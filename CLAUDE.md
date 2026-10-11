@@ -10,6 +10,12 @@ Code is synced into Roblox Studio with **Rojo 7.7.0** (the Studio plugin is the 
   Port 34872 belongs to the Steal a Pizza project, so the plugin must be set to 34873 for this game.
 - `servePlaceIds` locks the server to this place: Rojo refuses to connect from any other game.
 
+## Working as a team (two co-owners, one shared GitHub repo)
+- Before connecting Rojo: `git pull`. After finishing: disconnect, commit, `git push`.
+- Only one person can sync at a time. `ServerStorage.__Rojo_SessionLock` (ObjectValue) shows who is syncing.
+- If the code in Studio differs from `src/` (someone edited without syncing), do not connect: Rojo would overwrite it.
+  Find out whose change it is first.
+
 ## What Rojo manages
 | Studio | Folder |
 |---|---|
