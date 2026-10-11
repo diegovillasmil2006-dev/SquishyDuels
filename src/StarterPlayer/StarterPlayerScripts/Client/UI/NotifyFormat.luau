@@ -120,6 +120,10 @@ local function usableRect(rect: Rect): boolean
 	return finite(rect.x) and finite(rect.y) and finite(rect.w) and finite(rect.h) and rect.w > 0 and rect.h > 0
 end
 
+-- Pixels of play in the chain: a button's real box (centre anchor, hover or press scale) can sit up to a pixel off the
+-- rect the layout gave it, and the next rect in the chain must still count.
+local CHAIN_SLACK = 1
+
 -- The lowest bottom of the rects that share columns with [left, right] and hang in from above; nil when none. Lobby HUD
 -- (spec 2026-10-11): they chain. A rect counts when it starts at or above the running top: `defaultTop` at first, then
 -- `gap` under the lowest bottom so far (the Duel CTA at the top middle, then the coach card or the queue pill right
@@ -134,7 +138,7 @@ local function clearanceBetween(rects: { Rect }, left: number, right: number, de
 			if
 				not counted[rect]
 				and usableRect(rect)
-				and rect.y <= running
+				and rect.y <= running + CHAIN_SLACK
 				and rect.x < right
 				and left < rect.x + rect.w
 			then

@@ -188,7 +188,10 @@ return function(t: Context)
 			-- Without the CTA above it, a rect starting under the default top still never counts.
 			expect.equal(NotifyFormat.toastClearance({ coach }, W, COLUMN, TOP, GAP), nil)
 			-- A rect lower than the running top (a gap wider than `gap`) breaks the chain.
-			local lower = { x = 512, y = 113, w = 512, h = 80 }
+			local nearly = { x = 512, y = 113, w = 512, h = 80 }
+			-- One pixel of play (a button's real box can sit a pixel off its layout rect): still counts.
+			expect.equal(NotifyFormat.toastClearance({ nearly, cta }, W, COLUMN, TOP, GAP), 193)
+			local lower = { x = 512, y = 114, w = 512, h = 80 }
 			expect.equal(NotifyFormat.toastClearance({ lower, cta }, W, COLUMN, TOP, GAP), 104)
 			-- The toast column: 8 under the coach card, centred.
 			local placed = NotifyFormat.toastColumn({
