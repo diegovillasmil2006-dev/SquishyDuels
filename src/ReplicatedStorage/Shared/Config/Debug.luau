@@ -23,6 +23,8 @@ local STUDIO_FLAGS = {
 	-- Feel pass (§18.7, §18.3.4).
 	soundPicker = true, -- PlayerScripts.SD_SoundPicker BindableFunction and SoundController auditions (Play only)
 	forceRipplePathB = false, -- the jelly ripple skips path A (arena and backstop skins) and uses path B
+	-- Studio tests (2026-10-11).
+	ownersOwnAll = true, -- the two co-owners start every Studio test owning every squishy (DebugHooks.playerAdded)
 }
 
 local Debug = {
@@ -40,6 +42,7 @@ local Debug = {
 	forcePadPathB = IS_STUDIO and STUDIO_FLAGS.forcePadPathB,
 	soundPicker = IS_STUDIO and STUDIO_FLAGS.soundPicker,
 	forceRipplePathB = IS_STUDIO and STUDIO_FLAGS.forceRipplePathB,
+	ownersOwnAll = IS_STUDIO and STUDIO_FLAGS.ownersOwnAll,
 }
 
 return Debug

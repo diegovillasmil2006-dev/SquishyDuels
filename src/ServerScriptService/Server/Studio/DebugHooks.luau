@@ -66,6 +66,9 @@
 -- are debug strings for tests, never shown to players. Collaborators that other parts own (DuelService, CombatService,
 -- DataService's Studio hooks, the Part 7 services) are looked up when a command runs, so a missing one (or a missing
 -- debug function) is reported in the reply instead of breaking the boot.
+-- Owners own all (Config.Debug.ownersOwnAll, 2026-10-11): when a co-owner (OWNER_IDS) joins a Studio test, every
+-- squishy they do not own yet is granted once their profile is ready (playerAdded; EconomyService.grantSquishy with
+-- source "grant", so no onboarding step is completed). Once per join.
 
 -- Services
 
@@ -119,6 +122,8 @@ local PROJECTILE_COUNT_NAMES = { "projectileCount", "activeProjectileCount", "co
 local RELOAD_NAME = "debugReloadAsync"
 -- toStation: the root part goes this high above the station top (an R15 root stands about 3 studs up).
 local STAND_HEIGHT = 3
+-- Owners own all: the co-owners jayyyyy2806 and VillasmilGaming.
+local OWNER_IDS = { 8963996639, 136002404 }
 
 -- Module table
 
@@ -667,6 +672,30 @@ function DebugHooks.init()
 	bindable.Name = FUNCTION_NAME
 	bindable.OnInvoke = onInvoke
 	bindable.Parent = ServerStorage
+end
+
+-- Owners own all (see the header). Never yields: the wait for the profile runs in its own thread.
+function DebugHooks.playerAdded(player: Player)
+	if not (RunService:IsStudio() and Config.Debug.ownersOwnAll) or not table.find(OWNER_IDS, player.UserId) then
+		return
+	end
+	local dataService = optionalService("DataService")
+	if type(dataService) ~= "table" or type(dataService.waitForProfileAsync) ~= "function" then
+		log:warn("ownersOwnAll: DataService.waitForProfileAsync is missing; nothing granted")
+		return
+	end
+	task.spawn(function()
+		if dataService.waitForProfileAsync(player) == nil then
+			return -- left, OFFLINE or READONLY: nothing is granted
+		end
+		local added = 0
+		for _, def in Catalog.list() do
+			if EconomyService.grantSquishy(player, def.id, GRANT_SOURCE).added then
+				added += 1
+			end
+		end
+		log:info(`ownersOwnAll: user {player.UserId} got {added} squishies`)
+	end)
 end
 
 -- Not called by the bootstrap; removes the hook (leak checks).
