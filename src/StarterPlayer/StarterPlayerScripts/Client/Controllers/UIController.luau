@@ -110,6 +110,7 @@ local ModalStack = require(Client.UI.ModalStack)
 local NotifyFormat = require(Client.UI.NotifyFormat)
 local Theme = require(Client.UI.Theme)
 local Tweens = require(Client.Anim.Tweens)
+local UiFx = require(Client.UI.UiFx)
 local ControlsController = require(script.Parent.ControlsController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
@@ -1511,6 +1512,11 @@ function UIController.init()
 	for name in UI.ScreenGuis do
 		UIController.screenGui(name)
 	end
+	-- UI overhaul: the celebrations (UI/UiFx) draw above every window.
+	UiFx.setLayer(UIController.screenGui(OVERLAY_GUI))
+	c:add(function()
+		UiFx.setLayer(nil)
+	end)
 	-- The toast column's place follows the screen (toastsBelow).
 	c:add(UIController.screenGui(OVERLAY_GUI):GetPropertyChangedSignal("AbsoluteSize"):Connect(placeToasts))
 	c:add(UIController.LayoutChanged:connect(placeToasts))

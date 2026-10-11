@@ -143,6 +143,7 @@ local NotifyFormat = require(Client.UI.NotifyFormat)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local ScrollHint = require(Client.UI.Components.ScrollHint)
 local Theme = require(Client.UI.Theme)
+local UiFx = require(Client.UI.UiFx)
 local Waypoint = require(Client.UI.Waypoint)
 local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
@@ -784,11 +785,18 @@ local function buildCard(c: Cleanup.Cleanup)
 	end)
 end
 
--- §18.5.1 A9: the level label pops (a new pop restarts it; none under ReducedMotion, Tweens.scale).
+-- §18.5.1 A9: the level label pops (a new pop restarts it; none under ReducedMotion, Tweens.scale). UI overhaul: a
+-- level up is a stronger moment: a large Mint burst with its expanding rings on the level badge (UI/UiFx; above the HUD,
+-- never over the play area's centre).
 local function popLevel()
 	local k = card
 	if k == nil then
 		return
+	end
+	local badge = k.levelScales[1]
+	local target = if badge then badge.Parent else nil
+	if target and target:IsA("GuiObject") and target.Visible then
+		UiFx.burst(target, "large", Theme.Accents.mint.face)
 	end
 	for _, tween in k.levelTweens do
 		tween:Cancel()

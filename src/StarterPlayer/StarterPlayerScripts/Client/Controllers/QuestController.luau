@@ -63,6 +63,7 @@ local NotifyFormat = require(Client.UI.NotifyFormat)
 local QuestFormat = require(Client.UI.QuestFormat)
 local QueueFormat = require(Client.UI.QueueFormat)
 local Theme = require(Client.UI.Theme)
+local UiFx = require(Client.UI.UiFx)
 local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
@@ -282,6 +283,10 @@ local function claim(view: CardView)
 	local result = NetController.invokeAsync(CLAIM_REMOTE, id)
 	pending[id] = nil
 	if result.ok then
+		-- UI overhaul: a compact Mint burst where the Claim was (once per claim, after the server's yes).
+		if from then
+			UiFx.burst(from, "small", Theme.Accents.quests.face)
+		end
 		if reward > 0 then
 			HudController.flyCoins(from, reward)
 			UIController.toast(Strings.format(Strings.common.coinsGain, { coins = Format.coins(reward) }), "success")

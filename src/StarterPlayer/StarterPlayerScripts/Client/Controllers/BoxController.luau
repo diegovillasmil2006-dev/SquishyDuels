@@ -121,6 +121,12 @@
 -- full face with a white frame, the others its face dimmed towards the window (UNSELECTED_DIM); their texts follow the
 -- face (Theme.textOnColor). The odds rows are raised plum rows on the recessed field; Open is the Lime purchase CTA;
 -- Close is the red X.
+-- UI overhaul, the reveal's escalation (UI/UiFx, drawn above the windows): at the pop a neutral burst (white and cream
+-- for every result: no rarity hint before the reveal, §9.11); at the reveal a burst in the rarity's colour whose tier
+-- grows with the rarity (BOX_LOOK.revealTiers: Common small, Uncommon medium, Epic large, Exclusive huge) and, for Epic
+-- and Exclusive, a brief localized shake of the reveal panel (BOX_LOOK.revealShake); the name, the rarity tag and the
+-- result chip then pop in one after another (BOX_LOOK.infoStaggerMs; "NEW!" pops bigger than a duplicate's refund).
+-- A skip lands on the same final state at once (no sequence). Under ReducedMotion only the bursts' glows show.
 -- Stable names: Boxes_CloseButton, Boxes_Box_<id>, Boxes_DetailsButton, Boxes_Row_<i> (with Boxes_InspectButton),
 -- Boxes_OpenButton, Boxes_RetryButton, Boxes_ShopDirectButton, Boxes_HowToEarnButton; Reveal_SkipButton,
 -- Reveal_EquipButton, Reveal_InspectButton, Reveal_OpenAnotherButton, Reveal_CloseButton.
@@ -355,6 +361,11 @@ local BOX_LOOK = {
 	} :: { [string]: Color3 },
 	unselectedDim = 0.35,
 	selectedFramePx = 4,
+	-- The reveal's escalation (see the header).
+	fx = require(Client.UI.UiFx),
+	revealTiers = { Common = "small", Uncommon = "medium", Epic = "large", Exclusive = "huge" } :: { [string]: string },
+	revealShake = { Epic = 0.3, Exclusive = 0.55 } :: { [string]: number },
+	infoStaggerMs = 90,
 }
 local REVEAL_PANEL = BoxFormat.REVEAL_PANEL
 local REVEAL_WIDTH = REVEAL_PANEL.width
@@ -914,6 +925,8 @@ local function ensurePop(run: Run)
 			UIController.scale()
 		)
 	end
+	-- UI overhaul: the pop's neutral burst (white and cream for every result).
+	BOX_LOOK.fx.burst(run.stage.root, "small", nil, { neutral = true })
 end
 
 -- The rarity highlight's entry (§9.11): the rarity colour on the frame, the label + pips + "NEW!" sliding in (shown at
@@ -944,6 +957,29 @@ local function ensureHighlight(run: Run, instant: boolean)
 			ui.infoOffset.Position = UDim2.fromOffset(0, INFO_SLIDE_PX)
 			Tweens.play(ui.infoOffset, INFO_FADE_MS, { Position = UDim2.new() })
 			Tweens.fade(ui.info, { GroupTransparency = 0 }, INFO_FADE_MS)
+			-- UI overhaul: the name, the rarity and the result arrive one after another ("NEW!" the biggest).
+			local isNew = not run.entry.reveal.isDuplicate
+			local sequence: { { object: GuiObject, peak: number } } = {
+				{ object = ui.name, peak = 1.12 },
+				{ object = ui.rarity.root, peak = 1.1 },
+				{ object = ui.result.root, peak = if isNew then 1.22 else 1.08 },
+			}
+			for index, step in sequence do
+				task.delay((index - 1) * BOX_LOOK.infoStaggerMs / 1000, function()
+					if not run.done and step.object.Parent ~= nil then
+						BOX_LOOK.fx.punch(step.object, step.peak)
+					end
+				end)
+			end
+		end
+		-- UI overhaul: the reveal's burst in the rarity's colour, its tier growing with the rarity; a brief shake of the
+		-- panel for the top rarities.
+		local style = RarityStyle.get(run.rarity)
+		local tier = BOX_LOOK.revealTiers[run.rarity] or "small"
+		BOX_LOOK.fx.burst(run.stage.root, tier :: any, if style then style.ui.glow else nil)
+		local trauma = BOX_LOOK.revealShake[run.rarity]
+		if trauma and not instant then
+			BOX_LOOK.fx.shake(ui.root, trauma)
 		end
 	end
 	if not run.reduced then

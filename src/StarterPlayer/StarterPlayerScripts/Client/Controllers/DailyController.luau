@@ -71,6 +71,7 @@ local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
 local NotifyFormat = require(Client.UI.NotifyFormat)
 local Theme = require(Client.UI.Theme)
+local UiFx = require(Client.UI.UiFx)
 local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
 local StateController = require(script.Parent.StateController)
@@ -324,11 +325,28 @@ local function claim()
 	local button = claimButton
 	-- The flight starts where the button is now: the reply's StateDelta may hide it before the reply returns.
 	local from: Vector2? = if button then button.root.AbsolutePosition + button.root.AbsoluteSize / 2 else nil
+	-- UI overhaul: today's card (its view, for the burst) and whether it is the Treat Box day (the larger payoff).
+	local todayView: CardView? = nil
+	local treatDay = false
+	for i, card in currentModel().cards do
+		if card.today then
+			todayView = cards[i]
+			treatDay = card.treat
+		end
+	end
 	claiming = true
 	refresh()
 	local result = NetController.invokeAsync(REMOTE)
 	claiming = false
 	if result.ok then
+		-- UI overhaul: the reward burst on today's card (Gold; large for the Treat Box day), after the server's yes.
+		local target: GuiObject? = if todayView then todayView.frame else nil
+		if target then
+			UiFx.burst(target, if treatDay then "large" else "medium", Theme.Colors.gold)
+			UiFx.punch(target, 1.12)
+		elseif from then
+			UiFx.burst(from, "medium", Theme.Colors.gold)
+		end
 		local data = if type(result.data) == "table" then result.data else {}
 		local coins = if type(data.coins) == "number" then math.floor(data.coins) else 0
 		if data.streakReset == true then

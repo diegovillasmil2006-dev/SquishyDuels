@@ -125,6 +125,7 @@ local StaticIcon = require(Client.UI.Components.StaticIcon)
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
+local UiFx = require(Client.UI.UiFx)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
@@ -941,6 +942,13 @@ local function buySelected()
 		local name = if def then Strings.resolve(def.nameKey) or id else id
 		-- One sound per action (§18.5.2 B5): the success toast carries ui.purchase (§18.6).
 		UIController.toast(Strings.format(Strings.shop.success, { name = name }), "success", { sound = SOUND_PURCHASE })
+		-- UI overhaul: the new squishy gets a burst in its rarity's glow on the preview (after the server's yes only).
+		local d = detail
+		local style = if def then RarityStyle.get(def.rarity) else nil
+		if d and d.well.Visible then
+			UiFx.burst(d.well, "medium", if style then style.ui.glow else nil)
+			UiFx.punch(d.icon.root, 1.15)
+		end
 		if outcome.savePending then
 			UIController.toast(Strings.reasonText("box.saving"), "info", { sound = false })
 		end

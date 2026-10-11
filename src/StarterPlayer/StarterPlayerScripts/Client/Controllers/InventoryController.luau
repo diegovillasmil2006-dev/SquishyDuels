@@ -121,6 +121,7 @@ local StaticIcon = require(Client.UI.Components.StaticIcon)
 local Theme = require(Client.UI.Theme)
 local Toggle = require(Client.UI.Components.Toggle)
 local Tweens = require(Client.Anim.Tweens)
+local UiFx = require(Client.UI.UiFx)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
@@ -747,9 +748,33 @@ local function selectCard(id: string)
 	refresh()
 end
 
+-- UI overhaul: the visible cards' contents in grid order (the entrance cascade).
+local function cardContents(): { GuiObject }
+	local shown: { Card } = {}
+	for _, card in cards do
+		if card.root.Visible then
+			table.insert(shown, card)
+		end
+	end
+	table.sort(shown, function(a: Card, b: Card): boolean
+		return a.root.LayoutOrder < b.root.LayoutOrder
+	end)
+	local list: { GuiObject } = {}
+	for _, card in shown do
+		local content = card.root:FindFirstChild("Content")
+		if content and content:IsA("GuiObject") then
+			table.insert(list, content)
+		end
+	end
+	return list
+end
+
 local function setFilter(newFilter: InventoryFormat.Filter)
 	filter = newFilter
 	refresh()
+	-- UI overhaul: a filter change settles the grid's contents (no stagger, never the whole panel).
+	local settle = Config.UI.motion.tabSettle
+	UiFx.cascade(SCREEN, cardContents(), { from = settle.scaleFrom, ms = settle.ms, staggerMs = 0 })
 end
 
 local function equipSelected()
@@ -772,6 +797,14 @@ local function equipSelected()
 			refresh()
 		end)
 		NotifyController.show(EQUIPPED_TOAST, nil, "success")
+		-- UI overhaul: a brief ring and sparkles in the rarity's glow on the preview, once the server said yes.
+		local d = detail
+		local def = Catalog.get(id)
+		local style = if def then RarityStyle.get(def.rarity) else nil
+		if d and d.well.Visible then
+			UiFx.burst(d.well, "small", if style then style.ui.glow else nil)
+			UiFx.punch(d.icon.root, 1.12)
+		end
 	else
 		local reason = result.reason
 		local known = type(reason) == "string" and reason ~= GENERIC and KeyText.has("reason." .. reason)
@@ -813,10 +846,13 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	local gradient: UIGradient? = face.gradient
 	local shimmer = style ~= nil and style.card.gradient ~= nil and style.card.gradient.shimmerDegPerSecond ~= nil
 
-	-- Content (laid out top to bottom) and an overlay for the corner badges (not laid out).
+	-- Content (laid out top to bottom) and an overlay for the corner badges (not laid out). UI overhaul: anchored at its
+	-- centre, so the entrance cascade (UiFx.cascade) pops it from the middle.
 	local content: Frame = Create("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1),
 		Active = false,
 		Parent = root,
@@ -1557,6 +1593,7 @@ function InventoryController.init()
 			startPreviewBob(oc)
 			followSelection(oc)
 			refresh()
+			UiFx.cascade(SCREEN, cardContents()) -- UI overhaul: the cards pop in one after another (capped)
 		end,
 		onClose = function()
 			if openCleanup then

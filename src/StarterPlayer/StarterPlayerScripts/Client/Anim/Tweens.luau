@@ -20,6 +20,7 @@ local TweenService = game:GetService("TweenService")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
+local UiPrefs = require(script.Parent.Parent.UI.UiPrefs)
 
 -- Types
 
@@ -56,10 +57,10 @@ end
 
 -- Public
 
--- True while scale effects must be skipped and fades shortened: Roblox's own GuiService.ReducedMotionEnabled (§9.12).
--- There is no in-game override (an in-game "Reduce motion" toggle is an unapproved §16 proposal).
+-- True while scale effects must be skipped and fades shortened: Roblox's own GuiService.ReducedMotionEnabled (§9.12),
+-- or (UI overhaul 2026-10-11) the in-game Settings "Reduce motion" switch (UI/UiPrefs.reduceMotion).
 function Tweens.reducedMotion(): boolean
-	return GuiService.ReducedMotionEnabled
+	return GuiService.ReducedMotionEnabled or UiPrefs.get("reduceMotion")
 end
 
 function Tweens.info(ms: number, style: Enum.EasingStyle?, direction: Enum.EasingDirection?): TweenInfo
