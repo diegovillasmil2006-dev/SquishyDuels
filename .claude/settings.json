@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node tools/snapshot/snap.mjs *)",
+      "PowerShell(node tools/snapshot/snap.mjs *)"
+    ]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "-e",
+              "require(require('path').join(process.env.CLAUDE_PROJECT_DIR || process.cwd(), 'tools', 'snapshot', 'guard.cjs'))"
+            ],
+            "timeout": 15,
+            "statusMessage": "Checking for an unsaved Studio snapshot"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,2 +1,3 @@
-# Keep script line endings identical to Studio so Rojo never sees spurious changes.
+# Keep script line endings identical to Studio so snapshots never show fake changes.
 * text=auto eol=lf
+*.rbxm binary

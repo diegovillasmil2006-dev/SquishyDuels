@@ -2,6 +2,6 @@
 *.rbxlx
 *.rbxl.lock
 *.rbxlx.lock
-*.rbxm
 sourcemap.json
 node_modules/
+.claude/settings.local.json
