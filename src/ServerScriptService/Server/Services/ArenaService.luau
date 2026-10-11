@@ -1,15 +1,22 @@
 --!strict
 -- ArenaService (server only). DESIGN §2.3, §5.3, §5.4, §7.8.
--- The arena slot pool: up to Config.Duel.Arena.MaxSlots (6) clones of the template
--- ServerStorage.SD_Templates.Arena_CandyCourt (found by WorldService), placed in Workspace.SD_ArenaSlots (created at
--- runtime) on the grid Config.Duel.Arena.SlotOrigins (X 320/520 x Z -300..300, far from the lobby). Clones are made
--- lazily (PrewarmSlots at start), pivoted to their slot BEFORE they are parented, and kept for the server's lifetime;
--- release() clears the slot's Runtime folder and resets its state so the next match reuses it. The template is never
--- changed. Without a template, duels are disabled: available() is false, freeCount() is 0, acquire() returns nil
--- (QueueJoin answers queue.unavailable).
+-- The arena slot pool: up to Config.Duel.Arena.MaxSlots (6) clones of the arena templates in ServerStorage.SD_Templates
+-- (WorldService.arenaTemplates(): Candy Court plus the design arenas that are built, by World/Arenas id), placed in
+-- Workspace.SD_ArenaSlots (created at runtime) on the grid Config.Duel.Arena.SlotOrigins (X 320/520 x Z -300..300, far
+-- from the lobby). Clones are made lazily (PrewarmSlots at start), pivoted to their slot BEFORE they are parented, and
+-- kept for the server's lifetime; release() clears the slot's Runtime folder and resets its state so the next match
+-- reuses it. The templates are never changed. Without a usable template, duels are disabled: available() is false,
+-- freeCount() is 0, acquire() returns nil (QueueJoin answers queue.unavailable).
+-- Random arena (phase 4 spec 2026-10-11 §5.3, D7): acquire() rolls the match's arena with pickArena(), an equal chance
+-- over the usable templates (a server Random, never the client; repeats allowed), then takes a free clone of it, else
+-- clones it into the lowest never-cloned slot, else re-clones the lowest free slot that holds another arena (the old
+-- model is destroyed; at most one clone per match start). A template whose clone lacks a required child leaves the
+-- rotation (logged once); the others keep the duels going. Every arena shares Candy Court's gameplay frame, so zones,
+-- pads, killY and the projectile filter read the same from any clone. view(slot).arenaId names the arena (DuelState).
 --
 -- A Slot (plain table, read-only for callers except through the functions below):
---   index, model, origin (the Origin part's CFrame), floorY (floor top = Origin.Y, §5.3), killY (floorY +
+--   index, arenaId (World/Arenas id of the clone), model, origin (the Origin part's CFrame), floorY (floor top =
+--   Origin.Y, §5.3), killY (floorY +
 --   Config.Duel.Rules.OutOfBounds.KillYOffset), geometry, runtime, zones { HalfA, Neutral, HalfB, Bounds = {cframe,
 --   size} }, pads { A, B = CFrame } and padParts { A, B = BasePart }, inUse, matchId, acquiredAt, leaseUntil, and
 --   the projectile query parameters made once per slot:
@@ -47,6 +54,7 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local Arenas = require(Shared.World.Arenas)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local Signal = require(Shared.Util.Signal)
@@ -59,6 +67,7 @@ export type Zone = Types.ArenaZone
 
 export type Slot = {
 	index: number,
+	arenaId: string, -- World/Arenas id of the template this slot was cloned from
 	model: Model,
 	origin: CFrame,
 	floorY: number,
@@ -106,7 +115,7 @@ ArenaService.LeaseExpired = Signal.new() :: Signal.Signal<Slot, string?>
 
 -- Private
 
--- What this module logs through (useTemplate may swap it, so tests can check the log without console noise).
+-- What this module logs through (useTemplates may swap it, so tests can check the log without console noise).
 export type Logger = {
 	warn: (self: any, ...any) -> (),
 	error: (self: any, ...any) -> (),
@@ -114,8 +123,10 @@ export type Logger = {
 
 local DEFAULT_LOG: Logger = Log.new("Arena") :: any
 local log: Logger = DEFAULT_LOG
-local template: Instance? = nil
-local templateBroken = false
+local templates: { [string]: Instance } = {} -- arena id -> template
+local broken: { [string]: boolean } = {} -- arena ids whose clone lacked a required child
+local rng: Random = Random.new() -- the arena roll (server only)
+local forcedArena: string? = nil -- Studio (debugForceArena): every pick returns it while it is usable
 local container: Instance? = nil -- clones' parent; nil = Workspace.SD_ArenaSlots (made on the first clone)
 local slots: { [number]: Slot } = {}
 local handoffSlot: Slot? = nil
@@ -159,7 +170,7 @@ local function zoneOf(part: Instance?): Zone?
 end
 
 -- Builds the Slot of an already pivoted clone. Returns nil and a problem when the clone lacks a required child.
-local function readSlot(index: number, model: Model): (Slot?, string?)
+local function readSlot(index: number, model: Model, arenaId: string): (Slot?, string?)
 	local origin = model.PrimaryPart or model:FindFirstChild(ORIGIN_NAME)
 	if origin == nil or not origin:IsA("BasePart") then
 		return nil, "no Origin part"
@@ -211,6 +222,7 @@ local function readSlot(index: number, model: Model): (Slot?, string?)
 	local floorY = originCFrame.Position.Y
 	local slot: Slot = {
 		index = index,
+		arenaId = arenaId,
 		model = model,
 		origin = originCFrame,
 		floorY = floorY,
@@ -231,29 +243,77 @@ local function readSlot(index: number, model: Model): (Slot?, string?)
 	return slot, nil
 end
 
--- Clones the template into slot `index` (pivoted before parenting). Nil when the template is missing or broken.
-local function buildSlot(index: number): Slot?
-	local source = template
+-- The arena ids that can still be cloned, sorted.
+local function usableIds(): { string }
+	local ids: { string } = {}
+	for id in templates do
+		if not broken[id] then
+			table.insert(ids, id)
+		end
+	end
+	table.sort(ids)
+	return ids
+end
+
+-- Clones arena `arenaId` into slot `index` (pivoted before parenting). A free clone already in that slot (another
+-- arena) is destroyed once the new one is complete. Nil when the template is missing, not a Model or incomplete (it
+-- then leaves the rotation, logged once).
+local function cloneInto(index: number, arenaId: string): Slot?
+	local source: Instance? = templates[arenaId]
 	local position = ArenaService.slotOrigin(index)
-	if source == nil or templateBroken or position == nil or not source:IsA("Model") then
+	if source == nil or broken[arenaId] or position == nil then
 		return nil
 	end
-	local model = source:Clone() :: Model
-	model.Name = CLONE_PREFIX .. index
-	-- A runtime copy, not a generated root (generated roots are what the editor tools look for, §1.7).
-	model:RemoveTag(TAG_GENERATED)
-	model:SetAttribute(ATTR_SLOT, index)
-	model:PivotTo(CFrame.new(position))
-	local slot, problem = readSlot(index, model)
+	local slot: Slot?, problem: string? = nil, `a {source.ClassName}, not a Model`
+	if source:IsA("Model") then
+		local model = source:Clone() :: Model
+		model.Name = CLONE_PREFIX .. index
+		-- A runtime copy, not a generated root (generated roots are what the editor tools look for, §1.7).
+		model:RemoveTag(TAG_GENERATED)
+		model:SetAttribute(ATTR_SLOT, index)
+		model:PivotTo(CFrame.new(position))
+		slot, problem = readSlot(index, model, arenaId)
+		if slot == nil then
+			model:Destroy()
+		end
+	end
 	if slot == nil then
-		model:Destroy()
-		templateBroken = true
-		log:error(`arena template is incomplete ({problem}); duels are disabled`)
+		broken[arenaId] = true
+		local consequence = if #usableIds() == 0 then "duels are disabled" else "it leaves the rotation"
+		log:error(`arena template {arenaId} is incomplete ({problem}); {consequence}`)
 		return nil
 	end
-	model.Parent = getContainer()
+	local old = slots[index]
+	if old ~= nil then
+		old.model:Destroy()
+	end
+	slot.model.Parent = getContainer()
 	slots[index] = slot
 	return slot
+end
+
+-- The slot for arena `arenaId`: a free clone of it, else a new clone in the lowest never-cloned slot, else the lowest
+-- free slot re-cloned with it. Returns (nil, true) when every slot is in use and (nil, false) when the clone failed.
+local function slotFor(arenaId: string): (Slot?, boolean)
+	local freeOther: Slot? = nil
+	for index = 1, ArenaService.maxSlots() do
+		local slot = slots[index]
+		if slot ~= nil and not slot.inUse then
+			if slot.arenaId == arenaId then
+				return slot, false
+			end
+			freeOther = freeOther or slot
+		end
+	end
+	for index = 1, ArenaService.maxSlots() do
+		if slots[index] == nil then
+			return cloneInto(index, arenaId), false
+		end
+	end
+	if freeOther ~= nil then
+		return cloneInto(freeOther.index, arenaId), false
+	end
+	return nil, true
 end
 
 local function clearRuntime(slot: Slot)
@@ -368,6 +428,7 @@ function ArenaService.view(slot: Slot): Types.DuelArenaView
 	end
 	return {
 		slot = slot.index,
+		arenaId = slot.arenaId,
 		floorY = slot.floorY,
 		zones = zones,
 		pads = { PadA = slot.pads.A, PadB = slot.pads.B },
@@ -386,34 +447,68 @@ end
 
 -- Public: pool ---------------------------------------------------------------------------------------------------------
 
--- Uses this template and container (init() passes WorldService.arenaTemplate() and nil = Workspace.SD_ArenaSlots;
--- tests pass an in-memory template, an unparented folder, a fake clock and a recording logger). Destroys the clones
--- made so far. The clock defaults to the server time and the logger to [SD][Arena].
-function ArenaService.useTemplate(
-	newTemplate: Instance?,
+-- Uses these templates (arena id -> template) and container (init() passes WorldService.arenaTemplates() and nil =
+-- Workspace.SD_ArenaSlots; tests pass in-memory templates, an unparented folder, a fake clock, a recording logger and a
+-- scripted Random). Destroys the clones made so far and clears the Studio pin. The clock defaults to the server time,
+-- the logger to [SD][Arena], the Random to a new one.
+function ArenaService.useTemplates(
+	newTemplates: { [string]: Instance },
 	newContainer: Instance?,
 	newClock: (() -> number)?,
-	newLog: Logger?
+	newLog: Logger?,
+	newRng: Random?
 )
 	for _, slot in slots do
 		slot.model:Destroy()
 	end
 	slots = {}
 	handoffSlot = nil
-	template = newTemplate
-	templateBroken = false
+	templates = table.clone(newTemplates)
+	broken = {}
+	forcedArena = nil
 	container = newContainer
 	clock = newClock or serverClock
 	log = newLog or DEFAULT_LOG
+	rng = newRng or Random.new()
 end
 
--- True when duels can run: the template exists and is complete.
+-- Candy Court alone (Arenas.DEFAULT_ID): useTemplates({ candy_court = template }, ...); nil = no template.
+function ArenaService.useTemplate(
+	newTemplate: Instance?,
+	newContainer: Instance?,
+	newClock: (() -> number)?,
+	newLog: Logger?
+)
+	ArenaService.useTemplates(
+		if newTemplate then { [Arenas.DEFAULT_ID] = newTemplate } else {},
+		newContainer,
+		newClock,
+		newLog
+	)
+end
+
+-- True when duels can run: at least one template exists and is complete.
 function ArenaService.available(): boolean
-	return template ~= nil and not templateBroken
+	return #usableIds() > 0
 end
 
--- Takes a free slot (the lowest cloned free index first, else a new clone) and starts its lease. Nil when every slot
--- is in use or the template is missing. During a handoff, returns the handed-off slot instead.
+-- The next match's arena: the Studio pin (debugForceArena) while it is usable, else an equal-chance roll over the
+-- usable arena ids (D7; one usable arena needs no roll). Nil when none is usable.
+function ArenaService.pickArena(): string?
+	local usable = usableIds()
+	local forced = forcedArena
+	if forced ~= nil and table.find(usable, forced) then
+		return forced
+	end
+	if #usable <= 1 then
+		return usable[1]
+	end
+	return usable[rng:NextInteger(1, #usable)]
+end
+
+-- Takes a slot holding a freshly picked arena (pickArena, then a free clone of it, else a new clone, else a free slot
+-- re-cloned) and starts its lease. Nil when every slot is in use or no template is usable. During a handoff, returns
+-- the handed-off slot instead.
 function ArenaService.acquire(matchId: string?): Slot?
 	local handed = handoffSlot
 	if handed ~= nil then
@@ -423,35 +518,29 @@ function ArenaService.acquire(matchId: string?): Slot?
 		end
 		return handed
 	end
-	if not ArenaService.available() then
+	if not ArenaService.available() or ArenaService.inUseCount() >= ArenaService.maxSlots() then
 		return nil
 	end
 	local chosen: Slot? = nil
-	for index = 1, ArenaService.maxSlots() do
-		local slot = slots[index]
-		if slot ~= nil and not slot.inUse then
-			chosen = slot
-			break
+	while chosen == nil do
+		local arenaId = ArenaService.pickArena()
+		if arenaId == nil then
+			return nil -- every template broke
 		end
-	end
-	if chosen == nil then
-		for index = 1, ArenaService.maxSlots() do
-			if slots[index] == nil then
-				chosen = buildSlot(index)
-				break
-			end
+		local slot, busy = slotFor(arenaId)
+		if busy or (slot == nil and not broken[arenaId]) then
+			return nil
 		end
-	end
-	if chosen == nil then
-		return nil
+		chosen = slot -- nil: that arena just left the rotation; roll again
 	end
 	local now = clock()
-	chosen.inUse = true
-	chosen.matchId = matchId
-	chosen.acquiredAt = now
-	chosen.leaseUntil = now + ArenaService.leaseSeconds()
-	chosen.drainUntil = nil
-	return chosen
+	local slot = chosen :: Slot
+	slot.inUse = true
+	slot.matchId = matchId
+	slot.acquiredAt = now
+	slot.leaseUntil = now + ArenaService.leaseSeconds()
+	slot.drainUntil = nil
+	return slot
 end
 
 -- While set, the next acquire() returns this slot (QueueService -> DuelService.startMatch). nil clears it.
@@ -566,14 +655,30 @@ function ArenaService.janitorStep(now: number?): { Slot }
 	return expired
 end
 
--- Clones slots up to `count` (default PrewarmSlots) without taking them.
+-- Clones slots up to `count` (default PrewarmSlots) without taking them, each with a picked arena.
 function ArenaService.prewarm(count: number?)
 	local target = math.min(count or Config.Duel.Arena.PrewarmSlots, ArenaService.maxSlots())
 	for index = 1, target do
-		if slots[index] == nil and buildSlot(index) == nil then
-			return
+		while slots[index] == nil do
+			local arenaId = ArenaService.pickArena()
+			if arenaId == nil or (cloneInto(index, arenaId) == nil and not broken[arenaId]) then
+				return
+			end -- a failed clone left the rotation: pick again
 		end
 	end
+end
+
+-- Studio only (DebugHooks "forceArena"): every pick returns `arenaId` while it is usable; nil restores the roll.
+-- Returns false and a reason for an id with no template.
+function ArenaService.debugForceArena(arenaId: string?): (boolean, string?)
+	if arenaId ~= nil then
+		local template: Instance? = templates[arenaId]
+		if template == nil then
+			return false, `no arena template {arenaId}`
+		end
+	end
+	forcedArena = arenaId
+	return true, nil
 end
 
 -- Studio debug view: one line per cloned slot.
@@ -584,6 +689,7 @@ function ArenaService.debugState(): { [string]: any }
 		if slot ~= nil then
 			table.insert(list, {
 				index = index,
+				arenaId = slot.arenaId,
 				inUse = slot.inUse,
 				matchId = slot.matchId,
 				leaseLeft = if slot.leaseUntil then slot.leaseUntil - clock() else nil,
@@ -591,11 +697,19 @@ function ArenaService.debugState(): { [string]: any }
 			})
 		end
 	end
+	local brokenIds: { string } = {}
+	for id in broken do
+		table.insert(brokenIds, id)
+	end
+	table.sort(brokenIds)
 	return {
 		available = ArenaService.available(),
 		maxSlots = ArenaService.maxSlots(),
 		inUse = ArenaService.inUseCount(),
 		free = ArenaService.freeCount(),
+		arenas = usableIds(),
+		broken = brokenIds,
+		forced = forcedArena,
 		slots = list,
 	}
 end
@@ -603,8 +717,8 @@ end
 -- Lifecycle ------------------------------------------------------------------------------------------------------------
 
 function ArenaService.init()
-	ArenaService.useTemplate(WorldService.arenaTemplate(), nil)
-	if template == nil then
+	ArenaService.useTemplates(WorldService.arenaTemplates(), nil)
+	if not ArenaService.available() then
 		log:warn("no arena template; duels are disabled (queue.unavailable)")
 	end
 end

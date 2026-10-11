@@ -14,7 +14,9 @@
 --   * rayFace from a lane end E (the sphere centre, R = 4 short of a wall face) along the lane for R +
 --     rushProbeMarginStuds hits that face, and for R alone it does not;
 --   * arenaFrame(PadA, PadB, floorY) round-trips WorldLayout points (every cover Body within 0.001 studs, also for a
---     yawed arena); the mismatch guard trips at 0.03 studs and a turned box of the same shape matches.
+--     yawed arena); the mismatch guard trips at 0.03 studs and a turned box of the same shape matches;
+--   * arenaPiecesFor (phase 4 spec 2026-10-11 D9): Candy Court's pieces for "candy_court" or no arena id, none for any
+--     other arena (its cover is not Candy Court's: no skin is built there).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -381,6 +383,13 @@ return function(t: Context)
 			JellySkin.boxMismatch(cylinder, Vector3.new(7.5, 5, 5), CFrame.new(20, 3.75, 30), Vector3.new(5, 7.5, 5))
 				< 1e-6
 		)
+	end)
+
+	t.test("arenaPiecesFor: Candy Court's pieces for candy_court or no id, none for a design arena (D9)", function()
+		expect.equal(JellySkin.arenaPiecesFor(nil), JellySkin.arenaPieces())
+		expect.equal(JellySkin.arenaPiecesFor("candy_court"), JellySkin.arenaPieces())
+		expect.deepEqual(JellySkin.arenaPiecesFor("pinewood_camp"), {})
+		expect.deepEqual(JellySkin.arenaPiecesFor("anything else"), {})
 	end)
 
 	t.test("impulseFor and wobblePitch follow §18.3.4 and §18.6", function()

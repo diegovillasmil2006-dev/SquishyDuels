@@ -32,6 +32,97 @@ local Palette = {
 	-- The dark duel transition fade (§9.12, §9.14): the only full-screen overlay allowed above 30% opacity.
 	DuelFade = Color3.fromHex("#2B2440"),
 
+	-- Design arenas (phase 4 spec 2026-10-11): the world colours of the 5 Claude Design arenas (World/Arenas cover,
+	-- SDTools Builders/Arenas), named after the design's materials (sd/arena.js, sd/blox.js, sd/arenas2.js and the
+	-- shared palette, sd/lobby.js:71-83). World only; plain colours (the design's glows stay unlit, D6).
+	ArenaTeamMint = Color3.fromHex("#5FD3AE"), -- team_mint, sd/lobby.js:74
+	ArenaTeamStrawberry = Color3.fromHex("#F2687F"), -- team_strawberry, sd/lobby.js:74
+	ArenaCourtMint = Color3.fromHex("#BDEAD6"), -- court_mint, sd/arena.js:18
+	ArenaCourtStrawberry = Color3.fromHex("#F8CAD4"), -- court_strawberry, sd/arena.js:18
+	ArenaCushionCream = Color3.fromHex("#FFF3E2"), -- cushion_cream, sd/arena.js:19
+	ArenaTrimWhite = Color3.fromHex("#FFFDF8"), -- trim_white / court_line, sd/lobby.js:75, sd/arena.js:18
+	ArenaButter = Color3.fromHex("#FFD25E"), -- butter_yellow, sd/lobby.js:75
+	ArenaLilac = Color3.fromHex("#D9C6F5"), -- lilac / marshmallow_band, sd/lobby.js:75, sd/arena.js:21
+	ArenaViolet = Color3.fromHex("#B892F0"), -- violet / brick_lilac, sd/lobby.js:75, sd/arenas2.js:182
+	ArenaSky = Color3.fromHex("#8FD3F4"), -- sky_blue, sd/lobby.js:76
+	ArenaPlum = Color3.fromHex("#3F3756"), -- scoreboard_plum, sd/arena.js:21
+	ArenaGold = Color3.fromHex("#E8B84A"), -- gold_trim, sd/lobby.js:77 (small accents only: near the reserved CoinGold)
+	ArenaStrawberryRed = Color3.fromHex("#EE4A5C"), -- strawberry_red, sd/arena.js:22 (small accents only: near the reserved Danger)
+	ArenaFrogGreen = Color3.fromHex("#6CC56A"), -- frog_green, sd/arena.js:22
+	ArenaPebble = Color3.fromHex("#E8DCCB"), -- pebble, sd/lobby.js:80
+	ArenaInk = Color3.fromHex("#2B2233"), -- ink_dark, sd/lobby.js:80
+	ArenaLampGlow = Color3.fromHex("#FFF6DC"), -- lamp_glow / bulb_glow, sd/arena.js:22, sd/arenas2.js:182 (no glow, D6)
+	ArenaGlowCream = Color3.fromHex("#FFF1C2"), -- marquee_glow / lantern_glow, sd/arenas2.js:182, sd/blox.js:20 (no glow, D6)
+	ArenaGlass = Color3.fromHex("#E4F6FF"), -- glass, sd/lobby.js:77
+	ArenaFloorCream = Color3.fromHex("#F4E6D3"), -- arena_floor_cream, sd/arena.js:18
+	ArenaWafer = Color3.fromHex("#E5B06C"), -- wafer, sd/arena.js:20
+	ArenaWaferGroove = Color3.fromHex("#C98F4B"), -- wafer_groove, sd/arena.js:20
+	ArenaWaferCream = Color3.fromHex("#FFF6E8"), -- wafer_cream, sd/arena.js:20
+	ArenaCakeSponge = Color3.fromHex("#F2C98F"), -- cake_sponge, sd/arena.js:20
+	ArenaMarshmallow = Color3.fromHex("#FFF9F4"), -- marshmallow, sd/arena.js:21
+	ArenaScoreboardScreen = Color3.fromHex("#261F38"), -- scoreboard_screen, sd/arena.js:112
+	ArenaCaneWhite = Color3.fromHex("#FFF8F2"), -- cane_white, sd/arena.js:123
+	ArenaCrowdBlue = Color3.fromHex("#6EC6F5"), -- crowd gumdrop, sd/arena.js:94
+	ArenaGrass = Color3.fromHex("#6CC24A"), -- grass, sd/blox.js:16
+	ArenaGrassDark = Color3.fromHex("#58AE3E"), -- grass_dark, sd/blox.js:16
+	ArenaPlankLight = Color3.fromHex("#D39A5E"), -- plank_light, sd/blox.js:16
+	ArenaPlankMid = Color3.fromHex("#C48850"), -- plank_mid, sd/blox.js:16
+	ArenaPlankDark = Color3.fromHex("#8E5A33"), -- plank_dark, sd/blox.js:16
+	ArenaLogBark = Color3.fromHex("#9A6236"), -- log_bark, sd/blox.js:17
+	ArenaLogEnd = Color3.fromHex("#E8C08A"), -- log_end, sd/blox.js:17
+	ArenaPineLeaves = Color3.fromHex("#2F8F4E"), -- pine_leaves, sd/blox.js:17
+	ArenaOakLeaves = Color3.fromHex("#4FB252"), -- oak_leaves, sd/blox.js:17
+	ArenaTrunk = Color3.fromHex("#7A4E2E"), -- trunk, sd/blox.js:17
+	ArenaRock = Color3.fromHex("#9BA2AB"), -- rock, sd/blox.js:18
+	ArenaPaintWhite = Color3.fromHex("#FFF8EE"), -- paint_white, sd/blox.js:18
+	ArenaCabinRoof = Color3.fromHex("#6E4632"), -- cabin_roof, sd/blox.js:19
+	ArenaCabinWindow = Color3.fromHex("#9FD8F2"), -- cabin_window, sd/blox.js:19
+	ArenaChimneyStone = Color3.fromHex("#A9A39B"), -- chimney_stone, sd/blox.js:19
+	ArenaFireCore = Color3.fromHex("#FFB43B"), -- fire_core, sd/blox.js:19 (no glow, D6)
+	ArenaFireTip = Color3.fromHex("#FFE27A"), -- fire_tip, sd/blox.js:19 (no glow, D6)
+	ArenaIron = Color3.fromHex("#3B3640"), -- iron, sd/blox.js:20
+	ArenaStumpRing = Color3.fromHex("#D8A46C"), -- stump_ring, sd/blox.js:60
+	ArenaPlayroomRug = Color3.fromHex("#E6DAF2"), -- playroom_rug, sd/arenas2.js:50
+	ArenaQuiltMint = Color3.fromHex("#CDEFE2"), -- quilt_mint, sd/arenas2.js:50
+	ArenaQuiltStrawberry = Color3.fromHex("#FAD6DE"), -- quilt_strawberry, sd/arenas2.js:50
+	ArenaPeriwinkle = Color3.fromHex("#A9B4F0"), -- periwinkle_velvet, sd/arenas2.js:50
+	ArenaPeriwinkleDeep = Color3.fromHex("#8C98E0"), -- periwinkle_deep, sd/arenas2.js:50
+	ArenaToyWood = Color3.fromHex("#D6A06A"), -- toy_wood, sd/arenas2.js:50
+	ArenaToyWoodDark = Color3.fromHex("#B07A48"), -- toy_wood_dark, sd/arenas2.js:50
+	ArenaPillowMintPrint = Color3.fromHex("#A9E8D2"), -- pillow_mint_print, sd/arenas2.js:50
+	ArenaPillowStrawberryPrint = Color3.fromHex("#F9B3C2"), -- pillow_berry_print, sd/arenas2.js:50
+	ArenaReefSand = Color3.fromHex("#F3DFB4"), -- reef_sand, sd/arenas2.js:121
+	ArenaCourtAqua = Color3.fromHex("#BDEDEE"), -- court_aqua, sd/arenas2.js:121
+	ArenaCourtCoral = Color3.fromHex("#FFD6CC"), -- court_coral, sd/arenas2.js:121
+	ArenaSponge = Color3.fromHex("#F9D35B"), -- sponge_yellow, sd/arenas2.js:121
+	ArenaSpongePore = Color3.fromHex("#D9A534"), -- sponge_pore, sd/arenas2.js:121
+	ArenaClamShell = Color3.fromHex("#FFE3EC"), -- clam_shell, sd/arenas2.js:121
+	ArenaPearl = Color3.fromHex("#FFF6FA"), -- pearl, sd/arenas2.js:121
+	ArenaClamInner = Color3.fromHex("#F8A8BD"), -- clam_inner, sd/arenas2.js:121
+	ArenaBrainCoral = Color3.fromHex("#F49AC1"), -- brain_coral, sd/arenas2.js:121
+	ArenaSeaGlass = Color3.fromHex("#9FE3C9"), -- sea_glass, sd/arenas2.js:121
+	ArenaSeaGlassTop = Color3.fromHex("#D2F5E8"), -- sea_glass_top, sd/arenas2.js:121
+	ArenaAquariumWater = Color3.fromHex("#6CC8EA"), -- aquarium_water, sd/arenas2.js:121 (no glow, D6)
+	ArenaKelp = Color3.fromHex("#5DBB7A"), -- kelp, sd/arenas2.js:121
+	ArenaKelpDark = Color3.fromHex("#3E9C5F"), -- kelp_dark, sd/arenas2.js:121
+	ArenaReefRock = Color3.fromHex("#B6A6C9"), -- reef_rock, sd/arenas2.js:121
+	ArenaReefRockWarm = Color3.fromHex("#D8B9A6"), -- reef_rock_warm, sd/arenas2.js:121
+	ArenaTubeCoralOrange = Color3.fromHex("#FFB070"), -- tube_coral_orange, sd/arenas2.js:121
+	ArenaTubeCoralLilac = Color3.fromHex("#C6A3F4"), -- tube_coral_lilac, sd/arenas2.js:121
+	ArenaBubble = Color3.fromHex("#EFFBFF"), -- bubble, sd/arenas2.js:121
+	ArenaTankGlass = Color3.fromHex("#CFF3FF"), -- tank_glass, sd/arenas2.js:121
+	ArenaFishOrange = Color3.fromHex("#FF9A4D"), -- fish_orange, sd/arenas2.js:160
+	ArenaFishPink = Color3.fromHex("#F68FB4"), -- fish_pink, sd/arenas2.js:160
+	ArenaCarpet = Color3.fromHex("#45407A"), -- arcade_carpet, sd/arenas2.js:182
+	ArenaTileMintA = Color3.fromHex("#A8E6D2"), -- tile_mint_a, sd/arenas2.js:182
+	ArenaTileMintB = Color3.fromHex("#DDF6EE"), -- tile_mint_b, sd/arenas2.js:182
+	ArenaTileStrawberryA = Color3.fromHex("#F9B9C6"), -- tile_berry_a, sd/arenas2.js:182
+	ArenaTileStrawberryB = Color3.fromHex("#FDE3E9"), -- tile_berry_b, sd/arenas2.js:182
+	ArenaBrickSky = Color3.fromHex("#7FC8F8"), -- brick_sky, sd/arenas2.js:182
+	ArenaBrickGreen = Color3.fromHex("#8BE3A1"), -- brick_green, sd/arenas2.js:182
+	ArenaCabinetScreen = Color3.fromHex("#2A2342"), -- cabinet_screen, sd/arenas2.js:182 (no glow, D6)
+	ArenaConveyorBelt = Color3.fromHex("#4A4560"), -- conveyor_belt, sd/arenas2.js:182
+
 	-- Foam UI tokens (UI only; foam UI restyle spec 2026-10-09, read through UI/Theme). The world keeps the tokens
 	-- above.
 	-- Paper:

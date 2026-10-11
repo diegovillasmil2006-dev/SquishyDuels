@@ -257,6 +257,7 @@ export type DuelParticipantView = {
 export type ArenaZone = { cframe: CFrame, size: Vector3 }
 export type DuelArenaView = {
 	slot: number,
+	arenaId: string?, -- World/Arenas id of the match's arena (phase 4: a server fact, picked at random per match)
 	floorY: number,
 	zones: { [string]: ArenaZone },
 	pads: { [string]: CFrame },

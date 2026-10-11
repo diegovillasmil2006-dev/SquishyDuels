@@ -624,6 +624,10 @@ local Strings = {
 		duelGateSubtitle = "1v1 duels • Queue at the pad",
 		squeezeTitle = "SQUEEZE ZONE",
 		squeezeSubtitle = "Squeeze your squishy to earn Coins",
+		-- The design arenas' prop signs (phase 4 spec 2026-10-11, Arcade Toyworks: sd/arenas2.js:196, 220, 241, 251).
+		arenaPlay = "PLAY",
+		arenaToyworks = "TOYWORKS",
+		arenaPrizes = "PRIZES",
 	},
 
 	-- Collection display (§7.6, §7.7).

@@ -7,7 +7,10 @@
 -- there: the GripTier of every squeeze station and each giant pad's collision top.
 --
 -- API
---   Verify.verify(target, root, deps?) -> { string }   one line per problem; empty means OK
+--   Verify.verify(target, root, deps?) -> { string }   one line per problem; empty means OK. Targets: "shapes",
+--     "lobby", "arena" (Candy Court) and the 5 design arenas "arena_sweetshop_stadium", "arena_pinewood_camp",
+--     "arena_pillow_fort_park", "arena_bubble_reef_court", "arena_arcade_toyworks" (phase 4 spec 2026-10-11 §5.4):
+--     every arena target meets the same gameplay rules; ARENA_CONTRACTS holds what differs per target
 --     deps.Shared       the injected Shared clone; "lobby" requires Strings and World/WorldLayout from it
 --     deps.Strings      a Strings-like table (resolve(key) -> string?); takes precedence over deps.Shared
 --     deps.WorldLayout  a WorldLayout-like table; takes precedence over deps.Shared (unit tests pass fakes)
@@ -86,6 +89,16 @@ type BoxSpec = {
 type TagCount = {
 	tag: string,
 	count: number,
+}
+
+-- What one arena target must meet besides the rules every arena shares (frame, barriers, zones, pads, lane, symmetry).
+type ArenaContract = {
+	rootName: string,
+	arenaId: string?, -- the root's SD_ArenaId (design arenas); nil: not checked
+	lowCover: boolean, -- cover Models carry SD_CoverKind; "low" ones top out at LOW_COVER_TOP (spec §4.2 R3)
+	ownAxesWidth: boolean, -- a cover piece's width is measured along its Body's turn (R2), not the arena's axes
+	maxDecorParts: number,
+	maxSurfaceGuis: number?,
 }
 
 -- Constants
@@ -188,13 +201,37 @@ local PRACTICE_TARGET_ATTRIBUTES = {
 }
 
 -- arena (§5.3, §7.8)
-local ARENA_ROOT_NAME = "Arena_CandyCourt"
 local ARENA_CHILDREN = { "Origin", "Geometry", "Zones", "Spawns", "Decor", "Runtime" }
 local ARENA_MAX_PARTS = 400
-local ARENA_MAX_DECOR_PARTS = 59 -- "< 60"
 local COVER_PIECES = 12
 local COVER_MIN_TOP = 8
 local COVER_MAX_WIDTH = 8
+-- Design arenas (phase 4 spec 2026-10-11 §4.2, §5.4): low "half cover" may be hopped on (D2), Decor holds the
+-- out-of-bounds dressing, SurfaceGuis carry emblems and signs.
+local LOW_COVER_TOP = { 3, 5 }
+local ATTR_ARENA_ID = "SD_ArenaId"
+local ATTR_COVER_KIND = "SD_CoverKind"
+local DESIGN_ARENA_MAX_DECOR_PARTS = 260
+local DESIGN_ARENA_MAX_SURFACE_GUIS = 24
+local function designArena(rootName: string, arenaId: string): ArenaContract
+	return {
+		rootName = rootName,
+		arenaId = arenaId,
+		lowCover = true,
+		ownAxesWidth = true,
+		maxDecorParts = DESIGN_ARENA_MAX_DECOR_PARTS,
+		maxSurfaceGuis = DESIGN_ARENA_MAX_SURFACE_GUIS,
+	}
+end
+local ARENA_CONTRACTS: { [string]: ArenaContract } = {
+	-- Candy Court (§5.3, §7.8): full cover only, measured along the arena axes; Decor "< 60".
+	arena = { rootName = "Arena_CandyCourt", lowCover = false, ownAxesWidth = false, maxDecorParts = 59 },
+	arena_sweetshop_stadium = designArena("Arena_SweetshopStadium", "sweetshop_stadium"),
+	arena_pinewood_camp = designArena("Arena_PinewoodCamp", "pinewood_camp"),
+	arena_pillow_fort_park = designArena("Arena_PillowFortPark", "pillow_fort_park"),
+	arena_bubble_reef_court = designArena("Arena_BubbleReefCourt", "bubble_reef_court"),
+	arena_arcade_toyworks = designArena("Arena_ArcadeToyworks", "arcade_toyworks"),
+}
 local PLAYABLE_HALF_X = 36
 local PLAYABLE_HALF_Z = 52
 local NEUTRAL_HALF_Z = 8
@@ -1315,14 +1352,28 @@ end
 
 -- Private: arena (§5.3, §7.8)
 
-local function checkArenaTree(report: Report, root: Instance, all: { Instance })
+local function checkArenaTree(report: Report, root: Instance, all: { Instance }, contract: ArenaContract)
 	if not root:IsA("Model") then
 		note(report, "root", string.format("root is a %s, expected a Model", root.ClassName))
 	elseif (root :: Model).ModelStreamingMode == Enum.ModelStreamingMode.Atomic then
 		note(report, "root", "root is Atomic; only cover pieces are Atomic (§5.3)")
 	end
-	if root.Name ~= ARENA_ROOT_NAME then
-		note(report, "root", string.format("root is named %q, expected %q", root.Name, ARENA_ROOT_NAME))
+	if root.Name ~= contract.rootName then
+		note(report, "root", string.format("root is named %q, expected %q", root.Name, contract.rootName))
+	end
+	local arenaId = root:GetAttribute(ATTR_ARENA_ID)
+	if contract.arenaId ~= nil and arenaId ~= contract.arenaId then
+		note(
+			report,
+			"root",
+			string.format(
+				"root %s has %s %s, expected %q",
+				root.Name,
+				ATTR_ARENA_ID,
+				if type(arenaId) == "string" then string.format("%q", arenaId) else tostring(arenaId),
+				contract.arenaId
+			)
+		)
 	end
 	for _, name in ARENA_CHILDREN do
 		if root:FindFirstChild(name) == nil then
@@ -1335,8 +1386,11 @@ local function checkArenaTree(report: Report, root: Instance, all: { Instance })
 		end
 	end
 
-	local parts, dividers, barriers = 0, 0, 0
+	local parts, dividers, barriers, surfaceGuis = 0, 0, 0, 0
 	for _, instance in all do
+		if instance:IsA("SurfaceGui") then
+			surfaceGuis += 1
+		end
 		if instance:IsA("LuaSourceContainer") then
 			note(report, "forbidden", string.format("no scripts allowed: %s", describe(instance)))
 		elseif instance:IsA("ProximityPrompt") then
@@ -1362,6 +1416,10 @@ local function checkArenaTree(report: Report, root: Instance, all: { Instance })
 	end
 	if parts > ARENA_MAX_PARTS then
 		note(report, "budget", string.format("template has %d parts, budget %d", parts, ARENA_MAX_PARTS))
+	end
+	local maxSurfaceGuis = contract.maxSurfaceGuis
+	if maxSurfaceGuis ~= nil and surfaceGuis > maxSurfaceGuis then
+		note(report, "budget", string.format("template has %d SurfaceGuis, budget %d", surfaceGuis, maxSurfaceGuis))
 	end
 	for _, group in
 		{
@@ -1475,7 +1533,26 @@ local function checkFloor(report: Report, solid: { BasePart }, frame: CFrame)
 	end
 end
 
-local function checkCover(report: Report, geometry: Instance, frame: CFrame)
+-- A cover piece's width: the longer side of its parts' bounds along the arena's axes, or (ownAxes, spec §4.2 R2: the
+-- arena-axes box of an 8-stud wall turned 20 degrees is 8.4 wide) along its Body's turn about the arena's up axis.
+local function coverWidth(piece: Model, parts: { BasePart }, frame: CFrame, ownAxes: boolean): number
+	local measure = frame
+	local body = piece.PrimaryPart or piece:FindFirstChild("Body")
+	if ownAxes and body ~= nil and body:IsA("BasePart") then
+		-- A Block or Ball Body keeps its LookVector level; an upright (rolled) Cylinder too.
+		local look = frame:VectorToObjectSpace(body.CFrame.LookVector)
+		if math.abs(look.Y) < DIRECTION_DOT then
+			measure = frame * CFrame.Angles(0, math.atan2(-look.X, -look.Z), 0)
+		end
+	end
+	local low, high = unionBounds(parts, measure)
+	if low == nil or high == nil then
+		return 0
+	end
+	return math.max(high.X - low.X, high.Z - low.Z)
+end
+
+local function checkCover(report: Report, geometry: Instance, frame: CFrame, contract: ArenaContract)
 	local folder = geometry:FindFirstChild("Cover")
 	if folder == nil then
 		note(report, "cover", "Geometry/Cover is missing")
@@ -1504,14 +1581,36 @@ local function checkCover(report: Report, geometry: Instance, frame: CFrame)
 		if piece.ModelStreamingMode ~= Enum.ModelStreamingMode.Atomic then
 			note(report, "cover", string.format("cover %s is not Atomic", describe(piece)))
 		end
-		if high.Y < COVER_MIN_TOP - POSITION_TOLERANCE then
+		local kind = piece:GetAttribute(ATTR_COVER_KIND)
+		if contract.lowCover and kind ~= "full" and kind ~= "low" then
+			note(
+				report,
+				"cover",
+				string.format('cover %s has no %s ("full" or "low")', describe(piece), ATTR_COVER_KIND)
+			)
+		end
+		if contract.lowCover and kind == "low" then
+			if high.Y < LOW_COVER_TOP[1] - POSITION_TOLERANCE or high.Y > LOW_COVER_TOP[2] + POSITION_TOLERANCE then
+				note(
+					report,
+					"cover",
+					string.format(
+						"cover %s: low cover top %.2f is outside %g..%g",
+						describe(piece),
+						high.Y,
+						LOW_COVER_TOP[1],
+						LOW_COVER_TOP[2]
+					)
+				)
+			end
+		elseif high.Y < COVER_MIN_TOP - POSITION_TOLERANCE then
 			note(
 				report,
 				"cover",
 				string.format("cover %s: top %.2f is below %d", describe(piece), high.Y, COVER_MIN_TOP)
 			)
 		end
-		local width = math.max(high.X - low.X, high.Z - low.Z)
+		local width = coverWidth(piece, parts, frame, contract.ownAxesWidth)
 		if width > COVER_MAX_WIDTH + SIZE_TOLERANCE then
 			note(
 				report,
@@ -1640,7 +1739,7 @@ local function checkBarriers(report: Report, barriers: Instance?, frame: CFrame)
 	end
 end
 
-local function checkGeometry(report: Report, root: Instance, frame: CFrame)
+local function checkGeometry(report: Report, root: Instance, frame: CFrame, contract: ArenaContract)
 	local geometry = root:FindFirstChild("Geometry")
 	if geometry == nil then
 		return -- reported by checkArenaTree
@@ -1667,7 +1766,7 @@ local function checkGeometry(report: Report, root: Instance, frame: CFrame)
 		note(report, "Geometry", "Geometry has no parts outside Barriers")
 	end
 	checkFloor(report, solid, frame)
-	checkCover(report, geometry, frame)
+	checkCover(report, geometry, frame, contract)
 	checkLane(report, solid, frame)
 	checkBarriers(report, barriers, frame)
 end
@@ -1781,14 +1880,14 @@ local function checkSpawns(report: Report, root: Instance, frame: CFrame)
 	end
 end
 
-local function checkDecor(report: Report, root: Instance)
+local function checkDecor(report: Report, root: Instance, contract: ArenaContract)
 	local decor = root:FindFirstChild("Decor")
 	if decor == nil then
 		return -- reported by checkArenaTree
 	end
 	local parts = partsIn(decor)
-	if #parts > ARENA_MAX_DECOR_PARTS then
-		note(report, "Decor", string.format("Decor has %d parts, budget %d", #parts, ARENA_MAX_DECOR_PARTS))
+	if #parts > contract.maxDecorParts then
+		note(report, "Decor", string.format("Decor has %d parts, budget %d", #parts, contract.maxDecorParts))
 	end
 	for _, part in parts do
 		if part.CanCollide or part.CanQuery then
@@ -1801,22 +1900,27 @@ local function checkDecor(report: Report, root: Instance)
 	end
 end
 
-local function verifyArena(report: Report, root: Instance, _deps: Deps?)
-	local all = everything(root)
-	checkArenaTree(report, root, all)
-	local frame = checkOrigin(report, root)
-	checkGeometry(report, root, frame)
-	checkZones(report, root, frame)
-	checkSpawns(report, root, frame)
-	checkDecor(report, root)
+-- The checks of an arena target with this contract.
+local function arenaVerifier(contract: ArenaContract): (report: Report, root: Instance, deps: Deps?) -> ()
+	return function(report: Report, root: Instance, _deps: Deps?)
+		local all = everything(root)
+		checkArenaTree(report, root, all, contract)
+		local frame = checkOrigin(report, root)
+		checkGeometry(report, root, frame, contract)
+		checkZones(report, root, frame)
+		checkSpawns(report, root, frame)
+		checkDecor(report, root, contract)
+	end
 end
 
 -- Target id -> target-specific checks.
 local CHECKS: { [string]: (report: Report, root: Instance, deps: Deps?) -> () } = {
 	shapes = verifyShapes,
 	lobby = verifyLobby,
-	arena = verifyArena,
 }
+for target, contract in ARENA_CONTRACTS do
+	CHECKS[target] = arenaVerifier(contract)
+end
 
 -- Public
 

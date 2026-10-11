@@ -15,6 +15,10 @@
 --   "lobby"   Builders/LobbyBuilder  -> Workspace.SD_Lobby (Part 3)
 --   "arena"   Builders/ArenaBuilder  -> ServerStorage.SD_Templates.Arena_CandyCourt (Part 3). SD_Templates is a plain
 --             holder Folder, not generated content: it is created when missing and never removed or replaced.
+--   "arena_sweetshop_stadium", "arena_pinewood_camp", "arena_pillow_fort_park", "arena_bubble_reef_court",
+--   "arena_arcade_toyworks"   Builders/Arenas/<Name> -> ServerStorage.SD_Templates.Arena_<Name>: the 5 design arenas
+--             (phase 4 spec 2026-10-11 §5.2; World/Arenas names them). Each has its own generator id, so building one
+--             never removes Candy Court or another arena.
 -- Builders are required lazily, per target, so a broken builder only breaks its own target.
 
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
@@ -119,6 +123,36 @@ local TARGETS: { [string]: Target } = {
 	arena = {
 		load = function(): any
 			return require(script.Parent.Builders.ArenaBuilder)
+		end,
+		parent = templatesFolder,
+	},
+	arena_sweetshop_stadium = {
+		load = function(): any
+			return require(script.Parent.Builders.Arenas.SweetshopStadium)
+		end,
+		parent = templatesFolder,
+	},
+	arena_pinewood_camp = {
+		load = function(): any
+			return require(script.Parent.Builders.Arenas.PinewoodCamp)
+		end,
+		parent = templatesFolder,
+	},
+	arena_pillow_fort_park = {
+		load = function(): any
+			return require(script.Parent.Builders.Arenas.PillowFortPark)
+		end,
+		parent = templatesFolder,
+	},
+	arena_bubble_reef_court = {
+		load = function(): any
+			return require(script.Parent.Builders.Arenas.BubbleReefCourt)
+		end,
+		parent = templatesFolder,
+	},
+	arena_arcade_toyworks = {
+		load = function(): any
+			return require(script.Parent.Builders.Arenas.ArcadeToyworks)
 		end,
 		parent = templatesFolder,
 	},

@@ -17,6 +17,10 @@
 --   too. If one is missing it logs "World not built: run the generator" once and sets the Workspace attribute
 --   SD_WorldMissing = true (false when both exist). Dependent features ask worldReady() / arenaTemplate() and
 --   disable themselves honestly (queue.unavailable, §1.7).
+-- * The design arenas (phase 4 spec 2026-10-11 §5.3): every World/Arenas arena besides Candy Court whose template
+--   (SD_Templates.<templateName>, or any child there) carries its generator marks and SD_ArenaId = its id is in
+--   arenaTemplates() with Candy Court, so ArenaService can pick it. One that is missing is logged once ("not in the
+--   rotation") and never blocks worldReady(), which still needs only the lobby and Candy Court.
 -- * The runtime NEVER builds or rebuilds the world (§1.2 #6): this module creates no world instances.
 -- * Lookups are indexed once from the lobby root (the server always has the whole place; nothing streams out):
 --   station(id) is the lobby instance whose StationId attribute is `id` (squeeze stations, §2.9); stations(tag) the
@@ -34,6 +38,7 @@ local Workspace = game:GetService("Workspace")
 
 -- Requires
 
+local Arenas = require(ReplicatedStorage.Shared.World.Arenas)
 local Log = require(ReplicatedStorage.Shared.Util.Log)
 
 -- Types
@@ -46,11 +51,15 @@ export type PhysicsLike = {
 	GetRegisteredCollisionGroups: (self: any) -> { any },
 }
 
--- What findRoots() found. `missing` lists the generator ids whose root is absent ("lobby", "arena").
+-- What findRoots() found. `missing` lists the generator ids whose root is absent ("lobby", "arena"); `arenas` holds
+-- every arena template found by World/Arenas id (Candy Court as "candy_court"), `missingArenas` the design arena ids
+-- not found (in World/Arenas order).
 export type Roots = {
 	lobby: Instance?,
 	arena: Instance?,
+	arenas: { [string]: Instance },
 	missing: { string },
+	missingArenas: { string },
 }
 
 -- Constants
@@ -58,6 +67,7 @@ export type Roots = {
 local DEFAULT_GROUP = "Default"
 local TAG_GENERATED = "SD_Generated"
 local ATTR_GENERATOR_ID = "SD_GeneratorId"
+local ATTR_ARENA_ID = "SD_ArenaId"
 local ATTR_STATION_ID = "StationId"
 local ATTR_WORLD_MISSING = "SD_WorldMissing"
 local LOBBY_NAME = "SD_Lobby"
@@ -92,6 +102,7 @@ local GROUPS = WorldService.CollisionGroups
 
 local lobbyRoot: Instance? = nil
 local arenaRoot: Instance? = nil
+local arenaRoots: { [string]: Instance } = {} -- every arena template by World/Arenas id
 local byTag: { [string]: { Instance } } = {}
 local byStationId: { [string]: Instance? } = {}
 
@@ -124,6 +135,27 @@ local function findMarkedChild(container: Instance?, name: string, generatorId: 
 	end
 	for _, child in container:GetChildren() do
 		if isGeneratedRoot(child, generatorId) then
+			return child
+		end
+	end
+	return nil
+end
+
+-- The design arena template of `def` among `container`'s children: the child named def.templateName first, then any
+-- other child, as long as it carries def's generator marks and SD_ArenaId = def.id.
+local function findArenaTemplate(container: Instance?, def: Arenas.ArenaDef): Instance?
+	if container == nil then
+		return nil
+	end
+	local function matches(child: Instance): boolean
+		return isGeneratedRoot(child, def.generatorId) and child:GetAttribute(ATTR_ARENA_ID) == def.id
+	end
+	local named = container:FindFirstChild(def.templateName)
+	if named and matches(named) then
+		return named
+	end
+	for _, child in container:GetChildren() do
+		if matches(child) then
 			return child
 		end
 	end
@@ -223,7 +255,8 @@ end
 -- in tests). Never creates anything.
 function WorldService.findRoots(workspaceLike: Instance, serverStorageLike: Instance): Roots
 	local lobby = findMarkedChild(workspaceLike, LOBBY_NAME, LOBBY_ID)
-	local arena = findMarkedChild(serverStorageLike:FindFirstChild(TEMPLATES_NAME), ARENA_NAME, ARENA_ID)
+	local templates = serverStorageLike:FindFirstChild(TEMPLATES_NAME)
+	local arena = findMarkedChild(templates, ARENA_NAME, ARENA_ID)
 	local missing: { string } = {}
 	if lobby == nil then
 		table.insert(missing, LOBBY_ID)
@@ -231,14 +264,38 @@ function WorldService.findRoots(workspaceLike: Instance, serverStorageLike: Inst
 	if arena == nil then
 		table.insert(missing, ARENA_ID)
 	end
-	return { lobby = lobby, arena = arena, missing = missing }
+	local arenas: { [string]: Instance } = {}
+	local missingArenas: { string } = {}
+	if arena ~= nil then
+		arenas[Arenas.DEFAULT_ID] = arena
+	end
+	for _, id in Arenas.ids do
+		if id == Arenas.DEFAULT_ID then
+			continue
+		end
+		local found = findArenaTemplate(templates, Arenas.byId[id])
+		if found then
+			arenas[id] = found
+		else
+			table.insert(missingArenas, id)
+		end
+	end
+	return { lobby = lobby, arena = arena, arenas = arenas, missing = missing, missingArenas = missingArenas }
 end
 
 -- Uses these roots for every lookup (init() passes what findRoots() found; tests pass in-memory trees). nil clears.
--- Never writes attributes or logs.
-function WorldService.useWorld(lobby: Instance?, arena: Instance?)
+-- `arenas` (arena id -> template) defaults to Candy Court alone. Never writes attributes or logs.
+function WorldService.useWorld(lobby: Instance?, arena: Instance?, arenas: { [string]: Instance }?)
 	lobbyRoot = lobby
 	arenaRoot = arena
+	if arenas ~= nil then
+		arenaRoots = table.clone(arenas)
+	else
+		arenaRoots = {}
+		if arena ~= nil then
+			arenaRoots[Arenas.DEFAULT_ID] = arena
+		end
+	end
 	index(lobby)
 end
 
@@ -247,11 +304,14 @@ function WorldService.init()
 		log:error(problem)
 	end
 	local roots = WorldService.findRoots(Workspace, ServerStorage)
-	WorldService.useWorld(roots.lobby, roots.arena)
+	WorldService.useWorld(roots.lobby, roots.arena, roots.arenas)
 	local missing = #roots.missing > 0
 	Workspace:SetAttribute(ATTR_WORLD_MISSING, missing)
 	if missing then
 		log:warn(`World not built: run the generator (missing: {table.concat(roots.missing, ", ")})`)
+	end
+	if #roots.missingArenas > 0 then
+		log:warn(`arena templates not built, not in the rotation: {table.concat(roots.missingArenas, ", ")}`)
 	end
 end
 
@@ -269,6 +329,12 @@ end
 -- change it (ArenaService, §5.3).
 function WorldService.arenaTemplate(): Instance?
 	return arenaRoot
+end
+
+-- Every arena template by World/Arenas id: Candy Court ("candy_court") and the design arenas found (a new table).
+-- Clone them; never change them (ArenaService).
+function WorldService.arenaTemplates(): { [string]: Instance }
+	return table.clone(arenaRoots)
 end
 
 -- The lobby instance whose StationId attribute is `id` ("squeeze_01"...), or nil.

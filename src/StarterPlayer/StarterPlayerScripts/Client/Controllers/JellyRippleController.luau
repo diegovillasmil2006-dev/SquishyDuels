@@ -14,7 +14,9 @@
 -- Places (a frame from layout space to the world, and the real pieces streamed in there):
 --   * "arena": while the duel view is positioned (Positioning .. Result), from DuelState numbers only:
 --     JellySkin.arenaFrame(PadA, PadB, floorY); pieces Workspace.SD_ArenaSlots.Arena_<slot>.Geometry.Cover.Cover_<name>.
---     Ends at Returning, Cancelled, Void or when the view is gone.
+--     Ends at Returning, Cancelled, Void or when the view is gone. Candy Court only (phase 4 spec 2026-10-11 D9): in
+--     another arena (DuelState arena.arenaId) the place has no pieces (JellySkin.arenaPiecesFor) and no skin is built;
+--     its floor hits keep the double ring and its cover hits get one ring.
 --   * "backstop": Workspace.SD_Lobby.PracticeRange.Backstop (reading: LobbyBuilder's names), only while there is no
 --     duel view.
 --   A real piece is bound when it has streamed in; its Body is checked against WorldLayout (mismatchStuds): a piece
@@ -1175,20 +1177,22 @@ local function unbindReal(place: Place, index: number)
 	destroyWobblersOf(place, index)
 end
 
--- The arena view's frame, slot and match (nil while the view is not positioned or has ended).
-local function arenaWanted(view: any): (CFrame?, number?, string?)
+-- The arena view's frame, slot, match and arena id (nil while the view is not positioned or has ended; the arena id is
+-- nil when the view names none).
+local function arenaWanted(view: any): (CFrame?, number?, string?, string?)
 	if type(view) ~= "table" or view.positioned ~= true or ENDED_PHASES[view.phase] then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
 	local a = view.arena
 	if type(a) ~= "table" or type(a.pads) ~= "table" or type(a.floorY) ~= "number" or type(a.slot) ~= "number" then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
 	local padA, padB = a.pads.PadA, a.pads.PadB
 	if typeof(padA) ~= "CFrame" or typeof(padB) ~= "CFrame" then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
-	return JellySkin.arenaFrame(padA, padB, a.floorY), a.slot, view.matchId
+	local arenaId = if type(a.arenaId) == "string" then a.arenaId else nil
+	return JellySkin.arenaFrame(padA, padB, a.floorY), a.slot, view.matchId, arenaId
 end
 
 local function coverFolder(slot: number): Instance?
@@ -1248,7 +1252,7 @@ end
 -- Which places and which skin are wanted now (see the header); called on every poll and on DuelChanged.
 local function reconcile()
 	-- Arena.
-	local frame, slot, matchId = arenaWanted(duelView)
+	local frame, slot, matchId, arenaId = arenaWanted(duelView)
 	local current = arena
 	if current and (frame == nil or current.matchId ~= matchId or current.slot ~= slot) then
 		endPlace(current)
@@ -1258,7 +1262,7 @@ local function reconcile()
 		current = {
 			key = KEY_ARENA,
 			frame = frame,
-			pieces = JellySkin.arenaPieces(),
+			pieces = JellySkin.arenaPiecesFor(arenaId),
 			reals = {},
 			matchId = matchId,
 			slot = slot,
@@ -1304,7 +1308,7 @@ local function reconcile()
 		end
 	end
 	if skin == nil then
-		if arena and failed[KEY_ARENA] == nil then
+		if arena and failed[KEY_ARENA] == nil and #arena.pieces > 0 then
 			startSkin(KEY_ARENA, arena :: Place)
 		elseif backstop and duelView == nil and near and failed[KEY_BACKSTOP] == nil then
 			local b = backstop :: Place

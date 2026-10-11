@@ -11,6 +11,9 @@
 --   * a registration failure (e.g. the group limit) is reported as a problem, never thrown;
 --   * the generated roots (Workspace.SD_Lobby "lobby", ServerStorage.SD_Templates.Arena_CandyCourt "arena") count
 --     only with their generator marks; a missing one is reported; worldReady() needs both;
+--   * the design arena templates (phase 4 spec 2026-10-11 §5.3) count only with their generator marks and the
+--     SD_ArenaId of World/Arenas; a missing one is listed but never blocks worldReady(); arenaTemplates() is Candy
+--     Court plus the ones found (a copy);
 --   * station(id) / stations(tag) / zones come only from the lobby root.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -223,6 +226,58 @@ return function(t: Context)
 		WorldService.useWorld(nil, nil)
 		expect.equal(WorldService.worldReady(), false)
 		expect.equal(WorldService.station("squeeze_01"), nil)
+		workspaceLike:Destroy()
+		serverStorageLike:Destroy()
+	end)
+
+	-- A design arena template in the fake SD_Templates, marked like its generator does.
+	local function designTemplate(templates: Instance, name: string, generatorId: string, arenaId: string?): Model
+		local model = Instance.new("Model")
+		model.Name = name
+		mark(model, generatorId)
+		model:SetAttribute("SD_ArenaId", arenaId)
+		model.Parent = templates
+		return model
+	end
+
+	t.test("findRoots finds the design arena templates by generator id and SD_ArenaId", function()
+		local workspaceLike, serverStorageLike, _, arena = fakeWorld()
+		local templates = serverStorageLike:FindFirstChild("SD_Templates") :: Instance
+		local pinewood = designTemplate(templates, "Arena_PinewoodCamp", "arena_pinewood_camp", "pinewood_camp")
+		local renamed = designTemplate(templates, "Reef_Renamed", "arena_bubble_reef_court", "bubble_reef_court")
+		designTemplate(templates, "Arena_ArcadeToyworks", "arena_arcade_toyworks", "pinewood_camp") -- wrong SD_ArenaId
+		local unmarked = Instance.new("Model")
+		unmarked.Name = "Arena_SweetshopStadium" -- hand-made, no generator marks
+		unmarked:SetAttribute("SD_ArenaId", "sweetshop_stadium")
+		unmarked.Parent = templates
+		local roots = WorldService.findRoots(workspaceLike, serverStorageLike)
+		expect.deepEqual(roots.arenas, {
+			candy_court = arena,
+			pinewood_camp = pinewood,
+			bubble_reef_court = renamed,
+		})
+		expect.deepEqual(roots.missing, {}) -- the design arenas never block worldReady
+		expect.deepEqual(roots.missingArenas, { "sweetshop_stadium", "pillow_fort_park", "arcade_toyworks" })
+		workspaceLike:Destroy()
+		serverStorageLike:Destroy()
+	end)
+
+	t.test("arenaTemplates: Candy Court plus the design arenas found; worldReady needs lobby + Candy", function()
+		local workspaceLike, serverStorageLike, lobby, arena = fakeWorld()
+		local templates = serverStorageLike:FindFirstChild("SD_Templates") :: Instance
+		local pinewood = designTemplate(templates, "Arena_PinewoodCamp", "arena_pinewood_camp", "pinewood_camp")
+		WorldService.useWorld(lobby, arena, { candy_court = arena, pinewood_camp = pinewood })
+		expect.truthy(WorldService.worldReady())
+		local found = WorldService.arenaTemplates()
+		expect.deepEqual(found, { candy_court = arena, pinewood_camp = pinewood })
+		found.pinewood_camp = nil -- a copy: the service keeps its own
+		expect.equal(WorldService.arenaTemplates().pinewood_camp, pinewood)
+		WorldService.useWorld(lobby, arena) -- no map: Candy Court alone
+		expect.deepEqual(WorldService.arenaTemplates(), { candy_court = arena })
+		WorldService.useWorld(lobby, nil, { pinewood_camp = pinewood }) -- design arenas alone are not a world
+		expect.falsy(WorldService.worldReady())
+		WorldService.useWorld(nil, nil)
+		expect.deepEqual(WorldService.arenaTemplates(), {})
 		workspaceLike:Destroy()
 		serverStorageLike:Destroy()
 	end)

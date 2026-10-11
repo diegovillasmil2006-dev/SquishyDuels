@@ -15,7 +15,12 @@
 --     leaves the release to its owner (a slot without a matchId at once, a slot still held after LeaseDrainSeconds by
 --     the janitor), handoff hands the same slot to the next acquire, a missing or incomplete template disables the
 --     pool;
---   * the projectile RaycastParams / OverlapParams include Geometry minus Barriers, in the Default group.
+--   * the projectile RaycastParams / OverlapParams include Geometry minus Barriers, in the Default group;
+--   * several arenas (phase 4 spec 2026-10-11 §5.3, D7): pickArena is an equal-chance roll over the usable arena ids
+--     (sorted; one arena needs no roll); acquire takes a free clone of the picked arena, else clones it into the lowest
+--     uncloned slot, else re-clones the lowest free slot of another arena (old model destroyed, zones and pads read
+--     again); a broken arena leaves the rotation while the others keep working; view().arenaId names the arena;
+--     debugForceArena pins the pick (Studio); every arena's apron fits the slot grid.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -34,6 +39,8 @@ return function(t: Context)
 	local Config = t.requireShared("Config")
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local FakeClock = t.requireFake("FakeClock")
+	local FakeRng = t.requireFake("FakeRng")
+	local Arenas = t.requireShared("World/Arenas")
 	local Arena = WorldLayout.Arena
 
 	local function part(name: string, size: Vector3, cf: CFrame, parent: Instance): Part
@@ -373,5 +380,163 @@ return function(t: Context)
 		expect.equal(#logged, 1)
 		expect.truthy(string.find(logged[1], "Zones/HalfA", 1, true) or string.find(logged[1], "Zones/", 1, true))
 		teardown(template, container)
+	end)
+
+	-- Several arenas (phase 4 spec §5.3, D7) --------------------------------------------------------------------------
+
+	-- Fresh pool on one in-memory template per arena id (each carries SD_ArenaId, so a clone shows which arena it is);
+	-- `rolls` scripts the pick (FakeRng: each NextInteger returns the next value), `broken` ids lack their zones.
+	local function freshArenas(ids: { string }, rolls: { number }?, broken: string?): ({ [string]: Model }, Folder, any)
+		local clock = FakeClock.new(1000)
+		local templates: { [string]: Model } = {}
+		for _, id in ids do
+			local template = makeTemplate(if id == broken then { noZones = true } else nil)
+			template:SetAttribute("SD_ArenaId", id)
+			templates[id] = template
+		end
+		local container = Instance.new("Folder")
+		table.clear(logged)
+		ArenaService.useTemplates(templates, container, clock.now, quietLog, if rolls then FakeRng.new(rolls) else nil)
+		return templates, container, clock
+	end
+
+	local function teardownArenas(templates: { [string]: Model }, container: Instance)
+		ArenaService.useTemplate(nil, nil)
+		for _, template in templates do
+			template:Destroy()
+		end
+		container:Destroy()
+	end
+
+	local function arenaOf(slot: any): string?
+		return slot.model:GetAttribute("SD_ArenaId")
+	end
+
+	t.test("pickArena: an equal-chance roll over the usable arenas; a single arena needs no roll", function()
+		-- Sorted usable ids: arcade_toyworks, candy_court, pinewood_camp.
+		local templates, container = freshArenas({ "candy_court", "pinewood_camp", "arcade_toyworks" }, { 1, 3, 2 })
+		expect.equal(ArenaService.pickArena(), "arcade_toyworks")
+		expect.equal(ArenaService.pickArena(), "pinewood_camp")
+		expect.equal(ArenaService.pickArena(), "candy_court")
+		teardownArenas(templates, container)
+		local single, box = freshArenas({ "candy_court" }, {}) -- an empty script: any roll would raise
+		expect.equal(ArenaService.pickArena(), "candy_court")
+		expect.equal(ArenaService.acquire("m"), ArenaService.getSlot(1))
+		teardownArenas(single, box)
+	end)
+
+	t.test("acquire: the picked arena's free clone first, else a new clone; view() names the arena", function()
+		local templates, container = freshArenas({ "candy_court", "pinewood_camp" }, { 2, 1, 2 })
+		local first = ArenaService.acquire("m1") -- pinewood_camp: a new clone in slot 1
+		expect.equal(first.index, 1)
+		expect.equal(first.arenaId, "pinewood_camp")
+		expect.equal(arenaOf(first), "pinewood_camp")
+		expect.equal(ArenaService.view(first).arenaId, "pinewood_camp")
+		local second = ArenaService.acquire("m2") -- candy_court: no free clone of it, so slot 2
+		expect.equal(second.index, 2)
+		expect.equal(arenaOf(second), "candy_court")
+		ArenaService.release(first)
+		local model = first.model
+		local third = ArenaService.acquire("m3") -- pinewood_camp again: its free clone is reused, not re-cloned
+		expect.equal(third, first)
+		expect.equal(third.model, model)
+		expect.equal(ArenaService.clonedCount(), 2)
+		teardownArenas(templates, container)
+	end)
+
+	t.test("acquire: with every slot cloned, the lowest free slot of another arena is re-cloned", function()
+		local maxSlots = ArenaService.maxSlots()
+		local rolls: { number } = {}
+		for _ = 1, maxSlots do
+			table.insert(rolls, 1) -- candy_court in every slot
+		end
+		table.insert(rolls, 2) -- then pinewood_camp
+		local templates, container = freshArenas({ "candy_court", "pinewood_camp" }, rolls)
+		local taken = {}
+		for index = 1, maxSlots do
+			taken[index] = ArenaService.acquire()
+		end
+		ArenaService.release(taken[5])
+		ArenaService.release(taken[3])
+		local oldModel = taken[3].model
+		local slot = ArenaService.acquire("swap")
+		expect.equal(slot.index, 3)
+		expect.equal(slot.arenaId, "pinewood_camp")
+		expect.equal(arenaOf(slot), "pinewood_camp")
+		expect.equal(ArenaService.getSlot(3), slot)
+		expect.equal(oldModel.Parent, nil) -- the old clone is gone
+		expect.equal(slot.model.Parent, container)
+		expect.equal(slot.model.Name, "Arena_3")
+		local origin = Config.Duel.Arena.SlotOrigins[3]
+		expect.near((slot.origin.Position - origin).Magnitude, 0, 1e-3)
+		expect.truthy(ArenaService.inOwnHalf(slot, "B", origin + Vector3.new(0, 3, 40)))
+		expect.equal(slot.matchId, "swap")
+		expect.truthy(slot.inUse)
+		expect.falsy(taken[5].inUse) -- the other free slot is untouched
+		teardownArenas(templates, container)
+	end)
+
+	t.test("a broken arena leaves the rotation once; the others keep the duels going", function()
+		local templates, container = freshArenas({ "candy_court", "pinewood_camp" }, { 2 }, "pinewood_camp")
+		local slot = ArenaService.acquire("m1") -- picks pinewood_camp, its clone fails, the pick falls to candy_court
+		expect.truthy(slot)
+		expect.equal(slot.arenaId, "candy_court")
+		expect.equal(#logged, 1)
+		expect.truthy(string.find(logged[1], "pinewood_camp", 1, true) ~= nil)
+		expect.truthy(ArenaService.available())
+		expect.equal(ArenaService.pickArena(), "candy_court") -- one usable arena left: no roll
+		expect.equal(#container:GetChildren(), 1)
+		local state = ArenaService.debugState()
+		expect.deepEqual(state.arenas, { "candy_court" })
+		expect.deepEqual(state.broken, { "pinewood_camp" })
+		expect.equal(state.slots[1].arenaId, "candy_court")
+		teardownArenas(templates, container)
+	end)
+
+	t.test("debugForceArena pins the pick while usable; nil restores the roll; unknown ids fail", function()
+		local templates, container = freshArenas({ "candy_court", "pinewood_camp" }, { 1 })
+		local refused, reason = ArenaService.debugForceArena("nowhere")
+		expect.equal(refused, false)
+		expect.equal(reason, "no arena template nowhere")
+		local pinned, problem = ArenaService.debugForceArena("pinewood_camp")
+		expect.equal(pinned, true)
+		expect.equal(problem, nil)
+		expect.equal(ArenaService.pickArena(), "pinewood_camp") -- no roll used
+		expect.equal(ArenaService.pickArena(), "pinewood_camp")
+		expect.equal(ArenaService.debugState().forced, "pinewood_camp")
+		ArenaService.debugForceArena(nil)
+		expect.equal(ArenaService.pickArena(), "candy_court") -- the scripted roll 1
+		teardownArenas(templates, container)
+	end)
+
+	t.test("prewarm clones its slots with picked arenas", function()
+		local templates, container = freshArenas({ "candy_court", "pinewood_camp" }, { 2 })
+		ArenaService.prewarm(1)
+		local slot = ArenaService.getSlot(1)
+		expect.truthy(slot)
+		expect.equal(slot.arenaId, "pinewood_camp")
+		expect.falsy(slot.inUse)
+		teardownArenas(templates, container)
+	end)
+
+	t.test("grid: every arena's apron fits its slot cell, clear of the lobby and within streaming range", function()
+		local lobbyHalfX, lobbyHalfZ = WorldLayout.Lobby.baseSlab.size.X / 2, WorldLayout.Lobby.baseSlab.size.Z / 2
+		local maxSlots = ArenaService.maxSlots()
+		for _, id in Arenas.ids do
+			local apron = Arenas.byId[id].apron
+			local halfX, halfZ = apron.X / 2, apron.Z / 2
+			for i = 1, maxSlots do
+				local a = ArenaService.slotOrigin(i) :: Vector3
+				expect.truthy(math.abs(a.X) >= halfX + lobbyHalfX or math.abs(a.Z) >= halfZ + lobbyHalfZ)
+				local far = Vector3.new(math.abs(a.X) + halfX, 0, math.abs(a.Z) + halfZ).Magnitude
+				expect.truthy(far <= STREAMING_RADIUS)
+				for j = i + 1, maxSlots do
+					local b = ArenaService.slotOrigin(j) :: Vector3
+					if not (math.abs(a.X - b.X) >= 2 * halfX or math.abs(a.Z - b.Z) >= 2 * halfZ) then
+						error(`{id}: slots {i} and {j} overlap`)
+					end
+				end
+			end
+		end
 	end)
 end

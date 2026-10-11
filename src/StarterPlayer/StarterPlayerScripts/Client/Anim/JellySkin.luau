@@ -120,6 +120,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Spring = require(Shared.Util.Spring)
+local Arenas = require(Shared.World.Arenas)
 local WorldLayout = require(Shared.World.WorldLayout)
 
 local PadDent = require(script.Parent.PadDent)
@@ -736,6 +737,16 @@ function JellySkin.arenaPieces(): { Piece }
 		return built
 	end
 	return cached
+end
+
+-- The cover pieces of the duel view's arena (phase 4 spec 2026-10-11 D9): Candy Court's (arenaPieces) for its id or no
+-- id; none for any other arena, whose cover is not Candy Court's (no skin is built there: its floor hits keep the
+-- double ring and its cover hits get one ring).
+function JellySkin.arenaPiecesFor(arenaId: string?): { Piece }
+	if arenaId == nil or arenaId == Arenas.DEFAULT_ID then
+		return JellySkin.arenaPieces()
+	end
+	return {}
 end
 
 -- The arena frame from the DuelState numbers (§18.3.4): +Z from PadA to PadB (flattened), +Y up, origin at the pads'

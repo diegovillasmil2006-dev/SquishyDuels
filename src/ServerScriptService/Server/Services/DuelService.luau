@@ -1247,9 +1247,10 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, strin
 	ensureHeartbeat()
 	log:info(
 		string.format(
-			"match %s started in slot %d: A user %d (%s) vs B user %d (%s)",
+			"match %s started in slot %d (%s): A user %d (%s) vs B user %d (%s)",
 			matchId,
 			useSlot.index,
+			useSlot.arenaId,
 			sides.A.userId,
 			sides.A.squishyId,
 			sides.B.userId,

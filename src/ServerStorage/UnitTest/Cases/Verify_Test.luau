@@ -17,6 +17,10 @@
 --     SD_Divider: Roblox ignores CanQuery false on colliding parts, so the groups keep projectile rays off them),
 --     zones, pads, inert Decor, empty Runtime, nothing forbidden, ≤ 400 parts.
 --   templateLeftovers (§1.9 #4): a SpawnLocation or a floor-plane part outside the lobby root is reported.
+--   design arenas (phase 4 spec 2026-10-11 §5.4, the "arena_*" targets): every arena rule above, plus SD_ArenaId and
+--     the root name of the target, low cover (SD_CoverKind "low") topping out at 3..5 where Candy Court allows none,
+--     cover width measured along each piece's own turn (a turned 8-stud wall passes, a 9-stud one fails), Decor up
+--     to 260 parts and at most 24 SurfaceGuis.
 -- Method: a small hand-built tree that passes is the baseline; each case breaks exactly one rule and expects the
 -- matching problem line. Lobby cases inject fake Strings and WorldLayout modules (deps), so they do not depend on
 -- the real data. RunUnitTest passes no editor folder, so the whole SDTools folder is cloned (Verify requires its
@@ -404,6 +408,27 @@ end
 local function firstCoverBody(root: Instance): Part
 	local cover = (root :: any).Geometry.Cover
 	return (cover:GetChildren()[1] :: Instance):FindFirstChild("Body") :: Part
+end
+
+-- A design arena (phase 4 spec §5.4): the arena fixture renamed and marked for DESIGN_TARGET, with SD_ArenaId and every
+-- cover Model's SD_CoverKind; the round 5 x 10 x 5 pieces of COVER_B become low cover, 5 x 4 x 5.
+local DESIGN_TARGET = "arena_pinewood_camp"
+local function designArenaTree(Generated: any): Model
+	local root = arenaTree(Generated)
+	root.Name = "Arena_PinewoodCamp"
+	Generated.mark(root, DESIGN_TARGET, 1)
+	root:SetAttribute("SD_ArenaId", "pinewood_camp")
+	for _, piece in (root :: any).Geometry.Cover:GetChildren() do
+		local body = piece:FindFirstChild("Body") :: Part
+		local low = body.Size.X == 5
+		piece:SetAttribute("SD_CoverKind", if low then "low" else "full")
+		if low then
+			local position = body.CFrame.Position
+			body.Size = Vector3.new(5, 4, 5)
+			body.CFrame = CFrame.new(position.X, 2, position.Z)
+		end
+	end
+	return root
 end
 
 return function(t: Context)
@@ -923,6 +948,105 @@ return function(t: Context)
 			end),
 			"parts, budget 400"
 		)
+	end)
+
+	-- design arenas (phase 4 spec §5.4) -----------------------------------------------------------------------------
+
+	local function designProblems(mutate: ((root: Model) -> ())?, target: string?): { string }
+		local root = designArenaTree(Generated)
+		if mutate then
+			mutate(root)
+		end
+		local problems = Verify.verify(target or DESIGN_TARGET, root)
+		root:Destroy()
+		return problems
+	end
+
+	local function coverBody(root: Model, name: string): Part
+		return (root :: any).Geometry.Cover[name].Body :: Part
+	end
+
+	-- Resizes a cover Body standing on the floor (its centre at half its height).
+	local function resize(body: Part, size: Vector3, turn: number?)
+		local position = body.CFrame.Position
+		body.Size = size
+		body.CFrame = CFrame.new(position.X, size.Y / 2, position.Z) * CFrame.Angles(0, turn or 0, 0)
+	end
+
+	t.test("design arena: the fixture with low cover passes", function()
+		expectClean(designProblems())
+	end)
+
+	t.test("design arena: low cover tops out at 3..5; Candy Court has full cover only", function()
+		expectProblem(
+			designProblems(function(root)
+				resize(coverBody(root, "Cover_3_B"), Vector3.new(5, 5.5, 5))
+				resize(coverBody(root, "Cover_3_A"), Vector3.new(5, 5.5, 5))
+			end),
+			"low cover top 5.50"
+		)
+		expectProblem(
+			designProblems(function(root)
+				resize(coverBody(root, "Cover_3_B"), Vector3.new(5, 2.5, 5))
+				resize(coverBody(root, "Cover_3_A"), Vector3.new(5, 2.5, 5))
+			end),
+			"low cover top 2.50"
+		)
+		expectProblem(
+			designProblems(function(root)
+				root.Name = "Arena_CandyCourt"
+				Generated.mark(root, "arena", 1)
+				root:SetAttribute("SD_ArenaId", nil)
+			end, "arena"),
+			"is below 8"
+		)
+	end)
+
+	t.test("design arena: the root is named for its target and carries SD_ArenaId and SD_CoverKind", function()
+		local problems = designProblems(function(root)
+			local wall = (root :: any).Geometry.Cover.Cover_1_B :: Model
+			root.Name = "Arena_Other"
+			root:SetAttribute("SD_ArenaId", "candy_court")
+			wall:SetAttribute("SD_CoverKind", nil)
+		end)
+		expectProblem(problems, `expected "Arena_PinewoodCamp"`)
+		expectProblem(problems, `SD_ArenaId "candy_court", expected "pinewood_camp"`)
+		expectProblem(problems, "has no SD_CoverKind")
+	end)
+
+	t.test("design arena: cover width is measured along each piece's own turn", function()
+		-- An 8-long wall turned 20 degrees: its arena-axes box is 8.37 wide, its own length 8.
+		expectClean(designProblems(function(root)
+			resize(coverBody(root, "Cover_5_B"), Vector3.new(8, 8.6, 2.5), math.rad(20))
+			resize(coverBody(root, "Cover_5_A"), Vector3.new(8, 8.6, 2.5), math.rad(20))
+		end))
+		expectProblem(
+			designProblems(function(root)
+				resize(coverBody(root, "Cover_5_B"), Vector3.new(9, 8.6, 2.5), math.rad(20))
+				resize(coverBody(root, "Cover_5_A"), Vector3.new(9, 8.6, 2.5), math.rad(20))
+			end),
+			"wider than 8"
+		)
+	end)
+
+	t.test("design arena: Decor holds up to 260 parts and the tree at most 24 SurfaceGuis", function()
+		local function addDecor(root: Model, count: number)
+			local decor = root:FindFirstChild("Decor") :: Instance
+			for index = 1, count do
+				newPart(decor, "P" .. index, Vector3.one, CFrame.new(0, -20, 100), INERT)
+			end
+		end
+		expectClean(designProblems(function(root)
+			addDecor(root, 200) -- over Candy Court's 59, within 260
+		end))
+		local crowded = designProblems(function(root)
+			addDecor(root, 260)
+			for _ = 1, 25 do
+				Instance.new("SurfaceGui").Parent = root:FindFirstChild("Decor")
+			end
+		end)
+		expectProblem(crowded, "Decor has 261 parts, budget 260")
+		expectProblem(crowded, "25 SurfaceGuis, budget 24")
 	end)
 
 	toolsClone:Destroy()

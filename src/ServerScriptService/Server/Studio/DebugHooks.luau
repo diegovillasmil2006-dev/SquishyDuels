@@ -14,6 +14,9 @@
 --                                                   clear)
 --   SD_DebugServer:Invoke("queue" | "arenas" | "net" | "dummies")   debug views of QueueService, ArenaService,
 --                                                   NetService and TestHarness
+--   SD_DebugServer:Invoke("forceArena", arenaId?)   every next match gets that arena (World/Arenas id, e.g.
+--                                                   "pinewood_camp") while its template is usable; nil = random again
+--                                                   (ArenaService.debugForceArena; phase 4 spec §5.6)
 --   SD_DebugServer:Invoke("setAccepting", on)       QueueService.setAccepting
 --   SD_DebugServer:Invoke("dummyThrows", on)        every dummy throws (true) or holds (false)
 -- Part 5 (economy, saving, Grip):
@@ -260,6 +263,14 @@ local function forceMatch(userId: unknown, kind: unknown): Reply
 		Workspace:SetAttribute(ATTR_SCENARIO, "forceMatch")
 	end
 	return TestHarness.startDuelAsync(player, { throwing = true, strafe = true })
+end
+
+local function forceArena(arenaId: unknown): Reply
+	if arenaId ~= nil and type(arenaId) ~= "string" then
+		return { ok = false, error = "forceArena needs an arena id or nil" }
+	end
+	local ok, problem = ArenaService.debugForceArena(arenaId :: string?)
+	return { ok = ok, error = problem, arenas = ArenaService.debugState() }
 end
 
 local function scenario(name: unknown, ...: any): Reply
@@ -594,6 +605,7 @@ end
 local COMMANDS: { [string]: (...any) -> Reply } = {
 	counts = counts,
 	forceMatch = forceMatch,
+	forceArena = forceArena,
 	scenario = scenario,
 	setAccepting = setAccepting,
 	dummyThrows = dummyThrows,
