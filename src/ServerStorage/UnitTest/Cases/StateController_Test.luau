@@ -1,0 +1,459 @@
+--!strict
+-- StateController_Test: the pure reducers of StarterPlayerScripts.Client.Controllers.StateController. Server only
+-- (ServerStorage.UnitTest). Edit mode: init() and loadSnapshotAsync() are never called (no LocalPlayer, no remotes).
+-- Contract (DESIGN §2.7, §2.8, §5.4):
+--   * profile: a full Snapshot / StateDelta loads and replaces every field; older or repeated versions are ignored;
+--     a partial delta merges; the changed field names are reported (sorted);
+--   * QueueStatus: an owner update needs a valid state; a payload without `state` only updates the board counts;
+--   * duel view: a new match id starts a fresh view, a match never goes back a phase, ThrowImpact sets the victim's
+--     lives (never below 0), UltimateCharge sets ultReady only for a squishy with an ultimate at its chargeMax, and a
+--     cleared SD_DuelPhase ends the view after Result/Returning/Cancelled/Void or once it is stale;
+--   * the lobby is locked from Matched through Returning;
+--   * Part 5 profile fields (§2.8, §3.2, §11.6, §17.10): coins, equipped, policy, dataStatus (with the server's banner
+--     key), settings (clamped, defaults filled) and the table fields are checked before they are stored; a value of
+--     the wrong shape keeps the old one; an identical resend is no change; new squishies are tracked per session;
+--   * reveal holds (Part 7 review fix, §9.11): a held box result's refund is left out of the shown Coins and its new
+--     squishy out of owned; only an unseen entry that first appears in a partial state is held, and seeing it or a
+--     full state ends the hold.
+
+type Context = {
+	test: (name: string, fn: () -> ()) -> (),
+	expect: any,
+	requireShared: (path: string) -> any,
+	requireClient: (path: string) -> any,
+}
+
+return function(t: Context)
+	local expect = t.expect
+	local StateController = t.requireClient("Controllers/StateController")
+	local Config = t.requireShared("Config")
+
+	local function emptyStore()
+		return { v = 0, loaded = false, fields = {} }
+	end
+
+	local function duelState(matchId: string, phase: string, overrides: { [string]: any }?)
+		local o: { [string]: any } = overrides or {}
+		return {
+			matchId = matchId,
+			phase = phase,
+			phaseEndsAt = 1000,
+			you = {
+				userId = 1,
+				displayName = "Me",
+				squishyId = o.youSquishy or "kitty_bread",
+				side = "A",
+				lives = o.youLives or 3,
+				ultReady = false,
+				isTestDummy = false,
+			},
+			opponent = {
+				userId = 2,
+				displayName = "Them",
+				squishyId = o.opponentSquishy or "dragon",
+				side = "B",
+				lives = o.opponentLives or 3,
+				ultReady = false,
+				isTestDummy = o.dummy == true,
+			},
+			arena = { slot = 1, floorY = 0, zones = {}, pads = {} },
+			rules = { Lives = 3 },
+		}
+	end
+
+	local function stateEvent(raw: any, now: number?)
+		return { kind = "state", state = raw, now = now or 0 }
+	end
+
+	t.test("profile: a full snapshot loads; older and repeated deltas are ignored; partial deltas merge", function()
+		local store = emptyStore()
+		local s1, changed1 = StateController.reduceProfile(store, 5, { coins = 10, equipped = "kitty_bread" }, true)
+		expect.equal(s1.loaded, true)
+		expect.equal(s1.v, 5)
+		expect.deepEqual(changed1, { "coins", "equipped" })
+
+		local s2, changed2 = StateController.reduceProfile(s1, 4, { coins = 99 }, false)
+		expect.equal(s2, s1)
+		expect.equal(#changed2, 0)
+		local s3 = StateController.reduceProfile(s1, 5, { coins = 99 }, false)
+		expect.equal(s3, s1) -- the same v again is a repeat
+
+		local s4, changed4 = StateController.reduceProfile(s1, 6, { coins = 12 }, false)
+		expect.equal(s4.fields.coins, 12)
+		expect.equal(s4.fields.equipped, "kitty_bread")
+		expect.deepEqual(changed4, { "coins" })
+		expect.equal(s1.fields.coins, 10) -- the old store is never modified
+
+		local s5, changed5 = StateController.reduceProfile(s4, 7, { coins = 12 }, true)
+		expect.equal(s5.fields.equipped, nil) -- a full snapshot replaces everything
+		expect.deepEqual(changed5, { "equipped" })
+	end)
+
+	t.test("profile: a partial delta never marks the store loaded; invalid input is ignored", function()
+		local partial = StateController.reduceProfile(emptyStore(), 1, { coins = 1 }, false)
+		expect.equal(partial.loaded, false)
+		expect.equal(partial.fields.coins, 1)
+		local store = emptyStore()
+		expect.equal(StateController.reduceProfile(store, 0 / 0, { coins = 1 }, true), store)
+		expect.equal(StateController.reduceProfile(store, 2, "nope" :: any, true), store)
+	end)
+
+	t.test("queue: owner updates need a valid state; count-only payloads update the board counts only", function()
+		local counts = { searching = 0, duelsInProgress = 0, arenasFree = 6 }
+		local idle = {
+			state = "Idle",
+			searching = 0,
+			duelsInProgress = 0,
+			arenasFree = 6,
+		}
+		local view, newCounts, kind = StateController.reduceQueue(idle, counts, {
+			state = "Searching",
+			position = 2,
+			joinedAt = 1.8e9,
+			searching = 3,
+			duelsInProgress = 1,
+			arenasFree = 5,
+		})
+		expect.equal(kind, "owner")
+		expect.equal(view.state, "Searching")
+		expect.equal(view.position, 2)
+		expect.equal(view.joinedAt, 1.8e9)
+		expect.equal(view.searching, 3)
+		expect.deepEqual(newCounts, { searching = 3, duelsInProgress = 1, arenasFree = 5 })
+
+		local view2, counts2, kind2 =
+			StateController.reduceQueue(view, newCounts, { searching = 4, duelsInProgress = 2, arenasFree = 4 })
+		expect.equal(kind2, "counts")
+		expect.equal(view2.state, "Searching")
+		expect.equal(view2.position, 2)
+		expect.equal(view2.searching, 4)
+		expect.deepEqual(counts2, { searching = 4, duelsInProgress = 2, arenasFree = 4 })
+
+		local view3, _, kind3 = StateController.reduceQueue(view2, counts2, { state = "Lost" })
+		expect.equal(kind3, "invalid")
+		expect.equal(view3, view2)
+		local _, _, kind4 = StateController.reduceQueue(view2, counts2, "nope")
+		expect.equal(kind4, "invalid")
+		local _, _, kind5 = StateController.reduceQueue(view2, counts2, {})
+		expect.equal(kind5, "invalid")
+
+		-- Bad numbers keep the previous counts; a position below 1 is dropped.
+		local view6, counts6 = StateController.reduceQueue(view2, counts2, {
+			state = "Searching",
+			position = 0,
+			searching = -1,
+			duelsInProgress = 0 / 0,
+			arenasFree = 3,
+		})
+		expect.equal(view6.position, nil)
+		expect.deepEqual(counts6, { searching = 4, duelsInProgress = 2, arenasFree = 3 })
+	end)
+
+	t.test("lobby lock: from Matched through the end of the duel view", function()
+		local base = { searching = 0, duelsInProgress = 0, arenasFree = 6 }
+		local function q(state: string)
+			return { state = state, searching = base.searching, duelsInProgress = 0, arenasFree = 6 }
+		end
+		expect.equal(StateController.lobbyLocked(q("Idle"), nil), false)
+		expect.equal(StateController.lobbyLocked(q("Searching"), nil), false)
+		expect.equal(StateController.lobbyLocked(q("Matched"), nil), true)
+		local view = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Returning")))
+		expect.truthy(view)
+		expect.equal(StateController.lobbyLocked(q("Idle"), view), true)
+	end)
+
+	t.test("duel: a new match starts a fresh view; phases never go back; positioned from Positioning", function()
+		local v1 = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Preparing"), 10))
+		expect.equal(v1.matchId, "m1")
+		expect.equal(v1.phase, "Preparing")
+		expect.equal(v1.positioned, false)
+		expect.equal(v1.receivedAt, 10)
+		expect.equal(v1.opponent.displayName, "Them")
+
+		local v2 = StateController.reduceDuel(v1, stateEvent(duelState("m1", "Positioning"), 11))
+		expect.equal(v2.phase, "Positioning")
+		expect.equal(v2.positioned, true)
+		local v3 = StateController.reduceDuel(v2, stateEvent(duelState("m1", "Preparing"), 12))
+		expect.equal(v3, v2) -- backwards: ignored
+		local v4 = StateController.reduceDuel(v2, stateEvent(duelState("m1", "Cancelled"), 13))
+		expect.equal(v4.phase, "Cancelled")
+		expect.equal(v4.positioned, true)
+
+		local other = StateController.reduceDuel(v4, stateEvent(duelState("m2", "Preparing"), 14))
+		expect.equal(other.matchId, "m2")
+		expect.equal(other.positioned, false)
+	end)
+
+	t.test("duel: malformed DuelState payloads are ignored", function()
+		local good = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Active")))
+		local missingId = duelState("m1", "Active")
+		missingId.matchId = nil :: any
+		expect.equal(StateController.reduceDuel(good, stateEvent(missingId)), good)
+		local badPhase = duelState("m1", "Dancing")
+		expect.equal(StateController.reduceDuel(good, stateEvent(badPhase)), good)
+		local badSide = duelState("m1", "Active")
+		badSide.opponent.side = "C"
+		expect.equal(StateController.reduceDuel(good, stateEvent(badSide)), good)
+		local badTime = duelState("m1", "Active")
+		badTime.phaseEndsAt = 0 / 0
+		expect.equal(StateController.reduceDuel(nil, stateEvent(badTime)), nil)
+		expect.equal(StateController.reduceDuel(nil, stateEvent("nope")), nil)
+	end)
+
+	t.test("duel: ThrowImpact sets the victim's lives and invulnerability; other impacts change nothing", function()
+		local view = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Active")))
+		local hit = StateController.reduceDuel(view, {
+			kind = "impact",
+			impact = { kind = "player", victimId = 2, livesLeft = 2, invulnUntil = 50, projId = 1 },
+		})
+		expect.equal(hit.opponent.lives, 2)
+		expect.equal(hit.opponent.invulnUntil, 50)
+		expect.equal(hit.you.lives, 3)
+		expect.equal(view.opponent.lives, 3) -- the old view is untouched
+
+		local selfHit = StateController.reduceDuel(hit, {
+			kind = "impact",
+			impact = { kind = "player", victimId = 1, livesLeft = -4 },
+		})
+		expect.equal(selfHit.you.lives, 0)
+
+		local wall = { kind = "impact", impact = { kind = "geometry", projId = 2 } }
+		expect.equal(StateController.reduceDuel(selfHit, wall), selfHit)
+		local stranger = { kind = "impact", impact = { kind = "player", victimId = 99, livesLeft = 0 } }
+		expect.equal(StateController.reduceDuel(selfHit, stranger), selfHit)
+		expect.equal(StateController.reduceDuel(nil, wall), nil)
+
+		-- Lives and invulnerability survive the next DuelState of the same match only as the server sends them.
+		local nextPhase =
+			StateController.reduceDuel(hit, stateEvent(duelState("m1", "SuddenDeath", { opponentLives = 2 })))
+		expect.equal(nextPhase.opponent.lives, 2)
+		expect.equal(nextPhase.opponent.invulnUntil, 50)
+	end)
+
+	t.test("duel: UltimateCharge marks ultReady at chargeMax, only for a squishy with an ultimate", function()
+		local chargeMax = Config.Abilities.dragon_rush.chargeMax
+		local view = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Active")))
+		local half =
+			StateController.reduceDuel(view, { kind = "charge", charge = { ownerId = 2, charge = chargeMax / 2 } })
+		expect.equal(half.opponent.ultReady, false)
+		expect.equal(half.charges[2], chargeMax / 2)
+		local full = StateController.reduceDuel(half, { kind = "charge", charge = { ownerId = 2, charge = chargeMax } })
+		expect.equal(full.opponent.ultReady, true)
+		-- Kitty Bread has no ultimate: never ready, whatever the payload says.
+		local mine = StateController.reduceDuel(full, { kind = "charge", charge = { ownerId = 1, charge = chargeMax } })
+		expect.equal(mine.you.ultReady, false)
+		expect.equal(StateController.reduceDuel(mine, { kind = "charge", charge = { ownerId = 2 } }), mine)
+		-- Charges are kept across phase changes of the same match.
+		local later = StateController.reduceDuel(full, stateEvent(duelState("m1", "SuddenDeath")))
+		expect.equal(later.charges[2], chargeMax)
+	end)
+
+	t.test("duel: a cleared SD_DuelPhase ends the view after the end phases or once it is stale", function()
+		local result = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Result"), 100))
+		expect.equal(StateController.reduceDuel(result, { kind = "cleared", now = 100 }), nil)
+		local fresh = StateController.reduceDuel(nil, stateEvent(duelState("m2", "Preparing"), 100))
+		expect.equal(StateController.reduceDuel(fresh, { kind = "cleared", now = 100.2 }), fresh)
+		expect.equal(StateController.reduceDuel(fresh, { kind = "cleared", now = 105 }), nil)
+		expect.equal(StateController.reduceDuel(nil, { kind = "cleared", now = 1 }), nil)
+	end)
+
+	t.test("DuelResult payloads: a match id and a known outcome", function()
+		expect.equal(StateController.isValidResult({ matchId = "m1", outcome = "win" }), true)
+		expect.equal(StateController.isValidResult({ matchId = "m1", outcome = "void" }), true)
+		expect.equal(StateController.isValidResult({ matchId = "m1", outcome = "lose" }), false)
+		expect.equal(StateController.isValidResult({ outcome = "win" }), false)
+		expect.equal(StateController.isValidResult(nil), false)
+	end)
+
+	-- Part 5: the profile fields of §2.8 / §17.10 --------------------------------------------------------------------
+
+	t.test("fields: coins become a whole number >= 0; a bad value is never stored", function()
+		local norm = StateController.normalizeField
+		local ok, coins = norm("coins", 12.7)
+		expect.equal(ok, true)
+		expect.equal(coins, 12)
+		expect.equal((norm("coins", -1)), false)
+		expect.equal((norm("coins", 0 / 0)), false)
+		expect.equal((norm("coins", math.huge)), false)
+		expect.equal((norm("coins", "5")), false)
+		expect.equal((norm("coins", nil)), false)
+
+		-- A partial delta with a bad coins value keeps the old value and reports nothing changed for it.
+		local s1 = StateController.reduceProfile(emptyStore(), 1, { coins = 40 }, true)
+		local s2, changed = StateController.reduceProfile(s1, 2, { coins = -3, equipped = "toast" }, false)
+		expect.equal(s2.fields.coins, 40)
+		expect.equal(s2.fields.equipped, "toast")
+		expect.deepEqual(changed, { "equipped" })
+	end)
+
+	t.test("fields: equipped, policy and the table fields need their shape", function()
+		local norm = StateController.normalizeField
+		expect.equal((norm("equipped", "")), false)
+		expect.equal((norm("equipped", 3)), false)
+		expect.equal((norm("policy", "eligible")), true)
+		expect.equal((norm("policy", "maybe")), false)
+		for _, field in { "owned", "stats", "squeezeLimit", "quests", "daily", "onboarding", "grip", "practice" } do
+			expect.equal((norm(field, "nope")), false)
+			expect.equal((norm(field, {})), true)
+		end
+		-- Unknown fields from a newer server are kept as sent.
+		local ok, value = norm("somethingNew", 5)
+		expect.equal(ok, true)
+		expect.equal(value, 5)
+	end)
+
+	t.test("fields: settings are clamped and filled from Config.Data defaults", function()
+		local defaults = Config.Data.DefaultSettings
+		local ok, settings =
+			StateController.normalizeField("settings", { music = 140.6, sfx = -5, cameraShake = false })
+		expect.equal(ok, true)
+		expect.deepEqual(settings, {
+			music = Config.Data.settingsMax,
+			sfx = Config.Data.settingsMin,
+			cameraShake = false,
+			showTips = defaults.showTips,
+		})
+		local _, rounded = StateController.normalizeField("settings", { music = 42.5, sfx = 0 / 0 })
+		expect.equal(rounded.music, 43)
+		expect.equal(rounded.sfx, defaults.sfx)
+		expect.equal((StateController.normalizeField("settings", true)), false)
+	end)
+
+	t.test("fields: dataStatus keeps its status, booleans and a banner key that has a text", function()
+		local ok, status = StateController.normalizeField(
+			"dataStatus",
+			{ status = "ready", persisted = false, savePending = 1, banner = "data.studioMemory" }
+		)
+		expect.equal(ok, true)
+		expect.deepEqual(
+			status,
+			{ status = "ready", persisted = false, savePending = false, banner = "data.studioMemory" }
+		)
+		local _, noBanner = StateController.normalizeField("dataStatus", { status = "offline", banner = "data.nope" })
+		expect.deepEqual(noBanner, { status = "offline", persisted = true, savePending = false })
+		expect.equal((StateController.normalizeField("dataStatus", { status = "sleeping" })), false)
+		expect.equal((StateController.normalizeField("dataStatus", "ready")), false)
+	end)
+
+	t.test("fields: an identical resend is not a change and keeps the old table", function()
+		local owned = { kitty_bread = { at = 1, src = "starter" } }
+		local s1 = StateController.reduceProfile(emptyStore(), 1, { owned = owned, coins = 0 }, true)
+		local again = { kitty_bread = { at = 1, src = "starter" } }
+		local s2, changed = StateController.reduceProfile(s1, 2, { owned = again }, false)
+		expect.equal(#changed, 0)
+		expect.equal(s2.fields.owned, s1.fields.owned)
+		expect.equal(s2.v, 2)
+		local more = { kitty_bread = { at = 1, src = "starter" }, toast = { at = 5, src = "box" } }
+		local s3, changed3 = StateController.reduceProfile(s2, 3, { owned = more }, false)
+		expect.deepEqual(changed3, { "owned" })
+		expect.equal(s3.fields.owned.toast.src, "box")
+	end)
+
+	t.test("deepEqual: plain data by value", function()
+		local eq = StateController.deepEqual
+		expect.equal(eq({ a = 1, b = { c = 2 } }, { a = 1, b = { c = 2 } }), true)
+		expect.equal(eq({ a = 1 }, { a = 1, b = 2 }), false)
+		expect.equal(eq({ a = 1, b = 2 }, { a = 1 }), false)
+		expect.equal(eq({ 1, 2, 3 }, { 1, 2, 3 }), true)
+		expect.equal(eq({ 1, 2 }, { 2, 1 }), false)
+		expect.equal(eq("x", "x"), true)
+		expect.equal(eq(nil, {}), false)
+	end)
+
+	t.test("new squishies: the first owned set is the baseline; later ids are new until seen", function()
+		local track = StateController.trackNewOwned
+		local tracker = { baseline = nil, fresh = {} }
+		local t1 = track(tracker, { kitty_bread = {}, toast = {} }, true)
+		expect.deepEqual(t1.fresh, {})
+		local t2 = track(t1, { kitty_bread = {}, toast = {}, dragon = {} }, false)
+		expect.deepEqual(t2.fresh, { dragon = true })
+		expect.deepEqual(t1.fresh, {}) -- the input tracker is never modified
+		-- A later full snapshot (data recovery) re-baselines without marking anything new, and keeps what is still new.
+		local t3 = track(t2, { kitty_bread = {}, toast = {}, dragon = {}, donut = {} }, true)
+		expect.deepEqual(t3.fresh, { dragon = true })
+		-- An id that is no longer owned is no longer new.
+		local t4 = track(t3, { kitty_bread = {} }, false)
+		expect.deepEqual(t4.fresh, {})
+		-- A partial update before any full snapshot also only sets the baseline.
+		local t5 = track({ baseline = nil, fresh = {} }, { kitty_bread = {} }, false)
+		expect.deepEqual(t5.fresh, {})
+		expect.equal(track(t5, "nope", false), t5)
+	end)
+
+	-- Reveal holds (Part 7 review fix, §9.11 "no fake-outs"): the StateDelta carrying a box result arrives before its
+	-- reveal plays, so the shown Coins and owned leave the held results out until BoxController releases them.
+
+	local function boxEntry(req: string, squishy: string, dup: boolean, refund: number): any
+		return {
+			req = req,
+			box = "snack",
+			squishy = squishy,
+			dup = dup,
+			refund = refund,
+			cost = 400,
+			at = 0,
+			seen = false,
+		}
+	end
+
+	t.test("reveal holds: a held duplicate's refund and a held new squishy are hidden; nothing else is", function()
+		local hide = StateController.hideHeldReveals
+		local owned = { kitty_bread = { src = "starter" }, toast = { src = "box" }, dragon = { src = "box" } }
+		local unseen = {
+			boxEntry("R1", "toast", true, 100), -- a duplicate: 1000 - 400 + 100 = 700 on the server
+			boxEntry("R2", "dragon", false, 0), -- a new squishy
+			boxEntry("R3", "kitty_bread", true, 50), -- not held: shown as it is
+		}
+		-- Review scenario: 1000 Coins, a 400 box gives an owned Common (refund 100): the pill must show 600 (the spend),
+		-- not 700 (which says "duplicate" before the reveal); the new squishy is not owned yet.
+		local coins, shownOwned = hide(700, owned, unseen, { R1 = true, R2 = true })
+		expect.equal(coins, 600)
+		expect.deepEqual(shownOwned, { kitty_bread = { src = "starter" }, toast = { src = "box" } })
+		expect.truthy(owned.dragon ~= nil) -- the input is not changed
+		-- Only what is held: R1 alone keeps the owned table as it is (the same table).
+		local coins1, owned1 = hide(700, owned, unseen, { R1 = true })
+		expect.equal(coins1, 600)
+		expect.equal(owned1, owned)
+		-- Nothing held, no unseen list, a malformed entry: unchanged values (the same tables).
+		local c0, o0 = hide(700, owned, unseen, {})
+		expect.equal(c0, 700)
+		expect.equal(o0, owned)
+		local c2, o2 = hide(700, owned, nil, { R1 = true })
+		expect.equal(c2, 700)
+		expect.equal(o2, owned)
+		local malformed: { any } = { "junk" :: any, { req = 5 } :: any }
+		local c3, o3 = hide(700, owned, malformed, { R1 = true })
+		expect.equal(c3, 700)
+		expect.equal(o3, owned)
+		-- The shown Coins never go below 0; a missing Coins value stays missing.
+		expect.equal((hide(30, owned, unseen, { R1 = true })), 0)
+		expect.equal((hide(nil, owned, unseen, { R1 = true })), nil)
+	end)
+
+	t.test("reveal holds: only a result that first appears in a partial state is held; seen or full ends it", function()
+		local step = StateController.revealHoldStep
+		local before = { boxEntry("R1", "toast", true, 100) }
+		local after = { boxEntry("R1", "toast", true, 100), boxEntry("R2", "dragon", false, 0) }
+		-- A new unseen entry in a partial delta after the first full state starts a hold.
+		local start, stop = step({}, before, after, false, true)
+		expect.deepEqual(start, { "R2" })
+		expect.deepEqual(stop, {})
+		-- Already held: not started twice.
+		start, stop = step({ R2 = true }, before, after, false, true)
+		expect.deepEqual(start, {})
+		expect.deepEqual(stop, {})
+		-- The first load and any full state (rejoin replay, data recovery) hold nothing and end every hold.
+		start, stop = step({}, nil, after, true, false)
+		expect.deepEqual(start, {})
+		start, stop = step({ R1 = true, R2 = true }, before, after, true, true)
+		expect.deepEqual(start, {})
+		expect.deepEqual(stop, { "R1", "R2" })
+		-- A partial state before the first full one holds nothing.
+		start = step({}, nil, after, false, false)
+		expect.deepEqual(start, {})
+		-- AckReveal made it seen (it left the unseen list): the hold ends.
+		start, stop = step({ R2 = true }, after, before, false, true)
+		expect.deepEqual(start, {})
+		expect.deepEqual(stop, { "R2" })
+	end)
+end

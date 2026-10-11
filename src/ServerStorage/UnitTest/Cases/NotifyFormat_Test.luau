@@ -1,0 +1,297 @@
+--!strict
+-- NotifyFormat_Test: StarterPlayerScripts.Client.UI.NotifyFormat (what NotifyController shows). Server only
+-- (ServerStorage.UnitTest). Pure: no instances.
+-- Contract (DESIGN §2.8, §2.10, §3.12, §3.13, §11.3, §17.2, §17.7):
+--   * a Notify code shows its Strings text (reason.<code> or the plain key), placeholders filled from string and
+--     number args only; a code without a text (or not shaped like a code) shows nothing;
+--   * queue.* and duel.* codes are worded exactly like QueueController words them (one toast, never two texts);
+--   * server.restartSoon gets its {time}; grip.* codes are held back during a match, at most 3, newest kept, merged;
+--   * "No Coins were spent." only when the server's Result says charged = false;
+--   * unknown kinds become info;
+--   * foam UI (spec 2026-10-09): each toast kind has its accent stripe (Danger only for errors); the toast column
+--     starts 110 base px down, or under the lobby's coach card when that reaches lower, never past the middle;
+--   * integration (2026-10-09): only what hangs into the centred column from above moves it (the coach card, the
+--     phone's top-band queue pill, the duel top bar), never the PC queue pill lower down or the top-left column;
+--   * overlays fix (2026-10-09): quest.* codes are held back like grip.* ("Quest complete!" covered the duel result
+--     card); the toast column never covers the HUD groups beside it: it stays centred when they leave room, moves
+--     aside (the phone's tile row), narrows down to its minimum, else goes under them (never past the middle), and
+--     starts under anything above it that the moved column meets;
+--   * lobby HUD (spec 2026-10-11): what hangs in from above chains: a rect counts when it starts at or above the
+--     running top (the Duel CTA at the top middle, then the coach card or the queue pill right under it).
+
+type Context = {
+	test: (name: string, fn: () -> ()) -> (),
+	expect: any,
+	requireShared: (path: string) -> any,
+	requireClient: (path: string) -> any,
+}
+
+return function(t: Context)
+	local expect = t.expect
+	local NotifyFormat = t.requireClient("UI/NotifyFormat")
+	local QueueFormat = t.requireClient("UI/QueueFormat")
+	local Strings = t.requireShared("Strings")
+
+	t.test("codes: reason texts and plain keys, args filled; unknown codes show nothing", function()
+		expect.equal(NotifyFormat.textFor("data.openedElsewhere", nil), Strings.reason.data.openedElsewhere)
+		expect.equal(NotifyFormat.textFor("data.loaded", nil), Strings.data.loaded)
+		expect.equal(
+			NotifyFormat.textFor("server.restartSoon", { time = "2:00" }),
+			Strings.format(Strings.server.restartSoon, { time = "2:00" })
+		)
+		expect.equal(
+			NotifyFormat.textFor("grip.levelUp", { level = 13 }),
+			Strings.format(Strings.grip.levelUp, { level = 13 })
+		)
+		expect.equal(NotifyFormat.textFor("ult.noRoom", nil), Strings.reason.ult.noRoom)
+		expect.equal(NotifyFormat.textFor("nope.missing", nil), nil)
+		expect.equal(NotifyFormat.textFor("plainword", nil), nil)
+		expect.equal(NotifyFormat.textFor(42, nil), nil)
+		expect.equal(NotifyFormat.textFor(string.rep("a", 70) .. ".b", nil), nil)
+		expect.equal(NotifyFormat.isKnown("grip.headStart"), true)
+		expect.equal(NotifyFormat.isKnown("grip.nope"), false)
+	end)
+
+	t.test("args: only string and number values fill placeholders", function()
+		local text = NotifyFormat.textFor("grip.rankUp", { name = "Ana", rank = { "table" } :: any })
+		expect.equal(text, Strings.format(Strings.grip.rankUp, { name = "Ana" }))
+		expect.truthy(string.find(text :: string, "{rank}", 1, true))
+	end)
+
+	t.test("queue and duel codes use QueueController's wording", function()
+		for _, code in { "queue.timedOut", "queue.removedIdle", "queue.paused", "duel.noRewardsOffline" } do
+			expect.equal(NotifyFormat.textFor(code, nil), QueueFormat.messageText(code))
+		end
+		-- queue.timedOut gets its {minutes} from Config, never a raw placeholder.
+		expect.equal(string.find(NotifyFormat.textFor("queue.timedOut", nil) :: string, "{", 1, true), nil)
+	end)
+
+	t.test("kinds: the four kinds, anything else info", function()
+		expect.equal(NotifyFormat.kindOf("success"), "success")
+		expect.equal(NotifyFormat.kindOf("warn"), "warn")
+		expect.equal(NotifyFormat.kindOf("error"), "error")
+		expect.equal(NotifyFormat.kindOf("info"), "info")
+		expect.equal(NotifyFormat.kindOf("loud"), "info")
+		expect.equal(NotifyFormat.kindOf(nil), "info")
+	end)
+
+	t.test("hold-back: grip and quest codes only; at most max, newest kept, no repeats; merged one per line", function()
+		expect.equal(NotifyFormat.isHeldBack("grip.levelUp"), true)
+		expect.equal(NotifyFormat.isHeldBack("queue.timedOut"), false)
+		expect.equal(NotifyFormat.isHeldBack("gripper.x"), false)
+		-- Overlays fix: "Quest complete!" (and the auto-collected notice) wait for the end of the match too.
+		expect.equal(NotifyFormat.isHeldBack("quest.complete"), true)
+		expect.equal(NotifyFormat.isHeldBack("quest.autoCollected"), true)
+		expect.equal(NotifyFormat.isHeldBack("questline.x"), false)
+		expect.equal(NotifyFormat.isHeldBack("duel.noRewardsOffline"), false)
+		expect.equal(NotifyFormat.isHeldBack(nil), false)
+		local held = {}
+		held = NotifyFormat.pushHeld(held, "a", 3)
+		held = NotifyFormat.pushHeld(held, "b", 3)
+		held = NotifyFormat.pushHeld(held, "a", 3)
+		expect.deepEqual(held, { "b", "a" })
+		held = NotifyFormat.pushHeld(held, "c", 3)
+		held = NotifyFormat.pushHeld(held, "d", 3)
+		expect.deepEqual(held, { "a", "c", "d" })
+		expect.equal(NotifyFormat.merge(held), "a\nc\nd")
+		expect.equal(NotifyFormat.merge({}), nil)
+	end)
+
+	t.test("results: the reason text; No Coins were spent only when charged = false", function()
+		local plain = NotifyFormat.resultText({ ok = false, reason = "economy.notEnoughCoins" })
+		expect.equal(plain, Strings.reason.economy.notEnoughCoins)
+		local charged = NotifyFormat.resultText({ ok = false, reason = "economy.notEnoughCoins", charged = true })
+		expect.equal(charged, Strings.reason.economy.notEnoughCoins)
+		local refunded = NotifyFormat.resultText({ ok = false, reason = "box.paused", charged = false })
+		expect.equal(refunded, Strings.reason.box.paused .. " " .. Strings.common.noCoinsSpent)
+		expect.equal(NotifyFormat.resultText({ ok = false }), Strings.error.generic)
+	end)
+
+	t.test("areas", function()
+		expect.equal(NotifyFormat.areaOf("queue.timedOut"), "queue.")
+		expect.equal(NotifyFormat.areaOf("plain"), nil)
+		expect.equal(NotifyFormat.areaOf(5), nil)
+	end)
+
+	t.test("toast accents (foam UI): one per kind, Danger only for errors, unknown kinds as info", function()
+		expect.equal(NotifyFormat.toastAccent("info"), "sky")
+		expect.equal(NotifyFormat.toastAccent("success"), "mint")
+		expect.equal(NotifyFormat.toastAccent("warn"), "strawberry")
+		expect.equal(NotifyFormat.toastAccent("error"), "danger")
+		expect.equal(NotifyFormat.toastAccent("loud"), "sky")
+		expect.equal(NotifyFormat.toastAccent(nil), "sky")
+		-- Every accent but errors' is a Theme accent (never a reserved colour such as CoinGold).
+		local Theme = t.requireClient("UI/Theme")
+		for _, kind in { "info", "success", "warn" } do
+			expect.truthy(Theme.Accents[NotifyFormat.toastAccent(kind)] ~= nil)
+		end
+	end)
+
+	t.test("toast column top: 110 base, under the coach card when it reaches lower, never past the middle", function()
+		-- Nothing to keep clear: the default top.
+		expect.equal(NotifyFormat.toastTop(441, nil, 110, 8), 110)
+		-- A coach card ending higher than the default: the default top stays.
+		expect.equal(NotifyFormat.toastTop(441, 90, 110, 8), 110)
+		-- A coach card ending at 140: 8 under it.
+		expect.equal(NotifyFormat.toastTop(441, 140, 110, 8), 148)
+		-- A very tall card on a phone canvas (441 base): capped at the middle.
+		expect.equal(NotifyFormat.toastTop(441, 400, 110, 8), 220.5)
+		-- A canvas shorter than twice the default: never above the default either.
+		expect.equal(NotifyFormat.toastTop(200, 300, 110, 8), 110)
+		-- Bad numbers count as nothing to keep clear.
+		expect.equal(NotifyFormat.toastTop(441, 0 / 0, 110, 8), 110)
+		expect.equal(NotifyFormat.toastTop(441, 140, 110, 0 / 0), 140)
+		expect.equal(NotifyFormat.toastTop(0 / 0, 140, 110, 8), 110)
+	end)
+
+	t.test("toast clearance (integration): only what hangs into the centred column from above counts", function()
+		-- A phone canvas (785 base wide): the 420-wide column spans x 182.5 .. 602.5.
+		local W, COLUMN, TOP = 785, 420, 110
+		-- Nothing registered or shown: nothing to keep clear.
+		expect.equal(NotifyFormat.toastClearance({}, W, COLUMN, TOP), nil)
+		-- The coach card at the top centre, ending at 140: its bottom.
+		local coach = { x = 200, y = 12, w = 380, h = 128 }
+		expect.equal(NotifyFormat.toastClearance({ coach }, W, COLUMN, TOP), 140)
+		-- The duel top bar (two cards and the timer, 135 tall at 8 down) and the coach card: the lower one wins.
+		local topBar = { x = 150, y = 8, w = 480, h = 135 }
+		expect.equal(NotifyFormat.toastClearance({ coach, topBar }, W, COLUMN, TOP), 143)
+		-- The PC queue pill above the Duel CTA starts far below the toasts' top: it never moves them.
+		local pillAboveCta = { x = 1000, y = 520, w = 400, h = 150 }
+		expect.equal(NotifyFormat.toastClearance({ pillAboveCta }, 1422, COLUMN, TOP), nil)
+		-- The phone's queue pill in the top band (centred between the HUD groups): it counts.
+		local pillTop = { x = 300, y = 12, w = 320, h = 170 }
+		expect.equal(NotifyFormat.toastClearance({ pillTop, pillAboveCta }, W, COLUMN, TOP), 182)
+		-- Something beside the column (the top-left coin capsule and Grip card) does not count.
+		local left = { x = 12, y = 12, w = 160, h = 200 }
+		expect.equal(NotifyFormat.toastClearance({ left }, W, COLUMN, TOP), nil)
+		-- Rects without a size or with bad numbers count as nothing, as do bad canvas numbers.
+		expect.equal(NotifyFormat.toastClearance({ { x = 300, y = 12, w = 0, h = 50 } }, W, COLUMN, TOP), nil)
+		expect.equal(NotifyFormat.toastClearance({ { x = 0 / 0, y = 12, w = 300, h = 50 } }, W, COLUMN, TOP), nil)
+		expect.equal(NotifyFormat.toastClearance({ coach }, 0 / 0, COLUMN, TOP), nil)
+		-- Fed to toastTop: 8 under the coach card, capped at the middle of a 441-tall phone canvas.
+		expect.equal(NotifyFormat.toastTop(441, NotifyFormat.toastClearance({ coach }, W, COLUMN, TOP), TOP, 8), 148)
+	end)
+
+	t.test(
+		"toast clearance (lobby HUD 2026-10-11): under the Duel CTA, then the coach card or the pill under it",
+		function()
+			-- A PC canvas (1536 base wide): the 420-wide column spans x 558 .. 978; the CTA at the top middle ends at 104.
+			local W, COLUMN, TOP, GAP = 1536, 420, 110, 8
+			local cta = { x = 648, y = 12, w = 240, h = 92 }
+			expect.equal(NotifyFormat.toastClearance({ cta }, W, COLUMN, TOP, GAP), 104)
+			-- The coach card starts right under it (104 + 8 = 112, below the default top): it counts too (`<=`).
+			local coach = { x = 512, y = 112, w = 512, h = 80 }
+			expect.equal(NotifyFormat.toastClearance({ coach, cta }, W, COLUMN, TOP, GAP), 192)
+			-- The queue pill under the CTA instead (the coach card waits while queued).
+			local pill = { x = 508, y = 112, w = 520, h = 76 }
+			expect.equal(NotifyFormat.toastClearance({ pill, cta }, W, COLUMN, TOP, GAP), 188)
+			-- Without the CTA above it, a rect starting under the default top still never counts.
+			expect.equal(NotifyFormat.toastClearance({ coach }, W, COLUMN, TOP, GAP), nil)
+			-- A rect lower than the running top (a gap wider than `gap`) breaks the chain.
+			local lower = { x = 512, y = 113, w = 512, h = 80 }
+			expect.equal(NotifyFormat.toastClearance({ lower, cta }, W, COLUMN, TOP, GAP), 104)
+			-- The toast column: 8 under the coach card, centred.
+			local placed = NotifyFormat.toastColumn({
+				canvas = Vector2.new(W, 864),
+				width = COLUMN,
+				minWidth = 280,
+				height = 44,
+				defaultTop = TOP,
+				gap = GAP,
+				edge = 12,
+				above = { cta, coach },
+				beside = {},
+			})
+			expect.deepEqual(placed, { x = 558, y = 200, width = COLUMN })
+		end
+	)
+
+	-- Overlays fix: the toast column beside the HUD groups (base px; an 844×390 phone is about 993 wide at 0.85).
+	local function column(overrides: { [string]: any }): any
+		local input: { [string]: any } = {
+			canvas = Vector2.new(993, 441),
+			width = 420,
+			minWidth = 280,
+			height = 44,
+			defaultTop = 110,
+			gap = 8,
+			edge = 12,
+			above = {},
+			beside = {},
+		}
+		for key, value in overrides do
+			input[key] = value
+		end
+		return NotifyFormat.toastColumn(input :: any)
+	end
+	local function overlaps(x: number, y: number, w: number, h: number, rect: any): boolean
+		return x < rect.x + rect.w and rect.x < x + w and y < rect.y + rect.h and rect.y < y + h
+	end
+
+	t.test(
+		"toast column (overlays fix): centred with nothing beside it; moved aside of the phone's tile row",
+		function()
+			-- Nothing registered: centred at the default top, full width.
+			expect.deepEqual(column({}), { x = 286.5, y = 110, width = 420 })
+			-- The tile row on a phone (x 12..452) at the column's height: the column starts 8 right of it.
+			local tiles = { x = 12, y = 126, w = 440, h = 64 }
+			local beside = column({ beside = { tiles } })
+			expect.deepEqual(beside, { x = 460, y = 110, width = 420 })
+			expect.falsy(overlaps(beside.x, beside.y, beside.width, 44, tiles))
+			-- Two toasts (a taller band) also meet the Duel CTA at the right edge: narrowed to the room between them.
+			local cta = { x = 841, y = 166, w = 138, h = 64 }
+			local narrow = column({ beside = { tiles, cta }, height = 100 })
+			expect.deepEqual(narrow, { x = 460, y = 110, width = 373 })
+			expect.falsy(overlaps(narrow.x, narrow.y, narrow.width, 100, cta))
+			-- The same CTA lower than the band: the full width again.
+			expect.deepEqual(column({ beside = { tiles, cta }, height = 44 }), { x = 460, y = 110, width = 420 })
+			-- A PC (1536 wide): the left column, the tile column, the right column and the CTA leave it centred.
+			local pc = column({
+				canvas = Vector2.new(1536, 864),
+				beside = {
+					{ x = 12, y = 12, w = 270, h = 190 },
+					{ x = 12, y = 210, w = 80, h = 400 },
+					{ x = 1284, y = 12, w = 240, h = 300 },
+					{ x = 1284, y = 740, w = 240, h = 92 },
+				},
+			})
+			expect.deepEqual(pc, { x = 558, y = 110, width = 420 })
+		end
+	)
+
+	t.test(
+		"toast column (overlays fix): under the groups with no room beside them; under what hangs in above",
+		function()
+			-- Room narrower than the minimum: under the lowest group the band meets, full width, centred.
+			local tiles = { x = 12, y = 126, w = 440, h = 64 }
+			local wall = { x = 600, y = 100, w = 381, h = 80 }
+			expect.deepEqual(column({ beside = { tiles, wall } }), { x = 286.5, y = 198, width = 420 })
+			-- Never past the middle of the canvas (a 300-tall canvas: 150).
+			local left = { x = 12, y = 50, w = 600, h = 240 }
+			local right = { x = 620, y = 50, w = 361, h = 240 }
+			local capped = column({ canvas = Vector2.new(993, 300), beside = { left, right } })
+			expect.deepEqual(capped, { x = 286.5, y = 150, width = 420 })
+			-- The coach card above (bottom 140): 8 under it, then beside the tiles.
+			local coach = { x = 288, y = 12, w = 512, h = 128 }
+			expect.deepEqual(column({ above = { coach }, beside = { tiles } }), { x = 460, y = 148, width = 420 })
+			-- Something above that only the moved column meets (top right, ending at 160): it starts under that too.
+			local high = { x = 720, y = 12, w = 180, h = 148 }
+			expect.deepEqual(column({ above = { high } }), { x = 286.5, y = 110, width = 420 })
+			expect.deepEqual(column({ above = { high }, beside = { tiles } }), { x = 460, y = 168, width = 420 })
+		end
+	)
+
+	t.test("toast column (overlays fix): hidden rects count as nothing; a canvas narrower than the column", function()
+		local hidden = {
+			{ x = 0 / 0, y = 126, w = 440, h = 64 },
+			{ x = 12, y = 126, w = 0, h = 64 },
+			{ x = 12, y = 126, w = 440, h = 0 },
+		}
+		expect.deepEqual(column({ beside = hidden, above = hidden }), { x = 286.5, y = 110, width = 420 })
+		-- 400 base wide: the column takes the room inside the edges.
+		expect.deepEqual(column({ canvas = Vector2.new(400, 441) }), { x = 12, y = 110, width = 376 })
+		-- Bad numbers never break it.
+		local bad = column({ height = 0 / 0, gap = 0 / 0, minWidth = 0 / 0 })
+		expect.deepEqual(bad, { x = 286.5, y = 110, width = 420 })
+	end)
+end

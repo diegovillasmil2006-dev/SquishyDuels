@@ -1,0 +1,2 @@
+# Keep script line endings identical to Studio so Rojo never sees spurious changes.
+* text=auto eol=lf
