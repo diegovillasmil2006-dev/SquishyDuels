@@ -1,8 +1,8 @@
 --!strict
 -- Config.FirstPerson: first person in duels, the practice range's throw box and the lobby look (spec 2026-10-10 §4.1,
 -- spec 2026-10-11 §3). Shared, data only. Read by the client FirstPersonController (camera), ViewmodelController (the
--- two-arm overlay), Anim/ViewmodelMath, Anim/SuperMesh, Anim/DesignArm, Anim/NearFade, ProjectileRenderer and
--- VfxController.
+-- two-arm overlay), Anim/ViewmodelMath, Anim/SuperMesh, Anim/DesignArm, Anim/OwnArm, Anim/NearFade,
+-- ProjectileRenderer and VfxController.
 -- Units: "du" are the 3D Lab's viewmodel metres (camera space: -Z forward, +Y up, +X right); the overlay draws
 -- overlayStudsPerDu studs per du. Angles in radians unless the name says Deg. Springs are { k, c } (x'' = -k x - c x');
 -- every one is <= 3 Hz (Config.validate).
@@ -159,6 +159,23 @@ local FirstPerson = {
 		px = 3, -- design: fp.js:72
 		refHeightPx = 1080, -- spec 2026-10-11 §3.2 (1920 × 1080)
 		refDepthDu = 0.46, -- the hold depth (spec 2026-10-11 §3.2; REST z, design: fp.js:77)
+	},
+	-- The player's own avatar arms (user decision 2026-10-11: each player's own full avatar arms, skin, shirt sleeves
+	-- and body shape, in the design's motions; Anim/OwnArm): copies of the local R15 Hand, LowerArm and UpperArm. The
+	-- design arms above are the fallback. Engineering limits, not design visuals (spec phase1-arms §3.6).
+	ownArms = {
+		enabled = true,
+		handWidthDu = 0.1, -- the avatar hand's Size.X shows this wide: the design hand's width (design: fp.js:67)
+		-- + the upper arm's radius: past this the arm is off screen in every design pose (0.42 du + the arm's radius,
+		-- measured 2026-10-11 from fp.js:77, 145-155; 0.03 du margin)
+		reachDu = 0.45,
+		maxStretch = 5, -- past the wrist the arm stretches at most this much along its length; more = odd (fallback)
+		palmRoll = 0, -- an extra turn about the arm (rad, × side) if the palms do not face the toy
+		maxWidthDu = 0.2, -- a scaled LowerArm / UpperArm thicker than this is odd
+		maxHandLengthDu = 0.2, -- a scaled hand longer than this along the arm is odd
+		minPartStuds = 0.05, -- a source part thinner than this on any axis is odd
+		maxTransparency = 0.99, -- a source part at least this transparent is hidden on purpose: odd
+		recheckSeconds = 1, -- a shown overlay compares the avatar's signature this often; a change rebuilds the arms
 	},
 	-- The held toy (§3.3): its longest side is toyLongestDu, centred on pos with Euler XYZ rot; the hands sit at its
 	-- sides: x = its centre - (left) or + (right) its shown half-width + sideGap, y + sideY, z + sideZ (design:

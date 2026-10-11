@@ -1543,6 +1543,26 @@ return function(t: Context)
 		expect.truthy(containsText(axis, "Config.Inspect.Preview.squeezeAxis"))
 	end)
 
+	t.test("FirstPerson.ownArms (the player's own arms): the limits; validate reports a broken copy", function()
+		local own = Config.FirstPerson.ownArms
+		expect.equal(own.enabled, true)
+		expect.near(own.handWidthDu, Config.FirstPerson.arm.parts[1].size.X, 1e-6) -- the design hand's width (fp.js:67)
+		expect.equal(own.reachDu, 0.45)
+		expect.equal(own.maxStretch, 5)
+		expect.equal(own.palmRoll, 0)
+		expect.equal(own.recheckSeconds, 1)
+		local problems = validateBrokenCopy(t.Shared, "FirstPerson", function(fp)
+			fp.ownArms.enabled = "yes"
+			fp.ownArms.reachDu = 0
+			fp.ownArms.maxStretch = 0.5
+			fp.ownArms.maxTransparency = 2
+			fp.ownArms.palmRoll = "left"
+		end)
+		for _, key in { "enabled", "reachDu", "maxStretch", "maxTransparency", "palmRoll" } do
+			expect.truthy(containsText(problems, "Config.FirstPerson.ownArms." .. key))
+		end
+	end)
+
 	-- Sections and freezing ---------------------------------------------------------------------------------
 
 	-- Every section named in DESIGN §2.2 is merged into Config.

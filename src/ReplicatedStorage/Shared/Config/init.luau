@@ -1864,6 +1864,34 @@ local function checkFirstPerson(problems: Problems)
 	local outline = fp.outline
 	expectColour(`{p}.outline.colour`, outline.colour)
 	eachField(problems, `{p}.outline`, outline, { "px", "refHeightPx", "refDepthDu" }, expectPositive)
+	-- The player's own arms (Anim/OwnArm).
+	local own = fp.ownArms
+	expect(problems, type(own) == "table", `{p}.ownArms must be a table`)
+	if type(own) == "table" then
+		expect(
+			problems,
+			type(own.enabled) == "boolean",
+			`{p}.ownArms.enabled must be a boolean (got {show(own.enabled)})`
+		)
+		eachField(
+			problems,
+			`{p}.ownArms`,
+			own,
+			{ "handWidthDu", "reachDu", "maxWidthDu", "maxHandLengthDu", "minPartStuds", "recheckSeconds" },
+			expectPositive
+		)
+		expect(
+			problems,
+			isNumber(own.maxStretch) and own.maxStretch >= 1,
+			`{p}.ownArms.maxStretch must be a number >= 1 (got {show(own.maxStretch)})`
+		)
+		expect(
+			problems,
+			isNumber(own.maxTransparency) and own.maxTransparency > 0 and own.maxTransparency <= 1,
+			`{p}.ownArms.maxTransparency must be in (0, 1] (got {show(own.maxTransparency)})`
+		)
+		expect(problems, isNumber(own.palmRoll), `{p}.ownArms.palmRoll must be a number (got {show(own.palmRoll)})`)
+	end
 	-- The held toy, pop-in, squeeze, focus, shake, throw extras and Dragon charge.
 	local held = fp.held
 	expectVector(`{p}.held.pos`, held.pos)

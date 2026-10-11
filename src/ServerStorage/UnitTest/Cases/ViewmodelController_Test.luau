@@ -7,8 +7,11 @@
 -- Contract:
 --   * the overlay shows while a look is on ("duel", "practice" or "lobby") and the local player has a held model; it
 --     hides (gui disabled, 0 parts, no Scheduler job, the mirror cleared, the world FOV given back) when the look ends;
---   * two arms of five parts (hand, thumb, forearm, cuff, sleeve); skin #F5CDA4; the sleeve is the duel side's team
---     colour, mint in practice and the lobby; the overlay camera's FOV is 70 and its light overlayLight();
+--   * the arms are the local character's own R15 arms (Anim/OwnArm: three parts a side, its skin, no sleeve colour)
+--     when it has usable ones; else (R6, a part or rig attachment missing, a hidden part, no character) the design's
+--     two arms of five parts (hand, thumb, forearm, cuff, sleeve); skin #F5CDA4; the sleeve is the duel side's team
+--     colour, mint in practice and the lobby; a changed avatar rebuilds the arms within ownArms.recheckSeconds with
+--     the hands staying put; the character is only read; the overlay camera's FOV is 70 and its light overlayLight();
 --   * each show pops the toy in (scale backOut from ~0, from equipFrom), then the hold: the toy on held.pos (breathing)
 --     and both hands at its sides with rolls ±0.4; the hands go to rest while the toy is out of the hand;
 --   * the two-palm squeeze through the mirror: the palms on the toy's shown sides, rolls ±(0.4 + 0.3c), the toy to the
@@ -58,6 +61,8 @@ return function(t: Context)
 	local expect = t.expect
 	local FP = Config.FirstPerson
 	local PARTS = { "cuff", "forearm", "hand", "sleeve", "thumb" }
+	local SKIN = Color3.fromRGB(234, 184, 146) -- the stand-in character's arms
+	local BROWN = Color3.fromRGB(90, 60, 40)
 
 	type World = {
 		clock: number,
@@ -312,6 +317,46 @@ return function(t: Context)
 		return (a - b).Magnitude <= (tolerance or 1e-3)
 	end
 
+	-- A local character with usable R15 arms (test sizes, not Roblox's): a Humanoid (R15), the six arm MeshParts with
+	-- their rig attachments (arms straight down), a Shirt and BodyColors.
+	local function r15Character(): Model
+		local model = Instance.new("Model")
+		model.Name = "Tester"
+		local humanoid = Instance.new("Humanoid")
+		humanoid.RigType = Enum.HumanoidRigType.R15
+		humanoid.Parent = model
+		for _, side in { "Left", "Right" } do
+			local function part(kind: string, size: Vector3): MeshPart
+				local p = Instance.new("MeshPart")
+				p.Name = side .. kind
+				p.Size = size
+				p.Color = SKIN
+				p.Parent = model
+				return p
+			end
+			local function rig(parent: Instance, name: string, y: number)
+				local a = Instance.new("Attachment")
+				a.Name = side .. name
+				a.CFrame = CFrame.new(0, y, 0)
+				a.Parent = parent
+			end
+			local hand = part("Hand", Vector3.new(1, 0.3, 1))
+			local lower = part("LowerArm", Vector3.new(1, 1.05, 1))
+			local upper = part("UpperArm", Vector3.new(1, 1.17, 1))
+			rig(hand, "WristRigAttachment", 0.125)
+			rig(lower, "WristRigAttachment", -0.5)
+			rig(lower, "ElbowRigAttachment", 0.2)
+			rig(upper, "ElbowRigAttachment", -0.33)
+			rig(upper, "ShoulderRigAttachment", 0.42)
+		end
+		Instance.new("Shirt").Parent = model
+		-- As on a real character, BodyColors holds the arms' colours (its defaults would repaint them).
+		local colours = Instance.new("BodyColors")
+		colours.LeftArmColor3, colours.RightArmColor3 = SKIN, SKIN
+		colours.Parent = model
+		return model
+	end
+
 	t.test(
 		"shown while a look is on with a held model; hidden: disabled, 0 parts, no job, the FOV given back",
 		function()
@@ -348,11 +393,13 @@ return function(t: Context)
 		end
 	)
 
-	t.test("two arms of five parts; the design's skin; the sleeve: the duel side's, mint elsewhere; FOV 70", function()
+	t.test("no character: the design arms of five parts; sleeve by duel side, mint elsewhere; FOV 70", function()
 		local w = setup()
 		w.duel = { phase = "Active", phaseEndsAt = w.clock + 60, you = { side = "A" }, opponent = { side = "B" } }
 		enter(w, "duel")
 		local state = Viewmodel.debugState()
+		expect.equal(state.arms, "design")
+		expect.equal(state.armsWhy, "noCharacter")
 		expect.deepEqual(state.leftParts, PARTS)
 		expect.deepEqual(state.rightParts, PARTS)
 		expect.equal(state.skin, FP.colours.skin:ToHex())
@@ -375,6 +422,82 @@ return function(t: Context)
 			leave(w)
 		end
 		teardown()
+	end)
+
+	t.test("own arms: R15 arms, 3 parts a side, in the design's hold; the character only read", function()
+		local w = setup()
+		local character = r15Character()
+		local count = #character:GetDescendants()
+		local realHand = character:FindFirstChild("RightHand") :: BasePart
+		local realFrame = realHand.CFrame
+		local player: any = w.player
+		player.Character = character
+		enter(w, "lobby")
+		frames(w, 120)
+		local state = Viewmodel.debugState()
+		expect.equal(state.arms, "own")
+		expect.equal(state.armsWhy, nil)
+		expect.deepEqual(state.leftParts, { "LeftHand", "LeftLowerArm", "LeftUpperArm" })
+		expect.deepEqual(state.rightParts, { "RightHand", "RightLowerArm", "RightUpperArm" })
+		expect.equal(state.skin, SKIN:ToHex())
+		expect.equal(state.sleeve, nil)
+		-- The design's motions: both hands at the toy's sides, the design's rolls.
+		local left, right = ViewmodelMath.sides(state.toyPos, state.hw)
+		expect.truthy(close(state.leftPos, left, 0.01) and close(state.rightPos, right, 0.01))
+		expect.near(state.leftRoll, FP.arm.roll, 1e-3)
+		expect.near(state.rightRoll, -FP.arm.roll, 1e-3)
+		-- One model in the overlay with its Humanoid and the Shirt; the right hand's centre on the hand point.
+		local viewport = w.guis.SD_Viewmodel:FindFirstChildOfClass("ViewportFrame") :: ViewportFrame
+		local found = viewport:FindFirstChild("SD_OwnArms")
+		expect.truthy(found ~= nil)
+		local model = found :: Model
+		expect.truthy(model:FindFirstChildOfClass("Humanoid") ~= nil)
+		expect.truthy(model:FindFirstChildOfClass("Shirt") ~= nil)
+		local hand = model:FindFirstChild("RightHand") :: BasePart
+		expect.truthy((hand.Position - state.rightPos * FP.overlayStudsPerDu).Magnitude < 1e-3)
+		-- The character is only read.
+		expect.equal(#character:GetDescendants(), count)
+		expect.equal(realHand.CFrame, realFrame)
+		expect.equal(realHand.Parent, character)
+		leave(w)
+		expect.equal(overlayParts(w), 0)
+		expect.equal(viewport:FindFirstChild("SD_OwnArms"), nil)
+		teardown()
+		character:Destroy()
+	end)
+
+	t.test("own arms: a changed avatar rebuilds them, hands staying put; R6 or a missing part: design arms", function()
+		local w = setup()
+		local character = r15Character()
+		local player: any = w.player
+		player.Character = character
+		enter(w, "lobby")
+		frames(w, 120)
+		local before = Viewmodel.debugState()
+		local check = math.ceil(FP.ownArms.recheckSeconds / FRAME) + 2
+		local rightHand = character:FindFirstChild("RightHand") :: BasePart
+		rightHand.Color = BROWN
+		frames(w, check)
+		local after = Viewmodel.debugState()
+		expect.equal(after.arms, "own")
+		expect.equal(after.skin, BROWN:ToHex())
+		expect.truthy(close(after.rightPos, before.rightPos, 0.01))
+		local humanoid = character:FindFirstChildOfClass("Humanoid") :: Humanoid
+		humanoid.RigType = Enum.HumanoidRigType.R6
+		frames(w, check)
+		local design = Viewmodel.debugState()
+		expect.equal(design.arms, "design")
+		expect.equal(design.armsWhy, "notR15")
+		expect.deepEqual(design.rightParts, PARTS)
+		expect.equal(design.skin, FP.colours.skin:ToHex())
+		expect.truthy(close(design.rightPos, before.rightPos, 0.01))
+		-- Back to R15 with a hand missing: still the design arms, with the reason.
+		humanoid.RigType = Enum.HumanoidRigType.R15
+		rightHand:Destroy()
+		frames(w, check)
+		expect.equal(Viewmodel.debugState().armsWhy, "missing:RightHand")
+		teardown()
+		character:Destroy()
 	end)
 
 	t.test("each show pops the toy in, then the hold: the toy on held.pos, both hands at its sides", function()

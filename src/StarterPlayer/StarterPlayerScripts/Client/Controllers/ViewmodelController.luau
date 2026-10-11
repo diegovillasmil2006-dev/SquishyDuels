@@ -3,8 +3,11 @@
 -- player's first person, wherever it is (§3.8): while FirstPersonController.look() is set ("duel", "practice" or
 -- "lobby", the player's own zoom into the head) and the local player has a held model, a full-screen ViewportFrame in
 -- the controller-owned ScreenGui SD_Viewmodel (Config.FirstPerson.gui: DisplayOrder -1, under Roblox's TouchGui and
--- every HUD; ScreenInsets None; not in Config.UI.ScreenGuis) draws two arms (Anim/DesignArm, five parts each) and a
--- "Viewport" copy of the held squishy. The viewport is Active = false and Interactable = false, so a click at the
+-- every HUD; ScreenInsets None; not in Config.UI.ScreenGuis) draws two arms and a "Viewport" copy of the held squishy.
+-- The arms are the local player's own R15 arms (Anim/OwnArm: copies of the character's hands, lower and upper arms,
+-- with its Shirt; user decision 2026-10-11), or the design's (Anim/DesignArm, five parts each) when the character has
+-- none usable; every ownArms.recheckSeconds a changed avatar signature rebuilds them on the same springs. The viewport
+-- is Active = false and Interactable = false, so a click at the
 -- centre is never "over GUI" and touches pass through. Built at each show, destroyed at each hide: hidden, the gui is
 -- disabled with 0 parts, no Scheduler job, no mirror and no hold on the world FOV.
 --
@@ -58,7 +61,8 @@
 -- Kept from step 2 (spec 2026-10-11 §3.7): while the own invulnUntil (ThrowImpact) runs, the overlay shows at
 -- invulnTransparency; lastReleasePoint() puts your own first-person projectile's start on the world camera's ray
 -- through where the overlay toy was (ViewmodelMath.releasePoint); the TouchGui fallback (setTouchGuiFallback). Sleeve:
--- the duel side's colour (teamSleeves), colours.sleeve (mint) elsewhere; skin and cuff fixed.
+-- the duel side's colour (teamSleeves), colours.sleeve (mint) elsewhere; skin and cuff fixed (the design arms only:
+-- own arms wear the player's own shirt).
 -- Readings: "squeezing" is the mirrored press amount c > 0 (the design's palms down, fp.js:399, 412); the throw starts
 -- from idle or the pop-in (a new windup also cuts a finished throw's follow-through short when the toy is back); a
 -- cancelled windup goes back to the hold on the springs; the world FOV and the glow stop at a thousandth of a degree /
@@ -106,6 +110,7 @@ local Client = script.Parent.Parent
 local DesignArm = require(Client.Anim.DesignArm)
 local HoldSqueeze = require(Client.Anim.HoldSqueeze)
 local MeshQuality = require(Client.Anim.MeshQuality)
+local OwnArm = require(Client.Anim.OwnArm)
 local Scheduler = require(Client.Anim.Scheduler)
 local SquishDeformer = require(Client.Anim.SquishDeformer)
 local SquishRig = require(Client.Anim.SquishRig)
@@ -139,11 +144,13 @@ type Toy = {
 	pitch: number, -- the design's squeeze pitch (the sounds)
 }
 
--- One arm: the hand point and the roll on their springs (fp.js:73).
+-- One arm: the hand point and the roll on their springs (fp.js:73); its parts are the player's own (own) or the
+-- design's (arm), one of the two.
 type Arm = {
 	side: number,
-	arm: DesignArm.Arm,
-	frames: { [string]: CFrame }, -- DesignArm.partFrames' table, reused
+	arm: DesignArm.Arm?,
+	own: OwnArm.Arm?,
+	frames: { [string]: CFrame }, -- the partFrames table (OwnArm's or DesignArm's), reused
 	pos: Vector3, -- du
 	vel: Vector3,
 	roll: number,
@@ -183,6 +190,10 @@ type View = {
 	camera: Camera,
 	left: Arm,
 	right: Arm,
+	ownArms: OwnArm.Arms?, -- the own arms' model (nil: the design arms)
+	armsKey: string, -- OwnArm.signature of the character the arms were built from
+	armsWhy: string?, -- why the design arms show (OwnArm's reason; nil with own arms)
+	armsCheckIn: number, -- seconds to the next signature check
 	toy: Toy?,
 	toyShown: boolean,
 	kind: Kind,
@@ -246,6 +257,7 @@ local ULT = FP.ult
 local IDLE = FP.idle
 local SHAKE = FP.shake
 local ARM_ROLL = FP.arm.roll
+local OWN_ARMS = FP.ownArms
 local AXIS: SquishRig.Axis = FP.squeezeAxis :: SquishRig.Axis
 local TELEGRAPH_S = Config.Abilities.dragon_rush.telegraphSeconds
 local ROAR_TOY = "dragon" -- the design's Dragon roars as its throw starts (fp.js:305)
@@ -845,8 +857,17 @@ local function stepAction(v: View, dt: number, now: number, reduced: boolean, se
 end
 
 local function drawArm(arm: Arm)
-	DesignArm.partFrames(arm.pos, arm.shoulder, arm.roll, arm.side, U, arm.frames)
-	DesignArm.apply(arm.arm, arm.frames)
+	local own = arm.own
+	if own then
+		OwnArm.partFrames(own, arm.pos, arm.shoulder, arm.roll, U, arm.frames)
+		OwnArm.apply(own, arm.frames)
+		return
+	end
+	local design = arm.arm
+	if design then
+		DesignArm.partFrames(arm.pos, arm.shoulder, arm.roll, arm.side, U, arm.frames)
+		DesignArm.apply(design, arm.frames)
+	end
 end
 
 -- Writes the arms and the toy for this frame through the overlay camera `cameraCF`.
@@ -976,10 +997,53 @@ local function sleeveColour(): Color3
 	return FP.colours.sleeve
 end
 
+-- The design arms' sleeve (own arms wear the player's own shirt).
 local function recolour(v: View)
 	local sleeve = sleeveColour()
-	DesignArm.setColours(v.left.arm, sleeve)
-	DesignArm.setColours(v.right.arm, sleeve)
+	for _, arm in { v.left, v.right } do
+		local design = arm.arm
+		if design then
+			DesignArm.setColours(design, sleeve)
+		end
+	end
+end
+
+local function destroyArms(v: View)
+	local own = v.ownArms
+	v.ownArms = nil
+	if own then
+		OwnArm.destroy(own)
+	end
+	for _, arm in { v.left, v.right } do
+		local design = arm.arm
+		arm.arm, arm.own = nil, nil
+		if design then
+			DesignArm.destroy(design)
+		end
+		table.clear(arm.frames)
+	end
+end
+
+-- The arms' parts: the player's own (Anim/OwnArm) when the character has usable R15 arms, else the design's
+-- (Anim/DesignArm, the sleeve recoloured). The springs (hand, roll) are kept: a rebuild mid-throw does not jump.
+local function buildArms(v: View, player: Player)
+	destroyArms(v)
+	local character = player.Character
+	v.armsKey = OwnArm.signature(character)
+	v.armsCheckIn = OWN_ARMS.recheckSeconds
+	local ok: boolean, arms: any, why: any = pcall(OwnArm.make, character, v.viewport, U)
+	if ok and arms then
+		v.ownArms, v.armsWhy = arms, nil
+		v.left.own, v.right.own = arms.left, arms.right
+		return
+	end
+	if not ok then
+		log:warn("own arms failed:", arms)
+	end
+	v.armsWhy = if ok then why else "error"
+	v.left.arm = DesignArm.new(-1, v.viewport, U)
+	v.right.arm = DesignArm.new(1, v.viewport, U)
+	recolour(v)
 end
 
 local function setTouchGui(v: View, raise: boolean)
@@ -1070,6 +1134,14 @@ local function step(v: View, dt: number, now: number): boolean
 	local serverNow = deps.Workspace:GetServerTimeNow()
 	local reduced = deps.Motion.reducedMotion()
 	keepAxis(v, player)
+	-- The avatar's looks (spec phase1-arms §3.8): a change rebuilds the arms (late appearance, an outfit, own <-> design).
+	v.armsCheckIn -= dt
+	if v.armsCheckIn <= 0 then
+		v.armsCheckIn = OWN_ARMS.recheckSeconds
+		if OwnArm.signature(player.Character) ~= v.armsKey then
+			buildArms(v, player)
+		end
+	end
 	local posed = v.pose
 	if posed then
 		dt, now = 0, posed.now -- frozen
@@ -1109,10 +1181,11 @@ end
 
 -- Show and hide ---------------------------------------------------------------------------------------------------------
 
-local function newArm(side: number, viewport: ViewportFrame): Arm
+local function newArm(side: number): Arm
 	return {
 		side = side,
-		arm = DesignArm.new(side, viewport, U),
+		arm = nil, -- buildArms makes the parts
+		own = nil,
 		frames = {},
 		pos = sideOf(FP.arm.startPos, side), -- design: fp.js:73
 		vel = ZERO,
@@ -1129,8 +1202,12 @@ local function newView(gui: ScreenGui, viewport: ViewportFrame, camera: Camera):
 		gui = gui,
 		viewport = viewport,
 		camera = camera,
-		left = newArm(-1, viewport),
-		right = newArm(1, viewport),
+		left = newArm(-1),
+		right = newArm(1),
+		ownArms = nil,
+		armsKey = "",
+		armsWhy = nil,
+		armsCheckIn = 0,
 		toy = nil,
 		toyShown = false,
 		kind = "empty",
@@ -1230,8 +1307,7 @@ local function hide()
 	end)
 	destroyToy(v)
 	v.cleanup:clean()
-	DesignArm.destroy(v.left.arm)
-	DesignArm.destroy(v.right.arm)
+	destroyArms(v)
 	local glow = v.glow
 	if glow then
 		glow:Destroy()
@@ -1245,7 +1321,7 @@ local function show(player: Player)
 	local viewport, camera = overlayOf(gui)
 	local v = newView(gui, viewport, camera)
 	view = v
-	recolour(v)
+	buildArms(v, player)
 	buildToy(v, player)
 	v.cleanup:add(deps.Scheduler.add(function(dt: number, now: number): boolean
 		return step(v, dt, now)
@@ -1391,7 +1467,9 @@ function ViewmodelController.debugState(): { [string]: any }
 	end
 	local function names(arm: Arm): { string }
 		local list: { string } = {}
-		for name in arm.arm.parts do
+		local own, design = arm.own, arm.arm
+		local parts: { [string]: BasePart } = if own then own.parts elseif design then design.parts else {}
+		for name in parts do
 			table.insert(list, name)
 		end
 		table.sort(list)
@@ -1400,6 +1478,8 @@ function ViewmodelController.debugState(): { [string]: any }
 	local throw = v.throw
 	local toy = v.toy
 	local src = v.mirror
+	local rightOwn, rightDesign = v.right.own, v.right.arm
+	local handPart: BasePart? = if rightOwn then rightOwn.hand elseif rightDesign then rightDesign.parts.hand else nil
 	return {
 		shown = true,
 		look = deps.FirstPerson.look(),
@@ -1407,10 +1487,12 @@ function ViewmodelController.debugState(): { [string]: any }
 		toy = if toy then toy.id else nil,
 		toyShown = v.toyShown,
 		hw = if toy then toy.hw else nil,
+		arms = if v.ownArms then "own" else "design",
+		armsWhy = v.armsWhy,
 		leftParts = names(v.left),
 		rightParts = names(v.right),
-		sleeve = v.right.arm.parts.sleeve.Color:ToHex(),
-		skin = v.right.arm.parts.hand.Color:ToHex(),
+		sleeve = if rightDesign then rightDesign.parts.sleeve.Color:ToHex() else nil,
+		skin = if handPart then handPart.Color:ToHex() else nil,
 		ghost = v.ghost,
 		press = if src then src.pressAmount else 0,
 		focus = v.focus,
