@@ -6,6 +6,12 @@
 		"container": "Workspace"
 	},
 	{
+		"file": "Workspace/_SnapshotTestPart.rbxm",
+		"class": "Part",
+		"name": "_SnapshotTestPart",
+		"container": "Workspace"
+	},
+	{
 		"file": "ReplicatedStorage/SD_ShapeLibrary.rbxm",
 		"class": "Folder",
 		"name": "SD_ShapeLibrary",
