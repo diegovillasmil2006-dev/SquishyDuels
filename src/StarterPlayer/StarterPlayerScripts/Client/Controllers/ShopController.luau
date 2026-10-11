@@ -78,6 +78,11 @@
 -- * The preview leaves room for the name and the rarity tag (RarityTag.tallest); with no room for its smallest size the
 --   well hides (InventoryFormat.previewPx 0).
 -- * On touch the detail list's scroll bar stays on screen while it is longer than its window (UI/Components/ScrollHint).
+-- UI overhaul (2026-10-11, Candy UI): the cards are collectible cards (UI/CardFace, every card in its rarity's colours:
+-- they are products; a white frame when selected); the card's status line is Gold for a price and Mint for Owned;
+-- inactive tab and filter chips are the plum neutral; Close is the red X; the detail preview is the hero of the column
+-- (up to DETAIL_ICON_PX when the column has the room, on a glow in the rarity's colour, bobbing gently while the screen
+-- is open) and the price is a Gold number.
 -- Stable names: Shop_CloseButton, Shop_TabSquishiesButton, Shop_TabCoinsButton, Shop_FilterAllButton,
 -- Shop_FilterBoxButton, Shop_Card_<id>, Shop_BuyButton, Shop_InspectButton, Shop_EquipNowButton,
 -- Shop_Bundle_<key>Button.
@@ -105,6 +110,7 @@ local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
+local CardFace = require(Client.UI.CardFace)
 local CoinIcon = require(Client.UI.Components.CoinIcon)
 local ConfirmButton = require(Client.UI.Components.ConfirmButton)
 local Create = require(Client.UI.Create)
@@ -117,6 +123,8 @@ local ScrollHint = require(Client.UI.Components.ScrollHint)
 local ShopFormat = require(Client.UI.ShopFormat)
 local StaticIcon = require(Client.UI.Components.StaticIcon)
 local Theme = require(Client.UI.Theme)
+local Scheduler = require(Client.Anim.Scheduler)
+local Tweens = require(Client.Anim.Tweens)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
@@ -129,6 +137,7 @@ local WorldBinder = require(script.Parent.WorldBinder)
 type Card = {
 	id: string,
 	root: TextButton,
+	face: CardFace.CardFace, -- UI overhaul: the collectible card's face, rim and art glow
 	icon: StaticIcon.StaticIcon,
 	coin: Frame,
 	status: TextLabel,
@@ -142,6 +151,8 @@ type Chip = Button.Button
 type Detail = {
 	icon: StaticIcon.StaticIcon,
 	well: Frame, -- the inset well around the preview
+	glow: Frame, -- UI overhaul: the rarity glow behind the preview
+	coinsLine: TextLabel, -- UI overhaul: "Coins per squeeze: n"
 	name: TextLabel,
 	rarity: RarityTag.RarityTag,
 	priceRow: Frame,
@@ -187,8 +198,8 @@ local GENERIC = "error.generic"
 local SHOP = Config.UI.Shop
 local TOUCH = Config.UI.Touch
 local CARD_WIDTH = SHOP.cardWidth
-local CARD_HEIGHT = 184 -- reading: §11.6 gives the card width only
-local CARD_ICON_PX = 92
+local CARD_HEIGHT = 192 -- reading: §11.6 gives the card width only (UI overhaul: 184 -> 192, larger art)
+local CARD_ICON_PX = 100 -- UI overhaul: 92 -> 100
 local CARD_PAD = 6
 local CARD_GAP = 2
 local CARD_PIP_PX = 8
@@ -196,7 +207,7 @@ local CARD_NAME_KIND: Theme.TextKind = "Button" -- foam restyle: larger type, th
 local CARD_STATUS_KIND: Theme.TextKind = "Chip" -- the price / status line in the display font
 local CARD_RADIUS = Theme.Radius.button
 local CARD_BANDS = Theme.Foam.panel.bevel + Theme.Foam.panel.drop -- the foam card's bevel and drop (kept free)
-local DETAIL_ICON_PX = 132
+local DETAIL_ICON_PX = 300 -- UI overhaul: 132 -> 300, the hero fills the column's free height (previewPx caps it)
 local DETAIL_ICON_COMPACT_PX = 88 -- reading (Part 8): on phones more of the detail shows above the pinned buttons
 local DETAIL_ICON_MIN_PX = 48 -- fix batch: the smallest the preview gets so the name stays in view (previewPx)
 local WELL_PAD_PX = 8 -- the inset well around the detail preview
@@ -213,10 +224,14 @@ local MEASURE_MARGIN_PX = 2 -- Part 8: added to measured texts so laid-out parts
 local BUY_PAD_Y = 4 -- reading: the space above and below a wrapped Buy label
 local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives this
 local TAB_KIND: Theme.TextKind = "H2" -- the header tab's gap under it is PANEL.tabGap (InventoryFormat.hangingChrome)
--- Card faces (foam restyle): Frosting; owned a light Mint ("Owned" also in words); the selected card a light Sky.
-local OWNED_FILL = Theme.Accents.mint.face:Lerp(Theme.Colors.white, 0.75)
-local CARD_FILL = Theme.Colors.panel
-local SELECTED_FILL = Theme.Accents.sky.face:Lerp(Theme.Colors.white, 0.72)
+-- UI overhaul: the card faces are UI/CardFace's; the status line's colours (a price in Gold, "Owned" in Mint).
+local STATUS_PRICE_COLOR = Theme.Colors.gold
+local STATUS_OWNED_COLOR = Theme.Accents.mint.face
+local PREVIEW_BOB_PX = 4 -- the detail preview's idle bob (base px) ...
+local PREVIEW_BOB_SECONDS = 2.6 -- ... one cycle
+local PREVIEW_WOBBLE_DEG = 2
+local PREVIEW_GLOW_SHARE = 0.92
+local PREVIEW_GLOW_TRANSPARENCY = 0.7
 
 -- Module table
 
@@ -305,7 +320,7 @@ local function paintChip(chip: Chip?, active: boolean)
 		return
 	end
 	chipActive[chip] = active
-	chip:setAccent(if active then "strawberry" else "frosting")
+	chip:setAccent(if active then "strawberry" else "plum")
 end
 
 -- Layout: the pinned detail buttons (Part 8) ------------------------------------------------------------------------
@@ -396,6 +411,8 @@ local function layoutDetail()
 	if iconPx > 0 then
 		d.icon.root.Size = UDim2.fromOffset(iconPx, iconPx)
 		d.well.Size = UDim2.new(1, 0, 0, iconPx + 2 * WELL_PAD_PX)
+		local glowPx = math.floor(iconPx * PREVIEW_GLOW_SHARE)
+		d.glow.Size = UDim2.fromOffset(glowPx, glowPx)
 	end
 end
 
@@ -417,6 +434,9 @@ local function refreshDetail(list: { ShopFormat.Entry })
 	d.icon:setOwned(true)
 	d.name.Text = entry.name
 	d.rarity:setRarity(entry.rarity)
+	local rarityStyle = RarityStyle.get(entry.rarity)
+	d.glow.BackgroundColor3 = if rarityStyle then rarityStyle.ui.glow else Theme.Colors.ink2
+	d.coinsLine.Text = Strings.format(Strings.inspect.coinsPerSqueeze, { n = Catalog.getSqueezeCoins(entry.id) })
 	-- Fewer words (foam restyle): the coin and the bare price.
 	local priceText = ShopFormat.priceNumber(entry.price)
 	d.priceRow.Visible = priceText ~= nil and not entry.owned
@@ -481,10 +501,14 @@ end
 local fitCardLines: (list: { ShopFormat.Entry }) -> ()
 
 local function paintCard(card: Card, entry: ShopFormat.Entry, isSelected: boolean)
-	card.root.BackgroundColor3 = if isSelected then SELECTED_FILL elseif entry.owned then OWNED_FILL else CARD_FILL
+	card.face:paint({ owned = true, selected = isSelected })
 	local text, coin = ShopFormat.cardLine(entry)
 	card.status.Text = text
 	card.coin.Visible = coin
+	card.status.TextColor3 = if entry.owned
+		then STATUS_OWNED_COLOR
+		elseif coin then STATUS_PRICE_COLOR
+		else Theme.Colors.text
 end
 
 local function refreshGrid(list: { ShopFormat.Entry })
@@ -886,7 +910,7 @@ local function applyLayout()
 	f.content.Size = UDim2.new(1, 0, 1, -l.listTop)
 	local close = closeButton
 	if close then
-		close.root.Size = UDim2.fromOffset(0, l.closeHeight)
+		close.root.Size = UDim2.fromOffset(l.closeHeight, l.closeHeight) -- UI overhaul: the square red X
 	end
 	layoutDetail()
 	updateColumns()
@@ -989,21 +1013,17 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 		Name = "Shop_Card_" .. id,
 		Text = "",
 		AutoButtonColor = false,
-		BackgroundColor3 = CARD_FILL,
 		BorderSizePixel = 0,
 	})
 	c:add(root)
-	-- A foam card (the face is BackgroundColor3: paintCard recolours it, the bevel and ink drop follow) with the rarity
-	-- rim: the foam outline in the rarity colour, at least Theme.Stroke.thick.
-	Theme.foam(root, {
+	-- UI overhaul: a collectible card (UI/CardFace); paintCard paints its selection.
+	local _ = style
+	local face = CardFace.new(root, def.rarity, {
 		radius = CARD_RADIUS,
-		mode = "tint",
-		stroke = if style then math.max(style.card.strokePx, Theme.Stroke.thick) else Theme.Stroke.ink,
-		strokeColor = if style then style.color else Theme.Colors.inkUI,
-		bevel = Theme.Foam.panel.bevel,
-		drop = Theme.Foam.panel.drop,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		artCenterY = CARD_PAD + CARD_ICON_PX / 2,
+		artPx = CARD_ICON_PX,
 	})
+	c:add(face)
 	Focus.decorate(root, CARD_RADIUS)
 	local content: Frame = Create("Frame", {
 		Name = "Content",
@@ -1074,6 +1094,7 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	cards[id] = {
 		id = id,
 		root = root,
+		face = face,
 		icon = icon,
 		coin = coin.root,
 		status = status,
@@ -1138,6 +1159,21 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 		LayoutOrder = 2,
 		Parent = scroll,
 	}, Theme.Radius.tile, WELL_PAD_PX)
+	-- UI overhaul: a soft glow in the rarity's colour behind the preview (refreshDetail colours it).
+	local glowPx = math.floor(DETAIL_ICON_PX * PREVIEW_GLOW_SHARE)
+	local glow: Frame = Create("Frame", {
+		Name = "Glow",
+		BackgroundColor3 = Theme.Colors.ink2,
+		BackgroundTransparency = PREVIEW_GLOW_TRANSPARENCY,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(glowPx, glowPx),
+		Active = false,
+		ZIndex = 0,
+		Parent = well,
+	})
+	Theme.corner(9999, glow)
 	local icon = StaticIcon.new({
 		name = "Preview",
 		squishyId = Catalog.starterId(),
@@ -1169,8 +1205,12 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 		LayoutOrder = 2,
 		Parent = priceRow,
 	}, "HudNumber")
+	price.TextColor3 = Theme.Colors.gold -- UI overhaul: the price in Gold, with the HudNumber outline
 	local status = detailLabel(scroll, "Status", 6, "Body")
 	status.Visible = false
+	-- UI overhaul: what the squishy earns per squeeze (Catalog), a reason to buy it; refreshDetail fills it.
+	local coinsLine = detailLabel(scroll, "CoinsPerSqueeze", 7, "Body")
+	coinsLine.TextColor3 = Theme.Colors.ink2
 
 	-- Part 8: Buy and Inspect are pinned under the list (a sibling of it, not inside it), so they never scroll below
 	-- the fold; layoutDetail places them (no UIListLayout: ShopFormat.detailLayout decides the rows).
@@ -1184,6 +1224,7 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	})
 	local confirm = ConfirmButton.new({
 		name = "Shop_BuyButton",
+		accent = "shop", -- UI overhaul: the Lime purchase CTA
 		text = Strings.shop.buy,
 		price = 0,
 		balance = 0,
@@ -1237,6 +1278,8 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	detail = {
 		icon = icon,
 		well = well,
+		glow = glow,
+		coinsLine = coinsLine,
 		name = name,
 		rarity = rarity,
 		priceRow = priceRow,
@@ -1328,6 +1371,7 @@ local function build(parent: Instance): GuiObject
 	local close = Button.new({
 		name = "Shop_CloseButton",
 		text = Strings.common.close,
+		kind = "close", -- UI overhaul: the chunky red X
 		height = TOUCH.closeButton,
 		parent = root,
 		sound = false, -- closing plays ui.back (UIController.close, reason "button")
@@ -1503,6 +1547,33 @@ local function build(parent: Instance): GuiObject
 	return root
 end
 
+-- UI overhaul: the detail preview's idle life while the screen is open: a gentle bob and sway of the one StaticIcon
+-- (never every card), still under ReducedMotion.
+local function startPreviewBob(c: Cleanup.Cleanup)
+	local d = detail
+	if d == nil then
+		return
+	end
+	local root = d.icon.root
+	local elapsed = 0
+	c:add(Scheduler.add(function(dt: number): boolean
+		if Tweens.reducedMotion() then
+			root.Position = UDim2.fromScale(0.5, 0.5)
+			root.Rotation = 0
+			return true
+		end
+		elapsed = (elapsed + dt) % PREVIEW_BOB_SECONDS
+		local phase = 2 * math.pi * elapsed / PREVIEW_BOB_SECONDS
+		root.Position = UDim2.new(0.5, 0, 0.5, math.sin(phase) * PREVIEW_BOB_PX)
+		root.Rotation = math.sin(phase * 0.5) * PREVIEW_WOBBLE_DEG
+		return true
+	end, "render"))
+	c:add(function()
+		root.Position = UDim2.fromScale(0.5, 0.5)
+		root.Rotation = 0
+	end)
+end
+
 -- Gamepad: keeps the selected card inside the grid's visible part (§11.4), only while the screen is open.
 local function followSelection(c: Cleanup.Cleanup)
 	c:add(GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
@@ -1601,6 +1672,7 @@ function ShopController.init()
 			end
 			openCleanup = oc
 			followSelection(oc)
+			startPreviewBob(oc)
 			refresh()
 		end,
 		onClose = function()

@@ -1140,8 +1140,9 @@ local function buildTracker(c: Cleanup.Cleanup, parent: Instance)
 		mode = "tint",
 		bevel = bands.bevel,
 		drop = bands.drop,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		colors = Theme.panelColors(), -- Candy UI: the dark window face
 	})
+	Theme.rim(root)
 	Create("UIPadding", {
 		PaddingTop = UDim.new(0, 10),
 		PaddingLeft = UDim.new(0, Theme.Padding.medium),
@@ -1166,7 +1167,7 @@ local function buildTracker(c: Cleanup.Cleanup, parent: Instance)
 		name = "Icon",
 		icon = "quests",
 		sizePx = TRACKER_ICON_PX,
-		tone = "dark",
+		tone = "light", -- Candy UI: on the dark card
 		layoutOrder = 1,
 		parent = header,
 	})

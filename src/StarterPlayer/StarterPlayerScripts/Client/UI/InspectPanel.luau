@@ -369,6 +369,8 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	local close = Button.new({
 		name = "Inspect_CloseButton",
 		text = Strings.common.close,
+		kind = "primary", -- UI overhaul: the close red, with its key hint (a pill, not the X)
+		accent = "red",
 		height = TOUCH.closeButton,
 		keycap = "", -- the key for the active input (closeKey), hidden on touch
 		parent = root,

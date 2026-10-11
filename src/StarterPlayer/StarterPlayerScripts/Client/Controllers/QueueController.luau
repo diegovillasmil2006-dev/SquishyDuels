@@ -386,7 +386,7 @@ local function buildPill(c: Cleanup.Cleanup)
 		Parent = frame,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, PILL_GAP, top, Enum.HorizontalAlignment.Left)
-	local clock = IconGlyph.new({ name = "Icon", icon = "clock", sizePx = ICON_PX, tone = "dark", layoutOrder = 1 })
+	local clock = IconGlyph.new({ name = "Icon", icon = "clock", sizePx = ICON_PX, tone = "light", layoutOrder = 1 }) -- on the dark pill
 	clock.root.Parent = top
 	c:add(clock)
 	local texts: Frame = Create("Frame", {

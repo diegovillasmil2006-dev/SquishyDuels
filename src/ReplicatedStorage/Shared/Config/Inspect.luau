@@ -39,10 +39,12 @@ local Inspect = {
 		ambient = Color3.fromRGB(150, 146, 160),
 	},
 
+	-- UI overhaul (2026-10-11, Candy UI): a dark plum showcase (lighter at the top) with a soft spotlight ellipse, so the
+	-- pastel squishies and the rarity glow pop on the dark windows (was #EFE7FA -> #FFF4E6, ellipse 0.6).
 	Background = {
-		gradientFrom = "#EFE7FA", -- UIGradient, hex -> Color3.fromHex
-		gradientTo = "#FFF4E6",
-		ellipseTransparency = 0.6, -- soft white ellipse behind the model centre
+		gradientFrom = "#56487A", -- UIGradient, hex -> Color3.fromHex
+		gradientTo = "#211A2C",
+		ellipseTransparency = 0.82, -- soft white ellipse behind the model centre
 		contactShadowTransparency = 0.85, -- 2D Ink contact shadow that widens with the squash
 	},
 

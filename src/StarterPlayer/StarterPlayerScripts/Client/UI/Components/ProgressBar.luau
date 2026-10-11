@@ -7,7 +7,8 @@
 -- A Biscuit pill track with the InkUI 2 px outline of bars; the fill is a pill in the accent (default Mint) with its
 -- shade along the bottom (FILL_BEVEL_SHARE of the height). The fill hides at 0. The bar shows a share only: a "12 / 20"
 -- text goes next to it, never inside it (the caller's label). ProgressBar.clamp(fraction) is the shown share, pure.
--- Candy UI (UI overhaul 2026-10-11): the track is the dark recess (Colors.biscuit) and the fill a glossy jelly: a light
+-- Candy UI (UI overhaul 2026-10-11): the track is the darkest surface (Colors.track, with a faint inner rim so it reads
+-- on a recessed field too) and the fill a glossy jelly: a light
 -- band along its top (FILL_GLOSS_SHARE of the height, the face towards white) over the face and its shade.
 
 -- Services
@@ -81,7 +82,7 @@ function ProgressBar.new(spec: Spec): ProgressBar
 	local height = spec.heightPx or DEFAULT_HEIGHT_PX
 	local root: Frame = Create("Frame", {
 		Name = spec.name,
-		BackgroundColor3 = Theme.Colors.biscuit,
+		BackgroundColor3 = Theme.Colors.track,
 		BorderSizePixel = 0,
 		Size = if spec.widthPx then UDim2.fromOffset(spec.widthPx, height) else UDim2.new(1, 0, 0, height),
 		LayoutOrder = spec.layoutOrder or 0,
@@ -89,6 +90,7 @@ function ProgressBar.new(spec: Spec): ProgressBar
 	cleanup:add(root)
 	Theme.corner(height, root)
 	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.bar, root)
+	Theme.rim(root, Theme.Colors.rim, 0.75, 1)
 	local fill: Frame = Create("Frame", {
 		Name = "Fill",
 		BorderSizePixel = 0,

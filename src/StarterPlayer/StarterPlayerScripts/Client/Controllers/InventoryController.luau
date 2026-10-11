@@ -76,6 +76,12 @@
 --   the well hides (InventoryFormat.previewPx 0) so the tag is never cut.
 -- * The detail buttons keep InventoryFormat.PANEL.buttonGap between them, from the column's left edge, like Shop's.
 -- * On touch the detail list's scroll bar stays on screen while it is longer than its window (UI/Components/ScrollHint).
+-- UI overhaul (2026-10-11, Candy UI): the cards are collectible cards (UI/CardFace: the rarity's gradient face, the
+-- PlumInk outline, the rarity flourish on an inner rim, a glow behind 96 px art, a white frame when selected; locked =
+-- the dark disabled face); inactive filter chips are the plum neutral; Close is the red X; the detail preview sits on a
+-- glow in the rarity's colour and bobs gently while the screen is open (one StaticIcon, Scheduler; still under
+-- ReducedMotion); Reload and Windup bars are Lavender (time: shorter is faster, said by inspect.statsHint under the
+-- stats), the others Cyan.
 -- Stable names: Squishies_CloseButton, Squishies_Filter<Name>Button, Squishies_ShowNotOwnedToggle,
 -- Squishies_Card_<id>, Squishies_EquipButton, Squishies_InspectButton, Squishies_ViewInShopButton,
 -- Squishies_GoToBoxesButton.
@@ -99,6 +105,7 @@ local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
+local CardFace = require(Client.UI.CardFace)
 local Chip = require(Client.UI.Components.Chip)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
@@ -141,8 +148,8 @@ local PANEL = InventoryFormat.PANEL -- margin, height share (0.88: never more of
 -- it; Studio check).
 local CARD_NAME_ROOM = 12
 local CARD_WIDTH = INVENTORY.cardWidth + CARD_NAME_ROOM
-local CARD_HEIGHT = 168 -- reading: §11.6 gives the card width only
-local CARD_ICON_PX = 84
+local CARD_HEIGHT = 180 -- reading: §11.6 gives the card width only (UI overhaul: 168 -> 180 for the larger art)
+local CARD_ICON_PX = 96 -- UI overhaul: 84 -> 96, the art dominates the card
 local CARD_PAD_X = 6 -- Part 8: the card's text keeps off its frame (foam restyle: off the thicker rim too)
 local CARD_PAD_Y = 6
 local CARD_GAP = 2
@@ -189,11 +196,14 @@ local CONFIRM_SECONDS = 5 -- reading: how long "Equipped" shows before the State
 local SHIMMER_FULL_TURN = 360
 local GENERIC = "error.generic"
 local TAB_KIND: Theme.TextKind = "H2" -- the header tab's gap under it is PANEL.tabGap (InventoryFormat.hangingChrome)
--- Card faces (foam restyle): owned Frosting; not owned the disabled face (greyed, with the lock chip); the selected card
--- a light Sky (the info accent, so it never reads as "Equipped" Mint).
-local OWNED_FILL = Theme.Colors.panel
-local UNOWNED_FILL = Theme.Colors.disabledFace
-local SELECTED_FILL = Theme.Accents.sky.face:Lerp(Theme.Colors.white, 0.72)
+-- UI overhaul: the card faces are UI/CardFace's (owned: the rarity's colours; not owned: the dark disabled face; the
+-- selected card: a white frame).
+local STAT_TIME: { [string]: boolean } = { reload = true, windup = true } -- shorter is faster (Lavender bars)
+local PREVIEW_BOB_PX = 3 -- the detail preview's idle bob (base px) ...
+local PREVIEW_BOB_SECONDS = 2.6 -- ... one cycle (well under 1 Hz)
+local PREVIEW_WOBBLE_DEG = 2 -- ... and its gentle sway
+local PREVIEW_GLOW_SHARE = 0.92 -- the glow disc behind the preview, as a share of its size
+local PREVIEW_GLOW_TRANSPARENCY = 0.7
 
 -- Module table
 
@@ -204,6 +214,7 @@ local InventoryController = {}
 type Card = {
 	id: string,
 	root: TextButton,
+	face: CardFace.CardFace, -- UI overhaul: the collectible card's face, rim and art glow
 	icon: StaticIcon.StaticIcon,
 	stroke: UIStroke, -- the rarity rim (the foam outline in the rarity colour)
 	gradient: UIGradient?,
@@ -221,6 +232,7 @@ type Card = {
 type Detail = {
 	icon: StaticIcon.StaticIcon,
 	well: Frame, -- the inset well around the preview
+	glow: Frame, -- UI overhaul: the rarity glow behind the preview
 	name: TextLabel,
 	rarity: RarityTag.RarityTag,
 	ownership: Chip.Chip,
@@ -358,6 +370,8 @@ local function layoutDetail()
 	if iconPx > 0 then
 		d.icon.root.Size = UDim2.fromOffset(iconPx, iconPx)
 		d.well.Size = UDim2.new(1, 0, 0, iconPx + 2 * WELL_PAD_PX)
+		local glowPx = math.floor(iconPx * PREVIEW_GLOW_SHARE)
+		d.glow.Size = UDim2.fromOffset(glowPx, glowPx)
 	end
 end
 
@@ -535,7 +549,7 @@ local function applyLayout()
 	end
 	local close = closeButton
 	if close then
-		close.root.Size = UDim2.fromOffset(0, l.closeHeight)
+		close.root.Size = UDim2.fromOffset(l.closeHeight, l.closeHeight) -- UI overhaul: the square red X
 	end
 	layoutDetail()
 	updateColumns()
@@ -558,6 +572,9 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 	d.icon:setOwned(entry.owned)
 	d.name.Text = entry.name
 	d.rarity:setRarity(entry.rarity)
+	local rarityStyle = RarityStyle.get(entry.rarity)
+	d.glow.BackgroundColor3 = if rarityStyle then rarityStyle.ui.glow else Theme.Colors.ink2
+	d.glow.BackgroundTransparency = if entry.owned then PREVIEW_GLOW_TRANSPARENCY else 0.9
 	d.ownership:setText(KeyText.get(InventoryFormat.ownershipKey(entry)))
 	d.ownership:setAccent(if entry.equipped then "mint" elseif entry.owned then "frosting" else "lilac")
 	d.ownership.root.Visible = true
@@ -636,7 +653,7 @@ local function refreshCollected()
 end
 
 local function paintCard(card: Card, entry: InventoryFormat.Entry, isSelected: boolean)
-	card.root.BackgroundColor3 = if isSelected then SELECTED_FILL elseif entry.owned then OWNED_FILL else UNOWNED_FILL
+	card.face:paint({ owned = entry.owned, selected = isSelected })
 	card.icon:setOwned(entry.owned)
 	-- The top-left chip: Equipped (Mint), NEW (Strawberry) or Not owned (Lilac, with the lock).
 	local badgeText: string? = nil
@@ -680,7 +697,7 @@ local function refreshGrid(list: { InventoryFormat.Entry })
 		local active = name == filter
 		if chipActive[name] ~= active then
 			chipActive[name] = active
-			chip:setAccent(if active then "strawberry" else "frosting")
+			chip:setAccent(if active then "strawberry" else "plum")
 		end
 	end
 	local owned, total = InventoryFormat.collected(list)
@@ -780,40 +797,21 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 		Name = "Squishies_Card_" .. id,
 		Text = "",
 		AutoButtonColor = false,
-		BackgroundColor3 = OWNED_FILL,
 		BorderSizePixel = 0,
 	})
 	c:add(root)
-	-- A foam card (the face is BackgroundColor3: paintCard recolours it, the bevel and ink drop follow) with the rarity
-	-- rim: the foam outline in the rarity colour, at least Theme.Stroke.thick.
-	local foam = Theme.foam(root, {
+	-- UI overhaul: a collectible card (UI/CardFace: the rarity's face, the PlumInk outline, the rarity flourish on the
+	-- rim, the glow behind the art); paintCard paints its state.
+	local face = CardFace.new(root, def.rarity, {
 		radius = CARD_RADIUS,
-		mode = "tint",
-		stroke = if style then math.max(style.card.strokePx, Theme.Stroke.thick) else Theme.Stroke.ink,
-		strokeColor = if style then style.color else Theme.Colors.inkUI,
-		bevel = Theme.Foam.panel.bevel,
-		drop = Theme.Foam.panel.drop,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		artCenterY = CARD_PAD_Y + CARD_ICON_PX / 2,
+		artPx = CARD_ICON_PX,
 	})
+	c:add(face)
 	Focus.decorate(root, CARD_RADIUS)
-	local stroke = foam.stroke :: UIStroke
-	local gradient: UIGradient? = nil
-	local shimmer = false
-	if style then
-		local spec = style.card.gradient
-		if spec then
-			local keypoints: { ColorSequenceKeypoint } = {}
-			for index, color in spec.colors do
-				table.insert(keypoints, ColorSequenceKeypoint.new((index - 1) / math.max(1, #spec.colors - 1), color))
-			end
-			gradient = Create("UIGradient", {
-				Color = ColorSequence.new(keypoints),
-				Rotation = spec.rotationDeg,
-				Parent = stroke,
-			})
-			shimmer = spec.shimmerDegPerSecond ~= nil
-		end
-	end
+	local stroke = face.rim
+	local gradient: UIGradient? = face.gradient
+	local shimmer = style ~= nil and style.card.gradient ~= nil and style.card.gradient.shimmerDegPerSecond ~= nil
 
 	-- Content (laid out top to bottom) and an overlay for the corner badges (not laid out).
 	local content: Frame = Create("Frame", {
@@ -917,6 +915,7 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	local card: Card = {
 		id = id,
 		root = root,
+		face = face,
 		icon = icon,
 		stroke = stroke,
 		gradient = gradient,
@@ -1037,6 +1036,21 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 		LayoutOrder = 2,
 		Parent = scroll,
 	}, Theme.Radius.tile, WELL_PAD_PX)
+	-- UI overhaul: a soft glow in the rarity's colour behind the preview (refreshDetail colours it).
+	local glowPx = math.floor(DETAIL_ICON_PX * PREVIEW_GLOW_SHARE)
+	local glow: Frame = Create("Frame", {
+		Name = "Glow",
+		BackgroundColor3 = Theme.Colors.ink2,
+		BackgroundTransparency = PREVIEW_GLOW_TRANSPARENCY,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(glowPx, glowPx),
+		Active = false,
+		ZIndex = 0,
+		Parent = well,
+	})
+	Theme.corner(glowPx, glow)
 	local icon = StaticIcon.new({
 		name = "Preview",
 		squishyId = Catalog.starterId(),
@@ -1106,11 +1120,24 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 			TextXAlignment = Enum.TextXAlignment.Right,
 			Parent = header,
 		}, "Body")
-		local statBar =
-			ProgressBar.new({ name = "Bar", accent = "sky", heightPx = STAT_BAR_PX, layoutOrder = 2, parent = row })
+		local statBar = ProgressBar.new({
+			name = "Bar",
+			accent = if STAT_TIME[bar.stat] then "lilac" else "sky",
+			heightPx = STAT_BAR_PX,
+			layoutOrder = 2,
+			parent = row,
+		})
 		c:add(statBar)
 		stats[bar.stat] = { value = value, bar = statBar }
 	end
+	-- UI overhaul: the time stats are "shorter is faster" (the bars show the value, not "better").
+	Theme.label({
+		Name = "StatsHint",
+		Text = Strings.inspect.statsHint,
+		LayoutOrder = 99,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = statsField,
+	}, "Small", nil, Theme.Colors.ink2)
 	local trail = detailLabel(scroll, "Trail", 20, "Small")
 	local ultimate = detailLabel(scroll, "Ultimate", 21, "Small")
 	local elimination = detailLabel(scroll, "Elimination", 22, "Small")
@@ -1180,6 +1207,7 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	detail = {
 		icon = icon,
 		well = well,
+		glow = glow,
 		name = name,
 		rarity = rarity,
 		ownership = ownership,
@@ -1229,6 +1257,7 @@ local function build(parent: Instance): GuiObject
 	local close = Button.new({
 		name = "Squishies_CloseButton",
 		text = Strings.common.close,
+		kind = "close", -- UI overhaul: the chunky red X
 		height = TOUCH.closeButton,
 		parent = root,
 		sound = false, -- closing plays ui.back (UIController.close, reason "button")
@@ -1382,6 +1411,33 @@ local function build(parent: Instance): GuiObject
 	return root
 end
 
+-- UI overhaul: the detail preview's idle life while the screen is open: a gentle bob and sway of the one StaticIcon
+-- (never every card), still under ReducedMotion.
+local function startPreviewBob(c: Cleanup.Cleanup)
+	local d = detail
+	if d == nil then
+		return
+	end
+	local root = d.icon.root
+	local elapsed = 0
+	c:add(Scheduler.add(function(dt: number): boolean
+		if Tweens.reducedMotion() then
+			root.Position = UDim2.fromScale(0.5, 0.5)
+			root.Rotation = 0
+			return true
+		end
+		elapsed = (elapsed + dt) % PREVIEW_BOB_SECONDS
+		local phase = 2 * math.pi * elapsed / PREVIEW_BOB_SECONDS
+		root.Position = UDim2.new(0.5, 0, 0.5, math.sin(phase) * PREVIEW_BOB_PX)
+		root.Rotation = math.sin(phase * 0.5) * PREVIEW_WOBBLE_DEG
+		return true
+	end, "render"))
+	c:add(function()
+		root.Position = UDim2.fromScale(0.5, 0.5)
+		root.Rotation = 0
+	end)
+end
+
 -- Shimmer of Exclusive card frames (§4.3: 45°/s; static under ReducedMotion), only while the screen is open.
 local function startShimmer(c: Cleanup.Cleanup)
 	local speeds: { [Card]: number } = {}
@@ -1498,6 +1554,7 @@ function InventoryController.init()
 			end
 			openCleanup = oc
 			startShimmer(oc)
+			startPreviewBob(oc)
 			followSelection(oc)
 			refresh()
 		end,

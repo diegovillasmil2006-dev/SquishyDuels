@@ -2281,15 +2281,21 @@ end
 -- One side's look: its text and icon, its pips in the side colour and its card tinted with the side's light colour
 -- (foam UI; the panel's bevel follows the tint).
 local function paintSide(side: Side, sideName: string, lives: number)
-	local color, light = DuelFormat.sideColors(sideName)
+	local color = DuelFormat.sideColors(sideName)
 	side.side.Text = DuelFormat.sideText(sideName)
 	side.icon:setSide(sideName)
-	side.card.BackgroundColor3 = light
+	-- UI overhaul (2026-10-11, Candy UI): the side's own colour is the card's face (bold team colour blocking; the side
+	-- is still named in words and by its icon, §7.8); the texts follow the face and the filled lives are white on it
+	-- (an empty life is its outline only), so they read against the team colour.
+	side.card.BackgroundColor3 = color
+	for _, text in { side.name, side.side, side.lives } do
+		Theme.textOnColor(text, nil, color)
+	end
 	side.pips:setCount(lives)
 	side.pipCount = lives
 	for _, pip in side.pips.root:GetChildren() do
 		if pip:IsA("Frame") then
-			pip.BackgroundColor3 = color
+			pip.BackgroundColor3 = Theme.Colors.white
 		end
 	end
 end

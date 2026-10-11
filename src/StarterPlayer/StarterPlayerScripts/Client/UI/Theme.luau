@@ -233,7 +233,8 @@ Theme.Colors = {
 	-- UI surface tokens (Candy UI: the foam names kept, their values the dark candy look).
 	frosting = Palette.WarmWhite, -- the light sticker face
 	panelAlt = Palette.PanelRaised, -- a raised card or row on a window
-	biscuit = Palette.PanelRecess, -- recessed fields and bar tracks
+	biscuit = Palette.PanelRecess, -- recessed fields
+	track = Palette.PanelTrack, -- bar, slider and switch tracks
 	bevel = Palette.PanelBevel, -- the bevel band under a dark surface
 	inkUI = Palette.PlumInk, -- every outline; text on light faces
 	ink2 = Palette.TextMuted, -- captions on dark surfaces

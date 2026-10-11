@@ -61,7 +61,7 @@ local CHROME_PX = SWITCH_W + STATE_WIDTH + Theme.Padding.small * 2 -- everything
 local MEASURE_MARGIN_PX = 4
 local KNOB_BEVEL_PX = 2
 local ON_FILL = Theme.Accents.mint.face
-local OFF_FILL = Theme.Colors.biscuit
+local OFF_FILL = Theme.Colors.track -- Candy UI: the darkest surface (with a faint rim)
 
 -- Module table
 
@@ -122,6 +122,7 @@ function Toggle.new(spec: Spec): Toggle
 	})
 	Theme.corner(SWITCH_H, switch)
 	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.bar, switch)
+	Theme.rim(switch, Theme.Colors.rim, 0.7, 1)
 	local knobSize = SWITCH_H - KNOB_INSET * 2
 	local knob: Frame = Create("Frame", {
 		Name = "Knob",

@@ -76,6 +76,13 @@
 -- Foam fix round 2 (2026-10-09): one backdrop at a time (Layout.modalBackdrop): while two modals are open the dimmer
 -- fades out under the wash, so the HUD and the world are as dark as under one modal (the dimmer and the wash together
 -- made Inspect over Squishies darker than usual); the covered modal is darkened as much as they are.
+-- UI overhaul (2026-10-11, Candy UI): the dimmer and the wash are the plum Backdrop (Colors.backdrop) at
+-- modalOpen.dimmerTransparency, fading in over modalOpen.backdropMs. A modal pops elastically (popIn): UIScale
+-- scaleFrom -> overshoot over overshootShare of ms (Quad Out), then -> 1 (Quad InOut), while the root rises riseShare
+-- of its height into place (its AnchorPoint eases from that much lower to where it rests); a close or a reopen stops
+-- it first (stopPop: the scale and the anchor go back to rest), so open / close spam never strands a panel. A modal root
+-- that is a foam window gets the jelly-bubble texture (Theme.bubbles) when it is built. The banner is a dark window
+-- (Theme.panelColors) with its drop band in its outline colour.
 
 -- Services
 
@@ -165,6 +172,9 @@ type ScreenRecord = {
 	openCleanup: Cleanup.Cleanup?,
 	closeTween: Tween?, -- the visual shrink after a logical close (§18.5.2 B4)
 	closeToken: number,
+	openTween: Tween?, -- UI overhaul: the running phase of the elastic pop (popIn)
+	riseTween: Tween?, -- ... and its rise into place
+	restAnchor: Vector2?, -- the root's AnchorPoint at rest while it rises
 	layer: number, -- nextLayer() when open() last put it on top (Back answers the newest layer, ModalStack.backTarget)
 }
 
@@ -407,7 +417,7 @@ local function updateDimmer()
 		local gui = UIController.screenGui(DIMMER_GUI)
 		frame = Create("Frame", {
 			Name = "Dimmer",
-			BackgroundColor3 = Theme.Colors.inkUI,
+			BackgroundColor3 = Theme.Colors.backdrop,
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Size = UDim2.fromScale(1, 1),
@@ -427,7 +437,7 @@ local function updateDimmer()
 		Tweens.fade(
 			f,
 			{ BackgroundTransparency = if dim then MOTION.modalOpen.dimmerTransparency else 1 },
-			MOTION.modalOpen.ms
+			MOTION.modalOpen.backdropMs or MOTION.modalOpen.ms
 		)
 	else
 		local tween = Tweens.fade(
@@ -485,7 +495,7 @@ local function updateWash()
 		end
 		frame = Create("Frame", {
 			Name = "ModalWash",
-			BackgroundColor3 = Theme.Colors.inkUI,
+			BackgroundColor3 = Theme.Colors.backdrop,
 			BackgroundTransparency = 1,
 			BorderSizePixel = 0,
 			Position = UDim2.fromOffset(-WASH_BLEED, -WASH_BLEED),
@@ -500,7 +510,11 @@ local function updateWash()
 	if covered then
 		f.ZIndex = #list * MODAL_Z_STEP - 1
 		f.Visible = true
-		Tweens.fade(f, { BackgroundTransparency = MOTION.modalOpen.dimmerTransparency }, MOTION.modalOpen.ms)
+		Tweens.fade(
+			f,
+			{ BackgroundTransparency = MOTION.modalOpen.dimmerTransparency },
+			MOTION.modalOpen.backdropMs or MOTION.modalOpen.ms
+		)
 	elseif f.Visible then
 		local tween = Tweens.fade(
 			f,
@@ -534,6 +548,65 @@ local function callSafely(label: string, fn: (...any) -> ...any, ...: any)
 	end
 end
 
+-- UI overhaul: stops a modal's elastic pop (popIn) and puts its anchor back at rest (the scale is the caller's).
+local function stopPop(record: ScreenRecord)
+	Tweens.cancel(record.openTween)
+	record.openTween = nil
+	Tweens.cancel(record.riseTween)
+	record.riseTween = nil
+	local root, rest = record.root, record.restAnchor
+	if root and rest then
+		root.AnchorPoint = rest
+	end
+	record.restAnchor = nil
+end
+
+-- UI overhaul: the elastic pop of a modal opening (Config.UI.motion.modalOpen, see the header). At rest at once under
+-- ReducedMotion.
+local function popIn(record: ScreenRecord)
+	local scale, root = record.openScale, record.root
+	stopPop(record)
+	if scale == nil or root == nil then
+		return
+	end
+	local spec = MOTION.modalOpen
+	if Tweens.reducedMotion() then
+		scale.Scale = 1
+		return
+	end
+	local upMs = spec.ms * (spec.overshootShare or 1)
+	local settleMs = math.max(0, spec.ms - upMs)
+	scale.Scale = spec.scaleFrom
+	local up = Tweens.play(
+		scale,
+		upMs,
+		{ Scale = spec.overshoot or 1 },
+		Enum.EasingStyle.Quad,
+		Enum.EasingDirection.Out
+	)
+	record.openTween = up
+	up.Completed:Once(function(state: Enum.PlaybackState)
+		if state == Enum.PlaybackState.Completed and record.openTween == up then
+			record.openTween =
+				Tweens.play(scale, settleMs, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+		end
+	end)
+	local rise = spec.riseShare or 0
+	if rise > 0 then
+		local rest = root.AnchorPoint
+		record.restAnchor = rest
+		root.AnchorPoint = Vector2.new(rest.X, rest.Y - rise)
+		local tween = Tweens.play(root, spec.ms, { AnchorPoint = rest }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		record.riseTween = tween
+		tween.Completed:Once(function()
+			if record.riseTween == tween then
+				record.riseTween = nil
+				record.restAnchor = nil
+			end
+		end)
+	end
+end
+
 -- Closes one open modal record (no stack bookkeeping).
 local function closeRecord(name: string, reason: string)
 	local record = screens[name]
@@ -553,6 +626,7 @@ local function closeRecord(name: string, reason: string)
 		local token = record.closeToken
 		Tweens.cancel(record.closeTween)
 		record.closeTween = nil
+		stopPop(record) -- UI overhaul: an interrupted pop goes back to rest before the shrink
 		local openScale = record.openScale
 		if openScale == nil or Tweens.reducedMotion() or INSTANT_CLOSE_REASONS[reason] then
 			root.Visible = false
@@ -617,6 +691,10 @@ local function ensureBuilt(name: string, record: ScreenRecord): GuiObject?
 	Focus.prepareGroup(root)
 	record.openScale = Create("UIScale", { Name = "SD_OpenScale", Parent = root })
 	record.root = root
+	-- UI overhaul: a foam window gets the jelly-bubble texture behind its content.
+	if root:FindFirstChild("SD_Foam") then
+		Theme.bubbles(root)
+	end
 	return root
 end
 
@@ -1082,9 +1160,9 @@ local function bannerPosition(frame: GuiObject, below: GuiObject?): UDim2
 	return UDim2.new(0.5, 0, 0, math.floor(top + 0.5))
 end
 
--- The banner's foam colours (Theme.panel's: Frosting face, Bevel shade) with its drop band in `drop`.
+-- The banner's foam colours (Theme.panel's: the dark window face and bevel) with its drop band in `drop`.
 local function bannerColors(drop: Color3): Theme.FoamColors
-	return { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = drop }
+	return { face = Theme.Colors.panel, bevel = Theme.Colors.bevel, drop = drop }
 end
 
 local function stopBannerFollow()
@@ -1299,9 +1377,7 @@ function UIController.open(name: string, params: any?): boolean
 		-- The newest modal draws on top of the one it opened over (updateWash keeps every open root at its place).
 		root.ZIndex = stack:size() * MODAL_Z_STEP
 		root.Visible = true
-		if record.openScale then
-			Tweens.scale(record.openScale, MOTION.modalOpen.scaleFrom, 1, MOTION.modalOpen)
-		end
+		popIn(record) -- UI overhaul: the elastic pop and the rise into place
 		local openCleanup = Cleanup.new()
 		record.openCleanup = openCleanup
 		Focus.follow(root, spec.primary or function(): GuiObject?

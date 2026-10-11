@@ -412,6 +412,7 @@ local Strings = {
 			arc = "Arc",
 		},
 		statsCaption = "compared with other squishies",
+		statsHint = "Shorter Reload and Windup throw sooner.", -- UI overhaul: the time bars show the value, not "better"
 		statValue = "{value} {unit}",
 		unit = {
 			studsPerSecond = "studs/s",

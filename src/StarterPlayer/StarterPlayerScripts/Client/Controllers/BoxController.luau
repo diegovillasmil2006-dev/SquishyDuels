@@ -116,6 +116,11 @@
 -- "SD_Rigs" profiler scope (spec §5).
 -- Studio: debugRevealPreview(id) queues a local reveal of the squishy (source "preview": no remote, no grant, no hold,
 -- nothing acknowledged; no Equip or Open another) in a box that holds it (snack otherwise).
+-- UI overhaul (2026-10-11, Candy UI): each box has its own colour (BOX_ACCENTS: Snack Coral, Sweet Lavender, Treat
+-- Gold) on its selector card and its gift preview (BOX_TINTS, the StaticIcon's ImageColor3); the selected box is the
+-- full face with a white frame, the others its face dimmed towards the window (UNSELECTED_DIM); their texts follow the
+-- face (Theme.textOnColor). The odds rows are raised plum rows on the recessed field; Open is the Lime purchase CTA;
+-- Close is the red X.
 -- Stable names: Boxes_CloseButton, Boxes_Box_<id>, Boxes_DetailsButton, Boxes_Row_<i> (with Boxes_InspectButton),
 -- Boxes_OpenButton, Boxes_RetryButton, Boxes_ShopDirectButton, Boxes_HowToEarnButton; Reveal_SkipButton,
 -- Reveal_EquipButton, Reveal_InspectButton, Reveal_OpenAnotherButton, Reveal_CloseButton.
@@ -174,7 +179,16 @@ local WorldBinder = require(script.Parent.WorldBinder)
 
 -- Types
 
-type Card = { id: string, root: TextButton, icon: StaticIcon.StaticIcon, price: TextLabel, coin: Frame }
+type Card = {
+	id: string,
+	root: TextButton,
+	icon: StaticIcon.StaticIcon,
+	price: TextLabel,
+	coin: Frame,
+	name: TextLabel, -- UI overhaul: painted for the card's face
+	stroke: UIStroke, -- the outline (white when selected)
+	accent: Theme.Accent, -- the box's colour
+}
 
 type Row = {
 	root: Frame,
@@ -313,7 +327,7 @@ local SPINNER_DELAY_SECONDS = MOTION.loadingSpinnerDelayMs / 1000
 -- Layout (reading: DESIGN gives the content, not these sizes; base px under the ScreenGui UIScale).
 local LIST_SHARE = 0.3
 local CARD_HEIGHT = 120
-local CARD_ICON_PX = 64
+local CARD_ICON_PX = 76 -- UI overhaul: 64 -> 76, a bigger gift
 local CARD_RADIUS = Theme.Radius.button
 local CARD_BANDS = Theme.Foam.panel.bevel + Theme.Foam.panel.drop -- the foam card's bevel and drop (kept free)
 local COIN_PX = 20
@@ -328,8 +342,20 @@ local SCROLLBAR_PX = 6
 local CLOSE_INSET = 16 -- fix batch: Close sits this far from the panel's right edge (as on Quests and Settings)
 local TAB_KIND: Theme.TextKind = "H2" -- the header tab's gap under it: InventoryFormat.PANEL.tabGap (hangingChrome)
 -- Foam restyle: the selected box card's face, a light Lilac (the Boxes tile's colour).
-local SELECTED_FILL = Theme.Accents.lilac.face:Lerp(Theme.Colors.white, 0.72)
 local ROW_FILL = Theme.Colors.panelAlt -- an item row on the inset field
+-- UI overhaul: each box's colour (selector card) and its gift's tint (the gift_box model is pink and mint); an
+-- unselected box's face goes `unselectedDim` towards the window; the selected one has a white `selectedFramePx`
+-- frame. One table: this module's top level is at Luau's 200-local limit.
+local BOX_LOOK = {
+	accents = { snack = "strawberry", sweet = "lilac", treat = "gold" } :: { [string]: Theme.AccentName },
+	tints = {
+		snack = Color3.new(1, 1, 1),
+		sweet = Color3.fromHex("#D9C6FF"),
+		treat = Color3.fromHex("#FFE6A6"),
+	} :: { [string]: Color3 },
+	unselectedDim = 0.35,
+	selectedFramePx = 4,
+}
 local REVEAL_PANEL = BoxFormat.REVEAL_PANEL
 local REVEAL_WIDTH = REVEAL_PANEL.width
 local STAGE_HEIGHT = REVEAL_PANEL.stage
@@ -571,6 +597,11 @@ local function refreshRows()
 			row.name.Text = data.name
 			row.rarity:setRarity(data.rarity)
 			row.percent.Text = data.percentText
+			-- UI overhaul: the row is tinted by its rarity and the chance is in the rarity's glow, for a quick scan (the
+			-- rarity tag still names it).
+			local style = RarityStyle.get(data.rarity)
+			row.root.BackgroundColor3 = if style then ROW_FILL:Lerp(style.color, 0.16) else ROW_FILL
+			row.percent.TextColor3 = if style then style.ui.glow else Theme.Colors.text
 			row.owned.Text = data.ownedText or ""
 			row.owned.Visible = data.ownedText ~= nil
 			row.refund.Text = data.refundText
@@ -594,11 +625,25 @@ local function refresh()
 		body.Visible = loaded
 	end
 	for id, card in cards do
-		card.root.BackgroundColor3 = if id == selectedBox then SELECTED_FILL else Theme.Colors.panel
+		-- UI overhaul: the selected box is its full colour with a white frame, the others dimmed; texts follow the face.
+		local isSelected = id == selectedBox
+		local face = if isSelected
+			then card.accent.face
+			else card.accent.face:Lerp(Theme.Colors.panel, BOX_LOOK.unselectedDim)
+		card.root.BackgroundColor3 = face
+		card.stroke.Color = if isSelected then Theme.Colors.white else Theme.Colors.inkUI
+		card.stroke.Thickness = if isSelected then BOX_LOOK.selectedFramePx else Theme.Stroke.ink
 		-- Fewer words: a paid box's cost as the coin and a bare number; the Treat Box's box.freeOnly note.
 		local cost = BoxFormat.costText(id)
 		card.price.Text = cost or BoxFormat.priceText(id)
 		card.coin.Visible = cost ~= nil
+		for _, text in { card.name, card.price } do
+			if card.accent.light and isSelected then
+				Theme.textOnLight(text)
+			else
+				Theme.textOnColor(text, nil, face)
+			end
+		end
 	end
 	local d = disclosure
 	if d == nil then
@@ -1541,25 +1586,27 @@ local function label(
 end
 
 local function buildCard(c: Cleanup.Cleanup, parent: Instance, box: Boxes.BoxDef, order: number)
+	local accent = Theme.accent(BOX_LOOK.accents[box.id] or "lilac")
 	local root: TextButton = Create("TextButton", {
 		Name = "Boxes_Box_" .. box.id,
 		Text = "",
 		AutoButtonColor = false,
-		BackgroundColor3 = Theme.Colors.panel,
+		BackgroundColor3 = accent.face,
 		BorderSizePixel = 0,
 		Size = UDim2.new(1, 0, 0, CARD_HEIGHT),
 		LayoutOrder = order,
 		Parent = parent,
 	})
 	c:add(root)
-	-- A foam card (refresh recolours its face for the selected box; the bevel and ink drop follow).
-	Theme.foam(root, {
+	-- A foam card in the box's colour (refresh dims it unless selected; the bevel and ink drop follow the face).
+	local foam = Theme.foam(root, {
 		radius = CARD_RADIUS,
 		mode = "tint",
 		bevel = Theme.Foam.panel.bevel,
 		drop = Theme.Foam.panel.drop,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		colors = { face = accent.face, bevel = accent.shade, drop = Theme.Colors.inkUI },
 	})
+	Theme.rim(root, Theme.Colors.white, 0.7)
 	Focus.decorate(root, CARD_RADIUS)
 	c:add(Button.decorate(root))
 	local pad = Theme.padding(Theme.Padding.small, root)
@@ -1573,6 +1620,7 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, box: Boxes.BoxDef
 		layoutOrder = 1,
 		parent = root,
 	})
+	icon.root.ImageColor3 = BOX_LOOK.tints[box.id] or Color3.new(1, 1, 1) -- UI overhaul: each box its own gift
 	c:add(icon)
 	local text: Frame = Create("Frame", {
 		Name = "Text",
@@ -1610,7 +1658,16 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, box: Boxes.BoxDef
 	c:add(root.Activated:Connect(function()
 		selectBox(box.id)
 	end))
-	cards[box.id] = { id = box.id, root = root, icon = icon, price = price, coin = coin.root }
+	cards[box.id] = {
+		id = box.id,
+		root = root,
+		icon = icon,
+		price = price,
+		coin = coin.root,
+		name = name,
+		stroke = foam.stroke :: UIStroke,
+		accent = accent,
+	}
 end
 
 local function buildRow(c: Cleanup.Cleanup, parent: Instance, index: number): Row
@@ -1758,6 +1815,7 @@ local function build(parent: Instance): GuiObject
 	local close = Button.new({
 		name = "Boxes_CloseButton",
 		text = Strings.common.close,
+		kind = "close", -- UI overhaul: the chunky red X
 		height = TOUCH.closeButton,
 		parent = root,
 		sound = false, -- closing plays ui.back (UIController.close, reason "button")
@@ -1937,6 +1995,7 @@ local function build(parent: Instance): GuiObject
 	local area = buildOpenArea(content)
 	local confirm = ConfirmButton.new({
 		name = "Boxes_OpenButton",
+		accent = "shop", -- UI overhaul: the Lime purchase CTA
 		price = 0,
 		balance = coins(),
 		text = Strings.format(Strings.box.openButton, { cost = Format.coins(0) }),

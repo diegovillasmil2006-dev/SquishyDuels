@@ -308,6 +308,7 @@ local function build(parent: Instance): GuiObject
 	local close = Button.new({
 		name = "Settings_CloseButton",
 		text = Strings.common.close,
+		kind = "close", -- UI overhaul: the chunky red X
 		height = TOUCH.closeButton,
 		parent = root,
 		onActivated = function()

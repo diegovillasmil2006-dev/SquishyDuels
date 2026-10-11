@@ -39,6 +39,12 @@
 -- its scrolling body was centred on it, its top out of reach).
 -- Foam fix round 2 (2026-10-09): day 7 reads daily.treatBox "Treat Box" (was "Free Treat Box", which wrapped onto a
 -- third line on the 84 px card; every card takes the tallest card's height, so days 2-6 had about 40 px of empty room).
+-- UI overhaul (2026-10-11, Candy UI): a collectible reward track. DailyFormat.cardLook's faces map to the candy
+-- surfaces (CARD_FACES: a future day the raised plum, today Cyan with a white frame, a claimed day the recess with a
+-- Mint check, the Treat Box day 7 Gold with a gift beside its coin, the payoff); the texts follow their face
+-- (CARD_ACCENTS: outlined white on Cyan, PlumInk on Gold, light on the dark faces). The track is wider (PANEL_WIDTH,
+-- CARD_WIDTH) and still wraps onto a second row when it does not fit (DailyFormat.cardsPerRow). Claim is a Gold CTA;
+-- Close is the red X.
 -- Public: open(), debugState().
 
 -- Services
@@ -80,6 +86,8 @@ type CardView = {
 	padding: UIPadding,
 	today: TextLabel,
 	claimedRow: Frame,
+	texts: { TextLabel }, -- UI overhaul: every text on the card (painted for its face)
+	gift: Frame?, -- the Treat Box day's gift icon
 }
 
 -- Constants
@@ -91,9 +99,9 @@ local REMOTE = "DailyClaim"
 local FIELD = "daily"
 local MODAL_GUI = "SD_Modal"
 local TOUCH = Config.UI.Touch
-local PANEL_WIDTH = 680
+local PANEL_WIDTH = 760 -- UI overhaul: 680 -> 760, the wider cards still fit one row on a PC
 local MARGIN_PX = 24
-local CARD_WIDTH = 84
+local CARD_WIDTH = 92 -- UI overhaul: 84 -> 92
 local CARD_TEXT_KIND = "Small" -- the cards' text (their width grows with it)
 local CHECK_PX = 18
 local CHECK_BAR_PX = 3
@@ -104,12 +112,19 @@ local BODY_PAD_PX = 3 -- around the cards in the scrolling body: room for today'
 local CLOSE_INSET = 16
 local CARD_COIN_PX = 22
 local CLOCK_ICON_PX = 24
+-- DailyFormat.cardLook's face names -> the candy surfaces (UI overhaul): a future day raised off the window, today
+-- Cyan, the Treat Box day Gold ("lilac" names that day's face in DailyFormat), a claimed day recessed.
 local CARD_FACES: { [string]: Color3 } = {
-	frosting = Theme.Colors.panel,
+	frosting = Theme.Colors.panelAlt,
 	sky = Theme.Accents.sky.face,
-	lilac = Theme.Accents.lilac.face,
+	lilac = Theme.Accents.gold.face,
 	biscuit = Theme.Colors.biscuit,
 }
+-- The accent whose text rule a face's texts follow (nil: a dark face, light text).
+local CARD_ACCENTS: { [string]: Theme.AccentName } = { sky = "sky", lilac = "gold" }
+local TODAY_FRAME_PX = 4 -- today's white frame
+local GIFT_ICON_PX = 26
+local CLAIM_WIDTH = 240 -- the Claim CTA's width (base px)
 local MAX_HEIGHT_SHARE = 0.86 -- the panel never covers more than this share of the screen height (as Quests)
 local TICK_SECONDS = 1 -- the countdown and the sign line change once a second
 local REASON_NOT_READY = "data.notReady"
@@ -184,11 +199,24 @@ local function refresh()
 			view.today.Visible = card.today and card.todayText ~= nil
 			view.today.Text = card.todayText or ""
 			view.claimedRow.Visible = card.claimed
-			-- Foam UI: the face (the foam bands follow it) and the outline from DailyFormat.cardLook.
+			-- Foam UI: the face (the foam bands follow it) and the outline from DailyFormat.cardLook; UI overhaul: today's
+			-- frame is white and the texts follow the face.
 			local look = DailyFormat.cardLook(card)
-			view.stroke.Color = Theme.Colors.inkUI
-			view.stroke.Thickness = if look.thick then Theme.Stroke.thick else Theme.Stroke.ink
-			view.frame.BackgroundColor3 = CARD_FACES[look.face] or Theme.Colors.panel
+			view.stroke.Color = if look.thick then Theme.Colors.white else Theme.Colors.inkUI
+			view.stroke.Thickness = if look.thick then TODAY_FRAME_PX else Theme.Stroke.ink
+			view.frame.BackgroundColor3 = CARD_FACES[look.face] or Theme.Colors.panelAlt
+			local accent = CARD_ACCENTS[look.face]
+			for _, text in view.texts do
+				if accent then
+					Theme.textOnAccent(text, accent)
+				else
+					Theme.textOnLight(text, Theme.Colors.text)
+				end
+			end
+			local gift = view.gift
+			if gift then
+				gift.Visible = card.treat
+			end
 		end
 	end
 	local reset = resetLabel
@@ -368,7 +396,7 @@ local function checkMark(parent: Instance, order: number): Frame
 	})
 	Create("Frame", {
 		Name = "Short",
-		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundColor3 = Theme.Accents.mint.face, -- UI overhaul: the success colour on the recessed card
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.3, 0.62),
@@ -378,7 +406,7 @@ local function checkMark(parent: Instance, order: number): Frame
 	})
 	Create("Frame", {
 		Name = "Long",
-		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundColor3 = Theme.Accents.mint.face,
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.62, 0.48),
@@ -401,7 +429,7 @@ local function buildCard(parent: Instance, card: DailyFormat.DayCard): CardView
 	local list =
 		Theme.list(Enum.FillDirection.Vertical, 2, frame, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Top)
 	local stroke = frame:FindFirstChildOfClass("UIStroke") :: UIStroke
-	Theme.label({
+	local dayLabel = Theme.label({
 		Name = "Label",
 		Text = card.label,
 		LayoutOrder = 1,
@@ -409,18 +437,25 @@ local function buildCard(parent: Instance, card: DailyFormat.DayCard): CardView
 		Parent = frame,
 	}, "Chip")
 	c:add(CoinIcon.new({ name = "Coin", sizePx = CARD_COIN_PX, layoutOrder = 2, parent = frame }))
-	Theme.label({
+	local coinsLabel = Theme.label({
 		Name = "Coins",
 		Text = card.coinsText,
 		LayoutOrder = 3,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = frame,
 	}, "Small")
-	Theme.label({
+	-- UI overhaul: the Treat Box day shows its gift beside the coin (the payoff).
+	local gift: Frame? = nil
+	if card.treat then
+		local glyph = IconGlyph.new({ name = "Gift", icon = "boxes", sizePx = GIFT_ICON_PX, layoutOrder = 4, parent = frame })
+		c:add(glyph)
+		gift = glyph.root
+	end
+	local treatLabel = Theme.label({
 		Name = "Treat",
 		Text = card.treatText or "",
 		Visible = card.treat,
-		LayoutOrder = 4,
+		LayoutOrder = 5,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = frame,
 	}, "Small", Enum.FontWeight.Bold)
@@ -428,7 +463,7 @@ local function buildCard(parent: Instance, card: DailyFormat.DayCard): CardView
 		Name = "Today",
 		Text = "",
 		Visible = false,
-		LayoutOrder = 5,
+		LayoutOrder = 6,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = frame,
 	}, "Chip")
@@ -438,12 +473,12 @@ local function buildCard(parent: Instance, card: DailyFormat.DayCard): CardView
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Visible = false,
-		LayoutOrder = 6,
+		LayoutOrder = 7,
 		Parent = frame,
 	})
 	Theme.list(Enum.FillDirection.Vertical, 0, claimedRow, Enum.HorizontalAlignment.Center)
 	checkMark(claimedRow, 1)
-	Theme.label({
+	local claimedLabel = Theme.label({
 		Name = "Text",
 		Text = Strings.common.claimed,
 		LayoutOrder = 2,
@@ -457,6 +492,8 @@ local function buildCard(parent: Instance, card: DailyFormat.DayCard): CardView
 		padding = frame:FindFirstChildOfClass("UIPadding") :: UIPadding,
 		today = today,
 		claimedRow = claimedRow,
+		texts = { dayLabel, coinsLabel, treatLabel, today, claimedLabel },
+		gift = gift,
 	}
 end
 
@@ -491,6 +528,7 @@ local function build(parent: Instance): GuiObject
 	local close = Button.new({
 		name = "Daily_CloseButton",
 		text = Strings.common.close,
+		kind = "close", -- UI overhaul: the chunky red X
 		height = TOUCH.closeButton,
 		parent = panel,
 		sound = false, -- a Close button plays ui.back through UIController.close (§18.6)
@@ -570,6 +608,8 @@ local function build(parent: Instance): GuiObject
 		name = "Daily_ClaimButton",
 		text = Strings.common.claim,
 		kind = "primary",
+		accent = "gold", -- UI overhaul: claiming Coins is the Gold celebration
+		width = CLAIM_WIDTH, -- UI overhaul: a wide hero CTA (with its shine)
 		height = TOUCH.primaryButton,
 		layoutOrder = 4,
 		parent = content,
@@ -588,7 +628,7 @@ local function build(parent: Instance): GuiObject
 		Parent = content,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, countdown)
-	c:add(IconGlyph.new({ name = "Clock", icon = "clock", sizePx = CLOCK_ICON_PX, tone = "dark", parent = countdown }))
+	c:add(IconGlyph.new({ name = "Clock", icon = "clock", sizePx = CLOCK_ICON_PX, tone = "light", parent = countdown }))
 	countdownRow = countdown
 	countdownLabel = Theme.label({
 		Name = "Countdown",

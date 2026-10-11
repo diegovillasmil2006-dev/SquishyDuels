@@ -200,10 +200,11 @@ local function applyCard(view: CardView, card: QuestFormat.Card?, lock: string?,
 	local claimed = card.state == CLAIMED
 	view.stateRow.Visible = card.state ~= CLAIMABLE
 	view.stateLabel.Text = card.stateText
-	Theme.textOnLight(view.stateLabel, if claimed then Theme.Colors.inkUI else Theme.Colors.ink2)
+	-- UI overhaul (Candy UI): light text on the dark cards; "Claimed" in Mint beside its check.
+	Theme.textOnLight(view.stateLabel, if claimed then Theme.Accents.mint.face else Theme.Colors.ink2)
 	view.check.Visible = claimed
-	-- A claimed card is recessed (Biscuit; the foam bands follow the face).
-	view.frame.BackgroundColor3 = if claimed then Theme.Colors.biscuit else Theme.Colors.panel
+	-- A claimed card is recessed (the dark recess; the foam bands follow the face); an open one is raised off the window.
+	view.frame.BackgroundColor3 = if claimed then Theme.Colors.biscuit else Theme.Colors.panelAlt
 	local busy = pending[card.id] == true
 	setButton(view.claim, card.state == CLAIMABLE, busy, lock)
 	setButton(view.swap, card.canSwap, busy, lock)
@@ -338,7 +339,7 @@ local function checkMark(parent: Instance, order: number): Frame
 	})
 	Create("Frame", {
 		Name = "Short",
-		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundColor3 = Theme.Accents.mint.face, -- UI overhaul: the success colour on the dark card
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.3, 0.62),
@@ -348,7 +349,7 @@ local function checkMark(parent: Instance, order: number): Frame
 	})
 	Create("Frame", {
 		Name = "Long",
-		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundColor3 = Theme.Accents.mint.face,
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.62, 0.48),
@@ -432,9 +433,9 @@ newCard = function(section: Section, index: number): CardView
 	})
 	-- Theme.Padding.medium between the bevelled buttons (at 6 they read as one).
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.medium, buttons, Enum.HorizontalAlignment.Right)
-	-- The reward: a Biscuit chip with the coin (the coin colours stay for Coins only).
+	-- The reward: a recessed chip with the coin and the amount in Gold (UI overhaul; the coin colours stay for Coins).
 	local reward = Chip.new({ name = "Reward", text = "", layoutOrder = 0, parent = info })
-	reward:setColor(Theme.Colors.biscuit, Theme.Colors.inkUI)
+	reward:setColor(Theme.Colors.biscuit, Theme.Colors.gold)
 	c:add(reward)
 	local coin = CoinIcon.new({ name = "Coin", sizePx = REWARD_COIN_PX, layoutOrder = 1, parent = reward.root })
 	c:add(coin)
@@ -463,6 +464,7 @@ newCard = function(section: Section, index: number): CardView
 		name = "Quests_ClaimButton",
 		text = Strings.common.claim,
 		kind = "primary",
+		accent = "gold", -- UI overhaul: claiming Coins is the Gold celebration (as Daily)
 		height = TOUCH.minTarget,
 		layoutOrder = 2,
 		parent = buttons,
@@ -525,7 +527,7 @@ local function newSection(parent: Instance, name: string, order: number, headerT
 		Parent = parent,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, header, Enum.HorizontalAlignment.Left)
-	c:add(IconGlyph.new({ name = "Icon", icon = icon, sizePx = SECTION_ICON_PX, tone = "dark", parent = header }))
+	c:add(IconGlyph.new({ name = "Icon", icon = icon, sizePx = SECTION_ICON_PX, tone = "light", parent = header }))
 	Theme.label({
 		Name = "Text",
 		Text = headerText,
@@ -586,6 +588,7 @@ local function build(parent: Instance): GuiObject
 	local close = Button.new({
 		name = "Quests_CloseButton",
 		text = Strings.common.close,
+		kind = "close", -- UI overhaul: the chunky red X
 		height = TOUCH.closeButton,
 		parent = panel,
 		sound = false, -- a Close button plays ui.back through UIController.close (§18.6)
@@ -695,7 +698,7 @@ local function build(parent: Instance): GuiObject
 	footerPad.PaddingLeft = UDim.new(0, Theme.Padding.medium)
 	footerPad.PaddingRight = UDim.new(0, Theme.Padding.medium)
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, footer)
-	c:add(IconGlyph.new({ name = "Clock", icon = "clock", sizePx = FOOTER_ICON_PX, tone = "dark", parent = footer }))
+	c:add(IconGlyph.new({ name = "Clock", icon = "clock", sizePx = FOOTER_ICON_PX, tone = "light", parent = footer }))
 	footerLabel = Theme.label({
 		Name = "Footer",
 		Text = "",

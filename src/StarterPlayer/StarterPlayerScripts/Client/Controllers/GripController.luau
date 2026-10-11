@@ -472,7 +472,8 @@ end
 -- Sizes the card from its layout (defined after buildCard, which connects it).
 local applyCardLayout: () -> ()
 
--- The card's foam look on a TextButton (foam restyle: Frosting face, InkUI outline, bevel and ink drop, panel radius).
+-- The card's foam look on a TextButton (Candy UI: the dark window face, the PlumInk outline and the inner rim, bevel
+-- and ink drop, panel radius).
 local function cardFoam(object: GuiObject)
 	object.BackgroundColor3 = Theme.Colors.panel
 	Theme.foam(object, {
@@ -480,8 +481,9 @@ local function cardFoam(object: GuiObject)
 		mode = "tint",
 		bevel = CARD_BANDS.bevel,
 		drop = CARD_BANDS.drop,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		colors = Theme.panelColors(),
 	})
+	Theme.rim(object)
 end
 
 local function caption(props: { [string]: any }): TextLabel
@@ -604,7 +606,7 @@ local function buildRegular(c: Cleanup.Cleanup, body: Frame): (Frame, { [string]
 		name = "Icon",
 		icon = "clock",
 		sizePx = COLUMN.chipIconPx,
-		tone = "dark",
+		tone = "light", -- Candy UI: on the dark card
 		layoutOrder = 1,
 		parent = chipRow,
 	})
@@ -1015,6 +1017,7 @@ local function buildPanel(parent: Instance): GuiObject
 	local close = Button.new({
 		name = "Grip_CloseButton",
 		text = text("common.close"),
+		kind = "close", -- UI overhaul: the chunky red X
 		height = Config.UI.Touch.closeButton,
 		parent = root,
 		onActivated = function()

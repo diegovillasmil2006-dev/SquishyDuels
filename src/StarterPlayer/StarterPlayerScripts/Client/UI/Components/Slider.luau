@@ -138,7 +138,7 @@ function Slider.new(spec: Spec): Slider
 	track.NextSelectionRight = track
 	local bar: Frame = Create("Frame", {
 		Name = "Bar",
-		BackgroundColor3 = Theme.Colors.biscuit,
+		BackgroundColor3 = Theme.Colors.track, -- Candy UI: the darkest surface, with a faint rim
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.fromScale(0, 0.5),
@@ -148,6 +148,7 @@ function Slider.new(spec: Spec): Slider
 	})
 	Theme.corner(BAR_HEIGHT_PX, bar)
 	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.bar, bar)
+	Theme.rim(bar, Theme.Colors.rim, 0.75, 1)
 	local fill: Frame = Create("Frame", {
 		Name = "Fill",
 		BorderSizePixel = 0,
