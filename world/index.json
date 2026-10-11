@@ -1,0 +1,56 @@
+[
+	{
+		"file": "Workspace/SD_Lobby.rbxm",
+		"class": "Model",
+		"name": "SD_Lobby",
+		"container": "Workspace"
+	},
+	{
+		"file": "ReplicatedStorage/SD_ShapeLibrary.rbxm",
+		"class": "Folder",
+		"name": "SD_ShapeLibrary",
+		"container": "ReplicatedStorage"
+	},
+	{
+		"file": "ServerStorage/SD_Templates.rbxm",
+		"class": "Folder",
+		"name": "SD_Templates",
+		"container": "ServerStorage"
+	},
+	{
+		"file": "Lighting/Atmosphere.rbxm",
+		"class": "Atmosphere",
+		"name": "Atmosphere",
+		"container": "Lighting"
+	},
+	{
+		"file": "Lighting/Bloom.rbxm",
+		"class": "BloomEffect",
+		"name": "Bloom",
+		"container": "Lighting"
+	},
+	{
+		"file": "Lighting/DepthOfField.rbxm",
+		"class": "DepthOfFieldEffect",
+		"name": "DepthOfField",
+		"container": "Lighting"
+	},
+	{
+		"file": "Lighting/SD_Grade.rbxm",
+		"class": "ColorCorrectionEffect",
+		"name": "SD_Grade",
+		"container": "Lighting"
+	},
+	{
+		"file": "Lighting/Sky.rbxm",
+		"class": "Sky",
+		"name": "Sky",
+		"container": "Lighting"
+	},
+	{
+		"file": "Lighting/SunRays.rbxm",
+		"class": "SunRaysEffect",
+		"name": "SunRays",
+		"container": "Lighting"
+	}
+]
