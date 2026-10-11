@@ -66,6 +66,9 @@ function walk(dir, base = dir, files = [], dirs = []) {
 function syncWithGitHub() {
 	if (!tryGit("fetch", "origin").ok) return "offline: could not reach GitHub";
 	if (!tryGit("rev-parse", "--verify", "origin/main").ok) return "no origin/main yet";
+	if (git("rev-list", "--count", "HEAD..origin/main") === "0") return "up to date with GitHub";
+	// an undo prepared with `git revert --no-commit` leaves revert state behind; keep its changes, drop the state
+	if (fs.existsSync(path.join(ROOT, ".git", "REVERT_HEAD"))) tryGit("revert", "--quit");
 	const rebase = tryGit("rebase", "-X", "theirs", "--autostash", "origin/main");
 	if (rebase.ok) return "up to date with GitHub";
 	tryGit("rebase", "--abort");
