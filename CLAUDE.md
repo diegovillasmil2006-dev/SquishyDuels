@@ -91,5 +91,30 @@ slashes, or the snapshot stops and asks for a rename. Most models (lobby, arena,
 `ServerStorage.UnitTest.RunUnitTest(filter?, timeout?, deps?)` runs the cases in `UnitTest/Cases` in Edit mode
 (see the header of `src/ServerStorage/UnitTest/RunUnitTest.luau`). Run it with `execute_luau`.
 
+## Skills
+Load the matching skill with the Skill tool before starting work in its area, once per task (not per edit):
+
+| Skill | Load when |
+|---|---|
+| `roblox-ui` | any HUD, menu, modal, shop, notification or layout work, and any UI overhaul |
+| `game-feel` | button press/pop, coin flights, reward pop-ups, counters ticking, screen shake, hit feedback |
+| `roblox-audio` | SoundGroups, mixing, ducking, 3D sound, adding or wiring any sound |
+| `sound-effects` | generating a new custom SFX (needs `ELEVENLABS_API_KEY`; upload the result to the group, then add its id) |
+| `find-skills` | the task needs know-how none of the above covers; suggest the skill to the user before installing |
+
+The project rules here win over a skill when they disagree:
+- UI is built in code from `Client/UI` (`Components`, `Theme`, `Layout`, the `*Format` modules) and
+  `Shared/Config/UI`. Ignore `roblox-ui`'s advice to author UI as hand-placed Explorer instances; apply the rest
+  (responsive layout, safe insets, touch/gamepad focus, states, device checks).
+- Colours stay in `Art/Palette`, layout/motion tokens in `Config/UI`, mix values in `Config/Audio`, and sound ids only
+  in `AssetTable.luau`. Never hardcode them in screens or controllers.
+- Feedback must not cover the player or the play area; keep the UI readable on phone first.
+
+Missing skills (e.g. on the other co-owner's PC): install with
+`npx skills add gamedev-skills/awesome-gamedev-agent-skills --skill roblox-ui --skill game-feel -g -a claude-code -y`,
+`npx skills add tabooharmony/roblox-brain --skill roblox-audio -g -a claude-code -y`,
+`npx skills add elevenlabs/skills --skill sound-effects -g -a claude-code -y`,
+`npx skills add vercel-labs/skills --skill find-skills -g -a claude-code -y`, then start a new chat.
+
 ## Design docs
 The game spec and UI docs are in `C:\Users\diego\Desktop\ROBLOXSTEALAPIZZA\SQUISHY_DUELS_*.md` (VillasmilGaming's PC).
