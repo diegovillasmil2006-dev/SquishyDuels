@@ -793,6 +793,48 @@ return function(t: Context)
 		end
 	)
 
+	t.test("coach card (UI overhaul): a bottom-middle prompt, clear of the groups and the touch zones", function()
+		local canvas = Vector2.new(1422, 800)
+		local left = { x = 12, y = 12, w = 270, h = 200 }
+		local right = { x = 1154, y = 12, w = 256, h = 160 }
+		local bottom = canvas.Y - COLUMN.edge - COLUMN.coachBottomGap
+		local function at(height: number): (number) -> number
+			return function(_: number): number
+				return height
+			end
+		end
+		-- Nothing near the bottom: the preferred width, centred, its bottom edge at the gap.
+		local open = HudFormat.coachBottomPlacement({ canvas = canvas, blockers = { left, right }, heightAt = at(70) })
+		expect.truthy(open.fits)
+		expect.equal(open.width, COLUMN.coachWidth)
+		expect.near(open.y + open.height, bottom, 1e-6)
+		expect.near(open.x + open.width / 2, canvas.X / 2, 1e-6)
+		-- A phone: the thumbstick zone (lower left) and the jump button (lower right) narrow the band; never over them.
+		local phone = Vector2.new(993, 459)
+		local zone = { x = 0, y = 252, w = 397, h = 207 }
+		local jump = { x = 850, y = 330, w = 130, h = 120 }
+		local squeezed = HudFormat.coachBottomPlacement({
+			canvas = phone,
+			blockers = { zone, jump },
+			heightAt = function(width: number): number
+				return if width >= 440 then 60 else 84
+			end,
+		})
+		expect.truthy(squeezed.fits)
+		local box = { x = squeezed.x, y = squeezed.y, w = squeezed.width, h = squeezed.height }
+		expect.falsy(overlaps(box, zone))
+		expect.falsy(overlaps(box, jump))
+		expect.truthy(squeezed.width >= COLUMN.coachMinWidth)
+		-- No room at all: centred anyway, fits = false.
+		local crowded = HudFormat.coachBottomPlacement({
+			canvas = Vector2.new(700, 400),
+			blockers = { { x = 0, y = 200, w = 380, h = 200 }, { x = 400, y = 200, w = 300, h = 200 } },
+			heightAt = at(70),
+		})
+		expect.falsy(crowded.fits)
+		expect.near(crowded.x + crowded.width / 2, 350, 1e-6)
+	end)
+
 	t.test("coach card: top centre between the HUD groups, above the toasts; wider when the text needs it", function()
 		local canvas = Vector2.new(1422, 800)
 		local left = { x = 12, y = 12, w = 270, h = 200 }

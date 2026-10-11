@@ -189,6 +189,7 @@ local Strings = {
 		duelSearchingTime = "Searching · {time}",
 		-- The quest tracker card (top right): its label; the section name (quest.section.*) sits beside it.
 		questTracker = "QUEST",
+		questReady = "Ready to claim!", -- UI overhaul: the tracker's quest is done and not claimed
 	},
 
 	-- Touch / on-screen action buttons (§5.10, §6.3).

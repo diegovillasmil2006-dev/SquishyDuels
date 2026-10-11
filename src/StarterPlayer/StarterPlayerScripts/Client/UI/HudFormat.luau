@@ -77,6 +77,13 @@
 --                              groups; the preferred width when it is no taller than its band (the old one, down to
 --                              the toast line), else as wide as the room (fewer lines); fits = false when no width
 --                              keeps it in the band (the toasts start under it anyway: NotifyFormat chains them)
+--   coachBottomPlacement(input)
+--                              UI overhaul (2026-10-11): the coach card as a compact prompt at the bottom middle (the
+--                              centre column stays open: the Duel CTA and the toasts at the top, the character in the
+--                              middle): COLUMN.coachBottomGap above the HUD's bottom edge, centred in the free span its
+--                              band leaves between the blockers (the HUD groups and, on narrow layouts, the thumbstick
+--                              zone, the jump and touch buttons); its preferred width when the span allows, else the
+--                              span; fits = false when the span is narrower than minWidth (then centred anyway)
 --   ctaPlacement(input) / ctaWidth(compact, textScale?)
 --                              lobby HUD (spec 2026-10-11): the Duel CTA at the top middle on every layout, COLUMN.edge
 --                              down, centred and moved into the free span the left and right groups leave (freeSpan);
@@ -325,7 +332,7 @@ local NAV: { NavItem } = {
 		textKey = "hud.nav.settings",
 		button = "Hud_SettingsButton",
 		place = "settings",
-		accent = "frosting",
+		accent = "plum", -- UI overhaul (Candy UI): the neutral plum tile
 		icon = "settings",
 	},
 }
@@ -359,7 +366,7 @@ local COLUMN = table.freeze({
 	-- Phones (foam fix): the icon, the label line and the bands, so the tile row clears the thumbstick zone; still the
 	-- touch minimum (>= 44 px at the 0.85 phone scale).
 	tileSizeCompact = 58,
-	tileIconPx = 36,
+	tileIconPx = 42, -- UI overhaul: 36 -> 42, bolder tiles (still inside the 84 px tile with its label)
 	tileIconCompactPx = 24,
 	settingsIconPx = 28, -- the Settings tile's gear (top right; it keeps its size on phones)
 	tilePadding = 6, -- Button's tile side padding
@@ -387,6 +394,7 @@ local COLUMN = table.freeze({
 	ctaAir = 4, -- a little air over the CTA's measured content
 	coachWidth = 512, -- the coach card (the design's 640)
 	coachMinWidth = 320,
+	coachBottomGap = 14, -- UI overhaul: the bottom prompt's bottom edge, this far above COLUMN.edge
 	coachPadding = 10, -- top and sides (the bottom is at least panelBottom, over the foam bands)
 	coachGap = 12, -- the coach card's text to its button
 	panelBottom = 12, -- Theme.panel's least bottom padding (bevel 5 + drop 4 + 3)
@@ -1259,6 +1267,42 @@ function HudFormat.coachPlacement(input: CoachInput): CoachPlace
 	end
 	local roomHeight = input.heightAt(room)
 	return place(room, roomHeight, top + roomHeight <= line + FIT_SLACK)
+end
+
+-- UI overhaul (see the header): the coach card at the bottom middle, clear of the blockers on its band. The band
+-- depends on the card's height, which depends on its width, so the width is settled in two passes (the preferred
+-- width's band, then the room that band leaves). x = its left edge.
+function HudFormat.coachBottomPlacement(input: CoachInput): CoachPlace
+	local canvas = input.canvas
+	local want = input.preferred or COLUMN.coachWidth
+	local minWidth = input.minWidth or COLUMN.coachMinWidth
+	local bottom = canvas.Y - COLUMN.edge - COLUMN.coachBottomGap
+	local function band(width: number): (number, number, number, number)
+		local height = input.heightAt(width)
+		local top = bottom - height
+		local low, high = HudFormat.freeSpan(canvas, top, height, input.blockers)
+		return top, height, low, high
+	end
+	local width = math.max(0, math.min(want, canvas.X - 2 * COLUMN.edge))
+	local top, height, low, high = band(width)
+	if high - low < width - FIT_SLACK then
+		width = math.max(0, high - low)
+		top, height, low, high = band(width)
+	end
+	local room = high - low
+	if room < minWidth - FIT_SLACK or width < minWidth - FIT_SLACK then
+		local fallback = math.max(0, math.min(want, canvas.X - 2 * COLUMN.edge))
+		local fallbackHeight = input.heightAt(fallback)
+		return {
+			x = (canvas.X - fallback) / 2,
+			y = bottom - fallbackHeight,
+			width = fallback,
+			height = fallbackHeight,
+			fits = false,
+		}
+	end
+	local x = math.clamp(canvas.X / 2 - width / 2, low, high - width)
+	return { x = x, y = top, width = width, height = height, fits = true }
 end
 
 -- Where the Duel CTA goes (lobby HUD, spec 2026-10-11; see the header): COLUMN.edge from the HUD's top on every layout,

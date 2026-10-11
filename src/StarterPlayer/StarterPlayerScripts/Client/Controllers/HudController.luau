@@ -59,6 +59,11 @@
 --   the tiles), the right column (Settings, the tracker) and the links between them: the Duel CTA between the left
 --   column and Settings, Down to the queue pill's Cancel or the coach card's button (both Up back to it), a tile -> the
 --   CTA. Only the links this module set are cleared again.
+-- UI overhaul (2026-10-11, Candy UI): the tiles are bold candy tiles with larger icons (COLUMN.tileIconPx) and red
+-- notification badges; Settings is the plum neutral; the quest tracker turns Gold with hud.questReady when its quest
+-- is ready to claim (tap opens Quests); the Duel CTA gets one gloss sweep (Button:sweep) every CTA_SWEEP_SECONDS while
+-- it shows and is not queued (no bounce loop; nothing under ReducedMotion). The coach card moved to the bottom middle
+-- (OnboardingController), so the centre column stays open.
 -- Public: leftColumn(), LEFT_ORDER, setFocusEntry(object?), setFocusTarget(key, object?), element(name), coinsAnchor(),
 -- isShown(), VisibilityChanged, LayoutChanged, layoutRects(), flyCoins(from, amount), setGainSource(label?),
 -- debugCoinFlight(amount), columnPlan(), ColumnPlanChanged, setColumnItem(key, present), textScale(), debugState().
@@ -120,6 +125,7 @@ type Tracker = {
 	title: TextLabel,
 	bar: ProgressBar.ProgressBar,
 	count: TextLabel,
+	ready: boolean?, -- UI overhaul: the shown quest is ready to claim (Gold)
 }
 
 -- Constants
@@ -142,6 +148,7 @@ local TRACKER_BAR_PX = 14
 -- COLUMN.ctaLineGap / ctaAir (shared with HudFormat.ctaWidth).
 local CTA_BANDS_PX = 14
 local QUEUE_TICK_SECONDS = 0.25 -- the queued CTA's clock shows whole seconds
+local CTA_SWEEP_SECONDS = 7 -- UI overhaul: the idle Duel CTA's gloss sweep, this often
 local DAY_CHECK_SECONDS = 30 -- reading: how often the daily badge re-checks the UTC day
 local SHOP_SCREEN = "shop"
 local QUESTS_SCREEN = "quests"
@@ -627,12 +634,22 @@ local function refreshTracker()
 	end
 	local picked = quest :: QuestFormat.Card
 	setIfChanged(view.title, "Text", picked.title)
+	-- UI overhaul: a quest ready to claim says so in Gold (the tracker opens Quests, where Claim is).
+	local ready = picked.state == "claim"
 	setIfChanged(
 		view.section,
 		"Text",
-		if picked.kind == "starter" then Strings.quest.section.starter else Strings.quest.section.daily
+		if ready
+			then Strings.hud.questReady
+			elseif picked.kind == "starter" then Strings.quest.section.starter
+			else Strings.quest.section.daily
 	)
 	setIfChanged(view.count, "Text", picked.progressText)
+	setIfChanged(view.section, "TextColor3", if ready then Theme.Colors.gold else Theme.Colors.ink2)
+	if view.ready ~= ready then
+		view.ready = ready
+		view.bar:setAccent(if ready then "gold" else "mint")
+	end
 	-- A new quest jumps to its share; the same quest moving eases (Config.UI.motion.barFill).
 	view.bar:set(picked.fraction, trackedId == picked.id)
 	trackedId = picked.id
@@ -1622,6 +1639,17 @@ function HudController.start()
 			task.wait(DAY_CHECK_SECONDS)
 			refreshBadges()
 			refreshTracker()
+		end
+	end))
+	-- UI overhaul: the idle Duel CTA's gloss sweep (only while it shows and is not queued; Button:sweep does nothing
+	-- under ReducedMotion).
+	c:add(task.spawn(function()
+		while true do
+			task.wait(CTA_SWEEP_SECONDS)
+			local button = duelButton
+			if button and shown and button.root.Visible and not ctaQueued then
+				button:sweep()
+			end
 		end
 	end))
 	-- The queued CTA's clock (the queue pill's own clock, whole seconds).

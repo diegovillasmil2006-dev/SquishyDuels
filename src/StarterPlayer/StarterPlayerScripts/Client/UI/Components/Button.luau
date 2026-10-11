@@ -54,6 +54,8 @@
 -- Labels on an accent face follow Theme.textOnColor with the face (white on a dark face at every size). New kind:
 --   close      the chunky red X: a TOUCH.closeButton square with the "close" IconGlyph (spec.icon may change it); the
 --              label keeps spec.text (it names the action for tests and audits) but is hidden
+-- sweep(): one gloss pass across the shine stripes (they slide out to the right and come back in from the left over
+-- SWEEP_MS; nothing without stripes or under ReducedMotion): the attention cue of a ready CTA, instead of a bounce loop.
 
 -- Services
 
@@ -117,6 +119,7 @@ export type Button = {
 	setKeycap: (self: Button, text: string?) -> (),
 	setSubtext: (self: Button, text: string?) -> (),
 	setBadge: (self: Button, count: number?) -> (),
+	sweep: (self: Button) -> (),
 	destroy: (self: Button) -> (),
 }
 
@@ -191,6 +194,8 @@ local RIM_TRANSPARENCY = 0.7 -- the inner rim on a face ...
 local RIM_DISABLED_TRANSPARENCY = 0.9 -- ... and on the disabled face
 local CLOSE_RADIUS = 14
 local CLOSE_ICON_PX = 26
+local SWEEP_MS = 700 -- one gloss pass (out and back in)
+local SWEEP_OFFSET = 1.25 -- how far the stripes slide (a share of the button), so they leave it whole
 -- Kinds whose fixed width carries the shine stripes.
 local SHINE_KINDS: { [string]: boolean } = { tile = true, close = true, cta = true, primary = true }
 local STYLES: { [string]: Style } = {
@@ -968,6 +973,31 @@ function Button.new(spec: Spec): Button
 			return
 		end
 		ensureBadge():setCount(count)
+	end
+
+	local sweepTween: Tween? = nil
+	cleanup:add(function()
+		Tweens.cancel(sweepTween)
+	end)
+	function self.sweep(_: Button)
+		local shine = root:FindFirstChild("SD_Shine")
+		local gradient = if shine then shine:FindFirstChildOfClass("UIGradient") else nil
+		if gradient == nil or Tweens.reducedMotion() or state ~= "normal" then
+			return
+		end
+		Tweens.cancel(sweepTween)
+		local half = SWEEP_MS / 2
+		gradient.Offset = Vector2.zero
+		local out = Tweens.play(gradient, half, { Offset = Vector2.new(SWEEP_OFFSET, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		sweepTween = out
+		out.Completed:Once(function(playback: Enum.PlaybackState)
+			if playback ~= Enum.PlaybackState.Completed or sweepTween ~= out then
+				gradient.Offset = Vector2.zero
+				return
+			end
+			gradient.Offset = Vector2.new(-SWEEP_OFFSET, 0)
+			sweepTween = Tweens.play(gradient, half, { Offset = Vector2.zero }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		end)
 	end
 
 	function self.destroy(_: Button)

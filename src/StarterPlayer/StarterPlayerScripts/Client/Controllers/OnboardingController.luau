@@ -37,6 +37,10 @@
 --   step). The skip link always reads onboarding.skip "Skip tutorial" (§11.8: it ends the whole tutorial for good, so
 --   it is never shortened). Got it (primary) and Skip (secondary) are Button touch targets and the visible one is
 --   HudController's "onboarding" focus target (setFocusTarget), so a gamepad reaches it Down from the Duel CTA.
+-- UI overhaul (2026-10-11, Candy UI): the coach card is a compact prompt at the bottom middle
+-- (HudFormat.coachBottomPlacement, clear of the HUD groups and, on narrow layouts, the thumbstick zone and the touch
+-- buttons), so the centre column stays open (the Duel CTA and the toasts at the top, the character in the middle); it
+-- no longer pushes the toasts down. It wears a Coral rim (guidance) and pops in when a new step shows.
 -- Public: startReplay(), debugState().
 
 -- Services
@@ -92,6 +96,9 @@ local PULSE_GAP_PX = 4 -- the ring stands this far outside the element
 local PULSE_MIN_TRANSPARENCY = 0
 local PULSE_MAX_TRANSPARENCY = 0.7
 local PULSE_NAME = "SD_OnboardingPulse"
+-- UI overhaul: a new step's pop (the toast pop's numbers).
+local POP_FROM = Config.UI.motion.toast.popFrom
+local POP_SPEC: Tweens.Spec = { ms = 260, style = Enum.EasingStyle.Back, direction = Enum.EasingDirection.Out }
 local STATE_FIELDS = { "onboarding", "dataStatus", "policy", "coins" }
 
 -- Module table
@@ -290,10 +297,16 @@ local function refresh(baseline: boolean?)
 	-- queued (every layout since spec 2026-10-11).
 	local waiting = StateController.queue().state == SEARCHING
 	local visible = model ~= nil and not StateController.isLobbyLocked() and not waiting
+	local previousStep = shownStep
 	shownStep = if visible and model then model.stepId else nil
 	local frame = card
 	if frame then
 		frame.Visible = visible
+		-- UI overhaul: a new step pops in (Back Out; a scale effect, so none under ReducedMotion).
+		local pop = frame:FindFirstChild("Pop")
+		if visible and shownStep ~= previousStep and pop and pop:IsA("UIScale") then
+			Tweens.scale(pop, POP_FROM, 1, POP_SPEC)
+		end
 	end
 	local target: GuiObject? = nil
 	if visible and model then
@@ -423,8 +436,10 @@ local function buildCard(c: Cleanup.Cleanup)
 	frame.Parent = UIController.screenGui(HUD_GUI)
 	c:add(frame)
 	card = frame
-	-- Spec: the coach card never overlaps toasts; when it reaches below their line (fits = false) they start under it.
-	UIController.toastsBelow("coach", frame)
+	-- UI overhaul: guidance wears the brand colour on its rim; a new step pops in (refresh).
+	Theme.rim(frame, Theme.Accents.strawberry.face, 0.15, Theme.Stroke.medium)
+	Create("UIScale", { Name = "Pop", Parent = frame })
+	-- UI overhaul: at the bottom middle the card no longer meets the toasts (they stay under the Duel CTA).
 	-- The text's width follows the visible button's real width; the place follows the card's height.
 	c:add(gotIt.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		layoutCard()
@@ -459,16 +474,18 @@ layoutCard = function()
 		else HudFormat.buttonWidth(if showsGotIt then Strings.common.gotIt else Strings.onboarding.skip, textScale)
 	local rects = HudController.layoutRects()
 	local blockers: { HudFormat.Rect } = {}
-	for _, rect in { rects.left, rects.tiles, rects.right, rects.cta } do
+	for _, rect in { rects.left, rects.tiles, rects.right } do
 		if rect then
 			table.insert(blockers, rect)
 		end
 	end
+	-- UI overhaul: the bottom prompt keeps clear of the thumbstick zone and the touch buttons on narrow layouts.
+	for _, rect in rects.reserved do
+		table.insert(blockers, rect)
+	end
 	local text, buttonText = shownText, shownButton
-	local cta = rects.cta
-	local place = HudFormat.coachPlacement({
+	local place = HudFormat.coachBottomPlacement({
 		canvas = rects.canvas,
-		top = if cta then cta.y + cta.h + COLUMN.rowGap else nil,
 		blockers = blockers,
 		heightAt = function(width: number): number
 			return HudFormat.coachHeight(width, textScale, scale, text, buttonText, compact)
