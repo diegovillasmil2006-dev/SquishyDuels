@@ -828,8 +828,8 @@ local Signs: { Sign } = {
 		facing = WEST,
 		face = "Front",
 		lines = {
-			-- Reading: 0.9, not 2.2: "DAILY REWARD" must fit the 7-stud sign DESIGN gives.
-			line("Title", "daily.title", 0.9, "heading"),
+			-- Reading: 1.0, not 2.2: "DAILY REWARD" must fit the 7-stud sign DESIGN gives (1.0 ≈ 311 of 334 px).
+			line("Title", "daily.title", 1.0, "heading"),
 			-- Built empty: the stand stays inert until the daily feature registers its UI (§7.6), so the sign never says
 			-- "Ready to claim!" with nothing to claim; its owner writes daily.ready / daily.wait.
 			liveLine("Status", nil, 0.6, { "daily.ready", "daily.wait" }),
