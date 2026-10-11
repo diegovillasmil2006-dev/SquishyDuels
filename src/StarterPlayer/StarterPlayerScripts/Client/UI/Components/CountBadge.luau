@@ -6,6 +6,8 @@
 -- An accent face (default Strawberry) with the InkUI 2 px outline (bars and chips), at least sizePx wide and growing
 -- with its text. The number is the Chip display kind; by the outlined-text rule it is InkUI on the accent (16 < 18 px).
 -- CountBadge.text(n) is the shown text, pure: nil below 1, whole numbers capped at MAX (99, like HudFormat.badgeText).
+-- Candy UI (UI overhaul 2026-10-11): the default face is Red (a notification), its number white with the PlumInk
+-- outline (the Chip kind is outlined on an accent now), with a light inner rim.
 
 -- Services
 
@@ -25,7 +27,7 @@ local Theme = require(UI.Theme)
 export type Spec = {
 	name: string,
 	sizePx: number?, -- the height and the minimum width (base px); default 26
-	accent: Theme.AccentName?, -- default "strawberry"
+	accent: Theme.AccentName?, -- default "red"
 	layoutOrder: number?,
 	parent: Instance?,
 }
@@ -65,7 +67,7 @@ end
 function CountBadge.new(spec: Spec): CountBadge
 	local cleanup = Cleanup.new()
 	local size = spec.sizePx or DEFAULT_SIZE_PX
-	local accent = Theme.accent(spec.accent or "strawberry")
+	local accent = Theme.accent(spec.accent or "red")
 	-- The size is the minimum: a larger text size grows the badge (AutomaticSize XY), so the number always fits.
 	local root: Frame = Create("Frame", {
 		Name = spec.name,
@@ -82,6 +84,7 @@ function CountBadge.new(spec: Spec): CountBadge
 		stroke = Theme.Stroke.bar,
 		colors = { face = accent.face, bevel = accent.shade },
 	})
+	Theme.rim(root, Theme.Colors.white, 0.6, 1.5)
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, PADDING_X),
 		PaddingRight = UDim.new(0, PADDING_X),
@@ -101,7 +104,7 @@ function CountBadge.new(spec: Spec): CountBadge
 	if accent.light then
 		Theme.textOnLight(label)
 	else
-		Theme.textOnColor(label)
+		Theme.textOnColor(label, nil, accent.face)
 	end
 
 	local self = {} :: CountBadge

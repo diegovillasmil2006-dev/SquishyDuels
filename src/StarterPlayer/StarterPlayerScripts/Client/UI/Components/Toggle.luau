@@ -135,7 +135,7 @@ function Toggle.new(spec: Spec): Toggle
 		radius = knobSize,
 		stroke = Theme.Stroke.bar,
 		bevel = KNOB_BEVEL_PX,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel },
+		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.stickerBevel }, -- Candy UI: a light sticker knob
 	})
 
 	local function paint()

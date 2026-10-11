@@ -33,9 +33,18 @@ export type CardStyle = {
 	badgeKey: string?, -- Strings key of an extra badge
 }
 
+-- UI overhaul (2026-10-11): a collectible card's face in the rarity's colours (a vertical gradient, light top to deep
+-- bottom, white outlined names on it) and the glow of a selection or a reveal.
+export type UiStyle = {
+	faceTop: Color3,
+	faceBottom: Color3,
+	glow: Color3,
+}
+
 export type Style = {
 	rarity: Rarity,
 	color: Color3, -- the rarity colour (label chip, card stroke, reveal glow, Inspect frame)
+	ui: UiStyle, -- the UI card face and glow (UI overhaul)
 	trailTint: Color3?, -- Epic only: trail end colour, lighter than the rarity colour
 	labelTextColor: Color3, -- text on the rarity colour; contrast >= 4.5:1 (§4.3)
 	pipShape: PipShape,
@@ -83,6 +92,11 @@ local STYLES: { [string]: Style } = {
 	Common = {
 		rarity = "Common",
 		color = Color3.fromHex("#A9B4C2"),
+		ui = {
+			faceTop = Color3.fromHex("#8493A8"),
+			faceBottom = Color3.fromHex("#4B576D"),
+			glow = Color3.fromHex("#DCE4EE"),
+		},
 		labelTextColor = Palette.Ink, -- 6.4:1
 		pipShape = "dot",
 		pips = pipsOf("Common"),
@@ -92,6 +106,11 @@ local STYLES: { [string]: Style } = {
 	Uncommon = {
 		rarity = "Uncommon",
 		color = Color3.fromHex("#4CC38A"),
+		ui = {
+			faceTop = Color3.fromHex("#45C987"),
+			faceBottom = Color3.fromHex("#1C7A55"),
+			glow = Color3.fromHex("#8CFFC4"),
+		},
 		labelTextColor = Palette.Ink, -- 6.0:1
 		pipShape = "dot",
 		pips = pipsOf("Uncommon"),
@@ -101,6 +120,11 @@ local STYLES: { [string]: Style } = {
 	Epic = {
 		rarity = "Epic",
 		color = Color3.fromHex("#7C3AED"),
+		ui = {
+			faceTop = Color3.fromHex("#B067FF"),
+			faceBottom = Color3.fromHex("#5B25C2"),
+			glow = Color3.fromHex("#E2B8FF"),
+		},
 		trailTint = EPIC_TRAIL_TINT,
 		labelTextColor = Palette.White, -- 5.7:1
 		pipShape = "dot",
@@ -115,6 +139,11 @@ local STYLES: { [string]: Style } = {
 	Exclusive = {
 		rarity = "Exclusive",
 		color = Color3.fromHex("#FF9F1C"),
+		ui = {
+			faceTop = Color3.fromHex("#FFC94D"),
+			faceBottom = Color3.fromHex("#E2700F"),
+			glow = Color3.fromHex("#FFE7A0"),
+		},
 		labelTextColor = Palette.Ink, -- 6.5:1
 		pipShape = "diamond",
 		pips = pipsOf("Exclusive"),

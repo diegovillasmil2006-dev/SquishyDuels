@@ -9,6 +9,9 @@
 -- light face; on an accent the outlined-text rule (InkUI below 18 px); setColor(face, textColor) for a colour whose
 -- text colour is known (RarityStyle.labelTextColor). Grows with its text (AutomaticSize XY), at least heightPx tall.
 -- The chip is never the only sign of a state: it always carries its word.
+-- Candy UI (UI overhaul 2026-10-11): the default face is the light WarmWhite sticker (PlumInk text); on an accent the
+-- text follows Theme.textOnColor with that face (white with the outline from the Chip kind; white at every size on a
+-- dark face such as the plum neutral or a dark setColor).
 
 -- Services
 
@@ -111,17 +114,18 @@ function Chip.new(spec: Spec): Chip
 		Parent = root,
 	}, spec.textKind or "Chip")
 
-	local function paintText(light: boolean, textColor: Color3?)
+	local function paintText(light: boolean, textColor: Color3?, face: Color3?)
 		if textColor then
 			Theme.textOnLight(label, textColor)
 		elseif light then
 			Theme.textOnLight(label)
 		else
-			Theme.textOnColor(label)
+			Theme.textOnColor(label, nil, face)
 		end
 		local glyph = icon
 		if glyph then
-			glyph:setTone(if light or textColor then "dark" else "light")
+			local darkText = light or (textColor ~= nil and not Theme.isDarkFace(face or Theme.Colors.frosting))
+			glyph:setTone(if darkText then "dark" else "light")
 		end
 	end
 
@@ -135,19 +139,21 @@ function Chip.new(spec: Spec): Chip
 
 	function self.setAccent(_: Chip, name: Theme.AccentName)
 		foam:paint(Theme.accentColors(name))
-		paintText(Theme.accent(name).light, nil)
+		local picked = Theme.accent(name)
+		paintText(picked.light, nil, picked.face)
 	end
 
 	function self.setColor(_: Chip, face: Color3, textColor: Color3?)
 		foam:paint({ face = face, bevel = face:Lerp(Theme.Colors.inkUI, SHADE_MIX) })
-		paintText(false, textColor)
+		paintText(false, textColor, face)
 	end
 
 	function self.destroy(_: Chip)
 		cleanup:clean()
 	end
 
-	paintText(Theme.accent(spec.accent or "frosting").light, nil)
+	local initial = Theme.accent(spec.accent or "frosting")
+	paintText(initial.light, nil, initial.face)
 	if spec.parent then
 		root.Parent = spec.parent
 	end

@@ -1162,7 +1162,8 @@ local function buildLabel(c: Cleanup.Cleanup)
 		mode = "tint",
 		bevel = bands.bevel,
 		drop = bands.drop,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		-- Candy UI (2026-10-11): a light sticker in the world, dark text.
+		colors = Theme.stickerColors(),
 	})
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, Theme.Padding.medium),
@@ -1178,7 +1179,7 @@ local function buildLabel(c: Cleanup.Cleanup)
 		TextWrapped = false,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = chip,
-	}, "Chip")
+	}, "Chip", nil, Theme.Colors.inkUI)
 	gui.Parent = clientFxFolder()
 	c:add(gui)
 	floatLabel = { overlay = overlay, gui = gui, chip = chip, text = label, px = 0 }

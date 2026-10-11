@@ -477,7 +477,8 @@ function CollectionController.nameplate(plate: CollectionFormat.Plate, topAboveP
 		Parent = gui,
 	})
 	Create("UICorner", { CornerRadius = UDim.new(0.25, 0), Parent = panel })
-	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.bar, panel)
+	-- Candy UI (2026-10-11): world plates keep the light foam look and its inks (Theme.Colors.worldInk*).
+	Theme.stroke(Theme.Colors.worldInk, Theme.Stroke.bar, panel)
 	local function line(
 		name: string,
 		text: string,
@@ -499,9 +500,9 @@ function CollectionController.nameplate(plate: CollectionFormat.Plate, topAboveP
 		label.Parent = panel
 		return label
 	end
-	line("Title", plate.title, TITLE_KIND, PLATE_INSET, TITLE_HEIGHT, Theme.Colors.inkUI)
+	line("Title", plate.title, TITLE_KIND, PLATE_INSET, TITLE_HEIGHT, Theme.Colors.worldInk)
 	-- Foam restyle: "Not owned yet" in Ink2 (still >= 4.5:1 on Cream), "Owned" in InkUI.
-	local statusColor = if plate.owned then Theme.Colors.inkUI else Theme.Colors.ink2
+	local statusColor = if plate.owned then Theme.Colors.worldInk else Theme.Colors.worldInk2
 	line("Status", plate.status, STATUS_KIND, PLATE_INSET + TITLE_HEIGHT, STATUS_HEIGHT, statusColor)
 	return gui
 end

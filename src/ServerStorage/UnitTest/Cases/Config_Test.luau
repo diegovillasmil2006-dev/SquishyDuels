@@ -1833,11 +1833,17 @@ return function(t: Context)
 
 		-- Config.UI
 		local motion = ui.motion
-		expect.equal(motion.modalOpen.scaleFrom, 0.88)
-		expect.equal(motion.modalOpen.ms, 240)
-		expect.equal(motion.modalClose.scaleTo, 0.92)
-		expect.equal(motion.modalClose.visualMs, 100)
-		expect.equal(motion.buttonPressed.scale, 0.92)
+		-- UI overhaul (2026-10-11): the elastic modal pop (0.9 -> 1.03 -> 1 over 300 ms), a 150 ms squish on close,
+		-- hover 1.05 over 120 ms, press 0.94 over 70 ms.
+		expect.equal(motion.modalOpen.scaleFrom, 0.9)
+		expect.equal(motion.modalOpen.overshoot, 1.03)
+		expect.equal(motion.modalOpen.ms, 300)
+		expect.equal(motion.modalClose.scaleTo, 0.9)
+		expect.equal(motion.modalClose.visualMs, 150)
+		expect.equal(motion.buttonHover.scale, 1.05)
+		expect.equal(motion.buttonHover.ms, 120)
+		expect.equal(motion.buttonPressed.scale, 0.94)
+		expect.equal(motion.buttonPressed.ms, 70)
 		expect.deepEqual(motion.buttonRelease.spring, { omega = 20, zeta = 0.35 })
 		-- Reading (§18.1 #4 over B3's 2 cycles in 200 ms = 10 Hz): 1 cycle over 340 ms, 2.9 Hz.
 		expect.deepEqual(motion.buttonError, { wigglePx = 4, cycles = 1, ms = 340 })

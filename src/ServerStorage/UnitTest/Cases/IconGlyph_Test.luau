@@ -27,6 +27,9 @@ local SPEC_ICONS = {
 	"clock",
 	"upgrade",
 	"inspect",
+	-- UI overhaul (2026-10-11).
+	"close",
+	"check",
 }
 
 local function countNamed(root: Instance, name: string): number
@@ -52,7 +55,7 @@ return function(t: Context)
 		end
 	end
 
-	t.test("the spec's eleven icons, each with an image slot and parts inside its box", function()
+	t.test("the spec's icons (eleven, plus the overhaul's close and check), each with an image slot and parts inside its box", function()
 		expect.deepEqual(IconGlyph.NAMES, SPEC_ICONS)
 		for _, name in SPEC_ICONS do
 			local slot = IconGlyph.slotOf(name)

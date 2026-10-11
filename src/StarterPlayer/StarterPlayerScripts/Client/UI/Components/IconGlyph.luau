@@ -6,7 +6,8 @@
 --   local icon = IconGlyph.new({ name = "Icon", icon = "boxes", sizePx = 36, tone = "light", parent = tile })
 --   icon:setIcon("shop");   icon:setTone("dark");   icon:destroy()
 -- Names (IconGlyph.NAMES): squishies, boxes, shop, quests, daily, settings, duel (alias swords), change, clock,
--- upgrade, inspect.
+-- upgrade, inspect; UI overhaul (2026-10-11): close (the windows' chunky X, alias x) and check (a claimed or owned
+-- state).
 -- Tones: "light" = a white glyph with an InkUI outline and InkUI details (on an accent face, like the design's outlined
 -- icons); "dark" = an InkUI glyph with Frosting details and no outline (on Frosting); "disabled" = DisabledText with
 -- DisabledFace details.
@@ -87,8 +88,10 @@ local SLOTS: { [string]: string } = {
 	clock = "img.icon.clock",
 	upgrade = "img.icon.upgrade",
 	inspect = "img.icon.inspect",
+	close = "img.icon.close",
+	check = "img.icon.check",
 }
-local ALIASES: { [string]: string } = { swords = "duel" }
+local ALIASES: { [string]: string } = { swords = "duel", x = "close" }
 
 local function part(x: number, y: number, w: number, h: number, rotation: number?, corner: number?): Part
 	return { x = x, y = y, w = w, h = h, rotation = rotation, corner = corner }
@@ -199,10 +202,33 @@ local GLYPHS: { [string]: { Part } } = {
 		part(0.42, 0.42, 0.64, 0.64, 0, 0.5),
 		{ x = 0.42, y = 0.42, w = 0.38, h = 0.38, corner = 0.5, detail = true, ring = true },
 	},
+	-- A chunky X: two rounded bars crossed at the centre.
+	close = {
+		part(0.5, 0.5, 0.86, 0.26, 45, 0.5),
+		part(0.5, 0.5, 0.86, 0.26, -45, 0.5),
+	},
+	-- A tick: a short bar down to the joint and a long bar up to the right.
+	check = {
+		part(0.3, 0.6, 0.38, 0.22, 45, 0.5),
+		part(0.6, 0.49, 0.64, 0.22, -50, 0.5),
+	},
 }
 
-local NAMES: { string } =
-	{ "squishies", "boxes", "shop", "quests", "daily", "settings", "duel", "change", "clock", "upgrade", "inspect" }
+local NAMES: { string } = {
+	"squishies",
+	"boxes",
+	"shop",
+	"quests",
+	"daily",
+	"settings",
+	"duel",
+	"change",
+	"clock",
+	"upgrade",
+	"inspect",
+	"close",
+	"check",
+}
 
 -- Module table
 

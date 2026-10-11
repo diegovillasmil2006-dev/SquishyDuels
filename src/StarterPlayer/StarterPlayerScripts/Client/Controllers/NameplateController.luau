@@ -270,7 +270,8 @@ local function buildGui(plate: Plate, adornee: BasePart, isHead: boolean, c: Tro
 		mode = "tint",
 		bevel = PLATE_BANDS.bevel,
 		drop = PLATE_BANDS.drop,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		-- Candy UI (2026-10-11): world plates keep the light sticker bands.
+		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.stickerBevel, drop = Theme.Colors.inkUI },
 	})
 	local stroke = foam.stroke
 	Create("UIPadding", {
@@ -287,7 +288,7 @@ local function buildGui(plate: Plate, adornee: BasePart, isHead: boolean, c: Tro
 		TextWrapped = false,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = frame,
-	}, TEXT_KIND)
+	}, TEXT_KIND, nil, Theme.Colors.inkUI) -- dark text on the light rank plate (the screen UI's default is light)
 	gui.Parent = playerGui
 	c:add(gui)
 	plate.gui, plate.frame, plate.label, plate.stroke, plate.scale = gui, frame, label, stroke, uiScale

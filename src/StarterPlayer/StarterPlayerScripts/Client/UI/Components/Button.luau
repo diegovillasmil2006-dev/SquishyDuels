@@ -47,6 +47,13 @@
 -- button:setWidth(px?) switches between a fixed width (the label and reason wrap inside it; the caller sets the height
 -- through root.Size) and the automatic width (nil), e.g. the shop's Buy in a narrow column at a large text size.
 -- Button.PADDING_X is the side padding inside the primary / secondary kinds (base px).
+-- Candy UI (UI overhaul 2026-10-11): every kind has the PlumInk 3 px outline and a light inner rim (Theme.rim); the
+-- secondary kind is the plum neutral with a white label; a fixed-width tile, close, cta or primary carries two diagonal
+-- shine stripes under its content (Theme.shine; a cta or primary gets them from setWidth(px)); a press squishes the
+-- face (the bevel and drop bands shrink by PRESS_SINK_PX and the content sinks as much) and the release springs back.
+-- Labels on an accent face follow Theme.textOnColor with the face (white on a dark face at every size). New kind:
+--   close      the chunky red X: a TOUCH.closeButton square with the "close" IconGlyph (spec.icon may change it); the
+--              label keeps spec.text (it names the action for tests and audits) but is hidden
 
 -- Services
 
@@ -75,7 +82,7 @@ local Tweens = require(Client.Anim.Tweens)
 
 -- Types
 
-export type Kind = "primary" | "secondary" | "tile" | "cta"
+export type Kind = "primary" | "secondary" | "tile" | "cta" | "close"
 export type State = "normal" | "disabled" | "loading"
 export type SoundHook = (key: string) -> ()
 
@@ -179,6 +186,13 @@ local CTA_PADDING_X = 22
 local LINE_GAP = 8 -- between the keycap, the icon and the texts in a row
 local TILE_GAP = 2 -- between a tile's icon and its label
 local BADGE_INSET = 5 -- the badge's centre, inside the top-right corner
+local PRESS_SINK_PX = 2 -- Candy UI: a press sinks the content and shrinks the bevel and drop bands this much
+local RIM_TRANSPARENCY = 0.7 -- the inner rim on a face ...
+local RIM_DISABLED_TRANSPARENCY = 0.9 -- ... and on the disabled face
+local CLOSE_RADIUS = 14
+local CLOSE_ICON_PX = 26
+-- Kinds whose fixed width carries the shine stripes.
+local SHINE_KINDS: { [string]: boolean } = { tile = true, close = true, cta = true, primary = true }
 local STYLES: { [string]: Style } = {
 	primary = {
 		accent = "strawberry",
@@ -191,7 +205,7 @@ local STYLES: { [string]: Style } = {
 		iconPx = 24,
 	},
 	secondary = {
-		accent = "frosting",
+		accent = "plum",
 		radius = Theme.Radius.button,
 		top = Theme.Foam.button.top,
 		bevel = Theme.Foam.button.bevel,
@@ -219,6 +233,16 @@ local STYLES: { [string]: Style } = {
 		paddingX = CTA_PADDING_X,
 		height = CTA_HEIGHT,
 		iconPx = 44,
+	},
+	close = {
+		accent = "red",
+		radius = CLOSE_RADIUS,
+		top = Theme.Foam.button.top,
+		bevel = Theme.Foam.button.bevel,
+		drop = Theme.Foam.button.drop,
+		paddingX = 0,
+		height = TOUCH.closeButton,
+		iconPx = CLOSE_ICON_PX,
 	},
 }
 for _, style in STYLES do
@@ -459,13 +483,17 @@ function Button.new(spec: Spec): Button
 	local kind: Kind = spec.kind or "secondary"
 	local style = Button.style(kind)
 	local tile = kind == "tile"
+	local iconOnly = kind == "close"
+	local stacked = tile or iconOnly -- the icon above (or, for close, instead of) the label
 	local accent = Theme.accent(spec.accent or style.accent)
-	local fixedWidth: number? = spec.width or (if tile then TILE_SIZE else nil)
 	local height = math.max(spec.height or style.height, TOUCH.minTarget)
+	local fixedWidth: number? = spec.width or (if tile then TILE_SIZE elseif iconOnly then height else nil)
 	local soundOn = spec.sound ~= false
 	-- The content is raised by half the bands so it sits centred on the face.
 	local shift = (style.bevel + style.drop - style.top) / 2
-	local inLine = not tile and (spec.icon ~= nil or spec.keycap ~= nil or spec.subtext ~= nil)
+	local iconName: string? = spec.icon or (if iconOnly then "close" else nil)
+	local inLine = not stacked and (spec.icon ~= nil or spec.keycap ~= nil or spec.subtext ~= nil)
+	local sink = 0 -- the press squish now (PRESS_SINK_PX while pressed)
 
 	local root: TextButton = Create("TextButton", {
 		Name = spec.name,
@@ -484,11 +512,24 @@ function Button.new(spec: Spec): Button
 		drop = style.drop,
 		colors = Theme.accentColors(spec.accent or style.accent, true),
 	})
+	local rim = Theme.rim(root, Theme.Colors.white, RIM_TRANSPARENCY)
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, style.paddingX),
 		PaddingRight = UDim.new(0, style.paddingX),
 		Parent = root,
 	})
+	-- Candy UI: the shine stripes, only while the width is fixed (an overlay inside an automatically sized button would
+	-- inflate it); under the content (ZIndex 0).
+	local function applyShine(on: boolean)
+		local existing = root:FindFirstChild("SD_Shine")
+		if on and SHINE_KINDS[kind] then
+			local shine = Theme.shine(root, style.radius)
+			shine.ZIndex = 0
+		elseif existing then
+			existing:Destroy()
+		end
+	end
+	applyShine(fixedWidth ~= nil)
 
 	local content: Frame = Create("Frame", {
 		Name = "Content",
@@ -498,7 +539,7 @@ function Button.new(spec: Spec): Button
 		AutomaticSize = if fixedWidth then Enum.AutomaticSize.None else Enum.AutomaticSize.X,
 		Parent = root,
 	})
-	Theme.list(Enum.FillDirection.Vertical, if tile then TILE_GAP else 0, content)
+	Theme.list(Enum.FillDirection.Vertical, if stacked then TILE_GAP else 0, content)
 
 	-- A row (keycap, icon, the label over the subtext) for a non-tile button with any of those parts.
 	local line: Frame? = nil
@@ -526,13 +567,13 @@ function Button.new(spec: Spec): Button
 	end
 
 	local icon: IconGlyph.IconGlyph? = nil
-	if spec.icon then
+	if iconName then
 		icon = IconGlyph.new({
 			name = "Icon",
-			icon = spec.icon,
+			icon = iconName,
 			sizePx = spec.iconSize or style.iconPx,
-			layoutOrder = if tile then 0 else 2,
-			parent = if tile then content else line,
+			layoutOrder = if stacked then 0 else 2,
+			parent = if stacked then content else line,
 		})
 		cleanup:add(icon)
 	end
@@ -549,6 +590,7 @@ function Button.new(spec: Spec): Button
 	local label = Theme.label({
 		Name = "Label",
 		Text = spec.text,
+		Visible = not iconOnly,
 		LayoutOrder = 1,
 		Size = UDim2.fromScale(if wraps then 1 else 0, 0),
 		AutomaticSize = if wraps then Enum.AutomaticSize.Y else Enum.AutomaticSize.XY,
@@ -672,7 +714,7 @@ function Button.new(spec: Spec): Button
 			elseif accent.light then
 				Theme.textOnLight(text)
 			else
-				Theme.textOnColor(text)
+				Theme.textOnColor(text, nil, accent.face)
 			end
 		end
 		Theme.textOnLight(reasonLabel, Theme.Colors.ink2)
@@ -686,8 +728,18 @@ function Button.new(spec: Spec): Button
 	end
 
 	local function refreshVisual(animate: boolean)
+		-- Candy UI: a press sinks into the foam (the bands shrink, the content drops as much); none under ReducedMotion.
+		local newSink = if feel.pressed and state == "normal" and not Tweens.reducedMotion() then PRESS_SINK_PX else 0
+		if newSink ~= sink then
+			sink = newSink
+			foam:setBands(style.top, math.max(0, style.bevel - sink), math.max(0, style.drop - sink))
+			if wiggleHandle == nil then
+				content.Position = UDim2.fromOffset(0, sink - shift)
+			end
+		end
 		foam:paint(surfaceColors())
 		foam:setStroke(if state == "disabled" then Theme.Colors.disabledStroke else Theme.Colors.inkUI)
+		rim.Transparency = if state == "disabled" then RIM_DISABLED_TRANSPARENCY else RIM_TRANSPARENCY
 		feel.refresh(animate)
 	end
 
@@ -696,7 +748,7 @@ function Button.new(spec: Spec): Button
 			wiggleHandle:disconnect()
 			wiggleHandle = nil
 		end
-		content.Position = UDim2.fromOffset(0, -shift)
+		content.Position = UDim2.fromOffset(0, sink - shift)
 	end
 	cleanup:add(stopWiggle)
 
@@ -828,10 +880,10 @@ function Button.new(spec: Spec): Button
 		if row then
 			row.Visible = not loading
 		else
-			label.Visible = not loading
+			label.Visible = not loading and not iconOnly
 		end
 		local glyph = icon
-		if glyph and tile then
+		if glyph and stacked then
 			glyph.root.Visible = not loading
 		end
 		reasonLabel.Text = if disabled and reason then reason else ""
@@ -874,6 +926,7 @@ function Button.new(spec: Spec): Button
 			text.AutomaticSize = if fixed then Enum.AutomaticSize.Y else Enum.AutomaticSize.XY
 			text.TextWrapped = fixed
 		end
+		applyShine(fixed)
 	end
 
 	function self.setAccent(_: Button, name: Theme.AccentName)

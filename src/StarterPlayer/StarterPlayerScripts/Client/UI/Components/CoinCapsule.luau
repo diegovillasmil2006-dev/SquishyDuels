@@ -9,6 +9,9 @@
 -- (discPx, ZIndex 2, `disc.root` for the icon wiggle) at its left edge, over the left end of a Frosting foam capsule
 -- (heightPx tall, bevel 5, drop 4) that starts under the disc's centre and grows with the number (HudNumber kind, the
 -- display font). The root is discPx tall (the touch target: at least Config.UI.Touch.minTarget).
+-- Candy UI (UI overhaul 2026-10-11): the capsule is a dark window pill (Theme.panelColors, the inner rim) and the number
+-- a Coin-gold gradient (GOLD_TOP -> GOLD_BOTTOM over the white text) with the PlumInk outline of the HudNumber kind,
+-- the bold currency read of the references; the coin disc keeps the game's coin tokens.
 
 -- Services
 
@@ -53,6 +56,9 @@ local DEFAULT_DISC_PX = 52
 local DEFAULT_HEIGHT_PX = 44
 local TEXT_GAP_PX = 8 -- between the disc's right edge and the number
 local PADDING_RIGHT_PX = 18
+-- Candy UI: the number's gold gradient (Coins only, §7.2: the coin colours stay with the coin).
+local GOLD_TOP = Color3.fromHex("#FFF4B8")
+local GOLD_BOTTOM = Color3.fromHex("#FFC63A")
 
 -- Module table
 
@@ -95,8 +101,9 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 		top = top,
 		bevel = bands.bevel,
 		drop = bands.drop,
-		colors = Theme.accentColors("frosting", true),
+		colors = Theme.panelColors(),
 	})
+	Theme.rim(capsule)
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, disc / 2 + TEXT_GAP_PX),
 		PaddingRight = UDim.new(0, PADDING_RIGHT_PX),
@@ -113,6 +120,12 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 		TextWrapped = false,
 		Parent = capsule,
 	}, spec.textKind or "HudNumber")
+	Create("UIGradient", {
+		Name = "SD_GoldText",
+		Rotation = 90,
+		Color = ColorSequence.new(GOLD_TOP, GOLD_BOTTOM),
+		Parent = label,
+	})
 
 	local icon = CoinIcon.new({ name = "CoinIcon", sizePx = disc, parent = root })
 	cleanup:add(icon)

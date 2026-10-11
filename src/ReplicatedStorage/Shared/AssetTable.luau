@@ -241,6 +241,9 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.icon.clock", "image", IMAGE_NOTE),
 	otherSlot("img.icon.upgrade", "image", IMAGE_NOTE),
 	otherSlot("img.icon.inspect", "image", IMAGE_NOTE),
+	-- UI overhaul (2026-10-11): the chunky close X of every window and the check of a claimed or owned state.
+	otherSlot("img.icon.close", "image", IMAGE_NOTE),
+	otherSlot("img.icon.check", "image", IMAGE_NOTE),
 }
 
 -- The content string of an asset id: positive integers only, else nil.

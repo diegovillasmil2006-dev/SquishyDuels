@@ -13,6 +13,10 @@
 --   * CountBadge.text hides counts below 1 and caps them at 99; ProgressBar.clamp keeps 0..1; a Keycap reads its text
 --     through KeyText; a Chip's text follows its face; the CoinCapsule is a touch-sized button around the coin disc.
 -- Fill widths read back from a UDim (32-bit floats) are compared within UDIM_TOLERANCE (foam fix batch: 1e-9 failed).
+-- Candy UI (UI overhaul 2026-10-11): every kind (and the new close kind) has the PlumInk outline plus the SD_Rim inner
+-- rim; the outlined-text rule starts at the Chip kind (16 px), so tile and chip labels on an accent are outlined white;
+-- the secondary kind is the plum neutral (white label); a press of a fixed-width kind keeps its shine under the content;
+-- the Keycap is a light sticker with PlumInk letters.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -27,10 +31,11 @@ local function noop() end
 -- they are compared within this tolerance (as the other Roblox-value tests do), never 1e-9.
 local UDIM_TOLERANCE = 1e-4
 
+-- The outlines of a surface (its UIStrokes but the SD_Rim inner rim).
 local function strokesOf(object: Instance): number
 	local n = 0
 	for _, child in object:GetChildren() do
-		if child:IsA("UIStroke") then
+		if child:IsA("UIStroke") and child.Name ~= "SD_Rim" then
 			n += 1
 		end
 	end
@@ -54,8 +59,8 @@ return function(t: Context)
 	local WHITE = Color3.new(1, 1, 1)
 	local MIN_TARGET = Config.UI.Touch.minTarget
 
-	t.test("every Button kind: stable name, Label and Reason, touch height, one foam outline", function()
-		for _, kind in { "primary", "secondary", "tile", "cta" } do
+	t.test("every Button kind: stable name, Label and Reason, touch height, one foam outline and a rim", function()
+		for _, kind in { "primary", "secondary", "tile", "cta", "close" } do
 			local button =
 				Button.new({ name = "Test_" .. kind .. "Button", text = "Go", kind = kind, onActivated = noop })
 			local root = button.root
@@ -66,6 +71,7 @@ return function(t: Context)
 			expect.truthy(root:FindFirstChild("SD_Foam") ~= nil)
 			expect.equal(strokesOf(root), 1)
 			expect.equal((root:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.inkUI)
+			expect.truthy(root:FindFirstChild("SD_Rim") ~= nil)
 			expect.equal(button:getState(), "normal")
 			button:destroy()
 			expect.equal(root.Parent, nil)
@@ -79,14 +85,22 @@ return function(t: Context)
 		expect.truthy((label:FindFirstChild("SD_Outline") :: UIStroke).Enabled)
 		primary:destroy()
 
+		-- The plum neutral: outlined white too.
 		local secondary = Button.new({ name = "S", text = "Inspect", onActivated = noop })
 		local plain = secondary.root:FindFirstChild("Label", true) :: TextLabel
-		expect.equal(plain.TextColor3, Theme.Colors.inkUI)
-		local outline = plain:FindFirstChild("SD_Outline") :: UIStroke?
-		expect.truthy(outline == nil or not outline.Enabled)
+		expect.equal(plain.TextColor3, WHITE)
 		secondary:destroy()
 
-		local small = Button.new({ name = "C", text = "Go", kind = "primary", textKind = "Chip", onActivated = noop })
+		-- A light face (the sticker accent): PlumInk, no outline.
+		local light = Button.new({ name = "L", text = "Inspect", accent = "frosting", onActivated = noop })
+		local dark = light.root:FindFirstChild("Label", true) :: TextLabel
+		expect.equal(dark.TextColor3, Theme.Colors.inkUI)
+		local outline = dark:FindFirstChild("SD_Outline") :: UIStroke?
+		expect.truthy(outline == nil or not outline.Enabled)
+		light:destroy()
+
+		-- A Small (body) label on a saturated accent: PlumInk.
+		local small = Button.new({ name = "C", text = "Go", kind = "primary", textKind = "Small", onActivated = noop })
 		expect.equal((small.root:FindFirstChild("Label", true) :: TextLabel).TextColor3, Theme.Colors.inkUI)
 		small:destroy()
 	end)
@@ -115,9 +129,24 @@ return function(t: Context)
 		expect.equal((badge:FindFirstChild("Count") :: TextLabel).Text, "3")
 		tile:setBadge(0)
 		expect.falsy(badge.Visible)
-		-- A tile label is the Chip kind: InkUI on the accent (below the 18 px outline size).
-		expect.equal(label.TextColor3, Theme.Colors.inkUI)
+		-- A tile label is the Chip kind: outlined white on the accent (Candy UI: the rule starts at 16 px).
+		expect.equal(label.TextColor3, WHITE)
+		-- A fixed-width tile carries the shine under its content.
+		local shine = root:FindFirstChild("SD_Shine") :: Frame
+		expect.truthy(shine ~= nil)
+		expect.equal(shine.ZIndex, 0)
 		tile:destroy()
+
+		-- The close kind: a square red X, its label kept but hidden.
+		local close = Button.new({ name = "Test_CloseButton", text = "Close", kind = "close", onActivated = noop })
+		expect.equal(close.root.Size.X.Offset, close.root.Size.Y.Offset)
+		local closeLabel = close.root:FindFirstChild("Label", true) :: TextLabel
+		expect.equal(closeLabel.Text, "Close")
+		expect.falsy(closeLabel.Visible)
+		expect.truthy(close.root:FindFirstChild("Icon", true) ~= nil)
+		close:setState("normal")
+		expect.falsy(closeLabel.Visible)
+		close:destroy()
 
 		local plain = Button.new({ name = "NoBadge", text = "Go", onActivated = noop })
 		plain:setBadge(0)
@@ -178,7 +207,8 @@ return function(t: Context)
 		expect.equal(Button.widthFor("Go"), wide) -- the default kind has the primary padding
 		expect.equal(Button.style("tile").bevel, Theme.Foam.tile.bevel)
 		expect.equal(Button.style("cta").drop, Theme.Foam.cta.drop)
-		expect.equal(Button.style("nope" :: any).accent, "frosting")
+		expect.equal(Button.style("nope" :: any).accent, "plum")
+		expect.equal(Button.style("close").accent, "red")
 
 		local button = Button.new({ name = "W", text = "Confirm: 25,000 Coins", onActivated = noop })
 		local label = button.root:FindFirstChild("Label", true) :: TextLabel
@@ -192,6 +222,15 @@ return function(t: Context)
 		expect.equal(button.root.AutomaticSize, Enum.AutomaticSize.X)
 		expect.falsy(label.TextWrapped)
 		button:destroy()
+
+		-- A primary gets its shine only while its width is fixed (an overlay would inflate an automatic width).
+		local primary = Button.new({ name = "P", text = "Buy", kind = "primary", onActivated = noop })
+		expect.equal(primary.root:FindFirstChild("SD_Shine"), nil)
+		primary:setWidth(160)
+		expect.truthy(primary.root:FindFirstChild("SD_Shine") ~= nil)
+		primary:setWidth(nil)
+		expect.equal(primary.root:FindFirstChild("SD_Shine"), nil)
+		primary:destroy()
 	end)
 
 	t.test("CountBadge: hidden below 1, capped at 99", function()
@@ -238,7 +277,7 @@ return function(t: Context)
 		expect.falsy(cap.root.Visible)
 		cap:setKey("controls.key.inspectGamepad")
 		expect.equal(cap.label.Text, Strings.controls.key.inspectGamepad)
-		expect.equal(cap.label.TextColor3, Theme.Colors.frosting)
+		expect.equal(cap.label.TextColor3, Theme.Colors.inkUI) -- Candy UI: a light sticker key
 		cap:destroy()
 	end)
 
@@ -246,7 +285,9 @@ return function(t: Context)
 		local chip = Chip.new({ name = "EquippedChip", text = "Equipped" })
 		expect.equal(chip.label.TextColor3, Theme.Colors.inkUI)
 		chip:setAccent("strawberry")
-		expect.equal(chip.label.TextColor3, Theme.Colors.inkUI) -- Chip kind: below the outline size
+		expect.equal(chip.label.TextColor3, WHITE) -- Candy UI: the Chip kind is outlined white on an accent
+		chip:setAccent("gold")
+		expect.equal(chip.label.TextColor3, Theme.Colors.inkUI) -- a light accent: PlumInk
 		chip:setColor(Color3.fromHex("#7C3AED"), WHITE)
 		expect.equal(chip.label.TextColor3, WHITE)
 		chip:setText("Epic")

@@ -63,6 +63,44 @@ local Palette = {
 	DisabledShade = Color3.fromHex("#D9CFC2"),
 	DisabledText = Color3.fromHex("#8C8290"),
 
+	-- Candy UI tokens (UI overhaul 2026-10-11: the bold, outlined look of the Steal an Egg references in Squishy Duels'
+	-- own candy colours; read through UI/Theme, which maps them to its semantic names). Windows are dark plum with heavy
+	-- plum outlines; colour carries purpose: Coral brand / duel, Lavender boxes and reveals, Cyan info and daily, Mint
+	-- quests and success, Lime shop and buying, Gold Coins and celebration, Red close / cancel / errors. Each accent has a
+	-- face and a bevel shade. Text on the dark surfaces is WarmWhite (14.1:1 on PanelBody), captions TextMuted (8.0:1),
+	-- hints TextFaint (4.9:1); text on an accent face is white with the PlumInk outline (display kinds) or PlumInk.
+	CandyCoral = Color3.fromHex("#FF5B91"),
+	CandyCoralShade = Color3.fromHex("#D93C75"),
+	CandyLavender = Color3.fromHex("#AB78FF"),
+	CandyLavenderShade = Color3.fromHex("#8452E6"),
+	CandyCyan = Color3.fromHex("#36C9FF"),
+	CandyCyanShade = Color3.fromHex("#169FDA"),
+	CandyMint = Color3.fromHex("#47D7AE"),
+	CandyMintShade = Color3.fromHex("#22AE88"),
+	CandyLime = Color3.fromHex("#8DEE42"),
+	CandyLimeShade = Color3.fromHex("#5CBF1D"),
+	CandyGold = Color3.fromHex("#FFD451"),
+	CandyGoldShade = Color3.fromHex("#E0A72A"),
+	CandyRed = Color3.fromHex("#FF414F"),
+	CandyRedShade = Color3.fromHex("#C92738"),
+	CandyPlum = Color3.fromHex("#5E4F78"), -- the neutral (secondary) button face; white text
+	CandyPlumShade = Color3.fromHex("#45395A"),
+	-- Surfaces.
+	PlumInk = Color3.fromHex("#251B32"), -- every UI outline; text on light faces
+	PanelBody = Color3.fromHex("#30283E"), -- window and card body
+	PanelRaised = Color3.fromHex("#443951"), -- a raised card or row on a window
+	PanelRecess = Color3.fromHex("#1F1829"), -- recessed fields, bar and switch tracks
+	PanelBevel = Color3.fromHex("#211A2C"), -- the dark bevel band under a dark surface
+	PanelRim = Color3.fromHex("#8E7BB0"), -- the inner rim highlight (drawn mostly transparent)
+	WarmWhite = Color3.fromHex("#FFF8EE"), -- text on dark surfaces; the light "sticker" face
+	TextMuted = Color3.fromHex("#C9BEDA"), -- captions on dark surfaces
+	TextFaint = Color3.fromHex("#9D91B0"), -- hints on dark surfaces
+	StickerBevel = Color3.fromHex("#E3CFB4"), -- the bevel band under a light sticker (chips, world labels)
+	DisabledFaceDark = Color3.fromHex("#4A4159"),
+	DisabledShadeDark = Color3.fromHex("#3A3248"),
+	DisabledTextDark = Color3.fromHex("#ABA0BB"),
+	Backdrop = Color3.fromHex("#140E1C"), -- the modal dimmer and wash
+
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),
 	CoinRing = Color3.fromHex("#D99A1E"),

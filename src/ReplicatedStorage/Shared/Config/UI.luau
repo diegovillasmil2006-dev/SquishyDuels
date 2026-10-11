@@ -66,24 +66,36 @@ local UI = {
 		SD_Fade = { displayOrder = 40, insets = Enum.ScreenInsets.None },
 	} :: { [string]: ScreenGuiSpec },
 
-	-- UI motion and button states (§9.13, with the feel pass values of §18.5.2 / §18.8). Under ReducedMotion scale
-	-- effects are off and fades <= maxFadeMs.
+	-- UI motion and button states (§9.13, with the feel pass values of §18.5.2 / §18.8; UI overhaul 2026-10-11: the
+	-- elastic, snappy targets of the overhaul brief). Under ReducedMotion scale effects are off and fades <= maxFadeMs.
 	motion = {
+		-- UI overhaul: the panel pops scaleFrom -> overshoot over overshootShare of ms (Quad Out), then settles to 1 (Quad
+		-- InOut), rising riseShare of its height into place; the backdrop fades in over backdropMs. `style` / `direction`
+		-- stay the one-tween fallback (the banner's pop).
 		modalOpen = {
-			ms = 240, -- §18.8: 180 -> 240
+			ms = 300, -- overhaul: 240 -> 300 (two phases)
 			style = Enum.EasingStyle.Back,
 			direction = Enum.EasingDirection.Out,
-			scaleFrom = 0.88, -- §18.8: 0.94 -> 0.88
-			dimmerTransparency = 0.45, -- dimmer 1 -> 0.45
+			scaleFrom = 0.9, -- overhaul: 0.88 -> 0.9
+			overshoot = 1.03,
+			overshootShare = 0.6,
+			riseShare = 0.03,
+			dimmerTransparency = 0.5, -- the Backdrop colour 1 -> 0.5
+			backdropMs = 150,
 		},
 		-- The logical close is immediate; visually the root stays visualMs while UIScale goes 1 -> scaleTo (§18.5.2 B4).
 		modalClose = {
-			ms = 120,
+			ms = 160, -- overhaul: 120 -> 160 (the backdrop)
 			style = Enum.EasingStyle.Quad,
 			direction = Enum.EasingDirection.In,
-			scaleTo = 0.92,
-			visualMs = 100,
+			scaleTo = 0.9, -- overhaul: a brief inward squish
+			visualMs = 150,
 		},
+		-- UI overhaul: collectible cards pop in one after another the first time a grid fills (and when a tab or filter
+		-- shows a new set): staggerMs apart, never more than maxStaggerMs for the whole set, each scaleFrom -> 1 over ms.
+		cardIn = { staggerMs = 18, maxStaggerMs = 260, ms = 220, scaleFrom = 0.86 },
+		-- UI overhaul: a tab's content settles in (never the whole panel): scaleFrom -> 1 over ms.
+		tabSettle = { ms = 140, scaleFrom = 0.97 },
 		tabSwitch = { ms = 120, slidePx = 12 },
 		-- §18.5.2 B5: a UIScale pop popFrom -> 1 (Back Out, ms) with the slide; a re-armed toast nudges nudgeScale -> 1.
 		toast = {
@@ -126,8 +138,8 @@ local UI = {
 			bounceMinGapMs = 334,
 			countTailMs = 400,
 		},
-		buttonHover = { ms = 80, scale = 1.04, fillDelta = 0.08 },
-		buttonPressed = { ms = 60, scale = 0.92, fillDelta = -0.1 }, -- §18.8: scale 0.95 -> 0.92
+		buttonHover = { ms = 120, scale = 1.05, fillDelta = 0.08 }, -- overhaul: 80 ms 1.04 -> 120 ms 1.05
+		buttonPressed = { ms = 70, scale = 0.94, fillDelta = -0.1 }, -- overhaul: 60 ms 0.92 -> 70 ms 0.94
 		-- The springy release (§18.5.2 B3): Util/Spring from the current scale to the target (≈ 2.98 Hz, under §9.12's
 		-- 3 Hz); ms / style / direction stay as the fallback tween.
 		buttonRelease = {

@@ -7,6 +7,8 @@
 -- A Biscuit pill track with the InkUI 2 px outline of bars; the fill is a pill in the accent (default Mint) with its
 -- shade along the bottom (FILL_BEVEL_SHARE of the height). The fill hides at 0. The bar shows a share only: a "12 / 20"
 -- text goes next to it, never inside it (the caller's label). ProgressBar.clamp(fraction) is the shown share, pure.
+-- Candy UI (UI overhaul 2026-10-11): the track is the dark recess (Colors.biscuit) and the fill a glossy jelly: a light
+-- band along its top (FILL_GLOSS_SHARE of the height, the face towards white) over the face and its shade.
 
 -- Services
 
@@ -49,6 +51,13 @@ export type ProgressBar = {
 
 local DEFAULT_HEIGHT_PX = 14
 local FILL_BEVEL_SHARE = 0.25 -- the fill's shade band, as a share of the bar's height (the design's 3 of 16 px ≈ 0.2)
+local FILL_GLOSS_SHARE = 0.3 -- Candy UI: the fill's light band along its top
+local FILL_GLOSS_MIX = 0.4 -- how far that band is towards white
+
+-- The fill's foam colours for an accent (Candy UI: the gloss band).
+local function fillColors(accent: Theme.Accent): Theme.FoamColors
+	return { face = accent.face, top = accent.face:Lerp(Color3.new(1, 1, 1), FILL_GLOSS_MIX), bevel = accent.shade }
+end
 local MOTION = Config.UI.motion.barFill
 
 -- Module table
@@ -91,8 +100,9 @@ function ProgressBar.new(spec: Spec): ProgressBar
 	local foam = Theme.foam(fill, {
 		radius = height,
 		stroke = 0,
+		top = height * FILL_GLOSS_SHARE,
 		bevel = height * FILL_BEVEL_SHARE,
-		colors = { face = accent.face, bevel = accent.shade },
+		colors = fillColors(accent),
 		fixedHeight = height,
 	})
 
@@ -136,8 +146,7 @@ function ProgressBar.new(spec: Spec): ProgressBar
 	end
 
 	function self.setAccent(_: ProgressBar, name: Theme.AccentName)
-		local picked = Theme.accent(name)
-		foam:paint({ face = picked.face, bevel = picked.shade })
+		foam:paint(fillColors(Theme.accent(name)))
 	end
 
 	function self.destroy(_: ProgressBar)

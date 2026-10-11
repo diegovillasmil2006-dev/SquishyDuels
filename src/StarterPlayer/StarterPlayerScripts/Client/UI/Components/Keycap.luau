@@ -68,11 +68,13 @@ function Keycap.new(spec: Spec): Keycap
 		LayoutOrder = spec.layoutOrder or 0,
 	})
 	cleanup:add(root)
+	-- Candy UI: a light sticker key (WarmWhite, its light bevel as the drop, PlumInk letters), readable on the dark
+	-- surfaces and on every accent face.
 	Theme.foam(root, {
 		radius = math.floor(size * RADIUS_SHARE),
-		stroke = 0,
+		stroke = Theme.Stroke.thin,
 		drop = DROP_PX,
-		colors = { face = Theme.Colors.inkUI, drop = Theme.Colors.ink2 },
+		colors = { face = Theme.Colors.frosting, drop = Theme.Colors.stickerBevel },
 	})
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, PADDING_X),
@@ -89,7 +91,7 @@ function Keycap.new(spec: Spec): Keycap
 		TextWrapped = false,
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = root,
-	}, "Chip", nil, Theme.Colors.frosting)
+	}, "Chip", nil, Theme.Colors.inkUI)
 
 	local self = {} :: Keycap
 	self.root = root

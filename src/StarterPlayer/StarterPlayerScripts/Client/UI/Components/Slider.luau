@@ -176,7 +176,7 @@ function Slider.new(spec: Spec): Slider
 		radius = KNOB_PX,
 		bevel = KNOB_BEVEL_PX,
 		drop = KNOB_DROP_PX,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.bevel, drop = Theme.Colors.inkUI },
+		colors = Theme.stickerColors(), -- Candy UI: a light sticker knob on the dark track
 	})
 
 	local function paint()

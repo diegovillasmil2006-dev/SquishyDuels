@@ -696,8 +696,9 @@ return function(t: Context)
 	t.test("popup colours (foam UI): CoinGold only for Coins, Grip Mint, slow training Lilac", function()
 		local Palette = t.requireShared("Art/Palette")
 		expect.equal(SqueezeController.popupColor("coins"), Palette.CoinGold)
-		expect.equal(SqueezeController.popupColor("grip"), Palette.UIMint)
-		expect.equal(SqueezeController.popupColor("afk"), Palette.UILilac)
+		-- Candy UI (2026-10-11): the Mint and Lavender accents.
+		expect.equal(SqueezeController.popupColor("grip"), Palette.CandyMint)
+		expect.equal(SqueezeController.popupColor("afk"), Palette.CandyLavender)
 		-- The reserved coin colours never mark a Grip line.
 		for _, kind in { "grip", "afk" } do
 			local color = SqueezeController.popupColor(kind)

@@ -83,9 +83,10 @@ end
 function ScrollHint.new(spec: Spec): ScrollHint
 	local cleanup = Cleanup.new()
 	local scroll = spec.scroll
+	-- Candy UI: a light rail and thumb, so they read on the dark windows.
 	local rail: Frame = Create("Frame", {
 		Name = spec.name or "ScrollRail",
-		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundColor3 = Theme.Colors.text,
 		BackgroundTransparency = TRACK_TRANSPARENCY,
 		BorderSizePixel = 0,
 		Size = UDim2.fromOffset(scroll.ScrollBarThickness, 0), -- nothing shows before the caller sizes it
@@ -98,7 +99,7 @@ function ScrollHint.new(spec: Spec): ScrollHint
 	Theme.corner(Theme.Radius.pill, rail)
 	local thumb: Frame = Create("Frame", {
 		Name = "Thumb",
-		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundColor3 = Theme.Colors.ink2,
 		BorderSizePixel = 0,
 		Active = false,
 		Selectable = false,
