@@ -13,7 +13,8 @@
 --   CrackCanvas.ops(change, base, size) -> { Op }    the DrawLine calls of one CrackNetwork Change on a size² atlas: the
 --     halo across the line (offsets 0 and ±Config.Wax.canvas.haloOffsets px, the outermost pair at haloFalloff: the
 --     design's smoothstep halo, squish.js:86), then the line; "across" is y for a mostly horizontal segment, else x;
---     each op's transparency is 1 - stepAlpha(its alpha now, its alpha at change.previous)
+--     each op's transparency is 1 - stepAlpha(its alpha now, its alpha at change.previous); every point is clamped
+--     into [0, size - 1] (EditableImage:DrawLine errors on a point outside the image, which stopped the knead)
 --   CrackCanvas.fills(shell, colors, size) -> { Fill }   the whole image in colors[1], then each part's tile one pixel
 --     wider each side (the shelf packer's gutters) in colors[part]
 -- The atlas:
@@ -101,12 +102,17 @@ function CrackCanvas.ops(change: Change, base: Color3, size: number): { Op }
 	local before = if change.alpha > 0 then change.previous / change.alpha else 0
 	local ops: { Op } = {}
 	local haloColor = CrackCanvas.haloColor(base)
+	-- A tile on the atlas' far edge ends 2 px (gutterTexels) inside it, so a halo offset can reach x or y = size.
+	local edge = size - 1
+	local function inside(point: Vector2): Vector2
+		return Vector2.new(math.clamp(point.X, 0, edge), math.clamp(point.Y, 0, edge))
+	end
 	local function add(offset: number, color: Color3, target: number)
 		local step = CrackCanvas.stepAlpha(target, target * before)
 		if step > 0 then
 			table.insert(ops, {
-				from = from + across * offset,
-				to = to + across * offset,
+				from = inside(from + across * offset),
+				to = inside(to + across * offset),
 				color = color,
 				transparency = 1 - step,
 			})

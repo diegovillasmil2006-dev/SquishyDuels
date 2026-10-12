@@ -6,6 +6,7 @@
 --   * a change draws its halo across the line (offsets 0, ±1 at the halo's alpha, ±2 at half of it; across = the
 --     other axis than the segment's main one), then the line; each blend only adds what is missing since the
 --     previous step: (new - previous) / (1 - previous), as a transparency of 1 - that;
+--   * every point of the plan is inside the image, [0, size - 1] (DrawLine errors on one outside it);
 --   * the fill: the whole image in the first part's colour, then each part's tile (its UV rectangle in pixels, one
 --     pixel wider each side) in its own colour.
 
@@ -104,6 +105,41 @@ return function(t: Context)
 		local lineNow = 0.75 * LINES.lineAlpha * LINES.octave2Line
 		local lineBefore = 0.5 * LINES.lineAlpha * LINES.octave2Line
 		expect.near(vertical[#vertical].transparency, 1 - CrackCanvas.stepAlpha(lineNow, lineBefore), 1e-9)
+	end)
+
+	-- EditableImage:DrawLine errors on a point outside the image ("expects p2 to be within EditableImage bounds"): a
+	-- halo offset on a tile at the atlas' far edge reached x = size and stopped the knead a few seconds in.
+	t.test("every point stays inside the image: edge cracks and their halos are clamped to [0, size - 1]", function()
+		local base = Color3.new(0.5, 0.5, 0.5)
+		local function change(u0: number, v0: number, u1: number, v1: number)
+			return {
+				segment = 1,
+				octave = 1,
+				part = 1,
+				u0 = u0,
+				v0 = v0,
+				u1 = u1,
+				v1 = v1,
+				alpha = 1,
+				previous = 0,
+				line = LINES.lineAlpha,
+				halo = LINES.haloWhiten,
+			}
+		end
+		-- A vertical crack on the far right edge (halo across in x) and a horizontal one on the top edge (across in y).
+		for _, edgeChange in { change(0.98, 0.5, 1, 0.9), change(0.1, 0, 0.6, 0.01) } do
+			local ops = CrackCanvas.ops(edgeChange, base, 100)
+			expect.equal(#ops, 1 + 2 * #CANVAS.haloOffsets + 1)
+			for _, op in ops do
+				for _, point in { op.from, op.to } do
+					expect.truthy(point.X >= 0 and point.X <= 99 and point.Y >= 0 and point.Y <= 99)
+				end
+			end
+		end
+		-- The right-edge line itself ends on the last column; its near halo keeps its offset.
+		local ops = CrackCanvas.ops(change(0.98, 0.5, 1, 0.9), base, 100)
+		expect.near(ops[#ops].to.X, 99, 1e-6)
+		expect.near(ops[3].from.X, 98 - CANVAS.haloOffsets[1], 1e-6)
 	end)
 
 	t.test("the fill: the image in the first part's colour, then each tile one pixel wider", function()
