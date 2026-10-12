@@ -17,7 +17,9 @@
 --                 Void and practice never count for duel templates.
 --   needsSquishy  the quest names a squishy ({squishy} in its text): equipped with Economy.Quests.equippedPickChance
 --                 if owned, else uniform from the sorted owned list
---   variants      { {goal, reward} }: one is drawn per quest (a starter task has exactly one)
+--   variants      { {goal, reward} }: one is drawn per quest (a starter task has exactly one). The reward is counted
+--                 in squeezes (spec 2026-10-12 §9: the same numbers; Phase 3 pays reward × the player's squeeze value
+--                 Coins); until then it is paid as written, in Coins.
 --   textPair      Strings path of a { one, many } pair (`quest.template.squeezeAny`, `quest.starterTask.jelly`)
 --   minTier       starter_jelly only: counts accepted squeezes at a station of GripTier >= minTier (§17.10)
 --

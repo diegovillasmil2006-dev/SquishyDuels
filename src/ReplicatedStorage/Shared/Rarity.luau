@@ -10,9 +10,9 @@
 --   Rarity.isValid(r)       -> boolean
 --   Rarity.compare(a, b)    -> number: < 0 when a ranks below b, 0 when equal, > 0 when above. Anything that is
 --                              not a rarity ranks below Common. Sort "rarity descending" with compare(x, y) > 0.
---   Rarity.refund(r)        -> number? Coins for a duplicate box result (Config.Economy.DuplicateRefund, §6.5)
+-- A duplicate box result's refund no longer depends on the rarity (spec 2026-10-12 §8): Pricing.duplicateRefund(boxId)
+-- (Rarity.refund is gone).
 
-local Config = require(script.Parent.Config)
 local Types = require(script.Parent.Types)
 
 -- Types
@@ -102,13 +102,6 @@ end
 
 function Rarity.compare(a: unknown, b: unknown): number
 	return (Rarity.index(a) or 0) - (Rarity.index(b) or 0)
-end
-
-function Rarity.refund(r: unknown): number?
-	if not Rarity.isValid(r) then
-		return nil
-	end
-	return Config.Economy.DuplicateRefund[r :: string]
 end
 
 return table.freeze(Rarity)

@@ -113,7 +113,7 @@ return function(t: Context)
 
 	t.test("entries: every Catalog squishy, sorted by rarity, then price, then name", function()
 		local owned = { kitty_bread = { at = 0 } }
-		local list = ShopFormat.entries(Catalog.list(), owned, 3000, nil, nil)
+		local list = ShopFormat.entries(Catalog.list(), owned, 3_000_000, nil, nil)
 		expect.equal(#list, #Catalog.list())
 		-- Commons first (Kitty Bread is not sold, so after the priced Commons), Dragon last.
 		expect.deepEqual(ids(list), {
@@ -138,13 +138,14 @@ return function(t: Context)
 		end
 		expect.equal(byId.kitty_bread.state, "owned")
 		expect.equal(byId.toast.state, "buy")
-		expect.equal(byId.toast.price, 1200)
+		-- Spec 2026-10-12 §6 prices: Toast 10K, Butter 2.7M, Birdie 1.7B, Dragon 1.1T.
+		expect.equal(byId.toast.price, 10_000)
 		expect.equal(byId.butter.state, "buy")
 		expect.equal(byId.bird.state, "needCoins")
-		expect.equal(byId.bird.missing, 4500)
-		expect.equal(byId.dragon.missing, 22000)
+		expect.equal(byId.bird.missing, 1_697_000_000)
+		expect.equal(byId.dragon.missing, 1_099_997_000_000)
 		-- A buy in flight marks only that card.
-		local buying = ShopFormat.entries(Catalog.list(), owned, 3000, "toast", nil)
+		local buying = ShopFormat.entries(Catalog.list(), owned, 3_000_000, "toast", nil)
 		for _, e in buying do
 			if e.id == "toast" then
 				expect.equal(e.state, "purchasing")
@@ -176,7 +177,7 @@ return function(t: Context)
 
 	t.test("keepSelection keeps a listed selection, else picks the first entry", function()
 		local list = ShopFormat.entries(Catalog.list(), {}, 0, nil, ShopFormat.boxItemIds("snack"))
-		expect.equal(ShopFormat.keepSelection("donut", list), "donut")
+		expect.equal(ShopFormat.keepSelection("butter", list), "butter") -- in the Snack Box (spec 2026-10-12 §8)
 		expect.equal(ShopFormat.keepSelection("dragon", list), list[1].id)
 		expect.equal(ShopFormat.keepSelection(nil, list), list[1].id)
 		expect.equal(ShopFormat.keepSelection("toast", {}), nil)
@@ -272,10 +273,10 @@ return function(t: Context)
 		expect.equal(ShopFormat.coinsView(nil, bundles, {}, true).unavailable, true)
 	end)
 
-	t.test("bundles stay off while Grip is on with allowBundlesWithTrainer false (G-E)", function()
-		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowBundlesWithTrainer = false }), false)
-		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowBundlesWithTrainer = true }), true)
-		expect.equal(ShopFormat.bundlesAllowed({ enabled = false, allowBundlesWithTrainer = false }), true)
+	t.test("bundles stay off while Grip is on with allowBundlesWithCapsules false (G-E)", function()
+		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowBundlesWithCapsules = false }), false)
+		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowBundlesWithCapsules = true }), true)
+		expect.equal(ShopFormat.bundlesAllowed({ enabled = false, allowBundlesWithCapsules = false }), true)
 		expect.equal(ShopFormat.bundlesAllowed(Config.Grip), false) -- the shipped config
 		local fixture =
 			{ { key = "coins_test", nameKey = "bundle.handful", productId = 1, coins = 1000, onSale = true } }

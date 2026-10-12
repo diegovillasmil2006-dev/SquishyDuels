@@ -3,7 +3,8 @@
 -- (ServerStorage.UnitTest). Edit mode: connectAsync() is never called, so nothing can be sent.
 -- Contract (DESIGN §2.7, §2.8, §5.6 #2, §12 #2):
 --   * a C->S call is checked against Remotes.SPEC before sending: exact argument count, each argument's shape
---     (integers, finite numbers, server times below Net.maxAbsServerTime, finite Vector3s, id patterns);
+--     (integers, finite numbers, server times below Net.maxAbsServerTime, Coin amounts up to Economy.maxCoins,
+--     finite Vector3s, id patterns);
 --   * RemoteFunction replies are normalized to {ok, v, data | reason}; anything malformed is `error.generic`;
 --   * seq numbers count up by one per remote, independently for ThrowRequest and UltimateRequest;
 --   * before connecting nothing is sent: fire() returns false and invokeAsync() returns `error.connect` at once;
@@ -40,6 +41,14 @@ return function(t: Context)
 		expect.truthy(check("ThrowRequest", 1, AIM, ORIGIN)) -- missing argument
 		expect.truthy(check("ThrowRequest", 1, AIM, ORIGIN, NOW, 5)) -- extra argument
 		expect.truthy(check("ThrowRequest", 1, "aim", ORIGIN, NOW))
+	end)
+
+	t.test("ShopBuy: a 1.1T price is sent; a fraction, a negative or a price above maxCoins is refused", function()
+		local guid = "0123abcd-4567-89ab-cdef-0123456789ab"
+		expect.equal(check("ShopBuy", "dragon", 1_100_000_000_000, guid), nil) -- Dragon (spec 2026-10-12 §6)
+		expect.truthy(check("ShopBuy", "dragon", 2.5, guid))
+		expect.truthy(check("ShopBuy", "dragon", -1, guid))
+		expect.truthy(check("ShopBuy", "dragon", Config.Economy.maxCoins + 2, guid))
 	end)
 
 	t.test("every C->S remote: the declared argument count, nothing more", function()

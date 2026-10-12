@@ -24,9 +24,10 @@
 -- nextAt is a server time (§17.10): workspace:GetServerTimeNow() + max(0, 1 - tokens) × cycleSeconds, from the os.clock
 -- bucket (with a full cap it is simply now). `limit` is the squeeze Coins limit's whole points left (dormant while the
 -- limit is off). Accepted squeezes ride the autosave (§3.4: no idempotency key; the cap bounds them).
--- Coins alert (spec 2026-10-11 §5, like GripService's gripAlertPerHour): a rolling-hour counter per player of the
--- squeeze Coins really gained logs one [SD][abuse] warning when it passes Config.Grip.squeezeCoinsAlertPerHour; a log
--- only (the squeezes still pay); it re-arms once the hour's Coins are back under it. counts().coinAlerts counts them.
+-- Squeeze alert (spec 2026-10-12 §12, like GripService's gripAlertPerHour; was a squeeze Coins alert): a rolling-hour
+-- counter per player of the paid squeezes logs one [SD][abuse] warning when it passes Config.Grip.squeezeAlertPerHour;
+-- a log only (the squeezes still pay); it re-arms once the hour's squeezes are back under it. counts().squeezeAlerts
+-- counts them.
 -- The equipped squishy comes from InventoryService (the server record); one that is not owned or not in the Catalog
 -- falls back to the starter (§6.3 step 6, §12 #4).
 -- Stale-lobby check (init, after WorldService indexed the lobby): every WorldLayout station is compared with its tagged
@@ -104,7 +105,7 @@ export type StationProblem = {
 
 type Session = {
 	state: SqueezeRules.State,
-	coins: { [number]: number }, -- minute index -> squeeze Coins gained (rolling-hour Coins alert)
+	squeezes: { [number]: number }, -- minute index -> paid squeezes (rolling-hour squeeze alert)
 	alerted: boolean,
 }
 
@@ -113,7 +114,7 @@ type Stats = {
 	paid: number,
 	dropped: number,
 	rejected: { [string]: number },
-	coinAlerts: number, -- Coins alerts logged (squeezeCoinsAlertPerHour)
+	squeezeAlerts: number, -- squeeze alerts logged (squeezeAlertPerHour)
 }
 
 -- Constants
@@ -131,7 +132,7 @@ local FIELD_STATS = "stats"
 local FIELD_LIMIT = "squeezeLimit"
 local REASON_NOT_READY = "data.notReady"
 local NO_REASON = "none" -- counts() key for a rejection without a reason
-local ALERT_WINDOW_MINUTES = 60 -- the Coins alert's rolling hour (GripService's anomaly window)
+local ALERT_WINDOW_MINUTES = 60 -- the squeeze alert's rolling hour (GripService's anomaly window)
 
 -- Module table
 
@@ -148,7 +149,7 @@ local abuseLog = Log.new("abuse")
 
 local sessions: { [any]: Session } = {}
 local disabledStations: { [string]: boolean } = {}
-local stats: Stats = { accepted = 0, paid = 0, dropped = 0, rejected = {}, coinAlerts = 0 }
+local stats: Stats = { accepted = 0, paid = 0, dropped = 0, rejected = {}, squeezeAlerts = 0 }
 
 local function duelPhaseAttribute(player: any): string
 	if typeof(player) ~= "Instance" then
@@ -226,7 +227,7 @@ end
 local function sessionOf(player: any, now: number): Session
 	local session = sessions[player]
 	if session == nil then
-		session = { state = SqueezeRules.newState(now), coins = {}, alerted = false }
+		session = { state = SqueezeRules.newState(now), squeezes = {}, alerted = false }
 		sessions[player] = session
 	end
 	return session
@@ -246,26 +247,26 @@ local function padAt(rootPosition: Vector3?): SqueezeRules.StationInfo?
 	return { tier = station.tier }
 end
 
--- Rolling-hour Coins alert (spec 2026-10-11 §5): logs once when the last hour's squeeze Coins pass
--- Config.Grip.squeezeCoinsAlertPerHour, and re-arms once they are back under it.
-local function recordCoins(player: any, session: Session, coins: number)
+-- Rolling-hour squeeze alert (spec 2026-10-12 §12): logs once when the last hour's paid squeezes pass
+-- Config.Grip.squeezeAlertPerHour, and re-arms once they are back under it.
+local function recordSqueeze(player: any, session: Session)
 	local minute = math.floor(deps.clock() / 60)
-	session.coins[minute] = (session.coins[minute] or 0) + coins
+	session.squeezes[minute] = (session.squeezes[minute] or 0) + 1
 	local sum = 0
-	for m, value in session.coins do
+	for m, value in session.squeezes do
 		if m <= minute - ALERT_WINDOW_MINUTES then
-			session.coins[m] = nil
+			session.squeezes[m] = nil
 		else
 			sum += value
 		end
 	end
-	local alertAbove = Config.Grip.squeezeCoinsAlertPerHour
+	local alertAbove = Config.Grip.squeezeAlertPerHour
 	if sum <= alertAbove then
 		session.alerted = false
 	elseif not session.alerted then
 		session.alerted = true
-		stats.coinAlerts += 1
-		abuseLog:warn(`user {userIdOf(player)} earned {sum} squeeze Coins in the last hour (alert above {alertAbove})`)
+		stats.squeezeAlerts += 1
+		abuseLog:warn(`user {userIdOf(player)} made {sum} paid squeezes in the last hour (alert above {alertAbove})`)
 	end
 end
 
@@ -435,13 +436,13 @@ function SqueezeService.request(player: any): SqueezeResult?
 	end
 	local gain = GripService.addFromSqueeze(player, tier)
 	local gained = if decision.coins > 0 then deps.grantCoins(player, decision.coins, COIN_REASON) else 0
-	recordCoins(player, session, gained)
 	deps.markDirty(player, FIELD_STATS)
 	deps.markDirty(player, FIELD_LIMIT)
 	deps.setSqueezeAt(player, serverNow)
 	stats.accepted += 1
 	if decision.paid then
 		stats.paid += 1
+		recordSqueeze(player, session)
 	end
 	SqueezeService.Squeezed:fire(player, equipped, gained, tier)
 
@@ -484,7 +485,7 @@ function SqueezeService.counts(): { [string]: any }
 		paid = stats.paid,
 		dropped = stats.dropped,
 		rejected = table.clone(stats.rejected),
-		coinAlerts = stats.coinAlerts,
+		squeezeAlerts = stats.squeezeAlerts,
 		disabledStations = disabled,
 	}
 end
@@ -529,7 +530,7 @@ end
 function SqueezeService.reset()
 	table.clear(sessions)
 	table.clear(disabledStations)
-	stats = { accepted = 0, paid = 0, dropped = 0, rejected = {}, coinAlerts = 0 }
+	stats = { accepted = 0, paid = 0, dropped = 0, rejected = {}, squeezeAlerts = 0 }
 end
 
 -- Lifecycle -----------------------------------------------------------------------------------------------------------

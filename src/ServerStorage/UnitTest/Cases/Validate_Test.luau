@@ -4,7 +4,8 @@
 -- GenerateGUID(false) GUID (36 chars, hex groups 8-4-4-4-12); AckReveal also accepts `^daily:%d+$`;
 -- questId `^q%d+_%d$` or `^starter_[a-z]+$`, <= 24 chars; stationId `^squeeze_%d%d$`; numbers are finite
 -- (`x == x` and |x| < 1e6); server timestamps (`clientTime` = GetServerTimeNow(), §5.6) are finite with their own,
--- larger bound; SetSettings takes <= 4 known keys, integer volumes clamped 0-100, booleans.
+-- larger bound; Coin amounts (ShopBuy's expectedPrice) are whole numbers up to Config.Economy.maxCoins (spec
+-- 2026-10-12 §6: prices reach 1.1T); SetSettings takes <= 4 known keys, integer volumes clamped 0-100, booleans.
 -- Every helper returns the (typed) value when the input is valid and nil otherwise.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -215,6 +216,29 @@ return function(t: Context)
 		end
 	end)
 
+	-- Spec 2026-10-12 §6: Dragon costs 1.1T, far above the 1e6 bound of `number` and `integer`.
+	t.test("coins accepts whole Coin amounts up to maxCoins that integer rejects", function()
+		local Config = t.requireShared("Config")
+		expectAccepted("coins", { 0, 10_000, 1_100_000_000_000, Config.Economy.maxCoins })
+		expectRejected("integer", { 1_100_000_000_000 })
+	end)
+
+	t.test("coins rejects NaN, infinities, negatives, fractions, amounts above maxCoins and non-numbers", function()
+		local Config = t.requireShared("Config")
+		expectRejected("coins", { 0 / 0, math.huge, -math.huge, -1, 2.5, Config.Economy.maxCoins + 2, "10000", true })
+	end)
+
+	t.test("Remotes.SPEC declares ShopBuy's expectedPrice as coins", function()
+		local Remotes = t.requireShared("Remotes")
+		local declared: unknown = nil
+		for _, spec in Remotes.SPEC.ShopBuy.args do
+			if spec.name == "expectedPrice" then
+				declared = spec.type
+			end
+		end
+		expect.equal(declared, "coins")
+	end)
+
 	-- A vector is finite only when all three components are.
 	t.test("vector3 rejects a Vector3 with a non-finite component", function()
 		expectAccepted("vector3", { Vector3.new(1, 2, 3) })
@@ -264,6 +288,7 @@ return function(t: Context)
 				"stationId",
 				"number",
 				"serverTime",
+				"coins",
 				"vector3",
 				"settings",
 			}

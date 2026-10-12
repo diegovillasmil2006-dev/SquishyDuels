@@ -1,10 +1,10 @@
 --!strict
 -- Boxes_Test: unit tests for ReplicatedStorage.Shared.Boxes. Server only (ServerStorage.UnitTest).
--- Contract (DESIGN §6.4, §6.10, §13.2 Part 7 L1; spec 2026-10-09 §3.3): the box data exactly (snack 400 / sweet 1500
--- paid, treat free-only with no cost; ordered items, each new squishy right after its same-rarity siblings, Dragon
--- last; nameKey box.<id>.name; Kitty Bread in no box); every box's weights sum to WeightTotal (10,000); each rarity
--- keeps its §6.4 total, split equally across its items; the "xx.xx" texts come from integer math and add up to
--- "100.00"; byRarity is rarity descending with the §6.4 summaries (Snack: Epic 6.00 · Uncommon 30.00 · Common 64.00);
+-- Contract (DESIGN §6.4, §6.10, §13.2 Part 7 L1; spec 2026-10-09 §3.3; spec 2026-10-12 §8): the box data exactly
+-- (snack 150,000 / sweet 450,000,000 paid, treat free-only with no cost; ordered items, each new squishy right after its
+-- same-rarity siblings, Dragon last; nameKey box.<id>.name; Kitty Bread in no box); every box's weights sum to
+-- WeightTotal (10,000); each rarity's total is split equally across its items; the "xx.xx" texts come from integer math
+-- and add up to "100.00"; byRarity is rarity descending (Snack: Uncommon 20.00 · Common 80.00);
 -- isComplete is true only when every item is owned; containing lists every box a squishy is in; paidById holds only
 -- the paid boxes; everything is frozen. Tables are compared by value.
 
@@ -15,32 +15,29 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- Spec 2026-10-09 §3.3 (the §6.4 rarity totals split equally), as {id, weight} pairs in table order.
+-- Spec 2026-10-12 §8 (Snack and Sweet; each rarity's share split equally) and spec 2026-10-09 §3.3 (Treat), as {id,
+-- weight} pairs in table order.
 local EXPECTED_ITEMS: { [string]: { { any } } } = {
 	snack = {
-		{ "toast", 1600 },
-		{ "banana", 1600 },
-		{ "boba_bear", 1600 },
-		{ "pancake_pup", 1600 },
-		{ "butter", 750 },
-		{ "chocolate", 750 },
-		{ "mochi_fox", 750 },
-		{ "strawberry_frog", 750 },
-		{ "bird", 150 },
-		{ "donut", 150 },
-		{ "cloud_bunny", 150 },
-		{ "cupcake_axolotl", 150 },
+		{ "toast", 2000 },
+		{ "banana", 2000 },
+		{ "boba_bear", 2000 },
+		{ "pancake_pup", 2000 },
+		{ "butter", 500 },
+		{ "chocolate", 500 },
+		{ "mochi_fox", 500 },
+		{ "strawberry_frog", 500 },
 	},
 	sweet = {
-		{ "butter", 1450 },
-		{ "chocolate", 1450 },
-		{ "mochi_fox", 1450 },
-		{ "strawberry_frog", 1450 },
-		{ "bird", 950 },
-		{ "donut", 950 },
-		{ "cloud_bunny", 950 },
-		{ "cupcake_axolotl", 950 },
-		{ "dragon", 400 },
+		{ "butter", 1500 },
+		{ "chocolate", 1500 },
+		{ "mochi_fox", 1500 },
+		{ "strawberry_frog", 1500 },
+		{ "bird", 999 },
+		{ "donut", 999 },
+		{ "cloud_bunny", 999 },
+		{ "cupcake_axolotl", 999 },
+		{ "dragon", 4 },
 	},
 	treat = {
 		{ "toast", 1400 },
@@ -82,9 +79,9 @@ return function(t: Context)
 		expect.equal(Boxes.WeightTotal, 10000)
 
 		local snack, sweet, treat = Boxes.get("snack"), Boxes.get("sweet"), Boxes.get("treat")
-		expect.equal(snack.cost, 400)
+		expect.equal(snack.cost, 150_000)
 		expect.equal(snack.paid, true)
-		expect.equal(sweet.cost, 1500)
+		expect.equal(sweet.cost, 450_000_000)
 		expect.equal(sweet.paid, true)
 		expect.equal(treat.cost, nil)
 		expect.equal(treat.paid, false)
@@ -166,7 +163,7 @@ return function(t: Context)
 			expect.equal(sum, 10000)
 			expect.equal(Boxes.totalText(box.id), "100.00")
 		end
-		expect.deepEqual(Boxes.odds("snack")[1], { id = "toast", weight = 1600, percent = 16, text = "16.00" })
+		expect.deepEqual(Boxes.odds("snack")[1], { id = "toast", weight = 2000, percent = 20, text = "20.00" })
 		expect.deepEqual(Boxes.odds("nope"), {})
 		expect.equal(Boxes.totalText("nope"), nil)
 	end)
@@ -179,8 +176,8 @@ return function(t: Context)
 			end
 			return out
 		end
-		expect.deepEqual(summary("snack"), { { "Epic", "6.00" }, { "Uncommon", "30.00" }, { "Common", "64.00" } })
-		expect.deepEqual(summary("sweet"), { { "Exclusive", "4.00" }, { "Epic", "38.00" }, { "Uncommon", "58.00" } })
+		expect.deepEqual(summary("snack"), { { "Uncommon", "20.00" }, { "Common", "80.00" } })
+		expect.deepEqual(summary("sweet"), { { "Exclusive", "0.04" }, { "Epic", "39.96" }, { "Uncommon", "60.00" } })
 		expect.deepEqual(summary("treat"), { { "Epic", "10.00" }, { "Uncommon", "34.00" }, { "Common", "56.00" } })
 		for _, box in Boxes.list() do
 			local sum = 0
@@ -199,18 +196,21 @@ return function(t: Context)
 			owned[entry.id] = { at = 0, src = "box" }
 		end
 		expect.truthy(Boxes.isComplete("snack", owned))
-		-- Owning the Snack Box items does not complete the Sweet Box (Dragon is missing).
+		-- Owning the Snack Box items does not complete the Sweet Box (its Epics and Dragon are missing).
 		expect.falsy(Boxes.isComplete("sweet", owned))
-		owned.dragon = { at = 0, src = "shop" }
+		for _, entry in Boxes.get("sweet").items do
+			owned[entry.id] = { at = 0, src = "shop" }
+		end
 		expect.truthy(Boxes.isComplete("sweet", owned))
-		owned.bird = nil
+		owned.butter = nil -- in both boxes
 		expect.falsy(Boxes.isComplete("snack", owned))
+		expect.falsy(Boxes.isComplete("sweet", owned))
 		expect.falsy(Boxes.isComplete("nope", owned))
 	end)
 
 	t.test("containing lists every box a squishy is in, with its chance and whether the box is paid", function()
 		expect.deepEqual(Boxes.containing("dragon"), {
-			{ boxId = "sweet", weight = 400, percent = 4, text = "4.00", paid = true },
+			{ boxId = "sweet", weight = 4, percent = 0.04, text = "0.04", paid = true },
 		})
 		local butter = Boxes.containing("butter")
 		local seen: { { any } } = {}
@@ -218,7 +218,7 @@ return function(t: Context)
 			table.insert(seen, { row.boxId, row.text, row.paid })
 		end
 		local expected: { { any } } =
-			{ { "snack", "7.50", true }, { "sweet", "14.50", true }, { "treat", "8.50", false } }
+			{ { "snack", "5.00", true }, { "sweet", "15.00", true }, { "treat", "8.50", false } }
 		expect.deepEqual(seen, expected)
 		expect.deepEqual(Boxes.containing("nope"), {})
 	end)

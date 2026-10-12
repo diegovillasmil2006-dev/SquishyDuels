@@ -14,8 +14,9 @@
 --      opens that charged start the window: the rule keeps box writes inside the DataStore budget, §3.11, and a
 --      refusal writes nothing);
 --  10. EconomyService.trySpend(p, cost, "box") (economy.notEnoughCoins), BoxDraw.draw(box, rng) with the one server
---      Random.new() (never sent to clients), EconomyService.grantSquishy(p, id, "box") (a duplicate is refunded by
---      rarity there, reason "refund", §6.5), then one DataService.mutate appending the boxLog entry {req, box, squishy,
+--      Random.new() (never sent to clients), EconomyService.grantSquishy(p, id, "box", boxId) (a duplicate is refunded
+--      a share of the box price there, reason "refund", §6.5, spec 2026-10-12 §8: Pricing.duplicateRefund), then one
+--      DataService.mutate appending the boxLog entry {req, box, squishy,
 --      dup, refund, cost, at, seen = false} (cap Config.Data.caps.boxLog) and stats.boxesOpened + 1, and
 --      markDirty("unseenReveals"). Nothing yields between the spend and the log append (one in-memory change).
 --  11. DataService.saveNowAsync (awaited; the reveal's anticipation covers it) -> ok {squishyId, isDuplicate, refund,
@@ -31,8 +32,8 @@
 --   with the claim). nil when the profile is not ready or the box is not a valid free box. Reading: a free box whose
 --   items are all owned still opens (a duplicate refund; every outcome gives something).
 -- Fail closed at boot (§2.6 "invalid box entries are disabled"): a box whose weights are not valid (BoxDraw.isValid),
---   that names an id missing from the Catalog, or (paid) whose cost is not a positive whole number or not above every
---   duplicate refund of its items (§6.5: opening can never earn Coins) is logged and never opened.
+--   that names an id missing from the Catalog, or (paid) whose cost is not a positive whole number or not above its
+--   duplicate refund (§6.5: opening can never earn Coins) is logged and never opened.
 -- useDeps(overrides?) swaps the collaborators (tests: data port, save, economy, policy, flags, clocks, rng).
 -- init() registers the BoxOpen and AckReveal handlers and never yields.
 
@@ -68,7 +69,13 @@ type BoxDef = Boxes.BoxDef
 
 export type Economy = {
 	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?),
-	grantSquishy: (player: any, id: string, source: string) -> { added: boolean, refund: number, refused: string? },
+	-- `boxId` = the box the squishy came from (its duplicate refund, spec 2026-10-12 §8).
+	grantSquishy: (
+		player: any,
+		id: string,
+		source: string,
+		boxId: string?
+	) -> { added: boolean, refund: number, refused: string? },
 	grantCoins: (player: any, amount: number, reason: string) -> (number, string?),
 }
 
@@ -196,7 +203,7 @@ local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number)
 		log:error(`box {box.id}: the draw failed ({tostring(id)})`)
 		return nil
 	end
-	local grant = d.economy.grantSquishy(player, id, SOURCE_BOX)
+	local grant = d.economy.grantSquishy(player, id, SOURCE_BOX, box.id)
 	if grant.refused ~= nil then
 		log:error(`box {box.id}: {id} could not be granted to user {userIdOf(player)} ({grant.refused})`)
 		return nil
@@ -421,12 +428,9 @@ function BoxService.checkBoxes(): { [string]: string }
 			then
 				found[box.id] = "cost is not a positive whole number"
 			else
-				for _, item in box.items do
-					local def = Catalog.get(item.id)
-					if def ~= nil and Pricing.duplicateRefund(def.rarity) >= cost then
-						found[box.id] = `the duplicate refund of {item.id} is not below the cost {cost}`
-						break
-					end
+				local refund = Pricing.duplicateRefund(box.id)
+				if refund >= cost then
+					found[box.id] = `the duplicate refund {refund} is not below the cost {cost}`
 				end
 			end
 		end

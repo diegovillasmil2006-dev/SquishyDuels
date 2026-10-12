@@ -2,7 +2,8 @@
 -- GripMath_Test: unit tests for ReplicatedStorage.Shared.GripMath. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §17.3-§17.5, §17.7, §17.12 Part 5): integers only. levelFor gives the highest level whose
 -- LevelTotals <= total (edges checked at every threshold, t - 1 and t); progress at the max level; ranks Soft (Lv 1)
--- .. Squish Master (Lv 50); pads open at Lv 5 / 15 / 30 and canUseTier fails closed; squeezeGrip =
+-- .. Squish Master (Lv 50) .. Infinite (Lv 100, spec 2026-10-12 §10); pads open at Lv 5 / 15 / 30 and canUseTier
+-- fails closed; squeezeGrip =
 -- floor(gripPerSqueeze × gripPercent / 100), × 2 when doubled (the §17.3.1 table); squeezeCoins = squishy Coins + pad
 -- bonus when paid, emptyCoins otherwise, for each rarity × tier; afkGrip = floor(squeezeGrip × 125 / 100) (12, 37,
 -- 100, 375); afkMinutes 40 for a full bank; restedMinutes 9 when full (holding repeats every Hold.repeatSeconds,
@@ -44,6 +45,14 @@ local RANK_CASES: { { level: number, key: string } } = {
 	{ level = 40, key = "titan" },
 	{ level = 49, key = "titan" },
 	{ level = 50, key = "master" },
+	-- Spec 2026-10-12 §10: the ranks above Lv 50.
+	{ level = 59, key = "master" },
+	{ level = 60, key = "legend" },
+	{ level = 70, key = "mythic" },
+	{ level = 80, key = "cosmic" },
+	{ level = 90, key = "galaxy" },
+	{ level = 99, key = "galaxy" },
+	{ level = 100, key = "infinite" },
 }
 
 -- §17.4 pads: (level, best tier).
@@ -101,16 +110,16 @@ return function(t: Context)
 	end)
 
 	t.test("progress inside a level gives the level start, the next total and the bar parts", function()
-		local p = GripMath.progress(1500)
+		local p = GripMath.progress(1500) -- Lv 2 spans 1,000 .. 1,700 (spec 2026-10-12 totals)
 		expect.deepEqual(p, {
 			level = 2,
 			total = 1500,
 			levelStart = 1000,
-			nextTotal = 2500,
+			nextTotal = 1700,
 			into = 500,
-			span = 1500,
+			span = 700,
 			have = 1500,
-			need = 2500,
+			need = 1700,
 			isMax = false,
 		})
 	end)
@@ -144,7 +153,7 @@ return function(t: Context)
 
 	-- Ranks and pads --------------------------------------------------------------------------------------------
 
-	t.test("rankFor gives Soft Grip at Lv 1 up to Squish Master at Lv 50", function()
+	t.test("rankFor gives Soft Grip at Lv 1 up to Squish Master at Lv 50 and Infinite at Lv 100", function()
 		for _, case in RANK_CASES do
 			local rank = GripMath.rankFor(case.level)
 			if rank.key ~= case.key then
@@ -153,7 +162,9 @@ return function(t: Context)
 		end
 		local nextRank = GripMath.nextRank(1)
 		expect.equal(nextRank and nextRank.key, "firm")
-		expect.equal(GripMath.nextRank(50), nil)
+		local afterMaster = GripMath.nextRank(50)
+		expect.equal(afterMaster and afterMaster.key, "legend")
+		expect.equal(GripMath.nextRank(100), nil)
 	end)
 
 	t.test("bestTier opens the Jelly Pad at Lv 5, the Marshmallow Pad at 15 and the Royal Cushion at 30", function()

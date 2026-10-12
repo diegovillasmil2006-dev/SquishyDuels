@@ -20,7 +20,7 @@
 --   Creator.CreatorTargetId == creatorGroupId and IsForSale. Ids that fail are never offered. With no id configured
 --   (v1) it logs one info line.
 -- * offeredBundles(): the keys of bundles with a validated productId and onSale, and {} whenever Config.Grip.enabled
---   and not Config.Grip.allowBundlesWithTrainer (G7b fail closed at runtime too, G-E). The owner's state field
+--   and not Config.Grip.allowBundlesWithCapsules (G7b fail closed at runtime too, G-E). The owner's state field
 --   StateDelta.monetization = {bundles = offeredBundles(), passes = {}} is set on join and after validation.
 -- * PromptCoinBundle(bundleKey): an offered bundle, a READY profile and a server that is not closing -> the server's
 --   MarketplaceService:PromptProductPurchase; anything else -> Notify("purchase.unavailable"). Never prompts an id
@@ -76,7 +76,7 @@ export type Deps = {
 	debugAllowed: () -> boolean,
 	bundles: { CoinBundle }, -- Config.Monetization.CoinBundles
 	byProductId: { [number]: CoinBundle }, -- Config.Monetization.byProductId
-	bundlesLockedByGrip: () -> boolean, -- G7b: Config.Grip.enabled and not allowBundlesWithTrainer
+	bundlesLockedByGrip: () -> boolean, -- G7b: Config.Grip.enabled and not allowBundlesWithCapsules
 	log: Log.Logger, -- [SD][Monetization] (tests record it)
 }
 
@@ -148,7 +148,7 @@ local function defaultDeps(): Deps
 		bundles = MONETIZATION.CoinBundles,
 		byProductId = MONETIZATION.byProductId,
 		bundlesLockedByGrip = function(): boolean
-			return Config.Grip.enabled == true and Config.Grip.allowBundlesWithTrainer ~= true
+			return Config.Grip.enabled == true and Config.Grip.allowBundlesWithCapsules ~= true
 		end,
 		log = DEFAULT_LOG,
 	}

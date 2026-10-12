@@ -4,7 +4,7 @@
 -- Contract (DESIGN §6.4, §6.5, §6.10, §7.6, §7.7, §9.11, §18.1, §18.6):
 --   * the odds rows equal Boxes (ids, order, weights, the exact "xx.xx%" texts), with the rarity text + pips, Owned and
 --     the refund line from Pricing; every box's percent texts add up to exactly 100.00% and "Total: 100.00%";
---   * the rarity summary is rarity descending (Snack: Epic 6.00% · Uncommon 30.00% · Common 64.00%);
+--   * the rarity summary is rarity descending (Snack: Uncommon 20.00% · Common 80.00%; spec 2026-10-12 §8);
 --   * the open area follows the §6.10 table: checking -> disabled "Checking…" + the checking note; unknown -> Try again
 --     + the unknown note (disabled while the retry waits: 30 s from the later of the last press and the arrival of
 --     "unknown", retryWait); restricted -> "Shop squishies directly" + the restricted note;
@@ -14,7 +14,7 @@
 --     same phase lengths after it; the wobble stays inside [0.92, 1.06] and swings at most 3 times a second;
 --   * the sounds: box.shake at 0 / 300 / 600, box.open at 900, reveal.<rarity> at 1150 (shifted under ReducedMotion);
 --   * the odds board and the counter prompt (restricted and unknown -> "Shop Squishies" and the shop); the board groups
---     a rarity into one line ("Common 64.00% — 16.00% each: Toast, …") only when its items share one weight (spec
+--     a rarity into one line ("Common 80.00% — 20.00% each: Toast, …") only when its items share one weight (spec
 --     2026-10-09 §3.3), else one line per item;
 --   * the unseen-reveal rule: malformed entries are dropped, skipped ids are left out, each id once.
 --   * Part 8 (§11.2 audit): revealStageHeight keeps the class stage while the reveal panel fits, else shrinks it so the
@@ -84,7 +84,7 @@ return function(t: Context)
 				expect.equal(row.rarity, def.rarity)
 				expect.equal(row.rarityText, rarityName(def.rarity))
 				expect.equal(row.pips, Rarity.get(def.rarity).pips)
-				expect.equal(row.refund, Pricing.duplicateRefund(def.rarity))
+				expect.equal(row.refund, Pricing.duplicateRefund(box.id)) -- a share of the box price (spec 2026-10-12 §8)
 				expect.equal(
 					row.refundText,
 					Strings.format(Strings.box.refundLine, { coins = Format.coins(row.refund) })
@@ -119,26 +119,24 @@ return function(t: Context)
 			end
 			return Strings.format(Strings.box.chancesByRarity, { list = table.concat(list, Strings.box.listSeparator) })
 		end
-		expect.equal(
-			BoxFormat.raritySummary("snack"),
-			summary({ { "Epic", "6.00" }, { "Uncommon", "30.00" }, { "Common", "64.00" } })
-		)
+		-- Spec 2026-10-12 §8: Epics left the Snack Box; Dragon is 0.04% of the Sweet Box.
+		expect.equal(BoxFormat.raritySummary("snack"), summary({ { "Uncommon", "20.00" }, { "Common", "80.00" } }))
 		expect.equal(
 			BoxFormat.raritySummary("sweet"),
-			summary({ { "Exclusive", "4.00" }, { "Epic", "38.00" }, { "Uncommon", "58.00" } })
+			summary({ { "Exclusive", "0.04" }, { "Epic", "39.96" }, { "Uncommon", "60.00" } })
 		)
 	end)
 
 	t.test("box name and price: Coins for the paid boxes, free-only for the Treat Box", function()
 		expect.equal(BoxFormat.boxName("snack"), Strings.box.snack.name)
-		expect.equal(BoxFormat.priceText("snack"), Strings.format(Strings.common.coinsAmount, { coins = "400" }))
-		expect.equal(BoxFormat.priceText("sweet"), Strings.format(Strings.common.coinsAmount, { coins = "1,500" }))
+		expect.equal(BoxFormat.priceText("snack"), Strings.format(Strings.common.coinsAmount, { coins = "150.0K" }))
+		expect.equal(BoxFormat.priceText("sweet"), Strings.format(Strings.common.coinsAmount, { coins = "450.00M" }))
 		expect.equal(BoxFormat.priceText("treat"), Strings.box.freeOnly)
 	end)
 
 	t.test("costText: a paid box's cost as a bare number (beside the coin); none for the free box", function()
-		expect.equal(BoxFormat.costText("snack"), "400")
-		expect.equal(BoxFormat.costText("sweet"), "1,500")
+		expect.equal(BoxFormat.costText("snack"), "150.0K")
+		expect.equal(BoxFormat.costText("sweet"), "450.00M")
 		expect.equal(BoxFormat.costText("treat"), nil)
 		expect.equal(BoxFormat.costText("nope"), nil)
 		for _, box in Boxes.list() do
@@ -149,7 +147,7 @@ return function(t: Context)
 	end)
 
 	t.test("open area: the §6.10 policy states", function()
-		local base = { box = "snack", coins = 1000, owned = {}, savePending = false, inLobby = true }
+		local base = { box = "snack", coins = 200_000, owned = {}, savePending = false, inLobby = true }
 		local function with(changes: { [string]: any }): any
 			local input = table.clone(base)
 			for key, value in changes do
@@ -189,9 +187,9 @@ return function(t: Context)
 		local open = with({ policy = "eligible" })
 		expect.equal(open.kind, "open")
 		expect.equal(open.button, "confirm")
-		expect.equal(open.text, Strings.format(Strings.box.openButton, { cost = "400" }))
+		expect.equal(open.text, Strings.format(Strings.box.openButton, { cost = "150.0K" }))
 		expect.equal(open.enabled, true)
-		expect.equal(open.price, 400)
+		expect.equal(open.price, 150_000)
 		expect.equal(open.missing, 0)
 		expect.equal(open.howToEarn, false)
 
@@ -243,7 +241,7 @@ return function(t: Context)
 	end)
 
 	t.test("open area: eligible blocks (Coins, complete, saving, duel, profile) and the armed confirm", function()
-		local poor = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 280, owned = {} })
+		local poor = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 149_880, owned = {} })
 		expect.equal(poor.kind, "needCoins")
 		expect.equal(poor.enabled, false)
 		expect.equal(poor.missing, 120)
@@ -257,35 +255,37 @@ return function(t: Context)
 		for _, item in Boxes.get("snack").items do
 			all[item.id] = { at = 0, src = "box" }
 		end
-		local complete = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 5000, owned = all })
+		local complete = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, owned = all })
 		expect.equal(complete.kind, "complete")
 		expect.equal(complete.enabled, false)
 		expect.equal(complete.reason, Strings.reasonText("box.complete"))
 		-- The policy comes first: a restricted player who owns everything still gets the shop alternative.
 		expect.equal(
-			BoxFormat.openView({ box = "snack", policy = "restricted", coins = 5000, owned = all }).kind,
+			BoxFormat.openView({ box = "snack", policy = "restricted", coins = 200_000, owned = all }).kind,
 			"shopDirect"
 		)
 
 		local saving =
-			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 5000, owned = {}, savePending = true })
+			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, owned = {}, savePending = true })
 		expect.equal(saving.kind, "saving")
 		expect.equal(saving.enabled, false)
 		expect.equal(saving.reason, Strings.reasonText("box.saving"))
 
 		local duel =
-			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 5000, owned = {}, inLobby = false })
+			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, owned = {}, inLobby = false })
 		expect.equal(duel.enabled, false)
 		expect.equal(duel.reason, Strings.common.lockedInDuel)
 
-		local offline = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 5000, profileReady = false })
+		local offline =
+			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, profileReady = false })
 		expect.equal(offline.enabled, false)
 		expect.equal(offline.reason, Strings.data.loadFailed)
 
-		local armed = BoxFormat.openView({ box = "sweet", policy = "eligible", coins = 2000, owned = {}, armed = true })
+		local armed =
+			BoxFormat.openView({ box = "sweet", policy = "eligible", coins = 450_000_500, owned = {}, armed = true })
 		expect.equal(armed.kind, "confirm")
 		expect.equal(armed.enabled, true)
-		expect.equal(armed.text, Strings.format(Strings.spend.confirm, { price = "1,500" }))
+		expect.equal(armed.text, Strings.format(Strings.spend.confirm, { price = "450.00M" }))
 		expect.equal(armed.note, Strings.format(Strings.spend.balanceAfter, { balance = "500" }))
 		for _, view in { poor, complete, saving, duel, offline, armed } do
 			noRobux(view)
@@ -407,7 +407,10 @@ return function(t: Context)
 		local text = BoxFormat.boardText("eligible", "snack")
 		local lines = string.split(text, "\n")
 		local box = Boxes.get("snack")
-		expect.equal(lines[1], Strings.format(Strings.box.boardHeader, { box = Strings.box.snack.name, cost = "400" }))
+		expect.equal(
+			lines[1],
+			Strings.format(Strings.box.boardHeader, { box = Strings.box.snack.name, cost = "150.0K" })
+		)
 		expect.deepEqual(table.move(lines, 2, #lines, 1, {}), BoxFormat.oddsLines(box.items))
 		expect.equal(BoxFormat.boardText("checking", "snack"), text)
 		expect.equal(BoxFormat.boardText(nil, "snack"), text)
@@ -436,19 +439,18 @@ return function(t: Context)
 		end
 
 		local snack = string.split(BoxFormat.boardText("eligible", "snack"), "\n")
-		expect.equal(#snack, 4) -- the header, then Common, Uncommon and Epic in item order
-		expect.equal(snack[2], "Common 64.00% — 16.00% each: Toast, Banana, Boba Bear, Pancake Pup")
+		expect.equal(#snack, 3) -- the header, then Common and Uncommon in item order (spec 2026-10-12 §8)
+		expect.equal(snack[2], "Common 80.00% — 20.00% each: Toast, Banana, Boba Bear, Pancake Pup")
 		expect.equal(
 			snack[3],
-			group("Uncommon", "30.00", "7.50", { "Butter", "Chocolate", "Mochi Fox", "Strawberry Frog" })
+			group("Uncommon", "20.00", "5.00", { "Butter", "Chocolate", "Mochi Fox", "Strawberry Frog" })
 		)
-		expect.equal(snack[4], group("Epic", "6.00", "1.50", { "Birdie", "Donut", "Cloud Bunny", "Cupcake Axolotl" }))
 
 		-- Dragon, alone in its rarity, keeps its own line.
 		expect.deepEqual(BoxFormat.oddsLines(Boxes.get("sweet").items), {
-			group("Uncommon", "58.00", "14.50", { "Butter", "Chocolate", "Mochi Fox", "Strawberry Frog" }),
-			group("Epic", "38.00", "9.50", { "Birdie", "Donut", "Cloud Bunny", "Cupcake Axolotl" }),
-			line("dragon", "4.00"),
+			group("Uncommon", "60.00", "15.00", { "Butter", "Chocolate", "Mochi Fox", "Strawberry Frog" }),
+			group("Epic", "39.96", "9.99", { "Birdie", "Donut", "Cloud Bunny", "Cupcake Axolotl" }),
+			line("dragon", "0.04"),
 		})
 
 		-- Different weights inside a rarity: one line per item; an unknown id keeps a line of its own.

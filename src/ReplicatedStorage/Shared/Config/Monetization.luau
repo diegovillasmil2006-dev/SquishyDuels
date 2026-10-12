@@ -5,8 +5,11 @@
 -- and must never be invented. No Robux price is stored here or in Strings; prices come from GetProductInfoAsync.
 -- Robux guards (Config.validate, §17.9, Part 7): G7 = a coin bundle has exactly the fields key, nameKey, productId,
 -- coins and onSale; every game pass names a `benefit` listed in CosmeticBenefits; no bundle or pass key, pass benefit,
--- nameKey or nameKey text mentions the lobby training (grip, train, rested, afk, idle, squeeze, pad, cushion, level).
--- G7b = coin bundles stay off (no productId) while Config.Grip.enabled and allowBundlesWithTrainer is false (G-E).
+-- nameKey or nameKey text mentions the lobby training (grip, train, rested, afk, idle, squeeze, pad, cushion, level,
+-- capsule).
+-- G7b = coin bundles stay off (no productId) while Config.Grip.enabled and allowBundlesWithCapsules is false (G-E; lobby
+-- spec 2026-10-11 §11, was allowBundlesWithTrainer). The bundle amounts need redoing before Robux is ever turned on
+-- (spec 2026-10-12 §12).
 
 export type CoinBundle = {
 	key: string, -- bundleKey sent by PromptCoinBundle, ^[a-z_]+$, <= 24 chars

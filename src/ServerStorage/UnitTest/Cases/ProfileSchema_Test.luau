@@ -274,8 +274,12 @@ return function(t: Context)
 		end
 		expect.truthy(mentionsNonFinite) -- a non-finite total is logged
 
-		grip = gripAfter({ total = 1.5e9, trainer = 99, rested = timer(-5, NOW + 300), afk = timer(500, 1) })
-		expect.deepEqual(grip, { total = 1e9, trainer = 8, rested = timer(0, NOW + 300), afk = timer(120, 1) })
+		-- Above the 9 Qa maxGrip (spec 2026-10-12 §12): clamped to it.
+		grip = gripAfter({ total = 1.8e16, trainer = 99, rested = timer(-5, NOW + 300), afk = timer(500, 1) })
+		expect.deepEqual(
+			grip,
+			{ total = Config.Grip.maxGrip, trainer = 8, rested = timer(0, NOW + 300), afk = timer(120, 1) }
+		)
 
 		grip = gripAfter({
 			total = 12.7,
@@ -337,7 +341,7 @@ return function(t: Context)
 			{ math.huge, 0 },
 			{ -5, 0 },
 			{ 1.7, 1 },
-			{ 2e9, Config.Economy.maxCoins },
+			{ 2e16, Config.Economy.maxCoins }, -- above the 9 Qa cap (spec 2026-10-12 §12)
 			{ "100", 0 },
 			{ 500, 500 },
 		}

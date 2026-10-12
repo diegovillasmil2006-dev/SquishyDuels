@@ -9,7 +9,8 @@
 --     takes no more changes (the final leave snapshot) earn and spend nothing; spends also need no pending failed
 --     save; every change marks coins + stats and fires CoinsChanged(player, coins, delta, reason); coinsEarned /
 --     coinsSpent count real changes;
---   * grantSquishy adds {at, src}; a box duplicate is refunded by rarity, any other duplicate changes nothing;
+--   * grantSquishy adds {at, src}; a box duplicate is refunded a quarter of that box's price (spec 2026-10-12 §8),
+--     any other duplicate changes nothing; Coins stop at 9 Qa, exact to the Coin;
 --   * grantDuelResult records the duelLog entry (capped, oldest dropped), the duel stats and the Coins exactly once per
 --     matchId, then asks for a "soon" save; an unready profile records nothing (duel.noRewardsOffline);
 --   * the same-pair record (§6.7, §12 #15): a time only for a fully rewarded result (reduced and zero-Coin ones add
@@ -213,12 +214,17 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("a grant is clamped at maxCoins and returns what was really added", function()
+	t.test("a grant is clamped at maxCoins (9 Qa) and returns what was really added", function()
+		expect.equal(ECONOMY.maxCoins, 9_000_000_000_000_000) -- spec 2026-10-12 §12
 		local w = setup()
 		local player, profile = readyPlayer(w, ECONOMY.maxCoins - 10)
 		expect.equal(EconomyService.grantCoins(player, 100, "duel_win"), 10)
 		expect.equal(profile.coins, ECONOMY.maxCoins)
 		expect.equal(EconomyService.grantCoins(player, 100, "duel_win"), 0)
+		expect.equal(profile.coins, ECONOMY.maxCoins)
+		-- Whole Coins stay exact up to the cap: 8 Qa + 2.9 Qa adds exactly 1 Qa.
+		profile.coins = 8_000_000_000_000_000
+		expect.equal(EconomyService.grantCoins(player, 2_900_000_000_000_000, "duel_win"), 1_000_000_000_000_000)
 		expect.equal(profile.coins, ECONOMY.maxCoins)
 	end)
 
@@ -331,20 +337,22 @@ return function(t: Context)
 		expect.deepEqual(dirtyFields(w), { "owned" })
 	end)
 
-	t.test("a box duplicate is refunded by rarity; any other duplicate changes nothing (§6.5)", function()
+	t.test("a box duplicate is refunded a quarter of the box price; any other duplicate changes nothing", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
 		profile.owned.toast = { at = 5, src = "box" }
 		profile.owned.dragon = { at = 6, src = "shop" }
-		local toastRefund = ECONOMY.DuplicateRefund.Common
-		expect.equal(EconomyService.duplicateRefund("toast"), toastRefund)
-		expect.equal(EconomyService.duplicateRefund("dragon"), ECONOMY.DuplicateRefund.Exclusive)
+		-- Spec 2026-10-12 §8: 25% of the box price; the free Treat Box counts the Snack Box's.
+		local toastRefund = 37_500
+		expect.equal(EconomyService.duplicateRefund("snack"), toastRefund)
+		expect.equal(EconomyService.duplicateRefund("sweet"), 112_500_000)
+		expect.equal(EconomyService.duplicateRefund("treat"), toastRefund)
 		expect.equal(EconomyService.duplicateRefund("nope"), 0)
 		local reasons: { string } = {}
 		local connection = EconomyService.CoinsChanged:connect(function(_p: any, _c: number, _d: number, reason: string)
 			table.insert(reasons, reason)
 		end)
-		local dup = EconomyService.grantSquishy(player, "toast", "box")
+		local dup = EconomyService.grantSquishy(player, "toast", "box", "snack")
 		expect.deepEqual(dup, { added = false, refund = toastRefund })
 		expect.equal(profile.coins, toastRefund)
 		expect.deepEqual(profile.owned.toast, { at = 5, src = "box" })

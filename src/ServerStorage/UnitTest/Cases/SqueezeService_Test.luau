@@ -21,8 +21,9 @@
 --   * an OFFLINE profile earns nothing (data.notReady), nor does a session whose final save started (mutate refuses);
 --   * nextAt is in server time: serverNow + max(0, 1 - tokens) x cycleSeconds;
 --   * the stale-lobby check disables a station whose GripTier disagrees with WorldLayout (no boost, no slow training);
---   * one player's squeeze Coins above Config.Grip.squeezeCoinsAlertPerHour in a rolling hour log one [SD][abuse]
---     warning (log only: the squeezes still pay); the alert re-arms once the hour's Coins are back under it.
+--   * one player's paid squeezes above Config.Grip.squeezeAlertPerHour in a rolling hour log one [SD][abuse] warning
+--     (spec 2026-10-12 §12; log only: the squeezes still pay); the alert re-arms once the hour's squeezes are back
+--     under it.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -598,37 +599,29 @@ return function(t: Context)
 		end
 	)
 
-	t.test(
-		"squeeze Coins above squeezeCoinsAlertPerHour in a rolling hour: one alert (log only), re-armed after",
-		function()
-			local world = fresh()
-			local pads = Config.Grip.Pads
-			world.equipped = Catalog.byRarity("Exclusive")[1].id
-			setLevel(world, pads[#pads].level)
-			world.position = onStation("squeeze_09") -- the Royal Cushion: the most Coins a squeeze can pay
-			local each = Catalog.getSqueezeCoins(world.equipped) + pads[#pads].coinBonus
-			local alertAbove = Config.Grip.squeezeCoinsAlertPerHour
-			local crossing = math.floor(alertAbove / each) + 1 -- the squeeze that takes the hour above the alert
-			local function alerts(): number
-				return SqueezeService.counts().coinAlerts
-			end
-			click(world, crossing - 1, SQ.cycleSeconds) -- the hour's Coins reach the alert, not above it
-			expect.equal(world.profile.coins, (crossing - 1) * each)
-			expect.equal(alerts(), 0)
-			wait(world, SQ.cycleSeconds)
-			local over = SqueezeService.request(world.player)
-			expect.equal(over.ok, true)
-			expect.equal(over.coins, each) -- log only: it still pays
-			expect.equal(alerts(), 1)
-			click(world, 24, SQ.cycleSeconds) -- still above: no second line
-			expect.equal(alerts(), 1)
-			-- An hour later the counter has emptied (re-armed): crossing again logs again.
-			wait(world, 3600)
-			click(world, crossing, SQ.cycleSeconds)
-			expect.equal(alerts(), 2)
-			finish()
+	t.test("paid squeezes above squeezeAlertPerHour in a rolling hour: one alert (log only), re-armed after", function()
+		local world = fresh()
+		local each = Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus
+		local crossing = Config.Grip.squeezeAlertPerHour + 1 -- the squeeze that takes the hour above the alert
+		local function alerts(): number
+			return SqueezeService.counts().squeezeAlerts
 		end
-	)
+		click(world, crossing - 1, SQ.cycleSeconds) -- the hour's paid squeezes reach the alert, not above it
+		expect.equal(world.profile.stats.squeezes, crossing - 1)
+		expect.equal(alerts(), 0)
+		wait(world, SQ.cycleSeconds)
+		local over = SqueezeService.request(world.player)
+		expect.equal(over.ok, true)
+		expect.equal(over.coins, each) -- log only: it still pays
+		expect.equal(alerts(), 1)
+		click(world, 24, SQ.cycleSeconds) -- still above: no second line
+		expect.equal(alerts(), 1)
+		-- An hour later the counter has emptied (re-armed): crossing again logs again.
+		wait(world, 3600)
+		click(world, crossing, SQ.cycleSeconds)
+		expect.equal(alerts(), 2)
+		finish()
+	end)
 
 	t.test("a lobby that matches WorldLayout disables nothing", function()
 		fresh()

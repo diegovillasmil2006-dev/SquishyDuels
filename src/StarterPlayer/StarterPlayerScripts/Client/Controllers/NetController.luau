@@ -6,7 +6,8 @@
 --   Result, never throws), plus typed wrappers (queueJoinAsync, throwRequest, ...). Before anything is sent:
 --     1. the name must be a C->S remote of that kind (a wrong call is a bug: warned once per remote, dropped);
 --     2. the argument count must equal the SPEC and each argument must pass the same shape checks as the server
---        (Util/Validate: finite numbers, integers, Vector3, ids) -> else dropped locally, reason `net.invalid`;
+--        (Util/Validate: finite numbers, integers, Coin amounts, Vector3, ids) -> else dropped locally, reason
+--        `net.invalid`;
 --     3. the same token buckets as the server (Config.Net.Remotes + Config.Net.Global, §2.7 step 2), so an honest
 --        client that mashes a button never earns an abuse violation: an empty bucket drops locally, `net.rateLimited`;
 --     4. oneInFlight RemoteFunctions (BoxOpen, ShopBuy) refuse a second call while one runs (`net.rateLimited`).
@@ -61,6 +62,9 @@ local ARG_CHECKS: { [string]: (unknown) -> boolean } = {
 	end,
 	serverTime = function(v)
 		return Validate.serverTime(v) ~= nil
+	end,
+	coins = function(v)
+		return Validate.coins(v) ~= nil
 	end,
 	boolean = function(v)
 		return type(v) == "boolean"

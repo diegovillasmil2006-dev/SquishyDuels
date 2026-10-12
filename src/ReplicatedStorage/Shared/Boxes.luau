@@ -18,7 +18,7 @@
 --   Boxes.percentText(weight)        -> "32.00": weight / 100 with two decimals, integer math (no float rounding)
 --   Boxes.odds(boxId)                -> { OddsRow } {id, weight, percent, text} in item order (empty for an unknown id)
 --   Boxes.byRarity(boxId)            -> { RarityRow } {rarity, weight, percent, text}, rarity descending
---                                       (Snack: Epic 6.00 · Uncommon 30.00 · Common 64.00)
+--                                       (Snack: Uncommon 20.00 · Common 80.00)
 --   Boxes.totalText(boxId)           -> "100.00" (the sum of the weights), nil for an unknown id
 --   Boxes.isComplete(boxId, owned)   -> true when every item of the box is a key of `owned` (profile.owned); false
 --                                       for an unknown or empty box. BoxService refuses an open with box.complete while
@@ -26,8 +26,8 @@
 --   Boxes.containing(squishyId)      -> { ContainingRow } {boxId, weight, percent, text, paid} in list order
 --
 -- Readings:
---   * Items are `{ id = "toast", weight = 1600 }` instead of DESIGN's positional `{"toast", 3200}` pairs (same order;
---     the weights are the spec 2026-10-09 split) so strict types can describe them; Config.validate's box check
+--   * Items are `{ id = "toast", weight = 2000 }` instead of DESIGN's positional `{"toast", 3200}` pairs (same order;
+--     the weights are the spec 2026-10-12 §8 split) so strict types can describe them; Config.validate's box check
 --     accepts both forms.
 --   * `percent` (= weight / 100, a number) is the field DESIGN §2.2 names for odds rows; `text` is the exact display
 --     string. Screens show `text` (never format `percent` themselves).
@@ -69,45 +69,43 @@ local function item(id: string, weight: number): BoxItem
 	return { id = id, weight = weight }
 end
 
--- §6.4, in order. Spec 2026-10-09 §3.3: each rarity keeps its §6.4 total per box (Snack 64/30/6, Sweet 58/38/4, Treat
--- 56/34/10), split equally across that rarity's items; new items sit right after their same-rarity siblings and Dragon
+-- §6.4, in order. Spec 2026-10-12 §8 (squishy prices now far apart, so each box covers a narrower range): Snack 150K,
+-- Commons 80% (20% each) and Uncommons 20% (5% each), Epics left it; Sweet 450M, Uncommons 60% (15% each), Epics 39.96%
+-- (9.99% each) and Dragon 0.04%; Treat unchanged (Commons 56%, Uncommons 34%, Epics 10%). A rarity's share is split
+-- equally across its items (spec 2026-10-09 §3.3); new items sit right after their same-rarity siblings and Dragon
 -- stays last.
 local LIST: { BoxDef } = {
 	{
 		id = "snack",
 		nameKey = "box.snack.name",
-		cost = 400,
+		cost = 150_000,
 		paid = true,
 		items = {
-			item("toast", 1600),
-			item("banana", 1600),
-			item("boba_bear", 1600),
-			item("pancake_pup", 1600),
-			item("butter", 750),
-			item("chocolate", 750),
-			item("mochi_fox", 750),
-			item("strawberry_frog", 750),
-			item("bird", 150),
-			item("donut", 150),
-			item("cloud_bunny", 150),
-			item("cupcake_axolotl", 150),
+			item("toast", 2000),
+			item("banana", 2000),
+			item("boba_bear", 2000),
+			item("pancake_pup", 2000),
+			item("butter", 500),
+			item("chocolate", 500),
+			item("mochi_fox", 500),
+			item("strawberry_frog", 500),
 		},
 	},
 	{
 		id = "sweet",
 		nameKey = "box.sweet.name",
-		cost = 1500,
+		cost = 450_000_000,
 		paid = true,
 		items = {
-			item("butter", 1450),
-			item("chocolate", 1450),
-			item("mochi_fox", 1450),
-			item("strawberry_frog", 1450),
-			item("bird", 950),
-			item("donut", 950),
-			item("cloud_bunny", 950),
-			item("cupcake_axolotl", 950),
-			item("dragon", 400),
+			item("butter", 1500),
+			item("chocolate", 1500),
+			item("mochi_fox", 1500),
+			item("strawberry_frog", 1500),
+			item("bird", 999),
+			item("donut", 999),
+			item("cloud_bunny", 999),
+			item("cupcake_axolotl", 999),
+			item("dragon", 4),
 		},
 	},
 	{

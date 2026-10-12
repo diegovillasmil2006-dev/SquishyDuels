@@ -1,10 +1,10 @@
 --!strict
 -- Pricing_Test: unit tests for ReplicatedStorage.Shared.Pricing. Server only (ServerStorage.UnitTest).
--- Contract (DESIGN §6.5, §6.6, §13.2 Part 7 L1; spec 2026-10-09 §3.3): ceiling(id) = floor(min over the paid boxes
--- containing id of cost × 10000 / weight) (with 14 squishies: Commons 2,500, Uncommons 5,333, Epics 15,789, Dragon
--- 37,500; nil for Kitty Bread, which is in no box and not sold); every Catalog shopPrice <= its ceiling; every
--- duplicate refund is below the price of every paid box that contains that rarity (opening can never earn Coins);
--- duplicateRefund follows Config.Economy.DuplicateRefund under the "refund" policy and is 0 for a non-rarity.
+-- Contract (DESIGN §6.5, §6.6, §13.2 Part 7 L1; spec 2026-10-12 §8): ceiling(id) = floor(min over the paid boxes
+-- containing id of cost × 10000 / weight) (Commons 750,000, Uncommons 3,000,000, Epics 4,504,504,504, Dragon
+-- 1,125,000,000,000; nil for Kitty Bread, which is in no box and not sold); every Catalog shopPrice <= its ceiling;
+-- duplicateRefund(boxId) gives back a quarter of the box price (Snack 37,500, Sweet 112,500,000; the free Treat Box the
+-- Snack's 37,500), below every paid box's price (opening can never earn Coins), and 0 for an unknown box.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -13,22 +13,22 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- Spec 2026-10-09 §3.3 ceilings: Common 400 × 10000 / 1600; Uncommon min(400 × 10000 / 750, 1500 × 10000 / 1450);
--- Epic min(400 × 10000 / 150, 1500 × 10000 / 950); Dragon 1500 × 10000 / 400.
+-- Spec 2026-10-12 §8 ceilings: Common 150K × 10000 / 2000; Uncommon min(150K × 10000 / 500, 450M × 10000 / 1500);
+-- Epic 450M × 10000 / 999 (Sweet only); Dragon 450M × 10000 / 4.
 local CEILINGS: { [string]: number } = {
-	toast = 2500,
-	banana = 2500,
-	boba_bear = 2500,
-	pancake_pup = 2500,
-	butter = 5333,
-	chocolate = 5333,
-	mochi_fox = 5333,
-	strawberry_frog = 5333,
-	bird = 15789,
-	donut = 15789,
-	cloud_bunny = 15789,
-	cupcake_axolotl = 15789,
-	dragon = 37500,
+	toast = 750_000,
+	banana = 750_000,
+	boba_bear = 750_000,
+	pancake_pup = 750_000,
+	butter = 3_000_000,
+	chocolate = 3_000_000,
+	mochi_fox = 3_000_000,
+	strawberry_frog = 3_000_000,
+	bird = 4_504_504_504,
+	donut = 4_504_504_504,
+	cloud_bunny = 4_504_504_504,
+	cupcake_axolotl = 4_504_504_504,
+	dragon = 1_125_000_000_000,
 }
 
 return function(t: Context)
@@ -38,7 +38,7 @@ return function(t: Context)
 	local Config = t.requireShared("Config")
 	local expect = t.expect
 
-	t.test("ceiling matches the spec 2026-10-09 table and is nil for a squishy in no paid box", function()
+	t.test("ceiling matches the spec 2026-10-12 table and is nil for a squishy in no paid box", function()
 		for id, expected in CEILINGS do
 			expect.equal(Pricing.ceiling(id), expected)
 		end
@@ -53,7 +53,7 @@ return function(t: Context)
 				expect.equal(Boxes.get(row.boxId).cost, nil)
 			end
 		end
-		expect.equal(Pricing.ceiling("toast"), 2500)
+		expect.equal(Pricing.ceiling("toast"), 750_000)
 	end)
 
 	t.test("every shop price is at or below its ceiling", function()
@@ -68,38 +68,32 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("the whole collection through the shop costs 69,800 Coins (spec 2026-10-09 §3.3)", function()
+	t.test("the whole collection through the shop costs 1,106,810,840,000 Coins (spec 2026-10-12 §6)", function()
 		local total = 0
 		for _, def in Catalog.list() do
 			total += def.shopPrice or 0
 		end
-		expect.equal(total, 69800)
+		expect.equal(total, 4 * 10_000 + 4 * 2_700_000 + 4 * 1_700_000_000 + 1_100_000_000_000)
 	end)
 
-	t.test("every duplicate refund is below every paid box price containing that rarity", function()
+	t.test("a paid box's double gives back a quarter of its price, always below the price", function()
 		for _, box in Boxes.list() do
 			if box.paid then
-				for _, entry in box.items do
-					local def = Catalog.get(entry.id)
-					local refund = Pricing.duplicateRefund(def.rarity)
-					if not (refund < box.cost) then
-						error(`{box.id} ({box.cost}) contains {entry.id}, whose refund {refund} is not below it`)
-					end
+				local refund = Pricing.duplicateRefund(box.id)
+				expect.equal(refund, box.cost // 4)
+				if not (refund < box.cost) then
+					error(`{box.id} ({box.cost}): the refund {refund} is not below the price`)
 				end
 			end
 		end
 	end)
 
-	t.test("duplicateRefund follows Config.Economy.DuplicateRefund under the refund policy", function()
+	t.test("duplicateRefund: Snack 37,500, Sweet 112,500,000, the free Treat Box the Snack's; 0 otherwise", function()
 		expect.equal(Config.Economy.DuplicatePolicy, "refund")
-		expect.equal(Pricing.duplicateRefund("Common"), 100)
-		expect.equal(Pricing.duplicateRefund("Uncommon"), 150)
-		expect.equal(Pricing.duplicateRefund("Epic"), 300)
-		expect.equal(Pricing.duplicateRefund("Exclusive"), 1000)
-		for rarity, coins in Config.Economy.DuplicateRefund do
-			expect.equal(Pricing.duplicateRefund(rarity), coins)
-		end
-		expect.equal(Pricing.duplicateRefund("Mythic"), 0)
+		expect.equal(Pricing.duplicateRefund("snack"), 37_500)
+		expect.equal(Pricing.duplicateRefund("sweet"), 112_500_000)
+		expect.equal(Pricing.duplicateRefund("treat"), 37_500)
+		expect.equal(Pricing.duplicateRefund("nope"), 0)
 		expect.equal(Pricing.duplicateRefund(nil :: any), 0)
 	end)
 end

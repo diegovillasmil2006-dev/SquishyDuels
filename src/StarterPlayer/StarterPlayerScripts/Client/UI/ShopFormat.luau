@@ -49,7 +49,8 @@
 --   charged = false and gets a fresh id next time.
 -- * The Coins tab lists only bundles the server offers (StateDelta.monetization.bundles) that have a productId in
 --   Config and are on sale; it shows only shop.coinsUnavailable while none are left, and also whenever Grip is on with
---   allowBundlesWithTrainer false (G-E / G7b, fail closed on the client too). No passes tab or line, ever, in v1.
+--   allowBundlesWithCapsules false (G-E / G7b, fail closed on the client too; lobby spec 2026-10-11 §11, was
+--   allowBundlesWithTrainer). No passes tab or line, ever, in v1.
 
 -- Services
 
@@ -445,13 +446,13 @@ end
 
 -- Public: Coins tab ----------------------------------------------------------------------------------------------------
 
--- False while Grip is on and coin bundles must stay off with the trainer (G-E, G7b): the Coins tab then shows only
+-- False while Grip is on and coin bundles must stay off with the capsules (G-E, G7b): the Coins tab then shows only
 -- shop.coinsUnavailable whatever the server offers. `gripCfg` = Config.Grip.
-function ShopFormat.bundlesAllowed(gripCfg: { enabled: boolean, allowBundlesWithTrainer: boolean }?): boolean
+function ShopFormat.bundlesAllowed(gripCfg: { enabled: boolean, allowBundlesWithCapsules: boolean }?): boolean
 	if gripCfg == nil then
 		return true
 	end
-	return not (gripCfg.enabled == true and gripCfg.allowBundlesWithTrainer ~= true)
+	return not (gripCfg.enabled == true and gripCfg.allowBundlesWithCapsules ~= true)
 end
 
 -- A bundle's Robux price text: "…" while loading (or unknown), "Unavailable" on failure, else "{price} Robux".

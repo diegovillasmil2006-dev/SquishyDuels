@@ -5,7 +5,8 @@
 -- buy(p, squishyId, expectedPrice, requestId), in the §6.6 order:
 --   1. a Catalog id (and a GUID requestId), else net.invalid;
 --   2. shopPrice nil (the free starter) or a price disabled at boot -> shop.notForSale;
---   3. expectedPrice an integer equal to shopPrice, else shop.priceChanged (it is only compared, never charged);
+--   3. expectedPrice a whole Coin amount (Validate.coins: up to maxCoins, since prices reach 1.1T, spec 2026-10-12 §6)
+--      equal to shopPrice, else shop.priceChanged (it is only compared, never charged);
 --   4. no profile in memory yet -> data.notReady;
 --   5. shopLog.req == requestId -> the stored result (replay: no charge, charged = true as first answered);
 --   6. already owned -> ok {charged = false} (shop.owned: "No Coins were spent" may show);
@@ -177,7 +178,7 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 	if price == nil or disabled[id] ~= nil then
 		return refuse(CODE_NOT_FOR_SALE)
 	end
-	if Validate.integer(expectedPrice) == nil or expectedPrice ~= price then
+	if Validate.coins(expectedPrice) == nil or expectedPrice ~= price then
 		return refuse(CODE_PRICE_CHANGED)
 	end
 	-- 4-6: replay and ownership (the stored state is the idempotency key, §3.4)

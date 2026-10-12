@@ -39,8 +39,8 @@
 --   SD_DebugServer:Invoke("slowTick", userId)       one slow-training tick now: { grip, reason, station }
 --   SD_DebugServer:Invoke("tickSeconds", s?)        the slow-training tick interval (nil = Config; large = paused)
 --   SD_DebugServer:Invoke("gripLog", clear?)        the Grip toasts sent this session { userId, code, args, at }
---   SD_DebugServer:Invoke("grip" | "squeeze")       GripService.debugState / SqueezeService.counts (with coinAlerts,
---                                                   the squeeze Coins alerts logged, spec 2026-10-11 §5)
+--   SD_DebugServer:Invoke("grip" | "squeeze")       GripService.debugState / SqueezeService.counts (with
+--                                                   squeezeAlerts, the paid-squeeze alerts logged, spec 2026-10-12 §12)
 --   SD_DebugServer:Invoke("toStation", userId, stationId)  moves the character to stand on that squeeze station
 --                                                   (WorldLayout centre, top + 3 studs; CharacterService.teleportAsync):
 --                                                   a squeeze there gets the pad's boost (the server finds the pad under

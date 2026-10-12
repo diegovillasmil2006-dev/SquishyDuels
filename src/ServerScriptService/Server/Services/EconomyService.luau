@@ -20,8 +20,9 @@
 --   (exactly once together with DuelService's single end, §12 #14; a replay never adds a second same-pair time). It
 --   asks for a "soon" save. findLog / appendLog are the same helpers for the other logs (boxLog, shopLog, receipts,
 --   Part 7).
--- * Squishies: grantSquishy(p, id, source) adds an owned entry {at, src}; a duplicate from a box is refunded by rarity
---   when DuplicatePolicy is "refund" (§6.5, duplicateRefund); a duplicate from any other source changes nothing.
+-- * Squishies: grantSquishy(p, id, source, boxId?) adds an owned entry {at, src}; a duplicate from a box is refunded
+--   a share of that box's price when DuplicatePolicy is "refund" (§6.5; spec 2026-10-12 §8: duplicateRefund(boxId) =
+--   Pricing.duplicateRefund); a duplicate from any other source changes nothing.
 -- * Reading: stats.coinsEarned / coinsSpent count every real grant and spend except the Studio-only "debug" reason,
 --   so Studio tests never inflate them. Reading: stats.eliminations counts opponents eliminated in recorded results
 --   (DuelService passes 0 or 1).
@@ -40,6 +41,7 @@ local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local Pricing = require(Shared.Pricing)
 local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
 local DuelRewards = require(script.Parent.Parent.Logic.DuelRewards)
@@ -85,7 +87,6 @@ local REASON_DEBUG = "debug"
 local REASON_REFUND = "refund"
 local SOURCE_BOX = "box"
 local SAVE_SOON = "soon"
-local POLICY_REFUND = "refund"
 local CODE_NO_REWARDS_OFFLINE = "duel.noRewardsOffline"
 local OWNED_SOURCES: { [string]: boolean } = { starter = true, box = true, shop = true, grant = true }
 local DUEL_RESULTS: { [string]: string } = { win = "duel_win", loss = "duel_loss", draw = "duel_draw" }
@@ -222,14 +223,11 @@ function EconomyService.isReason(reason: unknown): boolean
 	return type(reason) == "string" and REASONS[reason] == true
 end
 
--- The Coins a duplicate of this squishy is worth under the duplicate policy (§6.5): the rarity's DuplicateRefund when
--- DuplicatePolicy is "refund"; 0 for an unknown id or the (unbuilt) "exclude_owned" policy.
-function EconomyService.duplicateRefund(id: unknown): number
-	local def = Catalog.get(id)
-	if def == nil or ECONOMY.DuplicatePolicy ~= POLICY_REFUND then
-		return 0
-	end
-	return ECONOMY.DuplicateRefund[def.rarity] or 0
+-- The Coins a duplicate from this box is worth under the duplicate policy (§6.5; spec 2026-10-12 §8): a share of the
+-- box's price (Pricing.duplicateRefund) when DuplicatePolicy is "refund"; 0 for an unknown box or the (unbuilt)
+-- "exclude_owned" policy.
+function EconomyService.duplicateRefund(boxId: unknown): number
+	return Pricing.duplicateRefund(boxId)
 end
 
 -- The first entry of a log whose `keyField` equals `key` (duelLog.matchId, boxLog.req, shopLog.req, receipts.id).
@@ -364,9 +362,10 @@ function EconomyService.trySpend(player: any, amount: number, reason: string): (
 	return true, nil
 end
 
--- Adds a squishy to the collection (§6.5). Already owned: a box duplicate is refunded by rarity (reason "refund"),
--- any other source changes nothing. Returns {added, refund, refused?}. Never yields.
-function EconomyService.grantSquishy(player: any, id: string, source: string): SquishyGrant
+-- Adds a squishy to the collection (§6.5). Already owned: a box duplicate is refunded duplicateRefund(boxId) (reason
+-- "refund"; `boxId` = the box it came from), any other source changes nothing. Returns {added, refund, refused?}.
+-- Never yields.
+function EconomyService.grantSquishy(player: any, id: string, source: string, boxId: string?): SquishyGrant
 	if not Catalog.isValidId(id) or not OWNED_SOURCES[source] then
 		log:warn(`grantSquishy: invalid id {tostring(id)} or source {tostring(source)}`)
 		return { added = false, refund = 0, refused = "invalid" }
@@ -379,7 +378,7 @@ function EconomyService.grantSquishy(player: any, id: string, source: string): S
 			profile.owned = owned
 		end
 		if owned[id] ~= nil then
-			local worth = if source == SOURCE_BOX then EconomyService.duplicateRefund(id) else 0
+			local worth = if source == SOURCE_BOX then EconomyService.duplicateRefund(boxId) else 0
 			if worth > 0 then
 				refund = addCoinsTo(profile, worth, REASON_REFUND)
 				after = profile.coins

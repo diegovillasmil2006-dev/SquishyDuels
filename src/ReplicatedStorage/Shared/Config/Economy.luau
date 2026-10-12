@@ -2,13 +2,19 @@
 -- Config.Economy: Coin amounts, limits and reward rules (DESIGN §6.1-§6.13). Shared, data only.
 -- Every number is [P] (provisional, not playtested). Box contents and costs live in Boxes.luau, shop prices in
 -- Catalog.luau, Robux coin bundles in Config.Monetization, quest templates and starter tasks in QuestDefs.luau.
+-- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Coins up to 9 Qa, squishy power by rarity (the
+-- squeeze value, shared CapsuleMath), duel rewards counted in squeezes, refunds as a share of the box price and the
+-- "capsule" Coin reason. Rewards still pay the Coins written here until Phase 3 multiplies them by the squeeze value.
 
 local Economy = {
 	startingCoins = 0,
-	maxCoins = 1_000_000_000, -- Coins are integers clamped to [0, maxCoins]
+	-- Coins are integers clamped to [0, maxCoins]. 9 Qa (spec 2026-10-12 §12; was 1B): Luau numbers hold every whole
+	-- number up to about 9.007 Qa exactly.
+	maxCoins = 9_000_000_000_000_000,
 
 	-- The closed list of reasons for EconomyService.grantCoins / trySpend (§6.1). "trainer" = Grip trainer upgrades
-	-- (§17.5, Part 7; validator G6 checks it is listed). "debug" is Studio only.
+	-- (§17.5, Part 7; validator G6 checks it is listed). "capsule" = capsule upgrades, slots and squeezes (spec
+	-- 2026-10-12, lobby spec 2026-10-11 §6; used from Phase 3). "debug" is Studio only.
 	CoinReasons = {
 		"squeeze",
 		"duel_win",
@@ -21,13 +27,14 @@ local Economy = {
 		"robux",
 		"box",
 		"shop",
+		"capsule",
 		"trainer",
 		"debug",
 	},
 
 	-- Coins per paid squeeze by the equipped squishy's rarity; Catalog `squeezeCoins` may override (§6.2).
 	-- Spec 2026-10-11 §5 (the user: "Less per squeeze, no limit"): every squeeze pays, so less each time (was 5 / 6 / 8
-	-- / 10 under the hourly limit).
+	-- / 10 under the hourly limit). Replaced by SquishyPower and the squeeze value in Phase 3 (spec 2026-10-12 §3).
 	CoinsByRarity = {
 		Common = 1,
 		Uncommon = 1,
@@ -35,11 +42,20 @@ local Economy = {
 		Exclusive = 2,
 	} :: { [string]: number },
 
+	-- Squishy power by rarity (spec 2026-10-12 §3, §6): a capsule squeeze pays squishy power × capsule power Coins
+	-- (CapsuleMath). A Catalog def's `power` may override it for one squishy.
+	SquishyPower = {
+		Common = 1,
+		Uncommon = 4,
+		Epic = 16,
+		Exclusive = 64,
+	} :: { [string]: number },
+
 	-- Squeeze earnings limit (§6.3): a rate limit, not a currency; never sold, never changed by passes or products.
 	-- Each paid squeeze uses 1 point; points refill at perHour (even offline) up to burst. At 0 a squeeze pays
 	-- emptyCoins (it still trains Grip, §17.3.1). New players start full (ProfileV1.squeezeLimit.value = burst).
 	-- A paid squeeze pays Catalog.getSqueezeCoins + the pad's Config.Grip.Pads[tier].coinBonus (GripMath.squeezeCoins);
-	-- validator G3 keeps that ceiling under Config.Grip.maxSqueezeCoinsPerHour for every limit setting.
+	-- validator G3 keeps the paid squeezes an hour under Config.Grip.maxSqueezesPerHour for every limit setting.
 	-- Math: shared SqueezeLimit (current / spend / full).
 	-- Off since spec 2026-10-11 §5 (the user: "Less per squeeze, no limit"): every squeeze pays. The module and the
 	-- profile field stay, dormant (SqueezeLimit also runs Double Grip and slow training).
@@ -51,10 +67,12 @@ local Economy = {
 	},
 
 	-- Duel rewards (§6.7), computed by Logic/DuelRewards and granted once on the transition into Result.
+	-- Spec 2026-10-12 §9: counted in squeezes, 3× today's 200 / 60 / 100; Phase 3 turns them into Coins with the
+	-- player's squeeze value. Until then they are paid as written, in Coins.
 	DuelRewards = {
-		win = 200,
-		loss = 60,
-		draw = 100,
+		win = 600,
+		loss = 180,
+		draw = 300,
 		minOwnThrows = 3, -- server-accepted throws, for every outcome; a draw needs both players to reach it
 		winMinActiveSeconds = 20, -- a bail before this is Cancelled (must be >= Duel.Rules.EarlyForfeitSeconds)
 		lossMinActiveSeconds = 45,
@@ -65,7 +83,9 @@ local Economy = {
 
 	-- Daily rewards (§6.9). Server time only: dayIndex = floor(os.time() / 86400), reset at 00:00 UTC.
 	Daily = {
-		coinsByDay = { 100, 150, 200, 250, 300, 400, 500 }, -- streak days 1..7, then the cycle restarts at Day 1
+		-- Streak days 1..7, then the cycle restarts at Day 1. Spec 2026-10-12 §9: counted in squeezes from Phase 3 (the
+		-- same numbers); paid as Coins until then.
+		coinsByDay = { 100, 150, 200, 250, 300, 400, 500 },
 		freeBoxDay = 7, -- also grants the free Treat Box, opened immediately
 		freeBoxId = "treat", -- must be a free-only box in Boxes.luau
 		GraceDays = 0, -- a missed day restarts the streak at Day 1 (name as in DESIGN §6.9)
@@ -82,12 +102,13 @@ local Economy = {
 
 	-- Duplicate box results (§6.5). "exclude_owned" is the documented alternative and is not built.
 	DuplicatePolicy = "refund" :: "refund" | "exclude_owned",
+	-- Spec 2026-10-12 §8: a double gives back `percent` % of the box price, rounded down (Snack 37,500, Sweet
+	-- 112,500,000); a free box (no price: the day-7 Treat Box) gives back that share of the `freeBoxPriceOf` box's price.
+	-- Replaces the refunds by rarity (100 / 150 / 300 / 1,000). Pricing.duplicateRefund(boxId) reads it.
 	DuplicateRefund = {
-		Common = 100,
-		Uncommon = 150,
-		Epic = 300,
-		Exclusive = 1000,
-	} :: { [string]: number },
+		percent = 25,
+		freeBoxPriceOf = "snack",
+	},
 	AllowOpenWhenComplete = false, -- a box whose every item is owned cannot be opened (box.complete)
 	MinSecondsBetweenOpens = 2, -- per player, plus one open in flight (keeps box writes inside the budget)
 

@@ -6,7 +6,8 @@
 -- Shared copy; tables are compared by value.
 -- Contract (DESIGN §6.4, §6.5, §3.4, §3.11, §12 #14 #17):
 --   * an open charges the box cost once (reason "box"), draws once with the server rng, grants the squishy (src "box")
---     or refunds a duplicate by rarity (reason "refund"), appends boxLog {req, box, squishy, dup, refund, cost, at,
+--     or refunds a duplicate a quarter of the box price (reason "refund", spec 2026-10-12 §8), appends boxLog {req,
+--     box, squishy, dup, refund, cost, at,
 --     seen = false} (cap Config.Data.caps.boxLog), counts stats.boxesOpened, marks unseenReveals, awaits the "now"
 --     save and answers {squishyId, isDuplicate, refund, savePending = not saved};
 --   * the same requestId replays the stored result: no charge, no draw, no save;
@@ -30,12 +31,12 @@ local NOW = 1_790_000_000
 local REQ_A = "aaaaaaaa-0000-0000-0000-000000000001"
 local REQ_B = "bbbbbbbb-0000-0000-0000-000000000002"
 local REQ_C = "cccccccc-0000-0000-0000-000000000003"
--- Snack Box draws (spec 2026-10-09 §3.3 cumulative weights: toast 1600, banana 3200, boba_bear 4800, pancake_pup
--- 6400, butter 7150, chocolate 7900, mochi_fox 8650, strawberry_frog 9400, bird 9550, donut 9700, cloud_bunny 9850,
--- cupcake_axolotl 10000).
+-- Snack Box draws (spec 2026-10-12 §8 cumulative weights: toast 2000, banana 4000, boba_bear 6000, pancake_pup
+-- 8000, butter 8500, chocolate 9000, mochi_fox 9500, strawberry_frog 10000).
 local R_TOAST = 1
-local R_BANANA = 1601
-local R_BUTTER = 6401
+local R_BANANA = 2001
+local R_BUTTER = 8001
+local COINS = 1_000_000 -- a few Snack Boxes (150,000 each, spec 2026-10-12 §8)
 
 return function(t: Context)
 	local expect = t.expect
@@ -44,11 +45,12 @@ return function(t: Context)
 	local Boxes = t.requireShared("Boxes")
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
+	local Pricing = t.requireShared("Pricing")
 	local FakeClock = t.requireFake("FakeClock")
 
 	local SNACK = Boxes.get("snack")
 	local SNACK_COST = SNACK.cost
-	local COMMON_REFUND = Config.Economy.DuplicateRefund.Common
+	local SNACK_REFUND = Pricing.duplicateRefund("snack")
 	local MIN_SECONDS = Config.Economy.MinSecondsBetweenOpens
 
 	local function newProfile(coins: number): any
@@ -178,14 +180,14 @@ return function(t: Context)
 
 	t.test("an open charges the cost once, draws once, grants, logs, counts and awaits the now save", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 1000)
+		local p, profile = readyPlayer(w, COINS)
 		w.rolls = { R_BANANA }
 		local result = BoxService.open(p, "snack", REQ_A)
 		expect.deepEqual(result, {
 			ok = true,
 			data = { squishyId = "banana", isDuplicate = false, refund = 0, savePending = false },
 		})
-		expect.equal(profile.coins, 1000 - SNACK_COST)
+		expect.equal(profile.coins, COINS - SNACK_COST)
 		expect.deepEqual(profile.owned.banana, { at = NOW, src = "box" })
 		expect.deepEqual(profile.boxLog, {
 			{
@@ -208,13 +210,13 @@ return function(t: Context)
 
 	t.test("the same requestId replays the stored result: no charge, no draw, no save", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 1000)
+		local p, profile = readyPlayer(w, COINS)
 		w.rolls = { R_TOAST }
 		local first = BoxService.open(p, "snack", REQ_A)
 		w.clock.advance(MIN_SECONDS + 0.2)
 		local again = BoxService.open(p, "snack", REQ_A)
 		expect.deepEqual(again, first)
-		expect.equal(profile.coins, 1000 - SNACK_COST)
+		expect.equal(profile.coins, COINS - SNACK_COST)
 		expect.equal(#profile.boxLog, 1)
 		expect.equal(profile.stats.boxesOpened, 1)
 		expect.equal(w.draws, 1)
@@ -222,28 +224,29 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"a duplicate is refunded by rarity (reason refund) and logged dup = true; the cost is still charged",
+		"a duplicate is refunded a quarter of the box price (reason refund) and logged dup = true; the cost is charged",
 		function()
 			local w = setup()
-			local p, profile = readyPlayer(w, 1000)
+			local p, profile = readyPlayer(w, COINS)
 			profile.owned.toast = { at = 5, src = "shop" }
 			w.rolls = { R_TOAST }
 			local result = BoxService.open(p, "snack", REQ_A)
 			expect.deepEqual(
 				result.data,
-				{ squishyId = "toast", isDuplicate = true, refund = COMMON_REFUND, savePending = false }
+				{ squishyId = "toast", isDuplicate = true, refund = SNACK_REFUND, savePending = false }
 			)
-			expect.equal(profile.coins, 1000 - SNACK_COST + COMMON_REFUND)
+			expect.equal(SNACK_REFUND, 37_500) -- 25% of the 150,000 Snack Box (spec 2026-10-12 §8)
+			expect.equal(profile.coins, COINS - SNACK_COST + SNACK_REFUND)
 			expect.deepEqual(profile.owned.toast, { at = 5, src = "shop" })
 			expect.equal(profile.boxLog[1].dup, true)
-			expect.equal(profile.boxLog[1].refund, COMMON_REFUND)
-			expect.equal(true, COMMON_REFUND < SNACK_COST) -- opening can never earn Coins (§6.5)
+			expect.equal(profile.boxLog[1].refund, SNACK_REFUND)
+			expect.equal(true, SNACK_REFUND < SNACK_COST) -- opening can never earn Coins (§6.5)
 		end
 	)
 
 	t.test("refusals in the §6.4 order, each charged = false with no Coin change and no draw", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 1000)
+		local p, profile = readyPlayer(w, COINS)
 		refused(BoxService.open(p, "snack", "nope"), "net.invalid")
 		refused(BoxService.open({ UserId = 2 }, "snack", REQ_A), "data.notReady")
 		w.statuses[p] = "offline"
@@ -284,7 +287,7 @@ return function(t: Context)
 		"a failed now save answers savePending = true, keeps the change and blocks the next open (box.saving)",
 		function()
 			local w = setup()
-			local p, profile = readyPlayer(w, 1000)
+			local p, profile = readyPlayer(w, COINS)
 			w.saveResult = false
 			w.rolls = { R_BUTTER }
 			local result = BoxService.open(p, "snack", REQ_A)
@@ -294,13 +297,13 @@ return function(t: Context)
 			refused(BoxService.open(p, "snack", REQ_B), "box.saving")
 			-- a replay of the first request still answers its stored result, with the current savePending
 			expect.deepEqual(BoxService.open(p, "snack", REQ_A).data, result.data)
-			expect.equal(profile.coins, 1000 - SNACK_COST)
+			expect.equal(profile.coins, COINS - SNACK_COST)
 		end
 	)
 
 	t.test("MinSecondsBetweenOpens and one open in flight answer net.rateLimited", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 5000)
+		local p, profile = readyPlayer(w, COINS)
 		local inner: any = nil
 		w.onSave = function(player: any)
 			if inner == nil then
@@ -314,13 +317,13 @@ return function(t: Context)
 		refused(BoxService.open(p, "snack", REQ_B), "net.rateLimited")
 		w.clock.advance(0.1)
 		expect.equal(BoxService.open(p, "snack", REQ_B).ok, true)
-		expect.equal(profile.coins, 5000 - 2 * SNACK_COST)
+		expect.equal(profile.coins, COINS - 2 * SNACK_COST)
 		expect.equal(w.draws, 2)
 	end)
 
 	t.test("AckReveal marks an unseen entry seen once, with markDirty and a soon save", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 1000)
+		local p, profile = readyPlayer(w, COINS)
 		w.rolls = { R_TOAST }
 		BoxService.open(p, "snack", REQ_A)
 		local dirtyBefore = w.dirty.unseenReveals
@@ -332,7 +335,7 @@ return function(t: Context)
 		expect.equal(BoxService.ackReveal(p, REQ_B), false) -- unknown
 		expect.equal(BoxService.ackReveal(p, "daily:x"), false) -- invalid id
 		expect.equal(w.soonSaves, 1)
-		expect.equal(profile.coins, 1000 - SNACK_COST) -- no economic effect
+		expect.equal(profile.coins, COINS - SNACK_COST) -- no economic effect
 	end)
 
 	t.test("grantFree: the Treat Box with no cost and no policy check, idempotent by daily:<day>, no save", function()
@@ -366,7 +369,7 @@ return function(t: Context)
 
 	t.test("boxLog keeps the newest Config.Data.caps.boxLog entries", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 1000)
+		local p, profile = readyPlayer(w, COINS)
 		local cap = Config.Data.caps.boxLog
 		for i = 1, cap do
 			table.insert(profile.boxLog, {

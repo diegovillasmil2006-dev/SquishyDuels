@@ -7,6 +7,8 @@
 --     |x| < 1e6), serverTime (|x| < 1e10), whole integers, finite Vector3s, ids by their §2.7 patterns and lengths,
 --     tables up to the key cap; NaN, inf, 1 KB strings, wrong types and unknown types fail;
 --   * validateArgs checks the argument count (too many = badArgCount) and every argument of a real remote;
+--   * ShopBuy's expectedPrice is a whole Coin amount up to Config.Economy.maxCoins (Dragon costs 1.1T, spec 2026-10-12
+--     §6), never NaN, inf, negative, fractional or above the cap;
 --   * OnboardingStep takes the client-recorded steps plus the Skip tutorial id (Part 7); TrainerUpgrade (Part 7) takes
 --     two whole numbers and rejects NaN, inf, 1e9, strings, fractions and extra arguments; SqueezeRequest takes no
 --     argument (spec 2026-10-11 §5: the server finds the pad itself), so a station id or anything else is badArgCount;
@@ -177,6 +179,21 @@ return function(t: Context)
 		expect.truthy(entry ~= nil and entry.oneInFlight == true)
 	end)
 
+	t.test("ShopBuy: a whole Coin price up to maxCoins passes; NaN, inf, negative, fractions and more fail", function()
+		local dragon = 1_100_000_000_000 -- above the 1e6 "integer" bound (spec 2026-10-12 §6)
+		local ok, args = NetService.validateArgs("ShopBuy", "dragon", dragon, GUID)
+		expect.truthy(ok)
+		expect.equal(args[2], dragon)
+		expect.truthy(valid("coins", Config.Economy.maxCoins))
+		expect.truthy(valid("coins", 0))
+		local bads: { any } = { 0 / 0, math.huge, -1, 2.5, Config.Economy.maxCoins + 2, "10000" }
+		for _, bad in bads do
+			if valid("coins", bad) then
+				error(`coins accepted {tostring(bad)}`)
+			end
+		end
+	end)
+
 	t.test("booleans, strings and tables; unknown types fail closed", function()
 		expect.truthy(valid("boolean", false))
 		expect.falsy(valid("boolean", 0))
@@ -198,6 +215,7 @@ return function(t: Context)
 			integer = 1,
 			number = 1,
 			serverTime = 1.8e9,
+			coins = 1_100_000_000_000,
 			boolean = true,
 			string = "a",
 			table = {},

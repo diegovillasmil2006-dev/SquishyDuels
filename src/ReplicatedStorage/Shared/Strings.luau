@@ -801,7 +801,7 @@ local Strings = {
 		goalPad = "Next: {pad} at Grip Lv {level}",
 		goalTrainer = "Next: {trainer} unlocks at Grip Lv {level}",
 		goalRank = "Next rank: {rank} at Grip Lv {level}",
-		goalMax = "Max level! You're a Squish Master.",
+		goalMax = "Max level! You've reached Infinite Grip.",
 		-- Foam fix 2: the regular HUD card's goal line (one line in its info column); the panel and toasts keep the above.
 		hudGoalPad = "Next: {pad} at Lv {level}",
 		hudGoalTrainer = "Next: {trainer} at Lv {level}",
@@ -825,6 +825,12 @@ local Strings = {
 			iron = "Iron Grip",
 			titan = "Titan Grip",
 			master = "Squish Master",
+			-- Spec 2026-10-12 §10: the ranks above Lv 50.
+			legend = "Legend Grip",
+			mythic = "Mythic Grip",
+			cosmic = "Cosmic Grip",
+			galaxy = "Galaxy Grip",
+			infinite = "Infinite Grip",
 		},
 		-- Keyed by Config.Grip.Pads[tier].key.
 		pad = {

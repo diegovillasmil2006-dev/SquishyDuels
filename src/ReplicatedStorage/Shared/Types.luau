@@ -17,7 +17,8 @@ export type SquishyDef = {
 	rarity: Rarity,
 	blueprintId: string,
 	icon: string?, -- uploaded image id later; nil = static viewport preview (v1)
-	squeezeCoins: number?, -- optional override; default Economy.CoinsByRarity[rarity]
+	squeezeCoins: number?, -- optional override; default Economy.CoinsByRarity[rarity] (replaced in Phase 3)
+	power: number?, -- optional squishy power; default Economy.SquishyPower[rarity] (spec 2026-10-12 §6)
 	shopPrice: number?, -- nil = not sold (the starter)
 	robuxOnly: boolean?,
 	equivalentId: string?, -- future Robux-exclusive squishies (§6.12)

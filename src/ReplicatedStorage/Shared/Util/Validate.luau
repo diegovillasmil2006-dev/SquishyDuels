@@ -3,6 +3,8 @@
 -- Every narrowing helper takes `unknown` and returns the typed value, or nil when the input is invalid.
 -- Numbers are valid only when finite: `x == x` and `|x| < Config.Net.maxAbsNumber` (1e6). Server timestamps
 -- (`clientTime` = workspace:GetServerTimeNow(), Unix seconds) use `serverTime`, bounded by Config.Net.maxAbsServerTime.
+-- Coin amounts (a price the client only repeats, ShopBuy's expectedPrice) use `coins`: a whole number in
+-- [0, Config.Economy.maxCoins], since prices reach the trillions (spec 2026-10-12 §6).
 -- Game-state checks (ownership, catalog membership, phases) are not done here.
 -- Bounds come from Config (the single source); Config never requires Util modules, so there is no cycle.
 
@@ -85,6 +87,18 @@ end
 function Validate.integer(value: unknown, min: number?, max: number?): number?
 	local n = Validate.number(value, min, max)
 	if n == nil or math.floor(n) ~= n then
+		return nil
+	end
+	return n
+end
+
+-- A Coin amount: a whole number in [0, Config.Economy.maxCoins] (not bounded by maxAbsNumber).
+function Validate.coins(value: unknown): number?
+	if type(value) ~= "number" then
+		return nil
+	end
+	local n = value :: number
+	if n ~= n or n < 0 or n > Config.Economy.maxCoins or math.floor(n) ~= n then
 		return nil
 	end
 	return n

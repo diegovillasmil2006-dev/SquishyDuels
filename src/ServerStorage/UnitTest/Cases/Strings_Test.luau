@@ -220,7 +220,7 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.goalPad"] = "Next: {pad} at Grip Lv {level}",
 	["grip.goalTrainer"] = "Next: {trainer} unlocks at Grip Lv {level}",
 	["grip.goalRank"] = "Next rank: {rank} at Grip Lv {level}",
-	["grip.goalMax"] = "Max level! You're a Squish Master.",
+	["grip.goalMax"] = "Max level! You've reached Infinite Grip.",
 	-- §17.7 at a pad
 	["grip.popup"] = "+{n} Grip",
 	["grip.popupDouble"] = "+{n} Grip (x{mult})",
@@ -514,6 +514,14 @@ return function(t: Context)
 		if #missing > 0 then
 			error("missing: " .. table.concat(missing, ", "))
 		end
+	end)
+
+	t.test("the ranks above Lv 50 read Legend, Mythic, Cosmic, Galaxy and Infinite (spec 2026-10-12 §10)", function()
+		local names = {}
+		for _, key in { "legend", "mythic", "cosmic", "galaxy", "infinite" } do
+			table.insert(names, Strings.resolve("grip.rank." .. key))
+		end
+		expect.deepEqual(names, { "Legend Grip", "Mythic Grip", "Cosmic Grip", "Galaxy Grip", "Infinite Grip" })
 	end)
 
 	-- Part 7 ----------------------------------------------------------------------------------------------------

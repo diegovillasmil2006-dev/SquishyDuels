@@ -221,14 +221,14 @@ return function(t: Context)
 				end
 				expect.equal(boxLines, #Boxes.containing(def.id))
 			end
-			-- §6.10 numbers with 14 squishies (spec 2026-10-09 §3.3), as the player reads them.
+			-- §6.10 numbers (spec 2026-10-12 §6, §8: Epics left the Snack Box), as the player reads them.
 			local bird = InspectFormat.view("bird", UNOWNED)
 			assert(bird ~= nil, "no view")
 			local texts = {}
 			for _, line in bird.howToGet do
 				table.insert(texts, line.text)
 			end
-			expect.deepEqual(texts, { "Snack Box: 1.50%", "Sweet Box: 9.50%", "Treat Box: 2.50%", "Shop: 7,500 Coins" })
+			expect.deepEqual(texts, { "Sweet Box: 9.99%", "Treat Box: 2.50%", "Shop: 1.70B Coins" })
 			expect.equal(bird.previewBadge, "Preview · Not owned") -- foam fix batch: sentence case, not all caps
 			-- The free starter is in no box and not sold: nothing to list, no View in Shop.
 			local kitty = InspectFormat.view("kitty_bread", UNOWNED)

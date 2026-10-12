@@ -195,7 +195,7 @@ return function(t: Context)
 		expect.equal(calls[1].matchId, MATCH_ID)
 		expect.equal(calls[1].outcome, "win")
 		expect.deepEqual(calls[1].result, {
-			coins = 200,
+			coins = Config.Economy.DuelRewards.win, -- 600 (spec 2026-10-12 §9)
 			logEntry = { matchId = MATCH_ID, opp = USER_B, result = "win", at = NOW_UNIX, full = true },
 			eliminations = 1,
 		})
@@ -219,7 +219,7 @@ return function(t: Context)
 		local reward = DuelRewards.compute(s, "A", { samePair = { [tostring(USER_B)] = times } }, NOW_UNIX, Config)
 		local payer = recorder({ coins = reward.coins, recorded = true, alreadyGranted = false })
 		local settled = DuelService.settleReward({ UserId = USER_A }, MATCH_ID, "win", reward, 0, payer)
-		expect.equal(settled.coins, 50)
+		expect.equal(settled.coins, 150) -- 600 × 0.25 (spec 2026-10-12 §9)
 		expect.equal(settled.coinsBlockedReason, "duel.rewardsReduced")
 	end)
 
@@ -251,7 +251,7 @@ return function(t: Context)
 			DuelService.settleReward(winner, MATCH_ID, "win", winReward, 0)
 			DuelService.settleReward(loser, MATCH_ID, "loss", lossReward, 0)
 		end
-		-- The loser bailed after 60 s: the win pays 200; the loss (>= 45 s of Active) pays 60.
+		-- The loser bailed after 60 s: the win pays 600; the loss (>= 45 s of Active) pays 180.
 		expect.equal(profiles[winner].coins, Config.Economy.DuelRewards.win)
 		expect.equal(profiles[loser].coins, Config.Economy.DuelRewards.loss)
 		expect.equal(#profiles[winner].duelLog, 1)

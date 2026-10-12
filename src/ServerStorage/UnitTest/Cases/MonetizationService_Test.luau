@@ -299,7 +299,7 @@ return function(t: Context)
 		expect.deepEqual(MonetizationService.offeredBundles(), {})
 		MonetizationService.playerAdded(p)
 		expect.deepEqual(w.views[#w.views].view, { bundles = {}, passes = {} })
-		-- validated ids are still not offered while Grip is on and allowBundlesWithTrainer is false
+		-- validated ids are still not offered while Grip is on and allowBundlesWithCapsules is false
 		local locked = setup({ locked = true })
 		offeredFor(locked, { PRODUCT, OTHER_PRODUCT })
 		expect.deepEqual(MonetizationService.offeredBundles(), {})

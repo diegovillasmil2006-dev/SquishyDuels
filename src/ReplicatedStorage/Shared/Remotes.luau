@@ -21,6 +21,7 @@ export type ArgType =
 	"integer"
 	| "number" -- finite, |x| < Config.Net.maxAbsNumber (1e6)
 	| "serverTime" -- a workspace:GetServerTimeNow() timestamp: finite, |x| < Config.Net.maxAbsServerTime
+	| "coins" -- a whole Coin amount in [0, Config.Economy.maxCoins] (prices reach the trillions, spec 2026-10-12 §6)
 	| "boolean"
 	| "string"
 	| "table"
@@ -150,7 +151,7 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	AckReveal = c2s("RemoteEvent", { arg("requestId", "revealRequestId") }),
 	ShopBuy = c2s("RemoteFunction", {
 		arg("squishyId", "squishyId"),
-		arg("expectedPrice", "integer"), -- compared only, never charged
+		arg("expectedPrice", "coins"), -- compared only, never charged (Dragon costs 1.1T, above the 1e6 "integer" bound)
 		arg("requestId", "requestId"),
 	}),
 	QuestClaim = c2s("RemoteFunction", { arg("questId", "questId") }),

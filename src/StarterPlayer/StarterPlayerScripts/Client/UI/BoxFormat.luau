@@ -70,8 +70,8 @@ export type OddsRow = {
 	percentText: string, -- "32.00%"
 	owned: boolean,
 	ownedText: string?, -- common.owned when owned
-	refund: number, -- Pricing.duplicateRefund(rarity)
-	refundText: string, -- box.refundLine "If you already own it: +100 Coins"
+	refund: number, -- Pricing.duplicateRefund(boxId): a share of the box price, the same on every row (spec 2026-10-12 §8)
+	refundText: string, -- box.refundLine "If you already own it: +37,500 Coins"
 	inspect: boolean, -- Inspect is offered for every row, owned or not (§6.10 #4)
 }
 
@@ -272,11 +272,11 @@ end
 function BoxFormat.oddsRows(boxId: string, owned: { [string]: any }?): { OddsRow }
 	local have = owned or {}
 	local rows: { OddsRow } = {}
+	local refund = Pricing.duplicateRefund(boxId)
 	for _, odds in Boxes.odds(boxId) do
 		local def = Catalog.get(odds.id)
 		local rarity = if def then def.rarity else ""
 		local info = Rarity.get(rarity)
-		local refund = Pricing.duplicateRefund(rarity)
 		local isOwned = have[odds.id] ~= nil
 		table.insert(rows, {
 			id = odds.id,

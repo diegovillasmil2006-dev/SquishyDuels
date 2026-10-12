@@ -13,16 +13,16 @@
 -- poll). It never errors: a
 -- missing or mistyped value becomes a problem line. Robux stays off: no product or pass ids are configured.
 -- Grip rules (§17.9 table, §17.12 Part 3): each of G1, G2, G4, G5, G8 and G10 catches a deliberately broken copy.
--- Part 5 (§17.12): G3 (since spec 2026-10-11: a Royal Cushion bonus of 4 fails, the limit switched back on passes; a
--- Catalog squeezeCoins override of 11 through Config.validate({ Catalog = fake })), G6's Strings names and G9
--- (percentPerTick 165 and 200, burst 150, perHour 360);
+-- Part 5 (§17.12): G3 (a squeeze count since spec 2026-10-12 §12: a 13-a-second cap and a ceiling of 43,199 fail, the
+-- limit switched back on passes), G6's Strings names and G9 (percentPerTick 165 and 200, burst 150, perHour 360);
 -- plus the Part 5 values of Data, UI.Grip and Config.Grip.
 -- Feel pass (§18.8, §18.9, §18.10 L1): every §18.8 key holds its DESIGN value, and each rule F1-F11 catches a planted
 -- bad value (among them: a 5° punch, a squeeze total of 20, an unstable wave speed and skinMode = "x").
 -- Part 7 (§17.12 Part 7 L1): G6 wiring (no "trainer" Coin reason; no or a parallel TrainerUpgrade rate), G7 and G7b
 -- with the negatives of §17.12 word for word through Config.robuxProblems (pass benefit "grip", a bundle with an extra
 -- rested field, pass keys grip_boost / afk_boost / slow_training_boost / royal_pad_pass, nameKey texts "Golden
--- Gripper" and "Royal Cushion VIP", a productId while allowBundlesWithTrainer is false); QuestDefs checks through
+-- Gripper" and "Royal Cushion VIP", a productId while allowBundlesWithCapsules is false; spec 2026-10-12 adds a
+-- capsule_boost pass key); QuestDefs checks through
 -- Config.validate({ QuestDefs = fake }); Onboarding.skipStepId; UI.Boxes / UI.Shop; the Part 7 values.
 -- Part 6 (Inspect readings): the preview dot, drag speed filter and Collection display values, and their negatives
 -- (non-positive sizes and times, dotSpeedMinPx above dotSpeedMaxPx, a negative margin or spin, a bad nameplate size).
@@ -41,7 +41,10 @@
 -- view and light, the five arm parts, colours, team sleeves, outline, held toy, pop-in, squeeze, focus, shake, throw
 -- extras and Dragon charge), squeezeAxis is "X" and Inspect's is "Y"; validate reports a broken arm part, outline,
 -- pop-in, held pose, team sleeve or squeeze inset. Economy: squeeze Coins 1 / 1 / 2 / 2, pad Coin bonuses 0 / 1 / 2 /
--- 3, no hourly limit, G3's ceiling 216,000 (a Royal Cushion bonus of 4 fails it) and the 50,000 Coins-an-hour alert.
+-- 3, no hourly limit, G3's 43,200 squeezes an hour and the 30,000-squeeze alert (spec 2026-10-12 §12).
+-- Big-number progression (spec 2026-10-12, Phase 1): the 9 Qa caps, 100 levels and their totals, the ranks, squishy
+-- power, duel rewards, refunds and maxGripPerEvent = CP(100) × 2; negatives for G1's rising totals, G5's CP(100) event,
+-- the Capsule block, SquishyPower, a Catalog power override and the refund share.
 --
 -- How a "deliberately broken copy" is made without changing Config's API: clone the Shared folder, require one
 -- section module of the clone and change it, then require the clone's Config. Its init receives the changed
@@ -262,31 +265,33 @@ return function(t: Context)
 	end)
 
 	-- Squeeze anywhere, Coins every time (spec 2026-10-11 §5; the user: "Less per squeeze, no limit", "+0/+1/+2/+3").
-	t.test("squeeze Coins 1 / 1 / 2 / 2, pad bonuses 0 / 1 / 2 / 3, no limit, G3 216,000, alert 50,000", function()
-		local economy, grip = Config.Economy, Config.Grip
-		expect.deepEqual(economy.CoinsByRarity, { Common = 1, Uncommon = 1, Epic = 2, Exclusive = 2 })
-		local bonuses, percents = {}, {}
-		for tier, pad in grip.Pads do
-			bonuses[tier], percents[tier] = pad.coinBonus, pad.gripPercent
+	t.test(
+		"squeeze Coins 1 / 1 / 2 / 2, pad bonuses 0 / 1 / 2 / 3, no limit, G3 43,200 squeezes, alert 30,000",
+		function()
+			local economy, grip = Config.Economy, Config.Grip
+			expect.deepEqual(economy.CoinsByRarity, { Common = 1, Uncommon = 1, Epic = 2, Exclusive = 2 })
+			local bonuses, percents = {}, {}
+			for tier, pad in grip.Pads do
+				bonuses[tier], percents[tier] = pad.coinBonus, pad.gripPercent
+			end
+			expect.deepEqual(bonuses, { 0, 1, 2, 3 })
+			expect.deepEqual(percents, { 100, 150, 200, 300 }) -- the Grip multipliers stay
+			expect.equal(economy.SqueezeLimit.enabled, false)
+			-- Spec 2026-10-12 §12: G3 counts squeezes, 43,200 an hour at the 12-a-second cap; the alert 30,000 of them.
+			expect.equal(grip.maxSqueezesPerHour, 3600 * 12)
+			expect.equal(grip.squeezeAlertPerHour, 30_000)
 		end
-		expect.deepEqual(bonuses, { 0, 1, 2, 3 })
-		expect.deepEqual(percents, { 100, 150, 200, 300 }) -- the Grip multipliers stay
-		expect.equal(economy.SqueezeLimit.enabled, false)
-		-- 43,200 squeezes an hour at the 12-a-second cap × (2 squeeze Coins + 3 pad bonus).
-		expect.equal(grip.maxSqueezeCoinsPerHour, 3600 * 12 * (2 + 3))
-		expect.equal(grip.maxSqueezeCoinsPerHour, 216_000)
-		expect.equal(grip.squeezeCoinsAlertPerHour, 50_000)
-	end)
+	)
 
-	t.test("validate reports a squeeze Coins alert that is not a whole number in 1..maxSqueezeCoinsPerHour", function()
+	t.test("validate reports a squeeze alert that is not a whole number in 1..maxSqueezesPerHour", function()
 		local zero = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.squeezeCoinsAlertPerHour = 0
+			grip.squeezeAlertPerHour = 0
 		end)
-		expect.truthy(containsText(zero, "Config.Grip.squeezeCoinsAlertPerHour"))
+		expect.truthy(containsText(zero, "Config.Grip.squeezeAlertPerHour"))
 		local above = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.squeezeCoinsAlertPerHour = 216_001
+			grip.squeezeAlertPerHour = 43_201
 		end)
-		expect.truthy(containsText(above, "Config.Grip.squeezeCoinsAlertPerHour"))
+		expect.truthy(containsText(above, "Config.Grip.squeezeAlertPerHour"))
 	end)
 
 	t.test("validate reports a hold repeat shorter than the release pop of any rarity", function()
@@ -664,10 +669,11 @@ return function(t: Context)
 
 	-- Grip rules (DESIGN §17.9; negatives from §17.12 Part 3) ---------------------------------------------------
 
-	-- G1 Levels: 50 totals from 0, rising, a level never costs less than the one before, <= maxGrip.
-	t.test("G1 reports a level that costs less than the one before", function()
+	-- G1 Levels: 100 totals from 0, rising, <= maxGrip. Spec 2026-10-12's totals make Lv 3 and Lv 11 cost less than the
+	-- level before, so that is no longer reported (the shipped config passes).
+	t.test("G1 reports totals that stop rising", function()
 		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.LevelTotals[10] = 70000 -- Lv 10 costs 4,000 after Lv 9 cost 24,000
+			grip.LevelTotals[10] = grip.LevelTotals[9] -- Lv 10 would cost nothing
 		end)
 		expect.truthy(containsAll(problems, { "G1:", "Lv 10" }))
 	end)
@@ -676,7 +682,7 @@ return function(t: Context)
 		local short = validateBrokenCopy(t.Shared, "Grip", function(grip)
 			table.remove(grip.LevelTotals)
 		end)
-		expect.truthy(containsAll(short, { "G1:", "50 levels" }))
+		expect.truthy(containsAll(short, { "G1:", "100 levels" }))
 		local start = validateBrokenCopy(t.Shared, "Grip", function(grip)
 			grip.LevelTotals[1] = 10
 		end)
@@ -885,24 +891,117 @@ return function(t: Context)
 		end
 	end)
 
-	-- G3 Coin ceiling: paid × (max squeeze Coins + max coinBonus) + unpaid × emptyCoins <= maxSqueezeCoinsPerHour.
-	-- Spec 2026-10-11 §5: the limit is off, so every one of the 43,200 squeezes an hour at the cap pays.
-	t.test("G3 reports a Royal Cushion Coin bonus of 4 (259,200 Coins per hour at the 12-per-second cap)", function()
-		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Pads[4].coinBonus = 4
+	-- G3 squeeze ceiling (spec 2026-10-12 §12): the paid squeezes an hour <= maxSqueezesPerHour (43,200). The limit is
+	-- off (spec 2026-10-11 §5), so every one of the 43,200 squeezes an hour at the 12-a-second cap pays.
+	t.test("G3 reports a 13-a-second squeeze cap (46,800 paid squeezes an hour)", function()
+		local problems = validateBrokenCopy(t.Shared, "Squeeze", function(squeeze)
+			squeeze.cycleSeconds = 1 / 13
 		end)
-		-- 43,200 paid × (2 + 4), above the 216,000 ceiling.
-		expect.truthy(containsAll(problems, { "G3:", "4 pad coinBonus", "259200" }))
+		expect.truthy(containsAll(problems, { "G3:", "46800 squeezes", "maxSqueezesPerHour" }))
 	end)
 
-	t.test("G3 passes the limit switched back on (600 paid × 5 + 42,600 unpaid × 0)", function()
+	t.test("G3 reports a ceiling of 43,199 squeezes an hour", function()
+		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.maxSqueezesPerHour = 43_199
+		end)
+		expect.truthy(containsAll(problems, { "G3:", "43200 squeezes" }))
+	end)
+
+	t.test("G3 passes the limit switched back on (600 paid squeezes an hour)", function()
 		local problems = validateBrokenCopy(t.Shared, "Economy", function(economy)
 			economy.SqueezeLimit.enabled = true
 		end)
 		expect.equal(#ruleLines(problems, "G3"), 0)
 	end)
 
-	t.test("G3 reports a Catalog squeezeCoins override of 11", function()
+	-- Big-number progression (spec 2026-10-12, Phase 1) --------------------------------------------------------------
+
+	t.test("the big-number values: 9 Qa caps, 100 levels, ranks, squishy power, duel rewards, refunds", function()
+		local economy, grip = Config.Economy, Config.Grip
+		expect.equal(economy.maxCoins, 9_000_000_000_000_000)
+		expect.equal(grip.maxGrip, 9_000_000_000_000_000)
+		expect.equal(grip.maxLevel, 100)
+		expect.equal(#grip.LevelTotals, 100)
+		-- The appendix's milestones (spec §10): Lv10 76K, Lv20 1.1M, Lv50 1.1B, Lv100 380T.
+		expect.equal(grip.LevelTotals[10], 76_000)
+		expect.equal(grip.LevelTotals[20], 1_100_000)
+		expect.equal(grip.LevelTotals[50], 1_100_000_000)
+		expect.equal(grip.LevelTotals[100], 380_000_000_000_000)
+		local ranks = {}
+		for _, rank in grip.Ranks do
+			table.insert(ranks, `{rank.level} {rank.key}`)
+		end
+		expect.equal(
+			table.concat(ranks, ", "),
+			"1 soft, 10 firm, 20 strong, 30 iron, 40 titan, 50 master, 60 legend, 70 mythic, 80 cosmic, 90 galaxy, "
+				.. "100 infinite"
+		)
+		expect.deepEqual(economy.SquishyPower, { Common = 1, Uncommon = 4, Epic = 16, Exclusive = 64 })
+		expect.equal(economy.DuelRewards.win, 600)
+		expect.equal(economy.DuelRewards.draw, 300)
+		expect.equal(economy.DuelRewards.loss, 180)
+		expect.deepEqual(economy.DuplicateRefund, { percent = 25, freeBoxPriceOf = "snack" })
+		expect.truthy(table.find(economy.CoinReasons, "capsule") ~= nil)
+		-- CP(100) × Rested.mult (spec §12); the alert holds an hour of them at the cap (checked above).
+		expect.equal(grip.maxGripPerEvent, 920_525_589 * grip.Rested.mult)
+		expect.equal(grip.allowBundlesWithCapsules, false)
+	end)
+
+	t.test("G5 reports a per-event cap one Grip below CP(100) × Rested.mult", function()
+		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.maxGripPerEvent = 1_841_051_177
+		end)
+		expect.truthy(containsAll(problems, { "G5:", "maxGripPerEvent", "CP(100)" }))
+	end)
+
+	t.test("validate reports capsule tiers that do not fill maxLevel, slower tiers and falling Grip gates", function()
+		local short = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			table.remove(grip.Capsule.Tiers)
+		end)
+		expect.truthy(containsAll(short, { "Config.Grip.Capsule", "must make maxLevel" }))
+		local slower = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.Tiers[2].seconds = 4.5
+		end)
+		expect.truthy(containsAll(slower, { "intervals must fall", "Tiers[2].seconds" }))
+		local gate = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.Tiers[3].gripLevel = 10
+		end)
+		expect.truthy(containsAll(gate, { "Grip gates must rise", "Tiers[3]" }))
+		local first = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.Tiers[1].gripLevel = 1
+		end)
+		expect.truthy(containsText(first, "Config.Grip.Capsule.Tiers[1] must need no Grip level"))
+	end)
+
+	t.test("validate reports capsule growth of 1, unordered or paid-first slots and a price above maxCoins", function()
+		local flat = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.power.growth = 1
+		end)
+		expect.truthy(containsText(flat, "Config.Grip.Capsule.power.growth must be > 1"))
+		local slots = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.slotPrices[3] = 2_500
+		end)
+		expect.truthy(containsAll(slots, { "slotPrices must rise", "slotPrices[3]" }))
+		local paidFirst = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.slotPrices[1] = 10
+		end)
+		expect.truthy(containsText(paidFirst, "Config.Grip.Capsule.slotPrices[1] must be 0"))
+		-- 1,000 × 1.5^98 is far above 9 Qa.
+		local steep = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.price.growth = 1.5
+		end)
+		expect.truthy(containsAll(steep, { "Config.Grip.Capsule", "above Config.Economy.maxCoins" }))
+	end)
+
+	t.test("validate reports a missing or zero squishy power and a Catalog power override of 0", function()
+		local missing = validateBrokenCopy(t.Shared, "Economy", function(economy)
+			economy.SquishyPower.Epic = nil
+		end)
+		expect.truthy(containsText(missing, "Config.Economy.SquishyPower has no entry for rarity Epic"))
+		local zero = validateBrokenCopy(t.Shared, "Economy", function(economy)
+			economy.SquishyPower.Common = 0
+		end)
+		expect.truthy(containsText(zero, "Config.Economy.SquishyPower.Common must be an integer >= 1"))
 		local Catalog = t.requireShared("Catalog")
 		local fake = {
 			list = function()
@@ -910,25 +1009,26 @@ return function(t: Context)
 				for index, def in Catalog.list() do
 					local copy = deepCopy(def)
 					if copy.id == "dragon" then
-						copy.squeezeCoins = 11
+						copy.power = 0
 					end
 					list[index] = copy
 				end
 				return list
 			end,
 			starterId = Catalog.starterId,
-			get = Catalog.get,
-			getSqueezeCoins = function(id: string): number
-				if id == "dragon" then
-					return 11
-				end
-				return Catalog.getSqueezeCoins(id)
-			end,
 		}
-		local problems = Config.validate({ Catalog = fake })
-		expect.truthy(containsAll(problems, { "G3:", "11 squeeze Coins" }))
-		-- The real Catalog passes.
-		expect.equal(#ruleLines(Config.validate({ Catalog = Catalog }), "G3"), 0)
+		expect.truthy(containsText(Config.validate({ Catalog = fake }), "Catalog.dragon.power must be an integer >= 1"))
+	end)
+
+	t.test("validate reports a refund of the whole box price and a free-box price from a free box", function()
+		local whole = validateBrokenCopy(t.Shared, "Economy", function(economy)
+			economy.DuplicateRefund.percent = 100
+		end)
+		expect.truthy(containsText(whole, "Config.Economy.DuplicateRefund.percent"))
+		local free = validateBrokenCopy(t.Shared, "Economy", function(economy)
+			economy.DuplicateRefund.freeBoxPriceOf = "treat"
+		end)
+		expect.truthy(containsAll(free, { "DuplicateRefund.freeBoxPriceOf", "must be a paid box" }))
 	end)
 
 	-- G6 Strings names: every rank, pad and trainer key has its grip.* text.
@@ -1088,7 +1188,7 @@ return function(t: Context)
 			expect.equal(Config.UI.Boxes.stillCheckingSeconds, 10)
 			expect.equal(Config.UI.Boxes.revealHoldMaxSeconds, 30)
 			expect.equal(Config.UI.Shop.cardWidth, 150)
-			expect.equal(Config.Grip.allowBundlesWithTrainer, false)
+			expect.equal(Config.Grip.allowBundlesWithCapsules, false)
 		end
 	)
 
@@ -1151,7 +1251,7 @@ return function(t: Context)
 	local function noText(_key: string): string?
 		return nil
 	end
-	local gripOn = { enabled = true, allowBundlesWithTrainer = false }
+	local gripOn = { enabled = true, allowBundlesWithCapsules = false }
 
 	t.test('G7 reports a pass benefit "grip" (not a cosmetic benefit, and it names the training)', function()
 		local pass = { key = "vip", nameKey = "bundle.handful", benefit = "grip" }
@@ -1184,6 +1284,10 @@ return function(t: Context)
 				error(`pass key {case.key} was not reported: {table.concat(problems, " | ")}`)
 			end
 		end
+		-- Lobby spec 2026-10-11 §11: capsules are training too.
+		local capsule = { key = "capsule_boost", nameKey = "bundle.handful", benefit = "hat" }
+		local capsuleProblems = Config.robuxProblems(monetization(nil, { capsule }, { "hat" }), gripOn, noText)
+		expect.truthy(containsAll(capsuleProblems, { "G7:", "GamePasses[1].key", '"capsule"' }))
 		-- A cosmetic pass with a neutral name passes.
 		local hat = { key = "party_hat", nameKey = "bundle.handful", benefit = "hat" }
 		expect.deepEqual(Config.robuxProblems(monetization(nil, { hat }, { "hat" }), gripOn, noText), {})
@@ -1203,14 +1307,14 @@ return function(t: Context)
 		expect.truthy(containsAll(passProblems, { "G7:", "GamePasses[1].nameKey", "Royal Cushion VIP", '"cushion"' }))
 	end)
 
-	t.test("G7b reports a productId set while allowBundlesWithTrainer is false (and only then)", function()
+	t.test("G7b reports a productId set while allowBundlesWithCapsules is false (and only then)", function()
 		-- A test value only: no product id is ever configured (§6.11, M7).
 		local configured = bundle({ productId = 1 })
 		local problems = Config.robuxProblems(monetization({ configured }), gripOn, noText)
 		expect.truthy(containsAll(problems, { "G7b:", "CoinBundles[1].productId" }))
-		local allowed = { enabled = true, allowBundlesWithTrainer = true }
+		local allowed = { enabled = true, allowBundlesWithCapsules = true }
 		expect.equal(#ruleLines(Config.robuxProblems(monetization({ configured }), allowed, noText), "G7b"), 0)
-		local gripOff = { enabled = false, allowBundlesWithTrainer = false }
+		local gripOff = { enabled = false, allowBundlesWithCapsules = false }
 		expect.equal(#ruleLines(Config.robuxProblems(monetization({ configured }), gripOff, noText), "G7b"), 0)
 		-- Fail closed: a Grip table without the flag counts as "bundles not allowed".
 		expect.truthy(#ruleLines(Config.robuxProblems(monetization({ configured }), {}, noText), "G7b") > 0)

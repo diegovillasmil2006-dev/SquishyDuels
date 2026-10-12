@@ -12,7 +12,8 @@
 --     shop.priceChanged (the client price is only compared), data.notReady, box.saving (savePending), purchase.unavailable
 --     (closing / restart), inventory.lockedInDuel, economy.notEnoughCoins;
 --   * one buy in flight per player and one charged buy per second (net.rateLimited);
---   * every Catalog price is valid at boot (nothing disabled).
+--   * every Catalog price is valid at boot (nothing disabled); Dragon's 1.1T price (spec 2026-10-12 §6) is bought
+--     with its exact expectedPrice, above the 1e6 bound of plain integer arguments.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -26,6 +27,7 @@ local NOW = 1_790_000_000
 local REQ_A = "aaaaaaaa-0000-0000-0000-000000000001"
 local REQ_B = "bbbbbbbb-0000-0000-0000-000000000002"
 local REQ_C = "cccccccc-0000-0000-0000-000000000003"
+local COINS = 1_000_000 -- a few Commons (10,000 each, spec 2026-10-12 §6)
 
 return function(t: Context)
 	local expect = t.expect
@@ -141,10 +143,10 @@ return function(t: Context)
 
 	t.test("a buy charges the shop price once, adds the squishy, logs it and awaits the now save", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 5000)
+		local p, profile = readyPlayer(w, COINS)
 		local result = ShopService.buy(p, "toast", TOAST, REQ_A)
 		expect.deepEqual(result, { ok = true, data = { squishyId = "toast", charged = true, savePending = false } })
-		expect.equal(profile.coins, 5000 - TOAST)
+		expect.equal(profile.coins, COINS - TOAST)
 		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
 		expect.deepEqual(profile.shopLog, { { req = REQ_A, squishy = "toast", price = TOAST, at = NOW } })
 		expect.equal(profile.stats.coinsSpent, TOAST)
@@ -155,14 +157,14 @@ return function(t: Context)
 		"the same requestId replays the stored result with no second charge; owned answers charged = false",
 		function()
 			local w = setup()
-			local p, profile = readyPlayer(w, 5000)
+			local p, profile = readyPlayer(w, COINS)
 			ShopService.buy(p, "toast", TOAST, REQ_A)
 			w.clock.advance(5)
 			local replay = ShopService.buy(p, "toast", TOAST, REQ_A)
 			expect.deepEqual(replay, { ok = true, data = { squishyId = "toast", charged = true, savePending = false } })
 			local owned = ShopService.buy(p, "toast", TOAST, REQ_B)
 			expect.deepEqual(owned, { ok = true, data = { squishyId = "toast", charged = false, savePending = false } })
-			expect.equal(profile.coins, 5000 - TOAST)
+			expect.equal(profile.coins, COINS - TOAST)
 			expect.equal(#profile.shopLog, 1)
 			expect.equal(w.saves, 1)
 		end
@@ -170,7 +172,7 @@ return function(t: Context)
 
 	t.test("refusals in order, each with charged = false and no Coin change", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 5000)
+		local p, profile = readyPlayer(w, COINS)
 		refused(ShopService.buy(p, "unicorn", 100, REQ_A), "net.invalid")
 		refused(ShopService.buy(p, "toast", TOAST, "not-a-guid"), "net.invalid")
 		refused(ShopService.buy(p, "kitty_bread", 0, REQ_A), "shop.notForSale")
@@ -205,20 +207,20 @@ return function(t: Context)
 		"a failed now save answers savePending = true, and the next buy waits for a good save (box.saving)",
 		function()
 			local w = setup()
-			local p, profile = readyPlayer(w, 5000)
+			local p, profile = readyPlayer(w, COINS)
 			w.saveResult = false
 			local result = ShopService.buy(p, "toast", TOAST, REQ_A)
 			expect.deepEqual(result, { ok = true, data = { squishyId = "toast", charged = true, savePending = true } })
 			expect.equal(profile.owned.toast ~= nil, true) -- the change stays in memory (§3.11)
 			w.clock.advance(5)
 			refused(ShopService.buy(p, "banana", BANANA, REQ_B), "box.saving")
-			expect.equal(profile.coins, 5000 - TOAST)
+			expect.equal(profile.coins, COINS - TOAST)
 		end
 	)
 
 	t.test("one buy in flight per player, and one charged buy per second", function()
 		local w = setup()
-		local p, profile = readyPlayer(w, 10000)
+		local p, profile = readyPlayer(w, COINS)
 		local inner: any = nil
 		w.onSave = function(player: any)
 			if inner == nil then
@@ -232,7 +234,7 @@ return function(t: Context)
 		w.clock.advance(0.5)
 		local ok = ShopService.buy(p, "banana", BANANA, REQ_C)
 		expect.equal(ok.ok, true)
-		expect.equal(profile.coins, 10000 - TOAST - BANANA)
+		expect.equal(profile.coins, COINS - TOAST - BANANA)
 	end)
 
 	t.test("shopLog keeps the newest Config.Data.caps.shopLog entries", function()
@@ -245,11 +247,21 @@ return function(t: Context)
 				{ req = string.format("%08x-0000-0000-0000-000000000000", i), squishy = "x", price = 1, at = i }
 			)
 		end
-		profile.coins = 5000
+		profile.coins = COINS
 		ShopService.buy(p, "toast", TOAST, REQ_A)
 		expect.equal(#profile.shopLog, cap)
 		expect.equal(profile.shopLog[cap].req, REQ_A)
 		expect.equal(profile.shopLog[1].at, 2)
+	end)
+
+	t.test("Dragon's 1.1T price is bought with its exact expectedPrice (a Coin amount, not a 1e6 integer)", function()
+		local w = setup()
+		local dragon = Catalog.get("dragon").shopPrice
+		expect.equal(dragon, 1_100_000_000_000)
+		local p, profile = readyPlayer(w, dragon)
+		local result = ShopService.buy(p, "dragon", dragon, REQ_A)
+		expect.deepEqual(result, { ok = true, data = { squishyId = "dragon", charged = true, savePending = false } })
+		expect.equal(profile.coins, 0)
 	end)
 
 	t.test("every Catalog shop price is valid at boot (nothing is disabled); priceOf reads the Catalog", function()

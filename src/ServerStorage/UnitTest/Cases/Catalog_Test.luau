@@ -6,10 +6,10 @@
 -- ultimates, elimination effects and presentation data; each new squishy throws exactly like its same-rarity sibling;
 -- no accent trips the splat red guard; every nameKey exists in Strings and every blueprintId in
 -- Art/SquishyBlueprints; throw stats sit inside Config.Combat.Bands; squeeze Coins follow
--- Config.Economy.CoinsByRarity unless overridden; the API is get, list, isValidId, starterId, byRarity and
--- getSqueezeCoins; entries cannot be changed. Rarity has the canonical ORDER, name keys, pips, hasTrail and the refund
--- lookup; RarityStyle and Palette carry the §4.3 and §7.2 values, and every rarity label reaches 4.5:1 contrast on its
--- colour.
+-- Config.Economy.CoinsByRarity and squishy power Config.Economy.SquishyPower unless overridden; shop prices are the
+-- spec 2026-10-12 §6 ladder; the API is get, list, isValidId, starterId, byRarity, getSqueezeCoins and getPower; entries
+-- cannot be changed. Rarity has the canonical ORDER, name keys, pips and hasTrail; RarityStyle and Palette carry the
+-- §4.3 and §7.2 values, and every rarity label reaches 4.5:1 contrast on its colour.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -73,7 +73,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.05,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 1200,
+		shopPrice = 10_000,
 	},
 	{
 		id = "banana",
@@ -86,7 +86,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 0.95,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 1200,
+		shopPrice = 10_000,
 	},
 	{
 		id = "butter",
@@ -100,7 +100,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.15,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2500,
+		shopPrice = 2_700_000,
 	},
 	{
 		id = "chocolate",
@@ -114,7 +114,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.18,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2500,
+		shopPrice = 2_700_000,
 	},
 	{
 		id = "bird",
@@ -129,7 +129,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "flock_volley", -- spec phase 5: the design's Epic ultimates (ults.js:3)
 		elimination = "epic_pending",
-		shopPrice = 7500,
+		shopPrice = 1_700_000_000,
 	},
 	{
 		id = "donut",
@@ -144,7 +144,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "sprinkle_roller", -- ults.js:4
 		elimination = "epic_pending",
-		shopPrice = 7500,
+		shopPrice = 1_700_000_000,
 	},
 	{
 		id = "dragon",
@@ -159,7 +159,7 @@ local EXPECTED: { Expected } = {
 		trail = "ember", -- "Ember comet"
 		ultimate = "dragon_rush",
 		elimination = "standard",
-		shopPrice = 25000,
+		shopPrice = 1_100_000_000_000,
 	},
 	-- Spec 2026-10-09 §3.3: appended after Dragon; each throw is a copy of a same-rarity sibling.
 	{
@@ -173,7 +173,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.00,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 1200,
+		shopPrice = 10_000,
 	},
 	{
 		id = "pancake_pup",
@@ -186,7 +186,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.05,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 1200,
+		shopPrice = 10_000,
 	},
 	{
 		id = "mochi_fox",
@@ -200,7 +200,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.15,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2500,
+		shopPrice = 2_700_000,
 	},
 	{
 		id = "strawberry_frog",
@@ -214,7 +214,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.18,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2500,
+		shopPrice = 2_700_000,
 	},
 	{
 		id = "cloud_bunny",
@@ -229,7 +229,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "rain_check", -- ults.js:5
 		elimination = "epic_pending",
-		shopPrice = 7500,
+		shopPrice = 1_700_000_000,
 	},
 	{
 		id = "cupcake_axolotl",
@@ -244,7 +244,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "bubble_pop", -- ults.js:6
 		elimination = "epic_pending",
-		shopPrice = 7500,
+		shopPrice = 1_700_000_000,
 	},
 }
 
@@ -560,13 +560,14 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("shop prices match DESIGN §4.2 and the starter is not sold", function()
+	-- Spec 2026-10-12 §6: the squishy ladder (were DESIGN §4.2's 1,200 / 2,500 / 7,500 / 25,000).
+	t.test("shop prices match the spec 2026-10-12 ladder and the starter is not sold", function()
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
 			if def.shopPrice ~= row.shopPrice then
 				error(
 					string.format(
-						"%s shopPrice = %s, DESIGN says %s",
+						"%s shopPrice = %s, the spec says %s",
 						row.id,
 						tostring(def.shopPrice),
 						tostring(row.shopPrice)
@@ -785,6 +786,16 @@ return function(t: Context)
 		expect.equal(Catalog.getSqueezeCoins(nil), 0)
 	end)
 
+	t.test("getPower follows Config.Economy.SquishyPower (1 / 4 / 16 / 64) unless overridden", function()
+		local byRarity = { Common = 1, Uncommon = 4, Epic = 16, Exclusive = 64 } -- spec 2026-10-12 §6
+		for _, row in EXPECTED do
+			local def = Catalog.get(row.id)
+			expect.equal(Catalog.getPower(row.id), if def.power ~= nil then def.power else byRarity[row.rarity])
+		end
+		expect.equal(Catalog.getPower("unknown"), 0)
+		expect.equal(Catalog.getPower(nil), 0)
+	end)
+
 	t.test("catalog entries cannot be changed", function()
 		local def = Catalog.get("dragon")
 		expect.throws(function()
@@ -838,13 +849,6 @@ return function(t: Context)
 		end
 		expect.equal(Strings.resolve(Rarity.get("Epic").nameKey), "Epic")
 		expect.equal(Rarity.get("Legendary"), nil)
-	end)
-
-	t.test("Rarity.refund reads Config.Economy.DuplicateRefund", function()
-		for _, rarity in RARITY_ORDER do
-			expect.equal(Rarity.refund(rarity), Config.Economy.DuplicateRefund[rarity])
-		end
-		expect.equal(Rarity.refund("Legendary"), nil)
 	end)
 
 	-- RarityStyle (§4.3) ----------------------------------------------------------------------------------------------

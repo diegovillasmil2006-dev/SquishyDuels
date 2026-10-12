@@ -44,16 +44,14 @@ return function(t: Context)
 				expect.equal(BoxDraw.pick(items, acc + 1), items[index + 1].id)
 			end
 		end
-		-- Snack (spec 2026-10-09 §3.3): toast 1..1600, banana ..3200, boba_bear ..4800, pancake_pup ..6400, butter ..7150,
-		-- chocolate ..7900, mochi_fox ..8650, strawberry_frog ..9400, bird ..9550, donut ..9700, cloud_bunny ..9850,
-		-- cupcake_axolotl ..10000.
-		expect.equal(BoxDraw.pick(items, 1600), "toast")
-		expect.equal(BoxDraw.pick(items, 1601), "banana")
-		expect.equal(BoxDraw.pick(items, 6400), "pancake_pup")
-		expect.equal(BoxDraw.pick(items, 6401), "butter")
-		expect.equal(BoxDraw.pick(items, 9550), "bird")
-		expect.equal(BoxDraw.pick(items, 9551), "donut")
-		expect.equal(BoxDraw.pick(items, 9851), "cupcake_axolotl")
+		-- Snack (spec 2026-10-12 §8): toast 1..2000, banana ..4000, boba_bear ..6000, pancake_pup ..8000, butter ..8500,
+		-- chocolate ..9000, mochi_fox ..9500, strawberry_frog ..10000.
+		expect.equal(BoxDraw.pick(items, 2000), "toast")
+		expect.equal(BoxDraw.pick(items, 2001), "banana")
+		expect.equal(BoxDraw.pick(items, 8000), "pancake_pup")
+		expect.equal(BoxDraw.pick(items, 8001), "butter")
+		expect.equal(BoxDraw.pick(items, 9500), "mochi_fox")
+		expect.equal(BoxDraw.pick(items, 9501), "strawberry_frog")
 	end)
 
 	t.test("pick: r outside 1..sum, a fraction or NaN gives nil", function()
@@ -72,9 +70,9 @@ return function(t: Context)
 		expect.equal(BoxDraw.draw(box, low), "butter")
 		expect.equal(FakeRng.calls(low), 1)
 		expect.equal(BoxDraw.draw(box, FakeRng.new({ Boxes.WeightTotal })), "dragon")
-		-- Sweet (spec 2026-10-09 §3.3): 9,601-10,000 is still Dragon; cupcake_axolotl ends at 9600.
-		expect.equal(BoxDraw.draw(box, FakeRng.new({ 9600 })), "cupcake_axolotl")
-		expect.equal(BoxDraw.draw(box, FakeRng.new({ 9601 })), "dragon")
+		-- Sweet (spec 2026-10-12 §8): 9,997-10,000 is Dragon (0.04%); cupcake_axolotl ends at 9996.
+		expect.equal(BoxDraw.draw(box, FakeRng.new({ 9996 })), "cupcake_axolotl")
+		expect.equal(BoxDraw.draw(box, FakeRng.new({ 9997 })), "dragon")
 		-- The scripted rng refuses values outside the requested range, so 1..10000 is what draw asked for.
 		expect.throws(function()
 			BoxDraw.draw(box, FakeRng.new({ Boxes.WeightTotal + 1 }))

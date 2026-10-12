@@ -138,7 +138,7 @@ return function(t: Context)
 			expect.equal(model.waypoint, "shop")
 		end
 		-- {coins} is capped at the goal.
-		local rich = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 99999 }))
+		local rich = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 999_999 })) -- above the 150K Snack Box
 		expect.equal(
 			rich.text,
 			Strings.format(Strings.onboarding.firstBox, { coins = Format.coins(snack), goal = Format.coins(snack) })

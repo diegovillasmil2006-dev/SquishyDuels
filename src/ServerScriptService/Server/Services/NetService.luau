@@ -6,8 +6,9 @@
 -- * Every client call runs the §2.7 handler order before any game code sees it:
 --     (1) player not muted -> (2) per-remote token bucket (Config.Net.Remotes) and the global cap per player
 --     (Config.Net.Global, 30/s burst 80) -> (3) select("#", ...) <= maxArgs -> (4) every argument narrowed by its
---     Remotes.SPEC type through Util/Validate (typeof, finite numbers, serverTime bound, id patterns and lengths,
---     table key cap) -> seq replay check -> (5)(6) the service handler (game-state checks and the action).
+--     Remotes.SPEC type through Util/Validate (typeof, finite numbers, serverTime bound, Coin amounts up to maxCoins,
+--     id patterns and lengths, table key cap) -> seq replay check -> (5)(6) the service handler (game-state checks
+--     and the action).
 --   A rate-limit hit, a wrong argument count or an invalid argument is a violation. More than
 --   Config.Net.Abuse.violations violations inside windowSeconds mute that player's C->S remotes for muteSeconds and
 --   log [SD][abuse] (no kicks in v1: Config.Net.kickOnAbuse = false). Muted calls are dropped without counting.
@@ -178,6 +179,7 @@ local CHECKS: { [string]: Check } = {
 		return Validate.number(v)
 	end),
 	serverTime = fromNarrow(Validate.serverTime),
+	coins = fromNarrow(Validate.coins),
 	boolean = checkBoolean,
 	string = checkString,
 	table = checkTable,
