@@ -144,6 +144,34 @@ function Prims.disc(
 	})
 end
 
+-- A WedgePart (its slope rises from the front (-Z) bottom edge to the back top edge) with the same flags as part().
+-- Phase 3: the design lobby's arrow tips (lobby.js:162).
+function Prims.wedge(
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	color: Color3,
+	flags: Flags?,
+	parent: Instance?
+): WedgePart
+	local wedge = Instance.new("WedgePart")
+	wedge.Name = name
+	wedge.Size = size
+	wedge.CFrame = cframe
+	wedge.Color = color
+	wedge.Material = DEFAULT_MATERIAL
+	wedge.Reflectance = 0
+	wedge.CastShadow = true
+	wedge.Transparency = 0
+	wedge.TopSurface = Enum.SurfaceType.Smooth
+	wedge.BottomSurface = Enum.SurfaceType.Smooth
+	applyFlags(wedge, flags or "solid")
+	if parent then
+		wedge.Parent = parent
+	end
+	return wedge
+end
+
 -- A Part carrying a SpecialMesh child named "Mesh" (Sphere for ellipsoids, Brick, Wedge, ...), non-colliding
 -- decor by default. Part.Size carries the full size; mesh Scale stays (1, 1, 1) and Offset 0, so a client animator can
 -- read the rest values from the mesh.

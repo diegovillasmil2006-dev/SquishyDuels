@@ -9,7 +9,11 @@
 --     world footprint is `size`; a tag (SD_GripSign) and its GripTier go on the part carrying the SurfaceGui;
 --   * a missing Strings key is an error, never a blank sign;
 --   * every lobby sign's lines fit on its panel (measure: the stacked line boxes never pass the SurfaceGui's edges,
---     which clip them), with the layout's own alignment.
+--     which clip them), with the layout's own alignment;
+--   * phase 3 (the design lobby, lobby.js:26-33): a design plate is a transparent panel with no wood frame, an
+--     optional rounded background (corner = round × the short side) with an optional border, and its own text colour;
+--     a plate can be placed by an exact CFrame (the tilted kiosk plate); the spawn logo (lobby.js:149-155) draws its
+--     disc, dashed ring, inner disc and stars around the two keyed lines on a Top host.
 -- Uses a small fake Strings table; every instance stays in memory and is destroyed.
 
 local ServerStorage = game:GetService("ServerStorage")
@@ -223,7 +227,7 @@ return function(t: Context)
 		)
 		expect.near((Signs.topTextUp(host) - Vector3.new(0, 0, -1)).Magnitude, 0, TOLERANCE)
 		expect.near((-host.CFrame.RightVector - Vector3.new(0, 0, -1)).Magnitude, 0, TOLERANCE)
-		expect.near((host.Position - Vector3.new(0, 0.095, 28)).Magnitude, 0, TOLERANCE)
+		expect.near((host.CFrame.Position - Vector3.new(0, 0.095, 28)).Magnitude, 0, TOLERANCE)
 		local cf, half = host.CFrame, host.Size / 2
 		expect.near(2 * (math.abs(cf.XVector.X) * half.X + math.abs(cf.ZVector.X) * half.Z), 24, TOLERANCE)
 		expect.near(2 * (math.abs(cf.XVector.Z) * half.X + math.abs(cf.ZVector.Z) * half.Z), 8, TOLERANCE)
@@ -292,6 +296,145 @@ return function(t: Context)
 		if #clipped > 0 then
 			error("signs whose lines are clipped: " .. table.concat(clipped, ", "))
 		end
+	end)
+
+	-- Phase 3 design plates (lobby.js:26-33) ------------------------------------------------------------------------
+
+	local PLATE_BG = Color3.fromHex("#FFF9F1")
+	local INK = Color3.fromHex("#2B2233")
+	local function plateSpec(overrides: { [string]: any }): any
+		local merged: { [string]: any } = {
+			size = Vector3.new(7, 2.2, 0.05),
+			lines = {
+				{ name = "Text", textKey = "test.title", live = false, letterHeight = 2.2 * 0.56, font = "heading" },
+			},
+		}
+		for key, value in overrides do
+			merged[key] = value
+		end
+		return spec(merged)
+	end
+
+	t.test(
+		"a design plate: transparent panel, no frame, rounded background with its border, its text colour",
+		function()
+			local folder = Instance.new("Folder")
+			local base = plateSpec({})
+			local carrier = Signs.build(FakeStrings, base, {
+				style = STYLE,
+				parent = folder,
+				plate = { background = PLATE_BG, border = INK, round = 0.24, text = INK },
+			})
+			expect.equal(carrier.Transparency, 1)
+			expect.equal((carrier.Parent :: Instance):FindFirstChild("Frame"), nil) -- no wood frame
+			local gui = carrier:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+			local backdrop = gui:FindFirstChild("Plate", true)
+			expect.truthy(backdrop ~= nil and backdrop:IsA("Frame"))
+			local frame = backdrop :: Frame
+			expect.equal(frame.BackgroundColor3, PLATE_BG)
+			expect.equal(frame.BackgroundTransparency, 0)
+			local corner = frame:FindFirstChildOfClass("UICorner") :: UICorner
+			expect.equal(corner.CornerRadius.Offset, math.floor(0.24 * 2.2 * gui.PixelsPerStud + 0.5))
+			local stroke = frame:FindFirstChildOfClass("UIStroke") :: UIStroke
+			expect.equal(stroke.Color, INK)
+			local text = label(carrier, "Text")
+			expect.equal(text.TextColor3, INK)
+			expect.equal(text:FindFirstChildOfClass("UIStroke"), nil) -- the design's plate text has no outline
+			expect.equal(text.Text, "TITLE")
+			expect.truthy(text:HasTag("SD_Sign"))
+			folder:Destroy()
+		end
+	)
+
+	t.test("a text-only design plate has no background; a plate without a border has no stroke", function()
+		local folder = Instance.new("Folder")
+		local textOnly = Signs.build(FakeStrings, plateSpec({}), {
+			style = STYLE,
+			parent = folder,
+			plate = { text = INK },
+		})
+		expect.equal((textOnly:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui):FindFirstChild("Plate", true), nil)
+		local mint = Color3.fromHex("#5FD3AE")
+		local noBorder = Signs.build(FakeStrings, plateSpec({ id = "mint" }), {
+			style = STYLE,
+			parent = folder,
+			plate = { background = mint, round = 0.24, text = Color3.new(1, 1, 1) },
+		})
+		local backdrop = (noBorder:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui):FindFirstChild(
+				"Plate",
+				true
+			) :: Frame
+		expect.equal(backdrop.BackgroundColor3, mint)
+		expect.equal(backdrop:FindFirstChildOfClass("UIStroke"), nil)
+		folder:Destroy()
+	end)
+
+	t.test("a plate placed by an exact CFrame keeps it (the kiosk's plate lies on its tilted top)", function()
+		local folder = Instance.new("Folder")
+		local tilted = CFrame.new(3, 5, -2) * CFrame.Angles(0, 0.9, 0) * CFrame.Angles(math.rad(-70), 0, 0)
+		local carrier = Signs.build(FakeStrings, plateSpec({ cframe = tilted, facing = tilted.LookVector }), {
+			style = STYLE,
+			parent = folder,
+			plate = { background = PLATE_BG, border = INK, round = 0.24, text = INK },
+		})
+		expect.near((carrier.CFrame.Position - tilted.Position).Magnitude, 0, TOLERANCE)
+		expect.near((carrier.CFrame.LookVector - tilted.LookVector).Magnitude, 0, TOLERANCE)
+		expect.near((carrier.CFrame.UpVector - tilted.UpVector).Magnitude, 0, TOLERANCE)
+		folder:Destroy()
+	end)
+
+	t.test("the spawn logo: disc, dashed ring, inner disc, 8 stars and the two keyed lines on a Top host", function()
+		local folder = Instance.new("Folder")
+		local host = Instance.new("Part")
+		host.Size = Vector3.new(25.6, 0.04, 25.6)
+		host.CFrame = CFrame.new(0, 0.72, 0)
+		host.Parent = folder
+		local colors = {
+			disc = PLATE_BG,
+			ring = Color3.fromHex("#5FD3AE"),
+			inner = Color3.fromHex("#F8CAD4"),
+			star = Color3.fromHex("#FFD25E"),
+		}
+		Signs.logo(
+			FakeStrings,
+			{
+				id = "spawnLogo",
+				position = Vector3.new(0, 0.72, 0),
+				size = Vector3.new(25.6, 0.04, 25.6),
+				facing = Vector3.new(0, 1, 0),
+				face = "Top",
+				textUp = Vector3.new(0, 0, -1),
+				lines = {
+					{ name = "Top", textKey = "test.title", live = false, letterHeight = 3.75, font = "heading" },
+					{ name = "Bottom", textKey = "test.title", live = false, letterHeight = 4.25, font = "heading" },
+				},
+			} :: any,
+			{ host = host, colors = colors, lineColors = { INK, Color3.fromHex("#F2687F") } }
+		)
+		local gui = host:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+		expect.equal(gui.Face, Enum.NormalId.Top)
+		expect.near((-host.CFrame.RightVector - Vector3.new(0, 0, -1)).Magnitude, 0, TOLERANCE)
+		local disc = gui:FindFirstChild("Disc", true) :: Frame
+		expect.equal(disc.BackgroundColor3, colors.disc)
+		local inner = gui:FindFirstChild("Inner", true) :: Frame
+		expect.equal(inner.BackgroundColor3, colors.inner)
+		local dashes, stars = 0, 0
+		for _, d in gui:GetDescendants() do
+			if d.Name == "Dash" then
+				dashes += 1
+				expect.equal((d :: Frame).BackgroundColor3, colors.ring)
+			elseif d.Name == "Star" then
+				stars += 1
+				expect.equal((d :: TextLabel).TextColor3, colors.star)
+			end
+		end
+		expect.equal(dashes, 41) -- radius 472 px, dash 46 + gap 26 on a 1024 canvas (lobby.js:151)
+		expect.equal(stars, 8) -- lobby.js:154
+		local top, bottom = label(host, "Top"), label(host, "Bottom")
+		expect.truthy(top:HasTag("SD_Sign") and bottom:HasTag("SD_Sign"))
+		expect.equal(top.TextColor3, INK)
+		expect.equal(bottom.TextColor3, Color3.fromHex("#F2687F"))
+		folder:Destroy()
 	end)
 
 	t.test("keysOf lists static and baked keys", function()

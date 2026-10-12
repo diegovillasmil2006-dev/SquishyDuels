@@ -75,7 +75,8 @@ return function(t: Context)
 	t.test("the backstop target sits high on the backstop's front face, at the thrower's Z inside its ends", function()
 		-- DESIGN §18.7 / §18.10 L6: fireOnce("backstop") gives the jelly ripple and sfx.impactSoft a real geometry hit.
 		local box = WorldLayout.PracticeRange.backstop
-		local faceX = box.position.X + box.size.X / 2
+		-- Phase 3 (D3): throws go toward +X, so the face toward the throw box is the backstop's -X face.
+		local faceX = box.position.X - box.size.X / 2
 		local topY = box.position.Y + box.size.Y / 2
 		local minZ = box.position.Z - box.size.Z / 2
 		local maxZ = box.position.Z + box.size.Z / 2
@@ -83,20 +84,20 @@ return function(t: Context)
 		local targetTop = PracticeTargets.FLOOR_Y + PracticeTargets.ROOT_HEIGHT + hitbox.topOffset + hitbox.radius
 
 		local middle = AutoDriver.backstopPoint(nil)
-		expect.near(middle.X, faceX, 1e-9) -- the face toward the throw box (throws go toward -X)
-		expect.truthy(faceX > box.position.X)
-		expect.near(middle.Z, box.position.Z, 1e-9)
+		expect.near(middle.X, faceX, 1e-5) -- the face toward the throw box (throws go toward +X)
+		expect.truthy(faceX < box.position.X)
+		expect.near(middle.Z, box.position.Z, 1e-5)
 		expect.truthy(middle.Y < topY) -- on the face, under its top edge
 		expect.truthy(middle.Y > targetTop + Config.Combat.Bands.radius.max) -- a ball there clears every target
 
-		local inLane = AutoDriver.backstopPoint(Vector3.new(-20, 3, -41))
-		expect.near(inLane.Z, -41, 1e-9)
-		expect.near(inLane.X, faceX, 1e-9)
-		local farSouth = AutoDriver.backstopPoint(Vector3.new(-20, 3, 100))
-		local farNorth = AutoDriver.backstopPoint(Vector3.new(-20, 3, -100))
+		local inLane = AutoDriver.backstopPoint(Vector3.new(75, 3, 52))
+		expect.near(inLane.Z, 52, 1e-5)
+		expect.near(inLane.X, faceX, 1e-5)
+		local farSouth = AutoDriver.backstopPoint(Vector3.new(75, 3, 200))
+		local farNorth = AutoDriver.backstopPoint(Vector3.new(75, 3, -100))
 		expect.truthy(farSouth.Z < maxZ and farSouth.Z > minZ)
 		expect.truthy(farNorth.Z < maxZ and farNorth.Z > minZ)
-		expect.near(farSouth.Z - farNorth.Z, box.size.Z - 8, 1e-9) -- 4 studs inside each end
+		expect.near(farSouth.Z - farNorth.Z, box.size.Z - 8, 1e-4) -- 4 studs inside each end (Vector3 is float32)
 	end)
 
 	t.test("fireOnce('backstop') outside the practice range sends nothing", function()

@@ -14,7 +14,7 @@
 --     time: when the opponent's capsule centre (practice: the nearest practice target, reading) is inside the cone
 --     and in line of sight, the aim point moves `strength` of the way toward it.
 --   * aimDir = ProjectileMath.solveLaunchDir(originHint, aimPoint, speed, g), then clamped to the pitch band
---     [-35°, +65°] and, in practice, into the 75° cone around the range forward (-X) (clampPitch / clampToCone).
+--     [-35°, +65°] and, in practice, into the 75° cone around the range forward (+X) (clampPitch / clampToCone).
 --   * ThrowRequest(seq, aimDir, originHint = HRP.CFrame * ReleaseOffset, clientTime = GetServerTimeNow()) through
 --     NetController.throwRequest (its per-remote seq counter, local shape checks and token buckets); a request the
 --     NetController drops locally starts no windup.

@@ -8,11 +8,14 @@
 --   * jelly gates (a latch): an open gate closes for a too-low level only once the viewer is beyond radius + padding
 --     (anti-trap); a closed gate stays closed for a too-low level however close the viewer presses (a root against
 --     the wall is within radius + padding), and opens only for a high enough level or a viewer inside the radius;
---   * a gate or pod sign takes its pad (and so its tier) from WorldLayout by position, never from GripTier;
+--   * a gate, pod sign or lock decor takes its pad (and so its tier) from WorldLayout by position, never from
+--     GripTier;
 --   * pod sign `Live` text: grip.signLocked "Needs Grip Lv {level} · You: Lv {have}" while locked,
 --     grip.signOpen "Open · +{coins} Coins · x{mult} Grip" once open, from Config.Grip.Pads;
---   * Part 8 (tools/mcp/stand-prompts.lua relies on it): the 7 stand tags, one prompt per tagged stand (6 stands + 8
---     pedestals = 14), each prompt key (and alt key) with a Strings text.
+--   * the design's lock + rope decor (phase 3 D5, SD_GripLock): shown as built while the level is unknown, and per
+--     viewer only while that viewer's level is below the pad's;
+--   * Part 8 (tools/mcp/stand-prompts.lua relies on it): the 7 stand tags, one prompt per tagged stand (6 stands + 14
+--     pedestals = 20 since the design's collection, D4), each prompt key (and alt key) with a Strings text.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -57,11 +60,11 @@ return function(t: Context)
 				size = zone.size,
 			})
 		end
-		local spawn = WorldBinder.pickZone(candidates, Vector3.new(0, 3, 40))
+		local spawn = WorldBinder.pickZone(candidates, Vector3.new(0, 3, 0)) -- the design medallion
 		expect.equal(spawn and spawn.zoneId, "lobby")
-		local mat = WorldBinder.pickZone(candidates, Vector3.new(-36, 3, 14))
+		local mat = WorldBinder.pickZone(candidates, Vector3.new(-47.58, 3, 42.65)) -- foam mat 2
 		expect.equal(mat and mat.zoneId, "squeeze")
-		local range = WorldBinder.pickZone(candidates, Vector3.new(-42, 3, -37))
+		local range = WorldBinder.pickZone(candidates, Vector3.new(99, 3, 62)) -- the middle lane
 		expect.equal(range and range.zoneId, "practice")
 		expect.equal(WorldBinder.pickZone(candidates, Vector3.new(400, 3, 0)), nil)
 	end)
@@ -102,18 +105,31 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("gates and pod signs find their pad by position (WorldLayout), not by GripTier", function()
+	t.test("gates, pod signs and lock decor find their pad by position (WorldLayout), not by GripTier", function()
 		-- Compared by blueprintId: WorldBinder requires the real Shared, the test runner a clone, so the tables differ.
 		local function idOf(found: any): string?
 			return if found ~= nil then found.blueprintId else nil
 		end
+		local signs: { [string]: any } = {}
+		for _, sign in WorldLayout.Signs do
+			signs[sign.id] = sign
+		end
 		for _, key in WorldLayout.GiantPadKeys do
 			local pad = WorldLayout.GiantPads[key]
-			-- The gate sits on the pad centre; the pod sign panel stands in front of it.
+			-- The gate sits on the pad centre, the lock decor pivots there, the pod sign plate stands in front of it.
 			expect.equal(idOf(WorldBinder.padNear(pad.gate.position)), pad.blueprintId)
-			expect.equal(idOf(WorldBinder.padNear(Vector3.new(pad.center.X, 11.5, 30.2))), pad.blueprintId)
+			expect.equal(idOf(WorldBinder.padNear(pad.center)), pad.blueprintId)
+			expect.equal(idOf(WorldBinder.padNear(signs[pad.signId].position)), pad.blueprintId)
 		end
-		expect.equal(WorldBinder.padNear(Vector3.new(0, 4.5, 40)), nil) -- the spawn: no pad nearby
+		expect.equal(WorldBinder.padNear(Vector3.new(0, 4.5, 0)), nil) -- the spawn: no pad nearby
+	end)
+
+	t.test("the lock + rope decor shows as built while the level is unknown, then only for a too-low level", function()
+		expect.equal(WorldBinder.lockVisible(nil, 5), true)
+		expect.equal(WorldBinder.lockVisible(1, 5), true)
+		expect.equal(WorldBinder.lockVisible(4, 5), true)
+		expect.equal(WorldBinder.lockVisible(5, 5), false)
+		expect.equal(WorldBinder.lockVisible(40, 30), false)
 	end)
 
 	t.test("pod sign live text follows Config.Grip.Pads and Strings", function()
@@ -137,7 +153,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"stand prompts (Part 8 check): 7 stand tags, 14 prompts (6 stands + 8 pedestals), every text known",
+		"stand prompts (Part 8 check): 7 stand tags, 20 prompts (6 stands + 14 pedestals), every text known",
 		function()
 			local tags = WorldBinder.standTags()
 			table.sort(tags)
@@ -166,8 +182,8 @@ return function(t: Context)
 				WorldLayout.Collection,
 			}
 			local pedestals = WorldLayout.Collection.pedestals
-			expect.equal(#stands + #pedestals, 14)
-			expect.equal(tagged, 14)
+			expect.equal(#stands + #pedestals, 20)
+			expect.equal(tagged, 20)
 			local specs: { any } = {}
 			for _, stand in stands do
 				table.insert(specs, (stand :: any).prompt)

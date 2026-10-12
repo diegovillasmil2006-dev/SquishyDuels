@@ -19,8 +19,10 @@
 --   * wall sides (+X / -X, 2.5 x 8): wallSideCols columns, the same rows, one colour.
 --   * wall top (+Y, 6 x 2.5): wallTopCols x wallTopRows (High), or 4 fixed corners (Low: hits there get a ring).
 --   * block sides (4 faces, 6 x 8): blockCols x blockRows, one colour; the top (under the Cap) and bottoms are left out.
---   * backstop: the front +X face is backstop.colsHigh x rowsHigh (cols across its Z, rows up its Y; Low: colsLow x
---     rowsLow); the other 5 faces are fixed corners. One colour (the backstop's WorldLayout colour), no vertex colours.
+--   * backstop: the front face (backstopFront(): the one the throws meet, opposite WorldLayout's throwDirection; "-X"
+--     since phase 3's design range, "+X" before) is backstop.colsHigh x rowsHigh (cols across its Z, rows up its Y;
+--     Low: colsLow x rowsLow); the other 5 faces are fixed corners. One colour (the backstop's WorldLayout colour), no
+--     vertex colours.
 --   * bounds anchors: 8 tiny triangles at the rest bounds widened by boundsMargin, and further where a skinned piece
 --     can reach while it dents (clampOut along its face normals) and jiggles (jiggleReach), so a bulge, a jiggle or a
 --     collapse never changes the mesh bounds (U, S3). Reading: the backstop skin gets them too (it collapses at rest
@@ -337,7 +339,6 @@ local AXIS_NAMES: { Axis } = { "X", "Y", "Z" }
 local WALL_FACES: { FaceName } = { "+Z", "-Z", "+X", "-X", "+Y" }
 local BLOCK_FACES: { FaceName } = { "+Z", "-Z", "+X", "-X" }
 local BOX_FACES: { FaceName } = { "+X", "-X", "+Y", "-Y", "+Z", "-Z" }
-local BACKSTOP_FIXED: { FaceName } = { "-X", "+Y", "-Y", "+Z", "-Z" }
 
 -- Face frames on a unit box: outward normal, u and v (u x v = normal).
 local FACE_AXES: { [string]: { n: Vector3, u: Vector3, v: Vector3 } } = {
@@ -933,6 +934,25 @@ end
 -- The six box face names, in a fixed order (debug pokes may name a face by its number in this list).
 JellySkin.BOX_FACES = table.freeze(table.clone(BOX_FACES))
 
+-- The box face a throw along `throwDirection` meets: the one whose outward normal is most opposite it ("+X" for
+-- throws toward -X).
+function JellySkin.frontFaceFor(throwDirection: Vector3): FaceName
+	local best, bestDot = BOX_FACES[1], math.huge
+	for _, name in BOX_FACES do
+		local dot = FACE_AXES[name].n:Dot(throwDirection)
+		if dot < bestDot then
+			best, bestDot = name, dot
+		end
+	end
+	return best
+end
+
+-- The practice backstop's skinned front face: the one its throws meet (WorldLayout.PracticeRange.throwDirection;
+-- "-X" since phase 3's design range, D3).
+function JellySkin.backstopFront(): FaceName
+	return JellySkin.frontFaceFor(WorldLayout.PracticeRange.throwDirection)
+end
+
 -- The practice backstop's skin layout (backstop space: origin at its box centre).
 function JellySkin.backstopLayout(quality: Quality): Layout
 	local backstop = RIPPLE.backstop
@@ -942,9 +962,13 @@ function JellySkin.backstopLayout(quality: Quality): Layout
 	local layout = newLayout("backstop", quality, { piece }, false, color)
 	local cols = if quality == "Low" then backstop.colsLow else backstop.colsHigh
 	local rows = if quality == "Low" then backstop.rowsLow else backstop.rowsHigh
+	local front = JellySkin.backstopFront()
 	beginPiece(layout, piece)
-	addFace(layout, piece, "+X", "backstopFront", cols, uniformRows(size.Y, rows), size.Y / (rows - 1), true, false)
-	for _, name in BACKSTOP_FIXED do
+	addFace(layout, piece, front, "backstopFront", cols, uniformRows(size.Y, rows), size.Y / (rows - 1), true, false)
+	for _, name in BOX_FACES do
+		if name == front then
+			continue
+		end
 		local _, _, _, _, _, height = boxFace(piece.center, piece.size, name)
 		addFace(layout, piece, name, "fixed", 2, uniformRows(height, 2), height, false, false)
 	end

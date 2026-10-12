@@ -4,7 +4,9 @@
 -- Contract (DESIGN §5.11, §7.6): 9 targets from WorldLayout.PracticeRange (3 lanes × 12/20/28 studs from the firing
 -- line), one moving (middle lane, 20 studs) along Z by railLength/2 · sin(2π·t/period) with a peak of ≈ 4 studs/s;
 -- positionAt is a pure function of server time (same on server and client); the hitbox is the player capsule
--- (floor+0 .. floor+6.1); the throw box and the 75° cone around -X are the practice context of ThrowRules.
+-- (floor+0 .. floor+6.1); the throw box and the 75° cone around the range forward are the practice context of
+-- ThrowRules. Phase 3 (the design lobby, D3): the lanes are the design's (world Z 52 / 62 / 72), the firing line the
+-- design's (X 79) and throws go toward +X (lobby.js:129, 399-406); the bounds come from WorldLayout.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -48,7 +50,7 @@ return function(t: Context)
 			expect.equal(def.period, source.period)
 			-- The floor point sits on the lane floor top, under the target (where the model's pivot is built).
 			expect.equal(def.position, Vector3.new(source.position.X, range.laneFloorTopY, source.position.Z))
-			expect.equal(def.position.X, range.firingLineX - def.distance)
+			expect.equal(def.position.X, range.firingLineX + def.distance) -- throws go toward +X (D3)
 			expect.equal(PracticeTargets.get(def.id), def)
 		end
 		expect.equal(PracticeTargets.get("target_99"), nil)
@@ -60,7 +62,7 @@ return function(t: Context)
 			if def.moving then
 				moving += 1
 				expect.equal(def.distance, 20)
-				expect.equal(def.position.Z, -37)
+				expect.equal(def.position.Z, 62) -- the middle design lane (lobby.js:405: local x 0)
 				expect.equal(def.railLength, 12)
 				expect.equal(def.period, 9.42)
 			end
@@ -145,7 +147,7 @@ return function(t: Context)
 	-- Attributes ---------------------------------------------------------------------------------------------------
 
 	t.test("fromAttributes reads a tagged target and rejects bad attributes", function()
-		local base = Vector3.new(-44, 0.06, -37)
+		local base = Vector3.new(99, 0.6, 62) -- the moving target's floor point: X 79 + 20, on the range floor
 		local attrs = { TargetId = "target_05", Distance = 20, Moving = true, RailLength = 12, Period = 9.42 }
 		local def = PracticeTargets.fromAttributes(attrs, base)
 		expect.truthy(def ~= nil)
@@ -169,23 +171,30 @@ return function(t: Context)
 
 	t.test("inThrowBox is the SD_PracticeZone box", function()
 		expect.truthy(PracticeTargets.inThrowBox(range.approach + Vector3.new(0, 3, 0)))
-		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(-17, 3, -21)))
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(-30, 3, -37))) -- on the lane, past the firing line
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(-20, 3, -10))) -- north of the range
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(0, 3, 40))) -- the spawn
+		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(78, 3, 80))) -- a corner spot behind the firing line
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(85, 3, 62))) -- on the lane, past the firing line
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(75, 3, 30))) -- south of the range (the daily stand side)
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(0, 3, 0))) -- the spawn
 	end)
 
-	t.test("inCone accepts aims within 75° of -X only", function()
+	t.test("inCone accepts aims within 75° of +X only (the design range throws east, D3)", function()
 		local cone = Config.Combat.Throw.practiceConeDeg
-		expect.truthy(PracticeTargets.inCone(Vector3.new(-1, 0, 0)))
-		expect.truthy(PracticeTargets.inCone(Vector3.new(-1, 0.9, 0.2).Unit))
-		expect.falsy(PracticeTargets.inCone(Vector3.new(1, 0, 0)))
+		expect.truthy(PracticeTargets.FORWARD == Vector3.new(1, 0, 0))
+		expect.truthy(PracticeTargets.inCone(Vector3.new(1, 0, 0)))
+		expect.truthy(PracticeTargets.inCone(Vector3.new(1, 0.9, 0.2).Unit))
+		expect.falsy(PracticeTargets.inCone(Vector3.new(-1, 0, 0)))
 		expect.falsy(PracticeTargets.inCone(Vector3.new(0, 0, -1)))
 		expect.falsy(PracticeTargets.inCone(Vector3.new(0, 1, 0)))
 		local inside = math.rad(cone - 1)
 		local outside = math.rad(cone + 1)
-		expect.truthy(PracticeTargets.inCone(Vector3.new(-math.cos(inside), 0, math.sin(inside))))
-		expect.falsy(PracticeTargets.inCone(Vector3.new(-math.cos(outside), 0, math.sin(outside))))
+		expect.truthy(PracticeTargets.inCone(Vector3.new(math.cos(inside), 0, math.sin(inside))))
+		expect.falsy(PracticeTargets.inCone(Vector3.new(math.cos(outside), 0, math.sin(outside))))
+	end)
+
+	t.test("the projectile bounds are WorldLayout.PracticeRange.bounds (data, not a hard-coded box)", function()
+		expect.equal(PracticeTargets.BOUNDS.position, range.bounds.position)
+		expect.equal(PracticeTargets.BOUNDS.size, range.bounds.size)
+		expect.truthy(table.isfrozen(PracticeTargets.BOUNDS))
 	end)
 
 	t.test("every target and the throw box lie inside the practice bounds", function()

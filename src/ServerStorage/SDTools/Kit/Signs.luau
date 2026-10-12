@@ -21,9 +21,15 @@
 --   `live` lines never carry SD_TextKey, so two binders never fight over one label.
 -- Fit: Signs.measure(spec, align?) gives the stacked line height against the panel's (same maths as the layout), so a
 -- test can prove no sign's lines run past its edges (the SurfaceGui clips them).
--- Placement: a "Front" sign's readable face looks along `facing` (CFrame.lookAt). A "Top" sign is a floor plate whose
--- text top points along `textUp`. A Top-face SurfaceGui's text top is its part's -RightVector and its lines read along
--- the LookVector (measured in Studio, Part 3 lobby screenshot), so the plate looks along textUp × Y.
+-- Placement: a "Front" sign's readable face looks along `facing` (CFrame.lookAt), or its panel takes `spec.cframe`
+-- exactly (Front face = -Z). A "Top" sign is a floor plate whose text top points along `textUp`. A Top-face
+-- SurfaceGui's text top is its part's -RightVector and its lines read along the LookVector (measured in Studio, Part 3
+-- lobby screenshot), so the plate looks along textUp × Y.
+-- Design plates (phase 3, the design lobby's plate(), sd/lobby.js:26-33; opts.plate): no Cocoa frame and a transparent
+-- panel (a host keeps its look); an optional rounded backdrop "Plate" (corner = round × the panel's short side) with an
+-- optional border (7 px of the design's 512-px canvas); every line in the plate's text colour with no outline.
+-- Signs.logo draws the spawn medallion's logo (sd/lobby.js:149-155) on a Top host: a disc, a dashed ring, an inner
+-- disc and 8 stars around its two keyed lines.
 
 local Prims = require(script.Parent.Prims)
 
@@ -49,6 +55,7 @@ export type SignSpec = {
 	textUp: Vector3?,
 	tag: string?,
 	tier: number?,
+	cframe: CFrame?, -- an exact panel frame (Front face = -Z) instead of position + facing
 	lines: { SignLine },
 }
 
@@ -57,6 +64,21 @@ export type Style = {
 	frame: Color3, -- Cocoa
 	text: Color3, -- Ink
 	stroke: Color3, -- Cream
+}
+
+-- A design plate (sd/lobby.js:26-33): colours are resolved by the caller (Art/Palette).
+export type PlateStyle = {
+	background: Color3?, -- the rounded backdrop; nil = text only (the design's bg: null)
+	border: Color3?, -- the backdrop's border; nil = none (border: null)
+	round: number?, -- corner radius as a share of the panel's short side (default 0.24)
+	text: Color3, -- every line's colour (fg)
+}
+
+-- The spawn logo's host and colours (sd/lobby.js:150-154).
+export type LogoOptions = {
+	host: BasePart, -- the floor plate carrying the logo (yawed so its text top points along textUp)
+	colors: { disc: Color3, ring: Color3, inner: Color3, star: Color3 },
+	lineColors: { Color3 }, -- per line, in order
 }
 
 -- How a sign's lines sit on its panel, in SurfaceGui pixels (see Signs.measure).
@@ -80,6 +102,7 @@ export type BuildOptions = {
 	frame: boolean?, -- a Cocoa frame behind the panel or host (default: true for Front signs, false for Top)
 	align: ("center" | "top")?, -- vertical placement of the lines (default "center")
 	parent: Instance?, -- where a new panel's Model (or a host's frame) goes
+	plate: PlateStyle?, -- a design plate: no frame, a transparent panel, its own backdrop and text colour
 }
 
 -- Constants
@@ -104,6 +127,23 @@ local FRAME_MARGIN = 0.3 -- the Cocoa frame shows this much around the panel
 local HEADING_FONT = Enum.Font.FredokaOne
 local BODY_FONT = Enum.Font.BuilderSansBold
 local FRAME_MATERIAL = Enum.Material.Wood -- §7.3: sign frames
+local PLATE_NAME = "Plate"
+local PLATE_ROUND = 0.24 -- design: lobby.js:29 (o.round ?? 0.24)
+local PLATE_CANVAS_PX = 512 -- design: lobby.js:31 (a plate's canvas is 512 px wide)
+local PLATE_BORDER_PX = 7 -- design: lobby.js:29 (lineWidth 7)
+-- The spawn logo (design: lobby.js:149-155): a 1024-px canvas on the logo circle.
+local LOGO_CANVAS_PX = 1024
+local LOGO_RING_RADIUS_PX = 1024 / 2 - 40 -- design: lobby.js:151 (W / 2 - 40)
+local LOGO_RING_WIDTH_PX = 18 -- design: lobby.js:151
+local LOGO_DASH_PX = 46 -- design: lobby.js:151 (setLineDash([46, 26]))
+local LOGO_GAP_PX = 26 -- design: lobby.js:151
+local LOGO_INNER_SHARE = 0.66 -- design: lobby.js:152 (radius W × 0.33)
+local LOGO_LINE_OFFSETS_PX = { -70, 92 } -- design: lobby.js:153 (H / 2 - 70, H / 2 + 92)
+local LOGO_STARS = 8 -- design: lobby.js:154
+local LOGO_STAR_RADIUS_SHARE = 0.4 -- design: lobby.js:154 (W × 0.4)
+local LOGO_STAR_PHASE = 0.39 -- design: lobby.js:154
+local LOGO_STAR_PX = 2 * 28 -- design: lobby.js:154 (outer radius 28)
+local STAR_GLYPH = "★" -- the design's 5-point star path, as a symbol glyph
 
 -- Module table
 
@@ -157,7 +197,15 @@ local function gapPixels(pps: number): number
 	return math.floor(GAP_STUDS * pps + 0.5)
 end
 
-local function addLine(content: Frame, line: SignLine, text: string, order: number, pps: number, style: Style)
+local function addLine(
+	content: Frame,
+	line: SignLine,
+	text: string,
+	order: number,
+	pps: number,
+	style: Style,
+	plateText: Color3?
+): TextLabel
 	local letterPx = letterPixels(line, pps)
 	local label = Instance.new("TextLabel")
 	label.Name = line.name
@@ -166,7 +214,7 @@ local function addLine(content: Frame, line: SignLine, text: string, order: numb
 	label.Size = UDim2.new(1, 0, 0, math.ceil(letterPx * LINE_BOX_FACTOR))
 	label.LayoutOrder = order
 	label.Font = if line.font == "heading" then HEADING_FONT else BODY_FONT
-	label.TextColor3 = style.text
+	label.TextColor3 = plateText or style.text
 	label.TextStrokeTransparency = 1
 	label.TextXAlignment = Enum.TextXAlignment.Center
 	label.TextYAlignment = Enum.TextYAlignment.Center
@@ -181,11 +229,13 @@ local function addLine(content: Frame, line: SignLine, text: string, order: numb
 	constraint.MinTextSize = 1
 	constraint.Parent = label
 
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = style.stroke
-	stroke.Thickness = STROKE_PX
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-	stroke.Parent = label
+	if plateText == nil then -- the design's plate text has no outline (lobby.js:30)
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = style.stroke
+		stroke.Thickness = STROKE_PX
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+		stroke.Parent = label
+	end
 
 	if line.textKey and not line.live then
 		label:AddTag(TAG_SIGN)
@@ -194,6 +244,60 @@ local function addLine(content: Frame, line: SignLine, text: string, order: numb
 		label:SetAttribute(ATTR_LIVE_KEY, line.bakeKey)
 	end
 	label.Parent = content
+	return label
+end
+
+local function newGui(face: Enum.NormalId, pps: number): SurfaceGui
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = GUI_NAME
+	gui.Face = face
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = pps
+	gui.LightInfluence = LIGHT_INFLUENCE
+	gui.AlwaysOnTop = false
+	gui.ClipsDescendants = true
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	return gui
+end
+
+-- A centred Frame filling its parent, its corners rounded by `radius` (UDim.new(0.5, 0) makes a disc).
+local function roundFrame(name: string, color: Color3, radius: UDim, parent: Instance): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = name
+	frame.BackgroundColor3 = color
+	frame.BackgroundTransparency = 0
+	frame.BorderSizePixel = 0
+	frame.AnchorPoint = Vector2.new(0.5, 0.5)
+	frame.Position = UDim2.fromScale(0.5, 0.5)
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.ZIndex = 0
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = radius
+	corner.Parent = frame
+	frame.Parent = parent
+	return frame
+end
+
+-- The design plate's rounded backdrop on the Front face of `part` (lobby.js:29), inset by its border so the stroke
+-- stays on the canvas.
+local function addPlateBackdrop(gui: SurfaceGui, part: BasePart, plate: PlateStyle, pps: number)
+	local background = plate.background
+	if background == nil then
+		return
+	end
+	local short = math.min(part.Size.X, part.Size.Y)
+	local radius = math.floor((plate.round or PLATE_ROUND) * short * pps + 0.5)
+	local frame = roundFrame(PLATE_NAME, background, UDim.new(0, radius), gui)
+	local border = plate.border
+	if border ~= nil then
+		local thickness = math.max(1, math.floor(PLATE_BORDER_PX / PLATE_CANVAS_PX * part.Size.X * pps + 0.5))
+		frame.Size = UDim2.new(1, -2 * thickness, 1, -2 * thickness)
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = border
+		stroke.Thickness = thickness
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Parent = frame
+	end
 end
 
 -- A floor plate at `position` with world size `worldSize`, yawed so its Top-face text top (the part's -RightVector)
@@ -209,8 +313,11 @@ local function topFrame(position: Vector3, worldSize: Vector3, up: Vector3): (CF
 	return frame, size
 end
 
--- The CFrame and part-space size of a sign panel. Front: LookVector = facing. Top: see topFrame.
+-- The CFrame and part-space size of a sign panel. Front: spec.cframe, else LookVector = facing. Top: see topFrame.
 local function panelFrame(spec: SignSpec): (CFrame, Vector3)
+	if spec.cframe ~= nil then
+		return spec.cframe, spec.size
+	end
 	if spec.face == "Top" then
 		return topFrame(spec.position, spec.size, spec.textUp or Vector3.new(0, 0, -1))
 	end
@@ -225,7 +332,7 @@ local function orientTopHost(host: BasePart, spec: SignSpec)
 		math.abs(cf.XVector.Y) * s.X + math.abs(cf.YVector.Y) * s.Y + math.abs(cf.ZVector.Y) * s.Z,
 		math.abs(cf.XVector.Z) * s.X + math.abs(cf.YVector.Z) * s.Y + math.abs(cf.ZVector.Z) * s.Z
 	)
-	local frame, size = topFrame(host.Position, worldSize, spec.textUp or Vector3.new(0, 0, -1))
+	local frame, size = topFrame(cf.Position, worldSize, spec.textUp or Vector3.new(0, 0, -1))
 	host.Size = size
 	host.CFrame = frame
 end
@@ -248,6 +355,7 @@ end
 -- Public
 
 -- A SurfaceGui with `lines` on face `face` of `part`. Errors on a key Strings lacks (builders check every key first).
+-- `plate` (a Front face): the design plate's backdrop and text colour (see the header).
 function Signs.surface(
 	strings: StringsModule,
 	part: BasePart,
@@ -255,18 +363,14 @@ function Signs.surface(
 	lines: { SignLine },
 	style: Style,
 	bakeArgs: { [string]: any }?,
-	align: ("center" | "top")?
+	align: ("center" | "top")?,
+	plate: PlateStyle?
 ): SurfaceGui
 	local pps = pixelsPerStud(lines)
-	local gui = Instance.new("SurfaceGui")
-	gui.Name = GUI_NAME
-	gui.Face = face
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = pps
-	gui.LightInfluence = LIGHT_INFLUENCE
-	gui.AlwaysOnTop = false
-	gui.ClipsDescendants = true
-	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	local gui = newGui(face, pps)
+	if plate then
+		addPlateBackdrop(gui, part, plate, pps)
+	end
 
 	local content = Instance.new("Frame")
 	content.Name = CONTENT_NAME
@@ -291,8 +395,9 @@ function Signs.surface(
 	layout.Padding = UDim.new(0, gapPixels(pps))
 	layout.Parent = content
 
+	local plateText = if plate then plate.text else nil
 	for index, line in lines do
-		addLine(content, line, lineText(strings, line, bakeArgs), index, pps, style)
+		addLine(content, line, lineText(strings, line, bakeArgs), index, pps, style, plateText)
 	end
 	gui.Parent = part
 	return gui
@@ -305,7 +410,7 @@ end
 -- `spec.tag` (SD_GripSign) and `spec.tier` (GripTier) go on the part that carries the SurfaceGui.
 function Signs.build(strings: StringsModule, spec: SignSpec, opts: BuildOptions): BasePart
 	local face = if spec.face == "Top" then Enum.NormalId.Top else Enum.NormalId.Front
-	local wantFrame = if opts.frame == nil then spec.face ~= "Top" else opts.frame
+	local wantFrame = if opts.plate then false elseif opts.frame == nil then spec.face ~= "Top" else opts.frame
 	local carrier: BasePart
 	local host = opts.host
 	if host then
@@ -324,6 +429,8 @@ function Signs.build(strings: StringsModule, spec: SignSpec, opts: BuildOptions)
 			size = size,
 			cframe = frame,
 			color = opts.style.panel,
+			transparency = if opts.plate then 1 else nil, -- a design plate is only its SurfaceGui
+			shadow = if opts.plate then false else nil,
 			flags = "decor",
 			parent = model,
 		})
@@ -340,8 +447,74 @@ function Signs.build(strings: StringsModule, spec: SignSpec, opts: BuildOptions)
 			carrier:SetAttribute(ATTR_GRIP_TIER, spec.tier)
 		end
 	end
-	Signs.surface(strings, carrier, face, spec.lines, opts.style, opts.bakeArgs, opts.align)
+	Signs.surface(strings, carrier, face, spec.lines, opts.style, opts.bakeArgs, opts.align, opts.plate)
 	return carrier
+end
+
+-- The spawn logo (sd/lobby.js:149-155) on the floor plate opts.host, yawed so its text top points along spec.textUp:
+-- a disc ("Disc"), the dashed ring ("Dash" × 41: 46-px dashes and 26-px gaps on radius 472 of the 1024-px canvas),
+-- the inner disc ("Inner"), 8 stars ("Star") and spec's two lines (static keys, SD_Sign) centred 70 px above and
+-- 92 px below the middle, in opts.lineColors. Errors on a key Strings lacks.
+function Signs.logo(strings: StringsModule, spec: SignSpec, opts: LogoOptions): SurfaceGui
+	local host = opts.host
+	orientTopHost(host, spec)
+	local pps = pixelsPerStud(spec.lines)
+	local gui = newGui(Enum.NormalId.Top, pps)
+	local colors = opts.colors
+	roundFrame("Disc", colors.disc, UDim.new(0.5, 0), gui)
+	local radius = LOGO_RING_RADIUS_PX / LOGO_CANVAS_PX
+	local period = LOGO_DASH_PX + LOGO_GAP_PX
+	for index = 0, math.floor(2 * math.pi * LOGO_RING_RADIUS_PX / period) - 1 do
+		local angle = (index * period + LOGO_DASH_PX / 2) / LOGO_RING_RADIUS_PX -- the dash's middle along the ring
+		local dash = Instance.new("Frame")
+		dash.Name = "Dash"
+		dash.BackgroundColor3 = colors.ring
+		dash.BorderSizePixel = 0
+		dash.AnchorPoint = Vector2.new(0.5, 0.5)
+		dash.Position = UDim2.fromScale(0.5 + radius * math.cos(angle), 0.5 + radius * math.sin(angle))
+		dash.Size = UDim2.fromScale(LOGO_DASH_PX / LOGO_CANVAS_PX, LOGO_RING_WIDTH_PX / LOGO_CANVAS_PX)
+		dash.Rotation = math.deg(angle) + 90 -- along the ring (the canvas and the GUI both run y downward)
+		dash.ZIndex = 1
+		dash.Parent = gui
+	end
+	local inner = roundFrame("Inner", colors.inner, UDim.new(0.5, 0), gui)
+	inner.Size = UDim2.fromScale(LOGO_INNER_SHARE, LOGO_INNER_SHARE)
+	inner.ZIndex = 1
+	for index = 0, LOGO_STARS - 1 do
+		local angle = (index / LOGO_STARS) * 2 * math.pi + LOGO_STAR_PHASE
+		local star = Instance.new("TextLabel")
+		star.Name = "Star"
+		star.BackgroundTransparency = 1
+		star.AnchorPoint = Vector2.new(0.5, 0.5)
+		star.Position = UDim2.fromScale(
+			0.5 + LOGO_STAR_RADIUS_SHARE * math.cos(angle),
+			0.5 + LOGO_STAR_RADIUS_SHARE * math.sin(angle)
+		)
+		star.Size = UDim2.fromScale(LOGO_STAR_PX / LOGO_CANVAS_PX, LOGO_STAR_PX / LOGO_CANVAS_PX)
+		star.Font = HEADING_FONT
+		star.Text = STAR_GLYPH
+		star.TextColor3 = colors.star
+		star.TextScaled = true
+		star.ZIndex = 2
+		star.Parent = gui
+	end
+	local content = Instance.new("Frame")
+	content.Name = CONTENT_NAME
+	content.BackgroundTransparency = 1
+	content.BorderSizePixel = 0
+	content.Size = UDim2.fromScale(1, 1)
+	content.ZIndex = 3
+	content.Parent = gui
+	local style: Style = { panel = colors.disc, frame = colors.disc, text = colors.ring, stroke = colors.disc }
+	for index, line in spec.lines do
+		local color = opts.lineColors[index] or style.text
+		local label = addLine(content, line, lineText(strings, line, nil), index, pps, style, color)
+		label.AnchorPoint = Vector2.new(0.5, 0.5)
+		label.Position = UDim2.fromScale(0.5, 0.5 + (LOGO_LINE_OFFSETS_PX[index] or 0) / LOGO_CANVAS_PX)
+		label.Size = UDim2.new(LOGO_INNER_SHARE, 0, 0, math.ceil(letterPixels(line, pps) * LINE_BOX_FACTOR))
+	end
+	gui.Parent = host
+	return gui
 end
 
 -- How the lines of `spec` sit on its panel, with the same maths surface() lays them out with. The canvas height is

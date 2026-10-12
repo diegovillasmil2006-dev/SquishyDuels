@@ -6,22 +6,23 @@
 --   * One Folder Workspace.SD_ClientFx/SD_Collection holds every display (created once in start(), so the Inspect leak
 --     test's SD_ClientFx child count stays the same whatever is built).
 --   * Every Config.Inspect.Collection.checkSeconds: for each streamed-in part tagged WorldLayout.Collection.pedestalTag
---     (attribute Slot 1-8), the distance from the local HumanoidRootPart (else the camera) decides through
+--     (attribute Slot 1-14), the distance from the local HumanoidRootPart (else the camera) decides through
 --     CollectionFormat.shouldBuild: a display is built within WorldLayout.Collection.buildStuds (60) and removed once
 --     it is more than Config.Inspect.Collection.hysteresisStuds past that radius.
 --   * Build: SquishyCache.clone(CollectionFormat.squishyForSlot(slot), "World", WorldLayout.Collection.squishyScale)
---     (a model slot replaces the blueprint, §8.3), its bottom on the pedestal top, face toward -X
---     (CollectionFormat.restCFrame; the pivot's height above the model's bottom is measured once per build from
+--     (a model slot replaces the blueprint, §8.3), its bottom on the pedestal top, face toward its pedestal's facing
+--     (phase 3: its bay's front; CollectionFormat.facingOf / restCFrame; the pivot's height above the model's bottom
+--     is measured once per build from
 --     GetBoundingBox). Owned -> full colour. Not owned -> a Lavender silhouette of this client's clone only
 --     (silhouette(): every BasePart Lavender, MeshPart TextureID and FileMesh TextureId cleared, Decals and Textures
 --     hidden, SurfaceAppearances removed).
---   * Nameplate: ONE BillboardGui per display, never a SurfaceGui (the lobby already uses 26 of its 30), parented to
+--   * Nameplate: ONE BillboardGui per display, never a SurfaceGui (the lobby's signs use its budget), parented to
 --     the model's Root: a Cream plate (CollectionFormat.PLATE_TOKEN) with the squishy's name and Owned / Not owned yet
 --     in Ink (CollectionFormat.plate), Config.Inspect.Collection.nameplateSizeStuds wide and tall,
 --     nameplateOffsetStuds above the model's top, MaxDistance = buildStuds, LightInfluence 0, not AlwaysOnTop.
 --   * Motion: every built display within buildStuds (at the last check) sways by CollectionFormat.swayAngle(now,
 --     phaseOf(slot), Config.Inspect.Collection.swayDeg, swayPeriodSeconds, Tweens.reducedMotion()) about its rest
---     pivot, within ±swayDeg of the -X facing so its face stays toward the aisle, always the rest pose times the angle
+--     pivot, within ±swayDeg of its facing so its face stays toward the shelf, always the rest pose times the angle
 --     of the clock, never added up; one kept past buildStuds by the margin holds still (§7.6 "built/animated only
 --     within 60 studs"); under ReducedMotion one write back to the rest pose, then nothing.
 --   * StateController.changed("owned") and Loaded rebuild only the displays whose ownership changed (one past
@@ -186,8 +187,12 @@ local function ensureFolder(): Folder
 	return made
 end
 
+-- The pedestal's top centre: its centre raised by its world-Y half extent, so a block and an upright Cylinder (the
+-- design pedestals of phase 3, whose part X axis is vertical) both work.
 local function topOf(part: BasePart): Vector3
-	return (part.CFrame * CFrame.new(0, part.Size.Y / 2, 0)).Position
+	local cf, half = part.CFrame, part.Size / 2
+	local extentY = math.abs(cf.XVector.Y) * half.X + math.abs(cf.YVector.Y) * half.Y + math.abs(cf.ZVector.Y) * half.Z
+	return cf.Position + Vector3.new(0, extentY, 0)
 end
 
 -- Where distances are measured from: the local HumanoidRootPart, else the camera; nil when there is neither.
@@ -208,7 +213,8 @@ end
 
 local function place(display: Display, now: number, reduced: boolean)
 	local angle = CollectionFormat.swayAngle(now, display.phase, DISPLAY.swayDeg, DISPLAY.swayPeriodSeconds, reduced)
-	display.model:PivotTo(CollectionFormat.restCFrame(display.top, display.lift, angle))
+	local facing = CollectionFormat.facingOf(display.slot)
+	display.model:PivotTo(CollectionFormat.restCFrame(display.top, display.lift, angle, facing))
 end
 
 local function removeDisplay(slot: number)

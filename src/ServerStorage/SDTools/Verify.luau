@@ -138,7 +138,8 @@ local ATTR_PAD_KEY = "PadKey"
 -- lobby (§7.5-§7.7, §17.6, §17.6.1)
 local LOBBY_ROOT_NAME = "SD_Lobby"
 local LOBBY_MAX_PARTS = 2500
-local LOBBY_MAX_SURFACE_GUIS = 30
+local LOBBY_MAX_SURFACE_GUIS = 64 -- phase 3 (D6): the design lobby's plates
+local LOBBY_PEDESTALS = 14 -- phase 3 (D4): the design's curved shelf holds every squishy (lobby.js:278)
 local LOBBY_MAX_LIGHTS = 8
 local LOBBY_MAX_EMITTERS = 3
 local MAX_ATOMIC_EXTENT = 64 -- studs: an Atomic station model streams as one piece
@@ -163,7 +164,7 @@ local LOBBY_TAG_COUNTS: { TagCount } = {
 	{ tag = TAG_BOX_STAND, count = 1 },
 	{ tag = "SD_ShopCounter", count = 1 },
 	{ tag = "SD_CollectionKiosk", count = 1 },
-	{ tag = TAG_PEDESTAL, count = 8 },
+	{ tag = TAG_PEDESTAL, count = LOBBY_PEDESTALS },
 	{ tag = "SD_QuestBoard", count = 1 },
 	{ tag = "SD_DailyStand", count = 1 },
 	{ tag = TAG_RETURN_POINT, count = 2 },
@@ -282,7 +283,7 @@ local BARRIER_BOXES: { BoxSpec } = {
 }
 -- Lobby floor plane and footprint (§7.5) for templateLeftovers.
 local LOBBY_FLOOR_Y = 0
-local LOBBY_FOOTPRINT_HALF = Vector3.new(64, 0, 56)
+local LOBBY_FOOTPRINT_HALF = Vector3.new(116, 0, 92) -- phase 3: the design hub, 232 × 184 (lobby.js:101)
 local ARENA_AUDIO_ZONE_ID = "arena"
 local ARENA_AUDIO_PRIORITY = 3
 
@@ -1334,7 +1335,7 @@ local function verifyLobby(report: Report, root: Instance, deps: Deps?)
 	checkTagCounts(report, all)
 	checkSqueezeStations(report, all, layout)
 	checkPracticeTargets(report, all)
-	checkSlots(report, all, TAG_PEDESTAL, 8)
+	checkSlots(report, all, TAG_PEDESTAL, LOBBY_PEDESTALS)
 	checkSlots(report, all, TAG_RETURN_POINT, 2)
 	checkSpawnAndStands(report, all)
 	checkVolumes(report, all)

@@ -193,6 +193,54 @@ local Palette = {
 	DisabledTextDark = Color3.fromHex("#ABA0BB"),
 	Backdrop = Color3.fromHex("#140E1C"), -- the modal dimmer and wash
 
+	-- Lobby kit (phase 3, user decision 2026-10-11 "build the design's lobby"): the world colours of the Claude Design
+	-- lobby (sd/lobby.js palette, lines 71-83, and its inline colours), named after the design's materials. World only,
+	-- for the lobby generator (SDTools LobbyBuilder, Kit/Props); plain colours (the design's glows stay unlit except the
+	-- lit state rings, D7).
+	LobbyFloor = Color3.fromHex("#F4E6D3"), -- lobby_floor_cream, lobby.js:73
+	LobbySeam = Color3.fromHex("#E8D6BF"), -- lobby_tile_seam, lobby.js:73
+	LobbyPath = Color3.fromHex("#F8CAD4"), -- path_pink, lobby.js:73
+	LobbyCurb = Color3.fromHex("#FFF6EA"), -- path_curb_cream, lobby.js:73
+	LobbyMint = Color3.fromHex("#5FD3AE"), -- team_mint, lobby.js:74
+	LobbyStrawberry = Color3.fromHex("#F2687F"), -- team_strawberry, lobby.js:74
+	LobbyCourtMint = Color3.fromHex("#BDEAD6"), -- court_mint, lobby.js:74
+	LobbyCourtStrawberry = Color3.fromHex("#F8CAD4"), -- court_strawberry, lobby.js:74
+	LobbyCushionCream = Color3.fromHex("#FFF3E2"), -- cushion_cream, lobby.js:75
+	LobbyTrimWhite = Color3.fromHex("#FFFDF8"), -- trim_white, lobby.js:75
+	LobbyButter = Color3.fromHex("#FFD25E"), -- butter_yellow, lobby.js:75
+	LobbyLilac = Color3.fromHex("#D9C6F5"), -- lilac, lobby.js:75
+	LobbyViolet = Color3.fromHex("#B892F0"), -- violet, lobby.js:75
+	LobbySky = Color3.fromHex("#8FD3F4"), -- sky_blue, lobby.js:76
+	LobbyPlum = Color3.fromHex("#3F3756"), -- scoreboard_plum, lobby.js:76
+	LobbyWafer = Color3.fromHex("#E5B06C"), -- wafer, lobby.js:76
+	LobbyWaferGroove = Color3.fromHex("#C98F4B"), -- wafer_groove, lobby.js:76
+	LobbyGold = Color3.fromHex("#E8B84A"), -- gold_trim, lobby.js:77
+	LobbyRoyalVelvet = Color3.fromHex("#7E57C2"), -- royal_velvet, lobby.js:77
+	LobbyVelvetRope = Color3.fromHex("#C9405A"), -- velvet_rope, lobby.js:77
+	LobbyGlass = Color3.fromHex("#E4F6FF"), -- glass, lobby.js:77
+	LobbyLampGlow = Color3.fromHex("#FFF6DC"), -- lamp_glow, lobby.js:78 (unlit, D7)
+	LobbyStrawberryRed = Color3.fromHex("#EE4A5C"), -- strawberry_red, lobby.js:78
+	LobbyCork = Color3.fromHex("#D9A06B"), -- cork, lobby.js:78
+	LobbyJellyShell = Color3.fromHex("#FF6F86"), -- jelly_shell, lobby.js:79
+	LobbyJellyCore = Color3.fromHex("#E8445C"), -- jelly_core, lobby.js:79
+	LobbyMarshmallow = Color3.fromHex("#FFF9F4"), -- marshmallow, lobby.js:79
+	LobbyMallowToast = Color3.fromHex("#E2A866"), -- mallow_toast, lobby.js:79
+	LobbyPebble = Color3.fromHex("#E8DCCB"), -- pebble, lobby.js:80 (the unlit queue pad rings, lobby.js:193)
+	LobbyInk = Color3.fromHex("#2B2233"), -- ink_dark, lobby.js:80 (also the plates' text and border, lobby.js:29-30)
+	LobbyCottonPink = Color3.fromHex("#F9B8D0"), -- cotton_candy_pink, lobby.js:80
+	LobbyCottonBlue = Color3.fromHex("#A9DDF6"), -- cotton_candy_blue, lobby.js:80
+	LobbyCandyStick = Color3.fromHex("#FFF4E6"), -- candy_stick, lobby.js:80
+	LobbyWindowSky = Color3.fromHex("#CFEFFF"), -- window_sky, lobby.js:81 (unlit, D7)
+	LobbyPlate = Color3.fromHex("#FFF9F1"), -- the text plates' default background, lobby.js:29
+	LobbyRangeArrow = Color3.fromHex("#FFB070"), -- the RANGE arrow, lobby.js:159
+	LobbyCoinInner = Color3.fromHex("#F6CF63"), -- coin_inner, lobby.js:249
+	LobbyQuestMint = Color3.fromHex("#D9F4EA"), -- the Daily quest cards, lobby.js:296
+	LobbyQuestButter = Color3.fromHex("#FFF0C4"), -- the Weekly quest cards, lobby.js:296
+	LobbyQuestPink = Color3.fromHex("#FBDDE3"), -- the Duels quest cards, lobby.js:296
+	LobbyQuestBar = Color3.fromHex("#FFC93C"), -- the Weekly progress strips, lobby.js:296
+	LobbyMallowCenter = Color3.fromHex("#F0C890"), -- mallow_toast_center, lobby.js:365
+	LobbyRankGrey = Color3.fromHex("#9AA4AE"), -- the rank tower's first tier, lobby.js:370
+
 	-- The knead screen in Inspect (spec phase2-squeeze §1.16-§1.20; user decision 2026-10-11: the design's exact hex,
 	-- read by UI/Components/WaxMeter, UI/KneadOverlay and Anim/FlakePool). The paper and ink of the design's HUD, its coat
 	-- bar and state word, the vignette's warm stops (its outer stop is KneadInk) and the re-wax sparkle's cream.

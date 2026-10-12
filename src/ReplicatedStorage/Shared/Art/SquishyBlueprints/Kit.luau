@@ -278,12 +278,12 @@ end
 
 -- Giant squishy pads (§17.6, §17.6.1): giant_jelly, giant_marshmallow, giant_cushion (the Royal Cushion). Placeholder
 -- design (§17.11 names them; §8.2 has no table): a Body RB of the pad's footprint × rest top from
--- World/WorldLayout.GiantPads (8 × 1.5 × 8, 8 × 1.6 × 8, 9 × 1.7 × 9 studs at scale 1) and the §8.1 #7 face kit made
--- giant: 8 parts + Root. The lobby generator uses ONLY the face parts: it builds each pad's Body itself (rounded base +
--- quilted path B tiles), stands this blueprint's lowest point on the floor and moves the face parts onto the side
--- that looks toward the pad's faceDirection. The face sits on the lower half of the side (eyes at 0.42 × rest top
--- above the floor), under the widest bulge of the quilted tiles, and stands out of the flat side by 0.4 (eyes),
--- 0.24 (mouth) and 0.14 (blush) so the tiles never hide it.
+-- World/WorldLayout.GiantPads (10.2 × 6.2 × 10.2, 10 × 6.6 × 10, 8.4 × 4.8 × 8.4 studs at scale 1: the design
+-- lobby's pads) and the §8.1 #7 face kit made giant: 8 parts + Root. Phase 3 (D5): the lobby generator builds the
+-- design's pads with no faces, so no build uses these blueprints today; they stay for tools (before, it used ONLY
+-- the face parts, moved onto the side toward the pad's faceDirection). The face sits on the lower half of the side
+-- (eyes at 0.42 × rest top above the floor), under the widest bulge of the quilted tiles, and stands out of the flat
+-- side by 0.4 (eyes), 0.24 (mouth) and 0.14 (blush) so the tiles never hide it.
 local GIANT_EYE = Vector3.new(0.5, 0.62, 1.0)
 local GIANT_EYE_X = -1.1 -- the left eye (§8.2 convention: x < 0 is the squishy's own left)
 local GIANT_SHINE_OFFSET = Vector3.new(-0.1, 0.14, -0.38) -- on the eye's front, up and to its left

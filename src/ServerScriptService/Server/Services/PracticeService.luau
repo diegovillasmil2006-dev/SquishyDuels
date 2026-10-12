@@ -166,7 +166,7 @@ function PracticeService.zone(): Types.ArenaZone?
 	return { cframe = volume.CFrame, size = volume.Size }
 end
 
--- The range forward (throws go toward -X), for the practice cone check (§5.6 #6).
+-- The range forward (throws go toward +X since phase 3), for the practice cone check (§5.6 #6).
 function PracticeService.forward(): Vector3
 	return PracticeTargets.FORWARD
 end

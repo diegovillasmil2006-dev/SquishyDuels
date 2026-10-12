@@ -19,10 +19,13 @@ type Context = {
 	requireClient: (path: string) -> any,
 }
 
+-- The design pads (phase 3 D5): the jelly shell 10.2 wide with its top at 6.2 (lobby.js:361), the marshmallow Ø10
+-- puffy disc to 6.6 (lobby.js:364), the royal cushion 8.4 wide to 4.8 (lobby.js:384); the corner radii are WorldLayout's
+-- readings (a round marshmallow: radius = half the footprint).
 local PADS = {
-	{ key = "jelly", footprint = 8, cornerRadius = 1.2, restTop = 1.5 },
-	{ key = "marshmallow", footprint = 8, cornerRadius = 2.0, restTop = 1.6 },
-	{ key = "royal", footprint = 9, cornerRadius = 1.0, restTop = 1.7 },
+	{ key = "jelly", footprint = 10.2, cornerRadius = 3.6, restTop = 6.2 },
+	{ key = "marshmallow", footprint = 10, cornerRadius = 5, restTop = 6.6 },
+	{ key = "royal", footprint = 8.4, cornerRadius = 3.0, restTop = 4.8 },
 }
 -- Per-quality budgets from §17.6.1 (the hard caps come from Config).
 local BUDGET = {

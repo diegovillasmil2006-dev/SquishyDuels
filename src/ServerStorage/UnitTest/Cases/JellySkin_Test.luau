@@ -220,10 +220,21 @@ return function(t: Context)
 		end
 	)
 
+	-- Phase 3 (the design lobby, D3): throws go toward +X now, so the face toward the thrower is "-X"; the name comes
+	-- from WorldLayout.PracticeRange.throwDirection (the outward normal opposite the throws).
+	t.test("the backstop's front face is the one the throws meet: opposite WorldLayout's throw direction", function()
+		local front = JellySkin.backstopFront()
+		local normal = JellySkin.faceNormalOf(front)
+		expect.truthy((normal + WorldLayout.PracticeRange.throwDirection).Magnitude < 1e-6)
+		expect.equal(front, "-X")
+		expect.equal(JellySkin.frontFaceFor(Vector3.new(-1, 0, 0)), "+X") -- the old range (throws toward -X)
+		expect.equal(JellySkin.frontFaceFor(Vector3.new(0, 0, 1)), "-Z")
+	end)
+
 	t.test("the backstop skin: a 35 x 13 front at High, 24 x 9 at Low, the other faces fixed corners", function()
 		for _, case in { { q = "High", cols = 35, rows = 13 }, { q = "Low", cols = 24, rows = 9 } } do
 			local layout = JellySkin.backstopLayout(case.q)
-			local front = layout.faces[layout.faceOf[1]["+X"]]
+			local front = layout.faces[layout.faceOf[1][JellySkin.backstopFront()]]
 			expect.equal(front.cols, case.cols)
 			expect.equal(front.rows, case.rows)
 			expect.truthy(front.moves)

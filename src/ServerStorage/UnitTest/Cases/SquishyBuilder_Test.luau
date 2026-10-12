@@ -73,8 +73,10 @@ local FACE_KIT_V1: { [string]: boolean } = {
 	dragon = true,
 }
 -- §17.12: the giant pads' footprint is 8-9 studs instead of the 1-4-stud bound (no Catalog entry: no flight check).
+-- Phase 3 (the design lobby, D5): the design's pads are 8.4-10.2 studs wide and their rest tops 4.8-6.6 studs.
 local GIANT_IDS: { [string]: boolean } = { giant_jelly = true, giant_marshmallow = true, giant_cushion = true }
-local GIANT_MIN_FOOTPRINT, GIANT_MAX_FOOTPRINT = 8, 9
+local GIANT_MIN_FOOTPRINT, GIANT_MAX_FOOTPRINT = 8.4, 10.2
+local GIANT_MAX_HEIGHT = 6.6
 local DRAGON_HEAD_ID = "dragon_head_vfx"
 local DRAGON_HEAD_MAX_PARTS = 19
 
@@ -534,7 +536,7 @@ return function(t: Context)
 		end))
 	end)
 
-	t.test("L1: the longest bound is 1-4 studs at blueprint scale (giant pads: an 8-9-stud footprint)", function()
+	t.test("L1: the longest bound is 1-4 studs at blueprint scale (giant pads: an 8.4-10.2-stud footprint)", function()
 		failIfAny(eachBuild(function(id, _mode, model, report)
 			local size = measureSize(model)
 			if GIANT_IDS[id] then
@@ -542,7 +544,7 @@ return function(t: Context)
 				if size.X < GIANT_MIN_FOOTPRINT - EPS or size.X > GIANT_MAX_FOOTPRINT + EPS then
 					report(`footprint {size.X}, expected {GIANT_MIN_FOOTPRINT}-{GIANT_MAX_FOOTPRINT}`)
 				end
-				if not (size.Y > 0 and size.Y < MAX_BOUND and size.Z >= size.X) then
+				if not (size.Y > 0 and size.Y <= GIANT_MAX_HEIGHT + EPS and size.Z >= size.X) then
 					report(`bounds {size}`)
 				end
 				return

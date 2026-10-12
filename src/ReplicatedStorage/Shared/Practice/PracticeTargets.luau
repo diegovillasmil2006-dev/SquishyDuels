@@ -11,7 +11,8 @@
 -- * Hitbox = the standard player capsule (Config.Combat.Hitbox, §5.5) on a virtual root ROOT_HEIGHT above the floor
 --   point, so it spans floor+0 .. floor+6.1 like a standing R15 player.
 -- * Practice context for ThrowRules (§5.6 #3, #5, #6): inThrowBox (the SD_PracticeZone box) and inCone (flat aim
---   within Config.Combat.Throw.practiceConeDeg of the range forward, -X).
+--   within Config.Combat.Throw.practiceConeDeg of the range forward, WorldLayout's throwDirection: +X since phase 3,
+--   the design lobby's range, D3).
 
 local Config = require(script.Parent.Parent.Config)
 local WorldLayout = require(script.Parent.Parent.World.WorldLayout)
@@ -38,18 +39,18 @@ local MIN_FLAT_AIM = 1e-6
 local ROOT_HEIGHT = HITBOX.radius - HITBOX.bottomOffset
 
 -- Reading (not in DESIGN): practice projectiles expire when they leave this box, as duel projectiles do outside the
--- arena Bounds (§5.7): the range from the backstop (X -60) to the east edge of the throw box (X -16), the lane width
--- (Z -54..-20), and the arena zones' height (Y -15..40).
+-- arena Bounds (§5.7). Phase 3: the box is WorldLayout.PracticeRange.bounds (the design range from its throw box to
+-- the hub's east edge, the arena zones' height).
 local BOUNDS: Box = table.freeze({
-	position = Vector3.new(-38, 12.5, -37),
-	size = Vector3.new(44, 55, 34),
+	position = RANGE.bounds.position,
+	size = RANGE.bounds.size,
 })
 
 local PracticeTargets = {}
 
 PracticeTargets.ROOT_HEIGHT = ROOT_HEIGHT
 PracticeTargets.FLOOR_Y = RANGE.laneFloorTopY -- the lane floor top (projectile shadow discs, §9.7)
-PracticeTargets.FORWARD = RANGE.throwDirection -- range forward: throws go toward -X
+PracticeTargets.FORWARD = RANGE.throwDirection -- range forward: throws go toward +X (D3)
 PracticeTargets.THROW_BOX = table.freeze({ position = RANGE.throwBox.position, size = RANGE.throwBox.size }) :: Box
 PracticeTargets.BOUNDS = BOUNDS
 

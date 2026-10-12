@@ -32,6 +32,10 @@
 --   Locked / open transparency from Config.Grip.Gate; the `Live` label shows grip.signLocked / grip.signOpen. Any
 --   error in that pass opens every gate and stops the gate logic for the session (fail open, §17.6). The server
 --   checks the level on every squeeze and tick anyway.
+-- * Lock decor (`SD_GripLock`, phase 3 D5: the design's lock + rope by each pad; the gates themselves are invisible):
+--   matched to its pad like a gate (by its pivot). Shown as built while the level is unknown (and after a failed
+--   pass); with a level, shown on this client only while the viewer's level is below the pad's (lockVisible), by
+--   LocalTransparencyModifier on its parts.
 
 -- Services
 
@@ -101,6 +105,12 @@ type PodSign = {
 	bakedText: string?,
 }
 
+type LockDecor = {
+	instance: Instance,
+	pad: any,
+	parts: { BasePart },
+}
+
 -- The Config.Grip fields this module reads (Config.Grip lands with Part 3's Grip data; read defensively).
 type GripPadConfig = { level: number, coinBonus: number, gripPercent: number }
 type GripGateConfig = {
@@ -117,6 +127,7 @@ local TAG_SIGN = "SD_Sign"
 local TAG_AUDIO_ZONE = "SD_AudioZone"
 local TAG_GRIP_GATE = "SD_GripGate"
 local TAG_GRIP_SIGN = "SD_GripSign"
+local TAG_GRIP_LOCK = WorldLayout.Tags.GripLock -- "SD_GripLock"
 local STAND_TAGS = {
 	"SD_QuestBoard",
 	"SD_DailyStand",
@@ -130,8 +141,8 @@ local LIVE_LABEL = "Live"
 local ROOT_PART = "HumanoidRootPart"
 local ZONE_CHECK_SECONDS = Config.Audio.zoneCheckSeconds -- §7.7: the HRP is checked every 0.25 s
 local DEFAULT_GATE_RECHECK_SECONDS = 0.5 -- §17.6, used only if Config.Grip.Gate is missing
--- A gate or pod sign binds to the giant pad whose centre is this close (horizontally): a gate sits on its pad centre,
--- a pod sign about 8 studs in front of it, and pads are at least 20 studs apart.
+-- A gate, pod sign or lock decor binds to the giant pad whose centre is this close (horizontally): a gate and a lock
+-- decor's pivot sit on its pad centre, a pod sign 6-10 studs in front of it, and pads are at least 20 studs apart.
 local MAX_PAD_MATCH_STUDS = 12
 
 -- Module table
@@ -151,6 +162,7 @@ local zoneParts: { [BasePart]: boolean } = {}
 local currentZone: ZoneInfo? = nil
 local gates: { [BasePart]: GatePart } = {}
 local podSigns: { [Instance]: PodSign } = {}
+local locks: { [Instance]: LockDecor } = {}
 local gripSource: GripSource? = nil
 local gripSourceConnection: any = nil
 local gateLogicFailed = false
@@ -437,6 +449,21 @@ local function restoreSigns()
 	end
 end
 
+local function setLockShown(lock: LockDecor, shown: boolean)
+	local modifier = if shown then 0 else 1
+	for _, part in lock.parts do
+		if part.LocalTransparencyModifier ~= modifier then
+			part.LocalTransparencyModifier = modifier
+		end
+	end
+end
+
+local function showAllLocks()
+	for _, lock in locks do
+		setLockShown(lock, true)
+	end
+end
+
 local function updateGrip()
 	if gateLogicFailed then
 		return
@@ -446,6 +473,7 @@ local function updateGrip()
 	if level == nil or type(grip) ~= "table" or type(grip.Pads) ~= "table" then
 		openAllGates()
 		restoreSigns()
+		showAllLocks()
 		return
 	end
 	local gateConfig: GripGateConfig? = grip.Gate
@@ -481,12 +509,17 @@ local function updateGrip()
 				end
 			end
 		end
+		for _, lock in locks do
+			local padConfig: GripPadConfig? = grip.Pads[lock.pad.tier]
+			setLockShown(lock, WorldBinder.lockVisible(level, if padConfig then padConfig.level else math.huge))
+		end
 		return nil
 	end)
 	if not ok then
 		gateLogicFailed = true
 		log:error("Grip gate pass failed; every gate stays open for this session:", err)
 		openAllGates()
+		showAllLocks()
 	end
 end
 
@@ -542,6 +575,42 @@ local function bindPodSign(instance: Instance, ic: Trove)
 	ic:add(function()
 		podSigns[instance] = nil
 	end)
+end
+
+local function bindLock(instance: Instance, ic: Trove)
+	local position = if instance:IsA("Model")
+		then instance:GetPivot().Position
+		elseif instance:IsA("BasePart") then instance.Position
+		else nil
+	local pad = padFor(position)
+	if pad == nil then
+		log:warn(`{instance:GetFullName()} is tagged {TAG_GRIP_LOCK} but stands by no giant pad; left as built`)
+		return
+	end
+	local lock: LockDecor = { instance = instance, pad = pad, parts = {} }
+	local function addPart(candidate: Instance)
+		if candidate:IsA("BasePart") then
+			table.insert(lock.parts, candidate)
+		end
+	end
+	addPart(instance)
+	for _, descendant in instance:GetDescendants() do
+		addPart(descendant)
+	end
+	ic:add(instance.DescendantAdded:Connect(function(descendant: Instance)
+		addPart(descendant)
+		if gripSource then
+			updateGrip()
+		end
+	end))
+	locks[instance] = lock
+	ic:add(function()
+		locks[instance] = nil
+		setLockShown(lock, true)
+	end)
+	if gripSource then
+		updateGrip()
+	end
 end
 
 -- Public ------------------------------------------------------------------------------------------------------------
@@ -626,6 +695,15 @@ function WorldBinder.padNear(position: Vector3): any
 	return best
 end
 
+-- Pure: whether a pad's lock + rope decor shows for a viewer `level` (nil = unknown: as built, shown) and the pad's
+-- required level (phase 3 D5).
+function WorldBinder.lockVisible(level: number?, requiredLevel: number): boolean
+	if level == nil then
+		return true
+	end
+	return level < requiredLevel
+end
+
 -- The `Live` line of a pod sign for this viewer level and GripTier (grip.signLocked / grip.signOpen), or nil when
 -- Config.Grip or the Strings texts are missing (the baked text then stays).
 function WorldBinder.podSignText(level: number, tier: number): string?
@@ -685,6 +763,7 @@ function WorldBinder.init()
 	end)
 	bindTag(trove, TAG_GRIP_GATE, bindGate)
 	bindTag(trove, TAG_GRIP_SIGN, bindPodSign)
+	bindTag(trove, TAG_GRIP_LOCK, bindLock)
 
 	-- Periodic checks (task loops, not frame events): audio zone 0.25 s, Grip gates recheckSeconds.
 	c:add(task.spawn(function()

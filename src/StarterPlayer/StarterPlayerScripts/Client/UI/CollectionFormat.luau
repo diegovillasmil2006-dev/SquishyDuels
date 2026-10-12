@@ -4,10 +4,13 @@
 -- silhouette, plate "Not owned yet"; models built and animated only within 60 studs). What CollectionController places
 -- and shows, as plain data; no instances:
 --   PLATE_TOKEN / SILHOUETTE_TOKEN       the Art/Palette tokens of the nameplate and of an unowned silhouette
---   squishyForSlot(slot, list?)          the squishy id of pedestal `slot` (1..8): Catalog.list() order; nil outside
+--   squishyForSlot(slot, list?)          the squishy id of pedestal `slot` (1..14 since phase 3, D4: the design's
+--                                        curved shelf holds every squishy): Catalog.list() order; nil outside
 --   slotOf(id, list?)                    the reverse; nil for an id without a pedestal
 --   shouldBuild(distance, built, ...)    build within buildStuds; a built model stays until buildStuds + hysteresis
---   restCFrame(top, pivotAboveBottom, angle)   the model's pivot: bottom on the pedestal top, face toward -X at 0°
+--   facingOf(slot)                       where pedestal `slot` faces (phase 3: its bay's front, WorldLayout); -X else
+--   restCFrame(top, pivotAboveBottom, angle, facing?)   the model's pivot: bottom on the pedestal top, face toward
+--                                        `facing` (default -X) at 0°
 --   phaseOf(slot) / swayAngle(t, phase, amplitudeDeg, periodSeconds, reduced)   the gentle display sway (0 under
 --                                        ReducedMotion)
 --   plate(id, owned)                     the nameplate texts: { title = squishy name, status, owned }
@@ -115,13 +118,31 @@ function CollectionFormat.shouldBuild(
 	return distance <= radius
 end
 
+-- Where pedestal `slot` faces: WorldLayout's facing (phase 3, D4: each bay of the design's curved shelf faces the arc
+-- centre, lobby.js:269); -X (§7.6) for a slot without a pedestal.
+function CollectionFormat.facingOf(slot: number): Vector3
+	if not isSlot(slot, #LAYOUT.pedestals) then
+		return Vector3.new(-1, 0, 0)
+	end
+	return LAYOUT.pedestals[slot].facing
+end
+
 -- The pivot CFrame of a displayed model whose pivot is `pivotAboveBottom` studs above its bottom, standing on the
--- pedestal top point `pedestalTop`: its face (the pivot's LookVector) toward -X at angleDeg 0 (§7.6 facing), turned
--- angleDeg about +Y.
-function CollectionFormat.restCFrame(pedestalTop: Vector3, pivotAboveBottom: number, angleDeg: number): CFrame
+-- pedestal top point `pedestalTop`: its face (the pivot's LookVector) toward `facing` at angleDeg 0 (default and for a
+-- facing with no horizontal part: -X, §7.6), turned angleDeg about +Y.
+function CollectionFormat.restCFrame(
+	pedestalTop: Vector3,
+	pivotAboveBottom: number,
+	angleDeg: number,
+	facing: Vector3?
+): CFrame
 	local lift = if finite(pivotAboveBottom) then pivotAboveBottom else 0
 	local angle = if finite(angleDeg) then angleDeg else 0
-	return CFrame.new(pedestalTop + Vector3.new(0, lift, 0)) * CFrame.Angles(0, math.rad(FACE_MINUS_X_DEG + angle), 0)
+	local yaw = math.rad(FACE_MINUS_X_DEG)
+	if facing ~= nil and Vector3.new(facing.X, 0, facing.Z).Magnitude > 1e-6 then
+		yaw = math.atan2(-facing.X, -facing.Z) -- CFrame.Angles(0, yaw, 0).LookVector = facing (flattened)
+	end
+	return CFrame.new(pedestalTop + Vector3.new(0, lift, 0)) * CFrame.Angles(0, yaw + math.rad(angle), 0)
 end
 
 -- The sway phase of a slot, in periods [0, 1): (slot - 1) / pedestal count. 0 for a slot without a pedestal.

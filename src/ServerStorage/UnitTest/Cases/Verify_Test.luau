@@ -8,7 +8,8 @@
 --     practice targets (1 moving), slots, Grip gates built open, Grip signs with exactly one Live label (no
 --     SD_TextKey) and one grip.pad.* Title, giant pads (one Collision station, top = WorldLayout collisionTop ± 0.01,
 --     Body top ≥ 0.4 above it, Body/Face inert), every SD_TextKey in Strings, keep-clear volumes, all stand prompts
---     disabled inside Atomic models < 64 studs, budgets (FAIL above 2,500 parts or 30 SurfaceGuis); the feel pass
+--     disabled inside Atomic models < 64 studs, budgets (FAIL above 2,500 parts or 64 SurfaceGuis: the design lobby's
+--     plates, phase 3 D6), 14 collection pedestals (D4); the feel pass
 --     (§18.5.1 A8): exactly 7 SD_Ambient decor pieces, each with a known SD_AmbientKind and no part that collides, is
 --     queried or touched (the client turns or breathes them locally).
 --   arena (§5.3, §7.8): structure, Origin PrimaryPart, Geometry CanQuery (Barriers excepted), floor top Y 0 out to
@@ -259,7 +260,7 @@ local function lobbyTree(Generated: any): Model
 	stand("SD_DailyStand", 17, 26, true)
 
 	local collection = newModel(root, "Collection", false)
-	for slot = 1, 8 do
+	for slot = 1, 14 do
 		local pedestal = newPart(
 			collection,
 			"Pedestal_" .. slot,
@@ -707,14 +708,34 @@ return function(t: Context)
 		expect.falsy(hasProblem(problems, "keep-clear"))
 	end)
 
-	t.test("lobby: more than 30 SurfaceGuis or 2,500 parts fail the budget", function()
+	t.test("lobby: more than 64 SurfaceGuis or 2,500 parts fail the budget", function()
 		local guis = lobbyProblems(function(root)
 			local holder = newPart(root, "GuiHolder", Vector3.one, CFrame.new(0, -50, 0), INERT)
-			for _ = 1, 27 do -- the fixture has 4
+			for _ = 1, 61 do -- the fixture has 4
 				Instance.new("SurfaceGui").Parent = holder
 			end
 		end)
-		expectProblem(guis, "SurfaceGuis, budget 30")
+		expectProblem(guis, "SurfaceGuis, budget 64")
+		local fits = lobbyProblems(function(root)
+			local holder = newPart(root, "GuiHolder", Vector3.one, CFrame.new(0, -50, 0), INERT)
+			for _ = 1, 60 do -- 64 in all: the budget itself passes
+				Instance.new("SurfaceGui").Parent = holder
+			end
+		end)
+		expect.falsy(hasProblem(fits, "SurfaceGuis, budget"))
+	end)
+
+	-- Phase 3: the design hub is 232 × 184 (lobby.js:101); a template floor is a leftover only across all of it.
+	t.test("templateLeftovers: the lobby footprint is the design hub's ±116 × ±92", function()
+		local place = Instance.new("Folder")
+		local lobby = newModel(place, "SD_Lobby", false)
+		newPart(place, "Plate", Vector3.new(200, 2, 160), CFrame.new(0, -1, 0), SOLID) -- the old ±64 × ±56 only
+		expect.deepEqual(Verify.templateLeftovers(place, lobby), {})
+		newPart(place, "Baseplate", Vector3.new(240, 2, 190), CFrame.new(0, -1, 0), SOLID)
+		local lines = Verify.templateLeftovers(place, lobby)
+		place:Destroy()
+		expect.equal(#lines, 1)
+		expectProblem(lines, "Baseplate has its top at Y 0.00")
 		local parts = lobbyProblems(function(root)
 			local filler = newFolder(root, "Filler")
 			for index = 1, 2500 do

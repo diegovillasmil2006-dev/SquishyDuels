@@ -71,7 +71,7 @@ export type ThrowState = {
 	rooted: boolean?, -- Dragon Rush telegraph or recovery
 	ownHalf: Zone?, -- duel: Zones/HalfA or Zones/HalfB of the match's arena slot
 	practiceZone: Zone?, -- the SD_PracticeZone box (lobby)
-	practiceForward: Vector3?, -- the range's forward (WorldLayout.PracticeRange.throwDirection, -X); nil fails closed
+	practiceForward: Vector3?, -- the range's forward (WorldLayout.PracticeRange.throwDirection, +X); nil fails closed
 	ping: number, -- Player:GetNetworkPing(), seconds (round trip); non-finite or negative counts as 0
 	throw: ThrowStats,
 	cooldownMultiplier: number?, -- DuelRules.cooldownMultiplier (SuddenDeath 0.8); nil = 1

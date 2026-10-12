@@ -42,9 +42,10 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
 	-- Giant squishy pads (§17.6.1; see Kit.giantPad): Mint jelly, Cream marshmallow, Lemon Royal Cushion.
-	giant_jelly = Kit.giantPad(8, 1.5, "8EDFC4"),
-	giant_marshmallow = Kit.giantPad(8, 1.6, "FFF4E6"),
-	giant_cushion = Kit.giantPad(9, 1.7, "FFD86B"),
+	-- Phase 3: the design lobby's pads (WorldLayout.GiantPads footprint × rest top, sd/lobby.js:361, 364, 384).
+	giant_jelly = Kit.giantPad(10.2, 6.2, "8EDFC4"),
+	giant_marshmallow = Kit.giantPad(10, 6.6, "FFF4E6"),
+	giant_cushion = Kit.giantPad(8.4, 4.8, "FFD86B"),
 }
 
 return TableUtil.deepFreeze(SquishyBlueprints)

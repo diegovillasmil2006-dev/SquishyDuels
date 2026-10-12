@@ -164,8 +164,10 @@ local Grip = {
 		checkSeconds = 0.25,
 		ownHideStuds = 1.5,
 	},
-	-- Jelly gates (built open; WorldBinder closes them locally while the viewer's level is too low, §17.6).
-	Gate = { lockedTransparency = 0.45, openTransparency = 0.85, antiTrapPadding = 1, recheckSeconds = 0.5 },
+	-- Jelly gates (built open; WorldBinder closes them locally while the viewer's level is too low, §17.6). Phase 3
+	-- (the design lobby, D5): both transparencies are 1, a gate is invisible; the pad's design lock and rope
+	-- (SD_GripLock) show while it is closed.
+	Gate = { lockedTransparency = 1, openTransparency = 1, antiTrapPadding = 1, recheckSeconds = 0.5 },
 	idleReminderSeconds = 900, -- idle card after 15 min of LocalPlayer.Idled
 	unlockWaypointSeconds = 20,
 	welcomeBackMinGain = 300, -- Double Grip points gained since the last save that show the welcome-back toast

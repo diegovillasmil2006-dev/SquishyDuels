@@ -11,7 +11,7 @@
 --   PracticeTargets.get(TargetId) (the server's data), else its attributes. The moving target slides on
 --   PracticeTargets.positionAt(def, workspace:GetServerTimeNow()) - the server's hit position - with no replication.
 --   Parts are placed from their streamed-in frames relative to the model pivot (BulkMoveTo), never incrementally; the
---   pivot faces the thrower (+X), so "down" tips the target back about its pivot's X axis.
+--   pivot faces the thrower (against the range's throwDirection), so "down" tips it back about its pivot's X axis.
 -- * Hit reaction (ThrowImpact kind "target", every nearby client): the target's Body squashes and wobbles (from its
 --   SpecialMesh's stored base values) and the target tips back "down" for Config.Combat.Practice.targetDownSeconds,
 --   then springs back up (downAngle / squashAt, pure). The hit target is impact.targetId, else the target nearest the

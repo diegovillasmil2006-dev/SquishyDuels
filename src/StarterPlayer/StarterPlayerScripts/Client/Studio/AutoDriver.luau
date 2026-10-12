@@ -133,14 +133,16 @@ function AutoDriver.pickTarget(list: { TargetInfo }, from: Vector3, wanted: stri
 	return best
 end
 
--- The aim point of fireOnce("backstop"): on the practice backstop's front face (+X, toward the throw box), 1 stud
--- below its top, at `from`'s Z kept BACKSTOP_END_MARGIN inside its ends (its middle when `from` is nil).
+-- The aim point of fireOnce("backstop"): on the practice backstop's front face (the one toward the throw box, against
+-- WorldLayout's throwDirection along X: -X since phase 3's design range), 1 stud below its top, at `from`'s Z kept
+-- BACKSTOP_END_MARGIN inside its ends (its middle when `from` is nil).
 function AutoDriver.backstopPoint(from: Vector3?): Vector3
 	local box = WorldLayout.PracticeRange.backstop
 	local half = box.size / 2
 	local reach = math.max(half.Z - BACKSTOP_END_MARGIN, 0)
 	local z = if from then math.clamp(from.Z, box.position.Z - reach, box.position.Z + reach) else box.position.Z
-	return Vector3.new(box.position.X + half.X, box.position.Y + half.Y - BACKSTOP_TOP_MARGIN, z)
+	local side = if WorldLayout.PracticeRange.throwDirection.X > 0 then -1 else 1
+	return Vector3.new(box.position.X + side * half.X, box.position.Y + half.Y - BACKSTOP_TOP_MARGIN, z)
 end
 
 -- The next target of a round-robin over `list` (sorted by id), and the index after it.

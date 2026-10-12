@@ -28,11 +28,12 @@ type Context = {
 	requireFake: (name: string) -> any,
 }
 
--- The §17.6.1 pad table (footprint, corner radius, rest top, sinkDepth).
+-- The pad table (footprint, corner radius, rest top, sinkDepth): the design pads of phase 3 D5 (lobby.js:361, 364,
+-- 384) with §17.6.1's sink depths.
 local PADS = {
-	{ key = "jelly", footprint = 8, cornerRadius = 1.2, restTop = 1.5, sinkDepth = 0.5, tiles = 8 },
-	{ key = "marshmallow", footprint = 8, cornerRadius = 2.0, restTop = 1.6, sinkDepth = 0.6, tiles = 8 },
-	{ key = "royal", footprint = 9, cornerRadius = 1.0, restTop = 1.7, sinkDepth = 0.7, tiles = 9 },
+	{ key = "jelly", footprint = 10.2, cornerRadius = 3.6, restTop = 6.2, sinkDepth = 0.5, tiles = 10 },
+	{ key = "marshmallow", footprint = 10, cornerRadius = 5, restTop = 6.6, sinkDepth = 0.6, tiles = 10 },
+	{ key = "royal", footprint = 8.4, cornerRadius = 3.0, restTop = 4.8, sinkDepth = 0.7, tiles = 8 },
 }
 local FRAME = 1 / 60
 local TILE_SPACING = 1.0 -- path B: tiles at 1.0-stud spacing (§17.6.1)

@@ -847,7 +847,7 @@ return function(t: Context)
 			expect.equal(sim:offset(front, 0, 0), 0)
 			-- A face that never moves (a fixed face) is refused.
 			local backstop = JellySkin.backstopLayout("High")
-			local fixed = backstop.faceOf[1]["-X"]
+			local fixed = backstop.faceOf[1]["+Y"] -- the top: fixed whichever side the throws meet (phase 3: -X)
 			local still = JellySkin.newSim(
 				backstop,
 				{ swapIn = function() end, swapOut = function() end, writeFace = function() end }

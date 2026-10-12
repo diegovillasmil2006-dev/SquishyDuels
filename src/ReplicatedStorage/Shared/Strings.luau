@@ -701,6 +701,28 @@ local Strings = {
 
 	-- World signs (`SD_TextKey`, §7.7).
 	world = {
+		-- The design lobby's plates (phase 3, user decision 2026-10-11 "build the design's lobby"; D10: the design's
+		-- words, sd/lobby.js). The plates that say "SHOP", "QUESTS", "Kitty Bread" and the pad names use shop.title,
+		-- quest.title, squishy.kittyBread.name and grip.pad.*.
+		logoTop = "Squishy", -- lobby.js:153
+		logoBottom = "Duels", -- lobby.js:153
+		arrowDuel = "DUEL", -- lobby.js:159 (the wayfinding post)
+		arrowShop = "SHOP",
+		arrowBoxes = "BOXES",
+		arrowSqueeze = "SQUEEZE",
+		arrowGrip = "GRIP",
+		arrowRange = "RANGE",
+		gateBadge = "DUELS", -- lobby.js:184
+		teamMint = "MINT", -- lobby.js:196
+		teamStrawberry = "STRAWBERRY", -- lobby.js:196
+		mysteryBox = "?", -- lobby.js:216
+		collectionKiosk = "Collection", -- lobby.js:276
+		questsDaily = "Daily", -- lobby.js:296 (the quest board's column heads)
+		questsWeekly = "Weekly",
+		questsDuels = "Duels",
+		number = "{n}", -- lobby.js:326, 348: the calendar's days and the foam mats' numbers ({n} = 1..7 / 1..6)
+		practiceBoard = "PRACTICE", -- lobby.js:418
+		practiceNoCoins = "no duel coins", -- lobby.js:418
 		spawnLogo = "SQUISHY DUELS",
 		spawnSafe = "Safe zone: duels happen in the arena",
 		duelGateTitle = "DUEL ARENA",
