@@ -21,13 +21,18 @@
 -- Every random value is one rng:NextNumber() roll, in the design's order.
 --
 -- The player (one per knead session):
---   KneadAudio.new(feel, pitch, options?) -> Audio   options.player (default SoundController), options.rng
+--   KneadAudio.new(feel, pitch, options?) -> Audio   options.player (default SoundController), options.rng,
+--                                options.wax (the wax switch, user 2026-10-12: nil = Config.Wax.enabled)
 --   audio:crack(E, intact)       a sounding crack (Anim/WaxCoat's events)
 --   audio:event(e)               Anim/SoftBody's sound events: press, release, air, snap (kicks are ignored here)
 --   audio:rewax()                the sparkle (fx.js:41)
 --   audio:frame(dt, active, drive, press, intact)   every frame: the beds (started on the first active frame)
 --   audio:destroy()              stops the beds; nothing plays after it (pending delays included)
 -- Delays under one frame play at once (frame-quantised, spec §3.9); longer ones wait with task.delay.
+-- With the wax off (user 2026-10-12: options.wax false) only the soft body sounds: the body bed (its loop; the caller
+-- drives it as if there were no coat: drive 0, intact 0) and the thumps (a press: its taps and, for palms and thumbs,
+-- the thump; a stretch let go: the snap thump). No crack bursts (crack, the snap's two bursts), no crackle ticks
+-- (release, air), no haze loop and no re-wax sparkle.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -57,6 +62,7 @@ export type Player = {
 export type Options = {
 	player: Player?,
 	rng: Random?,
+	wax: boolean?, -- the wax switch (user 2026-10-12): nil = Config.Wax.enabled; false = the soft body sounds only
 }
 
 export type Event = {
@@ -84,6 +90,7 @@ type AudioData = {
 	_bodyValue: number,
 	_hazeWritten: number,
 	_bodyWritten: number,
+	_wax: boolean,
 	_dead: boolean,
 }
 
@@ -272,6 +279,7 @@ function KneadAudio.new(feel: string, pitch: number, options: Options?): Audio
 		_bodyValue = 0,
 		_hazeWritten = 0,
 		_bodyWritten = 0,
+		_wax = if opts.wax == nil then Config.Wax.enabled else opts.wax,
 		_dead = false,
 	}
 	return setmetatable(data, AudioClass)
@@ -311,39 +319,47 @@ function AudioClass._one(self: Audio, key: string, volume: number, speed: number
 end
 
 function AudioClass.crack(self: Audio, E: number, intact: number)
-	if self._dead then
+	if self._dead or not self._wax then
 		return
 	end
 	self:_shot(KneadAudio.burst(E, intact, self._rng))
 end
 
+-- With the wax off (user 2026-10-12) the release and settling ticks (crackle grains) and the snap's bursts stay
+-- silent; the press (its taps and thump) and the snap thump still play.
 function AudioClass.event(self: Audio, e: Event)
 	if self._dead then
 		return
 	end
 	local kind = e.kind
 	local rng = self._rng
+	local wax = self._wax
 	if kind == "press" then
 		local shots, thump = KneadAudio.press(e.brush or "finger", self._pitch, rng)
 		self:_shots(shots)
 		if thump then
 			self:_one(KEY_THUMP, level(WAX.thumpLevelDb), thump)
 		end
-	elseif kind == "release" then
+	elseif kind == "release" and wax then
 		self:_shots(KneadAudio.release(e.brush or "finger", e.amount or 1, self._gain, rng))
-	elseif kind == "air" then
+	elseif kind == "air" and wax then
 		self:_shots(KneadAudio.air(e.amount or 1, self._rise, self._gain, rng))
 	elseif kind == "snap" then
 		local a = e.amount or 0
-		self:_shot(KneadAudio.burst(WAX.snapE + a, 1, rng))
-		local echo = KneadAudio.burst(WAX.echoE + WAX.echoShare * a, 1, rng)
-		echo.delay = WAX.echoDelay
-		self:_shot(echo)
+		if wax then
+			self:_shot(KneadAudio.burst(WAX.snapE + a, 1, rng))
+			local echo = KneadAudio.burst(WAX.echoE + WAX.echoShare * a, 1, rng)
+			echo.delay = WAX.echoDelay
+			self:_shot(echo)
+		end
 		self:_one(KEY_SNAP_THUMP, level(WAX.snapThumpLevelDb) * (0.5 + a), self._pitch)
 	end
 end
 
 function AudioClass.rewax(self: Audio)
+	if not self._wax then
+		return -- no re-wax sparkle with the wax off (user 2026-10-12)
+	end
 	self:_one(KEY_REWAX, level(WAX.rewaxLevelDb), 1)
 end
 
@@ -354,10 +370,12 @@ function AudioClass.frame(self: Audio, dt: number, active: boolean, drive: numbe
 	if active and not self._bedsTried then
 		self._bedsTried = true
 		local rng = self._rng
-		self._haze = self._player.playLoop(
-			KEY_HAZE .. self._feel,
-			{ group = GROUP, volume = 0, timePosition = rng:NextNumber() * WAX.startMax }
-		)
+		if self._wax then -- no crackle haze with the wax off (user 2026-10-12)
+			self._haze = self._player.playLoop(
+				KEY_HAZE .. self._feel,
+				{ group = GROUP, volume = 0, timePosition = rng:NextNumber() * WAX.startMax }
+			)
+		end
 		self._body = self._player.playLoop(
 			KEY_BODY .. self._feel,
 			{ group = GROUP, volume = 0, timePosition = rng:NextNumber() * WAX.startMax }

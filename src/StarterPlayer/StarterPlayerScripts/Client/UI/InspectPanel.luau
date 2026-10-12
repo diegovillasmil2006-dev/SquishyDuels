@@ -67,7 +67,8 @@
 -- 560), the Squeeze and Coat rows at the top of the info list (rich text, UI/KneadFormat) and the knead help as the
 -- caption; nil hides them again. Squeeze and Thumb crunch report their pointer down and up (callbacks.onKneadHold:
 -- "palms" / "crunch", the design's hold buttons fp.js:609-615); Re-wax calls callbacks.onRewax. Both callbacks are
--- optional.
+-- optional. User 2026-10-12 (the wax switch, Config.Wax.enabled): the thumb button takes the view's label (Thumb press
+-- with the wax off), Re-wax shows only while view.rewax and the Coat row only with a view.coat.
 
 -- Services
 
@@ -111,8 +112,9 @@ export type Callbacks = {
 	onRewax: (() -> ())?,
 }
 
--- What the panel shows while Inspect kneads (setKnead): the Squeeze and Coat rows (rich text) and the caption's help.
-export type KneadView = { squeeze: string, coat: string, help: string }
+-- What the panel shows while Inspect kneads (setKnead): the Squeeze and Coat rows (rich text; no Coat row without
+-- coat), the caption's help, the thumb hold button's label and whether Re-wax shows (KneadController.View).
+export type KneadView = { squeeze: string, coat: string?, help: string, thumb: string, rewax: boolean }
 
 -- A rectangle in base px, relative to the panel's content box (inside its padding).
 export type Rect = { x: number, y: number, w: number, h: number }
@@ -694,12 +696,15 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	-- Spec phase2-squeeze §3.7: the knead view while Inspect kneads (setKnead), and the caption show() last gave.
 	local kneadView: KneadView? = nil
 	local viewCaption = ""
+	local thumbText = Strings.knead.thumbCrunch -- the thumb button's label (setKnead; user 2026-10-12)
 
 	-- The rows each button row needs at this size and text size (Part 8): the shown buttons measured.
 	local function measuredRows(l: PanelLayout): ButtonRows
 		local stageWidths = { Button.widthFor(Strings.controls.squeeze), Button.widthFor(Strings.inspect.resetView) }
-		if crunch.root.Visible then -- spec phase2-squeeze §3.6: the knead's two buttons
-			table.insert(stageWidths, Button.widthFor(Strings.knead.thumbCrunch))
+		if crunch.root.Visible then -- spec phase2-squeeze §3.6: the knead's buttons (Re-wax with the wax on)
+			table.insert(stageWidths, Button.widthFor(thumbText))
+		end
+		if rewax.root.Visible then
 			table.insert(stageWidths, Button.widthFor(Strings.knead.rewax))
 		end
 		local infoWidths = { Button.widthFor(equipText, equipReason) }
@@ -843,17 +848,23 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		end
 	end
 
-	-- Spec phase2-squeeze §1.19, §3.7: the knead's buttons, rows and help while Inspect kneads; nil hides them.
+	-- Spec phase2-squeeze §1.19, §3.7: the knead's buttons, rows and help while Inspect kneads; nil hides them. User
+	-- 2026-10-12 (the wax switch): the thumb button's label from the view, Re-wax only while view.rewax, the Coat row
+	-- only with a view.coat.
 	function self.setKnead(_: Panel, view: KneadView?)
 		kneadView = view
 		local on = view ~= nil
-		crunch.root.Visible = on
-		rewax.root.Visible = on
-		kneadRows[1].Text = if view then view.squeeze else ""
-		kneadRows[2].Text = if view then view.coat else ""
-		for _, row in kneadRows do
-			row.Visible = on
+		if view then
+			thumbText = view.thumb
+			crunch:setText(thumbText)
 		end
+		crunch.root.Visible = on
+		rewax.root.Visible = view ~= nil and view.rewax
+		local coat = if view then view.coat else nil
+		kneadRows[1].Text = if view then view.squeeze else ""
+		kneadRows[2].Text = coat or ""
+		kneadRows[1].Visible = on
+		kneadRows[2].Visible = coat ~= nil
 		caption.Text = if view then view.help else viewCaption
 		apply() -- the stage's button row may need another row now (Part 8)
 	end

@@ -9,7 +9,9 @@
 --   * nearestVertices: each point gets the closest deforming shell vertex (never a bounds anchor);
 --   * rides: a rider's offset is its anchor vertex's shown minus rest position, written into the same table;
 --   * restRay: a stage ray in the shell's rest space (the pivot and the deformer's scale undone, a ray stays a ray);
---   * inputKind: Touch, any GamepadN, else the keyboard; view: the feel's Squeeze and Coat rows with that input's help;
+--   * inputKind: Touch, any GamepadN, else the keyboard; view: the feel's Squeeze and Coat rows with that input's help,
+--     Thumb crunch and Re-wax; with the wax off (user 2026-10-12) no Coat row, no Re-wax, Thumb press and the press
+--     help; no wax argument follows Config.Wax.enabled;
 --   * tiltTarget: the settle eases home first (fp.js:483), else a crunch that is not dragged tilts to show the top
 --     (fp.js:484); a drag, ReducedMotion or nothing to do leaves the view alone.
 
@@ -277,12 +279,24 @@ return function(t: Context)
 		expect.equal(Knead.inputKind(Enum.UserInputType.Gamepad4), "Gamepad")
 		expect.equal(Knead.inputKind(Enum.UserInputType.MouseMovement), "Keyboard")
 		expect.equal(Knead.inputKind(Enum.UserInputType.Keyboard), "Keyboard")
-		local view = Knead.view("mochi", "Gamepad")
-		local rows = KneadFormat.rows("mochi")
+		local view = Knead.view("mochi", "Gamepad", true)
+		local rows = KneadFormat.rows("mochi", true)
 		expect.equal(view.squeeze, rows.squeeze)
 		expect.equal(view.coat, rows.coat)
-		expect.equal(view.help, KneadFormat.help("Gamepad"))
-		expect.equal(Knead.view("foam", "Touch").help, KneadFormat.help("Touch"))
+		expect.truthy(view.coat ~= nil)
+		expect.equal(view.help, KneadFormat.help("Gamepad", true))
+		expect.equal(view.thumb, KneadFormat.thumb(true))
+		expect.equal(view.rewax, true)
+		expect.equal(Knead.view("foam", "Touch", true).help, KneadFormat.help("Touch", true))
+		-- User 2026-10-12: the wax off: the Squeeze row only, the press help and label, no Re-wax.
+		local soft = Knead.view("mochi", "Gamepad", false)
+		expect.equal(soft.squeeze, rows.squeeze)
+		expect.equal(soft.coat, nil)
+		expect.equal(soft.help, KneadFormat.help("Gamepad", false))
+		expect.equal(soft.thumb, KneadFormat.thumb(false))
+		expect.equal(soft.rewax, false)
+		-- No wax argument: the switch.
+		expect.deepEqual(Knead.view("mochi", "Gamepad"), Knead.view("mochi", "Gamepad", Config.Wax.enabled))
 	end)
 
 	t.test("tiltTarget: the settle eases home first, else an undragged crunch shows the top; else nothing", function()

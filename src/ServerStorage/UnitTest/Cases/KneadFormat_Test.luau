@@ -6,6 +6,8 @@
 --   * the bar: round(waxLeft·100) %, clamped to 0..1; the count: digit grouping and "1 crack" / "{n} cracks";
 --   * the panel rows: "Squeeze: <b>{feel label}.</b> {note}" and "Coat: <b>{coat label}.</b> {note}" (unknown = foam);
 --   * the caption: the touch, gamepad or keyboard help line;
+--   * the wax switch (user 2026-10-12; nil = Config.Wax.enabled): off, no Coat row, the help lines without crunch or
+--     re-wax words (helpNoWax) and the thumb button reads Thumb press; on, Coat, the wax help and Thumb crunch;
 --   * the vignette: the CSS radial gradient (125% 95% at 50% 45%) with premultiplied stops: clear in the middle and at
 --     the side edges' middle, about 0.017 at the top centre, 0.07 at the bottom centre, 0.09 at the top corners and
 --     0.15 at the bottom corners in about rgb(153, 113, 84); its RGBA8 pixels follow it;
@@ -49,25 +51,51 @@ return function(t: Context)
 	end)
 
 	t.test("the panel rows: the feel and the coat, bold labels; an unknown feel is foam", function()
-		local rows = KneadFormat.rows("mochi")
+		local rows = KneadFormat.rows("mochi", true)
 		expect.equal(rows.squeeze, `{K.squeezeRow}: <b>{K.feel.mochi.label}.</b> {K.feel.mochi.note}`)
 		expect.equal(rows.coat, `{K.coatRow}: <b>{K.coat.mochi.label}.</b> {K.coat.mochi.note}`)
-		expect.deepEqual(KneadFormat.rows("no_such_feel"), KneadFormat.rows("foam"))
+		expect.deepEqual(KneadFormat.rows("no_such_feel", true), KneadFormat.rows("foam", true))
 		for feel in Config.Anim.rig.feels do
-			local each = KneadFormat.rows(feel)
+			local each = KneadFormat.rows(feel, true)
 			-- Rich text: the notes carry no markup of their own.
 			for _, text in { K.feel[feel].note, K.coat[feel].note, K.feel[feel].label, K.coat[feel].label } do
 				expect.falsy(string.find(text, "[<>&]"))
 			end
-			expect.truthy(#each.squeeze > 0 and #each.coat > 0)
+			expect.truthy(#each.squeeze > 0 and #(each.coat :: string) > 0)
 		end
 	end)
 
 	t.test("the caption: the help line for touch, gamepad, else the keyboard's", function()
-		expect.equal(KneadFormat.help("Touch"), K.help.touch)
-		expect.equal(KneadFormat.help("Gamepad"), K.help.gamepad)
-		expect.equal(KneadFormat.help("KeyboardAndMouse"), K.help.keyboard)
-		expect.equal(KneadFormat.help(nil), K.help.keyboard)
+		expect.equal(KneadFormat.help("Touch", true), K.help.touch)
+		expect.equal(KneadFormat.help("Gamepad", true), K.help.gamepad)
+		expect.equal(KneadFormat.help("KeyboardAndMouse", true), K.help.keyboard)
+		expect.equal(KneadFormat.help(nil, true), K.help.keyboard)
+	end)
+
+	-- User 2026-10-12: the wax crunch off (Config.Wax.enabled false): no Coat row, press wording, no re-wax.
+	t.test("the wax off: no Coat row, the help without crunch or re-wax, the thumb button reads Thumb press", function()
+		local rows = KneadFormat.rows("mochi", false)
+		expect.equal(rows.squeeze, KneadFormat.rows("mochi", true).squeeze)
+		expect.equal(rows.coat, nil)
+		expect.equal(KneadFormat.help("Touch", false), K.helpNoWax.touch)
+		expect.equal(KneadFormat.help("Gamepad", false), K.helpNoWax.gamepad)
+		expect.equal(KneadFormat.help("KeyboardAndMouse", false), K.helpNoWax.keyboard)
+		expect.equal(KneadFormat.help(nil, false), K.helpNoWax.keyboard)
+		for _, line in { K.helpNoWax.keyboard, K.helpNoWax.touch, K.helpNoWax.gamepad } do
+			local lower = string.lower(line)
+			expect.falsy(string.find(lower, "crunch", 1, true))
+			expect.falsy(string.find(lower, "wax", 1, true))
+			expect.truthy(string.find(lower, "press", 1, true) ~= nil) -- the thumbs press
+		end
+		expect.truthy(string.find(K.helpNoWax.touch, K.thumbPress, 1, true) ~= nil) -- it names the button
+		expect.equal(KneadFormat.thumb(false), K.thumbPress)
+		expect.equal(K.thumbPress, "Thumb press")
+		expect.equal(KneadFormat.thumb(true), K.thumbCrunch)
+		-- nil follows the switch.
+		local on = Config.Wax.enabled
+		expect.equal(KneadFormat.rows("foam").coat ~= nil, on)
+		expect.equal(KneadFormat.help("Touch"), if on then K.help.touch else K.helpNoWax.touch)
+		expect.equal(KneadFormat.thumb(), if on then K.thumbCrunch else K.thumbPress)
 	end)
 
 	t.test("the vignette: the CSS radial gradient's alphas at the edges and corners", function()

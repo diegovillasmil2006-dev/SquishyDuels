@@ -1,8 +1,9 @@
 --!strict
 -- Config_Test: unit tests for ReplicatedStorage.Shared.Config. Server only (ServerStorage.UnitTest).
 -- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead and Config.Wax (the 18th and 19th sections) hold the design's
--- squish.js numbers; validate keeps jelly's 3.59 Hz knead spring as the documented exception and reports a knead spring
--- or depth spring above 3 Hz, a crunch faster than 3 presses a second, broken shares, shell budgets and wax rules.
+-- squish.js numbers (but the user's deeper finger dents of 2026-10-12); validate keeps jelly's 3.59 Hz knead spring as
+-- the documented exception and reports a knead spring or depth spring above 3 Hz, a crunch faster than 3 presses a
+-- second, broken shares, shell budgets and wax rules, and a wax switch (Config.Wax.enabled) that is not a boolean.
 -- Contract (DESIGN §2.2, §0.3, §2.7, §2.8, §6.3, §6.11, §17.9): Config merges the 16 section modules and deep-freezes
 -- them; Config.validate(): {string} returns human-readable problems, an empty list for the shipped config, and
 -- reports broken cross-references (every client -> server remote needs a rate entry; every click pays, so the squeeze
@@ -1753,7 +1754,8 @@ return function(t: Context)
 		end
 		expect.equal(knead.defaultFeel, "foam")
 		expect.equal(knead.brushSlots, 4)
-		expect.deepEqual(knead.finger, { radius = 0.15, depthOfRadius = 0.95, depthOfMinDim = 0.42, falloff = 1.4 })
+		-- User 2026-10-12: deeper finger dents (design: depthOfRadius 0.95, depthOfMinDim 0.42, squish.js:173-174).
+		expect.deepEqual(knead.finger, { radius = 0.15, depthOfRadius = 1.5, depthOfMinDim = 0.55, falloff = 1.4 })
 		expect.deepEqual(
 			knead.palm,
 			{ radius = 0.5, falloff = 0.55, depthOfX = 0.3, depthOfSqueeze = 0.55, betaShare = 0.35, power = 1.5 }
@@ -1772,6 +1774,7 @@ return function(t: Context)
 			{ 0.48, 0.2, 0.12, 0.36, 0.32 }
 		)
 		expect.equal(knead.memory.stampSpacing, 0.28)
+		expect.equal(knead.memory.capOfRadius, 1.7) -- user 2026-10-12: deeper dents (design: 1.1, squish.js:174)
 		expect.equal(knead.pull.slip, 1.75)
 		expect.equal(knead.sleepSeconds, 0.12)
 		expect.equal(knead.sounds.pan, 0.55) -- fp.js:103
@@ -1802,6 +1805,7 @@ return function(t: Context)
 				knead.sounds.pan = 2
 			end,
 			Wax = function(wax)
+				wax.enabled = "yes" -- user 2026-10-12: the switch is a boolean
 				wax.coats.plush.th = 0
 				wax.thScale = -1
 				wax.cells.maxCells = 0.5
@@ -1816,6 +1820,7 @@ return function(t: Context)
 		expect.truthy(containsText(problems, "Config.Knead.crunch.period"))
 		expect.truthy(containsText(problems, "Config.Knead.shell.lowVertices"))
 		expect.truthy(containsText(problems, "Config.Knead.sounds.pan"))
+		expect.truthy(containsText(problems, "Config.Wax.enabled"))
 		expect.truthy(containsText(problems, "Config.Wax.coats.plush.th"))
 		expect.truthy(containsText(problems, "Config.Wax.thScale"))
 		expect.truthy(containsText(problems, "Config.Wax.cells.maxCells"))

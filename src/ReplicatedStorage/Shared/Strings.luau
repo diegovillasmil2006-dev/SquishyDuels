@@ -496,12 +496,15 @@ local Strings = {
 	-- The knead screen in Inspect (spec phase2-squeeze §1.17-§1.19; design: the FP page html:95, fp.js:555-577, 701 and
 	-- sd/squish.js:29-32, 41-48). {n} = a count; panelRow fills {row} (squeezeRow / coatRow), {label} and {note} (a feel
 	-- or coat below) into a rich-text line. Reading: the coat notes speak to players, so foam's drops the design's "like
-	-- your butter clip" (user to confirm); the help lines are the design's (fp.js:577) for this screen's own keys.
+	-- your butter clip" (user to confirm); the help lines are the design's (fp.js:577) for this screen's own keys. User
+	-- 2026-10-12: with the wax crunch off (Config.Wax.enabled) the thumbs press: thumbPress and helpNoWax replace
+	-- thumbCrunch and help, and the wax texts (waxCoat, state, cracks, rewax, coatRow, coat) wait for the wax to come back.
 	knead = {
 		waxCoat = "Wax coat", -- design: html:95
 		state = { crunchy = "Crunchy", crackled = "Crackled", soft = "Soft" }, -- design: fp.js:701
 		cracks = { one = "{n} crack", many = "{n} cracks" }, -- design: fp.js:701
 		thumbCrunch = "Thumb crunch", -- design: fp.js:557
+		thumbPress = "Thumb press", -- user 2026-10-12: the thumb hold with the wax off
 		rewax = "Re-wax", -- design: fp.js:559
 		squeezeRow = "Squeeze", -- design: fp.js:569
 		coatRow = "Coat", -- design: fp.js:570
@@ -541,6 +544,12 @@ local Strings = {
 			keyboard = "Drag it to knead, off its edge to stretch · hold F to crunch, Q to squeeze · W re-waxes",
 			touch = "Drag it to knead, off its edge to stretch · hold Thumb crunch or Squeeze",
 			gamepad = "Hold X to crunch, LB to squeeze · RB re-waxes · Y faces it front",
+		},
+		-- User 2026-10-12: the caption with the wax crunch off (no crunch, no re-wax).
+		helpNoWax = {
+			keyboard = "Drag it to knead, off its edge to stretch · hold F to press with your thumbs, Q to squeeze",
+			touch = "Drag it to knead, off its edge to stretch · hold Thumb press or Squeeze",
+			gamepad = "Hold X to press with your thumbs, LB to squeeze · Y faces it front",
 		},
 	},
 

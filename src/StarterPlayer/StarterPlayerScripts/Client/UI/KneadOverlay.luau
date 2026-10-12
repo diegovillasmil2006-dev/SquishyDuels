@@ -3,7 +3,9 @@
 -- (its front layer, above the viewport; design: the FP page html:59-77): the warm vignette, the wax HUD
 -- (UI/Components/WaxMeter) and the fingertip ring. Built in code from Config.UI.Knead, Art/Palette and UI/KneadFormat;
 -- nothing in it takes input.
---   local overlay = KneadOverlay.new(stage)    -- a ViewportStage.Stage (its `front` and `root`)
+--   local overlay = KneadOverlay.new(stage, options?)   -- a ViewportStage.Stage (its `front` and `root`); options.hud:
+--                                              the wax HUD (user 2026-10-12: nil = Config.Wax.enabled; false = none,
+--                                              and setHud / setCompact do nothing)
 --   overlay:setHud(hud, animate?)              a KneadFormat.Hud
 --   overlay:setRing(state, position?)          a KneadMath.ringState at a screen point (InputObject.Position space);
 --                                              while the ring shows, the system cursor hides (UserInputService
@@ -34,6 +36,10 @@ local Tweens = require(Client.Anim.Tweens)
 
 export type StageLike = { front: Frame, root: Frame }
 
+export type Options = {
+	hud: boolean?, -- the wax HUD (user 2026-10-12: nil = Config.Wax.enabled)
+}
+
 export type Overlay = {
 	setHud: (self: Overlay, hud: KneadFormat.Hud, animate: boolean?) -> (),
 	setRing: (self: Overlay, state: string, position: Vector2?) -> (),
@@ -61,9 +67,11 @@ local function vignetteImage(): EditableImage?
 	return if ok then made else nil
 end
 
-function KneadOverlay.new(stage: StageLike): Overlay
+function KneadOverlay.new(stage: StageLike, options: Options?): Overlay
 	local cleanup = Cleanup.new()
 	local front = stage.front
+	local hudOption = if options then options.hud else nil
+	local showHud = if hudOption == nil then Config.Wax.enabled else hudOption
 
 	local image = vignetteImage()
 	if image then
@@ -87,8 +95,11 @@ function KneadOverlay.new(stage: StageLike): Overlay
 		cleanup:add(Tweens.fade(vignette, { ImageTransparency = 0 }, KNEAD.vignetteMs))
 	end
 
-	local meter = WaxMeter.new({ name = "WaxMeter", parent = front, zIndex = METER_Z })
-	cleanup:add(meter)
+	-- User 2026-10-12: no wax HUD with the wax off (Config.Wax.enabled).
+	local meter = if showHud then WaxMeter.new({ name = "WaxMeter", parent = front, zIndex = METER_Z }) else nil
+	if meter then
+		cleanup:add(meter)
+	end
 
 	local ring: Frame = Create("Frame", {
 		Name = "KneadRing",
@@ -149,7 +160,9 @@ function KneadOverlay.new(stage: StageLike): Overlay
 	local self = {} :: Overlay
 
 	function self.setHud(_: Overlay, hud: KneadFormat.Hud, animate: boolean?)
-		meter:set(hud, animate)
+		if meter then
+			meter:set(hud, animate)
+		end
 	end
 
 	function self.setRing(_: Overlay, state: string, position: Vector2?)
@@ -179,7 +192,9 @@ function KneadOverlay.new(stage: StageLike): Overlay
 	end
 
 	function self.setCompact(_: Overlay, on: boolean)
-		meter:setCompact(on)
+		if meter then
+			meter:setCompact(on)
+		end
 	end
 
 	function self.destroy(_: Overlay)

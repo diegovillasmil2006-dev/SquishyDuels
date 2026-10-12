@@ -2,9 +2,11 @@
 -- SoftBody_Test: unit tests for StarterPlayerScripts.Client.Anim.SoftBody, the port of the 3D Lab's SoftSquish (spec
 -- phase2-squeeze §1.3-§1.12, §3.3, §3.14). Server only (ServerStorage.UnitTest). Pure: time is injected (60 fps
 -- steps), randomness through FakeRng, no instances. Run on Butter's soft shell (ShellGeometry, its Body RB block and
--- two boxes; the toy faces -Z, so "the front" is its -Z side). Contract (every number from sd/squish.js):
---   * new: the design's box sizes (rF, dF, the memory cap, maxPull, rP, eps) from the shell's rest bounds; an unknown
---     feel is foam; at rest it shows the rest positions, sleeps and steps nothing;
+-- two boxes; the toy faces -Z, so "the front" is its -Z side). Contract (every number from sd/squish.js, but the user's
+-- deeper finger dents of 2026-10-12):
+--   * new: the design's box sizes (rF, dF, the memory cap, maxPull, rP, eps) from the shell's rest bounds, dF and the cap
+--     at the user's 1.5·rF / 0.55·minDim and 1.7·rF (design: 0.95 / 0.42, 1.1); an unknown feel is foam; at rest it
+--     shows the rest positions, sleeps and steps nothing;
 --   * profile: the live dent exp(-s - q2)·(1 - beta·s) and its derived rim peaks (foam/plush 6.2% of d at 1.56·r, mochi
 --     13.5% at 1.41·r, jelly 14.9% at 1.40·r), cut off past 7; a held finger settles to dF·profile·lump along the
 --     press, its rim raised, nothing sideways;
@@ -132,8 +134,9 @@ return function(t: Context)
 		expect.near(body.maxDim, maxDim, 1e-6)
 		expect.near(body.minDim, minDim, 1e-6)
 		expect.near(body.rF, 0.15 * maxDim, 1e-6)
-		expect.near(body.dF, math.min(0.95 * 0.15 * maxDim, 0.42 * minDim), 1e-6)
-		expect.near(body.cap, 1.1 * 0.15 * maxDim, 1e-6)
+		-- User 2026-10-12: deeper dents (design: 0.95·rF / 0.42·minDim and a 1.1·rF cap, squish.js:173-174).
+		expect.near(body.dF, math.min(1.5 * 0.15 * maxDim, 0.55 * minDim), 1e-6)
+		expect.near(body.cap, 1.7 * 0.15 * maxDim, 1e-6)
 		expect.near(body.maxPull, 0.36 * maxDim, 1e-6)
 		expect.near(body.rP, 0.17 * maxDim, 1e-6)
 		expect.near(body.eps, 2e-4 * maxDim, 1e-9)

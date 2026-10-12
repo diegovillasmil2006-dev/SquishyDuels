@@ -78,7 +78,9 @@
 -- pinch still zooms), F / ButtonX hold the thumb crunch, Q / ButtonL1 the palm squeeze (InspectPalms), W / ButtonR1
 -- re-wax (InspectRewax), R / ButtonY faces it front; the panel's Thumb crunch and Squeeze buttons are holds and Re-wax
 -- a press; no hold squeeze, tap preview or Squeeze-button preview. While it builds, or when it cannot (no shell body,
--- the mesh quota, an engine failure), Inspect is exactly as described above.
+-- the mesh quota, an engine failure), Inspect is exactly as described above. User 2026-10-12: with the wax crunch off
+-- (Config.Wax.enabled) there is no re-wax: InspectRewax is not bound (W / ButtonR1 do nothing here) and the panel
+-- shows no Re-wax (the knead's view); F / ButtonX are the thumb press.
 -- Tests: useDeps(overrides) swaps the side-effecting surfaces (camera, controls, sound, state, UI, stage, cache,
 -- deformer, scheduler, panel, input, prompts, Workspace, motion), screenSpec() returns the handlers init() registers
 -- and actionHandlers() the ones it binds, so InspectController_Test drives open / select / close, the preview, the keys
@@ -1387,7 +1389,7 @@ local HANDLERS: { [string]: ControlsController.Handler } = {
 		end
 		return true
 	end),
-	-- Q / ButtonL1 hold the palm squeeze, W / ButtonR1 re-wax (spec phase2-squeeze §3.6); they pass unless kneading.
+	-- Q / ButtonL1 hold the palm squeeze (spec phase2-squeeze §3.6); it passes unless kneading (W / ButtonR1: below).
 	InspectPalms = inspectAction(function(s: Session, state: Enum.UserInputState): boolean?
 		local knead = s.knead
 		if knead == nil or (state == Enum.UserInputState.Begin and not knead:isLive()) then
@@ -1397,16 +1399,6 @@ local HANDLERS: { [string]: ControlsController.Handler } = {
 			knead:palms(true)
 		elseif state == Enum.UserInputState.End then
 			knead:palms(false)
-		end
-		return true
-	end),
-	InspectRewax = inspectAction(function(s: Session, state: Enum.UserInputState): boolean?
-		local knead = s.knead
-		if knead == nil or not knead:isLive() then
-			return nil
-		end
-		if state == Enum.UserInputState.Begin then
-			knead:rewax()
 		end
 		return true
 	end),
@@ -1433,6 +1425,20 @@ local HANDLERS: { [string]: ControlsController.Handler } = {
 		return true
 	end),
 }
+-- W / ButtonR1 re-wax (spec phase2-squeeze §3.6); it passes unless kneading. User 2026-10-12: only with the wax crunch
+-- on (Config.Wax.enabled); off there is no re-wax and W / ButtonR1 are not bound.
+if Config.Wax.enabled then
+	HANDLERS.InspectRewax = inspectAction(function(s: Session, state: Enum.UserInputState): boolean?
+		local knead = s.knead
+		if knead == nil or not knead:isLive() then
+			return nil
+		end
+		if state == Enum.UserInputState.Begin then
+			knead:rewax()
+		end
+		return true
+	end)
+end
 
 -- Public -----------------------------------------------------------------------------------------------------------------
 

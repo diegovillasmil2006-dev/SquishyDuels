@@ -46,7 +46,8 @@
 -- Dragon charge), Inspect's squeeze axis, and Grip.squeezeCoinsAlertPerHour in 1..maxSqueezeCoinsPerHour.
 -- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead and Config.Wax have a row for every Config.Anim.rig feel, each
 -- share, time and gain in range and every spring <= 3 Hz except jelly's per-vertex knead spring (the design's own 3.59
--- Hz wobble, a documented exception); the crunch rhythm <= 3 presses a second.
+-- Hz wobble, a documented exception); the crunch rhythm <= 3 presses a second; the wax switch Config.Wax.enabled (user
+-- 2026-10-12) is a boolean.
 -- Convention: every string field whose name ends in "Key" (nameKey, textKey, ...) is a Strings path; validate()
 -- resolves each one with Strings.resolve, in Config and in the Catalog, Boxes and QuestDefs data.
 
@@ -2221,10 +2222,11 @@ local function checkKnead(problems: Problems)
 end
 
 -- Squeeze feel (spec phase2-squeeze §3.11): Config.Wax has a coat for every Config.Anim.rig feel, the cell, stress and
--- crack rules in range, and the line reveal steps in order.
+-- crack rules in range, and the line reveal steps in order. User 2026-10-12: its switch `enabled` is a boolean.
 local function checkWax(problems: Problems)
 	local p = "Config.Wax"
 	local wax: any = Wax
+	expectBoolean(problems, `{p}.enabled`, wax.enabled)
 	for _, feel in sortedKeys(Anim.rig.feels) do
 		local coat = wax.coats[feel]
 		local path = `{p}.coats.{feel}`

@@ -6,9 +6,12 @@
 --                                    (the design's `local`, fp.js:701; strictly above)
 --   hud(waxLeft, crunchiness, cracks) -> Hud   the coat bar's share (round(waxLeft·100) %, fp.js:700), the state word
 --                                    and "{n} cracks" (digit grouping, Util/Format; "1 crack" by the Strings rule)
---   rows(feel) -> Rows               the panel's Squeeze and Coat rows (fp.js:569-570), rich text with the label in bold
---                                    (an unknown feel is foam)
---   help(input) -> string            the caption while kneading for "Touch", "Gamepad" or any other input (the keyboard)
+--   rows(feel, wax?) -> Rows         the panel's Squeeze and Coat rows (fp.js:569-570), rich text with the label in bold
+--                                    (an unknown feel is foam); no Coat row (nil) with the wax off
+--   help(input, wax?) -> string      the caption while kneading for "Touch", "Gamepad" or any other input (the keyboard);
+--                                    with the wax off the press wording (Strings.knead.helpNoWax: no crunch, no re-wax)
+--   thumb(wax?) -> string            the thumb hold button's label: Thumb crunch, or Thumb press with the wax off
+--   (wax: the wax switch, user 2026-10-12; nil = Config.Wax.enabled)
 --   vignette(u, v) -> (Color3, alpha)   the design's radial-gradient(125% 95% at 50% 45%, ...) at the stage point (u, v)
 --                                    (0..1, v down), with CSS's premultiplied interpolation between the stops (Config.UI
 --                                    .Knead.vignette, colours Art/Palette VignetteGlow, VignetteWarm, KneadInk); before the
@@ -33,7 +36,7 @@ export type Hud = {
 	count: string,
 }
 
-export type Rows = { squeeze: string, coat: string }
+export type Rows = { squeeze: string, coat: string? }
 
 export type Ring = { visible: boolean, px: number, transparency: number }
 
@@ -47,6 +50,11 @@ local PERCENT = 100
 local BYTE = 255
 
 local KneadFormat = {}
+
+-- The wax switch (user 2026-10-12): `wax` when given, else Config.Wax.enabled.
+local function waxOn(wax: boolean?): boolean
+	return if wax == nil then Config.Wax.enabled else wax
+end
 
 function KneadFormat.stateKey(crunchiness: number): StateKey
 	if crunchiness > HUD.crunchy then
@@ -68,7 +76,7 @@ function KneadFormat.hud(waxLeft: number, crunchiness: number, cracks: number): 
 	}
 end
 
-function KneadFormat.rows(feel: string): Rows
+function KneadFormat.rows(feel: string, wax: boolean?): Rows
 	local key = if KNEAD.feel[feel] ~= nil then feel else DEFAULT_FEEL
 	local feelText, coatText = KNEAD.feel[key], KNEAD.coat[key]
 	return {
@@ -76,17 +84,24 @@ function KneadFormat.rows(feel: string): Rows
 			KNEAD.panelRow,
 			{ row = KNEAD.squeezeRow, label = feelText.label, note = feelText.note }
 		),
-		coat = Strings.format(KNEAD.panelRow, { row = KNEAD.coatRow, label = coatText.label, note = coatText.note }),
+		coat = if waxOn(wax)
+			then Strings.format(KNEAD.panelRow, { row = KNEAD.coatRow, label = coatText.label, note = coatText.note })
+			else nil,
 	}
 end
 
-function KneadFormat.help(input: string?): string
+function KneadFormat.help(input: string?, wax: boolean?): string
+	local lines = if waxOn(wax) then KNEAD.help else KNEAD.helpNoWax
 	if input == "Touch" then
-		return KNEAD.help.touch
+		return lines.touch
 	elseif input == "Gamepad" then
-		return KNEAD.help.gamepad
+		return lines.gamepad
 	end
-	return KNEAD.help.keyboard
+	return lines.keyboard
+end
+
+function KneadFormat.thumb(wax: boolean?): string
+	return if waxOn(wax) then KNEAD.thumbCrunch else KNEAD.thumbPress
 end
 
 function KneadFormat.vignette(u: number, v: number): (Color3, number)

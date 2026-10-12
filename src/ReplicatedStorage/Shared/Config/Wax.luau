@@ -7,10 +7,16 @@
 -- Not here: the audio fields of the design's WAX (modes to gain, squish.js:42-48: they shape the pre-rendered sounds,
 -- spec §3.10; their mix is Config.Audio.wax), the HUD layout (Config.UI.Knead), the coat labels and notes
 -- (Strings.knead). Phase 2b (the Inspect integration): flakes, jolt, sparkle, hud and canvas below.
+-- The switch (user 2026-10-12): `enabled` turns the whole coat on or off for Inspect's knead (Controllers/
+-- KneadController, KneadAudio and InspectController, UI/KneadFormat and KneadOverlay read it). Off, the knead keeps the
+-- soft body (Config.Knead) and makes nothing of what is below; the values stay for when it is on again.
 
 export type Coat = { cell: number, th: number, wear: number, gloss: number }
 
 local Wax = {
+	-- user 2026-10-12: the wax crunch is off — cracks, crunch sounds, flakes, the wax HUD and re-wax;
+	-- true brings it back
+	enabled = false,
 	-- Per material (design: squish.js:37-48): cell = the crack-line cell size × maxDim, th = the stress a cell takes
 	-- before it cracks, wear = the coat lost per crack per unit of energy, gloss = the wax shine.
 	coats = {

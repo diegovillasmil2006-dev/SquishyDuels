@@ -2,7 +2,8 @@
 -- Config.Knead: the knead screen's soft body (spec phase2-squeeze §1.2-§1.12, §3.2, §3.3, §3.11). Shared, data only.
 -- Read by the client Anim/SoftBody (the port of the 3D Lab's SoftSquish), Anim/ShellGeometry and Anim/WaxCoat (pan).
 -- Every number is the design's own, with its "design: <file>:<line>" (the 3D Lab package sd/squish.js and sd/fp.js);
--- "proposal" marks a Roblox-side value the design has no counterpart for (spec phase2 §3).
+-- "proposal" marks a Roblox-side value the design has no counterpart for (spec phase2 §3); "user 2026-10-12" marks the
+-- deeper finger dents the user picked over the design's (finger.depthOfRadius, depthOfMinDim, memory.capOfRadius).
 -- Units: soft-body lengths are shares of the toy's own box (the bounds of its soft shells: maxDim, minDim and the size
 -- s.x, s.y, s.z), so they port to studs unchanged; times in seconds; springs { k, c } (x'' = -k x - c x').
 -- The design frame: the design's toys face +Z and ours -Z, so SoftBody runs every formula in the model frame turned 180°
@@ -95,8 +96,15 @@ local Knead = {
 	defaultFeel = "foam", -- an unknown toy is foam (design: squish.js:35)
 	brushSlots = 4, -- MAXB: live brushes at once (design: squish.js:13)
 	-- The finger (design: squish.js:173, 325): radius rF = radius·maxDim, depth dF = min(depthOfRadius·rF,
-	-- depthOfMinDim·minDim), depth falloff T = falloff·rF.
-	finger = { radius = 0.15, depthOfRadius = 0.95, depthOfMinDim = 0.42, falloff = 1.4 },
+	-- depthOfMinDim·minDim), depth falloff T = falloff·rF. The user's deeper dents (2026-10-12) take dF to 1.31-1.58× the
+	-- design's (1.58× while the radius term is the smaller); memory.capOfRadius rises with them (1.55×), so the slow
+	-- rise keeps the deeper dent.
+	finger = {
+		radius = 0.15,
+		depthOfRadius = 1.5, -- user 2026-10-12: deeper dents (design: 0.95 / 0.42 / 1.1, squish.js:173-174)
+		depthOfMinDim = 0.55, -- user 2026-10-12: deeper dents (design: 0.95 / 0.42 / 1.1, squish.js:173-174)
+		falloff = 1.4,
+	},
 	-- The two palms (design: squish.js:392): at box.min.x and box.max.x pressing inward; radius = radius·min(s.y, s.z),
 	-- falloff T = falloff·s.x, depth min(depthOfX·s.x, (1 - the toy's squeeze depth)·depthOfSqueeze·s.x), rim beta ×
 	-- betaShare, profile power `power`.
@@ -129,7 +137,7 @@ local Knead = {
 		keepBelow = 0.85, -- design: squish.js:503
 		smearMin = 0.03, -- design: squish.js:503, 505
 		smearSideways = 0.7, -- design: squish.js:502
-		capOfRadius = 1.1, -- design: squish.js:174
+		capOfRadius = 1.7, -- user 2026-10-12: deeper dents (design: 0.95 / 0.42 / 1.1, squish.js:173-174)
 	},
 	lumpScale = 0.55, -- the lump noise frequency is 1 / (lumpScale·rF) (design: squish.js:176)
 	springSubstepsPerSecond = 90, -- the per-vertex springs (design: squish.js:555)

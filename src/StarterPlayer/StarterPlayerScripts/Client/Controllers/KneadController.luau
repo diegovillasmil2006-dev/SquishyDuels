@@ -25,9 +25,18 @@
 --   handle:pointerMove(position), handle:pointerUp(), handle:hover(position?)   (hover: the mouse, for the ring)
 --   handle:crunch(on), handle:palms(on), handle:rewax()   the thumb crunch, the palm squeeze and the re-wax
 --   handle:cancel()        every hold and press ends (focus lost, Cancel, the context off)
---   handle:debugState()    Studio checks: cracks/s, solver ms, build ms, the network, the quota
+--   handle:debugState()    Studio checks: cracks/s, solver ms, build ms, the network, the quota, the wax switch
 --   handle:destroy()       everything goes (the shell, its mesh and image, the quota slot, flakes, sounds, the rows)
 -- Pure (unit-tested): readModel, nearestVertices, rides, restRay, inputKind, view, tiltTarget.
+-- Tests: useDeps(overrides) swaps the engine-only surfaces (the shell's EditableMesh, the atlas' EditableImage, putting
+-- the atlas on the shell, the sound player), so KneadWax_Test runs a handle in Edit mode.
+--
+-- The wax switch (user 2026-10-12: Config.Wax.enabled, or args.wax): off, a session keeps the soft body (the finger
+-- knead with its dents and memory, the stretch off the edge, Q / palms, F / thumbs as a thumb press, R faces it front,
+-- the vignette and the fingertip ring) and its sound (KneadAudio without the wax: the body loop, driven as if there
+-- were no coat, and the thumps), and makes nothing of the wax: no CrackNetwork (none cached), no WaxCoat, no crack
+-- lines (the CrackCanvas is still made and filled: it is the shell's colour atlas), no flakes, jolt or wax HUD, no
+-- re-wax (rewax() does nothing), and the panel's view has no Coat row and no Re-wax, with press wording.
 --
 -- Readings (DESIGN silent; spec "proposal"):
 -- * The shell's parts: SD_Body parts of shape E, B or RB that are not section parts (their pose changes); a W body part
@@ -77,12 +86,15 @@ local Layout = require(Client.UI.Layout)
 local OrbitCamera = require(Client.UI.OrbitCamera)
 local ViewportStage = require(Client.UI.ViewportStage)
 local KneadAudio = require(script.Parent.KneadAudio)
+local SoundController = require(script.Parent.SoundController)
 
 -- Types
 
 type Shell = ShellGeometry.Shell
 
-export type View = { squeeze: string, coat: string, help: string }
+-- The panel's knead rows, help and buttons (UI/InspectPanel's KneadView): coat nil (no Coat row) and rewax false with
+-- the wax off; thumb = the thumb hold button's label.
+export type View = { squeeze: string, coat: string?, help: string, thumb: string, rewax: boolean }
 
 export type BodyPart = {
 	part: BasePart,
@@ -111,29 +123,30 @@ export type Args = {
 	reattach: () -> (), -- the deformer again, after the shell joined or left the model
 	onView: (view: View?) -> (), -- the panel's knead rows, buttons and help (nil: back to today's)
 	reduced: () -> boolean, -- ReducedMotion
+	wax: boolean?, -- the wax switch (user 2026-10-12): nil = Config.Wax.enabled
 }
 
 type State = "building" | "ready" | "live" | "off"
 
 type Hit = { point: Vector3, normal: Vector3 }
 
--- What the build makes (owned by the handle's Cleanup once ready).
+-- What the build makes (owned by the handle's Cleanup once ready). The network and the coat only with the wax on.
 type Kit = {
 	shell: Shell,
-	network: CrackNetwork.Network,
+	network: CrackNetwork.Network?,
 	mesh: SoftShell.Handle,
 	canvas: CrackCanvas.Canvas,
 	body: SoftBody.Body,
-	coat: WaxCoat.Coat,
+	coat: WaxCoat.Coat?,
 	anchors: { number }, -- per rider: its shell vertex
 	colors: { Color3 }, -- per shell part
-	all: { number }, -- 1..shell.count (the reveal after a late network build)
+	all: { number }, -- 1..shell.count (the reveal after a late network build; empty with the wax off)
 }
 
--- What going live makes.
+-- What going live makes. The flakes only with the wax on.
 type Live = {
 	overlay: KneadOverlay.Overlay,
-	pool: FlakePool.Pool,
+	pool: FlakePool.Pool?,
 	audio: KneadAudio.Audio,
 	twistBase: CFrame, -- the model's pivot without the jolt
 }
@@ -154,6 +167,7 @@ type HandleData = {
 	_rng: Random,
 	_reattach: boolean,
 	_dead: boolean,
+	_wax: boolean, -- the wax switch (user 2026-10-12)
 	-- input
 	_pressing: boolean,
 	_touch: boolean,
@@ -222,8 +236,23 @@ local KneadController = {}
 -- Private
 
 local log = Log.new("Knead")
--- One toy's shell and line network, kept for the next open of the same toy (the network takes seconds of frames).
-local cache: { key: string, shell: Shell, network: CrackNetwork.Network }? = nil
+-- One toy's shell and line network, kept for the next open of the same toy (the network takes seconds of frames). The
+-- network only once a session with the wax on made it (none with the wax off).
+type CacheEntry = { key: string, shell: Shell, network: CrackNetwork.Network? }
+local cache: CacheEntry? = nil
+
+-- The engine-only surfaces a handle touches; tests swap them (useDeps): the shell's EditableMesh, the crack atlas'
+-- EditableImage, the atlas on the shell (Content) and the sound player KneadAudio plays through.
+local REAL_DEPS = {
+	Shell = SoftShell, -- create(shell, flipV) -> (Handle?, reason?)
+	Canvas = CrackCanvas, -- new(shell, colors, size) -> Canvas?
+	Texture = function(part: MeshPart, image: EditableImage)
+		part.TextureContent = Content.fromObject(image)
+	end,
+	Sound = SoundController :: any, -- KneadAudio's player
+}
+type Deps = typeof(REAL_DEPS)
+local deps: Deps = REAL_DEPS
 
 -- The deformer's per-axis factor for a part of this rigidity (SquishDeformer: kv = 1 + (S - 1)·(1 - rigidity), R = 1).
 local function kvOf(scale: Vector3, rigidity: number): Vector3
@@ -349,10 +378,18 @@ function KneadController.inputKind(inputType: Enum.UserInputType): string
 	return KEYBOARD
 end
 
--- The panel's knead rows (spec §1.19) and the help caption for that input.
-function KneadController.view(feel: string, input: string): View
-	local rows = KneadFormat.rows(feel)
-	return { squeeze = rows.squeeze, coat = rows.coat, help = KneadFormat.help(input) }
+-- The panel's knead rows (spec §1.19), the help caption for that input, the thumb button's label and whether Re-wax
+-- shows; with the wax off (user 2026-10-12; wax nil = Config.Wax.enabled) no Coat row, no Re-wax and press wording.
+function KneadController.view(feel: string, input: string, wax: boolean?): View
+	local on = if wax == nil then WAX.enabled else wax
+	local rows = KneadFormat.rows(feel, on)
+	return {
+		squeeze = rows.squeeze,
+		coat = rows.coat,
+		help = KneadFormat.help(input, on),
+		thumb = KneadFormat.thumb(on),
+		rewax = on,
+	}
 end
 
 -- Where the view eases by itself this frame (the pitch in degrees at yaw 0, and the rate), or nil: the settle home
@@ -414,17 +451,30 @@ local function build(self: Handle)
 		end
 		local key = `{args.def.blueprintId}|{self._quality}|{args.model:GetAttribute(ATTR_SCALE)}|`
 			.. table.concat(names, ",")
-		local shell: Shell, network: CrackNetwork.Network
+		local entry: CacheEntry
 		local cached = cache
 		if cached ~= nil and cached.key == key then
-			shell, network = cached.shell, cached.network
-			network:reset()
+			entry = cached
 		else
-			shell = ShellGeometry.build(inputs, self._quality)
-			network = CrackNetwork.new(shell, self._feel)
-			cache = { key = key, shell = shell, network = network }
+			entry = { key = key, shell = ShellGeometry.build(inputs, self._quality), network = nil }
+			cache = entry
 		end
-		local made, reason = SoftShell.create(shell, KNEAD.shell.uvFlipV) -- yields
+		local shell = entry.shell
+		-- The crack lines only with the wax on (user 2026-10-12): the cached network reset, else a new one, kept with the
+		-- shell. With the wax off none is made or cached.
+		local network: CrackNetwork.Network? = nil
+		if self._wax then
+			local kept = entry.network
+			if kept then
+				kept:reset()
+				network = kept
+			else
+				local fresh = CrackNetwork.new(shell, self._feel)
+				entry.network = fresh
+				network = fresh
+			end
+		end
+		local made, reason = deps.Shell.create(shell, KNEAD.shell.uvFlipV) -- yields
 		mesh = made
 		if self._dead then
 			return nil
@@ -432,7 +482,7 @@ local function build(self: Handle)
 		if made == nil then
 			error(`no soft shell ({reason})`, 0)
 		end
-		local image = CrackCanvas.new(shell :: any, colors, KNEAD.shell.atlas[self._quality])
+		local image = deps.Canvas.new(shell :: any, colors, KNEAD.shell.atlas[self._quality])
 		canvas = image
 		if image == nil then
 			error("no EditableImage for the crack atlas", 0)
@@ -448,9 +498,12 @@ local function build(self: Handle)
 			faceMax = reading.faceMax,
 			rng = self._rng,
 		})
-		local all: { number } = table.create(shell.count, 0)
-		for i = 1, shell.count do
-			all[i] = i
+		local all: { number } = {}
+		if network then
+			all = table.create(shell.count, 0)
+			for i = 1, shell.count do
+				all[i] = i
+			end
 		end
 		return {
 			shell = shell,
@@ -458,7 +511,7 @@ local function build(self: Handle)
 			mesh = made,
 			canvas = image,
 			body = body,
-			coat = WaxCoat.new(body, { rng = self._rng }),
+			coat = if self._wax then WaxCoat.new(body, { rng = self._rng }) else nil, -- user 2026-10-12: the wax switch
 			anchors = KneadController.nearestVertices(shell, points),
 			colors = colors,
 			all = all,
@@ -485,13 +538,13 @@ local function build(self: Handle)
 	end
 end
 
--- The HUD now (Config.UI.Knead.refreshSeconds apart), compact on the compact layout.
+-- The HUD now (Config.UI.Knead.refreshSeconds apart), compact on the compact layout; none with the wax off.
 local function refreshHud(self: Handle, animate: boolean)
 	local kit, live = self._kit, self._live
-	if kit == nil or live == nil then
+	local coat = if kit then kit.coat else nil
+	if coat == nil or live == nil then
 		return
 	end
-	local coat = kit.coat
 	live.overlay:setHud(KneadFormat.hud(coat.waxLeft, coat.crunchiness, coat.cracks), animate)
 	local camera = Workspace.CurrentCamera
 	local screen = if camera then camera.ViewportSize else Vector2.zero
@@ -553,15 +606,15 @@ local function scaleOf(self: Handle): Vector3
 	return if deformer then deformer:getScale() else Vector3.one
 end
 
--- The shell joins the model, the body parts hide, the riders ride, the 2D layer, flakes and sound start, the panel
--- shows the knead; each step's undo goes in the Cleanup (newest first on teardown).
+-- The shell joins the model, the body parts hide, the riders ride, the 2D layer, flakes (with the wax on) and sound
+-- start, the panel shows the knead; each step's undo goes in the Cleanup (newest first on teardown).
 local function goLive(self: Handle)
 	local args = self._args
 	local kit = self._kit :: Kit
 	local c = self._cleanup
 	local model = args.model
 	local part = kit.mesh.part
-	part.TextureContent = Content.fromObject(kit.canvas.image)
+	deps.Texture(part, kit.canvas.image)
 	part.CFrame = model:GetPivot() * CFrame.new(kit.shell.center)
 	self._state = "live" -- from here a teardown puts the model back
 	part.Parent = model
@@ -607,12 +660,13 @@ local function goLive(self: Handle)
 	c:add(function()
 		OrbitCamera.setDefaults(args.orbit, args.def.inspect.yaw, args.def.inspect.pitch)
 	end)
-	local overlay = c:add(KneadOverlay.new(args.stage))
-	local pool = c:add(FlakePool.new(args.stage.viewport, FLAKES.cap))
-	local audio = c:add(KneadAudio.new(self._feel, self._pitch, { rng = self._rng }))
+	local wax = self._wax -- user 2026-10-12: with the wax off no wax HUD, no flakes, the soft body sounds only
+	local overlay = c:add(KneadOverlay.new(args.stage, { hud = wax }))
+	local pool = if wax then c:add(FlakePool.new(args.stage.viewport, FLAKES.cap)) else nil
+	local audio = c:add(KneadAudio.new(self._feel, self._pitch, { player = deps.Sound, rng = self._rng, wax = wax }))
 	self._live = { overlay = overlay, pool = pool, audio = audio, twistBase = twistBase }
 	self._input = KneadController.inputKind(UserInputService:GetLastInputType())
-	args.onView(KneadController.view(self._feel, self._input))
+	args.onView(KneadController.view(self._feel, self._input, wax))
 	c:add(function()
 		args.onView(nil)
 	end)
@@ -620,7 +674,7 @@ local function goLive(self: Handle)
 		local kind = KneadController.inputKind(inputType)
 		if kind ~= self._input and self._state == "live" then
 			self._input = kind
-			args.onView(KneadController.view(self._feel, kind))
+			args.onView(KneadController.view(self._feel, kind, self._wax))
 		end
 	end))
 	refreshHud(self, false)
@@ -639,9 +693,13 @@ local function crackFx(
 	kz: number,
 	reduced: boolean
 )
+	local coat, pool = kit.coat, live.pool
+	if coat == nil or pool == nil then
+		return -- (never: only the coat's cracks come here, and the coat comes with the flakes)
+	end
 	live.audio:crack(crack.E, crack.intact)
 	self._jolt = FlakePool.joltAfter(self._jolt, crack.E, crack.intact, reduced)
-	local shellPart = kit.shell.vertexPart[kit.coat.cellVertex[crack.cell]]
+	local shellPart = kit.shell.vertexPart[coat.cellVertex[crack.cell]]
 	local specs = FlakePool.crackSpecs({
 		E = crack.E,
 		intact = crack.intact,
@@ -656,7 +714,7 @@ local function crackFx(
 		reduced = reduced,
 	}, self._rng)
 	for _, spec in specs do
-		live.pool:spawn(spec)
+		pool:spawn(spec)
 	end
 end
 
@@ -727,36 +785,40 @@ local function frame(self: Handle, dt: number)
 	end
 	self._settleLeft = math.max(0, self._settleLeft - dt)
 
-	-- The solver, the coat and the lines (spec §3.3, §3.4).
+	-- The solver, the coat and the lines (spec §3.3, §3.4); the solver alone with the wax off (no coat, no network).
 	local started = os.clock()
-	if body.active or coat.shine > 0 then
+	if body.active or (coat ~= nil and coat.shine > 0) then
 		if body:step(dt) then
 			kit.mesh:write(body.written, body.writtenCount, body.px, body.py, body.pz)
 			KneadController.rides(self._offsets, self._reading.riders, kit.anchors, shell, body.px, body.py, body.pz)
 		end
-		coat:step(dt)
-		for _, crack in coat:takeEvents() do
-			crackFx(self, kit, live, crack, pivot, scale, eye, studsPerDu, kz, reduced)
-		end
-		if coat.touchedCount > 0 then
-			kit.canvas:queue(network:reveal(coat.damage, coat.touched, coat.touchedCount))
-			coat:clearTouched()
+		if coat and network then
+			coat:step(dt)
+			for _, crack in coat:takeEvents() do
+				crackFx(self, kit, live, crack, pivot, scale, eye, studsPerDu, kz, reduced)
+			end
+			if coat.touchedCount > 0 then
+				kit.canvas:queue(network:reveal(coat.damage, coat.touched, coat.touchedCount))
+				coat:clearTouched()
+			end
 		end
 	end
 	local solveMs = (os.clock() - started) * 1000
 	self._solveMs += (solveMs - self._solveMs) * SOLVE_SMOOTHING
 	self._solveMaxMs = math.max(self._solveMaxMs, solveMs)
-	if not network.finished then
-		local budget = CANVAS.buildMsPerFrame[self._quality] / 1000
-		local from = os.clock()
-		repeat
-			local finished = network:buildStep(BUILD_CHUNK)
-		until finished or os.clock() - from >= budget
-		if network.finished then
-			kit.canvas:queue(network:reveal(coat.damage, kit.all, shell.count)) -- what cracked while it built
+	if coat and network then
+		if not network.finished then
+			local budget = CANVAS.buildMsPerFrame[self._quality] / 1000
+			local from = os.clock()
+			repeat
+				local finished = network:buildStep(BUILD_CHUNK)
+			until finished or os.clock() - from >= budget
+			if network.finished then
+				kit.canvas:queue(network:reveal(coat.damage, kit.all, shell.count)) -- what cracked while it built
+			end
 		end
+		kit.canvas:draw(CANVAS.drawPerFrame)
 	end
-	kit.canvas:draw(CANVAS.drawPerFrame)
 
 	-- The body's events: the soft kicks to the rig's jiggle, the sound cues to the wax sound.
 	local rig = args.rig()
@@ -776,10 +838,20 @@ local function frame(self: Handle, dt: number)
 			rig:setFace(if squish then "squish" else "normal")
 		end
 	end
-	live.audio:frame(dt, body.active, coat.drive, body.pressSignal, coat.waxLeft)
+	-- No coat (the wax off, user 2026-10-12): the body bed driven as if there were none: drive 0, nothing intact.
+	live.audio:frame(
+		dt,
+		body.active,
+		if coat then coat.drive else 0,
+		body.pressSignal,
+		if coat then coat.waxLeft else 0
+	)
 
-	-- Flakes and the jolt (fp.js:480, 676-684).
-	live.pool:step(dt)
+	-- Flakes and the jolt (fp.js:480, 676-684); with the wax off there are none (no cracks raise the jolt).
+	local pool = live.pool
+	if pool then
+		pool:step(dt)
+	end
 	if self._jolt > JOLT_MIN then
 		local size = self._jolt * studsPerDu
 		local offset = eye.RightVector * ((self._rng:NextNumber() - 0.5) * size)
@@ -806,8 +878,9 @@ local function frame(self: Handle, dt: number)
 	updateRing(self, kit, live, pivot, scale)
 	self._rateTime += dt
 	if self._rateTime >= 1 then
-		self._cracksPerSecond = math.max(0, coat.cracks - self._rateFrom) / self._rateTime
-		self._rateFrom, self._rateTime = coat.cracks, 0
+		local cracks = if coat then coat.cracks else 0
+		self._cracksPerSecond = math.max(0, cracks - self._rateFrom) / self._rateTime
+		self._rateFrom, self._rateTime = cracks, 0
 	end
 end
 
@@ -926,18 +999,23 @@ function HandleClass.palms(self: Handle, on: boolean)
 	body:palms(on)
 end
 
--- A fresh coat (fp.js:687): the cracks, lines and atlas reset, the sparkle sound and burst.
+-- A fresh coat (fp.js:687): the cracks, lines and atlas reset, the sparkle sound and burst. Nothing with the wax off
+-- (user 2026-10-12: no coat, network or flakes).
 function HandleClass.rewax(self: Handle)
 	local kit, live = self._kit, self._live
 	if self._state ~= "live" or kit == nil or live == nil then
 		return
 	end
-	kit.coat:rewax()
-	kit.network:reset()
+	local coat, network, pool = kit.coat, kit.network, live.pool
+	if coat == nil or network == nil or pool == nil then
+		return
+	end
+	coat:rewax()
+	network:reset()
 	kit.canvas:clear()
 	kit.canvas:fill()
 	live.audio:rewax()
-	self._rateFrom = kit.coat.cracks
+	self._rateFrom = coat.cracks
 	local scale = scaleOf(self)
 	local shell = kit.shell
 	local kz = KneadMath.kneadZoom(self._args.stage.viewport.AbsoluteSize, shell.size)
@@ -949,7 +1027,7 @@ function HandleClass.rewax(self: Handle)
 		self._args.reduced()
 	)
 	for _, spec in specs do
-		live.pool:spawn(spec)
+		pool:spawn(spec)
 	end
 	refreshHud(self, true)
 end
@@ -962,29 +1040,34 @@ function HandleClass.cancel(self: Handle)
 	self._hoverDirty = true
 end
 
+-- With the wax off (wax false) the coat and network fields read as before the build (no cracks, no segments).
 function HandleClass.debugState(self: Handle): { [string]: any }
 	local kit = self._kit
 	local live = self._live
+	local coat = if kit then kit.coat else nil
+	local network = if kit then kit.network else nil
+	local pool = if live then live.pool else nil
 	return {
 		state = self._state,
 		reason = self._reason,
 		quality = self._quality,
 		feel = self._feel,
+		wax = self._wax,
 		vertices = if kit then kit.shell.count else 0,
 		triangles = if kit then kit.shell.triCount else 0,
-		cracks = if kit then kit.coat.cracks else 0,
+		cracks = if coat then coat.cracks else 0,
 		cracksPerSecond = self._cracksPerSecond,
-		waxLeft = if kit then kit.coat.waxLeft else 1,
-		crunchiness = if kit then kit.coat.crunchiness else 1,
+		waxLeft = if coat then coat.waxLeft else 1,
+		crunchiness = if coat then coat.crunchiness else 1,
 		crunching = self._crunching,
 		palms = self._palms,
 		pressing = self._pressing,
 		pulling = if kit then kit.body.pulling else false,
 		faceSquish = self._faceSquish,
-		networkFinished = if kit then kit.network.finished else false,
-		segments = if kit then kit.network.count else 0,
+		networkFinished = if network then network.finished else false,
+		segments = if network then network.count else 0,
 		pendingLines = if kit then kit.canvas:pending() else 0,
-		flakes = if live then live.pool:count() else 0,
+		flakes = if pool then pool:count() else 0,
 		jolt = self._jolt,
 		buildMs = self._buildMs,
 		solveMs = self._solveMs,
@@ -1032,6 +1115,7 @@ function KneadController.start(args: Args): Handle?
 		_rng = Random.new(),
 		_reattach = false,
 		_dead = false,
+		_wax = if args.wax == nil then WAX.enabled else args.wax,
 		_pressing = false,
 		_touch = false,
 		_pointerAt = nil,
@@ -1062,6 +1146,21 @@ function KneadController.start(args: Args): Handle?
 	end)
 	task.spawn(build, self)
 	return self
+end
+
+-- Test seam (Edit mode): replaces some of the engine-only surfaces (Shell, Canvas, Texture, Sound; nil = the real ones
+-- again).
+function KneadController.useDeps(overrides: { [string]: any }?)
+	if overrides == nil then
+		deps = REAL_DEPS
+		return
+	end
+	local merged: { [string]: any } = table.clone(REAL_DEPS :: any)
+	for key, value in overrides do
+		assert(merged[key] ~= nil, `[SD][Knead] unknown dependency {key}`)
+		merged[key] = value
+	end
+	deps = merged :: any
 end
 
 return KneadController

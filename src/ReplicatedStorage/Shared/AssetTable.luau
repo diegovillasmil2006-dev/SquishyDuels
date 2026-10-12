@@ -147,7 +147,7 @@ local SLOTS: { AssetSlot } = {
 		true,
 		nil,
 		"3 variants; 0.15–0.5 s; search: soft+squish, squishy+toy+squeeze, foam+squeeze, stress+ball+squeeze",
-		uploaded(115871460200680, 1, "sfx.squish - wax foam.wav")
+		uploaded(98509885377412, 1, "sfx.squish - slime foam.wav")
 	),
 	soundSlot(
 		"sfx.squeezeRelease",
@@ -155,7 +155,7 @@ local SLOTS: { AssetSlot } = {
 		true,
 		0.3,
 		"0.3–0.8 s; search: soft+air+release, pillow+squeeze",
-		uploaded(127791102712332, 0.3, "sfx.squeezeRelease - wax foam.wav")
+		uploaded(70674943007768, 0.3, "sfx.squeezeRelease - slime foam.wav")
 	),
 	soundSlot(
 		"sfx.throw",

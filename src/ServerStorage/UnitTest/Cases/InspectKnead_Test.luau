@@ -8,9 +8,11 @@
 --     stops the old knead and starts one on the new model; close stops it before the snapshot restores;
 --   * while it is live a press that hits the toy is the knead's (pointerDown, pointerMove, pointerUp; the view does not
 --     turn), a miss orbits as before; the mouse hovering with nothing pressed goes to hover(); focus loss cancels;
---   * live: F / ButtonX hold the crunch, Q / ButtonL1 the palms, W / ButtonR1 re-wax, the panel's holds and Re-wax reach
---     it, and nothing squeezes the rig (no hold squeeze, tap preview or Squeeze-button preview); not live: F squeezes as
---     before and Q / W pass;
+--   * live: F / ButtonX hold the crunch, Q / ButtonL1 the palms, W / ButtonR1 re-wax (only with the wax on), the panel's
+--     holds and Re-wax reach it, and nothing squeezes the rig (no hold squeeze, tap preview or Squeeze-button preview);
+--     not live: F squeezes as before and Q / W pass;
+--   * the wax switch (user 2026-10-12): with Config.Wax.enabled false InspectRewax has no handler (W / ButtonR1 are not
+--     bound), with it true it has one;
 --   * the knead steps every frame before the rig's write; debugState carries the knead's.
 
 type Context = {
@@ -23,7 +25,9 @@ type Context = {
 return function(t: Context)
 	local Inspect = t.requireClient("Controllers/InspectController")
 	local Catalog = t.requireShared("Catalog")
+	local Config = t.requireShared("Config")
 	local expect = t.expect
+	local WAX_ON = Config.Wax.enabled -- user 2026-10-12: the wax switch (InspectRewax is bound only with it on)
 
 	local BEGIN, END = Enum.UserInputState.Begin, Enum.UserInputState.End
 	local KEY_F = { KeyCode = Enum.KeyCode.F, UserInputType = Enum.UserInputType.Keyboard, Position = Vector3.zero }
@@ -503,7 +507,7 @@ return function(t: Context)
 		rethrow(ok, err)
 	end)
 
-	t.test("live: F holds the crunch, Q the palms, W re-waxes, the panel too; nothing squeezes the rig", function()
+	t.test("live: F holds the crunch, Q the palms, W re-waxes (wax on), the panel too; no rig squeeze", function()
 		local w = fresh()
 		w.open("toast")
 		local ok, err = pcall(function()
@@ -513,21 +517,28 @@ return function(t: Context)
 			handlers.InspectSqueeze(END, KEY_F :: any)
 			expect.equal(handlers.InspectPalms(BEGIN, KEY_Q :: any), true)
 			handlers.InspectPalms(END, KEY_Q :: any)
-			expect.equal(handlers.InspectRewax(BEGIN, KEY_W :: any), true)
+			-- User 2026-10-12: W / ButtonR1 re-wax only with the wax on; off they have no handler (not bound).
+			local keyRewaxes = 0
+			if WAX_ON then
+				expect.equal(handlers.InspectRewax(BEGIN, KEY_W :: any), true)
+				keyRewaxes = 1
+			else
+				expect.equal(handlers.InspectRewax, nil)
+			end
 			expect.equal(count(w.log, "knead:crunch:true"), 1)
 			expect.equal(count(w.log, "knead:crunch:false"), 1)
 			expect.equal(count(w.log, "knead:palms:true"), 1)
 			expect.equal(count(w.log, "knead:palms:false"), 1)
-			expect.equal(count(w.log, "knead:rewax"), 1)
+			expect.equal(count(w.log, "knead:rewax"), keyRewaxes)
 			w.callbacks.onKneadHold("crunch", true)
 			w.callbacks.onKneadHold("crunch", false)
 			w.callbacks.onKneadHold("palms", true)
-			w.callbacks.onRewax()
+			w.callbacks.onRewax() -- the panel shows Re-wax only with the wax on (the knead's view); the hook still reaches it
 			w.callbacks.onSqueeze()
 			expect.equal(count(w.log, "knead:crunch:true"), 2)
 			expect.equal(count(w.log, "knead:crunch:false"), 2)
 			expect.equal(count(w.log, "knead:palms:true"), 2)
-			expect.equal(count(w.log, "knead:rewax"), 2)
+			expect.equal(count(w.log, "knead:rewax"), keyRewaxes + 1)
 			-- A still press on the background and a tap on its box never squeeze while kneading.
 			local finger = touchAt(200, 150)
 			w.holder.InputBegan:fire(finger)
@@ -551,7 +562,10 @@ return function(t: Context)
 		local ok, err = pcall(function()
 			local handlers = Inspect.actionHandlers()
 			expect.equal(handlers.InspectPalms(BEGIN, KEY_Q :: any), nil)
-			expect.equal(handlers.InspectRewax(BEGIN, KEY_W :: any), nil)
+			local rewaxKey = handlers.InspectRewax -- none with the wax off (user 2026-10-12)
+			if rewaxKey then
+				expect.equal(rewaxKey(BEGIN, KEY_W :: any), nil)
+			end
 			w.callbacks.onKneadHold("crunch", true)
 			w.callbacks.onRewax()
 			expect.equal(count(w.log, "knead:crunch:true"), 0)
@@ -565,5 +579,14 @@ return function(t: Context)
 		end)
 		finish(w)
 		rethrow(ok, err)
+	end)
+
+	-- User 2026-10-12: the wax crunch off (Config.Wax.enabled false) leaves W / ButtonR1 unbound; on, they re-wax.
+	t.test("the wax switch: InspectRewax has a handler only with the wax on; the other knead keys always", function()
+		local handlers = Inspect.actionHandlers()
+		expect.equal(handlers.InspectRewax ~= nil, WAX_ON)
+		expect.equal(type(handlers.InspectPalms), "function")
+		expect.equal(type(handlers.InspectSqueeze), "function")
+		expect.equal(type(handlers.InspectReset), "function")
 	end)
 end
