@@ -438,20 +438,20 @@ return function(t: Context)
 		local before = SoundController.recent()
 		-- An unknown key, a PENDING key that asks (noId) and then repeats inside its cooldown.
 		SoundController.play("sfx.notAKey")
-		expect.equal(SoundController.play("sfx.impactSoft"), false)
-		expect.equal(SoundController.play("sfx.impactSoft"), false)
-		expect.deepEqual(resultsSince(before), { "sfx.notAKey=noId", "sfx.impactSoft=noId", "sfx.impactSoft=cooldown" })
+		expect.equal(SoundController.play("ui.hover"), false)
+		expect.equal(SoundController.play("ui.hover"), false)
+		expect.deepEqual(resultsSince(before), { "sfx.notAKey=noId", "ui.hover=noId", "ui.hover=cooldown" })
 		-- Another player's squeeze with no position is too far to hear; a far 3D one-shot is culled when there is a
 		-- camera to measure from (Edit mode in Studio has one).
 		before = SoundController.recent()
 		SoundController.play("sfx.squeezeRelease", { otherPlayer = true })
-		SoundController.play("sfx.dragonChomp", { at = Vector3.new(1e6, 0, 0) })
+		SoundController.play("sfx.elimination", { at = Vector3.new(1e6, 0, 0) })
 		local far = if game:GetService("Workspace").CurrentCamera ~= nil then "distance" else "noId"
-		expect.deepEqual(resultsSince(before), { "sfx.squeezeRelease=distance", `sfx.dragonChomp={far}` })
+		expect.deepEqual(resultsSince(before), { "sfx.squeezeRelease=distance", `sfx.elimination={far}` })
 		-- playTracked logs too and returns nothing to stop while nothing plays.
 		before = SoundController.recent()
-		expect.equal(SoundController.playTracked("sfx.dragonTelegraph"), nil)
-		expect.deepEqual(resultsSince(before), { "sfx.dragonTelegraph=noId" })
+		expect.equal(SoundController.playTracked("sfx.elimination"), nil)
+		expect.deepEqual(resultsSince(before), { "sfx.elimination=noId" })
 		-- Entries carry a key, a time and a result; the log keeps the newest recentLogSize.
 		for _ = 1, AUDIO.recentLogSize + 5 do
 			SoundController.play("duel.win") -- no cooldown
@@ -470,18 +470,18 @@ return function(t: Context)
 
 	t.test("cooldowns: other players' sounds (priority below 0) never hold the local player's cooldown", function()
 		if Config.Debug.isStudio then -- the log is Studio only
-			-- Another player's wobble arms only its own cooldown: the local player's wobble right after is still asked
-			-- for, and each kind then waits for its own cooldown.
+			-- Another player's error sound arms only its own cooldown: the local player's one right after is still
+			-- asked for, and each kind then waits for its own cooldown (ui.error: a key with a cooldown and no upload).
 			local before = SoundController.recent()
-			SoundController.play("sfx.jellyWobble", { priority = -1 })
-			SoundController.play("sfx.jellyWobble", { priority = 1 })
-			SoundController.play("sfx.jellyWobble", { priority = -1 })
-			SoundController.play("sfx.jellyWobble", { priority = 1 })
+			SoundController.play("ui.error", { priority = -1 })
+			SoundController.play("ui.error", { priority = 1 })
+			SoundController.play("ui.error", { priority = -1 })
+			SoundController.play("ui.error", { priority = 1 })
 			expect.deepEqual(resultsSince(before), {
-				"sfx.jellyWobble=noId",
-				"sfx.jellyWobble=noId",
-				"sfx.jellyWobble=cooldown",
-				"sfx.jellyWobble=cooldown",
+				"ui.error=noId",
+				"ui.error=noId",
+				"ui.error=cooldown",
+				"ui.error=cooldown",
 			})
 		end
 		expect.equal(SoundController.cooldownKey("sfx.squish", 1), "sfx.squish")

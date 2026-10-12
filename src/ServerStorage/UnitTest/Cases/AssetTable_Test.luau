@@ -4,7 +4,7 @@
 --   * the sound key set is exactly the 37 of §18.6 (the 34 of §14.2 plus ui.gripUnlock, sfx.jellyWobble, sfx.pop),
 --     the 10 of spec phase 5 (the dash and the four Epic ultimates), the 16 of the Inspect showcases (final polish
 --     2026-10-11: the design's own inspect one-shots, 2D SFX) and the 5 of feature 1 (2026-10-11: the charge throw and
---     the catch, PENDING, each note naming its file), 68 in all;
+--     the catch, each note naming its file), 68 in all;
 --   * a PENDING slot (id nil) carries no metadata (no source, licence, verifiedAt or variants);
 --   * an approved slot has an integer id > 0, a volume in (0, 2], a source, a licence and verifiedAt as YYYY-MM-DD,
 --     and so does each variant; no id repeats within a key;
@@ -13,8 +13,8 @@
 --     for a PENDING or unknown key;
 --   * Part 8, acceptance 10 "AssetTable audit" (§13.3, §14.1): a slot of ANY kind (sound, animation, image) that has
 --     an id carries an integer id > 0, a source, a licence and verifiedAt as YYYY-MM-DD, and so does each variant
---     (until Part 8 only sound slots were checked for this metadata). Every id is nil today, so the audit passes;
---     a planted entry of each kind proves the check itself.
+--     (until Part 8 only sound slots were checked for this metadata). Sound slots hold the group's uploads since
+--     2026-10-12; a planted entry of each kind proves the check itself.
 -- Pure data: runs in Edit mode on the Shared clone. Holds no asset ids (the approved branches check whatever the
 -- table holds once the picker flow writes ids).
 
@@ -193,9 +193,9 @@ return function(t: Context)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 
-	-- Feature 1 (2026-10-11): PENDING until the user uploads them; the hand sounds 2D, the catch's 3D at the catch for
-	-- the other duelist; each note names its file ('sfx.charge - loop.wav' ...).
-	t.test("feature 1's sounds: PENDING SFX, each note naming its file", function()
+	-- Feature 1 (2026-10-11; uploaded 2026-10-12): the hand sounds 2D, the catch's 3D at the catch for the other
+	-- duelist; each note names its file ('sfx.charge - loop.wav' ...).
+	t.test("feature 1's sounds: SFX, each note naming its file", function()
 		local spatial = {
 			["sfx.chargeLoop"] = false,
 			["sfx.chargeFull"] = false,
@@ -208,10 +208,8 @@ return function(t: Context)
 			local want = spatial[slot.key]
 			if want ~= nil then
 				found += 1
-				expect.equal(slot.id, nil)
 				expect.equal(slot.group, "SFX")
 				expect.equal(slot.spatial, want)
-				expect.truthy(string.find(slot.notes, "PENDING", 1, true) ~= nil)
 				expect.truthy(string.find(slot.notes, ".wav'", 1, true) ~= nil)
 			end
 		end
@@ -287,9 +285,9 @@ return function(t: Context)
 		expect.truthy(checked > 0)
 	end)
 
-	-- Every id is nil today, so the audit above never reaches its approved branch; this proves that branch on a fake
-	-- entry of each kind (a fake, tiny id, as the approved-slot check below uses; never written to AssetTable) and on
-	-- broken copies of it.
+	-- Animation and image ids are nil today, so the audit above never reaches their approved branch; this proves that
+	-- branch on a fake entry of each kind (a fake, tiny id, as the approved-slot check below uses; never written to
+	-- AssetTable) and on broken copies of it.
 	t.test("the any-kind audit accepts a full entry and rejects each broken field", function()
 		for _, kind in { "animation", "image", "sound" } do
 			expect.truthy(ASSET_KINDS[kind] == true)
@@ -324,8 +322,8 @@ return function(t: Context)
 		end
 	end)
 
-	-- Every slot is PENDING today, so the check above only runs its approved branch once the picker flow writes ids;
-	-- this proves that branch on an entry in the §18.7 "Approved slot format" (a fake, tiny id) and on broken copies.
+	-- The check above runs its approved branch on the uploaded sounds; this also proves that branch on an entry in the
+	-- §18.7 "Approved slot format" (a fake, tiny id) and on broken copies.
 	t.test("the approved-slot check accepts the §18.7 format and rejects each broken field", function()
 		local good = {
 			id = 7,
