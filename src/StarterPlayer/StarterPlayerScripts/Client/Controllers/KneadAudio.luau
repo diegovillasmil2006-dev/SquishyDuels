@@ -30,9 +30,10 @@
 --   audio:destroy()              stops the beds; nothing plays after it (pending delays included)
 -- Delays under one frame play at once (frame-quantised, spec §3.9); longer ones wait with task.delay.
 -- With the wax off (user 2026-10-12: options.wax false) only the soft body sounds: the body bed (its loop; the caller
--- drives it as if there were no coat: drive 0, intact 0) and the thumps (a press: its taps and, for palms and thumbs,
--- the thump; a stretch let go: the snap thump). No crack bursts (crack, the snap's two bursts), no crackle ticks
--- (release, air), no haze loop and no re-wax sparkle.
+-- drives it as if there were no coat: drive 0, intact 0), the thumps (a press: its taps and, for palms and thumbs,
+-- the thump; a stretch let go: the snap thump) and, for a press let go, the soft slime let-go (sfx.squeezeRelease on
+-- the UI group, as Inspect's squeeze plays, at the toy's pitch; Config.Audio.kneadSoft). No crack bursts (crack, the
+-- snap's two bursts), no crackle ticks (release, air), no haze loop and no re-wax sparkle.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -104,6 +105,9 @@ local KEY_BODY = "sfx.wax.body."
 local KEY_THUMP = "sfx.wax.thump"
 local KEY_SNAP_THUMP = "sfx.wax.snapThump"
 local KEY_REWAX = "sfx.wax.rewax"
+local KEY_LET_GO = "sfx.squeezeRelease" -- user 2026-10-12: the soft slime let-go (the wax off)
+local LET_GO_GROUP = "UI" -- Inspect plays on UI (InspectController's squeeze)
+local SOFT = Config.Audio.kneadSoft
 local FRAME = 1 / 60 -- delays shorter than this play at once
 local PRESS_LEAD = 0.003 -- design: squish.js:869 (a press starts 3 ms on)
 
@@ -325,8 +329,23 @@ function AudioClass.crack(self: Audio, E: number, intact: number)
 	self:_shot(KneadAudio.burst(E, intact, self._rng))
 end
 
--- With the wax off (user 2026-10-12) the release and settling ticks (crackle grains) and the snap's bursts stay
--- silent; the press (its taps and thump) and the snap thump still play.
+-- User 2026-10-12: with the wax off a press let go plays the soft slime let-go, louder the deeper the press was:
+-- letGoFloor + (1 - letGoFloor)·amount (Config.Audio.kneadSoft).
+function AudioClass._letGo(self: Audio, amount: number)
+	if self._dead then
+		return
+	end
+	local floor = SOFT.letGoFloor
+	self._player.play(KEY_LET_GO, {
+		group = LET_GO_GROUP,
+		volume = floor + (1 - floor) * math.clamp(amount, 0, 1),
+		pitch = self._pitch,
+	})
+end
+
+-- With the wax off (user 2026-10-12) a press let go plays the soft slime let-go instead of the release ticks; the
+-- settling ticks (crackle grains) and the snap's bursts stay silent; the press (its taps and thump) and the snap thump
+-- still play.
 function AudioClass.event(self: Audio, e: Event)
 	if self._dead then
 		return
@@ -340,8 +359,12 @@ function AudioClass.event(self: Audio, e: Event)
 		if thump then
 			self:_one(KEY_THUMP, level(WAX.thumpLevelDb), thump)
 		end
-	elseif kind == "release" and wax then
-		self:_shots(KneadAudio.release(e.brush or "finger", e.amount or 1, self._gain, rng))
+	elseif kind == "release" then
+		if wax then
+			self:_shots(KneadAudio.release(e.brush or "finger", e.amount or 1, self._gain, rng))
+		else
+			self:_letGo(e.amount or 1)
+		end
 	elseif kind == "air" and wax then
 		self:_shots(KneadAudio.air(e.amount or 1, self._rise, self._gain, rng))
 	elseif kind == "snap" then

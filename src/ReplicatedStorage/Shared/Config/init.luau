@@ -2558,6 +2558,8 @@ local function checkKneadScreen(problems: Problems)
 		eachField(problems, "Config.Audio.Groups.Wax.compressor", compressor, { "attack", "release" }, expectPositive)
 		expectNonNegative(problems, "Config.Audio.Groups.Wax.compressor.makeup", compressor.makeup)
 	end
+	-- User 2026-10-12: the knead's soft let-go with the wax off (a share of a full let-go at the lightest press).
+	expectBetween(problems, "Config.Audio.kneadSoft.letGoFloor", Audio.kneadSoft.letGoFloor, 0, 1)
 end
 
 local function checkVfx(problems: Problems)

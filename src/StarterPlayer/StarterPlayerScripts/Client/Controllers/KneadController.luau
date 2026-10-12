@@ -34,9 +34,9 @@
 -- The wax switch (user 2026-10-12: Config.Wax.enabled, or args.wax): off, a session keeps the soft body (the finger
 -- knead with its dents and memory, the stretch off the edge, Q / palms, F / thumbs as a thumb press, R faces it front,
 -- the vignette and the fingertip ring) and its sound (KneadAudio without the wax: the body loop, driven as if there
--- were no coat, and the thumps), and makes nothing of the wax: no CrackNetwork (none cached), no WaxCoat, no crack
--- lines (the CrackCanvas is still made and filled: it is the shell's colour atlas), no flakes, jolt or wax HUD, no
--- re-wax (rewax() does nothing), and the panel's view has no Coat row and no Re-wax, with press wording.
+-- were no coat, the thumps and the soft slime let-go), and makes nothing of the wax: no CrackNetwork (none cached), no
+-- WaxCoat, no crack lines (the CrackCanvas is still made and filled: it is the shell's colour atlas), no flakes, jolt
+-- or wax HUD, no re-wax (rewax() does nothing), and the panel's view has no Coat row and no Re-wax, with press wording.
 --
 -- Readings (DESIGN silent; spec "proposal"):
 -- * The shell's parts: SD_Body parts of shape E, B or RB that are not section parts (their pose changes); a W body part

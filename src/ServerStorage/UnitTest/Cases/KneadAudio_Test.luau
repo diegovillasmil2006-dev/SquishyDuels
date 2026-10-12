@@ -16,8 +16,10 @@
 --   * every play is in the Wax group at the file's level (10^(-normGainDb / 20)), the loops × the design's bus and
 --     master gains; destroy stops the beds and nothing plays after it (the wax on, options.wax true);
 --   * the wax off (user 2026-10-12, options.wax false): cracks, the release and settling ticks, the snap's bursts and
---     the re-wax sparkle are silent and the haze loop never starts; a press still plays its taps and thump, a snap its
---     thump, and the body loop follows the body formula at drive 0 (no coat); no wax option follows Config.Wax.enabled.
+--     the re-wax sparkle are silent and the haze loop never starts; a press let go plays the soft slime let-go
+--     (sfx.squeezeRelease, UI group, the toy's pitch, letGoFloor + (1 - letGoFloor)·amount); a press still plays its
+--     taps and thump, a snap its thump, and the body loop follows the body formula at drive 0 (no coat); no wax option
+--     follows Config.Wax.enabled.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -210,72 +212,87 @@ return function(t: Context)
 	end)
 
 	-- User 2026-10-12: the wax crunch off (options.wax false, Config.Wax.enabled false): the soft body sounds only.
-	t.test("the wax off: no crack, tick, snap burst, haze or sparkle; taps, thumps and the body loop stay", function()
-		local log = recorder()
-		local silent = FakeRng.new({}) -- no roll at all: a burst, a tick or the haze's start would need one
-		local audio = KneadAudio.new("mochi", 1.2, { player = log.player, rng = silent, wax = false })
-		audio:crack(1, 1)
-		audio:crack(2.8, 0.25)
-		audio:event({ kind = "release", brush = "finger", amount = 1, pan = 0 })
-		audio:event({ kind = "release", brush = "palm", amount = 0.5, pan = 0 })
-		audio:event({ kind = "air", amount = 1, pan = 0 })
-		audio:rewax()
-		expect.equal(#log.plays, 0)
-		expect.equal(FakeRng.calls(silent), 0)
-		-- A stretch let go: the snap thump alone (no bursts) at 0.5 + a, the toy's pitch.
-		audio:event({ kind = "snap", amount = 0.5, pan = 0, slipped = false })
-		expect.equal(#log.plays, 1)
-		expect.equal(log.plays[1].key, "sfx.wax.snapThump")
-		expect.equal(log.plays[1].options.group, "Wax")
-		expect.near(log.plays[1].options.volume, level(WAX.snapThumpLevelDb) * WAX.trim * 1.0, 1e-9)
-		expect.near(log.plays[1].options.pitch, 1.2, 1e-9)
-		expect.equal(FakeRng.calls(silent), 0)
-		audio:destroy()
-
-		-- A press: a finger's tap, then a palm's taps and the thump; every sheet play is a tap region.
-		local pressLog = recorder()
-		local soft = KneadAudio.new("mochi", 1.2, { player = pressLog.player, rng = FakeRng.new(5), wax = false })
-		soft:event({ kind = "press", brush = "finger", pan = 0 })
-		expect.equal(#pressLog.plays, 1) -- the finger's tap plays at once (3 ms lead)
-		soft:event({ kind = "press", brush = "palm", pan = 0 })
-		local taps, thumps = 0, 0
-		for _, play in pressLog.plays do
-			if play.key == "sfx.wax.mochi" then
-				taps += 1
-				expect.truthy(play.options.region.Min >= WAX.tapStart - 1e-9) -- a tap, never a burst or a grain
-			elseif play.key == "sfx.wax.thump" then
-				thumps += 1
+	t.test(
+		"the wax off: no crack, tick, snap burst, haze or sparkle; the slime let-go, taps, thumps, body loop",
+		function()
+			local log = recorder()
+			local silent = FakeRng.new({}) -- no roll at all: a burst, a tick or the haze's start would need one
+			local audio = KneadAudio.new("mochi", 1.2, { player = log.player, rng = silent, wax = false })
+			audio:crack(1, 1)
+			audio:crack(2.8, 0.25)
+			audio:event({ kind = "air", amount = 1, pan = 0 })
+			audio:rewax()
+			expect.equal(#log.plays, 0)
+			-- A press let go: the soft slime let-go on the UI group at the toy's pitch, louder the deeper the press was.
+			audio:event({ kind = "release", brush = "finger", amount = 1, pan = 0 })
+			audio:event({ kind = "release", brush = "palm", amount = 0.5, pan = 0 })
+			expect.equal(#log.plays, 2)
+			local floor = Config.Audio.kneadSoft.letGoFloor
+			for index, amount in { 1, 0.5 } do
+				local play = log.plays[index]
+				expect.equal(play.key, "sfx.squeezeRelease")
+				expect.equal(play.options.group, "UI")
+				expect.near(play.options.volume, floor + (1 - floor) * amount, 1e-9)
 				expect.near(play.options.pitch, 1.2, 1e-9)
 			end
-		end
-		expect.truthy(taps >= 2) -- the finger's and the palm's first (the palm's second may wait a frame)
-		expect.equal(thumps, 1)
+			expect.equal(FakeRng.calls(silent), 0)
+			-- A stretch let go: the snap thump alone (no bursts) at 0.5 + a, the toy's pitch.
+			audio:event({ kind = "snap", amount = 0.5, pan = 0, slipped = false })
+			expect.equal(#log.plays, 3)
+			expect.equal(log.plays[3].key, "sfx.wax.snapThump")
+			expect.equal(log.plays[3].options.group, "Wax")
+			expect.near(log.plays[3].options.volume, level(WAX.snapThumpLevelDb) * WAX.trim * 1.0, 1e-9)
+			expect.near(log.plays[3].options.pitch, 1.2, 1e-9)
+			expect.equal(FakeRng.calls(silent), 0)
+			audio:destroy()
+			audio:event({ kind = "release", brush = "finger", amount = 1, pan = 0 })
+			expect.equal(#log.plays, 3) -- nothing after destroy
 
-		-- The body loop alone starts with the first active frame and follows the body formula at drive 0, no coat.
-		soft:frame(1 / 60, true, 0, 0.8, 0)
-		expect.equal(#pressLog.loops, 1)
-		local body = pressLog.loops[1]
-		expect.equal(body.key, "sfx.wax.body.mochi")
-		for _ = 1, 120 do
+			-- A press: a finger's tap, then a palm's taps and the thump; every sheet play is a tap region.
+			local pressLog = recorder()
+			local soft = KneadAudio.new("mochi", 1.2, { player = pressLog.player, rng = FakeRng.new(5), wax = false })
+			soft:event({ kind = "press", brush = "finger", pan = 0 })
+			expect.equal(#pressLog.plays, 1) -- the finger's tap plays at once (3 ms lead)
+			soft:event({ kind = "press", brush = "palm", pan = 0 })
+			local taps, thumps = 0, 0
+			for _, play in pressLog.plays do
+				if play.key == "sfx.wax.mochi" then
+					taps += 1
+					expect.truthy(play.options.region.Min >= WAX.tapStart - 1e-9) -- a tap, never a burst or a grain
+				elseif play.key == "sfx.wax.thump" then
+					thumps += 1
+					expect.near(play.options.pitch, 1.2, 1e-9)
+				end
+			end
+			expect.truthy(taps >= 2) -- the finger's and the palm's first (the palm's second may wait a frame)
+			expect.equal(thumps, 1)
+
+			-- The body loop alone starts with the first active frame and follows the body formula at drive 0, no coat.
 			soft:frame(1 / 60, true, 0, 0.8, 0)
-		end
-		local _, bodyTarget = KneadAudio.beds(WAX.gain.mochi, 0, 0.8, 0)
-		expect.truthy(bodyTarget > 0)
-		local loopScale = level(WAX.loopLevelDb) * WAX.busGain * WAX.masterGain * WAX.trim
-		expect.near(body.volume, bodyTarget * loopScale, 1e-4)
-		for _ = 1, 120 do
-			soft:frame(1 / 60, false, 0, 0, 0)
-		end
-		expect.near(body.volume, 0, 1e-4)
-		soft:destroy()
-		expect.truthy(body.stopped)
-		expect.equal(#pressLog.loops, 1) -- never a haze loop
+			expect.equal(#pressLog.loops, 1)
+			local body = pressLog.loops[1]
+			expect.equal(body.key, "sfx.wax.body.mochi")
+			for _ = 1, 120 do
+				soft:frame(1 / 60, true, 0, 0.8, 0)
+			end
+			local _, bodyTarget = KneadAudio.beds(WAX.gain.mochi, 0, 0.8, 0)
+			expect.truthy(bodyTarget > 0)
+			local loopScale = level(WAX.loopLevelDb) * WAX.busGain * WAX.masterGain * WAX.trim
+			expect.near(body.volume, bodyTarget * loopScale, 1e-4)
+			for _ = 1, 120 do
+				soft:frame(1 / 60, false, 0, 0, 0)
+			end
+			expect.near(body.volume, 0, 1e-4)
+			soft:destroy()
+			expect.truthy(body.stopped)
+			expect.equal(#pressLog.loops, 1) -- never a haze loop
 
-		-- No wax option: the switch (Config.Wax.enabled).
-		local switchLog = recorder()
-		local switched = KneadAudio.new("foam", 1, { player = switchLog.player, rng = FakeRng.new(3) })
-		switched:crack(1, 1)
-		expect.equal(#switchLog.plays > 0, Config.Wax.enabled)
-		switched:destroy()
-	end)
+			-- No wax option: the switch (Config.Wax.enabled).
+			local switchLog = recorder()
+			local switched = KneadAudio.new("foam", 1, { player = switchLog.player, rng = FakeRng.new(3) })
+			switched:crack(1, 1)
+			expect.equal(#switchLog.plays > 0, Config.Wax.enabled)
+			switched:destroy()
+		end
+	)
 end

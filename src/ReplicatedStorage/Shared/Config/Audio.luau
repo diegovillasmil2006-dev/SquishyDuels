@@ -141,6 +141,13 @@ local Audio = {
 		stopFadeMs = 100, -- design: squishy-lib-v2.js:386 (a 30 ms time constant, cut at 200 ms)
 	},
 
+	-- User 2026-10-12: with the knead's wax crunch off (Config.Wax.enabled), letting go of a finger, palm or thumb press
+	-- plays the soft slime let-go (sfx.squeezeRelease) on the UI group at the toy's pitch (Controllers/KneadAudio), at a
+	-- volume of letGoFloor + (1 - letGoFloor)·amount (amount: how deep the press was, 0-1).
+	kneadSoft = {
+		letGoFloor = 0.35, -- proposal: the lightest let-go at 35% of a full one
+	},
+
 	-- The knead's wax crunch (spec phase2-squeeze §1.22, §3.9-§3.10; design: squish.js:796-945, fx.js:4-61), played by
 	-- Controllers/KneadAudio in the Wax group (no cooldown). The files are 48 kHz mono renders of the design's own
 	-- generators, each normalised to -1 dBFS (scratchpad work/sounds-out/manifest.json, normGainDb); a Volume of
