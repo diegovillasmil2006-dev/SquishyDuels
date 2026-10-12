@@ -70,6 +70,8 @@
 --     C0 writes).
 --   * rest() also puts the face back to normal, the multipliers to 1 and the sections to their base; isResting()
 --     covers every channel. The rest-and-sleep rule above holds with the looks at 1 and every angle at 0.
+--   * setOffsets(offsets?) (spec phase2-squeeze §3.2, Inspect's knead): pivot-space offsets per mesh part, added as
+--     Offset += R⁻¹(o ∘ S), so face and detail parts ride the soft shell; while set, the model never rests.
 -- No connections, instances or threads: the owner puts the deformer (it has destroy()) in its Cleanup.
 
 -- Services
@@ -173,6 +175,7 @@ type DeformerData = {
 	_angles: { number },
 	_sectionsOn: boolean,
 	_freeSections: boolean, -- some section part has no weld (Viewport: written against the current pivot)
+	_offsets: { [BasePart]: Vector3 }?, -- the knead's ride offsets (setOffsets), pivot space before S; nil = none
 }
 
 -- Constants
@@ -560,6 +563,7 @@ end
 local function writeMeshes(self: Deformer, S: Vector3)
 	local pivot: CFrame? = nil -- the current pivot, read once and only for a part placed against it
 	local sectionsOn = self._sectionsOn
+	local rides = self._offsets
 	local d = S - Vector3.one
 	local dx, dy, dz = d.X, d.Y, d.Z
 	for _, data in self._parts do
@@ -586,7 +590,12 @@ local function writeMeshes(self: Deformer, S: Vector3)
 			local look = data.look
 			putScale(data, if look then data.baseScale * kv * lookMul(self, look) else data.baseScale * kv, false)
 			-- R⁻¹(p ∘ S - p) from the per-axis steps (parts never move)
-			putOffset(data, data.baseOffset + data.ox * dx + data.oy * dy + data.oz * dz, false)
+			local offset = data.baseOffset + data.ox * dx + data.oy * dy + data.oz * dz
+			local ride = if rides then rides[data.part] else nil
+			if ride then
+				offset += data.R:VectorToObjectSpace(ride * S) -- the knead's ride (setOffsets): R⁻¹(o ∘ S)
+			end
+			putOffset(data, offset, false)
 		elseif data.solid then
 			-- Team slot models (MeshParts, plain parts): resize and move from the base, never from the current value.
 			putSize(data, (data.baseSize :: Vector3) * kv, false)
@@ -662,7 +671,7 @@ local function write(self: Deformer)
 	-- Mesh scale, look multipliers and sections.
 	local S = self._scale
 	updateLooks(self)
-	if nearOne(S) and looksAtRest(self) then
+	if nearOne(S) and looksAtRest(self) and self._offsets == nil then
 		if not self._meshAtBase then
 			writeBaseMeshes(self)
 			self._meshAtBase = true
@@ -735,6 +744,20 @@ function DeformerClass.setFace(self: Deformer, state: Face, force: boolean?)
 	end
 	setFaceState(self, state, force == true)
 	write(self)
+end
+
+-- The knead screen's ride (spec phase2-squeeze §3.2): pivot-space offsets (studs, before the scale) added to mesh parts'
+-- positions, so face and detail parts ride the soft shell's surface (Offset += R⁻¹(o ∘ S)); nil turns them off (the
+-- base values come back with the next write). A section part turning (angle ≠ 0) keeps its base Offset. Written by the
+-- next apply / set / setScale; the table is read, not copied (the owner may update it in place every frame).
+function DeformerClass.setOffsets(self: Deformer, offsets: { [BasePart]: Vector3 }?)
+	if self._destroyed then
+		return
+	end
+	if offsets == nil and self._offsets ~= nil then
+		self._meshAtBase = false -- the rest path writes the base values again
+	end
+	self._offsets = offsets
 end
 
 function DeformerClass.getFace(self: Deformer): Face
@@ -903,6 +926,7 @@ function SquishDeformer.attach(model: Model, options: Options?): Deformer
 		_angles = table.create(#sections, 0),
 		_sectionsOn = false,
 		_freeSections = freeSections,
+		_offsets = nil,
 	}
 	local deformer = setmetatable(data, DeformerClass)
 	registry[model] = deformer

@@ -235,6 +235,33 @@ local SLOTS: { AssetSlot } = {
 		"Bubble Pop pops; design fp.js:165 blub, fp.js:361; rendered sfx_ultBubblePop.wav (0.4 s)"
 	),
 
+	-- The knead's wax crunch (spec phase2-squeeze §3.10): renders of the design's own generators (squish.js:676-709,
+	-- 829-833, fx.js:41), 48 kHz mono, in the scratchpad's work/sounds-out (the sheets are also "wax crack sheet -
+	-- <feel>.wav" in the upload folder's Extras). 2D; Controllers/KneadAudio plays them in the Wax group at the levels of
+	-- Config.Audio.wax (volume 1 here). A sheet is played one region at a time (Sound.PlaybackRegion): 54 bursts, 48
+	-- grains, 5 taps (layout: Config.Audio.wax).
+	soundSlot("sfx.wax.foam", "SFX", false, 1, "upload wax_sheet_foam.wav (9.58 s): foam crack sheet, by region"),
+	soundSlot("sfx.wax.mochi", "SFX", false, 1, "upload wax_sheet_mochi.wav (9.58 s): mochi crack sheet, by region"),
+	soundSlot("sfx.wax.jelly", "SFX", false, 1, "upload wax_sheet_jelly.wav (9.58 s): jelly crack sheet, by region"),
+	soundSlot("sfx.wax.plush", "SFX", false, 1, "upload wax_sheet_plush.wav (9.58 s): plush crack sheet, by region"),
+	soundSlot("sfx.wax.haze.foam", "SFX", false, 1, "upload wax_haze_foam.wav (2 s loop): micro-crackle haze bed"),
+	soundSlot("sfx.wax.haze.mochi", "SFX", false, 1, "upload wax_haze_mochi.wav (2 s loop): micro-crackle haze bed"),
+	soundSlot("sfx.wax.haze.jelly", "SFX", false, 1, "upload wax_haze_jelly.wav (2 s loop): micro-crackle haze bed"),
+	soundSlot("sfx.wax.haze.plush", "SFX", false, 1, "upload wax_haze_plush.wav (2 s loop): micro-crackle haze bed"),
+	soundSlot("sfx.wax.body.foam", "SFX", false, 1, "upload wax_body_foam.wav (2 s loop): foam body bed"),
+	soundSlot("sfx.wax.body.mochi", "SFX", false, 1, "upload wax_body_mochi.wav (2 s loop): foam body bed"),
+	soundSlot("sfx.wax.body.jelly", "SFX", false, 1, "upload wax_body_jelly.wav (2 s loop): foam body bed"),
+	soundSlot("sfx.wax.body.plush", "SFX", false, 1, "upload wax_body_plush.wav (2 s loop): foam body bed"),
+	soundSlot("sfx.wax.thump", "SFX", false, 1, "upload wax_thump.wav (0.22 s): palm / thumb press thump, p = 1"),
+	soundSlot("sfx.wax.snapThump", "SFX", false, 1, "upload wax_snapThump.wav (0.26 s): stretch let-go thump, p = 1"),
+	soundSlot(
+		"sfx.wax.rewax",
+		"SFX",
+		false,
+		1,
+		"upload wax_rewax_1.wav and wax_rewax_2.wav (≤ 0.4 s; the second as a variant): the re-wax sparkle"
+	),
+
 	-- UI (§14.2)
 	soundSlot("ui.click", "UI", false, nil, "≤ 0.25 s; search: ui+click+soft, button+pop, menu+tick"),
 	soundSlot("ui.hover", "UI", false, nil, "≤ 0.25 s; search: ui+click+soft, button+pop, menu+tick"),

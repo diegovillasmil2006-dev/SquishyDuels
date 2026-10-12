@@ -65,7 +65,8 @@ return function(t: Context)
 		local soundKeys: { [string]: boolean } = {}
 		local count = 0
 		for _, slot in AssetTable.all() do
-			if slot.kind == "sound" then
+			-- The knead's wax sounds (spec phase2-squeeze §3.10) are uploaded renders played by region, never picked.
+			if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." then
 				soundKeys[slot.key] = true
 				count += 1
 			end

@@ -72,6 +72,13 @@
 --   §10.7's 2D dots already stand for the puffs); its wings and tail flare (sections, they show).
 -- * A held trigger whose Gamepad1 level reads 0 (another gamepad, a digital trigger) zooms at full press.
 -- * open() without a source uses "api" (Studio hooks).
+-- Knead (spec phase2-squeeze §3.1, §3.6; user decisions 2026-10-11): Inspect is the knead screen. buildModel starts
+-- Controllers/KneadController on its model (deps.Knead, so tests swap it too; stopped before the model goes: select,
+-- close). Once it is live a press on the toy kneads it and off its edge stretches it (the background still orbits, a
+-- pinch still zooms), F / ButtonX hold the thumb crunch, Q / ButtonL1 the palm squeeze (InspectPalms), W / ButtonR1
+-- re-wax (InspectRewax), R / ButtonY faces it front; the panel's Thumb crunch and Squeeze buttons are holds and Re-wax
+-- a press; no hold squeeze, tap preview or Squeeze-button preview. While it builds, or when it cannot (no shell body,
+-- the mesh quota, an engine failure), Inspect is exactly as described above.
 -- Tests: useDeps(overrides) swaps the side-effecting surfaces (camera, controls, sound, state, UI, stage, cache,
 -- deformer, scheduler, panel, input, prompts, Workspace, motion), screenSpec() returns the handlers init() registers
 -- and actionHandlers() the ones it binds, so InspectController_Test drives open / select / close, the preview, the keys
@@ -118,6 +125,7 @@ local ViewportStage = require(Client.UI.ViewportStage)
 local CameraController = require(script.Parent.CameraController)
 local ControlsController = require(script.Parent.ControlsController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
+local KneadController = require(script.Parent.KneadController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
@@ -136,7 +144,7 @@ export type OpenOptions = {
 -- (1 = shut), every section at `sections` × its maxDeg (-1.1 to 1.1; ±1 = ±max).
 export type DebugPose = { squash: number?, face: string?, blink: number?, sections: number? }
 
-type GestureMode = "none" | "drag" | "pinch" | "done"
+type GestureMode = "none" | "drag" | "pinch" | "done" | "knead" -- knead: the press is the knead's (spec phase2-squeeze)
 
 -- A pointer's hold gesture: not yet decided, pressing the rig, or over (a tap, the drag, or a finished hold).
 type HoldState = "none" | "pressing" | "done"
@@ -201,6 +209,7 @@ type Session = {
 	triggers: { [Enum.KeyCode]: boolean }, -- R2 / L2 held
 	shownKey: string?, -- what panel:show() last showed (id, owned, equipped, shop)
 	equip: InspectFormat.EquipState?,
+	knead: KneadController.Handle?, -- the knead screen (spec phase2-squeeze §3.6); nil: today's squeeze preview
 }
 
 -- Constants
@@ -252,6 +261,7 @@ local REAL_DEPS = {
 	Prompts = ProximityPromptService,
 	Workspace = Workspace,
 	Motion = Tweens, -- reducedMotion()
+	Knead = KneadController, -- start(args): the knead screen (spec phase2-squeeze)
 }
 type Deps = typeof(REAL_DEPS)
 
@@ -296,6 +306,12 @@ end
 
 local function ownedNow(s: Session): boolean
 	return deps.State.owns(s.id) or s.ownedOverride == true
+end
+
+-- Spec phase2-squeeze §3.6: the knead screen is live (the toy kneads; no squeeze preview).
+local function kneadLive(s: Session): boolean
+	local knead = s.knead
+	return knead ~= nil and knead:isLive()
 end
 
 local function equipStateOf(s: Session): InspectFormat.EquipState
@@ -552,6 +568,10 @@ end
 local function cancelInput(s: Session)
 	endGestures(s)
 	endKeySqueeze(s)
+	local knead = s.knead
+	if knead then
+		knead:cancel() -- every knead press and hold ends too
+	end
 	table.clear(s.keys)
 	table.clear(s.triggers)
 	s.stick = Vector2.zero
@@ -626,6 +646,12 @@ local function pointerBegan(s: Session, input: InputObject)
 		{ input = input, touch = touch, start = position, last = position, at = os.clock(), moved = 0, hold = "none" }
 	if g.mode == "none" and #g.pointers == 0 then
 		table.insert(g.pointers, pointer)
+		local knead = s.knead
+		if knead ~= nil and knead:pointerDown(position, touch) then
+			g.mode = "knead" -- spec phase2-squeeze §3.6: a press on the toy kneads it (no orbit, no hold)
+			pointer.hold = "done"
+			return
+		end
 		g.mode = "drag"
 		g.pending = Vector2.zero
 		OrbitCamera.beginDrag(s.orbit)
@@ -643,6 +669,10 @@ end
 
 local function pointerChanged(s: Session, input: InputObject)
 	local g = s.gesture
+	local knead = s.knead
+	if knead ~= nil and #g.pointers == 0 and input.UserInputType == Enum.UserInputType.MouseMovement then
+		knead:hover(positionOf(input)) -- the fingertip ring over the toy (spec phase2-squeeze §3.6)
+	end
 	if #g.pointers == 0 then
 		return
 	end
@@ -666,6 +696,10 @@ local function pointerChanged(s: Session, input: InputObject)
 	pointer.moved = math.max(pointer.moved, (position - pointer.start).Magnitude)
 	if g.mode == "drag" then
 		g.pending += delta
+	elseif g.mode == "knead" then
+		if knead then
+			knead:pointerMove(position)
+		end
 	elseif g.mode == "pinch" and #g.pointers == 2 then
 		local distance = (g.pointers[1].last - g.pointers[2].last).Magnitude
 		OrbitCamera.setZoom(s.orbit, OrbitCamera.pinchZoom(g.pinchZoom, g.pinchDist, distance))
@@ -701,9 +735,15 @@ local function pointerEnded(s: Session, input: InputObject)
 		local heldMs = (os.clock() - pointer.at) * 1000
 		local tap = undecided and OrbitCamera.isTap(pointer.moved, heldMs)
 		OrbitCamera.endDrag(s.orbit, tap or reduced())
-		if tap and inputLive() and tapHitsModel(s, pointer.last) then
+		if tap and inputLive() and not kneadLive(s) and tapHitsModel(s, pointer.last) then
 			previewSqueeze(s)
 		end
+	elseif g.mode == "knead" then
+		local knead = s.knead
+		if knead then
+			knead:pointerUp()
+		end
+		g.mode = "none"
 	elseif g.mode == "pinch" then
 		g.mode = if #g.pointers > 0 then "done" else "none"
 	end
@@ -824,7 +864,13 @@ local function step(s: Session, dt: number, now: number): boolean
 	if s.model ~= nil and stage:model() == s.model then
 		stage:setView(yaw, pitch, zoom)
 	end
-	stepHold(s, now)
+	local knead = s.knead
+	if knead == nil or not knead:isLive() then
+		stepHold(s, now) -- kneading, a still press is the finger, not a squeeze
+	end
+	if knead then
+		knead:step(dt, now) -- spec phase2-squeeze: before the rig, so its kicks and face land in this write
+	end
 	debug.profilebegin(PROFILE_RIGS)
 	stepRig(s, dt, now)
 	debug.profileend()
@@ -833,6 +879,61 @@ local function step(s: Session, dt: number, now: number): boolean
 end
 
 -- Open, select, close ----------------------------------------------------------------------------------------------------
+
+-- Spec phase2-squeeze §3.1, §3.6: the knead screen on the model buildModel just made (Controllers/KneadController). nil
+-- (no shell body, no mesh quota slot) or a failed start keeps today's squeeze preview.
+local function startKnead(s: Session)
+	local model = s.model
+	if model == nil then
+		return
+	end
+	local ok, handle = pcall(deps.Knead.start, {
+		model = model,
+		def = s.def,
+		stage = s.stage,
+		orbit = s.orbit,
+		rig = function(): SquishRig.Rig?
+			return s.rig
+		end,
+		deformer = function(): SquishDeformer.Deformer?
+			return s.deformer
+		end,
+		-- The deformer again, after the shell joined or left the model (it drives the shell as a solid part).
+		reattach = function()
+			if session ~= s or s.model ~= model then
+				return
+			end
+			local old = s.deformer
+			if old then
+				old:destroy()
+			end
+			s.deformer = deps.Deformer.attach(model, { twist = "pivot" })
+		end,
+		onView = function(view: KneadController.View?)
+			local p = panel
+			if p ~= nil and session == s then
+				p:setKnead(view)
+			end
+		end,
+		reduced = reduced,
+	})
+	if ok then
+		s.knead = handle
+	else
+		log:warn("knead start failed:", handle)
+	end
+end
+
+-- The knead stops before its model goes (select, close): the model, the panel and the view defaults come back.
+local function stopKnead(s: Session)
+	local knead = s.knead
+	s.knead = nil
+	if knead then
+		guarded("knead stop", function()
+			knead:destroy()
+		end)
+	end
+end
 
 -- Builds (or adopts) the model of s.def on the stage, attaches its deformer, gives it its rig (the reveal's when it was
 -- handed over, takeRig; else a new one with the wow face) on Y, and resets the view to its defaults.
@@ -879,11 +980,13 @@ local function buildModel(s: Session, adopt: boolean)
 	OrbitCamera.reset(orbit)
 	OrbitCamera.snap(orbit)
 	stage:setView(OrbitCamera.view(orbit))
+	startKnead(s)
 end
 
 -- §10.4 select: swap the model, reset the view; the restore snapshot stays.
 local function selectInto(s: Session, def: Types.SquishyDef, source: string, owned: boolean?)
 	cancelInput(s)
+	stopKnead(s)
 	clearDots(s)
 	s.rig = nil
 	s.pose = nil
@@ -946,6 +1049,7 @@ local function beginSession(def: Types.SquishyDef, source: string, owned: boolea
 		triggers = {},
 		shownKey = nil,
 		equip = nil,
+		knead = nil,
 	}
 	session = s
 	-- §10.4 step 2: the restore snapshot, once per open.
@@ -1054,6 +1158,7 @@ local function onClose(reason: string)
 		return
 	end
 	phase = "Closing"
+	stopKnead(s) -- first: its cursor, the panel and the model are back before the snapshot restores
 	restore(s)
 	cancelInput(s)
 	clearDots(s)
@@ -1151,13 +1256,33 @@ local callbacks: InspectPanel.Callbacks = {
 	end,
 	onSqueeze = function()
 		local s = session
-		if s ~= nil and phase == "Open" then
+		if s ~= nil and phase == "Open" and not kneadLive(s) then -- kneading, Squeeze is the palms' hold
 			previewSqueeze(s)
 		end
 	end,
 	onResetView = resetView,
 	onEquip = equip,
 	onViewInShop = viewInShop,
+	-- Spec phase2-squeeze §3.6: the panel's Thumb crunch and Squeeze holds, and Re-wax.
+	onKneadHold = function(action: string, down: boolean)
+		local s = session
+		local knead = if s ~= nil and phase == "Open" then s.knead else nil
+		if knead == nil or (down and not (knead:isLive() and isTop())) then
+			return
+		end
+		if action == "crunch" then
+			knead:crunch(down)
+		elseif action == "palms" then
+			knead:palms(down)
+		end
+	end,
+	onRewax = function()
+		local s = session
+		local knead = if s ~= nil and phase == "Open" then s.knead else nil
+		if knead ~= nil and knead:isLive() and isTop() then
+			knead:rewax()
+		end
+	end,
 }
 
 local screenSpec: UIController.ScreenSpec = {
@@ -1245,13 +1370,43 @@ local HANDLERS: { [string]: ControlsController.Handler } = {
 		return true
 	end),
 	-- F / ButtonX (first-person spec §3.7): down presses (HoldSqueeze), up lets go; a quick press is exactly a tap.
+	-- Kneading (spec phase2-squeeze §3.6) they hold the thumb crunch instead.
 	InspectSqueeze = inspectAction(function(s: Session, state: Enum.UserInputState): boolean?
+		local knead = s.knead
 		if state == Enum.UserInputState.Begin then
-			if beginSqueeze(s) then
+			if knead ~= nil and knead:isLive() then
+				knead:crunch(true)
+			elseif beginSqueeze(s) then
 				s.keySqueeze = true
 			end
 		elseif state == Enum.UserInputState.End then
 			endKeySqueeze(s)
+			if knead then
+				knead:crunch(false)
+			end
+		end
+		return true
+	end),
+	-- Q / ButtonL1 hold the palm squeeze, W / ButtonR1 re-wax (spec phase2-squeeze §3.6); they pass unless kneading.
+	InspectPalms = inspectAction(function(s: Session, state: Enum.UserInputState): boolean?
+		local knead = s.knead
+		if knead == nil or (state == Enum.UserInputState.Begin and not knead:isLive()) then
+			return nil
+		end
+		if state == Enum.UserInputState.Begin then
+			knead:palms(true)
+		elseif state == Enum.UserInputState.End then
+			knead:palms(false)
+		end
+		return true
+	end),
+	InspectRewax = inspectAction(function(s: Session, state: Enum.UserInputState): boolean?
+		local knead = s.knead
+		if knead == nil or not knead:isLive() then
+			return nil
+		end
+		if state == Enum.UserInputState.Begin then
+			knead:rewax()
 		end
 		return true
 	end),
@@ -1360,6 +1515,7 @@ function InspectController.debugState(): { [string]: any }
 	local selected = GuiService.SelectedObject
 	local view = { yaw = 0, pitch = 0, zoom = 1 }
 	local rig = if s then s.rig else nil
+	local knead = if s then s.knead else nil
 	local pressing = false
 	if s then
 		local yaw, pitch, zoom = OrbitCamera.view(s.orbit)
@@ -1398,6 +1554,7 @@ function InspectController.debugState(): { [string]: any }
 		restorePending = s ~= nil and (s.camera ~= nil or s.release ~= nil or s.promptsPending),
 		equip = if s then s.equip else nil,
 		pendingEquip = pendingEquip,
+		knead = if knead then knead:debugState() else nil, -- spec phase2-squeeze §3.14 (Studio checks)
 	}
 end
 

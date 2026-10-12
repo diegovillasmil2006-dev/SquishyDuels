@@ -193,6 +193,17 @@ local Palette = {
 	DisabledTextDark = Color3.fromHex("#ABA0BB"),
 	Backdrop = Color3.fromHex("#140E1C"), -- the modal dimmer and wash
 
+	-- The knead screen in Inspect (spec phase2-squeeze §1.16-§1.20; user decision 2026-10-11: the design's exact hex,
+	-- read by UI/Components/WaxMeter, UI/KneadOverlay and Anim/FlakePool). The paper and ink of the design's HUD, its coat
+	-- bar and state word, the vignette's warm stops (its outer stop is KneadInk) and the re-wax sparkle's cream.
+	KneadPaper = Color3.fromHex("#FFF9F1"), -- design: html:20 (--paper)
+	KneadInk = Color3.fromHex("#22172A"), -- design: html:20 (--ink); html:70 (the vignette's 100% stop)
+	WaxBar = Color3.fromHex("#F2C94C"), -- design: html:76
+	WaxState = Color3.fromHex("#C94860"), -- design: html:77
+	VignetteGlow = Color3.fromHex("#FFD696"), -- design: html:70 (rgba(255,214,150,0) at 44%)
+	VignetteWarm = Color3.fromHex("#FFBE78"), -- design: html:70 (rgba(255,190,120,.10) at 64%)
+	WaxSparkle = Color3.fromHex("#FFF2B8"), -- design: fp.js:687 (with White)
+
 	-- Moves (spec phase 5): the design's dash and Epic ultimate effect colours, world only (VfxController, DashController,
 	-- Anim/UltFx). Where the design uses its own rarity colour, the game's Art/RarityStyle colour is used instead.
 	DashPuff = Color3.fromHex("#FFF6EA"), -- design: fp.js:516 (push-off and plant puffs)

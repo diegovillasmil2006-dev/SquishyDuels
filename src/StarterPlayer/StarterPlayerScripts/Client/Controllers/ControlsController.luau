@@ -58,7 +58,8 @@
 --   priority, Sink only while the context is on and the handler handles them). Reading: the SD_MoveSink fallback sits
 --   at High + 100 and sinks the arrow keys whenever movement is blocked, which is always the case while Inspect is
 --   open, so an action with aboveMoveSink = true (the arrows) is bound one step above the sink; a handler that passes
---   hands them on to it.
+--   hands them on to it. Knead (spec phase2-squeeze §3.6): InspectPalms (Q / ButtonL1, held) and InspectRewax (W /
+--   ButtonR1, aboveMoveSink); while Inspect kneads, InspectSqueeze (F / ButtonX) is the thumb crunch.
 -- First person (spec 2026-10-10 §3.1, §3.5): DuelSqueeze = F, E, ButtonX and DuelForfeit = Backspace (keyboard only) in
 --   the Duel context; PracticeSqueeze = F, E, ButtonX in the Practice context, bound one step above the lobby actions
 --   (aboveLobby: Medium + 1, still under the High overlay actions), so in the practice throw box it sees F, E and
@@ -247,6 +248,11 @@ local ACTIONS: { [string]: ActionDef } = {
 		inputs = { Enum.KeyCode.ButtonR2, Enum.KeyCode.ButtonL2 },
 		triggerThreshold = Config.Inspect.Input.triggerDeadzone,
 	},
+	-- Spec phase2-squeeze §3.6, Inspect's knead (InspectController binds them): Q hold = the palm squeeze, W = re-wax (W
+	-- one step above SD_MoveSink, like the arrows). The gamepad buttons are a build choice (NOT IN DESIGN): L1 / R1 are
+	-- ModalTabPrevious / Next, which pass while Inspect (no tabs) is the top modal.
+	InspectPalms = { context = "Inspect", inputs = { Enum.KeyCode.Q, Enum.KeyCode.ButtonL1 } },
+	InspectRewax = { context = "Inspect", inputs = { Enum.KeyCode.W, Enum.KeyCode.ButtonR1 }, aboveMoveSink = true },
 }
 -- Lobby HUD spec 2026-10-11 §2: the action a left click or a touch on the 3D world presses (UserInputService, not a
 -- binding: see the header).

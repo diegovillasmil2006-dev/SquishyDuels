@@ -131,10 +131,11 @@ return function(t: Context)
 		-- Asking again for the same pad takes no second slot.
 		expect.equal(GiantPadController.pathABlocker("jelly", free), nil)
 		expect.equal(free:count(), 1)
-		-- The 3 pads and the ripple skin fill the 4 slots; nothing else fits.
+		-- The 3 pads, the ripple skin and the knead shell (spec phase2-squeeze §3.2) fill the 5 slots; nothing else fits.
 		expect.equal(GiantPadController.pathABlocker("marshmallow", free), nil)
 		expect.equal(GiantPadController.pathABlocker("royal", free), nil)
 		expect.truthy(free:tryAcquire("arena"))
+		expect.truthy(free:tryAcquire("soft"))
 		expect.falsy(free:tryAcquire("backstop"))
 	end)
 end

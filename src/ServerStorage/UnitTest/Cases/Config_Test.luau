@@ -1,5 +1,8 @@
 --!strict
 -- Config_Test: unit tests for ReplicatedStorage.Shared.Config. Server only (ServerStorage.UnitTest).
+-- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead and Config.Wax (the 18th and 19th sections) hold the design's
+-- squish.js numbers; validate keeps jelly's 3.59 Hz knead spring as the documented exception and reports a knead spring
+-- or depth spring above 3 Hz, a crunch faster than 3 presses a second, broken shares, shell budgets and wax rules.
 -- Contract (DESIGN §2.2, §0.3, §2.7, §2.8, §6.3, §6.11, §17.9): Config merges the 16 section modules and deep-freezes
 -- them; Config.validate(): {string} returns human-readable problems, an empty list for the shipped config, and
 -- reports broken cross-references (every client -> server remote needs a rate entry; every click pays, so the squeeze
@@ -72,6 +75,8 @@ local SECTIONS = {
 	"Debug",
 	"Grip",
 	"FirstPerson", -- first person (spec 2026-10-10 §4.1)
+	"Knead", -- the knead screen's soft body (spec phase2-squeeze §3.11)
+	"Wax", -- the knead screen's wax coat (spec phase2-squeeze §3.11)
 }
 
 local CREATOR_GROUP_ID = 706867720 -- DIJAY Studios (DESIGN §1.1, verified)
@@ -1714,6 +1719,111 @@ return function(t: Context)
 		end
 	end)
 
+	-- Squeeze feel (spec phase2-squeeze §3.11) ----------------------------------------------------------------
+
+	t.test("Knead and Wax hold the design's numbers (squish.js:13-48, 173-174, 392, 425-457)", function()
+		local knead, wax = Config.Knead, Config.Wax
+		-- rise, fast, k, c, beta, gamma, smear, pull, pullR, neck, plastic, lump (squish.js:29-32)
+		local fields =
+			{ "rise", "fast", "k", "c", "beta", "gamma", "smear", "pull", "pullR", "neck", "plastic", "lump" }
+		local rows: { [string]: { number } } = {
+			foam = { 1.9, 0.12, 300, 20, 0.7, 2, 0.62, 0.36, 0.17, 0.6, 0.08, 0.32 },
+			mochi = { 2.7, 0.05, 190, 11, 1, 2.3, 0.95, 0.62, 0.2, 0.85, 0.22, 0.18 },
+			jelly = { 0.4, 0.8, 520, 7, 1.05, 2.7, 0.45, 0.3, 0.17, 0.45, 0, 0.08 },
+			plush = { 1.1, 0.32, 320, 22, 0.7, 1.8, 0.42, 0.3, 0.19, 0.5, 0.06, 0.28 },
+		}
+		for feel, row in rows do
+			for index, field in fields do
+				expect.equal(knead.feels[feel][field], row[index])
+			end
+		end
+		-- cell, th, wear, gloss (squish.js:41-47)
+		local coats: { [string]: { number } } = {
+			foam = { 0.075, 1.45, 0.05, 0.6 },
+			mochi = { 0.06, 2.6, 0.045, 0.9 },
+			jelly = { 0.095, 2.8, 0.065, 1 },
+			plush = { 0.07, 2.4, 0.06, 0.35 },
+		}
+		for feel, row in coats do
+			expect.deepEqual(wax.coats[feel], { cell = row[1], th = row[2], wear = row[3], gloss = row[4] })
+		end
+		-- Every rig feel (the blueprints' motion.feel) has a knead row and a coat.
+		for feel in Config.Anim.rig.feels do
+			expect.truthy(knead.feels[feel] ~= nil and wax.coats[feel] ~= nil)
+		end
+		expect.equal(knead.defaultFeel, "foam")
+		expect.equal(knead.brushSlots, 4)
+		expect.deepEqual(knead.finger, { radius = 0.15, depthOfRadius = 0.95, depthOfMinDim = 0.42, falloff = 1.4 })
+		expect.deepEqual(
+			knead.palm,
+			{ radius = 0.5, falloff = 0.55, depthOfX = 0.3, depthOfSqueeze = 0.55, betaShare = 0.35, power = 1.5 }
+		)
+		expect.deepEqual(
+			knead.thumb,
+			{ radius = 0.11, falloff = 1.35, depthOfRadius = 0.9, depthOfMinDim = 0.3, betaShare = 0.6 }
+		)
+		local crunch = knead.crunch
+		expect.deepEqual(
+			{ crunch.period, crunch.low, crunch.pressEnd, crunch.holdEnd, crunch.releaseDrop, crunch.follow },
+			{ 0.56, 0.42, 0.5, 0.7, 0.58, 22 }
+		)
+		expect.deepEqual(
+			{ crunch.gap, crunch.slide, crunch.height, crunch.spanX, crunch.spanY },
+			{ 0.48, 0.2, 0.12, 0.36, 0.32 }
+		)
+		expect.equal(knead.memory.stampSpacing, 0.28)
+		expect.equal(knead.pull.slip, 1.75)
+		expect.equal(knead.sleepSeconds, 0.12)
+		expect.equal(knead.sounds.pan, 0.55) -- fp.js:103
+		expect.deepEqual(
+			wax.cells,
+			{ spacing = 0.085, maxCells = 480, thSpread = 0.35, neighbourRadius = 2, footprintRadius = 1.7 }
+		)
+		expect.deepEqual(wax.stress, { relax = 1.4, bend = 1.3, worn = 0.3 })
+		expect.equal(wax.cracks.sounding, 6)
+		expect.equal(wax.cracks.damage, 0.14)
+		expect.equal(wax.cracks.cascade, 0.07)
+		expect.truthy(wax.thScale > 0)
+	end)
+
+	t.test("validate keeps jelly's 3.59 Hz knead spring as the exception; it reports broken Knead / Wax", function()
+		-- The shipped Knead and Wax have no problem, jelly's k 520 / c 7 (3.59 Hz) included.
+		for _, line in Config.validate() do
+			expect.falsy(string.find(line, "Config.Knead", 1, true) or string.find(line, "Config.Wax", 1, true))
+		end
+		local problems = validateBrokenSections(t.Shared, {
+			Knead = function(knead)
+				knead.feels.foam.k = 2000 -- 7.1 Hz
+				knead.feels.mochi.fast = 1.5
+				knead.feels.jelly.k = 900 -- the exception: never checked against 3 Hz
+				knead.depth.spring = { 6500, 5 } -- 12.8 Hz
+				knead.crunch.period = 0.2 -- 5 presses a second
+				knead.shell.lowVertices = 3000 -- above highVertices
+				knead.sounds.pan = 2
+			end,
+			Wax = function(wax)
+				wax.coats.plush.th = 0
+				wax.thScale = -1
+				wax.cells.maxCells = 0.5
+				wax.cracks.sounding = 0
+				wax.lines.revealHigh = 0.01 -- below revealLow
+			end,
+		})
+		expect.truthy(containsAll(problems, { "Config.Knead.feels.foam", "Hz" }))
+		expect.truthy(containsText(problems, "Config.Knead.feels.mochi.fast"))
+		expect.falsy(containsText(problems, "Config.Knead.feels.jelly"))
+		expect.truthy(containsAll(problems, { "Config.Knead.depth.spring", "Hz" }))
+		expect.truthy(containsText(problems, "Config.Knead.crunch.period"))
+		expect.truthy(containsText(problems, "Config.Knead.shell.lowVertices"))
+		expect.truthy(containsText(problems, "Config.Knead.sounds.pan"))
+		expect.truthy(containsText(problems, "Config.Wax.coats.plush.th"))
+		expect.truthy(containsText(problems, "Config.Wax.thScale"))
+		expect.truthy(containsText(problems, "Config.Wax.cells.maxCells"))
+		expect.truthy(containsText(problems, "Config.Wax.cracks.sounding"))
+		expect.truthy(containsText(problems, "Config.Wax.lines.revealLow"))
+		expect.falsy(containsText(problems, "check crashed"))
+	end)
+
 	-- Sections and freezing ---------------------------------------------------------------------------------
 
 	-- Every section named in DESIGN §2.2 is merged into Config.
@@ -1854,7 +1964,7 @@ return function(t: Context)
 		expect.equal(vfx.Budgets.splats, 12)
 		expect.equal(vfx.Budgets.ambientMovers, 6)
 		expect.equal(vfx.Budgets.uiJuiceFrames, 32)
-		expect.equal(vfx.Budgets.editableMeshes, 4)
+		expect.equal(vfx.Budgets.editableMeshes, 5) -- spec phase2-squeeze §3.2: + the knead shell
 
 		-- Config.Anim
 		local ripple = anim.jellyRipple
@@ -2317,15 +2427,15 @@ return function(t: Context)
 		expect.truthy(containsAll(jiggle, { "F9:", "motionJiggle", "above 3 Hz" }))
 	end)
 
-	t.test("F10 reports room for 3 editable meshes when the pads and a ripple skin need 4", function()
+	t.test("F10 reports room for 4 editable meshes when the pads, a ripple skin and the knead shell need 5", function()
 		local problems = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
-			vfx.Budgets.editableMeshes = 3
+			vfx.Budgets.editableMeshes = 4
 		end)
-		expect.truthy(containsAll(problems, { "F10:", "editableMeshes (3)" }))
-		-- Without the ripple's path A, 3 is enough again.
+		expect.truthy(containsAll(problems, { "F10:", "editableMeshes (4)", "knead shell" }))
+		-- Without the ripple's path A, 4 is enough again.
 		local noSkin = validateBrokenSections(t.Shared, {
 			Vfx = function(vfx)
-				vfx.Budgets.editableMeshes = 3
+				vfx.Budgets.editableMeshes = 4
 			end,
 			Anim = function(anim)
 				anim.jellyRipple.pathA = false

@@ -437,6 +437,11 @@ return function(t: Context)
 					return o.reduced == true
 				end,
 			},
+			Knead = { -- no knead screen here (InspectKnead_Test covers the hooks): today's squeeze
+				start = function(): any
+					return nil
+				end,
+			},
 		})
 		w.spec = Inspect.screenSpec()
 		w.spec.build(Instance.new("Folder"))

@@ -44,6 +44,9 @@
 -- and the squeeze axis (step 2's hand, bob and per-toy offsets went on 2026-10-11). Design fidelity (spec 2026-10-11
 -- §3, §5, §6): the 3D Lab viewmodel values (arm parts, colours, outline, held toy, pop-in, squeeze, focus, throw extras,
 -- Dragon charge), Inspect's squeeze axis, and Grip.squeezeCoinsAlertPerHour in 1..maxSqueezeCoinsPerHour.
+-- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead and Config.Wax have a row for every Config.Anim.rig feel, each
+-- share, time and gain in range and every spring <= 3 Hz except jelly's per-vertex knead spring (the design's own 3.59
+-- Hz wobble, a documented exception); the crunch rhythm <= 3 presses a second.
 -- Convention: every string field whose name ends in "Key" (nameKey, textKey, ...) is a Strings path; validate()
 -- resolves each one with Strings.resolve, in Config and in the Catalog, Boxes and QuestDefs data.
 
@@ -58,12 +61,14 @@ local Economy = require(script.Economy)
 local FirstPerson = require(script.FirstPerson)
 local Grip = require(script.Grip)
 local Inspect = require(script.Inspect)
+local Knead = require(script.Knead)
 local Monetization = require(script.Monetization)
 local Net = require(script.Net)
 local Onboarding = require(script.Onboarding)
 local Squeeze = require(script.Squeeze)
 local UI = require(script.UI)
 local Vfx = require(script.Vfx)
+local Wax = require(script.Wax)
 
 type Problems = { string }
 type KeyRef = { path: string, key: string }
@@ -115,7 +120,7 @@ local BIND_TO_CLOSE_LIMIT_SECONDS = 30 -- Roblox gives BindToClose 30 s
 local MAX_HIGHLIGHTS = 255 -- engine cap
 local THROW_STATS = { "speed", "radius", "cooldown", "windup", "gravity" }
 local AIM_INPUTS = { "Gamepad", "Touch", "KeyboardAndMouse" } -- Enum.PreferredInput item names
-local AUDIO_GROUPS = { "Music", "SFX", "UI", "Ambient" }
+local AUDIO_GROUPS = { "Music", "SFX", "UI", "Ambient", "Wax" } -- Wax: spec phase2-squeeze §3.9
 local HEX_COLOR_PATTERN = "^#%x%x%x%x%x%x$"
 local STATION_ID_PATTERN = "^squeeze_%d%d$" -- §2.7
 local SQRT2 = math.sqrt(2)
@@ -171,12 +176,14 @@ local Config = {
 	FirstPerson = FirstPerson,
 	Grip = Grip,
 	Inspect = Inspect,
+	Knead = Knead,
 	Monetization = Monetization,
 	Net = Net,
 	Onboarding = Onboarding,
 	Squeeze = Squeeze,
 	UI = UI,
 	Vfx = Vfx,
+	Wax = Wax,
 }
 
 -- Private: freezing -------------------------------------------------------------------------------------------------
@@ -2043,6 +2050,514 @@ local function checkFirstPerson(problems: Problems)
 	expectColour(`{p}.ult.glowColour`, ult.glowColour)
 end
 
+-- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead has a row for every Config.Anim.rig feel, every share, time
+-- and gain in range, and every spring and rhythm <= MAX_FLICKER_HZ. Jelly's per-vertex knead spring (k 520, c 7)
+-- wobbles at 3.59 Hz: the design's own "springs straight back and wobbles" (squish.js:31), kept as decided (spec
+-- phase2 §3.13-6, 2026-10-11), so it is not checked against MAX_FLICKER_HZ.
+local KNEAD_SPRING_EXCEPTIONS: { [string]: boolean } = { jelly = true }
+
+local function checkKnead(problems: Problems)
+	local p = "Config.Knead"
+	local knead: any = Knead
+	for _, feel in sortedKeys(Anim.rig.feels) do
+		local row = knead.feels[feel]
+		local path = `{p}.feels.{feel}`
+		if type(row) ~= "table" then
+			add(problems, `{path} is missing (every Config.Anim.rig feel needs one)`)
+			continue
+		end
+		eachField(problems, path, row, { "rise", "k", "gamma", "pull", "pullR" }, expectPositive)
+		eachField(problems, path, row, { "c", "beta", "smear", "neck" }, expectNonNegative)
+		for _, field in { "fast", "plastic", "lump" } do
+			expectBetween(problems, `{path}.{field}`, row[field], 0, 1)
+		end
+		if not KNEAD_SPRING_EXCEPTIONS[feel] then
+			expectCalmSpring(problems, `{path} (k, c)`, row.k, row.c)
+		end
+	end
+	expect(
+		problems,
+		type(knead.defaultFeel) == "string" and knead.feels[knead.defaultFeel] ~= nil,
+		`{p}.defaultFeel {show(knead.defaultFeel)} is not a Config.Knead.feels entry`
+	)
+	expectCount(problems, `{p}.brushSlots`, knead.brushSlots, 1)
+	local finger, palm, thumb = knead.finger, knead.palm, knead.thumb
+	eachField(problems, `{p}.finger`, finger, { "radius", "depthOfRadius", "depthOfMinDim", "falloff" }, expectPositive)
+	eachField(
+		problems,
+		`{p}.palm`,
+		palm,
+		{ "radius", "falloff", "depthOfX", "depthOfSqueeze", "power" },
+		expectPositive
+	)
+	eachField(problems, `{p}.thumb`, thumb, { "radius", "falloff", "depthOfRadius", "depthOfMinDim" }, expectPositive)
+	expectBetween(problems, `{p}.palm.betaShare`, palm.betaShare, 0, 1)
+	expectBetween(problems, `{p}.thumb.betaShare`, thumb.betaShare, 0, 1)
+	local depth = knead.depth
+	eachField(
+		problems,
+		`{p}.depth`,
+		depth,
+		{ "riseFinger", "risePalm", "creepSeconds", "substepsPerSecond", "retireDepth", "retireSpeed" },
+		expectPositive
+	)
+	eachField(problems, `{p}.depth`, depth, { "delayFinger", "delayPalm" }, expectNonNegative)
+	expectBetween(problems, `{p}.depth.settle`, depth.settle, 0, 1)
+	local spring = depth.spring
+	local k, c = if type(spring) == "table" then spring[1] else nil, if type(spring) == "table" then spring[2] else nil
+	expectPositive(problems, `{p}.depth.spring[1] (k)`, k)
+	expectNonNegative(problems, `{p}.depth.spring[2] (c)`, c)
+	expectCalmSpring(problems, `{p}.depth.spring`, k, c)
+	local memory = knead.memory
+	eachField(
+		problems,
+		`{p}.memory`,
+		memory,
+		{ "stampSpacing", "maxStrokeOfRadius", "smearSideways", "capOfRadius" },
+		expectPositive
+	)
+	expectBetween(problems, `{p}.memory.keepBelow`, memory.keepBelow, 0, 1)
+	expectBetween(problems, `{p}.memory.smearMin`, memory.smearMin, 0, 1)
+	eachField(
+		problems,
+		p,
+		knead,
+		{ "lumpScale", "springSubstepsPerSecond", "restEpsilon", "movingEpsilon", "sleepSeconds" },
+		expectPositive
+	)
+	expectPositive(problems, `{p}.bulge.rate`, knead.bulge.rate)
+	expect(
+		problems,
+		isNumber(knead.bulge.dentShare) and knead.bulge.dentShare > 0 and knead.bulge.dentShare <= 1,
+		`{p}.bulge.dentShare must be in (0, 1] (got {show(knead.bulge.dentShare)})`
+	)
+	local pull = knead.pull
+	eachField(problems, `{p}.pull`, pull, { "slip", "radiusGrowth", "neckGain" }, expectPositive)
+	for _, field in { "tug", "plasticMin", "plasticWeightMin" } do
+		expectBetween(problems, `{p}.pull.{field}`, pull[field], 0, 1)
+	end
+	-- The crunch presses once a period: a rhythm, so at most MAX_FLICKER_HZ presses a second.
+	local crunch = knead.crunch
+	expect(
+		problems,
+		isNumber(crunch.period) and crunch.period > 0 and 1 / crunch.period <= MAX_FLICKER_HZ + FEEL_SLACK,
+		`{p}.crunch.period ({show(crunch.period)}) must be > 0 with at most {MAX_FLICKER_HZ} presses a second`
+	)
+	expect(
+		problems,
+		isNumber(crunch.pressEnd)
+			and isNumber(crunch.holdEnd)
+			and crunch.pressEnd > 0
+			and crunch.pressEnd <= crunch.holdEnd
+			and crunch.holdEnd < 1,
+		`{p}.crunch must satisfy 0 < pressEnd <= holdEnd < 1`
+	)
+	for _, field in { "low", "releaseDrop", "startAmount", "frontMinZ" } do
+		expectBetween(problems, `{p}.crunch.{field}`, crunch[field], 0, 1)
+	end
+	eachField(
+		problems,
+		`{p}.crunch`,
+		crunch,
+		{ "follow", "gap", "spanX", "spanY", "releaseRate", "releaseMinRise", "snap" },
+		expectPositive
+	)
+	eachField(problems, `{p}.crunch`, crunch, { "jitterU", "jitterV", "slide", "height" }, expectNonNegative)
+	expect(
+		problems,
+		isNumber(crunch.slide) and isNumber(crunch.gap) and crunch.slide < crunch.gap,
+		`{p}.crunch.slide must be < gap (the thumbs never cross)`
+	)
+	local pinch = knead.pinch
+	for _, field in sortedKeys(pinch) do
+		expectNonNegative(problems, `{p}.pinch.{field}`, pinch[field])
+	end
+	eachField(problems, `{p}.pinch`, pinch, { "dipSpan", "frontSpan", "pullIn" }, expectPositive)
+	for _, name in sortedKeys(knead.kicks) do
+		local kick = knead.kicks[name]
+		for _, field in sortedKeys(kick) do
+			expect(
+				problems,
+				isNumber(kick[field]),
+				`{p}.kicks.{name}.{field} must be a number (got {show(kick[field])})`
+			)
+		end
+	end
+	for _, field in sortedKeys(knead.sounds) do
+		expectBetween(problems, `{p}.sounds.{field}`, knead.sounds[field], 0, 1)
+	end
+	local face = knead.face
+	expect(
+		problems,
+		isNumber(face.palmOn)
+			and isNumber(face.palmOff)
+			and face.palmOff > 0
+			and face.palmOff <= face.palmOn
+			and face.palmOn <= 1,
+		`{p}.face must satisfy 0 < palmOff <= palmOn <= 1`
+	)
+	eachField(
+		problems,
+		`{p}.face`,
+		face,
+		{ "fingerDepth", "reach", "pull", "crunch", "fallbackRadius", "minRadius" },
+		expectPositive
+	)
+	expectNonNegative(problems, `{p}.face.fallbackLift`, face.fallbackLift)
+	-- The soft shell: a budget below one closed grid of 2 cuts a side (26 vertices) builds nothing smaller.
+	local shell = knead.shell
+	expectCount(problems, `{p}.shell.minSegments`, shell.minSegments, 1)
+	expectCount(problems, `{p}.shell.lowVertices`, shell.lowVertices, 26)
+	expectCount(problems, `{p}.shell.highVertices`, shell.highVertices, 26)
+	expect(
+		problems,
+		isNumber(shell.lowVertices) and isNumber(shell.highVertices) and shell.lowVertices <= shell.highVertices,
+		`{p}.shell.lowVertices must not exceed highVertices`
+	)
+	eachField(problems, `{p}.shell`, shell, { "anchorReach", "anchorLeg" }, expectPositive)
+	expectCount(problems, `{p}.shell.atlas.High`, shell.atlas.High, 1)
+	expectCount(problems, `{p}.shell.atlas.Low`, shell.atlas.Low, 1)
+	expectNonNegative(problems, `{p}.shell.gutterTexels`, shell.gutterTexels)
+end
+
+-- Squeeze feel (spec phase2-squeeze §3.11): Config.Wax has a coat for every Config.Anim.rig feel, the cell, stress and
+-- crack rules in range, and the line reveal steps in order.
+local function checkWax(problems: Problems)
+	local p = "Config.Wax"
+	local wax: any = Wax
+	for _, feel in sortedKeys(Anim.rig.feels) do
+		local coat = wax.coats[feel]
+		local path = `{p}.coats.{feel}`
+		if type(coat) ~= "table" then
+			add(problems, `{path} is missing (every Config.Anim.rig feel needs one)`)
+			continue
+		end
+		eachField(problems, path, coat, { "cell", "th" }, expectPositive)
+		expectNonNegative(problems, `{path}.gloss`, coat.gloss)
+		expect(
+			problems,
+			isNumber(coat.wear) and coat.wear > 0 and coat.wear <= 1,
+			`{path}.wear must be in (0, 1] (got {show(coat.wear)})`
+		)
+	end
+	expectPositive(problems, `{p}.thScale`, wax.thScale)
+	local cells = wax.cells
+	eachField(problems, `{p}.cells`, cells, { "spacing", "neighbourRadius", "footprintRadius" }, expectPositive)
+	expectCount(problems, `{p}.cells.maxCells`, cells.maxCells, 1)
+	expectNonNegative(problems, `{p}.cells.thSpread`, cells.thSpread)
+	local stress = wax.stress
+	expectPositive(problems, `{p}.stress.relax`, stress.relax)
+	expectNonNegative(problems, `{p}.stress.bend`, stress.bend)
+	expectBetween(problems, `{p}.stress.worn`, stress.worn, 0, 1)
+	local cracks = wax.cracks
+	expect(
+		problems,
+		isNumber(cracks.energyMin)
+			and isNumber(cracks.energyMax)
+			and cracks.energyMin > 0
+			and cracks.energyMin < cracks.energyMax,
+		`{p}.cracks must satisfy 0 < energyMin < energyMax`
+	)
+	expectNonNegative(problems, `{p}.cracks.energySpread`, cracks.energySpread)
+	for _, field in { "energyWorn", "dropMin", "crunchinessRate", "damage", "cascade" } do
+		expectBetween(problems, `{p}.cracks.{field}`, cracks[field], 0, 1)
+	end
+	expectCount(problems, `{p}.cracks.sounding`, cracks.sounding, 1)
+	eachField(problems, p, wax, { "driveStrain", "shineDecay" }, expectPositive)
+	expectNonNegative(problems, `{p}.shineGain`, wax.shineGain)
+	local lines = wax.lines
+	for _, field in sortedKeys(lines) do
+		expectNonNegative(problems, `{p}.lines.{field}`, lines[field])
+	end
+	expect(
+		problems,
+		isNumber(lines.revealLow) and isNumber(lines.revealHigh) and lines.revealLow < lines.revealHigh,
+		`{p}.lines.revealLow must be < revealHigh`
+	)
+	expect(
+		problems,
+		isNumber(lines.octave2Low) and isNumber(lines.octave2High) and lines.octave2Low < lines.octave2High,
+		`{p}.lines.octave2Low must be < octave2High`
+	)
+	expectBetween(problems, `{p}.lines.skipBelow`, lines.skipBelow, 0, 1)
+	expect(
+		problems,
+		isNumber(lines.alphaStep) and lines.alphaStep > 0 and lines.alphaStep <= 1,
+		`{p}.lines.alphaStep must be in (0, 1] (got {show(lines.alphaStep)})`
+	)
+	expectPositive(problems, `{p}.lines.pointsPerCell`, lines.pointsPerCell)
+end
+
+-- Phase 2b, the knead screen in Inspect (spec phase2-squeeze §3.4-§3.11): the knead view inside Inspect's orbit, the
+-- flakes, jolt, sparkle, HUD thresholds and crack canvas of Config.Wax, the HUD / vignette / ring layout of
+-- Config.UI.Knead and the wax mix of Config.Audio.wax: positives, shares in range, min <= max, the vignette stops in
+-- order and the flakes' spin <= MAX_FLICKER_HZ turns a second.
+local function checkKneadScreen(problems: Problems)
+	local knead: any, wax: any, ui: any, audio: any = Knead, Wax, UI, Audio
+	local function expectRange(path: string, low: unknown, high: unknown)
+		expect(
+			problems,
+			isNumber(low) and isNumber(high) and (low :: number) <= (high :: number),
+			`{path} must be numbers with min <= max (got {show(low)}, {show(high)})`
+		)
+	end
+	local p = "Config.Knead.view"
+	local view = knead.view
+	eachField(
+		problems,
+		p,
+		view,
+		{ "crunchRate", "homeRate", "settleSeconds", "fitDepth", "toyLongestDu", "cameraFovDeg" },
+		expectPositive
+	)
+	for _, field in { "homePitchRad", "crunchPitchRad" } do
+		expectBetween(
+			problems,
+			`{p}.{field}`,
+			view[field],
+			math.rad(Inspect.Orbit.pitchMinDeg),
+			math.rad(Inspect.Orbit.pitchMaxDeg)
+		)
+	end
+	expectBetween(problems, `{p}.fitWidth`, view.fitWidth, 0, 1)
+	expectBetween(problems, `{p}.fitHeight`, view.fitHeight, 0, 1)
+	expectBetween(problems, `{p}.cameraFovDeg`, view.cameraFovDeg, 1, 179)
+	expectPositive(problems, "Config.Knead.kickVelocity", knead.kickVelocity)
+	expectBoolean(problems, "Config.Knead.shell.uvFlipV", knead.shell.uvFlipV)
+
+	p = "Config.Wax.flakes"
+	local flakes = wax.flakes
+	eachField(problems, p, flakes, {
+		"minEnergy",
+		"offset",
+		"speedMax",
+		"sizeMin",
+		"lifeMin",
+		"drag",
+		"spinMin",
+		"startAngleMax",
+		"chipDepth",
+		"popPeak",
+		"popArc",
+		"fadePower",
+	}, expectPositive)
+	eachField(problems, p, flakes, { "speedMin", "sideways", "upMin", "depth" }, expectNonNegative)
+	for _, field in { "chanceBase", "chanceIntact", "extraChance", "whiten", "zoomShare" } do
+		expectBetween(problems, `{p}.{field}`, flakes[field], 0, 1)
+	end
+	expectRange(`{p}.speedMin / speedMax`, flakes.speedMin, flakes.speedMax)
+	expectRange(`{p}.upMin / upMax`, flakes.upMin, flakes.upMax)
+	expectRange(`{p}.sizeMin / sizeMax`, flakes.sizeMin, flakes.sizeMax)
+	expectRange(`{p}.lifeMin / lifeMax`, flakes.lifeMin, flakes.lifeMax)
+	expectRange(`{p}.spinMin / spinMax`, flakes.spinMin, flakes.spinMax)
+	expect(
+		problems,
+		isNumber(flakes.gravity) and flakes.gravity <= 0,
+		`{p}.gravity must be <= 0 (it falls; got {show(flakes.gravity)})`
+	)
+	expect(
+		problems,
+		isNumber(flakes.spinMax) and flakes.spinMax / (2 * math.pi) <= MAX_FLICKER_HZ,
+		`{p}.spinMax ({show(flakes.spinMax)} rad/s) must be <= {MAX_FLICKER_HZ} turns a second`
+	)
+	expect(problems, type(flakes.chip) == "table" and #flakes.chip >= 3, `{p}.chip must list at least 3 outline radii`)
+	for index, radius in (if type(flakes.chip) == "table" then flakes.chip else {}) :: { any } do
+		expectPositive(problems, `{p}.chip[{index}]`, radius)
+	end
+	expect(
+		problems,
+		isNumber(flakes.popEnd)
+			and isNumber(flakes.fadeStart)
+			and flakes.popEnd > 0
+			and flakes.popEnd < flakes.fadeStart
+			and flakes.fadeStart < 1,
+		`{p} must satisfy 0 < popEnd < fadeStart < 1`
+	)
+	expectCount(problems, `{p}.cap`, flakes.cap, 1)
+	eachField(problems, "Config.Wax.jolt", wax.jolt, { "minEnergy", "gain", "decay" }, expectPositive)
+	expectBetween(problems, "Config.Wax.jolt.intactBase", wax.jolt.intactBase, 0, 1)
+	local sparkle = wax.sparkle
+	expectCount(problems, "Config.Wax.sparkle.count", sparkle.count, 1)
+	eachField(problems, "Config.Wax.sparkle", sparkle, { "speed", "sizeDu", "life", "drag", "spread" }, expectPositive)
+	local star = sparkle.star
+	expect(
+		problems,
+		typeof(star) == "Vector3" and star.X > 0 and star.Y > 0 and star.Z > 0,
+		"Config.Wax.sparkle.star must be a Vector3 with every side > 0"
+	)
+	local hud = wax.hud
+	expect(
+		problems,
+		isNumber(hud.crackled)
+			and isNumber(hud.crunchy)
+			and hud.crackled > 0
+			and hud.crackled < hud.crunchy
+			and hud.crunchy < 1,
+		"Config.Wax.hud must satisfy 0 < crackled < crunchy < 1"
+	)
+	local canvas = wax.canvas
+	expectCount(problems, "Config.Wax.canvas.drawPerFrame", canvas.drawPerFrame, 1)
+	eachField(problems, "Config.Wax.canvas.buildMsPerFrame", canvas.buildMsPerFrame, { "High", "Low" }, expectPositive)
+	expectBetween(problems, "Config.Wax.canvas.haloFalloff", canvas.haloFalloff, 0, 1)
+	local last = 0
+	for index, offset in canvas.haloOffsets :: { any } do
+		expect(
+			problems,
+			isInteger(offset) and offset > last,
+			`Config.Wax.canvas.haloOffsets[{index}] must be a whole number of px above the one before`
+		)
+		last = if isNumber(offset) then offset else last
+	end
+
+	p = "Config.UI.Knead"
+	local hudUi = ui.Knead
+	eachField(problems, p, hudUi, {
+		"hudGapPx",
+		"hudPadX",
+		"hudPadY",
+		"hudRadius",
+		"hudStrokePx",
+		"trackWidth",
+		"trackHeight",
+		"trackStrokePx",
+		"stateMinWidth",
+		"refreshSeconds",
+		"fillMs",
+		"vignetteMs",
+		"ringPx",
+		"ringPressPx",
+		"ringPullPx",
+		"ringStrokePx",
+		"ringOutlinePx",
+		"ringSizeMs",
+	}, expectPositive)
+	eachField(problems, p, hudUi, { "hudTopPx", "hudDropPx" }, expectNonNegative)
+	expectBetween(problems, `{p}.countTransparency`, hudUi.countTransparency, 0, 1)
+	expectBetween(problems, `{p}.ringPressTransparency`, hudUi.ringPressTransparency, 0, 1)
+	expectCount(problems, `{p}.vignetteTexels`, hudUi.vignetteTexels, 2)
+	local vignette = hudUi.vignette
+	eachField(problems, `{p}.vignette`, vignette, { "rx", "ry" }, expectPositive)
+	expectBetween(problems, `{p}.vignette.cx`, vignette.cx, 0, 1)
+	expectBetween(problems, `{p}.vignette.cy`, vignette.cy, 0, 1)
+	local stops, alphas = vignette.stops, vignette.alphas
+	expect(
+		problems,
+		type(stops) == "table" and type(alphas) == "table" and #stops >= 2 and #stops == #alphas,
+		`{p}.vignette needs as many alphas as stops (at least 2)`
+	)
+	local before = -1
+	for index, stop in (if type(stops) == "table" then stops else {}) :: { any } do
+		expect(
+			problems,
+			isNumber(stop) and stop > before and stop <= 1,
+			`{p}.vignette.stops[{index}] must rise and stay <= 1`
+		)
+		before = if isNumber(stop) then stop else before
+		expectBetween(problems, `{p}.vignette.alphas[{index}]`, (alphas :: any)[index], 0, 1)
+	end
+
+	p = "Config.Audio.wax"
+	local mix = audio.wax
+	for _, feel in sortedKeys(Anim.rig.feels) do
+		expectPositive(problems, `{p}.gain.{feel}`, mix.gain[feel])
+		expect(problems, isNumber(mix.sheetLevelDb[feel]), `{p}.sheetLevelDb.{feel} must be a number`)
+	end
+	for _, field in { "loopLevelDb", "thumpLevelDb", "snapThumpLevelDb", "rewaxLevelDb", "energyDb" } do
+		expect(problems, isNumber(mix[field]), `{p}.{field} must be a number (got {show(mix[field])})`)
+	end
+	eachField(problems, p, mix, {
+		"busGain",
+		"masterGain",
+		"trim",
+		"burstSlot",
+		"grainStart",
+		"grainSlot",
+		"grainGain",
+		"tapStart",
+		"tapSlot",
+		"tapGain",
+		"tickPower",
+		"releaseSpan",
+		"airSpanMax",
+		"airSpanRise",
+		"releaseGain",
+		"airGain",
+		"fingerTap",
+		"pressTapA",
+		"pressTapB",
+		"thumpGain",
+		"snapE",
+		"echoE",
+		"snapThumpGain",
+		"hazeGain",
+		"bodyGain",
+		"hazeTau",
+		"bodyTau",
+		"quietHazeTau",
+		"quietBodyTau",
+		"bedEpsilon",
+		"startMax",
+	}, expectPositive)
+	eachField(problems, p, mix, { "releaseDelay", "airDelay", "echoDelay", "echoShare" }, expectNonNegative)
+	for _, field in { "intactBase", "tickGainMin", "tickFade", "releaseExtraChance", "hazeBase", "bodyBase" } do
+		expectBetween(problems, `{p}.{field}`, mix[field], 0, 1)
+	end
+	for _, field in { "burstVariants", "grainCount", "tapCount", "tickGrains", "releaseFinger", "releasePress" } do
+		expectCount(problems, `{p}.{field}`, mix[field], 1)
+	end
+	expect(
+		problems,
+		isInteger(mix.tickGrains) and isInteger(mix.grainCount) and mix.tickGrains <= mix.grainCount,
+		`{p}.tickGrains must not exceed grainCount`
+	)
+	local ranges = {
+		{ "burstSpeedMin", "burstSpeedMax" },
+		{ "tickSpeedMin", "tickSpeedMax" },
+		{ "airMin", "airMax" },
+		{ "fingerSpeedMin", "fingerSpeedMax" },
+		{ "pressSpeedAMin", "pressSpeedAMax" },
+		{ "pressSpeedBMin", "pressSpeedBMax" },
+		{ "pressGapMin", "pressGapMax" },
+	}
+	for _, pair in ranges do
+		expectRange(`{p}.{pair[1]} / {pair[2]}`, mix[pair[1]], mix[pair[2]])
+		expectPositive(problems, `{p}.{pair[1]}`, mix[pair[1]])
+	end
+	for _, list in { "burstEnergies", "burstIntacts" } do
+		local values = mix[list]
+		expect(problems, type(values) == "table" and #values >= 1, `{p}.{list} must list at least one value`)
+		for index, value in (if type(values) == "table" then values else {}) :: { any } do
+			expectPositive(problems, `{p}.{list}[{index}]`, value)
+		end
+	end
+	expect(
+		problems,
+		isNumber(mix.grainStart)
+			and isNumber(mix.tapStart)
+			and type(mix.burstEnergies) == "table"
+			and type(mix.burstIntacts) == "table"
+			and #mix.burstEnergies * #mix.burstIntacts * mix.burstVariants * mix.burstSlot <= mix.grainStart + 1e-6
+			and mix.grainStart + mix.grainCount * mix.grainSlot <= mix.tapStart + 1e-6,
+		`{p}: the bursts, grains and taps of a sheet must not overlap`
+	)
+	local compressor = (Audio.Groups.Wax :: any).compressor
+	expect(problems, type(compressor) == "table", "Config.Audio.Groups.Wax.compressor is missing")
+	if type(compressor) == "table" then
+		expect(
+			problems,
+			isNumber(compressor.threshold) and compressor.threshold <= 0,
+			"Config.Audio.Groups.Wax.compressor.threshold must be <= 0 dB"
+		)
+		expect(
+			problems,
+			isNumber(compressor.ratio) and compressor.ratio >= 1,
+			"Config.Audio.Groups.Wax.compressor.ratio must be >= 1"
+		)
+		eachField(problems, "Config.Audio.Groups.Wax.compressor", compressor, { "attack", "release" }, expectPositive)
+		expectNonNegative(problems, "Config.Audio.Groups.Wax.compressor.makeup", compressor.makeup)
+	end
+end
+
 local function checkVfx(problems: Problems)
 	local p = "Config.Vfx"
 	for _, name in sortedKeys(Vfx.Textures) do
@@ -3324,7 +3839,10 @@ local function checkUIJuice(problems: Problems)
 end
 
 -- F10 Editable meshes per client: Budgets.editableMeshes >= (giantPad.maxMeshes when giantPad.pathA, else 0) + (1 when
--- jellyRipple.pathA): the 3 giant pads plus one ripple skin, never two skins (§18.3.4).
+-- jellyRipple.pathA) + 1: the 3 giant pads plus one ripple skin, never two skins (§18.3.4), plus Inspect's knead shell
+-- (spec phase2-squeeze §3.2, MeshQuota key "soft").
+local KNEAD_SHELL_MESHES = 1
+
 local function checkEditableMeshes(problems: Problems)
 	local giantPad = (Anim :: any).giantPad
 	local pads = 0
@@ -3336,9 +3854,9 @@ local function checkEditableMeshes(problems: Problems)
 	local budget = Vfx.Budgets.editableMeshes
 	expect(
 		problems,
-		isNumber(budget) and budget >= pads + skins,
+		isNumber(budget) and budget >= pads + skins + KNEAD_SHELL_MESHES,
 		`F10: Config.Vfx.Budgets.editableMeshes ({show(budget)}) must be >= the giant pads' meshes ({pads}) + the `
-			.. `ripple skin ({skins})`
+			.. `ripple skin ({skins}) + the knead shell ({KNEAD_SHELL_MESHES})`
 	)
 end
 
@@ -4074,6 +4592,15 @@ function Config.validate(deps: ValidateDeps?): { string }
 	end)
 	guarded(problems, "Config.FirstPerson", function()
 		checkFirstPerson(problems)
+	end)
+	guarded(problems, "Config.Knead", function()
+		checkKnead(problems)
+	end)
+	guarded(problems, "Config.Wax", function()
+		checkWax(problems)
+	end)
+	guarded(problems, "Config knead screen", function()
+		checkKneadScreen(problems)
 	end)
 
 	local Boxes, boxesErr = loadSibling("Boxes")

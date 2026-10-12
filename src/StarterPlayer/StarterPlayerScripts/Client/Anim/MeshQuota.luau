@@ -1,7 +1,8 @@
 --!strict
 -- MeshQuota (client only; no instances, connections or clock reads). DESIGN §18.3.4, §18.9: at most
--- Config.Vfx.Budgets.editableMeshes (4) editable meshes per client, shared by the giant pads (3) and the jelly
--- ripple's skin (1: the arena skin or the practice backstop skin, never both). A module asks for a slot before it
+-- Config.Vfx.Budgets.editableMeshes (5) editable meshes per client, shared by the giant pads (3), the jelly
+-- ripple's skin (1: the arena skin or the practice backstop skin, never both) and Inspect's knead shell (1, spec
+-- phase2-squeeze §3.2: key "soft"). A module asks for a slot before it
 -- creates an EditableMesh and gives it back when that mesh is destroyed; a refused slot means path B for that key.
 --
 --   MeshQuota.tryAcquire(key) -> boolean   true = the key holds a slot (a key already held answers true and takes no

@@ -62,6 +62,12 @@
 -- box + one shop line) toggled Visible. destroy() removes everything (one Cleanup).
 -- Stable names: Inspect, Inspect_Stage, Inspect_CloseButton, Inspect_SqueezeButton, Inspect_ResetViewButton,
 -- Inspect_EquipButton, Inspect_ViewInShopButton.
+-- Knead (spec phase2-squeeze §1.19, §3.6-§3.7): panel:setKnead(view?) shows, while Inspect kneads, Thumb crunch
+-- (Inspect_CrunchButton) before Squeeze and Re-wax (Inspect_RewaxButton) after it (the design's bar order, fp.js:555-
+-- 560), the Squeeze and Coat rows at the top of the info list (rich text, UI/KneadFormat) and the knead help as the
+-- caption; nil hides them again. Squeeze and Thumb crunch report their pointer down and up (callbacks.onKneadHold:
+-- "palms" / "crunch", the design's hold buttons fp.js:609-615); Re-wax calls callbacks.onRewax. Both callbacks are
+-- optional.
 
 -- Services
 
@@ -100,7 +106,13 @@ export type Callbacks = {
 	onResetView: () -> (),
 	onEquip: () -> (),
 	onViewInShop: () -> (),
+	-- Spec phase2-squeeze §3.6 (optional): a knead hold button down / up ("palms" = Squeeze, "crunch" = Thumb crunch)
+	onKneadHold: ((action: string, down: boolean) -> ())?,
+	onRewax: (() -> ())?,
 }
+
+-- What the panel shows while Inspect kneads (setKnead): the Squeeze and Coat rows (rich text) and the caption's help.
+export type KneadView = { squeeze: string, coat: string, help: string }
 
 -- A rectangle in base px, relative to the panel's content box (inside its padding).
 export type Rect = { x: number, y: number, w: number, h: number }
@@ -139,7 +151,10 @@ export type Panel = {
 	equipButton: Button.Button,
 	viewInShopButton: Button.Button,
 	closeButton: Button.Button,
+	crunchButton: Button.Button, -- spec phase2-squeeze §3.6: shown while kneading
+	rewaxButton: Button.Button,
 	show: (self: Panel, view: InspectFormat.View) -> (),
+	setKnead: (self: Panel, knead: KneadView?) -> (),
 	setEquip: (self: Panel, state: InspectFormat.EquipState) -> (),
 	setLayout: (self: Panel, class: Layout.LayoutClass) -> (),
 	layout: (self: Panel) -> PanelLayout,
@@ -421,13 +436,67 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		name = "Inspect_ResetViewButton",
 		text = Strings.inspect.resetView,
 		height = TOUCH.primaryButton,
-		layoutOrder = 2,
+		layoutOrder = 3, -- spec phase2-squeeze §1.19: after Re-wax (the design's bar order)
 		parent = stageButtons,
 		onActivated = function()
 			callbacks.onResetView()
 		end,
 	})
 	cleanup:add(reset)
+	-- Spec phase2-squeeze §3.6: the knead's Thumb crunch (held) before Squeeze and Re-wax after it, shown by setKnead.
+	local crunch = Button.new({
+		name = "Inspect_CrunchButton",
+		text = Strings.knead.thumbCrunch,
+		height = TOUCH.primaryButton,
+		layoutOrder = 0,
+		parent = stageButtons,
+		onActivated = function() end, -- a hold: its pointer down and up (below)
+	})
+	crunch.root.Visible = false
+	cleanup:add(crunch)
+	local rewax = Button.new({
+		name = "Inspect_RewaxButton",
+		text = Strings.knead.rewax,
+		height = TOUCH.primaryButton,
+		layoutOrder = 2,
+		parent = stageButtons,
+		onActivated = function()
+			if callbacks.onRewax then
+				callbacks.onRewax()
+			end
+		end,
+	})
+	rewax.root.Visible = false
+	cleanup:add(rewax)
+	-- The hold buttons (fp.js:609-615): a mouse or touch press on Squeeze ("palms") or Thumb crunch ("crunch") reports
+	-- down, and its release, wherever it lifts, reports up.
+	local held: { [string]: InputObject } = {}
+	local function report(action: string, down: boolean)
+		local onHold = callbacks.onKneadHold
+		if onHold then
+			onHold(action, down)
+		end
+	end
+	local function holdOn(action: string, target: TextButton)
+		cleanup:add(target.InputBegan:Connect(function(input: InputObject)
+			local kind = input.UserInputType
+			if (kind == Enum.UserInputType.MouseButton1 or kind == Enum.UserInputType.Touch) and not held[action] then
+				held[action] = input
+				report(action, true)
+			end
+		end))
+	end
+	holdOn("palms", squeeze.root)
+	holdOn("crunch", crunch.root)
+	cleanup:add(UserInputService.InputEnded:Connect(function(input: InputObject)
+		for action, pressed in held do
+			local mouse = pressed.UserInputType == Enum.UserInputType.MouseButton1
+			if pressed == input or (mouse and input.UserInputType == Enum.UserInputType.MouseButton1) then
+				held[action] = nil
+				report(action, false)
+			end
+		end
+	end))
 
 	-- Info column: the scrolling list in an inset field, then [Equip] [View in Shop] ----------------------------------
 	local infoField = Theme.inset({ Name = "InfoField", Parent = root }, Theme.Radius.button, INFO_INSET_PX)
@@ -467,6 +536,14 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		}, kind, weight, color)
 	end
 
+	-- Spec phase2-squeeze §1.19: the knead's Squeeze and Coat rows (rich text, the label in bold), shown by setKnead.
+	local kneadRows: { TextLabel } = {}
+	for _, name in { "KneadSqueeze", "KneadCoat" } do
+		local row = infoLabel(name, "Body")
+		row.RichText = true
+		row.Visible = false
+		table.insert(kneadRows, row)
+	end
 	local coins = infoLabel("Coins", "H2")
 	local coinsSub = infoLabel("CoinsSub", "Small", nil, Theme.Colors.ink2)
 	local statsCaption = infoLabel("StatsCaption", "Small", nil, Theme.Colors.ink2)
@@ -614,10 +691,17 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	-- What Equip shows now (setEquip), measured for the row count.
 	local equipText = Strings.common.equip
 	local equipReason: string? = nil
+	-- Spec phase2-squeeze §3.7: the knead view while Inspect kneads (setKnead), and the caption show() last gave.
+	local kneadView: KneadView? = nil
+	local viewCaption = ""
 
 	-- The rows each button row needs at this size and text size (Part 8): the shown buttons measured.
 	local function measuredRows(l: PanelLayout): ButtonRows
 		local stageWidths = { Button.widthFor(Strings.controls.squeeze), Button.widthFor(Strings.inspect.resetView) }
+		if crunch.root.Visible then -- spec phase2-squeeze §3.6: the knead's two buttons
+			table.insert(stageWidths, Button.widthFor(Strings.knead.thumbCrunch))
+			table.insert(stageWidths, Button.widthFor(Strings.knead.rewax))
+		end
 		local infoWidths = { Button.widthFor(equipText, equipReason) }
 		if viewInShop.root.Visible then
 			table.insert(infoWidths, Button.widthFor(Strings.inspect.viewInShop))
@@ -640,7 +724,7 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		place(infoField, l.info)
 		place(infoButtons, l.infoButtons)
 		close.root.Size = UDim2.fromOffset(0, l.closeHeight)
-		for _, button in { squeeze, reset, equip, viewInShop } do
+		for _, button in { squeeze, reset, equip, viewInShop, crunch, rewax } do
 			button.root.Size = UDim2.fromOffset(0, l.buttonHeight)
 		end
 	end
@@ -674,6 +758,8 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	self.equipButton = equip
 	self.viewInShopButton = viewInShop
 	self.closeButton = close
+	self.crunchButton = crunch
+	self.rewaxButton = rewax
 
 	function self.show(_: Panel, view: InspectFormat.View)
 		nameLabel.Text = view.name
@@ -691,7 +777,8 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		end
 		lock.root.Visible = not view.owned
 
-		caption.Text = view.caption
+		viewCaption = view.caption
+		caption.Text = if kneadView then kneadView.help else view.caption
 		coins.Text = view.coinsText
 		coinsSub.Text = view.coinsSub
 		statsCaption.Text = view.statsCaption
@@ -754,6 +841,21 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 			equipReason = reason
 			apply() -- the info row may need another row now (Part 8)
 		end
+	end
+
+	-- Spec phase2-squeeze §1.19, §3.7: the knead's buttons, rows and help while Inspect kneads; nil hides them.
+	function self.setKnead(_: Panel, view: KneadView?)
+		kneadView = view
+		local on = view ~= nil
+		crunch.root.Visible = on
+		rewax.root.Visible = on
+		kneadRows[1].Text = if view then view.squeeze else ""
+		kneadRows[2].Text = if view then view.coat else ""
+		for _, row in kneadRows do
+			row.Visible = on
+		end
+		caption.Text = if view then view.help else viewCaption
+		apply() -- the stage's button row may need another row now (Part 8)
 	end
 
 	function self.setLayout(_: Panel, newClass: Layout.LayoutClass)

@@ -465,6 +465,57 @@ local Strings = {
 		equipFailed = "Couldn't equip. Try again.",
 	},
 
+	-- The knead screen in Inspect (spec phase2-squeeze §1.17-§1.19; design: the FP page html:95, fp.js:555-577, 701 and
+	-- sd/squish.js:29-32, 41-48). {n} = a count; panelRow fills {row} (squeezeRow / coatRow), {label} and {note} (a feel
+	-- or coat below) into a rich-text line. Reading: the coat notes speak to players, so foam's drops the design's "like
+	-- your butter clip" (user to confirm); the help lines are the design's (fp.js:577) for this screen's own keys.
+	knead = {
+		waxCoat = "Wax coat", -- design: html:95
+		state = { crunchy = "Crunchy", crackled = "Crackled", soft = "Soft" }, -- design: fp.js:701
+		cracks = { one = "{n} crack", many = "{n} cracks" }, -- design: fp.js:701
+		thumbCrunch = "Thumb crunch", -- design: fp.js:557
+		rewax = "Re-wax", -- design: fp.js:559
+		squeezeRow = "Squeeze", -- design: fp.js:569
+		coatRow = "Coat", -- design: fp.js:570
+		panelRow = "{row}: <b>{label}.</b> {note}",
+		feel = {
+			foam = {
+				label = "Slow-rise foam",
+				note = "Lumps and finger trails hold, then creep back over ~2 s. Drag off the edge to stretch it.",
+			}, -- design: squish.js:29
+			mochi = { label = "Stretchy mochi", note = "Stretches furthest and keeps a little of every pull." }, -- squish.js:30
+			jelly = { label = "Jelly bounce", note = "Springs straight back and wobbles." }, -- design: squish.js:31
+			plush = {
+				label = "Plush stuffing",
+				note = "Soft dents with folds, a gentle stretch, medium recovery.",
+			}, -- design: squish.js:32
+		},
+		coat = {
+			foam = {
+				label = "Crunchy wax coat",
+				note = "Wax-dipped: every bend cracks it with a dry crackle and fine lines spread from your thumbs. Keep kneading and it wears soft.",
+			}, -- design: squish.js:41 (without "like your butter clip")
+			mochi = {
+				label = "Glossy wax coat",
+				note = "A thin, shiny shell: finer cracks, crisper and a little higher than the butter.",
+			}, -- design: squish.js:43
+			jelly = {
+				label = "Candy-glass shell",
+				note = "A brittle candy shell over jelly: bigger shards, bright glassy ticks, then it wobbles.",
+			}, -- design: squish.js:45
+			plush = {
+				label = "Soft wax coat",
+				note = "Wax over fuzz: a muffled, lower crunch that wears soft quickly.",
+			}, -- design: squish.js:47
+		},
+		-- The caption under the stage while kneading, per input (design: fp.js:577, with this screen's keys).
+		help = {
+			keyboard = "Drag it to knead, off its edge to stretch · hold F to crunch, Q to squeeze · W re-waxes",
+			touch = "Drag it to knead, off its edge to stretch · hold Thumb crunch or Squeeze",
+			gamepad = "Hold X to crunch, LB to squeeze · RB re-waxes · Y faces it front",
+		},
+	},
+
 	-- Squishies screen (§11.6). {rarity} = a rarity name. Badges and buttons use common.equipped / common.notOwned /
 	-- common.equip / common.inspect; Equip results use inspect.equippedToast / inspect.equipFailed; loading uses
 	-- common.loading and a data error data.loadFailed.

@@ -222,6 +222,50 @@ local UI = {
 		afkPopupScale = 0.8,
 		afkPopupTransparency = 0.35,
 	},
+
+	-- The knead screen in Inspect (spec phase2-squeeze §1.18, §1.20, §3.7; design: the FP page html:59-77, fp.js:700).
+	-- Base px under the modal's UIScale; colours are Art/Palette Knead* / Wax*. The wax HUD: a paper box hudTopPx under
+	-- the stage's top edge (proposal: the design's 72 px is from its window's top), its row gap, padding, radius, ink
+	-- outline and ink drop band; the coat bar's track and outline; the state word's minimum width; the count's opacity;
+	-- refreshed every refreshSeconds, the bar easing over fillMs. Text is the Chip kind (16 base px): the design's 12 px
+	-- Fredoka and 10.5 px DM Mono are under minTextSize at Scale.min. The vignette: an EditableImage of vignetteTexels²
+	-- stretched over the stage, the CSS radial gradient (ellipse rx × ry of the stage at (cx, cy), alpha stops), fading
+	-- in over vignetteMs. The fingertip ring (mouse only): ringPx over the toy, ringPressPx pressing, ringPullPx
+	-- stretching; a white ringStrokePx border inside and an ink ringOutlinePx ring outside; white at
+	-- ringPressTransparency while pressing, solid while stretching; its size eases over ringSizeMs.
+	Knead = {
+		hudTopPx = 8, -- proposal
+		hudGapPx = 8, -- design: html:72
+		hudPadX = 12, -- design: html:72
+		hudPadY = 6, -- design: html:72
+		hudRadius = 12, -- design: html:72
+		hudStrokePx = 2, -- design: html:72
+		hudDropPx = 3, -- design: html:72 (box-shadow 0 3px 0 ink)
+		trackWidth = 96, -- design: html:75
+		trackHeight = 9, -- design: html:75
+		trackStrokePx = 1.5, -- design: html:75
+		stateMinWidth = 58, -- design: html:77
+		countTransparency = 0.4, -- opacity .6 (design: html:77)
+		refreshSeconds = 0.1, -- design: fp.js:700
+		fillMs = 250, -- design: html:76
+		vignetteMs = 450, -- design: html:70
+		vignetteTexels = 256, -- proposal (spec §3.7)
+		vignette = {
+			cx = 0.5, -- design: html:70 (at 50% 45%)
+			cy = 0.45,
+			rx = 1.25, -- design: html:70 (125% 95%)
+			ry = 0.95,
+			stops = { 0.44, 0.64, 1 }, -- design: html:70
+			alphas = { 0, 0.1, 0.4 }, -- design: html:70
+		},
+		ringPx = 40, -- design: html:59
+		ringPressPx = 28, -- design: html:61
+		ringPullPx = 20, -- design: html:62
+		ringStrokePx = 2.5, -- design: html:59
+		ringOutlinePx = 2, -- design: html:59
+		ringPressTransparency = 0.6, -- white at 40% (design: html:61)
+		ringSizeMs = 100, -- design: html:59
+	},
 }
 
 return UI

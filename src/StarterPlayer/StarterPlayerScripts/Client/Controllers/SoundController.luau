@@ -36,6 +36,10 @@
 --   pickVariant never repeats the last pick of a key when there are two or more.
 -- * playTracked(key, options) -> stop(fadeMs?)?: a one-shot that can be stopped early (the Dragon telegraph, stopped
 --   with Config.Audio.trackedStopFadeMs on a cancel); nil when nothing started.
+-- * Spec phase2-squeeze §3.9 (Inspect's knead, Controllers/KneadAudio): the Wax group (Config.Audio.Groups.Wax, the SFX
+--   slider, a CompressorSoundEffect from its `compressor`; VoiceCaps.Wax), options.region (only that part of the file
+--   plays: Sound.PlaybackRegion) and options.timePosition, and playLoop(key, options) -> Loop?: a looped voice whose
+--   volume the caller sets every frame (setVolume) and stops (stop).
 -- * Pooling: Sound instances are reused per key; a finished voice goes back to its key's pool.
 -- * Stuck voices: a one-shot leaves on Sound.Ended, a steal or a stop. Reading (DESIGN is silent): a Sound whose
 --   asset never loads never fires Ended, so every play attempt first drops the one-shots past their longest possible
@@ -85,7 +89,7 @@ local StateController = require(script.Parent.StateController)
 
 -- Types
 
-export type GroupName = "Music" | "SFX" | "UI" | "Ambient"
+export type GroupName = "Music" | "SFX" | "UI" | "Ambient" | "Wax"
 
 -- Another player's sound kind (§18.6): its own distance and count limits.
 export type OtherKind = "squeeze" | "throw"
@@ -99,6 +103,15 @@ export type PlayOptions = {
 	group: GroupName?, -- overrides the slot's group (Inspect plays on UI)
 	other: OtherKind?, -- another player's sound: distance and count limits (othersAllowed)
 	otherPlayer: boolean?, -- old alias for other = "squeeze"
+	-- Spec phase2-squeeze §3.9 (the knead's wax sheets): play only this part of the file (Sound.PlaybackRegion, seconds)
+	region: NumberRange?,
+	timePosition: number?, -- start here (a loop's random start); default the region's start, else 0
+}
+
+-- A looped voice the caller drives (playLoop): Volume = the choice's volume × setVolume's.
+export type Loop = {
+	setVolume: (self: Loop, volume: number) -> (),
+	stop: (self: Loop, fadeMs: number?) -> (),
 }
 
 -- One play attempt's outcome (the Studio log).
@@ -145,7 +158,7 @@ type Voice = VoiceInfo & {
 -- Constants
 
 local AUDIO = Config.Audio
-local GROUP_NAMES: { GroupName } = { "Music", "SFX", "UI", "Ambient" }
+local GROUP_NAMES: { GroupName } = { "Music", "SFX", "UI", "Ambient", "Wax" } -- Wax: spec phase2-squeeze §3.9
 local POOL_FOLDER = "SD_Sounds"
 local HOLDER_NAME = "SD_SoundAt"
 local MS = 1000
@@ -486,6 +499,13 @@ local function startVoice(
 			end
 		end)
 	end
+	-- Spec phase2-squeeze §3.9: a region of the file (the wax sheets), and where to start (a loop's random offset).
+	local region = options.region
+	sound.PlaybackRegionsEnabled = region ~= nil
+	if region then
+		sound.PlaybackRegion = region
+	end
+	sound.TimePosition = options.timePosition or (if region then region.Min else 0)
 	sound:Play()
 	return voice
 end
@@ -965,6 +985,70 @@ function SoundController.playTracked(key: string, options: PlayOptions?): ((fade
 	end
 end
 
+-- Spec phase2-squeeze §3.9: a looped voice the caller drives (the knead's wax beds): the key's chosen id in its group
+-- (options.group overrides), from options.timePosition, at options.volume (default 0) × the choice's volume; no
+-- cooldown. nil (logged like a play) when the key has nothing to play or the group is full of voices it may not steal.
+-- The handle's setVolume(v) sets choice volume × v; stop(fadeMs?) fades it out (default trackedStopFadeMs).
+function SoundController.playLoop(key: string, options: PlayOptions?): Loop?
+	local opts: PlayOptions = options or {}
+	local slot = slotOf(key)
+	if slot == nil then
+		AssetTable.sound(key) -- warns once for an unknown key
+		record(key, "noId")
+		return nil
+	end
+	if not playable(key) or poolFolder == nil then
+		record(key, "noId")
+		return nil
+	end
+	local groupName = SoundController.resolveGroup(slot.group, opts.group)
+	local priority = opts.priority or 0
+	local live, infos = liveVoices()
+	local allowed, victim = SoundController.admit(
+		infos,
+		groupName,
+		key,
+		priority,
+		AUDIO.VoiceCaps :: any,
+		crossfading,
+		AUDIO.perKeyCap :: any
+	)
+	if not allowed then
+		record(key, "caps")
+		return nil
+	end
+	if victim then
+		stopVoice(live[victim], AUDIO.stealFadeMs)
+	end
+	local choice = choiceFor(key)
+	if choice == nil then
+		record(key, "noId")
+		return nil
+	end
+	local startOpts = table.clone(opts)
+	startOpts.priority = priority
+	local level = choice.volume
+	local voice = startVoice(key, startOpts, true, level * (opts.volume or 0), choice, groupName)
+	record(key, if voice then "played" else "noId")
+	if voice == nil then
+		return nil
+	end
+	local started: Voice = voice
+	local loop = {} :: Loop
+	function loop.setVolume(_: Loop, volume: number)
+		if table.find(voices, started) ~= nil and not started.stopping and isFiniteNumber(volume) then
+			started.sound.Volume = level * math.max(volume, 0)
+		end
+	end
+	function loop.stop(_: Loop, fadeMs: number?)
+		if table.find(voices, started) ~= nil and not started.stopping then
+			local ms = if isFiniteNumber(fadeMs) then math.max(fadeMs :: number, 0) else AUDIO.trackedStopFadeMs
+			stopVoice(started, ms)
+		end
+	end
+	return loop
+end
+
 -- Crossfades the music to `key` (nil = silence). Same key: no change.
 function SoundController.setMusic(key: string?)
 	if key == musicKey then
@@ -1157,6 +1241,17 @@ function SoundController.init()
 		local group = Instance.new("SoundGroup")
 		group.Name = name
 		group.Volume = targetVolume(name)
+		-- Spec phase2-squeeze §3.9: a group's bus compressor (the Wax group's: the design's wax bus).
+		local spec = AUDIO.Groups[name].compressor
+		if spec then
+			local compressor = Instance.new("CompressorSoundEffect")
+			compressor.Threshold = spec.threshold
+			compressor.Ratio = spec.ratio
+			compressor.Attack = spec.attack
+			compressor.Release = spec.release
+			compressor.GainMakeup = spec.makeup
+			compressor.Parent = group
+		end
 		group.Parent = SoundService
 		groups[name] = group
 		c:add(group)

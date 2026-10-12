@@ -73,6 +73,26 @@ local SOUND_KEYS = {
 	"sfx.ultBubblePop",
 }
 
+-- Spec phase2-squeeze §3.10: the knead's wax sounds (Controllers/KneadAudio), counted apart from the §18.6 set.
+local WAX_PREFIX = "sfx.wax."
+local WAX_KEYS = {
+	"sfx.wax.foam",
+	"sfx.wax.mochi",
+	"sfx.wax.jelly",
+	"sfx.wax.plush",
+	"sfx.wax.haze.foam",
+	"sfx.wax.haze.mochi",
+	"sfx.wax.haze.jelly",
+	"sfx.wax.haze.plush",
+	"sfx.wax.body.foam",
+	"sfx.wax.body.mochi",
+	"sfx.wax.body.jelly",
+	"sfx.wax.body.plush",
+	"sfx.wax.thump",
+	"sfx.wax.snapThump",
+	"sfx.wax.rewax",
+}
+
 -- §18.6 keys marked "(optional)": the three new slots, the Dragon roar and the duel music.
 local OPTIONAL_KEYS = { "sfx.jellyWobble", "sfx.pop", "ui.gripUnlock", "sfx.dragonRoar", "music.duel" }
 
@@ -140,10 +160,31 @@ return function(t: Context)
 		for _, slot in soundSlots() do
 			expect.falsy(seen[slot.key])
 			seen[slot.key] = true
-			table.insert(keys, slot.key)
+			-- The knead's wax sounds (spec phase2-squeeze §3.10) are checked on their own (WAX_KEYS, below).
+			if string.sub(slot.key, 1, #WAX_PREFIX) ~= WAX_PREFIX then
+				table.insert(keys, slot.key)
+			end
 		end
 		expect.equal(#keys, 47)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
+	end)
+
+	-- Spec phase2-squeeze §3.10: the knead's 15 wax sounds, PENDING until the user uploads the rendered files; 2D, volume 1
+	-- (their levels are Config.Audio.wax), not optional (the picker never lists them), each note names its file.
+	t.test("the knead's wax sounds: 4 sheets, 4 haze and 4 body loops, 2 thumps and the re-wax sparkle", function()
+		local found: { string } = {}
+		for _, slot in soundSlots() do
+			if string.sub(slot.key, 1, #WAX_PREFIX) == WAX_PREFIX then
+				table.insert(found, slot.key)
+				expect.equal(slot.spatial, false)
+				expect.equal(slot.optional, nil)
+				expect.truthy(string.find(slot.notes, ".wav", 1, true) ~= nil)
+				if slot.id == nil then
+					expect.equal(slot.volume, 1)
+				end
+			end
+		end
+		expect.deepEqual(sorted(found), sorted(WAX_KEYS))
 	end)
 
 	t.test("a PENDING slot carries no metadata; an approved one carries all of it", function()

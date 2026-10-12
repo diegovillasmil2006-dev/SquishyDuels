@@ -399,7 +399,9 @@ local Vfx = {
 		splats = 12, -- live splats (5 parts each)
 		ambientMovers = 6, -- lobby SD_Ambient movers (5 used); the 2 breathers count in deformingRigs
 		uiJuiceFrames = 32, -- 8 coins + 18 confetti + 3 popups + 2 bubbles + slack (the box reveal keeps its own 24)
-		editableMeshes = 4, -- per client: the 3 giant pads + 1 ripple skin (arena or backstop, never both)
+		-- per client: the 3 giant pads + 1 ripple skin (arena or backstop, never both) + 1 knead shell (spec phase2-squeeze
+		-- §3.2: MeshQuota key "soft", Inspect's kneaded toy)
+		editableMeshes = 5,
 		-- (The first-person arms' 2 small session meshes, Anim/SuperMesh, are outside this quota: DESIGN §18.9.)
 		-- Squishy overhaul detail levels (spec 2026-10-09 §3.2, §5; the "Low" keys apply when MeshQuality.forCamera()
 		-- is "Low", or nil in the first frames). Hero (own held, Inspect, reveal; at most heroRigs, Inspect and the
