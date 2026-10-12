@@ -434,16 +434,34 @@ export type ThrowImpactPayload = {
 }
 
 export type UltimatePhase = "telegraph" | "release" | "cancel"
+-- Spec phase 5: one Flock Volley bird (its own projectile) and one Rain Check drop (an area hit), in a release.
+export type UltimateShot = { projId: number, origin: Vector3, dir: Vector3, length: number, releaseAt: number }
+export type UltimateDrop = { projId: number, position: Vector3, shadowAt: number, landAt: number }
 export type UltimateEventPayload = {
 	phase: UltimatePhase,
 	casterId: number,
-	projId: number?,
+	-- Config.Abilities key (spec phase 5). Reading: nil = "dragon_rush", the only ultimate before it existed.
+	ultimateId: string?,
+	projId: number?, -- release: the lane, the roller or the bubble
 	origin: Vector3,
 	dir: Vector3,
 	length: number,
 	radius: number,
 	telegraphEndsAt: number,
 	speed: number,
+	shots: { UltimateShot }?, -- release: Flock Volley's birds
+	center: Vector3?, -- release: Rain Check's zone centre, on the floor
+	drops: { UltimateDrop }?, -- release: Rain Check's drops
+}
+
+-- Spec phase 5: an accepted dash, to the participants (practice: nearby players) so their clients play its pose and
+-- effects; the dasher's own client already moved (it predicts). Server times.
+export type DashStartedPayload = {
+	userId: number,
+	dir: Vector3, -- flat unit
+	from: Vector3, -- the server HRP at the request
+	to: Vector3, -- the server's end point (cover, the own half and the range bounds cut it)
+	startAt: number,
 }
 
 export type UltimateChargePayload = { ownerId: number, charge: number }

@@ -26,6 +26,15 @@
 --   (E already stops at cover and Bounds), hitting each victim (or practice target) at most once. A lane tests the
 --   victim's capsule at standing height (axis floor + 1.3 .. floor + 4.8, §5.9 "even at the top of a jump"): only
 --   the HRP's X and Z count, so jumping never avoids the lane and the floor stadium the clients draw is the hit area.
+-- * The Epic ultimates (spec phase 5; AbilityService.launchUlt / launchArea), kind "ult" ("practiceUlt" in the range;
+--   never "throw", so they give no charge): the same gravity-0 simulation from O over a length that already stops at
+--   cover and Bounds. A Flock Volley bird tests the real capsule and ends at its first hit. The Sprinkle Roller
+--   (`clearHeight`) tests horizontally only (its lane's half-width + the capsule radius, Logic/UltRules.flatEntry) and
+--   misses a player whose feet are higher than clearHeight above the floor; it flies on like a lane. A Bubble Pop
+--   (`splashRadius`) pops at its first contact, at cover or at the end of its flight, and a pop is an area hit. An area
+--   hit (a Rain Check drop, a pop) happens once at its server time: the first victim (or practice target) whose feet
+--   (the capsule's lowest point) are within its radius of its floor point and passes canDamage is hit; a drop that
+--   hits nobody sends nothing, a pop that hits nobody sends its end impact (expired / geometry) at the pop point.
 -- * Order against the match timers (§5.2 rule 7, DuelRules "timed transitions happen at their deadline"): the match
 --   owner calls syncTo(now) before it advances its timers to `now`, so every projectile is swept up to that time
 --   first and a hit whose impact comes just before a phase deadline is applied before the deadline fires. A throw or
@@ -62,6 +71,7 @@ local Logic = script.Parent.Parent.Logic
 local HitMath = require(Logic.HitMath)
 local MovementRules = require(Logic.MovementRules)
 local ThrowRules = require(Logic.ThrowRules)
+local UltRules = require(Logic.UltRules)
 local CharacterService = require(script.Parent.CharacterService)
 local InventoryService = require(script.Parent.InventoryService)
 local NetService = require(script.Parent.NetService)
@@ -72,7 +82,7 @@ local PracticeService = require(script.Parent.PracticeService)
 export type Side = Types.Side
 export type Zone = Types.ArenaZone
 export type ThrowStats = ThrowRules.ThrowStats
-export type ProjectileKind = "throw" | "practice" | "lane" | "practiceLane"
+export type ProjectileKind = "throw" | "practice" | "lane" | "practiceLane" | "ult" | "practiceUlt"
 
 -- One duelist. DuelService creates it with newFighter(); the throw state fields belong to this module.
 export type Fighter = {
@@ -176,6 +186,36 @@ export type LaneSpec = {
 	stoppedByGeometry: boolean, -- E is on cover: the end impact is `geometry`, else `expired`
 }
 
+-- An Epic ultimate's projectile (AbilityService, spec phase 5): a Flock Volley bird, the Sprinkle Roller or a Bubble
+-- Pop bubble, a straight sweep like a lane over a length that already stops at cover and Bounds.
+export type UltSpec = {
+	caster: Fighter?, -- duel caster (nil in practice)
+	player: Player?, -- the casting player (practice: required)
+	squishyId: string,
+	origin: Vector3,
+	direction: Vector3, -- unit, horizontal
+	length: number,
+	radius: number,
+	speed: number,
+	releaseAt: number,
+	stoppedByGeometry: boolean,
+	floorY: number, -- the arena (or practice lane) floor, for the feet tests
+	flyOn: boolean?, -- true: flies on through the victim it hits (the roller); else ends at its first hit
+	clearHeight: number?, -- the roller: horizontal hits only, none while the feet are higher than this above floorY
+	splashRadius: number?, -- the bubble: it pops at its first contact or end; feet this close to the pop are hit
+}
+
+-- One area hit at one server time (a Rain Check drop).
+export type AreaSpec = {
+	caster: Fighter?,
+	player: Player?,
+	squishyId: string,
+	position: Vector3, -- on the floor
+	radius: number, -- a victim whose feet are this close to `position` is hit
+	at: number, -- server time
+	floorY: number,
+}
+
 -- What the guard and AbilityService read about a practising player.
 type PracticeActor = {
 	nextThrowAt: number,
@@ -205,6 +245,22 @@ type Projectile = {
 	countsAsLive: boolean, -- throws count toward MaxActiveProjectilesPerPlayer; lanes do not
 	hitOnce: { [any]: boolean }, -- lanes: victims / targets already hit
 	endKind: Types.ImpactKind,
+	-- Spec phase 5 (the Epic ultimates; nil / false for throws and lanes unless said):
+	flyOn: boolean, -- a hit does not end it (lanes, the roller)
+	floorY: number?, -- the floor its feet tests read
+	clearHeight: number?, -- the roller's horizontal test and jump rule
+	splashRadius: number?, -- a bubble: its pop becomes an area hit
+	area: Area?, -- an area hit waiting for (or at) its time
+	areaHits: number, -- victims / targets its area already hit
+}
+
+-- One area hit: at server time `at`, feet within `radius` of `center` (projected to the floor) are hit.
+type Area = {
+	center: Vector3, -- the drop point, or the pop point (its impacts are sent here)
+	at: number,
+	radius: number,
+	endKind: Types.ImpactKind?, -- sent at the center when nobody is hit (nil: silent, a Rain Check drop)
+	normal: Vector3?,
 }
 
 -- What this module needs from the outside world (useDeps). `send` fires a server -> client remote to a list of
@@ -578,11 +634,20 @@ local function sweep(proj: Projectile, s: ProjectileMath.SubStep): Candidate?
 		local root = if victim then victim.getRoot() else nil
 		if victim and root and not proj.hitOnce[victim] then
 			local capsuleRoot = root.Position
-			if proj.kind == "lane" then
-				-- §5.9: axis floor + 1.3 .. floor + 4.8 even at the top of a jump (only X and Z of the HRP count).
-				capsuleRoot = Vector3.new(capsuleRoot.X, port.arena.floorY + LANE_ROOT_HEIGHT, capsuleRoot.Z)
+			local fraction: number?
+			local clearHeight = proj.clearHeight
+			if clearHeight ~= nil then
+				-- The Sprinkle Roller (spec phase 5): horizontal only, jumped once the feet clear clearHeight.
+				if not UltRules.feetAbove(capsuleRoot, proj.floorY or port.arena.floorY, clearHeight) then
+					fraction = UltRules.flatEntry(s.p0, s.p1, proj.radius, capsuleRoot)
+				end
+			else
+				if proj.kind == "lane" then
+					-- §5.9: axis floor + 1.3 .. floor + 4.8 even at the top of a jump (only X and Z of the HRP count).
+					capsuleRoot = Vector3.new(capsuleRoot.X, port.arena.floorY + LANE_ROOT_HEIGHT, capsuleRoot.Z)
+				end
+				fraction = HitMath.capsuleEntry(s.p0, s.p1, proj.radius, HitMath.capsule(capsuleRoot))
 			end
-			local fraction = HitMath.capsuleEntry(s.p0, s.p1, proj.radius, HitMath.capsule(capsuleRoot))
 			if fraction and fraction < bestFraction then
 				local at = ProjectileMath.impactTime(proj.releaseAt, s.a, s.b, fraction)
 				if canDamage(port, attacker, victim, root.Position, at) then
@@ -592,12 +657,23 @@ local function sweep(proj: Projectile, s: ProjectileMath.SubStep): Candidate?
 				end
 			end
 		end
-	elseif proj.kind == "practice" or proj.kind == "practiceLane" then
+	elseif proj.kind == "practice" or proj.kind == "practiceLane" or proj.kind == "practiceUlt" then
 		local at = proj.releaseAt + s.b
 		for _, target in PracticeService.targets() do
 			if not proj.hitOnce[target.id] and not PracticeService.isTargetDown(target.id, at) then
 				local bottom, top, radius = PracticeService.capsuleAt(target, at)
-				local fraction = HitMath.capsuleEntry(s.p0, s.p1, proj.radius, { a = bottom, b = top, radius = radius })
+				local fraction: number?
+				local clearHeight = proj.clearHeight
+				if clearHeight ~= nil then
+					-- The roller against a target: horizontal only (a target's feet are on its lane floor).
+					local feetY = bottom.Y - radius
+					if feetY - (proj.floorY or feetY) <= clearHeight then
+						local box = { bottomOffset = 0, topOffset = 0, radius = radius }
+						fraction = UltRules.flatEntry(s.p0, s.p1, proj.radius, bottom, box)
+					end
+				else
+					fraction = HitMath.capsuleEntry(s.p0, s.p1, proj.radius, { a = bottom, b = top, radius = radius })
+				end
 				if fraction and fraction < bestFraction then
 					local candidate = makeCandidate(proj, "target", s, fraction, nil)
 					candidate.targetId = target.id
@@ -609,8 +685,105 @@ local function sweep(proj: Projectile, s: ProjectileMath.SubStep): Candidate?
 	return best
 end
 
+-- An area hit at its time (spec phase 5): the first victim (or practice target) not hit yet whose feet are within its
+-- radius of its floor point and that may be damaged then; nil when nobody is (left).
+local function areaVictim(proj: Projectile, area: Area): Candidate?
+	local floorPoint = Vector3.new(area.center.X, proj.floorY or area.center.Y, area.center.Z)
+	local candidate: Candidate = {
+		proj = proj,
+		kind = "player",
+		time = area.at,
+		a = proj.lastT,
+		position = area.center,
+		normal = nil,
+		direction = flatUnit(proj.velocity),
+		victim = nil,
+		targetId = nil,
+		outcome = nil,
+	}
+	local port = proj.port
+	if port then
+		local attacker = proj.owner :: Fighter
+		local victim = opponentOf(port, attacker)
+		local root = if victim then victim.getRoot() else nil
+		if
+			victim
+			and root
+			and not proj.hitOnce[victim]
+			and UltRules.feetWithin(root.Position, floorPoint, area.radius)
+			and canDamage(port, attacker, victim, root.Position, area.at)
+		then
+			candidate.victim = victim
+			local away = flatUnit(root.Position - area.center)
+			if away ~= Vector3.zero then
+				candidate.direction = away -- knockback away from the drop or the pop
+			end
+			return candidate
+		end
+		return nil
+	end
+	if proj.kind == "practiceUlt" then
+		for _, target in PracticeService.targets() do
+			if not proj.hitOnce[target.id] and not PracticeService.isTargetDown(target.id, area.at) then
+				local bottom, _, radius = PracticeService.capsuleAt(target, area.at)
+				if (bottom - Vector3.new(0, radius, 0) - floorPoint).Magnitude <= area.radius then
+					candidate.kind = "target"
+					candidate.targetId = target.id
+					return candidate
+				end
+			end
+		end
+	end
+	return nil
+end
+
+-- An area projectile's step: nothing before its time; then a victim, its end impact (a pop that hit nobody) or, when
+-- nobody (else) is in reach, a silent finish.
+local function areaStep(proj: Projectile, now: number): Candidate?
+	local area = proj.area :: Area
+	if now < area.at then
+		return nil
+	end
+	local candidate = areaVictim(proj, area)
+	if candidate then
+		return candidate
+	end
+	local endKind = area.endKind
+	if endKind == nil or proj.areaHits > 0 then
+		finish(proj)
+		return nil
+	end
+	return {
+		proj = proj,
+		kind = endKind :: Types.ImpactKind,
+		time = area.at,
+		a = proj.lastT,
+		position = area.center,
+		normal = area.normal,
+		direction = flatUnit(proj.velocity),
+	}
+end
+
+-- A Bubble Pop bubble pops where `at` says (its first contact, or the end of its flight): from now on it is an area hit.
+local function pop(proj: Projectile, at: Candidate, now: number): Candidate?
+	proj.area = {
+		center = at.position,
+		at = at.time,
+		radius = proj.splashRadius or 0,
+		endKind = if at.kind == "player" or at.kind == "target" then "expired" else at.kind,
+		normal = at.normal,
+	}
+	return areaStep(proj, now)
+end
+
 local function simulate(proj: Projectile, now: number): Candidate?
-	if proj.done or now < proj.releaseAt then
+	if proj.done then
+		return nil
+	end
+	if proj.area ~= nil then
+		return areaStep(proj, now)
+	end
+	if now < proj.releaseAt then
 		return nil
 	end
 	if not proj.released then
@@ -644,6 +817,9 @@ local function simulate(proj: Projectile, now: number): Candidate?
 	for _, s in ProjectileMath.subSteps(proj.origin, proj.velocity, proj.gravity, proj.lastT, tNow) do
 		local candidate = sweep(proj, s)
 		if candidate then
+			if proj.splashRadius ~= nil then
+				return pop(proj, candidate, now) -- a bubble pops at its first contact
+			end
 			return candidate -- lastT stays at this sub-step's start until the candidate is applied
 		end
 		proj.lastT = s.b
@@ -651,7 +827,7 @@ local function simulate(proj: Projectile, now: number): Candidate?
 
 	local position = ProjectileMath.positionAt(proj.origin, proj.velocity, proj.gravity, proj.lastT)
 	if proj.lastT >= proj.maxT or not insideBounds(proj, position) then
-		return {
+		local ended: Candidate = {
 			proj = proj,
 			kind = proj.endKind,
 			time = proj.releaseAt + proj.lastT,
@@ -659,6 +835,10 @@ local function simulate(proj: Projectile, now: number): Candidate?
 			position = position,
 			direction = flatUnit(ProjectileMath.velocityAt(proj.velocity, proj.gravity, proj.lastT)),
 		}
+		if proj.splashRadius ~= nil then
+			return pop(proj, ended, now) -- a bubble pops at cover or when its time is up
+		end
+		return ended
 	end
 	return nil
 end
@@ -706,8 +886,11 @@ local function applyPlayerHit(candidate: Candidate)
 	end
 	sendTo(proj, "ThrowImpact", payload, candidate.position)
 
-	if proj.kind == "lane" then
-		rewind(candidate) -- a lane flies on to its end; this victim is never hit twice
+	if proj.area ~= nil then
+		proj.areaHits += 1 -- an area hit: the next step looks for anyone else in reach, then finishes
+	end
+	if proj.flyOn or proj.area ~= nil then
+		rewind(candidate) -- a lane (or the roller) flies on to its end; this victim is never hit twice
 	else
 		finish(proj)
 	end
@@ -732,7 +915,8 @@ local function applyTargetHit(candidate: Candidate)
 	local proj = candidate.proj
 	local player = proj.player
 	local targetId = candidate.targetId
-	local fromLane = proj.kind == "practiceLane"
+	-- An ultimate's rehearsal hit (a lane or an Epic ultimate): the target reacts but it is not a throw (§5.11).
+	local fromLane = proj.kind == "practiceLane" or proj.kind == "practiceUlt"
 	if
 		player == nil
 		or targetId == nil
@@ -746,7 +930,10 @@ local function applyTargetHit(candidate: Candidate)
 	local payload = impactPayload(candidate)
 	payload.targetId = targetId
 	sendTo(proj, "ThrowImpact", payload, candidate.position)
-	if proj.kind == "practiceLane" then
+	if proj.area ~= nil then
+		proj.areaHits += 1
+	end
+	if proj.flyOn or proj.area ~= nil then
 		rewind(candidate)
 	else
 		finish(proj)
@@ -1112,6 +1299,8 @@ function CombatService.requestThrow(
 		countsAsLive = true,
 		hitOnce = {},
 		endKind = "expired",
+		flyOn = false,
+		areaHits = 0,
 	}
 
 	if kind == "throw" and fighter and port then
@@ -1182,6 +1371,88 @@ function CombatService.launchLane(spec: LaneSpec): number
 		countsAsLive = false,
 		hitOnce = {},
 		endKind = if spec.stoppedByGeometry then "geometry" else "expired",
+		flyOn = true,
+		areaHits = 0,
+	}
+	addProjectile(proj)
+	return proj.projId
+end
+
+-- The owner, kind and match of an Epic ultimate's projectile (duel caster, or the practising player).
+local function ultOwner(caster: Fighter?, player: Player?): (any, ProjectileKind, MatchPort?, number)
+	local port = if caster then portOf[caster] else nil
+	local kind: ProjectileKind = if caster and port then "ult" else "practiceUlt"
+	local owner = caster or (if player then practiceActorOf(player) else nil)
+	local ownerId = if caster then caster.userId elseif player then player.UserId else 0
+	return owner, kind, port, ownerId
+end
+
+-- Launches an Epic ultimate's projectile (AbilityService, spec phase 5): a Flock Volley bird, the Sprinkle Roller or a
+-- Bubble Pop bubble; a straight gravity-0 sweep from origin over `length` studs starting at releaseAt (see the header).
+-- Duel ones test the caster's opponent with the normal canDamage, practice ones only practice targets. Returns the projId.
+function CombatService.launchUlt(spec: UltSpec): number
+	local owner: any, kind: ProjectileKind, port: MatchPort?, ownerId: number = ultOwner(spec.caster, spec.player)
+	local speed = math.max(spec.speed, 1e-3)
+	local proj: Projectile = {
+		projId = newProjId(),
+		kind = kind,
+		ownerId = ownerId,
+		owner = owner,
+		player = spec.player,
+		port = port,
+		squishyId = spec.squishyId,
+		origin = spec.origin,
+		velocity = spec.direction * speed,
+		gravity = 0,
+		radius = spec.radius,
+		releaseAt = spec.releaseAt,
+		lastT = 0,
+		maxT = math.max(spec.length, 0) / speed,
+		fizzle = false,
+		released = false,
+		done = false,
+		countsAsLive = false,
+		hitOnce = {},
+		endKind = if spec.stoppedByGeometry then "geometry" else "expired",
+		flyOn = spec.flyOn == true,
+		floorY = spec.floorY,
+		clearHeight = spec.clearHeight,
+		splashRadius = spec.splashRadius,
+		areaHits = 0,
+	}
+	addProjectile(proj)
+	return proj.projId
+end
+
+-- Schedules one area hit (a Rain Check drop, spec phase 5) at server time spec.at: the caster's opponent (or the
+-- practice targets) whose feet are within spec.radius of spec.position is hit; a miss sends nothing. Returns the projId.
+function CombatService.launchArea(spec: AreaSpec): number
+	local owner: any, kind: ProjectileKind, port: MatchPort?, ownerId: number = ultOwner(spec.caster, spec.player)
+	local proj: Projectile = {
+		projId = newProjId(),
+		kind = kind,
+		ownerId = ownerId,
+		owner = owner,
+		player = spec.player,
+		port = port,
+		squishyId = spec.squishyId,
+		origin = spec.position,
+		velocity = Vector3.zero,
+		gravity = 0,
+		radius = spec.radius,
+		releaseAt = spec.at,
+		lastT = 0,
+		maxT = 0,
+		fizzle = false,
+		released = true,
+		done = false,
+		countsAsLive = false,
+		hitOnce = {},
+		endKind = "expired",
+		flyOn = false,
+		floorY = spec.floorY,
+		area = { center = spec.position, at = spec.at, radius = spec.radius, endKind = nil, normal = nil },
+		areaHits = 0,
 	}
 	addProjectile(proj)
 	return proj.projId

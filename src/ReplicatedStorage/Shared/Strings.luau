@@ -71,8 +71,9 @@ local Strings = {
 			context = "You can't throw here.",
 			direction = "You can't throw in that direction.",
 			tooMany = "Too many throws in the air. Wait a moment.",
-			-- Reading (not in §2.10): §5.6 #4 "not rooted by Dragon Rush" (telegraph and recovery).
-			rooted = "You can't throw while using Dragon Rush.",
+			-- Reading (not in §2.10): §5.6 #4 "not rooted by Dragon Rush" (telegraph and recovery); spec phase 5: every
+			-- ultimate roots its caster the same way.
+			rooted = "You can't throw while using your ultimate.",
 		},
 		ult = {
 			notReady = "Your ultimate isn't ready yet.",
@@ -196,6 +197,7 @@ local Strings = {
 	controls = {
 		throw = "Throw",
 		ultimate = "Ultimate",
+		dash = "Dash", -- spec phase 5: the touch Dash button (user decision 2026-10-11)
 		squeeze = "Squeeze",
 		-- Text button prompts (§11.4: button prompts are text, "E", "X", "R2", "B"; §11.7 input map). Reading: shown
 		-- as "{action} ({key})", e.g. "Inspect (V)".
@@ -332,7 +334,9 @@ local Strings = {
 		ko = "K.O.!",
 	},
 
-	-- Abilities (§5.9). {seconds} = Config.Abilities.dragon_rush.telegraphSeconds.
+	-- Abilities (§5.9). {seconds} = Config.Abilities.dragon_rush.telegraphSeconds. Spec phase 5: the four Epic
+	-- ultimates use the design's names (ults.js:3-6) and short descriptions from its stats and counters (user decision
+	-- 2026-10-11).
 	ability = {
 		interrupted = "Interrupted!",
 		dragonRush = {
@@ -340,6 +344,34 @@ local Strings = {
 			incoming = "Dragon Rush incoming!",
 			ready = "Dragon Rush ready",
 			description = "Shows a warning lane for {seconds} seconds, then a dragon head charges down it. If your opponent is touching the lane, they lose a life. Charges over time, when you land hits and when you lose a life.",
+		},
+		-- design: ults.js:3 ("Gaps between birdies open past ~30 st, so strafing between lanes beats it at range.")
+		flockVolley = {
+			name = "Flock Volley",
+			incoming = "Flock Volley incoming!",
+			ready = "Flock Volley ready",
+			description = "Throws 3 Birdies in a fan. Each one that hits takes a life. Far away the gaps open, so strafe between them.",
+		},
+		-- design: ults.js:4 ("Jump over it or step out of the lane. The sprinkle trail is cosmetic.")
+		sprinkleRoller = {
+			name = "Sprinkle Roller",
+			incoming = "Sprinkle Roller incoming!",
+			ready = "Sprinkle Roller ready",
+			description = "Rolls a giant Donut down a wide lane. Touching it takes a life. Jump over it or step out of the lane.",
+		},
+		-- design: ults.js:5 ("Every drop casts a shadow first; walk out of the zone.")
+		rainCheck = {
+			name = "Rain Check",
+			incoming = "Rain Check incoming!",
+			ready = "Rain Check ready",
+			description = "A rain cloud parks over your opponent and drops 5 raindrops. Each drop casts a shadow first, so walk out of the zone.",
+		},
+		-- design: ults.js:6 ("Slow and very visible: back off or bait the early pop.")
+		bubblePop = {
+			name = "Bubble Pop",
+			incoming = "Bubble Pop incoming!",
+			ready = "Bubble Pop ready",
+			description = "Sends a slow bubble that pops with a big splash when it touches someone, hits cover or after a moment. Back off or make it pop early.",
 		},
 	},
 

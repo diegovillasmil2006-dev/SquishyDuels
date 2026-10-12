@@ -53,6 +53,12 @@
 --   an impact ring sized exactly to R, the indicator fades in 250 ms (transparency only increases), camera shake
 --   0.8° / 260 ms within R + 10 studs of E. Cancel = "Interrupted!" over the lane, the lane fades in 200 ms, no head.
 --   floorY = origin.Y - laneHeightAboveFloor (the lane height is fixed above the floor, §5.9).
+-- The Epic ultimates (spec phase 5): an UltimateEvent whose ability (ThrowController.eventAbility: the event's
+--   ultimateId, none = Dragon Rush) is not a lane goes to Anim/UltFx, which draws it from the event numbers; their
+--   projectiles' ThrowImpacts get this module's normal hit feedback (puffs, ghost, flinch, the victim's vignette in the
+--   caster's accent and shake, hit-stop keyed by the projId except the roller's, which flies on) with the ability's
+--   knockbackMultiplier, and UltFx ends its drawn bird or bubble; their minor ends play no sfx.impactSoft (UltFx has
+--   its own sounds). Anim/UltFx is required inline (no new top-level local).
 -- First person (spec 2026-10-10 §3.10; FirstPersonController and Anim/NearFade by inline requires, no new top-level
 --   local): no SD_HitFlash ghost on the own character while first person is on (ghostWanted: a Highlight can draw on
 --   the hidden body); the local first-person victim's impact puffs and ring at a quarter (impactScale, majorBurst);
@@ -1685,6 +1691,23 @@ local function onUltimateEvent(raw: unknown)
 	if event == nil then
 		return
 	end
+	-- Spec phase 5: an Epic ultimate is drawn by Anim/UltFx (inline require: no new top-level local).
+	local ultimateId, ability = ThrowController.eventAbility(event)
+	if ultimateId == nil or ability == nil then
+		return
+	end
+	if ability.kind ~= "lane" then
+		require(script.Parent.Parent.Anim.UltFx).onEvent(event, ultimateId, ability, {
+			play = function(key: string, options: { [string]: any }?)
+				playSound(key, options :: any)
+			end,
+			playTracked = function(key: string, options: { [string]: any }?): ((fadeMs: number?) -> ())?
+				return SoundController.playTracked(key, options :: any)
+			end,
+			reduced = reduced,
+		})
+		return
+	end
 	local current = rushes[event.casterId]
 	if event.phase == "telegraph" then
 		if current then
@@ -1838,9 +1861,18 @@ local function handleImpact(impact: Types.ThrowImpactPayload, debugOnly: boolean
 	if rushInfo ~= nil and not MAJOR_KINDS[impact.kind] then
 		rushProjIds[impact.projId] = nil -- the lane ended (a lane flies on through the players it hits)
 	end
-	local accent = if info then accentOf(info.squishyId) else Palette.White
-	local attackerId = if info then info.throwerId else rushCaster
-	impactSound(impact, rushCaster ~= nil, attackerId)
+	-- Spec phase 5: an Epic ultimate's projectile (a bird, the roller, the bubble, a drop).
+	local UltFx = require(script.Parent.Parent.Anim.UltFx)
+	local ultInfo = UltFx.projectile(impact.projId)
+	if ultInfo ~= nil then
+		UltFx.impact(impact)
+	end
+	local accent = if info
+		then accentOf(info.squishyId)
+		elseif ultInfo then accentOf(ultInfo.squishyId)
+		else Palette.White
+	local attackerId = if info then info.throwerId elseif ultInfo then ultInfo.casterId else rushCaster
+	impactSound(impact, rushCaster ~= nil or ultInfo ~= nil, attackerId)
 	local localPlayer = Players.LocalPlayer
 	local localId = if localPlayer then localPlayer.UserId else nil
 	local isReduced = reduced()
@@ -1858,7 +1890,7 @@ local function handleImpact(impact: Types.ThrowImpactPayload, debugOnly: boolean
 	if stopSeconds ~= nil then
 		-- A throw ends at its first impact, so its projId is also ProjectileRenderer's key (the first asker registers);
 		-- a lane can hit more than once and only this module asks for it, so it goes unkeyed.
-		local key = if rushCaster ~= nil then nil else impact.projId
+		local key = if rushCaster ~= nil or (ultInfo ~= nil and ultInfo.flyOn) then nil else impact.projId
 		holdStart = HitStop.trigger(key, stopSeconds, os.clock(), isReduced)
 		if holdStart ~= nil then
 			stats.holds += 1
@@ -1907,7 +1939,11 @@ local function handleImpact(impact: Types.ThrowImpactPayload, debugOnly: boolean
 			flinch(victim, 1)
 		end
 		if victim == localPlayer and debugOnly ~= true then
-			applyKnockback(impact, if rushCaster ~= nil then RUSH.knockbackMultiplier else 1)
+			local multiplier = if rushCaster ~= nil
+				then RUSH.knockbackMultiplier
+				elseif ultInfo ~= nil then ultInfo.knockbackMultiplier
+				else 1
+			applyKnockback(impact, multiplier)
 		end
 		afterHold(function()
 			releaseHeldFlinch(victim, true)
@@ -2007,6 +2043,7 @@ local function clearMatchEffects()
 	for _, rush in table.clone(rushes) do
 		startRushFade(rush, RUSH_VFX.cancelFadeMs / 1000)
 	end
+	require(script.Parent.Parent.Anim.UltFx).clear() -- spec phase 5
 end
 
 local function onDuelChanged(view: any, old: any)
@@ -2042,6 +2079,7 @@ local function step(dt: number, clock: number): boolean
 	HitStop.runDue(clock, onDueError)
 	stepGhosts(now)
 	stepRushes(now)
+	require(script.Parent.Parent.Anim.UltFx).step(now) -- spec phase 5: the Epic ultimates
 	restoreEliminated()
 	local count = #effects
 	local kept = 0
@@ -2220,6 +2258,7 @@ function VfxController.clear()
 	table.clear(eliminated)
 	table.clear(projectiles)
 	table.clear(rushProjIds)
+	require(script.Parent.Parent.Anim.UltFx).clear() -- spec phase 5
 	pcall(function(): any
 		setArenaLighting(false)
 		return nil

@@ -25,6 +25,9 @@ local Net = {
 		ReportIdle = { rate = 1 / 30, burst = 1 },
 		ThrowRequest = { rate = 3, burst = 4 }, -- §5.6 #1: over the bucket = silent drop
 		UltimateRequest = { rate = 0.5, burst = 2 },
+		-- Spec phase 5: the dash's 2 s cooldown is DashRules' (the client sends at most one per cooldown); the bucket
+		-- only stops floods.
+		DashRequest = { rate = 1, burst = 3 },
 		-- The flood guard (> 20/s dropped silently, = Config.Squeeze.floodPerSecond): every click pays, so normal
 		-- fast clicking (the client sends at most 12 per second) is never rate-limited, counted as a violation or
 		-- muted; a macro above 20/s still is, once it has used up the burst. Burst 60 = 5 s of the 12-per-second

@@ -519,6 +519,60 @@ return function(t: Context)
 		expect.equal(ThrowController.parseUltimateEvent(nil), nil)
 	end)
 
+	-- Spec phase 5: the Epic ultimates' events carry their ultimateId and, at the release, their birds or drops.
+	t.test("an Epic ultimate's event: ultimateId, shots, center and drops are type-checked", function()
+		local release: any = {
+			phase = "release",
+			casterId = 42,
+			ultimateId = "flock_volley",
+			origin = Vector3.new(0, 4.8, -38),
+			dir = Vector3.new(0, 0, 1),
+			length = 90,
+			radius = 0.9,
+			telegraphEndsAt = 100.35,
+			speed = 75,
+			shots = {
+				{ projId = 7, origin = Vector3.zero, dir = Vector3.zAxis, length = 90, releaseAt = 100.35 },
+				{ projId = 8, origin = Vector3.zero, dir = Vector3.zAxis, length = 88, releaseAt = 100.4 },
+			},
+		}
+		expect.equal(ThrowController.parseUltimateEvent(release), release)
+		local rain: any = table.clone(release)
+		rain.ultimateId = "rain_check"
+		rain.shots = nil
+		rain.center = Vector3.new(0, 0, 30)
+		rain.drops = { { projId = 9, position = Vector3.new(1, 0, 30), shadowAt = 101.25, landAt = 102 } }
+		expect.equal(ThrowController.parseUltimateEvent(rain), rain)
+		local badId: any = table.clone(release)
+		badId.ultimateId = 5
+		expect.equal(ThrowController.parseUltimateEvent(badId), nil)
+		local badShot: any = table.clone(release)
+		badShot.shots = { { projId = "x", origin = Vector3.zero, dir = Vector3.zAxis, length = 1, releaseAt = 1 } }
+		expect.equal(ThrowController.parseUltimateEvent(badShot), nil)
+		local badDrop: any = table.clone(rain)
+		badDrop.drops = { { projId = 9, position = "here", shadowAt = 1, landAt = 2 } }
+		expect.equal(ThrowController.parseUltimateEvent(badDrop), nil)
+		local badCenter: any = table.clone(rain)
+		badCenter.center = 3
+		expect.equal(ThrowController.parseUltimateEvent(badCenter), nil)
+		local tooMany: any = table.clone(release)
+		tooMany.shots = table.create(40, release.shots[1])
+		expect.equal(ThrowController.parseUltimateEvent(tooMany), nil)
+	end)
+
+	t.test(
+		"eventAbility: the event's ultimateId; none is Dragon Rush (an event from before the Epic ultimates)",
+		function()
+			local id, ability = ThrowController.eventAbility({ ultimateId = "bubble_pop" } :: any)
+			expect.equal(id, "bubble_pop")
+			expect.equal(ability, Config.Abilities.bubble_pop)
+			local oldId, oldAbility = ThrowController.eventAbility({} :: any)
+			expect.equal(oldId, "dragon_rush")
+			expect.equal(oldAbility, Config.Abilities.dragon_rush)
+			expect.equal(ThrowController.eventAbility({ ultimateId = "laser_eyes" } :: any), nil)
+		end
+	)
+
 	t.test("an aim ray into open sky stops at the opponent's distance, not 200 studs (no lob to the moon)", function()
 		-- Part 4 user test: camera 12 studs behind pad A, the opponent on pad B 88 studs away, the crosshair a little
 		-- above the opponent (sky). The old 200-stud point gave a ~34° lob landing far past the court.
@@ -686,9 +740,10 @@ return function(t: Context)
 		expect.equal(wasCancelled, true)
 		local none: { any } = { ThrowController.windupValues(nil) }
 		expect.deepEqual(none, { nil, nil, nil, nil, false } :: { any })
-		local ult: any = { phase = "telegraph", telegraphEndsAt = 5, releaseStart = nil }
-		local p, ends, start = ThrowController.ultValues(ult)
+		local ult: any = { phase = "telegraph", telegraphEndsAt = 5, releaseStart = nil, ultimateId = "rain_check" }
+		local p, ends, start, id = ThrowController.ultValues(ult)
 		expect.deepEqual({ p, ends, start } :: { any }, { "telegraph", 5 } :: { any })
+		expect.equal(id, "rain_check") -- spec phase 5: the first-person hand times its wind-up by it
 		expect.deepEqual({ ThrowController.ultValues(nil) }, {})
 	end)
 

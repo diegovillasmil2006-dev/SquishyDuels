@@ -15,7 +15,8 @@
 --   asked for) a call that outlives it returns `error.generic` and the late reply is dropped.
 -- * Incoming: on(name, handler) for S->C events (any time, even before connecting); each handler runs in its own
 --   thread (Util/Signal), so one failing handler never stops the others. Typed on* wrappers for every S->C remote.
--- * seq numbers (ThrowRequest, UltimateRequest, §5.6 #2): nextSeq(name) counts from 1 per remote for the session.
+-- * seq numbers (ThrowRequest, UltimateRequest, DashRequest, §5.6 #2): nextSeq(name) counts from 1 per remote for the
+--   session.
 --   Reading: one counter per remote, so a long run of throws can never push the next ultimate's seq past the
 --   server's `< lastSeq + 1000` window.
 -- * Studio (Config.Debug.netCallCounter): outgoing call counts per remote, callCounts() (debug hooks, leak tests).
@@ -394,6 +395,12 @@ function NetController.ultimateRequest(aimDir: Vector3, clientTime: number): num
 	return if NetController.fire("UltimateRequest", seq, aimDir, clientTime) then seq else nil
 end
 
+-- Sends DashRequest (spec phase 5) with the next seq. Returns the seq, or nil when nothing was sent.
+function NetController.dashRequest(dir: Vector3, clientTime: number): number?
+	local seq = NetController.nextSeq("DashRequest")
+	return if NetController.fire("DashRequest", seq, dir, clientTime) then seq else nil
+end
+
 function NetController.equipSquishyAsync(squishyId: string): Result
 	return NetController.invokeAsync("EquipSquishy", squishyId)
 end
@@ -451,6 +458,10 @@ end
 
 function NetController.onUltimateCharge(handler: (Types.UltimateChargePayload) -> ()): Connection
 	return NetController.on("UltimateCharge", handler)
+end
+
+function NetController.onDashStarted(handler: (Types.DashStartedPayload) -> ()): Connection
+	return NetController.on("DashStarted", handler)
 end
 
 function NetController.onDuelResult(handler: (Types.DuelResultPayload) -> ()): Connection

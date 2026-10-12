@@ -45,6 +45,7 @@ local Audio = {
 		hover = 60,
 		hitConfirm = 50,
 		error = 250,
+		dash = 60, -- spec phase 5: sfx.dash and sfx.dashPlant (one dash plays each once)
 	},
 	coinBatchSeconds = 0.08, -- coin ticks batched to <= 1 per 0.08 s
 
@@ -58,6 +59,7 @@ local Audio = {
 		wobble = 0.08,
 		pop = 0.06,
 		hitConfirm = 0.03,
+		dash = 0.05, -- spec phase 5
 	},
 	-- The final pitch (random variation × the play option's `pitch`) is clamped to [pitchMin, pitchMax] (§18.6).
 	pitchMin = 0.5,

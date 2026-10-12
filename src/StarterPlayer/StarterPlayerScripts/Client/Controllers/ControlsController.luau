@@ -15,7 +15,9 @@
 --   Keyboard shortcuts are ignored while a TextBox is focused (chat).
 -- Duel and Practice (Part 4, §5.10, §11.7):
 --   * Throw / PracticeThrow = MouseButton1, ButtonR2, the touch Throw button; Ultimate / PracticeUltimate = Q,
---     ButtonL2, the touch Ultimate button. Duel actions run in the Duel context, Practice actions in the Practice one.
+--     ButtonL2, the touch Ultimate button; Dash / PracticeDash = C, ButtonB, the touch Dash button (spec phase 5, user
+--     decision 2026-10-11; ButtonB stays the Modal context's Back while a modal is open: ModalBack is High and sinks it).
+--     Duel actions run in the Duel context, Practice actions in the Practice one.
 --   * Triggers (ButtonR2 / ButtonL2) count as pressed above Config.Combat.Aim.triggerThreshold (0.5), or above the
 --     action's own triggerThreshold (InspectZoomTriggers: Config.Inspect.Input.triggerDeadzone): the handler sees one
 --     Begin when the trigger crosses it and one End when it drops back (triggerEdge, pure).
@@ -29,7 +31,9 @@
 --     insets, outside the thumbstick zone (lower-left 40% × 45%) and the jump button (read from
 --     PlayerGui.TouchGui.TouchControlFrame.JumpButton, else Roblox's default spot), 16 px apart (touchLayout, pure).
 --     Shown only while PreferredInput is Touch and the Duel or Practice context is live; Ultimate only while
---     setTouchAvailable("Ultimate", true) (the locked loadout has an ultimate). touchButtonsShown() says whether they
+--     setTouchAvailable("Ultimate", true) (the locked loadout has an ultimate). Spec phase 5: a third round button, Dash
+--     (dashButton × UIScale, in Sky), left of Throw and a little lower, else above it (touchLayout keeps it `gap` from
+--     Throw, Ultimate and the jump button and out of the thumbstick zone). touchButtonsShown() says whether they
 --     are up and TouchButtonsChanged fires when that changes (no HUD user since the lobby HUD of 2026-10-11 dropped
 --     the phone dock). A touch button presses the live
 --     action through pressAction(), exactly like a key. setTouchState() draws the cooldown: a vertical UIGradient
@@ -99,11 +103,11 @@ local Theme = require(Client.UI.Theme)
 
 export type Context = "Lobby" | "Duel" | "Practice" | "Modal" | "Inspect"
 export type Handler = (inputState: Enum.UserInputState, input: InputObject?) -> boolean?
-export type TouchButton = "Throw" | "Ultimate"
+export type TouchButton = "Throw" | "Ultimate" | "Dash"
 -- A screen rectangle in pixels (top-left corner and size).
 export type Rect = { x: number, y: number, w: number, h: number }
--- `jump` is the jump button's box the two were laid out against (on large screens it is taller than Throw).
-export type TouchLayout = { throw: Rect, ultimate: Rect, jump: Rect }
+-- `jump` is the jump button's box the buttons were laid out against (on large screens it is taller than Throw).
+export type TouchLayout = { throw: Rect, ultimate: Rect, dash: Rect, jump: Rect }
 -- What worldPointerPresses() checks for one left click or touch (lobby HUD spec 2026-10-11 §2).
 export type PointerFacts = {
 	kind: Enum.UserInputType,
@@ -178,13 +182,17 @@ local JUMP_SMALL = { size = 70, right = 95, bottom = 90 }
 local JUMP_LARGE = { size = 120, right = 170, bottom = 210 }
 -- reading: Ultimate sits up and to the left of Throw along this direction (more up than left).
 local ULT_DIRECTION = Vector2.new(-0.6, -0.8)
+-- Spec phase 5 (reading): Dash's places around Throw, in order: left and a little lower, above and a little right, left
+-- and a little higher; the first that keeps every touchLayout rule wins.
+local DASH_DIRECTIONS: { Vector2 } = { Vector2.new(-1, 0.25), Vector2.new(0.15, -1), Vector2.new(-1, -0.25) }
 local GAP_MARGIN_PX = 0.01 -- keeps the two round buttons at least TOUCH.gap apart after single-precision rounding
 local TOUCH_SHADE_TRANSPARENCY = 0.45 -- the cooling-down part of a round button
 local TOUCH_TEXT_SIZE = Config.UI.TextSize.Button
 local MIN_TEXT_SIZE = Config.UI.minTextSize
 -- Foam UI: each round button's accent and the base size its foam bands are drawn for (they scale with the button).
-local TOUCH_ACCENTS: { [string]: Theme.AccentName } = { Throw = "strawberry", Ultimate = "lilac" }
-local TOUCH_BASE_SIZES: { [string]: number } = { Throw = TOUCH.throwButton, Ultimate = TOUCH.ultButton }
+local TOUCH_ACCENTS: { [string]: Theme.AccentName } = { Throw = "strawberry", Ultimate = "lilac", Dash = "sky" }
+local TOUCH_BASE_SIZES: { [string]: number } =
+	{ Throw = TOUCH.throwButton, Ultimate = TOUCH.ultButton, Dash = TOUCH.dashButton }
 
 -- §11.7 input map. The lobby Squeeze also takes F (spec 2026-10-11 §3.8: the design's squish key, as in duels; no
 -- other Lobby action uses F, and Inspect's F is an overlay action that sinks only while Inspect is open).
@@ -207,6 +215,9 @@ local ACTIONS: { [string]: ActionDef } = {
 		touch = "Throw",
 	},
 	PracticeUltimate = { context = "Practice", inputs = { Enum.KeyCode.Q, Enum.KeyCode.ButtonL2 }, touch = "Ultimate" },
+	-- Spec phase 5 (user decision 2026-10-11): the dash (DashController).
+	Dash = { context = "Duel", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
+	PracticeDash = { context = "Practice", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
 	-- First person (spec 2026-10-10 §3.1, §3.5): the hand's squeeze and the PC forfeit key.
 	DuelSqueeze = { context = "Duel", inputs = { Enum.KeyCode.F, Enum.KeyCode.E, Enum.KeyCode.ButtonX } },
 	DuelForfeit = { context = "Duel", inputs = { Enum.KeyCode.Backspace } },
@@ -241,8 +252,9 @@ local ACTIONS: { [string]: ActionDef } = {
 -- binding: see the header).
 local WORLD_POINTER_ACTION = "Squeeze"
 -- Touch buttons in a fixed order, with their Strings label keys.
-local TOUCH_BUTTONS: { string } = { "Throw", "Ultimate" }
-local TOUCH_LABEL_KEYS: { [string]: string } = { Throw = "controls.throw", Ultimate = "controls.ultimate" }
+local TOUCH_BUTTONS: { string } = { "Throw", "Ultimate", "Dash" }
+local TOUCH_LABEL_KEYS: { [string]: string } =
+	{ Throw = "controls.throw", Ultimate = "controls.ultimate", Dash = "controls.dash" }
 
 -- Module table
 
@@ -284,7 +296,7 @@ local MOVE_SINK_KEYS: { Enum.KeyCode } = {
 	Enum.KeyCode.Space,
 	Enum.KeyCode.Thumbstick1,
 }
-local touchAvailable: { [string]: boolean } = { Throw = true, Ultimate = false }
+local touchAvailable: { [string]: boolean } = { Throw = true, Ultimate = false, Dash = true }
 local touchOwner: { [string]: string } = {} -- the action a touch button's Begin went to (its End goes there too)
 local touchGui: ScreenGui? = nil
 local touchWidgets: { [string]: TouchWidget } = {}
@@ -522,7 +534,7 @@ local function layoutTouch()
 		return
 	end
 	local layout = ControlsController.touchLayout(size, uiScaleOf(size.Y), jumpRect(gui))
-	local rects: { [string]: Rect } = { Throw = layout.throw, Ultimate = layout.ultimate }
+	local rects: { [string]: Rect } = { Throw = layout.throw, Ultimate = layout.ultimate, Dash = layout.dash }
 	for name, widget in touchWidgets do
 		local rect = rects[name]
 		widget.button.Position = UDim2.fromOffset(rect.x, rect.y)
@@ -798,8 +810,9 @@ end
 
 -- §5.10 touch layout in `screen` pixels (the safe-inset area): Throw (throwButton × uiScale, at least throwButtonMin)
 -- left of the jump button, bottoms aligned, `gap` apart; Ultimate (ultButton × uiScale) up and to the left, its centre
--- throwRadius + ultRadius + gap from Throw's centre. Both stay on screen and out of the thumbstick zone. `jump` in the
--- result is the jump button's box used (the given one, else Roblox's default spot), so HUD layouts keep clear of it.
+-- throwRadius + ultRadius + gap from Throw's centre. Both stay on screen and out of the thumbstick zone. Spec phase 5:
+-- Dash (dashButton × uiScale) beside Throw (DASH_DIRECTIONS), apart from the others. `jump` in the result is the jump
+-- button's box used (the given one, else Roblox's default spot), so HUD layouts keep clear of it.
 function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: Rect?): TouchLayout
 	local gap = TOUCH.gap
 	local throwSize = math.max(TOUCH.throwButton * uiScale, TOUCH.throwButtonMin)
@@ -832,10 +845,50 @@ function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: 
 	if ultX < zoneRight + gap and ultY + ultSize > zoneTop then
 		ultX = zoneRight + gap
 	end
+	local throwRect: Rect = { x = throwX, y = throwY, w = throwSize, h = throwSize }
+	local ultRect: Rect = { x = ultX, y = ultY, w = ultSize, h = ultSize }
+	local jumpRect: Rect = { x = jb.x, y = jb.y, w = jb.w, h = jb.h }
+	-- Spec phase 5: Dash, a round button `gap` from Throw and Ultimate (centre distance), `gap` from the jump box, on
+	-- screen and out of the thumbstick zone, at the first of DASH_DIRECTIONS around Throw that keeps all of that.
+	local dashSize = math.max(TOUCH.dashButton * uiScale, TOUCH.minTargetFloor)
+	local function centreOf(rect: Rect): Vector2
+		return Vector2.new(rect.x + rect.w / 2, rect.y + rect.h / 2)
+	end
+	local function fits(rect: Rect): boolean
+		local centre = centreOf(rect)
+		for _, other in { throwRect, ultRect } do
+			if (centre - centreOf(other)).Magnitude < rect.w / 2 + other.w / 2 + gap then
+				return false
+			end
+		end
+		local apartFromJump = rect.x + rect.w + gap <= jumpRect.x
+			or jumpRect.x + jumpRect.w + gap <= rect.x
+			or rect.y + rect.h + gap <= jumpRect.y
+			or jumpRect.y + jumpRect.h + gap <= rect.y
+		local inZone = rect.x < zoneRight + gap and rect.y + rect.h > zoneTop
+		return apartFromJump and not inZone
+	end
+	local dashRect: Rect? = nil
+	for _, direction in DASH_DIRECTIONS do
+		local reach = throwSize / 2 + dashSize / 2 + gap + GAP_MARGIN_PX
+		local centre = throwCentre + direction.Unit * reach
+		local rect: Rect = {
+			x = math.clamp(centre.X - dashSize / 2, 0, math.max(screen.X - dashSize, 0)),
+			y = math.clamp(centre.Y - dashSize / 2, 0, math.max(screen.Y - dashSize, 0)),
+			w = dashSize,
+			h = dashSize,
+		}
+		if fits(rect) then
+			dashRect = rect
+			break
+		end
+		dashRect = dashRect or rect
+	end
 	return {
-		throw = { x = throwX, y = throwY, w = throwSize, h = throwSize },
-		ultimate = { x = ultX, y = ultY, w = ultSize, h = ultSize },
-		jump = { x = jb.x, y = jb.y, w = jb.w, h = jb.h },
+		throw = throwRect,
+		ultimate = ultRect,
+		dash = dashRect :: Rect,
+		jump = jumpRect,
 	}
 end
 

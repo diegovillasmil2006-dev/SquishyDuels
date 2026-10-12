@@ -131,6 +131,13 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 		arg("aimDir", "Vector3"),
 		arg("clientTime", "serverTime"),
 	}),
+	-- Spec phase 5 (DashService, Logic/DashRules): the dash's flat unit direction only; the server decides whether it is
+	-- legal and where it ends (the client predicts the same end with Shared/DashMath).
+	DashRequest = c2s("RemoteEvent", {
+		arg("seq", "integer"),
+		arg("dir", "Vector3"),
+		arg("clientTime", "serverTime"),
+	}),
 	-- §6.3 (Logic/SqueezeRules). No argument (spec 2026-10-11 §5, squeeze anywhere): the server finds the pad under the
 	-- player's own root position; the tier always comes from the server's WorldLayout, never from the client.
 	SqueezeRequest = c2s("RemoteEvent", {}), -- reply: SqueezeResult
@@ -180,6 +187,8 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	),
 	ThrowImpact = s2c("participantsOrNearby", { arg("impact", "table") }),
 	UltimateEvent = s2c("participantsOrNearby", { arg("event", "table") }),
+	-- Types.DashStartedPayload (spec phase 5): participants incl. the dasher; practice: nearby players.
+	DashStarted = s2c("participantsOrNearby", { arg("dash", "table") }),
 	-- <= Config.Net.Broadcast.ultimateChargeMaxHz.
 	UltimateCharge = s2c("participants", { arg("charge", "table") }),
 	-- Each participant gets its own result.

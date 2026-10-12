@@ -193,6 +193,25 @@ local Palette = {
 	DisabledTextDark = Color3.fromHex("#ABA0BB"),
 	Backdrop = Color3.fromHex("#140E1C"), -- the modal dimmer and wash
 
+	-- Moves (spec phase 5): the design's dash and Epic ultimate effect colours, world only (VfxController, DashController,
+	-- Anim/UltFx). Where the design uses its own rarity colour, the game's Art/RarityStyle colour is used instead.
+	DashPuff = Color3.fromHex("#FFF6EA"), -- design: fp.js:516 (push-off and plant puffs)
+	DashPuffShade = Color3.fromHex("#E6D2B5"), -- design: fp.js:516
+	DashRibbonStrawberry = Color3.fromHex("#F8CAD4"), -- design: fp.js:529 (the strawberry runner's ribbons)
+	DashRibbonMint = Color3.fromHex("#BDEAD6"), -- design: main.js:341, arena.js:186 (the mint team's)
+	UltSprinkleLane = Color3.fromHex("#F68FB4"), -- design: fp.js:340 (Sprinkle Roller's lane), fp.js:243 (a sprinkle)
+	UltSprinkleBlue = Color3.fromHex("#7FD3F7"), -- design: fp.js:243
+	UltSprinkleYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:243
+	UltSprinkleGreen = Color3.fromHex("#8BE3A1"), -- design: fp.js:243
+	UltRainZone = Color3.fromHex("#B892F0"), -- design: fp.js:348 (Rain Check's zone ring)
+	UltRainShadow = Color3.fromHex("#6A5A9A"), -- design: fp.js:355 (a drop's shadow)
+	UltRainDrop = Color3.fromHex("#9DB8FF"), -- design: fp.js:356, 372 (a drop and its splash)
+	UltRainDrizzle = Color3.fromHex("#E6DEFF"), -- design: fp.js:267 (the hovering bunny's drizzle)
+	UltBubbleShell = Color3.fromHex("#CFF3FF"), -- design: fp.js:360 (Bubble Pop's bubble)
+	UltBubblePop = Color3.fromHex("#8FDCC4"), -- design: fp.js:361 (the pop ring and burst)
+	UltBubbleFoam = Color3.fromHex("#DDF4FF"), -- design: fp.js:361
+	UltBubblePink = Color3.fromHex("#F9AFCB"), -- design: fp.js:361
+
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),
 	CoinRing = Color3.fromHex("#D99A1E"),

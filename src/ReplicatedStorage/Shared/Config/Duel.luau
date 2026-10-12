@@ -37,6 +37,40 @@ local Duel = {
 		-- Feedback only, applied once by the victim's client. Dragon Rush multiplies it by
 		-- Config.Abilities.dragon_rush.knockbackMultiplier (the single source of that ×1.5).
 		Knockback = { Horizontal = 22, Vertical = 8 }, -- studs/s
+		-- The dash (spec phase 5 §1.2, §3.3; the design's numbers are all "provisional", design: main.js:310). The
+		-- dasher's client moves its own HumanoidRootPart (like knockback) along e(x) = 1 - (1 - x)³; the server checks
+		-- the request (Logic/DashRules), clamps the end point with Shared/DashMath and gives the movement guard a
+		-- bounded allowance for that dash only (MovementRules.allowDash). No i-frames.
+		Dash = {
+			distanceStuds = 14, -- design: main.js:310, fp.js:525 (D = s(14))
+			seconds = 0.22, -- design: main.js:310, fp.js:537 (T2 = 0.22)
+			-- The pose clip (design: avatar.js:79-99, 155): keys at frames 0, 2, 4, 7, 12 at 30 fps (0.40 s); the
+			-- push-off puff and sound at frame 2, the plant at frame 7; full weight until frame 9, then w² with
+			-- w = (12 - f) / 3 (design: avatar.js:160-161).
+			visualFrames = 12, -- design: main.js:357, avatar.js:84
+			visualFps = 30, -- design: avatar.js:155
+			pushoffFrame = 2, -- design: avatar.js:81
+			plantFrame = 7, -- design: avatar.js:83
+			fadeFromFrame = 9, -- design: avatar.js:160 (end - 3)
+			ribbonSeconds = 0.26, -- the ribbons and speed lines run while t < 0.26 s (design: fp.js:539-540)
+			cooldownSeconds = 2.0, -- user decision 2026-10-11 (NOT IN DESIGN: main.js:311 "unassigned (server)")
+			-- build choice 2026-10-11 (NOT IN DESIGN): the server checks the cooldown with this much jitter allowance,
+			-- like a throw's CooldownToleranceSeconds, so an honest client's dash is never refused at the edge.
+			cooldownToleranceSeconds = 0.15,
+			-- build choice 2026-10-11 (NOT IN DESIGN; the design ignores a dash in the air, fp.js:524): grounded = the HRP
+			-- at most this far above its standing height (the capsule's floor + 3.0).
+			groundToleranceStuds = 1.5,
+			-- build choice 2026-10-11 (NOT IN DESIGN): the end point stays this far (the hitbox radius) inside the own
+			-- half (duel) or the practice range bounds, so a dash never crosses into the neutral band; and a Spherecast
+			-- of this radius from the HRP stops it at cover and walls.
+			bodyRadiusStuds = 1.3,
+			-- build choice 2026-10-11 (NOT IN DESIGN): the movement guard allows the dash's own studs (plus this slack)
+			-- once, between the request (minus guardLeadSeconds: the client starts before its request arrives) and
+			-- seconds + guardTailSeconds after it (the replication delay of the last part of the move).
+			guardSlackStuds = 2,
+			guardLeadSeconds = 0.25,
+			guardTailSeconds = 0.5,
+		},
 	},
 
 	-- QueueService / Matchmaker (§5.4). Order: priority descending, then joinedAt.

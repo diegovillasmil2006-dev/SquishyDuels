@@ -174,6 +174,11 @@ local CATEGORY: { [string]: string } = {
 	["ui.hover"] = "hover",
 	["ui.hitConfirm"] = "hitConfirm",
 	["ui.error"] = "error",
+	-- Spec phase 5: the dash, and the Epic ultimates' drop and pop impacts.
+	["sfx.dash"] = "dash",
+	["sfx.dashPlant"] = "dash",
+	["sfx.ultRainDrop"] = "impact",
+	["sfx.ultBubblePop"] = "impact",
 }
 -- UI keys whose pitch never varies (§18.6 "Variation" 0 or fixed: the countdown ticks get their pitch from the
 -- caller, Config.Audio.countdownPitch; jingles and reveals play as recorded). Every other UI key varies by ±ui.

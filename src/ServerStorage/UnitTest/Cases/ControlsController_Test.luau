@@ -664,6 +664,69 @@ return function(t: Context)
 		expect.truthy(table.find(Controls.inputsOf("PracticeThrow") :: { EnumItem }, Enum.UserInputType.MouseButton1))
 	end)
 
+	-- Spec phase 5 (user decision 2026-10-11): the dash is C and ButtonB in the Duel and Practice contexts, and a third
+	-- round touch button in the Throw / Ultimate cluster.
+	t.test("the dash: C and ButtonB in the Duel and Practice contexts, and no other duel action takes them", function()
+		local function has(action: string, input: EnumItem): boolean
+			local inputs = Controls.inputsOf(action)
+			return inputs ~= nil and table.find(inputs, input) ~= nil
+		end
+		for _, action in { "Dash", "PracticeDash" } do
+			expect.truthy(has(action, Enum.KeyCode.C))
+			expect.truthy(has(action, Enum.KeyCode.ButtonB))
+		end
+		expect.equal(Controls.contextOf("Dash"), "Duel")
+		expect.equal(Controls.contextOf("PracticeDash"), "Practice")
+		for _, action in
+			{
+				"Throw",
+				"Ultimate",
+				"DuelSqueeze",
+				"DuelForfeit",
+				"PracticeThrow",
+				"PracticeUltimate",
+				"PracticeSqueeze",
+			}
+		do
+			expect.falsy(has(action, Enum.KeyCode.C))
+			expect.falsy(has(action, Enum.KeyCode.ButtonB))
+		end
+	end)
+
+	t.test("the touch Dash button: its size, on screen, out of the thumbstick zone, apart from the others", function()
+		local touch = Config.UI.Touch
+		local scaleConfig = Config.UI.Scale
+		local screens = {
+			Vector2.new(1280, 720),
+			Vector2.new(667, 375),
+			Vector2.new(1920, 1080),
+			Vector2.new(812, 375),
+			Vector2.new(844, 390),
+		}
+		for _, screen in screens do
+			local scale = math.clamp(screen.Y / scaleConfig.referenceHeight, scaleConfig.min, scaleConfig.max)
+			local layout = Controls.touchLayout(screen, scale, nil)
+			local dash = layout.dash
+			expect.near(dash.w, math.max(touch.dashButton * scale, touch.minTargetFloor), 1e-9)
+			expect.truthy(dash.x >= 0 and dash.y >= 0)
+			expect.truthy(dash.x + dash.w <= screen.X + 1e-6 and dash.y + dash.h <= screen.Y + 1e-6)
+			local inZone = dash.x < screen.X * touch.thumbstickZoneWidth
+				and dash.y + dash.h > screen.Y * (1 - touch.thumbstickZoneHeight)
+			expect.falsy(inZone)
+			local centre = Vector2.new(dash.x + dash.w / 2, dash.y + dash.h / 2)
+			for _, other in { layout.throw, layout.ultimate } do
+				local otherCentre = Vector2.new(other.x + other.w / 2, other.y + other.h / 2)
+				expect.truthy((centre - otherCentre).Magnitude >= dash.w / 2 + other.w / 2 + touch.gap - 1e-3)
+			end
+			local jump = layout.jump
+			local apart = dash.x + dash.w + touch.gap <= jump.x + 1e-6
+				or jump.x + jump.w + touch.gap <= dash.x + 1e-6
+				or dash.y + dash.h + touch.gap <= jump.y + 1e-6
+				or jump.y + jump.h + touch.gap <= dash.y + 1e-6
+			expect.truthy(apart)
+		end
+	end)
+
 	t.test("touch buttons keep 16 px from the jump button read from TouchGui", function()
 		local touch = Config.UI.Touch
 		local screen = Vector2.new(1280, 720)

@@ -177,7 +177,8 @@ local MAX_VARIANTS = 5 -- reading: §14.2 asks for at most 3; a little slack, ne
 local MAX_HISTORY = 200
 local MAX_EXACT_ID = 2 ^ 53
 
--- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys), each key with its "Try it" runner.
+-- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys), then spec phase 5's moves (10 keys), each
+-- key with its "Try it" runner (the moves play as they will in the game: "plain").
 local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } = {
 	{
 		name = "Squeezing",
@@ -249,6 +250,21 @@ local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } 
 			{ key = "music.duel", runner = "loop" },
 			{ key = "amb.lobby", runner = "loop" },
 			{ key = "amb.arena", runner = "loop" },
+		},
+	},
+	{
+		name = "Dash and Epic ultimates",
+		keys = {
+			{ key = "sfx.dash", runner = "plain" },
+			{ key = "sfx.dashPlant", runner = "plain" },
+			{ key = "sfx.ultCharge.bird", runner = "plain" },
+			{ key = "sfx.ultCharge.donut", runner = "plain" },
+			{ key = "sfx.ultCharge.cloud_bunny", runner = "plain" },
+			{ key = "sfx.ultCharge.cupcake_axolotl", runner = "plain" },
+			{ key = "sfx.ultRelease", runner = "plain" },
+			{ key = "sfx.ultRainDrop", runner = "plain" },
+			{ key = "sfx.ultCloudHover", runner = "plain" },
+			{ key = "sfx.ultBubblePop", runner = "plain" },
 		},
 	},
 }
@@ -625,7 +641,7 @@ function SoundPickerModel.stepVolume(volume: number, steps: number): number
 	return math.clamp(target / 10, VOLUME_MIN, VOLUME_MAX)
 end
 
--- The section (1-7) and runner of a key, or nil for a key outside the 37.
+-- The section (1-8) and runner of a key, or nil for a key outside the 47.
 function SoundPickerModel.infoOf(key: string): (number?, Runner?)
 	local info = INFO[key]
 	if info == nil then

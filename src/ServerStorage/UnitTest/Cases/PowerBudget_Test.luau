@@ -44,19 +44,26 @@ local TABLE: { Row } = {
 	{ id = "banana", speed = 88, radius = 1.2, cooldown = 0.95, windup = 0.18, Ps = -1.34, Pr = 0.50, Pw = 0, Pc = 1.05, sum = 0.21, ult = 0, net = 0.21, flight = 0.455, slack = 3.65 },
 	{ id = "butter", speed = 95, radius = 0.9, cooldown = 1.05, windup = 0.15, Ps = 0, Pr = -0.25, Pw = 1.20, Pc = -0.95, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 2.94 },
 	{ id = "chocolate", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
-	{ id = "bird", speed = 110, radius = 0.9, cooldown = 1.10, windup = 0.18, Ps = 2.30, Pr = -0.25, Pw = 0, Pc = -1.82, sum = 0.23, ult = 0, net = 0.23, flight = 0.364, slack = 2.50 },
-	{ id = "donut", speed = 92, radius = 1.3, cooldown = 1.00, windup = 0.19, Ps = -0.55, Pr = 0.75, Pw = -0.40, Pc = 0, sum = -0.20, ult = 0, net = -0.20, flight = 0.435, slack = 3.40 },
+	{ id = "bird", speed = 110, radius = 0.9, cooldown = 1.10, windup = 0.18, Ps = 2.30, Pr = -0.25, Pw = 0, Pc = -1.82, sum = 0.23, ult = 0.27, net = 0.50, flight = 0.364, slack = 2.50 },
+	{ id = "donut", speed = 92, radius = 1.3, cooldown = 1.00, windup = 0.19, Ps = -0.55, Pr = 0.75, Pw = -0.40, Pc = 0, sum = -0.20, ult = 0.69, net = 0.49, flight = 0.435, slack = 3.40 },
 	{ id = "dragon", speed = 92, radius = 1.0, cooldown = 1.05, windup = 0.19, Ps = -0.55, Pr = 0, Pw = -0.40, Pc = -0.95, sum = -1.90, ult = 2.00, net = 0.10, flight = 0.435, slack = 3.70 },
 	-- Spec 2026-10-09 §3.3: each new squishy's throw copies a same-rarity sibling's, so it scores that sibling's row.
 	{ id = "boba_bear", speed = 95, radius = 1.0, cooldown = 1.00, windup = 0.18, Ps = 0, Pr = 0, Pw = 0, Pc = 0, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 3.32 },
 	{ id = "pancake_pup", speed = 105, radius = 0.8, cooldown = 1.05, windup = 0.18, Ps = 1.60, Pr = -0.50, Pw = 0, Pc = -0.95, sum = 0.15, ult = 0, net = 0.15, flight = 0.381, slack = 2.88 },
 	{ id = "mochi_fox", speed = 95, radius = 0.9, cooldown = 1.05, windup = 0.15, Ps = 0, Pr = -0.25, Pw = 1.20, Pc = -0.95, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 2.94 },
 	{ id = "strawberry_frog", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
-	{ id = "cloud_bunny", speed = 110, radius = 0.9, cooldown = 1.10, windup = 0.18, Ps = 2.30, Pr = -0.25, Pw = 0, Pc = -1.82, sum = 0.23, ult = 0, net = 0.23, flight = 0.364, slack = 2.50 },
-	{ id = "cupcake_axolotl", speed = 92, radius = 1.3, cooldown = 1.00, windup = 0.19, Ps = -0.55, Pr = 0.75, Pw = -0.40, Pc = 0, sum = -0.20, ult = 0, net = -0.20, flight = 0.435, slack = 3.40 },
+	{ id = "cloud_bunny", speed = 110, radius = 0.9, cooldown = 1.10, windup = 0.18, Ps = 2.30, Pr = -0.25, Pw = 0, Pc = -1.82, sum = 0.23, ult = 0.27, net = 0.50, flight = 0.364, slack = 2.50 },
+	{ id = "cupcake_axolotl", speed = 92, radius = 1.3, cooldown = 1.00, windup = 0.19, Ps = -0.55, Pr = 0.75, Pw = -0.40, Pc = 0, sum = -0.20, ult = 0.69, net = 0.49, flight = 0.435, slack = 3.40 },
 }
 
-local ULTIMATE: { [string]: string } = { dragon = "dragon_rush" }
+-- Spec phase 5: the four Epics carry the design's ultimates (ults.js:3-6).
+local ULTIMATE: { [string]: string } = {
+	dragon = "dragon_rush",
+	bird = "flock_volley",
+	donut = "sprinkle_roller",
+	cloud_bunny = "rain_check",
+	cupcake_axolotl = "bubble_pop",
+}
 
 local TOLERANCE = 0.01 -- the table is rounded to 2 decimals
 local FLIGHT_TOLERANCE = 0.001 -- flight times are rounded to 3 decimals
@@ -184,6 +191,20 @@ return function(t: Context)
 		expect.equal(PowerBudget.ultimateCost("dragon_rush", Config), Config.Abilities.dragon_rush.budgetCost)
 		expect.equal(PowerBudget.ultimateCost(nil, Config), 0)
 		expect.equal(PowerBudget.ultimateCost("laser_eyes", Config), nil)
+	end)
+
+	-- Spec phase 5 (user decision 2026-10-11): each new Epic ultimate costs the most the existing rule allows without
+	-- re-tuning the throws (to 0.01): its cost passes, one hundredth more would not.
+	t.test("each Epic ultimate's cost is the most |Σ + cost| <= 0.5 allows, to 0.01", function()
+		for _, id in { "bird", "donut", "cloud_bunny", "cupcake_axolotl" } do
+			local def = Catalog.get(id)
+			local sum = PowerBudget.points(def.throw, Config).sum
+			local cost = PowerBudget.ultimateCost(def.ultimateId, Config)
+			local tolerance = Config.Combat.PowerBudget.tolerance
+			expect.truthy(cost > 0)
+			expect.truthy(math.abs(sum + cost) <= tolerance)
+			expect.truthy(math.abs(sum + cost + 0.01) > tolerance)
+		end
 	end)
 
 	t.test("no ability: |Σ| up to 0.5 passes, above fails", function()

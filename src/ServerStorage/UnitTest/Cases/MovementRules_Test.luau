@@ -7,7 +7,8 @@
 -- the teleport/knockback grace, pulls back too; a pull-back or out-of-bounds starts its own teleport grace. A player
 -- who must stand still (Countdown on the pad, a Dragon Rush root) and drifts more than holdToleranceStuds (+ slack)
 -- from the spot is pulled back to it, outside a grace. Repeated out-of-bounds in Active ends in a forfeit through
--- DuelRules (the 7th); before Active it never counts.
+-- DuelRules (the 7th); before Active it never counts. A validated dash (spec phase 5 §3.3) gets its own studs once as
+-- an over-speed allowance inside its window only; it never excuses the neutral zone.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -255,6 +256,72 @@ return function(t: Context)
 		evaluate(knocked, held(0, -30, nil), T0)
 		MovementRules.grace(knocked, T0 + GUARD.hitGraceSeconds)
 		expect.equal(evaluate(knocked, held(4, -30, nil), T0 + DT).action, "ok")
+	end)
+
+	-- The dash (spec phase 5 §3.3): a bounded allowance only inside a validated dash window ------------------------
+
+	local DASH = Config.Duel.Rules.Dash
+
+	t.test("a validated 14-stud dash inside one sample is not over-speed; the same move without it is", function()
+		local function run(allow: boolean): (any, any)
+			local guard = MovementRules.new()
+			evaluate(guard, sample(0, 3, -50), T0)
+			if allow then
+				MovementRules.allowDash(guard, T0 + 0.05, T0 + 0.05 + DASH.seconds + 0.5, DASH.distanceStuds)
+			end
+			-- 14 studs of dash plus 3.2 of walking in one 0.2 s sample: 86 studs/s.
+			return evaluate(guard, sample(0, 3, -50 + 14 + 3.2), T0 + DT), guard
+		end
+		local allowed, guard = run(true)
+		expect.equal(allowed.action, "ok")
+		expect.equal(guard.overSpeed, 0)
+		expect.truthy((guard.lastValid - Vector3.new(0, 3, -32.8)).Magnitude < 1e-4) -- the dash end is a valid spot
+		local _, plain = run(false)
+		expect.equal(plain.overSpeed, 1)
+	end)
+
+	t.test("a dash spread over three samples (replication jitter) never trips the 3-sample rule", function()
+		local guard = MovementRules.new()
+		evaluate(guard, sample(0, 3, -50), T0)
+		MovementRules.allowDash(guard, T0, T0 + 0.8, DASH.distanceStuds)
+		local z = -50
+		for i = 1, 3 do
+			z += 14 / 3 + 3.2 -- a third of the dash plus walking: 39 studs/s each
+			expect.equal(evaluate(guard, sample(0, 3, z), T0 + i * DT).action, "ok")
+		end
+		expect.equal(guard.overSpeed, 0)
+	end)
+
+	t.test("the allowance is used up once: a second dash's worth in the same window counts as over-speed", function()
+		local guard = MovementRules.new()
+		evaluate(guard, sample(0, 3, -50), T0)
+		MovementRules.allowDash(guard, T0, T0 + 1, DASH.distanceStuds)
+		expect.equal(evaluate(guard, sample(0, 3, -50 + 17), T0 + DT).action, "ok") -- 17 - 6 = 11 of the 14 used
+		evaluate(guard, sample(0, 3, -33 + 17), T0 + 2 * DT) -- 11 more: only 3 left, so this one is fast
+		expect.equal(guard.overSpeed, 1)
+	end)
+
+	t.test("outside the dash window the move is plain over-speed; the window then ends", function()
+		local guard = MovementRules.new()
+		evaluate(guard, sample(0, 3, -50), T0)
+		MovementRules.allowDash(guard, T0 + 5, T0 + 6, DASH.distanceStuds) -- a later window
+		evaluate(guard, sample(0, 3, -33), T0 + DT)
+		expect.equal(guard.overSpeed, 1)
+		-- A sample after the window closes it.
+		local after = MovementRules.new()
+		evaluate(after, sample(0, 3, -50), T0)
+		MovementRules.allowDash(after, T0, T0 + 0.1, DASH.distanceStuds)
+		evaluate(after, sample(0, 3, -49), T0 + 0.5)
+		expect.equal(after.dash, nil)
+	end)
+
+	t.test("a dash never excuses the neutral zone: it still pulls back", function()
+		local guard = MovementRules.new()
+		evaluate(guard, sample(0, 3, -21), T0)
+		MovementRules.allowDash(guard, T0, T0 + 1, DASH.distanceStuds)
+		local verdict = evaluate(guard, sample(0, 3, -7), T0 + DT) -- 14 studs forward, 1 stud into the neutral zone
+		expect.equal(verdict.action, "pivotBack")
+		expect.equal(verdict.reason, "neutral")
 	end)
 
 	-- Out of bounds -> forfeit after repeats (with DuelRules) ---------------------------------------------------------

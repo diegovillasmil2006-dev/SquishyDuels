@@ -110,6 +110,7 @@ local DEFS: { SquishyDef } = {
 		blueprintId = "bird",
 		shopPrice = 7500,
 		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 },
+		ultimateId = "flock_volley", -- spec phase 5: the design's Epic ultimate (ults.js:3), paid for out of the budget
 		eliminationEffectId = "epic_pending", -- shows Standard until the Epic effect is approved (§9.9)
 		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#7CC0F5" }, -- Twin ribbon + sparkle
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.30 },
@@ -123,6 +124,7 @@ local DEFS: { SquishyDef } = {
 		blueprintId = "donut",
 		shopPrice = 7500,
 		throw = { speed = 92, gravity = 38, radius = 1.3, cooldown = 1.00, windup = 0.19 },
+		ultimateId = "sprinkle_roller", -- spec phase 5 (ults.js:4)
 		eliminationEffectId = "epic_pending",
 		visuals = { trail = "twinRibbon", flightSpin = "roll", accent = "#FF8FB1" },
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
@@ -205,6 +207,7 @@ local DEFS: { SquishyDef } = {
 		blueprintId = "cloud_bunny",
 		shopPrice = 7500,
 		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 }, -- = bird
+		ultimateId = "rain_check", -- spec phase 5 (ults.js:5)
 		eliminationEffectId = "epic_pending",
 		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#D5C8F6" },
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.42 },
@@ -218,6 +221,7 @@ local DEFS: { SquishyDef } = {
 		blueprintId = "cupcake_axolotl",
 		shopPrice = 7500,
 		throw = { speed = 92, gravity = 38, radius = 1.3, cooldown = 1.00, windup = 0.19 }, -- = donut
+		ultimateId = "bubble_pop", -- spec phase 5 (ults.js:6)
 		eliminationEffectId = "epic_pending",
 		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#F9AFCB" },
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },

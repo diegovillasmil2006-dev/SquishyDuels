@@ -399,16 +399,167 @@ return function(t: Context)
 
 	-- Duel rules (Part 4, DESIGN §5.2-§5.9) -----------------------------------------------------------------------
 
-	-- Every ability's telegraph is visible to the opponent for at least 0.6 s (§5.9 "future abilities").
-	t.test("validate reports an ability telegraph shorter than 0.6 s and a Rush interval under 20 s", function()
+	-- Every ability's telegraph is visible to the opponent for at least 0.35 s: §5.9's 0.6 s lowered by the user's
+	-- decision of 2026-10-11 so the design's wind-ups pass (ults.js:3-6: 0.35, 0.45, 0.6, 0.5 s).
+	t.test("validate reports an ability telegraph shorter than 0.35 s and a Rush interval under 20 s", function()
 		local telegraph = validateBrokenCopy(t.Shared, "Abilities", function(abilities)
-			abilities.dragon_rush.telegraphSeconds = 0.5
+			abilities.dragon_rush.telegraphSeconds = 0.3
 		end)
 		expect.truthy(containsAll(telegraph, { "dragon_rush", "telegraphSeconds" }))
 		local interval = validateBrokenCopy(t.Shared, "Abilities", function(abilities)
 			abilities.dragon_rush.minIntervalSeconds = 10
 		end)
 		expect.truthy(containsAll(interval, { "dragon_rush", "minIntervalSeconds" }))
+	end)
+
+	-- Spec phase 5: the design's four Epic ultimates with the design's numbers (ults.js:3-6).
+	t.test("the four Epic ultimates carry the design's wind-ups, intervals and main numbers", function()
+		local A = Config.Abilities
+		local rows: { { any } } = {
+			{ "flock_volley", "volley", 0.35, 35 },
+			{ "sprinkle_roller", "roller", 0.45, 38 },
+			{ "rain_check", "rain", 0.6, 40 },
+			{ "bubble_pop", "bubble", 0.5, 36 },
+		}
+		for _, row in rows do
+			local ability = A[row[1]]
+			expect.equal(ability.kind, row[2])
+			expect.equal(ability.telegraphSeconds, row[3])
+			expect.equal(ability.minIntervalSeconds, row[4])
+			-- Dragon Rush's meter, fill rules and root / cancel / practice rules (user decisions 2026-10-11).
+			for _, field in { "chargeMax", "chargePerSecond", "chargePerHitLanded", "chargePerLifeLost" } do
+				expect.equal(ability[field], A.dragon_rush[field])
+			end
+			for _, field in { "recoverySeconds", "refundOnCancel", "practiceCooldownSeconds", "livesCost" } do
+				expect.equal(ability[field], A.dragon_rush[field])
+			end
+			expect.truthy(ability.cancelOnHitDuringTelegraph)
+		end
+		expect.equal(A.dragon_rush.kind, "lane")
+		expect.equal(A.flock_volley.count, 3)
+		expect.equal(A.flock_volley.fanDeg, 24)
+		expect.equal(A.flock_volley.speed, 75)
+		expect.equal(A.sprinkle_roller.radius * 2, 6)
+		expect.equal(A.sprinkle_roller.maxLength, 60)
+		expect.equal(A.sprinkle_roller.speed, 55)
+		expect.equal(A.sprinkle_roller.clearHeight, 3)
+		expect.equal(A.rain_check.radius, 7)
+		expect.equal(A.rain_check.drops, 5)
+		expect.equal(A.rain_check.dropHitRadius, 1.5)
+		expect.equal(A.bubble_pop.speed, 40)
+		expect.equal(A.bubble_pop.popSeconds, 1.2)
+		expect.equal(A.bubble_pop.splashRadius, 6)
+		expect.near(A.bubble_pop.maxLength, A.bubble_pop.speed * A.bubble_pop.popSeconds, 1e-9)
+	end)
+
+	t.test("validate reports an unknown ability kind and each kind's missing field", function()
+		local unknown = validateBrokenCopy(t.Shared, "Abilities", function(abilities)
+			abilities.flock_volley.kind = "laser"
+		end)
+		expect.truthy(containsAll(unknown, { "flock_volley", "kind" }))
+		local cases = {
+			{ "flock_volley", "count" },
+			{ "flock_volley", "fanDeg" },
+			{ "sprinkle_roller", "clearHeight" },
+			{ "rain_check", "drops" },
+			{ "rain_check", "dropRadii" },
+			{ "bubble_pop", "splashRadius" },
+			{ "bubble_pop", "popSeconds" },
+		}
+		for _, case in cases do
+			local problems = validateBrokenCopy(t.Shared, "Abilities", function(abilities)
+				abilities[case[1]][case[2]] = nil
+			end)
+			if not containsAll(problems, { case[1], case[2] }) then
+				error(`{case[1]}.{case[2]} missing was not reported: {table.concat(problems, "; ")}`)
+			end
+		end
+		-- A rain drop outside the zone is reported too.
+		local outside = validateBrokenCopy(t.Shared, "Abilities", function(abilities)
+			abilities.rain_check.dropRadii = { 2, 4, 8 }
+		end)
+		expect.truthy(containsAll(outside, { "rain_check", "dropRadii" }))
+	end)
+
+	-- User decision 2026-10-11 (design: fp.js:576): "Ultimates are reserved for Epic and Exclusive squishies"; a volley's
+	-- or a bubble's hit radius is its squishy's own throw radius.
+	t.test("validate reports an ultimate on an Uncommon and a volley radius that is not the throw radius", function()
+		local Catalog = t.requireShared("Catalog")
+		local function fakeCatalog(change: (copy: any) -> ()): any
+			return {
+				list = function()
+					local list = {}
+					for index, def in Catalog.list() do
+						local copy = deepCopy(def)
+						change(copy)
+						list[index] = copy
+					end
+					return list
+				end,
+				starterId = Catalog.starterId,
+				get = Catalog.get,
+				getSqueezeCoins = Catalog.getSqueezeCoins,
+			}
+		end
+		local uncommon = Config.validate({
+			Catalog = fakeCatalog(function(copy: any)
+				if copy.id == "chocolate" then
+					copy.ultimateId = "dragon_rush"
+				end
+			end),
+		})
+		expect.truthy(containsAll(uncommon, { "Catalog.chocolate", "only Epics and Exclusives" }))
+		local radius = Config.validate({
+			Catalog = fakeCatalog(function(copy: any)
+				if copy.id == "bird" then
+					copy.throw.radius = 1.0
+				end
+			end),
+		})
+		expect.truthy(containsAll(radius, { "Catalog.bird", "flock_volley", "radius" }))
+		-- The real Catalog has neither problem.
+		local real = Config.validate({ Catalog = Catalog })
+		expect.falsy(containsText(real, "only Epics and Exclusives"))
+	end)
+
+	-- Spec phase 5 (user decision 2026-10-11): the moves keep the 3 Hz flicker, 720°/s spin and particle limits, and the
+	-- dash's pose clip uses joints the joint layer has.
+	t.test(
+		"validate reports a dash pose on a missing joint, a pulse above 3 Hz and a roller spin above 720°/s",
+		function()
+			local joint = validateBrokenCopy(t.Shared, "Anim", function(anim)
+				anim.dash.keys.F[2].angles.LeftHip = Vector3.new(10, 0, 0)
+			end)
+			expect.truthy(containsAll(joint, { "Config.Anim.dash.keys.F", "LeftHip" }))
+			local fade = validateBrokenCopy(t.Shared, "Anim", function(anim)
+				anim.dash.holdFadeInFrames = 0
+			end)
+			expect.truthy(containsAll(fade, { "Config.Anim.dash.holdFadeInFrames" }))
+			local pulse = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
+				vfx.Ultimates.shadowPulseHz = 30 / (2 * math.pi) -- the design's own 30 rad/s
+			end)
+			expect.truthy(containsAll(pulse, { "Ultimates", "shadowPulseHz" }))
+			local spin = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
+				vfx.Ultimates.rollerSpinDegPerSecond = math.deg(22) -- the design's own 22 rad/s
+			end)
+			expect.truthy(containsAll(spin, { "Ultimates", "rollerSpinDegPerSecond" }))
+			local puffs = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
+				vfx.Dash.plantPuffs = 20
+			end)
+			expect.truthy(containsAll(puffs, { "Config.Vfx.Dash", "plantPuffs" }))
+		end
+	)
+
+	-- Spec phase 5: the dash's numbers (Config.Duel.Rules.Dash).
+	t.test("validate reports a dash rule that is not positive and a pose event outside the clip", function()
+		local problems = validateBrokenCopy(t.Shared, "Duel", function(duel)
+			duel.Rules.Dash.seconds = 0
+		end)
+		expect.truthy(containsAll(problems, { "Dash", "seconds" }))
+		local frames = validateBrokenCopy(t.Shared, "Duel", function(duel)
+			duel.Rules.Dash.plantFrame = 20
+		end)
+		expect.truthy(containsAll(frames, { "Dash", "plantFrame" }))
 	end)
 
 	-- The Rush lane sphere flies at a fixed height above the floor (§5.9: floor+0.5 .. floor+8.5).

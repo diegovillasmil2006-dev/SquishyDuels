@@ -1,7 +1,8 @@
 --!strict
 -- AssetTable_Test: unit tests for ReplicatedStorage.Shared.AssetTable. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §14, §18.6, §18.7, §18.10 L1):
---   * the sound key set is exactly the 37 of §18.6 (the 34 of §14.2 plus ui.gripUnlock, sfx.jellyWobble, sfx.pop);
+--   * the sound key set is exactly the 37 of §18.6 (the 34 of §14.2 plus ui.gripUnlock, sfx.jellyWobble, sfx.pop) and
+--     the 10 of spec phase 5 (the dash and the four Epic ultimates), 47 in all;
 --   * a PENDING slot (id nil) carries no metadata (no source, licence, verifiedAt or variants);
 --   * an approved slot has an integer id > 0, a volume in (0, 2], a source, a licence and verifiedAt as YYYY-MM-DD,
 --     and so does each variant; no id repeats within a key;
@@ -21,7 +22,7 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- §18.6: the 37 sound keys.
+-- §18.6: the 37 sound keys, then spec phase 5's 10.
 local SOUND_KEYS = {
 	"sfx.squish",
 	"sfx.squeezeRelease",
@@ -60,6 +61,16 @@ local SOUND_KEYS = {
 	"music.duel",
 	"amb.lobby",
 	"amb.arena",
+	"sfx.dash",
+	"sfx.dashPlant",
+	"sfx.ultCharge.bird",
+	"sfx.ultCharge.donut",
+	"sfx.ultCharge.cloud_bunny",
+	"sfx.ultCharge.cupcake_axolotl",
+	"sfx.ultRelease",
+	"sfx.ultRainDrop",
+	"sfx.ultCloudHover",
+	"sfx.ultBubblePop",
 }
 
 -- §18.6 keys marked "(optional)": the three new slots, the Dragon roar and the duel music.
@@ -123,7 +134,7 @@ return function(t: Context)
 		return found
 	end
 
-	t.test("the sound key set is exactly the 37 of §18.6", function()
+	t.test("the sound key set is exactly the 37 of §18.6 and the 10 of spec phase 5", function()
 		local keys = {}
 		local seen: { [string]: boolean } = {}
 		for _, slot in soundSlots() do
@@ -131,7 +142,7 @@ return function(t: Context)
 			seen[slot.key] = true
 			table.insert(keys, slot.key)
 		end
-		expect.equal(#keys, 37)
+		expect.equal(#keys, 47)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 

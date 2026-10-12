@@ -235,6 +235,125 @@ local Vfx = {
 		headScale = 3.2,
 	},
 
+	-- The dash's effects (spec phase 5 §1.2; design: fp.js:506-546, the third-person "Watch a dash"), drawn by
+	-- DashController for every dasher. Sizes and speeds in studs: the design writes metres, and 1 stud = 0.28 m
+	-- (kit.js:3), so a design value of m metres is m / 0.28 studs. Particle drag: the design multiplies speed by
+	-- exp(-drag·dt) (fx.js:135), Roblox halves it every 1/Drag s, so Drag = drag / ln 2. Colours: Art/Palette Dash*.
+	-- Small game-feel tier: no shake, no hit-stop, no camera effect for the dasher (user decision 2026-10-11).
+	Dash = {
+		pushoffPuffs = 12, -- design: fp.js:516
+		pushoffSpeed = 2 / 0.28, -- design: fp.js:516 (2 m/s)
+		pushoffSize = 0.07 / 0.28, -- design: fp.js:516
+		pushoffLifetime = 0.5, -- design: fp.js:516
+		pushoffDrag = 4.5 / math.log(2), -- design: fp.js:516 (drag 4.5)
+		pushoffGravity = 0.4 / 0.28, -- design: fp.js:516 (gravity 0.4 m/s², a slow rise)
+		ringToStuds = 2 * 0.8 / 0.28, -- the push-off ring's diameter: radius 0.1 -> 0.8 m (design: fp.js:516)
+		ringSeconds = 0.3, -- design: fp.js:516
+		ringTransparencyFrom = 1 - 0.55, -- opacity 0.55 (design: fp.js:516)
+		plantPuffs = 8, -- design: fp.js:517
+		plantSpeed = 1.4 / 0.28, -- design: fp.js:517
+		plantSize = 0.06 / 0.28, -- design: fp.js:517
+		plantLifetime = 0.45, -- design: fp.js:517
+		plantDrag = 5 / math.log(2), -- design: fp.js:517
+		plantGravity = 0.3 / 0.28, -- design: fp.js:517
+		-- Three ribbons while the dash runs (Config.Duel.Rules.Dash.ribbonSeconds), at the waist + `height`, in the dasher's
+		-- team tint (side A Strawberry, side B Mint; practice: Strawberry, the design runner's), `tintFirst` = the colour
+		-- goes tint -> white with age, else white -> tint (design: fp.js:529).
+		ribbons = {
+			{ height = 0.3 / 0.28, width = 0.32 / 0.28, lifetime = 0.2, opacity = 0.5, tintFirst = true },
+			{ height = -0.2 / 0.28, width = 0.2 / 0.28, lifetime = 0.16, opacity = 0.4, tintFirst = false },
+			{ height = 0.75 / 0.28, width = 0.12 / 0.28, lifetime = 0.14, opacity = 0.35, tintFirst = false },
+		},
+		-- Speed lines while the ribbons run: one white particle a frame with this chance, at the waist ± spread, moving
+		-- back along the dash (design: fp.js:539).
+		speedLineChance = 0.6,
+		speedLineSpeed = 3 / 0.28,
+		speedLineSize = 0.025 / 0.28,
+		speedLineLifetime = 0.2,
+		speedLineDrag = 2 / math.log(2),
+		speedLineSpread = Vector3.new(0.3 / 0.28, 0.7 / 0.28, 0.3 / 0.28), -- ± (0.3, -0.6..0.8, 0.3) m, centred
+		speedLineLift = 0.1 / 0.28,
+	},
+
+	-- The four Epic ultimates' effects (spec phase 5 §1.4-§1.8; design: fp.js:236-372), drawn by Anim/UltFx from the
+	-- UltimateEvent numbers only. Same metre conversion as Dash. Capped design values (user decision 2026-10-11): the
+	-- roller's spin (the design's 22 rad/s ≈ 1260°/s is held to the 720°/s flight-spin limit) and the drop shadow's
+	-- pulse (the design's 30 rad/s ≈ 4.8 Hz is held to the 3 Hz flicker limit). Colours: Art/Palette Ult*; the
+	-- rarity-coloured pieces use Art/RarityStyle.
+	Ultimates = {
+		chargeSparkRate = 20, -- glow sparks at the caster's hand during the wind-up, cosmetic (like Dragon Rush's)
+		-- Flock Volley: a glide arc and wobble on the drawn bird (design: fp.js:241, 246), the server path is straight.
+		glideArcStuds = 0.3 / 0.28, -- design: fp.js:337 (arc 0.3)
+		glideWobbleStuds = 0.08 / 0.28, -- design: fp.js:241 (0.08·sin(14k))
+		glideWobbleRate = 14, -- radians over the whole flight (k = 0..1)
+		glideRollRad = 0.2, -- design: fp.js:246 (0.2·sin(18t))
+		glideRollRate = 18, -- rad/s (2.9 Hz)
+		growSeconds = 0.14, -- design: fp.js:242 (held size -> 1)
+		growFrom = 0.5, -- reading: the held size the design starts from (H.K), relative to the flight size
+		-- Sprinkle Roller (design: fp.js:240-245, 339-343).
+		laneTransparency = 1 - 0.25, -- design: fp.js:340 (opacity 0.25)
+		laneSeconds = 1.6, -- design: fp.js:341
+		laneLift = 0.015 / 0.28, -- design: fp.js:341
+		rollerScaleFrom = 0.5, -- design: fp.js:342 (scale0)
+		rollerScaleTo = 2.3, -- design: fp.js:342 (s1)
+		rollerGrowSeconds = 0.3, -- design: fp.js:242 (backOut over 0.3 s)
+		rollerSpinDegPerSecond = 720, -- design: fp.js:245 (22 rad/s), capped (see above)
+		rollerTiltRad = 0.5, -- design: fp.js:245
+		rollerTiltWobbleRad = 0.12, -- design: fp.js:245
+		rollerTiltRate = 9, -- rad/s (1.4 Hz), design: fp.js:245
+		sprinkleChance = 0.9, -- a frame (design: fp.js:243)
+		sprinkleSpeedMin = 1 / 0.28, -- up (design: fp.js:243, 1..2.5 m/s)
+		sprinkleSpeedMax = 2.5 / 0.28,
+		sprinkleSize = 0.035 / 0.28,
+		sprinkleLifetime = 0.7,
+		sprinkleGravity = -5 / 0.28,
+		-- Rain Check (design: fp.js:255-268, 348-357, 371-372).
+		zoneSeconds = 3.2, -- design: fp.js:348
+		zonePulseHz = 16 / (2 * math.pi), -- design: fp.js:348 (ω 16 rad/s, 2.5 Hz)
+		zoneOpacity = 0.8, -- design: fp.js:335
+		zoneFill = 0.2, -- reading: the zone's floor disc is this share of zoneOpacity (the design draws a 10% annulus)
+		bunnyHeight = 14, -- above the centre (design: fp.js:349, s(14))
+		bunnyArcStuds = 1.4 / 0.28, -- design: fp.js:349
+		bunnyGrow = 2.2, -- scale 1 + 2.2·backOut (design: fp.js:266)
+		bunnyGrowSeconds = 0.35, -- design: fp.js:266
+		hoverSeconds = 2.6, -- design: fp.js:268 (ults.js:5 says it parks 2.2 s)
+		-- The hover's bob: the design adds 0.004·sin(3t) m a frame (fp.js:266), at 60 fps a 0.08 m swing (derived).
+		bunnyBobStuds = 0.004 * 60 / 3 / 0.28,
+		bunnyBobRate = 3, -- rad/s (0.5 Hz)
+		drizzleRate = 20, -- a second (design: fp.js:267)
+		drizzleSpreadStuds = 0.8 / 0.28,
+		drizzleDropStuds = 0.4 / 0.28,
+		drizzleSpeed = 2 / 0.28,
+		drizzleSize = 0.04 / 0.28,
+		drizzleLifetime = 0.5,
+		drizzleGravity = -6 / 0.28,
+		shadowRadius = 1.6, -- design: fp.js:355 (s(1.6))
+		shadowOpacity = 0.5, -- design: fp.js:355
+		shadowPulseHz = 3, -- design: fp.js:355 (ω 30 rad/s ≈ 4.8 Hz), capped (see above)
+		dropRadius = 0.09 / 0.28, -- design: fp.js:356
+		dropScale = Vector3.new(0.8, 1.4, 0.8), -- design: fp.js:371
+		splashRingToStuds = 2 * 2, -- diameter: radius 0.05 m -> 2 st (design: fp.js:372)
+		splashRingSeconds = 0.3,
+		splashTransparencyFrom = 1 - 0.8,
+		splashPuffs = 8,
+		splashSpeed = 1.5 / 0.28,
+		splashSize = 0.03 / 0.28,
+		splashLifetime = 0.4,
+		-- Bubble Pop (design: fp.js:359-361).
+		bubbleRadius = 0.42 / 0.28, -- the shell, visual only (design: fp.js:360)
+		bubbleTransparency = 1 - 0.35, -- design: fp.js:360
+		bubbleArcStuds = 0.9 / 0.28, -- design: fp.js:359 (arc 0.9)
+		popRingToStuds = 2 * 6, -- diameter: radius 0.1 m -> 6 st (design: fp.js:361)
+		popRingSeconds = 0.45,
+		popTransparencyFrom = 1 - 0.8,
+		popPuffs = 26, -- design: fp.js:361
+		popSpeed = 3 / 0.28,
+		popSize = 0.04 / 0.28,
+		popLifetime = 0.6,
+		popGravity = -3 / 0.28,
+		lingerSeconds = 0.25, -- reading: a drawn projectile fades this long after its server end
+	},
+
 	-- Per-effect budgets (§9.15).
 	Effects = {
 		-- Per squeeze: §9.15's 12 (6 / 8 / 10 / 12 puffs by rarity, §9.6) raised to 18 by §18.9: Exclusive's 12 puffs +

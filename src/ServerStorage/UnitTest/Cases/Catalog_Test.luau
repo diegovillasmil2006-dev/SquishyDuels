@@ -127,6 +127,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.10,
 		windup = 0.18,
 		trail = "twinRibbon",
+		ultimate = "flock_volley", -- spec phase 5: the design's Epic ultimates (ults.js:3)
 		elimination = "epic_pending",
 		shopPrice = 7500,
 	},
@@ -141,6 +142,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.00,
 		windup = 0.19,
 		trail = "twinRibbon",
+		ultimate = "sprinkle_roller", -- ults.js:4
 		elimination = "epic_pending",
 		shopPrice = 7500,
 	},
@@ -225,6 +227,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.10,
 		windup = 0.18,
 		trail = "twinRibbon",
+		ultimate = "rain_check", -- ults.js:5
 		elimination = "epic_pending",
 		shopPrice = 7500,
 	},
@@ -239,6 +242,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.00,
 		windup = 0.19,
 		trail = "twinRibbon",
+		ultimate = "bubble_pop", -- ults.js:6
 		elimination = "epic_pending",
 		shopPrice = 7500,
 	},
@@ -516,12 +520,17 @@ return function(t: Context)
 	end)
 
 	t.test("each new squishy throws exactly like its same-rarity sibling (spec 2026-10-09 §3.3)", function()
+		local rows: { [string]: Expected } = {}
+		for _, row in EXPECTED do
+			rows[row.id] = row
+		end
 		for id, siblingId in SIBLING do
 			local def, sibling = Catalog.get(id), Catalog.get(siblingId)
 			assert(def ~= nil and sibling ~= nil, id .. " or " .. siblingId .. " is missing")
 			expect.equal(def.rarity, sibling.rarity)
 			expect.deepEqual(def.throw, sibling.throw)
-			expect.equal(def.ultimateId, nil)
+			-- Spec phase 5: the Epics have their own ultimates (the design's, ults.js:3-6); the others have none.
+			expect.equal(def.ultimateId, rows[id].ultimate)
 		end
 	end)
 
@@ -634,14 +643,22 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("only Dragon has an ultimate: Dragon Rush, defined in Config.Abilities", function()
+	-- Spec phase 5 (user decision 2026-10-11): "Ultimates are reserved for Epic and Exclusive squishies" (design:
+	-- fp.js:576); Dragon keeps Dragon Rush and the four Epics get the design's ultimates (ults.js:3-6).
+	t.test("Dragon and the four Epics have ultimates, each in Config.Abilities; only Epics and Exclusives", function()
+		local count = 0
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
 			expect.equal(def.ultimateId, row.ultimate)
 			if def.ultimateId ~= nil then
+				count += 1
 				expect.truthy(Config.Abilities[def.ultimateId] ~= nil)
-				expect.equal(def.rarity, "Exclusive")
+				expect.truthy(def.rarity == "Epic" or def.rarity == "Exclusive")
 			end
+		end
+		expect.equal(count, 5)
+		for _, def in Catalog.byRarity("Epic") do
+			expect.truthy(def.ultimateId ~= nil)
 		end
 	end)
 

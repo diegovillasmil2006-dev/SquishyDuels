@@ -32,7 +32,9 @@
 --     toy (radius and opacity by the design), shake >= ult.shake·ch and the world FOV pulled by fovPullPerSecond; at
 --     the release (ThrowController's "release" phase) the glow goes off at once and the camera reacts once (release
 --     kick, FOV kick and shake, fp.js:331, 461) and the toy springs back to the hold (ours stays in the hand); a
---     cancel fades the glow by glowFadeRate.
+--     cancel fades the glow by glowFadeRate. Spec phase 5: every ultimate does the same, its charge share over its own
+--     telegraph (the design's wind-up, ultTelegraphSeconds) and its glow in the design's colour: Dragon's orange,
+--     else its squishy's rarity colour from Art/RarityStyle (fp.js:460, ultGlowColour).
 -- World camera: the FOV goes base + fov·focus.worldFovPerUnit (the fov spring toward focus.worldFovTarget × the focus
 -- share, 70° -> 64.5°) through CameraController.setFovOffset (one owner; base back exactly); the design's shake value
 -- (falling shake.decayPerSecond a second) through CameraController.shake (ViewmodelMath.shakeFor) only when it rose
@@ -170,7 +172,8 @@ type Throw = {
 	roar: boolean, -- the Dragon's roar shake is still due (fp.js:305)
 }
 
-type Ult = { t: number, ch: number } -- seconds into the charge; the charge share 0-1 over the telegraph
+-- Seconds into the charge; the charge share 0-1 over the telegraph (`telegraph` s); the glow's colour.
+type Ult = { t: number, ch: number, telegraph: number, colour: Color3 }
 
 type Pad = {
 	gui: ScreenGui,
@@ -660,23 +663,28 @@ local function stepThrow(v: View, serverNow: number, holding: boolean)
 	end
 end
 
--- One frame of the local Dragon Rush's charge (ThrowController.localUlt): ch over the game's telegraph.
+-- One frame of the local ultimate's charge (ThrowController.localUlt): ch over that ultimate's telegraph.
 local function stepUlt(v: View, dt: number, serverNow: number, holding: boolean)
-	local phase, telegraphEndsAt = deps.Throw.localUlt()
+	local phase, telegraphEndsAt, _, ultimateId = deps.Throw.localUlt()
 	local charging = phase == "cast" or phase == "telegraph"
 	local ult = v.ult
 	local kind: Kind = v.kind
 	if charging and holding and v.toy and (kind == "idle" or kind == "equip" or kind == "ult") then
 		if ult == nil then
-			ult = { t = 0, ch = 0 }
+			ult = {
+				t = 0,
+				ch = 0,
+				telegraph = ViewmodelController.ultTelegraphSeconds(ultimateId),
+				colour = ViewmodelController.ultGlowColour(ultimateId),
+			}
 			v.ult = ult
 			setKind(v, "ult")
 		end
 		local u = ult :: Ult
 		u.t += dt
-		u.ch = math.min(1, u.ch + dt / TELEGRAPH_S)
+		u.ch = math.min(1, u.ch + dt / u.telegraph)
 		if telegraphEndsAt then
-			u.ch = math.max(u.ch, math.clamp(1 - (telegraphEndsAt - serverNow) / TELEGRAPH_S, 0, 1))
+			u.ch = math.max(u.ch, math.clamp(1 - (telegraphEndsAt - serverNow) / u.telegraph, 0, 1))
 		end
 	elseif ult then
 		v.ult = nil -- released or cancelled: the toy springs back to the hold
@@ -720,6 +728,9 @@ local function stepGlow(v: View, dt: number, reduced: boolean)
 	end
 	local ball = glow :: BasePart
 	if ult then
+		if ball.Color ~= ult.colour then
+			ball.Color = ult.colour -- spec phase 5: each ultimate's own glow colour
+		end
 		local pulse = if reduced then 0 else ULT.glowPulse * math.sin(ULT.glowPulseRate * ult.t)
 		local radius = ULT.glowRadius + pulse
 		ball.Size = Vector3.one * (2 * radius * U)
@@ -1117,7 +1128,7 @@ local function applyPose(v: View, name: string)
 		setKind(v, "equip")
 		v.kindT = EQUIP.seconds / 2
 	elseif name == "rush" then
-		v.ult = { t = TELEGRAPH_S / 2, ch = 0.5 }
+		v.ult = { t = TELEGRAPH_S / 2, ch = 0.5, telegraph = TELEGRAPH_S, colour = ULT.glowColour }
 		setKind(v, "ult")
 	end
 end
@@ -1374,6 +1385,29 @@ local function onHeldChanged(model: Model?)
 end
 
 -- Public -----------------------------------------------------------------------------------------------------------------
+
+-- Spec phase 5: an ultimate's wind-up, the design's `charge` (Config.Abilities telegraphSeconds); none = Dragon Rush.
+function ViewmodelController.ultTelegraphSeconds(ultimateId: string?): number
+	local ability = (Config.Abilities :: any)[ultimateId or "dragon_rush"]
+	return if ability then ability.telegraphSeconds else TELEGRAPH_S
+end
+
+-- Spec phase 5: the wind-up glow's colour (design: fp.js:460): Dragon's orange (Config.FirstPerson.ult.glowColour),
+-- else the rarity colour of the squishy that owns the ultimate (Art/RarityStyle; the design's own rarity colours are
+-- not used, user decision 2026-10-11).
+function ViewmodelController.ultGlowColour(ultimateId: string?): Color3
+	local id = ultimateId or "dragon_rush"
+	if id == "dragon_rush" then
+		return ULT.glowColour
+	end
+	for _, def in Catalog.list() do
+		if def.ultimateId == id then
+			local style = require(Shared.Art.RarityStyle).get(def.rarity)
+			return if style then style.color else ULT.glowColour
+		end
+	end
+	return ULT.glowColour
+end
 
 function ViewmodelController.isShown(): boolean
 	return view ~= nil

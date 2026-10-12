@@ -45,11 +45,14 @@
 --     SoundController's). Other players' pop-ins and stale rejections stay silent (popInSound / rejectSound, pure).
 --   * Other throwers (ThrowStarted with another throwerId): windup scheduled on releaseAt - W (or joined midway),
 --     else straight to release + follow-through; their held model hides and pops in the same way.
--- Ultimate (Dragon Rush, §5.9, §9.10): Q / ButtonL2 / touch, when the locked squishy has an ultimateId and the charge
---   is full (duel; UltimateCharge) or the practice cooldown (10 s) ran out. UltimateRequest(seq, flat aim, clientTime).
---   Predicted ultCharge pose until the telegraph (cancelled if none within 600 ms); telegraph: ultCharge held, the
---   caster is rooted (no throws) until telegraphEndsAt + recoverySeconds; release: arms snap to throwRelease (80 ms),
---   then the rushRecovery hunch, weight -> 0 in 400 ms; cancel: blend out.
+-- Ultimate (Dragon Rush, §5.9, §9.10; the Epic ultimates, spec phase 5): Q / ButtonL2 / touch, when the locked squishy
+--   has an ultimateId and the charge is full (duel; UltimateCharge) or the practice cooldown (10 s) ran out.
+--   UltimateRequest(seq, flat aim, clientTime). Predicted ultCharge pose until the telegraph (cancelled if none within
+--   600 ms); telegraph: ultCharge held, the caster is rooted (no throws) until telegraphEndsAt + that ability's
+--   recoverySeconds (the event's ultimateId; none = Dragon Rush, eventAbility); release: arms snap to throwRelease
+--   (80 ms), then the rushRecovery hunch, weight -> 0 in 400 ms; cancel: blend out. Every ultimate uses this caster
+--   pose (spec phase 5: the design has none of its own). A release's own projIds (the lane, the roller, the bubble,
+--   each Flock Volley bird, each Rain Check drop) are remembered for HitConfirmed.
 -- Hooks for the HUD (cooldown display): getAimState() every frame (reticle position in viewport pixels,
 --   ready / cooling / blocked + reason code, readyAt, nextThrowAt, progress), getUltState(), and the signals
 --   CooldownChanged(readyAt, nextThrowAt), Rejected(reason, nextThrowAt), HitConfirmed(impact) (an own throw, or an
@@ -152,6 +155,8 @@ type Ctx = {
 
 type UltAnim = {
 	phase: "cast" | "telegraph" | "release" | "cancel",
+	ultimateId: string, -- Config.Abilities key (spec phase 5)
+	recoverySeconds: number, -- that ability's
 	startedClock: number, -- os.clock() of the cast / cancel start
 	telegraphEndsAt: number?,
 	releaseStart: number?, -- server time
@@ -390,12 +395,13 @@ function ThrowController.windupValues(w: Windup?): (number?, number?, number?, n
 	return w.tau, w.windup, w.releaseAt, w.releaseStart, w.cancelled
 end
 
--- An ultimate record as plain values (phase, telegraphEndsAt, releaseStart); nil, nil, nil for none (localUlt).
-function ThrowController.ultValues(ult: UltAnim?): (string?, number?, number?)
+-- An ultimate record as plain values (phase, telegraphEndsAt, releaseStart, ultimateId); nil, nil, nil, nil for none
+-- (localUlt).
+function ThrowController.ultValues(ult: UltAnim?): (string?, number?, number?, string?)
 	if ult == nil then
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	end
-	return ult.phase, ult.telegraphEndsAt, ult.releaseStart
+	return ult.phase, ult.telegraphEndsAt, ult.releaseStart, ult.ultimateId
 end
 
 -- Advances one throw animation by dt at server time `serverNow`. Returns the pose to show (nil = nothing yet, e.g. a
@@ -710,6 +716,37 @@ function ThrowController.parseImpact(raw: unknown): ThrowImpact?
 	return t :: ThrowImpact
 end
 
+-- Spec phase 5: a list field of an ultimate event (shots, drops) holds at most this many entries.
+local MAX_EVENT_ITEMS = 16
+
+-- True when `list` is nil, or an array of at most MAX_EVENT_ITEMS tables that each pass `check`.
+local function listOf(list: unknown, check: (any) -> boolean): boolean
+	if list == nil then
+		return true
+	end
+	if type(list) ~= "table" or #(list :: any) > MAX_EVENT_ITEMS then
+		return false
+	end
+	for _, item in list :: any do
+		if type(item) ~= "table" or not check(item) then
+			return false
+		end
+	end
+	return true
+end
+
+local function validShot(s: any): boolean
+	return isNumber(s.projId)
+		and isVector(s.origin)
+		and isVector(s.dir)
+		and isNumber(s.length)
+		and isNumber(s.releaseAt)
+end
+
+local function validDrop(d: any): boolean
+	return isNumber(d.projId) and isVector(d.position) and isNumber(d.shadowAt) and isNumber(d.landAt)
+end
+
 function ThrowController.parseUltimateEvent(raw: unknown): UltimateEvent?
 	if type(raw) ~= "table" then
 		return nil
@@ -726,7 +763,27 @@ function ThrowController.parseUltimateEvent(raw: unknown): UltimateEvent?
 	then
 		return nil
 	end
+	-- Spec phase 5: the optional fields of the Epic ultimates.
+	if
+		(t.ultimateId ~= nil and type(t.ultimateId) ~= "string")
+		or (t.center ~= nil and not isVector(t.center))
+		or not listOf(t.shots, validShot)
+		or not listOf(t.drops, validDrop)
+	then
+		return nil
+	end
 	return t :: UltimateEvent
+end
+
+-- Spec phase 5: an ultimate event's ability, (id, Config.Abilities entry): its ultimateId, or Dragon Rush for an event
+-- with none (sent before the Epic ultimates existed); nil, nil for an id this client does not know.
+function ThrowController.eventAbility(event: UltimateEvent): (string?, any)
+	local id = event.ultimateId or "dragon_rush"
+	local ability = (Config.Abilities :: any)[id]
+	if ability == nil then
+		return nil, nil
+	end
+	return id, ability
 end
 
 -- Runtime helpers ---------------------------------------------------------------------------------------------------
@@ -1265,6 +1322,8 @@ local function tryUltimate(aimPoint: Vector3?): (boolean, string?)
 	stats.ultsSent += 1
 	ults[player] = {
 		phase = "cast",
+		ultimateId = ctx.def.ultimateId or "dragon_rush",
+		recoverySeconds = ability.recoverySeconds,
 		startedClock = os.clock(),
 		telegraphEndsAt = nil,
 		releaseStart = nil,
@@ -1418,6 +1477,29 @@ local function onThrowImpact(raw: unknown)
 	end
 end
 
+-- Spec phase 5: remembers a release's own projectiles for HitConfirmed (each bird and drop is its own projId).
+local function rememberOwnUlt(event: UltimateEvent, ability: any)
+	local speed = if isNumber(event.speed) and event.speed > 0 then event.speed else ability.speed
+	local projId = event.projId
+	if isNumber(projId) then
+		ownProjectiles[projId :: number] = {
+			untilAt = event.telegraphEndsAt + math.max(event.length, 0) / speed + OWN_PROJECTILE_SECONDS,
+			lane = ability.kind == "lane" or ability.kind == "roller", -- they fly on through the player they hit
+		}
+	end
+	local shots: { Types.UltimateShot } = event.shots or {}
+	for _, shot in shots do
+		ownProjectiles[shot.projId] = {
+			untilAt = shot.releaseAt + math.max(shot.length, 0) / speed + OWN_PROJECTILE_SECONDS,
+			lane = false,
+		}
+	end
+	local drops: { Types.UltimateDrop } = event.drops or {}
+	for _, drop in drops do
+		ownProjectiles[drop.projId] = { untilAt = drop.landAt + OWN_PROJECTILE_SECONDS, lane = false }
+	end
+end
+
 local function onUltimateEvent(raw: unknown)
 	local event = ThrowController.parseUltimateEvent(raw)
 	if event == nil then
@@ -1427,12 +1509,18 @@ local function onUltimateEvent(raw: unknown)
 	if caster == nil then
 		return
 	end
+	local ultimateId, ability = ThrowController.eventAbility(event)
+	if ultimateId == nil or ability == nil then
+		return
+	end
 	local current = ults[caster]
 	local now = serverNow()
 	if event.phase == "telegraph" then
 		local weight = if current and not current.finished then current.weight else 0
 		ults[caster] = {
 			phase = "telegraph",
+			ultimateId = ultimateId,
+			recoverySeconds = ability.recoverySeconds,
 			startedClock = os.clock(),
 			telegraphEndsAt = event.telegraphEndsAt,
 			releaseStart = nil,
@@ -1441,25 +1529,20 @@ local function onUltimateEvent(raw: unknown)
 			finished = false,
 		}
 		if caster == localPlayer() then
-			local ability = Config.Abilities.dragon_rush
 			rootedUntil = event.telegraphEndsAt + ability.recoverySeconds
 			if not ControlsController.isContextActive("Duel") then
 				practiceUltReadyAt = now + ability.practiceCooldownSeconds
 			end
 		end
 	elseif event.phase == "release" then
-		if caster == localPlayer() and isNumber(event.projId) then
-			local speed = if isNumber(event.speed) and event.speed > 0
-				then event.speed
-				else Config.Abilities.dragon_rush.speed
-			ownProjectiles[event.projId :: number] = {
-				untilAt = event.telegraphEndsAt + math.max(event.length, 0) / speed + OWN_PROJECTILE_SECONDS,
-				lane = true,
-			}
+		if caster == localPlayer() then
+			rememberOwnUlt(event, ability)
 		end
 		if current == nil or current.finished then
 			ults[caster] = {
 				phase = "release",
+				ultimateId = ultimateId,
+				recoverySeconds = ability.recoverySeconds,
 				startedClock = os.clock(),
 				telegraphEndsAt = event.telegraphEndsAt,
 				releaseStart = math.max(event.telegraphEndsAt, now - 0.05),
@@ -1672,13 +1755,12 @@ local function stepThrowers(dt: number, now: number)
 			popIns[player] = nil
 		end
 	end
-	local recovery = Config.Abilities.dragon_rush.recoverySeconds
 	for player, ult in ults do
 		if player.Parent == nil then
 			ults[player] = nil
 			continue
 		end
-		local sample = stepUlt(ult, dt, now, recovery)
+		local sample = stepUlt(ult, dt, now, ult.recoverySeconds)
 		applyLayer(player, LAYER_ULT, sample)
 		if ult.finished then
 			ults[player] = nil
@@ -1756,9 +1838,9 @@ function ThrowController.localWindup(): (number?, number?, number?, number?, boo
 	return ThrowController.windupValues(windups[localPlayer()])
 end
 
--- The local player's Dragon Rush animation, duel or practice, as plain values: (phase "cast" | "telegraph" | "release" |
--- "cancel", telegraphEndsAt, releaseStart) while it lives, else nil, nil, nil.
-function ThrowController.localUlt(): (string?, number?, number?)
+-- The local player's ultimate animation, duel or practice, as plain values: (phase "cast" | "telegraph" | "release" |
+-- "cancel", telegraphEndsAt, releaseStart, ultimateId) while it lives, else nil, nil, nil, nil.
+function ThrowController.localUlt(): (string?, number?, number?, string?)
 	return ThrowController.ultValues(ults[localPlayer()])
 end
 

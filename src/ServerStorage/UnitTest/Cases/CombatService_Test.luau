@@ -699,6 +699,222 @@ return function(t: Context)
 		expect.equal(CombatService.counters().guardPivots, 2)
 	end)
 
+	-- Spec phase 5: the four Epic ultimates (launchUlt, launchArea). The roots here are plain tables (Position and
+	-- CFrame), so these cases need no engine part.
+	local ULT = Config.Abilities
+	local STAND = Config.Combat.Hitbox.radius - Config.Combat.Hitbox.bottomOffset -- HRP height of a standing player
+
+	local function tableRoot(position: Vector3): any
+		return { Position = position, CFrame = CFrame.new(position), Parent = nil }
+	end
+
+	-- A registered Active match whose roots are tables: A at (0, 3, -40), B at `bAt` (default (0, 3, 20)).
+	local function ultDuel(bAt: Vector3?): (any, any, PortState, any, any)
+		local rootA = tableRoot(A_ROOT)
+		local rootB = tableRoot(bAt or B_ROOT)
+		local a = fighter(1, "A", rootA, nil)
+		local b = fighter(2, "B", rootB, nil)
+		local port, state = makePort(a, b, nil)
+		CombatService.registerMatch(port)
+		return a, b, state, rootA, rootB
+	end
+
+	local function ultSpec(a: any, overrides: { [string]: any }): any
+		local spec: { [string]: any } = {
+			caster = a,
+			player = nil,
+			squishyId = "bird",
+			origin = Vector3.new(0, 4.8, -38),
+			direction = Vector3.new(0, 0, 1),
+			length = 80,
+			radius = ULT.flock_volley.radius,
+			speed = ULT.flock_volley.speed,
+			releaseAt = clock.now() + 0.35,
+			stoppedByGeometry = false,
+			floorY = 0,
+		}
+		for key, value in overrides do
+			spec[key] = value
+		end
+		return spec
+	end
+
+	t.test("a Flock Volley bird hits the opponent once and ends there; the hit is an ultimate, not a throw", function()
+		setup()
+		local a, _, state = ultDuel(nil)
+		local infos = {}
+		CombatService.Hit:connect(function(info: any)
+			table.insert(infos, info)
+		end)
+		local projId = CombatService.launchUlt(ultSpec(a, {}))
+		expect.equal(a.activeProjectiles, 0) -- never a live throw
+		runFor(0.35 + 60 / 75 + 0.2)
+		local hits = impacts("player")
+		expect.equal(#hits, 1)
+		expect.equal(hits[1].projId, projId)
+		expect.equal(#impacts(nil), 1) -- it ended at the hit: no end impact
+		expect.equal(state.hits[1].kind, "ult")
+		expect.equal(infos[1].kind, "ult")
+		expect.equal(CombatService.projectileCount(), 0)
+	end)
+
+	t.test("a Flock Volley bird stopped by cover ends there with a geometry impact", function()
+		setup()
+		local a = ultDuel(Vector3.new(20, 3, 20)) -- B off the bird's line
+		CombatService.launchUlt(ultSpec(a, { length = 20, stoppedByGeometry = true }))
+		runFor(0.35 + 20 / 75 + 0.2)
+		local ends = impacts("geometry")
+		expect.equal(#ends, 1)
+		expect.near((ends[1].position - Vector3.new(0, 4.8, -18)).Magnitude, 0, 1e-3)
+		expect.equal(#impacts("player"), 0)
+	end)
+
+	local function roller(a: any): number
+		local R = ULT.sprinkle_roller
+		return CombatService.launchUlt(ultSpec(a, {
+			squishyId = "donut",
+			origin = Vector3.new(0, R.laneHeightAboveFloor, -34),
+			length = R.maxLength,
+			radius = R.radius,
+			speed = R.speed,
+			releaseAt = clock.now() + R.telegraphSeconds,
+			flyOn = true,
+			clearHeight = R.clearHeight,
+		}))
+	end
+
+	t.test("Sprinkle Roller: a body touching the 6-stud lane is hit once; the roller rolls on to its end", function()
+		setup()
+		local R = ULT.sprinkle_roller
+		local reach = R.radius + Config.Combat.Hitbox.radius
+		local a, _, state = ultDuel(Vector3.new(reach - 0.2, STAND, 20))
+		roller(a)
+		runFor(R.telegraphSeconds + R.maxLength / R.speed + 0.2)
+		expect.equal(#impacts("player"), 1)
+		expect.equal(state.hits[1].kind, "ult")
+		expect.equal(#impacts("expired"), 1) -- it rolled on to its end
+		expect.equal(CombatService.projectileCount(), 0)
+	end)
+
+	t.test("Sprinkle Roller: jumped (feet above 3 studs) or just outside the lane, no hit", function()
+		setup()
+		local R = ULT.sprinkle_roller
+		local a, _, _, _, rootB = ultDuel(Vector3.new(0, STAND + R.clearHeight + 0.5, 20))
+		roller(a)
+		runFor(R.telegraphSeconds + R.maxLength / R.speed + 0.2)
+		expect.equal(#impacts("player"), 0)
+		setup()
+		local reach = R.radius + Config.Combat.Hitbox.radius
+		local a2 = ultDuel(Vector3.new(reach + 0.2, STAND, 20))
+		roller(a2)
+		runFor(R.telegraphSeconds + R.maxLength / R.speed + 0.2)
+		expect.equal(#impacts("player"), 0)
+		-- A body standing low still on the floor (feet just under 3 studs up) is hit.
+		setup()
+		local a3, _, _, _, rootB3 = ultDuel(Vector3.new(0, STAND + R.clearHeight - 0.5, 20))
+		roller(a3)
+		runFor(R.telegraphSeconds + R.maxLength / R.speed + 0.2)
+		expect.equal(#impacts("player"), 1)
+		expect.truthy(rootB ~= nil and rootB3 ~= nil)
+	end)
+
+	t.test("Rain Check: a drop hits a player whose feet are within 1.5 studs when it lands, not before", function()
+		setup()
+		local a, _, state = ultDuel(nil)
+		local landAt = clock.now() + 1
+		local projId = CombatService.launchArea({
+			caster = a,
+			player = nil,
+			squishyId = "cloud_bunny",
+			position = Vector3.new(1, 0, 20), -- 1 stud from B's feet
+			radius = ULT.rain_check.dropHitRadius,
+			at = landAt,
+			floorY = 0,
+		})
+		runFor(0.9)
+		expect.equal(#impacts(nil), 0)
+		runFor(0.2)
+		local hits = impacts("player")
+		expect.equal(#hits, 1)
+		expect.equal(hits[1].projId, projId)
+		expect.near(state.hits[1].at, landAt, 1e-9)
+		expect.equal(state.hits[1].kind, "ult")
+		expect.equal(CombatService.projectileCount(), 0)
+	end)
+
+	t.test("Rain Check: a drop that misses sends nothing; a second one inside the invulnerability passes", function()
+		setup()
+		local a = ultDuel(nil)
+		local function drop(at: Vector3, landAt: number)
+			CombatService.launchArea({
+				caster = a,
+				player = nil,
+				squishyId = "cloud_bunny",
+				position = at,
+				radius = ULT.rain_check.dropHitRadius,
+				at = landAt,
+				floorY = 0,
+			})
+		end
+		drop(Vector3.new(5, 0, 20), clock.now() + 0.5) -- 5 studs away: a miss
+		drop(Vector3.new(0, 0, 20), clock.now() + 1)
+		drop(Vector3.new(0.5, 0, 20), clock.now() + 1.36) -- inside the 1.5 s invulnerability of the first hit
+		runFor(2)
+		expect.equal(#impacts("player"), 1)
+		expect.equal(#impacts(nil), 1) -- misses and refused drops send nothing
+		expect.equal(CombatService.projectileCount(), 0)
+	end)
+
+	local function bubble(a: any, overrides: { [string]: any }?): number
+		local B = ULT.bubble_pop
+		local spec = ultSpec(a, {
+			squishyId = "cupcake_axolotl",
+			length = B.maxLength,
+			radius = B.radius,
+			speed = B.speed,
+			releaseAt = clock.now() + B.telegraphSeconds,
+			splashRadius = B.splashRadius,
+		})
+		local extra: { [string]: any } = overrides or {}
+		for key, value in extra do
+			spec[key] = value
+		end
+		return CombatService.launchUlt(spec)
+	end
+
+	t.test("Bubble Pop: it pops on the opponent and the splash takes one life", function()
+		setup()
+		local a, _, state = ultDuel(Vector3.new(0, STAND, 0))
+		bubble(a, { origin = Vector3.new(0, 4.8, -30) })
+		runFor(0.5 + 1.2 + 0.2)
+		expect.equal(#impacts("player"), 1)
+		expect.equal(#impacts(nil), 1)
+		expect.equal(state.hits[1].kind, "ult")
+	end)
+
+	t.test(
+		"Bubble Pop: popping after 1.2 s, its splash hits feet within 6 studs of the pop and misses past it",
+		function()
+			local B = ULT.bubble_pop
+			local popAt = Vector3.new(0, 4.8, -38 + B.maxLength) -- where the 1.2 s flight ends
+			setup()
+			local a, _, _, _, _ = ultDuel(Vector3.new(4, STAND, popAt.Z))
+			bubble(a, {})
+			runFor(0.5 + 1.2 + 0.2)
+			local hits = impacts("player")
+			expect.equal(#hits, 1)
+			expect.near((hits[1].position - popAt).Magnitude, 0, 0.05) -- the hit is at the pop point
+			setup()
+			local a2 = ultDuel(Vector3.new(B.splashRadius + 1, STAND, popAt.Z))
+			bubble(a2, {})
+			runFor(0.5 + 1.2 + 0.2)
+			expect.equal(#impacts("player"), 0)
+			local ends = impacts("expired")
+			expect.equal(#ends, 1) -- the pop with nobody near
+			expect.near((ends[1].position - popAt).Magnitude, 0, 0.05)
+		end
+	)
+
 	t.test("unregisterMatch drops the match's projectiles without impacts", function()
 		setup()
 		local _, _, _, rootA = duel(nil, nil)

@@ -1,7 +1,9 @@
 --!strict
--- AbilityService (server only). DESIGN §5.9, §9.10, §5.11, §12 #3, #7, #8.
--- Ultimates, keyed by the Catalog `ultimateId` (Config.Abilities). Dragon Rush is the only one; a future ability
--- adds its Config entry and a behaviour in BEHAVIOURS (every ability here is a telegraphed lane).
+-- AbilityService (server only). DESIGN §5.9, §9.10, §5.11, §12 #3, #7, #8; spec phase 5 (the four Epic ultimates).
+-- Ultimates, keyed by the Catalog `ultimateId` (Config.Abilities). Each ability has a `kind` with its behaviour in
+-- BEHAVIOURS: Dragon Rush is a telegraphed lane; Flock Volley, Sprinkle Roller, Rain Check and Bubble Pop are the
+-- design's Epic ultimates (Config.Abilities header). Every kind shares the request gate, the charge, the root, cancel
+-- and refund rules below; only the paths it checks before accepting and what it launches at the release differ.
 -- * Charge is server-only: it starts at `startCharge` every match, grows by chargePerSecond in Active and SuddenDeath,
 --   by chargePerHitLanded for each normal throw of the caster that hits, by chargePerLifeLost for each life the caster
 --   loses, and is capped at chargeMax. Participants get UltimateCharge {ownerId, charge} at most
@@ -14,23 +16,30 @@
 --   has the ultimate (ult.notReady), the charge is full and minIntervalSeconds passed since the last one, the caster
 --   is not in a throw windup, a telegraph or its recovery (ult.notReady), alive with a server HRP (ult.context), the
 --   aim flattened to horizontal keeps at
---   least minHorizontalAim (ult.direction). O = (HRP.X, floorY + laneHeightAboveFloor, HRP.Z) + dir ×
---   originForwardStuds; a lane sphere overlapping Geometry at O is ult.noRoom (no charge spent). E = the Spherecast
---   end along dir (at most maxLength) against the slot's Geometry, clamped to the arena Bounds. A rejection is a
+--   least minHorizontalAim (ult.direction). Then the kind's paths: a lane, the roller and the bubble start at
+--   O = (HRP.X, floorY + laneHeightAboveFloor, HRP.Z) + dir × originForwardStuds; a sphere of `radius` overlapping
+--   Geometry at O is ult.noRoom (no charge spent); E = the Spherecast end along dir (at most maxLength) against the
+--   slot's Geometry, clamped to the arena Bounds. Flock Volley fans `count` birds over fanDeg from the same O, each
+--   with its own E; Rain Check needs no room (its zone is placed at the release). A rejection is a
 --   Notify(code) to the caster. clientTime is checked for shape only: the telegraph uses server time with no lag
 --   compensation, so the opponent always sees it for telegraphSeconds minus their own latency.
 -- * Accepted: the charge is spent, the caster is rooted (ThrowRules check 4, and WalkSpeed/JumpHeight 0 on the server)
---   until telegraphEndsAt + recoverySeconds, and UltimateEvent telegraph {casterId, origin, dir, length, radius,
---   telegraphEndsAt, speed} goes to both participants. At telegraphEndsAt the lane is launched through
---   CombatService.launchLane (a gravity-0 sweep of `radius` from O to E at `speed`, the normal canDamage) and
---   UltimateEvent release carries its projId. A hit on the caster during the telegraph cancels it
+--   until telegraphEndsAt + recoverySeconds, and UltimateEvent telegraph {casterId, ultimateId, origin, dir, length,
+--   radius, telegraphEndsAt, speed} goes to both participants. At telegraphEndsAt the kind launches: the lane through
+--   CombatService.launchLane (a gravity-0 sweep of `radius` from O to E at `speed`, the normal canDamage), the birds,
+--   the roller and the bubble through CombatService.launchUlt (birds `staggerSeconds` apart), Rain Check's drops
+--   through CombatService.launchArea around a centre on the opponent's spot at the release (clamped into its half;
+--   practice: the target nearest the aim); UltimateEvent release carries the projId (lane, roller, bubble), the
+--   `shots` (birds) or the `center` and `drops` (rain). A hit on the caster during the telegraph cancels it
 --   (cancelOnHitDuringTelegraph): UltimateEvent cancel, refundOnCancel × chargeMax back, the root ends.
 -- * Practice range (§5.11): an owner of the squishy may rehearse inside SD_PracticeZone with no charge and a
---   practiceCooldownSeconds cooldown; the lane hits practice targets only and the events go to nearby players.
+--   practiceCooldownSeconds cooldown; its hits reach practice targets only and the events go to nearby players.
 --   Practice never gives charge. "A found match ends the session": attachMatch cancels a practice telegraph or
 --   recovery of either player (UltimateEvent cancel, movement restored while they are still in the lobby), so a
 --   practice root can never end inside the arena and unfreeze the Countdown.
--- Nothing the client sends is trusted for charge, timers, origin or length (§12 #3).
+-- Nothing the client sends is trusted for charge, timers, origin, length, targets or drop points (§12 #3).
+-- Tests swap the clock, the sender, the scheduler and the two world queries with useDeps; setCharge fills a meter for
+-- tests and Studio checks.
 
 -- Services
 
@@ -47,6 +56,7 @@ local PracticeTargets = require(Shared.Practice.PracticeTargets)
 local Types = require(Shared.Types)
 local Validate = require(Shared.Util.Validate)
 local HitMath = require(script.Parent.Parent.Logic.HitMath)
+local UltRules = require(script.Parent.Parent.Logic.UltRules)
 local CharacterService = require(script.Parent.CharacterService)
 local CombatService = require(script.Parent.CombatService)
 local InventoryService = require(script.Parent.InventoryService)
@@ -61,6 +71,7 @@ type Zone = Types.ArenaZone
 
 -- The Config.Abilities fields this module reads.
 export type AbilityDef = {
+	kind: string,
 	chargeMax: number,
 	startCharge: number,
 	chargePerSecond: number,
@@ -78,9 +89,26 @@ export type AbilityDef = {
 	practiceCooldownSeconds: number,
 	minHorizontalAim: number,
 	originForwardStuds: number,
+	count: number?,
+	fanDeg: number?,
+	staggerSeconds: number?,
+	clearHeight: number?,
+	splashRadius: number?,
+	drops: number?,
+	firstShadowSeconds: number?,
+	dropStepSeconds: number?,
+	shadowSeconds: number?,
+	fallSeconds: number?,
+	dropHitRadius: number?,
+	dropRadii: { number }?,
+	dropAngleStep: number?,
+	targetRadius: number?,
 }
 
 type CasterPhase = "idle" | "telegraph" | "recovery"
+
+-- One Flock Volley bird's path, found at the request.
+type Shot = { dir: Vector3, length: number, stoppedByGeometry: boolean }
 
 type Caster = {
 	userId: number,
@@ -95,10 +123,38 @@ type Caster = {
 	lastSeq: number,
 	phase: CasterPhase,
 	token: number, -- bumped on cancel / detach so a pending release or recovery end does nothing
-	event: Types.UltimateEventPayload?, -- the current lane
+	event: Types.UltimateEventPayload?, -- the current telegraph (then release)
 	stoppedByGeometry: boolean,
+	shots: { Shot }?, -- Flock Volley: the birds' paths
+	floorY: number, -- the floor of the current cast
 	sentCharge: number,
 	sentAt: number,
+}
+
+-- What the shared gate hands a kind: the place's floor, its world queries and its Bounds.
+type CastContext = {
+	floorY: number,
+	raycastParams: RaycastParams?,
+	overlapParams: OverlapParams?,
+	bounds: Zone,
+}
+
+-- A kind's paths for the telegraph (prepare) and its projectiles at the release (launch).
+type Prepared = { origin: Vector3, length: number, stoppedByGeometry: boolean, shots: { Shot }? }
+type Behaviour = {
+	prepare: (caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3) -> (string?, Prepared?),
+	launch: (caster: Caster, event: Types.UltimateEventPayload) -> Types.UltimateEventPayload,
+}
+
+-- What this module needs from the outside world (useDeps).
+export type Deps = {
+	now: () -> number,
+	send: (remote: string, recipients: { any }, ...any) -> (),
+	delay: (seconds: number, fn: (...any) -> (), ...any) -> (),
+	-- True when a sphere of `radius` at `origin` overlaps the place's Geometry (GetPartBoundsInRadius).
+	overlaps: (origin: Vector3, radius: number, params: OverlapParams) -> boolean,
+	-- The distance at which a sphere of `radius` moved from `origin` along `direction` meets Geometry (Spherecast).
+	cast: (origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?,
 }
 
 -- Constants
@@ -110,17 +166,16 @@ local CHARGE_SEND_INTERVAL = 1 / Config.Net.Broadcast.ultimateChargeMaxHz
 local MOVEMENT = Config.Duel.Rules.Movement
 local ZONE_TOLERANCE = Config.Combat.Throw.zoneToleranceStuds -- own half + 2 studs, as for a throw (§5.6 #5)
 local HALF_BY_SIDE: { [string]: string } = { A = "HalfA", B = "HalfB" }
+local OTHER_SIDE: { [string]: string } = { A = "B", B = "A" }
 local REASON_NOT_READY = "ult.notReady"
 local REASON_CONTEXT = "ult.context"
 local REASON_DIRECTION = "ult.direction"
 local REASON_NO_ROOM = "ult.noRoom"
 local REASON_INVALID = "net.invalid"
 local REMOTE_ULTIMATE = "UltimateRequest"
-
--- Every ultimate is a telegraphed lane today; a new kind of ability adds its behaviour here (§5.9 registry).
-local BEHAVIOURS: { [string]: "lane" } = {
-	dragon_rush = "lane",
-}
+-- build choice 2026-10-11 (NOT IN DESIGN): with no opponent spot (and no practice target ahead), Rain Check centres
+-- this far along the aim.
+local RAIN_FALLBACK_STUDS = Config.Combat.PowerBudget.referenceDistance
 
 -- Module table
 
@@ -134,14 +189,37 @@ local practiceCasters: { [Player]: Caster } = {}
 local attached: { [string]: MatchPort } = {}
 local lastTick: number? = nil
 
+local function defaultDeps(): Deps
+	return {
+		now = function(): number
+			return Workspace:GetServerTimeNow()
+		end,
+		send = function(remote: string, recipients: { any }, ...: any)
+			NetService.fireMany(remote, recipients, ...)
+		end,
+		delay = function(seconds: number, fn: (...any) -> (), ...: any)
+			task.delay(seconds, fn, ...)
+		end,
+		overlaps = function(origin: Vector3, radius: number, params: OverlapParams): boolean
+			return #Workspace:GetPartBoundsInRadius(origin, radius, params) > 0
+		end,
+		cast = function(origin: Vector3, radius: number, direction: Vector3, params: RaycastParams): number?
+			local hit = Workspace:Spherecast(origin, radius, direction, params)
+			return if hit then hit.Distance else nil
+		end,
+	}
+end
+
+local deps: Deps = defaultDeps()
+
 local function serverNow(): number
-	return Workspace:GetServerTimeNow()
+	return deps.now()
 end
 
 local function abilityOf(squishyId: string): (string?, AbilityDef?)
 	local def = Catalog.get(squishyId)
 	local id = if def then def.ultimateId else nil
-	if id == nil or BEHAVIOURS[id] == nil then
+	if id == nil then
 		return nil, nil
 	end
 	local ability = (Config.Abilities :: any)[id]
@@ -173,6 +251,8 @@ local function newCaster(
 		token = 0,
 		event = nil,
 		stoppedByGeometry = false,
+		shots = nil,
+		floorY = 0,
 		sentCharge = -1,
 		sentAt = -math.huge,
 	}
@@ -244,7 +324,7 @@ local function sendCharge(caster: Caster, now: number, force: boolean)
 	caster.sentCharge = shown
 	caster.sentAt = now
 	local payload: Types.UltimateChargePayload = { ownerId = caster.userId, charge = shown }
-	NetService.fireMany("UltimateCharge", audience(caster, Vector3.zero), payload)
+	deps.send("UltimateCharge", audience(caster, Vector3.zero), payload)
 end
 
 local function addCharge(caster: Caster, amount: number)
@@ -252,7 +332,7 @@ local function addCharge(caster: Caster, amount: number)
 end
 
 local function sendEvent(caster: Caster, event: Types.UltimateEventPayload)
-	NetService.fireMany("UltimateEvent", audience(caster, event.origin), event)
+	deps.send("UltimateEvent", audience(caster, event.origin), event)
 end
 
 -- A rejected request: the caster's client is told why. A payload failure is not answered; it counts as an abuse
@@ -303,6 +383,249 @@ local function endRecovery(caster: Caster, token: number)
 	setRooted(caster, false)
 end
 
+-- Private: the kinds ----------------------------------------------------------------------------------------------
+
+-- A straight sweep's room and end (the Dragon Rush rule, §5.9): a sphere of `radius` overlapping Geometry at `origin`
+-- is ult.noRoom (unless `room` is false: the later birds of a volley share the first one's start); the end is the
+-- Spherecast distance along dir (at most maxLength), clamped to the Bounds.
+local function sweepPath(
+	ctx: CastContext,
+	origin: Vector3,
+	dir: Vector3,
+	radius: number,
+	maxLength: number,
+	room: boolean
+): (string?, number, boolean)
+	local overlapParams = ctx.overlapParams
+	if room and overlapParams and deps.overlaps(origin, radius, overlapParams) then
+		return REASON_NO_ROOM, 0, false
+	end
+	local length = maxLength
+	local stoppedByGeometry = false
+	local raycastParams = ctx.raycastParams
+	if raycastParams then
+		local hit = deps.cast(origin, radius, dir * maxLength, raycastParams)
+		if hit then
+			length = hit
+			stoppedByGeometry = true
+		end
+	end
+	local clamped = AbilityService.clampToBounds(origin, dir, length, ctx.bounds)
+	if clamped < length then
+		length = clamped
+		stoppedByGeometry = false
+	end
+	return nil, length, stoppedByGeometry
+end
+
+-- One straight sweep from O (Dragon Rush, the roller, the bubble).
+local function prepareSweep(caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3): (string?, Prepared?)
+	local ability = caster.ability
+	local origin = AbilityService.laneOrigin(rootPosition, ctx.floorY, dir, ability)
+	local reason, length, stoppedByGeometry = sweepPath(ctx, origin, dir, ability.radius, ability.maxLength, true)
+	if reason then
+		return reason, nil
+	end
+	return nil, { origin = origin, length = length, stoppedByGeometry = stoppedByGeometry }
+end
+
+local function released(event: Types.UltimateEventPayload): Types.UltimateEventPayload
+	local copy = table.clone(event)
+	copy.phase = "release"
+	return copy
+end
+
+-- An Epic ultimate's projectile along the telegraph's lane (the roller, the bubble).
+local function launchAlong(caster: Caster, event: Types.UltimateEventPayload): number
+	local ability = caster.ability
+	return CombatService.launchUlt({
+		caster = caster.fighter,
+		player = caster.player,
+		squishyId = caster.squishyId,
+		origin = event.origin,
+		direction = event.dir,
+		length = event.length,
+		radius = event.radius,
+		speed = event.speed,
+		releaseAt = event.telegraphEndsAt,
+		stoppedByGeometry = caster.stoppedByGeometry,
+		floorY = caster.floorY,
+		flyOn = ability.kind == "roller",
+		clearHeight = ability.clearHeight,
+		splashRadius = ability.splashRadius,
+	})
+end
+
+-- The opponent's server HRP and half (duel), or nil.
+local function opponentOf(caster: Caster): (BasePart?, Zone?)
+	local port, fighter = caster.port, caster.fighter
+	if port == nil or fighter == nil then
+		return nil, nil
+	end
+	local half = port.arena.zones[HALF_BY_SIDE[OTHER_SIDE[fighter.side] or ""] or ""]
+	for _, other in port.fighters do
+		if other ~= fighter then
+			return other.getRoot(), half
+		end
+	end
+	return nil, half
+end
+
+-- Rain Check at the release: the centre (the opponent's spot clamped into its half; practice: the target nearest the
+-- aim) and its drops (design: fp.js:348-357).
+local function rainDrops(caster: Caster, event: Types.UltimateEventPayload): (Vector3, { UltRules.Drop })
+	local ability = caster.ability
+	local floorY = caster.floorY
+	local releaseAt = event.telegraphEndsAt
+	local fallback = event.origin + event.dir * RAIN_FALLBACK_STUDS
+	if caster.port then
+		local root, half = opponentOf(caster)
+		local spot = if root then root.Position else nil
+		local center = UltRules.rainCenter(spot, fallback, half, floorY)
+		local targets: { Vector3 } = {}
+		if spot then
+			table.insert(targets, UltRules.feetPoint(spot))
+		end
+		return center, UltRules.rainDrops(center, ability, releaseAt, targets)
+	end
+	local spots: { Vector3 } = {}
+	for _, target in PracticeService.targets() do
+		local bottom, _, radius = PracticeService.capsuleAt(target, releaseAt)
+		table.insert(spots, bottom - Vector3.new(0, radius, 0))
+	end
+	local aimed = UltRules.practiceCenter(event.origin, event.dir, spots, ability.maxLength)
+	local bounds = PracticeTargets.BOUNDS
+	local zone = { cframe = CFrame.new(bounds.position), size = bounds.size }
+	local center = UltRules.rainCenter(aimed, fallback, zone, floorY)
+	return center, UltRules.rainDrops(center, ability, releaseAt, spots)
+end
+
+local BEHAVIOURS: { [string]: Behaviour } = {
+	-- Dragon Rush (§5.9).
+	lane = {
+		prepare = prepareSweep,
+		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
+			local projId = CombatService.launchLane({
+				caster = caster.fighter,
+				player = caster.player,
+				squishyId = caster.squishyId,
+				origin = event.origin,
+				direction = event.dir,
+				length = event.length,
+				radius = event.radius,
+				speed = event.speed,
+				releaseAt = event.telegraphEndsAt,
+				stoppedByGeometry = caster.stoppedByGeometry,
+			})
+			local out = released(event)
+			out.projId = projId
+			return out
+		end,
+	},
+	-- Flock Volley: `count` birds over fanDeg from one O, each cut at cover and the Bounds (design: ults.js:3).
+	volley = {
+		prepare = function(caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3): (string?, Prepared?)
+			local ability = caster.ability
+			local origin = AbilityService.laneOrigin(rootPosition, ctx.floorY, dir, ability)
+			local shots: { Shot } = {}
+			local longest = 0
+			for index, birdDir in UltRules.volleyDirs(dir, ability.count or 1, ability.fanDeg or 0) do
+				local reason, length, stopped =
+					sweepPath(ctx, origin, birdDir, ability.radius, ability.maxLength, index == 1)
+				if reason then
+					return reason, nil
+				end
+				table.insert(shots, { dir = birdDir, length = length, stoppedByGeometry = stopped })
+				longest = math.max(longest, length)
+			end
+			return nil, { origin = origin, length = longest, stoppedByGeometry = false, shots = shots }
+		end,
+		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
+			local ability = caster.ability
+			local out = released(event)
+			local shots: { Types.UltimateShot } = {}
+			local paths: { Shot } = caster.shots or {}
+			for index, shot in paths do
+				local releaseAt = event.telegraphEndsAt + (ability.staggerSeconds or 0) * (index - 1)
+				local projId = CombatService.launchUlt({
+					caster = caster.fighter,
+					player = caster.player,
+					squishyId = caster.squishyId,
+					origin = event.origin,
+					direction = shot.dir,
+					length = shot.length,
+					radius = ability.radius,
+					speed = ability.speed,
+					releaseAt = releaseAt,
+					stoppedByGeometry = shot.stoppedByGeometry,
+					floorY = caster.floorY,
+				})
+				table.insert(shots, {
+					projId = projId,
+					origin = event.origin,
+					dir = shot.dir,
+					length = shot.length,
+					releaseAt = releaseAt,
+				})
+			end
+			out.shots = shots
+			return out
+		end,
+	},
+	-- Sprinkle Roller: one lane along the floor, flying on, jumpable (design: ults.js:4).
+	roller = {
+		prepare = prepareSweep,
+		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
+			local out = released(event)
+			out.projId = launchAlong(caster, event)
+			return out
+		end,
+	},
+	-- Bubble Pop: one bubble that pops at its first contact, cover or after popSeconds (design: ults.js:6).
+	bubble = {
+		prepare = prepareSweep,
+		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
+			local out = released(event)
+			out.projId = launchAlong(caster, event)
+			return out
+		end,
+	},
+	-- Rain Check: no room needed; the zone and its drops are placed at the release (design: ults.js:5).
+	rain = {
+		prepare = function(caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3): (string?, Prepared?)
+			local origin = Vector3.new(rootPosition.X, ctx.floorY, rootPosition.Z)
+				+ dir * caster.ability.originForwardStuds
+			return nil, { origin = origin, length = 0, stoppedByGeometry = false }
+		end,
+		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
+			local ability = caster.ability
+			local center, drops = rainDrops(caster, event)
+			local out = released(event)
+			local list: { Types.UltimateDrop } = {}
+			for _, drop in drops do
+				local projId = CombatService.launchArea({
+					caster = caster.fighter,
+					player = caster.player,
+					squishyId = caster.squishyId,
+					position = drop.position,
+					radius = ability.dropHitRadius or 0,
+					at = drop.landAt,
+					floorY = caster.floorY,
+				})
+				table.insert(list, {
+					projId = projId,
+					position = drop.position,
+					shadowAt = drop.shadowAt,
+					landAt = drop.landAt,
+				})
+			end
+			out.center = center
+			out.drops = list
+			return out
+		end,
+	},
+}
+
 local function release(caster: Caster, token: number)
 	if caster.token ~= token or caster.phase ~= "telegraph" then
 		return
@@ -326,24 +649,11 @@ local function release(caster: Caster, token: number)
 		end
 	end
 	caster.phase = "recovery"
-	local projId = CombatService.launchLane({
-		caster = caster.fighter,
-		player = caster.player,
-		squishyId = caster.squishyId,
-		origin = event.origin,
-		direction = event.dir,
-		length = event.length,
-		radius = event.radius,
-		speed = event.speed,
-		releaseAt = event.telegraphEndsAt,
-		stoppedByGeometry = caster.stoppedByGeometry,
-	})
-	local released = table.clone(event)
-	released.phase = "release"
-	released.projId = projId
-	caster.event = released
-	sendEvent(caster, released)
-	task.delay(caster.ability.recoverySeconds, endRecovery, caster, token)
+	local behaviour = BEHAVIOURS[caster.ability.kind] or BEHAVIOURS.lane
+	local out = behaviour.launch(caster, event)
+	caster.event = out
+	sendEvent(caster, out)
+	deps.delay(caster.ability.recoverySeconds, endRecovery, caster, token)
 end
 
 local function onHit(info: CombatService.HitInfo)
@@ -423,7 +733,7 @@ end
 
 -- Public: matches -----------------------------------------------------------------------------------------------------
 
--- A found match ends a practice session (§5.11): a practice Dragon Rush in its telegraph is cancelled (UltimateEvent
+-- A found match ends a practice session (§5.11): a practice ultimate in its telegraph is cancelled (UltimateEvent
 -- cancel to the range), one in its recovery just ends; either way the root ends now, while the player is still in the
 -- lobby (Preparing), and no pending release or recovery end can touch the player later.
 local function endPractice(player: Player?)
@@ -453,7 +763,7 @@ function AbilityService.attachMatch(port: MatchPort)
 	end
 	for _, fighter in port.fighters do
 		local id, ability = abilityOf(fighter.squishyId)
-		if id and ability then
+		if id and ability and BEHAVIOURS[ability.kind] then
 			local caster = newCaster(fighter.userId, fighter.player, fighter.squishyId, id, ability)
 			caster.fighter = fighter
 			caster.port = port
@@ -500,6 +810,18 @@ function AbilityService.chargeOf(userId: number): number?
 	return if caster then caster.charge else nil
 end
 
+-- Tests and Studio checks (a full meter to try an ultimate at once, e.g. from the server command bar in Play):
+-- sets a participant's charge, clamped to 0..chargeMax, and sends it. False without one.
+function AbilityService.setCharge(userId: number, charge: number): boolean
+	local caster = duelCasters[userId]
+	if caster == nil or type(charge) ~= "number" or charge ~= charge then
+		return false
+	end
+	caster.charge = math.clamp(charge, 0, caster.ability.chargeMax)
+	sendCharge(caster, serverNow(), true)
+	return true
+end
+
 -- Public: requests ----------------------------------------------------------------------------------------------------
 
 -- Validates and starts an ultimate (§5.9). `who` is the Player (UltimateRequest) or a registered fighter / its userId
@@ -525,10 +847,7 @@ function AbilityService.requestUltimate(
 
 	-- Context: a live match, or the practice range.
 	local caster: Caster
-	local floorY: number
-	local raycastParams: RaycastParams?
-	local overlapParams: OverlapParams?
-	local bounds: Zone
+	local ctx: CastContext
 	if fighter then
 		local port = CombatService.portOf(fighter)
 		local sync = if port then port.sync else nil
@@ -548,18 +867,20 @@ function AbilityService.requestUltimate(
 			return reject(player, REASON_NOT_READY) -- the match snapshot has no ultimate
 		end
 		caster = found
-		floorY = port.arena.floorY
-		raycastParams = port.arena.raycastParams
-		overlapParams = port.arena.overlapParams
 		local zone = port.arena.zones.Bounds
 		if zone == nil then
 			return reject(player, REASON_CONTEXT)
 		end
-		bounds = zone
+		ctx = {
+			floorY = port.arena.floorY,
+			raycastParams = port.arena.raycastParams,
+			overlapParams = port.arena.overlapParams,
+			bounds = zone,
+		}
 	elseif player and PracticeService.isPracticing(player) then
 		local squishyId = InventoryService.getEquipped(player)
 		local id, ability = abilityOf(squishyId)
-		if id == nil or ability == nil then
+		if id == nil or ability == nil or BEHAVIOURS[ability.kind] == nil then
 			return reject(player, REASON_NOT_READY)
 		end
 		local found = practiceCasters[player]
@@ -568,10 +889,12 @@ function AbilityService.requestUltimate(
 			practiceCasters[player] = found
 		end
 		caster = found
-		floorY = PracticeService.floorY()
-		raycastParams = PracticeService.raycastParams()
-		overlapParams = PracticeService.overlapParams()
-		bounds = { cframe = CFrame.new(PracticeTargets.BOUNDS.position), size = PracticeTargets.BOUNDS.size }
+		ctx = {
+			floorY = PracticeService.floorY(),
+			raycastParams = PracticeService.raycastParams(),
+			overlapParams = PracticeService.overlapParams(),
+			bounds = { cframe = CFrame.new(PracticeTargets.BOUNDS.position), size = PracticeTargets.BOUNDS.size },
+		}
 	else
 		return reject(player, REASON_CONTEXT)
 	end
@@ -603,24 +926,11 @@ function AbilityService.requestUltimate(
 		return reject(player, REASON_DIRECTION)
 	end
 
-	-- Room at O, then E (Spherecast against Geometry without Barriers, clamped to Bounds).
-	local origin = AbilityService.laneOrigin(root.Position, floorY, dir, ability)
-	if overlapParams and #Workspace:GetPartBoundsInRadius(origin, ability.radius, overlapParams) > 0 then
-		return reject(player, REASON_NO_ROOM)
-	end
-	local length = ability.maxLength
-	local stoppedByGeometry = false
-	if raycastParams then
-		local hit = Workspace:Spherecast(origin, ability.radius, dir * ability.maxLength, raycastParams)
-		if hit then
-			length = hit.Distance
-			stoppedByGeometry = true
-		end
-	end
-	local clamped = AbilityService.clampToBounds(origin, dir, length, bounds)
-	if clamped < length then
-		length = clamped
-		stoppedByGeometry = false
+	-- The kind's paths: room at O, then E (Spherecast against Geometry without Barriers, clamped to Bounds).
+	local behaviour = BEHAVIOURS[ability.kind]
+	local reason, prepared = behaviour.prepare(caster, ctx, root.Position, dir)
+	if reason or prepared == nil then
+		return reject(player, reason or REASON_NO_ROOM)
 	end
 
 	-- Accept: spend, root, telegraph.
@@ -631,7 +941,9 @@ function AbilityService.requestUltimate(
 	caster.lastUltAt = now
 	caster.phase = "telegraph"
 	caster.token += 1
-	caster.stoppedByGeometry = stoppedByGeometry
+	caster.stoppedByGeometry = prepared.stoppedByGeometry
+	caster.shots = prepared.shots
+	caster.floorY = ctx.floorY
 	if thrower then
 		thrower.rootedUntil = telegraphEndsAt + ability.recoverySeconds
 	end
@@ -639,10 +951,11 @@ function AbilityService.requestUltimate(
 	local event: Types.UltimateEventPayload = {
 		phase = "telegraph",
 		casterId = caster.userId,
+		ultimateId = caster.ultimateId,
 		projId = nil,
-		origin = origin,
+		origin = prepared.origin,
 		dir = dir,
-		length = length,
+		length = prepared.length,
 		radius = ability.radius,
 		telegraphEndsAt = telegraphEndsAt,
 		speed = ability.speed,
@@ -650,8 +963,28 @@ function AbilityService.requestUltimate(
 	caster.event = event
 	sendEvent(caster, event)
 	sendCharge(caster, now, true)
-	task.delay(ability.telegraphSeconds, release, caster, caster.token)
+	deps.delay(ability.telegraphSeconds, release, caster, caster.token)
 	return true, nil
+end
+
+-- Swaps the clock, the sender, the scheduler and the world queries (tests). Missing fields keep the live default;
+-- nil restores every default.
+function AbilityService.useDeps(newDeps: {
+	now: (() -> number)?,
+	send: ((remote: string, recipients: { any }, ...any) -> ())?,
+	delay: ((seconds: number, fn: (...any) -> (), ...any) -> ())?,
+	overlaps: ((origin: Vector3, radius: number, params: OverlapParams) -> boolean)?,
+	cast: ((origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?)?,
+}?)
+	local base = defaultDeps()
+	if newDeps then
+		base.now = newDeps.now or base.now
+		base.send = newDeps.send or base.send
+		base.delay = newDeps.delay or base.delay
+		base.overlaps = newDeps.overlaps or base.overlaps
+		base.cast = newDeps.cast or base.cast
+	end
+	deps = base
 end
 
 -- Lifecycle

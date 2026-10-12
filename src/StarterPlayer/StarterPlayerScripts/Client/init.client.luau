@@ -43,6 +43,7 @@ type Module = {
 -- Part 6: CollectionController (the per-player Collection pedestal displays, §7.6) right after AmbientController in
 -- the world layer; of the controllers it requires only StateController (plus SquishyCache, Scheduler, Tweens, the UI
 -- helpers and shared modules).
+-- Spec phase 5: DashController (the dash) right after ThrowController, whose windup and ultimate state it reads.
 local CONTROLLER_ORDER = {
 	"NetController",
 	"StateController",
@@ -58,6 +59,7 @@ local CONTROLLER_ORDER = {
 	"HeldSquishyController",
 	"CharacterAnimController",
 	"ThrowController",
+	"DashController",
 	"FirstPersonController",
 	"ViewmodelController",
 	"SqueezeController",

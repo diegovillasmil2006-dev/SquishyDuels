@@ -101,8 +101,16 @@ local MIN_QUEST_TIER = 2 -- starter_jelly's minTier: a giant pad (tier 2..#Grip.
 local BUNDLE_FIELDS = { key = true, nameKey = true, productId = true, coins = true, onSale = true }
 local ROBUX_BANNED_WORDS = { "grip", "train", "rested", "afk", "idle", "squeeze", "pad", "cushion", "level" }
 local TRAINER_COIN_REASON = "trainer" -- G6 wiring
-local MIN_TELEGRAPH_SECONDS = 0.6 -- every ability: telegraph >= 0.6 s visible to the opponent
+-- Every ability: telegraph >= this, visible to the opponent. §5.9's 0.6 s, lowered by the user's decision of
+-- 2026-10-11 so the design's wind-ups pass (design numbers win; ults.js:3-6: 0.35, 0.45, 0.6, 0.5 s).
+local MIN_TELEGRAPH_SECONDS = 0.35
 local MIN_ABILITY_INTERVAL_SECONDS = 20
+-- Spec phase 5: the ability kinds AbilityService runs (Config.Abilities header), and the kinds whose sphere flies above
+-- the floor (laneHeightAboveFloor > radius).
+local ABILITY_KINDS: { [string]: boolean } = { lane = true, volley = true, roller = true, rain = true, bubble = true }
+local FLYING_KINDS: { [string]: boolean } = { lane = true, volley = true, roller = true, bubble = true }
+local MAX_VOLLEY_COUNT = 8 -- reading: a fan wider than this is a typo
+local ULTIMATE_RARITIES: { [string]: boolean } = { Epic = true, Exclusive = true } -- design: fp.js:576
 local BIND_TO_CLOSE_LIMIT_SECONDS = 30 -- Roblox gives BindToClose 30 s
 local MAX_HIGHLIGHTS = 255 -- engine cap
 local THROW_STATS = { "speed", "radius", "cooldown", "windup", "gravity" }
@@ -709,6 +717,34 @@ local function checkDuel(problems: Problems)
 	expectNonNegative(problems, `{p}.Knockback.Horizontal`, rules.Knockback.Horizontal)
 	expectNonNegative(problems, `{p}.Knockback.Vertical`, rules.Knockback.Vertical)
 
+	-- Spec phase 5: the dash (the design's numbers and the server's tolerances).
+	local dash = rules.Dash
+	local d = `{p}.Dash`
+	eachField(problems, d, dash, {
+		"distanceStuds",
+		"seconds",
+		"visualFrames",
+		"visualFps",
+		"ribbonSeconds",
+		"cooldownSeconds",
+		"bodyRadiusStuds",
+	}, expectPositive)
+	eachField(problems, d, dash, {
+		"cooldownToleranceSeconds",
+		"groundToleranceStuds",
+		"guardSlackStuds",
+		"guardLeadSeconds",
+		"guardTailSeconds",
+	}, expectNonNegative)
+	for _, field in { "pushoffFrame", "plantFrame", "fadeFromFrame" } do
+		expectBetween(problems, `{d}.{field}`, dash[field], 0, dash.visualFrames)
+	end
+	expect(
+		problems,
+		isNumber(dash.cooldownToleranceSeconds) and dash.cooldownToleranceSeconds < dash.cooldownSeconds,
+		`{d}.cooldownToleranceSeconds must be shorter than cooldownSeconds`
+	)
+
 	local mm = Duel.Matchmaking
 	eachField(
 		problems,
@@ -816,13 +852,57 @@ local function checkAbilities(problems: Problems)
 			ability.minHorizontalAim > 0 and ability.minHorizontalAim <= 1,
 			`{p}.minHorizontalAim must be in (0, 1]`
 		)
+		local kind = ability.kind
+		expect(problems, ABILITY_KINDS[kind] == true, `{p}.kind {show(kind)} is not an ability kind`)
 		-- The lane sphere flies at a fixed height; it must clear the floor (§5.9: floor+0.5 .. floor+8.5).
-		expect(
-			problems,
-			ability.laneHeightAboveFloor > ability.radius,
-			`{p}.laneHeightAboveFloor ({ability.laneHeightAboveFloor}) must be above radius ({ability.radius}) so `
-				.. "the lane sphere stays above the floor"
-		)
+		if FLYING_KINDS[kind] then
+			expect(
+				problems,
+				ability.laneHeightAboveFloor > ability.radius,
+				`{p}.laneHeightAboveFloor ({ability.laneHeightAboveFloor}) must be above radius ({ability.radius}) so `
+					.. "the lane sphere stays above the floor"
+			)
+		end
+		-- Spec phase 5: each kind's own fields (Config.Abilities header).
+		if kind == "volley" then
+			expectCount(problems, `{p}.count`, ability.count, 1)
+			expect(
+				problems,
+				isInteger(ability.count) and (ability.count :: number) <= MAX_VOLLEY_COUNT,
+				`{p}.count must be at most {MAX_VOLLEY_COUNT}`
+			)
+			expectBetween(problems, `{p}.fanDeg`, ability.fanDeg, 0, 180)
+			expectNonNegative(problems, `{p}.staggerSeconds`, ability.staggerSeconds)
+		elseif kind == "roller" then
+			expectPositive(problems, `{p}.clearHeight`, ability.clearHeight)
+		elseif kind == "bubble" then
+			expectPositive(problems, `{p}.popSeconds`, ability.popSeconds)
+			expectPositive(problems, `{p}.splashRadius`, ability.splashRadius)
+		elseif kind == "rain" then
+			expectCount(problems, `{p}.drops`, ability.drops, 1)
+			eachField(problems, p, ability, {
+				"firstShadowSeconds",
+				"dropStepSeconds",
+				"shadowSeconds",
+				"fallSeconds",
+				"dropHitRadius",
+				"dropAngleStep",
+				"targetRadius",
+			}, expectPositive)
+			local radii = ability.dropRadii
+			local radiiOk = false
+			if radii ~= nil and type(radii) == "table" and #radii > 0 then
+				radiiOk = true
+				for _, r in radii do
+					radiiOk = radiiOk and isNumber(r) and r >= 0 and r <= ability.radius
+				end
+			end
+			expect(
+				problems,
+				radiiOk,
+				`{p}.dropRadii must be a non-empty list of numbers in [0, radius {show(ability.radius)}] (drops land in the zone)`
+			)
+		end
 	end
 end
 
@@ -1091,6 +1171,7 @@ local function checkUI(problems: Problems)
 		"throwButton",
 		"throwButtonMin",
 		"ultButton",
+		"dashButton",
 		"gap",
 	}, expectPositive)
 	expectBetween(problems, `{p}.Touch.thumbstickZoneWidth`, touch.thumbstickZoneWidth, 0, 1)
@@ -2082,6 +2163,85 @@ local function checkVfx(problems: Problems)
 	expectBetween(problems, `{p}.ZonePresets.Arena.contrast`, arena.contrast, -1, 1)
 	expectBetween(problems, `{p}.ZonePresets.Arena.saturation`, arena.saturation, -1, 1)
 	expectBetween(problems, `{p}.ZonePresets.Arena.atmosphereDensity`, arena.atmosphereDensity, 0, 1)
+end
+
+-- Spec phase 5: the dash's pose clip (Config.Anim.dash) and the effects of the dash and the Epic ultimates
+-- (Config.Vfx.Dash, Config.Vfx.Ultimates) keep the joint, flicker, spin and particle limits.
+local MAX_DASH_RIBBONS = 3 -- the design's budget: "<= 3 ribbons and <= 24 puffs per dash" (shots/01-tp-dash.jpg)
+local MAX_DASH_PUFFS = 24
+local function checkMoves(problems: Problems)
+	local dash = Anim.dash
+	local p = "Config.Anim.dash"
+	expectPositive(problems, `{p}.priority`, dash.priority)
+	expectPositive(problems, `{p}.holdFadeInFrames`, dash.holdFadeInFrames)
+	local frames = Duel.Rules.Dash.visualFrames
+	for _, key in { "F", "B", "L", "R" } do
+		local keys = (dash.keys :: any)[key]
+		local path = `{p}.keys.{key}`
+		if type(keys) ~= "table" or #keys < 2 then
+			add(problems, `{path} must list at least two keys`)
+			continue
+		end
+		expect(problems, keys[1].f == 0 and keys[#keys].f == frames, `{path} must run from frame 0 to {frames}`)
+		for index, entry in keys do
+			if index > 1 then
+				expect(problems, entry.f > keys[index - 1].f, `{path}[{index}].f must come after the key before`)
+			end
+			expect(problems, isNumber(entry.hold), `{path}[{index}].hold must be a number`)
+			checkPoseAngles(problems, `{path}[{index}].angles`, entry.angles, Anim.joints.R15)
+		end
+	end
+
+	local fx = Vfx.Dash
+	local f = "Config.Vfx.Dash"
+	eachField(problems, f, fx, {
+		"pushoffPuffs",
+		"pushoffSpeed",
+		"pushoffSize",
+		"pushoffLifetime",
+		"ringToStuds",
+		"ringSeconds",
+		"plantPuffs",
+		"plantSpeed",
+		"plantSize",
+		"plantLifetime",
+		"speedLineSpeed",
+		"speedLineSize",
+		"speedLineLifetime",
+	}, expectPositive)
+	expect(
+		problems,
+		#fx.ribbons <= MAX_DASH_RIBBONS and #fx.ribbons <= Vfx.Budgets.activeTrails,
+		`{f}.ribbons must be at most {MAX_DASH_RIBBONS}`
+	)
+	expect(
+		problems,
+		fx.pushoffPuffs + fx.plantPuffs <= MAX_DASH_PUFFS,
+		`{f}.pushoffPuffs + plantPuffs must be at most {MAX_DASH_PUFFS}`
+	)
+
+	local ult = Vfx.Ultimates
+	local u = "Config.Vfx.Ultimates"
+	for _, field in { "zonePulseHz", "shadowPulseHz" } do
+		expectBetween(problems, `{u}.{field}`, ult[field], 0, MAX_FLICKER_HZ + FEEL_SLACK)
+	end
+	for _, field in { "glideRollRate", "rollerTiltRate" } do
+		expect(
+			problems,
+			isNumber(ult[field]) and ult[field] / (2 * math.pi) <= MAX_FLICKER_HZ + FEEL_SLACK,
+			`{u}.{field} must stay at or under {MAX_FLICKER_HZ} Hz (rad/s / 2π)`
+		)
+	end
+	expectBetween(
+		problems,
+		`{u}.rollerSpinDegPerSecond`,
+		ult.rollerSpinDegPerSecond,
+		0,
+		MAX_ROLL_DEG_PER_SECOND + FEEL_SLACK
+	)
+	for _, field in { "popPuffs", "splashPuffs" } do
+		expectBetween(problems, `{u}.{field}`, ult[field], 1, Vfx.Budgets.liveParticlesPerEffect)
+	end
 end
 
 local function checkDebug(problems: Problems)
@@ -3252,12 +3412,24 @@ local function checkCatalog(problems: Problems, Catalog: any, rarities: { string
 		end
 
 		if def.ultimateId ~= nil then
+			local ability = if type(def.ultimateId) == "string" then Abilities[def.ultimateId] else nil
+			expect(problems, ability ~= nil, `{path}.ultimateId {show(def.ultimateId)} is not in Config.Abilities`)
+			-- User decision 2026-10-11 (design: fp.js:576): "Ultimates are reserved for Epic and Exclusive squishies".
 			expect(
 				problems,
-				type(def.ultimateId) == "string" and Abilities[def.ultimateId] ~= nil,
-				`{path}.ultimateId {show(def.ultimateId)} is not in Config.Abilities`
+				ULTIMATE_RARITIES[def.rarity] == true,
+				`{path} has an ultimate but only Epics and Exclusives get one`
 			)
-			expect(problems, def.rarity == "Exclusive", `{path} has an ultimate but only Exclusives get one`)
+			-- Spec phase 5: a volley's or a bubble's projectile is the squishy's own throw size (the game's normal
+			-- projectile hit radius, user decision 2026-10-11).
+			if ability ~= nil and (ability.kind == "volley" or ability.kind == "bubble") and type(throw) == "table" then
+				expect(
+					problems,
+					ability.radius == throw.radius,
+					`{path}.throw.radius {show(throw.radius)} must equal Config.Abilities.{def.ultimateId}.radius `
+						.. `{show(ability.radius)} (its projectiles are the squishy's own throw size)`
+				)
+			end
 		end
 		if def.squeezeCoins ~= nil then
 			expectCount(problems, `{path}.squeezeCoins`, def.squeezeCoins, 1)
@@ -3774,6 +3946,9 @@ function Config.validate(deps: ValidateDeps?): { string }
 	end)
 	guarded(problems, "Config.Vfx", function()
 		checkVfx(problems)
+	end)
+	guarded(problems, "Config moves (dash and Epic ultimates)", function()
+		checkMoves(problems)
 	end)
 	guarded(problems, "Config.Debug", function()
 		checkDebug(problems)

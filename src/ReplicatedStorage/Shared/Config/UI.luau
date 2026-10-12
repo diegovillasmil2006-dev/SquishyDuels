@@ -29,6 +29,9 @@ local UI = {
 		throwButton = 104, -- duel Throw ...
 		throwButtonMin = 72, -- ... never below this actual size
 		ultButton = 80, -- above-left of Throw
+		-- Spec phase 5 (user decision 2026-10-11): the Dash button, a third round button in the cluster, left of Throw
+		-- (ControlsController.touchLayout). Reading: the Ultimate button's size.
+		dashButton = 80,
 		gap = 16, -- from the thumbstick zone and the jump button
 		thumbstickZoneWidth = 0.4, -- lower-left 40% × 45% kept clear on phones
 		thumbstickZoneHeight = 0.45,

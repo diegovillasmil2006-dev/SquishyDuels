@@ -162,6 +162,79 @@ local SLOTS: { AssetSlot } = {
 		)
 	),
 
+	-- Moves (spec phase 5): the dash and the four Epic ultimates. Rendered from the design's own synth recipes
+	-- (scratchpad sounds-out; spec sounds.md Tier 2), waiting for the upload, check and approval pipeline.
+	soundSlot(
+		"sfx.dash",
+		"SFX",
+		true,
+		nil,
+		"the dash push-off (frame 2); design fx.js:45 dash(), fp.js:516; 2 variants rendered (sfx_dash_1/2.wav, 0.2 s)"
+	),
+	soundSlot(
+		"sfx.dashPlant",
+		"SFX",
+		true,
+		nil,
+		"the dash plant (frame 7); design fx.js:47 land(false), fp.js:517; rendered sfx_dashPlant.wav (0.23 s)"
+	),
+	soundSlot(
+		"sfx.ultCharge.bird",
+		"SFX",
+		true,
+		nil,
+		"Flock Volley wind-up (0.35 s); design fp.js:463 sawtooth 120->420 Hz + sparkle(4); sfx_ultCharge_bird.wav"
+	),
+	soundSlot(
+		"sfx.ultCharge.donut",
+		"SFX",
+		true,
+		nil,
+		"Sprinkle Roller wind-up (0.45 s); design fp.js:463 sawtooth 120->420 Hz + sparkle(4); sfx_ultCharge_donut.wav"
+	),
+	soundSlot(
+		"sfx.ultCharge.cloud_bunny",
+		"SFX",
+		true,
+		nil,
+		"Rain Check wind-up (0.6 s); design fp.js:463; rendered sfx_ultCharge_cloud_bunny.wav"
+	),
+	soundSlot(
+		"sfx.ultCharge.cupcake_axolotl",
+		"SFX",
+		true,
+		nil,
+		"Bubble Pop wind-up (0.5 s); design fp.js:463; rendered sfx_ultCharge_cupcake_axolotl.wav"
+	),
+	soundSlot(
+		"sfx.ultRelease",
+		"SFX",
+		true,
+		nil,
+		"every Epic ultimate's release; design fx.js:39 whoosh(0.6), fp.js:334; rendered sfx_ultRelease.wav (0.55 s)"
+	),
+	soundSlot(
+		"sfx.ultRainDrop",
+		"SFX",
+		true,
+		nil,
+		"a Rain Check drop lands; design fp.js:372 sine 900->400 Hz 0.08 s; rendered sfx_ultRainDrop.wav (0.15 s)"
+	),
+	soundSlot(
+		"sfx.ultCloudHover",
+		"SFX",
+		true,
+		nil,
+		"the Rain Check cloud parks; design fx.js:41 sparkle(4), fp.js:255; rendered sfx_ultCloudHover.wav (0.37 s)"
+	),
+	soundSlot(
+		"sfx.ultBubblePop",
+		"SFX",
+		true,
+		nil,
+		"Bubble Pop pops; design fp.js:165 blub, fp.js:361; rendered sfx_ultBubblePop.wav (0.4 s)"
+	),
+
 	-- UI (§14.2)
 	soundSlot("ui.click", "UI", false, nil, "≤ 0.25 s; search: ui+click+soft, button+pop, menu+tick"),
 	soundSlot("ui.hover", "UI", false, nil, "≤ 0.25 s; search: ui+click+soft, button+pop, menu+tick"),

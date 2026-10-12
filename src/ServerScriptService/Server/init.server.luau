@@ -49,6 +49,7 @@ local SERVICE_ORDER = {
 	"ArenaService",
 	"CombatService",
 	"AbilityService",
+	"DashService", -- spec phase 5: the dash (needs CombatService's fighters and guards)
 	"DuelService",
 	"QueueService",
 	"BoxService",

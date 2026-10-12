@@ -182,11 +182,19 @@ return function(t: Context)
 		expect.truthy(
 			string.find(ultimate, tostring(Config.Abilities.dragon_rush.telegraphSeconds) .. " seconds", 1, true)
 		)
+		-- Spec phase 5: the four Epics show their own ultimates (the design's names, ults.js:3-6); the rest show none.
 		for _, def in Catalog.list() do
 			if def.id ~= "dragon" then
 				local view = InspectFormat.view(def.id, UNOWNED)
 				assert(view ~= nil, "no view")
-				expect.equal(view.ultimate, nil)
+				if def.ultimateId == nil then
+					expect.equal(view.ultimate, nil)
+				else
+					local name = Strings.resolve(Config.Abilities[def.ultimateId].nameKey)
+					local text = view.ultimate
+					assert(text ~= nil, def.id .. " has no ultimate text")
+					expect.equal(string.sub(text, 1, #`Ultimate: {name}. `), `Ultimate: {name}. `)
+				end
 			end
 		end
 	end)

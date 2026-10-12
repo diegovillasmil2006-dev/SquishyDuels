@@ -1099,4 +1099,20 @@ return function(t: Context)
 			teardown()
 		end
 	)
+
+	-- Spec phase 5: every ultimate's first-person wind-up runs over its own telegraph (the design's charge) with its
+	-- glow in the design's colour: Dragon's orange, else the owning squishy's rarity colour (Art/RarityStyle).
+	t.test("each ultimate's wind-up length and glow colour", function()
+		local Config = t.requireShared("Config")
+		local RarityStyle = t.requireShared("Art/RarityStyle")
+		expect.equal(Viewmodel.ultTelegraphSeconds(nil), Config.Abilities.dragon_rush.telegraphSeconds)
+		expect.equal(Viewmodel.ultTelegraphSeconds("flock_volley"), 0.35)
+		expect.equal(Viewmodel.ultTelegraphSeconds("rain_check"), 0.6)
+		expect.equal(Viewmodel.ultGlowColour(nil), Config.FirstPerson.ult.glowColour)
+		expect.equal(Viewmodel.ultGlowColour("dragon_rush"), Config.FirstPerson.ult.glowColour)
+		local epic = RarityStyle.get("Epic").color
+		for _, id in { "flock_volley", "sprinkle_roller", "rain_check", "bubble_pop" } do
+			expect.equal(Viewmodel.ultGlowColour(id), epic)
+		end
+	end)
 end

@@ -432,6 +432,253 @@ local Anim = {
 		rollDegPerSecond = 360, -- flightSpin "roll"
 	},
 
+	-- The dash's pose clip (spec phase 5 §1.2; design: avatar.js:77-100), sampled by Shared/DashMath.sampleKeys on the
+	-- R15 joints this layer has: Root, Waist, Neck, LeftShoulder and LeftElbow (the design's hips, knees, ankles and its
+	-- pelvis offset of up to 0.32 studs have no joint here, spec §0.7, so they are not ported), plus the held arm: `hold`
+	-- degrees added to the design's rShoulder X (avatar.js:126, 185), so -hold on our RightShoulder X. Degrees in joint
+	-- space: the design's angles with X and Z negated (the 180° turn of the hold pose, poses.hold above; every dash key
+	-- has Y = 0). Keys at frames 0, 2, 4, 7, 12 (30 fps, Config.Duel.Rules.Dash); frame 12 is the design's READY
+	-- (avatar.js:77). R = the design's mirror(L) (avatar.js:69-76, 100), worked out key by key. No R6 dash pose
+	-- (NOT IN DESIGN).
+	dash = {
+		-- "Locomotion: Movement · Dash/Jump: Action · Throw: Action2 (upper mask)" (design: main.js:313): over the hold
+		-- (1), under the throw and ultimate poses (2).
+		priority = 1.5,
+		-- The held arm's `hold` offset fades in over this many frames and out over the clip's last 3 (design:
+		-- avatar.js:160, DashController.holdWeight); the body pose's weight is DashMath.weightAt.
+		holdFadeInFrames = 0.9,
+		keys = {
+			F = { -- design: avatar.js:79-85
+				{
+					f = 0,
+					hold = 0,
+					angles = {
+						Root = Vector3.new(-10, 0, 0),
+						Waist = Vector3.new(-8, 0, 0),
+						Neck = Vector3.new(14, 0, 0),
+						LeftShoulder = Vector3.new(-20, 0, -12),
+						LeftElbow = Vector3.new(35, 0, 0),
+					},
+				},
+				{
+					f = 2, -- push-off
+					hold = 8,
+					angles = {
+						Root = Vector3.new(-24, 0, 0),
+						Waist = Vector3.new(-10, 0, 0),
+						Neck = Vector3.new(28, 0, 0),
+						LeftShoulder = Vector3.new(-48, 0, -12),
+						LeftElbow = Vector3.new(40, 0, 0),
+					},
+				},
+				{
+					f = 4,
+					hold = 14,
+					angles = {
+						Root = Vector3.new(-30, 0, 0),
+						Waist = Vector3.new(-8, 0, 0),
+						Neck = Vector3.new(34, 0, 0),
+						LeftShoulder = Vector3.new(-60, 0, -14),
+						LeftElbow = Vector3.new(30, 0, 0),
+					},
+				},
+				{
+					f = 7, -- plant
+					hold = -10,
+					angles = {
+						Root = Vector3.new(-4, 0, 0),
+						Waist = Vector3.new(10, 0, 0),
+						Neck = Vector3.new(-4, 0, 0),
+						LeftShoulder = Vector3.new(25, 0, -20),
+						LeftElbow = Vector3.new(55, 0, 0),
+					},
+				},
+				{
+					f = 12, -- READY (design: avatar.js:77)
+					hold = 0,
+					angles = {
+						Root = Vector3.new(-3, 0, 0),
+						Waist = Vector3.new(0, 0, 0),
+						Neck = Vector3.new(0, 0, 0),
+						LeftShoulder = Vector3.new(-5, 0, -9),
+						LeftElbow = Vector3.new(14, 0, 0),
+					},
+				},
+			},
+			B = { -- design: avatar.js:86-92
+				{
+					f = 0,
+					hold = 0,
+					angles = {
+						Root = Vector3.new(6, 0, 0),
+						Waist = Vector3.new(4, 0, 0),
+						Neck = Vector3.new(-10, 0, 0),
+						LeftShoulder = Vector3.new(10, 0, -14),
+						LeftElbow = Vector3.new(40, 0, 0),
+					},
+				},
+				{
+					f = 2,
+					hold = -8,
+					angles = {
+						Root = Vector3.new(16, 0, 0),
+						Waist = Vector3.new(6, 0, 0),
+						Neck = Vector3.new(-22, 0, 0),
+						LeftShoulder = Vector3.new(30, 0, -18),
+						LeftElbow = Vector3.new(45, 0, 0),
+					},
+				},
+				{
+					f = 4,
+					hold = -12,
+					angles = {
+						Root = Vector3.new(20, 0, 0),
+						Waist = Vector3.new(6, 0, 0),
+						Neck = Vector3.new(-26, 0, 0),
+						LeftShoulder = Vector3.new(40, 0, -20),
+						LeftElbow = Vector3.new(50, 0, 0),
+					},
+				},
+				{
+					f = 7,
+					hold = 8,
+					angles = {
+						Root = Vector3.new(-8, 0, 0),
+						Waist = Vector3.new(-4, 0, 0),
+						Neck = Vector3.new(12, 0, 0),
+						LeftShoulder = Vector3.new(-15, 0, -16),
+						LeftElbow = Vector3.new(40, 0, 0),
+					},
+				},
+				{
+					f = 12,
+					hold = 0,
+					angles = {
+						Root = Vector3.new(-3, 0, 0),
+						Waist = Vector3.new(0, 0, 0),
+						Neck = Vector3.new(0, 0, 0),
+						LeftShoulder = Vector3.new(-5, 0, -9),
+						LeftElbow = Vector3.new(14, 0, 0),
+					},
+				},
+			},
+			L = { -- design: avatar.js:93-99
+				{
+					f = 0,
+					hold = 0,
+					angles = {
+						Root = Vector3.new(-4, 0, -8),
+						Waist = Vector3.new(-4, 0, -4),
+						Neck = Vector3.new(8, 0, 12),
+						LeftShoulder = Vector3.new(-10, 0, -20),
+						LeftElbow = Vector3.new(30, 0, 0),
+					},
+				},
+				{
+					f = 2,
+					hold = 4,
+					angles = {
+						Root = Vector3.new(-6, 0, 20),
+						Waist = Vector3.new(-2, 0, 6),
+						Neck = Vector3.new(8, 0, -26),
+						LeftShoulder = Vector3.new(0, 0, -55),
+						LeftElbow = Vector3.new(20, 0, 0),
+					},
+				},
+				{
+					f = 4,
+					hold = 8,
+					angles = {
+						Root = Vector3.new(-6, 0, 28),
+						Waist = Vector3.new(0, 0, 6),
+						Neck = Vector3.new(6, 0, -34),
+						LeftShoulder = Vector3.new(0, 0, -70),
+						LeftElbow = Vector3.new(15, 0, 0),
+					},
+				},
+				{
+					f = 7,
+					hold = -6,
+					angles = {
+						Root = Vector3.new(-4, 0, 6),
+						Waist = Vector3.new(0, 0, -4),
+						Neck = Vector3.new(4, 0, -2),
+						LeftShoulder = Vector3.new(0, 0, -30),
+						LeftElbow = Vector3.new(30, 0, 0),
+					},
+				},
+				{
+					f = 12,
+					hold = 0,
+					angles = {
+						Root = Vector3.new(-3, 0, 0),
+						Waist = Vector3.new(0, 0, 0),
+						Neck = Vector3.new(0, 0, 0),
+						LeftShoulder = Vector3.new(-5, 0, -9),
+						LeftElbow = Vector3.new(14, 0, 0),
+					},
+				},
+			},
+			R = { -- design: avatar.js:100, mirror(DASH_L) (rule avatar.js:69-76)
+				{
+					f = 0,
+					hold = 0,
+					angles = {
+						Root = Vector3.new(-4, 0, 8),
+						Waist = Vector3.new(-4, 0, 4),
+						Neck = Vector3.new(8, 0, -12),
+						LeftShoulder = Vector3.new(-6, 0, -10),
+						LeftElbow = Vector3.new(30, 0, 0),
+					},
+				},
+				{
+					f = 2,
+					hold = 4,
+					angles = {
+						Root = Vector3.new(-6, 0, -20),
+						Waist = Vector3.new(-2, 0, -6),
+						Neck = Vector3.new(8, 0, 26),
+						LeftShoulder = Vector3.new(0, 0, -10),
+						LeftElbow = Vector3.new(20, 0, 0),
+					},
+				},
+				{
+					f = 4,
+					hold = 8,
+					angles = {
+						Root = Vector3.new(-6, 0, -28),
+						Waist = Vector3.new(0, 0, -6),
+						Neck = Vector3.new(6, 0, 34),
+						LeftShoulder = Vector3.new(0, 0, -10),
+						LeftElbow = Vector3.new(20, 0, 0),
+					},
+				},
+				{
+					f = 7,
+					hold = -6,
+					angles = {
+						Root = Vector3.new(-4, 0, -6),
+						Waist = Vector3.new(0, 0, 4),
+						Neck = Vector3.new(4, 0, 2),
+						LeftShoulder = Vector3.new(0, 0, -10),
+						LeftElbow = Vector3.new(30, 0, 0),
+					},
+				},
+				{
+					f = 12,
+					hold = 0,
+					angles = {
+						Root = Vector3.new(-3, 0, 0),
+						Waist = Vector3.new(0, 0, 0),
+						Neck = Vector3.new(0, 0, 0),
+						LeftShoulder = Vector3.new(-3, 0, -10),
+						LeftElbow = Vector3.new(20, 0, 0),
+					},
+				},
+			},
+		},
+	},
+
 	-- Elimination (§9.9). The body is never faded.
 	elimination = {
 		epicEnabled = false, -- "epic_pending" plays the standard effect until approved

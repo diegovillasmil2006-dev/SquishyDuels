@@ -2,7 +2,7 @@
 -- SoundPickerModel_Test: unit tests for StarterPlayerScripts.Client.Studio.SoundPickerModel (the Studio sound picker's
 -- pure state). Server only (ServerStorage.UnitTest). Edit mode; no instances.
 -- Contract (DESIGN §18.7, §18.10 L6): optional skips count as done, needsMore doesn't; the 37 keys in the 7 sections'
--- order; the 3-variant flow; undo; volume clamp and 0.1 steps; export/import round trip; an unknown key is reported;
+-- order, then spec phase 5's 10 moves keys in an 8th; the 3-variant flow; undo; volume clamp and 0.1 steps; export/import round trip; an unknown key is reported;
 -- only candidates whose preload is "Success" show.
 -- The ids here are small made-up numbers (never real asset ids).
 
@@ -61,7 +61,7 @@ return function(t: Context)
 		return { version = 1, builtAt = builtAt or "round-1", keys = keys, decisions = decisions or {} }
 	end
 
-	t.test("the order holds the 37 AssetTable sound keys in 7 sections of 5, 7, 6, 5, 4, 6 and 4", function()
+	t.test("the order holds the 47 AssetTable sound keys in 8 sections of 5, 7, 6, 5, 4, 6, 4 and 10", function()
 		local soundKeys: { [string]: boolean } = {}
 		local count = 0
 		for _, slot in AssetTable.all() do
@@ -70,10 +70,10 @@ return function(t: Context)
 				count += 1
 			end
 		end
-		expect.equal(count, 37)
-		expect.equal(#Model.ORDER, 37)
+		expect.equal(count, 47)
+		expect.equal(#Model.ORDER, 47)
 		local seen: { [string]: boolean } = {}
-		local perSection = { 0, 0, 0, 0, 0, 0, 0 }
+		local perSection = { 0, 0, 0, 0, 0, 0, 0, 0 }
 		for _, key in Model.ORDER do
 			expect.truthy(soundKeys[key])
 			expect.falsy(seen[key])
@@ -82,12 +82,14 @@ return function(t: Context)
 			expect.truthy(runner)
 			perSection[section] += 1
 		end
-		expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 4 })
-		expect.equal(Model.SECTION_COUNT, 7)
+		expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 4, 10 })
+		expect.equal(Model.SECTION_COUNT, 8)
 		expect.equal(Model.sectionName(1), "Squeezing")
 		expect.equal(Model.sectionName(7), "Music and room sound")
 		expect.equal(Model.ORDER[1], "sfx.squish")
 		expect.equal(Model.ORDER[37], "amb.arena")
+		expect.equal(Model.sectionName(8), "Dash and Epic ultimates") -- spec phase 5
+		expect.equal(Model.ORDER[47], "sfx.ultBubblePop")
 	end)
 
 	t.test("keys load in the section order whatever the data order", function()
@@ -338,8 +340,9 @@ return function(t: Context)
 
 	t.test("the panel texts", function()
 		expect.equal(Model.progressText(7, 37), "7 of 37 done")
-		expect.equal(Model.sectionText(1), "Part 1 of 7: Squeezing")
-		expect.equal(Model.sectionText(7), "Part 7 of 7: Music and room sound")
+		expect.equal(Model.sectionText(1), "Part 1 of 8: Squeezing")
+		expect.equal(Model.sectionText(7), "Part 7 of 8: Music and room sound")
+		expect.equal(Model.sectionText(8), "Part 8 of 8: Dash and Epic ultimates") -- spec phase 5
 		expect.equal(Model.soundLine(2, 6, 0.3), "Sound 2 of 6 · 0.3 s")
 		expect.equal(Model.soundLine(2, 6, nil), "Sound 2 of 6")
 		expect.equal(Model.soundLine(1, 5, 83.7), "Sound 1 of 5 · 1:23")
