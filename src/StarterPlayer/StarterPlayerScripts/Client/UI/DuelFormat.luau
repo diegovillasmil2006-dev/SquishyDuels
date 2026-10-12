@@ -6,9 +6,10 @@
 --   countdown(endsAt, now, seconds)             "3", "2", "1", then "Throw!" for one tick from the end, then nil
 --   sideText / nameText / livesText             side labels (text, never colour alone), the opponent's name (a Studio
 --                                               test dummy is always labelled "TEST DUMMY (Studio)"), "3 lives"
---   hintKeys(preferredInput, hasUltimate)       the bottom dock's keycaps (foam UI): the throw key and the ultimate key
---                                               ("Click" / "Q", "R2" / "L2"; nil on touch); no ultimate key for a
---                                               loadout without an ultimate
+--   hintKeys(preferredInput, hasUltimate, squeeze?)   the bottom dock's keycaps (foam UI): the throw, ultimate, dash
+--                                               and squeeze keys ("Click" / "Q" / "C" / "F", "R2" / "L2" / "B" / "X";
+--                                               nil on touch); no ultimate key for a loadout without an ultimate, the
+--                                               squeeze key only in first person (final polish 2026-10-11)
 --   sideColors(side)                            a side's pip / icon colour and its top bar card's face (foam UI)
 --   cooldownSeconds(squishyId, phase, rules)    the throw cooldown the server applies (clamp × sudden-death mult.)
 --   progress(endsAt, now, duration)             0..1 fill of a cooldown bar
@@ -329,19 +330,26 @@ function DuelFormat.livesText(lives: number): string
 	return Strings.format(Strings.plural(n, Strings.duel.lives.one, Strings.duel.lives.many), { n = n })
 end
 
--- The bottom dock's keycaps for "KeyboardAndMouse" / "Gamepad" (Enum.PreferredInput names): (throw key, ultimate key),
--- the keys of duel.hintMouse / hintGamepad drawn one beside each meter (foam UI). (nil, nil) on touch
--- (ControlsController's Throw / Ultimate buttons instead); the ultimate key is nil for a loadout without an ultimate
--- (its meter hides).
-function DuelFormat.hintKeys(preferred: string, hasUltimate: boolean): (string?, string?)
+-- The bottom dock's keycaps for "KeyboardAndMouse" / "Gamepad" (Enum.PreferredInput names): (throw key, ultimate key,
+-- dash key, squeeze key), the keys of duel.hintMouse / hintGamepad drawn one beside each caption (foam UI). All nil on
+-- touch (ControlsController's round buttons instead); the ultimate key is nil for a loadout without an ultimate (its
+-- meter hides); final polish (2026-10-11): the squeeze key only when `squeeze` (first person: DuelSqueeze squeezes
+-- the toy in the overlay's hands, nothing otherwise).
+function DuelFormat.hintKeys(
+	preferred: string,
+	hasUltimate: boolean,
+	squeeze: boolean?
+): (string?, string?, string?, string?)
 	local mouse = preferred == "KeyboardAndMouse"
 	if not mouse and preferred ~= "Gamepad" then
-		return nil, nil
+		return nil, nil, nil, nil
 	end
 	local keys = Strings.duel.key
 	local throwKey = if mouse then keys.throwMouse else keys.throwGamepad
 	local ultimateKey = if mouse then keys.ultimateMouse else keys.ultimateGamepad
-	return throwKey, if hasUltimate then ultimateKey else nil
+	local dashKey = if mouse then keys.dashMouse else keys.dashGamepad
+	local squeezeKey = if mouse then keys.squeezeMouse else keys.squeezeGamepad
+	return throwKey, if hasUltimate then ultimateKey else nil, dashKey, if squeeze then squeezeKey else nil
 end
 
 -- A side's colours (§7.8; unchanged by the foam restyle, and never the only sign: the side text and icon go with

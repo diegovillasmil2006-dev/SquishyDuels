@@ -177,8 +177,9 @@ local MAX_VARIANTS = 5 -- reading: §14.2 asks for at most 3; a little slack, ne
 local MAX_HISTORY = 200
 local MAX_EXACT_ID = 2 ^ 53
 
--- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys), then spec phase 5's moves (10 keys), each
--- key with its "Try it" runner (the moves play as they will in the game: "plain").
+-- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys), then spec phase 5's moves (10 keys) and
+-- the Inspect showcases' one-shots (16 keys, final polish 2026-10-11), each key with its "Try it" runner (the moves and
+-- the showcases play as they will in the game: "plain").
 local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } = {
 	{
 		name = "Squeezing",
@@ -265,6 +266,27 @@ local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } 
 			{ key = "sfx.ultRainDrop", runner = "plain" },
 			{ key = "sfx.ultCloudHover", runner = "plain" },
 			{ key = "sfx.ultBubblePop", runner = "plain" },
+		},
+	},
+	{
+		name = "Inspect showcases",
+		keys = {
+			{ key = "sfx.inspect.flick", runner = "plain" },
+			{ key = "sfx.inspect.whoosh", runner = "plain" },
+			{ key = "sfx.inspect.flap", runner = "plain" },
+			{ key = "sfx.inspect.tap", runner = "plain" },
+			{ key = "sfx.inspect.ring", runner = "plain" },
+			{ key = "sfx.inspect.spread", runner = "plain" },
+			{ key = "sfx.inspect.peek", runner = "plain" },
+			{ key = "sfx.inspect.snap", runner = "plain" },
+			{ key = "sfx.inspect.tweet", runner = "plain" },
+			{ key = "sfx.inspect.stretch", runner = "plain" },
+			{ key = "sfx.inspect.ribbit", runner = "plain" },
+			{ key = "sfx.inspect.rattle", runner = "plain" },
+			{ key = "sfx.inspect.slurp", runner = "plain" },
+			{ key = "sfx.inspect.sparkle", runner = "plain" },
+			{ key = "sfx.inspect.wiggle", runner = "plain" },
+			{ key = "sfx.inspect.blub", runner = "plain" },
 		},
 	},
 }

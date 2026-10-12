@@ -271,6 +271,18 @@ local Palette = {
 	UltBubbleFoam = Color3.fromHex("#DDF4FF"), -- design: fp.js:361
 	UltBubblePink = Color3.fromHex("#F9AFCB"), -- design: fp.js:361
 
+	-- Inspect showcases (final polish 2026-10-11): the design's own speck colours of the first-person inspect events,
+	-- overlay only (Anim/InspectTracks). A toy's other specks use its Catalog accent and White.
+	InspectFlapBlue = Color3.fromHex("#8BD0F3"), -- design: fp.js:180 (flap petals, with white)
+	InspectRibbitRed = Color3.fromHex("#EE4A5C"), -- design: fp.js:186 (ribbit hearts; tiny, overlay only)
+	InspectSnapGold = Color3.fromHex("#E8B84A"), -- design: fp.js:179 (the chocolate snap's foil glint, with white)
+	InspectSparkleYellow = Color3.fromHex("#FFE27A"), -- design: fp.js:189 (sparkle, with white and lilac)
+	InspectSparkleLilac = Color3.fromHex("#D5C8F6"), -- design: fp.js:189
+	InspectEmberOrange = Color3.fromHex("#FF9A4D"), -- design: fp.js:182 (the Dragon's roar embers)
+	InspectEmberYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:182
+	InspectEmberPink = Color3.fromHex("#FF6F7D"), -- design: fp.js:182
+	InspectBubble = Color3.fromHex("#DDF4FF"), -- design: fp.js:191 (the axolotl's bubbles)
+
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),
 	CoinRing = Color3.fromHex("#D99A1E"),

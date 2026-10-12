@@ -1,8 +1,9 @@
 --!strict
 -- AssetTable_Test: unit tests for ReplicatedStorage.Shared.AssetTable. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §14, §18.6, §18.7, §18.10 L1):
---   * the sound key set is exactly the 37 of §18.6 (the 34 of §14.2 plus ui.gripUnlock, sfx.jellyWobble, sfx.pop) and
---     the 10 of spec phase 5 (the dash and the four Epic ultimates), 47 in all;
+--   * the sound key set is exactly the 37 of §18.6 (the 34 of §14.2 plus ui.gripUnlock, sfx.jellyWobble, sfx.pop),
+--     the 10 of spec phase 5 (the dash and the four Epic ultimates) and the 16 of the Inspect showcases (final polish
+--     2026-10-11: the design's own inspect one-shots, 2D SFX), 63 in all;
 --   * a PENDING slot (id nil) carries no metadata (no source, licence, verifiedAt or variants);
 --   * an approved slot has an integer id > 0, a volume in (0, 2], a source, a licence and verifiedAt as YYYY-MM-DD,
 --     and so does each variant; no id repeats within a key;
@@ -22,7 +23,7 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- §18.6: the 37 sound keys, then spec phase 5's 10.
+-- §18.6: the 37 sound keys, then spec phase 5's 10, then the Inspect showcases' 16 (final polish 2026-10-11).
 local SOUND_KEYS = {
 	"sfx.squish",
 	"sfx.squeezeRelease",
@@ -71,6 +72,22 @@ local SOUND_KEYS = {
 	"sfx.ultRainDrop",
 	"sfx.ultCloudHover",
 	"sfx.ultBubblePop",
+	"sfx.inspect.flick",
+	"sfx.inspect.whoosh",
+	"sfx.inspect.flap",
+	"sfx.inspect.tap",
+	"sfx.inspect.ring",
+	"sfx.inspect.spread",
+	"sfx.inspect.peek",
+	"sfx.inspect.snap",
+	"sfx.inspect.tweet",
+	"sfx.inspect.stretch",
+	"sfx.inspect.ribbit",
+	"sfx.inspect.rattle",
+	"sfx.inspect.slurp",
+	"sfx.inspect.sparkle",
+	"sfx.inspect.wiggle",
+	"sfx.inspect.blub",
 }
 
 -- Spec phase2-squeeze §3.10: the knead's wax sounds (Controllers/KneadAudio), counted apart from the §18.6 set.
@@ -154,7 +171,7 @@ return function(t: Context)
 		return found
 	end
 
-	t.test("the sound key set is exactly the 37 of §18.6 and the 10 of spec phase 5", function()
+	t.test("the sound key set is exactly the 37 of §18.6, the 10 of spec phase 5 and the 16 inspect ones", function()
 		local keys = {}
 		local seen: { [string]: boolean } = {}
 		for _, slot in soundSlots() do
@@ -165,8 +182,20 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 47)
+		expect.equal(#keys, 63)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
+	end)
+
+	-- Final polish 2026-10-11: the toy is in your hands, so its inspect sounds are 2D SFX, required (not optional).
+	t.test("the Inspect showcase slots are 2D SFX, required, each naming its design line", function()
+		for _, slot in soundSlots() do
+			if string.sub(slot.key, 1, 12) == "sfx.inspect." then
+				expect.equal(slot.group, "SFX")
+				expect.equal(slot.spatial, false)
+				expect.equal(slot.optional, nil)
+				expect.truthy(string.find(slot.notes, "design ", 1, true) ~= nil)
+			end
+		end
 	end)
 
 	-- Spec phase2-squeeze §3.10: the knead's 15 wax sounds, PENDING until the user uploads the rendered files; 2D, volume 1

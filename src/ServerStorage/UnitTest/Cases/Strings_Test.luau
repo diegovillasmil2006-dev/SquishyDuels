@@ -12,7 +12,8 @@
 -- label (grip.stationLabelBase), the Foam Mats card (grip.padPerksBase) and grip.limitNote never send you to a mat;
 -- the mat, pad-level, limit and locked-button texts are gone. Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2): the
 -- squeeze hints name a click or a tap, grip.holdPaused names no button (it left DESIGN's words), the Inspect step opens
--- Squishies, and the Squeeze button's key texts are gone.
+-- Squishies, and the Squeeze button's key texts are gone. Final polish (2026-10-11): the duel key hints also name the
+-- dash and the squeeze (they left DESIGN's "Click Throw · Q Ultimate"), and the "In the lane!" warning exists.
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
 
@@ -95,8 +96,6 @@ local DESIGN_WORDING: { [string]: string } = {
 	["duel.forfeitConfirm"] = "Forfeit the duel?",
 	["duel.sideA"] = "Strawberry side",
 	["duel.sideB"] = "Mint side",
-	["duel.hintMouse"] = "Click Throw · Q Ultimate",
-	["duel.hintGamepad"] = "R2 Throw · L2 Ultimate",
 	["duel.ultReady"] = "READY",
 	["duel.queueAgain"] = "Queue again",
 	["duel.testDummy"] = "TEST DUMMY (Studio)",
@@ -665,5 +664,20 @@ return function(t: Context)
 		end
 		-- "then try Squeeze" is Inspect's own Squeeze button, which stays.
 		expect.equal(Strings.controls.squeeze, "Squeeze")
+	end)
+
+	-- Final polish (2026-10-11): the duel key hints name the dash (spec phase 5: C / ButtonB) and the first-person
+	-- squeeze (F / ButtonX) after DESIGN's throw and ultimate; the lane warning under the duel bar.
+	t.test("the duel key hints name the dash and the squeeze; the lane warning exists", function()
+		expect.equal(Strings.duel.hintMouse, "Click Throw · Q Ultimate · C Dash · F Squeeze")
+		expect.equal(Strings.duel.hintGamepad, "R2 Throw · L2 Ultimate · B Dash · X Squeeze")
+		expect.equal(Strings.duel.hintMouseNoUlt, "Click Throw · C Dash · F Squeeze")
+		expect.equal(Strings.duel.hintGamepadNoUlt, "R2 Throw · B Dash · X Squeeze")
+		local key = Strings.duel.key
+		expect.equal(key.dashMouse, "C")
+		expect.equal(key.dashGamepad, "B")
+		expect.equal(key.squeezeMouse, "F")
+		expect.equal(key.squeezeGamepad, "X")
+		expect.equal(Strings.duel.inLane, "In the lane!")
 	end)
 end

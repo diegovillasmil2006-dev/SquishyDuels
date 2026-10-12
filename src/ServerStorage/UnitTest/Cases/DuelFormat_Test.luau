@@ -7,7 +7,8 @@
 --   * the countdown shows "3", "2", "1" and "Throw!" exactly from the Countdown's phaseEndsAt, for one tick;
 --   * sides are text; a Studio test dummy is always labelled as one; lives never show below 0;
 --   * key hints (foam UI: keycaps) only on mouse/keyboard and gamepad, the keys of the one-line hints; no ultimate key
---     for a loadout without an ultimate;
+--     for a loadout without an ultimate; final polish (2026-10-11): also the dash key, and the squeeze key in first
+--     person, each the key its action is bound to;
 --   * foam UI side colours: Strawberry / Mint unchanged; the top bar cards' light faces keep InkUI text >= 4.5:1;
 --   * the cooldown bar uses the server's clamp and the sudden-death multiplier;
 --   * the result panel shows rewards only from DuelResult (0 Coins with the blocked reason), and no stats or rewards
@@ -84,27 +85,53 @@ return function(t: Context)
 	end)
 
 	t.test("key hints (foam keycaps): mouse and gamepad only; no ultimate key without an ultimate", function()
-		local function keys(preferred: string, hasUltimate: boolean): { any }
-			local throwKey, ultimateKey = DuelFormat.hintKeys(preferred, hasUltimate)
-			return { throwKey or false, ultimateKey or false }
+		local function keys(preferred: string, hasUltimate: boolean, squeeze: boolean?): { any }
+			local throwKey, ultimateKey, dashKey, squeezeKey = DuelFormat.hintKeys(preferred, hasUltimate, squeeze)
+			return { throwKey or false, ultimateKey or false, dashKey or false, squeezeKey or false }
 		end
 		local key = Strings.duel.key
-		expect.deepEqual(keys("Touch", true), { false, false })
-		expect.deepEqual(keys("Touch", false), { false, false })
-		expect.deepEqual(keys("KeyboardAndMouse", true), { key.throwMouse, key.ultimateMouse })
-		expect.deepEqual(keys("KeyboardAndMouse", false), { key.throwMouse, false })
-		expect.deepEqual(keys("Gamepad", true), { key.throwGamepad, key.ultimateGamepad })
-		expect.deepEqual(keys("Gamepad", false), { key.throwGamepad, false })
-		-- The keycaps say what the one-line hints say (§11.6 "Click Throw · Q Ultimate" / "R2 Throw · L2 Ultimate").
+		expect.deepEqual(keys("Touch", true, true), { false, false, false, false })
+		expect.deepEqual(keys("Touch", false), { false, false, false, false })
+		expect.deepEqual(
+			keys("KeyboardAndMouse", true, true),
+			{ key.throwMouse, key.ultimateMouse, key.dashMouse, key.squeezeMouse }
+		)
+		expect.deepEqual(keys("KeyboardAndMouse", false), { key.throwMouse, false, key.dashMouse, false })
+		expect.deepEqual(
+			keys("Gamepad", true, true),
+			{ key.throwGamepad, key.ultimateGamepad, key.dashGamepad, key.squeezeGamepad }
+		)
+		expect.deepEqual(keys("Gamepad", false, false), { key.throwGamepad, false, key.dashGamepad, false })
+		-- The keycaps say what the one-line hints say ("Click Throw · Q Ultimate · C Dash · F Squeeze" / the gamepad's).
 		local hints = {
-			{ Strings.duel.hintMouse, key.throwMouse, key.ultimateMouse },
-			{ Strings.duel.hintGamepad, key.throwGamepad, key.ultimateGamepad },
+			{ Strings.duel.hintMouse, key.throwMouse, key.ultimateMouse, key.dashMouse, key.squeezeMouse },
+			{ Strings.duel.hintGamepad, key.throwGamepad, key.ultimateGamepad, key.dashGamepad, key.squeezeGamepad },
 		}
-		for _, pair in hints do
-			local hint, throwKey, ultimateKey = pair[1], pair[2], pair[3]
-			expect.truthy(string.find(hint, throwKey .. " " .. Strings.controls.throw, 1, true) ~= nil)
-			expect.truthy(string.find(hint, ultimateKey .. " " .. Strings.controls.ultimate, 1, true) ~= nil)
+		for _, row in hints do
+			local hint = row[1]
+			expect.truthy(string.find(hint, row[2] .. " " .. Strings.controls.throw, 1, true) ~= nil)
+			expect.truthy(string.find(hint, row[3] .. " " .. Strings.controls.ultimate, 1, true) ~= nil)
+			expect.truthy(string.find(hint, row[4] .. " " .. Strings.controls.dash, 1, true) ~= nil)
+			expect.truthy(string.find(hint, row[5] .. " " .. Strings.controls.squeeze, 1, true) ~= nil)
 		end
+		for _, hint in { Strings.duel.hintMouseNoUlt, Strings.duel.hintGamepadNoUlt } do
+			expect.equal(string.find(hint, Strings.controls.ultimate, 1, true), nil)
+			expect.truthy(string.find(hint, Strings.controls.dash, 1, true) ~= nil)
+		end
+	end)
+
+	-- Final polish (2026-10-11): a keycap is the key its action is really bound to (ControlsController's input map).
+	t.test("the dash and squeeze keycaps are the keys Dash and DuelSqueeze are bound to", function()
+		local Controls = t.requireClient("Controllers/ControlsController")
+		local key = Strings.duel.key
+		local function bound(action: string, keyCode: Enum.KeyCode): boolean
+			local inputs = Controls.inputsOf(action)
+			return inputs ~= nil and table.find(inputs, keyCode) ~= nil
+		end
+		expect.truthy(bound("Dash", (Enum.KeyCode :: any)[key.dashMouse]))
+		expect.truthy(bound("Dash", (Enum.KeyCode :: any)["Button" .. key.dashGamepad]))
+		expect.truthy(bound("DuelSqueeze", (Enum.KeyCode :: any)[key.squeezeMouse]))
+		expect.truthy(bound("DuelSqueeze", (Enum.KeyCode :: any)["Button" .. key.squeezeGamepad]))
 	end)
 
 	t.test("side colours (foam cards): the side's own colour, a light card face with readable InkUI text", function()
@@ -690,6 +717,32 @@ return function(t: Context)
 	local function overlaps(a: any, b: any): boolean
 		return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
 	end
+
+	-- Final polish (2026-10-11): the bottom dock (mouse / gamepad only) with the dash and squeeze keys. DuelController:
+	-- two meters METER_WIDTH 150 wide, then two caption-only columns (a Keycap of at least Keycap.SIZE_PX 24, growing
+	-- with its text by 2 × 5 px, Theme.Padding.small 6, the Chip caption), Theme.Padding.large 20 apart inside the
+	-- panel's Theme.Padding.medium 12. A phone with a keyboard or a gamepad has the narrowest canvas.
+	t.test("bottom dock (final polish): the four keys fit the narrowest phone canvas at the largest text", function()
+		local METER_WIDTH, KEYCAP, SMALL, LARGE, PANEL, MARGIN = 150, 24, 6, 20, 12, 12
+		local key = Strings.duel.key
+		local phone = canvas(SCREENS[1])
+		for _, textScale in { 1, LARGEST } do
+			local function keycap(text: string): number
+				return math.max(KEYCAP, textWidth(#text, "Chip", textScale) + 10)
+			end
+			for _, keys in { { key.dashMouse, key.squeezeMouse }, { key.dashGamepad, key.squeezeGamepad } } do
+				local dash = keycap(keys[1]) + SMALL + textWidth(#Strings.controls.dash, "Chip", textScale)
+				local squeeze = keycap(keys[2]) + SMALL + textWidth(#Strings.controls.squeeze, "Chip", textScale)
+				local dock = 2 * PANEL + 2 * METER_WIDTH + dash + squeeze + 3 * LARGE
+				expect.truthy(dock <= phone.X - 2 * MARGIN)
+			end
+			-- The meters' own captions still fit their 150 px ("L2" + "Ultimate" the widest).
+			local ultimate = keycap(key.ultimateGamepad)
+				+ SMALL
+				+ textWidth(#Strings.controls.ultimate, "Chip", textScale)
+			expect.truthy(ultimate <= METER_WIDTH)
+		end
+	end)
 
 	t.test("top bar (Part 8): never over the Forfeit button, on screen, centred when there is room", function()
 		for _, actual in SCREENS do

@@ -66,6 +66,10 @@
 --   ButtonX before the lobby Squeeze whatever the bind order (a handler that passes hands them on to it: the lobby
 --   Squeeze takes F, E and ButtonX since spec 2026-10-11 §3.8). Backspace reaches DuelForfeit only while no back
 --   handler holds the Modal context (ModalBack is High and sinks it first).
+--   Final polish (2026-10-11): HandInspect = R (the design's inspect key, fp.js:656) and ButtonL1 (build choice, NOT IN
+--   DESIGN: no world action uses it; the Backpack is off) in the Lobby context, so it is live in the lobby look and in
+--   the practice range and never in a match; ViewmodelController plays the held toy's showcase with it (its touch way
+--   is the overlay's own Inspect button).
 -- Tap or click to squeeze (lobby HUD spec 2026-10-11 §2): a left click or a touch on the 3D world presses the lobby
 --   Squeeze through pressAction() (so the Lobby context, blocks and the End rule decide as for a key), with the
 --   InputObject (SqueezeController holds while it is down). It comes from UserInputService.InputBegan, never from a
@@ -202,6 +206,8 @@ local ACTIONS: { [string]: ActionDef } = {
 	Squishies = { context = "Lobby", inputs = { Enum.KeyCode.I } },
 	InspectEquipped = { context = "Lobby", inputs = { Enum.KeyCode.V, Enum.KeyCode.ButtonY } },
 	FocusHud = { context = "Lobby", inputs = { Enum.KeyCode.DPadUp } },
+	-- Final polish (2026-10-11): the first-person Inspect showcase (ViewmodelController).
+	HandInspect = { context = "Lobby", inputs = { Enum.KeyCode.R, Enum.KeyCode.ButtonL1 } },
 	Throw = {
 		context = "Duel",
 		inputs = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2 },

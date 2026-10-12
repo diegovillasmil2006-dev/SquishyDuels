@@ -32,6 +32,10 @@ local UI = {
 		-- Spec phase 5 (user decision 2026-10-11): the Dash button, a third round button in the cluster, left of Throw
 		-- (ControlsController.touchLayout). Reading: the Ultimate button's size.
 		dashButton = 80,
+		-- Final polish (2026-10-11), build choice (NOT IN DESIGN for touch; the design's own page has an "Inspect R" button
+		-- in its bottom bar): the first-person Inspect button sits this far above the bottom of the safe area, in the
+		-- middle (Anim/ViewmodelMath.inspectButtonRect keeps it clear of the touch controls).
+		inspectButtonInset = 16,
 		gap = 16, -- from the thumbstick zone and the jump button
 		thumbstickZoneWidth = 0.4, -- lower-left 40% × 45% kept clear on phones
 		thumbstickZoneHeight = 0.45,
@@ -182,6 +186,12 @@ local UI = {
 
 	Queue = {
 		matchedBannerSeconds = 2, -- "Opponent found: {name}"
+	},
+
+	-- Final polish (2026-10-11): the "In the lane!" warning (DuelController, UI/LaneCue) sits this far (base px) under
+	-- the duel bar, or under the banner that shows there.
+	LaneCue = {
+		gapPx = 8,
 	},
 
 	Result = {

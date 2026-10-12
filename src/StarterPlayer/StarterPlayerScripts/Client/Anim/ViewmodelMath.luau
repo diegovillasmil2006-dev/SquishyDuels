@@ -42,6 +42,10 @@
 --   ViewmodelMath.touchPadRect(toyBox?, screen, layout) -> Rect?   the touch squeeze pad: the toy's box clipped to the
 --       screen and cut clear of the thumbstick zone (Config.UI.Touch) and ControlsController.touchLayout's Throw,
 --       Ultimate and Jump (all in the same safe-inset pixels); nil when nothing is left
+--   ViewmodelMath.inspectButtonRect(screen, size, inset, layout?) -> Rect   the touch Inspect button (final polish
+--       2026-10-11, build choice): centred `inset` above the bottom, moved right of the thumbstick zone (Config.UI.Touch)
+--       while beside it and up above any of ControlsController.touchLayout's buttons it meets (`gap` apart), on screen
+--       (pixels in the same safe-inset space)
 --   ViewmodelMath.releasePoint(camera, toyCam, ratio, hitDistance?) -> (Vector3, number)   the own projectile's start:
 --       on the world camera's ray through the overlay toy (toyCam, studs in camera space) at D0 = |toyCam| / ratio
 --       (ratio = overlay build scale ÷ held build scale, so a held-size model there looks as big), cut by cover to
@@ -79,6 +83,7 @@ local NEAR_Z = 0.01 -- a corner nearer than this (studs) to the camera plane is 
 local EDGE_BITS = { 1, 2, 4 } -- a box corner's X, Y and Z bits (screenBox)
 local COVER_GAP = 0.5 -- §3.6: the own projectile starts this far in front of cover ...
 local MIN_START = 1.5 -- ... and never nearer than this to the camera
+local BUTTON_PASSES = 8 -- inspectButtonRect: at most this many moves up (the touch layout has 4 buttons)
 
 -- Module table
 
@@ -320,6 +325,41 @@ function ViewmodelMath.touchPadRect(toyBox: Rect?, screen: Vector2, layout: Touc
 	local rect: Rect = out or { x = 0, y = 0, w = 0, h = 0 }
 	rect.x, rect.y, rect.w, rect.h = x0, y0, x1 - x0, y1 - y0
 	return rect
+end
+
+function ViewmodelMath.inspectButtonRect(screen: Vector2, size: Vector2, inset: number, layout: TouchLayout?): Rect
+	local gap = TOUCH.gap
+	local x = screen.X / 2 - size.X / 2
+	local y = screen.Y - inset - size.Y
+	if x < screen.X * TOUCH.thumbstickZoneWidth + gap and y + size.Y > screen.Y * (1 - TOUCH.thumbstickZoneHeight) then
+		x = screen.X * TOUCH.thumbstickZoneWidth + gap
+	end
+	if layout then
+		-- Up above each touch button it meets; checked again after a move (a move can meet the next one up).
+		for _ = 1, BUTTON_PASSES do
+			local moved = false
+			for _, b in layout :: { [string]: Rect } do
+				if
+					x < b.x + b.w + gap
+					and b.x - gap < x + size.X
+					and y < b.y + b.h + gap
+					and b.y - gap < y + size.Y
+				then
+					y = b.y - gap - size.Y
+					moved = true
+				end
+			end
+			if not moved then
+				break
+			end
+		end
+	end
+	return {
+		x = math.clamp(x, 0, math.max(screen.X - size.X, 0)),
+		y = math.clamp(y, 0, math.max(screen.Y - size.Y, 0)),
+		w = size.X,
+		h = size.Y,
+	}
 end
 
 function ViewmodelMath.releasePoint(

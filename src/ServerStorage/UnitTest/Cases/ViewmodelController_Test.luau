@@ -32,7 +32,14 @@
 --     overlay's frame; a wall cuts it to 0.5 in front (factor D / D0);
 --   * Dragon Rush: the charge pose toward ult.pos with the glow ball, no squeeze meanwhile, back to the hold after;
 --   * toyScreenPoint: nil while hidden, the toy's pixel point (below the centre) while it shows;
---   * debugPose freezes the named poses and nil lets the overlay live again.
+--   * debugPose freezes the named poses and nil lets the overlay live again;
+--   * final polish 2026-10-11, the Inspect showcases (Anim/InspectTracks; design: fp.js:111-194, 405-412): HandInspect
+--     plays the held toy's showcase in the lobby look and the practice range when the toy rests in the hand (never in a
+--     duel, during the pop-in or another showcase); each event fires once with its sound (the material ones at the
+--     toy's pitch), its kick, its shake and its specks (parts in the overlay; ReducedMotion: half of them, no kick);
+--     at dur the hold comes back without unwinding the turns; a squeeze, a throw windup or the toy leaving the hand
+--     ends it; debugInspect freezes it at t with no event; the touch Inspect button is made on touch in the lobby look
+--     and the range only.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -94,6 +101,7 @@ return function(t: Context)
 		shakes: { { number } },
 		camera: { CFrame: CFrame, ViewportSize: Vector2 }, -- the world camera (a stand-in: Edit mode has no viewport)
 		rayHit: number?, -- a wall this far along the release ray (Workspace:Raycast)
+		preferred: Enum.PreferredInput, -- ControlsController.preferredInput()
 	}
 
 	local function newRig(id: string): any
@@ -139,6 +147,7 @@ return function(t: Context)
 			shakes = {},
 			camera = { CFrame = CFrame.new(0, 5, 0), ViewportSize = Vector2.new(1920, 1080) },
 			rayHit = nil,
+			preferred = Enum.PreferredInput.KeyboardAndMouse,
 		}
 		local worldCamera = w.camera
 		Viewmodel.useDeps({
@@ -188,10 +197,12 @@ return function(t: Context)
 					return handler ~= nil and w.live[action] == true and handler(state, nil) == true
 				end,
 				preferredInput = function(): Enum.PreferredInput
-					return Enum.PreferredInput.KeyboardAndMouse
+					return w.preferred
 				end,
+				-- An empty layout (no touch buttons): ControlsController.touchLayout always returns a table, and
+				-- ViewmodelMath.touchPadRect iterates it.
 				touchLayout = function(): any
-					return nil
+					return {}
 				end,
 			},
 			Net = {
@@ -226,6 +237,9 @@ return function(t: Context)
 						gui = created
 					end
 					return gui :: ScreenGui
+				end,
+				scale = function(): number
+					return 1
 				end,
 			},
 			Camera = {
@@ -1114,5 +1128,191 @@ return function(t: Context)
 		for _, id in { "flock_volley", "sprinkle_roller", "rain_check", "bubble_pop" } do
 			expect.equal(Viewmodel.ultGlowColour(id), epic)
 		end
+	end)
+	-- Final polish 2026-10-11: the 14 first-person Inspect showcases (design: fp.js:111-194, 405-412).
+	local InspectTracks = t.requireClient("Anim/InspectTracks")
+
+	-- HandInspect (R) as ControlsController would press it; whether the overlay took it.
+	local function pressInspect(w: World): boolean
+		local handler = w.handlers.HandInspect
+		return handler ~= nil and handler(BEGIN, nil) == true
+	end
+
+	local function countOf(list: { string }, key: string): number
+		local n = 0
+		for _, item in list do
+			if item == key then
+				n += 1
+			end
+		end
+		return n
+	end
+
+	t.test("HandInspect plays the held toy's showcase in the lobby look and the range, never in a duel", function()
+		local w = setup("kitty_bread")
+		enter(w, "duel")
+		frames(w, 60)
+		expect.falsy(pressInspect(w)) -- never in a duel
+		expect.equal(Viewmodel.debugState().kind, "idle")
+		leave(w)
+		enter(w, "lobby")
+		expect.falsy(pressInspect(w)) -- the pop-in is on
+		frames(w, 60)
+		expect.truthy(pressInspect(w))
+		local state = Viewmodel.debugState()
+		expect.equal(state.kind, "inspect")
+		expect.falsy(pressInspect(w)) -- one at a time
+		-- Kitty Bread (fp.js:114-115): the ear flick at 0.68 s, the pat at 2.04 s.
+		frames(w, 42) -- 0.7 s
+		expect.equal(countOf(w.sounds, "sfx.inspect.flick"), 1)
+		frames(w, 81) -- 2.05 s
+		expect.equal(countOf(w.sounds, "sfx.squish"), 1)
+		expect.near(w.soundOptions[#w.soundOptions].pitch, 1) -- the material sound at the toy's pitch
+		state = Viewmodel.debugState()
+		expect.equal(state.specks, 5) -- the pat's puffs (fp.js:174)
+		expect.truthy(state.squash < 1) -- its kick (-2) on the squash spring
+		frames(w, 40) -- past dur (2.5 s)
+		state = Viewmodel.debugState()
+		expect.equal(state.kind, "idle")
+		expect.falsy(state.inspecting)
+		expect.truthy(math.abs(state.toyRot.Y - FP.held.rot.Y) < 0.05) -- the hold yaw, not 2π + 0.25
+		expect.equal(countOf(w.sounds, "sfx.inspect.flick"), 1) -- each event once
+		frames(w, 60)
+		state = Viewmodel.debugState()
+		expect.equal(state.specks, 0) -- the puffs are gone
+		expect.equal(state.squash, 1)
+		leave(w)
+		enter(w, "practice")
+		frames(w, 60)
+		expect.truthy(pressInspect(w))
+		teardown()
+	end)
+
+	t.test("a squeeze, a throw windup or the toy leaving the hand ends a showcase; turns not unwound", function()
+		local w = setup("toast") -- the card flip: rx to 2π (fp.js:116)
+		enter(w, "lobby")
+		frames(w, 60)
+		expect.truthy(pressInspect(w))
+		frames(w, 66) -- 1.1 s: rx near 2π
+		press(w, 0.5) -- a squeeze through the mirror
+		frames(w, 1)
+		local state = Viewmodel.debugState()
+		expect.equal(state.kind, "idle")
+		expect.falsy(state.inspecting)
+		expect.truthy(math.abs(state.toyRot.X) <= math.pi + 0.1) -- wrapped: the flip is not wound back
+		press(w, 0)
+		frames(w, 120)
+		leave(w)
+		enter(w, "practice")
+		frames(w, 60)
+		expect.truthy(pressInspect(w))
+		frames(w, 30)
+		w.windup = { FRAME, 0.18, nil, nil, false } -- a throw: it takes over from where the hands are
+		frames(w, 1)
+		state = Viewmodel.debugState()
+		expect.equal(state.kind, "throw")
+		expect.falsy(state.inspecting)
+		w.windup = { FRAME, 0.18, nil, nil, true }
+		frames(w, 120)
+		expect.equal(Viewmodel.debugState().kind, "idle")
+		expect.truthy(pressInspect(w))
+		w.holding = false -- out of the hand
+		frames(w, 1)
+		state = Viewmodel.debugState()
+		expect.equal(state.kind, "empty")
+		expect.falsy(state.inspecting)
+		teardown()
+	end)
+
+	t.test("debugInspect freezes a showcase at t for pictures (no event); nil lets it live again", function()
+		local w = setup("kitty_bread")
+		enter(w, "lobby")
+		frames(w, 60)
+		expect.truthy(Viewmodel.debugInspect(0.35))
+		frames(w, 3)
+		local state = Viewmodel.debugState()
+		expect.deepEqual({ state.pose, state.kind, state.inspecting }, { "inspect", "inspect", true } :: { any })
+		local track = InspectTracks.get("kitty_bread")
+		local offset, rot = InspectTracks.toyAt(track, 0.35)
+		expect.truthy(close(state.toyPos, FP.held.pos + offset, FP.idle.breath + 1e-4))
+		expect.truthy(close(state.toyRot, rot, 1e-4))
+		local sideL, sideR = ViewmodelMath.sides(state.toyPos, state.hw)
+		expect.truthy(close(state.leftPos, sideL, 1e-4) and close(state.rightPos, sideR, 1e-4))
+		expect.near(state.inspectTime, 0.35, 1e-9)
+		expect.truthy(Viewmodel.debugInspect(2.05)) -- the pat: the right hand on the head (fp.js:115)
+		frames(w, 2)
+		state = Viewmodel.debugState()
+		local _, sideR2 = ViewmodelMath.sides(state.toyPos, state.hw)
+		expect.truthy(close(state.rightPos, sideR2 + Vector3.new(-0.07, 0.085, 0), 1e-4))
+		expect.equal(countOf(w.sounds, "sfx.inspect.flick") + countOf(w.sounds, "sfx.squish"), 0) -- no event
+		expect.equal(state.specks, 0)
+		expect.truthy(Viewmodel.debugInspect(nil))
+		frames(w, 120)
+		state = Viewmodel.debugState()
+		expect.equal(state.pose, nil)
+		expect.equal(state.kind, "idle")
+		teardown()
+	end)
+
+	t.test("the Dragon's roar: embers in the overlay and the shake; ReducedMotion: half the specks, no kick", function()
+		local w = setup("dragon")
+		enter(w, "lobby")
+		frames(w, 60)
+		expect.truthy(pressInspect(w))
+		frames(w, 50) -- 0.83 s: the roar (fp.js:128-129, 182)
+		local state = Viewmodel.debugState()
+		expect.equal(countOf(w.sounds, "sfx.dragonRoar"), 1)
+		expect.equal(state.specks, 14)
+		expect.truthy(#w.shakes > 0) -- shake >= 0.25 (the camera shake setting is on)
+		local parts = 0
+		for _, d in w.guis.SD_Viewmodel:GetDescendants() do
+			if d.Name == "InspectSpeck" and d:IsA("BasePart") then
+				parts += 1
+			end
+		end
+		expect.equal(parts, 14)
+		frames(w, 40)
+		expect.equal(Viewmodel.debugState().specks, 0) -- life 0.5 s
+		teardown()
+		local r = setup("bird")
+		r.reduced = true
+		enter(r, "lobby")
+		frames(r, 60)
+		expect.truthy(pressInspect(r))
+		frames(r, 25) -- 0.42 s: the first flap (kick 3, 4 petals; fp.js:124, 180)
+		state = Viewmodel.debugState()
+		expect.equal(countOf(r.sounds, "sfx.inspect.flap"), 1)
+		expect.equal(state.specks, 2) -- × Config.Vfx.reducedParticleMultiplier
+		expect.equal(state.squash, 1) -- no kick
+		teardown()
+	end)
+
+	t.test("the touch Inspect button: made on touch in the lobby look and the range, never in a duel", function()
+		local w = setup("kitty_bread")
+		w.preferred = Enum.PreferredInput.Touch
+		local cases = {
+			{ look = "lobby", wanted = true },
+			{ look = "practice", wanted = true },
+			{ look = "duel", wanted = false },
+		}
+		for _, case in cases do
+			enter(w, case.look)
+			frames(w, 3)
+			local pad = w.guis.SD_ViewmodelPad
+			local found = if pad then pad:FindFirstChild("Viewmodel_InspectButton") else nil
+			expect.equal(found ~= nil, case.wanted)
+			if found then
+				local label = found:FindFirstChild("Label", true)
+				expect.truthy(label ~= nil and (label :: TextLabel).Text == "Inspect")
+			end
+			leave(w)
+			expect.equal(if pad then pad:FindFirstChild("Viewmodel_InspectButton") else nil, nil) -- gone with it
+		end
+		w.preferred = Enum.PreferredInput.KeyboardAndMouse
+		enter(w, "lobby")
+		frames(w, 3)
+		local pad = w.guis.SD_ViewmodelPad
+		expect.equal(if pad then pad:FindFirstChild("Viewmodel_InspectButton") else nil, nil) -- keys: R
+		teardown()
 	end)
 end

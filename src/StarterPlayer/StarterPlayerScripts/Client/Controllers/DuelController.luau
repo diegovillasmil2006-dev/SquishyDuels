@@ -135,6 +135,13 @@
 -- otherwise); the forfeit dialog's two buttons are Modal only while it shows (the locked mouse comes free) and tell
 -- FirstPersonController.setDialogOpen (the cursor shows); Backspace (DuelForfeit, keyboard) opens the confirmation, and
 -- in first person on PC the Forfeit button shows that key.
+-- Final polish (2026-10-11):
+-- * The bottom dock also names the dash (C / B) and, in first person, the squeeze (F / X): a keycap and its caption
+--   each, no bar (DuelFormat.hintKeys; mouse / gamepad only, as before: touch shows no key hints).
+-- * "In the lane!" (duel.inLane, Palette.Danger, Config.UI.LaneCue; UI/LaneCue): while the opponent's lane ultimate's
+--   telegraph runs (Dragon Rush, Sprinkle Roller: the UltimateEvent's own lane numbers) and the local body is inside its
+--   lane, a warning under the duel bar, or under the banner that shows there; it pops in (not under ReducedMotion) and
+--   hides at the release, the cancel, telegraphEndsAt, out of the lane and out of the duel.
 
 -- Services
 
@@ -163,6 +170,7 @@ local Create = require(Client.UI.Create)
 local DuelFormat = require(Client.UI.DuelFormat)
 local Focus = require(Client.UI.Focus)
 local Keycap = require(Client.UI.Components.Keycap)
+local LaneCue = require(Client.UI.LaneCue)
 local Pips = require(Client.UI.Components.Pips)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local QuestFormat = require(Client.UI.QuestFormat)
@@ -251,6 +259,11 @@ type Hud = {
 	hints: Frame,
 	throwMeter: Meter,
 	ultMeter: Meter,
+	dashMeter: Meter, -- final polish 2026-10-11: the dash and squeeze keys (a keycap and caption, no bar)
+	squeezeMeter: Meter,
+	laneCue: TextLabel, -- final polish 2026-10-11: "In the lane!"
+	laneCueScale: UIScale,
+	lane: LaneCue.Lane?, -- the opponent's lane telegraph running now
 	countdown: TextLabel,
 	countdownScale: UIScale,
 	countdownStroke: UIStroke,
@@ -1141,6 +1154,30 @@ local function buildHud(c: Cleanup.Cleanup): Hud
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.large, hints, nil, Enum.VerticalAlignment.Top)
 	local throwMeter = buildMeter(hints, "ThrowMeter", 1, Strings.controls.throw, "sky", false, c)
 	local ultMeter = buildMeter(hints, "UltimateMeter", 2, Strings.controls.ultimate, "lilac", true, c)
+	-- Final polish (2026-10-11): the dash and squeeze keys after them, each a keycap and its caption (no bar).
+	local dashMeter = buildMeter(hints, "DashKey", 3, Strings.controls.dash, "sky", false, c)
+	local squeezeMeter = buildMeter(hints, "SqueezeKey", 4, Strings.controls.squeeze, "mint", false, c)
+	for _, meter in { dashMeter, squeezeMeter } do
+		meter.bar.root.Visible = false
+		meter.frame.Size = UDim2.fromOffset(0, 0)
+		meter.frame.AutomaticSize = Enum.AutomaticSize.XY
+	end
+	-- Final polish (2026-10-11): "In the lane!" (updateLaneCue places it), in Danger with the InkUI outline.
+	local laneCue = Theme.label({
+		Name = "LaneCue",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0),
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Text = Strings.duel.inLane,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = false,
+		Visible = false,
+		Parent = gui,
+	}, "Title", nil, Palette.Danger)
+	c:add(laneCue)
+	outline(laneCue, Theme.Stroke.text)
+	local laneCueScale: UIScale = Create("UIScale", { Name = "Pop", Parent = laneCue })
 
 	-- The countdown bubbles (§18.5.2 B6): round foam discs, countdownBubble.px, behind the number (ZIndex 1 under its
 	-- 2); startCue paints each in its digit's colour.
@@ -1210,6 +1247,11 @@ local function buildHud(c: Cleanup.Cleanup): Hud
 		hints = hints,
 		throwMeter = throwMeter,
 		ultMeter = ultMeter,
+		dashMeter = dashMeter,
+		squeezeMeter = squeezeMeter,
+		laneCue = laneCue,
+		laneCueScale = laneCueScale,
+		lane = nil,
 		countdown = countdown,
 		countdownScale = countdownScale,
 		countdownStroke = countdownStroke,
@@ -1964,7 +2006,10 @@ end
 
 local function updateHints(h: Hud, view: StateController.DuelView, aim: ThrowController.AimState)
 	local ultimateId = DuelFormat.ultimateOf(view.you.squishyId)
-	local throwKey, ultimateKey = DuelFormat.hintKeys(ControlsController.preferredInput().Name, ultimateId ~= nil)
+	-- Final polish (2026-10-11): the squeeze key only in first person (DuelSqueeze squeezes the overlay's toy).
+	local firstPerson = require(script.Parent.FirstPersonController).mode() == "duel"
+	local throwKey, ultimateKey, dashKey, squeezeKey =
+		DuelFormat.hintKeys(ControlsController.preferredInput().Name, ultimateId ~= nil, firstPerson)
 	local phaseShows = DuelFormat.isLive(view.phase) or view.phase == "Countdown"
 	if throwKey == nil or not phaseShows then
 		h.hints.Visible = false
@@ -1974,6 +2019,10 @@ local function updateHints(h: Hud, view: StateController.DuelView, aim: ThrowCon
 	h.hints.Visible = true
 	setKey(h.throwMeter, throwKey)
 	setKey(h.ultMeter, ultimateKey)
+	setKey(h.dashMeter, dashKey)
+	setKey(h.squeezeMeter, squeezeKey)
+	h.dashMeter.frame.Visible = dashKey ~= nil
+	h.squeezeMeter.frame.Visible = squeezeKey ~= nil
 	setMeter(h.throwMeter, true, if aim.state == "hidden" then 1 else aim.progress, clock)
 	local fraction, has = ultFraction(view)
 	setMeter(h.ultMeter, has, fraction, clock)
@@ -2230,6 +2279,40 @@ local function layoutTopBar(h: Hud)
 	end
 end
 
+-- Final polish (2026-10-11): "In the lane!" while the opponent's lane telegraph runs and the own body is in its lane
+-- (LaneCue.shows), Config.UI.LaneCue.gapPx under the duel bar or under the banner that shows there (UIController's
+-- "Banner" in SD_Overlay: the telegraph's own "incoming" one), popping in as it appears.
+local function updateLaneCue(h: Hud, now: number)
+	local player = Players.LocalPlayer
+	local character = if player then player.Character else nil
+	local root = if character then character:FindFirstChild(ROOT_PART) else nil
+	local body = if root and root:IsA("BasePart") then root.Position else nil
+	local label = h.laneCue
+	local scale = UIController.scale()
+	if not LaneCue.shows(h.lane, body, now) or not (scale > 0) then
+		label.Visible = false
+		return
+	end
+	local origin = h.gui.AbsolutePosition.Y
+	local barBottom = (h.top.AbsolutePosition.Y + h.top.AbsoluteSize.Y - origin) / scale
+	local banner = UIController.screenGui("SD_Overlay"):FindFirstChild("Banner")
+	local bannerTop: number?, bannerBottom: number? = nil, nil
+	if banner and banner:IsA("GuiObject") and banner.Visible then
+		bannerTop = (banner.AbsolutePosition.Y - origin) / scale
+		bannerBottom = (banner.AbsolutePosition.Y + banner.AbsoluteSize.Y - origin) / scale
+	end
+	local top = LaneCue.top(barBottom, bannerTop, bannerBottom, UI_CONFIG.LaneCue.gapPx)
+	setIfChanged(label, "Position", UDim2.new(0.5, 0, 0, math.floor(top + 0.5)))
+	if not label.Visible then
+		label.Visible = true
+		Tweens.scale(h.laneCueScale, MOTION.readyPop.from, 1, {
+			ms = MOTION.readyPop.ms,
+			style = Enum.EasingStyle.Back,
+			direction = Enum.EasingDirection.Out,
+		})
+	end
+end
+
 local function updateFrame()
 	local h = hud
 	local view = StateController.duel()
@@ -2247,6 +2330,7 @@ local function updateFrame()
 	updateHints(h, view, aim)
 	updateReticle(h, view, aim, now)
 	updateArrow(h, view, now)
+	updateLaneCue(h, now)
 	if h.dialog.Visible then
 		refreshDialogNote(h, view)
 		placeDialog(h)
@@ -2327,6 +2411,8 @@ local function beginMatch(view: StateController.DuelView)
 	countdownEndsAt = nil
 	countdownText = nil
 	telegraphUntil = nil
+	h.lane = nil
+	h.laneCue.Visible = false
 	hitClock = -math.huge
 	hideCountdown(h)
 	resetMeter(h.ultMeter)
@@ -2429,6 +2515,8 @@ local function endMatch()
 		hideCountdown(h)
 		h.arrow.Visible = false
 		h.reticle.root.Visible = false
+		h.lane = nil
+		h.laneCue.Visible = false
 	end
 	countdownEndsAt = nil
 	countdownText = nil
@@ -2456,6 +2544,13 @@ local function onUltimateEvent(event: Types.UltimateEventPayload)
 	local view = StateController.duel()
 	if view == nil or type(event) ~= "table" or event.casterId ~= view.opponent.userId then
 		return
+	end
+	-- Final polish (2026-10-11): the lane of the opponent's lane telegraph for "In the lane!"; any other phase or kind
+	-- clears it.
+	local h = hud
+	if h then
+		local _, ability = ThrowController.eventAbility(event :: any)
+		h.lane = LaneCue.laneOf(event, if ability then ability.kind else nil)
 	end
 	if event.phase == "telegraph" then
 		telegraphUntil = event.telegraphEndsAt

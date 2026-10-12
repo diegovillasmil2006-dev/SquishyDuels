@@ -31,6 +31,10 @@
 --   card's body never squeezes), in the practice box (a click throws there), a touch in the thumbstick zone (the
 --   lower-left 40% × 45%, inThumbZone) or on the jump button, nor a second world touch; the Squeeze action itself keeps
 --   its keys only, so PracticeThrow keeps the left mouse button.
+-- Final polish (2026-10-11): the first-person Inspect showcase, HandInspect = R (the design's key, fp.js:656) and
+--   ButtonL1 (build choice, NOT IN DESIGN), in the Lobby context (live in the lobby look and the practice range, never
+--   from Matched through Returning); no other world action takes R or ButtonL1 (Inspect's R and the Modal tabs'
+--   ButtonL1 are overlay actions, and an open modal or Inspect blocks every world action).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -691,6 +695,36 @@ return function(t: Context)
 			expect.falsy(has(action, Enum.KeyCode.C))
 			expect.falsy(has(action, Enum.KeyCode.ButtonB))
 		end
+	end)
+
+	t.test("the hand inspect: R and ButtonL1 in the Lobby context; no other world action takes them", function()
+		expect.deepEqual(Controls.inputsOf("HandInspect"), { Enum.KeyCode.R, Enum.KeyCode.ButtonL1 })
+		expect.equal(Controls.contextOf("HandInspect"), "Lobby")
+		expect.equal(Controls.priorityOfAction("HandInspect"), Enum.ContextActionPriority.Medium.Value)
+		for _, action in
+			{
+				"Squeeze",
+				"Squishies",
+				"InspectEquipped",
+				"FocusHud",
+				"Throw",
+				"Ultimate",
+				"PracticeThrow",
+				"PracticeUltimate",
+				"Dash",
+				"PracticeDash",
+				"DuelSqueeze",
+				"DuelForfeit",
+				"PracticeSqueeze",
+			}
+		do
+			local inputs = Controls.inputsOf(action) :: { EnumItem }
+			expect.equal(table.find(inputs, Enum.KeyCode.R), nil)
+			expect.equal(table.find(inputs, Enum.KeyCode.ButtonL1), nil)
+		end
+		-- The overlay actions that share them only run while their own screen is open.
+		expect.equal(Controls.contextOf("InspectReset"), "Inspect")
+		expect.equal(Controls.contextOf("ModalTabPrevious"), "Modal")
 	end)
 
 	t.test("the touch Dash button: its size, on screen, out of the thumbstick zone, apart from the others", function()

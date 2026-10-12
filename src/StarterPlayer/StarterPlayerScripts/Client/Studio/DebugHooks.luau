@@ -147,6 +147,10 @@
 --   SD_DebugClient:Invoke("vmTouchGui", on)      ViewmodelController.setTouchGuiFallback(on): raises Roblox's TouchGui
 --                                                over the overlay while it shows (if DisplayOrder -1 does not sort
 --                                                under it); { ok, state }
+--   SD_DebugClient:Invoke("vmInspect", t?)       final polish 2026-10-11: the held toy's Inspect showcase in the
+--                                                overlay: a number freezes it at t seconds for pictures
+--                                                (ViewmodelController.debugInspect), true plays it live (inspect(), as
+--                                                R), nil lets the overlay live again; { ok, state }
 -- The feel-pass modules of other lanes (JellyRippleController, SplatController, MeshQuota), the Part 7 screens of the
 -- other lanes (ShopController, QuestController, DailyController, OnboardingController), the Part 6 controllers
 -- (InspectController, CollectionController) and the new functions on built ones are looked up when a command runs
@@ -962,6 +966,20 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 		end
 		set(on)
 		return { ok = true, state = read() }
+	end,
+	vmInspect = function(t: unknown): Reply
+		local viewmodel = optionalModule("Controllers", "ViewmodelController")
+		local freeze, play = functionOf(viewmodel, "debugInspect"), functionOf(viewmodel, "inspect")
+		local read = functionOf(viewmodel, "debugState")
+		if freeze == nil or play == nil or read == nil then
+			return missing("ViewmodelController.debugInspect")
+		end
+		if t == true then
+			return { ok = play() == true, state = read() }
+		elseif t ~= nil and type(t) ~= "number" then
+			return { ok = false, error = "vmInspect needs a time in seconds, true or nil" }
+		end
+		return { ok = freeze(t) == true, state = read() }
 	end,
 	boxes = boxes,
 	openBox = openBox,

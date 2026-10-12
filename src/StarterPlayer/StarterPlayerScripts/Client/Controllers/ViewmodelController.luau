@@ -69,6 +69,23 @@
 -- from idle or the pop-in (a new windup also cuts a finished throw's follow-through short when the toy is back); a
 -- cancelled windup goes back to the hold on the springs; the world FOV and the glow stop at a thousandth of a degree /
 -- of opacity (below anything shown).
+-- Inspect showcases (final polish 2026-10-11; design: fp.js:111-194, 304-306, 405-412, 656): HandInspect (R; ButtonL1
+-- and the overlay's own touch Inspect button are build choices, NOT IN DESIGN) plays the held toy's showcase
+-- (Anim/InspectTracks) while the overlay shows in the lobby look or the practice range and the toy rests in the hand
+-- (idle: no windup, ultimate, pop-in, throw or squeeze, not posed); never in a duel. Each frame of it: the toy's offset
+-- on the hold point, its rotation, its scale keys and both hands on the track's targets (the springs do the rest, as
+-- every action), the rolls ±arm.roll; each event fires once as t passes it: its sound (2D; the material ones at the
+-- toy's pitch), its kick on the design's squash spring (the toy's kRel / cRel, shown as (w, y, w) on the overlay copy,
+-- toys.js:442-455), its camera shake and its specks (Anim/Specks drawn as small parts in the overlay: particles draw
+-- nothing in a ViewportFrame; Neon for the design's unlit sparks and embers). At dur the hold comes back with the
+-- rotation spring set to the wrapped last key (fp.js:412; reading: the design's one-frame pull toward the unwrapped
+-- key, a frame-rate-dependent flick, is not kept). User decision 2026-10-11: a squeeze (the mirrored press), a throw
+-- windup, an ultimate, the toy leaving the hand or a look other than lobby / practice cancels it back to the hold, the
+-- rotation spring wrapped first (no unwinding of the turns). ReducedMotion: the showcase plays (asked for), without the
+-- kicks and the shake, with half the specks (Config.Vfx.reducedParticleMultiplier). debugInspect(t) freezes it at t
+-- for pictures (no event fires). The touch Inspect button (UI/Components/Button, the "inspect" glyph, common.inspect)
+-- sits in SD_ViewmodelPad at the bottom middle (ViewmodelMath.inspectButtonRect, Config.UI.Touch.inspectButtonInset)
+-- while touch is the input and the look is lobby or practice; a press while the toy is busy does nothing (as R).
 --
 -- API
 --   ViewmodelController.isShown() -> boolean   the overlay is up
@@ -88,6 +105,10 @@
 --       "empty", "popin" (halfway through the pop-in), "rush" (halfway through the charge); nil lets it live again
 --   ViewmodelController.setTouchGuiFallback(on)   raises Roblox's TouchGui over the overlay while it shows (when
 --       DisplayOrder -1 does not sort under it); off by default
+--   ViewmodelController.inspect() -> boolean   starts the held toy's Inspect showcase now when it may (HandInspect, the
+--       touch Inspect button, Studio); false when it may not
+--   ViewmodelController.debugInspect(t?) -> boolean   freezes the held toy's showcase at t seconds for pictures (every
+--       spring on its target, no event); nil lets the overlay live again (as debugPose(nil))
 --   ViewmodelController.debugState() / useDeps(overrides?) / init() / destroy()
 -- Require direction: it may require FirstPersonController, HeldSquishyController, ThrowController, ControlsController,
 -- NetController, StateController, SoundController, UIController and CameraController, never ProjectileRenderer,
@@ -106,14 +127,19 @@ local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local Palette = require(Shared.Art.Palette)
 local SquishyBlueprints = require(Shared.Art.SquishyBlueprints)
+local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local Button = require(Client.UI.Components.Button)
 local DesignArm = require(Client.Anim.DesignArm)
 local HoldSqueeze = require(Client.Anim.HoldSqueeze)
+local InspectTracks = require(Client.Anim.InspectTracks)
 local MeshQuality = require(Client.Anim.MeshQuality)
 local OwnArm = require(Client.Anim.OwnArm)
 local Scheduler = require(Client.Anim.Scheduler)
+local Specks = require(Client.Anim.Specks)
 local SquishDeformer = require(Client.Anim.SquishDeformer)
 local SquishRig = require(Client.Anim.SquishRig)
 local SuperMesh = require(Client.Anim.SuperMesh)
@@ -133,7 +159,7 @@ local UIController = require(script.Parent.UIController)
 
 -- Types
 
-type Kind = "equip" | "idle" | "throw" | "ult" | "empty"
+type Kind = "equip" | "idle" | "throw" | "ult" | "empty" | "inspect"
 
 type Toy = {
 	id: string,
@@ -144,7 +170,17 @@ type Toy = {
 	hw: number, -- its half width (du): the design's H.hw (fp.js:101)
 	ratio: number, -- overlay build scale ÷ held build scale (1): the release hand-off
 	pitch: number, -- the design's squeeze pitch (the sounds)
+	-- Final polish 2026-10-11: the design's squash spring a kick moves (toys.js:442-455): its release spring and widen.
+	squash: { number }, -- { kRel, cRel }
+	widen: number,
+	colours: { Color3 }, -- its own specks: its Catalog accent and white (the design's per-toy pcols stand-in)
 }
+
+-- One Inspect showcase running (final polish 2026-10-11): its track, the seconds into it and the events fired so far.
+type Inspect = { track: InspectTracks.Track, t: number, fired: number }
+
+-- One speck on screen: its numbers (Anim/Specks) and its part in the overlay.
+type Speck = { state: Specks.Speck, part: BasePart }
 
 -- One arm: the hand point and the roll on their springs (fp.js:73); its parts are the player's own (own) or the
 -- design's (arm), one of the two.
@@ -244,6 +280,13 @@ type View = {
 	posedRig: SquishRig.Rig?, -- a rig a debug pose pressed or held
 	touchGui: ScreenGui?, -- the fallback: Roblox's TouchGui and its own order
 	touchGuiOrder: number,
+	-- Final polish 2026-10-11: the Inspect showcase, its specks, the design's squash spring (y around 1, toys.js:446)
+	-- and the touch Inspect button (made at its first show).
+	inspect: Inspect?,
+	specks: { Speck },
+	squashY: number,
+	squashVel: number,
+	inspectButton: Button.Button?,
 }
 
 -- Constants
@@ -284,6 +327,16 @@ local GLOW_GONE = 1e-3 -- reading: a glow opacity below this is none
 local POSES: { [string]: boolean } =
 	{ idle = true, squeeze = true, windup = true, release = true, empty = true, popin = true, rush = true }
 local ZERO = Vector3.zero
+-- Final polish 2026-10-11: the Inspect showcases.
+local INSPECT_ACTION = "HandInspect"
+local INSPECT_LOOKS: { [string]: boolean } = { lobby = true, practice = true } -- never in a duel
+local INSPECT_POSE = "inspect"
+local INSPECT_BUTTON_NAME = "Viewmodel_InspectButton"
+local SPECK_NAME = "InspectSpeck"
+local REDUCED_SPECKS = Config.Vfx.reducedParticleMultiplier
+local MIN_PART = 0.001 -- studs: Roblox's smallest part size (a speck's first and last frames are smaller)
+local SQUASH_REST, SQUASH_REST_SPEED = 0.002, 0.01 -- the squash spring is at rest (design: toys.js:452)
+local INSPECT_INSET = Config.UI.Touch.inspectButtonInset
 
 -- The side-effecting surfaces the overlay touches; tests swap them (useDeps).
 local REAL_DEPS = {
@@ -342,6 +395,12 @@ local function sideOf(v: Vector3, side: number): Vector3
 end
 
 local function setKind(v: View, kind: Kind)
+	if kind ~= "inspect" and v.inspect then
+		-- User decision 2026-10-11: anything else ends a showcase back on the springs; the rotation spring is wrapped
+		-- first, so the toy never unwinds the showcase's turns (the design's wrapRot, fp.js:109).
+		v.inspect = nil
+		v.toyRot = InspectTracks.wrap(v.toyRot)
+	end
 	v.kind = kind
 	v.kindT = 0
 end
@@ -410,8 +469,12 @@ local function buildToy(v: View, player: Player)
 		hw = size.X / 2 / U,
 		ratio = scale,
 		pitch = if squeeze and squeeze.pitch then squeeze.pitch else 1,
+		squash = if squeeze then { squeeze.kRel, squeeze.cRel } else { 1, 1 },
+		widen = if squeeze then squeeze.widen else 0,
+		colours = { Color3.fromHex(def.visuals.accent), Palette.White },
 	}
 	v.mirror, v.mirrorScale = nil, Vector3.one
+	v.squashY, v.squashVel = 1, 0
 end
 
 local function showToy(v: View, on: boolean)
@@ -447,7 +510,8 @@ local function onMirror(v: View, out: SquishRig.Out?, scale: Vector3)
 end
 
 -- What the overlay copy shows this frame: the rig's own S (the held model's idle, pop-in and overlay scale divided out:
--- the design's toy has none of them, fp.js:396, 403) in the deformer's limits, the toy's scale keys on top.
+-- the design's toy has none of them, fp.js:396, 403) in the deformer's limits, the toy's scale keys on top, and the
+-- design's squash node (w, y, w) a showcase event kicked (toys.js:454-455; 1 at rest).
 local function fillOut(v: View): SquishRig.Out
 	local src, scale = v.restOut, Vector3.one
 	local mirror = v.mirror
@@ -455,7 +519,9 @@ local function fillOut(v: View): SquishRig.Out
 		src, scale = mirror, v.mirrorScale
 	end
 	local out = v.out
-	out.S = deps.Deformer.clampScale(src.S / scale) * v.sq
+	local toy = v.toy
+	local squash = if toy and v.squashY ~= 1 then InspectTracks.squashScale(v.squashY, toy.widen) else Vector3.one
+	out.S = deps.Deformer.clampScale(src.S / scale) * v.sq * squash
 	out.twist = src.twist
 	out.face, out.blink, out.cheek = src.face, src.blink, src.cheek
 	out.sections, out.sectionsOn = src.sections, src.sectionsOn
@@ -553,6 +619,140 @@ local function duelHandler(state: Enum.UserInputState, _input: InputObject?): bo
 	return true
 end
 
+-- Inspect showcases (final polish 2026-10-11) ---------------------------------------------------------------------
+
+-- The toy rests in the hand in a look with showcases (the lobby look, the practice range): one may start (no windup,
+-- ultimate, pop-in, throw or squeeze; not posed; the held toy has one).
+local function canInspect(v: View): boolean
+	local toy = v.toy
+	if toy == nil or not canSqueeze(v) or not INSPECT_LOOKS[deps.FirstPerson.look() or ""] then
+		return false
+	end
+	local mirror = v.mirror
+	return (mirror == nil or mirror.pressAmount <= 0) and InspectTracks.get(toy.id) ~= nil
+end
+
+local function startInspect(v: View): boolean
+	if not canInspect(v) then
+		return false
+	end
+	local track = InspectTracks.get((v.toy :: Toy).id) :: InspectTracks.Track
+	setKind(v, "inspect")
+	v.inspect = { track = track, t = 0, fired = 0 }
+	return true
+end
+
+-- A showcase event's specks (Anim/Specks) as small parts in the overlay (particles draw nothing in a ViewportFrame):
+-- Neon for the design's unlit sparks and embers, round but the cubes.
+local function spawnSpecks(v: View, spec: Specks.Spec, toy: Toy, reduced: boolean)
+	local list = Specks.spawn(spec, v.toyPos, v.random, if reduced then REDUCED_SPECKS else 1, toy.colours)
+	for _, state in list do
+		local part = Instance.new("Part")
+		part.Name = SPECK_NAME
+		part.Shape = if state.shape == "cube" then Enum.PartType.Block else Enum.PartType.Ball
+		part.Material = if state.glow then Enum.Material.Neon else Enum.Material.SmoothPlastic
+		part.Color = state.colour
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanTouch = false
+		part.CanQuery = false
+		part.CastShadow = false
+		part.Size = Vector3.one * MIN_PART
+		part.CFrame = CFrame.new(state.p * U)
+		part.Parent = v.viewport
+		table.insert(v.specks, { state = state, part = part :: BasePart })
+	end
+end
+
+-- The specks fly and shrink (fx.js:131-139); a speck past its life goes.
+local function stepSpecks(v: View, dt: number)
+	local list = v.specks
+	for i = #list, 1, -1 do
+		local speck = list[i]
+		local state = speck.state
+		if Specks.step(state, dt) then
+			speck.part.Size = Vector3.one * math.max(2 * Specks.radius(state) * U, MIN_PART)
+			speck.part.CFrame = CFrame.new(state.p * U) * Specks.rotation(state)
+		else
+			speck.part:Destroy()
+			table.remove(list, i)
+		end
+	end
+end
+
+local function clearSpecks(v: View)
+	for _, speck in v.specks do
+		speck.part:Destroy()
+	end
+	table.clear(v.specks)
+end
+
+-- One showcase event (design: vEv, fp.js:169-194): its sound (2D; the material sounds at the toy's pitch), its kick on
+-- the squash spring (toys.js:442), its camera shake and its specks. ReducedMotion: no kick, half the specks (the shake
+-- is held back by stepWorldCamera).
+local function fireEvent(v: View, name: string, reduced: boolean)
+	local recipe = InspectTracks.recipe(name)
+	local toy = v.toy
+	if recipe == nil or toy == nil then
+		return
+	end
+	if recipe.pitched then
+		playSound(recipe.sound, toy)
+	else
+		local ok, err = pcall(deps.Sound.play, recipe.sound, nil)
+		if not ok then
+			log:warn(`sound {recipe.sound} failed:`, err)
+		end
+	end
+	local kick = recipe.kick
+	if kick and not reduced then
+		v.squashVel += kick
+	end
+	local shake = recipe.shake
+	if shake then
+		raiseShake(v, shake)
+	end
+	local spec = recipe.specks
+	if spec then
+		spawnSpecks(v, spec, toy, reduced)
+	end
+end
+
+-- One frame of the showcase (fp.js:405-412): back to the hold on a squeeze or a look without showcases (user decision
+-- 2026-10-11), its events as t passes them, the hold back at dur with the rotation spring on the wrapped last key.
+local function stepInspect(v: View, dt: number, reduced: boolean)
+	local inspect = v.inspect
+	if inspect == nil or v.kind ~= "inspect" then
+		return
+	end
+	local mirror = v.mirror
+	if (mirror and mirror.pressAmount > 0) or not INSPECT_LOOKS[deps.FirstPerson.look() or ""] then
+		setKind(v, "idle")
+		return
+	end
+	inspect.t += dt
+	local track = inspect.track
+	local due = InspectTracks.firedBy(track, inspect.t)
+	while inspect.fired < due do
+		inspect.fired += 1
+		fireEvent(v, track.events[inspect.fired].name, reduced)
+	end
+	if inspect.t >= track.dur then
+		local _, last = InspectTracks.toyAt(track, track.dur)
+		v.inspect = nil
+		v.toyRot = InspectTracks.wrap(last) -- design: fp.js:412
+		setKind(v, "idle")
+	end
+end
+
+-- HandInspect (R; ButtonL1): the held toy's showcase when it may start; otherwise the press passes.
+local function inspectHandler(state: Enum.UserInputState, _input: InputObject?): boolean?
+	if state ~= Enum.UserInputState.Begin then
+		return false
+	end
+	return ViewmodelController.inspect()
+end
+
 -- PracticeSqueeze (spec 2026-10-11 §5): while the overlay shows, the paid lobby squeeze. The key goes with the press,
 -- so a held F, E or ButtonX keeps squeezing as in the lobby.
 local function practiceHandler(state: Enum.UserInputState, input: InputObject?): boolean?
@@ -624,7 +824,8 @@ local function stepThrow(v: View, serverNow: number, holding: boolean)
 	local tau, windup, releaseAt, releaseStart, cancelled = deps.Throw.localWindup()
 	local throw = v.throw
 	local fresh = tau ~= nil and releaseStart == nil and not cancelled
-	local free = v.kind == "idle" or v.kind == "equip" or (throw ~= nil and throw.released)
+	-- A windup also ends a running Inspect showcase (user decision 2026-10-11; setKind wraps its rotation spring).
+	local free = v.kind == "idle" or v.kind == "equip" or v.kind == "inspect" or (throw ~= nil and throw.released)
 	if fresh and free and holding and v.toy then
 		throw = {
 			track = ThrowTracks.get(ThrowTracks.styleOf((v.toy :: Toy).id)),
@@ -669,7 +870,7 @@ local function stepUlt(v: View, dt: number, serverNow: number, holding: boolean)
 	local charging = phase == "cast" or phase == "telegraph"
 	local ult = v.ult
 	local kind: Kind = v.kind
-	if charging and holding and v.toy and (kind == "idle" or kind == "equip" or kind == "ult") then
+	if charging and holding and v.toy and (kind == "idle" or kind == "equip" or kind == "ult" or kind == "inspect") then
 		if ult == nil then
 			ult = {
 				t = 0,
@@ -829,6 +1030,16 @@ local function stepAction(v: View, dt: number, now: number, reduced: boolean, se
 		end
 		raiseShake(v, ULT.shake * ch)
 		v.fovVel -= ULT.fovPullPerSecond * dt
+	elseif kind == "inspect" and v.inspect then
+		-- The showcase (design: fp.js:408-410): the toy's offset on the hold point, its rotation and scale keys, and
+		-- each hand from its rest toward the toy's side by the blend (both with the row's offset).
+		local inspect = v.inspect :: Inspect
+		local offset, rot = InspectTracks.toyAt(inspect.track, inspect.t)
+		toyP += offset
+		toyR = rot
+		sq = InspectTracks.scaleAt(inspect.track, inspect.t)
+		local sideL, sideR = ViewmodelMath.sides(toyP, hw)
+		left, right = InspectTracks.handsAt(inspect.track, inspect.t, sideL, sideR, v.left.rest, v.right.rest)
 	elseif kind == "empty" then
 		left, right = v.left.rest, v.right.rest
 		hide = true
@@ -853,6 +1064,18 @@ local function stepAction(v: View, dt: number, now: number, reduced: boolean, se
 		left, right = ViewmodelMath.sides(toyP, hw)
 	end
 	stepGlow(v, dt, reduced)
+	-- The design's squash spring (toys.js:443-452): back to 1 on the toy's release spring after a showcase event's kick
+	-- (fireEvent); held at exactly 1 at rest, so the low tier has nothing to redraw.
+	if toy and (v.squashY ~= 1 or v.squashVel ~= 0) then
+		if settle then
+			v.squashY, v.squashVel = 1, 0
+		else
+			v.squashY, v.squashVel = ViewmodelMath.spring(v.squashY, v.squashVel, 1, toy.squash, dt)
+			if math.abs(v.squashY - 1) < SQUASH_REST and math.abs(v.squashVel) < SQUASH_REST_SPEED then
+				v.squashY, v.squashVel = 1, 0
+			end
+		end
+	end
 	-- The springs (fp.js:470-478).
 	if settle then
 		v.toyPos, v.toyVel, v.toyRot, v.toyRotVel, v.sq, v.sqVel = toyP, ZERO, toyR, ZERO, sq, ZERO
@@ -994,6 +1217,57 @@ local function stepPad(v: View, cameraCF: CFrame)
 		pad.button.Visible = true
 	else
 		pad.button.Visible = false
+	end
+end
+
+-- The touch Inspect button (final polish 2026-10-11, build choice: the design's page has an "Inspect R" button in its
+-- bottom bar, fp.js:562): on touch, in a look with showcases, at the bottom middle of the pad gui (anchored by its
+-- bottom middle, inspectButtonInset up), then kept clear of the touch controls once its size is known
+-- (ViewmodelMath.inspectButtonRect).
+local function stepInspectButton(v: View)
+	local button = v.inspectButton
+	local wanted = v.toy ~= nil
+		and v.pose == nil
+		and deps.Controls.preferredInput() == Enum.PreferredInput.Touch
+		and INSPECT_LOOKS[deps.FirstPerson.look() or ""] == true
+	if not wanted then
+		if button then
+			button.root.Visible = false
+		end
+		return
+	end
+	local pad = ensurePad(v)
+	if button == nil then
+		local made = Button.new({
+			name = INSPECT_BUTTON_NAME,
+			text = Strings.common.inspect,
+			kind = "secondary",
+			icon = "inspect",
+			parent = pad.gui,
+			onActivated = function()
+				ViewmodelController.inspect()
+			end,
+		})
+		made.root.AnchorPoint = Vector2.new(0.5, 1)
+		made.root.Position = UDim2.new(0.5, 0, 1, -INSPECT_INSET)
+		made.root.ZIndex = 2 -- over the squeeze pad when the toy passes behind it (the pop-in)
+		v.inspectButton = made
+		v.cleanup:add(made)
+		button = made
+	end
+	local shown = button :: Button.Button
+	shown.root.Visible = true
+	local padSize, size = pad.gui.AbsoluteSize, shown.root.AbsoluteSize
+	if padSize.X <= 0 or padSize.Y <= 0 or size.X <= 0 or size.Y <= 0 then
+		return -- not laid out yet: the bottom middle meanwhile
+	end
+	local uiScale = deps.UI.scale()
+	local layout = pad.layout or deps.Controls.touchLayout(padSize, uiScale, nil)
+	local rect = ViewmodelMath.inspectButtonRect(padSize, size, INSPECT_INSET * uiScale, layout)
+	-- The pad gui holds UIController's UIScale: offsets are in unscaled pixels (the anchor is the bottom middle).
+	local position = UDim2.fromOffset((rect.x + rect.w / 2) / uiScale, (rect.y + rect.h) / uiScale)
+	if shown.root.Position ~= position then
+		shown.root.Position = position
 	end
 end
 
@@ -1168,10 +1442,14 @@ local function step(v: View, dt: number, now: number): boolean
 	v.fov, v.fovVel = ViewmodelMath.spring(v.fov, v.fovVel, FOCUS.worldFovTarget * v.focus, SPRINGS.fov, dt)
 	v.shake = math.max(0, v.shake - SHAKE.decayPerSecond * dt)
 	local shakeFrom = v.shake
+	if posed == nil then
+		stepInspect(v, dt, reduced) -- after shakeFrom: an event's shake reaches the world camera as an action's does
+	end
 	local hide = stepAction(v, dt, now, reduced, posed ~= nil)
 	if posed then
 		v.fov, v.fovVel, v.kick, v.kickVel = FOCUS.worldFovTarget * v.focus, 0, 0, 0
 	end
+	stepSpecks(v, dt)
 	showToy(v, not hide)
 	-- The low tier keeps the kick (an action) and drops the idle drift (its time held at 0: sin(0) = 0).
 	local cameraCF = if reduced
@@ -1186,6 +1464,7 @@ local function step(v: View, dt: number, now: number): boolean
 		v.viewport.ImageTransparency = ghost
 	end
 	stepPad(v, cameraCF)
+	stepInspectButton(v)
 	debug.profileend()
 	return true
 end
@@ -1264,6 +1543,11 @@ local function newView(gui: ScreenGui, viewport: ViewportFrame, camera: Camera):
 		posedRig = nil,
 		touchGui = nil,
 		touchGuiOrder = 0,
+		inspect = nil,
+		specks = {},
+		squashY = 1,
+		squashVel = 0,
+		inspectButton = nil,
 	}
 end
 
@@ -1319,6 +1603,7 @@ local function hide()
 	destroyToy(v)
 	v.cleanup:clean()
 	destroyArms(v)
+	clearSpecks(v) -- the viewport stays (overlayOf): nothing of the showcase is left in it
 	local glow = v.glow
 	if glow then
 		glow:Destroy()
@@ -1485,6 +1770,32 @@ function ViewmodelController.debugPose(name: string?): boolean
 	return true
 end
 
+function ViewmodelController.inspect(): boolean
+	local v = view
+	return v ~= nil and startInspect(v)
+end
+
+function ViewmodelController.debugInspect(t: number?): boolean
+	local v = view
+	if v == nil then
+		return false
+	end
+	if t == nil then
+		return ViewmodelController.debugPose(nil)
+	end
+	local toy = v.toy
+	local track = if toy then InspectTracks.get(toy.id) else nil
+	if track == nil or t ~= t then
+		return false
+	end
+	ViewmodelController.debugPose(nil) -- lets go of another pose first (its rig press)
+	local at = math.clamp(t, 0, track.dur)
+	v.pose = { name = INSPECT_POSE, now = os.clock() }
+	setKind(v, "inspect")
+	v.inspect = { track = track, t = at, fired = InspectTracks.firedBy(track, at) } -- frozen: no event fires
+	return true
+end
+
 function ViewmodelController.setTouchGuiFallback(on: boolean)
 	touchGuiFallback = on == true
 	local v = view
@@ -1551,6 +1862,12 @@ function ViewmodelController.debugState(): { [string]: any }
 		rightRoll = v.right.roll,
 		camera = v.camera.CFrame,
 		pose = if v.pose then v.pose.name else nil,
+		inspecting = v.inspect ~= nil,
+		inspectTime = if v.inspect then v.inspect.t else nil,
+		inspectFired = if v.inspect then v.inspect.fired else nil,
+		specks = #v.specks,
+		squash = v.squashY,
+		inspectButton = v.inspectButton ~= nil and v.inspectButton.root.Visible,
 		padShown = v.pad ~= nil and v.pad.button.Visible,
 		touchGuiRaised = v.touchGui ~= nil,
 		viewportParts = #v.viewport:GetDescendants(),
@@ -1581,6 +1898,7 @@ function ViewmodelController.init()
 	c:add(hide) -- added first, so it runs last
 	c:add(deps.Controls.bindAction(DUEL_ACTION, duelHandler))
 	c:add(deps.Controls.bindAction(PRACTICE_ACTION, practiceHandler))
+	c:add(deps.Controls.bindAction(INSPECT_ACTION, inspectHandler))
 	c:add(deps.FirstPerson.LookChanged:connect(function()
 		refresh()
 	end))

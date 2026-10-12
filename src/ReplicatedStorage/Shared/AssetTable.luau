@@ -262,6 +262,124 @@ local SLOTS: { AssetSlot } = {
 		"upload wax_rewax_1.wav and wax_rewax_2.wav (≤ 0.4 s; the second as a variant): the re-wax sparkle"
 	),
 
+	-- Inspect showcases (final polish 2026-10-11): the design's own first-person inspect one-shots (fp.js:159-192),
+	-- 2D (the toy is in your hands), played by ViewmodelController (Anim/InspectTracks recipes). Pat, plop and snapback
+	-- play sfx.squish / sfx.squeezeRelease at the toy's pitch, the hop sfx.pop and the roar sfx.dragonRoar (the slots
+	-- that already hold those design sounds). The expected files are in "Squishy Duels sounds to upload\2 Extras
+	-- (optional)\" (renders of the design recipes); the two whooshes are not rendered yet.
+	soundSlot(
+		"sfx.inspect.flick",
+		"SFX",
+		false,
+		nil,
+		"Kitty Bread's ear flick; design fp.js:173 triangle 900->1300 Hz 0.08 s (0.09 s); file 'inspect - ear flick.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.whoosh",
+		"SFX",
+		false,
+		nil,
+		"flip / twirl / toss / swish (Toast, Banana, Donut, Pancake Pup, Mochi Fox); design fx.js:39 whoosh(0.22), fp.js:175 (0.22 s); file 'inspect - flip or twirl whoosh.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.flap",
+		"SFX",
+		false,
+		nil,
+		"Birdie's and the Dragon's wing flap; design fx.js:39 whoosh(0.12), fp.js:180 (0.12 s); file 'inspect - wing flap.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.tap",
+		"SFX",
+		false,
+		nil,
+		"Toast's crust tap; design fp.js:176 triangle 620->560 Hz 0.05 s (0.06 s); file 'inspect - crust tap.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.ring",
+		"SFX",
+		false,
+		nil,
+		"the banana phone; design fp.js:166 two square 1320 Hz beeps (0.25 s); file 'inspect - Banana phone ring.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.spread",
+		"SFX",
+		false,
+		nil,
+		"Butter's spreading slide; design fp.js:177 lowpass noise 900->500 Hz 0.4 s; file 'inspect - Butter spread.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.peek",
+		"SFX",
+		false,
+		nil,
+		"peek / sniff (Butter, Donut, Pancake Pup); design fp.js:178 sine 700->980 Hz 0.12 s; file 'inspect - peek or sniff.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.snap",
+		"SFX",
+		false,
+		nil,
+		"Chocolate's snap test with the foil glint; design fp.js:164 (0.37 s); file 'inspect - Chocolate snap.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.tweet",
+		"SFX",
+		false,
+		nil,
+		"Birdie's tweet; design fp.js:160 three sine chirps (0.23 s); file 'inspect - Birdie tweet.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.stretch",
+		"SFX",
+		false,
+		nil,
+		"Mochi Fox's mochi stretch; design fp.js:183 squish at 0.8 x pitch + sine 200->120 Hz 0.5 s; file 'inspect - Mochi Fox stretch.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.ribbit",
+		"SFX",
+		false,
+		nil,
+		"Strawberry Frog's ribbit; design fp.js:161 two sawtooth croaks (0.31 s); file 'inspect - Strawberry Frog ribbit.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.rattle",
+		"SFX",
+		false,
+		nil,
+		"Boba Bear's pearl rattle; design fp.js:162 six bandpass noise clicks (0.59 s); file 'inspect - Boba Bear pearl rattle.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.slurp",
+		"SFX",
+		false,
+		nil,
+		"Boba Bear's straw sip; design fp.js:163 bandpass noise 400->1400 Hz 0.45 s; file 'inspect - Boba Bear straw slurp.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.sparkle",
+		"SFX",
+		false,
+		nil,
+		"Cloud Bunny's float sparkle; design fx.js:41 sparkle(3), fp.js:189 (0.37 s); file 'sparkle.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.wiggle",
+		"SFX",
+		false,
+		nil,
+		"Cupcake Axolotl's gill wiggle; design fp.js:190 sine 500->800 Hz 0.1 s; file 'inspect - Cupcake Axolotl wiggle.wav'"
+	),
+	soundSlot(
+		"sfx.inspect.blub",
+		"SFX",
+		false,
+		nil,
+		"Cupcake Axolotl's peek bubbles; design fp.js:165 blub (0.34 s); file 'inspect - Cupcake Axolotl bubbles.wav'"
+	),
+
 	-- UI (§14.2)
 	soundSlot("ui.click", "UI", false, nil, "≤ 0.25 s; search: ui+click+soft, button+pop, menu+tick"),
 	soundSlot("ui.hover", "UI", false, nil, "≤ 0.25 s; search: ui+click+soft, button+pop, menu+tick"),

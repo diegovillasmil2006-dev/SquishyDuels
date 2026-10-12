@@ -236,13 +236,20 @@ return function(t: Context)
 		label:Destroy()
 		local title = Theme.label({ Name = "Title", Text = "x" }, "Title")
 		local outline = title:FindFirstChild("SD_Outline") :: UIStroke
-		expect.truthy(outline ~= nil and outline.Enabled)
+		expect.truthy(outline and outline.Enabled)
 		expect.equal(outline.Thickness, 3)
 		-- A given colour has no outline.
 		Theme.text(title, "Title", nil, Theme.Colors.ink2)
 		expect.falsy(outline.Enabled)
 		title:Destroy()
 	end)
+
+	-- Polish item 20 (2026-10-10): on the first run after a Studio restart the fonts load inside the first measures,
+	-- which could pass the 5 s case limit. The text measure is warmed once per kind here, while the cases are built
+	-- (RunUnitTest gives the build no limit), with a text of its own, so the case still measures fresh texts.
+	for _, kind in { "Body", "Small", "Button", "Chip", "Title" } do
+		pcall(Theme.textBounds, "Warm-up", kind)
+	end
 
 	t.test("textBounds always answers with a size that grows with the text", function()
 		for _, kind in { "Body", "Small", "Button", "Chip", "Title" } do
@@ -271,7 +278,7 @@ return function(t: Context)
 		expect.truthy(sameColor(stroke.Color, Theme.Colors.inkUI))
 		expect.equal(stroke.Thickness, Theme.Stroke.ink)
 		local rim = panel:FindFirstChild("SD_Rim") :: UIStroke
-		expect.truthy(rim ~= nil and rim:IsA("UIStroke"))
+		expect.truthy(rim and rim:IsA("UIStroke"))
 		expect.equal((rim :: any).BorderStrokePosition, Enum.BorderStrokePosition.Inner)
 		local foundGradient = panel:FindFirstChild("SD_Foam")
 		expect.truthy(foundGradient ~= nil and foundGradient:IsA("UIGradient"))
@@ -347,7 +354,7 @@ return function(t: Context)
 		expect.truthy(tab:FindFirstChild("SD_Shine") ~= nil)
 		expect.truthy(tab:FindFirstChild("SD_Rim") ~= nil)
 		local glow = panel:FindFirstChild("SD_HeaderGlow") :: Frame
-		expect.truthy(glow ~= nil)
+		expect.truthy(glow)
 		expect.equal(glow.Size.Y.Offset > pad.PaddingTop.Offset, true)
 		panel:Destroy()
 	end)

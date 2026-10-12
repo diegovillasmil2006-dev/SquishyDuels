@@ -255,19 +255,28 @@ local Strings = {
 		you = "You",
 		sideA = "Strawberry side",
 		sideB = "Mint side",
-		hintMouse = "Click Throw · Q Ultimate",
-		hintGamepad = "R2 Throw · L2 Ultimate",
+		-- Final polish (2026-10-11): the hints also name the dash (spec phase 5: C / ButtonB) and the first-person squeeze
+		-- (DuelSqueeze: F / ButtonX).
+		hintMouse = "Click Throw · Q Ultimate · C Dash · F Squeeze",
+		hintGamepad = "R2 Throw · L2 Ultimate · B Dash · X Squeeze",
 		-- Reading: the key hints when the locked loadout has no ultimate (the Ultimate button is hidden, §11.6).
-		hintMouseNoUlt = "Click Throw",
-		hintGamepadNoUlt = "R2 Throw",
+		hintMouseNoUlt = "Click Throw · C Dash · F Squeeze",
+		hintGamepadNoUlt = "R2 Throw · B Dash · X Squeeze",
 		-- Foam UI restyle (2026-10-09): the same key hints drawn as keycaps, one beside each meter's caption
-		-- (controls.throw / controls.ultimate) in the bottom dock.
+		-- (controls.throw / controls.ultimate / controls.dash / controls.squeeze) in the bottom dock.
 		key = {
 			throwMouse = "Click",
 			ultimateMouse = "Q",
 			throwGamepad = "R2",
 			ultimateGamepad = "L2",
+			dashMouse = "C",
+			dashGamepad = "B",
+			squeezeMouse = "F",
+			squeezeGamepad = "X",
 		},
+		-- Final polish (2026-10-11): under the duel bar while an enemy lane ultimate's telegraph runs and your body is in
+		-- its lane (Dragon Rush, Sprinkle Roller; UI/LaneCue).
+		inLane = "In the lane!",
 		forfeit = "Forfeit",
 		forfeitConfirm = "Forfeit the duel?",
 		-- Reading (DESIGN gives the question only): the confirm dialog's buttons and one line on what happens.

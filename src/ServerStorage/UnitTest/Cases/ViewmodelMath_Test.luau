@@ -12,7 +12,9 @@
 --   * overlayCamera: the inverse of the overlay's idle offset and kick (fp.js:660); toyFrame turns our -Z-facing toys
 --     like the design's; scaledFrame shows a uniform scale as a move along each ray from the eye;
 --   * overlayLight (§3.1's closest option), shakeFor (the design's shake curve is CameraController's), screenPoint;
---   * touchPadRect (over the toy, clear of the touch controls) and releasePoint (the own projectile's start).
+--   * touchPadRect (over the toy, clear of the touch controls) and releasePoint (the own projectile's start);
+--   * inspectButtonRect (final polish 2026-10-11): the touch Inspect button at the bottom middle, never in the
+--     thumbstick zone nor on Throw, Ultimate, Dash or Jump, always on screen.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -330,6 +332,58 @@ return function(t: Context)
 			failIfAny(problems)
 		end
 	)
+
+	t.test("inspectButtonRect: bottom middle, clear of the thumbstick zone and the touch buttons, on screen", function()
+		local problems: { string } = {}
+		local touch = Config.UI.Touch
+		local function overlaps(a: any, b: any): boolean
+			return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
+		end
+		local inset = touch.inspectButtonInset
+		expect.truthy(type(inset) == "number" and inset >= 0)
+		for _, screen in
+			{ Vector2.new(667, 375), Vector2.new(844 - 2 * 47, 390), Vector2.new(1280, 720), Vector2.new(768, 1024) }
+		do
+			for _, uiScale in { 0.85, 1.25 } do
+				local layout = ControlsController.touchLayout(screen, uiScale, nil)
+				local size = Vector2.new(120, 52) * uiScale
+				local rect = ViewmodelMath.inspectButtonRect(screen, size, inset * uiScale, layout)
+				local label = `{screen} x{uiScale}`
+				if
+					rect.x < 0
+					or rect.y < 0
+					or rect.x + rect.w > screen.X + 1e-6
+					or rect.y + rect.h > screen.Y + 1e-6
+				then
+					table.insert(problems, `{label}: off screen`)
+				end
+				local zone = {
+					x = 0,
+					y = screen.Y * (1 - touch.thumbstickZoneHeight),
+					w = screen.X * touch.thumbstickZoneWidth,
+					h = screen.Y * touch.thumbstickZoneHeight,
+				}
+				for name, blocker in
+					{
+						zone = zone,
+						throw = layout.throw,
+						ultimate = layout.ultimate,
+						dash = layout.dash,
+						jump = layout.jump,
+					}
+				do
+					if overlaps(rect, blocker) then
+						table.insert(problems, `{label}: the Inspect button overlaps {name}`)
+					end
+				end
+			end
+		end
+		-- On a wide screen nothing is in the way: centred, `inset` above the bottom.
+		local wide = ViewmodelMath.inspectButtonRect(Vector2.new(1920, 1080), Vector2.new(120, 52), 16, nil)
+		expect.near(wide.x, 900)
+		expect.near(wide.y, 1080 - 16 - 52)
+		failIfAny(problems)
+	end)
 
 	t.test("releasePoint: on the camera ray through the overlay toy, as big as the held model; cut by cover", function()
 		local camera = CFrame.lookAt(Vector3.new(10, 5, 3), Vector3.new(10, 5, -20))
