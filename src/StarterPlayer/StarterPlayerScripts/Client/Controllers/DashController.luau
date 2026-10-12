@@ -69,6 +69,7 @@ local FxPool = require(Client.Anim.FxPool)
 local FxShapes = require(Client.Anim.FxShapes)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
+local CatchController = require(script.Parent.CatchController)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
@@ -91,6 +92,7 @@ export type GateFacts = {
 	rooted: boolean, -- an ultimate's telegraph or recovery
 	windup: boolean, -- a throw windup
 	ultBusy: boolean, -- an ultimate's cast or telegraph
+	crushing: boolean?, -- feature 1: the hands hold a caught toy (user decision 2026-10-11: no dash while crushing)
 	grounded: boolean,
 	now: number, -- server time
 	lastDashAt: number, -- server time of the own last dash (-math.huge before one)
@@ -315,6 +317,7 @@ local function factsNow(now: number, root: BasePart?, humanoid: Humanoid?): Gate
 		rooted = ThrowController.getUltState().rooted,
 		windup = windupBusy(),
 		ultBusy = ultBusy(),
+		crushing = CatchController.state().crushing, -- feature 1
 		grounded = grounded,
 		now = now,
 		lastDashAt = lastDashAt,
@@ -754,7 +757,7 @@ function DashController.gate(facts: GateFacts): string?
 	if context == "duel" and (not LIVE_PHASES[facts.phase or ""] or not facts.inZone) then
 		return REASON_CONTEXT
 	end
-	if facts.dashing or facts.rooted or facts.windup or facts.ultBusy then
+	if facts.dashing or facts.rooted or facts.windup or facts.ultBusy or facts.crushing == true then
 		return REASON_BUSY
 	end
 	if not facts.grounded then

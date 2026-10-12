@@ -1,7 +1,8 @@
 --!strict
 -- Config.Combat: hitbox, throw validation tolerances, lag, aim assist, throw stat bands and the power budget
--- (DESIGN §5.5-§5.10). Shared, data only. All [P]. Duel rules (lives, cooldown clamp, projectile limits, phase
--- timings) are in Config.Duel.Rules; Dragon Rush is in Config.Abilities.
+-- (DESIGN §5.5-§5.10), and feature 1's charge throw and catch (Charge, Catch). Shared, data only. All [P]. Duel rules
+-- (lives, cooldown clamp, projectile limits, phase timings) are in Config.Duel.Rules; Dragon Rush is in
+-- Config.Abilities.
 
 export type AimAssist = { enabled: boolean, coneDeg: number, strength: number }
 export type Band = { min: number, max: number }
@@ -109,6 +110,46 @@ local Combat = {
 	-- target's path: Shared/Practice/PracticeTargets (from World/WorldLayout.PracticeRange).
 	Practice = {
 		targetDownSeconds = 1.0, -- a hit target stays "down" this long
+	},
+
+	-- Feature 1 (2026-10-11, the user-approved plan; design: the combat-effects page "Squishy Combat FP v2.html",
+	-- "html:<line>" below): the charge throw. Hold Throw to charge c 0 -> 1, release to throw (Duel.Rules.HoldToCharge).
+	-- Server-authoritative (Shared/ThrowCharge, Logic/ThrowRules): the client sends ChargeStart(clientTime) when its
+	-- charge starts; at the ThrowRequest the server measures c from its own record (each press time lag-compensated as
+	-- §5.6 #7, the charge counted only from the moment the throw was ready, clamped 0..1, no record = 0) and throws at
+	-- the toy's own speed × (1 + speedGain·c). ThrowStarted carries c as `power`. Looks: Config.FirstPerson.charge,
+	-- Config.Vfx.Charge, Config.UI.Reticle; the tone: Config.Audio.charge.
+	Charge = {
+		seconds = 1.0, -- c rises 0 -> 1 over this long (design: html:323, 499 "charge + dt / 1.0")
+		speedGain = 17 / 20, -- design: html:330 (speed 20 + 17c over the uncharged 20)
+		walkFactor = 5.2 / 7, -- walk speed × this while charging (design: html:437: 5.2 against 7)
+		fovNarrowDeg = 4, -- the world FOV narrows by this × c while charging (design: html:463)
+		hitStopSeconds = 0.045, -- the thrower's hit-stop when a full charge is released (design: html:339)
+	},
+
+	-- Feature 1 (2026-10-11): the catch (design: html:342-354, 528-570, 614). Server-authoritative (CombatService,
+	-- Logic/CatchRules): CatchRequest(clientTime) opens a window at the validated press time; an OPPONENT's normal throw
+	-- (never an ultimate) that comes within radiusStuds of the catcher while moving toward them during the window is
+	-- caught: it ends without a hit, the catcher crushes it for crushSeconds, then it bursts and the thrower loses 1 life
+	-- (user decision 2026-10-11).
+	Catch = {
+		windowSeconds = 0.42, -- the hands stay open this long after the press (design: html:532)
+		cooldownSeconds = 0.75, -- from the press (design: html:344); a press also cancels a charge (design: html:344)
+		radiusStuds = 2.7 / 0.28, -- design: html:614 (d < 2.7 m; 1 stud = 0.28 m, so about 9.64 studs)
+		-- build choice 2026-10-11 (NOT IN DESIGN: the design measures from its camera, html:613): the catch is measured
+		-- from the catcher's HumanoidRootPart + this (about the eyes of a default avatar, where first person looks from).
+		centreAboveRootStuds = 1.5,
+		crushSeconds = 1.02, -- the caught toy bursts this long after the catch (design: html:554)
+		-- The hands are free again this long after the catch (design: html:567, "t > 1.5"): no throw, catch, dash or
+		-- ultimate before (user decision 2026-10-11: none while crushing; build choice: until the hands are back).
+		handsBackSeconds = 1.5,
+		burstHitStopSeconds = 0.12, -- the catcher's hit-stop at the burst (design: html:560)
+		-- user decision 2026-10-11: the thrower loses 1 life at the burst, so it costs the life even inside the thrower's
+		-- invulnerability (build choice: it then gives HitInvulnSeconds like any lost life); false = a normal hit.
+		burstIgnoresInvuln = true,
+		-- build choice 2026-10-11 (NOT IN DESIGN): the server's cooldown check allows this much jitter, as
+		-- Duel.Rules.CooldownToleranceSeconds does for throws.
+		cooldownToleranceSeconds = 0.05,
 	},
 }
 

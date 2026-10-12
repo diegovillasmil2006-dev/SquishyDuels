@@ -74,6 +74,15 @@ local Strings = {
 			-- Reading (not in §2.10): §5.6 #4 "not rooted by Dragon Rush" (telegraph and recovery); spec phase 5: every
 			-- ultimate roots its caster the same way.
 			rooted = "You can't throw while using your ultimate.",
+			-- Feature 1 (2026-10-11, not in §2.10): a throw while the hands are open for a catch or crushing a caught toy.
+			busy = "Your hands are busy.",
+		},
+		-- Feature 1 (2026-10-11, not in §2.10): a CatchRequest the server refuses (Logic/CatchRules). The client's own
+		-- gate mirrors these rules, so they are never shown; each code still has its text.
+		catch = {
+			context = "You can't catch here.",
+			cooldown = "Not ready to catch yet.",
+			busy = "Your hands are busy.",
 		},
 		ult = {
 			notReady = "Your ultimate isn't ready yet.",
@@ -198,6 +207,8 @@ local Strings = {
 		throw = "Throw",
 		ultimate = "Ultimate",
 		dash = "Dash", -- spec phase 5: the touch Dash button (user decision 2026-10-11)
+		-- Feature 1 (2026-10-11): the touch Catch button and the dock's caption (design: html:96 "Catch").
+		catch = "Catch",
 		squeeze = "Squeeze",
 		-- Text button prompts (§11.4: button prompts are text, "E", "X", "R2", "B"; §11.7 input map). Reading: shown
 		-- as "{action} ({key})", e.g. "Inspect (V)".
@@ -256,14 +267,14 @@ local Strings = {
 		sideA = "Strawberry side",
 		sideB = "Mint side",
 		-- Final polish (2026-10-11): the hints also name the dash (spec phase 5: C / ButtonB) and the first-person squeeze
-		-- (DuelSqueeze: F / ButtonX).
-		hintMouse = "Click Throw · Q Ultimate · C Dash · F Squeeze",
-		hintGamepad = "R2 Throw · L2 Ultimate · B Dash · X Squeeze",
+		-- (DuelSqueeze: F / ButtonX). Feature 1 (2026-10-11): and the catch (RMB or E / ButtonL1; design: html:96).
+		hintMouse = "Click Throw · RMB/E Catch · Q Ultimate · C Dash · F Squeeze",
+		hintGamepad = "R2 Throw · L1 Catch · L2 Ultimate · B Dash · X Squeeze",
 		-- Reading: the key hints when the locked loadout has no ultimate (the Ultimate button is hidden, §11.6).
-		hintMouseNoUlt = "Click Throw · C Dash · F Squeeze",
-		hintGamepadNoUlt = "R2 Throw · B Dash · X Squeeze",
+		hintMouseNoUlt = "Click Throw · RMB/E Catch · C Dash · F Squeeze",
+		hintGamepadNoUlt = "R2 Throw · L1 Catch · B Dash · X Squeeze",
 		-- Foam UI restyle (2026-10-09): the same key hints drawn as keycaps, one beside each meter's caption
-		-- (controls.throw / controls.ultimate / controls.dash / controls.squeeze) in the bottom dock.
+		-- (controls.throw / controls.catch / controls.ultimate / controls.dash / controls.squeeze) in the bottom dock.
 		key = {
 			throwMouse = "Click",
 			ultimateMouse = "Q",
@@ -273,7 +284,15 @@ local Strings = {
 			dashGamepad = "B",
 			squeezeMouse = "F",
 			squeezeGamepad = "X",
+			catchMouse = "RMB/E", -- feature 1 (design: html:96 "RMB / E")
+			catchGamepad = "L1", -- feature 1, build choice 2026-10-11 (NOT IN DESIGN: a mouse page)
 		},
+		-- Feature 1 (2026-10-11): the catch's big words (design: html:352, 563), and the prompt under the reticle while an
+		-- opponent's throw comes at you (design: html:88 "Catch!" with its keys).
+		caught = "CAUGHT!",
+		squished = "SQUISHED!",
+		catchPrompt = "Catch!",
+		catchPromptKey = "Catch! {key}",
 		-- Final polish (2026-10-11): under the duel bar while an enemy lane ultimate's telegraph runs and your body is in
 		-- its lane (Dragon Rush, Sprinkle Roller; UI/LaneCue).
 		inLane = "In the lane!",

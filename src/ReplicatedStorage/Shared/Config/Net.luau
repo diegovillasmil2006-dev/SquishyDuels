@@ -28,6 +28,10 @@ local Net = {
 		-- Spec phase 5: the dash's 2 s cooldown is DashRules' (the client sends at most one per cooldown); the bucket
 		-- only stops floods.
 		DashRequest = { rate = 1, burst = 3 },
+		-- Feature 1 (2026-10-11): the client sends one ChargeStart before each throw (ThrowRequest's own bucket); the
+		-- catch's 0.75 s cooldown is CombatService's (Config.Combat.Catch), the bucket only stops floods.
+		ChargeStart = { rate = 3, burst = 4 },
+		CatchRequest = { rate = 2, burst = 3 },
 		-- The flood guard (> 20/s dropped silently, = Config.Squeeze.floodPerSecond): every click pays, so normal
 		-- fast clicking (the client sends at most 12 per second) is never rate-limited, counted as a violation or
 		-- muted; a macro above 20/s still is, once it has used up the burst. Burst 60 = 5 s of the 12-per-second

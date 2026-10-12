@@ -9,7 +9,8 @@
 --      (a payload violation for NetService's abuse count). lastSeq advances as soon as seq passes, so a refused request
 --      can never be replayed.
 --   3. Context: a duel in Active or SuddenDeath, or the practice range; alive with a server HRP ......... dash.context
---   4. Not rooted (an ultimate's wind-up or recovery) and not in a throw windup ........................ dash.busy
+--   4. Not rooted (an ultimate's wind-up or recovery), not in a throw windup and, feature 1 (2026-10-11, user decision:
+--      no dash while crushing), not crushing a caught toy ........................................... dash.busy
 --   5. On the ground: HRP height above the floor <= standing height (Hitbox: radius - bottomOffset = 3.0) +
 --      groundToleranceStuds (the design ignores a dash in the air, fp.js:524) .......................... dash.airborne
 --   6. Cooldown: now >= lastDashAt + cooldownSeconds - cooldownToleranceSeconds ............................ dash.cooldown
@@ -53,6 +54,7 @@ export type DashState = {
 	floorY: number, -- the arena slot's floor, or the practice lane floor
 	rooted: boolean, -- an ultimate's telegraph or recovery (rootedUntil)
 	windup: boolean, -- a throw windup (windupUntil)
+	crushing: boolean?, -- feature 1: crushing a caught toy until the hands are back (nil = no)
 	zone: Zone?, -- duel: the own half (the place check and the end clamp); practice: the range bounds (end clamp)
 	-- The distance from `origin` along the flat unit `dir` (at most `distance`) at which the dasher's body meets cover,
 	-- or nil when the way is clear (DashService: a Spherecast against the slot's Geometry).
@@ -132,7 +134,7 @@ function DashRules.validate(input: DashInput, state: DashState, cfg: DashConfig?
 	end
 
 	-- 4. Busy.
-	if state.rooted or state.windup then
+	if state.rooted or state.windup or state.crushing == true then
 		return refuse(state, REASON_BUSY, seq, false)
 	end
 

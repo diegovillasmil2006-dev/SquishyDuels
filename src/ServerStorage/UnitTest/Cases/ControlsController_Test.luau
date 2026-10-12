@@ -21,8 +21,8 @@
 --   a Begin that arrives while the action is not live never does. Driven through casCallbackFor() (no CAS binding).
 -- Part 6 (DESIGN §10.6): Inspect's R2 / L2 zoom begins past Config.Inspect.Input.triggerDeadzone (0.05), so its speed
 --   follows Position.Z from the start; Throw / Ultimate keep the 0.5 edge.
--- First person (spec 2026-10-10 §3.1, §3.5): DuelSqueeze (F, E, ButtonX) and DuelForfeit (Backspace) live only in the
---   Duel context; PracticeSqueeze (F, E, ButtonX) only in the Practice context, bound at Medium + 1 (aboveLobby): above
+-- First person (spec 2026-10-10 §3.1, §3.5): DuelSqueeze (F, ButtonX; feature 1 moved E to the catch) and DuelForfeit
+--   (Backspace) live only in the Duel context; PracticeSqueeze (F, E, ButtonX) only in the Practice context, bound at Medium + 1 (aboveLobby): above
 --   the lobby Squeeze, under every High action; Inspect's F still passes while Inspect is closed; with a back handler
 --   pushed (the Modal context on) Backspace reaches ModalBack and never DuelForfeit, with none DuelForfeit runs.
 -- Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2): a left click or a touch on the 3D world presses the lobby
@@ -34,7 +34,12 @@
 -- Final polish (2026-10-11): the first-person Inspect showcase, HandInspect = R (the design's key, fp.js:656) and
 --   ButtonL1 (build choice, NOT IN DESIGN), in the Lobby context (live in the lobby look and the practice range, never
 --   from Matched through Returning); no other world action takes R or ButtonL1 (Inspect's R and the Modal tabs'
---   ButtonL1 are overlay actions, and an open modal or Inspect blocks every world action).
+--   ButtonL1 are overlay actions, and an open modal or Inspect blocks every world action; feature 1's Catch takes
+--   ButtonL1 in the Duel context only, which is never on with the Lobby context).
+-- Feature 1 (2026-10-11, the catch; design: the combat-effects page "Squishy Combat FP v2.html", html:96, 395-398): Catch
+--   is E and ButtonL1 in the Duel context (the right mouse button comes through UserInputService, as the world clicks);
+--   no other duel action takes them; the touch Catch button (catchButton × UIScale, at least minTargetFloor) sits on
+--   screen, out of the thumbstick zone and `gap` from Throw, Ultimate, Dash and the jump button.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -477,9 +482,12 @@ return function(t: Context)
 	t.test(
 		"DuelSqueeze and DuelForfeit sit in the Duel context, PracticeSqueeze in Practice, with their keys",
 		function()
-			local squeezeKeys = { Enum.KeyCode.F, Enum.KeyCode.E, Enum.KeyCode.ButtonX }
-			expect.deepEqual(Controls.inputsOf("DuelSqueeze"), squeezeKeys)
-			expect.deepEqual(Controls.inputsOf("PracticeSqueeze"), squeezeKeys)
+			-- Feature 1: E is the duel's catch (design: html:96), so DuelSqueeze keeps F and ButtonX.
+			expect.deepEqual(Controls.inputsOf("DuelSqueeze"), { Enum.KeyCode.F, Enum.KeyCode.ButtonX })
+			expect.deepEqual(
+				Controls.inputsOf("PracticeSqueeze"),
+				{ Enum.KeyCode.F, Enum.KeyCode.E, Enum.KeyCode.ButtonX }
+			)
 			expect.deepEqual(Controls.inputsOf("DuelForfeit"), { Enum.KeyCode.Backspace }) -- keyboard only
 			expect.equal(Controls.contextOf("DuelSqueeze"), "Duel")
 			expect.equal(Controls.contextOf("DuelForfeit"), "Duel")
@@ -690,10 +698,63 @@ return function(t: Context)
 				"PracticeThrow",
 				"PracticeUltimate",
 				"PracticeSqueeze",
+				"Catch",
 			}
 		do
 			expect.falsy(has(action, Enum.KeyCode.C))
 			expect.falsy(has(action, Enum.KeyCode.ButtonB))
+		end
+	end)
+
+	-- Feature 1 (2026-10-11): the catch.
+	t.test("the catch: E and ButtonL1 in the Duel context, and no other duel action takes them", function()
+		expect.deepEqual(Controls.inputsOf("Catch"), { Enum.KeyCode.E, Enum.KeyCode.ButtonL1 })
+		expect.equal(Controls.contextOf("Catch"), "Duel")
+		expect.equal(Controls.priorityOfAction("Catch"), Enum.ContextActionPriority.Medium.Value)
+		for _, action in { "Throw", "Ultimate", "Dash", "DuelSqueeze", "DuelForfeit" } do
+			local inputs = Controls.inputsOf(action) :: { EnumItem }
+			expect.equal(table.find(inputs, Enum.KeyCode.E), nil)
+			expect.equal(table.find(inputs, Enum.KeyCode.ButtonL1), nil)
+		end
+	end)
+
+	t.test("the touch Catch button: its size, on screen, out of the thumbstick zone, apart from the others", function()
+		local touch = Config.UI.Touch
+		local scaleConfig = Config.UI.Scale
+		-- The phones, then big screens whose 120 px jump button crowds Throw's corner (the catch goes further out).
+		local screens = {
+			Vector2.new(1280, 720),
+			Vector2.new(667, 375),
+			Vector2.new(1920, 1080),
+			Vector2.new(812, 375),
+			Vector2.new(844, 390),
+			Vector2.new(568, 320),
+			Vector2.new(1024, 768),
+			Vector2.new(1440, 900),
+			Vector2.new(1024, 600),
+			Vector2.new(2560, 1440),
+		}
+		for _, screen in screens do
+			local scale = math.clamp(screen.Y / scaleConfig.referenceHeight, scaleConfig.min, scaleConfig.max)
+			local layout = Controls.touchLayout(screen, scale, nil)
+			local catch = layout.catch
+			expect.near(catch.w, math.max(touch.catchButton * scale, touch.minTargetFloor), 1e-9)
+			expect.truthy(catch.x >= 0 and catch.y >= 0)
+			expect.truthy(catch.x + catch.w <= screen.X + 1e-6 and catch.y + catch.h <= screen.Y + 1e-6)
+			local inZone = catch.x < screen.X * touch.thumbstickZoneWidth
+				and catch.y + catch.h > screen.Y * (1 - touch.thumbstickZoneHeight)
+			expect.falsy(inZone)
+			local centre = Vector2.new(catch.x + catch.w / 2, catch.y + catch.h / 2)
+			for _, other in { layout.throw, layout.ultimate, layout.dash } do
+				local otherCentre = Vector2.new(other.x + other.w / 2, other.y + other.h / 2)
+				expect.truthy((centre - otherCentre).Magnitude >= catch.w / 2 + other.w / 2 + touch.gap - 1e-3)
+			end
+			local jump = layout.jump
+			local apart = catch.x + catch.w + touch.gap <= jump.x + 1e-6
+				or jump.x + jump.w + touch.gap <= catch.x + 1e-6
+				or catch.y + catch.h + touch.gap <= jump.y + 1e-6
+				or jump.y + jump.h + touch.gap <= catch.y + 1e-6
+			expect.truthy(apart)
 		end
 	end)
 
@@ -725,6 +786,9 @@ return function(t: Context)
 		-- The overlay actions that share them only run while their own screen is open.
 		expect.equal(Controls.contextOf("InspectReset"), "Inspect")
 		expect.equal(Controls.contextOf("ModalTabPrevious"), "Modal")
+		-- Feature 1: Catch takes ButtonL1 only in the Duel context, never on with the Lobby one; never R.
+		expect.equal(Controls.contextOf("Catch"), "Duel")
+		expect.equal(table.find(Controls.inputsOf("Catch") :: { EnumItem }, Enum.KeyCode.R), nil)
 	end)
 
 	t.test("the touch Dash button: its size, on screen, out of the thumbstick zone, apart from the others", function()

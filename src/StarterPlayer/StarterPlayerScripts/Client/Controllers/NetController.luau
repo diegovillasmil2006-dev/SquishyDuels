@@ -401,6 +401,15 @@ function NetController.dashRequest(dir: Vector3, clientTime: number): number?
 	return if NetController.fire("DashRequest", seq, dir, clientTime) then seq else nil
 end
 
+-- Feature 1 (2026-10-11): the charge throw's start and the catch press, each the press time only. True when sent.
+function NetController.chargeStart(clientTime: number): boolean
+	return NetController.fire("ChargeStart", clientTime)
+end
+
+function NetController.catchRequest(clientTime: number): boolean
+	return NetController.fire("CatchRequest", clientTime)
+end
+
 function NetController.equipSquishyAsync(squishyId: string): Result
 	return NetController.invokeAsync("EquipSquishy", squishyId)
 end
@@ -462,6 +471,10 @@ end
 
 function NetController.onDashStarted(handler: (Types.DashStartedPayload) -> ()): Connection
 	return NetController.on("DashStarted", handler)
+end
+
+function NetController.onCatchEvent(handler: (Types.CatchEventPayload) -> ()): Connection
+	return NetController.on("CatchEvent", handler)
 end
 
 function NetController.onDuelResult(handler: (Types.DuelResultPayload) -> ()): Connection

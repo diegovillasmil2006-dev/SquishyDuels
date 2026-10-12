@@ -32,6 +32,10 @@ local UI = {
 		-- Spec phase 5 (user decision 2026-10-11): the Dash button, a third round button in the cluster, left of Throw
 		-- (ControlsController.touchLayout). Reading: the Ultimate button's size.
 		dashButton = 80,
+		-- Feature 1 (2026-10-11): the Catch button, a fourth round button in the duel cluster (the design is a mouse page:
+		-- RMB / E, html:88); build choice 2026-10-11 (NOT IN DESIGN): the Ultimate button's size, above Throw
+		-- (ControlsController.touchLayout keeps it clear of the thumbstick zone, Jump and the other buttons).
+		catchButton = 80,
 		-- Final polish (2026-10-11), build choice (NOT IN DESIGN for touch; the design's own page has an "Inspect R" button
 		-- in its bottom bar): the first-person Inspect button sits this far above the bottom of the safe area, in the
 		-- middle (Anim/ViewmodelMath.inspectButtonRect keeps it clear of the touch controls).
@@ -192,6 +196,29 @@ local UI = {
 	-- the duel bar, or under the banner that shows there.
 	LaneCue = {
 		gapPx = 8,
+	},
+
+	-- Feature 1 (2026-10-11): the charge on the reticle, the catch prompt under it and the catch's big words
+	-- (DuelController, PracticeController, UI/DuelFormat; design: the combat-effects page "Squishy Combat FP v2.html",
+	-- html:28, 88, 301, 670-674).
+	Reticle = {
+		-- build choice 2026-10-11 (NOT IN DESIGN: the design's ring is solid, html:28): the charge fills the reticle in the
+		-- toy's colour at this transparency, clockwise (the cooldown's pie, which never shows while charging).
+		chargeFillTransparency = 0.2,
+		-- At full the reticle pulses chargeFullScale + chargePulse·sin(chargePulseRate·t) (design: html:671); static under
+		-- ReducedMotion.
+		chargeFullScale = 1.08,
+		chargePulse = 0.04,
+		chargePulseRate = 18, -- rad/s (2.9 Hz)
+		-- "Catch!" under the reticle while an opponent's throw within catchPromptStuds comes at you and the catch is ready
+		-- (design: html:88, 673-674: within 9 m); its opacity is catchPromptFrom + (1 - catchPromptFrom)·sin(2π·Hz·t)
+		-- (design: html:674, 0.75 + 0.25·sin(20t): its 3.2 Hz held to the 3 Hz flicker limit); steady under ReducedMotion.
+		catchPromptStuds = 9 / 0.28,
+		catchPromptFrom = 0.75,
+		catchPromptHz = 3,
+		-- "CAUGHT!" and "SQUISHED!" (UIController banners under the duel bar, in the caught toy's colour) show this long
+		-- (design: html:301, the toast's 1.1 s).
+		bigWordSeconds = 1.1,
 	},
 
 	Result = {

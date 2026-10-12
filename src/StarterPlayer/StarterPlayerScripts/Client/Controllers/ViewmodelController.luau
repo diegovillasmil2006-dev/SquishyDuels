@@ -86,6 +86,26 @@
 -- for pictures (no event fires). The touch Inspect button (UI/Components/Button, the "inspect" glyph, common.inspect)
 -- sits in SD_ViewmodelPad at the bottom middle (ViewmodelMath.inspectButtonRect, Config.UI.Touch.inspectButtonInset)
 -- while touch is the input and the look is lobby or practice; a press while the toy is busy does nothing (as R).
+-- Feature 1 (2026-10-11; design: the combat-effects page "Squishy Combat FP v2.html", html:<line>; the poses are
+-- Anim/ChargePoses', the effect parts Anim/ChargeFx's, the numbers Config.FirstPerson.v2 / charge / catch / crush):
+--   * charge (ThrowController.localCharge, from the hold, idle, the pop-in or a showcase): the toy to the right and
+--     cocked, the right hand under it, the left hand away and back to steady it, the jitter near full, the toy's squash
+--     scale and the squish face at full (its face is shown over the mirrored rig's), the glow ball in the toy's accent,
+--     the orbit from 0.4, the white shell, the camera shake and a ring every 0.32 s at full, a white ring the moment
+--     it is full, sparks gathering in (Anim/Specks "gather"); the world FOV narrows by Charge.fovNarrowDeg × c on the
+--     same FOV spring as the focus (design: html:463). The release that follows plays the throw track from that pose;
+--     its kick and FOV kick grow with the charge (ThrowCharge.release; design: html:333), with rings and sparks at the
+--     hand from c 0.45 and the hit-stop at full (design: html:335-339).
+--   * catch (CatchController.localCatch "open"): the hands open in front, the toy tucked away below (design:
+--     html:528-533); back to the hold when the window closes.
+--   * crush ("crush" / "after"): the caught toy (a "Viewport" copy of the thrower's squishy, crush.toyScale of the held
+--     one) arrives on its own spring, shakes, wobbles and squashes between the two palms (the overlay's two-palm
+--     squeeze pose on it, ViewmodelMath.palms), its "wow" then squish face, its glow, orbit and specks, the camera
+--     shake rising; the catch's kick, FOV kick, ring and sparks when it arrives (design: html:351-353); at burstAt the
+--     burst: specks, three rings, the FOV kick, the kick and the hands thrown apart (design: html:554-561), the toy
+--     gone; empty hands until the hands are back, then the held toy pops in. The flash, the sounds and the hit-stops
+--     are CatchController's; during any hit-stop the overlay runs at v2.hitStopTimeScale (design: html:422).
+--   ReducedMotion: no jitter, wobble, pulse or flicker, half the specks (as the showcases).
 --
 -- API
 --   ViewmodelController.isShown() -> boolean   the overlay is up
@@ -110,9 +130,9 @@
 --   ViewmodelController.debugInspect(t?) -> boolean   freezes the held toy's showcase at t seconds for pictures (every
 --       spring on its target, no event); nil lets the overlay live again (as debugPose(nil))
 --   ViewmodelController.debugState() / useDeps(overrides?) / init() / destroy()
--- Require direction: it may require FirstPersonController, HeldSquishyController, ThrowController, ControlsController,
--- NetController, StateController, SoundController, UIController and CameraController, never ProjectileRenderer,
--- VfxController, DuelController or PracticeController.
+-- Require direction: it may require FirstPersonController, HeldSquishyController, ThrowController, CatchController
+-- (feature 1), ControlsController, NetController, StateController, SoundController, UIController and CameraController,
+-- never ProjectileRenderer, VfxController, DuelController or PracticeController.
 
 -- Services
 
@@ -130,10 +150,14 @@ local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local SquishyBlueprints = require(Shared.Art.SquishyBlueprints)
 local Strings = require(Shared.Strings)
+local ThrowCharge = require(Shared.ThrowCharge)
 
 local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
+local ChargeFx = require(Client.Anim.ChargeFx)
+local ChargePoses = require(Client.Anim.ChargePoses)
 local DesignArm = require(Client.Anim.DesignArm)
+local HitStop = require(Client.Anim.HitStop)
 local HoldSqueeze = require(Client.Anim.HoldSqueeze)
 local InspectTracks = require(Client.Anim.InspectTracks)
 local MeshQuality = require(Client.Anim.MeshQuality)
@@ -148,6 +172,7 @@ local Tweens = require(Client.Anim.Tweens)
 local ViewmodelMath = require(Client.Anim.ViewmodelMath)
 local SquishyCache = require(Client.Models.SquishyCache)
 local CameraController = require(script.Parent.CameraController)
+local CatchController = require(script.Parent.CatchController)
 local ControlsController = require(script.Parent.ControlsController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
@@ -159,7 +184,24 @@ local UIController = require(script.Parent.UIController)
 
 -- Types
 
-type Kind = "equip" | "idle" | "throw" | "ult" | "empty" | "inspect"
+type Kind = "equip" | "idle" | "throw" | "ult" | "empty" | "inspect" | "charge" | "catch" | "crush"
+
+-- Feature 1: the caught toy on the overlay (the crush), its own spring, and whether it burst.
+type Caught = {
+	id: string,
+	model: Model,
+	deformer: SquishDeformer.Deformer,
+	centre: Vector3,
+	hw: number, -- its half width (du)
+	radius: number, -- its longest half side (du): the effects' unit
+	colours: { Color3 },
+	pos: Vector3, -- du, on its spring
+	vel: Vector3,
+	out: SquishRig.Out,
+	burstAt: number, -- server time
+	burst: boolean,
+	arrived: boolean, -- the catch's kick and effects played
+}
 
 type Toy = {
 	id: string,
@@ -206,6 +248,7 @@ type Throw = {
 	released: boolean,
 	kicked: boolean, -- the release's kick and FOV kick are on
 	roar: boolean, -- the Dragon's roar shake is still due (fp.js:305)
+	power: number, -- feature 1: the charge it was thrown with (0 = uncharged)
 }
 
 -- Seconds into the charge; the charge share 0-1 over the telegraph (`telegraph` s); the glow's colour.
@@ -287,6 +330,18 @@ type View = {
 	squashY: number,
 	squashVel: number,
 	inspectButton: Button.Button?,
+	-- Feature 1: the charge (its level and seconds this frame, the full ring's timer and whether the white ring fired,
+	-- the sparks owed), the orbit's turn, the face shown over the mirrored rig's, the effect parts and the caught toy.
+	chargeC: number,
+	chargeT: number,
+	chargeRingIn: number,
+	chargeFull: boolean,
+	speckDebt: number,
+	orbitAngle: number,
+	faceOverride: SquishRig.Face?,
+	fx: ChargeFx.ChargeFx,
+	caught: Caught?,
+	catchT: number, -- seconds since the press ("catch") or the catch ("crush")
 }
 
 -- Constants
@@ -337,12 +392,19 @@ local REDUCED_SPECKS = Config.Vfx.reducedParticleMultiplier
 local MIN_PART = 0.001 -- studs: Roblox's smallest part size (a speck's first and last frames are smaller)
 local SQUASH_REST, SQUASH_REST_SPEED = 0.002, 0.01 -- the squash spring is at rest (design: toys.js:452)
 local INSPECT_INSET = Config.UI.Touch.inspectButtonInset
+-- Feature 1 (2026-10-11): the charge, the catch and the crush (Config.FirstPerson.v2 / charge / catch / crush).
+local V2 = FP.v2
+local CHARGE = FP.charge
+local CATCH_FP = FP.catch
+local CRUSH = FP.crush
+local CAUGHT_NAME = "CaughtToy"
 
 -- The side-effecting surfaces the overlay touches; tests swap them (useDeps).
 local REAL_DEPS = {
 	FirstPerson = FirstPersonController,
 	Held = HeldSquishyController,
 	Throw = ThrowController,
+	Catch = CatchController, -- feature 1: localCatch()
 	Controls = ControlsController,
 	Net = NetController,
 	State = StateController,
@@ -523,7 +585,8 @@ local function fillOut(v: View): SquishRig.Out
 	local squash = if toy and v.squashY ~= 1 then InspectTracks.squashScale(v.squashY, toy.widen) else Vector3.one
 	out.S = deps.Deformer.clampScale(src.S / scale) * v.sq * squash
 	out.twist = src.twist
-	out.face, out.blink, out.cheek = src.face, src.blink, src.cheek
+	-- Feature 1: the squish face of a full charge shows over the rig's own (design: html:511).
+	out.face, out.blink, out.cheek = v.faceOverride or src.face, src.blink, src.cheek
 	out.sections, out.sectionsOn = src.sections, src.sectionsOn
 	return out
 end
@@ -644,9 +707,23 @@ end
 
 -- A showcase event's specks (Anim/Specks) as small parts in the overlay (particles draw nothing in a ViewportFrame):
 -- Neon for the design's unlit sparks and embers, round but the cubes.
-local function spawnSpecks(v: View, spec: Specks.Spec, toy: Toy, reduced: boolean)
-	local list = Specks.spawn(spec, v.toyPos, v.random, if reduced then REDUCED_SPECKS else 1, toy.colours)
+-- Feature 1: also the charge's and the crush's specks, at `at` (du) in `colours`, at most `cap` live in all.
+local function spawnSpecksAt(
+	v: View,
+	spec: Specks.Spec,
+	at: Vector3,
+	colours: { Color3 },
+	reduced: boolean,
+	cap: number?
+)
+	if cap ~= nil and #v.specks >= cap then
+		return
+	end
+	local list = Specks.spawn(spec, at, v.random, if reduced then REDUCED_SPECKS else 1, colours)
 	for _, state in list do
+		if cap ~= nil and #v.specks >= cap then
+			break
+		end
 		local part = Instance.new("Part")
 		part.Name = SPECK_NAME
 		part.Shape = if state.shape == "cube" then Enum.PartType.Block else Enum.PartType.Ball
@@ -662,6 +739,10 @@ local function spawnSpecks(v: View, spec: Specks.Spec, toy: Toy, reduced: boolea
 		part.Parent = v.viewport
 		table.insert(v.specks, { state = state, part = part :: BasePart })
 	end
+end
+
+local function spawnSpecks(v: View, spec: Specks.Spec, toy: Toy, reduced: boolean)
+	spawnSpecksAt(v, spec, v.toyPos, toy.colours, reduced, nil)
 end
 
 -- The specks fly and shrink (fx.js:131-139); a speck past its life goes.
@@ -804,7 +885,8 @@ end
 -- empty -> equip once the toy is in the hand again, equip -> idle at its end, back to empty when it leaves the hand.
 local function stepKind(v: View, holding: boolean)
 	local kind = v.kind
-	if kind == "throw" or kind == "ult" then
+	-- Feature 1: the charge, the open hands and the crush end by their own steps.
+	if kind == "throw" or kind == "ult" or kind == "charge" or kind == "catch" or kind == "crush" then
 		return
 	end
 	if not holding then
@@ -825,7 +907,12 @@ local function stepThrow(v: View, serverNow: number, holding: boolean)
 	local throw = v.throw
 	local fresh = tau ~= nil and releaseStart == nil and not cancelled
 	-- A windup also ends a running Inspect showcase (user decision 2026-10-11; setKind wraps its rotation spring).
-	local free = v.kind == "idle" or v.kind == "equip" or v.kind == "inspect" or (throw ~= nil and throw.released)
+	-- Feature 1: and a released charge, whose level the throw keeps (its kicks grow with it).
+	local free = v.kind == "idle"
+		or v.kind == "equip"
+		or v.kind == "inspect"
+		or v.kind == "charge"
+		or (throw ~= nil and throw.released)
 	if fresh and free and holding and v.toy then
 		throw = {
 			track = ThrowTracks.get(ThrowTracks.styleOf((v.toy :: Toy).id)),
@@ -836,6 +923,7 @@ local function stepThrow(v: View, serverNow: number, holding: boolean)
 			released = false,
 			kicked = false,
 			roar = (v.toy :: Toy).id == ROAR_TOY,
+			power = if v.kind == "charge" then v.chargeC else 0,
 		}
 		v.throw = throw
 		v.release = nil
@@ -892,6 +980,293 @@ local function stepUlt(v: View, dt: number, serverNow: number, holding: boolean)
 		v.rushReleased = phase == "release" -- a release's camera reaction comes in this frame's action (fp.js:331)
 		if kind == ("ult" :: Kind) then
 			setKind(v, if holding then "idle" else "empty")
+		end
+	end
+end
+
+-- Feature 1: the charge, the catch and the crush -----------------------------------------------------------------------
+
+-- One frame of the local charge (ThrowController.localCharge): from the hold (idle, the pop-in, a showcase) the kind
+-- becomes "charge"; a charge dropped without a throw goes back to the hold on the springs (a release turns it into the
+-- throw in stepThrow, before this).
+local function stepCharge(v: View, holding: boolean)
+	local c, t = deps.Throw.localCharge()
+	local kind: Kind = v.kind
+	local fromHold = kind == "idle" or kind == "equip" or kind == "inspect" or kind == "charge"
+	if c ~= nil and holding and v.toy and fromHold then
+		if kind ~= "charge" then
+			setKind(v, "charge")
+			v.chargeRingIn, v.chargeFull, v.speckDebt = 0, false, 0
+		end
+		v.chargeC, v.chargeT = c, t or 0
+	elseif kind == "charge" then
+		setKind(v, if holding then "idle" else "empty")
+		v.chargeC = 0
+	end
+end
+
+local function destroyCaught(v: View)
+	local caught = v.caught
+	v.caught = nil
+	if caught then
+		caught.deformer:destroy()
+		caught.model:Destroy()
+	end
+end
+
+-- The caught toy's overlay copy: a "Viewport" build of the thrower's squishy at crush.toyScale of the held toy's size
+-- (design: html:348), arriving from crush.from at crush.fromVelocity (design: html:349).
+local function buildCaught(v: View, id: string, burstAt: number, hold: Vector3): Caught?
+	destroyCaught(v)
+	local def = Catalog.get(id)
+	if def == nil then
+		return nil
+	end
+	local scale = U * FP.toyLongestDu * CRUSH.toyScale / longestOf(id)
+	local model = deps.Cache.clone(id, "Viewport", scale)
+	model.Name = CAUGHT_NAME
+	model:PivotTo(CFrame.identity)
+	local centre, size = ViewmodelMath.toyBox(model)
+	local caught: Caught = {
+		id = id,
+		model = model,
+		deformer = deps.Deformer.attach(model, { scaleMax = math.huge }),
+		centre = centre,
+		hw = size.X / 2 / U,
+		radius = math.max(size.X, size.Y, size.Z) / 2 / U,
+		colours = { Color3.fromHex(def.visuals.accent), Palette.White },
+		pos = hold + ChargePoses.map(CRUSH.from - V2.hold),
+		vel = ChargePoses.map(CRUSH.fromVelocity),
+		out = SquishRig.newOut(),
+		burstAt = burstAt,
+		burst = false,
+		arrived = false,
+	}
+	model.Parent = v.viewport
+	v.caught = caught
+	return caught
+end
+
+-- One frame of the local catch (CatchController.localCatch): "open" -> the open hands; "crush" / "after" -> the crush
+-- (the caught toy built on its first frame); nothing -> the hold again (after a crush the toy is already back).
+local function stepCatch(v: View, holding: boolean)
+	local phase, t, id, burstAt = deps.Catch.localCatch()
+	local kind: Kind = v.kind
+	if phase == "crush" or phase == "after" then
+		if kind ~= "crush" then
+			v.throw, v.ult = nil, nil
+			setKind(v, "crush")
+			if phase == "crush" and id and burstAt then
+				buildCaught(v, id, burstAt, HELD.pos)
+			end
+		end
+		v.catchT = t or 0
+	elseif phase == "open" then
+		if kind ~= "catch" and kind ~= "crush" then
+			v.throw = nil -- a finished throw's follow-through is cut (the catch never starts in a windup)
+			setKind(v, "catch")
+		end
+		v.catchT = t or 0
+	elseif kind == "catch" or kind == "crush" then
+		destroyCaught(v)
+		setKind(v, if holding then "idle" else "empty")
+	end
+end
+
+-- A design size (its metres) round a toy of `radius` du (in its toy radii, ChargePoses.size).
+local function around(metres: number, radius: number): number
+	return ChargePoses.size(metres) * radius
+end
+
+-- The charge's effects at the toy (design: html:508-514): glow, white shell, orbit, gathering sparks, the white ring
+-- the moment it is full and a ring every ringEvery at full.
+local function chargeEffects(v: View, toy: Toy, pose: ChargePoses.ChargePose, dt: number, reduced: boolean)
+	local radius = FP.toyLongestDu / 2
+	local at = v.toyPos
+	local accent = toy.colours[1]
+	v.fx:glow(at, radius * pose.glowScale, accent, pose.glow)
+	v.fx:outline(at, radius * CHARGE.outlineScale, pose.outline)
+	v.orbitAngle += dt * pose.orbitSpin
+	v.fx:orbit(at, radius, v.orbitAngle, pose.orbitScale, toy.colours, pose.orbit)
+	if pose.sparkRate > 0 then
+		v.speckDebt += dt * pose.sparkRate
+		local count = math.floor(v.speckDebt)
+		if count > 0 then
+			v.speckDebt -= count
+			spawnSpecksAt(v, {
+				kind = "gather",
+				count = count,
+				shape = "spark",
+				size = around(CHARGE.sparkSizeMax, radius),
+				sizeMin = around(CHARGE.sparkSizeMin, radius),
+				life = CHARGE.sparkLife,
+				gravity = 0,
+				drag = 0,
+				distMin = around(CHARGE.sparkDistMin, radius),
+				distMax = around(CHARGE.sparkDistMax, radius),
+				gather = CHARGE.sparkGather,
+			}, at, toy.colours, reduced, CHARGE.sparkMaxLive)
+		end
+	else
+		v.speckDebt = 0
+	end
+	if pose.full then
+		if not v.chargeFull then
+			v.chargeFull = true
+			local from, to = around(CHARGE.fullRingFrom, radius), around(CHARGE.fullRingTo, radius)
+			v.fx:ring(at, Palette.White, from, to, CHARGE.fullRingSeconds) -- design: html:514
+		end
+		v.chargeRingIn -= dt
+		if v.chargeRingIn <= 0 then
+			v.chargeRingIn = CHARGE.ringEvery
+			v.fx:ring(at, accent, around(CHARGE.ringFrom, radius), around(CHARGE.ringTo, radius), CHARGE.ringSeconds)
+		end
+	end
+end
+
+-- The release of a charged throw at the right hand (design: html:335-339): from whiteRingFrom two rings, a burst and
+-- sparks that grow with the charge; the thrower's hit-stop at full. Uncharged throws keep their look.
+local function releaseEffects(v: View, power: number, release: ThrowCharge.Release, reduced: boolean)
+	local toy = v.toy
+	if toy == nil or not (power > 0) then
+		return
+	end
+	local radius = FP.toyLongestDu / 2
+	local at = v.right.pos
+	local r = CHARGE.release
+	if release.whiteRing then
+		local to = around(r.ringTo + r.ringGain * power, radius)
+		v.fx:ring(at, toy.colours[1], around(r.ringFrom, radius), to, r.ringSeconds)
+		v.fx:ring(at, Palette.White, around(r.whiteFrom, radius), around(r.whiteTo, radius), r.whiteSeconds)
+	end
+	spawnSpecksAt(v, {
+		kind = "burst",
+		count = r.burst + math.floor(r.burstGain * power + 0.5),
+		shape = "sphere",
+		speed = around(r.burstSpeed + r.burstSpeedGain * power, radius),
+		size = around(r.burstSize, radius),
+		life = r.burstLife,
+		gravity = 0,
+	}, at, toy.colours, reduced, nil)
+	spawnSpecksAt(v, {
+		kind = "burst",
+		count = r.sparks + math.floor(r.sparksGain * power + 0.5),
+		shape = "spark",
+		speed = around(r.sparkSpeed * (r.sparkSpeedBase + power), radius),
+		size = around(r.sparkSize, radius),
+		life = r.sparkLife,
+		gravity = 0,
+		drag = r.sparkDrag,
+	}, at, toy.colours, reduced, nil)
+	local hold = release.hitStop
+	if hold ~= nil then
+		HitStop.trigger("chargeThrow:" .. tostring(os.clock()), hold, os.clock(), reduced) -- design: html:339
+	end
+end
+
+-- The catch arriving in the hands (design: html:351-353): the kick, the FOV kick, the shake, a ring and sparks.
+local function catchArrived(v: View, caught: Caught, reduced: boolean)
+	caught.arrived = true
+	v.kickVel += CATCH_FP.recoil * V2.kickPerRecoil
+	v.fovVel += CATCH_FP.fovKick
+	raiseShake(v, CATCH_FP.shake)
+	local at = HELD.pos + ChargePoses.map(CATCH_FP.ringAt - V2.hold)
+	local r = caught.radius
+	v.fx:ring(at, caught.colours[1], around(CATCH_FP.ringFrom, r), around(CATCH_FP.ringTo, r), CATCH_FP.ringSeconds)
+	spawnSpecksAt(v, {
+		kind = "burst",
+		count = CATCH_FP.sparks,
+		shape = "spark",
+		speed = around(CATCH_FP.sparkSpeed, r),
+		size = around(CATCH_FP.sparkSize, r),
+		life = CATCH_FP.sparkLife,
+		gravity = 0,
+	}, at, caught.colours, reduced, nil)
+end
+
+-- The burst (design: html:554-561): the caught toy goes, its pieces, sparks, puffs and white bits fly, three rings, the
+-- FOV kick, the kick, the shake and the hands thrown apart.
+local function burstCaught(v: View, caught: Caught, at: Vector3, reduced: boolean)
+	caught.burst = true
+	caught.model.Parent = nil
+	v.fx:glow(at, 0, caught.colours[1], 0)
+	v.fx:orbit(at, caught.radius, 0, 1, caught.colours, false)
+	local r = caught.radius
+	local speed, size = around(CRUSH.burstSpeed, r), around(CRUSH.burstSize, r)
+	local function burst(count: number, shape: Specks.Shape, colours: { Color3 }?, s: number, sz: number, life: number)
+		spawnSpecksAt(v, {
+			kind = "burst",
+			count = count,
+			shape = shape,
+			colours = colours,
+			speed = s,
+			size = sz,
+			life = life,
+			gravity = 0,
+			drag = CRUSH.burstDrag,
+		}, at, caught.colours, reduced, nil)
+	end
+	local white = { Palette.White }
+	burst(CRUSH.burstPieces, "cube", nil, speed, size, CRUSH.burstLife)
+	burst(CRUSH.burstSparks, "spark", nil, speed * CRUSH.sparkSpeedShare, size * CRUSH.sparkSizeShare, CRUSH.sparkLife)
+	burst(CRUSH.burstPuffs, "sphere", white, speed * CRUSH.puffSpeedShare, size * CRUSH.puffSizeShare, CRUSH.puffLife)
+	burst(CRUSH.burstWhite, "sphere", white, around(CRUSH.whiteSpeed, r), around(CRUSH.whiteSize, r), CRUSH.whiteLife)
+	local colours = { caught.colours[1], Palette.White, caught.colours[1] }
+	for i, ring in CRUSH.rings do
+		v.fx:ring(at, colours[i] or Palette.White, around(ring[1], r), around(ring[2], r), ring[3])
+	end
+	v.fovVel += CRUSH.burstFovKick
+	v.kickVel += CRUSH.burstRecoil * V2.kickPerRecoil
+	raiseShake(v, CRUSH.burstShake)
+	local push = ChargePoses.map(CRUSH.burstHands)
+	v.right.vel += push
+	v.left.vel += Vector3.new(-push.X, push.Y, push.Z)
+end
+
+-- The caught toy this frame: on its spring toward the crush's point, shaken, squashed and faced as the pose says
+-- (design: html:539-543), drawn at its own frame (no pop-in scale).
+local function drawCaught(caught: Caught, pose: ChargePoses.CrushPose, dt: number): Vector3
+	caught.pos, caught.vel = ViewmodelMath.spring(caught.pos, caught.vel, pose.toy, CRUSH.spring, dt)
+	local at = caught.pos + pose.shake
+	local out = caught.out
+	out.S = deps.Deformer.clampScale(pose.scale)
+	out.face = pose.face :: SquishRig.Face
+	local frame = ViewmodelMath.toyFrame(at, HELD.rot, U)
+	caught.model:PivotTo(frame * CFrame.new(-caught.centre * out.S))
+	caught.deformer:apply(out)
+	return at
+end
+
+-- The crush's effects at the caught toy (design: html:544-550): glow, orbit and specks.
+local function crushEffects(
+	v: View,
+	caught: Caught,
+	pose: ChargePoses.CrushPose,
+	at: Vector3,
+	dt: number,
+	reduced: boolean
+)
+	local r = caught.radius
+	v.fx:glow(at, r * pose.glowScale, caught.colours[1], pose.glow)
+	v.orbitAngle += dt * pose.orbitSpin
+	v.fx:orbit(at, r, v.orbitAngle, 1, caught.colours, pose.orbit)
+	if pose.speckRate > 0 then
+		v.speckDebt += dt * pose.speckRate
+		local count = math.floor(v.speckDebt)
+		if count > 0 then
+			v.speckDebt -= count
+			local spread = CRUSH.speckSpeed
+			spawnSpecksAt(v, {
+				kind = "emit",
+				count = count,
+				shape = "cube",
+				velMin = Vector3.new(-around(spread.X, r), 0, -around(spread.Z, r)), -- design: html:550
+				velMax = Vector3.new(around(spread.X, r), around(spread.Y, r), around(spread.Z, r)),
+				size = around(CRUSH.speckSizeMax, r),
+				sizeMin = around(CRUSH.speckSizeMin, r),
+				life = CRUSH.speckLife,
+				gravity = 0,
+			}, at, caught.colours, reduced, CRUSH.speckMaxLive)
 		end
 	end
 end
@@ -1012,9 +1387,12 @@ local function stepAction(v: View, dt: number, now: number, reduced: boolean, se
 			if not throw.kicked then
 				throw.kicked = true
 				v.toyPos = toyP -- design: fp.js:437
-				v.kickVel += FP.kick.release
-				v.fovVel += THROW.fovKick
+				-- Feature 1: a charged throw kicks harder (ThrowCharge.release; design: html:333-339).
+				local release = ThrowCharge.release(throw.power)
+				v.kickVel += FP.kick.release * release.kick
+				v.fovVel += THROW.fovKick * release.fovKick
 				raiseShake(v, THROW.shake)
+				releaseEffects(v, throw.power, release, reduced)
 			end
 		end
 	elseif kind == "ult" and ult then
@@ -1043,7 +1421,57 @@ local function stepAction(v: View, dt: number, now: number, reduced: boolean, se
 	elseif kind == "empty" then
 		left, right = v.left.rest, v.right.rest
 		hide = true
+	elseif kind == "charge" and toy then
+		-- Feature 1: the charge (design: html:498-517; Anim/ChargePoses).
+		local sideL, sideR = ViewmodelMath.sides(toyP, hw)
+		local frame = { hold = toyP, sideL = sideL, sideR = sideR, restL = v.left.rest, restR = v.right.rest }
+		local pose = ChargePoses.charge(v.chargeC, v.chargeT, frame, if settle then nil else v.random, reduced)
+		toyP, sq = pose.toy, pose.scale
+		left, right, lRoll, rRoll = pose.left, pose.right, pose.lRoll, pose.rRoll
+		v.faceOverride = if pose.squish then "squish" else nil
+		raiseShake(v, pose.shake)
+		chargeEffects(v, toy, pose, dt, reduced)
+	elseif kind == "catch" then
+		-- Feature 1: the open hands (design: html:528-533).
+		local sideL, sideR = ViewmodelMath.sides(toyP, hw)
+		local frame = { hold = toyP, sideL = sideL, sideR = sideR, restL = v.left.rest, restR = v.right.rest }
+		local pose = ChargePoses.catch(v.catchT, frame)
+		toyP, left, right, lRoll, rRoll = pose.toy, pose.left, pose.right, pose.lRoll, pose.rRoll
+	elseif kind == "crush" then
+		-- Feature 1: the crush, then empty hands with the own toy back at the hold until the hands are free (design:
+		-- html:535-569).
+		local caught = v.caught
+		if caught and not caught.burst then
+			local sideL, sideR = ViewmodelMath.sides(toyP, hw)
+			local frame = { hold = toyP, sideL = sideL, sideR = sideR, restL = v.left.rest, restR = v.right.rest }
+			local pose = ChargePoses.crush(v.catchT, frame, if settle then nil else v.random, reduced)
+			toyP = pose.held
+			hide = true -- design: html:575 (the held toy hides while crushing)
+			local at = drawCaught(caught, pose, dt)
+			if not caught.arrived then
+				catchArrived(v, caught, reduced)
+			end
+			crushEffects(v, caught, pose, at, dt, reduced)
+			local l, r, lr, rr = ViewmodelMath.palms(at, caught.hw, pose.scale, 1, pose.press, v.catchT, now, reduced)
+			left, right, lRoll, rRoll = l + pose.shake, r + pose.shake, lr, rr
+			raiseShake(v, pose.cameraShake)
+			if deps.Workspace:GetServerTimeNow() >= caught.burstAt then
+				burstCaught(v, caught, at, reduced)
+			end
+		else
+			left, right = v.left.rest, v.right.rest -- design: html:566
+		end
 	end
+	-- Feature 1: the charge's and the crush's effect parts only show in their kinds; the face only while charging.
+	if kind ~= "charge" then
+		v.faceOverride = nil
+		v.fx:outline(toyP, 0, false)
+		if kind ~= "crush" or v.caught == nil or (v.caught :: Caught).burst then
+			v.fx:glow(toyP, 0, Palette.White, 0)
+			v.fx:orbit(toyP, 0, 0, 1, {}, false)
+		end
+	end
+	v.fx:step(dt)
 	if v.rushReleased then
 		-- The Rush's release (design: fp.js:331, 461): the glow off at once, the overlay and world FOV kicks, the shake.
 		v.rushReleased = false
@@ -1396,6 +1824,7 @@ local function applyPose(v: View, name: string)
 			released = false,
 			kicked = false,
 			roar = false,
+			power = 0,
 		}
 		setKind(v, "throw")
 	elseif name == "popin" then
@@ -1431,15 +1860,23 @@ local function step(v: View, dt: number, now: number): boolean
 	if posed then
 		dt, now = 0, posed.now -- frozen
 	else
+		-- Feature 1: a hit-stop (a full charge's release, a catch, a burst) slows the overlay (design: html:422).
+		if HitStop.holding(os.clock()) then
+			dt *= V2.hitStopTimeScale
+		end
 		local holding = v.toy ~= nil and deps.Held.isHolding(player)
 		stepKind(v, holding)
 		stepThrow(v, serverNow, holding)
 		stepUlt(v, dt, serverNow, holding)
+		stepCharge(v, holding)
+		stepCatch(v, holding)
 		v.kindT += dt
 	end
 	-- The camera springs first (fp.js:652): the kick back to rest, the world FOV toward the focus, the shake falling.
+	-- Feature 1: a charge narrows the world FOV on the same spring (Charge.fovNarrowDeg × c; design: html:463).
+	local chargeFov = if v.kind == "charge" then ThrowCharge.fovOffset(v.chargeC) / FOCUS.worldFovPerUnit else 0
 	v.kick, v.kickVel = ViewmodelMath.spring(v.kick, v.kickVel, 0, SPRINGS.kick, dt)
-	v.fov, v.fovVel = ViewmodelMath.spring(v.fov, v.fovVel, FOCUS.worldFovTarget * v.focus, SPRINGS.fov, dt)
+	v.fov, v.fovVel = ViewmodelMath.spring(v.fov, v.fovVel, FOCUS.worldFovTarget * v.focus + chargeFov, SPRINGS.fov, dt)
 	v.shake = math.max(0, v.shake - SHAKE.decayPerSecond * dt)
 	local shakeFrom = v.shake
 	if posed == nil then
@@ -1548,6 +1985,16 @@ local function newView(gui: ScreenGui, viewport: ViewportFrame, camera: Camera):
 		squashY = 1,
 		squashVel = 0,
 		inspectButton = nil,
+		chargeC = 0,
+		chargeT = 0,
+		chargeRingIn = 0,
+		chargeFull = false,
+		speckDebt = 0,
+		orbitAngle = 0,
+		faceOverride = nil,
+		fx = ChargeFx.new(viewport, U),
+		caught = nil,
+		catchT = 0,
 	}
 end
 
@@ -1601,6 +2048,8 @@ local function hide()
 		deps.Camera.setFovOffset(FOV_OWNER, 0) -- the world FOV's base back exactly
 	end)
 	destroyToy(v)
+	destroyCaught(v) -- feature 1
+	v.fx:destroy()
 	v.cleanup:clean()
 	destroyArms(v)
 	clearSpecks(v) -- the viewport stays (overlayOf): nothing of the showcase is left in it
@@ -1661,6 +2110,7 @@ local function onHeldChanged(model: Model?)
 		v.posedRig = nil
 		buildToy(v, player) -- a new model, a new rig (keepAxis) and a new box
 		v.throw, v.ult = nil, nil
+		v.faceOverride = nil -- feature 1
 		if v.toy and deps.Held.isHolding(player) then
 			equip(v) -- a new toy pops in (design: fp.js:96-107)
 		else
@@ -1868,6 +2318,10 @@ function ViewmodelController.debugState(): { [string]: any }
 		specks = #v.specks,
 		squash = v.squashY,
 		inspectButton = v.inspectButton ~= nil and v.inspectButton.root.Visible,
+		charge = v.chargeC, -- feature 1
+		caught = if v.caught then v.caught.id else nil,
+		caughtBurst = v.caught ~= nil and v.caught.burst,
+		fxRings = v.fx:ringCount(),
 		padShown = v.pad ~= nil and v.pad.button.Visible,
 		touchGuiRaised = v.touchGui ~= nil,
 		viewportParts = #v.viewport:GetDescendants(),

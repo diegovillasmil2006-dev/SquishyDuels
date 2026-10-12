@@ -5,8 +5,10 @@
 -- the overlay's du (camera space: -Z forward, +Y up); no instances, connections or clock reads.
 --
 -- API
---   Specks.spawn(spec, at, random, multiplier, colours) -> { Speck }   one design call: "burst" (fx.js:97-106) or
---       "emit" (fx.js:92-96 called `count` times, as fp.js:182, 191 do), at `at` + (0, spec.offsetY, 0);
+--   Specks.spawn(spec, at, random, multiplier, colours) -> { Speck }   one design call: "burst" (fx.js:97-106),
+--       "emit" (fx.js:92-96 called `count` times, as fp.js:182, 191 do) or, feature 1 (2026-10-11), "gather" (the
+--       charge's sparks, the combat-effects page html:513: on a shell distMin..distMax round the point, each flying in
+--       at `gather` × its offset a second), at `at` + (0, spec.offsetY, 0);
 --       round(count × multiplier) specks (multiplier: Config.Vfx.reducedParticleMultiplier under ReducedMotion, else
 --       1); `colours` are the toy's own (its accent and white) for a spec without its own colours
 --   Specks.step(speck, dt) -> boolean   one frame (fx.js:131-137); false once its age reached its life (gone)
@@ -21,7 +23,7 @@ export type Shape = "puff" | "cube" | "petal" | "heart" | "spark" | "sphere" | "
 -- One design call. "puff" is the toy's own speck shape (the design's per-toy trail shape, toys.js:412-425; the game
 -- has none: a round speck in the toy's colours).
 export type Spec = {
-	kind: "burst" | "emit",
+	kind: "burst" | "emit" | "gather",
 	count: number,
 	shape: Shape,
 	colours: { Color3 }?, -- nil: the toy's own
@@ -30,10 +32,14 @@ export type Spec = {
 	velMin: Vector3?, -- emit: each axis random between these (fp.js:182, 191)
 	velMax: Vector3?,
 	size: number,
+	sizeMin: number?, -- emit / gather: a size random in sizeMin..size (nil: exactly size)
 	life: number,
 	gravity: number?, -- du/s² on Y; nil = the design's -6 (fx.js:95)
 	drag: number?, -- per second; nil = the design's 1.6 (fx.js:95)
 	offsetY: number?, -- the point above the toy's (toyWorldPos(off), fp.js:168)
+	distMin: number?, -- gather (feature 1): the shell the specks start on
+	distMax: number?,
+	gather: number?, -- gather: their speed toward the point, × their distance (a second)
 }
 
 export type Speck = {
@@ -123,10 +129,17 @@ function Specks.spawn(spec: Spec, at: Vector3, random: Random, multiplier: numbe
 	local point = at + Vector3.new(0, spec.offsetY or 0, 0)
 	for i = 1, count do
 		local colour = palette[(i - 1) % #palette + 1]
+		local sized = if spec.sizeMin ~= nil then between(random, spec.sizeMin, spec.size) else spec.size
 		if spec.kind == "emit" then
 			local lo, hi = spec.velMin or Vector3.zero, spec.velMax or Vector3.zero
 			local v = Vector3.new(between(random, lo.X, hi.X), between(random, lo.Y, hi.Y), between(random, lo.Z, hi.Z))
-			table.insert(list, newSpeck(spec, random, colour, point, v, spec.size, spec.life))
+			table.insert(list, newSpeck(spec, random, colour, point, v, sized, spec.life))
+		elseif spec.kind == "gather" then
+			-- Feature 1 (the combat-effects page html:513): from a shell round the point, flying in toward it.
+			local d = randomDirection(random)
+			local r = between(random, spec.distMin or 0, spec.distMax or spec.distMin or 0)
+			local v = -d * (r * (spec.gather or 0))
+			table.insert(list, newSpeck(spec, random, colour, point + d * r, v, sized, spec.life))
 		else
 			local d = randomDirection(random)
 			local normal = spec.normal

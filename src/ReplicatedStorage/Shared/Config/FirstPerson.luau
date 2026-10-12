@@ -273,6 +273,202 @@ local FirstPerson = {
 		releaseKick = -1.2, -- design: fp.js:331
 		releaseShake = 0.3, -- design: fp.js:331
 	},
+
+	-- Feature 1 (2026-10-11): the charge throw, the catch and the crush on the overlay (Anim/ChargePoses, Anim/ChargeFx;
+	-- design: the combat-effects page "Squishy Combat FP v2.html", html:<line>). That page has its own viewmodel: a
+	-- vertical FOV of 56° (html:131), its hold POSE (html:410-415) with the toy 0.6 deep and 0.066 m round (html:208).
+	-- Its moves are taken as offsets from its own hold and put on ours (held.pos, the hands at the toy's sides, rest),
+	-- each offset × depthScale in depth and × depthScale × fovScale across (the same place on screen through our 70°
+	-- camera); its rolls as changes from its hold's; its effect sizes in toy radii (÷ toyRadius), shown on ours.
+	v2 = {
+		depthScale = 0.5 / 0.6, -- held.pos.Z (fp.js:77) over the design's hold depth (design: html:411)
+		fovScale = math.tan(math.rad(35)) / math.tan(math.rad(28)), -- our 70° (fp.js:28) over its 56° (design: html:131)
+		toyRadius = 0.066, -- the held toy's size, m (design: html:208)
+		hold = Vector3.new(0, -0.175, -0.6), -- POSE.sq (design: html:411)
+		holdR = Vector3.new(0.06, -0.245, -0.575), -- POSE.R (design: html:412)
+		holdL = Vector3.new(-0.108, -0.195, -0.57), -- POSE.L (design: html:412)
+		emptyR = Vector3.new(0.16, -0.33, -0.55), -- POSE.emptyR (design: html:414)
+		emptyL = Vector3.new(-0.17, -0.34, -0.55), -- POSE.emptyL (design: html:414)
+		rollR = -0.2, -- POSE.eR.z (design: html:413)
+		rollL = 0.5, -- POSE.eL.z (design: html:413)
+		kickPerRecoil = 0.8 / 0.5, -- its recoil impulse on our kick spring: a throw's 0.5 (html:333) is our 0.8 (fp.js:437)
+		hitStopTimeScale = 0.07, -- the overlay's time runs this slow during a hit-stop (design: html:422)
+	},
+	-- The charge (design: html:498-517; c = the charge 0-1, ec = ease(min(1, c × easeGain)), ease = html:115).
+	charge = {
+		easeGain = 1.4, -- design: html:499
+		toy = Vector3.new(0.12, -0.165, -0.52), -- the toy's charged point (design: html:500)
+		handR = Vector3.new(0.048, -0.066, 0.022), -- the right hand from the toy (design: html:501)
+		leftAway = Vector3.new(-0.03, 0.02, 0.05), -- the left hand's away point from emptyL (design: html:502)
+		leftSteady = Vector3.new(-0.087, 0.004, 0.01), -- the left hand steadying the toy, from it (design: html:502)
+		leftAwayOver = 0.3, -- the left hand goes away over c 0 -> 0.3 (design: html:503)
+		leftBackFrom = 0.55, -- and comes back to steady the toy over c 0.55 -> 0.85 (design: html:503-504)
+		leftBackOver = 0.3,
+		leftRollTo = 1.3, -- the left roll goes rollL -> this as it comes back (design: html:504)
+		jitterFrom = 0.8, -- design: html:505
+		jitter = 0.0045, -- design: html:505
+		-- The toy's squash target s (design: html:507), shown as the scale (1 + squashX·s, 1 - squashY·s, 1 + squashX·s)
+		-- (design: squishy-lib-v2.js:196) on our scale-key spring.
+		squashSlope = 0.15,
+		squashKnee = 0.6,
+		squashBase = 0.09,
+		squashRise = 0.5,
+		squashPulse = 0.06, -- at full: + squashPulse·sin(squashPulseRate·t) (design: html:507)
+		squashPulseRate = 26,
+		squashX = 0.34, -- design: squishy-lib-v2.js:196
+		squashY = 0.44,
+		glowFrom = 0.2, -- design: html:508
+		glowGain = 0.45, -- design: html:508 (min(glowMax, (c - glowFrom)·glowGain))
+		glowMax = 0.24, -- design: html:508
+		glowScale = 1.08, -- × the toy's radius (design: html:192, 509)
+		glowPulse = 0.04, -- at full: + glowPulse·sin(glowPulseRate·t) (design: html:509)
+		glowFlicker = 0.2, -- at full: opacity × (1 - glowFlicker + glowFlicker·sin(glowPulseRate·t)) (design: html:508)
+		glowPulseRate = 18, -- rad/s, 2.9 Hz (design: html:508-509)
+		outlineScale = 1.15, -- the white shell at full, × the toy's radius (design: html:193, 510)
+		orbitFrom = 0.4, -- design: html:510
+		orbitCount = 7, -- design: html:195
+		orbitRadius = 1.55, -- × the toy's radius (design: html:195)
+		orbitWave = 0.35, -- the pieces' height wave, × the toy's radius (design: html:195)
+		orbitPiece = 0.11, -- a piece's size, × the toy's radius (design: html:195)
+		orbitTilt = 0.4, -- design: html:510
+		orbitSpin = 4, -- rad/s × c before full (design: html:510)
+		orbitSpinFull = 14, -- rad/s at full (design: html:510)
+		orbitScaleFrom = 0.6, -- the ring's scale 0.6 + 0.4c before full (design: html:511)
+		sparkFrom = 0.2, -- design: html:513
+		sparkRate = 30, -- + sparkRateGain·c a second (design: html:513)
+		sparkRateGain = 70,
+		sparkDistMin = 0.09, -- m from the toy (design: html:513)
+		sparkDistMax = 0.15,
+		sparkGather = 3.4, -- velocity = -offset × this (design: html:513)
+		sparkSizeMin = 0.0025, -- m (design: html:513)
+		sparkSizeMax = 0.005,
+		sparkLife = 0.27, -- design: html:513
+		sparkMaxLive = 24, -- build choice 2026-10-11 (NOT IN DESIGN): parts in the overlay, at most this many at once
+		ringEvery = 0.32, -- at full, a ring this often (design: html:514)
+		ringFrom = 0.07, -- m (design: html:514)
+		ringTo = 0.1,
+		ringSeconds = 0.4,
+		fullRingFrom = 0.06, -- the white ring the moment it is full (design: html:514)
+		fullRingTo = 0.12,
+		fullRingSeconds = 0.25,
+		shake = 0.12, -- at full (design: html:514)
+		-- The release of a charged throw at the hand, c = its charge (design: html:335-339); an uncharged throw keeps the
+		-- overlay's own release.
+		release = {
+			ringFrom = 0.01, -- m (design: html:335)
+			ringTo = 0.09, -- + ringGain·c
+			ringGain = 0.05,
+			ringSeconds = 0.3,
+			whiteFrom = 0.006, -- the white ring (design: html:335)
+			whiteTo = 0.06,
+			whiteSeconds = 0.22,
+			burst = 8, -- + burstGain·c pieces (design: html:336)
+			burstGain = 14,
+			burstSpeed = 0.6, -- + burstSpeedGain·c m/s
+			burstSpeedGain = 0.6,
+			burstSize = 0.008, -- m
+			burstLife = 0.5,
+			sparks = 6, -- + sparksGain·c (design: html:337)
+			sparksGain = 12,
+			sparkSpeed = 2.4, -- × (sparkSpeedBase + c): the mean of the design's 1.6..3.2 (design: html:337)
+			sparkSpeedBase = 0.6,
+			sparkSize = 0.004, -- m (design: html:337, 0.002..0.004)
+			sparkLife = 0.22, -- the mean of 0.16..0.28 (design: html:337)
+			sparkDrag = 4, -- design: html:337
+		},
+	},
+	-- The open hands (design: html:528-533) and the catch itself (design: html:346-354).
+	catch = {
+		openSeconds = 0.07, -- the hands open over this (design: html:529)
+		handR = Vector3.new(0.115, -0.15, -0.62), -- design: html:530
+		handL = Vector3.new(-0.115, -0.15, -0.62),
+		rollR = 0.5, -- design: html:531 (eR.z)
+		rollL = -0.5, -- design: html:531 (eL.z)
+		toy = Vector3.new(0, -0.42, -0.45), -- the own toy tucked away below the screen (design: html:531)
+		recoil = 1.4, -- design: html:351
+		fovKick = -50, -- design: html:351
+		shake = 0.25, -- design: html:351
+		ringAt = Vector3.new(0, -0.1, -0.7), -- design: html:353
+		ringFrom = 0.02, -- m (design: html:353)
+		ringTo = 0.2,
+		ringSeconds = 0.28,
+		sparks = 14, -- design: html:353
+		sparkSpeed = 1.2, -- m/s (design: html:353)
+		sparkSize = 0.006, -- m (design: html:353)
+		sparkLife = 0.4, -- design: html:353
+		hitStopSeconds = 0.06, -- design: html:353
+	},
+	-- The crush (design: html:535-569): t = seconds since the catch, e = clamp((t - easeFrom) / easeOver, 0, 1).
+	crush = {
+		toyScale = 0.07 / 0.066, -- the caught toy against the held one (design: html:208, 348)
+		from = Vector3.new(0, -0.02, -0.95), -- it arrives from here ... (design: html:349)
+		fromVelocity = Vector3.new(0, 0, 2), -- ... at this speed
+		spring = { 700, 44 }, -- design: html:188 (2.6 Hz)
+		base = Vector3.new(0, -0.13, -0.56), -- design: html:539
+		easeFrom = 0.12, -- design: html:538
+		easeOver = 0.9,
+		shakeBase = 0.0015, -- ± m on the toy and the hands (design: html:538)
+		shakeGain = 0.009, -- × e²
+		wobble = 0.07, -- × e (design: html:541)
+		wobbleRate = 30, -- rad/s, + wobbleRateGain·e
+		wobbleRateGain = 30,
+		squeezeX = 0.52, -- its scale (1 - squeezeX·e² + w, 1 + growY·e² - wobbleY·w, 1 + growZ·e² - wobbleZ·w) (design: html:542)
+		growY = 0.3,
+		growZ = 0.22,
+		wobbleY = 0.6,
+		wobbleZ = 0.4,
+		wowUntil = 0.18, -- the "wow" face, then the squish face (design: html:543)
+		glow = 0.32, -- × e² (design: html:544)
+		glowFlickerFrom = 0.6, -- design: html:544
+		glowFlicker = 0.15, -- design: html:544
+		-- The flicker's rate: the design's 40 rad/s (6.4 Hz, html:544) held to the 3 Hz flicker limit (DESIGN §9.12), as
+		-- phase 5 held the drop shadow's pulse.
+		glowFlickerHz = 3,
+		glowPulse = 0.05, -- the glow's size pulse × e (design: html:544, sin(35t): 5.6 Hz, held to glowFlickerHz too)
+		orbitFrom = 0.3, -- design: html:545
+		orbitSpin = 6, -- rad/s, + orbitSpinGain·e (design: html:545)
+		orbitSpinGain = 20,
+		speckRate = 80, -- a second × e (design: html:550)
+		speckSizeMin = 0.004, -- m (design: html:550)
+		speckSizeMax = 0.009,
+		speckLife = 0.5, -- design: html:550
+		speckSpeed = Vector3.new(0.25, 0.3, 0.1), -- m/s: ±X, 0..Y up, ±Z (design: html:550)
+		speckMaxLive = 24, -- build choice 2026-10-11 (NOT IN DESIGN): parts in the overlay
+		shake = 0.2, -- + shakeGainE·e² (design: html:551)
+		shakeGainE = 0.35,
+		squeakAt = 0.12, -- design: html:553
+		toy = Vector3.new(0, -0.45, -0.45), -- the own toy tucked away (design: html:549)
+		-- The burst (design: html:554-563), held to Config.Vfx.Budgets.liveParticlesPerEffect parts (its 80 + 30 + 7 + 18
+		-- pieces at 4/9; ReducedMotion halves them again).
+		burstPieces = 35, -- design: html:557 (80)
+		burstSparks = 13, -- design: html:557 (30)
+		burstPuffs = 3, -- design: html:557 (7)
+		burstWhite = 8, -- design: html:558 (18)
+		burstSpeed = 1.5, -- m/s (design: html:557)
+		burstSize = 0.012, -- m (design: html:557)
+		burstLife = 1.1, -- design: html:557
+		burstDrag = 2.4, -- design: html:557
+		-- The burst's sparks and puffs against its pieces (design: squishy-lib-v2.js:323, 327; the means of its ranges).
+		sparkSpeedShare = 1.35, -- speed × 0.9..1.8
+		sparkSizeShare = 0.35,
+		sparkLife = 0.52, -- 0.25..0.5 × life / 0.8
+		puffSpeedShare = 0.35, -- speed × 0.35 (+ 0.4 m/s, left out)
+		puffSizeShare = 4.5, -- size × 3..6
+		puffLife = 0.62, -- 0.45..0.8
+		whiteSpeed = 0.8, -- design: html:558
+		whiteSize = 0.006,
+		whiteLife = 0.5,
+		whiteDrag = 3,
+		rings = { -- from, to (m), seconds; the toy's colour, white, then its colour again (design: html:559)
+			{ 0.03, 0.3, 0.5 },
+			{ 0.02, 0.2, 0.32 },
+			{ 0.05, 0.45, 0.7 },
+		},
+		burstFovKick = 160, -- design: html:560
+		burstRecoil = -2, -- design: html:560
+		burstShake = 0.55, -- design: html:560
+		burstHands = Vector3.new(3, 0.5, 1), -- the hands thrown apart, a speed in m/s (X × side) (design: html:561)
+	},
 }
 
 return FirstPerson

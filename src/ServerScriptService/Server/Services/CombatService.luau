@@ -45,6 +45,23 @@
 --   While a fighter must stand still (the Countdown freeze on its pad, the Dragon Rush root of telegraph + recovery)
 --   the server enforces it too, not only through WalkSpeed / JumpHeight 0: a drift beyond holdToleranceStuds (plus the
 --   stopping distance a root allows at the player's ping) is pivoted back.
+-- * Feature 1 (2026-10-11; Config.Combat.Charge / Catch; design: the combat-effects page "Squishy Combat FP v2.html"):
+--   - The charge throw: ChargeStart(clientTime) stores the press time, lag-compensated as a throw's (§5.6 #7,
+--     Logic/CatchRules.pressTime), on the fighter (practice: the practice actor); the next ThrowRequest consumes it
+--     (accepted or not) and Logic/ThrowRules measures the charge from it, never before the throw was ready, the hands
+--     were back or a root ended (chargeFloorAt). ThrowStarted carries that charge as `power`.
+--   - The catch: CatchRequest(clientTime) is checked by Logic/CatchRules (a live duel, alive, not crushing, rooted or
+--     in a windup, the cooldown from the last press) and opens a window [press, press + windowSeconds] on the fighter;
+--     it also drops a charge (design: html:344). A throw's sweep tests the opponent's open window before its hit test
+--     (CatchRules.catchFraction on the same sub-steps, at the catcher's HRP + centreAboveRootStuds; ultimates, lanes
+--     and practice throws are never caught). A catch ends the throw without an impact (it is no longer a live throw)
+--     and keeps its record as a crush: CatchEvent "caught" to both duelists, the window closes, the catcher's hands are
+--     busy until handsBackSeconds after the catch (no throw, catch, dash or ultimate: ThrowRules 7b, CatchRules,
+--     DashService, AbilityService). At burstAt (= the catch + crushSeconds) the burst goes to the match owner with the
+--     step's hits, as a hit on the thrower by the catcher (kind "catch", force = Catch.burstIgnoresInvuln, so the
+--     thrower loses 1 life even inside its invulnerability; user decision 2026-10-11), then CatchEvent "burst" with
+--     the outcome; a match that ended meanwhile loses no life (the burst is still sent, without lives). Hit (and
+--     Eliminated) fire for it as for any hit. unregisterMatch drops a crush with its match.
 -- * CombatLog counters (§12 #23): rejections per reason and throws / hits / wins per squishy; userIds only in logs.
 --   A payload failure that only ThrowRules can see (the seq window, §5.6 #2) is reported to NetService as a violation.
 -- Signals (upward communication, §2.6): Hit(info), Eliminated(info), ThrowAccepted(info).
@@ -68,6 +85,7 @@ local ProjectileMath = require(Shared.ProjectileMath)
 local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
 local Logic = script.Parent.Parent.Logic
+local CatchRules = require(Logic.CatchRules)
 local HitMath = require(Logic.HitMath)
 local MovementRules = require(Logic.MovementRules)
 local ThrowRules = require(Logic.ThrowRules)
@@ -82,7 +100,8 @@ local PracticeService = require(script.Parent.PracticeService)
 export type Side = Types.Side
 export type Zone = Types.ArenaZone
 export type ThrowStats = ThrowRules.ThrowStats
-export type ProjectileKind = "throw" | "practice" | "lane" | "practiceLane" | "ult" | "practiceUlt"
+-- "catch" (feature 1) is the kind of a caught throw's burst hit (HitRequest, HitInfo); no projectile has it.
+export type ProjectileKind = "throw" | "practice" | "lane" | "practiceLane" | "ult" | "practiceUlt" | "catch"
 
 -- One duelist. DuelService creates it with newFighter(); the throw state fields belong to this module.
 export type Fighter = {
@@ -102,6 +121,13 @@ export type Fighter = {
 	throwsAccepted: number,
 	hits: number,
 	guard: MovementRules.Guard, -- movement guard memory (§5.7)
+	-- Feature 1 (server times): the charge start (ChargeStart; nil = none), the catch window, the last accepted catch
+	-- press and when the hands are back from a catch (-math.huge = none).
+	chargeStartAt: number?,
+	catchOpensAt: number,
+	catchClosesAt: number,
+	lastCatchPressAt: number,
+	handsBackAt: number,
 }
 
 -- The arena of one match, from the ArenaService slot.
@@ -122,6 +148,7 @@ export type HitRequest = {
 	kind: ProjectileKind,
 	projId: number,
 	position: Vector3,
+	force: boolean?, -- feature 1: a caught throw's burst costs the life inside invulnerability (DuelRules Hit.force)
 }
 
 export type HitOutcome = {
@@ -222,6 +249,17 @@ type PracticeActor = {
 	activeProjectiles: number,
 	rootedUntil: number,
 	windupUntil: number,
+	chargeStartAt: number?, -- feature 1: the practice charge start (ChargeStart; nil = none)
+}
+
+-- Feature 1: a caught throw's record while the catcher crushes it (its projectile stays in the list until the burst).
+type Crush = {
+	port: MatchPort,
+	catcher: Fighter,
+	thrower: Fighter,
+	at: number, -- the catch (server time)
+	burstAt: number,
+	position: Vector3, -- where it was caught
 }
 
 type Projectile = {
@@ -252,6 +290,8 @@ type Projectile = {
 	splashRadius: number?, -- a bubble: its pop becomes an area hit
 	area: Area?, -- an area hit waiting for (or at) its time
 	areaHits: number, -- victims / targets its area already hit
+	charge: number?, -- feature 1: a throw's charge (ThrowStarted.power)
+	crush: Crush?, -- feature 1: caught; it bursts at crush.burstAt (no more sweeping)
 }
 
 -- One area hit: at server time `at`, feet within `radius` of `center` (projected to the floor) are hit.
@@ -288,9 +328,13 @@ export type ProjectileInfo = {
 	fizzle: boolean,
 }
 
+-- Feature 1: "caught" (an opponent's open catch window took the throw) and "burst" (a crush's burst, a hit on the
+-- thrower by the catcher) are no ThrowImpact kinds.
+type CandidateKind = Types.ImpactKind | "caught" | "burst"
+
 type Candidate = {
 	proj: Projectile,
-	kind: Types.ImpactKind,
+	kind: CandidateKind,
 	time: number,
 	a: number, -- local time the projectile goes back to when the candidate is refused
 	position: Vector3,
@@ -299,6 +343,7 @@ type Candidate = {
 	victim: Fighter?,
 	targetId: string?,
 	outcome: HitOutcome?,
+	catcher: Fighter?, -- feature 1: "caught" and "burst"
 }
 
 -- Constants
@@ -320,6 +365,12 @@ local ATTR_MATCH_ID = "SD_MatchId"
 local ATTR_DUEL_PHASE = "SD_DuelPhase"
 local REASON_CONTEXT = "throw.context"
 local REMOTE_THROW = "ThrowRequest"
+-- Feature 1 (2026-10-11).
+local CATCH = Config.Combat.Catch
+local REMOTE_CHARGE = "ChargeStart"
+local REMOTE_CATCH = "CatchRequest"
+local REMOTE_CATCH_EVENT = "CatchEvent"
+local REASON_INVALID = "net.invalid"
 
 -- Module table
 
@@ -357,19 +408,29 @@ type Counters = {
 	bySquishy: { [string]: { throws: number, hits: number, wins: number } },
 	guardPivots: number,
 	outOfBounds: number,
+	catchWindows: number, -- feature 1: accepted catch presses
+	catches: number,
+	bursts: number,
 }
 
-local counters: Counters = {
-	accepted = 0,
-	practiceAccepted = 0,
-	rejected = {},
-	originClamped = 0,
-	fizzles = 0,
-	impacts = {},
-	bySquishy = {},
-	guardPivots = 0,
-	outOfBounds = 0,
-}
+local function newCounters(): Counters
+	return {
+		accepted = 0,
+		practiceAccepted = 0,
+		rejected = {},
+		originClamped = 0,
+		fizzles = 0,
+		impacts = {},
+		bySquishy = {},
+		guardPivots = 0,
+		outOfBounds = 0,
+		catchWindows = 0,
+		catches = 0,
+		bursts = 0,
+	}
+end
+
+local counters: Counters = newCounters()
 local countersDirty = false
 
 local function defaultDeps(): Deps
@@ -575,7 +636,7 @@ end
 
 local function makeCandidate(
 	proj: Projectile,
-	kind: Types.ImpactKind,
+	kind: CandidateKind,
 	s: ProjectileMath.SubStep,
 	fraction: number,
 	position: Vector3?
@@ -626,8 +687,32 @@ local function sweep(proj: Projectile, s: ProjectileMath.SubStep): Candidate?
 		end
 	end
 
-	-- 2. Capsules.
+	-- 1b. Feature 1: the opponent's open catch window, before the hit test (design: html:614-615). Only a normal duel
+	-- throw is caught (never an ultimate, a lane or a practice throw); a tie with a capsule entry is the catch.
 	local port = proj.port
+	if port and proj.kind == "throw" then
+		local catcher = opponentOf(port, proj.owner :: Fighter)
+		local catcherRoot = if catcher then catcher.getRoot() else nil
+		if catcher and catcherRoot and catcher.isAlive() and LIVE_PHASES[port.phase()] then
+			local fMin, fMax = CatchRules.windowShare(
+				catcher.catchOpensAt,
+				catcher.catchClosesAt,
+				proj.releaseAt + s.a,
+				proj.releaseAt + s.b
+			)
+			if fMin ~= nil and fMax ~= nil then
+				local centre = CatchRules.centre(catcherRoot.Position)
+				local fraction = CatchRules.catchFraction(s.p0, s.p1, centre, CATCH.radiusStuds, fMin, fMax)
+				if fraction and fraction < bestFraction then
+					local candidate = makeCandidate(proj, "caught", s, fraction, nil)
+					candidate.catcher = catcher
+					best, bestFraction = candidate, fraction
+				end
+			end
+		end
+	end
+
+	-- 2. Capsules.
 	if port then
 		local attacker = proj.owner :: Fighter
 		local victim = opponentOf(port, attacker)
@@ -770,15 +855,44 @@ local function pop(proj: Projectile, at: Candidate, now: number): Candidate?
 		center = at.position,
 		at = at.time,
 		radius = proj.splashRadius or 0,
-		endKind = if at.kind == "player" or at.kind == "target" then "expired" else at.kind,
+		-- (a bubble is an ultimate: never caught, so its first contact is an ImpactKind)
+		endKind = if at.kind == "player" or at.kind == "target"
+			then "expired"
+			else (at.kind :: any) :: Types.ImpactKind,
 		normal = at.normal,
 	}
 	return areaStep(proj, now)
 end
 
+-- Feature 1: a caught throw waits for its burst; at burstAt the burst is this step's candidate, a hit on the thrower by
+-- the catcher that goes to the match owner with the step's hits (impact order, as any hit).
+local function crushStep(proj: Projectile, crush: Crush, now: number): Candidate?
+	if now < crush.burstAt then
+		return nil
+	end
+	local root = crush.catcher.getRoot()
+	return {
+		proj = proj,
+		kind = "burst",
+		time = crush.burstAt,
+		a = proj.lastT,
+		position = if root then CatchRules.centre(root.Position) else crush.position,
+		normal = nil,
+		direction = Vector3.zero,
+		victim = crush.thrower,
+		targetId = nil,
+		outcome = nil,
+		catcher = crush.catcher,
+	}
+end
+
 local function simulate(proj: Projectile, now: number): Candidate?
 	if proj.done then
 		return nil
+	end
+	local crush = proj.crush
+	if crush ~= nil then
+		return crushStep(proj, crush, now)
 	end
 	if proj.area ~= nil then
 		return areaStep(proj, now)
@@ -940,12 +1054,113 @@ local function applyTargetHit(candidate: Candidate)
 	end
 end
 
+-- Feature 1: an opponent's open window took the throw. The window is used up (one catch each), so a second throw found
+-- in the same step is refused here and flies on from its sub-step. The throw ends (no ThrowImpact, no longer a live
+-- throw); its record stays as the crush until the burst (crushStep). CatchEvent "caught" goes to both duelists.
+local function applyCatch(candidate: Candidate)
+	local proj = candidate.proj
+	local catcher = candidate.catcher
+	local port = proj.port
+	local at = candidate.time
+	if catcher == nil or port == nil or at < catcher.catchOpensAt or at > catcher.catchClosesAt then
+		rewind(candidate)
+		return
+	end
+	local thrower = proj.owner :: Fighter
+	catcher.catchOpensAt, catcher.catchClosesAt = -math.huge, -math.huge
+	catcher.handsBackAt = math.max(catcher.handsBackAt, at + CATCH.handsBackSeconds)
+	catcher.chargeStartAt = nil
+	if proj.countsAsLive then
+		proj.countsAsLive = false
+		thrower.activeProjectiles = math.max(0, thrower.activeProjectiles - 1)
+	end
+	local burstAt = at + CATCH.crushSeconds
+	proj.crush = {
+		port = port,
+		catcher = catcher,
+		thrower = thrower,
+		at = at,
+		burstAt = burstAt,
+		position = candidate.position,
+	}
+	counters.catches += 1
+	bump(counters.impacts, "caught")
+	local payload: Types.CatchEventPayload = {
+		phase = "caught",
+		matchId = port.matchId,
+		catcherId = catcher.userId,
+		throwerId = thrower.userId,
+		projId = proj.projId,
+		squishyId = proj.squishyId,
+		position = candidate.position,
+		at = at,
+		burstAt = burstAt,
+	}
+	deps.send(REMOTE_CATCH_EVENT, audienceOf(port), payload)
+end
+
+-- Feature 1: the crush ends. With the match owner's outcome the thrower lost a life (Hit and Eliminated fire as for any
+-- hit, kind "catch"); without one (the match had ended meanwhile) no life is lost. CatchEvent "burst" goes out either way.
+local function applyBurst(candidate: Candidate)
+	local proj = candidate.proj
+	local crush = proj.crush
+	finish(proj)
+	if crush == nil then
+		return
+	end
+	local port = crush.port
+	local outcome = candidate.outcome
+	counters.bursts += 1
+	countersDirty = true
+	local payload: Types.CatchEventPayload = {
+		phase = "burst",
+		matchId = port.matchId,
+		catcherId = crush.catcher.userId,
+		throwerId = crush.thrower.userId,
+		projId = proj.projId,
+		squishyId = proj.squishyId,
+		position = candidate.position,
+		at = crush.burstAt,
+		burstAt = crush.burstAt,
+		livesLeft = if outcome then outcome.lives else nil,
+		invulnUntil = if outcome then outcome.invulnUntil else nil,
+		eliminated = if outcome then outcome.eliminated else nil,
+	}
+	if outcome then
+		crush.thrower.invulnUntil = outcome.invulnUntil
+		crush.catcher.hits += 1
+		bump(counters.impacts, "burst")
+	end
+	deps.send(REMOTE_CATCH_EVENT, audienceOf(port), payload)
+	if outcome then
+		local info: HitInfo = {
+			matchId = port.matchId,
+			attacker = crush.catcher,
+			victim = crush.thrower,
+			kind = "catch",
+			projId = proj.projId,
+			at = crush.burstAt,
+			position = candidate.position,
+			livesLeft = outcome.lives,
+			eliminated = outcome.eliminated,
+		}
+		CombatService.Hit:fire(info)
+		if outcome.eliminated then
+			CombatService.Eliminated:fire(info)
+		end
+	end
+end
+
 local function applyCandidate(candidate: Candidate)
 	local kind = candidate.kind
 	if kind == "player" then
 		applyPlayerHit(candidate)
 	elseif kind == "target" then
 		applyTargetHit(candidate)
+	elseif kind == "caught" then
+		applyCatch(candidate)
+	elseif kind == "burst" then
+		applyBurst(candidate)
 	else
 		if kind == "fizzle" then
 			counters.fizzles += 1
@@ -961,13 +1176,16 @@ end
 local function resolveHits(port: MatchPort, list: { Candidate }, now: number)
 	local requests: { HitRequest } = {}
 	for index, candidate in list do
+		-- Feature 1: a crush's burst is the catcher's hit on the thrower (kind "catch", Catch.burstIgnoresInvuln).
+		local burst = candidate.kind == "burst"
 		requests[index] = {
-			attacker = candidate.proj.owner,
+			attacker = if burst then candidate.catcher :: Fighter else candidate.proj.owner,
 			victim = candidate.victim :: Fighter,
 			at = candidate.time,
-			kind = candidate.proj.kind,
+			kind = if burst then "catch" else candidate.proj.kind,
 			projId = candidate.proj.projId,
 			position = candidate.position,
+			force = if burst then CATCH.burstIgnoresInvuln == true else nil,
 		}
 	end
 	local ok, outcomes = pcall(port.applyHits, requests, now)
@@ -998,11 +1216,12 @@ local function runStep(now: number)
 		return x.proj.projId < y.proj.projId -- a stable order for equal times
 	end)
 
-	-- Duel hits go to their match in one batch per Heartbeat (DuelRules: impact order, simultaneous final hits).
+	-- Duel hits go to their match in one batch per Heartbeat (DuelRules: impact order, simultaneous final hits); a
+	-- crush's burst is one of them (feature 1).
 	local hitsByPort: { [MatchPort]: { Candidate } } = {}
 	for _, candidate in candidates do
 		local port = candidate.proj.port
-		if candidate.kind == "player" and port then
+		if (candidate.kind == "player" or candidate.kind == "burst") and port then
 			local list = hitsByPort[port]
 			if list == nil then
 				list = {}
@@ -1085,6 +1304,10 @@ local function duelState(fighter: Fighter, port: MatchPort, now: number): ThrowR
 		overlaps = function(origin: Vector3, radius: number): boolean
 			return #Workspace:GetPartBoundsInRadius(origin, radius, arena.overlapParams) > 0
 		end,
+		-- Feature 1: the charge record, the hands (an open catch window or a crush) and the charge's floor.
+		chargeStartAt = fighter.chargeStartAt,
+		handsBusyUntil = math.max(fighter.catchClosesAt, fighter.handsBackAt),
+		chargeFloorAt = math.max(fighter.handsBackAt, fighter.rootedUntil),
 	}
 end
 
@@ -1122,6 +1345,8 @@ local function practiceState(
 				return #Workspace:GetPartBoundsInRadius(origin, radius, overlap) > 0
 			end
 			else nil,
+		chargeStartAt = actor.chargeStartAt, -- feature 1 (no catch in practice)
+		chargeFloorAt = actor.rootedUntil,
 	}
 end
 
@@ -1159,6 +1384,11 @@ function CombatService.newFighter(spec: {
 		throwsAccepted = 0,
 		hits = 0,
 		guard = MovementRules.new(),
+		chargeStartAt = nil,
+		catchOpensAt = -math.huge,
+		catchClosesAt = -math.huge,
+		lastCatchPressAt = -math.huge,
+		handsBackAt = -math.huge,
 	}
 end
 
@@ -1253,6 +1483,7 @@ function CombatService.requestThrow(
 
 	local decision = ThrowRules.validate(input, state, nil, now)
 	lastSeqs[userId] = decision.lastSeq
+	thrower.chargeStartAt = nil -- feature 1: a ThrowRequest uses up the charge record, accepted or not
 	if not decision.ok then
 		local reason = decision.reason or REASON_CONTEXT
 		bump(counters.rejected, reason)
@@ -1301,6 +1532,7 @@ function CombatService.requestThrow(
 		endKind = "expired",
 		flyOn = false,
 		areaHits = 0,
+		charge = decision.charge,
 	}
 
 	if kind == "throw" and fighter and port then
@@ -1327,6 +1559,7 @@ function CombatService.requestThrow(
 		gravity = gravity,
 		radius = radius,
 		releaseAt = releaseAt, -- the server projectile's own spawn time
+		power = decision.charge or 0, -- feature 1: the server's charge (the trail and the release)
 	}
 	sendTo(proj, "ThrowStarted", payload :: any, origin)
 	addProjectile(proj)
@@ -1339,6 +1572,74 @@ function CombatService.requestThrow(
 		projId = proj.projId,
 		releaseAt = releaseAt,
 	})
+	return true, nil
+end
+
+-- Feature 1: records a charge start (ChargeStart) for `who` (a Player, or a registered fighter / its userId): the press
+-- time in server time (lag-compensated as a throw's press, CatchRules.pressTime) on the duel fighter, else on the
+-- practising player's actor; the next ThrowRequest measures its charge from it. Returns (recorded, reason?).
+function CombatService.requestChargeStart(who: any, clientTime: unknown): (boolean, string?)
+	local now = serverNow()
+	local fighter, player = resolve(who)
+	local holder: any = nil
+	if fighter and portOf[fighter] then
+		holder = fighter
+	elseif player then
+		holder = practiceActorOf(player, now)
+	else
+		return false, REASON_CONTEXT
+	end
+	local pressAt = CatchRules.pressTime(now, clientTime, pingOf(player))
+	if pressAt == nil then
+		if player then
+			deps.reportViolation(player, REMOTE_CHARGE)
+		end
+		return false, REASON_INVALID
+	end
+	holder.chargeStartAt = pressAt
+	return true, nil
+end
+
+-- Feature 1: one catch press (CatchRequest) by `who` (a Player, or a registered fighter / its userId), checked by
+-- Logic/CatchRules against the server's state; accepted, it opens the window and drops a charge (design: html:344).
+-- Returns (accepted, reason?).
+function CombatService.requestCatch(who: any, clientTime: unknown): (boolean, string?)
+	local now = serverNow()
+	local fighter, player = resolve(who)
+	local port = if fighter then portOf[fighter] else nil
+	if port then
+		local sync = port.sync
+		if sync then
+			sync(now) -- the match's timers first, so the phase below is the one at the request time
+		end
+	end
+	local root = if fighter then fighter.getRoot() else nil
+	local state: CatchRules.CatchState = {
+		inDuel = fighter ~= nil and port ~= nil,
+		matchPhase = if port then port.phase() else nil,
+		alive = fighter ~= nil and fighter.isAlive(),
+		hasRoot = root ~= nil,
+		busyUntil = if fighter then fighter.handsBackAt else -math.huge,
+		rooted = fighter ~= nil and now < fighter.rootedUntil,
+		windup = fighter ~= nil and now < fighter.windupUntil,
+		lastPressAt = if fighter then fighter.lastCatchPressAt else -math.huge,
+		ping = pingOf(player),
+	}
+	local decision = CatchRules.validate({ clientTime = clientTime }, state, nil, now)
+	if not decision.ok or fighter == nil then
+		local reason = decision.reason or "catch.context"
+		bump(counters.rejected, reason)
+		if decision.violation and player then
+			deps.reportViolation(player, REMOTE_CATCH)
+		end
+		return false, reason
+	end
+	fighter.lastCatchPressAt = decision.pressAt :: number
+	fighter.catchOpensAt = decision.opensAt :: number
+	fighter.catchClosesAt = decision.closesAt :: number
+	fighter.chargeStartAt = nil
+	counters.catchWindows += 1
+	countersDirty = true
 	return true, nil
 end
 
@@ -1657,6 +1958,9 @@ function CombatService.counters(): { [string]: any }
 		bySquishy = bySquishy,
 		guardPivots = counters.guardPivots,
 		outOfBounds = counters.outOfBounds,
+		catchWindows = counters.catchWindows,
+		catches = counters.catches,
+		bursts = counters.bursts,
 		projectiles = CombatService.projectileCount(),
 		matches = (function(): number
 			local n = 0
@@ -1675,13 +1979,16 @@ local function logCounters()
 	countersDirty = false
 	local parts: { string } = {
 		string.format(
-			"accepted=%d practice=%d originClamped=%d fizzles=%d guardPivots=%d oob=%d",
+			"accepted=%d practice=%d originClamped=%d fizzles=%d guardPivots=%d oob=%d catchWindows=%d catches=%d bursts=%d",
 			counters.accepted,
 			counters.practiceAccepted,
 			counters.originClamped,
 			counters.fizzles,
 			counters.guardPivots,
-			counters.outOfBounds
+			counters.outOfBounds,
+			counters.catchWindows,
+			counters.catches,
+			counters.bursts
 		),
 	}
 	for reason, count in counters.rejected do
@@ -1698,6 +2005,13 @@ end
 function CombatService.init()
 	NetService.on("ThrowRequest", function(player: Player, seq: any, aimDir: any, originHint: any, clientTime: any)
 		CombatService.requestThrow(player, seq, aimDir, originHint, clientTime)
+	end)
+	-- Feature 1 (2026-10-11): the charge start and the catch press.
+	NetService.on(REMOTE_CHARGE, function(player: Player, clientTime: any)
+		CombatService.requestChargeStart(player, clientTime)
+	end)
+	NetService.on(REMOTE_CATCH, function(player: Player, clientTime: any)
+		CombatService.requestCatch(player, clientTime)
 	end)
 end
 
@@ -1737,17 +2051,7 @@ function CombatService.destroy()
 	table.clear(lastSeqs)
 	stepping = false
 	lastStepAt = -math.huge
-	counters = {
-		accepted = 0,
-		practiceAccepted = 0,
-		rejected = {},
-		originClamped = 0,
-		fizzles = 0,
-		impacts = {},
-		bySquishy = {},
-		guardPivots = 0,
-		outOfBounds = 0,
-	}
+	counters = newCounters()
 	countersDirty = false
 	CombatService.Hit:disconnectAll()
 	CombatService.Eliminated:disconnectAll()

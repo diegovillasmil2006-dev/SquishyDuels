@@ -705,7 +705,7 @@ local function checkDuel(problems: Problems)
 		rules.CooldownClamp.Min > 0 and rules.CooldownClamp.Min < rules.CooldownClamp.Max,
 		`{p}.CooldownClamp must satisfy 0 < Min < Max`
 	)
-	expectBoolean(problems, `{p}.HoldToRepeat`, rules.HoldToRepeat)
+	expectBoolean(problems, `{p}.HoldToCharge`, rules.HoldToCharge) -- feature 1 (was HoldToRepeat)
 	expectCount(problems, `{p}.MaxActiveProjectilesPerPlayer`, rules.MaxActiveProjectilesPerPlayer, 1)
 	expect(
 		problems,
@@ -2759,6 +2759,132 @@ local function checkMoves(problems: Problems)
 	end
 end
 
+-- Feature 1 (2026-10-11): the charge throw and the catch (Config.Combat.Charge / Catch and their looks in
+-- Config.FirstPerson, Config.Vfx, Config.UI and Config.Audio): the server's numbers, the 3 Hz flicker limit, the flash
+-- and hit-stop caps and the particle budgets.
+local function checkChargeCatch(problems: Problems)
+	local charge, catch = Combat.Charge, Combat.Catch
+	local p, q = "Config.Combat.Charge", "Config.Combat.Catch"
+	local maxHold = Vfx.HitStop.maxPerWindow
+	local budget = Vfx.Budgets.liveParticlesPerEffect
+	local flicker = MAX_FLICKER_HZ + FEEL_SLACK
+	eachField(problems, p, charge, { "seconds", "fovNarrowDeg" }, expectPositive)
+	expectNonNegative(problems, `{p}.speedGain`, charge.speedGain)
+	expectBetween(problems, `{p}.walkFactor`, charge.walkFactor, 0.1, 1)
+	expectBetween(problems, `{p}.hitStopSeconds`, charge.hitStopSeconds, 0, maxHold)
+	eachField(problems, q, catch, { "windowSeconds", "cooldownSeconds", "radiusStuds", "crushSeconds" }, expectPositive)
+	expectNonNegative(problems, `{q}.centreAboveRootStuds`, catch.centreAboveRootStuds)
+	expect(
+		problems,
+		isNumber(catch.windowSeconds) and catch.windowSeconds <= catch.cooldownSeconds,
+		`{q}.windowSeconds must not outlast cooldownSeconds (one window at a time)`
+	)
+	expect(
+		problems,
+		isNumber(catch.handsBackSeconds) and catch.handsBackSeconds >= catch.crushSeconds,
+		`{q}.handsBackSeconds must be >= crushSeconds (the hands come back after the burst)`
+	)
+	expectBetween(problems, `{q}.burstHitStopSeconds`, catch.burstHitStopSeconds, 0, maxHold)
+	expectBoolean(problems, `{q}.burstIgnoresInvuln`, catch.burstIgnoresInvuln)
+	expect(
+		problems,
+		isNumber(catch.cooldownToleranceSeconds)
+			and catch.cooldownToleranceSeconds >= 0
+			and catch.cooldownToleranceSeconds < catch.cooldownSeconds,
+		`{q}.cooldownToleranceSeconds must be in [0, cooldownSeconds)`
+	)
+
+	local fp = "Config.FirstPerson"
+	local v2, fc, fk, fr = FirstPerson.v2, FirstPerson.charge, FirstPerson.catch, FirstPerson.crush
+	eachField(problems, `{fp}.v2`, v2, { "depthScale", "fovScale", "toyRadius", "kickPerRecoil" }, expectPositive)
+	expectBetween(problems, `{fp}.v2.hitStopTimeScale`, v2.hitStopTimeScale, 0, 1)
+	-- The glow's flicker is a light: held to 3 Hz (§9.12). The squash pulse and the crush wobble are shape motion, kept
+	-- at the design's rates as the Rush wobble is (FirstPerson.ult.wobbleRate) and off under ReducedMotion.
+	expect(
+		problems,
+		isNumber(fc.glowPulseRate) and fc.glowPulseRate / (2 * math.pi) <= flicker,
+		`{fp}.charge.glowPulseRate must stay at or under {MAX_FLICKER_HZ} Hz (rad/s / 2π)`
+	)
+	expectBetween(problems, `{fp}.charge.glowMax`, fc.glowMax, 0, 1)
+	expectBetween(problems, `{fp}.charge.sparkMaxLive`, fc.sparkMaxLive, 1, budget)
+	expectBetween(problems, `{fp}.crush.speckMaxLive`, fr.speckMaxLive, 1, budget)
+	expectBetween(problems, `{fp}.crush.glowFlickerHz`, fr.glowFlickerHz, 0, flicker)
+	expectCalmSpring(problems, `{fp}.crush.spring`, fr.spring[1], fr.spring[2])
+	expectPositive(problems, `{fp}.catch.openSeconds`, fk.openSeconds)
+	expectBetween(problems, `{fp}.catch.hitStopSeconds`, fk.hitStopSeconds, 0, maxHold)
+	expect(
+		problems,
+		fr.burstPieces + fr.burstSparks + fr.burstPuffs + fr.burstWhite <= budget,
+		`{fp}.crush burst pieces must total at most Config.Vfx.Budgets.liveParticlesPerEffect ({budget})`
+	)
+
+	local vc, vk = Vfx.Charge, Vfx.Catch
+	local v = "Config.Vfx"
+	for _, field in
+		{ "trailWidthGain", "trailLifeGain", "releasePuffGain", "releaseRingGain", "fovKickGain", "kickGain" }
+	do
+		expectNonNegative(problems, `{v}.Charge.{field}`, (vc :: any)[field])
+	end
+	eachField(problems, `{v}.Charge`, vc, {
+		"powerRingStuds",
+		"powerRingSeconds",
+		"speckRate",
+		"speckLifetimeMin",
+		"speckLifetimeMax",
+		"speckSize",
+		"speckSpeed",
+	}, expectPositive)
+	expectBetween(problems, `{v}.Charge.powerRingGain`, vc.powerRingGain, 0, 1)
+	expect(
+		problems,
+		isNumber(vc.speckLifetimeMax) and vc.speckLifetimeMin <= vc.speckLifetimeMax,
+		`{v}.Charge.speckLifetimeMin must be <= speckLifetimeMax`
+	)
+	expect(
+		problems,
+		vk.sparks <= budget and vk.burstPieces + vk.burstSparks + vk.burstPuffs <= budget,
+		`{v}.Catch sparks and burst pieces must each stay within Budgets.liveParticlesPerEffect ({budget})`
+	)
+	eachField(problems, `{v}.Catch`, vk, {
+		"ringStuds",
+		"ringSeconds",
+		"sparkSizeStuds",
+		"flyInSeconds",
+		"burstRingStuds",
+		"burstGravity",
+		"burstDrag",
+	}, expectPositive)
+
+	local reticle = UI.Reticle
+	local r = "Config.UI.Reticle"
+	expectBetween(problems, `{r}.chargeFillTransparency`, reticle.chargeFillTransparency, 0, 1)
+	expect(
+		problems,
+		isNumber(reticle.chargePulseRate) and reticle.chargePulseRate / (2 * math.pi) <= flicker,
+		`{r}.chargePulseRate must stay at or under {MAX_FLICKER_HZ} Hz (rad/s / 2π)`
+	)
+	expectBetween(problems, `{r}.catchPromptHz`, reticle.catchPromptHz, 0, flicker)
+	-- The prompt's opacity swings catchPromptFrom ± (1 - catchPromptFrom): never below 0.
+	expectBetween(problems, `{r}.catchPromptFrom`, reticle.catchPromptFrom, 0.5, 1)
+	expectPositive(problems, `{r}.catchPromptStuds`, reticle.catchPromptStuds)
+	expectPositive(problems, `{r}.bigWordSeconds`, reticle.bigWordSeconds)
+	expect(
+		problems,
+		isNumber(UI.Touch.catchButton) and UI.Touch.catchButton >= UI.Touch.minTargetFloor,
+		`Config.UI.Touch.catchButton must be >= minTargetFloor ({UI.Touch.minTargetFloor})`
+	)
+
+	local tone = Audio.charge
+	local a = "Config.Audio.charge"
+	for _, field in { "pitchFrom", "pitchTo" } do
+		expectBetween(problems, `{a}.{field}`, (tone :: any)[field], Audio.pitchMin, Audio.pitchMax)
+	end
+	expectBetween(problems, `{a}.volumeFrom`, tone.volumeFrom, 0, 1)
+	expectBetween(problems, `{a}.tremolo`, tone.tremolo, 0, 0.99)
+	expectNonNegative(problems, `{a}.tremoloRate`, tone.tremoloRate)
+	expectNonNegative(problems, `{a}.stopFadeMs`, tone.stopFadeMs)
+end
+
 local function checkDebug(problems: Problems)
 	for _, name in sortedKeys(Debug) do
 		local value = (Debug :: any)[name]
@@ -4467,6 +4593,9 @@ function Config.validate(deps: ValidateDeps?): { string }
 	end)
 	guarded(problems, "Config moves (dash and Epic ultimates)", function()
 		checkMoves(problems)
+	end)
+	guarded(problems, "Config feature 1 (charge throw and catch)", function()
+		checkChargeCatch(problems)
 	end)
 	guarded(problems, "Config.Debug", function()
 		checkDebug(problems)

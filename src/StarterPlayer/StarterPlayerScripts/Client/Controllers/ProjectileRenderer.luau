@@ -65,6 +65,18 @@
 --   of the camera fades (Anim/NearFade: parts and outline Highlight), except the own one in its first 0.2 s in flight;
 --   at impact the near fade is a max with the splat fade (partFade), so it never brings the splat back. The local
 --   first-person victim gets no white impact fill (impactFlashOn). Third person is unchanged.
+-- * Feature 1 (2026-10-11; design: the combat-effects page "Squishy Combat FP v2.html", html:243, 333-338, 604-605;
+--   Shared/ThrowCharge, Config.Vfx.Charge / Catch): ThrowStarted.power (the server's charge) widens and lengthens the
+--   rarity trail (trailFactors), grows the release puffs and ring; from whiteRingFrom the grown ring takes the toy's
+--   accent with a smaller White one inside it (design: html:335), from powerRingFrom an accent ring crosses the path
+--   powerRingAheadStuds ahead of the hand (html:338; no ring under ReducedMotion, as before). In flight a charged
+--   throw whose rarity trail has no emitter of its own (Commons too) sheds accent specks (ThrowCharge.speckRate,
+--   within Effects.projectileParticles; halved under ReducedMotion). A caught throw (CatchController.Caught; no
+--   ThrowImpact comes) stops its trail and specks and flies from where it was caught into the catcher's hands (a
+--   point holdForwardStuds in front of and holdUpStuds above its root, facing where the catcher looks) over
+--   flyInSeconds, then shakes and squashes there as the crush does (Anim/ChargePoses.crushShape) until
+--   CatchController.Burst removes it (the burst's effects are VfxController's; a caught toy with no Burst goes
+--   CAUGHT_GRACE after its burstAt). A first-person catcher sees it in the overlay instead: its world copy goes at once.
 -- Impact puffs, rings, hit flashes and Dragon Rush visuals are VfxController's.
 
 -- Services
@@ -88,9 +100,11 @@ local RarityStyle = require(Shared.Art.RarityStyle)
 local Signal = require(Shared.Util.Signal)
 local SquishyBlueprints = require(Shared.Art.SquishyBlueprints)
 local SquishyBuilder = require(Shared.Art.SquishyBuilder)
+local ThrowCharge = require(Shared.ThrowCharge)
 local Types = require(Shared.Types)
 
 local Client = script.Parent.Parent
+local ChargePoses = require(Client.Anim.ChargePoses)
 local FxPool = require(Client.Anim.FxPool)
 local FxShapes = require(Client.Anim.FxShapes)
 local HitStop = require(Client.Anim.HitStop)
@@ -101,6 +115,7 @@ local SquishDeformer = require(Client.Anim.SquishDeformer)
 local SquishRig = require(Client.Anim.SquishRig)
 local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
+local CatchController = require(script.Parent.CatchController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
 local NetController = require(script.Parent.NetController)
@@ -181,6 +196,17 @@ type Projectile = {
 	lastPosition: Vector3,
 	lastVelocity: Vector3,
 	lastScale: Vector3,
+	power: number, -- feature 1: ThrowStarted.power (0 = uncharged)
+	caught: Caught?, -- feature 1: caught, flying into the catcher's hands
+}
+
+-- Feature 1: a caught throw's drawn toy (server times but startClock).
+type Caught = {
+	catcherId: number,
+	at: number,
+	burstAt: number,
+	startClock: number,
+	from: Vector3,
 }
 
 type PoolEntry = {
@@ -241,6 +267,10 @@ local MAJOR_KINDS: { [string]: boolean } = { player = true, target = true }
 -- Feel pass (§18.4).
 local THROW_RING = VFX.ThrowRing
 local IMPACT_FLASH = VFX.ImpactFlash
+-- Feature 1 (2026-10-11): the charge's power and the catch (Config.Vfx.Charge / Catch).
+local CHARGE_VFX = VFX.Charge
+local CATCH_VFX = VFX.Catch
+local CAUGHT_GRACE = 0.5 -- reading: a caught toy with no Burst goes this long after its burstAt
 local CONTACT_HOLD_U = 0.35 -- §18.4.4: the splat sample held during a hit-stop (fraction of the splat phase)
 local SOUND_THROW = "sfx.throw"
 local ENDED_PHASES: { [string]: boolean } = { Result = true, Returning = true, Cancelled = true, Void = true }
@@ -266,13 +296,14 @@ local cleanup: Cleanup.Cleanup? = nil
 local live: { [number]: Projectile } = {}
 local idle: { [string]: { PoolEntry } } = {}
 local highlights = 0
-local stats = { spawned = 0, impacts = 0, expired = 0, reused = 0, built = 0, held = 0, heldTimeouts = 0 }
+local stats = { spawned = 0, impacts = 0, expired = 0, reused = 0, built = 0, held = 0, heldTimeouts = 0, caught = 0 }
 local connections: { Signal.Connection } = {}
 local folder: Folder? = nil
 local contactParams: RaycastParams? = nil
 local contactRefreshedAt = -math.huge
 local rankedAt = -math.huge -- os.clock() of the last detail pick
 local detailScratch: { Projectile } = {} -- reused by every pick
+local random = Random.new() -- feature 1: the caught toy's shake
 
 -- Pure helpers ------------------------------------------------------------------------------------------------------
 
@@ -549,6 +580,25 @@ function ProjectileRenderer.impactFlashOn(kind: string, localIsVictim: boolean, 
 	return MAJOR_KINDS[kind] == true and not (localIsVictim and firstPerson)
 end
 
+-- Feature 1 (pure): ThrowStarted.power as a charge 0..1 (nil, not a number or not finite = 0, an uncharged throw).
+function ProjectileRenderer.powerOf(power: unknown): number
+	if type(power) ~= "number" or power ~= power or power == math.huge or power == -math.huge then
+		return 0
+	end
+	return math.clamp(power :: number, 0, 1)
+end
+
+-- Feature 1 (pure): a caught toy's drawn point `elapsed` seconds (client clock) after the catch reached this client:
+-- from where it was caught into the catcher's hands over Catch.flyInSeconds (Quad Out), then in the hands; where it
+-- was caught when the catcher has no hands here (nil).
+function ProjectileRenderer.caughtAt(from: Vector3, hands: Vector3?, elapsed: number): Vector3
+	if hands == nil then
+		return from
+	end
+	local u = math.clamp(elapsed / CATCH_VFX.flyInSeconds, 0, 1)
+	return from:Lerp(hands, 1 - (1 - u) * (1 - u))
+end
+
 -- Runtime helpers ---------------------------------------------------------------------------------------------------
 
 local function serverNow(): number
@@ -760,10 +810,12 @@ local function attachTrails(p: Projectile, root: BasePart)
 	local accent = Color3.fromHex(def.visuals.accent)
 	local colors = RarityStyle.trailColorSequence(style.kind, accent)
 	local pool = FxPool.default()
-	local half = style.width / 2
+	-- Feature 1: a charged throw's trail is wider and longer (design: html:243).
+	local widthFactor, lifeFactor = ThrowCharge.trailFactors(p.power)
+	local half = style.width * widthFactor / 2
 	for _, offset in style.offsets do
 		local props = {
-			Lifetime = style.lifetime,
+			Lifetime = style.lifetime * lifeFactor,
 			Transparency = NumberSequence.new(style.transparencyFrom, style.transparencyTo),
 			WidthScale = NumberSequence.new(1, style.widthScaleTo),
 			Color = colors,
@@ -802,6 +854,40 @@ local function attachTrails(p: Projectile, root: BasePart)
 			p.emitter = emitter
 		end
 	end
+end
+
+-- Feature 1: a charged throw sheds specks in flight (design: html:605) when its rarity trail has no emitter of its own
+-- (the comet / twin-ribbon / ember ones already shed theirs); on p.emitter, so the flight moves it and the impact,
+-- the catch and the removal end it as the rarity emitter's.
+local function attachSpecks(p: Projectile, root: BasePart)
+	local def = p.def
+	if def == nil or p.emitter ~= nil then
+		return
+	end
+	local style = RarityStyle.trail(def.visuals.trail)
+	local rate = ThrowCharge.speckRate(p.power, style ~= nil and style.emitter ~= nil)
+	if Tweens.reducedMotion() then
+		rate *= VFX.reducedParticleMultiplier
+	end
+	if not (rate > 0) then
+		return
+	end
+	local emitter = FxPool.default():acquireEmitter({
+		Texture = VFX.Textures.sparkles,
+		Rate = rate,
+		Lifetime = NumberRange.new(CHARGE_VFX.speckLifetimeMin, CHARGE_VFX.speckLifetimeMax), -- design: html:605
+		Speed = NumberRange.new(0, CHARGE_VFX.speckSpeed),
+		SpreadAngle = Vector2.new(180, 180),
+		Drag = CHARGE_VFX.speckDrag,
+		Size = NumberSequence.new(2 * CHARGE_VFX.speckSize, 0), -- the design's radius, as the billboard's width
+		Color = ColorSequence.new(Color3.fromHex(def.visuals.accent)),
+	})
+	local attachment = emitter.Parent
+	if attachment and attachment:IsA("Attachment") then
+		attachment.WorldPosition = root.Position
+	end
+	emitter.Enabled = true
+	p.emitter = emitter
 end
 
 local function makeShadow(p: Projectile): BasePart
@@ -844,11 +930,14 @@ local function handPosition(thrower: Player?): Vector3?
 end
 
 -- The release beat on the projectile's first drawn frame: the air puffs (§9.15), the air ring for every rarity (its
--- size × ringScale) and the whoosh (§18.4.5), all at the hand.
+-- size × ringScale) and the whoosh (§18.4.5), all at the hand. Feature 1: the charge's power grows them and adds the
+-- accent rings (ThrowCharge.release; design: html:335-338; see the header).
 local function releaseBeat(p: Projectile, ringScale: number)
 	local from = p.payload.origin + p.handOffset
-	if PUFF_COUNT > 0 then
-		FxPool.default():emit(from, PUFF_COUNT, {
+	local release = ThrowCharge.release(p.power)
+	local puffs = math.floor(PUFF_COUNT * release.puffs + 0.5) -- design: html:336
+	if puffs > 0 then
+		FxPool.default():emit(from, puffs, {
 			Texture = VFX.Textures.smoke,
 			Lifetime = NumberRange.new(PUFF_LIFETIME * 0.8, PUFF_LIFETIME),
 			Speed = NumberRange.new(2, 4),
@@ -858,14 +947,22 @@ local function releaseBeat(p: Projectile, ringScale: number)
 		})
 	end
 	if not Tweens.reducedMotion() then
-		FxShapes.ring(
-			from,
-			p.payload.velocity,
-			THROW_RING.toStuds * ringScale,
-			THROW_RING.seconds,
-			Palette.White,
-			THROW_RING.transparencyFrom
-		)
+		local velocity = p.payload.velocity
+		local ring = THROW_RING.toStuds * ringScale
+		local accent = if p.def then Color3.fromHex(p.def.visuals.accent) else Palette.White
+		-- design: html:335 (the toy-coloured ring grows with c; from whiteRingFrom a smaller white one joins it)
+		local grown = if release.whiteRing then accent else Palette.White
+		FxShapes.ring(from, velocity, ring * release.ring, THROW_RING.seconds, grown, THROW_RING.transparencyFrom)
+		if release.whiteRing then
+			local inner = ring * CHARGE_VFX.whiteRingShare
+			FxShapes.ring(from, velocity, inner, THROW_RING.seconds, Palette.White, THROW_RING.transparencyFrom)
+		end
+		if release.powerRing and velocity.Magnitude > 1e-6 then
+			-- design: html:338 (across the path, ahead of the hand; the design's own size, first person too)
+			local ahead = from + velocity.Unit * CHARGE_VFX.powerRingAheadStuds
+			local seconds = CHARGE_VFX.powerRingSeconds
+			FxShapes.ring(ahead, velocity, release.powerRingStuds, seconds, accent, THROW_RING.transparencyFrom)
+		end
 	end
 	-- Own sounds priority 1; another thrower's is an "other" sound (SoundController gives it -1: dropped first).
 	local options: SoundController.PlayOptions = { at = from }
@@ -922,6 +1019,7 @@ local function spawnVisual(p: Projectile, tau: number, at: Vector3?)
 	makeShadow(p)
 	if at == nil then
 		attachTrails(p, root)
+		attachSpecks(p, root)
 		if tau < PUFF_WINDOW then
 			releaseBeat(p, ProjectileRenderer.ringScale(ownFirstPerson))
 		end
@@ -1034,6 +1132,17 @@ local function setNear(p: Projectile, near: number)
 	if highlight then
 		highlight.OutlineTransparency, highlight.FillTransparency =
 			ProjectileRenderer.outlineFade(near, VFX.Projectile.fillTransparency)
+	end
+end
+
+-- The shadow disc under `position` on the floor (its size shrinking with the height).
+local function placeShadow(p: Projectile, position: Vector3)
+	local shadow = p.shadow
+	if shadow then
+		local height = position.Y - p.floorY
+		local d = ProjectileRenderer.shadowDiameter(p.payload.radius, height)
+		shadow.Size = Vector3.new(SHADOW_THICKNESS, d, d)
+		shadow.CFrame = CFrame.new(position.X, p.floorY + SHADOW_LIFT, position.Z) * CFrame.Angles(0, 0, math.pi / 2)
 	end
 end
 
@@ -1190,17 +1299,50 @@ local function stepFlight(p: Projectile, now: number, dt: number, eye: Vector3?)
 			attachment.WorldPosition = sample.position
 		end
 	end
-	local shadow = p.shadow
-	if shadow then
-		local height = sample.position.Y - p.floorY
-		local d = ProjectileRenderer.shadowDiameter(p.payload.radius, height)
-		shadow.Size = Vector3.new(SHADOW_THICKNESS, d, d)
-		shadow.CFrame = CFrame.new(sample.position.X, p.floorY + SHADOW_LIFT, sample.position.Z)
-			* CFrame.Angles(0, 0, math.pi / 2)
-	end
+	placeShadow(p, sample.position)
 	p.lastPosition = sample.position
 	p.lastVelocity = sample.velocity
 	p.lastScale = drawn
+	return true
+end
+
+-- Feature 1: the catcher's hands in the world (a point holdForwardStuds in front of and holdUpStuds above its root)
+-- and where it looks; nil when the catcher has no root here.
+local function catcherHands(catcherId: number): (Vector3?, Vector3?)
+	local catcher = Players:GetPlayerByUserId(catcherId)
+	local character = catcher and catcher.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if root == nil or not root:IsA("BasePart") then
+		return nil, nil
+	end
+	local frame = root.CFrame
+	return (frame * CFrame.new(0, CATCH_VFX.holdUpStuds, -CATCH_VFX.holdForwardStuds)).Position, frame.LookVector
+end
+
+-- Feature 1: a caught toy flies into the catcher's hands, then shakes and squashes there until its Burst (header).
+-- `eye`: the camera while first person is on (the near fade), else nil.
+local function stepCaught(p: Projectile, now: number, eye: Vector3?): boolean
+	local caught = p.caught :: Caught
+	if now > caught.burstAt + CAUGHT_GRACE then
+		return false
+	end
+	local root, deformer = p.root, p.deformer
+	if root == nil or deformer == nil or root.Parent == nil then
+		return false
+	end
+	local hands, look = catcherHands(caught.catcherId)
+	local position = ProjectileRenderer.caughtAt(caught.from, hands, os.clock() - caught.startClock)
+	local scale, shake = ChargePoses.crushShape(now - caught.at, Tweens.reducedMotion())
+	if shake > 0 then
+		local a = shake * p.payload.radius -- crushShape's shake is in toy radii
+		position += Vector3.new(random:NextNumber(-a, a), random:NextNumber(-a, a), random:NextNumber(-a, a))
+	end
+	root.CFrame = ProjectileRenderer.frameAt(position, look or p.lastVelocity, 0)
+	deformer:setScale(scale)
+	setNear(p, ProjectileRenderer.nearFadeAt(eye, position, false, 0))
+	placeShadow(p, position)
+	p.lastPosition = position
+	p.lastScale = scale
 	return true
 end
 
@@ -1214,6 +1356,8 @@ local function step(dt: number, clock: number): boolean
 		local ok, keep = pcall(function(): boolean
 			if p.impact ~= nil then
 				return stepImpact(p, eye)
+			elseif p.caught ~= nil then
+				return stepCaught(p, now, eye) -- feature 1: no lifetime check, the Burst ends it
 			end
 			return stepFlight(p, now, dt, eye)
 		end)
@@ -1280,6 +1424,8 @@ local function onThrowStarted(raw: unknown)
 		lastPosition = payload.origin,
 		lastVelocity = payload.velocity,
 		lastScale = Vector3.one,
+		power = ProjectileRenderer.powerOf(payload.power),
+		caught = nil,
 	}
 end
 
@@ -1310,6 +1456,49 @@ local function onThrowImpact(raw: unknown)
 		else nil
 	local flash = ProjectileRenderer.impactFlashOn(impact.kind, localIsVictim, FirstPersonController.isActive())
 	startImpact(p, impact.position, impact.normal, MAJOR_KINDS[impact.kind] == true, flash, holdStart)
+end
+
+-- Feature 1: a throw was caught (CatchController.Caught): its trail and specks stop and it flies into the catcher's
+-- hands (stepCaught); a first-person local catcher draws it in the overlay, so the world copy goes at once.
+local function onCaught(event: CatchController.Event)
+	local p = live[event.projId]
+	if p == nil or p.impact ~= nil or p.caught ~= nil then
+		return
+	end
+	if not p.spawned then
+		spawnVisual(p, math.max(Workspace:GetServerTimeNow() - p.payload.releaseAt, 0), event.position)
+	end
+	local localPlayer = Players.LocalPlayer
+	local ownCatch = localPlayer ~= nil and event.catcherId == localPlayer.UserId
+	if p.model == nil or (ownCatch and FirstPersonController.isActive()) then
+		removeProjectile(p)
+		return
+	end
+	setDetailed(p, false)
+	p.contact = nil
+	for _, trail in p.trails do
+		trail.Enabled = false
+	end
+	local emitter = p.emitter
+	if emitter then
+		emitter.Enabled = false
+	end
+	p.caught = {
+		catcherId = event.catcherId,
+		at = event.at,
+		burstAt = event.burstAt,
+		startClock = os.clock(),
+		from = p.lastPosition,
+	}
+	stats.caught += 1
+end
+
+-- Feature 1: the caught toy bursts (CatchController.Burst): gone (the burst's effects are VfxController's).
+local function onBurst(event: CatchController.Event)
+	local p = live[event.projId]
+	if p ~= nil and p.impact == nil then
+		removeProjectile(p)
+	end
 end
 
 -- Removes the duel projectiles at a match end (ProjectileRenderer.removeOnMatchEnd), and empties the idle pool when
@@ -1362,6 +1551,12 @@ function ProjectileRenderer.highlightCount(): number
 	return highlights
 end
 
+-- Feature 1: a catcher's hands in the world and where it looks (nil, nil without its root here): where its caught toy
+-- is held and bursts (VfxController draws the burst there).
+function ProjectileRenderer.catcherHands(catcherId: number): (Vector3?, Vector3?)
+	return catcherHands(catcherId)
+end
+
 -- The last drawn position of a live projectile (nil when unknown or not drawn yet).
 function ProjectileRenderer.positionOf(projId: number): Vector3?
 	local p = live[projId]
@@ -1370,8 +1565,11 @@ end
 
 -- Studio / debug counters: projectiles rendered (and detailed), pooled models, trails, highlights, live connections.
 function ProjectileRenderer.counts(): { [string]: any }
-	local rendered, waiting, detailed = 0, 0, 0
+	local rendered, waiting, detailed, caught = 0, 0, 0, 0
 	for _, p in live do
+		if p.caught ~= nil then
+			caught += 1
+		end
 		if p.spawned then
 			rendered += 1
 		else
@@ -1408,6 +1606,8 @@ function ProjectileRenderer.counts(): { [string]: any }
 		modelsBuilt = stats.built,
 		modelsReused = stats.reused,
 		connections = connected,
+		caught = caught, -- feature 1: caught toys drawn in a catcher's hands now
+		caughtTotal = stats.caught,
 	}
 end
 
@@ -1427,6 +1627,8 @@ function ProjectileRenderer.init()
 	c:add(Scheduler.add(step, "render"))
 	track(NetController.on("ThrowStarted", onThrowStarted))
 	track(NetController.on("ThrowImpact", onThrowImpact))
+	track(CatchController.Caught:connect(onCaught))
+	track(CatchController.Burst:connect(onBurst))
 	track(StateController.DuelChanged:connect(onDuelChanged))
 	c:add(function()
 		ProjectileRenderer.clear()

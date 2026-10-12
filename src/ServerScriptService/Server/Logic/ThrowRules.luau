@@ -15,6 +15,8 @@
 --      forward ......................................................................................... throw.direction
 --   7. Latency: lat = clamp(now - clientTime, 0, min(ping/2 + 0.03, 0.12)); abnormal clientTime (more than 0.05 s
 --      ahead or 1 s behind) -> lat = min(ping/2, 0.12). releaseAt = now - lat + windup (always in the future).
+--  7b. Hands (feature 1, 2026-10-11): the press (now - lat) is not before handsBusyUntil (a catch window or a crush,
+--      Config.Combat.Catch; design: html:323 throws only from the hold) ........................................ throw.busy
 --   8. Cooldown: releaseAt >= nextThrowAt - CooldownToleranceSeconds ......................... throw.cooldown
 --   9. Live projectiles < MaxActiveProjectilesPerPlayer ............................................. throw.tooMany
 --  10. Origin: originHint only if within 3 + 16·min(ping, 0.25) studs of serverHRP.CFrame * ReleaseOffset, in line
@@ -22,6 +24,11 @@
 --  11. Spawn overlap (adapter, GetPartBoundsInRadius vs Geometry without Barriers): accepted with fizzle = true; the
 --      throw still uses its cooldown.
 --  12. Accept: nextThrowAt = releaseAt + clamp(cooldown, CooldownClamp) × cooldownMultiplier (SuddenDeath 0.8).
+--      Feature 1 (2026-10-11): the charge c = Shared/ThrowCharge.measure(chargeStartAt, press, ready): from the
+--      server's own record of the charge start (ChargeStart, lag-compensated like this press) or from the moment the
+--      throw was ready (nextThrowAt - windup, and not before chargeFloorAt), whichever is later, clamped 0..1 (no
+--      record = 0); velocity = direction × speed × (1 + speedGain·c) (Config.Combat.Charge; design: html:330). The
+--      client never sends a charge or a speed.
 -- Rejections echo the seq (when it was valid) and the unchanged nextThrowAt for ThrowRejected(seq, reason, nextThrowAt).
 -- The thrown squishy's stats always come from the server (the match snapshot), never from the client (§12 #3).
 --
@@ -43,6 +50,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Config = require(ReplicatedStorage.Shared.Config)
+local ThrowCharge = require(ReplicatedStorage.Shared.ThrowCharge)
 local Types = require(ReplicatedStorage.Shared.Types)
 local Validate = require(ReplicatedStorage.Shared.Util.Validate)
 local HitMath = require(script.Parent.HitMath)
@@ -77,6 +85,12 @@ export type ThrowState = {
 	cooldownMultiplier: number?, -- DuelRules.cooldownMultiplier (SuddenDeath 0.8); nil = 1
 	isClear: ((from: Vector3, to: Vector3) -> boolean)?, -- raycast vs the slot's Geometry (no Barriers); nil = clear
 	overlaps: ((origin: Vector3, radius: number) -> boolean)?, -- GetPartBoundsInRadius vs Geometry; nil = no overlap
+	-- Feature 1 (2026-10-11): the server's record of this thrower's charge start (server time; nil = none), the server
+	-- time its hands are free again (a catch window or a crush; nil = free) and the earliest time a charge may count
+	-- from besides the cooldown (the hands back, a root's end; nil = none).
+	chargeStartAt: number?,
+	handsBusyUntil: number?,
+	chargeFloorAt: number?,
 }
 
 export type Decision = {
@@ -97,6 +111,7 @@ export type Decision = {
 	lag: number?,
 	originClamped: boolean?, -- the hint was not used (§12 #23 counter)
 	fizzle: boolean?, -- spawn overlap: ThrowImpact kind = fizzle at releaseAt
+	charge: number?, -- feature 1: the server's charge c (0..1) that drew the speed
 }
 
 export type ThrowConfig = { Combat: any, Duel: any }
@@ -109,6 +124,7 @@ local REASON_ROOTED = "throw.rooted"
 local REASON_DIRECTION = "throw.direction"
 local REASON_COOLDOWN = "throw.cooldown"
 local REASON_TOO_MANY = "throw.tooMany"
+local REASON_BUSY = "throw.busy" -- feature 1
 
 local LIVE_PHASES: { [string]: boolean } = { Active = true, SuddenDeath = true }
 
@@ -275,6 +291,12 @@ function ThrowRules.validate(input: ThrowInput, state: ThrowState, cfg: ThrowCon
 	local lag = ThrowRules.lagCompensation(now, clientTime, state.ping, c)
 	local releaseAt = now - lag + throw.windup
 
+	-- 7b. Hands (feature 1): not open for a catch, not crushing a caught toy.
+	local busyUntil = state.handsBusyUntil
+	if busyUntil ~= nil and now - lag < busyUntil then
+		return reject(state, REASON_BUSY, seq, false, mode)
+	end
+
 	-- 8. Cooldown.
 	if releaseAt < state.nextThrowAt - rules.CooldownToleranceSeconds then
 		return reject(state, REASON_COOLDOWN, seq, false, mode)
@@ -292,10 +314,13 @@ function ThrowRules.validate(input: ThrowInput, state: ThrowState, cfg: ThrowCon
 	local overlaps = state.overlaps
 	local fizzle = overlaps ~= nil and overlaps(origin, throw.radius)
 
-	-- 12. Accept.
+	-- 12. Accept. Feature 1: the charge, measured from the server's own record (see the header).
 	local clamp = rules.CooldownClamp
 	local multiplier = if state.cooldownMultiplier ~= nil then state.cooldownMultiplier else 1
 	local cooldown = math.clamp(throw.cooldown, clamp.Min, clamp.Max) * multiplier
+	local chargeCfg = c.Combat.Charge or Config.Combat.Charge -- a test's older Config copy may have none
+	local readyPressAt = math.max(state.nextThrowAt - throw.windup, state.chargeFloorAt or -math.huge)
+	local charge = ThrowCharge.measure(state.chargeStartAt, now - lag, readyPressAt, chargeCfg.seconds)
 	return {
 		ok = true,
 		violation = false,
@@ -306,12 +331,13 @@ function ThrowRules.validate(input: ThrowInput, state: ThrowState, cfg: ThrowCon
 		releaseAt = releaseAt,
 		direction = direction,
 		origin = origin,
-		velocity = direction * throw.speed,
+		velocity = direction * (throw.speed * ThrowCharge.speedFactor(charge, chargeCfg.speedGain)),
 		gravity = throw.gravity,
 		radius = throw.radius,
 		lag = lag,
 		originClamped = originClamped,
 		fizzle = fizzle,
+		charge = charge,
 	}
 end
 

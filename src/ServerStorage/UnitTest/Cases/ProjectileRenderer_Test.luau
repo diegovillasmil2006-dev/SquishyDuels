@@ -35,6 +35,9 @@
 --   * in first person every projectile within 4.5 studs of the camera fades (parts and outline), except the own one in
 --     its first 0.2 s; at impact the near fade wins over the splat fade (a max), and the outline fades with it;
 --   * the local first-person victim gets no white impact fill; third person is unchanged.
+-- Feature 1 (2026-10-11, the charge throw and the catch): ThrowStarted.power reads as a charge 0..1 (anything else 0);
+--   a caught toy flies from where it was caught into the catcher's hands over Catch.flyInSeconds (Quad Out) and stays
+--   there; with no catcher in reach it stays where it was caught.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -572,6 +575,27 @@ return function(t: Context)
 		outline, fill = ProjectileRenderer.outlineFade(0.5, Config.Vfx.ImpactFlash.fillFrom)
 		expect.near(outline, projectile.outlineTransparency + (1 - projectile.outlineTransparency) * 0.5, 1e-6)
 		expect.near(fill, 0.75, 1e-6)
+	end)
+
+	t.test("feature 1: ThrowStarted.power reads as a charge 0..1", function()
+		expect.equal(ProjectileRenderer.powerOf(nil), 0)
+		expect.equal(ProjectileRenderer.powerOf(0.4), 0.4)
+		expect.equal(ProjectileRenderer.powerOf(3), 1)
+		expect.equal(ProjectileRenderer.powerOf(-1), 0)
+		expect.equal(ProjectileRenderer.powerOf(0 / 0), 0)
+		expect.equal(ProjectileRenderer.powerOf(math.huge), 0)
+		expect.equal(ProjectileRenderer.powerOf("1"), 0)
+	end)
+
+	t.test("feature 1: a caught toy flies into the catcher's hands over flyInSeconds, then stays", function()
+		local fly = Config.Vfx.Catch.flyInSeconds
+		local from, hands = Vector3.new(0, 4, 10), Vector3.new(0, 4.8, 1.8)
+		expect.near((ProjectileRenderer.caughtAt(from, hands, 0) - from).Magnitude, 0, 1e-6)
+		local half = ProjectileRenderer.caughtAt(from, hands, fly / 2)
+		expect.near((half - from:Lerp(hands, 0.75)).Magnitude, 0, 1e-5) -- Quad Out: 3/4 of the way at half time
+		expect.near((ProjectileRenderer.caughtAt(from, hands, fly) - hands).Magnitude, 0, 1e-6)
+		expect.near((ProjectileRenderer.caughtAt(from, hands, 5) - hands).Magnitude, 0, 1e-6)
+		expect.near((ProjectileRenderer.caughtAt(from, nil, 0.05) - from).Magnitude, 0, 1e-6)
 	end)
 
 	t.test("no white impact fill for the local first-person victim; every other flash as before", function()

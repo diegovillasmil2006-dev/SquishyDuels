@@ -177,9 +177,10 @@ local MAX_VARIANTS = 5 -- reading: §14.2 asks for at most 3; a little slack, ne
 local MAX_HISTORY = 200
 local MAX_EXACT_ID = 2 ^ 53
 
--- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys), then spec phase 5's moves (10 keys) and
--- the Inspect showcases' one-shots (16 keys, final polish 2026-10-11), each key with its "Try it" runner (the moves and
--- the showcases play as they will in the game: "plain").
+-- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys), then spec phase 5's moves (10 keys), the
+-- Inspect showcases' one-shots (16 keys, final polish 2026-10-11) and feature 1's charge throw and catch (5 keys,
+-- 2026-10-11), each key with its "Try it" runner (the moves, the showcases and the catch play as they will in the
+-- game: "plain"; the charge tone is a loop the game bends in pitch, heard once here).
 local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } = {
 	{
 		name = "Squeezing",
@@ -287,6 +288,16 @@ local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } 
 			{ key = "sfx.inspect.sparkle", runner = "plain" },
 			{ key = "sfx.inspect.wiggle", runner = "plain" },
 			{ key = "sfx.inspect.blub", runner = "plain" },
+		},
+	},
+	{
+		name = "Charge throw and catch",
+		keys = {
+			{ key = "sfx.chargeLoop", runner = "plain" },
+			{ key = "sfx.chargeFull", runner = "plain" },
+			{ key = "sfx.catch", runner = "plain" },
+			{ key = "sfx.crushSqueak", runner = "plain" },
+			{ key = "sfx.crushBurst", runner = "plain" },
 		},
 	},
 }

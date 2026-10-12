@@ -9,6 +9,10 @@
 -- line of sight and in the own zone -> spawn overlap fizzles but still uses the cooldown -> accept with
 -- nextThrowAt = releaseAt + clamp(cooldown) × multiplier. Lifetime 3 s and Bounds expiry (§12 #10). The thrown
 -- squishy's stats come from the server state, never the request. validate never modifies the state it reads.
+-- Feature 1 (2026-10-11, the charge throw and the catch): #7b the hands: a press (lag-compensated) before
+-- handsBusyUntil (a catch window or a crush) is throw.busy; the charge c is measured from chargeStartAt to the press,
+-- from the throw's ready moment (nextThrowAt - windup, not before chargeFloorAt) at the earliest, clamped 0..1 (no
+-- start = 0), and the velocity is × (1 + speedGain·c).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -542,6 +546,46 @@ return function(t: Context)
 			expect.equal(decision.gravity, stats.gravity)
 			expect.equal(decision.radius, stats.radius)
 		end
+	end)
+
+	-- Feature 1: the hands and the charge -------------------------------------------------------------------------
+
+	t.test("#7b hands: a press before handsBusyUntil (lag-compensated) is throw.busy", function()
+		expectRejected(validate(input(), duelState({ handsBusyUntil = NOW + 0.2 })), "throw.busy")
+		-- The press is now - lag (0.05 here): busy until NOW - 0.02 still covers it.
+		expectRejected(validate(input(), duelState({ handsBusyUntil = NOW - 0.02 })), "throw.busy")
+		expect.truthy(validate(input(), duelState({ handsBusyUntil = NOW - 0.06 })).ok)
+		expect.truthy(validate(input(), duelState({ handsBusyUntil = -math.huge })).ok)
+		-- Rooted is still its own reason, checked first.
+		expectRejected(validate(input(), duelState({ rooted = true, handsBusyUntil = NOW + 1 })), "throw.rooted")
+	end)
+
+	t.test("the charge: measured by the server from chargeStartAt to the press, × (1 + 0.85c) speed", function()
+		local speedGain = Config.Combat.Charge.speedGain
+		-- No start: an uncharged throw.
+		local plain = validate(input(), duelState())
+		expect.equal(plain.charge, 0)
+		expect.near(plain.velocity.Magnitude, THROW.speed, 1e-3)
+		-- Started 0.55 s before now, pressed (let go) at now - 0.05: c = 0.5.
+		local half = validate(input(), duelState({ chargeStartAt = NOW - 0.55 }))
+		expect.near(half.charge, 0.5, TIME_TOLERANCE * 10)
+		expect.near(half.velocity.Magnitude, THROW.speed * (1 + speedGain * half.charge), 1e-3)
+		-- Clamped at 1.
+		local full = validate(input(), duelState({ chargeStartAt = NOW - 5 }))
+		expect.equal(full.charge, 1)
+		expect.near(full.velocity.Magnitude, THROW.speed * (1 + speedGain), 1e-3)
+		-- Pressed during the cooldown: counted from the moment the throw was ready (nextThrowAt - windup).
+		local cooled =
+			validate(input(), duelState({ chargeStartAt = NOW - 2, nextThrowAt = NOW - 0.25 + THROW.windup }))
+		expect.truthy(cooled.ok)
+		expect.near(cooled.charge, 0.2, TIME_TOLERANCE * 10)
+		-- Nor before chargeFloorAt (the hands back from a crush, an ultimate's root).
+		local floored = validate(input(), duelState({ chargeStartAt = NOW - 2, chargeFloorAt = NOW - 0.15 }))
+		expect.near(floored.charge, 0.1, TIME_TOLERANCE * 10)
+		-- A start after the press counts nothing.
+		expect.equal(validate(input(), duelState({ chargeStartAt = NOW })).charge, 0)
+		-- The direction is the aim, whatever the charge.
+		expect.near((full.direction - plain.direction).Magnitude, 0, FLOAT_TOLERANCE)
 	end)
 
 	-- §12 #10 Lifetime and Bounds -----------------------------------------------------------------------------------

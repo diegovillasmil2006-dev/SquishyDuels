@@ -235,6 +235,46 @@ local SLOTS: { AssetSlot } = {
 		"Bubble Pop pops; design fp.js:165 blub, fp.js:361; rendered sfx_ultBubblePop.wav (0.4 s)"
 	),
 
+	-- The charge throw and the catch (feature 1, 2026-10-11; design: the combat-effects page "Squishy Combat FP
+	-- v2.html" and its squishy-lib-v2.js sfx). PENDING: renders of the design's own synth recipes are expected in the
+	-- upload folder under the file names below. The tone and the ping are the own player's (2D); the catch sounds play
+	-- 2D for the catcher and 3D at the catcher's hands for the thrower.
+	soundSlot(
+		"sfx.chargeLoop",
+		"SFX",
+		false,
+		nil,
+		"PENDING; the charge tone, looped (CatchController / ThrowController drive its pitch and volume, Config.Audio.charge); design squishy-lib-v2.js:378-386 triangle + sine (×1.505) through a 700-2500 Hz low-pass; a steady 1.6 s loop at 250 Hz (c 0.28: PlaybackSpeed 0.6..2 gives the design's 150..510 Hz); file 'sfx.charge - loop.wav'"
+	),
+	soundSlot(
+		"sfx.chargeFull",
+		"SFX",
+		false,
+		nil,
+		"PENDING; the full-charge ping (with the white ring); design html:514 sfx.squish(release, 0.6), squishy-lib-v2.js:367 (0.15 s); file 'sfx.charge - full ping.wav'"
+	),
+	soundSlot(
+		"sfx.catch",
+		"SFX",
+		true,
+		nil,
+		"PENDING; a throw is caught; design html:351 sfx.catch, squishy-lib-v2.js:371 high-pass noise 1800->900 Hz + sine 220->120 Hz (0.14 s); file 'sfx.catch - catch.wav'"
+	),
+	soundSlot(
+		"sfx.crushSqueak",
+		"SFX",
+		true,
+		nil,
+		"PENDING; the caught toy squeaks as the crush starts (0.12 s in); design html:553 sfx.squish(press, 1), squishy-lib-v2.js:365 (0.22 s); file 'sfx.catch - crush squeak.wav'"
+	),
+	soundSlot(
+		"sfx.crushBurst",
+		"SFX",
+		true,
+		nil,
+		"PENDING; the caught toy bursts; design html:560 sfx.explode, squishy-lib-v2.js:373-377 low-pass noise 4000->250 Hz + sine 130->38 Hz + chimes (0.7 s); file 'sfx.catch - burst.wav'"
+	),
+
 	-- The knead's wax crunch (spec phase2-squeeze §3.10): renders of the design's own generators (squish.js:676-709,
 	-- 829-833, fx.js:41), 48 kHz mono, in the scratchpad's work/sounds-out (the sheets are also "wax crack sheet -
 	-- <feel>.wav" in the upload folder's Extras). 2D; Controllers/KneadAudio plays them in the Wax group at the levels of

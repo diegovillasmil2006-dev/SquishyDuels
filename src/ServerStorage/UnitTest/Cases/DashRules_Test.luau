@@ -5,7 +5,8 @@
 --   * payload: an integer seq above the last one, a Vector3 direction and a server-time clientTime, else net.invalid
 --     (a payload violation); lastSeq advances as soon as the seq passes, even when a later check refuses;
 --   * context: a duel in Active / SuddenDeath, or the practice range, alive with a server HRP, else dash.context;
---   * not during an ultimate's wind-up or recovery (rooted) or a throw windup: dash.busy;
+--   * not during an ultimate's wind-up or recovery (rooted), a throw windup or (feature 1, 2026-10-11) while the
+--     hands crush a caught toy: dash.busy;
 --   * on the ground (the HRP at most groundToleranceStuds above standing height): dash.airborne;
 --   * cooldownSeconds (2.0) since the last accepted dash, less cooldownToleranceSeconds: dash.cooldown;
 --   * a flat unit direction: dash.direction;
@@ -125,6 +126,12 @@ return function(t: Context)
 			DashRules.validate(input(1, Vector3.xAxis), state({ windup = true }), nil, NOW).reason,
 			"dash.busy"
 		)
+		-- Feature 1: no dash while crushing a caught toy.
+		expect.equal(
+			DashRules.validate(input(1, Vector3.xAxis), state({ crushing = true }), nil, NOW).reason,
+			"dash.busy"
+		)
+		expect.truthy(DashRules.validate(input(1, Vector3.xAxis), state({ crushing = false }), nil, NOW).ok)
 	end)
 
 	t.test("in the air: no dash (the design ignores an air dash, fp.js:524)", function()

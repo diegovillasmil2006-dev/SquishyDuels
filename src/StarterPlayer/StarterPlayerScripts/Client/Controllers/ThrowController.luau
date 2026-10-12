@@ -25,11 +25,25 @@
 --   * Readiness: the server accepts a press when releaseAt = press + windup >= nextThrowAt - 0.05, so the client
 --     treats readyAt = nextThrowAt - windup as "cooldown over" (reading: §9.5 "pop-in when the cooldown ends" and the
 --     ring fill use it). A press up to Rules.InputBufferSeconds (0.15) before readyAt (or before a Dragon Rush root
---     ends) is buffered; an earlier press is dropped once readyAt is known (bufferKeeps, pure). Holding Throw
---     re-throws as soon as it is ready (Rules.HoldToRepeat). One throw is in flight at a time (no second request
---     before ThrowStarted / ThrowRejected). A CAS Cancel drops the hold and the buffer; a sent request is never
---     cancelled. A ThrowRejected nextThrowAt that is not finite or lies more than REJECT_AHEAD_SECONDS ahead never
---     blocks the client: it is ignored (defensive: the server keeps nextThrowAt finite, §5.2).
+--     ends) is buffered; an earlier press is dropped once readyAt is known (bufferKeeps, pure). One throw is in flight
+--     at a time (no second request before ThrowStarted / ThrowRejected). A CAS Cancel drops the hold, the buffer and a
+--     charge; a sent request is never cancelled. A ThrowRejected nextThrowAt that is not finite or lies more than
+--     REJECT_AHEAD_SECONDS ahead never blocks the client: it is ignored (defensive: the server keeps nextThrowAt
+--     finite, §5.2).
+--   * Hold to charge (feature 1, 2026-10-11, user-approved plan; Rules.HoldToCharge, was HoldToRepeat; Config.Combat.
+--     Charge, Shared/ThrowCharge; design: the combat-effects page "Squishy Combat FP v2.html", html:323-341, 393-394,
+--     437, 463, 498-517): holding Throw charges c 0 -> 1 over Charge.seconds from the moment the throw is ready (no
+--     request in flight, no windup, no root, the cooldown over, the hands free: canCharge); letting go throws with that
+--     charge. A press during the cooldown that is still held when the throw becomes ready starts charging then; one let
+--     go before that still throws, uncharged, at readyAt when it was at most InputBufferSeconds early (the buffer). Every
+--     throw first sends ChargeStart(clientTime): at the charge's start, or right before an uncharged throw, so the
+--     server's own record is always this throw's; the server measures the charge (Logic/ThrowRules) and the client only
+--     uses its own c to solve the aim for the faster throw (speed × ThrowCharge.speedFactor), so the throw lands on the
+--     reticle. While charging: walk speed × Charge.walkFactor (written on the own Humanoid, put back unless something
+--     else changed it), the charge tone (sfx.chargeLoop, pitch and volume by ThrowCharge.tone) and sfx.chargeFull the
+--     moment it is full; the reticle and the first-person overlay read getAimState / localCharge. A catch press
+--     (CatchController: cancelCharge, setHandsBusy), an ultimate press, a lost context or a death drops the charge
+--     without a throw. Rules.HoldToCharge false: every press throws at once, uncharged.
 --   * Touch and gamepad aim from the screen centre, so in the Duel and Practice contexts the camera sits over the right
 --     shoulder: Humanoid.CameraOffset = HRP:VectorToObjectSpace(camRight × 1.75) every frame (§5.10; reading: gamepad
 --     too, "same as touch"), restored to its saved value when the context ends or the input switches to mouse, and
@@ -89,6 +103,7 @@ local ProjectileMath = require(Shared.ProjectileMath)
 local Signal = require(Shared.Util.Signal)
 local Spring = require(Shared.Util.Spring)
 local Strings = require(Shared.Strings)
+local ThrowCharge = require(Shared.ThrowCharge)
 local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
 
@@ -115,6 +130,12 @@ export type AimState = {
 	nextThrowAt: number, -- server time, from the server
 	progress: number, -- 0 (just thrown) .. 1 (ready)
 	kind: ("duel" | "practice")?,
+	-- Feature 1 (2026-10-11): the local charge c (0 when not charging), whether it is full, and the held toy's colour
+	-- (its Catalog accent) for the reticle's charge fill.
+	charging: boolean,
+	charge: number,
+	chargeFull: boolean,
+	chargeColor: Color3?,
 }
 
 export type UltState = {
@@ -178,6 +199,13 @@ type OwnProjectile = { untilAt: number, lane: boolean }
 
 type Shoulder = { humanoid: Humanoid, saved: Vector3 }
 
+-- Feature 1: the local charge, from server time `startAt`; `sent` = its ChargeStart left (else the server measures 0,
+-- so the aim is solved uncharged too); `full` = the full ping played; `color` the held toy's accent.
+type Charge = { startAt: number, sent: boolean, full: boolean, color: Color3? }
+
+-- Feature 1: the walk speed written while charging, put back at the end unless something else changed it.
+type WalkHold = { humanoid: Humanoid, saved: number, written: number }
+
 -- Constants
 
 local THROW_ANIM = Config.Anim.throw
@@ -229,6 +257,10 @@ local POP_SETTLE = 0.002
 local POP_MAX_SECONDS = 1
 local SOUND_POP = "sfx.pop" -- the local throw is ready again (§18.6)
 local SOUND_REJECTED = "ui.error" -- an own ThrowRejected (§18.4.5)
+-- Feature 1 (2026-10-11): the charge tone and the full-charge ping (design: html:323, 514, 517).
+local SOUND_CHARGE_LOOP = "sfx.chargeLoop"
+local SOUND_CHARGE_FULL = "sfx.chargeFull"
+local CHARGE_TONE_STOP_MS = Config.Audio.charge.stopFadeMs
 
 -- Module table
 
@@ -250,6 +282,10 @@ local lastReleaseAt = 0
 local pending: Pending? = nil
 local holdDown = false
 local bufferedAt: number? = nil
+local charge: Charge? = nil -- feature 1: the running charge (hold Throw)
+local chargeTone: SoundController.Loop? = nil
+local walkHold: WalkHold? = nil
+local handsBusyUntil = -math.huge -- feature 1: server time: an open catch window or a crush (setHandsBusy)
 local windups: { [Player]: Windup } = {}
 local ults: { [Player]: UltAnim } = {}
 local hiddenUntil: { [Player]: number } = {}
@@ -271,6 +307,10 @@ local aimState: AimState = {
 	nextThrowAt = 0,
 	progress = 1,
 	kind = nil,
+	charging = false,
+	charge = 0,
+	chargeFull = false,
+	chargeColor = nil,
 }
 local stats = { throwsSent = 0, ultsSent = 0, accepted = 0, rejected = 0, cancelled = 0, assisted = 0 }
 local connections: { Signal.Connection } = {}
@@ -616,6 +656,33 @@ end
 -- possible (`readyAt`) is at most `bufferSeconds` after it. A readyAt already in the past keeps it.
 function ThrowController.bufferKeeps(pressedAt: number, readyAt: number, bufferSeconds: number): boolean
 	return readyAt - pressedAt <= bufferSeconds + 1e-9
+end
+
+-- Feature 1 (hold to charge, pure): what one frame does with the Throw button while no charge runs. `held` = the
+-- button is down (hold to charge on), `charging` = a charge runs, `ready` = a throw may start now (canCharge),
+-- `buffered` = a press is waiting, `keeps` = that press is within the input buffer of the moment the throw becomes
+-- possible. "start" = start charging (a held press once the throw is ready), "throw" = throw now, uncharged (a press
+-- let go before it was ready, inside the buffer), "drop" = forget the press (let go too early), nil = wait.
+function ThrowController.holdStep(
+	held: boolean,
+	charging: boolean,
+	ready: boolean,
+	buffered: boolean,
+	keeps: boolean
+): ("start" | "throw" | "drop")?
+	if charging then
+		return nil -- the release throws it (onThrowInput)
+	end
+	if held then
+		return if ready then "start" else nil
+	end
+	if not buffered then
+		return nil
+	end
+	if not keeps then
+		return "drop"
+	end
+	return if ready then "throw" else nil
 end
 
 -- The sound of a held squishy popping back in (§18.6): sfx.pop for the local player's own throw only.
@@ -1054,9 +1121,11 @@ local function originHintOf(root: BasePart): Vector3
 	return (root.CFrame * CFrame.new(COMBAT.ReleaseOffset)).Position
 end
 
-local function throwDirection(ctx: Ctx, origin: Vector3, aimPoint: Vector3, forward: Vector3): Vector3
+-- Feature 1: solved for the charged speed (ThrowCharge.speedFactor(c)), the speed the server gives this throw.
+local function throwDirection(ctx: Ctx, origin: Vector3, aimPoint: Vector3, forward: Vector3, c: number): Vector3
 	local throw = ctx.def.throw
-	local raw = ProjectileMath.solveLaunchDir(origin, aimPoint, throw.speed, throw.gravity)
+	local speed = throw.speed * ThrowCharge.speedFactor(c)
+	local raw = ProjectileMath.solveLaunchDir(origin, aimPoint, speed, throw.gravity)
 	return ThrowController.limitDirection(raw, forward, ctx.kind == "practice")
 end
 
@@ -1199,13 +1268,21 @@ local function isRooted(now: number): boolean
 	return ult ~= nil and (ult.phase == "cast" or ult.phase == "telegraph")
 end
 
+-- Feature 1: the hands are busy with a catch (an open window or a crush; CatchController.setHandsBusy).
+local function handsBusy(now: number): boolean
+	return now < handsBusyUntil
+end
+
 -- Sends one throw toward `aimPoint` (nil = the current camera aim). Returns false and a reason code when it cannot.
-local function fire(ctx: Ctx, aimPoint: Vector3?, ray: Ray?): (boolean, string?)
+-- Feature 1: `c` = the local charge (0 = uncharged); `chargeSent` = its ChargeStart already left. An uncharged throw
+-- first sends ChargeStart at the same clientTime, so the server's charge record is always this throw's (c = 0).
+local function fire(ctx: Ctx, aimPoint: Vector3?, ray: Ray?, c: number?, chargeSent: boolean?): (boolean, string?)
 	local player = localPlayer()
 	local root = aliveRoot(player)
 	if root == nil then
 		return false, "throw.context"
 	end
+	local level = if chargeSent then c or 0 else 0
 	if ctx.kind == "duel" and not insideOwnHalf(root.Position) then
 		return false, "throw.context"
 	end
@@ -1229,9 +1306,12 @@ local function fire(ctx: Ctx, aimPoint: Vector3?, ray: Ray?): (boolean, string?)
 	local origin = originHintOf(root)
 	local dir = if missed and aimRay
 		then ThrowController.limitDirection(aimRay.Direction, root.CFrame.LookVector, ctx.kind == "practice")
-		else throwDirection(ctx, origin, point :: Vector3, root.CFrame.LookVector)
+		else throwDirection(ctx, origin, point :: Vector3, root.CFrame.LookVector, level)
 	local now = serverNow()
 	local windup = ctx.def.throw.windup
+	if not chargeSent then
+		NetController.chargeStart(now) -- feature 1: a fresh record (c = 0) for an uncharged throw
+	end
 	local seq = NetController.throwRequest(dir, origin, now)
 	if seq == nil then
 		return false, "net.rateLimited" -- dropped locally (bucket or shape check): nothing was sent
@@ -1250,14 +1330,95 @@ local function readyFor(ctx: Ctx): number
 	return nextThrowAt - ctx.def.throw.windup
 end
 
--- A press, a held button or a buffered press: throws when allowed and ready.
+-- Feature 1: a throw may start charging (or fire) now: nothing in flight, no windup, no root, the cooldown over and
+-- the hands free.
+local function canCharge(ctx: Ctx, now: number): boolean
+	return pending == nil and not ownWindupBusy() and not isRooted(now) and not handsBusy(now) and now >= readyFor(ctx)
+end
+
+-- Feature 1: the walk speed while charging (Charge.walkFactor, design: html:437), written on the own Humanoid; put back
+-- at the end unless something else (the server's freeze or root) changed it meanwhile.
+local function chargeWalk(on: boolean)
+	local current = walkHold
+	if on then
+		if current ~= nil then
+			return
+		end
+		local character = localPlayer().Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if humanoid == nil or not (humanoid.WalkSpeed > 0) then
+			return
+		end
+		local saved = humanoid.WalkSpeed
+		humanoid.WalkSpeed = ThrowCharge.walkSpeed(saved)
+		walkHold = { humanoid = humanoid, saved = saved, written = humanoid.WalkSpeed }
+	elseif current ~= nil then
+		walkHold = nil
+		local humanoid = current.humanoid
+		if humanoid.Parent ~= nil and math.abs(humanoid.WalkSpeed - current.written) < 1e-3 then
+			humanoid.WalkSpeed = current.saved
+		end
+	end
+end
+
+-- Feature 1: the charge tone while charging (ThrowCharge.tone: pitch and volume by c; nil stops it).
+local function setChargeTone(c: number?, elapsed: number)
+	if c == nil then
+		local tone = chargeTone
+		chargeTone = nil
+		if tone then
+			tone:stop(CHARGE_TONE_STOP_MS)
+		end
+		return
+	end
+	if chargeTone == nil then
+		local ok, loop = pcall(SoundController.playLoop, SOUND_CHARGE_LOOP, { volume = 0, priority = 1 })
+		chargeTone = if ok then loop else nil
+	end
+	local tone = chargeTone
+	if tone then
+		local pitch, volume = ThrowCharge.tone(c, elapsed)
+		tone:setPitch(pitch)
+		tone:setVolume(volume)
+	end
+end
+
+-- Feature 1: drops the running charge without a throw (a catch press, an ultimate, a lost context).
+local function dropCharge()
+	charge = nil
+	chargeWalk(false)
+	setChargeTone(nil, 0)
+end
+
+-- Feature 1: starts charging now (the throw is ready): ChargeStart(now) to the server, the walk speed, the tone.
+local function startCharge(ctx: Ctx, now: number)
+	local sent = NetController.chargeStart(now)
+	charge = { startAt = now, sent = sent, full = false, color = Color3.fromHex(ctx.def.visuals.accent) }
+	bufferedAt = nil
+	chargeWalk(true)
+	setChargeTone(0, 0)
+end
+
+-- Feature 1: lets go of a charge: the throw with its c (0 when its ChargeStart never left).
+local function releaseCharge(ctx: Ctx, now: number)
+	local running = charge
+	if running == nil then
+		return
+	end
+	local c = ThrowCharge.level(running.startAt, now)
+	dropCharge()
+	fire(ctx, nil, nil, c, running.sent)
+end
+
+-- A press, a held button or a buffered press: throws when allowed and ready (Rules.HoldToCharge false: a press throws
+-- at once, uncharged).
 local function tryThrow(fromPress: boolean): boolean
 	local now = serverNow()
 	local ctx = throwContext(now)
 	if ctx == nil then
 		return false
 	end
-	if pending ~= nil or ownWindupBusy() or isRooted(now) then
+	if pending ~= nil or ownWindupBusy() or isRooted(now) or handsBusy(now) then
 		if fromPress then
 			bufferedAt = now -- kept by step() only if the throw becomes possible within the buffer
 		end
@@ -1277,16 +1438,42 @@ local function tryThrow(fromPress: boolean): boolean
 	return true
 end
 
+-- Feature 1 (hold to charge): a press starts the charge when the throw is ready (else step() starts it once ready while
+-- it is held, or the buffer throws it uncharged when it was let go in time); the release throws the charge.
 local function onThrowInput(inputState: Enum.UserInputState, _input: InputObject?): boolean?
+	local holdToCharge = RULES.HoldToCharge == true
 	if inputState == Enum.UserInputState.Begin then
 		holdDown = true
-		return tryThrow(true)
+		if not holdToCharge then
+			return tryThrow(true)
+		end
+		local now = serverNow()
+		local ctx = throwContext(now)
+		if ctx == nil then
+			return false
+		end
+		if charge == nil and canCharge(ctx, now) then
+			startCharge(ctx, now)
+		elseif charge == nil then
+			bufferedAt = now -- step(): charge once ready while held; else the buffer rule
+		end
+		return true
 	elseif inputState == Enum.UserInputState.End then
 		holdDown = false
+		if holdToCharge and charge ~= nil then
+			local now = serverNow()
+			local ctx = throwContext(now)
+			if ctx then
+				releaseCharge(ctx, now)
+			else
+				dropCharge()
+			end
+		end
 		return false
 	elseif inputState == Enum.UserInputState.Cancel then
 		holdDown = false
 		bufferedAt = nil
+		dropCharge()
 	end
 	return false
 end
@@ -1316,13 +1503,16 @@ local function tryUltimate(aimPoint: Vector3?): (boolean, string?)
 	elseif now < practiceUltReadyAt then
 		return false, "ult.notReady"
 	end
-	if isRooted(now) or ownWindupBusy() or pending ~= nil then
+	if isRooted(now) or ownWindupBusy() or pending ~= nil or handsBusy(now) then
 		return false, "ult.notReady"
 	end
 	local root = aliveRoot(player)
 	if root == nil then
 		return false, "throw.context"
 	end
+	-- Feature 1 (build choice 2026-10-11, NOT IN DESIGN: the design has no ultimate): an ultimate drops a running
+	-- charge (no throw).
+	dropCharge()
 	local point = aimPoint
 	if point == nil then
 		point = cameraAim()
@@ -1586,6 +1776,8 @@ local function endMatchVisuals()
 	pending = nil
 	bufferedAt = nil
 	holdDown = false
+	dropCharge() -- feature 1
+	handsBusyUntil = -math.huge
 	for player, w in windups do
 		w.finished = true
 		fadeLayers(player)
@@ -1629,6 +1821,12 @@ local function updateAim(now: number)
 	local ctx, reason = throwContext(now)
 	local inContext = ControlsController.isContextActive("Duel") or ControlsController.isContextActive("Practice")
 	local state = aimState
+	-- Feature 1: the charge for the reticle (its fill in the toy's colour, the pulse at full).
+	local running = charge
+	state.charging = running ~= nil
+	state.charge = if running then ThrowCharge.level(running.startAt, now) else 0
+	state.chargeFull = running ~= nil and ThrowCharge.isFull(state.charge)
+	state.chargeColor = if running then running.color else nil
 	if not inContext then
 		state.state = "hidden"
 		state.reason = nil
@@ -1653,6 +1851,9 @@ local function updateAim(now: number)
 	elseif isRooted(now) then
 		state.state = "blocked"
 		state.reason = "throw.rooted"
+	elseif handsBusy(now) then
+		state.state = "blocked"
+		state.reason = "throw.busy" -- feature 1: a catch window or a crush
 	elseif ctx.kind == "duel" and not insideOwnHalf(root.Position) then
 		state.state = "blocked"
 		state.reason = "throw.context"
@@ -1785,27 +1986,49 @@ local function stepThrowers(dt: number, now: number)
 	end
 end
 
+-- Feature 1: one frame of the charge: dropped when it may not go on (no context, a root, the hands busy, dead), else
+-- its tone, and the full ping once (design: html:514).
+local function stepCharge(now: number)
+	local running = charge
+	if running == nil then
+		return
+	end
+	local ctx = throwContext(now)
+	if ctx == nil or isRooted(now) or handsBusy(now) or aliveRoot(localPlayer()) == nil then
+		dropCharge()
+		return
+	end
+	local c = ThrowCharge.level(running.startAt, now)
+	setChargeTone(c, now - running.startAt)
+	if ThrowCharge.isFull(c) and not running.full then
+		running.full = true
+		playSound(SOUND_CHARGE_FULL, { priority = 1 })
+	end
+end
+
 local function step(dt: number, _clock: number): boolean
 	local now = serverNow()
+	stepCharge(now)
 	updateAim(now)
-	-- Hold to repeat and the input buffer (§5.2).
-	local hold = holdDown and RULES.HoldToRepeat
-	if bufferedAt ~= nil or hold then
+	-- Hold to charge and the input buffer (§5.2; feature 1, ThrowController.holdStep).
+	if bufferedAt ~= nil or (holdDown and charge == nil and RULES.HoldToCharge) then
 		local ctx = throwContext(now)
 		if ctx == nil then
 			bufferedAt = nil
-		elseif pending == nil and not ownWindupBusy() and not isRooted(now) then
-			local ready = readyFor(ctx)
+		else
+			local held = holdDown and RULES.HoldToCharge == true
 			local pressed = bufferedAt
 			local buffer = rulesNumber("InputBufferSeconds", RULES.InputBufferSeconds)
-			if
-				pressed ~= nil
-				and not hold
-				and not ThrowController.bufferKeeps(pressed, math.max(ready, rootedUntil), buffer)
-			then
-				bufferedAt = nil -- pressed too early: the cooldown (or the root) ended long after it
-			elseif now >= ready then
+			local ready = readyFor(ctx)
+			local keeps = pressed == nil or ThrowController.bufferKeeps(pressed, math.max(ready, rootedUntil), buffer)
+			local action = ThrowController.holdStep(held, charge ~= nil, canCharge(ctx, now), pressed ~= nil, keeps)
+			if action == "start" then
+				startCharge(ctx, now)
+			elseif action == "throw" then
+				bufferedAt = nil
 				fire(ctx, nil, nil)
+			elseif action == "drop" then
+				bufferedAt = nil -- pressed too early: the cooldown (or the root) ended long after it
 			end
 		end
 	end
@@ -1861,6 +2084,47 @@ function ThrowController.localUlt(): (string?, number?, number?, string?)
 	return ThrowController.ultValues(ults[localPlayer()])
 end
 
+-- Feature 1: the local charge as plain values, (c 0-1, seconds since it started, full) while one runs, else nil, nil,
+-- false (the first-person overlay's charge pose reads it every frame).
+function ThrowController.localCharge(): (number?, number?, boolean)
+	local running = charge
+	if running == nil then
+		return nil, nil, false
+	end
+	local now = serverNow()
+	local c = ThrowCharge.level(running.startAt, now)
+	return c, math.max(0, now - running.startAt), ThrowCharge.isFull(c)
+end
+
+-- Feature 1: drops a running charge without a throw (CatchController: a catch press cancels a charge, design:
+-- html:344). The button must be pressed again to charge.
+function ThrowController.cancelCharge()
+	if charge ~= nil then
+		dropCharge()
+	end
+	holdDown = false
+	bufferedAt = nil
+end
+
+-- Feature 1: the hands are busy until server time `untilAt` (CatchController: an open catch window, a crush): no
+-- charge, throw or ultimate before; a later time only extends it.
+function ThrowController.setHandsBusy(untilAt: number)
+	if untilAt == untilAt and untilAt > handsBusyUntil then
+		handsBusyUntil = untilAt
+	end
+end
+
+-- Feature 1: whether the hands are busy now (the dash's gate, the overlay).
+function ThrowController.handsBusy(): boolean
+	return handsBusy(serverNow())
+end
+
+-- Feature 1: whether an ultimate roots the local player now (its telegraph or recovery; CatchController's gate reads it
+-- every frame, so it skips getUltState's charge and ability work).
+function ThrowController.rootedNow(): boolean
+	return isRooted(serverNow())
+end
+
 -- First person (spec 2026-10-10 §3.1, set by FirstPersonController while it is on, duel or practice): no shoulder
 -- offset; the saved CameraOffset goes back at once. This module stays the only writer of Humanoid.CameraOffset.
 function ThrowController.setShoulderSuppressed(on: boolean)
@@ -1892,7 +2156,7 @@ function ThrowController.throwAt(point: Vector3): (boolean, string?)
 	if ctx == nil then
 		return false, reason
 	end
-	if pending ~= nil or ownWindupBusy() or isRooted(now) or now < readyFor(ctx) then
+	if pending ~= nil or ownWindupBusy() or isRooted(now) or now < readyFor(ctx) or handsBusy(now) then
 		return false, "throw.cooldown"
 	end
 	return fire(ctx, point, nil)
@@ -1960,6 +2224,7 @@ function ThrowController.init()
 		if (context == "Duel" or context == "Practice") and not on then
 			holdDown = false
 			bufferedAt = nil
+			dropCharge() -- feature 1
 		end
 	end))
 	track(StateController.DuelChanged:connect(function(view: MatchView?)

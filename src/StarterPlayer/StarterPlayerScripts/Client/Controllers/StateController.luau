@@ -41,7 +41,8 @@
 --   service, as in Part 4), lets the boot go on at once; a late Snapshot is still applied when it arrives.
 -- * Queue (QueueStatus, §2.8): the owner's view {state, position, joinedAt, messageKey, counts} and the count-only
 --   board broadcast (a payload without `state`) kept apart: queue() / QueueChanged, queueCounts() / QueueCountsChanged.
--- * Duel (DuelState = a full view on every phase change; ThrowImpact lives; UltimateCharge; DuelResult): duel() /
+-- * Duel (DuelState = a full view on every phase change; ThrowImpact lives, and feature 1's CatchEvent "burst" lives;
+--   UltimateCharge; DuelResult): duel() /
 --   DuelChanged, lastResult() / DuelResultReceived. The view ends when the server clears the Player attribute
 --   SD_DuelPhase (back in the lobby, §2.9): at once after Result/Returning/Cancelled/Void, otherwise once the view is
 --   older than STALE_CLEAR_SECONDS (an attribute change racing a brand-new match's first DuelState never clears it).
@@ -1121,6 +1122,21 @@ function StateController.init()
 	end))
 	c:add(NetController.onThrowImpact(function(impact: any)
 		onDuelEvent({ kind = "impact", impact = impact })
+	end))
+	-- Feature 1 (2026-10-11): a caught throw's burst costs the thrower a life (CatchEvent "burst" with livesLeft): the
+	-- same reduction as a hit's ThrowImpact.
+	c:add(NetController.onCatchEvent(function(event: any)
+		if type(event) == "table" and event.phase == "burst" and type(event.livesLeft) == "number" then
+			onDuelEvent({
+				kind = "impact",
+				impact = {
+					kind = "player",
+					victimId = event.throwerId,
+					livesLeft = event.livesLeft,
+					invulnUntil = event.invulnUntil,
+				},
+			})
+		end
 	end))
 	c:add(NetController.onUltimateCharge(function(charge: any)
 		onDuelEvent({ kind = "charge", charge = charge })

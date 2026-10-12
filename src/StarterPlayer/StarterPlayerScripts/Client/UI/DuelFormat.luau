@@ -72,6 +72,16 @@
 --   result(...).questDone                       which quest lines this duel finished (the card marks them)
 --   aimBlocked(objects)                         whether a reticle's point sits on a HUD button or an open dialog (the
 --                                               duel and practice reticles hide there)
+-- Feature 1 (2026-10-11, the charge throw and the catch; Config.UI.Reticle; design: the combat-effects page
+-- "Squishy Combat FP v2.html"):
+--   hintKeys(...)                               a fifth value: the catch key ("RMB/E" / "L1"; nil on touch, where the
+--                                               Catch button shows instead)
+--   reticleText(aim, now)                       "Your hands are busy." while the hands are open or crushing (throw.busy)
+--   chargeLook(c, t, reduced)                   the reticle's charge fill (the cooldown pie's two rotations, filled to
+--                                               c) and its scale: chargeFullScale + chargePulse·sin(rate·t) at full
+--                                               (design: html:670-671), 1 under ReducedMotion
+--   catchPrompt(key, t, reduced)                the "Catch!" prompt's text (with the catch key for the input) and its
+--                                               text transparency (design: html:88, 674; steady under ReducedMotion)
 
 -- Services
 
@@ -202,6 +212,8 @@ local FULL_TURN = 360
 -- ThrowController.AimState reason codes (§2.10 throw.*) with their own reticle text.
 local REASON_ROOTED = "throw.rooted"
 local REASON_DIRECTION = "throw.direction"
+local REASON_BUSY = "throw.busy" -- feature 1: the hands are open for a catch or crushing a caught toy
+local RETICLE = Config.UI.Reticle -- feature 1: the charge fill and the catch prompt
 -- §9.14 result poses (Config.Anim.poses). Reading (DESIGN gives "2 spring bounces", no timing): the arms rise in
 -- POSE_RISE_SECONDS, then dip POSE_DIP of the way down and back once per bounce, POSE_BOUNCE_SECONDS each, then hold.
 local POSE_CHEER = "cheer"
@@ -331,25 +343,27 @@ function DuelFormat.livesText(lives: number): string
 end
 
 -- The bottom dock's keycaps for "KeyboardAndMouse" / "Gamepad" (Enum.PreferredInput names): (throw key, ultimate key,
--- dash key, squeeze key), the keys of duel.hintMouse / hintGamepad drawn one beside each caption (foam UI). All nil on
--- touch (ControlsController's round buttons instead); the ultimate key is nil for a loadout without an ultimate (its
--- meter hides); final polish (2026-10-11): the squeeze key only when `squeeze` (first person: DuelSqueeze squeezes
--- the toy in the overlay's hands, nothing otherwise).
+-- dash key, squeeze key, catch key), the keys of duel.hintMouse / hintGamepad drawn one beside each caption (foam UI).
+-- All nil on touch (ControlsController's round buttons instead); the ultimate key is nil for a loadout without an
+-- ultimate (its meter hides); final polish (2026-10-11): the squeeze key only when `squeeze` (first person:
+-- DuelSqueeze squeezes the toy in the overlay's hands, nothing otherwise); feature 1 (2026-10-11): the catch key last,
+-- so the callers that read four keys are unchanged.
 function DuelFormat.hintKeys(
 	preferred: string,
 	hasUltimate: boolean,
 	squeeze: boolean?
-): (string?, string?, string?, string?)
+): (string?, string?, string?, string?, string?)
 	local mouse = preferred == "KeyboardAndMouse"
 	if not mouse and preferred ~= "Gamepad" then
-		return nil, nil, nil, nil
+		return nil, nil, nil, nil, nil
 	end
 	local keys = Strings.duel.key
 	local throwKey = if mouse then keys.throwMouse else keys.throwGamepad
 	local ultimateKey = if mouse then keys.ultimateMouse else keys.ultimateGamepad
 	local dashKey = if mouse then keys.dashMouse else keys.dashGamepad
 	local squeezeKey = if mouse then keys.squeezeMouse else keys.squeezeGamepad
-	return throwKey, if hasUltimate then ultimateKey else nil, dashKey, if squeeze then squeezeKey else nil
+	local catchKey = if mouse then keys.catchMouse else keys.catchGamepad
+	return throwKey, if hasUltimate then ultimateKey else nil, dashKey, if squeeze then squeezeKey else nil, catchKey
 end
 
 -- A side's colours (§7.8; unchanged by the foam restyle, and never the only sign: the side text and icon go with
@@ -373,12 +387,40 @@ function DuelFormat.reticleText(aim: AimLike, now: number): string?
 	elseif aim.state == "blocked" then
 		if aim.reason == REASON_ROOTED then
 			return Strings.duel.reticle.rooted
-		elseif aim.reason == REASON_DIRECTION then
-			return Strings.reasonText(REASON_DIRECTION)
+		elseif aim.reason == REASON_DIRECTION or aim.reason == REASON_BUSY then
+			return Strings.reasonText(aim.reason :: string)
 		end
 		return Strings.duel.reticle.wrongZone
 	end
 	return nil
+end
+
+-- Feature 1: the reticle while charging: the pie's two rotations filled to c (pieRotations) and the reticle's scale,
+-- chargeFullScale + chargePulse·sin(chargePulseRate·t) at full (design: html:670-671), 1 below full and under
+-- ReducedMotion (no pulse; the full pie still shows it).
+function DuelFormat.chargeLook(c: number, t: number, reduced: boolean): (number, number, number)
+	local level = if finite(c) then math.clamp(c, 0, 1) else 0
+	local right, left = DuelFormat.pieRotations(level)
+	if reduced or level < 1 - EPSILON then
+		return right, left, 1
+	end
+	local wave = if finite(t) then math.sin(RETICLE.chargePulseRate * t) else 0
+	return right, left, RETICLE.chargeFullScale + RETICLE.chargePulse * wave
+end
+
+-- Feature 1: the "Catch!" prompt under the reticle (design: html:88, 674): its text, with the catch key for the active
+-- input ("Catch! RMB/E"; just "Catch!" without one, on touch), and its text transparency t seconds after it appeared:
+-- 1 - (catchPromptFrom + (1 - catchPromptFrom)·sin(2π·catchPromptHz·t)); steady (0) under ReducedMotion.
+function DuelFormat.catchPrompt(key: string?, t: number, reduced: boolean): (string, number)
+	local text = if key ~= nil and key ~= ""
+		then Strings.format(Strings.duel.catchPromptKey, { key = key })
+		else Strings.duel.catchPrompt
+	if reduced or not finite(t) then
+		return text, 0
+	end
+	local from = RETICLE.catchPromptFrom
+	local opacity = from + (1 - from) * math.sin(2 * math.pi * RETICLE.catchPromptHz * t)
+	return text, 1 - math.clamp(opacity, 0, 1)
 end
 
 -- The cooldown arc of the reticle as a clockwise pie from 12 o'clock: two half discs (right, left) each masked by a

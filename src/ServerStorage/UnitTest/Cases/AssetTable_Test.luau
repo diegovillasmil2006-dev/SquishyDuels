@@ -2,8 +2,9 @@
 -- AssetTable_Test: unit tests for ReplicatedStorage.Shared.AssetTable. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §14, §18.6, §18.7, §18.10 L1):
 --   * the sound key set is exactly the 37 of §18.6 (the 34 of §14.2 plus ui.gripUnlock, sfx.jellyWobble, sfx.pop),
---     the 10 of spec phase 5 (the dash and the four Epic ultimates) and the 16 of the Inspect showcases (final polish
---     2026-10-11: the design's own inspect one-shots, 2D SFX), 63 in all;
+--     the 10 of spec phase 5 (the dash and the four Epic ultimates), the 16 of the Inspect showcases (final polish
+--     2026-10-11: the design's own inspect one-shots, 2D SFX) and the 5 of feature 1 (2026-10-11: the charge throw and
+--     the catch, PENDING, each note naming its file), 68 in all;
 --   * a PENDING slot (id nil) carries no metadata (no source, licence, verifiedAt or variants);
 --   * an approved slot has an integer id > 0, a volume in (0, 2], a source, a licence and verifiedAt as YYYY-MM-DD,
 --     and so does each variant; no id repeats within a key;
@@ -23,7 +24,8 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- §18.6: the 37 sound keys, then spec phase 5's 10, then the Inspect showcases' 16 (final polish 2026-10-11).
+-- §18.6: the 37 sound keys, then spec phase 5's 10, then the Inspect showcases' 16 (final polish 2026-10-11), then
+-- feature 1's 5 (2026-10-11).
 local SOUND_KEYS = {
 	"sfx.squish",
 	"sfx.squeezeRelease",
@@ -88,6 +90,11 @@ local SOUND_KEYS = {
 	"sfx.inspect.sparkle",
 	"sfx.inspect.wiggle",
 	"sfx.inspect.blub",
+	"sfx.chargeLoop",
+	"sfx.chargeFull",
+	"sfx.catch",
+	"sfx.crushSqueak",
+	"sfx.crushBurst",
 }
 
 -- Spec phase2-squeeze §3.10: the knead's wax sounds (Controllers/KneadAudio), counted apart from the §18.6 set.
@@ -171,7 +178,7 @@ return function(t: Context)
 		return found
 	end
 
-	t.test("the sound key set is exactly the 37 of §18.6, the 10 of spec phase 5 and the 16 inspect ones", function()
+	t.test("the sound key set is the 37 of §18.6, spec phase 5's 10, the 16 inspect ones and feature 1's 5", function()
 		local keys = {}
 		local seen: { [string]: boolean } = {}
 		for _, slot in soundSlots() do
@@ -182,8 +189,33 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 63)
+		expect.equal(#keys, 68)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
+	end)
+
+	-- Feature 1 (2026-10-11): PENDING until the user uploads them; the hand sounds 2D, the catch's 3D at the catch for
+	-- the other duelist; each note names its file ('sfx.charge - loop.wav' ...).
+	t.test("feature 1's sounds: PENDING SFX, each note naming its file", function()
+		local spatial = {
+			["sfx.chargeLoop"] = false,
+			["sfx.chargeFull"] = false,
+			["sfx.catch"] = true,
+			["sfx.crushSqueak"] = true,
+			["sfx.crushBurst"] = true,
+		}
+		local found = 0
+		for _, slot in soundSlots() do
+			local want = spatial[slot.key]
+			if want ~= nil then
+				found += 1
+				expect.equal(slot.id, nil)
+				expect.equal(slot.group, "SFX")
+				expect.equal(slot.spatial, want)
+				expect.truthy(string.find(slot.notes, "PENDING", 1, true) ~= nil)
+				expect.truthy(string.find(slot.notes, ".wav'", 1, true) ~= nil)
+			end
+		end
+		expect.equal(found, 5)
 	end)
 
 	-- Final polish 2026-10-11: the toy is in your hands, so its inspect sounds are 2D SFX, required (not optional).

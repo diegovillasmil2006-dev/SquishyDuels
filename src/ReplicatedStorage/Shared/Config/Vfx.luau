@@ -354,6 +354,71 @@ local Vfx = {
 		lingerSeconds = 0.25, -- reading: a drawn projectile fades this long after its server end
 	},
 
+	-- Feature 1 (2026-10-11): the charge throw's power p (the server's charge c, ThrowStarted.power) on the projectile
+	-- and its release, for every viewer (ProjectileRenderer; design: the combat-effects page "Squishy Combat FP v2.html",
+	-- html:<line>). Sizes in studs: design metres / 0.28 (as Dash). The first-person release kicks are
+	-- Config.FirstPerson's.
+	Charge = {
+		trailWidthGain = 0.22 / 0.15, -- a rarity trail's width × (1 + gain·p) (design: html:243, 0.15 + 0.22p)
+		trailLifeGain = 0.22 / 0.3, -- its lifetime × (1 + gain·p) (design: html:243, 0.3 + 0.22p)
+		releasePuffGain = 14 / 8, -- the release puffs × (1 + gain·p) (design: html:336, 8 + 14c)
+		releaseRingGain = 0.05 / 0.09, -- the release ring × (1 + gain·p) (design: html:335, radius 0.09 + 0.05c)
+		whiteRingFrom = 0.45, -- a second, white ring from this power (design: html:335)
+		whiteRingShare = 0.06 / 0.09, -- its size against the first ring's (design: html:335)
+		powerRingFrom = 0.6, -- a ring across the throw's path from this power (design: html:338)
+		powerRingStuds = 2 * 0.9 / 0.28, -- its diameter at p = 1: radius 0.5 + 0.4 m (design: html:338)
+		powerRingGain = 0.4 / 0.9, -- its diameter × (1 - gain·(1 - p)) (design: html:338, 0.5 + 0.4c)
+		powerRingAheadStuds = 0.6 / 0.28, -- that far along the throw from the hand (design: html:338)
+		powerRingSeconds = 0.24, -- design: html:338
+		fovKickGain = 120 / 60, -- the first-person release FOV kick × (1 + gain·c) (design: html:333, 60 + 120c)
+		kickGain = 1.1 / 0.5, -- the first-person release kick × (1 + gain·c) (design: html:333, recoil 0.5 + 1.1c)
+		-- In flight (design: html:605): specks at speckRate × p a second (the power share of 12 + 30p; build choice
+		-- 2026-10-11: the uncharged 12 a second stays the rarity trails' look), only on a projectile whose rarity trail
+		-- has no emitter of its own, never more than Effects.projectileParticles live (the rate is held to
+		-- projectileParticles / speckLifetimeMax). The design's puff trail above p 0.6 (html:604) has no particle budget
+		-- left: not ported.
+		speckRate = 30, -- design: html:605
+		speckLifetimeMin = 0.3, -- design: html:605
+		speckLifetimeMax = 0.55,
+		speckSize = 0.05 / 0.28, -- design: html:605 (0.025-0.05 m)
+		speckSpeed = 0.8 / 0.28, -- design: html:605
+		speckDrag = 2 / math.log(2), -- design: html:605 (drag 2; Roblox halves the speed every 1 / Drag s)
+	},
+
+	-- Feature 1 (2026-10-11): the catch in the world, for every viewer but a first-person catcher (who sees it in the
+	-- overlay; Anim/CatchFx). design: html:353, 541-559 (metres / 0.28). Every count is within
+	-- Budgets.liveParticlesPerEffect.
+	Catch = {
+		ringStuds = 2 * 0.2 / 0.28, -- the catch ring's diameter (design: html:353, radius 0.02 -> 0.2 m)
+		ringSeconds = 0.28, -- design: html:353
+		sparks = 14, -- design: html:353
+		sparkSpeed = 1.2 / 0.28, -- design: html:353
+		sparkLifetime = 0.4, -- design: html:353
+		-- build choice 2026-10-11 (NOT IN DESIGN): the design's catch sparks are first-person sized (0.006 m, html:353);
+		-- in the world they take the elimination sparkles' size (VfxController's confetti), or no one would see them.
+		sparkSizeStuds = 0.6,
+		-- build choice 2026-10-11 (NOT IN DESIGN; the design has no third person): the drawn toy flies from where it was
+		-- caught into the catcher's hands, a point holdForwardStuds in front of and holdUpStuds above its root, over
+		-- flyInSeconds, then shakes and squashes there as the overlay's crush (Config.FirstPerson.crush) until the burst.
+		flyInSeconds = 0.12,
+		holdForwardStuds = 1.8,
+		holdUpStuds = 0.8,
+		-- The burst at the catcher's hands. The design draws its catch burst in first person only (html:557); in the
+		-- world it draws this moment as the burst that knocks the thrower out (html:359, 361), so those numbers are
+		-- used here: accent and white pieces, sparks and white puffs at 60 / 74 of its count (the budget), and its ring
+		-- facing the camera.
+		burstPieces = 37, -- design: html:359 (46)
+		burstSparks = 18, -- design: html:359 (22)
+		burstPuffs = 5, -- design: html:359 (6)
+		burstSpeed = 7 / 0.28, -- design: html:359
+		burstSize = 0.09 / 0.28, -- design: html:359
+		burstLifetime = 1.1, -- design: html:359
+		burstGravity = 5 / 0.28, -- studs/s² down (design: html:359, grav 5; its upward bias `up` 0.4 is not ported)
+		burstDrag = 1.6 / math.log(2), -- design: fx.js:95 (drag 1.6; Roblox halves the speed every 1 / Drag s)
+		burstRingStuds = 2 * 1.6 / 0.28, -- the ring's diameter (design: html:361, radius 0.1 -> 1.6 m)
+		burstRingSeconds = 0.3, -- design: html:361
+	},
+
 	-- Per-effect budgets (§9.15).
 	Effects = {
 		-- Per squeeze: §9.15's 12 (6 / 8 / 10 / 12 puffs by rarity, §9.6) raised to 18 by §18.9: Exclusive's 12 puffs +

@@ -9,7 +9,10 @@
 --   * an emit: the size and life exactly, the velocity inside velMin..velMax (fx.js:92-96, fp.js:182, 191);
 --   * a step: v.y += g·dt, v ×= exp(-drag·dt), p += v·dt; a speck dies when its age reaches its life (fx.js:131-135);
 --   * the size envelope: 1.25·sin(t/0.12·0.62π) up to t = 0.12, 1 to 0.6, then 1 - ((t - 0.6)/0.4)^1.6 (fx.js:139);
---   * spark and glowdrop are the design's unlit pools (fx.js:79): glow.
+--   * spark and glowdrop are the design's unlit pools (fx.js:79): glow;
+--   * feature 1 (2026-10-11), a gather (the charge's sparks, the combat-effects page html:513): each speck starts on a
+--     shell distMin..distMax round the point and flies straight in at gather × its distance a second, its size in
+--     sizeMin..size and its life exact.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -133,6 +136,35 @@ return function(t: Context)
 		local speck = Specks.spawn(burst({ count = 1 }), Vector3.zero, Random.new(2), 1, { WHITE })[1]
 		Specks.step(speck, speck.life * 0.3)
 		expect.near(Specks.radius(speck), speck.size) -- the design's sphere of radius 1 × size × the envelope
+	end)
+
+	t.test("feature 1: a gather starts on its shell and flies straight in at gather × the distance", function()
+		local at = Vector3.new(0, -0.1, -0.5)
+		local spec: any = {
+			kind = "gather",
+			count = 12,
+			shape = "spark",
+			size = 0.005,
+			sizeMin = 0.0025,
+			life = 0.27,
+			gravity = 0,
+			drag = 0,
+			distMin = 0.09,
+			distMax = 0.15,
+			gather = 3.4,
+		}
+		local list = Specks.spawn(spec, at, Random.new(5), 1, { ACCENT })
+		expect.equal(#list, 12)
+		for _, speck in list do
+			local offset = speck.p - at
+			expect.truthy(offset.Magnitude >= 0.09 - 1e-5 and offset.Magnitude <= 0.15 + 1e-5)
+			expect.near((speck.v + offset * 3.4).Magnitude, 0, 1e-5) -- straight in
+			expect.truthy(speck.size >= 0.0025 - EPS and speck.size <= 0.005 + EPS)
+			expect.equal(speck.life, 0.27)
+			expect.truthy(speck.glow)
+		end
+		-- ReducedMotion halves them, as every spec.
+		expect.equal(#Specks.spawn(spec, at, Random.new(5), 0.5, { ACCENT }), 6)
 	end)
 
 	t.test("spark and glowdrop are the unlit pools; the rest are lit", function()

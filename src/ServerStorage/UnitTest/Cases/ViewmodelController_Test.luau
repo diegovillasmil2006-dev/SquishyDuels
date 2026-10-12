@@ -39,7 +39,12 @@
 --     toy's pitch), its kick, its shake and its specks (parts in the overlay; ReducedMotion: half of them, no kick);
 --     at dur the hold comes back without unwinding the turns; a squeeze, a throw windup or the toy leaving the hand
 --     ends it; debugInspect freezes it at t with no event; the touch Inspect button is made on touch in the lobby look
---     and the range only.
+--     and the range only;
+--   * feature 1 (2026-10-11, the charge throw and the catch; design: the combat-effects page "Squishy Combat FP v2.html",
+--     html:498-570): a running charge (ThrowController.localCharge, a stand-in here) puts the overlay in the charge
+--     pose with the glow from c 0.2 and the orbit from 0.4 and narrows the world FOV; its end gives the hold back with
+--     the effect parts hidden; the catch (CatchController.localCatch, a stand-in) opens the hands, then the crush shows
+--     the caught toy's own copy and bursts it at burstAt (rings), and the hold comes back when the hands are free.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -82,6 +87,8 @@ return function(t: Context)
 		mirror: any,
 		windup: { any },
 		ult: { any },
+		charge: { any }, -- feature 1: what ThrowController.localCharge returns (c, t, full)
+		catch: { any }, -- feature 1: what CatchController.localCatch returns (phase, t, id, burstAt)
 		duel: any,
 		live: { [string]: boolean },
 		handlers: { [string]: any },
@@ -128,6 +135,8 @@ return function(t: Context)
 			mirror = nil,
 			windup = { nil, nil, nil, nil, false },
 			ult = { nil, nil, nil },
+			charge = { nil, nil, false },
+			catch = { nil, nil, nil, nil },
 			duel = nil,
 			live = { DuelSqueeze = true, PracticeSqueeze = true, Squeeze = true },
 			handlers = {},
@@ -181,6 +190,14 @@ return function(t: Context)
 				end,
 				localUlt = function(): (string?, number?, number?)
 					return w.ult[1], w.ult[2], w.ult[3]
+				end,
+				localCharge = function(): (number?, number?, boolean)
+					return w.charge[1], w.charge[2], w.charge[3] == true
+				end,
+			},
+			Catch = {
+				localCatch = function(): (string?, number?, string?, number?)
+					return w.catch[1], w.catch[2], w.catch[3], w.catch[4]
 				end,
 			},
 			Controls = {
@@ -971,6 +988,79 @@ return function(t: Context)
 			teardown()
 		end
 	)
+
+	-- Feature 1 (2026-10-11) -------------------------------------------------------------------------------------------
+
+	local function shownParts(w: World, name: string): number
+		local gui = w.guis.SD_Viewmodel
+		local count = 0
+		if gui then
+			for _, d in gui:GetDescendants() do
+				if d.Name == name and d:IsA("BasePart") and d.Transparency < 1 then
+					count += 1
+				end
+			end
+		end
+		return count
+	end
+
+	t.test(
+		"feature 1, the charge: the charge pose, its glow and orbit, the world FOV narrowed; then the hold",
+		function()
+			local w = setup()
+			enter(w, "duel")
+			frames(w, 60)
+			local fovBefore = #w.fov
+			w.charge = { 0.6, 0.6, false }
+			frames(w, 30)
+			local state = Viewmodel.debugState()
+			expect.equal(state.kind, "charge")
+			expect.near(state.charge, 0.6, 1e-9)
+			expect.equal(shownParts(w, "ChargeGlow"), 1)
+			expect.equal(shownParts(w, "ChargeOrbit"), FP.charge.orbitCount)
+			expect.equal(shownParts(w, "ChargeOutline"), 0) -- only at full
+			expect.truthy(#w.fov > fovBefore and w.fov[#w.fov] < 0) -- the world FOV narrows (design: html:463)
+			w.charge = { 1, 1.2, true }
+			frames(w, 5)
+			expect.equal(shownParts(w, "ChargeOutline"), 1)
+			w.charge = { nil, nil, false }
+			frames(w, 30)
+			state = Viewmodel.debugState()
+			expect.truthy(state.kind ~= "charge")
+			expect.equal(shownParts(w, "ChargeGlow"), 0)
+			expect.equal(shownParts(w, "ChargeOrbit"), 0)
+			expect.equal(shownParts(w, "ChargeOutline"), 0)
+			teardown()
+		end
+	)
+
+	t.test("feature 1, the catch: open hands, the caught toy crushed, its burst at burstAt, then the hold", function()
+		local w = setup()
+		enter(w, "duel")
+		frames(w, 60)
+		w.catch = { "open", 0.1, nil, nil }
+		frames(w, 10)
+		expect.equal(Viewmodel.debugState().kind, "catch")
+		w.catch = { "crush", 0.05, w.squishyId, w.clock + 0.4 }
+		frames(w, 6)
+		local state = Viewmodel.debugState()
+		expect.equal(state.kind, "crush")
+		expect.equal(state.caught, w.squishyId)
+		expect.falsy(state.caughtBurst)
+		frames(w, 30) -- past burstAt
+		state = Viewmodel.debugState()
+		expect.truthy(state.caughtBurst)
+		expect.truthy(state.fxRings > 0) -- the burst's rings (design: html:559)
+		w.catch = { "after", 1.3, w.squishyId, w.clock - 0.5 }
+		frames(w, 5)
+		expect.equal(Viewmodel.debugState().kind, "crush")
+		w.catch = { nil, nil, nil, nil }
+		frames(w, 60)
+		state = Viewmodel.debugState()
+		expect.truthy(state.kind ~= "crush" and state.kind ~= "catch")
+		expect.equal(state.caught, nil)
+		teardown()
+	end)
 
 	t.test("Dragon Rush: the charge pose with the glow ball, no squeeze meanwhile, back to the hold after", function()
 		local w = setup("dragon")

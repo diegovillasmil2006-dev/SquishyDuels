@@ -7,7 +7,9 @@
 -- lease expiry and late remote spam, in each phase column. A bail before Active or before 20 s of Active cancels
 -- (innocent requeued at the front, bailer 15 s cooldown); from 20 s it is a win for the other side. Two final hits in
 -- one step: the earlier impact wins, an exact tie is a draw. `ended` happens exactly once; step never modifies the
--- state it is given. Time comes only from the test (no wall clock).
+-- state it is given. Time comes only from the test (no wall clock). Feature 1 (2026-10-11): a forced hit (a caught
+-- throw's burst) costs the life even inside the victim's invulnerability, and starts a new invulnerability as any hit;
+-- after the end it is ignored like any hit.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -304,6 +306,34 @@ return function(t: Context)
 		expect.equal(s.participants.B.lives, 2)
 		expect.equal(count(effects, "lifeLost"), 0)
 		expect.truthy(DuelRules.canBeHit(s, "B", startAt + 1 + RULES.HitInvulnSeconds))
+	end)
+
+	t.test("feature 1: a forced hit (a caught throw's burst) lands inside the invulnerability", function()
+		local s, startAt = toActive()
+		local invuln = RULES.HitInvulnSeconds
+		s = run(s, { { hit("B", startAt + 1), startAt + 1 } })
+		expect.falsy(DuelRules.canBeHit(s, "B", startAt + 1.2))
+		local effects
+		s, effects = run(s, {
+			{ { kind = "hits", hits = { { victim = "B", at = startAt + 1.2, force = true } } }, startAt + 1.2 },
+		})
+		expect.equal(s.participants.B.lives, 1)
+		local lost = find(effects, "lifeLost", "B")
+		expect.truthy(lost ~= nil)
+		expect.equal(lost.invulnUntil, startAt + 1.2 + invuln) -- the later of the two invulnerabilities
+		expect.equal(s.participants.A.hits, 2)
+		-- An unforced hit at the same moment is still ignored.
+		s, effects = run(s, { { { kind = "hits", hits = { { victim = "B", at = startAt + 1.3 } } }, startAt + 1.3 } })
+		expect.equal(s.participants.B.lives, 1)
+		expect.equal(count(effects, "lifeLost"), 0)
+		-- After the end, a forced hit is ignored like any hit.
+		s = run(s, { { { kind = "forfeit", side = "A" }, startAt + 30 } })
+		local ended
+		ended, effects = run(s, {
+			{ { kind = "hits", hits = { { victim = "B", at = startAt + 31, force = true } } }, startAt + 31 },
+		})
+		expect.equal(ended.participants.B.lives, 1)
+		expect.equal(count(effects, "lifeLost"), 0)
 	end)
 
 	t.test("simultaneous KO: two final hits with the same impact time are a draw", function()

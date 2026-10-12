@@ -667,17 +667,33 @@ return function(t: Context)
 	end)
 
 	-- Final polish (2026-10-11): the duel key hints name the dash (spec phase 5: C / ButtonB) and the first-person
-	-- squeeze (F / ButtonX) after DESIGN's throw and ultimate; the lane warning under the duel bar.
-	t.test("the duel key hints name the dash and the squeeze; the lane warning exists", function()
-		expect.equal(Strings.duel.hintMouse, "Click Throw · Q Ultimate · C Dash · F Squeeze")
-		expect.equal(Strings.duel.hintGamepad, "R2 Throw · L2 Ultimate · B Dash · X Squeeze")
-		expect.equal(Strings.duel.hintMouseNoUlt, "Click Throw · C Dash · F Squeeze")
-		expect.equal(Strings.duel.hintGamepadNoUlt, "R2 Throw · B Dash · X Squeeze")
+	-- squeeze (F / ButtonX) after DESIGN's throw and ultimate; the lane warning under the duel bar. Feature 1
+	-- (2026-10-11): and the catch after the throw (RMB or E / ButtonL1; design: html:96).
+	t.test("the duel key hints name the catch, the dash and the squeeze; the lane warning exists", function()
+		expect.equal(Strings.duel.hintMouse, "Click Throw · RMB/E Catch · Q Ultimate · C Dash · F Squeeze")
+		expect.equal(Strings.duel.hintGamepad, "R2 Throw · L1 Catch · L2 Ultimate · B Dash · X Squeeze")
+		expect.equal(Strings.duel.hintMouseNoUlt, "Click Throw · RMB/E Catch · C Dash · F Squeeze")
+		expect.equal(Strings.duel.hintGamepadNoUlt, "R2 Throw · L1 Catch · B Dash · X Squeeze")
 		local key = Strings.duel.key
 		expect.equal(key.dashMouse, "C")
 		expect.equal(key.dashGamepad, "B")
 		expect.equal(key.squeezeMouse, "F")
 		expect.equal(key.squeezeGamepad, "X")
+		expect.equal(key.catchMouse, "RMB/E")
+		expect.equal(key.catchGamepad, "L1")
 		expect.equal(Strings.duel.inLane, "In the lane!")
+	end)
+
+	-- Feature 1 (2026-10-11): the catch's words (design: html:88, 352, 563), the touch button and the refusal codes.
+	t.test("the catch's words, its button and its refusal codes", function()
+		expect.equal(Strings.duel.caught, "CAUGHT!")
+		expect.equal(Strings.duel.squished, "SQUISHED!")
+		expect.equal(Strings.duel.catchPrompt, "Catch!")
+		expect.equal(Strings.format(Strings.duel.catchPromptKey, { key = "E" }), "Catch! E")
+		expect.equal(Strings.controls.catch, "Catch")
+		for _, code in { "catch.context", "catch.cooldown", "catch.busy", "throw.busy" } do
+			local text = Strings.reasonText(code)
+			expect.truthy(type(text) == "string" and text ~= "" and text ~= code)
+		end
 	end)
 end

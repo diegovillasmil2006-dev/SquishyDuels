@@ -44,6 +44,8 @@ type Module = {
 -- the world layer; of the controllers it requires only StateController (plus SquishyCache, Scheduler, Tweens, the UI
 -- helpers and shared modules).
 -- Spec phase 5: DashController (the dash) right after ThrowController, whose windup and ultimate state it reads.
+-- Feature 1 (2026-10-11): CatchController (the catch) right after ThrowController too, whose charge and hands it
+-- drives; the overlay, the duel HUD, the projectiles and the VFX read it.
 local CONTROLLER_ORDER = {
 	"NetController",
 	"StateController",
@@ -59,6 +61,7 @@ local CONTROLLER_ORDER = {
 	"HeldSquishyController",
 	"CharacterAnimController",
 	"ThrowController",
+	"CatchController",
 	"DashController",
 	"FirstPersonController",
 	"ViewmodelController",

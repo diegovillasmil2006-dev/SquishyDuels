@@ -19,6 +19,11 @@
 --   false with nothing running), read from the local windup and ult records by windupValues / ultValues;
 --   setShoulderSuppressed keeps the saved CameraOffset while first person is on, and the next update after it is
 --   switched off applies the 1.75-stud offset again (shoulderApplies / shoulderStep on a stand-in humanoid).
+-- Feature 1 (2026-10-11, hold to charge; design: the combat-effects page "Squishy Combat FP v2.html", html:323-339):
+--   holdStep, while no charge runs: a held press starts charging once the throw is ready (a press during the cooldown
+--   waits); a press let go before it was ready still throws uncharged when the throw becomes ready inside the input
+--   buffer, and is dropped outside it; a running charge is the release's (nil); localCharge() is nil, nil, false with
+--   nothing running; Config.Duel.Rules.HoldToCharge replaces HoldToRepeat.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -392,6 +397,25 @@ return function(t: Context)
 		expect.truthy(ThrowController.bufferKeeps(10, 10.05, buffer))
 		expect.falsy(ThrowController.bufferKeeps(10, 10 + buffer + 0.01, buffer))
 		expect.truthy(ThrowController.bufferKeeps(10, 9, buffer)) -- already ready
+	end)
+
+	t.test("hold to charge: a held press charges once ready; a short tap throws in the buffer or is dropped", function()
+		expect.equal(Config.Duel.Rules.HoldToCharge, true)
+		expect.equal((Config.Duel.Rules :: any).HoldToRepeat, nil)
+		-- held, charging, ready, buffered, keeps
+		expect.equal(ThrowController.holdStep(true, false, true, true, true), "start")
+		expect.equal(ThrowController.holdStep(true, false, false, true, true), nil) -- pressed in the cooldown: wait
+		expect.equal(ThrowController.holdStep(true, true, true, true, true), nil) -- a running charge: the release's
+		expect.equal(ThrowController.holdStep(false, true, true, false, false), nil)
+		expect.equal(ThrowController.holdStep(false, false, true, true, true), "throw") -- let go early, now ready
+		expect.equal(ThrowController.holdStep(false, false, false, true, true), nil) -- let go, not ready yet: wait
+		expect.equal(ThrowController.holdStep(false, false, false, true, false), "drop") -- outside the buffer
+		expect.equal(ThrowController.holdStep(false, false, true, false, false), nil) -- nothing pressed
+		-- Edit mode: no charge runs.
+		local c, elapsed, full = ThrowController.localCharge()
+		expect.equal(c, nil)
+		expect.equal(elapsed, nil)
+		expect.equal(full, false)
 	end)
 
 	t.test("a ThrowRejected nextThrowAt is adopted only when finite and not far ahead", function()

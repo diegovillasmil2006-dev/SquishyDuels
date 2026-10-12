@@ -142,6 +142,19 @@
 --   telegraph runs (Dragon Rush, Sprinkle Roller: the UltimateEvent's own lane numbers) and the local body is inside its
 --   lane, a warning under the duel bar, or under the banner that shows there; it pops in (not under ReducedMotion) and
 --   hides at the release, the cancel, telegraphEndsAt, out of the lane and out of the duel.
+-- Feature 1 (2026-10-11, the charge throw and the catch; design: the combat-effects page "Squishy Combat FP v2.html";
+-- CatchController by inline requires: no new top-level local):
+-- * The dock: throw, catch (its keycap "RMB/E" / "L1" and its cooldown bar, CatchController.state().progress: empty
+--   while the hands crush), ultimate, dash, squeeze (design: html:96).
+-- * The reticle: while charging, the pie fills clockwise to c in the toy's colour (Config.UI.Reticle
+--   chargeFillTransparency) and pulses at full (DuelFormat.chargeLook; design: html:670-671); "Your hands are busy."
+--   while they are open or crushing; "Catch! RMB/E" (the key for the input; "Catch!" on touch) pulsing in place of the
+--   state text while an opponent's throw comes at you and the catch is ready (DuelFormat.catchPrompt; design: html:88,
+--   673-674).
+-- * "CAUGHT!" and "SQUISHED!" (design: html:352, 563): banners under the duel bar in the caught toy's colour for
+--   bigWordSeconds, for both duelists, at CatchController.Caught / Burst (none over the "Dragon Rush incoming!" banner;
+--   no "SQUISHED!" when the burst takes the thrower's last life: VfxController's "K.O.!" says it). The catcher's hit
+--   marker and ui.hitConfirm at the burst (design: html:365), while the match is live.
 
 -- Services
 
@@ -236,6 +249,7 @@ type Reticle = {
 	root: Frame,
 	ringScale: UIScale,
 	pie: Frame,
+	pieScale: UIScale, -- feature 1: the charge's pulse at full
 	pieRight: UIGradient,
 	pieLeft: UIGradient,
 	dot: Frame,
@@ -258,6 +272,7 @@ type Hud = {
 	forfeit: Button.Button,
 	hints: Frame,
 	throwMeter: Meter,
+	catchMeter: Meter, -- feature 1 (2026-10-11): the catch key and its cooldown
 	ultMeter: Meter,
 	dashMeter: Meter, -- final polish 2026-10-11: the dash and squeeze keys (a keycap and caption, no bar)
 	squeezeMeter: Meter,
@@ -796,6 +811,7 @@ local function buildReticle(parent: Instance, c: Cleanup.Cleanup): Reticle
 	})
 	local pieRight = buildPieHalf(pie, "Right", true)
 	local pieLeft = buildPieHalf(pie, "Left", false)
+	local pieScale: UIScale = Create("UIScale", { Name = "Charge", Parent = pie })
 
 	local ring: Frame = Create("Frame", {
 		Name = "Ring",
@@ -858,6 +874,7 @@ local function buildReticle(parent: Instance, c: Cleanup.Cleanup): Reticle
 		root = root,
 		ringScale = ringScale,
 		pie = pie,
+		pieScale = pieScale,
 		pieRight = pieRight,
 		pieLeft = pieLeft,
 		dot = dot,
@@ -1153,10 +1170,12 @@ local function buildHud(c: Cleanup.Cleanup): Hud
 	c:add(hints)
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.large, hints, nil, Enum.VerticalAlignment.Top)
 	local throwMeter = buildMeter(hints, "ThrowMeter", 1, Strings.controls.throw, "sky", false, c)
-	local ultMeter = buildMeter(hints, "UltimateMeter", 2, Strings.controls.ultimate, "lilac", true, c)
+	-- Feature 1 (2026-10-11): the catch and its cooldown bar after the throw (design: html:96).
+	local catchMeter = buildMeter(hints, "CatchMeter", 2, Strings.controls.catch, "mint", false, c)
+	local ultMeter = buildMeter(hints, "UltimateMeter", 3, Strings.controls.ultimate, "lilac", true, c)
 	-- Final polish (2026-10-11): the dash and squeeze keys after them, each a keycap and its caption (no bar).
-	local dashMeter = buildMeter(hints, "DashKey", 3, Strings.controls.dash, "sky", false, c)
-	local squeezeMeter = buildMeter(hints, "SqueezeKey", 4, Strings.controls.squeeze, "mint", false, c)
+	local dashMeter = buildMeter(hints, "DashKey", 4, Strings.controls.dash, "sky", false, c)
+	local squeezeMeter = buildMeter(hints, "SqueezeKey", 5, Strings.controls.squeeze, "mint", false, c)
 	for _, meter in { dashMeter, squeezeMeter } do
 		meter.bar.root.Visible = false
 		meter.frame.Size = UDim2.fromOffset(0, 0)
@@ -1246,6 +1265,7 @@ local function buildHud(c: Cleanup.Cleanup): Hud
 		forfeit = forfeit,
 		hints = hints,
 		throwMeter = throwMeter,
+		catchMeter = catchMeter,
 		ultMeter = ultMeter,
 		dashMeter = dashMeter,
 		squeezeMeter = squeezeMeter,
@@ -2008,7 +2028,7 @@ local function updateHints(h: Hud, view: StateController.DuelView, aim: ThrowCon
 	local ultimateId = DuelFormat.ultimateOf(view.you.squishyId)
 	-- Final polish (2026-10-11): the squeeze key only in first person (DuelSqueeze squeezes the overlay's toy).
 	local firstPerson = require(script.Parent.FirstPersonController).mode() == "duel"
-	local throwKey, ultimateKey, dashKey, squeezeKey =
+	local throwKey, ultimateKey, dashKey, squeezeKey, catchKey =
 		DuelFormat.hintKeys(ControlsController.preferredInput().Name, ultimateId ~= nil, firstPerson)
 	local phaseShows = DuelFormat.isLive(view.phase) or view.phase == "Countdown"
 	if throwKey == nil or not phaseShows then
@@ -2018,12 +2038,15 @@ local function updateHints(h: Hud, view: StateController.DuelView, aim: ThrowCon
 	local clock = os.clock()
 	h.hints.Visible = true
 	setKey(h.throwMeter, throwKey)
+	setKey(h.catchMeter, catchKey)
 	setKey(h.ultMeter, ultimateKey)
 	setKey(h.dashMeter, dashKey)
 	setKey(h.squeezeMeter, squeezeKey)
 	h.dashMeter.frame.Visible = dashKey ~= nil
 	h.squeezeMeter.frame.Visible = squeezeKey ~= nil
 	setMeter(h.throwMeter, true, if aim.state == "hidden" then 1 else aim.progress, clock)
+	-- Feature 1: the catch's cooldown (empty while the hands crush a caught toy).
+	setMeter(h.catchMeter, true, require(script.Parent.CatchController).state().progress, clock)
 	local fraction, has = ultFraction(view)
 	setMeter(h.ultMeter, has, fraction, clock)
 	setReady(h.ultMeter, has and fraction >= 1, clock)
@@ -2054,6 +2077,21 @@ local function updateReticle(h: Hud, view: StateController.DuelView, aim: ThrowC
 	end
 	r.root.Visible = true
 	r.root.Position = UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
+	-- Feature 1: "Catch!" with its key in place of the state text while an opponent's throw comes at you and the
+	-- catch is ready (design: html:88, 673-674), pulsing (DuelFormat.catchPrompt).
+	local promptFade = 0
+	local catch = require(script.Parent.CatchController)
+	if catch.incoming() and catch.state().ready then
+		local _, _, _, _, catchKey = DuelFormat.hintKeys(ControlsController.preferredInput().Name, false, false)
+		text, promptFade = DuelFormat.catchPrompt(catchKey, os.clock(), Tweens.reducedMotion())
+	end
+	if r.label.TextTransparency ~= promptFade then
+		r.label.TextTransparency = promptFade
+		local stroke = r.label:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Transparency = promptFade
+		end
+	end
 	r.label.Text = text
 	-- Overlays fix: the state text moves in from a screen edge (DuelFormat.reticleLabelOffset; it wraps past
 	-- RETICLE_LABEL_WIDTH). Chip is a display kind, so the measure never yields.
@@ -2070,11 +2108,25 @@ local function updateReticle(h: Hud, view: StateController.DuelView, aim: ThrowC
 	)
 	setIfChanged(r.label, "Position", UDim2.new(0.5, math.floor(offset + 0.5), 1, Theme.Padding.small))
 	local cooling = aim.state == "cooling"
-	r.pie.Visible = cooling
-	if cooling then
+	-- Feature 1: while charging the pie fills to c in the toy's colour and pulses at full (DuelFormat.chargeLook); the
+	-- cooldown's white pie otherwise.
+	local charging = aim.charging and not cooling
+	r.pie.Visible = cooling or charging
+	if cooling or charging then
 		local right, left = DuelFormat.pieRotations(aim.progress)
+		local scale, colour, fill = 1, Theme.Colors.white, LAYOUT.PIE_TRANSPARENCY
+		if charging then
+			right, left, scale = DuelFormat.chargeLook(aim.charge, os.clock(), Tweens.reducedMotion())
+			colour, fill = aim.chargeColor or Theme.Colors.white, UI_CONFIG.Reticle.chargeFillTransparency
+		end
 		r.pieRight.Rotation = right
 		r.pieLeft.Rotation = left
+		setIfChanged(r.pieScale, "Scale", scale)
+		for _, gradient in { r.pieRight, r.pieLeft } do
+			local disc = gradient.Parent
+			setIfChanged(disc, "BackgroundColor3", colour)
+			setIfChanged(disc, "BackgroundTransparency", fill)
+		end
 	end
 	r.dot.BackgroundColor3 = if aim.state == "blocked" then Theme.Colors.danger else Theme.Colors.white
 	local sinceHit = os.clock() - hitClock
@@ -2632,6 +2684,36 @@ function DuelController.init()
 	c:add(StateController.DuelResultReceived:connect(showResult))
 	c:add(NetController.onUltimateEvent(onUltimateEvent))
 	c:add(ThrowController.HitConfirmed:connect(onHitConfirmed))
+	-- Feature 1 (2026-10-11): the catch's big words and the catcher's hit marker (header; an inline require).
+	local CatchController = require(script.Parent.CatchController)
+	local function bigWord(text: string, event: CatchController.Event)
+		if StateController.duel() == nil or (incomingBanner ~= nil and incomingBanner:isShown()) then
+			return
+		end
+		local def = require(Shared.Catalog).get(event.squishyId)
+		UIController.banner(text, {
+			seconds = UI_CONFIG.Reticle.bigWordSeconds,
+			color = if def then Color3.fromHex(def.visuals.accent) else nil,
+			below = topBar(),
+		})
+	end
+	c:add(CatchController.Caught:connect(function(event: CatchController.Event)
+		bigWord(Strings.duel.caught, event) -- design: html:352
+	end))
+	c:add(CatchController.Burst:connect(function(event: CatchController.Event)
+		local view = StateController.duel()
+		if view == nil or not DuelFormat.isLive(view.phase) then
+			return -- the match ended meanwhile: no life lost
+		end
+		local thrower = if event.throwerId == view.you.userId then view.you else view.opponent
+		if thrower.lives > 1 then
+			bigWord(Strings.duel.squished, event) -- design: html:563
+		end
+		local localPlayer = Players.LocalPlayer
+		if localPlayer ~= nil and event.catcherId == localPlayer.UserId then
+			onHitConfirmed({ projId = event.projId, kind = "player", position = event.position }) -- design: html:365
+		end
+	end))
 	c:add(NetController.onNotify(function(code: string, args: Types.NotifyArgs?, kind: Types.NotifyKind)
 		if type(code) == "string" and string.sub(code, 1, #ULT_NOTIFY_AREA) == ULT_NOTIFY_AREA then
 			UIController.notify(code, if type(args) == "table" then args else nil, toastKind(kind))

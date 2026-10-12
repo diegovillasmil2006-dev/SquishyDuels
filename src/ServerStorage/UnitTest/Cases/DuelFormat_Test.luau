@@ -31,7 +31,11 @@
 --   * foam fix 2 (2026-10-09): the side cards' need is their widest content from the texts on both layouts (so the
 --     opponent's whole name fits on a PC; on phones the lives row decides and a longer name is cut); the result card
 --     waits for the K.O. banner (capped); finished quests are marked; the reticles hide over a HUD button or an open
---     dialog, not over a plain HUD frame.
+--     dialog, not over a plain HUD frame;
+--   * feature 1 (2026-10-11, the charge throw and the catch): a fifth keycap, the catch's ("RMB/E" / "L1", the keys
+--     Catch is bound to; nil on touch); the dock of five fits the narrowest phone canvas; "Your hands are busy." while
+--     they are (throw.busy); the charge fills the pie to c and pulses only at full (1.08 ± 0.04 at 18 rad/s; still
+--     under ReducedMotion); "Catch!" carries the key and pulses 0.75 ± 0.25 at 3 Hz (steady under ReducedMotion).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -86,26 +90,47 @@ return function(t: Context)
 
 	t.test("key hints (foam keycaps): mouse and gamepad only; no ultimate key without an ultimate", function()
 		local function keys(preferred: string, hasUltimate: boolean, squeeze: boolean?): { any }
-			local throwKey, ultimateKey, dashKey, squeezeKey = DuelFormat.hintKeys(preferred, hasUltimate, squeeze)
-			return { throwKey or false, ultimateKey or false, dashKey or false, squeezeKey or false }
+			local throwKey, ultimateKey, dashKey, squeezeKey, catchKey =
+				DuelFormat.hintKeys(preferred, hasUltimate, squeeze)
+			return { throwKey or false, ultimateKey or false, dashKey or false, squeezeKey or false, catchKey or false }
 		end
 		local key = Strings.duel.key
-		expect.deepEqual(keys("Touch", true, true), { false, false, false, false })
-		expect.deepEqual(keys("Touch", false), { false, false, false, false })
+		expect.deepEqual(keys("Touch", true, true), { false, false, false, false, false })
+		expect.deepEqual(keys("Touch", false), { false, false, false, false, false })
 		expect.deepEqual(
 			keys("KeyboardAndMouse", true, true),
-			{ key.throwMouse, key.ultimateMouse, key.dashMouse, key.squeezeMouse }
+			{ key.throwMouse, key.ultimateMouse, key.dashMouse, key.squeezeMouse, key.catchMouse }
 		)
-		expect.deepEqual(keys("KeyboardAndMouse", false), { key.throwMouse, false, key.dashMouse, false })
+		expect.deepEqual(
+			keys("KeyboardAndMouse", false),
+			{ key.throwMouse, false, key.dashMouse, false, key.catchMouse }
+		)
 		expect.deepEqual(
 			keys("Gamepad", true, true),
-			{ key.throwGamepad, key.ultimateGamepad, key.dashGamepad, key.squeezeGamepad }
+			{ key.throwGamepad, key.ultimateGamepad, key.dashGamepad, key.squeezeGamepad, key.catchGamepad }
 		)
-		expect.deepEqual(keys("Gamepad", false, false), { key.throwGamepad, false, key.dashGamepad, false })
+		expect.deepEqual(
+			keys("Gamepad", false, false),
+			{ key.throwGamepad, false, key.dashGamepad, false, key.catchGamepad }
+		)
 		-- The keycaps say what the one-line hints say ("Click Throw · Q Ultimate · C Dash · F Squeeze" / the gamepad's).
 		local hints = {
-			{ Strings.duel.hintMouse, key.throwMouse, key.ultimateMouse, key.dashMouse, key.squeezeMouse },
-			{ Strings.duel.hintGamepad, key.throwGamepad, key.ultimateGamepad, key.dashGamepad, key.squeezeGamepad },
+			{
+				Strings.duel.hintMouse,
+				key.throwMouse,
+				key.ultimateMouse,
+				key.dashMouse,
+				key.squeezeMouse,
+				key.catchMouse,
+			},
+			{
+				Strings.duel.hintGamepad,
+				key.throwGamepad,
+				key.ultimateGamepad,
+				key.dashGamepad,
+				key.squeezeGamepad,
+				key.catchGamepad,
+			},
 		}
 		for _, row in hints do
 			local hint = row[1]
@@ -113,6 +138,7 @@ return function(t: Context)
 			expect.truthy(string.find(hint, row[3] .. " " .. Strings.controls.ultimate, 1, true) ~= nil)
 			expect.truthy(string.find(hint, row[4] .. " " .. Strings.controls.dash, 1, true) ~= nil)
 			expect.truthy(string.find(hint, row[5] .. " " .. Strings.controls.squeeze, 1, true) ~= nil)
+			expect.truthy(string.find(hint, row[6] .. " " .. Strings.controls.catch, 1, true) ~= nil)
 		end
 		for _, hint in { Strings.duel.hintMouseNoUlt, Strings.duel.hintGamepadNoUlt } do
 			expect.equal(string.find(hint, Strings.controls.ultimate, 1, true), nil)
@@ -132,6 +158,10 @@ return function(t: Context)
 		expect.truthy(bound("Dash", (Enum.KeyCode :: any)["Button" .. key.dashGamepad]))
 		expect.truthy(bound("DuelSqueeze", (Enum.KeyCode :: any)[key.squeezeMouse]))
 		expect.truthy(bound("DuelSqueeze", (Enum.KeyCode :: any)["Button" .. key.squeezeGamepad]))
+		-- Feature 1: "RMB/E" (the right mouse button comes through UserInputService) and "L1".
+		expect.equal(key.catchMouse, "RMB/E")
+		expect.truthy(bound("Catch", Enum.KeyCode.E))
+		expect.truthy(bound("Catch", (Enum.KeyCode :: any)["Button" .. key.catchGamepad]))
 	end)
 
 	t.test("side colours (foam cards): the side's own colour, a light card face with readable InkUI text", function()
@@ -184,6 +214,52 @@ return function(t: Context)
 			Strings.duel.reticle.wrongZone
 		)
 		expect.equal(DuelFormat.reticleText({ state = "hidden", readyAt = 0 }, 0), nil)
+		-- Feature 1: the hands open for a catch or crushing a caught toy.
+		expect.equal(
+			DuelFormat.reticleText({ state = "blocked", reason = "throw.busy", readyAt = 0 }, 0),
+			Strings.reason.throw.busy
+		)
+	end)
+
+	-- Feature 1 (2026-10-11): the reticle while charging and the catch prompt (design: html:88, 670-674).
+	t.test("charge on the reticle: the pie filled to c; a pulse only at full and never under ReducedMotion", function()
+		local RETICLE = Config.UI.Reticle
+		local right, left, scale = DuelFormat.chargeLook(0.25, 0, false)
+		local pr, pl = DuelFormat.pieRotations(0.25)
+		expect.equal(right, pr)
+		expect.equal(left, pl)
+		expect.equal(scale, 1)
+		local _, _, below = DuelFormat.chargeLook(0.99, 0.3, false)
+		expect.equal(below, 1)
+		local _, _, still = DuelFormat.chargeLook(1, 0, false)
+		expect.near(still, RETICLE.chargeFullScale, 1e-9)
+		local _, _, peak = DuelFormat.chargeLook(1, math.pi / 2 / RETICLE.chargePulseRate, false)
+		expect.near(peak, RETICLE.chargeFullScale + RETICLE.chargePulse, 1e-9)
+		expect.equal(RETICLE.chargeFullScale, 1.08) -- design: html:671
+		expect.equal(RETICLE.chargePulse, 0.04)
+		local _, _, reduced = DuelFormat.chargeLook(1, 0.3, true)
+		expect.equal(reduced, 1)
+		local fr, fl = DuelFormat.chargeLook(5, 0, true)
+		expect.equal(fr, 180)
+		expect.equal(fl, 360)
+		local nr = DuelFormat.chargeLook(0 / 0, 0, false)
+		expect.equal(nr, 0)
+	end)
+
+	t.test("the catch prompt: its key for the input, a 3 Hz pulse, steady under ReducedMotion", function()
+		local RETICLE = Config.UI.Reticle
+		local text, fade = DuelFormat.catchPrompt("RMB/E", 0, false)
+		expect.equal(text, "Catch! RMB/E")
+		expect.near(fade, 1 - RETICLE.catchPromptFrom, 1e-9)
+		local touchText = DuelFormat.catchPrompt(nil, 0, false)
+		expect.equal(touchText, Strings.duel.catchPrompt)
+		local _, peak = DuelFormat.catchPrompt("L1", 1 / (4 * RETICLE.catchPromptHz), false)
+		expect.near(peak, 0, 1e-9) -- fully shown at the top of the wave
+		local _, low = DuelFormat.catchPrompt("L1", 3 / (4 * RETICLE.catchPromptHz), false)
+		expect.near(low, 2 * (1 - RETICLE.catchPromptFrom), 1e-9)
+		local _, steady = DuelFormat.catchPrompt("L1", 0.37, true)
+		expect.equal(steady, 0)
+		expect.truthy(RETICLE.catchPromptHz <= 3) -- the flicker limit (§9.12)
 	end)
 
 	t.test("cooldown arc: the right half fills first, then the left half", function()
@@ -721,8 +797,9 @@ return function(t: Context)
 	-- Final polish (2026-10-11): the bottom dock (mouse / gamepad only) with the dash and squeeze keys. DuelController:
 	-- two meters METER_WIDTH 150 wide, then two caption-only columns (a Keycap of at least Keycap.SIZE_PX 24, growing
 	-- with its text by 2 × 5 px, Theme.Padding.small 6, the Chip caption), Theme.Padding.large 20 apart inside the
-	-- panel's Theme.Padding.medium 12. A phone with a keyboard or a gamepad has the narrowest canvas.
-	t.test("bottom dock (final polish): the four keys fit the narrowest phone canvas at the largest text", function()
+	-- panel's Theme.Padding.medium 12. A phone with a keyboard or a gamepad has the narrowest canvas. Feature 1
+	-- (2026-10-11): a third meter, the catch's, between the throw and the ultimate.
+	t.test("bottom dock (feature 1): the five keys fit the narrowest phone canvas at the largest text", function()
 		local METER_WIDTH, KEYCAP, SMALL, LARGE, PANEL, MARGIN = 150, 24, 6, 20, 12, 12
 		local key = Strings.duel.key
 		local phone = canvas(SCREENS[1])
@@ -733,14 +810,16 @@ return function(t: Context)
 			for _, keys in { { key.dashMouse, key.squeezeMouse }, { key.dashGamepad, key.squeezeGamepad } } do
 				local dash = keycap(keys[1]) + SMALL + textWidth(#Strings.controls.dash, "Chip", textScale)
 				local squeeze = keycap(keys[2]) + SMALL + textWidth(#Strings.controls.squeeze, "Chip", textScale)
-				local dock = 2 * PANEL + 2 * METER_WIDTH + dash + squeeze + 3 * LARGE
+				local dock = 2 * PANEL + 3 * METER_WIDTH + dash + squeeze + 4 * LARGE
 				expect.truthy(dock <= phone.X - 2 * MARGIN)
 			end
-			-- The meters' own captions still fit their 150 px ("L2" + "Ultimate" the widest).
+			-- The meters' own captions still fit their 150 px ("L2" + "Ultimate", "RMB/E" + "Catch" the widest).
 			local ultimate = keycap(key.ultimateGamepad)
 				+ SMALL
 				+ textWidth(#Strings.controls.ultimate, "Chip", textScale)
 			expect.truthy(ultimate <= METER_WIDTH)
+			local catch = keycap(key.catchMouse) + SMALL + textWidth(#Strings.controls.catch, "Chip", textScale)
+			expect.truthy(catch <= METER_WIDTH)
 		end
 	end)
 

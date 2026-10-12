@@ -62,41 +62,48 @@ return function(t: Context)
 		return { version = 1, builtAt = builtAt or "round-1", keys = keys, decisions = decisions or {} }
 	end
 
-	t.test("the order holds the 63 AssetTable sound keys in 9 sections of 5, 7, 6, 5, 4, 6, 4, 10 and 16", function()
-		local soundKeys: { [string]: boolean } = {}
-		local count = 0
-		for _, slot in AssetTable.all() do
-			-- The knead's wax sounds (spec phase2-squeeze §3.10) are uploaded renders played by region, never picked.
-			if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." then
-				soundKeys[slot.key] = true
-				count += 1
+	t.test(
+		"the order holds the 68 AssetTable sound keys in 10 sections of 5, 7, 6, 5, 4, 6, 4, 10, 16 and 5",
+		function()
+			local soundKeys: { [string]: boolean } = {}
+			local count = 0
+			for _, slot in AssetTable.all() do
+				-- The knead's wax sounds (spec phase2-squeeze §3.10) are uploaded renders played by region, never picked.
+				if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." then
+					soundKeys[slot.key] = true
+					count += 1
+				end
 			end
+			expect.equal(count, 68)
+			expect.equal(#Model.ORDER, 68)
+			local seen: { [string]: boolean } = {}
+			local perSection = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+			for _, key in Model.ORDER do
+				expect.truthy(soundKeys[key])
+				expect.falsy(seen[key])
+				seen[key] = true
+				local section, runner = Model.infoOf(key)
+				expect.truthy(runner)
+				perSection[section] += 1
+			end
+			expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 4, 10, 16, 5 })
+			expect.equal(Model.SECTION_COUNT, 10)
+			expect.equal(Model.sectionName(1), "Squeezing")
+			expect.equal(Model.sectionName(7), "Music and room sound")
+			expect.equal(Model.ORDER[1], "sfx.squish")
+			expect.equal(Model.ORDER[37], "amb.arena")
+			expect.equal(Model.sectionName(8), "Dash and Epic ultimates") -- spec phase 5
+			expect.equal(Model.ORDER[47], "sfx.ultBubblePop")
+			expect.equal(Model.sectionName(9), "Inspect showcases") -- final polish 2026-10-11
+			expect.equal(Model.ORDER[48], "sfx.inspect.flick")
+			expect.equal(Model.ORDER[63], "sfx.inspect.blub")
+			expect.equal(select(2, Model.infoOf("sfx.inspect.ring")), "plain")
+			expect.equal(Model.sectionName(10), "Charge throw and catch") -- feature 1, 2026-10-11
+			expect.equal(Model.ORDER[64], "sfx.chargeLoop")
+			expect.equal(Model.ORDER[68], "sfx.crushBurst")
+			expect.equal(select(2, Model.infoOf("sfx.catch")), "plain")
 		end
-		expect.equal(count, 63)
-		expect.equal(#Model.ORDER, 63)
-		local seen: { [string]: boolean } = {}
-		local perSection = { 0, 0, 0, 0, 0, 0, 0, 0, 0 }
-		for _, key in Model.ORDER do
-			expect.truthy(soundKeys[key])
-			expect.falsy(seen[key])
-			seen[key] = true
-			local section, runner = Model.infoOf(key)
-			expect.truthy(runner)
-			perSection[section] += 1
-		end
-		expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 4, 10, 16 })
-		expect.equal(Model.SECTION_COUNT, 9)
-		expect.equal(Model.sectionName(1), "Squeezing")
-		expect.equal(Model.sectionName(7), "Music and room sound")
-		expect.equal(Model.ORDER[1], "sfx.squish")
-		expect.equal(Model.ORDER[37], "amb.arena")
-		expect.equal(Model.sectionName(8), "Dash and Epic ultimates") -- spec phase 5
-		expect.equal(Model.ORDER[47], "sfx.ultBubblePop")
-		expect.equal(Model.sectionName(9), "Inspect showcases") -- final polish 2026-10-11
-		expect.equal(Model.ORDER[48], "sfx.inspect.flick")
-		expect.equal(Model.ORDER[63], "sfx.inspect.blub")
-		expect.equal(select(2, Model.infoOf("sfx.inspect.ring")), "plain")
-	end)
+	)
 
 	t.test("keys load in the section order whatever the data order", function()
 		local model, problems = Model.fromData(data({
@@ -346,10 +353,11 @@ return function(t: Context)
 
 	t.test("the panel texts", function()
 		expect.equal(Model.progressText(7, 37), "7 of 37 done")
-		expect.equal(Model.sectionText(1), "Part 1 of 9: Squeezing")
-		expect.equal(Model.sectionText(7), "Part 7 of 9: Music and room sound")
-		expect.equal(Model.sectionText(8), "Part 8 of 9: Dash and Epic ultimates") -- spec phase 5
-		expect.equal(Model.sectionText(9), "Part 9 of 9: Inspect showcases") -- final polish 2026-10-11
+		expect.equal(Model.sectionText(1), "Part 1 of 10: Squeezing")
+		expect.equal(Model.sectionText(7), "Part 7 of 10: Music and room sound")
+		expect.equal(Model.sectionText(8), "Part 8 of 10: Dash and Epic ultimates") -- spec phase 5
+		expect.equal(Model.sectionText(9), "Part 9 of 10: Inspect showcases") -- final polish 2026-10-11
+		expect.equal(Model.sectionText(10), "Part 10 of 10: Charge throw and catch") -- feature 1, 2026-10-11
 		expect.equal(Model.soundLine(2, 6, 0.3), "Sound 2 of 6 · 0.3 s")
 		expect.equal(Model.soundLine(2, 6, nil), "Sound 2 of 6")
 		expect.equal(Model.soundLine(1, 5, 83.7), "Sound 1 of 5 · 1:23")

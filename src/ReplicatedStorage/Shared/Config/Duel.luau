@@ -18,7 +18,11 @@ local Duel = {
 		CooldownClamp = { Min = 0.6, Max = 2.0 }, -- hard clamp on any catalog cooldown, seconds
 		CooldownToleranceSeconds = 0.05, -- jitter allowance: releaseAt >= nextThrowAt - tolerance
 		InputBufferSeconds = 0.15, -- a press this close to the cooldown end is buffered on the client
-		HoldToRepeat = true,
+		-- Feature 1 (2026-10-11, the user-approved plan; was HoldToRepeat): holding Throw charges the throw
+		-- (Config.Combat.Charge) and letting go throws it (design: html:393-394). A press during the cooldown starts the
+		-- charge when the throw is ready; one let go before that still throws, uncharged, when it was at most
+		-- InputBufferSeconds early. false: every press throws at once, uncharged.
+		HoldToCharge = true,
 		MaxActiveProjectilesPerPlayer = 4, -- extra requests rejected (throw.tooMany)
 		ProjectileMaxLifetime = 3.0, -- seconds
 		EarlyForfeitSeconds = 20, -- a bail before this much Active time cancels the duel

@@ -39,7 +39,8 @@
 -- * Spec phase2-squeeze §3.9 (Inspect's knead, Controllers/KneadAudio): the Wax group (Config.Audio.Groups.Wax, the SFX
 --   slider, a CompressorSoundEffect from its `compressor`; VoiceCaps.Wax), options.region (only that part of the file
 --   plays: Sound.PlaybackRegion) and options.timePosition, and playLoop(key, options) -> Loop?: a looped voice whose
---   volume the caller sets every frame (setVolume) and stops (stop).
+--   volume the caller sets every frame (setVolume) and stops (stop); feature 1 (2026-10-11): and its pitch (setPitch,
+--   the charge tone).
 -- * Pooling: Sound instances are reused per key; a finished voice goes back to its key's pool.
 -- * Stuck voices: a one-shot leaves on Sound.Ended, a steal or a stop. Reading (DESIGN is silent): a Sound whose
 --   asset never loads never fires Ended, so every play attempt first drops the one-shots past their longest possible
@@ -108,9 +109,11 @@ export type PlayOptions = {
 	timePosition: number?, -- start here (a loop's random start); default the region's start, else 0
 }
 
--- A looped voice the caller drives (playLoop): Volume = the choice's volume × setVolume's.
+-- A looped voice the caller drives (playLoop): Volume = the choice's volume × setVolume's; PlaybackSpeed = setPitch's,
+-- clamped to [pitchMin, pitchMax] (feature 1, 2026-10-11: the charge tone rises with the charge).
 export type Loop = {
 	setVolume: (self: Loop, volume: number) -> (),
+	setPitch: (self: Loop, pitch: number) -> (),
 	stop: (self: Loop, fadeMs: number?) -> (),
 }
 
@@ -1038,6 +1041,11 @@ function SoundController.playLoop(key: string, options: PlayOptions?): Loop?
 	function loop.setVolume(_: Loop, volume: number)
 		if table.find(voices, started) ~= nil and not started.stopping and isFiniteNumber(volume) then
 			started.sound.Volume = level * math.max(volume, 0)
+		end
+	end
+	function loop.setPitch(_: Loop, pitch: number)
+		if table.find(voices, started) ~= nil and not started.stopping and isFiniteNumber(pitch) then
+			started.sound.PlaybackSpeed = math.clamp(pitch, AUDIO.pitchMin, AUDIO.pitchMax)
 		end
 	end
 	function loop.stop(_: Loop, fadeMs: number?)

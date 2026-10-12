@@ -18,6 +18,14 @@
 --     ButtonL2, the touch Ultimate button; Dash / PracticeDash = C, ButtonB, the touch Dash button (spec phase 5, user
 --     decision 2026-10-11; ButtonB stays the Modal context's Back while a modal is open: ModalBack is High and sinks it).
 --     Duel actions run in the Duel context, Practice actions in the Practice one.
+--   * Feature 1 (2026-10-11; design: the combat-effects page "Squishy Combat FP v2.html", html:88, 96, 393-398): Catch =
+--     E, ButtonL1 (build choice, NOT IN DESIGN: no Duel action uses it), the touch Catch button and the right mouse
+--     button, in the Duel context only (nothing throws at you in practice). The right button comes from
+--     UserInputService.InputBegan, like the world click below, never from a ContextActionService binding: it never
+--     sinks, so the third-person camera keeps its right-button drag. E left DuelSqueeze (the design's squish key is F,
+--     html:399, its catch key E, html:398); PracticeSqueeze keeps it. The touch Catch button (catchButton × UIScale) sits
+--     above Throw, toward the jump button (CATCH_DIRECTIONS, kept clear like Dash; on the big screens' crowded corner
+--     one step further out, CATCH_STRETCHES) and shows only in the Duel context.
 --   * Triggers (ButtonR2 / ButtonL2) count as pressed above Config.Combat.Aim.triggerThreshold (0.5), or above the
 --     action's own triggerThreshold (InspectZoomTriggers: Config.Inspect.Input.triggerDeadzone): the handler sees one
 --     Begin when the trigger crosses it and one End when it drops back (triggerEdge, pure).
@@ -60,7 +68,7 @@
 --   open, so an action with aboveMoveSink = true (the arrows) is bound one step above the sink; a handler that passes
 --   hands them on to it. Knead (spec phase2-squeeze §3.6): InspectPalms (Q / ButtonL1, held) and InspectRewax (W /
 --   ButtonR1, aboveMoveSink); while Inspect kneads, InspectSqueeze (F / ButtonX) is the thumb crunch.
--- First person (spec 2026-10-10 §3.1, §3.5): DuelSqueeze = F, E, ButtonX and DuelForfeit = Backspace (keyboard only) in
+-- First person (spec 2026-10-10 §3.1, §3.5): DuelSqueeze = F, ButtonX (E until feature 1) and DuelForfeit = Backspace (keyboard only) in
 --   the Duel context; PracticeSqueeze = F, E, ButtonX in the Practice context, bound one step above the lobby actions
 --   (aboveLobby: Medium + 1, still under the High overlay actions), so in the practice throw box it sees F, E and
 --   ButtonX before the lobby Squeeze whatever the bind order (a handler that passes hands them on to it: the lobby
@@ -108,11 +116,11 @@ local Theme = require(Client.UI.Theme)
 
 export type Context = "Lobby" | "Duel" | "Practice" | "Modal" | "Inspect"
 export type Handler = (inputState: Enum.UserInputState, input: InputObject?) -> boolean?
-export type TouchButton = "Throw" | "Ultimate" | "Dash"
+export type TouchButton = "Throw" | "Ultimate" | "Dash" | "Catch"
 -- A screen rectangle in pixels (top-left corner and size).
 export type Rect = { x: number, y: number, w: number, h: number }
 -- `jump` is the jump button's box the buttons were laid out against (on large screens it is taller than Throw).
-export type TouchLayout = { throw: Rect, ultimate: Rect, dash: Rect, jump: Rect }
+export type TouchLayout = { throw: Rect, ultimate: Rect, dash: Rect, catch: Rect, jump: Rect }
 -- What worldPointerPresses() checks for one left click or touch (lobby HUD spec 2026-10-11 §2).
 export type PointerFacts = {
 	kind: Enum.UserInputType,
@@ -190,14 +198,26 @@ local ULT_DIRECTION = Vector2.new(-0.6, -0.8)
 -- Spec phase 5 (reading): Dash's places around Throw, in order: left and a little lower, above and a little right, left
 -- and a little higher; the first that keeps every touchLayout rule wins.
 local DASH_DIRECTIONS: { Vector2 } = { Vector2.new(-1, 0.25), Vector2.new(0.15, -1), Vector2.new(-1, -0.25) }
+-- Feature 1 (build choice 2026-10-11, NOT IN DESIGN): Catch's places around Throw, in order: above toward the jump
+-- button (phones), steeper (the larger jump button of big screens), straight up, then right and up.
+local CATCH_DIRECTIONS: { Vector2 } =
+	{ Vector2.new(0.5, -1), Vector2.new(0.35, -1), Vector2.new(0.15, -1), Vector2.new(1, -0.6) }
+-- Feature 1 (build choice 2026-10-11): where no direction fits at the touching distance (the 120 px jump button of a
+-- big screen sits right of Throw, Ultimate above-left, Dash left), the directions are tried again this many times as
+-- far out (checked over 21 screens from 568×320 to 3840×2160).
+local CATCH_STRETCHES: { number } = { 1, 1.35, 1.7 }
+local NO_STRETCH: { number } = { 1 }
+-- Feature 1: a touch button that shows only in one context (Catch: nothing throws at you in practice).
+local TOUCH_CONTEXTS: { [string]: Context } = { Catch = "Duel" }
 local GAP_MARGIN_PX = 0.01 -- keeps the two round buttons at least TOUCH.gap apart after single-precision rounding
 local TOUCH_SHADE_TRANSPARENCY = 0.45 -- the cooling-down part of a round button
 local TOUCH_TEXT_SIZE = Config.UI.TextSize.Button
 local MIN_TEXT_SIZE = Config.UI.minTextSize
 -- Foam UI: each round button's accent and the base size its foam bands are drawn for (they scale with the button).
-local TOUCH_ACCENTS: { [string]: Theme.AccentName } = { Throw = "strawberry", Ultimate = "lilac", Dash = "sky" }
+local TOUCH_ACCENTS: { [string]: Theme.AccentName } =
+	{ Throw = "strawberry", Ultimate = "lilac", Dash = "sky", Catch = "mint" }
 local TOUCH_BASE_SIZES: { [string]: number } =
-	{ Throw = TOUCH.throwButton, Ultimate = TOUCH.ultButton, Dash = TOUCH.dashButton }
+	{ Throw = TOUCH.throwButton, Ultimate = TOUCH.ultButton, Dash = TOUCH.dashButton, Catch = TOUCH.catchButton }
 
 -- §11.7 input map. The lobby Squeeze also takes F (spec 2026-10-11 §3.8: the design's squish key, as in duels; no
 -- other Lobby action uses F, and Inspect's F is an overlay action that sinks only while Inspect is open).
@@ -225,8 +245,11 @@ local ACTIONS: { [string]: ActionDef } = {
 	-- Spec phase 5 (user decision 2026-10-11): the dash (DashController).
 	Dash = { context = "Duel", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
 	PracticeDash = { context = "Practice", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
-	-- First person (spec 2026-10-10 §3.1, §3.5): the hand's squeeze and the PC forfeit key.
-	DuelSqueeze = { context = "Duel", inputs = { Enum.KeyCode.F, Enum.KeyCode.E, Enum.KeyCode.ButtonX } },
+	-- Feature 1 (2026-10-11): the catch (CatchController); the right mouse button comes from UserInputService (header).
+	Catch = { context = "Duel", inputs = { Enum.KeyCode.E, Enum.KeyCode.ButtonL1 }, touch = "Catch" },
+	-- First person (spec 2026-10-10 §3.1, §3.5): the hand's squeeze and the PC forfeit key (E is the catch since
+	-- feature 1).
+	DuelSqueeze = { context = "Duel", inputs = { Enum.KeyCode.F, Enum.KeyCode.ButtonX } },
 	DuelForfeit = { context = "Duel", inputs = { Enum.KeyCode.Backspace } },
 	PracticeSqueeze = {
 		context = "Practice",
@@ -264,9 +287,11 @@ local ACTIONS: { [string]: ActionDef } = {
 -- binding: see the header).
 local WORLD_POINTER_ACTION = "Squeeze"
 -- Touch buttons in a fixed order, with their Strings label keys.
-local TOUCH_BUTTONS: { string } = { "Throw", "Ultimate", "Dash" }
+local TOUCH_BUTTONS: { string } = { "Throw", "Ultimate", "Dash", "Catch" }
 local TOUCH_LABEL_KEYS: { [string]: string } =
-	{ Throw = "controls.throw", Ultimate = "controls.ultimate", Dash = "controls.dash" }
+	{ Throw = "controls.throw", Ultimate = "controls.ultimate", Dash = "controls.dash", Catch = "controls.catch" }
+-- Feature 1: the action the right mouse button presses (from UserInputService, see the header).
+local RIGHT_BUTTON_ACTION = "Catch"
 
 -- Module table
 
@@ -308,7 +333,8 @@ local MOVE_SINK_KEYS: { Enum.KeyCode } = {
 	Enum.KeyCode.Space,
 	Enum.KeyCode.Thumbstick1,
 }
-local touchAvailable: { [string]: boolean } = { Throw = true, Ultimate = false, Dash = true }
+local touchAvailable: { [string]: boolean } = { Throw = true, Ultimate = false, Dash = true, Catch = true }
+local rightMouse = false -- feature 1: a right click pressed Catch, until the button lifts
 local touchOwner: { [string]: string } = {} -- the action a touch button's Begin went to (its End goes there too)
 local touchGui: ScreenGui? = nil
 local touchWidgets: { [string]: TouchWidget } = {}
@@ -546,7 +572,8 @@ local function layoutTouch()
 		return
 	end
 	local layout = ControlsController.touchLayout(size, uiScaleOf(size.Y), jumpRect(gui))
-	local rects: { [string]: Rect } = { Throw = layout.throw, Ultimate = layout.ultimate, Dash = layout.dash }
+	local rects: { [string]: Rect } =
+		{ Throw = layout.throw, Ultimate = layout.ultimate, Dash = layout.dash, Catch = layout.catch }
 	for name, widget in touchWidgets do
 		local rect = rects[name]
 		widget.button.Position = UDim2.fromOffset(rect.x, rect.y)
@@ -567,7 +594,8 @@ local function refreshTouchVisibility()
 	end
 	gui.Enabled = show
 	for name, widget in touchWidgets do
-		widget.button.Visible = show and touchAvailable[name] == true
+		local only = TOUCH_CONTEXTS[name] -- feature 1: Catch shows in the Duel context only
+		widget.button.Visible = show and touchAvailable[name] == true and (only == nil or active[only] == true)
 	end
 	if show then
 		layoutTouch()
@@ -722,9 +750,15 @@ local function applyPhaseContexts()
 end
 
 -- Lobby HUD spec 2026-10-11 §2: a left click or a touch on the 3D world presses the lobby Squeeze (see the header).
--- Never sinks: it only listens.
+-- Never sinks: it only listens. Feature 1: a right click the game did not take presses Catch (header).
 local function onPointerBegan(input: InputObject, processed: boolean)
 	local kind = input.UserInputType
+	if kind == Enum.UserInputType.MouseButton2 then
+		if not processed and ControlsController.pressAction(RIGHT_BUTTON_ACTION, Enum.UserInputState.Begin, input) then
+			rightMouse = true
+		end
+		return
+	end
 	local touch = kind == Enum.UserInputType.Touch
 	if kind ~= Enum.UserInputType.MouseButton1 and not touch then
 		return
@@ -764,6 +798,13 @@ end
 
 -- The release of a world press sent as its End (it always reaches the handler, §17.3.2).
 local function onPointerEnded(input: InputObject)
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		if rightMouse then
+			rightMouse = false
+			ControlsController.pressAction(RIGHT_BUTTON_ACTION, Enum.UserInputState.End, input)
+		end
+		return
+	end
 	local mouse = input.UserInputType == Enum.UserInputType.MouseButton1
 	if input == worldTouch or (mouse and worldMouse) then
 		if mouse then
@@ -823,8 +864,9 @@ end
 -- §5.10 touch layout in `screen` pixels (the safe-inset area): Throw (throwButton × uiScale, at least throwButtonMin)
 -- left of the jump button, bottoms aligned, `gap` apart; Ultimate (ultButton × uiScale) up and to the left, its centre
 -- throwRadius + ultRadius + gap from Throw's centre. Both stay on screen and out of the thumbstick zone. Spec phase 5:
--- Dash (dashButton × uiScale) beside Throw (DASH_DIRECTIONS), apart from the others. `jump` in the result is the jump
--- button's box used (the given one, else Roblox's default spot), so HUD layouts keep clear of it.
+-- Dash (dashButton × uiScale) beside Throw (DASH_DIRECTIONS), apart from the others; feature 1: Catch (catchButton ×
+-- uiScale) the same way (CATCH_DIRECTIONS), apart from Dash too. `jump` in the result is the jump button's box used (the
+-- given one, else Roblox's default spot), so HUD layouts keep clear of it.
 function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: Rect?): TouchLayout
 	local gap = TOUCH.gap
 	local throwSize = math.max(TOUCH.throwButton * uiScale, TOUCH.throwButtonMin)
@@ -866,9 +908,9 @@ function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: 
 	local function centreOf(rect: Rect): Vector2
 		return Vector2.new(rect.x + rect.w / 2, rect.y + rect.h / 2)
 	end
-	local function fits(rect: Rect): boolean
+	local function fits(rect: Rect, others: { Rect }): boolean
 		local centre = centreOf(rect)
-		for _, other in { throwRect, ultRect } do
+		for _, other in others do
 			if (centre - centreOf(other)).Magnitude < rect.w / 2 + other.w / 2 + gap then
 				return false
 			end
@@ -880,26 +922,37 @@ function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: 
 		local inZone = rect.x < zoneRight + gap and rect.y + rect.h > zoneTop
 		return apartFromJump and not inZone
 	end
-	local dashRect: Rect? = nil
-	for _, direction in DASH_DIRECTIONS do
-		local reach = throwSize / 2 + dashSize / 2 + gap + GAP_MARGIN_PX
-		local centre = throwCentre + direction.Unit * reach
-		local rect: Rect = {
-			x = math.clamp(centre.X - dashSize / 2, 0, math.max(screen.X - dashSize, 0)),
-			y = math.clamp(centre.Y - dashSize / 2, 0, math.max(screen.Y - dashSize, 0)),
-			w = dashSize,
-			h = dashSize,
-		}
-		if fits(rect) then
-			dashRect = rect
-			break
+	-- A round button of `size` beside Throw: the first of `directions` whose place keeps every rule (else the first);
+	-- feature 1: each of `stretches` (× the touching distance) in turn, nearest first.
+	local function place(size: number, directions: { Vector2 }, others: { Rect }, stretches: { number }): Rect
+		local chosen: Rect? = nil
+		for _, stretch in stretches do
+			for _, direction in directions do
+				local reach = (throwSize / 2 + size / 2 + gap + GAP_MARGIN_PX) * stretch
+				local centre = throwCentre + direction.Unit * reach
+				local rect: Rect = {
+					x = math.clamp(centre.X - size / 2, 0, math.max(screen.X - size, 0)),
+					y = math.clamp(centre.Y - size / 2, 0, math.max(screen.Y - size, 0)),
+					w = size,
+					h = size,
+				}
+				if fits(rect, others) then
+					return rect
+				end
+				chosen = chosen or rect
+			end
 		end
-		dashRect = dashRect or rect
+		return chosen :: Rect
 	end
+	local dashRect = place(dashSize, DASH_DIRECTIONS, { throwRect, ultRect }, NO_STRETCH)
+	-- Feature 1: Catch, apart from Throw, Ultimate and Dash too (CATCH_DIRECTIONS, CATCH_STRETCHES).
+	local catchSize = math.max(TOUCH.catchButton * uiScale, TOUCH.minTargetFloor)
+	local catchRect = place(catchSize, CATCH_DIRECTIONS, { throwRect, ultRect, dashRect }, CATCH_STRETCHES)
 	return {
 		throw = throwRect,
 		ultimate = ultRect,
-		dash = dashRect :: Rect,
+		dash = dashRect,
+		catch = catchRect,
 		jump = jumpRect,
 	}
 end
@@ -1216,6 +1269,7 @@ function ControlsController.init()
 	c:add(function()
 		worldTouch = nil
 		worldMouse = false
+		rightMouse = false
 		for action in table.clone(bindings) do
 			ControlsController.unbindAction(action)
 		end

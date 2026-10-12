@@ -14,7 +14,8 @@
 --   (§5.6 #5, §12 #5; reading: §5.9 lists no position check, but without it a client that owns its physics could
 --   start the lane from the neutral zone, past the cover that is the counterplay) (ult.context), the match snapshot
 --   has the ultimate (ult.notReady), the charge is full and minIntervalSeconds passed since the last one, the caster
---   is not in a throw windup, a telegraph or its recovery (ult.notReady), alive with a server HRP (ult.context), the
+--   is not in a throw windup, a telegraph or its recovery, nor crushing a caught toy (feature 1) (ult.notReady), alive
+--   with a server HRP (ult.context), the
 --   aim flattened to horizontal keeps at
 --   least minHorizontalAim (ult.direction). Then the kind's paths: a lane, the roller and the bubble start at
 --   O = (HRP.X, floorY + laneHeightAboveFloor, HRP.Z) + dir × originForwardStuds; a sphere of `radius` overlapping
@@ -914,7 +915,14 @@ function AbilityService.requestUltimate(
 	elseif now < caster.lastUltAt + ability.practiceCooldownSeconds then
 		return reject(player, REASON_NOT_READY)
 	end
-	if caster.phase ~= "idle" or (thrower and (now < thrower.rootedUntil or now < thrower.windupUntil)) then
+	-- Feature 1 (2026-10-11, build choice: the hands are busy): no ultimate either while a caught toy is crushed
+	-- (CombatService's handsBackAt; a practice actor has none).
+	local handsBackAt = if thrower then (thrower :: any).handsBackAt else nil
+	if
+		caster.phase ~= "idle"
+		or (thrower and (now < thrower.rootedUntil or now < thrower.windupUntil))
+		or (type(handsBackAt) == "number" and now < handsBackAt)
+	then
 		return reject(player, REASON_NOT_READY)
 	end
 	local root = rootPartOf(caster)

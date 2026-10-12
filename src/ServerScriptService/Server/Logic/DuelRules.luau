@@ -21,7 +21,8 @@
 --   streamed {side}              Preparing: RequestStreamAroundAsync finished for that side (both -> Positioning)
 --   positioned {side}            Positioning: that character is on its pad (both -> Countdown)
 --   hits {hits = {{victim, at}}} hits of one server step (CombatService already applied canDamage); `hit {victim, at}`
---                                is the one-hit form. Applied in impact order; a hit inside invulnerability is ignored.
+--                                is the one-hit form. Applied in impact order; a hit inside invulnerability is ignored,
+--                                unless it has force = true (feature 1: a caught throw's burst, Hit).
 --   throwAccepted {side}         counts an accepted throw (rewards need >= 3)
 --   forfeit {side}               Forfeit button or intercepted Reset, confirmed
 --   leave {side}                 disconnect
@@ -136,7 +137,9 @@ export type MatchState = {
 	closed: boolean,
 }
 
-export type Hit = { victim: SideName, at: number }
+-- force (feature 1, 2026-10-11): the life is lost even inside the victim's invulnerability (a caught throw bursting in
+-- the catcher's hands, Config.Combat.Catch.burstIgnoresInvuln); the invulnerability then runs to the later end.
+export type Hit = { victim: SideName, at: number, force: boolean? }
 
 export type Event = {
 	kind: string,
@@ -437,9 +440,9 @@ local function applyHitGroup(s: MatchState, group: { Hit }, at: number, fx: Effe
 	local struckA, struckB = false, false
 	for _, hit in group do
 		local victim = participant(s, hit.victim)
-		if at >= victim.invulnUntil then
+		if hit.force == true or at >= victim.invulnUntil then
 			victim.lives = math.max(0, victim.lives - 1)
-			victim.invulnUntil = at + rules.HitInvulnSeconds
+			victim.invulnUntil = math.max(victim.invulnUntil, at + rules.HitInvulnSeconds)
 			participant(s, otherSide(hit.victim)).hits += 1
 			if hit.victim == "A" then
 				struckA = true
@@ -472,7 +475,7 @@ local function onHits(s: MatchState, hits: { Hit }, now: number, fx: Effects)
 	local valid: { Hit } = {}
 	for _, hit in hits do
 		if type(hit) == "table" and isSide(hit.victim) and type(hit.at) == "number" and hit.at == hit.at then
-			local entry: Hit = { victim = hit.victim, at = math.min(hit.at, now) }
+			local entry: Hit = { victim = hit.victim, at = math.min(hit.at, now), force = hit.force == true }
 			table.insert(valid, entry)
 		end
 	end

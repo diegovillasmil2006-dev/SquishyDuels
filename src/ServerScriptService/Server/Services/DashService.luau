@@ -5,8 +5,9 @@
 -- * DashRequest(seq, dir, clientTime) (and the Studio test dummy, through requestDash) is checked by Logic/DashRules
 --   with the server's own state: a registered duel (brought up to the request time first, port.sync) in Active or
 --   SuddenDeath with the dasher in its own half + Config.Combat.Throw.zoneToleranceStuds, or the practice range
---   (PracticeService.isPracticing); alive with a server HRP; not rooted by an ultimate (telegraph or recovery) and not in
---   a throw windup; on the ground; cooldownSeconds since the last accepted dash; a flat unit direction. The end point
+--   (PracticeService.isPracticing); alive with a server HRP; not rooted by an ultimate (telegraph or recovery), not in
+--   a throw windup and not crushing a caught toy (feature 1, CombatService's handsBackAt); on the ground;
+--   cooldownSeconds since the last accepted dash; a flat unit direction. The end point
 --   is cut at cover (a Spherecast of bodyRadiusStuds from the server HRP against the place's Geometry without Barriers)
 --   and kept bodyRadiusStuds inside the own half (practice: PracticeTargets.BOUNDS), so it never reaches the neutral
 --   band (Shared/DashMath.clampToZone, the client's own prediction uses the same clamp).
@@ -146,6 +147,7 @@ function DashService.requestDash(who: any, seq: unknown, dir: unknown, clientTim
 			floorY = port.arena.floorY,
 			rooted = now < fighter.rootedUntil,
 			windup = now < fighter.windupUntil,
+			crushing = now < fighter.handsBackAt, -- feature 1 (user decision 2026-10-11: no dash while crushing)
 			zone = port.arena.zones[HALF_BY_SIDE[fighter.side] or ""],
 			cast = caster(port.arena.raycastParams),
 		}

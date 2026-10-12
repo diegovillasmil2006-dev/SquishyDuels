@@ -138,6 +138,11 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 		arg("dir", "Vector3"),
 		arg("clientTime", "serverTime"),
 	}),
+	-- Feature 1 (2026-10-11; CombatService): the charge throw's start, the press time only (validated like ThrowRequest's
+	-- clientTime, §5.6 #7); the next ThrowRequest's charge is measured from it by the server, never sent by the client.
+	ChargeStart = c2s("RemoteEvent", { arg("clientTime", "serverTime") }),
+	-- Feature 1: the catch press; the server opens the catch window at the validated press time (Logic/CatchRules).
+	CatchRequest = c2s("RemoteEvent", { arg("clientTime", "serverTime") }),
 	-- §6.3 (Logic/SqueezeRules). No argument (spec 2026-10-11 §5, squeeze anywhere): the server finds the pad under the
 	-- player's own root position; the tier always comes from the server's WorldLayout, never from the client.
 	SqueezeRequest = c2s("RemoteEvent", {}), -- reply: SqueezeResult
@@ -189,6 +194,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	UltimateEvent = s2c("participantsOrNearby", { arg("event", "table") }),
 	-- Types.DashStartedPayload (spec phase 5): participants incl. the dasher; practice: nearby players.
 	DashStarted = s2c("participantsOrNearby", { arg("dash", "table") }),
+	-- Types.CatchEventPayload (feature 1): a catch ("caught": the catcher crushes the thrower's toy) and its burst
+	-- ("burst": the thrower loses a life), to the two duelists.
+	CatchEvent = s2c("participants", { arg("event", "table") }),
 	-- <= Config.Net.Broadcast.ultimateChargeMaxHz.
 	UltimateCharge = s2c("participants", { arg("charge", "table") }),
 	-- Each participant gets its own result.

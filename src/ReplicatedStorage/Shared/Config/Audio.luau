@@ -127,6 +127,20 @@ local Audio = {
 
 	recentLogSize = 30, -- Studio play-attempt log (SoundController.recent, SD_DebugClient "sounds")
 
+	-- Feature 1 (2026-10-11): the charge tone, sfx.chargeLoop as a looped voice (SoundController.playLoop) that follows
+	-- the charge c while charging and the crush's e while crushing (design: the combat-effects page's
+	-- squishy-lib-v2.js:378-386, html:517, 551-552: 150 + 360c Hz, gain 0.025 + 0.035c, × (1 + 0.35·sin 40T) at full).
+	-- A sample only changes speed: pitch = pitchFrom + (pitchTo - pitchFrom)·c (the design's ×3.4, 150 -> 510 Hz, held
+	-- to pitchMax: ×3.33), volume = the design's gain at c over its gain at 1.
+	charge = {
+		pitchFrom = 0.6, -- design: squishy-lib-v2.js:384 (150 Hz ...)
+		pitchTo = 2, -- (... 510 Hz), held to pitchMax
+		volumeFrom = 0.025 / 0.06, -- design: squishy-lib-v2.js:384 (gain 0.025 at c = 0, 0.06 at c = 1)
+		tremolo = 0.35, -- at full, volume × (1 + tremolo·sin(tremoloRate·t)) (design: squishy-lib-v2.js:384)
+		tremoloRate = 40, -- rad/s (design: squishy-lib-v2.js:384)
+		stopFadeMs = 100, -- design: squishy-lib-v2.js:386 (a 30 ms time constant, cut at 200 ms)
+	},
+
 	-- The knead's wax crunch (spec phase2-squeeze §1.22, §3.9-§3.10; design: squish.js:796-945, fx.js:4-61), played by
 	-- Controllers/KneadAudio in the Wax group (no cooldown). The files are 48 kHz mono renders of the design's own
 	-- generators, each normalised to -1 dBFS (scratchpad work/sounds-out/manifest.json, normGainDb); a Volume of

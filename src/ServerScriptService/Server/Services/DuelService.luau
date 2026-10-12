@@ -1065,7 +1065,8 @@ local function buildPort(match: Match, fighters: { Fighter }, slot: Slot): Match
 			end
 			local list: { DuelRules.Hit } = {}
 			for index, hit in hits do
-				list[index] = { victim = hit.victim.side, at = hit.at }
+				-- Feature 1: a caught throw's burst may cost the life inside invulnerability (hit.force).
+				list[index] = { victim = hit.victim.side, at = hit.at, force = hit.force == true }
 			end
 			-- `now` = the time the projectiles were swept to: the timers never run past what was simulated.
 			local state, effects = DuelRules.step(match.state, { kind = "hits", hits = list }, now)

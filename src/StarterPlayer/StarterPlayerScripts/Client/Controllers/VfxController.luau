@@ -84,6 +84,12 @@
 -- Foam fix 2 (2026-10-09): koBannerUntil() is the os.clock() at which the eliminator's "K.O.!" banner has gone (from the
 -- impact, counting this client's hit-stop, so it is known before the banner shows; koBannerEndsAt, pure). The duel
 -- result card (DuelController) waits until then, so the banner, which draws over SD_Modal, never sits on its title.
+-- Feature 1 (2026-10-11, the charge throw and the catch; design: the combat-effects page "Squishy Combat FP v2.html"):
+-- the catch's world effects (Anim/CatchFx: the catch ring and sparks where the throw was caught, then the burst's
+-- pieces, sparks, puffs and ring at the catcher's hands; none for a first-person catcher, whose overlay draws its own)
+-- and the burst's lost life (CatchEvent "burst" with livesLeft) as a "player" hit on the thrower dealt by the catcher
+-- (handleImpact's attackerOverride): the boing, flinch, ghost, vignette, the catcher's punch, the hit-stop, the
+-- elimination and "K.O.!" as for a throw's hit, with no knockback (the toy burst in the catcher's hands).
 
 -- Services
 
@@ -1850,9 +1856,11 @@ local function onThrowStarted(raw: unknown)
 	}
 end
 
--- One server impact (or a Studio fake one: debugOnly skips the knockback). The sounds, the knockback, the held flinch
--- pose and the held flash start now; everything else waits for this client's hit-stop, when it has one (§18.4.4).
-local function handleImpact(impact: Types.ThrowImpactPayload, debugOnly: boolean?)
+-- One server impact (or a Studio fake one, or feature 1's catch burst: noKnockback skips the knockback;
+-- attackerOverride: the hit's dealer when it is not the projectile's thrower, the catcher of a burst). The sounds, the
+-- knockback, the held flinch pose and the held flash start now; everything else waits for this client's hit-stop, when
+-- it has one (§18.4.4).
+local function handleImpact(impact: Types.ThrowImpactPayload, noKnockback: boolean?, attackerOverride: number?)
 	stats.impacts += 1
 	local info = projectiles[impact.projId]
 	projectiles[impact.projId] = nil
@@ -1871,7 +1879,8 @@ local function handleImpact(impact: Types.ThrowImpactPayload, debugOnly: boolean
 		then accentOf(info.squishyId)
 		elseif ultInfo then accentOf(ultInfo.squishyId)
 		else Palette.White
-	local attackerId = if info then info.throwerId elseif ultInfo then ultInfo.casterId else rushCaster
+	local attackerId = attackerOverride
+		or (if info then info.throwerId elseif ultInfo then ultInfo.casterId else rushCaster)
 	impactSound(impact, rushCaster ~= nil or ultInfo ~= nil, attackerId)
 	local localPlayer = Players.LocalPlayer
 	local localId = if localPlayer then localPlayer.UserId else nil
@@ -1938,7 +1947,7 @@ local function handleImpact(impact: Types.ThrowImpactPayload, debugOnly: boolean
 		else
 			flinch(victim, 1)
 		end
-		if victim == localPlayer and debugOnly ~= true then
+		if victim == localPlayer and noKnockback ~= true then
 			local multiplier = if rushCaster ~= nil
 				then RUSH.knockbackMultiplier
 				elseif ultInfo ~= nil then ultInfo.knockbackMultiplier
@@ -2275,6 +2284,61 @@ function VfxController.init()
 	track(NetController.on("ThrowImpact", onThrowImpact))
 	track(NetController.on("UltimateEvent", onUltimateEvent))
 	track(StateController.DuelChanged:connect(onDuelChanged))
+	-- Feature 1 (2026-10-11): the catch in the world (Anim/CatchFx at the catch, then at the catcher's hands at the
+	-- burst; a first-person catcher sees the overlay's own instead) and the burst's lost life as a hit on the thrower
+	-- dealt by the catcher, with no knockback (CatchEvent "burst" with livesLeft). Inline requires: no new top-level
+	-- local.
+	local CatchController = require(script.Parent.CatchController)
+	local CatchFx = require(script.Parent.Parent.Anim.CatchFx)
+	local function worldCatch(event: CatchController.Event, burst: boolean)
+		local localPlayer = Players.LocalPlayer
+		local own = localPlayer ~= nil and event.catcherId == localPlayer.UserId
+		if own and require(script.Parent.FirstPersonController).isActive() then
+			return
+		end
+		local hands = if burst then ProjectileRenderer.catcherHands(event.catcherId) else nil
+		local at = hands or event.position
+		local camera = Workspace.CurrentCamera
+		local facing = if camera then camera.CFrame.Position - at else Vector3.yAxis
+		local accent = accentOf(event.squishyId)
+		local emits: { CatchFx.Emit }, rings: { CatchFx.Ring }
+		if burst then
+			emits, rings = CatchFx.burst(accent)
+		else
+			emits, rings = CatchFx.caught(accent)
+		end
+		local pool = FxPool.default()
+		for _, emit in emits do
+			pool:emit(at, emit.count, emit.props)
+		end
+		for _, spec in rings do
+			ring(at, facing, spec.diameter, spec.seconds, spec.colour)
+		end
+	end
+	track(CatchController.Caught:connect(function(event: CatchController.Event)
+		worldCatch(event, false)
+	end))
+	track(CatchController.Burst:connect(function(event: CatchController.Event)
+		worldCatch(event, true)
+	end))
+	track(NetController.on("CatchEvent", function(raw: unknown)
+		local event = CatchController.parseEvent(raw)
+		if event == nil or event.phase ~= "burst" or event.livesLeft == nil then
+			return -- no life lost (the match had ended meanwhile)
+		end
+		local thrower = Players:GetPlayerByUserId(event.throwerId)
+		local root = if thrower then rootOf(thrower) else nil
+		local impact: Types.ThrowImpactPayload = {
+			projId = event.projId,
+			kind = "player",
+			position = if root then root.Position else event.position,
+			victimId = event.throwerId,
+			livesLeft = event.livesLeft,
+			invulnUntil = event.invulnUntil,
+			eliminated = event.eliminated == true,
+		}
+		handleImpact(impact, true, event.catcherId)
+	end))
 	c:add(function()
 		VfxController.clear()
 		table.clear(connections)

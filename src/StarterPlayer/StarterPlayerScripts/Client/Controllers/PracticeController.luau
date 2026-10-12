@@ -61,6 +61,10 @@
 --   CTA at the top middle, the right edge under the Settings tile is free on phones at the standard size (667×375 too).
 -- * The reticle hides while its point is on a HUD button or an open dialog (DuelFormat.aimBlocked, as the duel
 --   reticle), and its small state text has the thin InkUI outline (the 2 px one closed the gaps between words).
+-- Feature 1 (2026-10-11, the charge throw; design: the combat-effects page "Squishy Combat FP v2.html", html:670-671):
+-- while charging (ThrowController's AimState) the reticle's fill grows from its top to c in the held toy's colour at
+-- Config.UI.Reticle.chargeFillTransparency and the ring pulses at full (DuelFormat.chargeLook, as the duel reticle;
+-- none under ReducedMotion). The catch is duel-only: the range has no catch prompt.
 
 -- Services
 
@@ -197,6 +201,7 @@ local RETICLE_SIZE = 36
 local RETICLE_DOT = 6
 local RETICLE_CROSS = 18
 local RETICLE_FILL_TRANSPARENCY = 0.55
+local RETICLE_CHARGE = Config.UI.Reticle -- feature 1: the charge fill
 local RETICLE_TEXT_WIDTH = 220
 local RETICLE_TEXT_GAP = 6 -- the state text under the ring
 local RETICLE_TEXT_EDGE = 12 -- overlays fix: the state text keeps this far (base px) inside the screen's edges
@@ -1037,7 +1042,20 @@ local function stepReticle(now: number)
 	r.root.Position = UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
 	r.dot.Visible = shown.icon ~= "cross"
 	r.cross.Visible = shown.icon == "cross"
-	setReticleFill(r, if shown.icon == "fill" then shown.fill else 1)
+	-- Feature 1: while charging the fill grows to c in the toy's colour (the top c filled) and the ring pulses at full.
+	local charging = aim.charging and shown.icon == "dot"
+	setReticleFill(r, if charging then 1 - aim.charge elseif shown.icon == "fill" then shown.fill else 1)
+	local fillFrame = r.fillGradient.Parent
+	if fillFrame and fillFrame:IsA("Frame") then
+		local colour = if charging then aim.chargeColor or Palette.White else Palette.White
+		local alpha = if charging then RETICLE_CHARGE.chargeFillTransparency else RETICLE_FILL_TRANSPARENCY
+		if fillFrame.BackgroundColor3 ~= colour then
+			fillFrame.BackgroundColor3 = colour
+		end
+		if fillFrame.BackgroundTransparency ~= alpha then
+			fillFrame.BackgroundTransparency = alpha
+		end
+	end
 	local label = ""
 	if shown.reasonCode then
 		label = Strings.reasonText(shown.reasonCode)
@@ -1063,7 +1081,8 @@ local function stepReticle(now: number)
 	end
 	local clock = os.clock()
 	local reduced = Tweens.reducedMotion()
-	r.ringScale.Scale = PracticeController.hitMarkerScale(clock - r.hitStart, reduced)
+	local _, _, pulse = DuelFormat.chargeLook(if charging then aim.charge else 0, clock, reduced)
+	r.ringScale.Scale = PracticeController.hitMarkerScale(clock - r.hitStart, reduced) * pulse
 	r.hit.Visible = clock < r.hitUntil
 	if r.hit.Visible then
 		local scale, rotation = PracticeController.hitTextPop(clock - r.hitStart, hitTiltSign, reduced)

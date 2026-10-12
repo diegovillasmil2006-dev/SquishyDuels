@@ -414,9 +414,32 @@ export type ThrowStartedPayload = {
 	gravity: number,
 	radius: number,
 	releaseAt: number,
+	-- Feature 1 (2026-10-11): the server's charge c (0..1) of this throw, which drew its speed; clients scale the trail
+	-- and the release by it. Reading: nil (an older server) = 0.
+	power: number?,
 }
 
 export type ImpactKind = "player" | "geometry" | "expired" | "target" | "fizzle"
+
+-- Feature 1 (2026-10-11): a catch and its burst (CombatService, Config.Combat.Catch), to the two duelists. Server
+-- times. A caught throw sends no ThrowImpact: this event ends it on the clients.
+export type CatchPhase = "caught" | "burst"
+export type CatchEventPayload = {
+	phase: CatchPhase,
+	matchId: string,
+	catcherId: number,
+	throwerId: number,
+	projId: number, -- the caught throw
+	squishyId: string, -- the caught toy (the thrower's)
+	position: Vector3, -- caught: where the throw was caught; burst: the catcher's hands (the server's estimate)
+	at: number, -- the catch / the burst
+	burstAt: number, -- when the caught toy bursts
+	-- burst only: the thrower's lives after it, its invulnerability and whether it ended the match. livesLeft nil = no
+	-- life was lost (the match had ended meanwhile).
+	livesLeft: number?,
+	invulnUntil: number?,
+	eliminated: boolean?,
+}
 export type ThrowImpactPayload = {
 	projId: number,
 	kind: ImpactKind,
