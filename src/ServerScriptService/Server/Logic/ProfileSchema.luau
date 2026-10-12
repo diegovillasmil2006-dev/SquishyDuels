@@ -8,7 +8,8 @@
 -- Reading: a field whose default needs nothing from the stored data is added WITHOUT a new version: reconcile fills it
 -- (§3.3 step 2), and a server without it keeps it as an unknown field, so no rolling-deploy READONLY (§17.10). A
 -- version (and a frozen MIGRATIONS step) is only for a transform of stored data, like v1 -> v2's head start. That is
--- how `samePair = {}` (the same-pair record, §6.7) joined schema 2.
+-- how `samePair = {}` (the same-pair record, §6.7) joined schema 2, and `capsules` (progression spec 2026-10-12 §14:
+-- nobody but the two owners has played yet, so there are no old saves to fix).
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -29,7 +30,10 @@
 --        non-array table is rebuilt from them); a time later than now + 300 becomes now (reading: clamped, not
 --        dropped, so it still counts for at most one window instead of never expiring); an empty list is dropped;
 --        then sorted ascending with both caps (samePairFullRewards times per opponent, Data.caps.samePair opponents;
---        DuelRewards.capSamePair).
+--        DuelRewards.capSamePair); capsules (spec 2026-10-12 §6-§7, fails closed): slots a whole number in
+--        [1, #Capsule.slotPrices], one {level, squishyId} per unlocked slot (a missing one -> an empty Lv 1 capsule,
+--        extra entries dropped), level a whole number in [1, Capsule.maxLevel], a squishy that is not owned, not in
+--        the Catalog or already in an earlier capsule (one capsule each) taken out (the capsule stays, empty).
 -- load(raw, opts) runs the whole pipeline and also returns the start version (DataService keeps it as migratedFrom,
 -- GripService shows grip.headStart once, §17.10).
 --
@@ -89,6 +93,7 @@ export type LoadResult = {
 
 local CURRENT = 2
 local FUTURE_SLACK_SECONDS = Config.Data.timestampSkewSeconds -- §17.9 #6: a timer stamped after now + 300 -> now
+local CAPSULE = Config.Grip.Capsule
 local MAX_COUNTER = 2 ^ 53
 local SECONDS_PER_DAY = 86400
 local DAILY_PATH = "daily."
@@ -332,6 +337,52 @@ local function fixSamePair(d: any, now: number, problems: { string })
 	end
 end
 
+-- The capsules (see the header): fixed in place, every fix noted. Runs after `owned` is fixed.
+local function fixCapsules(d: any, catalog: CatalogLike, problems: { string })
+	local capsules = ensureTable(d, "capsules", function()
+		return { slots = 1, list = { { level = 1, squishyId = catalog.starterId() } } }
+	end, "capsules", problems)
+	fixInt(capsules, "slots", 1, #CAPSULE.slotPrices, 1, "capsules.slots", problems)
+	local list = ensureTable(capsules, "list", function()
+		return {}
+	end, "capsules.list", problems)
+	local kept: { any } = {}
+	local inUse: { [string]: boolean } = {}
+	for index = 1, capsules.slots do
+		local path = `capsules.list[{index}]`
+		local capsule = list[index]
+		if type(capsule) ~= "table" then
+			note(problems, path, capsule, "empty Lv 1")
+			capsule = { level = 1 }
+		end
+		fixInt(capsule, "level", 1, CAPSULE.maxLevel, 1, path .. ".level", problems)
+		local id = capsule.squishyId
+		if id ~= nil then
+			if type(id) ~= "string" or d.owned[id] == nil or not catalog.isValidId(id) or inUse[id] then
+				note(problems, path .. ".squishyId", id, nil)
+				capsule.squishyId = nil
+			else
+				inUse[id] = true
+			end
+		end
+		kept[index] = capsule
+	end
+	local count = 0
+	for _ in list do
+		count += 1
+	end
+	local present = 0
+	for index = 1, capsules.slots do
+		if list[index] ~= nil then
+			present += 1
+		end
+	end
+	if count ~= present then
+		note(problems, "capsules.list", count, #kept)
+	end
+	capsules.list = kept
+end
+
 local function versionOf(d: any): number
 	local v = tonumber(d.schemaVersion)
 	if v == nil or v ~= v or v < 1 then
@@ -380,6 +431,8 @@ function ProfileSchema.defaults(now: number): Profile
 			afk = { value = Config.Grip.Afk.burst, at = now },
 		},
 		samePair = {},
+		-- Spec 2026-10-12 §7: one capsule free, Kitty Bread at Lv 1.
+		capsules = { slots = 1, list = { { level = 1, squishyId = starter } } },
 	}
 	return profile
 end
@@ -570,6 +623,9 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 
 	-- Same-pair record (§6.7, §12 #15).
 	fixSamePair(d, now, problems)
+
+	-- Capsules (spec 2026-10-12 §6-§7).
+	fixCapsules(d, catalog, problems)
 
 	return d, problems
 end

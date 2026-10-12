@@ -2,7 +2,8 @@
 -- ProfileSize_Test: the §3.5 size budget, measured with HttpService:JSONEncode (the encoder Roblox uses for DataStore
 -- values) on a MAXIMAL profile: every log at its cap (50 boxLog, 20 shopLog, 100 receipts, 30 duelLog), a full
 -- same-pair record (Config.Data.caps.samePair opponents x samePairFullRewards times, §6.7), every catalog
--- squishy owned (14 since the 2026-10-09 overhaul), 3 quests, every starter task and onboarding step, the v2 Grip block, and long worst-case values
+-- squishy owned (14 since the 2026-10-09 overhaul), 3 quests, every starter task and onboarding step, the v2 Grip block,
+-- 4 capsules at the top level (spec 2026-10-12), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -115,6 +116,11 @@ return function(t: Context)
 			end
 			p.samePair[string.format("%d", 9_999_999_000 + i)] = times
 		end
+		-- Every slot unlocked, each capsule at the top level with a different squishy (spec 2026-10-12 §6-§7).
+		p.capsules = { slots = #Config.Grip.Capsule.slotPrices, list = {} }
+		for _, id in { "dragon", "bird", "donut", "cloud_bunny" } do
+			table.insert(p.capsules.list, { level = Config.Grip.Capsule.maxLevel, squishyId = id })
+		end
 		return p
 	end
 
@@ -148,6 +154,7 @@ return function(t: Context)
 		expect.equal(decoded.coins, p.coins)
 		expect.equal(#decoded.receipts, Config.Data.caps.receipts)
 		expect.equal(decoded.grip.total, p.grip.total)
+		expect.deepEqual(decoded.capsules, p.capsules)
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

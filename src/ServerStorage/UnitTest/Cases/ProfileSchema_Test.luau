@@ -11,7 +11,10 @@
 --   * the §3.3 sanitize rules (coins, starter ownership, equipped, logs, settings, quests);
 --   * samePair (§6.7) joined schema 2 without a new version: defaults {}, an older v2 profile gets it from reconcile,
 --     and sanitize fails closed (bad keys / values dropped, non-finite times dropped, far-future times -> now,
---     sorted, both caps).
+--     sorted, both caps);
+--   * capsules (spec 2026-10-12 §6-§7) joined schema 2 the same way: one free Kitty Bread capsule at Lv 1, sanitize
+--     fails closed (slots and levels clamped, one entry per slot, a squishy owned and in one capsule only), and they
+--     survive a JSON save and load unchanged.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -126,6 +129,7 @@ return function(t: Context)
 			afk = { value = 120, at = seen },
 		}
 		expected.samePair = {} -- filled by reconcile (no migration step)
+		expected.capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } } -- the same
 		return expected
 	end
 
@@ -164,6 +168,7 @@ return function(t: Context)
 			afk = { value = Config.Grip.Afk.burst, at = NOW },
 		})
 		expect.deepEqual(d.samePair, {})
+		expect.deepEqual(d.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -507,5 +512,83 @@ return function(t: Context)
 		expect.equal(samePair["1001"], nil)
 		expect.deepEqual(samePair["1002"], { NOW - 10_000 + 2 })
 		expect.truthy(#problems > 0)
+	end)
+
+	-- Capsules (progression spec 2026-10-12 §6-§7) ---------------------------------------------------------------------
+
+	local STARTER_CAPSULES = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }
+
+	t.test("capsules join schema 2 without a new version: an older v2 profile gets the free capsule", function()
+		local older = load(FIXTURE_V1).profile :: any
+		older.capsules = nil -- a v2 profile saved before the field existed
+		local result = load(older)
+		expect.equal(result.fromVersion, 2)
+		expect.equal(result.migrated, false)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.capsules, STARTER_CAPSULES)
+		expect.equal(result.profile.schemaVersion, ProfileSchema.CURRENT)
+	end)
+
+	t.test("sanitize capsules: slots and levels clamped, one entry per slot, a squishy in one capsule only", function()
+		local function fixedCapsules(capsules: any): (any, { string })
+			local profile = load(FIXTURE_V1).profile :: any -- owns kitty_bread, toast and banana
+			profile.capsules = capsules
+			local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return (fixed :: any).capsules, problems
+		end
+		local maxLevel = Config.Grip.Capsule.maxLevel
+		local capsules, problems = fixedCapsules("garbage")
+		expect.deepEqual(capsules, STARTER_CAPSULES)
+		expect.truthy(#problems > 0)
+
+		capsules = fixedCapsules({
+			slots = 9, -- more than the 4 slots
+			list = {
+				{ level = 0, squishyId = "toast" }, -- below Lv 1
+				{ level = 5.7, squishyId = "toast" }, -- floored; toast is already in capsule 1
+				{ level = maxLevel + 1, squishyId = "dragon" }, -- capped; dragon is not owned
+				"garbage" :: any, -- not a capsule: an empty Lv 1 one
+				{ level = 3 }, -- beyond the slots: dropped
+			} :: { any },
+		})
+		expect.deepEqual(capsules, {
+			slots = #Config.Grip.Capsule.slotPrices,
+			list = { { level = 1, squishyId = "toast" }, { level = 5 }, { level = maxLevel }, { level = 1 } } :: { any },
+		})
+
+		-- Not a number, not in the Catalog, a missing capsule.
+		capsules = fixedCapsules({ slots = 0 / 0, list = { { level = 0 / 0, squishyId = "retired_squishy" } } })
+		expect.deepEqual(capsules, { slots = 1, list = { { level = 1 } } })
+		capsules = fixedCapsules({ slots = 2.9, list = { { level = 7, squishyId = "banana" } } })
+		expect.deepEqual(
+			capsules,
+			{ slots = 2, list = { { level = 7, squishyId = "banana" }, { level = 1 } } :: { any } }
+		)
+
+		-- A valid set passes unchanged.
+		local valid = {
+			slots = 3,
+			list = {
+				{ level = maxLevel, squishyId = "kitty_bread" },
+				{ level = 42 },
+				{ level = 11, squishyId = "banana" },
+			} :: { any },
+		}
+		capsules, problems = fixedCapsules(TableUtil.deepCopy(valid))
+		expect.deepEqual(capsules, valid)
+		expect.deepEqual(problems, {})
+	end)
+
+	t.test("capsules survive a save and load (the HttpService JSON DataStores keep) unchanged", function()
+		local HttpService = game:GetService("HttpService")
+		local profile = load(FIXTURE_V1).profile :: any
+		profile.capsules = {
+			slots = 3,
+			list = { { level = 100, squishyId = "toast" }, { level = 1 }, { level = 57, squishyId = "banana" } } :: { any },
+		}
+		local result = load(HttpService:JSONDecode(HttpService:JSONEncode(profile)))
+		expect.equal(result.status, "ok")
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.capsules, profile.capsules)
 	end)
 end

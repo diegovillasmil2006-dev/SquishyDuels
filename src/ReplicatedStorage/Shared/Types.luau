@@ -94,6 +94,11 @@ export type DuelLogEntry = { matchId: string, opp: number, result: DuelLogResult
 -- trimmed by time, so the rolling hour is always whole; at most samePairFullRewards times per opponent and
 -- Config.Data.caps.samePair opponents.
 export type SamePairRecord = { [string]: { number } }
+-- The player's capsules (lobby bases spec 2026-10-11 §6, progression spec 2026-10-12 §6-§7): `slots` unlocked, a
+-- whole number 1..#Config.Grip.Capsule.slotPrices; `list[i]` = the capsule in slot i, one per unlocked slot: its level
+-- (1..Capsule.maxLevel) and the squishy in it (nil = empty; a squishy sits in one capsule at a time).
+export type CapsuleState = { level: number, squishyId: string? }
+export type CapsulesState = { slots: number, list: { CapsuleState } }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema).
@@ -118,6 +123,7 @@ export type ProfileV1 = {
 	duelLog: { DuelLogEntry }, -- cap 30
 	grip: GripState, -- schemaVersion 2 (§17.10)
 	samePair: SamePairRecord, -- added within schemaVersion 2 (reconcile fills it; no migration)
+	capsules: CapsulesState, -- added within schemaVersion 2 (reconcile fills it; no old saves to fix, spec 2026-10-12 §14)
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
