@@ -601,6 +601,28 @@ return function(t: Context)
 		expect.near(farthest, reach, 1e-6)
 	end)
 
+	t.test("a throw into open sky leaves along the crosshair, inside the pitch band (bug report 2026-10-11)", function()
+		-- The crosshair 25° above the horizon toward the opponent, nothing hit: the arc solved to the point in the air
+		-- at the opponent's distance climbed far steeper than the crosshair ("it goes all the way up"); the throw now
+		-- leaves along the crosshair itself.
+		local camera = Vector3.new(320, 7, -356)
+		local up25 = Vector3.new(0, math.sin(math.rad(25)), math.cos(math.rad(25)))
+		local forward = Vector3.new(0, 0, 1)
+		local dir = ThrowController.limitDirection(up25, forward, false)
+		expect.near(ProjectileMath.pitchDeg(dir), 25, 1e-3)
+		expectVectorNear(dir, up25)
+		local reach = ThrowController.missReach(camera, up25, { Vector3.new(320, 3, -256) }, 200)
+		local origin = Vector3.new(320, 4.5, -343)
+		local solved = ProjectileMath.solveLaunchDir(origin, camera + up25 * reach, 95, 35) -- kitty_bread's throw
+		expect.truthy(ProjectileMath.pitchDeg(solved) > 35) -- the old way: well above the crosshair
+		-- Straight up is held to the top of the band; practice keeps the range cone.
+		local steep = ThrowController.limitDirection(Vector3.new(0, 1, 0.05).Unit, forward, false)
+		expect.near(ProjectileMath.pitchDeg(steep), combat.Throw.pitchMaxDeg, 1e-3)
+		local PracticeTargets = t.requireShared("Practice/PracticeTargets")
+		local behind = -PracticeTargets.FORWARD + Vector3.new(0, 0.2, 0)
+		expect.truthy(PracticeTargets.inCone(ThrowController.limitDirection(behind.Unit, forward, true)))
+	end)
+
 	-- Sounds (§18.4.5, §18.6) -------------------------------------------------------------------------------------------
 
 	-- True when `key` is a sound slot of AssetTable (asked by key; silent while its id is nil).

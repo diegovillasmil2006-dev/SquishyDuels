@@ -233,7 +233,7 @@ return function(t: Context)
 	-- builder reads them, so the built arena does not change.
 	t.test("ArenaBuilder: the wall stripes equal WorldLayout.Arena.wallStripes", function()
 		local stripes = t.requireShared("World/WorldLayout").Arena.wallStripes
-		expect.deepEqual(stripes, { heights = { 2, 4, 6 }, thickness = 0.5, proud = 0.1, insetX = 0.02 })
+		expect.deepEqual(stripes, { heights = { 2, 4, 6 }, thickness = 0.5, proud = 0.1, insetX = 0.06 })
 		local root = build("ArenaBuilder", "arena").root
 		local cover = (root:FindFirstChild("Geometry") :: Instance):FindFirstChild("Cover") :: Instance
 		local problems: { string } = {}

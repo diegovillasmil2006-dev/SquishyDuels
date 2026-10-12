@@ -41,7 +41,7 @@ local UPRIGHT = CFrame.Angles(0, 0, math.pi / 2) -- a Cylinder part's X axis ont
 local ROD_OVERLAP = 1.06 -- rods of a ring overlap a little so its joints never gap
 local SWIRL_RADII = { 0.9, 0.7, 0.5, 0.3 } -- design: lobby.js:45 (ring radius / disk radius)
 local SWIRL_TUBE = 0.07 -- design: lobby.js:45 (tube / disk radius)
-local DISC_STEP = 0.02 -- each swirl disc stands this far proud of the one under it (no z-fighting)
+local DISC_STEP = Prims.LAYER -- each swirl disc stands this far proud of the one under it (0.02 flickered)
 local GUMDROP_RADIUS = 3.1 -- design: lobby.js:23 (the lathe's widest radius)
 local GUMDROP_HEIGHT = 6 -- design: lobby.js:23
 local ARROW_TAIL = -0.4 -- design: lobby.js:162 (the arrow shape: x -0.4 .. 5.4, tip to 6.6, y ±0.75)
@@ -170,7 +170,8 @@ function Props.cone(parent: Instance?, name: string, radius: number, height: num
 end
 
 -- A flat ring (inner .. outer diameter) whose top is `top` (its axis the frame's Y): a disc of `color` `thickness` tall
--- with a disc of `ground` (the surface's colour) on it, a hair higher. Returns the ring and the cover.
+-- with a disc of `ground` (the surface's colour) on it, Prims.LAYER higher (closer, the two tops flicker). Returns the
+-- ring and the cover.
 function Props.annulus(
 	parent: Instance?,
 	name: string,
@@ -187,7 +188,7 @@ function Props.annulus(
 		name .. "_cover",
 		innerDiameter,
 		thickness,
-		top * CFrame.new(0, -thickness / 2 + 0.005, 0),
+		top * CFrame.new(0, -thickness / 2 + Prims.LAYER, 0),
 		ground
 	)
 	return ring, cover

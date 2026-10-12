@@ -49,7 +49,7 @@ local COURT: ArenaKit.CourtStyle = {
 -- Tile checker (sd/arenas2.js:186): 8 x 8 squares, every other one in the light tile colour of its half; here aligned
 -- on the centre line so no square straddles the halves.
 local TILE = 8 -- design: sd/arenas2.js:186
-local CHECKER_TOP = 0.02 -- under the court lines (0.04)
+local CHECKER_TOP = ArenaKit.LAYER -- over the floor, under the court lines (0.07); 0.02 flickered
 
 -- Bumper rails (sd/arenas2.js:187-188): rb(L / 2 - 1, 2.4, 2.6) white with a 0.7 team stripe rb(..., 0.7, 2.7) at y 1.5.
 -- Spec §4.5: 1.6 deep in the 2-stud gutter; the stripe keeps the design's extra depth (2.7 / 2.6), inside the gutter.
@@ -146,7 +146,7 @@ local function buildRails(k: Kit)
 				k.rails,
 				`{side}_Bumper{index}`,
 				Vector3.new(BUMPER_DEPTH, BUMPER_HEIGHT, halfZ),
-				CFrame.new(sx * (halfX + BUMPER_DEPTH / 2), BUMPER_HEIGHT / 2, sign * halfZ / 2),
+				CFrame.new(sx * (halfX + BUMPER_DEPTH / 2 + ArenaKit.LAYER), BUMPER_HEIGHT / 2, sign * halfZ / 2),
 				"ArenaTrimWhite",
 				"solid"
 			) -- design: sd/arenas2.js:187
@@ -166,7 +166,7 @@ local function buildRails(k: Kit)
 			k.rails,
 			`{side}_BumperEnd`,
 			Vector3.new(width, BUMPER_HEIGHT, BUMPER_DEPTH),
-			CFrame.new(0, BUMPER_HEIGHT / 2, sign * (halfZ + BUMPER_DEPTH / 2)),
+			CFrame.new(0, BUMPER_HEIGHT / 2, sign * (halfZ + BUMPER_DEPTH / 2 + ArenaKit.LAYER)), -- stripe in front
 			"ArenaTrimWhite",
 			"solid"
 		) -- design: sd/arenas2.js:188
@@ -248,7 +248,8 @@ local function claw(k: Kit, name: string, z: number, ry: number, team: string)
 	end
 	piece("Base", Vector3.new(10, 6, 10), 0, 3, 0, team) -- design: sd/arenas2.js:213
 	piece("PrizeChute", Vector3.new(3.4, 2.6, 0.6), -2.6, 2.4, 5.05, "ArenaPlum") -- design: sd/arenas2.js:213
-	local glass = piece("Glass", Vector3.new(9.2, 9, 9.2), 0, 10.5, 0, "ArenaGlass") -- design: sd/arenas2.js:214
+	-- design: sd/arenas2.js:214; 2 * LAYER shorter so its ends clear the posts' (flicker)
+	local glass = piece("Glass", Vector3.new(9.2, 9 - 2 * ArenaKit.LAYER, 9.2), 0, 10.5, 0, "ArenaGlass")
 	glass.Material = Enum.Material.Glass
 	glass.Transparency = 1 - 0.26 -- design: sd/lobby.js:77 glass opacity 0.26
 	glass.CastShadow = false

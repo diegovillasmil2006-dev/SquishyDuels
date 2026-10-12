@@ -181,7 +181,7 @@ local function aquarium(k: Kit, sz: number, random: () -> number)
 		k,
 		model,
 		"Glass",
-		Vector3.new(0.5, TANK_HEIGHT, TANK_LENGTH),
+		Vector3.new(0.5, TANK_HEIGHT - 2 * ArenaKit.LAYER, TANK_LENGTH), -- ends clear the posts' (flicker)
 		CFrame.new(glassX, TANK_HEIGHT / 2, 0),
 		"ArenaTankGlass",
 		"decor",

@@ -107,7 +107,9 @@ local STUMP_HEIGHT = 3.5 -- design: sd/blox.js:60
 local STUMP: { Recipe.Part } = {
 	Recipe.disc("Body", STUMP_DIAMETER, STUMP_HEIGHT, 0, STUMP_HEIGHT / 2, 0, "ArenaLogBark", "Wood"),
 	Recipe.disc("Top", 2 * 2.7, 0.15, 0, 3.56, 0, "ArenaLogEnd", "Wood"), -- design: sd/blox.js:60 C(2.7) x 0.15, y 3.56
-	Recipe.disc("Ring", 2 * 1.6, 0.17, 0, 3.57, 0, "ArenaStumpRing", "Wood"), -- design: sd/blox.js:60, y 3.57
+	-- design: sd/blox.js:60, y 3.57; 0.01 higher so its top clears the top disc's by 0.03 (0.02 flickered, user bug report
+	-- 2026-10-11)
+	Recipe.disc("Ring", 2 * 1.6, 0.17, 0, 3.58, 0, "ArenaStumpRing", "Wood"),
 }
 
 local LOG_WALL = logWall()

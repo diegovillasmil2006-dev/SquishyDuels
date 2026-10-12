@@ -1435,11 +1435,13 @@ local Arena = {
 		span("GutterEndB", -36, 36, -4, 0, 52, 54),
 	} :: { Volume },
 	-- Neutral band: Cream/Strawberry diagonal "no-step" stripes with Ink edge lines; the midline sits on top.
-	-- Reading: overlays 0.05 thick (Y 0..0.05); the midline 0.06 (Y 0..0.06) so they never z-fight.
+	-- Reading: overlays 0.05 thick (Y 0..0.05); the midline 0.11 (Y 0..0.11), the stripes between (top 0.08): each
+	-- layer 0.03 above the one under it (closer they flicker, user bug report 2026-10-11; SDTools Kit/Prims.LAYER), the
+	-- midline 0.06 shorter than the band so their ends never meet.
 	neutralBand = { position = Vector3.new(0, 0.025, 0), size = Vector3.new(72, 0.05, 16), color = "Cream" } :: Box,
 	neutralStripeColor = "Strawberry",
 	neutralEdgeColor = "Ink",
-	midline = { position = Vector3.new(0, 0.03, 0), size = Vector3.new(72, 0.06, 1), color = "White" } :: Box,
+	midline = { position = Vector3.new(0, 0.055, 0), size = Vector3.new(71.94, 0.11, 1), color = "White" } :: Box,
 	-- 2-wide border strips inside the rails, per side (reading: along both side rails and the end rail of the half).
 	sideTints = {
 		A = {
@@ -1474,9 +1476,10 @@ local Arena = {
 	},
 	cover = cover, -- 12 pieces, each an Atomic sub-model in `Geometry`
 	-- The Cream stripes on each cover wall (§18.3.4, moved from ArenaBuilder with identical values): Stripe_n centred
-	-- `heights[n]` above the wall's bottom, `thickness` tall, (wall X - insetX) wide and (wall Z + proud) deep, so 0.01
-	-- inside each X face and 0.05 proud of each big face. The jelly ripple's skin puts a grid row on every stripe edge.
-	wallStripes = { heights = { 2, 4, 6 }, thickness = 0.5, proud = 0.1, insetX = 0.02 },
+	-- `heights[n]` above the wall's bottom, `thickness` tall, (wall X - insetX) wide and (wall Z + proud) deep, so 0.03
+	-- inside each X face (0.01 flickered, user bug report 2026-10-11) and 0.05 proud of each big face. The jelly
+	-- ripple's skin puts a grid row on every stripe edge.
+	wallStripes = { heights = { 2, 4, 6 }, thickness = 0.5, proud = 0.1, insetX = 0.06 },
 	-- Low walls 0.8 thick × 3 tall at X ±36.4 and Z ±52.4, tinted per side (reading: the side rails split at Z 0).
 	rails = {
 		{

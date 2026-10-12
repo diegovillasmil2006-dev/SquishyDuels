@@ -53,6 +53,10 @@ local PROMPT_NAME = "Prompt"
 local PROMPT_ATTACHMENT_NAME = "PromptAttachment"
 local ATTR_TEXT_KEY = "SD_TextKey"
 local UPRIGHT = CFrame.Angles(0, 0, math.rad(90)) -- part X axis -> world Y
+-- The smallest gap between two stacked faces of different colours that face the same way (a rim on its dais, a
+-- marking on a floor, a stripe on a wall): closer than this they fight in the depth buffer and flicker (user bug
+-- report 2026-10-11, "all the platforms flicker"). Too small to see. UnitTest Flicker_Test checks every build for it.
+local LAYER = 0.03
 
 -- Module table
 
@@ -61,6 +65,7 @@ Prims.MESH_NAME = MESH_NAME
 Prims.PROMPT_NAME = PROMPT_NAME
 Prims.PROMPT_ATTACHMENT_NAME = PROMPT_ATTACHMENT_NAME
 Prims.COSMETIC_GROUP = COSMETIC_GROUP
+Prims.LAYER = LAYER
 
 -- Private
 

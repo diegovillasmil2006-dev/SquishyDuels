@@ -9,12 +9,16 @@
 --     Workspace.SD_ClientFx (arena barriers and dividers are skipped by their groups). A ray that hits nothing (open
 --     sky) aims at the opponent's distance in a duel, the farthest practice target in practice (missReach), capped at
 --     Config.Combat.Aim.maxRayStuds (200). Reading (user test, Part 4): a plain 200 studs made every press just above
---     the opponent a lob far past the ~90-stud court ("it throws the squishy to the moon").
+--     the opponent a lob far past the ~90-stud court ("it throws the squishy to the moon"). That point is only the
+--     aim state's now: a throw whose ray hits nothing leaves along the crosshair (missDirection, user bug report
+--     2026-10-11: aimed well above the opponent, the solved arc to that point in the air still went "all the way
+--     up"; the Combat FP design throws along the camera direction too), unless aim assist moved the point.
 --   * Aim assist (Config.Combat.AimAssist; gamepad 4°, touch 5°, 50%; off for keyboard/mouse), applied once at throw
 --     time: when the opponent's capsule centre (practice: the nearest practice target, reading) is inside the cone
 --     and in line of sight, the aim point moves `strength` of the way toward it.
---   * aimDir = ProjectileMath.solveLaunchDir(originHint, aimPoint, speed, g), then clamped to the pitch band
---     [-35°, +65°] and, in practice, into the 75° cone around the range forward (+X) (clampPitch / clampToCone).
+--   * aimDir = ProjectileMath.solveLaunchDir(originHint, aimPoint, speed, g) (a ray that hit nothing: the ray's own
+--     direction), then clamped to the pitch band [-35°, +65°] and, in practice, into the 75° cone around the range
+--     forward (+X) (limitDirection: clampPitch / clampToCone).
 --   * ThrowRequest(seq, aimDir, originHint = HRP.CFrame * ReleaseOffset, clientTime = GetServerTimeNow()) through
 --     NetController.throwRequest (its per-remote seq counter, local shape checks and token buckets); a request the
 --     NetController drops locally starts no windup.
@@ -533,6 +537,16 @@ function ThrowController.clampToCone(dir: Vector3, forward: Vector3, coneDeg: nu
 	return rotated * math.cos(pitch) + Vector3.yAxis * math.sin(pitch)
 end
 
+-- A throw direction kept inside the pitch band and, in practice, the range cone (the server's checks, §5.5). Used for
+-- a solved aim and, as it is, for a throw whose aim ray hit nothing (it leaves along the crosshair, see the header).
+function ThrowController.limitDirection(raw: Vector3, forward: Vector3, practice: boolean): Vector3
+	local dir = ThrowController.clampPitch(raw, COMBAT.Throw.pitchMinDeg, COMBAT.Throw.pitchMaxDeg, forward)
+	if practice then
+		dir = ThrowController.clampToCone(dir, RANGE_FORWARD, COMBAT.Throw.practiceConeDeg - CONE_MARGIN_DEG)
+	end
+	return dir
+end
+
 -- Aim assist (§5.10): when `target` is inside the cone of `coneDeg` around the aim ray, the aim point moves `strength`
 -- of the way toward it. Returns the new aim point and whether it moved.
 function ThrowController.applyAimAssist(
@@ -954,11 +968,11 @@ local function missReachFor(ray: Ray): number
 	return ThrowController.missReach(ray.Origin, ray.Direction, anchors, COMBAT.Aim.maxRayStuds)
 end
 
--- The aim ray and point from the camera (mouse or centre).
-local function cameraAim(): (Vector3?, Vector2, boolean, Ray?)
+-- The aim ray and point from the camera (mouse or centre); the last value is false when the ray hit nothing.
+local function cameraAim(): (Vector3?, Vector2, boolean, Ray?, boolean)
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
-		return nil, Vector2.zero, true, nil
+		return nil, Vector2.zero, true, nil, false
 	end
 	local viewport = camera.ViewportSize
 	local centered = ControlsController.preferredInput() ~= Enum.PreferredInput.KeyboardAndMouse
@@ -968,7 +982,7 @@ local function cameraAim(): (Vector3?, Vector2, boolean, Ray?)
 	local reach = COMBAT.Aim.maxRayStuds
 	local result = Workspace:Raycast(ray.Origin, ray.Direction * reach, refreshAimParams())
 	local point = if result then result.Position else ray.Origin + ray.Direction.Unit * missReachFor(ray)
-	return point, screen, centered, ray
+	return point, screen, centered, ray, result ~= nil
 end
 
 local function hasLineOfSight(from: Vector3, to: Vector3, targetModel: Instance?): boolean
@@ -1043,11 +1057,7 @@ end
 local function throwDirection(ctx: Ctx, origin: Vector3, aimPoint: Vector3, forward: Vector3): Vector3
 	local throw = ctx.def.throw
 	local raw = ProjectileMath.solveLaunchDir(origin, aimPoint, throw.speed, throw.gravity)
-	local dir = ThrowController.clampPitch(raw, COMBAT.Throw.pitchMinDeg, COMBAT.Throw.pitchMaxDeg, forward)
-	if ctx.kind == "practice" then
-		dir = ThrowController.clampToCone(dir, RANGE_FORWARD, COMBAT.Throw.practiceConeDeg - CONE_MARGIN_DEG)
-	end
-	return dir
+	return ThrowController.limitDirection(raw, forward, ctx.kind == "practice")
 end
 
 -- Held squishy: anticipation squash on its rig, hide at release, pop-in at readyAt ---------------------------------
@@ -1201,18 +1211,25 @@ local function fire(ctx: Ctx, aimPoint: Vector3?, ray: Ray?): (boolean, string?)
 	end
 	local point = aimPoint
 	local aimRay = ray
+	local missed = false -- the camera ray hit nothing (open sky): the throw leaves along the crosshair (see the header)
 	if point == nil then
-		local camPoint, _, _, camRay = cameraAim()
-		point, aimRay = camPoint, camRay
+		local camPoint, _, _, camRay, hit = cameraAim()
+		point, aimRay, missed = camPoint, camRay, not hit
 	end
 	if point == nil then
 		return false, "throw.direction"
 	end
 	if aimPoint == nil then
-		point = assisted(ctx, aimRay, point :: Vector3)
+		local unassisted = point :: Vector3
+		point = assisted(ctx, aimRay, unassisted)
+		if point ~= unassisted then
+			missed = false -- aim assist found a target: aim at it
+		end
 	end
 	local origin = originHintOf(root)
-	local dir = throwDirection(ctx, origin, point :: Vector3, root.CFrame.LookVector)
+	local dir = if missed and aimRay
+		then ThrowController.limitDirection(aimRay.Direction, root.CFrame.LookVector, ctx.kind == "practice")
+		else throwDirection(ctx, origin, point :: Vector3, root.CFrame.LookVector)
 	local now = serverNow()
 	local windup = ctx.def.throw.windup
 	local seq = NetController.throwRequest(dir, origin, now)

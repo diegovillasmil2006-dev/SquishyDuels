@@ -1224,7 +1224,7 @@ return function(t: Context)
 	t.test("the arena wall stripe constants match ArenaBuilder's (§7.8, §18.3.4)", function()
 		expect.deepEqual(
 			WorldLayout.Arena.wallStripes,
-			{ heights = { 2, 4, 6 }, thickness = 0.5, proud = 0.1, insetX = 0.02 }
+			{ heights = { 2, 4, 6 }, thickness = 0.5, proud = 0.1, insetX = 0.06 }
 		)
 		local stripes = WorldLayout.Arena.wallStripes
 		for _, height in stripes.heights do

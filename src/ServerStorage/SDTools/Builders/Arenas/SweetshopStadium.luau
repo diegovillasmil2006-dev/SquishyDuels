@@ -111,7 +111,7 @@ local function buildRails(k: Kit)
 				k.rails,
 				`{side}_Cushion{index}`,
 				Vector3.new(CUSHION_DEPTH, CUSHION_HEIGHT, halfZ),
-				CFrame.new(sx * x, CUSHION_HEIGHT / 2, sign * halfZ / 2),
+				CFrame.new(sx * (x + ArenaKit.LAYER), CUSHION_HEIGHT / 2, sign * halfZ / 2), -- the cap's face in front
 				"ArenaCushionCream",
 				"solid"
 			) -- design: sd/arena.js:45
@@ -131,7 +131,7 @@ local function buildRails(k: Kit)
 			k.rails,
 			`{side}_CushionEnd`,
 			Vector3.new(endWidth, CUSHION_HEIGHT, CUSHION_DEPTH),
-			CFrame.new(0, CUSHION_HEIGHT / 2, sign * (halfZ + CUSHION_DEPTH / 2)),
+			CFrame.new(0, CUSHION_HEIGHT / 2, sign * (halfZ + CUSHION_DEPTH / 2 + ArenaKit.LAYER)),
 			"ArenaCushionCream",
 			"solid"
 		) -- design: sd/arena.js:49
@@ -168,7 +168,7 @@ local function cake(k: Kit, name: string, z: number, icing: string)
 			`Icing{index}`,
 			2 * (radius + ICING_EXTRA),
 			ICING_HEIGHT,
-			frame:PointToWorldSpace(Vector3.new(0, y + height - ICING_HEIGHT / 2, 0)),
+			frame:PointToWorldSpace(Vector3.new(0, y + height - ICING_HEIGHT / 2 + ArenaKit.LAYER, 0)), -- over the tier top
 			icing
 		) -- design: sd/arena.js:68
 		ArenaKit.disc(

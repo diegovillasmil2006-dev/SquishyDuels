@@ -35,6 +35,7 @@
 -- gameplay geometry. Everything is built UNPARENTED. Relative requires or ctx.Shared only.
 
 local Generated = require(script.Parent.Parent.Generated)
+local Prims = require(script.Parent.Parent.Kit.Prims)
 
 -- Types
 
@@ -266,8 +267,12 @@ local function buildMarkings(geometry: Folder, deps: Deps)
 		part(
 			markings,
 			if sign < 0 then "Neutral_EdgeA" else "Neutral_EdgeB",
-			Vector3.new(band.size.X, midline.size.Y, EDGE_LINE_WIDTH),
-			CFrame.new(band.position.X, midline.position.Y, band.position.Z + sign * (halfDepth - EDGE_LINE_WIDTH / 2)),
+			Vector3.new(band.size.X - 2 * Prims.LAYER, midline.size.Y, EDGE_LINE_WIDTH), -- ends clear the band's
+			CFrame.new(
+				band.position.X,
+				midline.position.Y,
+				band.position.Z + sign * (halfDepth - EDGE_LINE_WIDTH / 2 - Prims.LAYER) -- clears the band's edge
+			),
 			color(deps, arena.neutralEdgeColor),
 			MARKING
 		)

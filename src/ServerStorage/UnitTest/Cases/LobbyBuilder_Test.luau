@@ -595,6 +595,9 @@ return function(t: Context)
 			expect.equal(part.CanCollide, true)
 			expect.equal(part.CanQuery, false)
 			expect.equal(part.CanTouch, false)
+			-- Roblox ignores CanQuery on a colliding part: the barrier group keeps the aim ray (Default) off the walls
+			-- (user bug report 2026-10-11: throws aimed high flew up to the wall).
+			expect.equal(part.CollisionGroup, "SD_Barrier")
 		end
 	end)
 

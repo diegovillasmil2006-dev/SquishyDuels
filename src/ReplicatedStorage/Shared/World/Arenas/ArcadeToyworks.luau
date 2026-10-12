@@ -59,7 +59,8 @@ end
 local function cabinet(color: string): { Recipe.Part }
 	return {
 		block("Body", Vector3.new(5, 8.6, 4.2), 0, 4.3, 0, color), -- design: sd/arenas2.js:201
-		block("Marquee", Vector3.new(5.3, 1.7, 1.6), 0, 8.6, 1.3, "ArenaGlowCream"), -- design: sd/arenas2.js:201
+		-- design: sd/arenas2.js:201; 0.03 forward so its front clears the body's (flicker, user bug report 2026-10-11)
+		block("Marquee", Vector3.new(5.3, 1.7, 1.6), 0, 8.6, 1.3 + 0.03, "ArenaGlowCream"),
 		Recipe.turned(
 			"Screen",
 			Vector3.new(3.8, 2.9, 0.1),

@@ -280,7 +280,7 @@ local function sofa(k: Kit, shared: Instance)
 		k,
 		model,
 		"Back",
-		Vector3.new(SOFA_LENGTH, 34, 12),
+		Vector3.new(SOFA_LENGTH - 2 * ArenaKit.LAYER, 34, 12), -- ends clear the seat's (flicker)
 		frame * CFrame.new(0, 17, 15),
 		"ArenaPeriwinkleDeep"
 	) -- :93
@@ -357,13 +357,22 @@ local function shelf(k: Kit, random: () -> number)
 	local x, _ = ArenaKit.at(k, 0, -(k.design.W / 2 + 34)) -- design: sd/arenas2.js:97
 	local model, frame = ArenaKit.group(k, "ToyShelf", x, 0, ArenaKit.yaw(0))
 	local half = SHELF_LENGTH / 2
-	ArenaKit.part(k, model, "Board1", Vector3.new(SHELF_LENGTH, 2, 12), frame * CFrame.new(0, 1, 0), "ArenaToyWood")
+	-- The boards are 2 * LAYER shallower than the sides, so their fronts never meet (flicker).
+	local boardDepth = 12 - 2 * ArenaKit.LAYER
+	ArenaKit.part(
+		k,
+		model,
+		"Board1",
+		Vector3.new(SHELF_LENGTH, 2, boardDepth),
+		frame * CFrame.new(0, 1, 0),
+		"ArenaToyWood"
+	)
 	for index, y in { 14, 27, 40 } do
 		ArenaKit.part(
 			k,
 			model,
 			`Board{index + 1}`,
-			Vector3.new(SHELF_LENGTH, 1.6, 12),
+			Vector3.new(SHELF_LENGTH, 1.6, boardDepth),
 			frame * CFrame.new(0, y, 0),
 			"ArenaToyWood"
 		) -- design: sd/arenas2.js:98
@@ -378,7 +387,15 @@ local function shelf(k: Kit, random: () -> number)
 			"ArenaToyWoodDark"
 		)
 	end
-	ArenaKit.part(k, model, "Back", Vector3.new(SHELF_LENGTH, 42, 1.2), frame * CFrame.new(0, 21, -5.6), "ArenaToyWood") -- :99
+	local backHeight = 42 - ArenaKit.LAYER -- its top clears the sides' (flicker)
+	ArenaKit.part( -- design: sd/arenas2.js:99
+		k,
+		model,
+		"Back",
+		Vector3.new(SHELF_LENGTH, backHeight, 1.2),
+		frame * CFrame.new(0, backHeight / 2, -5.6),
+		"ArenaToyWood"
+	)
 	-- Books (sd/arenas2.js:101): width 2.2-3.8, height 7-11, depth 8, standing on each board, 12% leaning 0.18 rad.
 	local count = 0
 	for _, rowY in { 2, 15.6, 28.6 } do

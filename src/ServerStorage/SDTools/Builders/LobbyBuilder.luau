@@ -66,6 +66,8 @@ local Props = require(script.Parent.Parent.Kit.Props)
 local Signs = require(script.Parent.Parent.Kit.Signs)
 local Verify = require(script.Parent.Parent.Verify)
 
+local BARRIER_GROUP = "SD_Barrier" -- the invisible walls' collision group (see buildGround)
+
 -- Types
 
 type BuildContext = Generated.BuildContext
@@ -332,7 +334,10 @@ local function collar(
 	cframe: CFrame,
 	token: string
 ): Part
-	return Props.cylinder(parent, name, 2 * (ringRadius + tube), height, cframe, color(state, token))
+	-- Prims.LAYER below the given place: a collar flush with its core's top would fight it and flicker; the core's
+	-- face wins, the collar shows as the band around it (user bug report 2026-10-11).
+	local sunk = cframe * CFrame.new(0, -Prims.LAYER, 0)
+	return Props.cylinder(parent, name, 2 * (ringRadius + tube), height, sunk, color(state, token))
 end
 
 local function ball(
@@ -524,10 +529,11 @@ local function buildGround(state: State)
 		local frame = CFrame.new((path.from + path.to) / 2) * CFrame.Angles(0, -math.atan2(delta.Z, delta.X), 0)
 		local length = delta.Magnitude
 		local curbWidth = path.width + L.Promenade.curbExtra
+		local curbTop = 0.1 - Prims.LAYER -- under the path's 0.1 top (0.08 flickered)
 		Prims.part({
 			name = "paint_path_curb",
-			size = Vector3.new(length, 0.08, curbWidth),
-			cframe = frame + Vector3.new(0, 0.04, 0),
+			size = Vector3.new(length, curbTop, curbWidth),
+			cframe = frame + Vector3.new(0, curbTop / 2, 0),
 			color = color(state, "LobbyCurb"),
 			flags = "decor",
 			shadow = false,
@@ -535,7 +541,7 @@ local function buildGround(state: State)
 		})
 		Prims.part({
 			name = "paint_path",
-			size = Vector3.new(length, 0.1, path.width),
+			size = Vector3.new(length - 2 * Prims.LAYER, 0.1, path.width), -- ends clear the curb's (flicker)
 			cframe = frame + Vector3.new(0, 0.05, 0),
 			color = color(state, "LobbyPath"),
 			flags = "decor",
@@ -547,8 +553,8 @@ local function buildGround(state: State)
 			ground,
 			"paint_path_curb",
 			curbWidth / 2,
-			0.08,
-			CFrame.new(path.to + Vector3.new(0, 0.04, 0)),
+			curbTop,
+			CFrame.new(path.to + Vector3.new(0, curbTop / 2, 0)),
 			"LobbyCurb"
 		)
 		cyl(
@@ -567,8 +573,13 @@ local function buildGround(state: State)
 	local layers = {
 		{ name = "paint_promenade_curb", radius = P.curb.outer, top = P.curb.top, token = "LobbyCurb" },
 		{ name = "paint_promenade", radius = P.path.outer, top = P.path.top, token = "LobbyPath" },
-		{ name = "paint_promenade_curb", radius = P.path.inner, top = P.path.top + 0.005, token = "LobbyCurb" },
-		{ name = "paint_promenade_floor", radius = P.curb.inner, top = P.path.top + 0.01, token = "LobbyFloor" },
+		{ name = "paint_promenade_curb", radius = P.path.inner, top = P.path.top + Prims.LAYER, token = "LobbyCurb" },
+		{
+			name = "paint_promenade_floor",
+			radius = P.curb.inner,
+			top = P.path.top + 2 * Prims.LAYER,
+			token = "LobbyFloor",
+		},
 	}
 	for _, layer in layers do
 		cyl(state, ground, layer.name, layer.radius, layer.top, CFrame.new(0, layer.top / 2, 0), layer.token)
@@ -583,6 +594,15 @@ local function buildGround(state: State)
 			parent = walls,
 		})
 		Prims.tag(part, L.Tags.Boundary)
+		-- Roblox ignores CanQuery = false on a colliding part: in the Default group these 60-stud walls caught the aim
+		-- ray, so a practice throw aimed high flew up to a point on the wall (user bug report 2026-10-11, "it goes all
+		-- the way up"). The arena walls' group (ArenaBuilder.BARRIER_GROUP) collides only with SD_Characters.
+		local ok, err = pcall(function()
+			part.CollisionGroup = BARRIER_GROUP
+		end)
+		if not ok then
+			table.insert(state.warnings, string.format("could not set %s.CollisionGroup: %s", part.Name, tostring(err)))
+		end
 	end
 end
 
@@ -675,7 +695,8 @@ local function buildDuelGate(state: State)
 			)
 		end
 		Props.gumdrop(model, "gate_pillar_cap", at(F, e * 15, 27.6, -9), 0.95, color(state, team)) -- design: lobby.js:177
-		cyl(state, model, "gate_flag_pole", 0.25, 7, at(F, e * 15, 37, -9), "LobbyTrimWhite") -- design: lobby.js:178
+		-- design: lobby.js:178; Prims.LAYER up so its top clears the pennant's (flicker)
+		cyl(state, model, "gate_flag_pole", 0.25, 7, at(F, e * 15, 37 + Prims.LAYER, -9), "LobbyTrimWhite")
 		Prims.part({
 			name = "gate_pennant",
 			size = Vector3.new(4.2, 2.6, 0.2),
@@ -1019,7 +1040,7 @@ local function buildCollection(state: State)
 			string.format("collection_rarity_rim_%02d", pedestal.slot),
 			2 * (1.35 + 0.18),
 			0.36,
-			CFrame.new(pedestal.position.X, top - 0.18, pedestal.position.Z),
+			CFrame.new(pedestal.position.X, top - 0.18 - Prims.LAYER, pedestal.position.Z), -- the pedestal top wins
 			if rarity then rarity.color else color(state, "LobbyTrimWhite")
 		)
 	end
@@ -1084,8 +1105,9 @@ local function buildQuestBoard(state: State)
 			local fill = QUEST_FILLS[k + 1]
 			Prims.part({
 				name = "quest_bar_fill_line",
-				size = Vector3.new(3.8 * fill, 0.44, 0.12),
-				cframe = at(F, x - 1.9 * (1 - fill), y - 0.6, -0.82),
+				-- Prims.LAYER past the bar's left end: the two end faces met (flicker)
+				size = Vector3.new(3.8 * fill + Prims.LAYER, 0.42 + 2 * Prims.LAYER, 0.12),
+				cframe = at(F, x - 1.9 * (1 - fill) - Prims.LAYER / 2, y - 0.6, -0.8), -- 0.02 out: backs apart
 				color = color(state, QUEST_BAR_TOKENS[c + 1]),
 				flags = "decor",
 				parent = model,
@@ -1110,7 +1132,9 @@ local function buildDailyStand(state: State)
 	local g = stand.gift
 	local gift = Prims.model("GiftBox", model, false, g)
 	rb(state, gift, "gift_body", Vector3.new(6.6, 5, 6.6), at(g, 0, 2.5, 0), "LobbyMint", "decor", 6) -- lobby.js:316
-	for _, size in { Vector3.new(1.4, 5.04, 6.66), Vector3.new(6.66, 5.04, 1.4) } do
+	-- The ribbons stand Prims.LAYER proud of the body on every side (0.02 flickered).
+	local ribbonHeight, ribbonLength = 5 + 2 * Prims.LAYER, 6.6 + 2 * Prims.LAYER
+	for _, size in { Vector3.new(1.4, ribbonHeight, ribbonLength), Vector3.new(ribbonLength, ribbonHeight, 1.4) } do
 		Prims.part({
 			name = "gift_ribbon",
 			size = size,
@@ -1124,7 +1148,7 @@ local function buildDailyStand(state: State)
 	rb(state, gift, "gift_lid", Vector3.new(7.2, 1.5, 7.2), at(lid, 0, 0.75, 3.3), "LobbyMint", "decor", 6) -- lobby.js:318
 	Prims.part({
 		name = "gift_lid_ribbon",
-		size = Vector3.new(1.5, 1.54, 7.3),
+		size = Vector3.new(1.5, 1.5 + 2 * Prims.LAYER, 7.3),
 		cframe = at(lid, 0, 0.75, 3.3),
 		color = color(state, "LobbyButter"),
 		flags = "decor",
@@ -1356,12 +1380,15 @@ local function buildPracticeRange(state: State)
 	for row = 0, 2 do
 		for i = 0, 5 do
 			local token = if (i + row) % 2 == 1 then "LobbyCushionCream" else "LobbyLilac"
+			-- Rows overlap 0.2: every other row sits Prims.LAYER deeper, and the pillows reach 2 * Prims.LAYER past the
+			-- Backstop's back and top, so no two faces meet (flicker). The fronts stay at the design's X 110.5.
+			local back = 2 * Prims.LAYER
 			rb(
 				state,
 				model,
 				"backstop_pillow",
-				Vector3.new(6.4, 3.2, 3),
-				at(F, -16 + i * 6.4 + (row % 2) * 3.2 - 1.6, 1.6 + row * 3, -24),
+				Vector3.new(6.4, 3.2 + back, 3 + back),
+				at(F, -16 + i * 6.4 + (row % 2) * 3.2 - 1.6, 1.6 + row * 3, -24 - back / 2 - (row % 2) * Prims.LAYER),
 				token,
 				"decor",
 				3
@@ -1859,7 +1886,7 @@ local function buildKit(state: State)
 					"kit_window_sky",
 					6.8,
 					0.3,
-					facing * CFrame.new(0, 1.6, 0),
+					facing * CFrame.new(0, 1.6 + Prims.LAYER, 0), -- its back face clears the frame's (flicker)
 					color(state, "LobbyWindowSky")
 				)
 			end

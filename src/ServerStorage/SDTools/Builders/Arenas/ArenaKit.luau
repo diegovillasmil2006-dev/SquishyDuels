@@ -89,12 +89,13 @@ local AUDIO_ZONE_TAG = "SD_AudioZone"
 local ZONE_ORDER = { "HalfA", "Neutral", "HalfB", "Bounds" }
 local HIDDEN_TOKEN = "Cream" -- invisible parts (Origin, zones, barriers) keep a colour for whoever shows them
 local CORNER_APEX = Vector3.new(1, 0, -1) -- a CornerWedgePart's apex is over its (+X, -Z) base corner
--- Floor paint (spec §4.5): lines 0.04 thick on the floor (top 0.04), the centre circle above them, spawn markers on
--- the pad top (0.1) stacked 0.015 apart; all far below the lane check's Y 0.5.
-local LINE_THICKNESS = 0.04
-local CIRCLE_TOPS = { 0.06, 0.065 } -- alternate segments, so neighbours never share a plane
+-- Floor paint (spec §4.5): lines 0.07 thick on the floor (top 0.07), the centre circle above them, spawn markers on
+-- the pad top (0.1) stacked; every layer at least Prims.LAYER (0.03) above the one under it, closer they flicker
+-- (user bug report 2026-10-11; it was 0.04 / 0.06 / 0.12 + 0.015 steps); all far below the lane check's Y 0.5.
+local LINE_THICKNESS = 0.07
+local CIRCLE_TOPS = { 0.1, 0.105 } -- alternate segments (one colour), so neighbours never share a plane
 local MARKER_THICKNESS = 0.02
-local MARKER_TOPS = { 0.12, 0.135, 0.15 }
+local MARKER_TOPS = { 0.13, 0.16, 0.19 }
 local CIRCLE_SEGMENTS = 16 -- spec §4.5
 local CIRCLE_DASHES = 12 -- sd/blox.js:35 has 24 dashes on r 10; at r 5.2 half as many keep its gaps
 -- Design court numbers shared by all five (sd/arena.js:29-38, sd/blox.js:33-37, sd/arenas2.js:21-27).
@@ -122,6 +123,7 @@ local dynamicRequire = require :: (ModuleScript) -> any
 -- Module table
 
 local ArenaKit = {}
+ArenaKit.LAYER = Prims.LAYER -- the smallest gap between two stacked faces of different colours (Kit/Prims)
 ArenaKit.STAR = "★" -- design: sd/arenas2.js:13 starGeo
 ArenaKit.HEART = "♥" -- design: sd/arenas2.js:14 heartGeo
 ArenaKit.CORNER_APEX = CORNER_APEX

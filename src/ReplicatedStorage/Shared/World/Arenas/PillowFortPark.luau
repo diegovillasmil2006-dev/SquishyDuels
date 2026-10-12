@@ -21,7 +21,9 @@ local K = 8 / 7.05 -- R1
 local BOTTOM = Vector3.new(6.4, 3.9 * K, 4.8) -- spec §4.4; design: sd/arenas2.js:63 pill(13, 3.9, 4.8)
 local BOTTOM_Y = 1.95 * K -- design: sd/arenas2.js:63
 local TOP = Vector3.new(6.1, 3.7 * K, 4.5) -- spec §4.4; design: sd/arenas2.js:63 pill(12.4, 3.7, 4.5)
-local TOP_X = 0.15 -- design: sd/arenas2.js:63 (x 0.3, halved with the length, spec §4.4)
+-- design: sd/arenas2.js:63 (x 0.3, halved with the length, spec §4.4), 0.03 less so the top's end clears the
+-- bottom's (they met at x 3.2 and flickered; user bug report 2026-10-11)
+local TOP_X = 0.15 - 0.03
 local TOP_Y = 5.2 * K -- design: sd/arenas2.js:63
 local NUB = 1.6 -- spec §4.4 (design pill(1.8, 1.4, 2.4), sd/arenas2.js:64)
 local BOTTOM_NUB_X = 3.2 -- spec §4.4 (design +-6.3, sd/arenas2.js:64)
