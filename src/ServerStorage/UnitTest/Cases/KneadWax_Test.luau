@@ -9,7 +9,7 @@
 --     the atlas still on the shell and never queued, drawn, cleared or refilled; no wax HUD (no WaxMeter on the stage's
 --     front layer) and no flakes folder; the view has no Coat row, no Re-wax, Thumb press and a press help line; the
 --     palms and the thumb press still knead (the mesh is written) with their two thumps, taps, the body loop and the
---     soft slime let-go when they let go, and no crack, tick, haze or re-wax sound; rewax() changes nothing;
+--     softened let-go ticks, and no crack burst, haze or re-wax sound; rewax() changes nothing;
 --   * the wax on (args.wax true): the network builds and the atlas is drawn, the WaxMeter and the flakes folder are
 --     there, the view has the Coat row, Re-wax and Thumb crunch; rewax() clears and refills the atlas and plays the
 --     sparkle;
@@ -41,7 +41,7 @@ return function(t: Context)
 	local Strings = t.requireShared("Strings")
 	local expect = t.expect
 	local K = Strings.knead
-	local TAP_START = Config.Audio.wax.tapStart
+	local GRAIN_START = Config.Audio.wax.grainStart -- the sheet's grains (ticks) and taps come after its bursts
 
 	local function rethrow(ok: boolean, err: any)
 		if not ok then
@@ -223,22 +223,18 @@ return function(t: Context)
 			expect.equal(handle:debugState().segments, 0)
 			expect.equal(rec.canvas.queued, 0)
 			expect.equal(rec.canvas.draws, 0)
-			-- The sound: the two presses' thumps and taps (tap regions only), the soft slime let-go when they let go
-			-- (user 2026-10-12), the body loop, no haze, no sparkle.
-			local thumps, letGos = 0, 0
+			-- The sound: the two presses' thumps and taps, the softened let-go ticks (grains; user 2026-10-12), the body
+			-- loop, no burst, no haze, no sparkle.
+			local thumps = 0
 			for _, play in rec.plays do
 				expect.truthy(play.key ~= "sfx.wax.rewax")
 				if play.key == "sfx.wax.thump" then
 					thumps += 1
-				elseif play.key == "sfx.squeezeRelease" then
-					letGos += 1
-					expect.equal(play.options.group, "UI")
 				elseif play.options.region ~= nil then
-					expect.truthy(play.options.region.Min >= TAP_START - 1e-9) -- a tap, never a burst or a grain
+					expect.truthy(play.options.region.Min >= GRAIN_START - 1e-9) -- a tap or a tick, never a burst
 				end
 			end
 			expect.equal(thumps, 2) -- the palms' press and the thumbs' press
-			expect.truthy(letGos >= 1) -- the palms and the thumbs let go
 			local bodies, hazes = 0, 0
 			for _, loop in rec.loops do
 				if string.find(loop.key, "sfx.wax.body.", 1, true) then

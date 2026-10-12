@@ -15,11 +15,11 @@
 --   * the beds follow the design's formulas, eased with their time constants, and go quiet when the body rests;
 --   * every play is in the Wax group at the file's level (10^(-normGainDb / 20)), the loops × the design's bus and
 --     master gains; destroy stops the beds and nothing plays after it (the wax on, options.wax true);
---   * the wax off (user 2026-10-12, options.wax false): cracks, the release and settling ticks, the snap's bursts and
---     the re-wax sparkle are silent and the haze loop never starts; a press let go plays the soft slime let-go
---     (sfx.squeezeRelease, UI group, the toy's pitch, letGoFloor + (1 - letGoFloor)·amount); a press still plays its
---     taps and thump, a snap its thump, and the body loop follows the body formula at drive 0 (no coat); no wax option
---     follows Config.Wax.enabled.
+--   * the wax off (user 2026-10-12, options.wax false): cracks, the snap's bursts and the re-wax sparkle are silent and
+--     the haze loop never starts; the release and settling ticks play softened (soften: every crackleStride-th tick
+--     from the first, at crackleGain of its volume; Config.Audio.kneadSoft); a press still plays its taps and thump, a
+--     snap its thump, and the body loop follows the body formula at drive 0 (no coat); no wax option follows
+--     Config.Wax.enabled.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -211,42 +211,69 @@ return function(t: Context)
 		expect.equal(#log.plays, before)
 	end)
 
+	-- User 2026-10-12: the wax off lets go with the wax ticks softened: about a third of them, quieter.
+	t.test("soften: every crackleStride-th tick from the first, at crackleGain; the input is left alone", function()
+		local SOFT = Config.Audio.kneadSoft
+		local shots = {}
+		for i = 1, 7 do
+			table.insert(shots, { start = i, length = 0.05, volume = 0.1 * i, speed = 1 + i / 100, delay = i / 50 })
+		end
+		local soft = KneadAudio.soften(shots)
+		expect.equal(#soft, math.ceil(#shots / SOFT.crackleStride))
+		for i, shot in soft do
+			local from = shots[(i - 1) * SOFT.crackleStride + 1]
+			expect.equal(shot.start, from.start)
+			expect.equal(shot.length, from.length)
+			expect.equal(shot.speed, from.speed)
+			expect.equal(shot.delay, from.delay)
+			expect.near(shot.volume, from.volume * SOFT.crackleGain, 1e-12)
+		end
+		expect.near(shots[1].volume, 0.1, 1e-12) -- not changed in place
+		expect.equal(#KneadAudio.soften({}), 0)
+		expect.truthy(SOFT.crackleStride >= 2 and SOFT.crackleGain < 1) -- softer than the wax on
+	end)
+
 	-- User 2026-10-12: the wax crunch off (options.wax false, Config.Wax.enabled false): the soft body sounds only.
 	t.test(
-		"the wax off: no crack, tick, snap burst, haze or sparkle; the slime let-go, taps, thumps, body loop",
+		"the wax off: no crack, snap burst, haze or sparkle; softened let-go ticks, taps, thumps, body loop",
 		function()
 			local log = recorder()
-			local silent = FakeRng.new({}) -- no roll at all: a burst, a tick or the haze's start would need one
+			local silent = FakeRng.new({}) -- no roll at all: a burst or the haze's start would need one
 			local audio = KneadAudio.new("mochi", 1.2, { player = log.player, rng = silent, wax = false })
 			audio:crack(1, 1)
 			audio:crack(2.8, 0.25)
-			audio:event({ kind = "air", amount = 1, pan = 0 })
 			audio:rewax()
 			expect.equal(#log.plays, 0)
-			-- A press let go: the soft slime let-go on the UI group at the toy's pitch, louder the deeper the press was.
-			audio:event({ kind = "release", brush = "finger", amount = 1, pan = 0 })
-			audio:event({ kind = "release", brush = "palm", amount = 0.5, pan = 0 })
-			expect.equal(#log.plays, 2)
-			local floor = Config.Audio.kneadSoft.letGoFloor
-			for index, amount in { 1, 0.5 } do
-				local play = log.plays[index]
-				expect.equal(play.key, "sfx.squeezeRelease")
-				expect.equal(play.options.group, "UI")
-				expect.near(play.options.volume, floor + (1 - floor) * amount, 1e-9)
-				expect.near(play.options.pitch, 1.2, 1e-9)
-			end
 			expect.equal(FakeRng.calls(silent), 0)
 			-- A stretch let go: the snap thump alone (no bursts) at 0.5 + a, the toy's pitch.
 			audio:event({ kind = "snap", amount = 0.5, pan = 0, slipped = false })
-			expect.equal(#log.plays, 3)
-			expect.equal(log.plays[3].key, "sfx.wax.snapThump")
-			expect.equal(log.plays[3].options.group, "Wax")
-			expect.near(log.plays[3].options.volume, level(WAX.snapThumpLevelDb) * WAX.trim * 1.0, 1e-9)
-			expect.near(log.plays[3].options.pitch, 1.2, 1e-9)
+			expect.equal(#log.plays, 1)
+			expect.equal(log.plays[1].key, "sfx.wax.snapThump")
+			expect.equal(log.plays[1].options.group, "Wax")
+			expect.near(log.plays[1].options.volume, level(WAX.snapThumpLevelDb) * WAX.trim * 1.0, 1e-9)
+			expect.near(log.plays[1].options.pitch, 1.2, 1e-9)
 			expect.equal(FakeRng.calls(silent), 0)
 			audio:destroy()
-			audio:event({ kind = "release", brush = "finger", amount = 1, pan = 0 })
-			expect.equal(#log.plays, 3) -- nothing after destroy
+
+			-- A press let go: its wax ticks softened. No extra tick (0.9), the one tick at u = 0 plays at once (10 ms is
+			-- under a frame): the first of the soften()ed ticks, in the Wax group at the sheet's level.
+			local rolls = { 0.9, 0, 0, 0.5, 0.5 }
+			local letLog = recorder()
+			local letGo =
+				KneadAudio.new("mochi", 1.2, { player = letLog.player, rng = FakeRng.new(rolls), wax = false })
+			letGo:event({ kind = "release", brush = "finger", amount = 1, pan = 0 })
+			local expected = KneadAudio.soften(KneadAudio.release("finger", 1, WAX.gain.mochi, FakeRng.new(rolls)))
+			expect.equal(#expected, 1)
+			expect.equal(#letLog.plays, 1)
+			local tick = letLog.plays[1]
+			expect.equal(tick.key, "sfx.wax.mochi")
+			expect.equal(tick.options.group, "Wax")
+			expect.near(tick.options.region.Min, expected[1].start, 1e-4) -- NumberRange keeps float32
+			expect.near(tick.options.volume, level(WAX.sheetLevelDb.mochi) * WAX.trim * expected[1].volume, 1e-9)
+			expect.near(tick.options.pitch, expected[1].speed, 1e-9)
+			letGo:destroy()
+			letGo:event({ kind = "release", brush = "finger", amount = 1, pan = 0 })
+			expect.equal(#letLog.plays, 1) -- nothing after destroy
 
 			-- A press: a finger's tap, then a palm's taps and the thump; every sheet play is a tap region.
 			local pressLog = recorder()
