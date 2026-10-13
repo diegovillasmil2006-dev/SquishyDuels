@@ -5,8 +5,8 @@
 -- .. Squish Master (Lv 50) .. Infinite (Lv 100, spec 2026-10-12 §10); pads open at Lv 5 / 15 / 30 and canUseTier
 -- fails closed; squeezeGrip =
 -- floor(gripPerSqueeze × gripPercent / 100), × 2 when doubled (the §17.3.1 table; Phase 3: squeezeCoins is gone, own
--- squeezes pay the squeeze value of CapsuleMath); afkGrip = floor(squeezeGrip × 125 / 100) (12, 37,
--- 100, 375); afkMinutes 40 for a full bank; restedMinutes 9 when full (holding repeats every Hold.repeatSeconds,
+-- squeezes pay the squeeze value of CapsuleMath); afkGrip and afkMinutes are gone with slow training (build plan
+-- Phase 6); restedMinutes 9 when full (holding repeats every Hold.repeatSeconds,
 -- 0.45 s, since every click pays; it was 30 with the old 1.5 s cycle); nextGoal order (upgrade, next unlock, max),
 -- both branches of the Dragon rule, and no trainer line while trainerAvailable = false. Part 7 (§17.12 L1):
 -- upgradeDecision's every branch (buy, replay with charged = false, net.invalid, trainer.notNext, trainer.locked,
@@ -212,28 +212,9 @@ return function(t: Context)
 		expect.equal(GripMath.squeezeGrip(1, 5), 0)
 	end)
 
-	t.test("afkGrip is one and a quarter squeezes' worth, rounded down (12, 37, 100, 375)", function()
-		expect.equal(GripMath.afkGrip(1, 1), 12)
-		expect.equal(GripMath.afkGrip(3, 2), 37)
-		expect.equal(GripMath.afkGrip(5, 3), 100)
-		expect.equal(GripMath.afkGrip(8, 4), 375)
-		for trainer = 1, #GRIP.Trainer do
-			for tier = 1, #GRIP.Pads do
-				local want = math.floor(GripMath.squeezeGrip(trainer, tier) * GRIP.Afk.percentPerTick / 100)
-				expect.equal(GripMath.afkGrip(trainer, tier), want)
-			end
-		end
-	end)
-
-	t.test("afkMinutes: 40 for a full bank, whole points only", function()
-		expect.equal(GripMath.afkMinutes(GRIP.Afk.burst), 40)
-		expect.equal(GripMath.afkMinutes(0), 0)
-		expect.equal(GripMath.afkMinutes(0.9), 0)
-		expect.equal(GripMath.afkMinutes(1), 1)
-		expect.equal(GripMath.afkMinutes(3), 1)
-		expect.equal(GripMath.afkMinutes(4), 2)
-		expect.equal(GripMath.afkMinutes(119.5), 40)
-		expect.equal(GripMath.afkMinutes(0 / 0), 0)
+	t.test("slow training is gone (build plan Phase 6): no afkGrip or afkMinutes", function()
+		expect.equal((GripMath :: any).afkGrip, nil)
+		expect.equal((GripMath :: any).afkMinutes, nil)
 	end)
 
 	t.test("restedMinutes: 9 when full, ceil of points × Hold.repeatSeconds (0.45 s), whole points only", function()

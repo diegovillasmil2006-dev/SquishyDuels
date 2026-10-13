@@ -3,7 +3,8 @@
 -- Contract (DESIGN §6.3, §17.3.1, §17.10, §17.12 Part 5 "SqueezeService with fakes", pure part): the order flood guard
 -- -> profile ready -> a living character -> not in a match -> the tier -> bucket -> earnings limit. Squeeze anywhere
 -- (spec 2026-10-11 §5): the pad is the one the server-side root stands on (padUnder: WorldLayout.stationUnder with
--- Config.Grip.Afk's padMargin / heightAbove, the slow-training test); off a pad, or on a pad still locked for the
+-- Config.Squeeze's padMargin / heightAbove; Phase 6 moved them there from Config.Grip.Afk with slow training gone); off
+-- a pad, or on a pad still locked for the
 -- player's Grip level, the squeeze pays tier 1 (base Coins, no pad bonus) and uses a token like any other; only a
 -- missing or dead character is refused (squeeze.noCharacter, no token). Every click pays (2026-10-06): the bucket is
 -- the hidden anti-autoclicker cap, 12 at once and 12 per second on average (12 presses in 1 s all pay; a 13th at the
@@ -155,20 +156,28 @@ return function(t: Context)
 
 	-- The pad under the player (spec 2026-10-11 §5) -------------------------------------------------------------------
 
-	t.test("padUnder: the station the root stands on (the slow-training test), else nil", function()
+	t.test("padUnder: the station the root stands on (Config.Squeeze's pad test), else nil", function()
 		local WorldLayout = t.requireShared("World/WorldLayout")
-		local afk = Config.Grip.Afk
 		for _, id in WorldLayout.stationIds() do
 			local station = WorldLayout.station(id)
 			local standing = Vector3.new(station.position.X, station.top + 3, station.position.Z)
 			local found = SqueezeRules.padUnder(standing)
 			expect.equal(if found then found.id else nil, id)
 			-- Too high above the pad top, or far off to the side: not on it.
-			local above = Vector3.new(standing.X, station.top + afk.heightAbove + 0.01, standing.Z)
+			local above = Vector3.new(standing.X, station.top + SQUEEZE.heightAbove + 0.01, standing.Z)
 			local high = SqueezeRules.padUnder(above)
 			expect.truthy(high == nil or high.id ~= id)
 		end
 		expect.equal(SqueezeRules.padUnder(Vector3.new(0, 3, 40)), nil) -- the spawn: off every pad
+		-- Phase 6: the margins come from the Squeeze section (Config.Grip has no slow-training block any more).
+		local mat = WorldLayout.station("squeeze_01")
+		local low = { Squeeze = { padMargin = 0, heightAbove = 2 }, Economy = Config.Economy, Grip = {} }
+		local function at(height: number): Vector3
+			return Vector3.new(mat.position.X, mat.top + height, mat.position.Z)
+		end
+		expect.equal(SqueezeRules.padUnder(at(3), low), nil)
+		local found = SqueezeRules.padUnder(at(1), low)
+		expect.equal(if found then found.id else nil, "squeeze_01")
 	end)
 
 	t.test("tierFor: the pad's tier when unlocked; off a pad, a locked pad or an unknown tier pay tier 1", function()

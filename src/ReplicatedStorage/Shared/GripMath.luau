@@ -1,11 +1,11 @@
 --!strict
 -- GripMath: pure Grip arithmetic (DESIGN §17.3-§17.5, §17.7). Shared: server GripService and SqueezeService (Grip per
--- squeeze, the pad level check, slow-training ticks), client GripController, SqueezeController, NameplateController
+-- squeeze, the pad level check), client GripController, SqueezeController, NameplateController
 -- and WorldBinder (levels, ranks, pad labels, the next-goal line). No instances, no yields, no side effects.
 -- Grip is a lobby-only stat: never a currency, never read by duel or matchmaking code (§17.2 rule 1).
 --
 -- Integers only: every Grip, level, tier, Coin and minute value returned is a whole number; inputs are floored, and a
--- non-finite or negative input counts as 0. Timers (Double Grip, the slow-training bank, the squeeze Coins limit) use
+-- non-finite or negative input counts as 0. Timers (Double Grip, the squeeze Coins limit) use
 -- SqueezeLimit; this module only turns their values into minutes.
 -- `cfg` (optional, always the last argument) is a table with Config's Grip, Squeeze and Economy sections (a test's
 -- copy); nil = the live Config.
@@ -18,11 +18,10 @@
 --   pad(tier, cfg?) / trainer(index, cfg?)    -> the Config.Grip.Pads / Trainer entry, or nil
 --   bestTier(level, cfg?)                     -> the highest pad tier the level opens (1..#Pads)
 --   canUseTier(level, tier, cfg?)             -> boolean: tier is a pad and its level <= level (fail closed)
---   squeezeGrip(trainer, tier, doubled?, cfg?) -> the trainer Grip of one squeeze at a pad (§17.3.1): slow training's
---                                                base and the trainer card; since Phase 3 own squeezes pay
---                                                CapsuleMath.squeezeGrip (and the squeeze value in Coins)
---   afkGrip(trainer, tier, cfg?)              -> Grip of one paid slow-training tick (§17.3.6)
---   afkMinutes(bankValue, cfg?)               -> "Slow training at full speed: about {minutes} min left" (§17.7)
+--   squeezeGrip(trainer, tier, doubled?, cfg?) -> the trainer Grip of one squeeze at a pad (§17.3.1): the trainer
+--                                                card; since Phase 3 own squeezes pay CapsuleMath.squeezeGrip (and
+--                                                the squeeze value in Coins); Phase 6 removed slow training (afkGrip,
+--                                                afkMinutes)
 --   restedMinutes(restedValue, cfg?)          -> "Double Grip: about {minutes} min" (§17.3.4)
 --   clampTotal(total, cfg?)                   -> the total as stored: floored, clamped to [0, maxGrip] (§17.9 #6)
 --   addGrip(total, gain, cfg?)                -> clampTotal(total + gain)
@@ -45,7 +44,7 @@
 -- Readings:
 --   * HUD bar "{have} / {need} Grip" (§17.7): Progress.have = the total Grip and Progress.need = the total of the next
 --     level (both shown with Format.coins); the bar fill is into / span. At the max level the card shows grip.hudMax.
---   * restedMinutes and afkMinutes count whole points only (a squeeze or a tick needs a whole point): a pool holding
+--   * restedMinutes counts whole points only (a squeeze needs a whole point): a pool holding
 --     0.5 shows 0 min, not "about 1 min".
 --   * nextGoal, line 2 ("the next unlock line: pad, trainer gate or rank", §17.5): the unlock with the lowest level
 --     above the current one; on a tie the pad comes first, then the trainer gate, then the rank. Trainer lines (the
@@ -278,23 +277,6 @@ function GripMath.squeezeGrip(trainer: number, tier: number, doubled: boolean?, 
 		return math.floor(base * rested.mult)
 	end
 	return base
-end
-
--- floor(squeezeGrip(trainer, tier) × percentPerTick / 100): never doubled.
-function GripMath.afkGrip(trainer: number, tier: number, cfg: GripConfig?): number
-	local c = sections(cfg)
-	return math.floor(GripMath.squeezeGrip(trainer, tier, false, c) * c.Grip.Afk.percentPerTick / PERCENT)
-end
-
--- ceil(points / (60 / tickSeconds - perHour / 60)): minutes of nonstop slow training the bank still pays every tick
--- (40 for a full bank). math.huge if the bank would never drain (validator G9 forbids that).
-function GripMath.afkMinutes(bankValue: number, cfg: GripConfig?): number
-	local afk = sections(cfg).Grip.Afk
-	local drainPerMinute = MINUTE / afk.tickSeconds - afk.perHour / MINUTE
-	if drainPerMinute <= 0 then
-		return math.huge
-	end
-	return math.max(0, math.ceil(whole(bankValue) / drainPerMinute - ROUNDING_SLACK))
 end
 
 -- ceil(points × Grip.Hold.repeatSeconds / 60): minutes of holding Squeeze that Double Grip still covers (9 when full;

@@ -14,9 +14,9 @@
 -- Grip rules (§17.9, Part 3): G1 levels, G2 pads, G4 trainer, G5 caps and timers, G8 world (Config.Grip with
 -- WorldLayout) and G10 giant-pad animation (Config.Anim.giantPad, skipped until that block exists).
 -- Grip rules (Part 5): G3 squeeze ceiling (a squeeze count since spec 2026-10-12 §12),
--- G6 Strings names (every rank, pad and trainer key has its grip.rank / grip.pad / grip.trainer text) and G9 slow
--- training; plus the Part 5 values of Data (size budget, timer skew), UI.Grip and the Grip nameplate, gate and toast
--- settings.
+-- G6 Strings names (every rank, pad and trainer key has its grip.rank / grip.pad / grip.trainer text); plus the Part 5
+-- values of Data (size budget, timer skew), UI.Grip and the Grip nameplate, gate and toast settings. G9 is gone with
+-- slow training (build plan Phase 6); its pad margins are Config.Squeeze's now, checked there.
 -- Grip rules (Part 7): G6's wiring half ("trainer" is a Coin reason; Net.Remotes.TrainerUpgrade exists, one in
 -- flight); G7 Robux allowlist and G7b bundles-off-while-Grip, both through the pure Config.robuxProblems(monetization,
 -- grip, resolveText) (also called by Config_Test with fake tables). Part 7 also checks: QuestDefs (kind, category,
@@ -142,10 +142,8 @@ local DEFAULT_PAD_FOOTPRINT = 8 -- G10: the smallest giant pad (§17.6.1) when W
 local DEFAULT_SIDE_RINGS = 3 -- G10: fixed rim/side rings of 4(g - 1) vertices each (§17.6.1 "about 300 fixed")
 local SECONDS_PER_HOUR = 3600
 local PERCENT = 100
-local MIN_AFK_TICK_SECONDS = 5 -- G9
-local MAX_AFK_BANK_SECONDS = 1200 -- G9: the bank never holds more than 20 minutes of ticks
-local MAX_AFK_PAD_MARGIN = 2 -- G9
-local MAX_AFK_HEIGHT_ABOVE = 8 -- G9
+local MAX_PAD_MARGIN = 2 -- Config.Squeeze.padMargin (G9's limit before Phase 6)
+local MAX_PAD_HEIGHT_ABOVE = 8 -- Config.Squeeze.heightAbove (G9's limit before Phase 6)
 local DATASTORE_VALUE_LIMIT = 4_194_304 -- characters per DataStore value (§3.5)
 local MAX_FLICKER_HZ = 3 -- F9: nothing wobbles faster than 3 Hz (§9.12, §18.1 #4)
 local MAX_FOV_PUNCH_DEG = 4 -- F3 (§18.4.3)
@@ -471,6 +469,17 @@ local function checkSqueeze(problems: Problems)
 	expectNonNegative(problems, `{p}.radiusTolerance`, Squeeze.radiusTolerance)
 	expectCount(problems, `{p}.bucketCapacity`, Squeeze.bucketCapacity, 1)
 	expectCount(problems, `{p}.floodLogDrops`, Squeeze.floodLogDrops, 1)
+	-- The pad test (moved from G9 with Config.Grip.Afk's margins, build plan Phase 6).
+	expect(
+		problems,
+		isNumber(Squeeze.padMargin) and Squeeze.padMargin >= 0 and Squeeze.padMargin <= MAX_PAD_MARGIN,
+		`{p}.padMargin must be in [0, {MAX_PAD_MARGIN}] studs (got {show(Squeeze.padMargin)})`
+	)
+	expect(
+		problems,
+		isNumber(Squeeze.heightAbove) and Squeeze.heightAbove > 0 and Squeeze.heightAbove <= MAX_PAD_HEIGHT_ABOVE,
+		`{p}.heightAbove must be in (0, {MAX_PAD_HEIGHT_ABOVE}] studs (got {show(Squeeze.heightAbove)})`
+	)
 
 	-- Every click pays (2026-10-06): the bucket is a hidden anti-autoclicker cap (bucketCapacity at once, 1 per
 	-- cycleSeconds). The flood guard must let at least the cap through, so normal fast clicking is never dropped.
@@ -1291,16 +1300,6 @@ local function checkUI(problems: Problems)
 			.. "clear of the thumbstick zone"
 	)
 	expectCount(problems, `{p}.Grip.heldToastsMax`, grip.heldToastsMax, 1)
-	expect(
-		problems,
-		isNumber(grip.afkPopupScale) and grip.afkPopupScale > 0 and grip.afkPopupScale <= 1,
-		`{p}.Grip.afkPopupScale must be in (0, 1] (the slow-training popup is smaller)`
-	)
-	expect(
-		problems,
-		isNumber(grip.afkPopupTransparency) and grip.afkPopupTransparency >= 0 and grip.afkPopupTransparency < 1,
-		`{p}.Grip.afkPopupTransparency must be in [0, 1)`
-	)
 end
 
 local function checkAudio(problems: Problems)
@@ -3061,7 +3060,7 @@ local function capsulePrice(capsule: any, level: number): number
 end
 
 -- G5 Caps and timers: maxGripPerEvent covers the biggest event (a squeeze at the top capsule level, CP(maxLevel) ×
--- Rested.mult, spec 2026-10-12 §12, and today's trainer squeeze and slow-training tick); Double Grip refills slower
+-- Rested.mult, spec 2026-10-12 §12, and today's trainer squeeze); Double Grip refills slower
 -- than holding Squeeze spends it; Hold.maxSeconds < idleReminderSeconds < 1200 (idle kick); Hold.queuedSeconds < 120.
 -- Reading (every click pays, 2026-10-06): the refill rule compared with 3600 / Squeeze.cycleSeconds, the accepted rate
 -- when the cycle was the 1.5 s squeeze timer; the cycle is now the hidden anti-autoclicker cap (1/12 s), so the rule
@@ -3075,13 +3074,12 @@ local function checkGripCaps(problems: Problems)
 	for _, pad in Grip.Pads do
 		maxPercent = math.max(maxPercent, pad.gripPercent)
 	end
-	local rested, afk, hold = Grip.Rested, Grip.Afk, Grip.Hold
+	local rested, hold = Grip.Rested, Grip.Hold
 	expectBoolean(problems, `{p}.Rested.enabled`, rested.enabled)
 	expectPositive(problems, `{p}.Rested.perHour`, rested.perHour)
 	expectCount(problems, `{p}.Rested.burst`, rested.burst, 1)
 	expect(problems, isNumber(rested.mult) and rested.mult >= 1, `{p}.Rested.mult must be a number >= 1`)
-	expectPositive(problems, `{p}.Afk.percentPerTick`, afk.percentPerTick)
-	local multiplier = math.max(if rested.enabled then rested.mult else 1, afk.percentPerTick / 100)
+	local multiplier = if rested.enabled then rested.mult else 1
 	local trainerEvent = maxPerSqueeze * maxPercent / 100 * multiplier
 	local capsule = Grip.Capsule
 	local capsuleEvent = capsulePower(capsule, capsule.maxLevel) * (if rested.enabled then rested.mult else 1)
@@ -3426,64 +3424,6 @@ local function checkGripCapsules(problems: Problems)
 		problems,
 		biggest <= Economy.maxCoins,
 		`{p}: a level up costs up to {num(biggest)} Coins, above Config.Economy.maxCoins ({show(Economy.maxCoins)})`
-	)
-end
-
--- G9 Slow training (Part 5, §17.3.6): tickSeconds >= 5; percentPerTick / 100 × 3600 / tickSeconds <=
--- maxShareOfActive / 100 × 3600 / (Hold.repeatSeconds + Hold.leadSeconds) (the holding rate, not the bucket
--- maximum); perHour < 3600 / tickSeconds (the bank always limits nonstop resting); burst × tickSeconds <= 1200 (at most
--- 20 minutes of ticks); padMargin <= 2 and heightAbove <= 8.
--- Reading (every click pays, 2026-10-06): the holding rate used Squeeze.cycleSeconds (1.5 s) while that was the
--- squeeze timer; holding now repeats every Hold.repeatSeconds, so the bound is that rhythm (today 450 <= 1800).
-local function checkGripSlowTraining(problems: Problems)
-	local p = "Config.Grip.Afk"
-	local afk = Grip.Afk
-	expectBoolean(problems, `{p}.enabled`, afk.enabled)
-	expect(
-		problems,
-		isNumber(afk.tickSeconds) and afk.tickSeconds >= MIN_AFK_TICK_SECONDS,
-		`G9: {p}.tickSeconds must be >= {MIN_AFK_TICK_SECONDS} (got {show(afk.tickSeconds)})`
-	)
-	expectPositive(problems, `{p}.perHour`, afk.perHour)
-	expectCount(problems, `{p}.burst`, afk.burst, 1)
-	expect(
-		problems,
-		isNumber(afk.maxShareOfActive) and afk.maxShareOfActive > 0 and afk.maxShareOfActive <= PERCENT,
-		`G9: {p}.maxShareOfActive must be in (0, 100] (got {show(afk.maxShareOfActive)})`
-	)
-	local afkRate = afk.percentPerTick / PERCENT * SECONDS_PER_HOUR / afk.tickSeconds
-	local holdingRate = afk.maxShareOfActive
-		/ PERCENT
-		* SECONDS_PER_HOUR
-		/ (Grip.Hold.repeatSeconds + Grip.Hold.leadSeconds)
-	expect(
-		problems,
-		afkRate <= holdingRate,
-		`G9: slow training pays {num(afkRate)} squeezes' worth of Grip per hour ({p}.percentPerTick `
-			.. `{num(afk.percentPerTick)} every {num(afk.tickSeconds)} s), above {num(afk.maxShareOfActive)}% of holding `
-			.. `Squeeze ({num(holdingRate)} = maxShareOfActive% × 3600 / (Hold.repeatSeconds + Hold.leadSeconds))`
-	)
-	expect(
-		problems,
-		afk.perHour < SECONDS_PER_HOUR / afk.tickSeconds,
-		`G9: {p}.perHour ({num(afk.perHour)}) must be below 3600 / tickSeconds ({num(SECONDS_PER_HOUR / afk.tickSeconds)}) `
-			.. "so the bank always limits nonstop resting"
-	)
-	expect(
-		problems,
-		afk.burst * afk.tickSeconds <= MAX_AFK_BANK_SECONDS,
-		`G9: {p}.burst × tickSeconds ({num(afk.burst * afk.tickSeconds)} s) must be <= {MAX_AFK_BANK_SECONDS} s: the `
-			.. "bank never holds more than 20 minutes of ticks"
-	)
-	expect(
-		problems,
-		isNumber(afk.padMargin) and afk.padMargin >= 0 and afk.padMargin <= MAX_AFK_PAD_MARGIN,
-		`G9: {p}.padMargin must be in [0, {MAX_AFK_PAD_MARGIN}] studs (got {show(afk.padMargin)})`
-	)
-	expect(
-		problems,
-		isNumber(afk.heightAbove) and afk.heightAbove > 0 and afk.heightAbove <= MAX_AFK_HEIGHT_ABOVE,
-		`G9: {p}.heightAbove must be in (0, {MAX_AFK_HEIGHT_ABOVE}] studs (got {show(afk.heightAbove)})`
 	)
 end
 
@@ -4669,7 +4609,7 @@ function Config.validate(deps: ValidateDeps?): { string }
 		checkDebug(problems)
 	end)
 
-	-- Grip (§17.9): G1-G5, G9 and the Capsule block on Config alone; G8 with WorldLayout; G10 with Config.Anim.giantPad.
+	-- Grip (§17.9): G1-G5 and the Capsule block on Config alone; G8 with WorldLayout; G10 with Config.Anim.giantPad.
 	guarded(problems, "Config.Grip G1", function()
 		checkGripLevels(problems)
 	end)
@@ -4681,9 +4621,6 @@ function Config.validate(deps: ValidateDeps?): { string }
 	end)
 	guarded(problems, "Config.Grip G5", function()
 		checkGripCaps(problems)
-	end)
-	guarded(problems, "Config.Grip G9", function()
-		checkGripSlowTraining(problems)
 	end)
 	guarded(problems, "Config.Grip G3", function()
 		checkGripSqueezeCeiling(problems)

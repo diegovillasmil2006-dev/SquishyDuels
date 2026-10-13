@@ -841,9 +841,10 @@ local Strings = {
 	-- Config level, or the player's); {rank} = a grip.rank.* name; {pad} = a grip.pad.* name; {trainer} = a
 	-- grip.trainer.* name; {coins} = a Coin amount (a price, Coins still missing, or Coins per squeeze); {grip} = Grip
 	-- per squeeze (CapsuleMath.squeezeGrip); {mult} = a multiplier (Pads[tier].gripPercent / 100 or Rested.mult);
-	-- {minutes} = GripMath.restedMinutes / afkMinutes; {n} = Grip gained. {have}: on signLocked the viewer's Grip
+	-- {minutes} = GripMath.restedMinutes; {n} = Grip gained. {have}: on signLocked the viewer's Grip
 	-- Level; on the HUD bar {have}/{need} = Format.coins of the total and of the next level's total (GripMath.progress).
-	-- Phase 5: pads and trainers no longer boost a squeeze (CapsuleMath sets its pay); they still boost slow training.
+	-- Phase 5: pads and trainers no longer boost a squeeze (CapsuleMath sets its pay); Phase 6: slow training is gone
+	-- too, so their texts claim no boost at all (the pad and trainer removals are separate decisions).
 	grip = {
 		-- HUD card (top-left, under the Coins pill).
 		hudLevel = "Grip Lv {level} · {rank}",
@@ -867,7 +868,6 @@ local Strings = {
 		-- At a pad.
 		popup = "+{n} Grip",
 		popupDouble = "+{n} Grip (x{mult})",
-		afkPopup = "+{n} Grip (slow training)",
 		-- The floating label on the held squishy (lobby HUD spec 2026-10-11 §2): what one squeeze pays, the same anywhere
 		-- (Phase 5: the squeeze value and the best capsule's Grip; no pad name).
 		stationLabelBase = "+{coins} Coins · +{grip} Grip per squeeze",
@@ -911,7 +911,7 @@ local Strings = {
 		panelIntro = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
 		padsHeader = "Squeeze pads",
 		padNeeds = "Needs Grip Lv {level}",
-		padPerks = "x{mult} slow-training Grip",
+		padPerks = "The same Coins and Grip as anywhere", -- Phase 6: a pad gives no boost at all
 		padPerksBase = "No boost: the same Coins and Grip as anywhere", -- the Foam Mats card (spec 2026-10-11 §5)
 		padOpen = "Open",
 		padLocked = "Locked",
@@ -923,18 +923,16 @@ local Strings = {
 		trainerNeedLevel = "Reach Grip Lv {level}",
 		trainerNeedCoins = "Need {coins} more Coins",
 		trainerMax = "Best trainer owned!",
-		trainerNote = "Upgrades make slow training faster. They never change duels.",
+		trainerNote = "Upgrades never change duels.",
 		restedHelp = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 		-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays.
 		limitNote = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
-		afkHelp = "Standing on an open pad slowly trains Grip, even when you're not squeezing. It never gives Coins, and it stops if Roblox disconnects you for being idle.",
-		afkBank = "Slow training at full speed: about {minutes} min left",
 		duelNote = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 		-- Toasts (Notify codes, Types.GripNotifyCode). rankUp: {name} = the player's display name.
 		levelUp = "Grip Lv {level}!",
-		padUnlocked = "{pad} unlocked! x{mult} slow-training Grip there.",
+		padUnlocked = "{pad} unlocked!",
 		rankUp = "{name} reached {rank}!",
-		trainerBought = "{trainer} unlocked! Slow training is faster now.",
+		trainerBought = "{trainer} unlocked!",
 		intro = "You trained your Grip! Squeeze more to open new capsule tiers.",
 		welcome = "Double Grip is full: your first squeezes train x{mult} Grip!",
 		welcomeBack = "Welcome back! Double Grip: about {minutes} min.",
@@ -942,13 +940,13 @@ local Strings = {
 		-- Idle card (LocalPlayer.Idled after Config.Grip.idleReminderSeconds). The 20 minutes are Roblox's idle kick,
 		-- not a game setting.
 		idleTitle = "Still there?",
-		-- Foam fix 2: one sentence per line (the card's wrap broke the line after "Slow").
-		idleBody = "Roblox disconnects players who are idle for 20 minutes.\nSlow training stops when that happens.",
+		-- Foam fix 2: one sentence per line. Phase 6: the second names what still stops (the capsules).
+		idleBody = "Roblox disconnects players who are idle for 20 minutes.\nCapsules stop paying when that happens.",
 		idleButton = "Keep going",
 		-- World: the Jelly pod sign heading, the pod signs' Live line, the lobby nameplate.
 		gymTitle = "GRIP GYM",
 		signLocked = "Needs Grip Lv {level} · You: Lv {have}",
-		signOpen = "Open · x{mult} slow training",
+		signOpen = "Open",
 		nameplate = "Lv {level} · {rank}",
 	},
 }

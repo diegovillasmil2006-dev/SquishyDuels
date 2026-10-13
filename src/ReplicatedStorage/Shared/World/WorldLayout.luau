@@ -1842,7 +1842,7 @@ end
 
 -- The station a root part at `position` stands on (§17.3.6 #5): over a mat (radius + margin) or over a giant pad's
 -- footprint (half-size + margin on X and on Z), with its height between the station top and top + heightAbove.
--- Config.Grip.Afk gives margin (padMargin) and heightAbove.
+-- Config.Squeeze gives margin (padMargin) and heightAbove (Config.Grip.Afk's until slow training went, Phase 6).
 function WorldLayout.stationUnder(position: Vector3, margin: number, heightAbove: number): Station?
 	for _, station in Stations do
 		local dx = position.X - station.position.X

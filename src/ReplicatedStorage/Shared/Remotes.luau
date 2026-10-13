@@ -4,7 +4,7 @@
 -- client (NetController.connectAsync). The folder lives at ReplicatedStorage.SD_Remotes, outside `Shared`, because
 -- Rojo `$path` nodes delete unknown children. Per-remote rate limits live in Config.Net, keyed by the same names.
 -- Grip (§17.2 rule 5, §17.9 #1): there is no Grip remote. Grip comes only from an accepted SqueezeRequest and from the
--- server's own ticks (slow training, capsules); the client never says "I am on a pad" or "I am idle" (the idle card is
+-- server's own capsule ticks; the client never says "I am on a pad" or "I am idle" (the idle card is
 -- client only, and a queued client's idleness is ReportIdle). TrainerUpgrade (RF, Part 7, §17.5) only buys the next
 -- trainer with Coins: the server checks it with GripMath.upgradeDecision and never takes a price or a Grip amount from
 -- it; the capsule remotes (Phase 3) likewise only buy and fill the caller's own capsules (CapsuleMath's checks).

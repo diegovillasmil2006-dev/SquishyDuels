@@ -1,21 +1,20 @@
 --!strict
 -- GripController_Test: unit tests for StarterPlayerScripts.Client.Controllers.GripController (Part 5, the pure
 -- helpers; Part 7, the trainer card). Server only (ServerStorage.UnitTest). Edit mode: init() / start() are not called (no LocalPlayer, no UI).
--- Contract (DESIGN §17.3.4, §17.3.6, §17.5, §17.7, §17.10):
+-- Contract (DESIGN §17.3.4, §17.5, §17.7, §17.10):
 --   * normalize(raw): the StateDelta `grip` field as the client uses it; nil when missing or malformed; the total is
 --     floored and clamped to [0, maxGrip], the trainer to [1, #Trainer]; a timer needs a finite value and at;
---   * afkGain(old, new, explained, credit?): the Grip rise no SqueezeResult explains (the slow-training popup), never
---     negative; Phase 5: less the capsule Grip credited since the last check (capsuleGrip of the local player's
---     SD_Squeezes<slot> rises), whose unused part is handed back;
+--   * slow training is gone (build plan Phase 6): no popup helpers (afkGain, capsuleGrip) and no bank line
+--     (afkBankText);
 --   * gripChange: the first grip state and every full state (a profile recovered after OFFLINE) are a silent baseline
---     (no popup check, no waypoint; LevelChanged only for the first state or a moved level); an earned rise starts the
---     popup check and a level-up points the waypoint at the best pad it opened;
+--     (no waypoint; LevelChanged only for the first state or a moved level); a level-up after it points the waypoint
+--     at the best pad it opened;
 --   * shouldShowIdleCard(t): LocalPlayer.Idled's t >= Config.Grip.idleReminderSeconds (900);
 --   * waypointTarget(tier): the Foam Mats' "squeeze" waypoint, "<key>Pad" for a giant pad, nil for an unknown tier;
 --   * padPerks(pad): a pad card's perks line; the Foam Mats give no boost (grip.padPerksBase, spec 2026-10-11 §5:
 --     the same Coins and Grip as anywhere), the giant pads grip.padPerks;
---   * restedChip / afkBankText: "Double Grip: about {minutes} min" (nil while empty) and "Slow training at full speed:
---     about {minutes} min left" (40 for a full bank), both refilled to the given server time with SqueezeLimit;
+--   * restedChip: "Double Grip: about {minutes} min" (nil while empty), refilled to the given server time with
+--     SqueezeLimit;
 --   * cardModel: the HUD card texts (grip.hudLevel, the rank alone for the foam card's title, grip.hudBar /
 --     grip.hudMax, the bar fraction = have / need, the same numbers grip.hudBar shows (foam fix, user decision
 --     2026-10-09), the next goal in the §17.7 order with the §17.5 Dragon rule, the upgrade badge only while trainers can
@@ -66,12 +65,11 @@ return function(t: Context)
 
 	local NOW = 1_800_000_000 -- a server time on the GetServerTimeNow() / os.time() scale
 
-	local function view(total: number, trainer: number?, rested: number?, afk: number?): any
+	local function view(total: number, trainer: number?, rested: number?): any
 		return {
 			total = total,
 			trainer = trainer or 1,
 			rested = if rested then { value = rested, at = NOW } else nil,
-			afk = if afk then { value = afk, at = NOW } else nil,
 		}
 	end
 
@@ -99,44 +97,16 @@ return function(t: Context)
 		expect.equal(GripController.normalize({ total = 0 }).trainer, 1) -- missing trainer = the free Foam Ball
 		expect.equal(GripController.normalize({ total = 0, trainer = 0 }).trainer, 1)
 		expect.equal(GripController.normalize({ total = 0, trainer = 99 }).trainer, #GRIP.Trainer)
+		-- Phase 6: an old save's slow-training bank is not part of the view.
+		expect.equal((GripController.normalize({ total = 0, afk = { value = 60, at = NOW } }) :: any).afk, nil)
 	end)
 
-	-- Slow-training popup ----------------------------------------------------------------------------------------
+	-- Slow training is gone (build plan Phase 6) ----------------------------------------------------------------------
 
-	t.test("afkGain is the part of a rise no SqueezeResult explains, never negative", function()
-		expect.equal(GripController.afkGain(100, 137, 100), 37) -- a tick alone
-		expect.equal(GripController.afkGain(100, 130, 130), 0) -- a squeeze explains all of it
-		expect.equal(GripController.afkGain(100, 160, 130), 30) -- a squeeze, then a tick
-		expect.equal(GripController.afkGain(100, 90, 0), 0)
-		expect.equal(GripController.afkGain(100, 120, 50), 20) -- an old explanation below the start counts as none
-	end)
-
-	-- Phase 5: capsule Grip (CapsuleService pays CP(level) per squeeze of the local player's capsule, counted in the
-	-- Player attribute SD_Squeezes<slot>) is never shown as slow training.
-	t.test("capsuleGrip: squeezes × the capsule's power; nothing for an empty, locked or unknown capsule", function()
-		local CapsuleMath = t.requireShared("CapsuleMath")
-		local list: { any } = { { level = 11, squishyId = "toast" }, { level = 3 } }
-		local capsules = { slots = 2, list = list }
-		expect.equal(GripController.capsuleGrip(capsules, 1, 3), 3 * (CapsuleMath.power(11) :: number))
-		expect.equal(GripController.capsuleGrip(capsules, 2, 1), 0) -- empty: it never squeezes
-		expect.equal(GripController.capsuleGrip(capsules, 3, 1), 0) -- not unlocked
-		expect.equal(GripController.capsuleGrip(nil, 1, 1), 0)
-		expect.equal(GripController.capsuleGrip(capsules, 1, 0), 0)
-	end)
-
-	t.test("afkGain: capsule Grip credited since the last check is taken off the popup, the rest kept", function()
-		local gain, left = GripController.afkGain(100, 160, 100, 50) -- a capsule (50) and a tick (10)
-		expect.equal(gain, 10)
-		expect.equal(left, 0)
-		gain, left = GripController.afkGain(100, 130, 100, 50) -- the rise is all capsule Grip
-		expect.equal(gain, 0)
-		expect.equal(left, 20)
-		gain, left = GripController.afkGain(100, 160, 130, 50) -- a squeeze explained 30 of it first
-		expect.equal(gain, 0)
-		expect.equal(left, 20)
-		gain, left = GripController.afkGain(100, 137, 100) -- no credit: as before
-		expect.equal(gain, 37)
-		expect.equal(left, 0)
+	t.test("no slow-training popup or bank line any more", function()
+		for _, name in { "afkGain", "capsuleGrip", "afkBankText" } do
+			expect.equal((GripController :: any)[name], nil)
+		end
 	end)
 
 	-- Grip state changes (§17.7 "Load-time level jumps") -------------------------------------------------------------
@@ -170,14 +140,14 @@ return function(t: Context)
 		end
 	)
 
-	t.test("an earned rise starts the slow-training check, and a level-up opens the best pad's waypoint", function()
+	t.test("an earned rise changes nothing visible, and a level-up opens the best pad's waypoint", function()
 		local rise = GripController.gripChange(true, false, 100, 150, 1, 1)
-		expect.deepEqual(rise, { baseline = false, fireLevel = false, afkFrom = 100 })
+		expect.deepEqual(rise, { baseline = false, fireLevel = false })
 		local padLevel = GRIP.Pads[2].level
 		local before = GRIP.LevelTotals[padLevel] - 1
 		local after = GRIP.LevelTotals[padLevel]
 		local levelUp = GripController.gripChange(true, false, before, after, padLevel - 1, padLevel)
-		expect.deepEqual(levelUp, { baseline = false, fireLevel = true, afkFrom = before, waypointTier = 2 })
+		expect.deepEqual(levelUp, { baseline = false, fireLevel = true, waypointTier = 2 })
 		-- A drop (never earned) starts nothing.
 		expect.deepEqual(
 			GripController.gripChange(true, false, 150, 100, 1, 1),
@@ -254,22 +224,10 @@ return function(t: Context)
 		expect.equal(GripController.restedChip(view(0, 1, full), NOW + 86400), s("grip.restedChip", { minutes = 9 }))
 	end)
 
-	t.test("the slow-training bank line reads 40 minutes when full and refills with time", function()
-		local full = GRIP.Afk.burst
-		expect.equal(GripController.afkBankText(view(0, 1, nil, full), NOW), s("grip.afkBank", { minutes = 40 }))
-		expect.equal(GripController.afkBankText(view(0, 1, nil, 0), NOW), s("grip.afkBank", { minutes = 0 }))
-		local refilled = GripMath.afkMinutes(GRIP.Afk.perHour / 60 * 10) -- 10 minutes of refill
-		expect.equal(
-			GripController.afkBankText(view(0, 1, nil, 0), NOW + 600),
-			s("grip.afkBank", { minutes = refilled })
-		)
-		expect.equal(GripController.afkBankText(view(0), NOW), nil)
-	end)
-
 	-- HUD card -------------------------------------------------------------------------------------------------------
 
 	t.test("a new player's card: Lv 1, the bar toward Lv 2 and the Jelly Pad as the next goal", function()
-		local model = GripController.cardModel(view(0, 1, GRIP.Rested.burst, GRIP.Afk.burst), NOW, {}, 0, false)
+		local model = GripController.cardModel(view(0, 1, GRIP.Rested.burst), NOW, {}, 0, false)
 		expect.equal(model.level, 1)
 		expect.equal(model.levelText, s("grip.hudLevel", { level = 1, rank = rankName(1) }))
 		expect.equal(model.levelCompact, s("grip.hudLevelCompact", { level = 1, rank = rankName(1) }))

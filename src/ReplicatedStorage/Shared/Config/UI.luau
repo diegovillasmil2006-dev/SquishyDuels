@@ -255,9 +255,6 @@ local UI = {
 		compactBarHeight = 4, -- ... with a bar this tall
 		leftColumnMaxFraction = 0.55, -- L5 check: at 667×375 the left HUD column ends above this share of the height
 		heldToastsMax = 3, -- grip.* toasts kept from Matched to Returning, then shown merged into one
-		-- Reading (DESIGN: "smaller and lighter"): the slow-training popup's text scale and transparency.
-		afkPopupScale = 0.8,
-		afkPopupTransparency = 0.35,
 	},
 
 	-- The knead screen in Inspect (spec phase2-squeeze §1.18, §1.20, §3.7; design: the FP page html:59-77, fp.js:700).

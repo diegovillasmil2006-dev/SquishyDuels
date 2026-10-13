@@ -66,8 +66,8 @@
 --   squeezes, every burst goes through FxPool's live-particle caps, the "+N" pool keeps coinPopupMaxVisible lines of a
 --   kind, a reply within foldSeconds of the newest line of its kind folds its amount into that line (foldsInto: same
 --   totals, fewer lines, no smear), and a Foam Mat pulses at most once per MAT_MERGE_SECONDS (under 3 Hz, §18.1 #4).
--- * Signals for higher layers: ResultReceived(result) after every SqueezeResult (GripController tells slow-training
---   Grip from squeeze Grip with it); popup(text, kind) floats a line up from the squishy (the slow-training popup).
+-- * Signals for higher layers: ResultReceived(result) after every SqueezeResult (CapsuleController's home tap).
+--   Build plan Phase 6: slow training is gone, and popup() (its line) with it.
 --   Studio: debugHold(on) / debugPress() drive the same rules with a virtual input (DebugHooks).
 -- * Part 8 (§17.12 L5), kept for the world touch: the pure buttonReleases(held, pressed, ended, kind) decides which
 --   ended input releases a pointer hold (the finger that pressed, wherever it lifts; any left mouse release), and
@@ -92,16 +92,16 @@
 --     mat). ReducedMotion: the colour pulse at most once per MAT_REDUCED_GAP per mat, no ring. Giant pads keep their
 --     own dip (GiantPadController). The mat's Color is the only property written on the lobby's mats (§18.1 #3), and
 --     always restored.
---   * "+N" above the squishy (A4; lobby HUD spec §2: the Grip and slow-training lines too, from the one pool): an own
+--   * "+N" above the squishy (A4; lobby HUD spec §2: the Grip lines too, from the one pool): an own
 --     SqueezeResult.ok shows "+N" (a coin icon and common.plusAmount) when coins > 0 and "+N Grip" / "+N Grip (xM)"
---     when grip > 0, and popup() the slow-training line, from a pool of POPUP_POOL BillboardGuis (a share of
+--     when grip > 0, from a pool of POPUP_POOL BillboardGuis (a share of
 --     Effects.coinPopupMaxVisible per kind; the oldest is reused) on the local held model's Root, else the
 --     HumanoidRootPart, rising and popping in (coinPopupSample), fading at the end. Each starts above the floating
---     label, Coins first, then Grip, then slow training one step higher (lineLiftPx, pure; the label is px-sized, so
+--     label, Coins first, then Grip one step higher (lineLiftPx, pure; the label is px-sized, so
 --     the lift is in px: the BillboardGui is that much taller with the line at its top). The Grip lines keep the old
---     panel's look: the kind's colour (popupColor, pure: Grip Mint, slow training Lilac, smaller and lighter) with the
+--     panel's look: the kind's colour (popupColor, pure: Grip Mint) with the
 --     InkUI outline; "+N" keeps its coin icon and white outline. A reply within foldSeconds("coins") of the newest line
---     of its kind adds its amount to that line's number instead (a slow-training line never folds).
+--     of its kind adds its amount to that line's number instead.
 --     First person (spec 2026-10-11 §3.8): while FirstPersonController.look() is on, the held model is hidden and the
 --     toy shows in the overlay, so the lines float at the overlay toy instead ("+N Coins", common.coinsGain): the
 --     bottom centre on ViewmodelController.toyScreenPoint() (hudOffsetOf, pure), Grip one step higher, as big outlined
@@ -186,7 +186,7 @@ export type HoldCheck = {
 
 export type StopReason = "released" | "match" | "context" | "blocked" | "focus" | "maxTime" | "queued" | "rejected"
 
-export type PopupKind = "coins" | "grip" | "afk"
+export type PopupKind = "coins" | "grip"
 
 -- What labelShownFor() checks (lobby HUD spec 2026-10-11 §2: the floating label on the held squishy).
 export type LabelFacts = {
@@ -272,7 +272,6 @@ local OTHERS_CULL_STUDS = Config.Squeeze.othersCullStuds
 local HOLD: HoldConfig = Config.Grip.Hold
 local RESTED_MULT = Config.Grip.Rested.mult
 local FLOAT = Config.UI.motion.coinCounter
-local UI_GRIP = Config.UI.Grip
 local ACTION = "Squeeze"
 local HUD_GUI = "SD_Hud"
 local ROOT_PART = "HumanoidRootPart"
@@ -319,9 +318,9 @@ local SqueezeController = {}
 
 -- Fired with (result: Result) after every SqueezeResult, once its popups are shown.
 SqueezeController.ResultReceived = Signal.new() :: Signal.Signal<Result>
--- The "+N" pool's size (lobby HUD spec §2): a share of Effects.coinPopupMaxVisible for each kind of line (Coins, Grip
--- and slow training), so a reply's lines never take each other's slots early.
-SqueezeController.POPUP_POOL = EFFECTS.coinPopupMaxVisible * 3
+-- The "+N" pool's size (lobby HUD spec §2): a share of Effects.coinPopupMaxVisible for each kind of line (Coins and
+-- Grip; Phase 6 removed the slow-training share), so a reply's lines never take each other's slots early.
+SqueezeController.POPUP_POOL = EFFECTS.coinPopupMaxVisible * 2
 
 -- Private
 
@@ -419,9 +418,6 @@ local function showOverlayLine(line: string, kind: PopupKind, at: Vector2): Text
 	end
 	local rise = if Tweens.reducedMotion() then 0 else FLOAT.floatPx
 	local y = at.Y - (SqueezeController.lineLiftPx(kind, 0) - SqueezeController.lineLiftPx("coins", 0))
-	local afk = kind == "afk"
-	-- §17.7: the slow-training popup is smaller and lighter (its outline too, so it never reads as a dark smudge).
-	local transparency = if afk then UI_GRIP.afkPopupTransparency else 0
 	local label = Theme.label({
 		Name = "Popup",
 		Text = line,
@@ -429,14 +425,9 @@ local function showOverlayLine(line: string, kind: PopupKind, at: Vector2): Text
 		Position = UDim2.fromOffset(at.X, y),
 		Size = UDim2.fromOffset(LINE_WIDTH, 0),
 		TextXAlignment = Enum.TextXAlignment.Center,
-		TextTransparency = transparency,
 		Parent = container,
 	}, "HudNumber", nil, SqueezeController.popupColor(kind))
-	if afk then
-		label.TextSize = math.max(Config.UI.minTextSize, math.floor(label.TextSize * UI_GRIP.afkPopupScale + 0.5))
-	end
-	local stroke =
-		Theme.stroke(Theme.Colors.inkUI, if afk then Theme.Stroke.thin else Theme.Stroke.text, label, transparency)
+	local stroke = Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.text, label)
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	local goals: { [string]: any } = { TextTransparency = 1 }
 	if rise > 0 then
@@ -633,27 +624,19 @@ local function buildCoinPopup(): CoinPopup
 end
 
 -- Gives a pool popup the look of its kind (lobby HUD spec 2026-10-11 §2): "+N" keeps the coin icon and the InkUI
--- number with the white outline (A4); a Grip line is the Mint numeral and a slow-training line the smaller, lighter
--- Lilac one (popupColor), both with the InkUI outline (the old station panel's lines).
+-- number with the white outline (A4); a Grip line is the Mint numeral (popupColor) with the InkUI outline (the old
+-- station panel's lines).
 local function stylePopup(popup: CoinPopup, kind: PopupKind)
 	if popup.kind == kind then
 		return
 	end
 	popup.kind = kind
-	local coins, afk = kind == "coins", kind == "afk"
+	local coins = kind == "coins"
 	popup.icon.Visible = coins
 	popup.label.TextColor3 = if coins then Theme.Colors.inkUI else SqueezeController.popupColor(kind)
-	popup.label.TextSize = if afk
-		then math.max(Config.UI.minTextSize, math.floor(Theme.textSize("HudNumber") * UI_GRIP.afkPopupScale + 0.5))
-		else Theme.textSize("HudNumber")
+	popup.label.TextSize = Theme.textSize("HudNumber")
 	popup.stroke.Color = if coins then Palette.White else Theme.Colors.inkUI
-	popup.stroke.Thickness = if coins then Theme.Stroke.medium elseif afk then Theme.Stroke.thin else Theme.Stroke.text
-	-- §17.7: the slow-training line is lighter, its outline too (it never reads as a dark smudge); the fade starts there.
-	for _, target in popup.fades do
-		if target.object == popup.label or target.object == popup.stroke then
-			target.base = if afk then UI_GRIP.afkPopupTransparency else 0
-		end
-	end
+	popup.stroke.Thickness = if coins then Theme.Stroke.medium else Theme.Stroke.text
 end
 
 local function setFade(popup: CoinPopup, fade: number)
@@ -700,18 +683,18 @@ local function popupAdornee(): BasePart?
 	return root or localRoot()
 end
 
--- Floats one line of `kind` up from the squishy (A4; lobby HUD spec 2026-10-11 §2: the Grip and slow-training lines
--- too, from the one pool): `amount` as lineText words it, or the given `line` (the slow-training popup, which never
--- folds). It starts above the floating label (lineLiftPx). A reply within foldSeconds("coins") of the newest line of
--- its kind on the same model, with the same doubling, adds its amount to that line's number (its rise goes on), so at
+-- Floats one line of `kind` up from the squishy (A4; lobby HUD spec 2026-10-11 §2: the Grip lines too, from the one
+-- pool): `amount` as lineText words it. It starts above the floating label (lineLiftPx). A reply within
+-- foldSeconds("coins") of the newest line of its kind on the same model, with the same doubling, adds its amount to
+-- that line's number (its rise goes on), so at
 -- 12 replies a second a slot is never reused before its popup ends (every click pays; the old snap back to the start
 -- at full opacity). The amounts shown are unchanged in total.
 -- First person (spec 2026-10-11 §3.8): while a look is on, the line floats at the overlay toy instead (the held model
 -- is hidden); a reply within half its float (foldSeconds("grip"), a floating line's window) folds into it. Inline
 -- requires: this module adds no top-level local, and neither controller requires it back.
-local function floatLine(kind: PopupKind, amount: number, doubled: boolean, line: string?)
+local function floatLine(kind: PopupKind, amount: number, doubled: boolean)
 	local now = os.clock()
-	local fold = if line == nil then lineFolds[kind] else nil
+	local fold = lineFolds[kind]
 	local l = floatLabel
 	local point = if l and require(script.Parent.FirstPersonController).look() ~= nil
 		then require(script.Parent.ViewmodelController).toyScreenPoint()
@@ -731,10 +714,8 @@ local function floatLine(kind: PopupKind, amount: number, doubled: boolean, line
 		end
 		local inset = (game:GetService("GuiService"):GetGuiInset())
 		local at = SqueezeController.hudOffsetOf(point, inset, l.overlay.AbsolutePosition, UIController.scale())
-		local label = showOverlayLine(line or SqueezeController.lineText(kind, amount, doubled, true), kind, at)
-		if line == nil then
-			lineFolds[kind] = { index = 0, amount = amount, doubled = doubled, label = label, startedAt = now }
-		end
+		local label = showOverlayLine(SqueezeController.lineText(kind, amount, doubled, true), kind, at)
+		lineFolds[kind] = { index = 0, amount = amount, doubled = doubled, label = label, startedAt = now }
 		return
 	end
 	local adornee = popupAdornee()
@@ -770,7 +751,7 @@ local function floatLine(kind: PopupKind, amount: number, doubled: boolean, line
 	stylePopup(popup, kind)
 	popup.startedAt = now
 	popup.reduced = reduced
-	popup.label.Text = line or SqueezeController.lineText(kind, amount, doubled, false)
+	popup.label.Text = SqueezeController.lineText(kind, amount, doubled, false)
 	-- Lifted above the label (in px, as the label): the gui grows by twice the lift with the line at its top.
 	local lift = SqueezeController.lineLiftPx(kind, if l and labelShown then l.px else 0)
 	local width = if kind == "coins" then COIN_POPUP.widthPx else LINE_WIDTH
@@ -781,9 +762,7 @@ local function floatLine(kind: PopupKind, amount: number, doubled: boolean, line
 	popup.scale.Scale = first.scale
 	setFade(popup, 0)
 	popup.gui.Enabled = true
-	if line == nil then
-		lineFolds[kind] = { index = index, amount = amount, doubled = doubled }
-	end
+	lineFolds[kind] = { index = index, amount = amount, doubled = doubled }
 	if popupsHandle == nil then
 		popupsHandle = Scheduler.add(stepCoinPopups, "render")
 	end
@@ -792,12 +771,12 @@ end
 -- The floating label ----------------------------------------------------------------------------------------------
 
 -- The pad the local root stands on, or nil (spec 2026-10-11 §5: the server's own test, WorldLayout.stationUnder with
--- Config.Grip.Afk's padMargin / heightAbove, so the label shows the boost exactly where the server pays it).
+-- Config.Squeeze's padMargin / heightAbove, so the label shows the boost exactly where the server pays it).
 local function updateStation()
 	local root = localRoot()
 	local station: WorldLayout.Station? = nil
 	if root then
-		station = WorldLayout.stationUnder(root.Position, Config.Grip.Afk.padMargin, Config.Grip.Afk.heightAbove)
+		station = WorldLayout.stationUnder(root.Position, Config.Squeeze.padMargin, Config.Squeeze.heightAbove)
 	end
 	currentStation = station
 end
@@ -1314,16 +1293,17 @@ end
 
 -- Lobby HUD spec 2026-10-11 §2: how far (px) above the floating label's anchor (its bottom, Vfx.CoinPopup.startStuds
 -- above the held Root) a line of `kind` starts, as the height of its centre: above the label (`labelPx` tall, 0 while
--- it is hidden) and a Theme.Padding.small gap, half a line up so its bottom sits there, and Coins lowest, then Grip,
--- then slow training POPUP_STEP_PX higher each, so a reply's lines never start on each other.
+-- it is hidden) and a Theme.Padding.small gap, half a line up so its bottom sits there, and Coins lowest, then Grip
+-- POPUP_STEP_PX higher, so a reply's lines never start on each other.
 function SqueezeController.lineLiftPx(kind: PopupKind, labelPx: number): number
 	local above = if labelPx > 0 then labelPx + Theme.Padding.small else 0
-	local steps = if kind == "coins" then 0 elseif kind == "grip" then 1 else 2
+	local steps = if kind == "coins" then 0 else 1
 	return above + COIN_POPUP.heightPx / 2 + steps * POPUP_STEP_PX
 end
 
 -- Foam UI: the colour of a floating line (with the InkUI outline): Coins in CoinGold (the coin colour, used only for
--- Coins, §7.2), Grip in the UI Mint, the slow-training line in Lilac; the line's words always say which it is.
+-- Coins, §7.2), Grip in the UI Mint, anything else in Lilac (the old slow-training kind "afk"; none since Phase 6);
+-- the line's words always say which it is.
 function SqueezeController.popupColor(kind: string): Color3
 	if kind == "coins" then
 		return Palette.CoinGold
@@ -1503,12 +1483,6 @@ end
 -- True while a hold-to-squeeze runs.
 function SqueezeController.isHolding(): boolean
 	return hold ~= nil
-end
-
--- A line floating up from the squishy (lobby HUD spec §2; at the first-person toy in a look): GripController's
--- slow-training popup (kind "afk"), in its kind's colour above a reply's lines. It never folds.
-function SqueezeController.popup(line: string, kind: PopupKind)
-	floatLine(kind, 0, false, line)
 end
 
 -- Studio (DebugHooks): a virtual hold where the player stands (anywhere in the lobby, spec 2026-10-11 §5) under the

@@ -3,10 +3,10 @@
 -- Contract (DESIGN §6.3, §17.3.4, §17.3.6): a `{ value, at }` pool of points refills continuously at perHour (online
 -- and offline) up to burst; current() = min(burst, value + max(0, now - at) × perHour / 3600); spend() pays when a
 -- whole point is there and always returns the state to store (the refill up to now); full() = burst at now. One model
--- for the squeeze Coins limit (600/h, burst 300), Double Grip (240/h, burst 1200) and the slow-training bank (180/h,
--- burst 120): nonstop ticks every 10 s from a full bank pay every tick for about 40 minutes (239 ticks), then 1 in 2,
--- at most 300 in any hour. Odd input fails closed (non-finite or negative value = 0); a clock that went backwards
--- credits nothing twice.
+-- for the squeeze Coins limit (600/h, burst 300) and Double Grip (240/h, burst 1200); the old slow-training bank's
+-- numbers (180/h, burst 120; slow training is gone since build plan Phase 6) still pin the math: nonstop ticks every
+-- 10 s from a full bank pay every tick for about 40 minutes (239 ticks), then 1 in 2, at most 300 in any hour. Odd
+-- input fails closed (non-finite or negative value = 0); a clock that went backwards credits nothing twice.
 -- Time comes only from fixed numbers, never from the wall clock.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -114,19 +114,17 @@ return function(t: Context)
 		expect.equal(state.at, T0)
 	end)
 
-	-- The three pools of Config -------------------------------------------------------------------------------
+	-- The two pools of Config (Phase 6: the slow-training bank is gone) -----------------------------------------------
 
-	t.test("Config: Coins limit 1 per 6 s, Double Grip 4 a minute, slow-training bank 3 a minute", function()
+	t.test("Config: Coins limit 1 per 6 s, Double Grip 4 a minute", function()
 		local function perMinute(cfg: any): number
 			return SqueezeLimit.current({ value = 0, at = T0 }, T0 + 60, cfg)
 		end
 		expect.near(perMinute(Config.Economy.SqueezeLimit), Config.Economy.SqueezeLimit.perHour / 60)
 		expect.near(perMinute(Config.Grip.Rested), Config.Grip.Rested.perHour / 60)
-		expect.near(perMinute(Config.Grip.Afk), Config.Grip.Afk.perHour / 60)
-		-- DESIGN's numbers today: 600/h, 240/h, 180/h.
+		-- DESIGN's numbers today: 600/h, 240/h.
 		expect.near(perMinute({ perHour = 600, burst = 300 }), 10)
 		expect.near(perMinute({ perHour = 240, burst = 1200 }), 4)
-		expect.near(perMinute({ perHour = 180, burst = 120 }), 3)
 	end)
 
 	t.test("Double Grip takes 5 h to fill from empty", function()

@@ -4,7 +4,7 @@
 -- SqueezeRequest() (no argument, spec 2026-10-11 §5: squeeze anywhere in the lobby) gathers the server's own facts
 -- and lets the pure Logic/SqueezeRules.decide run the §6.3 order (flood guard; profile ready; a living character; not
 -- in a match; the tier; the anti-autoclicker cap; the earnings limit, off as shipped). The client sends nothing: the
--- pad comes from the server-side root position (SqueezeRules.padUnder, the slow-training "standing on it" test; a pad
+-- pad comes from the server-side root position (SqueezeRules.padUnder, the "standing on it" test; a pad
 -- the stale-lobby check disabled or the lobby does not have counts as none), and off a pad, or on a pad still locked
 -- for the player's Grip level, the squeeze pays tier 1 (base Coins and Grip, no pad bonus). The tier, the position,
 -- the equipped squishy, the timing and every amount are the server's. Every click pays (2026-10-06): no squeeze timer;
@@ -34,9 +34,8 @@
 -- falls back to the starter (§6.3 step 6, §12 #4).
 -- Stale-lobby check (init, after WorldService indexed the lobby): every WorldLayout station is compared with its tagged
 -- lobby instance. A GripTier attribute that differs from WorldLayout logs "stale lobby: rebuild" and disables the
--- station here (no boost: a squeeze there pays the base) and in GripService (GripService.disableStation: no slow
--- training there either; SqueezeService sits
--- above GripService, so the call goes downward, §2.6). Reading: a station missing from the lobby is disabled the same
+-- station here (no boost: a squeeze there pays the base; build plan Phase 6: slow training, which GripService also
+-- disabled there, is gone). Reading: a station missing from the lobby is disabled the same
 -- way (fail closed; a lobby that was never built logs one line), and a tagged station unknown to WorldLayout is
 -- logged (it can never be used: WorldLayout has no position or tier for it). This check lives here because
 -- WorldService is a duel-path file (§17.6).
@@ -316,7 +315,7 @@ local function applyStationProblems(problems: { StationProblem })
 		end
 	end
 	if #missing == #WorldLayout.stationIds() then
-		log:warn("no squeeze station in the lobby (world not built): pad boosts and slow training are off")
+		log:warn("no squeeze station in the lobby (world not built): pad boosts are off")
 	elseif #missing > 0 then
 		log:warn(`stale lobby: rebuild (missing from the lobby: {table.concat(missing, ", ")}); stations disabled`)
 	end
@@ -470,11 +469,9 @@ function SqueezeService.request(player: any): SqueezeResult?
 	return accepted
 end
 
--- Fail closed for a station that disagrees with WorldLayout (or is missing from the lobby): no squeezes here and, through
--- GripService.disableStation, no slow training.
+-- Fail closed for a station that disagrees with WorldLayout (or is missing from the lobby): no squeezes here.
 function SqueezeService.disableStation(stationId: string)
 	disabledStations[stationId] = true
-	GripService.disableStation(stationId)
 end
 
 -- True when the stale-lobby check disabled this station.

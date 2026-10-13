@@ -26,7 +26,8 @@
 --   data.offlineRetrying, and data.loadFailed once the background retries are used up (reading: §11.3's "Data load
 --   failed" line, which ends with "Please rejoin."); READONLY data.newerVersion (newer schema), data.rejoin (lock lost)
 --   or data.loadFailed (a stored value that is not a profile, or no reason). DataService sends none of these texts.
--- * grip = {total, trainer, rested, afk} (§17.10), copied from profile.grip; StateService is not a duel-path file.
+-- * grip = {total, trainer, rested} (§17.10), copied from profile.grip (build plan Phase 6: an old save's slow-training
+--   bank, grip.afk, is not sent); StateService is not a duel-path file.
 -- * capsules = profile.capsules {slots, list} as stored (build plan Phase 5: the owner's capsule card, the squeeze
 --   value of the reward texts and the owner's capsule pops; CapsuleService marks it on every change).
 --
@@ -282,7 +283,7 @@ local function rawField(field: string, profile: any, values: { [string]: any }, 
 		if type(grip) ~= "table" then
 			return nil
 		end
-		return { total = grip.total, trainer = grip.trainer, rested = grip.rested, afk = grip.afk }
+		return { total = grip.total, trainer = grip.trainer, rested = grip.rested }
 	end
 	return profile[field]
 end

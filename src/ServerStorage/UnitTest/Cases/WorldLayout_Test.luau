@@ -193,8 +193,9 @@ local TEXTS: { [string]: string } = {
 	["daily.wait"] = "Next reward in {time}",
 	["grip.padNeeds"] = "Needs Grip Lv {level}",
 	["grip.signLocked"] = "Needs Grip Lv {level} · You: Lv {have}",
-	-- Build plan Phase 5: a pad no longer adds Coins to a squeeze (the capsules set its pay); it speeds slow training.
-	["grip.signOpen"] = "Open · x{mult} slow training",
+	-- Build plan Phase 5: a pad no longer adds Coins to a squeeze (the capsules set its pay); Phase 6: slow training is
+	-- gone too, so an open pad's sign says only that.
+	["grip.signOpen"] = "Open",
 	["prompt.joinQueue"] = "Join 1v1 Queue",
 	["prompt.leaveQueue"] = "Leave Queue",
 	["prompt.seeBoxes"] = "See Boxes",
@@ -1330,7 +1331,7 @@ return function(t: Context)
 		expect.equal(none, nil)
 		expect.equal(far, math.huge)
 
-		local margin, above = Config.Grip.Afk.padMargin, Config.Grip.Afk.heightAbove
+		local margin, above = Config.Squeeze.padMargin, Config.Squeeze.heightAbove -- Phase 6: was Config.Grip.Afk
 		expect.equal(WorldLayout.stationUnder(standing, margin, above).id, "squeeze_06")
 		local off = standing + Vector3.new(3.8 + margin + 0.5, 0, 0)
 		expect.equal(WorldLayout.stationUnder(off, margin, above), nil)

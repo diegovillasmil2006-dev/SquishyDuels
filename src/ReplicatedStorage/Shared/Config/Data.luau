@@ -35,7 +35,7 @@ local Data = {
 	-- §3.5 size budget: a maximal profile (every cap full) must encode with HttpService:JSONEncode below this many
 	-- characters (the Part 5 size test). The DataStore limit is 4,194,304.
 	profileSizeLimitBytes = 100_000,
-	-- §17.9 #6 sanitize: a saved timer `at` (squeezeLimit, grip.rested, grip.afk) that is not finite or lies more than
+	-- §17.9 #6 sanitize: a saved timer `at` (squeezeLimit, grip.rested) that is not finite or lies more than
 	-- this many seconds after now becomes now.
 	timestampSkewSeconds = 300,
 

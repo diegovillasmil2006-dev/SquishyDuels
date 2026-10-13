@@ -50,7 +50,7 @@ local Economy = {
 	-- validator G3 keeps the paid squeezes an hour under Config.Grip.maxSqueezesPerHour for every limit setting.
 	-- Math: shared SqueezeLimit (current / spend / full).
 	-- Off since spec 2026-10-11 §5 (the user: "Less per squeeze, no limit"): every squeeze pays. The module and the
-	-- profile field stay, dormant (SqueezeLimit also runs Double Grip and slow training).
+	-- profile field stay, dormant (SqueezeLimit also runs Double Grip).
 	SqueezeLimit = {
 		enabled = false,
 		perHour = 600,

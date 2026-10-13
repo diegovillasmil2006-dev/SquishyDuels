@@ -3,16 +3,17 @@
 -- Grip is a lobby-only stat: never a currency, never sold, never read by duel or matchmaking code (§17.2).
 -- Pads are indexed by GripTier (WorldLayout gives each squeeze station its tier). Config.validate checks the rules
 -- G1 (levels), G2 (pads), G4 (trainer), G5 (caps and timers), G8 (world, with WorldLayout) and G10 (giant-pad
--- animation, with Config.Anim.giantPad) from Part 3 on; G3 (squeeze ceiling), G6 (Strings names) and G9 (slow
--- training) from Part 5; G6's wiring half ("trainer" Coin reason, the TrainerUpgrade rate), G7 (Robux allowlist) and
--- G7b (coin bundles stay off while Grip is on and allowBundlesWithCapsules is false) from Part 7.
+-- animation, with Config.Anim.giantPad) from Part 3 on; G3 (squeeze ceiling) and G6 (Strings names) from Part 5; G6's
+-- wiring half ("trainer" Coin reason, the TrainerUpgrade rate), G7 (Robux allowlist) and G7b (coin bundles stay off
+-- while Grip is on and allowBundlesWithCapsules is false) from Part 7.
 -- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Lv 1-100 and 9 Qa of Grip, five ranks above Lv 50,
 -- the Capsule block (tiers, intervals, capsule power, prices, Grip gates, slots; validate checks it) and G3 as a squeeze
--- count. Pads, trainers, slow training and the gates stay on until Phase 6; since Phase 3 they no longer change what
--- an own squeeze pays (the squeeze value and the highest capsule level's power, CapsuleMath).
+-- count. Pads, trainers and the gates stay on until their own Phase 6 removals; since Phase 3 they no longer change
+-- what an own squeeze pays (the squeeze value and the highest capsule level's power, CapsuleMath). Phase 6 removed
+-- slow training (the Afk block and G9); the pad test's padMargin / heightAbove moved to Config.Squeeze.
 -- Texts live in Strings: pad names `grip.pad.<key>`, ranks `grip.rank.<key>`, trainers `grip.trainer.<key>`.
--- Math: shared GripMath (levels, ranks, pads, Grip and Coins per squeeze, slow-training ticks, minutes, next goal),
--- CapsuleMath (the Capsule block) and SqueezeLimit (the Double Grip and slow-training timers).
+-- Math: shared GripMath (levels, ranks, pads, Grip and Coins per squeeze, minutes, next goal), CapsuleMath (the
+-- Capsule block) and SqueezeLimit (the Double Grip timer).
 
 export type Pad = {
 	key: string, -- Strings grip.pad.<key>; giant pads also use it as WorldLayout.GiantPads key / PadKey
@@ -225,24 +226,13 @@ local Grip = {
 	},
 	-- Double Grip (G-B): a timer like Economy.SqueezeLimit, filled only by time; new accounts start full.
 	Rested = { enabled = true, perHour = 240, burst = 1200, mult = 2 },
-	-- Slow training on a pad (§17.3.6): never Coins, never quest progress, never doubled.
-	Afk = {
-		enabled = true,
-		tickSeconds = 10,
-		percentPerTick = 125, -- of one squeeze's Grip, rounded down
-		perHour = 180, -- the bank: 1 point per paid tick, refills 3 a minute ...
-		burst = 120, -- ... up to 120 (new accounts start full)
-		padMargin = 1, -- studs beyond a pad's footprint that still count as "on it"
-		heightAbove = 6, -- root part height window above the pad top
-		maxShareOfActive = 25, -- G9: at most this % of the holding rate
-	},
 	-- Hold-to-squeeze (client only, §17.3.2). Every click pays (2026-10-06): a click squeezes at once; holding repeats
 	-- at a relaxed rhythm of one full squeeze animation, repeatSeconds (validator: >= the release pop end of every
 	-- rarity in Config.Anim.squeeze, 0.43 s), so clicking can be faster than holding.
 	-- Reading: the Grip pacing estimates of DESIGN §17.4 assumed one squeeze per 1.5 s (the old Squeeze.cycleSeconds).
 	-- Grip per squeeze is unchanged, so holding now trains about 1.5 / repeatSeconds (3.3x) faster and fast clicking
-	-- up to 12 × 1.5 = 18x; the "holding rate" rules (G5 Double Grip refill, G9 slow-training share,
-	-- GripMath.restedMinutes) now use repeatSeconds in place of the old cycle.
+	-- up to 12 × 1.5 = 18x; the "holding rate" rules (G5 Double Grip refill, GripMath.restedMinutes) now use
+	-- repeatSeconds in place of the old cycle.
 	Hold = { maxSeconds = 600, queuedSeconds = 60, repeatSeconds = 0.45, leadSeconds = 0.05, replyGraceSeconds = 0.5 },
 	-- G3 (spec 2026-10-12 §12): a squeeze count, no longer a Coin number, because Coins per squeeze now grow. The most
 	-- paid squeezes the server accepts in an hour: the anti-autoclicker cap, 12 a second (was maxSqueezeCoinsPerHour,
@@ -252,7 +242,7 @@ local Grip = {
 	-- pass this in a rolling hour (was 50,000 squeeze Coins). Validator: a whole number in 1..maxSqueezesPerHour.
 	squeezeAlertPerHour = 30_000,
 	-- CP(100) × Rested.mult = 920,525,589 × 2 (spec 2026-10-12 §12; was 600); it also covers today's biggest trainer
-	-- squeeze (Trainer[8] × 300% × Rested.mult = 600) and a slow-training tick (375) (G5). A capsule squeeze gives CP.
+	-- squeeze (Trainer[8] × 300% × Rested.mult = 600) (G5). A capsule squeeze gives CP.
 	maxGripPerEvent = 1_841_051_178,
 	-- (43200 + 12) × maxGripPerEvent: rolling-hour anomaly log, at the most squeezes the server can accept in an hour (the
 	-- anti-autoclicker cap, 12 per second, plus its burst) at the biggest Grip event, so honest fast clicking never

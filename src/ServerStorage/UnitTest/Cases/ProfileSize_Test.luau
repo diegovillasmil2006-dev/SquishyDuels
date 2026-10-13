@@ -105,6 +105,7 @@ return function(t: Context)
 			total = Config.Grip.maxGrip,
 			trainer = #Config.Grip.Trainer,
 			rested = { value = 1199.987654321, at = NOW - 0.987654321 },
+			-- Phase 6: slow training is gone, but an old save keeps its bank (an unknown field): the worst case has it.
 			afk = { value = 119.987654321, at = NOW - 0.987654321 },
 		}
 		-- 10-digit opponent ids, each with the most times a list keeps (ascending, inside the window).

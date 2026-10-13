@@ -7,7 +7,8 @@
 -- text mentions Grip (§17.2 rule 1). Part 7: the
 -- §17.7 trainer reason texts and quest.starterTask.jelly keep DESIGN's wording; the Part 7 readings (box.title,
 -- box.freeOnly, box.boardHeader, box.boardLine, daily.today) exist, and box.freeOnly names the Config free box day.
--- Foam fix 2: the Grip card's short goal lines (grip.hudGoal*); grip.idleBody keeps DESIGN's words with a line break.
+-- Foam fix 2: the Grip card's short goal lines (grip.hudGoal*); grip.idleBody keeps its line break (Phase 6: its second
+-- sentence names the capsules).
 -- Squeeze anywhere (spec 2026-10-11 §5): the onboarding step, Inspect's preview lines, the off-pad label
 -- (grip.stationLabelBase), the Foam Mats card (grip.padPerksBase) and grip.limitNote never send you to a mat;
 -- the mat, pad-level, limit and locked-button texts are gone. Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2): the
@@ -15,9 +16,10 @@
 -- Squishies, and the Squeeze button's key texts are gone. Final polish (2026-10-11): the duel key hints also name the
 -- dash and the squeeze (they left DESIGN's "Click Throw · Q Ultimate"), and the "In the lane!" warning exists.
 -- Phase 3 (lobby bases spec 2026-10-11 §6): every code the capsule remotes send has a text under reason.capsule.*.
--- Phase 5: pads and trainers no longer boost a squeeze, so no pad, trainer or onboarding text claims one (they name
--- slow training, and Grip opens the capsule tiers); the pad label and "Coins per squeeze" are gone; the capsule card
--- texts and a name for every capsule tier exist.
+-- Phase 5: pads and trainers no longer boost a squeeze, so no pad, trainer or onboarding text claims one (Grip opens
+-- the capsule tiers); the pad label and "Coins per squeeze" are gone; the capsule card texts and a name for every
+-- capsule tier exist. Phase 6: slow training is gone: its popup, help and bank texts are gone and no text names it
+-- (pads and trainers change nothing a player earns now; the idle card says capsules stop paying).
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
 
@@ -228,7 +230,6 @@ local PART5_WORDING: { [string]: string } = {
 	-- §17.7 at a pad
 	["grip.popup"] = "+{n} Grip",
 	["grip.popupDouble"] = "+{n} Grip (x{mult})",
-	["grip.afkPopup"] = "+{n} Grip (slow training)",
 	-- Lobby HUD spec 2026-10-11 §2: there is no Squeeze button any more (DESIGN's words named it).
 	["grip.holdPaused"] = "Squeeze again to keep training.",
 	-- §17.3.3, §17.5, §17.7 names
@@ -251,13 +252,13 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.trainer.gold"] = "Gold Gripper",
 	["grip.trainer.diamond"] = "Diamond Gripper",
 	-- §17.7 panel. Phase 5 (build plan; progression spec 2026-10-12 §3): pads and trainers no longer boost a squeeze
-	-- (the capsules set its pay) but still boost slow training, so DESIGN's pad and trainer lines say only that, and the
-	-- Grip level's purpose is the capsule tiers.
+	-- (the capsules set its pay), and the Grip level's purpose is the capsule tiers. Phase 6: slow training is gone, so
+	-- DESIGN's pad and trainer lines lost their last claim (a pad pays the same as anywhere).
 	["grip.panelTitle"] = "Grip Training",
 	["grip.panelIntro"] = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
 	["grip.padsHeader"] = "Squeeze pads",
 	["grip.padNeeds"] = "Needs Grip Lv {level}",
-	["grip.padPerks"] = "x{mult} slow-training Grip",
+	["grip.padPerks"] = "The same Coins and Grip as anywhere",
 	["grip.padOpen"] = "Open",
 	["grip.padLocked"] = "Locked",
 	["grip.showMe"] = "Show me",
@@ -268,30 +269,29 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.trainerNeedLevel"] = "Reach Grip Lv {level}",
 	["grip.trainerNeedCoins"] = "Need {coins} more Coins",
 	["grip.trainerMax"] = "Best trainer owned!",
-	["grip.trainerNote"] = "Upgrades make slow training faster. They never change duels.",
+	["grip.trainerNote"] = "Upgrades never change duels.",
 	["grip.restedHelp"] = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 	-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays (Phase 5: no pad boost).
 	["grip.limitNote"] = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
-	["grip.afkHelp"] = "Standing on an open pad slowly trains Grip, even when you're not squeezing. It never gives Coins, and it stops if Roblox disconnects you for being idle.",
-	["grip.afkBank"] = "Slow training at full speed: about {minutes} min left",
 	["grip.duelNote"] = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 	-- §17.7 toasts
 	["grip.levelUp"] = "Grip Lv {level}!",
-	["grip.padUnlocked"] = "{pad} unlocked! x{mult} slow-training Grip there.",
+	["grip.padUnlocked"] = "{pad} unlocked!",
 	["grip.rankUp"] = "{name} reached {rank}!",
-	["grip.trainerBought"] = "{trainer} unlocked! Slow training is faster now.",
+	["grip.trainerBought"] = "{trainer} unlocked!",
 	["grip.intro"] = "You trained your Grip! Squeeze more to open new capsule tiers.",
 	["grip.welcome"] = "Double Grip is full: your first squeezes train x{mult} Grip!",
 	["grip.welcomeBack"] = "Welcome back! Double Grip: about {minutes} min.",
 	["grip.headStart"] = "Your past squeezes count: you start at Grip Lv {level}!",
 	-- §17.7 idle card and world
 	["grip.idleTitle"] = "Still there?",
-	-- Foam fix 2: DESIGN's two sentences, one per line (the wrap broke the line after "Slow").
-	["grip.idleBody"] = "Roblox disconnects players who are idle for 20 minutes.\nSlow training stops when that happens.",
+	-- Foam fix 2: DESIGN's two sentences, one per line (the wrap broke the line after "Slow"). Phase 6: the second one
+	-- names what still stops (the capsules pay only while you are in the server).
+	["grip.idleBody"] = "Roblox disconnects players who are idle for 20 minutes.\nCapsules stop paying when that happens.",
 	["grip.idleButton"] = "Keep going",
 	["grip.gymTitle"] = "GRIP GYM",
 	["grip.signLocked"] = "Needs Grip Lv {level} · You: Lv {have}",
-	["grip.signOpen"] = "Open · x{mult} slow training",
+	["grip.signOpen"] = "Open",
 	["grip.nameplate"] = "Lv {level} · {rank}",
 }
 
@@ -690,6 +690,29 @@ return function(t: Context)
 			expect.equal(string.find(text, "better pads", 1, true), nil)
 			expect.equal(string.find(text, "better squeeze pads", 1, true), nil)
 		end
+	end)
+
+	-- Phase 6 (build plan): slow training is gone.
+	t.test("slow training is gone: its popup, help and bank texts are gone and no text names it", function()
+		for _, key in { "grip.afkPopup", "grip.afkHelp", "grip.afkBank" } do
+			expect.equal(Strings.resolve(key), nil)
+		end
+		local naming: { string } = {}
+		local function scan(node: any, path: string)
+			if type(node) == "string" then
+				local text = string.lower(node)
+				if string.find(text, "slow training", 1, true) or string.find(text, "slow-training", 1, true) then
+					table.insert(naming, path)
+				end
+			elseif type(node) == "table" then
+				for key, child in node do
+					scan(child, path .. "." .. tostring(key))
+				end
+			end
+		end
+		scan(Strings, "Strings")
+		table.sort(naming)
+		expect.deepEqual(naming, {})
 	end)
 
 	t.test("the capsule card texts exist with their placeholders, and every tier has a name", function()

@@ -6,7 +6,8 @@
 --   * a v1 fixture becomes v2: 10 Grip per old squeeze from the FROZEN constant, rested and afk start full and are
 --     stamped with lastSeenAt, missing fields filled with defaults, everything else deep-equal, start version 1;
 --   * v2 is a no-op (no second head start);
---   * bad Grip values (total, trainer, rested, afk) are sanitized;
+--   * bad Grip values (total, trainer, rested) are sanitized; slow training is gone (build plan Phase 6): a new save
+--     has no grip.afk, and an old save's (or the frozen migration's) is kept as it is, an unknown field nothing reads;
 --   * v3 (newer than CURRENT) is not migrated: READONLY view;
 --   * the §3.3 sanitize rules (coins, starter ownership, equipped, logs, settings, quests);
 --   * samePair (§6.7) joined schema 2 without a new version: defaults {}, an older v2 profile gets it from reconcile,
@@ -161,12 +162,8 @@ return function(t: Context)
 		for _, log in { d.boxLog, d.shopLog, d.receipts, d.duelLog } do
 			expect.deepEqual(log, {})
 		end
-		expect.deepEqual(d.grip, {
-			total = 0,
-			trainer = 1,
-			rested = { value = Config.Grip.Rested.burst, at = NOW },
-			afk = { value = Config.Grip.Afk.burst, at = NOW },
-		})
+		-- Phase 6: no slow-training bank (grip.afk) any more.
+		expect.deepEqual(d.grip, { total = 0, trainer = 1, rested = { value = Config.Grip.Rested.burst, at = NOW } })
 		expect.deepEqual(d.samePair, {})
 		expect.deepEqual(d.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
 		-- defaults are valid as they are: sanitize changes nothing
@@ -254,7 +251,7 @@ return function(t: Context)
 		expect.equal(load(v2).profile.grip.total, 777) -- no second head start
 	end)
 
-	t.test("bad Grip values are sanitized (total, trainer, rested, afk)", function()
+	t.test("bad Grip values are sanitized (total, trainer, rested); an old save's grip.afk is left as it is", function()
 		local function gripAfter(grip: any): (any, { string })
 			local profile = load(FIXTURE_V1).profile
 			profile.grip = grip
@@ -264,13 +261,8 @@ return function(t: Context)
 		local function timer(value: any, at: any): any
 			return { value = value, at = at }
 		end
-		local grip, problems = gripAfter({
-			total = 0 / 0,
-			trainer = 0,
-			rested = timer(5000, 0 / 0),
-			afk = timer(-1, NOW + 301),
-		})
-		expect.deepEqual(grip, { total = 0, trainer = 1, rested = timer(1200, NOW), afk = timer(0, NOW) })
+		local grip, problems = gripAfter({ total = 0 / 0, trainer = 0, rested = timer(5000, 0 / 0) })
+		expect.deepEqual(grip, { total = 0, trainer = 1, rested = timer(1200, NOW) })
 		local mentionsNonFinite = false
 		for _, problem in problems do
 			if string.find(problem, "non-finite", 1, true) then
@@ -280,28 +272,25 @@ return function(t: Context)
 		expect.truthy(mentionsNonFinite) -- a non-finite total is logged
 
 		-- Above the 9 Qa maxGrip (spec 2026-10-12 §12): clamped to it.
-		grip = gripAfter({ total = 1.8e16, trainer = 99, rested = timer(-5, NOW + 300), afk = timer(500, 1) })
-		expect.deepEqual(
-			grip,
-			{ total = Config.Grip.maxGrip, trainer = 8, rested = timer(0, NOW + 300), afk = timer(120, 1) }
-		)
+		grip = gripAfter({ total = 1.8e16, trainer = 99, rested = timer(-5, NOW + 300) })
+		expect.deepEqual(grip, { total = Config.Grip.maxGrip, trainer = 8, rested = timer(0, NOW + 300) })
 
-		grip = gripAfter({
-			total = 12.7,
-			trainer = 2.6,
-			rested = timer(0 / 0, math.huge),
-			afk = timer(math.huge, -math.huge),
-		})
-		expect.deepEqual(grip, { total = 12, trainer = 2, rested = timer(0, NOW), afk = timer(0, NOW) })
+		grip = gripAfter({ total = 12.7, trainer = 2.6, rested = timer(0 / 0, math.huge) })
+		expect.deepEqual(grip, { total = 12, trainer = 2, rested = timer(0, NOW) })
 
-		grip = gripAfter({ total = -5, trainer = "x", rested = "garbage", afk = timer(60, NOW - 10) })
-		expect.deepEqual(grip, { total = 0, trainer = 1, rested = timer(0, NOW), afk = timer(60, NOW - 10) })
+		grip = gripAfter({ total = -5, trainer = "x", rested = "garbage" })
+		expect.deepEqual(grip, { total = 0, trainer = 1, rested = timer(0, NOW) })
 
 		grip = gripAfter("garbage")
-		expect.deepEqual(grip, { total = 0, trainer = 1, rested = timer(1200, NOW), afk = timer(120, NOW) })
+		expect.deepEqual(grip, { total = 0, trainer = 1, rested = timer(1200, NOW) })
 
-		grip, problems = gripAfter({ total = 50_000, trainer = 3, rested = timer(600.5, NOW), afk = timer(42, NOW) })
-		expect.deepEqual(grip, { total = 50_000, trainer = 3, rested = timer(600.5, NOW), afk = timer(42, NOW) })
+		grip, problems = gripAfter({ total = 50_000, trainer = 3, rested = timer(600.5, NOW) })
+		expect.deepEqual(grip, { total = 50_000, trainer = 3, rested = timer(600.5, NOW) })
+		expect.deepEqual(problems, {})
+
+		-- Phase 6: slow training is gone, so nothing reads or fixes an old save's bank, even a broken one.
+		grip, problems = gripAfter({ total = 5, trainer = 1, rested = timer(1, NOW), afk = timer(-1, NOW + 301) })
+		expect.deepEqual(grip.afk, timer(-1, NOW + 301))
 		expect.deepEqual(problems, {})
 	end)
 

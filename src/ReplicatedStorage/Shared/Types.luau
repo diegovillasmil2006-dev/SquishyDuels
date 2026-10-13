@@ -59,11 +59,12 @@ export type ProfileStats = {
 }
 
 export type SqueezeLimitState = { value: number, at: number } -- §6.3 (a rate limit, not a currency)
--- Grip (§17.10): a lobby-only stat, never a currency. `rested` (Double Grip) and `afk` (the slow-training bank) are
--- timers with the SqueezeLimit shape, filled only by time. `total` is an integer in [0, Config.Grip.maxGrip];
--- `trainer` an integer in [1, #Config.Grip.Trainer] (the best trainer owned, bought in Part 7).
+-- Grip (§17.10): a lobby-only stat, never a currency. `rested` (Double Grip) is a timer with the SqueezeLimit shape,
+-- filled only by time. `total` is an integer in [0, Config.Grip.maxGrip]; `trainer` an integer in
+-- [1, #Config.Grip.Trainer] (the best trainer owned, bought in Part 7). Build plan Phase 6: slow training is gone, so
+-- `afk` (its bank) is no field any more; an old save keeps it as an unknown field.
 export type GripTimerState = SqueezeLimitState
-export type GripState = { total: number, trainer: number, rested: GripTimerState, afk: GripTimerState }
+export type GripState = { total: number, trainer: number, rested: GripTimerState }
 export type QuestsState = { day: number, swapsUsed: number, active: { QuestEntry } }
 export type StarterState = { progress: { [string]: number }, claimed: { [string]: boolean } }
 export type DailyState = { lastClaimDay: number, streakDay: number, totalClaims: number }
@@ -173,9 +174,8 @@ export type PracticeStats = { throws: number, hits: number, accuracy: number } -
 export type QuestsView = { day: number, swapsUsed: number, active: { QuestEntry }, starter: StarterState }
 
 -- Every state field, all present: the reply to RequestSnapshot and the content of a full StateDelta.
--- `grip` (§17.10) is the profile's GripState as stored; the client derives the level, rank, Double Grip minutes and
--- slow-training minutes with the same pure GripMath, and shows the slow-training popup when grip.total rises with no
--- SqueezeResult in between. Never sent into a duel view: Grip never reaches duel code (§17.2 rule 1).
+-- `grip` (§17.10) is the profile's GripState as stored; the client derives the level, rank and Double Grip minutes
+-- with the same pure GripMath. Never sent into a duel view: Grip never reaches duel code (§17.2 rule 1).
 -- `capsules` (build plan Phase 5) is the profile's CapsulesState as stored, for the owner's capsule card, the squeeze
 -- value of the reward texts and the owner's capsule pops (other players' capsules are read from their base's models).
 export type Snapshot = {

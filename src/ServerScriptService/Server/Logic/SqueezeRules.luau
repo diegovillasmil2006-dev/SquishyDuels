@@ -44,7 +44,7 @@
 --   SqueezeRules.tokens(bucket, now, cfg?)           -> tokens now (fractional, <= bucketCapacity)
 --   SqueezeRules.secondsUntilNext(bucket, now, cfg?) -> max(0, 1 - tokens) × cycleSeconds
 --   SqueezeRules.padUnder(rootPosition, cfg?)        -> WorldLayout.Station? the pad the root stands on
---                                                       (WorldLayout.stationUnder with Grip.Afk padMargin / heightAbove)
+--                                                       (WorldLayout.stationUnder with Squeeze padMargin / heightAbove)
 --   SqueezeRules.tierFor(station, level, cfg?)       -> the tier a squeeze pays (step 6)
 --   SqueezeRules.earn(limit, osNow, baseCoins, cfg?) -> (paid, coins, newLimit)
 --   SqueezeRules.decide(input, cfg?)                 -> Decision
@@ -53,8 +53,8 @@
 -- copy); nil = the live Config.
 --
 -- Readings: a missing or dead character is squeeze.noCharacter (spec 2026-10-11 §5: the only refusal left of the old
--- station checks; its text is under Strings reason.squeeze); the pad test is the slow-training one ("standing on it",
--- GripService), so the boost pays exactly where slow training does; a squeeze from
+-- station checks; its text is under Strings reason.squeeze); the pad test is "standing on it" (Config.Squeeze's
+-- margins; slow training, which shared it, is gone since build plan Phase 6); a squeeze from
 -- a player in a match is squeeze.inDuel (new reading code, its text is under Strings reason.squeeze); the flood guard
 -- counts only requests it let through (like a token bucket, so a spammer still gets 20 per second through to the
 -- bucket); the flood log re-arms once the drops inside the log window are back to floodLogDrops or fewer; a request
@@ -210,10 +210,10 @@ end
 -- Public: step 6, the pad and the tier (spec 2026-10-11 §5)
 
 -- The station a root part at `rootPosition` (server-measured) stands on: WorldLayout.stationUnder with
--- Config.Grip.Afk's padMargin and heightAbove, the same "standing on it" test as slow training. nil off every pad.
+-- Config.Squeeze's padMargin and heightAbove (the client's mat pulse uses the same test). nil off every pad.
 function SqueezeRules.padUnder(rootPosition: Vector3, cfg: SqueezeConfig?): WorldLayout.Station?
-	local afk = sections(cfg).Grip.Afk
-	return WorldLayout.stationUnder(rootPosition, afk.padMargin, afk.heightAbove)
+	local squeeze = sections(cfg).Squeeze
+	return WorldLayout.stationUnder(rootPosition, squeeze.padMargin, squeeze.heightAbove)
 end
 
 -- The tier a squeeze pays: the pad's when the player's Grip level has unlocked it, else BASE_TIER (off a pad, a

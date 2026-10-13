@@ -1,13 +1,10 @@
 --!strict
 -- GripService_Test: unit tests for ServerScriptService.Server.Services.GripService with injected fakes (fake clocks,
--- a fake profile, fake positions; the "player" is a plain table). Server only (ServerStorage.UnitTest). Edit mode:
--- start() is never called; ticks run through GripService.tick.
--- Contract (DESIGN §17.3.1 step 8a, §17.3.4, §17.3.6, §17.7, §17.12 Part 5 "GripService slow training with fakes"):
---   * slow training: off any pad -> 0; on a locked pad -> 0; first tick on a pad -> 0, second ->
---     floor(squeezeGrip x percentPerTick / 100); in a match, dead or OFFLINE -> 0; an accepted squeeze in the window ->
---     0; an empty bank -> 0 and the bank refills perHour; 30 minutes nonstop pay exactly what SqueezeLimit predicts; a
---     tick never changes Coins, quests, stats.squeezes or grip.rested; a disabled station pays nothing; an AFK-only
---     profile that reaches Lv 5 through ticks keeps its starter progress and Coins;
+-- a fake profile; the "player" is a plain table). Server only (ServerStorage.UnitTest). Edit mode: start() is never
+-- called.
+-- Contract (DESIGN §17.3.1 step 8a, §17.3.4, §17.7, §17.12 Part 5):
+--   * slow training is gone (build plan Phase 6): no tick, no bank, no disabled stations; a profile without grip.afk
+--     (every new save) trains Grip;
 --   * a squeeze uses exactly one Double Grip point and doubles its Grip; no point, no doubling; nothing when not ready
 --     or when the session takes no more changes (every write goes through mutate); the total stops at maxGrip and the
 --     gain says what it really gained; step() drops the session of a player who already left;
@@ -23,8 +20,8 @@
 --     grip.trainerBought, awaits one "now" save and replies {trainer, charged = true, savePending}; an identical retry
 --     is a replay (charged = false, no charge); every refusal code with charged = false: net.invalid (range, before
 --     the ready check), data.notReady, trainer.notNext (8 at trainer 1), trainer.locked, trainer.priceChanged,
---     trainer.paused (savePending, closing, restart), inventory.lockedInDuel, economy.notEnoughCoins; an AFK-only
---     profile that reaches Lv 5 through ticks keeps its starter progress and Coins with QuestService wired.
+--     trainer.paused (savePending, closing, restart), inventory.lockedInDuel, economy.notEnoughCoins; a capsule-only
+--     profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -41,11 +38,8 @@ return function(t: Context)
 	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
 	local GripMath = t.requireShared("GripMath")
-	local SqueezeLimit = t.requireShared("SqueezeLimit")
-	local WorldLayout = t.requireShared("World/WorldLayout")
 	local TableUtil = t.requireShared("Util/TableUtil")
 
-	local AFK = Config.Grip.Afk
 	local REST = Config.Grip.Rested
 	local UNIX_START = 1_800_000_000
 
@@ -55,8 +49,6 @@ return function(t: Context)
 		player: any,
 		status: string,
 		profile: any,
-		position: Vector3?,
-		alive: boolean,
 		phase: string,
 		closing: boolean,
 		frozen: boolean, -- the session takes no more changes (its final save took its snapshot): mutate refuses
@@ -75,12 +67,6 @@ return function(t: Context)
 		spends: { { amount: number, reason: string } },
 	}
 
-	-- A standing root position over a station (its top + 3 studs, like an R15 root).
-	local function onStation(id: string): Vector3
-		local station = WorldLayout.station(id)
-		return Vector3.new(station.position.X, station.top + 3, station.position.Z)
-	end
-
 	local function newProfile(unixNow: number): any
 		return {
 			coins = 50,
@@ -91,7 +77,6 @@ return function(t: Context)
 				total = 0,
 				trainer = 1,
 				rested = { value = 0, at = unixNow },
-				afk = { value = AFK.burst, at = unixNow },
 			},
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's
 		}
@@ -109,8 +94,6 @@ return function(t: Context)
 			player = { UserId = 42, DisplayName = "Tester" },
 			status = "ready",
 			profile = newProfile(UNIX_START),
-			position = onStation("squeeze_01"),
-			alive = true,
 			phase = "",
 			closing = false,
 			frozen = false,
@@ -148,9 +131,6 @@ return function(t: Context)
 					return false, "data.notReady"
 				end
 				return true, fn(world.profile)
-			end,
-			rootOf = function(_player: any): (Vector3?, boolean)
-				return world.position, world.alive
 			end,
 			duelPhaseOf = function(_player: any): string
 				return world.phase
@@ -213,7 +193,7 @@ return function(t: Context)
 		GripService.LevelChanged:disconnectAll()
 	end
 
-	-- Advances both clocks by `seconds` (the tick window and the bank).
+	-- Advances both clocks by `seconds` (the anomaly window and Double Grip).
 	local function wait(world: World, seconds: number)
 		world.clock.advance(seconds)
 		world.unix.advance(seconds)
@@ -227,233 +207,33 @@ return function(t: Context)
 		return list
 	end
 
-	local function expectedAfk(trainer: number, tier: number): number
-		local perSqueeze =
-			math.floor(Config.Grip.Trainer[trainer].gripPerSqueeze * Config.Grip.Pads[tier].gripPercent / 100)
-		return math.floor(perSqueeze * AFK.percentPerTick / 100)
-	end
+	-- Slow training is gone (build plan Phase 6) ----------------------------------------------------------------------
 
-	-- Slow training ---------------------------------------------------------------------------------------------------
-
-	t.test("off any pad: no slow training", function()
-		local world = fresh()
-		world.position = Vector3.new(0, 3, 0) -- the spawn, far from every pad
-		expect.equal(GripService.tick(world.player).reason, "offPad")
-		wait(world, AFK.tickSeconds)
-		local result = GripService.tick(world.player)
-		expect.equal(result.grip, 0)
-		expect.equal(result.reason, "offPad")
-		expect.equal(world.profile.grip.total, 0)
-		finish()
-	end)
-
-	t.test("first tick on a pad pays nothing, the second pays floor(squeezeGrip x percentPerTick / 100)", function()
-		local world = fresh()
-		local first = GripService.tick(world.player)
-		expect.equal(first.grip, 0)
-		expect.equal(first.reason, "firstTick")
-		wait(world, AFK.tickSeconds)
-		local second = GripService.tick(world.player)
-		expect.equal(second.reason, "paid")
-		expect.equal(second.grip, expectedAfk(1, 1))
-		expect.equal(second.grip, GripMath.afkGrip(1, 1))
-		expect.equal(world.profile.grip.total, expectedAfk(1, 1))
-		expect.truthy(table.find(world.dirty, "grip") ~= nil)
-		finish()
-	end)
-
-	t.test("on a locked pad: no slow training", function()
-		local world = fresh()
-		world.position = onStation("squeeze_07") -- the Jelly Pad (tier 2) at Lv 1
-		for _ = 1, 3 do
-			local result = GripService.tick(world.player)
-			expect.equal(result.grip, 0)
-			expect.equal(result.reason, "locked")
-			wait(world, AFK.tickSeconds)
+	t.test("no slow training: no tick, bank or disabled stations; a save without grip.afk trains Grip", function()
+		for _, name in
+			{ "tick", "debugTick", "debugSetAfkBank", "debugSetTickSeconds", "disableStation", "isStationDisabled" }
+		do
+			expect.equal((GripService :: any)[name], nil)
 		end
-		expect.equal(world.profile.grip.total, 0)
-		finish()
-	end)
-
-	t.test("an unlocked giant pad pays its tier's rate", function()
 		local world = fresh()
-		world.profile.grip.total = Config.Grip.LevelTotals[Config.Grip.Pads[3].level] -- Marshmallow level
-		GripService.refreshBaseline(world.player, false)
-		world.position = onStation("squeeze_08")
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		local result = GripService.tick(world.player)
-		expect.equal(result.reason, "paid")
-		expect.equal(result.grip, expectedAfk(1, 3))
-		finish()
-	end)
-
-	t.test("in a match, dead or OFFLINE: no slow training", function()
-		local world = fresh()
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		world.phase = "Active"
-		expect.equal(GripService.tick(world.player).reason, "inMatch")
-		world.phase = ""
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		world.alive = false
-		expect.equal(GripService.tick(world.player).reason, "noCharacter")
-		world.alive = true
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		world.status = "offline"
-		expect.equal(GripService.tick(world.player).reason, "notReady")
-		expect.equal(world.profile.grip.total, 0)
-		finish()
-	end)
-
-	t.test("an accepted squeeze since the previous tick: no slow training", function()
-		local world = fresh()
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds / 2)
+		expect.equal(world.profile.grip.afk, nil) -- a new save (ProfileSchema.defaults) has no bank
 		local gain = GripService.addFromSqueeze(world.player, 1)
-		local afterSqueeze = world.profile.grip.total
-		expect.equal(afterSqueeze, gain.grip)
-		wait(world, AFK.tickSeconds / 2)
-		local result = GripService.tick(world.player)
-		expect.equal(result.grip, 0)
-		expect.equal(result.reason, "squeezed")
-		expect.equal(world.profile.grip.total, afterSqueeze)
-		-- The window after that has no squeeze: it pays again.
-		wait(world, AFK.tickSeconds)
-		expect.equal(GripService.tick(world.player).reason, "paid")
+		expect.equal(gain.grip, ownGrip(world))
+		expect.equal(GripService.addFromCapsule(world.player, 10), 10)
+		expect.equal(world.profile.grip.total, gain.grip + 10)
 		finish()
 	end)
 
-	t.test("an empty bank pays nothing, and it refills perHour", function()
+	t.test("an old save keeps its grip.afk as it is (an unknown field nothing reads)", function()
 		local world = fresh()
-		world.profile.grip.afk = { value = 0, at = UNIX_START }
-		GripService.tick(world.player)
-		wait(world, 1)
-		local empty = GripService.tick(world.player)
-		expect.equal(empty.grip, 0)
-		expect.equal(empty.reason, "bankEmpty")
-		-- One point refills in 3600 / perHour seconds (20 s at 180/h, "3 a minute").
-		wait(world, 3600 / AFK.perHour)
-		local refilled = GripService.tick(world.player)
-		expect.equal(refilled.reason, "paid")
-		-- What the empty tick saw (1 s of refill) is left after the paid one used its whole point.
-		expect.near(world.profile.grip.afk.value, AFK.perHour / 3600, 1e-6)
+		world.profile.grip.afk = { value = 5, at = UNIX_START }
+		wait(world, 3600)
+		local gain = GripService.addFromSqueeze(world.player, 1)
+		expect.truthy(gain.grip > 0)
+		GripService.addFromCapsule(world.player, 10)
+		expect.deepEqual(world.profile.grip.afk, { value = 5, at = UNIX_START })
 		finish()
 	end)
-
-	t.test("30 minutes nonstop pay exactly the ticks SqueezeLimit predicts", function()
-		for _, startBank in { AFK.burst, 10 } do
-			local world = fresh()
-			world.profile.grip.afk = { value = startBank, at = UNIX_START }
-			local predicted = { value = startBank, at = UNIX_START }
-			local predictedPaid, paid = 0, 0
-			local ticks = math.floor(1800 / AFK.tickSeconds)
-			for i = 0, ticks do
-				local result = GripService.tick(world.player)
-				if i > 0 then -- the first tick on a pad never pays (and never touches the bank)
-					local ok
-					ok, predicted = SqueezeLimit.spend(predicted, world.unix.now(), AFK)
-					if ok then
-						predictedPaid += 1
-					end
-				end
-				if result.reason == "paid" then
-					paid += 1
-				end
-				wait(world, AFK.tickSeconds)
-			end
-			expect.equal(paid, predictedPaid)
-			expect.equal(world.profile.grip.total, paid * expectedAfk(1, 1))
-			expect.truthy(paid > 0)
-			if startBank == 10 then
-				expect.truthy(paid < ticks) -- the bank limited it
-			end
-			finish()
-		end
-	end)
-
-	t.test("a tick never changes Coins, quests, starter tasks, stats.squeezes or Double Grip", function()
-		local world = fresh()
-		world.profile.grip.rested = { value = 37, at = UNIX_START }
-		local before = TableUtil.deepCopy(world.profile)
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		expect.equal(GripService.tick(world.player).reason, "paid")
-		expect.equal(world.profile.coins, before.coins)
-		expect.deepEqual(world.profile.stats, before.stats)
-		expect.deepEqual(world.profile.quests, before.quests)
-		expect.deepEqual(world.profile.starter, before.starter)
-		expect.deepEqual(world.profile.grip.rested, before.grip.rested)
-		finish()
-	end)
-
-	t.test("a disabled station pays no slow-training tick", function()
-		local world = fresh()
-		GripService.disableStation("squeeze_01")
-		expect.truthy(GripService.isStationDisabled("squeeze_01"))
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		local result = GripService.tick(world.player)
-		expect.equal(result.grip, 0)
-		expect.equal(result.reason, "offPad")
-		finish()
-	end)
-
-	t.test("walking from one pad to another restarts the count", function()
-		local world = fresh()
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		world.position = onStation("squeeze_02")
-		expect.equal(GripService.tick(world.player).reason, "firstTick")
-		wait(world, AFK.tickSeconds)
-		expect.equal(GripService.tick(world.player).reason, "paid")
-		finish()
-	end)
-
-	t.test("an AFK-only profile that reaches Lv 5 through ticks keeps its starter progress and Coins", function()
-		local world = fresh()
-		local target = Config.Grip.LevelTotals[5]
-		world.profile.grip.total = target - 1
-		GripService.refreshBaseline(world.player, false)
-		local before = TableUtil.deepCopy(world.profile)
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		expect.equal(GripService.tick(world.player).reason, "paid")
-		expect.equal(GripService.levelOf(world.player), 5)
-		expect.equal(world.levelAttr, 5)
-		expect.equal(world.profile.coins, before.coins)
-		expect.deepEqual(world.profile.starter, before.starter)
-		expect.deepEqual(world.profile.quests, before.quests)
-		expect.equal(world.profile.stats.squeezes, before.stats.squeezes)
-		expect.truthy(table.find(codes(world), "grip.levelUp") ~= nil)
-		finish()
-	end)
-
-	t.test("slow training is off while the server closes", function()
-		local world = fresh()
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		world.closing = true
-		expect.equal(GripService.tick(world.player).reason, "off")
-		finish()
-	end)
-
-	t.test("step() ticks a player once per tickSeconds", function()
-		local world = fresh()
-		local start = world.clock.now()
-		for _ = 1, math.floor(AFK.tickSeconds * 3 / 0.25) + 1 do
-			GripService.step(world.clock.now())
-			wait(world, 0.25)
-		end
-		local paid = world.profile.grip.total / expectedAfk(1, 1)
-		-- Three windows: the first tick only records the pad, the next ones pay (2 or 3 depending on the spread).
-		expect.truthy(paid >= 2 and paid <= 3)
-		expect.truthy(world.clock.now() - start >= AFK.tickSeconds * 3)
-		finish()
-	end)
-
 	-- Squeezes ---------------------------------------------------------------------------------------------------------
 
 	t.test("a squeeze uses exactly one Double Grip point and trains x mult", function()
@@ -522,11 +302,6 @@ return function(t: Context)
 		expect.deepEqual(world.profile.stats, before.stats)
 		expect.truthy(table.find(world.dirty, "grip") ~= nil)
 		expect.equal(GripService.levelOf(world.player), GripMath.levelFor(power))
-		-- It is not an own squeeze: slow training on a pad still pays after it.
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		GripService.addFromCapsule(world.player, power)
-		expect.equal(GripService.tick(world.player).reason, "paid")
 		-- Not ready, or a session that takes no more changes: nothing.
 		world.status = "offline"
 		expect.equal(GripService.addFromCapsule(world.player, power), 0)
@@ -553,13 +328,8 @@ return function(t: Context)
 	t.test("a session that takes no more changes (final save started) earns nothing and changes nothing", function()
 		local world = fresh()
 		world.profile.grip.rested = { value = 5, at = UNIX_START }
-		GripService.tick(world.player) -- first tick on the pad
-		wait(world, AFK.tickSeconds)
 		local before = TableUtil.deepCopy(world.profile.grip)
 		world.frozen = true -- still "ready", but DataService.mutate refuses every change now
-		local tick = GripService.tick(world.player)
-		expect.equal(tick.grip, 0)
-		expect.equal(tick.reason, "notReady")
 		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.equal(gain.grip, 0)
 		expect.equal(gain.doubled, false)
@@ -582,11 +352,11 @@ return function(t: Context)
 	end)
 
 	t.test("step() drops the session of a player who already left (a late squeeze re-created it)", function()
-		local world = fresh()
+		fresh()
 		local gone = Instance.new("Folder") -- like a Player after PlayerRemoving: Parent = nil
 		GripService.addFromSqueeze(gone, 1)
 		expect.equal(GripService.debugState().sessions, 2)
-		GripService.step(world.clock.now())
+		GripService.step()
 		expect.equal(GripService.debugState().sessions, 1)
 		gone:Destroy()
 		finish()
@@ -905,8 +675,8 @@ return function(t: Context)
 		finish()
 	end)
 
-	-- Phase 3 (spec 2026-10-12 §3, §10): own squeezes train the capsules' power; a trainer only feeds slow training now
-	-- (trainers go in Phase 6). Was: a better trainer trains more Grip per squeeze.
+	-- Phase 3 (spec 2026-10-12 §3, §10): own squeezes train the capsules' power; since Phase 6 (no slow training) a
+	-- trainer changes no Grip at all. Was: a better trainer trains more Grip per squeeze.
 	t.test("trainer: a better trainer no longer changes an own squeeze's Grip", function()
 		local cost, gate = TRAINER[2].cost, TRAINER[2].level
 		local world = trainerWorld(1, gate, cost)
@@ -919,7 +689,8 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("Part 7: an AFK-only profile reaching Lv 5 keeps starter progress and Coins with quests wired", function()
+	-- Phase 6: capsule Grip is the idle Grip left (was: slow-training ticks on a pad).
+	t.test("Part 7: a capsule-only profile reaching Lv 5 keeps starter progress and Coins with quests wired", function()
 		local world = fresh()
 		local QuestService = t.requireServer("Services/QuestService")
 		local questNotices: { string } = {}
@@ -970,13 +741,11 @@ return function(t: Context)
 		world.profile.grip.total = target - 1
 		GripService.refreshBaseline(world.player, false)
 		local before = TableUtil.deepCopy(world.profile)
-		GripService.tick(world.player)
-		wait(world, AFK.tickSeconds)
-		expect.equal(GripService.tick(world.player).reason, "paid")
+		expect.equal(GripService.addFromCapsule(world.player, 10), 10)
 		expect.equal(GripService.levelOf(world.player), 5)
-		for _ = 1, 3 do -- more ticks at Lv 5, still on the pad
-			wait(world, AFK.tickSeconds)
-			GripService.tick(world.player)
+		for _ = 1, 3 do -- more capsule squeezes at Lv 5
+			wait(world, 4)
+			GripService.addFromCapsule(world.player, 10)
 		end
 		GripService.refreshBaseline(world.player, true) -- a reload: the silent baseline and the load toasts
 		QuestService.ensureQuests(world.player) -- a load never moves progress either

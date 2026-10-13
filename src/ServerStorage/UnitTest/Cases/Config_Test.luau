@@ -14,8 +14,7 @@
 -- missing or mistyped value becomes a problem line. Robux stays off: no product or pass ids are configured.
 -- Grip rules (§17.9 table, §17.12 Part 3): each of G1, G2, G4, G5, G8 and G10 catches a deliberately broken copy.
 -- Part 5 (§17.12): G3 (a squeeze count since spec 2026-10-12 §12: a 13-a-second cap and a ceiling of 43,199 fail, the
--- limit switched back on passes), G6's Strings names and G9 (percentPerTick 165 and 200, burst 150, perHour 360);
--- plus the Part 5 values of Data, UI.Grip and Config.Grip.
+-- limit switched back on passes) and G6's Strings names; plus the Part 5 values of Data, UI.Grip and Config.Grip.
 -- Feel pass (§18.8, §18.9, §18.10 L1): every §18.8 key holds its DESIGN value, and each rule F1-F11 catches a planted
 -- bad value (among them: a 5° punch, a squeeze total of 20, an unstable wave speed and skinMode = "x").
 -- Part 7 (§17.12 Part 7 L1): G6 wiring (no "trainer" Coin reason; no or a parallel TrainerUpgrade rate), G7 and G7b
@@ -47,6 +46,8 @@
 -- power, duel rewards, refunds and maxGripPerEvent = CP(100) × 2; negatives for G1's rising totals, G5's CP(100) event,
 -- the Capsule block, SquishyPower, a Catalog power override and the refund share. Phase 3: the capsule tick (0.25 s)
 -- and tap push (0.15), with their negatives.
+-- Phase 6 (build plan: slow training removed): no Config.Grip.Afk (G9 went with it) and no slow-training popup values
+-- in UI.Grip; the pad test's padMargin 1 and heightAbove 6 live in Config.Squeeze, which reports values above 2 and 8.
 --
 -- How a "deliberately broken copy" is made without changing Config's API: clone the Shared folder, require one
 -- section module of the clone and change it, then require the clone's Config. Its init receives the changed
@@ -880,9 +881,9 @@ return function(t: Context)
 
 	-- Grip rules, Part 5 (DESIGN §17.9 table; negatives from §17.12 Part 5) ------------------------------------------
 
-	t.test("the shipped config passes G3, G6 and G9", function()
+	t.test("the shipped config passes G3 and G6", function()
 		local problems = Config.validate()
-		for _, rule in { "G3", "G6", "G9" } do
+		for _, rule in { "G3", "G6" } do
 			local lines = ruleLines(problems, rule)
 			if #lines > 0 then
 				error(table.concat(lines, "\n"))
@@ -1063,50 +1064,24 @@ return function(t: Context)
 		expect.truthy(containsAll(problems, { "G6:", "grip.rank.mighty" }))
 	end)
 
-	-- G9 Slow training: <= 25% of holding; the bank always limits nonstop resting and holds <= 20 minutes of ticks.
-	t.test("G9 reports a percentPerTick just above 25% of holding, and 600", function()
-		-- Every click pays: holding repeats every Hold.repeatSeconds, so 25% of holding is maxShareOfActive% × 3600 /
-		-- (repeatSeconds + leadSeconds) squeezes an hour (1800; it was 580.6 with the old 1.5 s cycle, when 165 and 200
-		-- were the planted values).
-		local grip, afk = Config.Grip, Config.Grip.Afk
-		local holdingRate = afk.maxShareOfActive / 100 * 3600 / (grip.Hold.repeatSeconds + grip.Hold.leadSeconds)
-		local justAbove = math.floor(holdingRate * afk.tickSeconds / 36) + 1
-		expect.equal(justAbove, 501)
-		for _, percent in { justAbove, 600 } do
-			local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-				grip.Afk.percentPerTick = percent
-			end)
-			if not containsAll(problems, { "G9:", "percentPerTick" }) then
-				error(`percentPerTick = {percent} was not reported`)
-			end
-		end
+	-- Phase 6 (build plan): slow training is gone, and G9 with it. The pad a squeeze boosts on is still the one under
+	-- the root, with the margins Config.Grip.Afk held, now in Config.Squeeze (with G9's limits: 2 and 8 studs).
+	t.test("slow training is gone: no Config.Grip.Afk or popup values; the pad test lives in Config.Squeeze", function()
+		expect.equal((Config.Grip :: any).Afk, nil)
+		expect.equal((Config.UI.Grip :: any).afkPopupScale, nil)
+		expect.equal((Config.UI.Grip :: any).afkPopupTransparency, nil)
+		expect.equal(Config.Squeeze.padMargin, 1)
+		expect.equal(Config.Squeeze.heightAbove, 6)
+		expect.equal(#ruleLines(Config.validate(), "G9"), 0)
 	end)
 
-	t.test("G9 reports a bank of burst = 150 (more than 20 minutes of ticks)", function()
-		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Afk.burst = 150
+	t.test("validate reports Config.Squeeze pad margins above the limits", function()
+		local margin = validateBrokenCopy(t.Shared, "Squeeze", function(squeeze)
+			squeeze.padMargin = 3
+			squeeze.heightAbove = 9
 		end)
-		expect.truthy(containsAll(problems, { "G9:", "burst" }))
-	end)
-
-	t.test("G9 reports a bank refill of perHour = 360 (it would never limit nonstop resting)", function()
-		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Afk.perHour = 360
-		end)
-		expect.truthy(containsAll(problems, { "G9:", "perHour" }))
-	end)
-
-	t.test("G9 reports a tick under 5 s and pad margins above the limits", function()
-		local tick = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Afk.tickSeconds = 4
-		end)
-		expect.truthy(containsAll(tick, { "G9:", "tickSeconds" }))
-		local margin = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Afk.padMargin = 3
-			grip.Afk.heightAbove = 9
-		end)
-		expect.truthy(containsAll(margin, { "G9:", "padMargin" }))
-		expect.truthy(containsAll(margin, { "G9:", "heightAbove" }))
+		expect.truthy(containsAll(margin, { "Config.Squeeze.padMargin", "studs" }))
+		expect.truthy(containsAll(margin, { "Config.Squeeze.heightAbove", "studs" }))
 	end)
 
 	-- Part 5 values outside the Grip rules.

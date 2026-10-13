@@ -1,5 +1,5 @@
 --!strict
--- GripService (server only). DESIGN §17.2-§17.4, §17.3.1 step 8a, §17.3.4, §17.3.6, §17.6, §17.7, §17.9, §17.10.
+-- GripService (server only). DESIGN §17.2-§17.4, §17.3.1 step 8a, §17.3.4, §17.6, §17.7, §17.9, §17.10.
 -- Grip is a lobby-only stat: never a currency, never sold, never read by duel or matchmaking code (§17.2). This
 -- service is its only runtime writer (§17.2 rule 2: GripService, ProfileSchema's migration and sanitize, and the
 -- Studio DebugHooks through the debug* functions below). There is no Grip remote: Grip comes only from
@@ -7,20 +7,12 @@
 --     Coins, whether or not it paid. One Double Grip point is used when there is one (SqueezeLimit.spend on
 --     grip.rested with Config.Grip.Rested) and the Grip is CapsuleMath.squeezeGrip(profile.capsules) (the power of the
 --     highest capsule level, spec 2026-10-12 §3, §10; Phase 3: the trainer and the pad no longer change it; an unknown
---     tier still pays nothing) × Rested.mult when doubled. The squeeze time is recorded so slow training never stacks
---     with squeezing;
+--     tier still pays nothing) × Rested.mult when doubled;
 --   * addFromCapsule(p, amount) - one capsule squeeze (CapsuleService, Phase 3): `amount` Grip (the capsule's power),
 --     never doubled and never using a Double Grip point (lobby spec 2026-10-11 §5.4), with the same clamps, anomaly
---     counter, toasts and level changes as a squeeze;
---   * the slow-training tick (§17.3.6): one server check per player every Afk.tickSeconds (players spread over the
---     window by userId; nothing the client sends starts or speeds it). A tick pays GripMath.afkGrip(trainer, tier)
---     only when, in this order: Grip and slow training are enabled and the server is not closing; the profile is
---     ready; the character is alive with a root part; not in a match (SD_DuelPhase == ""); the server-side root is
---     over a pad (WorldLayout.stationUnder with padMargin / heightAbove; a station disabled by SqueezeService's
---     stale-lobby check counts as no pad); that pad's tier is unlocked; the player was on the same pad at the
---     previous tick; no accepted squeeze since the previous tick; and the bank (grip.afk, SqueezeLimit.spend with
---     Config.Grip.Afk) has a point. A paid tick adds Grip only: never Coins, quests, stats.squeezes, SD_SqueezeAt,
---     onboarding or Double Grip, and it is never doubled. It reaches the client in the normal StateDelta batch.
+--     counter, toasts and level changes as a squeeze.
+-- Build plan Phase 6 removed slow training (the per-player tick on a pad, its bank grip.afk and Config.Grip.Afk): an
+-- old save's grip.afk is an unknown field nothing reads, and a grip field without it is valid.
 -- Every gain is clamped to Config.Grip.maxGripPerEvent and the total to maxGrip (a clamp logs [SD][abuse]); a
 -- rolling-hour counter per player logs [SD][abuse] above gripAlertPerHour (a log only, §17.9 #12). The profile write
 -- itself (inside DataService.mutate) is arithmetic only; toasts, the level and LevelChanged follow once it is done.
@@ -34,10 +26,8 @@
 -- Grip was ever trained (reading: DESIGN lists the toast, not its trigger); else grip.welcomeBack when it grew by at
 -- least welcomeBackMinGain. "Since the last save" = since the loaded profile's lastSeenAt (§3.9 stamps it on every
 -- save snapshot). grip.intro when the total first rises above 0.
--- disableStation(id): called by SqueezeService's stale-lobby check (SqueezeService sits above this service, so the call
--- goes downward, §2.6); ticks skip that station.
--- Studio only (RunService:IsStudio() and Config.Debug.debugHooks): debugSetTotal / debugSetRested / debugSetAfkBank
--- (DebugHooks setGrip, setRested, setAfkBank), debugTick, debugSetTickSeconds, debugNotices, debugState.
+-- Studio only (RunService:IsStudio() and Config.Debug.debugHooks): debugSetTotal / debugSetRested (DebugHooks setGrip,
+-- setRested), debugNotices, debugState.
 -- Part 7: upgradeTrainer(p, targetLevel, expectedPrice), the TrainerUpgrade RF (§17.5, §17.10), is the only writer of
 -- grip.trainer. In DESIGN order: (2) the argument range, then (4)-(7) replay / trainer.notNext / trainer.locked /
 -- trainer.priceChanged, all through the pure GripMath.upgradeDecision, with (3) the ready profile (data.notReady)
@@ -50,9 +40,10 @@
 -- between the spend and the trainer write. Coins are never added here, and nothing here is sold for Robux (§6.11).
 -- Every Grip write goes through DataService.mutate (the data port), the one way to change a saved profile: a session
 -- that no longer takes changes (not ready, or its final save already took its snapshot) earns nothing.
--- Dependencies are injectable (useDeps) so unit tests run with fake profiles, positions and clocks; players are only
--- used as table keys and handed back to the dependencies, so a test may use plain tables.
--- init() never yields; playerAdded / playerRemoving never yield.
+-- Dependencies are injectable (useDeps) so unit tests run with fake profiles and clocks; players are only used as
+-- table keys and handed back to the dependencies, so a test may use plain tables.
+-- init() never yields; playerAdded / playerRemoving never yield. start() runs a loop that drops the session of a
+-- Player who already left (step).
 
 -- Services
 
@@ -72,10 +63,8 @@ local Signal = require(Shared.Util.Signal)
 local SqueezeLimit = require(Shared.SqueezeLimit)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
-local WorldLayout = require(Shared.World.WorldLayout)
 
 local Services = script.Parent
-local CharacterService = require(Services.CharacterService)
 local DataService = require(Services.DataService)
 local EconomyService = require(Services.EconomyService)
 local NetService = require(Services.NetService)
@@ -91,23 +80,18 @@ export type GripState = Types.GripState
 -- really gained (less than the event only at maxGrip), like SqueezeResult.coins at the Coin cap.
 export type SqueezeGain = { grip: number, gripTotal: number, doubled: boolean }
 
--- One slow-training tick: the Grip it paid and why (reasons: "off", "notReady", "noCharacter", "inMatch", "offPad",
--- "locked", "firstTick", "squeezed", "bankEmpty", "paid").
-export type TickResult = { grip: number, reason: string, station: string? }
-
 export type NoticeArgs = { [string]: string | number }
 export type Notice = { userId: number, code: string, args: NoticeArgs?, at: number }
 
 export type Deps = {
-	clock: () -> number, -- measurement clock (os.clock): tick schedule, squeeze times, the anomaly window
-	unixNow: () -> number, -- persistence clock (os.time): Double Grip and the slow-training bank
+	clock: () -> number, -- measurement clock (os.clock): the anomaly window
+	unixNow: () -> number, -- persistence clock (os.time): Double Grip
 	statusOf: (player: any) -> string, -- DataService status: "loading" | "ready" | "offline" | "readonly"
 	profileOf: (player: any) -> any, -- the profile table in memory (or nil); read only
 	-- DataService.mutate through the data port: runs fn(profile) on a READY session that still takes changes and
 	-- returns (true, fn's result), else (false, reason). Every Grip write goes through it (§3.9: a change made after
 	-- the final save snapshot was taken would be lost, so mutate refuses it and nothing is earned).
 	mutate: (player: any, fn: (profile: any) -> any) -> (boolean, any),
-	rootOf: (player: any) -> (Vector3?, boolean), -- server-side root position, and whether the character is alive
 	duelPhaseOf: (player: any) -> string, -- SD_DuelPhase ("" outside a match)
 	isClosing: () -> boolean,
 	markDirty: (player: any, field: string) -> (),
@@ -128,23 +112,14 @@ export type Deps = {
 export type UpgradeReply = { ok: boolean, data: Types.TrainerUpgradeResult?, reason: string?, charged: boolean? }
 
 -- What one Grip write did (inside DataService.mutate): the gain, i.e. what the total really gained (less than the
--- event only at maxGrip; -1 = the slow-training bank had no point), the total before and after it, and whether
--- Double Grip doubled it.
+-- event only at maxGrip), the total before and after it, and whether Double Grip doubled it.
 type Written = { gain: number, before: number, after: number, doubled: boolean }
 
 type Session = {
 	player: any,
 	level: number?, -- nil until the baseline is set (profile loaded)
-	spread: number, -- 0..1: this player's place in the tick window
-	nextTickAt: number, -- clock
-	lastTickAt: number?, -- clock time of the previous tick
-	lastStation: string?, -- the pad under the root at the previous tick
-	lastSqueezeAt: number?, -- clock time of the last accepted squeeze
 	gained: { [number]: number }, -- minute index -> Grip gained (rolling-hour anomaly counter)
 	alerted: boolean,
-	ticks: number,
-	paidTicks: number,
-	lastReason: string?,
 }
 
 -- Constants
@@ -157,9 +132,7 @@ local STATUS_READONLY = "readonly"
 local SAVE_SOON = "soon"
 local SCHEMA_WITH_GRIP = 2 -- v1 -> v2 added grip (§17.10)
 local MIN_LEVEL = 1
-local LOOP_SECONDS = 0.25 -- how often the tick loop looks for players whose tick is due
-local SPREAD_SLOTS = 100 -- players are spread over the tick window by userId % SPREAD_SLOTS
-local MIN_DEBUG_TICK_SECONDS = 0.5
+local LOOP_SECONDS = 0.25 -- how often the loop drops the sessions of players who left (step)
 local ANOMALY_WINDOW_MINUTES = 60
 local MAX_NOTICES = 100 -- Studio notice log length
 
@@ -199,8 +172,6 @@ local abuseLog = Log.new("abuse")
 local dynamicRequire = require :: (ModuleScript) -> any
 
 local sessions: { [any]: Session } = {}
-local disabledStations: { [string]: boolean } = {}
-local tickOverride: number? = nil
 local notices: { Notice } = {}
 local warned: { [string]: boolean } = {}
 local cleanup: Cleanup.Cleanup? = nil
@@ -262,10 +233,6 @@ local function defaultDeps(): Deps
 		mutate = function(player: any, fn: (profile: any) -> any): (boolean, any)
 			return StateService.dataPort().mutate(player, fn)
 		end,
-		rootOf = function(player: any): (Vector3?, boolean)
-			local root = CharacterService.getRoot(player)
-			return if root then root.Position else nil, CharacterService.isAlive(player)
-		end,
 		duelPhaseOf = duelPhaseAttribute,
 		isClosing = function(): boolean
 			return ShutdownService.isClosing()
@@ -321,10 +288,6 @@ local function debugAllowed(): boolean
 	return RunService:IsStudio() and Config.Debug.debugHooks
 end
 
-local function tickSeconds(): number
-	return tickOverride or Config.Grip.Afk.tickSeconds
-end
-
 local function isFiniteNumber(v: unknown): boolean
 	return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
 end
@@ -333,7 +296,8 @@ local function isLimitState(v: unknown): boolean
 	return type(v) == "table" and type((v :: any).value) == "number" and type((v :: any).at) == "number"
 end
 
--- The profile's grip field, or nil when it is missing or malformed (fail closed: nothing is earned).
+-- The profile's grip field, or nil when it is missing or malformed (fail closed: nothing is earned). Phase 6: an old
+-- save's grip.afk (slow training's bank) is neither needed nor read.
 local function gripOf(profile: any): GripState?
 	if type(profile) ~= "table" then
 		return nil
@@ -344,7 +308,6 @@ local function gripOf(profile: any): GripState?
 		or not isFiniteNumber(grip.total)
 		or not isFiniteNumber(grip.trainer)
 		or not isLimitState(grip.rested)
-		or not isLimitState(grip.afk)
 	then
 		warnOnce("noGripField", "a loaded profile has no valid grip field (ProfileSchema v2); Grip is paused for it")
 		return nil
@@ -374,20 +337,11 @@ local function writeGrip<T>(player: any, fn: (grip: GripState) -> T?): T?
 end
 
 local function newSession(player: any): Session
-	local spread = (math.abs(userIdOf(player)) % SPREAD_SLOTS) / SPREAD_SLOTS
 	return {
 		player = player,
 		level = nil,
-		spread = spread,
-		nextTickAt = deps.clock() + spread * tickSeconds(),
-		lastTickAt = nil,
-		lastStation = nil,
-		lastSqueezeAt = nil,
 		gained = {},
 		alerted = false,
-		ticks = 0,
-		paidTicks = 0,
-		lastReason = nil,
 	}
 end
 
@@ -455,10 +409,6 @@ local function setLevel(session: Session, level: number, silent: boolean)
 	if not quiet then
 		announceLevelUp(session, old :: number, level)
 	end
-end
-
-local function levelFrom(session: Session, grip: GripState): number
-	return session.level or GripMath.levelFor(grip.total)
 end
 
 -- Clamps one gain to [0, maxGripPerEvent] (whole Grip, GripMath.clampEvent). A clamp logs [SD][abuse].
@@ -557,88 +507,6 @@ local function loadToasts(session: Session, grip: GripState, savedAt: unknown)
 	end
 end
 
--- One slow-training tick for a session (the §17.3.6 checks, in order).
-local function tickSession(session: Session): TickResult
-	local player = session.player
-	local now = deps.clock()
-	local previousStation = session.lastStation
-	local previousTickAt = session.lastTickAt
-	session.lastTickAt = now
-	session.lastStation = nil
-	session.ticks += 1
-
-	local function result(grip: number, reason: string, station: string?): TickResult
-		session.lastReason = reason
-		return { grip = grip, reason = reason, station = station }
-	end
-
-	-- 1. enabled, not closing
-	local afk = Config.Grip.Afk
-	if not (Config.Grip.enabled and afk.enabled) or deps.isClosing() then
-		return result(0, "off")
-	end
-	-- 2. profile ready
-	local grip = readyGrip(player)
-	if grip == nil then
-		return result(0, "notReady")
-	end
-	-- 3. alive with a root part
-	local position, alive = deps.rootOf(player)
-	if not alive or position == nil then
-		return result(0, "noCharacter")
-	end
-	-- 4. not in a match (Matched starts at Preparing; Searching is allowed)
-	if deps.duelPhaseOf(player) ~= "" then
-		return result(0, "inMatch")
-	end
-	-- 5. on a pad (server WorldLayout; disabled stations count as none)
-	local station = WorldLayout.stationUnder(position, afk.padMargin, afk.heightAbove)
-	if station == nil or disabledStations[station.id] then
-		return result(0, "offPad")
-	end
-	session.lastStation = station.id
-	-- 6. the pad is unlocked
-	if Config.Grip.Pads[station.tier] == nil or not GripMath.canUseTier(levelFrom(session, grip), station.tier) then
-		return result(0, "locked", station.id)
-	end
-	-- 7. on the same pad at the previous tick
-	if previousStation ~= station.id then
-		return result(0, "firstTick", station.id)
-	end
-	-- 8. no accepted squeeze since the previous tick
-	local squeezedAt = session.lastSqueezeAt
-	if squeezedAt ~= nil and previousTickAt ~= nil and squeezedAt >= previousTickAt then
-		return result(0, "squeezed", station.id)
-	end
-	-- 9. a bank point (the bank and the gain are one write through DataService.mutate)
-	local written = writeGrip(player, function(live: GripState): Written
-		local paid, bank = SqueezeLimit.spend(live.afk, deps.unixNow(), afk)
-		live.afk = bank
-		if not paid then
-			return { gain = -1, before = live.total, after = live.total, doubled = false }
-		end
-		local amount = clampEvent(session, GripMath.afkGrip(live.trainer, station.tier), "slow training")
-		local before = addToTotal(session, live, amount)
-		return { gain = live.total - before, before = before, after = live.total, doubled = false }
-	end)
-	if written == nil then
-		return result(0, "notReady", station.id) -- the session stopped taking changes (e.g. its final save started)
-	elseif written.gain < 0 then
-		return result(0, "bankEmpty", station.id)
-	end
-	deps.markDirty(player, FIELD)
-	session.paidTicks += 1
-	afterGain(session, written.before, written.after, written.gain)
-	return result(written.gain, "paid", station.id)
-end
-
-local function reschedule(now: number)
-	local interval = tickSeconds()
-	for _, session in sessions do
-		session.nextTickAt = now + session.spread * interval
-	end
-end
-
 -- Public: queries -------------------------------------------------------------------------------------------------------
 
 -- The player's Grip Level (1..maxLevel): the session baseline, else computed from a ready or read-only profile, else 1.
@@ -665,18 +533,12 @@ function GripService.canUseTier(player: any, tier: number): boolean
 	return GripMath.canUseTier(GripService.levelOf(player), tier)
 end
 
--- True when SqueezeService's stale-lobby check disabled this station.
-function GripService.isStationDisabled(stationId: string): boolean
-	return disabledStations[stationId] == true
-end
-
 -- Public: writers -------------------------------------------------------------------------------------------------------
 
 -- Step 8a of an accepted squeeze at a station of `tier` (SqueezeService has checked everything else). Returns the
 -- Grip given, the new total and whether Double Grip doubled it. Nothing is given unless the profile is ready.
 function GripService.addFromSqueeze(player: any, tier: number): SqueezeGain
 	local session = ensureSession(player)
-	session.lastSqueezeAt = deps.clock()
 	local grip = readyGrip(player)
 	if grip == nil then
 		return { grip = 0, gripTotal = 0, doubled = false }
@@ -710,7 +572,7 @@ function GripService.addFromSqueeze(player: any, tier: number): SqueezeGain
 end
 
 -- One capsule squeeze (CapsuleService, Phase 3): `amount` Grip, never doubled (lobby spec 2026-10-11 §5.4) and not an
--- own squeeze (slow training's squeeze check ignores it). Returns what the total really gained (0 unless ready).
+-- own squeeze. Returns what the total really gained (0 unless ready).
 function GripService.addFromCapsule(player: any, amount: number): number
 	local session = ensureSession(player)
 	local grip = readyGrip(player)
@@ -804,16 +666,6 @@ function GripService.upgradeTrainer(player: any, targetLevel: any, expectedPrice
 	return NetService.ok(result)
 end
 
--- Fail closed for a station whose lobby instance disagrees with WorldLayout (SqueezeService's stale-lobby check):
--- slow-training ticks skip it from now on.
-function GripService.disableStation(stationId: string)
-	if not disabledStations[stationId] then
-		disabledStations[stationId] = true
-		-- info: the caller (SqueezeService's stale-lobby check) already warns with the reason
-		log:info(`station {stationId} disabled: no slow training there until the lobby is rebuilt`)
-	end
-end
-
 -- Sets the level baseline from the loaded profile, silently (no toasts or broadcast). With `withToasts` (a
 -- DataService.Loaded event) the load toasts follow. Profiles that are not ready or read-only are left alone.
 function GripService.refreshBaseline(player: any, withToasts: boolean?)
@@ -833,28 +685,12 @@ function GripService.refreshBaseline(player: any, withToasts: boolean?)
 	end
 end
 
--- Runs one slow-training tick for the player now (the loop does this every tickSeconds). Returns what it paid.
-function GripService.tick(player: any): TickResult
-	return tickSession(ensureSession(player))
-end
-
--- Runs the ticks that are due at `now` (default deps.clock()). Called by the loop every LOOP_SECONDS. A session of a
--- Player who already left (one a late squeeze re-created after playerRemoving) is dropped instead.
-function GripService.step(now: number?)
-	local t = if now ~= nil then now else deps.clock()
-	local interval = tickSeconds()
-	for key, session in table.clone(sessions) do
+-- Drops the session of a Player who already left (a late squeeze, or a final save's status change through
+-- refreshBaseline, re-created it after playerRemoving). Called by the loop every LOOP_SECONDS.
+function GripService.step()
+	for key in table.clone(sessions) do
 		if typeof(key) == "Instance" and (key :: Instance).Parent == nil then
 			sessions[key] = nil
-		elseif t >= session.nextTickAt then
-			session.nextTickAt += interval
-			if session.nextTickAt <= t then
-				session.nextTickAt = t + interval
-			end
-			local ok, err = pcall(tickSession, session)
-			if not ok then
-				log:error(`slow-training tick failed for user {userIdOf(session.player)}:`, err)
-			end
 		end
 	end
 end
@@ -881,66 +717,23 @@ function GripService.debugSetTotal(player: any, total: unknown, silent: boolean?
 	return true, nil
 end
 
-local function debugSetLimit(
-	player: any,
-	value: unknown,
-	key: "rested" | "afk",
-	cfg: { perHour: number, burst: number }
-): (boolean, string?)
+-- setRested: Double Grip points, clamped to [0, Rested.burst], refilling from now.
+function GripService.debugSetRested(player: any, value: unknown): (boolean, string?)
 	if not debugAllowed() then
 		return false, "Studio only"
 	end
 	if type(value) ~= "number" or value ~= value then
 		return false, "value must be a number"
 	end
-	local state: LimitState = { value = math.clamp(value, 0, cfg.burst), at = deps.unixNow() }
+	local state: LimitState = { value = math.clamp(value, 0, Config.Grip.Rested.burst), at = deps.unixNow() }
 	local written = writeGrip(player, function(live: GripState): boolean
-		if key == "rested" then
-			live.rested = state
-		else
-			live.afk = state
-		end
+		live.rested = state
 		return true
 	end)
 	if written == nil then
 		return false, "profile not ready"
 	end
 	deps.markDirty(player, FIELD)
-	return true, nil
-end
-
--- setRested: Double Grip points, clamped to [0, Rested.burst], refilling from now.
-function GripService.debugSetRested(player: any, value: unknown): (boolean, string?)
-	return debugSetLimit(player, value, "rested", Config.Grip.Rested)
-end
-
--- setAfkBank: slow-training bank points, clamped to [0, Afk.burst], refilling from now.
-function GripService.debugSetAfkBank(player: any, value: unknown): (boolean, string?)
-	return debugSetLimit(player, value, "afk", Config.Grip.Afk)
-end
-
--- Forces one slow-training tick now (L3: two calls on the same pad pay once, with no squeeze in between).
-function GripService.debugTick(player: any): TickResult?
-	if not debugAllowed() then
-		return nil
-	end
-	return GripService.tick(player)
-end
-
--- Overrides the tick interval (Studio tests; at least MIN_DEBUG_TICK_SECONDS; a very large value pauses the loop).
--- nil restores Config.Grip.Afk.tickSeconds. Every session is rescheduled from now.
-function GripService.debugSetTickSeconds(seconds: unknown): (boolean, string?)
-	if not debugAllowed() then
-		return false, "Studio only"
-	end
-	if seconds == nil then
-		tickOverride = nil
-	elseif type(seconds) == "number" and seconds == seconds and seconds >= MIN_DEBUG_TICK_SECONDS then
-		tickOverride = seconds
-	else
-		return false, `seconds must be nil or a number >= {MIN_DEBUG_TICK_SECONDS}`
-	end
-	reschedule(deps.clock())
 	return true, nil
 end
 
@@ -961,22 +754,11 @@ function GripService.debugState(): { [string]: any }
 		count += 1
 		players[tostring(userIdOf(session.player))] = {
 			level = session.level,
-			lastStation = session.lastStation,
-			lastReason = session.lastReason,
-			ticks = session.ticks,
-			paidTicks = session.paidTicks,
 			alerted = session.alerted,
 		}
 	end
-	local disabled: { string } = {}
-	for id in disabledStations do
-		table.insert(disabled, id)
-	end
-	table.sort(disabled)
 	return {
 		sessions = count,
-		tickSeconds = tickSeconds(),
-		disabledStations = disabled,
 		players = players,
 	}
 end
@@ -994,12 +776,10 @@ function GripService.useDeps(overrides: { [string]: any }?)
 	deps = fresh
 end
 
--- Forgets every session, disabled station, notice and debug override (tests; not called by the bootstrap).
+-- Forgets every session and notice (tests; not called by the bootstrap).
 function GripService.reset()
 	table.clear(sessions)
-	table.clear(disabledStations)
 	table.clear(notices)
-	tickOverride = nil
 end
 
 -- Lifecycle -----------------------------------------------------------------------------------------------------------

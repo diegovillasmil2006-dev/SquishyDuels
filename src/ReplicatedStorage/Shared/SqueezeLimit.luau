@@ -1,12 +1,12 @@
 --!strict
--- SqueezeLimit: pure math for a pool of points that refills with time (DESIGN §6.3, §17.3.4, §17.3.6). Shared
+-- SqueezeLimit: pure math for a pool of points that refills with time (DESIGN §6.3, §17.3.4). Shared
 -- (server SqueezeService, GripService, ProfileSchema; client limit bar, Grip card and panel). No instances, no yields,
 -- no side effects; time is injected (`now` = os.time() seconds for the profile timers).
 --
--- One model, three uses, each a `{ value, at }` state in the profile:
+-- One model, two uses (build plan Phase 6 removed the third, slow training's bank), each a `{ value, at }` state in
+-- the profile:
 --   * the squeeze Coins limit   profile.squeezeLimit  Config.Economy.SqueezeLimit  (600/h, burst 300)
 --   * Double Grip               profile.grip.rested   Config.Grip.Rested           (240/h, burst 1200)
---   * the slow-training bank    profile.grip.afk      Config.Grip.Afk              (180/h, burst 120)
 -- Points refill continuously at perHour (online and offline) up to burst; each use takes 1 point. New accounts start
 -- full (`full`). These are timers, never currencies: nothing sells, grants or refills them (§6.3, §17.2 rule 2).
 -- `enabled` is read by the callers, never here: a disabled Coins limit means every squeeze pays, while a disabled
@@ -16,7 +16,7 @@
 --   SqueezeLimit.current(s, now, cfg) -> number          points now (may be fractional), in [0, burst]
 --   SqueezeLimit.spend(s, now, cfg)   -> (paid, State)   paid when a whole point was there; the new state to store
 --   SqueezeLimit.full(now, cfg)       -> State           a full pool (new accounts, migration defaults)
--- `cfg` is any table with `perHour` and `burst` (the three Config blocks above).
+-- `cfg` is any table with `perHour` and `burst` (the two Config blocks above).
 --
 -- Readings (DESIGN gives the formulas of §6.3; these only make them safe on odd input):
 --   * A non-finite or negative `value` counts as 0 and a non-finite `at` as `now` (fail closed; ProfileSchema also

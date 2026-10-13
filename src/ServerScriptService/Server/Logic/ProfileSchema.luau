@@ -9,7 +9,9 @@
 -- (§3.3 step 2), and a server without it keeps it as an unknown field, so no rolling-deploy READONLY (§17.10). A
 -- version (and a frozen MIGRATIONS step) is only for a transform of stored data, like v1 -> v2's head start. That is
 -- how `samePair = {}` (the same-pair record, §6.7) joined schema 2, and `capsules` (progression spec 2026-10-12 §14:
--- nobody but the two owners has played yet, so there are no old saves to fix).
+-- nobody but the two owners has played yet, so there are no old saves to fix). The same way back: build plan Phase 6
+-- removed slow training, so `grip.afk` (its bank) left defaults and sanitize with no new version; an old save keeps it
+-- as an unknown field nothing reads, and the frozen v1 -> v2 step still writes it.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -24,7 +26,7 @@
 --        starter; quests whose template no longer exists dropped (only when opts.questExists is given: QuestDefs lands
 --        in Part 7); logs trimmed to Config.Data.caps (newest kept); settings clamped; Grip (§17.9 #6): total floored
 --        and clamped to [0, Grip.maxGrip] (non-finite -> 0), trainer an integer in [1, #Grip.Trainer], rested.value in
---        [0, Rested.burst], afk.value in [0, Afk.burst], a non-finite `at` or one later than now + 300 -> now;
+--        [0, Rested.burst], a non-finite `at` or one later than now + 300 -> now;
 --        samePair (§6.7, fails closed): not a table -> {}; a key that is not a whole-number userId string
 --        (DuelRewards.samePairKey) or a value that is not a table is dropped; in a list only finite numbers stay (a
 --        non-array table is rebuilt from them); a time later than now + 300 becomes now (reading: clamped, not
@@ -39,7 +41,7 @@
 --
 -- Readings (sanitize; wrong TYPES can only come from a bug or a hand edit, reconcile never replaces a present value):
 --   * a field of the wrong type is replaced by its default; a malformed owned entry stays owned as {at = now,
---     src = "grant"}; a non-finite rate-limit value (squeezeLimit, grip.rested, grip.afk) becomes 0, which time
+--     src = "grant"}; a non-finite rate-limit value (squeezeLimit, grip.rested) becomes 0, which time
 --     refills (fail closed);
 --   * idempotency flags fail closed: a quest's or starter task's `claimed` that is not a boolean counts as claimed;
 --     a non-finite daily.lastClaimDay becomes today (no second claim today);
@@ -428,7 +430,6 @@ function ProfileSchema.defaults(now: number): Profile
 			total = 0,
 			trainer = 1,
 			rested = { value = Config.Grip.Rested.burst, at = now },
-			afk = { value = Config.Grip.Afk.burst, at = now },
 		},
 		samePair = {},
 		-- Spec 2026-10-12 §7: one capsule free, Kitty Bread at Lv 1.
@@ -619,7 +620,6 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 	end
 	fixInt(grip, "trainer", 1, #Config.Grip.Trainer, 1, "grip.trainer", problems)
 	fixTimer(grip, "rested", Config.Grip.Rested.burst, now, "grip.rested", problems)
-	fixTimer(grip, "afk", Config.Grip.Afk.burst, now, "grip.afk", problems)
 
 	-- Same-pair record (§6.7, §12 #15).
 	fixSamePair(d, now, problems)

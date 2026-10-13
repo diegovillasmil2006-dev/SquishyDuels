@@ -32,12 +32,10 @@
 --   SD_DebugServer:Invoke("setGrip", userId, total, silent?)  GripService.debugSetTotal (a level change toasts like a
 --                                                   real gain unless silent)
 --   SD_DebugServer:Invoke("setRested", userId, v)   Double Grip points (GripService.debugSetRested)
---   SD_DebugServer:Invoke("setAfkBank", userId, v)  slow-training bank points (GripService.debugSetAfkBank)
 --   SD_DebugServer:Invoke("setSqueezeLimit", userId, v)  squeeze Coins limit points (SqueezeService.debugSetLimit;
 --                                                   dormant since spec 2026-10-11 §5: the hourly limit is off, so an
 --                                                   empty limit still pays every squeeze)
---   SD_DebugServer:Invoke("slowTick", userId)       one slow-training tick now: { grip, reason, station }
---   SD_DebugServer:Invoke("tickSeconds", s?)        the slow-training tick interval (nil = Config; large = paused)
+--   (build plan Phase 6: setAfkBank, slowTick and tickSeconds went with slow training)
 --   SD_DebugServer:Invoke("gripLog", clear?)        the Grip toasts sent this session { userId, code, args, at }
 --   SD_DebugServer:Invoke("grip" | "squeeze")       GripService.debugState / SqueezeService.counts (with
 --                                                   squeezeAlerts, the paid-squeeze alerts logged, spec 2026-10-12 §12)
@@ -390,36 +388,12 @@ local function setRested(userId: unknown, value: unknown): Reply
 	return fromGrip(GripService.debugSetRested(player, value))
 end
 
-local function setAfkBank(userId: unknown, value: unknown): Reply
-	local player, problem = playerOf(userId)
-	if player == nil then
-		return problem :: Reply
-	end
-	return fromGrip(GripService.debugSetAfkBank(player, value))
-end
-
 local function setSqueezeLimit(userId: unknown, value: unknown): Reply
 	local player, problem = playerOf(userId)
 	if player == nil then
 		return problem :: Reply
 	end
 	return fromGrip(SqueezeService.debugSetLimit(player, value))
-end
-
-local function slowTick(userId: unknown): Reply
-	local player, problem = playerOf(userId)
-	if player == nil then
-		return problem :: Reply
-	end
-	local result = GripService.debugTick(player)
-	if result == nil then
-		return { ok = false, error = "Studio only" }
-	end
-	return { ok = true, grip = result.grip, reason = result.reason, station = result.station }
-end
-
-local function tickSeconds(seconds: unknown): Reply
-	return fromGrip(GripService.debugSetTickSeconds(seconds))
 end
 
 local function gripLog(clear: unknown): Reply
@@ -626,10 +600,7 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 	grant = grant,
 	setGrip = setGrip,
 	setRested = setRested,
-	setAfkBank = setAfkBank,
 	setSqueezeLimit = setSqueezeLimit,
-	slowTick = slowTick,
-	tickSeconds = tickSeconds,
 	gripLog = gripLog,
 	grip = function(): Reply
 		return { ok = true, grip = GripService.debugState() }

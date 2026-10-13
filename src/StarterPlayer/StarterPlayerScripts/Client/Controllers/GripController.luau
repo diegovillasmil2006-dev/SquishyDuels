@@ -1,13 +1,14 @@
 --!strict
 -- GripController (client only). DESIGN §17.7 (UI), §17.2 rule 1 (no Grip in duels), §17.3.4 (Double Grip),
--- §17.3.6 (slow training), §17.5 (next-goal rule), §17.6 (gates and pod signs), §11.4, §11.6.
+-- §17.5 (next-goal rule), §17.6 (gates and pod signs), §11.4, §11.6. Build plan Phase 6: slow training is gone (no
+-- popup, help line or bank line).
 -- Grip is a lobby-only stat: nothing here sends anything to the server (there is no Grip remote, §17.2 rule 5).
 --
--- * State: StateController's `grip` field {total, trainer, rested {value, at}, afk {value, at}} (§17.10). Level,
---   rank, the bar, the Double Grip minutes and the slow-training minutes come from the same pure GripMath and
+-- * State: StateController's `grip` field {total, trainer, rested {value, at}} (§17.10). Level, rank, the bar and the
+--   Double Grip minutes come from the same pure GripMath and
 --   SqueezeLimit the server uses; timers are read against Workspace:GetServerTimeNow() (unix seconds, the scale of the
 --   server's os.time(): reading). The first grip state of the session is a silent baseline (§17.7 "Load-time level
---   jumps"): no toast, no waypoint, no slow-training popup. So is every later full state, e.g. a profile recovered
+--   jumps"): no toast, no waypoint. So is every later full state, e.g. a profile recovered
 --   after an OFFLINE start replacing the defaults (§3.13; StateController.isApplyingFull, gripChange).
 -- * Level source for WorldBinder (§17.6): setGripSource({level, changed = LevelChanged}) drives the local jelly gates
 --   and the pod signs' `Live` line. Before the first grip state the level is nil, so gates stay open.
@@ -39,8 +40,8 @@
 --   Biscuit inset, "Squeeze pads" (4 foam cards: name, grip.padNeeds, the perks line (padPerks: grip.padPerks, or
 --   grip.padPerksBase on the Foam Mats card, which give no boost since spec 2026-10-11 §5), Open (Mint) / Locked
 --   (Lilac, with the lock shape) as a chip, [Show me]: the only waypoint a player starts), the trainer card (Part 7,
---   below), the help lines (grip.restedHelp, grip.limitNote: where squeezing pays now that the hourly limit is off,
---   grip.afkHelp, grip.afkBank) in a second inset and the footer grip.duelNote.
+--   below), the help lines (grip.restedHelp, grip.limitNote: where squeezing pays now that the hourly limit is off)
+--   in a second inset and the footer grip.duelNote.
 --   No Coin Store link and no Robux upsell anywhere (§17.2 rule 4).
 -- * Trainer card (Part 7, §17.5, §17.7; shown once Remotes.SPEC.TrainerUpgrade exists, trainerAvailable()):
 --   grip.trainerHeader, the current trainer (grip.trainerNow) and the next one (grip.trainerNext), a
@@ -64,12 +65,6 @@
 --   layout's new goal, goes through NotifyController.show, so it gets the same hold-back. A newly unlocked pad
 --   (GripMath.unlocks on a level change after the baseline) starts the one automatic waypoint for
 --   Config.Grip.unlockWaypointSeconds (§17.7).
--- * Slow-training popup (§17.10): when grip.total rises and no SqueezeResult (SqueezeController.ResultReceived,
---   gripTotal) explains it within AFK_EXPLAIN_SECONDS, the unexplained part floats up from the held squishy as
---   grip.afkPopup (SqueezeController.popup, kind "afk"; lobby HUD spec 2026-10-11 §2: the squeeze panel is gone), at
---   most once per half tick. Phase 5: the local player's capsules pay Grip too (CapsuleService: CP of the level per
---   squeeze, counted in the Player attribute SD_Squeezes<slot>), so each rise of an SD_Squeezes<slot> credits
---   capsuleGrip of it, taken off the popup (afkGain); an accepted own squeeze drops the credit (no slow training then).
 -- * Idle card (modal "gripIdle"): Players.LocalPlayer.Idled with t >= Config.Grip.idleReminderSeconds (900) opens
 --   grip.idleTitle / grip.idleBody / [grip.idleButton] in the lobby. It is a modal, so ControlsController.block stops
 --   any hold-to-squeeze; [Keep going] only closes it (it never restarts a hold, and nothing simulates input).
@@ -117,7 +112,6 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
@@ -151,7 +145,6 @@ local Waypoint = require(Client.UI.Waypoint)
 local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
-local SqueezeController = require(script.Parent.SqueezeController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
 local WorldBinder = require(script.Parent.WorldBinder)
@@ -160,11 +153,11 @@ local WorldBinder = require(script.Parent.WorldBinder)
 
 export type Timer = { value: number, at: number }
 -- The client's view of the `grip` state field (§17.10), normalized.
-export type GripView = { total: number, trainer: number, rested: Timer?, afk: Timer? }
+export type GripView = { total: number, trainer: number, rested: Timer? }
 
--- What one new grip state does (gripChange): a silent baseline, whether LevelChanged fires, the total the
--- slow-training popup check starts from, and the pad tier whose waypoint to show.
-export type GripChange = { baseline: boolean, fireLevel: boolean, afkFrom: number?, waypointTier: number? }
+-- What one new grip state does (gripChange): a silent baseline, whether LevelChanged fires and the pad tier whose
+-- waypoint to show.
+export type GripChange = { baseline: boolean, fireLevel: boolean, waypointTier: number? }
 
 -- Texts and numbers of the HUD card for one state.
 export type CardModel = {
@@ -256,7 +249,6 @@ type PanelRefs = {
 	chipLabel: TextLabel,
 	goalLabel: TextLabel,
 	badge: Chip.Chip,
-	afkBank: TextLabel,
 	rows: { PadRow },
 	close: Button.Button,
 	trainer: TrainerRefs,
@@ -267,7 +259,6 @@ type PanelRefs = {
 local GRIP = Config.Grip
 local UI_GRIP = Config.UI.Grip
 local PADS = GRIP.Pads
-local AFK = GRIP.Afk
 local RESTED = GRIP.Rested
 local SCREEN_PANEL = "grip"
 local SCREEN_IDLE = "gripIdle"
@@ -281,7 +272,6 @@ local MODAL_GUI = "SD_Modal"
 local FALLBACK_COLUMN = "Hud_Left" -- HudController's column name, used only when HudController has none
 local ATTR_DUEL_PHASE = "SD_DuelPhase"
 local ATTR_MATCH_ID = "SD_MatchId"
-local ATTR_SQUEEZES = "SD_Squeezes" -- .. slot: the local player's capsule squeezes this session (CapsuleService)
 -- reading (DESIGN gives the content, not the sizes): the HUD column and card in base px under the SD_Hud UIScale
 -- (shared with HudFormat's column plan, which sizes the left side from the same numbers).
 local COLUMN = HudFormat.COLUMN
@@ -312,11 +302,6 @@ local PAD_CARD_BOTTOM = CARD_BANDS.bevel + CARD_BANDS.drop + Theme.Padding.small
 local IDLE_CARD_WIDTH = 440
 local LOCK_PX = 16
 local TIMER_REFRESH_SECONDS = 5 -- the minute texts change slowly (Double Grip refills 4 points a minute)
--- reading: how long a grip.total rise waits for the SqueezeResult that would explain it (the server sends both in the
--- same frame; the window only covers network jitter).
-local AFK_EXPLAIN_SECONDS = 0.35
--- §17.7 "at most once per tick"; reading: half a tick, so network jitter between two ticks never drops a popup.
-local AFK_POPUP_MIN_GAP = AFK.tickSeconds / 2
 -- §18.5.1 A9: the level label pops 1.25 -> 1 (Back Out, 300 ms). Reading: §18.8 gives no Config key for it.
 local LEVEL_POP = {
 	from = 1.25,
@@ -351,11 +336,6 @@ local warnedKeys: { [string]: boolean } = {}
 local view: GripView? = nil
 local level: number? = nil
 local baselineTotal: number? = nil
-local explainedTotal = 0
-local capsuleCredit = 0 -- capsule Grip seen since the last popup check (Phase 5)
-local capsuleSqueezes: { [number]: number } = {} -- slot -> the last SD_Squeezes<slot> seen
-local afkPendingFrom: number? = nil
-local lastAfkPopupAt = -math.huge
 local lastGoalKey: string? = nil
 local goalBaselineSet = false -- the session's first goal was seen (it is never toasted)
 local toastedGoals: { [string]: boolean } = {} -- goals already seen this session (each new goal is toasted once)
@@ -1185,8 +1165,6 @@ local function buildPanel(parent: Instance): GuiObject
 		Parent = help,
 	})
 	caption({ Name = "LimitNote", LayoutOrder = 2, Text = text("grip.limitNote"), Parent = help })
-	caption({ Name = "AfkHelp", LayoutOrder = 3, Text = text("grip.afkHelp"), Parent = help })
-	local afkBank = Theme.label({ Name = "AfkBank", LayoutOrder = 4, Parent = help }, "Small", Enum.FontWeight.Bold)
 	caption({ Name = "DuelNote", LayoutOrder = nextOrder(), Text = text("grip.duelNote"), Parent = scroll })
 
 	panelRefs = {
@@ -1202,7 +1180,6 @@ local function buildPanel(parent: Instance): GuiObject
 		chipLabel = chipLabel,
 		goalLabel = goalLabel,
 		badge = badge,
-		afkBank = afkBank,
 		rows = rows,
 		close = close,
 		trainer = trainer,
@@ -1322,7 +1299,6 @@ local function refreshPanel()
 	setLabel(refs.chipLabel, model.chip)
 	setLabel(refs.goalLabel, model.goal)
 	refs.badge.root.Visible = model.badge
-	setLabel(refs.afkBank, GripController.afkBankText(v, serverNow()))
 	for _, row in refs.rows do
 		local pad = PADS[row.tier]
 		local open = GripMath.canUseTier(model.level, row.tier)
@@ -1419,23 +1395,6 @@ end
 
 -- State -------------------------------------------------------------------------------------------------------------
 
-local function checkAfk()
-	local from = afkPendingFrom
-	afkPendingFrom = nil
-	local v = view
-	if from == nil or v == nil then
-		return
-	end
-	local gain, credit = GripController.afkGain(from, v.total, explainedTotal, capsuleCredit)
-	capsuleCredit = credit
-	explainedTotal = math.max(explainedTotal, v.total)
-	if gain <= 0 or suppressed() or os.clock() - lastAfkPopupAt < AFK_POPUP_MIN_GAP then
-		return
-	end
-	lastAfkPopupAt = os.clock()
-	SqueezeController.popup(text("grip.afkPopup", { n = Format.coins(gain) }), "afk")
-end
-
 local function onGrip(raw: any)
 	local newView = GripController.normalize(raw)
 	local old = view
@@ -1459,11 +1418,6 @@ local function onGrip(raw: any)
 		-- §17.7: the first state of the session, and a full state that replaced the profile (one recovered after an
 		-- OFFLINE start, §3.13), are a silent baseline: that Grip was loaded, not earned.
 		baselineTotal = newView.total
-		explainedTotal = newView.total
-		afkPendingFrom = nil
-	elseif change.afkFrom ~= nil and afkPendingFrom == nil then
-		afkPendingFrom = change.afkFrom
-		task.delay(AFK_EXPLAIN_SECONDS, checkAfk)
 	end
 	if change.fireLevel then
 		GripController.LevelChanged:fire(newLevel, oldLevel)
@@ -1516,57 +1470,32 @@ function GripController.normalize(raw: unknown): GripView?
 		total = GripMath.clampTotal(g.total),
 		trainer = if finite(g.trainer) then math.clamp(math.floor(g.trainer), 1, #GRIP.Trainer) else 1,
 		rested = timer(g.rested),
-		afk = timer(g.afk),
 	}
-end
-
--- The Grip that rose from `oldTotal` to `newTotal` and that no SqueezeResult explains (`explainedTotal` = the
--- highest gripTotal a SqueezeResult reported): slow-training Grip (§17.10). Never negative. Phase 5: less the capsule
--- Grip credited since the last check (`capsuleCredit`); returns that gain and the credit it did not use.
-function GripController.afkGain(
-	oldTotal: number,
-	newTotal: number,
-	explainedTotal: number,
-	capsuleCredit: number?
-): (number, number)
-	local gain = math.max(0, newTotal - math.max(oldTotal, explainedTotal))
-	local used = math.min(gain, math.max(0, capsuleCredit or 0))
-	return gain - used, math.max(0, capsuleCredit or 0) - used
-end
-
--- Phase 5: the Grip `squeezes` squeezes of the local player's capsule `slot` paid (CapsuleService: CP of its level per
--- squeeze); 0 for a capsule that holds no squishy (it never squeezes), a locked slot or anything unknown.
-function GripController.capsuleGrip(capsules: any?, slot: number, squeezes: number): number
-	local capsule = if type(capsules) == "table" and type(capsules.list) == "table" then capsules.list[slot] else nil
-	if type(capsule) ~= "table" or type(capsule.squishyId) ~= "string" or not (squeezes > 0) then
-		return 0
-	end
-	return squeezes * (CapsuleMath.power(capsule.level) or 0)
 end
 
 -- What one new grip state does (§17.7, §17.10). `hadBaseline` = a grip state was already seen this session;
 -- `fullApply` = it came in a full Snapshot / StateDelta (StateController.isApplyingFull). The session's first state and
 -- every full state are a silent baseline ("Load-time level jumps"): the Grip was loaded, not earned (e.g. a profile
--- recovered after an OFFLINE start, §3.13), so no slow-training popup, no unlock waypoint; LevelChanged still fires
--- for the first state and for a level that moved, so WorldBinder's gates and pod signs follow. Otherwise a rise of the
--- total starts the slow-training popup check from `oldTotal`, and a level change points the waypoint at the best pad
--- it opened.
+-- recovered after an OFFLINE start, §3.13), so no unlock waypoint; LevelChanged still fires
+-- for the first state and for a level that moved, so WorldBinder's gates and pod signs follow. Otherwise a level change
+-- points the waypoint at the best pad it opened.
+-- shortcut: the two totals are unused since slow training went (Phase 6); drop them with the callers' arguments the
+-- next time gripChange changes.
 function GripController.gripChange(
 	hadBaseline: boolean,
 	fullApply: boolean,
-	oldTotal: number?,
-	newTotal: number,
+	_oldTotal: number?,
+	_newTotal: number,
 	oldLevel: number?,
 	newLevel: number
 ): GripChange
 	local levelMoved = newLevel ~= oldLevel
 	if not hadBaseline or fullApply then
-		return { baseline = true, fireLevel = not hadBaseline or levelMoved, afkFrom = nil, waypointTier = nil }
+		return { baseline = true, fireLevel = not hadBaseline or levelMoved, waypointTier = nil }
 	end
 	local change: GripChange = {
 		baseline = false,
 		fireLevel = levelMoved,
-		afkFrom = if oldTotal ~= nil and newTotal > oldTotal then oldTotal else nil,
 		waypointTier = nil,
 	}
 	if levelMoved then
@@ -1702,16 +1631,6 @@ function GripController.restedChip(v: GripView, now: number): string?
 	end
 	local minutes = GripMath.restedMinutes(SqueezeLimit.current(rested, now, RESTED))
 	return if minutes > 0 then text("grip.restedChip", { minutes = minutes }) else nil
-end
-
--- "Slow training at full speed: about {minutes} min left" for a Grip state at server time `now`, or nil while slow
--- training is off or the bank is unknown.
-function GripController.afkBankText(v: GripView, now: number): string?
-	local afk = v.afk
-	if not AFK.enabled or afk == nil then
-		return nil
-	end
-	return text("grip.afkBank", { minutes = GripMath.afkMinutes(SqueezeLimit.current(afk, now, AFK)) })
 end
 
 -- The HUD card's texts for a Grip state at server time `now` (§17.7): level and rank (together, and the rank alone for
@@ -1922,13 +1841,6 @@ function GripController.init()
 	c:add(StateController.changed("dataStatus"):connect(refreshPanel))
 	c:add(NotifyController.route(NOTICE_TRAINER_BOUGHT, onTrainerBought))
 	c:add(StateController.LobbyLockChanged:connect(onLobbyLock))
-	c:add(SqueezeController.ResultReceived:connect(function(result: SqueezeController.Result)
-		local total = result.gripTotal
-		if result.ok and total then
-			explainedTotal = math.max(explainedTotal, total)
-			capsuleCredit = 0 -- an own squeeze: no slow training this tick, and the total above has the capsules' Grip
-		end
-	end))
 	c:add(UIController.LayoutChanged:connect(function()
 		refreshCard()
 		refreshPanel()
@@ -1948,9 +1860,7 @@ function GripController.init()
 		WorldBinder.setGripSource(nil)
 		clearWaypoint()
 		view, level, baselineTotal = nil, nil, nil
-		explainedTotal, afkPendingFrom, lastGoalKey, goalBaselineSet = 0, nil, nil, false
-		capsuleCredit = 0
-		table.clear(capsuleSqueezes)
+		lastGoalKey, goalBaselineSet = nil, false
 		trainerPending, heldTrainerToast, panelRefs = false, nil, nil
 		if cardPresent then
 			cardPresent = false
@@ -1980,20 +1890,6 @@ function GripController.start()
 		end))
 		c:add(player:GetAttributeChangedSignal(ATTR_DUEL_PHASE):Connect(onLobbyLock))
 		c:add(player:GetAttributeChangedSignal(ATTR_MATCH_ID):Connect(onLobbyLock))
-		-- Phase 5: the capsules' Grip is credited as it is paid, so the slow-training popup never shows it.
-		for slot = 1, #Config.Grip.Capsule.slotPrices do
-			local name = ATTR_SQUEEZES .. slot
-			local first = player:GetAttribute(name)
-			capsuleSqueezes[slot] = if finite(first) then first :: number else 0
-			c:add(player:GetAttributeChangedSignal(name):Connect(function()
-				local value = player:GetAttribute(name)
-				if finite(value) then
-					local added = (value :: number) - (capsuleSqueezes[slot] or 0)
-					capsuleSqueezes[slot] = value :: number
-					capsuleCredit += GripController.capsuleGrip(StateController.get("capsules"), slot, added)
-				end
-			end))
-		end
 	end
 	c:add(task.spawn(function()
 		while true do

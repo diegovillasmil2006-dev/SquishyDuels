@@ -31,7 +31,8 @@
 --   * labelShownFor: the floating label shows on the held squishy in the lobby, hidden in a match, while the lobby is
 --     locked, while not holding, while a screen is open and in a first-person look; labelSize: the nameplates' chip
 --     around its text;
---   * lineLiftPx: a reply's lines start above the label (Coins, then Grip, then slow training one step higher each).
+--   * lineLiftPx: a reply's lines start above the label (Coins, then Grip one step higher); slow training is gone
+--     (build plan Phase 6): no popup() line, and the "+N" pool holds a share for Coins and one for Grip.
 -- Feel pass (DESIGN §18.5.1 A1, A3, A4):
 --   * othersPuffs: another player's squeeze emits 4 puffs within 40 studs, none farther out;
 --   * matPulseColor: the base colour at 0 ms and from 150 ms on, the peak (base:Lerp(Lemon, 0.55)) at 40 ms, rising
@@ -42,7 +43,7 @@
 --     amount into it, so up to 12 replies a second keep the Coins and Grip lines of the one pool apart, never snap a
 --     slot back before its fade, and show the same totals.
 -- Foam UI (2026-10-09): popupColor: the floating lines are CoinGold for Coins only, Mint for Grip and Lilac for slow
--- training.
+-- training (the "afk" kind keeps its colour; nothing shows it since Phase 6).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -521,18 +522,16 @@ return function(t: Context)
 		expect.equal(empty.Y, tall)
 	end)
 
-	t.test("lineLiftPx: a reply's lines start above the label: Coins, then Grip, then slow training", function()
+	t.test("lineLiftPx: a reply's lines start above the label: Coins, then Grip", function()
 		local POPUP = Config.Vfx.CoinPopup
 		local half = POPUP.heightPx / 2
 		for _, labelPx in { 0, 30, 61 } do
 			local coins = SqueezeController.lineLiftPx("coins", labelPx)
 			local grip = SqueezeController.lineLiftPx("grip", labelPx)
-			local afk = SqueezeController.lineLiftPx("afk", labelPx)
 			-- The label's bottom is on the anchor, so its top is labelPx above it: the lowest line's bottom sits higher.
 			expect.truthy(coins - half >= labelPx)
 			-- One step between the kinds, at least a HudNumber line tall, so a reply's lines never start on each other.
 			expect.truthy(grip - coins >= Config.UI.TextSize.HudNumber)
-			expect.equal(afk - grip, grip - coins)
 		end
 		-- A taller label lifts every line by as much.
 		expect.equal(
@@ -685,7 +684,9 @@ return function(t: Context)
 		function()
 			local window = SqueezeController.foldSeconds("coins")
 			local pool = SqueezeController.POPUP_POOL
-			expect.equal(pool, EFFECTS.coinPopupMaxVisible * 3) -- a share each for Coins, Grip and slow training
+			-- A share each for Coins and Grip (Phase 6: no slow-training line; popup() went with it).
+			expect.equal(pool, EFFECTS.coinPopupMaxVisible * 2)
+			expect.equal((SqueezeController :: any).popup, nil)
 			for _, rate in { 12, 10, 8, 6, 4, 2 } do
 				local slots: { [number]: number } = {} -- slot -> start, while its popup shows
 				local kinds: { [number]: string } = {} -- slot -> the kind it shows

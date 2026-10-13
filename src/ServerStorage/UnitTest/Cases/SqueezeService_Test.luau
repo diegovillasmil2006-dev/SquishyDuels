@@ -22,7 +22,8 @@
 --   * exactly 1 Double Grip point is used per accepted squeeze;
 --   * an OFFLINE profile earns nothing (data.notReady), nor does a session whose final save started (mutate refuses);
 --   * nextAt is in server time: serverNow + max(0, 1 - tokens) x cycleSeconds;
---   * the stale-lobby check disables a station whose GripTier disagrees with WorldLayout (no boost, no slow training);
+--   * the stale-lobby check disables a station whose GripTier disagrees with WorldLayout (no boost; Phase 6: slow
+--     training is gone, so GripService has nothing to disable);
 --   * one player's paid squeezes above Config.Grip.squeezeAlertPerHour in a rolling hour log one [SD][abuse] warning
 --     (spec 2026-10-12 §12; log only: the squeezes still pay); the alert re-arms once the hour's squeezes are back
 --     under it.
@@ -87,7 +88,6 @@ return function(t: Context)
 				total = 0,
 				trainer = 1,
 				rested = { value = 0, at = UNIX_START },
-				afk = { value = Config.Grip.Afk.burst, at = UNIX_START },
 			},
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's
 		}
@@ -155,7 +155,6 @@ return function(t: Context)
 			statusOf = status,
 			profileOf = profileOf,
 			mutate = mutate,
-			rootOf = rootOf,
 			duelPhaseOf = phaseOf,
 			isClosing = function(): boolean
 				return false
@@ -624,37 +623,29 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test(
-		"a stale station is disabled: no boost for squeezes there (the base is paid) and no slow training",
-		function()
-			local world = fresh()
-			setLevel(world, Config.Grip.Pads[2].level)
-			local problems = SqueezeService.applyStationCheck(function(id: string): (boolean, unknown)
-				if id == "squeeze_07" then
-					return true, 1 -- the lobby says tier 1, WorldLayout says 2
-				elseif id == "squeeze_03" then
-					return false, nil -- missing from the lobby
-				end
-				return true, WorldLayout.stationTier(id)
-			end, { "squeeze_10" })
-			local kinds: { [string]: string } = {}
-			for _, problem in problems do
-				kinds[problem.id] = problem.kind
+	t.test("a stale station is disabled: no boost for squeezes there (the base is paid)", function()
+		local world = fresh()
+		setLevel(world, Config.Grip.Pads[2].level)
+		local problems = SqueezeService.applyStationCheck(function(id: string): (boolean, unknown)
+			if id == "squeeze_07" then
+				return true, 1 -- the lobby says tier 1, WorldLayout says 2
+			elseif id == "squeeze_03" then
+				return false, nil -- missing from the lobby
 			end
-			expect.deepEqual(kinds, { squeeze_07 = "stale", squeeze_03 = "missing", squeeze_10 = "unknown" })
-			expect.truthy(SqueezeService.isStationDisabled("squeeze_07"))
-			expect.truthy(SqueezeService.isStationDisabled("squeeze_03"))
-			expect.truthy(GripService.isStationDisabled("squeeze_07"))
-			expect.falsy(SqueezeService.isStationDisabled("squeeze_01"))
-			world.position = onStation("squeeze_07")
-			expectBase(world, SqueezeService.request(world.player))
-			-- Slow training skips it too.
-			GripService.tick(world.player)
-			wait(world, Config.Grip.Afk.tickSeconds)
-			expect.equal(GripService.tick(world.player).reason, "offPad")
-			finish()
+			return true, WorldLayout.stationTier(id)
+		end, { "squeeze_10" })
+		local kinds: { [string]: string } = {}
+		for _, problem in problems do
+			kinds[problem.id] = problem.kind
 		end
-	)
+		expect.deepEqual(kinds, { squeeze_07 = "stale", squeeze_03 = "missing", squeeze_10 = "unknown" })
+		expect.truthy(SqueezeService.isStationDisabled("squeeze_07"))
+		expect.truthy(SqueezeService.isStationDisabled("squeeze_03"))
+		expect.falsy(SqueezeService.isStationDisabled("squeeze_01"))
+		world.position = onStation("squeeze_07")
+		expectBase(world, SqueezeService.request(world.player))
+		finish()
+	end)
 
 	t.test("paid squeezes above squeezeAlertPerHour in a rolling hour: one alert (log only), re-armed after", function()
 		local world = fresh()
