@@ -7,14 +7,17 @@
 -- text mentions Grip (§17.2 rule 1). Part 7: the
 -- §17.7 trainer reason texts and quest.starterTask.jelly keep DESIGN's wording; the Part 7 readings (box.title,
 -- box.freeOnly, box.boardHeader, box.boardLine, daily.today) exist, and box.freeOnly names the Config free box day.
--- Foam fix 2: the Grip card's short goal lines (grip.hudGoal*); grip.stationLabel and grip.idleBody keep DESIGN's words
--- with a line break. Squeeze anywhere (spec 2026-10-11 §5): the onboarding step, Inspect's preview lines, the off-pad
--- label (grip.stationLabelBase), the Foam Mats card (grip.padPerksBase) and grip.limitNote never send you to a mat;
+-- Foam fix 2: the Grip card's short goal lines (grip.hudGoal*); grip.idleBody keeps DESIGN's words with a line break.
+-- Squeeze anywhere (spec 2026-10-11 §5): the onboarding step, Inspect's preview lines, the off-pad label
+-- (grip.stationLabelBase), the Foam Mats card (grip.padPerksBase) and grip.limitNote never send you to a mat;
 -- the mat, pad-level, limit and locked-button texts are gone. Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2): the
 -- squeeze hints name a click or a tap, grip.holdPaused names no button (it left DESIGN's words), the Inspect step opens
 -- Squishies, and the Squeeze button's key texts are gone. Final polish (2026-10-11): the duel key hints also name the
 -- dash and the squeeze (they left DESIGN's "Click Throw · Q Ultimate"), and the "In the lane!" warning exists.
 -- Phase 3 (lobby bases spec 2026-10-11 §6): every code the capsule remotes send has a text under reason.capsule.*.
+-- Phase 5: pads and trainers no longer boost a squeeze, so no pad, trainer or onboarding text claims one (they name
+-- slow training, and Grip opens the capsule tiers); the pad label and "Coins per squeeze" are gone; the capsule card
+-- texts and a name for every capsule tier exist.
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
 
@@ -226,8 +229,6 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.popup"] = "+{n} Grip",
 	["grip.popupDouble"] = "+{n} Grip (x{mult})",
 	["grip.afkPopup"] = "+{n} Grip (slow training)",
-	-- Foam fix 2 (2026-10-09): DESIGN's words with the pad name on its own line (one line left "squeeze" alone).
-	["grip.stationLabel"] = "{pad}\n+{coins} Coins · +{grip} Grip per squeeze",
 	-- Lobby HUD spec 2026-10-11 §2: there is no Squeeze button any more (DESIGN's words named it).
 	["grip.holdPaused"] = "Squeeze again to keep training.",
 	-- §17.3.3, §17.5, §17.7 names
@@ -249,35 +250,37 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.trainer.steel"] = "Steel Gripper",
 	["grip.trainer.gold"] = "Gold Gripper",
 	["grip.trainer.diamond"] = "Diamond Gripper",
-	-- §17.7 panel
+	-- §17.7 panel. Phase 5 (build plan; progression spec 2026-10-12 §3): pads and trainers no longer boost a squeeze
+	-- (the capsules set its pay) but still boost slow training, so DESIGN's pad and trainer lines say only that, and the
+	-- Grip level's purpose is the capsule tiers.
 	["grip.panelTitle"] = "Grip Training",
-	["grip.panelIntro"] = "Every squeeze trains your Grip. Higher Grip opens better squeeze pads.",
+	["grip.panelIntro"] = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
 	["grip.padsHeader"] = "Squeeze pads",
 	["grip.padNeeds"] = "Needs Grip Lv {level}",
-	["grip.padPerks"] = "+{coins} Coins and x{mult} Grip per squeeze",
+	["grip.padPerks"] = "x{mult} slow-training Grip",
 	["grip.padOpen"] = "Open",
 	["grip.padLocked"] = "Locked",
 	["grip.showMe"] = "Show me",
 	["grip.trainerHeader"] = "Trainer",
-	["grip.trainerNow"] = "Now: {trainer} (+{grip} Grip per squeeze)",
-	["grip.trainerNext"] = "Next: {trainer} (+{grip} Grip per squeeze)",
+	["grip.trainerNow"] = "Now: {trainer}",
+	["grip.trainerNext"] = "Next: {trainer}",
 	["grip.trainerBuy"] = "Upgrade: {coins} Coins",
 	["grip.trainerNeedLevel"] = "Reach Grip Lv {level}",
 	["grip.trainerNeedCoins"] = "Need {coins} more Coins",
 	["grip.trainerMax"] = "Best trainer owned!",
-	["grip.trainerNote"] = "Upgrades make training faster. They never change duels.",
+	["grip.trainerNote"] = "Upgrades make slow training faster. They never change duels.",
 	["grip.restedHelp"] = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
-	-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays.
-	["grip.limitNote"] = "Every squeeze earns Coins and trains Grip, anywhere in the lobby. Squeeze pads give a boost.",
+	-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays (Phase 5: no pad boost).
+	["grip.limitNote"] = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
 	["grip.afkHelp"] = "Standing on an open pad slowly trains Grip, even when you're not squeezing. It never gives Coins, and it stops if Roblox disconnects you for being idle.",
 	["grip.afkBank"] = "Slow training at full speed: about {minutes} min left",
 	["grip.duelNote"] = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 	-- §17.7 toasts
 	["grip.levelUp"] = "Grip Lv {level}!",
-	["grip.padUnlocked"] = "{pad} unlocked! +{coins} Coins and x{mult} Grip per squeeze there.",
+	["grip.padUnlocked"] = "{pad} unlocked! x{mult} slow-training Grip there.",
 	["grip.rankUp"] = "{name} reached {rank}!",
-	["grip.trainerBought"] = "{trainer} unlocked! +{grip} Grip per squeeze.",
-	["grip.intro"] = "You trained your Grip! Squeeze more to open better pads.",
+	["grip.trainerBought"] = "{trainer} unlocked! Slow training is faster now.",
+	["grip.intro"] = "You trained your Grip! Squeeze more to open new capsule tiers.",
 	["grip.welcome"] = "Double Grip is full: your first squeezes train x{mult} Grip!",
 	["grip.welcomeBack"] = "Welcome back! Double Grip: about {minutes} min.",
 	["grip.headStart"] = "Your past squeezes count: you start at Grip Lv {level}!",
@@ -288,7 +291,7 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.idleButton"] = "Keep going",
 	["grip.gymTitle"] = "GRIP GYM",
 	["grip.signLocked"] = "Needs Grip Lv {level} · You: Lv {have}",
-	["grip.signOpen"] = "Open · +{coins} Coins · x{mult} Grip",
+	["grip.signOpen"] = "Open · x{mult} slow training",
 	["grip.nameplate"] = "Lv {level} · {rank}",
 }
 
@@ -623,17 +626,17 @@ return function(t: Context)
 			{ hint.keyboard, hint.touch, hint.gamepad },
 			{ "Click or press E", "Tap the screen", "Press X" } -- each starts a sentence
 		)
+		-- Phase 5: a pad no longer boosts a squeeze, so the step stops at the hint.
 		expect.equal(
 			Strings.format(Strings.onboarding.squeeze, { squeezeHint = hint.keyboard }),
-			"Squeeze squishies anywhere to earn Coins. Click or press E. Squeeze pads give a boost."
+			"Squeeze squishies anywhere to earn Coins. Click or press E."
 		)
 		expect.equal(
 			Strings.format(Strings.onboarding.squeeze, { squeezeHint = hint.touch }),
-			"Squeeze squishies anywhere to earn Coins. Tap the screen. Squeeze pads give a boost."
+			"Squeeze squishies anywhere to earn Coins. Tap the screen."
 		)
 		expect.equal(Strings.inspect.preview, "Preview only. Squeeze in the lobby to earn Coins.")
-		expect.equal(Strings.inspect.coinsPerSqueezeSub, "per squeeze")
-		-- Off a pad the floating label reads the base amount (no pad name).
+		-- The floating label reads what a squeeze pays (no pad name).
 		expect.equal(
 			Strings.format(Strings.grip.stationLabelBase, { coins = "1", grip = "10" }),
 			"+1 Coins · +10 Grip per squeeze"
@@ -641,11 +644,12 @@ return function(t: Context)
 		-- The Foam Mats card: the base amount, no boost.
 		expect.equal(Strings.grip.padPerksBase, "No boost: the same Coins and Grip as anywhere")
 		-- No text sends the player to a mat any more.
-		for _, key in { "onboarding.squeeze", "inspect.preview", "inspect.coinsPerSqueezeSub", "grip.limitNote" } do
+		for _, key in { "onboarding.squeeze", "inspect.preview", "capsule.powerNote", "grip.limitNote" } do
 			local text = Strings.resolve(key)
 			expect.truthy(type(text) == "string" and string.find(string.lower(text), "mat", 1, true) == nil)
 		end
-		-- The mat, pad-level, limit and locked-button texts are gone with what showed them.
+		-- The mat, pad-level, limit and locked-button texts are gone with what showed them; Phase 5: so are the pad label
+		-- and the old "Coins per squeeze" line (a squishy's capsule power replaces it).
 		for _, key in
 			{
 				"reason.squeeze.notAtStation",
@@ -654,9 +658,77 @@ return function(t: Context)
 				"squeeze.limitEmpty",
 				"squeeze.limitHelp",
 				"grip.padLockedButton",
+				"grip.stationLabel",
+				"inspect.coinsPerSqueeze",
+				"inspect.coinsPerSqueezeSub",
 			}
 		do
 			expect.equal(Strings.resolve(key), nil)
+		end
+	end)
+
+	-- Phase 5 (build plan; lobby bases spec 2026-10-11 §9; progression spec 2026-10-12 §3-§6) ---------------------------
+
+	t.test("no pad, trainer or onboarding text claims a squeeze bonus any more", function()
+		for _, key in
+			{
+				"grip.padPerks",
+				"grip.padUnlocked",
+				"grip.trainerNow",
+				"grip.trainerNext",
+				"grip.trainerBought",
+				"grip.signOpen",
+				"grip.limitNote",
+				"grip.panelIntro",
+				"grip.intro",
+				"onboarding.squeeze",
+			}
+		do
+			local text = string.lower(Strings.resolve(key) :: string)
+			expect.equal(string.find(text, "per squeeze", 1, true), nil)
+			expect.equal(string.find(text, "boost", 1, true), nil)
+			expect.equal(string.find(text, "better pads", 1, true), nil)
+			expect.equal(string.find(text, "better squeeze pads", 1, true), nil)
+		end
+	end)
+
+	t.test("the capsule card texts exist with their placeholders, and every tier has a name", function()
+		local Config = t.requireShared("Config")
+		for _, tier in Config.Grip.Capsule.Tiers do
+			local name = Strings.resolve("capsule.tier." .. tier.key)
+			expect.truthy(type(name) == "string" and name ~= "")
+		end
+		expect.equal(Strings.format(Strings.capsule.title, { slot = 2 }), "Capsule 2")
+		expect.equal(Strings.format(Strings.capsule.tierLevel, { tier = "Jelly", level = 14 }), "Jelly · Lv 14")
+		expect.equal(Strings.format(Strings.capsule.visitor, { name = "Mia" }), "Only Mia can upgrade this.")
+		expect.equal(Strings.format(Strings.capsule.needGrip, { level = 20 }), "Needs Grip Lv 20")
+		expect.equal(Strings.format(Strings.capsule.upgrade, { coins = "1,000" }), "Upgrade · 1,000")
+		expect.equal(Strings.format(Strings.capsule.evolve, { coins = "28,000" }), "Evolve · 28,000")
+		expect.equal(Strings.format(Strings.capsule.power, { n = 16 }), "x16 power")
+		expect.equal(Strings.format(Strings.base.unlockPrice, { coins = "2,500" }), "Unlock · 2,500")
+		for _, key in
+			{
+				"capsule.prompt",
+				"capsule.swap",
+				"capsule.empty",
+				"capsule.speed",
+				"capsule.speedNext",
+				"capsule.coinsHour",
+				"capsule.coinsHourNext",
+				"capsule.gripHour",
+				"capsule.gripHourNext",
+				"capsule.evolveTo",
+				"capsule.unlockFirst",
+				"capsule.locked",
+				"capsule.max",
+				"capsule.pick",
+				"capsule.inCapsule",
+				"capsule.back",
+				"capsule.powerNote",
+			}
+		do
+			local text = Strings.resolve(key)
+			expect.truthy(type(text) == "string" and text ~= "")
 		end
 	end)
 

@@ -3,7 +3,7 @@
 -- (ServerStorage.UnitTest). Pure: no instances, no LocalPlayer.
 -- Contract (DESIGN §10.1, §10.4, §10.7-§10.9):
 --   * view(id, ctx) for all 14 squishies: every field comes from Catalog, Config, Boxes and Strings (name, rarity,
---     "Coins per squeeze: {n}" (Phase 3: the squishy's in a Lv 1 capsule, CapsuleMath.capsuleCoins), the five stat
+--     its capsule power "x{n} power" (Phase 5: CapsuleMath.squishyPower) over "Capsule Coins multiplier", the five stat
 --     bars of InventoryFormat.statBars fully resolved, the trail (Commons "No
 --     trail"), Dragon's ultimate from Config.Abilities, "Elimination: Standard", the Catalog `inspect` view); unowned
 --     shows "Preview · Not owned" and "How to get" = one line per Boxes.containing row (the free Treat Box too) with
@@ -97,9 +97,9 @@ return function(t: Context)
 			expect.equal(view.caption, Strings.inspect.preview)
 			expect.equal(
 				view.coinsText,
-				Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(def.id, 1) })
+				Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(def.id) })
 			)
-			expect.equal(view.coinsSub, Strings.inspect.coinsPerSqueezeSub)
+			expect.equal(view.coinsSub, Strings.capsule.powerNote)
 			expect.equal(view.statsCaption, Strings.inspect.statsCaption)
 			expect.equal(view.elimination, "Elimination: Standard") -- §10.8 #7 (Epics too, until the effect ships)
 			expect.equal(view.howToGetTitle, Strings.inspect.howToGet)
@@ -178,6 +178,10 @@ return function(t: Context)
 		expect.truthy(butter.trail.colors ~= nil)
 		local dragon = InspectFormat.view("dragon", UNOWNED)
 		assert(dragon ~= nil, "no view")
+		-- Phase 5 (progression spec 2026-10-12 §6): capsule power by rarity, x1 / x4 / x16 / x64.
+		expect.equal(kitty.coinsText, "x1 power")
+		expect.equal(butter.coinsText, "x4 power")
+		expect.equal(dragon.coinsText, "x64 power")
 		local ultimate = dragon.ultimate
 		assert(ultimate ~= nil, "Dragon has no ultimate text")
 		expect.equal(string.sub(ultimate, 1, #"Ultimate: Dragon Rush. "), "Ultimate: Dragon Rush. ")

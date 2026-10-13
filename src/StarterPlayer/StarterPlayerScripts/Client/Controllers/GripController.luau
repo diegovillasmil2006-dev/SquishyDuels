@@ -67,7 +67,9 @@
 -- * Slow-training popup (§17.10): when grip.total rises and no SqueezeResult (SqueezeController.ResultReceived,
 --   gripTotal) explains it within AFK_EXPLAIN_SECONDS, the unexplained part floats up from the held squishy as
 --   grip.afkPopup (SqueezeController.popup, kind "afk"; lobby HUD spec 2026-10-11 §2: the squeeze panel is gone), at
---   most once per half tick.
+--   most once per half tick. Phase 5: the local player's capsules pay Grip too (CapsuleService: CP of the level per
+--   squeeze, counted in the Player attribute SD_Squeezes<slot>), so each rise of an SD_Squeezes<slot> credits
+--   capsuleGrip of it, taken off the popup (afkGain); an accepted own squeeze drops the credit (no slow training then).
 -- * Idle card (modal "gripIdle"): Players.LocalPlayer.Idled with t >= Config.Grip.idleReminderSeconds (900) opens
 --   grip.idleTitle / grip.idleBody / [grip.idleButton] in the lobby. It is a modal, so ControlsController.block stops
 --   any hold-to-squeeze; [Keep going] only closes it (it never restarts a hold, and nothing simulates input).
@@ -115,6 +117,7 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
@@ -278,6 +281,7 @@ local MODAL_GUI = "SD_Modal"
 local FALLBACK_COLUMN = "Hud_Left" -- HudController's column name, used only when HudController has none
 local ATTR_DUEL_PHASE = "SD_DuelPhase"
 local ATTR_MATCH_ID = "SD_MatchId"
+local ATTR_SQUEEZES = "SD_Squeezes" -- .. slot: the local player's capsule squeezes this session (CapsuleService)
 -- reading (DESIGN gives the content, not the sizes): the HUD column and card in base px under the SD_Hud UIScale
 -- (shared with HudFormat's column plan, which sizes the left side from the same numbers).
 local COLUMN = HudFormat.COLUMN
@@ -348,6 +352,8 @@ local view: GripView? = nil
 local level: number? = nil
 local baselineTotal: number? = nil
 local explainedTotal = 0
+local capsuleCredit = 0 -- capsule Grip seen since the last popup check (Phase 5)
+local capsuleSqueezes: { [number]: number } = {} -- slot -> the last SD_Squeezes<slot> seen
 local afkPendingFrom: number? = nil
 local lastAfkPopupAt = -math.huge
 local lastGoalKey: string? = nil
@@ -1420,7 +1426,8 @@ local function checkAfk()
 	if from == nil or v == nil then
 		return
 	end
-	local gain = GripController.afkGain(from, v.total, explainedTotal)
+	local gain, credit = GripController.afkGain(from, v.total, explainedTotal, capsuleCredit)
+	capsuleCredit = credit
 	explainedTotal = math.max(explainedTotal, v.total)
 	if gain <= 0 or suppressed() or os.clock() - lastAfkPopupAt < AFK_POPUP_MIN_GAP then
 		return
@@ -1514,9 +1521,27 @@ function GripController.normalize(raw: unknown): GripView?
 end
 
 -- The Grip that rose from `oldTotal` to `newTotal` and that no SqueezeResult explains (`explainedTotal` = the
--- highest gripTotal a SqueezeResult reported): slow-training Grip (§17.10). Never negative.
-function GripController.afkGain(oldTotal: number, newTotal: number, explainedTotal: number): number
-	return math.max(0, newTotal - math.max(oldTotal, explainedTotal))
+-- highest gripTotal a SqueezeResult reported): slow-training Grip (§17.10). Never negative. Phase 5: less the capsule
+-- Grip credited since the last check (`capsuleCredit`); returns that gain and the credit it did not use.
+function GripController.afkGain(
+	oldTotal: number,
+	newTotal: number,
+	explainedTotal: number,
+	capsuleCredit: number?
+): (number, number)
+	local gain = math.max(0, newTotal - math.max(oldTotal, explainedTotal))
+	local used = math.min(gain, math.max(0, capsuleCredit or 0))
+	return gain - used, math.max(0, capsuleCredit or 0) - used
+end
+
+-- Phase 5: the Grip `squeezes` squeezes of the local player's capsule `slot` paid (CapsuleService: CP of its level per
+-- squeeze); 0 for a capsule that holds no squishy (it never squeezes), a locked slot or anything unknown.
+function GripController.capsuleGrip(capsules: any?, slot: number, squeezes: number): number
+	local capsule = if type(capsules) == "table" and type(capsules.list) == "table" then capsules.list[slot] else nil
+	if type(capsule) ~= "table" or type(capsule.squishyId) ~= "string" or not (squeezes > 0) then
+		return 0
+	end
+	return squeezes * (CapsuleMath.power(capsule.level) or 0)
 end
 
 -- What one new grip state does (§17.7, §17.10). `hadBaseline` = a grip state was already seen this session;
@@ -1901,6 +1926,7 @@ function GripController.init()
 		local total = result.gripTotal
 		if result.ok and total then
 			explainedTotal = math.max(explainedTotal, total)
+			capsuleCredit = 0 -- an own squeeze: no slow training this tick, and the total above has the capsules' Grip
 		end
 	end))
 	c:add(UIController.LayoutChanged:connect(function()
@@ -1923,6 +1949,8 @@ function GripController.init()
 		clearWaypoint()
 		view, level, baselineTotal = nil, nil, nil
 		explainedTotal, afkPendingFrom, lastGoalKey, goalBaselineSet = 0, nil, nil, false
+		capsuleCredit = 0
+		table.clear(capsuleSqueezes)
 		trainerPending, heldTrainerToast, panelRefs = false, nil, nil
 		if cardPresent then
 			cardPresent = false
@@ -1952,6 +1980,20 @@ function GripController.start()
 		end))
 		c:add(player:GetAttributeChangedSignal(ATTR_DUEL_PHASE):Connect(onLobbyLock))
 		c:add(player:GetAttributeChangedSignal(ATTR_MATCH_ID):Connect(onLobbyLock))
+		-- Phase 5: the capsules' Grip is credited as it is paid, so the slow-training popup never shows it.
+		for slot = 1, #Config.Grip.Capsule.slotPrices do
+			local name = ATTR_SQUEEZES .. slot
+			local first = player:GetAttribute(name)
+			capsuleSqueezes[slot] = if finite(first) then first :: number else 0
+			c:add(player:GetAttributeChangedSignal(name):Connect(function()
+				local value = player:GetAttribute(name)
+				if finite(value) then
+					local added = (value :: number) - (capsuleSqueezes[slot] or 0)
+					capsuleSqueezes[slot] = value :: number
+					capsuleCredit += GripController.capsuleGrip(StateController.get("capsules"), slot, added)
+				end
+			end))
+		end
 	end
 	c:add(task.spawn(function()
 		while true do

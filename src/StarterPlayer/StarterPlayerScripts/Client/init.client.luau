@@ -46,6 +46,8 @@ type Module = {
 -- Spec phase 5: DashController (the dash) right after ThrowController, whose windup and ultimate state it reads.
 -- Feature 1 (2026-10-11): CatchController (the catch) right after ThrowController too, whose charge and hands it
 -- drives; the overlay, the duel HUD, the projectiles and the VFX read it.
+-- Build plan Phase 5: CapsuleController (the base capsules' feel and the capsule card) with the feature screens, after
+-- DailyController; it requires ControlsController (its pointer claim) and SqueezeController (the home tap), both above.
 local CONTROLLER_ORDER = {
 	"NetController",
 	"StateController",
@@ -76,6 +78,7 @@ local CONTROLLER_ORDER = {
 	"BoxController",
 	"QuestController",
 	"DailyController",
+	"CapsuleController",
 	"QueueController",
 	"DuelController",
 	"SettingsController",

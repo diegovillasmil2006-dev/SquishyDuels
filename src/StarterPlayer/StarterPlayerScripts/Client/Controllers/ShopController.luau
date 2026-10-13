@@ -154,7 +154,7 @@ type Detail = {
 	icon: StaticIcon.StaticIcon,
 	well: Frame, -- the inset well around the preview
 	glow: Frame, -- UI overhaul: the rarity glow behind the preview
-	coinsLine: TextLabel, -- UI overhaul: "Coins per squeeze: n"
+	coinsLine: TextLabel, -- UI overhaul: "Coins per squeeze: n"; Phase 5: the capsule power "x16 power"
 	name: TextLabel,
 	rarity: RarityTag.RarityTag,
 	priceRow: Frame,
@@ -438,8 +438,8 @@ local function refreshDetail(list: { ShopFormat.Entry })
 	d.rarity:setRarity(entry.rarity)
 	local rarityStyle = RarityStyle.get(entry.rarity)
 	d.glow.BackgroundColor3 = if rarityStyle then rarityStyle.ui.glow else Theme.Colors.ink2
-	-- shortcut: Coins per squeeze in a Lv 1 capsule (Phase 3); Phase 5 shows the capsule power instead.
-	d.coinsLine.Text = Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(entry.id, 1) })
+	-- Phase 5 (progression spec 2026-10-12 §6): what the squishy multiplies in a capsule ("x16 power").
+	d.coinsLine.Text = Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(entry.id) })
 	-- Fewer words (foam restyle): the coin and the bare price.
 	local priceText = ShopFormat.priceNumber(entry.price)
 	d.priceRow.Visible = priceText ~= nil and not entry.owned

@@ -91,6 +91,7 @@ return function(t: Context)
 			receipts = {},
 			duelLog = {},
 			grip = { total = 50, trainer = 1, rested = { value = 1200, at = 1 }, afk = { value = 120, at = 1 } },
+			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
 		}
 	end
 
@@ -215,6 +216,7 @@ return function(t: Context)
 		expect.equal(reply.ok, true)
 		local snap = reply.data
 		expect.deepEqual(keysOf(snap), {
+			"capsules",
 			"coins",
 			"daily",
 			"dataStatus",
@@ -246,6 +248,8 @@ return function(t: Context)
 			snap.grip,
 			{ total = 50, trainer = 1, rested = { value = 1200, at = 1 }, afk = { value = 120, at = 1 } }
 		)
+		-- Phase 5: the owner's capsules as stored (the capsule card, the squeeze value of the reward texts).
+		expect.deepEqual(snap.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
 		expect.equal(snap.policy, "checking")
 		expect.deepEqual(snap.monetization, { bundles = {}, passes = {} })
 		expect.deepEqual(snap.practice, { throws = 0, hits = 0, accuracy = 0 })
@@ -524,7 +528,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list is DESIGN's StateDelta list plus grip", function()
+	t.test("the field list is DESIGN's StateDelta list plus grip and capsules", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -541,7 +545,23 @@ return function(t: Context)
 			"unseenReveals",
 			"practice",
 			"grip",
+			"capsules",
 		})
+	end)
+
+	-- Phase 5: a capsule change reaches the owner's client like any other field (CapsuleService marks it; the sweep
+	-- catches it anyway).
+	t.test("a changed capsule goes out in the next partial StateDelta", function()
+		local w = setup()
+		local player, profile = loadedPlayer(w)
+		profile.capsules.list[1].level = 2
+		StateService.markDirty(player, "capsules")
+		runDeferred(w)
+		expect.equal(#w.sent, 2)
+		expect.deepEqual(
+			w.sent[2].fields,
+			{ capsules = { slots = 1, list = { { level = 2, squishyId = "kitty_bread" } } } }
+		)
 	end)
 
 	-- The DataService reading -----------------------------------------------------------------------------------------

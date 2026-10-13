@@ -303,6 +303,59 @@ local UI = {
 		ringPressTransparency = 0.6, -- white at 40% (design: html:61)
 		ringSizeMs = 100, -- design: html:59
 	},
+
+	-- Capsules (lobby bases spec 2026-10-11 §5.3, §9; build plan Phase 5): the capsule card (Controllers/CapsuleController,
+	-- UI/CapsuleFormat) and the capsule feel (Anim/CapsuleFeel). Base px for the card; seconds, studs and shares for the
+	-- feel. Colours come from Art/Palette (the bricks take the capsule's own colours), the brick flight from
+	-- Config.Vfx.Confetti.
+	Capsule = {
+		-- The card: at most cardWidth base px wide (cardMargin to the screen's sides), at most heightShare of the screen
+		-- (the rest scrolls, DailyFormat.bodyHeight); the squishy picture iconPx, the swap list's pictures swapIconPx.
+		cardWidth = 420,
+		cardMargin = 24,
+		heightShare = 0.86,
+		iconPx = 72,
+		swapIconPx = 56,
+		-- It opens from the ProximityPrompt within promptStuds of a capsule's front (E / ButtonX), or a tap or click on a
+		-- capsule within clickStuds of the camera that moves less than Config.Inspect.Input.tapMaxPixels.
+		promptStuds = 7,
+		clickStuds = 80,
+		-- The feel (spec §5.3): the press comes down in pressDownMs, holds pressHoldMs and rises in pressUpMs; the squishy
+		-- squashes to squashHeight × squashWidth, springs back to springHeight and wobbles. Reading: the wobble's half
+		-- period is pressUpMs, so it peaks as the press is back up (1.56 Hz, under the 3 Hz flicker limit, §18.1 #4).
+		pressDownMs = 160,
+		pressHoldMs = 140,
+		pressUpMs = 320,
+		squashHeight = 0.58,
+		squashWidth = 1.25,
+		springHeight = 1.12,
+		tapSquish = 0.08, -- spec §5.3: a home tap gives every capsule a small squish
+		-- An upgrade (spec §5.3; readings): the squishy stretches upgradeStretch and turns upgradeTurns times over spinMs,
+		-- `bricks` brick confetti fly, a ring flashes over the drum and the level plate pops platePop -> 1 over
+		-- platePopMs; a new tier look (an evolve) is the bigger burst: evolveStretch, evolveTurns, evolveBricks, 2 rings.
+		upgradeStretch = 0.25,
+		evolveStretch = 0.4,
+		upgradeTurns = 1,
+		evolveTurns = 2,
+		spinMs = 700,
+		bricks = 8,
+		evolveBricks = 16,
+		brickSize = Vector3.new(0.5, 0.3, 0.5),
+		ringStuds = 9,
+		ringMs = 350,
+		platePop = 1.4,
+		platePopMs = 300,
+		-- The owner's "+N Coins +N Grip" over a capsule (spec §5.3): it rises popRiseStuds over popMs, fading over the
+		-- last popFadeShare of it (under ReducedMotion it holds still, then fades). Visitors see `sparkles` sparkles
+		-- sparkleStuds big (reading: the squeeze particles' look, Anim.squeeze.particles, big enough to read at a distance).
+		popMs = 900,
+		popRiseStuds = 2.5,
+		popFadeShare = 0.35,
+		sparkles = 3,
+		sparkleStuds = 0.5,
+		-- Nothing moves on a capsule farther than cullStuds from the camera or off the screen (as Squeeze.othersCullStuds).
+		cullStuds = 60,
+	},
 }
 
 return UI

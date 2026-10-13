@@ -5,7 +5,7 @@
 --   board(quests, ctx)    the Daily section (one card per active quest) and the Starter section (one card per
 --                         QuestDefs starter task), the swaps left, the footer "New quests in {h}h {m}m" and the empty
 --                         sentence "No quests right now. Check back in {time}." when the day has no quest
---   dailyCard(entry, ctx, swapsLeft) / starterCards(starter)   single cards (see Card)
+--   dailyCard(entry, ctx, swapsLeft) / starterCards(starter, capsules?)   single cards (see Card)
 --   swapsLeft(quests)     Config.Economy.Quests.freeSwapsPerDay - quests.swapsUsed, never below 0
 --   footer(now) / emptyText(now)   the two time lines (server time; the next quest day starts at 00:00 UTC)
 --   titleOf(entry)        a daily quest's line from QuestDefs.text (goal and squishy name filled in)
@@ -16,8 +16,10 @@
 --                         px): the content's, capped so the whole panel (body + chrome: header, footer, paddings)
 --                         stays within maxShare of the screen height; never under minH (unit-tested at 667×375,
 --                         1280×720, 1920×1080 and the largest text)
--- A card: the title, the progress "3/5" (common.progress) with its bar fill, the reward "+150 Coins"
--- (common.coinsGain), the state In progress / Claim / Claimed, Swap and the Equip shortcut.
+-- A card: the title, the progress "3/5" (common.progress) with its bar fill, the reward "+1,500 Coins"
+-- (common.coinsGain), the state In progress / Claim / Claimed, Swap and the Equip shortcut. Phase 5 (progression spec
+-- 2026-10-12 §9): the reward is the quest's squeezes × the squeeze value of ctx.capsules (the player's capsules state;
+-- CapsuleMath.rewardCoins, the Coins the server pays at claim time), and Card.reward is those Coins.
 -- Readings: Swap shows on every unfinished daily quest while a free swap is left (one swap a day, on any one of them;
 -- §11.6 "Swap on one unfinished daily quest per day"); a starter task never swaps. The Equip shortcut shows while
 -- the quest is unfinished and its squishy is owned but not equipped. The Starter section hides once every starter task
@@ -31,6 +33,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
@@ -51,8 +54,8 @@ export type Card = {
 	goal: number,
 	fraction: number, -- 0..1, the progress bar fill
 	progressText: string, -- "3/5"
-	reward: number,
-	rewardText: string, -- "+150 Coins"
+	reward: number, -- Coins (the quest's squeezes × the squeeze value)
+	rewardText: string, -- "+1,500 Coins"
 	state: CardState,
 	stateText: string, -- quest.inProgress / common.claim / common.claimed
 	canSwap: boolean,
@@ -63,6 +66,7 @@ export type Context = {
 	owned: { [string]: any }?, -- profile.owned (squishyId -> entry)
 	equipped: string?,
 	now: number, -- server time (workspace:GetServerTimeNow())
+	capsules: any?, -- the `capsules` state field (the squeeze value of the rewards); nil = a new player's
 }
 
 export type Board = {
@@ -199,16 +203,8 @@ function QuestFormat.dailyCard(entry: unknown, ctx: Context, swapsLeft: number):
 	end
 	local claimed = e.claimed == true
 	local done = e.done == true or claimed
-	local result = card(
-		e.id,
-		DAILY_KIND,
-		title,
-		whole(e.progress, 0),
-		whole(e.goal, 1),
-		math.max(0, whole(e.reward, 0)),
-		done,
-		claimed
-	)
+	local reward = CapsuleMath.rewardCoins(whole(e.reward, 0), CapsuleMath.squeezeValue(ctx.capsules))
+	local result = card(e.id, DAILY_KIND, title, whole(e.progress, 0), whole(e.goal, 1), reward, done, claimed)
 	result.canSwap = not done and swapsLeft > 0
 	local id = e.squishy
 	if not done and type(id) == "string" and ctx.owned and ctx.owned[id] ~= nil and ctx.equipped ~= id then
@@ -217,8 +213,9 @@ function QuestFormat.dailyCard(entry: unknown, ctx: Context, swapsLeft: number):
 	return result
 end
 
--- One card per QuestDefs starter task, from profile.starter {progress, claimed}.
-function QuestFormat.starterCards(starter: unknown): { Card }
+-- One card per QuestDefs starter task, from profile.starter {progress, claimed}; rewards at `capsules`' squeeze value.
+function QuestFormat.starterCards(starter: unknown, capsules: any?): { Card }
+	local value = CapsuleMath.squeezeValue(capsules)
 	local progressMap = if type(starter) == "table" and type((starter :: any).progress) == "table"
 		then (starter :: any).progress
 		else {}
@@ -233,10 +230,8 @@ function QuestFormat.starterCards(starter: unknown): { Card }
 			local claimed = claimedMap[def.id] == true
 			local done = claimed or progress >= variant.goal
 			local title = QuestDefs.text(def.id, variant.goal)
-			table.insert(
-				cards,
-				card(def.id, STARTER_KIND, title, progress, variant.goal, variant.reward, done, claimed)
-			)
+			local reward = CapsuleMath.rewardCoins(variant.reward, value)
+			table.insert(cards, card(def.id, STARTER_KIND, title, progress, variant.goal, reward, done, claimed))
 		end
 	end
 	return cards
@@ -265,7 +260,8 @@ function QuestFormat.board(quests: unknown, ctx: Context): Board
 			end
 		end
 	end
-	local starter = QuestFormat.starterCards(if type(quests) == "table" then (quests :: any).starter else nil)
+	local starter =
+		QuestFormat.starterCards(if type(quests) == "table" then (quests :: any).starter else nil, ctx.capsules)
 	local starterVisible = false
 	for _, c in starter do
 		if c.state ~= "claimed" then

@@ -176,6 +176,8 @@ export type QuestsView = { day: number, swapsUsed: number, active: { QuestEntry 
 -- `grip` (§17.10) is the profile's GripState as stored; the client derives the level, rank, Double Grip minutes and
 -- slow-training minutes with the same pure GripMath, and shows the slow-training popup when grip.total rises with no
 -- SqueezeResult in between. Never sent into a duel view: Grip never reaches duel code (§17.2 rule 1).
+-- `capsules` (build plan Phase 5) is the profile's CapsulesState as stored, for the owner's capsule card, the squeeze
+-- value of the reward texts and the owner's capsule pops (other players' capsules are read from their base's models).
 export type Snapshot = {
 	coins: number,
 	owned: { [string]: OwnedEntry },
@@ -192,6 +194,7 @@ export type Snapshot = {
 	unseenReveals: { BoxLogEntry }, -- boxLog entries with seen = false
 	practice: PracticeStats,
 	grip: GripState,
+	capsules: CapsulesState,
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -211,6 +214,7 @@ export type StateDeltaFields = {
 	unseenReveals: { BoxLogEntry }?,
 	practice: PracticeStats?,
 	grip: GripState?,
+	capsules: CapsulesState?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -230,6 +234,7 @@ export type StateField =
 	| "unseenReveals"
 	| "practice"
 	| "grip"
+	| "capsules"
 
 export type SnapshotLoading = { status: "loading" }
 

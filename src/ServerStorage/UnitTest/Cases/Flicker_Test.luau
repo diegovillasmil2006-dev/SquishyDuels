@@ -275,4 +275,7 @@ return function(t: Context)
 			model:Destroy()
 		end
 	)
+	-- Last: until here the clone is in use (the tests hold only its Builders, and an unreferenced clone root is
+	-- collected with its children cut loose, so a builder's script.Parent.Parent would be nil).
+	tools:Destroy()
 end

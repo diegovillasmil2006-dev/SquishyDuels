@@ -16,15 +16,11 @@
 --   pointed at the new model on HeldSquishyController.HeldChanged: a Px size (the same size at any distance, labelSize,
 --   pure), AlwaysOnTop, LightInfluence 0 and the nameplates' foam chip (Frosting, the chip bands and outline, the Chip
 --   text in InkUI), its bottom Vfx.CoinPopup.startStuds above the Root. Its text (panelLabel, pure, named for the old
---   panel) reads the pad the local root stands on (WorldLayout.stationUnder with Config.Grip.Afk's padMargin /
---   heightAbove, the server's own test; the tier from WorldLayout, never from an attribute): grip.stationLabel
---   "Jelly Pad" / "+10 Coins · +15 Grip per squeeze" on an unlocked pad, else the base amount grip.stationLabelBase
---   (tier 1: off a pad, or on a pad still locked for the local Grip level, the squeeze pays the base) (GripMath, the
---   equipped squishy, the trainer from StateController's `grip` field; shortcut: since Phase 3 own squeezes pay the
---   squeeze value and the highest capsule level's Grip, which this client cannot see yet, so the Coins are the
---   squishy's in a Lv 1 capsule and the Grip the trainer's; Phase 5 shows the real ones). Shown (labelShownFor, pure)
---   only while holding, out of a match, with the lobby unlocked, no screen open (no block) and no first-person look;
---   it is built once and shown or hidden with Enabled.
+--   panel) is what one own squeeze pays, the same anywhere (Phase 5; since Phase 3 a pad no longer changes it):
+--   grip.stationLabelBase with the squeeze value (CapsuleMath.squeezeValue) and the Grip of the highest capsule level
+--   (CapsuleMath.squeezeGrip) of StateController's `capsules` field, re-read with the station check. Shown
+--   (labelShownFor, pure) only while holding, out of a match, with the lobby unlocked, no screen open (no block) and no
+--   first-person look; it is built once and shown or hidden with Enabled.
 -- * Sending (§17.3.2, §9.6; every click pays, user decision 2026-10-06): there is no squeeze timer and no cooldown
 --   strip, ring or disabled button between squeezes. Every press (F / E / ButtonX, a click, a tap, the pad)
 --   squeezes IMMEDIATELY: the local squeeze restarts from the top (play) and a SqueezeRequest (no argument: the server
@@ -128,11 +124,9 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local CapsuleMath = require(Shared.CapsuleMath)
-local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
-local GripMath = require(Shared.GripMath)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local Signal = require(Shared.Util.Signal)
@@ -276,7 +270,6 @@ local CAP = Config.Squeeze.bucketCapacity
 local CAP_WINDOW = Config.Squeeze.bucketCapacity * Config.Squeeze.cycleSeconds
 local OTHERS_CULL_STUDS = Config.Squeeze.othersCullStuds
 local HOLD: HoldConfig = Config.Grip.Hold
-local GRIP_PADS = Config.Grip.Pads
 local RESTED_MULT = Config.Grip.Rested.mult
 local FLOAT = Config.UI.motion.coinCounter
 local UI_GRIP = Config.UI.Grip
@@ -284,7 +277,6 @@ local ACTION = "Squeeze"
 local HUD_GUI = "SD_Hud"
 local ROOT_PART = "HumanoidRootPart"
 local ATTR_SQUEEZE_AT = "SD_SqueezeAt"
-local ATTR_EQUIPPED = "SD_Equipped"
 local ATTR_DUEL_PHASE = "SD_DuelPhase"
 local ATTR_MATCH_ID = "SD_MatchId"
 local REASON_TOO_FAST = "squeeze.tooFast"
@@ -408,35 +400,6 @@ local function promptShown(): boolean
 		shownPrompts[prompt] = nil
 	end
 	return false
-end
-
--- The local Grip state from StateController (`grip` field, §17.10), or nil before it is known.
-local function gripState(): (number?, number?)
-	local grip = StateController.get("grip")
-	if type(grip) ~= "table" then
-		return nil, nil
-	end
-	local total = if finite(grip.total) then math.max(0, math.floor(grip.total)) else nil
-	local trainer = if finite(grip.trainer) then math.floor(grip.trainer) else 1
-	return total, trainer
-end
-
-local function localLevel(): number?
-	local total = gripState()
-	return if total then GripMath.levelFor(total) else nil
-end
-
-local function equippedId(): string
-	local player = localPlayer()
-	local attribute = if player then player:GetAttribute(ATTR_EQUIPPED) else nil
-	if type(attribute) == "string" and Catalog.isValidId(attribute) then
-		return attribute
-	end
-	local fromState = StateController.get("equipped")
-	if type(fromState) == "string" and Catalog.isValidId(fromState) then
-		return fromState
-	end
-	return Catalog.starterId()
 end
 
 -- Popups ------------------------------------------------------------------------------------------------------------
@@ -868,10 +831,7 @@ local function refreshLabel()
 	if l.gui.Adornee ~= root then
 		l.gui.Adornee = root
 	end
-	local station = currentStation
-	local _, trainer = gripState()
-	local line =
-		SqueezeController.panelLabel(if station then station.tier else nil, localLevel(), trainer or 1, equippedId())
+	local line = SqueezeController.panelLabel(StateController.get("capsules"))
 	if l.text.Text ~= line then
 		l.text.Text = line
 		l.text.TextSize = Theme.textSize("Chip")
@@ -1494,17 +1454,13 @@ function SqueezeController.labelSize(textBounds: Vector2): Vector2
 	)
 end
 
--- Spec 2026-10-11 §5: the floating label's text (named for the old squeeze panel's pad label): the pad's
--- (stationLabel) when the local root stands on a pad (`tier`) the local Grip `level` has unlocked (unknown = unlocked,
--- lockedLevel); otherwise the base amount every squeeze pays (grip.stationLabelBase with tier 1's numbers: off a pad,
--- on a locked pad, or an unknown tier).
-function SqueezeController.panelLabel(tier: number?, level: number?, trainer: number, squishyId: string): string
-	if tier ~= nil and GRIP_PADS[tier] ~= nil and SqueezeController.lockedLevel(level, tier) == nil then
-		return SqueezeController.stationLabel(tier, trainer, squishyId)
-	end
+-- The floating label's text (named for the old squeeze panel's pad label): what one own squeeze pays for the
+-- `capsules` state field (Phase 5), the same anywhere: grip.stationLabelBase with the squeeze value and the Grip of the
+-- highest capsule level (CapsuleMath; a new player's 10 and 10 before the state arrives).
+function SqueezeController.panelLabel(capsules: any?): string
 	return text("grip.stationLabelBase", {
-		coins = Format.coins(CapsuleMath.capsuleCoins(squishyId, 1)),
-		grip = Format.coins(GripMath.squeezeGrip(trainer, 1)),
+		coins = Format.coins(CapsuleMath.squeezeValue(capsules)),
+		grip = Format.coins(CapsuleMath.squeezeGrip(capsules)),
 	})
 end
 
@@ -1514,34 +1470,6 @@ end
 function SqueezeController.hudOffsetOf(point: Vector2, inset: Vector2, origin: Vector2, scale: number): Vector2
 	local s = if finite(scale) and scale > 0 then scale else 1
 	return (point - inset - origin) / s
-end
-
--- The Grip level a station's pad needs when `level` is below it, else nil. An unknown level (no Grip state yet) is
--- never locked on the client: the server decides every squeeze (a locked pad pays the base, spec 2026-10-11 §5).
-function SqueezeController.lockedLevel(level: number?, tier: number): number?
-	if level == nil then
-		return nil
-	end
-	local pad = GRIP_PADS[tier]
-	if pad == nil or GripMath.canUseTier(level, tier) then
-		return nil
-	end
-	return pad.level
-end
-
--- The station label (§17.7 "At a pad"): grip.stationLabel "{pad}" / "+{coins} Coins · +{grip} Grip per squeeze", the
--- Coins of the equipped squishy in a Lv 1 capsule (CapsuleMath; see the header's shortcut) and the Grip from GripMath
--- with the WorldLayout tier and the trainer level. "" for an unknown tier.
-function SqueezeController.stationLabel(tier: number, trainer: number, squishyId: string): string
-	local pad = GRIP_PADS[tier]
-	if pad == nil then
-		return ""
-	end
-	return text("grip.stationLabel", {
-		pad = text("grip.pad." .. pad.key),
-		coins = Format.coins(CapsuleMath.capsuleCoins(squishyId, 1)),
-		grip = Format.coins(GripMath.squeezeGrip(trainer, tier)),
-	})
 end
 
 -- Public: the squeeze ---------------------------------------------------------------------------------------------

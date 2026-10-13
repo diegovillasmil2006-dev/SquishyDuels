@@ -4,7 +4,8 @@
 --
 -- * Profile store (Snapshot + versioned StateDelta, §2.7/§2.8): one monotonic `v`; a delta older than (or equal to)
 --   the stored v is ignored; `full` replaces every field. Fields: coins, owned, equipped, stats, squeezeLimit, quests,
---   daily, settings, onboarding, policy, dataStatus, monetization, unseenReveals, practice, grip (§17.10); unknown
+--   daily, settings, onboarding, policy, dataStatus, monetization, unseenReveals, practice, grip (§17.10), capsules
+--   (build plan Phase 5: the player's own capsules {slots, list}); unknown
 --   fields are kept as sent. Each known field is checked before it is stored (normalizeField): a value of the wrong
 --   shape is dropped (a partial delta keeps the old value), coins become a whole number >= 0, settings are clamped
 --   with Config.Data defaults filled in, dataStatus gets its booleans (and keeps `banner`, the server's Strings key of
@@ -162,6 +163,7 @@ local TABLE_FIELDS: { [string]: boolean } = {
 	unseenReveals = true,
 	practice = true,
 	grip = true,
+	capsules = true,
 }
 local MAX_COMPARE_DEPTH = 16
 -- Reveal holds (see the header): the fields shown without the held results, in fire order (sorted).

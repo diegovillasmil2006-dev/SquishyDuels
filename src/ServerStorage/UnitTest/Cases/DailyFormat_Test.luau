@@ -6,7 +6,9 @@
 --   * the day after a claim continues the streak (Day 7 wraps to Day 1 without a reset); a missed day restarts it at
 --     Day 1 with the one-sentence reset rule; a first claim is Day 1 without that sentence;
 --   * 7 day cards with "Day n", the Coins of that day and the free Treat Box on day 7; today highlighted; the days of
---     the cycle already claimed carry "Claimed";
+--     the cycle already claimed carry "Claimed"; Phase 5 (progression spec 2026-10-12 §9): a day's Coins are its
+--     squeezes (Config.Economy.Daily.coinsByDay) × the player's squeeze value (CapsuleMath.squeezeValue of the
+--     capsules passed in; a new player's 10 without them), as the server pays at claim time;
 --   * once today is claimed: "Come back in {time}" until 00:00 UTC; the sign reads "Ready to claim!" or
 --     "Next reward in {time}", nothing while the state is unknown;
 --   * Part 8 layout (§11.2; base px at 667×375, 1280×720 and 1920×1080, Medium and the largest text): the day cards
@@ -25,11 +27,14 @@ type Context = {
 return function(t: Context)
 	local expect = t.expect
 	local DailyFormat = t.requireClient("UI/DailyFormat")
+	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
 	local Strings = t.requireShared("Strings")
 	local DAILY = Config.Economy.Daily
 	local DAYS = #DAILY.coinsByDay
+	-- A new player's squeeze value (no capsule passed in): Kitty Bread in a Lv 1 capsule, 10 Coins.
+	local VALUE = CapsuleMath.squeezeValue(nil)
 
 	local D = 20000 -- a UTC day index
 	local START = D * 86400 -- 00:00:00 UTC of day D
@@ -101,7 +106,7 @@ return function(t: Context)
 		expect.equal(model.resetText, Strings.daily.streakReset)
 		expect.deepEqual(claimedDays(model), {})
 		expect.deepEqual(todayDays(model), { 1 })
-		expect.equal(model.coins, DAILY.coinsByDay[1])
+		expect.equal(model.coins, DAILY.coinsByDay[1] * VALUE)
 		-- After the claim the saved state no longer shows the miss: the reply's streakReset keeps the sentence.
 		local claimed = daily(D, 1)
 		expect.equal(DailyFormat.model(claimed, NOON).reset, false)
@@ -116,10 +121,10 @@ return function(t: Context)
 		for n, card in model.cards do
 			expect.equal(card.day, n)
 			expect.equal(card.label, Strings.format(Strings.daily.dayLabel, { n = n }))
-			expect.equal(card.coins, DAILY.coinsByDay[n])
+			expect.equal(card.coins, DAILY.coinsByDay[n] * VALUE)
 			expect.equal(
 				card.coinsText,
-				Strings.format(Strings.common.coinsAmount, { coins = Format.coins(DAILY.coinsByDay[n]) })
+				Strings.format(Strings.common.coinsAmount, { coins = Format.coins(DAILY.coinsByDay[n] * VALUE) })
 			)
 			expect.equal(card.treat, n == DAILY.freeBoxDay)
 			if n == DAILY.freeBoxDay then
@@ -140,9 +145,31 @@ return function(t: Context)
 		local seventh = DailyFormat.model(daily(D - 1, 6), NOON)
 		expect.equal(seventh.nextDay, 7)
 		expect.equal(seventh.treat, true)
-		expect.equal(seventh.coins, DAILY.coinsByDay[7])
+		expect.equal(seventh.coins, DAILY.coinsByDay[7] * VALUE)
 		expect.deepEqual(todayDays(seventh), { 7 })
 	end)
+
+	t.test(
+		"a day's Coins are its squeezes × the squeeze value of the player's best capsule (spec 2026-10-12 §9)",
+		function()
+			-- Butter (power 4) in a Lv 11 capsule (CP 68) beats Kitty Bread at Lv 1: 272 Coins a squeeze.
+			local capsules =
+				{ slots = 2, list = { { level = 1, squishyId = "kitty_bread" }, { level = 11, squishyId = "butter" } } }
+			local value = CapsuleMath.squeezeValue(capsules)
+			expect.equal(value, 272)
+			local model = DailyFormat.model(daily(D - 1, 3), NOON, nil, capsules)
+			for n, card in model.cards do
+				expect.equal(card.coins, DAILY.coinsByDay[n] * value)
+				expect.equal(
+					card.coinsText,
+					Strings.format(Strings.common.coinsAmount, { coins = Format.coins(DAILY.coinsByDay[n] * value) })
+				)
+			end
+			expect.equal(model.coins, DAILY.coinsByDay[4] * value) -- day 4 is next
+			-- The same rule as the server's reward (CapsuleMath.rewardCoins: floored, never past the Coins cap).
+			expect.equal(model.cards[1].coins, CapsuleMath.rewardCoins(DAILY.coinsByDay[1], value))
+		end
+	)
 
 	t.test("claimed today: Come back in {time} until 00:00 UTC; the sign counts down", function()
 		local claimed = daily(D, 3)

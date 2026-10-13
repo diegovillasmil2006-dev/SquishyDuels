@@ -118,12 +118,12 @@ local RANK_COLORS: { [string]: Color3 } = {
 	iron = Palette.Lavender,
 	titan = Palette.Bubblegum,
 	master = Palette.Lemon,
-	-- shortcut: spec 2026-10-12 §10's new ranks reuse light §7.2 tokens, until the Phase 5 nameplate pass picks theirs.
-	legend = Palette.Strawberry,
-	mythic = Palette.LaneLilac,
-	cosmic = Palette.Mint,
-	galaxy = Palette.Vanilla,
-	infinite = Palette.White,
+	-- Spec 2026-10-12 §10's ranks above Lv 50 (Phase 5): their own light faces.
+	legend = Palette.RankLegend,
+	mythic = Palette.RankMythic,
+	cosmic = Palette.RankCosmic,
+	galaxy = Palette.RankGalaxy,
+	infinite = Palette.RankInfinite,
 }
 
 -- Module table

@@ -27,6 +27,8 @@
 --   failed" line, which ends with "Please rejoin."); READONLY data.newerVersion (newer schema), data.rejoin (lock lost)
 --   or data.loadFailed (a stored value that is not a profile, or no reason). DataService sends none of these texts.
 -- * grip = {total, trainer, rested, afk} (§17.10), copied from profile.grip; StateService is not a duel-path file.
+-- * capsules = profile.capsules {slots, list} as stored (build plan Phase 5: the owner's capsule card, the squeeze
+--   value of the reward texts and the owner's capsule pops; CapsuleService marks it on every change).
 --
 -- dataPort() is the one reading of DataService for this layer (EconomyService, InventoryService and
 -- PreferencesService use it as their default, and so do services above them). portFrom(source) builds the same port
@@ -107,6 +109,7 @@ local FIELDS: { string } = {
 	"unseenReveals",
 	"practice",
 	"grip",
+	"capsules",
 }
 local FIELD_SET: { [string]: boolean } = {}
 for _, field in FIELDS do

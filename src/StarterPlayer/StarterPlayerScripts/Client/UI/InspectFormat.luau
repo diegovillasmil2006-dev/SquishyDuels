@@ -83,7 +83,7 @@ export type View = {
 	badgeText: string,
 	previewBadge: string?, -- "Preview · Not owned" when not owned (§10.9)
 	caption: string, -- inspect.preview (§10.7)
-	coinsText: string, -- "Coins per squeeze: 10" (in a Lv 1 capsule)
+	coinsText: string, -- the capsule power, "x16 power"
 	coinsSub: string,
 	stats: { StatLine },
 	statsCaption: string,
@@ -250,10 +250,9 @@ function InspectFormat.view(id: string, ctx: ViewContext): View?
 		badgeText = textOf(badgeKey, badgeKey),
 		previewBadge = if owned then nil else Strings.inspect.previewNotOwned,
 		caption = Strings.inspect.preview,
-		-- shortcut: the squishy's Coins per squeeze in a Lv 1 capsule (Phase 3 removed the per-squishy squeeze Coins);
-		-- Phase 5 turns this line into its capsule power.
-		coinsText = Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(def.id, 1) }),
-		coinsSub = Strings.inspect.coinsPerSqueezeSub,
+		-- Phase 5 (progression spec 2026-10-12 §3, §6): what the squishy multiplies in a capsule ("x16 power").
+		coinsText = Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(def.id) }),
+		coinsSub = Strings.capsule.powerNote,
 		stats = statLines(def),
 		statsCaption = Strings.inspect.statsCaption,
 		trail = trailOf(def),

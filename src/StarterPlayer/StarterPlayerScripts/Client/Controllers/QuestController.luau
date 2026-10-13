@@ -7,7 +7,7 @@
 --   a Daily section (one card per quest of the day, or "No quests right now. Check back in {time}.") and a Starter
 --   section (the starter tasks, hidden once all are claimed), then the footer "New quests in {h}h {m}m" (refreshed
 --   every second while open). A card (Quest_<questId>): the quest line, a progress bar with "3/5", the reward
---   "+150 Coins", its state (In progress; Claim = the primary Quests_ClaimButton; Claimed = a check drawn from shapes +
+--   "+1,500 Coins" (Phase 5: its squeezes × the `capsules` field's squeeze value), its state (In progress; Claim = the primary Quests_ClaimButton; Claimed = a check drawn from shapes +
 --   "Claimed"), Quests_SwapButton on unfinished daily quests while the day's free swap is left, and the
 --   Quests_EquipButton shortcut when the quest's squishy is owned but not equipped.
 -- * Claim -> NetController.invokeAsync("QuestClaim", questId): on ok the reward flies from the button into the pill
@@ -151,6 +151,7 @@ local function currentBoard(): QuestFormat.Board
 		owned = StateController.owned(),
 		equipped = StateController.equipped(),
 		now = serverNow(),
+		capsules = StateController.get("capsules"), -- Phase 5: rewards = squeezes × the squeeze value
 	})
 end
 
@@ -783,7 +784,7 @@ function QuestController.init()
 	c:add(WorldBinder.registerStand(STAND_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { FIELD, "owned", "equipped", "dataStatus" } do
+	for _, field in { FIELD, "owned", "equipped", "dataStatus", "capsules" } do
 		c:add(StateController.changed(field):connect(refresh))
 	end
 	c:add(function()

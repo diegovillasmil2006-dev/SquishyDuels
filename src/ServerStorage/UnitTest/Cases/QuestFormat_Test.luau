@@ -2,8 +2,10 @@
 -- QuestFormat_Test: StarterPlayerScripts.Client.UI.QuestFormat (the quest board and the result panel's quest names).
 -- Server only (ServerStorage.UnitTest). Pure: no instances.
 -- Contract (DESIGN §6.8, §11.6):
---   * a daily card: the QuestDefs text (goal and squishy name filled in), "3/5" progress with its bar, "+150 Coins",
---     and its state In progress / Claim / Claimed;
+--   * a daily card: the QuestDefs text (goal and squishy name filled in), "3/5" progress with its bar, "+1,500 Coins",
+--     and its state In progress / Claim / Claimed; Phase 5 (progression spec 2026-10-12 §9): a quest's or starter
+--     task's reward is its squeezes × the player's squeeze value (CapsuleMath.squeezeValue of ctx.capsules; a new
+--     player's 10 without them), the Coins the server pays at claim time (card.reward is those Coins);
 --   * Swap on unfinished daily quests while a free swap is left (none once used, none on a finished quest);
 --   * the Equip shortcut when the quest's squishy is owned but not equipped (and the quest is unfinished);
 --   * a Starter section with every QuestDefs starter task (progress from profile.starter), hidden once all are claimed;
@@ -23,7 +25,9 @@ type Context = {
 return function(t: Context)
 	local expect = t.expect
 	local QuestFormat = t.requireClient("UI/QuestFormat")
+	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
+	local Format = t.requireShared("Util/Format")
 	local QuestDefs = t.requireShared("QuestDefs")
 	local Strings = t.requireShared("Strings")
 	local SWAPS = Config.Economy.Quests.freeSwapsPerDay
@@ -61,13 +65,16 @@ return function(t: Context)
 	end
 
 	local ctx = { owned = { kitty_bread = {}, toast = {} }, equipped = "kitty_bread", now = NOW }
+	-- A new player's squeeze value (no capsules in the context): Kitty Bread in a Lv 1 capsule, 10 Coins.
+	local VALUE = CapsuleMath.squeezeValue(nil)
 
 	t.test("daily card: title, progress, reward and the three states", function()
 		local open = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 37), ctx, SWAPS)
 		expect.equal(open.title, QuestDefs.text("squeeze_any", 100))
 		expect.equal(open.progressText, Strings.format(Strings.common.progress, { progress = 37, goal = 100 }))
 		expect.near(open.fraction, 0.37, 1e-9)
-		expect.equal(open.rewardText, Strings.format(Strings.common.coinsGain, { coins = "150" }))
+		expect.equal(open.reward, 150 * VALUE)
+		expect.equal(open.rewardText, Strings.format(Strings.common.coinsGain, { coins = "1,500" }))
 		expect.equal(open.state, "inProgress")
 		expect.equal(open.stateText, Strings.quest.inProgress)
 		local ready = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 100), ctx, SWAPS)
@@ -127,7 +134,7 @@ return function(t: Context)
 			expect.equal(cards[i].id, def.id)
 			expect.equal(cards[i].kind, "starter")
 			expect.equal(cards[i].title, QuestDefs.text(def.id, variant.goal))
-			expect.equal(cards[i].reward, variant.reward)
+			expect.equal(cards[i].reward, variant.reward * VALUE)
 		end
 		expect.equal(cards[1].progress, math.min(7, defs[1].variants[1].goal))
 		expect.equal(cards[2].progress, 0)
@@ -153,6 +160,27 @@ return function(t: Context)
 		expect.equal(QuestFormat.starterClaimable(quests({}, 0, { progress = doneMap, claimed = allClaimed })), 0)
 		expect.equal(QuestFormat.starterClaimable(nil), 0)
 	end)
+
+	t.test(
+		"rewards are the squeezes × the squeeze value of the capsules in the context (spec 2026-10-12 §9)",
+		function()
+			-- Dragon (power 64) in a Lv 21 capsule: 64 × CP(21) Coins a squeeze.
+			local capsules = { slots = 1, list = { { level = 21, squishyId = "dragon" } } }
+			local value = CapsuleMath.squeezeValue(capsules)
+			expect.equal(value, 64 * (CapsuleMath.power(21) :: number))
+			local rich = { owned = ctx.owned, equipped = ctx.equipped, now = NOW, capsules = capsules }
+			local defs = QuestDefs.starter()
+			local board = QuestFormat.board(quests({ entry(1, "squeeze_any", 100, 37) }), rich)
+			expect.equal(board.daily[1].reward, 150 * value)
+			expect.equal(
+				board.daily[1].rewardText,
+				Strings.format(Strings.common.coinsGain, { coins = Format.coins(150 * value) })
+			)
+			for i, def in defs do
+				expect.equal(board.starter[i].reward, CapsuleMath.rewardCoins(def.variants[1].reward, value))
+			end
+		end
+	)
 
 	t.test("footer and empty state count down to 00:00 UTC", function()
 		expect.equal(QuestFormat.footer(NOW), Strings.format(Strings.quest.footer, { h = 18, m = 53 }))

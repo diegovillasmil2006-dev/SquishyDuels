@@ -15,7 +15,7 @@
 --   Exclusive shimmer at 45°/s, static under ReducedMotion, and the "Ultimate" badge), and the badges "Equipped", "NEW"
 --   (StateController new squishies, until the card is first selected) or "Not owned" (greyed, with a lock).
 --   Sort: equipped first, then rarity descending, then name (UI/InventoryFormat); the selection is kept while visible.
--- * Detail panel: preview, name, rarity row, ownership (with a lock when not owned), "Coins per squeeze: {n}", the five
+-- * Detail panel: preview, name, rarity row, ownership (with a lock when not owned), "x{n} power" (Phase 5), the five
 --   throw stats as bars inside the §5.8 bands, trail, ultimate, elimination, the shop price when not owned (+ View in
 --   Shop once a "shop" screen exists), Equip and Inspect.
 -- * Equip (Squishies_EquipButton): EquipSquishy through NetController; loading while it runs; ok -> "Equipped!" toast
@@ -581,8 +581,8 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 	d.ownership:setAccent(if entry.equipped then "mint" elseif entry.owned then "frosting" else "lilac")
 	d.ownership.root.Visible = true
 	d.lock.Visible = not entry.owned
-	-- shortcut: Coins per squeeze in a Lv 1 capsule (Phase 3); Phase 5 shows the capsule power instead.
-	d.coins.Text = Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(entry.id, 1) })
+	-- Phase 5 (progression spec 2026-10-12 §6): what the squishy multiplies in a capsule ("x16 power").
+	d.coins.Text = Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(entry.id) })
 	for _, bar in InventoryFormat.statBars(def) do
 		local view = d.stats[bar.stat]
 		if view then

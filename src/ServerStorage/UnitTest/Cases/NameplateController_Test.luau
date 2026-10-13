@@ -5,7 +5,8 @@
 --   * visible(enabled, viewerPhase, targetPhase, level): only with nameplates on, a known level, and neither the viewer
 --     nor the target in a match (SD_DuelPhase ~= "" hides it);
 --   * text(level): grip.nameplate "Lv {level} · {rank}" with the rank of that level;
---   * rankColor(level): one colour per rank (always shown with the rank's name), the same within a rank.
+--   * rankColor(level): one colour per rank (always shown with the rank's name), the same within a rank; Phase 5: the
+--     ranks above Lv 50 have their own Palette faces (Rank*), and every face keeps the plate's text >= 4.5:1.
 -- Part 8 polish (§17.11; Readings, DESIGN lists no details): fadeTransparency (solid until the last fadeStuds before
 -- maxDistance, then linear to clear), ownHidden (the own plate hides with the camera within ownHideStuds of the Head),
 -- plateSize (the plate fits "Lv 50 · <longest rank>" at every PreferredTextSize; foam UI: plus the chip bands under
@@ -63,6 +64,39 @@ return function(t: Context)
 			local nextRank = RANKS[index + 1]
 			local lastLevel = if nextRank then nextRank.level - 1 else Config.Grip.maxLevel
 			expect.equal(Nameplate.rankColor(lastLevel), color)
+		end
+	end)
+
+	-- Phase 5: the ranks above Lv 50 have their own Palette faces (Rank*), and every plate keeps its PlumInk text
+	-- readable (WCAG 2 contrast >= 4.5:1, as Theme_Test checks the UI faces).
+	t.test("every rank up to Lv 100 has a plate colour of its own that keeps the plate's text >= 4.5:1", function()
+		local Palette = t.requireShared("Art/Palette")
+		local function luminance(color: Color3): number
+			local function channel(c: number): number
+				return if c <= 0.03928 then c / 12.92 else ((c + 0.055) / 1.055) ^ 2.4
+			end
+			return 0.2126 * channel(color.R) + 0.7152 * channel(color.G) + 0.0722 * channel(color.B)
+		end
+		local ink = luminance(Palette.PlumInk)
+		for _, rank in RANKS do
+			local face = luminance(Nameplate.rankColor(rank.level))
+			expect.truthy((math.max(face, ink) + 0.05) / (math.min(face, ink) + 0.05) >= 4.5)
+		end
+		local tokens = {
+			legend = "RankLegend",
+			mythic = "RankMythic",
+			cosmic = "RankCosmic",
+			galaxy = "RankGalaxy",
+			infinite = "RankInfinite",
+		}
+		for rankKey, token in tokens do
+			local level = 0
+			for _, rank in RANKS do
+				if rank.key == rankKey then
+					level = rank.level
+				end
+			end
+			expect.equal(Nameplate.rankColor(level), Palette[token])
 		end
 	end)
 

@@ -16,7 +16,9 @@
 --   the owner's open capsule (a clone of ServerStorage.SD_Templates.Capsules.Capsule_<its tier's look> on the slot's
 --   capsule spot, its Level label base.capsuleLevel) with its squishy (Squishy_<id>) on the seat (the template's
 --   SD_SeatY), or a locked slot (the Lock, its Price label base.unlockPrice with the slot's price), and capsule 1's
---   squishy as the statue (Statue_<id>) on the back wall's plinth. Each clone carries SD_Template (its template's name).
+--   squishy as the statue (Statue_<id>) on the back wall's plinth. Each clone carries SD_Template (its template's name);
+--   Phase 5: each capsule also SD_Level and SD_Squishy (none when empty), so every client can show its read-only card
+--   and play its upgrade burst (Controllers/CapsuleController).
 --   A plot renders when it is handed out or freed, when its owner's profile loads (the data port's Loaded) and on
 --   refresh(player) after a capsule change (CapsuleService). Until the profile is ready a plot shows its owner's name
 --   and colour only; without the generated plot or the templates nothing is drawn and nothing fails.
@@ -71,6 +73,8 @@ local CAPSULES_FOLDER = "Capsules" -- the templates' folder, and the runtime fol
 local OWNER_LABEL = "Owner"
 local ATTR_SEAT = "SD_SeatY"
 local ATTR_TEMPLATE = "SD_Template"
+local ATTR_LEVEL = "SD_Level"
+local ATTR_SQUISHY = "SD_Squishy"
 
 -- Module table
 
@@ -167,7 +171,9 @@ local function drawCapsules(model: Instance, plot: number, capsules: any, templa
 			if shown then
 				local level = Strings.format(Strings.resolve("base.capsuleLevel") or "", { level = capsule.level })
 				setLabel(shown, "Level", level)
+				shown:SetAttribute(ATTR_LEVEL, capsule.level)
 				if Catalog.isValidId(capsule.squishyId) then
+					shown:SetAttribute(ATTR_SQUISHY, capsule.squishyId)
 					local seat = shown:GetAttribute(ATTR_SEAT)
 					local lift = if type(seat) == "number" then seat else 0
 					place(

@@ -4,7 +4,9 @@
 -- Contract (DESIGN §17.3.4, §17.3.6, §17.5, §17.7, §17.10):
 --   * normalize(raw): the StateDelta `grip` field as the client uses it; nil when missing or malformed; the total is
 --     floored and clamped to [0, maxGrip], the trainer to [1, #Trainer]; a timer needs a finite value and at;
---   * afkGain(old, new, explained): the Grip rise no SqueezeResult explains (the slow-training popup), never negative;
+--   * afkGain(old, new, explained, credit?): the Grip rise no SqueezeResult explains (the slow-training popup), never
+--     negative; Phase 5: less the capsule Grip credited since the last check (capsuleGrip of the local player's
+--     SD_Squeezes<slot> rises), whose unused part is handed back;
 --   * gripChange: the first grip state and every full state (a profile recovered after OFFLINE) are a silent baseline
 --     (no popup check, no waypoint; LevelChanged only for the first state or a moved level); an earned rise starts the
 --     popup check and a level-up points the waypoint at the best pad it opened;
@@ -107,6 +109,34 @@ return function(t: Context)
 		expect.equal(GripController.afkGain(100, 160, 130), 30) -- a squeeze, then a tick
 		expect.equal(GripController.afkGain(100, 90, 0), 0)
 		expect.equal(GripController.afkGain(100, 120, 50), 20) -- an old explanation below the start counts as none
+	end)
+
+	-- Phase 5: capsule Grip (CapsuleService pays CP(level) per squeeze of the local player's capsule, counted in the
+	-- Player attribute SD_Squeezes<slot>) is never shown as slow training.
+	t.test("capsuleGrip: squeezes × the capsule's power; nothing for an empty, locked or unknown capsule", function()
+		local CapsuleMath = t.requireShared("CapsuleMath")
+		local list: { any } = { { level = 11, squishyId = "toast" }, { level = 3 } }
+		local capsules = { slots = 2, list = list }
+		expect.equal(GripController.capsuleGrip(capsules, 1, 3), 3 * (CapsuleMath.power(11) :: number))
+		expect.equal(GripController.capsuleGrip(capsules, 2, 1), 0) -- empty: it never squeezes
+		expect.equal(GripController.capsuleGrip(capsules, 3, 1), 0) -- not unlocked
+		expect.equal(GripController.capsuleGrip(nil, 1, 1), 0)
+		expect.equal(GripController.capsuleGrip(capsules, 1, 0), 0)
+	end)
+
+	t.test("afkGain: capsule Grip credited since the last check is taken off the popup, the rest kept", function()
+		local gain, left = GripController.afkGain(100, 160, 100, 50) -- a capsule (50) and a tick (10)
+		expect.equal(gain, 10)
+		expect.equal(left, 0)
+		gain, left = GripController.afkGain(100, 130, 100, 50) -- the rise is all capsule Grip
+		expect.equal(gain, 0)
+		expect.equal(left, 20)
+		gain, left = GripController.afkGain(100, 160, 130, 50) -- a squeeze explained 30 of it first
+		expect.equal(gain, 0)
+		expect.equal(left, 20)
+		gain, left = GripController.afkGain(100, 137, 100) -- no credit: as before
+		expect.equal(gain, 37)
+		expect.equal(left, 0)
 	end)
 
 	-- Grip state changes (§17.7 "Load-time level jumps") -------------------------------------------------------------

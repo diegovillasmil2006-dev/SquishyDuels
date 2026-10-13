@@ -3,7 +3,8 @@
 -- its sign), §11.3 (states), §11.4 (focus), §18.5.2 B2 (coin flights). The server decides every claim
 -- (DailyRewardService); this module only shows the state and sends DailyClaim. Looks: UI/DailyFormat (pure).
 -- * The "daily" modal (registered in init, so the HUD's Daily button and the SD_DailyStand prompt come alive, §7.6):
---   7 day cards (Day n, its Coins, "Treat Box" on day 7; today highlighted with "Today"; claimed days with a
+--   7 day cards (Day n, its Coins (Phase 5: its squeezes × the `capsules` field's squeeze value, refreshed when the
+--   capsules change), "Treat Box" on day 7; today highlighted with "Today"; claimed days with a
 --   check drawn from shapes plus "Claimed"), the reset sentence when a missed day restarts the streak, the Claim
 --   button (Daily_ClaimButton), then "Come back in {time}" once today is claimed (refreshed every second while open).
 --   Locked states (§11.3): a profile that is not ready -> disabled with reason.data.notReady; a pending save -> disabled
@@ -86,6 +87,7 @@ type CardView = {
 	list: UIListLayout,
 	padding: UIPadding,
 	today: TextLabel,
+	coins: TextLabel, -- Phase 5: the day's Coins follow the squeeze value
 	claimedRow: Frame,
 	texts: { TextLabel }, -- UI overhaul: every text on the card (painted for its face)
 	gift: Frame?, -- the Treat Box day's gift icon
@@ -175,7 +177,8 @@ end
 
 local function currentModel(): DailyFormat.Model
 	local now = serverNow()
-	return DailyFormat.model(dailyState(), now, resetDay ~= nil and resetDay == DailyFormat.today(now))
+	local justReset = resetDay ~= nil and resetDay == DailyFormat.today(now)
+	return DailyFormat.model(dailyState(), now, justReset, StateController.get("capsules"))
 end
 
 -- Why the Claim button is disabled now, or nil.
@@ -197,6 +200,7 @@ local function refresh()
 	for i, view in cards do
 		local card = model.cards[i]
 		if card then
+			view.coins.Text = card.coinsText
 			view.today.Visible = card.today and card.todayText ~= nil
 			view.today.Text = card.todayText or ""
 			view.claimedRow.Visible = card.claimed
@@ -509,6 +513,7 @@ local function buildCard(parent: Instance, card: DailyFormat.DayCard): CardView
 		list = list,
 		padding = frame:FindFirstChildOfClass("UIPadding") :: UIPadding,
 		today = today,
+		coins = coinsLabel,
 		claimedRow = claimedRow,
 		texts = { dayLabel, coinsLabel, treatLabel, today, claimedLabel },
 		gift = gift,
@@ -730,6 +735,7 @@ function DailyController.init()
 	end
 	c:add(StateController.changed(FIELD):connect(onState))
 	c:add(StateController.changed("dataStatus"):connect(onState))
+	c:add(StateController.changed("capsules"):connect(refresh)) -- Phase 5: the squeeze value sets the Coins
 	c:add(function()
 		table.clear(cards)
 		root, resetLabel, countdownLabel, claimButton, closeButton = nil, nil, nil, nil, nil

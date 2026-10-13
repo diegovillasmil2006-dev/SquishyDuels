@@ -11,9 +11,12 @@
 --   nextDay(daily, today)            the streak day the next claim gives: streakDay % 7 + 1 the day after a claim,
 --                                    Day 1 after a missed day or for a first claim; while claimed today, today's day
 --   countdownText(now)               "5:03:12" until the next 00:00 UTC (TimeUtil.formatCountdown)
---   model(daily, now, justReset?)    the 7 day cards (daily.dayLabel, Coins, daily.treatBox on the free box day; today
---                                    highlighted with daily.today; claimed days with a check and common.claimed), the
---                                    claim state, the reset sentence (daily.streakReset) and "Come back in {time}"
+--   model(daily, now, justReset?, capsules?)   the 7 day cards (daily.dayLabel, Coins, daily.treatBox on the free box
+--                                    day; today highlighted with daily.today; claimed days with a check and
+--                                    common.claimed), the claim state, the reset sentence (daily.streakReset) and "Come
+--                                    back in {time}". Phase 5 (progression spec 2026-10-12 §9): a day's Coins are its
+--                                    squeezes (coinsByDay) × the squeeze value of `capsules` (the player's capsules state;
+--                                    CapsuleMath.rewardCoins, as the server pays at claim time)
 --   signText(daily, now)             the stand sign's status line: daily.ready / daily.wait {time}; nil = unknown
 -- Part 8 layout (§11.2; base px under the ScreenGui UIScale; unit-tested at 667×375, 1280×720, 1920×1080 and the
 -- largest text):
@@ -28,7 +31,7 @@
 --                                    day already claimed = Biscuit (recessed), else Frosting. Each look comes with its
 --                                    word on the card (Today, Treat Box, Claimed), never colour alone
 -- Readings: a daily value of the wrong shape counts as unknown (no claim offered, the sign stays as it is). The
--- free-box day and the Coins per day come from Config.Economy.Daily (coinsByDay, freeBoxDay, GraceDays); GraceDays
+-- free-box day and the squeezes per day come from Config.Economy.Daily (coinsByDay, freeBoxDay, GraceDays); GraceDays
 -- widens the "next day" window (0 = DESIGN's rule: only lastClaimDay == today - 1 continues the streak).
 
 -- Services
@@ -38,6 +41,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local Strings = require(Shared.Strings)
@@ -153,8 +157,9 @@ end
 
 -- The Daily panel. `justReset` (from this session's DailyClaim reply, streakReset) keeps the reset sentence after
 -- the claim, so the player still reads why the streak is at Day 1.
-function DailyFormat.model(daily: unknown, now: number, justReset: boolean?): Model
+function DailyFormat.model(daily: unknown, now: number, justReset: boolean?, capsules: any?): Model
 	local seconds = if finite(now) then TimeUtil.secondsUntilNextUtcDay(now) else 0
+	local value = CapsuleMath.squeezeValue(capsules)
 	local d = valid(daily)
 	local today = if finite(now) then TimeUtil.utcDay(now) else 0
 	local known = d ~= nil and finite(now)
@@ -167,7 +172,7 @@ function DailyFormat.model(daily: unknown, now: number, justReset: boolean?): Mo
 	local cards: { DayCard } = {}
 	local todayWord = Strings.daily.today
 	for n = 1, DAYS do
-		local coins = COINS_BY_DAY[n]
+		local coins = CapsuleMath.rewardCoins(COINS_BY_DAY[n], value)
 		local isToday = known and n == day
 		local claimed = n <= claimedUpTo
 		table.insert(cards, {
@@ -187,7 +192,7 @@ function DailyFormat.model(daily: unknown, now: number, justReset: boolean?): Mo
 		known = known,
 		canClaim = can,
 		nextDay = day,
-		coins = COINS_BY_DAY[day],
+		coins = CapsuleMath.rewardCoins(COINS_BY_DAY[day], value),
 		treat = day == FREE_BOX_DAY,
 		cards = cards,
 		reset = reset,

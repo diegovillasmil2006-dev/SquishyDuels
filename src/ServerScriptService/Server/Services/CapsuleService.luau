@@ -27,7 +27,8 @@
 --   ok({capsules, charged = false, savePending}).
 -- Every refusal carries charged = false. Every profile write goes through DataService.mutate (the data port).
 -- Phase 4: every capsule change (a bought level or slot, a squishy set) redraws the caller's own base at once
--- (BaseService.refresh, deps.showCapsules); a refusal, a replay or a squishy already there draws nothing.
+-- (BaseService.refresh, deps.showCapsules); a refusal, a replay or a squishy already there draws nothing. Phase 5: the
+-- same call sends the caller's `capsules` state field (StateService.markDirty) to their client in this frame.
 -- Dependencies are injectable (useDeps) so unit tests run with fake profiles and players (plain tables); init() never
 -- yields; playerAdded / playerRemoving never yield.
 
@@ -73,7 +74,8 @@ export type Deps = {
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 	requestSave: (player: any, reason: string) -> (),
 	setAttribute: (player: any, name: string, value: number) -> (),
-	showCapsules: (player: any) -> (), -- BaseService.refresh: the player's base shows their capsules again
+	-- BaseService.refresh and StateService.markDirty: the player's base and client show their capsules again
+	showCapsules: (player: any) -> (),
 }
 
 -- What the remotes answer: NetService.ok(Types.CapsuleResult) or NetService.err(reason, false).
@@ -175,6 +177,7 @@ local function defaultDeps(): Deps
 		end,
 		showCapsules = function(player: any)
 			BaseService.refresh(player)
+			StateService.markDirty(player, "capsules")
 		end,
 	}
 end

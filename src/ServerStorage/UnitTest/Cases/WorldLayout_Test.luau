@@ -193,7 +193,8 @@ local TEXTS: { [string]: string } = {
 	["daily.wait"] = "Next reward in {time}",
 	["grip.padNeeds"] = "Needs Grip Lv {level}",
 	["grip.signLocked"] = "Needs Grip Lv {level} · You: Lv {have}",
-	["grip.signOpen"] = "Open · +{coins} Coins · x{mult} Grip",
+	-- Build plan Phase 5: a pad no longer adds Coins to a squeeze (the capsules set its pay); it speeds slow training.
+	["grip.signOpen"] = "Open · x{mult} slow training",
 	["prompt.joinQueue"] = "Join 1v1 Queue",
 	["prompt.leaveQueue"] = "Leave Queue",
 	["prompt.seeBoxes"] = "See Boxes",

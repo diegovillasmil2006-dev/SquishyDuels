@@ -472,8 +472,6 @@ local Strings = {
 	inspect = {
 		preview = "Preview only. Squeeze in the lobby to earn Coins.", -- spec 2026-10-11 §5 (squeeze anywhere)
 		previewNotOwned = "Preview · Not owned", -- foam fix batch: sentence case like the other chips (was all caps)
-		coinsPerSqueeze = "Coins per squeeze: {n}",
-		coinsPerSqueezeSub = "per squeeze", -- spec 2026-10-11 §5
 		stat = {
 			speed = "Speed",
 			size = "Size",
@@ -713,8 +711,8 @@ local Strings = {
 	-- Onboarding card (§11.8). Keyed by step id. {goal} = the box cost or the cheapest shop price from Config/Catalog.
 	onboarding = {
 		welcome = "Welcome to Squishy Duels! Your first squishy is {starterName}.",
-		-- Spec 2026-10-11 §5 (squeeze anywhere; pads only boost).
-		squeeze = "Squeeze squishies anywhere to earn Coins. {squeezeHint}. Squeeze pads give a boost.",
+		-- Spec 2026-10-11 §5 (squeeze anywhere); Phase 5: a pad no longer boosts a squeeze (capsules set its pay).
+		squeeze = "Squeeze squishies anywhere to earn Coins. {squeezeHint}.",
 		firstBox = "Open your first box at the Gift Box counter. {coins}/{goal} Coins",
 		firstBoxShop = "Get your first new squishy in the Shop. {coins}/{goal} Coins",
 		equip = "Equip your new squishy: open Squishies and press Equip.",
@@ -785,6 +783,52 @@ local Strings = {
 		unlockPrice = "Unlock · {coins}",
 	},
 
+	-- The capsule card and its prompt (lobby bases spec 2026-10-11 §9; progression spec 2026-10-12 §3-§7; build plan
+	-- Phase 5). {slot} = 1..4; {tier} = a capsule.tier.* name; {level} = a capsule level 1..100 (needGrip, evolveTo: a
+	-- Grip Level); {seconds} / {next} = seconds between two squeezes (one decimal); {coins} / {grip} / {next} =
+	-- Format.coins amounts; {name} = the base owner's display name; {n} = a squishy's capsule power (Catalog power). The
+	-- squeeze pop reuses common.coinsGain and grip.popup, the Unlock button base.unlockPrice.
+	capsule = {
+		title = "Capsule {slot}",
+		prompt = "Capsule",
+		tierLevel = "{tier} · Lv {level}",
+		-- Keyed by Config.Grip.Capsule.Tiers[i].key.
+		tier = {
+			foam = "Foam",
+			jelly = "Jelly",
+			marshmallow = "Marshmallow",
+			gummy = "Gummy",
+			taffy = "Taffy",
+			caramel = "Caramel",
+			bubblegum = "Bubblegum",
+			rainbow = "Rainbow",
+			crystal = "Crystal",
+			royal = "Royal",
+		},
+		swap = "Tap to swap",
+		empty = "Put a squishy in to start squeezing.",
+		speed = "Squeezes every {seconds} s",
+		speedNext = "Squeezes every {seconds} s → {next} s",
+		coinsHour = "Coins/h: {coins}",
+		coinsHourNext = "Coins/h: {coins} → {next}",
+		gripHour = "Grip/h: {grip}",
+		gripHourNext = "Grip/h: {grip} → {next}",
+		evolveTo = "Next: {tier} look · needs Grip Lv {level}",
+		upgrade = "Upgrade · {coins}",
+		evolve = "Evolve · {coins}",
+		needGrip = "Needs Grip Lv {level}",
+		unlockFirst = "Unlock capsule {slot} first",
+		locked = "Locked",
+		max = "Top level!",
+		visitor = "Only {name} can upgrade this.",
+		pick = "Pick a squishy",
+		inCapsule = "In capsule {slot}",
+		back = "Back",
+		-- Squishies, Shop and Inspect: what a squishy multiplies in a capsule (progression spec §3, §6).
+		power = "x{n} power",
+		powerNote = "Capsule Coins multiplier",
+	},
+
 	-- Collection display (§7.6, §7.7).
 	collection = {
 		title = "MY COLLECTION",
@@ -795,10 +839,11 @@ local Strings = {
 	-- Grip training (§17.6, §17.7), a lobby-only stat. Never shown in duels: the client holds grip.* toasts back from
 	-- Matched to Returning, and no duel text mentions it. Placeholders: {level} = a Grip Level (a pad's or trainer's
 	-- Config level, or the player's); {rank} = a grip.rank.* name; {pad} = a grip.pad.* name; {trainer} = a
-	-- grip.trainer.* name; {coins} = a Coin amount (a pad's coinBonus, a price, or Coins still missing); {grip} = Grip
-	-- per squeeze (GripMath.squeezeGrip); {mult} = a multiplier (Pads[tier].gripPercent / 100 or Rested.mult);
+	-- grip.trainer.* name; {coins} = a Coin amount (a price, Coins still missing, or Coins per squeeze); {grip} = Grip
+	-- per squeeze (CapsuleMath.squeezeGrip); {mult} = a multiplier (Pads[tier].gripPercent / 100 or Rested.mult);
 	-- {minutes} = GripMath.restedMinutes / afkMinutes; {n} = Grip gained. {have}: on signLocked the viewer's Grip
 	-- Level; on the HUD bar {have}/{need} = Format.coins of the total and of the next level's total (GripMath.progress).
+	-- Phase 5: pads and trainers no longer boost a squeeze (CapsuleMath sets its pay); they still boost slow training.
 	grip = {
 		-- HUD card (top-left, under the Coins pill).
 		hudLevel = "Grip Lv {level} · {rank}",
@@ -823,10 +868,8 @@ local Strings = {
 		popup = "+{n} Grip",
 		popupDouble = "+{n} Grip (x{mult})",
 		afkPopup = "+{n} Grip (slow training)",
-		-- The floating label on the held squishy (lobby HUD spec 2026-10-11 §2): the pad name on its own line (foam fix
-		-- 2: one line left "squeeze" alone).
-		stationLabel = "{pad}\n+{coins} Coins · +{grip} Grip per squeeze",
-		-- Spec 2026-10-11 §5: off a pad (or on one still locked) a squeeze pays the base amount, with no pad name.
+		-- The floating label on the held squishy (lobby HUD spec 2026-10-11 §2): what one squeeze pays, the same anywhere
+		-- (Phase 5: the squeeze value and the best capsule's Grip; no pad name).
 		stationLabelBase = "+{coins} Coins · +{grip} Grip per squeeze",
 		-- Lobby HUD spec §2: there is no Squeeze button to press any more.
 		holdPaused = "Squeeze again to keep training.",
@@ -865,34 +908,34 @@ local Strings = {
 		},
 		-- Grip panel (one scrolling column). The trainer card itself comes with Part 7.
 		panelTitle = "Grip Training",
-		panelIntro = "Every squeeze trains your Grip. Higher Grip opens better squeeze pads.",
+		panelIntro = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
 		padsHeader = "Squeeze pads",
 		padNeeds = "Needs Grip Lv {level}",
-		padPerks = "+{coins} Coins and x{mult} Grip per squeeze",
+		padPerks = "x{mult} slow-training Grip",
 		padPerksBase = "No boost: the same Coins and Grip as anywhere", -- the Foam Mats card (spec 2026-10-11 §5)
 		padOpen = "Open",
 		padLocked = "Locked",
 		showMe = "Show me",
 		trainerHeader = "Trainer",
-		trainerNow = "Now: {trainer} (+{grip} Grip per squeeze)",
-		trainerNext = "Next: {trainer} (+{grip} Grip per squeeze)",
+		trainerNow = "Now: {trainer}",
+		trainerNext = "Next: {trainer}",
 		trainerBuy = "Upgrade: {coins} Coins",
 		trainerNeedLevel = "Reach Grip Lv {level}",
 		trainerNeedCoins = "Need {coins} more Coins",
 		trainerMax = "Best trainer owned!",
-		trainerNote = "Upgrades make training faster. They never change duels.",
+		trainerNote = "Upgrades make slow training faster. They never change duels.",
 		restedHelp = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 		-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays.
-		limitNote = "Every squeeze earns Coins and trains Grip, anywhere in the lobby. Squeeze pads give a boost.",
+		limitNote = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
 		afkHelp = "Standing on an open pad slowly trains Grip, even when you're not squeezing. It never gives Coins, and it stops if Roblox disconnects you for being idle.",
 		afkBank = "Slow training at full speed: about {minutes} min left",
 		duelNote = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 		-- Toasts (Notify codes, Types.GripNotifyCode). rankUp: {name} = the player's display name.
 		levelUp = "Grip Lv {level}!",
-		padUnlocked = "{pad} unlocked! +{coins} Coins and x{mult} Grip per squeeze there.",
+		padUnlocked = "{pad} unlocked! x{mult} slow-training Grip there.",
 		rankUp = "{name} reached {rank}!",
-		trainerBought = "{trainer} unlocked! +{grip} Grip per squeeze.",
-		intro = "You trained your Grip! Squeeze more to open better pads.",
+		trainerBought = "{trainer} unlocked! Slow training is faster now.",
+		intro = "You trained your Grip! Squeeze more to open new capsule tiers.",
 		welcome = "Double Grip is full: your first squeezes train x{mult} Grip!",
 		welcomeBack = "Welcome back! Double Grip: about {minutes} min.",
 		headStart = "Your past squeezes count: you start at Grip Lv {level}!",
@@ -905,7 +948,7 @@ local Strings = {
 		-- World: the Jelly pod sign heading, the pod signs' Live line, the lobby nameplate.
 		gymTitle = "GRIP GYM",
 		signLocked = "Needs Grip Lv {level} · You: Lv {have}",
-		signOpen = "Open · +{coins} Coins · x{mult} Grip",
+		signOpen = "Open · x{mult} slow training",
 		nameplate = "Lv {level} · {rank}",
 	},
 }

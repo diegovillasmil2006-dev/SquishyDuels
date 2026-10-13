@@ -339,6 +339,15 @@ local Palette = {
 	InspectEmberPink = Color3.fromHex("#FF6F7D"), -- design: fp.js:182
 	InspectBubble = Color3.fromHex("#DDF4FF"), -- design: fp.js:191 (the axolotl's bubbles)
 
+	-- The nameplate faces of the ranks above Lv 50 (progression spec 2026-10-12 §10; build plan Phase 5): light colours,
+	-- so the plates' PlumInk text keeps at least 4.5:1 (NameplateController_Test). Readings: the hexes (the spec names the
+	-- ranks only).
+	RankLegend = Color3.fromHex("#FFB98A"),
+	RankMythic = Color3.fromHex("#D2B4FF"),
+	RankCosmic = Color3.fromHex("#AFC4FF"),
+	RankGalaxy = Color3.fromHex("#F2B8F5"),
+	RankInfinite = Color3.fromHex("#9FEADF"),
+
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),
 	CoinRing = Color3.fromHex("#D99A1E"),

@@ -13,7 +13,9 @@
 --     from their ready profile: an open slot holds its tier's capsule template (Capsule_<look>) on its spot with
 --     "Lv <level>" and its squishy (Squishy_<id>) on the seat, a locked slot the Lock with "Unlock · <price>", and
 --     capsule 1's squishy stands as the statue (Statue_<id>); refresh(player) redraws (no duplicates); without the
---     templates, the plot's model or a ready profile, only the name and colour change and nothing fails.
+--     templates, the plot's model or a ready profile, only the name and colour change and nothing fails;
+--   * Phase 5: every capsule carries its level (SD_Level) and its squishy (SD_Squishy, none when empty), so every
+--     client can show a read-only card and play the upgrade burst for any base.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -303,6 +305,24 @@ return function(t: Context)
 			finish(w)
 		end
 	)
+
+	t.test("every capsule carries its level and squishy for the clients' cards (Phase 5)", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		templates(w)
+		local a = newPlayer(w, "A")
+		local list: { any } = { { level = 3, squishyId = "kitty_bread" }, { level = 15 } }
+		w.capsules[a] = { slots = 2, list = list }
+		BaseService.playerAdded(a)
+		local folder = model:FindFirstChild("Capsules") :: Folder
+		local first = folder:FindFirstChild("Capsule1") :: Model
+		local second = folder:FindFirstChild("Capsule2") :: Model
+		expect.equal(first:GetAttribute("SD_Level"), 3)
+		expect.equal(first:GetAttribute("SD_Squishy"), "kitty_bread")
+		expect.equal(second:GetAttribute("SD_Level"), 15)
+		expect.equal(second:GetAttribute("SD_Squishy"), nil) -- empty
+		finish(w)
+	end)
 
 	t.test("refresh(player) redraws after a capsule change, without duplicates; the profile can come later", function()
 		local w = fresh()

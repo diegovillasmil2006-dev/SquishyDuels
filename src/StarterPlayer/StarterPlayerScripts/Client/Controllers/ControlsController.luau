@@ -88,7 +88,9 @@
 --   coach card's body never squeezes), the Practice context is on (a click throws there; the first-person pad and the
 --   keys squeeze there), or it is a touch in the thumbstick zone (inThumbZone, pure: touchLayout's lower-left zone) or
 --   on the jump button, or a second world touch while the first is down. The press's release (InputEnded) is sent as
---   its End.
+--   its End. Phase 5 (lobby bases spec 2026-10-11 §9): a press that would squeeze is first offered to the pointer claim
+--   (setPointerClaim, one owner: CapsuleController); when it takes it (a tap on a capsule opens its card), nothing is
+--   pressed.
 --
 -- A handler returns true when it handled the input (Sink); anything else passes it on. Virtual presses (touch
 -- buttons, Studio AutoDriver) call the handler with input = nil.
@@ -342,6 +344,7 @@ local touchCleanup: Cleanup.Cleanup? = nil
 local touchShown = false -- the last shouldShowTouch() answer (TouchButtonsChanged)
 local worldTouch: InputObject? = nil -- the world touch that pressed the lobby Squeeze, until it lifts
 local worldMouse = false -- a left click on the world pressed the lobby Squeeze, until the button lifts
+local pointerClaim: ((input: InputObject) -> boolean)? = nil -- Phase 5: setPointerClaim
 
 local function text(key: string, args: { [string]: any }?): string
 	local template = Strings.resolve(key)
@@ -787,6 +790,10 @@ local function onPointerBegan(input: InputObject, processed: boolean)
 		onJump = jump,
 		touchDown = touch and worldTouch ~= nil,
 	})
+	local claim = pointerClaim
+	if presses and claim and claim(input) then
+		return -- Phase 5: taken (a tap on a capsule opens its card), so it is no squeeze
+	end
 	if presses and ControlsController.pressAction(WORLD_POINTER_ACTION, Enum.UserInputState.Begin, input) then
 		if touch then
 			worldTouch = input
@@ -988,6 +995,12 @@ function ControlsController.pointerOnGui(objects: { GuiObject }): boolean
 end
 
 -- Public: bindings
+
+-- Phase 5: `claim(input)` sees every left click or touch that would press the lobby Squeeze first; returning true takes
+-- it (nothing is pressed). One claim at a time; nil removes it.
+function ControlsController.setPointerClaim(claim: ((input: InputObject) -> boolean)?)
+	pointerClaim = claim
+end
 
 -- Binds an action of the input map to a handler. Returns an idempotent unbind function. Binding an action that is
 -- already bound replaces the old handler (with a warning).
