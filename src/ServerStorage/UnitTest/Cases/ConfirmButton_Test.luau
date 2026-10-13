@@ -1,7 +1,7 @@
 --!strict
 -- ConfirmButton_Test: the pure two-step confirm of StarterPlayerScripts.Client.UI.Components.ConfirmButton. Server only
 -- (ServerStorage.UnitTest). Pure: ConfirmButton.new is never called (no instances, no LocalPlayer).
--- Contract (DESIGN §11.5, one pattern for boxes, the shop and the Grip trainer):
+-- Contract (DESIGN §11.5, one pattern for boxes, the shop and the capsules):
 --   * the first press arms the button: "Confirm: {price} Coins" with "Balance after: {balance}" under it;
 --   * a second press inside Config.UI.confirmSeconds confirms (once), otherwise a tick reverts it to idle;
 --   * not enough Coins -> disabled with the missing amount (common.needCoins), and a press is denied;

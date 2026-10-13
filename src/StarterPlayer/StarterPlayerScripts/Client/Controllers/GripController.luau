@@ -1,10 +1,11 @@
 --!strict
 -- GripController (client only). DESIGN §17.7 (UI), §17.2 rule 1 (no Grip in duels), §17.3.4 (Double Grip),
 -- §17.5 (next-goal rule), §17.6 (gates and pod signs), §11.4, §11.6. Build plan Phase 6: slow training is gone (no
--- popup, help line or bank line).
+-- popup, help line or bank line), and so are the trainers (no trainer card, Upgrade tab or badge, trainer goal or
+-- TrainerUpgrade call).
 -- Grip is a lobby-only stat: nothing here sends anything to the server (there is no Grip remote, §17.2 rule 5).
 --
--- * State: StateController's `grip` field {total, trainer, rested {value, at}} (§17.10). Level, rank, the bar and the
+-- * State: StateController's `grip` field {total, rested {value, at}} (§17.10). Level, rank, the bar and the
 --   Double Grip minutes come from the same pure GripMath and
 --   SqueezeLimit the server uses; timers are read against Workspace:GetServerTimeNow() (unix seconds, the scale of the
 --   server's os.time(): reading). The first grip state of the session is a silent baseline (§17.7 "Load-time level
@@ -16,10 +17,8 @@
 --   panel; a foam card (foam UI restyle, spec 2026-10-09 "Grip card", redesign-check.jpg).
 --   regular: a Mint level tile (grip.levelTag "GRIP" over the level) beside the rank (grip.rank.*), the ProgressBar,
 --   grip.hudBar ({have}/{need} from GripMath.progress, Format.coins; grip.hudMax at the top), the Double Grip line with a
---   clock (grip.restedChip, only while it has minutes), the next-goal line (GripMath.nextGoal; hidden while the Upgrade
---   tab shows, which says the same) and grip.upgradeBadge as a raised Strawberry tab hanging off the card's bottom edge
---   (GripMath.upgradeReady; only once the TrainerUpgrade remote exists, Part 7). Its lines are left-aligned like the
---   design (foam fix; Theme.label's default is centred). The card's height follows its lines.
+--   clock (grip.restedChip, only while it has minutes) and the next-goal line (GripMath.nextGoal). Its lines are
+--   left-aligned like the design (foam fix; Theme.label's default is centred). The card's height follows its lines.
 --   The bar (foam fix, user decision 2026-10-09) fills with the same numbers its words show: have / need, the total
 --   over the next level's total (42,000 / 66,000 is about two thirds full); every Grip bar with have / need (the card,
 --   the compact row, the panel) uses it. Before, it was the share of the current level (DESIGN §17.7).
@@ -36,28 +35,13 @@
 -- * Grip panel (modal "grip", one scrolling column, §11.4 focus; foam restyle: a foam panel with the grip.panelTitle
 --   header tab and Close straddling its top edge at the right, like Quests, Daily and Settings; foam fix: no header row
 --   that held only Close, so the column starts at the top): the level and the bar (have / need, like the card), the
---   chip, the goal and the upgrade tab in a
+--   chip and the goal in a
 --   Biscuit inset, "Squeeze pads" (4 foam cards: name, grip.padNeeds, the perks line (padPerks: grip.padPerks, or
 --   grip.padPerksBase on the Foam Mats card, which give no boost since spec 2026-10-11 §5), Open (Mint) / Locked
---   (Lilac, with the lock shape) as a chip, [Show me]: the only waypoint a player starts), the trainer card (Part 7,
---   below), the help lines (grip.restedHelp, grip.limitNote: where squeezing pays now that the hourly limit is off)
+--   (Lilac, with the lock shape) as a chip, [Show me]: the only waypoint a player starts), the help lines
+--   (grip.restedHelp, grip.limitNote: where squeezing pays now that the hourly limit is off)
 --   in a second inset and the footer grip.duelNote.
 --   No Coin Store link and no Robux upsell anywhere (§17.2 rule 4).
--- * Trainer card (Part 7, §17.5, §17.7; shown once Remotes.SPEC.TrainerUpgrade exists, trainerAvailable()):
---   grip.trainerHeader, the current trainer (grip.trainerNow) and the next one (grip.trainerNext), a
---   UI/Components/ConfirmButton (Grip_TrainerUpgradeButton) labelled grip.trainerBuy with the §11.5 two-step confirm and
---   "Balance after", and grip.trainerNote. States (the pure trainerCardState): maxed (grip.trainerMax, no button),
---   Locked (disabled with grip.trainerNeedLevel), need Coins (disabled with grip.trainerNeedCoins; never a Coin Store
---   link), upgrading (loading), and paused while the profile is not ready or a save is pending. The local
---   GripMath.upgradeDecision pre-check only decides the disabled state; the confirm sends
---   NetController.invokeAsync("TrainerUpgrade", trainer + 1, Config price) (the price is only compared by the server)
---   and every refusal is shown through NotifyController.showResult (Strings.reasonText; common.noCoinsSpent only when
---   charged == false). Success is the server's grip.trainerBought Notify: this module routes that one code and toasts
---   it with the ui.purchase sound (one sound per action, §18.5.2 B5, §18.6), holding it like NotifyController's grip.*
---   hold-back when it arrives during a match. A replay (charged = false) shows nothing: the state already has it.
---   Readings: the paused reasons are common.loading (profile loading), reason.data.offline / data.readOnly and
---   reason.trainer.paused (a save pending, §3.11); "+{grip} Grip per squeeze" is the Foam Mats value
---   (GripMath.squeezeGrip(trainer, 1)), as in the server's grip.trainerBought.
 -- * Toasts: the server's `grip.*` Notify codes (levelUp, padUnlocked, rankUp, intro, welcome, welcomeBack, headStart;
 --   GripService decides them; reading: §17.10's code list has no grip.intro, but GripService sends it on the first Grip
 --   ever, so the client shows no intro of its own) are shown by NotifyController, which also holds them back
@@ -84,8 +68,8 @@
 --     Config.UI.Grip.compactRowMaxHeight base px; the whole card, still the ONE tap target Hud_GripButton, is
 --     HudFormat.gripCardHeight("compact") tall: at least Layout.touchBase(Config.UI.Touch.minTarget, scale) (>= 44 px
 --     at scale 0.85). The goal toast follows the card: any card but the regular one toasts a new goal.
---   - Gamepad (§11.4, §17.7): the panel opens with its primary (Close) selected; Close, the four Grip_ShowMe<tier>Button
---     and Grip_TrainerUpgradeButton (while shown) are linked top to bottom (HudFormat.chainLinks) and the scroll column
+--   - Gamepad (§11.4, §17.7): the panel opens with its primary (Close) selected; Close and the four
+--     Grip_ShowMe<tier>Button are linked top to bottom (HudFormat.chainLinks) and the scroll column
 --     follows the selection (scrollDelta, pure: GuiService.SelectedObject inside the column is scrolled into view); the
 --     idle card's primary is its Keep going button.
 --   - The title sits in the header tab and Close straddles the panel's top edge (the panel's top padding holds their
@@ -94,7 +78,7 @@
 --   PANEL_HEIGHT_SHARE together and are centred together (panelLayout, pure; as Quests and Settings), so Close stays on
 --   a phone's screen. The Level block's list is centred; a pad card keeps some face under Show me (PAD_CARD_BOTTOM) and
 --   Show me sits at the right end of its row (a flex spacer). The regular card's goal line reads the short form of the
---   goal (cardModel's cardGoal, grip.hudGoal*: "Next: Sponge Ball at Lv 3"), so a new player's card keeps it to one
+--   goal (cardModel's cardGoal, grip.hudGoal*: "Next: Jelly Pad at Lv 5"), so a new player's card keeps it to one
 --   line; the panel and the compact layout's toast keep the full text.
 -- * Foam fix 3 (2026-10-10; look only): fix 2 took Close's hang out of the panel's height, so on a phone the column
 --   ended at "Squeeze pads" with no pad card under it. The panel keeps the whole PANEL_HEIGHT_SHARE again, centred with
@@ -117,33 +101,27 @@ local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local GripMath = require(Shared.GripMath)
 local Log = require(Shared.Util.Log)
-local Remotes = require(Shared.Remotes)
 local Signal = require(Shared.Util.Signal)
 local SqueezeLimit = require(Shared.SqueezeLimit)
 local Strings = require(Shared.Strings)
 local WorldLayout = require(Shared.World.WorldLayout)
 
-local Types = require(Shared.Types)
-
 local Client = script.Parent.Parent
 local Tweens = require(Client.Anim.Tweens)
 local Button = require(Client.UI.Components.Button)
 local Chip = require(Client.UI.Components.Chip)
-local ConfirmButton = require(Client.UI.Components.ConfirmButton)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
 local HudFormat = require(Client.UI.HudFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
 local LockIcon = require(Client.UI.Components.LockIcon)
-local NotifyFormat = require(Client.UI.NotifyFormat)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local ScrollHint = require(Client.UI.Components.ScrollHint)
 local Theme = require(Client.UI.Theme)
 local UiFx = require(Client.UI.UiFx)
 local Waypoint = require(Client.UI.Waypoint)
 local HudController = require(script.Parent.HudController)
-local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -153,7 +131,7 @@ local WorldBinder = require(script.Parent.WorldBinder)
 
 export type Timer = { value: number, at: number }
 -- The client's view of the `grip` state field (§17.10), normalized.
-export type GripView = { total: number, trainer: number, rested: Timer? }
+export type GripView = { total: number, rested: Timer? }
 
 -- What one new grip state does (gripChange): a silent baseline, whether LevelChanged fires and the pad tier whose
 -- waypoint to show.
@@ -172,45 +150,15 @@ export type CardModel = {
 	cardGoal: string?, -- the regular card's goal line (foam fix 2: the short grip.hudGoal* form of the same goal)
 	goalKey: string?, -- its Strings key (GripMath.Goal.textKey)
 	goalArgs: { [string]: any }?, -- its format arguments
-	badge: boolean, -- grip.upgradeBadge (Part 7: only once TrainerUpgrade exists)
 }
-
--- The trainer card's state (§17.5 "Trainer card states", Part 7). Priority: maxed, upgrading, Locked, paused (blocked),
--- need Coins, ready.
-export type TrainerCardKind = "max" | "upgrading" | "locked" | "blocked" | "needCoins" | "ready"
-
--- What the trainer card shows for one state (trainerCardState).
-export type TrainerCard = {
-	kind: TrainerCardKind,
-	trainer: number, -- the best trainer owned
-	target: number?, -- the next trainer (trainer + 1); nil when maxed
-	cost: number, -- the next trainer's Config price (only compared by the server); 0 when maxed
-	missing: number, -- Coins still missing (needCoins only; else 0)
-	nowText: string, -- grip.trainerNow
-	nextText: string?, -- grip.trainerNext
-	buyText: string?, -- grip.trainerBuy (the ConfirmButton's idle label)
-	reason: string?, -- the disabled reason: grip.trainerNeedLevel, a paused reason, or grip.trainerNeedCoins
-	maxText: string?, -- grip.trainerMax
-}
-
--- trainerCardState's optional context: an upgrade is running; the data status (StateController.dataStatus()).
-export type TrainerContext = { pending: boolean?, status: Types.DataStatus? }
 
 -- The Grip panel's base size and how far below the screen's centre it sits (panelLayout, foam fix 2).
 export type PanelLayout = { width: number, height: number, shift: number }
 
-type TrainerRefs = {
-	slot: Frame,
-	now: TextLabel,
-	nextLine: TextLabel,
-	max: TextLabel,
-	confirm: ConfirmButton.ConfirmButton,
-}
-
 type Card = {
 	slot: Frame, -- the fixed-size holder in HudController's column (the press scale never moves the list)
 	root: TextButton,
-	body: Frame, -- holds the one visible layout (the root has no padding, so the Upgrade tab can hang below it)
+	body: Frame, -- holds the one visible layout (the root has no padding)
 	regular: Frame,
 	compact: Frame,
 	levelLabel: TextLabel, -- the level number on the level tile
@@ -220,13 +168,11 @@ type Card = {
 	chipRow: Frame,
 	chipLabel: TextLabel,
 	goalLabel: TextLabel,
-	tab: Chip.Chip, -- "Upgrade available" (regular layout)
 	compactLabel: TextLabel,
 	compactBar: ProgressBar.ProgressBar,
 	levelScales: { UIScale }, -- the level pop (§18.5.1 A9): on the level tile's number and the compact level label
 	levelTweens: { Tween },
 	barSet: boolean, -- the bars got their first value (later values ease)
-	tabWanted: boolean, -- a trainer can be bought (the regular layout shows the Upgrade tab)
 }
 
 type PadRow = {
@@ -248,10 +194,8 @@ type PanelRefs = {
 	barLabel: TextLabel,
 	chipLabel: TextLabel,
 	goalLabel: TextLabel,
-	badge: Chip.Chip,
 	rows: { PadRow },
 	close: Button.Button,
-	trainer: TrainerRefs,
 }
 
 -- Constants
@@ -262,10 +206,6 @@ local PADS = GRIP.Pads
 local RESTED = GRIP.Rested
 local SCREEN_PANEL = "grip"
 local SCREEN_IDLE = "gripIdle"
-local REMOTE_TRAINER = "TrainerUpgrade" -- Part 7 (§17.5)
-local NOTICE_TRAINER_BOUGHT = "grip.trainerBought" -- the server's success toast of a trainer purchase
-local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase or upgrade result (Shop, trainer)
-local TRAINER_BUTTON = "Grip_TrainerUpgradeButton"
 local IDLE_BUTTON = "GripIdle_KeepGoingButton"
 local HUD_GUI = "SD_Hud"
 local MODAL_GUI = "SD_Modal"
@@ -281,8 +221,6 @@ local CARD_ORDER = HudController.LEFT_ORDER.grip
 local COMPACT_ROW_GAP = 2 -- between the compact row's label and its bar (HudFormat.gripCompactRowHeight)
 local CARD_BANDS = Theme.Foam.panel -- the card's foam: bevel 5 + drop 4 under its content
 local LEVEL_TILE_RADIUS = 14
-local TAB_INSET = 14 -- the Upgrade tab's right edge from the card's right edge
-local TAB_CLEARANCE = 2 -- the tab's top half stays this far under the card's last line
 local BAR_EPSILON = 1e-4 -- the bar eases only when its share really changed (the card refreshes every few seconds)
 -- Part 8: the scroll column keeps a selected item this far inside its window (base px).
 local SCROLL_MARGIN = 12
@@ -309,11 +247,10 @@ local LEVEL_POP = {
 	style = Enum.EasingStyle.Back,
 	direction = Enum.EasingDirection.Out,
 }
--- Foam fix 2: the regular card's short form of a goal's text (its info column is 184 base wide: "Next: {trainer}
--- unlocks at Grip Lv {level}" left "Grip Lv 3" alone on a line). Other goals keep their text.
+-- Foam fix 2: the regular card's short form of a goal's text (its info column is 184 base wide: the old trainer goal,
+-- "Next: {trainer} unlocks at Grip Lv {level}", left "Grip Lv 3" alone on a line). Other goals keep their text.
 local CARD_GOAL_KEYS: { [string]: string } = {
 	["grip.goalPad"] = "grip.hudGoalPad",
-	["grip.goalTrainer"] = "grip.hudGoalTrainer",
 	["grip.goalRank"] = "grip.hudGoalRank",
 }
 
@@ -345,8 +282,6 @@ local card: Card? = nil
 local panelRefs: PanelRefs? = nil
 local focusEntrySet = false -- the card is HudController's DPadUp focus entry (only while it is shown)
 local cardPresent = false -- the card wants to show (HudController.setColumnItem "grip")
-local trainerPending = false -- a TrainerUpgrade call is running
-local heldTrainerToast: string? = nil -- a grip.trainerBought toast that arrived during a match (shown after it)
 
 local function text(key: string, args: { [string]: any }?): string
 	local template = Strings.resolve(key)
@@ -381,21 +316,6 @@ end
 -- From Matched through Returning nothing about Grip is shown (§17.2 rule 1).
 local function suppressed(): boolean
 	return StateController.isLobbyLocked() or inMatch()
-end
-
-local function trainerAvailable(): boolean
-	-- Part 7 adds the TrainerUpgrade remote; until then the trainer lines and the badge stay off (§17.11).
-	return (Remotes.SPEC :: any).TrainerUpgrade ~= nil
-end
-
-local function ownedMap(): { [string]: any }
-	local owned = StateController.get("owned")
-	return if type(owned) == "table" then owned else {}
-end
-
-local function coinsNow(): number
-	local coins = StateController.get("coins")
-	return if finite(coins) then coins else 0
 end
 
 -- Waypoints ---------------------------------------------------------------------------------------------------------
@@ -650,7 +570,7 @@ local function buildCard(c: Cleanup.Cleanup)
 	-- The Button press feel; silent: it opens the Grip panel (ui.open plays).
 	c:add(Button.decorate(root, { sound = false }))
 	-- Part 8: one layout at a time (the other is invisible, so the list skips it). The root's height follows the body
-	-- (applyCardLayout): no AutomaticSize, so the Upgrade tab may hang below the card's edge.
+	-- (applyCardLayout): no AutomaticSize.
 	local body: Frame = Create("Frame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
@@ -703,22 +623,6 @@ local function buildCard(c: Cleanup.Cleanup)
 		table.insert(levelScales, Create("UIScale", { Name = "LevelPop", Scale = 1, Parent = label }))
 	end
 
-	-- "Upgrade available" (§17.5 / §17.7 badge): a raised Strawberry tab straddling the card's bottom edge (the design's
-	-- tab, its Butter remapped to Strawberry by the spec).
-	local tab = Chip.new({
-		name = "UpgradeTab",
-		text = text("grip.upgradeBadge"),
-		accent = "strawberry",
-		icon = "upgrade",
-		raised = true,
-		parent = root,
-	})
-	c:add(tab)
-	tab.root.AnchorPoint = Vector2.new(1, 0.5)
-	tab.root.Position = UDim2.new(1, -TAB_INSET, 1, 0)
-	tab.root.ZIndex = 3
-	tab.root.Visible = false
-
 	c:add(root.Activated:Connect(function()
 		if not suppressed() then
 			UIController.open(SCREEN_PANEL)
@@ -745,19 +649,14 @@ local function buildCard(c: Cleanup.Cleanup)
 		chipRow = parts.chipRow,
 		chipLabel = parts.chipLabel,
 		goalLabel = parts.goalLabel,
-		tab = tab,
 		compactLabel = compactLabel,
 		compactBar = compactBar,
 		levelScales = levelScales,
 		levelTweens = {},
 		barSet = false,
-		tabWanted = false,
 	}
 	-- The root follows the body's height (the layout changes it, and wrapping lines at a new text size).
 	c:add(body:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-		applyCardLayout()
-	end))
-	c:add(tab.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		applyCardLayout()
 	end))
 	c:add(function()
@@ -809,7 +708,7 @@ local function currentModel(): CardModel?
 	if v == nil then
 		return nil
 	end
-	return GripController.cardModel(v, serverNow(), ownedMap(), coinsNow(), trainerAvailable())
+	return GripController.cardModel(v, serverNow())
 end
 
 -- The card's own press-feel scale (Button.decorate's UIScale "Scale" on the root; 1 without it), so its measured sizes
@@ -821,8 +720,7 @@ end
 
 -- Part 8: the card's layout from HudController's column plan (regular / compact / hidden), whether it is up, and its
 -- size: compact = the touch-sized tap target (HudFormat.gripCardHeight) as wide as its line (gripCompactWidth);
--- regular = the body plus the paddings, the bottom one deep enough for the Upgrade tab's upper half to stay under the
--- last line. Its slot in the column takes the same, unscaled size.
+-- regular = the body plus the paddings. Its slot in the column takes the same, unscaled size.
 applyCardLayout = function()
 	local k = card
 	if k == nil then
@@ -842,11 +740,6 @@ applyCardLayout = function()
 	local compactLayout = mode == "compact"
 	k.regular.Visible = not compactLayout
 	k.compact.Visible = compactLayout
-	-- The Upgrade tab belongs to the regular layout (the compact card keeps its one row, §17.7).
-	local tabShown = not compactLayout and k.tabWanted
-	if k.tab.root.Visible ~= tabShown then
-		k.tab.root.Visible = tabShown
-	end
 	local scale = UIController.scale() * feelScale(k.root)
 	local width, height = CARD_WIDTH, 0
 	if compactLayout then
@@ -861,9 +754,8 @@ applyCardLayout = function()
 		k.body.Position = UDim2.fromOffset(COLUMN.cardPadLeft, COLUMN.cardPadTop)
 		k.body.Size = UDim2.new(1, -(COLUMN.cardPadLeft + COLUMN.cardPadRight), 0, 0)
 		local bodyHeight = if scale > 0 then k.body.AbsoluteSize.Y / scale else 0
-		local tabHalf = if tabShown and scale > 0 then k.tab.root.AbsoluteSize.Y / scale / 2 else 0
-		local bottom = math.max(COLUMN.cardPadBottom, tabHalf + TAB_CLEARANCE)
-		height = math.ceil(COLUMN.cardPadTop + math.max(bodyHeight, HudFormat.levelTileHeight(1)) + bottom)
+		height =
+			math.ceil(COLUMN.cardPadTop + math.max(bodyHeight, HudFormat.levelTileHeight(1)) + COLUMN.cardPadBottom)
 	end
 	local size = UDim2.fromOffset(width, height)
 	if k.root.Size ~= size then
@@ -892,10 +784,8 @@ local function refreshCard()
 	setLabel(k.barLabel, model.barText)
 	k.chipRow.Visible = model.chip ~= nil
 	setLabel(k.chipLabel, model.chip)
-	-- Foam fix: the goal line hides while the Upgrade tab shows (it says the same, and the card stays compact). Foam fix
-	-- 2: it reads the short form (cardGoal), so it keeps to one line.
-	setLabel(k.goalLabel, if model.badge then nil else model.cardGoal)
-	k.tabWanted = model.badge
+	-- Foam fix 2: the goal line reads the short form (cardGoal), so it keeps to one line.
+	setLabel(k.goalLabel, model.cardGoal)
 	setLabel(k.compactLabel, model.levelCompact)
 	-- The first value is set at once; later changes ease (Config.UI.motion.barFill; at once under ReducedMotion).
 	if not k.barSet or math.abs(k.bar:get() - model.fraction) > BAR_EPSILON then
@@ -924,10 +814,7 @@ end
 
 -- Panel -------------------------------------------------------------------------------------------------------------
 
--- The trainer card's confirm (defined after refreshPanel, which it calls).
-local upgradeTrainer: () -> ()
-
--- A foam card inside the panel's column (a pad, the trainer): Frosting with the InkUI outline, its rows in a list.
+-- A foam card inside the panel's column (a pad): Frosting with the InkUI outline, its rows in a list.
 local function columnCard(name: string, order: number, parent: Instance): Frame
 	local cardFrame = Theme.panel({
 		Name = name,
@@ -938,36 +825,6 @@ local function columnCard(name: string, order: number, parent: Instance): Frame
 	}, Theme.Radius.button, Theme.Padding.medium)
 	Theme.list(Enum.FillDirection.Vertical, 4, cardFrame, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
 	return cardFrame
-end
-
--- The trainer card (Part 7, §17.5 / §17.7): built once with the panel; refreshTrainer fills it.
-local function buildTrainerCard(parent: Instance, order: number): TrainerRefs
-	local slot = columnCard("TrainerSlot", order, parent)
-	slot.Visible = false
-	Theme.label({ Name = "Header", LayoutOrder = 1, Text = text("grip.trainerHeader"), Parent = slot }, "H2")
-	local now = Theme.label({ Name = "Now", LayoutOrder = 2, Parent = slot }, "Body", Enum.FontWeight.Bold)
-	local nextLine = caption({ Name = "Next", LayoutOrder = 3, Parent = slot })
-	local max =
-		Theme.label({ Name = "Max", LayoutOrder = 4, Visible = false, Parent = slot }, "Body", Enum.FontWeight.Bold)
-	-- The panel is built once and kept, so its ConfirmButton lives as long as it does.
-	local confirm = ConfirmButton.new({
-		name = TRAINER_BUTTON,
-		text = "",
-		price = 0,
-		balance = 0,
-		height = Config.UI.Touch.primaryButton,
-		layoutOrder = 5,
-		parent = slot,
-		-- §17.5: "Need {n} more Coins", never a Coin Store link (§17.2 rule 4).
-		needText = function(missing: number): string
-			return text("grip.trainerNeedCoins", { coins = Format.coins(missing) })
-		end,
-		onConfirm = function()
-			upgradeTrainer()
-		end,
-	})
-	caption({ Name = "Note", LayoutOrder = 6, Text = text("grip.trainerNote"), Parent = slot })
-	return { slot = slot, now = now, nextLine = nextLine, max = max, confirm = confirm }
 end
 
 -- Foam fix 2: sizes and places the panel (panelLayout) with what hangs above its top edge: half the taller of Close and
@@ -990,9 +847,9 @@ local function placePanel(root: GuiObject, tab: GuiObject?)
 end
 
 -- The Grip panel (foam restyle): a foam panel with the "Grip Training" header tab, Close straddling its top edge at the
--- right and one scrolling column: the intro, the level in a Biscuit inset (the bar, the Double Grip line, the goal, the
--- upgrade tab), "Squeeze pads" as four foam cards (name, needs, perks, Open / Locked with a lock, [Show me]), the
--- trainer card and the help lines in a second inset, then the duel note.
+-- right and one scrolling column: the intro, the level in a Biscuit inset (the bar, the Double Grip line, the goal),
+-- "Squeeze pads" as four foam cards (name, needs, perks, Open / Locked with a lock, [Show me]), the
+-- help lines in a second inset, then the duel note.
 local function buildPanel(parent: Instance): GuiObject
 	local root = Theme.panel({
 		Name = "GripPanel",
@@ -1071,7 +928,7 @@ local function buildPanel(parent: Instance): GuiObject
 			AutomaticSize = Enum.AutomaticSize.Y,
 			Parent = scroll,
 		}, Theme.Radius.button, Theme.Padding.medium)
-		-- Foam fix 2: centred like its lines' text, so the Level block's "Upgrade available" chip is not pushed aside.
+		-- Foam fix 2: centred like its lines' text.
 		Theme.list(Enum.FillDirection.Vertical, 6, block, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Top)
 		return block
 	end
@@ -1092,15 +949,6 @@ local function buildPanel(parent: Instance): GuiObject
 	local barLabel = caption({ Name = "BarText", LayoutOrder = 3, Parent = header })
 	local chipLabel = caption({ Name = "Chip", LayoutOrder = 4, Parent = header })
 	local goalLabel = Theme.label({ Name = "Goal", LayoutOrder = 5, Parent = header }, "Small", Enum.FontWeight.Bold)
-	local badge = Chip.new({
-		name = "Badge",
-		text = text("grip.upgradeBadge"),
-		accent = "strawberry",
-		icon = "upgrade",
-		layoutOrder = 6,
-		parent = header,
-	})
-	badge.root.Visible = false
 
 	Theme.label(
 		{ Name = "PadsHeader", LayoutOrder = nextOrder(), Text = text("grip.padsHeader"), Parent = scroll },
@@ -1154,9 +1002,6 @@ local function buildPanel(parent: Instance): GuiObject
 		table.insert(rows, { tier = tier, needs = needs, status = status, lock = lock.root :: GuiObject })
 	end
 
-	-- Part 7: the trainer card (current and next trainer, ConfirmButton), shown once TrainerUpgrade exists.
-	local trainer = buildTrainerCard(scroll, nextOrder())
-
 	local help = insetBlock("Help")
 	caption({
 		Name = "RestedHelp",
@@ -1179,16 +1024,13 @@ local function buildPanel(parent: Instance): GuiObject
 		barLabel = barLabel,
 		chipLabel = chipLabel,
 		goalLabel = goalLabel,
-		badge = badge,
 		rows = rows,
 		close = close,
-		trainer = trainer,
 	}
 	return root
 end
 
--- Part 8 (§11.4): the panel's gamepad chain, top to bottom: Close, the four Show me buttons, the trainer's upgrade
--- button while it shows (HudFormat.chainLinks). A hidden trainer button keeps no link.
+-- Part 8 (§11.4): the panel's gamepad chain, top to bottom: Close, the four Show me buttons (HudFormat.chainLinks).
 local function linkPanel()
 	local refs = panelRefs
 	if refs == nil then
@@ -1203,14 +1045,6 @@ local function linkPanel()
 	add("close", refs.close.root)
 	for tier, button in refs.showMe do
 		add("showMe" .. tier, button)
-	end
-	local trainer = refs.trainer
-	local trainerButton = trainer.confirm.button.root
-	if trainer.slot.Visible and trainer.confirm.root.Visible then
-		add("trainer", trainerButton)
-	else
-		local o = trainerButton :: any
-		o.NextSelectionUp, o.NextSelectionDown = nil, nil
 	end
 	local links = HudFormat.chainLinks(column)
 	for key, object in objects do
@@ -1252,45 +1086,15 @@ local function followSelection()
 	scroll.CanvasPosition = Vector2.new(position.X, math.clamp(position.Y + delta / scale, 0, maxY))
 end
 
--- Fills the trainer card from the current state (hidden until the TrainerUpgrade remote exists).
-local function refreshTrainer(refs: TrainerRefs, v: GripView, lv: number)
-	local coins = coinsNow()
-	local state = if trainerAvailable()
-		then GripController.trainerCardState(v, coins, lv, {
-			pending = trainerPending,
-			status = StateController.dataStatus(),
-		})
-		else nil
-	refs.slot.Visible = state ~= nil
-	if state == nil then
-		return
-	end
-	setLabel(refs.now, state.nowText)
-	setLabel(refs.nextLine, state.nextText)
-	setLabel(refs.max, state.maxText)
-	local confirm = refs.confirm
-	local buyable = state.kind ~= "max"
-	confirm.root.Visible = buyable
-	if not buyable then
-		confirm:reset()
-		return
-	end
-	confirm:setText(state.buyText)
-	confirm:setPrice(state.cost, coins)
-	confirm:setDisabled(if state.kind == "locked" or state.kind == "blocked" then state.reason or "" else nil)
-	confirm:setLoading(state.kind == "upgrading")
-end
-
 local function refreshPanel()
 	local refs = panelRefs
-	local v = view
 	if refs == nil or not UIController.isOpen(SCREEN_PANEL) then
 		return
 	end
 	placePanel(refs.root, refs.tab)
 	refs.intro.Visible = GripController.introShown(UIController.layoutClass())
 	local model = currentModel()
-	if model == nil or v == nil then
+	if model == nil then
 		return
 	end
 	setLabel(refs.levelLabel, model.levelText)
@@ -1298,7 +1102,6 @@ local function refreshPanel()
 	setLabel(refs.barLabel, model.barText)
 	setLabel(refs.chipLabel, model.chip)
 	setLabel(refs.goalLabel, model.goal)
-	refs.badge.root.Visible = model.badge
 	for _, row in refs.rows do
 		local pad = PADS[row.tier]
 		local open = GripMath.canUseTier(model.level, row.tier)
@@ -1308,47 +1111,7 @@ local function refreshPanel()
 		row.status:setAccent(if open then "mint" else "lilac")
 		row.lock.Visible = not open
 	end
-	refreshTrainer(refs.trainer, v, model.level)
 	linkPanel()
-end
-
--- Sends TrainerUpgrade(trainer + 1, Config price) (§17.5). The server decides; success is its grip.trainerBought
--- toast (onTrainerBought), a refusal its reason (common.noCoinsSpent only when charged == false), a replay nothing.
-upgradeTrainer = function()
-	local v = view
-	if v == nil or trainerPending or suppressed() then
-		return
-	end
-	local target = v.trainer + 1
-	local def = GRIP.Trainer[target]
-	if def == nil then
-		return
-	end
-	trainerPending = true
-	refreshPanel()
-	local result = NetController.invokeAsync(REMOTE_TRAINER, target, def.cost)
-	trainerPending = false
-	if not result.ok then
-		NotifyController.showResult(result)
-	end
-	local refs = panelRefs
-	if refs then
-		refs.trainer.confirm:setLoading(false)
-	end
-	refreshPanel()
-end
-
--- The server's grip.trainerBought (routed here): one toast with the ui.purchase sound; held during a match.
-local function onTrainerBought(code: string, args: Types.NotifyArgs?, _kind: Types.NotifyKind)
-	local message = NotifyFormat.textFor(code, args)
-	if message == nil then
-		return
-	end
-	if suppressed() then
-		heldTrainerToast = message
-		return
-	end
-	UIController.toast(message, "success", { sound = SOUND_PURCHASE })
 end
 
 -- The idle card (foam restyle): a foam panel with the "Still there?" header tab, the sentence and [Keep going].
@@ -1438,12 +1201,6 @@ local function onLobbyLock()
 		clearWaypoint()
 		UIController.close(SCREEN_IDLE, "matched")
 		UIController.close(SCREEN_PANEL, "matched")
-	else
-		local held = heldTrainerToast
-		heldTrainerToast = nil
-		if held then
-			UIController.toast(held, "success", { sound = SOUND_PURCHASE })
-		end
 	end
 	refreshCard()
 end
@@ -1451,7 +1208,7 @@ end
 -- Public: pure helpers (unit-tested) --------------------------------------------------------------------------------
 
 -- The `grip` state field as the client uses it, or nil when it is missing or malformed. The total is clamped like
--- the server stores it (GripMath.clampTotal); the trainer to [1, #Trainer]; a timer needs a finite value and at.
+-- the server stores it (GripMath.clampTotal); a timer needs a finite value and at.
 function GripController.normalize(raw: unknown): GripView?
 	if type(raw) ~= "table" then
 		return nil
@@ -1468,7 +1225,6 @@ function GripController.normalize(raw: unknown): GripView?
 	end
 	return {
 		total = GripMath.clampTotal(g.total),
-		trainer = if finite(g.trainer) then math.clamp(math.floor(g.trainer), 1, #GRIP.Trainer) else 1,
 		rested = timer(g.rested),
 	}
 end
@@ -1607,18 +1363,13 @@ function GripController.padPerks(pad: { coinBonus: number, gripPercent: number }
 	return text("grip.padPerks", { coins = pad.coinBonus, mult = pad.gripPercent / 100 })
 end
 
--- The format arguments of a GripMath.nextGoal result: its name (nameKey) as {trainer} / {pad} / {rank}, {level} and
--- {coins} (Format.coins).
+-- The format arguments of a GripMath.nextGoal result: its name (nameKey) as {pad} / {rank}, and {level}.
 function GripController.goalArgs(goal: GripMath.Goal): { [string]: any }
 	local args: { [string]: any } = { level = goal.level }
 	local nameKey = goal.nameKey
 	if nameKey then
 		local name = text(nameKey)
-		args.trainer, args.pad, args.rank = name, name, name
-	end
-	local coins = goal.coins
-	if coins then
-		args.coins = Format.coins(coins)
+		args.pad, args.rank = name, name
 	end
 	return args
 end
@@ -1636,22 +1387,15 @@ end
 -- The HUD card's texts for a Grip state at server time `now` (§17.7): level and rank (together, and the rank alone for
 -- the regular card's title beside its level tile), the bar ({have}/{need} from GripMath.progress; grip.hudMax at the
 -- top; foam fix, user decision 2026-10-09: the fill is have / need too, the same numbers the words show, so 42,000 /
--- 66,000 reads about two thirds full; full at the top), the Double Grip chip, the next goal (foam fix 2: and its short
--- form for the regular card, CARD_GOAL_KEYS) and the upgrade badge (Part 7).
-function GripController.cardModel(
-	v: GripView,
-	now: number,
-	owned: { [string]: any },
-	coins: number,
-	canBuyTrainers: boolean
-): CardModel
+-- 66,000 reads about two thirds full; full at the top), the Double Grip chip and the next goal (foam fix 2: and its
+-- short form for the regular card, CARD_GOAL_KEYS).
+function GripController.cardModel(v: GripView, now: number): CardModel
 	local progress = GripMath.progress(v.total)
 	local lv = progress.level
 	local rank = GripMath.rankFor(lv)
 	local rankText = text("grip.rank." .. rank.key)
 	local fraction = if progress.isMax or progress.need <= 0 then 1 else progress.have / progress.need
-	local state = { total = v.total, trainer = v.trainer }
-	local goal = GripMath.nextGoal(state, owned, coins, canBuyTrainers)
+	local goal = GripMath.nextGoal(v)
 	local goalArgs = if goal then GripController.goalArgs(goal) else nil
 	return {
 		level = lv,
@@ -1667,90 +1411,7 @@ function GripController.cardModel(
 		cardGoal = if goal then text(CARD_GOAL_KEYS[goal.textKey] or goal.textKey, goalArgs) else nil,
 		goalKey = if goal then goal.textKey else nil,
 		goalArgs = goalArgs,
-		badge = GripMath.upgradeReady(state, coins, canBuyTrainers),
 	}
-end
-
--- Why the trainer can't be bought right now whatever the Coins (profile loading, OFFLINE / READONLY, a save pending,
--- §3.11), or nil. Reading: the server's own reasons for the same cases (trainer.paused for a pending save).
-local function trainerPausedReason(status: Types.DataStatus?): string?
-	if status == nil then
-		return nil
-	elseif status.status == "loading" then
-		return Strings.common.loading
-	elseif status.status == "offline" then
-		return Strings.reasonText("data.offline")
-	elseif status.status == "readonly" then
-		return Strings.reasonText("data.readOnly")
-	elseif status.savePending == true then
-		return Strings.reasonText("trainer.paused")
-	end
-	return nil
-end
-
--- The trainer card for a Grip state, the Coins and the Grip level (§17.5 "Trainer card states"), or nil without a
--- state. The next trainer is trainer + 1 at its Config price; the local GripMath.upgradeDecision pre-check (the
--- server's own pure checks) only decides the disabled state: maxed (no next trainer), upgrading (ctx.pending),
--- Locked (trainer.locked: grip.trainerNeedLevel), paused (ctx.status), need Coins (grip.trainerNeedCoins with the
--- missing amount), else ready. "+{grip} Grip per squeeze" is GripMath.squeezeGrip(trainer, 1) (the Foam Mats).
-function GripController.trainerCardState(
-	grip: GripView?,
-	coins: number,
-	level: number,
-	ctx: TrainerContext?
-): TrainerCard?
-	if grip == nil then
-		return nil
-	end
-	local trainers = GRIP.Trainer
-	local owned = math.clamp(math.floor(grip.trainer), 1, #trainers)
-	local current = trainers[owned]
-	local card: TrainerCard = {
-		kind = "ready",
-		trainer = owned,
-		target = nil,
-		cost = 0,
-		missing = 0,
-		nowText = text("grip.trainerNow", {
-			trainer = text("grip.trainer." .. current.key),
-			grip = GripMath.squeezeGrip(owned, 1),
-		}),
-	}
-	local target = owned + 1
-	local nextDef = trainers[target]
-	if nextDef == nil then
-		card.kind = "max"
-		card.maxText = text("grip.trainerMax")
-		return card
-	end
-	local balance = if finite(coins) then math.max(0, math.floor(coins)) else 0
-	card.target = target
-	card.cost = nextDef.cost
-	card.nextText = text("grip.trainerNext", {
-		trainer = text("grip.trainer." .. nextDef.key),
-		grip = GripMath.squeezeGrip(target, 1),
-	})
-	card.buyText = text("grip.trainerBuy", { coins = Format.coins(nextDef.cost) })
-	local decision = GripMath.upgradeDecision({ trainer = owned, level = level }, target, nextDef.cost)
-	local paused = trainerPausedReason(if ctx then ctx.status else nil)
-	if ctx and ctx.pending == true then
-		card.kind = "upgrading"
-	elseif decision.kind == "reject" and decision.reason == "trainer.locked" then
-		card.kind = "locked"
-		card.reason = text("grip.trainerNeedLevel", { level = nextDef.level })
-	elseif decision.kind ~= "buy" then
-		-- Cannot happen for trainer + 1 at its own price; fail closed with the server's reason.
-		card.kind = "blocked"
-		card.reason = Strings.reasonText(decision.reason)
-	elseif paused ~= nil then
-		card.kind = "blocked"
-		card.reason = paused
-	elseif balance < nextDef.cost then
-		card.kind = "needCoins"
-		card.missing = nextDef.cost - balance
-		card.reason = text("grip.trainerNeedCoins", { coins = Format.coins(card.missing) })
-	end
-	return card
 end
 
 -- Public -----------------------------------------------------------------------------------------------------------
@@ -1768,7 +1429,6 @@ function GripController.debugState(): { [string]: any }
 	return {
 		ok = true,
 		total = if v then v.total else nil,
-		trainer = if v then v.trainer else nil,
 		level = level,
 		rank = if level then GripMath.rankFor(level).key else nil,
 		baselineTotal = baselineTotal,
@@ -1777,19 +1437,10 @@ function GripController.debugState(): { [string]: any }
 		cardHeight = if k then k.root.AbsoluteSize.Y else nil, -- px on screen (>= 44 on the compact card)
 		chip = if model then model.chip else nil,
 		goal = if model then model.goal else nil,
-		badge = if model then model.badge else nil,
 		suppressed = suppressed(),
 		waypoint = waypoint ~= nil,
 		panelOpen = UIController.isOpen(SCREEN_PANEL),
 		idleOpen = UIController.isOpen(SCREEN_IDLE),
-		trainerAvailable = trainerAvailable(),
-		trainerPending = trainerPending,
-		trainerCard = if v and level
-			then (GripController.trainerCardState(v, coinsNow(), level, {
-				pending = trainerPending,
-				status = StateController.dataStatus(),
-			}) :: TrainerCard).kind
-			else nil,
 	}
 end
 
@@ -1814,12 +1465,6 @@ function GripController.init()
 		onOpen = function()
 			refreshPanel()
 		end,
-		onClose = function()
-			local refs = panelRefs
-			if refs and not trainerPending then
-				refs.trainer.confirm:reset() -- an armed confirm never survives a close
-			end
-		end,
 		primary = function(): GuiObject?
 			local refs = panelRefs
 			return if refs then refs.close.root else nil
@@ -1833,13 +1478,6 @@ function GripController.init()
 		end,
 	}))
 	c:add(StateController.changed("grip"):connect(onGrip))
-	c:add(StateController.changed("coins"):connect(function()
-		refreshCard()
-		refreshPanel() -- the trainer card's need-Coins state and "Balance after"
-	end))
-	c:add(StateController.changed("owned"):connect(refreshCard))
-	c:add(StateController.changed("dataStatus"):connect(refreshPanel))
-	c:add(NotifyController.route(NOTICE_TRAINER_BOUGHT, onTrainerBought))
 	c:add(StateController.LobbyLockChanged:connect(onLobbyLock))
 	c:add(UIController.LayoutChanged:connect(function()
 		refreshCard()
@@ -1861,7 +1499,7 @@ function GripController.init()
 		clearWaypoint()
 		view, level, baselineTotal = nil, nil, nil
 		lastGoalKey, goalBaselineSet = nil, false
-		trainerPending, heldTrainerToast, panelRefs = false, nil, nil
+		panelRefs = nil
 		if cardPresent then
 			cardPresent = false
 			HudController.setColumnItem("grip", false)

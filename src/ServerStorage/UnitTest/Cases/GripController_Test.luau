@@ -1,11 +1,12 @@
 --!strict
 -- GripController_Test: unit tests for StarterPlayerScripts.Client.Controllers.GripController (Part 5, the pure
--- helpers; Part 7, the trainer card). Server only (ServerStorage.UnitTest). Edit mode: init() / start() are not called (no LocalPlayer, no UI).
+-- helpers). Server only (ServerStorage.UnitTest). Edit mode: init() / start() are not called (no LocalPlayer, no UI).
 -- Contract (DESIGN §17.3.4, §17.5, §17.7, §17.10):
 --   * normalize(raw): the StateDelta `grip` field as the client uses it; nil when missing or malformed; the total is
---     floored and clamped to [0, maxGrip], the trainer to [1, #Trainer]; a timer needs a finite value and at;
+--     floored and clamped to [0, maxGrip]; a timer needs a finite value and at;
 --   * slow training is gone (build plan Phase 6): no popup helpers (afkGain, capsuleGrip) and no bank line
---     (afkBankText);
+--     (afkBankText); so are the trainers (Phase 6): no trainer card (trainerCardState), no upgrade badge and no
+--     trainer goal, and an old save's trainer is not part of the view;
 --   * gripChange: the first grip state and every full state (a profile recovered after OFFLINE) are a silent baseline
 --     (no waypoint; LevelChanged only for the first state or a moved level); a level-up after it points the waypoint
 --     at the best pad it opened;
@@ -17,13 +18,8 @@
 --     SqueezeLimit;
 --   * cardModel: the HUD card texts (grip.hudLevel, the rank alone for the foam card's title, grip.hudBar /
 --     grip.hudMax, the bar fraction = have / need, the same numbers grip.hudBar shows (foam fix, user decision
---     2026-10-09), the next goal in the §17.7 order with the §17.5 Dragon rule, the upgrade badge only while trainers can
---     be bought);
+--     2026-10-09), the next goal in the §17.7 order (the next pad or rank, then max);
 --   * goalId / shouldToastGoal: on the compact layout a new goal is toasted once per session, never the first one;
---   * trainerCardState (Part 7, §17.5): maxed (grip.trainerMax), Locked (grip.trainerNeedLevel), need Coins
---     (grip.trainerNeedCoins with the missing amount, never a Coin Store link or Robux), upgrading, paused (profile not
---     ready or a save pending), ready; the current / next trainer lines and the grip.trainerBuy label at the Config
---     price; the TrainerUpgrade remote exists, so the live card shows the trainer lines and the badge.
 --   * Part 8 (§11.4): scrollDelta (the panel's column follows a gamepad selection, with a margin). (headerLayout went
 --     with the panel's Close-only header row, foam fix.) The compact card's touch height and width are tested in
 --     HudFormat_Test.
@@ -65,10 +61,9 @@ return function(t: Context)
 
 	local NOW = 1_800_000_000 -- a server time on the GetServerTimeNow() / os.time() scale
 
-	local function view(total: number, trainer: number?, rested: number?): any
+	local function view(total: number, rested: number?): any
 		return {
 			total = total,
-			trainer = trainer or 1,
 			rested = if rested then { value = rested, at = NOW } else nil,
 		}
 	end
@@ -84,28 +79,38 @@ return function(t: Context)
 		expect.equal(GripController.normalize({ total = "12" }), nil)
 	end)
 
-	t.test("normalize clamps the total and the trainer, and keeps only finite timers", function()
+	t.test("normalize clamps the total, keeps finite timers and drops an old save's trainer and afk", function()
 		local v = GripController.normalize({
 			total = 1234.9,
 			trainer = 3.7,
 			rested = { value = 600, at = NOW },
 			afk = { value = 0 / 0, at = NOW },
 		})
-		expect.deepEqual(v, { total = 1234, trainer = 3, rested = { value = 600, at = NOW } })
+		expect.deepEqual(v, { total = 1234, rested = { value = 600, at = NOW } })
 		expect.equal(GripController.normalize({ total = -5 }).total, 0)
 		expect.equal(GripController.normalize({ total = GRIP.maxGrip * 10 }).total, GRIP.maxGrip)
-		expect.equal(GripController.normalize({ total = 0 }).trainer, 1) -- missing trainer = the free Foam Ball
-		expect.equal(GripController.normalize({ total = 0, trainer = 0 }).trainer, 1)
-		expect.equal(GripController.normalize({ total = 0, trainer = 99 }).trainer, #GRIP.Trainer)
 		-- Phase 6: an old save's slow-training bank is not part of the view.
 		expect.equal((GripController.normalize({ total = 0, afk = { value = 60, at = NOW } }) :: any).afk, nil)
 	end)
 
-	-- Slow training is gone (build plan Phase 6) ----------------------------------------------------------------------
+	-- Slow training and the trainers are gone (build plan Phase 6) ----------------------------------------------------
 
 	t.test("no slow-training popup or bank line any more", function()
 		for _, name in { "afkGain", "capsuleGrip", "afkBankText" } do
 			expect.equal((GripController :: any)[name], nil)
+		end
+	end)
+
+	t.test("no trainer card, upgrade badge or trainer goal any more; the TrainerUpgrade remote is gone", function()
+		expect.equal(Remotes.SPEC.TrainerUpgrade, nil)
+		expect.equal((GripController :: any).trainerCardState, nil)
+		for level = 1, GRIP.maxLevel do
+			local model = GripController.cardModel(view(GRIP.LevelTotals[level]), NOW)
+			expect.equal((model :: any).badge, nil)
+			local key = model.goalKey
+			if key ~= "grip.goalPad" and key ~= "grip.goalRank" and key ~= "grip.goalMax" then
+				error(`Lv {level}: the goal is {tostring(key)}`)
+			end
 		end
 	end)
 
@@ -215,19 +220,19 @@ return function(t: Context)
 		local full = GRIP.Rested.burst
 		local fullMinutes = GripMath.restedMinutes(full)
 		expect.equal(fullMinutes, 9) -- minutes of holding (Hold.repeatSeconds 0.45 s per squeeze; every click pays)
-		expect.equal(GripController.restedChip(view(0, 1, full), NOW), s("grip.restedChip", { minutes = 9 }))
-		expect.equal(GripController.restedChip(view(0, 1, 0), NOW), nil)
+		expect.equal(GripController.restedChip(view(0, full), NOW), s("grip.restedChip", { minutes = 9 }))
+		expect.equal(GripController.restedChip(view(0, 0), NOW), nil)
 		expect.equal(GripController.restedChip(view(0), NOW), nil)
 		-- It refills with time (4 points a minute): one minute after empty -> 4 points -> about 1 min.
-		expect.equal(GripController.restedChip(view(0, 1, 0), NOW + 60), s("grip.restedChip", { minutes = 1 }))
+		expect.equal(GripController.restedChip(view(0, 0), NOW + 60), s("grip.restedChip", { minutes = 1 }))
 		-- It never goes above the burst.
-		expect.equal(GripController.restedChip(view(0, 1, full), NOW + 86400), s("grip.restedChip", { minutes = 9 }))
+		expect.equal(GripController.restedChip(view(0, full), NOW + 86400), s("grip.restedChip", { minutes = 9 }))
 	end)
 
 	-- HUD card -------------------------------------------------------------------------------------------------------
 
 	t.test("a new player's card: Lv 1, the bar toward Lv 2 and the Jelly Pad as the next goal", function()
-		local model = GripController.cardModel(view(0, 1, GRIP.Rested.burst), NOW, {}, 0, false)
+		local model = GripController.cardModel(view(0, GRIP.Rested.burst), NOW)
 		expect.equal(model.level, 1)
 		expect.equal(model.levelText, s("grip.hudLevel", { level = 1, rank = rankName(1) }))
 		expect.equal(model.levelCompact, s("grip.hudLevelCompact", { level = 1, rank = rankName(1) }))
@@ -241,37 +246,36 @@ return function(t: Context)
 		expect.equal(model.chip, s("grip.restedChip", { minutes = 9 })) -- holding minutes (Hold.repeatSeconds 0.45 s)
 		expect.equal(model.goalKey, "grip.goalPad")
 		expect.equal(model.goal, s("grip.goalPad", { pad = s("grip.pad.jelly"), level = GRIP.Pads[2].level }))
-		expect.falsy(model.badge)
 	end)
 
 	t.test("the bar fills with the numbers it shows: have / need (user decision 2026-10-09)", function()
 		-- Lv 2 spans 1,000 .. 1,700 (spec 2026-10-12 totals): 1,350 reads "1,350 / 1,700" and fills 79% (not the 50%
 		-- share of the level).
-		local model = GripController.cardModel(view(1350), NOW, {}, 0, false)
+		local model = GripController.cardModel(view(1350), NOW)
 		expect.equal(model.level, 2)
 		expect.near(model.fraction, 1350 / 1700, 1e-9)
 		expect.equal(model.barText, s("grip.hudBar", { have = "1,350", need = "1,700" }))
 		-- The design's example: 42,000 / 66,000 is about two thirds full, whatever level that is.
-		local example = GripController.cardModel(view(42000), NOW, {}, 0, false)
+		local example = GripController.cardModel(view(42000), NOW)
 		local need = GripMath.progress(42000).need
 		expect.near(example.fraction, 42000 / need, 1e-9)
 		expect.equal(example.barText, s("grip.hudBar", { have = Format.coins(42000), need = Format.coins(need) }))
 		-- Right at a level's start the bar is not empty (the old share of the level read 0 there).
-		local start = GripController.cardModel(view(GRIP.LevelTotals[3]), NOW, {}, 0, false)
+		local start = GripController.cardModel(view(GRIP.LevelTotals[3]), NOW)
 		expect.near(start.fraction, GRIP.LevelTotals[3] / GRIP.LevelTotals[4], 1e-9)
 		expect.truthy(start.fraction > 0)
 	end)
 
 	t.test("the next unlock is the lowest level ahead (a rank before a farther pad)", function()
 		-- Lv 5 (the Jelly Pad is open): Firm Grip at Lv 10 comes before the Marshmallow Pad at Lv 15.
-		local model = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW, {}, 0, false)
+		local model = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW)
 		expect.equal(model.level, 5)
 		expect.equal(model.goalKey, "grip.goalRank")
 		expect.equal(model.goal, s("grip.goalRank", { rank = s("grip.rank.firm"), level = 10 }))
 	end)
 
 	t.test("the max level shows grip.hudMax, a full bar and grip.goalMax", function()
-		local model = GripController.cardModel(view(GRIP.LevelTotals[GRIP.maxLevel]), NOW, {}, 0, false)
+		local model = GripController.cardModel(view(GRIP.LevelTotals[GRIP.maxLevel]), NOW)
 		expect.equal(model.level, GRIP.maxLevel)
 		expect.equal(model.levelText, s("grip.hudLevel", { level = GRIP.maxLevel, rank = rankName(GRIP.maxLevel) }))
 		expect.equal(model.rankText, rankName(GRIP.maxLevel))
@@ -280,48 +284,8 @@ return function(t: Context)
 		expect.equal(model.goal, s("grip.goalMax"))
 	end)
 
-	t.test("no trainer line and no badge until the TrainerUpgrade remote exists (Part 7)", function()
-		-- Lv 3 with 1,000 Coins could buy the Sponge Ball, but trainers are not available yet.
-		local model = GripController.cardModel(view(GRIP.LevelTotals[3]), NOW, {}, 1000, false)
-		expect.falsy(model.badge)
-		expect.truthy(model.goalKey ~= "grip.goalUpgrade" and model.goalKey ~= "grip.goalTrainer")
-	end)
-
-	t.test("with trainers available: a cheap upgrade is the goal and shows the badge", function()
-		local sponge = GRIP.Trainer[2]
-		local model = GripController.cardModel(view(GRIP.LevelTotals[sponge.level]), NOW, {}, sponge.cost, true)
-		expect.truthy(model.badge)
-		expect.equal(model.goalKey, "grip.goalUpgrade")
-		expect.equal(
-			model.goal,
-			s("grip.goalUpgrade", { trainer = s("grip.trainer." .. sponge.key), coins = Format.coins(sponge.cost) })
-		)
-		-- One Coin short: no badge, no upgrade line.
-		local short = GripController.cardModel(view(GRIP.LevelTotals[sponge.level]), NOW, {}, sponge.cost - 1, true)
-		expect.falsy(short.badge)
-		expect.truthy(short.goalKey ~= "grip.goalUpgrade")
-	end)
-
-	t.test(
-		"the §17.5 Dragon rule: an expensive upgrade is only the goal once the top shop squishy is owned",
-		function()
-			-- Trainer 4 owned; the next one (Jelly Gripper, 25,000 > 5,000) needs Lv 15.
-			local nextTrainer = GRIP.Trainer[5]
-			expect.truthy(nextTrainer.cost > GRIP.goalUpgradeMaxCostWhileCollecting)
-			local state = view(GRIP.LevelTotals[nextTrainer.level], 4)
-			local topId = GripMath.topShopSquishyId()
-			expect.truthy(topId ~= nil)
-			local collecting = GripController.cardModel(state, NOW, {}, nextTrainer.cost, true)
-			expect.truthy(collecting.badge) -- the badge still shows
-			expect.truthy(collecting.goalKey ~= "grip.goalUpgrade")
-			local owned = { [topId :: string] = { at = 0 } }
-			local done = GripController.cardModel(state, NOW, owned, nextTrainer.cost, true)
-			expect.equal(done.goalKey, "grip.goalUpgrade")
-		end
-	)
-
 	t.test("compact layout: each new goal is toasted once, never the session's first one", function()
-		local model = GripController.cardModel(view(0), NOW, {}, 0, false)
+		local model = GripController.cardModel(view(0), NOW)
 		local id = GripController.goalId(model)
 		expect.equal(id, "grip.goalPad|" .. model.goal)
 		expect.equal(GripController.goalId({ goalKey = nil, goal = nil } :: any), nil)
@@ -333,44 +297,28 @@ return function(t: Context)
 		seen[id :: string] = true
 		expect.falsy(GripController.shouldToastGoal(seen, id, true, false)) -- already toasted this session
 		-- A different goal (Lv 5: the next rank) is new.
-		local later = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW, {}, 0, false)
+		local later = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW)
 		expect.truthy(GripController.shouldToastGoal(seen, GripController.goalId(later), true, false))
 	end)
 
-	-- Foam fix 2 (2026-10-09): the regular card's goal line is a short form of the same goal ("Next: Sponge Ball at Lv
-	-- 3"), so a new player's first card has no line holding only "Grip Lv 3"; the panel and the compact layout's toast
-	-- keep the full text (goal / goalKey).
+	-- Foam fix 2 (2026-10-09): the regular card's goal line is a short form of the same goal ("Next: Jelly Pad at Lv
+	-- 5"), so it keeps to one line; the panel and the compact layout's toast keep the full text (goal / goalKey).
 	t.test(
 		"the HUD card's goal line is the short form of the goal; the panel and the toast keep the full text",
 		function()
-			local sponge = GRIP.Trainer[2]
-			local fresh = GripController.cardModel(view(0), NOW, {}, 0, true)
-			expect.equal(fresh.goalKey, "grip.goalTrainer")
-			local spongeArgs = { trainer = s("grip.trainer.sponge"), level = sponge.level }
-			expect.equal(fresh.goal, s("grip.goalTrainer", spongeArgs))
-			expect.equal(fresh.cardGoal, s("grip.hudGoalTrainer", spongeArgs))
-			local pad = GripController.cardModel(view(0), NOW, {}, 0, false)
+			local pad = GripController.cardModel(view(0), NOW)
 			expect.equal(pad.cardGoal, s("grip.hudGoalPad", { pad = s("grip.pad.jelly"), level = GRIP.Pads[2].level }))
-			local rank = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW, {}, 0, false)
+			local rank = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW)
 			expect.equal(rank.cardGoal, s("grip.hudGoalRank", { rank = s("grip.rank.firm"), level = 10 }))
-			-- The max level keeps its own line (the upgrade goal hides behind the Upgrade tab, so it keeps its text too).
-			local max = GripController.cardModel(view(GRIP.LevelTotals[GRIP.maxLevel]), NOW, {}, 0, false)
+			-- The max level keeps its own line.
+			local max = GripController.cardModel(view(GRIP.LevelTotals[GRIP.maxLevel]), NOW)
 			expect.equal(max.cardGoal, max.goal)
-			local upgrade = GripController.cardModel(view(GRIP.LevelTotals[sponge.level]), NOW, {}, sponge.cost, true)
-			expect.equal(upgrade.cardGoal, upgrade.goal)
-			-- Every short form of every pad, trainer and rank goal: no "Grip Lv" (the card is the Grip card) and at most 30
+			-- Every short form of every pad and rank goal: no "Grip Lv" (the card is the Grip card) and at most 30
 			-- characters (Reading: in Studio a 28-character goal line took 165 of the info column's 184 base px).
 			local lines = {}
 			for tier = 2, #GRIP.Pads do
 				local row = GRIP.Pads[tier]
 				table.insert(lines, s("grip.hudGoalPad", { pad = s("grip.pad." .. row.key), level = row.level }))
-			end
-			for index = 2, #GRIP.Trainer do
-				local row = GRIP.Trainer[index]
-				table.insert(
-					lines,
-					s("grip.hudGoalTrainer", { trainer = s("grip.trainer." .. row.key), level = row.level })
-				)
 			end
 			for index = 2, #GRIP.Ranks do
 				local row = GRIP.Ranks[index]
@@ -385,163 +333,21 @@ return function(t: Context)
 		end
 	)
 
-	t.test("goalArgs gives the name under every placeholder and formats the Coins", function()
+	t.test("goalArgs gives the name under every placeholder", function()
 		local args = GripController.goalArgs({
-			kind = "upgrade",
-			textKey = "grip.goalUpgrade",
-			nameKey = "grip.trainer.sponge",
+			kind = "pad",
+			textKey = "grip.goalPad",
+			nameKey = "grip.pad.jelly",
 			index = 2,
-			level = 3,
-			coins = 1000,
+			level = 5,
 		})
-		expect.equal(args.trainer, s("grip.trainer.sponge"))
-		expect.equal(args.pad, s("grip.trainer.sponge"))
-		expect.equal(args.level, 3)
-		expect.equal(args.coins, "1,000")
+		expect.equal(args.pad, s("grip.pad.jelly"))
+		expect.equal(args.rank, s("grip.pad.jelly"))
+		expect.equal(args.level, 5)
+		expect.equal(args.trainer, nil) -- Phase 6: no trainer goal any more
 		local maxArgs = GripController.goalArgs({ kind = "max", textKey = "grip.goalMax" })
-		expect.equal(maxArgs.trainer, nil)
+		expect.equal(maxArgs.pad, nil)
 		expect.equal(maxArgs.coins, nil)
-	end)
-
-	-- Trainer card (Part 7, §17.5 / §17.7) ------------------------------------------------------------------------
-
-	local TRAINER = GRIP.Trainer
-
-	local function trainerName(index: number): string
-		return s("grip.trainer." .. TRAINER[index].key)
-	end
-
-	local function readyStatus(savePending: boolean?): any
-		return { status = "ready", persisted = true, savePending = savePending == true }
-	end
-
-	t.test("the TrainerUpgrade remote exists (Part 7), so the live card shows trainer lines and the badge", function()
-		expect.truthy(Remotes.SPEC.TrainerUpgrade ~= nil)
-		local spec = Remotes.SPEC.TrainerUpgrade
-		expect.equal(spec.dir, "c2s")
-		expect.equal(spec.kind, "RemoteFunction")
-		expect.equal(#spec.args, 2) -- (targetLevel, expectedPrice): never a Grip amount
-		local sponge = TRAINER[2]
-		local model = GripController.cardModel(view(GRIP.LevelTotals[sponge.level]), NOW, {}, sponge.cost, true)
-		expect.truthy(model.badge)
-		expect.equal(model.goalKey, "grip.goalUpgrade")
-	end)
-
-	t.test("trainerCardState: nil without a Grip state", function()
-		expect.equal(GripController.trainerCardState(nil, 1000, 5), nil)
-	end)
-
-	t.test("trainerCardState: the current and next trainer lines and the Upgrade label at the Config price", function()
-		local card = GripController.trainerCardState(view(GRIP.LevelTotals[3], 1), 5000, 3)
-		expect.equal(card.kind, "ready")
-		expect.equal(card.trainer, 1)
-		expect.equal(card.target, 2)
-		expect.equal(card.cost, TRAINER[2].cost)
-		expect.equal(card.missing, 0)
-		expect.equal(card.reason, nil)
-		expect.equal(card.nowText, s("grip.trainerNow", { trainer = trainerName(1), grip = TRAINER[1].gripPerSqueeze }))
-		expect.equal(
-			card.nextText,
-			s("grip.trainerNext", { trainer = trainerName(2), grip = TRAINER[2].gripPerSqueeze })
-		)
-		expect.equal(card.buyText, s("grip.trainerBuy", { coins = Format.coins(TRAINER[2].cost) }))
-		expect.equal(card.buyText, "Upgrade: 1,000 Coins")
-		expect.equal(card.maxText, nil)
-	end)
-
-	t.test("trainerCardState: Locked below the next trainer's Grip level (grip.trainerNeedLevel)", function()
-		local nextLevel = TRAINER[2].level
-		local card = GripController.trainerCardState(view(0, 1), 999999, nextLevel - 1)
-		expect.equal(card.kind, "locked")
-		expect.equal(card.reason, s("grip.trainerNeedLevel", { level = nextLevel }))
-		-- The gate is the next trainer's, not the owned one's: trainer 4 owned, the Jelly Gripper needs Lv 15.
-		local later = GripController.trainerCardState(view(0, 4), 999999, TRAINER[5].level - 1)
-		expect.equal(later.kind, "locked")
-		expect.equal(later.reason, s("grip.trainerNeedLevel", { level = TRAINER[5].level }))
-		local open = GripController.trainerCardState(view(0, 4), 999999, TRAINER[5].level)
-		expect.equal(open.kind, "ready")
-	end)
-
-	t.test("trainerCardState: need Coins shows the missing amount, never a Coin Store link or Robux", function()
-		local cost = TRAINER[2].cost
-		local card = GripController.trainerCardState(view(0, 1), cost - 600, TRAINER[2].level)
-		expect.equal(card.kind, "needCoins")
-		expect.equal(card.missing, 600)
-		expect.equal(card.reason, s("grip.trainerNeedCoins", { coins = "600" }))
-		local broke = GripController.trainerCardState(view(0, 1), 0 / 0, TRAINER[2].level)
-		expect.equal(broke.missing, cost)
-		-- §17.2 rule 4: no Robux upsell and no Coin Store link anywhere on the card.
-		for _, c in { card, broke } do
-			for _, value in { c.nowText, c.nextText, c.buyText, c.reason } do
-				expect.falsy(string.find(string.lower(value :: string), "robux", 1, true))
-				-- No link to the shop (the Coin Store lives there): the word "shop" never appears.
-				expect.falsy(string.find(string.lower(value :: string), string.lower(s("hud.nav.shop")), 1, true))
-			end
-		end
-	end)
-
-	t.test("trainerCardState: maxed shows grip.trainerMax and no next trainer", function()
-		local card = GripController.trainerCardState(view(GRIP.LevelTotals[GRIP.maxLevel], #TRAINER), 0, GRIP.maxLevel)
-		expect.equal(card.kind, "max")
-		expect.equal(card.trainer, #TRAINER)
-		expect.equal(card.target, nil)
-		expect.equal(card.cost, 0)
-		expect.equal(card.nextText, nil)
-		expect.equal(card.buyText, nil)
-		expect.equal(card.maxText, s("grip.trainerMax"))
-		expect.equal(
-			card.nowText,
-			s("grip.trainerNow", { trainer = trainerName(#TRAINER), grip = TRAINER[#TRAINER].gripPerSqueeze })
-		)
-	end)
-
-	t.test("trainerCardState: upgrading while a TrainerUpgrade runs (it wins over every other state)", function()
-		local ready = GripController.trainerCardState(view(0, 1), 5000, 3, { pending = true, status = readyStatus() })
-		expect.equal(ready.kind, "upgrading")
-		local locked = GripController.trainerCardState(view(0, 1), 0, 1, { pending = true })
-		expect.equal(locked.kind, "upgrading")
-		-- Maxed stays maxed (nothing can be running).
-		expect.equal(GripController.trainerCardState(view(0, #TRAINER), 0, 1, { pending = true }).kind, "max")
-	end)
-
-	t.test("trainerCardState: paused while the profile is not ready or a save is pending (§3.11)", function()
-		local level = TRAINER[2].level
-		local saving = GripController.trainerCardState(view(0, 1), 5000, level, { status = readyStatus(true) })
-		expect.equal(saving.kind, "blocked")
-		expect.equal(saving.reason, Strings.reasonText("trainer.paused"))
-		local loading = GripController.trainerCardState(view(0, 1), 5000, level, {
-			status = { status = "loading", persisted = true, savePending = false },
-		})
-		expect.equal(loading.reason, Strings.common.loading)
-		local offline = GripController.trainerCardState(view(0, 1), 5000, level, {
-			status = { status = "offline", persisted = false, savePending = false },
-		})
-		expect.equal(offline.reason, Strings.reasonText("data.offline"))
-		local readOnly = GripController.trainerCardState(view(0, 1), 5000, level, {
-			status = { status = "readonly", persisted = false, savePending = false },
-		})
-		expect.equal(readOnly.reason, Strings.reasonText("data.readOnly"))
-		-- Locked wins over paused (the level gate is the reason that lasts).
-		local both = GripController.trainerCardState(view(0, 1), 5000, 1, { status = readyStatus(true) })
-		expect.equal(both.kind, "locked")
-		-- A ready profile with no pending save: ready.
-		expect.equal(GripController.trainerCardState(view(0, 1), 5000, level, { status = readyStatus() }).kind, "ready")
-	end)
-
-	t.test("trainerCardState agrees with GripMath.upgradeDecision on the next trainer (the server's checks)", function()
-		for owned = 1, #TRAINER - 1 do
-			local nextDef = TRAINER[owned + 1]
-			for _, level in { nextDef.level - 1, nextDef.level } do
-				local decision = GripMath.upgradeDecision({ trainer = owned, level = level }, owned + 1, nextDef.cost)
-				local card = GripController.trainerCardState(view(0, owned), nextDef.cost, level)
-				if decision.kind == "buy" then
-					expect.equal(card.kind, "ready")
-				else
-					expect.equal(decision.reason, "trainer.locked")
-					expect.equal(card.kind, "locked")
-				end
-			end
-		end
 	end)
 
 	-- Part 8 (§11.4, §17.7): the panel's gamepad scroll and header ---------------------------------------------------

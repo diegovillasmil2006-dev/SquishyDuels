@@ -2,7 +2,7 @@
 -- Shared type definitions (shared: server and client). Types only: this module has no runtime values.
 -- Sources: DESIGN §2.2 (list), §2.7 (Result), §2.8 (remote payloads), §3.2 (ProfileV1), §4.1 (SquishyDef),
 -- §5.4 (phases and queue states), §17.10 (Grip: schemaVersion 2, the StateDelta grip field, SqueezeResult fields),
--- §6.9 / §17.5 (Part 7: DailyClaimResult, TrainerUpgradeResult).
+-- §6.9 (Part 7: DailyClaimResult).
 -- Where DESIGN names a payload field but not its exact type, the reading is marked "reading:".
 
 -- == Catalog (§4.1) ==
@@ -60,11 +60,11 @@ export type ProfileStats = {
 
 export type SqueezeLimitState = { value: number, at: number } -- §6.3 (a rate limit, not a currency)
 -- Grip (§17.10): a lobby-only stat, never a currency. `rested` (Double Grip) is a timer with the SqueezeLimit shape,
--- filled only by time. `total` is an integer in [0, Config.Grip.maxGrip]; `trainer` an integer in
--- [1, #Config.Grip.Trainer] (the best trainer owned, bought in Part 7). Build plan Phase 6: slow training is gone, so
--- `afk` (its bank) is no field any more; an old save keeps it as an unknown field.
+-- filled only by time. `total` is an integer in [0, Config.Grip.maxGrip]. Build plan Phase 6: slow training and the
+-- trainers are gone, so `afk` (its bank) and `trainer` (the best trainer owned) are no fields any more; an old save
+-- keeps them as unknown fields.
 export type GripTimerState = SqueezeLimitState
-export type GripState = { total: number, trainer: number, rested: GripTimerState }
+export type GripState = { total: number, rested: GripTimerState }
 export type QuestsState = { day: number, swapsUsed: number, active: { QuestEntry } }
 export type StarterState = { progress: { [string]: number }, claimed: { [string]: boolean } }
 export type DailyState = { lastClaimDay: number, streakDay: number, totalClaims: number }
@@ -321,9 +321,6 @@ export type DailyClaimResult = {
 	streakReset: boolean?,
 	treatRequestId: string?,
 }
--- TrainerUpgrade data (§17.5, §17.10): `trainer` = the best trainer owned after the call; `charged` is false for a
--- replay (that trainer was already owned: no Coins taken); `savePending` = the awaited "now" save failed.
-export type TrainerUpgradeResult = { trainer: number, charged: boolean, savePending: boolean }
 -- CapsuleUpgrade / CapsuleUnlock / CapsuleSet data (lobby spec 2026-10-11 §6, Phase 3): `capsules` = the caller's own
 -- capsules after the call; `charged` is false when no Coins were taken (an unlock replay, any CapsuleSet);
 -- `savePending` = the awaited "now" save failed (CapsuleSet: a failed save is pending).
@@ -352,8 +349,6 @@ export type ShopBuyCall = (squishyId: string, expectedPrice: number, requestId: 
 export type QuestClaimCall = (questId: string) -> Result<nil>
 export type QuestSwapCall = (questId: string) -> Result<nil>
 export type DailyClaimCall = () -> Result<DailyClaimResult>
--- targetLevel = the trainer index to buy (2..#Config.Grip.Trainer); expectedPrice is compared, never charged.
-export type TrainerUpgradeCall = (targetLevel: number, expectedPrice: number) -> Result<TrainerUpgradeResult>
 -- slot = 1..#Config.Grip.Capsule.slotPrices of the caller's own capsules; expectedPrice is compared, never charged.
 export type CapsuleUpgradeCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
 export type CapsuleUnlockCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
@@ -391,7 +386,7 @@ export type SqueezeResultPayload = {
 }
 
 -- Notify codes of the Grip feature (§17.10): toasts, held back by the client from Matched to Returning (§17.7).
--- grip.rankUp goes only to players whose SD_DuelPhase == "". grip.trainerBought comes with the trainer (Part 7).
+-- grip.rankUp goes only to players whose SD_DuelPhase == "". (grip.trainerBought went with the trainers, Phase 6.)
 -- Reading: the intro toast `grip.intro` ("the first Grip ever", §17.7 Toasts) is not in the §17.10 Notify list; it is
 -- listed here because GripService sends it once, when grip.total first rises above 0 (one sender only: the client
 -- shows what arrives, so it is never raised a second time locally).
@@ -402,7 +397,6 @@ export type GripNotifyCode =
 	| "grip.welcome"
 	| "grip.welcomeBack"
 	| "grip.headStart"
-	| "grip.trainerBought"
 	| "grip.intro"
 
 -- Owner update. reading: `position` and `joinedAt` are absent while Idle.

@@ -126,13 +126,6 @@ local Strings = {
 		purchase = {
 			unavailable = "This purchase isn't available right now.",
 		},
-		-- Grip trainer upgrades (TrainerUpgrade, §17.5, §17.7; Part 7).
-		trainer = {
-			notNext = "Buy the trainers in order.",
-			locked = "Your Grip level is too low for this trainer.",
-			priceChanged = "The price changed. Please check it again.",
-			paused = "Upgrades are paused for a moment. Try again soon.",
-		},
 		-- Capsules (CapsuleUpgrade / CapsuleUnlock / CapsuleSet; lobby spec 2026-10-11 §6, Phase 3).
 		capsule = {
 			notNext = "Unlock the capsules in order.",
@@ -837,14 +830,15 @@ local Strings = {
 	},
 
 	-- Grip training (§17.6, §17.7), a lobby-only stat. Never shown in duels: the client holds grip.* toasts back from
-	-- Matched to Returning, and no duel text mentions it. Placeholders: {level} = a Grip Level (a pad's or trainer's
-	-- Config level, or the player's); {rank} = a grip.rank.* name; {pad} = a grip.pad.* name; {trainer} = a
-	-- grip.trainer.* name; {coins} = a Coin amount (a price, Coins still missing, or Coins per squeeze); {grip} = Grip
+	-- Matched to Returning, and no duel text mentions it. Placeholders: {level} = a Grip Level (a pad's
+	-- Config level, or the player's); {rank} = a grip.rank.* name; {pad} = a grip.pad.* name;
+	-- {coins} = a Coin amount (Coins per squeeze); {grip} = Grip
 	-- per squeeze (CapsuleMath.squeezeGrip); {mult} = a multiplier (Pads[tier].gripPercent / 100 or Rested.mult);
 	-- {minutes} = GripMath.restedMinutes; {n} = Grip gained. {have}: on signLocked the viewer's Grip
 	-- Level; on the HUD bar {have}/{need} = Format.coins of the total and of the next level's total (GripMath.progress).
 	-- Phase 5: pads and trainers no longer boost a squeeze (CapsuleMath sets its pay); Phase 6: slow training is gone
-	-- too, so their texts claim no boost at all (the pad and trainer removals are separate decisions).
+	-- too, so the pad texts claim no boost at all (the pad removal is a separate decision), and so are the trainers
+	-- (their names, card, goal, toast and reason texts).
 	grip = {
 		-- HUD card (top-left, under the Coins pill).
 		hudLevel = "Grip Lv {level} · {rank}",
@@ -854,16 +848,12 @@ local Strings = {
 		-- Foam restyle (spec 2026-10-09): the small label over the level number on the regular card's level tile.
 		levelTag = "GRIP",
 		restedChip = "Double Grip: about {minutes} min",
-		upgradeBadge = "Upgrade available",
 		-- Next goal (GripMath.nextGoal, first that applies).
-		goalUpgrade = "Upgrade ready: {trainer} for {coins} Coins",
 		goalPad = "Next: {pad} at Grip Lv {level}",
-		goalTrainer = "Next: {trainer} unlocks at Grip Lv {level}",
 		goalRank = "Next rank: {rank} at Grip Lv {level}",
 		goalMax = "Max level! You've reached Infinite Grip.",
 		-- Foam fix 2: the regular HUD card's goal line (one line in its info column); the panel and toasts keep the above.
 		hudGoalPad = "Next: {pad} at Lv {level}",
-		hudGoalTrainer = "Next: {trainer} at Lv {level}",
 		hudGoalRank = "Next: {rank} at Lv {level}",
 		-- At a pad.
 		popup = "+{n} Grip",
@@ -895,18 +885,7 @@ local Strings = {
 			marshmallow = "Marshmallow Pad",
 			royal = "Royal Cushion",
 		},
-		-- Keyed by Config.Grip.Trainer[i].key.
-		trainer = {
-			foam = "Foam Ball",
-			sponge = "Sponge Ball",
-			rubber = "Rubber Ball",
-			spring = "Spring Gripper",
-			jelly = "Jelly Gripper",
-			steel = "Steel Gripper",
-			gold = "Gold Gripper",
-			diamond = "Diamond Gripper",
-		},
-		-- Grip panel (one scrolling column). The trainer card itself comes with Part 7.
+		-- Grip panel (one scrolling column).
 		panelTitle = "Grip Training",
 		panelIntro = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
 		padsHeader = "Squeeze pads",
@@ -916,14 +895,6 @@ local Strings = {
 		padOpen = "Open",
 		padLocked = "Locked",
 		showMe = "Show me",
-		trainerHeader = "Trainer",
-		trainerNow = "Now: {trainer}",
-		trainerNext = "Next: {trainer}",
-		trainerBuy = "Upgrade: {coins} Coins",
-		trainerNeedLevel = "Reach Grip Lv {level}",
-		trainerNeedCoins = "Need {coins} more Coins",
-		trainerMax = "Best trainer owned!",
-		trainerNote = "Upgrades never change duels.",
 		restedHelp = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 		-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays.
 		limitNote = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
@@ -932,7 +903,6 @@ local Strings = {
 		levelUp = "Grip Lv {level}!",
 		padUnlocked = "{pad} unlocked!",
 		rankUp = "{name} reached {rank}!",
-		trainerBought = "{trainer} unlocked!",
 		intro = "You trained your Grip! Squeeze more to open new capsule tiers.",
 		welcome = "Double Grip is full: your first squeezes train x{mult} Grip!",
 		welcomeBack = "Welcome back! Double Grip: about {minutes} min.",

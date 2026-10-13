@@ -6,8 +6,8 @@
 -- Contract (DESIGN §2.7 state versioning, §2.8 RequestSnapshot / StateDelta, §3.1 / §3.13 / §11.3 banners, §17.10):
 --   * RequestSnapshot: {status = "loading"} while loading, the full Snapshot when loaded;
 --   * the Snapshot holds every field: profile projections (quests with starter, unseenReveals = boxLog entries with
---     seen = false, grip = {total, trainer, rested}: Phase 6, an old save's grip.afk is not sent), session fields
---     (policy "checking", monetization with no
+--     seen = false, grip = {total, rested}: Phase 6, an old save's grip.afk and grip.trainer are not sent), session
+--     fields (policy "checking", monetization with no
 --     offers, practice zeros until PracticeService sets it), dataStatus {status, persisted, savePending, banner};
 --   * Loaded sends one full StateDelta; later changes go out as one partial StateDelta per batch with v + 1, only for
 --     fields whose value changed; nothing partial before the first full state; the sweep catches unmarked changes;
@@ -91,7 +91,7 @@ return function(t: Context)
 			shopLog = {},
 			receipts = {},
 			duelLog = {},
-			-- An old save (Phase 6): it still holds the slow-training bank, which is never sent.
+			-- An old save (Phase 6): it still holds the slow-training bank and the trainer, which are never sent.
 			grip = { total = 50, trainer = 1, rested = { value = 1200, at = 1 }, afk = { value = 120, at = 1 } },
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
 		}
@@ -246,7 +246,7 @@ return function(t: Context)
 		})
 		expect.equal(#snap.unseenReveals, 1)
 		expect.equal(snap.unseenReveals[1].req, "new-one")
-		expect.deepEqual(snap.grip, { total = 50, trainer = 1, rested = { value = 1200, at = 1 } }) -- no afk (Phase 6)
+		expect.deepEqual(snap.grip, { total = 50, rested = { value = 1200, at = 1 } }) -- no afk or trainer (Phase 6)
 		-- Phase 5: the owner's capsules as stored (the capsule card, the squeeze value of the reward texts).
 		expect.deepEqual(snap.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
 		expect.equal(snap.policy, "checking")
@@ -323,7 +323,7 @@ return function(t: Context)
 		expect.equal(#w.deferred, 0) -- nothing scheduled
 		profile.coins = 7
 		profile.settings.music = 5
-		profile.grip.trainer = 2
+		profile.grip.total = 60
 		StateService.markDirty(player)
 		runDeferred(w)
 		expect.equal(#w.sent, 2)

@@ -2,31 +2,24 @@
 -- Config.Grip: Grip training (DESIGN §17, approved 2026-10-05). Shared, data only. Every value is [P].
 -- Grip is a lobby-only stat: never a currency, never sold, never read by duel or matchmaking code (§17.2).
 -- Pads are indexed by GripTier (WorldLayout gives each squeeze station its tier). Config.validate checks the rules
--- G1 (levels), G2 (pads), G4 (trainer), G5 (caps and timers), G8 (world, with WorldLayout) and G10 (giant-pad
--- animation, with Config.Anim.giantPad) from Part 3 on; G3 (squeeze ceiling) and G6 (Strings names) from Part 5; G6's
--- wiring half ("trainer" Coin reason, the TrainerUpgrade rate), G7 (Robux allowlist) and G7b (coin bundles stay off
--- while Grip is on and allowBundlesWithCapsules is false) from Part 7.
+-- G1 (levels), G2 (pads), G5 (caps and timers), G8 (world, with WorldLayout) and G10 (giant-pad animation, with
+-- Config.Anim.giantPad) from Part 3 on; G3 (squeeze ceiling) and G6 (Strings names) from Part 5; G7 (Robux allowlist)
+-- and G7b (coin bundles stay off while Grip is on and allowBundlesWithCapsules is false) from Part 7.
 -- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Lv 1-100 and 9 Qa of Grip, five ranks above Lv 50,
 -- the Capsule block (tiers, intervals, capsule power, prices, Grip gates, slots; validate checks it) and G3 as a squeeze
--- count. Pads, trainers and the gates stay on until their own Phase 6 removals; since Phase 3 they no longer change
+-- count. Pads and the gates stay on until their own Phase 6 removals; since Phase 3 they no longer change
 -- what an own squeeze pays (the squeeze value and the highest capsule level's power, CapsuleMath). Phase 6 removed
--- slow training (the Afk block and G9); the pad test's padMargin / heightAbove moved to Config.Squeeze.
--- Texts live in Strings: pad names `grip.pad.<key>`, ranks `grip.rank.<key>`, trainers `grip.trainer.<key>`.
--- Math: shared GripMath (levels, ranks, pads, Grip and Coins per squeeze, minutes, next goal), CapsuleMath (the
+-- slow training (the Afk block and G9); the pad test's padMargin / heightAbove moved to Config.Squeeze. Then it removed
+-- the trainers (the Trainer block, its next-goal price rule, G4 and G6's wiring half).
+-- Texts live in Strings: pad names `grip.pad.<key>`, ranks `grip.rank.<key>`.
+-- Math: shared GripMath (levels, ranks, pads, minutes, next goal), CapsuleMath (the
 -- Capsule block) and SqueezeLimit (the Double Grip timer).
 
 export type Pad = {
 	key: string, -- Strings grip.pad.<key>; giant pads also use it as WorldLayout.GiantPads key / PadKey
 	level: number, -- Grip Level that unlocks it
 	coinBonus: number, -- shown in the pad texts only since Phase 3 (was added to a paid squeeze's Coins)
-	gripPercent: number, -- Grip per squeeze, % of the trainer value
-}
-
-export type Trainer = {
-	key: string, -- Strings grip.trainer.<key>
-	gripPerSqueeze: number,
-	cost: number, -- Coins
-	level: number, -- Grip Level needed to buy it
+	gripPercent: number, -- shown in the pad texts only since Phase 3 (was a squeeze's share of the trainer's Grip)
 }
 
 export type Limit = { enabled: boolean, perHour: number, burst: number }
@@ -179,17 +172,6 @@ local Grip = {
 		{ key = "marshmallow", level = 15, coinBonus = 2, gripPercent = 200 },
 		{ key = "royal", level = 30, coinBonus = 3, gripPercent = 300 },
 	} :: { Pad },
-	-- Trainer upgrades, bought in order with Coins (reason "trainer", Part 7); each needs a Grip Level.
-	Trainer = {
-		{ key = "foam", gripPerSqueeze = 10, cost = 0, level = 1 },
-		{ key = "sponge", gripPerSqueeze = 15, cost = 1000, level = 3 },
-		{ key = "rubber", gripPerSqueeze = 20, cost = 4000, level = 6 },
-		{ key = "spring", gripPerSqueeze = 30, cost = 12000, level = 10 },
-		{ key = "jelly", gripPerSqueeze = 40, cost = 25000, level = 15 },
-		{ key = "steel", gripPerSqueeze = 55, cost = 50000, level = 20 },
-		{ key = "gold", gripPerSqueeze = 75, cost = 90000, level = 28 },
-		{ key = "diamond", gripPerSqueeze = 100, cost = 150000, level = 36 },
-	} :: { Trainer },
 	-- Capsules (spec 2026-10-12 §3-§7, §10; lobby spec 2026-10-11 §5-§6): 10 tiers × 10 levels (Lv1-100), read by
 	-- shared CapsuleMath; CapsuleService pays from them (Phase 3).
 	-- Validator: the tiers fit maxLevel, intervals fall, Grip gates rise (tier 1 needs none), growth > 1, slot prices
@@ -241,15 +223,13 @@ local Grip = {
 	-- Spec 2026-10-12 §12: the server logs a warning (log only, like gripAlertPerHour) when one player's paid squeezes
 	-- pass this in a rolling hour (was 50,000 squeeze Coins). Validator: a whole number in 1..maxSqueezesPerHour.
 	squeezeAlertPerHour = 30_000,
-	-- CP(100) × Rested.mult = 920,525,589 × 2 (spec 2026-10-12 §12; was 600); it also covers today's biggest trainer
-	-- squeeze (Trainer[8] × 300% × Rested.mult = 600) (G5). A capsule squeeze gives CP.
+	-- CP(100) × Rested.mult = 920,525,589 × 2 (spec 2026-10-12 §12; was 600) (G5). A capsule squeeze gives CP.
 	maxGripPerEvent = 1_841_051_178,
 	-- (43200 + 12) × maxGripPerEvent: rolling-hour anomaly log, at the most squeezes the server can accept in an hour (the
 	-- anti-autoclicker cap, 12 per second, plus its burst) at the biggest Grip event, so honest fast clicking never
 	-- trips it (spec 2026-10-12 §12). Phase 3 reading: the honest maximum with 4 Lv 100 capsules on top (own squeezes
 	-- mostly undoubled, Double Grip's points, every tap pushing the capsules) is about 7.5e13 an hour, still under it.
 	gripAlertPerHour = 79_555_503_503_736,
-	goalUpgradeMaxCostWhileCollecting = 5000, -- next-goal rule (§17.5)
 	-- G-E / G7b (lobby spec 2026-10-11 §11; was allowBundlesWithTrainer): coin bundles stay off while capsules turn Coins
 	-- into Grip power.
 	allowBundlesWithCapsules = false,

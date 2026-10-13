@@ -2,9 +2,8 @@
 -- Config.Net: per-remote token buckets, global cap and abuse thresholds (DESIGN §2.7, §2.8, §12). Shared, data only.
 -- `Remotes` is keyed by the exact client -> server remote names of Remotes.SPEC; Config.validate() checks that every
 -- C->S remote has an entry here and that every entry here is a C->S remote. Rates are [P].
--- Grip has no remote of its own (§17.9 #1): the only Grip-related calls are TrainerUpgrade (Part 7, §17.5), which buys
--- a trainer with Coins (rate 1, burst 1, one in flight; validator G6 checks the entry), and the capsule remotes
--- (Phase 3) with the same limits.
+-- Grip has no remote of its own (§17.9 #1): the only Grip-related calls are the capsule remotes (Phase 3: rate 1,
+-- burst 1, one in flight). TrainerUpgrade went with the trainers (build plan Phase 6).
 
 export type RemoteRate = {
 	rate: number, -- tokens refilled per second
@@ -47,9 +46,7 @@ local Net = {
 		QuestClaim = { rate = 2, burst = 3 },
 		QuestSwap = { rate = 0.5, burst = 1 },
 		DailyClaim = { rate = 0.5, burst = 1 },
-		-- Grip trainer upgrade (§17.5, Part 7): the stored trainer is the idempotency key, so a retry is a replay.
-		TrainerUpgrade = { rate = 1, burst = 1, oneInFlight = true },
-		-- Capsules (lobby spec 2026-10-11 §6, Phase 3): the TrainerUpgrade limits, 1 a second and one at a time.
+		-- Capsules (lobby spec 2026-10-11 §6, Phase 3): 1 a second and one at a time.
 		CapsuleUpgrade = { rate = 1, burst = 1, oneInFlight = true },
 		CapsuleUnlock = { rate = 1, burst = 1, oneInFlight = true },
 		CapsuleSet = { rate = 1, burst = 1, oneInFlight = true },

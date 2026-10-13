@@ -22,8 +22,8 @@
 --   cardWidth(screenX, scale)        the card's width in base px: Config.UI.Capsule.cardWidth, narrower only to keep
 --                                    cardMargin to the screen's sides (Layout.modalWidth)
 -- Readings: per hour = whole Coins (or Grip) of 3600 / seconds squeezes; seconds with one decimal; the paused reasons
--- are the trainer card's (GripController) with reason.capsule.paused for a pending save; the Grip level of the player
--- defaults to 1 (a new player's) when unknown.
+-- are the removed trainer card's (common.loading, reason.data.offline / data.readOnly) with reason.capsule.paused for a
+-- pending save; the Grip level of the player defaults to 1 (a new player's) when unknown.
 
 -- Services
 

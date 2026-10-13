@@ -11,14 +11,15 @@
 -- Logic/PowerBudget. `deps.WorldLayout` replaces the WorldLayout module (unit tests pass a deliberately broken copy;
 -- WorldLayout is frozen on load); `deps.Catalog` replaces the Catalog module (unit tests pass a broken one);
 -- `deps.QuestDefs` replaces the QuestDefs module (unit tests pass broken quest definitions).
--- Grip rules (§17.9, Part 3): G1 levels, G2 pads, G4 trainer, G5 caps and timers, G8 world (Config.Grip with
+-- Grip rules (§17.9, Part 3): G1 levels, G2 pads, G5 caps and timers, G8 world (Config.Grip with
 -- WorldLayout) and G10 giant-pad animation (Config.Anim.giantPad, skipped until that block exists).
 -- Grip rules (Part 5): G3 squeeze ceiling (a squeeze count since spec 2026-10-12 §12),
--- G6 Strings names (every rank, pad and trainer key has its grip.rank / grip.pad / grip.trainer text); plus the Part 5
+-- G6 Strings names (every rank and pad key has its grip.rank / grip.pad text); plus the Part 5
 -- values of Data (size budget, timer skew), UI.Grip and the Grip nameplate, gate and toast settings. G9 is gone with
--- slow training (build plan Phase 6); its pad margins are Config.Squeeze's now, checked there.
--- Grip rules (Part 7): G6's wiring half ("trainer" is a Coin reason; Net.Remotes.TrainerUpgrade exists, one in
--- flight); G7 Robux allowlist and G7b bundles-off-while-Grip, both through the pure Config.robuxProblems(monetization,
+-- slow training (build plan Phase 6); its pad margins are Config.Squeeze's now, checked there. G4 (trainer) and G6's
+-- wiring half (the "trainer" Coin reason, the TrainerUpgrade rate) are gone with the trainers (Phase 6).
+-- Grip rules (Part 7): G7 Robux allowlist and G7b bundles-off-while-Grip, both through the pure
+-- Config.robuxProblems(monetization,
 -- grip, resolveText) (also called by Config_Test with fake tables). Part 7 also checks: QuestDefs (kind, category,
 -- counts, positive integer goal/reward variants, the textPair's .one/.many texts, the daily templates cover squeeze,
 -- duel and practice, starter ids, starter_jelly's minTier in 2..#Grip.Pads), Onboarding.skipStepId (camelCase, not a
@@ -114,7 +115,6 @@ local MIN_QUEST_TIER = 2 -- starter_jelly's minTier: a giant pad (tier 2..#Grip.
 -- spec 2026-10-11 §11).
 local BUNDLE_FIELDS = { key = true, nameKey = true, productId = true, coins = true, onSale = true }
 local ROBUX_BANNED_WORDS = { "grip", "train", "rested", "afk", "idle", "squeeze", "pad", "cushion", "level", "capsule" }
-local TRAINER_COIN_REASON = "trainer" -- G6 wiring
 -- Every ability: telegraph >= this, visible to the opponent. §5.9's 0.6 s, lowered by the user's decision of
 -- 2026-10-11 so the design's wind-ups pass (design numbers win; ults.js:3-6: 0.35, 0.45, 0.6, 0.5 s).
 local MIN_TELEGRAPH_SECONDS = 0.35
@@ -3007,42 +3007,6 @@ local function checkGripPads(problems: Problems)
 	end
 end
 
--- G4 Trainer: level 1 costs 0; cost, Grip per squeeze and required level all rise strictly; required level <= 50;
--- every cost < Net.maxAbsNumber.
-local function checkGripTrainer(problems: Problems)
-	local p = "Config.Grip.Trainer"
-	local trainers: { any } = Grip.Trainer
-	local first = trainers[1]
-	expect(
-		problems,
-		first ~= nil and first.cost == 0 and first.level == 1,
-		`G4: {p}[1] (the starting trainer) must cost 0 and need Lv 1`
-	)
-	for index, trainer in trainers do
-		local path = `{p}[{index}]`
-		expectId(problems, `{path}.key`, trainer.key)
-		expectCount(problems, `G4: {path}.gripPerSqueeze`, trainer.gripPerSqueeze, 1)
-		expectCoins(problems, `G4: {path}.cost`, trainer.cost)
-		expectBetween(problems, `G4: {path}.level`, trainer.level, 1, Grip.maxLevel)
-		expect(
-			problems,
-			isNumber(trainer.cost) and trainer.cost < Net.maxAbsNumber,
-			`G4: {path}.cost ({show(trainer.cost)}) must be below Config.Net.maxAbsNumber ({Net.maxAbsNumber}), `
-				.. "or the client's expectedPrice could never match it"
-		)
-		local before = trainers[index - 1]
-		if before then
-			expect(problems, trainer.cost > before.cost, `G4: {p} costs must rise strictly ({path}.cost)`)
-			expect(
-				problems,
-				trainer.gripPerSqueeze > before.gripPerSqueeze,
-				`G4: {p} Grip per squeeze must rise strictly ({path}.gripPerSqueeze)`
-			)
-			expect(problems, trainer.level > before.level, `G4: {p} required levels must rise strictly ({path}.level)`)
-		end
-	end
-end
-
 -- Capsule power CP(level) and the Coins from level to level + 1, from the Config.Grip.Capsule data (CapsuleMath's
 -- formulas, spec 2026-10-12 §3, §5: Config cannot require CapsuleMath, which requires Config).
 local function capsulePower(capsule: any, level: number): number
@@ -3060,34 +3024,25 @@ local function capsulePrice(capsule: any, level: number): number
 end
 
 -- G5 Caps and timers: maxGripPerEvent covers the biggest event (a squeeze at the top capsule level, CP(maxLevel) ×
--- Rested.mult, spec 2026-10-12 §12, and today's trainer squeeze); Double Grip refills slower
+-- Rested.mult, spec 2026-10-12 §12); Double Grip refills slower
 -- than holding Squeeze spends it; Hold.maxSeconds < idleReminderSeconds < 1200 (idle kick); Hold.queuedSeconds < 120.
 -- Reading (every click pays, 2026-10-06): the refill rule compared with 3600 / Squeeze.cycleSeconds, the accepted rate
 -- when the cycle was the 1.5 s squeeze timer; the cycle is now the hidden anti-autoclicker cap (1/12 s), so the rule
 -- uses the hold-to-squeeze rhythm, 3600 / Hold.repeatSeconds, the slowest steady way to squeeze.
 local function checkGripCaps(problems: Problems)
 	local p = "Config.Grip"
-	local maxPerSqueeze, maxPercent = 0, 0
-	for _, trainer in Grip.Trainer do
-		maxPerSqueeze = math.max(maxPerSqueeze, trainer.gripPerSqueeze)
-	end
-	for _, pad in Grip.Pads do
-		maxPercent = math.max(maxPercent, pad.gripPercent)
-	end
 	local rested, hold = Grip.Rested, Grip.Hold
 	expectBoolean(problems, `{p}.Rested.enabled`, rested.enabled)
 	expectPositive(problems, `{p}.Rested.perHour`, rested.perHour)
 	expectCount(problems, `{p}.Rested.burst`, rested.burst, 1)
 	expect(problems, isNumber(rested.mult) and rested.mult >= 1, `{p}.Rested.mult must be a number >= 1`)
-	local multiplier = if rested.enabled then rested.mult else 1
-	local trainerEvent = maxPerSqueeze * maxPercent / 100 * multiplier
 	local capsule = Grip.Capsule
 	local capsuleEvent = capsulePower(capsule, capsule.maxLevel) * (if rested.enabled then rested.mult else 1)
 	expect(
 		problems,
-		isNumber(Grip.maxGripPerEvent) and Grip.maxGripPerEvent >= math.max(trainerEvent, capsuleEvent),
+		isNumber(Grip.maxGripPerEvent) and Grip.maxGripPerEvent >= capsuleEvent,
 		`G5: {p}.maxGripPerEvent ({show(Grip.maxGripPerEvent)}) must be >= the biggest Grip event (CP({capsule.maxLevel})`
-			.. ` × Rested.mult = {capsuleEvent}; trainer {maxPerSqueeze} × {maxPercent}% × {multiplier} = {trainerEvent})`
+			.. ` × Rested.mult = {capsuleEvent})`
 	)
 	expectPositive(problems, `{p}.Hold.repeatSeconds`, hold.repeatSeconds)
 	if isNumber(hold.repeatSeconds) and hold.repeatSeconds > 0 then
@@ -3427,8 +3382,7 @@ local function checkGripCapsules(problems: Problems)
 	)
 end
 
--- G6 Strings names (Part 5 half): every rank, pad and trainer key has its Strings text grip.rank.<key>,
--- grip.pad.<key>, grip.trainer.<key>.
+-- G6 Strings names (Part 5 half): every rank and pad key has its Strings text grip.rank.<key>, grip.pad.<key>.
 local function checkGripStrings(problems: Problems, Strings: any)
 	local resolve = Strings.resolve
 	if type(resolve) ~= "function" then
@@ -3437,7 +3391,6 @@ local function checkGripStrings(problems: Problems, Strings: any)
 	local groups: { { path: string, prefix: string, list: { any } } } = {
 		{ path = "Ranks", prefix = "grip.rank.", list = Grip.Ranks },
 		{ path = "Pads", prefix = "grip.pad.", list = Grip.Pads },
-		{ path = "Trainer", prefix = "grip.trainer.", list = Grip.Trainer },
 	}
 	for _, group in groups do
 		for index, entry in group.list do
@@ -3449,26 +3402,6 @@ local function checkGripStrings(problems: Problems, Strings: any)
 				`G6: Config.Grip.{group.path}[{index}] needs the Strings text {key}`
 			)
 		end
-	end
-end
-
--- G6 wiring (Part 7 half): trainer upgrades spend Coins with the reason "trainer", through the TrainerUpgrade remote
--- (one in flight; checkRemoteRates cross-checks the entry against Remotes.SPEC).
-local function checkGripWiring(problems: Problems)
-	expect(
-		problems,
-		table.find(Economy.CoinReasons, TRAINER_COIN_REASON) ~= nil,
-		`G6: Config.Economy.CoinReasons must list {show(TRAINER_COIN_REASON)} (Grip trainer upgrades, §17.5)`
-	)
-	local entry = Net.Remotes.TrainerUpgrade
-	if entry == nil then
-		add(problems, "G6: Config.Net.Remotes.TrainerUpgrade is missing (the trainer upgrade remote, §17.5)")
-	else
-		expect(
-			problems,
-			entry.oneInFlight == true,
-			"G6: Config.Net.Remotes.TrainerUpgrade must be oneInFlight (one purchase at a time)"
-		)
 	end
 end
 
@@ -3504,7 +3437,6 @@ local function checkGripSettings(problems: Problems)
 		isNumber(Grip.welcomeBackMinGain) and Grip.welcomeBackMinGain <= Grip.Rested.burst,
 		`{p}.welcomeBackMinGain must not exceed Rested.burst ({show(Grip.Rested.burst)}), or the toast never shows`
 	)
-	expectCoins(problems, `{p}.goalUpgradeMaxCostWhileCollecting`, Grip.goalUpgradeMaxCostWhileCollecting)
 	expectBoolean(problems, `{p}.allowBundlesWithCapsules`, Grip.allowBundlesWithCapsules)
 	expectPositive(problems, `{p}.maxSqueezesPerHour`, Grip.maxSqueezesPerHour)
 	-- Spec 2026-10-12 §12: the paid-squeeze alert log; above the ceiling it could never fire.
@@ -4609,15 +4541,13 @@ function Config.validate(deps: ValidateDeps?): { string }
 		checkDebug(problems)
 	end)
 
-	-- Grip (§17.9): G1-G5 and the Capsule block on Config alone; G8 with WorldLayout; G10 with Config.Anim.giantPad.
+	-- Grip (§17.9): G1-G3, G5 and the Capsule block on Config alone; G8 with WorldLayout; G10 with
+	-- Config.Anim.giantPad.
 	guarded(problems, "Config.Grip G1", function()
 		checkGripLevels(problems)
 	end)
 	guarded(problems, "Config.Grip G2", function()
 		checkGripPads(problems)
-	end)
-	guarded(problems, "Config.Grip G4", function()
-		checkGripTrainer(problems)
 	end)
 	guarded(problems, "Config.Grip G5", function()
 		checkGripCaps(problems)
@@ -4630,9 +4560,6 @@ function Config.validate(deps: ValidateDeps?): { string }
 	end)
 	guarded(problems, "Config.Grip settings", function()
 		checkGripSettings(problems)
-	end)
-	guarded(problems, "Config.Grip G6 wiring", function()
-		checkGripWiring(problems)
 	end)
 	local layout: any = if deps then deps.WorldLayout else nil
 	if layout == nil then

@@ -35,7 +35,7 @@
 --                                           clamped to [0, Config.Economy.maxCoins] (a negative or non-finite input
 --                                           counts as 0)
 --   CapsuleMath.upgradeDecision(capsules, slot, expectedPrice, gripLevel) -> Decision: the pure CapsuleUpgrade checks
---     (lobby spec §6) in GripMath.upgradeDecision's order, the first that applies wins:
+--     (lobby spec §6) in the trainers' old order (§17.5), the first that applies wins:
 --       2 slot a whole number 1..#slotPrices and expectedPrice whole Coins in [0, maxCoins], else "net.invalid";
 --       the slot is unlocked (slot <= capsules.slots), else "capsule.locked"; below maxLevel, else "capsule.maxLevel";
 --       6 the next level's Grip gate (gripLevelFor(level + 1) <= gripLevel), else "capsule.gripLocked";

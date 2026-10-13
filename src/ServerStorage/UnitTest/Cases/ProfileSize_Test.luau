@@ -103,7 +103,8 @@ return function(t: Context)
 		end
 		p.grip = {
 			total = Config.Grip.maxGrip,
-			trainer = #Config.Grip.Trainer,
+			-- Phase 6: an old save keeps its best trainer (an unknown field now): the worst case has it.
+			trainer = 8,
 			rested = { value = 1199.987654321, at = NOW - 0.987654321 },
 			-- Phase 6: slow training is gone, but an old save keeps its bank (an unknown field): the worst case has it.
 			afk = { value = 119.987654321, at = NOW - 0.987654321 },

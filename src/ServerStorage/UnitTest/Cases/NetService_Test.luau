@@ -9,8 +9,8 @@
 --   * validateArgs checks the argument count (too many = badArgCount) and every argument of a real remote;
 --   * ShopBuy's expectedPrice is a whole Coin amount up to Config.Economy.maxCoins (Dragon costs 1.1T, spec 2026-10-12
 --     §6), never NaN, inf, negative, fractional or above the cap;
---   * OnboardingStep takes the client-recorded steps plus the Skip tutorial id (Part 7); TrainerUpgrade (Part 7) takes
---     two whole numbers and rejects NaN, inf, 1e9, strings, fractions and extra arguments; SqueezeRequest takes no
+--   * OnboardingStep takes the client-recorded steps plus the Skip tutorial id (Part 7); TrainerUpgrade is gone with
+--     the trainers (build plan Phase 6: unknownRemote, no rate entry); SqueezeRequest takes no
 --     argument (spec 2026-10-11 §5: the server finds the pad itself), so a station id or anything else is badArgCount;
 --   * the guard runs mute -> per-remote bucket -> global cap (30/s, burst 80) -> arg count -> types -> seq replay;
 --     a rate-limit hit, a wrong count or an invalid argument is a violation; more than 20 violations in 60 s mute the
@@ -147,36 +147,11 @@ return function(t: Context)
 		expect.equal(whyMany, "badArgCount")
 	end)
 
-	t.test("TrainerUpgrade: two whole numbers; NaN, inf, 1e9, strings, fractions, extra args fail", function()
-		local ok, args = NetService.validateArgs("TrainerUpgrade", 2, 1000)
-		expect.truthy(ok)
-		expect.equal(args[1], 2)
-		expect.equal(args[2], 1000)
-		local bad: { { any } } = {
-			{ NAN, 1000 },
-			{ 2, NAN },
-			{ INF, 1000 },
-			{ 2, -INF },
-			{ 2, 1e9 },
-			{ 1e9, 1000 },
-			{ "2", 1000 },
-			{ 2, "1000" },
-			{ 2.5, 1000 },
-			{ 2, 1000.5 },
-			{ 2 }, -- missing expectedPrice
-			{ {}, 1000 },
-		}
-		for i, case in bad do
-			local okBad, why = NetService.validateArgs("TrainerUpgrade", table.unpack(case))
-			if okBad or why ~= "invalid" then
-				error(`bad TrainerUpgrade case {i} was not rejected as invalid ({tostring(why)})`)
-			end
-		end
-		local okMany, whyMany = NetService.validateArgs("TrainerUpgrade", 2, 1000, "extra")
-		expect.falsy(okMany)
-		expect.equal(whyMany, "badArgCount")
-		local entry = Config.Net.Remotes.TrainerUpgrade
-		expect.truthy(entry ~= nil and entry.oneInFlight == true)
+	t.test("TrainerUpgrade is gone with the trainers (build plan Phase 6): unknownRemote, no rate entry", function()
+		local ok, why = NetService.validateArgs("TrainerUpgrade", 2, 1000)
+		expect.falsy(ok)
+		expect.equal(why, "unknownRemote")
+		expect.equal(Config.Net.Remotes.TrainerUpgrade, nil)
 	end)
 
 	t.test("ShopBuy: a whole Coin price up to maxCoins passes; NaN, inf, negative, fractions and more fail", function()

@@ -13,7 +13,7 @@
 --   the caller's own plot (BaseService.plotOf + WorldLayout.inPlot), every capsule that holds a squishy moves
 --   Capsule.tapPush of a squeeze forward (the next tick pays it). Anywhere else nothing happens.
 -- * CapsuleUpgrade(slot, expectedPrice) / CapsuleUnlock(slot, expectedPrice) (RFs; Config.Net: 1 a second, one in
---   flight), in GripService.upgradeTrainer's order: (2) the argument range, then CapsuleMath.upgradeDecision /
+--   flight), in the trainers' old order (§17.5): (2) the argument range, then CapsuleMath.upgradeDecision /
 --   unlockDecision with (3) the ready profile (data.notReady) checked between them (an unlock of a slot that is already
 --   open is a replay: ok, charged = false); (8) a pending failed save, the server closing or a restart pending ->
 --   capsule.paused; (9) SD_DuelPhase ~= "" -> inventory.lockedInDuel; (10) EconomyService.trySpend(p, cost,

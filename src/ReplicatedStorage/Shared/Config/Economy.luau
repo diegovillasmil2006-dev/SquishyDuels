@@ -13,9 +13,9 @@ local Economy = {
 	-- number up to about 9.007 Qa exactly.
 	maxCoins = 9_000_000_000_000_000,
 
-	-- The closed list of reasons for EconomyService.grantCoins / trySpend (§6.1). "trainer" = Grip trainer upgrades
-	-- (§17.5, Part 7; validator G6 checks it is listed). "capsule" = capsule upgrades, slots and squeezes (spec
-	-- 2026-10-12, lobby spec 2026-10-11 §6; CapsuleService). "debug" is Studio only.
+	-- The closed list of reasons for EconomyService.grantCoins / trySpend (§6.1). "capsule" = capsule upgrades, slots
+	-- and squeezes (spec 2026-10-12, lobby spec 2026-10-11 §6; CapsuleService). "debug" is Studio only. "trainer" went
+	-- with the trainers (build plan Phase 6).
 	CoinReasons = {
 		"squeeze",
 		"duel_win",
@@ -29,7 +29,6 @@ local Economy = {
 		"box",
 		"shop",
 		"capsule",
-		"trainer",
 		"debug",
 	},
 

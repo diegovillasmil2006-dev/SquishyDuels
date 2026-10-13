@@ -5,9 +5,9 @@
 -- Rojo `$path` nodes delete unknown children. Per-remote rate limits live in Config.Net, keyed by the same names.
 -- Grip (§17.2 rule 5, §17.9 #1): there is no Grip remote. Grip comes only from an accepted SqueezeRequest and from the
 -- server's own capsule ticks; the client never says "I am on a pad" or "I am idle" (the idle card is
--- client only, and a queued client's idleness is ReportIdle). TrainerUpgrade (RF, Part 7, §17.5) only buys the next
--- trainer with Coins: the server checks it with GripMath.upgradeDecision and never takes a price or a Grip amount from
--- it; the capsule remotes (Phase 3) likewise only buy and fill the caller's own capsules (CapsuleMath's checks).
+-- client only, and a queued client's idleness is ReportIdle). The capsule remotes (Phase 3) only buy and fill the
+-- caller's own capsules: the server checks them with CapsuleMath and never takes a price or a Grip amount from them.
+-- TrainerUpgrade went with the trainers (build plan Phase 6).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -158,10 +158,6 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	QuestClaim = c2s("RemoteFunction", { arg("questId", "questId") }),
 	QuestSwap = c2s("RemoteFunction", { arg("questId", "questId") }),
 	DailyClaim = c2s("RemoteFunction", {}), -- data: Types.DailyClaimResult
-	-- §17.5: targetLevel = the trainer index to buy (2..#Config.Grip.Trainer); expectedPrice is compared, never charged.
-	-- data: Types.TrainerUpgradeResult {trainer, charged, savePending}; a replay (trainer already owned) is ok with
-	-- charged = false.
-	TrainerUpgrade = c2s("RemoteFunction", { arg("targetLevel", "integer"), arg("expectedPrice", "integer") }),
 	-- Capsules (lobby spec 2026-10-11 §6, Phase 3; CapsuleService): only the caller's own capsules, so no remote takes
 	-- a base, plot or player id. slot = 1..#Config.Grip.Capsule.slotPrices; expectedPrice is compared, never charged.
 	-- data: Types.CapsuleResult {capsules, charged, savePending}.

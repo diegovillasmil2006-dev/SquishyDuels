@@ -4,8 +4,8 @@
 -- Strings.reasonText(code). Part 4: the duel, queue and practice texts DESIGN quotes keep their exact wording, and
 -- every text the Part 4 screens and DuelResult.reasonKey use exists. Part 5: the data banners, restart notice,
 -- settings, Squishies and every §17.7 Grip text keep DESIGN's wording; the Part 5 codes and readings exist; no duel
--- text mentions Grip (§17.2 rule 1). Part 7: the
--- §17.7 trainer reason texts and quest.starterTask.jelly keep DESIGN's wording; the Part 7 readings (box.title,
+-- text mentions Grip (§17.2 rule 1). Part 7:
+-- quest.starterTask.jelly keeps DESIGN's wording; the Part 7 readings (box.title,
 -- box.freeOnly, box.boardHeader, box.boardLine, daily.today) exist, and box.freeOnly names the Config free box day.
 -- Foam fix 2: the Grip card's short goal lines (grip.hudGoal*); grip.idleBody keeps its line break (Phase 6: its second
 -- sentence names the capsules).
@@ -19,7 +19,8 @@
 -- Phase 5: pads and trainers no longer boost a squeeze, so no pad, trainer or onboarding text claims one (Grip opens
 -- the capsule tiers); the pad label and "Coins per squeeze" are gone; the capsule card texts and a name for every
 -- capsule tier exist. Phase 6: slow training is gone: its popup, help and bank texts are gone and no text names it
--- (pads and trainers change nothing a player earns now; the idle card says capsules stop paying).
+-- (pads change nothing a player earns now; the idle card says capsules stop paying); so are the trainers: every
+-- trainer text, goal and reason is gone and no text names a trainer.
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
 
@@ -220,11 +221,8 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.hudBar"] = "{have} / {need} Grip",
 	["grip.hudMax"] = "Max level",
 	["grip.restedChip"] = "Double Grip: about {minutes} min",
-	["grip.upgradeBadge"] = "Upgrade available",
 	-- §17.7 next goal
-	["grip.goalUpgrade"] = "Upgrade ready: {trainer} for {coins} Coins",
 	["grip.goalPad"] = "Next: {pad} at Grip Lv {level}",
-	["grip.goalTrainer"] = "Next: {trainer} unlocks at Grip Lv {level}",
 	["grip.goalRank"] = "Next rank: {rank} at Grip Lv {level}",
 	["grip.goalMax"] = "Max level! You've reached Infinite Grip.",
 	-- §17.7 at a pad
@@ -243,14 +241,6 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.pad.jelly"] = "Jelly Pad",
 	["grip.pad.marshmallow"] = "Marshmallow Pad",
 	["grip.pad.royal"] = "Royal Cushion",
-	["grip.trainer.foam"] = "Foam Ball",
-	["grip.trainer.sponge"] = "Sponge Ball",
-	["grip.trainer.rubber"] = "Rubber Ball",
-	["grip.trainer.spring"] = "Spring Gripper",
-	["grip.trainer.jelly"] = "Jelly Gripper",
-	["grip.trainer.steel"] = "Steel Gripper",
-	["grip.trainer.gold"] = "Gold Gripper",
-	["grip.trainer.diamond"] = "Diamond Gripper",
 	-- §17.7 panel. Phase 5 (build plan; progression spec 2026-10-12 §3): pads and trainers no longer boost a squeeze
 	-- (the capsules set its pay), and the Grip level's purpose is the capsule tiers. Phase 6: slow training is gone, so
 	-- DESIGN's pad and trainer lines lost their last claim (a pad pays the same as anywhere).
@@ -262,14 +252,6 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.padOpen"] = "Open",
 	["grip.padLocked"] = "Locked",
 	["grip.showMe"] = "Show me",
-	["grip.trainerHeader"] = "Trainer",
-	["grip.trainerNow"] = "Now: {trainer}",
-	["grip.trainerNext"] = "Next: {trainer}",
-	["grip.trainerBuy"] = "Upgrade: {coins} Coins",
-	["grip.trainerNeedLevel"] = "Reach Grip Lv {level}",
-	["grip.trainerNeedCoins"] = "Need {coins} more Coins",
-	["grip.trainerMax"] = "Best trainer owned!",
-	["grip.trainerNote"] = "Upgrades never change duels.",
 	["grip.restedHelp"] = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 	-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays (Phase 5: no pad boost).
 	["grip.limitNote"] = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
@@ -278,7 +260,6 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.levelUp"] = "Grip Lv {level}!",
 	["grip.padUnlocked"] = "{pad} unlocked!",
 	["grip.rankUp"] = "{name} reached {rank}!",
-	["grip.trainerBought"] = "{trainer} unlocked!",
 	["grip.intro"] = "You trained your Grip! Squeeze more to open new capsule tiers.",
 	["grip.welcome"] = "Double Grip is full: your first squeezes train x{mult} Grip!",
 	["grip.welcomeBack"] = "Welcome back! Double Grip: about {minutes} min.",
@@ -344,7 +325,6 @@ local PART5_CODES = {
 	"grip.welcome",
 	"grip.welcomeBack",
 	"grip.headStart",
-	"grip.trainerBought",
 }
 
 return function(t: Context)
@@ -498,14 +478,13 @@ return function(t: Context)
 		scan(Strings.ability, "ability")
 	end)
 
-	-- G6 from the Strings side: every rank, pad and trainer of Config.Grip has its name.
-	t.test("every Config.Grip rank, pad and trainer has a grip.* name", function()
+	-- G6 from the Strings side: every rank and pad of Config.Grip has its name.
+	t.test("every Config.Grip rank and pad has a grip.* name", function()
 		local Config = t.requireShared("Config")
 		local missing = {}
 		local groups: { { prefix: string, list: { any } } } = {
 			{ prefix = "grip.rank.", list = Config.Grip.Ranks },
 			{ prefix = "grip.pad.", list = Config.Grip.Pads },
-			{ prefix = "grip.trainer.", list = Config.Grip.Trainer },
 		}
 		for _, group in groups do
 			for _, entry in group.list do
@@ -530,13 +509,9 @@ return function(t: Context)
 
 	-- Part 7 ----------------------------------------------------------------------------------------------------
 
-	-- §17.7 quotes these word for word; the trainer codes are server reason codes (§17.10).
+	-- §17.7 quotes these word for word (Phase 6: the trainer reason texts went with the trainers).
 	t.test("Part 7 texts DESIGN quotes keep their exact wording", function()
 		local wording: { [string]: string } = {
-			["reason.trainer.notNext"] = "Buy the trainers in order.",
-			["reason.trainer.locked"] = "Your Grip level is too low for this trainer.",
-			["reason.trainer.priceChanged"] = "The price changed. Please check it again.",
-			["reason.trainer.paused"] = "Upgrades are paused for a moment. Try again soon.",
 			["quest.starterTask.jelly.one"] = "Squeeze once on the Jelly Pad",
 			["quest.starterTask.jelly.many"] = "Squeeze {n} times on the Jelly Pad",
 		}
@@ -549,9 +524,6 @@ return function(t: Context)
 		table.sort(wrong)
 		if #wrong > 0 then
 			error("not the DESIGN wording: " .. table.concat(wrong, "; "))
-		end
-		for _, code in { "trainer.notNext", "trainer.locked", "trainer.priceChanged", "trainer.paused" } do
-			expect.equal(Strings.reasonText(code), Strings.resolve("reason." .. code))
 		end
 	end)
 
@@ -591,16 +563,12 @@ return function(t: Context)
 		end
 	end)
 
-	-- Foam fix 2 (2026-10-09): the regular Grip card's goal line is a short form of grip.goalPad / goalTrainer /
-	-- goalRank (the panel and the compact layout's toast keep those), so it fits the card's info column on one line.
+	-- Foam fix 2 (2026-10-09): the regular Grip card's goal line is a short form of grip.goalPad / goalRank (the panel
+	-- and the compact layout's toast keep those), so it fits the card's info column on one line.
 	t.test("the Grip card's short goal lines exist with their placeholders", function()
 		expect.equal(
 			Strings.format(Strings.grip.hudGoalPad, { pad = "Jelly Pad", level = 5 }),
 			"Next: Jelly Pad at Lv 5"
-		)
-		expect.equal(
-			Strings.format(Strings.grip.hudGoalTrainer, { trainer = "Sponge Ball", level = 3 }),
-			"Next: Sponge Ball at Lv 3"
 		)
 		expect.equal(
 			Strings.format(Strings.grip.hudGoalRank, { rank = "Firm Grip", level = 10 }),
@@ -669,14 +637,11 @@ return function(t: Context)
 
 	-- Phase 5 (build plan; lobby bases spec 2026-10-11 §9; progression spec 2026-10-12 §3-§6) ---------------------------
 
-	t.test("no pad, trainer or onboarding text claims a squeeze bonus any more", function()
+	t.test("no pad or onboarding text claims a squeeze bonus any more", function()
 		for _, key in
 			{
 				"grip.padPerks",
 				"grip.padUnlocked",
-				"grip.trainerNow",
-				"grip.trainerNext",
-				"grip.trainerBought",
 				"grip.signOpen",
 				"grip.limitNote",
 				"grip.panelIntro",
@@ -702,6 +667,46 @@ return function(t: Context)
 			if type(node) == "string" then
 				local text = string.lower(node)
 				if string.find(text, "slow training", 1, true) or string.find(text, "slow-training", 1, true) then
+					table.insert(naming, path)
+				end
+			elseif type(node) == "table" then
+				for key, child in node do
+					scan(child, path .. "." .. tostring(key))
+				end
+			end
+		end
+		scan(Strings, "Strings")
+		table.sort(naming)
+		expect.deepEqual(naming, {})
+	end)
+
+	-- Phase 6 (build plan): the trainers are gone too.
+	t.test("the trainers are gone: their names, card, goal, toast and reason texts; no text names one", function()
+		expect.equal((Strings.grip :: any).trainer, nil)
+		expect.equal((Strings.reason :: any).trainer, nil)
+		for _, key in
+			{
+				"grip.upgradeBadge",
+				"grip.goalUpgrade",
+				"grip.goalTrainer",
+				"grip.hudGoalTrainer",
+				"grip.trainerHeader",
+				"grip.trainerNow",
+				"grip.trainerNext",
+				"grip.trainerBuy",
+				"grip.trainerNeedLevel",
+				"grip.trainerNeedCoins",
+				"grip.trainerMax",
+				"grip.trainerNote",
+				"grip.trainerBought",
+			}
+		do
+			expect.equal(Strings.resolve(key), nil)
+		end
+		local naming: { string } = {}
+		local function scan(node: any, path: string)
+			if type(node) == "string" then
+				if string.find(string.lower(node), "trainer", 1, true) then
 					table.insert(naming, path)
 				end
 			elseif type(node) == "table" then

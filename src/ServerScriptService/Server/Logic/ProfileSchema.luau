@@ -10,8 +10,9 @@
 -- version (and a frozen MIGRATIONS step) is only for a transform of stored data, like v1 -> v2's head start. That is
 -- how `samePair = {}` (the same-pair record, §6.7) joined schema 2, and `capsules` (progression spec 2026-10-12 §14:
 -- nobody but the two owners has played yet, so there are no old saves to fix). The same way back: build plan Phase 6
--- removed slow training, so `grip.afk` (its bank) left defaults and sanitize with no new version; an old save keeps it
--- as an unknown field nothing reads, and the frozen v1 -> v2 step still writes it.
+-- removed slow training and the trainers, so `grip.afk` (the bank) and `grip.trainer` left defaults and sanitize with
+-- no new version (and no refund); an old save keeps them as unknown fields nothing reads, and the frozen v1 -> v2 step
+-- still writes them.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -25,7 +26,7 @@
 --        from the Catalog are kept (and ignored by their readers); equipped not owned or not in the Catalog -> the
 --        starter; quests whose template no longer exists dropped (only when opts.questExists is given: QuestDefs lands
 --        in Part 7); logs trimmed to Config.Data.caps (newest kept); settings clamped; Grip (§17.9 #6): total floored
---        and clamped to [0, Grip.maxGrip] (non-finite -> 0), trainer an integer in [1, #Grip.Trainer], rested.value in
+--        and clamped to [0, Grip.maxGrip] (non-finite -> 0), rested.value in
 --        [0, Rested.burst], a non-finite `at` or one later than now + 300 -> now;
 --        samePair (§6.7, fails closed): not a table -> {}; a key that is not a whole-number userId string
 --        (DuelRewards.samePairKey) or a value that is not a table is dropped; in a list only finite numbers stay (a
@@ -428,7 +429,6 @@ function ProfileSchema.defaults(now: number): Profile
 		duelLog = {},
 		grip = {
 			total = 0,
-			trainer = 1,
 			rested = { value = Config.Grip.Rested.burst, at = now },
 		},
 		samePair = {},
@@ -618,7 +618,6 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 			note(problems, "grip.total", total, fixed)
 		end
 	end
-	fixInt(grip, "trainer", 1, #Config.Grip.Trainer, 1, "grip.trainer", problems)
 	fixTimer(grip, "rested", Config.Grip.Rested.burst, now, "grip.rested", problems)
 
 	-- Same-pair record (§6.7, §12 #15).

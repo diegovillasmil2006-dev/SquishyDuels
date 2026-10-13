@@ -1,6 +1,6 @@
 --!strict
 -- ConfirmButton (client only). DESIGN §11.5 (inline two-step spend confirmation, one pattern for boxes, the shop and
--- the Grip trainer), §11.1 (UI/Components: ConfirmButton), §11.3 (Locked: disabled + reason), §9.13 / §18.5.2 B3 (the
+-- the capsules), §11.1 (UI/Components: ConfirmButton), §11.3 (Locked: disabled + reason), §9.13 / §18.5.2 B3 (the
 -- Button press feel, sounds and the "no" wiggle all come from Button, unchanged).
 --   local confirm = ConfirmButton.new({ name = "Shop_BuyButton", text = Strings.shop.buy, price = 1200, balance = 3000,
 --       onConfirm = function() confirm:setLoading(true); ...; confirm:setLoading(false) end, parent = column })
@@ -11,7 +11,7 @@
 -- Behaviour (§11.5): the first press turns the button into "Confirm: {price} Coins" (spend.confirm) for
 -- Config.UI.confirmSeconds (3 s) with "Balance after: {balance}" (spend.balanceAfter) under it; a second press inside
 -- that window calls onConfirm; otherwise it reverts to its idle text. Not enough Coins -> disabled with the missing
--- amount (common.needCoins, or spec.needText(missing), e.g. the trainer card's grip.trainerNeedCoins). The component
+-- amount (common.needCoins, or spec.needText(missing), e.g. the box panel's BoxFormat.needCoinsText). The component
 -- never decides a price, a balance or an outcome: the caller passes the Config price and StateController's Coins, and
 -- the server checks everything again (§6.1, §12).
 -- Readings (DESIGN is silent):

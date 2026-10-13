@@ -6,13 +6,14 @@
 --   * addFromSqueeze(p, tier) - step 8a of a squeeze SqueezeService accepted, after the earnings limit decided the
 --     Coins, whether or not it paid. One Double Grip point is used when there is one (SqueezeLimit.spend on
 --     grip.rested with Config.Grip.Rested) and the Grip is CapsuleMath.squeezeGrip(profile.capsules) (the power of the
---     highest capsule level, spec 2026-10-12 §3, §10; Phase 3: the trainer and the pad no longer change it; an unknown
+--     highest capsule level, spec 2026-10-12 §3, §10; Phase 3: the pad no longer changes it; an unknown
 --     tier still pays nothing) × Rested.mult when doubled;
 --   * addFromCapsule(p, amount) - one capsule squeeze (CapsuleService, Phase 3): `amount` Grip (the capsule's power),
 --     never doubled and never using a Double Grip point (lobby spec 2026-10-11 §5.4), with the same clamps, anomaly
 --     counter, toasts and level changes as a squeeze.
--- Build plan Phase 6 removed slow training (the per-player tick on a pad, its bank grip.afk and Config.Grip.Afk): an
--- old save's grip.afk is an unknown field nothing reads, and a grip field without it is valid.
+-- Build plan Phase 6 removed slow training (the per-player tick on a pad, its bank grip.afk and Config.Grip.Afk) and
+-- the trainers (upgradeTrainer, the TrainerUpgrade RF and grip.trainer): an old save's grip.afk and grip.trainer are
+-- unknown fields nothing reads, and a grip field without them is valid.
 -- Every gain is clamped to Config.Grip.maxGripPerEvent and the total to maxGrip (a clamp logs [SD][abuse]); a
 -- rolling-hour counter per player logs [SD][abuse] above gripAlertPerHour (a log only, §17.9 #12). The profile write
 -- itself (inside DataService.mutate) is arithmetic only; toasts, the level and LevelChanged follow once it is done.
@@ -28,16 +29,6 @@
 -- save snapshot). grip.intro when the total first rises above 0.
 -- Studio only (RunService:IsStudio() and Config.Debug.debugHooks): debugSetTotal / debugSetRested (DebugHooks setGrip,
 -- setRested), debugNotices, debugState.
--- Part 7: upgradeTrainer(p, targetLevel, expectedPrice), the TrainerUpgrade RF (§17.5, §17.10), is the only writer of
--- grip.trainer. In DESIGN order: (2) the argument range, then (4)-(7) replay / trainer.notNext / trainer.locked /
--- trainer.priceChanged, all through the pure GripMath.upgradeDecision, with (3) the ready profile (data.notReady)
--- checked between them; (8) a pending failed save, the server closing or a restart pending -> trainer.paused; (9)
--- SD_DuelPhase ~= "" -> inventory.lockedInDuel; (10) EconomyService.trySpend(p, cost, "trainer") (else
--- economy.notEnoughCoins; its "savePending" -> trainer.paused), then grip.trainer is set through DataService.mutate,
--- the grip field is marked, grip.trainerBought is sent, and the "now" save is awaited before the reply {trainer,
--- charged = true, savePending}. A replay (the target already owned: the stored trainer is the idempotency key, §3.4
--- trainer row) is ok {trainer, charged = false, savePending}. Every refusal carries charged = false. Nothing yields
--- between the spend and the trainer write. Coins are never added here, and nothing here is sold for Robux (§6.11).
 -- Every Grip write goes through DataService.mutate (the data port), the one way to change a saved profile: a session
 -- that no longer takes changes (not ready, or its final save already took its snapshot) earns nothing.
 -- Dependencies are injectable (useDeps) so unit tests run with fake profiles and clocks; players are only used as
@@ -65,10 +56,7 @@ local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 
 local Services = script.Parent
-local DataService = require(Services.DataService)
-local EconomyService = require(Services.EconomyService)
 local NetService = require(Services.NetService)
-local ShutdownService = require(Services.ShutdownService)
 local StateService = require(Services.StateService)
 
 -- Types
@@ -92,8 +80,6 @@ export type Deps = {
 	-- returns (true, fn's result), else (false, reason). Every Grip write goes through it (§3.9: a change made after
 	-- the final save snapshot was taken would be lost, so mutate refuses it and nothing is earned).
 	mutate: (player: any, fn: (profile: any) -> any) -> (boolean, any),
-	duelPhaseOf: (player: any) -> string, -- SD_DuelPhase ("" outside a match)
-	isClosing: () -> boolean,
 	markDirty: (player: any, field: string) -> (),
 	requestSave: (player: any, reason: string) -> (),
 	notify: (player: any, code: string, args: NoticeArgs?, kind: string) -> (),
@@ -101,15 +87,7 @@ export type Deps = {
 	setLevelAttribute: (player: any, level: number) -> (),
 	migratedFrom: (player: any) -> number?, -- schema version a migration started from this session (nil = none)
 	displayName: (player: any) -> string,
-	-- Part 7 (the trainer purchase, upgradeTrainer):
-	savePending: (player: any) -> boolean, -- a failed save is pending (DataService.isSavePending)
-	isRestartPending: () -> boolean, -- ShutdownService.isRestartPending
-	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?), -- EconomyService.trySpend
-	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 }
-
--- What upgradeTrainer answers: NetService.ok(Types.TrainerUpgradeResult) or NetService.err(reason, false).
-export type UpgradeReply = { ok: boolean, data: Types.TrainerUpgradeResult?, reason: string?, charged: boolean? }
 
 -- What one Grip write did (inside DataService.mutate): the gain, i.e. what the total really gained (less than the
 -- event only at maxGrip), the total before and after it, and whether Double Grip doubled it.
@@ -143,18 +121,6 @@ local NOTICE_RANK_UP = "grip.rankUp"
 local NOTICE_HEAD_START = "grip.headStart"
 local NOTICE_WELCOME = "grip.welcome"
 local NOTICE_WELCOME_BACK = "grip.welcomeBack"
-local NOTICE_TRAINER_BOUGHT = "grip.trainerBought"
-
--- The trainer purchase (Part 7, §17.5).
-local REMOTE_TRAINER = "TrainerUpgrade"
-local COIN_REASON_TRAINER = "trainer"
-local CODE_INVALID = "net.invalid"
-local CODE_NOT_READY = "data.notReady"
-local CODE_PAUSED = "trainer.paused"
-local CODE_IN_DUEL = "inventory.lockedInDuel"
-local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
-local KIND_REPLAY = "replay"
-local KIND_BUY = "buy"
 
 -- Module table
 
@@ -233,10 +199,6 @@ local function defaultDeps(): Deps
 		mutate = function(player: any, fn: (profile: any) -> any): (boolean, any)
 			return StateService.dataPort().mutate(player, fn)
 		end,
-		duelPhaseOf = duelPhaseAttribute,
-		isClosing = function(): boolean
-			return ShutdownService.isClosing()
-		end,
 		markDirty = function(player: any, field: string)
 			StateService.markDirty(player, field)
 		end,
@@ -267,18 +229,6 @@ local function defaultDeps(): Deps
 			end
 			return tostring(player)
 		end,
-		savePending = function(player: any): boolean
-			return StateService.dataPort().savePending(player)
-		end,
-		isRestartPending = function(): boolean
-			return ShutdownService.isRestartPending()
-		end,
-		trySpend = function(player: any, amount: number, reason: string): (boolean, string?)
-			return EconomyService.trySpend(player, amount, reason)
-		end,
-		saveNow = function(player: any): boolean
-			return DataService.saveNowAsync(player)
-		end,
 	}
 end
 
@@ -297,18 +247,13 @@ local function isLimitState(v: unknown): boolean
 end
 
 -- The profile's grip field, or nil when it is missing or malformed (fail closed: nothing is earned). Phase 6: an old
--- save's grip.afk (slow training's bank) is neither needed nor read.
+-- save's grip.afk (slow training's bank) and grip.trainer are neither needed nor read.
 local function gripOf(profile: any): GripState?
 	if type(profile) ~= "table" then
 		return nil
 	end
 	local grip = profile.grip
-	if
-		type(grip) ~= "table"
-		or not isFiniteNumber(grip.total)
-		or not isFiniteNumber(grip.trainer)
-		or not isLimitState(grip.rested)
-	then
+	if type(grip) ~= "table" or not isFiniteNumber(grip.total) or not isLimitState(grip.rested) then
 		warnOnce("noGripField", "a loaded profile has no valid grip field (ProfileSchema v2); Grip is paused for it")
 		return nil
 	end
@@ -594,78 +539,6 @@ function GripService.addFromCapsule(player: any, amount: number): number
 	return written.gain
 end
 
--- The TrainerUpgrade RF (§17.5; see the header for the order of the checks). `targetLevel` = the trainer index to buy,
--- `expectedPrice` = the price the client showed (only compared, never charged). Yields only for the awaited "now" save
--- after a purchase. Returns NetService.ok({trainer, charged, savePending}) or NetService.err(reason, false).
-function GripService.upgradeTrainer(player: any, targetLevel: any, expectedPrice: any): UpgradeReply
-	local grip = readyGrip(player)
-	local state: GripMath.UpgradeState = {
-		trainer = if grip then grip.trainer else 1,
-		level = GripService.levelOf(player),
-	}
-	local decision = GripMath.upgradeDecision(state, targetLevel, expectedPrice)
-	-- (2) the argument range: upgradeDecision checks it before anything that reads the profile.
-	if decision.reason == CODE_INVALID then
-		return NetService.err(CODE_INVALID, false)
-	end
-	-- (3) the profile is ready (and its grip field valid).
-	if grip == nil then
-		return NetService.err(CODE_NOT_READY, false)
-	end
-	-- (4) replay: the target is already owned.
-	if decision.kind == KIND_REPLAY then
-		local replay: Types.TrainerUpgradeResult =
-			{ trainer = grip.trainer, charged = false, savePending = deps.savePending(player) }
-		return NetService.ok(replay)
-	end
-	-- (5)-(7) trainer.notNext / trainer.locked / trainer.priceChanged.
-	if decision.kind ~= KIND_BUY then
-		return NetService.err(decision.reason or CODE_INVALID, false)
-	end
-	-- (8) paused while a failed save is pending, the server closes or a restart is pending.
-	if deps.savePending(player) or deps.isClosing() or deps.isRestartPending() then
-		return NetService.err(CODE_PAUSED, false)
-	end
-	-- (9) not from Matched through Returning.
-	if deps.duelPhaseOf(player) ~= "" then
-		return NetService.err(CODE_IN_DUEL, false)
-	end
-	-- (10) the spend, then the trainer, with nothing yielding in between.
-	local cost = decision.cost
-	if cost > 0 then
-		local spent, why = deps.trySpend(player, cost, COIN_REASON_TRAINER)
-		if not spent then
-			local code = if why == "savePending"
-				then CODE_PAUSED
-				elseif why == "notReady" then CODE_NOT_READY
-				elseif why == "notEnoughCoins" then CODE_NOT_ENOUGH
-				else CODE_INVALID
-			return NetService.err(code, false)
-		end
-	end
-	local target = targetLevel :: number
-	local written = writeGrip(player, function(live: GripState): number
-		live.trainer = math.max(live.trainer, target)
-		return live.trainer
-	end)
-	if written == nil then
-		-- Cannot happen without a yield after the spend (the session was ready a moment ago); logged loudly.
-		log:error(`user {userIdOf(player)}: trainer {target} was paid ({cost} Coins) but could not be written`)
-		return NetService.err(CODE_NOT_READY, false)
-	end
-	deps.markDirty(player, FIELD)
-	local def = Config.Grip.Trainer[written]
-	local args: NoticeArgs = {
-		trainer = text("grip.trainer." .. def.key, def.key),
-		grip = GripMath.squeezeGrip(written, 1),
-	}
-	notice(player, NOTICE_TRAINER_BOUGHT, args, "success")
-	log:info(`user {userIdOf(player)} bought trainer {written} ({def.key}) for {cost} Coins`)
-	local saved = deps.saveNow(player)
-	local result: Types.TrainerUpgradeResult = { trainer = written, charged = true, savePending = not saved }
-	return NetService.ok(result)
-end
-
 -- Sets the level baseline from the loaded profile, silently (no toasts or broadcast). With `withToasts` (a
 -- DataService.Loaded event) the load toasts follow. Profiles that are not ready or read-only are left alone.
 function GripService.refreshBaseline(player: any, withToasts: boolean?)
@@ -803,10 +676,6 @@ function GripService.init()
 			GripService.refreshBaseline(player, false)
 		end
 	end)
-	-- The trainer purchase (Part 7, §17.5). NetService has already narrowed both arguments to whole numbers.
-	c:add(NetService.onInvoke(REMOTE_TRAINER, function(player: Player, targetLevel: any, expectedPrice: any): any
-		return GripService.upgradeTrainer(player, targetLevel, expectedPrice)
-	end))
 end
 
 function GripService.start()

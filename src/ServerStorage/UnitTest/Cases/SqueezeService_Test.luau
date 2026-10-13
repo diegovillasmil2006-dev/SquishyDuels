@@ -86,7 +86,6 @@ return function(t: Context)
 			starter = { progress = {}, claimed = {} },
 			grip = {
 				total = 0,
-				trainer = 1,
 				rested = { value = 0, at = UNIX_START },
 			},
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's

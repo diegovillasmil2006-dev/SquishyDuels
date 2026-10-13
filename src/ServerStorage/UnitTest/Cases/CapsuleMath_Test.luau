@@ -8,7 +8,7 @@
 -- rewardCoins = squeezes × value, stopping at 9 Qa; anything that is not a level or a slot gives nil.
 -- Phase 3: capsuleCoins = squishy power × CP; an own squeeze's Grip is the CP of the highest capsule level; two prices
 -- in a row always differ (so a retried upgrade is refused, never charged twice); the CapsuleUpgrade / CapsuleUnlock
--- checks in GripMath.upgradeDecision's order.
+-- checks in the trainers' old order (§17.5).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -208,7 +208,7 @@ return function(t: Context)
 		return { slots = #levels, list = list }
 	end
 
-	t.test("upgradeDecision: buy at the next level's price; refusals in GripMath.upgradeDecision's order", function()
+	t.test("upgradeDecision: buy at the next level's price; refusals in the trainers' old order (§17.5)", function()
 		local price3 = CapsuleMath.price(3)
 		expect.deepEqual(CapsuleMath.upgradeDecision(state({ 3 }), 1, price3, 1), { kind = "buy", cost = price3 })
 		-- 2: the argument range comes first, whatever the state.

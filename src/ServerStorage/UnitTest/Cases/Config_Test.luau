@@ -12,12 +12,12 @@
 -- hold-to-squeeze repeat no shorter than any rarity's release pop; the RequestSnapshot bucket covers the loading
 -- poll). It never errors: a
 -- missing or mistyped value becomes a problem line. Robux stays off: no product or pass ids are configured.
--- Grip rules (§17.9 table, §17.12 Part 3): each of G1, G2, G4, G5, G8 and G10 catches a deliberately broken copy.
+-- Grip rules (§17.9 table, §17.12 Part 3): each of G1, G2, G5, G8 and G10 catches a deliberately broken copy.
 -- Part 5 (§17.12): G3 (a squeeze count since spec 2026-10-12 §12: a 13-a-second cap and a ceiling of 43,199 fail, the
 -- limit switched back on passes) and G6's Strings names; plus the Part 5 values of Data, UI.Grip and Config.Grip.
 -- Feel pass (§18.8, §18.9, §18.10 L1): every §18.8 key holds its DESIGN value, and each rule F1-F11 catches a planted
 -- bad value (among them: a 5° punch, a squeeze total of 20, an unstable wave speed and skinMode = "x").
--- Part 7 (§17.12 Part 7 L1): G6 wiring (no "trainer" Coin reason; no or a parallel TrainerUpgrade rate), G7 and G7b
+-- Part 7 (§17.12 Part 7 L1): G7 and G7b
 -- with the negatives of §17.12 word for word through Config.robuxProblems (pass benefit "grip", a bundle with an extra
 -- rested field, pass keys grip_boost / afk_boost / slow_training_boost / royal_pad_pass, nameKey texts "Golden
 -- Gripper" and "Royal Cushion VIP", a productId while allowBundlesWithCapsules is false; spec 2026-10-12 adds a
@@ -48,6 +48,8 @@
 -- and tap push (0.15), with their negatives.
 -- Phase 6 (build plan: slow training removed): no Config.Grip.Afk (G9 went with it) and no slow-training popup values
 -- in UI.Grip; the pad test's padMargin 1 and heightAbove 6 live in Config.Squeeze, which reports values above 2 and 8.
+-- Phase 6 (trainers removed): no Config.Grip.Trainer (G4 and G6's wiring half went with it), no next-goal upgrade
+-- price, no "trainer" Coin reason and no TrainerUpgrade rate.
 --
 -- How a "deliberately broken copy" is made without changing Config's API: clone the Shared folder, require one
 -- section module of the clone and change it, then require the clone's Config. Its init receives the changed
@@ -720,23 +722,12 @@ return function(t: Context)
 		expect.truthy(containsAll(high, { "G2:", "Pads[4].gripPercent" }))
 	end)
 
-	-- G4 Trainer: free first trainer; cost, Grip and level rise strictly; costs below Net.maxAbsNumber.
-	t.test("G4 reports a trainer cost of 1,000,000 (not below Net.maxAbsNumber)", function()
-		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Trainer[8].cost = 1_000_000
-		end)
-		expect.truthy(containsAll(problems, { "G4:", "Trainer[8].cost", "maxAbsNumber" }))
-	end)
-
-	t.test("G4 reports a paid first trainer and trainers that stop rising", function()
-		local free = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Trainer[1].cost = 10
-		end)
-		expect.truthy(containsAll(free, { "G4:", "Trainer[1]" }))
-		local flat = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Trainer[5].gripPerSqueeze = 30 -- same as Trainer[4]
-		end)
-		expect.truthy(containsAll(flat, { "G4:", "Grip per squeeze" }))
+	-- Phase 6 (build plan): the trainers are gone, and G4 and G6's wiring half with them.
+	t.test("the trainers are gone: no Trainer block, goal price, trainer Coin reason or TrainerUpgrade", function()
+		expect.equal((Config.Grip :: any).Trainer, nil)
+		expect.equal((Config.Grip :: any).goalUpgradeMaxCostWhileCollecting, nil)
+		expect.equal(table.find(Config.Economy.CoinReasons, "trainer"), nil)
+		expect.equal(Config.Net.Remotes.TrainerUpgrade, nil)
 	end)
 
 	-- G5 Caps and timers.
@@ -1049,14 +1040,7 @@ return function(t: Context)
 		expect.truthy(containsAll(free, { "DuplicateRefund.freeBoxPriceOf", "must be a paid box" }))
 	end)
 
-	-- G6 Strings names: every rank, pad and trainer key has its grip.* text.
-	t.test("G6 reports a trainer key without a Strings name", function()
-		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Trainer[2].key = "towel"
-		end)
-		expect.truthy(containsAll(problems, { "G6:", "grip.trainer.towel" }))
-	end)
-
+	-- G6 Strings names: every rank and pad key has its grip.* text.
 	t.test("G6 reports a rank key without a Strings name", function()
 		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
 			grip.Ranks[3].key = "mighty"
@@ -1162,30 +1146,22 @@ return function(t: Context)
 		end
 	end)
 
-	-- Part 7 (DESIGN §17.9 G6 wiring / G7 / G7b, §17.12 Part 7 negatives, §6.8 QuestDefs, §11.6, PROGRESS readings) ---
+	-- Part 7 (DESIGN §17.9 G7 / G7b, §17.12 Part 7 negatives, §6.8 QuestDefs, §11.6, PROGRESS readings) ---------------
 
-	t.test(
-		"the Part 7 values: trainer reason, TrainerUpgrade rate, no cosmetic benefits, skip id, UI readings",
-		function()
-			local reasons = Config.Economy.CoinReasons
-			local trainerAt = table.find(reasons, "trainer")
-			expect.truthy(trainerAt ~= nil)
-			expect.equal(trainerAt, (table.find(reasons, "debug") :: number) - 1) -- "trainer" sits just before "debug"
-			local trainerRate = Config.Net.Remotes.TrainerUpgrade
-			expect.equal(trainerRate.rate, 1)
-			expect.equal(trainerRate.burst, 1)
-			expect.equal(trainerRate.oneInFlight, true)
-			expect.deepEqual(Config.Monetization.CosmeticBenefits, {})
-			expect.equal(Config.Onboarding.skipStepId, "skip")
-			expect.equal(Config.UI.Boxes.stillCheckingSeconds, 10)
-			expect.equal(Config.UI.Boxes.revealHoldMaxSeconds, 30)
-			expect.equal(Config.UI.Shop.cardWidth, 150)
-			expect.equal(Config.Grip.allowBundlesWithCapsules, false)
-		end
-	)
+	t.test("the Part 7 values: no cosmetic benefits, skip id, UI readings", function()
+		-- Phase 6: the "trainer" Coin reason is gone, so the capsule reason sits just before "debug".
+		local reasons = Config.Economy.CoinReasons
+		expect.equal(table.find(reasons, "capsule"), (table.find(reasons, "debug") :: number) - 1)
+		expect.deepEqual(Config.Monetization.CosmeticBenefits, {})
+		expect.equal(Config.Onboarding.skipStepId, "skip")
+		expect.equal(Config.UI.Boxes.stillCheckingSeconds, 10)
+		expect.equal(Config.UI.Boxes.revealHoldMaxSeconds, 30)
+		expect.equal(Config.UI.Shop.cardWidth, 150)
+		expect.equal(Config.Grip.allowBundlesWithCapsules, false)
+	end)
 
 	t.test("every Part 7 client -> server remote has a rate entry", function()
-		local names = { "BoxOpen", "AckReveal", "ShopBuy", "QuestClaim", "QuestSwap", "DailyClaim", "TrainerUpgrade" }
+		local names = { "BoxOpen", "AckReveal", "ShopBuy", "QuestClaim", "QuestSwap", "DailyClaim" }
 		for _, name in names do
 			local entry = Config.Net.Remotes[name]
 			if entry == nil then
@@ -1195,7 +1171,7 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("the shipped config passes G6 wiring, G7 and G7b", function()
+	t.test("the shipped config passes G6, G7 and G7b", function()
 		local problems = Config.validate()
 		for _, rule in { "G6", "G7", "G7b" } do
 			local lines = ruleLines(problems, rule)
@@ -1205,25 +1181,6 @@ return function(t: Context)
 		end
 		local Strings = t.requireShared("Strings")
 		expect.deepEqual(Config.robuxProblems(Config.Monetization, Config.Grip, Strings.resolve), {})
-	end)
-
-	-- G6 wiring: trainer upgrades spend Coins with the reason "trainer" through a one-in-flight TrainerUpgrade.
-	t.test('G6 reports a missing "trainer" Coin reason', function()
-		local problems = validateBrokenCopy(t.Shared, "Economy", function(economy)
-			table.remove(economy.CoinReasons, table.find(economy.CoinReasons, "trainer"))
-		end)
-		expect.truthy(containsAll(problems, { "G6:", "CoinReasons", '"trainer"' }))
-	end)
-
-	t.test("G6 reports a missing TrainerUpgrade rate and one that is not one-in-flight", function()
-		local missing = validateBrokenCopy(t.Shared, "Net", function(net)
-			net.Remotes.TrainerUpgrade = nil
-		end)
-		expect.truthy(containsAll(missing, { "G6:", "TrainerUpgrade" }))
-		local parallel = validateBrokenCopy(t.Shared, "Net", function(net)
-			net.Remotes.TrainerUpgrade.oneInFlight = false
-		end)
-		expect.truthy(containsAll(parallel, { "G6:", "TrainerUpgrade", "oneInFlight" }))
 	end)
 
 	-- G7 / G7b through Config.robuxProblems with fake tables (§17.12 Part 7 negatives, word for word).

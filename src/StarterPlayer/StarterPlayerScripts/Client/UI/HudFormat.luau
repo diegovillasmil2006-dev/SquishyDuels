@@ -178,7 +178,6 @@ export type ColumnTexts = {
 	gripBar: string,
 	gripChip: string,
 	gripGoal: string,
-	gripBadge: string,
 	tiles: { string }, -- the tile labels
 	onboarding: { OnboardingText },
 	gotIt: string,
@@ -356,7 +355,7 @@ local COLUMN = table.freeze({
 	listGap = 4, -- between the regular card's lines
 	barHeight = 12, -- the regular card's ProgressBar
 	chipIconPx = 18, -- the clock before the Double Grip line
-	tilesGap = 22, -- Hud_Left to the tiles under the regular card (its Upgrade tab hangs half its height below it)
+	tilesGap = 22, -- Hud_Left to the tiles under the regular card (it held the removed Upgrade tab's lower half)
 	tileGap = 10,
 	-- Foam fix 2: a tile's count badge reaches this far past the tile's top and right edges (CountBadge's 26 / 2 less
 	-- Button's BADGE_INSET 5, plus its 2 px outline); what is above or beside the tiles keeps badgeAir more.
@@ -845,7 +844,6 @@ end
 -- The Grip card's height: hidden 0; compact = one tap target at least the touch minimum (Reading, §17.7 vs §11.2: the
 -- visible row stays <= compactRowMaxHeight, the card around it is Layout.touchBase(minTarget) tall); regular = the
 -- level tile beside its lines (the rank, the bar, "{have} / {need} Grip", the Double Grip line, the next goal), padded.
--- The Upgrade tab hangs below the card (COLUMN.tilesGap keeps the tiles clear of it).
 function HudFormat.gripCardHeight(mode: GripMode, textScale: number?, scale: number, texts: ColumnTexts?): number
 	if mode == "hidden" then
 		return 0
@@ -972,12 +970,7 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 	local maxLevel = grip.maxLevel
 	local rank = longestName("grip.rank.", grip.Ranks)
 	local pad = longestName("grip.pad.", grip.Pads)
-	local trainer = longestName("grip.trainer.", grip.Trainer)
-	local topCost, topTrainerLevel, topPadLevel, topRankLevel = 0, 0, 0, 0
-	for _, row in grip.Trainer do
-		topCost = math.max(topCost, row.cost)
-		topTrainerLevel = math.max(topTrainerLevel, row.level)
-	end
+	local topPadLevel, topRankLevel = 0, 0
 	for _, row in grip.Pads do
 		topPadLevel = math.max(topPadLevel, row.level)
 	end
@@ -1024,13 +1017,10 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 		}),
 		gripChip = text("grip.restedChip", { minutes = GripMath.restedMinutes(grip.Rested.burst) }),
 		gripGoal = longest({
-			text("grip.goalUpgrade", { trainer = trainer, coins = Format.coins(topCost) }),
 			text("grip.goalPad", { pad = pad, level = topPadLevel }),
-			text("grip.goalTrainer", { trainer = trainer, level = topTrainerLevel }),
 			text("grip.goalRank", { rank = rank, level = topRankLevel }),
 			text("grip.goalMax"),
 		}),
-		gripBadge = text("grip.upgradeBadge"),
 		tiles = tiles,
 		onboarding = onboarding,
 		gotIt = Strings.common.gotIt,
@@ -1051,8 +1041,8 @@ local function validScreen(screenPx: Vector2): Vector2
 end
 
 -- The left side's gaps (base px): between the coin capsule and the Grip card (phones use the tight gap: the thumbstick
--- line is close), and from Hud_Left to the tiles: under the regular card the gap that holds its Upgrade tab (it hangs
--- half its height below it), else a tile badge's reach plus air (foam fix 2: on phones the 6 px gap put the Squishies
+-- line is close), and from Hud_Left to the tiles: under the regular card COLUMN.tilesGap (it held the removed Upgrade
+-- tab), else a tile badge's reach plus air (foam fix 2: on phones the 6 px gap put the Squishies
 -- count on the coin capsule's outline).
 function HudFormat.leftGaps(compact: boolean, grip: GripMode): (number, number)
 	local inner = if compact then COLUMN.gap else COLUMN.leftGap

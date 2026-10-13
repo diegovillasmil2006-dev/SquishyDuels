@@ -3,25 +3,20 @@
 -- a fake profile; the "player" is a plain table). Server only (ServerStorage.UnitTest). Edit mode: start() is never
 -- called.
 -- Contract (DESIGN §17.3.1 step 8a, §17.3.4, §17.7, §17.12 Part 5):
---   * slow training is gone (build plan Phase 6): no tick, no bank, no disabled stations; a profile without grip.afk
---     (every new save) trains Grip;
+--   * slow training and the trainers are gone (build plan Phase 6): no tick, no bank, no disabled stations, no
+--     upgradeTrainer; a profile without grip.afk or grip.trainer (every new save) trains Grip;
 --   * a squeeze uses exactly one Double Grip point and doubles its Grip; no point, no doubling; nothing when not ready
 --     or when the session takes no more changes (every write goes through mutate); the total stops at maxGrip and the
 --     gain says what it really gained; step() drops the session of a player who already left;
 --   * Phase 3 (spec 2026-10-12 §3, §10): an own squeeze trains the power of the highest capsule level (an empty
---     capsule counts; 10 without capsules), whatever the trainer or the pad; a capsule squeeze (addFromCapsule) trains
+--     capsule counts; 10 without capsules), whatever the pad; a capsule squeeze (addFromCapsule) trains
 --     its power, never doubled and without a Double Grip point; Grip events above gripAlertPerHour in a rolling hour
 --     set the anomaly alert, which re-arms an hour later;
 --   * a load sets the level silently (no level-up or rank-up toast), with grip.headStart after a v1 -> v2 migration;
 --     grip.welcomeBack only when Double Grip grew by welcomeBackMinGain since the last save (lastSeenAt, §17.3.4);
 --   * a level-up toasts grip.levelUp and grip.padUnlocked, broadcasts grip.rankUp to the lobby players and asks for a
 --     "soon" save;
---   * Part 7 trainer upgrades (§17.5, §17.12): a buy charges once ("trainer"), sets grip.trainer, toasts
---     grip.trainerBought, awaits one "now" save and replies {trainer, charged = true, savePending}; an identical retry
---     is a replay (charged = false, no charge); every refusal code with charged = false: net.invalid (range, before
---     the ready check), data.notReady, trainer.notNext (8 at trainer 1), trainer.locked, trainer.priceChanged,
---     trainer.paused (savePending, closing, restart), inventory.lockedInDuel, economy.notEnoughCoins; a capsule-only
---     profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired.
+--   * a capsule-only profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -49,8 +44,6 @@ return function(t: Context)
 		player: any,
 		status: string,
 		profile: any,
-		phase: string,
-		closing: boolean,
 		frozen: boolean, -- the session takes no more changes (its final save took its snapshot): mutate refuses
 		dirty: { string },
 		saves: { string },
@@ -59,12 +52,6 @@ return function(t: Context)
 		levelChanges: { { old: number, new: number, silent: boolean } },
 		migratedFrom: number?,
 		lobby: { any },
-		-- Part 7 (the trainer purchase)
-		savePending: boolean,
-		restart: boolean,
-		saveOk: boolean,
-		nowSaves: number,
-		spends: { { amount: number, reason: string } },
 	}
 
 	local function newProfile(unixNow: number): any
@@ -75,7 +62,6 @@ return function(t: Context)
 			starter = { progress = { squeeze = 2 }, claimed = {} },
 			grip = {
 				total = 0,
-				trainer = 1,
 				rested = { value = 0, at = unixNow },
 			},
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's
@@ -94,8 +80,6 @@ return function(t: Context)
 			player = { UserId = 42, DisplayName = "Tester" },
 			status = "ready",
 			profile = newProfile(UNIX_START),
-			phase = "",
-			closing = false,
 			frozen = false,
 			dirty = {},
 			saves = {},
@@ -104,11 +88,6 @@ return function(t: Context)
 			levelChanges = {},
 			migratedFrom = nil,
 			lobby = {},
-			savePending = false,
-			restart = false,
-			saveOk = true,
-			nowSaves = 0,
-			spends = {},
 		}
 		world.lobby = { world.player }
 		GripService.reset()
@@ -132,12 +111,6 @@ return function(t: Context)
 				end
 				return true, fn(world.profile)
 			end,
-			duelPhaseOf = function(_player: any): string
-				return world.phase
-			end,
-			isClosing = function(): boolean
-				return world.closing
-			end,
 			markDirty = function(_player: any, field: string)
 				table.insert(world.dirty, field)
 			end,
@@ -158,29 +131,6 @@ return function(t: Context)
 			end,
 			displayName = function(player: any): string
 				return player.DisplayName
-			end,
-			-- Part 7: like EconomyService.trySpend / DataService.saveNowAsync over the same fake profile.
-			savePending = function(_player: any): boolean
-				return world.savePending
-			end,
-			isRestartPending = function(): boolean
-				return world.restart
-			end,
-			trySpend = function(_player: any, amount: number, reason: string): (boolean, string?)
-				if world.status ~= "ready" or world.frozen then
-					return false, "notReady"
-				elseif world.savePending then
-					return false, "savePending"
-				elseif world.profile.coins < amount then
-					return false, "notEnoughCoins"
-				end
-				world.profile.coins -= amount
-				table.insert(world.spends, { amount = amount, reason = reason })
-				return true, nil
-			end,
-			saveNow = function(_player: any): boolean
-				world.nowSaves += 1
-				return world.saveOk
 			end,
 		})
 		GripService.playerAdded(world.player)
@@ -207,16 +157,25 @@ return function(t: Context)
 		return list
 	end
 
-	-- Slow training is gone (build plan Phase 6) ----------------------------------------------------------------------
+	-- Slow training and the trainers are gone (build plan Phase 6) ----------------------------------------------------
 
-	t.test("no slow training: no tick, bank or disabled stations; a save without grip.afk trains Grip", function()
+	t.test("no slow training or trainers; a save without grip.afk or grip.trainer trains Grip", function()
 		for _, name in
-			{ "tick", "debugTick", "debugSetAfkBank", "debugSetTickSeconds", "disableStation", "isStationDisabled" }
+			{
+				"tick",
+				"debugTick",
+				"debugSetAfkBank",
+				"debugSetTickSeconds",
+				"disableStation",
+				"isStationDisabled",
+				"upgradeTrainer",
+			}
 		do
 			expect.equal((GripService :: any)[name], nil)
 		end
 		local world = fresh()
 		expect.equal(world.profile.grip.afk, nil) -- a new save (ProfileSchema.defaults) has no bank
+		expect.equal(world.profile.grip.trainer, nil) -- and no trainer
 		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.equal(gain.grip, ownGrip(world))
 		expect.equal(GripService.addFromCapsule(world.player, 10), 10)
@@ -224,14 +183,16 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("an old save keeps its grip.afk as it is (an unknown field nothing reads)", function()
+	t.test("an old save keeps its grip.afk and grip.trainer as they are (unknown fields nothing reads)", function()
 		local world = fresh()
 		world.profile.grip.afk = { value = 5, at = UNIX_START }
+		world.profile.grip.trainer = 8
 		wait(world, 3600)
 		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.truthy(gain.grip > 0)
 		GripService.addFromCapsule(world.player, 10)
 		expect.deepEqual(world.profile.grip.afk, { value = 5, at = UNIX_START })
+		expect.equal(world.profile.grip.trainer, 8)
 		finish()
 	end)
 	-- Squeezes ---------------------------------------------------------------------------------------------------------
@@ -272,7 +233,6 @@ return function(t: Context)
 				{ level = 4, squishyId = "dragon" },
 			}
 			world.profile.capsules = { slots = 3, list = list }
-			world.profile.grip.trainer = #Config.Grip.Trainer -- the trainer no longer matters either
 			local plain = GripService.addFromSqueeze(world.player, 4)
 			expect.equal(plain.grip, CapsuleMath.power(31))
 			world.profile.grip.rested = { value = 3, at = UNIX_START }
@@ -521,171 +481,6 @@ return function(t: Context)
 			end
 		end
 		expect.equal(count, 1)
-		finish()
-	end)
-
-	-- Trainer upgrades (Part 7, §17.5, §17.12 Part 7) -----------------------------------------------------------------
-
-	local TRAINER = Config.Grip.Trainer
-
-	-- A ready profile at trainer `trainer`, Grip Level `level` and `coins` Coins.
-	local function trainerWorld(trainer: number, level: number, coins: number): World
-		local world = fresh()
-		world.profile.grip.trainer = trainer
-		world.profile.grip.total = Config.Grip.LevelTotals[level]
-		world.profile.coins = coins
-		GripService.refreshBaseline(world.player, false)
-		expect.equal(GripService.levelOf(world.player), level)
-		return world
-	end
-
-	local function expectRefused(reply: any, reason: string)
-		expect.equal(reply.ok, false)
-		expect.equal(reply.reason, reason)
-		expect.equal(reply.charged, false)
-	end
-
-	t.test("trainer: a buy charges once, sets grip.trainer, toasts, saves now and replies charged", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost + 5)
-		local reply = GripService.upgradeTrainer(world.player, 2, cost)
-		expect.equal(reply.ok, true)
-		expect.deepEqual(reply.data, { trainer = 2, charged = true, savePending = false })
-		expect.equal(world.profile.grip.trainer, 2)
-		expect.equal(world.profile.coins, 5)
-		expect.deepEqual(world.spends, { { amount = cost, reason = "trainer" } })
-		expect.equal(world.nowSaves, 1)
-		expect.truthy(table.find(world.dirty, "grip") ~= nil)
-		local bought = nil
-		for _, n in world.notices do
-			if n.code == "grip.trainerBought" then
-				bought = n
-			end
-		end
-		expect.truthy(bought ~= nil)
-		expect.equal(bought.args.trainer, "Sponge Ball")
-		expect.equal(bought.args.grip, GripMath.squeezeGrip(2, 1))
-		finish()
-	end)
-
-	t.test("trainer: two identical buys charge once; the second is a replay with charged = false", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost * 3)
-		expect.equal(GripService.upgradeTrainer(world.player, 2, cost).data.charged, true)
-		local replay = GripService.upgradeTrainer(world.player, 2, cost)
-		expect.equal(replay.ok, true)
-		expect.deepEqual(replay.data, { trainer = 2, charged = false, savePending = false })
-		expect.equal(world.profile.coins, cost * 2)
-		expect.equal(#world.spends, 1)
-		expect.equal(world.nowSaves, 1) -- a replay saves nothing
-		-- A replay answers the best trainer owned, whatever price it carries.
-		expect.equal(GripService.upgradeTrainer(world.player, 2, 0).data.trainer, 2)
-		finish()
-	end)
-
-	t.test("trainer: TrainerUpgrade(8, 150000) at trainer 1 is trainer.notNext", function()
-		local world = trainerWorld(1, Config.Grip.maxLevel, 1_000_000)
-		expectRefused(GripService.upgradeTrainer(world.player, 8, TRAINER[8].cost), "trainer.notNext")
-		expectRefused(GripService.upgradeTrainer(world.player, 3, TRAINER[3].cost), "trainer.notNext")
-		expect.equal(world.profile.grip.trainer, 1)
-		expect.equal(#world.spends, 0)
-		finish()
-	end)
-
-	t.test("trainer: a level below the gate is trainer.locked; a price mismatch is trainer.priceChanged", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local low = trainerWorld(1, gate - 1, cost * 2)
-		expectRefused(GripService.upgradeTrainer(low.player, 2, cost), "trainer.locked")
-		expect.equal(#low.spends, 0)
-		finish()
-		local world = trainerWorld(1, gate, cost * 2)
-		expectRefused(GripService.upgradeTrainer(world.player, 2, cost - 1), "trainer.priceChanged")
-		expectRefused(GripService.upgradeTrainer(world.player, 2, 0), "trainer.priceChanged")
-		expect.equal(world.profile.coins, cost * 2)
-		expect.equal(world.profile.grip.trainer, 1)
-		finish()
-	end)
-
-	t.test("trainer: out-of-range arguments are net.invalid, checked before the profile", function()
-		local world = trainerWorld(1, Config.Grip.maxLevel, 1_000_000)
-		world.status = "offline" -- step 2 comes before step 3
-		for _, args in { { 1, 0 }, { #TRAINER + 1, 0 }, { 0, 0 }, { 2, -1 }, { 2.5, 1000 }, { 2, 0 / 0 } } do
-			expectRefused(GripService.upgradeTrainer(world.player, args[1], args[2]), "net.invalid")
-		end
-		finish()
-	end)
-
-	t.test("trainer: a profile that is not ready is data.notReady and changes nothing", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost)
-		world.status = "offline"
-		expectRefused(GripService.upgradeTrainer(world.player, 2, cost), "data.notReady")
-		world.status = "loading"
-		expectRefused(GripService.upgradeTrainer(world.player, 2, cost), "data.notReady")
-		expect.equal(world.profile.coins, cost)
-		expect.equal(world.profile.grip.trainer, 1)
-		finish()
-	end)
-
-	t.test("trainer: savePending, closing or a pending restart is trainer.paused", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost)
-		world.savePending = true
-		expectRefused(GripService.upgradeTrainer(world.player, 2, cost), "trainer.paused")
-		world.savePending = false
-		world.closing = true
-		expectRefused(GripService.upgradeTrainer(world.player, 2, cost), "trainer.paused")
-		world.closing = false
-		world.restart = true
-		expectRefused(GripService.upgradeTrainer(world.player, 2, cost), "trainer.paused")
-		expect.equal(world.profile.coins, cost)
-		expect.equal(#world.spends, 0)
-		finish()
-	end)
-
-	t.test("trainer: from Matched through Returning is inventory.lockedInDuel", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost)
-		for _, phase in { "Preparing", "Active", "Returning" } do
-			world.phase = phase
-			expectRefused(GripService.upgradeTrainer(world.player, 2, cost), "inventory.lockedInDuel")
-		end
-		expect.equal(world.profile.coins, cost)
-		finish()
-	end)
-
-	t.test("trainer: too few Coins is economy.notEnoughCoins and nothing changes", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost - 1)
-		expectRefused(GripService.upgradeTrainer(world.player, 2, cost), "economy.notEnoughCoins")
-		expect.equal(world.profile.coins, cost - 1)
-		expect.equal(world.profile.grip.trainer, 1)
-		expect.equal(world.nowSaves, 0)
-		finish()
-	end)
-
-	t.test("trainer: a failed now save keeps the purchase and replies savePending", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost)
-		world.saveOk = false
-		local reply = GripService.upgradeTrainer(world.player, 2, cost)
-		expect.deepEqual(reply.data, { trainer = 2, charged = true, savePending = true })
-		expect.equal(world.profile.grip.trainer, 2)
-		expect.equal(world.profile.coins, 0)
-		finish()
-	end)
-
-	-- Phase 3 (spec 2026-10-12 §3, §10): own squeezes train the capsules' power; since Phase 6 (no slow training) a
-	-- trainer changes no Grip at all. Was: a better trainer trains more Grip per squeeze.
-	t.test("trainer: a better trainer no longer changes an own squeeze's Grip", function()
-		local cost, gate = TRAINER[2].cost, TRAINER[2].level
-		local world = trainerWorld(1, gate, cost)
-		GripService.upgradeTrainer(world.player, 2, cost)
-		expect.equal(world.profile.grip.trainer, 2)
-		local before = world.profile.grip.total
-		local gain = GripService.addFromSqueeze(world.player, 1)
-		expect.equal(gain.grip, ownGrip(world) * (if gain.doubled then REST.mult else 1))
-		expect.equal(world.profile.grip.total, before + gain.grip)
 		finish()
 	end)
 

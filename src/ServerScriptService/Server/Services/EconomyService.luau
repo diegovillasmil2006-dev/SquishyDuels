@@ -10,8 +10,8 @@
 --   pass maxCoins is clamped (the returned amount is what was really added).
 -- * Profile status (§3.13, §12 #6): grants need a READY profile (OFFLINE / READONLY / loading sessions earn nothing,
 --   they are never saved; neither is a change after the final leave snapshot, which mutate refuses); spends also need
---   no pending failed save (§3.11: boxes, shop, daily and trainer are blocked while savePending; each caller turns
---   "savePending" into its own code: box.saving, trainer.paused, ...).
+--   no pending failed save (§3.11: boxes, shop, daily and capsules are blocked while savePending; each caller turns
+--   "savePending" into its own code: box.saving, capsule.paused, ...).
 -- * Idempotency (§3.4): there is no generic ledger; each action keeps its own log. The duel ledger lives here:
 --   grantDuelResult(p, matchId, outcome, result) appends {matchId, opp, result, at, full} to profile.duelLog (cap
 --   Config.Data.caps.duelLog, oldest dropped), updates the same-pair record profile.samePair (§6.7, §12 #15:
@@ -110,7 +110,7 @@ EconomyService.CoinsChanged = Signal.new() :: Signal.Signal<Player, number, numb
 -- (player, squishyId, source) when a squishy is added to a collection (not for duplicates).
 EconomyService.SquishyGranted = Signal.new() :: Signal.Signal<Player, string, string>
 
--- §2.10 codes for the failure kinds that have one ("savePending" is the caller's: box.saving, trainer.paused, ...).
+-- §2.10 codes for the failure kinds that have one ("savePending" is the caller's: box.saving, capsule.paused, ...).
 EconomyService.CODES = table.freeze({
 	notReady = "data.notReady",
 	notEnoughCoins = "economy.notEnoughCoins",

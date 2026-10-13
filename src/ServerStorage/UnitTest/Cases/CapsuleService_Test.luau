@@ -349,7 +349,7 @@ return function(t: Context)
 		end
 		expect.equal(#w.spends, 0)
 		expect.equal(w.profiles[w.a].coins, 1_000_000)
-		-- The argument range comes before the ready check (like TrainerUpgrade).
+		-- The argument range comes before the ready check (like TrainerUpgrade did).
 		w.status[w.a] = "offline"
 		expectRefused(CapsuleService.upgrade(w.a, 0, price), "net.invalid")
 		expectRefused(CapsuleService.upgrade(w.a, 1, price), "data.notReady")
