@@ -13,7 +13,8 @@
 --     not even their hits; the test dummy's hits never count); an event after midnight counts for the new day; a quest
 --     that becomes done toasts quest.complete; DuelResult lines list the quests the match moved;
 --   * QuestClaim: data.notReady / net.invalid / quest.notReady / quest.alreadyClaimed; a claim pays once ("quest" for a
---     daily quest, "starter" for a starter task) and saves "soon";
+--     daily quest, "starter" for a starter task) and saves "soon"; every reward is counted in squeezes and pays × the
+--     squeeze value of the moment it is granted (Phase 3, spec 2026-10-12 §9), the rollover's auto-claims included;
 --   * QuestSwap: one free swap of an unfinished daily quest (QuestLogic.swap with swap number 1), then quest.swapUsed;
 --     a done quest or a starter task is net.invalid;
 --   * a profile load or an OFFLINE profile never moves progress or pays.
@@ -28,6 +29,7 @@ type Context = {
 
 local DAY = 20000
 local NOON = DAY * 86400 + 12 * 3600
+local VALUE = 1_385 -- the squeeze value of the test profile: Toast (×1) in a Lv 30 capsule (CP 1,385)
 
 return function(t: Context)
 	local expect = t.expect
@@ -36,6 +38,7 @@ return function(t: Context)
 	local FakeClock = t.requireFake("FakeClock")
 	local FakeRng = t.requireFake("FakeRng")
 	local TableUtil = t.requireShared("Util/TableUtil")
+	local CapsuleMath = t.requireShared("CapsuleMath")
 
 	type World = {
 		clock: any,
@@ -58,6 +61,7 @@ return function(t: Context)
 			equipped = "toast",
 			quests = { day = -1, swapsUsed = 0, active = {} },
 			starter = { progress = {}, claimed = {} },
+			capsules = { slots = 1, list = { { level = 30, squishyId = "toast" } } },
 		}
 	end
 
@@ -223,10 +227,10 @@ return function(t: Context)
 		open.progress = 19
 		w.profile.quests = { day = DAY - 1, swapsUsed = 1, active = { done, claimed, open } }
 		expect.truthy(QuestService.ensureQuests(w.player))
-		expect.deepEqual(w.grants, { { amount = 150, reason = "quest" } })
-		expect.equal(w.profile.coins, 150)
+		expect.deepEqual(w.grants, { { amount = 150 * VALUE, reason = "quest" } })
+		expect.equal(w.profile.coins, 150 * VALUE)
 		expect.deepEqual(codes(w), { "quest.autoCollected" })
-		expect.equal(w.notices[1].args.coins, 150)
+		expect.equal(w.notices[1].args.coins, 150 * VALUE)
 		expect.equal(w.profile.quests.day, DAY)
 		expect.equal(w.profile.quests.swapsUsed, 0)
 		expect.equal(#w.profile.quests.active, 3)
@@ -404,14 +408,26 @@ return function(t: Context)
 		QuestService.onSqueezed(w.player, "toast", 5, 1)
 		local reply = QuestService.claim(w.player, id)
 		expect.equal(reply.ok, true)
-		expect.deepEqual(w.grants, { { amount = 150, reason = "quest" } })
+		expect.deepEqual(w.grants, { { amount = 150 * VALUE, reason = "quest" } })
 		expect.truthy(w.profile.quests.active[1].claimed)
 		expect.deepEqual(w.saves, { "soon" })
 		local again = QuestService.claim(w.player, id)
 		expect.equal(again.ok, false)
 		expect.equal(again.reason, "quest.alreadyClaimed")
 		expect.equal(#w.grants, 1)
-		expect.equal(w.profile.coins, 150)
+		expect.equal(w.profile.coins, 150 * VALUE)
+		finish()
+	end)
+
+	t.test("a quest pays its squeezes at the squeeze value of the claim's moment (spec 2026-10-12 §9)", function()
+		local w = fresh()
+		local done = entry(1, "squeeze_any", 1, 150)
+		done.progress, done.done = 1, true
+		withQuests(w, { done })
+		w.profile.capsules =
+			{ slots = 2, list = { { level = 30, squishyId = "toast" }, { level = 11, squishyId = "dragon" } } }
+		expect.equal(QuestService.claim(w.player, done.id).ok, true)
+		expect.deepEqual(w.grants, { { amount = 150 * 64 * (CapsuleMath.power(11) :: number), reason = "quest" } })
 		finish()
 	end)
 
@@ -421,7 +437,7 @@ return function(t: Context)
 		w.profile.starter.progress.starter_practice = 5
 		local reply = QuestService.claim(w.player, "starter_practice")
 		expect.equal(reply.ok, true)
-		expect.deepEqual(w.grants, { { amount = 50, reason = "starter" } })
+		expect.deepEqual(w.grants, { { amount = 50 * VALUE, reason = "starter" } })
 		expect.truthy(w.profile.starter.claimed.starter_practice)
 		expect.equal(QuestService.claim(w.player, "starter_practice").reason, "quest.alreadyClaimed")
 		expect.equal(QuestService.claim(w.player, "starter_duel").reason, "quest.notReady")
@@ -441,7 +457,7 @@ return function(t: Context)
 		local reply = QuestService.claim(w.player, done.id)
 		expect.equal(reply.ok, false)
 		expect.equal(reply.reason, "quest.alreadyClaimed")
-		expect.deepEqual(w.grants, { { amount = 150, reason = "quest" } })
+		expect.deepEqual(w.grants, { { amount = 150 * VALUE, reason = "quest" } })
 		expect.deepEqual(codes(w), { "quest.autoCollected" })
 		expect.equal(w.profile.quests.day, DAY + 1)
 		finish()
@@ -509,7 +525,7 @@ return function(t: Context)
 		expect.equal(#w.grants, 0) -- setting progress never pays
 		local summary = QuestService.debugRollover(w.player)
 		expect.equal(summary.autoClaimed, 1)
-		expect.equal(summary.coins, first.reward)
+		expect.equal(summary.coins, first.reward * VALUE)
 		expect.truthy(summary.generated)
 		expect.equal(w.profile.quests.day, DAY)
 		local state = QuestService.debugState(w.player)

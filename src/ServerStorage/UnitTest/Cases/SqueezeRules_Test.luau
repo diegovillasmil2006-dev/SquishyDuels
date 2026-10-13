@@ -11,8 +11,9 @@
 -- gets 20 in its first second); more than 20 requests in any second are dropped silently (a steady 20/s never is; more
 -- than 40 drops in 10 s log once, so a 5 s backlog of 60 presses arriving at once is not logged); the shipped hourly
 -- limit is off (spec 2026-10-11 §5), so every accepted squeeze pays and the limit state is left alone; with the limit
--- switched on (the rule stays, dormant) an empty limit still accepts but pays emptyCoins; a paid squeeze pays squishy
--- Coins + the pad bonus; an unready profile earns nothing (data.notReady); every reply's nextAt is a server time =
+-- switched on (the rule stays, dormant) an empty limit still accepts but pays emptyCoins; a paid squeeze pays the
+-- squeeze value the caller passes (Phase 3: a pad adds no Coin bonus, it only sets the tier); an unready profile earns
+-- nothing (data.notReady); every reply's nextAt is a server time =
 -- serverNow + max(0, 1 - tokens) × cycleSeconds. Clocks are plain numbers (os.clock, os.time and server time kept far
 -- apart so a mix-up shows).
 
@@ -196,11 +197,13 @@ return function(t: Context)
 		expect.near(d.state.bucket.tokens, SQUEEZE.bucketCapacity - 1)
 	end)
 
-	t.test("an unlocked giant pad adds its coin bonus", function()
+	-- Phase 3 (spec 2026-10-12 §3): own squeezes pay the squeeze value; a pad adds no Coins (was + its coinBonus).
+	t.test("an unlocked giant pad pays the same squeeze value and reports its tier", function()
 		for tier, pad in Config.Grip.Pads do
 			local d = SqueezeRules.decide(input(fresh(), { station = { tier = tier }, level = pad.level }), Config)
 			expect.equal(d.outcome, "accepted")
-			expect.equal(d.coins, 5 + pad.coinBonus)
+			expect.equal(d.tier, tier)
+			expect.equal(d.coins, 5)
 		end
 	end)
 
@@ -211,7 +214,7 @@ return function(t: Context)
 		expect.equal(d.reason, nil)
 		expect.truthy(d.paid)
 		expect.equal(d.tier, 1)
-		expect.equal(d.coins, 5 + Config.Grip.Pads[1].coinBonus)
+		expect.equal(d.coins, 5)
 		expect.near(d.state.bucket.tokens, SQUEEZE.bucketCapacity - 1)
 	end)
 
@@ -222,7 +225,7 @@ return function(t: Context)
 		expect.equal(d.outcome, "accepted")
 		expect.truthy(d.paid)
 		expect.equal(d.tier, 1)
-		expect.equal(d.coins, 5 + Config.Grip.Pads[1].coinBonus)
+		expect.equal(d.coins, 5)
 	end)
 
 	t.test("the shipped hourly limit is off: an empty limit state still pays full Coins and is left alone", function()

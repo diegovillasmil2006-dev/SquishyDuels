@@ -12,7 +12,9 @@
 --   * grantSquishy adds {at, src}; a box duplicate is refunded a quarter of that box's price (spec 2026-10-12 §8),
 --     any other duplicate changes nothing; Coins stop at 9 Qa, exact to the Coin;
 --   * grantDuelResult records the duelLog entry (capped, oldest dropped), the duel stats and the Coins exactly once per
---     matchId, then asks for a "soon" save; an unready profile records nothing (duel.noRewardsOffline);
+--     matchId, then asks for a "soon" save; an unready profile records nothing (duel.noRewardsOffline); the reward is
+--     counted in squeezes and pays squeezes × the squeeze value of that moment (Phase 3, spec 2026-10-12 §9), up to
+--     the top squeeze value and never past maxCoins; rewardCoins(profile, squeezes) is that conversion;
 --   * the same-pair record (§6.7, §12 #15): a time only for a fully rewarded result (reduced and zero-Coin ones add
 --     none), never twice for one matchId, per player; expired times and opponents dropped on every result; at most
 --     samePairFullRewards times per opponent and Config.Data.caps.samePair opponents (the least recent go);
@@ -41,6 +43,7 @@ type World = {
 
 local NOW = 1_790_000_000
 local MATCH_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+local VALUE = 10 -- the squeeze value of newProfile's capsules: a new player's (Kitty Bread at Lv 1)
 
 return function(t: Context)
 	local expect = t.expect
@@ -66,6 +69,7 @@ return function(t: Context)
 				boxesOpened = 0,
 			},
 			duelLog = {},
+			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
 		}
 	end
 
@@ -385,14 +389,14 @@ return function(t: Context)
 		end)
 		local grant = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 200, 42))
 		connection:disconnect()
-		expect.deepEqual(grant, { coins = 200, recorded = true, alreadyGranted = false })
+		expect.deepEqual(grant, { coins = 200 * VALUE, recorded = true, alreadyGranted = false })
 		expect.equal(w.mutations, 1) -- the whole result in one step
-		expect.equal(profile.coins, 200)
+		expect.equal(profile.coins, 200 * VALUE)
 		expect.deepEqual(profile.duelLog, { { matchId = MATCH_ID, opp = 42, result = "win", at = NOW, full = true } })
 		expect.equal(profile.stats.duelsPlayed, 1)
 		expect.equal(profile.stats.duelsWon, 1)
 		expect.equal(profile.stats.eliminations, 1)
-		expect.equal(profile.stats.coinsEarned, 200)
+		expect.equal(profile.stats.coinsEarned, 200 * VALUE)
 		expect.deepEqual(reasons, { "duel_win" })
 		expect.deepEqual(w.saves, { { player = player, reason = "soon" } })
 		expect.deepEqual(EconomyService.duelLog(player), profile.duelLog)
@@ -409,7 +413,7 @@ return function(t: Context)
 		w.clock = NOW + 5
 		local again = EconomyService.grantDuelResult(player, MATCH_ID, "loss", duelResult("loss", 60))
 		expect.deepEqual(again, { coins = 0, recorded = false, alreadyGranted = true })
-		expect.equal(profile.coins, 60)
+		expect.equal(profile.coins, 60 * VALUE)
 		expect.equal(#profile.duelLog, 1)
 		expect.deepEqual(profile.samePair, { ["99"] = { NOW } }) -- the replay adds no second same-pair time
 		expect.equal(profile.stats.duelsPlayed, 1)
@@ -469,15 +473,49 @@ return function(t: Context)
 		expect.equal(#w.saves, 0)
 	end)
 
-	t.test("a reward above the largest duel reward is recorded without Coins", function()
+	t.test("a reward above the largest duel reward (in squeezes) is recorded without Coins", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		local grant = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 1_000_000))
+		local grant = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 601))
 		expect.equal(grant.recorded, true)
 		expect.equal(grant.coins, 0)
 		expect.equal(profile.coins, 0)
 		expect.equal(profile.duelLog[1].full, false) -- paid nothing, so not a fully rewarded result
 		expect.deepEqual(profile.samePair, {})
+	end)
+
+	-- Phase 3 (spec 2026-10-12 §9): rewards are counted in squeezes and converted when they are granted.
+	t.test("a duel reward pays its squeezes × the squeeze value of that moment (the best capsule)", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		-- Butter Lv 11: 4 × 68 = 272; Toast Lv 30: 1 × 1,385 (the best).
+		profile.capsules = {
+			slots = 2,
+			list = { { level = 11, squishyId = "butter" }, { level = 30, squishyId = "toast" } },
+		}
+		local first = EconomyService.grantDuelResult(player, "m-1", "win", duelResult("win", 600, 7, "m-1"))
+		expect.equal(first.coins, 600 * 1_385)
+		-- The value changes with the capsules: the next result pays the new one.
+		profile.capsules.list[1].level = 21 -- Butter Lv 21: 4 × 461 = 1,844
+		local second = EconomyService.grantDuelResult(player, "m-2", "loss", duelResult("loss", 180, 8, "m-2"))
+		expect.equal(second.coins, 180 * 1_844)
+		expect.equal(profile.coins, 600 * 1_385 + 180 * 1_844)
+		expect.equal(EconomyService.rewardCoins(profile, 300), 300 * 1_844)
+		expect.equal(EconomyService.rewardCoins(nil, 100), 1_000) -- no profile: a new player's value (spec §9)
+		expect.equal(EconomyService.rewardCoins({}, 100), 1_000)
+	end)
+
+	t.test("at the top squeeze value a duel win still pays in full, and Coins stop at maxCoins", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
+		local top = 64 * 920_525_589 -- Dragon in a Royal Lv 100 capsule (spec §4: 58.9B a squeeze)
+		local grant = EconomyService.grantDuelResult(player, "top-1", "win", duelResult("win", 600, 7, "top-1"))
+		expect.equal(grant.coins, 600 * top)
+		profile.coins = ECONOMY.maxCoins - 5
+		local capped = EconomyService.grantDuelResult(player, "top-2", "win", duelResult("win", 600, 8, "top-2"))
+		expect.equal(capped.coins, 5)
+		expect.equal(profile.coins, ECONOMY.maxCoins)
 	end)
 
 	-- The same-pair record (§6.7, §12 #15) ------------------------------------------------------------------------------
@@ -487,7 +525,7 @@ return function(t: Context)
 		local player, profile = readyPlayer(w, 0)
 		local reduced = duelResult("win", 50, 42, "reduced-1")
 		reduced.logEntry.full = false -- DuelRewards: a reduced result is not fully rewarded
-		expect.equal(EconomyService.grantDuelResult(player, "reduced-1", "win", reduced).coins, 50)
+		expect.equal(EconomyService.grantDuelResult(player, "reduced-1", "win", reduced).coins, 50 * VALUE)
 		local short = EconomyService.grantDuelResult(player, "short-1", "loss", duelResult("loss", 0, 42, "short-1"))
 		expect.equal(short.recorded, true)
 		expect.deepEqual(profile.samePair, {})
@@ -660,7 +698,7 @@ return function(t: Context)
 		expect.equal(EconomyService.grantCoins(player, 25, "squeeze"), 25)
 		expect.deepEqual(EconomyService.grantSquishy(player, "toast", "shop"), { added = true, refund = 0 })
 		local grant = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 200, 77))
-		expect.equal(grant.coins, 200)
+		expect.equal(grant.coins, 200 * VALUE) -- a new profile's capsule: Kitty Bread at Lv 1
 		expect.equal(EconomyService.trySpend(player, 20, "box"), true)
 		expect.truthy(first.releaseAsync(player))
 		-- After the release the old session takes no changes.
@@ -671,18 +709,18 @@ return function(t: Context)
 		expect.equal(second.loadAsync(player), "ready")
 		EconomyService.useDeps(recorderDeps(w, StateService.portFrom(second)))
 		local profile = second.getProfile(player)
-		expect.equal(profile.coins, 205)
+		expect.equal(profile.coins, 25 + 200 * VALUE - 20)
 		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
 		expect.equal(#profile.duelLog, 1)
 		expect.equal(profile.duelLog[1].matchId, MATCH_ID)
 		expect.deepEqual(profile.samePair, { ["77"] = { NOW } }) -- the same-pair record survives too (§6.7)
 		expect.equal(profile.stats.duelsWon, 1)
-		expect.equal(profile.stats.coinsEarned, 225)
+		expect.equal(profile.stats.coinsEarned, 25 + 200 * VALUE)
 		expect.equal(profile.stats.coinsSpent, 20)
 		-- The same match never pays twice, even on another server.
 		local again = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 200, 77))
 		expect.equal(again.alreadyGranted, true)
-		expect.equal(profile.coins, 205)
+		expect.equal(profile.coins, 25 + 200 * VALUE - 20)
 		expect.deepEqual(profile.samePair, { ["77"] = { NOW } })
 		second.releaseAsync(player)
 		EconomyService.useDeps(nil)

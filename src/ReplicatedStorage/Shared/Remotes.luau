@@ -4,9 +4,10 @@
 -- client (NetController.connectAsync). The folder lives at ReplicatedStorage.SD_Remotes, outside `Shared`, because
 -- Rojo `$path` nodes delete unknown children. Per-remote rate limits live in Config.Net, keyed by the same names.
 -- Grip (§17.2 rule 5, §17.9 #1): there is no Grip remote. Grip comes only from an accepted SqueezeRequest and from the
--- server's own slow-training tick; the client never says "I am on a pad" or "I am idle" (the idle card is client
--- only, and a queued client's idleness is ReportIdle). TrainerUpgrade (RF, Part 7, §17.5) only buys the next trainer
--- with Coins: the server checks it with GripMath.upgradeDecision and never takes a price or a Grip amount from it.
+-- server's own ticks (slow training, capsules); the client never says "I am on a pad" or "I am idle" (the idle card is
+-- client only, and a queued client's idleness is ReportIdle). TrainerUpgrade (RF, Part 7, §17.5) only buys the next
+-- trainer with Coins: the server checks it with GripMath.upgradeDecision and never takes a price or a Grip amount from
+-- it; the capsule remotes (Phase 3) likewise only buy and fill the caller's own capsules (CapsuleMath's checks).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -161,6 +162,12 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- data: Types.TrainerUpgradeResult {trainer, charged, savePending}; a replay (trainer already owned) is ok with
 	-- charged = false.
 	TrainerUpgrade = c2s("RemoteFunction", { arg("targetLevel", "integer"), arg("expectedPrice", "integer") }),
+	-- Capsules (lobby spec 2026-10-11 §6, Phase 3; CapsuleService): only the caller's own capsules, so no remote takes
+	-- a base, plot or player id. slot = 1..#Config.Grip.Capsule.slotPrices; expectedPrice is compared, never charged.
+	-- data: Types.CapsuleResult {capsules, charged, savePending}.
+	CapsuleUpgrade = c2s("RemoteFunction", { arg("slot", "integer"), arg("expectedPrice", "coins") }),
+	CapsuleUnlock = c2s("RemoteFunction", { arg("slot", "integer"), arg("expectedPrice", "coins") }),
+	CapsuleSet = c2s("RemoteFunction", { arg("slot", "integer"), arg("squishyId", "squishyId") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

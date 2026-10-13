@@ -1,6 +1,6 @@
 --!strict
 -- Config.Squeeze: squeeze stations, server bucket and flood guard (DESIGN §6.3). Shared, data only. All [P].
--- Coins per squeeze are in Config.Economy.CoinsByRarity; the earnings limit is Config.Economy.SqueezeLimit;
+-- Coins per squeeze: the squeeze value (CapsuleMath.squeezeValue); the earnings limit is Config.Economy.SqueezeLimit;
 -- squeeze animation timings are Config.Anim.squeeze; pad bonuses, Grip and hold-to-squeeze (its repeat rhythm,
 -- Grip.Hold.repeatSeconds) are in Config.Grip.
 -- The server model is Logic/SqueezeRules: a squeeze works anywhere in the lobby (spec 2026-10-11 §5); the pad that pays

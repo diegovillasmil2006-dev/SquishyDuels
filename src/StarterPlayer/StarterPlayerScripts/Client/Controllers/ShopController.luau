@@ -99,6 +99,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
+local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
@@ -437,7 +438,8 @@ local function refreshDetail(list: { ShopFormat.Entry })
 	d.rarity:setRarity(entry.rarity)
 	local rarityStyle = RarityStyle.get(entry.rarity)
 	d.glow.BackgroundColor3 = if rarityStyle then rarityStyle.ui.glow else Theme.Colors.ink2
-	d.coinsLine.Text = Strings.format(Strings.inspect.coinsPerSqueeze, { n = Catalog.getSqueezeCoins(entry.id) })
+	-- shortcut: Coins per squeeze in a Lv 1 capsule (Phase 3); Phase 5 shows the capsule power instead.
+	d.coinsLine.Text = Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(entry.id, 1) })
 	-- Fewer words (foam restyle): the coin and the bare price.
 	local priceText = ShopFormat.priceNumber(entry.price)
 	d.priceRow.Visible = priceText ~= nil and not entry.owned

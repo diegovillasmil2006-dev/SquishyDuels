@@ -15,9 +15,11 @@
 --     false}; no token used before step 7 and nothing earned (squeeze.noCharacter, squeeze.inDuel, data.notReady);
 --   * accepted -> the new profile.squeezeLimit and stats.squeezes + 1 are written through DataService.mutate (a
 --     session that stopped taking changes, e.g. its final save started, is answered data.notReady and earns
---     nothing); Grip through GripService.addFromSqueeze(p, tier) (step 8a, whether or not it paid); Coins
---     (Catalog.getSqueezeCoins(equipped) + the pad's coinBonus when paid, else emptyCoins) through
---     EconomyService.grantCoins(p, n, "squeeze"); the character attribute
+--     nothing); Grip through GripService.addFromSqueeze(p, tier) (step 8a, whether or not it paid); Coins (the squeeze
+--     value, CapsuleMath.squeezeValue(profile.capsules), when paid, else emptyCoins; spec 2026-10-12 §3, Phase 3: the
+--     held squishy and the pad no longer change it) through EconomyService.grantCoins(p, n, "squeeze"); a paid one
+--     also pushes the player's capsules (CapsuleService.push with the server-side root position: only inside their
+--     own base, lobby spec 2026-10-11 §6); the character attribute
 --     SD_SqueezeAt = server time (others see the squeeze, the giant pads dip); Squeezed(p, squishyId, coins, tier)
 --     for the layers above (QuestService, Part 7: onSqueeze(p, id, tier)); then SqueezeResult{ok = true, coins,
 --     total, limit, nextAt, grip, gripTotal, doubled}. `coins` is what the balance really gained (0 at the Coin cap).
@@ -51,6 +53,7 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
@@ -63,6 +66,7 @@ local Server = script.Parent.Parent
 local SqueezeRules = require(Server.Logic.SqueezeRules)
 
 local Services = script.Parent
+local CapsuleService = require(Services.CapsuleService)
 local CharacterService = require(Services.CharacterService)
 local EconomyService = require(Services.EconomyService)
 local GripService = require(Services.GripService)
@@ -93,6 +97,7 @@ export type Deps = {
 	markDirty: (player: any, field: string) -> (),
 	setSqueezeAt: (player: any, at: number) -> (),
 	reply: (player: any, result: SqueezeResult) -> (),
+	pushCapsules: (player: any, rootPosition: Vector3) -> (), -- CapsuleService.push (a paid squeeze)
 }
 
 -- One problem the stale-lobby check found.
@@ -214,6 +219,9 @@ local function defaultDeps(): Deps
 		end,
 		reply = function(player: any, result: SqueezeResult)
 			NetService.fire(REMOTE_RESULT, player, result)
+		end,
+		pushCapsules = function(player: any, rootPosition: Vector3)
+			CapsuleService.push(player, rootPosition)
 		end,
 	}
 end
@@ -383,7 +391,7 @@ function SqueezeService.request(player: any): SqueezeResult?
 		rootPosition = root,
 		inMatch = deps.duelPhaseOf(player) ~= "",
 		level = GripService.levelOf(player),
-		baseCoins = Catalog.getSqueezeCoins(equipped),
+		baseCoins = CapsuleMath.squeezeValue(if ready then profile.capsules else nil),
 		limit = limit,
 	})
 	session.state = decision.state
@@ -443,6 +451,7 @@ function SqueezeService.request(player: any): SqueezeResult?
 	if decision.paid then
 		stats.paid += 1
 		recordSqueeze(player, session)
+		deps.pushCapsules(player, root :: Vector3)
 	end
 	SqueezeService.Squeezed:fire(player, equipped, gained, tier)
 

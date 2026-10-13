@@ -9,7 +9,8 @@
 --     duel.noRewardsOffline only once a profile system is wired (§0.3 #9); a same-pair reduction rides along;
 --   * a reward without a duelLog entry asks EconomyService nothing; a matchId already paid pays 0 with no reason;
 --   * through the real EconomyService a match pays once, however often it is settled (duelLog.matchId), and unpaid
---     results are recorded but never count toward the same-pair reduction (§6.7 "fully rewarded results");
+--     results are recorded but never count toward the same-pair reduction (§6.7 "fully rewarded results"); it pays the
+--     reward's squeezes × the squeeze value (Phase 3, spec 2026-10-12 §9: VALUE for these profiles);
 --   * §12 #15 through the real EconomyService: seven alts in rotation (~105 results an hour, more than duelLog's 30
 --     entries hold) are reduced from the 7th full result against the same alt inside the hour, for both players; an
 --     hour after the first of those results the pair is paid in full again;
@@ -34,6 +35,7 @@ return function(t: Context)
 	local DuelRewards = t.requireServer("Logic/DuelRewards")
 	local EconomyService = t.requireServer("Services/EconomyService")
 	local Config = t.requireShared("Config")
+	local VALUE = 10 -- the squeeze value of newProfile's capsules (Kitty Bread at Lv 1)
 
 	local function step(s: any, event: any, now: number): any
 		local nextState = DuelRules.step(s, event, now)
@@ -124,6 +126,7 @@ return function(t: Context)
 			},
 			duelLog = {},
 			samePair = {},
+			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
 		}
 	end
 
@@ -251,9 +254,9 @@ return function(t: Context)
 			DuelService.settleReward(winner, MATCH_ID, "win", winReward, 0)
 			DuelService.settleReward(loser, MATCH_ID, "loss", lossReward, 0)
 		end
-		-- The loser bailed after 60 s: the win pays 600; the loss (>= 45 s of Active) pays 180.
-		expect.equal(profiles[winner].coins, Config.Economy.DuelRewards.win)
-		expect.equal(profiles[loser].coins, Config.Economy.DuelRewards.loss)
+		-- The loser bailed after 60 s: the win pays 600 squeezes; the loss (>= 45 s of Active) 180 (× VALUE each).
+		expect.equal(profiles[winner].coins, Config.Economy.DuelRewards.win * VALUE)
+		expect.equal(profiles[loser].coins, Config.Economy.DuelRewards.loss * VALUE)
 		expect.equal(#profiles[winner].duelLog, 1)
 		expect.equal(#profiles[loser].duelLog, 1)
 		-- One same-pair time each, however often the match was settled.
@@ -274,7 +277,7 @@ return function(t: Context)
 			0
 		)
 		expect.deepEqual(replay, { coins = 0 })
-		expect.equal(profiles[winner].coins, Config.Economy.DuelRewards.win)
+		expect.equal(profiles[winner].coins, Config.Economy.DuelRewards.win * VALUE)
 		expect.deepEqual(profiles[winner].samePair, { [tostring(USER_B)] = { NOW_UNIX } })
 		EconomyService.useDeps(nil)
 	end)
@@ -299,8 +302,8 @@ return function(t: Context)
 		expect.deepEqual(profiles[winner].samePair, {}) -- unpaid results add no same-pair time
 		-- The next real win against B pays in full.
 		local real = DuelRewards.compute(forfeitMatch(60, 3, true, "real-1"), "A", historyOf(winner), NOW_UNIX, Config)
-		expect.deepEqual(DuelService.settleReward(winner, "real-1", "win", real, 0), { coins = REWARDS.win })
-		expect.equal(profiles[winner].coins, REWARDS.win)
+		expect.deepEqual(DuelService.settleReward(winner, "real-1", "win", real, 0), { coins = REWARDS.win * VALUE })
+		expect.equal(profiles[winner].coins, REWARDS.win * VALUE)
 		EconomyService.useDeps(nil)
 	end)
 
@@ -339,8 +342,8 @@ return function(t: Context)
 		for _ = 1, limit do
 			for i = 1, ALTS do
 				local mainCoins, altCoins = play(alts[i])
-				expect.equal(mainCoins, REWARDS.win)
-				expect.equal(altCoins, REWARDS.loss)
+				expect.equal(mainCoins, REWARDS.win * VALUE)
+				expect.equal(altCoins, REWARDS.loss * VALUE)
 			end
 		end
 		-- duelLog (capped) no longer holds `limit` results against the first alt, so it could never have caught this.
@@ -359,8 +362,8 @@ return function(t: Context)
 		-- Round 7: the 7th full result against each alt inside the hour is reduced, for both players.
 		for i = 1, ALTS do
 			local mainCoins, altCoins, shown = play(alts[i])
-			expect.equal(mainCoins, math.floor(REWARDS.win * REWARDS.samePairMultiplier))
-			expect.equal(altCoins, math.floor(REWARDS.loss * REWARDS.samePairMultiplier))
+			expect.equal(mainCoins, math.floor(REWARDS.win * REWARDS.samePairMultiplier) * VALUE)
+			expect.equal(altCoins, math.floor(REWARDS.loss * REWARDS.samePairMultiplier) * VALUE)
 			expect.equal(shown.coinsBlockedReason, "duel.rewardsReduced")
 		end
 		-- Reduced results add no time: still `limit` per alt.
@@ -370,8 +373,8 @@ return function(t: Context)
 		-- An hour after the first result against the first alt that one has left the window: full again.
 		clock.now = NOW_UNIX + REWARDS.samePairWindowSeconds
 		local mainCoins, altCoins = play(firstAlt)
-		expect.equal(mainCoins, REWARDS.win)
-		expect.equal(altCoins, REWARDS.loss)
+		expect.equal(mainCoins, REWARDS.win * VALUE)
+		expect.equal(altCoins, REWARDS.loss * VALUE)
 		EconomyService.useDeps(nil)
 	end)
 

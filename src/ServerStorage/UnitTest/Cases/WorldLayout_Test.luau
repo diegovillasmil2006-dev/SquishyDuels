@@ -16,6 +16,9 @@
 --   * practice range on the design lanes, throws toward +X (D3); 14 collection pedestals facing their bays (D4);
 --     return points, audio zones, the corner lollipops, TagCounts;
 --   * first person: no prompt and no squeeze station reaches into the practice throw box;
+--   * Phase 3 bases (lobby bases spec 2026-10-11 §2, §4; data only): 10 plots 36° apart around the hub centre, gates
+--     at radius 96 and backs at 148, facing the hub, 44 × 52, the capsule pads and the spawn inside, no two plots
+--     sharing ground; inPlot is the footprint only, never an unknown plot;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -1305,6 +1308,81 @@ return function(t: Context)
 			table.insert(WorldLayout.Stations, {})
 		end)
 		expect.near(WorldLayout.GiantPads.jelly.collisionTop, 5.7, 1e-9)
+	end)
+
+	-- Bases (lobby bases spec 2026-10-11 §2, §4; Phase 3 data) --------------------------------------------------------
+
+	t.test("10 plots 36° apart around the hub centre: gates at r 96, backs at r 148, facing the hub", function()
+		local bases = WorldLayout.Bases
+		expect.truthy(vectorNear(bases.center, Vector3.zero)) -- the hub centre (the spawn medallion)
+		expect.equal(bases.width, 44)
+		expect.equal(bases.depth, 52)
+		expect.equal(#bases.frames, 10)
+		for index = 1, 10 do
+			local frame = WorldLayout.plotFrame(index) :: CFrame
+			local angle = math.rad((index - 1) * 36) -- compass angle, clockwise from north (-Z)
+			local outward = Vector3.new(math.sin(angle), 0, -math.cos(angle))
+			-- CFrames are float32: turned points match to 1e-3, like the other turned design points.
+			expect.truthy(flatNear(frame * bases.gate, outward * 96, 1e-3))
+			expect.truthy(flatNear(frame * Vector3.new(0, 0, -bases.depth / 2), outward * 148, 1e-3))
+			expect.truthy(vectorNear(frame:VectorToWorldSpace(Vector3.new(0, 0, 1)), -outward, 1e-6)) -- local +Z: hub
+			expect.near(frame.Position.Y, 0, 1e-9)
+		end
+		expect.truthy(flatNear((WorldLayout.plotFrame(1) :: CFrame).Position, Vector3.new(0, 0, -122), 1e-6)) -- north
+		expect.truthy(flatNear((WorldLayout.plotFrame(6) :: CFrame).Position, Vector3.new(0, 0, 122), 1e-6)) -- south
+		expect.equal(WorldLayout.plotFrame(0), nil)
+		expect.equal(WorldLayout.plotFrame(11), nil)
+	end)
+
+	t.test(
+		"a plot holds its 4 capsule pads (x ±13, z -8 / +8) and its spawn facing the gate; plots share no ground",
+		function()
+			local bases = WorldLayout.Bases
+			expect.deepEqual(bases.capsulePads, {
+				Vector3.new(-13, 0, -8),
+				Vector3.new(13, 0, -8),
+				Vector3.new(-13, 0, 8),
+				Vector3.new(13, 0, 8),
+			})
+			expect.equal(bases.capsulePadSize, 8)
+			expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, -16))) -- 42 studs behind the gate
+			expect.truthy(vectorNear(bases.spawn.LookVector, Vector3.new(0, 0, 1), 1e-6)) -- toward the gate
+			local half = bases.capsulePadSize / 2
+			for index = 1, 10 do
+				local frame = WorldLayout.plotFrame(index) :: CFrame
+				for _, pad in bases.capsulePads do
+					for _, corner in { Vector3.new(-half, 0, -half), Vector3.new(half, 0, half) } do
+						expect.truthy(WorldLayout.inPlot(index, frame * (pad + corner)))
+					end
+				end
+				expect.truthy(WorldLayout.inPlot(index, (frame * bases.spawn).Position))
+				-- No corner of a plot lies on its neighbours' ground.
+				for _, corner in { { -22, -26 }, { 22, -26 }, { -22, 26 }, { 22, 26 } } do
+					local point = frame * Vector3.new(corner[1], 0, corner[2])
+					for _, other in { index % 10 + 1, (index + 8) % 10 + 1 } do
+						expect.falsy(WorldLayout.inPlot(other, point))
+					end
+				end
+			end
+		end
+	)
+
+	t.test("inPlot: the plot's footprint at any height; nothing for the hub or an unknown plot", function()
+		local frame = WorldLayout.plotFrame(3) :: CFrame
+		expect.truthy(WorldLayout.inPlot(3, frame * Vector3.new(0, 3, 0)))
+		expect.truthy(WorldLayout.inPlot(3, frame * Vector3.new(0, 40, 0))) -- height is ignored
+		-- Just inside a corner: float32 turns an exact edge point a hair either way.
+		expect.truthy(WorldLayout.inPlot(3, frame * Vector3.new(21.99, 3, 25.99)))
+		expect.falsy(WorldLayout.inPlot(3, frame * Vector3.new(0, 3, 26.5))) -- just out through the gate
+		expect.falsy(WorldLayout.inPlot(3, frame * Vector3.new(22.5, 3, 0))) -- just past the side fence line
+		for index = 1, 10 do
+			expect.falsy(WorldLayout.inPlot(index, Vector3.new(0, 3, 0))) -- the hub centre is no plot
+		end
+		expect.falsy(WorldLayout.inPlot(11, frame * Vector3.new(0, 3, 0)))
+		expect.falsy(WorldLayout.inPlot(0, Vector3.zero))
+		expect.equal(WorldLayout.Tags.BaseSpawn, "SD_BaseSpawn")
+		expect.equal(WorldLayout.Attributes.Plot, "Plot")
+		expect.equal(WorldLayout.TagCounts.SD_BaseSpawn, nil) -- the island is built in Phase 4
 	end)
 
 	-- Arena (§5.3, §7.8) --------------------------------------------------------------------------------------------

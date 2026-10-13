@@ -4,7 +4,9 @@
 -- into Result (DuelRules sets `ended` exactly once) and pays the result through EconomyService.grantDuelResult (Part 5).
 --
 -- Rules (Config.Economy.DuelRewards, all [P]):
---   amounts win 200, loss 60, draw 100; Cancelled and Void pay nothing and log nothing.
+--   amounts win 600, loss 180, draw 300, counted in squeezes (spec 2026-10-12 §9: `coins` below is that count;
+--   EconomyService.grantDuelResult pays it × the player's squeeze value); Cancelled and Void pay nothing and log
+--   nothing.
 --   every outcome: the match reached Result from Active or SuddenDeath; the player made >= minOwnThrows (3)
 --     server-accepted throws; a real player (never the Studio test dummy); profile ready (`rewardsEnabled`).
 --   win (also by forfeit or leave): Active >= winMinActiveSeconds (20). loss: Active >= lossMinActiveSeconds (45).
@@ -66,7 +68,7 @@ export type RewardHistory = { duelLog: { DuelLogEntry }?, samePair: SamePairReco
 export type Reward = {
 	userId: number,
 	outcome: Types.DuelOutcome, -- this participant's view: win, loss, draw, cancelled, void
-	coins: number, -- integer to grant (0 when not eligible)
+	coins: number, -- squeezes to grant (0 when not eligible); EconomyService pays them × the squeeze value
 	base: number, -- the amount before the same-pair multiplier (0 when not eligible)
 	multiplier: number, -- 1, or samePairMultiplier
 	eligible: boolean,

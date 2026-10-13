@@ -17,7 +17,6 @@ export type SquishyDef = {
 	rarity: Rarity,
 	blueprintId: string,
 	icon: string?, -- uploaded image id later; nil = static viewport preview (v1)
-	squeezeCoins: number?, -- optional override; default Economy.CoinsByRarity[rarity] (replaced in Phase 3)
 	power: number?, -- optional squishy power; default Economy.SquishyPower[rarity] (spec 2026-10-12 §6)
 	shopPrice: number?, -- nil = not sold (the starter)
 	robuxOnly: boolean?,
@@ -320,6 +319,10 @@ export type DailyClaimResult = {
 -- TrainerUpgrade data (§17.5, §17.10): `trainer` = the best trainer owned after the call; `charged` is false for a
 -- replay (that trainer was already owned: no Coins taken); `savePending` = the awaited "now" save failed.
 export type TrainerUpgradeResult = { trainer: number, charged: boolean, savePending: boolean }
+-- CapsuleUpgrade / CapsuleUnlock / CapsuleSet data (lobby spec 2026-10-11 §6, Phase 3): `capsules` = the caller's own
+-- capsules after the call; `charged` is false when no Coins were taken (an unlock replay, any CapsuleSet);
+-- `savePending` = the awaited "now" save failed (CapsuleSet: a failed save is pending).
+export type CapsuleResult = { capsules: CapsulesState, charged: boolean, savePending: boolean }
 
 -- QueueJoin data: the player's place in the queue (1 = next). A join from an OFFLINE/READONLY profile still
 -- succeeds and the server also sends Notify("duel.noRewardsOffline", nil, "warn") (§2.8).
@@ -346,6 +349,10 @@ export type QuestSwapCall = (questId: string) -> Result<nil>
 export type DailyClaimCall = () -> Result<DailyClaimResult>
 -- targetLevel = the trainer index to buy (2..#Config.Grip.Trainer); expectedPrice is compared, never charged.
 export type TrainerUpgradeCall = (targetLevel: number, expectedPrice: number) -> Result<TrainerUpgradeResult>
+-- slot = 1..#Config.Grip.Capsule.slotPrices of the caller's own capsules; expectedPrice is compared, never charged.
+export type CapsuleUpgradeCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
+export type CapsuleUnlockCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
+export type CapsuleSetCall = (slot: number, squishyId: string) -> Result<CapsuleResult>
 export type PromptCoinBundleCall = (bundleKey: string) -> ()
 export type PromptGamePassCall = (passKey: string) -> ()
 export type PolicyRetryCall = () -> ()

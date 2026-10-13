@@ -133,6 +133,15 @@ local Strings = {
 			priceChanged = "The price changed. Please check it again.",
 			paused = "Upgrades are paused for a moment. Try again soon.",
 		},
+		-- Capsules (CapsuleUpgrade / CapsuleUnlock / CapsuleSet; lobby spec 2026-10-11 §6, Phase 3).
+		capsule = {
+			notNext = "Unlock the capsules in order.",
+			locked = "Unlock this capsule first.",
+			gripLocked = "Your Grip level is too low for the next capsule level.",
+			maxLevel = "This capsule is at the top level.",
+			priceChanged = "The price changed. Please check it again.",
+			paused = "Upgrades are paused for a moment. Try again soon.",
+		},
 	},
 
 	-- Small texts reused by many screens.

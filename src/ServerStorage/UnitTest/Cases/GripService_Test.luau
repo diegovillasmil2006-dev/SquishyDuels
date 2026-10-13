@@ -11,6 +11,10 @@
 --   * a squeeze uses exactly one Double Grip point and doubles its Grip; no point, no doubling; nothing when not ready
 --     or when the session takes no more changes (every write goes through mutate); the total stops at maxGrip and the
 --     gain says what it really gained; step() drops the session of a player who already left;
+--   * Phase 3 (spec 2026-10-12 §3, §10): an own squeeze trains the power of the highest capsule level (an empty
+--     capsule counts; 10 without capsules), whatever the trainer or the pad; a capsule squeeze (addFromCapsule) trains
+--     its power, never doubled and without a Double Grip point; Grip events above gripAlertPerHour in a rolling hour
+--     set the anomaly alert, which re-arms an hour later;
 --   * a load sets the level silently (no level-up or rank-up toast), with grip.headStart after a v1 -> v2 migration;
 --     grip.welcomeBack only when Double Grip grew by welcomeBackMinGain since the last save (lastSeenAt, §17.3.4);
 --   * a level-up toasts grip.levelUp and grip.padUnlocked, broadcasts grip.rankUp to the lobby players and asks for a
@@ -34,6 +38,7 @@ return function(t: Context)
 	local expect = t.expect
 	local GripService = t.requireServer("Services/GripService")
 	local FakeClock = t.requireFake("FakeClock")
+	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
 	local GripMath = t.requireShared("GripMath")
 	local SqueezeLimit = t.requireShared("SqueezeLimit")
@@ -88,7 +93,13 @@ return function(t: Context)
 				rested = { value = 0, at = unixNow },
 				afk = { value = AFK.burst, at = unixNow },
 			},
+			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's
 		}
+	end
+
+	-- Grip of one own squeeze for this profile (Phase 3: the highest capsule level's power).
+	local function ownGrip(world: any): number
+		return CapsuleMath.squeezeGrip(world.profile.capsules)
 	end
 
 	local function fresh(): World
@@ -448,7 +459,7 @@ return function(t: Context)
 	t.test("a squeeze uses exactly one Double Grip point and trains x mult", function()
 		local world = fresh()
 		world.profile.grip.rested = { value = 5, at = UNIX_START }
-		local base = GripMath.squeezeGrip(1, 1)
+		local base = ownGrip(world)
 		for i = 1, 3 do
 			local gain = GripService.addFromSqueeze(world.player, 1)
 			expect.equal(gain.doubled, REST.enabled)
@@ -459,13 +470,69 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("without a Double Grip point a squeeze trains the base Grip", function()
+	-- Phase 3: a pad no longer changes an own squeeze's Grip (was GripMath.squeezeGrip(trainer, tier): 15 on Jelly).
+	t.test("without a Double Grip point a squeeze trains the base Grip, on a pad too", function()
 		local world = fresh()
 		local gain = GripService.addFromSqueeze(world.player, 2)
 		expect.equal(gain.doubled, false)
-		expect.equal(gain.grip, GripMath.squeezeGrip(1, 2))
+		expect.equal(gain.grip, ownGrip(world))
+		expect.equal(gain.grip, 10) -- a new player's capsule: CP(1)
 		expect.equal(gain.gripTotal, world.profile.grip.total)
 		expect.near(world.profile.grip.rested.value, 0, 1e-6)
+		finish()
+	end)
+
+	t.test(
+		"an own squeeze trains the highest capsule level's power (an empty capsule counts), x mult doubled",
+		function()
+			local world = fresh()
+			local list: { any } = {
+				{ level = 12, squishyId = "kitty_bread" },
+				{ level = 31 },
+				{ level = 4, squishyId = "dragon" },
+			}
+			world.profile.capsules = { slots = 3, list = list }
+			world.profile.grip.trainer = #Config.Grip.Trainer -- the trainer no longer matters either
+			local plain = GripService.addFromSqueeze(world.player, 4)
+			expect.equal(plain.grip, CapsuleMath.power(31))
+			world.profile.grip.rested = { value = 3, at = UNIX_START }
+			local doubled = GripService.addFromSqueeze(world.player, 1)
+			expect.equal(doubled.doubled, REST.enabled)
+			expect.equal(
+				doubled.grip,
+				if REST.enabled then CapsuleMath.power(31) * REST.mult else CapsuleMath.power(31)
+			)
+			-- Without any capsule field the squeeze trains CP(1), the starter capsule's.
+			world.profile.capsules = nil
+			expect.equal(GripService.addFromSqueeze(world.player, 1).grip, 10 * (if REST.enabled then REST.mult else 1))
+			finish()
+		end
+	)
+
+	t.test("a capsule squeeze trains its power: never doubled, no Double Grip point used, quests untouched", function()
+		local world = fresh()
+		world.profile.grip.rested = { value = 5, at = UNIX_START }
+		local before = TableUtil.deepCopy(world.profile)
+		local power = CapsuleMath.power(23) :: number
+		expect.equal(GripService.addFromCapsule(world.player, power), power)
+		expect.equal(world.profile.grip.total, power)
+		expect.deepEqual(world.profile.grip.rested, before.grip.rested)
+		expect.equal(world.profile.coins, before.coins)
+		expect.deepEqual(world.profile.quests, before.quests)
+		expect.deepEqual(world.profile.stats, before.stats)
+		expect.truthy(table.find(world.dirty, "grip") ~= nil)
+		expect.equal(GripService.levelOf(world.player), GripMath.levelFor(power))
+		-- It is not an own squeeze: slow training on a pad still pays after it.
+		GripService.tick(world.player)
+		wait(world, AFK.tickSeconds)
+		GripService.addFromCapsule(world.player, power)
+		expect.equal(GripService.tick(world.player).reason, "paid")
+		-- Not ready, or a session that takes no more changes: nothing.
+		world.status = "offline"
+		expect.equal(GripService.addFromCapsule(world.player, power), 0)
+		world.status = "ready"
+		world.frozen = true
+		expect.equal(GripService.addFromCapsule(world.player, power), 0)
 		finish()
 	end)
 
@@ -506,7 +573,7 @@ return function(t: Context)
 		local cap = Config.Grip.maxGrip
 		world.profile.grip.total = cap - 3
 		GripService.refreshBaseline(world.player, false)
-		expect.truthy(GripMath.squeezeGrip(1, 1) > 3)
+		expect.truthy(ownGrip(world) > 3)
 		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.equal(world.profile.grip.total, cap)
 		expect.equal(gain.gripTotal, cap)
@@ -534,28 +601,27 @@ return function(t: Context)
 		finish()
 	end)
 
-	-- shortcut: today's biggest Grip event (Trainer[8] on the Royal Cushion, 600 doubled) cannot reach the spec 2026-10-12
-	-- alert (43,212 × CP(100) × 2), so this checks the fastest honest hour stays silent; Phase 3's capsule Grip (up to
-	-- CP(100) × 2 an event) brings back a test that crosses it and re-arms an hour later.
-	t.test(
-		"the rolling-hour anomaly counter stays silent for the most Grip an hour of squeezing gives today",
-		function()
-			local world = fresh()
-			world.profile.grip.trainer = #Config.Grip.Trainer -- the biggest gain per squeeze
-			local tier = #Config.Grip.Pads
-			local key = tostring(world.player.UserId)
-			local most = 3600 * 12 + 12 -- the squeezes the server accepts in an hour: the cap and its burst
-			local gained = 0
-			for _ = 1, most do
-				gained += GripService.addFromSqueeze(world.player, tier).grip
-			end
-			expect.truthy(gained <= most * 600)
-			expect.truthy(gained < Config.Grip.gripAlertPerHour)
-			expect.falsy(GripService.debugState().players[key].alerted)
-			expect.equal(world.profile.grip.total, gained)
-			finish()
+	-- Phase 3: Grip events now reach maxGripPerEvent (CP(100) × 2), so the alert can be crossed again (spec 2026-10-12
+	-- §12: gripAlertPerHour = 43,212 of the biggest events). Events at maxGripPerEvent, one more than the alert holds.
+	t.test("Grip above gripAlertPerHour in a rolling hour sets the anomaly alert; it re-arms an hour later", function()
+		local world = fresh()
+		local key = tostring(world.player.UserId)
+		local event = Config.Grip.maxGripPerEvent
+		local events = Config.Grip.gripAlertPerHour // event -- exactly the alert: not above it
+		expect.equal(events * event, Config.Grip.gripAlertPerHour)
+		for _ = 1, events do
+			GripService.addFromCapsule(world.player, event)
 		end
-	)
+		expect.equal(world.profile.grip.total, Config.Grip.gripAlertPerHour)
+		expect.falsy(GripService.debugState().players[key].alerted)
+		GripService.addFromCapsule(world.player, event) -- the hour passes the alert
+		expect.truthy(GripService.debugState().players[key].alerted)
+		-- An hour later the counter only holds the new gain: the alert re-arms.
+		wait(world, 3600 + 60)
+		GripService.addFromCapsule(world.player, 1)
+		expect.falsy(GripService.debugState().players[key].alerted)
+		finish()
+	end)
 
 	-- Levels and toasts ------------------------------------------------------------------------------------------------
 
@@ -839,13 +905,16 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("trainer: a better trainer trains more Grip per squeeze", function()
+	-- Phase 3 (spec 2026-10-12 §3, §10): own squeezes train the capsules' power; a trainer only feeds slow training now
+	-- (trainers go in Phase 6). Was: a better trainer trains more Grip per squeeze.
+	t.test("trainer: a better trainer no longer changes an own squeeze's Grip", function()
 		local cost, gate = TRAINER[2].cost, TRAINER[2].level
 		local world = trainerWorld(1, gate, cost)
 		GripService.upgradeTrainer(world.player, 2, cost)
+		expect.equal(world.profile.grip.trainer, 2)
 		local before = world.profile.grip.total
 		local gain = GripService.addFromSqueeze(world.player, 1)
-		expect.equal(gain.grip, GripMath.squeezeGrip(2, 1, gain.doubled))
+		expect.equal(gain.grip, ownGrip(world) * (if gain.doubled then REST.mult else 1))
 		expect.equal(world.profile.grip.total, before + gain.grip)
 		finish()
 	end)

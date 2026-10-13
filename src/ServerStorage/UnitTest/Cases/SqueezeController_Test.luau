@@ -19,7 +19,8 @@
 --   * normalizeResult; lineText: "+N" above the squishy, "+N Coins" at the first-person toy, "+N Grip" or
 --     "+N Grip (xM)";
 --   * lockedLevel, stationLabel (GripMath with the WorldLayout tier); panelLabel (spec 2026-10-11 §5): the pad's label
---     on an unlocked pad, else the base amount (grip.stationLabelBase, tier 1), never a limit line;
+--     on an unlocked pad, else the base amount (grip.stationLabelBase, tier 1), never a limit line; Phase 3: the Coins
+--     are the squishy's in a Lv 1 capsule on every pad (CapsuleMath; pads add no Coins);
 --   * hudOffsetOf (spec 2026-10-11 §3.8): the overlay toy's viewport point as an SD_Hud offset, for the lines that
 --     float next to the first-person toy.
 -- Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2; the squeeze panel and its button are gone):
@@ -87,6 +88,7 @@ return function(t: Context)
 	-- Part 5: sending, hold-to-squeeze, results, the station label (§6.3, §17.3.2, §17.7, §17.10) -------------------
 
 	local Strings = t.requireShared("Strings")
+	local CapsuleMath = t.requireShared("CapsuleMath")
 	local GripMath = t.requireShared("GripMath")
 	local Format = t.requireShared("Util/Format")
 	local HOLD = Config.Grip.Hold
@@ -471,18 +473,18 @@ return function(t: Context)
 				for _, trainer in { 1, 3, 8 } do
 					local expected = s("grip.stationLabel", {
 						pad = s("grip.pad." .. pads[tier].key),
-						coins = Format.coins(GripMath.squeezeCoins(Catalog.getSqueezeCoins(id), tier, true)),
+						coins = Format.coins(CapsuleMath.capsuleCoins(id, 1)),
 						grip = Format.coins(GripMath.squeezeGrip(trainer, tier)),
 					})
 					expect.equal(SqueezeController.stationLabel(tier, trainer, id), expected)
 				end
 			end
 		end
-		-- §17.3.1 table: Rubber Ball (trainer 3) on the Jelly Pad = 30 Grip; a Common on the Jelly Pad = 1 + 1 Coins
-		-- (spec 2026-10-11 §5).
+		-- §17.3.1 table: Rubber Ball (trainer 3) on the Jelly Pad = 30 Grip; a Common's Lv 1 capsule pays 10 Coins on
+		-- every pad (Phase 3; was 1 + the pad's 1).
 		expect.equal(
 			SqueezeController.stationLabel(2, 3, "kitty_bread"),
-			s("grip.stationLabel", { pad = s("grip.pad.jelly"), coins = "2", grip = "30" })
+			s("grip.stationLabel", { pad = s("grip.pad.jelly"), coins = "10", grip = "30" })
 		)
 		expect.equal(SqueezeController.stationLabel(#pads + 1, 1, "kitty_bread"), "")
 	end)
@@ -494,7 +496,7 @@ return function(t: Context)
 		for _, id in { "kitty_bread", "dragon" } do
 			for _, trainer in { 1, 3, 8 } do
 				local base = s("grip.stationLabelBase", {
-					coins = Format.coins(GripMath.squeezeCoins(Catalog.getSqueezeCoins(id), 1, true)),
+					coins = Format.coins(CapsuleMath.capsuleCoins(id, 1)),
 					grip = Format.coins(GripMath.squeezeGrip(trainer, 1)),
 				})
 				expect.equal(SqueezeController.panelLabel(nil, 50, trainer, id), base)
@@ -511,10 +513,11 @@ return function(t: Context)
 				expect.equal(SqueezeController.panelLabel(#pads + 1, 50, trainer, id), base)
 			end
 		end
-		-- §17.3.1 table: a Common off a pad = 1 Coin and the Foam Mats Grip (10 for the first trainer).
+		-- A Common off a pad = its Lv 1 capsule's 10 Coins (Phase 3; was 1) and the Foam Mats Grip (10 for the first
+		-- trainer, §17.3.1 table).
 		expect.equal(
 			SqueezeController.panelLabel(nil, 1, 1, "kitty_bread"),
-			s("grip.stationLabelBase", { coins = "1", grip = "10" })
+			s("grip.stationLabelBase", { coins = "10", grip = "10" })
 		)
 	end)
 

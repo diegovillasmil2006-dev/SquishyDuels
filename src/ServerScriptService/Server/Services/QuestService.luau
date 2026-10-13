@@ -35,6 +35,8 @@
 --   (Reading of §3.4's "ok semantics": nothing changes and the code says why; the client treats the quest as
 --   claimed); not done -> quest.notReady; else claimed = true and
 --   grantCoins(reward, "quest") (a daily quest) or "starter" (a starter task), markDirty("quests") and a "soon" save.
+--   Every reward is counted in squeezes (spec 2026-10-12 §9) and pays reward × the squeeze value of the moment it is
+--   granted (EconomyService.rewardCoins), the rollover's auto-collected ones included.
 -- * QuestSwap(questId) (swap): one free swap per day (Economy.Quests.freeSwapsPerDay) of an unfinished daily quest
 --   through QuestLogic.swap (seeded with the swap number): quest.swapUsed once used, net.invalid for anything else
 --   (no such quest, done, a starter task); a swap is saved "soon" (Reading: DESIGN names no save; the seed makes a
@@ -253,8 +255,9 @@ local function equippedOf(profile: any): string?
 end
 
 -- Marks a daily entry claimed (in the live profile) and pays its reward once. The claim is written first, then the
--- Coins (nothing yields in between): a quest can never pay twice. Returns the Coins added, or nil when the entry was
--- already claimed or the session takes no changes.
+-- Coins (nothing yields in between): a quest can never pay twice. The reward is counted in squeezes and paid at the
+-- squeeze value of that moment (EconomyService.rewardCoins, spec 2026-10-12 §9). Returns the Coins added, or nil when
+-- the entry was already claimed or the session takes no changes.
 local function claimDaily(player: any, questId: string): number?
 	local reward = 0
 	local ok, marked = deps.data.mutate(player, function(profile: any): boolean
@@ -272,7 +275,8 @@ local function claimDaily(player: any, questId: string): number?
 	end
 	local added = 0
 	if reward > 0 then
-		local coins, failure = deps.grantCoins(player, reward, REASON_QUEST)
+		local amount = EconomyService.rewardCoins(deps.data.getProfile(player), reward)
+		local coins, failure = deps.grantCoins(player, amount, REASON_QUEST)
 		added = coins
 		if failure ~= nil then
 			log:error(`user {deps.userIdOf(player)}: quest {questId} was claimed but its Coins failed ({failure})`)
@@ -301,7 +305,8 @@ local function claimStarter(player: any, id: string): number?
 	local reward = whole(def.variants[1].reward)
 	local added = 0
 	if reward > 0 then
-		local coins, failure = deps.grantCoins(player, reward, REASON_STARTER)
+		local amount = EconomyService.rewardCoins(deps.data.getProfile(player), reward)
+		local coins, failure = deps.grantCoins(player, amount, REASON_STARTER)
 		added = coins
 		if failure ~= nil then
 			log:error(`user {deps.userIdOf(player)}: starter task {id} was claimed but its Coins failed ({failure})`)

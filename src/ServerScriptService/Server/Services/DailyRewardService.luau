@@ -11,7 +11,8 @@
 --   4. DailyLogic.nextStreak -> the streak day and whether a missed day restarted it (Notify daily.streakReset, and
 --      streakReset = true in the reply);
 --   5. in one step with nothing yielding: the daily record {lastClaimDay = today, streakDay, totalClaims + 1} through
---      DataService.mutate, EconomyService.grantCoins(coinsByDay[streak], "daily") and, on the free box day,
+--      DataService.mutate, EconomyService.grantCoins(EconomyService.rewardCoins(profile, coinsByDay[streak]), "daily")
+--      (the day's reward counted in squeezes × the squeeze value now, spec 2026-10-12 §9) and, on the free box day,
 --      BoxService.grantFree(p, Economy.Daily.freeBoxId, "daily:<today>") (the Treat Box: no cost, no policy check,
 --      appends boxLog seen = false; its key makes it impossible to repeat, §3.4);
 --   6. markDirty("daily"), then ONE awaited DataService.saveNowAsync (it carries the Coins and the Treat Box too);
@@ -64,7 +65,7 @@ export type Status = {
 	canClaim: boolean,
 	nextStreakDay: number, -- the day the next claim pays (today's day while claimed today)
 	willReset: boolean, -- the next claim restarts the streak at Day 1
-	coins: number, -- the Coins of nextStreakDay
+	coins: number, -- the Coins of nextStreakDay (its squeezes × the squeeze value now)
 	freeBox: boolean, -- nextStreakDay is the free Treat Box day
 	secondsUntilNext: number, -- until the next 00:00 UTC
 }
@@ -169,7 +170,8 @@ function DailyRewardService.status(player: any): Status
 	local now = deps.unixNow()
 	local today = DailyLogic.dayIndex(now)
 	local ready = deps.data.status(player) == STATUS_READY
-	local daily = dailyOf(deps.data.getProfile(player), today)
+	local profile = deps.data.getProfile(player)
+	local daily = dailyOf(profile, today)
 	local canClaim = ready and (DailyLogic.canClaim(daily, today))
 	local streak, reset = DailyLogic.nextStreak(daily, today)
 	local reward = DailyLogic.reward(streak)
@@ -182,7 +184,7 @@ function DailyRewardService.status(player: any): Status
 		canClaim = canClaim,
 		nextStreakDay = streak,
 		willReset = reset,
-		coins = reward.coins,
+		coins = EconomyService.rewardCoins(profile, reward.coins),
 		freeBox = reward.freeBox,
 		secondsUntilNext = DailyLogic.secondsUntilNext(now),
 	}
@@ -232,7 +234,8 @@ function DailyRewardService.claim(player: any): any
 	end
 	local coins = 0
 	if reward.coins > 0 then
-		local added, failure = deps.grantCoins(player, reward.coins, COIN_REASON)
+		local amount = EconomyService.rewardCoins(data.getProfile(player), reward.coins)
+		local added, failure = deps.grantCoins(player, amount, COIN_REASON)
 		coins = added
 		if failure ~= nil then
 			log:error(`user {player.UserId}: daily Coins for day {today} not granted ({failure})`)

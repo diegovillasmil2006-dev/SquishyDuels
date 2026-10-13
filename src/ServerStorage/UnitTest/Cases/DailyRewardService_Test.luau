@@ -7,7 +7,8 @@
 --     daily.alreadyClaimed and changes nothing;
 --   * the streak continues the day after a claim (after day 7 back to Day 1), restarts at Day 1 after a missed day
 --     (daily.streakReset toast, streakReset = true), and a first claim starts at Day 1 without the reset sentence;
---   * Coins by day 100..500 with reason "daily"; day 7 also grants the free Treat Box through
+--   * Coins by day 100..500 squeezes × the squeeze value at the claim (Phase 3, spec 2026-10-12 §9) with reason
+--     "daily"; day 7 also grants the free Treat Box through
 --     BoxService.grantFree(p, "treat", "daily:<day>") in the same flow; one awaited "now" save; the reply is
 --     {streakDay, coins, treat, streakReset, treatRequestId} and a failed save shows as treat.savePending;
 --   * not ready -> data.notReady; a pending failed save -> box.saving; neither changes anything;
@@ -23,6 +24,7 @@ type Context = {
 
 local DAY = 20000
 local DAY_SECONDS = 86400
+local VALUE = 4 * 68 -- the squeeze value of the test profile: Butter (×4) in a Lv 11 capsule (CP 68)
 
 return function(t: Context)
 	local expect = t.expect
@@ -59,6 +61,7 @@ return function(t: Context)
 				coins = 0,
 				daily = { lastClaimDay = lastClaimDay, streakDay = streakDay, totalClaims = 4 },
 				boxLog = {},
+				capsules = { slots = 1, list = { { level = 11, squishyId = "butter" } } },
 			},
 			dirty = {},
 			notices = {},
@@ -134,13 +137,21 @@ return function(t: Context)
 		local w = fresh(-1, 0)
 		local reply = DailyRewardService.claim(w.player)
 		expect.equal(reply.ok, true)
-		expect.deepEqual(reply.data, { streakDay = 1, coins = DAILY.coinsByDay[1], streakReset = false })
+		expect.deepEqual(reply.data, { streakDay = 1, coins = DAILY.coinsByDay[1] * VALUE, streakReset = false })
 		expect.deepEqual(w.profile.daily, { lastClaimDay = DAY, streakDay = 1, totalClaims = 5 })
-		expect.deepEqual(w.grants, { { amount = DAILY.coinsByDay[1], reason = "daily" } })
+		expect.deepEqual(w.grants, { { amount = DAILY.coinsByDay[1] * VALUE, reason = "daily" } })
 		expect.deepEqual(w.dirty, { "daily" })
 		expect.equal(w.nowSaves, 1)
 		expect.deepEqual(w.notices, {})
 		expect.equal(#w.boxes, 0)
+		finish()
+	end)
+
+	t.test("the day's squeezes pay the squeeze value of the claim's moment (spec 2026-10-12 §9)", function()
+		local w = fresh(DAY - 1, 1)
+		w.profile.capsules.list[1].level = 21 -- Butter Lv 21: 4 × 461
+		local reply = DailyRewardService.claim(w.player)
+		expect.equal(reply.data.coins, DAILY.coinsByDay[2] * 4 * 461)
 		finish()
 	end)
 
@@ -165,9 +176,9 @@ return function(t: Context)
 		local w = fresh(DAY - 1, 3)
 		local reply = DailyRewardService.claim(w.player)
 		expect.equal(reply.data.streakDay, 4)
-		expect.equal(reply.data.coins, DAILY.coinsByDay[4])
+		expect.equal(reply.data.coins, DAILY.coinsByDay[4] * VALUE)
 		expect.equal(reply.data.streakReset, false)
-		expect.equal(w.profile.coins, DAILY.coinsByDay[4])
+		expect.equal(w.profile.coins, DAILY.coinsByDay[4] * VALUE)
 		finish()
 	end)
 
@@ -176,18 +187,18 @@ return function(t: Context)
 		local reply = DailyRewardService.claim(w.player)
 		expect.equal(reply.data.streakDay, 1)
 		expect.equal(reply.data.streakReset, true)
-		expect.equal(reply.data.coins, DAILY.coinsByDay[1])
+		expect.equal(reply.data.coins, DAILY.coinsByDay[1] * VALUE)
 		expect.deepEqual(w.notices, { "daily.streakReset" })
 		finish()
 	end)
 
-	t.test("day 7 pays 500 and opens the free Treat Box daily:<day> in the same claim", function()
+	t.test("day 7 pays 500 squeezes' worth and opens the free Treat Box daily:<day> in the same claim", function()
 		expect.equal(DAILY.freeBoxDay, 7)
 		local w = fresh(DAY - 1, 6)
 		local reply = DailyRewardService.claim(w.player)
 		local key = "daily:" .. tostring(DAY)
 		expect.equal(reply.data.streakDay, 7)
-		expect.equal(reply.data.coins, DAILY.coinsByDay[7])
+		expect.equal(reply.data.coins, DAILY.coinsByDay[7] * VALUE)
 		expect.equal(reply.data.treatRequestId, key)
 		expect.deepEqual(
 			reply.data.treat,
@@ -226,7 +237,7 @@ return function(t: Context)
 		expect.equal(reply.ok, true)
 		expect.equal(reply.data.treat, nil)
 		expect.equal(reply.data.treatRequestId, nil)
-		expect.equal(w.profile.coins, DAILY.coinsByDay[7])
+		expect.equal(w.profile.coins, DAILY.coinsByDay[7] * VALUE)
 		finish()
 	end)
 
@@ -256,7 +267,7 @@ return function(t: Context)
 		expect.equal(s.today, DAY)
 		expect.equal(s.nextStreakDay, 7)
 		expect.equal(s.freeBox, true)
-		expect.equal(s.coins, DAILY.coinsByDay[7])
+		expect.equal(s.coins, DAILY.coinsByDay[7] * VALUE)
 		expect.equal(s.willReset, false)
 		expect.equal(s.secondsUntilNext, 14 * 3600)
 		expect.truthy(DailyRewardService.debugSetState(w.player, { lastClaimDay = DAY - 3, streakDay = 4 }))

@@ -5,8 +5,13 @@
 -- Studio DebugHooks through the debug* functions below). There is no Grip remote: Grip comes only from
 --   * addFromSqueeze(p, tier) - step 8a of a squeeze SqueezeService accepted, after the earnings limit decided the
 --     Coins, whether or not it paid. One Double Grip point is used when there is one (SqueezeLimit.spend on
---     grip.rested with Config.Grip.Rested) and the Grip is GripMath.squeezeGrip(trainer, tier) × Rested.mult when
---     doubled. The squeeze time is recorded so slow training never stacks with squeezing;
+--     grip.rested with Config.Grip.Rested) and the Grip is CapsuleMath.squeezeGrip(profile.capsules) (the power of the
+--     highest capsule level, spec 2026-10-12 §3, §10; Phase 3: the trainer and the pad no longer change it; an unknown
+--     tier still pays nothing) × Rested.mult when doubled. The squeeze time is recorded so slow training never stacks
+--     with squeezing;
+--   * addFromCapsule(p, amount) - one capsule squeeze (CapsuleService, Phase 3): `amount` Grip (the capsule's power),
+--     never doubled and never using a Double Grip point (lobby spec 2026-10-11 §5.4), with the same clamps, anomaly
+--     counter, toasts and level changes as a squeeze;
 --   * the slow-training tick (§17.3.6): one server check per player every Afk.tickSeconds (players spread over the
 --     window by userId; nothing the client sends starts or speeds it). A tick pays GripMath.afkGrip(trainer, tier)
 --     only when, in this order: Grip and slow training are enabled and the server is not closing; the profile is
@@ -58,6 +63,7 @@ local RunService = game:GetService("RunService")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local GripMath = require(Shared.GripMath)
@@ -681,6 +687,7 @@ function GripService.addFromSqueeze(player: any, tier: number): SqueezeGain
 	if session.level == nil then
 		setLevel(session, GripMath.levelFor(grip.total), true) -- the Loaded baseline was missed: set it silently
 	end
+	local power = CapsuleMath.squeezeGrip(deps.profileOf(player).capsules)
 	-- Double Grip and the gain are one write through DataService.mutate.
 	local written = writeGrip(player, function(live: GripState): Written
 		local rested = Config.Grip.Rested
@@ -690,7 +697,7 @@ function GripService.addFromSqueeze(player: any, tier: number): SqueezeGain
 			live.rested = state
 			doubled = paid
 		end
-		local amount = clampEvent(session, GripMath.squeezeGrip(live.trainer, tier, doubled), "squeeze")
+		local amount = clampEvent(session, if doubled then math.floor(power * rested.mult) else power, "squeeze")
 		local before = addToTotal(session, live, amount)
 		return { gain = live.total - before, before = before, after = live.total, doubled = doubled }
 	end)
@@ -700,6 +707,29 @@ function GripService.addFromSqueeze(player: any, tier: number): SqueezeGain
 	deps.markDirty(player, FIELD)
 	afterGain(session, written.before, written.after, written.gain)
 	return { grip = written.gain, gripTotal = written.after, doubled = written.doubled }
+end
+
+-- One capsule squeeze (CapsuleService, Phase 3): `amount` Grip, never doubled (lobby spec 2026-10-11 §5.4) and not an
+-- own squeeze (slow training's squeeze check ignores it). Returns what the total really gained (0 unless ready).
+function GripService.addFromCapsule(player: any, amount: number): number
+	local session = ensureSession(player)
+	local grip = readyGrip(player)
+	if grip == nil or not Config.Grip.enabled then
+		return 0
+	end
+	if session.level == nil then
+		setLevel(session, GripMath.levelFor(grip.total), true) -- the Loaded baseline was missed: set it silently
+	end
+	local written = writeGrip(player, function(live: GripState): Written
+		local before = addToTotal(session, live, clampEvent(session, amount, "capsule"))
+		return { gain = live.total - before, before = before, after = live.total, doubled = false }
+	end)
+	if written == nil then
+		return 0 -- the session stopped taking changes
+	end
+	deps.markDirty(player, FIELD)
+	afterGain(session, written.before, written.after, written.gain)
+	return written.gain
 end
 
 -- The TrainerUpgrade RF (§17.5; see the header for the order of the checks). `targetLevel` = the trainer index to buy,

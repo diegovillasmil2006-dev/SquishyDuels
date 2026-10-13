@@ -8,7 +8,8 @@
 -- G7b (coin bundles stay off while Grip is on and allowBundlesWithCapsules is false) from Part 7.
 -- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Lv 1-100 and 9 Qa of Grip, five ranks above Lv 50,
 -- the Capsule block (tiers, intervals, capsule power, prices, Grip gates, slots; validate checks it) and G3 as a squeeze
--- count. Pads, trainers, slow training and the gates stay on until Phase 6.
+-- count. Pads, trainers, slow training and the gates stay on until Phase 6; since Phase 3 they no longer change what
+-- an own squeeze pays (the squeeze value and the highest capsule level's power, CapsuleMath).
 -- Texts live in Strings: pad names `grip.pad.<key>`, ranks `grip.rank.<key>`, trainers `grip.trainer.<key>`.
 -- Math: shared GripMath (levels, ranks, pads, Grip and Coins per squeeze, slow-training ticks, minutes, next goal),
 -- CapsuleMath (the Capsule block) and SqueezeLimit (the Double Grip and slow-training timers).
@@ -16,7 +17,7 @@
 export type Pad = {
 	key: string, -- Strings grip.pad.<key>; giant pads also use it as WorldLayout.GiantPads key / PadKey
 	level: number, -- Grip Level that unlocks it
-	coinBonus: number, -- added to a paid squeeze's Coins
+	coinBonus: number, -- shown in the pad texts only since Phase 3 (was added to a paid squeeze's Coins)
 	gripPercent: number, -- Grip per squeeze, % of the trainer value
 }
 
@@ -189,12 +190,17 @@ local Grip = {
 		{ key = "diamond", gripPerSqueeze = 100, cost = 150000, level = 36 },
 	} :: { Trainer },
 	-- Capsules (spec 2026-10-12 §3-§7, §10; lobby spec 2026-10-11 §5-§6): 10 tiers × 10 levels (Lv1-100), read by
-	-- shared CapsuleMath. Phase 1 holds the numbers only: nothing pays from them until CapsuleService (Phase 3).
+	-- shared CapsuleMath; CapsuleService pays from them (Phase 3).
 	-- Validator: the tiers fit maxLevel, intervals fall, Grip gates rise (tier 1 needs none), growth > 1, slot prices
-	-- rise from a free slot 1, and the biggest price (Lv 99 -> 100) fits Config.Economy.maxCoins.
+	-- rise from a free slot 1, the biggest price (Lv 99 -> 100) fits Config.Economy.maxCoins, tickSeconds > 0 and
+	-- tapPush in (0, 1].
 	Capsule = {
 		maxLevel = 100,
 		levelsPerTier = 10,
+		-- Lobby spec §6: CapsuleService moves every capsule forward every tickSeconds; each paid own squeeze while the
+		-- player stands in their own base pushes every capsule tapPush of a squeeze forward.
+		tickSeconds = 0.25,
+		tapPush = 0.15,
 		-- Index = tier (spec §4): the look, the seconds between two squeezes and the Grip Level the tier needs.
 		Tiers = {
 			{ key = "foam", seconds = 4.0, gripLevel = 0 },
@@ -246,11 +252,12 @@ local Grip = {
 	-- pass this in a rolling hour (was 50,000 squeeze Coins). Validator: a whole number in 1..maxSqueezesPerHour.
 	squeezeAlertPerHour = 30_000,
 	-- CP(100) × Rested.mult = 920,525,589 × 2 (spec 2026-10-12 §12; was 600); it also covers today's biggest trainer
-	-- squeeze (Trainer[8] × 300% × Rested.mult = 600) and a slow-training tick (375) (G5).
+	-- squeeze (Trainer[8] × 300% × Rested.mult = 600) and a slow-training tick (375) (G5). A capsule squeeze gives CP.
 	maxGripPerEvent = 1_841_051_178,
 	-- (43200 + 12) × maxGripPerEvent: rolling-hour anomaly log, at the most squeezes the server can accept in an hour (the
 	-- anti-autoclicker cap, 12 per second, plus its burst) at the biggest Grip event, so honest fast clicking never
-	-- trips it (spec 2026-10-12 §12).
+	-- trips it (spec 2026-10-12 §12). Phase 3 reading: the honest maximum with 4 Lv 100 capsules on top (own squeezes
+	-- mostly undoubled, Double Grip's points, every tap pushing the capsules) is about 7.5e13 an hour, still under it.
 	gripAlertPerHour = 79_555_503_503_736,
 	goalUpgradeMaxCostWhileCollecting = 5000, -- next-goal rule (§17.5)
 	-- G-E / G7b (lobby spec 2026-10-11 §11; was allowBundlesWithTrainer): coin bundles stay off while capsules turn Coins

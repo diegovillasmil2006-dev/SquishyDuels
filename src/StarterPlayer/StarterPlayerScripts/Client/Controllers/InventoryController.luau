@@ -94,6 +94,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
@@ -580,7 +581,8 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 	d.ownership:setAccent(if entry.equipped then "mint" elseif entry.owned then "frosting" else "lilac")
 	d.ownership.root.Visible = true
 	d.lock.Visible = not entry.owned
-	d.coins.Text = Strings.format(Strings.inspect.coinsPerSqueeze, { n = Catalog.getSqueezeCoins(entry.id) })
+	-- shortcut: Coins per squeeze in a Lv 1 capsule (Phase 3); Phase 5 shows the capsule power instead.
+	d.coins.Text = Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(entry.id, 1) })
 	for _, bar in InventoryFormat.statBars(def) do
 		local view = d.stats[bar.stat]
 		if view then

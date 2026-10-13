@@ -18,8 +18,9 @@
 --   pad(tier, cfg?) / trainer(index, cfg?)    -> the Config.Grip.Pads / Trainer entry, or nil
 --   bestTier(level, cfg?)                     -> the highest pad tier the level opens (1..#Pads)
 --   canUseTier(level, tier, cfg?)             -> boolean: tier is a pad and its level <= level (fail closed)
---   squeezeGrip(trainer, tier, doubled?, cfg?) -> Grip of one accepted squeeze (§17.3.1)
---   squeezeCoins(baseCoins, tier, paid, cfg?) -> Coins of one accepted squeeze (§17.3.1)
+--   squeezeGrip(trainer, tier, doubled?, cfg?) -> the trainer Grip of one squeeze at a pad (§17.3.1): slow training's
+--                                                base and the trainer card; since Phase 3 own squeezes pay
+--                                                CapsuleMath.squeezeGrip (and the squeeze value in Coins)
 --   afkGrip(trainer, tier, cfg?)              -> Grip of one paid slow-training tick (§17.3.6)
 --   afkMinutes(bankValue, cfg?)               -> "Slow training at full speed: about {minutes} min left" (§17.7)
 --   restedMinutes(restedValue, cfg?)          -> "Double Grip: about {minutes} min" (§17.3.4)
@@ -277,17 +278,6 @@ function GripMath.squeezeGrip(trainer: number, tier: number, doubled: boolean?, 
 		return math.floor(base * rested.mult)
 	end
 	return base
-end
-
--- paid: baseCoins (Catalog.getSqueezeCoins of the server's equipped squishy) + the pad's coinBonus; not paid:
--- Economy.SqueezeLimit.emptyCoins. An unknown tier adds no bonus.
-function GripMath.squeezeCoins(baseCoins: number, tier: number, paid: boolean, cfg: GripConfig?): number
-	local c = sections(cfg)
-	if not paid then
-		return whole(c.Economy.SqueezeLimit.emptyCoins)
-	end
-	local pad = GripMath.pad(tier, c)
-	return whole(baseCoins) + (if pad then pad.coinBonus else 0)
 end
 
 -- floor(squeezeGrip(trainer, tier) × percentPerTick / 100): never doubled.

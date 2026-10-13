@@ -5,9 +5,9 @@
 -- 6 of the squishy overhaul (spec 2026-10-09 §3.3), with their names, rarities, throw stats, prices, trails,
 -- ultimates, elimination effects and presentation data; each new squishy throws exactly like its same-rarity sibling;
 -- no accent trips the splat red guard; every nameKey exists in Strings and every blueprintId in
--- Art/SquishyBlueprints; throw stats sit inside Config.Combat.Bands; squeeze Coins follow
--- Config.Economy.CoinsByRarity and squishy power Config.Economy.SquishyPower unless overridden; shop prices are the
--- spec 2026-10-12 §6 ladder; the API is get, list, isValidId, starterId, byRarity, getSqueezeCoins and getPower; entries
+-- Art/SquishyBlueprints; throw stats sit inside Config.Combat.Bands; squishy power follows
+-- Config.Economy.SquishyPower unless overridden (Phase 3: the per-squishy squeeze Coins are gone); shop prices are the
+-- spec 2026-10-12 §6 ladder; the API is get, list, isValidId, starterId, byRarity and getPower; entries
 -- cannot be changed. Rarity has the canonical ORDER, name keys, pips and hasTrail; RarityStyle and Palette carry the
 -- §4.3 and §7.2 values, and every rarity label reaches 4.5:1 contrast on its colour.
 
@@ -24,7 +24,6 @@ type Expected = {
 	id: string,
 	name: string,
 	rarity: string,
-	coins: number,
 	speed: number,
 	gravity: number,
 	radius: number,
@@ -48,13 +47,12 @@ type Presentation = {
 	fx: string?,
 }
 
--- DESIGN §4.2 main table, in its order. Coins = Coins per squeeze (1 / 1 / 2 / 2 by rarity since spec 2026-10-11 §5).
+-- DESIGN §4.2 main table, in its order.
 local EXPECTED: { Expected } = {
 	{
 		id = "kitty_bread",
 		name = "Kitty Bread",
 		rarity = "Common",
-		coins = 1,
 		speed = 95,
 		gravity = 35,
 		radius = 1.0,
@@ -66,7 +64,6 @@ local EXPECTED: { Expected } = {
 		id = "toast",
 		name = "Toast",
 		rarity = "Common",
-		coins = 1,
 		speed = 105,
 		gravity = 25,
 		radius = 0.8,
@@ -79,7 +76,6 @@ local EXPECTED: { Expected } = {
 		id = "banana",
 		name = "Banana",
 		rarity = "Common",
-		coins = 1,
 		speed = 88,
 		gravity = 50,
 		radius = 1.2,
@@ -92,7 +88,6 @@ local EXPECTED: { Expected } = {
 		id = "butter",
 		name = "Butter",
 		rarity = "Uncommon",
-		coins = 1,
 		speed = 95,
 		gravity = 30,
 		radius = 0.9,
@@ -106,7 +101,6 @@ local EXPECTED: { Expected } = {
 		id = "chocolate",
 		name = "Chocolate",
 		rarity = "Uncommon",
-		coins = 1,
 		speed = 90,
 		gravity = 40,
 		radius = 1.4,
@@ -120,7 +114,6 @@ local EXPECTED: { Expected } = {
 		id = "bird",
 		name = "Birdie",
 		rarity = "Epic",
-		coins = 2,
 		speed = 110,
 		gravity = 20,
 		radius = 0.9,
@@ -135,7 +128,6 @@ local EXPECTED: { Expected } = {
 		id = "donut",
 		name = "Donut",
 		rarity = "Epic",
-		coins = 2,
 		speed = 92,
 		gravity = 38,
 		radius = 1.3,
@@ -150,7 +142,6 @@ local EXPECTED: { Expected } = {
 		id = "dragon",
 		name = "Dragon",
 		rarity = "Exclusive",
-		coins = 2,
 		speed = 92,
 		gravity = 35,
 		radius = 1.0,
@@ -166,7 +157,6 @@ local EXPECTED: { Expected } = {
 		id = "boba_bear",
 		name = "Boba Bear",
 		rarity = "Common",
-		coins = 1,
 		speed = 95,
 		gravity = 35,
 		radius = 1.0,
@@ -179,7 +169,6 @@ local EXPECTED: { Expected } = {
 		id = "pancake_pup",
 		name = "Pancake Pup",
 		rarity = "Common",
-		coins = 1,
 		speed = 105,
 		gravity = 25,
 		radius = 0.8,
@@ -192,7 +181,6 @@ local EXPECTED: { Expected } = {
 		id = "mochi_fox",
 		name = "Mochi Fox",
 		rarity = "Uncommon",
-		coins = 1,
 		speed = 95,
 		gravity = 30,
 		radius = 0.9,
@@ -206,7 +194,6 @@ local EXPECTED: { Expected } = {
 		id = "strawberry_frog",
 		name = "Strawberry Frog",
 		rarity = "Uncommon",
-		coins = 1,
 		speed = 90,
 		gravity = 40,
 		radius = 1.4,
@@ -220,7 +207,6 @@ local EXPECTED: { Expected } = {
 		id = "cloud_bunny",
 		name = "Cloud Bunny",
 		rarity = "Epic",
-		coins = 2,
 		speed = 110,
 		gravity = 20,
 		radius = 0.9,
@@ -235,7 +221,6 @@ local EXPECTED: { Expected } = {
 		id = "cupcake_axolotl",
 		name = "Cupcake Axolotl",
 		rarity = "Epic",
-		coins = 2,
 		speed = 92,
 		gravity = 38,
 		radius = 1.3,
@@ -771,19 +756,6 @@ return function(t: Context)
 		end
 		expect.equal(#Catalog.byRarity("Legendary"), 0)
 		expect.equal(#Catalog.byRarity(nil), 0)
-	end)
-
-	t.test("getSqueezeCoins follows Config.Economy.CoinsByRarity unless overridden", function()
-		for _, row in EXPECTED do
-			local def = Catalog.get(row.id)
-			expect.equal(Catalog.getSqueezeCoins(row.id), row.coins)
-			local wanted = if def.squeezeCoins ~= nil
-				then def.squeezeCoins
-				else Config.Economy.CoinsByRarity[def.rarity]
-			expect.equal(Catalog.getSqueezeCoins(row.id), wanted)
-		end
-		expect.equal(Catalog.getSqueezeCoins("unknown"), 0)
-		expect.equal(Catalog.getSqueezeCoins(nil), 0)
 	end)
 
 	t.test("getPower follows Config.Economy.SquishyPower (1 / 4 / 16 / 64) unless overridden", function()

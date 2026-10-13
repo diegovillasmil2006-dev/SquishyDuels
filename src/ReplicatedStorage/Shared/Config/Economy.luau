@@ -4,7 +4,8 @@
 -- Catalog.luau, Robux coin bundles in Config.Monetization, quest templates and starter tasks in QuestDefs.luau.
 -- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Coins up to 9 Qa, squishy power by rarity (the
 -- squeeze value, shared CapsuleMath), duel rewards counted in squeezes, refunds as a share of the box price and the
--- "capsule" Coin reason. Rewards still pay the Coins written here until Phase 3 multiplies them by the squeeze value.
+-- "capsule" Coin reason. Since Phase 3 every reward counted in squeezes pays CapsuleMath.rewardCoins(squeezes, the
+-- player's squeeze value) Coins at the moment it is granted, and an own squeeze pays the squeeze value.
 
 local Economy = {
 	startingCoins = 0,
@@ -14,7 +15,7 @@ local Economy = {
 
 	-- The closed list of reasons for EconomyService.grantCoins / trySpend (§6.1). "trainer" = Grip trainer upgrades
 	-- (§17.5, Part 7; validator G6 checks it is listed). "capsule" = capsule upgrades, slots and squeezes (spec
-	-- 2026-10-12, lobby spec 2026-10-11 §6; used from Phase 3). "debug" is Studio only.
+	-- 2026-10-12, lobby spec 2026-10-11 §6; CapsuleService). "debug" is Studio only.
 	CoinReasons = {
 		"squeeze",
 		"duel_win",
@@ -32,18 +33,9 @@ local Economy = {
 		"debug",
 	},
 
-	-- Coins per paid squeeze by the equipped squishy's rarity; Catalog `squeezeCoins` may override (§6.2).
-	-- Spec 2026-10-11 §5 (the user: "Less per squeeze, no limit"): every squeeze pays, so less each time (was 5 / 6 / 8
-	-- / 10 under the hourly limit). Replaced by SquishyPower and the squeeze value in Phase 3 (spec 2026-10-12 §3).
-	CoinsByRarity = {
-		Common = 1,
-		Uncommon = 1,
-		Epic = 2,
-		Exclusive = 2,
-	} :: { [string]: number },
-
 	-- Squishy power by rarity (spec 2026-10-12 §3, §6): a capsule squeeze pays squishy power × capsule power Coins
-	-- (CapsuleMath). A Catalog def's `power` may override it for one squishy.
+	-- (CapsuleMath), and an own squeeze pays the best capsule's (the squeeze value; it replaced CoinsByRarity in
+	-- Phase 3). A Catalog def's `power` may override it for one squishy.
 	SquishyPower = {
 		Common = 1,
 		Uncommon = 4,
@@ -54,7 +46,7 @@ local Economy = {
 	-- Squeeze earnings limit (§6.3): a rate limit, not a currency; never sold, never changed by passes or products.
 	-- Each paid squeeze uses 1 point; points refill at perHour (even offline) up to burst. At 0 a squeeze pays
 	-- emptyCoins (it still trains Grip, §17.3.1). New players start full (ProfileV1.squeezeLimit.value = burst).
-	-- A paid squeeze pays Catalog.getSqueezeCoins + the pad's Config.Grip.Pads[tier].coinBonus (GripMath.squeezeCoins);
+	-- A paid squeeze pays the squeeze value (CapsuleMath.squeezeValue, Phase 3; pads add nothing since then);
 	-- validator G3 keeps the paid squeezes an hour under Config.Grip.maxSqueezesPerHour for every limit setting.
 	-- Math: shared SqueezeLimit (current / spend / full).
 	-- Off since spec 2026-10-11 §5 (the user: "Less per squeeze, no limit"): every squeeze pays. The module and the
@@ -67,8 +59,8 @@ local Economy = {
 	},
 
 	-- Duel rewards (§6.7), computed by Logic/DuelRewards and granted once on the transition into Result.
-	-- Spec 2026-10-12 §9: counted in squeezes, 3× today's 200 / 60 / 100; Phase 3 turns them into Coins with the
-	-- player's squeeze value. Until then they are paid as written, in Coins.
+	-- Spec 2026-10-12 §9: counted in squeezes, 3× the old 200 / 60 / 100; EconomyService.grantDuelResult turns them
+	-- into Coins with the player's squeeze value when it pays.
 	DuelRewards = {
 		win = 600,
 		loss = 180,
@@ -83,8 +75,8 @@ local Economy = {
 
 	-- Daily rewards (§6.9). Server time only: dayIndex = floor(os.time() / 86400), reset at 00:00 UTC.
 	Daily = {
-		-- Streak days 1..7, then the cycle restarts at Day 1. Spec 2026-10-12 §9: counted in squeezes from Phase 3 (the
-		-- same numbers); paid as Coins until then.
+		-- Streak days 1..7, then the cycle restarts at Day 1. Spec 2026-10-12 §9: counted in squeezes (the same
+		-- numbers), paid as squeezes × the squeeze value when claimed.
 		coinsByDay = { 100, 150, 200, 250, 300, 400, 500 },
 		freeBoxDay = 7, -- also grants the free Treat Box, opened immediately
 		freeBoxId = "treat", -- must be a free-only box in Boxes.luau

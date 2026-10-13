@@ -16,7 +16,9 @@
 --   grantDuelResult(p, matchId, outcome, result) appends {matchId, opp, result, at, full} to profile.duelLog (cap
 --   Config.Data.caps.duelLog, oldest dropped), updates the same-pair record profile.samePair (§6.7, §12 #15:
 --   DuelRewards.recordSamePair drops times older than the rolling window and adds now only for a fully rewarded
---   result), counts the duel stats and pays the Coins, all in one step, and a matchId already in duelLog is a no-op
+--   result), counts the duel stats and pays the Coins, all in one step (the reward is counted in squeezes, spec
+--   2026-10-12 §9: it pays CapsuleMath.rewardCoins(squeezes, the profile's squeeze value) in that same step, so the
+--   squeeze value is the one of the moment it is granted), and a matchId already in duelLog is a no-op
 --   (exactly once together with DuelService's single end, §12 #14; a replay never adds a second same-pair time). It
 --   asks for a "soon" save. findLog / appendLog are the same helpers for the other logs (boxLog, shopLog, receipts,
 --   Part 7).
@@ -38,6 +40,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
@@ -63,7 +66,7 @@ export type SquishyGrant = { added: boolean, refund: number, refused: Failure? }
 
 -- The duel result as DuelService passes it (computed by Logic/DuelRewards, §6.7).
 export type DuelResultInput = {
-	coins: number, -- the reward (0 when not eligible)
+	coins: number, -- the reward counted in squeezes (0 when not eligible); paid as squeezes × the squeeze value
 	logEntry: Types.DuelLogEntry?, -- nil = nothing to record (no ready profile, test dummy, cancelled, already granted)
 	eliminations: number?, -- opponents this player eliminated in the match (0 or 1)
 }
@@ -81,7 +84,8 @@ export type DuelGrant = {
 local ECONOMY = Config.Economy
 local MAX_COINS = ECONOMY.maxCoins
 local DUEL_LOG_CAP = Config.Data.caps.duelLog
-local MAX_DUEL_COINS = math.max(ECONOMY.DuelRewards.win, ECONOMY.DuelRewards.loss, ECONOMY.DuelRewards.draw)
+-- The guard counts squeezes, so a legit reward passes at any squeeze value (its Coins stop at maxCoins).
+local MAX_DUEL_SQUEEZES = math.max(ECONOMY.DuelRewards.win, ECONOMY.DuelRewards.loss, ECONOMY.DuelRewards.draw)
 local STATUS_READY = "ready"
 local REASON_DEBUG = "debug"
 local REASON_REFUND = "refund"
@@ -221,6 +225,13 @@ end
 -- True for a reason in Config.Economy.CoinReasons (§6.1).
 function EconomyService.isReason(reason: unknown): boolean
 	return type(reason) == "string" and REASONS[reason] == true
+end
+
+-- A reward counted in squeezes (duels, daily, quests, starter tasks; spec 2026-10-12 §9) as the Coins it pays now:
+-- CapsuleMath.rewardCoins(squeezes, the squeeze value of the profile's capsules; a new player's 10 without any).
+function EconomyService.rewardCoins(profile: unknown, squeezes: number): number
+	local capsules = if type(profile) == "table" then (profile :: any).capsules else nil
+	return CapsuleMath.rewardCoins(squeezes, CapsuleMath.squeezeValue(capsules))
 end
 
 -- The Coins a duplicate from this box is worth under the duplicate policy (§6.5; spec 2026-10-12 §8): a share of the
@@ -403,8 +414,8 @@ end
 
 -- Records one finished duel for a real player and pays its reward, exactly once per matchId (§3.4, §3.11, §6.7):
 -- duelLog entry (capped), the same-pair record (a time only for a fully rewarded result), duelsPlayed /
--- duelsWon|Lost|Drawn / eliminations, Coins with reason duel_<outcome>, then a "soon" save. `outcome` is this player's
--- view (win / loss / draw). Never yields.
+-- duelsWon|Lost|Drawn / eliminations, Coins with reason duel_<outcome> (result.coins squeezes × the squeeze value),
+-- then a "soon" save. `outcome` is this player's view (win / loss / draw). Never yields.
 function EconomyService.grantDuelResult(
 	player: any,
 	matchId: string,
@@ -421,10 +432,10 @@ function EconomyService.grantDuelResult(
 		log:warn(`grantDuelResult: log entry does not match match {matchId} / {outcome}; nothing recorded`)
 		return grant
 	end
-	local coins = result.coins
-	if not isWhole(coins) or coins > MAX_DUEL_COINS then
-		log:warn(`grantDuelResult: invalid reward {tostring(coins)} for match {matchId}; recorded without Coins`)
-		coins = 0
+	local squeezes = result.coins
+	if not isWhole(squeezes) or squeezes > MAX_DUEL_SQUEEZES then
+		log:warn(`grantDuelResult: invalid reward {tostring(squeezes)} for match {matchId}; recorded without Coins`)
+		squeezes = 0
 	end
 	local after = 0
 	local ok = edit(player, function(profile: any)
@@ -446,7 +457,7 @@ function EconomyService.grantDuelResult(
 			opp = entry.opp,
 			result = entry.result,
 			at = entry.at,
-			full = if coins > 0 then entry.full else false,
+			full = if squeezes > 0 then entry.full else false,
 		}
 		EconomyService.appendLog(duelLog, logged, DUEL_LOG_CAP)
 		-- Reading: an entry without `full` that pays Coins counts as fully rewarded (fail closed).
@@ -463,8 +474,8 @@ function EconomyService.grantDuelResult(
 		if type(eliminations) == "number" and eliminations > 0 and math.floor(eliminations) == eliminations then
 			addStat(profile, "eliminations", eliminations)
 		end
-		if coins > 0 then
-			grant.coins = addCoinsTo(profile, coins, reason)
+		if squeezes > 0 then
+			grant.coins = addCoinsTo(profile, EconomyService.rewardCoins(profile, squeezes), reason)
 			after = profile.coins
 		end
 	end)

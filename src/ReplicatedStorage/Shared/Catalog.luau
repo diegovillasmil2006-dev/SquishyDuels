@@ -14,9 +14,6 @@
 --   Catalog.isValidId(v)         -> boolean (v is the id of a squishy in the catalog)
 --   Catalog.starterId()          -> "kitty_bread" (the free starter: Common, not in boxes, not sold)
 --   Catalog.byRarity(r)          -> { SquishyDef } of that rarity in catalog order (empty for a non-rarity)
---   Catalog.getSqueezeCoins(id)  -> Coins per paid squeeze: def.squeezeCoins, else
---                                   Config.Economy.CoinsByRarity[rarity]; 0 for an unknown id (fail closed). Replaced by
---                                   the squeeze value (CapsuleMath) in Phase 3.
 --   Catalog.getPower(id)         -> squishy power (spec 2026-10-12 §3, §6): def.power, else
 --                                   Config.Economy.SquishyPower[rarity] (1 / 4 / 16 / 64); 0 for an unknown id
 --
@@ -280,17 +277,6 @@ end
 function Catalog.byRarity(r: unknown): { SquishyDef }
 	local list = if type(r) == "string" then BY_RARITY[r] else nil
 	return if list then table.clone(list) else {}
-end
-
-function Catalog.getSqueezeCoins(id: unknown): number
-	local def = Catalog.get(id)
-	if def == nil then
-		return 0
-	end
-	if def.squeezeCoins ~= nil then
-		return def.squeezeCoins
-	end
-	return Config.Economy.CoinsByRarity[def.rarity] or 0
 end
 
 function Catalog.getPower(id: unknown): number

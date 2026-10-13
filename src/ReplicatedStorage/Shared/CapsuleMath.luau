@@ -22,13 +22,30 @@
 --                                           90 for Royal)
 --   CapsuleMath.slotPrice(slot)          -> number?: Coins to unlock the slot (0, 2,500, 80,000, 1,500,000)
 --   CapsuleMath.squishyPower(id)         -> number: Catalog.getPower(id) (1 / 4 / 16 / 64 by rarity; 0 for an unknown id)
---   CapsuleMath.squeezeValue(capsules)   -> number: Coins per squeeze of the best capsule, the max of squishyPower(id) ×
---                                           power(level) over the { level, squishyId } entries (an entry without a known
---                                           squishy or a level skipped); with none, the starter's value (Kitty Bread ×
---                                           CP(1) = 10): a new player's squeeze is 10 Coins (spec §9)
+--   CapsuleMath.capsuleCoins(id, level)  -> number: Coins of one capsule squeeze, squishyPower(id) × power(level)
+--                                           (0 for an unknown squishy or level)
+--   CapsuleMath.squeezeValue(capsules)   -> number: Coins per squeeze of the best capsule, the max of capsuleCoins over
+--                                           capsules.list (`capsules` = a profile's {slots, list}; an entry without a
+--                                           known squishy or a level skipped); with none, the starter's value (Kitty
+--                                           Bread × CP(1) = 10): a new player's squeeze is 10 Coins (spec §9)
+--   CapsuleMath.squeezeGrip(capsules)    -> number: Grip of one own squeeze before Double Grip, the power of the
+--                                           highest capsule level in capsules.list, empty capsules included (CP(1) = 10
+--                                           with none; spec §3, §10)
 --   CapsuleMath.rewardCoins(squeezes, value) -> number: a reward counted in squeezes as Coins, floor(squeezes × value),
 --                                           clamped to [0, Config.Economy.maxCoins] (a negative or non-finite input
 --                                           counts as 0)
+--   CapsuleMath.upgradeDecision(capsules, slot, expectedPrice, gripLevel) -> Decision: the pure CapsuleUpgrade checks
+--     (lobby spec §6) in GripMath.upgradeDecision's order, the first that applies wins:
+--       2 slot a whole number 1..#slotPrices and expectedPrice whole Coins in [0, maxCoins], else "net.invalid";
+--       the slot is unlocked (slot <= capsules.slots), else "capsule.locked"; below maxLevel, else "capsule.maxLevel";
+--       6 the next level's Grip gate (gripLevelFor(level + 1) <= gripLevel), else "capsule.gripLocked";
+--       7 expectedPrice == price(level), else "capsule.priceChanged" (the client's price is only compared);
+--       else "buy" (cost = price(level)). No replay: a retry carries the old price, and two prices in a row always
+--       differ (CapsuleMath_Test), so it is capsule.priceChanged and nothing is charged twice.
+--   CapsuleMath.unlockDecision(capsules, slot, expectedPrice) -> Decision: the pure CapsuleUnlock checks, same order:
+--       2 the argument range, else "net.invalid"; 4 slot <= capsules.slots -> "replay" (already unlocked: nothing is
+--       charged; the slot count is the idempotency key); 5 slot ~= slots + 1 -> "capsule.notNext" (in order);
+--       7 expectedPrice ~= slotPrice(slot) -> "capsule.priceChanged"; else "buy" (cost = slotPrice(slot)).
 --
 -- Rounding is Luau's math.round (half away from zero); no CP or price of today's table is within 0.003 of a half, so
 -- float noise never moves one (CapsuleMath_Test checks every spec row).
@@ -37,11 +54,17 @@
 
 local Catalog = require(script.Parent.Catalog)
 local Config = require(script.Parent.Config)
+local Types = require(script.Parent.Types)
+local Validate = require(script.Parent.Util.Validate)
 
 -- Types
 
 -- One capsule as the squeeze value reads it.
 export type CapsuleEntry = { level: number, squishyId: string? }
+export type Capsules = Types.CapsulesState
+export type DecisionKind = "buy" | "replay" | "reject"
+-- `cost` = the price the checks read (0 when the arguments are invalid or nothing can be bought).
+export type Decision = { kind: DecisionKind, reason: string?, cost: number }
 
 -- Constants
 
@@ -78,6 +101,22 @@ local function roundedBase(level: number): number
 	local raw = PRICE.base * PRICE.growth ^ (level - 1)
 	local scale = math.max(1, 10 ^ (math.floor(math.log10(raw)) + 1 - PRICE.digits))
 	return math.round(raw / scale) * scale
+end
+
+-- capsules.list, or an empty list for anything that is not a capsules state (fail closed).
+local function listOf(capsules: Capsules?): { any }
+	local list = if type(capsules) == "table" then (capsules :: any).list else nil
+	return if type(list) == "table" then list else {}
+end
+
+-- capsules.slots (1 for anything else: the free first slot).
+local function slotsOf(capsules: Capsules?): number
+	local slots = if type(capsules) == "table" then (capsules :: any).slots else nil
+	return if isWholeNumber(slots) then slots else 1
+end
+
+local function reject(reason: string, cost: number): Decision
+	return { kind = "reject", reason = reason, cost = cost }
 end
 
 -- Public: one capsule level
@@ -131,27 +170,83 @@ function CapsuleMath.squishyPower(id: unknown): number
 	return Catalog.getPower(id)
 end
 
-function CapsuleMath.squeezeValue(capsules: { CapsuleEntry }?): number
+function CapsuleMath.capsuleCoins(id: unknown, level: number): number
+	local cp = CapsuleMath.power(level)
+	return if cp then CapsuleMath.squishyPower(id) * cp else 0
+end
+
+function CapsuleMath.squeezeValue(capsules: Capsules?): number
 	local best = 0
-	if type(capsules) == "table" then
-		for _, entry in capsules do
-			if type(entry) == "table" then
-				local cp = CapsuleMath.power(entry.level)
-				local squishy = CapsuleMath.squishyPower(entry.squishyId)
-				if cp ~= nil and squishy > 0 then
-					best = math.max(best, squishy * cp)
-				end
-			end
+	for _, entry in listOf(capsules) do
+		if type(entry) == "table" then
+			best = math.max(best, CapsuleMath.capsuleCoins(entry.squishyId, entry.level))
 		end
 	end
 	if best == 0 then
-		return CapsuleMath.squishyPower(Catalog.starterId()) * (CapsuleMath.power(1) :: number)
+		return CapsuleMath.capsuleCoins(Catalog.starterId(), 1)
 	end
 	return best
 end
 
+function CapsuleMath.squeezeGrip(capsules: Capsules?): number
+	local highest = 1
+	for _, entry in listOf(capsules) do
+		if type(entry) == "table" and isLevel(entry.level) then
+			highest = math.max(highest, entry.level)
+		end
+	end
+	return CapsuleMath.power(highest) :: number
+end
+
 function CapsuleMath.rewardCoins(squeezes: number, value: number): number
 	return math.min(math.floor(amount(squeezes) * amount(value)), Config.Economy.maxCoins)
+end
+
+-- Public: the CapsuleUpgrade / CapsuleUnlock checks
+
+function CapsuleMath.upgradeDecision(
+	capsules: Capsules?,
+	slot: number,
+	expectedPrice: number,
+	gripLevel: number
+): Decision
+	if CapsuleMath.slotPrice(slot) == nil or Validate.coins(expectedPrice) == nil then
+		return reject("net.invalid", 0)
+	end
+	local capsule = listOf(capsules)[slot]
+	if type(capsule) ~= "table" or slot > slotsOf(capsules) then
+		return reject("capsule.locked", 0)
+	end
+	local level = capsule.level
+	local cost = CapsuleMath.price(level)
+	if cost == nil then
+		return reject("capsule.maxLevel", 0)
+	end
+	if (CapsuleMath.gripLevelFor(level + 1) :: number) > gripLevel then
+		return reject("capsule.gripLocked", cost)
+	end
+	if expectedPrice ~= cost then
+		return reject("capsule.priceChanged", cost)
+	end
+	return { kind = "buy", cost = cost }
+end
+
+function CapsuleMath.unlockDecision(capsules: Capsules?, slot: number, expectedPrice: number): Decision
+	local cost = CapsuleMath.slotPrice(slot)
+	if cost == nil or Validate.coins(expectedPrice) == nil then
+		return reject("net.invalid", 0)
+	end
+	local slots = slotsOf(capsules)
+	if slot <= slots then
+		return { kind = "replay", cost = cost }
+	end
+	if slot ~= slots + 1 then
+		return reject("capsule.notNext", cost)
+	end
+	if expectedPrice ~= cost then
+		return reject("capsule.priceChanged", cost)
+	end
+	return { kind = "buy", cost = cost }
 end
 
 return table.freeze(CapsuleMath)

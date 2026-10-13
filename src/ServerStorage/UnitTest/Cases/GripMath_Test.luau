@@ -4,8 +4,8 @@
 -- LevelTotals <= total (edges checked at every threshold, t - 1 and t); progress at the max level; ranks Soft (Lv 1)
 -- .. Squish Master (Lv 50) .. Infinite (Lv 100, spec 2026-10-12 §10); pads open at Lv 5 / 15 / 30 and canUseTier
 -- fails closed; squeezeGrip =
--- floor(gripPerSqueeze × gripPercent / 100), × 2 when doubled (the §17.3.1 table); squeezeCoins = squishy Coins + pad
--- bonus when paid, emptyCoins otherwise, for each rarity × tier; afkGrip = floor(squeezeGrip × 125 / 100) (12, 37,
+-- floor(gripPerSqueeze × gripPercent / 100), × 2 when doubled (the §17.3.1 table; Phase 3: squeezeCoins is gone, own
+-- squeezes pay the squeeze value of CapsuleMath); afkGrip = floor(squeezeGrip × 125 / 100) (12, 37,
 -- 100, 375); afkMinutes 40 for a full bank; restedMinutes 9 when full (holding repeats every Hold.repeatSeconds,
 -- 0.45 s, since every click pays; it was 30 with the old 1.5 s cycle); nextGoal order (upgrade, next unlock, max),
 -- both branches of the Dragon rule, and no trainer line while trainerAvailable = false. Part 7 (§17.12 L1):
@@ -211,29 +211,6 @@ return function(t: Context)
 		expect.equal(GripMath.squeezeGrip(9, 1), 0)
 		expect.equal(GripMath.squeezeGrip(1, 5), 0)
 	end)
-
-	t.test(
-		"squeezeCoins: squishy Coins + pad bonus when paid, emptyCoins otherwise, for each rarity × tier",
-		function()
-			local empty = Config.Economy.SqueezeLimit.emptyCoins
-			local wrong = {}
-			for rarity, base in Config.Economy.CoinsByRarity do
-				for tier, pad in GRIP.Pads do
-					local paid = GripMath.squeezeCoins(base, tier, true)
-					local unpaid = GripMath.squeezeCoins(base, tier, false)
-					if paid ~= base + pad.coinBonus or unpaid ~= empty then
-						table.insert(wrong, string.format("%s tier %d: %d / %d", rarity, tier, paid, unpaid))
-					end
-				end
-			end
-			if #wrong > 0 then
-				error(table.concat(wrong, "; "))
-			end
-			-- Spec 2026-10-11 §5: a Common pays 1 / 2 / 3 / 4 on the four pads (+0 / +1 / +2 / +3).
-			expect.equal(GripMath.squeezeCoins(1, 4, true), 4)
-			expect.equal(GripMath.squeezeCoins(1, 7, true), 1) -- unknown tier: no bonus
-		end
-	)
 
 	t.test("afkGrip is one and a quarter squeezes' worth, rounded down (12, 37, 100, 375)", function()
 		expect.equal(GripMath.afkGrip(1, 1), 12)

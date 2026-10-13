@@ -18,6 +18,8 @@
 --   (x, 0, z) turned by `yaw` (three.js rotation.y = CFrame.Angles(0, yaw, 0)); its local +Z, its front, faces the hub
 --   centre. A design point (lx, ly, lz) of a station is stationFrame(id) * Vector3.new(lx, ly, lz); nested design
 --   groups (grp(), lobby.js:19) multiply in the same way.
+-- * Bases (lobby bases spec 2026-10-11 §2, §4; Phase 3 data, built in Phase 4): the island's 10 plots in a ring around
+--   the hub centre; a plot frame (plotFrame(i)) turns like a station frame, its local +Z facing the hub.
 -- * Arena: relative to the template's `Origin` part (floor centre, floor top Y = 0); long axis = Z; Side A = Z < 0
 --   ("Strawberry side"), Side B = Z > 0 ("Mint side"). The slot origins live in Config.Duel.Arena.SlotOrigins.
 -- * Box: `position` = centre; `size` = W × H × D in the part's own frame; `facing` = the unit direction its Front
@@ -1348,6 +1350,40 @@ for _, key in GIANT_PAD_KEYS do
 	Waypoints[key .. "Pad"] = GiantPads[key].center
 end
 
+-- Private: Squish Island bases (lobby bases spec 2026-10-11 §2, §4; build plan Phase 3) -------------------------------
+
+-- Data only until Phase 4 builds the island. Its centre is the hub centre above (the spawn medallion, the origin), so
+-- Phase 4 builds the island where the lobby stands now. 10 plots in a ring, 36° apart: plot i at compass angle
+-- (i - 1) × 36°, clockwise from north (-Z: plot 1 north of the hub, plot 6 south), 44 wide and 52 deep, from its gate
+-- at radius 96 to its back at radius 148. A plot frame is a station frame (newFrame): its local +Z faces the hub, so
+-- the gate is at local z +26 and the back at -26.
+local BASE_COUNT = 10
+local BASE_GATE_RADIUS = 96
+local BASE_BACK_RADIUS = 148
+local BASE_DEPTH = BASE_BACK_RADIUS - BASE_GATE_RADIUS -- 52
+
+local Bases = {
+	center = Vector3.zero,
+	gateRadius = BASE_GATE_RADIUS,
+	backRadius = BASE_BACK_RADIUS,
+	width = 44,
+	depth = BASE_DEPTH,
+	-- The 8 × 8 capsule pads at local x ±13, z -8 / +8: slot 1 back left, 2 back right, 3 front left, 4 front right.
+	capsulePads = { Vector3.new(-13, 0, -8), Vector3.new(13, 0, -8), Vector3.new(-13, 0, 8), Vector3.new(13, 0, 8) },
+	capsulePadSize = 8,
+	gate = Vector3.new(0, 0, BASE_DEPTH / 2), -- the Donut Arch gate, 16 wide
+	-- Reading: the spec's [spawn] faces the gate (§4) 42 studs behind it (§2: spawn -> duel stage 116 st, gate -> stage
+	-- 74 st), so local z -16, facing +Z.
+	spawn = CFrame.new(0, 0, BASE_DEPTH / 2 - 42) * CFrame.Angles(0, math.pi, 0),
+	frames = {} :: { CFrame }, -- plot i's frame (plotFrame(i))
+}
+for index = 1, BASE_COUNT do
+	local angle = math.rad((index - 1) * 360 / BASE_COUNT)
+	local radius = (BASE_GATE_RADIUS + BASE_BACK_RADIUS) / 2
+	local frame = newFrame(radius * math.sin(angle), -radius * math.cos(angle))
+	Bases.frames[index] = CFrame.new(frame.position) * CFrame.Angles(0, frame.yaw, 0)
+end
+
 -- Private: arena template (§5.3, §7.8) -----------------------------------------------------------------------------
 
 local ARENA_HALF_X = 36
@@ -1586,6 +1622,7 @@ local WorldLayout = {
 	AudioZones = AudioZones,
 	Activities = Activities,
 	Waypoints = Waypoints,
+	Bases = Bases, -- the island's 10 plots (Phase 3 data; plotFrame / inPlot), built in Phase 4
 	-- Straight-line routes at WalkSpeed 16 (= Config.Duel.Rules.Movement.WalkSpeed; real paths ≈ +10%).
 	-- User decision 2026-10-11: build the design's lobby (phase 3 spec D1). Its worst route, gift box <-> practice
 	-- entry, is 156 studs = 9.75 s, so the §7.5 limits (5 s, pods 7 s) become 10 s and 12 s.
@@ -1655,6 +1692,9 @@ local WorldLayout = {
 		-- Reading (§18.5.1 A8 names the tag and attribute; §18.8 lists only the count): here so LobbyBuilder and
 		-- AmbientController share one spelling.
 		Ambient = "SD_Ambient",
+		-- Phase 4 builds one SpawnLocation per plot with this tag and the Plot attribute; BaseService spawns the plot's
+		-- owner there once it exists (none before: players spawn as today). Not in TagCounts until the island is built.
+		BaseSpawn = "SD_BaseSpawn",
 	},
 	Attributes = {
 		StationId = "StationId",
@@ -1674,6 +1714,7 @@ local WorldLayout = {
 		AmbienceKey = "AmbienceKey",
 		MusicMul = "MusicMul",
 		AmbientKind = "SD_AmbientKind", -- reading (see Tags.Ambient): "spin" | "spinBob" | "breathe" (§18.5.1 A8)
+		Plot = "Plot", -- Tags.BaseSpawn: the plot index 1..10
 	},
 	Arena = Arena,
 }
@@ -1846,6 +1887,23 @@ end
 -- The floor point of a waypoint target ("duel", "giftBox", "squeeze", "jellyPad", ...), or nil.
 function WorldLayout.waypoint(name: string): Vector3?
 	return Waypoints[name]
+end
+
+-- The frame of plot `index` (1..10, Bases): a plot point (x, y, z) is plotFrame(index) * Vector3.new(x, y, z); nil for
+-- anything else.
+function WorldLayout.plotFrame(index: number): CFrame?
+	return Bases.frames[index]
+end
+
+-- True when `position` lies over plot `index`'s footprint (width × depth, edges included; height ignored). False for
+-- an unknown plot.
+function WorldLayout.inPlot(index: number, position: Vector3): boolean
+	local frame: CFrame? = Bases.frames[index]
+	if frame == nil then
+		return false
+	end
+	local p = frame:PointToObjectSpace(position)
+	return math.abs(p.X) <= Bases.width / 2 and math.abs(p.Z) <= Bases.depth / 2
 end
 
 -- Every Strings key the generated world shows (sign lines, prompts, nameplates), sorted and without duplicates.

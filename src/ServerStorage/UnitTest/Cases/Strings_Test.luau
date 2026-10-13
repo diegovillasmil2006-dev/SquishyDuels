@@ -14,6 +14,7 @@
 -- squeeze hints name a click or a tap, grip.holdPaused names no button (it left DESIGN's words), the Inspect step opens
 -- Squishies, and the Squeeze button's key texts are gone. Final polish (2026-10-11): the duel key hints also name the
 -- dash and the squeeze (they left DESIGN's "Click Throw · Q Ultimate"), and the "In the lane!" warning exists.
+-- Phase 3 (lobby bases spec 2026-10-11 §6): every code the capsule remotes send has a text under reason.capsule.*.
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
 
@@ -702,6 +703,17 @@ return function(t: Context)
 		for _, code in { "catch.context", "catch.cooldown", "catch.busy", "throw.busy" } do
 			local text = Strings.reasonText(code)
 			expect.truthy(type(text) == "string" and text ~= "" and text ~= code)
+		end
+	end)
+
+	-- Phase 3: the codes CapsuleMath's checks and CapsuleService send (the others are shared: net.invalid,
+	-- data.notReady, economy.notEnoughCoins, inventory.notOwned, inventory.lockedInDuel).
+	t.test("every capsule refusal code has a text under reason.capsule", function()
+		local codes = { "notNext", "locked", "gripLocked", "maxLevel", "priceChanged", "paused" }
+		for _, name in codes do
+			local text = Strings.resolve("reason.capsule." .. name)
+			expect.truthy(type(text) == "string" and text ~= "")
+			expect.equal(Strings.reasonText("capsule." .. name), text)
 		end
 	end)
 end

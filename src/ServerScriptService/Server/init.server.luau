@@ -32,6 +32,8 @@ type Module = {
 
 -- Server layers (§2.6 rule 2). MonetizationService is first so ProcessReceipt is assigned before any yield.
 -- GripService is its own layer between CharacterService and SqueezeService (§17.10 "Server layering", §17.11).
+-- Phase 3: BaseService after CharacterService (its plot spawn replaces the lobby spawn once Phase 4 builds the plots);
+-- CapsuleService between GripService (it pays Grip) and SqueezeService (whose paid squeezes push the capsules).
 local SERVICE_ORDER = {
 	"MonetizationService",
 	"NetService",
@@ -43,7 +45,9 @@ local SERVICE_ORDER = {
 	"InventoryService",
 	"WorldService",
 	"CharacterService",
+	"BaseService",
 	"GripService",
+	"CapsuleService",
 	"SqueezeService",
 	"PracticeService",
 	"ArenaService",

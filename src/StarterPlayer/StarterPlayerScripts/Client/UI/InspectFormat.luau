@@ -32,6 +32,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
+local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
@@ -82,7 +83,7 @@ export type View = {
 	badgeText: string,
 	previewBadge: string?, -- "Preview · Not owned" when not owned (§10.9)
 	caption: string, -- inspect.preview (§10.7)
-	coinsText: string, -- "Coins per squeeze: 2"
+	coinsText: string, -- "Coins per squeeze: 10" (in a Lv 1 capsule)
 	coinsSub: string,
 	stats: { StatLine },
 	statsCaption: string,
@@ -249,7 +250,9 @@ function InspectFormat.view(id: string, ctx: ViewContext): View?
 		badgeText = textOf(badgeKey, badgeKey),
 		previewBadge = if owned then nil else Strings.inspect.previewNotOwned,
 		caption = Strings.inspect.preview,
-		coinsText = Strings.format(Strings.inspect.coinsPerSqueeze, { n = Catalog.getSqueezeCoins(def.id) }),
+		-- shortcut: the squishy's Coins per squeeze in a Lv 1 capsule (Phase 3 removed the per-squishy squeeze Coins);
+		-- Phase 5 turns this line into its capsule power.
+		coinsText = Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(def.id, 1) }),
 		coinsSub = Strings.inspect.coinsPerSqueezeSub,
 		stats = statLines(def),
 		statsCaption = Strings.inspect.statsCaption,

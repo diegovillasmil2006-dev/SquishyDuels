@@ -40,11 +40,13 @@
 -- Design fidelity (spec 2026-10-11 §3, §5, §6): Config.FirstPerson holds the 3D Lab design's viewmodel numbers (the
 -- view and light, the five arm parts, colours, team sleeves, outline, held toy, pop-in, squeeze, focus, shake, throw
 -- extras and Dragon charge), squeezeAxis is "X" and Inspect's is "Y"; validate reports a broken arm part, outline,
--- pop-in, held pose, team sleeve or squeeze inset. Economy: squeeze Coins 1 / 1 / 2 / 2, pad Coin bonuses 0 / 1 / 2 /
--- 3, no hourly limit, G3's 43,200 squeezes an hour and the 30,000-squeeze alert (spec 2026-10-12 §12).
+-- pop-in, held pose, team sleeve or squeeze inset. Economy: pad Coin bonuses 0 / 1 / 2 / 3 (data only since Phase 3:
+-- CoinsByRarity is gone), no hourly limit, G3's 43,200 squeezes an hour and the 30,000-squeeze alert (spec 2026-10-12
+-- §12).
 -- Big-number progression (spec 2026-10-12, Phase 1): the 9 Qa caps, 100 levels and their totals, the ranks, squishy
 -- power, duel rewards, refunds and maxGripPerEvent = CP(100) × 2; negatives for G1's rising totals, G5's CP(100) event,
--- the Capsule block, SquishyPower, a Catalog power override and the refund share.
+-- the Capsule block, SquishyPower, a Catalog power override and the refund share. Phase 3: the capsule tick (0.25 s)
+-- and tap push (0.15), with their negatives.
 --
 -- How a "deliberately broken copy" is made without changing Config's API: clone the Shared folder, require one
 -- section module of the clone and change it, then require the clone's Config. Its init receives the changed
@@ -265,23 +267,21 @@ return function(t: Context)
 	end)
 
 	-- Squeeze anywhere, Coins every time (spec 2026-10-11 §5; the user: "Less per squeeze, no limit", "+0/+1/+2/+3").
-	t.test(
-		"squeeze Coins 1 / 1 / 2 / 2, pad bonuses 0 / 1 / 2 / 3, no limit, G3 43,200 squeezes, alert 30,000",
-		function()
-			local economy, grip = Config.Economy, Config.Grip
-			expect.deepEqual(economy.CoinsByRarity, { Common = 1, Uncommon = 1, Epic = 2, Exclusive = 2 })
-			local bonuses, percents = {}, {}
-			for tier, pad in grip.Pads do
-				bonuses[tier], percents[tier] = pad.coinBonus, pad.gripPercent
-			end
-			expect.deepEqual(bonuses, { 0, 1, 2, 3 })
-			expect.deepEqual(percents, { 100, 150, 200, 300 }) -- the Grip multipliers stay
-			expect.equal(economy.SqueezeLimit.enabled, false)
-			-- Spec 2026-10-12 §12: G3 counts squeezes, 43,200 an hour at the 12-a-second cap; the alert 30,000 of them.
-			expect.equal(grip.maxSqueezesPerHour, 3600 * 12)
-			expect.equal(grip.squeezeAlertPerHour, 30_000)
+	-- Phase 3: CoinsByRarity is gone (own squeezes pay the squeeze value) and the pad data no longer changes that pay.
+	t.test("no CoinsByRarity, pad bonuses 0 / 1 / 2 / 3, no limit, G3 43,200 squeezes, alert 30,000", function()
+		local economy, grip = Config.Economy, Config.Grip
+		expect.equal((economy :: any).CoinsByRarity, nil)
+		local bonuses, percents = {}, {}
+		for tier, pad in grip.Pads do
+			bonuses[tier], percents[tier] = pad.coinBonus, pad.gripPercent
 		end
-	)
+		expect.deepEqual(bonuses, { 0, 1, 2, 3 })
+		expect.deepEqual(percents, { 100, 150, 200, 300 }) -- the Grip multipliers stay
+		expect.equal(economy.SqueezeLimit.enabled, false)
+		-- Spec 2026-10-12 §12: G3 counts squeezes, 43,200 an hour at the 12-a-second cap; the alert 30,000 of them.
+		expect.equal(grip.maxSqueezesPerHour, 3600 * 12)
+		expect.equal(grip.squeezeAlertPerHour, 30_000)
+	end)
 
 	t.test("validate reports a squeeze alert that is not a whole number in 1..maxSqueezesPerHour", function()
 		local zero = validateBrokenCopy(t.Shared, "Grip", function(grip)
@@ -509,7 +509,6 @@ return function(t: Context)
 				end,
 				starterId = Catalog.starterId,
 				get = Catalog.get,
-				getSqueezeCoins = Catalog.getSqueezeCoins,
 			}
 		end
 		local uncommon = Config.validate({
@@ -991,6 +990,24 @@ return function(t: Context)
 			grip.Capsule.price.growth = 1.5
 		end)
 		expect.truthy(containsAll(steep, { "Config.Grip.Capsule", "above Config.Economy.maxCoins" }))
+	end)
+
+	-- Phase 3 (lobby spec 2026-10-11 §6): the capsule tick and the home tap push.
+	t.test("capsules tick every 0.25 s and a home tap pushes 0.15 of a squeeze; validate reports bad values", function()
+		expect.equal(Config.Grip.Capsule.tickSeconds, 0.25)
+		expect.equal(Config.Grip.Capsule.tapPush, 0.15)
+		local stopped = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.tickSeconds = 0
+		end)
+		expect.truthy(containsText(stopped, "Config.Grip.Capsule.tickSeconds must be a number > 0"))
+		local none = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.tapPush = 0
+		end)
+		expect.truthy(containsText(none, "Config.Grip.Capsule.tapPush must be a number > 0"))
+		local big = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Capsule.tapPush = 1.5
+		end)
+		expect.truthy(containsText(big, "Config.Grip.Capsule.tapPush must be at most 1 squeeze"))
 	end)
 
 	t.test("validate reports a missing or zero squishy power and a Catalog power override of 0", function()

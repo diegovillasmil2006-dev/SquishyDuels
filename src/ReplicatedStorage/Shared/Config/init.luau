@@ -48,7 +48,9 @@
 -- less than the one before), G3 as a squeeze count, G5 covering CP(100) × Rested.mult, the Capsule block (tiers fit
 -- maxLevel, intervals fall, Grip gates rise, growth > 1, slot prices rise from a free slot 1, the biggest price fits
 -- maxCoins), SquishyPower and a Catalog `power` override (whole numbers >= 1), the refund share (Economy.DuplicateRefund,
--- under 100%, its free-box price from a paid box), and "capsule" among the G7 training words.
+-- under 100%, its free-box price from a paid box), and "capsule" among the G7 training words. Phase 3: the capsule
+-- tick and tap push (CoinsByRarity and the Catalog `squeezeCoins` override are gone: own squeezes pay the squeeze
+-- value).
 -- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead and Config.Wax have a row for every Config.Anim.rig feel, each
 -- share, time and gain in range and every spring <= 3 Hz except jelly's per-vertex knead spring (the design's own 3.59
 -- Hz wobble, a documented exception); the crunch rhythm <= 3 presses a second; the wax switch Config.Wax.enabled (user
@@ -389,10 +391,6 @@ local function checkEconomy(problems: Problems, rarities: { string })
 		reasons[reason] = true
 	end
 
-	checkRarityTable(problems, `{p}.CoinsByRarity`, Economy.CoinsByRarity, rarities)
-	for rarity, coins in Economy.CoinsByRarity do
-		expectCount(problems, `{p}.CoinsByRarity.{rarity}`, coins, 1)
-	end
 	checkRarityTable(problems, `{p}.SquishyPower`, Economy.SquishyPower, rarities)
 	for rarity, power in Economy.SquishyPower do
 		expectCount(problems, `{p}.SquishyPower.{rarity}`, power, 1)
@@ -3369,7 +3367,8 @@ local function checkGripSqueezeCeiling(problems: Problems)
 end
 
 -- Capsules (spec 2026-10-12 §4-§7): the tiers fill maxLevel; intervals fall and Grip gates rise (tier 1 needs none);
--- power and price grow (> 1); slot prices rise from a free slot 1; every price fits Economy.maxCoins.
+-- power and price grow (> 1); slot prices rise from a free slot 1; every price fits Economy.maxCoins; the Phase 3 tick
+-- and tap push are positive (a push at most one squeeze).
 local function checkGripCapsules(problems: Problems)
 	local p = "Config.Grip.Capsule"
 	local capsule = Grip.Capsule
@@ -3408,6 +3407,9 @@ local function checkGripCapsules(problems: Problems)
 		isNumber(price.evolveMultiplier) and price.evolveMultiplier >= 1,
 		`{p}.price.evolveMultiplier must be >= 1`
 	)
+	expectPositive(problems, `{p}.tickSeconds`, capsule.tickSeconds)
+	expectPositive(problems, `{p}.tapPush`, capsule.tapPush)
+	expect(problems, isNumber(capsule.tapPush) and capsule.tapPush <= 1, `{p}.tapPush must be at most 1 squeeze`)
 	local slots: { any } = capsule.slotPrices
 	expect(problems, slots[1] == 0, `{p}.slotPrices[1] must be 0 (the first capsule is free)`)
 	for index, coins in slots do
@@ -4141,9 +4143,6 @@ local function checkCatalog(problems: Problems, Catalog: any, rarities: { string
 						.. `{show(ability.radius)} (its projectiles are the squishy's own throw size)`
 				)
 			end
-		end
-		if def.squeezeCoins ~= nil then
-			expectCount(problems, `{path}.squeezeCoins`, def.squeezeCoins, 1)
 		end
 		if def.power ~= nil then
 			expectCount(problems, `{path}.power`, def.power, 1)

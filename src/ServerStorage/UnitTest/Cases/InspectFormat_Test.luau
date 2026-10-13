@@ -3,7 +3,8 @@
 -- (ServerStorage.UnitTest). Pure: no instances, no LocalPlayer.
 -- Contract (DESIGN §10.1, §10.4, §10.7-§10.9):
 --   * view(id, ctx) for all 14 squishies: every field comes from Catalog, Config, Boxes and Strings (name, rarity,
---     "Coins per squeeze: {n}", the five stat bars of InventoryFormat.statBars fully resolved, the trail (Commons "No
+--     "Coins per squeeze: {n}" (Phase 3: the squishy's in a Lv 1 capsule, CapsuleMath.capsuleCoins), the five stat
+--     bars of InventoryFormat.statBars fully resolved, the trail (Commons "No
 --     trail"), Dragon's ultimate from Config.Abilities, "Elimination: Standard", the Catalog `inspect` view); unowned
 --     shows "Preview · Not owned" and "How to get" = one line per Boxes.containing row (the free Treat Box too) with
 --     its exact percent, then "Shop: {price} Coins"; owned shows no How to get; View in Shop needs an unowned squishy
@@ -30,6 +31,7 @@ return function(t: Context)
 	local InventoryFormat = t.requireClient("UI/InventoryFormat")
 	local BoxFormat = t.requireClient("UI/BoxFormat")
 	local Boxes = t.requireShared("Boxes")
+	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
@@ -95,7 +97,7 @@ return function(t: Context)
 			expect.equal(view.caption, Strings.inspect.preview)
 			expect.equal(
 				view.coinsText,
-				Strings.format(Strings.inspect.coinsPerSqueeze, { n = Catalog.getSqueezeCoins(def.id) })
+				Strings.format(Strings.inspect.coinsPerSqueeze, { n = CapsuleMath.capsuleCoins(def.id, 1) })
 			)
 			expect.equal(view.coinsSub, Strings.inspect.coinsPerSqueezeSub)
 			expect.equal(view.statsCaption, Strings.inspect.statsCaption)

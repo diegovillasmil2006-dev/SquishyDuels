@@ -15,7 +15,8 @@
 --   2 profile ready (not OFFLINE / READONLY / loading)       else data.notReady
 --   3 a living character with a root part                                           else squeeze.noCharacter
 --   4 not in a match (SD_DuelPhase == ""; squeezing while Searching is allowed)     else squeeze.inDuel
---   5 the equipped squishy comes from the server record (the caller passes its Catalog.getSqueezeCoins)
+--   5 the Coins come from the server record (the caller passes the squeeze value of the player's capsules,
+--     CapsuleMath.squeezeValue; Phase 3: the held squishy no longer changes it)
 --   6 the tier (tierFor): the pad the server-side root stands on (padUnder; SqueezeService drops a pad its
 --     stale-lobby check disabled) when GripMath.canUseTier(level, its tier); off a pad, or on a pad still locked for
 --     the player's Grip level, BASE_TIER (1: the Foam Mats row, base Coins and Grip, no pad bonus)
@@ -25,7 +26,8 @@
 --     12 a second)                                                                   else squeeze.tooFast
 --   8 earnings limit (SqueezeLimit with Economy.SqueezeLimit, on os.time()): paid when a point is there (always
 --     when the limit is disabled, as shipped since spec 2026-10-11 §5: the limit state is then left alone);
---     coins = GripMath.squeezeCoins(baseCoins, tier, paid)
+--     coins = baseCoins when paid, else Economy.SqueezeLimit.emptyCoins (Phase 3: a pad adds no Coin bonus; the tier
+--     still goes to Grip's fail-closed check and the quests)
 -- Every click pays (user decision, 2026-10-06): there is no squeeze timer; a human clicking never meets step 7 (the
 -- client stays under the cap), so every press is accepted and pays (through the earnings limit). Only a macro gets
 -- squeeze.tooFast (no Coins, no Grip; the client shows nothing for it), and above 20/s the flood guard drops it.
@@ -44,7 +46,7 @@
 --   SqueezeRules.padUnder(rootPosition, cfg?)        -> WorldLayout.Station? the pad the root stands on
 --                                                       (WorldLayout.stationUnder with Grip.Afk padMargin / heightAbove)
 --   SqueezeRules.tierFor(station, level, cfg?)       -> the tier a squeeze pays (step 6)
---   SqueezeRules.earn(limit, osNow, baseCoins, tier, cfg?) -> (paid, coins, newLimit)
+--   SqueezeRules.earn(limit, osNow, baseCoins, cfg?) -> (paid, coins, newLimit)
 --   SqueezeRules.decide(input, cfg?)                 -> Decision
 -- `now` = os.clock() seconds (bucket, flood guard); `osNow` = os.time() (the saved limit); `serverNow` =
 -- workspace:GetServerTimeNow() (nextAt). cfg = a table with Config's Squeeze, Economy and Grip sections (a test's
@@ -97,7 +99,7 @@ export type Input = {
 	rootPosition: Vector3?, -- nil: no living character with a HumanoidRootPart
 	inMatch: boolean, -- SD_DuelPhase ~= ""
 	level: number, -- Grip Level (GripService.levelOf)
-	baseCoins: number, -- Catalog.getSqueezeCoins(server equipped, owned, else the starter)
+	baseCoins: number, -- the squeeze value (CapsuleMath.squeezeValue of the profile's capsules)
 	limit: Types.SqueezeLimitState, -- profile.squeezeLimit
 }
 
@@ -230,16 +232,14 @@ function SqueezeRules.earn(
 	limit: Types.SqueezeLimitState,
 	osNow: number,
 	baseCoins: number,
-	tier: number,
 	cfg: SqueezeConfig?
 ): (boolean, number, Types.SqueezeLimitState)
-	local c = sections(cfg)
-	local limitCfg = c.Economy.SqueezeLimit
+	local limitCfg = sections(cfg).Economy.SqueezeLimit
 	local paid, newLimit = true, limit
 	if limitCfg.enabled then
 		paid, newLimit = SqueezeLimit.spend(limit, osNow, limitCfg)
 	end
-	return paid, GripMath.squeezeCoins(baseCoins, tier, paid, c :: any), newLimit
+	return paid, if paid then baseCoins else limitCfg.emptyCoins, newLimit
 end
 
 -- Public: the whole §6.3 order
@@ -288,7 +288,7 @@ function SqueezeRules.decide(input: Input, cfg: SqueezeConfig?): Decision
 
 	-- 8. Earnings limit and Coins.
 	local decision = finish("accepted", nil, newBucket)
-	local paid, coins, newLimit = SqueezeRules.earn(input.limit, input.osNow, input.baseCoins, tier, c)
+	local paid, coins, newLimit = SqueezeRules.earn(input.limit, input.osNow, input.baseCoins, c)
 	decision.paid = paid
 	decision.coins = coins
 	decision.limit = newLimit

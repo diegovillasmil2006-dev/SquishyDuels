@@ -18,11 +18,13 @@
 --   text in InkUI), its bottom Vfx.CoinPopup.startStuds above the Root. Its text (panelLabel, pure, named for the old
 --   panel) reads the pad the local root stands on (WorldLayout.stationUnder with Config.Grip.Afk's padMargin /
 --   heightAbove, the server's own test; the tier from WorldLayout, never from an attribute): grip.stationLabel
---   "Jelly Pad" / "+2 Coins · +15 Grip per squeeze" on an unlocked pad, else the base amount grip.stationLabelBase
+--   "Jelly Pad" / "+10 Coins · +15 Grip per squeeze" on an unlocked pad, else the base amount grip.stationLabelBase
 --   (tier 1: off a pad, or on a pad still locked for the local Grip level, the squeeze pays the base) (GripMath, the
---   equipped squishy, the trainer from StateController's `grip` field). Shown (labelShownFor, pure) only while
---   holding, out of a match, with the lobby unlocked, no screen open (no block) and no first-person look; it is built
---   once and shown or hidden with Enabled.
+--   equipped squishy, the trainer from StateController's `grip` field; shortcut: since Phase 3 own squeezes pay the
+--   squeeze value and the highest capsule level's Grip, which this client cannot see yet, so the Coins are the
+--   squishy's in a Lv 1 capsule and the Grip the trainer's; Phase 5 shows the real ones). Shown (labelShownFor, pure)
+--   only while holding, out of a match, with the lobby unlocked, no screen open (no block) and no first-person look;
+--   it is built once and shown or hidden with Enabled.
 -- * Sending (§17.3.2, §9.6; every click pays, user decision 2026-10-06): there is no squeeze timer and no cooldown
 --   strip, ring or disabled button between squeezes. Every press (F / E / ButtonX, a click, a tap, the pad)
 --   squeezes IMMEDIATELY: the local squeeze restarts from the top (play) and a SqueezeRequest (no argument: the server
@@ -125,6 +127,7 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
@@ -1500,7 +1503,7 @@ function SqueezeController.panelLabel(tier: number?, level: number?, trainer: nu
 		return SqueezeController.stationLabel(tier, trainer, squishyId)
 	end
 	return text("grip.stationLabelBase", {
-		coins = Format.coins(GripMath.squeezeCoins(Catalog.getSqueezeCoins(squishyId), 1, true)),
+		coins = Format.coins(CapsuleMath.capsuleCoins(squishyId, 1)),
 		grip = Format.coins(GripMath.squeezeGrip(trainer, 1)),
 	})
 end
@@ -1526,8 +1529,9 @@ function SqueezeController.lockedLevel(level: number?, tier: number): number?
 	return pad.level
 end
 
--- The station label (§17.7 "At a pad"): grip.stationLabel "{pad}" / "+{coins} Coins · +{grip} Grip per squeeze", from
--- GripMath with the WorldLayout tier, the trainer level and the equipped squishy. "" for an unknown tier.
+-- The station label (§17.7 "At a pad"): grip.stationLabel "{pad}" / "+{coins} Coins · +{grip} Grip per squeeze", the
+-- Coins of the equipped squishy in a Lv 1 capsule (CapsuleMath; see the header's shortcut) and the Grip from GripMath
+-- with the WorldLayout tier and the trainer level. "" for an unknown tier.
 function SqueezeController.stationLabel(tier: number, trainer: number, squishyId: string): string
 	local pad = GRIP_PADS[tier]
 	if pad == nil then
@@ -1535,7 +1539,7 @@ function SqueezeController.stationLabel(tier: number, trainer: number, squishyId
 	end
 	return text("grip.stationLabel", {
 		pad = text("grip.pad." .. pad.key),
-		coins = Format.coins(GripMath.squeezeCoins(Catalog.getSqueezeCoins(squishyId), tier, true)),
+		coins = Format.coins(CapsuleMath.capsuleCoins(squishyId, 1)),
 		grip = Format.coins(GripMath.squeezeGrip(trainer, tier)),
 	})
 end

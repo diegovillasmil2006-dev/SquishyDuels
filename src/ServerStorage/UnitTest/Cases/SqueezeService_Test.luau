@@ -6,10 +6,12 @@
 -- anywhere, spec 2026-10-11 §5):
 --   * SqueezeRequest takes no argument: the server finds the pad under its own root position (SqueezeRules.padUnder)
 --     and ignores anything the client sends;
---   * an accepted squeeze on a mat pays Catalog.getSqueezeCoins(equipped) + the pad's coinBonus, trains Grip, counts
---     stats.squeezes, sets SD_SqueezeAt (server time), fires Squeezed and replies ok;
+--   * an accepted squeeze on a mat pays the squeeze value (Phase 3, spec 2026-10-12 §3: the best capsule's
+--     CapsuleMath.squeezeValue, whatever squishy is held or pad stood on), trains the highest capsule level's power,
+--     counts stats.squeezes, sets SD_SqueezeAt (server time), fires Squeezed and replies ok; a paid one pushes the
+--     capsules with the server's own root position (CapsuleService.push decides whether that is home);
 --   * off every pad, on a pad still locked for the player's level, on a pad the lobby does not have or one the
---     stale-lobby check disabled, the squeeze pays tier 1 (base Coins and Grip, no pad bonus, Squeezed with tier 1);
+--     stale-lobby check disabled, the squeeze pays the same and reports tier 1 (Squeezed with tier 1);
 --     only a dead character is refused (squeeze.noCharacter), and a player in a match;
 --   * the shipped hourly limit is off: every accepted squeeze pays (with the limit switched on, an empty one would give
 --     0 Coins while Grip still rises);
@@ -38,9 +40,9 @@ return function(t: Context)
 	local SqueezeService = t.requireServer("Services/SqueezeService")
 	local GripService = t.requireServer("Services/GripService")
 	local FakeClock = t.requireFake("FakeClock")
+	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
-	local GripMath = t.requireShared("GripMath")
 	local WorldLayout = t.requireShared("World/WorldLayout")
 
 	local SQ = Config.Squeeze
@@ -66,6 +68,7 @@ return function(t: Context)
 		squeezed: { { id: string, coins: number, tier: number } },
 		dirty: { string },
 		frozen: boolean, -- the session takes no more changes (its final save took its snapshot): mutate refuses
+		pushes: { Vector3 }, -- CapsuleService.push calls (the root positions)
 	}
 
 	local function onStation(id: string): Vector3
@@ -86,7 +89,16 @@ return function(t: Context)
 				rested = { value = 0, at = UNIX_START },
 				afk = { value = Config.Grip.Afk.burst, at = UNIX_START },
 			},
+			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's
 		}
+	end
+
+	-- What one own squeeze pays this profile (Phase 3): the squeeze value and the highest capsule level's power.
+	local function valueOf(world: any): number
+		return CapsuleMath.squeezeValue(world.profile.capsules)
+	end
+	local function gripOf(world: any): number
+		return CapsuleMath.squeezeGrip(world.profile.capsules)
 	end
 
 	local function fresh(): World
@@ -107,6 +119,7 @@ return function(t: Context)
 			squeezed = {},
 			dirty = {},
 			frozen = false,
+			pushes = {},
 		}
 		local function status(_player: any): string
 			return world.status
@@ -191,6 +204,9 @@ return function(t: Context)
 			reply = function(_player: any, result: any)
 				table.insert(world.replies, result)
 			end,
+			pushCapsules = function(_player: any, rootPosition: Vector3)
+				table.insert(world.pushes, rootPosition)
+			end,
 		})
 		GripService.playerAdded(world.player)
 		return world
@@ -218,13 +234,15 @@ return function(t: Context)
 	t.test("an accepted squeeze at a mat pays Coins, trains Grip and replies ok", function()
 		local world = fresh()
 		local result = SqueezeService.request(world.player)
-		local coins = Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus
+		local coins = valueOf(world)
+		expect.equal(coins, 10) -- a new player's squeeze (spec 2026-10-12 §9)
 		expect.truthy(result ~= nil)
 		expect.equal(result.ok, true)
 		expect.equal(result.coins, coins)
 		expect.equal(result.total, coins)
 		expect.equal(world.profile.coins, coins)
-		expect.equal(result.grip, GripMath.squeezeGrip(1, 1))
+		expect.equal(result.grip, gripOf(world))
+		expect.deepEqual(world.pushes, { world.position }) -- a paid squeeze pushes the capsules from the server's root
 		expect.equal(result.gripTotal, world.profile.grip.total)
 		expect.equal(result.doubled, false)
 		expect.equal(result.limit, if LIMIT.enabled then LIMIT.burst - 1 else LIMIT.burst) -- off: spec 2026-10-11 §5
@@ -246,25 +264,66 @@ return function(t: Context)
 		expect.equal(result.coins, 1)
 		expect.equal(result.total, Config.Economy.maxCoins)
 		expect.equal(world.squeezed[1].coins, 1)
-		expect.equal(result.grip, GripMath.squeezeGrip(1, 1)) -- Grip never depends on the Coin cap
+		expect.equal(result.grip, gripOf(world)) -- Grip never depends on the Coin cap
 		finish()
 	end)
 
-	t.test("the equipped squishy's rarity sets the Coins (server record, not the client)", function()
+	-- Phase 3 (spec 2026-10-12 §3): was "the equipped squishy's rarity sets the Coins".
+	t.test("the held squishy no longer changes the Coins: every squeeze pays the squeeze value", function()
 		local world = fresh()
 		world.equipped = "dragon"
 		local result = SqueezeService.request(world.player)
-		expect.equal(result.coins, Catalog.getSqueezeCoins("dragon"))
+		expect.equal(result.coins, valueOf(world))
+		expect.equal(world.squeezed[1].id, "dragon") -- the quests still see the held squishy
+		finish()
+	end)
+
+	t.test("own squeezes pay the best capsule's value and the highest level's power (x mult doubled)", function()
+		local world = fresh()
+		-- Lv 21 Toast: 461 × 1; Lv 5 Dragon: 16 × 64 = 1,024 (the best); an empty Lv 30 capsule: the highest level.
+		local list: { any } =
+			{ { level = 21, squishyId = "toast" }, { level = 5, squishyId = "dragon" }, { level = 30 } }
+		world.profile.capsules = { slots = 3, list = list }
+		local plain = SqueezeService.request(world.player)
+		expect.equal(plain.coins, 1_024)
+		expect.equal(plain.grip, CapsuleMath.power(30))
+		expect.equal(plain.doubled, false)
+		world.profile.grip.rested = { value = 1, at = UNIX_START }
+		world.clock.advance(SQ.cycleSeconds)
+		world.server.advance(SQ.cycleSeconds)
+		local doubled = SqueezeService.request(world.player)
+		expect.equal(doubled.coins, 1_024) -- Double Grip doubles Grip only
+		expect.equal(doubled.doubled, REST.enabled)
+		expect.equal(doubled.grip, (CapsuleMath.power(30) :: number) * (if REST.enabled then REST.mult else 1))
+		finish()
+	end)
+
+	t.test("a refused squeeze pushes no capsule; a paid one pushes with the server's root, not the client's", function()
+		local world = fresh()
+		world.phase = "Active" -- in a match: squeeze.inDuel
+		expect.equal(SqueezeService.request(world.player).reason, "squeeze.inDuel")
+		world.phase = ""
+		world.alive = false
+		world.clock.advance(1)
+		expect.equal(SqueezeService.request(world.player).reason, "squeeze.noCharacter")
+		expect.equal(#world.pushes, 0)
+		world.alive = true
+		world.position = Vector3.new(5, 3, -120) -- anywhere: CapsuleService decides whether it is home
+		world.clock.advance(1)
+		local forged = (SqueezeService.request :: any)(world.player, Vector3.zero)
+		expect.equal(forged.ok, true)
+		expect.deepEqual(world.pushes, { Vector3.new(5, 3, -120) })
 		finish()
 	end)
 
 	-- Squeeze anywhere (spec 2026-10-11 §5) ---------------------------------------------------------------------------
 
-	-- One accepted squeeze that paid the base (tier 1: no pad bonus, the Foam Mats Grip).
+	-- One accepted squeeze that paid the base (tier 1; Phase 3: every squeeze pays the squeeze value and the highest
+	-- capsule level's Grip, so only the tier the quests see differs).
 	local function expectBase(world: World, result: any)
 		expect.equal(result.ok, true)
-		expect.equal(result.coins, Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus)
-		expect.equal(result.grip, GripMath.squeezeGrip(world.profile.grip.trainer, 1))
+		expect.equal(result.coins, valueOf(world))
+		expect.equal(result.grip, gripOf(world))
 		expect.equal(world.squeezed[#world.squeezed].tier, 1)
 	end
 
@@ -292,7 +351,7 @@ return function(t: Context)
 			world.position = onStation("squeeze_01")
 			local forged = (SqueezeService.request :: any)(world.player, "squeeze_09")
 			expect.equal(forged.ok, true)
-			expect.equal(forged.coins, Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus)
+			expect.equal(forged.coins, valueOf(world))
 			expect.equal(world.squeezed[1].tier, 1)
 			finish()
 		end
@@ -313,9 +372,9 @@ return function(t: Context)
 		world.profile.squeezeLimit = { value = 0, at = UNIX_START }
 		local result = SqueezeService.request(world.player)
 		expect.equal(result.ok, true)
-		expect.equal(result.coins, Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus)
+		expect.equal(result.coins, valueOf(world))
 		expect.equal(world.profile.squeezeLimit.value, 0) -- the dormant limit state is left alone
-		expect.equal(result.grip, GripMath.squeezeGrip(1, 1))
+		expect.equal(result.grip, gripOf(world))
 		expect.truthy(world.profile.grip.total > 0)
 		expect.equal(world.profile.stats.squeezes, 1) -- still counts for stats and quests
 		expect.equal(#world.squeezed, 1)
@@ -343,7 +402,7 @@ return function(t: Context)
 
 	t.test("12 presses in 1 s all pay Coins and Grip", function()
 		local world = fresh()
-		local coinsEach = Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus
+		local coinsEach = valueOf(world)
 		local replies, dropped = click(world, SQ.bucketCapacity, 1 / SQ.bucketCapacity)
 		expect.equal(dropped, 0)
 		expect.equal(#replies, SQ.bucketCapacity)
@@ -439,7 +498,7 @@ return function(t: Context)
 		local world = fresh()
 		world.profile.squeezeLimit = { value = 5, at = UNIX_START }
 		local replies = click(world, 400, SQ.cycleSeconds)
-		local coinsEach = Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus
+		local coinsEach = valueOf(world)
 		expect.equal(#replies, 400)
 		for i, result in replies do
 			if not result.ok or result.coins ~= coinsEach or result.grip <= 0 then
@@ -454,7 +513,7 @@ return function(t: Context)
 	t.test("exactly one Double Grip point per accepted squeeze", function()
 		local world = fresh()
 		world.profile.grip.rested = { value = 10, at = UNIX_START }
-		local base = GripMath.squeezeGrip(1, 1)
+		local base = gripOf(world)
 		for i = 1, 3 do
 			local result = SqueezeService.request(world.player)
 			expect.equal(result.ok, true)
@@ -550,20 +609,18 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the Marshmallow Pad at its level pays the Coin bonus and its Grip percent", function()
+	-- Phase 3 (spec 2026-10-12 §3, §10): was "pays the Coin bonus and its Grip percent"; pads stay until Phase 6.
+	t.test("the Marshmallow Pad at its level pays like anywhere else and still reports its tier", function()
 		local world = fresh()
 		setLevel(world, Config.Grip.Pads[3].level)
 		local gripBefore = world.profile.grip.total
 		world.position = onStation("squeeze_08")
 		local result = SqueezeService.request(world.player)
 		expect.equal(result.ok, true)
-		expect.equal(result.coins, Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[3].coinBonus)
-		expect.equal(
-			result.grip,
-			math.floor(Config.Grip.Trainer[1].gripPerSqueeze * Config.Grip.Pads[3].gripPercent / 100)
-		)
+		expect.equal(result.coins, valueOf(world))
+		expect.equal(result.grip, gripOf(world))
 		expect.equal(world.profile.grip.total, gripBefore + result.grip)
-		expect.equal(world.squeezed[1].tier, 3)
+		expect.equal(world.squeezed[1].tier, 3) -- the quests (starter_jelly) still see the pad
 		finish()
 	end)
 
@@ -601,7 +658,7 @@ return function(t: Context)
 
 	t.test("paid squeezes above squeezeAlertPerHour in a rolling hour: one alert (log only), re-armed after", function()
 		local world = fresh()
-		local each = Catalog.getSqueezeCoins(world.equipped) + Config.Grip.Pads[1].coinBonus
+		local each = valueOf(world)
 		local crossing = Config.Grip.squeezeAlertPerHour + 1 -- the squeeze that takes the hour above the alert
 		local function alerts(): number
 			return SqueezeService.counts().squeezeAlerts
