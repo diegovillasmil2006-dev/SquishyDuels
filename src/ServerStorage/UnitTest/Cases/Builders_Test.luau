@@ -9,6 +9,11 @@
 -- WorldLayout.Arena.cover), the wall stripes (WorldLayout.Arena.wallStripes, §18.3.4), the Runtime folder and the
 -- part budget.
 -- LobbyBuilder is written by another Part 3 helper; until it exists its smoke case fails with "not found".
+-- CapsuleBuilder (build plan Phase 4; lobby bases spec 2026-10-11 §4, §5.1, §7; big-number progression spec §4): the
+-- templates BaseService clones onto the plots pass Verify("capsules"); one capsule per Config.Grip.Capsule tier look
+-- (pivot on the drum's bottom, its level plate along the pivot's LookVector, SD_SeatY on the drum), the lock, and a
+-- low-detail squishy (3.5 tall) and statue (WorldLayout.Bases.statueHeight) per Catalog squishy, pivot at the bottom
+-- centre; worstPlotParts adds up a plot at its worst.
 
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -286,6 +291,117 @@ return function(t: Context)
 		expect.equal(runtimeChildren, 0)
 		expect.truthy(parts > 0 and parts <= 400)
 	end)
+
+	t.test("CapsuleBuilder builds unparented, marked templates that pass Verify", function()
+		local built = build("CapsuleBuilder", "capsules")
+		local ok, err = pcall(expectVerified, "capsules", built.root)
+		local warnings = table.concat(built.warnings, " | ")
+		built.root:Destroy()
+		if not ok then
+			error(tostring(err) .. (if warnings ~= "" then " (build warnings: " .. warnings .. ")" else ""))
+		end
+	end)
+
+	t.test(
+		"CapsuleBuilder: a capsule per tier look, the lock, a squishy and a statue per squishy, sized and pivoted",
+		function()
+			local Config = t.requireShared("Config")
+			local Catalog = t.requireShared("Catalog")
+			local WorldLayout = t.requireShared("World/WorldLayout")
+			local root = build("CapsuleBuilder", "capsules").root
+			-- The size of a model around its pivot (its own axes): lowest Y and the height / width measure.
+			local function measure(model: Model): (number, number, number)
+				local pivot = model:GetPivot()
+				local low, high = Vector3.one * math.huge, -Vector3.one * math.huge
+				for _, part in model:GetDescendants() do
+					if part:IsA("BasePart") and part.Transparency < 1 then
+						for _, sx in { -0.5, 0.5 } do
+							for _, sy in { -0.5, 0.5 } do
+								for _, sz in { -0.5, 0.5 } do
+									local corner =
+										pivot:PointToObjectSpace(part.CFrame * (part.Size * Vector3.new(sx, sy, sz)))
+									low = low:Min(corner)
+									high = high:Max(corner)
+								end
+							end
+						end
+					end
+				end
+				local size = high - low
+				return low.Y, size.Y, size.X
+			end
+			local ok, err = pcall(function()
+				for _, tier in Config.Grip.Capsule.Tiers do
+					local capsule = root:FindFirstChild("Capsule_" .. tier.key) :: Model
+					if (capsule :: Model?) == nil then
+						error("no Capsule_" .. tier.key)
+					end
+					expect.equal(capsule:GetAttribute("SD_Look"), tier.key)
+					expect.equal(capsule:GetAttribute("SD_SeatY"), 1.5) -- the squishy stands on the drum (Ø7 × 1.5, §5.1)
+					local bottom, height = measure(capsule)
+					expect.near(bottom, 0, 0.01) -- the pivot is the drum's bottom centre
+					expect.truthy(height >= 9.5 and height <= 11.5) -- drum 1.5 + tube 7 + cap and knob
+					-- The level plate's front faces along the pivot's LookVector, so it reads from the plot's middle path.
+					local plate = capsule:FindFirstChild("LevelPlate") :: BasePart
+					local front = capsule:GetPivot():PointToObjectSpace(plate.Position)
+					expect.truthy(front.Z < -3.4)
+					local label = capsule:FindFirstChild("Level", true)
+					expect.truthy(label ~= nil and label:IsA("TextLabel") and label:GetAttribute("SD_TextKey") == nil)
+				end
+				local lock = root:FindFirstChild("Lock") :: Model
+				expect.truthy((lock :: Model?) ~= nil and lock:FindFirstChild("Price", true) ~= nil)
+				for _, def in Catalog.list() do
+					for _, entry in
+						{ { "Squishy_", 3.5 }, { "Statue_", WorldLayout.Bases.statueHeight } } :: { { any } }
+					do
+						local model = root:FindFirstChild(entry[1] .. def.id) :: Model
+						if (model :: Model?) == nil then
+							error("no " .. entry[1] .. def.id)
+						end
+						local bottom, height, width = measure(model)
+						expect.near(bottom, 0, 0.01) -- the pivot at its bottom centre
+						-- Built at max(height, 0.8 × width) = `tall`; low detail keeps its biggest parts, so it stays near.
+						local size = math.max(height, 0.8 * width)
+						if size > entry[2] + 0.05 or size < 0.6 * entry[2] then
+							error(string.format("%s is %.2f tall (measure), built at %.2f", model.Name, size, entry[2]))
+						end
+					end
+				end
+			end)
+			root:Destroy()
+			if not ok then
+				error(err)
+			end
+		end
+	)
+
+	t.test(
+		"CapsuleBuilder.worstPlotParts: n biggest capsules, the n biggest squishies and the biggest statue",
+		function()
+			local builders = tools:FindFirstChild("Builders") :: Instance
+			local CapsuleBuilder = dynamicRequire(builders:FindFirstChild("CapsuleBuilder") :: ModuleScript)
+			local root = Instance.new("Folder")
+			local function model(name: string, parts: number)
+				local holder = Instance.new("Model")
+				holder.Name = name
+				for _ = 1, parts do
+					Instance.new("Part").Parent = holder
+				end
+				holder.Parent = root
+			end
+			model("Capsule_a", 13)
+			model("Capsule_b", 10)
+			model("Lock", 8)
+			model("Squishy_x", 12)
+			model("Squishy_y", 5)
+			model("Squishy_z", 9)
+			model("Statue_x", 7)
+			model("Statue_y", 11)
+			expect.equal(CapsuleBuilder.worstPlotParts(root, 2), 2 * 13 + (12 + 9) + 11)
+			expect.equal(CapsuleBuilder.worstPlotParts(root, 4), 4 * 13 + (12 + 9 + 5) + 11) -- only 3 squishies exist
+			root:Destroy()
+		end
+	)
 
 	t.test("LobbyBuilder builds an unparented, marked lobby that passes Verify", function()
 		local built = build("LobbyBuilder", "lobby")

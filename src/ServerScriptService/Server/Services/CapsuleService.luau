@@ -26,6 +26,8 @@
 --   capsule that held it is left empty: one capsule per squishy, spec 2026-10-12 §6) with a "soon" save; reply
 --   ok({capsules, charged = false, savePending}).
 -- Every refusal carries charged = false. Every profile write goes through DataService.mutate (the data port).
+-- Phase 4: every capsule change (a bought level or slot, a squishy set) redraws the caller's own base at once
+-- (BaseService.refresh, deps.showCapsules); a refusal, a replay or a squishy already there draws nothing.
 -- Dependencies are injectable (useDeps) so unit tests run with fake profiles and players (plain tables); init() never
 -- yields; playerAdded / playerRemoving never yield.
 
@@ -71,6 +73,7 @@ export type Deps = {
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 	requestSave: (player: any, reason: string) -> (),
 	setAttribute: (player: any, name: string, value: number) -> (),
+	showCapsules: (player: any) -> (), -- BaseService.refresh: the player's base shows their capsules again
 }
 
 -- What the remotes answer: NetService.ok(Types.CapsuleResult) or NetService.err(reason, false).
@@ -169,6 +172,9 @@ local function defaultDeps(): Deps
 			if typeof(player) == "Instance" then
 				(player :: Instance):SetAttribute(name, value)
 			end
+		end,
+		showCapsules = function(player: any)
+			BaseService.refresh(player)
 		end,
 	}
 end
@@ -271,6 +277,7 @@ local function buy(player: any, cost: number, what: string, write: (capsules: an
 		return NetService.err(CODE_NOT_READY, false)
 	end
 	log:info(`user {userIdOf(player)} bought {what} for {cost} Coins`)
+	deps.showCapsules(player)
 	local data = result(player, true, false) -- copied before the save yields
 	data.savePending = not deps.saveNow(player)
 	return NetService.ok(data)
@@ -387,6 +394,7 @@ function CapsuleService.set(player: any, slot: any, squishyId: any): Reply
 	if not written then
 		return NetService.err(CODE_NOT_READY, false)
 	end
+	deps.showCapsules(player)
 	deps.requestSave(player, SAVE_SOON)
 	return NetService.ok(result(player, false, deps.savePending(player)))
 end

@@ -7,7 +7,8 @@
 --   * an unknown target is never hit;
 --   * the practice_hits quest counts each target at most once per Config.Economy.Quests.practiceTargetRepeatSeconds;
 --   * a Dragon Rush rehearsal lane knocks a target down but never counts for the quest or the session stats;
---   * targets are the 9 PracticeTargets definitions; practice never pays Coins (this service has no Coin path).
+--   * targets are the 4 PracticeTargets definitions (Squish Island's range, lobby bases spec §3); practice never pays
+--     Coins (this service has no Coin path).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -38,7 +39,7 @@ return function(t: Context)
 
 	t.test("the targets are the PracticeTargets definitions", function()
 		expect.equal(#PracticeService.targets(), #PracticeTargets.list())
-		expect.equal(#PracticeService.targets(), 9)
+		expect.equal(#PracticeService.targets(), 4)
 	end)
 
 	t.test("a hit knocks the target down for targetDownSeconds; a down target cannot be hit", function()

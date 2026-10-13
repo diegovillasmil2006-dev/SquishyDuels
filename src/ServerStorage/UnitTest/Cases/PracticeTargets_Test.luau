@@ -1,12 +1,12 @@
 --!strict
 -- PracticeTargets_Test: unit tests for ReplicatedStorage.Shared.Practice.PracticeTargets. Server only
 -- (ServerStorage.UnitTest).
--- Contract (DESIGN §5.11, §7.6): 9 targets from WorldLayout.PracticeRange (3 lanes × 12/20/28 studs from the firing
--- line), one moving (middle lane, 20 studs) along Z by railLength/2 · sin(2π·t/period) with a peak of ≈ 4 studs/s;
--- positionAt is a pure function of server time (same on server and client); the hitbox is the player capsule
--- (floor+0 .. floor+6.1); the throw box and the 75° cone around the range forward are the practice context of
--- ThrowRules. Phase 3 (the design lobby, D3): the lanes are the design's (world Z 52 / 62 / 72), the firing line the
--- design's (X 79) and throws go toward +X (lobby.js:129, 399-406); the bounds come from WorldLayout.
+-- Contract (DESIGN §5.11, §7.6): the targets of WorldLayout.PracticeRange, one moving (20 studs from the firing line)
+-- along Z by railLength/2 · sin(2π·t/period) with a peak of ≈ 4 studs/s; positionAt is a pure function of server time
+-- (same on server and client); the hitbox is the player capsule (floor+0 .. floor+6.1); the throw box and the 75° cone
+-- around the range forward are the practice context of ThrowRules; the bounds come from WorldLayout. Phase 4 (Squish
+-- Island, lobby bases spec §3: "44-st lane", "3 dummies"): 4 targets on one lane along Z 0, the 3 dummies 12 / 28 / 34
+-- studs and the moving target 20 studs past the firing line at X 52; throws still go toward +X (D3).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -37,10 +37,10 @@ return function(t: Context)
 
 	-- Definitions --------------------------------------------------------------------------------------------------
 
-	t.test("the 9 targets match WorldLayout.PracticeRange", function()
+	t.test("the 4 targets match WorldLayout.PracticeRange", function()
 		local list = PracticeTargets.list()
 		expect.equal(#list, #range.targets)
-		expect.equal(#list, 9)
+		expect.equal(#list, 4) -- spec §3: 3 dummies, plus the moving target the game keeps (§5.11)
 		for index, def in list do
 			local source = range.targets[index]
 			expect.equal(def.id, source.id)
@@ -56,13 +56,13 @@ return function(t: Context)
 		expect.equal(PracticeTargets.get("target_99"), nil)
 	end)
 
-	t.test("exactly one target moves: middle lane, 20 studs, rail 12, period 9.42 s", function()
+	t.test("exactly one target moves: on the lane, 20 studs, rail 12, period 9.42 s", function()
 		local moving = 0
 		for _, def in PracticeTargets.list() do
 			if def.moving then
 				moving += 1
 				expect.equal(def.distance, 20)
-				expect.equal(def.position.Z, 62) -- the middle design lane (lobby.js:405: local x 0)
+				expect.equal(def.position.Z, 0) -- the island's one lane runs along Z 0
 				expect.equal(def.railLength, 12)
 				expect.equal(def.period, 9.42)
 			end
@@ -147,7 +147,7 @@ return function(t: Context)
 	-- Attributes ---------------------------------------------------------------------------------------------------
 
 	t.test("fromAttributes reads a tagged target and rejects bad attributes", function()
-		local base = Vector3.new(99, 0.6, 62) -- the moving target's floor point: X 79 + 20, on the range floor
+		local base = Vector3.new(72, 0.6, 0) -- the moving target's floor point: X 52 + 20, on the lane floor
 		local attrs = { TargetId = "target_05", Distance = 20, Moving = true, RailLength = 12, Period = 9.42 }
 		local def = PracticeTargets.fromAttributes(attrs, base)
 		expect.truthy(def ~= nil)
@@ -171,9 +171,9 @@ return function(t: Context)
 
 	t.test("inThrowBox is the SD_PracticeZone box", function()
 		expect.truthy(PracticeTargets.inThrowBox(range.approach + Vector3.new(0, 3, 0)))
-		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(78, 3, 80))) -- a corner spot behind the firing line
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(85, 3, 62))) -- on the lane, past the firing line
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(75, 3, 30))) -- south of the range (the daily stand side)
+		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(51, 3, 9))) -- a corner spot behind the firing line
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(60, 3, 0))) -- on the lane, past the firing line
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(48, 3, 15))) -- beside the lane (the garden)
 		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(0, 3, 0))) -- the spawn
 	end)
 

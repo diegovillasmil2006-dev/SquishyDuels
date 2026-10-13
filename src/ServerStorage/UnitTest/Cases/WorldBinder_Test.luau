@@ -60,12 +60,14 @@ return function(t: Context)
 				size = zone.size,
 			})
 		end
-		local spawn = WorldBinder.pickZone(candidates, Vector3.new(0, 3, 0)) -- the design medallion
+		local spawn = WorldBinder.pickZone(candidates, Vector3.new(0, 3, 0)) -- the hub spawn's medallion
 		expect.equal(spawn and spawn.zoneId, "lobby")
-		local mat = WorldBinder.pickZone(candidates, Vector3.new(-47.58, 3, 42.65)) -- foam mat 2
+		local mat = WorldBinder.pickZone(candidates, Vector3.new(-64, 3, 0)) -- foam mat 2
 		expect.equal(mat and mat.zoneId, "squeeze")
-		local range = WorldBinder.pickZone(candidates, Vector3.new(99, 3, 62)) -- the middle lane
+		local range = WorldBinder.pickZone(candidates, Vector3.new(75, 3, 0)) -- the practice lane
 		expect.equal(range and range.zoneId, "practice")
+		local plot = WorldBinder.pickZone(candidates, Vector3.new(0, 3, -122)) -- plot 1, north of the hub
+		expect.equal(plot and plot.zoneId, "lobby")
 		expect.equal(WorldBinder.pickZone(candidates, Vector3.new(400, 3, 0)), nil)
 	end)
 

@@ -1,72 +1,89 @@
 --!strict
--- LobbyBuilder: builds the lobby Workspace.SD_Lobby as the Claude Design hub (design package sd/lobby.js; user decision
--- 2026-10-11 "build the design's lobby", phase 3 spec decisions D1-D14), with the game's stations, Grip pods (§17.6)
--- and giant pads (§17.6.1) inside it. Server only, Edit mode only (ServerStorage.SDTools); called by Main's pipeline
--- (target "lobby"), never at runtime. Contract (Generated.BuildContext / BuildResult): build(ctx) returns
--- { ok, root, warnings, error } with the new tree UNPARENTED and marked GeneratorId "lobby"; it never parents anything
--- into the place. Relative requires, or modules of the injected ctx.Shared clone (never an absolute require).
+-- LobbyBuilder: builds the lobby Workspace.SD_Lobby as Squish Island (lobby bases spec 2026-10-11 §2-§4, §7-§8; build
+-- plan Phase 4): the island, Squish Square with the duel stage under the duel tower, the stations in the hub sectors
+-- (the Claude Design hub's stations, design package sd/lobby.js, phase 3 decisions D1-D14, made compact), the Grip pods
+-- (§17.6) and giant pads (§17.6.1) until Phase 6, the garden, the beach, the sky and the 10 bases. Server only, Edit
+-- mode only (ServerStorage.SDTools); called by Main's pipeline (target "lobby"), never at runtime. Contract
+-- (Generated.BuildContext / BuildResult): build(ctx) returns { ok, root, warnings, error } with the new tree
+-- UNPARENTED and marked GeneratorId "lobby"; it never parents anything into the place. Relative requires, or modules
+-- of the injected ctx.Shared clone (never an absolute require).
 --
--- Data: what the game reads (stations, stands, prompts, pads, targets, signs, volumes, the station frames) comes from
--- Shared World/WorldLayout; colours are Art/Palette tokens ("Lobby kit"); text is Shared Strings (the design's plate
--- words are world.* keys, D10); the giant pads' Live line uses Config.Grip.Pads[tier].level; the queue board uses
--- Config.Duel.Arena.MaxSlots; the pedestal bands use Art/RarityStyle (D9) in Catalog order (D4). The design's decor is
--- built here, in each station's design frame (WorldLayout.stationFrame: lobby.js:112, 119-130), every number with its
--- `-- design: lobby.js:<line>`; "reading" marks a value the design leaves open, "NOT IN DESIGN" a part the game needs.
--- Kit/Props maps the design's primitives to parts (rounded boxes, cylinders, rings as collars or annuli, gumdrops).
+-- Data: what the game reads (stations, stands, prompts, pads, targets, signs, volumes, plots, the station frames, the
+-- island's radii) comes from Shared World/WorldLayout; colours are Art/Palette tokens ("Lobby kit", "Squish Island");
+-- text is Shared Strings (the design's plate words are world.* keys, D10; the bases' signs base.*); the giant pads' Live
+-- line uses Config.Grip.Pads[tier].level; the queue board uses Config.Duel.Arena.MaxSlots; the pedestal bands use
+-- Art/RarityStyle (D9) in Catalog order (D4). The decor is built here, in each station's frame
+-- (WorldLayout.stationFrame) or a plot's (WorldLayout.plotFrame), every design number with its
+-- `-- design: lobby.js:<line>`, an island number with `-- spec §<n>`; "reading" marks a value neither gives, "NOT IN
+-- DESIGN" a part the game needs. Kit/Props maps the design's primitives to parts.
 --
 -- Static default states (D14): each station is built as the design shows its first state (lobby.js:120-129, "set"):
 -- the box Available (reveal ring lit), the shop Purchasable (turntable ring lit), the daily gift Ready (ring lit), the
 -- queue empty (no lights: D2, presentation only), the squeeze meters full, the quest cards in progress, the royal pod
--- Locked, every lock + rope shown (WorldBinder hides them per viewer, D5). Left to state binders: the queue lights and
--- portal, the box lid / beam / rope / reveal toy, the shop's lock / check, the quest stamps, the daily lid / check /
--- clock, the squeeze meters, the royal crown and ring. Neon only on the lit state rings (D7); no outlines (D8); the
--- scale avatars, labels, cameras and footprint rings are never built (spec B.15).
+-- Locked, every lock + rope shown (WorldBinder hides them per viewer, D5). Every plot is built open: grey, "Open plot",
+-- no capsules (BaseService shows the owner's name, colour, capsules and statue at runtime). Neon only on the lit state
+-- rings (D7); no outlines (D8).
 --
 -- Tree (station models with a prompt are Atomic and < 64 studs, so a prompt and its SurfaceGui stream together, §7.7):
 --   SD_Lobby (Model, ModelStreamingMode Default, marked SD_Generated / lobby / VERSION)
---     Ground       base slab, floor seams, paths and the promenade rings (lobby.js:115-116, 133-142)
---     Boundaries   4 invisible walls (SD_Boundary)
---     Spawn        medallion, rim, logo plate (spawn logo sign), SpawnLocation (SD_LobbySpawn), wayfinding post
---     DuelGate     stage, step = podium (SD_QueuePodium + prompt), arch, slot board, 10 queue pads, queue board
---                  valance (SD_QueueBoard, NOT IN DESIGN), ReturnPoint1/2 (SD_ReturnPoint, Slot)
+--     Island      the sea, the shallow water, the beach, the grass and its edge (spec §2, §8)
+--     Boundaries  4 invisible walls at the sea's edge (SD_Boundary)
+--     Hub         Squish Square: its floor, curb and paths (the sign owner of the painted "SQUISH SQUARE")
+--     Spawn       the medallion on the stage centre, its rim, the logo plate, the hub SpawnLocation (SD_LobbySpawn)
+--     DuelGate    the duel stage, the queue podium (SD_QueuePodium + prompt), 10 queue pads, the queue board
+--                 (SD_QueueBoard), ReturnPoint1/2 (SD_ReturnPoint, Slot)
+--     DuelTower   the landmark (spec §2, §7): 4 pillars, the deck with the DUELS badge, the Dragon Spire
 --     GiftBoxCounter dais, GiftBox (the mystery box, SD_Ambient breathe), reveal pedestal (SD_BoxStand, BoxId + prompt)
---                  with its ring, OddsBoard (Title + live Body)
+--                 with its ring, OddsBoard (Title + live Body)
 --     ShopCounter  floor, back wall and shelves, counter (SD_ShopCounter + prompt), awning, display case, turntable,
 --                  the design's toys
---     Collection   floor, 7 bays, 14 pedestals (SD_CollectionPedestal, Slot + Inspect prompt; the squishies are
---                  client-built) with rarity bands, kiosk (SD_CollectionKiosk + prompt)
+--     Collection   floor, 7 bays on an arc, 14 pedestals (SD_CollectionPedestal, Slot + Inspect prompt; the squishies
+--                  are client-built) with rarity bands, kiosk (SD_CollectionKiosk + prompt)
 --     QuestBoard   floor, posts, cork (SD_QuestBoard + prompt), frame, header, 9 cards
 --     DailyStand   dais (SD_DailyStand + prompt), GiftBox (SD_Ambient spinBob), ring, 7-day calendar, Status plate
 --     SqueezeZone  floor, plinth, Statue (Kitty Bread, SD_Ambient breathe) + StatueSparkle, 6 foam mats
 --                  (SD_SqueezeStation, StationId, GripTier 1) with meters
---     PracticeRange LaneFloor, FiringLine, ThrowBox (SD_PracticeZone), Backstop (in the pillow wall), Targets (9
---                  SD_PracticeTarget bullseye boards: TargetId, Distance, Moving, RailLength, Period; "Body" mesh),
---                  rope rails, board
+--     PracticeRange LaneFloor, FiringLine, ThrowBox (SD_PracticeZone), Backstop (in the pillow wall, on its footing),
+--                  Targets (3 dummies and the moving target, SD_PracticeTarget bullseye boards: TargetId, Distance,
+--                  Moving, RailLength, Period; "Body" mesh), rope rails, board
 --     GripGym / RoyalPod  floors, white bases / daises, jelly gates (SD_GripGate, invisible), lock + rope decor
 --                  (SD_GripLock, GripTier), pod signs (SD_GripSign) and GiantPad_<key> (Atomic, SD_GiantPad: GripTier,
 --                  PadKey): Collision (the invisible station box, SD_SqueezeStation) and Body (the design pad: base,
 --                  quilted tiles inside the rounded footprint, SD_PadAccent parts path A keeps visible); no Face (D5)
---     Kit          perimeter walls, pillars, shelves, windows, hedges, lamps, trees, benches, the kit sample bay
---     Decor        Lollipop1..4 (Atomic, SD_Ambient spin)
+--     HubDecor     the Butter Fountain, the chocolate bar benches, the pancake stack tables (spec §3, §7)
+--     Garden       the 10 garden paths, Boba pearl bollards, Mochi Fox lanterns, cupcake trees, the Toast Stack Tower,
+--                  the Banana Slide, the Frog Lily Pond and the lily pads on the sea (spec §7)
+--     Sky          6 Cloud Bunny clouds (spec §7)
+--     Decor        Lollipop1..4 (Atomic, SD_Ambient spin), in the garden
+--     Bases        Base_01..Base_10 (SD_Base, Plot): plinth floor (studs, SD_BaseTint light) and rim (full), white
+--                  fence with posts every 8 studs and caps (full), the Donut Arch gate (16 wide, icing full) with its
+--                  name sign (live line Owner), the back wall (44 × 9, cap full), the statue plinth, the 4 capsule pads
+--                  (Slot), the plot's SpawnLocation (SD_BaseSpawn, Plot) and its props (spec §4, §7)
 --     KeepClear / AudioZones (Folders) invisible volumes
 -- Lobby background motion (§18.5.1 A8, D12): Decor/Lollipop1..4 "spin", DailyStand/GiftBox "spinBob",
 -- GiftBoxCounter/GiftBox and SqueezeZone/Statue "breathe" (SD_Ambient + SD_AmbientKind); none of their parts
 -- collides, is queried or is touched. Every ProximityPrompt is created DISABLED (WorldBinder enables a stand's prompt
 -- only when its UI exists, §7.6) with SD_TextKey (and SD_AltTextKey). Signs: Kit/Signs (static lines SD_Sign +
 -- SD_TextKey; baked/live lines without SD_TextKey); the design's plates have no wood frame (Kit/Signs plate).
--- Self-check (§7.7): exact tag counts (WorldLayout.TagCounts), unique StationIds, one moving target, every prompt
--- disabled, inert SD_Ambient decor, part and SurfaceGui budgets; any problem fails the build. The keep-clear test
--- (oriented boxes, station models' own parts exempt as in Verify) and a part-count report come back as warnings.
+-- Render rules (spec §7), applied to the whole tree at the end: nothing but a SpawnLocation is touched; parts under 2
+-- studs cast no shadow; decor nobody walks on never collides (Kit/Prims "decor").
+-- Self-check (§7.7, spec §7): exact tag counts (WorldLayout.TagCounts), unique StationIds, one moving target, every
+-- prompt disabled, inert SD_Ambient decor, the SurfaceGui budget, one plot Model and one SpawnLocation per plot, the
+-- render rules, nothing collidable standing on a path (the 10 path volumes: the paths stay 8 wide), and the part budget
+-- per zone (WorldLayout.Budgets) with every plot's capsules at their worst case (Builders/CapsuleBuilder's templates);
+-- any problem fails the build. The keep-clear test (oriented boxes, station models' own parts exempt as in Verify) and
+-- a part-count report per zone come back as warnings.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local CapsuleBuilder = require(script.Parent.CapsuleBuilder)
 local Generated = require(script.Parent.Parent.Generated)
 local Prims = require(script.Parent.Parent.Kit.Prims)
 local Props = require(script.Parent.Parent.Kit.Props)
 local Signs = require(script.Parent.Parent.Kit.Signs)
 local Verify = require(script.Parent.Parent.Verify)
 
-local BARRIER_GROUP = "SD_Barrier" -- the invisible walls' collision group (see buildGround)
+local BARRIER_GROUP = "SD_Barrier" -- the invisible walls' collision group (see buildIsland)
 
 -- Types
 
@@ -96,10 +113,13 @@ type State = {
 	warnedTemplate: boolean,
 }
 
+-- A prop part: a primitive (`kind`), its name, size, CFrame in the prop's frame and Palette token.
+type PropPart = { kind: "block" | "cyl" | "ball" | "egg", name: string, size: Vector3, cframe: CFrame, token: string }
+
 -- Constants
 
 local GENERATOR_ID = "lobby"
-local VERSION = 2 -- phase 3: the design hub
+local VERSION = 3 -- Phase 4: Squish Island
 local ROOT_NAME = "SD_Lobby"
 
 local SHAPE_LIBRARY_NAME = "SD_ShapeLibrary"
@@ -121,11 +141,9 @@ local QUEST_FILLS = { 0.75, 0.4, 0.15 } -- design: lobby.js:303 (Available)
 local QUEST_CARD_TILTS = { { 0.0009, 0.0024, 0.0086 }, { 0.0072, 0.0281, 0.003 }, { -0.0336, 0.0024, 0.0086 } }
 local SHOP_GIFT_TOKENS = { "LobbyMint", "LobbyButter", "LobbyViolet", "LobbySky", "LobbyStrawberry" } -- lobby.js:241
 local RANK_TOKENS = { "LobbyRankGrey", "LobbyMint", "LobbySky", "LobbyViolet", "LobbyButter", "LobbyStrawberry" } -- 370
-local SHELF_BLOB_TOKENS = { "LobbyStrawberry", "LobbyButter", "LobbySky", "LobbyViolet" } -- design: lobby.js:439
-local HEDGE_TOKENS = { "LobbyMint", "LobbyStrawberry", "LobbyButter", "LobbyViolet" } -- design: lobby.js:443
--- The corner lollipops' swirl colours (design: lobby.js:468), in WorldLayout.Props.lollipops order.
+-- The lollipops' stick and disk colour (design: lobby.js:468), their swirl colours in WorldLayout.Props.lollipops.
 local LOLLIPOP_STICK = "LobbyTrimWhite"
--- Practice targets (D3): the design's bullseye boards (lobby.js:406-409) on the game's 9 targets.
+-- Practice targets (D3): the design's bullseye boards (lobby.js:406-409) on the game's targets.
 local TARGET_RINGS = { -- design: lobby.js:409 (the inner ring discs, outer to inner)
 	{ radius = 2.4, token = "LobbyStrawberry" },
 	{ radius = 1.7, token = "LobbyTrimWhite" },
@@ -134,16 +152,6 @@ local TARGET_RINGS = { -- design: lobby.js:409 (the inner ring discs, outer to i
 local TARGET_RING_STEP = 0.12 -- design: lobby.js:409
 local TARGET_POLE_OVERLAP = 0.45 -- design: lobby.js:407-408 (the pole's top, 7.15, is 0.45 under the board centre)
 local RAIL = { width = 0.4, height = 0.07, token = "LobbyPlum" } -- NOT IN DESIGN: the moving target's rail (§5.11)
--- World kit decor the design places between the paths (lobby.js:445-467: mids nudged off the station cameras),
--- reproduced (phase 3 spec B.14): cotton trees (pink, k 1.05), candy lamps, wafer benches (x, z, yaw).
-local TREES = { Vector3.new(-10.15, 0, -39.72), Vector3.new(36.51, 0, 18.65), Vector3.new(-40.84, 0, 3.63) }
-local LAMPS = { Vector3.new(40.98, 0, 1.41), Vector3.new(31.21, 0, 26.59), Vector3.new(-39.02, 0, -12.59) }
-local BENCHES = {
-	{ -11.14, -43.6, 3.3917 },
-	{ 44.99, -0.8, 1.5886 },
-	{ 35.21, 28.03, 0.8985 },
-	{ 9.86, 43.91, 0.221 },
-}
 -- Statue sparkle (§7.7 "ambient sparkle at the statue"): rate, lifetime and texture from Config.Vfx; the look below.
 local SPARKLE = {
 	token = "Lemon",
@@ -156,6 +164,43 @@ local SPARKLE = {
 local RETURN_MARKER_SIZE = Vector3.new(2, 0.2, 2)
 local PAD_TILE_INSET = 0.5 -- reading: quilted tiles whose centre lies this far inside the rounded footprint
 local PAD_TUFT = Vector3.new(0.76, 0.4, 0.76) -- reading: the royal tufts (SPH 0.38, lobby.js:386) pressed to buttons
+
+-- The duel tower (spec §2: 4 pillars 7 × 7 at (±14, ±14), deck at 36, a blocky Dragon on top, about 68 tall).
+-- Reading: the pillars at (±12, ±12) so they stand on the stage and leave the 10 paths clear; mint on the west, strawberry
+-- on the east like the queue pads; the Dragon Spire is the game's Dragon toy on a stepped spire.
+local TOWER = {
+	pillar = 7,
+	pillarAt = 12,
+	deckBottom = 35,
+	deckTop = 38.5,
+	deckSide = 31,
+	dragonTall = 22, -- toyAt measure: its top reaches about 68
+	bandY = { 8, 20, 30 },
+}
+local QUEUE_PAD_RING = 10 -- reading: the 10 queue pads (design: lobby.js:190-195) on a ring around the medallion
+
+-- Spec §7 render rules.
+local SMALL_PART = 2 -- parts under 2 studs cast no shadow
+local WALKABLE_TOP = 0.5 -- a colliding part whose top is at or below this is floor (§7.7 rule 3; Verify's rule)
+
+-- Zones of the part budget (spec §7): root children that are the garden, the beach and the sky; the plots' folder; the
+-- hub is everything else.
+local GARDEN_ZONE: { [string]: boolean } = { Island = true, Boundaries = true, Garden = true, Sky = true, Decor = true }
+local BASES_FOLDER = "Bases"
+
+-- Base layout (spec §4; plot-local, +Z toward the hub, the plinth's top Y 0). Readings where §4 gives no number.
+local BASE_RIM_DROP = Prims.LAYER -- the full-colour rim's top lies this far under the floor's
+local FENCE_POST = Vector3.new(0.8, 3, 0.8)
+local FENCE_CAP = Vector3.new(1.1, 0.5, 1.1)
+local FENCE_RAIL_Y = { 1.2, 2.4 }
+local FENCE_RAIL = 0.35
+local FENCE_SIDE_Z = { -18, -10, -2, 6, 14, 22 } -- posts every 8 studs (spec §4) along each side
+local FENCE_FRONT_X = 15 -- a post between the gate and each front corner
+local BACK_WALL = Vector3.new(44, 9, 1.6) -- spec §4
+local GATE_PILLAR = Vector3.new(2, 7, 2) -- reading: dough pillars 2 wide, 7 tall
+local DONUT_TUBE = 1.3 -- reading: the arch is half a donut, its tube this thick
+local SPAWN_PAD = Vector3.new(4, 0.2, 4)
+local STATUE_PLINTH = { diameter = 6, height = 1.2 }
 
 -- `require` with a runtime-chosen ModuleScript (the injected Shared clone); the analyzer cannot resolve it.
 local dynamicRequire = require :: (ModuleScript) -> any
@@ -487,103 +532,47 @@ local function frontOf(frame: CFrame): Vector3
 	return frame:VectorToWorldSpace(Vector3.zAxis)
 end
 
--- Private: hub --------------------------------------------------------------------------------------------------------
+-- Private: the island and the square ---------------------------------------------------------------------------------
 
-local function buildGround(state: State)
+-- An upright disc `radius` wide whose top is `top` and whose bottom is `bottom`, centred on the floor point `centre`.
+local function slab(
+	state: State,
+	parent: Instance,
+	name: string,
+	radius: number,
+	bottom: number,
+	top: number,
+	centre: Vector3,
+	token: string,
+	flags: Prims.Flags?
+): Part
+	local height = top - bottom
+	return cyl(state, parent, name, radius, height, CFrame.new(centre.X, bottom + height / 2, centre.Z), token, flags)
+end
+
+-- The sea, the shallow water, the beach and the grass (spec §2, §8): the sea is WorldLayout.Lobby.baseSlab; the round
+-- layers stand on it, each top Prims.LAYER or more above the one under it. Then the boundaries at the sea's edge.
+local function buildIsland(state: State)
 	local L = state.L
-	local ground = Prims.model("Ground", state.root, false)
-	boxPart(state, "floor_base", L.Lobby.baseSlab, ground, "solid") -- design: lobby.js:115
-	-- design: lobby.js:116 (tile seams every 12 studs from 8 inside the hub edge, 0.25 wide, 0.03 thick)
-	local box = L.Lobby.footprint
-	local seam = color(state, "LobbySeam")
-	local depth, width = box.maxZ - box.minZ, box.maxX - box.minX
-	local x = box.minX + 8
-	while x < box.maxX do
-		Prims.part({
-			name = "floor_tile_line",
-			size = Vector3.new(0.25, 0.03, depth),
-			cframe = CFrame.new(x, 0.015, 0),
-			color = seam,
-			flags = "decor",
-			shadow = false,
-			parent = ground,
-		})
-		x += 12
-	end
-	local z = box.minZ + 8
-	while z < box.maxZ do
-		Prims.part({
-			name = "floor_tile_line",
-			size = Vector3.new(width, 0.03, 0.25),
-			cframe = CFrame.new(0, 0.015, z),
-			color = seam,
-			flags = "decor",
-			shadow = false,
-			parent = ground,
-		})
-		z += 12
-	end
-	-- Paths (lobby.js:134): a curb box w + 1.8 wide (0.08 thick) under the path box (0.1), each with a round end.
-	for _, path in L.Paths do
-		local delta = path.to - path.from
-		local frame = CFrame.new((path.from + path.to) / 2) * CFrame.Angles(0, -math.atan2(delta.Z, delta.X), 0)
-		local length = delta.Magnitude
-		local curbWidth = path.width + L.Promenade.curbExtra
-		local curbTop = 0.1 - Prims.LAYER -- under the path's 0.1 top (0.08 flickered)
-		Prims.part({
-			name = "paint_path_curb",
-			size = Vector3.new(length, curbTop, curbWidth),
-			cframe = frame + Vector3.new(0, curbTop / 2, 0),
-			color = color(state, "LobbyCurb"),
-			flags = "decor",
-			shadow = false,
-			parent = ground,
-		})
-		Prims.part({
-			name = "paint_path",
-			size = Vector3.new(length - 2 * Prims.LAYER, 0.1, path.width), -- ends clear the curb's (flicker)
-			cframe = frame + Vector3.new(0, 0.05, 0),
-			color = color(state, "LobbyPath"),
-			flags = "decor",
-			shadow = false,
-			parent = ground,
-		})
-		cyl(
-			state,
-			ground,
-			"paint_path_curb",
-			curbWidth / 2,
-			curbTop,
-			CFrame.new(path.to + Vector3.new(0, curbTop / 2, 0)),
-			"LobbyCurb"
-		)
-		cyl(
-			state,
-			ground,
-			"paint_path",
-			path.width / 2,
-			0.1,
-			CFrame.new(path.to + Vector3.new(0, 0.05, 0)),
-			"LobbyPath"
-		)
-	end
-	-- The promenade rings (lobby.js:142): curb 22.6-33.4 under path 23.4-32.6, as stacked discs whose inner parts are
-	-- covered by discs of the colour inside them (reading: no flat-ring primitive).
-	local P = L.Promenade
-	local layers = {
-		{ name = "paint_promenade_curb", radius = P.curb.outer, top = P.curb.top, token = "LobbyCurb" },
-		{ name = "paint_promenade", radius = P.path.outer, top = P.path.top, token = "LobbyPath" },
-		{ name = "paint_promenade_curb", radius = P.path.inner, top = P.path.top + Prims.LAYER, token = "LobbyCurb" },
-		{
-			name = "paint_promenade_floor",
-			radius = P.curb.inner,
-			top = P.path.top + 2 * Prims.LAYER,
-			token = "LobbyFloor",
-		},
-	}
-	for _, layer in layers do
-		cyl(state, ground, layer.name, layer.radius, layer.top, CFrame.new(0, layer.top / 2, 0), layer.token)
-	end
+	local I = L.Island
+	local model = Prims.model("Island", state.root, false)
+	local sea = boxPart(state, "sea", L.Lobby.baseSlab, model, "solid")
+	local seaTop = sea.Position.Y + sea.Size.Y / 2
+	local bottom = seaTop - 1 -- reading: every layer reaches 1 stud into the sea
+	slab(state, model, "shallow_water", I.shallow.radius, bottom, I.shallow.top, Vector3.zero, I.shallow.color, "solid")
+	slab(state, model, "beach", I.beach.radius, bottom, I.beach.top, Vector3.zero, I.beach.color, "solid")
+	slab(
+		state,
+		model,
+		"grass_edge",
+		I.grassEdge.radius,
+		bottom,
+		I.grass.top - Prims.LAYER,
+		Vector3.zero,
+		I.grassEdge.color,
+		"solid"
+	)
+	slab(state, model, "grass", I.grass.radius, bottom, I.grass.top, Vector3.zero, I.grass.color, "solid")
 	local walls = Prims.folder("Boundaries", state.root)
 	for _, wall in L.Lobby.Boundaries do
 		local part = Prims.part({
@@ -594,9 +583,8 @@ local function buildGround(state: State)
 			parent = walls,
 		})
 		Prims.tag(part, L.Tags.Boundary)
-		-- Roblox ignores CanQuery = false on a colliding part: in the Default group these 60-stud walls caught the aim
-		-- ray, so a practice throw aimed high flew up to a point on the wall (user bug report 2026-10-11, "it goes all
-		-- the way up"). The arena walls' group (ArenaBuilder.BARRIER_GROUP) collides only with SD_Characters.
+		-- Roblox ignores CanQuery = false on a colliding part: in the Default group these walls would catch the aim ray
+		-- (user bug report 2026-10-11, "it goes all the way up"). The barrier group collides only with SD_Characters.
 		local ok, err = pcall(function()
 			part.CollisionGroup = BARRIER_GROUP
 		end)
@@ -606,11 +594,47 @@ local function buildGround(state: State)
 	end
 end
 
+-- Squish Square (spec §2): the raised floor, the white curb under its edge and the paths across it to the stage.
+local function buildHub(state: State)
+	local L = state.L
+	local I = L.Island
+	local model = station(state, "Hub", false)
+	local hub = I.hub
+	slab(state, model, "hub_floor", hub.radius, hub.top - hub.height, hub.top, Vector3.zero, hub.color, "solid")
+	-- Prims.LAYER under the floor's top: the curb shows as a white band around the square and as its side.
+	slab(
+		state,
+		model,
+		"hub_curb",
+		I.curb.radius,
+		hub.top - hub.height,
+		hub.top - Prims.LAYER,
+		Vector3.zero,
+		I.curb.color,
+		"solid"
+	)
+	for _, path in L.Paths do
+		local dir = (path.to - path.from).Unit
+		local from, to = dir * I.paving.from, dir * I.paving.to
+		Prims.part({
+			name = "hub_path",
+			size = Vector3.new((to - from).Magnitude, Prims.LAYER, path.width),
+			cframe = CFrame.new((from + to) / 2 + Vector3.new(0, hub.top + Prims.LAYER / 2, 0))
+				* CFrame.Angles(0, -math.atan2(dir.Z, dir.X), 0),
+			color = color(state, I.paving.color),
+			flags = "decor",
+			shadow = false,
+			parent = model,
+		})
+	end
+end
+
+-- The hub spawn (lobby.js:147-155): the medallion on the stage centre, its rim, the invisible SpawnLocation and the
+-- logo's plate.
 local function buildSpawn(state: State)
 	local L = state.L
 	local S = L.Spawn
 	local model = station(state, S.model, true)
-	local F = stationCF(state, "spawn")
 	local medallion = S.medallion
 	cyl(
 		state,
@@ -622,8 +646,17 @@ local function buildSpawn(state: State)
 		medallion.color,
 		"solid"
 	) -- design: lobby.js:147
-	-- spawn_medallion_rim TOR(14.25, 0.55) at the top edge (lobby.js:148): a strawberry collar flush with the top.
-	collar(state, model, "spawn_medallion_rim", 14.25, 0.55, 1.1, at(F, 0, S.top - 0.55, 0), "LobbyStrawberry")
+	-- spawn_medallion_rim (lobby.js:148): a strawberry collar around the medallion, Prims.LAYER under its top.
+	collar(
+		state,
+		model,
+		"spawn_medallion_rim",
+		medallion.diameter / 2,
+		0.4,
+		medallion.height,
+		CFrame.new(medallion.position),
+		"LobbyStrawberry"
+	)
 	local box = S.location
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "SpawnLocation"
@@ -655,97 +688,73 @@ local function buildSpawn(state: State)
 		flags = "decor",
 		parent = model,
 	})
-	-- The wayfinding post (lobby.js:157-158) and its six arrows (159-164).
-	local post = S.post
-	cyl(state, model, "wayfinding_pole", 0.85, 16, at(post, 0, 8, 0), "LobbyTrimWhite") -- design: lobby.js:158
-	ball(state, model, "wayfinding_finial", 1.1, at(post, 0, 16.4, 0).Position, "LobbyStrawberry")
-	cyl(state, model, "wayfinding_base", 2.6, 0.8, at(post, 0, 0.4, 0), "LobbyPlum")
-	for _, arrow in S.arrows do
-		Props.arrow(model, arrow.frame, color(state, arrow.color))
-	end
 end
 
 -- Private: stations ---------------------------------------------------------------------------------------------------
 
+-- The duel stage (spec §2) with the design's queue (lobby.js:169-204): the stage, its podium and 10 queue pads, the
+-- queue board and the return points. Atomic (it holds the prompt), so it stays under 64 studs.
 local function buildDuelGate(state: State)
 	local L = state.L
 	local gate = L.DuelGate
 	local model = station(state, gate.model, true)
 	local F = stationCF(state, "duel")
-	rb(state, model, "queue_stage", gate.stage.size, L.boxCFrame(gate.stage), gate.stage.color, "solid", 4) -- lobby.js:172
-	rb(state, model, "queue_stage_trim", Vector3.new(48.8, 0.6, 30.8), at(F, 0, 0.3, 0), "LobbyPlum", "solid", 6)
-	-- The podium (SD_QueuePodium) is the design's queue_stage_step (lobby.js:173).
-	local podium =
-		rb(state, model, "queue_stage_step", gate.podium.size, L.boxCFrame(gate.podium), gate.podium.color, "solid", 4)
-	Prims.tag(podium, gate.podiumTag)
-	addPrompt(state, podium, gate.prompt)
-	for _, e in { -1, 1 } do
-		local team = if e < 0 then "LobbyMint" else "LobbyStrawberry" -- design: lobby.js:175
-		rb(state, model, "gate_pillar", Vector3.new(6, 26, 6), at(F, e * 15, 14.6, -9), team, "solid", 4) -- lobby.js:176
-		for _, y in { 5.5, 17 } do
-			rb(
-				state,
-				model,
-				"gate_pillar_band",
-				Vector3.new(7, 1.6, 7),
-				at(F, e * 15, y, -9),
-				"LobbyTrimWhite",
-				"decor",
-				5
-			)
-		end
-		Props.gumdrop(model, "gate_pillar_cap", at(F, e * 15, 27.6, -9), 0.95, color(state, team)) -- design: lobby.js:177
-		-- design: lobby.js:178; Prims.LAYER up so its top clears the pennant's (flicker)
-		cyl(state, model, "gate_flag_pole", 0.25, 7, at(F, e * 15, 37 + Prims.LAYER, -9), "LobbyTrimWhite")
-		Prims.part({
-			name = "gate_pennant",
-			size = Vector3.new(4.2, 2.6, 0.2),
-			cframe = at(F, e * 15 + e * 2.2, 39.2, -9),
-			color = color(state, team),
-			flags = "decor",
-			parent = model,
-		})
-		cyl(state, model, "slot_board_post", 0.4, 8, at(F, e * 10, 30.8, -9), "LobbyGold") -- design: lobby.js:179
-		rb(
+	local stage = gate.stage
+	cyl(state, model, "queue_stage", stage.diameter / 2, stage.height, CFrame.new(stage.position), stage.color, "solid")
+	-- queue_stage_trim (lobby.js:172): a plum band around the stage, Prims.LAYER under its top.
+	collar(
+		state,
+		model,
+		"queue_stage_trim",
+		stage.diameter / 2,
+		0.4,
+		stage.height,
+		CFrame.new(stage.position),
+		"LobbyPlum"
+	)
+	local podium = gate.podium
+	local step = cyl(
+		state,
+		model,
+		"queue_stage_step",
+		podium.diameter / 2,
+		podium.height,
+		CFrame.new(podium.position),
+		podium.color,
+		"solid"
+	) -- the design's step (lobby.js:173) as the podium (SD_QueuePodium)
+	Prims.tag(step, gate.podiumTag)
+	addPrompt(state, step, gate.prompt)
+	collar(
+		state,
+		model,
+		"queue_stage_step_trim",
+		podium.diameter / 2,
+		0.3,
+		podium.height,
+		CFrame.new(podium.position),
+		"LobbyGold"
+	)
+	-- The 10 queue pads (lobby.js:190-195): mint on the west half, strawberry on the east, between the paths.
+	for k = 0, 9 do
+		local a = math.rad(18 + 36 * k)
+		local x, z = QUEUE_PAD_RING * math.sin(a), -QUEUE_PAD_RING * math.cos(a)
+		local mint = x < 0
+		local top = gate.stageTop
+		cyl(state, model, "queue_pad", 1.8, 0.5, at(F, x, top + 0.25, z), "LobbyTrimWhite", "solid")
+		-- queue_pad_ring TOR(1.75, 0.28): a collar flush with the pad top (off: pebble, D2).
+		collar(state, model, "queue_pad_ring", 1.75, 0.28, 0.56, at(F, x, top + 0.5 - 0.28, z), "LobbyPebble")
+		cyl(
 			state,
 			model,
-			"gate_curtain",
-			Vector3.new(3.4, 22, 1.6),
-			at(F, e * 10.6, 12.6, -9.4),
-			"LobbyRoyalVelvet",
-			"decor",
-			3
+			"queue_pad_paint",
+			0.9,
+			0.08,
+			at(F, x, top + 0.52, z),
+			if mint then "LobbyCourtMint" else "LobbyCourtStrawberry"
 		)
-		rb(state, model, "gate_curtain_tie", Vector3.new(4, 1, 2.2), at(F, e * 10.6, 9, -9.4), "LobbyGold", "decor", 6)
 	end
-	rb(state, model, "gate_lintel", Vector3.new(38, 6, 7), at(F, 0, 24, -9), "LobbyPlum", "decor", 4) -- lobby.js:182
-	rb(state, model, "gate_lintel_trim", Vector3.new(39, 1, 7.6), at(F, 0, 20.6, -9), "LobbyGold", "decor", 6)
-	cyl(state, model, "gate_badge", 5.4, 1.6, at(F, 0, 24, -5.2, math.pi / 2), "LobbyButter") -- design: lobby.js:183
-	-- gate_badge_rim TOR(5.4, 0.4) at z -4.4 (lobby.js:183): a gold collar around the badge, flush with its front.
-	collar(state, model, "gate_badge_rim", 5.4, 0.4, 0.8, at(F, 0, 24, -4.8, math.pi / 2), "LobbyGold")
-	rb(state, model, "slot_board", Vector3.new(28, 4.6, 1.4), at(F, 0, 37, -9), "LobbyPlum", "decor", 5) -- lobby.js:187
-	for i = 0, 9 do -- design: lobby.js:188 (off: trim white, D2)
-		cyl(state, model, "slot_light", 0.95, 0.5, at(F, -11.25 + i * 2.5, 37, -8.2, math.pi / 2), "LobbyTrimWhite")
-	end
-	rb(state, model, "slot_divider", Vector3.new(0.5, 3.4, 0.6), at(F, 0, 37, -8.2), "LobbyTrimWhite", "decor", 4)
-	for _, e in { -1, 1 } do -- design: lobby.js:190-195 (5 mint pads west, 5 strawberry pads east)
-		for i = 0, 4 do
-			local x, z = e * 6.5, -3 + i * 3.8
-			cyl(state, model, "queue_pad", 1.8, 0.5, at(F, x, 1.85, z), "LobbyTrimWhite", "solid")
-			-- queue_pad_ring TOR(1.75, 0.28) at 2.05: a collar flush with the pad top (off: pebble, D2).
-			collar(state, model, "queue_pad_ring", 1.75, 0.28, 0.56, at(F, x, 2.1 - 0.28, z), "LobbyPebble")
-			cyl(
-				state,
-				model,
-				"queue_pad_paint",
-				0.9,
-				0.08,
-				at(F, x, 2.12, z),
-				if e < 0 then "LobbyCourtMint" else "LobbyCourtStrawberry"
-			)
-		end
-	end
-	-- NOT IN DESIGN (D11): the live queue board (SD_QueueBoard) as a plum valance under the badge.
+	-- NOT IN DESIGN (D11): the live queue board (SD_QueueBoard) under the tower's crossbar.
 	local board = boxPart(state, "StatusBoard", gate.statusBoard, model, "decor", "LobbyPlum")
 	Prims.tag(board, gate.boardTag)
 	state.hosts[gate.model .. "/statusBoard"] = board
@@ -762,6 +771,114 @@ local function buildDuelGate(state: State)
 	end
 end
 
+-- The duel tower (spec §2, §7 "Dragon Spire"): the island's landmark over the stage. Decor above the stage's pillars:
+-- only the pillars collide.
+local function buildDuelTower(state: State)
+	local L = state.L
+	local model = station(state, "DuelTower", false)
+	local F = stationCF(state, "duel")
+	local top = L.DuelGate.stageTop
+	local height = TOWER.deckBottom - top
+	for _, sx in { -1, 1 } do
+		for _, sz in { -1, 1 } do
+			local team = if sx < 0 then "LobbyMint" else "LobbyStrawberry"
+			local x, z = sx * TOWER.pillarAt, sz * TOWER.pillarAt
+			rb(
+				state,
+				model,
+				"tower_pillar",
+				Vector3.new(TOWER.pillar, height, TOWER.pillar),
+				at(F, x, top + height / 2, z),
+				team,
+				"solid",
+				4
+			)
+			for _, y in TOWER.bandY do
+				rb(
+					state,
+					model,
+					"tower_pillar_band",
+					Vector3.new(TOWER.pillar + 0.6, 1.4, TOWER.pillar + 0.6),
+					at(F, x, y, z),
+					"LobbyTrimWhite",
+					"decor",
+					5
+				)
+			end
+		end
+	end
+	local deck = TOWER.deckTop - TOWER.deckBottom
+	rb(
+		state,
+		model,
+		"tower_deck",
+		Vector3.new(TOWER.deckSide, deck, TOWER.deckSide),
+		at(F, 0, TOWER.deckBottom + deck / 2, 0),
+		"LobbyPlum",
+		"decor",
+		6
+	)
+	Prims.part({
+		name = "tower_deck_trim",
+		size = Vector3.new(TOWER.deckSide + 0.6, 0.6, TOWER.deckSide + 0.6),
+		cframe = at(F, 0, TOWER.deckBottom + 0.3 - Prims.LAYER, 0), -- its top clears the deck's bottom face
+		color = color(state, "LobbyGold"),
+		flags = "decor",
+		parent = model,
+	})
+	-- A low parapet on the deck's four edges (blocky, spec §1 #4).
+	local edge = TOWER.deckSide / 2 - 0.6
+	for _, side in { { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } } do
+		local alongX = side[1] == 0
+		rb(
+			state,
+			model,
+			"tower_parapet",
+			if alongX then Vector3.new(TOWER.deckSide, 1.6, 1.2) else Vector3.new(1.2, 1.6, TOWER.deckSide - 2.4),
+			at(F, side[1] * edge, TOWER.deckTop + 0.8, side[2] * edge),
+			"LobbyButter",
+			"decor",
+			6
+		)
+	end
+	-- The spire: two stepped blocks with gold trims, the Dragon on top.
+	local spireTop = TOWER.deckTop
+	for index, side in { 16, 11 } do
+		rb(
+			state,
+			model,
+			"tower_spire",
+			Vector3.new(side, 3, side),
+			at(F, 0, spireTop + 1.5, 0),
+			if index == 1 then "LobbyLilac" else "LobbyViolet",
+			"decor",
+			6
+		)
+		Prims.part({
+			name = "tower_spire_trim",
+			size = Vector3.new(side + 0.4, 0.5, side + 0.4),
+			cframe = at(F, 0, spireTop + 3 - 0.25 - Prims.LAYER, 0),
+			color = color(state, "LobbyGold"),
+			flags = "decor",
+			parent = model,
+		})
+		spireTop += 3
+	end
+	-- The crossbar between the south pillars that carries the queue board.
+	Prims.part({
+		name = "tower_crossbar",
+		size = Vector3.new(2 * TOWER.pillarAt - TOWER.pillar, 1.2, 1.2),
+		cframe = at(F, 0, 15.6, TOWER.pillarAt),
+		color = color(state, "LobbyGold"),
+		flags = "decor",
+		parent = model,
+	})
+	local base = at(F, 0, spireTop, 0)
+	placeToy(state, "TowerDragon", "dragon", base.Position, frontOf(base), TOWER.dragonTall, model)
+end
+
+-- The squishy box (lobby.js:206-233), compact: the design's dais, mystery box (at WorldLayout's mysteryScale), reveal
+-- pedestal and odds board.
 local function buildGiftBoxCounter(state: State)
 	local L = state.L
 	local stand = L.GiftBoxCounter
@@ -769,28 +886,51 @@ local function buildGiftBoxCounter(state: State)
 	local F = stationCF(state, "box")
 	local dais = stand.dais
 	cyl(state, model, "box_dais", dais.diameter / 2, dais.height, CFrame.new(dais.position), dais.color, "solid") -- lobby.js:209
-	collar(state, model, "box_dais_trim", 11.3, 0.45, 0.9, at(F, 0, 1.4 - 0.45, 0), "LobbyGold") -- design: lobby.js:209
-	-- The mystery box (lobby.js:210-216): "GiftBox", breathing (D12); its lid stays shut (Available).
+	collar(
+		state,
+		model,
+		"box_dais_trim",
+		dais.diameter / 2 - 0.3,
+		0.45,
+		0.9,
+		at(F, 0, dais.height - 0.45, 0),
+		"LobbyGold"
+	)
+	-- The mystery box (lobby.js:210-216) at scale S: "GiftBox", breathing (D12); its lid stays shut (Available). The
+	-- ribbons keep the design's 0.03 margins (unscaled) so no two faces share a plane.
+	local S = stand.mysteryScale
 	local bx = stand.mysteryBox
 	local box = Prims.model("GiftBox", model, false, bx)
-	rb(state, box, "box_body", Vector3.new(10, 8, 10), at(bx, 0, 4, 0), "LobbyStrawberry", "decor", 6) -- lobby.js:211
-	for _, size in { Vector3.new(2.2, 8.06, 10.12), Vector3.new(10.12, 8.06, 2.2) } do
+	local body = Vector3.new(10, 8, 10) * S
+	rb(state, box, "box_body", body, at(bx, 0, body.Y / 2, 0), "LobbyStrawberry", "decor", 6) -- lobby.js:211
+	for _, size in
+		{
+			Vector3.new(2.2 * S, body.Y + 0.06, body.Z + 0.12),
+			Vector3.new(body.X + 0.12, body.Y + 0.06, 2.2 * S),
+		}
+	do
 		Prims.part({
 			name = "box_ribbon",
 			size = size,
-			cframe = at(bx, 0, 4, 0),
+			cframe = at(bx, 0, body.Y / 2, 0),
 			color = color(state, "LobbyButter"),
 			flags = "decor",
 			parent = box,
 		})
 	end
-	local lid = at(bx, 0, 8, -5) -- box_lid_hinge (lobby.js:212)
-	rb(state, box, "box_lid", Vector3.new(10.9, 2, 10.9), at(lid, 0, 1, 5), "LobbyStrawberry", "decor", 6) -- lobby.js:213
-	for _, size in { Vector3.new(2.3, 2.06, 11), Vector3.new(11, 2.06, 2.3) } do
+	local lid = at(bx, 0, body.Y, -body.Z / 2) -- box_lid_hinge (lobby.js:212)
+	local lidSize = Vector3.new(10.9, 2, 10.9) * S
+	rb(state, box, "box_lid", lidSize, at(lid, 0, lidSize.Y / 2, body.Z / 2), "LobbyStrawberry", "decor", 6) -- lobby.js:213
+	for _, size in
+		{
+			Vector3.new(2.3 * S, lidSize.Y + 0.06, lidSize.Z + 0.1),
+			Vector3.new(lidSize.X + 0.1, lidSize.Y + 0.06, 2.3 * S),
+		}
+	do
 		Prims.part({
 			name = "box_lid_ribbon",
 			size = size,
-			cframe = at(lid, 0, 1, 5),
+			cframe = at(lid, 0, lidSize.Y / 2, body.Z / 2),
 			color = color(state, "LobbyButter"),
 			flags = "decor",
 			parent = box,
@@ -800,12 +940,12 @@ local function buildGiftBoxCounter(state: State)
 		Props.ellipsoid(
 			box,
 			"box_bow_loop",
-			Vector3.new(4.4, 4.4, 1.2),
-			at(lid, e * 1.7, 3.1, 5, 0, 0, e * 0.7),
+			Vector3.new(4.4, 4.4, 1.2) * S,
+			at(lid, e * 1.7 * S, 3.1 * S, body.Z / 2, 0, 0, e * 0.7),
 			color(state, "LobbyButter")
 		)
 	end
-	ball(state, box, "box_bow_knot", 0.9, at(lid, 0, 2.6, 5).Position, "LobbyButter") -- design: lobby.js:215
+	ball(state, box, "box_bow_knot", 0.9 * S, at(lid, 0, 2.6 * S, body.Z / 2).Position, "LobbyButter") -- lobby.js:215
 	-- The "?" plate (lobby.js:216) is a sign carried by this invisible plate inside the breathing box.
 	for _, sign in L.Signs do
 		if sign.id == "mysteryBox" then
@@ -840,53 +980,56 @@ local function buildGiftBoxCounter(state: State)
 	)
 	Prims.tag(pedestal, stand.tag, { [L.Attributes.BoxId] = stand.boxId })
 	addPrompt(state, pedestal, stand.prompt)
-	local ped = at(F, 0, 1.4, 6.6) -- reveal_pedestal group (lobby.js:217)
-	local ring = collar(state, model, "reveal_ring", 2.8, 0.3, 0.6, at(ped, 0, 2.6 - 0.3, 0), "LobbyMint") -- lobby.js:219
+	local top = standDisc.position.Y + standDisc.height / 2
+	local ring = collar(
+		state,
+		model,
+		"reveal_ring",
+		2.8,
+		0.3,
+		0.6,
+		CFrame.new(standDisc.position.X, top - 0.3, standDisc.position.Z),
+		"LobbyMint"
+	) -- lobby.js:219
 	ring.Material = Enum.Material.Neon
 	-- The odds board (lobby.js:221-228): two gold posts and the cream panel "OddsBoard" (BoxController's).
 	local ob = stand.oddsFrame
+	local postX = stand.oddsBoard.size.X / 2 - 0.4
 	for _, e in { -1, 1 } do
-		cyl(state, model, "odds_post", 0.3, 7, at(ob, e * 3.4, 3.5, 0), "LobbyGold") -- design: lobby.js:222
+		cyl(state, model, "odds_post", 0.3, 7, at(ob, e * postX, 3.5, 0), "LobbyGold") -- design: lobby.js:222
 	end
 	state.hosts[stand.model .. "/oddsBoard"] = boxPart(state, "OddsBoard", stand.oddsBoard, model, "decor")
 end
 
+-- The shop (lobby.js:235-261) as a compact stall: the design's floor, back wall, shelves of gift boxes, counter,
+-- awning, coin emblem, display case of toys and preview turntable, at the stall's size.
 local function buildShopCounter(state: State)
 	local L = state.L
 	local stand = L.ShopCounter
 	local model = station(state, stand.model, true)
 	local F = stationCF(state, "shop")
 	rb(state, model, "shop_floor", stand.floor.size, L.boxCFrame(stand.floor), "LobbyCushionCream", "solid", 4) -- 238
-	rb(state, model, "shop_backwall", Vector3.new(28, 15, 1.6), at(F, 0, 8.3, -6.5), "LobbyCourtStrawberry", "solid", 4)
-	rb(
-		state,
-		model,
-		"shop_backwall_cap",
-		Vector3.new(28.6, 1.2, 2.4),
-		at(F, 0, 16.2, -6.5),
-		"LobbyStrawberry",
-		"decor",
-		6
-	)
-	for _, y in { 7, 11.5 } do -- design: lobby.js:240
-		rb(state, model, "shop_shelf", Vector3.new(24, 0.6, 2.6), at(F, 0, y, -5.2), "LobbyTrimWhite", "decor", 6)
+	rb(state, model, "shop_backwall", Vector3.new(20, 13, 1.4), at(F, 0, 7.3, -6.8), "LobbyCourtStrawberry", "solid", 4)
+	rb(state, model, "shop_backwall_cap", Vector3.new(20.6, 1, 2), at(F, 0, 14.3, -6.8), "LobbyStrawberry", "decor", 6)
+	for _, y in { 6, 10 } do -- design: lobby.js:240
+		rb(state, model, "shop_shelf", Vector3.new(18, 0.6, 2.2), at(F, 0, y, -5.6), "LobbyTrimWhite", "decor", 6)
 	end
-	for i = 0, 9 do -- design: lobby.js:242
-		local y, x = if i < 5 then 7.3 else 11.8, -9.6 + (i % 5) * 4.8
+	for i = 0, 7 do -- design: lobby.js:242 (two rows of 4)
+		local y, x = if i < 4 then 6.3 else 10.3, -6.75 + (i % 4) * 4.5
 		rb(
 			state,
 			model,
 			"shop_gift_box",
-			Vector3.new(2.6, 2.4, 2),
-			at(F, x, y + 1.2, -5.2),
+			Vector3.new(2.4, 2.2, 1.8),
+			at(F, x, y + 1.1, -5.6),
 			SHOP_GIFT_TOKENS[i % 5 + 1],
 			"decor",
 			6
 		)
 		Prims.part({
 			name = "shop_gift_ribbon",
-			size = Vector3.new(0.5, 2.46, 2.06),
-			cframe = at(F, x, y + 1.2, -5.2),
+			size = Vector3.new(0.5, 2.26, 1.86),
+			cframe = at(F, x, y + 1.1, -5.6),
 			color = color(state, "LobbyTrimWhite"),
 			flags = "decor",
 			parent = model,
@@ -905,106 +1048,107 @@ local function buildShopCounter(state: State)
 	)
 	Prims.tag(counter, stand.tag)
 	addPrompt(state, counter, stand.prompt)
-	for i = -4, 4 do -- design: lobby.js:244
+	for i = -3, 3 do -- design: lobby.js:244
 		rb(
 			state,
 			model,
 			"shop_counter_groove",
 			Vector3.new(0.45, 3.4, 0.4),
-			at(F, i * 2.3, 3, 3.55),
+			at(F, i * 2, 3, 3.55),
 			"LobbyWaferGroove",
 			"decor",
 			4
 		)
 	end
-	rb(state, model, "shop_counter_top", Vector3.new(23.4, 0.8, 6), at(F, 0, 5.6, 1), "LobbyTrimWhite", "solid", 6) -- 245
+	rb(state, model, "shop_counter_top", Vector3.new(15, 0.8, 4.6), at(F, 0, 5.6, 1.5), "LobbyTrimWhite", "solid", 6) -- 245
+	local awningEdge = 10.4
 	for _, e in { -1, 1 } do
-		cyl(state, model, "awning_post", 0.45, 13.4, at(F, e * 12.6, 7.4, 6.2), "LobbyTrimWhite") -- design: lobby.js:246
+		cyl(state, model, "awning_post", 0.45, 13.4, at(F, e * awningEdge, 7.5, 5.2), "LobbyTrimWhite") -- lobby.js:246
 	end
-	for i = 0, 9 do -- design: lobby.js:247-248
+	for i = 0, 7 do -- design: lobby.js:247-248 (stripes edge to edge)
 		local stripe = if i % 2 == 1 then "LobbyMint" else "LobbyTrimWhite"
+		local x = -3.5 * 2.64 + i * 2.64
 		Prims.part({
 			name = "awning_stripe",
-			size = Vector3.new(2.64, 0.5, 13),
-			cframe = at(F, -11.88 + i * 2.64, 15, -0.1, 0.28),
+			size = Vector3.new(2.64, 0.5, 12),
+			cframe = at(F, x, 14.4, -0.4, 0.28),
 			color = color(state, stripe),
 			flags = "decor",
 			parent = model,
 		})
-		Props.ellipsoid(
-			model,
-			"awning_scallop",
-			Vector3.new(2.6, 1.6, 0.5),
-			at(F, -11.88 + i * 2.64, 13, 6.3),
-			color(state, stripe)
-		)
+		Props.ellipsoid(model, "awning_scallop", Vector3.new(2.6, 1.6, 0.5), at(F, x, 12.6, 5.6), color(state, stripe))
 	end
-	cyl(state, model, "shop_coin_emblem", 3.6, 0.9, at(F, 0, 20.4, -6.5, math.pi / 2), "LobbyGold") -- design: lobby.js:249
+	cyl(state, model, "shop_coin_emblem", 2.8, 0.9, at(F, 0, 17.6, -6.8, math.pi / 2), "LobbyGold") -- design: lobby.js:249
 	-- shop_coin_ring TOR(2.6, 0.3) on the coin's face (lobby.js:249): a thin annulus of the inner coin colour.
 	Props.annulus(
 		model,
 		"shop_coin_ring",
-		4.6,
-		5.8,
-		at(F, 0, 20.4, -6.0, math.pi / 2),
+		3.6,
+		4.5,
+		at(F, 0, 17.6, -6.3, math.pi / 2),
 		0.05,
 		color(state, "LobbyCoinInner"),
 		color(state, "LobbyGold")
 	)
-	rb(
-		state,
-		model,
-		"display_case_base",
-		Vector3.new(10.4, 0.6, 4.4),
-		at(F, -5.4, 6.3, 1),
-		"LobbyTrimWhite",
-		"decor",
-		6
-	)
+	-- The display case (lobby.js:250-254) on the counter's left end, the coins on its right.
+	rb(state, model, "display_case_base", Vector3.new(6.4, 0.6, 3), at(F, -3.8, 6.3, 1.5), "LobbyTrimWhite", "decor", 6)
 	Prims.part({
 		name = "display_case_glass",
-		size = Vector3.new(10, 3.6, 4), -- design: lobby.js:251 (opacity 0.26)
-		cframe = at(F, -5.4, 8.4, 1),
+		size = Vector3.new(6, 3.2, 2.6), -- design: lobby.js:251 (opacity 0.26)
+		cframe = at(F, -3.8, 8.2, 1.5),
 		color = color(state, "LobbyGlass"),
 		transparency = 0.74,
 		shadow = false,
 		flags = "decor",
 		parent = model,
 	})
-	for i = 0, 2 do -- design: lobby.js:252
-		cyl(state, model, "display_case_riser", 1.2, 0.3, at(F, -8.6 + i * 3.2, 6.75, 1), "LobbyLilac")
+	for i = 0, 1 do -- design: lobby.js:252
+		cyl(state, model, "display_case_riser", 1.2, 0.3, at(F, -5.4 + i * 3.2, 6.75, 1.5), "LobbyLilac")
 	end
-	for i = 0, 5 do -- design: lobby.js:253
-		cyl(state, model, "coin_stack", 0.9, 0.35, at(F, 7.6 + (i % 2) * 0.12, 6.1 + i * 0.36, 1.6), "LobbyGold")
+	for i = 0, 4 do -- design: lobby.js:253
+		cyl(state, model, "coin_stack", 0.9, 0.35, at(F, 4 + (i % 2) * 0.12, 6.2 + i * 0.36, 2), "LobbyGold")
 	end
-	cyl(state, model, "coin_single", 0.9, 0.35, at(F, 9.6, 6.1, 0.4, 0.3, 0, 0.2), "LobbyGold") -- design: lobby.js:254
-	-- The preview turntable (lobby.js:255-257); its ring is lit butter (Purchasable, D7).
+	cyl(state, model, "coin_single", 0.9, 0.35, at(F, 6, 6.2, 0.6, 0.3, 0, 0.2), "LobbyGold") -- design: lobby.js:254
+	-- The preview turntable (lobby.js:255-257) on the square at the stall's front corner; its ring is lit butter
+	-- (Purchasable, D7).
 	local tt = stand.turntable
 	cyl(state, model, "turntable_base", 3.3, 1.4, at(tt, 0, 0.7, 0), "LobbyTrimWhite", "solid")
 	local ring = collar(state, model, "turntable_ring", 3.1, 0.3, 0.6, at(tt, 0, 1.4 - 0.3, 0), "LobbyButter")
 	ring.Material = Enum.Material.Neon
-	-- The design's toys (lobby.js:260): Toast, Banana and Chocolate in the case, Butter on the turntable.
-	for i, toy in { { "toast", 1.5 }, { "banana", 1.2 }, { "chocolate", 1.6 } } :: { { any } } do
-		local base = at(F, -8.6 + (i - 1) * 3.2, 6.9, 1, 0, 0.2)
+	-- The design's toys (lobby.js:260): Toast and Banana in the case, Butter on the turntable.
+	for i, toy in { { "toast", 1.5 }, { "banana", 1.2 } } :: { { any } } do
+		local base = at(F, -5.4 + (i - 1) * 3.2, 6.9, 1.5, 0, 0.2)
 		placeToy(state, "shop_toy_" .. toy[1], toy[1], base.Position, frontOf(base), toy[2], model)
 	end
 	local turn = at(tt, 0, 1.4, 0, 0, 0.4)
 	placeToy(state, "turntable_toy", "butter", turn.Position, frontOf(turn), 2.4, model)
 end
 
+-- The collection (lobby.js:263-284) as a compact stall: 7 bays on WorldLayout's arc, 14 pedestals, the kiosk.
 local function buildCollection(state: State)
 	local L = state.L
 	local stand = L.Collection
 	local model = station(state, stand.model, true)
 	local F = stationCF(state, "collection")
 	rb(state, model, "collection_floor", stand.floor.size, L.boxCFrame(stand.floor), "LobbyCushionCream", "solid", 4) -- 266
+	local w = stand.bayWidth
 	for _, bay in stand.bays do -- design: lobby.js:269-271
-		rb(state, model, "bay_backboard", Vector3.new(5.6, 15, 1.2), at(bay, 0, 7.5, -1.6), "LobbyLilac", "solid", 4)
-		rb(state, model, "bay_cap", Vector3.new(6.2, 1.2, 2.2), at(bay, 0, 15.2, -1.4), "LobbyViolet", "decor", 6)
+		rb(state, model, "bay_backboard", Vector3.new(w, 15, 1.2), at(bay, 0, 7.5, -1.6), "LobbyLilac", "solid", 4)
+		rb(state, model, "bay_cap", Vector3.new(w + 0.6, 1.2, 2.2), at(bay, 0, 15.2, -1.4), "LobbyViolet", "decor", 6)
 		for _, y in { 4, 9.6 } do
-			rb(state, model, "bay_shelf", Vector3.new(5.4, 0.6, 3.2), at(bay, 0, y, 0), "LobbyTrimWhite", "decor", 6)
+			rb(
+				state,
+				model,
+				"bay_shelf",
+				Vector3.new(w - 0.2, 0.6, 3.2),
+				at(bay, 0, y, 0),
+				"LobbyTrimWhite",
+				"decor",
+				6
+			)
 		end
 	end
+	local dividerRadius = stand.bayRadius + 1.5 -- design: lobby.js:273 (between the backboards)
 	for k = 0, 7 do -- design: lobby.js:273
 		local a = math.rad(-70 + k * 20)
 		cyl(
@@ -1012,8 +1156,8 @@ local function buildCollection(state: State)
 			model,
 			"bay_divider",
 			0.5,
-			15.6,
-			at(F, math.sin(a) * 16.5, 8.6, 3 - math.cos(a) * 16.5),
+			16.4, -- from the square, so the end ones past the floor's corners still stand on something
+			at(F, math.sin(a) * dividerRadius, 8.2, stand.bayCenterZ - math.cos(a) * dividerRadius),
 			"LobbyTrimWhite"
 		)
 	end
@@ -1044,7 +1188,7 @@ local function buildCollection(state: State)
 			if rarity then rarity.color else color(state, "LobbyTrimWhite")
 		)
 	end
-	-- The inventory kiosk (lobby.js:274-276): the SD_CollectionKiosk.
+	-- The inventory kiosk (lobby.js:274-276): the SD_CollectionKiosk, on the square in front of the shelves.
 	local ks = stand.kioskFrame
 	local kiosk =
 		rb(state, model, "kiosk_body", stand.kiosk.size, L.boxCFrame(stand.kiosk), stand.kiosk.color, "solid", 5)
@@ -1253,7 +1397,16 @@ local function buildSqueezeZone(state: State)
 		zone.floor.color,
 		"solid"
 	) -- 338
-	collar(state, model, "squeeze_floor_rim", 22.6, 0.45, 0.9, at(F, 0, 0.6 - 0.45, 0), "LobbyTrimWhite") -- lobby.js:338
+	collar(
+		state,
+		model,
+		"squeeze_floor_rim",
+		zone.floor.diameter / 2 - 0.4,
+		0.45,
+		0.9,
+		at(F, 0, 0.6 - 0.45, 0),
+		"LobbyTrimWhite"
+	) -- lobby.js:338
 	local plinth = cyl(
 		state,
 		model,
@@ -1352,6 +1505,8 @@ local function buildTarget(state: State, parent: Instance, target: any)
 	end
 end
 
+-- The practice range (lobby.js:399-421; D3; spec §3): one lane east along its sector's middle (WorldLayout), the
+-- design's throw spot, bullseye targets, pillow wall around the Backstop, rope rails and board.
 local function buildPracticeRange(state: State)
 	local L = state.L
 	local range = L.PracticeRange
@@ -1359,36 +1514,43 @@ local function buildPracticeRange(state: State)
 	local F = stationCF(state, "practice")
 	boxPart(state, "LaneFloor", range.laneFloor, model, "solid") -- design: lobby.js:402
 	boxPart(state, "FiringLine", range.firingLine, model, "solid") -- design: lobby.js:403
-	for _, x in { -10, 0, 10 } do -- design: lobby.js:404 (throw spots: flat rings 1.6-2.4)
-		Props.annulus(
-			model,
-			"range_throw_spot_paint",
-			3.2,
-			4.8,
-			at(F, x, 0.66, 12),
-			0.06,
-			color(state, "LobbyTrimWhite"),
-			color(state, "LobbyCourtMint")
-		)
-	end
+	-- The throw spot (lobby.js:404: a flat ring 1.6-2.4) at the approach, on the lane.
+	local spot = range.approach
+	Props.annulus(
+		model,
+		"range_throw_spot_paint",
+		3.2,
+		4.8,
+		CFrame.new(spot.X, range.laneFloorTopY + 0.06, spot.Z),
+		0.06,
+		color(state, "LobbyTrimWhite"),
+		color(state, "LobbyCourtMint")
+	)
 	Prims.tag(volumePart("ThrowBox", range.throwBox, model), range.zoneTag)
 	local targets = Prims.folder("Targets", model)
 	for _, target in range.targets do
 		buildTarget(state, targets, target)
 	end
-	-- The pillow wall (lobby.js:412-413) holds the Backstop part (WorldLayout, the jelly ripple's box).
+	-- The pillow wall (lobby.js:412-413) holds the Backstop part (WorldLayout, the jelly ripple's box). Its fronts stand
+	-- 0.5 in front of the Backstop's (station-local z, the frame's -Z is the throws' direction).
+	local front = F:PointToObjectSpace(range.backstop.position).Z + range.backstop.size.X / 2 + 0.5
 	for row = 0, 2 do
 		for i = 0, 5 do
 			local token = if (i + row) % 2 == 1 then "LobbyCushionCream" else "LobbyLilac"
 			-- Rows overlap 0.2: every other row sits Prims.LAYER deeper, and the pillows reach 2 * Prims.LAYER past the
-			-- Backstop's back and top, so no two faces meet (flicker). The fronts stay at the design's X 110.5.
+			-- Backstop's back and top, so no two faces meet (flicker).
 			local back = 2 * Prims.LAYER
 			rb(
 				state,
 				model,
 				"backstop_pillow",
 				Vector3.new(6.4, 3.2 + back, 3 + back),
-				at(F, -16 + i * 6.4 + (row % 2) * 3.2 - 1.6, 1.6 + row * 3, -24 - back / 2 - (row % 2) * Prims.LAYER),
+				at(
+					F,
+					-16 + i * 6.4 + (row % 2) * 3.2 - 1.6,
+					1.6 + row * 3,
+					front - 1.5 - back / 2 - (row % 2) * Prims.LAYER
+				),
 				token,
 				"decor",
 				3
@@ -1401,22 +1563,36 @@ local function buildPracticeRange(state: State)
 			model,
 			"backstop_frame",
 			Vector3.new(2, 10.6, 3.4),
-			at(F, e * 18.6, 5.3, -24),
+			at(F, e * 18.6, 5.3, front - 1.5),
 			"LobbyStrawberry",
 			"decor",
 			5
 		)
+		-- Rope rails along the lane (lobby.js:414), on its floor 0.6 inside its edges.
+		local edge = range.laneFloor.size.Z / 2 - 0.6
 		Props.ropeLine(
 			state.template,
 			model,
-			F,
-			{ { e * 18, 10 }, { e * 18, -2 }, { e * 18, -14 } },
+			F * CFrame.new(0, range.laneFloorTopY, 0),
+			{ { e * edge, 14 }, { e * edge, -2 }, { e * edge, -18 } },
 			3.2,
 			color(state, "LobbyGold"),
 			color(state, "LobbyVelvetRope")
-		) -- 414
+		)
 	end
 	boxPart(state, "Backstop", range.backstop, model, "solid")
+	-- Reading (island): the lane is 20 wide and the design's pillow wall 42, so a footing under the wall and its frames
+	-- (42 × 4, from the garden up to Prims.LAYER under the lane's top) carries its ends past the lane's edges.
+	local footingTop = range.laneFloorTopY - Prims.LAYER
+	local grass = L.Island.grass.top
+	Prims.part({
+		name = "backstop_footing",
+		size = Vector3.new(4, footingTop - grass, 42),
+		cframe = CFrame.new(range.backstop.position.X - 0.25, (footingTop + grass) / 2, range.backstop.position.Z),
+		color = color(state, range.laneFloor.color),
+		flags = "solid",
+		parent = model,
+	})
 	local sb = range.boardFrame -- range_board (lobby.js:415-417)
 	for _, e in { -1, 1 } do
 		cyl(state, model, "range_board_post", 0.3, 6, at(sb, e * 3.2, 3, 0), "LobbyTrimWhite")
@@ -1647,17 +1823,19 @@ local function buildLock(
 	end
 end
 
+-- The Grip gym (lobby.js:355-373; until Phase 6): the jelly and marshmallow pads one behind the other on the gym floor,
+-- the rank tower beside the gap between them.
 local function buildGripGym(state: State)
 	local L = state.L
 	local pod = L.Pods.gym
 	local model = station(state, pod.model, false)
 	local F = stationCF(state, "grip")
 	rb(state, model, "grip_floor", pod.floor.size, L.boxCFrame(pod.floor), pod.floor.color, "solid", 4) -- lobby.js:357
-	for i = 0, 4 do -- design: lobby.js:358
+	for i = -1, 1 do -- design: lobby.js:358 (floor lines; reading: across the gap between the pads)
 		Prims.part({
 			name = "grip_floor_line",
-			size = Vector3.new(42, 0.05, 0.5),
-			cframe = at(F, 0, 0.82, -9 + i * 4.5),
+			size = Vector3.new(pod.floor.size.X - 1.2, 0.05, 0.5),
+			cframe = at(F, 0, 0.82, i * 1.6),
 			color = color(state, "LobbyTrimWhite"),
 			flags = "decor",
 			shadow = false,
@@ -1703,8 +1881,8 @@ local function buildGripGym(state: State)
 		buildGate(state, pad, model)
 		buildLock(state, pad, model, at(frame, 0, 9.5, 0), 1, frame, { { -6.5, 6.8 }, { 6.5, 6.8 } }, 3) -- lobby.js:372-373
 	end
-	-- The rank tower between the pads (lobby.js:368-371).
-	local rk = at(F, 0, 0.8, -7)
+	-- The rank tower (lobby.js:368-371), beside the gap between the pads.
+	local rk = at(F, 4.8, 0.8, 0)
 	cyl(state, model, "rank_base", 0.8, 1, at(rk, 0, 0.5, 0), "LobbyPlum")
 	for i, token in RANK_TOKENS do
 		rb(state, model, "rank_tier", Vector3.new(3, 1.6, 1.2), at(rk, 0, 1.8 + (i - 1) * 1.8, 0), token, "decor", 6)
@@ -1717,7 +1895,10 @@ local function buildRoyalPod(state: State)
 	local pod = L.Pods.royal
 	local model = station(state, pod.model, false)
 	local F = stationCF(state, "royal")
-	cyl(state, model, "royal_dais", 13, 1, at(F, 0, 0.5, 0), "LobbyPlum", "solid") -- design: lobby.js:381
+	-- design: lobby.js:381; reading (island): from the garden up to the design's top 1, a step ring around it.
+	local grass = L.Island.grass.top
+	cyl(state, model, "royal_step", 15, 0.05 - grass, at(F, 0, (grass + 0.05) / 2, 0), "LobbyCushionCream", "solid")
+	cyl(state, model, "royal_dais", 13, 1 - grass, at(F, 0, (grass + 1) / 2, 0), "LobbyPlum", "solid")
 	cyl(state, model, "royal_dais_upper", 9.8, 1, at(F, 0, 1.5, 0), "LobbyRoyalVelvet", "solid")
 	collar(state, model, "royal_dais_trim", 12.7, 0.32, 0.64, at(F, 0, 1 - 0.32, 0), "LobbyGold") -- design: lobby.js:382
 	collar(state, model, "royal_dais_trim", 9.6, 0.32, 0.64, at(F, 0, 2 - 0.32, 0), "LobbyGold")
@@ -1793,213 +1974,542 @@ local function buildRoyalPod(state: State)
 	) -- 394
 end
 
--- Private: kit, decor, signs, volumes ---------------------------------------------------------------------------------
+-- Private: props, the garden, the sky and the bases (spec §4, §7) ------------------------------------------------------
 
-local function buildKit(state: State)
+-- A prop part (PropPart) list placed in `frame` as a Model `name` under `parent`: blocks, upright cylinders (size.X the
+-- diameter, size.Y the height), balls (size.X) and ellipsoids. Decor unless the part says solid.
+local function prop(
+	state: State,
+	parent: Instance,
+	name: string,
+	frame: CFrame,
+	parts: { PropPart },
+	solid: { [string]: boolean }?
+): Model
+	local model = Prims.model(name, parent, false, frame)
+	for _, p in parts do
+		local cf = frame * p.cframe
+		local c = color(state, p.token)
+		local flags: Prims.Flags = if solid and solid[p.name] then "solid" else "decor"
+		if p.kind == "block" then
+			Prims.part({ name = p.name, size = p.size, cframe = cf, color = c, flags = flags, parent = model })
+		elseif p.kind == "cyl" then
+			Props.cylinder(model, p.name, p.size.X, p.size.Y, cf, c, flags)
+		elseif p.kind == "ball" then
+			Props.ball(model, p.name, p.size.X, cf.Position, c, flags)
+		else
+			Props.ellipsoid(model, p.name, p.size, cf, c, flags)
+		end
+	end
+	return model
+end
+
+local function p(
+	kind: "block" | "cyl" | "ball" | "egg",
+	name: string,
+	size: Vector3,
+	cframe: CFrame,
+	token: string
+): PropPart
+	return { kind = kind, name = name, size = size, cframe = cframe, token = token }
+end
+
+local V, C = Vector3.new, CFrame.new
+
+-- Spec §7 props, readings of their shapes (the spec names each prop and its part count only). Each stands on its
+-- frame's origin (the ground), its front along the frame's +Z.
+local FOUNTAIN: { PropPart } = { -- Butter Fountain (hub 342°)
+	p("cyl", "fountain_basin", V(12, 1.2, 0), C(0, 0.6, 0), "LobbyTrimWhite"),
+	p("cyl", "fountain_water", V(11, 0.05, 0), C(0, 1.225, 0), "IslandShallow"),
+	p("cyl", "fountain_column", V(1.6, 3, 0), C(0, 2.7, 0), "LobbyTrimWhite"),
+	p("cyl", "fountain_bowl", V(5, 0.5, 0), C(0, 4.45, 0), "LobbyTrimWhite"),
+	p("cyl", "fountain_bowl_water", V(4.4, 0.05, 0), C(0, 4.725, 0), "IslandShallow"),
+	p("block", "fountain_butter", V(2.2, 1, 1.6), C(0, 5.25, 0), "LobbyButter"),
+	p("ball", "fountain_drip", V(0.5, 0, 0), C(2.3, 4.5, 0), "LobbyButter"),
+	p("ball", "fountain_drip", V(0.5, 0, 0), C(-1.2, 4.5, 2), "LobbyButter"),
+	p("ball", "fountain_drip", V(0.5, 0, 0), C(-1.2, 4.5, -2), "LobbyButter"),
+}
+local BENCH: { PropPart } = { -- Chocolate bar bench (hub ×6)
+	p("block", "bench_seat", V(6, 0.8, 2), C(0, 1.6, 0), "Cocoa"),
+	p("block", "bench_groove", V(0.15, 0.86, 2.06), C(-1.5, 1.6, 0), "ArenaTrunk"),
+	p("block", "bench_groove", V(0.15, 0.86, 2.06), C(1.5, 1.6, 0), "ArenaTrunk"),
+	p("block", "bench_leg", V(0.8, 1.2, 1.6), C(-2.4, 0.6, 0), "Cocoa"),
+	p("block", "bench_leg", V(0.8, 1.2, 1.6), C(2.4, 0.6, 0), "Cocoa"),
+	p("block", "bench_back", V(6, 2, 0.5), C(0, 3, -0.75), "Cocoa"),
+}
+local TABLE: { PropPart } = { -- Pancake Stack table (hub ×4)
+	p("cyl", "table_leg", V(0.8, 1.6, 0), C(0, 0.8, 0), "LobbyWaferGroove"),
+	p("cyl", "table_pancake", V(4.4, 0.5, 0), C(0, 1.85, 0), "LobbyWafer"),
+	p("cyl", "table_pancake", V(4.4, 0.5, 0), C(0, 2.35, 0), "LobbyMallowToast"),
+	p("cyl", "table_pancake", V(4.4, 0.5, 0), C(0, 2.85, 0), "LobbyWafer"),
+	p("cyl", "table_syrup", V(3.4, 0.1, 0), C(0, 3.15, 0), "LobbyWaferGroove"),
+	p("block", "table_butter", V(1.2, 0.5, 1.2), C(0, 3.45, 0), "LobbyButter"),
+}
+local LANTERN: { PropPart } = { -- Mochi Fox lantern (the 10 path mouths)
+	p("cyl", "lantern_post", V(0.5, 5, 0), C(0, 2.5, 0), "LobbyTrimWhite"),
+	p("ball", "lantern_fox", V(2.2, 0, 0), C(0, 5.8, 0), "LobbyRangeArrow"),
+	p("egg", "lantern_ear", V(0.6, 1, 0.4), C(-0.6, 6.9, 0), "LobbyRangeArrow"),
+	p("egg", "lantern_ear", V(0.6, 1, 0.4), C(0.6, 6.9, 0), "LobbyRangeArrow"),
+	p("ball", "lantern_snout", V(0.9, 0, 0), C(0, 5.6, 1), "LobbyCushionCream"),
+}
+local BOLLARD: { PropPart } = { -- Boba pearl bollard (×4 along each path)
+	p("cyl", "bollard_post", V(0.6, 1.4, 0), C(0, 0.7, 0), "LobbyCushionCream"),
+	p("ball", "bollard_pearl", V(1.2, 0, 0), C(0, 1.8, 0), "ArenaInk"),
+}
+local FROSTING = { "LobbyCottonPink", "LobbyMint", "LobbyButter" }
+local function cupcakeTree(index: number): { PropPart } -- Cupcake tree (garden, gaps between bases, beach)
+	return {
+		p("cyl", "tree_trunk", V(0.9, 4, 0), C(0, 2, 0), "HubWood"),
+		p("cyl", "tree_cup", V(4, 1.8, 0), C(0, 4.9, 0), "LobbyWafer"),
+		p("egg", "tree_frosting", V(4.6, 2.8, 4.6), C(0, 6.6, 0), FROSTING[index % #FROSTING + 1]),
+		p("ball", "tree_cherry", V(0.9, 0, 0), C(0, 8.3, 0), "LobbyStrawberryRed"),
+	}
+end
+local TOAST_TOWER: { PropPart } = { -- Toast Stack Tower (garden 18°)
+	p("block", "toast_slice", V(5.6, 1.1, 5.6), C(0, 0.55, 0), "LobbyWafer"),
+	p("block", "toast_slice", V(5.6, 1.1, 5.6), C(0, 1.7, 0) * CFrame.Angles(0, 0.35, 0), "LobbyMallowToast"),
+	p("block", "toast_slice", V(5.6, 1.1, 5.6), C(0, 2.85, 0) * CFrame.Angles(0, 0.7, 0), "LobbyWafer"),
+	p("block", "toast_slice", V(5.6, 1.1, 5.6), C(0, 4, 0) * CFrame.Angles(0, 1.05, 0), "LobbyMallowToast"),
+	p("block", "toast_slice", V(5.6, 1.1, 5.6), C(0, 5.15, 0) * CFrame.Angles(0, 1.4, 0), "LobbyWafer"),
+	p("block", "toast_butter", V(2.4, 0.7, 2.4), C(0, 6.05, 0) * CFrame.Angles(0, 0.6, 0), "LobbyButter"),
+}
+local SLIDE_TOP = 6 -- the Banana Slide's platform height
+local SLIDE: { PropPart } = { -- Banana Slide (garden; reading: 162°, the range has 90°)
+	p("block", "slide_platform", V(3, 0.5, 3), C(7.5, SLIDE_TOP, 0), "LobbyWaferGroove"),
+	p("block", "slide_leg", V(0.5, SLIDE_TOP, 0.5), C(8.75, SLIDE_TOP / 2, -1.25), "LobbyWaferGroove"),
+	p("block", "slide_leg", V(0.5, SLIDE_TOP, 0.5), C(8.75, SLIDE_TOP / 2, 1.25), "LobbyWaferGroove"),
+	p("block", "slide_rung", V(0.3, 0.3, 2.5), C(8.75, 1.5, 0), "LobbyWaferGroove"),
+	p("block", "slide_rung", V(0.3, 0.3, 2.5), C(8.75, 3, 0), "LobbyWaferGroove"),
+	p("block", "slide_rung", V(0.3, 0.3, 2.5), C(8.75, 4.5, 0), "LobbyWaferGroove"),
+	p("ball", "slide_tip", V(1.4, 0, 0), C(-0.3, 0.6, 0), "LobbyWaferGroove"),
+}
+local CLOUD: { PropPart } = { -- Cloud Bunny cloud (sky ×6)
+	p("ball", "cloud_puff", V(7, 0, 0), C(-5, 0, 0), "White"),
+	p("ball", "cloud_puff", V(9, 0, 0), C(0, 1, 0), "White"),
+	p("ball", "cloud_puff", V(7, 0, 0), C(5, 0, 0), "White"),
+	p("egg", "cloud_ear", V(1.4, 4.5, 1), C(-1.6, 6.5, 0), "White"),
+	p("egg", "cloud_ear", V(1.4, 4.5, 1), C(1.6, 6.5, 0), "White"),
+}
+-- Base props (spec §4: the Kitty Loaf mailbox, the Toast bench, the Chocolate flower box, the Birdie nest planter).
+local MAILBOX: { PropPart } = {
+	p("block", "mailbox_post", V(0.5, 3, 0.5), C(0, 1.5, 0), "LobbyTrimWhite"),
+	p("block", "mailbox_loaf", V(2.2, 1.6, 1.4), C(0, 3.8, 0), "LobbyWafer"),
+	p("egg", "mailbox_crust", V(2.3, 0.9, 1.5), C(0, 4.6, 0), "LobbyWaferGroove"),
+	p("egg", "mailbox_ear", V(0.5, 0.7, 0.3), C(-0.6, 5.1, 0), "LobbyWaferGroove"),
+	p("egg", "mailbox_ear", V(0.5, 0.7, 0.3), C(0.6, 5.1, 0), "LobbyWaferGroove"),
+	p("block", "mailbox_flag", V(0.15, 0.9, 0.6), C(1.2, 4.2, 0.3), "LobbyStrawberry"),
+}
+local TOAST_BENCH: { PropPart } = {
+	p("block", "toast_bench_seat", V(5, 0.6, 1.8), C(0, 1.6, 0), "LobbyWafer"),
+	p("block", "toast_bench_leg", V(0.6, 1.3, 1.4), C(-1.9, 0.65, 0), "LobbyWaferGroove"),
+	p("block", "toast_bench_leg", V(0.6, 1.3, 1.4), C(1.9, 0.65, 0), "LobbyWaferGroove"),
+	p("block", "toast_bench_back", V(5, 2.6, 0.5), C(0, 3.2, -0.65), "LobbyWafer"),
+	p("egg", "toast_bench_crust", V(5.4, 1.4, 0.6), C(0, 4.5, -0.65), "LobbyWaferGroove"),
+}
+local FLOWER_BOX: { PropPart } = {
+	p("block", "flower_box", V(5, 1.2, 1.8), C(0, 0.6, 0), "Cocoa"),
+	p("block", "flower_box_line", V(0.15, 1.26, 1.86), C(-0.85, 0.6, 0), "ArenaTrunk"),
+	p("block", "flower_box_line", V(0.15, 1.26, 1.86), C(0.85, 0.6, 0), "ArenaTrunk"),
+	p("ball", "flower", V(0.9, 0, 0), C(-1.6, 1.5, 0), "LobbyStrawberry"),
+	p("ball", "flower", V(0.9, 0, 0), C(0, 1.5, 0), "LobbyButter"),
+	p("ball", "flower", V(0.9, 0, 0), C(1.6, 1.5, 0), "LobbySky"),
+}
+local PLANTER: { PropPart } = {
+	p("cyl", "planter_pot", V(3, 1.6, 0), C(0, 0.8, 0), "LobbySky"),
+	p("cyl", "planter_nest", V(3.4, 0.6, 0), C(0, 1.9, 0), "HubWood"),
+	p("egg", "planter_egg", V(0.7, 0.9, 0.7), C(-0.6, 2.4, 0.2), "White"),
+	p("egg", "planter_egg", V(0.7, 0.9, 0.7), C(0.5, 2.4, -0.3), "LobbySky"),
+	p("egg", "planter_egg", V(0.7, 0.9, 0.7), C(0.2, 2.4, 0.6), "LobbyButter"),
+	p("egg", "planter_leaf", V(1.6, 0.4, 0.8), C(-1.6, 1.9, 0) * CFrame.Angles(0, 0, 0.5), "ArenaOakLeaves"),
+	p("egg", "planter_leaf", V(1.6, 0.4, 0.8), C(1.6, 1.9, 0) * CFrame.Angles(0, 0, -0.5), "ArenaOakLeaves"),
+}
+
+-- A frame on the ground `radius` out on compass angle `degrees`, its +Z toward the island centre, at height `y`.
+local function groundFrame(radius: number, degrees: number, y: number, lateral: number?): CFrame
+	local a = math.rad(degrees)
+	local out = Vector3.new(math.sin(a), 0, -math.cos(a))
+	local side = Vector3.new(math.cos(a), 0, math.sin(a))
+	local point = out * radius + side * (lateral or 0) + Vector3.new(0, y, 0)
+	return CFrame.lookAt(point, point + out) -- LookVector outward: the frame's +Z faces the centre
+end
+
+-- Readings: the hub decor between the paths (spec §3, §7), clear of the stations, their approaches and the range.
+local BENCHES = { { 18, 30 }, { 54, 30 }, { 162, 30 }, { 198, 30 }, { 234, 30 }, { 342, 30 } } -- { compass °, radius }
+local TABLES = { { 126, 29 }, { 270, 44 }, { 306, 40 }, { 306, 54 } }
+local GARDEN_RADIUS = 84 -- reading: the middle of the garden ring (r 70-96)
+local CUPCAKE_GARDEN = { 54, 126, 234, 342 } -- beside the lollipops, 8 studs either side
+local CUPCAKE_GAPS = { 122, 140 } -- between the bases (on the sector lines)
+local CUPCAKE_BEACH = 168
+local SEA_LILY_PADS = { 40, 130, 220, 310 }
+
+-- The Butter Fountain, the chocolate bar benches and the pancake stack tables (spec §3, §7).
+local function buildHubDecor(state: State)
 	local L = state.L
-	local model = Prims.model("Kit", state.root, false)
-	local box = L.Lobby.footprint
-	local hx, hz = box.maxX, box.maxZ
-	-- Perimeter walls (lobby.js:426-438): per side n = round(L / 16) modules, pillars at every boundary.
-	local function side(x0: number, z0: number, x1: number, z1: number, nx: number, nz: number)
-		local length = math.sqrt((x1 - x0) ^ 2 + (z1 - z0) ^ 2)
-		local n = math.floor(length / 16 + 0.5)
-		local ry = -math.atan2(z1 - z0, x1 - x0)
-		for i = 0, n - 1 do
-			local t = (i + 0.5) / n
-			local x, z = x0 + (x1 - x0) * t, z0 + (z1 - z0) * t
-			local frame = CFrame.new(x, 0, z) * CFrame.Angles(0, ry, 0)
-			rb(
-				state,
-				model,
-				"kit_wall_module",
-				Vector3.new(16, 10, 3),
-				frame * CFrame.new(0, 5, 0),
-				"LobbyCushionCream",
-				"solid",
-				4
-			)
-			rb(
-				state,
-				model,
-				"kit_wall_cap",
-				Vector3.new(16.4, 1.4, 3.8),
-				frame * CFrame.new(0, 10.4, 0),
-				"LobbyStrawberry",
-				"decor",
-				6
-			)
-			if i % 3 == 1 then -- design: lobby.js:431 (shelf modules)
-				for _, y in { 3.4, 6.8 } do
-					local shelf = CFrame.new(x + nx * 2.6, y, z + nz * 2.6) * CFrame.Angles(0, ry, 0)
-					Prims.part({
-						name = "kit_wall_shelf",
-						size = Vector3.new(13, 0.6, 2.6),
-						cframe = shelf,
-						color = color(state, "LobbyTrimWhite"),
-						flags = "decor",
-						parent = model,
-					})
-					for k = 0, 4 do
-						local o = -5 + k * 2.5
-						local bx, bz = x + math.cos(ry) * o + nx * 2.6, z - math.sin(ry) * o + nz * 2.6
-						local shape = (k + i) % 3
-						local token = SHELF_BLOB_TOKENS[(k + i + (if y > 4 then 1 else 0)) % 4 + 1]
-						if shape == 0 then
-							ball(state, model, "kit_shelf_toy_blob", 0.9, Vector3.new(bx, y + 1.2, bz), token)
-						elseif shape == 1 then
-							rb(
-								state,
-								model,
-								"kit_shelf_toy_blob",
-								Vector3.new(1.8, 1.6, 1.6),
-								CFrame.new(bx, y + 1.1, bz) * CFrame.Angles(0, ry + 0.3, 0),
-								token,
-								"decor",
-								4
-							)
-						else -- GUM × 0.3 (reading: a whole pebble on the shelf, no hidden half)
-							Props.ellipsoid(
-								model,
-								"kit_shelf_toy_blob",
-								Vector3.new(1.86, 1.8, 1.86),
-								CFrame.new(bx, y + 0.3 + 0.9, bz),
-								color(state, token)
-							)
-						end
-					end
-				end
-			end
-			if i % 3 == 2 then -- design: lobby.js:432 (window modules: a sky disc in a white frame)
-				local facing = CFrame.lookAt(Vector3.new(x, 5.8, z), Vector3.new(x + nx, 5.8, z + nz))
-					* CFrame.Angles(-math.pi / 2, 0, 0)
-				Props.cylinder(
+	local model = Prims.model("HubDecor", state.root, false)
+	prop(state, model, "ButterFountain", stationCF(state, "fountain"), FOUNTAIN, { fountain_basin = true })
+	for index, spot in BENCHES do
+		prop(state, model, "ChocolateBench" .. index, groundFrame(spot[2], spot[1], L.Island.hub.top), BENCH)
+	end
+	for index, spot in TABLES do
+		prop(state, model, "PancakeTable" .. index, groundFrame(spot[2], spot[1], L.Island.hub.top), TABLE)
+	end
+end
+
+-- The garden ring and the beach (spec §2, §7): the 10 paths, their bollards and lanterns, the cupcake trees, the Toast
+-- Stack Tower, the Banana Slide, the Frog Lily Pond and the lily pads on the sea.
+local function buildGarden(state: State)
+	local L = state.L
+	local I = L.Island
+	local model = Prims.model("Garden", state.root, false)
+	local grass = I.grass.top
+	for index, path in L.Paths do
+		local dir = (path.to - path.from).Unit
+		-- From under the hub's curb to under the plot's rim (both overhang the path's ends).
+		local from, to = dir * (L.Lobby.hubRadius + 0.5), path.to + dir * 0.5
+		Prims.part({
+			name = "garden_path",
+			size = Vector3.new((to - from).Magnitude, I.pathTop - grass, path.width),
+			cframe = CFrame.new((from + to) / 2 + Vector3.new(0, (grass + I.pathTop) / 2, 0))
+				* CFrame.Angles(0, -math.atan2(dir.Z, dir.X), 0),
+			color = color(state, I.pathColor),
+			flags = "solid",
+			shadow = false,
+			parent = model,
+		})
+		local degrees = (index - 1) * 360 / #L.Paths
+		for _, radius in { 77, 89 } do
+			for _, side in { -1, 1 } do
+				prop(
+					state,
 					model,
-					"kit_window_frame",
-					2 * (3.5 + 0.45),
-					0.2,
-					facing * CFrame.new(0, 1.55, 0),
-					color(state, "LobbyTrimWhite")
-				)
-				Props.cylinder(
-					model,
-					"kit_window_sky",
-					6.8,
-					0.3,
-					facing * CFrame.new(0, 1.6 + Prims.LAYER, 0), -- its back face clears the frame's (flicker)
-					color(state, "LobbyWindowSky")
+					"BobaBollard",
+					groundFrame(radius, degrees, grass, side * (path.width / 2 + 1)),
+					BOLLARD
 				)
 			end
 		end
-		for i = 0, n do -- design: lobby.js:434
-			local t = i / n
-			local x, z = x0 + (x1 - x0) * t, z0 + (z1 - z0) * t
-			cyl(state, model, "kit_wall_pillar", 2.1, 12.6, CFrame.new(x, 6.3, z), "LobbyLilac", "solid")
-			Props.gumdrop(model, "kit_pillar_gumdrop", CFrame.new(x, 12.6, z), 0.6, color(state, "LobbyMint"))
-		end
-	end
-	side(-hx, -hz, hx, -hz, 0, 1) -- design: lobby.js:436
-	side(-hx, hz, hx, hz, 0, -1)
-	side(-hx, -hz, -hx, hz, 1, 0)
-	side(hx, -hz, hx, hz, -1, 0)
-	-- Promenade hedges (lobby.js:441-443): gumdrops at radius 35.6 every 0.115 rad, none within 0.24 rad of a path.
-	local pathAngles: { number } = {}
-	for _, path in L.Paths do
-		table.insert(pathAngles, math.atan2(path.to.Z, path.to.X))
-	end
-	local a, i = 0, 0
-	while a < 2 * math.pi do
-		local near = false
-		for _, p in pathAngles do
-			if math.abs(math.atan2(math.sin(a - p), math.cos(a - p))) < 0.24 then
-				near = true
-			end
-		end
-		if not near then
-			local scale = 0.42 + (i % 3) * 0.05
-			Props.gumdrop(
-				model,
-				"kit_gumdrop_hedge",
-				CFrame.new(math.cos(a) * 35.6, 0, math.sin(a) * 35.6),
-				scale,
-				color(state, HEDGE_TOKENS[i % 4 + 1])
-			)
-		end
-		a += 0.115
-		i += 1
-	end
-	-- Trees, lamps and benches between the paths (lobby.js:445-467; positions reproduced, see TREES).
-	for index, foot in TREES do
-		Props.cottonTree(
-			model,
-			"kit_cotton_tree" .. index,
-			foot,
-			1.05,
-			color(state, "LobbyCandyStick"),
-			color(state, "LobbyCottonPink")
-		)
-	end
-	for _, foot in LAMPS do -- design: lobby.js:458
-		for k = 0, 6 do
-			cyl(
-				state,
-				model,
-				if k % 2 == 1 then "kit_candy_lamp_stripe" else "kit_candy_lamp_pole",
-				0.55,
-				2,
-				CFrame.new(foot + Vector3.new(0, 1 + k * 2, 0)),
-				if k % 2 == 1 then "LobbyStrawberryRed" else "LobbyTrimWhite"
-			)
-		end
-		ball(state, model, "kit_candy_lamp_globe", 1.5, foot + Vector3.new(0, 15.5, 0), "LobbyLampGlow")
-		cyl(state, model, "kit_candy_lamp_pole", 1.6, 0.8, CFrame.new(foot + Vector3.new(0, 14.2, 0)), "LobbyTrimWhite")
-	end
-	for _, bench in BENCHES do -- design: lobby.js:462
-		local frame = CFrame.new(bench[1], 0, bench[2]) * CFrame.Angles(0, bench[3], 0)
-		rb(
+		prop(
 			state,
 			model,
-			"kit_wafer_bench",
-			Vector3.new(9, 1.2, 3),
-			frame * CFrame.new(0, 2.2, 0),
-			"LobbyWafer",
-			"decor",
-			5
+			"MochiFoxLantern",
+			groundFrame(L.Lobby.hubRadius + 3, degrees, grass, path.width / 2 + 2),
+			LANTERN
 		)
-		for _, e in { -1, 1 } do
-			rb(
-				state,
-				model,
-				"kit_wafer_bench_leg",
-				Vector3.new(1, 1.8, 2.6),
-				frame * CFrame.new(e * 3, 0.9, 0),
-				"LobbyWaferGroove",
-				"decor",
-				5
-			)
+	end
+	local trees = 0
+	local function tree(frame: CFrame)
+		trees += 1
+		prop(state, model, "CupcakeTree", frame, cupcakeTree(trees))
+	end
+	for _, degrees in CUPCAKE_GARDEN do
+		for _, side in { -1, 1 } do
+			tree(groundFrame(GARDEN_RADIUS - 4, degrees, grass, side * 8))
 		end
 	end
-	-- The kit sample bay (lobby.js:469-474).
-	local K = stationCF(state, "kit")
-	rb(state, model, "kit_sample_plinth", Vector3.new(26, 0.8, 9), at(K, 0, 0.4, 2), "LobbyCushionCream", "solid", 4)
-	rb(state, model, "kit_sample_wall", Vector3.new(6, 7, 2), at(K, -8, 4.3, 0), "LobbyCushionCream", "decor", 4)
-	rb(state, model, "kit_sample_cap", Vector3.new(6.3, 1, 2.5), at(K, -8, 8.2, 0), "LobbyStrawberry", "decor", 6)
-	Props.gumdrop(model, "kit_sample_gumdrop", at(K, 0, 0.8, 2), 0.55, color(state, "LobbyMint"))
-	Props.gumdrop(model, "kit_sample_gumdrop", at(K, 3.4, 0.8, 3), 0.42, color(state, "LobbyStrawberry"))
-	rb(state, model, "kit_sample_bench", Vector3.new(6, 1, 2.4), at(K, 9, 2, 2), "LobbyWafer", "decor", 5)
-	for _, e in { -1, 1 } do
-		rb(
-			state,
+	for k = 0, #L.Paths - 1 do
+		local degrees = 18 + k * 36
+		for _, radius in CUPCAKE_GAPS do
+			tree(groundFrame(radius, degrees, grass))
+		end
+		tree(groundFrame(CUPCAKE_BEACH, degrees, I.beach.top))
+	end
+	prop(state, model, "ToastStackTower", groundFrame(GARDEN_RADIUS, 18, grass), TOAST_TOWER)
+	-- The slide: its chute is a quarter of a ring from the platform down to the grass (Kit/Props rods, banana yellow).
+	local slide = prop(state, model, "BananaSlide", groundFrame(GARDEN_RADIUS, 162, grass), SLIDE)
+	Props.rods(
+		slide,
+		"slide_chute",
+		7,
+		1.1,
+		groundFrame(GARDEN_RADIUS, 162, grass) * CFrame.new(0, SLIDE_TOP + 0.5, 0) * CFrame.Angles(0, 0, -math.pi / 2),
+		color(state, "LobbyButter"),
+		5,
+		math.pi / 2
+	)
+	-- The pond: water in a stone ring (Kit/Props annulus: the ring and the water disc on it), lily pads, the frog.
+	local pondFrame = groundFrame(GARDEN_RADIUS, 198, grass)
+	local pond = Prims.model("FrogLilyPond", model, false, pondFrame)
+	Props.annulus(
+		pond,
+		"pond_rim",
+		15,
+		16.4,
+		pondFrame * CFrame.new(0, 0.15, 0),
+		0.15,
+		color(state, "LobbyCushionCream"),
+		color(state, "IslandShallow")
+	)
+	local water = 0.15 + Prims.LAYER
+	for index, spot in { { -3, 2 }, { 3.5, -1 }, { 0, -4 } } do
+		Props.cylinder(
+			pond,
+			"pond_lily_pad",
+			2.6,
+			0.06,
+			pondFrame * CFrame.new(spot[1], water + 0.03 + index * Prims.LAYER, spot[2]),
+			color(state, "ArenaFrogGreen")
+		)
+	end
+	local frogBase = pondFrame * CFrame.new(0, water + 0.06 + 3 * Prims.LAYER, -4)
+	placeToy(state, "PondFrog", "strawberry_frog", frogBase.Position, frogBase.LookVector * -1, 3, pond)
+	local seaTop = L.Lobby.baseSlab.position.Y + L.Lobby.baseSlab.size.Y / 2
+	for _, degrees in SEA_LILY_PADS do
+		Props.cylinder(
 			model,
-			"kit_sample_bench_leg",
-			Vector3.new(0.8, 1.6, 2),
-			at(K, 9 + e * 2.4, 1.3, 2),
-			"LobbyWaferGroove",
-			"decor",
-			5
+			"sea_lily_pad",
+			3,
+			0.06,
+			groundFrame(200, degrees, seaTop + 0.03),
+			color(state, "ArenaFrogGreen")
 		)
 	end
 end
+
+-- The Cloud Bunny clouds (spec §7: sky ×6). Readings: 60° apart, r 110-130, Y 62-74; they cast no shadow.
+local function buildSky(state: State)
+	local model = Prims.model("Sky", state.root, false)
+	for k = 0, 5 do
+		local cloud =
+			prop(state, model, "CloudBunny", groundFrame(110 + (k % 2) * 20, 30 + k * 60, 62 + (k % 3) * 6), CLOUD)
+		for _, part in cloud:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.CastShadow = false
+			end
+		end
+	end
+end
+
+-- One plot (spec §4): see the header. Built open (grey, "Open plot"); BaseService colours, names and fills it.
+local function buildBase(state: State, index: number, folder: Instance)
+	local L = state.L
+	local B = L.Bases
+	local name = B.models[index]
+	local F = L.plotFrame(index) :: CFrame
+	local model = Prims.model(name, folder, false, F)
+	state.models[name] = model
+	Prims.tag(model, L.Tags.Base, { [L.Attributes.Plot] = index })
+	local open = B.openColors
+	local function tint(part: BasePart, which: string)
+		part:SetAttribute(L.Attributes.BaseTint, which)
+	end
+	local halfW, halfD = B.width / 2, B.depth / 2
+	local grassDepth = -L.Island.grass.top -- the plinth reaches down to the grass
+	local rim = Prims.part({
+		name = "Rim",
+		size = Vector3.new(B.width, grassDepth - BASE_RIM_DROP, B.depth),
+		cframe = F * CFrame.new(0, -(grassDepth + BASE_RIM_DROP) / 2, 0),
+		color = color(state, open.full),
+		flags = "solid",
+		parent = model,
+	})
+	tint(rim, "full")
+	local floor = Prims.part({
+		name = "Floor",
+		size = Vector3.new(B.width - 2, grassDepth, B.depth - 2),
+		cframe = F * CFrame.new(0, -grassDepth / 2, 0),
+		color = color(state, open.light),
+		material = Enum.Material.Plastic,
+		flags = "solid",
+		parent = model,
+	})
+	floor.TopSurface = Enum.SurfaceType.Studs -- spec §7: Roblox's own Studs surface
+	tint(floor, "light")
+	-- The back wall (44 × 9) with its cap in the plot's colour.
+	local wallZ = -halfD + BACK_WALL.Z / 2
+	Prims.part({
+		name = "BackWall",
+		size = BACK_WALL,
+		cframe = F * CFrame.new(0, BACK_WALL.Y / 2, wallZ),
+		color = color(state, "LobbyCushionCream"),
+		flags = "solid",
+		parent = model,
+	})
+	local cap = Prims.part({
+		name = "BackWallCap",
+		size = Vector3.new(BACK_WALL.X + 0.6, 0.8, BACK_WALL.Z + 0.6),
+		cframe = F * CFrame.new(0, BACK_WALL.Y + 0.4, wallZ),
+		color = color(state, open.full),
+		flags = "decor",
+		parent = model,
+	})
+	tint(cap, "full")
+	-- The fence: white posts every 8 studs with caps in the plot's colour, two white rails, the gate's gap left open.
+	local inset = B.fenceInset
+	local postX, frontZ = halfW - inset, halfD - inset
+	local posts: { Vector3 } = {}
+	for _, side in { -1, 1 } do
+		for _, z in FENCE_SIDE_Z do
+			table.insert(posts, Vector3.new(side * postX, 0, z))
+		end
+		table.insert(posts, Vector3.new(side * postX, 0, frontZ))
+		table.insert(posts, Vector3.new(side * FENCE_FRONT_X, 0, frontZ))
+	end
+	for _, post in posts do
+		Prims.part({
+			name = "FencePost",
+			size = FENCE_POST,
+			cframe = F * CFrame.new(post + Vector3.new(0, FENCE_POST.Y / 2, 0)),
+			color = color(state, "LobbyTrimWhite"),
+			flags = "solid",
+			parent = model,
+		})
+		tint(
+			Prims.part({
+				name = "FenceCap",
+				size = FENCE_CAP,
+				cframe = F * CFrame.new(post + Vector3.new(0, FENCE_POST.Y + FENCE_CAP.Y / 2, 0)),
+				color = color(state, open.full),
+				flags = "decor",
+				parent = model,
+			}),
+			"full"
+		)
+	end
+	local gateEdge = B.gateWidth / 2 + GATE_PILLAR.X -- the gate pillars' outer faces
+	local backZ = wallZ + BACK_WALL.Z / 2
+	for _, y in FENCE_RAIL_Y do
+		for _, side in { -1, 1 } do
+			local sideLength = frontZ - backZ
+			Prims.part({
+				name = "FenceRail",
+				size = Vector3.new(FENCE_RAIL, FENCE_RAIL, sideLength),
+				cframe = F * CFrame.new(side * postX, y, (frontZ + backZ) / 2),
+				color = color(state, "LobbyTrimWhite"),
+				flags = "solid",
+				parent = model,
+			})
+			local frontLength = postX - gateEdge
+			Prims.part({
+				name = "FenceRail",
+				size = Vector3.new(frontLength, FENCE_RAIL, FENCE_RAIL),
+				cframe = F * CFrame.new(side * (gateEdge + frontLength / 2), y, frontZ),
+				color = color(state, "LobbyTrimWhite"),
+				flags = "solid",
+				parent = model,
+			})
+		end
+	end
+	-- The Donut Arch gate (spec §4, §7): dough pillars and half a donut over the 16-wide gap, its icing in the plot's
+	-- colour with sprinkles, the name sign hanging under it.
+	local gateZ = frontZ
+	for _, side in { -1, 1 } do
+		Props.cylinder(
+			model,
+			"GatePillar",
+			GATE_PILLAR.X,
+			GATE_PILLAR.Y,
+			F * CFrame.new(side * (B.gateWidth / 2 + GATE_PILLAR.X / 2), GATE_PILLAR.Y / 2, gateZ),
+			color(state, "LobbyWafer"),
+			"solid"
+		)
+	end
+	local archRadius = B.gateWidth / 2 + GATE_PILLAR.X / 2
+	local arch = F * CFrame.new(0, GATE_PILLAR.Y, gateZ) -- the ring's plane: the gate's, around its local Z
+	Props.rods(model, "GateDough", archRadius, DONUT_TUBE, arch, color(state, "LobbyWafer"), 6, math.pi)
+	for _, rod in
+		Props.rods(
+			model,
+			"GateIcing",
+			archRadius,
+			DONUT_TUBE + 0.15,
+			arch * CFrame.Angles(0, 0, math.pi / 6),
+			color(state, open.full),
+			5, -- not the dough's 6: no icing rod shares a dough rod's end planes (Flicker_Test)
+			2 * math.pi / 3
+		)
+	do
+		tint(rod, "full")
+	end
+	for k, token in { "LobbyButter", "LobbySky", "White", "LobbyMint", "LobbyButter", "White" } do
+		local a = math.rad(45 + (k - 1) * 18)
+		local r = archRadius + DONUT_TUBE + 0.1
+		Prims.part({
+			name = "GateSprinkle",
+			size = Vector3.new(0.3, 0.3, 0.8),
+			cframe = arch * CFrame.new(r * math.cos(a), r * math.sin(a), 0) * CFrame.Angles(0, 0, a),
+			color = color(state, token),
+			flags = "decor",
+			parent = model,
+		})
+	end
+	local sign = B.nameSign
+	local board = Prims.part({
+		name = "NameSign",
+		size = sign.size,
+		cframe = F * CFrame.new(sign.position) * CFrame.Angles(0, math.pi, 0), -- its Front reads toward the hub
+		color = color(state, "LobbyPlate"),
+		flags = "decor",
+		parent = model,
+	})
+	state.hosts[name .. "/nameSign"] = board
+	local chainTop = GATE_PILLAR.Y + archRadius - DONUT_TUBE
+	local chainBottom = sign.position.Y + sign.size.Y / 2
+	for _, side in { -1, 1 } do
+		Prims.part({
+			name = "NameSignChain",
+			size = Vector3.new(0.15, chainTop - chainBottom, 0.15),
+			cframe = F * CFrame.new(side * 3, (chainTop + chainBottom) / 2, sign.position.Z),
+			color = color(state, "LobbyGold"),
+			flags = "decor",
+			parent = model,
+		})
+	end
+	-- The capsule pads (8 × 8, Slot) and the statue's plinth.
+	for slot, pad in B.capsulePads do
+		local part = Prims.part({
+			name = "Pad" .. slot,
+			size = Vector3.new(B.capsulePadSize, B.capsulePadTop, B.capsulePadSize),
+			cframe = F * CFrame.new(pad + Vector3.new(0, B.capsulePadTop / 2, 0)),
+			color = color(state, "LobbyTrimWhite"),
+			flags = "solid",
+			parent = model,
+		})
+		part:SetAttribute(L.Attributes.Slot, slot)
+	end
+	local statue = (F * B.statue).Position
+	Props.cylinder(
+		model,
+		"StatuePlinth",
+		STATUE_PLINTH.diameter,
+		STATUE_PLINTH.height,
+		CFrame.new(statue - Vector3.new(0, STATUE_PLINTH.height / 2, 0)),
+		color(state, "LobbyTrimWhite"),
+		"solid"
+	)
+	-- The plot's spawn (BaseService: the owner spawns here), invisible, flush with the floor.
+	local spawn = Instance.new("SpawnLocation")
+	spawn.Name = "Spawn"
+	spawn.Size = SPAWN_PAD
+	spawn.CFrame = F * B.spawn * CFrame.new(0, -SPAWN_PAD.Y / 2, 0)
+	spawn.Transparency = 1
+	spawn.CastShadow = false
+	spawn.Anchored = true
+	spawn.CanCollide = true
+	spawn.CanQuery = true
+	spawn.CanTouch = true -- a SpawnLocation keeps its default touch
+	spawn.Neutral = true
+	spawn.AllowTeamChangeOnTouch = false
+	spawn.Duration = 0
+	spawn.Enabled = true
+	spawn.TopSurface = Enum.SurfaceType.Smooth
+	spawn.BottomSurface = Enum.SurfaceType.Smooth
+	spawn.Parent = model
+	Prims.tag(spawn, L.Tags.BaseSpawn, { [L.Attributes.Plot] = index })
+	-- Props (spec §4): the mailbox and the flower box by the gate, the bench and the planter by the back wall.
+	prop(state, model, "KittyLoafMailbox", F * CFrame.new(17, 0, 21) * CFrame.Angles(0, math.pi, 0), MAILBOX)
+	prop(state, model, "ChocolateFlowerBox", F * CFrame.new(-17, 0, 21), FLOWER_BOX)
+	prop(state, model, "ToastBench", F * CFrame.new(15.5, 0, -19), TOAST_BENCH)
+	prop(state, model, "BirdieNestPlanter", F * CFrame.new(-15.5, 0, -19), PLANTER)
+end
+
+local function buildBases(state: State)
+	local folder = Prims.folder(BASES_FOLDER, state.root)
+	for index = 1, #state.L.Bases.frames do
+		buildBase(state, index, folder)
+	end
+end
+
+-- Private: decor, signs, volumes ---------------------------------------------------------------------------------------
 
 local function buildDecor(state: State)
 	local L = state.L
@@ -2104,7 +2614,22 @@ local function buildVolumes(state: State)
 	end
 end
 
--- Private: self-check -------------------------------------------------------------------------------------------------
+-- Private: render rules and self-check ---------------------------------------------------------------------------------
+
+-- Spec §7 render rules on the finished tree: nothing but a SpawnLocation is touched; parts under SMALL_PART studs cast
+-- no shadow.
+local function applyRenderRules(root: Instance)
+	for _, part in root:GetDescendants() do
+		if part:IsA("BasePart") then
+			if not part:IsA("SpawnLocation") then
+				part.CanTouch = false
+			end
+			if math.max(part.Size.X, part.Size.Y, part.Size.Z) < SMALL_PART then
+				part.CastShadow = false
+			end
+		end
+	end
+end
 
 local function everything(root: Instance): { Instance }
 	local list = root:GetDescendants()
@@ -2112,20 +2637,80 @@ local function everything(root: Instance): { Instance }
 	return list
 end
 
--- Exact tag counts, unique station ids, one moving target, disabled prompts, budgets (§7.7, §17.6).
-local function selfCheck(state: State): ({ string }, number, number, number)
+-- Whether a colliding part stands on a path (an aisle volume's CFrame and size): an upright cylinder or a ball by its
+-- round footprint, anything else by its box (Verify.boxesOverlap). Touching never counts.
+local function onPath(part: BasePart, volume: CFrame, size: Vector3): boolean
+	local cf, s = part.CFrame, part.Size
+	local shape = if part:IsA("Part") then part.Shape else Enum.PartType.Block
+	local round = shape == Enum.PartType.Ball or (shape == Enum.PartType.Cylinder and math.abs(cf.XVector.Y) > 0.99)
+	if not round then
+		return Verify.boxesOverlap(volume, size, cf, s, 0.01)
+	end
+	local radius = if shape == Enum.PartType.Ball then s.X / 2 else math.min(s.Y, s.Z) / 2
+	local halfHeight = if shape == Enum.PartType.Ball then radius else s.X / 2
+	local p = volume:PointToObjectSpace(cf.Position)
+	local h = size / 2
+	if math.abs(p.Y) >= h.Y + halfHeight - 0.01 then
+		return false
+	end
+	local dx, dz = math.max(math.abs(p.X) - h.X, 0), math.max(math.abs(p.Z) - h.Z, 0)
+	return dx * dx + dz * dz < (radius - 0.01) ^ 2
+end
+
+-- The part counts of the budget zones (spec §7): the hub, the garden (GARDEN_ZONE) and each plot's static parts.
+type Zones = { hub: number, garden: number, bases: { number } }
+local function zoneParts(root: Instance): Zones
+	local zones: Zones = { hub = 0, garden = 0, bases = {} }
+	for _, child in root:GetChildren() do
+		if child.Name == BASES_FOLDER then
+			for _, base in child:GetChildren() do
+				table.insert(zones.bases, Prims.countParts(base))
+			end
+		elseif GARDEN_ZONE[child.Name] then
+			zones.garden += Prims.countParts(child)
+		else
+			zones.hub += Prims.countParts(child)
+		end
+	end
+	return zones
+end
+
+-- Exact tag counts, unique station ids, one moving target, disabled prompts, the plots, the render rules, clear
+-- paths and the budgets (§7.7, §17.6, spec §4, §7). `worstPlot`: the parts a plot's capsules, squishies and statue add
+-- at their worst (CapsuleBuilder.worstPlotParts).
+local function selfCheck(state: State, worstPlot: number): ({ string }, Zones, number, number)
 	local L = state.L
 	local problems: { string } = {}
 	local all = everything(state.root)
 	local counts: { [string]: number } = {}
 	local stationIds: { [string]: boolean } = {}
-	local parts, guis, prompts, moving = 0, 0, 0, 0
+	local plots: { [number]: boolean } = {}
+	local guis, prompts, moving = 0, 0, 0
+	local solids: { BasePart } = {}
 	for _, instance in all do
 		for _, tag in instance:GetTags() do
 			counts[tag] = (counts[tag] or 0) + 1
 		end
 		if instance:IsA("BasePart") then
-			parts += 1
+			local part = instance :: BasePart
+			if part.CanTouch and not part:IsA("SpawnLocation") then
+				table.insert(problems, part:GetFullName() .. " is touched (spec §7: CanTouch off)")
+			end
+			if part.CastShadow and math.max(part.Size.X, part.Size.Y, part.Size.Z) < SMALL_PART then
+				table.insert(problems, part:GetFullName() .. " casts a shadow (spec §7: off under 2 studs)")
+			end
+			local top = part.Position.Y
+				+ math.abs(part.CFrame.XVector.Y) * part.Size.X / 2
+				+ math.abs(part.CFrame.YVector.Y) * part.Size.Y / 2
+				+ math.abs(part.CFrame.ZVector.Y) * part.Size.Z / 2
+			if
+				part.CanCollide
+				and top > WALKABLE_TOP
+				and not part:HasTag(L.Tags.Boundary)
+				and not part:HasTag(L.Tags.KeepClear)
+			then
+				table.insert(solids, part)
+			end
 		elseif instance:IsA("SurfaceGui") then
 			guis += 1
 		elseif instance:IsA("ProximityPrompt") then
@@ -2159,6 +2744,34 @@ local function selfCheck(state: State): ({ string }, number, number, number)
 				holder = holder:FindFirstAncestorWhichIsA("Model")
 			end
 		end
+		-- Spec §4: one Model per plot, holding the plot's one SpawnLocation (BaseService finds both by Plot).
+		if instance:HasTag(L.Tags.Base) then
+			local plot = instance:GetAttribute(L.Attributes.Plot)
+			if type(plot) ~= "number" or L.plotFrame(plot) == nil or plots[plot] then
+				table.insert(
+					problems,
+					string.format("%s has Plot %s (missing, unknown or repeated)", instance.Name, tostring(plot))
+				)
+			else
+				plots[plot] = true
+				local spawns = 0
+				for _, d in instance:GetDescendants() do
+					if
+						d:HasTag(L.Tags.BaseSpawn)
+						and d:IsA("SpawnLocation")
+						and d:GetAttribute(L.Attributes.Plot) == plot
+					then
+						spawns += 1
+					end
+				end
+				if spawns ~= 1 then
+					table.insert(
+						problems,
+						string.format("%s holds %d spawns of its plot, expected 1", instance.Name, spawns)
+					)
+				end
+			end
+		end
 	end
 	local tags = {}
 	for tag in L.TagCounts do
@@ -2174,13 +2787,59 @@ local function selfCheck(state: State): ({ string }, number, number, number)
 	if moving ~= 1 then
 		table.insert(problems, string.format("%d moving practice targets, expected 1", moving))
 	end
-	if parts > L.Budgets.lobbyParts then
-		table.insert(problems, string.format("%d parts, budget %d", parts, L.Budgets.lobbyParts))
-	end
 	if guis > L.Budgets.lobbySurfaceGuis then
 		table.insert(problems, string.format("%d SurfaceGuis, budget %d", guis, L.Budgets.lobbySurfaceGuis))
 	end
-	return problems, parts, guis, prompts
+	-- Spec §2: the paths stay 8 wide: nothing collidable stands on one (no station exemption).
+	for _, volume in L.KeepClear do
+		if volume.kind ~= "aisle" then
+			continue
+		end
+		local cf = CFrame.new(volume.position) * CFrame.Angles(0, volume.yaw or 0, 0)
+		local reach = (volume.size / 2).Magnitude
+		for _, part in solids do
+			if
+				(part.Position - volume.position).Magnitude <= reach + part.Size.Magnitude / 2
+				and onPath(part, cf, volume.size)
+			then
+				table.insert(problems, string.format("%s stands on %s", part:GetFullName(), volume.name))
+			end
+		end
+	end
+	-- Spec §7 part budget, every plot at its worst.
+	local zones = zoneParts(state.root)
+	local B = L.Budgets
+	local total = zones.hub + zones.garden
+	if zones.hub > B.hubParts then
+		table.insert(problems, string.format("the hub has %d parts, budget %d", zones.hub, B.hubParts))
+	end
+	if zones.garden > B.gardenParts then
+		table.insert(
+			problems,
+			string.format("the garden, beach and sky have %d parts, budget %d", zones.garden, B.gardenParts)
+		)
+	end
+	for index, parts in zones.bases do
+		local worst = parts + worstPlot
+		total += worst
+		if worst > B.baseParts then
+			table.insert(
+				problems,
+				string.format(
+					"plot %d has %d parts at its worst (%d + %d), budget %d",
+					index,
+					worst,
+					parts,
+					worstPlot,
+					B.baseParts
+				)
+			)
+		end
+	end
+	if total > B.islandParts then
+		table.insert(problems, string.format("the island has %d parts at its worst, budget %d", total, B.islandParts))
+	end
+	return problems, zones, guis, prompts
 end
 
 -- Station bodies, exempt from the keep-clear test as in Verify: every instance with a station tag (every
@@ -2283,6 +2942,13 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 	if #missing > 0 then
 		return failure(warnings, "Strings has no text for: " .. table.concat(missing, ", "))
 	end
+	-- The plots' worst case (spec §7) from the capsule templates themselves, built in memory and thrown away.
+	local templates = CapsuleBuilder.build({ scratch = ctx.scratch, Shared = ctx.Shared })
+	if not templates.ok or templates.root == nil then
+		return failure(warnings, "capsule templates (the plots' budget): " .. tostring(templates.error))
+	end
+	local worstPlot = CapsuleBuilder.worstPlotParts(templates.root, #deps.WorldLayout.Bases.capsulePads)
+	templates.root:Destroy()
 
 	local library = ReplicatedStorage:FindFirstChild(SHAPE_LIBRARY_NAME)
 	local roundedBox = if library then library:FindFirstChild(ROUNDED_BOX_NAME) else nil
@@ -2304,9 +2970,11 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 		warnedTemplate = false,
 	}
 
-	buildGround(state)
+	buildIsland(state)
+	buildHub(state)
 	buildSpawn(state)
 	buildDuelGate(state)
+	buildDuelTower(state)
 	buildGiftBoxCounter(state)
 	buildShopCounter(state)
 	buildCollection(state)
@@ -2316,12 +2984,16 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 	buildPracticeRange(state)
 	buildGripGym(state)
 	buildRoyalPod(state)
-	buildKit(state)
+	buildHubDecor(state)
+	buildGarden(state)
+	buildSky(state)
 	buildDecor(state)
+	buildBases(state)
 	buildSigns(state) -- after every station model and host part exists
 	buildVolumes(state)
+	applyRenderRules(root)
 
-	local problems, parts, guis, prompts = selfCheck(state)
+	local problems, zones, guis, prompts = selfCheck(state, worstPlot)
 	if #problems > 0 then
 		return failure(
 			warnings,
@@ -2331,14 +3003,31 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 	for _, line in keepClearReport(state) do
 		table.insert(warnings, line)
 	end
+	local B = state.L.Budgets
+	local bases, worst = 0, 0
+	for _, parts in zones.bases do
+		bases += parts
+		worst = math.max(worst, parts + worstPlot)
+	end
 	table.insert(
 		warnings,
 		string.format(
-			"lobby report: %d parts (budget %d), %d SurfaceGuis (budget %d), %d prompts (all disabled)",
-			parts,
-			state.L.Budgets.lobbyParts,
+			"lobby report: hub %d parts (budget %d), garden/beach/sky %d (budget %d), %d plots %d static + %d each at "
+				.. "their worst, the worst plot %d (budget %d), the island at its worst %d (budget %d); %d SurfaceGuis "
+				.. "(budget %d), %d prompts (all disabled)",
+			zones.hub,
+			B.hubParts,
+			zones.garden,
+			B.gardenParts,
+			#zones.bases,
+			bases,
+			worstPlot,
+			worst,
+			B.baseParts,
+			zones.hub + zones.garden + bases + #zones.bases * worstPlot,
+			B.islandParts,
 			guis,
-			state.L.Budgets.lobbySurfaceGuis,
+			B.lobbySurfaceGuis,
 			prompts
 		)
 	)

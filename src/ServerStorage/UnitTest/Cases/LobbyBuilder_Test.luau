@@ -1,21 +1,29 @@
 --!strict
--- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 2: the
--- Claude Design hub, sd/lobby.js; user decision 2026-10-11, phase 3 spec D1-D14). Server only (ServerStorage.UnitTest).
+-- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 3: Squish
+-- Island, lobby bases spec 2026-10-11 §2-§4, §7-§8, build plan Phase 4, with the Claude Design hub's stations,
+-- sd/lobby.js, phase 3 spec D1-D14, in its hub sectors). Server only (ServerStorage.UnitTest).
 -- Builders_Test already checks the generic part (ok, unparented, marked, passes Verify); these cases pin what the
 -- runtime and the binders rely on, restated from the design and the game's contracts instead of read from the builder:
 --   * every ProximityPrompt starts DISABLED and carries SD_TextKey (6 stands + 14 collection pedestals);
 --   * static sign lines are TextLabels tagged SD_Sign with SD_TextKey; live lines have neither; ≤ 64 SurfaceGuis (D6);
---   * the spawn (an invisible SpawnLocation in the medallion, top 0.7), the 9 squeeze stations and their tiers, the
---     practice targets (on the design lanes, inert, a "Body" with a mesh), the throw box, the backstop, return points
---     and boundaries;
+--   * the hub spawn (an invisible SpawnLocation in the medallion on the stage, top 1.1), the 9 squeeze stations and
+--     their tiers, the 4 practice targets (on the island's lane, inert, a "Body" with a mesh), the throw box, the
+--     backstop, return points and boundaries;
+--   * the island (§2): the sea, the shallow water, the beach, the grass at Y -0.9, Squish Square at Y 0 with its curb
+--     and 10 paths that stay clear (nothing collidable on them, 8 wide); the duel tower (§2, §7) over the stage;
+--   * the 10 plots (§4): Base_01..10 tagged SD_Base with Plot, at their plot frames, built open (grey, "Open plot" on
+--     the live Owner label), every tinted part marked SD_BaseTint, 4 capsule pads with Slot, one SpawnLocation each
+--     (SD_BaseSpawn, flush with the plot floor, facing the gate), the gate's 16-stud gap open;
+--   * the part budget per zone (§7) with every plot at its worst (CapsuleBuilder's templates);
 --   * the giant pads (D5): Atomic, one Collision station box at the design's standing surface, a Body of tiles inside
 --     the rounded footprint that never collides, no Face; the gates open and invisible; one lock + rope decor model
 --     per pad (SD_GripLock);
 --   * Neon only on the state rings lit in the design's default states (D7);
---   * 7 SD_Ambient models with their SD_AmbientKind (4 corner lollipops spin, the daily gift spins and bobs, the mystery
---     box and the statue breathe), none of their parts collides, is queried or touched;
---   * the design's own parts where lobby.js puts them (spot checks), the odds board beside the box stand, one Status
---     label in the daily stand, 14 pedestals with RarityStyle bands (D9), a 13-stud Kitty Bread statue.
+--   * 7 SD_Ambient models with their SD_AmbientKind (4 garden lollipops spin, the daily gift spins and bobs, the
+--     mystery box and the statue breathe), none of their parts collides, is queried or touched;
+--   * the stations' parts where the island puts them (spot checks), the odds board beside the box stand, one Status
+--     label in the daily stand, 14 pedestals with RarityStyle bands (D9), a 13-stud Kitty Bread statue; nothing but the
+--     range itself stands on the practice range (§7.7 rule 4).
 -- The lobby is built once, in memory, from the Shared folder under test; nothing is parented into the place.
 
 local ServerStorage = game:GetService("ServerStorage")
@@ -33,7 +41,7 @@ local TAG_COUNTS: { [string]: number } = {
 	SD_LobbySpawn = 1,
 	SD_SqueezeStation = 9,
 	SD_PracticeZone = 1,
-	SD_PracticeTarget = 9,
+	SD_PracticeTarget = 4, -- lobby bases spec §3: 3 dummies, plus the moving target the game keeps
 	SD_QueuePodium = 1,
 	SD_QueueBoard = 1,
 	SD_BoxStand = 1,
@@ -50,6 +58,8 @@ local TAG_COUNTS: { [string]: number } = {
 	SD_Boundary = 4,
 	SD_AudioZone = 3,
 	SD_Ambient = 7, -- §18.5.1 A8 / D12: 4 lollipops, both gift boxes, the statue
+	SD_Base = 10, -- lobby bases spec §4: one Model per plot
+	SD_BaseSpawn = 10, -- and its SpawnLocation
 }
 local AMBIENT_KINDS: { [string]: string } = {
 	["Decor/Lollipop1"] = "spin",
@@ -71,26 +81,25 @@ local STATION_TIERS: { [string]: number } = { -- §17.4
 	squeeze_08 = 3,
 	squeeze_09 = 4,
 }
+-- A floor point `radius` studs out on compass angle `degrees` (lobby bases spec §2: clockwise from north, -Z).
+local function polar(radius: number, degrees: number): Vector3
+	local a = math.rad(degrees)
+	return Vector3.new(radius * math.sin(a), 0, -radius * math.cos(a))
+end
+
 type PadSpec = { tier: number, station: string, center: Vector3, collisionTop: number, restTop: number }
-local GIANT_PADS: { [string]: PadSpec } = { -- D5 (design centres lobby.js:359, 363, 383; tops 361, 364, 384)
-	jelly = {
-		tier = 2,
-		station = "squeeze_07",
-		center = Vector3.new(8.9955, 0, 70.3142),
-		collisionTop = 5.7,
-		restTop = 6.2,
-	},
-	marshmallow = {
-		tier = 3,
-		station = "squeeze_08",
-		center = Vector3.new(-12.9955, 0, 69.6858),
-		collisionTop = 6.0,
-		restTop = 6.6,
-	},
-	royal = { tier = 4, station = "squeeze_09", center = Vector3.new(46, 0, 58), collisionTop = 4.1, restTop = 4.8 },
+-- D5 (tops lobby.js:361, 364, 384). Island readings: the Grip gym (126°, r 53) holds the jelly pad 10.5 nearer the hub
+-- and the marshmallow pad 10.5 farther out; the Royal Cushion on the Royal pod (306°, r 80).
+local GIANT_PADS: { [string]: PadSpec } = {
+	jelly = { tier = 2, station = "squeeze_07", center = polar(42.5, 126), collisionTop = 5.7, restTop = 6.2 },
+	marshmallow = { tier = 3, station = "squeeze_08", center = polar(63.5, 126), collisionTop = 6.0, restTop = 6.6 },
+	royal = { tier = 4, station = "squeeze_09", center = polar(80, 306), collisionTop = 4.1, restTop = 4.8 },
 }
--- The practice range floor (lobby.js:402: X 73..115, Z 43..81): §7.7 rule 4 keeps squishy colours off it.
-local RANGE_MIN, RANGE_MAX = Vector3.new(73, 0, 43), Vector3.new(115, 0, 81)
+-- The practice range (§3; island readings): the lane floor X 46..91 across Z -10..10, and the backstop's footing under
+-- the pillow wall (X 88..92, Z -21..21). §7.7 rule 4 keeps squishy colours off it.
+local function onRange(p: Vector3): boolean
+	return (p.X >= 46 and p.X <= 91 and math.abs(p.Z) <= 10) or (p.X >= 88 and p.X <= 92 and math.abs(p.Z) <= 21)
+end
 local SQUISHY_IDS = {
 	"kitty_bread",
 	"toast",
@@ -112,7 +121,7 @@ local STAND_TAGS =
 -- D7: the only Neon is a state ring lit in the design's default state (box Available, shop Purchasable, daily Ready).
 local LIT_RINGS: { [string]: boolean } = { reveal_ring = true, turntable_ring = true, daily_ring = true }
 local MAX_SURFACE_GUIS = 64 -- D6
-local MAX_PARTS = 2500 -- §7.7
+local MAX_PARTS = 5200 -- lobby bases spec §7: the whole island at its worst (the static tree is far below it)
 local TOLERANCE = 1e-3 -- CFrames are stored in single precision
 local DESIGN_TOLERANCE = 0.02 -- design points restated with two decimals
 
@@ -186,19 +195,21 @@ local function extent(root: Instance): (Vector3, Vector3)
 	return low, high
 end
 
--- The design frame of a station (lobby.js:112, 119-130) and a station-local design point in the world.
-local FRAMES: { [string]: { number } } = {
-	duel = { 0, -66 },
-	box = { -58, -46 },
-	shop = { 58, -46 },
-	quests = { 84, -14 },
-	daily = { 84, 20 },
-	squeeze = { -58, 52 },
-	royal = { 46, 58 },
+-- The frame of a station (lobby bases spec §3: its sector's compass angle; readings for the radii; lobby.js:112: its
+-- local +Z faces the hub centre) and a station-local point in the world.
+local FRAMES: { [string]: { number } } = { -- { radius, compass degrees }
+	box = { 52, 54 },
+	shop = { 56, 18 },
+	quests = { 53, 162 },
+	daily = { 50, 198 },
+	squeeze = { 78, 270 },
+	royal = { 80, 306 },
+	grip = { 53, 126 },
 }
 local function design(id: string, x: number, y: number, z: number): Vector3
 	local spec = FRAMES[id]
-	local frame = CFrame.new(spec[1], 0, spec[2]) * CFrame.Angles(0, math.atan2(-spec[1], -spec[2]), 0)
+	local p = polar(spec[1], spec[2])
+	local frame = CFrame.new(p) * CFrame.Angles(0, math.atan2(-p.X, -p.Z), 0)
 	return frame * Vector3.new(x, y, z)
 end
 
@@ -236,13 +247,13 @@ return function(t: Context)
 		return model
 	end
 
-	t.test("the root is SD_Lobby, unparented, not Atomic, version 2", function()
+	t.test("the root is SD_Lobby, unparented, not Atomic, version 3 (Squish Island)", function()
 		local root = lobby()
 		expect.equal(root.Name, "SD_Lobby")
 		expect.equal(root.Parent, nil)
 		expect.equal((root :: Model).ModelStreamingMode, Enum.ModelStreamingMode.Default)
-		expect.equal(LobbyBuilder.VERSION, 2)
-		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 2)
+		expect.equal(LobbyBuilder.VERSION, 3)
+		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 3)
 	end)
 
 	t.test("exact tag counts", function()
@@ -324,18 +335,19 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("the spawn: an invisible SpawnLocation in the medallion, Neutral, Duration 0, top 0.7, facing -Z", function()
+	t.test("the hub spawn: an invisible SpawnLocation in the medallion on the stage, top 1.1, facing -Z", function()
 		local spawn = tagged(lobby(), "SD_LobbySpawn")[1] :: SpawnLocation
 		expect.equal(spawn.ClassName, "SpawnLocation")
 		expect.equal(spawn.Neutral, true)
 		expect.equal(spawn.Duration, 0)
 		expect.equal(spawn.Transparency, 1) -- the design's medallion is the spawn (lobby.js:147)
-		expect.near(topY(spawn), 0.7, TOLERANCE)
+		expect.near(topY(spawn), 1.1, TOLERANCE)
 		expect.near(spawn.CFrame.LookVector.Z, -1, TOLERANCE)
+		expect.near(Vector3.new(spawn.CFrame.Position.X, 0, spawn.CFrame.Position.Z).Magnitude, 0, TOLERANCE)
 		local medallion = named(station("Spawn"), "spawn_medallion")[1]
 		expect.truthy(medallion)
-		expect.near(topY(medallion), 0.7, TOLERANCE) -- C(14, 14.5, 0.7) at Y 0.35
-		expect.near(medallion.Size.Y, 29, TOLERANCE) -- an upright cylinder: diameter on Y and Z
+		expect.near(topY(medallion), 1.1, TOLERANCE) -- reading: Ø12, 0.3 tall on the stage (top 0.8)
+		expect.near(medallion.Size.Y, 12, TOLERANCE) -- an upright cylinder: diameter on Y and Z
 	end)
 
 	t.test("sign labels: static lines tagged with a key, live lines never keyed; ≤ 64 SurfaceGuis (D6)", function()
@@ -522,7 +534,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"practice: 9 targets on the design lanes with attributes, one moving, inert, each with a Body mesh",
+		"practice: 4 targets on the island's lane with attributes, one moving, inert, each with a Body mesh",
 		function()
 			local moving = 0
 			for _, target in tagged(lobby(), "SD_PracticeTarget") do
@@ -536,9 +548,9 @@ return function(t: Context)
 					expect.near(target:GetAttribute("Period") :: number, 9.42, TOLERANCE)
 				end
 				local pivot = (target :: Model).WorldPivot -- no PrimaryPart: GetPivot() is WorldPivot
-				expect.truthy(table.find({ 52, 62, 72 }, math.round(pivot.Position.Z)) ~= nil)
-				expect.near(pivot.Position.X, 79 + (target:GetAttribute("Distance") :: number), TOLERANCE)
-				expect.near(pivot.Position.Y, 0.6, TOLERANCE) -- on the range floor (lobby.js:402)
+				expect.near(pivot.Position.Z, 0, TOLERANCE) -- the island's one lane
+				expect.near(pivot.Position.X, 52 + (target:GetAttribute("Distance") :: number), TOLERANCE)
+				expect.near(pivot.Position.Y, 0.6, TOLERANCE) -- on the lane floor's top
 				expect.near(pivot.LookVector.X, -1, TOLERANCE) -- facing the thrower (throws go +X, D3)
 				for _, part in target:GetDescendants() do
 					if part:IsA("BasePart") then
@@ -550,9 +562,9 @@ return function(t: Context)
 			end
 			expect.equal(moving, 1)
 			local zone = tagged(lobby(), "SD_PracticeZone")[1] :: BasePart
-			expect.near(zone.CFrame.Position.X, 75, TOLERANCE) -- X 71..79, Z 43..81, Y 0..12
+			expect.near(zone.CFrame.Position.X, 48, TOLERANCE) -- X 44..52, Z -10..10, Y 0..12
 			expect.near(zone.Size.X, 8, TOLERANCE)
-			expect.near(zone.Size.Z, 38, TOLERANCE)
+			expect.near(zone.Size.Z, 20, TOLERANCE)
 			expect.near(zone.Size.Y, 12, TOLERANCE)
 			expect.equal(zone.CanCollide, false)
 		end
@@ -572,16 +584,31 @@ return function(t: Context)
 		expect.near((backstop.CFrame.Position - spec.position).Magnitude, 0, TOLERANCE)
 		expect.near((backstop.Size - spec.size).Magnitude, 0, TOLERANCE)
 		expect.equal(#named(range, "backstop_pillow"), 18) -- lobby.js:412
+		-- Reading (island): the 42-wide pillow wall stands on a footing past the 20-wide lane, never in the air.
+		local footing = range:FindFirstChild("backstop_footing") :: BasePart
+		expect.truthy((footing :: BasePart?) ~= nil and footing.CanCollide)
+		expect.near(footing.Position.Y - footing.Size.Y / 2, -0.9, TOLERANCE) -- on the grass
+		local bottomRow = 0
+		for _, pillow in named(range, "backstop_pillow") do
+			local p = pillow.Position
+			if p.Y - pillow.Size.Y / 2 < 1 then -- the bottom row stands on the lane or the footing
+				bottomRow += 1
+				expect.truthy(math.abs(p.Z) + pillow.Size.X / 2 <= footing.Size.Z / 2 + TOLERANCE)
+				expect.truthy(math.abs(p.X - footing.Position.X) <= footing.Size.X / 2)
+				expect.truthy(p.Y - pillow.Size.Y / 2 <= topY(footing) + TOLERANCE)
+			end
+		end
+		expect.equal(bottomRow, 6)
 	end)
 
-	t.test("return points at (±6, 0, -42) facing +Z, Slots 1 and 2", function()
+	t.test("return points at (∓6, 0.8, 19) on the stage facing +Z, Slots 1 and 2", function()
 		local slots: { [number]: boolean } = {}
 		for _, point in tagged(lobby(), "SD_ReturnPoint") do
 			local part = point :: BasePart
 			local slot = part:GetAttribute("Slot") :: number
 			slots[slot] = true
-			expect.near(math.abs(part.CFrame.Position.X), 6, TOLERANCE)
-			expect.near(part.CFrame.Position.Z, -42, TOLERANCE)
+			expect.near(part.CFrame.Position.X, if slot == 1 then -6 else 6, TOLERANCE)
+			expect.near(part.CFrame.Position.Z, 19, TOLERANCE)
 			expect.near(part.CFrame.LookVector.Z, 1, TOLERANCE)
 			expect.equal(part.CanCollide, false)
 		end
@@ -636,51 +663,57 @@ return function(t: Context)
 		end
 		expect.deepEqual(found, AMBIENT_KINDS)
 		local decor = root:FindFirstChild("Decor") :: Instance
-		local corners = {
-			Vector3.new(-104, 0, -80),
-			Vector3.new(104, 0, -80),
-			Vector3.new(-104, 0, 80),
-			Vector3.new(104, 0, 80),
-		} -- lobby.js:468
-		for index = 1, 4 do
+		for index, degrees in { 54, 126, 234, 342 } do -- island reading: in the garden at r 86, on the grass
+			local foot = polar(86, degrees) + Vector3.new(0, -0.9, 0)
 			local lollipop = decor:FindFirstChild("Lollipop" .. index) :: Model
 			expect.equal(lollipop.ModelStreamingMode, Enum.ModelStreamingMode.Atomic)
-			-- The client spins it about its pivot: the stick's foot on the floor.
-			expect.near((lollipop.WorldPivot.Position - corners[index]).Magnitude, 0, TOLERANCE)
+			-- The client spins it about its pivot: the stick's foot on the grass.
+			expect.near((lollipop.WorldPivot.Position - foot).Magnitude, 0, TOLERANCE)
 			local _, high = extent(lollipop)
-			expect.near(high.Y, 24 + 7, 0.1) -- stick 24, disk radius 7 (lobby.js:468)
+			expect.near(high.Y, -0.9 + 24 + 7, 0.1) -- stick 24, disk radius 7 (lobby.js:468)
 		end
 	end)
 
-	t.test("the corner lollipop on the practice range uses no squishy body colour (§7.7 rule 4)", function()
-		local Blueprints = t.requireShared("Art/SquishyBlueprints")
-		local bodyColours: { [string]: boolean } = {}
-		for _, id in SQUISHY_IDS do
-			for _, spec in Blueprints[id].parts do
-				if spec.body then
-					bodyColours[string.upper(spec.color)] = true
+	t.test(
+		"nothing but the range stands on the practice range: no squishy body colour near the lanes (§7.7 rule 4)",
+		function()
+			local Blueprints = t.requireShared("Art/SquishyBlueprints")
+			local bodyColours: { [string]: boolean } = {}
+			for _, id in SQUISHY_IDS do
+				for _, spec in Blueprints[id].parts do
+					if spec.body then
+						bodyColours[string.upper(spec.color)] = true
+					end
 				end
 			end
-		end
-		local decor = lobby():FindFirstChild("Decor") :: Instance
-		local onRange = 0
-		for _, model in decor:GetChildren() do
-			if not (model:IsA("Model") and string.sub(model.Name, 1, 8) == "Lollipop") then
-				continue
-			end
-			local base = (model :: Model).WorldPivot.Position
-			if base.X < RANGE_MIN.X or base.X > RANGE_MAX.X or base.Z < RANGE_MIN.Z or base.Z > RANGE_MAX.Z then
-				continue
-			end
-			onRange += 1
-			for _, part in model:GetDescendants() do
-				if part:IsA("BasePart") and bodyColours[string.upper(part.Color:ToHex())] then
-					error(`{part:GetFullName()} is {part.Color:ToHex()}, a squishy body colour`)
+			-- Ground, volumes and walls lie under or around everything; the range's own parts are the range.
+			local skip: { [string]: boolean } =
+				{ PracticeRange = true, Island = true, KeepClear = true, AudioZones = true, Boundaries = true }
+			local foreign = {}
+			for _, child in lobby():GetChildren() do
+				if skip[child.Name] then
+					continue
+				end
+				for _, part in child:GetDescendants() do
+					if part:IsA("BasePart") and part.Transparency < 1 and onRange(part.Position) then
+						table.insert(foreign, part:GetFullName())
+						if bodyColours[string.upper(part.Color:ToHex())] then
+							error(`{part:GetFullName()} is {part.Color:ToHex()}, a squishy body colour`)
+						end
+					end
 				end
 			end
+			if #foreign > 0 then
+				error("decor on the practice range: " .. table.concat(foreign, ", "))
+			end
+			for index = 1, 4 do -- no lollipop on the range (the design hub had one on its corner)
+				local lollipop = (lobby():FindFirstChild("Decor") :: Instance):FindFirstChild(
+						"Lollipop" .. index
+					) :: Model
+				expect.falsy(onRange(lollipop.WorldPivot.Position))
+			end
 		end
-		expect.equal(onRange, 1) -- the SE lollipop (104, 80) stands on the range floor's north-east corner
-	end)
+	)
 
 	t.test("the statue: a 13-stud Kitty Bread on the plinth with its ambient sparkle; emitter budget", function()
 		local Config = t.requireShared("Config")
@@ -774,8 +807,7 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the design's parts stand where lobby.js puts them (spot checks)", function()
-		local root = lobby()
+	t.test("the stations' parts stand where the island puts them (spot checks)", function()
 		local function at(model: string, name: string, point: Vector3)
 			local parts = named(station(model), name)
 			if #parts == 0 then
@@ -789,14 +821,11 @@ return function(t: Context)
 				error(`{model}/{name}: nearest is {best} studs from {point}`)
 			end
 		end
-		at("DuelGate", "queue_stage", Vector3.new(0, 0.8, -66)) -- lobby.js:172
-		at("DuelGate", "gate_lintel", Vector3.new(0, 24, -75)) -- lobby.js:182
-		at("DuelGate", "gate_badge", Vector3.new(0, 24, -71.2)) -- lobby.js:183
-		expect.equal(#named(station("DuelGate"), "queue_pad"), 10) -- lobby.js:190-192
-		expect.equal(#named(station("DuelGate"), "slot_light"), 10) -- lobby.js:188
+		at("DuelGate", "queue_stage", Vector3.new(0, 0.4, 0)) -- §2: the stage Ø44 at the island centre
+		expect.equal(#named(station("DuelGate"), "queue_pad"), 10) -- §2 "same 10 queue pads" (lobby.js:190-192)
 		at("GiftBoxCounter", "box_dais", design("box", 0, 0.7, 0)) -- lobby.js:209
-		at("ShopCounter", "shop_backwall", design("shop", 0, 8.3, -6.5)) -- lobby.js:239
-		expect.equal(#named(station("ShopCounter"), "awning_stripe"), 10) -- lobby.js:247
+		at("ShopCounter", "shop_backwall", design("shop", 0, 7.3, -6.8)) -- lobby.js:239 (reading: the compact stall)
+		expect.equal(#named(station("ShopCounter"), "awning_stripe"), 8) -- lobby.js:247 (reading: 8 on the stall)
 		at("QuestBoard", "quest_header", design("quests", 0, 17.4, -1.6)) -- lobby.js:295
 		expect.equal(#named(station("QuestBoard"), "quest_card"), 9) -- lobby.js:300
 		expect.equal(#named(station("DailyStand"), "calendar_tile"), 7) -- lobby.js:324
@@ -804,16 +833,303 @@ return function(t: Context)
 		expect.equal(#named(station("SqueezeZone"), "refill_meter"), 6) -- lobby.js:346
 		at("RoyalPod", "canopy_finial", design("royal", 0, 23.4, 0)) -- lobby.js:391
 		expect.equal(#named(station("RoyalPod"), "canopy_post"), 4) -- lobby.js:388
-		local kit = root:FindFirstChild("Kit") :: Instance
-		local walls = 0
-		for _, part in kit:GetDescendants() do
-			if part.Name == "kit_wall_module" then
-				walls += 1
+		expect.equal(lobby():FindFirstChild("Kit"), nil) -- the design hub's kit corner is gone
+		-- The props (§3, §7): the Butter Fountain at 342°, 6 chocolate benches and 4 pancake tables on the square.
+		local decor = station("HubDecor")
+		expect.truthy(decor:FindFirstChild("ButterFountain") ~= nil)
+		local benches, tables = 0, 0
+		for _, child in decor:GetChildren() do
+			if string.sub(child.Name, 1, 14) == "ChocolateBench" then
+				benches += 1
+			elseif string.sub(child.Name, 1, 12) == "PancakeTable" then
+				tables += 1
 			end
 		end
-		expect.equal(walls, 54) -- 15 + 15 + 12 + 12 (lobby.js:427, 436)
-		expect.equal(#named(kit, "kit_wall_pillar"), 58) -- lobby.js:434
-		expect.equal(#named(kit, "kit_gumdrop_hedge"), 15) -- lobby.js:441-442
+		expect.equal(benches, 6)
+		expect.equal(tables, 4)
+		local garden = station("Garden")
+		expect.equal(#named(garden, "garden_path"), 10)
+		for _, name in { "ToastStackTower", "BananaSlide", "FrogLilyPond" } do
+			expect.truthy(garden:FindFirstChild(name) ~= nil)
+		end
+		expect.equal(#station("Sky"):GetChildren(), 6) -- §7: 6 Cloud Bunny clouds
+	end)
+
+	-- Squish Island (lobby bases spec §2-§4, §7) -------------------------------------------------------------------------
+
+	-- The single part `name` of `model`.
+	local function only(model: Instance, name: string): BasePart
+		local parts = named(model, name)
+		if #parts ~= 1 then
+			error(`{model.Name} has {#parts} {name}`)
+		end
+		return parts[1]
+	end
+
+	t.test(
+		"the ground: sea, shallow water, beach, grass at Y -0.9; Squish Square at Y 0, its curb and paths (§2)",
+		function()
+			local island = station("Island")
+			local grass = only(island, "grass")
+			expect.near(topY(grass), -0.9, TOLERANCE)
+			expect.near(grass.Size.Z, 320, TOLERANCE) -- an upright cylinder: r 160
+			local beach = only(island, "beach")
+			expect.near(topY(beach), -1.2, TOLERANCE)
+			expect.near(beach.Size.Z, 352, TOLERANCE) -- r 176
+			expect.truthy(topY(only(island, "grass_edge")) < topY(grass))
+			expect.truthy(topY(only(island, "sea")) < topY(only(island, "shallow_water")))
+			local hub = station("Hub")
+			local floor = only(hub, "hub_floor")
+			expect.near(topY(floor), 0, TOLERANCE)
+			expect.near(floor.Size.Z, 140, TOLERANCE) -- Ø140
+			expect.near(floor.Position.Y - floor.Size.X / 2, -0.9, TOLERANCE) -- raised 0.9 from the garden
+			local curb = only(hub, "hub_curb")
+			expect.near(topY(curb), -0.03, TOLERANCE) -- Prims.LAYER under the floor: a white band that never flickers
+			expect.near(curb.Size.Z, 142, TOLERANCE)
+			expect.equal(curb.Color, t.requireShared("Art/Palette").White)
+			expect.equal(#named(hub, "hub_path"), 10)
+		end
+	)
+
+	t.test(
+		'10 plots under Bases: Base_NN tagged SD_Base with Plot at their frames, built open: grey, "Open plot" (§4)',
+		function()
+			local WorldLayout = t.requireShared("World/WorldLayout")
+			local Palette = t.requireShared("Art/Palette")
+			local bases = station("Bases")
+			expect.equal(#bases:GetChildren(), 10)
+			for index = 1, 10 do
+				local model = bases:FindFirstChild(string.format("Base_%02d", index)) :: Model
+				expect.truthy((model :: Model?) ~= nil and model:IsA("Model"))
+				expect.truthy(model:HasTag("SD_Base"))
+				expect.equal(model:GetAttribute("Plot"), index)
+				local frame = WorldLayout.plotFrame(index) :: CFrame
+				expect.near((model.WorldPivot.Position - frame.Position).Magnitude, 0, TOLERANCE)
+				local tints = { full = 0, light = 0 }
+				for _, part in model:GetDescendants() do
+					local which = part:GetAttribute("SD_BaseTint")
+					if which ~= nil then
+						expect.truthy(part:IsA("BasePart") and (which == "full" or which == "light"))
+						tints[which :: string] += 1
+						local want = Palette[if which == "full" then "BaseOpen" else "BaseOpenLight"]
+						expect.equal((part :: BasePart).Color, want)
+					end
+				end
+				expect.equal(tints.light, 1) -- the plinth floor
+				expect.truthy(tints.full >= 10) -- the rim, the fence caps, the wall cap, the gate's icing
+				-- The name sign: one live Owner label built "Open plot", without SD_TextKey (BaseService writes it).
+				local owner = model:FindFirstChild("Owner", true)
+				expect.truthy(owner ~= nil and owner:IsA("TextLabel"))
+				expect.equal((owner :: TextLabel).Text, Strings.resolve("base.openPlot"))
+				expect.equal((owner :: Instance):GetAttribute("SD_TextKey"), nil)
+				-- The 4 capsule pads (Slot 1..4) on their spots, top 0.3.
+				for slot, pad in WorldLayout.Bases.capsulePads do
+					local part = model:FindFirstChild("Pad" .. slot) :: BasePart
+					expect.equal(part:GetAttribute("Slot"), slot)
+					expect.near((part.Position - frame * (pad + Vector3.new(0, 0.15, 0))).Magnitude, 0, TOLERANCE)
+					expect.near(topY(part), 0.3, TOLERANCE)
+				end
+				-- The plinth floor: Roblox's own studs on top (§7), its top the plot floor (Y 0).
+				local floor = model:FindFirstChild("Floor") :: BasePart
+				expect.equal(floor.TopSurface, Enum.SurfaceType.Studs)
+				expect.near(topY(floor), 0, TOLERANCE)
+				expect.equal(model:FindFirstChild("Capsules"), nil) -- BaseService draws the capsules at runtime
+			end
+		end
+	)
+
+	t.test(
+		"each plot's SpawnLocation: SD_BaseSpawn with its Plot, invisible, Neutral, flush with the floor, facing the gate",
+		function()
+			local WorldLayout = t.requireShared("World/WorldLayout")
+			local seen: { [number]: boolean } = {}
+			for _, item in tagged(lobby(), "SD_BaseSpawn") do
+				local spawn = item :: SpawnLocation
+				expect.equal(spawn.ClassName, "SpawnLocation")
+				local plot = spawn:GetAttribute("Plot") :: number
+				expect.falsy(seen[plot])
+				seen[plot] = true
+				expect.equal((spawn.Parent :: Instance).Name, string.format("Base_%02d", plot)) -- inside its plot's model
+				expect.equal(spawn.Neutral, true)
+				expect.equal(spawn.Duration, 0)
+				expect.equal(spawn.Transparency, 1)
+				expect.equal(spawn.CanTouch, true) -- a SpawnLocation keeps its touch (§7's rule spares it)
+				expect.near(topY(spawn), 0, TOLERANCE)
+				local want = (WorldLayout.plotFrame(plot) :: CFrame) * WorldLayout.Bases.spawn
+				expect.near(
+					Vector3.new(spawn.Position.X - want.X, 0, spawn.Position.Z - want.Z).Magnitude,
+					0,
+					TOLERANCE
+				)
+				expect.near((spawn.CFrame.LookVector - want.LookVector).Magnitude, 0, TOLERANCE)
+			end
+			for plot = 1, 10 do
+				expect.truthy(seen[plot])
+			end
+		end
+	)
+
+	t.test("each plot's gate leaves its 16-stud gap open: nothing collidable stands in it (§4)", function()
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		local Verify = dynamicRequire(toolsClone:FindFirstChild("Verify") :: ModuleScript)
+		local B = WorldLayout.Bases
+		for index = 1, 10 do
+			local model = station("Bases"):FindFirstChild(string.format("Base_%02d", index)) :: Instance
+			local frame = WorldLayout.plotFrame(index) :: CFrame
+			-- The opening: 15.8 wide across the fence line (local z 23..26), from 0.5 above the floor to 6.5.
+			local opening, size = frame * CFrame.new(0, 3.5, B.depth / 2 - 1.5), Vector3.new(15.8, 6, 3)
+			for _, part in model:GetDescendants() do
+				if part:IsA("BasePart") and part.CanCollide then
+					if Verify.boxesOverlap(opening, size, part.CFrame, part.Size, 0.01) then
+						error(`{part:GetFullName()} stands in plot {index}'s gate`)
+					end
+				end
+			end
+			expect.equal(#named(model, "FencePost"), 16) -- every 8 studs along the sides, beside the gate (§4)
+			expect.equal(#named(model, "GatePillar"), 2)
+		end
+	end)
+
+	t.test("the 10 paths stay clear: no collidable part stands where people walk (§2: 8 wide)", function()
+		-- Points along each path, 3.5 either side of its line and on it, 1.5 and 4 studs above the walking surface
+		-- (the square at Y 0 to r 70, the garden path at Y -0.8 beyond), from the stage edge to the gate.
+		type Solid = { part: BasePart, reach: number }
+		local solids: { Solid } = {}
+		for _, part in lobby():GetDescendants() do
+			if part:IsA("BasePart") and part.CanCollide and not part:HasTag("SD_Boundary") then
+				table.insert(solids, { part = part, reach = part.Size.Magnitude / 2 })
+			end
+		end
+		local function inside(part: BasePart, point: Vector3): boolean
+			local p = part.CFrame:PointToObjectSpace(point)
+			local h = part.Size / 2
+			local shape = if part:IsA("Part") then part.Shape else Enum.PartType.Block
+			if shape == Enum.PartType.Ball then
+				return p.Magnitude < h.X
+			elseif shape == Enum.PartType.Cylinder then
+				return math.abs(p.X) < h.X and p.Y * p.Y + p.Z * p.Z < math.min(h.Y, h.Z) ^ 2
+			end
+			return math.abs(p.X) < h.X and math.abs(p.Y) < h.Y and math.abs(p.Z) < h.Z
+		end
+		for index = 1, 10 do
+			local out = polar(1, (index - 1) * 36)
+			local side = Vector3.new(-out.Z, 0, out.X)
+			local nearby: { BasePart } = {}
+			for _, solid in solids do
+				local q = solid.part.Position
+				local along = math.clamp(Vector3.new(q.X, 0, q.Z):Dot(out), 22, 96)
+				local flat = Vector3.new(q.X, 0, q.Z) - out * along
+				if flat.Magnitude <= 4 + solid.reach then
+					table.insert(nearby, solid.part)
+				end
+			end
+			for radius = 23, 95, 1.5 do
+				local floor = if radius <= 70 then 0 else -0.8
+				for _, lateral in { -3.5, 0, 3.5 } do
+					for _, height in { 1.5, 4 } do
+						local point = out * radius + side * lateral + Vector3.new(0, floor + height, 0)
+						for _, part in nearby do
+							if inside(part, point) then
+								error(`{part:GetFullName()} stands on path {index} at r {radius}`)
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+
+	t.test(
+		"the duel tower: 4 pillars on the stage at (±12, ±12), the deck at 35-38.5, the Dragon's top near 68 (§2)",
+		function()
+			local tower = station("DuelTower")
+			local pillars = named(tower, "tower_pillar")
+			expect.equal(#pillars, 4)
+			for _, pillar in pillars do
+				expect.near(math.abs(pillar.Position.X), 12, TOLERANCE)
+				expect.near(math.abs(pillar.Position.Z), 12, TOLERANCE)
+				expect.near(pillar.Position.Y - pillar.Size.Y / 2, 0.8, TOLERANCE) -- on the stage top
+				expect.near(topY(pillar), 35, TOLERANCE) -- under the deck
+				expect.equal(pillar.CanCollide, true)
+				-- On the stage (Ø44), so off every path: its outer corner inside the stage edge.
+				local corner = Vector3.new(math.abs(pillar.Position.X) + 3.5, 0, math.abs(pillar.Position.Z) + 3.5)
+				expect.truthy(corner.Magnitude <= 22)
+			end
+			local deck = only(tower, "tower_deck")
+			expect.near(deck.Position.Y - deck.Size.Y / 2, 35, TOLERANCE)
+			expect.near(topY(deck), 38.5, TOLERANCE)
+			expect.equal(deck.CanCollide, false) -- decor above the pillars
+			local dragon = tower:FindFirstChild("TowerDragon") :: Model
+			expect.truthy((dragon :: Model?) ~= nil)
+			local _, high = extent(dragon)
+			expect.truthy(high.Y >= 60 and high.Y <= 76) -- §2: "about 68 tall"
+			local badge = false
+			for _, d in tower:GetDescendants() do
+				if d:IsA("TextLabel") and d:GetAttribute("SD_TextKey") == "world.gateBadge" then
+					badge = true
+				end
+			end
+			expect.truthy(badge) -- "DUELS" on the deck (lobby.js:184)
+		end
+	)
+
+	t.test("the part budget per zone (§7): hub 2,000, each plot at its worst 220, garden 1,000, all 5,200", function()
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		local budgets = WorldLayout.Budgets
+		expect.equal(budgets.hubParts, 2000)
+		expect.equal(budgets.baseParts, 220)
+		expect.equal(budgets.gardenParts, 1000)
+		expect.equal(budgets.islandParts, 5200)
+		-- A plot at its worst: 4 open capsules of the biggest look holding the 4 biggest squishies, and the statue.
+		local builders = toolsClone:FindFirstChild("Builders") :: Instance
+		local CapsuleBuilder = dynamicRequire(builders:FindFirstChild("CapsuleBuilder") :: ModuleScript)
+		local templateScratch = Cleanup.new()
+		local templates = CapsuleBuilder.build({ scratch = templateScratch, Shared = shared })
+		expect.truthy(templates.ok)
+		local worst = CapsuleBuilder.worstPlotParts(templates.root, 4)
+		templates.root:Destroy()
+		templateScratch:clean()
+		expect.truthy(worst > 4 * 10) -- 4 capsules at least
+		local function count(instance: Instance): number
+			local n = 0
+			for _, d in instance:GetDescendants() do
+				if d:IsA("BasePart") then
+					n += 1
+				end
+			end
+			return n
+		end
+		local garden: { [string]: boolean } =
+			{ Island = true, Boundaries = true, Garden = true, Sky = true, Decor = true }
+		local hubParts, gardenParts, total = 0, 0, 0
+		for _, child in lobby():GetChildren() do
+			if child.Name == "Bases" then
+				for _, base in child:GetChildren() do
+					local parts = count(base) + worst
+					if parts > budgets.baseParts then
+						error(`{base.Name} has {parts} parts at its worst`)
+					end
+					total += parts
+				end
+			elseif garden[child.Name] then
+				gardenParts += count(child)
+			else
+				hubParts += count(child)
+			end
+		end
+		total += hubParts + gardenParts
+		expect.truthy(hubParts <= budgets.hubParts)
+		expect.truthy(gardenParts <= budgets.gardenParts)
+		expect.truthy(total <= budgets.islandParts)
+		-- The build report states the same counts.
+		local report: string? = nil
+		for _, warning in built.warnings do
+			if string.find(warning, "lobby report", 1, true) then
+				report = warning
+			end
+		end
+		expect.truthy(report ~= nil and string.find(report :: string, `hub {hubParts} parts`, 1, true) ~= nil)
+		expect.truthy(string.find(report :: string, `the island at its worst {total} `, 1, true) ~= nil)
 	end)
 
 	t.test("the practice audio zone covers the throw box (§18.8)", function()

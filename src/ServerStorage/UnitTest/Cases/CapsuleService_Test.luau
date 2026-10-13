@@ -16,7 +16,9 @@
 --     nothing; 1 call a second and one at a time (spam is rate-limited);
 --   * a buy charges once with "capsule", writes the level or the slot, awaits one "now" save and replies the capsules;
 --     an unlock retry is a replay; an upgrade retry carries the old price and is refused; CapsuleSet moves a squishy
---     out of the capsule that held it and asks for a "soon" save.
+--     out of the capsule that held it and asks for a "soon" save;
+--   * Phase 4: every capsule change (a bought level or slot, a squishy set) redraws the caller's own base
+--     (BaseService.refresh through deps.showCapsules); a refusal, a replay or a squishy already there does not.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -56,6 +58,7 @@ return function(t: Context)
 		spends: { { player: any, amount: number, reason: string } },
 		nowSaves: number,
 		saves: { string },
+		shown: { any }, -- players whose base was redrawn (showCapsules)
 	}
 
 	local function newProfile(): any
@@ -90,6 +93,7 @@ return function(t: Context)
 			spends = {},
 			nowSaves = 0,
 			saves = {},
+			shown = {},
 		}
 		CapsuleService.reset()
 		CapsuleService.useDeps({
@@ -156,6 +160,9 @@ return function(t: Context)
 			end,
 			setAttribute = function(player: any, name: string, value: number)
 				w.attrs[`{player.UserId}:{name}`] = value
+			end,
+			showCapsules = function(player: any)
+				table.insert(w.shown, player)
 			end,
 		})
 		for index, player in { w.a, w.b } do
@@ -470,6 +477,28 @@ return function(t: Context)
 			finish()
 		end
 	)
+
+	t.test("a bought level or slot and a squishy set redraw the caller's base; refusals and replays do not", function()
+		local w = fresh()
+		w.profiles[w.a].coins = 10_000
+		expectRefused(CapsuleService.upgrade(w.a, 1, 999), "capsule.priceChanged")
+		expect.equal(#w.shown, 0)
+		expect.equal(CapsuleService.upgrade(w.a, 1, CapsuleMath.price(1)).ok, true)
+		expect.deepEqual(w.shown, { w.a })
+		expect.equal(CapsuleService.unlock(w.a, 2, 2_500).ok, true)
+		expect.equal(#w.shown, 2)
+		expect.equal(CapsuleService.unlock(w.a, 2, 2_500).data.charged, false) -- a replay: nothing changed
+		expect.equal(#w.shown, 2)
+		expect.equal(CapsuleService.set(w.a, 2, "toast").ok, true)
+		expect.equal(#w.shown, 3)
+		expect.equal(CapsuleService.set(w.a, 2, "toast").ok, true) -- already there: nothing changes
+		expectRefused(CapsuleService.set(w.a, 1, "dragon"), "inventory.notOwned")
+		expect.equal(#w.shown, 3)
+		for _, player in w.shown do
+			expect.equal(player, w.a) -- only the caller's own base
+		end
+		finish()
+	end)
 
 	t.test("spam: 1 call a second and one at a time for each capsule remote", function()
 		for _, remote in { "CapsuleUpgrade", "CapsuleUnlock", "CapsuleSet" } do

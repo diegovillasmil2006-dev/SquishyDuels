@@ -90,8 +90,8 @@ return function(t: Context)
 		expect.truthy(middle.Y < topY) -- on the face, under its top edge
 		expect.truthy(middle.Y > targetTop + Config.Combat.Bands.radius.max) -- a ball there clears every target
 
-		local inLane = AutoDriver.backstopPoint(Vector3.new(75, 3, 52))
-		expect.near(inLane.Z, 52, 1e-5)
+		local inLane = AutoDriver.backstopPoint(Vector3.new(75, 3, 5)) -- on Squish Island's lane (Z -10..10)
+		expect.near(inLane.Z, 5, 1e-5)
 		expect.near(inLane.X, faceX, 1e-5)
 		local farSouth = AutoDriver.backstopPoint(Vector3.new(75, 3, 200))
 		local farNorth = AutoDriver.backstopPoint(Vector3.new(75, 3, -100))

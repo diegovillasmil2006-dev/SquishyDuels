@@ -1,24 +1,31 @@
 --!strict
 -- WorldLayout_Test: unit tests for ReplicatedStorage.Shared.World.WorldLayout. Server only (ServerStorage.UnitTest).
--- Contract: the lobby is the Claude Design hub (design package sd/lobby.js; user decision 2026-10-11 "build the
--- design's lobby", phase 3 spec decisions D1-D14). The numbers below are restated from lobby.js (each with its line)
--- and turned into world points with the design's own frame maths (lobby.js:112: a station's local +Z faces the hub
--- centre; three.js rotation.y = CFrame.Angles(0, yaw, 0)), so a drift in WorldLayout is caught:
---   * 12 station frames (lobby.js:119-130), 10 paths from radius 31 (lobby.js:133-140), the 232 × 184 hub;
---   * nine squeeze stations squeeze_01..09 with the §17.4 tiers: the six foam mats on the design ring
---     (lobby.js:342-344), the giant pads on the design pads (D5: Jelly, Marshmallow, Royal Cushion), each collision box
---     inside its rounded footprint and its (invisible) gate;
---   * keep-clear volumes (yawed with their paths) never overlap between stations and hold no station body;
---   * routes within the design's worst real route (D1: 10 s, pods 12 s; was §7.5's 5 s), spawn routes no longer than
---     the design's distances;
---   * every sign, prompt and plate key resolves in Strings; the design plate words (D10) and the game's live lines;
---     the plates sit where lobby.js puts them; within the 64-SurfaceGui budget (D6);
---   * practice range on the design lanes, throws toward +X (D3); 14 collection pedestals facing their bays (D4);
---     return points, audio zones, the corner lollipops, TagCounts;
+-- Contract: the lobby is Squish Island (lobby bases spec 2026-10-11 §2-§4, §7-§8; build plan Phase 4) with the stations
+-- of the Claude Design hub (design package sd/lobby.js, phase 3 spec decisions D1-D14) in its hub sectors. The island
+-- numbers are restated from the spec (each with its §), the station-local numbers from lobby.js (each with its line)
+-- or as the island's readings, and turned into world points with the design's own frame maths (lobby.js:112: a
+-- station's local +Z faces the hub centre; three.js rotation.y = CFrame.Angles(0, yaw, 0)), so a drift in WorldLayout
+-- is caught:
+--   * the island (Squish Square Ø140 at Y 0, grass to r 160 at Y -0.9, the beach to r 176, the sea) and its
+--     boundaries; 12 station frames in the hub sectors (§3: centred on 18° + 36° j, readings for the radii); 10 paths,
+--     8 wide, from the stage edge (r 22) to each plot's gate (r 96), 36° apart;
+--   * nine squeeze stations squeeze_01..09 with the §17.4 tiers: the six foam mats on the design ring of radius 14
+--     (lobby.js:342-344) around the squeeze frame, the giant pads (D5: Jelly, Marshmallow, Royal Cushion), each
+--     collision box inside its rounded footprint and its (invisible) gate, the pads at least 20 apart;
+--   * keep-clear volumes (yawed with their paths) never overlap between stations and hold no station body; the path
+--     aisles are the paths themselves (8 wide);
+--   * routes within the design's worst real route (D1: 10 s, pods 12 s; was §7.5's 5 s), hub spawn routes no longer
+--     than the island's distances; a plot's spawn 116 studs and its gate 74 from the stage (§2);
+--   * every sign, prompt and plate key resolves in Strings; the design plate words (D10), the island's "SQUISH
+--     SQUARE" (§2) and the game's live lines; the plates sit where the island puts them; within the 64-SurfaceGui
+--     budget (D6); every plot's name sign hangs under its gate, reading "Open plot" as built (§4);
+--   * the practice range: one lane east (Z 0), 4 targets, throws toward +X (§3, D3); 14 collection pedestals facing
+--     their bays (D4); return points on the stage, audio zones over the island, the lollipops in the garden,
+--     TagCounts (10 SD_Base, 10 SD_BaseSpawn since Phase 4);
 --   * first person: no prompt and no squeeze station reaches into the practice throw box;
---   * Phase 3 bases (lobby bases spec 2026-10-11 §2, §4; data only): 10 plots 36° apart around the hub centre, gates
---     at radius 96 and backs at 148, facing the hub, 44 × 52, the capsule pads and the spawn inside, no two plots
---     sharing ground; inPlot is the footprint only, never an unknown plot;
+--   * bases (§2, §4, §8): 10 plots 36° apart around the hub centre, gates at radius 96 and backs at 148, facing the
+--     hub, 44 × 52, the capsule pads, their capsule spots and the spawn inside, no two plots sharing ground, a colour
+--     per plot and the open grey; inPlot is the footprint only, never an unknown plot;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -55,43 +62,50 @@ local TIERS: { [string]: number } = {
 	squeeze_09 = 4,
 }
 
--- Station centres and yaws (lobby.js:112, 119-130); nil yaw = atan2(-x, -z), the front facing the hub centre.
-local FRAMES: { [string]: { x: number, z: number, yaw: number? } } = {
-	spawn = { x = 0, z = 0, yaw = 0 }, -- lobby.js:119
-	duel = { x = 0, z = -66 }, -- lobby.js:120
-	box = { x = -58, z = -46 }, -- lobby.js:121
-	shop = { x = 58, z = -46 }, -- lobby.js:122
-	collection = { x = -86, z = 4 }, -- lobby.js:123
-	quests = { x = 84, z = -14 }, -- lobby.js:124
-	daily = { x = 84, z = 20 }, -- lobby.js:125
-	squeeze = { x = -58, z = 52 }, -- lobby.js:126
-	grip = { x = -2, z = 70 }, -- lobby.js:127
-	royal = { x = 46, z = 58 }, -- lobby.js:128
-	practice = { x = 88, z = 62, yaw = -math.pi / 2 }, -- lobby.js:129
-	kit = { x = -96, z = -86, yaw = 0 }, -- lobby.js:130 (-116 + 20, -92 + 6)
+-- A floor point `radius` studs out on compass angle `degrees` (lobby bases spec §2: clockwise from north, -Z).
+local function polar(radius: number, degrees: number): Vector3
+	local a = math.rad(degrees)
+	return Vector3.new(radius * math.sin(a), 0, -radius * math.cos(a))
+end
+
+-- Station frames (spec §3: each station in the hub sector centred on its compass angle, 18° + 36° j; the radius is a
+-- reading: the farthest out the sector lets it stand between its two paths). nil yaw = atan2(-x, -z), the front
+-- facing the hub centre (lobby.js:112).
+local FRAMES: { [string]: { r: number, deg: number, yaw: number? } } = {
+	spawn = { r = 0, deg = 0, yaw = 0 }, -- the stage centre (§2)
+	duel = { r = 0, deg = 0, yaw = 0 }, -- the duel stage under the tower (§2)
+	shop = { r = 56, deg = 18 }, -- §3
+	box = { r = 52, deg = 54 }, -- §3
+	practice = { r = 70, deg = 90, yaw = -math.pi / 2 }, -- §3; the range runs east (+X) along its sector's middle
+	grip = { r = 53, deg = 126 }, -- reading: the Grip gym until Phase 6
+	quests = { r = 53, deg = 162 }, -- §3
+	daily = { r = 50, deg = 198 }, -- §3
+	collection = { r = 56, deg = 234 }, -- §3
+	squeeze = { r = 78, deg = 270 }, -- §3 (reaches into the garden)
+	royal = { r = 80, deg = 306 }, -- reading: the Royal pod until Phase 6, in the garden
+	fountain = { r = 48, deg = 342 }, -- §3: the Butter Fountain (a prop)
 }
 
--- Path ends (lobby.js:136-140: radius 31 toward the station or its entry, ending foot + 1 short of its centre).
-local PATH_ENDS: { [string]: Vector3 } = {
-	duel = Vector3.new(0, 0, -39),
-	box = Vector3.new(-47.81, 0, -37.92),
-	shop = Vector3.new(44.68, 0, -35.44),
-	collection = Vector3.new(-67.02, 0, 3.12),
-	quests = Vector3.new(72.16, 0, -12.03),
-	daily = Vector3.new(74.27, 0, 17.68),
-	squeeze = Vector3.new(-40.13, 0, 35.98),
-	grip = Vector3.new(-1.31, 0, 46.01),
-	royal = Vector3.new(37.3, 0, 47.03),
-	practice = Vector3.new(72, 0, 62),
+-- Where each stand is used (its approach): APPROACH_STEP in front of the stand's front edge (station-local z).
+local APPROACH_FRONTS: { [string]: number } = {
+	duel = 17.5, -- the podium's front (Ø5 at z 15)
+	box = 10, -- the dais edge (Ø20)
+	shop = 6, -- the stall floor's front
+	collection = 3, -- the shelf floor's front
+	quests = 5.5, -- the floor's front
+	daily = 7.6, -- the dais edge (Ø15.2)
 }
+local APPROACH_STEP = 3 -- reading (not in spec)
 
--- The giant pad table (D5): design centres (lobby.js:359, 363, 383), footprints and rest tops (lobby.js:361, 364,
--- 384); corner radii and collision boxes are the readings that keep G8's rules; sinkDepth is §17.6.1's.
+-- The giant pad table (D5): footprints and rest tops (lobby.js:361, 364, 384); corner radii and collision boxes are the
+-- readings that keep G8's rules; sinkDepth is §17.6.1's. Centres (island readings): the Grip gym's pads one behind
+-- the other along its sector (the jelly pad 10.5 nearer the hub, the marshmallow pad 10.5 farther out), the Royal
+-- Cushion on the Royal pod's frame.
 local GIANT_PADS: { [string]: PadSpec } = {
 	jelly = {
 		station = "squeeze_07",
 		tier = 2,
-		center = Vector3.new(8.9955, 0, 70.3142),
+		center = polar(53 - 10.5, 126),
 		footprint = 10.2,
 		corner = 3.6,
 		restTop = 6.2,
@@ -101,7 +115,7 @@ local GIANT_PADS: { [string]: PadSpec } = {
 	marshmallow = {
 		station = "squeeze_08",
 		tier = 3,
-		center = Vector3.new(-12.9955, 0, 69.6858),
+		center = polar(53 + 10.5, 126),
 		footprint = 10,
 		corner = 5,
 		restTop = 6.6,
@@ -111,7 +125,7 @@ local GIANT_PADS: { [string]: PadSpec } = {
 	royal = {
 		station = "squeeze_09",
 		tier = 4,
-		center = Vector3.new(46, 0, 58),
+		center = polar(80, 306),
 		footprint = 8.4,
 		corner = 3.0,
 		restTop = 4.8,
@@ -126,21 +140,21 @@ local CORNER_MARGIN = 0.1
 local POSITION_TOLERANCE = 0.01 -- studs; the design numbers are restated with two decimals
 local FLOAT_TOLERANCE = 1e-4 -- Vector3 components are single precision
 
--- Spawn routes (from the medallion centre to the path ends, B.2 table; pods to their centres; squeeze to the mat
--- nearest the spawn), in studs; the layout's may not be longer.
+-- Hub spawn routes (from the medallion centre to each stand's approach; pods to their centres; squeeze to the mat
+-- nearest the spawn), in studs: the island's distances when Phase 4 was built (a station moved farther out fails).
 local SPAWN = Vector3.zero
 local SPAWN_ROUTES: { [string]: number } = {
-	quests = 73.2,
-	daily = 76.3,
-	squeeze = 63.9,
-	collection = 67.1,
-	shop = 57.0,
-	duel = 39.0,
-	practice = 95.0,
-	giftBox = 61.0,
-	jellyPad = 70.9,
-	marshmallowPad = 70.9,
-	royalPad = 74.0,
+	quests = 44.5,
+	daily = 39.4,
+	squeeze = 64.0,
+	collection = 50.0,
+	shop = 47.0,
+	duel = 20.5,
+	practice = 48.0,
+	giftBox = 39.0,
+	jellyPad = 42.5,
+	marshmallowPad = 63.5,
+	royalPad = 80.0,
 }
 local ROUTE_TOLERANCE = 0.1
 
@@ -148,12 +162,8 @@ local ROUTE_TOLERANCE = 0.1
 local TEXTS: { [string]: string } = {
 	["world.logoTop"] = "Squishy", -- lobby.js:153
 	["world.logoBottom"] = "Duels", -- lobby.js:153
-	["world.arrowDuel"] = "DUEL", -- lobby.js:159
-	["world.arrowShop"] = "SHOP",
-	["world.arrowBoxes"] = "BOXES",
-	["world.arrowSqueeze"] = "SQUEEZE",
-	["world.arrowGrip"] = "GRIP",
-	["world.arrowRange"] = "RANGE",
+	["world.squishSquare"] = "SQUISH SQUARE", -- lobby bases spec §2 (the design's path arrows are gone: §2's paths
+	-- lead to the plots)
 	["world.gateBadge"] = "DUELS", -- lobby.js:184
 	["world.teamMint"] = "MINT", -- lobby.js:196
 	["world.teamStrawberry"] = "STRAWBERRY", -- lobby.js:196
@@ -195,6 +205,7 @@ local TEXTS: { [string]: string } = {
 	["prompt.inspect"] = "Inspect",
 	["collection.owned"] = "Owned",
 	["collection.notOwned"] = "Not owned yet",
+	["base.openPlot"] = "Open plot", -- lobby bases spec §4: an open plot's name sign
 }
 
 -- Helpers
@@ -215,11 +226,12 @@ local function show(v: Vector3): string
 	return string.format("(%.2f, %.2f, %.2f)", v.X, v.Y, v.Z)
 end
 
--- The design frame of a station (lobby.js:112).
+-- The frame of a station (lobby.js:112: its local +Z faces the hub centre unless a yaw is given).
 local function frameOf(id: string): CFrame
 	local spec = FRAMES[id]
-	local yaw = if spec.yaw ~= nil then spec.yaw else math.atan2(-spec.x, -spec.z)
-	return CFrame.new(spec.x, 0, spec.z) * CFrame.Angles(0, yaw, 0)
+	local p = polar(spec.r, spec.deg)
+	local yaw = if spec.yaw ~= nil then spec.yaw else math.atan2(-p.X, -p.Z)
+	return CFrame.new(p.X, 0, p.Z) * CFrame.Angles(0, yaw, 0)
 end
 
 -- A design point: station `id`, then nested groups { x, y, z, yaw } (lobby.js grp()), then a local point.
@@ -299,7 +311,7 @@ local function discOverlaps(body: any, volume: any): boolean
 	local p = frame:PointToObjectSpace(Vector3.new(body.position.X, volume.position.Y, body.position.Z))
 	local dx = p.X - math.clamp(p.X, -h.X, h.X)
 	local dz = p.Z - math.clamp(p.Z, -h.Z, h.Z)
-	return dx * dx + dz * dz < (body.radius - 1e-6) ^ 2
+	return dx * dx + dz * dz < (body.radius - 0.01) ^ 2 -- touching never counts (Verify's OVERLAP_EPSILON)
 end
 
 return function(t: Context)
@@ -324,8 +336,8 @@ return function(t: Context)
 	local function stationBodies(): { any }
 		local L = WorldLayout
 		local bodies: { any } = {
-			boxBody("DuelGate.stage", L.DuelGate.stage),
-			boxBody("DuelGate.podium", L.DuelGate.podium),
+			discBody("DuelGate.stage", L.DuelGate.stage),
+			discBody("DuelGate.podium", L.DuelGate.podium),
 			discBody("GiftBoxCounter.dais", L.GiftBoxCounter.dais),
 			discBody("GiftBoxCounter.stand", L.GiftBoxCounter.stand),
 			boxBody("GiftBoxCounter.oddsBoard", L.GiftBoxCounter.oddsBoard),
@@ -348,72 +360,85 @@ return function(t: Context)
 		return bodies
 	end
 
-	-- The hub and its frames (lobby.js:101, 112-130) -------------------------------------------------------------
+	-- The island and its frames (lobby bases spec §2-§3) ------------------------------------------------------------
 
 	t.test(
-		"the hub is the design's 232 × 184 with its base slab; boundaries stand just outside the kit walls",
+		"the island: Squish Square Ø140 at Y 0 with its curb, grass to r 160 at Y -0.9, the beach to r 176, the sea",
 		function()
-			local lobby = WorldLayout.Lobby
-			expect.equal(lobby.footprint.minX, -116) -- lobby.js:101
-			expect.equal(lobby.footprint.maxX, 116)
-			expect.equal(lobby.footprint.minZ, -92)
-			expect.equal(lobby.footprint.maxZ, 92)
-			expect.equal(lobby.floorTopY, 0)
-			expect.truthy(vectorNear(lobby.baseSlab.size, Vector3.new(322, 2, 274))) -- lobby.js:115
-			expect.truthy(vectorNear(lobby.baseSlab.position, Vector3.new(0, -1, 0)))
+			local island, lobby = WorldLayout.Island, WorldLayout.Lobby
+			expect.equal(island.hub.radius, 70) -- §2: Ø140
+			expect.equal(island.hub.top, 0)
+			expect.equal(island.hub.height, 0.9) -- §2: raised 0.9 above the garden
+			expect.equal(island.curb.radius, 71) -- reading: a 1-stud white curb (§2, §8)
+			expect.equal(island.grass.radius, 160) -- §2
+			expect.equal(island.grass.top, -0.9)
+			expect.equal(island.beach.radius, 176) -- §2: the beach r 160-176
+			expect.truthy(island.beach.top < island.grass.top)
+			expect.truthy(island.shallow.radius > island.beach.radius and island.shallow.top < island.beach.top)
+			expect.equal(lobby.floorTopY, 0) -- the hub and the plots
+			expect.equal(lobby.hubRadius, 70)
+			expect.equal(lobby.stageRadius, 22) -- §2: the duel stage Ø44
+			expect.equal(lobby.footprint, nil) -- the design hub's 232 × 184 rectangle is gone
+			-- The sea: a slab under everything, wider than the shallow water, its top under the water's.
+			local sea = lobby.baseSlab
+			local seaTop = sea.position.Y + sea.size.Y / 2
+			expect.truthy(seaTop < island.shallow.top)
+			expect.truthy(sea.size.X / 2 >= island.shallow.radius and sea.size.Z / 2 >= island.shallow.radius)
+			expect.truthy(sea.size.X / 2 < 225) -- the arena slots' aprons (X >= 225) never lie on it (ArenaService_Test)
 			expect.equal(#lobby.Boundaries, 4)
 			for _, wall in lobby.Boundaries do
 				local low, high = wall.position - wall.size / 2, wall.position + wall.size / 2
-				-- Outside the kit walls (3 deep on the hub edge, pillars Ø4.2 on it: lobby.js:430, 434).
-				local outside = low.X >= 118.1 or high.X <= -118.1 or low.Z >= 94.1 or high.Z <= -94.1
+				-- Out past the shallow water (and so past every plot, r 150 at its back corners), on the sea.
+				local outside = low.X >= 192 or high.X <= -192 or low.Z >= 192 or high.Z <= -192
 				expect.truthy(outside)
-				expect.truthy(low.Y <= 0 and high.Y >= 60)
+				expect.truthy(low.Y <= seaTop and high.Y >= 60)
 			end
 		end
 	)
 
-	t.test("station frames follow lobby.js:119-130; stationFrame maps station-local design points", function()
+	t.test("station frames sit in the hub sectors (spec §3); stationFrame maps station-local points", function()
 		for id, spec in FRAMES do
 			local frame = WorldLayout.StationFrames[id]
 			expect.truthy(frame ~= nil)
-			expect.truthy(vectorNear(frame.position, Vector3.new(spec.x, 0, spec.z)))
-			local yaw = if spec.yaw ~= nil then spec.yaw else math.atan2(-spec.x, -spec.z)
-			expect.near(frame.yaw, yaw, 1e-9)
+			local p = polar(spec.r, spec.deg)
+			if not flatNear(frame.position, p, FLOAT_TOLERANCE) then
+				error(`{id} is at {show(frame.position)}, expected {show(p)}`)
+			end
+			expect.near(frame.position.Y, 0, 1e-9)
+			local yaw = if spec.yaw ~= nil then spec.yaw else math.atan2(-p.X, -p.Z)
+			expect.near(frame.yaw, yaw, 1e-6) -- the frame's position is a float32 Vector3
 			local cf = WorldLayout.stationFrame(id)
 			expect.truthy(vectorNear(cf * Vector3.new(3, 1, 2), frameOf(id) * Vector3.new(3, 1, 2), FLOAT_TOLERANCE))
+			if spec.r > 0 and id ~= "practice" then
+				expect.near((spec.deg - 18) % 36, 0, 1e-9) -- the middle of a sector, between two paths
+			end
 		end
-		-- The design's own spot checks (phase 3 spec B.2): the box front and the practice range turned west.
-		expect.truthy(flatNear(frontOf("box"), Vector3.new(0.7835, 0, 0.6214), 1e-4))
+		local count = 0
+		for _ in WorldLayout.StationFrames do
+			count += 1
+		end
+		expect.equal(count, 12)
+		-- Spot checks: the box faces the hub centre; the practice range turned west, so throws go east (D3).
+		expect.truthy(flatNear(frontOf("box"), -polar(1, 54), 1e-4))
 		expect.truthy(flatNear(frontOf("practice"), Vector3.new(-1, 0, 0), 1e-6))
 		expect.equal(WorldLayout.stationFrame("nowhere"), nil)
+		expect.equal(WorldLayout.stationFrame("kit"), nil) -- the design hub's kit corner is gone (an island has none)
 	end)
 
-	t.test(
-		"paths run from radius 31 to the station ends, 11 wide to the duel gate, else 8 (lobby.js:133-140)",
-		function()
-			expect.equal(#WorldLayout.Paths, 10)
-			local seen: { [string]: boolean } = {}
-			for _, path in WorldLayout.Paths do
-				seen[path.id] = true
-				local stated = PATH_ENDS[path.id]
-				expect.truthy(stated)
-				if not flatNear(path.to, stated, POSITION_TOLERANCE) then
-					error(`path {path.id} ends at {show(path.to)}, the design says {show(stated)}`)
-				end
-				expect.near(Vector3.new(path.from.X, 0, path.from.Z).Magnitude, 31, 1e-4)
-				expect.equal(path.width, if path.id == "duel" then 11 else 8)
+	t.test("10 paths, 8 wide, from the stage edge (r 22) to each plot's gate (r 96), 36° apart (spec §2)", function()
+		expect.equal(#WorldLayout.Paths, 10)
+		for index, path in WorldLayout.Paths do
+			expect.equal(path.id, "plot" .. index)
+			local out = polar(1, (index - 1) * 36)
+			if not flatNear(path.from, out * 22, 1e-4) or not flatNear(path.to, out * 96, 1e-4) then
+				error(`path {path.id} runs {show(path.from)} -> {show(path.to)}`)
 			end
-			for id in PATH_ENDS do
-				expect.truthy(seen[id])
-			end
-			-- The promenade rings (lobby.js:142).
-			local promenade = WorldLayout.Promenade
-			expect.equal(promenade.curb.inner, 22.6)
-			expect.equal(promenade.curb.outer, 33.4)
-			expect.equal(promenade.path.inner, 23.4)
-			expect.equal(promenade.path.outer, 32.6)
+			expect.equal(path.width, 8)
+			-- The path ends at its plot's gate.
+			expect.truthy(flatNear(path.to, (WorldLayout.plotFrame(index) :: CFrame) * WorldLayout.Bases.gate, 1e-3))
 		end
-	)
+		expect.equal(WorldLayout.Promenade, nil) -- the design's promenade rings are gone: the stage is the centre
+	end)
 
 	-- Stations and tiers ------------------------------------------------------------------------------------------
 
@@ -451,14 +476,14 @@ return function(t: Context)
 	end)
 
 	t.test("the six foam mats sit on the design ring at radius 14 (lobby.js:342-344), Ø7.6, top 2.05", function()
-		-- Appendix A4 of the phase 3 spec (world X, Z), mats 1-6.
+		-- The design ring around the squeeze frame (270°, r 78; its front faces east, toward the hub), mats 1-6.
 		local expected = {
-			Vector3.new(-60.88, 0, 38.3),
-			Vector3.new(-47.58, 0, 42.65),
-			Vector3.new(-44.69, 0, 56.35),
-			Vector3.new(-55.12, 0, 65.7),
-			Vector3.new(-68.42, 0, 61.35),
-			Vector3.new(-71.31, 0, 47.65),
+			Vector3.new(-71, 0, -12.12),
+			Vector3.new(-64, 0, 0),
+			Vector3.new(-71, 0, 12.12),
+			Vector3.new(-85, 0, 12.12),
+			Vector3.new(-92, 0, 0),
+			Vector3.new(-85, 0, -12.12),
 		}
 		expect.equal(#WorldLayout.SqueezeZone.mats, 6)
 		expect.equal(WorldLayout.SqueezeZone.matDiameter, 7.6) -- lobby.js:341 (superF 3.8)
@@ -492,7 +517,7 @@ return function(t: Context)
 				expect.equal(pad.tier, spec.tier)
 				expect.equal(pad.model, "GiantPad_" .. key)
 				if not vectorNear(pad.center, spec.center, POSITION_TOLERANCE) then
-					error(`{key} is at {show(pad.center)}, the design says {show(spec.center)}`)
+					error(`{key} is at {show(pad.center)}, the island puts it at {show(spec.center)}`)
 				end
 				expect.near(pad.footprint, spec.footprint, 1e-9)
 				expect.near(pad.cornerRadius, spec.corner, 1e-9)
@@ -619,7 +644,8 @@ return function(t: Context)
 			expect.equal(aisle.kind, "aisle")
 			local middle = (path.from + path.to) / 2 + Vector3.new(0, 3, 0)
 			expect.truthy(WorldLayout.contains(aisle, middle))
-			expect.near(aisle.size.Z, path.width + 1.8, 1e-6) -- the curb width (lobby.js:134)
+			expect.near(aisle.size.Z, path.width, 1e-6) -- spec §2: the path itself, 8 wide (no curb on the island)
+			expect.near(aisle.size.X, (path.to - path.from).Magnitude, 1e-4) -- from the stage edge to the gate
 		end
 	end)
 
@@ -694,7 +720,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"routes between activities stay under 10 s, pod routes within 12 s; the worst is box <-> practice",
+		"routes between activities stay under 10 s, pod routes within 12 s; the worst is practice <-> squeeze",
 		function()
 			local activities = WorldLayout.Activities
 			expect.equal(#activities, 11)
@@ -727,13 +753,14 @@ return function(t: Context)
 			if #tooLong > 0 then
 				error("routes over the limit: " .. table.concat(tooLong, ", "))
 			end
-			expect.near(worst, 156.0 / 16, 0.01)
-			expect.truthy(worstPair == "practice/giftBox" or worstPair == "giftBox/practice")
+			-- Squish Island: the worst is practice <-> squeeze, across the hub (112 studs, 7 s).
+			expect.near(worst, 112.0 / 16, 0.01)
+			expect.truthy(worstPair == "practice/squeeze" or worstPair == "squeeze/practice")
 			expect.truthy(worstPod <= 12)
 		end
 	)
 
-	t.test("spawn routes are no longer than the design states", function()
+	t.test("hub spawn routes are no longer than the island's distances", function()
 		for _, activity in WorldLayout.Activities do
 			local stated = SPAWN_ROUTES[activity.name]
 			expect.truthy(stated ~= nil)
@@ -742,19 +769,19 @@ return function(t: Context)
 				shortest = math.min(shortest, WorldLayout.horizontalDistance(SPAWN, point))
 			end
 			if shortest > stated + ROUTE_TOLERANCE then
-				error(string.format("spawn -> %s is %.1f studs, the design says %.1f", activity.name, shortest, stated))
+				error(string.format("spawn -> %s is %.1f studs, the island says %.1f", activity.name, shortest, stated))
 			end
 		end
-		-- The spawn: an invisible SpawnLocation in the medallion, top flush with it (Y 0.7, lobby.js:147).
+		-- The hub spawn: an invisible SpawnLocation in the medallion on the stage (top 0.8 + 0.3), flush with it.
 		local location = WorldLayout.Spawn.location
 		expect.truthy(flatNear(location.position, Vector3.zero, 1e-6))
-		expect.near(location.position.Y + location.size.Y / 2, 0.7, FLOAT_TOLERANCE)
-		expect.equal(WorldLayout.Spawn.top, 0.7)
+		expect.near(location.position.Y + location.size.Y / 2, 1.1, FLOAT_TOLERANCE)
+		expect.equal(WorldLayout.Spawn.top, 1.1)
 		expect.truthy(vectorNear(location.facing, Vector3.new(0, 0, -1)))
 	end)
 
 	t.test(
-		"every activity has a waypoint; approaches are the path ends; squeeze points at the mat nearest the spawn",
+		"every activity has a waypoint; approaches stand 3 in front of each stand, off the paths; squeeze: nearest mat",
 		function()
 			for _, activity in WorldLayout.Activities do
 				expect.truthy(WorldLayout.waypoint(activity.name) ~= nil)
@@ -776,11 +803,24 @@ return function(t: Context)
 				collection = WorldLayout.Collection,
 				quests = WorldLayout.QuestBoard,
 				daily = WorldLayout.DailyStand,
-				practice = WorldLayout.PracticeRange,
 			}
 			for id, stand in approaches do
-				if not flatNear(stand.approach, PATH_ENDS[id], POSITION_TOLERANCE) then
-					error(`{id}: approach {show(stand.approach)}, the path ends at {show(PATH_ENDS[id])}`)
+				local want = design(id, {}, 0, 0, APPROACH_FRONTS[id] + APPROACH_STEP)
+				if not flatNear(stand.approach, want, POSITION_TOLERANCE) then
+					error(`{id}: approach {show(stand.approach)}, expected {show(want)}`)
+				end
+			end
+			-- The practice approach is the throw spot, inside the throw box on the lane.
+			expect.truthy(flatNear(WorldLayout.PracticeRange.approach, Vector3.new(48, 0, 0), 1e-6))
+			-- Nobody waits on a path: no approach lies in a path aisle.
+			approaches.practice = WorldLayout.PracticeRange
+			for id, stand in approaches do
+				for _, volume in WorldLayout.KeepClear do
+					if
+						volume.kind == "aisle" and WorldLayout.contains(volume, stand.approach + Vector3.new(0, 3, 0))
+					then
+						error(`{id}: approach {show(stand.approach)} lies on {volume.name}`)
+					end
 				end
 			end
 			expect.truthy(flatNear(WorldLayout.waypoint("spawn"), Vector3.zero, 1e-6))
@@ -853,29 +893,29 @@ return function(t: Context)
 		expect.truthy(#WorldLayout.Signs >= 40) -- the design's plates (about 45 with the game's live boards)
 	end)
 
-	t.test("the design plates sit where lobby.js puts them, facing their station fronts", function()
+	t.test("the design plates sit where the island puts them, facing their station fronts", function()
 		local byId: { [string]: any } = {}
 		for _, sign in WorldLayout.Signs do
 			byId[sign.id] = sign
 		end
+		local UP = Vector3.new(0, 1, 0)
+		-- The practice board stands by the throw box's back corner (45, 0, 8.5), its plates toward the throw spot.
+		local board, spot = Vector3.new(45, 0, 8.5), Vector3.new(48, 0, 0)
+		local towardSpot = (spot - board).Unit
 		local expected: { [string]: { point: Vector3, facing: Vector3 } } = {
-			gateBadge = { point = design("duel", {}, 0, 24, -4.35), facing = frontOf("duel") }, -- lobby.js:184
-			teamMint = { point = design("duel", {}, -6.5, 1.65, 17.1), facing = frontOf("duel") }, -- lobby.js:196
-			teamStrawberry = { point = design("duel", {}, 6.5, 1.65, 17.1), facing = frontOf("duel") },
+			-- lobby.js:184 "DUELS"; reading: on the tower deck's south face (§2: the deck at 36).
+			gateBadge = { point = design("duel", {}, 0, 36.75, 15.56), facing = frontOf("duel") },
+			-- lobby.js:196 the team plates; reading: lying on the stage beside each team's queue pads.
+			teamMint = { point = Vector3.new(-16.5, 0.85, 0), facing = UP },
+			teamStrawberry = { point = Vector3.new(16.5, 0.85, 0), facing = UP },
 			shopPlate = { point = design("shop", {}, 0, 3.1, 3.62), facing = frontOf("shop") }, -- lobby.js:250
 			questsTitle = { point = design("quests", {}, 0, 17.4, -1.06), facing = frontOf("quests") }, -- lobby.js:295
 			questsDaily = { point = design("quests", {}, -6, 13.6, -1.0), facing = frontOf("quests") }, -- lobby.js:298
 			kittyBreadPlate = { point = design("squeeze", {}, 0, 1.6, 6.75), facing = frontOf("squeeze") }, -- lobby.js:340
-			practiceBoard = {
-				point = design("practice", { { -16, 0.6, 12, 0.5 } }, 0, 7.6, 0.45),
-				facing = frontOf("practice", 0.5),
-			}, -- lobby.js:415-418
-			arrowDuelFront = {
-				point = design("spawn", { { 19, 0, 19, -math.pi / 4 } }, 0, 5.4, 0)
-					+ Vector3.new(-0.2181, 0, -0.9759) * 2.9
-					+ Vector3.new(0.9759, 0, -0.2181) * 0.33,
-				facing = Vector3.new(0.9759, 0, -0.2181),
-			}, -- lobby.js:157-165: arm +X toward the duel gate, plate 2.9 along it, 0.33 out of the board
+			practiceBoard = { point = board + Vector3.new(0, 7.6, 0) + towardSpot * 0.45, facing = towardSpot }, -- lobby.js:418
+			-- §2 "SQUISH SQUARE" on the ground; reading: on the north and south paths at r 31, read from the stage.
+			squishSquareNorth = { point = Vector3.new(0, 0.08, -31), facing = UP },
+			squishSquareSouth = { point = Vector3.new(0, 0.08, 31), facing = UP },
 		}
 		for id, want in expected do
 			local sign = byId[id]
@@ -883,7 +923,7 @@ return function(t: Context)
 				error(`no sign {id}`)
 			end
 			if not vectorNear(sign.position, want.point, POSITION_TOLERANCE) then
-				error(`{id} is at {show(sign.position)}, lobby.js puts it at {show(want.point)}`)
+				error(`{id} is at {show(sign.position)}, the island puts it at {show(want.point)}`)
 			end
 			if not vectorNear(sign.facing, want.facing, 1e-3) then
 				error(`{id} faces {show(sign.facing)}, expected {show(want.facing)}`)
@@ -959,13 +999,13 @@ return function(t: Context)
 		local stands = {
 			{ WorldLayout.QuestBoard, "prompt.viewQuests", design("quests", {}, 0, 4.5, 0.2) },
 			{ WorldLayout.DailyStand, "prompt.dailyReward", design("daily", {}, 0, 2.5, 8.2) },
-			{ WorldLayout.GiftBoxCounter, "prompt.seeBoxes", design("box", {}, 0, 3, 10.3) },
+			{ WorldLayout.GiftBoxCounter, "prompt.seeBoxes", design("box", {}, 0, 3, 9.3) }, -- 0.6 before the pedestal
 			{ WorldLayout.ShopCounter, "prompt.openShop", design("shop", {}, 0, 3.4, 4.3) },
-			{ WorldLayout.DuelGate, "prompt.joinQueue", design("duel", {}, 0, 2, 19.6) },
+			{ WorldLayout.DuelGate, "prompt.joinQueue", design("duel", {}, 0, 2.6, 18) }, -- 0.5 before the podium
 			{
 				WorldLayout.Collection,
 				"prompt.openCollection",
-				design("collection", { { 12, 0.8, 7, -0.7 } }, 0, 3, 1.9),
+				design("collection", { { 9, 0, 6, -0.6 } }, 0, 3, 1.9), -- reading: the kiosk on the square
 			},
 		} :: { { any } }
 		for _, entry in stands do
@@ -979,18 +1019,20 @@ return function(t: Context)
 		end
 		expect.equal(WorldLayout.DuelGate.prompt.altActionKey, "prompt.leaveQueue")
 		expect.equal(WorldLayout.GiftBoxCounter.prompt.altActionKey, "prompt.shopDirect")
-		-- The stands themselves are the design's parts (lobby.js:173, 218, 243, 275, 291, 314).
-		expect.truthy(vectorNear(WorldLayout.DuelGate.podium.position, design("duel", {}, 0, 0.4, 16.6), 1e-3))
-		expect.truthy(vectorNear(WorldLayout.DuelGate.podium.size, Vector3.new(22, 0.8, 5), 1e-6))
-		expect.truthy(vectorNear(WorldLayout.GiftBoxCounter.stand.position, design("box", {}, 0, 2.7, 6.6), 1e-3))
+		-- The stands: the design's parts (lobby.js:173, 218, 243, 275, 291, 314), compact where the island needs it.
+		-- Reading: the queue podium is a round step (Ø5) on the stage's south side.
+		expect.truthy(vectorNear(WorldLayout.DuelGate.podium.position, design("duel", {}, 0, 1.2, 15), 1e-3))
+		expect.equal(WorldLayout.DuelGate.podium.diameter, 5)
+		expect.truthy(vectorNear(WorldLayout.GiftBoxCounter.stand.position, design("box", {}, 0, 2.7, 5.6), 1e-3))
 		expect.equal(WorldLayout.GiftBoxCounter.stand.diameter, 6.2)
 		expect.equal(WorldLayout.GiftBoxCounter.boxId, "snack")
-		expect.truthy(vectorNear(WorldLayout.ShopCounter.counter.position, design("shop", {}, 0, 3, 1), 1e-3))
-		expect.truthy(vectorNear(WorldLayout.ShopCounter.counter.size, Vector3.new(22, 4.4, 5), 1e-6))
+		-- Reading: the shop counter 14 wide and 4 deep in its 22-wide stall.
+		expect.truthy(vectorNear(WorldLayout.ShopCounter.counter.position, design("shop", {}, 0, 3, 1.5), 1e-3))
+		expect.truthy(vectorNear(WorldLayout.ShopCounter.counter.size, Vector3.new(14, 4.4, 4), 1e-6))
 		expect.truthy(
 			vectorNear(
 				WorldLayout.Collection.kiosk.position,
-				design("collection", { { 12, 0.8, 7, -0.7 } }, 0, 2.3, 0),
+				design("collection", { { 9, 0, 6, -0.6 } }, 0, 2.3, 0),
 				1e-3
 			)
 		)
@@ -1003,28 +1045,26 @@ return function(t: Context)
 	-- Practice range, collection, return points, audio zones -----------------------------------------------------
 
 	t.test(
-		"practice range: 9 targets on the design lanes, 12/20/28 studs past the design firing line, throws +X (D3)",
+		"practice range: one lane east (Z 0), 4 targets 12/20/28/34 past the firing line at X 52, throws +X (§3, D3)",
 		function()
 			local range = WorldLayout.PracticeRange
 			local targets = range.targets
-			expect.equal(#targets, 9)
-			-- Lanes = the design's three throw spots / targets (lobby.js:404-406: local x -10/0/10 -> world Z 52/62/72);
-			-- the firing line paint at local z 9 -> world X 79 (lobby.js:403); throwers face local -Z = world +X.
-			expect.equal(range.firingLineX, 79)
+			expect.equal(#targets, 4) -- spec §3: 3 dummies, plus the moving target the game keeps (§5.11)
+			expect.equal(range.firingLineX, 52) -- reading: the lane's west end, so the targets fit before the backstop
 			expect.truthy(vectorNear(range.throwDirection, Vector3.new(1, 0, 0)))
 			local ids: { [string]: boolean } = {}
 			local moving = 0
-			for _, target in targets do
+			for index, target in targets do
+				expect.equal(target.id, string.format("target_%02d", index))
 				expect.falsy(ids[target.id])
 				ids[target.id] = true
-				expect.truthy(table.find({ 52, 62, 72 }, target.position.Z) ~= nil)
-				expect.truthy(table.find({ 12, 20, 28 }, target.distance) ~= nil)
+				expect.equal(target.position.Z, 0)
+				expect.equal(target.distance, ({ 12, 20, 28, 34 })[index])
 				expect.equal(target.position.X, range.firingLineX + target.distance)
 				expect.equal(target.nameKey, "practice.targetName")
 				if target.moving then
 					moving += 1
 					expect.equal(target.distance, 20)
-					expect.equal(target.position.Z, 62)
 					expect.equal(target.railLength, 12)
 					expect.equal(target.period, 9.42)
 				else
@@ -1033,22 +1073,34 @@ return function(t: Context)
 				end
 			end
 			expect.equal(moving, 1)
-			-- The throw box: X 71..79 behind the firing line, across the range floor (Z 43..81), Y 0..12 (D3 reading).
+			-- The throw box: X 44..52 behind the firing line, across the lane (Z -10..10), Y 0..12 (D3 reading).
 			local low, high =
 				range.throwBox.position - range.throwBox.size / 2, range.throwBox.position + range.throwBox.size / 2
-			expect.truthy(vectorNear(low, Vector3.new(71, 0, 43)))
-			expect.truthy(vectorNear(high, Vector3.new(79, 12, 81)))
+			expect.truthy(vectorNear(low, Vector3.new(44, 0, -10)))
+			expect.truthy(vectorNear(high, Vector3.new(52, 12, 10)))
 			expect.truthy(WorldLayout.contains(range.throwBox, range.approach + Vector3.new(0, 3, 0)))
-			-- The range floor (lobby.js:402: rb(38, 0.6, 42) turned -90°: X 73..115, Z 43..81), top 0.6.
+			-- The lane floor X 46..91, Z -10..10, from the garden (Y -0.9) to its top 0.6; §3's "44-st lane".
 			local floorLow, floorHigh = WorldLayout.boxBounds(range.laneFloor)
-			expect.truthy(vectorNear(floorLow, Vector3.new(73, 0, 43), 1e-3))
-			expect.truthy(vectorNear(floorHigh, Vector3.new(115, 0.6, 81), 1e-3))
+			expect.truthy(vectorNear(floorLow, Vector3.new(46, -0.9, -10), 1e-3))
+			expect.truthy(vectorNear(floorHigh, Vector3.new(91, 0.6, 10), 1e-3))
+			expect.truthy(floorHigh.X - floorLow.X >= 44)
 			expect.equal(range.laneFloorTopY, 0.6)
-			-- The backstop: the design's pillow wall (lobby.js:412-413, front X 110.5) holds the Backstop part 0.5 behind
-			-- the pillow fronts, between the frames (Z 44.4..79.6), Y 0.6..9.2.
+			-- The backstop at the lane's east end, the design's size (the jelly ripple's grid is tuned to it): X 89..91.5,
+			-- Y 0.6..9.2, Z -17.6..17.6, past the farthest target; its pillow wall stays clear of plots 3 and 4.
 			local backLow, backHigh = WorldLayout.boxBounds(range.backstop)
-			expect.truthy(vectorNear(backLow, Vector3.new(111, 0.6, 44.4), 1e-3))
-			expect.truthy(vectorNear(backHigh, Vector3.new(113.5, 9.2, 79.6), 1e-3))
+			expect.truthy(vectorNear(backLow, Vector3.new(89, 0.6, -17.6), 1e-3))
+			expect.truthy(vectorNear(backHigh, Vector3.new(91.5, 9.2, 17.6), 1e-3))
+			expect.truthy(backLow.X > range.firingLineX + 34)
+			for _, plot in { 3, 4 } do -- the wall's ends (Z ±21) stay 1.5 studs or more off those plots
+				for _, z in { -21, 21 } do
+					local corner = Vector3.new(backHigh.X + 0.1, 0, z)
+					local frame = WorldLayout.plotFrame(plot) :: CFrame
+					local p = frame:PointToObjectSpace(corner)
+					local outside =
+						math.max(math.abs(p.X) - WorldLayout.Bases.width / 2, p.Z - WorldLayout.Bases.depth / 2)
+					expect.truthy(outside >= 1.5)
+				end
+			end
 			-- Every target root and the throw box lie inside the projectile bounds.
 			for _, target in targets do
 				for _, dz in { -target.railLength / 2, 0, target.railLength / 2 } do
@@ -1061,7 +1113,7 @@ return function(t: Context)
 	)
 
 	t.test(
-		"collection: 14 pedestals in catalog order on the 7 design bays (lobby.js:269-281), facing the bays (D4)",
+		"collection: 14 pedestals in catalog order on the 7 bays of the design arc (lobby.js:269-281), facing them (D4)",
 		function()
 			local pedestals = WorldLayout.Collection.pedestals
 			expect.equal(#pedestals, 14)
@@ -1072,10 +1124,10 @@ return function(t: Context)
 				local bay = i // 2
 				local a = math.rad(-60 + 20 * bay) -- lobby.js:269
 				local y = (if i % 2 == 1 then 9.6 else 4) + 0.3 -- lobby.js:279
-				local group = { 15 * math.sin(a), 0.8, 3 - 15 * math.cos(a), -a }
+				local group = { 12 * math.sin(a), 0.8, 2 - 12 * math.cos(a), -a } -- reading: the design arc at r 12 around z 2
 				local want = design("collection", { group }, 0, y + 0.35, 0.3) -- lobby.js:280
 				if not vectorNear(pedestal.position, want, POSITION_TOLERANCE) then
-					error(`pedestal {index} is at {show(pedestal.position)}, lobby.js puts it at {show(want)}`)
+					error(`pedestal {index} is at {show(pedestal.position)}, the island puts it at {show(want)}`)
 				end
 				expect.truthy(vectorNear(pedestal.facing, frontOf("collection", -a), 1e-4))
 				expect.truthy(vectorNear(pedestal.size, Vector3.new(2.8, 0.7, 2.8), 1e-6)) -- C(1.3, 1.4, 0.7)
@@ -1089,40 +1141,50 @@ return function(t: Context)
 		end
 	)
 
-	t.test("return points: slots 1 and 2 at (±6, 0, -42) facing +Z, in front of the queue step (reading)", function()
-		local points = WorldLayout.ReturnPoints
-		expect.equal(#points, 2)
-		local xs: { [number]: boolean } = {}
-		for index, point in points do
-			expect.equal(point.slot, index)
-			expect.equal(math.abs(point.position.X), 6)
-			expect.equal(point.position.Z, -42)
-			expect.equal(point.position.Y, 0)
-			expect.truthy(vectorNear(point.facing, Vector3.new(0, 0, 1)))
-			xs[point.position.X] = true
+	t.test(
+		"return points: slots 1 and 2 at (∓6, 0.8, 19) on the stage's south side, facing south (reading)",
+		function()
+			local points = WorldLayout.ReturnPoints
+			expect.equal(#points, 2)
+			for index, point in points do
+				expect.equal(point.slot, index)
+				expect.equal(point.position.X, if index == 1 then -6 else 6) -- Slot 1 west
+				expect.equal(point.position.Z, 19)
+				expect.near(point.position.Y, 0.8, FLOAT_TOLERANCE) -- the stage top
+				expect.truthy(vectorNear(point.facing, Vector3.new(0, 0, 1)))
+				-- On the stage, beside the podium, off the south path's aisle (it starts at the stage edge).
+				expect.truthy(
+					Vector3.new(point.position.X, 0, point.position.Z).Magnitude < WorldLayout.Lobby.stageRadius
+				)
+			end
 		end
-		expect.truthy(xs[-6] and xs[6])
-	end)
+	)
 
 	t.test(
-		"audio zones: the hub, the squeeze circle, the range with its throw box; the highest priority wins",
+		"audio zones: the island, the squeeze floor, the range with its throw box; the highest priority wins",
 		function()
 			local byId: { [string]: any } = {}
 			for _, zone in WorldLayout.AudioZones do
 				byId[zone.zoneId] = zone
 			end
-			expect.truthy(vectorNear(byId.lobby.position, Vector3.new(0, 20, 0)))
-			expect.truthy(vectorNear(byId.lobby.size, Vector3.new(232, 40, 184)))
-			expect.truthy(vectorNear(byId.squeeze.position, Vector3.new(-58, 15, 52)))
-			expect.truthy(vectorNear(byId.squeeze.size, Vector3.new(46, 30, 46)))
-			expect.truthy(vectorNear(byId.practice.position, Vector3.new(93.5, 15, 62)))
-			expect.truthy(vectorNear(byId.practice.size, Vector3.new(45, 30, 38)))
+			-- The lobby zone covers the whole island with its plots (r 150 at their back corners), from the garden up.
+			expect.truthy(vectorNear(byId.lobby.position, Vector3.new(0, 18, 0)))
+			expect.truthy(vectorNear(byId.lobby.size, Vector3.new(360, 40, 360)))
+			-- The squeeze zone is the Ø40 squeeze floor's square; the practice zone the lane with its throw box.
+			expect.truthy(vectorNear(byId.squeeze.position, Vector3.new(-78, 15, 0), 1e-4))
+			expect.truthy(vectorNear(byId.squeeze.size, Vector3.new(40, 30, 40)))
+			expect.truthy(vectorNear(byId.practice.position, Vector3.new(68.5, 15, 0)))
+			expect.truthy(vectorNear(byId.practice.size, Vector3.new(49, 30, 40)))
 			expect.equal(byId.lobby.priority, 1)
 			expect.equal(byId.squeeze.musicMul, 0.8)
 			expect.equal(byId.practice.musicMul, 0.6)
-			expect.equal(WorldLayout.audioZoneAt(Vector3.new(-47.58, 3, 42.65)).zoneId, "squeeze") -- mat 2
-			expect.equal(WorldLayout.audioZoneAt(Vector3.new(99, 3, 62)).zoneId, "practice") -- the lanes
+			expect.equal(WorldLayout.audioZoneAt(Vector3.new(-64, 3, 0)).zoneId, "squeeze") -- mat 2
+			expect.equal(WorldLayout.audioZoneAt(Vector3.new(75, 3, 0)).zoneId, "practice") -- the lane
 			expect.equal(WorldLayout.audioZoneAt(Vector3.new(0, 3, 0)).zoneId, "lobby")
+			for index = 1, 10 do -- every plot hears the lobby
+				local back = (WorldLayout.plotFrame(index) :: CFrame) * Vector3.new(21, 2, -25)
+				expect.equal(WorldLayout.audioZoneAt(back).zoneId, "lobby")
+			end
 			expect.equal(WorldLayout.audioZoneAt(Vector3.new(400, 3, 0)), nil)
 			local arena = WorldLayout.Arena.audioZone
 			expect.equal(arena.zoneId, "arena")
@@ -1149,22 +1211,39 @@ return function(t: Context)
 		expect.equal(counts.SD_AudioZone, #WorldLayout.AudioZones)
 		expect.equal(counts.SD_Ambient, #WorldLayout.Props.lollipops.positions + 3)
 		expect.equal(counts.SD_Ambient, 7)
+		expect.equal(counts.SD_PracticeTarget, 4)
+		expect.equal(counts.SD_Base, 10) -- Phase 4: one Model per plot (spec §4)
+		expect.equal(counts.SD_BaseSpawn, 10) -- and its SpawnLocation
+		expect.equal(WorldLayout.Tags.Base, "SD_Base")
 		expect.equal(WorldLayout.Tags.Ambient, "SD_Ambient")
 		expect.equal(WorldLayout.Attributes.AmbientKind, "SD_AmbientKind")
 	end)
 
-	t.test("the corner lollipops: 4 at (±104, ±80), 24 tall, radius 7 (lobby.js:468)", function()
-		local lollipops = WorldLayout.Props.lollipops
-		expect.deepEqual(lollipops.positions, {
-			Vector3.new(-104, 0, -80),
-			Vector3.new(104, 0, -80),
-			Vector3.new(-104, 0, 80),
-			Vector3.new(104, 0, 80),
-		})
-		expect.equal(lollipops.height, 24)
-		expect.equal(lollipops.radius, 7)
-		expect.equal(#lollipops.colors, 4)
-	end)
+	t.test(
+		"the lollipops: 4 in the garden at r 86 (54°, 126°, 234°, 342°), 24 tall, radius 7 (lobby.js:468)",
+		function()
+			local lollipops = WorldLayout.Props.lollipops
+			expect.equal(#lollipops.positions, 4)
+			for index, degrees in { 54, 126, 234, 342 } do
+				local want = polar(86, degrees) + Vector3.new(0, WorldLayout.Island.grass.top, 0) -- on the grass
+				if not vectorNear(lollipops.positions[index], want, 1e-4) then
+					error(`lollipop {index} is at {show(lollipops.positions[index])}, expected {show(want)}`)
+				end
+				-- In the middle of a sector: its disk (radius 7) stays clear of every path (4 either side of its line).
+				local p = Vector3.new(want.X, 0, want.Z)
+				for _, path in WorldLayout.Paths do
+					local dir = (path.to - path.from).Unit
+					local along = p:Dot(dir)
+					if along > 0 then
+						expect.truthy((p - dir * along).Magnitude - lollipops.radius > path.width / 2)
+					end
+				end
+			end
+			expect.equal(lollipops.height, 24)
+			expect.equal(lollipops.radius, 7)
+			expect.equal(#lollipops.colors, 4)
+		end
+	)
 
 	t.test("the practice audio zone contains the whole throw box, so its sounds play there (§18.8)", function()
 		local practice: any = nil
@@ -1382,8 +1461,92 @@ return function(t: Context)
 		expect.falsy(WorldLayout.inPlot(0, Vector3.zero))
 		expect.equal(WorldLayout.Tags.BaseSpawn, "SD_BaseSpawn")
 		expect.equal(WorldLayout.Attributes.Plot, "Plot")
-		expect.equal(WorldLayout.TagCounts.SD_BaseSpawn, nil) -- the island is built in Phase 4
+		expect.equal(WorldLayout.TagCounts.SD_BaseSpawn, 10) -- Phase 4 builds the island: one per plot
 	end)
+
+	t.test("a plot's spawn stands 116 studs from the stage edge and its gate 74 (spec §2), facing the gate", function()
+		local bases = WorldLayout.Bases
+		local stage = WorldLayout.Lobby.stageRadius
+		for index = 1, 10 do
+			local frame = WorldLayout.plotFrame(index) :: CFrame
+			local spawn = frame * bases.spawn
+			expect.near(Vector3.new(spawn.Position.X, 0, spawn.Position.Z).Magnitude - stage, 116, 1e-3)
+			local gate = frame * bases.gate
+			expect.near(Vector3.new(gate.X, 0, gate.Z).Magnitude - stage, 74, 1e-3)
+			expect.truthy(vectorNear(spawn.LookVector, -frame.LookVector, 1e-4)) -- toward the gate and the hub
+		end
+	end)
+
+	t.test(
+		"every plot's name sign hangs under its gate arch, reads toward the hub, built as base.openPlot (§4)",
+		function()
+			local bases = WorldLayout.Bases
+			local byId: { [string]: any } = {}
+			for _, sign in WorldLayout.Signs do
+				byId[sign.id] = sign
+			end
+			for index = 1, 10 do
+				local sign = byId["baseSign" .. index]
+				expect.truthy(sign ~= nil)
+				expect.equal(sign.owner, bases.models[index])
+				expect.equal(sign.part, "nameSign")
+				local frame = WorldLayout.plotFrame(index) :: CFrame
+				expect.truthy(vectorNear(sign.position, frame * bases.nameSign.position, 1e-3))
+				expect.truthy(vectorNear(sign.facing, -frame.LookVector, 1e-4))
+				expect.equal(#sign.lines, 1)
+				local line = sign.lines[1]
+				expect.equal(line.name, "Owner") -- BaseService writes the owner's display name here
+				expect.truthy(line.live)
+				expect.equal(line.bakeKey, "base.openPlot")
+			end
+			-- Between the gate's pillars (16 apart) and at the gate line.
+			expect.truthy(math.abs(bases.nameSign.position.X) + bases.nameSign.size.X / 2 <= bases.gateWidth / 2)
+			expect.truthy(math.abs(bases.nameSign.position.Z - bases.gate.Z) <= 1)
+			expect.equal(bases.gateWidth, 16) -- §4
+			expect.equal(Strings.resolve("base.openPlot"), "Open plot")
+			expect.equal(Strings.resolve("base.capsuleLevel"), "Lv {level}")
+			expect.equal(Strings.resolve("base.unlockPrice"), "Unlock · {coins}")
+		end
+	)
+
+	t.test("each plot has its own Palette colour and light shade (spec §8); an open plot is grey (§4)", function()
+		local Palette = t.requireShared("Art/Palette")
+		local bases = WorldLayout.Bases
+		expect.equal(#bases.colors, 10)
+		local seen: { [string]: boolean } = {}
+		for index, colors in bases.colors do
+			for _, which in { "full", "light" } do
+				expect.equal(typeof(Palette[colors[which]]), "Color3")
+			end
+			local hex = (Palette[colors.full] :: Color3):ToHex()
+			expect.falsy(seen[hex])
+			seen[hex] = true
+			expect.equal(bases.models[index], string.format("Base_%02d", index))
+		end
+		expect.equal(bases.colors[1].full, "BaseRed") -- §8: B1 red .. B10 pink
+		expect.equal(bases.colors[10].full, "BasePink")
+		expect.deepEqual(bases.openColors, { full = "BaseOpen", light = "BaseOpenLight" })
+		expect.equal(typeof(Palette.BaseOpen), "Color3")
+		expect.equal(typeof(Palette.BaseOpenLight), "Color3")
+		expect.equal(WorldLayout.Attributes.BaseTint, "SD_BaseTint")
+	end)
+
+	t.test(
+		"capsule spots stand on their pads (top 0.3) facing the plot's middle path; the statue faces the gate",
+		function()
+			local bases = WorldLayout.Bases
+			expect.equal(#bases.capsuleSpots, 4)
+			expect.equal(bases.capsulePadTop, 0.3)
+			for slot, spot in bases.capsuleSpots do
+				local pad = bases.capsulePads[slot]
+				expect.truthy(vectorNear(spot.Position, pad + Vector3.new(0, bases.capsulePadTop, 0), 1e-6))
+				expect.truthy(vectorNear(spot.LookVector, Vector3.new(-math.sign(pad.X), 0, 0), 1e-6))
+			end
+			expect.truthy(vectorNear(bases.statue.LookVector, Vector3.new(0, 0, 1), 1e-6))
+			expect.truthy(bases.statue.Position.Z < -bases.depth / 2 + 6) -- in front of the back wall
+			expect.equal(bases.statueHeight, 8)
+		end
+	)
 
 	-- Arena (§5.3, §7.8) --------------------------------------------------------------------------------------------
 

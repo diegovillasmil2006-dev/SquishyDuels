@@ -1,25 +1,30 @@
 --!strict
 -- WorldLayout: every coordinate, size and tier of the lobby and of the arena template (§5.3, §7.8), as frozen data,
 -- plus small pure helpers. Shared: required by the edit-time generators and Verify (through the injected Shared
--- clone; no requires here) and at runtime (station positions and tiers, return points, waypoints, zones). Requiring
--- it has no side effects: it only builds and deep-freezes plain tables.
+-- clone; no requires here) and at runtime (station positions and tiers, return points, waypoints, zones, plots).
+-- Requiring it has no side effects: it only builds and deep-freezes plain tables.
 --
--- The lobby is the Claude Design hub (user decision 2026-10-11 "build the design's lobby"; design package sd/lobby.js,
--- phase 3 spec decisions D1-D14): a 232 × 184 hub with 12 stations around the spawn medallion. Design numbers carry
--- `-- design: lobby.js:<line>`; values the design does not state are marked "reading (not in design)" and parts the
--- game needs that the design has no place for "NOT IN DESIGN". This module holds what the game reads (stations,
--- stands, prompts, pads, targets, signs, volumes, routes) and the design's station frames; the lobby generator
--- (SDTools LobbyBuilder) puts the design's decor around them in the same frames.
+-- The lobby is Squish Island (lobby bases spec 2026-10-11 §2-§4, §7; build plan Phase 4): a round island (grass to
+-- r 160, a sand beach to r 176, then the sea) with Squish Square, the hub (Ø140, raised 0.9 above the garden, white
+-- curb), at its centre: the duel stage under the duel tower in the middle, the stations in the hub sectors between
+-- the 10 paths, and 10 bases in a ring (gates at r 96, backs at r 148) on those paths. The stations keep the Claude
+-- Design hub's look (design package sd/lobby.js, phase 3 decisions D1-D14), made compact enough for their sector; a
+-- design number carries `-- design: lobby.js:<line>`, an island number `-- spec §<n>` (the lobby bases spec), and a
+-- value neither gives is a "reading". This module holds what the game reads (stations, stands, prompts, pads, targets,
+-- signs, volumes, routes, plots) and the station frames; the lobby generator (SDTools LobbyBuilder) builds the decor
+-- around them in the same frames.
 --
 -- Frames and units (studs):
--- * Lobby: world coordinates. Floor top Y = 0. North = -Z. The spawn medallion is at the origin; players spawn
---   facing north, toward the duel gate (lobby.js:119-120; main.js:486 "Spawn eye").
--- * Station frames (StationFrames, stationFrame(id)): the design's st() groups (lobby.js:112, 119-130), a station at
---   (x, 0, z) turned by `yaw` (three.js rotation.y = CFrame.Angles(0, yaw, 0)); its local +Z, its front, faces the hub
---   centre. A design point (lx, ly, lz) of a station is stationFrame(id) * Vector3.new(lx, ly, lz); nested design
---   groups (grp(), lobby.js:19) multiply in the same way.
--- * Bases (lobby bases spec 2026-10-11 §2, §4; Phase 3 data, built in Phase 4): the island's 10 plots in a ring around
---   the hub centre; a plot frame (plotFrame(i)) turns like a station frame, its local +Z facing the hub.
+-- * Lobby: world coordinates. The hub and base floors have their top at Y 0; the garden lies 0.9 lower (§2). North
+--   = -Z. The island centre is the origin: the duel stage and the hub spawn's medallion.
+-- * Compass angles (§2's map): clockwise from north, direction (sin a, 0, -cos a). Path k (1..10) runs on angle
+--   (k - 1) × 36° from the stage edge (r 22) to plot k's gate (r 96); the hub sectors lie between them, centred on
+--   18° + 36° × j. Nothing collidable stands on a path (the generator checks it).
+-- * Station frames (StationFrames, stationFrame(id)): a station at (x, 0, z) turned by `yaw` (CFrame.Angles(0, yaw,
+--   0)); its local +Z, its front, faces the hub centre unless a yaw is given (the practice range). A station-local
+--   point (lx, ly, lz) is stationFrame(id) * Vector3.new(lx, ly, lz); nested groups multiply the same way.
+-- * Bases (§2, §4): plot i's frame (plotFrame(i)) turns like a station frame, local +Z toward the hub: the gate at
+--   local z +26, the back at -26.
 -- * Arena: relative to the template's `Origin` part (floor centre, floor top Y = 0); long axis = Z; Side A = Z < 0
 --   ("Strawberry side"), Side B = Z > 0 ("Mint side"). The slot origins live in Config.Duel.Arena.SlotOrigins.
 -- * Box: `position` = centre; `size` = W × H × D in the part's own frame; `facing` = the unit direction its Front
@@ -29,7 +34,7 @@
 -- * Disc: an upright cylinder (`position` = centre, `diameter`, `height`). Roblox Cylinder parts have their axis on
 --   X, so builders rotate them 90° about Z.
 -- * Volume: an invisible box (`position` = centre, `size`), axis-aligned unless it has a `yaw` (the keep-clear aisles
---   along the design's diagonal paths): keep-clear volumes, zones, audio zones, boundaries, the practice throw box.
+--   along the paths): keep-clear volumes, zones, audio zones, boundaries, the practice throw box.
 -- * `color` fields are Art/Palette token names (builders use Palette[color]). `*Key` fields are Strings keys, except
 --   `musicKey` / `ambienceKey` (AssetTable sound slots).
 -- * A squeeze station's `tier` is its GripTier (§17.4): 1 = Foam Mats, 2-4 = the giant pads. Server and client read
@@ -150,7 +155,6 @@ export type GiantPad = {
 
 export type Target = {
 	id: string, -- TargetId
-	lane: number,
 	distance: number, -- studs from the firing line
 	position: Vector3, -- floor point under the target (rail centre for the moving one)
 	moving: boolean,
@@ -193,11 +197,14 @@ export type StationFrame = {
 }
 
 export type Path = {
-	id: string, -- the station id it leads to
-	from: Vector3, -- on the promenade, radius 31 from the hub centre
-	to: Vector3, -- the station end: the approach point
+	id: string, -- "plot1".."plot10": the plot it leads to
+	from: Vector3, -- on the stage edge (r 22)
+	to: Vector3, -- the plot's gate (r 96)
 	width: number,
 }
+
+-- A base's two colours (Palette tokens): `full` for the rim, the fence caps and the gate, `light` for the plinth.
+export type BaseColors = { full: string, light: string }
 
 -- Constants
 
@@ -208,16 +215,27 @@ local UP = Vector3.new(0, 1, 0)
 
 local KEEP_CLEAR_BOTTOM = 0.5 -- §7.7 props rule 3: nothing collidable between Y 0.5 and 24 above walkable floor
 local KEEP_CLEAR_TOP = 24
-local KEEP_CLEAR_LIFT = 0.1 -- mat and pad volumes start this far above the standing surface (the body stays out)
+local KEEP_CLEAR_LIFT = 0.1 -- mat, pad and stage volumes start this far above the standing surface (the body stays out)
 local PROMPT_KEEP_CLEAR_RADIUS = 5 -- §7.7 props rule 1: "5-stud radius around every prompt" (kept as a 10 × 10 box)
 local PROMPT_DISTANCE = 10 -- §7.6 prompt defaults (V)
 local INSPECT_DISTANCE = 12 -- §7.6 collection pedestals
-local APPROACH_DEPTH = 8 -- reading (not in design): a stand's keep-clear volume runs this far back along its path
-local APPROACH_OVERRUN = 0.5 -- reading: and this far past the path's end, so the end lies inside it, not on a face
-local APPROACH_WIDTH = 8 -- reading: as wide as a path (lobby.js:139)
--- Reading: the practice aisle stops this far short of the range entry (72, 62), where its corner meets the range
--- floor's west edge (X 73, lobby.js:402); the range's own volume covers the entry.
-local PRACTICE_AISLE_TRIM = 3
+-- Reading (not in spec): a stand's approach point (where a player uses it, the route and waypoint target) lies
+-- APPROACH_STEP in front of the stand's front edge, and its keep-clear volume (as wide as a path) runs from
+-- APPROACH_GAP in front of that edge to APPROACH_DEPTH further out, toward the hub centre.
+local APPROACH_STEP = 3
+local APPROACH_GAP = 0.5
+local APPROACH_DEPTH = 8
+local APPROACH_WIDTH = 8
+
+-- The island (lobby bases spec §2).
+local HUB_RADIUS = 70 -- spec §2: Squish Square Ø140
+local STAGE_RADIUS = 22 -- spec §2: the duel stage Ø44
+local PATH_WIDTH = 8 -- spec §2: the paths are 8 wide
+local BASE_COUNT = 10 -- spec §1 #9
+local SECTOR_DEGREES = 360 / BASE_COUNT -- 36: the plots, and their paths, 36° apart (§2)
+local BASE_GATE_RADIUS = 96 -- spec §2
+local BASE_BACK_RADIUS = 148 -- spec §2
+local BASE_DEPTH = BASE_BACK_RADIUS - BASE_GATE_RADIUS -- 52
 
 -- Private: builders of plain data ---------------------------------------------------------------------------------
 
@@ -276,29 +294,43 @@ local function liveLine(name: string, bakeKey: string?, letterHeight: number, cl
 	}
 end
 
--- Private: the design's station frames (lobby.js:112, 119-130) ---------------------------------------------------
+-- The horizontal unit direction of a compass angle in degrees (clockwise from north, -Z).
+local function compass(degrees: number): Vector3
+	local a = math.rad(degrees)
+	return Vector3.new(math.sin(a), 0, -math.cos(a))
+end
+
+-- Private: station frames -----------------------------------------------------------------------------------------
 
 local function newFrame(x: number, z: number, yaw: number?): StationFrame
 	-- design: lobby.js:112 (st(): ry = atan2(-x, -z) unless given, so the local +Z faces the hub centre)
 	return { position = Vector3.new(x, 0, z), yaw = if yaw ~= nil then yaw else math.atan2(-x, -z) }
 end
 
-local HUB_HALF_X = 116 -- design: lobby.js:101 (LOBBY.W 232 / 2)
-local HUB_HALF_Z = 92 -- design: lobby.js:101 (LOBBY.D 184 / 2)
+-- A station in a hub sector: `radius` studs out on compass angle `degrees`, its front toward the hub centre.
+local function polarFrame(radius: number, degrees: number): StationFrame
+	local p = compass(degrees) * radius
+	return newFrame(p.X, p.Z)
+end
 
+-- Spec §3: the stations in the sectors between the paths (centred on 18° + 36° j). Readings: each station's radius,
+-- the farthest out its sector lets it stand between the paths. Squeeze (270°) and the Royal pod (306°) reach into the
+-- garden; the Grip gym and the Royal pod (both removed in Phase 6) take the sectors §3 gives the range (90-126°) and
+-- the foam mats (270-306°) as their second; the practice range runs east (+X) along its sector's middle, so throws
+-- still go toward +X (D3).
 local StationFrames: { [string]: StationFrame } = {
-	spawn = newFrame(0, 0, 0), -- design: lobby.js:119
-	duel = newFrame(0, -66), -- design: lobby.js:120
-	box = newFrame(-58, -46), -- design: lobby.js:121
-	shop = newFrame(58, -46), -- design: lobby.js:122
-	collection = newFrame(-86, 4), -- design: lobby.js:123
-	quests = newFrame(84, -14), -- design: lobby.js:124
-	daily = newFrame(84, 20), -- design: lobby.js:125
-	squeeze = newFrame(-58, 52), -- design: lobby.js:126
-	grip = newFrame(-2, 70), -- design: lobby.js:127
-	royal = newFrame(46, 58), -- design: lobby.js:128
-	practice = newFrame(88, 62, -math.pi / 2), -- design: lobby.js:129
-	kit = newFrame(-HUB_HALF_X + 20, -HUB_HALF_Z + 6, 0), -- design: lobby.js:130
+	spawn = newFrame(0, 0, 0), -- the stage centre; the hub spawn faces north
+	duel = newFrame(0, 0, 0), -- the duel stage under the tower (spec §2), local +Z = south
+	shop = polarFrame(56, 18), -- spec §3: 18°
+	box = polarFrame(52, 54), -- spec §3: 54°
+	practice = newFrame(70, 0, -math.pi / 2), -- spec §3: 90°; local +Z = west (the throwers), -Z = east (the throws)
+	grip = polarFrame(53, 126), -- reading: the Grip gym until Phase 6
+	quests = polarFrame(53, 162), -- spec §3: 162°
+	daily = polarFrame(50, 198), -- spec §3: 198°
+	collection = polarFrame(56, 234), -- spec §3: 234°
+	squeeze = polarFrame(78, 270), -- spec §3: 270°
+	royal = polarFrame(80, 306), -- reading: the Royal pod until Phase 6
+	fountain = polarFrame(48, 342), -- spec §3: 342° (a prop, not a station)
 }
 
 -- The CFrame of a station frame.
@@ -329,177 +361,160 @@ local function plateCF(frame: CFrame): CFrame
 	return frame * CFrame.Angles(0, math.pi, 0)
 end
 
--- Private: the hub (lobby.js:101, 115, 426-438) --------------------------------------------------------------------
+-- A plate lying on the floor at `position`, its text's top toward `up` (horizontal), read from above.
+local function floorPlateFrame(position: Vector3, up: Vector3): CFrame
+	return CFrame.fromMatrix(position, up:Cross(UP), up, UP)
+end
+
+-- Private: the island (spec §2) -------------------------------------------------------------------------------------
+
+local Island = {
+	hub = { radius = HUB_RADIUS, top = 0, height = 0.9, color = "HubTile" }, -- spec §2: Ø140, raised 0.9; §8 tiles
+	-- Reading: the white curb (§2, §8) is a 1-stud band around the hub, Prims.LAYER under its floor.
+	curb = { radius = HUB_RADIUS + 1, color = "White" },
+	-- Reading: the hub's paths (spec §2's paths, carried across the square to the stage) in the second tile colour.
+	paving = { from = STAGE_RADIUS, to = HUB_RADIUS - 0.2, color = "HubTileB" },
+	grass = { radius = 160, top = -0.9, color = "IslandGrass" }, -- spec §2, §8
+	grassEdge = { radius = 162, color = "IslandGrassEdge" }, -- reading: a 2-stud darker edge (§8 grass edge)
+	beach = { radius = 176, top = -1.2, color = "IslandSand" }, -- spec §2: the beach r 160-176; §8 sand
+	shallow = { radius = 192, top = -1.5, color = "IslandShallow" }, -- reading: shallow water around the beach (§8)
+	pathTop = -0.8, -- reading: the garden paths stand 0.1 proud of the grass
+	pathColor = "HubTileB",
+}
 
 local Lobby = {
-	floorTopY = 0, -- design: lobby.js:115 (floor_base top)
-	footprint = { minX = -HUB_HALF_X, maxX = HUB_HALF_X, minZ = -HUB_HALF_Z, maxZ = HUB_HALF_Z }, -- 232 × 184
-	-- Walkable: inside the 3-deep kit walls centred on the hub edge (design: lobby.js:430, rb(16, 10, 3)).
-	interior = { minX = -114.5, maxX = 114.5, minZ = -90.5, maxZ = 90.5 },
-	baseSlab = { position = Vector3.new(0, -1, 0), size = Vector3.new(322, 2, 274), color = "LobbyFloor" } :: Box, -- design: lobby.js:115 (W + 90, 2, D + 90)
-	spawnCamera = Vector3.new(0, 5.5, 12.1), -- design: main.js:486 "Spawn eye" (metres / 0.28)
+	floorTopY = 0, -- the hub and base floors
+	hubRadius = HUB_RADIUS,
+	stageRadius = STAGE_RADIUS,
+	-- The sea (§8): a slab under the island, top Y -1.6. Reading: ±222, so the arena slots' aprons (Config.Duel.Arena,
+	-- X ≥ 225) never lie on it (ArenaService_Test reads this size).
+	baseSlab = { position = Vector3.new(0, -2.6, 0), size = Vector3.new(444, 2, 444), color = "IslandSea" } :: Box,
 	-- Invisible walls (§7.7): Transparency 1, CanCollide true, CanQuery false, CanTouch false, tag SD_Boundary.
-	-- Reading (not in design): just outside the kit walls and their pillars (Ø4.2 on the hub edge, lobby.js:434), so a
-	-- player who climbs a wall cap stays in the hub; they stand on the floor (Y 0..60).
+	-- Reading: just inside the sea's edge, so nobody walks off the sea into the void; from under the sea to Y 60.
 	Boundaries = {
-		span("WestWall", -122.5, -118.5, 0, 60, -98.5, 98.5),
-		span("EastWall", 118.5, 122.5, 0, 60, -98.5, 98.5),
-		span("NorthWall", -122.5, 122.5, 0, 60, -98.5, -94.5),
-		span("SouthWall", -122.5, 122.5, 0, 60, 94.5, 98.5),
+		span("WestWall", -222, -218, -4, 60, -222, 222),
+		span("EastWall", 218, 222, -4, 60, -222, 222),
+		span("NorthWall", -218, 218, -4, 60, -222, -218),
+		span("SouthWall", -218, 218, -4, 60, 218, 222),
 	} :: { Volume },
 }
 
--- Paths from the promenade to every station but the spawn and the kit (lobby.js:133-140): from radius 31 toward the
--- station's centre (or its entry) to `foot + 1` short of it (to its entry), 11 wide to the duel gate, else 8.
-local PATH_START_RADIUS = 31 -- design: lobby.js:139
-local PATH_WIDTH = 8 -- design: lobby.js:139
-local DUEL_PATH_WIDTH = 11 -- design: lobby.js:139
-local PATH_STATIONS: { { id: string, foot: number, entry: Vector3? } } = {
-	{ id = "duel", foot = 26 }, -- design: lobby.js:120
-	{ id = "box", foot = 12 }, -- design: lobby.js:121
-	{ id = "shop", foot = 16 }, -- design: lobby.js:122
-	{ id = "collection", foot = 18 }, -- design: lobby.js:123
-	{ id = "quests", foot = 11 }, -- design: lobby.js:124
-	{ id = "daily", foot = 9 }, -- design: lobby.js:125
-	{ id = "squeeze", foot = 23 }, -- design: lobby.js:126
-	{ id = "grip", foot = 23 }, -- design: lobby.js:127
-	{ id = "royal", foot = 13 }, -- design: lobby.js:128
-	{ id = "practice", foot = 20, entry = Vector3.new(72, 0, 62) }, -- design: lobby.js:129
-}
+-- Spec §2: 10 paths, 8 wide, from the stage edge across the square and the garden to each plot's gate.
 local Paths: { Path } = {}
-local pathEnds: { [string]: Vector3 } = {}
-for _, entry in PATH_STATIONS do
-	local target = entry.entry or StationFrames[entry.id].position
-	local direction = Vector3.new(target.X, 0, target.Z).Unit
-	local inset = if entry.entry then 0 else entry.foot + 1 -- design: lobby.js:138
-	local path: Path = {
-		id = entry.id,
-		from = direction * PATH_START_RADIUS,
-		to = target - direction * inset,
-		width = if entry.id == "duel" then DUEL_PATH_WIDTH else PATH_WIDTH,
-	}
-	table.insert(Paths, path)
-	pathEnds[entry.id] = path.to
+for index = 1, BASE_COUNT do
+	local out = compass((index - 1) * SECTOR_DEGREES)
+	table.insert(Paths, {
+		id = "plot" .. index,
+		from = out * STAGE_RADIUS,
+		to = out * BASE_GATE_RADIUS,
+		width = PATH_WIDTH,
+	})
 end
 
-local Promenade = {
-	-- Flat rings around the spawn (lobby.js:142): a curb ring 22.6..33.4 under a path ring 23.4..32.6.
-	curb = { inner = 22.6, outer = 33.4, top = 0.06 }, -- design: lobby.js:142
-	path = { inner = 23.4, outer = 32.6, top = 0.1 }, -- design: lobby.js:142
-	curbExtra = 1.8, -- design: lobby.js:134 (a path's curb is 1.8 wider than the path)
-}
+-- A stand's approach: the point APPROACH_STEP in front of its front edge (`front`, station-local z), its frame's
+-- front direction, for the keep-clear volume.
+local function approachOf(id: string, front: number): Vector3
+	return at(id, 0, 0, front + APPROACH_STEP)
+end
 
 -- Private: stations -------------------------------------------------------------------------------------------------
 
+-- The hub spawn: the design's spawn medallion (lobby.js:147-155) as a smaller disc on the stage centre with the logo.
 local Spawn = {
 	model = "Spawn",
 	tag = "SD_LobbySpawn",
-	-- spawn_medallion C(14, 14.5, 0.7): Ø29 at the bottom, top Y 0.7 (design: lobby.js:147).
-	medallion = { position = Vector3.new(0, 0.35, 0), diameter = 29, height = 0.7, color = "LobbyTrimWhite" } :: Disc,
-	-- Reading (not in design: the medallion is the spawn, lobby.js:147): an invisible SpawnLocation inside it, its top
-	-- flush with the medallion's, facing north to the duel gate (main.js:486 "Spawn eye"). Neutral, Duration 0.
+	-- Reading: Ø12, 0.3 tall on the stage (top 0.8): top Y 1.1.
+	medallion = { position = Vector3.new(0, 0.95, 0), diameter = 12, height = 0.3, color = "LobbyTrimWhite" } :: Disc,
+	-- Reading: an invisible SpawnLocation inside it, its top flush with the medallion's, facing north (the hub spawn,
+	-- for a player without a plot). Neutral, Duration 0.
 	location = {
-		position = Vector3.new(0, 0.35, 0),
-		size = Vector3.new(12, 0.7, 8),
+		position = Vector3.new(0, 0.95, 0),
+		size = Vector3.new(6, 0.3, 6),
 		facing = NORTH,
 		color = "LobbyTrimWhite",
 	} :: Box,
-	top = 0.7, -- design: lobby.js:147
-	-- paint_spawn_logo: a circle r 12.8 lying on the medallion at Y 0.72 (design: lobby.js:149-155). The builder's
-	-- plate is a thin invisible square that carries the logo's Top SurfaceGui.
-	logoPlate = { position = Vector3.new(0, 0.72, 0), size = Vector3.new(25.6, 0.04, 25.6) } :: Box,
-	-- wayfinding_post at (19, 0, 19) turned -π/4 (design: lobby.js:157); one arrow per destination (lobby.js:159-166).
-	post = groupCF("spawn", 19, 0, 19, -math.pi / 4),
-	arrows = {} :: { { key: string, textKey: string, color: string, frame: CFrame } },
+	top = 1.1,
+	-- The logo's plate (lobby.js:149-155): a thin invisible square on the medallion that carries the logo.
+	logoPlate = { position = Vector3.new(0, 1.12, 0), size = Vector3.new(11.2, 0.04, 11.2) } :: Box,
 }
--- design: lobby.js:159 (destinations, colours) and 161 (arm i at y 5.4 + 1.75 i, its +X toward the station).
-for index, arrow in
-	{
-		{ key = "duel", textKey = "world.arrowDuel", color = "LobbyMint" },
-		{ key = "shop", textKey = "world.arrowShop", color = "LobbyButter" },
-		{ key = "box", textKey = "world.arrowBoxes", color = "LobbyStrawberry" },
-		{ key = "squeeze", textKey = "world.arrowSqueeze", color = "LobbySky" },
-		{ key = "grip", textKey = "world.arrowGrip", color = "LobbyViolet" },
-		{ key = "practice", textKey = "world.arrowRange", color = "LobbyRangeArrow" },
-	}
-do
-	local target = StationFrames[arrow.key].position
-	local angle = math.atan2(target.Z - 19, target.X - 19) -- design: lobby.js:161 (aims at the station centre)
-	local frame = Spawn.post * CFrame.new(0, 5.4 + (index - 1) * 1.75, 0) * CFrame.Angles(0, -angle + math.pi / 4, 0)
-	table.insert(Spawn.arrows, { key = arrow.key, textKey = arrow.textKey, color = arrow.color, frame = frame })
-end
 
--- Duel gate + queue (lobby.js:120, 169-204). Frame (0, -66), yaw 0: world = local + (0, 0, -66).
+-- The duel stage + queue (spec §2: "Duel stage Ø 44, under the tower, same 10 queue pads"; lobby.js:169-204). Frame
+-- (0, 0), yaw 0: world = local.
 local DuelGate = {
 	model = "DuelGate",
 	podiumTag = "SD_QueuePodium",
 	boardTag = "SD_QueueBoard",
-	-- queue_stage rb(48, 1.6, 30): the stage floor, top 1.6 (design: lobby.js:172).
-	stage = { position = at("duel", 0, 0.8, 0), size = Vector3.new(48, 1.6, 30), color = "LobbyCushionCream" } :: Box,
-	-- The queue podium (SD_QueuePodium) is the design's queue_stage_step rb(22, 0.8, 5) (design: lobby.js:173).
-	podium = {
-		position = at("duel", 0, 0.4, 16.6),
-		size = Vector3.new(22, 0.8, 5),
+	-- Spec §2: the stage Ø44; reading: 0.8 tall (one step up from the square).
+	stage = {
+		position = Vector3.new(0, 0.4, 0),
+		diameter = 2 * STAGE_RADIUS,
+		height = 0.8,
 		color = "LobbyCushionCream",
-	} :: Box,
-	-- NOT IN DESIGN (D11): the live queue board (SD_QueueBoard) as a valance plate under the gate's badge, between the
-	-- curtains, below the badge disc (Y 18.6) and above the arch's walkway (clear height 13.4 over the stage).
-	statusBoard = { position = at("duel", 0, 16.7, -7), size = Vector3.new(12, 3.4, 0.2), facing = SOUTH } :: Box,
-	approach = pathEnds.duel, -- the duel path's end (design: lobby.js:136-140)
-	-- "Join 1v1 Queue" / "Leave Queue" (toggle). Reading: at the step's front centre (its front at local z 19.1).
-	prompt = prompt("prompt.joinQueue", at("duel", 0, 2, 19.6), "prompt.leaveQueue"),
+	} :: Disc,
+	stageTop = 0.8,
+	-- The queue podium (SD_QueuePodium): reading, a round step on the stage's south side, between the south pillars.
+	podium = { position = at("duel", 0, 1.2, 15), diameter = 5, height = 0.8, color = "LobbyCushionCream" } :: Disc,
+	-- NOT IN DESIGN (D11): the live queue board (SD_QueueBoard) under the crossbar between the south pillars.
+	statusBoard = { position = at("duel", 0, 13.2, 12), size = Vector3.new(12, 3.4, 0.2), facing = SOUTH } :: Box,
+	approach = at("duel", 0, 0, 20.5), -- reading: in front of the podium, on the stage's south edge
+	-- "Join 1v1 Queue" / "Leave Queue" (toggle). Reading: 0.5 in front of the podium.
+	prompt = prompt("prompt.joinQueue", at("duel", 0, 2.6, 18), "prompt.leaveQueue"),
 }
 
--- Squishy box (lobby.js:121, 206-233). The SD_BoxStand is the design's reveal pedestal (its interaction).
-local BOX_ODDS = groupCF("box", -10, 1.4, 2.5, 0.55) -- odds_board group (design: lobby.js:221)
+-- Squishy box (lobby.js:121, 206-233), compact (reading: the dais Ø20 and a 0.8 mystery box fit the 54° sector).
+local BOX_ODDS = groupCF("box", -7, 1.4, 2, 0.5) -- odds_board group (design: lobby.js:221; reading: moved in)
 local GiftBoxCounter = {
 	model = "GiftBoxCounter",
 	tag = "SD_BoxStand",
 	boxId = "snack", -- reading: SD_BoxStand's BoxId = the first paid box (Boxes land in Part 7)
-	dais = { position = at("box", 0, 0.7, 0), diameter = 23.2, height = 1.4, color = "LobbyLilac" } :: Disc, -- design: lobby.js:209 (C(11, 11.6, 1.4))
-	-- reveal_pedestal_body C(2.6, 3.1, 2.6) at the pedestal group (0, 1.4, 6.6) + (0, 1.3, 0) (design: lobby.js:217-218).
-	stand = { position = at("box", 0, 2.7, 6.6), diameter = 6.2, height = 2.6, color = "LobbyTrimWhite" } :: Disc,
-	-- odds_board_panel rb(7.6, 5.8, 0.6) at the board's (0, 5.4, 0), its face toward the board's front (design:
-	-- lobby.js:221-224). BoxController finds it by name ("OddsBoard") next to the stand part.
+	dais = { position = at("box", 0, 0.7, 0), diameter = 20, height = 1.4, color = "LobbyLilac" } :: Disc, -- lobby.js:209 (reading: Ø20)
+	-- reveal_pedestal_body C(2.6, 3.1, 2.6) on the dais (design: lobby.js:217-218; reading: z 5.6).
+	stand = { position = at("box", 0, 2.7, 5.6), diameter = 6.2, height = 2.6, color = "LobbyTrimWhite" } :: Disc,
+	-- odds_board_panel (design: lobby.js:221-224; reading: 5.6 wide). BoxController finds it by name ("OddsBoard").
 	oddsBoard = {
 		position = BOX_ODDS * Vector3.new(0, 5.4, 0),
-		size = Vector3.new(7.6, 5.8, 0.6),
-		facing = frontOf("box", 0.55),
+		size = Vector3.new(5.6, 5.8, 0.6),
+		facing = frontOf("box", 0.5),
 		color = "LobbyCushionCream",
 	} :: Box,
 	oddsFrame = BOX_ODDS,
-	mysteryBox = groupCF("box", 0, 1.4, -3), -- the "GiftBox" model's pivot: mystery_box (design: lobby.js:210)
-	approach = pathEnds.box,
+	mysteryBox = groupCF("box", 0, 1.4, -3.2), -- the "GiftBox" model's pivot: mystery_box (design: lobby.js:210)
+	mysteryScale = 0.8, -- reading: the design's box at 0.8 (8 × 6.4 × 8)
+	approach = approachOf("box", 10), -- the dais edge
 	-- Restricted/unknown clients relabel it locally to "Shop Squishies". Reading: 0.6 in front of the pedestal.
-	prompt = prompt("prompt.seeBoxes", at("box", 0, 3, 10.3), "prompt.shopDirect"),
+	prompt = prompt("prompt.seeBoxes", at("box", 0, 3, 9.3), "prompt.shopDirect"),
 }
 
--- Shop counter (lobby.js:122, 235-261).
+-- Shop counter (lobby.js:122, 235-261), compact (reading: a 22-wide stall with an 8-stripe awning).
 local ShopCounter = {
 	model = "ShopCounter",
 	tag = "SD_ShopCounter",
-	floor = { position = at("shop", 0, 0.4, 0), size = Vector3.new(30, 0.8, 18), yaw = StationFrames.shop.yaw } :: Box, -- design: lobby.js:238
-	-- shop_counter rb(22, 4.4, 5): the SD_ShopCounter (design: lobby.js:243).
+	floor = { position = at("shop", 0, 0.4, -1), size = Vector3.new(22, 0.8, 14), yaw = StationFrames.shop.yaw } :: Box, -- design: lobby.js:238 (reading: 22 × 14)
+	-- shop_counter rb(22, 4.4, 5): the SD_ShopCounter (design: lobby.js:243; reading: 14 wide, 4 deep).
 	counter = {
-		position = at("shop", 0, 3, 1),
-		size = Vector3.new(22, 4.4, 5),
+		position = at("shop", 0, 3, 1.5),
+		size = Vector3.new(14, 4.4, 4),
 		facing = frontOf("shop"),
 		color = "LobbyWafer",
 	} :: Box,
-	turntable = groupCF("shop", 9, 0.8, 9.5), -- preview_turntable (design: lobby.js:255)
-	approach = pathEnds.shop,
+	turntable = groupCF("shop", 7.8, 0, 8.2), -- preview_turntable (design: lobby.js:255; reading: on the square)
+	approach = approachOf("shop", 6), -- the stall floor's front
 	prompt = prompt("prompt.openShop", at("shop", 0, 3.4, 4.3)), -- reading: in front of the SHOP plate (lobby.js:250)
 }
 
--- Collection display (lobby.js:123, 263-284): 7 bays on an arc of radius 15 around (0, 3), 2 shelves each, the 14
--- squishies in catalog order (D4: the game's Catalog order; slot i is bay (i - 1) // 2, lower shelf first).
-local BAY_RADIUS = 15 -- design: lobby.js:265
+-- Collection display (lobby.js:123, 263-284), compact: 7 bays on an arc of radius 12 (reading; the design's 15)
+-- around (0, 2), 2 shelves each, the 14 squishies in catalog order (D4: slot i is bay (i - 1) // 2, lower shelf first).
+local BAY_RADIUS = 12
+local BAY_CENTER_Z = 2
 local bays: { CFrame } = {}
 for k = 0, 6 do
 	local a = math.rad(-60 + k * 20) -- design: lobby.js:269
-	table.insert(bays, groupCF("collection", math.sin(a) * BAY_RADIUS, 0.8, 3 - math.cos(a) * BAY_RADIUS, -a))
+	table.insert(
+		bays,
+		groupCF("collection", math.sin(a) * BAY_RADIUS, 0.8, BAY_CENTER_Z - math.cos(a) * BAY_RADIUS, -a)
+	)
 end
-local KIOSK = groupCF("collection", 12, 0.8, 7, -0.7) -- inventory_kiosk (design: lobby.js:274)
+local KIOSK = groupCF("collection", 9, 0, 6, -0.6) -- inventory_kiosk (design: lobby.js:274; reading: on the square)
 local PEDESTAL_DIAMETER = 2.8 -- design: lobby.js:280 (C(1.3, 1.4, 0.7))
 local PEDESTAL_HEIGHT = 0.7 -- design: lobby.js:280
 local pedestals: { Pedestal } = {}
@@ -528,11 +543,14 @@ local Collection = {
 	kioskTag = "SD_CollectionKiosk",
 	pedestalTag = "SD_CollectionPedestal",
 	floor = {
-		position = at("collection", 0, 0.4, -2),
-		size = Vector3.new(38, 0.8, 26),
+		position = at("collection", 0, 0.4, -4.7),
+		size = Vector3.new(25.2, 0.8, 15.4),
 		yaw = StationFrames.collection.yaw,
-	} :: Box, -- design: lobby.js:266
+	} :: Box, -- design: lobby.js:266 (reading: under the arc only)
 	bays = bays, -- collection_bay_0..6 frames (design: lobby.js:269)
+	bayRadius = BAY_RADIUS,
+	bayCenterZ = BAY_CENTER_Z, -- the arc's centre (station-local z)
+	bayWidth = 4.2, -- reading: the design's 5.6 bays narrowed to the smaller arc
 	pedestals = pedestals,
 	-- Client-built per player: owned = full colour, unowned = Lavender silhouette. Reading: the design's toys are 2.6
 	-- tall (lobby.js:281); 1.75 stands a Kitty-Bread-sized blueprint (about 1.5 at scale 1) at that height, one scale for
@@ -545,15 +563,15 @@ local Collection = {
 	kiosk = {
 		position = KIOSK * Vector3.new(0, 2.3, 0),
 		size = Vector3.new(3.4, 4.6, 2.4),
-		facing = frontOf("collection", -0.7),
+		facing = frontOf("collection", -0.6),
 		color = "LobbyViolet",
 	} :: Box,
 	kioskFrame = KIOSK,
-	approach = pathEnds.collection,
+	approach = approachOf("collection", 3), -- the shelf floor's front
 	prompt = prompt("prompt.openCollection", KIOSK * Vector3.new(0, 3, 1.9)), -- reading: 0.7 in front of the kiosk
 }
 
--- Quest board (lobby.js:124, 286-309).
+-- Quest board (lobby.js:124, 286-309): the design's board as it is.
 local QuestBoard = {
 	model = "QuestBoard",
 	tag = "SD_QuestBoard",
@@ -565,22 +583,22 @@ local QuestBoard = {
 		facing = frontOf("quests"),
 		color = "LobbyCork",
 	} :: Box,
-	approach = pathEnds.quests,
+	approach = approachOf("quests", 5.5), -- the floor's front
 	prompt = prompt("prompt.viewQuests", at("quests", 0, 4.5, 0.2)), -- reading: in front of the cork, under the cards
 }
 
--- Daily reward (lobby.js:125, 311-333). The SD_DailyStand is the design's dais.
+-- Daily reward (lobby.js:125, 311-333): the design's dais as it is. The SD_DailyStand is the dais.
 local DailyStand = {
 	model = "DailyStand",
 	tag = "SD_DailyStand",
 	pedestal = { position = at("daily", 0, 0.6, 0), diameter = 15.2, height = 1.2, color = "LobbyLilac" } :: Disc, -- design: lobby.js:314 (C(7.2, 7.6, 1.2))
 	gift = groupCF("daily", 0, 1.2, 0), -- the "GiftBox" model's pivot: daily_gift (design: lobby.js:315)
-	approach = pathEnds.daily,
+	approach = approachOf("daily", 7.6), -- the dais edge
 	prompt = prompt("prompt.dailyReward", at("daily", 0, 2.5, 8.2)), -- reading: 0.6 in front of the dais
 }
 
--- Squeeze zone (lobby.js:126, 335-352): 6 foam mats on a ring of radius 14 around the statue, mats 1-6 =
--- squeeze_01..06 (the design's foam_mat_1..6).
+-- Squeeze zone (lobby.js:126, 335-352): the design's ring of 6 foam mats (radius 14) around the giant Kitty Bread, on a
+-- Ø40 floor (reading; the design's 46) that reaches from the square into the garden, so its top stays 0.6.
 local MAT_RING_RADIUS = 14 -- design: lobby.js:343
 local MAT_DIAMETER = 7.6 -- design: lobby.js:341 (superF 3.8)
 local MAT_THICKNESS = 1.5 -- design: lobby.js:341 (superF 0.75 up and down)
@@ -600,7 +618,8 @@ end
 
 local SqueezeZone = {
 	model = "SqueezeZone",
-	floor = { position = at("squeeze", 0, 0.3, 0), diameter = 46, height = 0.6, color = "LobbyCourtMint" } :: Disc, -- design: lobby.js:338 (C(22.4, 23, 0.6))
+	-- design: lobby.js:338 (C(22.4, 23, 0.6)); reading: Ø40, from the garden (Y -0.9) up to the design's top 0.6
+	floor = { position = at("squeeze", 0, -0.15, 0), diameter = 40, height = 1.5, color = "LobbyCourtMint" } :: Disc,
 	mats = mats, -- tag SD_SqueezeStation (StationId, GripTier = 1); no ProximityPrompt in the zone
 	matDiameter = MAT_DIAMETER,
 	matThickness = MAT_THICKNESS,
@@ -620,54 +639,50 @@ local SqueezeZone = {
 	sparkle = at("squeeze", 0, 9.3, 0), -- reading: the statue's middle (2.8 + 13 / 2)
 }
 
--- Practice range (lobby.js:129, 399-421; D3). Frame (88, 62) turned -90°: world X = 88 - local z, Z = 62 + local x.
--- Throwers stand at local +Z (west) and throw toward local -Z = world +X. The game's 9 targets (3 lanes × 12/20/28
--- studs, one moving, §5.11) stand on the design's 3 lanes, measured from the design's firing line.
-local FIRING_LINE_X = 79 -- design: lobby.js:403 (range_firing_line_paint at local z 9)
-local LANE_Z = { 52, 62, 72 } -- design: lobby.js:404-406 (local x -10 / 0 / 10)
-local TARGET_DISTANCES = { 12, 20, 28 }
+-- Practice range (lobby.js:129, 399-421; D3; spec §3: "44-st lane", "3 dummies"): one lane east along its sector's
+-- middle (Z 0), so throws go toward +X as before. Frame (70, 0) turned -90°: world X = 70 - local z, Z = local x.
+-- Throwers stand at local +Z (west) and throw toward local -Z = world +X. Reading (spec §3 + the moving target the game
+-- keeps, §5.11): 3 static dummies 12 / 28 / 34 studs past the firing line and the moving one at 20. The lane's east
+-- end (X 91) keeps the pillow wall 2 studs clear of plots 3 and 4, whose gates flank it (72° and 108°).
+local FIRING_LINE_X = 52 -- reading: the lane runs from X 46 to 91 (the backstop's back), 39 past the line
+local TARGET_DISTANCES = { 12, 20, 28, 34 }
 local THROW_DIRECTION = EAST
-local MOVING_LANE = 2
 local MOVING_DISTANCE = 20
 local MOVING_RAIL_LENGTH = 12 -- ±6 along Z
 local MOVING_PERIOD = 9.42 -- seconds (peak ≈ 4 studs/s)
+local THROW_SPOT = Vector3.new(48, 0, 0) -- reading: inside the throw box, on the lane
+local RANGE_BOARD = Vector3.new(45, 0, 8.5) -- reading: by the throw box's back corner
 local targets: { Target } = {}
-for lane, z in LANE_Z do
-	for _, distance in TARGET_DISTANCES do
-		local moving = lane == MOVING_LANE and distance == MOVING_DISTANCE
-		table.insert(targets, {
-			id = string.format("target_%02d", #targets + 1),
-			lane = lane,
-			distance = distance,
-			position = Vector3.new(FIRING_LINE_X, 0, z) + THROW_DIRECTION * distance,
-			moving = moving,
-			railLength = if moving then MOVING_RAIL_LENGTH else 0,
-			period = if moving then MOVING_PERIOD else 0,
-			nameKey = "practice.targetName",
-		})
-	end
+for _, distance in TARGET_DISTANCES do
+	local moving = distance == MOVING_DISTANCE
+	table.insert(targets, {
+		id = string.format("target_%02d", #targets + 1),
+		distance = distance,
+		position = Vector3.new(FIRING_LINE_X, 0, 0) + THROW_DIRECTION * distance,
+		moving = moving,
+		railLength = if moving then MOVING_RAIL_LENGTH else 0,
+		period = if moving then MOVING_PERIOD else 0,
+		nameKey = "practice.targetName",
+	})
 end
 
 local PracticeRange = {
 	model = "PracticeRange",
 	zoneTag = "SD_PracticeZone",
 	targetTag = "SD_PracticeTarget",
-	-- range_floor rb(38, 0.6, 42) at local (0, 0.3, -6), turned: X 73..115, Z 43..81 (design: lobby.js:402).
-	laneFloor = { position = Vector3.new(94, 0.3, 62), size = Vector3.new(42, 0.6, 38), color = "LobbyCourtMint" } :: Box,
+	-- range_floor (design: lobby.js:402); reading: X 46..91, Z -10..10, from the garden (Y -0.9) up to the top 0.6.
+	laneFloor = { position = Vector3.new(68.5, -0.15, 0), size = Vector3.new(45, 1.5, 20), color = "LobbyCourtMint" } :: Box,
 	laneFloorTopY = 0.6,
-	-- range_firing_line_paint B(32, 0.08, 1.2) at local (0, 0.64, 9): X 78.4..79.6, Z 46..78 (design: lobby.js:403).
+	-- range_firing_line_paint B(32, 0.08, 1.2) (design: lobby.js:403; reading: across the 20-wide lane).
 	firingLine = {
-		position = Vector3.new(FIRING_LINE_X, 0.64, 62),
-		size = Vector3.new(1.2, 0.08, 32),
+		position = Vector3.new(FIRING_LINE_X, 0.64, 0),
+		size = Vector3.new(1.2, 0.08, 20),
 		color = "LobbyTrimWhite",
 	} :: Box,
 	firingLineX = FIRING_LINE_X,
-	-- Reading (D3): the throw box runs 8 deep behind the firing line across the range floor, so the practice path's
-	-- end (72, 62) lies inside it.
-	throwBox = span("ThrowBox", 71, 79, 0, 12, 43, 81), -- SD_PracticeZone, invisible
+	-- Reading (D3): the throw box runs 8 deep behind the firing line across the lane, so the approach lies inside it.
+	throwBox = span("ThrowBox", 44, 52, 0, 12, -10, 10), -- SD_PracticeZone, invisible
 	throwDirection = THROW_DIRECTION,
-	laneZ = LANE_Z,
-	laneWidth = 10, -- design: lobby.js:404 (throw spots 10 apart)
 	distances = TARGET_DISTANCES,
 	targets = targets, -- anchored; the target hitbox is the player capsule (§5.11)
 	-- Reading (D3): each target is dressed as the design's bullseye board (lobby.js:406-409); its centre stands this
@@ -675,21 +690,22 @@ local PracticeRange = {
 	-- bullseye hit is a capsule hit (the design's 7.6 put the board above the capsule).
 	boardHeight = 4.6,
 	-- The "Backstop" part (jelly ripple, splats): inside the design's pillow wall (lobby.js:412-413, pillows X
-	-- 110.5..113.5, Y 0..9.2), its front 0.5 behind the pillow fronts so the pillows stand out of it, between the
-	-- strawberry frames (Z 44.4..79.6), from the range floor up.
+	-- 88.5..91.5, Y 0..9.2), its front 0.5 behind the pillow fronts so the pillows stand out of it, from the lane top
+	-- up; the design's size (the jelly ripple's grid is tuned to it).
 	backstop = {
-		position = Vector3.new(112.25, 4.9, 62),
+		position = Vector3.new(90.25, 4.9, 0),
 		size = Vector3.new(2.5, 8.6, 35.2),
 		color = "LobbyCushionCream",
 	} :: Box,
-	-- Reading: practice projectiles expire outside this box (the throw box's west edge to the hub's east edge, the
-	-- range floor's width, the arena zones' height Y -15..40).
-	bounds = span("Bounds", 71, 116, -15, 40, 43, 81),
-	boardFrame = groupCF("practice", -16, 0.6, 12, 0.5), -- range_board (design: lobby.js:415)
-	approach = pathEnds.practice, -- the practice path's end, the design's entry (72, 62) (lobby.js:129)
+	-- Reading: practice projectiles expire outside this box (the throw box's west edge to past the backstop, 20 either
+	-- side of the lane, the arena zones' height Y -15..40).
+	bounds = span("Bounds", 44, 93, -15, 40, -20, 20),
+	-- range_board (design: lobby.js:415): reading, its front (local +Z, the plates' side) toward the throw spot.
+	boardFrame = CFrame.lookAt(RANGE_BOARD, 2 * RANGE_BOARD - THROW_SPOT),
+	approach = THROW_SPOT,
 }
 
--- Private: Grip pods and giant pads (§17.6, §17.6.1; D5) -------------------------------------------------------------
+-- Private: Grip pods and giant pads (§17.6, §17.6.1; D5; removed in Phase 6) -----------------------------------------
 
 -- Reading (D5): the gates are invisible (Config.Grip.Gate transparencies 1); a closed one still stops a too-low
 -- level locally. They are tall enough that a jump from a pad's white base (Y 2.2) cannot clear them.
@@ -746,13 +762,14 @@ local GIANT_PAD_KEYS = { "jelly", "marshmallow", "royal" }
 
 -- Readings: the corner radius of an n = 3 superellipse pad is the rounded square with the same diagonal reach
 -- (3.6 for the jelly shell, 3.0 for the cushion); the marshmallow is round (radius = half its footprint). Collision
--- boxes keep G8's rules (inside the rounded footprint, 0.8 inside the gate).
+-- boxes keep G8's rules (inside the rounded footprint, 0.8 inside the gate). Reading (island): the gym's two pads
+-- stand one behind the other along their sector (21 apart: pads stay 20 apart), the jelly pad in front.
 local GiantPads: { [string]: GiantPad } = {
 	jelly = giantPad({
 		key = "jelly",
 		stationId = "squeeze_07",
 		tier = 2,
-		frame = groupCF("grip", -11, 0.8, 0), -- jelly_pad (design: lobby.js:359)
+		frame = groupCF("grip", 0, 0.8, 10.5), -- jelly_pad (design: lobby.js:359; reading: the gym's front pad)
 		footprint = 10.2, -- design: lobby.js:361 (jelly_shell rb(10.2, 4, 10.2, 3))
 		cornerRadius = 3.6,
 		restTop = 6.2, -- design: lobby.js:361 (shell top: grip floor 0.8 + 3.4 + 2)
@@ -764,7 +781,7 @@ local GiantPads: { [string]: GiantPad } = {
 		key = "marshmallow",
 		stationId = "squeeze_08",
 		tier = 3,
-		frame = groupCF("grip", 11, 0.8, 0), -- marshmallow_pad (design: lobby.js:363)
+		frame = groupCF("grip", 0, 0.8, -10.5), -- marshmallow_pad (design: lobby.js:363; reading: the gym's back pad)
 		footprint = 10, -- design: lobby.js:364 (superF(5, 2.2, 5): Ø10)
 		cornerRadius = 5,
 		restTop = 6.6, -- design: lobby.js:364 (0.8 + 3.6 + 2.2)
@@ -789,12 +806,13 @@ local GiantPads: { [string]: GiantPad } = {
 local Pods = {
 	gym = {
 		model = "GripGym",
+		-- design: lobby.js:357 (the gym floor, top 0.8); reading: 14 × 34 under both pads, down to the garden.
 		floor = {
-			position = at("grip", 0, 0.4, 0),
-			size = Vector3.new(44, 0.8, 24),
+			position = at("grip", 0, -0.05, 0),
+			size = Vector3.new(14, 1.7, 34),
 			yaw = StationFrames.grip.yaw,
 			color = "LobbyLilac",
-		} :: Box, -- design: lobby.js:357
+		} :: Box,
 		padKeys = { "jelly", "marshmallow" },
 	},
 	royal = {
@@ -833,21 +851,23 @@ end
 
 -- Private: other lobby data ----------------------------------------------------------------------------------------
 
--- Reading (not in design): on the floor in front of the queue step, beside the duel path's end, facing the hub.
+-- Reading: on the stage's south side, beside the podium, facing south (players come back from a duel here).
 local ReturnPoints: { ReturnPoint } = {
-	{ slot = 1, position = at("duel", -6, 0, 24), facing = SOUTH }, -- reading: Slot 1 = west
-	{ slot = 2, position = at("duel", 6, 0, 24), facing = SOUTH },
+	{ slot = 1, position = at("duel", -6, DuelGate.stageTop, 19), facing = SOUTH }, -- reading: Slot 1 = west
+	{ slot = 2, position = at("duel", 6, DuelGate.stageTop, 19), facing = SOUTH },
 }
 
+local LOLLIPOP_RADIUS = 86 -- reading: in the garden, between two plots' paths
 local Props = {
-	-- The 4 corner lollipops (design: lobby.js:468): a stick 24 tall, a disk of radius 7 facing ±Z with swirl rings,
-	-- (ca, cb) colours per corner. The client spins them about the stick (D12: Lollipop1..4 keep the game's motion).
+	-- The 4 lollipops (design: lobby.js:468): a stick 24 tall, a disk of radius 7 facing ±Z with swirl rings, (ca, cb)
+	-- colours each. The client spins them about the stick (D12: Lollipop1..4 keep the game's motion). Reading
+	-- (island): on the garden grass (Y -0.9) in four sectors.
 	lollipops = {
 		positions = {
-			Vector3.new(-HUB_HALF_X + 12, 0, -HUB_HALF_Z + 12), -- design: lobby.js:468 (NW)
-			Vector3.new(HUB_HALF_X - 12, 0, -HUB_HALF_Z + 12), -- NE
-			Vector3.new(-HUB_HALF_X + 12, 0, HUB_HALF_Z - 12), -- SW
-			Vector3.new(HUB_HALF_X - 12, 0, HUB_HALF_Z - 12), -- SE
+			compass(54) * LOLLIPOP_RADIUS + Vector3.new(0, Island.grass.top, 0),
+			compass(126) * LOLLIPOP_RADIUS + Vector3.new(0, Island.grass.top, 0),
+			compass(234) * LOLLIPOP_RADIUS + Vector3.new(0, Island.grass.top, 0),
+			compass(342) * LOLLIPOP_RADIUS + Vector3.new(0, Island.grass.top, 0),
 		},
 		colors = {
 			{ "LobbyStrawberry", "LobbyMint" }, -- design: lobby.js:468
@@ -906,7 +926,62 @@ end
 local PLATE_BOXED: PlateStyle = { background = "LobbyPlate", border = "LobbyInk", round = 0.24, color = "LobbyInk" }
 local PLATE_TEXT: PlateStyle = { color = "LobbyInk" }
 
--- Every static SurfaceGui sign: the design's plates (D6, D10) and the game's live boards (D11).
+-- Private: Squish Island bases (lobby bases spec 2026-10-11 §2, §4; Phase 3 data, built in Phase 4) ------------------
+
+-- Plot i at compass angle (i - 1) × 36° (plot 1 north of the hub, -Z; plot 6 south), 44 wide and 52 deep, from its gate
+-- at radius 96 to its back at radius 148, centred on the island centre. A plot frame is a station frame (newFrame):
+-- its local +Z faces the hub, so the gate is at local z +26 and the back at -26.
+local BASE_TOKENS = { "Red", "Orange", "Yellow", "Lime", "Teal", "Sky", "Blue", "Navy", "Purple", "Pink" } -- §8 B1-B10
+local CAPSULE_PADS = { Vector3.new(-13, 0, -8), Vector3.new(13, 0, -8), Vector3.new(-13, 0, 8), Vector3.new(13, 0, 8) }
+local CAPSULE_PAD_TOP = 0.3 -- reading: the pads stand 0.3 proud of the plinth
+local baseFrames: { CFrame } = {}
+local baseColors: { BaseColors } = {}
+local baseModels: { string } = {}
+for index = 1, BASE_COUNT do
+	local frame = polarFrame((BASE_GATE_RADIUS + BASE_BACK_RADIUS) / 2, (index - 1) * SECTOR_DEGREES)
+	baseFrames[index] = CFrame.new(frame.position) * CFrame.Angles(0, frame.yaw, 0)
+	baseColors[index] = { full = "Base" .. BASE_TOKENS[index], light = "Base" .. BASE_TOKENS[index] .. "Light" }
+	baseModels[index] = string.format("Base_%02d", index)
+end
+-- Where each slot's capsule (or its lock) stands: on its pad, its front toward the plot's middle path (reading).
+local capsuleSpots: { CFrame } = {}
+for slot, pad in CAPSULE_PADS do
+	local top = pad + Vector3.new(0, CAPSULE_PAD_TOP, 0)
+	capsuleSpots[slot] = CFrame.lookAt(top, top + Vector3.new(-math.sign(pad.X), 0, 0))
+end
+
+local Bases = {
+	center = Vector3.zero,
+	gateRadius = BASE_GATE_RADIUS,
+	backRadius = BASE_BACK_RADIUS,
+	width = 44,
+	depth = BASE_DEPTH,
+	-- The 8 × 8 capsule pads at local x ±13, z -8 / +8: slot 1 back left, 2 back right, 3 front left, 4 front right.
+	capsulePads = CAPSULE_PADS,
+	capsulePadSize = 8,
+	capsulePadTop = CAPSULE_PAD_TOP,
+	capsuleSpots = capsuleSpots,
+	gate = Vector3.new(0, 0, BASE_DEPTH / 2), -- the Donut Arch gate
+	gateWidth = 16, -- spec §4
+	-- The gate's name sign (§4): a board hanging under the arch's top, its front read from the path (reading: 9 × 2).
+	nameSign = { position = Vector3.new(0, 11.6, BASE_DEPTH / 2 - 0.6), size = Vector3.new(9, 2, 0.3) } :: Box,
+	-- Reading: the gate's posts and fence run along the plinth's edges 0.6 inside them.
+	fenceInset = 0.6,
+	-- Reading: the spec's [spawn] faces the gate (§4) 42 studs behind it (§2: spawn -> duel stage 116 st, gate -> stage
+	-- 74 st), so local z -16, facing +Z.
+	spawn = CFrame.new(0, 0, BASE_DEPTH / 2 - 42) * CFrame.Angles(0, math.pi, 0),
+	-- Reading: the back wall's statue (§4: the squishy in capsule 1) stands on a plinth (top 1.2) in front of the back
+	-- wall, facing the gate; it is this tall (max(height, 0.8 × width), like the hub statue).
+	statue = CFrame.new(0, 1.2, -21.5) * CFrame.Angles(0, math.pi, 0),
+	statueHeight = 8,
+	-- Spec §8: plot i's colour (full: rim, fence caps, gate; light: the plinth floor); an open plot is grey (§4).
+	colors = baseColors,
+	openColors = { full = "BaseOpen", light = "BaseOpenLight" } :: BaseColors,
+	models = baseModels, -- plot i's Model under SD_Lobby.Bases (tag SD_Base, attribute Plot)
+	frames = baseFrames, -- plot i's frame (plotFrame(i))
+}
+
+-- Every static SurfaceGui sign: the design's plates (D6, D10), the game's live boards (D11), the bases' name signs.
 local Signs: { Sign } = {
 	{
 		-- The spawn logo on the medallion (lobby.js:149-155): "Squishy" over "Duels" in a dashed ring, text top north.
@@ -920,12 +995,12 @@ local Signs: { Sign } = {
 		textUp = NORTH,
 		logo = true,
 		lines = {
-			-- 150 / 170 px of the 1024-px canvas on 25.6 studs (lobby.js:153).
+			-- 150 / 170 px of the 1024-px canvas (lobby.js:153), on the 11.2-stud plate.
 			{
 				name = "Top",
 				textKey = "world.logoTop",
 				live = false,
-				letterHeight = 3.75,
+				letterHeight = 150 / 1024 * 11.2,
 				font = "heading",
 				color = "LobbyInk",
 			},
@@ -933,33 +1008,35 @@ local Signs: { Sign } = {
 				name = "Bottom",
 				textKey = "world.logoBottom",
 				live = false,
-				letterHeight = 4.25,
+				letterHeight = 170 / 1024 * 11.2,
 				font = "heading",
 				color = "LobbyStrawberry",
 			},
 		},
 	},
-	plateSign("gateBadge", DuelGate.model, groupCF("duel", 0, 24, -4.35), 8.8, 3, "world.gateBadge", PLATE_TEXT), -- design: lobby.js:184
+	-- design: lobby.js:184 ("DUELS" on the gate's badge); reading: on the tower deck's south face.
+	plateSign("gateBadge", "DuelTower", groupCF("duel", 0, 36.75, 15.56), 10, 2.8, "world.gateBadge", PLATE_TEXT),
+	-- design: lobby.js:196 (the team plates); reading: lying on the stage beside each team's pads.
 	plateSign(
 		"teamMint",
 		DuelGate.model,
-		groupCF("duel", -6.5, 1.65, 17.1),
+		floorPlateFrame(at("duel", -16.5, 0.85, 0), NORTH),
 		4.6,
 		1.5,
 		"world.teamMint",
 		{ background = "LobbyMint", round = 0.24, color = "White" }
-	), -- design: lobby.js:196
+	),
 	plateSign(
 		"teamStrawberry",
 		DuelGate.model,
-		groupCF("duel", 6.5, 1.65, 17.1),
+		floorPlateFrame(at("duel", 16.5, 0.85, 0), NORTH),
 		6.4,
 		1.5,
 		"world.teamStrawberry",
 		{ background = "LobbyStrawberry", round = 0.24, color = "White" }
-	), -- design: lobby.js:196
+	),
 	{
-		-- NOT IN DESIGN (D11): the live queue board on the valance under the badge.
+		-- NOT IN DESIGN (D11): the live queue board under the crossbar between the south pillars.
 		id = "queueBoard",
 		owner = DuelGate.model,
 		part = "statusBoard",
@@ -976,17 +1053,17 @@ local Signs: { Sign } = {
 	},
 	{
 		-- The mystery box's "?" (lobby.js:216: 3.4 × 3.4, the box group's (0, 4.4, 5.06), 300 px of 512, round .5),
-		-- carried by a plate part inside the breathing "GiftBox" model.
+		-- carried by a plate part inside the breathing "GiftBox" model; scaled with the box.
 		id = "mysteryBox",
 		owner = GiftBoxCounter.model,
 		part = "mysteryPlate",
-		position = plateCF(GiftBoxCounter.mysteryBox * CFrame.new(0, 4.4, 5.06)).Position,
-		size = Vector3.new(3.4, 3.4, 0.05),
+		position = plateCF(GiftBoxCounter.mysteryBox * CFrame.new(0, 4.4 * 0.8, 5.06 * 0.8)).Position,
+		size = Vector3.new(3.4 * 0.8, 3.4 * 0.8, 0.05),
 		facing = frontOf("box"),
 		face = "Front",
-		cframe = plateCF(GiftBoxCounter.mysteryBox * CFrame.new(0, 4.4, 5.06)),
+		cframe = plateCF(GiftBoxCounter.mysteryBox * CFrame.new(0, 4.4 * 0.8, 5.06 * 0.8)),
 		plate = { background = "LobbyPlate", border = "LobbyInk", round = 0.5, color = "LobbyStrawberry" },
-		lines = { line("Text", "world.mysteryBox", 300 / 512 * 3.4, "heading") },
+		lines = { line("Text", "world.mysteryBox", 300 / 512 * 3.4 * 0.8, "heading") },
 	},
 	{
 		-- The odds board (lobby.js:221-228): its cream panel carries the game's odds title and live lines (D10, D11);
@@ -996,7 +1073,7 @@ local Signs: { Sign } = {
 		part = "oddsBoard",
 		position = GiftBoxCounter.oddsBoard.position,
 		size = GiftBoxCounter.oddsBoard.size,
-		facing = frontOf("box", 0.55),
+		facing = frontOf("box", 0.5),
 		face = "Front",
 		align = "top",
 		plate = PLATE_TEXT,
@@ -1090,45 +1167,27 @@ local Signs: { Sign } = {
 		"world.practiceNoCoins",
 		{ color = "White" }
 	),
+	-- Spec §2: "SQUISH SQUARE" painted on the ground in a ring at r 26-36; reading: two plates on the north and south
+	-- paths at r 31, read from the stage.
+	plateSign(
+		"squishSquareNorth",
+		"Hub",
+		floorPlateFrame(compass(0) * 31 + Vector3.new(0, 0.08, 0), compass(0)),
+		18,
+		3,
+		"world.squishSquare",
+		PLATE_TEXT
+	),
+	plateSign(
+		"squishSquareSouth",
+		"Hub",
+		floorPlateFrame(compass(180) * 31 + Vector3.new(0, 0.08, 0), compass(180)),
+		18,
+		3,
+		"world.squishSquare",
+		PLATE_TEXT
+	),
 }
-
--- The wayfinding arrows' names on both faces of each board (lobby.js:165: 4.6 × 1.15 at the arm's (2.9, 0, ±0.33),
--- the back one turned π, no background, ink).
-local ARROW_NAMES: { [string]: string } = {
-	duel = "Duel",
-	shop = "Shop",
-	box = "Boxes",
-	squeeze = "Squeeze",
-	grip = "Grip",
-	practice = "Range",
-}
-for _, arrow in Spawn.arrows do
-	local name = "arrow" .. ARROW_NAMES[arrow.key]
-	table.insert(
-		Signs,
-		plateSign(
-			name .. "Front",
-			Spawn.model,
-			arrow.frame * CFrame.new(2.9, 0, 0.33),
-			4.6,
-			1.15,
-			arrow.textKey,
-			PLATE_TEXT
-		)
-	)
-	table.insert(
-		Signs,
-		plateSign(
-			name .. "Back",
-			Spawn.model,
-			arrow.frame * CFrame.new(2.9, 0, -0.33) * CFrame.Angles(0, math.pi, 0),
-			4.6,
-			1.15,
-			arrow.textKey,
-			PLATE_TEXT
-		)
-	)
-end
 
 -- The daily calendar's day numbers (lobby.js:322-326): 7 tiles on an arc of radius 10 around (0, 2), each number
 -- 0.32 in front of its tile, 1.2 × 1.2, no background.
@@ -1194,52 +1253,61 @@ for _, key in GIANT_PAD_KEYS do
 	})
 end
 
+-- The bases' name signs (spec §4): one live line, the owner's display name (BaseService) or base.openPlot as built.
+for index = 1, BASE_COUNT do
+	local frame = Bases.frames[index]
+	local cf = frame * CFrame.new(Bases.nameSign.position) * CFrame.Angles(0, math.pi, 0) -- its Front reads toward the hub
+	table.insert(Signs, {
+		id = "baseSign" .. index,
+		owner = Bases.models[index],
+		part = "nameSign",
+		position = cf.Position,
+		size = Bases.nameSign.size,
+		facing = cf.LookVector,
+		face = "Front",
+		cframe = cf,
+		plate = PLATE_BOXED,
+		lines = { liveLine("Owner", "base.openPlot", 1.1) },
+	})
+end
+
 -- Keep-clear volumes (§7.7 props rules 1 and 5; §17.6): the generator reports collidable parts inside them. Station
--- volumes cover the floor in front of each stand (its path's last 8 studs) and never contain its body; mat and pad
--- volumes start above the standing surface; station volumes never overlap each other. Aisles follow the paths, as wide
--- as their curbs. Prompt volumes add the 5-stud radius around every prompt.
+-- volumes cover the floor in front of each stand (its approach) and never contain its body; mat, pad and stage volumes
+-- start above the standing surface; station volumes never overlap each other. The aisles are the 10 paths (8 wide),
+-- from the stage edge to the gates: nothing collidable stands on them (the generator fails the build otherwise).
+-- Prompt volumes add the 5-stud radius around every prompt.
 local KeepClear: { KeepClearVolume } = {
-	keepClearAt("spawn", "station", Vector3.zero, 16, 16), -- reading: the spawn area on the medallion
+	-- reading: the spawn area on the medallion, above its top
+	keepClearAt("spawn", "station", Vector3.zero, 12, 12, nil, Spawn.top + KEEP_CLEAR_LIFT),
 }
 for _, path in Paths do
 	local delta = path.to - path.from
-	local length = delta.Magnitude - (if path.id == "practice" then PRACTICE_AISLE_TRIM else 0)
-	local yaw = -math.atan2(delta.Z, delta.X) -- design: lobby.js:134 (a path box's yaw)
 	table.insert(
 		KeepClear,
 		keepClearAt(
 			"path_" .. path.id,
 			"aisle",
-			path.from + delta.Unit * (length / 2),
-			length,
-			path.width + Promenade.curbExtra,
-			yaw
+			(path.from + path.to) / 2,
+			delta.Magnitude,
+			path.width,
+			-math.atan2(delta.Z, delta.X) -- a path box's yaw (lobby.js:134)
 		)
 	)
 end
--- A stand's volume: the last APPROACH_DEPTH studs of its path and APPROACH_OVERRUN past its end (the approach point).
-local function approachVolume(name: string, pathId: string): KeepClearVolume
-	local finish = pathEnds[pathId]
-	local direction = Vector3.new(finish.X, 0, finish.Z).Unit
-	local yaw = -math.atan2(direction.Z, direction.X)
-	local depth = APPROACH_DEPTH + APPROACH_OVERRUN
-	return keepClearAt(
-		name,
-		"station",
-		finish - direction * (APPROACH_DEPTH - APPROACH_OVERRUN) / 2,
-		depth,
-		APPROACH_WIDTH,
-		yaw
-	)
+-- A stand's volume: from APPROACH_GAP in front of its front edge (station-local z `front`) APPROACH_DEPTH outward.
+local function approachVolume(name: string, id: string, front: number, minY: number?): KeepClearVolume
+	local depth = APPROACH_DEPTH + APPROACH_GAP
+	local center = at(id, 0, 0, front + APPROACH_GAP + depth / 2)
+	return keepClearAt(name, "station", center, APPROACH_WIDTH, depth, StationFrames[id].yaw, minY)
 end
-table.insert(KeepClear, approachVolume("duelGate", "duel"))
-table.insert(KeepClear, approachVolume("giftBoxCounter", "box"))
-table.insert(KeepClear, approachVolume("shopCounter", "shop"))
-table.insert(KeepClear, approachVolume("collection", "collection"))
-table.insert(KeepClear, approachVolume("questBoard", "quests"))
-table.insert(KeepClear, approachVolume("dailyStand", "daily"))
--- The practice throw box, above the range floor and the firing line paint.
-table.insert(KeepClear, keepClearAt("practiceRange", "station", Vector3.new(75, 0, 62), 8, 38, nil, 0.7))
+table.insert(KeepClear, approachVolume("duelGate", "duel", 17.5, DuelGate.stageTop + KEEP_CLEAR_LIFT)) -- the podium's front
+table.insert(KeepClear, approachVolume("giftBoxCounter", "box", 10))
+table.insert(KeepClear, approachVolume("shopCounter", "shop", 6))
+table.insert(KeepClear, approachVolume("collection", "collection", 3))
+table.insert(KeepClear, approachVolume("questBoard", "quests", 5.5))
+table.insert(KeepClear, approachVolume("dailyStand", "daily", 7.6))
+-- The practice throw box, above the lane floor and the firing line paint.
+table.insert(KeepClear, keepClearAt("practiceRange", "station", Vector3.new(48, 0, 0), 8, 20, nil, 0.7))
 for _, mat in mats do
 	table.insert(
 		KeepClear,
@@ -1278,9 +1346,8 @@ for _, pedestal in pedestals do
 	promptKeepClear(string.format("prompt_pedestal%d", pedestal.slot), pedestal.prompt.position)
 end
 
--- Audio zones (§7.7): highest priority wins. The lobby zone is the whole hub, the squeeze zone the design's squeeze
--- circle (lobby.js:338: Ø46), the practice zone the range floor with its throw box (X 71..116, Z 43..81; §18.8: it
--- covers the throw box).
+-- Audio zones (§7.7): highest priority wins. The lobby zone is the whole island, the squeeze zone the squeeze floor
+-- (Ø40), the practice zone the lane with its throw box (X 44..93; §18.8: it covers the throw box).
 local function audioZone(
 	zoneId: string,
 	position: Vector3,
@@ -1303,13 +1370,13 @@ local function audioZone(
 end
 
 local AudioZones: { AudioZone } = {
-	audioZone("lobby", Vector3.new(0, 20, 0), Vector3.new(232, 40, 184), 1, "music.lobby", 1.0, "amb.lobby"),
-	audioZone("squeeze", Vector3.new(-58, 15, 52), Vector3.new(46, 30, 46), 2, "music.lobby", 0.8, "amb.lobby"),
-	audioZone("practice", Vector3.new(93.5, 15, 62), Vector3.new(45, 30, 38), 2, "music.lobby", 0.6, "amb.lobby"),
+	audioZone("lobby", Vector3.new(0, 18, 0), Vector3.new(360, 40, 360), 1, "music.lobby", 1.0, "amb.lobby"),
+	audioZone("squeeze", at("squeeze", 0, 15, 0), Vector3.new(40, 30, 40), 2, "music.lobby", 0.8, "amb.lobby"),
+	audioZone("practice", Vector3.new(68.5, 15, 0), Vector3.new(49, 30, 40), 2, "music.lobby", 0.6, "amb.lobby"),
 }
 
--- Activities and their walk points (routes, waypoints): the stands' approaches are their paths' ends; the squeeze
--- zone counts each mat; the Grip pods are separate activities because of the G-D exception (§17.0).
+-- Activities and their walk points (routes, waypoints): the stands' approaches; the squeeze zone counts each mat; the
+-- Grip pods are separate activities because of the G-D exception (§17.0).
 local matPoints: { Vector3 } = {}
 for _, mat in mats do
 	table.insert(matPoints, Vector3.new(mat.position.X, 0, mat.position.Z))
@@ -1348,40 +1415,6 @@ local Waypoints: { [string]: Vector3 } = {
 }
 for _, key in GIANT_PAD_KEYS do
 	Waypoints[key .. "Pad"] = GiantPads[key].center
-end
-
--- Private: Squish Island bases (lobby bases spec 2026-10-11 §2, §4; build plan Phase 3) -------------------------------
-
--- Data only until Phase 4 builds the island. Its centre is the hub centre above (the spawn medallion, the origin), so
--- Phase 4 builds the island where the lobby stands now. 10 plots in a ring, 36° apart: plot i at compass angle
--- (i - 1) × 36°, clockwise from north (-Z: plot 1 north of the hub, plot 6 south), 44 wide and 52 deep, from its gate
--- at radius 96 to its back at radius 148. A plot frame is a station frame (newFrame): its local +Z faces the hub, so
--- the gate is at local z +26 and the back at -26.
-local BASE_COUNT = 10
-local BASE_GATE_RADIUS = 96
-local BASE_BACK_RADIUS = 148
-local BASE_DEPTH = BASE_BACK_RADIUS - BASE_GATE_RADIUS -- 52
-
-local Bases = {
-	center = Vector3.zero,
-	gateRadius = BASE_GATE_RADIUS,
-	backRadius = BASE_BACK_RADIUS,
-	width = 44,
-	depth = BASE_DEPTH,
-	-- The 8 × 8 capsule pads at local x ±13, z -8 / +8: slot 1 back left, 2 back right, 3 front left, 4 front right.
-	capsulePads = { Vector3.new(-13, 0, -8), Vector3.new(13, 0, -8), Vector3.new(-13, 0, 8), Vector3.new(13, 0, 8) },
-	capsulePadSize = 8,
-	gate = Vector3.new(0, 0, BASE_DEPTH / 2), -- the Donut Arch gate, 16 wide
-	-- Reading: the spec's [spawn] faces the gate (§4) 42 studs behind it (§2: spawn -> duel stage 116 st, gate -> stage
-	-- 74 st), so local z -16, facing +Z.
-	spawn = CFrame.new(0, 0, BASE_DEPTH / 2 - 42) * CFrame.Angles(0, math.pi, 0),
-	frames = {} :: { CFrame }, -- plot i's frame (plotFrame(i))
-}
-for index = 1, BASE_COUNT do
-	local angle = math.rad((index - 1) * 360 / BASE_COUNT)
-	local radius = (BASE_GATE_RADIUS + BASE_BACK_RADIUS) / 2
-	local frame = newFrame(radius * math.sin(angle), -radius * math.cos(angle))
-	Bases.frames[index] = CFrame.new(frame.position) * CFrame.Angles(0, frame.yaw, 0)
 end
 
 -- Private: arena template (§5.3, §7.8) -----------------------------------------------------------------------------
@@ -1599,10 +1632,10 @@ local Arena = {
 
 local WorldLayout = {
 	Lobby = Lobby,
-	StationFrames = StationFrames, -- the design's station frames (lobby.js:119-130); stationFrame(id) gives the CFrame
-	Paths = Paths, -- lobby.js:133-140, in station order
+	Island = Island, -- the island's ground: the hub, its curb and paving, grass, beach, shallow water (spec §2, §8)
+	StationFrames = StationFrames, -- the station frames (spec §3); stationFrame(id) gives the CFrame
+	Paths = Paths, -- the 10 paths, stage edge -> gate, plot order (spec §2)
 	Spawn = Spawn,
-	Promenade = Promenade,
 	QuestBoard = QuestBoard,
 	DailyStand = DailyStand,
 	SqueezeZone = SqueezeZone,
@@ -1622,17 +1655,22 @@ local WorldLayout = {
 	AudioZones = AudioZones,
 	Activities = Activities,
 	Waypoints = Waypoints,
-	Bases = Bases, -- the island's 10 plots (Phase 3 data; plotFrame / inPlot), built in Phase 4
+	Bases = Bases, -- the island's 10 plots (plotFrame / inPlot)
 	-- Straight-line routes at WalkSpeed 16 (= Config.Duel.Rules.Movement.WalkSpeed; real paths ≈ +10%).
-	-- User decision 2026-10-11: build the design's lobby (phase 3 spec D1). Its worst route, gift box <-> practice
-	-- entry, is 156 studs = 9.75 s, so the §7.5 limits (5 s, pods 7 s) become 10 s and 12 s.
+	-- User decision 2026-10-11 (phase 3 spec D1): 10 s between activities, 12 s for routes that involve a Grip pod.
 	Routes = {
 		walkSpeed = 16,
 		maxSeconds = 10, -- between any two activities (§7.5; D1)
 		podMaxSeconds = 12, -- G-D exception: routes that involve a Grip pod (D1)
 	},
 	Budgets = {
-		lobbyParts = 2500,
+		-- Spec §7 part budget, checked by the lobby generator with every plot's capsules at their worst case (4 open
+		-- capsules of the biggest look, the 4 biggest squishies in them and the biggest statue): the whole island, the
+		-- hub (everything but the bases, the garden, the beach and the sky), one base, and the garden + beach + sky.
+		islandParts = 5200,
+		hubParts = 2000,
+		baseParts = 220,
+		gardenParts = 1000,
 		lobbySurfaceGuis = 64, -- Verify fails above this (§17.6; D6: the design's plates)
 		lobbyDynamicLights = 8, -- none casting shadows
 		lobbyAmbientEmitters = 3,
@@ -1644,7 +1682,7 @@ local WorldLayout = {
 		SD_LobbySpawn = 1,
 		SD_SqueezeStation = 9,
 		SD_PracticeZone = 1,
-		SD_PracticeTarget = 9,
+		SD_PracticeTarget = #targets, -- 4: 3 dummies and the moving target (spec §3)
 		SD_QueuePodium = 1,
 		SD_QueueBoard = 1,
 		SD_BoxStand = 1,
@@ -1662,6 +1700,8 @@ local WorldLayout = {
 		SD_AudioZone = #AudioZones, -- lobby, squeeze, practice
 		-- Lobby background motion (§18.5.1 A8): the 4 lollipops, both gift boxes and the statue.
 		SD_Ambient = #Props.lollipops.positions + 3,
+		SD_Base = BASE_COUNT, -- one Model per plot (spec §4)
+		SD_BaseSpawn = BASE_COUNT, -- one SpawnLocation per plot
 	},
 	-- Tag and attribute names (§2.9, §17.10).
 	Tags = {
@@ -1692,8 +1732,9 @@ local WorldLayout = {
 		-- Reading (§18.5.1 A8 names the tag and attribute; §18.8 lists only the count): here so LobbyBuilder and
 		-- AmbientController share one spelling.
 		Ambient = "SD_Ambient",
-		-- Phase 4 builds one SpawnLocation per plot with this tag and the Plot attribute; BaseService spawns the plot's
-		-- owner there once it exists (none before: players spawn as today). Not in TagCounts until the island is built.
+		-- A plot's Model (attribute Plot): BaseService shows its owner's name, colour, capsules and statue on it.
+		Base = "SD_Base",
+		-- A plot's SpawnLocation (attribute Plot): BaseService spawns the plot's owner there.
 		BaseSpawn = "SD_BaseSpawn",
 	},
 	Attributes = {
@@ -1714,7 +1755,9 @@ local WorldLayout = {
 		AmbienceKey = "AmbienceKey",
 		MusicMul = "MusicMul",
 		AmbientKind = "SD_AmbientKind", -- reading (see Tags.Ambient): "spin" | "spinBob" | "breathe" (§18.5.1 A8)
-		Plot = "Plot", -- Tags.BaseSpawn: the plot index 1..10
+		Plot = "Plot", -- Tags.Base and Tags.BaseSpawn: the plot index 1..10
+		-- "full" | "light": a base part BaseService colours with its plot's colour (Bases.colors) or an open plot's grey.
+		BaseTint = "SD_BaseTint",
 	},
 	Arena = Arena,
 }
@@ -1772,8 +1815,8 @@ function WorldLayout.giantPadForStation(stationId: string): GiantPad?
 	return padByStation[stationId]
 end
 
--- The CFrame of a design station frame ("spawn", "duel", "box", ..., "kit"; lobby.js:112, 119-130), or nil: a design
--- point (x, y, z) of that station is stationFrame(id) * Vector3.new(x, y, z).
+-- The CFrame of a station frame ("spawn", "duel", "shop", ..., "fountain"; StationFrames), or nil: a station-local
+-- point (x, y, z) is stationFrame(id) * Vector3.new(x, y, z).
 function WorldLayout.stationFrame(id: string): CFrame?
 	if StationFrames[id] == nil then
 		return nil

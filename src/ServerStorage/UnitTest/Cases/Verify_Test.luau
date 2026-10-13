@@ -4,12 +4,15 @@
 --   shapes (DESIGN §1.7 step 4, §8.1 #2): SD_ShapeLibrary holds exactly one RoundedBox, any PartOperation (the
 --     IntersectOperation GeometryService:IntersectAsync returns), never a plain Part. An empty in-memory solid has no
 --     geometry, so only the class rule is asserted for it.
---   lobby (§7.6, §7.7, §17.6, §17.6.1): exact tag counts, 9 stations with unique ids and GripTier = WorldLayout,
---     practice targets (1 moving), slots, Grip gates built open, Grip signs with exactly one Live label (no
---     SD_TextKey) and one grip.pad.* Title, giant pads (one Collision station, top = WorldLayout collisionTop ± 0.01,
---     Body top ≥ 0.4 above it, Body/Face inert), every SD_TextKey in Strings, keep-clear volumes, all stand prompts
---     disabled inside Atomic models < 64 studs, budgets (FAIL above 2,500 parts or 64 SurfaceGuis: the design lobby's
---     plates, phase 3 D6), 14 collection pedestals (D4); the feel pass
+--   lobby (§7.6, §7.7, §17.6, §17.6.1; Squish Island, lobby bases spec 2026-10-11 §2-§4, §7): exact tag counts, 9
+--     stations with unique ids and GripTier = WorldLayout, 4 practice targets (1 moving), slots, Grip gates built
+--     open, Grip signs with exactly one Live label (no SD_TextKey) and one grip.pad.* Title, giant pads (one Collision
+--     station, top = WorldLayout collisionTop ± 0.01, Body top ≥ 0.4 above it, Body/Face inert), every SD_TextKey in
+--     Strings, keep-clear volumes, all stand prompts disabled inside Atomic models < 64 studs, budgets (FAIL above
+--     5,200 parts, the island's §7 total, or 64 SurfaceGuis: the design lobby's plates, phase 3 D6), 14 collection
+--     pedestals (D4); 10 plots (one SD_Base Model per Plot 1..10, each holding one SD_BaseSpawn SpawnLocation of its
+--     own, Neutral, Duration 0; SD_BaseTint only "full" or "light"); the §7 render rules (nothing but a SpawnLocation
+--     is touched, parts under 2 studs cast no shadow); the feel pass
 --     (§18.5.1 A8): exactly 7 SD_Ambient decor pieces, each with a known SD_AmbientKind and no part that collides, is
 --     queried or touched (the client turns or breathes them locally).
 --   arena (§5.3, §7.8): structure, Origin PrimaryPart, Geometry CanQuery (Barriers excepted), floor top Y 0 out to
@@ -17,7 +20,12 @@
 --     point-symmetric), open pad-to-pad lane, barriers (walls and ceiling in SD_Barrier, 76-wide dividers in
 --     SD_Divider: Roblox ignores CanQuery false on colliding parts, so the groups keep projectile rays off them),
 --     zones, pads, inert Decor, empty Runtime, nothing forbidden, ≤ 400 parts.
---   templateLeftovers (§1.9 #4): a SpawnLocation or a floor-plane part outside the lobby root is reported.
+--   templateLeftovers (§1.9 #4): a SpawnLocation or a floor-plane part outside the lobby root is reported (the
+--     lobby footprint is Squish Square, ±70, since Phase 4).
+--   capsules (lobby bases spec §4, §5.1, §7; big-number progression spec §4): a Folder "Capsules" holding exactly
+--     Capsule_<look> for the 10 tier looks (SD_Look, SD_SeatY, a live "Level" label, ≤ 16 parts), the Lock (a live
+--     "Price" label, ≤ 12 parts), and Squishy_<id> / Statue_<id> for every Catalog squishy (≤ 12 parts each); every
+--     part anchored and never touched, parts under 2 studs cast no shadow. A fake Catalog is injected (deps.Catalog).
 --   design arenas (phase 4 spec 2026-10-11 §5.4, the "arena_*" targets): every arena rule above, plus SD_ArenaId and
 --     the root name of the target, low cover (SD_CoverKind "low") topping out at 3..5 where Candy Court allows none,
 --     cover width measured along each piece's own turn (a turned 8-stud wall passes, a 9-stud one fails), Decor up
@@ -145,6 +153,7 @@ local function newPart(parent: Instance?, name: string, size: Vector3, cframe: C
 	part.CanTouch = flags.touch == true
 	part.CanQuery = flags.query
 	part.Transparency = flags.transparency or 0
+	part.CastShadow = math.max(size.X, size.Y, size.Z) >= 2 -- lobby bases spec §7: parts under 2 studs cast none
 	part.Parent = parent
 	return part
 end
@@ -228,16 +237,16 @@ local function lobbyTree(Generated: any): Model
 
 	local practice = newModel(root, "Practice", false)
 	newPart(practice, "ThrowBox", Vector3.new(8, 12, 34), CFrame.new(-20, 6, -37), GHOST):AddTag("SD_PracticeZone")
-	for index = 1, 9 do
+	for index = 1, 4 do -- lobby bases spec §3: 3 dummies and the moving target
 		local x = -36 - 8 * ((index - 1) % 3)
 		local z = -47 + 10 * math.floor((index - 1) / 3)
 		local target = newPart(practice, "Target_" .. index, Vector3.new(2, 4, 1), CFrame.new(x, 2, z), SOLID)
 		target:AddTag("SD_PracticeTarget")
 		target:SetAttribute("TargetId", "t" .. index)
 		target:SetAttribute("Distance", 12)
-		target:SetAttribute("Moving", index == 5)
-		target:SetAttribute("RailLength", if index == 5 then 8 else 0)
-		target:SetAttribute("Period", if index == 5 then 4 else 0)
+		target:SetAttribute("Moving", index == 2)
+		target:SetAttribute("RailLength", if index == 2 then 8 else 0)
+		target:SetAttribute("Period", if index == 2 then 4 else 0)
 	end
 
 	local function stand(tag: string, x: number, z: number, prompt: boolean): Part
@@ -337,6 +346,31 @@ local function lobbyTree(Generated: any): Model
 		collision:SetAttribute("GripTier", pad.tier)
 		newPart(newModel(giant, "Body", false), "Base", Vector3.new(8, 1.5, 8), CFrame.new(pad.x, 0.75, pad.z), INERT)
 		newPart(newFolder(giant, "Face"), "Eye", Vector3.new(1, 1, 0.2), CFrame.new(pad.x + 4, 1, pad.z), INERT)
+	end
+
+	-- Lobby bases spec §4: 10 plots, each a Model with its Plot holding its SpawnLocation and a tinted floor.
+	local bases = newFolder(root, "Bases")
+	for plot = 1, 10 do
+		local base = newModel(bases, string.format("Base_%02d", plot), false)
+		base:AddTag("SD_Base")
+		base:SetAttribute("Plot", plot)
+		local x = -45 + 10 * plot
+		newPart(base, "Floor", Vector3.new(8, 1, 8), CFrame.new(x, -0.5, 90), SOLID):SetAttribute(
+			"SD_BaseTint",
+			"light"
+		)
+		local spawn = Instance.new("SpawnLocation")
+		spawn.Name = "Spawn"
+		spawn.Size = Vector3.new(4, 0.2, 4)
+		spawn.CFrame = CFrame.new(x, -0.1, 90)
+		spawn.Anchored = true
+		spawn.Transparency = 1
+		spawn.CastShadow = false
+		spawn.Duration = 0
+		spawn.Neutral = true
+		spawn:AddTag("SD_BaseSpawn")
+		spawn:SetAttribute("Plot", plot)
+		spawn.Parent = base
 	end
 
 	-- §18.5.1 A8: 4 spinning lollipops, the daily gift box (spinBob), the counter gift box and the statue (breathe).
@@ -708,7 +742,7 @@ return function(t: Context)
 		expect.falsy(hasProblem(problems, "keep-clear"))
 	end)
 
-	t.test("lobby: more than 64 SurfaceGuis or 2,500 parts fail the budget", function()
+	t.test("lobby: more than 64 SurfaceGuis fail the budget", function()
 		local guis = lobbyProblems(function(root)
 			local holder = newPart(root, "GuiHolder", Vector3.one, CFrame.new(0, -50, 0), INERT)
 			for _ = 1, 61 do -- the fixture has 4
@@ -725,25 +759,30 @@ return function(t: Context)
 		expect.falsy(hasProblem(fits, "SurfaceGuis, budget"))
 	end)
 
-	-- Phase 3: the design hub is 232 × 184 (lobby.js:101); a template floor is a leftover only across all of it.
-	t.test("templateLeftovers: the lobby footprint is the design hub's ±116 × ±92", function()
-		local place = Instance.new("Folder")
-		local lobby = newModel(place, "SD_Lobby", false)
-		newPart(place, "Plate", Vector3.new(200, 2, 160), CFrame.new(0, -1, 0), SOLID) -- the old ±64 × ±56 only
-		expect.deepEqual(Verify.templateLeftovers(place, lobby), {})
-		newPart(place, "Baseplate", Vector3.new(240, 2, 190), CFrame.new(0, -1, 0), SOLID)
-		local lines = Verify.templateLeftovers(place, lobby)
-		place:Destroy()
-		expect.equal(#lines, 1)
-		expectProblem(lines, "Baseplate has its top at Y 0.00")
-		local parts = lobbyProblems(function(root)
-			local filler = newFolder(root, "Filler")
-			for index = 1, 2500 do
-				newPart(filler, "P" .. index, Vector3.one, CFrame.new(0, -50, 0), INERT)
-			end
-		end)
-		expectProblem(parts, "parts, budget 2500")
-	end)
+	-- Phase 4: the floor plane Y 0 is Squish Square's (Ø140; the plots' floors too); a template floor is a leftover
+	-- only across all of the square. The whole island's §7 budget is 5,200 parts.
+	t.test(
+		"templateLeftovers: the lobby footprint is Squish Square's ±70; the island fails above 5,200 parts",
+		function()
+			local place = Instance.new("Folder")
+			local lobby = newModel(place, "SD_Lobby", false)
+			newPart(place, "Plate", Vector3.new(130, 2, 130), CFrame.new(0, -1, 0), SOLID) -- inside the square only
+			expect.deepEqual(Verify.templateLeftovers(place, lobby), {})
+			newPart(place, "Baseplate", Vector3.new(150, 2, 150), CFrame.new(0, -1, 0), SOLID)
+			local lines = Verify.templateLeftovers(place, lobby)
+			place:Destroy()
+			expect.equal(#lines, 1)
+			expectProblem(lines, "Baseplate has its top at Y 0.00")
+			local parts = lobbyProblems(function(root)
+				local filler = newFolder(root, "Filler")
+				for index = 1, 5200 do
+					local part = newPart(filler, "P" .. index, Vector3.one, CFrame.new(0, -50, 0), INERT)
+					part.CastShadow = false
+				end
+			end)
+			expectProblem(parts, "parts, budget 5200")
+		end
+	)
 
 	t.test("lobby: stand prompts must be disabled and inside an Atomic station model", function()
 		local enabled = lobbyProblems(function(root)
@@ -780,6 +819,194 @@ return function(t: Context)
 			(decor:FindFirstChild("Lollipop1") :: Instance):SetAttribute("SD_AmbientKind", "wobble")
 		end)
 		expectProblem(unknown, "has SD_AmbientKind wobble")
+	end)
+
+	t.test("lobby: practice targets are exactly 4 (lobby bases spec §3: 3 dummies and the moving target)", function()
+		expectProblem(
+			lobbyProblems(function(root)
+				findTagged(root, "SD_PracticeTarget", "TargetId", "t4"):Destroy()
+			end),
+			"tag SD_PracticeTarget: expected 4, found 3"
+		)
+	end)
+
+	t.test("lobby: every plot is one SD_Base Model with a unique Plot, holding one SD_BaseSpawn of its own", function()
+		expectProblem(
+			lobbyProblems(function(root)
+				findTagged(root, "SD_Base", "Plot", 2):SetAttribute("Plot", 1)
+			end),
+			"SD_Base: Plot 1 is used twice"
+		)
+		expectProblem(
+			lobbyProblems(function(root)
+				findTagged(root, "SD_Base", "Plot", 3):SetAttribute("Plot", 11)
+			end),
+			"has Plot 11, expected 1..10"
+		)
+		local moved = lobbyProblems(function(root)
+			local spawn = findTagged(root, "SD_BaseSpawn", "Plot", 4)
+			spawn.Parent = findTagged(root, "SD_Base", "Plot", 5)
+		end)
+		expectProblem(moved, "Base_04 holds 0 SD_BaseSpawn of Plot 4, expected 1")
+		expectProblem(moved, "Base_05 holds 1 SD_BaseSpawn of Plot 4")
+		expectProblem(
+			lobbyProblems(function(root)
+				(findTagged(root, "SD_BaseSpawn", "Plot", 6) :: SpawnLocation).Neutral = false
+			end),
+			"Neutral"
+		)
+		expectProblem(
+			lobbyProblems(function(root)
+				local base = findTagged(root, "SD_Base", "Plot", 7);
+				(base:FindFirstChild("Floor") :: Instance):SetAttribute("SD_BaseTint", "dark")
+			end),
+			"SD_BaseTint dark, expected full or light"
+		)
+		expectProblem(
+			lobbyProblems(function(root)
+				findTagged(root, "SD_Base", "Plot", 8):RemoveTag("SD_Base")
+			end),
+			"tag SD_Base: expected 10, found 9"
+		)
+	end)
+
+	t.test(
+		"lobby: render rules (§7): only a SpawnLocation is touched; a part under 2 studs casts no shadow",
+		function()
+			local touched = lobbyProblems(function(root)
+				(root:FindFirstChild("SpawnLogo") :: Part).CanTouch = true
+			end)
+			expectProblem(touched, "SD_Lobby.SpawnLogo is touched")
+			local shadow = lobbyProblems(function(root)
+				local decor = root:FindFirstChild("Decor") :: Instance
+				local statue = decor:FindFirstChild("Statue") :: Instance
+				newPart(statue, "Pebble", Vector3.new(1, 1, 1), CFrame.new(-55, 1, 6), INERT).CastShadow = true
+			end)
+			expectProblem(shadow, "Pebble casts a shadow")
+			-- The spawns keep their touch (a SpawnLocation needs it).
+			expect.falsy(hasProblem(lobbyProblems(), "is touched"))
+		end
+	)
+
+	-- capsules (lobby bases spec §4, §5.1, §7; big-number progression spec §4) ---------------------------------
+
+	local CAPSULE_LOOKS =
+		{ "foam", "jelly", "marshmallow", "gummy", "taffy", "caramel", "bubblegum", "rainbow", "crystal", "royal" }
+	local FAKE_CATALOG = {
+		list = function(): { any }
+			return { { id = "kitty_bread" }, { id = "toast" } }
+		end,
+	}
+
+	-- A model `name` of `count` small parts (no shadow) with an optional live label `label` on the first one.
+	local function templateModel(root: Instance, name: string, count: number, label: string?): Model
+		local model = newModel(root, name, false)
+		for index = 1, count do
+			local part = newPart(model, "P" .. index, Vector3.new(1, 1, 1), CFrame.new(0, index, 0), INERT)
+			part.CastShadow = false
+			if index == 1 and label then
+				local gui = Instance.new("SurfaceGui")
+				gui.Parent = part
+				newLabel(gui, label)
+			end
+		end
+		return model
+	end
+
+	-- A Capsules tree that meets every capsules rule.
+	local function capsulesTree(): Folder
+		local root = newFolder(nil, "Capsules")
+		for _, look in CAPSULE_LOOKS do
+			local capsule = templateModel(root, "Capsule_" .. look, 13, "Level")
+			capsule:SetAttribute("SD_Look", look)
+			capsule:SetAttribute("SD_SeatY", 1.5)
+		end
+		templateModel(root, "Lock", 8, "Price")
+		for _, def in FAKE_CATALOG.list() do
+			templateModel(root, "Squishy_" .. def.id, 12)
+			templateModel(root, "Statue_" .. def.id, 12)
+		end
+		Generated.mark(root, "capsules", 1)
+		return root
+	end
+
+	local function capsulesProblems(mutate: ((root: Folder) -> ())?): { string }
+		local root = capsulesTree()
+		if mutate then
+			mutate(root)
+		end
+		local problems = Verify.verify("capsules", root, { Catalog = FAKE_CATALOG } :: any)
+		root:Destroy()
+		return problems
+	end
+
+	t.test("capsules: the baseline templates pass", function()
+		expectClean(capsulesProblems())
+	end)
+
+	t.test("capsules: every tier look, the lock and each squishy's capsule and statue model must be there", function()
+		local problems = capsulesProblems(function(root)
+			(root:FindFirstChild("Capsule_royal") :: Instance):Destroy();
+			(root:FindFirstChild("Statue_toast") :: Instance):Destroy();
+			(root:FindFirstChild("Lock") :: Instance):Destroy()
+			templateModel(root, "Capsule_mint", 3, "Level")
+		end)
+		expectProblem(problems, "Capsule_royal is missing")
+		expectProblem(problems, "Statue_toast is missing")
+		expectProblem(problems, "Lock is missing")
+		expectProblem(problems, "unexpected template Capsule_mint")
+	end)
+
+	t.test(
+		"capsules: part caps (capsule 16, lock 12, squishy and statue 12) and the live Level / Price labels",
+		function()
+			local big = capsulesProblems(function(root)
+				local capsule = root:FindFirstChild("Capsule_foam") :: Instance
+				for index = 1, 4 do
+					newPart(capsule, "Extra" .. index, Vector3.new(1, 1, 1), CFrame.identity, INERT).CastShadow = false
+				end
+				local squishy = root:FindFirstChild("Squishy_toast") :: Instance
+				newPart(squishy, "Extra", Vector3.new(1, 1, 1), CFrame.identity, INERT).CastShadow = false
+			end)
+			expectProblem(big, "Capsule_foam has 17 parts, at most 16")
+			expectProblem(big, "Squishy_toast has 13 parts, at most 12")
+			local unlabelled = capsulesProblems(function(root)
+				local capsule = root:FindFirstChild("Capsule_jelly") :: Instance
+				(capsule:FindFirstChild("Level", true) :: Instance):Destroy()
+				local lock = root:FindFirstChild("Lock") :: Instance
+				(lock:FindFirstChild("Price", true) :: Instance):SetAttribute("SD_TextKey", "base.unlockPrice");
+				(root:FindFirstChild("Capsule_gummy") :: Instance):SetAttribute("SD_Look", "jelly")
+			end)
+			expectProblem(unlabelled, "Capsule_jelly has no live Level label")
+			expectProblem(unlabelled, "Lock has no live Price label")
+			expectProblem(unlabelled, "Capsule_gummy has SD_Look jelly")
+		end
+	)
+
+	t.test("capsules: every part anchored, never touched, no shadow under 2 studs; no scripts", function()
+		local problems = capsulesProblems(function(root)
+			local capsule = root:FindFirstChild("Capsule_taffy") :: Instance
+			(capsule:FindFirstChild("P2") :: Part).Anchored = false
+			(capsule:FindFirstChild("P3") :: Part).CanTouch = true
+			(capsule:FindFirstChild("P4") :: Part).CastShadow = true
+			Instance.new("Script").Parent = capsule
+		end)
+		expectProblem(problems, "Capsule_taffy.P2 is not anchored")
+		expectProblem(problems, "Capsule_taffy.P3 is touched")
+		expectProblem(problems, "Capsule_taffy.P4 casts a shadow")
+		expectProblem(problems, "generated trees hold no scripts")
+	end)
+
+	t.test("capsules: the root is a Folder named Capsules, marked capsules", function()
+		local root = capsulesTree()
+		root.Name = "Templates"
+		local problems = Verify.verify("capsules", root, { Catalog = FAKE_CATALOG } :: any)
+		root:Destroy()
+		expectProblem(problems, 'root is named "Templates", expected "Capsules"')
+		local unmarked = newFolder(nil, "Capsules")
+		local none = Verify.verify("capsules", unmarked, { Catalog = FAKE_CATALOG } :: any)
+		unmarked:Destroy()
+		expectProblem(none, "is not marked")
 	end)
 
 	-- arena -----------------------------------------------------------------------------------------------------

@@ -11,14 +11,14 @@
 -- * Hitbox = the standard player capsule (Config.Combat.Hitbox, §5.5) on a virtual root ROOT_HEIGHT above the floor
 --   point, so it spans floor+0 .. floor+6.1 like a standing R15 player.
 -- * Practice context for ThrowRules (§5.6 #3, #5, #6): inThrowBox (the SD_PracticeZone box) and inCone (flat aim
---   within Config.Combat.Throw.practiceConeDeg of the range forward, WorldLayout's throwDirection: +X since phase 3,
---   the design lobby's range, D3).
+--   within Config.Combat.Throw.practiceConeDeg of the range forward, WorldLayout's throwDirection: +X, the island's
+--   range runs east, lobby bases spec §3 and D3).
 
 local Config = require(script.Parent.Parent.Config)
 local WorldLayout = require(script.Parent.Parent.World.WorldLayout)
 
 export type TargetDef = {
-	id: string, -- TargetId ("target_01".."target_09")
+	id: string, -- TargetId ("target_01".."target_04")
 	distance: number, -- studs from the firing line
 	position: Vector3, -- floor point (rail centre for the moving target)
 	moving: boolean,

@@ -752,12 +752,7 @@ local Strings = {
 		-- quest.title, squishy.kittyBread.name and grip.pad.*.
 		logoTop = "Squishy", -- lobby.js:153
 		logoBottom = "Duels", -- lobby.js:153
-		arrowDuel = "DUEL", -- lobby.js:159 (the wayfinding post)
-		arrowShop = "SHOP",
-		arrowBoxes = "BOXES",
-		arrowSqueeze = "SQUEEZE",
-		arrowGrip = "GRIP",
-		arrowRange = "RANGE",
+		squishSquare = "SQUISH SQUARE", -- lobby bases spec §2: the hub's name painted on the ground
 		gateBadge = "DUELS", -- lobby.js:184
 		teamMint = "MINT", -- lobby.js:196
 		teamStrawberry = "STRAWBERRY", -- lobby.js:196
@@ -779,6 +774,15 @@ local Strings = {
 		arenaPlay = "PLAY",
 		arenaToyworks = "TOYWORKS",
 		arenaPrizes = "PRIZES",
+	},
+
+	-- The island's bases (lobby bases spec 2026-10-11 §4, §9; build plan Phase 4): the gate's name sign (BaseService
+	-- writes the owner's display name, or openPlot) and the capsule plates. {level} = a capsule level 1..100;
+	-- {coins} = a slot's unlock price, already formatted (Util/Format.coins).
+	base = {
+		openPlot = "Open plot",
+		capsuleLevel = "Lv {level}",
+		unlockPrice = "Unlock · {coins}",
 	},
 
 	-- Collection display (§7.6, §7.7).

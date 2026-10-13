@@ -241,6 +241,62 @@ local Palette = {
 	LobbyMallowCenter = Color3.fromHex("#F0C890"), -- mallow_toast_center, lobby.js:365
 	LobbyRankGrey = Color3.fromHex("#9AA4AE"), -- the rank tower's first tier, lobby.js:370
 
+	-- Squish Island (lobby bases spec 2026-10-11 §8, build plan Phase 4): world only (SDTools LobbyBuilder, BaseService).
+	IslandGrass = Color3.fromHex("#5CCB4E"), -- §8 grass
+	IslandGrassEdge = Color3.fromHex("#3E9E3A"), -- §8 grass edge
+	IslandSand = Color3.fromHex("#F5DC9B"), -- §8 sand
+	IslandSea = Color3.fromHex("#2BA7E3"), -- §8 sea
+	IslandShallow = Color3.fromHex("#6FD3F5"), -- §8 shallow water
+	HubTile = Color3.fromHex("#F6F7F9"), -- §8 hub tiles
+	HubTileB = Color3.fromHex("#E3E8EF"), -- §8 hub tiles (the paths)
+	HubWood = Color3.fromHex("#A8673A"), -- §8 wood
+	-- The 10 base colours, one per plot (§8, B1 -> B10), and their light shades (reading: 60% toward white) for the
+	-- plinth; an open plot is grey (§4).
+	BaseRed = Color3.fromHex("#E8343F"),
+	BaseRedLight = Color3.fromHex("#F6AEB2"),
+	BaseOrange = Color3.fromHex("#FF8A1F"),
+	BaseOrangeLight = Color3.fromHex("#FFD0A5"),
+	BaseYellow = Color3.fromHex("#FFC51F"),
+	BaseYellowLight = Color3.fromHex("#FFE8A5"),
+	BaseLime = Color3.fromHex("#9BE22B"),
+	BaseLimeLight = Color3.fromHex("#D7F3AA"),
+	BaseTeal = Color3.fromHex("#1FC7B6"),
+	BaseTealLight = Color3.fromHex("#A5E9E2"),
+	BaseSky = Color3.fromHex("#38B6FF"),
+	BaseSkyLight = Color3.fromHex("#AFE2FF"),
+	BaseBlue = Color3.fromHex("#2E7BF0"),
+	BaseBlueLight = Color3.fromHex("#ABCAF9"),
+	BaseNavy = Color3.fromHex("#2B3A8C"),
+	BaseNavyLight = Color3.fromHex("#AAB0D1"),
+	BasePurple = Color3.fromHex("#8E4FE0"),
+	BasePurpleLight = Color3.fromHex("#D2B9F3"),
+	BasePink = Color3.fromHex("#FF5FA2"),
+	BasePinkLight = Color3.fromHex("#FFBFDA"),
+	BaseOpen = Color3.fromHex("#A7ADB5"), -- reading: an open plot's rim and caps
+	BaseOpenLight = Color3.fromHex("#D9DDE2"), -- reading: an open plot's floor
+	-- The 10 capsule looks (progression spec 2026-10-12 §4; SDTools CapsuleBuilder's look table also uses lobby kit
+	-- tokens): Foam cream, Jelly glossy red, Marshmallow white with toasted trim, Gummy see-through green, Taffy pink and
+	-- white stripes, Caramel amber, Bubblegum bright pink, Rainbow stripes, Crystal icy see-through, Royal purple and
+	-- gold. Readings: the hexes (the spec names the looks only).
+	CapsuleFoam = Color3.fromHex("#FFF1DC"),
+	CapsuleFoamTrim = Color3.fromHex("#F7B8C8"),
+	CapsuleFoamGlass = Color3.fromHex("#FFF8EC"),
+	CapsuleGummy = Color3.fromHex("#3FBF4F"),
+	CapsuleGummyLight = Color3.fromHex("#A6F0A0"),
+	CapsuleGummyGlass = Color3.fromHex("#6EE07A"),
+	CapsuleTaffy = Color3.fromHex("#FF9EC4"),
+	CapsuleTaffyGlass = Color3.fromHex("#FFD6E6"),
+	CapsuleCaramel = Color3.fromHex("#D98A2B"),
+	CapsuleCaramelDark = Color3.fromHex("#8E5A1F"),
+	CapsuleCaramelGlass = Color3.fromHex("#F2B35E"),
+	CapsuleBubblegum = Color3.fromHex("#FF5FB4"),
+	CapsuleBubblegumLight = Color3.fromHex("#FFC2E2"),
+	CapsuleBubblegumGlass = Color3.fromHex("#FF8ACB"),
+	CapsuleRainbowGlass = Color3.fromHex("#E8F7FF"),
+	CapsuleCrystal = Color3.fromHex("#BFE9FF"),
+	CapsuleCrystalGlass = Color3.fromHex("#D8F4FF"),
+	CapsuleRoyalGlass = Color3.fromHex("#CDB8F0"),
+
 	-- The knead screen in Inspect (spec phase2-squeeze §1.16-§1.20; user decision 2026-10-11: the design's exact hex,
 	-- read by UI/Components/WaxMeter, UI/KneadOverlay and Anim/FlakePool). The paper and ink of the design's HUD, its coat
 	-- bar and state word, the vignette's warm stops (its outer stop is KneadInk) and the re-wax sparkle's cream.

@@ -7,6 +7,8 @@
 -- child: ellipsoids and wedges are not their box); two faces fight when they face the same way, lie less than
 -- MIN_GAP apart and overlap (separating axes in their plane), with a different colour or material. Faces facing down
 -- rest on something and are left out. SDTools Kit/Prims.LAYER (0.03) is the gap the builders keep.
+-- The capsule templates (build plan Phase 4) all sit on the origin, so each template is checked on its own (in a holder
+-- folder, so a squishy or statue model's SD_BlueprintId leaves it out like the lobby's toys).
 
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -212,6 +214,33 @@ return function(t: Context)
 
 	t.test("the lobby has no two faces of different colours in one plane", function()
 		expectNoFlicker(builders:FindFirstChild("LobbyBuilder"))
+	end)
+
+	t.test("each capsule template has no two faces of different colours in one plane", function()
+		local root = build(builders:FindFirstChild("CapsuleBuilder"))
+		local lines: { string } = {}
+		local checked = 0
+		for _, template in root:GetChildren() do
+			local holder = Instance.new("Folder")
+			holder.Name = "Capsules"
+			template.Parent = holder
+			for _, line in flickerPairs(holder) do
+				table.insert(lines, line)
+			end
+			holder:Destroy()
+			checked += 1
+		end
+		root:Destroy()
+		expect.truthy(checked >= 11) -- 10 looks and the lock, at least
+		if #lines > 0 then
+			error(
+				string.format(
+					"%d face pair(s) in one plane (flicker): %s",
+					#lines,
+					table.concat(lines, "; ", 1, math.min(#lines, 8))
+				)
+			)
+		end
 	end)
 
 	t.test("Candy Court has no two faces of different colours in one plane", function()
