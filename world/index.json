@@ -12,6 +12,12 @@
 		"container": "ReplicatedStorage"
 	},
 	{
+		"file": "ServerStorage/SD_MeshLibrary.rbxm",
+		"class": "Model",
+		"name": "SD_MeshLibrary",
+		"container": "ServerStorage"
+	},
+	{
 		"file": "ServerStorage/SD_Templates.rbxm",
 		"class": "Folder",
 		"name": "SD_Templates",
