@@ -112,7 +112,9 @@ return function(t: Context)
 
 	t.test("tones recolour in place; setIcon rebuilds; an unknown icon is blank", function()
 		local holder = Instance.new("Folder")
-		local icon = IconGlyph.new({ name = "Icon", icon = "settings", sizePx = 32, parent = holder })
+		-- UI FINAL R10: "settings" and "clock" now show the uploaded pictures; "upgrade" and "inspect" stay shape-drawn
+		-- (no design art, UI FINAL plan §3), so they keep testing the placeholder path.
+		local icon = IconGlyph.new({ name = "Icon", icon = "upgrade", sizePx = 32, parent = holder })
 		expect.equal(icon.root.Parent, holder)
 		local fill = icon.root:FindFirstChild("Fill") :: Frame
 		local outline = icon.root:FindFirstChild("Outline") :: Frame
@@ -123,9 +125,15 @@ return function(t: Context)
 		expect.equal(fill.BackgroundColor3, Theme.Colors.inkUI)
 		expect.falsy(outline.Visible)
 		expect.equal(icon.root:FindFirstChild("Fill"), fill) -- same instances
-		icon:setIcon("clock")
-		expect.equal(icon:icon(), "clock")
-		expect.equal(countNamed(icon.root, "Fill"), 1) -- the clock face
+		icon:setIcon("inspect")
+		expect.equal(icon:icon(), "inspect")
+		local silhouettes = 0
+		for _, p in IconGlyph.parts("inspect") do
+			if not p.detail then
+				silhouettes += 1
+			end
+		end
+		expect.equal(countNamed(icon.root, "Fill"), silhouettes)
 		expect.equal((icon.root:FindFirstChild("Fill") :: Frame).BackgroundColor3, Theme.Colors.inkUI) -- tone kept
 		icon:setIcon("nope")
 		expect.equal(#icon.root:GetChildren(), 0)

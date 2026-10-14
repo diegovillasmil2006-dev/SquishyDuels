@@ -779,6 +779,53 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.fx.glow", "image", IMAGE_NOTE),
 }
 
+-- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL
+-- files (R0) and uploaded by the user to the DIJAY Studios group on 2026-10-14 (Asset Manager import of "Squishy Duels
+-- UI uploads/1 upload now"; each file is its key with "." -> "_" plus ".png"). Checked that day: group-owned Image
+-- assets with those names (Studio search_asset), thumbnails state Completed. Filled in here, apart from the slot lines
+-- above (some of them are the co-owner's), before the slots freeze.
+local IMAGE_UPLOAD_DATE = "2026-10-14"
+local IMAGE_UPLOAD_LICENSE = "Group-owned upload; rendered from the co-owner's own Claude Design UI FINAL files"
+local IMAGE_IDS: { [string]: number } = {
+	["img.coin"] = 90713766462731,
+	["img.nav.squishies"] = 104894121342657,
+	["img.nav.boxes"] = 92341248104176,
+	["img.nav.shop"] = 93615172778327,
+	["img.nav.quests"] = 73060299726151,
+	["img.nav.daily"] = 133292280404049,
+	["img.nav.duel"] = 86138187108930,
+	["img.nav.settings"] = 106586140072962,
+	["img.icon.check"] = 75504651196077,
+	["img.icon.close"] = 118301423971613,
+	["img.icon.clock"] = 78025365670037,
+	["img.icon.lock"] = 106121352096349,
+	["img.icon.star"] = 116982124354283,
+	["img.icon.bolt"] = 108086298024901,
+	["img.icon.flame"] = 103076380529363,
+	["img.icon.gift"] = 93988585835101,
+	["img.icon.sound"] = 126975592754375,
+	["img.icon.squeeze"] = 77432147407452,
+	["img.icon.match"] = 75650728481067,
+	["img.box.sweet"] = 102246400652557,
+	["img.box.treat"] = 108858759156594,
+	["img.fx.rays"] = 127919808884928,
+	["img.fx.raysDetail"] = 129278230460109,
+	["img.fx.raysReveal"] = 104783140251190,
+	["img.fx.dots"] = 85381713960011,
+	["img.fx.glow"] = 107009283075080,
+}
+for _, slot in SLOTS do
+	local id = IMAGE_IDS[slot.key]
+	if id ~= nil and slot.kind == "image" then
+		local file = string.gsub(slot.key, "%.", "_") .. ".png"
+		slot.id = id
+		slot.source = `DIJAY Studios group upload: '{file}'`
+		slot.license = IMAGE_UPLOAD_LICENSE
+		slot.verifiedAt = IMAGE_UPLOAD_DATE
+		slot.notes = "UI FINAL design picture (R0 render of the design's own file)."
+	end
+end
+
 -- The content string of an asset id: positive integers only, else nil.
 local function contentFor(id: unknown): string?
 	if type(id) ~= "number" or id ~= id or id < 1 or id > MAX_EXACT_ID or math.floor(id) ~= id then

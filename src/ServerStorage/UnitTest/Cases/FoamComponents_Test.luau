@@ -67,6 +67,7 @@ return function(t: Context)
 	local Theme = t.requireClient("UI/Theme")
 	local Layout = t.requireClient("UI/Layout")
 	local Config = t.requireShared("Config")
+	local AssetTable = t.requireShared("AssetTable")
 	local Palette = t.requireShared("Art/Palette")
 	local Strings = t.requireShared("Strings")
 	local WHITE = Color3.new(1, 1, 1)
@@ -472,11 +473,17 @@ return function(t: Context)
 		capsule:destroy()
 
 		local coin = CoinIcon.new({ name = "Coin", sizePx = 22 })
-		expect.truthy(coin.root:FindFirstChild("Disc") ~= nil)
-		local disc = coin.root:FindFirstChild("Disc") :: Frame
-		expect.truthy(disc:FindFirstChild("SD_Foam") ~= nil)
-		expect.truthy(disc:FindFirstChild("Ring") ~= nil)
-		expect.equal((disc:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.inkUI)
+		local coinImage = AssetTable.image("img.coin")
+		if coinImage then -- UI FINAL R10: the design's coin picture (uploaded 2026-10-14) replaces the drawn disc
+			expect.equal((coin.root:FindFirstChild("Image") :: ImageLabel).Image, coinImage)
+			expect.equal(coin.root:FindFirstChild("Disc"), nil)
+		else
+			expect.truthy(coin.root:FindFirstChild("Disc") ~= nil)
+			local disc = coin.root:FindFirstChild("Disc") :: Frame
+			expect.truthy(disc:FindFirstChild("SD_Foam") ~= nil)
+			expect.truthy(disc:FindFirstChild("Ring") ~= nil)
+			expect.equal((disc:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.inkUI)
+		end
 		coin:destroy()
 	end)
 
