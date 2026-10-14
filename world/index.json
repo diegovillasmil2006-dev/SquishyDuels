@@ -12,6 +12,12 @@
 		"container": "ReplicatedStorage"
 	},
 	{
+		"file": "ServerStorage/Eclipse Animator Saves.rbxm",
+		"class": "Folder",
+		"name": "Eclipse Animator Saves",
+		"container": "ServerStorage"
+	},
+	{
 		"file": "ServerStorage/SD_MeshLibrary.rbxm",
 		"class": "Model",
 		"name": "SD_MeshLibrary",
