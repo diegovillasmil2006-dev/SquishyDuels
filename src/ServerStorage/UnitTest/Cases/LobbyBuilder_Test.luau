@@ -1,7 +1,7 @@
 --!strict
--- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 4: Squish
+-- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 6: Squish
 -- Island, lobby bases spec 2026-10-11 §2-§4, §7-§8, build plan Phase 4, without the giant pads since Phase 6, with the
--- Claude Design hub's stations,
+-- look upgrade's lamps, halos, finishes and Blender mesh sets since 2026-10-14, with the Claude Design hub's stations,
 -- sd/lobby.js, phase 3 spec D1-D14, in its hub sectors). Server only (ServerStorage.UnitTest).
 -- Builders_Test already checks the generic part (ok, unparented, marked, passes Verify); these cases pin what the
 -- runtime and the binders rely on, restated from the design and the game's contracts instead of read from the builder:
@@ -17,14 +17,23 @@
 --     (SD_BaseSpawn, flush with the plot floor, facing the gate), the gate's 16-stud gap open;
 --   * the part budget per zone (§7) with every plot at its worst (CapsuleBuilder's templates);
 --   * no giant pad, Jelly gate, pod sign, lock decor, Grip gym or Royal pod any more (build plan Phase 6);
---   * Neon only on the state rings lit in the design's default states (D7);
+--   * Neon only on the state rings lit in the design's default states (D7) and the design's lit refill fills
+--     (lobby.js:347-350): 9 in all;
 --   * 7 SD_Ambient models with their SD_AmbientKind (4 garden lollipops spin, the daily gift spins and bobs, the
 --     mystery box and the statue breathe), none of their parts collides, is queried or touched;
 --   * the stations' parts where the island puts them (spot checks), the odds board beside the box stand, one Status
 --     label in the daily stand, 14 pedestals with RarityStyle bands (D9), a 13-stud Kitty Bread statue; nothing but the
 --     range itself stands on the practice range (§7.7 rule 4);
 --   * Batch 3 (the duel pads): the 10 queue_pad_ring parts in DuelGate sit on WorldLayout.QueuePads, one each, so the
---     server can bind the built rings at runtime (FriendDuelService.bindRings).
+--     server can bind the built rings at runtime (FriendDuelService.bindRings);
+--   * the lobby look upgrade (user OK 2026-10-14, SDTools Kit/WorldLook): FIX 1, 2 shadowless lamps (under the tower
+--     deck and the shop's awning) and 13 gold halos (SD_Sparkle) over the mystery box, the shop's toy, the daily gift
+--     and every gate, none in the duel lanes (14 emitters with the statue's); FIX 2, the finishes by colour (grass,
+--     sand, wood, fabric, a little shine), with the studded floors, the cork, the pad rings and the toys as built and
+--     7 materials at most; FIX 3, each Blender mesh set (gates, tower pillars, lollipops, cupcake trees, clouds) is
+--     whole MeshParts when ServerStorage.SD_MeshLibrary has it and is marked approved (SD_MeshesApproved, after
+--     Roblox's check), else today's parts with one warning; an imported library holds every set unturned, and
+--     WorldLook.MESHES still fits the builder numbers the meshes were made from.
 -- The lobby is built once, in memory, from the Shared folder under test; nothing is parented into the place.
 
 local ServerStorage = game:GetService("ServerStorage")
@@ -104,8 +113,14 @@ local SQUISHY_IDS = {
 }
 local STAND_TAGS =
 	{ "SD_QueuePodium", "SD_BoxStand", "SD_ShopCounter", "SD_CollectionKiosk", "SD_QuestBoard", "SD_DailyStand" }
--- D7: the only Neon is a state ring lit in the design's default state (box Available, shop Purchasable, daily Ready).
-local LIT_RINGS: { [string]: boolean } = { reveal_ring = true, turntable_ring = true, daily_ring = true }
+-- D7: the only Neon is a state ring lit in the design's default state (box Available, shop Purchasable, daily Ready),
+-- and since the look upgrade (2026-10-14) the design's lit refill fills.
+local LIT_RINGS: { [string]: boolean } = {
+	reveal_ring = true,
+	turntable_ring = true,
+	daily_ring = true,
+	refill_fill = true, -- the design's always-lit Ready meters (lobby.js:347-350)
+}
 local MAX_SURFACE_GUIS = 64 -- D6
 local MAX_PARTS = 5200 -- lobby bases spec §7: the whole island at its worst (the static tree is far below it)
 local TOLERANCE = 1e-3 -- CFrames are stored in single precision
@@ -231,13 +246,13 @@ return function(t: Context)
 		return model
 	end
 
-	t.test("the root is SD_Lobby, unparented, not Atomic, version 4 (Squish Island without the giant pads)", function()
+	t.test("the root is SD_Lobby, unparented, not Atomic, version 6 (the Blender mesh library)", function()
 		local root = lobby()
 		expect.equal(root.Name, "SD_Lobby")
 		expect.equal(root.Parent, nil)
 		expect.equal((root :: Model).ModelStreamingMode, Enum.ModelStreamingMode.Default)
-		expect.equal(LobbyBuilder.VERSION, 4)
-		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 4)
+		expect.equal(LobbyBuilder.VERSION, 6)
+		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 6)
 	end)
 
 	t.test("exact tag counts", function()
@@ -504,7 +519,7 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("collidable parts are anchored; Neon only on the lit state rings (D7); part budget", function()
+	t.test("collidable parts are anchored; Neon only on the lit state rings and refill fills; part budget", function()
 		local parts, neon = 0, 0
 		for _, instance in lobby():GetDescendants() do
 			if instance:IsA("BasePart") then
@@ -520,7 +535,7 @@ return function(t: Context)
 				end
 			end
 		end
-		expect.truthy(neon >= 3)
+		expect.equal(neon, 9) -- 3 lit state rings + 6 refill fills
 		expect.truthy(parts <= MAX_PARTS)
 	end)
 
@@ -591,7 +606,7 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the statue: a 13-stud Kitty Bread on the plinth with its ambient sparkle; emitter budget", function()
+	t.test("the statue: a 13-stud Kitty Bread on the plinth with its ambient sparkle; 14 emitters", function()
 		local Config = t.requireShared("Config")
 		local emitters = {}
 		for _, d in lobby():GetDescendants() do
@@ -599,7 +614,7 @@ return function(t: Context)
 				table.insert(emitters, d)
 			end
 		end
-		expect.truthy(#emitters >= 1 and #emitters <= 3)
+		expect.equal(#emitters, 14) -- the statue's sparkle and the 13 FIX 1 halos (Verify's budget)
 		local squeeze = station("SqueezeZone")
 		local sparkle = squeeze:FindFirstChild("StatueSparkle", true)
 		expect.truthy(sparkle ~= nil and sparkle:IsA("ParticleEmitter"))
@@ -1032,6 +1047,329 @@ return function(t: Context)
 				error(warning)
 			end
 		end
+	end)
+
+	-- The lobby look upgrade (user OK 2026-10-14, SDTools Kit/WorldLook) ---------------------------------------------
+
+	local function worldLook(): any
+		local kit = toolsClone:FindFirstChild("Kit") :: Instance
+		local module = kit:FindFirstChild("WorldLook")
+		if module == nil or not module:IsA("ModuleScript") then
+			error("SDTools.Kit.WorldLook is missing")
+		end
+		return dynamicRequire(module)
+	end
+
+	-- The world frame of an emitter's or a light's Attachment.
+	local function attachedAt(instance: Instance): CFrame
+		local attachment = instance.Parent :: Attachment
+		if not attachment:IsA("Attachment") then
+			error(`{instance:GetFullName()} is not on an Attachment`)
+		end
+		return (attachment.Parent :: BasePart).CFrame * attachment.CFrame
+	end
+
+	t.test("FIX 1 halos: 13 gold twinkles over the box, the shop's toy, the daily gift and the gates", function()
+		local Config = t.requireShared("Config")
+		local Palette = t.requireShared("Art/Palette")
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		local halos: { [string]: { ParticleEmitter } } = {}
+		local count = 0
+		local duel = (WorldLayout.stationFrame("duel") :: CFrame).Position
+		for _, d in lobby():GetDescendants() do
+			if d:IsA("ParticleEmitter") and d.Name ~= "StatueSparkle" then
+				count += 1
+				expect.truthy(d:HasTag("SD_Sparkle")) -- AmbientController lowers it under ReducedMotion
+				expect.equal(d.Texture, Config.Vfx.Textures.sparkles) -- built-in texture, no upload
+				expect.equal(d.LightEmission, 0) -- additive blending washes out on the cream lobby
+				expect.equal(d.Rate, 3) -- restated: 3 a second, about 4-5 alive
+				expect.equal(d.Color.Keypoints[1].Value:ToHex(), Palette.LobbyGold:ToHex()) -- gold_trim (lobby.js:77)
+				-- Restated: 0.9 studs, a gate's 2 (seen from its plot spawn 44 studs away), held from 0.15 to 0.7.
+				local size = if d.Name == "GateSparkle" then 2 else 0.9
+				local held = 0
+				for _, key in d.Size.Keypoints do
+					if math.abs(key.Value - size) < TOLERANCE then
+						held += 1
+					end
+				end
+				expect.equal(held, 2)
+				local world = attachedAt(d)
+				expect.near(world.UpVector.Y, 1, TOLERANCE) -- it rises upward, even on a Cylinder host
+				-- The duel pads' ring (radius 10) and its lanes stay clear.
+				local offset = world.Position - duel
+				expect.truthy(Vector2.new(offset.X, offset.Z).Magnitude > 14)
+				halos[d.Name] = halos[d.Name] or {}
+				table.insert(halos[d.Name], d)
+			end
+		end
+		expect.equal(count, 13)
+		-- One over each station item, at the plan's point: over the item's middle, 0.5-2.5 studs over its visible box.
+		local function over(name: string, stationName: string, item: Instance, point: Vector3)
+			local list = halos[name] or {}
+			expect.equal(#list, 1)
+			expect.truthy(list[1]:IsDescendantOf(station(stationName)))
+			local world = attachedAt(list[1]).Position
+			expect.near((world - point).Magnitude, 0, TOLERANCE)
+			local low, high = extent(item)
+			local gap = world.Y - high.Y
+			if gap < 0.5 or gap > 2.5 then
+				error(`{name} is {gap} studs over {item:GetFullName()}'s top`)
+			end
+			local middle = (low + high) / 2
+			expect.truthy(Vector2.new(world.X - middle.X, world.Z - middle.Z).Magnitude < 1)
+		end
+		local box = station("GiftBoxCounter"):FindFirstChild("GiftBox") :: Instance
+		over("BoxSparkle", "GiftBoxCounter", box, WorldLayout.GiftBoxCounter.mysteryBox * Vector3.new(0, 12.1, 0))
+		local toy = station("ShopCounter"):FindFirstChild("turntable_toy") :: Instance
+		over("ShopSparkle", "ShopCounter", toy, WorldLayout.ShopCounter.turntable * Vector3.new(0, 5.3, 0))
+		local gift = station("DailyStand"):FindFirstChild("GiftBox") :: Instance
+		over("DailySparkle", "DailyStand", gift, WorldLayout.DailyStand.gift * Vector3.new(0, 10.3, 0))
+		-- One on each plot's NameSign, 1.2 over the Donut Arch's top (pillars 7 + arch 9 + tube 1.3) on the gate line.
+		local plots: { [number]: boolean } = {}
+		local gates: { ParticleEmitter } = halos.GateSparkle or {}
+		for _, emitter in gates do
+			local sign = (emitter.Parent :: Instance).Parent :: Instance
+			expect.equal(sign.Name, "NameSign")
+			local plot = (sign.Parent :: Instance):GetAttribute("Plot") :: number
+			expect.falsy(plots[plot])
+			plots[plot] = true
+			local gateZ = WorldLayout.Bases.depth / 2 - 0.6 -- the fence line (inset 0.6)
+			local want = (WorldLayout.plotFrame(plot) :: CFrame) * Vector3.new(0, 18.5, gateZ)
+			expect.near((attachedAt(emitter).Position - want).Magnitude, 0, TOLERANCE)
+		end
+		for plot = 1, 10 do
+			expect.truthy(plots[plot])
+		end
+	end)
+
+	t.test("FIX 1 lamps: shadowless PointLights under the tower deck and the shop's awning", function()
+		local WorldLook = worldLook()
+		local Palette = t.requireShared("Art/Palette")
+		-- Where each lamp hangs (restated): 3 under the deck's underside (35) over the hub spawn, the shop under its
+		-- awning (12.6).
+		local HOMES: { [string]: { station: string, point: Vector3 } } = {
+			SpawnLamp = { station = "Spawn", point = Vector3.new(0, 32, 0) },
+			ShopLamp = { station = "ShopCounter", point = design("shop", 0, 11.5, 2) },
+		}
+		local found: { [string]: PointLight } = {}
+		local lights = 0
+		for _, d in lobby():GetDescendants() do
+			if d:IsA("Light") then
+				lights += 1
+				expect.equal(d.ClassName, "PointLight")
+				if found[d.Name] then
+					error(`two lights named {d.Name}`)
+				end
+				found[d.Name] = d :: PointLight
+				expect.equal(d.Shadows, false) -- Verify fails a shadowed light
+				expect.falsy(d:IsDescendantOf(station("Bases")))
+			end
+		end
+		local lamps = 0
+		for name, spec in WorldLook.LAMPS do
+			lamps += 1
+			local light: PointLight? = found[name]
+			local home = HOMES[name]
+			if not light or not home then
+				error(`lamp {name} is not built, or this test does not know where it hangs`)
+			end
+			expect.truthy(light:IsDescendantOf(station(home.station)))
+			expect.equal(light.Color:ToHex(), Palette[spec.token]:ToHex())
+			expect.near(light.Range, spec.range, TOLERANCE)
+			expect.near(light.Brightness, spec.brightness, TOLERANCE)
+			expect.near((attachedAt(light).Position - home.point).Magnitude, 0, DESIGN_TOLERANCE)
+		end
+		expect.equal(lights, lamps)
+		expect.equal(lamps, 2) -- a lamp that fails its on/off picture goes from WorldLook, the builder and this count
+	end)
+
+	t.test("FIX 2 finishes: grass, sand, wood, fabric, shine; floors, cork, pad rings, toys as built", function()
+		local WorldLook = worldLook()
+		local Palette = t.requireShared("Art/Palette")
+		local root = lobby()
+		local island = station("Island")
+		expect.equal(only(island, "grass").Material, Enum.Material.Grass)
+		expect.equal(only(island, "grass_edge").Material, Enum.Material.Grass)
+		expect.equal(only(island, "beach").Material, Enum.Material.Sand)
+		local function all(list: { BasePart }, count: number, material: Enum.Material)
+			expect.equal(#list, count)
+			for _, part in list do
+				expect.equal(part.Material, material)
+			end
+		end
+		all(named(station("Garden"), "tree_trunk"), 38, Enum.Material.Wood) -- spec §8 "wood"
+		all(named(station("Bases"), "planter_nest"), 10, Enum.Material.Wood)
+		all(named(station("PracticeRange"), "rope"), 4, Enum.Material.Fabric) -- velvet_rope (lobby.js:77)
+		expect.near(only(station("GiftBoxCounter"), "box_dais_trim").Reflectance, 0.13, TOLERANCE) -- gold_trim
+		local glass = only(station("ShopCounter"), "display_case_glass")
+		expect.near(glass.Reflectance, 0.24, TOLERANCE) -- glass rough .12
+		expect.near(glass.Transparency, 0.74, TOLERANCE) -- opacity .26 (lobby.js:251)
+		for _, floor in named(station("Bases"), "Floor") do
+			expect.equal(floor.Material, Enum.Material.Plastic) -- spec §7: Roblox's own studs need Plastic
+			expect.equal(floor.TopSurface, Enum.SurfaceType.Studs)
+		end
+		expect.equal(only(station("QuestBoard"), "quest_cork").Material, Enum.Material.SmoothPlastic) -- no cork
+		local rings = named(station("DuelGate"), "queue_pad_ring")
+		expect.equal(#rings, 10)
+		for _, ring in rings do -- FriendDuelService lights them and puts back this built look
+			expect.equal(ring.Material, Enum.Material.SmoothPlastic)
+			expect.equal(ring.Color, Palette.LobbyPebble)
+		end
+		-- Every visible part in a FINISH colour carries its finish (matched by colour, so two coplanar faces of one
+		-- colour always match: Flicker_Test); toys keep SquishyBuilder's look; 7 materials at most (phone batching).
+		local byHex: { [string]: any } = {}
+		for token, look in WorldLook.FINISH do
+			byHex[Palette[token]:ToHex()] = look
+		end
+		local materials: { [Enum.Material]: boolean } = {}
+		local kinds = 0
+		for _, d in root:GetDescendants() do
+			if not d:IsA("BasePart") then
+				continue
+			end
+			if not materials[d.Material] then
+				materials[d.Material] = true
+				kinds += 1
+			end
+			if WorldLook.inToy(d, root) then
+				expect.equal(d.Material, Enum.Material.SmoothPlastic)
+				expect.equal(d.Reflectance, 0)
+				continue
+			end
+			local look = byHex[d.Color:ToHex()]
+			if look == nil or d.Transparency >= 1 or d.Material == Enum.Material.Neon then
+				continue
+			end
+			if look.material and not d:IsA("MeshPart") and d.Material ~= look.material then
+				error(`{d:GetFullName()} is {d.Material.Name}, its colour's finish is {look.material.Name}`)
+			end
+			if look.reflectance then
+				expect.near(d.Reflectance, look.reflectance, TOLERANCE)
+			end
+		end
+		expect.truthy(kinds <= 7)
+	end)
+
+	t.test("FIX 3 mesh sets: MeshParts when an approved SD_MeshLibrary has the set, else today's parts", function()
+		local WorldLook = worldLook()
+		local library = ServerStorage:FindFirstChild(WorldLook.MESH_LIBRARY)
+		-- Only after the user's word that Roblox approved the meshes: before that other players may see nothing there.
+		local approved = library ~= nil and library:GetAttribute("SD_MeshesApproved") == true
+		local meshed: { [string]: boolean } = {}
+		local setOf: { [string]: string } = {} -- piece name -> its set
+		local shadowless: { [string]: boolean } = {}
+		for set, pieces in WorldLook.MESHES do
+			meshed[set] = approved and WorldLook.meshTemplates(library, pieces) ~= nil
+			for _, piece in pieces do
+				setOf[piece.name] = set
+				shadowless[piece.name] = piece.noShadow == true
+			end
+		end
+		local missingLines, waitingLines = 0, 0
+		for _, warning in built.warnings do
+			if string.find(warning, "SD_MeshLibrary is missing", 1, true) then
+				missingLines += 1
+			elseif string.find(warning, "waits for Roblox's check", 1, true) then
+				waitingLines += 1
+			end
+		end
+		expect.equal(missingLines, if library then 0 else 1)
+		expect.equal(waitingLines, if library and not approved then 1 else 0)
+		-- A piece's name is a MeshPart exactly when its set is meshed; only the tower's pillars collide.
+		for _, d in lobby():GetDescendants() do
+			local set = setOf[d.Name]
+			if set and d:IsA("BasePart") then
+				expect.equal(d:IsA("MeshPart"), meshed[set])
+				if d:IsA("MeshPart") and d.Name ~= "tower_pillar" and (d.CanCollide or d.CanQuery or d.CanTouch) then
+					error(`{d:GetFullName()} collides, is queried or touched`)
+				end
+				if d:IsA("MeshPart") and shadowless[d.Name] and d.CastShadow then
+					error(`{d:GetFullName()} casts a shadow (noShadow)`)
+				end
+			end
+		end
+		local function parts(model: Instance): number
+			local n = 0
+			for _, d in model:GetDescendants() do
+				if d:IsA("BasePart") then
+					n += 1
+				end
+			end
+			return n
+		end
+		-- Each gate: the 6 DonutArch pieces, the icing tinted "full"; or today's 6 dough, 5 icing and 6 sprinkle parts.
+		for _, base in station("Bases"):GetChildren() do
+			local today = #named(base, "GateDough") + #named(base, "GateIcing") + #named(base, "GateSprinkle")
+			if meshed.DonutArch then
+				for _, piece in WorldLook.MESHES.DonutArch do
+					expect.equal(#named(base, piece.name), 1)
+				end
+				expect.equal(only(base, "DonutArch_Icing"):GetAttribute("SD_BaseTint"), "full")
+				expect.equal(today, 0)
+			else
+				expect.equal(#named(base, "GateDough"), 6)
+				expect.equal(today, 17)
+			end
+		end
+		local pillars = named(station("DuelTower"), "tower_pillar")
+		expect.equal(#pillars, 4)
+		for _, pillar in pillars do
+			expect.truthy(pillar.CanCollide and pillar.CanQuery) -- solid either way
+		end
+		for index = 1, 4 do -- the stick, the disk and the swirl rings: 3 pieces, or 18 parts
+			local lollipop = station("Decor"):FindFirstChild("Lollipop" .. index) :: Instance
+			expect.equal(parts(lollipop), if meshed.Lollipop then 3 else 18)
+		end
+		local clouds = station("Sky"):GetChildren()
+		expect.equal(#clouds, 6)
+		for _, cloud in clouds do -- 1 Cloud Bunny, or 3 puffs and 2 ears
+			expect.equal(parts(cloud), if meshed.CloudBunny then 1 else 5)
+		end
+		local trees = 0
+		for _, tree in station("Garden"):GetChildren() do
+			if tree.Name == "CupcakeTree" then -- the trunk and the cherry stay parts either way
+				trees += 1
+				expect.equal(parts(tree), 4)
+				expect.equal(#named(tree, "tree_trunk") + #named(tree, "tree_cherry"), 2)
+				expect.equal(#named(tree, "tree_cup"), if meshed.CupcakeTree then 0 else 1)
+			end
+		end
+		expect.equal(trees, 38)
+	end)
+
+	t.test("FIX 3: an imported ServerStorage.SD_MeshLibrary holds every round-1 set, unturned", function()
+		local WorldLook = worldLook()
+		local library = ServerStorage:FindFirstChild(WorldLook.MESH_LIBRARY)
+		if library == nil then
+			return -- not imported yet: every set is today's parts (the case above)
+		end
+		for set, pieces in WorldLook.MESHES do
+			if WorldLook.meshTemplates(library, pieces) == nil then
+				error(`SD_MeshLibrary has no usable {set}: a piece is missing, not a MeshPart, or turned`)
+			end
+		end
+	end)
+
+	t.test("FIX 3: WorldLook.MESHES fits the builder numbers (else re-run the Blender script)", function()
+		local WorldLook = worldLook()
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		local function size(set: string, name: string): Vector3
+			for _, piece in WorldLook.MESHES[set] do
+				if piece.name == name then
+					return piece.size
+				end
+			end
+			error(`WorldLook.MESHES.{set} has no {name}`)
+		end
+		-- The donut: radius gateWidth / 2 + half the pillar (1), tube 1.3 (LobbyBuilder GATE_PILLAR, DONUT_TUBE).
+		local outer = WorldLayout.Bases.gateWidth / 2 + 1 + 1.3
+		expect.near(size("DonutArch", "DonutArch_Dough").X, 2 * outer, TOLERANCE)
+		-- The tower pillar: 7 wide, from the stage top to the deck's underside (35).
+		local pillar = Vector3.new(7, 35 - WorldLayout.DuelGate.stageTop, 7)
+		expect.near((size("TowerPillar", "tower_pillar") - pillar).Magnitude, 0, TOLERANCE)
+		-- The lollipop: the stick's height plus the disk's radius.
+		local lollipops = WorldLayout.Props.lollipops
+		expect.near(size("Lollipop", "Lollipop_White").Y, lollipops.height + lollipops.radius, TOLERANCE)
 	end)
 
 	t.test("two builds are identical (deterministic generator)", function()

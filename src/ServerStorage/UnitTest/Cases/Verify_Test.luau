@@ -8,7 +8,8 @@
 --     stations with unique ids and GripTier = WorldLayout, 4 practice targets (1 moving), slots (the Grip gates, Grip
 --     signs and giant pads, and their checks, went in build plan Phase 6), every SD_TextKey in
 --     Strings, keep-clear volumes, all stand prompts disabled inside Atomic models < 64 studs, budgets (FAIL above
---     5,200 parts, the island's §7 total, or 64 SurfaceGuis: the design lobby's plates, phase 3 D6), 14 collection
+--     5,200 parts, the island's §7 total, 64 SurfaceGuis: the design lobby's plates, phase 3 D6, or 14 particle
+--     emitters: the statue's sparkle and the 13 look-upgrade halos; any light casting shadows fails), 14 collection
 --     pedestals (D4); 10 plots (one SD_Base Model per Plot 1..10, each holding one SD_BaseSpawn SpawnLocation of its
 --     own, Neutral, Duration 0; SD_BaseTint only "full" or "light"); the §7 render rules (nothing but a SpawnLocation
 --     is touched, parts under 2 studs cast no shadow); the feel pass
@@ -655,6 +656,30 @@ return function(t: Context)
 			end
 		end)
 		expect.falsy(hasProblem(fits, "SurfaceGuis, budget"))
+	end)
+
+	-- The lobby look upgrade (2026-10-14): the statue's sparkle and 13 FIX 1 halos; lights never cast shadows.
+	t.test("lobby: more than 14 particle emitters fail the budget; a light with Shadows on fails", function()
+		local function withEmitters(count: number): { string }
+			return lobbyProblems(function(root)
+				local holder = newPart(root, "EmitterHolder", Vector3.one, CFrame.new(0, -50, 0), INERT)
+				for _ = 1, count do -- the fixture has none
+					Instance.new("ParticleEmitter").Parent = holder
+				end
+			end)
+		end
+		expectProblem(withEmitters(15), "particle emitters, budget 14")
+		expect.falsy(hasProblem(withEmitters(14), "particle emitters, budget"))
+		local function withLight(shadows: boolean): { string }
+			return lobbyProblems(function(root)
+				local holder = newPart(root, "LampHolder", Vector3.one, CFrame.new(0, -50, 0), INERT)
+				local light = Instance.new("PointLight")
+				light.Shadows = shadows
+				light.Parent = holder
+			end)
+		end
+		expectProblem(withLight(true), "casts shadows")
+		expect.falsy(hasProblem(withLight(false), "casts shadows"))
 	end)
 
 	-- Phase 4: the floor plane Y 0 is Squish Square's (Ø140; the plots' floors too); a template floor is a leftover

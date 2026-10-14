@@ -24,11 +24,14 @@
 -- Every part: anchored, CanTouch false, CastShadow off when it is under 2 studs (spec §7). Only the drum, the tube and
 -- the cap collide (players walk around a capsule); the rest is decor. Self-check: every look, the lock and every
 -- squishy and statue present, part counts within CAPSULE_PARTS / LOCK_PARTS / LOW_DETAIL; any problem fails the build.
+-- The lobby look upgrade (user OK 2026-10-14): the Knob glows (Neon) and each capsule and the lock take Kit/WorldLook's
+-- finishes (the royal velvet Fabric, a little shine on gold and candy); the squishies and statues keep their own look.
 
 local Generated = require(script.Parent.Parent.Generated)
 local Prims = require(script.Parent.Parent.Kit.Prims)
 local Props = require(script.Parent.Parent.Kit.Props)
 local Signs = require(script.Parent.Parent.Kit.Signs)
+local WorldLook = require(script.Parent.Parent.Kit.WorldLook)
 
 -- Types
 
@@ -59,7 +62,7 @@ type Deps = {
 -- Constants
 
 local GENERATOR_ID = "capsules"
-local VERSION = 1
+local VERSION = 2 -- 2: the look upgrade: finishes and the Neon knob
 local ROOT_NAME = "Capsules"
 
 -- Spec §5.1 (readings where it gives no number).
@@ -310,7 +313,8 @@ local function buildCapsule(deps: Deps, key: string, look: Look): Model
 	Props.cylinder(model, "PressRod", 0.8, 0.35, CFrame.new(0, capBottom - 0.175, 0), press)
 	Props.cylinder(model, "Cap", DRUM_DIAMETER, CAP_HEIGHT, CFrame.new(0, capBottom + CAP_HEIGHT / 2, 0), body, "solid")
 	band(model, "CapTrim", TRIM_DIAMETER, 0.4, capBottom + 0.4, trim)
-	Props.ball(model, "Knob", 1.6, Vector3.new(0, capBottom + CAP_HEIGHT + 0.6, 0), trim)
+	local knob = Props.ball(model, "Knob", 1.6, Vector3.new(0, capBottom + CAP_HEIGHT + 0.6, 0), trim)
+	knob.Material = Enum.Material.Neon -- FIX 1: NOT IN DESIGN (the capsule is spec-only), a lit ball in the look's trim
 	plate(
 		deps,
 		model,
@@ -450,6 +454,7 @@ function CapsuleBuilder.build(ctx: BuildContext): BuildResult
 			continue
 		end
 		local capsule = buildCapsule(deps, tier.key, look)
+		WorldLook.finish(capsule, deps.Palette) -- FIX 2: the finishes by colour
 		if partCount(capsule) > CAPSULE_PARTS then
 			table.insert(
 				problems,
@@ -459,6 +464,7 @@ function CapsuleBuilder.build(ctx: BuildContext): BuildResult
 		capsule.Parent = root
 	end
 	local lock = buildLock(deps)
+	WorldLook.finish(lock, deps.Palette)
 	if partCount(lock) > LOCK_PARTS then
 		table.insert(problems, string.format("Lock has %d parts (%d at most)", partCount(lock), LOCK_PARTS))
 	end

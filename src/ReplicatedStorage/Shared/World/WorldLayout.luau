@@ -1486,8 +1486,10 @@ local WorldLayout = {
 		baseParts = 220,
 		gardenParts = 1000,
 		lobbySurfaceGuis = 64, -- Verify fails above this (§17.6; D6: the design's plates)
-		lobbyDynamicLights = 8, -- none casting shadows
-		lobbyAmbientEmitters = 3,
+		lobbyDynamicLights = 8, -- none casting shadows (2 used: the FIX 1 lamps)
+		-- the statue + 13 halos; about 60 live particles island-wide, on top of Config.Vfx liveParticlesTotal (FxPool's
+		-- own bursts only)
+		lobbyAmbientEmitters = 14,
 		arenaParts = Arena.maxParts,
 		arenaDecorParts = Arena.decor.maxParts,
 	},
@@ -1540,6 +1542,9 @@ local WorldLayout = {
 		Base = "SD_Base",
 		-- A plot's SpawnLocation (attribute Plot): BaseService spawns the plot's owner there.
 		BaseSpawn = "SD_BaseSpawn",
+		-- FIX 1 (2026-10-14): the lobby's halo emitters (LobbyBuilder); AmbientController lowers their Rate under
+		-- ReducedMotion.
+		Sparkle = "SD_Sparkle",
 	},
 	Attributes = {
 		StationId = "StationId",

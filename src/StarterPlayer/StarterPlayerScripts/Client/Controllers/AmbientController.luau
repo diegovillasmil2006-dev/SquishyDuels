@@ -14,8 +14,9 @@
 --     screen (AmbientMath.sphereOnScreen); otherwise it holds its last pose. Back in view, the clock puts it where
 --     it belongs, so nothing drifts.
 --   * ReducedMotion (Tweens.reducedMotion): one write back to the built pose, then nothing; the statue sparkle (the
---     StatueSparkle emitter LobbyBuilder puts on the statue's plinth) runs at Rate 1, back to
---     Config.Vfx.Effects.statueSparkleRate after.
+--     StatueSparkle emitter LobbyBuilder puts on the statue's plinth) runs at Rate 1, and every SD_Sparkle halo
+--     (WorldLayout.Tags.Sparkle, LobbyBuilder's look upgrade, FIX 1) at min(its Rate, 1); back to
+--     Config.Vfx.Effects.statueSparkleRate and each halo's built Rate after (and as it streams out).
 --   * Stream-out or tag removal: the binding goes (the deformer rests first; a model still in place is put back on its
 --     built pivot).
 -- Only local pivots and mesh values change, on decor whose parts never collide, are queried or touched (LobbyBuilder's
@@ -66,6 +67,7 @@ local ATTR_KIND = WorldLayout.Attributes.AmbientKind
 local STATUE_NAME = "Statue" -- SqueezeZone/Statue (LobbyBuilder)
 local SPARKLE_NAME = "StatueSparkle" -- LobbyBuilder's emitter on the statue's plinth
 local REDUCED_SPARKLE_RATE = 1 -- §18.1: ReducedMotion "statue sparkle Rate 1"
+local SPARKLE_TAG = WorldLayout.Tags.Sparkle -- the lobby's halo emitters (FIX 1, 2026-10-14)
 
 -- Module table
 
@@ -81,6 +83,7 @@ local wasReduced = false
 local warnedBudget = false
 local breathersScratch: { Entry } = {} -- reused every frame (no per-frame tables)
 local distances: { [Entry]: number } = {}
+local sparkleRates: { [ParticleEmitter]: number } = {} -- each tagged halo's built Rate
 
 local function moverCount(): number
 	local count = 0
@@ -109,6 +112,30 @@ local function setSparkle(entry: Entry, reduced: boolean)
 	if sparkle.Rate ~= rate then
 		sparkle.Rate = rate
 	end
+end
+
+-- An SD_Sparkle halo: its built Rate, or at most REDUCED_SPARKLE_RATE under ReducedMotion.
+local function setSparkleRate(emitter: ParticleEmitter, reduced: boolean)
+	local built = sparkleRates[emitter]
+	if built and emitter.Parent ~= nil then
+		emitter.Rate = if reduced then math.min(built, REDUCED_SPARKLE_RATE) else built
+	end
+end
+
+local function bindSparkle(instance: Instance)
+	if instance:IsA("ParticleEmitter") and sparkleRates[instance :: ParticleEmitter] == nil then
+		local emitter = instance :: ParticleEmitter
+		sparkleRates[emitter] = emitter.Rate -- its Rate on arrival (unbind always puts the built Rate back)
+		setSparkleRate(emitter, wasReduced)
+	end
+end
+
+local function unbindSparkle(instance: Instance)
+	local built = sparkleRates[instance :: any]
+	if built then -- a streamed-out emitter comes back as the same instance: never with the reduced Rate
+		(instance :: ParticleEmitter).Rate = built
+	end
+	sparkleRates[instance :: any] = nil
 end
 
 -- Back to the built pose: one write, then nothing until the entry moves again.
@@ -200,15 +227,19 @@ local function byDistance(a: Entry, b: Entry): boolean
 end
 
 local function step(_dt: number, now: number): boolean
-	if next(entries) == nil then
-		return true
-	end
+	-- Before the entries check: a player at a base with no SD_Ambient model streamed in still gets the halos' switch.
 	local reduced = Tweens.reducedMotion()
 	if reduced ~= wasReduced then
 		wasReduced = reduced
 		for _, entry in entries do
 			setSparkle(entry, reduced)
 		end
+		for emitter in sparkleRates do
+			setSparkleRate(emitter, reduced)
+		end
+	end
+	if next(entries) == nil then
+		return true
 	end
 	if reduced then
 		for _, entry in entries do
@@ -301,11 +332,20 @@ function AmbientController.init()
 	for _, instance in CollectionService:GetTagged(TAG) do
 		bind(instance)
 	end
+	c:add(CollectionService:GetInstanceAddedSignal(SPARKLE_TAG):Connect(bindSparkle))
+	c:add(CollectionService:GetInstanceRemovedSignal(SPARKLE_TAG):Connect(unbindSparkle))
+	for _, instance in CollectionService:GetTagged(SPARKLE_TAG) do
+		bindSparkle(instance)
+	end
 	c:add(Scheduler.add(step, "render"))
 	c:add(function()
 		for model in table.clone(entries) do
 			unbind(model)
 		end
+		for emitter in sparkleRates do
+			setSparkleRate(emitter, false)
+		end
+		table.clear(sparkleRates)
 		breatheSlots = math.huge
 		wasReduced = false
 		warnedBudget = false

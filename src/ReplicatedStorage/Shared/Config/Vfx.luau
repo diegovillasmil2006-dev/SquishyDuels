@@ -446,7 +446,9 @@ local Vfx = {
 		dragonRushSeconds = 1.5,
 		boxRevealViewports = 1,
 		boxRevealUiFrames = 24,
-		ambientEmitters = 3,
+		-- the statue + 13 lobby halos (2026-10-14); about 60 live particles island-wide, on top of liveParticlesTotal
+		-- (FxPool's own bursts only)
+		ambientEmitters = 14,
 		statueSparkleRate = 2, -- Lemon
 		statueSparkleLifetime = 1.5,
 	},

@@ -22,25 +22,34 @@
 -- queue empty (no lights: D2, presentation only), the squeeze meters full, the quest cards in progress. Every plot is
 -- built open: grey, "Open plot",
 -- no capsules (BaseService shows the owner's name, colour, capsules and statue at runtime). Neon only on the lit state
--- rings (D7); no outlines (D8).
+-- rings (D7) and the design's lit refill fills (lobby.js:347-350); no outlines (D8).
+-- The lobby look upgrade (user OK 2026-10-14, numbers in Kit/WorldLook): FIX 1, the lamps SpawnLamp and ShopLamp
+-- and the halos BoxSparkle, ShopSparkle, DailySparkle and a GateSparkle on each plot's NameSign (SD_Sparkle);
+-- FIX 2, the finishes (WorldLook.finish) on the whole tree after the build. FIX 3 (round 1): the Donut Arch gates, the
+-- tower pillars, the lollipops, the cupcake trees' cups and frosting and the Cloud Bunny clouds are clones of
+-- ServerStorage.SD_MeshLibrary's MeshParts (the user's Blender import, WorldLook.MESHES) once it is marked approved
+-- (WorldLook.MESH_APPROVED, after Roblox's check); until then, and for a set the library lacks, today's parts, with a
+-- warning.
 --
 -- Tree (station models with a prompt are Atomic and < 64 studs, so a prompt and its SurfaceGui stream together, §7.7):
 --   SD_Lobby (Model, ModelStreamingMode Default, marked SD_Generated / lobby / VERSION)
 --     Island      the sea, the shallow water, the beach, the grass and its edge (spec §2, §8)
 --     Boundaries  4 invisible walls at the sea's edge (SD_Boundary)
 --     Hub         Squish Square: its floor, curb and paths (the sign owner of the painted "SQUISH SQUARE")
---     Spawn       the medallion on the stage centre, its rim, the logo plate, the hub SpawnLocation (SD_LobbySpawn)
+--     Spawn       the medallion on the stage centre, its rim, the logo plate, the hub SpawnLocation (SD_LobbySpawn),
+--                 SpawnLamp under the tower deck
 --     DuelGate    the duel stage, the queue podium (SD_QueuePodium + prompt), 10 queue pads, the queue board
 --                 (SD_QueueBoard), ReturnPoint1/2 (SD_ReturnPoint, Slot)
 --     DuelTower   the landmark (spec §2, §7): 4 pillars, the deck with the DUELS badge, the Dragon Spire
 --     GiftBoxCounter dais, GiftBox (the mystery box, SD_Ambient breathe), reveal pedestal (SD_BoxStand, BoxId + prompt)
---                 with its ring, OddsBoard (Title + live Body)
+--                 with its ring, OddsBoard (Title + live Body), BoxSparkle over the box
 --     ShopCounter  floor, back wall and shelves, counter (SD_ShopCounter + prompt), awning, display case, turntable,
---                  the design's toys
+--                  the design's toys, ShopLamp under the awning, ShopSparkle over the turntable's toy
 --     Collection   floor, 7 bays on an arc, 14 pedestals (SD_CollectionPedestal, Slot + Inspect prompt; the squishies
 --                  are client-built) with rarity bands, kiosk (SD_CollectionKiosk + prompt)
 --     QuestBoard   floor, posts, cork (SD_QuestBoard + prompt), frame, header, 9 cards
---     DailyStand   dais (SD_DailyStand + prompt), GiftBox (SD_Ambient spinBob), ring, 7-day calendar, Status plate
+--     DailyStand   dais (SD_DailyStand + prompt), GiftBox (SD_Ambient spinBob), ring, 7-day calendar, Status plate,
+--                  DailySparkle over the gift
 --     SqueezeZone  floor, plinth, Statue (Kitty Bread, SD_Ambient breathe) + StatueSparkle, 6 foam mats
 --                  (SD_SqueezeStation, StationId, GripTier 1) with meters
 --     PracticeRange LaneFloor, FiringLine, ThrowBox (SD_PracticeZone), Backstop (in the pillow wall, on its footing),
@@ -53,7 +62,8 @@
 --     Decor        Lollipop1..4 (Atomic, SD_Ambient spin), in the garden
 --     Bases        Base_01..Base_10 (SD_Base, Plot): plinth floor (studs, SD_BaseTint light) and rim (full), white
 --                  fence with posts every 8 studs and caps (full), the Donut Arch gate (16 wide, icing full) with its
---                  name sign (live line Owner), the back wall (44 × 9, cap full), the statue plinth, the 4 capsule pads
+--                  name sign (live line Owner; GateSparkle over the arch), the back wall (44 × 9, cap full), the statue
+--                  plinth, the 4 capsule pads
 --                  (Slot), the plot's SpawnLocation (SD_BaseSpawn, Plot) and its props (spec §4, §7)
 --     KeepClear / AudioZones (Folders) invisible volumes
 -- Lobby background motion (§18.5.1 A8, D12): Decor/Lollipop1..4 "spin", DailyStand/GiftBox "spinBob",
@@ -71,6 +81,7 @@
 -- a part-count report per zone come back as warnings.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local CapsuleBuilder = require(script.Parent.CapsuleBuilder)
 local Generated = require(script.Parent.Parent.Generated)
@@ -78,6 +89,7 @@ local Prims = require(script.Parent.Parent.Kit.Prims)
 local Props = require(script.Parent.Parent.Kit.Props)
 local Signs = require(script.Parent.Parent.Kit.Signs)
 local Verify = require(script.Parent.Parent.Verify)
+local WorldLook = require(script.Parent.Parent.Kit.WorldLook)
 
 local BARRIER_GROUP = "SD_Barrier" -- the invisible walls' collision group (see buildIsland)
 
@@ -106,6 +118,7 @@ type State = {
 	hosts: { [string]: BasePart }, -- "<owner>/<part>" -> the part that carries a sign
 	template: BasePart?, -- ReplicatedStorage.SD_ShapeLibrary.RoundedBox
 	warnedTemplate: boolean,
+	meshes: { [string]: { [string]: MeshPart } | false }, -- FIX 3: each WorldLook.MESHES set's pieces, or false
 }
 
 -- A prop part: a primitive (`kind`), its name, size, CFrame in the prop's frame and Palette token.
@@ -114,7 +127,8 @@ type PropPart = { kind: "block" | "cyl" | "ball" | "egg", name: string, size: Ve
 -- Constants
 
 local GENERATOR_ID = "lobby"
-local VERSION = 4 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates
+local VERSION = 6 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates; 5: look upgrade;
+-- 6: the Blender mesh library, round 1 (falls back to parts)
 local ROOT_NAME = "SD_Lobby"
 
 local SHAPE_LIBRARY_NAME = "SD_ShapeLibrary"
@@ -512,6 +526,157 @@ local function markAmbient(state: State, model: Model?, kind: string)
 	Prims.tag(model, L.Tags.Ambient, { [L.Attributes.AmbientKind] = kind })
 end
 
+-- FIX 1 (user OK 2026-10-14): an Attachment `name` of `host` at the world point `point`, world-upright (Top = up
+-- even on a Cylinder host, whose X axis is up).
+local function upright(name: string, host: BasePart, point: Vector3): Attachment
+	local attachment = Instance.new("Attachment")
+	attachment.Name = name
+	attachment.CFrame = host.CFrame:ToObjectSpace(CFrame.new(point))
+	attachment.Parent = host
+	return attachment
+end
+
+-- A shadowless PointLight `name` (WorldLook.LAMPS[name]) at `point`.
+local function lamp(state: State, name: string, host: BasePart, point: Vector3)
+	local spec = WorldLook.LAMPS[name]
+	local light = Instance.new("PointLight")
+	light.Name = name
+	light.Color = color(state, spec.token)
+	light.Brightness = spec.brightness
+	light.Range = spec.range
+	light.Shadows = false -- Verify fails a shadowed light
+	light.Parent = upright(name, host, point)
+end
+
+-- A twinkle halo `name` (WorldLook.HALO, `size` or the recipe's) at `point` over a static `host`, tagged
+-- WorldLayout.Tags.Sparkle (AmbientController's ReducedMotion). LightEmission 0: additive blending washes out on the
+-- cream lobby.
+local function halo(state: State, name: string, host: BasePart, point: Vector3, size: number?)
+	local recipe = WorldLook.HALO
+	local peak = size or recipe.size
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = name
+	emitter.Texture = state.deps.Config.Vfx.Textures.sparkles -- built-in rbxasset, no upload (AssetTable §14.3)
+	emitter.Rate = recipe.rate
+	emitter.Lifetime = NumberRange.new(recipe.lifetime)
+	emitter.Speed = recipe.speed
+	emitter.Drag = recipe.drag
+	emitter.SpreadAngle = recipe.spread
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Size = NumberSequence.new({ -- held like the transparency, so it reads for most of its life
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(0.15, peak),
+		NumberSequenceKeypoint.new(0.7, peak),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	emitter.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(0.15, 0.2),
+		NumberSequenceKeypoint.new(0.7, 0.2),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	emitter.Color = ColorSequence.new(color(state, recipe.token))
+	emitter.LightEmission = 0
+	emitter.LockedToPart = false
+	emitter.Parent = upright(name, host, point)
+	Prims.tag(emitter, state.L.Tags.Sparkle)
+end
+
+-- FIX 3: each WorldLook.MESHES set's pieces from ServerStorage.SD_MeshLibrary (the user's Blender import, used only
+-- once marked approved), or false: that set is built from today's parts, with a warning (as rb() warns for a missing
+-- RoundedBox).
+local function resolveMeshes(state: State)
+	local library = ServerStorage:FindFirstChild(WorldLook.MESH_LIBRARY)
+	if library == nil then
+		table.insert(
+			state.warnings,
+			string.format(
+				"ServerStorage.%s is missing (import the Blender meshes): today's shapes",
+				WorldLook.MESH_LIBRARY
+			)
+		)
+	elseif library:GetAttribute(WorldLook.MESH_APPROVED) ~= true then
+		table.insert(
+			state.warnings,
+			string.format(
+				"ServerStorage.%s waits for Roblox's check (%s is not true yet): today's shapes",
+				WorldLook.MESH_LIBRARY,
+				WorldLook.MESH_APPROVED
+			)
+		)
+		library = nil
+	end
+	local sets: { string } = {}
+	for set in WorldLook.MESHES do
+		table.insert(sets, set)
+	end
+	table.sort(sets) -- deterministic warnings
+	for _, set in sets do
+		local templates = WorldLook.meshTemplates(library, WorldLook.MESHES[set])
+		state.meshes[set] = templates or false
+		if library and templates == nil then
+			table.insert(
+				state.warnings,
+				string.format(
+					"%s has no usable %s (missing piece or turned import): built from parts",
+					WorldLook.MESH_LIBRARY,
+					set
+				)
+			)
+		end
+	end
+end
+
+-- FIX 3: the set's library pieces in `frame`, each in its Palette token (`tokens` by piece name). Decor (the
+-- Prims.roundedBox flags) unless `solid`.
+local function placeMeshes(
+	state: State,
+	set: string,
+	frame: CFrame,
+	tokens: { [string]: string },
+	parent: Instance,
+	solid: boolean?
+): { [string]: BasePart }
+	local templates = state.meshes[set] :: { [string]: MeshPart }
+	local made: { [string]: BasePart } = {}
+	for _, piece in WorldLook.MESHES[set] do
+		local part, failed = Prims.roundedBox(
+			templates[piece.name],
+			piece.name,
+			piece.size,
+			frame * CFrame.new(piece.center),
+			color(state, tokens[piece.name]),
+			parent
+		)
+		if failed then -- never grey boxes in place of a library piece
+			error(string.format("[SD][LobbyBuilder] could not clone %s.%s", WorldLook.MESH_LIBRARY, piece.name), 0)
+		end
+		if piece.noShadow then
+			part.CastShadow = false
+		end
+		if solid then
+			part.CanCollide = true
+			part.CanQuery = true
+		end
+		local boxed = pcall(function()
+			(part :: MeshPart).CollisionFidelity = Enum.CollisionFidelity.Box -- a solid pillar collides as a block
+		end)
+		if solid and not boxed then -- PLAN §8: then the user sets Box once on the library's piece
+			local fix = string.format(
+				"could not set CollisionFidelity Box on %s: set it once on %s.%s",
+				piece.name,
+				WorldLook.MESH_LIBRARY,
+				piece.name
+			)
+			if not table.find(state.warnings, fix) then
+				table.insert(state.warnings, fix)
+			end
+		end
+		made[piece.name] = part
+	end
+	return made
+end
+
 -- The world direction a design group's front (+Z) looks along.
 local function frontOf(frame: CFrame): Vector3
 	return frame:VectorToWorldSpace(Vector3.zAxis)
@@ -621,7 +786,7 @@ local function buildSpawn(state: State)
 	local S = L.Spawn
 	local model = station(state, S.model, true)
 	local medallion = S.medallion
-	cyl(
+	local medallionPart = cyl(
 		state,
 		model,
 		"spawn_medallion",
@@ -631,6 +796,8 @@ local function buildSpawn(state: State)
 		medallion.color,
 		"solid"
 	) -- design: lobby.js:147
+	-- FIX 1: 3 under the tower deck's underside (always in shade, seen from the hub), over the medallion.
+	lamp(state, "SpawnLamp", medallionPart, at(stationCF(state, "duel"), 0, TOWER.deckBottom - 3, 0).Position)
 	-- spawn_medallion_rim (lobby.js:148): a strawberry collar around the medallion, Prims.LAYER under its top.
 	collar(
 		state,
@@ -768,16 +935,20 @@ local function buildDuelTower(state: State)
 		for _, sz in { -1, 1 } do
 			local team = if sx < 0 then "LobbyMint" else "LobbyStrawberry"
 			local x, z = sx * TOWER.pillarAt, sz * TOWER.pillarAt
-			rb(
-				state,
-				model,
-				"tower_pillar",
-				Vector3.new(TOWER.pillar, height, TOWER.pillar),
-				at(F, x, top + height / 2, z),
-				team,
-				"solid",
-				4
-			)
+			if state.meshes.TowerPillar then -- FIX 3: the design's rounded pillar (rb n 4) as a Blender mesh, solid
+				placeMeshes(state, "TowerPillar", at(F, x, top + height / 2, z), { tower_pillar = team }, model, true)
+			else
+				rb(
+					state,
+					model,
+					"tower_pillar",
+					Vector3.new(TOWER.pillar, height, TOWER.pillar),
+					at(F, x, top + height / 2, z),
+					team,
+					"solid",
+					4
+				)
+			end
 			for _, y in TOWER.bandY do
 				rb(
 					state,
@@ -870,7 +1041,9 @@ local function buildGiftBoxCounter(state: State)
 	local model = station(state, stand.model, true)
 	local F = stationCF(state, "box")
 	local dais = stand.dais
-	cyl(state, model, "box_dais", dais.diameter / 2, dais.height, CFrame.new(dais.position), dais.color, "solid") -- lobby.js:209
+	-- design: lobby.js:209
+	local daisPart =
+		cyl(state, model, "box_dais", dais.diameter / 2, dais.height, CFrame.new(dais.position), dais.color, "solid")
 	collar(
 		state,
 		model,
@@ -951,6 +1124,8 @@ local function buildGiftBoxCounter(state: State)
 		end
 	end
 	markAmbient(state, box, AMBIENT_BREATHE)
+	-- FIX 1: the halo on the dais (the box breathes), 1.5 over the bow's top (6.4 + 2.48 + 1.76 = 10.64 over bx).
+	halo(state, "BoxSparkle", daisPart, at(bx, 0, 12.1, 0).Position)
 	-- The reveal pedestal (lobby.js:217-219) is the SD_BoxStand; its ring is lit mint (Available, D7).
 	local standDisc = stand.stand
 	local pedestal = cyl(
@@ -1033,6 +1208,7 @@ local function buildShopCounter(state: State)
 	)
 	Prims.tag(counter, stand.tag)
 	addPrompt(state, counter, stand.prompt)
+	lamp(state, "ShopLamp", counter, at(F, 0, 11.5, 2).Position) -- FIX 1: under the awning (scallops 12.6)
 	for i = -3, 3 do -- design: lobby.js:244
 		rb(
 			state,
@@ -1097,9 +1273,11 @@ local function buildShopCounter(state: State)
 	-- The preview turntable (lobby.js:255-257) on the square at the stall's front corner; its ring is lit butter
 	-- (Purchasable, D7).
 	local tt = stand.turntable
-	cyl(state, model, "turntable_base", 3.3, 1.4, at(tt, 0, 0.7, 0), "LobbyTrimWhite", "solid")
+	local turntablePart = cyl(state, model, "turntable_base", 3.3, 1.4, at(tt, 0, 0.7, 0), "LobbyTrimWhite", "solid")
 	local ring = collar(state, model, "turntable_ring", 3.1, 0.3, 0.6, at(tt, 0, 1.4 - 0.3, 0), "LobbyButter")
 	ring.Material = Enum.Material.Neon
+	-- FIX 1: the halo over the turntable's toy (Butter, at most 2.4 tall on the 1.4 turntable: top 3.8 at most).
+	halo(state, "ShopSparkle", turntablePart, at(tt, 0, 5.3, 0).Position)
 	-- The design's toys (lobby.js:260): Toast and Banana in the case, Butter on the turntable.
 	for i, toy in { { "toast", 1.5 }, { "banana", 1.2 } } :: { { any } } do
 		local base = at(F, -5.4 + (i - 1) * 3.2, 6.9, 1.5, 0, 0.2)
@@ -1311,6 +1489,8 @@ local function buildDailyStand(state: State)
 		color(state, dais.color)
 	)
 	ring.Material = Enum.Material.Neon
+	-- FIX 1: the halo on the dais (the gift spins and bobs), 1.5 over the bow's top (5 + 2.2 + 1.52 = 8.72 over g).
+	halo(state, "DailySparkle", pedestal, at(g, 0, 10.3, 0).Position)
 	-- The 7-day calendar (lobby.js:322-328); days 1-3 carry their check (static art).
 	for d = 0, 6 do
 		local a = math.rad(-48 + d * 16)
@@ -1339,7 +1519,7 @@ local function buildDailyStand(state: State)
 end
 
 -- The statue's ambient sparkle (§7.7): one emitter on an Attachment of the plinth at WorldLayout's sparkle point.
--- Built-in texture and rates from Config.Vfx (one of the ≤ 3 ambient emitters, §7.7 budget); no light emission.
+-- Built-in texture and rates from Config.Vfx (one of the lobby's 14 emitters, Verify); no light emission.
 local function buildStatueSparkle(state: State, host: BasePart, point: Vector3)
 	local vfx = state.deps.Config.Vfx
 	local attachment = Instance.new("Attachment")
@@ -1429,6 +1609,7 @@ local function buildSqueezeZone(state: State)
 			size = Vector3.new(0.8, 2.8, 0.3), -- design: lobby.js:347
 			cframe = at(mg, 0, 4, 5.62),
 			color = color(state, "LobbyMint"),
+			material = Enum.Material.Neon, -- design: lobby.js:347-350 (glow, the Ready meter always lit)
 			flags = "decor",
 			parent = model,
 		})
@@ -1810,7 +1991,19 @@ local function buildGarden(state: State)
 	local trees = 0
 	local function tree(frame: CFrame)
 		trees += 1
-		prop(state, model, "CupcakeTree", frame, cupcakeTree(trees))
+		if state.meshes.CupcakeTree then -- FIX 3: the Blender cup and frosting; the trunk and the cherry stay parts
+			local parts = cupcakeTree(trees)
+			local m = prop(state, model, "CupcakeTree", frame, { parts[1], parts[4] })
+			placeMeshes(
+				state,
+				"CupcakeTree",
+				frame,
+				{ CupcakeTree_Cup = parts[2].token, CupcakeTree_Frosting = parts[3].token },
+				m
+			)
+		else
+			prop(state, model, "CupcakeTree", frame, cupcakeTree(trees))
+		end
 	end
 	for _, degrees in CUPCAKE_GARDEN do
 		for _, side in { -1, 1 } do
@@ -1880,8 +2073,14 @@ end
 local function buildSky(state: State)
 	local model = Prims.model("Sky", state.root, false)
 	for k = 0, 5 do
-		local cloud =
-			prop(state, model, "CloudBunny", groundFrame(110 + (k % 2) * 20, 30 + k * 60, 62 + (k % 3) * 6), CLOUD)
+		local frame = groundFrame(110 + (k % 2) * 20, 30 + k * 60, 62 + (k % 3) * 6)
+		local cloud: Model
+		if state.meshes.CloudBunny then -- FIX 3: the Blender Cloud Bunny (its ears as the design draws them)
+			cloud = Prims.model("CloudBunny", model, false, frame)
+			placeMeshes(state, "CloudBunny", frame, { CloudBunny = "White" }, cloud)
+		else
+			cloud = prop(state, model, "CloudBunny", frame, CLOUD)
+		end
 		for _, part in cloud:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.CastShadow = false
@@ -2016,32 +2215,44 @@ local function buildBase(state: State, index: number, folder: Instance)
 	end
 	local archRadius = B.gateWidth / 2 + GATE_PILLAR.X / 2
 	local arch = F * CFrame.new(0, GATE_PILLAR.Y, gateZ) -- the ring's plane: the gate's, around its local Z
-	Props.rods(model, "GateDough", archRadius, DONUT_TUBE, arch, color(state, "LobbyWafer"), 6, math.pi)
-	for _, rod in
-		Props.rods(
-			model,
-			"GateIcing",
-			archRadius,
-			DONUT_TUBE + 0.15,
-			arch * CFrame.Angles(0, 0, math.pi / 6),
-			color(state, open.full),
-			5, -- not the dough's 6: no icing rod shares a dough rod's end planes (Flicker_Test)
-			2 * math.pi / 3
-		)
-	do
-		tint(rod, "full")
-	end
-	for k, token in { "LobbyButter", "LobbySky", "White", "LobbyMint", "LobbyButter", "White" } do
-		local a = math.rad(45 + (k - 1) * 18)
-		local r = archRadius + DONUT_TUBE + 0.1
-		Prims.part({
-			name = "GateSprinkle",
-			size = Vector3.new(0.3, 0.3, 0.8),
-			cframe = arch * CFrame.new(r * math.cos(a), r * math.sin(a), 0) * CFrame.Angles(0, 0, a),
-			color = color(state, token),
-			flags = "decor",
-			parent = model,
-		})
+	if state.meshes.DonutArch then -- FIX 3: the Blender donut, its icing on both faces, the design's sprinkles
+		local made = placeMeshes(state, "DonutArch", arch, {
+			DonutArch_Dough = "LobbyWafer",
+			DonutArch_Icing = open.full,
+			DonutArch_Sprinkles_White = "White",
+			DonutArch_Sprinkles_Sky = "LobbySky",
+			DonutArch_Sprinkles_Butter = "LobbyButter",
+			DonutArch_Sprinkles_Mint = "LobbyMint",
+		}, model)
+		tint(made.DonutArch_Icing, "full")
+	else
+		Props.rods(model, "GateDough", archRadius, DONUT_TUBE, arch, color(state, "LobbyWafer"), 6, math.pi)
+		for _, rod in
+			Props.rods(
+				model,
+				"GateIcing",
+				archRadius,
+				DONUT_TUBE + 0.15,
+				arch * CFrame.Angles(0, 0, math.pi / 6),
+				color(state, open.full),
+				5, -- not the dough's 6: no icing rod shares a dough rod's end planes (Flicker_Test)
+				2 * math.pi / 3
+			)
+		do
+			tint(rod, "full")
+		end
+		for k, token in { "LobbyButter", "LobbySky", "White", "LobbyMint", "LobbyButter", "White" } do
+			local a = math.rad(45 + (k - 1) * 18)
+			local r = archRadius + DONUT_TUBE + 0.1
+			Prims.part({
+				name = "GateSprinkle",
+				size = Vector3.new(0.3, 0.3, 0.8),
+				cframe = arch * CFrame.new(r * math.cos(a), r * math.sin(a), 0) * CFrame.Angles(0, 0, a),
+				color = color(state, token),
+				flags = "decor",
+				parent = model,
+			})
+		end
 	end
 	local sign = B.nameSign
 	local board = Prims.part({
@@ -2065,6 +2276,9 @@ local function buildBase(state: State, index: number, folder: Instance)
 			parent = model,
 		})
 	end
+	-- FIX 1: the halo 1.2 over the arch's top, against the sky (seen from the plot's spawn and from the hub).
+	local archHalo = F * CFrame.new(0, GATE_PILLAR.Y + archRadius + DONUT_TUBE + 1.2, gateZ)
+	halo(state, "GateSparkle", board, archHalo.Position, WorldLook.HALO.gateSize) -- seen from about 44 studs
 	-- The capsule pads (8 × 8, Slot) and the statue's plinth.
 	for slot, pad in B.capsulePads do
 		local part = Prims.part({
@@ -2128,11 +2342,21 @@ local function buildDecor(state: State)
 	local lollipops = L.Props.lollipops
 	for index, foot in lollipops.positions do -- design: lobby.js:468
 		local swirl = lollipops.colors[index]
-		local lollipop = Props.lollipop(model, "Lollipop" .. index, foot, lollipops.height, lollipops.radius, {
-			stick = color(state, LOLLIPOP_STICK),
-			a = color(state, swirl[1]),
-			b = color(state, swirl[2]),
-		})
+		local lollipop: Model
+		if state.meshes.Lollipop then -- FIX 3: the Blender stick, disk and raised swirl rings (the design's h 24, r 7)
+			lollipop = Prims.model("Lollipop" .. index, model, false, CFrame.new(foot))
+			placeMeshes(state, "Lollipop", CFrame.new(foot), {
+				Lollipop_White = LOLLIPOP_STICK,
+				Lollipop_RingA = swirl[1],
+				Lollipop_RingB = swirl[2],
+			}, lollipop)
+		else
+			lollipop = Props.lollipop(model, "Lollipop" .. index, foot, lollipops.height, lollipops.radius, {
+				stick = color(state, LOLLIPOP_STICK),
+				a = color(state, swirl[1]),
+				b = color(state, swirl[2]),
+			})
+		end
 		for _, part in lollipop:GetDescendants() do
 			if part:IsA("BasePart") then
 				Prims.cosmetic(part)
@@ -2575,7 +2799,9 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 		hosts = {},
 		template = if roundedBox and roundedBox:IsA("BasePart") then roundedBox else nil,
 		warnedTemplate = false,
+		meshes = {},
 	}
+	resolveMeshes(state)
 
 	buildIsland(state)
 	buildHub(state)
@@ -2596,6 +2822,7 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 	buildBases(state)
 	buildSigns(state) -- after every station model and host part exists
 	buildVolumes(state)
+	WorldLook.finish(root, deps.Palette) -- FIX 2: the finishes by colour
 	applyRenderRules(root)
 
 	local problems, zones, guis, prompts = selfCheck(state, worstPlot)

@@ -13,7 +13,8 @@
 -- templates BaseService clones onto the plots pass Verify("capsules"); one capsule per Config.Grip.Capsule tier look
 -- (pivot on the drum's bottom, its level plate along the pivot's LookVector, SD_SeatY on the drum), the lock, and a
 -- low-detail squishy (3.5 tall) and statue (WorldLayout.Bases.statueHeight) per Catalog squishy, pivot at the bottom
--- centre; worstPlotParts adds up a plot at its worst.
+-- centre; worstPlotParts adds up a plot at its worst. The lobby look upgrade (2026-10-14): every capsule's Knob glows
+-- (Neon) and the capsules take Kit/WorldLook's finishes (royal velvet Fabric, a shiny jelly body).
 
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -374,6 +375,26 @@ return function(t: Context)
 			end
 		end
 	)
+
+	t.test("CapsuleBuilder look upgrade: a glowing Knob on every capsule, velvet and jelly finishes", function()
+		local Config = t.requireShared("Config")
+		local root = build("CapsuleBuilder", "capsules").root
+		local ok, err = pcall(function()
+			local function piece(look: string, name: string): BasePart
+				local capsule = root:FindFirstChild("Capsule_" .. look) :: Instance
+				return capsule:FindFirstChild(name) :: BasePart
+			end
+			for _, tier in Config.Grip.Capsule.Tiers do
+				expect.equal(piece(tier.key, "Knob").Material, Enum.Material.Neon) -- FIX 1: the lit ball on top
+			end
+			expect.equal(piece("royal", "Drum").Material, Enum.Material.Fabric) -- royal_velvet (lobby.js:77)
+			expect.near(piece("jelly", "Drum").Reflectance, 0.15, 1e-3) -- jelly_core rough .30 (lobby.js:79)
+		end)
+		root:Destroy()
+		if not ok then
+			error(err)
+		end
+	end)
 
 	t.test(
 		"CapsuleBuilder.worstPlotParts: n biggest capsules, the n biggest squishies and the biggest statue",
