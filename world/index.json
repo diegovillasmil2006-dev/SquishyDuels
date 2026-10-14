@@ -1,5 +1,11 @@
 [
 	{
+		"file": "Workspace/ClaudeEclipseTest.rbxm",
+		"class": "Model",
+		"name": "ClaudeEclipseTest",
+		"container": "Workspace"
+	},
+	{
 		"file": "Workspace/SD_Lobby.rbxm",
 		"class": "Model",
 		"name": "SD_Lobby",
