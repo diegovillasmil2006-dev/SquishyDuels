@@ -20,10 +20,8 @@
 --                                                SettingsController and SoundController, and the held-back toasts
 --   SD_DebugClient:Invoke("state")               small table: equipped id, held models, joint layers, squeeze,
 --                                                controls, Cleanup.liveCount(), cached templates, the audio zone,
---                                                the giant pads (GiantPadController.debugState), the aim state and
---                                                the AutoDriver
---   SD_DebugClient:Invoke("padPathB", on)        §17.12 L3: on = true makes every giant pad drop its path A mesh and
---                                                fail the next one (path B, one log line per pad); false stops it
+--                                                the aim state and the AutoDriver (giantPads and the "padPathB"
+--                                                command went with the giant pads, build plan Phase 6)
 --   SD_DebugClient:Invoke("fire", target?)       one throw now through ThrowController (the same rules as a press and
 --                                                the real ThrowRequest remote): target nil / "auto" = the opponent in a
 --                                                duel, else the nearest practice target; "opponent"; "target"; or a
@@ -183,7 +181,6 @@ local ViewportStage = require(Client.UI.ViewportStage)
 local BoxController = require(Client.Controllers.BoxController)
 local CharacterAnimController = require(Client.Controllers.CharacterAnimController)
 local ControlsController = require(Client.Controllers.ControlsController)
-local GiantPadController = require(Client.Controllers.GiantPadController)
 local GripController = require(Client.Controllers.GripController)
 local HeldSquishyController = require(Client.Controllers.HeldSquishyController)
 local HudController = require(Client.Controllers.HudController)
@@ -349,14 +346,6 @@ local function ui(): Reply
 	}
 end
 
-local function padPathB(on: unknown): Reply
-	if type(on) ~= "boolean" then
-		return { ok = false, error = "padPathB needs true or false" }
-	end
-	GiantPadController.debugForceFailure(on)
-	return { ok = true }
-end
-
 local function state(): Reply
 	local player = Players.LocalPlayer
 	local zone = WorldBinder.currentZone()
@@ -380,7 +369,6 @@ local function state(): Reply
 		cleanupLive = Cleanup.liveCount(),
 		cachedTemplates = SquishyCache.templateCount(),
 		audioZone = if zone then zone.zoneId else nil,
-		giantPads = GiantPadController.debugState(),
 		gripLevel = GripController.level(),
 	}
 end
@@ -536,7 +524,7 @@ local function feelCounters(folderName: string, name: string): any
 	return if ok then result else tostring(result)
 end
 
--- MeshQuota.count() (editable meshes held by the giant pads and the ripple skin), or nil while it is not built.
+-- MeshQuota.count() (editable meshes held by the ripple skin and the knead shell), or nil while it is not built.
 local function meshQuotaCount(): number?
 	local count = functionOf(optionalModule("Anim", "MeshQuota"), "count")
 	if count == nil then
@@ -1008,7 +996,6 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 	gripIdle = gripIdle,
 	ui = ui,
 	state = state,
-	padPathB = padPathB,
 	fire = fire,
 	ult = ult,
 	auto = auto,

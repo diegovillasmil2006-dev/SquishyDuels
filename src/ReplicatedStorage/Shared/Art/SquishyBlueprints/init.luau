@@ -1,6 +1,6 @@
 --!strict
--- SquishyBlueprints: part lists for the squishies plus `gift_box`, `dragon_head_vfx` (DESIGN §8.1, §8.2) and the
--- three giant squishy pads `giant_jelly`, `giant_marshmallow`, `giant_cushion` (§17.6.1, faces only; Kit.giantPad).
+-- SquishyBlueprints: part lists for the squishies plus `gift_box` and `dragon_head_vfx` (DESIGN §8.1, §8.2). The
+-- giant pads' `giant_*` blueprints went with the pads (build plan Phase 6).
 -- Shared (client runtime and edit-time generators), data only. Built by Art/SquishyBuilder; all numbers [P].
 --
 -- The module is a frozen map `{ [blueprintId]: Blueprint }`; the squishy blueprint ids equal the squishy ids. Each
@@ -41,11 +41,6 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	cupcake_axolotl = require(script.cupcake_axolotl),
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
-	-- Giant squishy pads (§17.6.1; see Kit.giantPad): Mint jelly, Cream marshmallow, Lemon Royal Cushion.
-	-- Phase 3: the design lobby's pads (WorldLayout.GiantPads footprint × rest top, sd/lobby.js:361, 364, 384).
-	giant_jelly = Kit.giantPad(10.2, 6.2, "8EDFC4"),
-	giant_marshmallow = Kit.giantPad(10, 6.6, "FFF4E6"),
-	giant_cushion = Kit.giantPad(8.4, 4.8, "FFD86B"),
 }
 
 return TableUtil.deepFreeze(SquishyBlueprints)

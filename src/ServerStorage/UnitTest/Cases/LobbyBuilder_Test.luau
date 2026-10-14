@@ -1,13 +1,14 @@
 --!strict
--- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 3: Squish
--- Island, lobby bases spec 2026-10-11 §2-§4, §7-§8, build plan Phase 4, with the Claude Design hub's stations,
+-- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 4: Squish
+-- Island, lobby bases spec 2026-10-11 §2-§4, §7-§8, build plan Phase 4, without the giant pads since Phase 6, with the
+-- Claude Design hub's stations,
 -- sd/lobby.js, phase 3 spec D1-D14, in its hub sectors). Server only (ServerStorage.UnitTest).
 -- Builders_Test already checks the generic part (ok, unparented, marked, passes Verify); these cases pin what the
 -- runtime and the binders rely on, restated from the design and the game's contracts instead of read from the builder:
 --   * every ProximityPrompt starts DISABLED and carries SD_TextKey (6 stands + 14 collection pedestals);
 --   * static sign lines are TextLabels tagged SD_Sign with SD_TextKey; live lines have neither; ≤ 64 SurfaceGuis (D6);
---   * the hub spawn (an invisible SpawnLocation in the medallion on the stage, top 1.1), the 9 squeeze stations and
---     their tiers, the 4 practice targets (on the island's lane, inert, a "Body" with a mesh), the throw box, the
+--   * the hub spawn (an invisible SpawnLocation in the medallion on the stage, top 1.1), the 6 squeeze stations (tier
+--     1), the 4 practice targets (on the island's lane, inert, a "Body" with a mesh), the throw box, the
 --     backstop, return points and boundaries;
 --   * the island (§2): the sea, the shallow water, the beach, the grass at Y -0.9, Squish Square at Y 0 with its curb
 --     and 10 paths that stay clear (nothing collidable on them, 8 wide); the duel tower (§2, §7) over the stage;
@@ -15,9 +16,7 @@
 --     the live Owner label), every tinted part marked SD_BaseTint, 4 capsule pads with Slot, one SpawnLocation each
 --     (SD_BaseSpawn, flush with the plot floor, facing the gate), the gate's 16-stud gap open;
 --   * the part budget per zone (§7) with every plot at its worst (CapsuleBuilder's templates);
---   * the giant pads (D5): Atomic, one Collision station box at the design's standing surface, a Body of tiles inside
---     the rounded footprint that never collides, no Face; the gates open and invisible; one lock + rope decor model
---     per pad (SD_GripLock);
+--   * no giant pad, Jelly gate, pod sign, lock decor, Grip gym or Royal pod any more (build plan Phase 6);
 --   * Neon only on the state rings lit in the design's default states (D7);
 --   * 7 SD_Ambient models with their SD_AmbientKind (4 garden lollipops spin, the daily gift spins and bobs, the
 --     mystery box and the statue breathe), none of their parts collides, is queried or touched;
@@ -39,7 +38,7 @@ type Context = {
 -- Restated numbers.
 local TAG_COUNTS: { [string]: number } = {
 	SD_LobbySpawn = 1,
-	SD_SqueezeStation = 9,
+	SD_SqueezeStation = 6,
 	SD_PracticeZone = 1,
 	SD_PracticeTarget = 4, -- lobby bases spec §3: 3 dummies, plus the moving target the game keeps
 	SD_QueuePodium = 1,
@@ -51,10 +50,6 @@ local TAG_COUNTS: { [string]: number } = {
 	SD_QuestBoard = 1,
 	SD_DailyStand = 1,
 	SD_ReturnPoint = 2,
-	SD_GripGate = 3,
-	SD_GripSign = 3,
-	SD_GripLock = 3, -- D5: the design's lock + rope per pad (lobby.js:372-373, 394)
-	SD_GiantPad = 3,
 	SD_Boundary = 4,
 	SD_AudioZone = 3,
 	SD_Ambient = 7, -- §18.5.1 A8 / D12: 4 lollipops, both gift boxes, the statue
@@ -77,9 +72,6 @@ local STATION_TIERS: { [string]: number } = { -- §17.4
 	squeeze_04 = 1,
 	squeeze_05 = 1,
 	squeeze_06 = 1,
-	squeeze_07 = 2,
-	squeeze_08 = 3,
-	squeeze_09 = 4,
 }
 -- A floor point `radius` studs out on compass angle `degrees` (lobby bases spec §2: clockwise from north, -Z).
 local function polar(radius: number, degrees: number): Vector3
@@ -87,14 +79,6 @@ local function polar(radius: number, degrees: number): Vector3
 	return Vector3.new(radius * math.sin(a), 0, -radius * math.cos(a))
 end
 
-type PadSpec = { tier: number, station: string, center: Vector3, collisionTop: number, restTop: number }
--- D5 (tops lobby.js:361, 364, 384). Island readings: the Grip gym (126°, r 53) holds the jelly pad 10.5 nearer the hub
--- and the marshmallow pad 10.5 farther out; the Royal Cushion on the Royal pod (306°, r 80).
-local GIANT_PADS: { [string]: PadSpec } = {
-	jelly = { tier = 2, station = "squeeze_07", center = polar(42.5, 126), collisionTop = 5.7, restTop = 6.2 },
-	marshmallow = { tier = 3, station = "squeeze_08", center = polar(63.5, 126), collisionTop = 6.0, restTop = 6.6 },
-	royal = { tier = 4, station = "squeeze_09", center = polar(80, 306), collisionTop = 4.1, restTop = 4.8 },
-}
 -- The practice range (§3; island readings): the lane floor X 46..91 across Z -10..10, and the backstop's footing under
 -- the pillow wall (X 88..92, Z -21..21). §7.7 rule 4 keeps squishy colours off it.
 local function onRange(p: Vector3): boolean
@@ -203,8 +187,6 @@ local FRAMES: { [string]: { number } } = { -- { radius, compass degrees }
 	quests = { 53, 162 },
 	daily = { 50, 198 },
 	squeeze = { 78, 270 },
-	royal = { 80, 306 },
-	grip = { 53, 126 },
 }
 local function design(id: string, x: number, y: number, z: number): Vector3
 	local spec = FRAMES[id]
@@ -247,13 +229,13 @@ return function(t: Context)
 		return model
 	end
 
-	t.test("the root is SD_Lobby, unparented, not Atomic, version 3 (Squish Island)", function()
+	t.test("the root is SD_Lobby, unparented, not Atomic, version 4 (Squish Island without the giant pads)", function()
 		local root = lobby()
 		expect.equal(root.Name, "SD_Lobby")
 		expect.equal(root.Parent, nil)
 		expect.equal((root :: Model).ModelStreamingMode, Enum.ModelStreamingMode.Default)
-		expect.equal(LobbyBuilder.VERSION, 3)
-		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 3)
+		expect.equal(LobbyBuilder.VERSION, 4)
+		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 4)
 	end)
 
 	t.test("exact tag counts", function()
@@ -266,7 +248,7 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("9 squeeze stations, unique ids, GripTier from §17.4", function()
+	t.test("6 squeeze stations, unique ids, GripTier from §17.4", function()
 		local seen: { [string]: boolean } = {}
 		for _, item in tagged(lobby(), "SD_SqueezeStation") do
 			local id = item:GetAttribute("StationId")
@@ -387,151 +369,22 @@ return function(t: Context)
 		expect.near((-host.CFrame.RightVector - Vector3.new(0, 0, -1)).Magnitude, 0, TOLERANCE)
 	end)
 
-	t.test("pod signs: one Live label without a key, a keyed grip.pad Title, near their pad", function()
-		for _, sign in tagged(lobby(), "SD_GripSign") do
-			local live, titles = 0, 0
-			for _, d in sign:GetDescendants() do
-				if d:IsA("TextLabel") and d.Name == "Live" then
-					live += 1
-					expect.equal(d:GetAttribute("SD_TextKey"), nil)
-					expect.falsy(d:HasTag("SD_Sign"))
-					expect.truthy(string.find(d.Text, "{", 1, true) == nil)
-				elseif d:IsA("TextLabel") and d.Name == "Title" then
-					titles += 1
-					local key = d:GetAttribute("SD_TextKey")
-					expect.truthy(type(key) == "string" and string.sub(key :: string, 1, 9) == "grip.pad.")
-				end
-			end
-			expect.equal(live, 1)
-			expect.equal(titles, 1)
-			local tier = sign:GetAttribute("GripTier")
-			expect.truthy(type(tier) == "number")
-			for _, spec in GIANT_PADS do
-				if spec.tier == tier then
-					local p = (sign :: BasePart).CFrame.Position
-					expect.truthy(Vector3.new(p.X - spec.center.X, 0, p.Z - spec.center.Z).Magnitude <= 12)
-				end
-			end
-		end
-	end)
-
-	t.test("giant pads: Atomic, one Collision at the design's standing surface, an inert Body, no Face (D5)", function()
-		local root = lobby()
-		for _, model in tagged(root, "SD_GiantPad") do
-			local key = model:GetAttribute("PadKey")
-			local spec = GIANT_PADS[key :: string]
-			expect.truthy(spec ~= nil and model:IsA("Model"))
-			expect.equal(model.Name, "GiantPad_" .. (key :: string))
-			expect.equal((model :: Model).ModelStreamingMode, Enum.ModelStreamingMode.Atomic)
-			expect.equal(model:GetAttribute("GripTier"), spec.tier)
-			local collisions = {}
-			for _, child in model:GetChildren() do
-				if child.Name == "Collision" then
-					table.insert(collisions, child)
-				end
-			end
-			expect.equal(#collisions, 1)
-			local box = collisions[1] :: BasePart
-			expect.truthy(box:HasTag("SD_SqueezeStation"))
-			expect.equal(box:GetAttribute("StationId"), spec.station)
-			expect.equal(box.Transparency, 1)
-			expect.equal(box.CanCollide, true)
-			expect.equal(box.CanTouch, false)
-			expect.near(topY(box), spec.collisionTop, 0.01)
-			expect.near(box.CFrame.Position.X, spec.center.X, DESIGN_TOLERANCE)
-			expect.near(box.CFrame.Position.Z, spec.center.Z, DESIGN_TOLERANCE)
-			expect.equal(model:FindFirstChild("Face"), nil) -- the design pads have no faces
-			local body = model:FindFirstChild("Body") :: Model
-			expect.truthy(body and body:IsA("Model"))
-			local tiles, bodyTop = 0, -math.huge
-			for _, part in body:GetDescendants() do
-				if part:IsA("BasePart") then
-					expect.equal(part.CanCollide, false)
-					expect.equal(part.CanQuery, false)
-					expect.equal(part.CanTouch, false)
-					bodyTop = math.max(bodyTop, topY(part))
-					if string.sub(part.Name, 1, 5) == "Tile_" then
-						tiles += 1
-						local mesh = part:FindFirstChildOfClass("SpecialMesh")
-						expect.truthy(mesh ~= nil and mesh.MeshType == Enum.MeshType.Sphere)
-					end
-				end
-			end
-			expect.truthy(tiles >= 40)
-			expect.near(bodyTop, spec.restTop, 0.151) -- tile tops at restTop; accents ride at most 0.15 over it (float32)
-			expect.truthy(bodyTop >= spec.collisionTop + 0.4)
-		end
-	end)
-
 	t.test(
-		"giant pad accents (SD_PadAccent): jelly shines, the toasted marshmallow top, royal tufts and piping",
+		"no Grip gym, Royal pod, giant pad, Jelly gate, pod sign or lock decor any more (build plan Phase 6)",
 		function()
-			local accents: { [string]: number } = {}
-			for _, model in tagged(lobby(), "SD_GiantPad") do
-				local key = model:GetAttribute("PadKey") :: string
-				local count = 0
-				for _, part in (model:FindFirstChild("Body") :: Instance):GetDescendants() do
-					if part:IsA("BasePart") and part:GetAttribute("SD_PadAccent") == true then
-						count += 1
-					end
-				end
-				accents[key] = count
+			local root = lobby()
+			expect.equal(root:FindFirstChild("GripGym"), nil)
+			expect.equal(root:FindFirstChild("RoyalPod"), nil)
+			for _, tag in { "SD_GiantPad", "SD_GripGate", "SD_GripSign", "SD_GripLock" } do
+				expect.equal(#tagged(root, tag), 0)
 			end
-			expect.equal(accents.jelly, 2) -- lobby.js:362
-			expect.equal(accents.marshmallow, 1) -- lobby.js:365 (toast top)
-			expect.equal(accents.royal, 9) -- lobby.js:385-386 (4 piping + 5 tufts)
+			for _, d in root:GetDescendants() do
+				if d:GetAttribute("SD_PadAccent") ~= nil or d:GetAttribute("PadKey") ~= nil then
+					error(`{d:GetFullName()} still carries a giant pad attribute`)
+				end
+			end
 		end
 	)
-
-	t.test("jelly gates: open and invisible as built, one per pad tier, Ø14 (D5)", function()
-		local tiers: { [number]: boolean } = {}
-		for _, gate in tagged(lobby(), "SD_GripGate") do
-			local part = gate :: BasePart
-			expect.equal(part.CanCollide, false)
-			expect.equal(part.CanQuery, false)
-			expect.equal(part.CanTouch, false)
-			expect.equal(part.Transparency, 1)
-			local tier = part:GetAttribute("GripTier") :: number
-			expect.truthy(tier >= 2 and tier <= 4 and not tiers[tier])
-			tiers[tier] = true
-			expect.near(part.Size.Y, 14, TOLERANCE) -- an upright cylinder: diameter on Y and Z
-			expect.near(part.Size.X, 14, TOLERANCE) -- height
-		end
-	end)
-
-	t.test("lock + rope decor: one SD_GripLock model per pad tier, inert, pivot on its pad, shown as built", function()
-		local tiers: { [number]: boolean } = {}
-		for _, lock in tagged(lobby(), "SD_GripLock") do
-			expect.truthy(lock:IsA("Model"))
-			local tier = lock:GetAttribute("GripTier") :: number
-			expect.truthy(tier >= 2 and tier <= 4 and not tiers[tier])
-			tiers[tier] = true
-			local pivot = (lock :: Model).WorldPivot.Position -- no PrimaryPart: GetPivot() is WorldPivot
-			local found = false
-			for _, spec in GIANT_PADS do
-				if spec.tier == tier then
-					found = true
-					expect.near(
-						Vector3.new(pivot.X - spec.center.X, 0, pivot.Z - spec.center.Z).Magnitude,
-						0,
-						DESIGN_TOLERANCE
-					)
-				end
-			end
-			expect.truthy(found)
-			local parts = 0
-			for _, part in lock:GetDescendants() do
-				if part:IsA("BasePart") then
-					parts += 1
-					expect.equal(part.CanCollide, false)
-					expect.equal(part.CanQuery, false)
-					expect.equal(part.CanTouch, false)
-					expect.equal(part.Transparency, 0)
-				end
-			end
-			expect.truthy(parts >= 10) -- a lock icon and a rope barrier
-		end
-	end)
 
 	t.test(
 		"practice: 4 targets on the island's lane with attributes, one moving, inert, each with a Body mesh",
@@ -831,8 +684,6 @@ return function(t: Context)
 		expect.equal(#named(station("DailyStand"), "calendar_tile"), 7) -- lobby.js:324
 		at("SqueezeZone", "statue_plinth", design("squeeze", 0, 1.4, 0)) -- lobby.js:339
 		expect.equal(#named(station("SqueezeZone"), "refill_meter"), 6) -- lobby.js:346
-		at("RoyalPod", "canopy_finial", design("royal", 0, 23.4, 0)) -- lobby.js:391
-		expect.equal(#named(station("RoyalPod"), "canopy_post"), 4) -- lobby.js:388
 		expect.equal(lobby():FindFirstChild("Kit"), nil) -- the design hub's kit corner is gone
 		-- The props (§3, §7): the Butter Fountain at 342°, 6 chocolate benches and 4 pancake tables on the square.
 		local decor = station("HubDecor")

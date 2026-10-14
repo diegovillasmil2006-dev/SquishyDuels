@@ -19,7 +19,7 @@
 --   reason (with "No Coins were spent." only when the server said charged = false, §2.10).
 -- * Sounds (§18.5.2 B5, §18.6): UIController.toast plays each toast's one sound (ui.toast; ui.error for a warn or
 --   error toast). This module only passes the mapped key of a code in Config.Audio.toastSounds (grip.levelUp,
---   grip.padUnlocked, grip.rankUp -> ui.gripUnlock), so that key stays out of the duel-path files; a merged held
+--   grip.rankUp -> ui.gripUnlock), so that key stays out of the duel-path files; a merged held
 --   toast plays the mapped key of the newest held code that has one. Every key is silent until an id is approved.
 
 -- Services

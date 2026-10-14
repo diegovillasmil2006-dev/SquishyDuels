@@ -239,7 +239,6 @@ local Palette = {
 	LobbyQuestPink = Color3.fromHex("#FBDDE3"), -- the Duels quest cards, lobby.js:296
 	LobbyQuestBar = Color3.fromHex("#FFC93C"), -- the Weekly progress strips, lobby.js:296
 	LobbyMallowCenter = Color3.fromHex("#F0C890"), -- mallow_toast_center, lobby.js:365
-	LobbyRankGrey = Color3.fromHex("#9AA4AE"), -- the rank tower's first tier, lobby.js:370
 
 	-- Squish Island (lobby bases spec 2026-10-11 §8, build plan Phase 4): world only (SDTools LobbyBuilder, BaseService).
 	IslandGrass = Color3.fromHex("#5CCB4E"), -- §8 grass

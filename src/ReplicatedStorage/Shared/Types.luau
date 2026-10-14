@@ -386,13 +386,13 @@ export type SqueezeResultPayload = {
 }
 
 -- Notify codes of the Grip feature (§17.10): toasts, held back by the client from Matched to Returning (§17.7).
--- grip.rankUp goes only to players whose SD_DuelPhase == "". (grip.trainerBought went with the trainers, Phase 6.)
+-- grip.rankUp goes only to players whose SD_DuelPhase == "". (grip.trainerBought went with the trainers and
+-- grip.padUnlocked with the giant pads, Phase 6.)
 -- Reading: the intro toast `grip.intro` ("the first Grip ever", §17.7 Toasts) is not in the §17.10 Notify list; it is
 -- listed here because GripService sends it once, when grip.total first rises above 0 (one sender only: the client
 -- shows what arrives, so it is never raised a second time locally).
 export type GripNotifyCode =
 	"grip.levelUp"
-	| "grip.padUnlocked"
 	| "grip.rankUp"
 	| "grip.welcome"
 	| "grip.welcomeBack"

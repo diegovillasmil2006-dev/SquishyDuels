@@ -1,6 +1,7 @@
 --!strict
--- MeshQuality (client only; no connections). DESIGN §17.6.1, §18.3.4: the editable-mesh quality rule shared by the
--- giant pads and the jelly ripple's skins. "Low" on the compact layout (Config.UI.Breakpoints: viewport height below
+-- MeshQuality (client only; no connections). DESIGN §17.6.1, §18.3.4: the editable-mesh quality rule (the jelly
+-- ripple's skins and the other client meshes; the giant pads used it until build plan Phase 6). "Low" on the compact
+-- layout (Config.UI.Breakpoints: viewport height below
 -- compactBelowHeight or width below compactBelowWidth) or on a touch-only device (touch, and no keyboard, mouse or
 -- gamepad); otherwise "High". The viewport can read 1 x 1 in the first frames, so pick() answers nil until it has a
 -- real size and the caller asks again later.
@@ -8,7 +9,6 @@
 --   MeshQuality.pick(viewport, input) -> Quality?   pure
 --   MeshQuality.input() -> Input                    reads UserInputService
 --   MeshQuality.forCamera(camera?) -> Quality?      pick(camera.ViewportSize, input()); nil without a camera
--- The giant pads' own once-per-session slow-frame downgrade stays in their controller.
 
 -- Services
 

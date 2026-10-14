@@ -14,8 +14,9 @@
 --     set the anomaly alert, which re-arms an hour later;
 --   * a load sets the level silently (no level-up or rank-up toast), with grip.headStart after a v1 -> v2 migration;
 --     grip.welcomeBack only when Double Grip grew by welcomeBackMinGain since the last save (lastSeenAt, §17.3.4);
---   * a level-up toasts grip.levelUp and grip.padUnlocked, broadcasts grip.rankUp to the lobby players and asks for a
---     "soon" save;
+--   * a level-up toasts grip.levelUp (grip.padUnlocked went with the giant pads, build plan Phase 6), broadcasts
+--     grip.rankUp to the lobby players and asks for a "soon" save; an unknown tier (only tier 1, the Foam Mats, is
+--     left) trains nothing and GripService.canUseTier is gone;
 --   * a capsule-only profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired.
 
 type Context = {
@@ -212,9 +213,9 @@ return function(t: Context)
 	end)
 
 	-- Phase 3: a pad no longer changes an own squeeze's Grip (was GripMath.squeezeGrip(trainer, tier): 15 on Jelly).
-	t.test("without a Double Grip point a squeeze trains the base Grip, on a pad too", function()
+	t.test("without a Double Grip point a squeeze trains the base Grip", function()
 		local world = fresh()
-		local gain = GripService.addFromSqueeze(world.player, 2)
+		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.equal(gain.doubled, false)
 		expect.equal(gain.grip, ownGrip(world))
 		expect.equal(gain.grip, 10) -- a new player's capsule: CP(1)
@@ -233,7 +234,7 @@ return function(t: Context)
 				{ level = 4, squishyId = "dragon" },
 			}
 			world.profile.capsules = { slots = 3, list = list }
-			local plain = GripService.addFromSqueeze(world.player, 4)
+			local plain = GripService.addFromSqueeze(world.player, 1)
 			expect.equal(plain.grip, CapsuleMath.power(31))
 			world.profile.grip.rested = { value = 3, at = UNIX_START }
 			local doubled = GripService.addFromSqueeze(world.player, 1)
@@ -322,12 +323,13 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("an unknown tier trains nothing and is never open", function()
+	t.test("an unknown tier trains nothing (the giant pads' tiers 2-4 too); canUseTier is gone (Phase 6)", function()
 		local world = fresh()
-		expect.equal(GripService.addFromSqueeze(world.player, #Config.Grip.Pads + 1).grip, 0)
-		expect.falsy(GripService.canUseTier(world.player, #Config.Grip.Pads + 1))
-		expect.truthy(GripService.canUseTier(world.player, 1))
-		expect.falsy(GripService.canUseTier(world.player, 2))
+		expect.equal(#Config.Grip.Pads, 1)
+		expect.equal(GripService.addFromSqueeze(world.player, 2).grip, 0)
+		expect.equal(GripService.addFromSqueeze(world.player, 4).grip, 0)
+		expect.equal(world.profile.grip.total, 0)
+		expect.equal((GripService :: any).canUseTier, nil)
 		finish()
 	end)
 
@@ -431,21 +433,21 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("a level-up toasts the level and the opened pad, and asks for a soon save", function()
+	t.test("a level-up toasts the level (no pad toast since Phase 6) and asks for a soon save", function()
 		local world = fresh()
-		local padLevel = Config.Grip.Pads[2].level
-		world.profile.grip.total = Config.Grip.LevelTotals[padLevel] - 1
+		local level = 5 -- the old Jelly Pad level
+		world.profile.grip.total = Config.Grip.LevelTotals[level] - 1
 		GripService.refreshBaseline(world.player, false)
 		expect.equal(#world.notices, 0)
 		GripService.addFromSqueeze(world.player, 1)
-		expect.equal(GripService.levelOf(world.player), padLevel)
+		expect.equal(GripService.levelOf(world.player), level)
 		local list = codes(world)
 		expect.truthy(table.find(list, "grip.levelUp") ~= nil)
-		expect.truthy(table.find(list, "grip.padUnlocked") ~= nil)
+		expect.falsy(table.find(list, "grip.padUnlocked") ~= nil)
 		expect.falsy(table.find(list, "grip.rankUp") ~= nil)
 		expect.deepEqual(world.saves, { "soon" })
 		local change = world.levelChanges[#world.levelChanges]
-		expect.equal(change.new, padLevel)
+		expect.equal(change.new, level)
 		expect.equal(change.silent, false)
 		finish()
 	end)
@@ -531,7 +533,7 @@ return function(t: Context)
 		})
 		QuestService.init() -- wired to every source it listens to; GripService is not one of them
 		QuestService.ensureQuests(world.player) -- today's quests, as after a profile load
-		world.profile.starter = { progress = { starter_squeeze = 2, starter_jelly = 3 }, claimed = {} }
+		world.profile.starter = { progress = { starter_squeeze = 2, starter_duel = 0 }, claimed = {} }
 		local target = Config.Grip.LevelTotals[5]
 		world.profile.grip.total = target - 1
 		GripService.refreshBaseline(world.player, false)

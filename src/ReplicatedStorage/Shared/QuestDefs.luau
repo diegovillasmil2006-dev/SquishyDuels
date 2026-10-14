@@ -1,5 +1,5 @@
 --!strict
--- QuestDefs: the 7 daily quest templates and the 4 starter tasks (DESIGN §6.8, §17.10). Shared (server
+-- QuestDefs: the 7 daily quest templates and the 3 starter tasks (DESIGN §6.8). Shared (server
 -- Logic/QuestLogic and QuestService, client QuestController / UI/QuestFormat, DataService's stored-quest check). Data
 -- only plus pure lookups; no instances, no yields. All numbers are [P].
 --
@@ -20,8 +20,9 @@
 --   variants      { {goal, reward} }: one is drawn per quest (a starter task has exactly one). The reward is counted
 --                 in squeezes (spec 2026-10-12 §9: the same numbers); QuestService pays reward × the player's squeeze
 --                 value Coins (CapsuleMath.rewardCoins) when it is claimed.
---   textPair      Strings path of a { one, many } pair (`quest.template.squeezeAny`, `quest.starterTask.jelly`)
---   minTier       starter_jelly only: counts accepted squeezes at a station of GripTier >= minTier (§17.10)
+--   textPair      Strings path of a { one, many } pair (`quest.template.squeezeAny`, `quest.starterTask.duel`)
+-- Build plan Phase 6 removed starter_jelly (squeezes on the Jelly Pad, gone with the giant pads) and its `minTier`; an
+-- old save's starter.progress / claimed entry for it is an unknown task nothing reads.
 --
 -- API:
 --   QuestDefs.get(defId)                     -> QuestDef? (daily template or starter task)
@@ -34,7 +35,6 @@
 -- Readings:
 --   * The plural pair is named by `textPair`, not by a "...Key" field: Config.validate resolves every "...Key" field
 --     to a plain string, and a pair is a table. Config.validate checks `.one` and `.many` resolve instead.
---   * starter_jelly's minTier is 2 [P]: "accepted squeezes at a station of tier >= 2" (§17.10), the Jelly Pad and up.
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -55,7 +55,6 @@ export type QuestDef = {
 	needsSquishy: boolean,
 	variants: { Variant },
 	textPair: string,
-	minTier: number?,
 }
 
 -- Constants
@@ -131,7 +130,7 @@ local DAILY: { QuestDef } = {
 	},
 }
 
--- §6.8 starter tasks (once per account) plus starter_jelly (§17.10, Part 7).
+-- §6.8 starter tasks (once per account).
 local STARTER: { QuestDef } = {
 	{
 		id = "starter_squeeze",
@@ -159,16 +158,6 @@ local STARTER: { QuestDef } = {
 		needsSquishy = false,
 		variants = { v(1, 150) },
 		textPair = "quest.starterTask.duel",
-	},
-	{
-		id = "starter_jelly",
-		kind = "starter",
-		category = "squeeze",
-		counts = "squeeze",
-		needsSquishy = false,
-		variants = { v(10, 150) },
-		textPair = "quest.starterTask.jelly",
-		minTier = 2, -- [P] the Jelly Pad (GripTier 2) and up
 	},
 }
 

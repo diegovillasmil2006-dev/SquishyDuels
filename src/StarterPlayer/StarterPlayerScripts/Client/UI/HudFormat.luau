@@ -89,12 +89,13 @@
 --                              down, centred and moved into the free span the left and right groups leave (freeSpan);
 --                              fits = false when that span is narrower than it (then the screen's centre). ctaWidth is
 --                              its widest width estimate (the queued texts; the left plan keeps it clear on phones)
---   focusLinks(groups) / chainLinks(keys)
+--   focusLinks(groups)
 --                              the gamepad links of the HUD (§11.4, §17.7): the left column top to bottom through the
 --                              tiles (DPadUp's Grip card, Down walks the tiles), the right column (Settings, the
 --                              tracker) and the links between them: the Duel CTA between the left column and Settings,
 --                              Down to the queue pill's Cancel or the coach card's button (which link Up back to it), a
---                              tile -> the CTA; chainLinks is one vertical chain (the Grip panel)
+--                              tile -> the CTA (chainLinks, the Grip panel's Show me chain, went with its pad cards,
+--                              build plan Phase 6)
 --   dpadUpTarget(hudShown, entryShown, rowShown)
 --                              DPadUp's target: the Grip card while it shows, else the first tile
 
@@ -969,11 +970,7 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 	local grip = Config.Grip
 	local maxLevel = grip.maxLevel
 	local rank = longestName("grip.rank.", grip.Ranks)
-	local pad = longestName("grip.pad.", grip.Pads)
-	local topPadLevel, topRankLevel = 0, 0
-	for _, row in grip.Pads do
-		topPadLevel = math.max(topPadLevel, row.level)
-	end
+	local topRankLevel = 0
 	for _, row in grip.Ranks do
 		topRankLevel = math.max(topRankLevel, row.level)
 	end
@@ -1017,7 +1014,6 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 		}),
 		gripChip = text("grip.restedChip", { minutes = GripMath.restedMinutes(grip.Rested.burst) }),
 		gripGoal = longest({
-			text("grip.goalPad", { pad = pad, level = topPadLevel }),
 			text("grip.goalRank", { rank = rank, level = topRankLevel }),
 			text("grip.goalMax"),
 		}),
@@ -1339,17 +1335,6 @@ local function linkOf(links: { [string]: FocusLink }, key: string): FocusLink
 	local created: FocusLink = {}
 	links[key] = created
 	return created
-end
-
--- One vertical chain: each key links up to the one before it and down to the one after it.
-function HudFormat.chainLinks(keys: { string }): { [string]: FocusLink }
-	local links: { [string]: FocusLink } = {}
-	for index, key in keys do
-		local item = linkOf(links, key)
-		item.up = keys[index - 1]
-		item.down = keys[index + 1]
-	end
-	return links
 end
 
 -- The HUD's gamepad links by key (see FocusGroups). Every key without a link in a direction gets none (the engine's

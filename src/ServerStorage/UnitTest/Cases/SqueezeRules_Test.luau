@@ -4,8 +4,8 @@
 -- -> profile ready -> a living character -> not in a match -> the tier -> bucket -> earnings limit. Squeeze anywhere
 -- (spec 2026-10-11 §5): the pad is the one the server-side root stands on (padUnder: WorldLayout.stationUnder with
 -- Config.Squeeze's padMargin / heightAbove; Phase 6 moved them there from Config.Grip.Afk with slow training gone); off
--- a pad, or on a pad still locked for the
--- player's Grip level, the squeeze pays tier 1 (base Coins, no pad bonus) and uses a token like any other; only a
+-- a pad, or on a tier Config.Grip.Pads no longer has (the giant pads' 2-4, gone in Phase 6), the squeeze pays tier 1
+-- (base Coins, no pad bonus) and uses a token like any other; tierFor takes no Grip level any more; only a
 -- missing or dead character is refused (squeeze.noCharacter, no token). Every click pays (2026-10-06): the bucket is
 -- the hidden anti-autoclicker cap, 12 at once and 12 per second on average (12 presses in 1 s all pay; a 13th at the
 -- same instant is squeeze.tooFast; a macro at 25/s for 30 s gets at most 12 + 30 × 12 accepted; a rested 20/s macro
@@ -50,7 +50,6 @@ return function(t: Context)
 			station = { tier = 1 },
 			rootPosition = ON_MAT,
 			inMatch = false,
-			level = 1,
 			baseCoins = 5,
 			limit = { value = 300, at = OS0 },
 		}
@@ -180,17 +179,20 @@ return function(t: Context)
 		expect.equal(if found then found.id else nil, "squeeze_01")
 	end)
 
-	t.test("tierFor: the pad's tier when unlocked; off a pad, a locked pad or an unknown tier pay tier 1", function()
-		local pads = Config.Grip.Pads
-		expect.equal(SqueezeRules.tierFor(nil, 50), 1)
-		for tier, pad in pads do
-			expect.equal(SqueezeRules.tierFor({ tier = tier }, pad.level), tier)
-			if pad.level > 1 then
-				expect.equal(SqueezeRules.tierFor({ tier = tier }, pad.level - 1), 1)
+	t.test(
+		"tierFor: the Foam Mats' tier 1; off a pad or an unknown tier (the old giant pads' 2-4) pay tier 1",
+		function()
+			expect.equal(#Config.Grip.Pads, 1)
+			expect.equal(SqueezeRules.tierFor(nil), 1)
+			expect.equal(SqueezeRules.tierFor({ tier = 1 }), 1)
+			for tier = 2, 5 do
+				expect.equal(SqueezeRules.tierFor({ tier = tier }), 1)
 			end
+			-- A config with a second row (a test's copy) gives that row's tier.
+			local two = { Squeeze = Config.Squeeze, Economy = Config.Economy, Grip = { Pads = { {}, {} } } }
+			expect.equal(SqueezeRules.tierFor({ tier = 2 }, two), 2)
 		end
-		expect.equal(SqueezeRules.tierFor({ tier = #pads + 1 }, 50), 1)
-	end)
+	)
 
 	-- decide: the §6.3 order ------------------------------------------------------------------------------------
 
@@ -207,18 +209,8 @@ return function(t: Context)
 	end)
 
 	-- Phase 3 (spec 2026-10-12 §3): own squeezes pay the squeeze value; a pad adds no Coins (was + its coinBonus).
-	t.test("an unlocked giant pad pays the same squeeze value and reports its tier", function()
-		for tier, pad in Config.Grip.Pads do
-			local d = SqueezeRules.decide(input(fresh(), { station = { tier = tier }, level = pad.level }), Config)
-			expect.equal(d.outcome, "accepted")
-			expect.equal(d.tier, tier)
-			expect.equal(d.coins, 5)
-		end
-	end)
-
-	t.test("a pad still locked for the player's level pays the base (tier 1): no pad bonus, one token", function()
-		local royal = #Config.Grip.Pads
-		local d = SqueezeRules.decide(input(fresh(), { station = { tier = royal }, level = 1 }), Config)
+	t.test("an old giant-pad tier (gone in Phase 6) pays the base (tier 1): no pad bonus, one token", function()
+		local d = SqueezeRules.decide(input(fresh(), { station = { tier = 4 } }), Config)
 		expect.equal(d.outcome, "accepted")
 		expect.equal(d.reason, nil)
 		expect.truthy(d.paid)
@@ -228,7 +220,7 @@ return function(t: Context)
 	end)
 
 	t.test("off a pad (no station under the player) the squeeze pays the base: tier 1, no pad bonus", function()
-		local offPad = input(fresh(), { level = 50 })
+		local offPad = input(fresh())
 		offPad.station = nil
 		local d = SqueezeRules.decide(offPad, Config)
 		expect.equal(d.outcome, "accepted")

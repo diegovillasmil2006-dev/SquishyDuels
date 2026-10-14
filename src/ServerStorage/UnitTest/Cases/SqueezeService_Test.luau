@@ -10,8 +10,9 @@
 --     CapsuleMath.squeezeValue, whatever squishy is held or pad stood on), trains the highest capsule level's power,
 --     counts stats.squeezes, sets SD_SqueezeAt (server time), fires Squeezed and replies ok; a paid one pushes the
 --     capsules with the server's own root position (CapsuleService.push decides whether that is home);
---   * off every pad, on a pad still locked for the player's level, on a pad the lobby does not have or one the
---     stale-lobby check disabled, the squeeze pays the same and reports tier 1 (Squeezed with tier 1);
+--   * off every pad, on a pad the lobby does not have or one the stale-lobby check disabled, the squeeze pays the same
+--     and reports tier 1 (Squeezed with tier 1); since the giant pads went (build plan Phase 6) every station is a
+--     tier-1 Foam Mat (squeeze_01..06);
 --     only a dead character is refused (squeeze.noCharacter), and a player in a match;
 --   * the shipped hourly limit is off: every accepted squeeze pays (with the limit switched on, an empty one would give
 --     0 Coins while Grip still rises);
@@ -224,11 +225,6 @@ return function(t: Context)
 		world.server.advance(seconds)
 	end
 
-	local function setLevel(world: World, level: number)
-		world.profile.grip.total = Config.Grip.LevelTotals[level]
-		GripService.refreshBaseline(world.player, false)
-	end
-
 	t.test("an accepted squeeze at a mat pays Coins, trains Grip and replies ok", function()
 		local world = fresh()
 		local result = SqueezeService.request(world.player)
@@ -317,7 +313,7 @@ return function(t: Context)
 	-- Squeeze anywhere (spec 2026-10-11 §5) ---------------------------------------------------------------------------
 
 	-- One accepted squeeze that paid the base (tier 1; Phase 3: every squeeze pays the squeeze value and the highest
-	-- capsule level's Grip, so only the tier the quests see differs).
+	-- capsule level's Grip; since Phase 6 every station is tier 1 too).
 	local function expectBase(world: World, result: any)
 		expect.equal(result.ok, true)
 		expect.equal(result.coins, valueOf(world))
@@ -334,20 +330,19 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("a pad still locked for the player's level pays the base, never its bonus", function()
-		local world = fresh()
-		world.position = onStation("squeeze_09") -- the Royal Cushion (tier 4) at Lv 1
-		expectBase(world, SqueezeService.request(world.player))
-		finish()
+	t.test("the giant pads' stations are gone (Phase 6): squeeze_07..09 are not WorldLayout stations", function()
+		for _, id in { "squeeze_07", "squeeze_08", "squeeze_09" } do
+			expect.equal(WorldLayout.station(id), nil)
+		end
+		expect.equal(#WorldLayout.stationIds(), 6)
 	end)
 
 	t.test(
 		"the client's station id is ignored: the pad is the server's own (an extra argument changes nothing)",
 		function()
 			local world = fresh()
-			setLevel(world, Config.Grip.Pads[#Config.Grip.Pads].level)
 			world.position = onStation("squeeze_01")
-			local forged = (SqueezeService.request :: any)(world.player, "squeeze_09")
+			local forged = (SqueezeService.request :: any)(world.player, "squeeze_06")
 			expect.equal(forged.ok, true)
 			expect.equal(forged.coins, valueOf(world))
 			expect.equal(world.squeezed[1].tier, 1)
@@ -357,9 +352,8 @@ return function(t: Context)
 
 	t.test("a pad the lobby does not have gives no boost: the base is paid", function()
 		local world = fresh()
-		setLevel(world, Config.Grip.Pads[3].level)
-		world.position = onStation("squeeze_08")
-		world.untagged.squeeze_08 = true
+		world.position = onStation("squeeze_02")
+		world.untagged.squeeze_02 = true
 		expectBase(world, SqueezeService.request(world.player))
 		finish()
 	end)
@@ -607,27 +601,11 @@ return function(t: Context)
 		end
 	)
 
-	-- Phase 3 (spec 2026-10-12 §3, §10): was "pays the Coin bonus and its Grip percent"; pads stay until Phase 6.
-	t.test("the Marshmallow Pad at its level pays like anywhere else and still reports its tier", function()
-		local world = fresh()
-		setLevel(world, Config.Grip.Pads[3].level)
-		local gripBefore = world.profile.grip.total
-		world.position = onStation("squeeze_08")
-		local result = SqueezeService.request(world.player)
-		expect.equal(result.ok, true)
-		expect.equal(result.coins, valueOf(world))
-		expect.equal(result.grip, gripOf(world))
-		expect.equal(world.profile.grip.total, gripBefore + result.grip)
-		expect.equal(world.squeezed[1].tier, 3) -- the quests (starter_jelly) still see the pad
-		finish()
-	end)
-
 	t.test("a stale station is disabled: no boost for squeezes there (the base is paid)", function()
 		local world = fresh()
-		setLevel(world, Config.Grip.Pads[2].level)
 		local problems = SqueezeService.applyStationCheck(function(id: string): (boolean, unknown)
-			if id == "squeeze_07" then
-				return true, 1 -- the lobby says tier 1, WorldLayout says 2
+			if id == "squeeze_02" then
+				return true, 2 -- the lobby says tier 2, WorldLayout says 1
 			elseif id == "squeeze_03" then
 				return false, nil -- missing from the lobby
 			end
@@ -637,11 +615,11 @@ return function(t: Context)
 		for _, problem in problems do
 			kinds[problem.id] = problem.kind
 		end
-		expect.deepEqual(kinds, { squeeze_07 = "stale", squeeze_03 = "missing", squeeze_10 = "unknown" })
-		expect.truthy(SqueezeService.isStationDisabled("squeeze_07"))
+		expect.deepEqual(kinds, { squeeze_02 = "stale", squeeze_03 = "missing", squeeze_10 = "unknown" })
+		expect.truthy(SqueezeService.isStationDisabled("squeeze_02"))
 		expect.truthy(SqueezeService.isStationDisabled("squeeze_03"))
 		expect.falsy(SqueezeService.isStationDisabled("squeeze_01"))
-		world.position = onStation("squeeze_07")
+		world.position = onStation("squeeze_02")
 		expectBase(world, SqueezeService.request(world.player))
 		finish()
 	end)

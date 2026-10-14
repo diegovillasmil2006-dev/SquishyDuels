@@ -4,13 +4,12 @@
 -- Strings.reasonText(code). Part 4: the duel, queue and practice texts DESIGN quotes keep their exact wording, and
 -- every text the Part 4 screens and DuelResult.reasonKey use exists. Part 5: the data banners, restart notice,
 -- settings, Squishies and every §17.7 Grip text keep DESIGN's wording; the Part 5 codes and readings exist; no duel
--- text mentions Grip (§17.2 rule 1). Part 7:
--- quest.starterTask.jelly keeps DESIGN's wording; the Part 7 readings (box.title,
+-- text mentions Grip (§17.2 rule 1). Part 7: the Part 7 readings (box.title,
 -- box.freeOnly, box.boardHeader, box.boardLine, daily.today) exist, and box.freeOnly names the Config free box day.
 -- Foam fix 2: the Grip card's short goal lines (grip.hudGoal*); grip.idleBody keeps its line break (Phase 6: its second
 -- sentence names the capsules).
 -- Squeeze anywhere (spec 2026-10-11 §5): the onboarding step, Inspect's preview lines, the off-pad label
--- (grip.stationLabelBase), the Foam Mats card (grip.padPerksBase) and grip.limitNote never send you to a mat;
+-- (grip.stationLabelBase) and grip.limitNote never send you to a mat;
 -- the mat, pad-level, limit and locked-button texts are gone. Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2): the
 -- squeeze hints name a click or a tap, grip.holdPaused names no button (it left DESIGN's words), the Inspect step opens
 -- Squishies, and the Squeeze button's key texts are gone. Final polish (2026-10-11): the duel key hints also name the
@@ -20,7 +19,8 @@
 -- the capsule tiers); the pad label and "Coins per squeeze" are gone; the capsule card texts and a name for every
 -- capsule tier exist. Phase 6: slow training is gone: its popup, help and bank texts are gone and no text names it
 -- (pads change nothing a player earns now; the idle card says capsules stop paying); so are the trainers: every
--- trainer text, goal and reason is gone and no text names a trainer.
+-- trainer text, goal and reason is gone and no text names a trainer; and so are the giant pads and Jelly gates: their
+-- names (only grip.pad.foam is left), pad cards, signs, unlock toast, pad goal and the starter_jelly task texts.
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
 
@@ -222,7 +222,6 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.hudMax"] = "Max level",
 	["grip.restedChip"] = "Double Grip: about {minutes} min",
 	-- §17.7 next goal
-	["grip.goalPad"] = "Next: {pad} at Grip Lv {level}",
 	["grip.goalRank"] = "Next rank: {rank} at Grip Lv {level}",
 	["grip.goalMax"] = "Max level! You've reached Infinite Grip.",
 	-- §17.7 at a pad
@@ -238,27 +237,17 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.rank.titan"] = "Titan Grip",
 	["grip.rank.master"] = "Squish Master",
 	["grip.pad.foam"] = "Foam Mats",
-	["grip.pad.jelly"] = "Jelly Pad",
-	["grip.pad.marshmallow"] = "Marshmallow Pad",
-	["grip.pad.royal"] = "Royal Cushion",
 	-- §17.7 panel. Phase 5 (build plan; progression spec 2026-10-12 §3): pads and trainers no longer boost a squeeze
 	-- (the capsules set its pay), and the Grip level's purpose is the capsule tiers. Phase 6: slow training is gone, so
 	-- DESIGN's pad and trainer lines lost their last claim (a pad pays the same as anywhere).
 	["grip.panelTitle"] = "Grip Training",
 	["grip.panelIntro"] = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
-	["grip.padsHeader"] = "Squeeze pads",
-	["grip.padNeeds"] = "Needs Grip Lv {level}",
-	["grip.padPerks"] = "The same Coins and Grip as anywhere",
-	["grip.padOpen"] = "Open",
-	["grip.padLocked"] = "Locked",
-	["grip.showMe"] = "Show me",
 	["grip.restedHelp"] = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 	-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays (Phase 5: no pad boost).
 	["grip.limitNote"] = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
 	["grip.duelNote"] = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 	-- §17.7 toasts
 	["grip.levelUp"] = "Grip Lv {level}!",
-	["grip.padUnlocked"] = "{pad} unlocked!",
 	["grip.rankUp"] = "{name} reached {rank}!",
 	["grip.intro"] = "You trained your Grip! Squeeze more to open new capsule tiers.",
 	["grip.welcome"] = "Double Grip is full: your first squeezes train x{mult} Grip!",
@@ -270,9 +259,6 @@ local PART5_WORDING: { [string]: string } = {
 	-- names what still stops (the capsules pay only while you are in the server).
 	["grip.idleBody"] = "Roblox disconnects players who are idle for 20 minutes.\nCapsules stop paying when that happens.",
 	["grip.idleButton"] = "Keep going",
-	["grip.gymTitle"] = "GRIP GYM",
-	["grip.signLocked"] = "Needs Grip Lv {level} · You: Lv {have}",
-	["grip.signOpen"] = "Open",
 	["grip.nameplate"] = "Lv {level} · {rank}",
 }
 
@@ -320,7 +306,6 @@ local PART5_CODES = {
 	"server.restartSoon",
 	"data.loaded",
 	"grip.levelUp",
-	"grip.padUnlocked",
 	"grip.rankUp",
 	"grip.welcome",
 	"grip.welcomeBack",
@@ -509,22 +494,12 @@ return function(t: Context)
 
 	-- Part 7 ----------------------------------------------------------------------------------------------------
 
-	-- §17.7 quotes these word for word (Phase 6: the trainer reason texts went with the trainers).
-	t.test("Part 7 texts DESIGN quotes keep their exact wording", function()
-		local wording: { [string]: string } = {
-			["quest.starterTask.jelly.one"] = "Squeeze once on the Jelly Pad",
-			["quest.starterTask.jelly.many"] = "Squeeze {n} times on the Jelly Pad",
-		}
-		local wrong = {}
-		for key, text in wording do
-			if Strings.resolve(key) ~= text then
-				table.insert(wrong, string.format("%s = %q", key, tostring(Strings.resolve(key))))
-			end
-		end
-		table.sort(wrong)
-		if #wrong > 0 then
-			error("not the DESIGN wording: " .. table.concat(wrong, "; "))
-		end
+	-- §17.7 quoted the starter_jelly texts word for word; Phase 6 removed them with the task (and the trainer reason
+	-- texts with the trainers).
+	t.test("Part 7: the starter_jelly task texts are gone with the giant pads (build plan Phase 6)", function()
+		expect.equal((Strings.quest.starterTask :: any).jelly, nil)
+		expect.equal(Strings.resolve("quest.starterTask.jelly.one"), nil)
+		expect.equal(Strings.resolve("quest.starterTask.jelly.many"), nil)
 	end)
 
 	-- Readings the Part 7 screens use (DESIGN implies them but gives no words).
@@ -563,13 +538,9 @@ return function(t: Context)
 		end
 	end)
 
-	-- Foam fix 2 (2026-10-09): the regular Grip card's goal line is a short form of grip.goalPad / goalRank (the panel
-	-- and the compact layout's toast keep those), so it fits the card's info column on one line.
+	-- Foam fix 2 (2026-10-09): the regular Grip card's goal line is a short form of grip.goalRank (the panel and the
+	-- compact layout's toast keep it), so it fits the card's info column on one line.
 	t.test("the Grip card's short goal lines exist with their placeholders", function()
-		expect.equal(
-			Strings.format(Strings.grip.hudGoalPad, { pad = "Jelly Pad", level = 5 }),
-			"Next: Jelly Pad at Lv 5"
-		)
 		expect.equal(
 			Strings.format(Strings.grip.hudGoalRank, { rank = "Firm Grip", level = 10 }),
 			"Next: Firm Grip at Lv 10"
@@ -609,8 +580,6 @@ return function(t: Context)
 			Strings.format(Strings.grip.stationLabelBase, { coins = "1", grip = "10" }),
 			"+1 Coins · +10 Grip per squeeze"
 		)
-		-- The Foam Mats card: the base amount, no boost.
-		expect.equal(Strings.grip.padPerksBase, "No boost: the same Coins and Grip as anywhere")
 		-- No text sends the player to a mat any more.
 		for _, key in { "onboarding.squeeze", "inspect.preview", "capsule.powerNote", "grip.limitNote" } do
 			local text = Strings.resolve(key)
@@ -640,9 +609,6 @@ return function(t: Context)
 	t.test("no pad or onboarding text claims a squeeze bonus any more", function()
 		for _, key in
 			{
-				"grip.padPerks",
-				"grip.padUnlocked",
-				"grip.signOpen",
 				"grip.limitNote",
 				"grip.panelIntro",
 				"grip.intro",
@@ -718,6 +684,30 @@ return function(t: Context)
 		scan(Strings, "Strings")
 		table.sort(naming)
 		expect.deepEqual(naming, {})
+	end)
+
+	-- Phase 6 (build plan): the giant pads and the Jelly gates are gone too.
+	t.test("the giant pads and Jelly gates are gone: their names, cards, signs, toast and goal texts", function()
+		expect.deepEqual(Strings.grip.pad, { foam = "Foam Mats" })
+		for _, key in
+			{
+				"grip.goalPad",
+				"grip.hudGoalPad",
+				"grip.padsHeader",
+				"grip.padNeeds",
+				"grip.padPerks",
+				"grip.padPerksBase",
+				"grip.padOpen",
+				"grip.padLocked",
+				"grip.showMe",
+				"grip.padUnlocked",
+				"grip.gymTitle",
+				"grip.signLocked",
+				"grip.signOpen",
+			}
+		do
+			expect.equal(Strings.resolve(key), nil)
+		end
 	end)
 
 	t.test("the capsule card texts exist with their placeholders, and every tier has a name", function()

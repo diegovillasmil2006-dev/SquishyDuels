@@ -169,8 +169,8 @@ end
 
 -- Whether a bounding sphere is on screen (A8 culling), from Camera:WorldToViewportPoint of its centre (screenX,
 -- screenY in pixels, depth in studs), its radius, the viewport size and tan(FieldOfView / 2) (vertical). Reading: the
--- giant pads' rule, restated here so the lobby decor needs no lobby pad controller (and HeldSquishyController, which
--- duel code requires, never reaches one through AmbientController).
+-- giant pads' rule (they went in build plan Phase 6), restated here so the lobby decor needed no lobby pad controller
+-- (and HeldSquishyController, which duel code requires, never reaches one through AmbientController).
 function AmbientMath.sphereOnScreen(
 	screenX: number,
 	screenY: number,

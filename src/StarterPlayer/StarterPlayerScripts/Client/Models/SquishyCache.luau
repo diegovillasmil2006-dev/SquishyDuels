@@ -21,8 +21,8 @@
 --     flight, Inspect, cells, box reveal, collection display). The folder is read when a template is first built, so
 --     a change shows after SquishyCache.clear() or on the next join.
 --   * Not covered: models baked into the place at edit time. The lobby generator builds the Kitty Bread statue and
---     the two lobby gift boxes (counter and daily stand) and the giant pads' faces straight from the blueprints, so
---     they keep the blueprint look whatever SD_Models holds.
+--     the two lobby gift boxes (counter and daily stand) straight from the blueprints, so they keep the blueprint look
+--     whatever SD_Models holds.
 --   * Facing: the model's pivot (its PrimaryPart's pivot, or WorldPivot without one) becomes the Root: what the hand
 --     holds and what Inspect and flight turn about. The face looks toward the pivot's -Z (LookVector), +Y up. Put
 --     the pivot at the body centre.

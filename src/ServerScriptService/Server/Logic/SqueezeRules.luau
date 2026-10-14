@@ -8,8 +8,7 @@
 --                 (GripService.addFromSqueeze, §17.3.1 step 8a, whether or not it paid), stats.squeezes and quests,
 --                 SD_SqueezeAt, reply SqueezeResult{ok = true, coins, ..., nextAt}.
 --
--- decide() runs the §6.3 order on plain inputs (squeeze anywhere, spec 2026-10-11 §5: the lobby has no station gate,
--- a pad only gives its boost):
+-- decide() runs the §6.3 order on plain inputs (squeeze anywhere, spec 2026-10-11 §5: the lobby has no station gate):
 --   1 flood guard: more than Squeeze.floodPerSecond (20) requests inside any 1 s are dropped; more than
 --     floodLogDrops (40) drops inside floodLogWindowSeconds (10 s) set `logFlood` once
 --   2 profile ready (not OFFLINE / READONLY / loading)       else data.notReady
@@ -18,16 +17,16 @@
 --   5 the Coins come from the server record (the caller passes the squeeze value of the player's capsules,
 --     CapsuleMath.squeezeValue; Phase 3: the held squishy no longer changes it)
 --   6 the tier (tierFor): the pad the server-side root stands on (padUnder; SqueezeService drops a pad its
---     stale-lobby check disabled) when GripMath.canUseTier(level, its tier); off a pad, or on a pad still locked for
---     the player's Grip level, BASE_TIER (1: the Foam Mats row, base Coins and Grip, no pad bonus)
+--     stale-lobby check disabled) when Config.Grip.Pads has its tier; off a pad, BASE_TIER (1: the Foam Mats row,
+--     base Coins and Grip). Since the giant pads went (build plan Phase 6) every station is tier 1, so every squeeze
+--     pays tier 1; the tier still goes to Grip's fail-closed check
 --   7 the anti-autoclicker cap, a token bucket: capacity Squeeze.bucketCapacity (12), 1 token per cycleSeconds
 --     (1/12 s), on os.clock(): 12 at once and 12 per second on average, so over any t seconds at most 12 + 12 × t
 --     squeezes are accepted (right after a rest a macro can get up to 20 in one second, the flood guard's limit, then
 --     12 a second)                                                                   else squeeze.tooFast
 --   8 earnings limit (SqueezeLimit with Economy.SqueezeLimit, on os.time()): paid when a point is there (always
 --     when the limit is disabled, as shipped since spec 2026-10-11 §5: the limit state is then left alone);
---     coins = baseCoins when paid, else Economy.SqueezeLimit.emptyCoins (Phase 3: a pad adds no Coin bonus; the tier
---     still goes to Grip's fail-closed check and the quests)
+--     coins = baseCoins when paid, else Economy.SqueezeLimit.emptyCoins (Phase 3: a pad adds no Coin bonus)
 -- Every click pays (user decision, 2026-10-06): there is no squeeze timer; a human clicking never meets step 7 (the
 -- client stays under the cap), so every press is accepted and pays (through the earnings limit). Only a macro gets
 -- squeeze.tooFast (no Coins, no Grip; the client shows nothing for it), and above 20/s the flood guard drops it.
@@ -45,7 +44,7 @@
 --   SqueezeRules.secondsUntilNext(bucket, now, cfg?) -> max(0, 1 - tokens) × cycleSeconds
 --   SqueezeRules.padUnder(rootPosition, cfg?)        -> WorldLayout.Station? the pad the root stands on
 --                                                       (WorldLayout.stationUnder with Squeeze padMargin / heightAbove)
---   SqueezeRules.tierFor(station, level, cfg?)       -> the tier a squeeze pays (step 6)
+--   SqueezeRules.tierFor(station, cfg?)              -> the tier a squeeze pays (step 6)
 --   SqueezeRules.earn(limit, osNow, baseCoins, cfg?) -> (paid, coins, newLimit)
 --   SqueezeRules.decide(input, cfg?)                 -> Decision
 -- `now` = os.clock() seconds (bucket, flood guard); `osNow` = os.time() (the saved limit); `serverNow` =
@@ -67,7 +66,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Config = require(ReplicatedStorage.Shared.Config)
-local GripMath = require(ReplicatedStorage.Shared.GripMath)
 local SqueezeLimit = require(ReplicatedStorage.Shared.SqueezeLimit)
 local Types = require(ReplicatedStorage.Shared.Types)
 local WorldLayout = require(ReplicatedStorage.Shared.World.WorldLayout)
@@ -98,7 +96,6 @@ export type Input = {
 	station: StationInfo?, -- the pad under the server-side root (padUnder); nil: off every pad or a disabled one
 	rootPosition: Vector3?, -- nil: no living character with a HumanoidRootPart
 	inMatch: boolean, -- SD_DuelPhase ~= ""
-	level: number, -- Grip Level (GripService.levelOf)
 	baseCoins: number, -- the squeeze value (CapsuleMath.squeezeValue of the profile's capsules)
 	limit: Types.SqueezeLimitState, -- profile.squeezeLimit
 }
@@ -110,7 +107,7 @@ export type Decision = {
 	reason: string?, -- "rejected": a §2.10 reason code
 	logFlood: boolean, -- log the flood now (once)
 	state: State, -- store this as the player's State (every outcome)
-	tier: number, -- the tier this squeeze pays (tierFor: Grip, quests)
+	tier: number, -- the tier this squeeze pays (tierFor: Grip)
 	paid: boolean, -- "accepted" and the earnings limit had a point
 	coins: number, -- Coins to grant with reason "squeeze" ("accepted" only; may be 0)
 	limit: Types.SqueezeLimitState, -- the new profile.squeezeLimit (unchanged unless accepted)
@@ -123,8 +120,8 @@ local REASON_NOT_READY = "data.notReady"
 local REASON_NO_CHARACTER = "squeeze.noCharacter"
 local REASON_IN_DUEL = "squeeze.inDuel"
 local REASON_TOO_FAST = "squeeze.tooFast"
--- Off a pad (or on a locked one) a squeeze pays the Foam Mats row: validator G2 keeps Pads[1] at level 1, coinBonus 0,
--- gripPercent 100 (spec 2026-10-11 §5: base Coins and base Grip, no pad bonus).
+-- Off a pad a squeeze pays the Foam Mats row: validator G2 keeps Pads[1] at level 1, coinBonus 0, gripPercent 100
+-- (spec 2026-10-11 §5: base Coins and base Grip, no pad bonus).
 local BASE_TIER = 1
 local FLOOD_WINDOW_SECONDS = 1 -- "> floodPerSecond requests/s"
 local FLOOD_EDGE_SECONDS = 1e-6 -- float slack at the window's edge (see Readings)
@@ -216,10 +213,10 @@ function SqueezeRules.padUnder(rootPosition: Vector3, cfg: SqueezeConfig?): Worl
 	return WorldLayout.stationUnder(rootPosition, squeeze.padMargin, squeeze.heightAbove)
 end
 
--- The tier a squeeze pays: the pad's when the player's Grip level has unlocked it, else BASE_TIER (off a pad, a
--- locked pad or an unknown tier).
-function SqueezeRules.tierFor(station: StationInfo?, level: number, cfg: SqueezeConfig?): number
-	if station ~= nil and GripMath.canUseTier(level, station.tier, sections(cfg) :: any) then
+-- The tier a squeeze pays: the pad's when Config.Grip.Pads has its tier, else BASE_TIER (off a pad or an unknown
+-- tier).
+function SqueezeRules.tierFor(station: StationInfo?, cfg: SqueezeConfig?): number
+	if station ~= nil and sections(cfg).Grip.Pads[station.tier] ~= nil then
 		return station.tier
 	end
 	return BASE_TIER
@@ -247,7 +244,7 @@ end
 function SqueezeRules.decide(input: Input, cfg: SqueezeConfig?): Decision
 	local c = sections(cfg)
 	local state = input.state
-	local tier = SqueezeRules.tierFor(input.station, input.level, c)
+	local tier = SqueezeRules.tierFor(input.station, c)
 
 	-- 1. Flood guard (silent drop).
 	local allowed, flood, logNow = SqueezeRules.flood(state.flood, input.now, c)

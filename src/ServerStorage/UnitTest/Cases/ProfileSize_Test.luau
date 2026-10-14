@@ -67,6 +67,7 @@ return function(t: Context)
 				claimed = false,
 			})
 		end
+		-- starter_jelly: build plan Phase 6 removed the task, but an old save keeps its entries.
 		for _, starterId in { "starter_squeeze", "starter_practice", "starter_duel", "starter_jelly" } do
 			p.starter.progress[starterId] = BIG_COUNTER
 			p.starter.claimed[starterId] = true

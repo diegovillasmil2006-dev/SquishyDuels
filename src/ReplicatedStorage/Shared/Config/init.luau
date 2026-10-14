@@ -11,18 +11,18 @@
 -- Logic/PowerBudget. `deps.WorldLayout` replaces the WorldLayout module (unit tests pass a deliberately broken copy;
 -- WorldLayout is frozen on load); `deps.Catalog` replaces the Catalog module (unit tests pass a broken one);
 -- `deps.QuestDefs` replaces the QuestDefs module (unit tests pass broken quest definitions).
--- Grip rules (§17.9, Part 3): G1 levels, G2 pads, G5 caps and timers, G8 world (Config.Grip with
--- WorldLayout) and G10 giant-pad animation (Config.Anim.giantPad, skipped until that block exists).
+-- Grip rules (§17.9, Part 3): G1 levels, G2 pads (the Foam Mats row), G5 caps and timers, G8 world (Config.Grip with
+-- WorldLayout). G10 (giant-pad animation) and G8's giant-pad and gate rules are gone with the giant pads (Phase 6).
 -- Grip rules (Part 5): G3 squeeze ceiling (a squeeze count since spec 2026-10-12 §12),
 -- G6 Strings names (every rank and pad key has its grip.rank / grip.pad text); plus the Part 5
--- values of Data (size budget, timer skew), UI.Grip and the Grip nameplate, gate and toast settings. G9 is gone with
+-- values of Data (size budget, timer skew), UI.Grip and the Grip nameplate and toast settings. G9 is gone with
 -- slow training (build plan Phase 6); its pad margins are Config.Squeeze's now, checked there. G4 (trainer) and G6's
 -- wiring half (the "trainer" Coin reason, the TrainerUpgrade rate) are gone with the trainers (Phase 6).
 -- Grip rules (Part 7): G7 Robux allowlist and G7b bundles-off-while-Grip, both through the pure
 -- Config.robuxProblems(monetization,
 -- grip, resolveText) (also called by Config_Test with fake tables). Part 7 also checks: QuestDefs (kind, category,
 -- counts, positive integer goal/reward variants, the textPair's .one/.many texts, the daily templates cover squeeze,
--- duel and practice, starter ids, starter_jelly's minTier in 2..#Grip.Pads), Onboarding.skipStepId (camelCase, not a
+-- duel and practice, starter ids), Onboarding.skipStepId (camelCase, not a
 -- step id), UI.Boxes and UI.Shop; and, now that Boxes, Pricing and QuestDefs exist, the box/price checks below run.
 -- Part 6 (Inspect): Config.Inspect's drag speed filter, the R2 / L2 zoom deadzone (in [0, 1)), the squeeze preview dots
 -- (positive, dotSpeedMinPx <= dotSpeedMaxPx) and the Collection displays (positive check period, sway period and
@@ -110,7 +110,6 @@ local QUEST_COUNTS = {
 	hitsWith = true,
 	practiceHit = true,
 }
-local MIN_QUEST_TIER = 2 -- starter_jelly's minTier: a giant pad (tier 2..#Grip.Pads), never the Foam Mats
 -- G7 (§17.9): a coin bundle has exactly these fields; no Robux name may mention the lobby training (capsules too, lobby
 -- spec 2026-10-11 §11).
 local BUNDLE_FIELDS = { key = true, nameKey = true, productId = true, coins = true, onSale = true }
@@ -132,14 +131,9 @@ local AIM_INPUTS = { "Gamepad", "Touch", "KeyboardAndMouse" } -- Enum.PreferredI
 local AUDIO_GROUPS = { "Music", "SFX", "UI", "Ambient", "Wax" } -- Wax: spec phase2-squeeze §3.9
 local HEX_COLOR_PATTERN = "^#%x%x%x%x%x%x$"
 local STATION_ID_PATTERN = "^squeeze_%d%d$" -- §2.7
-local SQRT2 = math.sqrt(2)
-local GATE_CLEARANCE = 0.8 -- G8: a giant pad's rounded corner stays this far inside its jelly gate
-local CORNER_MARGIN = 0.1 -- G8: a collision-box corner stays this far inside the rounded footprint
 local MAX_IDLE_KICK_SECONDS = 1200 -- G5: Roblox disconnects idle players after 20 minutes
 local MAX_QUEUED_HOLD_SECONDS = 120 -- G5
-local MAX_WAVE_COURANT = 0.5 -- G10: waveSpeed × substep / spacing
-local DEFAULT_PAD_FOOTPRINT = 8 -- G10: the smallest giant pad (§17.6.1) when WorldLayout is not available
-local DEFAULT_SIDE_RINGS = 3 -- G10: fixed rim/side rings of 4(g - 1) vertices each (§17.6.1 "about 300 fixed")
+local MAX_WAVE_COURANT = 0.5 -- F7: the ripple's wave speed × substep / spacing
 local SECONDS_PER_HOUR = 3600
 local PERCENT = 100
 local MAX_PAD_MARGIN = 2 -- Config.Squeeze.padMargin (G9's limit before Phase 6)
@@ -2969,41 +2963,18 @@ local function checkGripLevels(problems: Problems)
 	end
 end
 
--- G2 Pads: Pads[1] = {level 1, bonus 0, 100%}; levels rise strictly; bonuses never decrease; percents never
--- decrease, are multiples of 10 and are <= 300.
+-- G2 Pads: Pads[1], the Foam Mats (the only row since the giant pads went, build plan Phase 6), has an id key, level
+-- 1, coinBonus 0 and gripPercent 100.
 local function checkGripPads(problems: Problems)
 	local p = "Config.Grip.Pads"
-	local pads: { any } = Grip.Pads
-	local first = pads[1]
+	local first = (Grip.Pads :: { any })[1]
 	expect(
 		problems,
 		first ~= nil and first.level == 1 and first.coinBonus == 0 and first.gripPercent == 100,
 		`G2: {p}[1] (the Foam Mats) must be level 1, coinBonus 0, gripPercent 100`
 	)
-	local keys: { [string]: boolean } = {}
-	for index, pad in pads do
-		local path = `{p}[{index}]`
-		expectId(problems, `{path}.key`, pad.key)
-		expect(problems, not keys[pad.key], `G2: {path}.key {show(pad.key)} is used twice`)
-		keys[pad.key] = true
-		expectBetween(problems, `G2: {path}.level`, pad.level, 1, Grip.maxLevel)
-		expectCount(problems, `G2: {path}.level`, pad.level, 1)
-		expectCount(problems, `G2: {path}.coinBonus`, pad.coinBonus, 0)
-		expect(
-			problems,
-			isInteger(pad.gripPercent) and pad.gripPercent > 0 and pad.gripPercent % 10 == 0 and pad.gripPercent <= 300,
-			`G2: {path}.gripPercent must be a multiple of 10 in 10..300 (got {show(pad.gripPercent)})`
-		)
-		local before = pads[index - 1]
-		if before then
-			expect(problems, pad.level > before.level, `G2: {p} levels must rise strictly ({path}.level)`)
-			expect(problems, pad.coinBonus >= before.coinBonus, `G2: {p} coin bonuses must never decrease ({path})`)
-			expect(
-				problems,
-				pad.gripPercent >= before.gripPercent,
-				`G2: {p} Grip percents must never decrease ({path})`
-			)
-		end
+	if first ~= nil then
+		expectId(problems, `{p}[1].key`, first.key)
 	end
 end
 
@@ -3069,13 +3040,10 @@ local function checkGripCaps(problems: Problems)
 	eachField(problems, `{p}.Hold`, hold, { "leadSeconds", "replyGraceSeconds" }, expectNonNegative)
 end
 
--- G8 World: every WorldLayout station has a GripTier in 1..#Pads; tiers 2..#Pads each have exactly one station;
--- every GiantPads entry matches a tier 2..#Pads station (and that tier's pad key), its collision top is below its
--- rest top, its rounded corner is at least 0.8 studs inside its gate, and each collision-box corner lies inside the
--- rounded footprint: (b - (f - r)) × √2 <= r - 0.1 whenever b > f - r.
+-- G8 World: every WorldLayout station has a unique squeeze_NN id and a GripTier in 1..#Pads (the giant pads' rules
+-- went with them, build plan Phase 6).
 local function checkGripWorld(problems: Problems, layout: any)
-	local pads: { any } = Grip.Pads
-	local tierCount = #pads
+	local tierCount = #Grip.Pads
 	local stations = layout.Stations
 	if type(stations) ~= "table" then
 		add(problems, "G8: WorldLayout.Stations is missing")
@@ -3083,7 +3051,6 @@ local function checkGripWorld(problems: Problems, layout: any)
 	end
 
 	local byId: { [string]: any } = {}
-	local perTier: { [number]: number } = {}
 	for index, station in stations do
 		local id = station.id
 		local label = `WorldLayout.Stations[{index}] ({show(id)})`
@@ -3097,205 +3064,12 @@ local function checkGripWorld(problems: Problems, layout: any)
 			byId[id] = station
 		end
 		local tier = station.tier
-		if isInteger(tier) and tier >= 1 and tier <= tierCount then
-			perTier[tier] = (perTier[tier] or 0) + 1
-		else
-			add(
-				problems,
-				`G8: {label} has GripTier {show(tier)}; it must be an integer in 1..{tierCount} (#Config.Grip.Pads)`
-			)
-		end
-	end
-	for tier = 2, tierCount do
 		expect(
 			problems,
-			perTier[tier] == 1,
-			`G8: GripTier {tier} ({show(pads[tier].key)}) must have exactly one WorldLayout station (got {perTier[tier] or 0})`
+			isInteger(tier) and tier >= 1 and tier <= tierCount,
+			`G8: {label} has GripTier {show(tier)}; it must be an integer in 1..{tierCount} (#Config.Grip.Pads)`
 		)
 	end
-
-	local giant = layout.GiantPads
-	if type(giant) ~= "table" then
-		add(problems, "G8: WorldLayout.GiantPads is missing")
-		return
-	end
-	local padsPerStation: { [string]: number } = {}
-	for _, key in sortedKeys(giant) do
-		local pad = giant[key]
-		local path = `WorldLayout.GiantPads.{tostring(key)}`
-		local tier = pad.tier
-		expect(
-			problems,
-			isInteger(tier) and tier >= 2 and tier <= tierCount,
-			`G8: {path}.tier ({show(tier)}) must be a giant-pad tier in 2..{tierCount}`
-		)
-		local padConfig = pads[tier]
-		expect(
-			problems,
-			padConfig ~= nil and padConfig.key == key,
-			`G8: {path} must be the pad of its tier (Config.Grip.Pads[{show(tier)}].key is `
-				.. `{show(padConfig and padConfig.key)})`
-		)
-		local station = byId[pad.stationId]
-		if station == nil then
-			add(problems, `G8: {path}.stationId {show(pad.stationId)} is not a WorldLayout station`)
-		else
-			padsPerStation[pad.stationId] = (padsPerStation[pad.stationId] or 0) + 1
-			expect(
-				problems,
-				station.tier == tier,
-				`G8: {path}.tier ({show(tier)}) must equal the GripTier of station {pad.stationId} ({show(station.tier)})`
-			)
-		end
-		expect(
-			problems,
-			pad.collisionTop < pad.restTop,
-			`G8: {path}.collisionTop ({show(pad.collisionTop)}) must be below restTop ({show(pad.restTop)})`
-		)
-		local box = pad.collision
-		local boxTop = box.position.Y + box.size.Y / 2
-		expect(
-			problems,
-			math.abs(boxTop - pad.collisionTop) <= 0.01,
-			`G8: {path}.collision top is at Y {studs(boxTop)}, not collisionTop ({show(pad.collisionTop)})`
-		)
-
-		local f = pad.footprint / 2
-		local r = pad.cornerRadius
-		expect(problems, r > 0 and r <= f, `G8: {path}.cornerRadius must be in (0, footprint / 2]`)
-		local gateRadius = pad.gate.diameter / 2
-		local cornerReach = (f - r) * SQRT2 + r
-		expect(
-			problems,
-			gateRadius - cornerReach >= GATE_CLEARANCE,
-			`G8: {path}: the rounded corner reaches {studs(cornerReach)} studs from the centre, only `
-				.. `{studs(gateRadius - cornerReach)} inside its gate (radius {studs(gateRadius)}); it needs >= {GATE_CLEARANCE}`
-		)
-		local b = math.max(box.size.X, box.size.Z) / 2
-		if b > f - r then
-			local reach = (b - (f - r)) * SQRT2
-			expect(
-				problems,
-				reach <= r - CORNER_MARGIN,
-				`G8: {path}: a collision-box corner pokes out of the rounded footprint ((b - (f - r)) × √2 = `
-					.. `{studs(reach)} > r - {CORNER_MARGIN} = {studs(r - CORNER_MARGIN)}; b = {studs(b)}, f = {studs(f)}, r = {studs(
-						r
-					)})`
-			)
-		end
-	end
-	for _, station in stations do
-		if isInteger(station.tier) and station.tier >= 2 then
-			expect(
-				problems,
-				padsPerStation[station.id] == 1,
-				`G8: station {show(station.id)} (GripTier {station.tier}) needs exactly one WorldLayout.GiantPads entry`
-			)
-		end
-	end
-end
-
--- Every "<x>Omega" > 0 and every "<x>Zeta" in (0, 1] directly inside `tbl`.
-local function checkSprings(problems: Problems, path: string, tbl: any)
-	for _, key in sortedKeys(tbl) do
-		local value = tbl[key]
-		if type(key) ~= "string" then
-			continue
-		end
-		if string.sub(key, -5) == "Omega" then
-			expect(
-				problems,
-				isNumber(value) and value > 0,
-				`G10: {path}.{key} must be a spring ω > 0 (got {show(value)})`
-			)
-		elseif string.sub(key, -4) == "Zeta" then
-			expect(
-				problems,
-				isNumber(value) and value > 0 and value <= 1,
-				`G10: {path}.{key} must be a spring ζ in (0, 1] (got {show(value)})`
-			)
-		end
-	end
-end
-
--- G10 Giant-pad animation (Config.Anim.giantPad; skipped until the block exists). Always: springs ω > 0 and
--- 0 < ζ <= 1 (the block's own and pathB's), radius <= 3, maxContacts <= 8. Path A (built: the feasibility test
--- passed 2026-10-05; `pathA = false` skips it): waveSpeed × substep / spacing <= 0.5 for High and Low, maxSimulated
--- <= 3, and each grid within maxVertices / maxTriangles. Grid spacing = the smallest giant pad footprint /
--- (grid - 1); the vertex count adds `sideRings` (default 3) fixed rings of 4(grid - 1) around the top grid.
-local function checkGiantPadAnim(problems: Problems, layout: any)
-	local giantPad = (Anim :: any).giantPad
-	if giantPad == nil then
-		return
-	end
-	local p = "Config.Anim.giantPad"
-	checkSprings(problems, p, giantPad)
-	if type(giantPad.pathB) == "table" then
-		checkSprings(problems, `{p}.pathB`, giantPad.pathB)
-	end
-	expect(
-		problems,
-		isNumber(giantPad.radius) and giantPad.radius > 0 and giantPad.radius <= 3,
-		`G10: {p}.radius must be in (0, 3] (got {show(giantPad.radius)})`
-	)
-	expect(
-		problems,
-		isInteger(giantPad.maxContacts) and giantPad.maxContacts >= 1 and giantPad.maxContacts <= 8,
-		`G10: {p}.maxContacts must be an integer in 1..8 (got {show(giantPad.maxContacts)})`
-	)
-	if giantPad.pathA == false then
-		return
-	end
-
-	local footprint = math.huge
-	if layout ~= nil and type(layout.GiantPads) == "table" then
-		for _, pad in layout.GiantPads do
-			if isNumber(pad.footprint) then
-				footprint = math.min(footprint, pad.footprint)
-			end
-		end
-	end
-	if footprint == math.huge then
-		footprint = DEFAULT_PAD_FOOTPRINT
-	end
-	expectNonNegative(problems, `G10: {p}.waveSpeed`, giantPad.waveSpeed)
-	expectPositive(problems, `G10: {p}.substep`, giantPad.substep)
-	expectCount(problems, `G10: {p}.maxVertices`, giantPad.maxVertices, 1)
-	expectCount(problems, `G10: {p}.maxTriangles`, giantPad.maxTriangles, 1)
-	local rings = if giantPad.sideRings == nil then DEFAULT_SIDE_RINGS else giantPad.sideRings
-	expectCount(problems, `G10: {p}.sideRings`, rings, 0)
-	for _, name in { "gridHigh", "gridLow" } do
-		local grid = giantPad[name]
-		if not (isInteger(grid) and grid >= 2) then
-			add(problems, `G10: {p}.{name} must be an integer >= 2 (got {show(grid)})`)
-			continue
-		end
-		local spacing = footprint / (grid - 1)
-		local courant = giantPad.waveSpeed * giantPad.substep / spacing
-		expect(
-			problems,
-			courant <= MAX_WAVE_COURANT,
-			`G10: {p}.waveSpeed × substep / spacing = {studs(courant)} for {name} ({grid} × {grid}, spacing `
-				.. `{studs(spacing)}) must be <= {MAX_WAVE_COURANT}, or the ripple is unstable`
-		)
-		local vertices = grid * grid + rings * 4 * (grid - 1)
-		local triangles = 2 * (grid - 1) * (grid - 1) + rings * 8 * (grid - 1)
-		expect(
-			problems,
-			vertices <= giantPad.maxVertices,
-			`G10: {p}.{name} gives ≈ {vertices} vertices per pad, above maxVertices ({giantPad.maxVertices})`
-		)
-		expect(
-			problems,
-			triangles <= giantPad.maxTriangles,
-			`G10: {p}.{name} gives ≈ {triangles} triangles per pad, above maxTriangles ({giantPad.maxTriangles})`
-		)
-	end
-	expect(
-		problems,
-		isInteger(giantPad.maxSimulated) and giantPad.maxSimulated >= 1 and giantPad.maxSimulated <= 3,
-		`G10: {p}.maxSimulated must be an integer in 1..3 (got {show(giantPad.maxSimulated)})`
-	)
 end
 
 local function num(value: number): string
@@ -3405,7 +3179,7 @@ local function checkGripStrings(problems: Problems, Strings: any)
 	end
 end
 
--- The other Part 5 Grip values: nameplate, gates, toasts and the caps the services read.
+-- The other Part 5 Grip values: nameplate, toasts and the caps the services read.
 local function checkGripSettings(problems: Problems)
 	local p = "Config.Grip"
 	local plate = Grip.Nameplate
@@ -3425,12 +3199,6 @@ local function checkGripSettings(problems: Problems)
 	)
 	expectPositive(problems, `{p}.Nameplate.checkSeconds`, plate.checkSeconds)
 	expectNonNegative(problems, `{p}.Nameplate.ownHideStuds`, plate.ownHideStuds)
-	local gate = Grip.Gate
-	expectBetween(problems, `{p}.Gate.lockedTransparency`, gate.lockedTransparency, 0, 1)
-	expectBetween(problems, `{p}.Gate.openTransparency`, gate.openTransparency, 0, 1)
-	expectNonNegative(problems, `{p}.Gate.antiTrapPadding`, gate.antiTrapPadding)
-	expectPositive(problems, `{p}.Gate.recheckSeconds`, gate.recheckSeconds)
-	expectPositive(problems, `{p}.unlockWaypointSeconds`, Grip.unlockWaypointSeconds)
 	expectCount(problems, `{p}.welcomeBackMinGain`, Grip.welcomeBackMinGain, 0)
 	expect(
 		problems,
@@ -3905,25 +3673,19 @@ local function checkUIJuice(problems: Problems)
 	checkFeelSpring(problems, "Config.Anim.jellyRipple.pathB", pathB.omega, pathB.zeta)
 end
 
--- F10 Editable meshes per client: Budgets.editableMeshes >= (giantPad.maxMeshes when giantPad.pathA, else 0) + (1 when
--- jellyRipple.pathA) + 1: the 3 giant pads plus one ripple skin, never two skins (§18.3.4), plus Inspect's knead shell
--- (spec phase2-squeeze §3.2, MeshQuota key "soft").
+-- F10 Editable meshes per client: Budgets.editableMeshes >= (1 when jellyRipple.pathA) + 1: one ripple skin, never two
+-- skins (§18.3.4), plus Inspect's knead shell (spec phase2-squeeze §3.2, MeshQuota key "soft"). The giant pads' meshes
+-- went with the pads (build plan Phase 6).
 local KNEAD_SHELL_MESHES = 1
 
 local function checkEditableMeshes(problems: Problems)
-	local giantPad = (Anim :: any).giantPad
-	local pads = 0
-	if type(giantPad) == "table" and giantPad.pathA ~= false then
-		expectCount(problems, "F10: Config.Anim.giantPad.maxMeshes", giantPad.maxMeshes, 0)
-		pads = if isNumber(giantPad.maxMeshes) then giantPad.maxMeshes else 0
-	end
 	local skins = if Anim.jellyRipple.pathA ~= false then 1 else 0
 	local budget = Vfx.Budgets.editableMeshes
 	expect(
 		problems,
-		isNumber(budget) and budget >= pads + skins + KNEAD_SHELL_MESHES,
-		`F10: Config.Vfx.Budgets.editableMeshes ({show(budget)}) must be >= the giant pads' meshes ({pads}) + the `
-			.. `ripple skin ({skins}) + the knead shell ({KNEAD_SHELL_MESHES})`
+		isNumber(budget) and budget >= skins + KNEAD_SHELL_MESHES,
+		`F10: Config.Vfx.Budgets.editableMeshes ({show(budget)}) must be >= the ripple skin ({skins}) + the knead `
+			.. `shell ({KNEAD_SHELL_MESHES})`
 	)
 end
 
@@ -4281,14 +4043,6 @@ local function checkQuestDefs(problems: Problems, QuestDefs: any): { any }?
 				end
 			end
 		end
-		if def.minTier ~= nil then
-			expect(
-				problems,
-				isInteger(def.minTier) and def.minTier >= MIN_QUEST_TIER and def.minTier <= #Grip.Pads,
-				`{path}.minTier must be an integer in {MIN_QUEST_TIER}..{#Grip.Pads} (a giant pad tier; got `
-					.. `{show(def.minTier)})`
-			)
-		end
 	end
 	expect(
 		problems,
@@ -4541,8 +4295,7 @@ function Config.validate(deps: ValidateDeps?): { string }
 		checkDebug(problems)
 	end)
 
-	-- Grip (§17.9): G1-G3, G5 and the Capsule block on Config alone; G8 with WorldLayout; G10 with
-	-- Config.Anim.giantPad.
+	-- Grip (§17.9): G1-G3, G5 and the Capsule block on Config alone; G8 with WorldLayout.
 	guarded(problems, "Config.Grip G1", function()
 		checkGripLevels(problems)
 	end)
@@ -4577,9 +4330,6 @@ function Config.validate(deps: ValidateDeps?): { string }
 			checkCombatReach(problems, layout)
 		end)
 	end
-	guarded(problems, "Config.Anim.giantPad G10", function()
-		checkGiantPadAnim(problems, layout)
-	end)
 
 	-- Feel pass (§18.9): F1-F11; F7 reads the WorldLayout face sizes, F8 the AssetTable sound keys.
 	local AssetTableModule, assetErr = loadSibling("AssetTable")

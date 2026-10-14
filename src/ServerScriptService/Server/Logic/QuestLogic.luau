@@ -19,14 +19,14 @@
 --   QuestLogic.apply(entries, event) -> { QuestProgressLine }: advances the daily quests the event counts for (in place,
 --       capped at the goal; done = progress >= goal) and returns one line per quest it changed.
 --   QuestLogic.applyStarter(starter, event) -> { starterId }: the same for profile.starter (progress map, in place);
---       claimed tasks never move. starter_jelly (minTier 2) only counts a "squeeze" event with tier >= minTier.
+--       claimed tasks never move.
 --   QuestLogic.starterView(starter) -> { StarterTaskView } {id, progress, goal, reward, done, claimed} in table order
 --   QuestLogic.rollover(quests, today) -> {autoClaim = { QuestEntry }, regenerate}: when quests.day ~= today, the
 --       done-but-unclaimed entries (the same tables: QuestService sets claimed and grants each once, toast
 --       quest.autoCollected) and regenerate = true; unfinished quests expire with no reward. Same day: nothing.
 --
 -- Events (from server hooks only, after validation; no remote ever reports progress):
---   {kind = "squeeze", squishyId, tier}        an accepted squeeze (paid or not); tier = the station's server GripTier
+--   {kind = "squeeze", squishyId}              an accepted squeeze (paid or not)
 --   {kind = "duel", outcome, squishyId, throws} a match result for one real participant; outcome win/loss/draw/
 --                                               cancelled/void, squishyId = the match snapshot's, throws = own accepted
 --   {kind = "hit", squishyId}                  a server-confirmed hit on the duel opponent
@@ -71,7 +71,6 @@ export type EventKind = "squeeze" | "duel" | "hit" | "practiceHit"
 export type QuestEvent = {
 	kind: EventKind,
 	squishyId: string?, -- squeeze, duel, hit
-	tier: number?, -- squeeze
 	outcome: string?, -- duel: "win" | "loss" | "draw" | "cancelled" | "void"
 	throws: number?, -- duel
 }
@@ -174,10 +173,7 @@ local function counts(def: QuestDef, squishy: string?, event: QuestEvent): boole
 	local rule = def.counts
 	local sameSquishy = squishy ~= nil and event.squishyId == squishy
 	if rule == "squeeze" then
-		if event.kind ~= "squeeze" then
-			return false
-		end
-		return def.minTier == nil or whole(event.tier) >= def.minTier
+		return event.kind == "squeeze"
 	elseif rule == "squeezeWith" then
 		return event.kind == "squeeze" and sameSquishy
 	elseif rule == "duelFinish" then

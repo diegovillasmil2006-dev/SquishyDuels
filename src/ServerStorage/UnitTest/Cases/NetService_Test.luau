@@ -108,7 +108,7 @@ return function(t: Context)
 		expect.truthy(valid("revealRequestId", "daily:20000"))
 		expect.falsy(valid("revealRequestId", "daily:x"))
 		expect.truthy(valid("questId", "q20000_1"))
-		expect.truthy(valid("questId", "starter_jelly"))
+		expect.truthy(valid("questId", "starter_duel"))
 		expect.falsy(valid("questId", "q1"))
 	end)
 

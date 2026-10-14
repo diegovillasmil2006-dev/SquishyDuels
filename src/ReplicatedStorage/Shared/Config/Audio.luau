@@ -121,7 +121,6 @@ local Audio = {
 	-- lobby-stat sound key out of the duel-path files.
 	toastSounds = {
 		["grip.levelUp"] = "ui.gripUnlock",
-		["grip.padUnlocked"] = "ui.gripUnlock",
 		["grip.rankUp"] = "ui.gripUnlock",
 	},
 

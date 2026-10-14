@@ -16,8 +16,8 @@
 -- ray from its centre: B and RB from the evenly cut cube, E through the equal-angle warp tan(g·π/4) so its cells stay
 -- even. Neighbouring sides share their edge vertices, so a part is one closed shell; its vertex normals are the
 -- surface's own (E: the ellipsoid gradient; B: the mean of the sides that meet there; RB: the ellipsoid where it rounds
--- the box, else as B). Every triangle is wound so that (b - a) x (c - a) points out of its part (the giant pads' and
--- the jelly skins' convention, which renders outward).
+-- the box, else as B). Every triangle is wound so that (b - a) x (c - a) points out of its part (the jelly skins'
+-- convention, which renders outward).
 -- The spacing is solved so the whole toy lands just under the quality's vertex budget (a closed grid has 2(nx·ny +
 -- ny·nz + nz·nx) + 2 vertices and twice that minus 4 triangles).
 --

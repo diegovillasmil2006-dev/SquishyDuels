@@ -2,24 +2,25 @@
 -- Config.Grip: Grip training (DESIGN §17, approved 2026-10-05). Shared, data only. Every value is [P].
 -- Grip is a lobby-only stat: never a currency, never sold, never read by duel or matchmaking code (§17.2).
 -- Pads are indexed by GripTier (WorldLayout gives each squeeze station its tier). Config.validate checks the rules
--- G1 (levels), G2 (pads), G5 (caps and timers), G8 (world, with WorldLayout) and G10 (giant-pad animation, with
--- Config.Anim.giantPad) from Part 3 on; G3 (squeeze ceiling) and G6 (Strings names) from Part 5; G7 (Robux allowlist)
+-- G1 (levels), G2 (pads), G5 (caps and timers) and G8 (world, with WorldLayout) from Part 3 on; G3 (squeeze ceiling)
+-- and G6 (Strings names) from Part 5; G7 (Robux allowlist)
 -- and G7b (coin bundles stay off while Grip is on and allowBundlesWithCapsules is false) from Part 7.
 -- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Lv 1-100 and 9 Qa of Grip, five ranks above Lv 50,
 -- the Capsule block (tiers, intervals, capsule power, prices, Grip gates, slots; validate checks it) and G3 as a squeeze
--- count. Pads and the gates stay on until their own Phase 6 removals; since Phase 3 they no longer change
+-- count. Since Phase 3 a pad no longer changes
 -- what an own squeeze pays (the squeeze value and the highest capsule level's power, CapsuleMath). Phase 6 removed
 -- slow training (the Afk block and G9); the pad test's padMargin / heightAbove moved to Config.Squeeze. Then it removed
--- the trainers (the Trainer block, its next-goal price rule, G4 and G6's wiring half).
+-- the trainers (the Trainer block, its next-goal price rule, G4 and G6's wiring half), and the giant pads and their
+-- Jelly gates (Pads rows 2-4, the Gate block, unlockWaypointSeconds, G10): only the Foam Mats row is left.
 -- Texts live in Strings: pad names `grip.pad.<key>`, ranks `grip.rank.<key>`.
--- Math: shared GripMath (levels, ranks, pads, minutes, next goal), CapsuleMath (the
+-- Math: shared GripMath (levels, ranks, minutes, next goal), CapsuleMath (the
 -- Capsule block) and SqueezeLimit (the Double Grip timer).
 
 export type Pad = {
-	key: string, -- Strings grip.pad.<key>; giant pads also use it as WorldLayout.GiantPads key / PadKey
-	level: number, -- Grip Level that unlocks it
-	coinBonus: number, -- shown in the pad texts only since Phase 3 (was added to a paid squeeze's Coins)
-	gripPercent: number, -- shown in the pad texts only since Phase 3 (was a squeeze's share of the trainer's Grip)
+	key: string, -- Strings grip.pad.<key>
+	level: number, -- Grip Level that unlocks it (G2: 1, the Foam Mats)
+	coinBonus: number, -- read by G2 only since Phase 6 (Foam Mats: 0; was added to a paid squeeze's Coins)
+	gripPercent: number, -- read by G2 only since Phase 6 (Foam Mats: 100; was a squeeze's share of the trainer's Grip)
 }
 
 export type Limit = { enabled: boolean, perHour: number, burst: number }
@@ -163,14 +164,10 @@ local Grip = {
 		{ level = 90, key = "galaxy" },
 		{ level = 100, key = "infinite" },
 	},
-	-- Index = GripTier: 1 = the Foam Mats (squeeze_01..06), 2-4 = the giant pads (squeeze_07..09).
-	-- Spec 2026-10-11 §5: squeezing pays anywhere in the lobby as tier 1 (no boost); a pad gives the boost. Coin bonuses
-	-- +0 / +1 / +2 / +3 (the user, 2026-10-11; were +0 / +1 / +3 / +5).
+	-- Index = GripTier: 1 = the Foam Mats (squeeze_01..06), the only tier since the giant pads went (Phase 6).
+	-- Spec 2026-10-11 §5: squeezing pays anywhere in the lobby as tier 1 (no boost).
 	Pads = {
 		{ key = "foam", level = 1, coinBonus = 0, gripPercent = 100 },
-		{ key = "jelly", level = 5, coinBonus = 1, gripPercent = 150 },
-		{ key = "marshmallow", level = 15, coinBonus = 2, gripPercent = 200 },
-		{ key = "royal", level = 30, coinBonus = 3, gripPercent = 300 },
 	} :: { Pad },
 	-- Capsules (spec 2026-10-12 §3-§7, §10; lobby spec 2026-10-11 §5-§6): 10 tiers × 10 levels (Lv1-100), read by
 	-- shared CapsuleMath; CapsuleService pays from them (Phase 3).
@@ -250,12 +247,7 @@ local Grip = {
 		checkSeconds = 0.25,
 		ownHideStuds = 1.5,
 	},
-	-- Jelly gates (built open; WorldBinder closes them locally while the viewer's level is too low, §17.6). Phase 3
-	-- (the design lobby, D5): both transparencies are 1, a gate is invisible; the pad's design lock and rope
-	-- (SD_GripLock) show while it is closed.
-	Gate = { lockedTransparency = 1, openTransparency = 1, antiTrapPadding = 1, recheckSeconds = 0.5 },
 	idleReminderSeconds = 900, -- idle card after 15 min of LocalPlayer.Idled
-	unlockWaypointSeconds = 20,
 	welcomeBackMinGain = 300, -- Double Grip points gained since the last save that show the welcome-back toast
 }
 

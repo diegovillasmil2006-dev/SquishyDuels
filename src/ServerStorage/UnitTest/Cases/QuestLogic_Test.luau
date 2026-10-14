@@ -7,8 +7,8 @@
 -- category, refuses done / unknown / starter quests (net.invalid) and a second swap (quest.swapUsed), and leaves the
 -- input unchanged; progress counts only what each template counts (cancelled and void duels never count; duel_finish
 -- needs >= 3 own throws, duel_win / duel_win_with count every win, §6.8), stops at the goal and reports one line per
--- changed quest; starter_jelly advances only on a
--- squeeze at tier >= 2 (a tier-1 squeeze, a slow-training tick, a level-up or a load leave it unchanged); claimed
+-- changed quest; every accepted squeeze moves starter_squeeze (starter_jelly and the squeeze event's tier went with
+-- the giant pads, build plan Phase 6; a slow-training tick, a level-up or a load move nothing); claimed
 -- tasks never move; the rollover auto-claims done-but-unclaimed quests of an old day.
 -- Determinism uses Fakes/FakeRng seeded factories (the same on every runner); one case also checks Random.new.
 
@@ -55,8 +55,8 @@ return function(t: Context)
 		return { progress = {}, claimed = {} }
 	end
 
-	local function squeeze(squishyId: string, tier: number): any
-		return { kind = "squeeze", squishyId = squishyId, tier = tier }
+	local function squeeze(squishyId: string): any
+		return { kind = "squeeze", squishyId = squishyId }
 	end
 
 	local function duel(outcome: string, squishyId: string, throws: number): any
@@ -277,14 +277,14 @@ return function(t: Context)
 		local any = entry("squeeze_any", 2)
 		local with = entry("squeeze_with", 60, "toast")
 		local quests = { any, with }
-		local lines = QuestLogic.apply(quests, squeeze("banana", 1))
+		local lines = QuestLogic.apply(quests, squeeze("banana"))
 		expect.deepEqual(lines, { { questId = any.id, progress = 1, goal = 2, done = false } })
-		QuestLogic.apply(quests, squeeze("toast", 3))
+		QuestLogic.apply(quests, squeeze("toast"))
 		expect.equal(any.progress, 2)
 		expect.truthy(any.done)
 		expect.equal(with.progress, 1)
 		-- A done quest does not move again.
-		expect.deepEqual(QuestLogic.apply({ any }, squeeze("toast", 1)), {})
+		expect.deepEqual(QuestLogic.apply({ any }, squeeze("toast")), {})
 		expect.equal(any.progress, 2)
 	end)
 
@@ -353,7 +353,7 @@ return function(t: Context)
 		-- Practice hits and squeezes never count for duel templates.
 		local finish = entry("duel_finish", 2)
 		QuestLogic.apply({ finish }, { kind = "practiceHit" })
-		QuestLogic.apply({ finish }, squeeze("toast", 4))
+		QuestLogic.apply({ finish }, squeeze("toast"))
 		expect.equal(finish.progress, 0)
 	end)
 
@@ -362,7 +362,7 @@ return function(t: Context)
 		claimed.claimed = true
 		local unknown = entry("gone_template", 5)
 		local starterLike = entry("starter_squeeze", 20)
-		expect.deepEqual(QuestLogic.apply({ claimed, unknown, starterLike }, squeeze("toast", 1)), {})
+		expect.deepEqual(QuestLogic.apply({ claimed, unknown, starterLike }, squeeze("toast")), {})
 		expect.equal(claimed.progress, 0)
 		expect.equal(unknown.progress, 0)
 		expect.equal(starterLike.progress, 0)
@@ -370,20 +370,14 @@ return function(t: Context)
 
 	-- starter tasks -------------------------------------------------------------------------------------------------
 
-	t.test("starter_jelly advances only on an accepted squeeze at a tier >= 2 station", function()
+	t.test("every accepted squeeze moves starter_squeeze; starter_jelly is gone (build plan Phase 6)", function()
 		local starter = freshStarter()
-		-- A tier-1 squeeze moves starter_squeeze but leaves starter_jelly unchanged.
-		expect.deepEqual(QuestLogic.applyStarter(starter, squeeze("toast", 1)), { "starter_squeeze" })
+		expect.deepEqual(QuestLogic.applyStarter(starter, squeeze("toast")), { "starter_squeeze" })
+		-- An old-style event's tier changes nothing.
+		local old = { kind = "squeeze", squishyId = "toast", tier = 4 } :: any
+		expect.deepEqual(QuestLogic.applyStarter(starter, old), { "starter_squeeze" })
+		expect.equal(starter.progress.starter_squeeze, 2)
 		expect.equal(starter.progress.starter_jelly, nil)
-		for _, tier in { 2, 3, 4 } do
-			local changed = QuestLogic.applyStarter(starter, squeeze("toast", tier))
-			expect.deepEqual(changed, { "starter_squeeze", "starter_jelly" })
-		end
-		expect.equal(starter.progress.starter_jelly, 3)
-		-- A squeeze event with no tier (or a bad one) counts as tier 0.
-		QuestLogic.applyStarter(starter, { kind = "squeeze", squishyId = "toast" })
-		QuestLogic.applyStarter(starter, squeeze("toast", 0 / 0))
-		expect.equal(starter.progress.starter_jelly, 3)
 	end)
 
 	t.test("a slow-training tick, a level-up or a profile load leave every starter task unchanged", function()
@@ -407,24 +401,26 @@ return function(t: Context)
 		expect.deepEqual(QuestLogic.applyStarter(starter, duel("loss", "toast", MIN_THROWS)), { "starter_duel" })
 		expect.equal(starter.progress.starter_duel, 1)
 		starter.claimed.starter_squeeze = true
-		expect.deepEqual(QuestLogic.applyStarter(starter, squeeze("toast", 1)), {})
+		expect.deepEqual(QuestLogic.applyStarter(starter, squeeze("toast")), {})
 		expect.equal(starter.progress.starter_squeeze, nil)
 	end)
 
-	t.test("starterView lists every starter task with progress, goal, reward, done and claimed", function()
-		local starter = {
-			progress = { starter_squeeze = 20, starter_jelly = 4, starter_practice = 99 },
-			claimed = {
-				starter_squeeze = true,
-			},
-		}
-		expect.deepEqual(QuestLogic.starterView(starter), {
-			{ id = "starter_squeeze", progress = 20, goal = 20, reward = 100, done = true, claimed = true },
-			{ id = "starter_practice", progress = 5, goal = 5, reward = 50, done = true, claimed = false },
-			{ id = "starter_duel", progress = 0, goal = 1, reward = 150, done = false, claimed = false },
-			{ id = "starter_jelly", progress = 4, goal = 10, reward = 150, done = false, claimed = false },
-		})
-	end)
+	t.test(
+		"starterView lists every starter task with progress, goal, reward, done and claimed (not starter_jelly)",
+		function()
+			local starter = {
+				progress = { starter_squeeze = 20, starter_jelly = 4, starter_practice = 99 },
+				claimed = {
+					starter_squeeze = true,
+				},
+			}
+			expect.deepEqual(QuestLogic.starterView(starter), {
+				{ id = "starter_squeeze", progress = 20, goal = 20, reward = 100, done = true, claimed = true },
+				{ id = "starter_practice", progress = 5, goal = 5, reward = 50, done = true, claimed = false },
+				{ id = "starter_duel", progress = 0, goal = 1, reward = 150, done = false, claimed = false },
+			})
+		end
+	)
 
 	-- rollover ---------------------------------------------------------------------------------------------------------
 

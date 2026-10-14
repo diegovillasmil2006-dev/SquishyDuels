@@ -2,9 +2,10 @@
 -- Verify: checks a generated tree against its DESIGN contract (§1.7 step 4). Server only, Edit mode only
 -- (ServerStorage.SDTools). Main runs verify() on the new, UNPARENTED tree before the swap: any problem aborts the
 -- build with the place unchanged. Pure inspection: it never changes, parents or destroys anything.
--- The expectations are restated from DESIGN (§5.3, §7.6-§7.8, §8.1, §17.6, §17.6.1, §18.5.1) instead of read from the
+-- The expectations are restated from DESIGN (§5.3, §7.6-§7.8, §8.1, §17.6, §18.5.1) instead of read from the
 -- builders, so a builder that drifts from the contract is caught. What DESIGN keeps in World/WorldLayout is read from
--- there: the GripTier of every squeeze station and each giant pad's collision top.
+-- there: the GripTier of every squeeze station. The giant pads, their Jelly gates and pod signs went in build plan
+-- Phase 6 (their checks with them).
 --
 -- API
 --   Verify.verify(target, root, deps?) -> { string }   one line per problem; empty means OK. Targets: "shapes",
@@ -53,8 +54,6 @@
 --   tiers  WorldLayout.stationTier(stationId) -> number; or a station table in Stations / SqueezeStations / stations /
 --          squeezeStations: a map stationId -> entry, or an array of entries with id / stationId / StationId; the
 --          tier is entry.gripTier / GripTier / tier
---   pads   WorldLayout.GiantPads (or giantPads): a map padKey -> entry, or an array of entries with key / padKey /
---          PadKey (or matched by the station id in stationId / station / StationId); entry.collisionTop is the top
 -- Relative requires only (Shared modules come from deps).
 
 local Workspace = game:GetService("Workspace")
@@ -80,7 +79,6 @@ type Report = {
 -- WorldLayout, normalized.
 type Layout = {
 	tierOf: (stationId: string) -> number?,
-	padCollisionTop: (padKey: string?, stationId: string?) -> number?,
 }
 
 type Range = { number } -- { min, max }
@@ -138,9 +136,6 @@ local TAG_SIGN = "SD_Sign"
 local TAG_AUDIO_ZONE = "SD_AudioZone"
 local TAG_KEEP_CLEAR = "SD_KeepClear"
 local TAG_BOUNDARY = "SD_Boundary"
-local TAG_GRIP_GATE = "SD_GripGate"
-local TAG_GRIP_SIGN = "SD_GripSign"
-local TAG_GIANT_PAD = "SD_GiantPad"
 local TAG_AMBIENT = "SD_Ambient" -- lobby background motion (§18.5.1 A8)
 local TAG_BASE = "SD_Base" -- a plot's Model (lobby bases spec §4)
 local TAG_BASE_SPAWN = "SD_BaseSpawn" -- a plot's SpawnLocation
@@ -150,9 +145,8 @@ local ATTR_TEXT_KEY = "SD_TextKey"
 local ATTR_AMBIENT_KIND = "SD_AmbientKind"
 local ATTR_STATION_ID = "StationId"
 local ATTR_GRIP_TIER = "GripTier"
-local ATTR_PAD_KEY = "PadKey"
 
--- lobby (§7.5-§7.7, §17.6, §17.6.1)
+-- lobby (§7.5-§7.7, §17.6)
 local LOBBY_ROOT_NAME = "SD_Lobby"
 local LOBBY_MAX_PARTS = 5200 -- lobby bases spec §7: the whole island (the plots' capsules come at runtime)
 local LOBBY_MAX_SURFACE_GUIS = 64 -- phase 3 (D6): the design lobby's plates
@@ -161,15 +155,11 @@ local LOBBY_MAX_LIGHTS = 8
 local LOBBY_MAX_EMITTERS = 3
 local MAX_ATOMIC_EXTENT = 64 -- studs: an Atomic station model streams as one piece
 local WALKABLE_TOP = 0.5 -- parts whose top is at or below this are floor coverings (§7.7 rule 3)
-local COLLISION_TOP_TOLERANCE = 0.01
-local BODY_ABOVE_COLLISION = 0.4
-local SQUEEZE_STATIONS = 9 -- squeeze_01..06 mats + squeeze_07..09 giant pads (§17.6)
+local SQUEEZE_STATIONS = 6 -- squeeze_01..06, the Foam Mats (the giant pads' squeeze_07..09 went in Phase 6)
 local PRACTICE_TARGETS = 4 -- lobby bases spec §3: 3 dummies and the moving target
 local LOBBY_BASES = 10 -- lobby bases spec §2: 10 plots
 local SMALL_PART = 2 -- lobby bases spec §7: parts under 2 studs cast no shadow
 local STATION_ID_PATTERN = "^squeeze_%d%d$"
-local GRIP_TIERS = { 2, 3, 4 } -- one gate, one sign and one giant pad per tier
-local GRIP_TITLE_PREFIX = "grip.pad."
 local AUDIO_ZONE_IDS = { "lobby", "squeeze", "practice" }
 -- §18.5.1 A8: the 4 lollipops (spin), the daily gift box (spinBob), the counter gift box and the statue (breathe).
 local AMBIENT_DECOR = 7
@@ -188,9 +178,6 @@ local LOBBY_TAG_COUNTS: { TagCount } = {
 	{ tag = "SD_QuestBoard", count = 1 },
 	{ tag = "SD_DailyStand", count = 1 },
 	{ tag = TAG_RETURN_POINT, count = 2 },
-	{ tag = TAG_GRIP_GATE, count = 3 },
-	{ tag = TAG_GRIP_SIGN, count = 3 },
-	{ tag = TAG_GIANT_PAD, count = 3 },
 	{ tag = TAG_BOUNDARY, count = 4 },
 	{ tag = TAG_AUDIO_ZONE, count = #AUDIO_ZONE_IDS },
 	{ tag = TAG_AMBIENT, count = AMBIENT_DECOR },
@@ -223,9 +210,6 @@ local STATION_TAGS = {
 	"SD_QuestBoard",
 	"SD_DailyStand",
 	TAG_RETURN_POINT,
-	TAG_GRIP_GATE,
-	TAG_GRIP_SIGN,
-	TAG_GIANT_PAD,
 }
 local PRACTICE_TARGET_ATTRIBUTES = {
 	{ name = "Distance", kind = "number" },
@@ -324,9 +308,6 @@ local ARENA_AUDIO_PRIORITY = 3
 local STATION_TABLES = { "Stations", "SqueezeStations", "stations", "squeezeStations" }
 local STATION_ID_FIELDS = { "id", "stationId", "StationId" }
 local TIER_FIELDS = { "gripTier", "GripTier", "tier" }
-local PAD_TABLES = { "GiantPads", "giantPads" }
-local PAD_KEY_FIELDS = { "key", "padKey", "PadKey" }
-local PAD_STATION_FIELDS = { "stationId", "station", "StationId" }
 
 -- `require` with a runtime-chosen ModuleScript (the injected Shared clone); the analyzer cannot resolve it.
 local dynamicRequire = require :: (ModuleScript) -> any
@@ -604,20 +585,7 @@ local function readLayout(module: any): Layout?
 		end
 		return nil
 	end
-	local function padCollisionTop(padKey: string?, stationId: string?): number?
-		for _, name in PAD_TABLES do
-			local list = module[name]
-			local entry = if padKey then findEntry(list, padKey, PAD_KEY_FIELDS) else nil
-			if entry == nil and stationId then
-				entry = findEntry(list, stationId, PAD_STATION_FIELDS)
-			end
-			if entry and type(entry.collisionTop) == "number" then
-				return entry.collisionTop
-			end
-		end
-		return nil
-	end
-	return { tierOf = tierOf, padCollisionTop = padCollisionTop }
+	return { tierOf = tierOf }
 end
 
 -- Private: generic checks
@@ -666,31 +634,6 @@ local function expectInert(report: Report, key: string, what: string, instance: 
 					tostring(part.CanTouch)
 				)
 			)
-		end
-	end
-end
-
--- The GripTier of each instance is one of GRIP_TIERS, each tier appearing exactly once.
-local function checkGripTiers(report: Report, tag: string, instances: { Instance })
-	local seen: { [number]: boolean } = {}
-	for _, instance in instances do
-		local tier = instance:GetAttribute(ATTR_GRIP_TIER)
-		if type(tier) ~= "number" or not table.find(GRIP_TIERS, tier) then
-			note(
-				report,
-				tag,
-				string.format(
-					"%s %s has %s %s, expected 2, 3 or 4",
-					tag,
-					describe(instance),
-					ATTR_GRIP_TIER,
-					tostring(tier)
-				)
-			)
-		elseif seen[tier] then
-			note(report, tag, string.format("%s: two instances have %s %d", tag, ATTR_GRIP_TIER, tier))
-		else
-			seen[tier] = true
 		end
 	end
 end
@@ -751,7 +694,7 @@ local function verifyShapes(report: Report, root: Instance, _deps: Deps?)
 	expectFlag(report, ROUNDED_BOX_NAME, "CanQuery", solid.CanQuery, false)
 end
 
--- Private: lobby (§7.5-§7.7, §17.6, §17.6.1)
+-- Private: lobby (§7.5-§7.7, §17.6)
 
 local function checkLobbyRoot(report: Report, root: Instance)
 	if not root:IsA("Model") then
@@ -1006,18 +949,6 @@ local function checkTextKeys(report: Report, all: { Instance }, strings: any)
 	end
 end
 
-local function checkGripGates(report: Report, all: { Instance })
-	local gates = tagged(all, TAG_GRIP_GATE)
-	checkGripTiers(report, TAG_GRIP_GATE, gates)
-	for _, gate in gates do
-		if #partsIn(gate) == 0 then
-			note(report, TAG_GRIP_GATE, string.format("%s %s has no parts", TAG_GRIP_GATE, describe(gate)))
-		end
-		-- §17.6: gates are built open; only WorldBinder closes them locally.
-		expectInert(report, TAG_GRIP_GATE, TAG_GRIP_GATE .. " (built open)", gate)
-	end
-end
-
 -- §18.1 #3 / §18.5.1 A8: the client turns or breathes SD_Ambient decor locally, so every part of it must stay out of
 -- collisions, queries and touches, and its SD_AmbientKind must be one the client knows. Reading: DESIGN asks Verify
 -- only for the count; the inert and kind checks guard the same exception.
@@ -1032,167 +963,6 @@ local function checkAmbient(report: Report, all: { Instance })
 			)
 		end
 		expectInert(report, TAG_AMBIENT, TAG_AMBIENT .. " (moved by the client)", decor)
-	end
-end
-
-local function namedBelow(instance: Instance, name: string): { Instance }
-	local found: { Instance } = {}
-	for _, descendant in instance:GetDescendants() do
-		if descendant.Name == name then
-			table.insert(found, descendant)
-		end
-	end
-	return found
-end
-
-local function checkGripSigns(report: Report, all: { Instance })
-	local signs = tagged(all, TAG_GRIP_SIGN)
-	checkGripTiers(report, TAG_GRIP_SIGN, signs)
-	for _, sign in signs do
-		local what = string.format("%s %s", TAG_GRIP_SIGN, describe(sign))
-		local lives = namedBelow(sign, "Live")
-		if #lives ~= 1 then
-			note(report, TAG_GRIP_SIGN, string.format("%s has %d Live labels, expected exactly 1", what, #lives))
-		else
-			local live = lives[1]
-			if not live:IsA("TextLabel") then
-				note(
-					report,
-					TAG_GRIP_SIGN,
-					string.format("%s: Live is a %s, expected a TextLabel", what, live.ClassName)
-				)
-			end
-			if live:GetAttribute(ATTR_TEXT_KEY) ~= nil then
-				note(report, TAG_GRIP_SIGN, string.format("%s: the Live label must not carry %s", what, ATTR_TEXT_KEY))
-			end
-		end
-		local titles = namedBelow(sign, "Title")
-		if #titles ~= 1 then
-			note(report, TAG_GRIP_SIGN, string.format("%s has %d Title labels, expected exactly 1", what, #titles))
-		else
-			local title = titles[1]
-			local key = title:GetAttribute(ATTR_TEXT_KEY)
-			if not title:IsA("TextLabel") then
-				note(
-					report,
-					TAG_GRIP_SIGN,
-					string.format("%s: Title is a %s, expected a TextLabel", what, title.ClassName)
-				)
-			end
-			if type(key) ~= "string" or string.sub(key, 1, #GRIP_TITLE_PREFIX) ~= GRIP_TITLE_PREFIX then
-				note(
-					report,
-					TAG_GRIP_SIGN,
-					string.format(
-						"%s: Title %s is %s, expected %s<key>",
-						what,
-						ATTR_TEXT_KEY,
-						tostring(key),
-						GRIP_TITLE_PREFIX
-					)
-				)
-			end
-		end
-	end
-end
-
-local function checkGiantPads(report: Report, all: { Instance }, layout: Layout?)
-	local pads = tagged(all, TAG_GIANT_PAD)
-	checkGripTiers(report, TAG_GIANT_PAD, pads)
-	for _, pad in pads do
-		local what = string.format("%s %s", TAG_GIANT_PAD, describe(pad))
-		if not pad:IsA("Model") then
-			note(report, TAG_GIANT_PAD, string.format("%s is a %s, expected a Model", what, pad.ClassName))
-		elseif (pad :: Model).ModelStreamingMode ~= Enum.ModelStreamingMode.Atomic then
-			note(report, TAG_GIANT_PAD, string.format("%s is not Atomic", what))
-		end
-		local rawKey = pad:GetAttribute(ATTR_PAD_KEY)
-		local padKey: string? = if type(rawKey) == "string" and rawKey ~= "" then rawKey else nil
-		if padKey == nil then
-			note(report, TAG_GIANT_PAD, string.format("%s has no %s", what, ATTR_PAD_KEY))
-		end
-
-		local collisions: { BasePart } = {}
-		for _, instance in namedBelow(pad, "Collision") do
-			if instance:IsA("BasePart") then
-				table.insert(collisions, instance :: BasePart)
-			end
-		end
-		if #collisions ~= 1 then
-			note(
-				report,
-				TAG_GIANT_PAD,
-				string.format("%s has %d Collision parts, expected exactly 1", what, #collisions)
-			)
-			continue
-		end
-		local collision = collisions[1]
-		if not collision:HasTag(TAG_SQUEEZE) then
-			note(
-				report,
-				TAG_GIANT_PAD,
-				string.format("%s: Collision is not tagged %s (it is the station)", what, TAG_SQUEEZE)
-			)
-		end
-		if collision:GetAttribute(ATTR_GRIP_TIER) ~= pad:GetAttribute(ATTR_GRIP_TIER) then
-			note(report, TAG_GIANT_PAD, string.format("%s: Collision and pad disagree on %s", what, ATTR_GRIP_TIER))
-		end
-		expectFlag(report, describe(collision), "Transparency", collision.Transparency, 1)
-		expectFlag(report, describe(collision), "Anchored", collision.Anchored, true)
-		expectFlag(report, describe(collision), "CanCollide", collision.CanCollide, true)
-		expectFlag(report, describe(collision), "CanTouch", collision.CanTouch, false)
-
-		local _, collisionHigh = boxBounds(collision.CFrame, collision.Size)
-		local collisionTop = collisionHigh.Y
-		local rawStation = collision:GetAttribute(ATTR_STATION_ID)
-		local stationId: string? = if type(rawStation) == "string" then rawStation else nil
-		local expectedTop = if layout then layout.padCollisionTop(padKey, stationId) else nil
-		if layout and expectedTop == nil then
-			note(
-				report,
-				"WorldLayout",
-				string.format("WorldLayout.GiantPads has no collisionTop for pad %s", tostring(padKey or stationId))
-			)
-		elseif expectedTop and not near(collisionTop, expectedTop, COLLISION_TOP_TOLERANCE) then
-			note(
-				report,
-				TAG_GIANT_PAD,
-				string.format(
-					"%s: collision top is %.3f, WorldLayout says %.3f (±%.2f)",
-					what,
-					collisionTop,
-					expectedTop,
-					COLLISION_TOP_TOLERANCE
-				)
-			)
-		end
-
-		local body = pad:FindFirstChild("Body")
-		local bodyParts = partsIn(body)
-		if #bodyParts == 0 then
-			note(report, TAG_GIANT_PAD, string.format("%s has no Body parts", what))
-		else
-			local _, bodyHigh = unionBounds(bodyParts, CFrame.identity)
-			local bodyTop = if bodyHigh then bodyHigh.Y else -math.huge
-			if bodyTop < collisionTop + BODY_ABOVE_COLLISION - 1e-3 then
-				note(
-					report,
-					TAG_GIANT_PAD,
-					string.format(
-						"%s: Body top %.3f is less than %.1f above the collision top %.3f",
-						what,
-						bodyTop,
-						BODY_ABOVE_COLLISION,
-						collisionTop
-					)
-				)
-			end
-			expectInert(report, TAG_GIANT_PAD, what .. " Body", body :: Instance)
-		end
-		local face = pad:FindFirstChild("Face")
-		if face then
-			expectInert(report, TAG_GIANT_PAD, what .. " Face", face)
-		end
 	end
 end
 
@@ -1472,7 +1242,7 @@ local function verifyLobby(report: Report, root: Instance, deps: Deps?)
 		local loaded, err = loadShared(if deps then deps.Shared else nil, { "World", "WorldLayout" })
 		layoutModule = loaded
 		if err then
-			note(report, "WorldLayout", err .. ": GripTier and giant pad heights were not checked")
+			note(report, "WorldLayout", err .. ": GripTier was not checked")
 		end
 	end
 	local layout = readLayout(layoutModule)
@@ -1489,9 +1259,6 @@ local function verifyLobby(report: Report, root: Instance, deps: Deps?)
 	if strings ~= nil then
 		checkTextKeys(report, all, strings)
 	end
-	checkGripGates(report, all)
-	checkGripSigns(report, all)
-	checkGiantPads(report, all, layout)
 	checkAmbient(report, all)
 	checkKeepClear(report, all, root)
 	checkPrompts(report, all, root)

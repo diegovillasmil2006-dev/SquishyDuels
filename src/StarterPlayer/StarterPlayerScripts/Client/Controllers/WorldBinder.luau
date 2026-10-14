@@ -1,5 +1,5 @@
 --!strict
--- WorldBinder (client only). DESIGN §2.4, §7.6, §7.7, §17.6, §1.6. Tag binders over the generated lobby, tolerant
+-- WorldBinder (client only). DESIGN §2.4, §7.6, §7.7, §1.6. Tag binders over the generated lobby, tolerant
 -- of streaming: every binder works from CollectionService (instances already streamed in, then the added/removed
 -- signals), keeps one Cleanup per bound instance and cleans it when the instance streams out or is destroyed.
 --
@@ -17,25 +17,8 @@
 --   against the lobby zones of WorldLayout.AudioZones plus every streamed-in `SD_AudioZone` volume (arena clones
 --   carry theirs); the highest priority wins. currentZone() and the ZoneChanged signal expose it (SoundController
 --   comes later).
--- * Grip gates (`SD_GripGate`) and pod signs (`SD_GripSign`): the pad is the WorldLayout.GiantPads entry whose
---   centre is nearest the instance (within MAX_PAD_MATCH_STUDS), so the tier comes from WorldLayout, never from the
---   GripTier attribute, which is for Verify only (§17.6, §17.10). The level source is GripController (Part 5): it
---   calls setGripSource({level, changed = GripController.LevelChanged}) from its init (it sits above this module, so
---   the call goes downward, §2.6). Until a source is registered, and while its level() is nil (no grip state yet),
---   nothing is changed: gates stay open exactly as built (CanCollide false) and each sign's `Live` label keeps its
---   baked "Needs Grip Lv X" text. With a level, every recheckSeconds (Config.Grip.Gate,
---   0.5 s), on stream-in and on a level change, a gate is a LOCAL barrier with a latch (gateShouldBlock): while the
---   viewer's level is below the pad's level, an open gate closes once the viewer's root is farther than gate radius +
---   antiTrapPadding from its axis (nobody is shut in), and a closed gate stays closed however close the viewer
---   presses against it (a root pressed on the wall is within radius + 1, so a plain distance test let players in);
---   it opens again only for a high enough level, or for a viewer whose root is inside the jelly radius (trapped).
---   Locked / open transparency from Config.Grip.Gate; the `Live` label shows grip.signLocked / grip.signOpen. Any
---   error in that pass opens every gate and stops the gate logic for the session (fail open, §17.6). The server
---   checks the level on every squeeze and tick anyway.
--- * Lock decor (`SD_GripLock`, phase 3 D5: the design's lock + rope by each pad; the gates themselves are invisible):
---   matched to its pad like a gate (by its pivot). Shown as built while the level is unknown (and after a failed
---   pass); with a level, shown on this client only while the viewer's level is below the pad's (lockVisible), by
---   LocalTransparencyModifier on its parts.
+-- Build plan Phase 6 removed the Jelly gates (SD_GripGate), the giant pads' pod signs (SD_GripSign) and lock decor
+-- (SD_GripLock) with their binders and the Grip level source (setGripSource).
 
 -- Services
 
@@ -73,12 +56,6 @@ export type ZoneCandidate = ZoneInfo & {
 	size: Vector3,
 }
 
--- The Grip level of the viewer (GripController.level / LevelChanged, Part 5). level() returns nil while unknown.
-export type GripSource = {
-	level: () -> number?,
-	changed: { connect: (self: any, handler: (...any) -> ()) -> any }?,
-}
-
 -- A Util/Cleanup as stored in records (its generic add<T>() trips the exact record comparison of the type checker).
 type Trove = {
 	add: (self: any, item: any) -> any,
@@ -91,43 +68,11 @@ type Stand = {
 	prompts: { ProximityPrompt },
 }
 
-type GatePart = {
-	part: BasePart,
-	pad: any, -- WorldLayout GiantPad
-	builtTransparency: number,
-	builtCanCollide: boolean,
-}
-
-type PodSign = {
-	instance: Instance,
-	pad: any,
-	live: TextLabel?,
-	bakedText: string?,
-}
-
-type LockDecor = {
-	instance: Instance,
-	pad: any,
-	parts: { BasePart },
-}
-
--- The Config.Grip fields this module reads (Config.Grip lands with Part 3's Grip data; read defensively).
-type GripPadConfig = { level: number, coinBonus: number, gripPercent: number }
-type GripGateConfig = {
-	lockedTransparency: number,
-	openTransparency: number,
-	antiTrapPadding: number,
-	recheckSeconds: number,
-}
-
 -- Constants
 
 local ATTR_TEXT_KEY = "SD_TextKey"
 local TAG_SIGN = "SD_Sign"
 local TAG_AUDIO_ZONE = "SD_AudioZone"
-local TAG_GRIP_GATE = "SD_GripGate"
-local TAG_GRIP_SIGN = "SD_GripSign"
-local TAG_GRIP_LOCK = WorldLayout.Tags.GripLock -- "SD_GripLock"
 local STAND_TAGS = {
 	"SD_QuestBoard",
 	"SD_DailyStand",
@@ -137,13 +82,8 @@ local STAND_TAGS = {
 	"SD_CollectionPedestal",
 	"SD_QueuePodium",
 }
-local LIVE_LABEL = "Live"
 local ROOT_PART = "HumanoidRootPart"
 local ZONE_CHECK_SECONDS = Config.Audio.zoneCheckSeconds -- §7.7: the HRP is checked every 0.25 s
-local DEFAULT_GATE_RECHECK_SECONDS = 0.5 -- §17.6, used only if Config.Grip.Gate is missing
--- A gate, pod sign or lock decor binds to the giant pad whose centre is this close (horizontally): a gate and a lock
--- decor's pivot sit on its pad centre, a pod sign 6-10 studs in front of it, and pads are at least 20 studs apart.
-local MAX_PAD_MATCH_STUDS = 12
 
 -- Module table
 
@@ -160,17 +100,7 @@ local handlers: { [string]: StandHandler } = {}
 local stands: { [string]: { [Instance]: Stand } } = {}
 local zoneParts: { [BasePart]: boolean } = {}
 local currentZone: ZoneInfo? = nil
-local gates: { [BasePart]: GatePart } = {}
-local podSigns: { [Instance]: PodSign } = {}
-local locks: { [Instance]: LockDecor } = {}
-local gripSource: GripSource? = nil
-local gripSourceConnection: any = nil
-local gateLogicFailed = false
 local warnedKeys: { [string]: boolean } = {}
-
-local function gripConfig(): any
-	return (Config :: any).Grip
-end
 
 local function isTextObject(instance: Instance): boolean
 	return instance:IsA("TextLabel") or instance:IsA("TextButton") or instance:IsA("TextBox")
@@ -412,207 +342,6 @@ local function updateZone()
 	end
 end
 
--- Grip gates and pod signs ------------------------------------------------------------------------------------------
-
--- The WorldLayout giant pad for a gate or sign at `position` (see WorldBinder.padNear), or nil.
-local function padFor(position: Vector3?): any
-	if position == nil then
-		return nil
-	end
-	return WorldBinder.padNear(position)
-end
-
-local function viewerLevel(): number?
-	local source = gripSource
-	if source == nil then
-		return nil
-	end
-	local ok, level = pcall(source.level)
-	if ok and type(level) == "number" then
-		return level
-	end
-	return nil
-end
-
-local function openAllGates()
-	for _, gate in gates do
-		gate.part.CanCollide = gate.builtCanCollide
-		gate.part.Transparency = gate.builtTransparency
-	end
-end
-
-local function restoreSigns()
-	for _, sign in podSigns do
-		if sign.live and sign.bakedText ~= nil then
-			sign.live.Text = sign.bakedText
-		end
-	end
-end
-
-local function setLockShown(lock: LockDecor, shown: boolean)
-	local modifier = if shown then 0 else 1
-	for _, part in lock.parts do
-		if part.LocalTransparencyModifier ~= modifier then
-			part.LocalTransparencyModifier = modifier
-		end
-	end
-end
-
-local function showAllLocks()
-	for _, lock in locks do
-		setLockShown(lock, true)
-	end
-end
-
-local function updateGrip()
-	if gateLogicFailed then
-		return
-	end
-	local level = viewerLevel()
-	local grip = gripConfig()
-	if level == nil or type(grip) ~= "table" or type(grip.Pads) ~= "table" then
-		openAllGates()
-		restoreSigns()
-		showAllLocks()
-		return
-	end
-	local gateConfig: GripGateConfig? = grip.Gate
-	local root = localRoot()
-	local ok, err = pcall(function(): any
-		for _, gate in gates do
-			local padConfig: GripPadConfig? = grip.Pads[gate.pad.tier]
-			local required = if padConfig then padConfig.level else math.huge
-			local distance = if root
-				then WorldLayout.horizontalDistance(root.Position, gate.pad.gate.position)
-				else math.huge
-			local padding = if gateConfig then gateConfig.antiTrapPadding else 1
-			local block = WorldBinder.gateShouldBlock(
-				level,
-				required,
-				distance,
-				gate.pad.gate.diameter / 2,
-				padding,
-				gate.part.CanCollide
-			)
-			local locked = level < required
-			gate.part.CanCollide = block
-			if gateConfig then
-				gate.part.Transparency = if locked then gateConfig.lockedTransparency else gateConfig.openTransparency
-			end
-		end
-		for _, sign in podSigns do
-			local live = sign.live
-			if live then
-				local text = WorldBinder.podSignText(level, sign.pad.tier)
-				if text ~= nil and live.Text ~= text then
-					live.Text = text
-				end
-			end
-		end
-		for _, lock in locks do
-			local padConfig: GripPadConfig? = grip.Pads[lock.pad.tier]
-			setLockShown(lock, WorldBinder.lockVisible(level, if padConfig then padConfig.level else math.huge))
-		end
-		return nil
-	end)
-	if not ok then
-		gateLogicFailed = true
-		log:error("Grip gate pass failed; every gate stays open for this session:", err)
-		openAllGates()
-		showAllLocks()
-	end
-end
-
-local function bindGate(instance: Instance, ic: Trove)
-	if not instance:IsA("BasePart") then
-		return
-	end
-	local part = instance :: BasePart
-	local pad = padFor(part.Position)
-	if pad == nil then
-		log:warn(`{part:GetFullName()} is tagged {TAG_GRIP_GATE} but stands on no giant pad; left as built`)
-		return
-	end
-	gates[part] = {
-		part = part,
-		pad = pad,
-		builtTransparency = part.Transparency,
-		builtCanCollide = part.CanCollide,
-	}
-	ic:add(function()
-		gates[part] = nil
-	end)
-	if gripSource then
-		updateGrip()
-	end
-end
-
-local function bindPodSign(instance: Instance, ic: Trove)
-	local position = if instance:IsA("BasePart")
-		then instance.Position
-		elseif instance:IsA("Model") then instance:GetPivot().Position
-		else nil
-	local pad = padFor(position)
-	if pad == nil then
-		log:warn(`{instance:GetFullName()} is tagged {TAG_GRIP_SIGN} but stands by no giant pad; left as built`)
-		return
-	end
-	local sign: PodSign = { instance = instance, pad = pad, live = nil, bakedText = nil }
-	local function findLive(candidate: Instance)
-		if sign.live == nil and candidate.Name == LIVE_LABEL and candidate:IsA("TextLabel") then
-			sign.live = candidate
-			sign.bakedText = candidate.Text
-			if gripSource then
-				updateGrip()
-			end
-		end
-	end
-	for _, descendant in instance:GetDescendants() do
-		findLive(descendant)
-	end
-	ic:add(instance.DescendantAdded:Connect(findLive))
-	podSigns[instance] = sign
-	ic:add(function()
-		podSigns[instance] = nil
-	end)
-end
-
-local function bindLock(instance: Instance, ic: Trove)
-	local position = if instance:IsA("Model")
-		then instance:GetPivot().Position
-		elseif instance:IsA("BasePart") then instance.Position
-		else nil
-	local pad = padFor(position)
-	if pad == nil then
-		log:warn(`{instance:GetFullName()} is tagged {TAG_GRIP_LOCK} but stands by no giant pad; left as built`)
-		return
-	end
-	local lock: LockDecor = { instance = instance, pad = pad, parts = {} }
-	local function addPart(candidate: Instance)
-		if candidate:IsA("BasePart") then
-			table.insert(lock.parts, candidate)
-		end
-	end
-	addPart(instance)
-	for _, descendant in instance:GetDescendants() do
-		addPart(descendant)
-	end
-	ic:add(instance.DescendantAdded:Connect(function(descendant: Instance)
-		addPart(descendant)
-		if gripSource then
-			updateGrip()
-		end
-	end))
-	locks[instance] = lock
-	ic:add(function()
-		locks[instance] = nil
-		setLockShown(lock, true)
-	end)
-	if gripSource then
-		updateGrip()
-	end
-end
-
 -- Public ------------------------------------------------------------------------------------------------------------
 
 -- Registers the UI handler of a stand tag (one per tag; a new one replaces the old). Its prompts are enabled on this
@@ -659,87 +388,6 @@ function WorldBinder.pickZone(candidates: { ZoneCandidate }, position: Vector3):
 	return best
 end
 
--- Pure: whether a jelly gate blocks the viewer next (§17.6), given whether it blocks now. Never for a high enough
--- level. A closed gate stays closed while the viewer's root is at or outside the jelly radius, however close it
--- presses (a root against the wall is within radius + padding, so a plain distance test let players walk in); it
--- opens only for a root inside the radius (a viewer somehow shut in). An open gate closes only once the root is
--- farther than radius + padding from the axis, so it never closes on someone standing in its wall (anti-trap).
-function WorldBinder.gateShouldBlock(
-	level: number,
-	requiredLevel: number,
-	distanceFromAxis: number,
-	radius: number,
-	padding: number,
-	blockingNow: boolean?
-): boolean
-	if level >= requiredLevel then
-		return false
-	end
-	if blockingNow then
-		return distanceFromAxis >= radius
-	end
-	return distanceFromAxis > radius + padding
-end
-
--- Pure: the WorldLayout giant pad whose centre is horizontally nearest `position`, if within MAX_PAD_MATCH_STUDS
--- (gates and pod signs; the tier then comes from WorldLayout, never from an attribute), else nil.
-function WorldBinder.padNear(position: Vector3): any
-	local best, bestDistance = nil, MAX_PAD_MATCH_STUDS
-	for _, key in WorldLayout.GiantPadKeys do
-		local pad = WorldLayout.GiantPads[key]
-		local distance = WorldLayout.horizontalDistance(pad.center, position)
-		if distance <= bestDistance then
-			best, bestDistance = pad, distance
-		end
-	end
-	return best
-end
-
--- Pure: whether a pad's lock + rope decor shows for a viewer `level` (nil = unknown: as built, shown) and the pad's
--- required level (phase 3 D5).
-function WorldBinder.lockVisible(level: number?, requiredLevel: number): boolean
-	if level == nil then
-		return true
-	end
-	return level < requiredLevel
-end
-
--- The `Live` line of a pod sign for this viewer level and GripTier (grip.signLocked / grip.signOpen), or nil when
--- Config.Grip or the Strings texts are missing (the baked text then stays).
-function WorldBinder.podSignText(level: number, tier: number): string?
-	local grip = gripConfig()
-	local pad = if type(grip) == "table" and type(grip.Pads) == "table" then grip.Pads[tier] else nil
-	if pad == nil then
-		return nil
-	end
-	if level < pad.level then
-		local template = Strings.resolve("grip.signLocked")
-		return if template then Strings.format(template, { level = pad.level, have = level }) else nil
-	end
-	local template = Strings.resolve("grip.signOpen")
-	return if template then Strings.format(template, { coins = pad.coinBonus, mult = pad.gripPercent / 100 }) else nil
-end
-
--- Part 5 hook: the viewer's Grip level source. nil (the default) keeps gates open and pod signs baked.
-function WorldBinder.setGripSource(source: GripSource?)
-	if gripSourceConnection then
-		local connection = gripSourceConnection
-		gripSourceConnection = nil
-		if type(connection) == "table" and type(connection.disconnect) == "function" then
-			connection:disconnect()
-		elseif typeof(connection) == "RBXScriptConnection" then
-			connection:Disconnect()
-		end
-	end
-	gripSource = source
-	if source and source.changed then
-		gripSourceConnection = source.changed:connect(function()
-			updateGrip()
-		end)
-	end
-	updateGrip()
-end
-
 -- Lifecycle ---------------------------------------------------------------------------------------------------------
 
 function WorldBinder.init()
@@ -761,11 +409,8 @@ function WorldBinder.init()
 			end)
 		end
 	end)
-	bindTag(trove, TAG_GRIP_GATE, bindGate)
-	bindTag(trove, TAG_GRIP_SIGN, bindPodSign)
-	bindTag(trove, TAG_GRIP_LOCK, bindLock)
 
-	-- Periodic checks (task loops, not frame events): audio zone 0.25 s, Grip gates recheckSeconds.
+	-- Periodic check (a task loop, not frame events): audio zone 0.25 s.
 	c:add(task.spawn(function()
 		while true do
 			local ok, err = pcall(function(): any
@@ -778,20 +423,7 @@ function WorldBinder.init()
 			task.wait(ZONE_CHECK_SECONDS)
 		end
 	end))
-	local grip = gripConfig()
-	local recheck = if type(grip) == "table" and type(grip.Gate) == "table"
-		then grip.Gate.recheckSeconds
-		else DEFAULT_GATE_RECHECK_SECONDS
-	c:add(task.spawn(function()
-		while true do
-			task.wait(recheck)
-			if gripSource then
-				updateGrip()
-			end
-		end
-	end))
 	c:add(function()
-		WorldBinder.setGripSource(nil)
 		currentZone = nil
 	end)
 end

@@ -1,10 +1,10 @@
 --!strict
 -- Config.Squeeze: squeeze stations, server bucket and flood guard (DESIGN §6.3). Shared, data only. All [P].
 -- Coins per squeeze: the squeeze value (CapsuleMath.squeezeValue); the earnings limit is Config.Economy.SqueezeLimit;
--- squeeze animation timings are Config.Anim.squeeze; pad bonuses, Grip and hold-to-squeeze (its repeat rhythm,
--- Grip.Hold.repeatSeconds) are in Config.Grip.
--- The server model is Logic/SqueezeRules: a squeeze works anywhere in the lobby (spec 2026-10-11 §5); the pad that pays
--- its boost is the one under the HumanoidRootPart (WorldLayout.stationUnder with padMargin / heightAbove below).
+-- squeeze animation timings are Config.Anim.squeeze; the pads (only the Foam Mats' row since build plan Phase 6), Grip
+-- and hold-to-squeeze (its repeat rhythm, Grip.Hold.repeatSeconds) are in Config.Grip.
+-- The server model is Logic/SqueezeRules: a squeeze works anywhere in the lobby (spec 2026-10-11 §5); the pad that
+-- sets its tier is the one under the HumanoidRootPart (WorldLayout.stationUnder with padMargin / heightAbove below).
 -- Every click pays (user decision, 2026-10-06): there is no squeeze timer. The bucket below is only a hidden
 -- anti-autoclicker cap that a human never meets: 12 at once and 12 per second on average (after a rest a macro can get
 -- up to 20 in one second, the flood guard's limit; over any t seconds at most 12 + 12 × t). The client stays under it

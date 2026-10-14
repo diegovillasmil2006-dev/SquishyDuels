@@ -19,7 +19,6 @@
 --   flat ring       lobby.js:22  annulus(): a disc with a disc of the ground's colour on it
 --   GUM             lobby.js:23  gumdrop(): an ellipsoid as wide as the gumdrop's foot, its lower half hidden in what it
 --                                stands on (reading: the lathe profile has no Roblox shape)
---   ConeGeometry    (lobby.js:387, 391, 392)  cone(): a pointed ellipsoid (reading)
 -- Composite props: lollipop() (lobby.js:40-47), cottonTree() (48-51), lockIcon() (52-58), checkIcon() (59-64),
 -- ropeLine() (65-70) and arrow() (the wayfinding arrow board, 162-164).
 
@@ -162,11 +161,6 @@ function Props.ellipsoid(
 	flags: Flags?
 ): Part
 	return Prims.meshPart(name, Enum.MeshType.Sphere, size, cframe, color, flags or "decor", parent)
-end
-
--- A cone (radius, height) centred on `frame` with its tip along the frame's +Y: a pointed ellipsoid (reading).
-function Props.cone(parent: Instance?, name: string, radius: number, height: number, frame: CFrame, color: Color3): Part
-	return Props.ellipsoid(parent, name, Vector3.new(2 * radius, height, 2 * radius), frame, color)
 end
 
 -- A flat ring (inner .. outer diameter) whose top is `top` (its axis the frame's Y): a disc of `color` `thickness` tall

@@ -12,7 +12,8 @@
 -- hold-to-squeeze repeat no shorter than any rarity's release pop; the RequestSnapshot bucket covers the loading
 -- poll). It never errors: a
 -- missing or mistyped value becomes a problem line. Robux stays off: no product or pass ids are configured.
--- Grip rules (§17.9 table, §17.12 Part 3): each of G1, G2, G5, G8 and G10 catches a deliberately broken copy.
+-- Grip rules (§17.9 table, §17.12 Part 3): each of G1, G2, G5 and G8 catches a deliberately broken copy (G10 and G8's
+-- giant-pad and gate rules went with the giant pads, build plan Phase 6).
 -- Part 5 (§17.12): G3 (a squeeze count since spec 2026-10-12 §12: a 13-a-second cap and a ceiling of 43,199 fail, the
 -- limit switched back on passes) and G6's Strings names; plus the Part 5 values of Data, UI.Grip and Config.Grip.
 -- Feel pass (§18.8, §18.9, §18.10 L1): every §18.8 key holds its DESIGN value, and each rule F1-F11 catches a planted
@@ -39,9 +40,9 @@
 -- Design fidelity (spec 2026-10-11 §3, §5, §6): Config.FirstPerson holds the 3D Lab design's viewmodel numbers (the
 -- view and light, the five arm parts, colours, team sleeves, outline, held toy, pop-in, squeeze, focus, shake, throw
 -- extras and Dragon charge), squeezeAxis is "X" and Inspect's is "Y"; validate reports a broken arm part, outline,
--- pop-in, held pose, team sleeve or squeeze inset. Economy: pad Coin bonuses 0 / 1 / 2 / 3 (data only since Phase 3:
--- CoinsByRarity is gone), no hourly limit, G3's 43,200 squeezes an hour and the 30,000-squeeze alert (spec 2026-10-12
--- §12).
+-- pop-in, held pose, team sleeve or squeeze inset. Economy: the one Foam Mats pad row (0 Coin bonus, 100%; data only
+-- since Phase 3: CoinsByRarity is gone), no hourly limit, G3's 43,200 squeezes an hour and the 30,000-squeeze alert
+-- (spec 2026-10-12 §12).
 -- Big-number progression (spec 2026-10-12, Phase 1): the 9 Qa caps, 100 levels and their totals, the ranks, squishy
 -- power, duel rewards, refunds and maxGripPerEvent = CP(100) × 2; negatives for G1's rising totals, G5's CP(100) event,
 -- the Capsule block, SquishyPower, a Catalog power override and the refund share. Phase 3: the capsule tick (0.25 s)
@@ -50,6 +51,9 @@
 -- in UI.Grip; the pad test's padMargin 1 and heightAbove 6 live in Config.Squeeze, which reports values above 2 and 8.
 -- Phase 6 (trainers removed): no Config.Grip.Trainer (G4 and G6's wiring half went with it), no next-goal upgrade
 -- price, no "trainer" Coin reason and no TrainerUpgrade rate.
+-- Phase 6 (giant pads and Jelly gates removed): one Config.Grip.Pads row, no Gate block, unlockWaypointSeconds,
+-- Config.Anim.giantPad (G10), forcePadPathB or grip.padUnlocked toast sound; 2 editable meshes; no starter_jelly or
+-- QuestDefs minTier.
 --
 -- How a "deliberately broken copy" is made without changing Config's API: clone the Shared folder, require one
 -- section module of the clone and change it, then require the clone's Config. Its init receives the changed
@@ -218,18 +222,6 @@ local function deepCopy(value: any): any
 	return copy
 end
 
--- The first "<x>Zeta" key of a table, in sorted order (nil when there is none).
-local function firstZetaKey(tbl: any): string?
-	local keys = {}
-	for key in tbl do
-		if type(key) == "string" and string.sub(key, -4) == "Zeta" then
-			table.insert(keys, key)
-		end
-	end
-	table.sort(keys)
-	return keys[1]
-end
-
 return function(t: Context)
 	local Config = t.requireShared("Config")
 	local expect = t.expect
@@ -271,15 +263,11 @@ return function(t: Context)
 
 	-- Squeeze anywhere, Coins every time (spec 2026-10-11 §5; the user: "Less per squeeze, no limit", "+0/+1/+2/+3").
 	-- Phase 3: CoinsByRarity is gone (own squeezes pay the squeeze value) and the pad data no longer changes that pay.
-	t.test("no CoinsByRarity, pad bonuses 0 / 1 / 2 / 3, no limit, G3 43,200 squeezes, alert 30,000", function()
+	t.test("no CoinsByRarity, one Foam Mats pad row (0, 100%), no limit, G3 43,200 squeezes, alert 30,000", function()
 		local economy, grip = Config.Economy, Config.Grip
 		expect.equal((economy :: any).CoinsByRarity, nil)
-		local bonuses, percents = {}, {}
-		for tier, pad in grip.Pads do
-			bonuses[tier], percents[tier] = pad.coinBonus, pad.gripPercent
-		end
-		expect.deepEqual(bonuses, { 0, 1, 2, 3 })
-		expect.deepEqual(percents, { 100, 150, 200, 300 }) -- the Grip multipliers stay
+		-- Build plan Phase 6: the giant pads' rows 2-4 are gone.
+		expect.deepEqual(grip.Pads, { { key = "foam", level = 1, coinBonus = 0, gripPercent = 100 } })
 		expect.equal(economy.SqueezeLimit.enabled, false)
 		-- Spec 2026-10-12 §12: G3 counts squeezes, 43,200 an hour at the 12-a-second cap; the alert 30,000 of them.
 		expect.equal(grip.maxSqueezesPerHour, 3600 * 12)
@@ -695,32 +683,40 @@ return function(t: Context)
 		expect.truthy(containsAll(above, { "G1:", "maxGrip" }))
 	end)
 
-	-- G2 Pads: Pads[1] = {1, 0, 100%}; levels rise; bonuses and percents never decrease; percents x10, <= 300.
-	t.test("G2 reports a bad Foam Mats row and pads out of order", function()
-		local first = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Pads[1].coinBonus = 1
+	-- G2 Pads (one row since Phase 6): Pads[1], the Foam Mats, = {an id key, level 1, coinBonus 0, gripPercent 100}.
+	t.test("G2 reports a bad Foam Mats row: a Coin bonus, a Grip percent, a level or a key", function()
+		local cases: { { any } } = {
+			{ "coinBonus", 1 },
+			{ "gripPercent", 150 },
+			{ "level", 5 },
+		}
+		for _, case in cases do
+			local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
+				grip.Pads[1][case[1]] = case[2]
+			end)
+			expect.truthy(containsAll(problems, { "G2:", "Pads[1] (the Foam Mats)" }))
+		end
+		local key = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Pads[1].key = "Foam Mats"
 		end)
-		expect.truthy(containsAll(first, { "G2:", "Pads[1]" }))
-		local levels = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Pads[3].level = 5 -- same level as the Jelly Pad
-		end)
-		expect.truthy(containsAll(levels, { "G2:", "levels must rise" }))
-		local bonus = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Pads[4].coinBonus = 1 -- below the Marshmallow Pad's 2
-		end)
-		expect.truthy(containsAll(bonus, { "G2:", "coin bonuses" }))
+		expect.truthy(containsAll(key, { "Config.Grip.Pads[1].key" }))
 	end)
 
-	t.test("G2 reports a Grip percent that is not a multiple of 10 or above 300", function()
-		local odd = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Pads[2].gripPercent = 155
-		end)
-		expect.truthy(containsAll(odd, { "G2:", "Pads[2].gripPercent" }))
-		local high = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Pads[4].gripPercent = 310
-		end)
-		expect.truthy(containsAll(high, { "G2:", "Pads[4].gripPercent" }))
-	end)
+	t.test(
+		"the giant pads and Jelly gates are gone: one pad row, no Gate block, waypoint time, giantPad or flag",
+		function()
+			local grip = Config.Grip :: any
+			expect.equal(#grip.Pads, 1)
+			expect.equal(grip.Gate, nil)
+			expect.equal(grip.unlockWaypointSeconds, nil)
+			expect.equal((Config.Anim :: any).giantPad, nil)
+			expect.equal((Config.Debug :: any).forcePadPathB, nil)
+			expect.equal(Config.Audio.toastSounds["grip.padUnlocked"], nil)
+			local problems = Config.validate()
+			expect.equal(#ruleLines(problems, "G10"), 0)
+			expect.falsy(containsText(problems, "giantPad"))
+		end
+	)
 
 	-- Phase 6 (build plan): the trainers are gone, and G4 and G6's wiring half with them.
 	t.test("the trainers are gone: no Trainer block, goal price, trainer Coin reason or TrainerUpgrade", function()
@@ -776,33 +772,19 @@ return function(t: Context)
 		expect.truthy(containsAll(problems, { "G8:", "squeeze_01", "GripTier nil" }))
 	end)
 
-	t.test("G8 reports two tier-4 stations", function()
-		local problems = validateWorld(function(layout)
-			layout.Stations[8].tier = 4 -- squeeze_08 (the Marshmallow Pad) moved to the Royal tier
+	t.test("G8 reports an old giant-pad tier (2: only the Foam Mats' tier 1 is left), a bad id and a repeat", function()
+		local tier = validateWorld(function(layout)
+			layout.Stations[2].tier = 2 -- the old Jelly Pad tier
 		end)
-		expect.truthy(containsAll(problems, { "G8:", "GripTier 4", "exactly one" }))
-		expect.truthy(containsAll(problems, { "G8:", "GripTier 3", "exactly one" }))
-	end)
-
-	t.test("G8 reports a giant pad whose corner pokes out of its gate", function()
-		local problems = validateWorld(function(layout)
-			layout.GiantPads.jelly.gate.diameter = 10
+		expect.truthy(containsAll(tier, { "G8:", "squeeze_02", "GripTier 2", "1..1" }))
+		local id = validateWorld(function(layout)
+			layout.Stations[3].id = "squeeze_7"
 		end)
-		expect.truthy(containsAll(problems, { "G8:", "GiantPads.jelly", "inside its gate" }))
-	end)
-
-	t.test("G8 reports the old 7.4 Marshmallow collision box (its corner leaves the rounded footprint)", function()
-		local problems = validateWorld(function(layout)
-			layout.GiantPads.marshmallow.collision.size = Vector3.new(7.4, 1, 7.4)
+		expect.truthy(containsAll(id, { "G8:", "squeeze_7", "must match" }))
+		local twice = validateWorld(function(layout)
+			layout.Stations[4].id = "squeeze_01"
 		end)
-		expect.truthy(containsAll(problems, { "G8:", "GiantPads.marshmallow", "pokes out" }))
-	end)
-
-	t.test("G8 reports a giant pad whose collision top is not below its rest top", function()
-		local problems = validateWorld(function(layout)
-			layout.GiantPads.royal.restTop = 1.0
-		end)
-		expect.truthy(containsAll(problems, { "G8:", "GiantPads.royal.collisionTop" }))
+		expect.truthy(containsAll(twice, { "G8:", "squeeze_01", "listed twice" }))
 	end)
 
 	t.test("G8 is skipped cleanly when WorldLayout does not exist", function()
@@ -821,43 +803,6 @@ return function(t: Context)
 		end
 		expect.equal(#ruleLines(result, "G8"), 0)
 		expect.falsy(containsText(result, "WorldLayout"))
-	end)
-
-	-- G10 Giant-pad animation (Config.Anim.giantPad).
-	t.test("G10 reports a path B spring with zeta = 0", function()
-		local broken = ""
-		local problems = validateBrokenCopy(t.Shared, "Anim", function(anim)
-			local giantPad = anim.giantPad
-			assert(giantPad ~= nil, "Config.Anim.giantPad is missing (DESIGN §17.10, Part 3)")
-			local springs = if type(giantPad.pathB) == "table" and firstZetaKey(giantPad.pathB)
-				then giantPad.pathB
-				else giantPad
-			local key = firstZetaKey(springs)
-			assert(key ~= nil, "Config.Anim.giantPad has no spring zeta")
-			springs[key] = 0
-			broken = key
-		end)
-		expect.truthy(containsAll(problems, { "G10:", broken }))
-	end)
-
-	t.test("G10 reports waveSpeed = 30 as an unstable ripple", function()
-		local problems = validateBrokenCopy(t.Shared, "Anim", function(anim)
-			assert(anim.giantPad ~= nil, "Config.Anim.giantPad is missing (DESIGN §17.10, Part 3)")
-			anim.giantPad.waveSpeed = 30
-		end)
-		expect.truthy(containsAll(problems, { "G10:", "waveSpeed", "gridHigh" }))
-	end)
-
-	t.test("G10 reports grids above the vertex cap and too many simulated pads", function()
-		local grid = validateBrokenCopy(t.Shared, "Anim", function(anim)
-			assert(anim.giantPad ~= nil, "Config.Anim.giantPad is missing (DESIGN §17.10, Part 3)")
-			anim.giantPad.gridHigh = 40
-		end)
-		expect.truthy(containsAll(grid, { "G10:", "gridHigh", "maxVertices" }))
-		local simulated = validateBrokenCopy(t.Shared, "Anim", function(anim)
-			anim.giantPad.maxSimulated = 4
-		end)
-		expect.truthy(containsAll(simulated, { "G10:", "maxSimulated" }))
 	end)
 
 	t.test("the box reveal's result input guard must be between 0 and 1000 ms", function()
@@ -1329,10 +1274,10 @@ return function(t: Context)
 
 	t.test("QuestDefs reports a textPair without its Strings one/many texts", function()
 		local problems = questProblems(function(defs)
-			findDef(defs, "starter_jelly").textPair = "quest.starterTask.royal"
+			findDef(defs, "starter_duel").textPair = "quest.starterTask.jelly" -- gone with the task (Phase 6)
 		end)
-		expect.truthy(containsAll(problems, { "QuestDefs.starter_jelly.textPair", "quest.starterTask.royal.one" }))
-		expect.truthy(containsAll(problems, { "QuestDefs.starter_jelly.textPair", "quest.starterTask.royal.many" }))
+		expect.truthy(containsAll(problems, { "QuestDefs.starter_duel.textPair", "quest.starterTask.jelly.one" }))
+		expect.truthy(containsAll(problems, { "QuestDefs.starter_duel.textPair", "quest.starterTask.jelly.many" }))
 	end)
 
 	t.test("QuestDefs reports variants that are not positive integer goal/reward pairs", function()
@@ -1357,18 +1302,15 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"QuestDefs reports a bad starter id, a kind that does not match the id and a minTier outside 2..4",
+		"QuestDefs reports a bad starter id and a kind that does not match the id (minTier went in Phase 6)",
 		function()
 			local problems = questProblems(function(defs)
 				findDef(defs, "starter_duel").id = "starter_Duel2"
 				findDef(defs, "starter_squeeze").kind = "daily"
-				findDef(defs, "starter_jelly").minTier = 1
-				findDef(defs, "starter_practice").minTier = 5
 			end)
 			expect.truthy(containsAll(problems, { "QuestDefs.starter_Duel2", "^starter_[a-z]+$" }))
 			expect.truthy(containsAll(problems, { "QuestDefs.starter_squeeze.kind" }))
-			expect.truthy(containsAll(problems, { "QuestDefs.starter_jelly.minTier", "2..4" }))
-			expect.truthy(containsAll(problems, { "QuestDefs.starter_practice.minTier", "2..4" }))
+			expect.falsy(containsText(questProblems(function() end), "minTier"))
 		end
 	)
 
@@ -2022,7 +1964,7 @@ return function(t: Context)
 		expect.equal(vfx.Budgets.splats, 12)
 		expect.equal(vfx.Budgets.ambientMovers, 6)
 		expect.equal(vfx.Budgets.uiJuiceFrames, 32)
-		expect.equal(vfx.Budgets.editableMeshes, 5) -- spec phase2-squeeze §3.2: + the knead shell
+		expect.equal(vfx.Budgets.editableMeshes, 2) -- a ripple skin + the knead shell (the 3 giant pads went, Phase 6)
 
 		-- Config.Anim
 		local ripple = anim.jellyRipple
@@ -2137,10 +2079,7 @@ return function(t: Context)
 			maxJ = 0.08,
 		})
 		expect.equal(anim.held.equipPopPuffs, 6)
-		expect.deepEqual(
-			anim.giantPad.landing,
-			{ minFallSpeed = 18, landedVy = -2, perSpeed = 0.004, min = 0.04, max = 0.14, seconds = 0.12 }
-		)
+		expect.equal(anim.giantPad, nil) -- build plan Phase 6: its landing thump went with the giant pads
 		expect.equal(anim.elimination.confettiParticles, 18)
 		expect.deepEqual(
 			anim.duel.countdownBubble,
@@ -2231,7 +2170,6 @@ return function(t: Context)
 		expect.equal(audio.Ducking.telegraph, 0.8)
 		expect.deepEqual(audio.toastSounds, {
 			["grip.levelUp"] = "ui.gripUnlock",
-			["grip.padUnlocked"] = "ui.gripUnlock",
 			["grip.rankUp"] = "ui.gripUnlock",
 		})
 		expect.equal(audio.recentLogSize, 30)
@@ -2485,15 +2423,15 @@ return function(t: Context)
 		expect.truthy(containsAll(jiggle, { "F9:", "motionJiggle", "above 3 Hz" }))
 	end)
 
-	t.test("F10 reports room for 4 editable meshes when the pads, a ripple skin and the knead shell need 5", function()
+	t.test("F10 reports room for 1 editable mesh when a ripple skin and the knead shell need 2", function()
 		local problems = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
-			vfx.Budgets.editableMeshes = 4
+			vfx.Budgets.editableMeshes = 1
 		end)
-		expect.truthy(containsAll(problems, { "F10:", "editableMeshes (4)", "knead shell" }))
-		-- Without the ripple's path A, 4 is enough again.
+		expect.truthy(containsAll(problems, { "F10:", "editableMeshes (1)", "knead shell" }))
+		-- Without the ripple's path A, 1 is enough again.
 		local noSkin = validateBrokenSections(t.Shared, {
 			Vfx = function(vfx)
-				vfx.Budgets.editableMeshes = 4
+				vfx.Budgets.editableMeshes = 1
 			end,
 			Anim = function(anim)
 				anim.jellyRipple.pathA = false

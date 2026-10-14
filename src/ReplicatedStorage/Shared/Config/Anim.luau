@@ -1,7 +1,7 @@
 --!strict
--- Config.Anim: procedural animation timings, poses and limits (DESIGN §9.1-§9.7, §9.9, §9.11, §9.14, §17.6.1), plus
--- the feel pass (§18.3, §18.5, §18.8): jellyRipple, squeeze.rhythm, held.lobbyIdle / motionJiggle / equipPopPuffs,
--- giantPad.landing and the duel countdown bubble, "Throw!", result and 2D confetti values.
+-- Config.Anim: procedural animation timings, poses and limits (DESIGN §9.1-§9.7, §9.9, §9.11, §9.14), plus
+-- the feel pass (§18.3, §18.5, §18.8): jellyRipple, squeeze.rhythm, held.lobbyIdle / motionJiggle / equipPopPuffs
+-- and the duel countdown bubble, "Throw!", result and 2D confetti values.
 -- Shared (read by client Anim code and the Inspect/box-reveal presentation), data only. All [P].
 -- No AnimationIds: v1 is procedural only. VFX budgets and hit feedback are in Config.Vfx.
 
@@ -756,72 +756,6 @@ local Anim = {
 			lifetime = 1.2,
 			fadeSeconds = 0.3,
 		},
-	},
-
-	-- Giant squishy pads (§17.6.1): the dent model (Anim/PadDent), the path A mesh (Anim/PadMesh) and the client
-	-- limits of GiantPadController. Geometry (footprint, corner radius, rest top, collision top, sinkDepth) lives in
-	-- WorldLayout.GiantPads. Presentation only: the server never reads any of this.
-	giantPad = {
-		radius = 2.2, -- dent radius R (studs); w(x) = (1 - x^2)^2
-		maxContacts = 8, -- per pad, nearest the camera first
-		contactHeight = 6, -- a root part 0..6 studs above the collision top counts as a contact
-		pressOmega = 18, -- sinking in: critically damped
-		releaseOmega = 3.5, -- rising back: underdamped ...
-		releaseZeta = 0.45, -- ... (about 25% overshoot with the wave coupling)
-		waveSpeed = 3, -- neighbour coupling c (studs/s); 0 under ReducedMotion
-		substep = 1 / 120,
-		clampUp = 0.22, -- heights clamped to [-(sinkDepth + pulse extra) - clampExtra, clampUp] (PadDent)
-		clampExtra = 0.05,
-		sleepEpsilon = 0.002, -- |h| and |v| below this = still
-		activeMargin = 1.5, -- vertices within radius + activeMargin of a contact are stepped
-		squeezeDip = 0.1, -- extra dip under a squeezer after an accepted squeeze (SD_SqueezeAt)
-		gridHigh = 25, -- path A top grid (vertices per side)
-		gridLow = 13,
-		maxVertices = 1200, -- hard caps per pad mesh (PadMesh_Test)
-		maxTriangles = 2400,
-		writesPerPad = 400, -- above this a pad steps every other frame
-		writesPerClient = 600,
-		maxSimulated = 2, -- pads stepped in the same frame
-		createStuds = 120, -- path A mesh created within this camera distance; destroyed only on stream-out
-		simulateStuds = 80, -- stepped only within this distance and on screen
-		downgradeFrameMs = 20, -- average frame time above this ...
-		downgradeSeconds = 5, -- ... for this long while a pad is active: rebuild meshes at Low once per session
-		-- reading (not in DESIGN, provisional): how long the squeeze dip lasts (the 0.15 s Lemon pulse it replaces).
-		squeezeDipSeconds = 0.15,
-		-- reading (§17.6.1 "at most 3 editable meshes"): path A meshes per client.
-		maxMeshes = 3,
-		-- reading (not in DESIGN, provisional): PadMesh top-edge rounding radius (studs).
-		bevel = 0.4,
-		-- reading (not in DESIGN): reverses every path A triangle if a Studio check shows the mesh inside out.
-		flipWinding = false,
-		-- Path A switch (§17.6.1): false = every pad shows path B on every client (no editable meshes at all) and
-		-- validator G10 skips its path-A checks. On: the feasibility test passed (2026-10-05) and M15 is done.
-		pathA = true,
-		-- Fixed rim and side rings below the path A top grid. Must equal Anim/PadMesh.RING_COUNT (PadMesh_Test checks
-		-- it); validator G10 counts vertices and triangles with it.
-		sideRings = 3,
-		-- Path B (the quilted cushion tiles in Body). The first eleven values are kept from the earlier whole-squash
-		-- variant (validator G10 checks its springs); the tiles use the same dent model as path A plus tileSquash.
-		pathB = {
-			baseA = 0.04,
-			perCharA = 0.02,
-			maxA = 0.10,
-			smoothT = 0.35,
-			backOmega = 6,
-			backZeta = 0.4,
-			bounceImpulse = 0.05,
-			bounceOmega = 10,
-			bounceZeta = 0.3,
-			squeezeImpulse = 0.03,
-			dimpleDiameter = 2.4,
-			-- Tile look while pressed: squash = 1 - tileSquash * clamp(-h / sinkDepth, tileSquashMin, 1),
-			-- mesh.Scale = (1/sqrt(squash), squash, 1/sqrt(squash)), mesh.Offset.Y = h.
-			tileSquash = 0.45,
-			tileSquashMin = -0.5,
-		},
-		-- Landing thump (§18.5.1 A5): a contact whose root falls at <= -minFallSpeed studs/s and then slows to >=
-		-- landedVy adds extra = clamp(perSpeed · |vy|, min, max) studs for `seconds` (the pulseUntil mechanism).
-		landing = { minFallSpeed = 18, landedVy = -2, perSpeed = 0.004, min = 0.04, max = 0.14, seconds = 0.12 },
 	},
 
 	-- Jelly ripple on arena cover and the practice backstop (§18.3, §18.8). Path A: an EditableMesh skin swapped in on

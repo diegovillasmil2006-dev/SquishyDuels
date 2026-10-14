@@ -15,7 +15,8 @@
 -- (AssetService:CreateEditableMesh, writeMesh, then CreateMeshPartAsync(Content.fromObject)) and keeps each MeshPart as
 -- a template; newPart clones it for every n, so the thumb (design 5) and the cuff (design 8) take the hand's roundness.
 -- Why: the client's EditableMesh budget held about 8 meshes on a PC in Studio (2026-10-11), shared with the giant pads
--- (3) and the jelly ripple (1); one mesh per exponent (6) pushed two of those onto their path B. A mesh must stay alive
+-- (3; gone since build plan Phase 6) and the jelly ripple (1); one mesh per exponent (6) pushed two of those onto
+-- their path B. A mesh must stay alive
 -- while its MeshPart shows (destroying it blanks the part, Studio 2026-10-11). Any error or nil on the way (no
 -- EditableMesh access, the device's budget, an engine error, a copy that lost its mesh) turns the path off for the
 -- session with one warning,

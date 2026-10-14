@@ -28,7 +28,7 @@
 --     collapse never changes the mesh bounds (U, S3). Reading: the backstop skin gets them too (it collapses at rest
 --     as well).
 --   Face axes: u along the columns, v along the rows, u x v = the outward normal; every triangle is wound so that
---   (b - a) x (c - a) points along its vertices' normal (the giant pads' PadMesh convention, which renders outward).
+--   (b - a) x (c - a) points along its vertices' normal (the convention that renders outward).
 --   counts(quality, options?) gives the arena totals from the formulas: High 5,368 / 9,000, Low 2,488 / 3,728.
 --   options.walls = false leaves the walls out (Config.Anim.jellyRipple.vertexColors off: walls use path B and only
 --   the one-colour blocks are skinned).
@@ -55,7 +55,7 @@
 -- Sim (newSim): the per-skin bookkeeping JellyRippleController drives each frame. impulse() wakes a face (and asks for
 -- the piece's swap-in the first time in "onHit" mode); step() steps the awake faces with the write budget
 -- (writesPerFrame vertex writes; a face that wrote more than what is left steps every other frame with both frames'
--- dt, the giant pads' rule; dentParams' maxDt is 2 × the Scheduler's, so no time is lost), snaps a face to rest
+-- dt; dentParams' maxDt is 2 × the Scheduler's, so no time is lost), snaps a face to rest
 -- faceSeconds (Rush rushFaceSeconds) after its last impulse or once its dent sleeps, and asks for a piece's swap-out
 -- exactly when the last of its faces sleeps and its jiggle rests. At most maxActiveFaces ripple at once; another one
 -- snaps the face with the oldest impulse to rest. The instance work goes through the SimIO callbacks; swap-in and

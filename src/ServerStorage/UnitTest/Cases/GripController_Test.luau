@@ -8,26 +8,23 @@
 --     (afkBankText); so are the trainers (Phase 6): no trainer card (trainerCardState), no upgrade badge and no
 --     trainer goal, and an old save's trainer is not part of the view;
 --   * gripChange: the first grip state and every full state (a profile recovered after OFFLINE) are a silent baseline
---     (no waypoint; LevelChanged only for the first state or a moved level); a level-up after it points the waypoint
---     at the best pad it opened;
+--     (fireLevel only for the first state or a moved level); a level-up after it fires the level (and pops it);
 --   * shouldShowIdleCard(t): LocalPlayer.Idled's t >= Config.Grip.idleReminderSeconds (900);
---   * waypointTarget(tier): the Foam Mats' "squeeze" waypoint, "<key>Pad" for a giant pad, nil for an unknown tier;
---   * padPerks(pad): a pad card's perks line; the Foam Mats give no boost (grip.padPerksBase, spec 2026-10-11 §5:
---     the same Coins and Grip as anywhere), the giant pads grip.padPerks;
+--   * the giant pads and Jelly gates are gone (build plan Phase 6): no waypointTarget, padPerks, pad cards, unlock
+--     waypoint, pad goal or LevelChanged (WorldBinder's level source);
 --   * restedChip: "Double Grip: about {minutes} min" (nil while empty), refilled to the given server time with
 --     SqueezeLimit;
 --   * cardModel: the HUD card texts (grip.hudLevel, the rank alone for the foam card's title, grip.hudBar /
 --     grip.hudMax, the bar fraction = have / need, the same numbers grip.hudBar shows (foam fix, user decision
---     2026-10-09), the next goal in the §17.7 order (the next pad or rank, then max);
+--     2026-10-09), the next goal in the §17.7 order (the next rank, then max);
 --   * goalId / shouldToastGoal: on the compact layout a new goal is toasted once per session, never the first one;
---   * Part 8 (§11.4): scrollDelta (the panel's column follows a gamepad selection, with a margin). (headerLayout went
---     with the panel's Close-only header row, foam fix.) The compact card's touch height and width are tested in
---     HudFormat_Test.
+--   * Part 8: the compact card's touch height and width are tested in HudFormat_Test. (headerLayout went with the
+--     panel's Close-only header row, foam fix; scrollDelta went with the pad cards' Show me buttons, Phase 6.)
 --   * Foam fix 2: cardModel's cardGoal (the regular card's short goal line, grip.hudGoal*); panelLayout (the panel and
 --     the Close hanging above it are centred together, so Close stays on the screen).
 --   * Foam fix 3: panelLayout gives the panel its whole height share back (fix 2 took Close's hang out of it, and on a
 --     phone no pad card showed); it shrinks only to keep Close's top PANEL.edge inside the screen. introShown: the
---     panel's intro line hides on the compact layout, so the first pad card peeks in under "Squeeze pads".
+--     panel's intro line hides on the compact layout.
 -- Strings are compared by value through the test's own Strings copy (the controller requires the real one).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -45,7 +42,6 @@ return function(t: Context)
 	local Format = t.requireShared("Util/Format")
 	local GripMath = t.requireShared("GripMath")
 	local Strings = t.requireShared("Strings")
-	local WorldLayout = t.requireShared("World/WorldLayout")
 	local expect = t.expect
 	local GRIP = Config.Grip
 
@@ -108,7 +104,7 @@ return function(t: Context)
 			local model = GripController.cardModel(view(GRIP.LevelTotals[level]), NOW)
 			expect.equal((model :: any).badge, nil)
 			local key = model.goalKey
-			if key ~= "grip.goalPad" and key ~= "grip.goalRank" and key ~= "grip.goalMax" then
+			if key ~= "grip.goalRank" and key ~= "grip.goalMax" then
 				error(`Lv {level}: the goal is {tostring(key)}`)
 			end
 		end
@@ -128,31 +124,24 @@ return function(t: Context)
 		)
 	end)
 
-	t.test(
-		"a full state after the baseline (a profile recovered after OFFLINE) is silent: no popup, no waypoint",
-		function()
-			-- OFFLINE defaults (total 0, Lv 1), then the real profile is swapped in with a total past several pad levels.
-			local total = GRIP.LevelTotals[GRIP.Pads[#GRIP.Pads].level]
-			local level = GripMath.levelFor(total)
-			expect.truthy(level > 1)
-			local change = GripController.gripChange(true, true, 0, total, 1, level)
-			expect.deepEqual(change, { baseline = true, fireLevel = true }) -- gates and signs still follow the new level
-			-- A full state that keeps the level changes nothing visible either.
-			expect.deepEqual(
-				GripController.gripChange(true, true, 100, 150, 1, 1),
-				{ baseline = true, fireLevel = false }
-			)
-		end
-	)
+	t.test("a full state after the baseline (a profile recovered after OFFLINE) is silent: no popup", function()
+		-- OFFLINE defaults (total 0, Lv 1), then the real profile is swapped in with a total past several levels.
+		local total = GRIP.LevelTotals[30]
+		local level = GripMath.levelFor(total)
+		expect.truthy(level > 1)
+		local change = GripController.gripChange(true, true, 0, total, 1, level)
+		expect.deepEqual(change, { baseline = true, fireLevel = true })
+		-- A full state that keeps the level changes nothing visible either.
+		expect.deepEqual(GripController.gripChange(true, true, 100, 150, 1, 1), { baseline = true, fireLevel = false })
+	end)
 
-	t.test("an earned rise changes nothing visible, and a level-up opens the best pad's waypoint", function()
+	t.test("an earned rise changes nothing visible, and a level-up fires the level (no waypoint, Phase 6)", function()
 		local rise = GripController.gripChange(true, false, 100, 150, 1, 1)
 		expect.deepEqual(rise, { baseline = false, fireLevel = false })
-		local padLevel = GRIP.Pads[2].level
-		local before = GRIP.LevelTotals[padLevel] - 1
-		local after = GRIP.LevelTotals[padLevel]
-		local levelUp = GripController.gripChange(true, false, before, after, padLevel - 1, padLevel)
-		expect.deepEqual(levelUp, { baseline = false, fireLevel = true, waypointTier = 2 })
+		local before = GRIP.LevelTotals[5] - 1
+		local after = GRIP.LevelTotals[5]
+		local levelUp = GripController.gripChange(true, false, before, after, 4, 5)
+		expect.deepEqual(levelUp, { baseline = false, fireLevel = true })
 		-- A drop (never earned) starts nothing.
 		expect.deepEqual(
 			GripController.gripChange(true, false, 150, 100, 1, 1),
@@ -161,7 +150,7 @@ return function(t: Context)
 	end)
 
 	t.test("the level label pops only for a level reached after the silent baseline (§18.5.1 A9)", function()
-		local padLevel = GRIP.Pads[2].level
+		local padLevel = 5 -- any level above 1
 		local before = GRIP.LevelTotals[padLevel] - 1
 		local after = GRIP.LevelTotals[padLevel]
 		-- The session's first state and a full state (loaded, not earned) never pop, even when the level moved.
@@ -186,33 +175,13 @@ return function(t: Context)
 		expect.falsy(GripController.shouldShowIdleCard(120)) -- Idled's first event (about 2 minutes)
 	end)
 
-	-- Waypoints ------------------------------------------------------------------------------------------------------
+	-- The giant pads and Jelly gates are gone (build plan Phase 6) ---------------------------------------------------
 
-	t.test("pad waypoints come from WorldLayout (Foam Mats: the squeeze waypoint)", function()
-		expect.equal(GripController.waypointTarget(1), WorldLayout.waypoint("squeeze"))
-		for tier = 2, #GRIP.Pads do
-			local key = GRIP.Pads[tier].key
-			local target = GripController.waypointTarget(tier)
-			expect.truthy(target ~= nil)
-			expect.equal(target, WorldLayout.waypoint(key .. "Pad"))
+	t.test("no pad waypoints, pad perks or LevelChanged (WorldBinder's level source) any more", function()
+		for _, name in { "waypointTarget", "padPerks", "LevelChanged" } do
+			expect.equal((GripController :: any)[name], nil)
 		end
-		expect.equal(GripController.waypointTarget(#GRIP.Pads + 1), nil)
-		expect.equal(GripController.waypointTarget(0), nil)
 	end)
-
-	t.test(
-		"pad perks: the Foam Mats card says it gives no boost (spec 2026-10-11 §5); the others show theirs",
-		function()
-			expect.equal(GripController.padPerks(GRIP.Pads[1]), s("grip.padPerksBase"))
-			for tier = 2, #GRIP.Pads do
-				local pad = GRIP.Pads[tier]
-				expect.equal(
-					GripController.padPerks(pad),
-					s("grip.padPerks", { coins = pad.coinBonus, mult = pad.gripPercent / 100 })
-				)
-			end
-		end
-	)
 
 	-- Timers ---------------------------------------------------------------------------------------------------------
 
@@ -231,7 +200,7 @@ return function(t: Context)
 
 	-- HUD card -------------------------------------------------------------------------------------------------------
 
-	t.test("a new player's card: Lv 1, the bar toward Lv 2 and the Jelly Pad as the next goal", function()
+	t.test("a new player's card: Lv 1, the bar toward Lv 2 and Firm Grip as the next goal", function()
 		local model = GripController.cardModel(view(0, GRIP.Rested.burst), NOW)
 		expect.equal(model.level, 1)
 		expect.equal(model.levelText, s("grip.hudLevel", { level = 1, rank = rankName(1) }))
@@ -244,8 +213,8 @@ return function(t: Context)
 		)
 		expect.near(model.fraction, 0)
 		expect.equal(model.chip, s("grip.restedChip", { minutes = 9 })) -- holding minutes (Hold.repeatSeconds 0.45 s)
-		expect.equal(model.goalKey, "grip.goalPad")
-		expect.equal(model.goal, s("grip.goalPad", { pad = s("grip.pad.jelly"), level = GRIP.Pads[2].level }))
+		expect.equal(model.goalKey, "grip.goalRank")
+		expect.equal(model.goal, s("grip.goalRank", { rank = s("grip.rank.firm"), level = 10 }))
 	end)
 
 	t.test("the bar fills with the numbers it shows: have / need (user decision 2026-10-09)", function()
@@ -266,12 +235,12 @@ return function(t: Context)
 		expect.truthy(start.fraction > 0)
 	end)
 
-	t.test("the next unlock is the lowest level ahead (a rank before a farther pad)", function()
-		-- Lv 5 (the Jelly Pad is open): Firm Grip at Lv 10 comes before the Marshmallow Pad at Lv 15.
-		local model = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW)
-		expect.equal(model.level, 5)
+	t.test("the next unlock is the next rank", function()
+		-- Lv 12: Strong Grip at Lv 20.
+		local model = GripController.cardModel(view(GRIP.LevelTotals[12]), NOW)
+		expect.equal(model.level, 12)
 		expect.equal(model.goalKey, "grip.goalRank")
-		expect.equal(model.goal, s("grip.goalRank", { rank = s("grip.rank.firm"), level = 10 }))
+		expect.equal(model.goal, s("grip.goalRank", { rank = s("grip.rank.strong"), level = 20 }))
 	end)
 
 	t.test("the max level shows grip.hudMax, a full bar and grip.goalMax", function()
@@ -287,7 +256,7 @@ return function(t: Context)
 	t.test("compact layout: each new goal is toasted once, never the session's first one", function()
 		local model = GripController.cardModel(view(0), NOW)
 		local id = GripController.goalId(model)
-		expect.equal(id, "grip.goalPad|" .. model.goal)
+		expect.equal(id, "grip.goalRank|" .. model.goal)
 		expect.equal(GripController.goalId({ goalKey = nil, goal = nil } :: any), nil)
 		local seen: { [string]: boolean } = {}
 		expect.falsy(GripController.shouldToastGoal(seen, id, true, true)) -- the baseline
@@ -296,30 +265,24 @@ return function(t: Context)
 		expect.falsy(GripController.shouldToastGoal(seen, nil, true, false))
 		seen[id :: string] = true
 		expect.falsy(GripController.shouldToastGoal(seen, id, true, false)) -- already toasted this session
-		-- A different goal (Lv 5: the next rank) is new.
-		local later = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW)
+		-- A different goal (Lv 12: the next rank after Firm Grip) is new.
+		local later = GripController.cardModel(view(GRIP.LevelTotals[12]), NOW)
 		expect.truthy(GripController.shouldToastGoal(seen, GripController.goalId(later), true, false))
 	end)
 
-	-- Foam fix 2 (2026-10-09): the regular card's goal line is a short form of the same goal ("Next: Jelly Pad at Lv
-	-- 5"), so it keeps to one line; the panel and the compact layout's toast keep the full text (goal / goalKey).
+	-- Foam fix 2 (2026-10-09): the regular card's goal line is a short form of the same goal ("Next: Firm Grip at Lv
+	-- 10"), so it keeps to one line; the panel and the compact layout's toast keep the full text (goal / goalKey).
 	t.test(
 		"the HUD card's goal line is the short form of the goal; the panel and the toast keep the full text",
 		function()
-			local pad = GripController.cardModel(view(0), NOW)
-			expect.equal(pad.cardGoal, s("grip.hudGoalPad", { pad = s("grip.pad.jelly"), level = GRIP.Pads[2].level }))
 			local rank = GripController.cardModel(view(GRIP.LevelTotals[5]), NOW)
 			expect.equal(rank.cardGoal, s("grip.hudGoalRank", { rank = s("grip.rank.firm"), level = 10 }))
 			-- The max level keeps its own line.
 			local max = GripController.cardModel(view(GRIP.LevelTotals[GRIP.maxLevel]), NOW)
 			expect.equal(max.cardGoal, max.goal)
-			-- Every short form of every pad and rank goal: no "Grip Lv" (the card is the Grip card) and at most 30
+			-- Every short form of every rank goal: no "Grip Lv" (the card is the Grip card) and at most 30
 			-- characters (Reading: in Studio a 28-character goal line took 165 of the info column's 184 base px).
 			local lines = {}
-			for tier = 2, #GRIP.Pads do
-				local row = GRIP.Pads[tier]
-				table.insert(lines, s("grip.hudGoalPad", { pad = s("grip.pad." .. row.key), level = row.level }))
-			end
 			for index = 2, #GRIP.Ranks do
 				local row = GRIP.Ranks[index]
 				table.insert(lines, s("grip.hudGoalRank", { rank = s("grip.rank." .. row.key), level = row.level }))
@@ -333,41 +296,21 @@ return function(t: Context)
 		end
 	)
 
-	t.test("goalArgs gives the name under every placeholder", function()
+	t.test("goalArgs gives the rank name and the level", function()
 		local args = GripController.goalArgs({
-			kind = "pad",
-			textKey = "grip.goalPad",
-			nameKey = "grip.pad.jelly",
+			kind = "rank",
+			textKey = "grip.goalRank",
+			nameKey = "grip.rank.firm",
 			index = 2,
-			level = 5,
+			level = 10,
 		})
-		expect.equal(args.pad, s("grip.pad.jelly"))
-		expect.equal(args.rank, s("grip.pad.jelly"))
-		expect.equal(args.level, 5)
+		expect.equal(args.rank, s("grip.rank.firm"))
+		expect.equal(args.level, 10)
+		expect.equal(args.pad, nil) -- Phase 6: no pad goal any more
 		expect.equal(args.trainer, nil) -- Phase 6: no trainer goal any more
 		local maxArgs = GripController.goalArgs({ kind = "max", textKey = "grip.goalMax" })
-		expect.equal(maxArgs.pad, nil)
+		expect.equal(maxArgs.rank, nil)
 		expect.equal(maxArgs.coins, nil)
-	end)
-
-	-- Part 8 (§11.4, §17.7): the panel's gamepad scroll and header ---------------------------------------------------
-
-	t.test("scrollDelta: a selected item scrolls into the window with a margin; 0 when it already shows", function()
-		-- Window 100..300, margin 10: the item may sit in 110..290.
-		expect.equal(GripController.scrollDelta(150, 200, 100, 300, 10), 0)
-		expect.equal(GripController.scrollDelta(110, 290, 100, 300, 10), 0) -- exactly inside the margin
-		expect.equal(GripController.scrollDelta(320, 372, 100, 300, 10), 82) -- below: scroll down by 372 - 290
-		expect.equal(GripController.scrollDelta(40, 92, 100, 300, 10), -70) -- above: scroll up by 110 - 40
-		expect.equal(GripController.scrollDelta(285, 337, 100, 300, 10), 47) -- partly below
-		-- An item taller than the window aligns its top (never a back-and-forth).
-		expect.equal(GripController.scrollDelta(400, 800, 100, 300, 10), 290)
-		-- A margin larger than half the window falls back to the bare window.
-		expect.equal(GripController.scrollDelta(150, 200, 100, 300, 500), 0)
-		expect.equal(GripController.scrollDelta(320, 372, 100, 300, 500), 72)
-		-- A negative margin counts as 0; non-finite input never jumps.
-		expect.equal(GripController.scrollDelta(320, 372, 100, 300, -5), 72)
-		expect.equal(GripController.scrollDelta(0 / 0, 372, 100, 300, 10), 0)
-		expect.equal(GripController.scrollDelta(320, math.huge, 100, 300, 10), 0)
 	end)
 
 	-- Foam fix 2 (2026-10-09): the panel and what hangs above its top edge are centred together, like Quests and
@@ -430,8 +373,8 @@ return function(t: Context)
 		end
 	)
 
-	-- Foam fix 3: on a phone the intro line ("Every squeeze trains your Grip. …") hides, so the first pad card's top
-	-- shows under "Squeeze pads" (with it, the column ended at the heading and nothing showed that it scrolls on).
+	-- Foam fix 3: on a phone the intro line ("Every squeeze trains your Grip. …") hides (it pushed the pad cards, gone
+	-- since Phase 6, under the fold).
 	t.test("introShown: the Grip panel's intro line shows on regular screens, not on the compact layout", function()
 		expect.equal(GripController.introShown("regular"), true)
 		expect.equal(GripController.introShown("compact"), false)

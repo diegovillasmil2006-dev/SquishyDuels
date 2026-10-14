@@ -668,8 +668,6 @@ local Strings = {
 			squeeze = { one = "Squeeze once", many = "Squeeze {n} times" },
 			practice = { one = "Hit {n} practice target", many = "Hit {n} practice targets" },
 			duel = { one = "Finish your first duel", many = "Finish {n} duels" },
-			-- §17.7 (Part 7): squeezes at a tier >= 2 station only (the Jelly Pad and up).
-			jelly = { one = "Squeeze once on the Jelly Pad", many = "Squeeze {n} times on the Jelly Pad" },
 		},
 	},
 
@@ -739,8 +737,8 @@ local Strings = {
 	-- World signs (`SD_TextKey`, §7.7).
 	world = {
 		-- The design lobby's plates (phase 3, user decision 2026-10-11 "build the design's lobby"; D10: the design's
-		-- words, sd/lobby.js). The plates that say "SHOP", "QUESTS", "Kitty Bread" and the pad names use shop.title,
-		-- quest.title, squishy.kittyBread.name and grip.pad.*.
+		-- words, sd/lobby.js). The plates that say "SHOP", "QUESTS" and "Kitty Bread" use shop.title, quest.title and
+		-- squishy.kittyBread.name.
 		logoTop = "Squishy", -- lobby.js:153
 		logoBottom = "Duels", -- lobby.js:153
 		squishSquare = "SQUISH SQUARE", -- lobby bases spec §2: the hub's name painted on the ground
@@ -830,15 +828,15 @@ local Strings = {
 	},
 
 	-- Grip training (§17.6, §17.7), a lobby-only stat. Never shown in duels: the client holds grip.* toasts back from
-	-- Matched to Returning, and no duel text mentions it. Placeholders: {level} = a Grip Level (a pad's
-	-- Config level, or the player's); {rank} = a grip.rank.* name; {pad} = a grip.pad.* name;
+	-- Matched to Returning, and no duel text mentions it. Placeholders: {level} = a Grip Level (a rank's
+	-- Config level, or the player's); {rank} = a grip.rank.* name;
 	-- {coins} = a Coin amount (Coins per squeeze); {grip} = Grip
-	-- per squeeze (CapsuleMath.squeezeGrip); {mult} = a multiplier (Pads[tier].gripPercent / 100 or Rested.mult);
-	-- {minutes} = GripMath.restedMinutes; {n} = Grip gained. {have}: on signLocked the viewer's Grip
-	-- Level; on the HUD bar {have}/{need} = Format.coins of the total and of the next level's total (GripMath.progress).
-	-- Phase 5: pads and trainers no longer boost a squeeze (CapsuleMath sets its pay); Phase 6: slow training is gone
-	-- too, so the pad texts claim no boost at all (the pad removal is a separate decision), and so are the trainers
-	-- (their names, card, goal, toast and reason texts).
+	-- per squeeze (CapsuleMath.squeezeGrip); {mult} = a multiplier (Rested.mult);
+	-- {minutes} = GripMath.restedMinutes; {n} = Grip gained. On the HUD bar {have}/{need} = Format.coins of the total
+	-- and of the next level's total (GripMath.progress).
+	-- Phase 5: pads and trainers no longer boost a squeeze (CapsuleMath sets its pay); Phase 6: slow training is gone,
+	-- and so are the trainers (their names, card, goal, toast and reason texts) and the giant pads and Jelly gates (the
+	-- pad cards, signs, unlock toast and pad goal); grip.pad.foam names the Foam Mats' Config.Grip.Pads row.
 	grip = {
 		-- HUD card (top-left, under the Coins pill).
 		hudLevel = "Grip Lv {level} · {rank}",
@@ -849,11 +847,9 @@ local Strings = {
 		levelTag = "GRIP",
 		restedChip = "Double Grip: about {minutes} min",
 		-- Next goal (GripMath.nextGoal, first that applies).
-		goalPad = "Next: {pad} at Grip Lv {level}",
 		goalRank = "Next rank: {rank} at Grip Lv {level}",
 		goalMax = "Max level! You've reached Infinite Grip.",
 		-- Foam fix 2: the regular HUD card's goal line (one line in its info column); the panel and toasts keep the above.
-		hudGoalPad = "Next: {pad} at Lv {level}",
 		hudGoalRank = "Next: {rank} at Lv {level}",
 		-- At a pad.
 		popup = "+{n} Grip",
@@ -881,27 +877,16 @@ local Strings = {
 		-- Keyed by Config.Grip.Pads[tier].key.
 		pad = {
 			foam = "Foam Mats",
-			jelly = "Jelly Pad",
-			marshmallow = "Marshmallow Pad",
-			royal = "Royal Cushion",
 		},
 		-- Grip panel (one scrolling column).
 		panelTitle = "Grip Training",
 		panelIntro = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
-		padsHeader = "Squeeze pads",
-		padNeeds = "Needs Grip Lv {level}",
-		padPerks = "The same Coins and Grip as anywhere", -- Phase 6: a pad gives no boost at all
-		padPerksBase = "No boost: the same Coins and Grip as anywhere", -- the Foam Mats card (spec 2026-10-11 §5)
-		padOpen = "Open",
-		padLocked = "Locked",
-		showMe = "Show me",
 		restedHelp = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 		-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays.
 		limitNote = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
 		duelNote = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 		-- Toasts (Notify codes, Types.GripNotifyCode). rankUp: {name} = the player's display name.
 		levelUp = "Grip Lv {level}!",
-		padUnlocked = "{pad} unlocked!",
 		rankUp = "{name} reached {rank}!",
 		intro = "You trained your Grip! Squeeze more to open new capsule tiers.",
 		welcome = "Double Grip is full: your first squeezes train x{mult} Grip!",
@@ -913,10 +898,7 @@ local Strings = {
 		-- Foam fix 2: one sentence per line. Phase 6: the second names what still stops (the capsules).
 		idleBody = "Roblox disconnects players who are idle for 20 minutes.\nCapsules stop paying when that happens.",
 		idleButton = "Keep going",
-		-- World: the Jelly pod sign heading, the pod signs' Live line, the lobby nameplate.
-		gymTitle = "GRIP GYM",
-		signLocked = "Needs Grip Lv {level} · You: Lv {have}",
-		signOpen = "Open",
+		-- World: the lobby nameplate.
 		nameplate = "Lv {level} · {rank}",
 	},
 }

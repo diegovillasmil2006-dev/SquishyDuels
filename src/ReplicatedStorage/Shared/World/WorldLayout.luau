@@ -37,8 +37,9 @@
 --   along the paths): keep-clear volumes, zones, audio zones, boundaries, the practice throw box.
 -- * `color` fields are Art/Palette token names (builders use Palette[color]). `*Key` fields are Strings keys, except
 --   `musicKey` / `ambienceKey` (AssetTable sound slots).
--- * A squeeze station's `tier` is its GripTier (§17.4): 1 = Foam Mats, 2-4 = the giant pads. Server and client read
---   the tier here by stationId (stationTier), never from the client or the GripTier attribute (§17.6).
+-- * A squeeze station's `tier` is its GripTier (§17.4): 1 = Foam Mats, the only stations since the giant pads, their
+--   Grip gym and Royal pod went (build plan Phase 6). Server and client read the tier here by stationId
+--   (stationTier), never from the client or the GripTier attribute (§17.6).
 
 -- Types
 
@@ -109,8 +110,8 @@ export type Sign = {
 	facing: Vector3, -- unit normal of the readable face; (0, 1, 0) for floor plates
 	face: "Front" | "Top",
 	textUp: Vector3?, -- floor plates only: the direction the top of the text points
-	tag: string?, -- extra tag besides SD_Sign (SD_GripSign)
-	tier: number?, -- SD_GripSign: GripTier
+	tag: string?, -- an extra tag besides SD_Sign (no sign has one since the pod signs went, build plan Phase 6)
+	tier: number?, -- with `tag`: its GripTier attribute
 	align: ("center" | "top")?, -- vertical placement of the lines on the panel (default "center")
 	cframe: CFrame?, -- an exact panel frame (Front face = -Z, the readable side), e.g. a plate lying on a tilted top
 	plate: PlateStyle?, -- a design plate (no wood frame); nil = the §7.7 sign look
@@ -119,38 +120,12 @@ export type Sign = {
 }
 
 export type Station = {
-	id: string, -- "squeeze_01".."squeeze_09"
+	id: string, -- "squeeze_01".."squeeze_06"
 	tier: number, -- GripTier
-	kind: "mat" | "giant",
 	model: string,
-	position: Vector3, -- the point the server measures from: mat centre / giant pad collision box centre
-	top: number, -- Y of the standing surface: mat top / collision top
-	halfSize: number, -- mats: radius; giant pads: half the square footprint
-	padKey: string?, -- giant pads: "jelly" | "marshmallow" | "royal"
-}
-
-export type Gate = Disc & { transparency: number }
-
-export type GiantPad = {
-	key: string,
-	stationId: string,
-	tier: number,
-	model: string, -- "GiantPad_<key>", Atomic, tagged SD_GiantPad (GripTier, PadKey)
-	blueprintId: string, -- Art/SquishyBlueprints giant_* (kept for tools; the design pads have no faces, D5)
-	frame: CFrame, -- the design's pad group (lobby.js:359, 363, 383): its base decor is placed in this frame
-	center: Vector3, -- floor point under the pad centre (Y 0: the pad's mesh and tiles are measured from the floor)
-	footprint: number, -- side of the visual pad (its rounded square, or its circle for a corner radius of half of it)
-	cornerRadius: number,
-	restTop: number, -- visual top at rest: the design's standing surface
-	sinkDepth: number,
-	collision: Box, -- the invisible station box (Transparency 1, CanCollide true, CanTouch false)
-	collisionTop: number, -- restTop - sinkDepth: feet sink to it on the dented top
-	look: { body: string, top: string, transparency: number },
-	gate: Gate, -- the jelly cylinder, tagged SD_GripGate (GripTier); invisible (D5)
-	signId: string,
-	tileSpacing: number, -- path B quilted tiles (§17.6.1), only those inside the rounded footprint are built
-	tileSize: Vector3,
-	tilesPerSide: number,
+	position: Vector3, -- the point the server measures from: the mat centre
+	top: number, -- Y of the standing surface: the mat top
+	halfSize: number, -- the mat's radius
 }
 
 export type Target = {
@@ -181,8 +156,7 @@ export type AudioZone = Volume & {
 
 export type Activity = {
 	name: string,
-	points: { Vector3 }, -- floor points a player walks to (approach points, mat or pad centres)
-	pod: boolean, -- a Grip pod: the G-D route exception applies (§17.0, §17.6)
+	points: { Vector3 }, -- floor points a player walks to (approach points, mat centres)
 }
 
 export type ReturnPoint = {
@@ -314,22 +288,19 @@ local function polarFrame(radius: number, degrees: number): StationFrame
 end
 
 -- Spec §3: the stations in the sectors between the paths (centred on 18° + 36° j). Readings: each station's radius,
--- the farthest out its sector lets it stand between the paths. Squeeze (270°) and the Royal pod (306°) reach into the
--- garden; the Grip gym and the Royal pod (both removed in Phase 6) take the sectors §3 gives the range (90-126°) and
--- the foam mats (270-306°) as their second; the practice range runs east (+X) along its sector's middle, so throws
--- still go toward +X (D3).
+-- the farthest out its sector lets it stand between the paths. Squeeze (270°) reaches into the garden; the practice
+-- range runs east (+X) along its sector's middle, so throws still go toward +X (D3). The Grip gym (126°) and the Royal
+-- pod (306°) went with the giant pads (build plan Phase 6): their sectors stay open.
 local StationFrames: { [string]: StationFrame } = {
 	spawn = newFrame(0, 0, 0), -- the stage centre; the hub spawn faces north
 	duel = newFrame(0, 0, 0), -- the duel stage under the tower (spec §2), local +Z = south
 	shop = polarFrame(56, 18), -- spec §3: 18°
 	box = polarFrame(52, 54), -- spec §3: 54°
 	practice = newFrame(70, 0, -math.pi / 2), -- spec §3: 90°; local +Z = west (the throwers), -Z = east (the throws)
-	grip = polarFrame(53, 126), -- reading: the Grip gym until Phase 6
 	quests = polarFrame(53, 162), -- spec §3: 162°
 	daily = polarFrame(50, 198), -- spec §3: 198°
 	collection = polarFrame(56, 234), -- spec §3: 234°
 	squeeze = polarFrame(78, 270), -- spec §3: 270°
-	royal = polarFrame(80, 306), -- reading: the Royal pod until Phase 6
 	fountain = polarFrame(48, 342), -- spec §3: 342° (a prop, not a station)
 }
 
@@ -705,122 +676,6 @@ local PracticeRange = {
 	approach = THROW_SPOT,
 }
 
--- Private: Grip pods and giant pads (§17.6, §17.6.1; D5; removed in Phase 6) -----------------------------------------
-
--- Reading (D5): the gates are invisible (Config.Grip.Gate transparencies 1); a closed one still stops a too-low
--- level locally. They are tall enough that a jump from a pad's white base (Y 2.2) cannot clear them.
-local GATE_DIAMETER = 14
-local GATE_HEIGHT = 14
-
-local function giantPad(spec: {
-	key: string,
-	stationId: string,
-	tier: number,
-	frame: CFrame,
-	footprint: number,
-	cornerRadius: number,
-	restTop: number,
-	sinkDepth: number,
-	collisionSide: number,
-	look: { body: string, top: string, transparency: number },
-}): GiantPad
-	local center = Vector3.new(spec.frame.Position.X, 0, spec.frame.Position.Z)
-	local collisionTop = spec.restTop - spec.sinkDepth
-	return {
-		key = spec.key,
-		stationId = spec.stationId,
-		tier = spec.tier,
-		model = "GiantPad_" .. spec.key,
-		blueprintId = "giant_" .. (if spec.key == "royal" then "cushion" else spec.key),
-		frame = spec.frame,
-		center = center,
-		footprint = spec.footprint,
-		cornerRadius = spec.cornerRadius,
-		restTop = spec.restTop,
-		sinkDepth = spec.sinkDepth,
-		collision = {
-			position = Vector3.new(center.X, collisionTop / 2, center.Z),
-			size = Vector3.new(spec.collisionSide, collisionTop, spec.collisionSide),
-		},
-		collisionTop = collisionTop,
-		look = spec.look,
-		gate = {
-			position = Vector3.new(center.X, GATE_HEIGHT / 2, center.Z),
-			diameter = GATE_DIAMETER,
-			height = GATE_HEIGHT,
-			color = "LobbyTrimWhite",
-			transparency = 1, -- built CanCollide/CanQuery/CanTouch false; WorldBinder closes it locally (§17.6)
-		},
-		signId = "pod_" .. spec.key,
-		tileSpacing = 1.0,
-		tileSize = Vector3.new(2, 1, 2),
-		tilesPerSide = math.round(spec.footprint / 1.0),
-	}
-end
-
-local GIANT_PAD_KEYS = { "jelly", "marshmallow", "royal" }
-
--- Readings: the corner radius of an n = 3 superellipse pad is the rounded square with the same diagonal reach
--- (3.6 for the jelly shell, 3.0 for the cushion); the marshmallow is round (radius = half its footprint). Collision
--- boxes keep G8's rules (inside the rounded footprint, 0.8 inside the gate). Reading (island): the gym's two pads
--- stand one behind the other along their sector (21 apart: pads stay 20 apart), the jelly pad in front.
-local GiantPads: { [string]: GiantPad } = {
-	jelly = giantPad({
-		key = "jelly",
-		stationId = "squeeze_07",
-		tier = 2,
-		frame = groupCF("grip", 0, 0.8, 10.5), -- jelly_pad (design: lobby.js:359; reading: the gym's front pad)
-		footprint = 10.2, -- design: lobby.js:361 (jelly_shell rb(10.2, 4, 10.2, 3))
-		cornerRadius = 3.6,
-		restTop = 6.2, -- design: lobby.js:361 (shell top: grip floor 0.8 + 3.4 + 2)
-		sinkDepth = 0.5, -- §17.6.1
-		collisionSide = 7.8,
-		look = { body = "LobbyJellyShell", top = "LobbyJellyShell", transparency = 0.38 }, -- design: lobby.js:79 (opacity .62)
-	}),
-	marshmallow = giantPad({
-		key = "marshmallow",
-		stationId = "squeeze_08",
-		tier = 3,
-		frame = groupCF("grip", 0, 0.8, -10.5), -- marshmallow_pad (design: lobby.js:363; reading: the gym's back pad)
-		footprint = 10, -- design: lobby.js:364 (superF(5, 2.2, 5): Ø10)
-		cornerRadius = 5,
-		restTop = 6.6, -- design: lobby.js:364 (0.8 + 3.6 + 2.2)
-		sinkDepth = 0.6, -- §17.6.1
-		collisionSide = 6.8,
-		look = { body = "LobbyMarshmallow", top = "LobbyMarshmallow", transparency = 0 }, -- design: lobby.js:79
-	}),
-	royal = giantPad({
-		key = "royal",
-		stationId = "squeeze_09",
-		tier = 4,
-		frame = groupCF("royal", 0, 2, 0), -- royal_cushion (design: lobby.js:383)
-		footprint = 8.4, -- design: lobby.js:384 (royal_cushion_body rb(8.4, 2.8, 8.4, 3))
-		cornerRadius = 3.0,
-		restTop = 4.8, -- design: lobby.js:384 (2 + 1.4 + 1.4)
-		sinkDepth = 0.7, -- §17.6.1 (softest)
-		collisionSide = 6.4,
-		look = { body = "LobbyRoyalVelvet", top = "LobbyRoyalVelvet", transparency = 0 }, -- design: lobby.js:77
-	}),
-}
-
-local Pods = {
-	gym = {
-		model = "GripGym",
-		-- design: lobby.js:357 (the gym floor, top 0.8); reading: 14 × 34 under both pads, down to the garden.
-		floor = {
-			position = at("grip", 0, -0.05, 0),
-			size = Vector3.new(14, 1.7, 34),
-			yaw = StationFrames.grip.yaw,
-			color = "LobbyLilac",
-		} :: Box,
-		padKeys = { "jelly", "marshmallow" },
-	},
-	royal = {
-		model = "RoyalPod",
-		padKeys = { "royal" },
-	},
-}
-
 -- Private: stations list (§6.3, §17.6) -----------------------------------------------------------------------------
 
 local Stations: { Station } = {}
@@ -828,24 +683,10 @@ for _, mat in mats do
 	table.insert(Stations, {
 		id = mat.id,
 		tier = 1,
-		kind = "mat",
 		model = SqueezeZone.model,
 		position = mat.position,
 		top = MAT_TOP,
 		halfSize = MAT_DIAMETER / 2,
-	})
-end
-for _, key in GIANT_PAD_KEYS do
-	local pad = GiantPads[key]
-	table.insert(Stations, {
-		id = pad.stationId,
-		tier = pad.tier,
-		kind = "giant",
-		model = pad.model,
-		position = pad.collision.position,
-		top = pad.collisionTop,
-		halfSize = pad.footprint / 2,
-		padKey = pad.key,
 	})
 end
 
@@ -1227,32 +1068,6 @@ for index, mat in mats do
 	)
 end
 
--- Pod signs (§17.6): `Title` is static (SD_TextKey grip.pad.<key>), `Live` has no SD_TextKey (baked with
--- Strings.format(grip.padNeeds, {level = Config.Grip.Pads[tier].level}), then written only by the SD_GripSign binder).
--- The design's "Jelly Pad" / "Marshmallow Pad" plates sit on the bases' fronts (lobby.js:367, 1 tall); reading: 2.4
--- tall so the Live line fits under the title. NOT IN DESIGN: the Royal Cushion's sign on its upper dais' front.
-for _, key in GIANT_PAD_KEYS do
-	local pad = GiantPads[key]
-	local frame = if key == "royal" then groupCF("royal", 0, 2.2, 10) else pad.frame * CFrame.new(0, 1.2, 6.06) -- design: lobby.js:367 (the base's front face)
-	local cf = plateCF(frame)
-	table.insert(Signs, {
-		id = pad.signId,
-		owner = if key == "royal" then Pods.royal.model else Pods.gym.model,
-		position = cf.Position,
-		size = Vector3.new(if key == "marshmallow" then 7 else 5.6, 2.4, 0.05), -- design: lobby.js:367 (5.4 / 7 wide)
-		facing = cf.LookVector,
-		face = "Front",
-		cframe = cf,
-		plate = if key == "royal" then PLATE_BOXED else PLATE_TEXT,
-		tag = "SD_GripSign",
-		tier = pad.tier,
-		lines = {
-			line("Title", "grip.pad." .. key, 0.9, "heading"),
-			liveLine("Live", "grip.padNeeds", 0.5, { "grip.signLocked", "grip.signOpen" }),
-		},
-	})
-end
-
 -- The bases' name signs (spec §4): one live line, the owner's display name (BaseService) or base.openPlot as built.
 for index = 1, BASE_COUNT do
 	local frame = Bases.frames[index]
@@ -1314,21 +1129,6 @@ for _, mat in mats do
 		keepClearAt(mat.id, "station", mat.position, 10, 10, nil, MAT_TOP + KEEP_CLEAR_LIFT) -- mats 14 apart: no overlap
 	)
 end
-for _, key in GIANT_PAD_KEYS do
-	local pad = GiantPads[key]
-	table.insert(
-		KeepClear,
-		keepClearAt(
-			pad.stationId,
-			"station",
-			pad.center,
-			pad.gate.diameter,
-			pad.gate.diameter,
-			nil,
-			pad.collisionTop + KEEP_CLEAR_LIFT
-		)
-	)
-end
 -- §7.7 props rule 1: the 5-stud radius around every prompt (each stand prompt and the 14 Inspect prompts), as boxes
 -- from Y 0.5 to 24. They hold their own station's body, which the keep-clear test exempts, so they catch decor and
 -- the team's Workspace.SD_Manual parts crowding a prompt.
@@ -1375,27 +1175,24 @@ local AudioZones: { AudioZone } = {
 	audioZone("practice", Vector3.new(68.5, 15, 0), Vector3.new(49, 30, 40), 2, "music.lobby", 0.6, "amb.lobby"),
 }
 
--- Activities and their walk points (routes, waypoints): the stands' approaches; the squeeze zone counts each mat; the
--- Grip pods are separate activities because of the G-D exception (§17.0).
+-- Activities and their walk points (routes, waypoints): the stands' approaches; the squeeze zone counts each mat.
 local matPoints: { Vector3 } = {}
 for _, mat in mats do
 	table.insert(matPoints, Vector3.new(mat.position.X, 0, mat.position.Z))
 end
 local Activities: { Activity } = {
-	{ name = "quests", points = { QuestBoard.approach }, pod = false },
-	{ name = "daily", points = { DailyStand.approach }, pod = false },
-	{ name = "squeeze", points = matPoints, pod = false },
-	{ name = "collection", points = { Collection.approach }, pod = false },
-	{ name = "shop", points = { ShopCounter.approach }, pod = false },
-	{ name = "duel", points = { DuelGate.approach }, pod = false },
-	{ name = "practice", points = { PracticeRange.approach }, pod = false },
-	{ name = "giftBox", points = { GiftBoxCounter.approach }, pod = false },
+	{ name = "quests", points = { QuestBoard.approach } },
+	{ name = "daily", points = { DailyStand.approach } },
+	{ name = "squeeze", points = matPoints },
+	{ name = "collection", points = { Collection.approach } },
+	{ name = "shop", points = { ShopCounter.approach } },
+	{ name = "duel", points = { DuelGate.approach } },
+	{ name = "practice", points = { PracticeRange.approach } },
+	{ name = "giftBox", points = { GiftBoxCounter.approach } },
 }
-for _, key in GIANT_PAD_KEYS do
-	table.insert(Activities, { name = key .. "Pad", points = { GiantPads[key].center }, pod = true })
-end
 
--- Waypoint targets (floor points): onboarding, "Show me" and unlock waypoints. "squeeze" = the mat nearest the spawn.
+-- Waypoint targets (floor points): onboarding and the "show me the way" waypoints. "squeeze" = the mat nearest the
+-- spawn.
 local nearestMat = matPoints[1]
 for _, point in matPoints do
 	if point.Magnitude < nearestMat.Magnitude then
@@ -1413,9 +1210,6 @@ local Waypoints: { [string]: Vector3 } = {
 	practice = PracticeRange.approach,
 	giftBox = GiftBoxCounter.approach,
 }
-for _, key in GIANT_PAD_KEYS do
-	Waypoints[key .. "Pad"] = GiantPads[key].center
-end
 
 -- Private: arena template (§5.3, §7.8) -----------------------------------------------------------------------------
 
@@ -1644,10 +1438,7 @@ local WorldLayout = {
 	GiftBoxCounter = GiftBoxCounter,
 	ShopCounter = ShopCounter,
 	Collection = Collection,
-	Pods = Pods,
-	GiantPads = GiantPads, -- keyed by pad key; GiantPadKeys gives the order
-	GiantPadKeys = GIANT_PAD_KEYS,
-	Stations = Stations, -- squeeze_01..09 in id order
+	Stations = Stations, -- squeeze_01..06 in id order
 	ReturnPoints = ReturnPoints,
 	Props = Props,
 	Signs = Signs,
@@ -1657,11 +1448,11 @@ local WorldLayout = {
 	Waypoints = Waypoints,
 	Bases = Bases, -- the island's 10 plots (plotFrame / inPlot)
 	-- Straight-line routes at WalkSpeed 16 (= Config.Duel.Rules.Movement.WalkSpeed; real paths ≈ +10%).
-	-- User decision 2026-10-11 (phase 3 spec D1): 10 s between activities, 12 s for routes that involve a Grip pod.
+	-- User decision 2026-10-11 (phase 3 spec D1): 10 s between activities (its 12 s Grip pod exception went with the
+	-- pods, build plan Phase 6).
 	Routes = {
 		walkSpeed = 16,
 		maxSeconds = 10, -- between any two activities (§7.5; D1)
-		podMaxSeconds = 12, -- G-D exception: routes that involve a Grip pod (D1)
 	},
 	Budgets = {
 		-- Spec §7 part budget, checked by the lobby generator with every plot's capsules at their worst case (4 open
@@ -1680,7 +1471,7 @@ local WorldLayout = {
 	-- Exact tag counts the lobby generator self-checks (§7.7, §17.6).
 	TagCounts = {
 		SD_LobbySpawn = 1,
-		SD_SqueezeStation = 9,
+		SD_SqueezeStation = 6,
 		SD_PracticeZone = 1,
 		SD_PracticeTarget = #targets, -- 4: 3 dummies and the moving target (spec §3)
 		SD_QueuePodium = 1,
@@ -1692,10 +1483,6 @@ local WorldLayout = {
 		SD_QuestBoard = 1,
 		SD_DailyStand = 1,
 		SD_ReturnPoint = 2,
-		SD_GripGate = 3,
-		SD_GripSign = 3,
-		SD_GripLock = 3, -- the design's lock + rope per pad, shown while its gate is closed (D5)
-		SD_GiantPad = 3,
 		SD_Boundary = #Lobby.Boundaries, -- 4 invisible walls
 		SD_AudioZone = #AudioZones, -- lobby, squeeze, practice
 		-- Lobby background motion (§18.5.1 A8): the 4 lollipops, both gift boxes and the statue.
@@ -1723,12 +1510,6 @@ local WorldLayout = {
 		AudioZone = "SD_AudioZone",
 		KeepClear = "SD_KeepClear",
 		Boundary = "SD_Boundary",
-		GripGate = "SD_GripGate",
-		GripSign = "SD_GripSign",
-		-- Phase 3 (D5): a pad's design lock + rope (a Model with GripTier); WorldBinder shows it while the gate is closed
-		-- for the local player.
-		GripLock = "SD_GripLock",
-		GiantPad = "SD_GiantPad",
 		-- Reading (§18.5.1 A8 names the tag and attribute; §18.8 lists only the count): here so LobbyBuilder and
 		-- AmbientController share one spelling.
 		Ambient = "SD_Ambient",
@@ -1740,7 +1521,6 @@ local WorldLayout = {
 	Attributes = {
 		StationId = "StationId",
 		GripTier = "GripTier",
-		PadKey = "PadKey",
 		TargetId = "TargetId",
 		Distance = "Distance",
 		Moving = "Moving",
@@ -1770,10 +1550,6 @@ for _, station in Stations do
 	stationById[station.id] = station
 	table.insert(stationIds, station.id)
 end
-local padByStation: { [string]: GiantPad } = {}
-for _, key in GIANT_PAD_KEYS do
-	padByStation[GiantPads[key].stationId] = GiantPads[key]
-end
 table.freeze(stationIds) -- handed out as is by stationIds()
 
 local function deepFreeze(value: any)
@@ -1794,7 +1570,7 @@ function WorldLayout.station(id: string): Station?
 	return stationById[id]
 end
 
--- The GripTier of a station (1 = Foam Mats, 2-4 = giant pads), or nil for an unknown id.
+-- The GripTier of a station (1 = Foam Mats), or nil for an unknown id.
 function WorldLayout.stationTier(id: string): number?
 	local station = stationById[id]
 	return if station then station.tier else nil
@@ -1803,16 +1579,6 @@ end
 -- Every station id, in order (frozen list).
 function WorldLayout.stationIds(): { string }
 	return stationIds
-end
-
--- The giant pad with this key ("jelly", "marshmallow", "royal"), or nil.
-function WorldLayout.giantPad(key: string): GiantPad?
-	return GiantPads[key]
-end
-
--- The giant pad whose collision box is this station, or nil (Foam Mats and unknown ids).
-function WorldLayout.giantPadForStation(stationId: string): GiantPad?
-	return padByStation[stationId]
 end
 
 -- The CFrame of a station frame ("spawn", "duel", "shop", ..., "fountain"; StationFrames), or nil: a station-local
@@ -1840,17 +1606,15 @@ function WorldLayout.nearestStation(position: Vector3, maxDistance: number): (St
 	return best, bestDistance
 end
 
--- The station a root part at `position` stands on (§17.3.6 #5): over a mat (radius + margin) or over a giant pad's
--- footprint (half-size + margin on X and on Z), with its height between the station top and top + heightAbove.
+-- The station a root part at `position` stands on (§17.3.6 #5): over a mat (radius + margin), with its height between
+-- the station top and top + heightAbove.
 -- Config.Squeeze gives margin (padMargin) and heightAbove (Config.Grip.Afk's until slow training went, Phase 6).
 function WorldLayout.stationUnder(position: Vector3, margin: number, heightAbove: number): Station?
 	for _, station in Stations do
 		local dx = position.X - station.position.X
 		local dz = position.Z - station.position.Z
 		local reach = station.halfSize + margin
-		local over = if station.kind == "mat"
-			then dx * dx + dz * dz <= reach * reach
-			else math.abs(dx) <= reach and math.abs(dz) <= reach
+		local over = dx * dx + dz * dz <= reach * reach
 		if over and position.Y >= station.top and position.Y <= station.top + heightAbove then
 			return station
 		end
@@ -1927,7 +1691,7 @@ function WorldLayout.routeSeconds(a: Vector3, b: Vector3): number
 	return WorldLayout.horizontalDistance(a, b) / WorldLayout.Routes.walkSpeed
 end
 
--- The floor point of a waypoint target ("duel", "giftBox", "squeeze", "jellyPad", ...), or nil.
+-- The floor point of a waypoint target ("duel", "giftBox", "squeeze", ...), or nil.
 function WorldLayout.waypoint(name: string): Vector3?
 	return Waypoints[name]
 end

@@ -1,18 +1,17 @@
 --!strict
 -- GripController (client only). DESIGN §17.7 (UI), §17.2 rule 1 (no Grip in duels), §17.3.4 (Double Grip),
--- §17.5 (next-goal rule), §17.6 (gates and pod signs), §11.4, §11.6. Build plan Phase 6: slow training is gone (no
+-- §17.5 (next-goal rule), §11.4, §11.6. Build plan Phase 6: slow training is gone (no
 -- popup, help line or bank line), and so are the trainers (no trainer card, Upgrade tab or badge, trainer goal or
--- TrainerUpgrade call).
+-- TrainerUpgrade call) and the giant pads and Jelly gates (no pad cards, Show me or unlock waypoint, pad goal, or
+-- level source for WorldBinder's gates and pod signs).
 -- Grip is a lobby-only stat: nothing here sends anything to the server (there is no Grip remote, §17.2 rule 5).
 --
 -- * State: StateController's `grip` field {total, rested {value, at}} (§17.10). Level, rank, the bar and the
 --   Double Grip minutes come from the same pure GripMath and
 --   SqueezeLimit the server uses; timers are read against Workspace:GetServerTimeNow() (unix seconds, the scale of the
 --   server's os.time(): reading). The first grip state of the session is a silent baseline (§17.7 "Load-time level
---   jumps"): no toast, no waypoint. So is every later full state, e.g. a profile recovered
+--   jumps"): no toast. So is every later full state, e.g. a profile recovered
 --   after an OFFLINE start replacing the defaults (§3.13; StateController.isApplyingFull, gripChange).
--- * Level source for WorldBinder (§17.6): setGripSource({level, changed = LevelChanged}) drives the local jelly gates
---   and the pod signs' `Live` line. Before the first grip state the level is nil, so gates stay open.
 -- * HUD Grip card (SD_Hud, top-left under the coin capsule): one tap target `Hud_GripButton` that opens the Grip
 --   panel; a foam card (foam UI restyle, spec 2026-10-09 "Grip card", redesign-check.jpg).
 --   regular: a Mint level tile (grip.levelTag "GRIP" over the level) beside the rank (grip.rank.*), the ProgressBar,
@@ -36,23 +35,19 @@
 --   header tab and Close straddling its top edge at the right, like Quests, Daily and Settings; foam fix: no header row
 --   that held only Close, so the column starts at the top): the level and the bar (have / need, like the card), the
 --   chip and the goal in a
---   Biscuit inset, "Squeeze pads" (4 foam cards: name, grip.padNeeds, the perks line (padPerks: grip.padPerks, or
---   grip.padPerksBase on the Foam Mats card, which give no boost since spec 2026-10-11 §5), Open (Mint) / Locked
---   (Lilac, with the lock shape) as a chip, [Show me]: the only waypoint a player starts), the help lines
+--   Biscuit inset, the help lines
 --   (grip.restedHelp, grip.limitNote: where squeezing pays now that the hourly limit is off)
 --   in a second inset and the footer grip.duelNote.
 --   No Coin Store link and no Robux upsell anywhere (§17.2 rule 4).
--- * Toasts: the server's `grip.*` Notify codes (levelUp, padUnlocked, rankUp, intro, welcome, welcomeBack, headStart;
+-- * Toasts: the server's `grip.*` Notify codes (levelUp, rankUp, intro, welcome, welcomeBack, headStart;
 --   GripService decides them; reading: §17.10's code list has no grip.intro, but GripService sends it on the first Grip
 --   ever, so the client shows no intro of its own) are shown by NotifyController, which also holds them back
 --   from Matched through Returning (at most 3, merged into one, §17.7). This module's only own toast, the compact
---   layout's new goal, goes through NotifyController.show, so it gets the same hold-back. A newly unlocked pad
---   (GripMath.unlocks on a level change after the baseline) starts the one automatic waypoint for
---   Config.Grip.unlockWaypointSeconds (§17.7).
+--   layout's new goal, goes through NotifyController.show, so it gets the same hold-back.
 -- * Idle card (modal "gripIdle"): Players.LocalPlayer.Idled with t >= Config.Grip.idleReminderSeconds (900) opens
 --   grip.idleTitle / grip.idleBody / [grip.idleButton] in the lobby. It is a modal, so ControlsController.block stops
 --   any hold-to-squeeze; [Keep going] only closes it (it never restarts a hold, and nothing simulates input).
--- * No Grip UI in duels: the card hides, both modals close and the waypoint goes while the lobby is locked
+-- * No Grip UI in duels: the card hides and both modals close while the lobby is locked
 --   (StateController.isLobbyLocked) or SD_DuelPhase / SD_MatchId is set.
 -- * Feel pass (DESIGN §18.5.1 A9, lobby only): a level change after the silent baseline (shouldPopLevel) pops the
 --   card's level label (both layouts) LEVEL_POP.from -> 1, Back Out over LEVEL_POP.ms, through a UIScale (Tweens.scale:
@@ -68,27 +63,23 @@
 --     Config.UI.Grip.compactRowMaxHeight base px; the whole card, still the ONE tap target Hud_GripButton, is
 --     HudFormat.gripCardHeight("compact") tall: at least Layout.touchBase(Config.UI.Touch.minTarget, scale) (>= 44 px
 --     at scale 0.85). The goal toast follows the card: any card but the regular one toasts a new goal.
---   - Gamepad (§11.4, §17.7): the panel opens with its primary (Close) selected; Close and the four
---     Grip_ShowMe<tier>Button are linked top to bottom (HudFormat.chainLinks) and the scroll column
---     follows the selection (scrollDelta, pure: GuiService.SelectedObject inside the column is scrolled into view); the
---     idle card's primary is its Keep going button.
+--   - Gamepad (§11.4, §17.7): the panel opens with its primary (Close) selected; the idle card's primary is its Keep
+--     going button.
 --   - The title sits in the header tab and Close straddles the panel's top edge (the panel's top padding holds their
 --     lower halves), so the column starts at the panel's padding and the two never meet.
 -- * Foam fix 2 (2026-10-09; look only): the panel and what hangs above it (half the taller of Close and the tab) take
 --   PANEL_HEIGHT_SHARE together and are centred together (panelLayout, pure; as Quests and Settings), so Close stays on
---   a phone's screen. The Level block's list is centred; a pad card keeps some face under Show me (PAD_CARD_BOTTOM) and
---   Show me sits at the right end of its row (a flex spacer). The regular card's goal line reads the short form of the
---   goal (cardModel's cardGoal, grip.hudGoal*: "Next: Jelly Pad at Lv 5"), so a new player's card keeps it to one
+--   a phone's screen. The Level block's list is centred. The regular card's goal line reads the short form of the
+--   goal (cardModel's cardGoal, grip.hudGoal*: "Next: Firm Grip at Lv 10"), so a new player's card keeps it to one
 --   line; the panel and the compact layout's toast keep the full text.
 -- * Foam fix 3 (2026-10-10; look only): fix 2 took Close's hang out of the panel's height, so on a phone the column
 --   ended at "Squeeze pads" with no pad card under it. The panel keeps the whole PANEL_HEIGHT_SHARE again, centred with
 --   Close, and is shorter only to keep Close's top PANEL_EDGE inside the screen (panelLayout); on the compact layout
---   the intro line hides (introShown), so the first pad card peeks in; on touch the column has the scroll rail
+--   the intro line hides (introShown; see there); on touch the column has the scroll rail
 --   (UI/Components/ScrollHint, "ScrollRail" on the panel), like Settings.
 
 -- Services
 
-local GuiService = game:GetService("GuiService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
@@ -101,31 +92,25 @@ local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local GripMath = require(Shared.GripMath)
 local Log = require(Shared.Util.Log)
-local Signal = require(Shared.Util.Signal)
 local SqueezeLimit = require(Shared.SqueezeLimit)
 local Strings = require(Shared.Strings)
-local WorldLayout = require(Shared.World.WorldLayout)
 
 local Client = script.Parent.Parent
 local Tweens = require(Client.Anim.Tweens)
 local Button = require(Client.UI.Components.Button)
-local Chip = require(Client.UI.Components.Chip)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
 local HudFormat = require(Client.UI.HudFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
-local LockIcon = require(Client.UI.Components.LockIcon)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local ScrollHint = require(Client.UI.Components.ScrollHint)
 local Theme = require(Client.UI.Theme)
 local UiFx = require(Client.UI.UiFx)
-local Waypoint = require(Client.UI.Waypoint)
 local HudController = require(script.Parent.HudController)
 local NotifyController = require(script.Parent.NotifyController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
-local WorldBinder = require(script.Parent.WorldBinder)
 
 -- Types
 
@@ -133,9 +118,9 @@ export type Timer = { value: number, at: number }
 -- The client's view of the `grip` state field (§17.10), normalized.
 export type GripView = { total: number, rested: Timer? }
 
--- What one new grip state does (gripChange): a silent baseline, whether LevelChanged fires and the pad tier whose
--- waypoint to show.
-export type GripChange = { baseline: boolean, fireLevel: boolean, waypointTier: number? }
+-- What one new grip state does (gripChange): a silent baseline and whether the level moved (fireLevel; the level pop
+-- reads it).
+export type GripChange = { baseline: boolean, fireLevel: boolean }
 
 -- Texts and numbers of the HUD card for one state.
 export type CardModel = {
@@ -175,26 +160,17 @@ type Card = {
 	barSet: boolean, -- the bars got their first value (later values ease)
 }
 
-type PadRow = {
-	tier: number,
-	needs: TextLabel,
-	status: Chip.Chip,
-	lock: GuiObject,
-}
-
 type PanelRefs = {
 	root: Frame,
 	tab: Frame, -- the header tab (its height counts in what hangs above the panel, placePanel)
 	title: TextLabel,
 	scroll: ScrollingFrame,
 	intro: TextLabel, -- foam fix 3: hidden on the compact layout (introShown)
-	showMe: { GuiObject }, -- Grip_ShowMe<tier>Button by tier
 	levelLabel: TextLabel,
 	bar: ProgressBar.ProgressBar,
 	barLabel: TextLabel,
 	chipLabel: TextLabel,
 	goalLabel: TextLabel,
-	rows: { PadRow },
 	close: Button.Button,
 }
 
@@ -202,7 +178,6 @@ type PanelRefs = {
 
 local GRIP = Config.Grip
 local UI_GRIP = Config.UI.Grip
-local PADS = GRIP.Pads
 local RESTED = GRIP.Rested
 local SCREEN_PANEL = "grip"
 local SCREEN_IDLE = "gripIdle"
@@ -222,8 +197,6 @@ local COMPACT_ROW_GAP = 2 -- between the compact row's label and its bar (HudFor
 local CARD_BANDS = Theme.Foam.panel -- the card's foam: bevel 5 + drop 4 under its content
 local LEVEL_TILE_RADIUS = 14
 local BAR_EPSILON = 1e-4 -- the bar eases only when its share really changed (the card refreshes every few seconds)
--- Part 8: the scroll column keeps a selected item this far inside its window (base px).
-local SCROLL_MARGIN = 12
 -- Foam fix (like Quests, Daily and Settings): Close straddles the panel's top edge this far from its right edge.
 local CLOSE_INSET = 16
 local PANEL_BAR_HEIGHT = 14
@@ -234,11 +207,7 @@ local PANEL_MARGIN = 24
 local PANEL_HEIGHT_SHARE = 0.86
 local PANEL_EDGE = Theme.Padding.small
 local PANEL_FALLBACK_HEIGHT = 480 -- before SD_Modal has a size
--- Foam fix 2: a pad card's bottom padding, its foam bands plus a little face under the Show me button (Theme.panel's
--- least bottom padding left 3 px of face, so the button sat on the card's bevel).
-local PAD_CARD_BOTTOM = CARD_BANDS.bevel + CARD_BANDS.drop + Theme.Padding.small
 local IDLE_CARD_WIDTH = 440
-local LOCK_PX = 16
 local TIMER_REFRESH_SECONDS = 5 -- the minute texts change slowly (Double Grip refills 4 points a minute)
 -- §18.5.1 A9: the level label pops 1.25 -> 1 (Back Out, 300 ms). Reading: §18.8 gives no Config key for it.
 local LEVEL_POP = {
@@ -250,7 +219,6 @@ local LEVEL_POP = {
 -- Foam fix 2: the regular card's short form of a goal's text (its info column is 184 base wide: the old trainer goal,
 -- "Next: {trainer} unlocks at Grip Lv {level}", left "Grip Lv 3" alone on a line). Other goals keep their text.
 local CARD_GOAL_KEYS: { [string]: string } = {
-	["grip.goalPad"] = "grip.hudGoalPad",
 	["grip.goalRank"] = "grip.hudGoalRank",
 }
 
@@ -261,9 +229,6 @@ local GripController = {}
 -- Foam fix 2: the Grip panel's height share and widest width; fix 3: Close's least room under the screen's top (tests
 -- read them).
 GripController.PANEL = table.freeze({ heightShare = PANEL_HEIGHT_SHARE, maxWidth = PANEL_MAX_WIDTH, edge = PANEL_EDGE })
-
--- Fired with (level, old) when the local Grip level changes (the baseline included; WorldBinder's gripSource).
-GripController.LevelChanged = Signal.new() :: Signal.Signal<number?, number?>
 
 -- Private
 
@@ -276,8 +241,6 @@ local baselineTotal: number? = nil
 local lastGoalKey: string? = nil
 local goalBaselineSet = false -- the session's first goal was seen (it is never toasted)
 local toastedGoals: { [string]: boolean } = {} -- goals already seen this session (each new goal is toasted once)
-local waypoint: Waypoint.Handle? = nil
-local waypointToken = 0
 local card: Card? = nil
 local panelRefs: PanelRefs? = nil
 local focusEntrySet = false -- the card is HudController's DPadUp focus entry (only while it is shown)
@@ -316,33 +279,6 @@ end
 -- From Matched through Returning nothing about Grip is shown (§17.2 rule 1).
 local function suppressed(): boolean
 	return StateController.isLobbyLocked() or inMatch()
-end
-
--- Waypoints ---------------------------------------------------------------------------------------------------------
-
-local function clearWaypoint()
-	waypointToken += 1
-	local handle = waypoint
-	waypoint = nil
-	if handle then
-		handle:destroy()
-	end
-end
-
--- Shows the waypoint to a pad for Config.Grip.unlockWaypointSeconds (a newer one replaces it).
-local function showWaypoint(tier: number)
-	local target = GripController.waypointTarget(tier)
-	if target == nil then
-		return
-	end
-	clearWaypoint()
-	waypoint = Waypoint.show(target)
-	local token = waypointToken
-	task.delay(GRIP.unlockWaypointSeconds, function()
-		if waypointToken == token then
-			clearWaypoint()
-		end
-	end)
 end
 
 -- Card --------------------------------------------------------------------------------------------------------------
@@ -814,19 +750,6 @@ end
 
 -- Panel -------------------------------------------------------------------------------------------------------------
 
--- A foam card inside the panel's column (a pad): Frosting with the InkUI outline, its rows in a list.
-local function columnCard(name: string, order: number, parent: Instance): Frame
-	local cardFrame = Theme.panel({
-		Name = name,
-		LayoutOrder = order,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = parent,
-	}, Theme.Radius.button, Theme.Padding.medium)
-	Theme.list(Enum.FillDirection.Vertical, 4, cardFrame, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
-	return cardFrame
-end
-
 -- Foam fix 2: sizes and places the panel (panelLayout) with what hangs above its top edge: half the taller of Close and
 -- the header tab (measured without the open pop's scale, SD_OpenScale; Close until the tab has a size).
 local function placePanel(root: GuiObject, tab: GuiObject?)
@@ -848,8 +771,7 @@ end
 
 -- The Grip panel (foam restyle): a foam panel with the "Grip Training" header tab, Close straddling its top edge at the
 -- right and one scrolling column: the intro, the level in a Biscuit inset (the bar, the Double Grip line, the goal),
--- "Squeeze pads" as four foam cards (name, needs, perks, Open / Locked with a lock, [Show me]), the
--- help lines in a second inset, then the duel note.
+-- the help lines in a second inset, then the duel note.
 local function buildPanel(parent: Instance): GuiObject
 	local root = Theme.panel({
 		Name = "GripPanel",
@@ -950,58 +872,6 @@ local function buildPanel(parent: Instance): GuiObject
 	local chipLabel = caption({ Name = "Chip", LayoutOrder = 4, Parent = header })
 	local goalLabel = Theme.label({ Name = "Goal", LayoutOrder = 5, Parent = header }, "Small", Enum.FontWeight.Bold)
 
-	Theme.label(
-		{ Name = "PadsHeader", LayoutOrder = nextOrder(), Text = text("grip.padsHeader"), Parent = scroll },
-		"H2"
-	)
-	local rows: { PadRow } = {}
-	local showMe: { GuiObject } = {}
-	for tier, pad in PADS do
-		local row = columnCard("Pad_" .. pad.key, nextOrder(), scroll)
-		local rowPad = row:FindFirstChildOfClass("UIPadding") :: UIPadding
-		rowPad.PaddingBottom = UDim.new(0, PAD_CARD_BOTTOM)
-		Theme.label({ Name = "Name", LayoutOrder = 1, Text = text("grip.pad." .. pad.key), Parent = row }, "Button")
-		local needs = caption({ Name = "Needs", LayoutOrder = 2, Parent = row })
-		caption({ Name = "Perks", LayoutOrder = 3, Text = GripController.padPerks(pad), Parent = row })
-		local statusRow: Frame = Create("Frame", {
-			Name = "Status",
-			LayoutOrder = 4,
-			BackgroundTransparency = 1,
-			Size = UDim2.fromScale(1, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			Parent = row,
-		})
-		local statusList =
-			Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, statusRow, Enum.HorizontalAlignment.Left)
-		statusList.Wraps = true
-		-- The lock shape and the Open / Locked word (never the colour alone, §17.7); the panel is built once and kept,
-		-- so its parts live as long as it does.
-		local lock = LockIcon.new({ name = "Lock", sizePx = LOCK_PX, layoutOrder = 1, parent = statusRow })
-		local status = Chip.new({ name = "State", text = text("grip.padLocked"), layoutOrder = 2, parent = statusRow })
-		-- Foam fix 2: a spacer takes the row's free room, so Show me sits at its right end (it was packed against the chip).
-		local spacer: Frame = Create("Frame", {
-			Name = "Spacer",
-			LayoutOrder = 3,
-			BackgroundTransparency = 1,
-			Size = UDim2.fromOffset(0, 0),
-			Parent = statusRow,
-		})
-		Create("UIFlexItem", { FlexMode = Enum.UIFlexMode.Fill, Parent = spacer })
-		local button = Button.new({
-			name = "Grip_ShowMe" .. tier .. "Button",
-			text = text("grip.showMe"),
-			height = Config.UI.Touch.minTarget,
-			layoutOrder = 4,
-			parent = statusRow,
-			onActivated = function()
-				UIController.close(SCREEN_PANEL, "showMe")
-				showWaypoint(tier)
-			end,
-		})
-		showMe[tier] = button.root
-		table.insert(rows, { tier = tier, needs = needs, status = status, lock = lock.root :: GuiObject })
-	end
-
 	local help = insetBlock("Help")
 	caption({
 		Name = "RestedHelp",
@@ -1018,72 +888,14 @@ local function buildPanel(parent: Instance): GuiObject
 		title = title,
 		scroll = scroll,
 		intro = intro,
-		showMe = showMe,
 		levelLabel = levelLabel,
 		bar = panelBar,
 		barLabel = barLabel,
 		chipLabel = chipLabel,
 		goalLabel = goalLabel,
-		rows = rows,
 		close = close,
 	}
 	return root
-end
-
--- Part 8 (§11.4): the panel's gamepad chain, top to bottom: Close, the four Show me buttons (HudFormat.chainLinks).
-local function linkPanel()
-	local refs = panelRefs
-	if refs == nil then
-		return
-	end
-	local objects: { [string]: GuiObject } = {}
-	local column: { string } = {}
-	local function add(key: string, object: GuiObject)
-		objects[key] = object
-		table.insert(column, key)
-	end
-	add("close", refs.close.root)
-	for tier, button in refs.showMe do
-		add("showMe" .. tier, button)
-	end
-	local links = HudFormat.chainLinks(column)
-	for key, object in objects do
-		local link = links[key]
-		local o = object :: any
-		o.NextSelectionUp = if link and link.up then objects[link.up] else nil
-		o.NextSelectionDown = if link and link.down then objects[link.down] else nil
-	end
-end
-
--- Part 8 (§11.4 "the scroll column follows the selection"): a gamepad selection inside the panel's column is scrolled
--- into view (the engine may already do it, U; then the delta is 0). Reading: CanvasPosition is in base px under the
--- SD_Modal UIScale, so a screen-px delta is divided by the UI scale.
-local function followSelection()
-	local refs = panelRefs
-	if refs == nil or not UIController.isOpen(SCREEN_PANEL) then
-		return
-	end
-	local selected = GuiService.SelectedObject
-	local scroll = refs.scroll
-	local scale = UIController.scale()
-	if selected == nil or not selected:IsDescendantOf(scroll) or scale <= 0 then
-		return
-	end
-	local itemTop = selected.AbsolutePosition.Y
-	local viewTop = scroll.AbsolutePosition.Y
-	local delta = GripController.scrollDelta(
-		itemTop,
-		itemTop + selected.AbsoluteSize.Y,
-		viewTop,
-		viewTop + scroll.AbsoluteWindowSize.Y,
-		SCROLL_MARGIN * scale
-	)
-	if delta == 0 then
-		return
-	end
-	local maxY = math.max(0, (scroll.AbsoluteCanvasSize.Y - scroll.AbsoluteWindowSize.Y) / scale)
-	local position = scroll.CanvasPosition
-	scroll.CanvasPosition = Vector2.new(position.X, math.clamp(position.Y + delta / scale, 0, maxY))
 end
 
 local function refreshPanel()
@@ -1102,16 +914,6 @@ local function refreshPanel()
 	setLabel(refs.barLabel, model.barText)
 	setLabel(refs.chipLabel, model.chip)
 	setLabel(refs.goalLabel, model.goal)
-	for _, row in refs.rows do
-		local pad = PADS[row.tier]
-		local open = GripMath.canUseTier(model.level, row.tier)
-		setLabel(row.needs, text("grip.padNeeds", { level = pad.level }))
-		-- Open on Mint, Locked on Lilac (the locked accent), always with the word and, when locked, the lock.
-		row.status:setText(text(if open then "grip.padOpen" else "grip.padLocked"))
-		row.status:setAccent(if open then "mint" else "lilac")
-		row.lock.Visible = not open
-	end
-	linkPanel()
 end
 
 -- The idle card (foam restyle): a foam panel with the "Still there?" header tab, the sentence and [Keep going].
@@ -1182,13 +984,6 @@ local function onGrip(raw: any)
 		-- OFFLINE start, §3.13), are a silent baseline: that Grip was loaded, not earned.
 		baselineTotal = newView.total
 	end
-	if change.fireLevel then
-		GripController.LevelChanged:fire(newLevel, oldLevel)
-	end
-	local tier = change.waypointTier
-	if tier ~= nil and not suppressed() then
-		showWaypoint(tier)
-	end
 	refreshCard()
 	refreshPanel()
 	if GripController.shouldPopLevel(change) and not suppressed() then
@@ -1198,7 +993,6 @@ end
 
 local function onLobbyLock()
 	if suppressed() then
-		clearWaypoint()
 		UIController.close(SCREEN_IDLE, "matched")
 		UIController.close(SCREEN_PANEL, "matched")
 	end
@@ -1232,9 +1026,7 @@ end
 -- What one new grip state does (§17.7, §17.10). `hadBaseline` = a grip state was already seen this session;
 -- `fullApply` = it came in a full Snapshot / StateDelta (StateController.isApplyingFull). The session's first state and
 -- every full state are a silent baseline ("Load-time level jumps"): the Grip was loaded, not earned (e.g. a profile
--- recovered after an OFFLINE start, §3.13), so no unlock waypoint; LevelChanged still fires
--- for the first state and for a level that moved, so WorldBinder's gates and pod signs follow. Otherwise a level change
--- points the waypoint at the best pad it opened.
+-- recovered after an OFFLINE start, §3.13); fireLevel is still true for the first state and for a level that moved.
 -- shortcut: the two totals are unused since slow training went (Phase 6); drop them with the callers' arguments the
 -- next time gripChange changes.
 function GripController.gripChange(
@@ -1247,18 +1039,9 @@ function GripController.gripChange(
 ): GripChange
 	local levelMoved = newLevel ~= oldLevel
 	if not hadBaseline or fullApply then
-		return { baseline = true, fireLevel = not hadBaseline or levelMoved, waypointTier = nil }
+		return { baseline = true, fireLevel = not hadBaseline or levelMoved }
 	end
-	local change: GripChange = {
-		baseline = false,
-		fireLevel = levelMoved,
-		waypointTier = nil,
-	}
-	if levelMoved then
-		local pads = GripMath.unlocks(oldLevel or newLevel, newLevel).pads
-		change.waypointTier = pads[#pads]
-	end
-	return change
+	return { baseline = false, fireLevel = levelMoved }
 end
 
 -- Whether a grip state pops the card's level label (§18.5.1 A9): only a level that moved after the silent baseline
@@ -1285,34 +1068,6 @@ function GripController.shouldToastGoal(
 	return compact and not first and goalId ~= nil and toasted[goalId] ~= true
 end
 
--- Part 8 (§11.4): how far (px, + = down) a scroll column must move so an item [itemTop, itemBottom] sits inside its
--- window [viewTop, viewBottom] with `margin` to spare; 0 when it already does. An item taller than the window aligns
--- its top. Non-finite input gives 0 (never a jump).
-function GripController.scrollDelta(
-	itemTop: number,
-	itemBottom: number,
-	viewTop: number,
-	viewBottom: number,
-	margin: number
-): number
-	for _, value in { itemTop, itemBottom, viewTop, viewBottom, margin } do
-		if not finite(value) then
-			return 0
-		end
-	end
-	local spare = math.max(0, margin)
-	local top, bottom = viewTop + spare, viewBottom - spare
-	if bottom < top then
-		top, bottom = viewTop, viewBottom
-	end
-	if itemBottom - itemTop > bottom - top or itemTop < top then
-		return itemTop - top
-	elseif itemBottom > bottom then
-		return itemBottom - bottom
-	end
-	return 0
-end
-
 -- Foam fix 2: the Grip panel's base size and how far below the centre it sits, for SD_Modal at `screenPx` px and the UI
 -- `scale`. What hangs above its top edge (`above`: half the taller of Close and the header tab) is centred with it: the
 -- panel moves down by half of it (a whole offset), like Quests and Settings (centred alone, Close ended 1-4 px above a
@@ -1335,7 +1090,8 @@ function GripController.panelLayout(screenPx: Vector2, scale: number, above: num
 end
 
 -- Foam fix 3: whether the Grip panel's intro line shows. Not on the compact layout: on a phone it pushed the first pad
--- card under the fold, so nothing under "Squeeze pads" showed that the column goes on.
+-- card under the fold. The pad cards are gone since build plan Phase 6; the phone layout is kept as it was until the
+-- user decides whether the intro comes back there.
 function GripController.introShown(class: string): boolean
 	return class ~= "compact"
 end
@@ -1345,31 +1101,12 @@ function GripController.shouldShowIdleCard(idleSeconds: number): boolean
 	return finite(idleSeconds) and idleSeconds >= GRIP.idleReminderSeconds
 end
 
--- The floor point of a pad's waypoint (Foam Mats: the mat nearest the spawn; giant pads: "<key>Pad"), or nil.
-function GripController.waypointTarget(tier: number): Vector3?
-	local pad = GripMath.pad(tier)
-	if pad == nil then
-		return nil
-	end
-	return if tier == 1 then WorldLayout.waypoint("squeeze") else WorldLayout.waypoint(pad.key .. "Pad")
-end
-
--- A pad card's perks line: grip.padPerks ("+{coins} Coins and x{mult} Grip per squeeze"), or grip.padPerksBase for a
--- pad with no boost, the Foam Mats (spec 2026-10-11 §5: squeezing pays the same anywhere, a pad only adds its boost).
-function GripController.padPerks(pad: { coinBonus: number, gripPercent: number }): string
-	if pad.coinBonus == 0 and pad.gripPercent == 100 then
-		return text("grip.padPerksBase")
-	end
-	return text("grip.padPerks", { coins = pad.coinBonus, mult = pad.gripPercent / 100 })
-end
-
--- The format arguments of a GripMath.nextGoal result: its name (nameKey) as {pad} / {rank}, and {level}.
+-- The format arguments of a GripMath.nextGoal result: its name (nameKey) as {rank}, and {level}.
 function GripController.goalArgs(goal: GripMath.Goal): { [string]: any }
 	local args: { [string]: any } = { level = goal.level }
 	local nameKey = goal.nameKey
 	if nameKey then
-		local name = text(nameKey)
-		args.pad, args.rank = name, name
+		args.rank = text(nameKey)
 	end
 	return args
 end
@@ -1438,7 +1175,6 @@ function GripController.debugState(): { [string]: any }
 		chip = if model then model.chip else nil,
 		goal = if model then model.goal else nil,
 		suppressed = suppressed(),
-		waypoint = waypoint ~= nil,
 		panelOpen = UIController.isOpen(SCREEN_PANEL),
 		idleOpen = UIController.isOpen(SCREEN_IDLE),
 	}
@@ -1483,20 +1219,11 @@ function GripController.init()
 		refreshCard()
 		refreshPanel()
 	end))
-	-- Part 8: the card's layout follows HudController's left column plan; the panel's column follows the gamepad.
+	-- Part 8: the card's layout follows HudController's left column plan.
 	c:add(HudController.ColumnPlanChanged:connect(function()
 		applyCardLayout()
 	end))
-	c:add(GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(followSelection))
-	WorldBinder.setGripSource({
-		level = function(): number?
-			return level
-		end,
-		changed = GripController.LevelChanged :: any,
-	})
 	c:add(function()
-		WorldBinder.setGripSource(nil)
-		clearWaypoint()
 		view, level, baselineTotal = nil, nil, nil
 		lastGoalKey, goalBaselineSet = nil, false
 		panelRefs = nil

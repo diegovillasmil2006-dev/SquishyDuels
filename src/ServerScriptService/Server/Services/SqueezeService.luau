@@ -1,12 +1,12 @@
 --!strict
--- SqueezeService (server only). DESIGN §6.3, §17.3.1 (steps 6a and 8a), §17.6 ("One source for the pad tier"),
+-- SqueezeService (server only). DESIGN §6.3, §17.3.1 (step 8a), §17.6 ("One source for the pad tier"),
 -- §17.9 #1-#3, §17.10 (SqueezeResult, server-time nextAt), §12 #4-#7 and #16, §2.8, §2.9 (SD_SqueezeAt).
 -- SqueezeRequest() (no argument, spec 2026-10-11 §5: squeeze anywhere in the lobby) gathers the server's own facts
 -- and lets the pure Logic/SqueezeRules.decide run the §6.3 order (flood guard; profile ready; a living character; not
 -- in a match; the tier; the anti-autoclicker cap; the earnings limit, off as shipped). The client sends nothing: the
 -- pad comes from the server-side root position (SqueezeRules.padUnder, the "standing on it" test; a pad
--- the stale-lobby check disabled or the lobby does not have counts as none), and off a pad, or on a pad still locked
--- for the player's Grip level, the squeeze pays tier 1 (base Coins and Grip, no pad bonus). The tier, the position,
+-- the stale-lobby check disabled or the lobby does not have counts as none), and off a pad the squeeze pays tier 1
+-- (base Coins and Grip, no pad bonus; every station is tier 1 since the giant pads went). The tier, the position,
 -- the equipped squishy, the timing and every amount are the server's. Every click pays (2026-10-06): no squeeze timer;
 -- the cap (Config.Squeeze: 12 at once, 12 a second on average) only stops macros: over it -> squeeze.tooFast with no
 -- Coins and no Grip.
@@ -20,8 +20,8 @@
 --     held squishy and the pad no longer change it) through EconomyService.grantCoins(p, n, "squeeze"); a paid one
 --     also pushes the player's capsules (CapsuleService.push with the server-side root position: only inside their
 --     own base, lobby spec 2026-10-11 §6); the character attribute
---     SD_SqueezeAt = server time (others see the squeeze, the giant pads dip); Squeezed(p, squishyId, coins, tier)
---     for the layers above (QuestService, Part 7: onSqueeze(p, id, tier)); then SqueezeResult{ok = true, coins,
+--     SD_SqueezeAt = server time (others see the squeeze, their Foam Mat pulses); Squeezed(p, squishyId, coins, tier)
+--     for the layers above (QuestService, Part 7: onSqueezed(p, id)); then SqueezeResult{ok = true, coins,
 --     total, limit, nextAt, grip, gripTotal, doubled}. `coins` is what the balance really gained (0 at the Coin cap).
 -- nextAt is a server time (§17.10): workspace:GetServerTimeNow() + max(0, 1 - tokens) × cycleSeconds, from the os.clock
 -- bucket (with a full cap it is simply now). `limit` is the squeeze Coins limit's whole points left (dormant while the
@@ -315,7 +315,7 @@ local function applyStationProblems(problems: { StationProblem })
 		end
 	end
 	if #missing == #WorldLayout.stationIds() then
-		log:warn("no squeeze station in the lobby (world not built): pad boosts are off")
+		log:warn("no squeeze station in the lobby (world not built)")
 	elseif #missing > 0 then
 		log:warn(`stale lobby: rebuild (missing from the lobby: {table.concat(missing, ", ")}); stations disabled`)
 	end
@@ -389,7 +389,6 @@ function SqueezeService.request(player: any): SqueezeResult?
 		station = padAt(root),
 		rootPosition = root,
 		inMatch = deps.duelPhaseOf(player) ~= "",
-		level = GripService.levelOf(player),
 		baseCoins = CapsuleMath.squeezeValue(if ready then profile.capsules else nil),
 		limit = limit,
 	})

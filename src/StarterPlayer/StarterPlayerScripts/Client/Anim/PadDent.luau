@@ -1,9 +1,9 @@
 --!strict
--- PadDent (client only; pure, time injected). The dent model of the giant squishy pads (DESIGN §17.6.1), shared by
--- path A (EditableMesh top-grid vertices) and path B (quilted cushion tiles), and since the feel pass (§18.3.4) the
--- wave model of the jelly ripple on walls and cover (impulses, no contacts). No instances, connections, yields or
--- clock reads: the caller passes dt and the contacts. Values come from Config.Anim.giantPad (see paramsFrom) plus the
--- pad's sinkDepth from WorldLayout.GiantPads; the ripple builds its own Params from Config.Anim.jellyRipple.
+-- PadDent (client only; pure, time injected). The dent model of the giant squishy pads (DESIGN §17.6.1), and since the
+-- feel pass (§18.3.4) the wave model of the jelly ripple on walls and cover (impulses, no contacts); since the giant
+-- pads went (build plan Phase 6) the ripple is its only user. No instances, connections, yields or
+-- clock reads: the caller passes dt and the contacts. The ripple builds its Params from Config.Anim.jellyRipple
+-- (JellySkin.dentParams).
 --
 -- Model (all heights h are offsets from the rest surface, studs; negative = sunk):
 --   * Contacts: points {x, z} in pad space (studs from the pad centre), optional `extra` depth (squeeze pulse).
@@ -17,8 +17,8 @@
 --     That coupling is a quarter of the discrete Laplacian, so a wave really travels at c / 2 (§18.3.4).
 --   * Per-axis spacing (§18.3.4, the ripple's wall rows): with a row spacing dz other than the column spacing dx the
 --     coupling is c^2 * ((meanX - h) / dx^2 + (meanZ - h) / dz^2) / 2 (meanX = mean of left/right, meanZ = mean of
---     down/up). With dz = dx that is the formula above, and the code then runs the original expression, so the giant
---     pads (one spacing) get bit-for-bit the same numbers.
+--     down/up). With dz = dx that is the formula above, and the code then runs the original expression, so a
+--     one-spacing grid gets bit-for-bit the same numbers.
 --   * Impulses (§18.3.4): impulse(x, z, speed, radius) adds v -= speed * w(r / radius) to every non-pinned vertex
 --     within `radius` of (x, z) and wakes them; the springs and the coupling then carry the wave.
 --   * Semi-implicit Euler in equal substeps <= `substep` (1/120 s); dt is clamped to maxDt (1/20 s). Neighbours are
@@ -74,21 +74,6 @@ export type Params = {
 	activeMargin: number,
 	maxContacts: number?,
 	writeEpsilon: number?, -- default sleepEpsilon / 4
-}
-
--- The Config.Anim.giantPad fields paramsFrom() reads.
-export type GiantPadConfig = {
-	radius: number,
-	maxContacts: number,
-	pressOmega: number,
-	releaseOmega: number,
-	releaseZeta: number,
-	waveSpeed: number,
-	substep: number,
-	clampUp: number,
-	clampExtra: number,
-	sleepEpsilon: number,
-	activeMargin: number,
 }
 
 type DentData = {
@@ -202,31 +187,6 @@ function PadDent.targetAt(x: number, z: number, contacts: { Contact }, sinkDepth
 		end
 	end
 	return t
-end
-
--- Params from Config.Anim.giantPad, a pad's sinkDepth and the frame dt clamp (Config.Anim.Scheduler.maxDt).
-function PadDent.paramsFrom(cfg: GiantPadConfig, sinkDepth: number, maxDt: number): Params
-	return {
-		sinkDepth = sinkDepth,
-		radius = cfg.radius,
-		pressOmega = cfg.pressOmega,
-		releaseOmega = cfg.releaseOmega,
-		releaseZeta = cfg.releaseZeta,
-		waveSpeed = cfg.waveSpeed,
-		substep = cfg.substep,
-		maxDt = maxDt,
-		clampUp = cfg.clampUp,
-		clampExtra = cfg.clampExtra,
-		sleepEpsilon = cfg.sleepEpsilon,
-		activeMargin = cfg.activeMargin,
-		maxContacts = cfg.maxContacts,
-	}
-end
-
--- A regular grid centred on the pad centre (path B tiles): cols x rows vertices, columns `spacing` apart and rows
--- `spacingZ` apart (default `spacing`).
-function PadDent.regularGrid(cols: number, rows: number, spacing: number, pinEdge: boolean?, spacingZ: number?): Grid
-	return { cols = cols, rows = rows, spacing = spacing, spacingZ = spacingZ, pinEdge = pinEdge }
 end
 
 function PadDent.new(grid: Grid, params: Params): Dent
@@ -567,18 +527,6 @@ function DentClass.snapToRest(self: Dent): number
 	self.writtenCount = writtenCount
 	self.asleep = true
 	return writtenCount
-end
-
--- How many vertices snapToRest() would write now (those not shown at rest). Lets a caller budget a snap first.
-function DentClass.restWriteCount(self: Dent): number
-	local shown = self.shown
-	local count = 0
-	for index = 1, self.count do
-		if shown[index] ~= 0 then
-			count += 1
-		end
-	end
-	return count
 end
 
 -- True when nothing moves and no contact was given on the last step (the pad writes nothing until touched again).

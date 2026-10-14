@@ -1131,13 +1131,8 @@ return function(t: Context)
 			expect.deepEqual(grid.t2, { up = "grip", down = "t4", left = "t1", right = "cta" })
 			expect.deepEqual(grid.t4, { up = "t2", left = "t3", right = "cta" })
 			expect.deepEqual(grid.t5, { up = "t3", right = "cta" })
-			-- The Grip panel's chain (chainLinks): top to bottom only.
-			expect.deepEqual(HudFormat.chainLinks({ "close", "showMe1", "showMe2" }), {
-				close = { down = "showMe1" },
-				showMe1 = { up = "close", down = "showMe2" },
-				showMe2 = { up = "showMe1" },
-			})
-			expect.deepEqual(HudFormat.chainLinks({}), {})
+			-- The Grip panel's chain (chainLinks) went with its pad cards (build plan Phase 6).
+			expect.equal((HudFormat :: any).chainLinks, nil)
 		end
 	)
 

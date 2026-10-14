@@ -2,12 +2,12 @@
 -- GripMath_Test: unit tests for ReplicatedStorage.Shared.GripMath. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §17.3-§17.5, §17.7, §17.12 Part 5): integers only. levelFor gives the highest level whose
 -- LevelTotals <= total (edges checked at every threshold, t - 1 and t); progress at the max level; ranks Soft (Lv 1)
--- .. Squish Master (Lv 50) .. Infinite (Lv 100, spec 2026-10-12 §10); pads open at Lv 5 / 15 / 30 and canUseTier
--- fails closed; afkGrip and afkMinutes are gone with slow training (build plan Phase 6), and the trainer helpers
+-- .. Squish Master (Lv 50) .. Infinite (Lv 100, spec 2026-10-12 §10); pad, bestTier and canUseTier are gone with the
+-- giant pads (build plan Phase 6); afkGrip and afkMinutes are gone with slow training (Phase 6), and the trainer helpers
 -- (trainer, squeezeGrip, upgradeReady, upgradeDecision, topShopSquishyId) with the trainers (Phase 6; own squeezes pay
 -- CapsuleMath's squeeze value and Grip since Phase 3); restedMinutes 9 when full (holding repeats every
--- Hold.repeatSeconds, 0.45 s, since every click pays; it was 30 with the old 1.5 s cycle); nextGoal: the next pad or
--- rank (the pad first on a tie), then max.
+-- Hold.repeatSeconds, 0.45 s, since every click pays; it was 30 with the old 1.5 s cycle); nextGoal: the next rank,
+-- then max (never a pad since Phase 6).
 -- Every table is compared by value (Config here is the runner's copy; GripMath reads the same copy).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -39,9 +39,6 @@ local RANK_CASES: { { level: number, key: string } } = {
 	{ level = 99, key = "galaxy" },
 	{ level = 100, key = "infinite" },
 }
-
--- §17.4 pads: (level, best tier).
-local TIER_CASES = { { 1, 1 }, { 4, 1 }, { 5, 2 }, { 14, 2 }, { 15, 3 }, { 29, 3 }, { 30, 4 }, { 50, 4 } }
 
 return function(t: Context)
 	local GripMath = t.requireShared("GripMath")
@@ -136,7 +133,7 @@ return function(t: Context)
 		expect.falsy(wasFine)
 	end)
 
-	-- Ranks and pads --------------------------------------------------------------------------------------------
+	-- Ranks -----------------------------------------------------------------------------------------------------
 
 	t.test("rankFor gives Soft Grip at Lv 1 up to Squish Master at Lv 50 and Infinite at Lv 100", function()
 		for _, case in RANK_CASES do
@@ -152,26 +149,10 @@ return function(t: Context)
 		expect.equal(GripMath.nextRank(100), nil)
 	end)
 
-	t.test("bestTier opens the Jelly Pad at Lv 5, the Marshmallow Pad at 15 and the Royal Cushion at 30", function()
-		for _, case in TIER_CASES do
-			if GripMath.bestTier(case[1]) ~= case[2] then
-				error(string.format("bestTier(%d) = %d, want %d", case[1], GripMath.bestTier(case[1]), case[2]))
-			end
+	t.test("the giant pads are gone (build plan Phase 6): no pad, bestTier or canUseTier", function()
+		for _, name in { "pad", "bestTier", "canUseTier" } do
+			expect.equal((GripMath :: any)[name], nil)
 		end
-	end)
-
-	t.test("canUseTier checks the pad's level and fails closed on an unknown tier", function()
-		expect.truthy(GripMath.canUseTier(1, 1))
-		expect.falsy(GripMath.canUseTier(4, 2))
-		expect.truthy(GripMath.canUseTier(5, 2))
-		expect.falsy(GripMath.canUseTier(29, 4))
-		expect.truthy(GripMath.canUseTier(30, 4))
-		expect.truthy(GripMath.canUseTier(50, 3)) -- a lower pad stays open
-		expect.falsy(GripMath.canUseTier(50, 5))
-		expect.falsy(GripMath.canUseTier(50, 0))
-		expect.falsy(GripMath.canUseTier(50, 1.5))
-		expect.equal(GripMath.pad(2) and GripMath.pad(2).key, "jelly")
-		expect.equal(GripMath.pad(9), nil)
 	end)
 
 	-- Amounts ---------------------------------------------------------------------------------------------------
@@ -197,60 +178,41 @@ return function(t: Context)
 		expect.equal(GripMath.restedMinutes(134), 2) -- 60.3 s
 	end)
 
-	t.test("unlocks lists the pads and the rank reached between two levels", function()
-		expect.deepEqual(GripMath.unlocks(4, 5), { pads = { 2 } })
+	t.test("unlocks gives the rank reached between two levels (no pads since Phase 6)", function()
+		expect.deepEqual(GripMath.unlocks(4, 5), {})
 		local firm = GripMath.unlocks(9, 10)
-		expect.deepEqual(firm.pads, {})
 		expect.equal(firm.rank and firm.rank.key, "firm")
+		expect.equal((firm :: any).pads, nil)
 		local all = GripMath.unlocks(1, 50)
-		expect.deepEqual(all.pads, { 2, 3, 4 })
 		expect.equal(all.rank and all.rank.key, "master")
-		expect.deepEqual(GripMath.unlocks(5, 5), { pads = {} })
+		expect.deepEqual(GripMath.unlocks(5, 5), {})
 	end)
 
-	-- Next goal (§17.7; build plan Phase 6: no trainers, so the next pad or rank, then max) ------------------------
+	-- Next goal (§17.7; build plan Phase 6: no trainers or pads, so the next rank, then max) -----------------------
 
-	t.test("nextGoal: a new player is pointed at the Jelly Pad (Lv 5)", function()
+	t.test("nextGoal: a new player is pointed at the next rank, Firm Grip (Lv 10)", function()
 		expect.deepEqual(GripMath.nextGoal(state(0)), {
-			kind = "pad",
-			textKey = "grip.goalPad",
-			nameKey = "grip.pad.jelly",
-			index = 2,
-			level = 5,
-		})
-	end)
-
-	t.test("nextGoal: the rank line when it is the nearest unlock", function()
-		-- Lv 5: Firm Grip at Lv 10 comes before the Marshmallow Pad at Lv 15.
-		expect.deepEqual(GripMath.nextGoal(state(TOTALS[5])), {
 			kind = "rank",
 			textKey = "grip.goalRank",
 			nameKey = "grip.rank.firm",
 			index = 2,
 			level = 10,
 		})
-		-- Lv 31: no pad is left, Titan Grip comes at Lv 40.
+		-- Lv 31: Titan Grip comes at Lv 40.
 		local late = GripMath.nextGoal(state(TOTALS[31]))
 		expect.equal(late and late.nameKey, "grip.rank.titan")
 		expect.equal(late and late.level, 40)
-	end)
-
-	t.test("nextGoal: on a tie the pad line comes before the rank (Lv 20: both at Lv 30)", function()
-		local goal = GripMath.nextGoal(state(TOTALS[20]))
-		expect.equal(goal and goal.kind, "pad")
-		expect.equal(goal and goal.nameKey, "grip.pad.royal")
-		expect.equal(goal and goal.level, 30)
 	end)
 
 	t.test("nextGoal at the max level: grip.goalMax", function()
 		expect.deepEqual(GripMath.nextGoal(state(TOTALS[#TOTALS])), { kind = "max", textKey = "grip.goalMax" })
 	end)
 
-	t.test("nextGoal is a pad, a rank or max at every level, never a trainer or a price (Phase 6)", function()
+	t.test("nextGoal is a rank or max at every level, never a pad, a trainer or a price (Phase 6)", function()
 		for level = 1, MAX_LEVEL do
 			local goal: any = GripMath.nextGoal(state(TOTALS[level]))
 			local kind = if goal then goal.kind else "none"
-			if (kind ~= "pad" and kind ~= "rank" and kind ~= "max") or (goal and goal.coins) ~= nil then
+			if (kind ~= "rank" and kind ~= "max") or (goal and goal.coins) ~= nil then
 				error(`Lv {level}: {kind}`)
 			end
 		end

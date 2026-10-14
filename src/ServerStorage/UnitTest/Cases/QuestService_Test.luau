@@ -8,7 +8,8 @@
 --     once; the rollover grants every done-but-unclaimed quest once (reason "quest", quest.autoCollected), lets the
 --     unfinished ones expire and resets swapsUsed; a stored day after today is kept; nothing for a profile that is
 --     not ready;
---   * progress only from server hooks: squeezes (starter_squeeze always, starter_jelly only at tier >= 2), practice
+--   * progress only from server hooks: squeezes (starter_squeeze; starter_jelly went with the giant pads, build plan
+--     Phase 6, and onSqueezed takes no tier), practice
 --     hits that count for quests, duel hits held until the result, the duel result (cancelled / void count nothing,
 --     not even their hits; the test dummy's hits never count); an event after midnight counts for the new day; a quest
 --     that becomes done toasts quest.complete; DuelResult lines list the quests the match moved;
@@ -259,7 +260,7 @@ return function(t: Context)
 		local w = fresh()
 		withQuests(w, { entry(1, "squeeze_any", 3, 150) })
 		w.clock.advance(24 * 3600) -- the next day
-		QuestService.onSqueezed(w.player, "toast", 5, 1)
+		QuestService.onSqueezed(w.player, "toast")
 		expect.equal(w.profile.quests.day, DAY + 1)
 		local expected = QuestLogic.generate({
 			userId = 777,
@@ -267,7 +268,7 @@ return function(t: Context)
 			owned = { "kitty_bread", "toast" },
 			equipped = "toast",
 		}, FakeRng.new)
-		QuestLogic.apply(expected, { kind = "squeeze", squishyId = "toast", tier = 1 })
+		QuestLogic.apply(expected, { kind = "squeeze", squishyId = "toast" })
 		expect.deepEqual(w.profile.quests.active, expected)
 		expect.equal(w.profile.starter.progress.starter_squeeze, 1)
 		finish()
@@ -278,8 +279,8 @@ return function(t: Context)
 	t.test("squeezes move squeeze quests and starter_squeeze; quest.complete when one is done", function()
 		local w = fresh()
 		withQuests(w, { entry(1, "squeeze_any", 2, 150), entry(2, "squeeze_with", 2, 200, "toast") })
-		QuestService.onSqueezed(w.player, "toast", 5, 1)
-		QuestService.onSqueezed(w.player, "kitty_bread", 5, 1)
+		QuestService.onSqueezed(w.player, "toast")
+		QuestService.onSqueezed(w.player, "kitty_bread")
 		local quests = w.profile.quests.active
 		expect.equal(quests[1].progress, 2)
 		expect.truthy(quests[1].done)
@@ -291,14 +292,13 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("starter_jelly moves only on a squeeze at a station of tier >= 2", function()
+	t.test("starter_jelly is gone (build plan Phase 6): squeezes move starter_squeeze only", function()
 		local w = fresh()
 		withQuests(w, {})
-		QuestService.onSqueezed(w.player, "toast", 5, 1)
+		for _ = 1, 3 do
+			QuestService.onSqueezed(w.player, "toast")
+		end
 		expect.equal(w.profile.starter.progress.starter_jelly, nil)
-		QuestService.onSqueezed(w.player, "toast", 6, 2)
-		QuestService.onSqueezed(w.player, "toast", 8, 4)
-		expect.equal(w.profile.starter.progress.starter_jelly, 2)
 		expect.equal(w.profile.starter.progress.starter_squeeze, 3)
 		finish()
 	end)
@@ -388,7 +388,7 @@ return function(t: Context)
 		local w = fresh()
 		withQuests(w, { entry(1, "squeeze_any", 2, 150) })
 		w.status = "offline"
-		QuestService.onSqueezed(w.player, "toast", 0, 1)
+		QuestService.onSqueezed(w.player, "toast")
 		QuestService.onTargetHit(w.player, "T1", 1, true)
 		expect.deepEqual(QuestService.onDuelResult(w.player, result("win", "toast", 9), info("m", "win")), {})
 		expect.equal(w.profile.quests.active[1].progress, 0)
@@ -405,7 +405,7 @@ return function(t: Context)
 		local early = QuestService.claim(w.player, id)
 		expect.equal(early.ok, false)
 		expect.equal(early.reason, "quest.notReady")
-		QuestService.onSqueezed(w.player, "toast", 5, 1)
+		QuestService.onSqueezed(w.player, "toast")
 		local reply = QuestService.claim(w.player, id)
 		expect.equal(reply.ok, true)
 		expect.deepEqual(w.grants, { { amount = 150 * VALUE, reason = "quest" } })
@@ -530,7 +530,7 @@ return function(t: Context)
 		expect.equal(w.profile.quests.day, DAY)
 		local state = QuestService.debugState(w.player)
 		expect.equal(state.day, DAY)
-		expect.equal(#state.starter, 4)
+		expect.equal(#state.starter, 3) -- starter_jelly went with the giant pads (Phase 6)
 		expect.falsy(QuestService.debugRollover(w.player, DAY)) -- not a day before today
 		finish()
 	end)

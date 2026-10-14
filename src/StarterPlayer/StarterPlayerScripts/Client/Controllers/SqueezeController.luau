@@ -89,8 +89,8 @@
 --     (matPulseColor; the base is always Palette[SqueezeZone.matColor], never read back) and grows an FxShapes ring on
 --     the mat top at the squeezer's feet; one pulse and one ring per mat, a new trigger restarts them, at most once
 --     per MAT_MERGE_SECONDS per mat (faster triggers merge into the running pulse: fast clicking never strobes the
---     mat). ReducedMotion: the colour pulse at most once per MAT_REDUCED_GAP per mat, no ring. Giant pads keep their
---     own dip (GiantPadController). The mat's Color is the only property written on the lobby's mats (§18.1 #3), and
+--     mat). ReducedMotion: the colour pulse at most once per MAT_REDUCED_GAP per mat, no ring. The mat's Color is the
+--     only property written on the lobby's mats (§18.1 #3), and
 --     always restored.
 --   * "+N" above the squishy (A4; lobby HUD spec §2: the Grip lines too, from the one pool): an own
 --     SqueezeResult.ok shows "+N" (a coin icon and common.plusAmount) when coins > 0 and "+N Grip" / "+N Grip (xM)"
@@ -492,8 +492,8 @@ end
 -- between merge into the running pulse, so fast clicking never strobes the mat.
 local function pulseMat(stationId: string, at: Vector3)
 	local station = WorldLayout.station(stationId)
-	if station == nil or station.kind ~= "mat" then
-		return -- giant pads keep their own dip
+	if station == nil then
+		return
 	end
 	forgetGoneMats()
 	local part = matPart(stationId)
@@ -1026,7 +1026,7 @@ local function onOtherSqueeze(player: Player, character: Model)
 	-- A3: their Foam Mat pulses too, within the same 40 studs.
 	if distance <= EFFECTS.othersSqueezeStuds then
 		local station = WorldLayout.nearestStation(root.Position, STATION_RADIUS + Config.Squeeze.radiusTolerance)
-		if station and station.kind == "mat" then
+		if station then
 			pulseMat(station.id, root.Position)
 		end
 	end

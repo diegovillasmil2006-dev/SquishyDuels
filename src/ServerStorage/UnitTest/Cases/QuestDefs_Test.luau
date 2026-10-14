@@ -1,7 +1,8 @@
 --!strict
 -- QuestDefs_Test: unit tests for ReplicatedStorage.Shared.QuestDefs. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §6.8, §17.10): the 7 daily templates with their §6.8 targets and Coins, categories and counting
--- rules; the 4 starter tasks (squeeze 20/100, practice 5/50, duel 1/150, jelly 10/150 with minTier 2); every textPair
+-- rules; the 3 starter tasks (squeeze 20/100, practice 5/50, duel 1/150; starter_jelly and minTier went with the giant
+-- pads, build plan Phase 6); every textPair
 -- resolves to a Strings {one, many} pair and text() fills {n} and {squishy} with the right plural; the lists are frozen
 -- and get() rejects unknown ids. Tables are compared by value.
 
@@ -23,12 +24,11 @@ local DAILY: { { any } } = {
 	{ "practice_hits", "practice", "practiceHit", false, { { 20, 100 } } },
 }
 
--- §6.8 + §17.10: id -> category, counts, goal, reward, minTier.
+-- §6.8: id -> category, counts, goal, reward.
 local STARTER: { { any } } = {
-	{ "starter_squeeze", "squeeze", "squeeze", 20, 100, nil },
-	{ "starter_practice", "practice", "practiceHit", 5, 50, nil },
-	{ "starter_duel", "duel", "duelFinish", 1, 150, nil },
-	{ "starter_jelly", "squeeze", "squeeze", 10, 150, 2 },
+	{ "starter_squeeze", "squeeze", "squeeze", 20, 100 },
+	{ "starter_practice", "practice", "practiceHit", 5, 50 },
+	{ "starter_duel", "duel", "duelFinish", 1, 150 },
 }
 
 return function(t: Context)
@@ -55,12 +55,12 @@ return function(t: Context)
 			expect.equal(def.counts, row[3])
 			expect.equal(def.needsSquishy, row[4])
 			expect.deepEqual(variantsOf(def), row[5])
-			expect.equal(def.minTier, nil)
+			expect.equal((def :: any).minTier, nil)
 			expect.equal(QuestDefs.get(row[1]), def)
 		end
 	end)
 
-	t.test("the 4 starter tasks: squeeze 20/100, practice 5/50, duel 1/150, jelly 10/150 at tier >= 2", function()
+	t.test("the 3 starter tasks: squeeze 20/100, practice 5/50, duel 1/150 (no starter_jelly since Phase 6)", function()
 		local starter = QuestDefs.starter()
 		expect.equal(#starter, #STARTER)
 		for index, row in STARTER do
@@ -71,9 +71,10 @@ return function(t: Context)
 			expect.equal(def.counts, row[3])
 			expect.equal(def.needsSquishy, false)
 			expect.deepEqual(variantsOf(def), { { row[4], row[5] } })
-			expect.equal(def.minTier, row[6])
+			expect.equal((def :: any).minTier, nil)
 			expect.truthy(string.match(def.id, "^starter_[a-z]+$") ~= nil)
 		end
+		expect.equal(QuestDefs.get("starter_jelly"), nil)
 	end)
 
 	t.test("list() is the daily templates, then the starter tasks", function()
@@ -114,8 +115,7 @@ return function(t: Context)
 		expect.equal(QuestDefs.text("starter_squeeze", 20), "Squeeze 20 times")
 		expect.equal(QuestDefs.text("starter_practice", 5), "Hit 5 practice targets")
 		expect.equal(QuestDefs.text("starter_duel", 1), "Finish your first duel")
-		expect.equal(QuestDefs.text("starter_jelly", 10), "Squeeze 10 times on the Jelly Pad")
-		expect.equal(QuestDefs.text("starter_jelly", 1), "Squeeze once on the Jelly Pad")
+		expect.equal(QuestDefs.text("starter_jelly", 10), "") -- gone with the giant pads (Phase 6)
 		expect.equal(QuestDefs.text("nope", 3), "")
 	end)
 

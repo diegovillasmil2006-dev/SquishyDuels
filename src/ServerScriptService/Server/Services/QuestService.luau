@@ -1,6 +1,6 @@
 --!strict
 -- QuestService (server only). DESIGN §6.8, §2.8 (QuestClaim, QuestSwap, DuelResult.questProgress), §3.4 (quest and
--- starter claims), §12 #3, #14, §17.7 / §17.10 / §17.12 (the starter task starter_jelly).
+-- starter claims), §12 #3, #14 (§17.10's starter task starter_jelly went with the giant pads, build plan Phase 6).
 -- Daily quests and starter tasks. The rules are the pure Logic/QuestLogic and the data is QuestDefs; this module owns
 -- the profile writes (DataService.mutate through the data port), the Coins (EconomyService.grantCoins), the toasts and
 -- the saves.
@@ -13,8 +13,8 @@
 --   Reading: a stored day AFTER today (another server's clock ran ahead) is kept, never rolled backwards, so the same
 --   day can never be generated (and claimed) twice.
 -- * Progress comes ONLY from server hooks, after their own validation (no remote ever reports progress):
---     SqueezeService.Squeezed(p, squishyId, coins, tier) -> {kind = "squeeze", squishyId, tier} (daily quests and
---       starter tasks: starter_squeeze always, starter_jelly only at a station of tier >= 2, QuestDefs.minTier);
+--     SqueezeService.Squeezed(p, squishyId, coins, tier) -> {kind = "squeeze", squishyId} (daily quests and
+--       starter tasks);
 --     PracticeService.TargetHit(p, targetId, t, countsForQuest), only when countsForQuest (each target at most once
 --       per 2 s) -> {kind = "practiceHit"} (practice_hits and, Reading, starter_practice: the same confirmed hits);
 --     CombatService.Hit(info) for the attacker's Player -> {kind = "hit", squishyId = info.attacker.squishyId} (the
@@ -28,7 +28,7 @@
 --       own throws; duel_win and duel_win_with count every win, §6.8). It returns DuelResult.questProgress: one
 --       {questId, progress, goal, done} line per quest this match moved (Reading: the hits and the result).
 --   QuestService never listens to GripService: slow-training ticks, level-ups and profile loads never move a quest or
---   a starter task (§17.7, §17.12: idling alone can never earn starter_jelly's Coins).
+--   a starter task (§17.7, §17.12: idling alone never earns a starter task's Coins).
 --   A quest that becomes done shows quest.complete ("Quest complete! Claim your reward.").
 -- * QuestClaim(questId) (claim): profile READY (data.notReady); a starter id or a daily quest of today (else
 --   net.invalid); already claimed (also a quest of yesterday the rollover just collected) -> quest.alreadyClaimed
@@ -425,10 +425,9 @@ end
 
 -- Public: progress hooks -----------------------------------------------------------------------------------------------
 
--- SqueezeService.Squeezed: an accepted squeeze (paid or not) paid at `tier` (server-side: the pad under the player,
--- tier 1 off a pad or on a locked one, spec 2026-10-11 §5).
-function QuestService.onSqueezed(player: any, squishyId: string, _coins: number, tier: number)
-	applyEvents(player, { { kind = "squeeze", squishyId = squishyId, tier = tier } })
+-- SqueezeService.Squeezed: an accepted squeeze (paid or not). Its coins and tier are not needed here.
+function QuestService.onSqueezed(player: any, squishyId: string)
+	applyEvents(player, { { kind = "squeeze", squishyId = squishyId } })
 end
 
 -- PracticeService.TargetHit: a confirmed practice target hit; only `countsForQuest` hits count.

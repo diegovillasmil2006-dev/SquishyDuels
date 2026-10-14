@@ -1,7 +1,7 @@
 --!strict
--- GripMath: pure Grip arithmetic (DESIGN §17.3-§17.5, §17.7). Shared: server GripService and SqueezeService (levels
--- and clamps, the pad level check), client GripController, SqueezeController, NameplateController
--- and WorldBinder (levels, ranks, pad labels, the next-goal line). No instances, no yields, no side effects.
+-- GripMath: pure Grip arithmetic (DESIGN §17.3-§17.5, §17.7). Shared: server GripService (levels and clamps), client
+-- GripController, NameplateController, CapsuleController and UI/HudFormat (levels, ranks, the next-goal line).
+-- No instances, no yields, no side effects.
 -- Grip is a lobby-only stat: never a currency, never read by duel or matchmaking code (§17.2 rule 1).
 --
 -- Integers only: every Grip, level, tier, Coin and minute value returned is a whole number; inputs are floored, and a
@@ -15,27 +15,24 @@
 --   progress(total, cfg?)                     -> Progress (level, the level's start and the next level's total)
 --   rankFor(level, cfg?)                      -> (Rank, index): the rank of a level (Lv 1 "soft" .. Lv 50 "master")
 --   nextRank(level, cfg?)                     -> (Rank?, index?): the first rank above that level
---   pad(tier, cfg?)                           -> the Config.Grip.Pads entry, or nil
---   bestTier(level, cfg?)                     -> the highest pad tier the level opens (1..#Pads)
---   canUseTier(level, tier, cfg?)             -> boolean: tier is a pad and its level <= level (fail closed)
 --   restedMinutes(restedValue, cfg?)          -> "Double Grip: about {minutes} min" (§17.3.4)
 --   clampTotal(total, cfg?)                   -> the total as stored: floored, clamped to [0, maxGrip] (§17.9 #6)
 --   addGrip(total, gain, cfg?)                -> clampTotal(total + gain)
 --   clampEvent(gain, cfg?)                    -> (gain clamped to [0, maxGripPerEvent], wasClamped) (§17.3.1)
---   unlocks(oldLevel, newLevel, cfg?)         -> Unlocks: pads and the rank reached on a level change (toasts)
+--   unlocks(oldLevel, newLevel, cfg?)         -> Unlocks: the rank reached on a level change (toasts)
 --   nextGoal(state, cfg?)                     -> Goal?: the one next-goal line of the Grip card (§17.7)
 -- Since Phase 3 own squeezes pay CapsuleMath.squeezeGrip (and the squeeze value in Coins). Build plan Phase 6 removed
--- slow training (afkGrip, afkMinutes) and the trainers (trainer, squeezeGrip, upgradeReady, upgradeDecision and the
--- next goal's upgrade line with its Dragon rule, topShopSquishyId).
+-- slow training (afkGrip, afkMinutes), the trainers (trainer, squeezeGrip, upgradeReady, upgradeDecision and the
+-- next goal's upgrade line with its Dragon rule, topShopSquishyId) and the giant pads (pad, bestTier, canUseTier, the
+-- pads of unlocks and the next goal's pad line).
 --
 -- Readings:
 --   * HUD bar "{have} / {need} Grip" (§17.7): Progress.have = the total Grip and Progress.need = the total of the next
 --     level (both shown with Format.coins); the bar fill is into / span. At the max level the card shows grip.hudMax.
 --   * restedMinutes counts whole points only (a squeeze needs a whole point): a pool holding
 --     0.5 shows 0 min, not "about 1 min".
---   * nextGoal ("the next unlock line", §17.5): the unlock with the lowest level above the current one, a pad or a
---     rank; on a tie the pad comes first. With nothing left to unlock and the level at maxLevel the line is
---     grip.goalMax.
+--   * nextGoal ("the next unlock line", §17.5): the next rank above the current level. With nothing left to unlock
+--     and the level at maxLevel the line is grip.goalMax.
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -43,7 +40,6 @@ local Config = require(script.Parent.Config)
 
 -- Types
 
-export type Pad = { key: string, level: number, coinBonus: number, gripPercent: number }
 export type Rank = { level: number, key: string }
 
 -- Anything with Config's Grip, Squeeze and Economy sections.
@@ -65,19 +61,18 @@ export type Progress = {
 }
 
 export type Unlocks = {
-	pads: { number }, -- tiers whose level lies in (oldLevel, newLevel], in tier order
 	rank: Rank?, -- the highest rank whose level lies in (oldLevel, newLevel]
 	rankIndex: number?,
 }
 
-export type GoalKind = "pad" | "rank" | "max"
--- One next-goal line. Format: Strings.format(Strings.resolve(textKey), { pad = <name>, rank = <name>, level = level })
--- where <name> = Strings.resolve(nameKey).
+export type GoalKind = "rank" | "max"
+-- One next-goal line. Format: Strings.format(Strings.resolve(textKey), { rank = <name>, level = level }) where
+-- <name> = Strings.resolve(nameKey).
 export type Goal = {
 	kind: GoalKind,
-	textKey: string, -- grip.goalPad | grip.goalRank | grip.goalMax
-	nameKey: string?, -- grip.pad.<key> | grip.rank.<key>
-	index: number?, -- the pad tier or rank index
+	textKey: string, -- grip.goalRank | grip.goalMax
+	nameKey: string?, -- grip.rank.<key>
+	index: number?, -- the rank index
 	level: number?, -- the unlock level
 }
 
@@ -102,11 +97,6 @@ local function whole(n: unknown): number
 		return 0
 	end
 	return math.floor(n)
-end
-
--- True when n is an integer index into list.
-local function isIndex(n: unknown, list: { any }): boolean
-	return type(n) == "number" and n == n and math.floor(n) == n and n >= 1 and n <= #list
 end
 
 local function maxLevelOf(c: GripConfig): number
@@ -190,30 +180,6 @@ function GripMath.nextRank(level: number, cfg: GripConfig?): (Rank?, number?)
 	return nil, nil
 end
 
--- Public: pads
-
-function GripMath.pad(tier: number, cfg: GripConfig?): Pad?
-	local pads = sections(cfg).Grip.Pads
-	return if isIndex(tier, pads) then pads[tier] else nil
-end
-
-function GripMath.bestTier(level: number, cfg: GripConfig?): number
-	local lv = whole(level)
-	local best = 1
-	for tier, pad in sections(cfg).Grip.Pads do
-		if pad.level <= lv and tier > best then
-			best = tier
-		end
-	end
-	return best
-end
-
--- §17.3.1 step 6a (server, before the bucket) and the client's locked-pad text. An unknown tier is never usable.
-function GripMath.canUseTier(level: number, tier: number, cfg: GripConfig?): boolean
-	local pad = GripMath.pad(tier, cfg)
-	return pad ~= nil and pad.level <= whole(level)
-end
-
 -- Public: amounts
 
 -- ceil(points × Grip.Hold.repeatSeconds / 60): minutes of holding Squeeze that Double Grip still covers (9 when full;
@@ -232,12 +198,7 @@ end
 function GripMath.unlocks(oldLevel: number, newLevel: number, cfg: GripConfig?): Unlocks
 	local c = sections(cfg)
 	local from, to = whole(oldLevel), whole(newLevel)
-	local result: Unlocks = { pads = {} }
-	for tier, pad in c.Grip.Pads do
-		if pad.level > from and pad.level <= to then
-			table.insert(result.pads, tier)
-		end
-	end
+	local result: Unlocks = {}
 	for index, rank in c.Grip.Ranks do
 		if rank.level > from and rank.level <= to then
 			result.rank = rank
@@ -247,45 +208,21 @@ function GripMath.unlocks(oldLevel: number, newLevel: number, cfg: GripConfig?):
 	return result
 end
 
--- The one next-goal line (§17.7 order): 1 the next unlock (pad or rank); 2 max level. nil only when nothing applies.
+-- The one next-goal line (§17.7 order): 1 the next rank; 2 max level. nil only when nothing applies.
 function GripMath.nextGoal(state: GoalState, cfg: GripConfig?): Goal?
 	local c = sections(cfg)
-	local grip = c.Grip
 	local level = GripMath.levelFor(state.total, c)
 
-	-- 1. The next unlock: the lowest level above the current one (pad, then rank on a tie).
-	-- Candidates in tie order; the first with the lowest level wins.
-	local candidates: { Goal } = {}
-	for tier, pad in grip.Pads do
-		if pad.level > level then
-			table.insert(candidates, {
-				kind = "pad",
-				textKey = "grip.goalPad",
-				nameKey = "grip.pad." .. pad.key,
-				index = tier,
-				level = pad.level,
-			})
-			break
-		end
-	end
+	-- 1. The next rank above the current level.
 	local rank, rankIndex = GripMath.nextRank(level, c)
 	if rank ~= nil then
-		table.insert(candidates, {
+		return {
 			kind = "rank",
 			textKey = "grip.goalRank",
 			nameKey = "grip.rank." .. rank.key,
 			index = rankIndex,
 			level = rank.level,
-		})
-	end
-	local best: Goal? = nil
-	for _, goal in candidates do
-		if best == nil or (goal.level :: number) < (best.level :: number) then
-			best = goal
-		end
-	end
-	if best ~= nil then
-		return best
+		}
 	end
 
 	-- 2. Max level.

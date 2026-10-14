@@ -19,7 +19,7 @@
 -- itself (inside DataService.mutate) is arithmetic only; toasts, the level and LevelChanged follow once it is done.
 -- Levels: the server-written Player attribute SD_GripLevel and LevelChanged(player, old, new, silent). When a profile
 -- loads (DataService.Loaded) the level baseline is set silently (no level-up or rank-up toast, no broadcast, §17.7
--- "Load-time level jumps"); a later level-up sends grip.levelUp, grip.padUnlocked for every pad it opened, a
+-- "Load-time level jumps"); a later level-up sends grip.levelUp, a
 -- grip.rankUp broadcast to the players in the lobby (SD_DuelPhase == "") when the rank changed, and asks for a "soon"
 -- save (§17.9 #7). Grip itself rides the autosave (StateService.markDirty(p, "grip") on every change).
 -- Load toasts (on each Loaded): grip.headStart when the v1 -> v2 migration ran this session (DataService.migratedFrom)
@@ -116,7 +116,6 @@ local MAX_NOTICES = 100 -- Studio notice log length
 
 local NOTICE_INTRO = "grip.intro"
 local NOTICE_LEVEL_UP = "grip.levelUp"
-local NOTICE_PAD_UNLOCKED = "grip.padUnlocked"
 local NOTICE_RANK_UP = "grip.rankUp"
 local NOTICE_HEAD_START = "grip.headStart"
 local NOTICE_WELCOME = "grip.welcome"
@@ -310,28 +309,18 @@ local function notice(player: any, code: string, args: NoticeArgs?, kind: string
 	end
 end
 
--- Text of a Strings key, for toast arguments the client only formats (pad and rank names live in Strings; validator
--- G6 checks every pad and rank key exists, so the fallback never shows).
+-- Text of a Strings key, for toast arguments the client only formats (rank names live in Strings; validator G6
+-- checks every rank key exists, so the fallback never shows).
 local function text(key: string, fallback: string): string
 	return Strings.resolve(key) or fallback
 end
 
--- A level-up that is not silent: toasts (the level, each pad it opened), the rank broadcast and a "soon" save.
+-- A level-up that is not silent: the level toast, the rank broadcast and a "soon" save.
 local function announceLevelUp(session: Session, old: number, new: number)
 	local player = session.player
 	local levelArgs: NoticeArgs = { level = new }
 	notice(player, NOTICE_LEVEL_UP, levelArgs, "success")
-	local unlocks = GripMath.unlocks(old, new)
-	for _, tier in unlocks.pads do
-		local pad = Config.Grip.Pads[tier]
-		local padArgs: NoticeArgs = {
-			pad = text("grip.pad." .. pad.key, pad.key),
-			coins = pad.coinBonus,
-			mult = pad.gripPercent / 100,
-		}
-		notice(player, NOTICE_PAD_UNLOCKED, padArgs, "success")
-	end
-	local rank = unlocks.rank
+	local rank = GripMath.unlocks(old, new).rank
 	if rank ~= nil then
 		local args: NoticeArgs = { name = deps.displayName(player), rank = text("grip.rank." .. rank.key, rank.key) }
 		for _, other in deps.lobbyPlayers() do
@@ -468,14 +457,6 @@ function GripService.levelOf(player: any): number
 		end
 	end
 	return MIN_LEVEL
-end
-
--- True when the player's level opens the pad tier (§17.3.1 step 6a). An unknown tier is never open (fail closed).
-function GripService.canUseTier(player: any, tier: number): boolean
-	if Config.Grip.Pads[tier] == nil then
-		return false
-	end
-	return GripMath.canUseTier(GripService.levelOf(player), tier)
 end
 
 -- Public: writers -------------------------------------------------------------------------------------------------------

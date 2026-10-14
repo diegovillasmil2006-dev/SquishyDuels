@@ -4,10 +4,9 @@
 --   shapes (DESIGN §1.7 step 4, §8.1 #2): SD_ShapeLibrary holds exactly one RoundedBox, any PartOperation (the
 --     IntersectOperation GeometryService:IntersectAsync returns), never a plain Part. An empty in-memory solid has no
 --     geometry, so only the class rule is asserted for it.
---   lobby (§7.6, §7.7, §17.6, §17.6.1; Squish Island, lobby bases spec 2026-10-11 §2-§4, §7): exact tag counts, 9
---     stations with unique ids and GripTier = WorldLayout, 4 practice targets (1 moving), slots, Grip gates built
---     open, Grip signs with exactly one Live label (no SD_TextKey) and one grip.pad.* Title, giant pads (one Collision
---     station, top = WorldLayout collisionTop ± 0.01, Body top ≥ 0.4 above it, Body/Face inert), every SD_TextKey in
+--   lobby (§7.6, §7.7, §17.6; Squish Island, lobby bases spec 2026-10-11 §2-§4, §7): exact tag counts, 6
+--     stations with unique ids and GripTier = WorldLayout, 4 practice targets (1 moving), slots (the Grip gates, Grip
+--     signs and giant pads, and their checks, went in build plan Phase 6), every SD_TextKey in
 --     Strings, keep-clear volumes, all stand prompts disabled inside Atomic models < 64 studs, budgets (FAIL above
 --     5,200 parts, the island's §7 total, or 64 SurfaceGuis: the design lobby's plates, phase 3 D6), 14 collection
 --     pedestals (D4); 10 plots (one SD_Base Model per Plot 1..10, each holding one SD_BaseSpawn SpawnLocation of its
@@ -58,17 +57,9 @@ local GHOST: Flags = { collide = false, query = false, transparency = 1 }
 local INERT: Flags = { collide = false, query = false }
 local WALL: Flags = { collide = true, query = false, transparency = 1 }
 
--- Lobby fixtures: Grip pods (§17.6) and the fake modules.
-local PADS = {
-	{ key = "jelly", tier = 2, station = "squeeze_07", x = -33, z = 37 },
-	{ key = "marshmallow", tier = 3, station = "squeeze_08", x = -53, z = 37 },
-	{ key = "royal", tier = 4, station = "squeeze_09", x = 38, z = 38 },
-}
+-- Lobby fixtures: the fake modules.
 local KNOWN_KEYS: { [string]: boolean } = {
 	["world.spawnLogo"] = true,
-	["grip.pad.jelly"] = true,
-	["grip.pad.marshmallow"] = true,
-	["grip.pad.royal"] = true,
 }
 local FAKE_STRINGS = {
 	resolve = function(key: string): string?
@@ -195,20 +186,13 @@ local function findTagged(root: Instance, tag: string, attribute: string, value:
 	error(string.format("fixture has no %s with %s = %s", tag, attribute, tostring(value)))
 end
 
--- A WorldLayout fake in the "Stations array + GiantPads map" shape.
+-- A WorldLayout fake in the "Stations array" shape.
 local function fakeLayout(): any
 	local stations = {}
-	for index = 1, 9 do
-		table.insert(
-			stations,
-			{ id = string.format("squeeze_%02d", index), gripTier = if index <= 6 then 1 else index - 5 }
-		)
+	for index = 1, 6 do
+		table.insert(stations, { id = string.format("squeeze_%02d", index), gripTier = 1 })
 	end
-	local pads = {}
-	for _, pad in PADS do
-		pads[pad.key] = { stationId = pad.station, collisionTop = 1.0 }
-	end
-	return { Stations = stations, GiantPads = pads }
+	return { Stations = stations }
 end
 
 -- A small lobby that satisfies every lobby rule (positions follow §7.6 / §17.6 loosely; only the rules matter).
@@ -319,34 +303,6 @@ local function lobbyTree(Generated: any): Model
 	newPart(newFolder(root, "KeepClear"), "Promenade", Vector3.new(20, 23, 40), CFrame.new(0, 12, 0), GHOST):AddTag(
 		"SD_KeepClear"
 	)
-
-	for _, pad in PADS do
-		local pod = newModel(root, "Pod_" .. pad.key, false)
-		local gate = newPart(pod, "Gate", Vector3.new(12, 9, 12), CFrame.new(pad.x, 4.5, pad.z), INERT)
-		gate.Transparency = 0.55
-		gate:AddTag("SD_GripGate")
-		gate:SetAttribute("GripTier", pad.tier)
-
-		local panel = newPart(pod, "Sign", Vector3.new(8, 4, 0.4), CFrame.new(pad.x, 11.5, pad.z - 6.8), INERT)
-		panel:AddTag("SD_GripSign")
-		panel:SetAttribute("GripTier", pad.tier)
-		local gui = Instance.new("SurfaceGui")
-		gui.Parent = panel
-		newLabel(gui, "Title", "grip.pad." .. pad.key)
-		newLabel(gui, "Live")
-
-		local giant = newModel(pod, "GiantPad_" .. pad.key, true)
-		giant:AddTag("SD_GiantPad")
-		giant:SetAttribute("GripTier", pad.tier)
-		giant:SetAttribute("PadKey", pad.key)
-		local collision = newPart(giant, "Collision", Vector3.new(6.8, 1, 6.8), CFrame.new(pad.x, 0.5, pad.z), WALL)
-		collision.CanQuery = true
-		collision:AddTag("SD_SqueezeStation")
-		collision:SetAttribute("StationId", pad.station)
-		collision:SetAttribute("GripTier", pad.tier)
-		newPart(newModel(giant, "Body", false), "Base", Vector3.new(8, 1.5, 8), CFrame.new(pad.x, 0.75, pad.z), INERT)
-		newPart(newFolder(giant, "Face"), "Eye", Vector3.new(1, 1, 0.2), CFrame.new(pad.x + 4, 1, pad.z), INERT)
-	end
 
 	-- Lobby bases spec §4: 10 plots, each a Model with its Plot holding its SpawnLocation and a tinted floor.
 	local bases = newFolder(root, "Bases")
@@ -594,7 +550,7 @@ return function(t: Context)
 		local problems = lobbyProblems(function(root)
 			findTagged(root, "SD_SqueezeStation", "StationId", "squeeze_03"):Destroy()
 		end)
-		expectProblem(problems, "tag SD_SqueezeStation: expected 9, found 8")
+		expectProblem(problems, "tag SD_SqueezeStation: expected 6, found 5")
 		expectProblem(problems, "no station has StationId squeeze_03")
 	end)
 
@@ -618,22 +574,15 @@ return function(t: Context)
 
 	t.test("lobby: a station WorldLayout does not know is reported", function()
 		local deps = lobbyDeps()
-		table.remove(deps.WorldLayout.Stations, 9)
-		expectProblem(lobbyProblems(nil, deps), "WorldLayout has no GripTier for station squeeze_09")
+		table.remove(deps.WorldLayout.Stations, 6)
+		expectProblem(lobbyProblems(nil, deps), "WorldLayout has no GripTier for station squeeze_06")
 	end)
 
-	t.test("lobby: WorldLayout as stationTier() plus a GiantPads array is read too", function()
-		local tiers = { squeeze_07 = 2, squeeze_08 = 3, squeeze_09 = 4 }
-		-- Mixed key fields on purpose: Verify accepts key, padKey or PadKey.
-		local pads: { any } = {}
-		table.insert(pads, { key = "jelly", collisionTop = 1.0 })
-		table.insert(pads, { key = "marshmallow", collisionTop = 1.0 })
-		table.insert(pads, { padKey = "royal", collisionTop = 1.0 })
+	t.test("lobby: WorldLayout as stationTier() is read too", function()
 		local layout: any = {
-			stationTier = function(id: string): number
-				return tiers[id] or 1
+			stationTier = function(_id: string): number
+				return 1
 			end,
-			GiantPads = pads,
 		}
 		expectClean(lobbyProblems(nil, { Strings = FAKE_STRINGS, WorldLayout = layout }))
 	end)
@@ -660,57 +609,6 @@ return function(t: Context)
 			end),
 			"SD_CollectionPedestal: Slot 1 is used twice"
 		)
-	end)
-
-	t.test("lobby: a Grip gate must be built open (no collide, query or touch)", function()
-		expectProblem(
-			lobbyProblems(function(root)
-				local gate = findTagged(root, "SD_GripGate", "GripTier", 3) :: Part
-				gate.CanCollide = true
-			end),
-			"SD_GripGate (built open)"
-		)
-	end)
-
-	t.test("lobby: a Grip sign needs exactly one Live label without SD_TextKey", function()
-		local keyed = lobbyProblems(function(root)
-			local sign = findTagged(root, "SD_GripSign", "GripTier", 2)
-			local live = (sign:FindFirstChildWhichIsA("SurfaceGui") :: SurfaceGui):FindFirstChild("Live") :: Instance
-			live:SetAttribute("SD_TextKey", "grip.pad.jelly")
-		end)
-		expectProblem(keyed, "the Live label must not carry SD_TextKey")
-		local doubled = lobbyProblems(function(root)
-			local sign = findTagged(root, "SD_GripSign", "GripTier", 4)
-			newLabel(sign:FindFirstChildWhichIsA("SurfaceGui") :: SurfaceGui, "Live")
-		end)
-		expectProblem(doubled, "has 2 Live labels, expected exactly 1")
-	end)
-
-	t.test("lobby: a giant pad's collision top must match WorldLayout", function()
-		expectProblem(
-			lobbyProblems(function(root)
-				local pad = findTagged(root, "SD_GiantPad", "PadKey", "royal")
-				local collision = pad:FindFirstChild("Collision") :: Part
-				collision.CFrame = collision.CFrame + Vector3.new(0, 0.2, 0)
-			end),
-			"collision top is 1.200, WorldLayout says 1.000"
-		)
-	end)
-
-	t.test("lobby: a giant pad's Body must rise 0.4 above the collision top and be inert", function()
-		local low = lobbyProblems(function(root)
-			local pad = findTagged(root, "SD_GiantPad", "PadKey", "jelly")
-			local base = (pad:FindFirstChild("Body") :: Instance):FindFirstChild("Base") :: Part
-			base.Size = Vector3.new(8, 1.2, 8)
-			base.CFrame = CFrame.new(base.CFrame.Position.X, 0.6, base.CFrame.Position.Z)
-		end)
-		expectProblem(low, "is less than 0.4 above the collision top")
-		local solid = lobbyProblems(function(root)
-			local pad = findTagged(root, "SD_GiantPad", "PadKey", "marshmallow")
-			local eye = (pad:FindFirstChild("Face") :: Instance):FindFirstChild("Eye") :: Part
-			eye.CanTouch = true
-		end)
-		expectProblem(solid, "Face: ")
 	end)
 
 	t.test("lobby: an SD_TextKey missing from Strings is reported", function()
@@ -745,14 +643,14 @@ return function(t: Context)
 	t.test("lobby: more than 64 SurfaceGuis fail the budget", function()
 		local guis = lobbyProblems(function(root)
 			local holder = newPart(root, "GuiHolder", Vector3.one, CFrame.new(0, -50, 0), INERT)
-			for _ = 1, 61 do -- the fixture has 4
+			for _ = 1, 64 do -- the fixture has 1 (its 3 pod signs went in Phase 6)
 				Instance.new("SurfaceGui").Parent = holder
 			end
 		end)
 		expectProblem(guis, "SurfaceGuis, budget 64")
 		local fits = lobbyProblems(function(root)
 			local holder = newPart(root, "GuiHolder", Vector3.one, CFrame.new(0, -50, 0), INERT)
-			for _ = 1, 60 do -- 64 in all: the budget itself passes
+			for _ = 1, 63 do -- 64 in all: the budget itself passes
 				Instance.new("SurfaceGui").Parent = holder
 			end
 		end)

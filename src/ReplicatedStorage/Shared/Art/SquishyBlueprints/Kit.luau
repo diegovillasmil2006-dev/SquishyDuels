@@ -40,7 +40,7 @@
 --             feel "foam" | "mochi" | "jelly" | "plush", flight { style, amp?, pulse? } (pulse: the peak stretch along
 --             travel, Mochi Fox 1.15).
 --
--- Face kit v1 (gift box, Rush head, giant pads and the 8 blueprints until their redesign): eyes, blush, giantPad.
+-- Face kit v1 (gift box, Rush head and the 8 blueprints until their redesign): eyes.
 -- Face kit v2 (the 14 squishies, §3.1): eyes2, happyEyes, catMouth, smileStrokes, blush2, squishFace. Ink 1B1220 for
 -- pupils and line mouths, open mouth 8A2440, tongue FF7F96, blush FF8FA8; one shine per eye at the viewer's upper
 -- left (+X, +Y from the pupil). Tongues and shines are attach parts with an explicit -Z offset (>= 0.01 stud at
@@ -123,8 +123,6 @@ local KIT_PUPIL = Vector3.new(0.15, 0.19, 0.08)
 local KIT_PUPIL_EMBED = 0.6
 local KIT_SHINE = Vector3.new(0.06, 0.06, 0.03)
 local KIT_SHINE_OFFSET = Vector3.new(-0.03, 0.05, -0.04)
-local BLUSH = "FF9FB8"
-local BLUSH_EMBED = 0.65
 Kit.PUPIL_COLOR = "2B1E26"
 Kit.WHITE = "FFFFFF"
 Kit.MOUTH = "7A2E3E"
@@ -269,90 +267,6 @@ function Kit.eyes(x: number, y: number, pupil: Vector3?, shineOffset: Vector3?):
 			attach = { to = "EyeR", offset = offset },
 			color = Kit.WHITE,
 		},
-	}
-end
-
-function Kit.blush(x: number, y: number, size: Vector3): { PartSpec }
-	return Kit.pair({ name = "BlushL", shape = "E", size = size, face = Kit.F(x, y, BLUSH_EMBED), color = BLUSH })
-end
-
--- Giant squishy pads (§17.6, §17.6.1): giant_jelly, giant_marshmallow, giant_cushion (the Royal Cushion). Placeholder
--- design (§17.11 names them; §8.2 has no table): a Body RB of the pad's footprint × rest top from
--- World/WorldLayout.GiantPads (10.2 × 6.2 × 10.2, 10 × 6.6 × 10, 8.4 × 4.8 × 8.4 studs at scale 1: the design
--- lobby's pads) and the §8.1 #7 face kit made giant: 8 parts + Root. Phase 3 (D5): the lobby generator builds the
--- design's pads with no faces, so no build uses these blueprints today; they stay for tools (before, it used ONLY
--- the face parts, moved onto the side toward the pad's faceDirection). The face sits on the lower half of the side
--- (eyes at 0.42 × rest top above the floor), under the widest bulge of the quilted tiles, and stands out of the flat
--- side by 0.4 (eyes), 0.24 (mouth) and 0.14 (blush) so the tiles never hide it.
-local GIANT_EYE = Vector3.new(0.5, 0.62, 1.0)
-local GIANT_EYE_X = -1.1 -- the left eye (§8.2 convention: x < 0 is the squishy's own left)
-local GIANT_SHINE_OFFSET = Vector3.new(-0.1, 0.14, -0.38) -- on the eye's front, up and to its left
-local GIANT_SHINE = Vector3.new(0.16, 0.16, 0.1)
-local GIANT_MOUTH = Vector3.new(0.42, 0.22, 0.6)
-local GIANT_MOUTH_DROP = 0.32 -- below the eye centre
-local GIANT_BLUSH = Vector3.new(0.6, 0.26, 0.4)
-local GIANT_BLUSH_X = -1.95
-local GIANT_BLUSH_DROP = 0.25
-local GIANT_EYE_HEIGHT = 0.42 -- eye centre above the floor, as a fraction of the rest top
-
-function Kit.giantPad(footprint: number, restTop: number, bodyColor: string): Blueprint
-	-- Model space is centred on the Body, so the floor is at -restTop / 2.
-	local eyeY = GIANT_EYE_HEIGHT * restTop - restTop / 2
-	local eyes = {
-		{
-			name = "EyeL",
-			shape = "E",
-			size = GIANT_EYE,
-			face = Kit.F(GIANT_EYE_X, eyeY, KIT_PUPIL_EMBED),
-			color = Kit.PUPIL_COLOR,
-		},
-		{
-			name = "EyeR",
-			shape = "E",
-			size = GIANT_EYE,
-			face = Kit.F(-GIANT_EYE_X, eyeY, KIT_PUPIL_EMBED),
-			color = Kit.PUPIL_COLOR,
-		},
-		{
-			name = "ShineL",
-			shape = "E",
-			size = GIANT_SHINE,
-			attach = { to = "EyeL", offset = GIANT_SHINE_OFFSET },
-			color = Kit.WHITE,
-		},
-		{
-			name = "ShineR",
-			shape = "E",
-			size = GIANT_SHINE,
-			attach = { to = "EyeR", offset = GIANT_SHINE_OFFSET },
-			color = Kit.WHITE,
-		},
-	} :: { PartSpec }
-	return {
-		version = 1,
-		scale = 1,
-		parts = Kit.concat(
-			{
-				{
-					name = "Body",
-					shape = "RB",
-					size = Vector3.new(footprint, restTop, footprint),
-					color = bodyColor,
-					body = true,
-				},
-			},
-			eyes,
-			{
-				{
-					name = "Mouth",
-					shape = "E",
-					size = GIANT_MOUTH,
-					face = Kit.F(0, eyeY - GIANT_MOUTH_DROP, Kit.MOUTH_EMBED),
-					color = Kit.MOUTH,
-				},
-			},
-			Kit.blush(GIANT_BLUSH_X, eyeY - GIANT_BLUSH_DROP, GIANT_BLUSH)
-		),
 	}
 end
 

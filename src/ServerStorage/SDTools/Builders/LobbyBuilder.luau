@@ -1,8 +1,8 @@
 --!strict
 -- LobbyBuilder: builds the lobby Workspace.SD_Lobby as Squish Island (lobby bases spec 2026-10-11 §2-§4, §7-§8; build
 -- plan Phase 4): the island, Squish Square with the duel stage under the duel tower, the stations in the hub sectors
--- (the Claude Design hub's stations, design package sd/lobby.js, phase 3 decisions D1-D14, made compact), the Grip pods
--- (§17.6) and giant pads (§17.6.1) until Phase 6, the garden, the beach, the sky and the 10 bases. Server only, Edit
+-- (the Claude Design hub's stations, design package sd/lobby.js, phase 3 decisions D1-D14, made compact), the garden,
+-- the beach, the sky and the 10 bases (the Grip pods and giant pads went in build plan Phase 6). Server only, Edit
 -- mode only (ServerStorage.SDTools); called by Main's pipeline (target "lobby"), never at runtime. Contract
 -- (Generated.BuildContext / BuildResult): build(ctx) returns { ok, root, warnings, error } with the new tree
 -- UNPARENTED and marked GeneratorId "lobby"; it never parents anything into the place. Relative requires, or modules
@@ -10,8 +10,8 @@
 --
 -- Data: what the game reads (stations, stands, prompts, pads, targets, signs, volumes, plots, the station frames, the
 -- island's radii) comes from Shared World/WorldLayout; colours are Art/Palette tokens ("Lobby kit", "Squish Island");
--- text is Shared Strings (the design's plate words are world.* keys, D10; the bases' signs base.*); the giant pads' Live
--- line uses Config.Grip.Pads[tier].level; the queue board uses Config.Duel.Arena.MaxSlots; the pedestal bands use
+-- text is Shared Strings (the design's plate words are world.* keys, D10; the bases' signs base.*); the queue board
+-- uses Config.Duel.Arena.MaxSlots; the pedestal bands use
 -- Art/RarityStyle (D9) in Catalog order (D4). The decor is built here, in each station's frame
 -- (WorldLayout.stationFrame) or a plot's (WorldLayout.plotFrame), every design number with its
 -- `-- design: lobby.js:<line>`, an island number with `-- spec §<n>`; "reading" marks a value neither gives, "NOT IN
@@ -19,8 +19,8 @@
 --
 -- Static default states (D14): each station is built as the design shows its first state (lobby.js:120-129, "set"):
 -- the box Available (reveal ring lit), the shop Purchasable (turntable ring lit), the daily gift Ready (ring lit), the
--- queue empty (no lights: D2, presentation only), the squeeze meters full, the quest cards in progress, the royal pod
--- Locked, every lock + rope shown (WorldBinder hides them per viewer, D5). Every plot is built open: grey, "Open plot",
+-- queue empty (no lights: D2, presentation only), the squeeze meters full, the quest cards in progress. Every plot is
+-- built open: grey, "Open plot",
 -- no capsules (BaseService shows the owner's name, colour, capsules and statue at runtime). Neon only on the lit state
 -- rings (D7); no outlines (D8).
 --
@@ -46,10 +46,6 @@
 --     PracticeRange LaneFloor, FiringLine, ThrowBox (SD_PracticeZone), Backstop (in the pillow wall, on its footing),
 --                  Targets (3 dummies and the moving target, SD_PracticeTarget bullseye boards: TargetId, Distance,
 --                  Moving, RailLength, Period; "Body" mesh), rope rails, board
---     GripGym / RoyalPod  floors, white bases / daises, jelly gates (SD_GripGate, invisible), lock + rope decor
---                  (SD_GripLock, GripTier), pod signs (SD_GripSign) and GiantPad_<key> (Atomic, SD_GiantPad: GripTier,
---                  PadKey): Collision (the invisible station box, SD_SqueezeStation) and Body (the design pad: base,
---                  quilted tiles inside the rounded footprint, SD_PadAccent parts path A keeps visible); no Face (D5)
 --     HubDecor     the Butter Fountain, the chocolate bar benches, the pancake stack tables (spec §3, §7)
 --     Garden       the 10 garden paths, Boba pearl bollards, Mochi Fox lanterns, cupcake trees, the Toast Stack Tower,
 --                  the Banana Slide, the Frog Lily Pond and the lily pads on the sea (spec §7)
@@ -94,7 +90,6 @@ type Deps = {
 	Strings: any,
 	Palette: any,
 	Config: any,
-	GripPads: { any },
 	WorldLayout: any,
 	SquishyBuilder: any,
 	RarityStyle: any,
@@ -119,14 +114,13 @@ type PropPart = { kind: "block" | "cyl" | "ball" | "egg", name: string, size: Ve
 -- Constants
 
 local GENERATOR_ID = "lobby"
-local VERSION = 3 -- Phase 4: Squish Island
+local VERSION = 4 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates
 local ROOT_NAME = "SD_Lobby"
 
 local SHAPE_LIBRARY_NAME = "SD_ShapeLibrary"
 local ROUNDED_BOX_NAME = "RoundedBox"
 
 local ATTR_ALT_TEXT_KEY = "SD_AltTextKey" -- the toggled (Leave Queue) / relabelled (Shop Squishies) prompt text
-local ATTR_PAD_ACCENT = "SD_PadAccent" -- a giant pad Body part path A keeps visible (GiantPadController)
 -- SD_AmbientKind values (§18.5.1 A8; Anim/AmbientMath reads the same three).
 local AMBIENT_SPIN = "spin" -- the lollipops
 local AMBIENT_SPIN_BOB = "spinBob" -- the daily gift box
@@ -140,7 +134,6 @@ local QUEST_FILLS = { 0.75, 0.4, 0.15 } -- design: lobby.js:303 (Available)
 -- design: lobby.js:300 ((r() - 0.5) × 0.08 with r = rng(11), kit.js:5-8; reproduced, cards c = 1..3, k = 1..3)
 local QUEST_CARD_TILTS = { { 0.0009, 0.0024, 0.0086 }, { 0.0072, 0.0281, 0.003 }, { -0.0336, 0.0024, 0.0086 } }
 local SHOP_GIFT_TOKENS = { "LobbyMint", "LobbyButter", "LobbyViolet", "LobbySky", "LobbyStrawberry" } -- lobby.js:241
-local RANK_TOKENS = { "LobbyRankGrey", "LobbyMint", "LobbySky", "LobbyViolet", "LobbyButter", "LobbyStrawberry" } -- 370
 -- The lollipops' stick and disk colour (design: lobby.js:468), their swirl colours in WorldLayout.Props.lollipops.
 local LOLLIPOP_STICK = "LobbyTrimWhite"
 -- Practice targets (D3): the design's bullseye boards (lobby.js:406-409) on the game's targets.
@@ -162,8 +155,6 @@ local SPARKLE = {
 	spread = Vector2.new(180, 180),
 }
 local RETURN_MARKER_SIZE = Vector3.new(2, 0.2, 2)
-local PAD_TILE_INSET = 0.5 -- reading: quilted tiles whose centre lies this far inside the rounded footprint
-local PAD_TUFT = Vector3.new(0.76, 0.4, 0.76) -- reading: the royal tufts (SPH 0.38, lobby.js:386) pressed to buttons
 
 -- The duel tower (spec §2: 4 pillars 7 × 7 at (±14, ±14), deck at 36, a blocky Dragon on top, about 68 tall).
 -- Reading: the pillars at (±12, ±12) so they stand on the stage and leave the 10 paths clear; mint on the west, strawberry
@@ -253,16 +244,10 @@ local function loadDeps(shared: Instance): (Deps?, string?)
 		end
 		loaded[entry[1]] = module
 	end
-	local config = loaded.Config
-	local grip = if type(config) == "table" then config.Grip else nil
-	if type(grip) ~= "table" or type(grip.Pads) ~= "table" then
-		return nil, "Config.Grip.Pads is missing"
-	end
 	return {
 		Strings = loaded.Strings,
 		Palette = loaded.Palette,
-		Config = config,
-		GripPads = grip.Pads,
+		Config = loaded.Config,
 		WorldLayout = loaded.WorldLayout,
 		SquishyBuilder = loaded.SquishyBuilder,
 		RarityStyle = loaded.RarityStyle,
@@ -1600,380 +1585,6 @@ local function buildPracticeRange(state: State)
 	rb(state, model, "range_board_panel", Vector3.new(7.6, 4.2, 0.8), at(sb, 0, 6.6, 0), "LobbyPlum", "decor", 5)
 end
 
--- Private: Grip pods and giant pads -----------------------------------------------------------------------------------
-
--- Whether the floor point (x, z) of pad space lies inside the pad's rounded footprint shrunk by `inset`.
-local function insideFootprint(pad: any, x: number, z: number, inset: number): boolean
-	local half = pad.footprint / 2 - inset
-	local r = math.max(pad.cornerRadius - inset, 0)
-	local dx, dz = math.abs(x) - (half - r), math.abs(z) - (half - r)
-	if dx <= 0 or dz <= 0 then
-		return math.abs(x) <= half and math.abs(z) <= half
-	end
-	return dx * dx + dz * dz <= r * r
-end
-
--- GiantPad_<key>: Collision (the station) and Body (the design pad: base, quilted tiles, accents) (§17.6.1, D5).
--- `bottom`: the surface the pad stands on (the white base's top, or the royal upper dais).
-local function buildGiantPad(state: State, pad: any, parent: Instance, bottomY: number)
-	local L = state.L
-	local look = pad.look
-	local floor = CFrame.new(pad.center.X, 0, pad.center.Z)
-	local model = Prims.model(pad.model, parent, true, floor)
-	Prims.tag(model, L.Tags.GiantPad, { [L.Attributes.GripTier] = pad.tier, [L.Attributes.PadKey] = pad.key })
-	local collision = Prims.part({
-		name = "Collision",
-		size = pad.collision.size,
-		cframe = CFrame.new(pad.collision.position),
-		flags = "solid",
-		shadow = false,
-		transparency = 1,
-		parent = model,
-	})
-	Prims.tag(collision, L.Tags.SqueezeStation, {
-		[L.Attributes.StationId] = pad.stationId,
-		[L.Attributes.GripTier] = pad.tier,
-	})
-
-	local body = Prims.model("Body", model, false, floor)
-	local bodyColor = color(state, look.body)
-	local tileTop = pad.restTop - pad.tileSize.Y / 2 -- tile centres; their tops are the rest top
-	local baseHeight = tileTop - bottomY
-	local baseFrame = floor * CFrame.new(0, bottomY + baseHeight / 2, 0)
-	local base: BasePart
-	if pad.cornerRadius * 2 >= pad.footprint then -- round (the marshmallow, lobby.js:364)
-		base = Props.cylinder(body, "Base", pad.footprint, baseHeight, baseFrame, bodyColor)
-	else -- design: lobby.js:361, 384 (rb(…, 3) shells)
-		base = rb(
-			state,
-			body,
-			"Base",
-			Vector3.new(pad.footprint, baseHeight, pad.footprint),
-			baseFrame,
-			look.body,
-			"decor",
-			3
-		)
-	end
-	base.Transparency = look.transparency
-	local frame = pad.frame -- the design's pad group
-	if pad.key == "jelly" then
-		-- jelly_core inside the translucent shell (lobby.js:360).
-		rb(state, body, "jelly_core", Vector3.new(8.6, 3, 8.6), at(frame, 0, 2.6, 0), "LobbyJellyCore", "decor", 3)
-	end
-	local n = pad.tilesPerSide
-	local middle = (n + 1) / 2
-	local topColor = color(state, look.top)
-	for row = 1, n do
-		for column = 1, n do
-			local x, z = (column - middle) * pad.tileSpacing, (row - middle) * pad.tileSpacing
-			if not insideFootprint(pad, x, z, PAD_TILE_INSET) then
-				continue
-			end
-			local tile = Prims.meshPart(
-				string.format("Tile_%02d_%02d", row, column),
-				Enum.MeshType.Sphere,
-				pad.tileSize,
-				floor * CFrame.new(x, tileTop, z),
-				topColor,
-				"decor",
-				body
-			)
-			tile.Transparency = look.transparency
-		end
-	end
-	-- Accents (SD_PadAccent): path A keeps them over its one-colour mesh (GiantPadController).
-	local accents: { BasePart } = {}
-	if pad.key == "jelly" then -- design: lobby.js:362 (two shines on the shell top)
-		table.insert(
-			accents,
-			rb(
-				state,
-				body,
-				"jelly_shine",
-				Vector3.new(5.4, 0.3, 1.2),
-				at(frame, -1.8, 5.4, 2.8),
-				"LobbyTrimWhite",
-				"decor",
-				4
-			)
-		)
-		table.insert(
-			accents,
-			rb(
-				state,
-				body,
-				"jelly_shine",
-				Vector3.new(1.2, 0.3, 3.4),
-				at(frame, -4, 5.3, 0.6),
-				"LobbyTrimWhite",
-				"decor",
-				4
-			)
-		)
-	elseif pad.key == "marshmallow" then -- design: lobby.js:365 (the toasted top C(3.6, 3.6, 0.2) at 5.72)
-		table.insert(
-			accents,
-			Props.ellipsoid(
-				body,
-				"mallow_toast_top",
-				Vector3.new(7.2, 0.2, 7.2),
-				at(frame, 0, 5.72, 0),
-				color(state, "LobbyMallowCenter")
-			)
-		)
-	elseif pad.key == "royal" then -- design: lobby.js:385-386 (gold piping and five tufts)
-		for _, e in { -1, 1 } do
-			table.insert(
-				accents,
-				rb(
-					state,
-					body,
-					"royal_piping",
-					Vector3.new(8.4, 0.4, 0.4),
-					at(frame, 0, 1.4, e * 4.05),
-					"LobbyGold",
-					"decor",
-					6
-				)
-			)
-			table.insert(
-				accents,
-				rb(
-					state,
-					body,
-					"royal_piping",
-					Vector3.new(0.4, 0.4, 8.4),
-					at(frame, e * 4.05, 1.4, 0),
-					"LobbyGold",
-					"decor",
-					6
-				)
-			)
-		end
-		for _, tuft in { { 0, 0 }, { 2.2, 2.2 }, { -2.2, 2.2 }, { 2.2, -2.2 }, { -2.2, -2.2 } } do
-			table.insert(
-				accents,
-				Props.ellipsoid(
-					body,
-					"royal_tuft",
-					PAD_TUFT,
-					at(frame, tuft[1], 2.75, tuft[2]),
-					color(state, "LobbyGold")
-				)
-			)
-		end
-	end
-	for _, accent in accents do
-		accent:SetAttribute(ATTR_PAD_ACCENT, true)
-	end
-	for _, part in body:GetDescendants() do
-		if part:IsA("BasePart") then
-			Prims.cosmetic(part)
-		end
-	end
-end
-
--- The pad's jelly gate (SD_GripGate): open and invisible as built (D5); WorldBinder closes it locally (§17.6).
-local function buildGate(state: State, pad: any, parent: Instance)
-	local L = state.L
-	local gate = Prims.disc(
-		"Gate_" .. pad.key,
-		pad.gate.diameter,
-		pad.gate.height,
-		pad.gate.position,
-		color(state, pad.gate.color),
-		"decor",
-		parent
-	)
-	gate.Transparency = pad.gate.transparency
-	gate.CastShadow = false
-	Prims.tag(gate, L.Tags.GripGate, { [L.Attributes.GripTier] = pad.tier })
-end
-
--- The design's lock + rope (lobby.js:52-58, 65-70) as one SD_GripLock model pivoted on its pad (D5): shown as built,
--- WorldBinder hides it per viewer once the level is high enough.
-local function buildLock(
-	state: State,
-	pad: any,
-	parent: Instance,
-	lockFrame: CFrame,
-	k: number,
-	ropeFrame: CFrame,
-	rope: { { number } },
-	ropeHeight: number
-)
-	local L = state.L
-	local model = Prims.model("Lock_" .. pad.key, parent, false, pad.frame)
-	Prims.tag(model, L.Tags.GripLock, { [L.Attributes.GripTier] = pad.tier })
-	Props.lockIcon(state.template, model, lockFrame, k, color(state, "LobbyGold"), color(state, "LobbyInk"))
-	Props.ropeLine(
-		state.template,
-		model,
-		ropeFrame,
-		rope,
-		ropeHeight,
-		color(state, "LobbyGold"),
-		color(state, "LobbyVelvetRope")
-	)
-	for _, part in model:GetDescendants() do
-		if part:IsA("BasePart") then
-			Prims.cosmetic(part)
-		end
-	end
-end
-
--- The Grip gym (lobby.js:355-373; until Phase 6): the jelly and marshmallow pads one behind the other on the gym floor,
--- the rank tower beside the gap between them.
-local function buildGripGym(state: State)
-	local L = state.L
-	local pod = L.Pods.gym
-	local model = station(state, pod.model, false)
-	local F = stationCF(state, "grip")
-	rb(state, model, "grip_floor", pod.floor.size, L.boxCFrame(pod.floor), pod.floor.color, "solid", 4) -- lobby.js:357
-	for i = -1, 1 do -- design: lobby.js:358 (floor lines; reading: across the gap between the pads)
-		Prims.part({
-			name = "grip_floor_line",
-			size = Vector3.new(pod.floor.size.X - 1.2, 0.05, 0.5),
-			cframe = at(F, 0, 0.82, i * 1.6),
-			color = color(state, "LobbyTrimWhite"),
-			flags = "decor",
-			shadow = false,
-			parent = model,
-		})
-	end
-	for _, key in pod.padKeys do
-		local pad = L.GiantPads[key]
-		local frame = pad.frame -- jelly_pad / marshmallow_pad (lobby.js:359, 363)
-		rb(
-			state,
-			model,
-			if key == "jelly" then "jelly_base" else "mallow_base",
-			Vector3.new(12, 1.4, 12),
-			at(frame, 0, 0.7, 0),
-			"LobbyTrimWhite",
-			"solid",
-			4
-		) -- lobby.js:360, 364
-		buildGiantPad(state, pad, model, frame.Position.Y + 1.4)
-		local pips = if key == "jelly" then 3 else 5 -- design: lobby.js:366
-		for i = 0, pips - 1 do
-			ball(
-				state,
-				model,
-				"level_pip",
-				0.42,
-				at(frame, -((pips - 1) * 1.1) / 2 + i * 1.1, 1.75, 5.3).Position,
-				"LobbyButter"
-			)
-		end
-		if key == "marshmallow" then
-			-- mallow_toast_ring TOR(4.1, 0.55) at 5.55 (lobby.js:365); reading: a toasted band at the top edge.
-			Props.cylinder(
-				model,
-				"mallow_toast_ring",
-				10.4,
-				0.6,
-				at(frame, 0, 4.9, 0),
-				color(state, "LobbyMallowToast")
-			)
-		end
-		buildGate(state, pad, model)
-		buildLock(state, pad, model, at(frame, 0, 9.5, 0), 1, frame, { { -6.5, 6.8 }, { 6.5, 6.8 } }, 3) -- lobby.js:372-373
-	end
-	-- The rank tower (lobby.js:368-371), beside the gap between the pads.
-	local rk = at(F, 4.8, 0.8, 0)
-	cyl(state, model, "rank_base", 0.8, 1, at(rk, 0, 0.5, 0), "LobbyPlum")
-	for i, token in RANK_TOKENS do
-		rb(state, model, "rank_tier", Vector3.new(3, 1.6, 1.2), at(rk, 0, 1.8 + (i - 1) * 1.8, 0), token, "decor", 6)
-	end
-	ball(state, model, "rank_finial", 1.1, at(rk, 0, 12.8, 0).Position, "LobbyGold")
-end
-
-local function buildRoyalPod(state: State)
-	local L = state.L
-	local pod = L.Pods.royal
-	local model = station(state, pod.model, false)
-	local F = stationCF(state, "royal")
-	-- design: lobby.js:381; reading (island): from the garden up to the design's top 1, a step ring around it.
-	local grass = L.Island.grass.top
-	cyl(state, model, "royal_step", 15, 0.05 - grass, at(F, 0, (grass + 0.05) / 2, 0), "LobbyCushionCream", "solid")
-	cyl(state, model, "royal_dais", 13, 1 - grass, at(F, 0, (grass + 1) / 2, 0), "LobbyPlum", "solid")
-	cyl(state, model, "royal_dais_upper", 9.8, 1, at(F, 0, 1.5, 0), "LobbyRoyalVelvet", "solid")
-	collar(state, model, "royal_dais_trim", 12.7, 0.32, 0.64, at(F, 0, 1 - 0.32, 0), "LobbyGold") -- design: lobby.js:382
-	collar(state, model, "royal_dais_trim", 9.6, 0.32, 0.64, at(F, 0, 2 - 0.32, 0), "LobbyGold")
-	local pad = L.GiantPads.royal
-	buildGiantPad(state, pad, model, 2) -- the cushion stands on the upper dais (lobby.js:383)
-	local cg = pad.frame
-	for _, c in { { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } } do -- design: lobby.js:387 (tassels hang from the corners)
-		Props.cone(model, "royal_tassel", 0.5, 1.6, at(cg, c[1] * 4.2, 0.5, c[2] * 4.2), color(state, "LobbyGold"))
-		ball(state, model, "royal_tassel_knot", 0.4, at(cg, c[1] * 4.2, 1.4, c[2] * 4.2).Position, "LobbyGold")
-	end
-	for _, c in { { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } } do -- design: lobby.js:388 (the canopy)
-		cyl(state, model, "canopy_post", 0.55, 15, at(F, c[1] * 7.4, 9.5, c[2] * 7.4), "LobbyGold")
-		rb(
-			state,
-			model,
-			"canopy_curtain",
-			Vector3.new(1.8, 12, 1.8),
-			at(F, c[1] * 7.4, 10, c[2] * 7.4),
-			"LobbyRoyalVelvet",
-			"decor",
-			3
-		)
-		rb(
-			state,
-			model,
-			"canopy_curtain_tie",
-			Vector3.new(2.4, 0.8, 2.4),
-			at(F, c[1] * 7.4, 8, c[2] * 7.4),
-			"LobbyGold",
-			"decor",
-			6
-		)
-	end
-	-- canopy_dome: a half sphere r 11 squashed to 0.55 (lobby.js:389); reading: four stacked discs (no hemisphere).
-	local domeHeight = 11 * 0.55
-	for step = 0, 3 do
-		local bottom = step * domeHeight / 4
-		local radius = 11 * math.sqrt(1 - (bottom / domeHeight) ^ 2)
-		cyl(
-			state,
-			model,
-			"canopy_dome",
-			radius,
-			domeHeight / 4,
-			at(F, 0, 17 + bottom + domeHeight / 8, 0),
-			"LobbyLilac"
-		)
-	end
-	collar(state, model, "canopy_dome_rim", 11, 0.5, 1, at(F, 0, 17, 0), "LobbyGold") -- design: lobby.js:390
-	ball(state, model, "canopy_finial", 1.2, at(F, 0, 23.4, 0).Position, "LobbyGold") -- design: lobby.js:391
-	Props.cone(model, "canopy_finial_tip", 0.6, 2.4, at(F, 0, 25.4, 0), color(state, "LobbyGold"))
-	-- royal_ring TOR(9, 0.3) on the upper dais (lobby.js:393), unlit (Locked): a thin annulus.
-	Props.annulus(
-		model,
-		"royal_ring",
-		17.4,
-		18.6,
-		at(F, 0, 2 + 0.24, 0),
-		0.24,
-		color(state, "LobbyButter"),
-		color(state, "LobbyRoyalVelvet")
-	)
-	buildGate(state, pad, model)
-	buildLock(
-		state,
-		pad,
-		model,
-		at(F, 0, 10.5, 9),
-		1.1,
-		F,
-		{ { -9, 11.2 }, { -4.5, 13 }, { 4.5, 13 }, { 9, 11.2 } },
-		3.4
-	) -- 394
-end
-
 -- Private: props, the garden, the sky and the bases (spec §4, §7) ------------------------------------------------------
 
 -- A prop part (PropPart) list placed in `frame` as a Model `name` under `parent`: blocks, upright cylinders (size.X the
@@ -2570,10 +2181,6 @@ local function buildSigns(state: State)
 			continue
 		end
 		local bakeArgs: { [string]: any } = { count = 0, max = maxSlots }
-		if sign.tier ~= nil then
-			local gripPad = state.deps.GripPads[sign.tier]
-			bakeArgs.level = if gripPad then gripPad.level else nil
-		end
 		local plate: Signs.PlateStyle? = nil
 		local style = sign.plate
 		if style then
@@ -2982,8 +2589,6 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 	buildDailyStand(state)
 	buildSqueezeZone(state)
 	buildPracticeRange(state)
-	buildGripGym(state)
-	buildRoyalPod(state)
 	buildHubDecor(state)
 	buildGarden(state)
 	buildSky(state)

@@ -38,7 +38,8 @@ type Module = {
 -- screens never require each other.
 -- Reading (Part 5): GripController and NameplateController come right after HudController, because the Grip card sits
 -- in HudController's left column and is its DPadUp entry (§17.7, §17.11).
--- Feel pass (§18.10 L1): AmbientController (lobby background motion) right after GiantPadController;
+-- Feel pass (§18.10 L1): AmbientController (lobby background motion) right after WorldBinder (GiantPadController sat
+-- between them until the giant pads went, build plan Phase 6);
 -- JellyRippleController after VfxController, then SplatController, which requires the ripple (§18.4).
 -- Part 6: CollectionController (the per-player Collection pedestal displays, §7.6) right after AmbientController in
 -- the world layer; of the controllers it requires only StateController (plus SquishyCache, Scheduler, Tweens, the UI
@@ -57,7 +58,6 @@ local CONTROLLER_ORDER = {
 	"UIController",
 	"NotifyController",
 	"WorldBinder",
-	"GiantPadController",
 	"AmbientController",
 	"CollectionController",
 	"HeldSquishyController",

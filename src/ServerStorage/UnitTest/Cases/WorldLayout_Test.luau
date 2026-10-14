@@ -7,14 +7,15 @@
 -- station's local +Z faces the hub centre; three.js rotation.y = CFrame.Angles(0, yaw, 0)), so a drift in WorldLayout
 -- is caught:
 --   * the island (Squish Square Ø140 at Y 0, grass to r 160 at Y -0.9, the beach to r 176, the sea) and its
---     boundaries; 12 station frames in the hub sectors (§3: centred on 18° + 36° j, readings for the radii); 10 paths,
+--     boundaries; 10 station frames in the hub sectors (§3: centred on 18° + 36° j, readings for the radii; the Grip
+--     gym's 126° and the Royal pod's 306° went with the giant pads, build plan Phase 6); 10 paths,
 --     8 wide, from the stage edge (r 22) to each plot's gate (r 96), 36° apart;
---   * nine squeeze stations squeeze_01..09 with the §17.4 tiers: the six foam mats on the design ring of radius 14
---     (lobby.js:342-344) around the squeeze frame, the giant pads (D5: Jelly, Marshmallow, Royal Cushion), each
---     collision box inside its rounded footprint and its (invisible) gate, the pads at least 20 apart;
+--   * six squeeze stations squeeze_01..06, tier 1: the six foam mats on the design ring of radius 14
+--     (lobby.js:342-344) around the squeeze frame; the giant pads, their gates, pods, pod signs and lock decor are gone
+--     (Phase 6);
 --   * keep-clear volumes (yawed with their paths) never overlap between stations and hold no station body; the path
 --     aisles are the paths themselves (8 wide);
---   * routes within the design's worst real route (D1: 10 s, pods 12 s; was §7.5's 5 s), hub spawn routes no longer
+--   * routes within the design's worst real route (D1: 10 s; was §7.5's 5 s), hub spawn routes no longer
 --     than the island's distances; a plot's spawn 116 studs and its gate 74 from the stage (§2);
 --   * every sign, prompt and plate key resolves in Strings; the design plate words (D10), the island's "SQUISH
 --     SQUARE" (§2) and the game's live lines; the plates sit where the island puts them; within the 64-SurfaceGui
@@ -37,16 +38,6 @@ type Context = {
 }
 
 type Bounds = { name: string, low: Vector3, high: Vector3 }
-type PadSpec = {
-	station: string,
-	tier: number,
-	center: Vector3,
-	footprint: number,
-	corner: number,
-	restTop: number,
-	collision: number,
-	sink: number,
-}
 
 -- Constants (restated from the design so a drifting layout is caught)
 
@@ -57,9 +48,6 @@ local TIERS: { [string]: number } = {
 	squeeze_04 = 1,
 	squeeze_05 = 1,
 	squeeze_06 = 1,
-	squeeze_07 = 2,
-	squeeze_08 = 3,
-	squeeze_09 = 4,
 }
 
 -- A floor point `radius` studs out on compass angle `degrees` (lobby bases spec §2: clockwise from north, -Z).
@@ -77,12 +65,10 @@ local FRAMES: { [string]: { r: number, deg: number, yaw: number? } } = {
 	shop = { r = 56, deg = 18 }, -- §3
 	box = { r = 52, deg = 54 }, -- §3
 	practice = { r = 70, deg = 90, yaw = -math.pi / 2 }, -- §3; the range runs east (+X) along its sector's middle
-	grip = { r = 53, deg = 126 }, -- reading: the Grip gym until Phase 6
 	quests = { r = 53, deg = 162 }, -- §3
 	daily = { r = 50, deg = 198 }, -- §3
 	collection = { r = 56, deg = 234 }, -- §3
 	squeeze = { r = 78, deg = 270 }, -- §3 (reaches into the garden)
-	royal = { r = 80, deg = 306 }, -- reading: the Royal pod until Phase 6, in the garden
 	fountain = { r = 48, deg = 342 }, -- §3: the Butter Fountain (a prop)
 }
 
@@ -97,50 +83,10 @@ local APPROACH_FRONTS: { [string]: number } = {
 }
 local APPROACH_STEP = 3 -- reading (not in spec)
 
--- The giant pad table (D5): footprints and rest tops (lobby.js:361, 364, 384); corner radii and collision boxes are the
--- readings that keep G8's rules; sinkDepth is §17.6.1's. Centres (island readings): the Grip gym's pads one behind
--- the other along its sector (the jelly pad 10.5 nearer the hub, the marshmallow pad 10.5 farther out), the Royal
--- Cushion on the Royal pod's frame.
-local GIANT_PADS: { [string]: PadSpec } = {
-	jelly = {
-		station = "squeeze_07",
-		tier = 2,
-		center = polar(53 - 10.5, 126),
-		footprint = 10.2,
-		corner = 3.6,
-		restTop = 6.2,
-		collision = 7.8,
-		sink = 0.5,
-	},
-	marshmallow = {
-		station = "squeeze_08",
-		tier = 3,
-		center = polar(53 + 10.5, 126),
-		footprint = 10,
-		corner = 5,
-		restTop = 6.6,
-		collision = 6.8,
-		sink = 0.6,
-	},
-	royal = {
-		station = "squeeze_09",
-		tier = 4,
-		center = polar(80, 306),
-		footprint = 8.4,
-		corner = 3.0,
-		restTop = 4.8,
-		collision = 6.4,
-		sink = 0.7,
-	},
-}
-local GATE_DIAMETER = 14 -- reading (D5): invisible; the design shows its lock and rope instead
-local GATE_HEIGHT = 14 -- reading: taller than a jump from a pad's base
-local GATE_CLEARANCE = 0.8
-local CORNER_MARGIN = 0.1
 local POSITION_TOLERANCE = 0.01 -- studs; the design numbers are restated with two decimals
 local FLOAT_TOLERANCE = 1e-4 -- Vector3 components are single precision
 
--- Hub spawn routes (from the medallion centre to each stand's approach; pods to their centres; squeeze to the mat
+-- Hub spawn routes (from the medallion centre to each stand's approach; squeeze to the mat
 -- nearest the spawn), in studs: the island's distances when Phase 4 was built (a station moved farther out fails).
 local SPAWN = Vector3.zero
 local SPAWN_ROUTES: { [string]: number } = {
@@ -152,9 +98,6 @@ local SPAWN_ROUTES: { [string]: number } = {
 	duel = 20.5,
 	practice = 48.0,
 	giftBox = 39.0,
-	jellyPad = 42.5,
-	marshmallowPad = 63.5,
-	royalPad = 80.0,
 }
 local ROUTE_TOLERANCE = 0.1
 
@@ -178,9 +121,6 @@ local TEXTS: { [string]: string } = {
 	["shop.title"] = "SHOP", -- lobby.js:250
 	["quest.title"] = "QUESTS", -- lobby.js:295
 	["squishy.kittyBread.name"] = "Kitty Bread", -- lobby.js:340
-	["grip.pad.jelly"] = "Jelly Pad", -- lobby.js:367
-	["grip.pad.marshmallow"] = "Marshmallow Pad", -- lobby.js:367
-	["grip.pad.royal"] = "Royal Cushion",
 	-- The game's live lines and prompts (D10, D11).
 	["queue.boardTitle"] = "Duel Queue",
 	["queue.boardWaiting"] = "Waiting: {count}",
@@ -191,11 +131,6 @@ local TEXTS: { [string]: string } = {
 	["box.unknownNote"] = "Couldn't check box availability. Try again.",
 	["daily.ready"] = "Ready to claim!",
 	["daily.wait"] = "Next reward in {time}",
-	["grip.padNeeds"] = "Needs Grip Lv {level}",
-	["grip.signLocked"] = "Needs Grip Lv {level} · You: Lv {have}",
-	-- Build plan Phase 5: a pad no longer adds Coins to a squeeze (the capsules set its pay); Phase 6: slow training is
-	-- gone too, so an open pad's sign says only that.
-	["grip.signOpen"] = "Open",
 	["prompt.joinQueue"] = "Join 1v1 Queue",
 	["prompt.leaveQueue"] = "Leave Queue",
 	["prompt.seeBoxes"] = "See Boxes",
@@ -353,12 +288,7 @@ return function(t: Context)
 			discBody("SqueezeZone.plinth", L.SqueezeZone.plinth),
 			boxBody("PracticeRange.laneFloor", L.PracticeRange.laneFloor),
 			boxBody("PracticeRange.backstop", L.PracticeRange.backstop),
-			boxBody("Pods.gym.floor", L.Pods.gym.floor),
 		}
-		for _, key in L.GiantPadKeys do
-			local pad = L.GiantPads[key]
-			table.insert(bodies, boxBody(`GiantPads.{key}.collision`, pad.collision))
-		end
 		return bodies
 	end
 
@@ -419,7 +349,9 @@ return function(t: Context)
 		for _ in WorldLayout.StationFrames do
 			count += 1
 		end
-		expect.equal(count, 12)
+		expect.equal(count, 10)
+		expect.equal(WorldLayout.stationFrame("grip"), nil) -- the Grip gym went with the giant pads (Phase 6)
+		expect.equal(WorldLayout.stationFrame("royal"), nil) -- and the Royal pod
 		-- Spot checks: the box faces the hub centre; the practice range turned west, so throws go east (D3).
 		expect.truthy(flatNear(frontOf("box"), -polar(1, 54), 1e-4))
 		expect.truthy(flatNear(frontOf("practice"), Vector3.new(-1, 0, 0), 1e-6))
@@ -444,10 +376,10 @@ return function(t: Context)
 
 	-- Stations and tiers ------------------------------------------------------------------------------------------
 
-	t.test("stations are squeeze_01..09, unique and in id order", function()
+	t.test("stations are squeeze_01..06, unique and in id order", function()
 		local ids = WorldLayout.stationIds()
-		expect.equal(#ids, 9)
-		expect.equal(#WorldLayout.Stations, 9)
+		expect.equal(#ids, 6)
+		expect.equal(#WorldLayout.Stations, 6)
 		local seen: { [string]: boolean } = {}
 		for index, station in WorldLayout.Stations do
 			expect.equal(station.id, string.format("squeeze_%02d", index))
@@ -456,26 +388,28 @@ return function(t: Context)
 			seen[station.id] = true
 			expect.equal(WorldLayout.station(station.id), station)
 		end
+		expect.equal(WorldLayout.station("squeeze_07"), nil) -- the giant pads' stations went in Phase 6
 		expect.equal(WorldLayout.station("squeeze_10"), nil)
 		expect.truthy(table.isfrozen(ids)) -- handed out shared: no caller may change it
 	end)
 
-	t.test("station tiers match DESIGN §17.4 (mats 1, Jelly 2, Marshmallow 3, Royal 4)", function()
-		for id, tier in TIERS do
-			expect.equal(WorldLayout.stationTier(id), tier)
-			expect.equal(WorldLayout.station(id).kind, if tier == 1 then "mat" else "giant")
+	t.test(
+		"station tiers match DESIGN §17.4: every station is a tier-1 Foam Mat (the giant pads went, Phase 6)",
+		function()
+			for id, tier in TIERS do
+				expect.equal(WorldLayout.stationTier(id), tier)
+			end
+			expect.equal(WorldLayout.stationTier("squeeze_00"), nil)
+			expect.equal(WorldLayout.stationTier("squeeze_09"), nil)
+			expect.equal(WorldLayout.stationTier("practice"), nil)
+			local pads = Config.Grip.Pads
+			expect.equal(#pads, 1)
+			expect.equal(pads[1].key, "foam")
+			for _, name in { "GiantPads", "GiantPadKeys", "Pods", "giantPad", "giantPadForStation" } do
+				expect.equal((WorldLayout :: any)[name], nil)
+			end
 		end
-		expect.equal(WorldLayout.stationTier("squeeze_00"), nil)
-		expect.equal(WorldLayout.stationTier("practice"), nil)
-		expect.equal(WorldLayout.giantPadForStation("squeeze_01"), nil)
-		local pads = Config.Grip.Pads
-		expect.equal(#pads, 4)
-		expect.equal(pads[1].key, "foam")
-		for key, spec in GIANT_PADS do
-			expect.equal(WorldLayout.giantPadForStation(spec.station).key, key)
-			expect.equal(pads[spec.tier].key, key)
-		end
-	end)
+	)
 
 	t.test("the six foam mats sit on the design ring at radius 14 (lobby.js:342-344), Ø7.6, top 2.05", function()
 		-- The design ring around the squeeze frame (270°, r 78; its front faces east, toward the hub), mats 1-6.
@@ -504,81 +438,6 @@ return function(t: Context)
 		end
 	end)
 
-	-- Giant pads (D5) ------------------------------------------------------------------------------------------------
-
-	t.test(
-		"giant pads match the design pads (D5): centre, footprint, rest top, collision top = rest top - sink",
-		function()
-			local count = 0
-			for key, spec in GIANT_PADS do
-				count += 1
-				local pad = WorldLayout.giantPad(key)
-				expect.truthy(pad ~= nil)
-				expect.equal(pad.key, key)
-				expect.equal(pad.stationId, spec.station)
-				expect.equal(pad.tier, spec.tier)
-				expect.equal(pad.model, "GiantPad_" .. key)
-				if not vectorNear(pad.center, spec.center, POSITION_TOLERANCE) then
-					error(`{key} is at {show(pad.center)}, the island puts it at {show(spec.center)}`)
-				end
-				expect.near(pad.footprint, spec.footprint, 1e-9)
-				expect.near(pad.cornerRadius, spec.corner, 1e-9)
-				expect.near(pad.restTop, spec.restTop, 1e-9)
-				expect.near(pad.sinkDepth, spec.sink, 1e-9)
-				expect.near(pad.collisionTop, spec.restTop - spec.sink, 1e-9)
-				expect.truthy(
-					vectorNear(
-						pad.collision.size,
-						Vector3.new(spec.collision, pad.collisionTop, spec.collision),
-						FLOAT_TOLERANCE
-					)
-				)
-				expect.truthy(
-					vectorNear(
-						pad.collision.position,
-						Vector3.new(spec.center.X, pad.collisionTop / 2, spec.center.Z),
-						POSITION_TOLERANCE
-					)
-				)
-				expect.equal(pad.gate.diameter, GATE_DIAMETER)
-				expect.equal(pad.gate.height, GATE_HEIGHT)
-				expect.equal(pad.gate.transparency, 1) -- invisible: the lock and rope show instead (D5)
-				expect.truthy(
-					vectorNear(pad.gate.position, Vector3.new(spec.center.X, GATE_HEIGHT / 2, spec.center.Z), 1e-3)
-				)
-				-- The server measures squeezes from the collision box centre (§17.6.1).
-				expect.equal(WorldLayout.station(spec.station).position, pad.collision.position)
-				expect.equal(WorldLayout.station(spec.station).top, pad.collisionTop)
-			end
-			expect.equal(count, #WorldLayout.GiantPadKeys)
-			expect.deepEqual(WorldLayout.GiantPadKeys, { "jelly", "marshmallow", "royal" })
-			expect.equal(WorldLayout.GiantPads.jelly.blueprintId, "giant_jelly")
-			expect.equal(WorldLayout.GiantPads.royal.blueprintId, "giant_cushion")
-		end
-	)
-
-	t.test("every giant pad fits its gate; its collision box fits the rounded footprint; pads stay 20 apart", function()
-		for _, key in WorldLayout.GiantPadKeys do
-			local pad = WorldLayout.GiantPads[key]
-			local f, r = pad.footprint / 2, pad.cornerRadius
-			local b = pad.collision.size.X / 2
-			expect.truthy(f - b >= 0.6 - FLOAT_TOLERANCE) -- the collision box stays inside the visual edge
-			local reach = (f - r) * math.sqrt(2) + r
-			expect.truthy(pad.gate.diameter / 2 - reach >= GATE_CLEARANCE)
-			if b > f - r then
-				expect.truthy((b - (f - r)) * math.sqrt(2) <= r - CORNER_MARGIN + FLOAT_TOLERANCE)
-			end
-			expect.truthy(pad.collisionTop < pad.restTop)
-		end
-		local keys = WorldLayout.GiantPadKeys
-		for i = 1, #keys do
-			for j = i + 1, #keys do
-				local a, b = WorldLayout.GiantPads[keys[i]], WorldLayout.GiantPads[keys[j]]
-				expect.truthy(WorldLayout.horizontalDistance(a.center, b.center) >= 20)
-			end
-		end
-	end)
-
 	-- Keep-clear volumes (§7.7 props rules 1 and 5) ------------------------------------------------------------------
 
 	t.test("station keep-clear volumes never overlap each other (yawed volumes included)", function()
@@ -588,7 +447,7 @@ return function(t: Context)
 				table.insert(volumes, volume)
 			end
 		end
-		expect.truthy(#volumes >= 17) -- 7 stands/zones + 9 squeeze stations + the spawn
+		expect.truthy(#volumes >= 14) -- 7 stands/zones + 6 squeeze stations + the spawn
 		local overlaps = {}
 		for i = 1, #volumes do
 			for j = i + 1, #volumes do
@@ -718,49 +577,40 @@ return function(t: Context)
 	t.test("route speed is the uniform WalkSpeed; limits are the design's worst routes (D1)", function()
 		expect.equal(WorldLayout.Routes.walkSpeed, Config.Duel.Rules.Movement.WalkSpeed)
 		expect.equal(WorldLayout.Routes.maxSeconds, 10) -- box <-> practice 156 studs = 9.75 s (phase 3 spec A2)
-		expect.equal(WorldLayout.Routes.podMaxSeconds, 12)
+		expect.equal((WorldLayout.Routes :: any).podMaxSeconds, nil) -- the pod exception went with the pods (Phase 6)
 	end)
 
-	t.test(
-		"routes between activities stay under 10 s, pod routes within 12 s; the worst is practice <-> squeeze",
-		function()
-			local activities = WorldLayout.Activities
-			expect.equal(#activities, 11)
-			local worst, worstPod = 0, 0
-			local worstPair = ""
-			local tooLong = {}
-			for i = 1, #activities do
-				for j = i + 1, #activities do
-					local a, b = activities[i], activities[j]
-					local shortest = math.huge
-					for _, p in a.points do
-						for _, q in b.points do
-							shortest = math.min(shortest, WorldLayout.routeSeconds(p, q))
-						end
-					end
-					local pod = a.pod or b.pod
-					if pod then
-						worstPod = math.max(worstPod, shortest)
-					elseif shortest > worst then
-						worst = shortest
-						worstPair = a.name .. "/" .. b.name
-					end
-					local limit = if pod then WorldLayout.Routes.podMaxSeconds else WorldLayout.Routes.maxSeconds
-					local ok = if pod then shortest <= limit else shortest < limit
-					if not ok then
-						table.insert(tooLong, string.format("%s -> %s %.2f s", a.name, b.name, shortest))
+	t.test("routes between activities stay under 10 s; the worst is practice <-> squeeze", function()
+		local activities = WorldLayout.Activities
+		expect.equal(#activities, 8)
+		local worst = 0
+		local worstPair = ""
+		local tooLong = {}
+		for i = 1, #activities do
+			for j = i + 1, #activities do
+				local a, b = activities[i], activities[j]
+				local shortest = math.huge
+				for _, p in a.points do
+					for _, q in b.points do
+						shortest = math.min(shortest, WorldLayout.routeSeconds(p, q))
 					end
 				end
+				if shortest > worst then
+					worst = shortest
+					worstPair = a.name .. "/" .. b.name
+				end
+				if shortest >= WorldLayout.Routes.maxSeconds then
+					table.insert(tooLong, string.format("%s -> %s %.2f s", a.name, b.name, shortest))
+				end
 			end
-			if #tooLong > 0 then
-				error("routes over the limit: " .. table.concat(tooLong, ", "))
-			end
-			-- Squish Island: the worst is practice <-> squeeze, across the hub (112 studs, 7 s).
-			expect.near(worst, 112.0 / 16, 0.01)
-			expect.truthy(worstPair == "practice/squeeze" or worstPair == "squeeze/practice")
-			expect.truthy(worstPod <= 12)
 		end
-	)
+		if #tooLong > 0 then
+			error("routes over the limit: " .. table.concat(tooLong, ", "))
+		end
+		-- Squish Island: the worst is practice <-> squeeze, across the hub (112 studs, 7 s).
+		expect.near(worst, 112.0 / 16, 0.01)
+		expect.truthy(worstPair == "practice/squeeze" or worstPair == "squeeze/practice")
+	end)
 
 	t.test("hub spawn routes are no longer than the island's distances", function()
 		for _, activity in WorldLayout.Activities do
@@ -963,39 +813,13 @@ return function(t: Context)
 		expect.truthy(table.find(status.clientKeys, "daily.wait") ~= nil)
 	end)
 
-	t.test(
-		"pod signs: SD_GripSign per tier, Title grip.pad.<key>, one Live line, within 12 studs of their pad",
-		function()
-			local tiers: { [number]: boolean } = {}
-			local count = 0
-			for _, sign in WorldLayout.Signs do
-				if sign.tag ~= "SD_GripSign" then
-					continue
-				end
-				count += 1
-				expect.falsy(tiers[sign.tier])
-				tiers[sign.tier] = true
-				local pad = WorldLayout.giantPadForStation(string.format("squeeze_%02d", sign.tier + 5))
-				expect.equal(sign.id, pad.signId)
-				expect.truthy(WorldLayout.horizontalDistance(sign.position, pad.center) <= 12) -- WorldBinder.padNear
-				local titles, lives = 0, 0
-				for _, line in sign.lines do
-					if line.name == "Title" then
-						titles += 1
-						expect.equal(line.textKey, "grip.pad." .. pad.key)
-					elseif line.name == "Live" then
-						lives += 1
-						expect.equal(line.textKey, nil)
-						expect.equal(line.bakeKey, "grip.padNeeds")
-						expect.truthy(line.live)
-					end
-				end
-				expect.equal(titles, 1)
-				expect.equal(lives, 1)
-			end
-			expect.equal(count, 3)
+	t.test("the pod signs went with the giant pads (Phase 6): no sign carries an extra tag or a GripTier", function()
+		for _, sign in WorldLayout.Signs do
+			expect.equal(sign.tag, nil)
+			expect.equal(sign.tier, nil)
+			expect.falsy(string.sub(sign.id, 1, 4) == "pod_")
 		end
-	)
+	end)
 
 	t.test("stand prompts sit on their stations with the §7.6 defaults", function()
 		local stands = {
@@ -1202,11 +1026,15 @@ return function(t: Context)
 		expect.equal(counts.SD_CollectionPedestal, #WorldLayout.Collection.pedestals)
 		expect.equal(counts.SD_CollectionPedestal, 14)
 		expect.equal(counts.SD_ReturnPoint, #WorldLayout.ReturnPoints)
-		expect.equal(counts.SD_GiantPad, #WorldLayout.GiantPadKeys)
-		expect.equal(counts.SD_GripGate, #WorldLayout.GiantPadKeys)
-		expect.equal(counts.SD_GripSign, #WorldLayout.GiantPadKeys)
-		expect.equal(counts.SD_GripLock, #WorldLayout.GiantPadKeys) -- the design's lock + rope per pad (D5)
-		expect.equal(WorldLayout.Tags.GripLock, "SD_GripLock")
+		expect.equal(counts.SD_SqueezeStation, 6)
+		-- The giant pads' tags went with them (Phase 6).
+		for _, tag in { "SD_GiantPad", "SD_GripGate", "SD_GripSign", "SD_GripLock" } do
+			expect.equal(counts[tag], nil)
+		end
+		for _, name in { "GiantPad", "GripGate", "GripSign", "GripLock" } do
+			expect.equal((WorldLayout.Tags :: any)[name], nil)
+		end
+		expect.equal((WorldLayout.Attributes :: any).PadKey, nil)
 		expect.equal(#WorldLayout.Lobby.Boundaries, 4)
 		expect.equal(counts.SD_Boundary, 4)
 		expect.equal(counts.SD_AudioZone, 3)
@@ -1335,17 +1163,13 @@ return function(t: Context)
 		expect.equal(WorldLayout.stationUnder(standing, margin, above).id, "squeeze_06")
 		local off = standing + Vector3.new(3.8 + margin + 0.5, 0, 0)
 		expect.equal(WorldLayout.stationUnder(off, margin, above), nil)
-		local jelly = WorldLayout.GiantPads.jelly
-		local onJelly = Vector3.new(jelly.center.X, jelly.collisionTop + 3, jelly.center.Z)
-		expect.equal(WorldLayout.stationUnder(onJelly, margin, above).id, "squeeze_07")
-		-- On the white base in front of the pad (Y 2.2): below the collision top, so not on the pad.
-		expect.equal(WorldLayout.stationUnder(Vector3.new(jelly.center.X, 2.2 + 3, jelly.center.Z), margin, above), nil)
-		expect.equal(WorldLayout.stationUnder(onJelly + Vector3.new(0, above + 0.5, 0), margin, above), nil)
-		local royal = WorldLayout.GiantPads.royal
-		expect.equal(
-			WorldLayout.stationUnder(Vector3.new(royal.center.X, royal.collisionTop + 3, royal.center.Z), margin, above).id,
-			"squeeze_09"
-		)
+		-- Too high above the mat top, or below it: not on it.
+		expect.equal(WorldLayout.stationUnder(standing + Vector3.new(0, above, 0), margin, above), nil)
+		expect.equal(WorldLayout.stationUnder(standing - Vector3.new(0, 3.5, 0), margin, above), nil)
+		-- Where the Grip gym's Jelly Pad stood (126°, r 42.5; gone since Phase 6): no station.
+		local a = math.rad(126)
+		local gym = Vector3.new(42.5 * math.sin(a), 6, -42.5 * math.cos(a))
+		expect.equal(WorldLayout.stationUnder(gym, margin, above), nil)
 		expect.equal(WorldLayout.stationUnder(Vector3.new(0, 3, 0), margin, above), nil)
 	end)
 
@@ -1383,12 +1207,12 @@ return function(t: Context)
 			(WorldLayout :: any).Stations = {}
 		end)
 		expect.throws(function()
-			(WorldLayout.GiantPads.jelly :: any).collisionTop = 0.6
+			(WorldLayout.Stations[1] :: any).top = 0.6
 		end)
 		expect.throws(function()
 			table.insert(WorldLayout.Stations, {})
 		end)
-		expect.near(WorldLayout.GiantPads.jelly.collisionTop, 5.7, 1e-9)
+		expect.near(WorldLayout.Stations[1].top, WorldLayout.SqueezeZone.matHeight, 1e-9)
 	end)
 
 	-- Bases (lobby bases spec 2026-10-11 §2, §4; Phase 3 data) --------------------------------------------------------

@@ -4,9 +4,10 @@
 -- here (exact part counts and rigidities are pinned again after the Studio tuning pass), so the geometry lanes can
 -- replace any blueprint and keep this test green.
 -- Server only (ServerStorage.UnitTest). Edit-mode safe: builds unparented models, no Play-only APIs.
--- Contract: the 19 blueprints (14 squishies + gift_box, dragon_head_vfx, 3 giant pads) build in every mode; the part
+-- Contract: the 16 blueprints (14 squishies + gift_box, dragon_head_vfx; the 3 giant pads' went with the pads, build
+-- plan Phase 6) build in every mode; the part
 -- budget (<= 31 visible + Root in every face state, <= 6 hidden squish-face parts, <= 12 hinged parts in <= 6
--- sections); the longest bound 1-4 studs (giant pads: their footprint) and, for redesigned squishies, 1.5-1.7 studs in
+-- sections); the longest bound 1-4 studs and, for redesigned squishies, 1.5-1.7 studs in
 -- hand (Dragon, Cloud Bunny 1.8); no lights/GUIs/scripts/decals/sounds; every part non-colliding/non-query/non-touch/
 -- massless; face parts (embed >= 0.5) centred inside a body part and looking out of their side; look parts without
 -- shadows and the squish set hidden; section pivots inside a body part and the section's first part; contact points
@@ -72,11 +73,6 @@ local FACE_KIT_V1: { [string]: boolean } = {
 	donut = true,
 	dragon = true,
 }
--- §17.12: the giant pads' footprint is 8-9 studs instead of the 1-4-stud bound (no Catalog entry: no flight check).
--- Phase 3 (the design lobby, D5): the design's pads are 8.4-10.2 studs wide and their rest tops 4.8-6.6 studs.
-local GIANT_IDS: { [string]: boolean } = { giant_jelly = true, giant_marshmallow = true, giant_cushion = true }
-local GIANT_MIN_FOOTPRINT, GIANT_MAX_FOOTPRINT = 8.4, 10.2
-local GIANT_MAX_HEIGHT = 6.6
 local DRAGON_HEAD_ID = "dragon_head_vfx"
 local DRAGON_HEAD_MAX_PARTS = 19
 
@@ -377,9 +373,9 @@ return function(t: Context)
 
 	-- Data -----------------------------------------------------------------------------------------------------------
 
-	t.test("the 19 blueprints: 14 squishies, gift_box, dragon_head_vfx and the 3 giant pads", function()
+	t.test("the 16 blueprints: 14 squishies, gift_box and dragon_head_vfx (no giant pads since Phase 6)", function()
 		local expected = table.clone(SQUISHY_IDS)
-		for _, id in { "gift_box", DRAGON_HEAD_ID, "giant_jelly", "giant_marshmallow", "giant_cushion" } do
+		for _, id in { "gift_box", DRAGON_HEAD_ID } do
 			table.insert(expected, id)
 		end
 		table.sort(expected)
@@ -536,19 +532,9 @@ return function(t: Context)
 		end))
 	end)
 
-	t.test("L1: the longest bound is 1-4 studs at blueprint scale (giant pads: an 8.4-10.2-stud footprint)", function()
-		failIfAny(eachBuild(function(id, _mode, model, report)
+	t.test("L1: the longest bound is 1-4 studs at blueprint scale", function()
+		failIfAny(eachBuild(function(_id, _mode, model, report)
 			local size = measureSize(model)
-			if GIANT_IDS[id] then
-				-- The footprint is the width (X); the face stands out of the -Z side, so Z is a little deeper.
-				if size.X < GIANT_MIN_FOOTPRINT - EPS or size.X > GIANT_MAX_FOOTPRINT + EPS then
-					report(`footprint {size.X}, expected {GIANT_MIN_FOOTPRINT}-{GIANT_MAX_FOOTPRINT}`)
-				end
-				if not (size.Y > 0 and size.Y <= GIANT_MAX_HEIGHT + EPS and size.Z >= size.X) then
-					report(`bounds {size}`)
-				end
-				return
-			end
 			local longest = math.max(size.X, size.Y, size.Z)
 			if longest < MIN_BOUND or longest > MAX_BOUND or math.min(size.X, size.Y, size.Z) <= 0 then
 				report(`bounds {size}`)
@@ -576,45 +562,6 @@ return function(t: Context)
 			failIfAny(problems)
 		end
 	)
-
-	-- The lobby generator stands each giant pad's face on the side of its WorldLayout pad: the blueprint must have the
-	-- pad's footprint and rest top, and its face must sit on the lower half of the side, below the quilted tiles' top.
-	t.test("giant pad blueprints match WorldLayout.GiantPads and keep their faces low on the side", function()
-		local WorldLayout = t.requireShared("World/WorldLayout")
-		local problems: { string } = {}
-		local seen = 0
-		for _, key in WorldLayout.GiantPadKeys do
-			local pad = WorldLayout.giantPad(key)
-			local id = pad.blueprintId
-			if not GIANT_IDS[id] or Blueprints[id] == nil then
-				table.insert(problems, `{key}: blueprint {id} is missing`)
-				continue
-			end
-			seen += 1
-			local model = Builder.build(id, "Viewport")
-			local body = model:FindFirstChild("Body") :: BasePart
-			if not near(renderedSize(body), Vector3.new(pad.footprint, pad.restTop, pad.footprint), EPS) then
-				table.insert(problems, `{id}: Body {renderedSize(body)} is not the pad's footprint x rest top`)
-			end
-			local floor = -pad.restTop / 2
-			for _, spec in Blueprints[id].parts do
-				if spec.face == nil then
-					continue
-				end
-				local part = model:FindFirstChild(spec.name) :: BasePart
-				local height = part.CFrame.Position.Y - floor
-				if height <= 0 or height >= pad.restTop / 2 then
-					table.insert(problems, `{id}/{spec.name} is {height} above the floor, not on the lower half`)
-				end
-				if part.CFrame.Position.Z > -pad.footprint / 2 + 0.5 then
-					table.insert(problems, `{id}/{spec.name} is not on the front (-Z) side`)
-				end
-			end
-			model:Destroy()
-		end
-		expect.equal(seen, 3)
-		failIfAny(problems)
-	end)
 
 	t.test("L1: no lights, GUIs, scripts, decals or sounds", function()
 		failIfAny(eachBuild(function(_id, _mode, model, report)
