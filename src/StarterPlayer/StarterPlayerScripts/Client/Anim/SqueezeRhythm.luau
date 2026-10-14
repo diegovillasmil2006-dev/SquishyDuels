@@ -4,7 +4,7 @@
 -- have no rhythm.
 --
 -- * Streak: own squeezes at most rhythm.streakSeconds (2.1 s, its own value: it no longer depends on
---   Config.Squeeze.cycleSeconds, which is now the 1/12 s anti-autoclicker cap) apart continue it, so fast clicking
+--   Config.Squeeze.cycleSeconds, the paid-squeeze cap since Batch 1 #2) apart continue it, so fast clicking
 --   keeps one streak; a longer gap starts a new streak at 1. Any rejection other than squeeze.tooFast resets it
 --   (tooFast is the cap saying "not yet", not a stop).
 -- * Pitch: sfx.squish and sfx.squeezeRelease follow rhythm.pitchPattern {1.00, 1.03, 1.06, 1.03}, repeating from the

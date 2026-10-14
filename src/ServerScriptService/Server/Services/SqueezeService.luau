@@ -3,13 +3,13 @@
 -- §17.9 #1-#3, §17.10 (SqueezeResult, server-time nextAt), §12 #4-#7 and #16, §2.8, §2.9 (SD_SqueezeAt).
 -- SqueezeRequest() (no argument, spec 2026-10-11 §5: squeeze anywhere in the lobby) gathers the server's own facts
 -- and lets the pure Logic/SqueezeRules.decide run the §6.3 order (flood guard; profile ready; a living character; not
--- in a match; the tier; the anti-autoclicker cap; the earnings limit, off as shipped). The client sends nothing: the
+-- in a match; the tier; the paid-squeeze cap; the earnings limit, off as shipped). The client sends nothing: the
 -- pad comes from the server-side root position (SqueezeRules.padUnder, the "standing on it" test; a pad
 -- the stale-lobby check disabled or the lobby does not have counts as none), and off a pad the squeeze pays tier 1
 -- (base Coins and Grip, no pad bonus; every station is tier 1 since the giant pads went). The tier, the position,
--- the equipped squishy, the timing and every amount are the server's. Every click pays (2026-10-06): no squeeze timer;
--- the cap (Config.Squeeze: 12 at once, 12 a second on average) only stops macros: over it -> squeeze.tooFast with no
--- Coins and no Grip.
+-- the equipped squishy, the timing and every amount are the server's. No squeeze timer; squeezes pay up to the hold
+-- rhythm (Batch 1 #2; Config.Squeeze: 2 at once, then 1 per 0.45 s): over it -> squeeze.tooFast with no Coins, no Grip
+-- and no capsule push.
 --   * dropped (flood guard) -> nothing, no reply; a flood is logged once ([SD][abuse]) when SqueezeRules says so;
 --   * rejected -> SqueezeResult{ok = false, coins = 0, total, limit, reason, nextAt, grip = 0, gripTotal, doubled =
 --     false}; no token used before step 7 and nothing earned (squeeze.noCharacter, squeeze.inDuel, data.notReady);

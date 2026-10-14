@@ -75,11 +75,11 @@ local Economy = {
 	-- Daily rewards (§6.9). Server time only: dayIndex = floor(os.time() / 86400), reset at 00:00 UTC.
 	Daily = {
 		-- Streak days 1..7, then the cycle restarts at Day 1. Spec 2026-10-12 §9: counted in squeezes (the same
-		-- numbers), paid as squeezes × the squeeze value when claimed.
+		-- numbers), paid as squeezes × the squeeze value when claimed. Review quick win 2026-10-14 (NOT IN DESIGN: §6.9
+		-- had GraceDays = 0, a reset): a missed day only pauses the streak; the next claim pays the next day.
 		coinsByDay = { 100, 150, 200, 250, 300, 400, 500 },
 		freeBoxDay = 7, -- also grants the free Treat Box, opened immediately
 		freeBoxId = "treat", -- must be a free-only box in Boxes.luau
-		GraceDays = 0, -- a missed day restarts the streak at Day 1 (name as in DESIGN §6.9)
 	},
 
 	-- Daily quests (§6.8). Templates and rewards are in QuestDefs.luau.

@@ -7,13 +7,15 @@
 -- the Unix scale): the client clock is never used (§6.9); the UTC day is TimeUtil.utcDay(now).
 --   today(now)                       the UTC day index of a server time
 --   canClaim(daily, today)           today > daily.lastClaimDay (§2.8 DailyClaim)
---   isReset(daily, today)            a day was missed since the last claim: the next claim restarts at Day 1
---   nextDay(daily, today)            the streak day the next claim gives: streakDay % 7 + 1 the day after a claim,
---                                    Day 1 after a missed day or for a first claim; while claimed today, today's day
+--   welcomeBack(daily, today)        a day was missed since the last claim (review quick win 2026-10-14: that only
+--                                    pauses the streak; the panel and the join toast say daily.welcomeBack)
+--   nextDay(daily, today)            the streak day the next claim gives: streakDay % 7 + 1 after any claim, also
+--                                    after a missed day; Day 1 for a first claim; while claimed today, today's day
 --   countdownText(now)               "5:03:12" until the next 00:00 UTC (TimeUtil.formatCountdown)
---   model(daily, now, justReset?, capsules?)   the 7 day cards (daily.dayLabel, Coins, daily.treatBox on the free box
+--   model(daily, now, capsules?)     the 7 day cards (daily.dayLabel, Coins, daily.treatBox on the free box
 --                                    day; today highlighted with daily.today; claimed days with a check and
---                                    common.claimed), the claim state, the reset sentence (daily.streakReset) and "Come
+--                                    common.claimed), the claim state, the welcome back line (daily.welcomeBack with
+--                                    the waiting day, while it is claimable after a missed day) and "Come
 --                                    back in {time}". Phase 5 (progression spec 2026-10-12 §9): a day's Coins are its
 --                                    squeezes (coinsByDay) × the squeeze value of `capsules` (the player's capsules state;
 --                                    CapsuleMath.rewardCoins, as the server pays at claim time)
@@ -31,8 +33,7 @@
 --                                    day already claimed = Biscuit (recessed), else Frosting. Each look comes with its
 --                                    word on the card (Today, Treat Box, Claimed), never colour alone
 -- Readings: a daily value of the wrong shape counts as unknown (no claim offered, the sign stays as it is). The
--- free-box day and the squeezes per day come from Config.Economy.Daily (coinsByDay, freeBoxDay, GraceDays); GraceDays
--- widens the "next day" window (0 = DESIGN's rule: only lastClaimDay == today - 1 continues the streak).
+-- free-box day and the squeezes per day come from Config.Economy.Daily (coinsByDay, freeBoxDay).
 
 -- Services
 
@@ -76,8 +77,8 @@ export type Model = {
 	coins: number, -- the Coins of `nextDay`
 	treat: boolean, -- `nextDay` is the free Treat Box day
 	cards: { DayCard },
-	reset: boolean, -- show the reset sentence
-	resetText: string?, -- daily.streakReset
+	welcomeBack: boolean, -- back after a missed day and today is claimable: show the welcome back line
+	welcomeText: string?, -- daily.welcomeBack with the waiting day
 	countdownText: string?, -- "Come back in {time}" once today is claimed
 	secondsLeft: number, -- until the next 00:00 UTC
 }
@@ -88,7 +89,6 @@ local DAILY = Config.Economy.Daily
 local COINS_BY_DAY: { number } = DAILY.coinsByDay
 local DAYS = #COINS_BY_DAY
 local FREE_BOX_DAY: number = DAILY.freeBoxDay
-local GRACE_DAYS: number = if type(DAILY.GraceDays) == "number" then DAILY.GraceDays else 0
 
 -- Module table
 
@@ -127,13 +127,14 @@ function DailyFormat.canClaim(daily: unknown, today: number): boolean
 	return d ~= nil and finite(today) and today > d.lastClaimDay
 end
 
--- True when the next claim restarts the streak because a day was missed (a first-ever claim is not a reset).
-function DailyFormat.isReset(daily: unknown, today: number): boolean
+-- True when the player is back after a missed day (a first-ever claim is not one). A missed day only pauses the
+-- streak: the next claim still pays the next day.
+function DailyFormat.welcomeBack(daily: unknown, today: number): boolean
 	local d = valid(daily)
 	if d == nil or not finite(today) or d.lastClaimDay < 0 or today <= d.lastClaimDay then
 		return false
 	end
-	return today - d.lastClaimDay > 1 + GRACE_DAYS
+	return today - d.lastClaimDay > 1
 end
 
 function DailyFormat.nextDay(daily: unknown, today: number): number
@@ -144,7 +145,7 @@ function DailyFormat.nextDay(daily: unknown, today: number): number
 	if today <= d.lastClaimDay then
 		return clampDay(math.max(1, d.streakDay)) -- claimed today: today's card is the day just claimed
 	end
-	if d.lastClaimDay < 0 or DailyFormat.isReset(d, today) or d.streakDay < 1 then
+	if d.lastClaimDay < 0 or d.streakDay < 1 then
 		return 1
 	end
 	return clampDay(math.floor(d.streakDay) % DAYS + 1)
@@ -155,9 +156,8 @@ function DailyFormat.countdownText(now: number): string
 	return TimeUtil.formatCountdown(TimeUtil.secondsUntilNextUtcDay(now))
 end
 
--- The Daily panel. `justReset` (from this session's DailyClaim reply, streakReset) keeps the reset sentence after
--- the claim, so the player still reads why the streak is at Day 1.
-function DailyFormat.model(daily: unknown, now: number, justReset: boolean?, capsules: any?): Model
+-- The Daily panel.
+function DailyFormat.model(daily: unknown, now: number, capsules: any?): Model
 	local seconds = if finite(now) then TimeUtil.secondsUntilNextUtcDay(now) else 0
 	local value = CapsuleMath.squeezeValue(capsules)
 	local d = valid(daily)
@@ -165,8 +165,8 @@ function DailyFormat.model(daily: unknown, now: number, justReset: boolean?, cap
 	local known = d ~= nil and finite(now)
 	local can = known and DailyFormat.canClaim(d, today)
 	local day = DailyFormat.nextDay(d, today)
-	local reset = (can and DailyFormat.isReset(d, today)) or (known and not can and justReset == true)
-	-- Days already claimed in this cycle: before today's claim, the days before the next one (none after a reset);
+	local welcome = can and DailyFormat.welcomeBack(d, today)
+	-- Days already claimed in this cycle: before today's claim, the days before the next one;
 	-- once today is claimed, every day up to and including it.
 	local claimedUpTo = if not known then 0 elseif can then day - 1 else day
 	local cards: { DayCard } = {}
@@ -195,8 +195,8 @@ function DailyFormat.model(daily: unknown, now: number, justReset: boolean?, cap
 		coins = CapsuleMath.rewardCoins(COINS_BY_DAY[day], value),
 		treat = day == FREE_BOX_DAY,
 		cards = cards,
-		reset = reset,
-		resetText = if reset then Strings.daily.streakReset else nil,
+		welcomeBack = welcome,
+		welcomeText = if welcome then Strings.format(Strings.daily.welcomeBack, { n = day }) else nil,
 		countdownText = if known and not can
 			then Strings.format(Strings.daily.comeBack, { time = TimeUtil.formatCountdown(seconds) })
 			else nil,

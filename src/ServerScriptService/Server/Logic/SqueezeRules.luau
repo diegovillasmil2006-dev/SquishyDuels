@@ -20,20 +20,19 @@
 --     stale-lobby check disabled) when Config.Grip.Pads has its tier; off a pad, BASE_TIER (1: the Foam Mats row,
 --     base Coins and Grip). Since the giant pads went (build plan Phase 6) every station is tier 1, so every squeeze
 --     pays tier 1; the tier still goes to Grip's fail-closed check
---   7 the anti-autoclicker cap, a token bucket: capacity Squeeze.bucketCapacity (12), 1 token per cycleSeconds
---     (1/12 s), on os.clock(): 12 at once and 12 per second on average, so over any t seconds at most 12 + 12 × t
---     squeezes are accepted (right after a rest a macro can get up to 20 in one second, the flood guard's limit, then
---     12 a second)                                                                   else squeeze.tooFast
+--   7 the paid-squeeze cap, a token bucket: capacity Squeeze.bucketCapacity (2), 1 token per cycleSeconds
+--     (0.45 s = Grip.Hold.repeatSeconds), on os.clock(): 2 at once, then the hold rhythm, so over any t seconds at
+--     most 2 + t / 0.45 squeezes are accepted, however fast the requests come       else squeeze.tooFast
 --   8 earnings limit (SqueezeLimit with Economy.SqueezeLimit, on os.time()): paid when a point is there (always
 --     when the limit is disabled, as shipped since spec 2026-10-11 §5: the limit state is then left alone);
 --     coins = baseCoins when paid, else Economy.SqueezeLimit.emptyCoins (Phase 3: a pad adds no Coin bonus)
--- Every click pays (user decision, 2026-10-06): there is no squeeze timer; a human clicking never meets step 7 (the
--- client stays under the cap), so every press is accepted and pays (through the earnings limit). Only a macro gets
--- squeeze.tooFast (no Coins, no Grip; the client shows nothing for it), and above 20/s the flood guard drops it.
--- Reading (why a bucket, not a strict "12 in any second" window): the client keeps its own 12-in-any-second limit on
--- its clock, and network jitter bunches those presses on arrival; the bucket's spare tokens absorb that, where a strict
--- server window would answer honest presses with squeeze.tooFast. The price is one extra burst of at most 12 after a
--- rest, which the long-run 12 a second keeps small (the hourly earnings limit is off since spec 2026-10-11 §5).
+-- Batch 1 #2 (replaces "every click pays", 2026-10-06): squeezes pay up to the hold rhythm and no faster. There is
+-- no squeeze timer; a hold never meets step 7, and the client sends no more than the cap (a click over it only
+-- squishes on screen). A request over it (a macro, or rarely network jitter) gets squeeze.tooFast (no Coins, no Grip,
+-- no capsule push; the client shows nothing for it), and above 20/s the flood guard drops it.
+-- Reading (why a bucket of 2, not 1): network jitter bunches a hold's presses on arrival; the spare token absorbs
+-- that, where a bucket of 1 would answer honest holds with squeeze.tooFast. The price is one extra paid squeeze after
+-- a rest (the hourly earnings limit is off since spec 2026-10-11 §5).
 -- `nextAt` (every reply) is a server time: serverNow + max(0, 1 - tokens) × cycleSeconds (§17.10).
 --
 -- API:
@@ -188,8 +187,8 @@ function SqueezeRules.tokens(bucket: Bucket, now: number, cfg: SqueezeConfig?): 
 end
 
 -- Uses one token if there is one. Returns (accepted, newBucket); store the new bucket either way. A clock that went
--- backwards refills nothing and keeps the later time. A token short by float noise only (TOKEN_SLACK: with the 1/12 s
--- cycle, os.clock differences are not exact multiples of it) still counts as a token.
+-- backwards refills nothing and keeps the later time. A token short by float noise only (TOKEN_SLACK: os.clock
+-- differences are not exact multiples of cycleSeconds) still counts as a token.
 function SqueezeRules.accept(bucket: Bucket, now: number, cfg: SqueezeConfig?): (boolean, Bucket)
 	local tokens = SqueezeRules.tokens(bucket, now, cfg)
 	local at = math.max(bucket.at, now)

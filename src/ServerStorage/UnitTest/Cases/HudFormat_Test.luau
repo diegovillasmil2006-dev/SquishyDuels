@@ -772,26 +772,23 @@ return function(t: Context)
 		)
 	end)
 
-	t.test(
-		"worst-case texts: every onboarding step in every input and policy, the longest Grip lines, the tiles",
-		function()
-			local texts = HudFormat.worstCaseTexts()
-			expect.equal(#texts.onboarding, #Config.Onboarding.Steps * 3 * 2)
-			for _, entry in texts.onboarding do
-				expect.truthy(type(entry.text) == "string" and entry.text ~= "")
-			end
-			-- §11.8: the skip link is "Skip tutorial" (it ends the whole tutorial), never the short "Skip".
-			expect.equal(texts.skip, Strings.onboarding.skip)
-			expect.equal(texts.gotIt, Strings.common.gotIt)
-			expect.equal(texts.gripLevel, tostring(Config.Grip.maxLevel))
-			expect.truthy(string.find(texts.gripCompact, tostring(Config.Grip.maxLevel), 1, true) ~= nil)
-			expect.equal((texts :: any).gripBadge, nil) -- Phase 6: no Upgrade tab (the trainers are gone)
-			expect.truthy(#texts.coins >= #Strings.common.loading)
-			expect.equal(#texts.tiles, 5)
-			expect.equal(texts.tiles[1], Strings.hud.nav.squishies)
-			expect.equal(HudFormat.worstCaseTexts(), texts) -- computed once
+	t.test("worst-case texts: every onboarding step in every input, the longest Grip lines, the tiles", function()
+		local texts = HudFormat.worstCaseTexts()
+		expect.equal(#texts.onboarding, #Config.Onboarding.Steps * 3)
+		for _, entry in texts.onboarding do
+			expect.truthy(type(entry.text) == "string" and entry.text ~= "")
 		end
-	)
+		-- §11.8: the skip link is "Skip tutorial" (it ends the whole tutorial), never the short "Skip".
+		expect.equal(texts.skip, Strings.onboarding.skip)
+		expect.equal(texts.gotIt, Strings.common.gotIt)
+		expect.equal(texts.gripLevel, tostring(Config.Grip.maxLevel))
+		expect.truthy(string.find(texts.gripCompact, tostring(Config.Grip.maxLevel), 1, true) ~= nil)
+		expect.equal((texts :: any).gripBadge, nil) -- Phase 6: no Upgrade tab (the trainers are gone)
+		expect.truthy(#texts.coins >= #Strings.common.loading)
+		expect.equal(#texts.tiles, 5)
+		expect.equal(texts.tiles[1], Strings.hud.nav.squishies)
+		expect.equal(HudFormat.worstCaseTexts(), texts) -- computed once
+	end)
 
 	t.test("coach card (UI overhaul): a bottom-middle prompt, clear of the groups and the touch zones", function()
 		local canvas = Vector2.new(1422, 800)

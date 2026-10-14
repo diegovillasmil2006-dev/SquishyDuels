@@ -13,8 +13,7 @@
 --   OFFLINE / READONLY session (§3.13 "equip the starter") may equip only the starter (data.offline / data.readOnly
 --   for anything else); its profile is an in-memory view DataService never saves (§3.9), so the choice is written
 --   there directly. A READY session changes through DataService.mutate (the data port) and asks for a "soon" save.
---   Success sets profile.equipped and SD_Equipped, marks the state field and fires Equipped(p, id, oldId)
---   (PreferencesService completes the onboarding step "equip" for a non-starter, §11.8).
+--   Success sets profile.equipped and SD_Equipped, marks the state field and fires Equipped(p, id, oldId).
 -- * Loaded / status changes: the profile's choice (sanitized) becomes SD_Equipped; a ready profile whose choice is not
 --   owned or unknown is corrected to the starter (§3.3).
 -- * Duplicate policy hooks (§6.5): isDuplicate(p, id) and duplicateRefund(boxId) for the box flow (Part 7; a refund

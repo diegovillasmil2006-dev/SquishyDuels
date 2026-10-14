@@ -93,8 +93,8 @@ local Strings = {
 			direction = "Aim along the ground to use your ultimate.",
 		},
 		squeeze = {
-			-- Every click pays (2026-10-06): only the hidden anti-autoclicker cap (12 a second) sends this code, and
-			-- the client never shows it (kept so every server reason has a text, §2.10).
+			-- Batch 1 #2: only the paid-squeeze cap (the hold rhythm) sends this code, and the client never shows it
+			-- (kept so every server reason has a text, §2.10).
 			tooFast = "Squeezing too fast. Wait a moment.",
 			-- Reading (not in §2.10): §6.3 step 5, a squeeze from a player in a match (Matched through Returning).
 			inDuel = "You can squeeze again after the duel.",
@@ -680,7 +680,9 @@ local Strings = {
 		popup = "Daily reward ready",
 		dayLabel = "Day {n}",
 		comeBack = "Come back in {time}",
-		streakReset = "Your streak restarted at Day 1.",
+		-- Review quick win 2026-10-14: a missed day pauses the streak (never back to Day 1); the Daily panel and the join
+		-- toast greet a returning player with the day that is waiting ({n} = that day).
+		welcomeBack = "Welcome back! Day {n} is waiting.",
 		treatBox = "Treat Box", -- foam fix round 2: "Free Treat Box" wrapped onto a third line on the 84 px day card
 		-- Reading (Part 7; §11.6 "today highlighted" gives no text): the label on today's day card.
 		today = "Today",
@@ -699,16 +701,18 @@ local Strings = {
 		noSfx = "No sound effects yet",
 	},
 
-	-- Onboarding card (§11.8). Keyed by step id. {goal} = the box cost or the cheapest shop price from Config/Catalog.
+	-- Onboarding card (§11.8). Keyed by step id. {goal} = the cheapest shop price from the Catalog (Batch 1).
 	onboarding = {
 		welcome = "Welcome to Squishy Duels! Your first squishy is {starterName}.",
 		-- Spec 2026-10-11 §5 (squeeze anywhere); Phase 5: a pad no longer boosts a squeeze (capsules set its pay).
 		squeeze = "Squeeze squishies anywhere to earn Coins. {squeezeHint}.",
-		firstBox = "Open your first box at the Gift Box counter. {coins}/{goal} Coins",
-		firstBoxShop = "Get your first new squishy in the Shop. {coins}/{goal} Coins",
-		equip = "Equip your new squishy: open Squishies and press Equip.",
-		-- Lobby HUD spec 2026-10-11 §2: Inspect is in the Squishies screen now (no equipped card).
-		inspect = "Open Squishies and press Inspect to see it in 3D. Drag to spin it, then try Squeeze.",
+		-- Batch 1: the capsule step (the first capsule upgrade or unlock). It shows with about 10 Coins, so it waits
+		-- for the UP! marker (CapsuleController: the upgrade is affordable) instead of pointing at a locked button.
+		capsule = "Capsules in your base earn Coins! When Capsule 1 shows UP!, open it to Upgrade.",
+		firstBox = "Get your first new squishy in the Shop. {coins}/{goal} Coins",
+		-- Lobby HUD spec 2026-10-11 §2: Inspect is in the Squishies screen now (no equipped card). Batch 1: it follows
+		-- the capsule card, so it names the squishy.
+		inspect = "Open Squishies, press Inspect to see your squishy in 3D. Spin it, then try Squeeze.",
 		duel = "Ready? Step up to the Duel Gate to find an opponent.",
 		done = "You're all set! Daily rewards and quests are in the menu.",
 		skip = "Skip tutorial",
@@ -818,6 +822,8 @@ local Strings = {
 		-- Squishies, Shop and Inspect: what a squishy multiplies in a capsule (progression spec §3, §6).
 		power = "x{n} power",
 		powerNote = "Capsule Coins multiplier",
+		-- Batch 1 #7b: the bouncing marker over an own capsule whose upgrade the Coins cover now (CapsuleController).
+		up = "UP!",
 	},
 
 	-- Collection display (§7.6, §7.7).
@@ -849,8 +855,18 @@ local Strings = {
 		-- Next goal (GripMath.nextGoal, first that applies).
 		goalRank = "Next rank: {rank} at Grip Lv {level}",
 		goalMax = "Max level! You've reached Infinite Grip.",
+		-- Batch 1 #7a: a capsule buy comes first. {slot} = a capsule 1..4; {level} = its next level; {have} / {need} =
+		-- Format.coins of the Coins now (capped at the price) and the price.
+		goalCapsuleReady = "Upgrade Capsule {slot} · READY!",
+		goalUnlockReady = "Unlock Capsule {slot} · READY!",
+		goalCapsule = "Next: upgrade Capsule {slot} to Lv {level} · {have}/{need} Coins",
+		goalUnlock = "Next: unlock Capsule {slot} · {have}/{need} Coins",
 		-- Foam fix 2: the regular HUD card's goal line (one line in its info column); the panel and toasts keep the above.
 		hudGoalRank = "Next: {rank} at Lv {level}",
+		-- Batch 1 #7a: the card's short form of goalCapsule and goalUnlock. It names Coins, as the bar line above it
+		-- names Grip. One line (at most 30 characters) except a price of 100.00M .. 999.99M (31-32), which may take a
+		-- second line: the card's height plan holds it (HudFormat.worstCaseTexts gripGoal). The READY lines are short.
+		hudGoalCapsule = "Capsule {slot}: {have}/{need} Coins",
 		-- At a pad.
 		popup = "+{n} Grip",
 		popupDouble = "+{n} Grip (x{mult})",
@@ -880,10 +896,10 @@ local Strings = {
 		},
 		-- Grip panel (one scrolling column).
 		panelTitle = "Grip Training",
-		panelIntro = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
+		panelIntro = "Squeezing trains your Grip. Higher Grip opens new capsule tiers.",
 		restedHelp = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 		-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays.
-		limitNote = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
+		limitNote = "Squeezing earns Coins and trains Grip, anywhere in the lobby.",
 		duelNote = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 		-- Toasts (Notify codes, Types.GripNotifyCode). rankUp: {name} = the player's display name.
 		levelUp = "Grip Lv {level}!",

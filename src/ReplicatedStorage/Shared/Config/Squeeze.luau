@@ -5,13 +5,15 @@
 -- and hold-to-squeeze (its repeat rhythm, Grip.Hold.repeatSeconds) are in Config.Grip.
 -- The server model is Logic/SqueezeRules: a squeeze works anywhere in the lobby (spec 2026-10-11 §5); the pad that
 -- sets its tier is the one under the HumanoidRootPart (WorldLayout.stationUnder with padMargin / heightAbove below).
--- Every click pays (user decision, 2026-10-06): there is no squeeze timer. The bucket below is only a hidden
--- anti-autoclicker cap that a human never meets: 12 at once and 12 per second on average (after a rest a macro can get
--- up to 20 in one second, the flood guard's limit; over any t seconds at most 12 + 12 × t). The client stays under it
--- (at most 12 sends in any second) and shows nothing for squeeze.tooFast. Config.validate: bucketCapacity >= 1,
--- floodPerSecond >= the cap (capacity and 1 / cycleSeconds), Config.Net.Remotes.SqueezeRequest.rate = floodPerSecond
--- (its burst holds 5 s of the cap), floodLogDrops >= that burst - floodPerSecond, Grip.Hold.repeatSeconds >= the
--- release pop end of every rarity (Config.Anim.squeeze), padMargin in [0, 2] and heightAbove in (0, 8].
+-- Batch 1 #2 (replaces "every click pays", 2026-10-06): squeezes pay up to the hold-to-squeeze rhythm and no faster.
+-- The bucket below is the paid-squeeze cap: 2 at once, then 1 every cycleSeconds (= Grip.Hold.repeatSeconds, 0.45 s),
+-- so over any t seconds at most 2 + t / 0.45 squeezes pay (8,000 an hour, G3), whether held, clicked or sent by a
+-- macro. A request over it is squeeze.tooFast: no Coins, no Grip, no capsule push, and the client shows nothing for
+-- it. The client sends at most bucketCapacity requests inside bucketCapacity × cycleSeconds; a click over that still
+-- squishes on screen but is not sent. Config.validate: bucketCapacity >= 1, floodPerSecond >= the cap (capacity and
+-- 1 / cycleSeconds), Config.Net.Remotes.SqueezeRequest.rate = floodPerSecond (its burst holds 5 s of the cap),
+-- floodLogDrops >= that burst - floodPerSecond, Grip.Hold.repeatSeconds >= the release pop end of every rarity
+-- (Config.Anim.squeeze) and = cycleSeconds, padMargin in [0, 2] and heightAbove in (0, 8].
 
 local Squeeze = {
 	-- Other players' mat pulse only (SqueezeController): a root within stationRadius + radiusTolerance studs of a mat
@@ -22,11 +24,11 @@ local Squeeze = {
 	-- player with the same test). Build plan Phase 6: moved here from Config.Grip.Afk when slow training went.
 	padMargin = 1, -- studs beyond a pad's footprint that still count as "on it"
 	heightAbove = 6, -- root part height window above the pad top
-	bucketCapacity = 12, -- anti-autoclicker token bucket (os.clock()): at most 12 paid squeezes at once ...
-	cycleSeconds = 1 / 12, -- ... refilled 1 per cycle (12 a second on average); over it: squeeze.tooFast, no Coins/Grip
+	bucketCapacity = 2, -- paid-squeeze token bucket (os.clock()): 2 at once (absorbs network jitter on a hold) ...
+	cycleSeconds = 0.45, -- ... refilled 1 per cycle = Grip.Hold.repeatSeconds; over it: squeeze.tooFast, nothing paid
 	floodPerSecond = 20, -- requests above this are dropped silently (= Config.Net.Remotes.SqueezeRequest.rate)
-	-- More than this many drops ... (40: a network stall delivers an honest clicker's queued presses at once; 5 s of
-	-- them, the SqueezeRequest remote burst of 60, drop 40 here and are not logged as abuse.)
+	-- More than this many drops ... (40: a network stall delivers queued presses at once; the SqueezeRequest remote's
+	-- whole burst of 60 drops 40 here and is not logged as abuse.)
 	floodLogDrops = 40,
 	floodLogWindowSeconds = 10, -- ... inside this window is logged once
 	othersCullStuds = 60, -- clients ignore other players' SD_SqueezeAt beyond this distance

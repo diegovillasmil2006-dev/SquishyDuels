@@ -415,7 +415,6 @@ local CTA_CLOCK_SAMPLE = "88:88"
 local WORST_COINS = { 99_999, 999_999, 999_999_999 } -- the widest Format.coins texts of each form
 local WORST_ONBOARDING_COINS = 1e12
 local ONBOARDING_INPUTS: { OnboardingFormat.InputKind } = { "keyboard", "touch", "gamepad" }
-local ONBOARDING_POLICIES = { "eligible", "restricted" }
 local GRID_COLUMNS = 2
 -- Every layout the left side may take, in the order of preference (see the header). A column without the Grip card
 -- uses the same layouts with grip = "hidden" (candidates).
@@ -985,21 +984,21 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 	end
 	local onboarding: { OnboardingText } = {}
 	for _, step in OnboardingFormat.steps() do
-		for _, policy in ONBOARDING_POLICIES do
-			for _, input in ONBOARDING_INPUTS do
-				-- Coins above every goal: the text reads "{goal}/{goal}", its widest form.
-				local ctx: OnboardingFormat.Context = {
-					onboarding = nil,
-					ready = true,
-					policy = policy,
-					coins = WORST_ONBOARDING_COINS,
-					input = input :: OnboardingFormat.InputKind,
-				}
-				local line = OnboardingFormat.text(step, ctx)
-				table.insert(onboarding, { text = line, gotIt = step.id == "welcome" })
-			end
+		for _, input in ONBOARDING_INPUTS do
+			-- Coins above every goal: the text reads "{goal}/{goal}", its widest form.
+			local ctx: OnboardingFormat.Context = {
+				onboarding = nil,
+				ready = true,
+				coins = WORST_ONBOARDING_COINS,
+				input = input :: OnboardingFormat.InputKind,
+			}
+			local line = OnboardingFormat.text(step, ctx)
+			table.insert(onboarding, { text = line, gotIt = step.id == "welcome" })
 		end
 	end
+	-- Batch 1 #7a: the capsule goals as the regular card shows them, at the widest Coins text.
+	local capsuleSlot = #grip.Capsule.slotPrices
+	local worstCoins = Format.coins(WORST_COINS[#WORST_COINS])
 	local result: ColumnTexts = {
 		coins = longest(coinsTexts),
 		gripRank = rank,
@@ -1016,6 +1015,9 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 		gripGoal = longest({
 			text("grip.goalRank", { rank = rank, level = topRankLevel }),
 			text("grip.goalMax"),
+			text("grip.goalCapsuleReady", { slot = capsuleSlot }),
+			text("grip.goalUnlockReady", { slot = capsuleSlot }),
+			text("grip.hudGoalCapsule", { slot = capsuleSlot, have = worstCoins, need = worstCoins }),
 		}),
 		tiles = tiles,
 		onboarding = onboarding,

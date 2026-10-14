@@ -46,6 +46,10 @@
 --       2 the argument range, else "net.invalid"; 4 slot <= capsules.slots -> "replay" (already unlocked: nothing is
 --       charged; the slot count is the idempotency key); 5 slot ~= slots + 1 -> "capsule.notNext" (in order);
 --       7 expectedPrice ~= slotPrice(slot) -> "capsule.priceChanged"; else "buy" (cost = slotPrice(slot)).
+--   CapsuleMath.upgradeCost(capsules, slot, gripLevel) -> number?: Batch 1 #7: the Coins of the slot's next level when
+--       that capsule holds a known squishy (an empty one would earn nothing) and upgradeDecision would buy it at that
+--       price (open, below maxLevel, the Grip gate met), else nil. GripMath.nextGoal and CapsuleController's UP!
+--       marker read it.
 --
 -- Rounding is Luau's math.round (half away from zero); no CP or price of today's table is within 0.003 of a half, so
 -- float noise never moves one (CapsuleMath_Test checks every spec row).
@@ -247,6 +251,18 @@ function CapsuleMath.unlockDecision(capsules: Capsules?, slot: number, expectedP
 		return reject("capsule.priceChanged", cost)
 	end
 	return { kind = "buy", cost = cost }
+end
+
+function CapsuleMath.upgradeCost(capsules: Capsules?, slot: number, gripLevel: number): number?
+	local capsule = listOf(capsules)[slot]
+	if type(capsule) ~= "table" or CapsuleMath.squishyPower(capsule.squishyId) <= 0 then
+		return nil
+	end
+	local cost = CapsuleMath.price(capsule.level)
+	if cost == nil or CapsuleMath.upgradeDecision(capsules, slot, cost, gripLevel).kind ~= "buy" then
+		return nil
+	end
+	return cost
 end
 
 return table.freeze(CapsuleMath)

@@ -5,26 +5,27 @@
 -- * The "daily" modal (registered in init, so the HUD's Daily button and the SD_DailyStand prompt come alive, §7.6):
 --   7 day cards (Day n, its Coins (Phase 5: its squeezes × the `capsules` field's squeeze value, refreshed when the
 --   capsules change), "Treat Box" on day 7; today highlighted with "Today"; claimed days with a
---   check drawn from shapes plus "Claimed"), the reset sentence when a missed day restarts the streak, the Claim
+--   check drawn from shapes plus "Claimed"), the welcome back line after a missed day (daily.welcomeBack), the Claim
 --   button (Daily_ClaimButton), then "Come back in {time}" once today is claimed (refreshed every second while open).
 --   Locked states (§11.3): a profile that is not ready -> disabled with reason.data.notReady; a pending save -> disabled
 --   with reason.box.saving (§3.11: daily claims are blocked while a save is pending; reading, planner note 3).
 -- * Claim -> NetController.invokeAsync("DailyClaim") (one at a time; the button shows its spinner). On ok: the Coins fly
 --   from the button into the pill (HudController.flyCoins, only for amounts >= coinFlight.minAmount) and
---   common.coinsGain is toasted; the reply's streakReset keeps the reset sentence on the panel for the rest of that UTC
---   day. A failure toasts its reason ({time} filled with the countdown, e.g. daily.alreadyClaimed "Claimed! Come back
---   in {time}."). The day-7 Treat Box reveal is NOT opened here: BoxController plays it from StateDelta.unseenReveals
+--   common.coinsGain is toasted; the welcome back line is gone once today is claimed (nothing is waiting any more). A
+--   failure toasts its reason ({time} filled with the countdown, e.g. daily.alreadyClaimed "Claimed! Come back in
+--   {time}."). The day-7 Treat Box reveal is NOT opened here: BoxController plays it from StateDelta.unseenReveals
 --   (planner note 6).
 -- * "Daily reward ready" (daily.popup): one toast per session, the first time a full state arrives (or at start) with
---   a ready profile whose reward is claimable (§6.9 "appears once on join"). Reading: not during a duel (it waits for
---   the next full state then).
+--   a ready profile whose reward is claimable (§6.9 "appears once on join"); back after a missed day it reads
+--   daily.welcomeBack ("Welcome back! Day 4 is waiting.") instead. Reading: not during a duel (it waits for the next
+--   full state then).
 -- * The daily stand (§7.6, §7.7): WorldBinder.registerStand("SD_DailyStand") opens the screen. The sign's live line
 --   (the TextLabel named "Status" in the stand's station model, built empty) shows daily.ready / daily.wait {time},
 --   rewritten every second while the stand is streamed in; it is emptied while the state is unknown (a profile that
 --   did not load). The gift box's slow spin belongs to the feel pass (AmbientController spinBob), not to this module.
 -- Times are server times (workspace:GetServerTimeNow(), §6.9: the client clock is never used).
 -- Part 8 (layout pass, §11.2; the maths is pure in UI/DailyFormat and unit-tested at 667×375, 1280×720, 1920×1080 and
--- the largest text): the day cards and the reset sentence scroll in a body (DailyFormat.bodyHeight, the panel within
+-- the largest text): the day cards and the welcome back line scroll in a body (DailyFormat.bodyHeight, the panel within
 -- MAX_HEIGHT_SHARE of the screen) with Daily_ClaimButton and the countdown pinned under it; the cards grow with the
 -- player's text size (DailyFormat.cardWidth: 84 -> 122 base px at the largest) and wrap onto a second line when
 -- they do not fit; the panel's width follows the screen. Before, at 667×375 with the largest text, "Claimed" did not
@@ -33,7 +34,7 @@
 -- tab (the Daily tile's Sky blue) and Close straddling the top-right corner (the panel moves down by half of what hangs
 -- above it, as in Quests). The day cards are foam cards of one height (the tallest card's content): "Day n" in the
 -- display font, the coin, the Coins; their face and outline come from DailyFormat.cardLook (today Sky blue with the
--- thick outline, the Treat Box day Lilac, claimed days Biscuit), always with their words. The reset sentence sits in
+-- thick outline, the Treat Box day Lilac, claimed days Biscuit), always with their words. The welcome back line sits in
 -- an inset field; the countdown carries the clock icon.
 -- Foam fix batch (2026-10-09): the tab reads daily.panelTitle "Daily Reward" in title case like every other screen's
 -- tab (daily.title "DAILY REWARD" stays the world sign's); the body's list is top-aligned (a centred list taller than
@@ -151,13 +152,12 @@ local bodyLayout: UIListLayout? = nil
 local headerTab: Frame? = nil
 local cards: { CardView } = {}
 local resetLabel: TextLabel? = nil
-local resetBox: Frame? = nil -- the inset field around the reset sentence (foam UI)
+local resetBox: Frame? = nil -- the inset field around the welcome back line (foam UI)
 local countdownLabel: TextLabel? = nil
 local countdownRow: Frame? = nil -- the clock and the countdown (foam UI)
 local claimButton: Button.Button? = nil
 local closeButton: Button.Button? = nil
 local claiming = false
-local resetDay: number? = nil -- the UTC day whose claim reply said streakReset (keeps the sentence that day)
 local popupShown = false
 local started = false
 local lastSignText: string? = nil
@@ -176,9 +176,7 @@ local function savePending(): boolean
 end
 
 local function currentModel(): DailyFormat.Model
-	local now = serverNow()
-	local justReset = resetDay ~= nil and resetDay == DailyFormat.today(now)
-	return DailyFormat.model(dailyState(), now, justReset, StateController.get("capsules"))
+	return DailyFormat.model(dailyState(), serverNow(), StateController.get("capsules"))
 end
 
 -- Why the Claim button is disabled now, or nil.
@@ -226,11 +224,11 @@ local function refresh()
 	end
 	local reset = resetLabel
 	if reset then
-		reset.Visible = model.reset
-		reset.Text = model.resetText or ""
+		reset.Visible = model.welcomeBack
+		reset.Text = model.welcomeText or ""
 	end
 	if resetBox then
-		resetBox.Visible = model.reset
+		resetBox.Visible = model.welcomeBack
 	end
 	local countdown = countdownLabel
 	if countdown then
@@ -353,9 +351,6 @@ local function claim()
 		end
 		local data = if type(result.data) == "table" then result.data else {}
 		local coins = if type(data.coins) == "number" then math.floor(data.coins) else 0
-		if data.streakReset == true then
-			resetDay = DailyFormat.today(serverNow())
-		end
 		if coins > 0 then
 			if from then
 				HudController.flyCoins(from, coins)
@@ -377,10 +372,10 @@ local function maybePopup()
 	if popupShown or not started or not StateController.isProfileReady() or StateController.isLobbyLocked() then
 		return
 	end
-	local now = serverNow()
-	if DailyFormat.canClaim(dailyState(), DailyFormat.today(now)) then
+	local model = currentModel()
+	if model.canClaim then
 		popupShown = true
-		UIController.toast(Strings.daily.popup, INFO_KIND)
+		UIController.toast(model.welcomeText or Strings.daily.popup, INFO_KIND)
 	end
 end
 
@@ -567,7 +562,7 @@ local function build(parent: Instance): GuiObject
 	c:add(close)
 	closeButton = close
 
-	-- Part 8: the day cards and the reset sentence scroll when the screen is too short (fitBody); Claim and the
+	-- Part 8: the day cards and the welcome back line scroll when the screen is too short (fitBody); Claim and the
 	-- countdown stay under them.
 	local scroll: ScrollingFrame = Create("ScrollingFrame", {
 		Name = "Body",
@@ -610,7 +605,7 @@ local function build(parent: Instance): GuiObject
 		table.insert(cards, buildCard(row, card))
 	end
 
-	-- The reset sentence in an inset field.
+	-- The welcome back line (after a missed day) in an inset field.
 	local box = Theme.inset({
 		Name = "ResetBox",
 		Size = UDim2.fromScale(1, 0),
@@ -697,7 +692,7 @@ function DailyController.debugState(): { [string]: any }
 		today = DailyFormat.today(now),
 		canClaim = model.canClaim,
 		nextDay = model.nextDay,
-		reset = model.reset,
+		welcomeBack = model.welcomeBack,
 		claiming = claiming,
 		popupShown = popupShown,
 		sign = lastSignText,

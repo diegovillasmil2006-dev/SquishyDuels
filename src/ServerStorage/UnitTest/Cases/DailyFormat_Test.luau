@@ -3,8 +3,9 @@
 -- (ServerStorage.UnitTest). Pure: no instances.
 -- Contract (DESIGN §6.9, §7.7, §11.6):
 --   * the day changes at 00:00 UTC of the server time: 23:59:59 still counts as the claimed day, 00:00:00 is a new one;
---   * the day after a claim continues the streak (Day 7 wraps to Day 1 without a reset); a missed day restarts it at
---     Day 1 with the one-sentence reset rule; a first claim is Day 1 without that sentence;
+--   * the day after a claim continues the streak (Day 7 wraps to Day 1); a missed day only pauses it (review quick win
+--     2026-10-14): the next claim pays the next day and the panel greets the player with daily.welcomeBack; a first
+--     claim is Day 1 without that line;
 --   * 7 day cards with "Day n", the Coins of that day and the free Treat Box on day 7; today highlighted; the days of
 --     the cycle already claimed carry "Claimed"; Phase 5 (progression spec 2026-10-12 §9): a day's Coins are its
 --     squeezes (Config.Economy.Daily.coinsByDay) × the player's squeeze value (CapsuleMath.squeezeValue of the
@@ -76,43 +77,44 @@ return function(t: Context)
 		local after = DailyFormat.model(claimed, NEXT_DAY)
 		expect.equal(after.canClaim, true)
 		expect.equal(after.nextDay, 4)
-		expect.equal(after.reset, false)
+		expect.equal(after.welcomeBack, false)
 		expect.equal(DailyFormat.signText(claimed, LAST_SECOND), Strings.format(Strings.daily.wait, { time = "0:01" }))
 		expect.equal(DailyFormat.signText(claimed, NEXT_DAY), Strings.daily.ready)
 	end)
 
-	t.test("streak: the next day continues, Day 7 wraps to Day 1 without a reset", function()
+	t.test("streak: the next day continues, Day 7 wraps to Day 1", function()
 		expect.equal(DailyFormat.nextDay(daily(D - 1, 3), D), 4)
-		expect.equal(DailyFormat.isReset(daily(D - 1, 3), D), false)
+		expect.equal(DailyFormat.welcomeBack(daily(D - 1, 3), D), false)
 		expect.equal(DailyFormat.nextDay(daily(D - 1, DAYS), D), 1)
-		expect.equal(DailyFormat.isReset(daily(D - 1, DAYS), D), false)
-		-- A first claim ever (the profile defaults): Day 1, no reset sentence.
+		expect.equal(DailyFormat.welcomeBack(daily(D - 1, DAYS), D), false)
+		-- A first claim ever (the profile defaults): Day 1, no welcome back line.
 		local first = DailyFormat.model(daily(-1, 0), NOON)
 		expect.equal(first.canClaim, true)
 		expect.equal(first.nextDay, 1)
-		expect.equal(first.reset, false)
-		expect.equal(first.resetText, nil)
+		expect.equal(first.welcomeBack, false)
+		expect.equal(first.welcomeText, nil)
 		expect.deepEqual(claimedDays(first), {})
 		expect.deepEqual(todayDays(first), { 1 })
 	end)
 
-	t.test("reset: a missed day restarts at Day 1 with the one-sentence rule", function()
+	t.test("welcome back: a missed day pauses the streak; the panel names the day that is waiting", function()
 		local missed = daily(D - 2, 5)
-		expect.equal(DailyFormat.isReset(missed, D), true)
-		expect.equal(DailyFormat.nextDay(missed, D), 1)
+		expect.equal(DailyFormat.welcomeBack(missed, D), true)
+		expect.equal(DailyFormat.nextDay(missed, D), 6)
 		local model = DailyFormat.model(missed, NOON)
 		expect.equal(model.canClaim, true)
-		expect.equal(model.reset, true)
-		expect.equal(model.resetText, Strings.daily.streakReset)
-		expect.deepEqual(claimedDays(model), {})
-		expect.deepEqual(todayDays(model), { 1 })
-		expect.equal(model.coins, DAILY.coinsByDay[1] * VALUE)
-		-- After the claim the saved state no longer shows the miss: the reply's streakReset keeps the sentence.
-		local claimed = daily(D, 1)
-		expect.equal(DailyFormat.model(claimed, NOON).reset, false)
-		local kept = DailyFormat.model(claimed, NOON, true)
-		expect.equal(kept.reset, true)
-		expect.equal(kept.resetText, Strings.daily.streakReset)
+		expect.equal(model.welcomeBack, true)
+		expect.equal(model.welcomeText, Strings.format(Strings.daily.welcomeBack, { n = 6 }))
+		expect.deepEqual(claimedDays(model), { 1, 2, 3, 4, 5 })
+		expect.deepEqual(todayDays(model), { 6 })
+		expect.equal(model.coins, DAILY.coinsByDay[6] * VALUE)
+		-- A long break pauses too; after Day 7 a new cycle starts at Day 1.
+		expect.equal(DailyFormat.nextDay(daily(D - 40, 2), D), 3)
+		expect.equal(DailyFormat.nextDay(daily(D - 3, DAYS), D), 1)
+		-- Once today is claimed nothing is waiting any more: no line.
+		local claimed = DailyFormat.model(daily(D, 6), NOON)
+		expect.equal(claimed.welcomeBack, false)
+		expect.equal(claimed.welcomeText, nil)
 	end)
 
 	t.test("day cards: labels, Coins, the day 7 Treat Box, today highlighted, claimed days", function()
@@ -157,7 +159,7 @@ return function(t: Context)
 				{ slots = 2, list = { { level = 1, squishyId = "kitty_bread" }, { level = 11, squishyId = "butter" } } }
 			local value = CapsuleMath.squeezeValue(capsules)
 			expect.equal(value, 272)
-			local model = DailyFormat.model(daily(D - 1, 3), NOON, nil, capsules)
+			local model = DailyFormat.model(daily(D - 1, 3), NOON, capsules)
 			for n, card in model.cards do
 				expect.equal(card.coins, DAILY.coinsByDay[n] * value)
 				expect.equal(
@@ -305,7 +307,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"layout (Part 8): the panel stays within 86% of the screen, the cards and the reset sentence scroll",
+		"layout (Part 8): the panel stays within 86% of the screen, the cards and the welcome back line scroll",
 		function()
 			for _, actual in SCREENS do
 				local screen = actual / Layout.uiScale(actual.Y)
@@ -324,7 +326,7 @@ return function(t: Context)
 					-- with Claimed, 2 px between them.
 					local cardHeight = 6 + 12 + 8 * line + 22 + 18 + 6 * 2
 					for _, rows in { 1, 2 } do
-						-- The reset sentence (2 lines) in its inset field (12 px padding).
+						-- The welcome back line (2 lines) in its inset field (12 px padding).
 						local reset = 2 * 1.25 * UI.TextSize.Body * textScale + 24
 						local content = rows * cardHeight + (rows - 1) * GAP + 12 + reset + 6
 						local body = DailyFormat.bodyHeight(screen.Y, content, chrome, SHARE, UI.Touch.minTarget)

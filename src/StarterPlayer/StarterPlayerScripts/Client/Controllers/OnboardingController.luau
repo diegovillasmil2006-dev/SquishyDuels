@@ -12,9 +12,9 @@
 --   onboarding.skipped). Both act on the card at once (the saved flags follow in a StateDelta). Hidden during duels
 --   (StateController lobby lock; the HUD column hides too), with its guidance.
 -- * Guidance: a waypoint (UI/Waypoint, hidden within Config.Onboarding.waypointHideStuds) to the step's
---   WorldLayout.waypoint target ("giftBox" or "shop", "duel"; the squeeze step has none since spec 2026-10-11 §5), or a
---   pulsing Lemon ring on a HUD button (HudController.element("squishies"): the equip and inspect steps; lobby HUD,
---   spec 2026-10-11: no dock, so Inspect is reached through the Squishies list). Reading: the ring's stroke fades in
+--   WorldLayout.waypoint target ("shop", "duel"; the squeeze and capsule steps have none since spec 2026-10-11 §5 /
+--   Batch 1), or a pulsing Lemon ring on a HUD button (HudController.element("squishies"): the inspect step; lobby
+--   HUD, spec 2026-10-11: no dock, so Inspect is reached through the Squishies list). Reading: the ring's stroke fades in
 --   and out once per PULSE_SECONDS (1 s, under §9.12's 3 Hz and the 1 Hz skeleton pulse); static under ReducedMotion.
 --   The ring is our own frame in SD_Hud that follows the element's box (hidden with the HUD or the element), so
 --   HudController needs no pulse API.
@@ -25,8 +25,9 @@
 -- * "onboarding" is a non-modal screen registered in init, so Settings shows "Replay tutorial", which opens it with
 --   {replay = true}: a local replay from the first step that ignores and never changes the saved flags (no
 --   OnboardingStep is sent). A replay step completes on the local signs of the same events: Got it (welcome), an
---   accepted SqueezeResult (squeeze), stats.boxesOpened rising or a new owned squishy (firstBox), an equip of a
---   non-starter (equip), Inspect opening (inspect), the queue turning Searching (duel). Skip ends the replay.
+--   accepted SqueezeResult (squeeze), stats.boxesOpened rising or a new owned squishy (firstBox), a capsule level or
+--   slot rising (capsule, OnboardingFormat.capsuleBought), Inspect opening (inspect), the queue turning Searching
+--   (duel). Skip ends the replay.
 -- * Done: when a run that showed a card completes (not by skipping), the done toast (Config.Onboarding.doneToastKey)
 --   shows once for that run. A full state (a profile recovered after an OFFLINE start, §3.13) is a new baseline: no
 --   toast for what it replaced.
@@ -50,7 +51,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
@@ -99,7 +99,7 @@ local PULSE_NAME = "SD_OnboardingPulse"
 -- UI overhaul: a new step's pop (the toast pop's numbers).
 local POP_FROM = Config.UI.motion.toast.popFrom
 local POP_SPEC: Tweens.Spec = { ms = 260, style = Enum.EasingStyle.Back, direction = Enum.EasingDirection.Out }
-local STATE_FIELDS = { "onboarding", "dataStatus", "policy", "coins" }
+local STATE_FIELDS = { "onboarding", "dataStatus", "coins" }
 
 -- Module table
 
@@ -164,7 +164,6 @@ local function context(): OnboardingFormat.Context
 		onboarding = effectiveState(),
 		ready = StateController.isProfileReady(),
 		replay = replay,
-		policy = StateController.get("policy"),
 		coins = StateController.coins(),
 		input = inputKind(),
 		unavailable = unavailable(),
@@ -617,9 +616,9 @@ function OnboardingController.init()
 			end
 		end
 	end))
-	c:add(StateController.changed("equipped"):connect(function(value: any)
-		if replay and not StateController.isApplyingFull() and value ~= Catalog.starterId() then
-			markReplay("equip")
+	c:add(StateController.changed("capsules"):connect(function(value: any, old: any)
+		if replay and not StateController.isApplyingFull() and OnboardingFormat.capsuleBought(value, old) then
+			markReplay("capsule")
 		end
 	end))
 	c:add(StateController.QueueChanged:connect(function(new: StateController.QueueView, old: StateController.QueueView)

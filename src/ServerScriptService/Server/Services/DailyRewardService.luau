@@ -8,15 +8,14 @@
 --      daily code for it; "Saving your collection…" is the sentence the box and shop use too);
 --   3. DailyLogic.canClaim(daily, today), else daily.alreadyClaimed (the client shows "Claimed! Come back in {time}"
 --      with its own countdown to 00:00 UTC);
---   4. DailyLogic.nextStreak -> the streak day and whether a missed day restarted it (Notify daily.streakReset, and
---      streakReset = true in the reply);
+--   4. DailyLogic.nextStreak -> the streak day this claim pays (a missed day only pauses the streak);
 --   5. in one step with nothing yielding: the daily record {lastClaimDay = today, streakDay, totalClaims + 1} through
 --      DataService.mutate, EconomyService.grantCoins(EconomyService.rewardCoins(profile, coinsByDay[streak]), "daily")
 --      (the day's reward counted in squeezes × the squeeze value now, spec 2026-10-12 §9) and, on the free box day,
 --      BoxService.grantFree(p, Economy.Daily.freeBoxId, "daily:<today>") (the Treat Box: no cost, no policy check,
 --      appends boxLog seen = false; its key makes it impossible to repeat, §3.4);
 --   6. markDirty("daily"), then ONE awaited DataService.saveNowAsync (it carries the Coins and the Treat Box too);
---   7. reply ok Types.DailyClaimResult {streakDay, coins, treat, streakReset, treatRequestId}; `treat` is the Treat
+--   7. reply ok Types.DailyClaimResult {streakDay, coins, treat, treatRequestId}; `treat` is the Treat
 --      Box result with savePending = the save failed (the reveal plays at once; AckReveal uses treatRequestId).
 -- Idempotent by daily.lastClaimDay: a second claim the same day is refused (daily.alreadyClaimed) before anything
 -- changes. Reading: DailyClaim has no oneInFlight; a second call while the first awaits its save already sees today's
@@ -47,7 +46,6 @@ local StateService = require(script.Parent.StateService)
 export type Deps = {
 	data: StateService.DataPort,
 	markDirty: (player: any, field: string) -> (),
-	notify: (player: any, code: string, args: Types.NotifyArgs?, kind: Types.NotifyKind?) -> (),
 	grantCoins: (player: any, amount: number, reason: string) -> (number, string?),
 	-- BoxService.grantFree: non-yielding, idempotent by requestId; nil when nothing was granted.
 	grantFree: (player: any, boxId: string, requestId: string) -> Types.BoxResult?,
@@ -64,7 +62,6 @@ export type Status = {
 	totalClaims: number,
 	canClaim: boolean,
 	nextStreakDay: number, -- the day the next claim pays (today's day while claimed today)
-	willReset: boolean, -- the next claim restarts the streak at Day 1
 	coins: number, -- the Coins of nextStreakDay (its squeezes × the squeeze value now)
 	freeBox: boolean, -- nextStreakDay is the free Treat Box day
 	secondsUntilNext: number, -- until the next 00:00 UTC
@@ -80,7 +77,6 @@ local TREAT_KEY_PREFIX = "daily:"
 local CODE_NOT_READY = "data.notReady"
 local CODE_SAVING = "box.saving"
 local CODE_ALREADY = "daily.alreadyClaimed"
-local NOTICE_RESET = "daily.streakReset"
 
 -- `require` with a runtime-chosen ModuleScript; the analyzer cannot resolve these paths statically.
 local dynamicRequire = require :: (ModuleScript) -> any
@@ -118,9 +114,6 @@ local function defaultDeps(): Deps
 		data = StateService.dataPort(),
 		markDirty = function(player: any, field: string)
 			StateService.markDirty(player, field)
-		end,
-		notify = function(player: any, code: string, args: Types.NotifyArgs?, kind: Types.NotifyKind?)
-			NetService.notify(player, code, args, kind)
 		end,
 		grantCoins = function(player: any, amount: number, reason: string): (number, string?)
 			return EconomyService.grantCoins(player, amount, reason)
@@ -173,7 +166,7 @@ function DailyRewardService.status(player: any): Status
 	local profile = deps.data.getProfile(player)
 	local daily = dailyOf(profile, today)
 	local canClaim = ready and (DailyLogic.canClaim(daily, today))
-	local streak, reset = DailyLogic.nextStreak(daily, today)
+	local streak = DailyLogic.nextStreak(daily, today)
 	local reward = DailyLogic.reward(streak)
 	return {
 		ready = ready,
@@ -183,7 +176,6 @@ function DailyRewardService.status(player: any): Status
 		totalClaims = daily.totalClaims,
 		canClaim = canClaim,
 		nextStreakDay = streak,
-		willReset = reset,
 		coins = EconomyService.rewardCoins(profile, reward.coins),
 		freeBox = reward.freeBox,
 		secondsUntilNext = DailyLogic.secondsUntilNext(now),
@@ -209,7 +201,7 @@ function DailyRewardService.claim(player: any): any
 		return NetService.err(CODE_ALREADY)
 	end
 	-- 4. the streak day this claim pays
-	local streak, reset = DailyLogic.nextStreak(before, today)
+	local streak = DailyLogic.nextStreak(before, today)
 	local reward = DailyLogic.reward(streak)
 	-- 5. the daily record, the Coins and the Treat Box, with nothing yielding in between
 	local ok, recorded = data.mutate(player, function(profile: any): boolean
@@ -254,9 +246,6 @@ function DailyRewardService.claim(player: any): any
 		end
 	end
 	deps.markDirty(player, FIELD)
-	if reset then
-		deps.notify(player, NOTICE_RESET, nil, "info")
-	end
 	log:info(`user {player.UserId} claimed daily day {today}: streak {streak}, {coins} Coins, treat {treat ~= nil}`)
 	-- 6. one awaited "now" save carries the record, the Coins and the Treat Box (§3.4).
 	local saved = deps.saveNow(player)
@@ -268,7 +257,6 @@ function DailyRewardService.claim(player: any): any
 		streakDay = streak,
 		coins = coins,
 		treat = treat,
-		streakReset = reset,
 		treatRequestId = treatRequestId,
 	}
 	return NetService.ok(claimResult)

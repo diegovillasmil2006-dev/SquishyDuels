@@ -12,9 +12,10 @@
 --   remote for onboarding.skipped): the id Config.Onboarding.skipStepId ("skip") sets onboarding.skipped = true
 --   instead of marking a step (skip(p): idempotent, a "soon" save, never Coins, the done steps are kept so a later
 --   "Replay tutorial" stays local). Server-observed steps are recorded through markStep(p, id) by the
---   wiring below: squeeze (SqueezeService.Squeezed, first accepted squeeze), firstBox (EconomyService.SquishyGranted
---   from a box or the shop), equip (InventoryService.Equipped with a non-starter), duel (QueueService.Joined, when that
---   signal exists). Recording is idempotent and never pays Coins (§11.8).
+--   wiring below: squeeze (SqueezeService.Squeezed, first accepted squeeze), capsule (EconomyService.CoinsChanged: the
+--   first spend with reason "capsule", a capsule upgrade or unlock; Batch 1), firstBox (EconomyService.SquishyGranted
+--   from a box or the shop), duel (QueueService.Joined, when that signal exists). Recording is idempotent and never
+--   pays Coins (§11.8).
 -- * A READY session changes through DataService.mutate (the data port) and asks for a "soon" save. An OFFLINE /
 --   READONLY session keeps the change in its in-memory view only (DataService never saves it, §3.9); a loading one has
 --   no profile yet and ignores the call.
@@ -29,13 +30,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local Types = require(Shared.Types)
 local Validate = require(Shared.Util.Validate)
 local EconomyService = require(script.Parent.EconomyService)
-local InventoryService = require(script.Parent.InventoryService)
 local NetService = require(script.Parent.NetService)
 local StateService = require(script.Parent.StateService)
 
@@ -56,7 +55,8 @@ local STATUS_READONLY = "readonly"
 local SAVE_SOON = "soon"
 local STEP_SQUEEZE = "squeeze"
 local STEP_FIRST_BOX = "firstBox"
-local STEP_EQUIP = "equip"
+local STEP_CAPSULE = "capsule"
+local CAPSULE_REASON = "capsule" -- CapsuleService's Coin reason: its spends are the capsule upgrades and unlocks
 local STEP_DUEL = "duel"
 local FIRST_BOX_SOURCES: { [string]: boolean } = { box = true, shop = true }
 local SETTING_KEYS = { "music", "sfx", "cameraShake", "showTips" }
@@ -270,10 +270,11 @@ end
 
 -- Server-observed onboarding steps (§11.8), wired in init.
 
--- InventoryService.Equipped: the first equip of a non-starter completes "equip".
-function PreferencesService.onEquipped(player: any, id: string)
-	if id ~= Catalog.starterId() then
-		PreferencesService.markStep(player, STEP_EQUIP)
+-- EconomyService.CoinsChanged: the first capsule upgrade or unlock (a spend, delta < 0, with reason "capsule"; a
+-- capsule's pay has the same reason with delta > 0) completes "capsule" (Batch 1).
+function PreferencesService.onCoinsChanged(player: any, _coins: number, delta: number, reason: string)
+	if reason == CAPSULE_REASON and delta < 0 then
+		PreferencesService.markStep(player, STEP_CAPSULE)
 	end
 end
 
@@ -304,7 +305,7 @@ function PreferencesService.init()
 	NetService.on(REMOTE_STEP, function(player: Player, stepId: any)
 		PreferencesService.clientStep(player, stepId)
 	end)
-	InventoryService.Equipped:connect(PreferencesService.onEquipped)
+	EconomyService.CoinsChanged:connect(PreferencesService.onCoinsChanged)
 	EconomyService.SquishyGranted:connect(PreferencesService.onSquishyGranted)
 	local SqueezeService = optionalModule("SqueezeService")
 	if SqueezeService and not connect(SqueezeService.Squeezed, PreferencesService.onSqueezed) then

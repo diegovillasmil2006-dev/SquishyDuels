@@ -15,8 +15,9 @@
 --   * a Dragon Rush lane and an Epic ultimate's projectile are never caught;
 --   * crushSeconds (1.02) later the burst: the thrower loses 1 life (a hit by the catcher, kind "catch", force: even
 --     inside invulnerability), Hit fires, CatchEvent "burst" carries the lives; the match ending meanwhile: no life;
---   * the press: cooldownSeconds (0.75), busy while crushing (until handsBackSeconds after the catch), only in a live
---     duel; it drops a charge record; no throw while the hands are open or crushing (throw.busy).
+--   * the press: cooldownSeconds (1.3) after a missed catch, busy while crushing (until handsBackSeconds after a catch:
+--     its own wait, unchanged), only in a live duel; it drops a charge record; no throw while the hands are open or
+--     crushing (throw.busy).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -487,7 +488,11 @@ return function(t: Context)
 		ok, reason = CombatService.requestCatch(2, clock.now())
 		expect.falsy(ok)
 		expect.equal(reason, "catch.cooldown")
-		runFor(0.3)
+		runFor(0.5) -- 1.0 s after a missed catch: the old 0.75 s wait would have let this in
+		ok, reason = CombatService.requestCatch(2, clock.now())
+		expect.falsy(ok)
+		expect.equal(reason, "catch.cooldown")
+		runFor(CATCH.cooldownSeconds - 1.0 + 0.05)
 		expect.truthy((CombatService.requestCatch(2, clock.now())))
 		local _, reasonUnknown = CombatService.requestCatch(99, clock.now())
 		expect.equal(reasonUnknown, "catch.context")
@@ -502,7 +507,7 @@ return function(t: Context)
 		runFor(0.3)
 		local event = catchEvents("caught")[1]
 		expect.truthy(event ~= nil)
-		runUntil(event.at + CATCH.windowSeconds + 0.4) -- past any cooldown, still crushing
+		runUntil(event.at + CATCH.cooldownSeconds + 0.05) -- past the cooldown, still crushing
 		local ok, reason = CombatService.requestCatch(2, clock.now())
 		expect.falsy(ok)
 		expect.equal(reason, "catch.busy")
@@ -511,6 +516,19 @@ return function(t: Context)
 		expect.equal(why, "throw.busy")
 		runUntil(b.handsBackAt + 0.05)
 		expect.truthy((throwAt(2, 2, A_ROOT)))
+	end)
+
+	t.test("a catch keeps its own wait: the next catch opens as soon as the hands are back", function()
+		setup()
+		local _, b = caughtThrow(0.1)
+		runFor(0.3)
+		expect.equal(#catchEvents("caught"), 1)
+		runUntil(b.handsBackAt - 0.05)
+		local ok, reason = CombatService.requestCatch(2, clock.now())
+		expect.falsy(ok)
+		expect.equal(reason, "catch.busy")
+		runUntil(b.handsBackAt + 0.01)
+		expect.truthy((CombatService.requestCatch(2, clock.now())))
 	end)
 
 	t.test("an open window keeps the hands busy (throw.busy) and a press drops the charge record", function()

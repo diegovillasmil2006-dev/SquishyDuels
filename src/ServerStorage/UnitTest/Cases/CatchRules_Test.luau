@@ -6,7 +6,8 @@
 --   * clientTime must be a server timestamp (net.invalid, a violation);
 --   * a registered duel in Active or SuddenDeath, alive with a root (catch.context);
 --   * not crushing (until busyUntil), not rooted, not in a throw windup (catch.busy);
---   * cooldownSeconds (0.75) from the last accepted press, with cooldownToleranceSeconds of slack (catch.cooldown);
+--   * cooldownSeconds (1.3, review quick win 2026-10-14) from the last accepted press, with cooldownToleranceSeconds of
+--     slack (catch.cooldown); a real catch keeps its own wait (the lag-compensated rule below);
 --   * accepted: the window opens at the lag-compensated press (now - lag, as a ThrowRequest's) for windowSeconds (0.42);
 --   * the catch test: the first point of a sub-step within radiusStuds (2.7 m) of the centre (root + 1.5) while still
 --     moving toward it, inside the part of the sub-step the window covers; a throw going away is never caught.
@@ -63,13 +64,20 @@ return function(t: Context)
 		end
 	end
 
-	t.test("the design's numbers: 0.42 s open, 0.75 s cooldown, 2.7 m (≈ 9.6 studs), 1.02 s crush", function()
+	t.test("the numbers: 0.42 s open, 1.3 s after a miss, 2.7 m (≈ 9.6 studs), 1.02 s crush", function()
 		expect.equal(CATCH.windowSeconds, 0.42) -- design: html:532
-		expect.equal(CATCH.cooldownSeconds, 0.75) -- design: html:344
+		expect.equal(CATCH.cooldownSeconds, 1.3) -- review quick win 2026-10-14 (design: html:344 has 0.75)
 		expect.near(R, 2.7 / 0.28, 1e-9) -- design: html:614
 		expect.equal(CATCH.crushSeconds, 1.02) -- design: html:554
 		local entry = Config.Net.Remotes.CatchRequest
 		expect.truthy(entry.rate > 0 and entry.burst >= 1)
+		-- A real catch keeps its own wait: the client gate (unlagged) and the server gate (the press lag-compensated by
+		-- up to Lag.maxCompensationSeconds) both open by the time the hands are back.
+		expect.truthy(CATCH.cooldownSeconds <= CATCH.handsBackSeconds)
+		expect.truthy(
+			CATCH.cooldownSeconds - CATCH.cooldownToleranceSeconds
+				<= CATCH.handsBackSeconds - Config.Combat.Lag.maxCompensationSeconds
+		)
 	end)
 
 	t.test("accepted: the window opens at the lag-compensated press for windowSeconds", function()
@@ -116,12 +124,13 @@ return function(t: Context)
 		expectRefused(validate(NOW, state({ windup = true })), "catch.busy")
 	end)
 
-	t.test("catch.cooldown: 0.75 s from the last accepted press, with the tolerance", function()
-		local tolerance = CATCH.cooldownToleranceSeconds
+	t.test("catch.cooldown: 1.3 s from the last accepted press (a missed catch), with the tolerance", function()
+		local cooldown, tolerance = CATCH.cooldownSeconds, CATCH.cooldownToleranceSeconds
 		expectRefused(validate(NOW, state({ lastPressAt = NOW - 0.5 })), "catch.cooldown")
-		expectRefused(validate(NOW, state({ lastPressAt = NOW - (0.75 - tolerance) + 0.01 })), "catch.cooldown")
-		expect.truthy(validate(NOW, state({ lastPressAt = NOW - (0.75 - tolerance) - 1e-3 })).ok)
-		expect.truthy(validate(NOW, state({ lastPressAt = NOW - 0.75 })).ok)
+		expectRefused(validate(NOW, state({ lastPressAt = NOW - 1.0 })), "catch.cooldown") -- the old 0.75 s let this in
+		expectRefused(validate(NOW, state({ lastPressAt = NOW - (cooldown - tolerance) + 0.01 })), "catch.cooldown")
+		expect.truthy(validate(NOW, state({ lastPressAt = NOW - (cooldown - tolerance) - 1e-3 })).ok)
+		expect.truthy(validate(NOW, state({ lastPressAt = NOW - cooldown })).ok)
 	end)
 
 	t.test("the order: a bad payload before the context, the context before busy, busy before the cooldown", function()

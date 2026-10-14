@@ -6,15 +6,16 @@
 -- second, broken shares, shell budgets and wax rules, and a wax switch (Config.Wax.enabled) that is not a boolean.
 -- Contract (DESIGN §2.2, §0.3, §2.7, §2.8, §6.3, §6.11, §17.9): Config merges the 16 section modules and deep-freezes
 -- them; Config.validate(): {string} returns human-readable problems, an empty list for the shipped config, and
--- reports broken cross-references (every client -> server remote needs a rate entry; every click pays, so the squeeze
--- rules are: the anti-autoclicker cap's bucketCapacity >= 1, floodPerSecond >= the cap, SqueezeRequest rate =
+-- reports broken cross-references (every client -> server remote needs a rate entry; the squeeze
+-- rules are: the paid-squeeze cap's bucketCapacity >= 1, floodPerSecond >= the cap, SqueezeRequest rate =
 -- floodPerSecond with a burst of at least 5 s of the cap (a stall's backlog) and Global.burst >= it, and the
--- hold-to-squeeze repeat no shorter than any rarity's release pop; the RequestSnapshot bucket covers the loading
--- poll). It never errors: a
+-- hold-to-squeeze repeat no shorter than any rarity's release pop and equal to the cap's cycleSeconds; the
+-- RequestSnapshot bucket covers the loading poll; a real catch keeps its timing under the catch cooldown). It never
+-- errors: a
 -- missing or mistyped value becomes a problem line. Robux stays off: no product or pass ids are configured.
 -- Grip rules (§17.9 table, §17.12 Part 3): each of G1, G2, G5 and G8 catches a deliberately broken copy (G10 and G8's
 -- giant-pad and gate rules went with the giant pads, build plan Phase 6).
--- Part 5 (§17.12): G3 (a squeeze count since spec 2026-10-12 §12: a 13-a-second cap and a ceiling of 43,199 fail, the
+-- Part 5 (§17.12): G3 (a squeeze count since spec 2026-10-12 §12: a 13-a-second cap and a ceiling of 7,999 fail, the
 -- limit switched back on passes) and G6's Strings names; plus the Part 5 values of Data, UI.Grip and Config.Grip.
 -- Feel pass (§18.8, §18.9, §18.10 L1): every §18.8 key holds its DESIGN value, and each rule F1-F11 catches a planted
 -- bad value (among them: a 5° punch, a squeeze total of 20, an unstable wave speed and skinMode = "x").
@@ -41,8 +42,8 @@
 -- view and light, the five arm parts, colours, team sleeves, outline, held toy, pop-in, squeeze, focus, shake, throw
 -- extras and Dragon charge), squeezeAxis is "X" and Inspect's is "Y"; validate reports a broken arm part, outline,
 -- pop-in, held pose, team sleeve or squeeze inset. Economy: the one Foam Mats pad row (0 Coin bonus, 100%; data only
--- since Phase 3: CoinsByRarity is gone), no hourly limit, G3's 43,200 squeezes an hour and the 30,000-squeeze alert
--- (spec 2026-10-12 §12).
+-- since Phase 3: CoinsByRarity is gone), no hourly limit, G3's 8,000 squeezes an hour and the 8,000-squeeze alert
+-- (spec 2026-10-12 §12; Batch 1 #2).
 -- Big-number progression (spec 2026-10-12, Phase 1): the 9 Qa caps, 100 levels and their totals, the ranks, squishy
 -- power, duel rewards, refunds and maxGripPerEvent = CP(100) × 2; negatives for G1's rising totals, G5's CP(100) event,
 -- the Capsule block, SquishyPower, a Catalog power override and the refund share. Phase 3: the capsule tick (0.25 s)
@@ -246,16 +247,18 @@ return function(t: Context)
 		expect.truthy(containsText(problems, "SqueezeRequest"))
 	end)
 
-	-- Every click pays (2026-10-06): the squeeze timer is gone; Config.Squeeze is a hidden anti-autoclicker cap.
-	t.test("the every-click-pays values: a 12-per-second cap, a 20/s flood guard, a 0.45 s hold repeat", function()
+	-- Batch 1 #2 (replaces every click pays): Config.Squeeze is the paid-squeeze cap at the hold rhythm.
+	t.test("the paid-cap values: 2 at once then 1 per 0.45 s (the hold repeat), a 20/s flood guard", function()
 		local squeeze, net, grip = Config.Squeeze, Config.Net, Config.Grip
-		expect.equal(squeeze.bucketCapacity, 12)
-		expect.near(squeeze.cycleSeconds, 1 / 12, 1e-12)
+		expect.equal(squeeze.bucketCapacity, 2)
+		expect.near(squeeze.cycleSeconds, 0.45, 1e-12)
+		expect.equal(squeeze.cycleSeconds, grip.Hold.repeatSeconds)
 		expect.equal(squeeze.floodPerSecond, 20)
-		-- Burst 60 = 5 s of the cap: a network stall's backlog of honest presses is never a violation.
+		-- Burst 60: far more than 5 s of the cap; a network stall's backlog of honest presses is never a violation.
 		expect.deepEqual(net.Remotes.SqueezeRequest, { rate = 20, burst = 60 })
 		expect.deepEqual(net.Global, { rate = 30, burst = 80 })
 		expect.equal(grip.Hold.repeatSeconds, 0.45)
+		-- Kept from the old 12-a-second cap's hour (far above the honest maximum now).
 		expect.equal(grip.gripAlertPerHour, (3600 * 12 + 12) * grip.maxGripPerEvent)
 		-- Squeeze anywhere (spec 2026-10-11 §5): no hourly limit (the shared module stays, dormant).
 		expect.deepEqual(Config.Economy.SqueezeLimit, { enabled = false, perHour = 600, burst = 300, emptyCoins = 0 })
@@ -263,15 +266,15 @@ return function(t: Context)
 
 	-- Squeeze anywhere, Coins every time (spec 2026-10-11 §5; the user: "Less per squeeze, no limit", "+0/+1/+2/+3").
 	-- Phase 3: CoinsByRarity is gone (own squeezes pay the squeeze value) and the pad data no longer changes that pay.
-	t.test("no CoinsByRarity, one Foam Mats pad row (0, 100%), no limit, G3 43,200 squeezes, alert 30,000", function()
+	t.test("no CoinsByRarity, one Foam Mats pad row (0, 100%), no limit, G3 8,000 squeezes, alert 8,000", function()
 		local economy, grip = Config.Economy, Config.Grip
 		expect.equal((economy :: any).CoinsByRarity, nil)
 		-- Build plan Phase 6: the giant pads' rows 2-4 are gone.
 		expect.deepEqual(grip.Pads, { { key = "foam", level = 1, coinBonus = 0, gripPercent = 100 } })
 		expect.equal(economy.SqueezeLimit.enabled, false)
-		-- Spec 2026-10-12 §12: G3 counts squeezes, 43,200 an hour at the 12-a-second cap; the alert 30,000 of them.
-		expect.equal(grip.maxSqueezesPerHour, 3600 * 12)
-		expect.equal(grip.squeezeAlertPerHour, 30_000)
+		-- Spec 2026-10-12 §12, Batch 1 #2: G3 counts squeezes, 8,000 an hour at the hold rhythm; the alert at the same.
+		expect.equal(grip.maxSqueezesPerHour, 8_000)
+		expect.equal(grip.squeezeAlertPerHour, 8_000)
 	end)
 
 	t.test("validate reports a squeeze alert that is not a whole number in 1..maxSqueezesPerHour", function()
@@ -280,7 +283,7 @@ return function(t: Context)
 		end)
 		expect.truthy(containsText(zero, "Config.Grip.squeezeAlertPerHour"))
 		local above = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.squeezeAlertPerHour = 43_201
+			grip.squeezeAlertPerHour = 8_001
 		end)
 		expect.truthy(containsText(above, "Config.Grip.squeezeAlertPerHour"))
 	end)
@@ -298,9 +301,9 @@ return function(t: Context)
 
 	t.test("validate reports a flood guard below the cap and a remote bucket that does not match it", function()
 		local flood = validateBrokenCopy(t.Shared, "Squeeze", function(squeeze)
-			squeeze.floodPerSecond = 8 -- below the cap of 12 a second: fast clicking would be dropped
+			squeeze.floodPerSecond = 2 -- below the paid cap of 2.2 a second: an honest client's sends would be dropped
 		end)
-		expect.truthy(containsText(flood, "floodPerSecond"))
+		expect.truthy(containsText(flood, "floodPerSecond (2) must be >= the paid-squeeze cap"))
 		local fastCycle = validateBrokenCopy(t.Shared, "Squeeze", function(squeeze)
 			squeeze.cycleSeconds = 1 / 30 -- a 30-per-second cap above the 20/s flood guard
 		end)
@@ -313,9 +316,9 @@ return function(t: Context)
 			net.Remotes.SqueezeRequest.burst = 4
 		end)
 		expect.truthy(containsText(burst, "SqueezeRequest.burst"))
-		-- 59 is under 5 s of the 12-per-second cap (60): a stall's backlog would turn into violations.
+		-- 11 is under 5 s of the paid cap (5 / 0.45 = 11.1): a stall's backlog would turn into violations.
 		local shortBacklog = validateBrokenCopy(t.Shared, "Net", function(net)
-			net.Remotes.SqueezeRequest.burst = 59
+			net.Remotes.SqueezeRequest.burst = 11
 		end)
 		expect.truthy(containsText(shortBacklog, "SqueezeRequest.burst"))
 		local global = validateBrokenCopy(t.Shared, "Net", function(net)
@@ -326,6 +329,20 @@ return function(t: Context)
 			squeeze.bucketCapacity = 0
 		end)
 		expect.truthy(containsText(capacity, "bucketCapacity"))
+	end)
+
+	t.test("validate reports a paid-squeeze cap off the hold rhythm (clicks would out-earn holds)", function()
+		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.Hold.repeatSeconds = 0.5
+		end)
+		expect.truthy(containsText(problems, "cycleSeconds (0.45) must equal Config.Grip.Hold.repeatSeconds (0.5)"))
+	end)
+
+	t.test("validate reports a catch cooldown that would delay a real catch (review quick win)", function()
+		local problems = validateBrokenCopy(t.Shared, "Combat", function(combat)
+			combat.Catch.cooldownSeconds = 1.6 -- 1.6 - 0.05 is past the hands-back 1.5 - 0.12 lag compensation
+		end)
+		expect.truthy(containsText(problems, "cooldownSeconds - cooldownToleranceSeconds must be <= handsBackSeconds"))
 	end)
 
 	-- validate() never errors: a missing field that later checks compare against is reported, not raised.
@@ -740,7 +757,7 @@ return function(t: Context)
 		end)
 		expect.truthy(containsAll(cap, { "G5:", "maxGripPerEvent" }))
 		local refill = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			-- Every click pays: the holding rate is 3600 / Hold.repeatSeconds (8000 an hour), no longer 3600 / 1.5.
+			-- The holding rate is 3600 / Hold.repeatSeconds (8000 an hour), no longer 3600 / 1.5.
 			grip.Rested.perHour = math.ceil(3600 / grip.Hold.repeatSeconds)
 		end)
 		expect.truthy(containsAll(refill, { "G5:", "Rested.perHour" }))
@@ -827,8 +844,8 @@ return function(t: Context)
 		end
 	end)
 
-	-- G3 squeeze ceiling (spec 2026-10-12 §12): the paid squeezes an hour <= maxSqueezesPerHour (43,200). The limit is
-	-- off (spec 2026-10-11 §5), so every one of the 43,200 squeezes an hour at the 12-a-second cap pays.
+	-- G3 squeeze ceiling (spec 2026-10-12 §12): the paid squeezes an hour <= maxSqueezesPerHour (8,000). The limit is
+	-- off (spec 2026-10-11 §5), so every one of the 8,000 squeezes an hour at the hold rhythm pays (Batch 1 #2).
 	t.test("G3 reports a 13-a-second squeeze cap (46,800 paid squeezes an hour)", function()
 		local problems = validateBrokenCopy(t.Shared, "Squeeze", function(squeeze)
 			squeeze.cycleSeconds = 1 / 13
@@ -836,11 +853,11 @@ return function(t: Context)
 		expect.truthy(containsAll(problems, { "G3:", "46800 squeezes", "maxSqueezesPerHour" }))
 	end)
 
-	t.test("G3 reports a ceiling of 43,199 squeezes an hour", function()
+	t.test("G3 reports a ceiling of 7,999 squeezes an hour", function()
 		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.maxSqueezesPerHour = 43_199
+			grip.maxSqueezesPerHour = 7_999
 		end)
-		expect.truthy(containsAll(problems, { "G3:", "43200 squeezes" }))
+		expect.truthy(containsAll(problems, { "G3:", "8000 squeezes" }))
 	end)
 
 	t.test("G3 passes the limit switched back on (600 paid squeezes an hour)", function()

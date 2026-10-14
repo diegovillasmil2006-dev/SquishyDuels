@@ -8,7 +8,7 @@
 -- rewardCoins = squeezes × value, stopping at 9 Qa; anything that is not a level or a slot gives nil.
 -- Phase 3: capsuleCoins = squishy power × CP; an own squeeze's Grip is the CP of the highest capsule level; two prices
 -- in a row always differ (so a retried upgrade is refused, never charged twice); the CapsuleUpgrade / CapsuleUnlock
--- checks in the trainers' old order (§17.5).
+-- checks in the trainers' old order (§17.5). Batch 1: upgradeCost (the Next goal's and the UP! marker's rule).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -245,6 +245,21 @@ return function(t: Context)
 			end
 		end
 	)
+
+	t.test("upgradeCost: the next price for an open capsule with a squishy and the Grip gate met, else nil", function()
+		local list: { any } = { { level = 1, squishyId = "kitty_bread" }, { level = 3 } }
+		local caps = { slots = 2, list = list }
+		expect.equal(CapsuleMath.upgradeCost(caps, 1, 1), 1_000)
+		expect.equal(CapsuleMath.upgradeCost(caps, 2, 1), nil) -- empty: an upgrade would earn nothing
+		expect.equal(CapsuleMath.upgradeCost(caps, 3, 1), nil) -- not open
+		expect.equal(CapsuleMath.upgradeCost(caps, 0, 1), nil)
+		expect.equal(CapsuleMath.upgradeCost(nil, 1, 1), nil)
+		local evolve = { slots = 1, list = { { level = 10, squishyId = "kitty_bread" } } }
+		expect.equal(CapsuleMath.upgradeCost(evolve, 1, 9), nil) -- Lv 11 is Jelly: Grip Lv 10
+		expect.equal(CapsuleMath.upgradeCost(evolve, 1, 10), 28_000)
+		local top = { slots = 1, list = { { level = 100, squishyId = "kitty_bread" } } }
+		expect.equal(CapsuleMath.upgradeCost(top, 1, 100), nil)
+	end)
 
 	t.test("rewardCoins = squeezes × value, rounded down and stopping at 9 Qa", function()
 		expect.equal(CapsuleMath.rewardCoins(100, 10), 1_000) -- spec §9: Daily day 1 for a new player

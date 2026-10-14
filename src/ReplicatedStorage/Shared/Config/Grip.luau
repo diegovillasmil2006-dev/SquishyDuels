@@ -205,27 +205,29 @@ local Grip = {
 	},
 	-- Double Grip (G-B): a timer like Economy.SqueezeLimit, filled only by time; new accounts start full.
 	Rested = { enabled = true, perHour = 240, burst = 1200, mult = 2 },
-	-- Hold-to-squeeze (client only, §17.3.2). Every click pays (2026-10-06): a click squeezes at once; holding repeats
-	-- at a relaxed rhythm of one full squeeze animation, repeatSeconds (validator: >= the release pop end of every
-	-- rarity in Config.Anim.squeeze, 0.43 s), so clicking can be faster than holding.
+	-- Hold-to-squeeze (client only, §17.3.2): a click squeezes at once; holding repeats at a relaxed rhythm of one full
+	-- squeeze animation, repeatSeconds (validator: >= the release pop end of every rarity in Config.Anim.squeeze,
+	-- 0.43 s). Batch 1 #2: it is also the paid-squeeze cap (Config.Squeeze.cycleSeconds), so clicking pays no faster
+	-- than holding.
 	-- Reading: the Grip pacing estimates of DESIGN §17.4 assumed one squeeze per 1.5 s (the old Squeeze.cycleSeconds).
-	-- Grip per squeeze is unchanged, so holding now trains about 1.5 / repeatSeconds (3.3x) faster and fast clicking
-	-- up to 12 × 1.5 = 18x; the "holding rate" rules (G5 Double Grip refill, GripMath.restedMinutes) now use
-	-- repeatSeconds in place of the old cycle.
+	-- Grip per squeeze is unchanged, so squeezing now trains at most about 1.5 / repeatSeconds (3.3x) faster; the
+	-- "holding rate" rules (G5 Double Grip refill, GripMath.restedMinutes) use repeatSeconds.
 	Hold = { maxSeconds = 600, queuedSeconds = 60, repeatSeconds = 0.45, leadSeconds = 0.05, replyGraceSeconds = 0.5 },
 	-- G3 (spec 2026-10-12 §12): a squeeze count, no longer a Coin number, because Coins per squeeze now grow. The most
-	-- paid squeezes the server accepts in an hour: the anti-autoclicker cap, 12 a second (was maxSqueezeCoinsPerHour,
-	-- 216,000 Coins).
-	maxSqueezesPerHour = 43_200,
+	-- paid squeezes the server accepts in an hour: the hold rhythm, 3600 / 0.45 (Batch 1 #2; was 43,200 at the old
+	-- 12-a-second cap, before that maxSqueezeCoinsPerHour, 216,000 Coins).
+	maxSqueezesPerHour = 8_000,
 	-- Spec 2026-10-12 §12: the server logs a warning (log only, like gripAlertPerHour) when one player's paid squeezes
-	-- pass this in a rolling hour (was 50,000 squeeze Coins). Validator: a whole number in 1..maxSqueezesPerHour.
-	squeezeAlertPerHour = 30_000,
+	-- pass this in a rolling hour (was 50,000 squeeze Coins, then 30,000). Batch 1 #2: the paid cap's whole hour, so
+	-- only riding the cap with no break for an hour (more than the client sends) passes it. Validator: a whole number
+	-- in 1..maxSqueezesPerHour.
+	squeezeAlertPerHour = 8_000,
 	-- CP(100) × Rested.mult = 920,525,589 × 2 (spec 2026-10-12 §12; was 600) (G5). A capsule squeeze gives CP.
 	maxGripPerEvent = 1_841_051_178,
-	-- (43200 + 12) × maxGripPerEvent: rolling-hour anomaly log, at the most squeezes the server can accept in an hour (the
-	-- anti-autoclicker cap, 12 per second, plus its burst) at the biggest Grip event, so honest fast clicking never
-	-- trips it (spec 2026-10-12 §12). Phase 3 reading: the honest maximum with 4 Lv 100 capsules on top (own squeezes
-	-- mostly undoubled, Double Grip's points, every tap pushing the capsules) is about 7.5e13 an hour, still under it.
+	-- (43200 + 12) × maxGripPerEvent: rolling-hour anomaly log, sized at the old 12-a-second cap's hour plus its burst at
+	-- the biggest Grip event (spec 2026-10-12 §12) and kept as it is (Batch 1 #2): the honest maximum with 4 Lv 100
+	-- capsules (own squeezes at the hold rhythm, Double Grip's points, every paid squeeze pushing the capsules) is about
+	-- 2.3e13 an hour, far under it.
 	gripAlertPerHour = 79_555_503_503_736,
 	-- G-E / G7b (lobby spec 2026-10-11 §11; was allowBundlesWithTrainer): coin bundles stay off while capsules turn Coins
 	-- into Grip power.

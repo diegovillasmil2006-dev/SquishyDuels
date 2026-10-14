@@ -134,7 +134,13 @@ local Combat = {
 	-- (user decision 2026-10-11).
 	Catch = {
 		windowSeconds = 0.42, -- the hands stay open this long after the press (design: html:532)
-		cooldownSeconds = 0.75, -- from the press (design: html:344); a press also cancels a charge (design: html:344)
+		-- From the press; a press also cancels a charge (design: html:344). Review quick win 2026-10-14 (NOT IN DESIGN:
+		-- html:344 has 0.75): after a missed catch the hands wait 1.3 s, so mashing Catch keeps them open about 32% of
+		-- the time (windowSeconds / cooldownSeconds = 0.42 / 1.3), not 56%. A real catch keeps its own wait: the hands
+		-- are back handsBackSeconds (1.5) after it, and the first press then always passes this cooldown, even
+		-- lag-compensated (Config.validate and CatchRules_Test: cooldownSeconds - cooldownToleranceSeconds <=
+		-- handsBackSeconds - Lag.maxCompensationSeconds).
+		cooldownSeconds = 1.3,
 		radiusStuds = 2.7 / 0.28, -- design: html:614 (d < 2.7 m; 1 stud = 0.28 m, so about 9.64 studs)
 		-- build choice 2026-10-11 (NOT IN DESIGN: the design measures from its camera, html:613): the catch is measured
 		-- from the catcher's HumanoidRootPart + this (about the eyes of a default avatar, where first person looks from).

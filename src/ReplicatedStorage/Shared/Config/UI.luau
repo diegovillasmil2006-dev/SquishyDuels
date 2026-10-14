@@ -352,6 +352,15 @@ local UI = {
 		sparkleStuds = 0.5,
 		-- Nothing moves on a capsule farther than cullStuds from the camera or off the screen (as Squeeze.othersCullStuds).
 		cullStuds = 60,
+		-- Batch 1 #7b: the "UP!" marker over an own capsule whose next level the Coins cover now. It hangs over the
+		-- +Coins pop's highest point (the controller's POP_STUDS + popRiseStuds) and is lifted upLift of its own height
+		-- (BillboardGui.SizeOffset, so in screen pixels): its bottom (upPx.Y × upLift - upPx.Y / 2 = 35 px) stays
+		-- above the pop's top (28 px, half its 56 px) at any distance. It bobs upBob more of its height and back once
+		-- every upBobMs (1.1 Hz, under the 3 Hz flicker limit, §18.1 #4); still under ReducedMotion.
+		upPx = Vector2.new(80, 32),
+		upLift = 1.6,
+		upBob = 0.25,
+		upBobMs = 900,
 	},
 }
 

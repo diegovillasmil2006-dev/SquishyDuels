@@ -18,13 +18,19 @@
 --   open is a replay: ok, charged = false); (8) a pending failed save, the server closing or a restart pending ->
 --   capsule.paused; (9) SD_DuelPhase ~= "" -> inventory.lockedInDuel; (10) EconomyService.trySpend(p, cost,
 --   "capsule") (else economy.notEnoughCoins; "savePending" -> capsule.paused), then the capsule's next level or the
---   new slot (an empty Lv 1 capsule) through DataService.mutate, nothing yielding in between, and the awaited "now"
---   save before the reply ok({capsules, charged = true, savePending}).
+--   new slot (a Lv 1 capsule holding the best spare squishy, bestSpare, else empty; Batch 1 #7c) through
+--   DataService.mutate, nothing yielding in between, and the awaited "now" save before the reply ok({capsules,
+--   charged = true, savePending}).
 -- * CapsuleSet(slot, squishyId) (RF, same limits): (2) slot 1..#slotPrices and a Catalog squishy, else net.invalid;
 --   (3) data.notReady; (4) that squishy already in that capsule -> ok, nothing changes; the slot is open, else
 --   capsule.locked; the squishy is owned, else inventory.notOwned; (9) inventory.lockedInDuel; then it goes in (a
 --   capsule that held it is left empty: one capsule per squishy, spec 2026-10-12 §6) with a "soon" save; reply
 --   ok({capsules, charged = false, savePending}).
+-- * Batch 1 #7c, autoFill(p) (EconomyService.SquishyGranted, wired in init: a box, the shop or a Studio grant; new
+--   squishies only): every open capsule that holds no squishy takes the best spare one (bestSpare: owned, in no
+--   capsule, the highest Catalog power, ties in Catalog order), READY profile only; a capsule that holds a squishy keeps
+--   it, so nothing the player placed ever moves. It redraws the base (showCapsules) and asks for a "soon" save, like
+--   CapsuleSet.
 -- Every refusal carries charged = false. Every profile write goes through DataService.mutate (the data port).
 -- Phase 4: every capsule change (a bought level or slot, a squishy set) redraws the caller's own base at once
 -- (BaseService.refresh, deps.showCapsules); a refusal, a replay or a squishy already there draws nothing. Phase 5: the
@@ -205,6 +211,29 @@ local function intervalOf(capsule: any): number?
 	return CapsuleMath.seconds(capsule.level)
 end
 
+-- Batch 1 #7c: the owned squishy no capsule holds with the highest power (ties: catalog order), or nil. Ids outside the
+-- Catalog (an old save) are never picked.
+local function bestSpare(profile: any): string?
+	local owned = profile.owned
+	if type(owned) ~= "table" then
+		return nil
+	end
+	local placed: { [string]: boolean } = {}
+	for _, capsule in profile.capsules.list do
+		if type(capsule) == "table" and type(capsule.squishyId) == "string" then
+			placed[capsule.squishyId] = true
+		end
+	end
+	local best: string?, bestPower: number = nil, 0
+	for _, def in Catalog.list() do
+		local power = Catalog.getPower(def.id)
+		if owned[def.id] ~= nil and not placed[def.id] and power > bestPower then
+			best, bestPower = def.id, power
+		end
+	end
+	return best
+end
+
 -- The reply data: a copy of the caller's capsules as they are now.
 local function result(player: any, charged: boolean, savePending: boolean): Types.CapsuleResult
 	return {
@@ -264,14 +293,14 @@ local function spend(player: any, cost: number): string?
 		else CODE_INVALID
 end
 
--- A checked purchase: the spend, then `write(capsules)` on the live capsules, then the awaited "now" save.
-local function buy(player: any, cost: number, what: string, write: (capsules: any) -> ()): Reply
+-- A checked purchase: the spend, then `write(capsules, profile)` on the live profile, then the awaited "now" save.
+local function buy(player: any, cost: number, what: string, write: (capsules: any, profile: any) -> ()): Reply
 	local refused = spend(player, cost)
 	if refused ~= nil then
 		return NetService.err(refused, false)
 	end
 	local written = deps.mutate(player, function(profile: any): boolean
-		write(profile.capsules)
+		write(profile.capsules, profile)
 		return true
 	end)
 	if not written then
@@ -357,9 +386,10 @@ function CapsuleService.unlock(player: any, slot: any, expectedPrice: any): Repl
 	if decision.kind ~= "buy" then
 		return NetService.err(decision.reason or CODE_INVALID, false)
 	end
-	return buy(player, decision.cost, `capsule slot {slot}`, function(live: any)
+	return buy(player, decision.cost, `capsule slot {slot}`, function(live: any, profile: any)
 		live.slots = math.max(live.slots, slot)
-		live.list[slot] = live.list[slot] or { level = 1 } -- a new capsule starts empty at Lv 1 (spec 2026-10-12 §7)
+		-- A new capsule starts at Lv 1 (spec 2026-10-12 §7) holding the best spare squishy, else empty (Batch 1 #7c).
+		live.list[slot] = live.list[slot] or { level = 1, squishyId = bestSpare(profile) }
 	end)
 end
 
@@ -402,6 +432,30 @@ function CapsuleService.set(player: any, slot: any, squishyId: any): Reply
 	return NetService.ok(result(player, false, deps.savePending(player)))
 end
 
+-- Batch 1 #7c (see the header). Returns true when a capsule was filled.
+function CapsuleService.autoFill(player: any): boolean
+	if readyCapsules(player) == nil then
+		return false
+	end
+	local filled = false
+	deps.mutate(player, function(profile: any): boolean
+		local capsules = profile.capsules
+		for slot = 1, capsules.slots do
+			local capsule = capsules.list[slot]
+			if type(capsule) == "table" and capsule.squishyId == nil then
+				capsule.squishyId = bestSpare(profile)
+				filled = filled or capsule.squishyId ~= nil
+			end
+		end
+		return filled
+	end)
+	if filled then
+		deps.showCapsules(player)
+		deps.requestSave(player, SAVE_SOON)
+	end
+	return filled
+end
+
 -- Public: tests -----------------------------------------------------------------------------------------------------
 
 -- Replaces dependencies (fields not given keep their defaults). nil restores every default.
@@ -431,6 +485,10 @@ function CapsuleService.init()
 	end)
 	NetService.onInvoke("CapsuleSet", function(player: Player, slot: any, squishyId: any): any
 		return CapsuleService.set(player, slot, squishyId)
+	end)
+	-- Batch 1 #7c: a new squishy (a box, the shop, a Studio grant) fills an open empty capsule.
+	EconomyService.SquishyGranted:connect(function(player: Player)
+		CapsuleService.autoFill(player)
 	end)
 end
 

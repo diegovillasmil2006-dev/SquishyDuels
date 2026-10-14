@@ -7,9 +7,8 @@
 export type Step = {
 	id: string,
 	textKey: string,
-	restrictedTextKey: string?, -- shown instead when paid random boxes are restricted or unknown
 	recordedBy: "client" | "server",
-	guidance: "none" | "waypointMat" | "waypointBoxStand" | "pulseSquishies" | "waypointPodium",
+	guidance: "none" | "waypointMat" | "waypointShop" | "pulseSquishies" | "waypointPodium",
 }
 
 local Onboarding = {
@@ -20,20 +19,16 @@ local Onboarding = {
 		{ id = "welcome", textKey = "onboarding.welcome", recordedBy = "client", guidance = "none" },
 		-- First accepted squeeze.
 		{ id = "squeeze", textKey = "onboarding.squeeze", recordedBy = "server", guidance = "waypointMat" },
-		-- First box opened or first shop purchase. Restricted/unknown players are pointed to the Shop.
-		{
-			id = "firstBox",
-			textKey = "onboarding.firstBox",
-			restrictedTextKey = "onboarding.firstBoxShop",
-			recordedBy = "server",
-			guidance = "waypointBoxStand",
-		},
-		-- First successful equip of a non-starter squishy.
-		{ id = "equip", textKey = "onboarding.equip", recordedBy = "server", guidance = "pulseSquishies" },
+		-- Batch 1: the first capsule upgrade or unlock (only capsules change what you earn). A new player spawns in their
+		-- base with Kitty Bread in capsule 1, so no waypoint.
+		{ id = "capsule", textKey = "onboarding.capsule", recordedBy = "server", guidance = "none" },
 		-- Inspect opened. Lobby HUD (spec 2026-10-11): no dock, so the Squishies tile pulses (its list has Inspect).
 		{ id = "inspect", textKey = "onboarding.inspect", recordedBy = "client", guidance = "pulseSquishies" },
 		-- QueueJoin accepted.
 		{ id = "duel", textKey = "onboarding.duel", recordedBy = "server", guidance = "waypointPodium" },
+		-- First box opened or first shop purchase. Batch 1 (review #1): last, so no long goal hides the duel card, and
+		-- everyone is pointed to the Shop and its cheapest squishy (a 10,000 Common), never the 150,000 Snack Box.
+		{ id = "firstBox", textKey = "onboarding.firstBox", recordedBy = "server", guidance = "waypointShop" },
 	} :: { Step },
 
 	-- Reading (PROGRESS Part 5 open item; DESIGN gives `onboarding.skipped` no remote): the "Skip tutorial" link sends

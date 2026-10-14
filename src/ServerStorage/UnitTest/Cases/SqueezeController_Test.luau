@@ -5,13 +5,14 @@
 -- Contract (DESIGN §9.6, Config.Anim.squeeze):
 --   * the deepest squash is the controlled widening (c 0.66), after the Compression phase (c 0.70);
 --   * Uncommon and Epic widen wideningExtraMs longer; Common and Exclusive use the base timeline;
--- Part 5 (DESIGN §6.3, §17.3.2, §17.7, §17.10), with every click pays (2026-10-06):
+-- Part 5 (DESIGN §6.3, §17.3.2, §17.7, §17.10), with the paid cap of Batch 1 #2:
 --   * sendDue: a fresh press always goes at once (no reply, nextAt or rhythm to wait for); a hold repeat goes at
 --     max(nextAt + leadSeconds, lastSend + Hold.repeatSeconds), one full squeeze animation; with no reply the next
 --     repeat waits repeatSeconds + replyGraceSeconds;
---   * underCap: the client sends at most bucketCapacity (12) requests inside 1 s, so clicking as fast as a human can
---     sends every press and never gets squeeze.tooFast from the server's anti-autoclicker cap; a 13th inside the
---     same second is not sent;
+--   * underCap: the client sends at most bucketCapacity (2) requests inside bucketCapacity × cycleSeconds (0.9 s), the
+--     server's paid-squeeze cap (Batch 1 #2: squeezes pay up to the hold rhythm), so clicking at any speed sends no
+--     more than the server pays and never gets squeeze.tooFast; a press over it is not sent (it still squishes on
+--     screen: trySend, checked in Play only);
 --   * holdStopReason: every §17.3.2 stop rule (release, match, context, block, 600 s, 60 s while Searching); since
 --     spec 2026-10-11 §5 (squeeze anywhere) where the player stands never stops a hold (no "station" or "locked" stop);
 --     a simulated 60 Hz hold against the server's cap repeats every repeatSeconds, never gets tooFast and stops at
@@ -94,7 +95,7 @@ return function(t: Context)
 	local HOLD = Config.Grip.Hold
 	local REPEAT = HOLD.repeatSeconds
 	local CAP = Config.Squeeze.bucketCapacity
-	local CYCLE = Config.Squeeze.cycleSeconds -- the cap's refill (1/12 s), not a squeeze timer
+	local CYCLE = Config.Squeeze.cycleSeconds -- the paid cap's refill (= Hold.repeatSeconds), not a squeeze timer
 	local WINDOW = CAP * CYCLE
 	local T0 = 1_800_000_000 -- a server time (GetServerTimeNow scale)
 
@@ -117,11 +118,12 @@ return function(t: Context)
 		}
 	end
 
-	t.test("DESIGN values: hold repeats one full squeeze animation (0.45 s), the cap is 12 per second", function()
+	t.test("DESIGN values: hold repeats one full squeeze animation (0.45 s), the paid cap is that rhythm", function()
 		local SqueezeFeel = t.requireClient("Controllers/SqueezeFeel")
 		expect.equal(REPEAT, 0.45)
-		expect.equal(CAP, 12)
-		expect.near(WINDOW, 1, 1e-9)
+		expect.equal(CAP, 2)
+		expect.near(CYCLE, REPEAT, 1e-12)
+		expect.near(WINDOW, 2 * REPEAT, 1e-9)
 		-- One full squeeze animation: never before the release pop end of any of the 14 squishies.
 		expect.equal(#Catalog.list(), 14)
 		for _, def in Catalog.list() do
@@ -161,7 +163,7 @@ return function(t: Context)
 		end
 	)
 
-	-- Every click pays: the client side of the anti-autoclicker cap -------------------------------------------------
+	-- The client side of the paid-squeeze cap (Batch 1 #2) -----------------------------------------------------------
 
 	-- Presses at `pressAt` (clock seconds) through underCap the way trySend keeps its recent sends (the last CAP).
 	-- Returns the times that were sent.
@@ -195,7 +197,7 @@ return function(t: Context)
 		return tooFast
 	end
 
-	t.test("underCap: 12 presses in 1 s are all sent; a 13th in the same second is not", function()
+	t.test("underCap: the cap's presses at once are all sent; one more inside its window is not", function()
 		local burst = {}
 		for i = 1, CAP + 1 do
 			table.insert(burst, T0 + (i - 1) * 0.01)
@@ -209,70 +211,79 @@ return function(t: Context)
 		expect.truthy(SqueezeController.underCap({}, T0, CAP, WINDOW))
 	end)
 
-	t.test("clicking as fast as a human can: every press is sent and the server never says tooFast", function()
-		-- Steady 8, 10 and 12 clicks a second for a minute (12 is the cap: the fastest a client sends).
-		for _, rate in { 8, 10, 12 } do
-			local presses = {}
-			for i = 1, 60 * rate do
-				table.insert(presses, T0 + (i - 1) / rate)
+	t.test(
+		"clicking at any speed: the client sends no more than the paid cap and the server never says tooFast",
+		function()
+			-- Steady 3, 8 and 12 clicks a second for a minute: some presses are not sent, about the hold rhythm is.
+			for _, rate in { 3, 8, 12 } do
+				local presses = {}
+				for i = 1, 60 * rate do
+					table.insert(presses, T0 + (i - 1) / rate)
+				end
+				local sent = sendPresses(presses)
+				expect.truthy(#sent < #presses)
+				expect.truthy(#sent <= CAP + 60 / CYCLE)
+				expect.truthy(#sent >= 0.85 * 60 / CYCLE)
+				expect.equal(serverTooFast(sent), 0)
 			end
-			local sent = sendPresses(presses)
-			expect.equal(#sent, #presses)
+			-- A jittery 11 a second: gaps from 40 to 130 ms (mean 91 ms).
+			local jitter, at = {}, T0
+			local gaps = { 0.04, 0.13, 0.07, 0.11, 0.09, 0.105 }
+			for i = 1, 660 do
+				table.insert(jitter, at)
+				at += gaps[(i - 1) % #gaps + 1]
+			end
+			local sent = sendPresses(jitter)
 			expect.equal(serverTooFast(sent), 0)
-		end
-		-- A jittery 11 a second: gaps from 40 to 130 ms (mean 91 ms).
-		local jitter, at = {}, T0
-		local gaps = { 0.04, 0.13, 0.07, 0.11, 0.09, 0.105 }
-		for i = 1, 660 do
-			table.insert(jitter, at)
-			at += gaps[(i - 1) % #gaps + 1]
-		end
-		local sent = sendPresses(jitter)
-		expect.equal(#sent, #jitter)
-		expect.equal(serverTooFast(sent), 0)
-		-- Never more than the cap inside any 1 s, so never near the 20/s flood guard.
-		for i = 1, #sent do
-			local inside = 0
-			for j = i, #sent do
-				if sent[j] - sent[i] < WINDOW - 1e-6 then
-					inside += 1
+			-- Never more than the cap inside its window, so far below the 20/s flood guard.
+			for i = 1, #sent do
+				local inside = 0
+				for j = i, #sent do
+					if sent[j] - sent[i] < WINDOW - 1e-6 then
+						inside += 1
+					end
+				end
+				if inside > CAP then
+					error(`{inside} sends inside {WINDOW} s from {sent[i] - T0}`)
 				end
 			end
-			if inside > CAP then
-				error(`{inside} sends inside 1 s from {sent[i] - T0}`)
-			end
+			expect.truthy(CAP <= Config.Squeeze.floodPerSecond)
 		end
-		expect.truthy(CAP <= Config.Squeeze.floodPerSecond)
-	end)
+	)
 
-	t.test("a macro at 30 clicks a second: the client sends at most 12 a second", function()
+	t.test("a macro at 30 clicks a second: the client sends no more than the paid cap", function()
 		local presses = {}
 		for i = 1, 300 do
 			table.insert(presses, T0 + (i - 1) / 30)
 		end
 		local sent = sendPresses(presses)
-		expect.truthy(#sent <= CAP * 10 + CAP)
+		expect.truthy(#sent <= CAP + 10 / CYCLE)
 		expect.equal(serverTooFast(sent), 0)
 	end)
 
-	t.test("12 presses a second stay inside the squeeze particle budget", function()
-		-- Worst case per second at the cap: every press merges a big pop's sparkles, puffs at most once per release
-		-- pop (the largest flourish, 12) plus Dragon's steam never (a cut squeeze has not reached its release yet).
-		local maxPuffs = 0
-		for _, flourish in squeeze.flourish do
-			maxPuffs = math.max(maxPuffs, flourish.particles)
+	t.test(
+		"12 presses a second (a human's fastest; over-cap presses still play) stay inside the particle budget",
+		function()
+			-- Every press plays, sent or not (Batch 1 #2), so the budget is a human's click speed, not CAP.
+			local PRESSES = 12
+			-- Worst case per second at 12 presses: every press merges a big pop's sparkles, puffs at most once per release
+			-- pop (the largest flourish, 12) plus Dragon's steam never (a cut squeeze has not reached its release yet).
+			local maxPuffs = 0
+			for _, flourish in squeeze.flourish do
+				maxPuffs = math.max(maxPuffs, flourish.particles)
+			end
+			local rhythm = squeeze.rhythm
+			local sparkles = PRESSES * math.max(rhythm.popSparkles, rhythm.bigPopSparkles)
+			local puffs = math.ceil(1 / (squeeze.phases[#squeeze.phases].endMs / 1000)) * maxPuffs
+			local longest = math.max(squeeze.particles.lifetimeMax, 0.35)
+			local live = (sparkles + puffs) * longest
+			expect.truthy(live <= Config.Vfx.Budgets.liveParticlesPerEffect)
+			expect.truthy(live <= Config.Vfx.Budgets.liveParticlesTotal / 2)
+			-- The squeeze sounds' key cooldown (90 ms) is at least the 83 ms between those presses: never more than one
+			-- sfx.squish (or sfx.squeezeRelease) per press, whatever the click speed.
+			expect.truthy(Config.Audio.cooldownMs.squeeze >= 1000 / PRESSES)
 		end
-		local rhythm = squeeze.rhythm
-		local sparkles = CAP * math.max(rhythm.popSparkles, rhythm.bigPopSparkles)
-		local puffs = math.ceil(1 / (squeeze.phases[#squeeze.phases].endMs / 1000)) * maxPuffs
-		local longest = math.max(squeeze.particles.lifetimeMax, 0.35)
-		local live = (sparkles + puffs) * longest
-		expect.truthy(live <= Config.Vfx.Budgets.liveParticlesPerEffect)
-		expect.truthy(live <= Config.Vfx.Budgets.liveParticlesTotal / 2)
-		-- The squeeze sounds' key cooldown (90 ms) is at least the 83 ms between capped presses: never more than one
-		-- sfx.squish (or sfx.squeezeRelease) per press, whatever the click speed.
-		expect.truthy(Config.Audio.cooldownMs.squeeze >= 1000 * CYCLE)
-	end)
+	)
 
 	t.test("holdStopReason: nothing stops a good hold; each §17.3.2 rule stops it", function()
 		expect.equal(SqueezeController.holdStopReason(okCheck(), HOLD), nil)
@@ -326,9 +337,10 @@ return function(t: Context)
 		expect.equal(SqueezeController.holdStopReason(check, HOLD), nil)
 	end)
 
-	-- Drives sendDue / holdStopReason the way step() does (60 Hz) against a model of the server's anti-autoclicker cap
-	-- (capacity bucketCapacity, 1 token per cycleSeconds, nextAt = now + max(0, 1 - tokens) × cycleSeconds), starting
-	-- with `tokens0` tokens (after fast clicking it can be empty). `reply` = the server answers.
+	-- Drives sendDue / holdStopReason the way step() does (60 Hz) against a model of the server's paid-squeeze cap
+	-- (Batch 1 #2; capacity bucketCapacity, 1 token per cycleSeconds, nextAt = now + max(0, 1 - tokens) ×
+	-- cycleSeconds), starting with `tokens0` tokens (after fast clicking it can be empty). `reply` = the server
+	-- answers.
 	local function simulateHold(seconds: number, reply: boolean, tokens0: number?): ({ number }, number)
 		local dt = 1 / 60
 		local sendsAt: { number } = {}
@@ -376,7 +388,7 @@ return function(t: Context)
 				error(`repeat {i} came {gap} s after the last one`)
 			end
 		end
-		-- About 2.2 squeezes a second for the whole 10 minutes (clicking can be faster), none after the pause.
+		-- About 2.2 squeezes a second for the whole 10 minutes (clicking pays no faster), none after the pause.
 		expect.truthy(#sendsAt >= math.floor(HOLD.maxSeconds / (REPEAT + 1 / 60)))
 		expect.truthy(#sendsAt <= math.ceil(HOLD.maxSeconds / REPEAT) + 1)
 		expect.truthy(sendsAt[#sendsAt] - T0 < HOLD.maxSeconds)

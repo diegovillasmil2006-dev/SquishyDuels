@@ -18,7 +18,10 @@
 --     an unlock retry is a replay; an upgrade retry carries the old price and is refused; CapsuleSet moves a squishy
 --     out of the capsule that held it and asks for a "soon" save;
 --   * Phase 4: every capsule change (a bought level or slot, a squishy set) redraws the caller's own base
---     (BaseService.refresh through deps.showCapsules); a refusal, a replay or a squishy already there does not.
+--     (BaseService.refresh through deps.showCapsules); a refusal, a replay or a squishy already there does not;
+--   * Batch 1: an open empty capsule takes the best spare squishy (owned, in no capsule, highest power, ties in Catalog
+--     order) on a new grant (autoFill, ready only) and on an unlock; a placed squishy never moves; a fill redraws and
+--     saves soon.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -383,23 +386,97 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("unlock in order at the slot price; an open slot is a replay; a new capsule is empty at Lv 1", function()
+	t.test(
+		"unlock in order at the slot price; an open slot is a replay; a new capsule takes the best spare squishy",
+		function()
+			local w = fresh()
+			w.profiles[w.a].coins = 100_000
+			expectRefused(CapsuleService.unlock(w.a, 3, 80_000), "capsule.notNext")
+			expectRefused(CapsuleService.unlock(w.a, 2, 2_000), "capsule.priceChanged")
+			local reply = CapsuleService.unlock(w.a, 2, 2_500)
+			expect.equal(reply.ok, true)
+			expect.equal(reply.data.charged, true)
+			local opened: { any } = { { level = 1, squishyId = "kitty_bread" }, { level = 1, squishyId = "butter" } }
+			expect.deepEqual(w.profiles[w.a].capsules, { slots = 2, list = opened })
+			expect.equal(w.profiles[w.a].coins, 97_500)
+			local replay = CapsuleService.unlock(w.a, 2, 2_500)
+			expect.equal(replay.ok, true)
+			expect.equal(replay.data.charged, false)
+			expect.equal(CapsuleService.unlock(w.a, 1, 0).data.charged, false)
+			expect.equal(#w.spends, 1)
+			expect.equal(w.nowSaves, 1) -- a replay saves nothing
+			finish()
+		end
+	)
+
+	t.test(
+		"Batch 1: an unlock with no spare stays empty; ties go to Catalog order; a replay changes nothing",
+		function()
+			local w = fresh()
+			local a = w.profiles[w.a]
+			a.coins = 100_000
+			a.owned = { kitty_bread = { at = 1, src = "starter" } } -- only the squishy already in capsule 1
+			expect.equal(CapsuleService.unlock(w.a, 2, 2_500).ok, true)
+			expect.deepEqual(a.capsules.list[2], { level = 1 })
+			finish()
+			-- Two Commons spare (Toast before Banana in the Catalog): the first one goes in.
+			local v = fresh()
+			local b = v.profiles[v.a]
+			b.coins = 100_000
+			b.owned.butter = nil
+			b.owned.banana = { at = 4, src = "shop" }
+			expect.equal(CapsuleService.unlock(v.a, 2, 2_500).ok, true)
+			expect.equal(b.capsules.list[2].squishyId, "toast")
+			local before = TableUtil.deepCopy(b.capsules)
+			expect.equal(CapsuleService.unlock(v.a, 2, 2_500).data.charged, false) -- a replay
+			expect.deepEqual(b.capsules, before)
+			finish()
+		end
+	)
+
+	t.test(
+		"Batch 1: a new squishy fills every open empty capsule with the best spare; a placed squishy never moves",
+		function()
+			local w = fresh()
+			local a = w.profiles[w.a]
+			local list: { any } = { { level = 4, squishyId = "kitty_bread" }, { level = 2 }, { level = 1 } }
+			a.capsules = { slots = 3, list = list }
+			a.owned.nope = { at = 9, src = "box" } -- not in the Catalog: never placed
+			local bBefore = TableUtil.deepCopy(w.profiles[w.b].capsules)
+			expect.equal(CapsuleService.autoFill(w.a), true)
+			local filled: { any } = {
+				{ level = 4, squishyId = "kitty_bread" },
+				{ level = 2, squishyId = "butter" },
+				{ level = 1, squishyId = "toast" },
+			}
+			expect.deepEqual(a.capsules.list, filled)
+			expect.deepEqual(w.shown, { w.a })
+			expect.deepEqual(w.saves, { "soon" })
+			-- Nothing left empty: a newer squishy waits (the player swaps it in).
+			a.owned.banana = { at = 10, src = "shop" }
+			expect.equal(CapsuleService.autoFill(w.a), false)
+			expect.deepEqual(a.capsules.list, filled)
+			expect.deepEqual(w.shown, { w.a })
+			expect.deepEqual(w.saves, { "soon" })
+			expect.deepEqual(w.profiles[w.b].capsules, bBefore)
+			finish()
+		end
+	)
+
+	t.test("Batch 1: auto-fill needs a ready profile and never fills a locked slot", function()
 		local w = fresh()
-		w.profiles[w.a].coins = 100_000
-		expectRefused(CapsuleService.unlock(w.a, 3, 80_000), "capsule.notNext")
-		expectRefused(CapsuleService.unlock(w.a, 2, 2_000), "capsule.priceChanged")
-		local reply = CapsuleService.unlock(w.a, 2, 2_500)
-		expect.equal(reply.ok, true)
-		expect.equal(reply.data.charged, true)
-		local opened: { any } = { { level = 1, squishyId = "kitty_bread" }, { level = 1 } }
-		expect.deepEqual(w.profiles[w.a].capsules, { slots = 2, list = opened })
-		expect.equal(w.profiles[w.a].coins, 97_500)
-		local replay = CapsuleService.unlock(w.a, 2, 2_500)
-		expect.equal(replay.ok, true)
-		expect.equal(replay.data.charged, false)
-		expect.equal(CapsuleService.unlock(w.a, 1, 0).data.charged, false)
-		expect.equal(#w.spends, 1)
-		expect.equal(w.nowSaves, 1) -- a replay saves nothing
+		local a = w.profiles[w.a]
+		local list: { any } = { { level = 1, squishyId = "kitty_bread" }, { level = 1 } }
+		a.capsules = { slots = 2, list = list }
+		w.status[w.a] = "offline"
+		expect.equal(CapsuleService.autoFill(w.a), false)
+		expect.equal(a.capsules.list[2].squishyId, nil)
+		w.status[w.a] = "ready"
+		a.capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }
+		expect.equal(CapsuleService.autoFill(w.a), false)
+		expect.equal(#a.capsules.list, 1)
+		expect.deepEqual(w.shown, {})
+		expect.deepEqual(w.saves, {})
 		finish()
 	end)
 

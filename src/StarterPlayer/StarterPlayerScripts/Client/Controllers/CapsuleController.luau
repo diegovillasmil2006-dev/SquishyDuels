@@ -24,6 +24,12 @@
 --   - a motion never cuts a bigger one (tap < squeeze < upgrade < evolve), and a squeeze never cuts a squeeze whose
 --     press still moves. One Scheduler render effect steps every motion, pop and brick from its start time (never
 --     added up, so a frame skip changes nothing) and ends when nothing runs.
+--   - Batch 1 #7b: over every OWN capsule whose next level the Coins cover now (CapsuleMath.upgradeCost, the Next goal's
+--     rule) a pooled "UP!" BillboardGui (Strings capsule.up, Lemon with an InkUI outline, upPx) hangs over the +Coins
+--     pop's highest point, lifted upLift of its height (SizeOffset), so the two never overlap at any distance; it bobs
+--     upBob every upBobMs (a looping tween; still under ReducedMotion). It follows the capsules, Coins and Grip state and
+--     every redraw of the own plot; AlwaysOnTop is off, so the player's body hides it. Nobody else ever sees it (only
+--     the local SD_Plot's capsules, in the local PlayerGui).
 -- * Card (modal "capsule"; UI/CapsuleFormat; the house components): a foam panel with its header tab ("Capsule N",
 --   Mint) and Close on its corner, a scrolling body (the squishy and "Tap to swap", tier and level, the evolve preview,
 --   the speed, Coins/h, Grip/h; a locked slot shows the lock and its word) and a pinned footer: one ConfirmButton (the
@@ -50,6 +56,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
@@ -108,6 +115,8 @@ type Rig = {
 type Motion = { kind: Kind, at: number, duration: number, squishy: Model?, rig: Rig? }
 
 type Pop = { gui: BillboardGui, coins: TextLabel, grip: TextLabel, strokes: { UIStroke }, at: number? }
+
+type Marker = { gui: BillboardGui, tween: Tween? }
 
 type Brick = { part: BasePart, from: Vector3, velocity: Vector3, spin: Vector3, at: number }
 
@@ -180,6 +189,10 @@ local SPHERE_UP = 5.5
 local SPHERE_RADIUS = 6.5
 local SECOND_RING = 1.4 -- the evolve's second ring: this much wider and slower
 local POP_PX = Vector2.new(220, 56)
+-- Batch 1 #7b: the UP! marker hangs over the pop's highest point and bobs upward (SizeOffset, in its own heights) once
+-- every upBobMs (a looping engine tween: no per-frame work here).
+local UP_STUDS = POP_STUDS + C.popRiseStuds
+local UP_BOB = TweenInfo.new(C.upBobMs / 2000, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
 -- Foam UI (as the Daily panel): Close sits CLOSE_INSET from the panel's right edge; the body pads its rows.
 local CLOSE_INSET = 16
 local BODY_PAD_PX = 6
@@ -200,6 +213,7 @@ local playerCleanups: { [Player]: Cleanup.Cleanup } = {}
 local levels: { [number]: Levels } = {}
 local motions: { [Model]: Motion } = {} -- by capsule model
 local pops: { [number]: Pop } = {} -- by own slot
+local markers: { [number]: Marker } = {} -- by own slot (Batch 1 #7b)
 local bricks: { Brick } = {}
 local effect: Scheduler.Handle? = nil
 local refs: CardRefs? = nil
@@ -479,6 +493,63 @@ local function showPop(slot: number, capsule: Model, squeezes: number)
 	wake()
 end
 
+-- The pooled UP! marker of an own slot (built on first use in the PlayerGui, kept across respawns, like the pops).
+local function markerOf(slot: number): Marker?
+	local known = markers[slot]
+	if known then
+		return known
+	end
+	local gui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	if gui == nil then
+		return nil
+	end
+	local billboard: BillboardGui = Create("BillboardGui", {
+		Name = "SD_CapsuleUp" .. slot,
+		AlwaysOnTop = false, -- the player's body hides it, so it never covers the player
+		LightInfluence = 0,
+		ResetOnSpawn = false,
+		MaxDistance = C.cullStuds,
+		Size = UDim2.fromOffset(C.upPx.X, C.upPx.Y),
+		StudsOffsetWorldSpace = Vector3.new(0, UP_STUDS, 0),
+		SizeOffset = Vector2.new(0, C.upLift),
+		Enabled = false,
+		Parent = gui,
+	})
+	local label = Theme.label({
+		Name = "Up",
+		Text = Strings.capsule.up,
+		TextWrapped = false,
+		AutomaticSize = Enum.AutomaticSize.None,
+		Size = UDim2.fromScale(1, 1),
+		Parent = billboard,
+	}, "Button", nil, Theme.Colors.lemon)
+	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.medium, label).ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+	local marker: Marker = { gui = billboard, tween = nil }
+	markers[slot] = marker
+	return marker
+end
+
+-- Shows the marker over `drum` (nil hides it and keeps the last Adornee); it bobs unless ReducedMotion is on.
+local function setMarker(marker: Marker, drum: BasePart?)
+	local gui = marker.gui
+	if drum then
+		gui.Adornee = drum
+	end
+	gui.Enabled = drum ~= nil
+	local bob = drum ~= nil and not Tweens.reducedMotion()
+	if bob == (marker.tween ~= nil) then
+		return
+	end
+	Tweens.cancel(marker.tween)
+	marker.tween = nil
+	gui.SizeOffset = Vector2.new(0, C.upLift)
+	if bob then
+		local tween = TweenService:Create(gui, UP_BOB, { SizeOffset = Vector2.new(0, C.upLift + C.upBob) })
+		tween:Play()
+		marker.tween = tween
+	end
+end
+
 -- A few sparkles over a squishy (what a visitor sees of a squeeze).
 local function sparkle(squishy: Model?)
 	if squishy == nil or not hasParts(squishy) then
@@ -607,6 +678,7 @@ end
 -- Card -------------------------------------------------------------------------------------------------------------
 
 local refreshCard: () -> ()
+local refreshMarkers: () -> ()
 
 local function open(plot: number, slot: number)
 	UIController.open(SCREEN, { plot = plot, slot = slot })
@@ -678,6 +750,7 @@ local function onFolder(plot: number, folder: Instance)
 				end
 				slots[slot] = level
 			end
+			refreshMarkers() -- a redraw replaces the capsule models: the markers follow the new drums
 		elseif kind == "Lock" then
 			addPrompt(fc, plot, slot, child, "Post")
 			slots[slot] = nil
@@ -713,6 +786,28 @@ local function gripLevel(): number
 	local grip = StateController.get("grip")
 	return if type(grip) == "table" and type(grip.total) == "number" then GripMath.levelFor(grip.total) else 1
 end
+
+-- Batch 1 #7b: the UP! marker over every own capsule whose next level the Coins cover now; never on another base.
+refreshMarkers = function()
+	local plot = Players.LocalPlayer:GetAttribute(ATTR_PLOT)
+	local folder = if type(plot) == "number" then folderOf(plot) else nil
+	local capsules = StateController.get("capsules")
+	local coins = StateController.coins() or 0
+	local level = gripLevel()
+	for slot = 1, SLOTS do
+		local capsule = modelIn(folder, "Capsule" .. slot)
+		local found = if capsule then capsule:FindFirstChild("Drum") else nil
+		local drum = if found and found:IsA("BasePart") then found else nil
+		local cost = CapsuleMath.upgradeCost(capsules, slot, level)
+		local show = drum ~= nil and cost ~= nil and coins >= cost
+		local marker = if show then markerOf(slot) else markers[slot]
+		if marker then
+			setMarker(marker, if show then drum else nil)
+		end
+	end
+end
+-- shortcut: a Drum that streams in after its redraw gets its marker on the next Coins change (every few seconds while
+-- capsules pay); add a ChildAdded hook if a Play test shows a gap.
 
 local function cardModel(): CapsuleFormat.Card?
 	local s = shown
@@ -1283,7 +1378,10 @@ function CapsuleController.init()
 		end,
 	}))
 	for _, field in { "capsules", "coins", "grip", "dataStatus", "owned" } do
-		c:add(StateController.changed(field):connect(refreshCard))
+		c:add(StateController.changed(field):connect(function()
+			refreshCard()
+			refreshMarkers() -- Batch 1 #7b
+		end))
 	end
 	c:add(UIController.LayoutChanged:connect(fit))
 	c:add(function()
@@ -1300,6 +1398,11 @@ function CapsuleController.init()
 			pop.gui:Destroy()
 		end
 		table.clear(pops)
+		for _, marker in markers do
+			Tweens.cancel(marker.tween)
+			marker.gui:Destroy()
+		end
+		table.clear(markers)
 		local handle = effect
 		if handle then
 			handle:disconnect()

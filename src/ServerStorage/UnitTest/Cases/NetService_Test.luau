@@ -352,7 +352,8 @@ return function(t: Context)
 		expect.truthy(guard:isMuted(key))
 	end)
 
-	-- Every click pays (2026-10-06): normal fast clicking is never rate-limited, counted or muted; a macro still is.
+	-- An honest client (it sends at most the paid-squeeze cap, Batch 1 #2) is never rate-limited, counted or muted; a
+	-- macro still is.
 	t.test("guard: SqueezeRequest at 20 per second for a minute is never limited or muted; 30 per second is", function()
 		local guard, clock, mutes = makeGuard()
 		local key = { name = "clicker" }
@@ -368,7 +369,7 @@ return function(t: Context)
 		expect.equal(guard:violationsOf(key), 0)
 		expect.falsy(guard:isMuted(key))
 		expect.equal(#mutes, 0)
-		-- A burst of the cap's 12 at once (a jittery network can bunch presses) is fine too.
+		-- A burst of the paid cap at once (a jittery network can bunch presses) is fine too.
 		for _ = 1, Config.Squeeze.bucketCapacity do
 			expect.equal(guard:check(key, "SqueezeRequest", 0), "ok")
 		end
@@ -382,8 +383,8 @@ return function(t: Context)
 		expect.truthy(guard:isMuted(macro))
 	end)
 
-	-- Review fix (every click pays): a network stall queues an honest clicker's presses (the client sends at most 12 a
-	-- second) and delivers them in one go. Up to 5 s of them (60) are no violation at all, the clicking goes on
+	-- Review fix: a network stall queues a client's presses and delivers them in one go (12 a second here is far more
+	-- than the paid cap of Batch 1 #2 sends). Up to 5 s of them (60) are no violation at all, the clicking goes on
 	-- without one, and even a 6.5 s backlog (78) stays under the mute.
 	t.test("guard: a 5 s backlog of 12/s clicking arriving at once is no violation and never mutes", function()
 		local guard, clock, mutes = makeGuard()

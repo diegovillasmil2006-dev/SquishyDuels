@@ -6,15 +6,16 @@
 -- Config.Squeeze's padMargin / heightAbove; Phase 6 moved them there from Config.Grip.Afk with slow training gone); off
 -- a pad, or on a tier Config.Grip.Pads no longer has (the giant pads' 2-4, gone in Phase 6), the squeeze pays tier 1
 -- (base Coins, no pad bonus) and uses a token like any other; tierFor takes no Grip level any more; only a
--- missing or dead character is refused (squeeze.noCharacter, no token). Every click pays (2026-10-06): the bucket is
--- the hidden anti-autoclicker cap, 12 at once and 12 per second on average (12 presses in 1 s all pay; a 13th at the
--- same instant is squeeze.tooFast; a macro at 25/s for 30 s gets at most 12 + 30 × 12 accepted; a rested 20/s macro
--- gets 20 in its first second); more than 20 requests in any second are dropped silently (a steady 20/s never is; more
--- than 40 drops in 10 s log once, so a 5 s backlog of 60 presses arriving at once is not logged); the shipped hourly
--- limit is off (spec 2026-10-11 §5), so every accepted squeeze pays and the limit state is left alone; with the limit
--- switched on (the rule stays, dormant) an empty limit still accepts but pays emptyCoins; a paid squeeze pays the
--- squeeze value the caller passes (Phase 3: a pad adds no Coin bonus, it only sets the tier); an unready profile earns
--- nothing (data.notReady); every reply's nextAt is a server time =
+-- missing or dead character is refused (squeeze.noCharacter, no token). Batch 1 #2 (replaces every click pays): the
+-- bucket is the paid-squeeze cap at the hold rhythm, 2 at once then 1 per cycleSeconds (= Grip.Hold.repeatSeconds,
+-- 0.45 s; a hold pays every press, even with network jitter; one press over the bucket is squeeze.tooFast; clicking at
+-- 12/s for 60 s pays at most 2 + 60 / 0.45; a macro at 25/s for 30 s gets at most 2 + 30 / 0.45 accepted and a rested
+-- 20/s macro never more than 2 + t / 0.45); more than 20 requests in any second are dropped silently (a steady 20/s
+-- never is; more than 40 drops in 10 s log once, so the remote's whole burst of 60 arriving at once is not logged); the
+-- shipped hourly limit is off (spec 2026-10-11 §5), so every accepted squeeze pays and the limit state is left alone;
+-- with the limit switched on (the rule stays, dormant) an empty limit still accepts but pays emptyCoins; a paid
+-- squeeze pays the squeeze value the caller passes (Phase 3: a pad adds no Coin bonus, it only sets the tier); an
+-- unready profile earns nothing (data.notReady); every reply's nextAt is a server time =
 -- serverNow + max(0, 1 - tokens) × cycleSeconds. Clocks are plain numbers (os.clock, os.time and server time kept far
 -- apart so a mix-up shows).
 
@@ -78,11 +79,15 @@ return function(t: Context)
 		expect.equal(fresh().bucket.tokens, SQUEEZE.bucketCapacity)
 	end)
 
-	t.test("DESIGN values: a 12-per-second cap (capacity 12, 1/12 s cycle), a 20/s flood guard", function()
-		expect.equal(SQUEEZE.bucketCapacity, 12)
-		expect.near(SQUEEZE.cycleSeconds, 1 / 12, 1e-12)
-		expect.equal(SQUEEZE.floodPerSecond, 20)
-	end)
+	t.test(
+		"Batch 1 #2 values: the paid cap is the hold rhythm (2 at once, 1 per Hold.repeatSeconds), a 20/s flood guard",
+		function()
+			expect.equal(SQUEEZE.bucketCapacity, 2)
+			expect.near(SQUEEZE.cycleSeconds, Config.Grip.Hold.repeatSeconds, 1e-12)
+			expect.near(SQUEEZE.cycleSeconds, 0.45, 1e-12)
+			expect.equal(SQUEEZE.floodPerSecond, 20)
+		end
+	)
 
 	t.test("the bucket accepts its capacity at once, then 1 per cycleSeconds", function()
 		local bucket = fresh().bucket
@@ -331,7 +336,7 @@ return function(t: Context)
 		expect.equal(last.reason, nil)
 	end)
 
-	-- Every click pays (2026-10-06) ---------------------------------------------------------------------------------
+	-- The paid cap (Batch 1 #2: squeezes pay up to the hold rhythm) ---------------------------------------------------
 
 	-- `count` requests `spacing` seconds apart from CLOCK0 (os.clock and server time move together), with the limit
 	-- carried from one to the next; returns the decisions in order and the state after them.
@@ -352,8 +357,8 @@ return function(t: Context)
 		return decisions, state
 	end
 
-	t.test("12 presses in 1 s all pay (spread out or all at once)", function()
-		for _, spacing in { 1 / 12, 0.05, 0 } do
+	t.test("the bucket's presses all pay (one cycle apart, close together or all at once)", function()
+		for _, spacing in { SQUEEZE.cycleSeconds, 0.05, 0 } do
 			local decisions = presses(SQUEEZE.bucketCapacity, spacing)
 			for i, d in decisions do
 				if d.outcome ~= "accepted" or not d.paid or d.coins ~= 5 then
@@ -363,7 +368,7 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("a 13th press in the same second is squeeze.tooFast with no Coins; the next cycle pays again", function()
+	t.test("one press over the bucket is squeeze.tooFast with no Coins; the next cycle pays again", function()
 		local decisions, s = presses(SQUEEZE.bucketCapacity + 1, 0)
 		local last = decisions[#decisions]
 		expect.equal(last.outcome, "rejected")
@@ -379,14 +384,48 @@ return function(t: Context)
 		expect.truthy(later.paid)
 	end)
 
-	t.test("clicking at 12 per second for 60 s: every press is accepted, never dropped or too fast", function()
-		local decisions = presses(60 * 12, 1 / 12)
-		for i, d in decisions do
-			if d.outcome ~= "accepted" then
-				error(`press {i}: {d.outcome} {tostring(d.reason)}`)
+	t.test(
+		"holding (one press every Hold.repeatSeconds) for 60 s: every press pays, even with network jitter",
+		function()
+			local hold = Config.Grip.Hold.repeatSeconds
+			local decisions = presses(math.floor(60 / hold), hold)
+			for i, d in decisions do
+				if d.outcome ~= "accepted" or not d.paid then
+					error(`steady press {i}: {d.outcome} {tostring(d.reason)}`)
+				end
+			end
+			-- Jitter bunches a hold's presses on arrival (0.25 s then 0.65 s apart, 0.45 s on average): the spare token
+			-- absorbs it.
+			local s = fresh()
+			local at = 0
+			for i = 1, 134 do
+				local d = SqueezeRules.decide(input(s, { now = CLOCK0 + at, serverNow = SERVER0 + at }), Config)
+				s = d.state
+				if d.outcome ~= "accepted" then
+					error(`jittery press {i}: {d.outcome} {tostring(d.reason)}`)
+				end
+				at += if i % 2 == 1 then 0.25 else 0.65
 			end
 		end
-	end)
+	)
+
+	t.test(
+		"clicking at 12 per second for 60 s pays only the hold rhythm; the rest is squeeze.tooFast, none dropped",
+		function()
+			local paid = 0
+			local decisions = presses(60 * 12, 1 / 12)
+			for i, d in decisions do
+				if d.outcome == "accepted" then
+					paid += 1
+				elseif d.outcome ~= "rejected" or d.reason ~= "squeeze.tooFast" or d.coins ~= 0 then
+					error(`press {i}: {d.outcome} {tostring(d.reason)}, {d.coins} Coins`)
+				end
+			end
+			local cap = SQUEEZE.bucketCapacity + math.floor(60 / SQUEEZE.cycleSeconds + 1e-6) -- 2 + 133
+			expect.truthy(paid <= cap)
+			expect.truthy(paid >= cap - 2) -- the limit really is the bucket, not something stricter
+		end
+	)
 
 	t.test("a steady 20 requests per second for 30 s is never dropped by the flood guard", function()
 		local decisions = presses(30 * 20, 1 / 20)
@@ -400,8 +439,8 @@ return function(t: Context)
 		expect.falsy(logged)
 	end)
 
-	t.test("fast clicking runs the earnings limit out: Coins stop, every press is still accepted", function()
-		local decisions = presses(SQUEEZE.bucketCapacity, 1 / 12, { value = 5, at = OS0 }, LIMIT_ON)
+	t.test("squeezing runs the earnings limit out: Coins stop, every press is still accepted", function()
+		local decisions = presses(8, SQUEEZE.cycleSeconds, { value = 5, at = OS0 }, LIMIT_ON)
 		local paid, coins = 0, 0
 		for _, d in decisions do
 			expect.equal(d.outcome, "accepted")
@@ -411,11 +450,11 @@ return function(t: Context)
 			coins += d.coins
 		end
 		expect.equal(paid, 5)
-		expect.equal(coins, 5 * 5 + (SQUEEZE.bucketCapacity - 5) * LIMIT_ON.Economy.SqueezeLimit.emptyCoins)
+		expect.equal(coins, 5 * 5 + (8 - 5) * LIMIT_ON.Economy.SqueezeLimit.emptyCoins)
 	end)
 
 	t.test(
-		"a 25/s macro for 30 s: the flood guard drops above 20/s, at most the burst plus 12/s is accepted",
+		"a 25/s macro for 30 s: the flood guard drops above 20/s, at most the bucket plus 1 per cycleSeconds is accepted",
 		function()
 			local s = fresh()
 			local acceptedAt: { number } = {}
@@ -459,54 +498,59 @@ return function(t: Context)
 		end
 	)
 
-	-- Review: the cap is a bucket, so "12 a second" holds on average; a rested macro's first second gets up to the
-	-- flood guard's 20. Kept on purpose (SqueezeRules header reading: a strict window would punish network jitter).
-	t.test("a rested 20/s macro gets 20 in its first second, then 12 a second (12 + 12 × t in all)", function()
-		local decisions = presses(4 * 20, 1 / 20)
-		local perSecond = { 0, 0, 0, 0 }
-		for i, d in decisions do
-			if d.outcome == "accepted" then
-				local second = math.floor((i - 1) / 20) + 1
-				perSecond[second] += 1
+	-- Review: the cap is a bucket, so the hold rhythm holds on average; a rested macro gets the bucket's spare token on
+	-- top (SqueezeRules header reading: a bucket of 1 would punish network jitter).
+	t.test(
+		"a rested 20/s macro never gets more than 2 + t / cycleSeconds (the hold rhythm after the bucket)",
+		function()
+			local decisions = presses(4 * 20, 1 / 20)
+			local perSecond = { 0, 0, 0, 0 }
+			for i, d in decisions do
+				if d.outcome == "accepted" then
+					local second = math.floor((i - 1) / 20) + 1
+					perSecond[second] += 1
+				end
 			end
+			expect.truthy(perSecond[1] <= SQUEEZE.bucketCapacity + 1 / SQUEEZE.cycleSeconds)
+			expect.truthy(perSecond[4] <= 1 / SQUEEZE.cycleSeconds + 1)
+			local total = perSecond[1] + perSecond[2] + perSecond[3] + perSecond[4]
+			expect.truthy(total <= SQUEEZE.bucketCapacity + math.floor(4 / SQUEEZE.cycleSeconds + 1e-6))
 		end
-		expect.equal(perSecond[1], SQUEEZE.floodPerSecond)
-		expect.truthy(perSecond[4] <= 1 / SQUEEZE.cycleSeconds + 1)
-		local total = perSecond[1] + perSecond[2] + perSecond[3] + perSecond[4]
-		expect.truthy(total <= SQUEEZE.bucketCapacity + math.floor(4 / SQUEEZE.cycleSeconds + 1e-6))
-	end)
+	)
 
-	-- Review fix: a network stall delivers an honest clicker's queued presses at once (60 = 5 s of the cap, the
-	-- SqueezeRequest remote burst). The flood guard lets 20 through (12 paid, 8 squeeze.tooFast with nothing earned),
-	-- drops 40 silently and does not log it as a flood; the clicking after it is accepted again.
-	t.test("a 5 s backlog arriving at once: 12 paid, 8 tooFast, 40 dropped, no flood log", function()
-		local backlog = 5 * 12
-		expect.truthy(Config.Net.Remotes.SqueezeRequest.burst >= backlog)
-		local decisions, s = presses(backlog, 0)
-		local paid, tooFast, dropped, logged = 0, 0, 0, false
-		for _, d in decisions do
-			logged = logged or d.logFlood
-			if d.outcome == "accepted" and d.paid then
-				paid += 1
-			elseif d.outcome == "dropped" then
-				dropped += 1
-			elseif d.reason == "squeeze.tooFast" then
-				tooFast += 1
-				expect.equal(d.coins, 0)
+	-- Review fix: a network stall delivers queued presses at once (the SqueezeRequest remote's whole burst, 60). The
+	-- flood guard lets 20 through (the bucket's 2 paid, 18 squeeze.tooFast with nothing earned), drops 40 silently and
+	-- does not log it as a flood; a hold after it pays again.
+	t.test(
+		"a 60-request backlog arriving at once: the bucket paid, the rest of 20 tooFast, 40 dropped, no flood log",
+		function()
+			local backlog = Config.Net.Remotes.SqueezeRequest.burst
+			local decisions, s = presses(backlog, 0)
+			local paid, tooFast, dropped, logged = 0, 0, 0, false
+			for _, d in decisions do
+				logged = logged or d.logFlood
+				if d.outcome == "accepted" and d.paid then
+					paid += 1
+				elseif d.outcome == "dropped" then
+					dropped += 1
+				elseif d.reason == "squeeze.tooFast" then
+					tooFast += 1
+					expect.equal(d.coins, 0)
+				end
+			end
+			expect.equal(paid, SQUEEZE.bucketCapacity)
+			expect.equal(tooFast, SQUEEZE.floodPerSecond - SQUEEZE.bucketCapacity)
+			expect.equal(dropped, backlog - SQUEEZE.floodPerSecond)
+			expect.falsy(logged)
+			-- One second later a hold (one press every cycleSeconds) is accepted again.
+			for i = 1, 4 do
+				local at = 1 + (i - 1) * SQUEEZE.cycleSeconds
+				local d = SqueezeRules.decide(input(s, { now = CLOCK0 + at, serverNow = SERVER0 + at }), Config)
+				s = d.state
+				if d.outcome ~= "accepted" then
+					error(`press {i} after the backlog: {d.outcome} {tostring(d.reason)}`)
+				end
 			end
 		end
-		expect.equal(paid, SQUEEZE.bucketCapacity)
-		expect.equal(tooFast, SQUEEZE.floodPerSecond - SQUEEZE.bucketCapacity)
-		expect.equal(dropped, backlog - SQUEEZE.floodPerSecond)
-		expect.falsy(logged)
-		-- One second later the clicking (12 a second) is accepted again.
-		for i = 1, 12 do
-			local at = 1 + (i - 1) / 12
-			local d = SqueezeRules.decide(input(s, { now = CLOCK0 + at, serverNow = SERVER0 + at }), Config)
-			s = d.state
-			if d.outcome ~= "accepted" then
-				error(`press {i} after the backlog: {d.outcome} {tostring(d.reason)}`)
-			end
-		end
-	end)
+	)
 end

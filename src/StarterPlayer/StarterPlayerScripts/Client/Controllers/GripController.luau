@@ -67,6 +67,10 @@
 --     going button.
 --   - The title sits in the header tab and Close straddles the panel's top edge (the panel's top padding holds their
 --     lower halves), so the column starts at the panel's padding and the two never meet.
+-- * Batch 1 #7a: the next goal also reads the capsules, Coins and owned squishies (StateController "capsules" /
+--   coins() / owned(), refreshed on their changes), so it names the capsule buy first ("Upgrade Capsule 1 · READY!",
+--   "Capsule 1: 120/1,000 Coins" on the regular card; an unlock only with a spare squishy); a capsule goal's toast id
+--   is its key and capsule, never its Coins.
 -- * Foam fix 2 (2026-10-09; look only): the panel and what hangs above it (half the taller of Close and the tab) take
 --   PANEL_HEIGHT_SHARE together and are centred together (panelLayout, pure; as Quests and Settings), so Close stays on
 --   a phone's screen. The Level block's list is centred. The regular card's goal line reads the short form of the
@@ -220,6 +224,9 @@ local LEVEL_POP = {
 -- "Next: {trainer} unlocks at Grip Lv {level}", left "Grip Lv 3" alone on a line). Other goals keep their text.
 local CARD_GOAL_KEYS: { [string]: string } = {
 	["grip.goalRank"] = "grip.hudGoalRank",
+	-- Batch 1 #7a: a capsule buy's progress, short; the READY lines are short already.
+	["grip.goalCapsule"] = "grip.hudGoalCapsule",
+	["grip.goalUnlock"] = "grip.hudGoalCapsule",
 }
 
 -- Module table
@@ -644,7 +651,8 @@ local function currentModel(): CardModel?
 	if v == nil then
 		return nil
 	end
-	return GripController.cardModel(v, serverNow())
+	local capsules = StateController.get("capsules")
+	return GripController.cardModel(v, serverNow(), capsules, StateController.coins(), StateController.owned())
 end
 
 -- The card's own press-feel scale (Button.decorate's UIScale "Scale" on the root; 1 without it), so its measured sizes
@@ -1050,10 +1058,16 @@ function GripController.shouldPopLevel(change: GripChange): boolean
 	return change.fireLevel and not change.baseline
 end
 
--- A goal's identity for the "new goal" toast: its Strings key plus its text (nil while there is no goal).
+-- A goal's identity for the "new goal" toast: its Strings key plus its text; a capsule goal's key plus its capsule
+-- (Batch 1: its Coins move with every squeeze, so its text would be a new goal again and again). nil while there is no
+-- goal.
 function GripController.goalId(model: CardModel): string?
 	local key = model.goalKey
-	return if key then key .. "|" .. (model.goal or "") else nil
+	if key == nil then
+		return nil
+	end
+	local slot = if model.goalArgs then model.goalArgs.slot else nil
+	return key .. "|" .. (if slot ~= nil then tostring(slot) else model.goal or "")
 end
 
 -- Whether a goal that just became the current one is toasted (§17.7 compact layout: "a new goal also appears once
@@ -1101,12 +1115,18 @@ function GripController.shouldShowIdleCard(idleSeconds: number): boolean
 	return finite(idleSeconds) and idleSeconds >= GRIP.idleReminderSeconds
 end
 
--- The format arguments of a GripMath.nextGoal result: its name (nameKey) as {rank}, and {level}.
+-- The format arguments of a GripMath.nextGoal result: its name (nameKey) as {rank}, {level}; a capsule goal's {slot}
+-- and its Coins as {have} / {need} (Format.coins).
 function GripController.goalArgs(goal: GripMath.Goal): { [string]: any }
-	local args: { [string]: any } = { level = goal.level }
+	local args: { [string]: any } = { level = goal.level, slot = goal.slot }
 	local nameKey = goal.nameKey
 	if nameKey then
 		args.rank = text(nameKey)
+	end
+	local need = goal.need
+	if need ~= nil then
+		args.have = Format.coins(goal.have or 0)
+		args.need = Format.coins(need)
 	end
 	return args
 end
@@ -1124,15 +1144,16 @@ end
 -- The HUD card's texts for a Grip state at server time `now` (§17.7): level and rank (together, and the rank alone for
 -- the regular card's title beside its level tile), the bar ({have}/{need} from GripMath.progress; grip.hudMax at the
 -- top; foam fix, user decision 2026-10-09: the fill is have / need too, the same numbers the words show, so 42,000 /
--- 66,000 reads about two thirds full; full at the top), the Double Grip chip and the next goal (foam fix 2: and its
--- short form for the regular card, CARD_GOAL_KEYS).
-function GripController.cardModel(v: GripView, now: number): CardModel
+-- 66,000 reads about two thirds full; full at the top), the Double Grip chip and the next goal (Batch 1: a capsule
+-- buy first when `capsules` is given, an unlock only with a spare in `owned`; foam fix 2: and its short form for the
+-- regular card, CARD_GOAL_KEYS).
+function GripController.cardModel(v: GripView, now: number, capsules: any?, coins: number?, owned: any?): CardModel
 	local progress = GripMath.progress(v.total)
 	local lv = progress.level
 	local rank = GripMath.rankFor(lv)
 	local rankText = text("grip.rank." .. rank.key)
 	local fraction = if progress.isMax or progress.need <= 0 then 1 else progress.have / progress.need
-	local goal = GripMath.nextGoal(v)
+	local goal = GripMath.nextGoal({ total = v.total, capsules = capsules, coins = coins, owned = owned })
 	local goalArgs = if goal then GripController.goalArgs(goal) else nil
 	return {
 		level = lv,
@@ -1214,6 +1235,13 @@ function GripController.init()
 		end,
 	}))
 	c:add(StateController.changed("grip"):connect(onGrip))
+	-- Batch 1 #7a: the next goal follows the capsules, the Coins and the owned squishies (a spare allows an unlock).
+	for _, field in { "capsules", "coins", "owned" } do
+		c:add(StateController.changed(field):connect(function()
+			refreshCard()
+			refreshPanel()
+		end))
+	end
 	c:add(StateController.LobbyLockChanged:connect(onLobbyLock))
 	c:add(UIController.LayoutChanged:connect(function()
 		refreshCard()

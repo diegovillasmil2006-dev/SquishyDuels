@@ -1,20 +1,18 @@
 --!strict
--- OnboardingFormat (client only, pure). DESIGN §11.8 (onboarding card, Config/Onboarding), §6.10 (eligible vs restricted
--- or unknown players), §6.4 / §6.6 (the first box price, the cheapest shop price), §11.7 (input kinds). What the
--- onboarding tip card shows, as plain data. Onboarding never pays Coins.
+-- OnboardingFormat (client only, pure). DESIGN §11.8 (onboarding card, Config/Onboarding), §6.6 (the cheapest shop
+-- price), §11.7 (input kinds). What the onboarding tip card shows, as plain data. Onboarding never pays Coins.
 --   currentStep(done, unavailable?)   the lowest Config.Onboarding step not in `done` (steps complete in any order)
 --                            and not unavailable, or nil
 --   isComplete(done, unavailable?)    every available step done
---   isEligible(policy)       paid random boxes allowed: only "eligible" (checking / unknown / restricted fail closed)
---   goal(policy)             the Coins goal of the firstBox step: Boxes.get("snack").cost when eligible, else the
---                            cheapest Catalog shopPrice (§11.8 "{coins}/400" / "{coins}/1,200")
+--   goal()                   the Coins goal of the firstBox step: the cheapest Catalog shopPrice (a 10,000 Common; Batch
+--                            1: the 150,000 Snack Box was out of a new player's reach; a box still completes the step)
 --   squeezeHint(input)       onboarding.squeezeHint.<keyboard | touch | gamepad> (spec 2026-10-11: "Click or press E",
 --                            "Tap the screen", "Press X")
---   guidance(step, policy)   (waypoint, pulse): a WorldLayout.waypoint name ("giftBox" or "shop", "duel") or a
---                            HudController.element name ("squishies": the equip and inspect steps, since spec
---                            2026-10-11 Inspect is reached through the Squishies list); the squeeze step has neither
---   text(step, ctx)          the step's text with {starterName}, {squeezeHint}, {coins}/{goal} filled in; restricted or
---                            unknown players get the step's restrictedTextKey (onboarding.firstBoxShop)
+--   guidance(step)           (waypoint, pulse): a WorldLayout.waypoint name ("shop", "duel") or a HudController.element
+--                            name ("squishies": the inspect step); the squeeze and capsule steps have neither
+--   text(step, ctx)          the step's text with {starterName}, {squeezeHint}, {coins}/{goal} filled in
+--   capsuleBought(new, old)  the replay's sign of the capsule step: the capsules state's slot count or a capsule's level
+--                            rose (a swap or an auto-filled squishy changes neither)
 --   visible(ctx) / model(ctx) the card, or nil when hidden: shown only for a ready profile that has not skipped and has
 --                            a step left. Replay mode (ctx.replay = the steps done in this local replay) ignores the saved
 --                            flags (done and skipped); the saved state never changes for a replay.
@@ -31,7 +29,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
@@ -44,7 +41,6 @@ export type InputKind = "keyboard" | "touch" | "gamepad"
 export type Step = {
 	id: string,
 	textKey: string,
-	restrictedTextKey: string?,
 	recordedBy: string,
 	guidance: string,
 }
@@ -53,7 +49,6 @@ export type Context = {
 	onboarding: any?, -- the profile's onboarding state {v, done, skipped}
 	ready: boolean, -- the profile is ready (not loading, offline or read-only)
 	replay: { [string]: boolean }?, -- replay mode: the steps done in this local replay (saved flags ignored)
-	policy: string?, -- StateDelta.policy
 	coins: number?,
 	input: InputKind?,
 	unavailable: { [string]: boolean }?, -- step ids passed over (their screen is not registered)
@@ -73,17 +68,13 @@ export type Model = {
 local ONBOARDING = Config.Onboarding
 local STEPS: { Step } = ONBOARDING.Steps :: any
 local WELCOME = "welcome"
-local ELIGIBLE = "eligible"
-local FIRST_BOX_ID = "snack" -- the first paid box (§11.8 "{coins}/400"; the SD_BoxStand BoxId)
 local DEFAULT_INPUT: InputKind = "keyboard"
--- Config.Onboarding guidance -> (waypoint, pulse). The box stand step points eligible players to the Gift Box counter
--- and everyone else to the Shop (§11.8 "waypoint to the box stand (or shop)"). The squeeze step's waypointMat maps to
--- no waypoint: its text says squeeze anywhere (spec 2026-10-11 §5), so it sends no one to a mat.
+-- Config.Onboarding guidance -> (waypoint, pulse). The firstBox step points everyone to the Shop (Batch 1). The squeeze
+-- step's waypointMat maps to no waypoint: its text says squeeze anywhere (spec 2026-10-11 §5).
 local WAYPOINTS: { [string]: string } = {
-	waypointBoxStand = "giftBox",
+	waypointShop = "shop",
 	waypointPodium = "duel",
 }
-local SHOP_WAYPOINT = "shop"
 local PULSES: { [string]: string } = {
 	pulseSquishies = "squishies",
 }
@@ -163,18 +154,7 @@ function OnboardingFormat.isComplete(done: { [string]: boolean }?, unavailable: 
 	return OnboardingFormat.currentStep(done, unavailable) == nil
 end
 
-function OnboardingFormat.isEligible(policy: unknown): boolean
-	return policy == ELIGIBLE
-end
-
-function OnboardingFormat.goal(policy: unknown): number
-	if OnboardingFormat.isEligible(policy) then
-		local box = Boxes.get(FIRST_BOX_ID)
-		local cost = if box then box.cost else nil
-		if cost and finite(cost) then
-			return cost
-		end
-	end
+function OnboardingFormat.goal(): number
 	return cheapestShopPrice() or 0
 end
 
@@ -184,21 +164,13 @@ function OnboardingFormat.squeezeHint(input: InputKind?): string
 end
 
 -- The waypoint target name and the HUD element to pulse for a step (either may be nil).
-function OnboardingFormat.guidance(step: Step, policy: unknown): (string?, string?)
-	local waypoint = WAYPOINTS[step.guidance]
-	if step.guidance == "waypointBoxStand" and not OnboardingFormat.isEligible(policy) then
-		waypoint = SHOP_WAYPOINT
-	end
-	return waypoint, PULSES[step.guidance]
+function OnboardingFormat.guidance(step: Step): (string?, string?)
+	return WAYPOINTS[step.guidance], PULSES[step.guidance]
 end
 
 function OnboardingFormat.text(step: Step, ctx: Context): string
-	local key = step.textKey
-	if step.restrictedTextKey and not OnboardingFormat.isEligible(ctx.policy) then
-		key = step.restrictedTextKey
-	end
-	local template = Strings.resolve(key) or ""
-	local goal = OnboardingFormat.goal(ctx.policy)
+	local template = Strings.resolve(step.textKey) or ""
+	local goal = OnboardingFormat.goal()
 	local coins = if finite(ctx.coins) then math.clamp(math.floor(ctx.coins :: number), 0, goal) else 0
 	return Strings.format(template, {
 		starterName = starterName(),
@@ -221,7 +193,7 @@ function OnboardingFormat.model(ctx: Context): Model?
 		return nil
 	end
 	local step = OnboardingFormat.currentStep(doneSet(ctx), ctx.unavailable) :: Step
-	local waypoint, pulse = OnboardingFormat.guidance(step, ctx.policy)
+	local waypoint, pulse = OnboardingFormat.guidance(step)
 	local welcome = step.id == WELCOME
 	return {
 		stepId = step.id,
@@ -236,6 +208,29 @@ end
 -- The saved done set of an onboarding state (booleans only), for the controller's own checks.
 function OnboardingFormat.done(onboarding: any): { [string]: boolean }
 	return savedDone(onboarding)
+end
+
+-- Batch 1: the replay's sign of the capsule step: the slot count or a capsule's level rose (an upgrade or an unlock).
+function OnboardingFormat.capsuleBought(new: any, old: any): boolean
+	if type(new) ~= "table" or type(old) ~= "table" or type(new.list) ~= "table" or type(old.list) ~= "table" then
+		return false
+	end
+	if finite(new.slots) and finite(old.slots) and new.slots > old.slots then
+		return true
+	end
+	for slot, capsule in new.list do
+		local before = old.list[slot]
+		if
+			type(capsule) == "table"
+			and type(before) == "table"
+			and finite(capsule.level)
+			and finite(before.level)
+			and capsule.level > before.level
+		then
+			return true
+		end
+	end
+	return false
 end
 
 return OnboardingFormat

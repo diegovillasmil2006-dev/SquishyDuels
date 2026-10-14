@@ -7,18 +7,18 @@
 --   DailyLogic.dayIndex(now)                  -> math.floor(now / 86400): the UTC day (a new day at 00:00 UTC)
 --   DailyLogic.canClaim(daily, today)         -> (true) or (false, "daily.alreadyClaimed") when lastClaimDay >= today.
 --                                                Profile ready and no save pending stay DailyRewardService's checks.
---   DailyLogic.nextStreak(daily, today, cfg?) -> (streakDay, reset): the streak day this claim pays.
---                                                Claimed yesterday (lastClaimDay >= today - 1 - GraceDays) ->
---                                                streakDay % #coinsByDay + 1 (after day 7 back to Day 1), reset false;
---                                                a missed day -> 1, reset = true ("Your streak restarted at Day 1.").
+--   DailyLogic.nextStreak(daily, today, cfg?) -> streakDay: the streak day this claim pays:
+--                                                streakDay % #coinsByDay + 1 after any earlier claim (after day 7 back
+--                                                to Day 1). A missed day only pauses the streak (review quick win
+--                                                2026-10-14): the claim after a gap pays the next day, never back to
+--                                                Day 1.
 --   DailyLogic.reward(streakDay, cfg?)        -> {coins, freeBox}: coinsByDay[streakDay]; freeBox on freeBoxDay (7)
 --   DailyLogic.secondsUntilNext(now)          -> seconds until the next 00:00 UTC, in (0, 86400]
 -- `cfg` is a table shaped like Config.Economy.Daily (a test's copy); nil = the live Config.
 --
 -- Readings:
---   * `reset` is true only when there was a streak to restart (lastClaimDay >= 0): a first-ever claim starts at Day 1
---     without the restart sentence.
---   * nextStreak for a day that is not claimable (lastClaimDay >= today) returns the stored day (clamped) and false.
+--   * A first-ever claim (lastClaimDay < 0) is Day 1.
+--   * nextStreak for a day that is not claimable (lastClaimDay >= today) returns the stored day (clamped).
 --   * A streak day outside 1..#coinsByDay (only from a hand edit) is clamped into it; a non-number lastClaimDay is
 --     treated as "already claimed today" by canClaim (fail closed; ProfileSchema.sanitize fixes it on load).
 
@@ -36,7 +36,7 @@ local Types = require(Shared.Types)
 -- Types
 
 export type DailyState = Types.DailyState
-export type DailyConfig = { coinsByDay: { number }, freeBoxDay: number, GraceDays: number? }
+export type DailyConfig = { coinsByDay: { number }, freeBoxDay: number }
 export type Reward = { coins: number, freeBox: boolean }
 
 -- Constants
@@ -79,18 +79,17 @@ function DailyLogic.canClaim(state: DailyState, today: number): (boolean, string
 	return true, nil
 end
 
-function DailyLogic.nextStreak(state: DailyState, today: number, cfg: DailyConfig?): (number, boolean)
+function DailyLogic.nextStreak(state: DailyState, today: number, cfg: DailyConfig?): number
 	local c = daily(cfg)
 	local cycle = math.max(1, #c.coinsByDay)
 	local last = state.lastClaimDay
 	if not isFinite(last) or last >= today then
-		return clampWhole(state.streakDay, 1, cycle), false
+		return clampWhole(state.streakDay, 1, cycle)
 	end
-	local grace = clampWhole(c.GraceDays, 0, math.huge)
-	if last >= today - 1 - grace then
-		return clampWhole(state.streakDay, 0, cycle) % cycle + 1, false
+	if last < 0 then
+		return 1 -- a first-ever claim
 	end
-	return 1, last >= 0
+	return clampWhole(state.streakDay, 0, cycle) % cycle + 1 -- also after a missed day: the streak only paused
 end
 
 function DailyLogic.reward(streakDay: number, cfg: DailyConfig?): Reward

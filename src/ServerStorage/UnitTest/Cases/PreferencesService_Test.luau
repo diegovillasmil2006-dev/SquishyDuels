@@ -7,7 +7,7 @@
 --     anything else drops the whole payload; only the keys sent change; a change marks "settings" and saves "soon"
 --     (ready profiles only, through DataService.mutate; OFFLINE keeps it in memory; loading has nothing to change);
 --   * onboarding: markStep is idempotent and saves once; the client may record only welcome and inspect; server steps
---     come from the wiring (equip of a non-starter, the first squishy from a box or the shop, a squeeze, a queue join);
+--     come from the wiring (the first capsule spend, the first squishy from a box or the shop, a squeeze, a queue join);
 --     onboarding never pays Coins; the skip id (Config.Onboarding.skipStepId, Part 7) sets onboarding.skipped once
 --     ("soon" save, idempotent) and marks no step;
 --   * end to end through a real DataService core (memory store): settings and steps survive a release and a reload.
@@ -168,7 +168,7 @@ return function(t: Context)
 		local player, profile = readyPlayer(w)
 		expect.truthy(PreferencesService.clientStep(player, "welcome"))
 		expect.truthy(PreferencesService.clientStep(player, "inspect"))
-		for _, serverStep in { "squeeze", "firstBox", "equip", "duel" } do
+		for _, serverStep in { "squeeze", "capsule", "firstBox", "duel" } do
 			expect.falsy(PreferencesService.clientStep(player, serverStep))
 		end
 		expect.falsy(PreferencesService.clientStep(player, 3))
@@ -205,18 +205,22 @@ return function(t: Context)
 		expect.equal(#w.saves, 0)
 	end)
 
-	t.test("server-observed steps: a non-starter equip, the first box or shop squishy, a squeeze, a join", function()
+	t.test("server-observed steps: the first capsule buy, the first box or shop squishy, a squeeze, a join", function()
 		local w = setup()
 		local player, profile = readyPlayer(w)
-		PreferencesService.onEquipped(player, "kitty_bread")
-		expect.equal(profile.onboarding.done.equip, nil) -- the starter does not count
-		PreferencesService.onEquipped(player, "toast")
+		PreferencesService.onCoinsChanged(player, 10, 10, "capsule")
+		expect.equal(profile.onboarding.done.capsule, nil) -- a capsule's pay is no buy
+		PreferencesService.onCoinsChanged(player, 0, -10_000, "shop")
+		expect.equal(profile.onboarding.done.capsule, nil) -- another spend does not count
+		PreferencesService.onCoinsChanged(player, 0, -1_000, "capsule")
 		PreferencesService.onSquishyGranted(player, "toast", "grant")
 		expect.equal(profile.onboarding.done.firstBox, nil) -- a debug grant does not count
 		PreferencesService.onSquishyGranted(player, "toast", "box")
 		PreferencesService.onSqueezed(player)
 		PreferencesService.onQueueJoined(player)
-		expect.deepEqual(profile.onboarding.done, { equip = true, firstBox = true, squeeze = true, duel = true })
+		expect.deepEqual(profile.onboarding.done, { capsule = true, firstBox = true, squeeze = true, duel = true })
+		expect.equal((PreferencesService :: any).onEquipped, nil) -- Batch 1: there is no equip step any more
+		expect.equal(profile.coins, 0) -- onboarding never pays Coins
 	end)
 
 	t.test("a session that takes no more changes stores nothing and saves nothing", function()

@@ -21,17 +21,18 @@
 --   (CapsuleMath.squeezeGrip) of StateController's `capsules` field, re-read with the station check. Shown
 --   (labelShownFor, pure) only while holding, out of a match, with the lobby unlocked, no screen open (no block) and no
 --   first-person look; it is built once and shown or hidden with Enabled.
--- * Sending (§17.3.2, §9.6; every click pays, user decision 2026-10-06): there is no squeeze timer and no cooldown
---   strip, ring or disabled button between squeezes. Every press (F / E / ButtonX, a click, a tap, the pad)
+-- * Sending (§17.3.2, §9.6; Batch 1 #2: squeezes pay up to the hold rhythm): there is no squeeze timer and no
+--   cooldown strip, ring or disabled button between squeezes. Every press (F / E / ButtonX, a click, a tap, the pad)
 --   squeezes IMMEDIATELY: the local squeeze restarts from the top (play) and a SqueezeRequest (no argument: the server
---   finds the pad itself) goes at once, without waiting for
---   the last reply. The only limit is the server's hidden anti-autoclicker cap (Config.Squeeze: 12 at once, 12 a
---   second on average): the client never sends more than Config.Squeeze.bucketCapacity requests inside bucketCapacity ×
---   cycleSeconds (1 s, underCap, pure), so a human never meets it; a press over it is simply not sent. While held,
---   the repeat goes at a relaxed rhythm of one full squeeze animation: max(nextAt + Hold.leadSeconds, lastSend +
---   Hold.repeatSeconds) (SqueezeResult.nextAt is SERVER time, Workspace:GetServerTimeNow()); with no SqueezeResult
---   within repeatSeconds + Hold.replyGraceSeconds (a flood-guard drop has no reply) the next repeat goes anyway
---   (sendDue, pure). Clicking can be faster than holding. "+N Coins" only when SqueezeResult.coins > 0; "+N Grip" /
+--   finds the pad itself) goes at once, without waiting for the last reply. It is sent while the client is under the
+--   server's paid-squeeze cap (Config.Squeeze: 2 at once, then 1 per cycleSeconds = Hold.repeatSeconds): it never
+--   sends more than Config.Squeeze.bucketCapacity requests inside bucketCapacity × cycleSeconds (0.9 s, underCap,
+--   pure). A fresh press over it still squishes on screen but is not sent (it pays nothing, no "+N", nothing negative
+--   shown). While held, the repeat goes at a relaxed rhythm of one full squeeze animation: max(nextAt +
+--   Hold.leadSeconds, lastSend + Hold.repeatSeconds) (SqueezeResult.nextAt is SERVER time,
+--   Workspace:GetServerTimeNow()); with no SqueezeResult within repeatSeconds + Hold.replyGraceSeconds (a flood-guard
+--   drop has no reply) the next repeat goes anyway (sendDue, pure). Clicking pays no faster than holding. "+N Coins"
+--   only when SqueezeResult.coins > 0; "+N Grip" /
 --   "+N Grip (xM)" when grip > 0 (doubled). A rejection other than squeeze.tooFast stops the hold and shows its reason
 --   once (tooFast is silent: the client shows nothing for it).
 -- * Hold stop rules (§17.3.2; holdStopReason, pure, plus events): End / Cancel (ControlsController delivers End even
@@ -58,10 +59,11 @@
 --   SoundController (silent until vetted ids exist). Other players' squeezes come from their character's
 --   server-written SD_SqueezeAt (only fresh changes, within Config.Squeeze.othersCullStuds = 60 studs, §9.6; their
 --   sounds within Config.Audio.Spatial.othersSqueezeStuds, at most othersSqueezeMax at once, §11.9).
---   Every click pays (SqueezeFeel.startKind / interruptFx): the local player's own squeeze restarts the rig on every
---   press, even mid-squeeze, from where it is so nothing jumps; another player's waits for its running squeeze's
+--   Every press squishes (SqueezeFeel.startKind / interruptFx): the local player's own squeeze restarts the rig on
+--   every press, even mid-squeeze, from where it is so nothing jumps; another player's waits for its running squeeze's
 --   release pop end ("busy"). An own squeeze cut short before its pop end merges its release pop (the big pop on every
---   8th) and, at most once per release pop, its puffs into the press. Budgets at the 12-per-second cap: sfx.squish and
+--   8th) and, at most once per release pop, its puffs into the press. Budgets at 12 presses a second (a human's fastest;
+--   presses over the paid cap still play): sfx.squish and
 --   sfx.squeezeRelease keep their 90 ms key cooldown (Config.Audio), puffs come no faster than back-to-back full
 --   squeezes, every burst goes through FxPool's live-particle caps, the "+N" pool keeps coinPopupMaxVisible lines of a
 --   kind, a reply within foldSeconds of the newest line of its kind folds its amount into that line (foldsInto: same
@@ -264,8 +266,8 @@ type FloatLabel = {
 -- Constants
 
 local STATION_RADIUS = Config.Squeeze.stationRadius
--- The client side of the server's anti-autoclicker cap (every click pays): at most CAP sends inside CAP_WINDOW seconds
--- (bucketCapacity in bucketCapacity × cycleSeconds = 12 in 1 s).
+-- The client side of the server's paid-squeeze cap (Batch 1 #2): at most CAP sends inside CAP_WINDOW seconds
+-- (bucketCapacity in bucketCapacity × cycleSeconds = 2 in 0.9 s); a fresh press over it plays but is not sent.
 local CAP = Config.Squeeze.bucketCapacity
 local CAP_WINDOW = Config.Squeeze.bucketCapacity * Config.Squeeze.cycleSeconds
 local OTHERS_CULL_STUDS = Config.Squeeze.othersCullStuds
@@ -686,9 +688,10 @@ end
 -- Floats one line of `kind` up from the squishy (A4; lobby HUD spec 2026-10-11 §2: the Grip lines too, from the one
 -- pool): `amount` as lineText words it. It starts above the floating label (lineLiftPx). A reply within
 -- foldSeconds("coins") of the newest line of its kind on the same model, with the same doubling, adds its amount to
--- that line's number (its rise goes on), so at
--- 12 replies a second a slot is never reused before its popup ends (every click pays; the old snap back to the start
--- at full opacity). The amounts shown are unchanged in total.
+-- that line's number (its rise goes on), so a burst of replies never reuses a slot before its popup ends (a review
+-- fix from the every-click-pays days, against the old snap back to the start at full opacity; with the Batch 1 paid
+-- cap a click burst still brings its 2 replies at once, which fold into one line). The amounts shown are unchanged in
+-- total.
 -- First person (spec 2026-10-11 §3.8): while a look is on, the line floats at the overlay toy instead (the held model
 -- is hidden); a reply within half its float (foldSeconds("grip"), a floating line's window) folds into it. Inline
 -- requires: this module adds no top-level local, and neither controller requires it back.
@@ -838,9 +841,9 @@ local function stopHold(reason: StopReason)
 end
 
 -- Sends one SqueezeRequest if it is due (a fresh press always is; a hold repeat follows sendDue) and the client is
--- under the anti-autoclicker cap (underCap); anywhere in the lobby (spec 2026-10-11 §5: the server finds the pad).
--- Plays the local squeeze at once (it restarts from the top on every press). Returns true when it was sent. A press
--- over the cap is not sent and shows nothing (a human never gets there).
+-- under the paid-squeeze cap (underCap); anywhere in the lobby (spec 2026-10-11 §5: the server finds the pad).
+-- Plays the local squeeze at once (it restarts from the top on every press). Returns true when it was sent. A fresh
+-- press over the cap still squishes on screen but is not sent, so it pays nothing and shows no "+N" (Batch 1 #2).
 local function trySend(fresh: boolean): boolean
 	local now = serverNow()
 	if now < SqueezeController.sendDue(sendState, fresh, HOLD) then
@@ -848,6 +851,9 @@ local function trySend(fresh: boolean): boolean
 	end
 	local clock = os.clock()
 	if not SqueezeController.underCap(recentSends, clock, CAP, CAP_WINDOW) then
+		if fresh then
+			SqueezeController.playLocal()
+		end
 		return false
 	end
 	if not NetController.squeezeRequest() then
@@ -887,7 +893,8 @@ local function isHeld(h: Hold): boolean
 	return virtualHeld
 end
 
--- A fresh press (Begin): starts (or restarts) the hold and squeezes at once (every click pays, anywhere).
+-- A fresh press (Begin): starts (or restarts) the hold and squeezes at once on screen; sends (and pays) while under the
+-- paid cap, anywhere.
 local function freshPress(press: PressInput): boolean
 	local now = os.clock()
 	hold = {
@@ -1134,12 +1141,12 @@ end
 
 -- Public: pure helpers (unit-tested) --------------------------------------------------------------------------------
 
--- §17.3.2 with every click pays (2026-10-06): the server time at which the next SqueezeRequest may go out. A fresh
--- press goes at once (-math.huge: it never waits for a reply, the server's nextAt or the hold rhythm; only underCap
--- can hold it back). A hold repeat goes at max(nextAt + leadSeconds, lastSend + repeatSeconds): one full squeeze
--- animation per repeat (Config.Grip.Hold.repeatSeconds), later only while the cap's bucket is empty. While the reply
--- to the last send is missing, a hold repeat waits until lastSend + repeatSeconds + replyGraceSeconds (a flood-guard
--- drop has no reply, so the hold never stalls).
+-- §17.3.2 (Batch 1 #2: squeezes pay up to the hold rhythm): the server time at which the next SqueezeRequest may go
+-- out. A fresh press goes at once (-math.huge: it never waits for a reply, the server's nextAt or the hold rhythm; only
+-- underCap can hold it back). A hold repeat goes at max(nextAt + leadSeconds, lastSend + repeatSeconds): one full
+-- squeeze animation per repeat (Config.Grip.Hold.repeatSeconds), later only while the cap's bucket is empty. While the
+-- reply to the last send is missing, a hold repeat waits until lastSend + repeatSeconds + replyGraceSeconds (a
+-- flood-guard drop has no reply, so the hold never stalls).
 -- Reading: DESIGN's "max(nextAt, serverNow) + 0.05 s" is evaluated every frame, so "serverNow + 0.05" would never be
 -- reached; the lead is added to nextAt (a token still missing) and the repeat floor covers the case where a token is
 -- already there.
@@ -1154,10 +1161,10 @@ function SqueezeController.sendDue(s: SendState, fresh: boolean, hold: HoldConfi
 	return math.max(s.nextAt + hold.leadSeconds, last + hold.repeatSeconds)
 end
 
--- The client side of the server's anti-autoclicker cap (every click pays): true when a send at `now` keeps fewer than
+-- The client side of the server's paid-squeeze cap: true when a send at `now` keeps fewer than
 -- `capacity` sends inside the last `windowSeconds` (`sentAt` = the clock times of the recent sends; one exactly
--- windowSeconds old is out). With Config.Squeeze's bucketCapacity in bucketCapacity × cycleSeconds (12 in 1 s) the
--- client never empties the server's bucket (12 at once, 12 per second) nor reaches its flood guard (20/s).
+-- windowSeconds old is out). With Config.Squeeze's bucketCapacity in bucketCapacity × cycleSeconds (2 in 0.9 s) the
+-- client stays inside the server's bucket (2 at once, then 1 per 0.45 s) and far below its flood guard (20/s).
 function SqueezeController.underCap(sentAt: { number }, now: number, capacity: number, windowSeconds: number): boolean
 	local inWindow = 0
 	local after = now - windowSeconds + CAP_EDGE_SECONDS
@@ -1379,8 +1386,9 @@ function SqueezeController.coinPopupSample(t: number, reduced: boolean): CoinPop
 	}
 end
 
--- How long after the newest line of a kind a new reply folds into it instead of starting another line (every click
--- pays; review fix). "coins", every line above the squishy (lobby HUD spec §2): one pool slot's share of a popup's
+-- How long after the newest line of a kind a new reply folds into it instead of starting another line (a review fix
+-- from the every-click-pays days; the paid cap's 2 replies at once still fold). "coins", every line above the
+-- squishy (lobby HUD spec §2): one pool slot's share of a popup's
 -- life (Effects.coinPopupSeconds / coinPopupMaxVisible = 0.2 s), so a slot is never reused before its popup has
 -- ended; "grip", a line at the first-person toy: half its float (coinCounter.floatMs / 2 = 0.35 s), so the line before
 -- has risen 3/4 of floatPx and faded 3/4 of the way when the next one starts below it.
@@ -1536,7 +1544,7 @@ function SqueezeController.debugState(): { [string]: any }
 		heldFor = if h then os.clock() - h.startedAt else nil,
 		lastStopReason = lastStopReason,
 		sends = sends,
-		recentSends = #recentSends, -- sends kept for the anti-autoclicker cap (at most bucketCapacity)
+		recentSends = #recentSends, -- sends kept for the paid-squeeze cap (at most bucketCapacity)
 		lastSendAt = sendState.lastSendAt,
 		replied = sendState.replied,
 		nextAt = sendState.nextAt,

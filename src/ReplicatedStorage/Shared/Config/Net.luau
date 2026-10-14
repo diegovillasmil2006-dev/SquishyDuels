@@ -29,16 +29,16 @@ local Net = {
 		-- only stops floods.
 		DashRequest = { rate = 1, burst = 3 },
 		-- Feature 1 (2026-10-11): the client sends one ChargeStart before each throw (ThrowRequest's own bucket); the
-		-- catch's 0.75 s cooldown is CombatService's (Config.Combat.Catch), the bucket only stops floods.
+		-- catch's cooldown is CombatService's (Config.Combat.Catch.cooldownSeconds), the bucket only stops floods.
 		ChargeStart = { rate = 3, burst = 4 },
 		CatchRequest = { rate = 2, burst = 3 },
-		-- The flood guard (> 20/s dropped silently, = Config.Squeeze.floodPerSecond): every click pays, so normal
-		-- fast clicking (the client sends at most 12 per second) is never rate-limited, counted as a violation or
-		-- muted; a macro above 20/s still is, once it has used up the burst. Burst 60 = 5 s of the 12-per-second
-		-- cap: after a network stall an honest clicker's queued presses arrive at once, and up to 5 s of them are
-		-- never violations (a mute needs over 6.7 s of them; Config.validate: burst >= 5 s of the cap, Global.burst >=
-		-- this burst). The paid-squeeze cap (capacity 12, 12 per second) is a game-state check in SqueezeService
-		-- (Config.Squeeze), not this bucket.
+		-- The flood guard (> 20/s dropped silently, = Config.Squeeze.floodPerSecond): an honest client sends at most
+		-- the paid-squeeze cap (Config.Squeeze: bucketCapacity inside bucketCapacity × cycleSeconds, 2 in 0.9 s; Batch 1
+		-- #2), so it is never rate-limited, counted as a violation or muted; a macro above 20/s still is, once it has
+		-- used up the burst. Burst 60 is far more than 5 s of the paid cap: after a network stall the queued presses
+		-- arrive at once and are never violations (Config.validate: burst >= 5 s of the cap, Global.burst >= this
+		-- burst). The paid-squeeze cap itself (2 at once, then 1 per 0.45 s, the hold rhythm) is a game-state check in
+		-- SqueezeService (Config.Squeeze), not this bucket.
 		SqueezeRequest = { rate = 20, burst = 60 },
 		BoxOpen = { rate = 0.5, burst = 1, oneInFlight = true },
 		AckReveal = { rate = 5, burst = 5 },

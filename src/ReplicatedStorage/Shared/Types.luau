@@ -312,13 +312,12 @@ export type ClientOnboardingStep = "welcome" | "inspect" | "skip"
 export type ShopResult = { squishyId: string, charged: boolean, savePending: boolean }
 export type BoxResult = { squishyId: string, isDuplicate: boolean, refund: number, savePending: boolean }
 -- reading: day 7 carries the free Treat Box result so the reveal can play at once (§6.9). Readings (Part 7):
--- `streakReset` is true when a missed day restarted the streak at Day 1 (the panel shows daily.streakReset; never on a
--- first claim); `treatRequestId` is the free Treat Box's boxLog key "daily:<dayIndex>" (§3.4), the id AckReveal sends.
+-- `treatRequestId` is the free Treat Box's boxLog key "daily:<dayIndex>" (§3.4), the id AckReveal sends. A missed day
+-- only pauses the streak (review quick win 2026-10-14), so there is no reset flag.
 export type DailyClaimResult = {
 	streakDay: number,
 	coins: number,
 	treat: BoxResult?,
-	streakReset: boolean?,
 	treatRequestId: string?,
 }
 -- CapsuleUpgrade / CapsuleUnlock / CapsuleSet data (lobby spec 2026-10-11 §6, Phase 3): `capsules` = the caller's own
@@ -376,9 +375,9 @@ export type SqueezeResultPayload = {
 	total: number, -- the Coins balance after it
 	limit: number, -- reading: whole points left in the squeeze Coins limit (floor of SqueezeLimit.current)
 	reason: string?, -- a §2.10 code when ok = false (squeeze.tooFast, squeeze.noCharacter, data.notReady, ...)
-	-- Server time (workspace:GetServerTimeNow() scale) of the next token of the anti-autoclicker cap:
+	-- Server time (workspace:GetServerTimeNow() scale) of the next token of the paid-squeeze cap:
 	-- GetServerTimeNow() + max(0, 1 - tokens) × Config.Squeeze.cycleSeconds, converted by SqueezeService from its
-	-- os.clock() bucket (§17.10). Every click pays: only a hold repeat looks at it (SqueezeController.sendDue).
+	-- os.clock() bucket (§17.10). Only a hold repeat looks at it (SqueezeController.sendDue).
 	nextAt: number,
 	grip: number, -- Grip this squeeze trained (0 when rejected); already doubled when `doubled`
 	gripTotal: number, -- grip.total after it

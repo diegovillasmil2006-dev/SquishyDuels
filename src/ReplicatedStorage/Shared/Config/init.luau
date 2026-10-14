@@ -156,7 +156,7 @@ local MOTION_RANGES: { [string]: { number } } =
 local MOTION_FIELDS = { "depth", "widen", "kRel", "cRel" }
 local MAX_FLAP_HZ = 2.5
 local MAX_ROLL_DEG_PER_SECOND = 720
--- Every click pays: a network stall delivers an honest clicker's queued SqueezeRequests at once; the remote burst
+-- A network stall delivers an honest client's queued SqueezeRequests at once; the remote burst
 -- holds this many seconds of the paid-squeeze cap, so they are never violations (Config.Net.Remotes.SqueezeRequest).
 local SQUEEZE_BACKLOG_SECONDS = 5
 -- F7: face sizes when WorldLayout is not available (§18.3.1: a wall 6 × 8 × 2.5, a block 6 × 8 × 6; §18.3.7: the
@@ -426,7 +426,6 @@ local function checkEconomy(problems: Problems, rarities: { string })
 	expectBetween(problems, `{p}.Daily.freeBoxDay`, daily.freeBoxDay, 1, #daily.coinsByDay)
 	expectCount(problems, `{p}.Daily.freeBoxDay`, daily.freeBoxDay, 1)
 	expectId(problems, `{p}.Daily.freeBoxId`, daily.freeBoxId)
-	expectCount(problems, `{p}.Daily.GraceDays`, daily.GraceDays, 0)
 
 	local quests = Economy.Quests
 	expectCount(problems, `{p}.Quests.perDay`, quests.perDay, 1)
@@ -475,8 +474,8 @@ local function checkSqueeze(problems: Problems)
 		`{p}.heightAbove must be in (0, {MAX_PAD_HEIGHT_ABOVE}] studs (got {show(Squeeze.heightAbove)})`
 	)
 
-	-- Every click pays (2026-10-06): the bucket is a hidden anti-autoclicker cap (bucketCapacity at once, 1 per
-	-- cycleSeconds). The flood guard must let at least the cap through, so normal fast clicking is never dropped.
+	-- Batch 1 #2: the bucket is the paid-squeeze cap (bucketCapacity at once, 1 per cycleSeconds = the hold rhythm).
+	-- The flood guard must let at least the cap through, so an honest client's sends are never dropped.
 	local capacity, cycle, floodRate = Squeeze.bucketCapacity, Squeeze.cycleSeconds, Squeeze.floodPerSecond
 	if isNumber(capacity) and isNumber(cycle) and cycle > 0 and isNumber(floodRate) then
 		local capPerSecond = math.max(capacity, 1 / cycle)
@@ -487,6 +486,14 @@ local function checkSqueeze(problems: Problems)
 				.. `bucketCapacity {capacity}, 1 / cycleSeconds {1 / cycle})`
 		)
 	end
+	-- The cap's rhythm is the hold's: clicking pays no faster than holding, and a hold is never refused.
+	local holdRepeat = Grip.Hold.repeatSeconds
+	expect(
+		problems,
+		isNumber(cycle) and isNumber(holdRepeat) and math.abs(cycle - holdRepeat) <= FEEL_SLACK,
+		`{p}.cycleSeconds ({show(cycle)}) must equal Config.Grip.Hold.repeatSeconds ({show(holdRepeat)}), so `
+			.. `clicking pays no faster than holding`
+	)
 
 	-- Hold-to-squeeze repeats one full squeeze animation: never before the release pop end of any rarity (§9.6).
 	local phases = Anim.squeeze.phases
@@ -2803,6 +2810,20 @@ local function checkChargeCatch(problems: Problems)
 			and catch.cooldownToleranceSeconds < catch.cooldownSeconds,
 		`{q}.cooldownToleranceSeconds must be in [0, cooldownSeconds)`
 	)
+	-- Review quick win 2026-10-14: a real catch keeps its timing (the first press once the hands are back always passes
+	-- the cooldown, even lag-compensated); only a missed catch waits the longer cooldown.
+	local maxLag = Combat.Lag.maxCompensationSeconds
+	expect(
+		problems,
+		isNumber(catch.cooldownSeconds)
+			and isNumber(catch.cooldownToleranceSeconds)
+			and isNumber(catch.handsBackSeconds)
+			and isNumber(maxLag)
+			and catch.cooldownSeconds - catch.cooldownToleranceSeconds
+				<= catch.handsBackSeconds - maxLag + FEEL_SLACK,
+		`{q}.cooldownSeconds - cooldownToleranceSeconds must be <= handsBackSeconds - `
+			.. `Config.Combat.Lag.maxCompensationSeconds, so a real catch keeps its timing`
+	)
 
 	local fp = "Config.FirstPerson"
 	local v2, fc, fk, fr = FirstPerson.v2, FirstPerson.charge, FirstPerson.catch, FirstPerson.crush
@@ -2997,9 +3018,9 @@ end
 -- G5 Caps and timers: maxGripPerEvent covers the biggest event (a squeeze at the top capsule level, CP(maxLevel) ×
 -- Rested.mult, spec 2026-10-12 §12); Double Grip refills slower
 -- than holding Squeeze spends it; Hold.maxSeconds < idleReminderSeconds < 1200 (idle kick); Hold.queuedSeconds < 120.
--- Reading (every click pays, 2026-10-06): the refill rule compared with 3600 / Squeeze.cycleSeconds, the accepted rate
--- when the cycle was the 1.5 s squeeze timer; the cycle is now the hidden anti-autoclicker cap (1/12 s), so the rule
--- uses the hold-to-squeeze rhythm, 3600 / Hold.repeatSeconds, the slowest steady way to squeeze.
+-- Reading (2026-10-06): the refill rule compared with 3600 / Squeeze.cycleSeconds, the accepted rate
+-- when the cycle was the 1.5 s squeeze timer; the rule uses the hold-to-squeeze rhythm, 3600 / Hold.repeatSeconds
+-- (since Batch 1 #2 also the paid-squeeze cap's rate).
 local function checkGripCaps(problems: Problems)
 	local p = "Config.Grip"
 	local rested, hold = Grip.Rested, Grip.Hold
@@ -3077,9 +3098,9 @@ local function num(value: number): string
 end
 
 -- G3 Squeeze ceiling (Part 5; a squeeze count since spec 2026-10-12 §12, because Coins per squeeze now grow with the
--- capsules): attempts = 3600 / Squeeze.cycleSeconds (the most squeezes the server accepts in an hour; every click pays,
--- so this is the anti-autoclicker cap, 12 per second); paid = L.enabled and min(L.perHour, attempts) or attempts
--- (L = Economy.SqueezeLimit) must be <= Grip.maxSqueezesPerHour (43,200).
+-- capsules): attempts = 3600 / Squeeze.cycleSeconds (the most squeezes the server accepts in an hour: the paid cap at
+-- the hold rhythm since Batch 1 #2); paid = L.enabled and min(L.perHour, attempts) or attempts
+-- (L = Economy.SqueezeLimit) must be <= Grip.maxSqueezesPerHour (8,000).
 local function checkGripSqueezeCeiling(problems: Problems)
 	local limit = Economy.SqueezeLimit
 	local attempts = SECONDS_PER_HOUR / Squeeze.cycleSeconds

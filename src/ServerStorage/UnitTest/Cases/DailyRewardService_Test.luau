@@ -5,12 +5,12 @@
 -- Contract (DESIGN §6.9, §2.8 DailyClaim, §3.4 daily row, §3.11):
 --   * one claim per UTC day (os.time; 23:59:59 and 00:00:00 are different days); a second claim the same day is
 --     daily.alreadyClaimed and changes nothing;
---   * the streak continues the day after a claim (after day 7 back to Day 1), restarts at Day 1 after a missed day
---     (daily.streakReset toast, streakReset = true), and a first claim starts at Day 1 without the reset sentence;
+--   * the streak continues the day after a claim (after day 7 back to Day 1); a missed day only pauses it (review
+--     quick win 2026-10-14: the claim after a gap pays the next day, no toast); a first claim starts at Day 1;
 --   * Coins by day 100..500 squeezes × the squeeze value at the claim (Phase 3, spec 2026-10-12 §9) with reason
 --     "daily"; day 7 also grants the free Treat Box through
 --     BoxService.grantFree(p, "treat", "daily:<day>") in the same flow; one awaited "now" save; the reply is
---     {streakDay, coins, treat, streakReset, treatRequestId} and a failed save shows as treat.savePending;
+--     {streakDay, coins, treat, treatRequestId} and a failed save shows as treat.savePending;
 --   * not ready -> data.notReady; a pending failed save -> box.saving; neither changes anything;
 --   * status() reports the same rules; debugSetState sets the record (Studio only).
 
@@ -42,7 +42,6 @@ return function(t: Context)
 		saveOk: boolean,
 		profile: any,
 		dirty: { string },
-		notices: { string },
 		grants: { { amount: number, reason: string } },
 		boxes: { { boxId: string, requestId: string } },
 		nowSaves: number,
@@ -64,7 +63,6 @@ return function(t: Context)
 				capsules = { slots = 1, list = { { level = 11, squishyId = "butter" } } },
 			},
 			dirty = {},
-			notices = {},
 			grants = {},
 			boxes = {},
 			nowSaves = 0,
@@ -101,9 +99,6 @@ return function(t: Context)
 			markDirty = function(_player: any, field: string)
 				table.insert(w.dirty, field)
 			end,
-			notify = function(_player: any, code: string)
-				table.insert(w.notices, code)
-			end,
 			grantCoins = function(_player: any, amount: number, reason: string): (number, string?)
 				w.profile.coins += amount
 				table.insert(w.grants, { amount = amount, reason = reason })
@@ -133,16 +128,15 @@ return function(t: Context)
 		DailyRewardService.useDeps(nil)
 	end
 
-	t.test("a first claim pays Day 1 with 'daily', records the day, saves now once, no reset sentence", function()
+	t.test("a first claim pays Day 1 with 'daily', records the day, saves now once", function()
 		local w = fresh(-1, 0)
 		local reply = DailyRewardService.claim(w.player)
 		expect.equal(reply.ok, true)
-		expect.deepEqual(reply.data, { streakDay = 1, coins = DAILY.coinsByDay[1] * VALUE, streakReset = false })
+		expect.deepEqual(reply.data, { streakDay = 1, coins = DAILY.coinsByDay[1] * VALUE })
 		expect.deepEqual(w.profile.daily, { lastClaimDay = DAY, streakDay = 1, totalClaims = 5 })
 		expect.deepEqual(w.grants, { { amount = DAILY.coinsByDay[1] * VALUE, reason = "daily" } })
 		expect.deepEqual(w.dirty, { "daily" })
 		expect.equal(w.nowSaves, 1)
-		expect.deepEqual(w.notices, {})
 		expect.equal(#w.boxes, 0)
 		finish()
 	end)
@@ -177,18 +171,19 @@ return function(t: Context)
 		local reply = DailyRewardService.claim(w.player)
 		expect.equal(reply.data.streakDay, 4)
 		expect.equal(reply.data.coins, DAILY.coinsByDay[4] * VALUE)
-		expect.equal(reply.data.streakReset, false)
 		expect.equal(w.profile.coins, DAILY.coinsByDay[4] * VALUE)
 		finish()
 	end)
 
-	t.test("a missed day restarts the streak at Day 1 with daily.streakReset", function()
+	t.test("a missed day pauses the streak: the claim after a gap pays the next day", function()
 		local w = fresh(DAY - 2, 5)
 		local reply = DailyRewardService.claim(w.player)
-		expect.equal(reply.data.streakDay, 1)
-		expect.equal(reply.data.streakReset, true)
-		expect.equal(reply.data.coins, DAILY.coinsByDay[1] * VALUE)
-		expect.deepEqual(w.notices, { "daily.streakReset" })
+		expect.equal(reply.data.streakDay, 6)
+		expect.equal(reply.data.coins, DAILY.coinsByDay[6] * VALUE)
+		expect.deepEqual(w.profile.daily, { lastClaimDay = DAY, streakDay = 6, totalClaims = 5 })
+		finish()
+		local away = fresh(DAY - 30, 2)
+		expect.equal(DailyRewardService.claim(away.player).data.streakDay, 3)
 		finish()
 	end)
 
@@ -210,11 +205,10 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("after day 7 the cycle restarts at Day 1 without the reset sentence", function()
+	t.test("after day 7 the cycle restarts at Day 1", function()
 		local w = fresh(DAY - 1, 7)
 		local reply = DailyRewardService.claim(w.player)
 		expect.equal(reply.data.streakDay, 1)
-		expect.equal(reply.data.streakReset, false)
 		expect.equal(#w.boxes, 0)
 		expect.equal(w.profile.daily.totalClaims, 5)
 		finish()
@@ -268,12 +262,10 @@ return function(t: Context)
 		expect.equal(s.nextStreakDay, 7)
 		expect.equal(s.freeBox, true)
 		expect.equal(s.coins, DAILY.coinsByDay[7] * VALUE)
-		expect.equal(s.willReset, false)
 		expect.equal(s.secondsUntilNext, 14 * 3600)
 		expect.truthy(DailyRewardService.debugSetState(w.player, { lastClaimDay = DAY - 3, streakDay = 4 }))
-		local reset = DailyRewardService.status(w.player)
-		expect.equal(reset.nextStreakDay, 1)
-		expect.equal(reset.willReset, true)
+		local paused = DailyRewardService.status(w.player)
+		expect.equal(paused.nextStreakDay, 5) -- a missed day only pauses the streak
 		expect.falsy(DailyRewardService.debugSetState(w.player, { streakDay = 9 }))
 		w.debug = false
 		expect.falsy(DailyRewardService.debugSetState(w.player, { lastClaimDay = DAY }))

@@ -5,10 +5,11 @@
 --   * the card shows the lowest incomplete Config.Onboarding step; steps complete in any order;
 --   * shown only for a ready profile that has not skipped and has a step left;
 --   * the welcome card has [Got it] and names the starter; the others have one "Skip tutorial" link;
---   * the squeeze hint follows the input kind; the firstBox step reads {coins}/{goal}: the Snack Box cost for eligible
---     players, the cheapest shop price (with the Shop text and a Shop waypoint) for restricted, unknown or checking;
---   * guidance: waypoints "giftBox" or "shop" / "duel", the "squishies" pulse (equip and inspect); the squeeze step
---     has no waypoint (spec 2026-10-11 §5: its text says squeeze anywhere, so it sends no one to a mat);
+--   * the squeeze hint follows the input kind; the firstBox step reads {coins}/{goal}: the cheapest shop price (a
+--     10,000 Common) and a Shop waypoint for everyone (Batch 1, never the 150K Snack Box);
+--   * guidance: waypoints "shop" / "duel", the "squishies" pulse (inspect); the squeeze and capsule steps have none
+--     (spec 2026-10-11 §5: the squeeze text says squeeze anywhere, so it sends no one to a mat); capsuleBought is the
+--     replay's capsule sign (Batch 1);
 --   * replay mode ignores the saved flags (done and skipped) and uses its own local set;
 --   * a step whose screen is not registered yet (Inspect before Part 6) is passed over (reading).
 
@@ -22,7 +23,6 @@ type Context = {
 return function(t: Context)
 	local expect = t.expect
 	local OnboardingFormat = t.requireClient("UI/OnboardingFormat")
-	local Boxes = t.requireShared("Boxes")
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
@@ -63,7 +63,6 @@ return function(t: Context)
 		local c: { [string]: any } = {
 			onboarding = { v = 1, done = done, skipped = false },
 			ready = true,
-			policy = "eligible",
 			coins = 0,
 			input = "keyboard",
 		}
@@ -115,52 +114,48 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("firstBox: the Snack Box goal when eligible, the Shop text and price otherwise", function()
-		local snack = Boxes.get("snack").cost
-		expect.equal(OnboardingFormat.goal("eligible"), snack)
-		local eligible = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 150 }))
-		expect.equal(eligible.stepId, "firstBox")
+	t.test("firstBox: the cheapest shop squishy (a 10,000 Common) and the Shop for everyone", function()
+		local price = cheapest()
+		expect.equal(price, 10_000)
+		expect.equal(OnboardingFormat.goal(), price)
+		local model = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 150 }))
+		expect.equal(model.stepId, "firstBox")
 		expect.equal(
-			eligible.text,
-			Strings.format(Strings.onboarding.firstBox, { coins = Format.coins(150), goal = Format.coins(snack) })
+			model.text,
+			Strings.format(Strings.onboarding.firstBox, { coins = Format.coins(150), goal = Format.coins(price) })
 		)
-		expect.equal(eligible.waypoint, "giftBox")
-		for _, policy in { "restricted", "unknown", "checking" } do
-			expect.equal(OnboardingFormat.goal(policy), cheapest())
-			local model = OnboardingFormat.model(ctx(doneBefore("firstBox"), { policy = policy, coins = 150 }))
-			expect.equal(
-				model.text,
-				Strings.format(
-					Strings.onboarding.firstBoxShop,
-					{ coins = Format.coins(150), goal = Format.coins(cheapest()) }
-				)
-			)
-			expect.equal(model.waypoint, "shop")
-		end
+		expect.equal(model.waypoint, "shop")
+		expect.equal(model.pulse, nil)
 		-- {coins} is capped at the goal.
-		local rich = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 999_999 })) -- above the 150K Snack Box
+		local rich = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 999_999 }))
 		expect.equal(
 			rich.text,
-			Strings.format(Strings.onboarding.firstBox, { coins = Format.coins(snack), goal = Format.coins(snack) })
+			Strings.format(Strings.onboarding.firstBox, { coins = Format.coins(price), goal = Format.coins(price) })
 		)
 	end)
 
-	t.test("guidance: the Squishies tile pulses for equip and inspect, a waypoint to the duel podium", function()
-		expect.equal(OnboardingFormat.model(ctx(doneBefore("equip"))).pulse, "squishies")
-		expect.equal(OnboardingFormat.model(ctx(doneBefore("equip"))).waypoint, nil)
-		-- Lobby HUD (spec 2026-10-11): no dock, so Inspect is reached through the Squishies tile (its list's Inspect).
-		expect.equal(OnboardingFormat.model(ctx(doneBefore("inspect"))).pulse, "squishies")
-		local duel = OnboardingFormat.model(ctx(doneBefore("duel")))
-		expect.equal(duel.waypoint, "duel")
-		expect.equal(duel.text, Strings.onboarding.duel)
-	end)
+	t.test(
+		"guidance: none for the capsule step, the Squishies tile pulses for inspect, a waypoint to the duel podium",
+		function()
+			local capsule = OnboardingFormat.model(ctx(doneBefore("capsule")))
+			expect.equal(capsule.stepId, "capsule")
+			expect.equal(capsule.text, Strings.onboarding.capsule)
+			expect.equal(capsule.waypoint, nil)
+			expect.equal(capsule.pulse, nil)
+			-- Lobby HUD (spec 2026-10-11): no dock, so Inspect is reached through the Squishies tile (its list's Inspect).
+			expect.equal(OnboardingFormat.model(ctx(doneBefore("inspect"))).pulse, "squishies")
+			local duel = OnboardingFormat.model(ctx(doneBefore("duel")))
+			expect.equal(duel.waypoint, "duel")
+			expect.equal(duel.text, Strings.onboarding.duel)
+		end
+	)
 
 	t.test("a step whose screen is not there yet is passed over", function()
 		local skipInspect = { inspect = true }
-		local equipDone = doneBefore("inspect")
-		expect.equal(OnboardingFormat.currentStep(equipDone).id, "inspect")
-		expect.equal(OnboardingFormat.currentStep(equipDone, skipInspect).id, "duel")
-		expect.equal(OnboardingFormat.model(ctx(equipDone, { unavailable = skipInspect })).stepId, "duel")
+		local beforeInspect = doneBefore("inspect")
+		expect.equal(OnboardingFormat.currentStep(beforeInspect).id, "inspect")
+		expect.equal(OnboardingFormat.currentStep(beforeInspect, skipInspect).id, "duel")
+		expect.equal(OnboardingFormat.model(ctx(beforeInspect, { unavailable = skipInspect })).stepId, "duel")
 		-- Everything else done: complete while Inspect is unavailable, not once it exists.
 		local allButInspect: { [string]: boolean } = {}
 		for id in allDone() do
@@ -205,5 +200,28 @@ return function(t: Context)
 		-- Still needs a ready profile.
 		local notReady = ctx({}, { ready = false, replay = {} })
 		expect.equal(OnboardingFormat.model(notReady), nil)
+	end)
+
+	t.test("Batch 1: capsule follows squeeze, firstBox is last; there is no equip step", function()
+		local ids = {}
+		for _, step in STEPS do
+			table.insert(ids, step.id)
+		end
+		expect.deepEqual(ids, { "welcome", "squeeze", "capsule", "inspect", "duel", "firstBox" })
+	end)
+
+	t.test("capsuleBought: a level or a slot rose; a swap or an auto-fill does not", function()
+		local before = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }
+		local upgraded = { slots = 1, list = { { level = 2, squishyId = "kitty_bread" } } }
+		local opened: { any } = { { level = 1, squishyId = "kitty_bread" }, { level = 1 } }
+		local unlocked = { slots = 2, list = opened }
+		local swapped = { slots = 1, list = { { level = 1, squishyId = "toast" } } }
+		expect.truthy(OnboardingFormat.capsuleBought(upgraded, before))
+		expect.truthy(OnboardingFormat.capsuleBought(unlocked, before))
+		expect.falsy(OnboardingFormat.capsuleBought(swapped, before))
+		expect.falsy(OnboardingFormat.capsuleBought(before, before))
+		expect.falsy(OnboardingFormat.capsuleBought(nil, before))
+		expect.falsy(OnboardingFormat.capsuleBought(before, nil))
+		expect.falsy(OnboardingFormat.capsuleBought({ slots = 1, list = "x" }, before))
 	end)
 end

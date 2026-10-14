@@ -2,9 +2,9 @@
 -- DailyLogic_Test: unit tests for ServerScriptService.Server.Logic.DailyLogic. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §6.9, §13.2 Part 7 L1): the day is floor(os.time() / 86400), so 23:59:59 UTC and 00:00:00 UTC are
 -- different days and secondsUntilNext counts to midnight UTC; a second claim the same day is daily.alreadyClaimed;
--- claiming the day after continues the streak, a missed day restarts it at Day 1 (reset = true, but not on a first
--- ever claim), and after Day 7 the cycle restarts at Day 1; rewards are 100/150/200/250/300/400/500 with the free
--- Treat Box on Day 7 only.
+-- claiming the day after continues the streak; a missed day only pauses it (review quick win 2026-10-14: the claim
+-- after a gap pays the next day, never back to Day 1); a first-ever claim is Day 1, and after Day 7 the cycle restarts
+-- at Day 1; rewards are 100/150/200/250/300/400/500 with the free Treat Box on Day 7 only.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -50,9 +50,8 @@ return function(t: Context)
 		expect.truthy(okNext)
 		expect.equal(reasonNext, nil)
 		-- ... and it continues the streak.
-		local streak, reset = DailyLogic.nextStreak(claimedYesterday, DailyLogic.dayIndex(MIDNIGHT))
+		local streak = DailyLogic.nextStreak(claimedYesterday, DailyLogic.dayIndex(MIDNIGHT))
 		expect.equal(streak, 4)
-		expect.falsy(reset)
 	end)
 
 	t.test("the same day is daily.alreadyClaimed (also for a lastClaimDay in the future or not a number)", function()
@@ -66,18 +65,17 @@ return function(t: Context)
 		expect.equal(why, nil)
 	end)
 
-	t.test("a missed day restarts the streak at Day 1 with reset = true", function()
-		for _, last in { TODAY - 2, TODAY - 10 } do
-			local streak, reset = DailyLogic.nextStreak(state(last, 5), TODAY)
-			expect.equal(streak, 1)
-			expect.truthy(reset)
+	t.test("a missed day pauses the streak: the claim after a gap pays the next day, never Day 1", function()
+		for _, last in { TODAY - 2, TODAY - 10, TODAY - 400 } do
+			expect.equal(DailyLogic.nextStreak(state(last, 3), TODAY), 4)
 		end
+		-- After Day 7 a new cycle starts at Day 1, gap or not.
+		expect.equal(DailyLogic.nextStreak(state(TODAY - 5, 7), TODAY), 1)
 	end)
 
-	t.test("a first-ever claim is Day 1 without the restart sentence", function()
-		local streak, reset = DailyLogic.nextStreak(state(-1, 0), TODAY)
-		expect.equal(streak, 1)
-		expect.falsy(reset)
+	t.test("a first-ever claim is Day 1", function()
+		expect.equal(DailyLogic.nextStreak(state(-1, 0), TODAY), 1)
+		expect.equal(DailyLogic.nextStreak(state(-1, 4), TODAY), 1)
 	end)
 
 	t.test("consecutive claims walk Day 1..7, then the cycle restarts at Day 1", function()
@@ -105,13 +103,10 @@ return function(t: Context)
 	end)
 
 	t.test("a config copy can change the cycle and the free box day", function()
-		local cfg = { coinsByDay = { 10, 20, 30 }, freeBoxDay = 3, GraceDays = 1 }
+		local cfg = { coinsByDay = { 10, 20, 30 }, freeBoxDay = 3 }
 		expect.deepEqual(DailyLogic.reward(3, cfg), { coins = 30, freeBox = true })
-		local streak = DailyLogic.nextStreak(state(TODAY - 1, 3), TODAY, cfg)
-		expect.equal(streak, 1)
-		-- One grace day: missing one day keeps the streak.
-		local kept, reset = DailyLogic.nextStreak(state(TODAY - 2, 1), TODAY, cfg)
-		expect.equal(kept, 2)
-		expect.falsy(reset)
+		expect.equal(DailyLogic.nextStreak(state(TODAY - 1, 3), TODAY, cfg), 1)
+		-- A missed day pauses the streak in any cycle.
+		expect.equal(DailyLogic.nextStreak(state(TODAY - 2, 1), TODAY, cfg), 2)
 	end)
 end

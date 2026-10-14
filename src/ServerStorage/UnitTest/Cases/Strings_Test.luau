@@ -21,8 +21,12 @@
 -- (pads change nothing a player earns now; the idle card says capsules stop paying); so are the trainers: every
 -- trainer text, goal and reason is gone and no text names a trainer; and so are the giant pads and Jelly gates: their
 -- names (only grip.pad.foam is left), pad cards, signs, unlock toast, pad goal and the starter_jelly task texts.
+-- Batch 1: the tutorial teaches capsules and points at the Shop (no equip or firstBoxShop text); the capsule goal and
+-- UP! texts exist; grip.panelIntro / limitNote say squeezing earns (Batch 1 #2).
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
+-- Review quick win (2026-10-14): a missed day pauses the daily streak: daily.welcomeBack names the waiting day and no
+-- daily text speaks of a reset.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -241,10 +245,10 @@ local PART5_WORDING: { [string]: string } = {
 	-- (the capsules set its pay), and the Grip level's purpose is the capsule tiers. Phase 6: slow training is gone, so
 	-- DESIGN's pad and trainer lines lost their last claim (a pad pays the same as anywhere).
 	["grip.panelTitle"] = "Grip Training",
-	["grip.panelIntro"] = "Every squeeze trains your Grip. Higher Grip opens new capsule tiers.",
+	["grip.panelIntro"] = "Squeezing trains your Grip. Higher Grip opens new capsule tiers.",
 	["grip.restedHelp"] = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 	-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays (Phase 5: no pad boost).
-	["grip.limitNote"] = "Every squeeze earns Coins and trains Grip, anywhere in the lobby.",
+	["grip.limitNote"] = "Squeezing earns Coins and trains Grip, anywhere in the lobby.",
 	["grip.duelNote"] = "Grip only helps in the lobby. It never changes duels, and it can't be bought.",
 	-- §17.7 toasts
 	["grip.levelUp"] = "Grip Lv {level}!",
@@ -754,7 +758,7 @@ return function(t: Context)
 	t.test("the tap-to-squeeze texts: the Inspect step opens Squishies; no text names the Squeeze button", function()
 		expect.equal(
 			Strings.onboarding.inspect,
-			"Open Squishies and press Inspect to see it in 3D. Drag to spin it, then try Squeeze."
+			"Open Squishies, press Inspect to see your squishy in 3D. Spin it, then try Squeeze."
 		)
 		expect.equal(Strings.grip.holdPaused, "Squeeze again to keep training.")
 		-- The Squeeze button's key texts went with the button.
@@ -804,6 +808,45 @@ return function(t: Context)
 			local text = Strings.resolve("reason.capsule." .. name)
 			expect.truthy(type(text) == "string" and text ~= "")
 			expect.equal(Strings.reasonText("capsule." .. name), text)
+		end
+	end)
+
+	t.test(
+		"Batch 1: the tutorial teaches capsules and points at the Shop; the capsule goal and UP! texts exist",
+		function()
+			expect.equal(Strings.resolve("onboarding.equip"), nil)
+			expect.equal(Strings.resolve("onboarding.firstBoxShop"), nil)
+			expect.equal(Strings.onboarding.firstBox, "Get your first new squishy in the Shop. {coins}/{goal} Coins")
+			expect.equal(
+				Strings.onboarding.capsule,
+				"Capsules in your base earn Coins! When Capsule 1 shows UP!, open it to Upgrade."
+			)
+			expect.equal(Strings.format(Strings.grip.goalCapsuleReady, { slot = 2 }), "Upgrade Capsule 2 · READY!")
+			expect.equal(Strings.format(Strings.grip.goalUnlockReady, { slot = 3 }), "Unlock Capsule 3 · READY!")
+			expect.equal(
+				Strings.format(Strings.grip.goalCapsule, { slot = 1, level = 2, have = "120", need = "1,000" }),
+				"Next: upgrade Capsule 1 to Lv 2 · 120/1,000 Coins"
+			)
+			expect.equal(
+				Strings.format(Strings.grip.goalUnlock, { slot = 2, have = "100", need = "2,500" }),
+				"Next: unlock Capsule 2 · 100/2,500 Coins"
+			)
+			expect.equal(
+				Strings.format(Strings.grip.hudGoalCapsule, { slot = 1, have = "120", need = "1,000" }),
+				"Capsule 1: 120/1,000 Coins"
+			)
+			expect.equal(Strings.capsule.up, "UP!")
+		end
+	)
+
+	t.test("daily: the welcome back line names the waiting day; no daily text speaks of a reset", function()
+		expect.equal(Strings.format(Strings.daily.welcomeBack, { n = 4 }), "Welcome back! Day 4 is waiting.")
+		expect.equal(Strings.resolve("daily.streakReset"), nil)
+		for key, value in Strings.daily do
+			local text = string.lower(value)
+			if string.find(text, "reset", 1, true) or string.find(text, "restart", 1, true) then
+				error(`daily.{key} speaks of a reset: {value}`)
+			end
 		end
 	end)
 end

@@ -16,18 +16,19 @@
 --     only a dead character is refused (squeeze.noCharacter), and a player in a match;
 --   * the shipped hourly limit is off: every accepted squeeze pays (with the limit switched on, an empty one would give
 --     0 Coins while Grip still rises);
---   * every click pays (2026-10-06): 12 presses in 1 s all pay Coins and Grip; a 13th in the same second is
---     squeeze.tooFast with no Coins, no Grip and no stats; clicking at 12/s for a minute pays every press; a steady
---     20 requests/s is never dropped; a 25/s macro is capped at 12 accepted per second (after the burst) and its
---     excess above 20/s is dropped silently;
+--   * squeezes pay up to the hold rhythm (Batch 1 #2, replacing every click pays): the bucket's presses all pay Coins
+--     and Grip; one more is squeeze.tooFast with no Coins, no Grip, no stats and no capsule push; holding for a minute
+--     pays every press; clicking at 12/s for a minute pays only the hold rhythm (2 + 60 / 0.45 at most, the rest
+--     tooFast, none dropped); a steady 20 requests/s is never dropped; a 25/s macro is capped at 1 accepted per
+--     cycleSeconds (after the bucket) and its excess above 20/s is dropped silently;
 --   * exactly 1 Double Grip point is used per accepted squeeze;
 --   * an OFFLINE profile earns nothing (data.notReady), nor does a session whose final save started (mutate refuses);
 --   * nextAt is in server time: serverNow + max(0, 1 - tokens) x cycleSeconds;
 --   * the stale-lobby check disables a station whose GripTier disagrees with WorldLayout (no boost; Phase 6: slow
 --     training is gone, so GripService has nothing to disable);
 --   * one player's paid squeezes above Config.Grip.squeezeAlertPerHour in a rolling hour log one [SD][abuse] warning
---     (spec 2026-10-12 §12; log only: the squeezes still pay); the alert re-arms once the hour's squeezes are back
---     under it.
+--     (spec 2026-10-12 §12; log only: the squeezes still pay; 8,000 since Batch 1 #2, so only riding the paid cap for
+--     a whole hour passes it); the alert re-arms once the hour's squeezes are back under it.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -373,7 +374,7 @@ return function(t: Context)
 		finish()
 	end)
 
-	-- Every click pays (2026-10-06) ---------------------------------------------------------------------------------
+	-- The paid cap (Batch 1 #2: squeezes pay up to the hold rhythm) ---------------------------------------------------
 
 	-- `count` requests at mat squeeze_01, `spacing` seconds apart; returns (replies in order, drops).
 	local function click(world: World, count: number, spacing: number): ({ any }, number)
@@ -392,7 +393,7 @@ return function(t: Context)
 		return replies, dropped
 	end
 
-	t.test("12 presses in 1 s all pay Coins and Grip", function()
+	t.test("the bucket's presses all pay Coins and Grip", function()
 		local world = fresh()
 		local coinsEach = valueOf(world)
 		local replies, dropped = click(world, SQ.bucketCapacity, 1 / SQ.bucketCapacity)
@@ -414,45 +415,75 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("a 13th press in the same second: squeeze.tooFast, no Coins, no Grip, no stats", function()
+	t.test("one press over the bucket: squeeze.tooFast, no Coins, no Grip, no stats, no capsule push", function()
 		local world = fresh()
-		local replies = click(world, SQ.bucketCapacity, 0) -- a burst of 12 at once: all pay
+		local replies = click(world, SQ.bucketCapacity, 0) -- the bucket's burst at once: all pay
 		for _, result in replies do
 			expect.equal(result.ok, true)
 		end
 		local coins, grip = world.profile.coins, world.profile.grip.total
 		local limit = world.profile.squeezeLimit.value
-		local thirteenth = SqueezeService.request(world.player)
-		expect.equal(thirteenth.ok, false)
-		expect.equal(thirteenth.reason, "squeeze.tooFast")
-		expect.equal(thirteenth.coins, 0)
-		expect.equal(thirteenth.grip, 0)
+		local over = SqueezeService.request(world.player)
+		expect.equal(over.ok, false)
+		expect.equal(over.reason, "squeeze.tooFast")
+		expect.equal(over.coins, 0)
+		expect.equal(over.grip, 0)
 		expect.equal(world.profile.coins, coins)
 		expect.equal(world.profile.grip.total, grip)
 		expect.equal(world.profile.squeezeLimit.value, limit)
 		expect.equal(world.profile.stats.squeezes, SQ.bucketCapacity)
 		expect.equal(#world.squeezed, SQ.bucketCapacity)
+		expect.equal(#world.pushes, SQ.bucketCapacity) -- no capsule push for the extra press
 		-- One cycle later the cap has a token again.
 		wait(world, SQ.cycleSeconds)
 		expect.equal(SqueezeService.request(world.player).ok, true)
 		finish()
 	end)
 
-	t.test("clicking at 12 per second for a minute: every press pays, nothing is dropped", function()
-		local world = fresh()
-		local count = 60 * SQ.bucketCapacity
-		local replies, dropped = click(world, count, SQ.cycleSeconds)
-		expect.equal(dropped, 0)
-		expect.equal(#replies, count)
-		for i, result in replies do
-			if not result.ok then
-				error(`press {i}: {tostring(result.reason)}`)
+	t.test(
+		"holding (one press every Hold.repeatSeconds) for a minute: every press pays and pushes the capsules",
+		function()
+			local world = fresh()
+			local spacing = Config.Grip.Hold.repeatSeconds
+			local count = math.floor(60 / spacing)
+			local replies, dropped = click(world, count, spacing)
+			expect.equal(dropped, 0)
+			expect.equal(#replies, count)
+			for i, result in replies do
+				if not result.ok then
+					error(`press {i}: {tostring(result.reason)}`)
+				end
 			end
+			expect.equal(world.profile.stats.squeezes, count)
+			expect.equal(#world.pushes, count)
+			finish()
 		end
-		expect.equal(world.profile.stats.squeezes, count)
-		expect.equal(SqueezeService.counts().dropped, 0)
-		finish()
-	end)
+	)
+
+	t.test(
+		"clicking at 12 per second for a minute pays only the hold rhythm: no Coins, Grip or push for the rest",
+		function()
+			local world = fresh()
+			local replies, dropped = click(world, 60 * 12, 1 / 12)
+			expect.equal(dropped, 0)
+			local paid = 0
+			for i, result in replies do
+				if result.ok then
+					paid += 1
+				elseif result.reason ~= "squeeze.tooFast" or result.coins ~= 0 or result.grip ~= 0 then
+					error(`press {i}: {tostring(result.reason)}, {result.coins} Coins, {result.grip} Grip`)
+				end
+			end
+			local cap = SQ.bucketCapacity + math.floor(60 / SQ.cycleSeconds + 1e-6)
+			expect.truthy(paid <= cap)
+			expect.truthy(paid >= cap - 2)
+			expect.equal(world.profile.coins, paid * valueOf(world))
+			expect.equal(world.profile.stats.squeezes, paid)
+			expect.equal(#world.pushes, paid)
+			expect.equal(SqueezeService.counts().dropped, 0)
+			finish()
+		end
+	)
 
 	t.test("a steady 20 requests per second is never dropped by the flood guard", function()
 		local world = fresh()
@@ -463,28 +494,31 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("a 25/s macro: at most 12 accepted per second after the burst, the excess above 20/s dropped", function()
-		local world = fresh()
-		local seconds = 30
-		local replies, dropped = click(world, seconds * 25, 1 / 25)
-		local accepted = 0
-		for _, result in replies do
-			if result.ok then
-				accepted += 1
-			else
-				expect.equal(result.reason, "squeeze.tooFast")
-				expect.equal(result.coins, 0)
-				expect.equal(result.grip, 0)
+	t.test(
+		"a 25/s macro: at most 1 accepted per cycleSeconds after the bucket, the excess above 20/s dropped",
+		function()
+			local world = fresh()
+			local seconds = 30
+			local replies, dropped = click(world, seconds * 25, 1 / 25)
+			local accepted = 0
+			for _, result in replies do
+				if result.ok then
+					accepted += 1
+				else
+					expect.equal(result.reason, "squeeze.tooFast")
+					expect.equal(result.coins, 0)
+					expect.equal(result.grip, 0)
+				end
 			end
+			local perSecond = 1 / SQ.cycleSeconds
+			expect.truthy(accepted <= SQ.bucketCapacity + math.floor(seconds * perSecond + 1e-6))
+			expect.truthy(accepted >= math.floor(seconds * perSecond) - 1)
+			expect.truthy(dropped > 0) -- the flood guard dropped the excess silently
+			expect.equal(#replies, accepted + (SqueezeService.counts().rejected["squeeze.tooFast"] or 0))
+			expect.equal(world.profile.stats.squeezes, accepted)
+			finish()
 		end
-		local perSecond = 1 / SQ.cycleSeconds
-		expect.truthy(accepted <= SQ.bucketCapacity + math.floor(seconds * perSecond + 1e-6))
-		expect.truthy(accepted >= math.floor(seconds * perSecond) - 1)
-		expect.truthy(dropped > 0) -- the flood guard dropped the excess silently
-		expect.equal(#replies, accepted + (SqueezeService.counts().rejected["squeeze.tooFast"] or 0))
-		expect.equal(world.profile.stats.squeezes, accepted)
-		finish()
-	end)
+	)
 
 	t.test("no hourly limit: 400 squeezes from a nearly empty limit state all pay Coins and Grip", function()
 		local world = fresh()
@@ -627,23 +661,36 @@ return function(t: Context)
 	t.test("paid squeezes above squeezeAlertPerHour in a rolling hour: one alert (log only), re-armed after", function()
 		local world = fresh()
 		local each = valueOf(world)
-		local crossing = Config.Grip.squeezeAlertPerHour + 1 -- the squeeze that takes the hour above the alert
+		local alertAt = Config.Grip.squeezeAlertPerHour
+		expect.equal(alertAt, 3600 / SQ.cycleSeconds) -- Batch 1 #2: the paid cap's whole hour (exactly 8000)
 		local function alerts(): number
 			return SqueezeService.counts().squeezeAlerts
 		end
-		click(world, crossing - 1, SQ.cycleSeconds) -- the hour's paid squeezes reach the alert, not above it
-		expect.equal(world.profile.stats.squeezes, crossing - 1)
+		-- Rides the paid cap from 0.1 s into a minute (the alert counts whole minutes): the bucket, then one press per
+		-- cycleSeconds, alertAt paid squeezes in all inside 60 whole minutes (one more a cycle later still lands 0.35 s
+		-- before the last of them ends).
+		local function ride()
+			local now = world.clock.now()
+			wait(world, (math.floor(now / 60) + 1) * 60 + 0.1 - now)
+			click(world, SQ.bucketCapacity, 0)
+			wait(world, SQ.cycleSeconds)
+			click(world, alertAt - SQ.bucketCapacity, SQ.cycleSeconds)
+		end
+		ride() -- the hour's paid squeezes reach the alert, not above it
+		expect.equal(world.profile.stats.squeezes, alertAt)
 		expect.equal(alerts(), 0)
 		wait(world, SQ.cycleSeconds)
 		local over = SqueezeService.request(world.player)
 		expect.equal(over.ok, true)
 		expect.equal(over.coins, each) -- log only: it still pays
 		expect.equal(alerts(), 1)
-		click(world, 24, SQ.cycleSeconds) -- still above: no second line
+		click(world, 24, SQ.cycleSeconds) -- no second line
 		expect.equal(alerts(), 1)
 		-- An hour later the counter has emptied (re-armed): crossing again logs again.
 		wait(world, 3600)
-		click(world, crossing, SQ.cycleSeconds)
+		ride()
+		wait(world, SQ.cycleSeconds)
+		expect.equal(SqueezeService.request(world.player).ok, true)
 		expect.equal(alerts(), 2)
 		finish()
 	end)

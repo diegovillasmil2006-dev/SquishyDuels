@@ -2,9 +2,9 @@
 -- SqueezeRhythm_Test: unit tests for StarterPlayerScripts.Client.Anim.SqueezeRhythm (pure). Server only
 -- (ServerStorage.UnitTest). Edit mode: no instances, the clock is passed in.
 -- Contract (DESIGN §18.5.1 A2, §18.11, Config.Anim.squeeze.rhythm):
---   * the streak continues while own squeezes are <= rhythm.streakSeconds (2.1 s, its own value since every click
---     pays: it no longer depends on Config.Squeeze.cycleSeconds) apart and starts again above; fast clicking (12 a
---     second, the anti-autoclicker cap) keeps one streak, its pitch pattern and a big pop every 8th;
+--   * the streak continues while own squeezes are <= rhythm.streakSeconds (2.1 s, its own value: it does not depend
+--     on Config.Squeeze.cycleSeconds) apart and starts again above; fast clicking (12 a second, a human's fastest;
+--     every press plays, Batch 1 #2) keeps one streak, its pitch pattern and a big pop every 8th;
 --   * the pitch follows pitchPattern {1, 1.03, 1.06, 1.03} from the streak's first squeeze, repeating; the random
 --     variance is cut to pitchVariance once the streak is >= 2 (the first squeeze keeps the key's own variance);
 --   * every popEvery-th (8th) squeeze is a big pop (bigPopSparkles + sfx.pop) that replaces the release pop
@@ -25,7 +25,7 @@ return function(t: Context)
 	local expect = t.expect
 	local R = Config.Anim.squeeze.rhythm
 	local HOLD = Config.Grip.Hold.repeatSeconds -- the hold-to-squeeze rhythm
-	local CLICK = 1 / 12 -- the fastest clicking the anti-autoclicker cap lets through
+	local CLICK = 1 / 12 -- a human's fastest clicking (every press plays locally, sent or not; Batch 1 #2)
 	local T0 = 1000
 
 	t.test("DESIGN values: 2.1 s streak gap, the pitch pattern, a big pop every 8th", function()
