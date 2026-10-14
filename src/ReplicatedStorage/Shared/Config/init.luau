@@ -56,6 +56,9 @@
 -- share, time and gain in range and every spring <= 3 Hz except jelly's per-vertex knead spring (the design's own 3.59
 -- Hz wobble, a documented exception); the crunch rhythm <= 3 presses a second; the wax switch Config.Wax.enabled (user
 -- 2026-10-12) is a boolean.
+-- Batch 3 (friends, review #6 and #10): Config.Social's pads, rematch window (it outlives the result card), weekly
+-- board (a Studio store name ends in "_STUDIO", at most 100 entries a read) and badges (unique keys, an id only once
+-- the owners made the badge, known rule kinds, whole thresholds, Catalog squishies and rarities).
 -- Convention: every string field whose name ends in "Key" (nameKey, textKey, ...) is a Strings path; validate()
 -- resolves each one with Strings.resolve, in Config and in the Catalog, Boxes and QuestDefs data.
 
@@ -74,6 +77,7 @@ local Knead = require(script.Knead)
 local Monetization = require(script.Monetization)
 local Net = require(script.Net)
 local Onboarding = require(script.Onboarding)
+local Social = require(script.Social)
 local Squeeze = require(script.Squeeze)
 local UI = require(script.UI)
 local Vfx = require(script.Vfx)
@@ -164,6 +168,21 @@ local SQUEEZE_BACKLOG_SECONDS = 5
 local DEFAULT_WALL_SIZE = Vector3.new(6, 8, 2.5)
 local DEFAULT_BLOCK_SIZE = Vector3.new(6, 8, 6)
 local DEFAULT_BACKSTOP_SIZE = Vector3.new(2, 12, 34)
+-- Batch 3: GetSortedAsync reads at most 100 entries a page; the rule kinds Logic/BadgeRules knows; a week in seconds.
+local MAX_SORTED_PAGE = 100
+local BADGE_RULES: { [string]: boolean } = {
+	joined = true,
+	stat = true,
+	gripLevel = true,
+	capsuleSlots = true,
+	capsuleLevel = true,
+	ownRarityAll = true,
+	own = true,
+	flag = true,
+}
+local BADGE_KEY_PATTERN = "^[a-z0-9_]+$"
+local SECONDS_PER_WEEK = 7 * 86400
+local STUDIO_STORE_SUFFIX = "_STUDIO"
 
 local Config = {
 	Abilities = Abilities,
@@ -181,6 +200,7 @@ local Config = {
 	Monetization = Monetization,
 	Net = Net,
 	Onboarding = Onboarding,
+	Social = Social,
 	Squeeze = Squeeze,
 	UI = UI,
 	Vfx = Vfx,
@@ -1269,6 +1289,13 @@ local function checkUI(problems: Problems)
 	expectPositive(problems, `{p}.Settings.saveDebounceSeconds`, UI.Settings.saveDebounceSeconds)
 	expectPositive(problems, `{p}.Queue.matchedBannerSeconds`, UI.Queue.matchedBannerSeconds)
 	expectPositive(problems, `{p}.Result.autoCloseAfterReturnSeconds`, UI.Result.autoCloseAfterReturnSeconds)
+	eachField(
+		problems,
+		`{p}.Result.rematchPulse`,
+		UI.Result.rematchPulse,
+		{ "scale", "upMs", "downMs" },
+		expectPositive
+	)
 	local inventory = UI.Inventory
 	expectPositive(problems, `{p}.Inventory.cardWidth`, inventory.cardWidth)
 	expect(
@@ -4114,6 +4141,100 @@ end
 -- Runs one group of checks. The checks assume each value has the shape the section files give it; when a value is
 -- missing or has the wrong type a check can raise (e.g. comparing nil). That is reported as one problem line and
 -- the remaining groups still run, so validate() never errors (the bootstraps rely on it to warn and fail closed).
+-- Batch 3 (friends): Config.Social. `defs` (the checked Catalog, nil when it did not load) names the squishies a badge
+-- may ask for.
+local function checkSocial(problems: Problems, rarities: { string }, defs: { [string]: any }?)
+	local p = "Config.Social"
+	local pads = Social.Pads
+	eachField(problems, `{p}.Pads`, pads, { "checkHz", "holdSeconds", "radiusStuds", "heightStuds" }, expectPositive)
+	expectNonNegative(problems, `{p}.Pads.waitingToastSeconds`, pads.waitingToastSeconds)
+
+	-- The offer outlives the result card: the Result phase, both return fades, the card's auto-close after the return
+	-- and the requeue cooldown a rematch waits out.
+	local window = Social.Rematch.windowSeconds
+	local need = Duel.Rules.ResultSeconds
+		+ 2 * Duel.Positioning.ReturnFadeSeconds
+		+ UI.Result.autoCloseAfterReturnSeconds
+		+ Duel.Rules.RequeueCooldownSeconds
+	expect(
+		problems,
+		isNumber(window) and window >= need,
+		`{p}.Rematch.windowSeconds ({show(window)}) must be >= {need} s: the Result phase, both return fades, the `
+			.. `result card's auto-close and the requeue cooldown, so the card never outlives the offer`
+	)
+
+	local board = Social.Board
+	expectCount(problems, `{p}.Board.size`, board.size, 1)
+	expect(
+		problems,
+		isInteger(board.readSize) and board.readSize >= board.size and board.readSize <= MAX_SORTED_PAGE,
+		`{p}.Board.readSize must be a whole number in {show(board.size)}..{MAX_SORTED_PAGE} `
+			.. `(got {show(board.readSize)})`
+	)
+	expectPositive(problems, `{p}.Board.refreshSeconds`, board.refreshSeconds)
+	expectText(problems, `{p}.Board.storeName`, board.storeName)
+	expect(
+		problems,
+		type(board.studioStoreName) == "string"
+			and string.sub(board.studioStoreName, -#STUDIO_STORE_SUFFIX) == STUDIO_STORE_SUFFIX,
+		`{p}.Board.studioStoreName must end in "{STUDIO_STORE_SUFFIX}" (got {show(board.studioStoreName)})`
+	)
+	expect(
+		problems,
+		isNumber(board.weekOffsetSeconds)
+			and board.weekOffsetSeconds >= 0
+			and board.weekOffsetSeconds < SECONDS_PER_WEEK,
+		`{p}.Board.weekOffsetSeconds must be in [0, {SECONDS_PER_WEEK}) (got {show(board.weekOffsetSeconds)})`
+	)
+
+	local badges = Social.Badges
+	expectPositive(problems, `{p}.Badges.checkSeconds`, badges.checkSeconds)
+	expectCount(problems, `{p}.Badges.maxTries`, badges.maxTries, 1)
+	local known: { [string]: boolean } = {}
+	for _, rarity in rarities do
+		known[rarity] = true
+	end
+	local keys: { [string]: boolean } = {}
+	for index, badge in badges.list do
+		local at = `{p}.Badges.list[{index}]`
+		local key = badge.key
+		expect(
+			problems,
+			type(key) == "string" and string.match(key, BADGE_KEY_PATTERN) ~= nil,
+			`{at}.key must match {BADGE_KEY_PATTERN} (got {show(key)})`
+		)
+		if type(key) == "string" then
+			expect(problems, not keys[key], `{at}.key {show(key)} is used twice`)
+			keys[key] = true
+		end
+		expect(
+			problems,
+			badge.id == nil or (isInteger(badge.id) and (badge.id :: number) > 0),
+			`{at}.id must be nil (not created yet) or a whole number > 0 (got {show(badge.id)})`
+		)
+		local rule = badge.rule
+		local kind = if type(rule) == "table" then rule.kind else nil
+		if type(kind) ~= "string" or not BADGE_RULES[kind] then
+			add(problems, `{at}.rule.kind {show(kind)} is not a badge rule`)
+		elseif kind == "stat" or kind == "gripLevel" or kind == "capsuleSlots" or kind == "capsuleLevel" then
+			expectCount(problems, `{at}.rule.atLeast`, rule.atLeast, 1)
+			if kind == "stat" then
+				expectText(problems, `{at}.rule.stat`, rule.stat)
+			end
+		elseif kind == "ownRarityAll" then
+			expect(problems, known[rule.rarity or ""] == true, `{at}.rule.rarity {show(rule.rarity)} is not a rarity`)
+		elseif kind == "own" then
+			expect(
+				problems,
+				defs == nil or (type(rule.squishyId) == "string" and defs[rule.squishyId] ~= nil),
+				`{at}.rule.squishyId {show(rule.squishyId)} is not a Catalog squishy`
+			)
+		elseif kind == "flag" then
+			expectText(problems, `{at}.rule.flag`, rule.flag)
+		end
+	end
+end
+
 local function guarded(problems: Problems, label: string, run: () -> ...any)
 	local ok, err = pcall(run)
 	if not ok then
@@ -4424,6 +4545,9 @@ function Config.validate(deps: ValidateDeps?): { string }
 			end
 		end)
 	end
+	guarded(problems, "Config.Social", function()
+		checkSocial(problems, rarities, defs)
+	end)
 	guarded(problems, "Config.FirstPerson", function()
 		checkFirstPerson(problems)
 	end)

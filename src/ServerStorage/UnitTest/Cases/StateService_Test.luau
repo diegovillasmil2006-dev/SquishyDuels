@@ -8,7 +8,8 @@
 --   * the Snapshot holds every field: profile projections (quests with starter, unseenReveals = boxLog entries with
 --     seen = false, grip = {total, rested}: Phase 6, an old save's grip.afk and grip.trainer are not sent), session
 --     fields (policy "checking", monetization with no
---     offers, practice zeros until PracticeService sets it), dataStatus {status, persisted, savePending, banner};
+--     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it),
+--     dataStatus {status, persisted, savePending, banner};
 --   * Loaded sends one full StateDelta; later changes go out as one partial StateDelta per batch with v + 1, only for
 --     fields whose value changed; nothing partial before the first full state; the sweep catches unmarked changes;
 --   * an OFFLINE session that loads later gets the full state again and Notify data.loaded (sent only here);
@@ -233,6 +234,7 @@ return function(t: Context)
 			"settings",
 			"squeezeLimit",
 			"stats",
+			"topWins",
 			"unseenReveals",
 		}) -- every Types.Snapshot field
 		expect.equal(snap.coins, 120)
@@ -252,6 +254,7 @@ return function(t: Context)
 		expect.equal(snap.policy, "checking")
 		expect.deepEqual(snap.monetization, { bundles = {}, passes = {} })
 		expect.deepEqual(snap.practice, { throws = 0, hits = 0, accuracy = 0 })
+		expect.deepEqual(snap.topWins, { loaded = false, top = {}, wins = 0 }) -- Batch 3: until the first board read
 		expect.deepEqual(
 			snap.dataStatus,
 			{ status = "ready", persisted = false, savePending = false, banner = "data.studioMemory" }
@@ -474,6 +477,10 @@ return function(t: Context)
 		runDeferred(w)
 		expect.equal(#w.sent, 2)
 		expect.deepEqual(w.sent[2].fields, { practice = { throws = 4, hits = 1, accuracy = 25 }, policy = "eligible" })
+		local board = { loaded = true, top = { { name = "Ana", wins = 3 } }, place = 1, wins = 3 }
+		StateService.setSessionField(player, "topWins", board) -- Batch 3: the weekly board (ShowOffService)
+		runDeferred(w)
+		expect.deepEqual(w.sent[3].fields, { topWins = board })
 		expect.throws(function()
 			StateService.setSessionField(player, "coins", 5)
 		end, "session field")
@@ -527,7 +534,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list is DESIGN's StateDelta list plus grip and capsules", function()
+	t.test("the field list is DESIGN's StateDelta list plus grip, capsules and topWins", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -545,6 +552,7 @@ return function(t: Context)
 			"practice",
 			"grip",
 			"capsules",
+			"topWins",
 		})
 	end)
 

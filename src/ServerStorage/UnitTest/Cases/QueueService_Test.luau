@@ -142,7 +142,9 @@ return function(t: Context)
 			restartPending = function(): boolean
 				return w.flags.restart
 			end,
-			dataStatus = nil,
+			dataStatus = function(p: any): string?
+				return p.dataStatus -- nil unless a case sets it (Batch 3)
+			end,
 			defer = function(_fn: () -> ()) end,
 			log = {
 				warn = function(_self: any, ...: any)
@@ -508,6 +510,79 @@ return function(t: Context)
 		expect.equal(QueueService.searchingCount(), 0)
 		local again = QueueService.forceMatch(w.players[1], dummy)
 		expect.falsy(again)
+	end)
+
+	t.test(
+		"startDirect (Batch 3 pads and Rematch): both start at once; tickets dropped, Matched, Joined twice",
+		function()
+			local w = setup(3)
+			join(w, 1)
+			join(w, 3)
+			local joined: { any } = {}
+			local connection = QueueService.Joined:connect(function(player: any)
+				table.insert(joined, player)
+			end)
+			local ok, err = pcall(function()
+				local started, match = QueueService.startDirect(w.players[1], w.players[2])
+				expect.truthy(started)
+				expect.equal(match.matchId, "m1")
+				expect.equal(w.started[1].a, w.players[1])
+				expect.equal(w.started[1].b, w.players[2])
+				expect.equal(QueueService.state(w.players[1]), "Matched")
+				expect.equal(QueueService.state(w.players[2]), "Matched")
+				expect.equal(QueueService.searchingCount(), 1) -- player 3 is still waiting
+				expect.equal(lastNotice(w, w.players[1]), nil) -- the ticket went without a "left the queue" toast
+				expect.deepEqual(joined, { w.players[1], w.players[2] }) -- the tutorial's duel step for both
+			end)
+			connection:disconnect()
+			if not ok then
+				error(err, 0)
+			end
+		end
+	)
+
+	t.test("startDirect warns a player whose save did not load, as QueueJoin does", function()
+		local w = setup(2)
+		local p1, p2 = w.players[1], w.players[2]
+		p2.dataStatus = "offline"
+		expect.truthy((QueueService.startDirect(p1, p2)))
+		expect.equal(lastNotice(w, p1), nil)
+		local notice = lastNotice(w, p2)
+		expect.equal(notice.code, "duel.noRewardsOffline")
+		expect.equal(notice.kind, "warn")
+	end)
+
+	t.test("startDirect refuses in QueueJoin's order; a full arena before any ticket is touched", function()
+		local w = setup(3)
+		local p1, p2 = w.players[1], w.players[2]
+		local function reason(a: any, b: any): any
+			local started, why = QueueService.startDirect(a, b)
+			expect.falsy(started)
+			return why
+		end
+		expect.equal(reason(p1, { kind = "testDummy", isTestDummy = true, userId = -100001 }), "queue.unavailable")
+		w.flags.restart = true
+		expect.equal(reason(p1, p2), "queue.paused")
+		w.flags.restart = false
+		p2.dead = true
+		expect.equal(reason(p1, p2), "queue.notReady")
+		p2.dead = false
+		join(w, 1)
+		w.arena.free = 0
+		expect.equal(reason(p1, p2), "queue.waitingArena")
+		expect.equal(QueueService.state(p1), "Searching") -- the ticket is kept
+		w.arena.free = 6
+		QueueService.forceMatch(w.players[3], p2) -- Studio path (unit tests run in Studio): p2 is in a match now
+		expect.equal(reason(p1, p2), "queue.alreadyQueued")
+		w.matches = {}
+		w.clock.advance(2.1)
+		QueueService.tick() -- p2 back to Idle, with the 3 s cooldown
+		expect.equal(reason(p2, p1), "queue.cooldown")
+		QueueService.setAccepting(false)
+		expect.equal(reason(p1, p2), "queue.unavailable")
+		QueueService.setAccepting(true)
+		w.clock.advance(Rules.RequeueCooldownSeconds + 0.01)
+		expect.truthy((QueueService.startDirect(p2, p1)))
 	end)
 
 	t.test("board: count-only QueueStatus to everyone, on change", function()

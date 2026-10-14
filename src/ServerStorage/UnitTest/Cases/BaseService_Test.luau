@@ -16,6 +16,8 @@
 --     templates, the plot's model or a ready profile, only the name and colour change and nothing fails;
 --   * Phase 5: every capsule carries its level (SD_Level) and its squishy (SD_Squishy, none when empty), so every
 --     client can show a read-only card and play the upgrade burst for any base.
+--   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
+--     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -36,10 +38,12 @@ return function(t: Context)
 		models: { [number]: Model }, -- the fake plot models (owner view)
 		templates: Instance?,
 		capsules: { [any]: any }, -- player -> a ready profile's capsules
+		friends: { [any]: any }, -- player -> the friend who invited them (or whom they followed) in this server
 	}
 
 	local function fresh(): World
-		local w: World = { delays = {}, asked = {}, made = {}, models = {}, templates = nil, capsules = {} }
+		local w: World =
+			{ delays = {}, asked = {}, made = {}, models = {}, templates = nil, capsules = {}, friends = {} }
 		BaseService.reset()
 		BaseService.useDeps({
 			delay = function(seconds: number, fn: () -> ())
@@ -60,6 +64,9 @@ return function(t: Context)
 			end,
 			displayNameOf = function(player: any): string
 				return "Name of " .. tostring(if typeof(player) == "Instance" then player.Name else "table")
+			end,
+			friendOf = function(player: any): any
+				return w.friends[player]
 			end,
 		})
 		return w
@@ -129,6 +136,48 @@ return function(t: Context)
 		local plain = { UserId = 5 }
 		BaseService.playerAdded(plain :: any)
 		expect.equal(BaseService.plotOf(plain), 5)
+		finish(w)
+	end)
+
+	t.test(
+		"a friend's invite (Batch 3): the free plot nearest the friend's on the ring; ties take the lower",
+		function()
+			local w = fresh()
+			local players = fill(w)
+			for _, plot in { 2, 3, 4, 6, 9 } do
+				BaseService.playerRemoving(players[plot])
+			end
+			local near = newPlayer(w, "Near")
+			w.friends[near] = players[5] -- on plot 5: 4 and 6 are both one away, the lower wins
+			BaseService.playerAdded(near)
+			expect.equal(BaseService.plotOf(near), 4)
+			local wrap = newPlayer(w, "Wrap")
+			w.friends[wrap] = players[1] -- on plot 1: plot 10 is taken, 9 is two away round the ring, 2 is one away
+			BaseService.playerAdded(wrap)
+			expect.equal(BaseService.plotOf(wrap), 2)
+			BaseService.playerRemoving(players[10])
+			local ring = newPlayer(w, "Ring")
+			w.friends[ring] = players[1] -- plot 10 (one away round the ring) beats plot 3 (two away)
+			BaseService.playerAdded(ring)
+			expect.equal(BaseService.plotOf(ring), 10)
+			local lone = newPlayer(w, "Lone")
+			w.friends[lone] = newPlayer(w, "Gone") -- a friend without a plot (not in this server): the lowest free one
+			BaseService.playerAdded(lone)
+			expect.equal(BaseService.plotOf(lone), 3)
+			finish(w)
+		end
+	)
+
+	t.test("a friend's invite with every plot taken waits in the hub like anyone", function()
+		local w = fresh()
+		local players = fill(w)
+		local late = newPlayer(w, "Late")
+		w.friends[late] = players[4]
+		BaseService.playerAdded(late)
+		expect.equal(BaseService.plotOf(late), nil)
+		BaseService.playerRemoving(players[8])
+		runDelays(w)
+		expect.equal(BaseService.plotOf(late), 8)
 		finish(w)
 	end)
 

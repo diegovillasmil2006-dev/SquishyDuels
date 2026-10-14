@@ -38,6 +38,8 @@
 -- when the counts change, at most Config.Net.Broadcast.queueStatusMaxHz (a payload without `state` is the board
 -- update). duelsInProgress counts arena slots in use (Result and Returning included), the board shows it "of MaxSlots".
 -- ShutdownService: RestartScheduled clears every ticket with queue.paused and pauses joins; Closing clears the queue.
+-- Batch 3 (friends, review #6): startDirect(a, b) starts a match between two players outside the queue on a live server
+-- (FriendDuelService: the duel pads and Rematch), with QueueJoin's checks for both; forceMatch stays Studio-only.
 -- All collaborators are reached through `deps` (useDeps in tests; init() builds the real ones), so the queue rules are
 -- unit-tested without Players, remotes or DuelService.
 
@@ -181,8 +183,10 @@ local ENDING_WORDS = table.freeze({
 
 local QueueService = {}
 
--- Fired with (player) after every accepted QueueJoin (the ticket is in the queue). Layers above listen to it
--- (PreferencesService records the onboarding step "duel", §11.8); this module never knows who listens.
+-- Fired with (player) after every accepted QueueJoin (the ticket is in the queue) and, Batch 3, for both players of a
+-- startDirect start (the duel pads / Rematch: no ticket, both Matched). Layers above listen to it (PreferencesService
+-- records the onboarding step "duel", §11.8; FriendDuelService clears rematch offers); this module never knows who
+-- listens.
 QueueService.Joined = Signal.new() :: Signal.Signal<any>
 
 -- Private
@@ -392,9 +396,16 @@ local function dropAll(code: string?, kind: Types.NotifyKind?)
 end
 
 -- Why `record` may not enter the queue now (nil = it may): setAccepting(false), then Matchmaker.joinCheck (§2.8
--- order). `checkAlive` and `checkCooldown` are off for a requeue at the front. Matchmaker answers queue.unavailable
--- for a missing live character too; that one case becomes queue.notReady (see the header reading).
-local function refusal(record: Record, now: number, checkAlive: boolean, checkCooldown: boolean): string?
+-- order). `checkAlive` and `checkCooldown` are off for a requeue at the front; `searchingFree` (startDirect) lets a
+-- Searching ticket count as free. Matchmaker answers queue.unavailable for a missing live character too; that one case
+-- becomes queue.notReady (see the header reading).
+local function refusal(
+	record: Record,
+	now: number,
+	checkAlive: boolean,
+	checkCooldown: boolean,
+	searchingFree: boolean?
+): string?
 	local d = getDeps()
 	if not accepting then
 		return CODE_UNAVAILABLE
@@ -404,7 +415,7 @@ local function refusal(record: Record, now: number, checkAlive: boolean, checkCo
 		paused = d.restartPending(),
 		arenaAvailable = d.arena.available(),
 		isTestDummy = not d.isPlayer(record.player),
-		queued = record.state ~= "Idle",
+		queued = record.state == "Matched" or (record.state == "Searching" and not searchingFree),
 		inMatch = inMatch(record.player),
 		alive = (not checkAlive) or d.isAlive(record.player),
 		cooldownUntil = if checkCooldown then record.cooldownUntil else nil,
@@ -956,6 +967,46 @@ function QueueService.forceMatch(a: any, b: any): (boolean, any)
 		markMatched(b, a, match, now)
 	end
 	return ok, match
+end
+
+-- Batch 3 (FriendDuelService: the duel pads and Rematch): starts a match between `a` and `b` outside the queue. Both
+-- need a record and must pass QueueJoin's checks (§2.8 order: a's first reason, then b's; a Searching ticket counts as
+-- free); a full arena answers queue.waitingArena before any ticket is touched. Then their Searching tickets go without
+-- a toast and DuelService starts the match. Returns (true, match) with both Matched, QueueJoin's duel.noRewardsOffline
+-- warning for an offline / read-only save, and Joined fired for both (the tutorial's duel step), or (false, reason
+-- code).
+function QueueService.startDirect(a: any, b: any): (boolean, any)
+	local d = getDeps()
+	local recordA, recordB = records[a], records[b]
+	if recordA == nil or recordB == nil or a == b then
+		return false, CODE_UNAVAILABLE -- the Studio test dummy has no record
+	end
+	local now = d.now()
+	local why = refusal(recordA, now, true, true, true) or refusal(recordB, now, true, true, true)
+	if why ~= nil then
+		return false, why
+	end
+	if d.arena.freeCount() <= 0 then
+		return false, CODE_WAITING_ARENA
+	end
+	dropTicket(recordA, nil, nil, nil)
+	dropTicket(recordB, nil, nil, nil)
+	local ok, match = startMatchWith(a, b)
+	if not ok then
+		return false, if match == "noArena" then CODE_WAITING_ARENA else CODE_UNAVAILABLE
+	end
+	markMatched(a, b, match, now)
+	markMatched(b, a, match, now)
+	for _, player in { a, b } do
+		-- QueueJoin's warning: a save that did not load pays and keeps nothing from this duel.
+		local status = if d.dataStatus then d.dataStatus(player) else nil
+		if status == "offline" or status == "readonly" then
+			d.notify(player, CODE_NO_REWARDS, nil, "warn")
+		end
+	end
+	QueueService.Joined:fire(a)
+	QueueService.Joined:fire(b)
+	return true, match
 end
 
 -- Pairs waiting tickets now (re-entrant calls while a start is running are folded into one more pass). Returns how

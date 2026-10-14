@@ -35,7 +35,9 @@
 --   * feature 1 (2026-10-11, the charge throw and the catch): a fifth keycap, the catch's ("RMB/E" / "L1", the keys
 --     Catch is bound to; nil on touch); the dock of five fits the narrowest phone canvas; "Your hands are busy." while
 --     they are (throw.busy); the charge fills the pie to c and pulses only at full (1.08 ± 0.04 at 18 rad/s; still
---     under ReducedMotion); "Catch!" carries the key and pulses 0.75 ± 0.25 at 3 Hz (steady under ReducedMotion).
+--     under ReducedMotion); "Catch!" carries the key and pulses 0.75 ± 0.25 at 3 Hz (steady under ReducedMotion);
+--   * Batch 3 (friends): the Rematch button reads "Rematch"; once pressed "Waiting…" (disabled) with the line "Waiting
+--     for {name}…"; the line "{name} wants a rematch!" while only the opponent asked; both: loading with "Starting…".
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -1190,4 +1192,23 @@ return function(t: Context)
 		expect.equal(DuelFormat.isLive("SuddenDeath"), true)
 		expect.equal(DuelFormat.isLive("Countdown"), false)
 	end)
+
+	t.test(
+		"rematchView: Rematch, the opponent's ask, waiting once pressed, starting once both pressed (Batch 3)",
+		function()
+			local view = DuelFormat.rematchView
+			expect.deepEqual(view(false, false, "Ana"), { text = "Rematch", state = "normal" })
+			expect.deepEqual(
+				view(false, true, "Ana"),
+				{ text = "Rematch", line = "Ana wants a rematch!", state = "normal" }
+			)
+			-- The button stays short (any name length); the name goes on the line, which wraps.
+			expect.deepEqual(
+				view(true, false, "Ana"),
+				{ text = "Waiting…", line = "Waiting for Ana…", state = "disabled" }
+			)
+			expect.deepEqual(view(true, true, "Ana"), { text = "Rematch", line = "Starting…", state = "loading" })
+			expect.equal(view(true, false, string.rep("W", 20)).text, "Waiting…")
+		end
+	)
 end

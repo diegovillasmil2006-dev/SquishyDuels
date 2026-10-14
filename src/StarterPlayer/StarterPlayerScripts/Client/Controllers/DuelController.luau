@@ -40,7 +40,8 @@
 --   count"), the reason, stats (throws, hits, accuracy), the reward line from DuelResult only (0 Coins with the blocked
 --   reason), quest lines and the loss tip; the title pops (Back Out 300 ms), lines appear with a 150 ms stagger. After
 --   the return it gains Queue again (UIController.open("queue")) and Close, answers Back / ButtonB, takes gamepad
---   focus, and closes itself Config.UI.Result.autoCloseAfterReturnSeconds later. A modal opened over it meanwhile
+--   focus, and closes itself Config.UI.Result.autoCloseAfterReturnSeconds later (Batch 3: once someone pressed
+--   Rematch, when the rematch offer ends instead; see the Batch 3 paragraph). A modal opened over it meanwhile
 --   (Inspect) gets Back first (UIController) and keeps its focus when the card closes.
 -- * Returning (§9.14): fade to the dark transition colour over Config.Duel.Positioning.ReturnFadeSeconds, the server
 --   repositions, then the fade lifts when the match view ends (SD_DuelPhase cleared). Reading: a fade still dark after
@@ -84,7 +85,18 @@
 -- * The forfeit dialog sits in SD_Modal above the touch Throw / Ultimate buttons (SD_Touch), Active, its two buttons
 --   wrapping at the largest text; Keep playing is still the gamepad primary and Back / ButtonB still close it.
 -- * The result panel's lines scroll in a body sized by DuelFormat.resultLayout, with Queue again / Close pinned under
---   it and the panel kept on screen; the gamepad primary is Queue again, else Close.
+--   it and the panel kept on screen; the gamepad primary is Queue again, else Close (Batch 3: Rematch first while it
+--   shows).
+-- Batch 3 (friends, review #6): the result card's row starts with Result_RematchButton while FriendDuelService offers
+-- a rematch with this opponent (the LocalPlayer's SD_RematchWith = their userId; never the Studio test dummy). A press
+-- sends RematchRequest (no arguments); DuelFormat.rematchView words it: "Rematch"; once pressed "Waiting…" (disabled)
+-- with the line "Waiting for {name}…" over the row; "{name} wants a rematch!" (the button pulses,
+-- Config.UI.Result.rematchPulse, not under ReducedMotion) once the opponent's SD_RematchWant names this player; both:
+-- the spinner and "Starting…" (the server waits out the requeue cooldown). The gamepad primary is Rematch while it
+-- shows (when it hides while selected, the focus moves to Queue again or Close). If someone pressed Rematch by the
+-- auto-close, the card waits until the server ends the offer; otherwise it closes as before; a new match closes it
+-- anyway. A card closed while this player still wants the rematch sends RematchRequest again, which takes the wish
+-- back (the server toggles it).
 -- Foam UI restyle (2026-10-09; spec docs/superpowers/specs/2026-10-09-foam-ui-restyle-design.md, the kit in
 -- 2026-10-09-foam-ui-components.md). Look and layout only: every timing, name, focus and behaviour above stays.
 -- * Top bar: each side is a foam card (Theme.panel) tinted with the side's light colour (DuelFormat.sideColors:
@@ -299,6 +311,9 @@ type ResultPanel = {
 	close: Button.Button,
 	cleanup: Cleanup.Cleanup,
 	afterReturn: boolean,
+	rematch: Button.Button, -- Batch 3
+	closeWithOffer: boolean, -- Batch 3: the auto-close came after a Rematch press; close when the offer ends
+	rematchAsked: () -> boolean, -- Batch 3: either player pressed Rematch
 }
 
 -- Constants
@@ -1408,7 +1423,8 @@ local function updateQueueAgain(panel: ResultPanel)
 	panel.queueAgain.root.Visible = StateController.queue().state == "Idle"
 end
 
--- Shows Queue again / Close, answers Back, takes gamepad focus, and closes itself after autoCloseAfterReturnSeconds.
+-- Shows Queue again / Close, answers Back, takes gamepad focus, and closes itself after autoCloseAfterReturnSeconds
+-- (Batch 3: Rematch first, and once someone pressed it the close waits for the rematch offer to end).
 local function resultAfterReturn(panel: ResultPanel)
 	if panel.afterReturn then
 		return
@@ -1425,13 +1441,18 @@ local function resultAfterReturn(panel: ResultPanel)
 	panel.cleanup:add(UIController.pushBack(closeResult))
 	-- Gamepad: Queue again, or Close while already queued (Queue again hides then), so a primary is always selected.
 	Focus.follow(panel.frame, function(): GuiObject?
+		if panel.rematch.root.Visible then
+			return panel.rematch.root -- Batch 3: Rematch first while it is offered
+		end
 		return if panel.queueAgain.root.Visible then panel.queueAgain.root else panel.close.root
 	end, panel.cleanup)
 	panel.cleanup:add(StateController.QueueChanged:connect(function()
 		updateQueueAgain(panel)
 	end))
 	panel.cleanup:add(task.delay(UI_CONFIG.Result.autoCloseAfterReturnSeconds, function()
-		if resultPanel == panel then
+		if resultPanel == panel and panel.rematch.root.Visible and panel.rematchAsked() then
+			panel.closeWithOffer = true -- Batch 3: someone pressed Rematch: wait for the server to end the offer
+		elseif resultPanel == panel then
 			closeResult()
 		end
 	end))
@@ -1499,8 +1520,9 @@ local function questDoneLine(parent: Instance, order: number, text: string): (Fr
 	return row, fills
 end
 
--- Builds and shows the result card for `model` (showResult; after the "K.O.!" banner when there is one).
-local function openResult(model: DuelFormat.ResultModel)
+-- Builds and shows the result card for `model` (showResult; after the "K.O.!" banner when there is one). Batch 3:
+-- `opponent` (a real player) may be offered a rematch.
+local function openResult(model: DuelFormat.ResultModel, opponent: { userId: number, name: string }?)
 	local style = DuelFormat.resultStyle(model.outcome)
 	local reduced = Tweens.reducedMotion()
 
@@ -1762,6 +1784,87 @@ local function openResult(model: DuelFormat.ResultModel)
 		end,
 	})
 	panelCleanup:add(close)
+	-- Batch 3 (friends): Rematch and the opponent's ask over the row (see the header).
+	local rematchLine = Theme.label({
+		Name = "RematchLine",
+		LayoutOrder = -1,
+		Text = "",
+		Visible = false,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = buttons,
+	}, "Body", Enum.FontWeight.Bold)
+	local rematch: Button.Button
+	rematch = Button.new({
+		name = "Result_RematchButton",
+		text = Strings.duel.rematch,
+		kind = "primary",
+		accent = "mint",
+		height = TOUCH.primaryButton,
+		layoutOrder = 0,
+		parent = buttons,
+		onActivated = function()
+			-- One press only until the server answers: a second RematchRequest would take the wish back.
+			rematch:setState("disabled")
+			NetController.fire("RematchRequest")
+		end,
+	})
+	rematch.root.Visible = false
+	panelCleanup:add(rematch)
+	local rematchAsked = false -- either player pressed Rematch (the auto-close then waits for the offer to end)
+	local function refreshRematch()
+		local me = Players.LocalPlayer
+		local other = if opponent then Players:GetPlayerByUserId(opponent.userId) else nil
+		local offered = me ~= nil and opponent ~= nil and me:GetAttribute("SD_RematchWith") == opponent.userId
+		if me == nil or opponent == nil or not offered then
+			rematchAsked = false
+			if rematch.root.Visible and GuiService.SelectedObject == rematch.root then
+				Focus.select(if queueAgain.root.Visible then queueAgain.root else close.root)
+			end
+			rematch.root.Visible = false
+			rematchLine.Visible = false
+			local panel = resultPanel
+			if panel and panel.rematch == rematch and panel.closeWithOffer then
+				closeResult()
+			end
+			return
+		end
+		local iWant = me:GetAttribute("SD_RematchWant") == opponent.userId
+		local theyWant = other ~= nil and other:GetAttribute("SD_RematchWant") == me.UserId
+		local view = DuelFormat.rematchView(iWant, theyWant, opponent.name)
+		rematchAsked = iWant or theyWant
+		rematch.root.Visible = true
+		rematch:setText(view.text)
+		rematch:setState(view.state)
+		if theyWant and not iWant and not rematchLine.Visible then
+			local pulse = UI_CONFIG.Result.rematchPulse
+			rematch:pulse(pulse.scale, pulse.upMs, pulse.downMs)
+		end
+		rematchLine.Text = view.line or ""
+		rematchLine.Visible = view.line ~= nil
+	end
+	-- Closing the card (Close, Back, Queue again) while this player still wants the rematch takes the wish back.
+	panelCleanup:add(function()
+		local me = Players.LocalPlayer
+		if
+			me
+			and opponent
+			and me:GetAttribute("SD_RematchWith") == opponent.userId
+			and me:GetAttribute("SD_RematchWant") == opponent.userId
+		then
+			NetController.fire("RematchRequest")
+		end
+	end)
+	local localPlayer = Players.LocalPlayer
+	if localPlayer and opponent then
+		for _, name in { "SD_RematchWith", "SD_RematchWant" } do
+			panelCleanup:add(localPlayer:GetAttributeChangedSignal(name):Connect(refreshRematch))
+		end
+		local other = Players:GetPlayerByUserId(opponent.userId)
+		if other then
+			panelCleanup:add(other:GetAttributeChangedSignal("SD_RematchWant"):Connect(refreshRematch))
+		end
+	end
+	refreshRematch()
 
 	-- §18.5.2 B7 at the title pop: the jingle (none for cancelled / void) and the confetti inside the panel.
 	if style.jingle then
@@ -1903,6 +2006,11 @@ local function openResult(model: DuelFormat.ResultModel)
 		close = close,
 		cleanup = panelCleanup,
 		afterReturn = false,
+		rematch = rematch,
+		closeWithOffer = false,
+		rematchAsked = function(): boolean
+			return rematchAsked
+		end,
 	}
 	resultPanel = panel
 	if StateController.duel() == nil then
@@ -1917,16 +2025,22 @@ local function showResult(payload: Types.DuelResultPayload)
 	if view and view.matchId == payload.matchId then
 		startPoses(model.outcome, view)
 	end
+	-- Batch 3: who the card may offer a rematch with (never the Studio test dummy).
+	local opponent = if view
+			and view.matchId == payload.matchId
+			and not view.opponent.isTestDummy
+		then { userId = view.opponent.userId, name = DuelFormat.nameText(view.opponent) }
+		else nil
 	-- Foam fix 2: the eliminator's "K.O.!" banner (SD_Vfx, drawn over SD_Modal) ends first, so it never sits on the
 	-- card's title (the impact that set it arrives before DuelResult).
 	local wait = DuelFormat.resultWait(VfxController.koBannerUntil(), os.clock(), LAYOUT.RESULT_WAIT_MAX)
 	if wait <= 0 then
-		openResult(model)
+		openResult(model, opponent)
 		return
 	end
 	resultWait = task.delay(wait, function()
 		resultWait = nil
-		openResult(model)
+		openResult(model, opponent)
 	end)
 end
 

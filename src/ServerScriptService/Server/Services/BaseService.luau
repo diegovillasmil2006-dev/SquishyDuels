@@ -7,6 +7,9 @@
 --   without it CharacterService's lobby spawn stays. With no plot free (a player who left is freed on their leave
 --   hook, so only briefly, or in a Studio test with more players than plots), it tries again every RETRY_SECONDS for
 --   RETRY_FOR_SECONDS while the player waits in the hub; a plot found later is used from their next respawn.
+-- * Batch 3 (friends, review #6): a player who joined from a friend's invite (GetJoinData().ReferredByPlayerId) or
+--   followed a friend in (Player.FollowUserId) while that friend has a plot here gets the free plot nearest to the
+--   friend's on the ring (min(|i - p|, 10 - |i - p|); a tie takes the lower number) instead of the lowest one.
 -- * playerRemoving: the plot is free again ("Open plot", grey, no capsules). Rejoining gives the lowest free plot again
 --   (maybe another one); the capsule levels live in the profile, so they come back wherever the player lands.
 -- * The owner view (Phase 4, spec §4, §8): render(plot) shows on the plot's generated Model (Tags.Base with that Plot)
@@ -29,6 +32,7 @@
 
 -- Services
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -56,6 +60,7 @@ export type Deps = {
 	templates: () -> Instance?, -- ServerStorage.SD_Templates.Capsules (SDTools target "capsules"), or nil
 	capsulesOf: (player: any) -> any, -- the capsules ({slots, list}) of the player's READY profile, or nil
 	displayNameOf: (player: any) -> string,
+	friendOf: (player: any) -> any?, -- Batch 3: the friend in this server who invited the player (or was followed)
 }
 
 -- Constants
@@ -125,6 +130,17 @@ local function defaultDeps(): Deps
 				return player.DisplayName
 			end)
 			return if ok and type(name) == "string" then name else tostring(player)
+		end,
+		friendOf = function(player: any): any?
+			if typeof(player) ~= "Instance" or not player:IsA("Player") then
+				return nil
+			end
+			local ok, data = pcall(player.GetJoinData, player) -- never yields
+			local id = if ok and type(data) == "table" then (data :: any).ReferredByPlayerId else nil
+			if type(id) ~= "number" or id <= 0 then
+				id = player.FollowUserId
+			end
+			return if type(id) == "number" and id > 0 then Players:GetPlayerByUserId(id) else nil
 		end,
 	}
 end
@@ -237,24 +253,44 @@ local function render(plot: number)
 	end
 end
 
--- Gives the player the lowest free plot (and its spawn, when the world has it). Returns it, or nil when all are taken.
-local function assign(player: any): number?
+-- The free plot for the player: the one nearest their friend's plot on the ring (Batch 3; a tie takes the lower
+-- number), else the lowest free one; nil when all are taken.
+local function freePlot(player: any): number?
+	local friend = deps.friendOf(player)
+	local near = if friend ~= nil then plots[friend] else nil
+	local best, bestGap = nil, math.huge
 	for plot = 1, PLOT_COUNT do
 		if owners[plot] == nil then
-			owners[plot] = player
-			plots[player] = plot
-			if typeof(player) == "Instance" then
-				(player :: Instance):SetAttribute(ATTR_PLOT, plot)
-				local spawn = deps.spawnOf(plot)
-				if spawn and (player :: Instance):IsA("Player") then
-					(player :: Player).RespawnLocation = spawn
-				end
+			if near == nil then
+				return plot
 			end
-			render(plot)
-			return plot
+			local gap = math.abs(plot - near)
+			gap = math.min(gap, PLOT_COUNT - gap)
+			if gap < bestGap then
+				best, bestGap = plot, gap
+			end
 		end
 	end
-	return nil
+	return best
+end
+
+-- Gives the player a free plot (freePlot, and its spawn, when the world has it). Returns it, or nil when all are taken.
+local function assign(player: any): number?
+	local plot = freePlot(player)
+	if plot == nil then
+		return nil
+	end
+	owners[plot] = player
+	plots[player] = plot
+	if typeof(player) == "Instance" then
+		(player :: Instance):SetAttribute(ATTR_PLOT, plot)
+		local spawn = deps.spawnOf(plot)
+		if spawn and (player :: Instance):IsA("Player") then
+			(player :: Player).RespawnLocation = spawn
+		end
+	end
+	render(plot)
+	return plot
 end
 
 -- Public

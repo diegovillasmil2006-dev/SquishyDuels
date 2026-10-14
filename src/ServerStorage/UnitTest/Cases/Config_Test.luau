@@ -55,6 +55,10 @@
 -- Phase 6 (giant pads and Jelly gates removed): one Config.Grip.Pads row, no Gate block, unlockWaypointSeconds,
 -- Config.Anim.giantPad (G10), forcePadPathB or grip.padUnlocked toast sound; 2 editable meshes; no starter_jelly or
 -- QuestDefs minTier.
+-- Batch 3 (friends, review #6 and #10): Config.Social (the 20th section) holds the duel pads, the rematch window, the
+-- weekly wins board and the 12 badges (no ids until the owners create them); validate reports a rematch window shorter
+-- than the result card's life, a Studio board store without "_STUDIO", a board read past 100 entries and every kind of
+-- broken badge entry; RematchRequest is a client -> server RemoteEvent with no arguments and its own bucket.
 --
 -- How a "deliberately broken copy" is made without changing Config's API: clone the Shared folder, require one
 -- section module of the clone and change it, then require the clone's Config. Its init receives the changed
@@ -91,6 +95,7 @@ local SECTIONS = {
 	"FirstPerson", -- first person (spec 2026-10-10 §4.1)
 	"Knead", -- the knead screen's soft body (spec phase2-squeeze §3.11)
 	"Wax", -- the knead screen's wax coat (spec phase2-squeeze §3.11)
+	"Social", -- Batch 3 (friends, review #6 and #10): duel pads, Rematch, the weekly board, badges
 }
 
 local CREATOR_GROUP_ID = 706867720 -- DIJAY Studios (DESIGN §1.1, verified)
@@ -1131,6 +1136,78 @@ return function(t: Context)
 			end
 			expect.truthy(entry.rate > 0 and entry.burst >= 1)
 		end
+	end)
+
+	-- Batch 3 (friends) ------------------------------------------------------------------------------------------
+
+	t.test("Batch 3 values: the pads, the rematch window, the weekly board, 12 badges without ids", function()
+		local social = Config.Social
+		expect.deepEqual(
+			social.Pads,
+			{ checkHz = 5, holdSeconds = 3, radiusStuds = 1.8, heightStuds = 5, waitingToastSeconds = 30 }
+		)
+		expect.equal(social.Rematch.windowSeconds, 20)
+		expect.equal(social.Board.size, 5)
+		expect.equal(social.Board.readSize, 100)
+		expect.equal(social.Board.refreshSeconds, 60)
+		expect.equal(social.Board.storeName, "WeeklyWins_v1")
+		expect.equal(social.Board.studioStoreName, "WeeklyWins_v1_STUDIO")
+		expect.equal(social.Board.weekOffsetSeconds, 4 * 86400) -- 1970-01-01 was a Thursday: weeks start on Monday
+		expect.equal(social.Badges.checkSeconds, 15)
+		expect.equal(social.Badges.maxTries, 3)
+		expect.equal(#social.Badges.list, 12)
+		for _, badge in social.Badges.list do
+			expect.equal(badge.id, nil) -- the owners create the badges, then paste the ids
+		end
+	end)
+
+	t.test("RematchRequest: a client -> server RemoteEvent with no arguments and its own bucket", function()
+		local spec = t.requireShared("Remotes").SPEC.RematchRequest
+		expect.equal(spec.dir, "c2s")
+		expect.equal(spec.kind, "RemoteEvent")
+		expect.equal(#spec.args, 0)
+		expect.deepEqual(Config.Net.Remotes.RematchRequest, { rate = 0.5, burst = 2 })
+	end)
+
+	t.test("validate reports a rematch window shorter than the result card's life", function()
+		local problems = validateBrokenCopy(t.Shared, "Social", function(social)
+			social.Rematch.windowSeconds = 10
+		end)
+		expect.truthy(containsText(problems, "Config.Social.Rematch.windowSeconds (10) must be >= 13.5"))
+	end)
+
+	t.test("validate reports a Studio board store without _STUDIO and a board read past 100", function()
+		local problems = validateBrokenCopy(t.Shared, "Social", function(social)
+			social.Board.studioStoreName = "WeeklyWins_v1"
+			social.Board.readSize = 101
+		end)
+		expect.truthy(containsText(problems, 'Config.Social.Board.studioStoreName must end in "_STUDIO"'))
+		expect.truthy(containsText(problems, "Config.Social.Board.readSize"))
+	end)
+
+	t.test("validate reports broken badges: key, repeat, id, rule kind, threshold, squishy, rarity", function()
+		local problems = validateBrokenCopy(t.Shared, "Social", function(social)
+			social.Badges.list = {
+				{ key = "welcome", rule = { kind = "joined" } },
+				{ key = "welcome", rule = { kind = "joined" } },
+				{ key = "Bad Key", rule = { kind = "joined" } },
+				{ key = "zero_id", id = 0, rule = { kind = "joined" } },
+				{ key = "lucky", rule = { kind = "luckyBox" } },
+				{ key = "none", rule = { kind = "stat", stat = "duelsWon", atLeast = 0 } },
+				{ key = "nope", rule = { kind = "own", squishyId = "nope" } },
+				{ key = "mythic", rule = { kind = "ownRarityAll", rarity = "Mythic" } },
+			}
+		end)
+		expect.truthy(containsText(problems, 'Config.Social.Badges.list[2].key "welcome" is used twice'))
+		expect.truthy(containsText(problems, "Config.Social.Badges.list[3].key must match"))
+		expect.truthy(containsText(problems, "Config.Social.Badges.list[4].id must be nil"))
+		expect.truthy(containsText(problems, 'Config.Social.Badges.list[5].rule.kind "luckyBox" is not a badge rule'))
+		expect.truthy(containsText(problems, "Config.Social.Badges.list[6].rule.atLeast must be an integer >= 1"))
+		expect.truthy(
+			containsText(problems, 'Config.Social.Badges.list[7].rule.squishyId "nope" is not a Catalog squishy')
+		)
+		expect.truthy(containsText(problems, 'Config.Social.Badges.list[8].rule.rarity "Mythic" is not a rarity'))
+		expect.falsy(containsText(problems, "check crashed"))
 	end)
 
 	t.test("the shipped config passes G6, G7 and G7b", function()

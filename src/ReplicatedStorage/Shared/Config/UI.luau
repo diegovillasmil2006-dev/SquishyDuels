@@ -223,6 +223,9 @@ local UI = {
 
 	Result = {
 		autoCloseAfterReturnSeconds = 6,
+		-- Batch 3: the Rematch button's bounce when the opponent asks (the coin pill's bounce: scale over upMs, back
+		-- over downMs; Button:pulse, off under ReducedMotion).
+		rematchPulse = { scale = 1.08, upMs = 70, downMs = 160 },
 	},
 
 	-- Squishies screen (§11.6): columns = floor(gridWidth / (cardWidth + pad)).

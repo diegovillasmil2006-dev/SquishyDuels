@@ -34,6 +34,8 @@ type Module = {
 -- GripService is its own layer between CharacterService and SqueezeService (§17.10 "Server layering", §17.11).
 -- Phase 3: BaseService after CharacterService (its plot spawn replaces the lobby spawn once Phase 4 builds the plots);
 -- CapsuleService between GripService (it pays Grip) and SqueezeService (whose paid squeezes push the capsules).
+-- Batch 3 (friends): FriendDuelService right after QueueService (it starts duels through it); ShowOffService last (it
+-- reads the duel results, Grip levels and FriendDuelService's friend matches).
 local SERVICE_ORDER = {
 	"MonetizationService",
 	"NetService",
@@ -56,12 +58,14 @@ local SERVICE_ORDER = {
 	"DashService", -- spec phase 5: the dash (needs CombatService's fighters and guards)
 	"DuelService",
 	"QueueService",
+	"FriendDuelService",
 	"BoxService",
 	"ShopService",
 	"QuestService",
 	"DailyRewardService",
 	"TipService",
 	"PreferencesService",
+	"ShowOffService",
 }
 
 -- Studio only, appended after the services; each needs its Config.Debug flag (always false outside Studio).

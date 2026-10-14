@@ -255,6 +255,8 @@ local Strings = {
 		boardWaiting = "Waiting: {count}",
 		boardActive = "Duels in progress: {count} of {max}",
 		boardHint = "Matches start automatically when an opponent is found.",
+		-- Batch 3 (review #6): beside Practice in the "no one else is in the queue" hint; Roblox's own invite window.
+		inviteFriends = "Invite friends",
 	},
 
 	-- Duel HUD, banners and result panel (§5.2, §5.4, §6.13, §9.14, §11.6).
@@ -355,6 +357,18 @@ local Strings = {
 		rewardBlocked = "0 Coins: {reason}",
 		queueAgain = "Queue again",
 		testDummy = "TEST DUMMY (Studio)",
+		-- Batch 3 (friends, review #6): the duel pads under the Duel tower (FriendDuelService) and Rematch on the
+		-- result card. The waiting toasts name the pad the partner needs (a mint stander needs a friend on strawberry);
+		-- padReady goes to both when a lane's two pads are taken ({seconds} = Config.Social.Pads.holdSeconds). The
+		-- Rematch button stays short (rematchWaiting); the line over the buttons carries the name.
+		padWaitingMint = "Get a friend on the mint pad across from you to duel!",
+		padWaitingStrawberry = "Get a friend on the strawberry pad across from you to duel!",
+		padReady = "Duel with {name} in {seconds} seconds! Step off to cancel.",
+		rematch = "Rematch",
+		rematchWaiting = "Waiting…",
+		rematchWaitingFor = "Waiting for {name}…",
+		rematchAsked = "{name} wants a rematch!",
+		rematchStarting = "Starting…",
 	},
 
 	-- Hit and elimination feedback (§9.8, §9.9).
@@ -669,6 +683,26 @@ local Strings = {
 			practice = { one = "Hit {n} practice target", many = "Hit {n} practice targets" },
 			duel = { one = "Finish your first duel", many = "Finish {n} duels" },
 		},
+	},
+
+	-- Batch 3 (review #10): the Roblox player list's columns (leaderstats, ShowOffService), in this order.
+	social = {
+		statWins = "Wins",
+		statLevel = "Grip Lv",
+	},
+
+	-- Batch 3 (review #10): "Top Wins This Week" in the Quests screen (ShowOffService's weekly board, UI/QuestFormat).
+	-- Only fully paid wins over other players count; the board starts over every Monday.
+	board = {
+		title = "Top Wins This Week",
+		line = { one = "{rank}. {name} · {wins} win", many = "{rank}. {name} · {wins} wins" },
+		empty = "No wins yet this week. Be the first!",
+		loading = "Checking the board…",
+		unavailable = "The board is taking a break. Check back soon!", -- no read has worked yet (the server's store)
+		someone = "A player", -- a name the server could not look up
+		you = { one = "You: #{rank} · {n} win", many = "You: #{rank} · {n} wins" },
+		youUnranked = { one = "You: {n} win this week", many = "You: {n} wins this week" },
+		youNone = "Win a duel against another player to get on the board!",
 	},
 
 	-- Daily rewards (§6.9, §7.7, §11.6).

@@ -82,6 +82,11 @@
 --                                               (design: html:670-671), 1 under ReducedMotion
 --   catchPrompt(key, t, reduced)                the "Catch!" prompt's text (with the catch key for the input) and its
 --                                               text transparency (design: html:88, 674; steady under ReducedMotion)
+-- Batch 3 (friends, review #6):
+--   rematchView(iWant, theyWant, name)          the result card's Rematch button and the line over the buttons:
+--                                               "Rematch"; once pressed "Waiting…" (disabled) with "Waiting for
+--                                               {name}…"; "{name} wants a rematch!" while only the opponent asked;
+--                                               both: the spinner (loading) with "Starting…" (the requeue cooldown)
 
 -- Services
 
@@ -102,6 +107,8 @@ local Types = require(Shared.Types)
 -- Types
 
 export type ParticipantLike = { displayName: string, isTestDummy: boolean, side: Types.Side }
+-- Batch 3: rematchView's answer (`state` is the Button state).
+export type RematchView = { text: string, line: string?, state: "normal" | "disabled" | "loading" }
 
 export type StatLine = { label: string, value: string }
 
@@ -562,6 +569,22 @@ function DuelFormat.rewardText(outcome: string, coins: number): string?
 	end
 	local n = if finite(coins) then math.max(0, math.floor(coins + 0.5)) else 0
 	return Strings.format(template, { coins = Format.coins(n) })
+end
+
+-- Batch 3: the Rematch button's text and state, and the line over the card's buttons (see the header).
+function DuelFormat.rematchView(iWant: boolean, theyWant: boolean, name: string): RematchView
+	local duel = Strings.duel
+	if iWant and theyWant then
+		return { text = duel.rematch, line = duel.rematchStarting, state = "loading" }
+	elseif iWant then
+		return {
+			text = duel.rematchWaiting,
+			line = Strings.format(duel.rematchWaitingFor, { name = name }),
+			state = "disabled",
+		}
+	end
+	local line = if theyWant then Strings.format(duel.rematchAsked, { name = name }) else nil
+	return { text = duel.rematch, line = line, state = "normal" }
 end
 
 -- Public: feel pass cues (§18.5.2 B6-B7, §18.6)

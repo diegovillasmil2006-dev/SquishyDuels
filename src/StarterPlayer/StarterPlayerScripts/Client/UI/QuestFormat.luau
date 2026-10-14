@@ -16,6 +16,11 @@
 --                         px): the content's, capped so the whole panel (body + chrome: header, footer, paddings)
 --                         stays within maxShare of the screen height; never under minH (unit-tested at 667×375,
 --                         1280×720, 1920×1080 and the largest text)
+--   topWins(view)         Batch 3 (review #10): "Top Wins This Week" from the topWins state (Types.TopWinsView): the
+--                         ranked lines "1. Ana · 12 wins", a note ("Checking the board…" before the first read, "The
+--                         board is taking a break…" while no read works, the empty week's "No wins yet this week. Be
+--                         the first!" alone) and the player's own line (place and wins, their week's wins outside the
+--                         read, or how to get on the board)
 -- A card: the title, the progress "3/5" (common.progress) with its bar fill, the reward "+1,500 Coins"
 -- (common.coinsGain), the state In progress / Claim / Claimed, Swap and the Equip shortcut. Phase 5 (progression spec
 -- 2026-10-12 §9): the reward is the quest's squeezes × the squeeze value of ctx.capsules (the player's capsules state;
@@ -77,6 +82,9 @@ export type Board = {
 	footer: string,
 	empty: string?, -- the empty sentence when the day has no quest
 }
+
+-- Batch 3: what the Quests screen's "Top Wins This Week" section shows.
+export type TopWins = { lines: { string }, note: string?, you: string? }
 
 -- Constants
 
@@ -315,6 +323,42 @@ function QuestFormat.namer(quests: unknown): (questId: string) -> string?
 		end
 		return nil
 	end
+end
+
+-- Batch 3: the "Top Wins This Week" section from the topWins state (see the header). A broken entry is left out.
+function QuestFormat.topWins(view: unknown): TopWins
+	local v: any = view
+	if type(v) ~= "table" or v.loaded ~= true or type(v.top) ~= "table" then
+		return { lines = {}, note = Strings.board.loading }
+	end
+	local board = Strings.board
+	if v.unavailable == true then
+		return { lines = {}, note = board.unavailable }
+	end
+	local lines: { string } = {}
+	for _, entry in v.top do
+		if type(entry) == "table" and type(entry.name) == "string" and type(entry.wins) == "number" then
+			local args = { rank = #lines + 1, name = entry.name, wins = Format.coins(entry.wins) }
+			table.insert(lines, Strings.format(Strings.plural(entry.wins, board.line.one, board.line.many), args))
+		end
+	end
+	local wins = if type(v.wins) == "number" then v.wins else 0
+	if #lines == 0 and wins == 0 then
+		return { lines = lines, note = board.empty } -- the empty week's note says it all
+	end
+	local you: string
+	if type(v.place) == "number" then
+		local text = Strings.plural(wins, board.you.one, board.you.many)
+		you = Strings.format(text, { rank = v.place, n = Format.coins(wins) })
+	elseif wins > 0 then
+		you = Strings.format(
+			Strings.plural(wins, board.youUnranked.one, board.youUnranked.many),
+			{ n = Format.coins(wins) }
+		)
+	else
+		you = board.youNone
+	end
+	return { lines = lines, note = if #lines == 0 then board.empty else nil, you = you }
 end
 
 return QuestFormat

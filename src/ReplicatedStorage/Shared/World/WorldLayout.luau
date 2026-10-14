@@ -165,6 +165,9 @@ export type ReturnPoint = {
 	facing: Vector3,
 }
 
+-- Batch 3: one queue pad as the game reads it (QueuePads): its top centre, its team and its lane (1..5).
+export type QueuePad = { position: Vector3, team: "mint" | "strawberry", lane: number }
+
 export type StationFrame = {
 	position: Vector3, -- the station centre on the floor
 	yaw: number, -- rotation.y (radians)
@@ -691,6 +694,25 @@ for _, mat in mats do
 end
 
 -- Private: other lobby data ----------------------------------------------------------------------------------------
+
+-- Batch 3 (review #6, the duel pads; Services/FriendDuelService): the 10 queue pads as the game reads them. The ring
+-- LobbyBuilder builds (design: lobby.js:190-195; 10 studs out on the sector centres 18° + 36° k, LobbyBuilder's
+-- QUEUE_PAD_RING), each with its top centre (the pad is 0.5 tall on the stage), its team (mint on the west half,
+-- strawberry on the east, as built) and its lane: a pad and the one straight across the medallion (k and k + 5, 20
+-- studs apart, always one strawberry and one mint). LobbyBuilder_Test checks that every built queue_pad_ring sits on
+-- one of them.
+local QUEUE_PAD_RING = 10
+local QUEUE_PAD_HEIGHT = 0.5
+local QueuePads: { QueuePad } = {}
+for k = 0, 9 do
+	local angle = math.rad(18 + 36 * k)
+	local x, z = QUEUE_PAD_RING * math.sin(angle), -QUEUE_PAD_RING * math.cos(angle)
+	table.insert(QueuePads, {
+		position = at("duel", x, DuelGate.stageTop + QUEUE_PAD_HEIGHT, z),
+		team = if x < 0 then "mint" else "strawberry",
+		lane = k % 5 + 1,
+	})
+end
 
 -- Reading: on the stage's south side, beside the podium, facing south (players come back from a duel here).
 local ReturnPoints: { ReturnPoint } = {
@@ -1440,6 +1462,7 @@ local WorldLayout = {
 	Collection = Collection,
 	Stations = Stations, -- squeeze_01..06 in id order
 	ReturnPoints = ReturnPoints,
+	QueuePads = QueuePads, -- Batch 3: the duel pads (pad index = LobbyBuilder's ring order k + 1)
 	Props = Props,
 	Signs = Signs,
 	KeepClear = KeepClear,

@@ -40,12 +40,16 @@
 --   on phones (before: always those widths, with about 170 base px of empty pill before Cancel).
 -- * The matched banner sits under the duel HUD's top bar once it shows (UIController.banner `below`, followed) and
 --   leaves when the countdown starts, so it never covers the bar's lives or the countdown disc.
+-- Batch 3 (friends, review #6): Queue_InviteButton ("Invite friends") joins the no-opponent hint's row after Practice
+-- when SocialService:CanSendGameInviteAsync said yes (asked once at start, in pcall; an error hides it). A press opens
+-- Roblox's own invite window (SocialService:PromptGameInvite, in pcall): no server call, no count, no reward.
 
 -- Services
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SocialService = game:GetService("SocialService")
 local Workspace = game:GetService("Workspace")
 
 -- Requires
@@ -113,6 +117,8 @@ local titleLabel: TextLabel? = nil
 local detailLabel: TextLabel? = nil
 local keepButton: Button.Button? = nil
 local practiceButton: Button.Button? = nil
+local inviteButton: Button.Button? = nil -- Batch 3
+local canInvite = false -- Batch 3: SocialService:CanSendGameInviteAsync said yes
 local cancelButton: Button.Button? = nil
 local lastPlacement: QueueFormat.PillPlacement? = nil
 local aloneSince: number? = nil
@@ -156,7 +162,7 @@ local function linkGamepad(shown: boolean)
 		return
 	end
 	local order: { GuiObject } = {}
-	for _, button in { keepButton, practiceButton, cancelButton } do
+	for _, button in { keepButton, practiceButton, inviteButton, cancelButton } do
 		if button and button.root.Visible then
 			table.insert(order, button.root)
 		end
@@ -203,6 +209,10 @@ local function hugWidth(scale: number, cap: number): number
 	local keep, practice = keepButton, practiceButton
 	if keep and practice and keep.root.Visible then
 		hint = restingWidth(keep, scale) + restingWidth(practice, scale) + Theme.Padding.small
+	end
+	local invite = inviteButton
+	if invite and invite.root.Visible then
+		hint += restingWidth(invite, scale) + Theme.Padding.small -- Batch 3: Invite friends in the same row
 	end
 	return QueueFormat.pillWidth({
 		padding = PILL_PADDING,
@@ -285,6 +295,10 @@ local function refreshPill()
 			if button then
 				setIfChanged(button.root, "Visible", model.showHint)
 			end
+		end
+		local invite = inviteButton
+		if invite then
+			setIfChanged(invite.root, "Visible", model.showHint and canInvite)
 		end
 		local hint = hintRow
 		if hint then
@@ -458,6 +472,22 @@ local function buildPill(c: Cleanup.Cleanup)
 	practice.root.Visible = false
 	c:add(practice)
 	practiceButton = practice
+	local invite = Button.new({
+		name = "Queue_InviteButton",
+		text = Strings.queue.inviteFriends,
+		height = TOUCH.minTarget,
+		layoutOrder = 3,
+		parent = row,
+		onActivated = function()
+			local player = Players.LocalPlayer
+			if player then
+				pcall(SocialService.PromptGameInvite, SocialService, player)
+			end
+		end,
+	})
+	invite.root.Visible = false
+	c:add(invite)
+	inviteButton = invite
 	local cancel = Button.new({
 		name = "Queue_CancelButton",
 		text = Strings.common.cancel,
@@ -478,7 +508,7 @@ local function buildPill(c: Cleanup.Cleanup)
 	c:add(function()
 		linkGamepad(false)
 		pill, titleLabel, detailLabel, textsFrame, hintRow = nil, nil, nil, nil, nil
-		keepButton, practiceButton, cancelButton, lastPlacement = nil, nil, nil, nil
+		keepButton, practiceButton, inviteButton, cancelButton, lastPlacement = nil, nil, nil, nil, nil
 		measuredKey, measuredText = nil, 0
 	end)
 end
@@ -637,6 +667,12 @@ function QueueController.start()
 			if StateController.queue().state == "Searching" then
 				NetController.reportIdle()
 			end
+		end))
+		-- Batch 3: whether this player may invite (it yields; an error counts as no).
+		c:add(task.spawn(function()
+			local ok, allowed = pcall(SocialService.CanSendGameInviteAsync, SocialService, player)
+			canInvite = ok and allowed == true
+			refreshPill()
 		end))
 	end
 	local function guarded(label: string, fn: () -> ())

@@ -170,6 +170,12 @@ export type DataStatusName = "loading" | "ready" | "offline" | "readonly"
 export type DataStatus = { status: DataStatusName, persisted: boolean, savePending: boolean, banner: string? }
 export type MonetizationView = { bundles: { string }, passes: { string } } -- offered keys; passes empty in v1
 export type PracticeStats = { throws: number, hits: number, accuracy: number } -- session only, never saved
+-- Batch 3 (review #10): "Top Wins This Week" (ShowOffService; session only). `loaded` turns true with the first board
+-- read; `top` = the leaders (at most Config.Social.Board.size) with their display names; `place` = the player's own
+-- place when within the read (Board.readSize); `wins` = the player's counted wins this week; `unavailable` = no read
+-- has worked yet (no API access, an outage), so there is no board to show.
+export type TopWinsLine = { name: string, wins: number }
+export type TopWinsView = { loaded: boolean, top: { TopWinsLine }, place: number?, wins: number, unavailable: boolean? }
 -- reading: `quests` (daily + starter) = the profile's daily quest state plus the starter task state.
 export type QuestsView = { day: number, swapsUsed: number, active: { QuestEntry }, starter: StarterState }
 
@@ -195,6 +201,7 @@ export type Snapshot = {
 	practice: PracticeStats,
 	grip: GripState,
 	capsules: CapsulesState,
+	topWins: TopWinsView, -- Batch 3
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -215,6 +222,7 @@ export type StateDeltaFields = {
 	practice: PracticeStats?,
 	grip: GripState?,
 	capsules: CapsulesState?,
+	topWins: TopWinsView?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -235,6 +243,7 @@ export type StateField =
 	| "practice"
 	| "grip"
 	| "capsules"
+	| "topWins"
 
 export type SnapshotLoading = { status: "loading" }
 

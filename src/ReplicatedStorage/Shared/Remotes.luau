@@ -169,6 +169,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	PolicyRetry = c2s("RemoteEvent", {}),
 	SetSettings = c2s("RemoteEvent", { arg("settings", "table") }), -- only keys music, sfx, cameraShake, showTips
 	OnboardingStep = c2s("RemoteEvent", { arg("stepId", "stepId") }),
+	-- Batch 3 (FriendDuelService): Rematch on the duel result card. No argument: the server takes the opponent from its
+	-- own MatchEnded record (the offer) and starts nothing until both players asked.
+	RematchRequest = c2s("RemoteEvent", {}),
 
 	-- Server -> client
 	-- The only state channel (Types.StateDeltaFields, incl. `grip` from Part 5): one monotonic `v` per player.

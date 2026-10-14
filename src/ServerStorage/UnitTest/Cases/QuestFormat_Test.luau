@@ -14,6 +14,10 @@
 --   * Part 8 (§11.2): the Quests panel's scrolling body keeps the whole panel within 86% of the screen height at
 --     667×375, 1280×720 and 1920×1080, Medium and the largest text, never under one touch target; short boards show
 --     whole. Foam UI (2026-10-09): the chrome counts the header tab and Close hanging above the panel.
+--   * Batch 3 (review #10): "Top Wins This Week" (the topWins state): "Checking the board…" until the first read,
+--     "The board is taking a break…" while no read works, the ranked lines "1. Ana · 12 wins" ("1 win"), "No wins yet
+--     this week. Be the first!" alone for an empty week, and the player's own line: their place and wins, their
+--     week's wins outside the read, or how to get on the board.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -254,4 +258,41 @@ return function(t: Context)
 			expect.equal(QuestFormat.bodyHeight(0 / 0, 0 / 0, 0 / 0, SHARE, 52), 52)
 		end
 	)
+
+	t.test("Top Wins This Week: loading, the ranked lines, an empty week and the player's own line", function()
+		local board = Strings.board
+		expect.deepEqual(QuestFormat.topWins(nil), { lines = {}, note = board.loading })
+		expect.deepEqual(
+			QuestFormat.topWins({ loaded = false, top = {}, wins = 0 }),
+			{ lines = {}, note = board.loading }
+		)
+		expect.deepEqual(
+			QuestFormat.topWins({ loaded = true, top = {}, wins = 0 }),
+			{ lines = {}, note = "No wins yet this week. Be the first!" } -- the note alone, no second "get on" line
+		)
+		expect.deepEqual(
+			QuestFormat.topWins({ loaded = true, unavailable = true, top = {}, wins = 0 }),
+			{ lines = {}, note = "The board is taking a break. Check back soon!" }
+		)
+		expect.deepEqual(
+			QuestFormat.topWins({ loaded = true, top = { { name = "Cy", wins = 1 } }, wins = 0 }),
+			{ lines = { "1. Cy · 1 win" }, you = board.youNone }
+		)
+		local top: { any } = { { name = "Ana", wins = 1234 }, { name = "Bo", wins = 12 }, { name = 5, wins = "x" } }
+		local view = {
+			loaded = true,
+			top = top,
+			place = 1,
+			wins = 1234,
+		}
+		expect.deepEqual(QuestFormat.topWins(view), {
+			lines = { "1. Ana · 1,234 wins", "2. Bo · 12 wins" }, -- a broken entry is left out
+			you = "You: #1 · 1,234 wins",
+		})
+		expect.equal(
+			QuestFormat.topWins({ loaded = true, top = view.top, place = 2, wins = 1 }).you,
+			"You: #2 · 1 win"
+		)
+		expect.equal(QuestFormat.topWins({ loaded = true, top = view.top, wins = 3 }).you, "You: 3 wins this week")
+	end)
 end

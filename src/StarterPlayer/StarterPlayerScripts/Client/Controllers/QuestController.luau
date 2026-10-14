@@ -35,6 +35,12 @@
 -- and the state on the left ("Info") and Claim / Swap / Equip at its right end ("Buttons", Theme.Padding.medium apart;
 -- UIListLayout.HorizontalFlex SpaceBetween; they wrap under the left part when both do not fit); every count beside a
 -- bar is as wide as the widest the board shows (digits measured as 8), so the bars end at one edge.
+-- Batch 3 (friends, review #10; user decision Q3 B): a "Top Wins This Week" section under the quests (the Duel CTA's
+-- swords icon): QuestFormat.topWins of the topWins state (ShowOffService's weekly board, refreshed by the server about
+-- once a minute): the top 5 as "1. Ana · 12 wins", a note before the first read, while the board cannot be read or for
+-- an empty week, and the player's own line (place and wins). Text only, from the existing label kinds; no new art. On
+-- touch the body keeps its scroll bar on screen (UI/Components/ScrollHint, like Settings), so the section under the
+-- quests can be found on a phone.
 -- Public: open(), debugState().
 
 -- Services
@@ -58,6 +64,7 @@ local CoinIcon = require(Client.UI.Components.CoinIcon)
 local Create = require(Client.UI.Create)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
+local ScrollHint = require(Client.UI.Components.ScrollHint) -- Batch 3
 local Layout = require(Client.UI.Layout)
 local NotifyFormat = require(Client.UI.NotifyFormat)
 local QuestFormat = require(Client.UI.QuestFormat)
@@ -94,11 +101,15 @@ type Section = {
 	views: { CardView },
 }
 
+-- Batch 3: the Top Wins section's rows: the ranked lines (made on demand), the note and the player's own line.
+type TopWinsRows = { section: Section, lines: { TextLabel }, note: TextLabel, you: TextLabel }
+
 -- Constants
 
 local SCREEN = "quests"
 local STAND_TAG = "SD_QuestBoard"
 local FIELD = "quests"
+local TOP_WINS_FIELD = "topWins" -- Batch 3
 local CLAIM_REMOTE = "QuestClaim"
 local SWAP_REMOTE = "QuestSwap"
 local MODAL_GUI = "SD_Modal"
@@ -136,6 +147,7 @@ local cleanup: Cleanup.Cleanup? = nil
 local root: Frame? = nil
 local dailySection: Section? = nil
 local starterSection: Section? = nil
+local topWins: TopWinsRows? = nil -- Batch 3
 local emptyLabel: TextLabel? = nil
 local footerLabel: TextLabel? = nil
 local closeButton: Button.Button? = nil
@@ -251,6 +263,34 @@ local function progressWidthOf(board: QuestFormat.Board): number
 	return math.ceil(widest) + PROGRESS_SLACK_PX
 end
 
+-- Batch 3: the Top Wins section from the topWins state.
+local function refreshTopWins()
+	local rows = topWins
+	if rows == nil then
+		return
+	end
+	local model = QuestFormat.topWins(StateController.get(TOP_WINS_FIELD))
+	for i, text in model.lines do
+		local label = rows.lines[i]
+			or Theme.label({
+				Name = "Line" .. i,
+				LayoutOrder = i,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Parent = rows.section.list,
+			}, "Body")
+		rows.lines[i] = label
+		label.Text = text
+		label.Visible = true
+	end
+	for i = #model.lines + 1, #rows.lines do
+		rows.lines[i].Visible = false
+	end
+	rows.note.Text = model.note or ""
+	rows.note.Visible = model.note ~= nil
+	rows.you.Text = model.you or ""
+	rows.you.Visible = model.you ~= nil
+end
+
 local function refresh()
 	if root == nil then
 		return
@@ -269,6 +309,7 @@ local function refresh()
 		fillSection(starter, if board.starterVisible then board.starter else {}, lock, progressWidth)
 	end
 	refreshTimes(board)
+	refreshTopWins()
 end
 
 local function claim(view: CardView)
@@ -640,6 +681,13 @@ local function build(parent: Instance): GuiObject
 		PaddingRight = UDim.new(0, SCROLLBAR_PX + 4),
 		Parent = body,
 	})
+	-- Batch 3 (like Settings): on touch the body's scroll bar stays on screen while the sections are longer than it
+	-- (UI/Components/ScrollHint), on the panel over the body's right edge (the body is the first row of Content);
+	-- fitBody sizes it. Top Wins sits under the quests, below the fold on a phone.
+	local scrollHint = ScrollHint.new({ scroll = body, parent = panel })
+	scrollHint.root.AnchorPoint = Vector2.new(1, 0)
+	scrollHint.root.Position = UDim2.fromScale(1, 0)
+	c:add(scrollHint)
 	-- Part 8: the body's height from QuestFormat.bodyHeight with the chrome measured (the tab and Close above the
 	-- panel, the paddings, the footer and the gaps at the player's text size), and the panel's width follows the
 	-- screen. Foam UI: the panel moves down by half of what hangs above it, so the whole stays centred.
@@ -674,6 +722,10 @@ local function build(parent: Instance): GuiObject
 		if math.abs(height - current) >= 1 then
 			body.Size = UDim2.new(1, 0, 0, height)
 		end
+		local railSize = UDim2.fromOffset(SCROLLBAR_PX, body.Size.Y.Offset) -- Batch 3: the ScrollHint rail
+		if scrollHint.root.Size ~= railSize then
+			scrollHint.root.Size = railSize
+		end
 	end
 	c:add(list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitBody))
 	c:add(panelList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitBody))
@@ -692,6 +744,24 @@ local function build(parent: Instance): GuiObject
 		Parent = body,
 	}, "Body")
 	starterSection = newSection(body, "Starter", 4, Strings.quest.section.starter, "quests")
+	-- Batch 3 (review #10): Top Wins This Week, after the quests.
+	local winsSection = newSection(body, "TopWins", 6, Strings.board.title, "duel")
+	topWins = {
+		section = winsSection,
+		lines = {},
+		note = Theme.label({
+			Name = "Note",
+			LayoutOrder = 98,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = winsSection.list,
+		}, "Small"),
+		you = Theme.label({
+			Name = "You",
+			LayoutOrder = 99,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = winsSection.list,
+		}, "Body", Enum.FontWeight.Bold),
+	}
 	-- The footer: the clock and "New quests in {h}h {m}m" in an inset pill.
 	local footer = Theme.inset({
 		Name = "FooterPill",
@@ -784,12 +854,13 @@ function QuestController.init()
 	c:add(WorldBinder.registerStand(STAND_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { FIELD, "owned", "equipped", "dataStatus", "capsules" } do
+	for _, field in { FIELD, "owned", "equipped", "dataStatus", "capsules", TOP_WINS_FIELD } do
 		c:add(StateController.changed(field):connect(refresh))
 	end
 	c:add(function()
 		table.clear(pending)
 		root, dailySection, starterSection, emptyLabel, footerLabel, closeButton = nil, nil, nil, nil, nil, nil
+		topWins = nil
 		lastBoard = nil
 	end)
 end

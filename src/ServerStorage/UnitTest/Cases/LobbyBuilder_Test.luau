@@ -22,7 +22,9 @@
 --     mystery box and the statue breathe), none of their parts collides, is queried or touched;
 --   * the stations' parts where the island puts them (spot checks), the odds board beside the box stand, one Status
 --     label in the daily stand, 14 pedestals with RarityStyle bands (D9), a 13-stud Kitty Bread statue; nothing but the
---     range itself stands on the practice range (§7.7 rule 4).
+--     range itself stands on the practice range (§7.7 rule 4);
+--   * Batch 3 (the duel pads): the 10 queue_pad_ring parts in DuelGate sit on WorldLayout.QueuePads, one each, so the
+--     server can bind the built rings at runtime (FriendDuelService.bindRings).
 -- The lobby is built once, in memory, from the Shared folder under test; nothing is parented into the place.
 
 local ServerStorage = game:GetService("ServerStorage")
@@ -452,6 +454,27 @@ return function(t: Context)
 			end
 		end
 		expect.equal(bottomRow, 6)
+	end)
+
+	t.test("the 10 queue pad rings sit on WorldLayout.QueuePads, one each (Batch 3 runtime binding)", function()
+		local pads = t.requireShared("World/WorldLayout").QueuePads
+		local hits: { [number]: number } = {}
+		local rings = 0
+		for _, part in station("DuelGate"):GetDescendants() do
+			if part:IsA("BasePart") and part.Name == "queue_pad_ring" then
+				rings += 1
+				for index, pad in pads do
+					local offset = part.Position - pad.position
+					if Vector2.new(offset.X, offset.Z).Magnitude < 0.01 then
+						hits[index] = (hits[index] or 0) + 1
+					end
+				end
+			end
+		end
+		expect.equal(rings, 10)
+		for index = 1, #pads do
+			expect.equal(hits[index], 1)
+		end
 	end)
 
 	t.test("return points at (∓6, 0.8, 19) on the stage facing +Z, Slots 1 and 2", function()

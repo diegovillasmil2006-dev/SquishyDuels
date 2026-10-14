@@ -58,6 +58,8 @@ local Net = {
 		PolicyRetry = { rate = 1 / 30, burst = 2 },
 		SetSettings = { rate = 0.5, burst = 2 },
 		OnboardingStep = { rate = 2, burst = 5 },
+		-- Batch 3 (FriendDuelService): no arguments; a press only sets the player's own wish for the offered rematch.
+		RematchRequest = { rate = 0.5, burst = 2 },
 	} :: { [string]: RemoteRate },
 
 	-- Per-player cap over all C->S remotes together (§2.7 step 2). Burst 80 (was 40): it holds SqueezeRequest's

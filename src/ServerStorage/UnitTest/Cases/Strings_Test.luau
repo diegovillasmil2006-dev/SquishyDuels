@@ -27,6 +27,8 @@
 -- §2.10 list.)
 -- Review quick win (2026-10-14): a missed day pauses the daily streak: daily.welcomeBack names the waiting day and no
 -- daily text speaks of a reset.
+-- Batch 3 (friends, review #6 and #10): the duel pad, Rematch, Invite, player list and weekly board texts, word for
+-- word; none of them rewards inviting or mentions Robux.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -847,6 +849,40 @@ return function(t: Context)
 			if string.find(text, "reset", 1, true) or string.find(text, "restart", 1, true) then
 				error(`daily.{key} speaks of a reset: {value}`)
 			end
+		end
+	end)
+
+	t.test("Batch 3: the duel pad, Rematch, Invite, player list and weekly board texts", function()
+		expect.equal(Strings.duel.padWaitingMint, "Get a friend on the mint pad across from you to duel!")
+		expect.equal(Strings.duel.padWaitingStrawberry, "Get a friend on the strawberry pad across from you to duel!")
+		expect.equal(
+			Strings.format(Strings.duel.padReady, { name = "Ana", seconds = 3 }),
+			"Duel with Ana in 3 seconds! Step off to cancel."
+		)
+		expect.equal(Strings.duel.rematch, "Rematch")
+		expect.equal(Strings.duel.rematchWaiting, "Waiting…")
+		expect.equal(Strings.format(Strings.duel.rematchWaitingFor, { name = "Ana" }), "Waiting for Ana…")
+		expect.equal(Strings.format(Strings.duel.rematchAsked, { name = "Ana" }), "Ana wants a rematch!")
+		expect.equal(Strings.duel.rematchStarting, "Starting…")
+		expect.equal(Strings.queue.inviteFriends, "Invite friends")
+		expect.equal(Strings.social.statWins, "Wins")
+		expect.equal(Strings.social.statLevel, "Grip Lv")
+		local board = Strings.board
+		expect.equal(board.title, "Top Wins This Week")
+		expect.equal(Strings.format(board.line.many, { rank = 1, name = "Ana", wins = "12" }), "1. Ana · 12 wins")
+		expect.equal(Strings.format(board.line.one, { rank = 2, name = "Bo", wins = "1" }), "2. Bo · 1 win")
+		expect.equal(board.empty, "No wins yet this week. Be the first!")
+		expect.equal(board.loading, "Checking the board…")
+		expect.equal(board.unavailable, "The board is taking a break. Check back soon!")
+		expect.equal(board.someone, "A player")
+		expect.equal(Strings.format(board.you.many, { rank = 3, n = "12" }), "You: #3 · 12 wins")
+		expect.equal(Strings.format(board.you.one, { rank = 3, n = "1" }), "You: #3 · 1 win")
+		expect.equal(Strings.format(board.youUnranked.many, { n = "4" }), "You: 4 wins this week")
+		expect.equal(board.youNone, "Win a duel against another player to get on the board!")
+		for _, text in { Strings.queue.inviteFriends, board.title, board.youNone, Strings.duel.padWaitingMint } do
+			local lower = string.lower(text)
+			expect.falsy(string.find(lower, "robux", 1, true))
+			expect.falsy(string.find(lower, "reward", 1, true))
 		end
 	end)
 end
