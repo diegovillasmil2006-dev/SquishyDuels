@@ -644,7 +644,7 @@ local function placeMeshes(
 			templates[piece.name],
 			piece.name,
 			piece.size,
-			frame * CFrame.new(piece.center),
+			frame * CFrame.new(piece.center) * WorldLook.IMPORT_TURN,
 			color(state, tokens[piece.name]),
 			parent
 		)

@@ -225,6 +225,8 @@ return function(t: Context)
 		expect.equal(count, 13)
 		expect.equal(WorldLook.MESH_LIBRARY, "SD_MeshLibrary")
 		expect.equal(WorldLook.MESH_APPROVED, "SD_MeshesApproved") -- the coordinator sets it after Roblox's check
+		expect.near(WorldLook.IMPORT_TURN.LookVector.Z, 1, 1e-6) -- a half turn about Y (the importer's turn, undone)
+		expect.near(WorldLook.IMPORT_TURN.UpVector.Y, 1, 1e-6)
 	end)
 
 	t.test("teardown", function()

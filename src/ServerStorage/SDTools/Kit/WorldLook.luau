@@ -84,6 +84,9 @@ WorldLook.MESH_LIBRARY = "SD_MeshLibrary" -- ServerStorage, the user's import (h
 -- The library's attribute, true only once the user says Roblox approved the meshes (before that, other players may see
 -- nothing where a mesh is): until then every rebuild keeps today's parts.
 WorldLook.MESH_APPROVED = "SD_MeshesApproved"
+-- Roblox's 3D Importer turns a glTF a half turn about Y (seen 2026-10-14: the imported sets lay in -X order and the
+-- sprinkles sat off the icing), so every clone turns back the same half turn about its own centre.
+WorldLook.IMPORT_TURN = CFrame.Angles(0, math.pi, 0)
 
 -- Round-1 sets: pieces in build order. size / center = the Blender printout (studs, Roblox axes, in the set's frame:
 -- DonutArch the arch frame F * (0, GATE_PILLAR.Y, gateZ), TowerPillar the pillar's centre, Lollipop the stick's foot,
