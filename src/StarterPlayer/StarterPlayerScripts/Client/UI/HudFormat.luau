@@ -42,8 +42,8 @@
 --   COLUMN                     the HUD's shared sizes (the controllers read them here, so the maths and the UI agree)
 --   textWidth / textLines / textHeight(text, sizePx, widthPx, font)
 --                              a text estimate (Reading, DESIGN gives no font metrics; TEXT_METRICS: a character is
---                              0.56 em in Nunito Bold and 0.6 em in Fredoka One, a line 1.25 × the size; greedy word
---                              wrap). The Studio layout audit measures the real boxes.
+--                              0.6 em in Fredoka One, every kind's font since UI FINAL R1, a line 1.25 × the size;
+--                              greedy word wrap). The Studio layout audit measures the real boxes.
 --   leftColumnPlan(screenPx, layoutClass, textScale, parts?) / columnLayouts(...) / samePlan(a, b)
 --                              the left side: the top-left column Hud_Left (the coin capsule and the Grip card) and the
 --                              tile group Hud_Nav under it. It picks the Grip card's layout (regular / compact), how
@@ -337,6 +337,11 @@ local NAV: { NavItem } = {
 	},
 }
 
+-- UI FINAL R1: the sticker shapes (Config.UI.Sticker) the band sums below come from, and UI/Theme's room kept over a
+-- panel's bands (PANEL_BAND_GAP there).
+local STICKER = Config.UI.Sticker
+local PANEL_BAND_GAP = 3
+
 -- The HUD's shared sizes in base px (Readings: the design's 1080p px ÷ 1.25, spec "Shapes"; DESIGN gives the content,
 -- not the sizes).
 local COLUMN = table.freeze({
@@ -358,11 +363,12 @@ local COLUMN = table.freeze({
 	chipIconPx = 18, -- the clock before the Double Grip line
 	tilesGap = 22, -- Hud_Left to the tiles under the regular card (it held the removed Upgrade tab's lower half)
 	tileGap = 10,
-	-- Foam fix 2: a tile's count badge reaches this far past the tile's top and right edges (CountBadge's 26 / 2 less
-	-- Button's BADGE_INSET 5, plus its 2 px outline); what is above or beside the tiles keeps badgeAir more.
-	badgeReach = 10,
+	-- Foam fix 2: a tile's count badge reaches this far past the tile's top and right edges (CountBadge's height / 2
+	-- less Button's BADGE_INSET 5; UI FINAL R1: the 32 px badge of H:102, its border drawn inside); what is above or
+	-- beside the tiles keeps badgeAir more.
+	badgeReach = 11,
 	badgeAir = 4,
-	tileSize = 84, -- UI/Components/Button.TILE_SIZE
+	tileSize = 84, -- the HUD nav cell (the grid's CellSize wins over Button.TILE_SIZE, the design's 118 × 104 sticker)
 	-- Phones (foam fix): the icon, the label line and the bands, so the tile row clears the thumbstick zone; still the
 	-- touch minimum (>= 44 px at the 0.85 phone scale).
 	tileSizeCompact = 58,
@@ -397,13 +403,14 @@ local COLUMN = table.freeze({
 	coachBottomGap = 14, -- UI overhaul: the bottom prompt's bottom edge, this far above COLUMN.edge
 	coachPadding = 10, -- top and sides (the bottom is at least panelBottom, over the foam bands)
 	coachGap = 12, -- the coach card's text to its button
-	panelBottom = 12, -- Theme.panel's least bottom padding (bevel 5 + drop 4 + 3)
+	-- Theme.panel's least bottom padding: the purple card's border and lip (drawn inside it) and the room over them.
+	panelBottom = STICKER.border.normal + STICKER.lip.card + PANEL_BAND_GAP,
 	toastTop = 110, -- UIController's TOAST_TOP: where the toasts start (base px from the top)
 	gripCompactMinWidth = 120, -- the compact Grip card is never narrower than this (gripCompactWidth)
 	fallbackScreen = Vector2.new(1280, 720), -- before the HUD has a size
 })
 -- Reading: the text estimate (see the header).
-local TEXT_METRICS = table.freeze({ bodyEm = 0.56, titleEm = 0.6, lineHeight = 1.25 })
+local TEXT_METRICS = table.freeze({ bodyEm = 0.6, titleEm = 0.6, lineHeight = 1.25 })
 local TOUCH = Config.UI.Touch
 local UI_GRIP = Config.UI.Grip
 local TEXT_SIZE = Config.UI.TextSize

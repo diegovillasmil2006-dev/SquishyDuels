@@ -12,6 +12,9 @@
 -- Candy UI (UI overhaul 2026-10-11): the default face is the light WarmWhite sticker (PlumInk text); on an accent the
 -- text follows Theme.textOnColor with that face (white with the outline from the Chip kind; white at every size on a
 -- dark face such as the plum neutral or a dark setColor).
+-- UI FINAL R1 (H:232-234): 30 base px tall, a 3 px ink border drawn inside the box, radius 10, padding 12 inside the
+-- border; the default face is the cream sticker (Frosting #FFF6EA, ink text), an accent paints its gradient
+-- (Theme.accentColors).
 
 -- Services
 
@@ -21,6 +24,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
+local Config = require(Shared.Config)
 
 local UI = script.Parent.Parent
 local Create = require(UI.Create)
@@ -52,8 +56,9 @@ export type Chip = {
 
 -- Constants
 
-local DEFAULT_HEIGHT_PX = 26
-local PADDING_X = 10
+local STICKER = Config.UI.Sticker
+local DEFAULT_HEIGHT_PX = 30 -- H:232
+local PADDING_X = 12 + STICKER.border.thin -- H:232: padding 0 12px inside the border
 local GAP_PX = 4
 local ICON_SHARE = 0.7 -- the icon, as a share of the chip's height
 local SHADE_MIX = 0.15 -- setColor: the bevel shade of a raised chip, the face this far towards InkUI
@@ -79,8 +84,9 @@ function Chip.new(spec: Spec): Chip
 	})
 	cleanup:add(root)
 	local foam = Theme.foam(root, {
-		radius = Theme.Radius.chip,
-		stroke = Theme.Stroke.bar,
+		radius = STICKER.radius.chip,
+		stroke = STICKER.border.thin,
+		inner = true,
 		top = bands.top,
 		bevel = bands.bevel,
 		drop = bands.drop,

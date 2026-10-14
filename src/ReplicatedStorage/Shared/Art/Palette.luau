@@ -347,6 +347,80 @@ local Palette = {
 	RankGalaxy = Color3.fromHex("#F2B8F5"),
 	RankInfinite = Color3.fromHex("#9FEADF"),
 
+	-- Sticker UI (design 'Squishy Duels UI FINAL', 2026-10-14; plan work/ui/PLAN.md R1): the design's own hex, one
+	-- token per hex, read through UI/Theme (which stops reading the Candy UI block above, but StickerBevel for the
+	-- world plates). `H:n` = "Squishy Duels HUD.dc.html" line n, `lib:n` = uploads/hud-lib.js line n. The design's
+	-- soft rgba() tints are these colours at an alpha (Config.UI Sticker). A design hex an older token already holds is
+	-- read there: the cream sticker #FFF6EA (H:171) is Frosting.
+	-- Ink and surfaces.
+	StickerInk = Color3.fromHex("#1E1428"), -- H:75: every outline, lip and text stroke
+	StickerInkDeep = Color3.fromHex("#120B1E"), -- H:240: the stat, odds and quest bar outlines
+	StickerSwitchOff = Color3.fromHex("#1A1229"), -- H:980: a switch's off track
+	StickerTrough = Color3.fromHex("#5130C7"), -- H:141: bar troughs and slots
+	StickerWell = Color3.fromHex("#5B36D9"), -- H:236: the stats well, the reset / reward / timer pills
+	StickerWindowTop = Color3.fromHex("#FFD6EC"), -- H:182: the windows' pink body
+	StickerWindowBottom = Color3.fromHex("#FFAFD6"), -- H:182
+	StickerCardTop = Color3.fromHex("#A385FF"), -- H:203: the purple cards, rows, off tabs and the default toast
+	StickerCardBottom = Color3.fromHex("#7A57F2"), -- H:203
+	StickerPillTop = Color3.fromHex("#9775FF"), -- H:75: the coin pill, the duel search bar
+	StickerPillBottom = Color3.fromHex("#6C47F5"), -- H:75
+	StickerToyTile = Color3.fromHex("#EFE6FF"), -- H:274: the toy thumbnail tiles
+	StickerScrollThumb = Color3.fromHex("#5A4880"), -- H:22: the scroll bar thumb
+	StickerScrimPurple = Color3.fromHex("#6E3CDC"), -- H:178: the modal scrim's outer colour (the dimmer)
+	-- Text.
+	StickerOnWindowText = Color3.fromHex("#8A2468"), -- H:196: text on the pink window body (6.3:1 / 4.9:1)
+	StickerCoinText = Color3.fromHex("#FFE36B"), -- H:79: the coin number, prices and rewards
+	StickerTextSoft = Color3.fromHex("#F3EDFF"), -- H:239: body text on the purple surfaces and the well
+	StickerTextMuted = Color3.fromHex("#EDE4FF"), -- H:142: captions
+	StickerTextChip = Color3.fromHex("#E9E1FA"), -- H:233: the throw-style chip's text
+	StickerTabOff = Color3.fromHex("#D9CFF0"), -- H:929: an unselected tab's text
+	StickerTextGrey = Color3.fromHex("#C9BFD9"), -- H:530: the level-up pill's old level
+	StickerCollected = Color3.fromHex("#FFE3EF"), -- H:186: "Collected"
+	StickerBoxHeaderText = Color3.fromHex("#0B4B5E"), -- H:260: the Boxes subtitle on the cyan band
+	-- Buttons and badges (each a top / mid / end or top / end gradient, 180deg).
+	StickerGreenTop = Color3.fromHex("#A6F796"), -- H:245: the primary (green) buttons
+	StickerGreenMid = Color3.fromHex("#4CD45C"), -- H:245 (55%)
+	StickerGreenEnd = Color3.fromHex("#2FB447"), -- H:245
+	StickerGreen2End = Color3.fromHex("#38C150"), -- H:80: the small green chips and the switch's on track
+	StickerToggleOnTop = Color3.fromHex("#9BF58A"), -- H:980: the switch's on track
+	StickerCyanTop = Color3.fromHex("#9DEFFA"), -- H:247: the secondary (cyan) buttons
+	StickerCyanMid = Color3.fromHex("#3CC6E2"), -- H:247 (55%)
+	StickerCyanEnd = Color3.fromHex("#1FA6C9"), -- H:247
+	StickerGoldTop = Color3.fromHex("#FFE88A"), -- H:498: AGAIN (coins and celebration only)
+	StickerGoldMid = Color3.fromHex("#FFC23A"), -- H:498 (55%)
+	StickerGoldEnd = Color3.fromHex("#F59A12"), -- H:498
+	StickerRedTop = Color3.fromHex("#FF8A9A"), -- H:102: count badges, NEW, "Not enough coins!"
+	StickerRedEnd = Color3.fromHex("#E83A5A"), -- H:102
+	StickerCloseTop = Color3.fromHex("#FF9A9A"), -- H:252: every window's close X
+	StickerCloseEnd = Color3.fromHex("#F0344A"), -- H:252
+	StickerCancelRedTop = Color3.fromHex("#FF8A8A"), -- H:145: the duel search's cancel X (with StickerCloseEnd)
+	StickerYellowTop = Color3.fromHex("#FFF08A"), -- H:120: the daily "!" badge
+	StickerYellowEnd = Color3.fromHex("#FFB627"), -- H:120
+	StickerMintTop = Color3.fromHex("#9AF5D2"), -- H:210: "Equipped", the selected quest tab
+	StickerMintEnd = Color3.fromHex("#25B886"), -- H:210
+	StickerDisabledTop = Color3.fromHex("#CBBDF2"), -- H:246: a disabled button (EQUIPPED)
+	StickerDisabledEnd = Color3.fromHex("#A996E0"), -- H:246
+	StickerCancelTop = Color3.fromHex("#C4B4F0"), -- H:462: CANCEL
+	StickerCancelEnd = Color3.fromHex("#9B86DB"), -- H:462
+	StickerPinkTop = Color3.fromHex("#FFA6C8"), -- H:126: the DUEL button
+	StickerPinkMid = Color3.fromHex("#FF5D97"), -- H:126 (55%)
+	StickerPinkEnd = Color3.fromHex("#EE3B7B"), -- H:126
+	StickerDuelBevel = Color3.fromHex("#961446"), -- H:126: the DUEL button's bottom bevel tint (at .3)
+	StickerFoundBevel = Color3.fromHex("#A05000"), -- H:149: MATCH FOUND's bottom bevel tint (at .25)
+	-- Bars.
+	StickerBlueBarTop = Color3.fromHex("#8BEBFF"), -- lib:37: the blue stat bars and quest bars
+	StickerBlueBarEnd = Color3.fromHex("#25AEE6"), -- lib:37
+	StickerPurpleBarTop = Color3.fromHex("#C9A8FF"), -- lib:39: the purple stat bars
+	StickerPurpleBarEnd = Color3.fromHex("#8A55EE"), -- lib:39
+	StickerGripTop = Color3.fromHex("#B5FBE0"), -- H:85: the Grip bar
+	StickerGripEnd = Color3.fromHex("#2FC48F"), -- H:85
+	StickerVolumeTop = Color3.fromHex("#FFB1CB"), -- H:444: the volume slider
+	StickerVolumeEnd = Color3.fromHex("#FF5C93"), -- H:444
+	-- Chips.
+	StickerUltTop = Color3.fromHex("#FFD79A"), -- H:234: the Ultimate chip (with StickerGoldEnd)
+	StickerUltText = Color3.fromHex("#4A2600"), -- H:234
+	StickerThrowChip = Color3.fromHex("#4A3A6E"), -- H:233: the throw-style chip
+
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),
 	CoinRing = Color3.fromHex("#D99A1E"),

@@ -59,6 +59,8 @@
 -- Batch 3 (friends, review #6 and #10): Config.Social's pads, rematch window (it outlives the result card), weekly
 -- board (a Studio store name ends in "_STUDIO", at most 100 entries a read) and badges (unique keys, an id only once
 -- the owners made the badge, known rule kinds, whole thresholds, Catalog squishies and rarities).
+-- UI FINAL R1 (the look kit): Config.UI.Sticker's borders, lips, radii, surfaces, bars and toggles are whole px >= 0
+-- with alphas in 0..1, and every text role names a TextSize kind with a positive stroke.
 -- Convention: every string field whose name ends in "Key" (nameKey, textKey, ...) is a Strings path; validate()
 -- resolves each one with Strings.resolve, in Config and in the Catalog, Boxes and QuestDefs data.
 
@@ -1328,6 +1330,45 @@ local function checkUI(problems: Problems)
 			.. "clear of the thumbstick zone"
 	)
 	expectCount(problems, `{p}.Grip.heldToastsMax`, grip.heldToastsMax, 1)
+
+	-- UI FINAL (R1, the look kit): the sticker shapes are whole px >= 0, the alphas are in 0..1, every text role draws
+	-- in a TextSize kind with a positive stroke.
+	local sticker = UI.Sticker :: any
+	for _, group in { "border", "lip", "radius" } do
+		for _, name in sortedKeys(sticker[group]) do
+			expectCount(problems, `{p}.Sticker.{group}.{name}`, sticker[group][name], 0)
+		end
+	end
+	for _, group in { "surfaces", "bars", "toggles" } do
+		for _, name in sortedKeys(sticker[group]) do
+			local entry = sticker[group][name]
+			for _, field in sortedKeys(entry) do
+				local path = `{p}.Sticker.{group}.{name}.{field}`
+				if string.sub(field, -5) == "Alpha" then
+					expectBetween(problems, path, entry[field], 0, 1)
+				else
+					expectCount(problems, path, entry[field], 0)
+				end
+			end
+		end
+	end
+	for _, name in sortedKeys(sticker.text) do
+		local role = sticker.text[name]
+		local path = `{p}.Sticker.text.{name}`
+		expect(
+			problems,
+			type(role.kind) == "string" and isNumber(UI.TextSize[role.kind]),
+			`{path}.kind must be a Config.UI.TextSize kind (got {show(role.kind)})`
+		)
+		expectPositive(problems, `{path}.stroke`, role.stroke)
+		if role.drop ~= nil then
+			expectCount(problems, `{path}.drop`, role.drop, 0)
+		end
+		if role.color ~= nil then
+			expectText(problems, `{path}.color`, role.color)
+		end
+	end
+	expectBoolean(problems, `{p}.Sticker.buttonCaps`, sticker.buttonCaps)
 end
 
 local function checkAudio(problems: Problems)

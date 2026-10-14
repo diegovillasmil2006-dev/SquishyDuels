@@ -8,9 +8,10 @@
 -- * capture() / restore(token): the focus before a panel opened comes back when it closes, if that object is still in
 --   a PlayerGui and visible; otherwise nil. restoreWithin(token, root) does it only while the selection is still inside
 --   `root` or empty (a non-modal panel never takes the focus back from a modal opened over it).
--- * decorate(button, radius?): the custom SelectionImageObject (outer white 3 px + inner InkUI 2 px strokes, readable
---   on light and dark backgrounds), its corners following the button's corner radius (foam UI: default
---   Theme.Radius.button; one ring per radius, built once). Button prompts are text ("E", "X", "R2", "B") in Strings.
+-- * decorate(button, radius?): the custom SelectionImageObject (outer InkUI 3 px + inner white 2 px strokes, readable
+--   on light and dark backgrounds; UI FINAL R1, plan §2: the ink outside, as white is 1.1:1 on the pink windows), its
+--   corners following the button's corner radius (foam UI: default Theme.Radius.button; one ring per radius, built
+--   once). Button prompts are text ("E", "X", "R2", "B") in Strings.
 -- AutoSelectGuiEnabled stays on (V).
 
 -- Services
@@ -91,7 +92,7 @@ function Focus.selectionImage(radiusPx: number?): Frame
 		Position = UDim2.fromOffset(-OUTSET_PX, -OUTSET_PX),
 	})
 	Theme.corner(radius + OUTSET_PX, outer)
-	Theme.stroke(Theme.Colors.white, FOCUS.outerStrokePx, outer)
+	Theme.stroke(Theme.Colors.inkUI, FOCUS.outerStrokePx, outer)
 	local inner: Frame = Create("Frame", {
 		Name = "Inner",
 		BackgroundTransparency = 1,
@@ -100,7 +101,7 @@ function Focus.selectionImage(radiusPx: number?): Frame
 		Parent = outer,
 	})
 	Theme.corner(radius + FOCUS.innerStrokePx, inner)
-	Theme.stroke(Theme.Colors.inkUI, FOCUS.innerStrokePx, inner)
+	Theme.stroke(Theme.Colors.white, FOCUS.innerStrokePx, inner)
 	selectionImages[radius] = outer
 	return outer
 end

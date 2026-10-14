@@ -11,6 +11,9 @@
 --   * a diamond pip (a rotated square) fits its pip box;
 --   * fix round 2: tallest() is the tallest side-by-side tag over every rarity (the room the Squishies and Shop details
 --     keep for the tag under the name).
+--   * UI FINAL R1 (H:209, H:271, H:933): the pill is at least 22 px tall with a 3 px ink border, in the design's rarity
+--     colour (Common #6F7D8B), the label white, outlined, in capitals; the pips in the same colour, still with their
+--     2 px outline, so the gaps count a 2 px and a 3 px outline (the room inside the tag the larger one).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -47,6 +50,11 @@ return function(t: Context)
 		expect.truthy(stackedGap >= 2 * OUTLINE + 2)
 		expect.truthy(inlineGap >= Theme.Padding.small + 2 * OUTLINE) -- the old 6 px of air between them, kept
 		expect.truthy(room >= OUTLINE)
+		-- UI FINAL R1: the pips' 2 px and the pill's 3 px outlines (H:209), and room for the larger.
+		local pill = t.requireShared("Config").UI.Sticker.border.thin
+		expect.truthy(inlineGap >= Theme.Padding.small + OUTLINE + pill)
+		expect.truthy(stackedGap >= 2 + OUTLINE + pill)
+		expect.truthy(room >= pill)
 	end)
 
 	t.test("measure matches the built tag both ways round", function()
@@ -96,6 +104,32 @@ return function(t: Context)
 		-- A square rotated 45° spans its side × √2.
 		expect.truthy(shape.Size.X.Scale * math.sqrt(2) <= 1 + EPS)
 		tag:destroy()
+	end)
+
+	t.test("the design's pill: 22 px at least, the rarity's design colour, white outlined capitals", function()
+		local RarityStyle = t.requireShared("Art/RarityStyle")
+		local Palette = t.requireShared("Art/Palette")
+		expect.equal(RarityTag.color("Common"), Color3.fromHex("#6F7D8B")) -- H:933
+		expect.equal(RarityTag.color("Epic"), Color3.fromHex("#9A63E8")) -- lib:15
+		expect.equal(RarityTag.color("Nope"), Theme.Colors.inkUI)
+		expect.equal(RarityStyle.get("Uncommon").ui.light, Color3.fromHex("#D8F8E7")) -- lib:14
+		for _, rarity in { "Common", "Uncommon", "Epic", "Exclusive" } do
+			expect.truthy(RarityTag.measure(rarity).chipHeight >= 22)
+			local tag = RarityTag.new({ name = "Rarity", rarity = rarity })
+			local chip = tag.root:FindFirstChild("Chip") :: Frame
+			local label = chip:FindFirstChild("Label") :: TextLabel
+			expect.equal(chip.BackgroundColor3, RarityTag.color(rarity))
+			expect.equal((chip:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness, 3)
+			expect.equal(label.Text, string.upper(label.Text))
+			expect.equal(label.TextColor3, Palette.White)
+			expect.truthy((label:FindFirstChild("SD_Outline") :: UIStroke).Enabled)
+			local pip = (tag.root:FindFirstChild("Pips") :: Frame):FindFirstChild("Pip1") :: Frame
+			local shape = pip:FindFirstChild("Shape") :: Frame
+			expect.equal(shape.BackgroundColor3, RarityTag.color(rarity))
+			-- The pips keep the bar outline (H:209 draws them bare; a reading), the pill the design's 3 px.
+			expect.equal((shape:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness, Theme.Stroke.bar)
+			tag:destroy()
+		end
 	end)
 
 	t.test("tallest: the tallest side-by-side tag over every rarity (the room a detail keeps for it)", function()

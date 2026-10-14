@@ -16,6 +16,11 @@
 -- grown by the outline on every side (ZIndex 1), then in the fill (ZIndex 2), so the outline traces the union of the
 -- shapes; detail parts (ZIndex 3) are marks on top (eyes, a ribbon, clock hands). The part lists are pure data
 -- (IconGlyph.parts(name)), unit-tested in Edit mode.
+-- UI FINAL R1 (plan work/ui/PLAN.md §3): IconGlyph.image(key, props) is an image-only icon (a design picture with no
+-- drawn placeholder: lock, star, bolt, flame, gift, sound, squeeze, match, the boxes): the AssetTable picture, with an
+-- optional drop shadow (the design's filter: drop-shadow, H:100), hidden while the id is nil (the text beside it
+-- carries the meaning). Those keys are not IconGlyph.NAMES (every name has a drawn placeholder). The "disabled" tone is
+-- the light look (a white glyph with the ink outline) on the disabled lilac (H:246).
 
 -- Services
 
@@ -57,6 +62,15 @@ export type Spec = {
 	tone: Tone?, -- default "light"
 	layoutOrder: number?,
 	parent: Instance?,
+}
+
+-- UI FINAL R1: IconGlyph.image's options; `shadow` = the drop shadow (px lower, alpha, colour; default the ink).
+export type ImageProps = {
+	name: string,
+	sizePx: number?,
+	layoutOrder: number?,
+	parent: Instance?,
+	shadow: { px: number, alpha: number, color: Color3? }?,
 }
 
 export type IconGlyph = {
@@ -246,7 +260,7 @@ local function toneColors(tone: Tone): (Color3, Color3, boolean)
 	if tone == "dark" then
 		return Theme.Colors.inkUI, Theme.Colors.frosting, false
 	elseif tone == "disabled" then
-		return Theme.Colors.disabledText, Theme.Colors.disabledFace, false
+		return Theme.Colors.disabledText, Theme.Colors.inkUI, true -- UI FINAL R1: white with the ink outline (H:246)
 	end
 	return Theme.Colors.white, Theme.Colors.inkUI, true
 end
@@ -285,6 +299,49 @@ function IconGlyph.outlinePx(sizePx: number): number
 end
 
 -- Public: component
+
+-- UI FINAL R1: an image-only icon (see the header): a holder `sizePx` square (default 32) named props.name, with the
+-- AssetTable picture `key` ("Image", fitted) and, with props.shadow, a copy of it ("Shadow": the shadow colour at
+-- shadow.alpha, shadow.px lower, behind). Hidden while the id is nil. Returns the holder.
+function IconGlyph.image(key: string, props: ImageProps): Frame
+	local size = props.sizePx or DEFAULT_SIZE_PX
+	local content = AssetTable.image(key)
+	local holder: Frame = Create("Frame", {
+		Name = props.name,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(size, size),
+		LayoutOrder = props.layoutOrder or 0,
+		Visible = content ~= nil,
+	})
+	local shadow = props.shadow
+	if shadow then
+		Create("ImageLabel", {
+			Name = "Shadow",
+			BackgroundTransparency = 1,
+			Position = UDim2.fromOffset(0, shadow.px),
+			Size = UDim2.fromScale(1, 1),
+			Image = content or "",
+			ImageColor3 = shadow.color or Theme.Colors.inkUI,
+			ImageTransparency = 1 - shadow.alpha,
+			ScaleType = Enum.ScaleType.Fit,
+			ZIndex = Z_OUTLINE,
+			Parent = holder,
+		})
+	end
+	Create("ImageLabel", {
+		Name = "Image",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Image = content or "",
+		ScaleType = Enum.ScaleType.Fit,
+		ZIndex = Z_FILL,
+		Parent = holder,
+	})
+	if props.parent then
+		holder.Parent = props.parent
+	end
+	return holder
+end
 
 function IconGlyph.new(spec: Spec): IconGlyph
 	local cleanup = Cleanup.new()
@@ -333,7 +390,7 @@ function IconGlyph.new(spec: Spec): IconGlyph
 		end
 		local shown = image
 		if shown then
-			shown.ImageTransparency = if tone == "disabled" then 0.5 else 0
+			shown.ImageTransparency = 0
 		end
 	end
 

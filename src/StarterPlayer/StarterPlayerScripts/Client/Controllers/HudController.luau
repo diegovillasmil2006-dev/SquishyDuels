@@ -144,9 +144,11 @@ local GAP_PX = COLUMN.rowGap
 -- The quest tracker card.
 local TRACKER_ICON_PX = 20
 local TRACKER_BAR_PX = 14
--- The Duel CTA: the content's room over its foam bands (Theme.Foam.cta 2 + 7 + 5); its icon gap and air are
--- COLUMN.ctaLineGap / ctaAir (shared with HudFormat.ctaWidth).
-local CTA_BANDS_PX = 14
+-- The Duel CTA: the content's room over its bands (UI FINAL R1: Button's cta sticker, the border and highlight on top,
+-- the bevel, the border and the lip at the bottom); its icon gap and air are COLUMN.ctaLineGap / ctaAir (shared with
+-- HudFormat.ctaWidth).
+local CTA_STYLE = Button.style("cta")
+local CTA_BANDS_PX = CTA_STYLE.top + CTA_STYLE.bevel + CTA_STYLE.drop
 local QUEUE_TICK_SECONDS = 0.25 -- the queued CTA's clock shows whole seconds
 local CTA_SWEEP_SECONDS = 7 -- UI overhaul: the idle Duel CTA's gloss sweep, this often
 local DAY_CHECK_SECONDS = 30 -- reading: how often the daily badge re-checks the UTC day
@@ -326,6 +328,9 @@ local function gainLabel(layer: Frame, amount: number, spot: HudFormat.GainSpot)
 	-- The small kind takes the thin outline (2 px closed up its comma and digits, like the reticle's small text).
 	local thickness = if spot.kind == "HudNumber" then Theme.Stroke.medium else Theme.Stroke.thin
 	local stroke: UIStroke = Create("UIStroke", { Color = Theme.Colors.white, Thickness = thickness, Parent = label })
+	if spot.kind ~= "HudNumber" then
+		Theme.noOutline(label) -- UI FINAL R1: the small "+N" keeps only its thin outline, as before
+	end
 	return label, stroke
 end
 
@@ -560,7 +565,7 @@ local function refreshBanner()
 		if stroke then
 			-- Offline / read-only are data errors (Danger is for error states, §7.2); a pending save is info (Sky).
 			stroke.Color = if banner.kind == "warn" then Theme.Colors.danger else Theme.accent("sky").face
-			stroke.Thickness = Theme.Stroke.thick
+			stroke.Thickness = Theme.Sticker.border.normal -- UI FINAL R1: Theme.panel's border (H:203)
 		end
 	end
 end

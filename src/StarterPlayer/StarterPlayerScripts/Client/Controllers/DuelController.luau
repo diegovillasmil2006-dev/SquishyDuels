@@ -531,8 +531,10 @@ local function circle(parent: Instance)
 	Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = parent })
 end
 
--- The foam kit's outlined text (InkUI, round joins) on a text over the arena or a coloured face.
+-- The foam kit's outlined text (InkUI, round joins) on a text over the arena or a coloured face. UI FINAL R1: it is the
+-- text's only outline (Theme's own goes), so the fades below that write this stroke reach the whole outline.
 local function outline(text: GuiObject, px: number): UIStroke
+	Theme.noOutline(text)
 	local stroke = Theme.stroke(Theme.Colors.inkUI, px, text)
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	stroke.LineJoinMode = Enum.LineJoinMode.Round
@@ -1137,8 +1139,9 @@ local function buildHud(c: Cleanup.Cleanup): Hud
 	})
 	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.small, opponentColumn, Enum.HorizontalAlignment.Left)
 	local opponent = buildSide(opponentColumn, "Opponent", 1, Enum.TextXAlignment.Left)
-	-- The opponent's "Dragon Rush ready": a lilac chip (the duel HUD's ultimate colour, as the meter), under their card.
-	local chip = c:add(Chip.new({ name = "UltReadyChip", text = "", accent = "lilac", layoutOrder = 2 }))
+	-- The opponent's "Dragon Rush ready": a chip under their card (UI FINAL R1: the Ultimate's gold, H:234; the
+	-- design's lilac is its disabled colour).
+	local chip = c:add(Chip.new({ name = "UltReadyChip", text = "", accent = "ult", layoutOrder = 2 }))
 	chip.root.Visible = false
 	chip.root.Parent = opponentColumn
 	local chipScale: UIScale = Create("UIScale", { Name = "Pop", Parent = chip.root })

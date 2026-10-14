@@ -17,6 +17,9 @@
 --   * Foam UI (spec 2026-10-09): foamStops gives a valid UIGradient (0 to 1, strictly rising, <= 20 stops) with the
 --     top, face, bevel and drop bands at their base px heights, leaves missing or too thin bands out, never lets bands
 --     pass each other and treats an unmeasured surface as a 52 px button.
+--   * UI FINAL R1 (the look kit): stickerBands puts a sticker's inner border and inset highlight in the top band, the
+--     bevel above the bottom border and the border with the lip in the drop band, so foamStops paints them at their px;
+--     lipGap keeps a lipped list's pitch at the design's face + gap.
 --   * Foam fix round 2 (2026-10-09): scrollThumb (the touch scroll rail of UI/Components/ScrollHint) shows only for a
 --     list longer than its window, its size and top as shares of the track; modalBackdrop keeps one backdrop at a time
 --     (the dimmer under one modal, only the wash under the top of two); pinnedButtons takes the buttons' own gap.
@@ -275,6 +278,42 @@ return function(t: Context)
 				expect.near(stops[i].time - stops[i - 1].time, 0.001, 1e-9)
 			end
 		end
+	end)
+
+	t.test("stickerBands: a sticker's border, highlight, bevel and lip as foam bands at their px", function()
+		-- The primary button (H:245): border 4, highlight 3, bevel 6, lip 5, in a 65 px box (60 + the lip).
+		local bands = Layout.stickerBands(4, 3, 6, 5)
+		expect.deepEqual(bands, { top = 7, bevel = 6, drop = 9 })
+		local stops = Layout.foamStops(65, bands.top, bands.bevel, bands.drop)
+		expectValidStops(stops)
+		expect.deepEqual(bandOrder(stops), { "top", "face", "bevel", "drop" })
+		local starts: { [string]: number } = {}
+		for _, stop in stops do
+			if starts[stop.band] == nil then
+				starts[stop.band] = stop.time
+			end
+		end
+		expect.near(starts.face, 7 / 65, 1e-9) -- under the top border and the highlight
+		expect.near(starts.bevel, 1 - 15 / 65, 1e-9) -- right above the bottom border
+		expect.near(starts.drop, 1 - 9 / 65, 1e-9) -- the bottom border and the lip
+		-- The purple card (H:203): no highlight in a tint, no bevel; the panel's lip band.
+		expect.deepEqual(Layout.stickerBands(4, 0, 0, 5), { top = 4, bevel = 0, drop = 9 })
+		-- No border (the nav sticker): only what is asked; bad values count as 0.
+		expect.deepEqual(Layout.stickerBands(0, 0, 0, 0), { top = 0, bevel = 0, drop = 0 })
+		expect.deepEqual(Layout.stickerBands(-2, 0 / 0, 3, math.huge), { top = 0, bevel = 3, drop = 0 })
+	end)
+
+	t.test("lipGap: a lipped list keeps the design's pitch (face + gap)", function()
+		-- Quest rows (H:363): 94 + the 5 px lip, the design's gap 12 -> padding 7, pitch 106 = 94 + 12.
+		local padding = Layout.lipGap(12, 5)
+		expect.equal(padding, 7)
+		expect.equal((94 + 5) + padding, 94 + 12)
+		-- Squishy cards (H:203): 178 + 5 with the gap 12 -> 7, pitch 190.
+		expect.equal(178 + 5 + Layout.lipGap(12, 5), 190)
+		-- Never below 0; bad values count as 0.
+		expect.equal(Layout.lipGap(4, 10), 0)
+		expect.equal(Layout.lipGap(0 / 0, 5), 0)
+		expect.equal(Layout.lipGap(12, -1), 12)
 	end)
 
 	t.test("foamStops: missing bands are left out; a panel has no top band", function()

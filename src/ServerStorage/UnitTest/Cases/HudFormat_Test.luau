@@ -337,6 +337,22 @@ return function(t: Context)
 		return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
 	end
 
+	-- UI FINAL R1: the band sums the HUD lays out with come from the sticker shapes (no hand copies), and the text
+	-- estimate is Fredoka One's for every kind.
+	t.test("band sums from Config.UI.Sticker; one text metric for every kind (Fredoka One)", function()
+		local sticker = Config.UI.Sticker
+		expect.equal(COLUMN.panelBottom, sticker.border.normal + sticker.lip.card + 3)
+		local Button = t.requireClient("UI/Components/Button")
+		local tile = Button.style("tile")
+		expect.equal(COLUMN.tileBands, tile.top + tile.bevel + tile.drop)
+		local Theme = t.requireClient("UI/Theme")
+		local panel = Theme.panel({}, nil, COLUMN.coachPadding)
+		expect.equal((panel:FindFirstChildOfClass("UIPadding") :: UIPadding).PaddingBottom.Offset, COLUMN.panelBottom)
+		panel:Destroy()
+		expect.equal(HudFormat.TEXT_METRICS.bodyEm, HudFormat.TEXT_METRICS.titleEm)
+		expect.equal(HudFormat.TEXT_METRICS.bodyEm, 0.6)
+	end)
+
 	t.test("text estimate: greedy word wrap, long words break, empty text has no lines", function()
 		local em = HudFormat.TEXT_METRICS.bodyEm
 		-- A line exactly 10 characters wide at 10 px.
@@ -606,9 +622,9 @@ return function(t: Context)
 	-- put the Squishies "3" on the coin capsule's outline.
 	t.test("the tiles keep a count badge's reach plus air under Hud_Left (foam fix 2)", function()
 		local CountBadge = t.requireClient("UI/Components/CountBadge")
-		local Theme = t.requireClient("UI/Theme")
-		-- The badge: CountBadge.SIZE_PX tall, centred Button's BADGE_INSET (5) inside the tile's corner, a bar outline.
-		expect.truthy(COLUMN.badgeReach >= CountBadge.SIZE_PX / 2 - 5 + Theme.Stroke.bar)
+		-- The badge: CountBadge.SIZE_PX tall, centred Button's BADGE_INSET (5) inside the tile's corner; UI FINAL R1:
+		-- its border is drawn inside it (H:102), so nothing reaches past its box.
+		expect.truthy(COLUMN.badgeReach >= CountBadge.SIZE_PX / 2 - 5)
 		for _, compact in { true, false } do
 			for _, grip in { "compact", "hidden" } do
 				local _, toTiles = HudFormat.leftGaps(compact, grip)

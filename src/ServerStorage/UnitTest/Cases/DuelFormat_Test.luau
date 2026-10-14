@@ -188,7 +188,9 @@ return function(t: Context)
 		expect.equal((DuelFormat.sideColors("?")), Palette.Strawberry)
 		expect.truthy(aFace ~= bFace)
 		for _, face in { aFace, bFace } do
-			expect.truthy(contrast(Palette.InkUI, face) >= 4.5) -- the name, side and lives text on the card
+			-- The name, side and lives text on the card, in the UI ink (UI FINAL R1: StickerInk) and the world ink.
+			expect.truthy(contrast(Palette.StickerInk, face) >= 4.5)
+			expect.truthy(contrast(Palette.InkUI, face) >= 4.5)
 			expect.truthy(face ~= Palette.Danger and face ~= Palette.CoinGold) -- reserved colours never mark a side
 		end
 	end)

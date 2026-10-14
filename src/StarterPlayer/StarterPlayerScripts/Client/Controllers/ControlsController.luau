@@ -48,7 +48,7 @@
 --     transparency edge at 1 - progress over the round button plus a text (§11.6, no images).
 --     Foam UI restyle (spec 2026-10-09; look only: sizes, places, input and the cooldown unchanged): each round button
 --     is an opaque foam disc (Theme.foam: InkUI outline, top highlight, bevel and ink drop drawn once for its base
---     size, so they scale with it): Throw in Strawberry, Ultimate in Lilac (TOUCH_ACCENTS), the label in the display
+--     size, so they scale with it): Throw in Strawberry, Ultimate in its gold (TOUCH_ACCENTS), the label in the display
 --     font, white with the InkUI outline (the outlined-text rule), the cooldown shade in InkUI.
 -- * Ref-counted block(reason) -> release(): the first block disables character movement through
 --   PlayerModule:GetControls():Disable(), the last release re-enables it. Releases are idempotent.
@@ -216,8 +216,9 @@ local TOUCH_SHADE_TRANSPARENCY = 0.45 -- the cooling-down part of a round button
 local TOUCH_TEXT_SIZE = Config.UI.TextSize.Button
 local MIN_TEXT_SIZE = Config.UI.minTextSize
 -- Foam UI: each round button's accent and the base size its foam bands are drawn for (they scale with the button).
+-- UI FINAL R1: the Ultimate in its gold (H:234), never the lilac of a disabled button (H:246).
 local TOUCH_ACCENTS: { [string]: Theme.AccentName } =
-	{ Throw = "strawberry", Ultimate = "lilac", Dash = "sky", Catch = "mint" }
+	{ Throw = "strawberry", Ultimate = "ult", Dash = "sky", Catch = "mint" }
 local TOUCH_BASE_SIZES: { [string]: number } =
 	{ Throw = TOUCH.throwButton, Ultimate = TOUCH.ultButton, Dash = TOUCH.dashButton, Catch = TOUCH.catchButton }
 

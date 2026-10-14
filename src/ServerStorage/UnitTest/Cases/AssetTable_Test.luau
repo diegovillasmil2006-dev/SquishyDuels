@@ -246,6 +246,55 @@ return function(t: Context)
 		expect.deepEqual(sorted(found), sorted(WAX_KEYS))
 	end)
 
+	-- UI FINAL R1 (plan work/ui/PLAN.md §3): the image keys, the existing 18 and the design's 15 pictures (rendered in
+	-- R0, uploaded by the user; nil until then).
+	t.test("the image key set: the existing 18 and the design's 15 new pictures", function()
+		local keys = {}
+		for _, slot in AssetTable.all() do
+			if slot.kind == "image" then
+				table.insert(keys, slot.key)
+			end
+		end
+		expect.deepEqual(
+			sorted(keys),
+			sorted({
+				"img.coin",
+				"img.rarity.common",
+				"img.rarity.uncommon",
+				"img.rarity.epic",
+				"img.rarity.exclusive",
+				"img.nav.squishies",
+				"img.nav.boxes",
+				"img.nav.shop",
+				"img.nav.quests",
+				"img.nav.daily",
+				"img.nav.duel",
+				"img.nav.settings",
+				"img.icon.change",
+				"img.icon.clock",
+				"img.icon.upgrade",
+				"img.icon.inspect",
+				"img.icon.close",
+				"img.icon.check",
+				"img.icon.lock",
+				"img.icon.star",
+				"img.icon.bolt",
+				"img.icon.flame",
+				"img.icon.gift",
+				"img.icon.sound",
+				"img.icon.squeeze",
+				"img.icon.match",
+				"img.box.sweet",
+				"img.box.treat",
+				"img.fx.rays",
+				"img.fx.raysDetail",
+				"img.fx.raysReveal",
+				"img.fx.dots",
+				"img.fx.glow",
+			})
+		)
+	end)
+
 	t.test("a PENDING slot carries no metadata; an approved one carries all of it", function()
 		for _, slot in AssetTable.all() do
 			if slot.id == nil then

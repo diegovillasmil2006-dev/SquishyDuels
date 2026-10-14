@@ -1393,7 +1393,9 @@ return function(t: Context)
 			expect.equal(found ~= nil, case.wanted)
 			if found then
 				local label = found:FindFirstChild("Label", true)
-				expect.truthy(label ~= nil and (label :: TextLabel).Text == "Inspect")
+				-- UI FINAL R1: a secondary button shows its label in capitals (Q5).
+				local shown = t.requireClient("UI/Components/Button").displayText("Inspect", "secondary")
+				expect.truthy(label ~= nil and (label :: TextLabel).Text == shown)
 			end
 			leave(w)
 			expect.equal(if pad then pad:FindFirstChild("Viewmodel_InspectButton") else nil, nil) -- gone with it

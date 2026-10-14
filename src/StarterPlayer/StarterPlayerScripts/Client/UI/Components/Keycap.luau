@@ -7,6 +7,10 @@
 -- caller picks the key for the active input and hides the cap on touch (§11.7). An InkUI face with a 2 px Ink2 band at
 -- its bottom (the design's key drop), Frosting text in the Chip display kind (14.2:1), at least sizePx square, growing
 -- with longer texts ("Backspace").
+-- UI FINAL R1 (H:171): the cream key (Frosting, #FFF6EA) with a 3 px ink border, radius 10 and the 4 px ink lip under
+-- it, ink letters. Readings: the border stays outside the box, the default size 24 and the side padding 5 (the
+-- design's key is 34 px with padding 10, the squeeze button's, which stays removed: the user's Q2), so the duel dock
+-- keeps its width on the smallest phone at the largest text.
 
 -- Services
 
@@ -16,6 +20,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
+local Config = require(Shared.Config)
 
 local UI = script.Parent.Parent
 local Create = require(UI.Create)
@@ -43,10 +48,10 @@ export type Keycap = {
 
 -- Constants
 
+local STICKER = Config.UI.Sticker
 local DEFAULT_SIZE_PX = 24
-local DROP_PX = 2
+local DROP_PX = STICKER.lip.chip -- H:171: box-shadow 0 4px 0
 local PADDING_X = 5
-local RADIUS_SHARE = 0.3 -- the corner, as a share of the size
 
 -- Module table
 
@@ -71,10 +76,10 @@ function Keycap.new(spec: Spec): Keycap
 	-- Candy UI: a light sticker key (WarmWhite, its light bevel as the drop, PlumInk letters), readable on the dark
 	-- surfaces and on every accent face.
 	Theme.foam(root, {
-		radius = math.floor(size * RADIUS_SHARE),
-		stroke = Theme.Stroke.thin,
+		radius = STICKER.radius.chip,
+		stroke = STICKER.border.thin,
 		drop = DROP_PX,
-		colors = { face = Theme.Colors.frosting, drop = Theme.Colors.stickerBevel },
+		colors = { face = Theme.Colors.frosting, drop = Theme.Colors.inkUI },
 	})
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, PADDING_X),

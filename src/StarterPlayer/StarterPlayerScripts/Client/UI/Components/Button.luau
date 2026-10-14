@@ -7,55 +7,73 @@
 --   local feel = Button.decorate(plainGuiButton, { sound = false })   -- the same press feel on a plain button
 --   Button.setSoundHook(function(key) SoundController.play(key) end) -- UIController.init (a component never requires
 --                                                                       a controller)
--- Kinds (foam surfaces, Theme.foam: a face, a white top highlight, a bottom bevel shade band and a bottom InkUI drop
--- band, the InkUI 2.5 outline; see Button.style(kind)):
---   primary    Strawberry (or spec.accent), radius 16, bands 2 / 5 / 3, height 56; the label outlined white (the rule)
---   secondary  Frosting, the same shape, InkUI label (the default kind)
---   tile       an accent face (spec.accent, default Strawberry), radius 20, bands 2 / 6 / 4, a fixed TILE_SIZE square
---              unless width / height are given: the icon (spec.icon) above the label (Chip kind by default: InkUI by
---              the rule; textKind "Button" for an outlined white label, which needs a wider tile), an optional count badge
---   cta        the big call to action (the Duel button): Strawberry, radius 22, bands 2 / 7 / 5, height CTA_HEIGHT
+-- Kinds (UI FINAL R1, the look kit of the design "Squishy Duels UI FINAL", 2026-10-14; `H:n` = its "Squishy Duels
+-- HUD.dc.html" line n; see Button.style(kind)). Each is a sticker surface (Theme.foam): the accent's gradient face, an
+-- ink border drawn inside the box, the inset highlight along the top and the bevel along the bottom
+-- (Config.UI.Sticker.surfaces), and the ink lip under the face, inside the box (Layout.stickerBands):
+--   primary    green 3-stop (or spec.accent), border 4, radius 18, lip 5, highlight 3 at .55, bevel 6 at .15, height 56
+--              (H:245)
+--   secondary  cyan 3-stop, the same shape (the default kind; the design's FIND IN BOXES, GO, reveal EQUIP, H:247)
+--   cancel     the lilac CANCEL (H:462): highlight 3 at .3, no bevel
+--   tile       the nav tile: the icon (spec.icon) above its outlined label (Chip kind by default), a fixed TILE_SIZE ×
+--              TILE_HEIGHT box (the design's sticker, H:99) unless width / height are given, an optional count badge.
+--              Until R4 gives it the design's faceless sticker and its picture (img.nav.*), it keeps its foam plate
+--              (an outer 3 px ink outline, the Theme.Foam.tile bands, radius 20) in its accent's sticker colours, so
+--              the lobby nav keeps a visible face and press state
+--   cta        the big call to action (the Duel button, H:126): pink 3-stop, border 5, radius 28, lip 7, highlight 4 at
+--              .6, bevel 8 at .3 towards the duel tint, height CTA_HEIGHT; the one kind with the sweep strip
+--   close      the chunky red X (H:252): border 5, radius 24, lip 6, highlight 4 at .5, bevel 6 at .18, a square (76 by
+--              default) with the "close" IconGlyph at CLOSE_ICON_SHARE of it (spec.icon may change it); the label keeps
+--              spec.text (it names the action for tests and audits) but is hidden
+-- Q5 (the user, 2026-10-14; Config.UI.Sticker.buttonCaps): primary, secondary, cancel and cta labels show in capitals
+-- (a display transform: Strings and setText keep their case; widthFor measures the capitals). The label stays the
+-- Button text kind (20 px) unless spec.textKind says otherwise: the screens that measure buttons keep their numbers
+-- until their own round (R5-R9, PLAN.md) passes the design's size (Big 24, HudNumber 26, Large 28; its outline follows,
+-- Theme.outlinePx).
 -- Optional parts (any kind): spec.icon (UI/Components/IconGlyph; above the label on a tile, left of it otherwise),
 -- spec.keycap (UI/Components/Keycap, left of the icon; the caller hides it on touch with setKeycap(nil)), spec.subtext
 -- (a Chip-kind line under the label, e.g. the CTA's "Join the queue") and spec.badge (UI/Components/CountBadge on the
 -- top-right corner, setBadge). A non-tile button with an icon, a keycap or a subtext lays them out in one row ("Line");
 -- pass keycap = "" / subtext = "" to reserve a part that starts hidden.
 -- States:
---   normal    hover: scale 1.04 in 80 ms, face +8%; pressed: scale 0.92 in 60 ms, face -10%; release: a spring
---             (Util/Spring, Config.UI.motion.buttonRelease.spring: ω 20, ζ 0.35, ≈ 2.5% overshoot, under 3 Hz) from the
---             current scale to 1 (1.04 while hovered), a Scheduler render effect; buttonRelease.ms with Back Out is the
+--   normal    hover: scale (Config.UI.motion.buttonHover), face brighter by fillDelta (the design's brightness 1.07,
+--             H:637); pressed: scale buttonPressed, face darker; release: a spring (Util/Spring,
+--             Config.UI.motion.buttonRelease.spring: ω 20, ζ 0.35, ≈ 2.5% overshoot, under 3 Hz) from the current scale
+--             to 1 (the hover scale while hovered), a Scheduler render effect; buttonRelease.ms with Back Out is the
 --             fallback when no spring is configured. The whole foam stack is the root, so it scales with the press.
---   focused   (gamepad selection) the custom focus ring (UI/Focus, concentric with the kind's corners) + scale 1.04
---   disabled  the disabled foam (face #E9E1D6, outline #A79FAB, shade #D9CFC2, no ink drop), the label in DisabledText,
---             PLUS a reason text in Ink2 (4.65:1) under the label; still selectable so a gamepad user can read it;
+--             The design's per-kind hover and press (H:634-644, PLAN.md §2) come with R2's motion kit.
+--   focused   (gamepad selection) the custom focus ring (UI/Focus, concentric with the kind's corners) + the focus
+--             scale
+--   disabled  the disabled sticker (the lilac #CBBDF2 -> #A996E0, highlight 3 at .2, no bevel, H:246), the label
+--             white with the ink outline (H:246), PLUS a reason text under the label, white with the ink outline too
+--             (it reads on the lilac and over the ink lip alike); still selectable so a gamepad user can read it;
 --             Activated is ignored, but a press plays ui.error and a "no" wiggle (the label moves ±wigglePx, `cycles`
 --             times over buttonError.ms, fading out)
---   loading   the label (or the row) is replaced by a 3-dot spinner; not activatable (and silent)
+--   loading   the label (or the row) is replaced by the spinner (H:465: a 30 px ink ring with a white arc, one turn
+--             every 0.7 s); not activatable (and silent)
 -- Sounds go through the hook (§18.6): ui.click on Activated (after onActivated ran, so UIController can keep one sound
 -- per action), ui.hover on MouseEnter (mouse only), ui.error on a disabled press. spec.sound = false silences the
 -- click and hover of a button that opens a screen (ui.open plays instead); the disabled ui.error still plays.
 -- pulse(scale, downMs, upMs): to `scale` over downMs (Quad Out), back over upMs (Back Out) (the squeeze echo, A2; the
 -- coin pill bounce, B1).
--- Under ReducedMotion (Anim/Tweens.reducedMotion) every scale effect, pulse and wiggle is off and the spinner dots stay
--- still; the colour feedback and the sounds stay. Sizes are base px under the ScreenGui UIScale; the height is raised to
--- the touch minimum (Config.UI.Touch.minTarget). The bands are inside the button's box; the content is raised by half
--- of them so it sits centred on the face. The root keeps the stable test name given in spec.name (§2.11
--- `<Screen>_<Action>Button`); its text parts keep the names Label and Reason.
+-- Under ReducedMotion (Anim/Tweens.reducedMotion) every scale effect, pulse, wiggle and sweep is off and the spinner
+-- stays still; the colour feedback and the sounds stay. Sizes are base px under the ScreenGui UIScale; the height is
+-- raised to the touch minimum (Config.UI.Touch.minTarget). The bands and the lip are inside the button's box; the
+-- content is raised by half the lip so it sits centred on the face (Style.shift; the tile's foam plate: half its
+-- bands, as before). The root keeps the stable test name given in spec.name (§2.11 `<Screen>_<Action>Button`); its
+-- text parts keep the names Label and Reason.
 -- Part 8: Button.widthFor(text, reason?, textKind?, kind?) is the width (base px) an automatic-width Button with that
--- label (and disabled reason line) takes: the wider text (Theme.textWidth, the player's text size) plus the kind's side
--- padding and MEASURE_MARGIN_PX, so a layout that wraps or pins buttons from it never lets two of them touch.
+-- label (and disabled reason line) takes: the wider text (Theme.textWidth, the player's text size; the label in
+-- capitals for a kind that shows them) plus the kind's side padding and MEASURE_MARGIN_PX, so a layout that wraps or
+-- pins buttons from it never lets two of them touch.
 -- button:setWidth(px?) switches between a fixed width (the label and reason wrap inside it; the caller sets the height
 -- through root.Size) and the automatic width (nil), e.g. the shop's Buy in a narrow column at a large text size.
 -- Button.PADDING_X is the side padding inside the primary / secondary kinds (base px).
--- Candy UI (UI overhaul 2026-10-11): every kind has the PlumInk 3 px outline and a light inner rim (Theme.rim); the
--- secondary kind is the plum neutral with a white label; a fixed-width tile, close, cta or primary carries two diagonal
--- shine stripes under its content (Theme.shine; a cta or primary gets them from setWidth(px)); a press squishes the
--- face (the bevel and drop bands shrink by PRESS_SINK_PX and the content sinks as much) and the release springs back.
--- Labels on an accent face follow Theme.textOnColor with the face (white on a dark face at every size). New kind:
---   close      the chunky red X: a TOUCH.closeButton square with the "close" IconGlyph (spec.icon may change it); the
---              label keeps spec.text (it names the action for tests and audits) but is hidden
--- sweep(): one gloss pass across the shine stripes (they slide out to the right and come back in from the left over
--- SWEEP_MS; nothing without stripes or under ReducedMotion): the attention cue of a ready CTA, instead of a bounce loop.
+-- Candy UI (UI overhaul 2026-10-11), kept: a press squishes the face (the bevel and drop bands shrink by PRESS_SINK_PX
+-- and the content sinks as much) and the release springs back; labels on an accent face follow Theme.textOnColor.
+-- sweep(): one pass of the design's shine strip (H:127: a 54 px white strip at .6; sdShine's moving part, H:28) across
+-- a fixed-width cta (nothing on the other kinds or under ReducedMotion): the attention cue of a ready CTA, instead of a
+-- bounce loop.
 
 -- Services
 
@@ -78,13 +96,14 @@ local Create = require(UI.Create)
 local Focus = require(UI.Focus)
 local IconGlyph = require(script.Parent.IconGlyph)
 local Keycap = require(script.Parent.Keycap)
+local Layout = require(UI.Layout)
 local Theme = require(UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 
 -- Types
 
-export type Kind = "primary" | "secondary" | "tile" | "cta" | "close"
+export type Kind = "primary" | "secondary" | "cancel" | "tile" | "cta" | "close"
 export type State = "normal" | "disabled" | "loading"
 export type SoundHook = (key: string) -> ()
 
@@ -92,8 +111,8 @@ export type Spec = {
 	name: string,
 	text: string,
 	kind: Kind?,
-	accent: Theme.AccentName?, -- the face; default per kind (primary / tile / cta Strawberry, secondary Frosting)
-	width: number?, -- base px; nil = automatic width (a tile: TILE_SIZE)
+	accent: Theme.AccentName?, -- the face; default per kind (Button.style(kind).accent)
+	width: number?, -- base px; nil = automatic width (a tile: TILE_SIZE, a close X: its height)
 	height: number?, -- base px; raised to Config.UI.Touch.minTarget
 	textKind: Theme.TextKind?, -- default "Button" ("Chip" on a tile)
 	onActivated: () -> (),
@@ -123,16 +142,22 @@ export type Button = {
 	destroy: (self: Button) -> (),
 }
 
--- The shape of a kind (base px).
+-- The shape of a kind (base px; UI FINAL R1: a sticker surface, Config.UI.Sticker).
 export type Style = {
 	accent: Theme.AccentName,
+	surface: string, -- its Config.UI.Sticker.surfaces entry (the highlight and bevel)
 	radius: number,
-	top: number, -- the foam bands (Theme.Foam)
+	border: number, -- the ink border (0 = none)
+	inner: boolean, -- the border is drawn inside the box (a sticker); else outside (the tile's foam plate)
+	lip: number, -- the ink lip under the face, inside the box
+	top: number, -- the foam bands (Layout.stickerBands)
 	bevel: number,
 	drop: number,
+	shift: number, -- the content is raised this much, so it sits centred on the face
 	paddingX: number, -- side padding inside the button
 	height: number, -- the default height
 	iconPx: number, -- the default icon size
+	caps: boolean, -- the label shows in capitals (Q5)
 }
 
 export type DecorateOptions = {
@@ -161,10 +186,6 @@ local MOTION = Config.UI.motion
 local TOUCH = Config.UI.Touch
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
-local SPINNER_DOTS = 3
-local SPINNER_DOT_PX = 8
--- reading (DESIGN gives no spinner timing): one dot after another, a full cycle per second (well under 3 Hz).
-local SPINNER_CYCLE_SECONDS = 1
 local HORIZONTAL_PADDING = 18
 -- reading: added to a measured width (TextService rounding, the focus / hover scale) so laid-out buttons never touch
 local MEASURE_MARGIN_PX = 4
@@ -180,75 +201,139 @@ local MOUSE_INPUTS: { [Enum.UserInputType]: boolean } = {
 	[Enum.UserInputType.MouseButton3] = true,
 	[Enum.UserInputType.MouseWheel] = true,
 }
--- Foam kinds (readings where the spec gives no number: the tile is the design's 100 px tile ÷ 1.25 plus room for a
--- Chip label at the default text size; the CTA is the design's 116 px ÷ 1.25; its radius is the panel token).
-local TILE_SIZE = 84
+local STICKER = Config.UI.Sticker
+-- UI FINAL R1 (the design's own px): the nav sticker (H:99-100), the DUEL button (H:126), the close X (H:252).
+local TILE_SIZE = 118
+local TILE_HEIGHT = 104
+local TILE_ICON_PX = 92
 local TILE_PADDING_X = 6
 local CTA_HEIGHT = 92
 local CTA_PADDING_X = 22
+local CLOSE_SIZE = 76
+local CLOSE_ICON_SHARE = 46 / 76 -- H:252: the X picture, as a share of the button
 local LINE_GAP = 8 -- between the keycap, the icon and the texts in a row
 local TILE_GAP = 2 -- between a tile's icon and its label
 local BADGE_INSET = 5 -- the badge's centre, inside the top-right corner
 local PRESS_SINK_PX = 2 -- Candy UI: a press sinks the content and shrinks the bevel and drop bands this much
-local RIM_TRANSPARENCY = 0.7 -- the inner rim on a face ...
-local RIM_DISABLED_TRANSPARENCY = 0.9 -- ... and on the disabled face
-local CLOSE_RADIUS = 14
-local CLOSE_ICON_PX = 26
-local SWEEP_MS = 700 -- one gloss pass (out and back in)
-local SWEEP_OFFSET = 1.25 -- how far the stripes slide (a share of the button), so they leave it whole
--- Kinds whose fixed width carries the shine stripes.
-local SHINE_KINDS: { [string]: boolean } = { tile = true, close = true, cta = true, primary = true }
+-- The spinner (H:465): a SPINNER_PX ring of SPINNER_RING_PX ink whose top quarter is white (the top ARC_SHARE of its
+-- height), one turn every SPINNER_TURN_SECONDS (1.4 Hz, under 3 Hz).
+local SPINNER_PX = 30
+local SPINNER_RING_PX = 5
+local SPINNER_TURN_SECONDS = 0.7
+local ARC_SHARE = 0.15
+local ARC_EDGE = 0.001 -- the arc's hard edge
+-- The sweep strip (H:127, H:28): STRIP_PX wide at STRIP_ALPHA, slid across over SWEEP_MS (sdShine's moving part, the
+-- last 45% of 3.4 s); SWEEP_OFFSET (a share of the button) takes it from fully out on the left to fully out on the
+-- right.
+local STRIP_PX = 54
+local STRIP_ALPHA = 0.6
+local STRIP_SLANT_DEG = 20 -- skewX(-20deg)
+local STRIP_MAX_HALF = 0.45 -- a narrow button keeps the strip's stops apart
+local SWEEP_MS = 1530
+local SWEEP_OFFSET = 1
+-- Kinds whose fixed width carries the sweep strip.
+local SHINE_KINDS: { [string]: boolean } = { cta = true }
+
+-- A sticker kind's style (UI FINAL R1): its bands from the border, the surface's highlight and bevel, and the lip.
+local function sticker(
+	accent: Theme.AccentName,
+	surface: string,
+	radius: number,
+	border: number,
+	lip: number,
+	paddingX: number,
+	height: number,
+	iconPx: number
+): Style
+	local look = STICKER.surfaces[surface]
+	local bands = Layout.stickerBands(border, look.highlightPx, look.bevelPx or 0, lip)
+	return {
+		accent = accent,
+		surface = surface,
+		radius = radius,
+		border = border,
+		inner = true,
+		lip = lip,
+		top = bands.top,
+		bevel = bands.bevel,
+		drop = bands.drop,
+		shift = lip / 2,
+		paddingX = paddingX,
+		height = height,
+		iconPx = iconPx,
+		caps = surface ~= "close",
+	}
+end
 local STYLES: { [string]: Style } = {
-	primary = {
-		accent = "strawberry",
-		radius = Theme.Radius.button,
-		top = Theme.Foam.button.top,
-		bevel = Theme.Foam.button.bevel,
-		drop = Theme.Foam.button.drop,
-		paddingX = HORIZONTAL_PADDING,
-		height = TOUCH.primaryButton,
-		iconPx = 24,
-	},
-	secondary = {
-		accent = "plum",
-		radius = Theme.Radius.button,
-		top = Theme.Foam.button.top,
-		bevel = Theme.Foam.button.bevel,
-		drop = Theme.Foam.button.drop,
-		paddingX = HORIZONTAL_PADDING,
-		height = TOUCH.primaryButton,
-		iconPx = 24,
-	},
+	primary = sticker(
+		"green",
+		"primary",
+		STICKER.radius.button,
+		STICKER.border.normal,
+		STICKER.lip.button,
+		HORIZONTAL_PADDING,
+		TOUCH.primaryButton,
+		24
+	),
+	secondary = sticker(
+		"cyan",
+		"primary",
+		STICKER.radius.button,
+		STICKER.border.normal,
+		STICKER.lip.button,
+		HORIZONTAL_PADDING,
+		TOUCH.primaryButton,
+		24
+	),
+	cancel = sticker(
+		"cancel",
+		"cancel",
+		STICKER.radius.button,
+		STICKER.border.normal,
+		STICKER.lip.button,
+		HORIZONTAL_PADDING,
+		TOUCH.primaryButton,
+		24
+	),
+	-- The nav tile keeps its foam plate until R4 (see the header): an outer ink outline, the Theme.Foam.tile bands, in
+	-- its accent's sticker colours; no capitals (H:101 "Squishies").
 	tile = {
 		accent = "strawberry",
+		surface = "primary",
 		radius = Theme.Radius.tile,
+		border = Theme.Stroke.ink,
+		inner = false,
+		lip = 0,
 		top = Theme.Foam.tile.top,
 		bevel = Theme.Foam.tile.bevel,
 		drop = Theme.Foam.tile.drop,
+		shift = (Theme.Foam.tile.bevel + Theme.Foam.tile.drop - Theme.Foam.tile.top) / 2,
 		paddingX = TILE_PADDING_X,
-		height = TILE_SIZE,
-		iconPx = 36,
+		height = TILE_HEIGHT,
+		iconPx = TILE_ICON_PX,
+		caps = false,
 	},
-	cta = {
-		accent = "strawberry",
-		radius = Theme.Radius.panel,
-		top = Theme.Foam.cta.top,
-		bevel = Theme.Foam.cta.bevel,
-		drop = Theme.Foam.cta.drop,
-		paddingX = CTA_PADDING_X,
-		height = CTA_HEIGHT,
-		iconPx = 44,
-	},
-	close = {
-		accent = "red",
-		radius = CLOSE_RADIUS,
-		top = Theme.Foam.button.top,
-		bevel = Theme.Foam.button.bevel,
-		drop = Theme.Foam.button.drop,
-		paddingX = 0,
-		height = TOUCH.closeButton,
-		iconPx = CLOSE_ICON_PX,
-	},
+	cta = sticker(
+		"strawberry",
+		"duel",
+		STICKER.radius.duel,
+		STICKER.border.heavy,
+		STICKER.lip.cta,
+		CTA_PADDING_X,
+		CTA_HEIGHT,
+		44
+	),
+	-- H:252: radius 24 (the plate radius token).
+	close = sticker(
+		"red",
+		"close",
+		STICKER.radius.plate,
+		STICKER.border.heavy,
+		STICKER.lip.closeX,
+		0,
+		CLOSE_SIZE,
+		math.floor(CLOSE_SIZE * CLOSE_ICON_SHARE)
+	),
 }
 for _, style in STYLES do
 	table.freeze(style)
@@ -260,6 +345,7 @@ local Button = {}
 
 Button.PADDING_X = HORIZONTAL_PADDING
 Button.TILE_SIZE = TILE_SIZE
+Button.TILE_HEIGHT = TILE_HEIGHT
 Button.CTA_HEIGHT = CTA_HEIGHT
 
 -- Private
@@ -412,11 +498,17 @@ function Button.style(kind: Kind?): Style
 	return STYLES[kind or "secondary"] or STYLES.secondary
 end
 
+-- The label as a Button of `kind` (default "secondary") shows it: in capitals for a kind that shows them (Q5,
+-- Config.UI.Sticker.buttonCaps), else as it is.
+function Button.displayText(text: string, kind: Kind?): string
+	return if STICKER.buttonCaps and Button.style(kind).caps then string.upper(text) else text
+end
+
 -- The width (base px) of an automatic-width Button of `kind` (default "secondary") showing `text` (in `textKind`,
--- default "Button") and, when given, the disabled `reason` line (Small) under it, at the player's text size: the wider
--- of the two, the kind's side padding and MEASURE_MARGIN_PX.
+-- default "Button"; in capitals for a kind that shows them) and, when given, the disabled `reason` line (Small) under
+-- it, at the player's text size: the wider of the two, the kind's side padding and MEASURE_MARGIN_PX.
 function Button.widthFor(text: string, reason: string?, textKind: Theme.TextKind?, kind: Kind?): number
-	local width = Theme.textWidth(text, textKind or "Button")
+	local width = Theme.textWidth(Button.displayText(text, kind), textKind or "Button")
 	if reason and reason ~= "" then
 		width = math.max(width, Theme.textWidth(reason, "Small"))
 	end
@@ -494,8 +586,8 @@ function Button.new(spec: Spec): Button
 	local height = math.max(spec.height or style.height, TOUCH.minTarget)
 	local fixedWidth: number? = spec.width or (if tile then TILE_SIZE elseif iconOnly then height else nil)
 	local soundOn = spec.sound ~= false
-	-- The content is raised by half the bands so it sits centred on the face.
-	local shift = (style.bevel + style.drop - style.top) / 2
+	-- UI FINAL R1: the content is raised so it sits centred on the face (Style.shift).
+	local shift = style.shift
 	local iconName: string? = spec.icon or (if iconOnly then "close" else nil)
 	local inLine = not stacked and (spec.icon ~= nil or spec.keycap ~= nil or spec.subtext ~= nil)
 	local sink = 0 -- the press squish now (PRESS_SINK_PX while pressed)
@@ -512,26 +604,57 @@ function Button.new(spec: Spec): Button
 	cleanup:add(root)
 	local foam = Theme.foam(root, {
 		radius = style.radius,
+		stroke = style.border,
+		inner = style.inner,
 		top = style.top,
 		bevel = style.bevel,
 		drop = style.drop,
-		colors = Theme.accentColors(spec.accent or style.accent, true),
+		colors = Theme.accentColors(spec.accent or style.accent, true, style.surface),
 	})
-	local rim = Theme.rim(root, Theme.Colors.white, RIM_TRANSPARENCY)
 	Create("UIPadding", {
 		PaddingLeft = UDim.new(0, style.paddingX),
 		PaddingRight = UDim.new(0, style.paddingX),
 		Parent = root,
 	})
-	-- Candy UI: the shine stripes, only while the width is fixed (an overlay inside an automatically sized button would
-	-- inflate it); under the content (ZIndex 0).
+	-- UI FINAL R1: the sweep strip (H:127), only while the width is fixed (an overlay inside an automatically sized
+	-- button would inflate it, and the strip's share of the width must be known): a white frame over the whole box (its
+	-- UIPadding undone; the button's corners, so it never shows outside them) under the content (ZIndex 0), whose
+	-- UIGradient leaves one STRIP_PX soft strip, offset out of sight until sweep().
 	local function applyShine(on: boolean)
 		local existing = root:FindFirstChild("SD_Shine")
-		if on and SHINE_KINDS[kind] then
-			local shine = Theme.shine(root, style.radius)
-			shine.ZIndex = 0
-		elseif existing then
-			existing:Destroy()
+		local width = root.Size.X.Offset
+		if not (on and SHINE_KINDS[kind] and width > 0) then
+			if existing then
+				existing:Destroy()
+			end
+			return
+		end
+		local strip = existing
+		if strip == nil then
+			local made: Frame = Create("Frame", {
+				Name = "SD_Shine",
+				BackgroundColor3 = WHITE,
+				BorderSizePixel = 0,
+				Position = UDim2.fromOffset(-style.paddingX, 0),
+				Size = UDim2.new(1, 2 * style.paddingX, 1, 0),
+				Active = false,
+				ZIndex = 0,
+				Parent = root,
+			})
+			Theme.corner(style.radius, made)
+			Create("UIGradient", { Rotation = STRIP_SLANT_DEG, Offset = Vector2.new(-SWEEP_OFFSET, 0), Parent = made })
+			strip = made
+		end
+		local gradient = (strip :: Instance):FindFirstChildOfClass("UIGradient")
+		if gradient then
+			local half = math.min(STRIP_MAX_HALF, STRIP_PX / width / 2)
+			gradient.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5 - half, 1),
+				NumberSequenceKeypoint.new(0.5, 1 - STRIP_ALPHA),
+				NumberSequenceKeypoint.new(0.5 + half, 1),
+				NumberSequenceKeypoint.new(1, 1),
+			})
 		end
 	end
 	applyShine(fixedWidth ~= nil)
@@ -576,7 +699,8 @@ function Button.new(spec: Spec): Button
 		icon = IconGlyph.new({
 			name = "Icon",
 			icon = iconName,
-			sizePx = spec.iconSize or style.iconPx,
+			-- UI FINAL R1: the close X's picture is CLOSE_ICON_SHARE of its square (H:252), whatever size it is given.
+			sizePx = spec.iconSize or (if iconOnly then math.floor(height * CLOSE_ICON_SHARE) else style.iconPx),
 			layoutOrder = if stacked then 0 else 2,
 			parent = if stacked then content else line,
 		})
@@ -594,7 +718,7 @@ function Button.new(spec: Spec): Button
 	local wraps = fixedWidth ~= nil and not inLine
 	local label = Theme.label({
 		Name = "Label",
-		Text = spec.text,
+		Text = Button.displayText(spec.text, kind),
 		Visible = not iconOnly,
 		LayoutOrder = 1,
 		Size = UDim2.fromScale(if wraps then 1 else 0, 0),
@@ -630,28 +754,31 @@ function Button.new(spec: Spec): Button
 		Parent = content,
 	}, "Small")
 
+	-- UI FINAL R1: the spinner (H:465), an ink ring whose top quarter is white (a UIGradient on the ring's stroke).
 	local spinner: Frame = Create("Frame", {
 		Name = "Spinner",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0.5, -shift),
-		Size = UDim2.fromOffset(SPINNER_DOTS * SPINNER_DOT_PX * 2, SPINNER_DOT_PX),
+		Size = UDim2.fromOffset(SPINNER_PX, SPINNER_PX),
 		Visible = false,
 		Parent = root,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, SPINNER_DOT_PX, spinner)
-	local dots: { Frame } = {}
-	for i = 1, SPINNER_DOTS do
-		local dot: Frame = Create("Frame", {
-			Name = "Dot" .. i,
-			LayoutOrder = i,
-			BorderSizePixel = 0,
-			Size = UDim2.fromOffset(SPINNER_DOT_PX, SPINNER_DOT_PX),
-			Parent = spinner,
-		})
-		Theme.corner(SPINNER_DOT_PX, dot)
-		table.insert(dots, dot)
-	end
+	Theme.corner(SPINNER_PX, spinner)
+	local ring = Theme.stroke(WHITE, SPINNER_RING_PX, spinner)
+	pcall(function()
+		(ring :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
+	end)
+	Create("UIGradient", {
+		Rotation = 90,
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, WHITE),
+			ColorSequenceKeypoint.new(ARC_SHARE, WHITE),
+			ColorSequenceKeypoint.new(ARC_SHARE + ARC_EDGE, Theme.Colors.inkUI),
+			ColorSequenceKeypoint.new(1, Theme.Colors.inkUI),
+		}),
+		Parent = ring,
+	})
 
 	local badge: CountBadge.CountBadge? = nil
 	local function ensureBadge(): CountBadge.CountBadge
@@ -679,31 +806,29 @@ function Button.new(spec: Spec): Button
 		return state == "normal"
 	end)
 
-	-- The foam colours of the current state (§9.13: hover face +8%, pressed -10%).
+	-- The sticker colours of the current state (§9.13: hover brighter by buttonHover.fillDelta, pressed darker by
+	-- buttonPressed.fillDelta; UI FINAL R1: the disabled sticker of H:246).
 	local function surfaceColors(): Theme.FoamColors
 		if state == "disabled" then
-			local colors = Theme.Colors
-			return {
-				face = colors.disabledFace,
-				top = colors.disabledFace,
-				bevel = colors.disabledShade,
-				drop = colors.disabledShade,
-			}
+			return Theme.surfaceColors(Theme.Accents.disabled, "disabled", true)
 		end
-		local face, shade = accent.face, accent.shade
-		if feel.pressed then
-			face = face:Lerp(BLACK, -MOTION.buttonPressed.fillDelta)
-			shade = shade:Lerp(BLACK, -MOTION.buttonPressed.fillDelta)
-		elseif feel.hovered then
-			face = face:Lerp(WHITE, MOTION.buttonHover.fillDelta)
-			shade = shade:Lerp(WHITE, MOTION.buttonHover.fillDelta)
+		if not (feel.pressed or feel.hovered) then
+			return Theme.surfaceColors(accent, style.surface, true)
 		end
-		return {
-			face = face,
-			top = face:Lerp(WHITE, Theme.Foam.highlight),
-			bevel = shade,
-			drop = Theme.Colors.inkUI,
-		}
+		local toward = if feel.pressed then BLACK else WHITE
+		local amount = if feel.pressed then -MOTION.buttonPressed.fillDelta else MOTION.buttonHover.fillDelta
+		local function lift(color: Color3): Color3
+			return color:Lerp(toward, amount)
+		end
+		local mid = accent.mid
+		return Theme.surfaceColors({
+			face = lift(accent.face),
+			shade = lift(accent.shade),
+			light = accent.light,
+			top = lift(accent.top),
+			mid = if mid then lift(mid) else nil,
+			midAt = accent.midAt,
+		}, style.surface, true)
 	end
 
 	-- Text and icon colours of the current state and accent (the outlined-text rule on an accent face).
@@ -722,13 +847,11 @@ function Button.new(spec: Spec): Button
 				Theme.textOnColor(text, nil, accent.face)
 			end
 		end
-		Theme.textOnLight(reasonLabel, Theme.Colors.ink2)
+		-- UI FINAL R1: white with the ink outline (H:246's text), readable on the lilac face and over the ink lip.
+		Theme.textOnLight(reasonLabel, Theme.Colors.white)
 		local glyph = icon
 		if glyph then
 			glyph:setTone(if disabled then "disabled" elseif accent.light then "dark" else "light")
-		end
-		for _, dot in dots do
-			dot.BackgroundColor3 = label.TextColor3
 		end
 	end
 
@@ -744,7 +867,6 @@ function Button.new(spec: Spec): Button
 		end
 		foam:paint(surfaceColors())
 		foam:setStroke(if state == "disabled" then Theme.Colors.disabledStroke else Theme.Colors.inkUI)
-		rim.Transparency = if state == "disabled" then RIM_DISABLED_TRANSPARENCY else RIM_TRANSPARENCY
 		feel.refresh(animate)
 	end
 
@@ -786,23 +908,17 @@ function Button.new(spec: Spec): Button
 			spinnerHandle:disconnect()
 			spinnerHandle = nil
 		end
-		for _, dot in dots do
-			dot.BackgroundTransparency = 0
-		end
+		spinner.Rotation = 0
 	end
 
+	-- One turn every SPINNER_TURN_SECONDS (still under ReducedMotion).
 	local function startSpinner()
 		stopSpinner()
 		if Tweens.reducedMotion() then
 			return
 		end
-		local elapsed = 0
 		spinnerHandle = Scheduler.add(function(dt: number): boolean
-			elapsed = (elapsed + dt) % SPINNER_CYCLE_SECONDS
-			local lit = math.floor(elapsed / SPINNER_CYCLE_SECONDS * SPINNER_DOTS) + 1
-			for i, dot in dots do
-				dot.BackgroundTransparency = if i == lit then 0 else 0.6
-			end
+			spinner.Rotation = (spinner.Rotation + 360 * dt / SPINNER_TURN_SECONDS) % 360
 			return true
 		end, "render")
 	end
@@ -874,7 +990,7 @@ function Button.new(spec: Spec): Button
 	self.root = root
 
 	function self.setText(_: Button, text: string)
-		label.Text = text
+		label.Text = Button.displayText(text, kind)
 	end
 
 	function self.setState(_: Button, newState: State, reason: string?)
@@ -979,6 +1095,7 @@ function Button.new(spec: Spec): Button
 	cleanup:add(function()
 		Tweens.cancel(sweepTween)
 	end)
+	-- UI FINAL R1: the strip slides from out of sight on the left to out of sight on the right (ease-in-out, H:127).
 	function self.sweep(_: Button)
 		local shine = root:FindFirstChild("SD_Shine")
 		local gradient = if shine then shine:FindFirstChildOfClass("UIGradient") else nil
@@ -986,18 +1103,14 @@ function Button.new(spec: Spec): Button
 			return
 		end
 		Tweens.cancel(sweepTween)
-		local half = SWEEP_MS / 2
-		gradient.Offset = Vector2.zero
-		local out = Tweens.play(gradient, half, { Offset = Vector2.new(SWEEP_OFFSET, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		sweepTween = out
-		out.Completed:Once(function(playback: Enum.PlaybackState)
-			if playback ~= Enum.PlaybackState.Completed or sweepTween ~= out then
-				gradient.Offset = Vector2.zero
-				return
-			end
-			gradient.Offset = Vector2.new(-SWEEP_OFFSET, 0)
-			sweepTween = Tweens.play(gradient, half, { Offset = Vector2.zero }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		end)
+		gradient.Offset = Vector2.new(-SWEEP_OFFSET, 0)
+		sweepTween = Tweens.play(
+			gradient,
+			SWEEP_MS,
+			{ Offset = Vector2.new(SWEEP_OFFSET, 0) },
+			Enum.EasingStyle.Sine,
+			Enum.EasingDirection.InOut
+		)
 	end
 
 	function self.destroy(_: Button)

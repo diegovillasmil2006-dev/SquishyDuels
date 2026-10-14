@@ -1419,6 +1419,72 @@ return function(t: Context)
 		expect.truthy(containsAll(badCase, { "skipStepId", "camelCase" }))
 	end)
 
+	-- UI FINAL R1 (the look kit, plan work/ui/PLAN.md §1.2 and R1): the design's text kinds (every one at least 16 base
+	-- px) and the sticker shapes.
+	t.test("UI FINAL R1: the design's text kinds and the sticker shapes hold their values", function()
+		local size = Config.UI.TextSize
+		for kind, px in
+			{
+				Big = 24,
+				Large = 28,
+				Coin = 32,
+				Name = 34,
+				Found = 36,
+				Ribbon = 38,
+				Hero = 40,
+				WindowSmall = 44,
+				Duel = 48,
+				Window = 50,
+				Prize = 52,
+				Reveal = 64,
+				Congrats = 82,
+			}
+		do
+			expect.equal(size[kind], px)
+		end
+		for _, px in size do
+			expect.truthy(px >= 16)
+		end
+		local sticker = Config.UI.Sticker
+		expect.deepEqual(sticker.border, { thin = 3, normal = 4, heavy = 5 })
+		expect.equal(sticker.lip.button, 5)
+		expect.equal(sticker.lip.window, 10)
+		expect.equal(sticker.radius.button, 18)
+		expect.equal(sticker.radius.window, 32)
+		expect.deepEqual(
+			sticker.surfaces.primary,
+			{ highlightPx = 3, highlightAlpha = 0.55, bevelPx = 6, bevelAlpha = 0.15 }
+		)
+		expect.deepEqual(sticker.text.windowTitle, { kind = "Window", stroke = 9, drop = 5 })
+		expect.deepEqual(sticker.text.coin, { kind = "Coin", stroke = 6, drop = 3, color = "StickerCoinText" })
+		expect.equal(sticker.buttonCaps, true)
+		expect.equal(sticker.toggles.large.width, 80)
+		expect.equal(sticker.bars.quest.troughShadeAlpha, 0.35)
+	end)
+
+	t.test("UI reports a bad sticker shape, alpha, text role or caps switch", function()
+		local problems = validateBrokenCopy(t.Shared, "UI", function(ui)
+			ui.Sticker.border.normal = -1
+			ui.Sticker.radius.card = 20.5
+			ui.Sticker.surfaces.primary.highlightAlpha = 1.5
+			ui.Sticker.text.duel.kind = "Gigantic"
+			ui.Sticker.text.button.stroke = 0
+			ui.Sticker.bars.stat.border = -3
+			ui.Sticker.buttonCaps = "yes"
+		end)
+		expect.truthy(containsText(problems, "Config.UI.Sticker.border.normal"))
+		expect.truthy(containsText(problems, "Config.UI.Sticker.radius.card"))
+		expect.truthy(containsText(problems, "Config.UI.Sticker.surfaces.primary.highlightAlpha"))
+		expect.truthy(containsAll(problems, { "Config.UI.Sticker.text.duel.kind", '"Gigantic"' }))
+		expect.truthy(containsText(problems, "Config.UI.Sticker.text.button.stroke"))
+		expect.truthy(containsText(problems, "Config.UI.Sticker.bars.stat.border"))
+		expect.truthy(containsText(problems, "Config.UI.Sticker.buttonCaps"))
+		-- The shipped shapes are clean.
+		for _, problem in Config.validate() do
+			expect.falsy(string.find(problem, "Sticker", 1, true) ~= nil)
+		end
+	end)
+
 	t.test("UI reports a non-positive box timeout or shop card width", function()
 		local problems = validateBrokenCopy(t.Shared, "UI", function(ui)
 			ui.Boxes.stillCheckingSeconds = 0
@@ -2214,6 +2280,7 @@ return function(t: Context)
 		expect.equal(motion.modalClose.visualMs, 150)
 		expect.equal(motion.buttonHover.scale, 1.05)
 		expect.equal(motion.buttonHover.ms, 120)
+		expect.equal(motion.buttonHover.fillDelta, 0.07) -- UI FINAL R1: the design's brightness(1.07), H:637
 		expect.equal(motion.buttonPressed.scale, 0.94)
 		expect.equal(motion.buttonPressed.ms, 70)
 		expect.deepEqual(motion.buttonRelease.spring, { omega = 20, zeta = 0.35 })

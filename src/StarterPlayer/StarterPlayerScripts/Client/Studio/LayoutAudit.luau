@@ -40,8 +40,9 @@
 -- Rules (Readings where DESIGN is silent):
 --   * Only visible objects: Visible on it and every ancestor, in an Enabled ScreenGui whose name starts with "SD_"
 --     (the game's guis; not Roblox's TouchGui / Freecam, not the Studio sound picker SD_SoundPicker), without the
---     ModalWash backdrop between two stacked modals (it bleeds past SD_Modal on purpose). An object with no area is
---     counted in `checked` but left out of the rules that need a box.
+--     ModalWash backdrop between two stacked modals (it bleeds past SD_Modal on purpose) and without the mirrored
+--     copies SD_Drop / SD_Face of Theme.stickerText (UI FINAL R1: their label, the source of truth, is audited). An
+--     object with no area is counted in `checked` but left out of the rules that need a box.
 --   * offscreen: an edge outside its ScreenGui's AbsolutePosition / AbsoluteSize box by more than 1 px, unless the
 --     object is inside a ScrollingFrame.
 --   * belowFold: a GuiButton inside a ScrollingFrame that is not entirely inside that frame's visible window
@@ -250,8 +251,9 @@ local INSIDE_TOLERANCE_PX = 1
 local GUI_PREFIX = "SD_"
 local EXCLUDED_GUIS: { [string]: boolean } = { SD_SoundPicker = true } -- a Studio tool, not the game's UI
 -- Backdrops left out of every rule: UIController's ModalWash between two stacked modals reaches past SD_Modal's edges
--- on purpose (over the top bar inset, like SD_Dimmer) and holds nothing (integration of the foam fix batch).
-local EXCLUDED_OBJECTS: { [string]: boolean } = { ModalWash = true }
+-- on purpose (over the top bar inset, like SD_Dimmer) and holds nothing (integration of the foam fix batch). UI FINAL
+-- R1: a text drop's two mirrored copies (Theme.stickerText) would read as text overlapping its own label.
+local EXCLUDED_OBJECTS: { [string]: boolean } = { ModalWash = true, SD_Drop = true, SD_Face = true }
 local HUD_GUI = "SD_Hud"
 local OVERLAY_GUI = "SD_Overlay"
 local TOASTS = "Toasts" -- UIController's toast column in SD_Overlay

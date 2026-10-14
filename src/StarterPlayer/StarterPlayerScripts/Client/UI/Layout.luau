@@ -34,6 +34,12 @@
 --                            twice: Inspect over Squishies, the box reveal over Boxes)
 --   pinnedButtons(..., buttonGap?)   the buttons keep their own gap between them and between their rows (the detail
 --                            buttons of Squishies and Shop: at 6 the bevelled buttons read as one)
+-- UI FINAL R1 (the look kit, plan work/ui/PLAN.md §2):
+--   stickerBands(border, highlight, bevel, lip)   the foam bands of a sticker surface whose ink border is drawn inside
+--                            its box (UI/Theme foam's `inner`): the top band is the border and the inset highlight, the
+--                            bevel sits right above the bottom border, the drop band is the bottom border and the lip
+--   lipGap(gap, lip)         the padding of a list or grid whose items draw a `lip` px ink lip inside their box: the
+--                            design's gap less the lip, so the pitch stays the design's (face + gap)
 -- No instances, no services: unit-tested in Edit mode.
 
 -- Services
@@ -72,6 +78,9 @@ export type Pinned = {
 
 -- One stop of a foam surface's gradient (top to bottom): the band it starts at `time` (0..1).
 export type FoamBand = "top" | "face" | "bevel" | "drop"
+
+-- A foam surface's band heights in base px (stickerBands; UI/Theme.Bands).
+export type Bands = { top: number, bevel: number, drop: number }
 export type FoamStop = { time: number, band: FoamBand }
 
 -- A scroll bar's thumb (scrollThumb): its size and its top as shares of the track (0..1).
@@ -324,6 +333,26 @@ function Layout.foamStops(height: number, top: number, bevel: number, drop: numb
 	end
 	table.insert(stops, { time = 1, band = stops[#stops].band })
 	return stops
+end
+
+-- UI FINAL R1: the foam bands (base px) of a sticker surface with an inner `border`, an inset `highlight` along its
+-- top, a `bevel` along its bottom and a `lip` under it (CSS: border, inset 0 Hpx 0, inset 0 -Bpx 0, box-shadow 0 Dpx
+-- 0). Negative or non-finite values count as 0.
+function Layout.stickerBands(border: number, highlight: number, bevel: number, lip: number): Bands
+	local function px(n: number): number
+		return if finite(n) and n > 0 then n else 0
+	end
+	local b = px(border)
+	return { top = b + px(highlight), bevel = px(bevel), drop = b + px(lip) }
+end
+
+-- UI FINAL R1: the padding between the items of a list or grid that each draw a `lip` px ink lip inside their box under
+-- the face: the design's `gap` less the lip (never below 0), so the pitch stays the design's face + gap (CSS box-shadow
+-- takes no room; our lip does).
+function Layout.lipGap(gap: number, lip: number): number
+	local g = if finite(gap) and gap > 0 then gap else 0
+	local l = if finite(lip) and lip > 0 then lip else 0
+	return math.max(0, g - l)
 end
 
 -- The thumb of a list `canvas` tall seen through a window `window` tall and scrolled `offset` down (one unit for all

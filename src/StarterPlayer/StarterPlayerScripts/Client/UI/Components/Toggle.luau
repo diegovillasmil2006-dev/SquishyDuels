@@ -10,6 +10,11 @@
 -- size (Theme.textWidth + the state text and the switch), for a caller that sets widthPx (the Squishies filter row).
 -- Foam UI (spec 2026-10-09): the switch is a Biscuit track (off) or the Mint accent (on) with the InkUI 2 px outline of
 -- bars and chips; the knob is a Frosting foam disc with a small bevel. Sizes and behaviour unchanged.
+-- UI FINAL R1 (H:197, H:437, H:980, H:1010): spec.variant "small" (56 × 32, the default; the Squishies switch) or
+-- "large" (80 × 42, the Settings switches), Config.UI.Sticker.toggles: a 4 px ink border drawn inside the switch, the
+-- on track StickerToggleOnTop -> StickerGreen2End, the off track StickerSwitchOff, the white knob at the design's
+-- places inside the border (small: 20 px with its ink drop 2 px lower at .4; large: 28 px with a 3 px ink border and a
+-- 3 px bevel at .12), the large track's inner shade (3 px at .25). The row stays one button the touch minimum tall.
 
 -- Services
 
@@ -20,12 +25,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
+local Palette = require(Shared.Art.Palette)
 local Log = require(Shared.Util.Log)
 local Strings = require(Shared.Strings)
 
 local UI = script.Parent.Parent
 local Create = require(UI.Create)
 local Focus = require(UI.Focus)
+local Layout = require(UI.Layout)
 local Theme = require(UI.Theme)
 
 -- Types
@@ -36,9 +43,13 @@ export type Spec = {
 	value: boolean,
 	onChanged: (value: boolean) -> (),
 	widthPx: number?, -- nil = fill the parent's width
+	variant: Variant?, -- default "small"
 	layoutOrder: number?,
 	parent: Instance?,
 }
+
+-- UI FINAL R1: the design's two switches (Config.UI.Sticker.toggles).
+export type Variant = "small" | "large"
 
 export type Toggle = {
 	root: TextButton,
@@ -51,17 +62,22 @@ export type Toggle = {
 -- Constants
 
 local TOUCH = Config.UI.Touch
-local SWITCH_W = 52
-local SWITCH_H = 28
-local KNOB_INSET = 3
+local TOGGLES = Config.UI.Sticker.toggles
+local DEFAULT_VARIANT = "small"
 local STATE_WIDTH = 60
 local ON_TEXT = Strings.common.on
 local OFF_TEXT = Strings.common.off
-local CHROME_PX = SWITCH_W + STATE_WIDTH + Theme.Padding.small * 2 -- everything beside the label
 local MEASURE_MARGIN_PX = 4
-local KNOB_BEVEL_PX = 2
-local ON_FILL = Theme.Accents.mint.face
-local OFF_FILL = Theme.Colors.track -- Candy UI: the darkest surface (with a faint rim)
+local ON_TOP = Palette.StickerToggleOnTop -- H:980
+local ON_END = Palette.StickerGreen2End
+local OFF_FILL = Palette.StickerSwitchOff -- H:980
+local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
+
+-- Everything beside the label (base px): the switch, the state text and their gaps.
+local function chromePx(variant: string): number
+	return (TOGGLES[variant] or TOGGLES[DEFAULT_VARIANT]).width + STATE_WIDTH + Theme.Padding.small * 2
+end
 
 -- Module table
 
@@ -73,14 +89,18 @@ local log = Log.new("Toggle")
 
 -- Public
 
--- The width (base px) a toggle needs for `text` on one line at the player's text size, with its state text and switch.
-function Toggle.widthFor(text: string): number
-	return math.ceil(Theme.textWidth(text, "Body")) + CHROME_PX + MEASURE_MARGIN_PX
+-- The width (base px) a toggle (default variant "small") needs for `text` on one line at the player's text size, with
+-- its state text and switch.
+function Toggle.widthFor(text: string, variant: Variant?): number
+	return math.ceil(Theme.textWidth(text, "Body")) + chromePx(variant or DEFAULT_VARIANT) + MEASURE_MARGIN_PX
 end
 
 function Toggle.new(spec: Spec): Toggle
 	local cleanup = Cleanup.new()
 	local value = spec.value == true
+	local variant: string = if spec.variant and TOGGLES[spec.variant] then spec.variant else DEFAULT_VARIANT
+	local look = TOGGLES[variant]
+	local chrome = chromePx(variant)
 	local root: TextButton = Create("TextButton", {
 		Name = spec.name,
 		Text = "",
@@ -99,14 +119,14 @@ function Toggle.new(spec: Spec): Toggle
 		Text = spec.text,
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.fromScale(0, 0.5),
-		Size = UDim2.new(1, -CHROME_PX, 0, 0),
+		Size = UDim2.new(1, -chrome, 0, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = root,
 	}, "Body")
 	local stateLabel = Theme.label({
 		Name = "State",
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -(SWITCH_W + Theme.Padding.small), 0.5, 0),
+		Position = UDim2.new(1, -(look.width + Theme.Padding.small), 0.5, 0),
 		Size = UDim2.fromOffset(STATE_WIDTH, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
 		Parent = root,
@@ -116,34 +136,71 @@ function Toggle.new(spec: Spec): Toggle
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.fromScale(1, 0.5),
-		Size = UDim2.fromOffset(SWITCH_W, SWITCH_H),
+		Size = UDim2.fromOffset(look.width, look.height),
 		Active = false,
 		Parent = root,
 	})
-	Theme.corner(SWITCH_H, switch)
-	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.bar, switch)
-	Theme.rim(switch, Theme.Colors.rim, 0.7, 1)
-	local knobSize = SWITCH_H - KNOB_INSET * 2
+	-- The track: a "tint" surface (BackgroundColor3 is its top colour) with the border inside and the inner shade.
+	local track = Theme.foam(switch, {
+		radius = look.height,
+		stroke = look.border,
+		inner = true,
+		mode = "tint",
+		top = look.border + (look.trackShadePx or 0),
+		colors = { face = OFF_FILL },
+	})
+	local knobSize = look.knob
+	local knobBorder = look.knobBorder or 0
 	local knob: Frame = Create("Frame", {
 		Name = "Knob",
 		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0, 0.5),
 		Size = UDim2.fromOffset(knobSize, knobSize),
 		Active = false,
+		ZIndex = 2,
 		Parent = switch,
 	})
+	local knobBands = Layout.stickerBands(knobBorder, 0, look.knobBevelPx or 0, 0)
 	Theme.foam(knob, {
 		radius = knobSize,
-		stroke = Theme.Stroke.bar,
-		bevel = KNOB_BEVEL_PX,
-		colors = { face = Theme.Colors.frosting, bevel = Theme.Colors.stickerBevel }, -- Candy UI: a light sticker knob
+		stroke = knobBorder,
+		inner = true,
+		top = knobBands.top,
+		bevel = knobBands.bevel,
+		drop = knobBands.drop,
+		colors = { face = WHITE, bevel = WHITE:Lerp(BLACK, look.knobBevelAlpha or 0), drop = Theme.Colors.inkUI },
 	})
+	-- H:197: the small knob's drop, the ink at knobDropAlpha a few px lower, behind it.
+	local knobDrop: Frame? = nil
+	if look.knobDropPx then
+		local made: Frame = Create("Frame", {
+			Name = "KnobDrop",
+			BackgroundColor3 = Theme.Colors.inkUI,
+			BackgroundTransparency = 1 - (look.knobDropAlpha or 0),
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(knobSize, knobSize),
+			Active = false,
+			ZIndex = 1,
+			Parent = switch,
+		})
+		Theme.corner(knobSize, made)
+		knobDrop = made
+	end
 
 	local function paint()
-		switch.BackgroundColor3 = if value then ON_FILL else OFF_FILL
-		knob.Position = if value
-			then UDim2.new(1, -(knobSize + KNOB_INSET), 0.5, 0)
-			else UDim2.new(0, KNOB_INSET, 0.5, 0)
+		local face = if value then ON_TOP else OFF_FILL
+		switch.BackgroundColor3 = face
+		track:paint({
+			face = face,
+			faceEnd = if value then ON_END else nil,
+			top = face:Lerp(BLACK, look.trackShadeAlpha or 0),
+		})
+		local x = look.border + (if value then look.knobOn else look.knobOff)
+		local y = look.border + look.knobTop
+		knob.Position = UDim2.fromOffset(x, y)
+		local drop = knobDrop
+		if drop then
+			drop.Position = UDim2.fromOffset(x, y + (look.knobDropPx or 0))
+		end
 		stateLabel.Text = if value then ON_TEXT else OFF_TEXT
 	end
 

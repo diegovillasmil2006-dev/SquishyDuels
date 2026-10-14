@@ -39,6 +39,13 @@ export type UiStyle = {
 	faceTop: Color3,
 	faceBottom: Color3,
 	glow: Color3,
+	-- UI FINAL (R1, the design's rarity table, hud-lib.js lib:12-17): the light, main and deep stops of the design's
+	-- rarity gradients (tabs, plates, the detail stage), and `pillText`, the rarity pill and pips colour on a card when
+	-- it differs from `base` (Common, H:933). Optional, so a fallback face (UI/CardFace) needs none of them.
+	light: Color3?,
+	base: Color3?,
+	dark: Color3?,
+	pillText: Color3?,
 }
 
 export type Style = {
@@ -96,6 +103,10 @@ local STYLES: { [string]: Style } = {
 			faceTop = Color3.fromHex("#8493A8"),
 			faceBottom = Color3.fromHex("#4B576D"),
 			glow = Color3.fromHex("#DCE4EE"),
+			light = Color3.fromHex("#EEF2F6"), -- lib:13
+			base = Color3.fromHex("#8C9AA8"), -- lib:13
+			dark = Color3.fromHex("#5F6C79"), -- lib:13
+			pillText = Color3.fromHex("#6F7D8B"), -- H:933
 		},
 		labelTextColor = Palette.Ink, -- 6.4:1
 		pipShape = "dot",
@@ -110,6 +121,9 @@ local STYLES: { [string]: Style } = {
 			faceTop = Color3.fromHex("#45C987"),
 			faceBottom = Color3.fromHex("#1C7A55"),
 			glow = Color3.fromHex("#8CFFC4"),
+			light = Color3.fromHex("#D8F8E7"), -- lib:14
+			base = Color3.fromHex("#3FBF84"), -- lib:14
+			dark = Color3.fromHex("#23875A"), -- lib:14
 		},
 		labelTextColor = Palette.Ink, -- 6.0:1
 		pipShape = "dot",
@@ -124,6 +138,9 @@ local STYLES: { [string]: Style } = {
 			faceTop = Color3.fromHex("#B067FF"),
 			faceBottom = Color3.fromHex("#5B25C2"),
 			glow = Color3.fromHex("#E2B8FF"),
+			light = Color3.fromHex("#EEE2FF"), -- lib:15
+			base = Color3.fromHex("#9A63E8"), -- lib:15
+			dark = Color3.fromHex("#6638BD"), -- lib:15
 		},
 		trailTint = EPIC_TRAIL_TINT,
 		labelTextColor = Palette.White, -- 5.7:1
@@ -143,6 +160,9 @@ local STYLES: { [string]: Style } = {
 			faceTop = Color3.fromHex("#FFC94D"),
 			faceBottom = Color3.fromHex("#E2700F"),
 			glow = Color3.fromHex("#FFE7A0"),
+			light = Color3.fromHex("#FFF2CC"), -- lib:16
+			base = Color3.fromHex("#F0A532"), -- lib:16
+			dark = Color3.fromHex("#B86C0C"), -- lib:16
 		},
 		labelTextColor = Palette.Ink, -- 6.5:1
 		pipShape = "diamond",

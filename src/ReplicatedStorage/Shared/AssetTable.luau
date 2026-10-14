@@ -758,6 +758,25 @@ local SLOTS: { AssetSlot } = {
 	-- UI overhaul (2026-10-11): the chunky close X of every window and the check of a claimed or owned state.
 	otherSlot("img.icon.close", "image", IMAGE_NOTE),
 	otherSlot("img.icon.check", "image", IMAGE_NOTE),
+	-- UI FINAL (R1, plan work/ui/PLAN.md §3): the design's other pictures (rendered in R0, uploaded by the user). While
+	-- an id is nil: the lock is shapes (UI/Components/LockIcon), the image-only icons hide (IconGlyph.image; the text
+	-- beside them says it), the boxes stay the tinted gift, there are no rays or dots, and the radial fills are
+	-- vertical gradients.
+	otherSlot("img.icon.lock", "image", IMAGE_NOTE),
+	otherSlot("img.icon.star", "image", IMAGE_NOTE),
+	otherSlot("img.icon.bolt", "image", IMAGE_NOTE),
+	otherSlot("img.icon.flame", "image", IMAGE_NOTE),
+	otherSlot("img.icon.gift", "image", IMAGE_NOTE),
+	otherSlot("img.icon.sound", "image", IMAGE_NOTE),
+	otherSlot("img.icon.squeeze", "image", IMAGE_NOTE),
+	otherSlot("img.icon.match", "image", IMAGE_NOTE),
+	otherSlot("img.box.sweet", "image", IMAGE_NOTE),
+	otherSlot("img.box.treat", "image", IMAGE_NOTE),
+	otherSlot("img.fx.rays", "image", IMAGE_NOTE),
+	otherSlot("img.fx.raysDetail", "image", IMAGE_NOTE),
+	otherSlot("img.fx.raysReveal", "image", IMAGE_NOTE),
+	otherSlot("img.fx.dots", "image", IMAGE_NOTE),
+	otherSlot("img.fx.glow", "image", IMAGE_NOTE),
 }
 
 -- The content string of an asset id: positive integers only, else nil.

@@ -7,6 +7,9 @@
 --   * each reads an AssetTable image slot (img.nav.* or img.icon.*) that exists; with every id nil today the
 --     placeholder is drawn: an InkUI outline copy and a fill per silhouette part, the details on top;
 --   * the tones recolour without rebuilding; setIcon rebuilds; an unknown icon draws nothing and never errors.
+--   * UI FINAL R1 (plan §3): IconGlyph.image(key, props) holds the picture (and with props.shadow its drop shadow
+--     behind it, px lower at the alpha) and hides itself while the id is nil; the image-only keys are not
+--     IconGlyph.NAMES.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -154,6 +157,37 @@ return function(t: Context)
 			-- The window and the door sit on the shop, under the awning.
 			expect.truthy(mark.y - mark.h / 2 >= awning.y + awning.h / 2)
 		end
+	end)
+
+	t.test("image(): the picture and its shadow, hidden while the id is nil; not a drawn icon", function()
+		local holder = Instance.new("Folder")
+		local key = "img.icon.star"
+		expect.truthy(imageKeys[key])
+		local icon = IconGlyph.image(key, {
+			name = "Star",
+			sizePx = 40,
+			layoutOrder = 3,
+			parent = holder,
+			shadow = { px = 5, alpha = 0.3 },
+		})
+		expect.equal(icon.Parent, holder)
+		expect.equal(icon.Name, "Star")
+		expect.equal(icon.Size, UDim2.fromOffset(40, 40))
+		expect.equal(icon.LayoutOrder, 3)
+		expect.equal(icon.Visible, AssetTable.image(key) ~= nil)
+		local image = icon:FindFirstChild("Image") :: ImageLabel
+		local shadow = icon:FindFirstChild("Shadow") :: ImageLabel
+		expect.truthy(icon:FindFirstChild("Image") ~= nil and icon:FindFirstChild("Shadow") ~= nil)
+		expect.equal(shadow.Position.Y.Offset, 5)
+		expect.near(shadow.ImageTransparency, 0.7, 1e-4)
+		expect.equal(shadow.ImageColor3, Theme.Colors.inkUI)
+		expect.truthy(shadow.ZIndex < image.ZIndex)
+		-- No shadow unless asked; image-only keys are not IconGlyph names.
+		local plain = IconGlyph.image("img.icon.bolt", { name = "Bolt" })
+		expect.equal(plain:FindFirstChild("Shadow"), nil)
+		plain:Destroy()
+		expect.equal(IconGlyph.canonical("star"), nil)
+		holder:Destroy()
 	end)
 
 	t.test("the outline grows with the icon inside its limits", function()

@@ -843,7 +843,8 @@ local function outlinedLabel(
 	local label = Theme.label(props, kind, nil, color)
 	label.Name = name
 	label.TextXAlignment = Enum.TextXAlignment.Center
-	-- The foam kit's outlined text, as on the duel reticle (InkUI, round joins).
+	-- The foam kit's outlined text, as on the duel reticle (InkUI, round joins); UI FINAL R1: its only outline.
+	Theme.noOutline(label)
 	local stroke = Theme.stroke(Theme.Colors.inkUI, strokePx, label)
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	stroke.LineJoinMode = Enum.LineJoinMode.Round

@@ -9,6 +9,10 @@ export type Tween = {
 	direction: Enum.EasingDirection,
 }
 export type ScreenGuiSpec = { displayOrder: number, insets: Enum.ScreenInsets }
+-- UI FINAL R1 (Sticker): a design surface's inset highlight and bevel; a text role; a component variant's numbers.
+export type StickerSurface = { highlightPx: number, highlightAlpha: number, bevelPx: number?, bevelAlpha: number? }
+export type StickerTextRole = { kind: string, stroke: number, drop: number?, color: string? }
+export type StickerVariant = { [string]: number }
 
 local UI = {
 	-- UIScale = clamp(SD_Hud.AbsoluteSize.Y / referenceHeight, min, max), recomputed on size change.
@@ -56,6 +60,21 @@ local UI = {
 		Countdown = 96,
 		-- Foam UI (spec 2026-10-09): the display font at chip size, for chips, count badges, keycaps and tile labels.
 		Chip = 16,
+		-- UI FINAL (R1; plan §1.2: 1 design px = 1 base px, every kind at least 16 so 16 × Scale.min stays readable):
+		-- the design's larger sizes ("Squishy Duels HUD.dc.html" lines).
+		Big = 24, -- H:370 CLAIM / GO, H:462 CANCEL, H:498 AGAIN
+		Large = 28, -- H:245 EQUIP, H:415 the Day 7 box
+		Coin = 32, -- H:79 the coin number
+		Name = 34, -- H:227 the detail name, H:459 the confirm title
+		Found = 36, -- H:151 MATCH FOUND!
+		Ribbon = 38, -- H:527 the level-up ribbon letters
+		Hero = 40, -- H:95 the Grip level, H:483 the box name on the open stage
+		WindowSmall = 44, -- H:429 the Settings title
+		Duel = 48, -- H:130 DUEL
+		Window = 50, -- H:184 the window titles
+		Prize = 52, -- H:545 the congrats item title
+		Reveal = 64, -- H:490 the reveal name
+		Congrats = 82, -- H:539 the CONGRATULATIONS letters
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -149,7 +168,9 @@ local UI = {
 			bounceMinGapMs = 334,
 			countTailMs = 400,
 		},
-		buttonHover = { ms = 120, scale = 1.05, fillDelta = 0.08 }, -- overhaul: 80 ms 1.04 -> 120 ms 1.05
+		-- UI FINAL (R1): the hover brightens by the design's brightness(1.07) (H:637); the per-kind hover and press
+		-- motion (H:634-644) comes in R2 (PLAN.md R2: Button's newFeel).
+		buttonHover = { ms = 120, scale = 1.05, fillDelta = 0.07 }, -- overhaul: 80 ms 1.04 -> 120 ms 1.05
 		buttonPressed = { ms = 70, scale = 0.94, fillDelta = -0.1 }, -- overhaul: 60 ms 0.92 -> 70 ms 0.94
 		-- The springy release (§18.5.2 B3): Util/Spring from the current scale to the target (≈ 2.98 Hz, under §9.12's
 		-- 3 Hz); ms / style / direction stay as the fallback tween.
@@ -165,7 +186,7 @@ local UI = {
 		-- Pops (Back Out): the HUD badge when its count rises (§18.5.2 B5); READY and the opponent's Rush chip (B8).
 		badgePop = { from = 1.4, ms = 220 },
 		readyPop = { from = 1.3, ms = 220 },
-		focus = { scale = 1.04, outerStrokePx = 3, innerStrokePx = 2 }, -- white outer + Ink inner stroke
+		focus = { scale = 1.04, outerStrokePx = 3, innerStrokePx = 2 }, -- Ink outer + white inner stroke (UI FINAL R1)
 		-- Reading (foam UI, spec 2026-10-09; DESIGN gives no number): a ProgressBar fill easing to a new value.
 		barFill = { ms = 300, style = Enum.EasingStyle.Quad, direction = Enum.EasingDirection.Out },
 		disabledTextOpacity = 0.6, -- plus a reason text; still selectable
@@ -364,6 +385,145 @@ local UI = {
 		upLift = 1.6,
 		upBob = 0.25,
 		upBobMs = 900,
+	},
+
+	-- UI FINAL (R1, the look kit; plan work/ui/PLAN.md §2): the sticker look of the design "Squishy Duels UI FINAL"
+	-- (2026-10-14), read through UI/Theme (Theme.Sticker). Base px (1 design px = 1 base px). `H:n` = "Squishy Duels
+	-- HUD.dc.html" line n. Colours are Art/Palette Sticker*; a role's `color` names a Palette token.
+	Sticker = {
+		-- The ink border (CSS border-box: drawn inside the box, Theme.foam's `inner`).
+		border = {
+			thin = 3, -- H:102 badges, pills, chips, bar tracks
+			normal = 4, -- H:203 buttons, cards, rows, tabs
+			heavy = 5, -- H:252 the duel bar, the window, the close X
+		},
+		-- The solid ink lip under a surface (box-shadow: 0 Npx 0 #1E1428), drawn inside the box under its face.
+		lip = {
+			bar = 3, -- H:84
+			chip = 4, -- H:171
+			row = 5, -- H:363
+			button = 5, -- H:245
+			card = 5, -- H:935
+			boxCard = 6, -- H:264
+			closeX = 6, -- H:252
+			cta = 7, -- H:126
+			search = 7, -- H:136
+			window = 10, -- H:182
+		},
+		radius = {
+			slot = 8, -- H:141
+			chip = 10, -- H:232
+			tile = 12, -- H:274
+			tab = 14, -- H:194
+			tabQuest = 16, -- H:358
+			button = 18, -- H:245
+			card = 20, -- H:203
+			row = 22, -- H:363
+			plate = 24, -- H:264
+			duel = 28, -- H:126
+			confirm = 30, -- H:457
+			window = 32, -- H:182
+		},
+		-- The inset highlight along a surface's top (box-shadow: inset 0 Hpx 0 rgba(255,255,255,a)) and the bevel along
+		-- its bottom (inset 0 -Bpx 0 rgba(c,b); c is black unless UI/Theme names a tint for the surface). Theme paints
+		-- them as solid bands: the top stop lerped to white by highlightAlpha, the end stop lerped to c by bevelAlpha.
+		-- The tints: duel StickerDuelBevel, found StickerFoundBevel (Art/Palette). No squeeze surface: the squeeze
+		-- button stays removed (the user's Q2).
+		surfaces = {
+			primary = { highlightPx = 3, highlightAlpha = 0.55, bevelPx = 6, bevelAlpha = 0.15 }, -- H:245, H:247
+			disabled = { highlightPx = 3, highlightAlpha = 0.2 }, -- H:246
+			cancel = { highlightPx = 3, highlightAlpha = 0.3 }, -- H:462
+			again = { highlightPx = 3, highlightAlpha = 0.6, bevelPx = 6, bevelAlpha = 0.15 }, -- H:498
+			duel = { highlightPx = 4, highlightAlpha = 0.6, bevelPx = 8, bevelAlpha = 0.3 }, -- H:126
+			found = { highlightPx = 4, highlightAlpha = 0.65, bevelPx = 8, bevelAlpha = 0.25 }, -- H:149
+			close = { highlightPx = 4, highlightAlpha = 0.5, bevelPx = 6, bevelAlpha = 0.18 }, -- H:252
+			badge = { highlightPx = 2, highlightAlpha = 0.5 }, -- H:102
+			badgeMark = { highlightPx = 2, highlightAlpha = 0.6 }, -- H:120: the daily "!" badge
+			coinPill = { highlightPx = 3, highlightAlpha = 0.14 }, -- H:75
+			search = { highlightPx = 4, highlightAlpha = 0.12 }, -- H:136
+			toast = { highlightPx = 3, highlightAlpha = 0.35 }, -- H:175
+			qpop = { highlightPx = 3, highlightAlpha = 0.45 }, -- H:162
+			row = { highlightPx = 3, highlightAlpha = 0.1 }, -- H:363, H:433: quest and settings rows
+			card = { highlightPx = 2, highlightAlpha = 0.1 }, -- H:935: the squishy cards
+		} :: { [string]: StickerSurface },
+		-- Text roles (Theme.stickerText): the kind (Config.UI.TextSize), the CSS -webkit-text-stroke width (the ink
+		-- outline is half of it), the solid ink drop under the letters (text-shadow: 0 Npx 0 #1E1428; a mirrored copy,
+		-- only from 3 px) and a Palette colour (default white).
+		text = {
+			windowTitle = { kind = "Window", stroke = 9, drop = 5 }, -- H:184
+			settingsTitle = { kind = "WindowSmall", stroke = 8, drop = 5 }, -- H:429
+			duel = { kind = "Duel", stroke = 8, drop = 4 }, -- H:130
+			navLabel = { kind = "H2", stroke = 7, drop = 3 }, -- H:101 (23 px -> 22)
+			settingsLabel = { kind = "Button", stroke = 6, drop = 3 }, -- H:159 (19 px -> 20)
+			coin = { kind = "Coin", stroke = 6, drop = 3, color = "StickerCoinText" }, -- H:79
+			found = { kind = "Found", stroke = 7, drop = 4 }, -- H:151
+			hero = { kind = "Hero", stroke = 8, drop = 4 }, -- H:95
+			revealBox = { kind = "Hero", stroke = 8, drop = 5 }, -- H:483
+			detailName = { kind = "Name", stroke = 7, drop = 4 }, -- H:227
+			confirmTitle = { kind = "Name", stroke = 7, drop = 4 }, -- H:459
+			boxName = { kind = "Title", stroke = 6, drop = 4 }, -- H:269
+			day7 = { kind = "Large", stroke = 7, drop = 4 }, -- H:415
+			ribbon = { kind = "Ribbon", stroke = 7, drop = 4 }, -- H:527
+			revealName = { kind = "Reveal", stroke = 10, drop = 6 }, -- H:490
+			congrats = { kind = "Congrats", stroke = 13, drop = 6 }, -- H:539
+			prize = { kind = "Prize", stroke = 10, drop = 6, color = "StickerCoinText" }, -- H:545
+			button = { kind = "Big", stroke = 5 }, -- H:370, H:462
+			buttonLarge = { kind = "HudNumber", stroke = 6 }, -- H:246 (26 px)
+			tab = { kind = "H2", stroke = 5 }, -- H:358
+			badge = { kind = "Body", stroke = 3 }, -- H:102 (18 px)
+			badgeMark = { kind = "Button", stroke = 4 }, -- H:120 (the daily "!", 20 px)
+			small = { kind = "Small", stroke = 4 }, -- H:89 (14 px -> 16)
+			gripText = { kind = "Small", stroke = 3.5 }, -- H:87 (12 px -> 16)
+		} :: { [string]: StickerTextRole },
+		-- Q5 (the user, 2026-10-14): big button labels in capitals (a display transform; Strings stay as they are).
+		buttonCaps = true,
+		-- UI/Components/ProgressBar variants: the track's border, its alpha (the Grip track is white at .7), an inner
+		-- shade along its top (troughShade), and the fill's top highlight; colours in ProgressBar (Palette). The moving
+		-- shine strips (H:85, H:367) come with R2's idle loops.
+		bars = {
+			grip = { border = 3, troughAlpha = 0.7, fillHighlightPx = 3, fillHighlightAlpha = 0.55 }, -- H:84-85
+			stat = { border = 3, fillHighlightPx = 3, fillHighlightAlpha = 0.45 }, -- H:240
+			quest = {
+				border = 3,
+				troughShadePx = 3,
+				troughShadeAlpha = 0.35,
+				fillHighlightPx = 4,
+				fillHighlightAlpha = 0.5,
+			}, -- H:367
+			odds = { border = 3, fillHighlightPx = 2, fillHighlightAlpha = 0.4 }, -- H:271
+			collected = { border = 3 }, -- H:187
+			volume = { border = 3, fillHighlightPx = 3, fillHighlightAlpha = 0.5 }, -- H:444
+		} :: { [string]: StickerVariant },
+		-- UI/Components/Toggle's two switches: size, border, the knob (size, border, its top inset and left edge off /
+		-- on, inside the border), the knob's drop (small) or bevel (large), the track's top shade (large).
+		toggles = {
+			small = { -- H:197, H:1010 (the Squishies "Show locked" switch)
+				width = 56,
+				height = 32,
+				border = 4,
+				knob = 20,
+				knobBorder = 0,
+				knobTop = 2,
+				knobOff = 3,
+				knobOn = 26,
+				knobDropPx = 2,
+				knobDropAlpha = 0.4,
+			},
+			large = { -- H:437, H:980 (the Settings switches)
+				width = 80,
+				height = 42,
+				border = 4,
+				knob = 28,
+				knobBorder = 3,
+				knobTop = 3,
+				knobOff = 4,
+				knobOn = 40,
+				knobBevelPx = 3,
+				knobBevelAlpha = 0.12,
+				trackShadePx = 3,
+				trackShadeAlpha = 0.25,
+			},
+		} :: { [string]: StickerVariant },
 	},
 }
 

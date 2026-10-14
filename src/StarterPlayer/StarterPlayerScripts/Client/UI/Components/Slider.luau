@@ -13,6 +13,9 @@
 -- The value maths (valueAt, fractionOf, stepped) is pure and unit-tested in Edit mode.
 -- Foam UI (spec 2026-10-09): the bar is a Biscuit track with the InkUI 2 px outline of bars, the fill the Mint accent
 -- with its bevel shade, the knob a Frosting foam disc (outline, bevel, drop). Behaviour unchanged.
+-- UI FINAL R1 (H:444-446, the Volume row): the track 20 base px tall with its 3 px ink border (drawn outside a 14 px
+-- bar, so it shows the design's 20), StickerTrough; the fill the pink volume gradient under a 3 px highlight at .5; the
+-- knob a 36 px white disc with a 4 px ink border inside it, the 3 px ink lip under it and a 3 px bevel at .12.
 
 -- Services
 
@@ -25,11 +28,13 @@ local UserInputService = game:GetService("UserInputService")
 local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
+local Palette = require(Shared.Art.Palette)
 local Log = require(Shared.Util.Log)
 
 local UI = script.Parent.Parent
 local Create = require(UI.Create)
 local Focus = require(UI.Focus)
+local Layout = require(UI.Layout)
 local Theme = require(UI.Theme)
 
 -- Types
@@ -58,11 +63,17 @@ export type Slider = {
 -- Constants
 
 local TOUCH = Config.UI.Touch
-local BAR_HEIGHT_PX = 12
-local FILL_BEVEL_PX = 3
-local KNOB_PX = 26
-local KNOB_BEVEL_PX = 3
-local KNOB_DROP_PX = 2
+local STICKER = Config.UI.Sticker
+local VOLUME = STICKER.bars.volume -- H:444
+local BAR_BORDER_PX = VOLUME.border
+local BAR_HEIGHT_PX = 20 - 2 * BAR_BORDER_PX -- H:444: 20 with the border, drawn outside the bar
+local KNOB_PX = 36 -- H:445
+local KNOB_BORDER_PX = STICKER.border.normal -- H:445
+local KNOB_LIP_PX = STICKER.lip.bar -- H:445: box-shadow 0 3px 0
+local KNOB_BEVEL_PX = 3 -- H:445: inset 0 -3px 0 rgba(0,0,0,.12)
+local KNOB_BEVEL_ALPHA = 0.12
+local WHITE = Color3.new(1, 1, 1)
+local BLACK = Color3.new(0, 0, 0)
 local STICK_THRESHOLD = 0.6 -- reading: a sideways stick push counts as one DPad step
 local DISABLED_TRANSPARENCY = 0.5
 
@@ -138,7 +149,7 @@ function Slider.new(spec: Spec): Slider
 	track.NextSelectionRight = track
 	local bar: Frame = Create("Frame", {
 		Name = "Bar",
-		BackgroundColor3 = Theme.Colors.track, -- Candy UI: the darkest surface, with a faint rim
+		BackgroundColor3 = Theme.Colors.track, -- H:444: the trough
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0, 0.5),
 		Position = UDim2.fromScale(0, 0.5),
@@ -147,8 +158,7 @@ function Slider.new(spec: Spec): Slider
 		Parent = track,
 	})
 	Theme.corner(BAR_HEIGHT_PX, bar)
-	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.bar, bar)
-	Theme.rim(bar, Theme.Colors.rim, 0.75, 1)
+	Theme.stroke(Theme.Colors.inkUI, BAR_BORDER_PX, bar)
 	local fill: Frame = Create("Frame", {
 		Name = "Fill",
 		BorderSizePixel = 0,
@@ -156,34 +166,42 @@ function Slider.new(spec: Spec): Slider
 		Active = false,
 		Parent = bar,
 	})
-	local accent = Theme.Accents.mint
 	Theme.foam(fill, {
 		radius = BAR_HEIGHT_PX,
 		stroke = 0,
-		bevel = FILL_BEVEL_PX,
-		colors = { face = accent.face, bevel = accent.shade },
+		top = VOLUME.fillHighlightPx,
+		colors = {
+			face = Palette.StickerVolumeTop,
+			faceEnd = Palette.StickerVolumeEnd,
+			top = Palette.StickerVolumeTop:Lerp(WHITE, VOLUME.fillHighlightAlpha),
+		},
 	})
+	-- The knob's lip is inside its box under the disc, so the box is KNOB_LIP_PX taller and sits that much lower.
 	local knob: Frame = Create("Frame", {
 		Name = "Knob",
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0, 0.5),
-		Size = UDim2.fromOffset(KNOB_PX, KNOB_PX),
+		Position = UDim2.new(0, 0, 0.5, KNOB_LIP_PX / 2),
+		Size = UDim2.fromOffset(KNOB_PX, KNOB_PX + KNOB_LIP_PX),
 		Active = false,
 		ZIndex = 2,
 		Parent = track,
 	})
+	local knobBands = Layout.stickerBands(KNOB_BORDER_PX, 0, KNOB_BEVEL_PX, KNOB_LIP_PX)
 	Theme.foam(knob, {
-		radius = KNOB_PX,
-		bevel = KNOB_BEVEL_PX,
-		drop = KNOB_DROP_PX,
-		colors = Theme.stickerColors(), -- Candy UI: a light sticker knob on the dark track
+		radius = KNOB_PX / 2,
+		stroke = KNOB_BORDER_PX,
+		inner = true,
+		top = knobBands.top,
+		bevel = knobBands.bevel,
+		drop = knobBands.drop,
+		colors = { face = WHITE, bevel = WHITE:Lerp(BLACK, KNOB_BEVEL_ALPHA), drop = Theme.Colors.inkUI },
 	})
 
 	local function paint()
 		local f = Slider.fractionOf(value, min, max)
 		fill.Size = UDim2.fromScale(f, 1)
-		knob.Position = UDim2.fromScale(f, 0.5)
+		knob.Position = UDim2.new(f, 0, 0.5, KNOB_LIP_PX / 2)
 		local transparency = if enabled then 0 else DISABLED_TRANSPARENCY
 		fill.BackgroundTransparency = transparency
 		knob.BackgroundTransparency = transparency

@@ -429,6 +429,7 @@ local function showOverlayLine(line: string, kind: PopupKind, at: Vector2): Text
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = container,
 	}, "HudNumber", nil, SqueezeController.popupColor(kind))
+	Theme.noOutline(label) -- UI FINAL R1: its own outline below is the only one (it fades with the face)
 	local stroke = Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.text, label)
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	local goals: { [string]: any } = { TextTransparency = 1 }
@@ -1310,14 +1311,15 @@ end
 
 -- Foam UI: the colour of a floating line (with the InkUI outline): Coins in CoinGold (the coin colour, used only for
 -- Coins, §7.2), Grip in the UI Mint, anything else in Lilac (the old slow-training kind "afk"; none since Phase 6);
--- the line's words always say which it is.
+-- the line's words always say which it is. UI FINAL R1: the world floats keep the Candy Mint and Lavender (plan §4:
+-- world UI is kept; the R1 accents moved to the design's hues), until R2 restyles the squeeze floats.
 function SqueezeController.popupColor(kind: string): Color3
 	if kind == "coins" then
 		return Palette.CoinGold
 	elseif kind == "grip" then
-		return Theme.Accents.mint.face
+		return Palette.CandyMint
 	end
-	return Theme.Accents.lilac.face
+	return Palette.CandyLavender
 end
 
 -- Puffs for another player's squeeze `distance` studs from this client (§18.5.1 A1): Effects.othersSqueezePuffs

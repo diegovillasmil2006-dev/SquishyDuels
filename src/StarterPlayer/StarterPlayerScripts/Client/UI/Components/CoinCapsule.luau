@@ -22,6 +22,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
+local Palette = require(Shared.Art.Palette)
 
 local UI = script.Parent.Parent
 local CoinIcon = require(script.Parent.CoinIcon)
@@ -56,9 +57,10 @@ local DEFAULT_DISC_PX = 52
 local DEFAULT_HEIGHT_PX = 44
 local TEXT_GAP_PX = 8 -- between the disc's right edge and the number
 local PADDING_RIGHT_PX = 18
--- Candy UI: the number's gold gradient (Coins only, §7.2: the coin colours stay with the coin).
-local GOLD_TOP = Color3.fromHex("#FFF4B8")
-local GOLD_BOTTOM = Color3.fromHex("#FFC63A")
+-- Candy UI: the number's gold gradient (Coins only, §7.2: the coin colours stay with the coin). UI FINAL R1: the
+-- design's coin number colour (Art/Palette StickerCoinText, H:79), flat.
+local GOLD_TOP = Palette.StickerCoinText
+local GOLD_BOTTOM = Palette.StickerCoinText
 
 -- Module table
 
