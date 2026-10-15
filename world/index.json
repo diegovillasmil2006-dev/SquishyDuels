@@ -1,8 +1,44 @@
 [
 	{
+		"file": "Workspace/BBB_Kit.rbxm",
+		"class": "Model",
+		"name": "BBB_Kit",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/JAR_Kit.rbxm",
+		"class": "Model",
+		"name": "JAR_Kit",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/PFP_Kit.rbxm",
+		"class": "Model",
+		"name": "PFP_Kit",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SDP_Kit.rbxm",
+		"class": "Model",
+		"name": "SDP_Kit",
+		"container": "Workspace"
+	},
+	{
 		"file": "Workspace/SD_Lobby.rbxm",
 		"class": "Model",
 		"name": "SD_Lobby",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SPF_Kit.rbxm",
+		"class": "Model",
+		"name": "SPF_Kit",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/TBC_Kit.rbxm",
+		"class": "Model",
+		"name": "TBC_Kit",
 		"container": "Workspace"
 	},
 	{
