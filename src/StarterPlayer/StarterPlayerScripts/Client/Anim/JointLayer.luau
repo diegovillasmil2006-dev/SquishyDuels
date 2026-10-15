@@ -107,6 +107,8 @@ type JointLayerData = {
 
 -- Constants
 
+local OPTIONAL_JOINTS: { [string]: boolean } = (Config.Anim.joints :: any).optional or {}
+
 local JOINTS_CONFIG = Config.Anim.joints
 -- A kicked (spring) layer is removed once position and speed are below this.
 local SETTLE_EPSILON = JOINTS_CONFIG.springSettleEpsilon
@@ -160,6 +162,9 @@ local function tryResolve(self: JointLayer): boolean
 	for name, path in PoseLibrary.joints(rig) do
 		local part, joint = findJoint(self.character, path)
 		if joint == nil then
+			if OPTIONAL_JOINTS[name] then
+				continue -- a rig without it keeps every other joint (Config.Anim.joints.optional: the throw's legs)
+			end
 			return false
 		end
 		table.insert(states, { name = name, path = path, part = part, joint = joint })

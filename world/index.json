@@ -1,21 +1,9 @@
 [
 	{
-		"file": "Workspace/DuelMaps.rbxm",
-		"class": "Folder",
-		"name": "DuelMaps",
-		"container": "Workspace"
-	},
-	{
 		"file": "Workspace/SD_Lobby.rbxm",
 		"class": "Model",
 		"name": "SD_Lobby",
 		"container": "Workspace"
-	},
-	{
-		"file": "ReplicatedStorage/DuelMapScripts.rbxm",
-		"class": "Folder",
-		"name": "DuelMapScripts",
-		"container": "ReplicatedStorage"
 	},
 	{
 		"file": "ReplicatedStorage/SD_ShapeLibrary.rbxm",
@@ -24,10 +12,10 @@
 		"container": "ReplicatedStorage"
 	},
 	{
-		"file": "ServerStorage/DuelMapKits.rbxm",
+		"file": "ReplicatedStorage/SD_ThrowVfx.rbxm",
 		"class": "Folder",
-		"name": "DuelMapKits",
-		"container": "ServerStorage"
+		"name": "SD_ThrowVfx",
+		"container": "ReplicatedStorage"
 	},
 	{
 		"file": "ServerStorage/Eclipse Animator Saves.rbxm",

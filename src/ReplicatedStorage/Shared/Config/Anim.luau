@@ -97,7 +97,15 @@ local Anim = {
 			Waist = { "UpperTorso", "Waist" },
 			Neck = { "Head", "Neck" },
 			Root = { "LowerTorso", "Root" },
+			-- 2026-10-15 throw overhaul: the legs, for the full-body throws only (Anim/ThrowMotion; no other layer moves
+			-- them, so the Animator's walk and idle own them the rest of the time).
+			RightHip = { "RightUpperLeg", "RightHip" },
+			LeftHip = { "LeftUpperLeg", "LeftHip" },
+			RightKnee = { "RightLowerLeg", "RightKnee" },
+			LeftKnee = { "LeftLowerLeg", "LeftKnee" },
 		} :: { [string]: { string } },
+		-- Joints a rig may lack without disabling its layer (JointLayer skips them): the legs above.
+		optional = { RightHip = true, LeftHip = true, RightKnee = true, LeftKnee = true } :: { [string]: boolean },
 		R6 = {
 			RightShoulder = { "Torso", "Right Shoulder" },
 			LeftShoulder = { "Torso", "Left Shoulder" },
