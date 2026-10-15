@@ -81,6 +81,7 @@ local CONTROLLER_ORDER = {
 	"CapsuleController",
 	"QueueController",
 	"DuelController",
+	"UltReadyTagController",
 	"SettingsController",
 	"OnboardingController",
 	"ProjectileRenderer",
