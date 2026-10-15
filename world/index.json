@@ -12,6 +12,90 @@
 		"container": "Workspace"
 	},
 	{
+		"file": "Workspace/SQ Bench Banana.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Banana",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Birdie.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Birdie",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Boba Bear.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Boba Bear",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Butter.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Butter",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Chocolate.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Chocolate",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Cloud Bunny.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Cloud Bunny",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Cupcake Axolotl.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Cupcake Axolotl",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Donut.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Donut",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Dragon.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Dragon",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Kitty Bread.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Kitty Bread",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Mochi Fox.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Mochi Fox",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Pancake Pup.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Pancake Pup",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Strawberry Frog.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Strawberry Frog",
+		"container": "Workspace"
+	},
+	{
+		"file": "Workspace/SQ Bench Toast.rbxm",
+		"class": "Model",
+		"name": "SQ Bench Toast",
+		"container": "Workspace"
+	},
+	{
 		"file": "ReplicatedStorage/SD_ShapeLibrary.rbxm",
 		"class": "Folder",
 		"name": "SD_ShapeLibrary",
