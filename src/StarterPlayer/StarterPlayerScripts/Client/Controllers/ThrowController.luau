@@ -63,11 +63,6 @@
 --     SoundController's). Other players' pop-ins and stale rejections stay silent (popInSound / rejectSound, pure).
 --   * Other throwers (ThrowStarted with another throwerId): windup scheduled on releaseAt - W (or joined midway),
 --     else straight to release + follow-through; their held model hides and pops in the same way.
---   * Full-body throws (2026-10-15 throw overhaul): an R15 thrower's throw layer plays its toy's style clip
---     (Anim/ThrowMotion, by Anim/ThrowTracks.styleOf; on the windup / release clock and weights above, so the server's
---     timing is unchanged), the legs too when it stood still as the windup began (setStyle); from the release the
---     throwing hand trails a smear in the toy's accent (Anim/ThrowVfx "HandSwoosh", none on a hidden hand). R6 and
---     the ultimate caster keep the poses.
 -- Ultimate (Dragon Rush, §5.9, §9.10; the Epic ultimates, spec phase 5): Q / ButtonL2 / touch, when the locked squishy
 --   has an ultimateId and the charge is full (duel; UltimateCharge) or the practice cooldown (10 s) ran out.
 --   UltimateRequest(seq, flat aim, clientTime). Predicted ultCharge pose until the telegraph (cancelled if none within
@@ -115,9 +110,6 @@ local WorldLayout = require(Shared.World.WorldLayout)
 local Client = script.Parent.Parent
 local Scheduler = require(Client.Anim.Scheduler)
 local SquishRig = require(Client.Anim.SquishRig)
-local ThrowMotion = require(Client.Anim.ThrowMotion)
-local ThrowTracks = require(Client.Anim.ThrowTracks)
-local ThrowVfx = require(Client.Anim.ThrowVfx)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
@@ -157,17 +149,7 @@ export type UltState = {
 
 -- One pose frame of the throw / ultimate layer: blend `from` -> `to` by u, at `weight`; `squash` = 0..1 of the held
 -- squishy's anticipation squash.
--- 2026-10-15: `phase` ("windup" / "release") and `t` (windup share u, or seconds since the release) drive the
--- full-body clip (Anim/ThrowMotion); the ultimate's samples have none.
-export type Sample = {
-	from: string,
-	to: string,
-	u: number,
-	weight: number,
-	squash: number,
-	phase: string?,
-	t: number?,
-}
+export type Sample = { from: string, to: string, u: number, weight: number, squash: number }
 
 -- A throw animation of one character.
 export type Windup = {
@@ -183,10 +165,6 @@ export type Windup = {
 	last: Sample?,
 	finished: boolean,
 	popAt: number?, -- server time the held squishy pops back in (readyAt), known after ThrowStarted
-	squishyId: string?, -- 2026-10-15: the thrown toy (setStyle)
-	style: string?, -- its throw style (Anim/ThrowTracks), whose full-body clip plays (Anim/ThrowMotion)
-	legs: boolean?, -- the clip moves the legs too (the thrower stood still as the windup began)
-	swooshed: boolean?, -- the hand smear has started
 }
 
 export type ThrowStarted = Types.ThrowStartedPayload
@@ -238,8 +216,6 @@ local RULES = Config.Duel.Rules
 local RUSH_VFX = Config.Vfx.DragonRush
 local HITBOX = COMBAT.Hitbox
 local LAYER_THROW = "throw"
-local LEGS_MAX_SPEED = 4 -- studs/s: a thrower moving faster keeps its run (no legs in the clip)
-local SWOOSH_SECONDS = 0.26 -- the hand smear from the release
 local LAYER_ULT = "ult"
 local THROW_PRIORITY = POSES.throwWindup.priority or 2
 local OVERLAY_THROW = "throw"
@@ -369,10 +345,7 @@ end
 -- Pose during the windup at animation time tau.
 function ThrowController.windupSample(tau: number, windup: number): Sample
 	local weight = ThrowController.windupWeight(tau, windup)
-	local sample = newSample("throwWindup", "throwWindup", 0, weight, weight)
-	sample.phase = "windup"
-	sample.t = if windup > 0 then math.clamp(tau / windup, 0, 1) else 1
-	return sample
+	return newSample("throwWindup", "throwWindup", 0, weight, weight)
 end
 
 -- The held squishy during a windup with anticipation squash `squash` (0-1, the sample's): the value its rig is held at
@@ -415,7 +388,7 @@ end
 
 -- Pose t seconds after the release (§9.7): snap to throwRelease (Quint Out), follow to throwFollow (Quad Out), then
 -- the weight returns to 0 (Sine InOut). Returns the sample and whether the throw animation is over.
-local function releasePose(t: number): (Sample, boolean)
+function ThrowController.releaseSample(t: number): (Sample, boolean)
 	if t < SNAP_S then
 		local u = ease(t / SNAP_S, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
 		return newSample("throwWindup", "throwRelease", u, 1, 0), false
@@ -427,13 +400,6 @@ local function releasePose(t: number): (Sample, boolean)
 		return newSample("throwFollow", "throwFollow", 0, 1 - k, 0), false
 	end
 	return newSample("throwFollow", "throwFollow", 0, 0, 0), true
-end
-
-function ThrowController.releaseSample(t: number): (Sample, boolean)
-	local sample, done = releasePose(t)
-	sample.phase = "release"
-	sample.t = t
-	return sample, done
 end
 
 -- A windup that starts now. `deadline` = server time after which an unanswered windup cancels.
@@ -452,15 +418,6 @@ function ThrowController.newWindup(windup: number, deadline: number, remote: boo
 		finished = false,
 		popAt = nil,
 	}
-end
-
--- 2026-10-15: the full-body clip a windup plays (Anim/ThrowMotion): its toy's throw style, and the legs too when the
--- thrower stands still as it begins (a running throw keeps its run). `root` nil = no legs.
-function ThrowController.setStyle(w: Windup, squishyId: string?, root: BasePart?)
-	w.squishyId = squishyId
-	w.style = if squishyId then ThrowTracks.styleOf(squishyId) else nil
-	local v = if root then root.AssemblyLinearVelocity else nil
-	w.legs = v ~= nil and Vector3.new(v.X, 0, v.Z).Magnitude < LEGS_MAX_SPEED
 end
 
 -- Cancels a windup (rejected / unanswered): its last pose fades out over cancelBlendMs.
@@ -505,7 +462,6 @@ function ThrowController.stepWindup(w: Windup, dt: number, serverNow: number): S
 			w.finished = true
 		end
 		local sample = newSample(from.from, from.to, from.u, from.weight * k, from.squash * k)
-		sample.phase, sample.t = from.phase, from.t
 		w.last = sample
 		return sample
 	end
@@ -582,21 +538,6 @@ function ThrowController.blendDegrees(from: string, to: string, u: number, rig: 
 		end
 	end
 	return out
-end
-
--- 2026-10-15: the full-body clip's joint degrees for a throw sample (R15 with a styled windup), else nil (the
--- ultimate, R6, or a windup with no style: blendDegrees).
-function ThrowController.motionDegrees(sample: Sample, rig: string, w: Windup?): { [string]: Vector3 }?
-	if rig ~= "R15" or w == nil or w.style == nil or sample.t == nil then
-		return nil
-	end
-	local legs = w.legs == true
-	if sample.phase == "windup" then
-		return ThrowMotion.windup(w.style :: string, sample.t :: number, legs)
-	elseif sample.phase == "release" then
-		return ThrowMotion.release(w.style :: string, sample.t :: number, legs)
-	end
-	return nil
 end
 
 -- Clamps a direction's pitch to [minDeg, maxDeg] (keeps its heading) and returns a unit vector. A vertical or zero
@@ -1280,7 +1221,7 @@ end
 
 -- Joint layers ------------------------------------------------------------------------------------------------------
 
-local function applyLayer(player: Player, id: string, sample: Sample?, w: Windup?)
+local function applyLayer(player: Player, id: string, sample: Sample?)
 	local layer = CharacterAnimController.getLayer(player)
 	if layer == nil then
 		return
@@ -1295,8 +1236,7 @@ local function applyLayer(player: Player, id: string, sample: Sample?, w: Windup
 	if rig == nil or not layer:isReady() then
 		return
 	end
-	local degrees = ThrowController.motionDegrees(sample, rig, w)
-		or ThrowController.blendDegrees(sample.from, sample.to, sample.u, rig)
+	local degrees = ThrowController.blendDegrees(sample.from, sample.to, sample.u, rig)
 	local anyLayer: any = layer
 	anyLayer:setAngles(id, "override", degrees, sample.weight, THROW_PRIORITY)
 end
@@ -1310,22 +1250,6 @@ local function fadeLayers(player: Player)
 		if layer:has(id) then
 			layer:blendWeight(id, 0, DUEL_END_BLEND_S, true)
 		end
-	end
-end
-
--- 2026-10-15: the throwing hand's smear from the release (Anim/ThrowVfx "HandSwoosh"), in the toy's accent; none on a
--- hidden hand (the local first person hides the body) or a rig without a right hand.
-local function releaseSwoosh(player: Player, w: Windup)
-	local character = player.Character
-	local hand = character and (character:FindFirstChild("RightHand") or character:FindFirstChild("Right Arm"))
-	if hand == nil or not hand:IsA("BasePart") or hand.LocalTransparencyModifier > 0.5 then
-		return
-	end
-	local def = if w.squishyId then Catalog.get(w.squishyId) else nil
-	local accent = if def then Color3.fromHex(def.visuals.accent) else nil
-	local ok, err = pcall(ThrowVfx.swoosh, hand, { accent = accent, seconds = SWOOSH_SECONDS })
-	if not ok then
-		log:warn("hand swoosh failed:", err)
 	end
 end
 
@@ -1397,7 +1321,6 @@ local function fire(ctx: Ctx, aimPoint: Vector3?, ray: Ray?, c: number?, chargeS
 	pending = { seq = seq, sentAt = now, windup = windup }
 	bufferedAt = nil
 	local w = ThrowController.newWindup(windup, now + windup + COCKED_S, false)
-	ThrowController.setStyle(w, ctx.def.id, root)
 	windups[player] = w
 	setSquashOverlay(player, w)
 	return true, nil
@@ -1710,9 +1633,6 @@ local function onThrowStarted(raw: unknown)
 		setSquashOverlay(thrower, w)
 	end
 	local current = w :: Windup
-	if current.style == nil then
-		ThrowController.setStyle(current, payload.squishyId, rootOf(thrower))
-	end
 	current.releaseAt = payload.releaseAt
 	current.popAt = popAt
 end
@@ -2029,11 +1949,7 @@ local function stepThrowers(dt: number, now: number)
 		if not wasReleased and w.releaseStart ~= nil then
 			hideHeld(player, w.popAt or now)
 		end
-		applyLayer(player, LAYER_THROW, sample, w)
-		if sample and sample.phase == "release" and not w.swooshed and not w.cancelled then
-			w.swooshed = true
-			releaseSwoosh(player, w)
-		end
+		applyLayer(player, LAYER_THROW, sample)
 		if w.finished then
 			windups[player] = nil
 			if player == localPlayer() and w.cancelled then
