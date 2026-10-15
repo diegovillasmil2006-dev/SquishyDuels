@@ -240,7 +240,9 @@ local Grip = {
 	-- frame), and the local player's own plate hides while the camera is within ownHideStuds of its Head (first
 	-- person). Validator: 0 < fadeStuds < maxDistance, checkSeconds > 0, ownHideStuds >= 0.
 	Nameplate = {
-		enabled = true,
+		-- Off since 2026-10-15 (jayyyyy: distracting above heads). Diego's HUD shows the Grip level on the player's own
+		-- screen ("GRIP n", UI FINAL H:92-96) and nothing above heads, like Ride a Pet.
+		enabled = false,
 		maxDistance = 60,
 		headOffsetStuds = 2,
 		popScale = 1.2,

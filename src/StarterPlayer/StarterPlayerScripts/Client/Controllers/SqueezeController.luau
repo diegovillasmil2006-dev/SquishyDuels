@@ -787,6 +787,7 @@ end
 
 -- Shows or hides the floating label (labelShownFor) on the held model's Root and keeps its text (panelLabel) and its
 -- px size (labelSize) current. Built once (buildLabel): only Enabled, Adornee, the text and the size change.
+-- Never shown while Config.Squeeze.floatingLabel is false (off since 2026-10-15).
 local function refreshLabel()
 	local l = floatLabel
 	if l == nil then
@@ -795,7 +796,7 @@ local function refreshLabel()
 	local player = localPlayer()
 	local model = if player then HeldSquishyController.getModel(player) else nil
 	local root = if model then model.PrimaryPart else nil
-	local shown = SqueezeController.labelShownFor({
+	local shown = Config.Squeeze.floatingLabel and SqueezeController.labelShownFor({
 		holding = root ~= nil and player ~= nil and HeldSquishyController.isHolding(player),
 		inMatch = inMatch(),
 		lobbyLocked = StateController.isLobbyLocked(),

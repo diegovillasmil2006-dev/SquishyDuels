@@ -32,6 +32,10 @@ local Squeeze = {
 	floodLogDrops = 40,
 	floodLogWindowSeconds = 10, -- ... inside this window is logged once
 	othersCullStuds = 60, -- clients ignore other players' SD_SqueezeAt beyond this distance
+	-- The floating "+N Coins · +N Grip per squeeze" chip over the held squishy (SqueezeController): off since 2026-10-15
+	-- (jayyyyy: distracting; Diego's HUD puts that line above a squeeze button the game doesn't have). The "+N" pop-ups
+	-- on each squeeze stay.
+	floatingLabel = false,
 }
 
 return Squeeze
