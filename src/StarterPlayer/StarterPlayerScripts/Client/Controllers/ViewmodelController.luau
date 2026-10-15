@@ -346,6 +346,9 @@ type View = {
 
 -- Constants
 
+local LIGHT_POP = 0.4 -- 2026-10-15: an uncharged release's share of the charged burst and sparks ...
+local LIGHT_POP_SIZE = 0.45 -- ... and of its burst's speck size (Play check: full-size specks read as blobs)
+
 local FP = Config.FirstPerson
 local U = FP.overlayStudsPerDu
 local SPRINGS = FP.springs
@@ -1125,15 +1128,40 @@ local function chargeEffects(v: View, toy: Toy, pose: ChargePoses.ChargePose, dt
 end
 
 -- The release of a charged throw at the right hand (design: html:335-339): from whiteRingFrom two rings, a burst and
--- sparks that grow with the charge; the thrower's hit-stop at full. Uncharged throws keep their look.
+-- sparks that grow with the charge; the thrower's hit-stop at full. 2026-10-15 throw overhaul: an uncharged throw gets
+-- a light pop too (one small ring in the toy's colour, LIGHT_POP of the base burst and sparks; no white ring, no
+-- hit-stop), so every throw leaves the hand with a snap.
 local function releaseEffects(v: View, power: number, release: ThrowCharge.Release, reduced: boolean)
 	local toy = v.toy
-	if toy == nil or not (power > 0) then
+	if toy == nil then
 		return
 	end
 	local radius = FP.toyLongestDu / 2
 	local at = v.right.pos
 	local r = CHARGE.release
+	if not (power > 0) then
+		v.fx:ring(at, toy.colours[1], around(r.ringFrom, radius), around(r.ringTo, radius), r.ringSeconds)
+		spawnSpecksAt(v, {
+			kind = "burst",
+			count = math.max(1, math.floor(r.burst * LIGHT_POP + 0.5)),
+			shape = "sphere",
+			speed = around(r.burstSpeed, radius),
+			size = around(r.burstSize, radius) * LIGHT_POP_SIZE,
+			life = r.burstLife,
+			gravity = 0,
+		}, at, toy.colours, reduced, nil)
+		spawnSpecksAt(v, {
+			kind = "burst",
+			count = math.max(1, math.floor(r.sparks * LIGHT_POP + 0.5)),
+			shape = "spark",
+			speed = around(r.sparkSpeed * r.sparkSpeedBase, radius),
+			size = around(r.sparkSize, radius),
+			life = r.sparkLife,
+			gravity = 0,
+			drag = r.sparkDrag,
+		}, at, toy.colours, reduced, nil)
+		return
+	end
 	if release.whiteRing then
 		local to = around(r.ringTo + r.ringGain * power, radius)
 		v.fx:ring(at, toy.colours[1], around(r.ringFrom, radius), to, r.ringSeconds)
@@ -1367,7 +1395,7 @@ local function stepAction(v: View, dt: number, now: number, reduced: boolean, se
 	elseif kind == "throw" and throw then
 		local track, t = throw.track, throw.time
 		toyP, toyR = ThrowTracks.toyAt(track, t)
-		sq = ThrowTracks.scaleAt(track, t)
+		sq = ThrowTracks.scaleAt(track, t) * ThrowTracks.flairAt(track, t) -- 2026-10-15: squash and stretch
 		left, right = ThrowTracks.handsAt(track, t, throw.fromL, throw.fromR)
 		rRoll = -(ARM_ROLL + (if t < track.rel then THROW.rollCocked else 0))
 		lRoll = THROW.rollL

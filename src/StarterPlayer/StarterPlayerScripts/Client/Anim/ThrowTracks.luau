@@ -24,6 +24,9 @@
 --   ThrowTracks.handsAt(track, t, fromL, fromR) -> (Vector3, Vector3)   the left and right hand points (du) at t, the
 --       first row of each replaced by where that hand was at the press (design: fp.js:305), so nothing snaps
 --   ThrowTracks.scaleAt(track, t) -> Vector3    the toy's scale keys at t (sling, shove); (1, 1, 1) for the others
+--   ThrowTracks.flairAt(track, t) -> Vector3    2026-10-15 throw overhaul (not the design's rows): for a track without
+--       scale keys, the toy squashes into the cock (wide, short) and stretches along the throw (Z) on the strike, then
+--       springs back over FLAIR_BACK; (1, 1, 1) for sling and shove (their own keys already do it)
 --   ThrowTracks.newClock() -> Clock / ThrowTracks.advance(clock, track, tau?, W?, releaseAt?, now) -> number
 --       the track time this frame from ThrowController.localWindup()'s tau, W and releaseAt and the server time now
 --       (tau nil = the windup record is gone: the clock runs on by itself)
@@ -59,6 +62,9 @@ export type Clock = {
 
 local STRIKE = Config.Anim.throw.releaseSnapMs / 1000
 local DEFAULT_STYLE = "overhand"
+local FLAIR_COCK = Vector3.new(1.1, 0.88, 1.1) -- 2026-10-15: the squash into the cock
+local FLAIR_STRIKE = Vector3.new(0.86, 0.86, 1.3) -- the stretch along the throw on the strike
+local FLAIR_BACK = 0.12 -- seconds after rel back to (1, 1, 1)
 
 -- The design's rows (fp.js:144): the toy at the hold, the hands at the press, the empty hands.
 local TH0 = { 0, 0, -0.13, -0.5, 0, 0.25, 0 } -- design: fp.js:144
@@ -297,6 +303,18 @@ end
 function ThrowTracks.scaleAt(t: Track, time: number): Vector3
 	local sq = t.sq
 	return if sq then kv(sq, time, 2) else Vector3.one
+end
+
+function ThrowTracks.flairAt(t: Track, time: number): Vector3
+	if t.sq ~= nil then
+		return Vector3.one
+	end
+	if time <= t.cock then
+		return Vector3.one:Lerp(FLAIR_COCK, ease(time / math.max(t.cock, 1e-3)))
+	elseif time <= t.rel then
+		return FLAIR_COCK:Lerp(FLAIR_STRIKE, ease((time - t.cock) / math.max(t.rel - t.cock, 1e-3)))
+	end
+	return FLAIR_STRIKE:Lerp(Vector3.one, ease((time - t.rel) / FLAIR_BACK))
 end
 
 function ThrowTracks.newClock(): Clock

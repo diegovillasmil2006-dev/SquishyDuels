@@ -77,6 +77,15 @@
 --   flyInSeconds, then shakes and squashes there as the crush does (Anim/ChargePoses.crushShape) until
 --   CatchController.Burst removes it (the burst's effects are VfxController's; a caught toy with no Burst goes
 --   CAUGHT_GRACE after its burstAt). A first-person catcher sees it in the overlay instead: its world copy goes at once.
+-- * Throw overhaul (2026-10-15; the effects are the VFX Studio library ReplicatedStorage.SD_ThrowVfx, played by
+--   Anim/ThrowVfx): every squishy flies with its own signature trail (Trails/<id>: ribbons and flight particles, sized
+--   to the throw radius and its charge, fewer for another player's practice throw); the rarity trail is only the
+--   fallback (no library, or the trail budget full). The release adds the Release burst at the hand (not for the own
+--   first-person throw: the overlay has its own). A "geometry" impact (floor, wall, cover; groundReacts) no longer
+--   ends in the small splat: from where it touched, at the speed it came in, the toy bounces, rolls and skids on the
+--   real surfaces (Anim/GroundBounce, by its feel: foam, mochi, jelly, plush; down slopes too), with Land / Bounce /
+--   Skid dust, a soft sound on the bigger bounces, then the design's ground splat (face up and flat, peel up facing
+--   its thrower, a breath) and a Poof. Duel throws keep it short. Players, targets and the minor ends are unchanged.
 -- Impact puffs, rings, hit flashes and Dragon Rush visuals are VfxController's.
 
 -- Services
@@ -107,12 +116,14 @@ local Client = script.Parent.Parent
 local ChargePoses = require(Client.Anim.ChargePoses)
 local FxPool = require(Client.Anim.FxPool)
 local FxShapes = require(Client.Anim.FxShapes)
+local GroundBounce = require(Client.Anim.GroundBounce)
 local HitStop = require(Client.Anim.HitStop)
 local MeshQuality = require(Client.Anim.MeshQuality)
 local NearFade = require(Client.Anim.NearFade)
 local Scheduler = require(Client.Anim.Scheduler)
 local SquishDeformer = require(Client.Anim.SquishDeformer)
 local SquishRig = require(Client.Anim.SquishRig)
+local ThrowVfx = require(Client.Anim.ThrowVfx)
 local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
 local CatchController = require(script.Parent.CatchController)
@@ -198,6 +209,9 @@ type Projectile = {
 	lastScale: Vector3,
 	power: number, -- feature 1: ThrowStarted.power (0 = uncharged)
 	caught: Caught?, -- feature 1: caught, flying into the catcher's hands
+	vfx: ThrowVfx.Handle?, -- 2026-10-15: the squishy's signature trail (Anim/ThrowVfx)
+	ground: GroundBounce.State?, -- after a geometry impact: bouncing, rolling, the ground splat
+	skid: ThrowVfx.Handle?, -- the skid dust while it rolls
 }
 
 -- Feature 1: a caught throw's drawn toy (server times but startClock).
@@ -281,6 +295,10 @@ local BUDGETS = VFX.Budgets
 local DETAIL_RANK_SECONDS = 0.25
 local DETAIL_GROUP_STUDS = 1e5 -- detailKey: keeps the incoming / other / own groups apart (studs)
 local PROFILE_RIGS = "SD_Rigs" -- the profiler scope of rig stepping and writes (spec §5)
+local MAX_TRAIL_GROWTH = 1.6 -- 2026-10-15: a full charge grows the signature trail at most this much
+local GROUND_SOUND_MIN = 9 -- studs/s along the normal: a softer bounce stays silent
+local BOUNCE_VOLUME = 0.45
+local POOF_VOLUME = 0.5
 
 -- Module table
 
@@ -784,6 +802,14 @@ local function releaseTrails(p: Projectile)
 		p.emitter = nil
 		pool:release(emitter)
 	end
+	local vfx, skid = p.vfx, p.skid
+	p.vfx, p.skid = nil, nil
+	if vfx then
+		vfx:stop()
+	end
+	if skid then
+		skid:stop()
+	end
 end
 
 -- Frees one trail slot by taking the trails of another player's practice projectile (§9.7: culled first).
@@ -800,6 +826,18 @@ end
 local function attachTrails(p: Projectile, root: BasePart)
 	local def = p.def
 	if def == nil then
+		return
+	end
+	-- 2026-10-15: the squishy's own signature trail (header); a charged throw's is bigger, as the rarity trail's.
+	local widthGain = ThrowCharge.trailFactors(p.power)
+	local handle = ThrowVfx.trail(def.id, {
+		accent = Color3.fromHex(def.visuals.accent),
+		scale = p.payload.radius * math.min(widthGain, MAX_TRAIL_GROWTH),
+		low = not p.high,
+	})
+	if handle then
+		handle:set(ProjectileRenderer.frameAt(root.Position, p.payload.velocity, 0), 0)
+		p.vfx = handle
 		return
 	end
 	local kind = def.visuals.trail
@@ -964,6 +1002,14 @@ local function releaseBeat(p: Projectile, ringScale: number)
 			FxShapes.ring(ahead, velocity, release.powerRingStuds, seconds, accent, THROW_RING.transparencyFrom)
 		end
 	end
+	-- 2026-10-15: the Release burst (VFX Studio library), but not in the own first-person view (the overlay has its own).
+	if not (p.own and FirstPersonController.isActive()) and p.def then
+		ThrowVfx.burst("Release", CFrame.new(from), {
+			accent = Color3.fromHex(p.def.visuals.accent),
+			scale = p.payload.radius,
+			low = not p.high,
+		})
+	end
 	-- Own sounds priority 1; another thrower's is an "other" sound (SoundController gives it -1: dropped first).
 	local options: SoundController.PlayOptions = { at = from }
 	if p.own then
@@ -1035,6 +1081,7 @@ local function removeProjectile(p: Projectile)
 	if live[p.projId] == p then
 		live[p.projId] = nil
 	end
+	p.ground = nil
 	releaseTrails(p)
 	local highlight = p.highlight
 	if highlight then
@@ -1183,6 +1230,11 @@ local function startImpact(
 	if emitter then
 		emitter.Enabled = false
 	end
+	local vfx = p.vfx
+	if vfx then
+		p.vfx = nil
+		vfx:stop()
+	end
 	local shadow = p.shadow
 	if shadow then
 		shadow.Transparency = 1
@@ -1273,11 +1325,19 @@ local function stepFlight(p: Projectile, now: number, dt: number, eye: Vector3?)
 			for _, trail in p.trails do
 				trail.Enabled = false
 			end
+			local vfx = p.vfx
+			if vfx then
+				vfx:setOn(false)
+			end
 			setDetailed(p, false)
 		end
 	end
 	sample.position = position
 	root.CFrame = ProjectileRenderer.poseAt(sample.position, sample.velocity, sample.roll, sample.nod)
+	local vfx = p.vfx
+	if vfx then
+		vfx:set(ProjectileRenderer.frameAt(sample.position, sample.velocity, 0), sample.roll)
+	end
 	setNear(p, ProjectileRenderer.nearFadeAt(eye, sample.position, p.own, tau))
 	local rig, out = p.rig, p.out
 	local drawn = sample.scale
@@ -1303,6 +1363,168 @@ local function stepFlight(p: Projectile, now: number, dt: number, eye: Vector3?)
 	p.lastPosition = sample.position
 	p.lastVelocity = sample.velocity
 	p.lastScale = drawn
+	return true
+end
+
+-- 2026-10-15 throw overhaul: the ground reaction (Anim/GroundBounce) ----------------------------------------------
+
+-- GroundBounce's cast: the contact-hold exclusions (characters, SD_ClientFx, test dummies): (position, normal) or nil.
+local function groundCast(origin: Vector3, direction: Vector3): (Vector3?, Vector3?)
+	local hit = Workspace:Raycast(origin, direction, contactRaycastParams())
+	if hit then
+		return hit.Position, hit.Normal
+	end
+	return nil, nil
+end
+
+-- A frame whose Y axis is `normal`: the surface bursts (their Attachment Y is the normal).
+local function surfaceFrame(position: Vector3, normal: Vector3): CFrame
+	local n = if normal.Magnitude > 1e-6 then normal.Unit else Vector3.yAxis
+	local ref = if math.abs(n.Y) > 0.9 then Vector3.xAxis else Vector3.yAxis
+	return CFrame.fromMatrix(position, ref:Cross(n).Unit, n)
+end
+
+-- The toy's feel (its blueprint motion.feel: foam, mochi, jelly, plush), nil when unknown.
+local function feelOf(p: Projectile): string?
+	local def = p.def
+	local blueprint = if def then SquishyBlueprints[def.blueprintId] else nil
+	local motion = if blueprint then blueprint.motion else nil
+	return if motion then motion.feel else nil
+end
+
+local function vfxOptions(p: Projectile): ThrowVfx.Options
+	return {
+		accent = if p.def then Color3.fromHex(p.def.visuals.accent) else nil,
+		feel = feelOf(p),
+		scale = p.payload.radius,
+		low = not p.high,
+	}
+end
+
+local function groundSound(p: Projectile, at: Vector3, key: string, volume: number, pitch: number)
+	local options: SoundController.PlayOptions = { at = at, volume = volume, pitch = pitch }
+	if p.own then
+		options.priority = 1
+	else
+		options.other = "throw"
+	end
+	local ok, err = pcall(SoundController.play, key, options)
+	if not ok then
+		log:warn("ground sound failed:", err)
+	end
+end
+
+-- The effects of one frame's GroundBounce events. The first touch-down's sound is VfxController's (its impact).
+local function groundEvents(p: Projectile, events: { GroundBounce.Event })
+	local radius = p.payload.radius
+	for _, e in events do
+		local floor = e.position - e.normal * radius
+		if e.kind == "land" or e.kind == "bounce" then
+			ThrowVfx.burst(if e.kind == "land" then "Land" else "Bounce", surfaceFrame(floor, e.normal), vfxOptions(p))
+			if e.kind == "bounce" and e.speed >= GROUND_SOUND_MIN then
+				local loud = math.clamp(e.speed / 40, 0.35, 1)
+				groundSound(p, floor, "sfx.impactSoft", BOUNCE_VOLUME * loud, 1 + (1 - loud) * 0.3)
+			end
+			local deformer = p.deformer
+			if deformer then
+				deformer:setFace("squish")
+			end
+		elseif e.kind == "skid" then
+			if e.on and p.skid == nil then
+				p.skid = ThrowVfx.hold("Skid", vfxOptions(p))
+			end
+			local skid = p.skid
+			if skid then
+				skid:setOn(e.on == true)
+			end
+		elseif e.kind == "rest" then
+			ThrowVfx.burst("Settle", surfaceFrame(floor, e.normal), vfxOptions(p))
+		elseif e.kind == "peel" then
+			local deformer = p.deformer
+			if deformer then
+				deformer:setFace("normal")
+			end
+		elseif e.kind == "poof" then
+			ThrowVfx.burst("Poof", CFrame.new(e.position), vfxOptions(p))
+			groundSound(p, e.position, "sfx.pop", POOF_VOLUME, 1.1)
+		end
+	end
+end
+
+-- A geometry impact starts the ground reaction instead of the minor splat: the drawn toy's centre one radius off the
+-- surface under the server's point (that point may be the centre or the contact), at the speed it came in at.
+local function startGround(p: Projectile, position: Vector3, normal: Vector3)
+	setDetailed(p, false)
+	for _, trail in p.trails do
+		trail.Enabled = false
+	end
+	local emitter = p.emitter
+	if emitter then
+		emitter.Enabled = false
+	end
+	local vfx = p.vfx
+	if vfx then
+		p.vfx = nil
+		vfx:stop()
+	end
+	local n = normal.Unit
+	local radius = p.payload.radius
+	local surface, surfaceNormal = groundCast(position + n * (radius + 1), -n * (radius + 3))
+	local up = surfaceNormal or n
+	local centre = (surface or position) + up * radius
+	local thrower = p.thrower
+	local character = thrower and thrower.Character
+	local throwerRoot = character and character:FindFirstChild("HumanoidRootPart")
+	local lookBack = if throwerRoot and throwerRoot:IsA("BasePart")
+		then throwerRoot.Position - centre
+		else -p.lastVelocity
+	local state, events = GroundBounce.new(
+		centre,
+		p.lastVelocity,
+		up,
+		radius,
+		p.payload.gravity,
+		feelOf(p),
+		{ duel = p.duel, lookBack = lookBack }
+	)
+	p.ground = state
+	p.contact = nil
+	local shadow = p.shadow
+	if shadow then
+		shadow.Transparency = 1 -- it is on the ground now
+	end
+	groundEvents(p, events)
+end
+
+-- `eye`: the camera while first person is on (the near fade), else nil.
+local function stepGround(p: Projectile, dt: number, eye: Vector3?): boolean
+	local state = p.ground :: GroundBounce.State
+	local root, deformer = p.root, p.deformer
+	if root == nil or deformer == nil or root.Parent == nil then
+		return false
+	end
+	groundEvents(p, GroundBounce.step(state, dt, groundCast))
+	if state.phase == "done" then
+		return false
+	end
+	local frame, scale = GroundBounce.pose(state)
+	root.CFrame = frame
+	deformer:setScale(scale)
+	local near = ProjectileRenderer.nearFadeAt(eye, state.position, false, 0)
+	local fade = ProjectileRenderer.partFade(GroundBounce.fade(state), near)
+	setFade(p, fade)
+	local highlight = p.highlight
+	if highlight then
+		highlight.OutlineTransparency, highlight.FillTransparency =
+			ProjectileRenderer.outlineFade(fade, VFX.Projectile.fillTransparency)
+	end
+	p.near = near
+	local skid = p.skid
+	if skid then
+		skid:set(surfaceFrame(state.position - state.normal * p.payload.radius, state.normal))
+	end
+	p.lastPosition = state.position
+	p.lastScale = scale
 	return true
 end
 
@@ -1354,7 +1576,9 @@ local function step(dt: number, clock: number): boolean
 	local eye = if camera and FirstPersonController.isActive() then camera.CFrame.Position else nil
 	for projId, p in live do
 		local ok, keep = pcall(function(): boolean
-			if p.impact ~= nil then
+			if p.ground ~= nil then
+				return stepGround(p, dt, eye)
+			elseif p.impact ~= nil then
 				return stepImpact(p, eye)
 			elseif p.caught ~= nil then
 				return stepCaught(p, now, eye) -- feature 1: no lifetime check, the Burst ends it
@@ -1426,6 +1650,9 @@ local function onThrowStarted(raw: unknown)
 		lastScale = Vector3.one,
 		power = ProjectileRenderer.powerOf(payload.power),
 		caught = nil,
+		vfx = nil,
+		ground = nil,
+		skid = nil,
 	}
 end
 
@@ -1435,8 +1662,8 @@ local function onThrowImpact(raw: unknown)
 		return
 	end
 	local p = live[impact.projId]
-	if p == nil then
-		return -- not ours to draw (e.g. a Dragon Rush lane, or a projectile we never saw)
+	if p == nil or p.ground ~= nil then
+		return -- not ours to draw (e.g. a Dragon Rush lane, or a projectile we never saw), or already on the ground
 	end
 	stats.impacts += 1
 	if not p.spawned then
@@ -1454,6 +1681,10 @@ local function onThrowImpact(raw: unknown)
 	local holdStart = if seconds ~= nil
 		then HitStop.trigger(impact.projId, seconds, os.clock(), Tweens.reducedMotion())
 		else nil
+	if ProjectileRenderer.groundReacts(impact.kind, impact.normal, p.caught ~= nil) then
+		startGround(p, impact.position, impact.normal :: Vector3) -- 2026-10-15: bounce, roll, ground splat (header)
+		return
+	end
 	local flash = ProjectileRenderer.impactFlashOn(impact.kind, localIsVictim, FirstPersonController.isActive())
 	startImpact(p, impact.position, impact.normal, MAJOR_KINDS[impact.kind] == true, flash, holdStart)
 end
@@ -1483,6 +1714,11 @@ local function onCaught(event: CatchController.Event)
 	if emitter then
 		emitter.Enabled = false
 	end
+	local vfx = p.vfx
+	if vfx then
+		p.vfx = nil
+		vfx:stop()
+	end
 	p.caught = {
 		catcherId = event.catcherId,
 		at = event.at,
@@ -1505,7 +1741,7 @@ end
 -- out of a match.
 local function clearDuel(outOfMatch: boolean)
 	for _, p in live do
-		if p.duel and ProjectileRenderer.removeOnMatchEnd(p.impact ~= nil, outOfMatch) then
+		if p.duel and ProjectileRenderer.removeOnMatchEnd(p.impact ~= nil or p.ground ~= nil, outOfMatch) then
 			removeProjectile(p)
 		end
 	end
@@ -1538,6 +1774,13 @@ end
 -- stepImpact); only the ones still in flight go. Out of a match (the view is gone: back in the lobby) everything goes.
 function ProjectileRenderer.removeOnMatchEnd(impactStarted: boolean, outOfMatch: boolean): boolean
 	return outOfMatch or not impactStarted
+end
+
+-- 2026-10-15 (pure, unit-tested): whether an impact starts the ground reaction (Anim/GroundBounce) instead of the
+-- splat: a "geometry" hit with a normal (floor, wall, cover) on a toy still flying. Players, targets, "expired" and
+-- "fizzle" keep theirs.
+function ProjectileRenderer.groundReacts(kind: string, normal: Vector3?, caught: boolean): boolean
+	return kind == "geometry" and normal ~= nil and normal.Magnitude > 1e-6 and not caught
 end
 
 -- The contact-hold ray params (Default group; characters, SD_ClientFx and the Studio test dummies excluded; rebuilt at

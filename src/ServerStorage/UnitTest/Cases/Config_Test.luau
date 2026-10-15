@@ -551,9 +551,10 @@ return function(t: Context)
 		"validate reports a dash pose on a missing joint, a pulse above 3 Hz and a roller spin above 720°/s",
 		function()
 			local joint = validateBrokenCopy(t.Shared, "Anim", function(anim)
-				anim.dash.keys.F[2].angles.LeftHip = Vector3.new(10, 0, 0)
+				-- LeftAnkle: a joint the layer still has not (the legs' hips and knees came with the throw, 2026-10-15)
+				anim.dash.keys.F[2].angles.LeftAnkle = Vector3.new(10, 0, 0)
 			end)
-			expect.truthy(containsAll(joint, { "Config.Anim.dash.keys.F", "LeftHip" }))
+			expect.truthy(containsAll(joint, { "Config.Anim.dash.keys.F", "LeftAnkle" }))
 			local fade = validateBrokenCopy(t.Shared, "Anim", function(anim)
 				anim.dash.holdFadeInFrames = 0
 			end)
