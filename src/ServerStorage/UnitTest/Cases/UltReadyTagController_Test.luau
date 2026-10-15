@@ -56,6 +56,18 @@ return function(t: Context)
 		end
 	end)
 
+	t.test("shownFor: Studio test dummies get no tag (no Player to stand on)", function()
+		local v = view("Active", false, true)
+		v.opponent.isTestDummy = true
+		expect.deepEqual(Tag.shownFor(v, 1), {})
+	end)
+
+	t.test("init / start / destroy run cleanly in Edit mode (no LocalPlayer, no duel)", function()
+		Tag.init()
+		Tag.start()
+		Tag.destroy()
+	end)
+
 	t.test("scaleAt: ReducedMotion holds at 1 once popped", function()
 		local popEnd = MOTION.readyPop.ms / 1000
 		expect.near(Tag.scaleAt(popEnd + 0.37, true), 1, 1e-6)

@@ -219,6 +219,16 @@ local UI = {
 		gapPx = 8,
 	},
 
+	-- jayyyyy 2026-10-15: the READY badge above other duelists whose ultimate is charged (UltReadyTagController).
+	-- guiPx: the BillboardGui (room for the chip and its pop); the offset sits above the Head, rootToHeadStuds more
+	-- when only the HumanoidRootPart is there; maxDistanceStuds covers a whole arena (72 x 104).
+	UltReadyTag = {
+		guiPx = Vector2.new(140, 48),
+		headOffsetStuds = 2.5,
+		rootToHeadStuds = 1.5,
+		maxDistanceStuds = 140,
+	},
+
 	-- Feature 1 (2026-10-11): the charge on the reticle, the catch prompt under it and the catch's big words
 	-- (DuelController, PracticeController, UI/DuelFormat; design: the combat-effects page "Squishy Combat FP v2.html",
 	-- html:28, 88, 301, 670-674).

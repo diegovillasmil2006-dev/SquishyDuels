@@ -4,19 +4,20 @@
 -- (Components/Chip with Strings.duel.ultReady, raised, DuelController's READY_CHIP_PX 24) instead of new art.
 -- * One BillboardGui per OTHER duelist whose ultimate is charged (StateController's duel view: participant.ultReady,
 --   kept from UltimateCharge); the local player's own READY stays on the duel HUD. It lives in this client's PlayerGui
---   with the character's Head (else its HumanoidRootPart) as Adornee, HEAD_OFFSET_STUDS above it, the same px size at
---   any distance, LightInfluence 0, AlwaysOnTop false (walls hide it) and MaxDistance MAX_DISTANCE.
+--   with the character's Head (else its HumanoidRootPart) as Adornee, UltReadyTag.headOffsetStuds above it, the same
+--   px size at any distance, LightInfluence 0, AlwaysOnTop false (walls hide it) and MaxDistance maxDistanceStuds.
 -- * Shown while the match is on (shownFor, pure: not Result, Returning, Cancelled or Void); hidden at once when the
 --   charge is spent, the duelist leaves or the match ends.
 -- * Motion like the HUD's READY (DuelController, §18.5.2 B8): it pops Config.UI.motion.readyPop.from -> 1 when it
 --   appears (DuelFormat.readyPop), then pulses 1 ± PULSE_SCALE every motion.ultReadyPulseSeconds; static under
---   ReducedMotion (Anim/Tweens). One RenderStepped connection, only while at least one tag shows.
+--   ReducedMotion (Anim/Tweens). One Anim/Scheduler "render" effect (DESIGN §9.1 #3: the Scheduler holds the client's
+--   only per-frame connections), only while at least one tag shows.
+-- * Sizes and distances: Config.UI.UltReadyTag. Studio test dummies get no tag (no Player to stand on).
 
 -- Services
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 
 -- Requires
 
@@ -27,6 +28,7 @@ local Log = require(Shared.Util.Log)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 local Create = require(Client.UI.Create)
 local DuelFormat = require(Client.UI.DuelFormat)
@@ -36,12 +38,9 @@ local StateController = require(script.Parent.StateController)
 -- Constants
 
 local MOTION = Config.UI.motion
+local TAG = Config.UI.UltReadyTag
 local CHIP_PX = 24 -- DuelController LAYOUT.READY_CHIP_PX: the same badge as on the HUD
 local PULSE_SCALE = 0.08 -- DuelController LAYOUT.READY_PULSE_SCALE
-local GUI_SIZE = UDim2.fromOffset(140, 48) -- room for the chip and its pop
-local HEAD_OFFSET_STUDS = 2.5 -- above the Head (the root part: 1.5 more)
-local ROOT_TO_HEAD_STUDS = 1.5
-local MAX_DISTANCE = 140 -- studs: a whole arena (72 x 104) and then some
 local END_PHASES: { [string]: boolean } = { Result = true, Returning = true, Cancelled = true, Void = true }
 
 -- Types
@@ -63,7 +62,7 @@ local UltReadyTagController = {}
 local log = Log.new("UltReadyTag")
 local cleanup: any = nil
 local tags: { [number]: Tag } = {}
-local stepConnection: RBXScriptConnection? = nil
+local stepHandle: Scheduler.Handle? = nil
 
 -- Public (pure)
 
@@ -75,7 +74,12 @@ function UltReadyTagController.shownFor(view: any, localUserId: number?): { numb
 		return out
 	end
 	for _, participant in { view.you, view.opponent } do
-		if type(participant) == "table" and participant.ultReady == true and participant.userId ~= localUserId then
+		if
+			type(participant) == "table"
+			and participant.ultReady == true
+			and participant.isTestDummy ~= true
+			and participant.userId ~= localUserId
+		then
 			table.insert(out, participant.userId)
 		end
 	end
@@ -126,9 +130,9 @@ local function removeTag(userId: number)
 end
 
 local function stopStepping()
-	if stepConnection then
-		stepConnection:Disconnect()
-		stepConnection = nil
+	if stepHandle then
+		stepHandle:disconnect()
+		stepHandle = nil
 	end
 end
 
@@ -146,7 +150,7 @@ local function step()
 		else
 			if tag.gui.Adornee ~= adornee then
 				tag.gui.Adornee = adornee
-				tag.gui.StudsOffset = Vector3.new(0, HEAD_OFFSET_STUDS + (if isHead then 0 else ROOT_TO_HEAD_STUDS), 0)
+				tag.gui.StudsOffset = Vector3.new(0, TAG.headOffsetStuds + (if isHead then 0 else TAG.rootToHeadStuds), 0)
 			end
 			tag.gui.Enabled = true
 			tag.scale.Scale = UltReadyTagController.scaleAt(now - tag.since, reduced)
@@ -162,10 +166,10 @@ local function addTag(userId: number)
 	end
 	local gui: BillboardGui = Create("BillboardGui", {
 		Name = "SD_UltReady_" .. userId,
-		Size = GUI_SIZE,
+		Size = UDim2.fromOffset(TAG.guiPx.X, TAG.guiPx.Y),
 		LightInfluence = 0,
 		AlwaysOnTop = false,
-		MaxDistance = MAX_DISTANCE,
+		MaxDistance = TAG.maxDistanceStuds,
 		ResetOnSpawn = false,
 		Enabled = false,
 	})
@@ -181,14 +185,18 @@ local function addTag(userId: number)
 	local scale: UIScale = Create("UIScale", { Name = "Pop", Parent = chip.root })
 	gui.Parent = playerGui
 	tags[userId] = { userId = userId, gui = gui, scale = scale, chip = chip, since = os.clock() }
-	if stepConnection == nil then
-		stepConnection = RunService.RenderStepped:Connect(function()
+	if stepHandle == nil then
+		stepHandle = Scheduler.add(function(): boolean
 			local ok, err = pcall(step)
 			if not ok then
-				stopStepping()
 				log:error("ult ready tag update failed:", err)
 			end
-		end)
+			local alive = ok and next(tags) ~= nil
+			if not alive then
+				stepHandle = nil
+			end
+			return alive
+		end, "render")
 	end
 end
 
@@ -222,7 +230,7 @@ function UltReadyTagController.start()
 	if c == nil then
 		return
 	end
-	c:add(StateController.DuelChanged:Connect(function(view)
+	c:add(StateController.DuelChanged:connect(function(view: StateController.DuelView?)
 		local ok, err = pcall(refresh, view)
 		if not ok then
 			log:error("ult ready tags refresh failed:", err)
