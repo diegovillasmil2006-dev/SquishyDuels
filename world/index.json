@@ -1,26 +1,8 @@
 [
 	{
-		"file": "Workspace/BBB_Kit.rbxm",
-		"class": "Model",
-		"name": "BBB_Kit",
-		"container": "Workspace"
-	},
-	{
-		"file": "Workspace/JAR_Kit.rbxm",
-		"class": "Model",
-		"name": "JAR_Kit",
-		"container": "Workspace"
-	},
-	{
-		"file": "Workspace/PFP_Kit.rbxm",
-		"class": "Model",
-		"name": "PFP_Kit",
-		"container": "Workspace"
-	},
-	{
-		"file": "Workspace/SDP_Kit.rbxm",
-		"class": "Model",
-		"name": "SDP_Kit",
+		"file": "Workspace/DuelMaps.rbxm",
+		"class": "Folder",
+		"name": "DuelMaps",
 		"container": "Workspace"
 	},
 	{
@@ -30,22 +12,22 @@
 		"container": "Workspace"
 	},
 	{
-		"file": "Workspace/SPF_Kit.rbxm",
-		"class": "Model",
-		"name": "SPF_Kit",
-		"container": "Workspace"
-	},
-	{
-		"file": "Workspace/TBC_Kit.rbxm",
-		"class": "Model",
-		"name": "TBC_Kit",
-		"container": "Workspace"
+		"file": "ReplicatedStorage/DuelMapScripts.rbxm",
+		"class": "Folder",
+		"name": "DuelMapScripts",
+		"container": "ReplicatedStorage"
 	},
 	{
 		"file": "ReplicatedStorage/SD_ShapeLibrary.rbxm",
 		"class": "Folder",
 		"name": "SD_ShapeLibrary",
 		"container": "ReplicatedStorage"
+	},
+	{
+		"file": "ServerStorage/DuelMapKits.rbxm",
+		"class": "Folder",
+		"name": "DuelMapKits",
+		"container": "ServerStorage"
 	},
 	{
 		"file": "ServerStorage/Eclipse Animator Saves.rbxm",
