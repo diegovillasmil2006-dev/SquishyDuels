@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=Gochi+Hand&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#f3f2f2;color:#201e1d;font-family:Archivo,sans-serif}
+a{color:#b8250e}a:hover{color:#ec3013}
+</style>
+</helmet>
+<div style="padding:40px clamp(16px,4vw,48px) 80px;max-width:1440px;display:flex;flex-direction:column;gap:0">
+  <header style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px 40px;padding-bottom:28px;border-bottom:2px solid #201e1d">
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#b8250e">Squishy Duels · Level design</div>
+      <h1 style="margin:0;font-size:clamp(36px,5vw,60px);line-height:1;font-weight:800;letter-spacing:-.02em">Duels map concepts</h1>
+      <p style="margin:0;max-width:52ch;font-size:16px;line-height:1.5;text-wrap:pretty">Three Team Deathmatch maps for 6v6 and three Free-for-all maps for 12 players, built for short and mid range fights. Each map has a rough sketch, a clean minimap and a Blender build list. Sizes are in Roblox studs. A player is about 5 studs tall.</p>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 16px;align-content:end;font-size:14px">
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="2" y="3" width="24" height="12" fill="#7b6cff" stroke="#fff" stroke-width="1.5"></rect></svg>Cover (5–7 studs)</div>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="2" y="3" width="24" height="12" fill="#8fe3c8" stroke="#201e1d" stroke-width="1"></rect></svg>Platform +1 (8 studs)</div>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="2" y="3" width="24" height="12" fill="#d6fff2" stroke="#201e1d" stroke-width="2.5"></rect></svg>Platform +2 (16 studs)</div>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="2" y="3" width="24" height="12" fill="#8fe3c8"></rect><path d="M7 3v12M12 3v12M17 3v12M22 3v12" stroke="#fff" stroke-width="1.5"></path></svg>Ramp / stairs</div>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="2" y="3" width="24" height="12" fill="rgba(255,90,95,.35)" stroke="#ff5a5f" stroke-dasharray="3 2"></rect></svg>Red spawn</div>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="2" y="3" width="24" height="12" fill="rgba(59,169,255,.35)" stroke="#3ba9ff" stroke-dasharray="3 2"></rect></svg>Blue spawn</div>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="2" y="3" width="24" height="12" fill="rgba(255,200,40,.45)" stroke="#e0a400" stroke-dasharray="3 2"></rect></svg>FFA spawn</div>
+      <div style="display:flex;gap:10px;align-items:center"><svg width="28" height="18"><rect x="9" y="4" width="10" height="10" transform="rotate(45 14 9)" fill="#ff2e93" stroke="#fff" stroke-width="1.5"></rect></svg>Power-up</div>
+    </div>
+  </header>
+
+  <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="2">
+    <section style="display:flex;flex-direction:column">
+      <div style="display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;justify-content:space-between;padding:36px 0 14px;border-bottom:2px solid #201e1d">
+        <h2 style="margin:0;font-size:clamp(26px,3vw,36px);font-weight:800;letter-spacing:-.01em">{{ sec.title }}</h2>
+        <div style="font-size:15px;color:#4a4644;max-width:60ch">{{ sec.rule }}</div>
+      </div>
+      <sc-for list="{{ sec.maps }}" as="m" hint-placeholder-count="3">
+        <article style="display:flex;flex-direction:column;gap:20px;padding:28px 0 36px;border-bottom:2px solid #201e1d">
+          <div style="display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline">
+            <span style="font-size:15px;font-weight:700;color:#ec3013">{{ m.num }}</span>
+            <h3 style="margin:0;font-size:clamp(24px,2.6vw,30px);font-weight:800">{{ m.name }}</h3>
+            <span style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 8px;background:#fde0da;color:#8e1d0b">{{ m.mode }}</span>
+            <span style="font-size:15px;color:#4a4644">{{ m.theme }}</span>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px;align-items:start">
+            <div style="display:flex;flex-direction:column;gap:18px">
+              <p style="margin:0;font-size:16px;line-height:1.55;text-wrap:pretty">{{ m.desc }}</p>
+              <div style="display:grid;grid-template-columns:auto 1fr;border-top:2px solid #201e1d;font-size:14px">
+                <sc-for list="{{ m.stats }}" as="s" hint-placeholder-count="4">
+                  <div style="padding:9px 16px 9px 0;border-bottom:1px solid #cfcbca;font-weight:700">{{ s.k }}</div>
+                  <div style="padding:9px 0;border-bottom:1px solid #cfcbca">{{ s.v }}</div>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#4a4644">Flow</div>
+                <p style="margin:0;font-size:14px;line-height:1.55;color:#33302e;text-wrap:pretty">{{ m.flow }}</p>
+              </div>
+            </div>
+            <figure style="margin:0;display:flex;flex-direction:column;gap:8px">
+              <div style="background:#fff;border:2px solid #201e1d;padding:10px">{{ m.sketch }}</div>
+              <figcaption style="font-size:13px;color:#4a4644">Rough sketch</figcaption>
+            </figure>
+            <figure style="margin:0;display:flex;flex-direction:column;gap:8px">
+              <div style="background:{{ m.frame }};border:2px solid #201e1d;padding:10px">{{ m.mini }}</div>
+              <figcaption style="font-size:13px;color:#4a4644">Clean minimap · top = north</figcaption>
+            </figure>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:0;overflow-x:auto">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#4a4644;padding-bottom:8px">Blender build list</div>
+            <div style="display:grid;grid-template-columns:minmax(150px,1.2fr) minmax(130px,1fr) 56px minmax(200px,2.4fr);min-width:620px;font-size:14px;border-top:2px solid #201e1d">
+              <div style="padding:8px 12px 8px 0;font-weight:700;border-bottom:2px solid #201e1d">Model</div>
+              <div style="padding:8px 12px 8px 0;font-weight:700;border-bottom:2px solid #201e1d">Size W×D×H</div>
+              <div style="padding:8px 12px 8px 0;font-weight:700;border-bottom:2px solid #201e1d">Qty</div>
+              <div style="padding:8px 0;font-weight:700;border-bottom:2px solid #201e1d">Notes</div>
+              <sc-for list="{{ m.builds }}" as="b" hint-placeholder-count="6">
+                <div style="padding:8px 12px 8px 0;border-bottom:1px solid #cfcbca;font-weight:600">{{ b.0 }}</div>
+                <div style="padding:8px 12px 8px 0;border-bottom:1px solid #cfcbca;font-variant-numeric:tabular-nums">{{ b.1 }}</div>
+                <div style="padding:8px 12px 8px 0;border-bottom:1px solid #cfcbca;font-variant-numeric:tabular-nums">{{ b.2 }}</div>
+                <div style="padding:8px 0;border-bottom:1px solid #cfcbca;color:#33302e">{{ b.3 }}</div>
+              </sc-for>
+            </div>
+          </div>
+        </article>
+      </sc-for>
+    </section>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;wobble&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:2.2,&quot;min&quot;:0,&quot;max&quot;:5,&quot;step&quot;:0.1,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;Sketch&quot;},&quot;sketchLabels&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Sketch&quot;},&quot;showGrid&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Minimap&quot;}}">
+const h = React.createElement;
+
+const MAPS = [
+{ id:'toybox', mode:'TDM', name:'Toy Box Clash', theme:'Giant bedroom floor', w:160, h:240, sym:2,
+  pal:{ground:'#ffe6a8',floor:'#ffd0e1',block:'#7b6cff',p1:'#8fe3c8',p2:'#d6fff2',frame:'#2b2160'},
+  desc:'A bedroom floor seen from a squishy\'s height. Toy blocks, crayon boxes and a toy car are the cover, and a pillow fort on the rug sits in the middle.',
+  flow:'Three lanes. The book stack flank gives high ground and a power-up, but you can see it from mid. The middle lane goes over the rug fort, where the main power-up spawns. The toy car lane is the short-range route.',
+  els:[
+    {t:'floor',x:30,y:85,w:100,h:70,c:1,l:'rug'},
+    {t:'spawnA',x:45,y:212,w:70,h:22},
+    {t:'block',x:28,y:192,w:18,h:14,l:'toy blocks'},
+    {t:'block',x:114,y:192,w:18,h:14},
+    {t:'p1',x:8,y:146,w:26,h:40,l:'book stack +1'},
+    {t:'ramp',x:8,y:186,w:26,h:12},
+    {t:'block',x:118,y:150,w:24,h:12,rot:-15,l:'toy car'},
+    {t:'block',x:60,y:168,w:40,h:9,l:'crayon box'},
+    {t:'block',x:66,y:140,w:28,h:6,l:'pillow'},
+    {t:'circle',x:138,y:214,r:7,l:'ball'},
+    {t:'p1',x:62,y:108,w:36,h:24,c:1,l:'rug fort +1'},
+    {t:'ramp',x:46,y:112,w:16,h:16,c:1},{t:'ramp',x:98,y:112,w:16,h:16,c:1},
+    {t:'pick',x:80,y:120,c:1},{t:'pick',x:21,y:166}
+  ],
+  builds:[
+    ['Toy block','18×14×7','4','Bevelled cube with a letter decal, bright primary colors'],
+    ['Book stack platform','26×40×8','2','3 stacked books, walkable top cover'],
+    ['Book ramp','26×12×8','2','Leaning book or wedge, about 30° slope'],
+    ['Toy car','24×12×6','2','Chunky round wheels, rotated 15°'],
+    ['Crayon box','40×9×6','2','Long low cover with crayons poking out'],
+    ['Pillow wall','28×6×5','2','Puffy rounded edges, crouch-height cover'],
+    ['Rug fort','36×24×8','1','Center platform with blanket roof edges, plus 2 ramps 16×16'],
+    ['Bouncy ball','⌀14','2','Sphere with stripes, decorative cover near spawn'],
+    ['Rug decal','100×70','1','Flat plane with a star pattern, no collision']
+  ]},
+{ id:'sprinkle', mode:'TDM', name:'Sprinkle Factory', theme:'Candy factory floor', w:160, h:240, sym:2,
+  pal:{ground:'#ffd6ec',floor:'#fff2a8',block:'#ff5fa2',p1:'#9ad8ff',p2:'#e2f4ff',frame:'#3a1d4f'},
+  desc:'A candy factory with conveyor belts that split the lanes, a big mixing vat in the middle and catwalks on the flanks.',
+  flow:'The conveyor belts run along the lanes and block cross-map shots. Each team has a +2 catwalk on its right flank, so both sides get the same high ground. You can fight around the vat in the middle or take a power-up on either side of it.',
+  els:[
+    {t:'floor',x:50,y:60,w:60,h:120,c:1,l:'sugar floor'},
+    {t:'spawnA',x:45,y:212,w:70,h:22},
+    {t:'block',x:36,y:142,w:8,h:52,l:'conveyor'},
+    {t:'block',x:116,y:150,w:8,h:40},
+    {t:'block',x:58,y:182,w:14,h:14,l:'gummy crate'},
+    {t:'block',x:90,y:172,w:14,h:14},
+    {t:'p2',x:128,y:128,w:28,h:46,l:'catwalk +2'},
+    {t:'ramp',x:128,y:174,w:28,h:14},
+    {t:'circle',x:18,y:176,r:9,l:'candy jar'},
+    {t:'block',x:38,y:112,w:16,h:16,l:'sprinkle bin'},
+    {t:'circle',x:80,y:120,r:15,c:1,l:'mixing vat'},
+    {t:'pick',x:80,y:147},{t:'pick',x:142,y:150}
+  ],
+  builds:[
+    ['Conveyor belt','8×52×5 / 8×40×5','4','Rollers on the side, scrolling texture is optional'],
+    ['Gummy crate','14×14×7','4','Wooden crate filled with gummy bears'],
+    ['Catwalk','28×46×16','2','Grated top on legs, open underneath so you can walk through'],
+    ['Catwalk stairs','28×14×16','2','Stepped stairs with a candy-stripe rail'],
+    ['Candy jar','⌀18 × 12','2','Glass jar with wrapped sweets'],
+    ['Sprinkle bin','16×16×6','2','Open tub filled with sprinkles'],
+    ['Mixing vat','⌀30 × 14','1','Swirling pink goo top, metal rim'],
+    ['Sugar floor decal','60×120','1','Hazard stripes around the edge, no collision']
+  ]},
+{ id:'bath', mode:'TDM', name:'Bubble Bath Bay', theme:'Bathroom floor and tub', w:160, h:240, sym:2,
+  pal:{ground:'#c9f1ff',floor:'#8fdcff',block:'#ff8fc7',p1:'#ffe066',p2:'#fff6c2',frame:'#123a5a'},
+  desc:'A tiled bathroom floor with soap bars and shampoo bottles for cover. A rubber duck tower stands on each flank and a bathtub rim is raised in the middle.',
+  flow:'The bathtub rim is a wide +1 stage in the middle with steps on both sides. The duck tower is the only +2 spot for each team, and its power-up sits under the enemy towel rail. Because the mat is open, mid-range fights cross the middle.',
+  els:[
+    {t:'floor',x:20,y:96,w:120,h:48,c:1,l:'bath mat'},
+    {t:'spawnA',x:45,y:212,w:70,h:22},
+    {t:'block',x:22,y:186,w:22,h:12,rot:12,l:'soap'},
+    {t:'block',x:116,y:186,w:22,h:12,rot:-12},
+    {t:'circle',x:80,y:190,r:6,l:'shampoo'},
+    {t:'p2',x:12,y:138,w:26,h:26,l:'duck tower +2'},
+    {t:'ramp',x:12,y:164,w:26,h:12},
+    {t:'block',x:98,y:152,w:44,h:6,l:'towel rail'},
+    {t:'block',x:62,y:160,w:14,h:10,l:'sponge'},
+    {t:'p1',x:50,y:104,w:60,h:32,c:1,l:'tub rim +1'},
+    {t:'ramp',x:34,y:112,w:16,h:16,c:1},{t:'ramp',x:110,y:112,w:16,h:16,c:1},
+    {t:'pick',x:80,y:120,c:1},{t:'pick',x:150,y:170}
+  ],
+  builds:[
+    ['Soap bar','22×12×6','4','Rounded bar with bubble decals, rotated 12°'],
+    ['Shampoo bottle','⌀12 × 14','2','Pump top, pastel label'],
+    ['Duck tower','26×26×16','2','Stacked tiles with a giant rubber duck on top, flat walkable deck'],
+    ['Tower stairs','26×12×16','2','Wide steps'],
+    ['Towel rail','44×6×7','2','Towel hanging over a rail, soft cloth sim optional'],
+    ['Sponge','14×10×5','2','Porous texture, low cover'],
+    ['Bathtub rim','60×32×8','1','Walkable rim with bubbles in the middle, plus 2 steps 16×16'],
+    ['Bath mat decal','120×48','1','Fluffy texture, no collision']
+  ]},
+{ id:'arcade', mode:'FFA', name:'Jelly Arcade', theme:'Candy-colored arcade', w:200, h:200, sym:4,
+  pal:{ground:'#e5d9ff',floor:'#b9f7d3',block:'#ff5fa2',p1:'#7de3ff',p2:'#dcf8ff',frame:'#1e1446'},
+  desc:'An arcade hall with rows of cabinets and claw machines. A round prize pit is raised in the center.',
+  flow:'The map has 4-way rotational symmetry, so every spawn looks the same. Cabinets form short corridors around each corner, and the prize pit has 4 ramps up to the main power-up. Each side lane has a power-up halfway between two spawns.',
+  els:[
+    {t:'floor',x:70,y:70,w:60,h:60,c:1,l:'jelly floor'},
+    {t:'spawn',x:8,y:8,w:24,h:24},
+    {t:'spawn',x:88,y:4,w:24,h:14},
+    {t:'block',x:44,y:36,w:10,h:24,l:'cabinet'},
+    {t:'block',x:60,y:30,w:24,h:10},
+    {t:'block',x:14,y:62,w:30,h:8,l:'prize counter'},
+    {t:'block',x:62,y:54,w:14,h:14,l:'claw machine'},
+    {t:'cp1',x:100,y:100,r:20,c:1,l:'prize pit +1'},
+    {t:'ramp',x:93,y:68,w:14,h:12},
+    {t:'pick',x:100,y:100,c:1},{t:'pick',x:30,y:100}
+  ],
+  builds:[
+    ['Arcade cabinet','10×24×12','8','Glowing screen, joystick panel; same model rotated'],
+    ['Prize counter','30×8×5','4','Glass counter with plushie prizes'],
+    ['Claw machine','14×14×12','4','Glass box with tiny squishies inside'],
+    ['Prize pit','⌀40 × 8','1','Round raised platform filled with ball-pit balls'],
+    ['Pit ramp','14×12×8','4','Rainbow ramp on each side'],
+    ['Jelly floor decal','60×60','1','Glossy checker tiles, no collision']
+  ]},
+{ id:'sundae', mode:'FFA', name:'Sundae Plaza', theme:'Ice cream town square', w:200, h:200, sym:4,
+  pal:{ground:'#fff0d6',floor:'#ffc9de',block:'#ff8a5b',p1:'#b8f08a',p2:'#e8ffd2',frame:'#3b2030'},
+  desc:'A town square with ice cream carts, benches and four waffle-cone kiosks. A milkshake fountain is in the middle.',
+  flow:'The four kiosks are +1 perches with power-ups on top, and each sits one ramp away from the middle. The fountain blocks long sightlines across the plaza, so fights stay mid range. Carts and benches make short-range pockets near the spawns.',
+  els:[
+    {t:'floor',x:60,y:60,w:80,h:80,c:1,l:'plaza tiles'},
+    {t:'spawn',x:8,y:8,w:24,h:24},
+    {t:'spawn',x:88,y:4,w:24,h:14},
+    {t:'block',x:38,y:30,w:22,h:11,rot:20,l:'ice cream cart'},
+    {t:'block',x:24,y:64,w:6,h:22,l:'bench'},
+    {t:'p1',x:48,y:52,w:24,h:24,l:'cone kiosk +1'},
+    {t:'ramp',x:72,y:58,w:12,h:12},
+    {t:'circle',x:72,y:26,r:6,l:'planter'},
+    {t:'circle',x:100,y:100,r:13,c:1,l:'fountain'},
+    {t:'pick',x:60,y:64}
+  ],
+  builds:[
+    ['Ice cream cart','22×11×7','4','Striped umbrella, cone sign, rotated 20°'],
+    ['Bench','6×22×4','4','Chunky candy-colored slats'],
+    ['Cone kiosk','24×24×8','4','Waffle-pattern sides with a walkable roof, scoop decor on the corners'],
+    ['Kiosk ramp','12×12×8','4','Wafer stick ramp'],
+    ['Planter','⌀12 × 5','4','Lollipop flowers'],
+    ['Milkshake fountain','⌀26 × 7','1','Pink milkshake water, cherry on top'],
+    ['Plaza tile decal','80×80','1','Sprinkle mosaic, no collision']
+  ]},
+{ id:'park', mode:'FFA', name:'Pillow Fort Park', theme:'Soft playground', w:200, h:200, sym:4,
+  pal:{ground:'#c8f5a6',floor:'#ffe7a3',block:'#5aa0ff',p1:'#ffb3e1',p2:'#ffe1f4',frame:'#1d3b2a'},
+  desc:'A playground of soft pillows with sandboxes, seesaws and swing frames. A slide tower stands in the center.',
+  flow:'The +2 slide tower in the center gives a view over the whole map, but players can reach it from 4 ramps, so it can be attacked from any side. Each corner sandbox has a power-up between two spawns. Swing frames and bushes break up the edges.',
+  els:[
+    {t:'floor',x:34,y:34,w:30,h:30,l:'sandbox'},
+    {t:'spawn',x:6,y:6,w:22,h:22},
+    {t:'spawn',x:88,y:4,w:24,h:14},
+    {t:'block',x:36,y:84,w:26,h:6,l:'seesaw'},
+    {t:'circle',x:18,y:52,r:7,l:'bush'},
+    {t:'block',x:66,y:22,w:4,h:24,l:'swing frame'},
+    {t:'p2',x:84,y:84,w:32,h:32,c:1,l:'slide tower +2'},
+    {t:'ramp',x:90,y:68,w:20,h:16},
+    {t:'pick',x:100,y:100,c:1},{t:'pick',x:49,y:49}
+  ],
+  builds:[
+    ['Sandbox','30×30×2','4','Low rim, sand texture inside, walkable'],
+    ['Seesaw','26×6×4','4','Tilted plank on a pivot, static collision'],
+    ['Bush','⌀14 × 6','4','Round puffy shrub'],
+    ['Swing frame','4×24×12','4','A-frame with 2 swings, the posts are cover'],
+    ['Slide tower','32×32×16','1','Pillow-fort walls with a walkable top deck'],
+    ['Slide ramp','20×16×16','4','Curvy slide shape, slope under 35° so it can be climbed']
+  ]}
+];
+
+const TEAM = { spawnA:['#ff5a5f','RED SPAWN','R'], spawnB:['#3ba9ff','BLUE SPAWN','B'], spawn:['#ffc828','spawn','S'] };
+
+function transform(m, e, k) {
+  const W = m.w, H = m.h, n = { ...e, copy: true };
+  if (m.sym === 2) {
+    if (e.r != null || e.t === 'pick') { n.x = W - e.x; n.y = H - e.y; }
+    else { n.x = W - e.x - e.w; n.y = H - e.y - e.h; }
+    if (e.t === 'spawnA') n.t = 'spawnB';
+    return n;
+  }
+  let x = e.x, y = e.y, w = e.w, hh = e.h;
+  for (let i = 0; i < k; i++) {
+    if (e.r != null || e.t === 'pick') { const nx = W - y; y = x; x = nx; }
+    else { const cx = x + w / 2, cy = y + hh / 2, ncx = W - cy, ncy = cx; [w, hh] = [hh, w]; x = ncx - w / 2; y = ncy - hh / 2; }
+  }
+  Object.assign(n, { x, y, w, h: hh });
+  return n;
+}
+function expand(m) {
+  const out = [];
+  for (const e of m.els) {
+    out.push(e);
+    if (e.c) continue;
+    if (m.sym === 2) out.push(transform(m, e));
+    else for (let k = 1; k < 4; k++) out.push(transform(m, e, k));
+  }
+  const order = { floor: 0, spawn: 1, spawnA: 1, spawnB: 1, ramp: 2, p1: 3, cp1: 3, p2: 4, block: 5, circle: 5, pick: 6 };
+  return out.sort((a, b) => order[a.t] - order[b.t]);
+}
+const rotG = (e, kids, key) => h('g', { key, transform: e.rot ? `rotate(${e.rot} ${e.x + e.w / 2} ${e.y + e.h / 2})` : undefined }, ...kids);
+function rampLines(e, stroke, sw, zig) {
+  const horiz = e.w >= e.h, lines = [], step = 2.6;
+  if (zig) {
+    const pts = []; const n = Math.floor((horiz ? e.w : e.h) / step);
+    for (let i = 0; i <= n; i++) {
+      const t = i * step;
+      pts.push(horiz ? `${e.x + t},${i % 2 ? e.y + 1 : e.y + e.h - 1}` : `${i % 2 ? e.x + 1 : e.x + e.w - 1},${e.y + t}`);
+    }
+    return [h('polyline', { key: 'z', points: pts.join(' '), fill: 'none', stroke, strokeWidth: sw, strokeLinejoin: 'round' })];
+  }
+  for (let t = step; t < (horiz ? e.w : e.h); t += step)
+    lines.push(h('line', horiz ? { key: t, x1: e.x + t, y1: e.y, x2: e.x + t, y2: e.y + e.h } : { key: t, x1: e.x, y1: e.y + t, x2: e.x + e.w, y2: e.y + t }, null));
+  return [h('g', { key: 'l', stroke, strokeWidth: sw }, ...lines)];
+}
+const diamond = (x, y, s, props) => h('rect', { x: x - s / 2, y: y - s / 2, width: s, height: s, transform: `rotate(45 ${x} ${y})`, ...props });
+
+function sketch(m, els, wobble, labels) {
+  const P = 10, ink = '#262626', sw = 1.2, fid = `rough-${m.id}`, kids = [];
+  const fillOf = t => ({ floor: m.pal.floor, block: m.pal.block, circle: m.pal.block, p1: m.pal.p1, cp1: m.pal.p1, p2: m.pal.p2, ramp: m.pal.p1 })[t];
+  kids.push(h('rect', { key: 'g', x: 0.6, y: 0.6, width: m.w, height: m.h, fill: m.pal.ground, opacity: 0.6 }));
+  kids.push(h('rect', { key: 'go', x: 0, y: 0, width: m.w, height: m.h, fill: 'none', stroke: ink, strokeWidth: 1.8 }));
+  els.forEach((e, i) => {
+    const k = 'e' + i;
+    if (e.t === 'pick') {
+      const pts = []; for (let j = 0; j < 10; j++) { const a = Math.PI / 5 * j - Math.PI / 2, r = j % 2 ? 2.2 : 5; pts.push(`${e.x + r * Math.cos(a)},${e.y + r * Math.sin(a)}`); }
+      kids.push(h('polygon', { key: k, points: pts.join(' '), fill: '#ff2e93', stroke: ink, strokeWidth: 0.9, strokeLinejoin: 'round' }));
+      return;
+    }
+    if (TEAM[e.t]) {
+      const [c, label] = TEAM[e.t];
+      kids.push(h('g', { key: k },
+        h('rect', { x: e.x + 1, y: e.y + 1, width: e.w, height: e.h, fill: c, opacity: 0.45 }),
+        h('rect', { x: e.x, y: e.y, width: e.w, height: e.h, fill: 'none', stroke: c, strokeWidth: 1.4, strokeDasharray: '3 2' }),
+        h('text', { x: e.x + e.w / 2, y: e.y + e.h / 2 + 2, textAnchor: 'middle', fontSize: e.t === 'spawn' ? 5 : 6.5, fill: ink, fontFamily: 'Gochi Hand' }, label)));
+      return;
+    }
+    if (e.r != null) {
+      kids.push(h('g', { key: k },
+        h('circle', { cx: e.x + 0.8, cy: e.y + 0.8, r: e.r, fill: fillOf(e.t) }),
+        h('circle', { cx: e.x, cy: e.y, r: e.r, fill: 'none', stroke: ink, strokeWidth: e.t === 'cp1' ? 1.8 : sw })));
+    } else {
+      const parts = [
+        h('rect', { key: 'f', x: e.x + 0.9, y: e.y + 0.9, width: e.w, height: e.h, fill: fillOf(e.t) }),
+        h('rect', { key: 's', x: e.x, y: e.y, width: e.w, height: e.h, fill: 'none', stroke: ink, strokeWidth: e.t === 'p2' ? 2.4 : e.t === 'floor' ? 0.8 : sw, strokeDasharray: e.t === 'floor' ? '2 2' : undefined })
+      ];
+      if (e.t === 'ramp') parts.push(...rampLines(e, ink, 0.7, true));
+      kids.push(rotG(e, parts, k));
+    }
+    if (labels && e.l && !e.copy) {
+      const cx = e.r != null ? e.x : e.x + e.w / 2, cy = e.r != null ? e.y + e.r + 6 : (e.t === 'floor' ? e.y + 6 : e.y + e.h / 2 + 2);
+      kids.push(h('text', { key: k + 't', x: cx, y: cy, textAnchor: 'middle', fontSize: 5.5, fill: ink, fontFamily: 'Gochi Hand', paintOrder: 'stroke', stroke: '#fff', strokeWidth: 1.6 }, e.l));
+    }
+  });
+  return h('svg', { viewBox: `${-P} ${-P} ${m.w + 2 * P} ${m.h + 2 * P}`, style: { display: 'block', width: '100%', height: 'auto' } },
+    h('defs', null, h('filter', { id: fid, x: '-5%', y: '-5%', width: '110%', height: '110%' },
+      h('feTurbulence', { type: 'fractalNoise', baseFrequency: 0.05, numOctaves: 2, seed: m.id.length }),
+      h('feDisplacementMap', { in: 'SourceGraphic', scale: wobble }))),
+    h('g', { filter: wobble > 0 ? `url(#${fid})` : undefined }, ...kids));
+}
+
+function mini(m, els, grid) {
+  const P = 10, kids = [], shadow = 'rgba(20,10,60,.28)';
+  kids.push(h('rect', { key: 'glow', x: -3, y: -3, width: m.w + 6, height: m.h + 6, rx: 6, fill: 'none', stroke: 'rgba(255,255,255,.18)', strokeWidth: 4 }));
+  kids.push(h('rect', { key: 'g', x: 0, y: 0, width: m.w, height: m.h, rx: 4, fill: m.pal.ground, stroke: '#fff', strokeWidth: 1.4 }));
+  if (grid) for (let v = 10; v < Math.max(m.w, m.h); v += 10) {
+    if (v < m.w) kids.push(h('line', { key: 'gx' + v, x1: v, y1: 0, x2: v, y2: m.h, stroke: 'rgba(0,0,0,.08)', strokeWidth: 0.4 }));
+    if (v < m.h) kids.push(h('line', { key: 'gy' + v, x1: 0, y1: v, x2: m.w, y2: v, stroke: 'rgba(0,0,0,.08)', strokeWidth: 0.4 }));
+  }
+  els.forEach((e, i) => {
+    const k = 'e' + i;
+    if (e.t === 'pick') {
+      kids.push(h('g', { key: k }, h('circle', { cx: e.x, cy: e.y, r: 6, fill: '#ff2e93', opacity: 0.22 }), diamond(e.x, e.y, 4.6, { fill: '#ff2e93', stroke: '#fff', strokeWidth: 1 })));
+      return;
+    }
+    if (TEAM[e.t]) {
+      const [c, , letter] = TEAM[e.t];
+      kids.push(h('g', { key: k },
+        h('rect', { x: e.x, y: e.y, width: e.w, height: e.h, rx: 2, fill: c, fillOpacity: 0.32, stroke: c, strokeWidth: 1, strokeDasharray: '3 2' }),
+        h('text', { x: e.x + e.w / 2, y: e.y + e.h / 2 + 2.3, textAnchor: 'middle', fontSize: 6.5, fontWeight: 800, fill: '#fff', fontFamily: 'Archivo', paintOrder: 'stroke', stroke: c, strokeWidth: 1.6 }, letter)));
+      return;
+    }
+    const lift = { block: 1.2, circle: 1.2, p1: 1.6, cp1: 1.6, p2: 3, ramp: 0, floor: 0 }[e.t];
+    const fill = { floor: m.pal.floor, block: m.pal.block, circle: m.pal.block, p1: m.pal.p1, cp1: m.pal.p1, p2: m.pal.p2, ramp: m.pal.p1 }[e.t];
+    const stroke = e.t === 'floor' ? 'none' : '#fff', swd = e.t === 'p2' ? 1.8 : e.t === 'p1' || e.t === 'cp1' ? 1.1 : 0.8;
+    if (e.r != null) {
+      kids.push(h('g', { key: k },
+        lift ? h('circle', { cx: e.x + lift, cy: e.y + lift, r: e.r, fill: shadow }) : null,
+        h('circle', { cx: e.x, cy: e.y, r: e.r, fill, stroke, strokeWidth: swd }),
+        e.t === 'cp1' ? h('circle', { cx: e.x, cy: e.y, r: e.r - 4, fill: 'none', stroke: '#fff', strokeOpacity: 0.6, strokeWidth: 0.6, strokeDasharray: '2 2' }) : null));
+      return;
+    }
+    const parts = [];
+    if (lift) parts.push(h('rect', { key: 'sh', x: e.x + lift, y: e.y + lift, width: e.w, height: e.h, rx: 1.2, fill: shadow }));
+    parts.push(h('rect', { key: 'b', x: e.x, y: e.y, width: e.w, height: e.h, rx: e.t === 'floor' ? 3 : 1.2, fill, fillOpacity: e.t === 'floor' ? 0.8 : 1, stroke, strokeWidth: swd }));
+    if (e.t === 'ramp') parts.push(...rampLines(e, '#fff', 0.7, false));
+    kids.push(rotG(e, parts, k));
+  });
+  return h('svg', { viewBox: `${-P} ${-P} ${m.w + 2 * P} ${m.h + 2 * P}`, style: { display: 'block', width: '100%', height: 'auto' } }, ...kids);
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const wobble = this.props.wobble ?? 2.2, grid = this.props.showGrid ?? true, labels = this.props.sketchLabels ?? true;
+    const build = (m, i) => {
+      const els = expand(m);
+      const spawns = els.filter(e => TEAM[e.t]).length, picks = els.filter(e => e.t === 'pick').length;
+      const levels = els.some(e => e.t === 'p2') ? 'Ground, +1, +2' : 'Ground, +1';
+      return {
+        ...m, num: String(i + 1).padStart(2, '0'), frame: m.pal.frame,
+        mode: m.mode === 'TDM' ? 'Team Deathmatch · 6v6' : 'Free-for-all · 12',
+        stats: [
+          { k: 'Size', v: `${m.w} × ${m.h} studs` },
+          { k: 'Symmetry', v: m.sym === 2 ? 'Mirrored (180° rotation)' : '4-way rotation' },
+          { k: 'Spawns', v: m.sym === 2 ? '1 zone per team' : `${spawns} zones` },
+          { k: 'Power-ups', v: String(picks) },
+          { k: 'Height levels', v: levels }
+        ],
+        sketch: sketch(m, els, wobble, labels), mini: mini(m, els, grid)
+      };
+    };
+    return {
+      sections: [
+        { title: 'Team Deathmatch', rule: '6v6. Spawns face each other at the short ends and the layout is point-mirrored, so neither team has an advantage.', maps: MAPS.filter(m => m.mode === 'TDM').map(build) },
+        { title: 'Free-for-all', rule: '12 players. Square maps with 4-way rotation and 8 spawn zones spread along the edges.', maps: MAPS.filter(m => m.mode === 'FFA').map((m, i) => build(m, i + 3)) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
