@@ -1,0 +1,4 @@
+# Archive parts are raw bytes; the Windows script needs CRLF line endings.
+*.0[0-9][0-9] binary
+*.bat text eol=crlf
+*.sh text eol=lf
