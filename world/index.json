@@ -12,12 +12,6 @@
 		"container": "Workspace"
 	},
 	{
-		"file": "Workspace/SD_TestTeleport.rbxm",
-		"class": "Folder",
-		"name": "SD_TestTeleport",
-		"container": "Workspace"
-	},
-	{
 		"file": "ReplicatedStorage/DuelMapScripts.rbxm",
 		"class": "Folder",
 		"name": "DuelMapScripts",
