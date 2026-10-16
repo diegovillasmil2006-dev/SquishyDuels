@@ -1,6 +1,7 @@
 --!strict
 -- Layout (client only, pure). DESIGN §11.2, §5.10: the layout maths of the UI, all numbers from Config.UI.
---   uiScale(absY)            UIScale = clamp(SD_Hud.AbsoluteSize.Y / referenceHeight, min, max)
+--   uiScale(absY, absX?)     UIScale = clamp(min(absX / referenceWidth, absY / referenceHeight), min, max) (UI FINAL
+--                            R2, PR1: the design's fit, H:624; absY alone without absX)
 --   layoutClass(absX, absY)  "compact" if Y < compactBelowHeight or X < compactBelowWidth, else "regular"
 --   textSize(kind, pref)     base px (Config.UI.TextSize[kind]) × the GuiService.PreferredTextSize multiplier,
 --                            rounded; the UIScale of the ScreenGui multiplies it once more on screen
@@ -132,13 +133,19 @@ end
 
 -- Public
 
--- The UIScale for an SD_Hud of this absolute height (px). A non-finite or non-positive height gives the minimum.
-function Layout.uiScale(absoluteHeight: number): number
+-- The UIScale for an SD_Hud of this absolute height (px). A non-finite or non-positive height gives the minimum. UI
+-- FINAL R2 (PR1, decided 2026-10-15): with its absolute width too, the design's fit min(w / referenceWidth, h /
+-- referenceHeight) (H:624) inside the floor and cap; a missing or bad width leaves the height alone to decide.
+function Layout.uiScale(absoluteHeight: number, absoluteWidth: number?): number
 	local scale = UI.Scale
 	if not finite(absoluteHeight) or absoluteHeight <= 0 then
 		return scale.min
 	end
-	return math.clamp(absoluteHeight / scale.referenceHeight, scale.min, scale.max)
+	local fit = absoluteHeight / scale.referenceHeight
+	if absoluteWidth ~= nil and finite(absoluteWidth) and absoluteWidth > 0 then
+		fit = math.min(fit, absoluteWidth / scale.referenceWidth)
+	end
+	return math.clamp(fit, scale.min, scale.max)
 end
 
 -- "compact" on small screens (phones in landscape), else "regular".
@@ -203,7 +210,7 @@ function Layout.modalPanel(
 ): ModalPanel
 	local x = if finite(screenPx.X) and screenPx.X > 0 then screenPx.X else FALLBACK_SCREEN_X
 	local y = if finite(screenPx.Y) and screenPx.Y > 0 then screenPx.Y else FALLBACK_SCREEN_Y
-	local scale = Layout.uiScale(y)
+	local scale = Layout.uiScale(y, x)
 	local width = Layout.modalWidth(x, scale, marginBasePx)
 	if width <= 0 then
 		width = UI.modalMaxWidth

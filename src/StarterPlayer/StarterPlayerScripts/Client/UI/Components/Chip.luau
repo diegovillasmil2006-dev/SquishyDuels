@@ -14,7 +14,7 @@
 -- dark face such as the plum neutral or a dark setColor).
 -- UI FINAL R1 (H:232-234): 30 base px tall, a 3 px ink border drawn inside the box, radius 10, padding 12 inside the
 -- border; the default face is the cream sticker (Frosting #FFF6EA, ink text), an accent paints its gradient
--- (Theme.accentColors).
+-- (Theme.accentColors). UI FINAL R2 (P8, H:232, H:234): the icon is the design's 20 px, 6 px from the text.
 
 -- Services
 
@@ -59,8 +59,8 @@ export type Chip = {
 local STICKER = Config.UI.Sticker
 local DEFAULT_HEIGHT_PX = 30 -- H:232
 local PADDING_X = 12 + STICKER.border.thin -- H:232: padding 0 12px inside the border
-local GAP_PX = 4
-local ICON_SHARE = 0.7 -- the icon, as a share of the chip's height
+local GAP_PX = 6 -- H:232: gap 6px
+local ICON_PX = 20 -- H:232, H:234: the 20 px icon
 local SHADE_MIX = 0.15 -- setColor: the bevel shade of a raised chip, the face this far towards InkUI
 
 -- Module table
@@ -104,7 +104,7 @@ function Chip.new(spec: Spec): Chip
 		icon = IconGlyph.new({
 			name = "Icon",
 			icon = spec.icon,
-			sizePx = math.floor(height * ICON_SHARE),
+			sizePx = ICON_PX,
 			layoutOrder = 1,
 			parent = root,
 		})

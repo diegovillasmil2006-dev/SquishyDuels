@@ -62,7 +62,9 @@
 -- UI FINAL R1 (the look kit): Config.UI.Sticker's borders, lips, radii, surfaces, bars and toggles are whole px >= 0
 -- with alphas in 0..1, and every text role names a TextSize kind with a positive stroke.
 -- FFA/TDM v1 (2026-10-15): Config.Match's in-server queue, maps, spawn spots, storm sampling and test wall
--- (checkMatch; the wall's colour is an Art/Palette token, never a "...Key" field, which would read as a Strings key).
+-- (Config/ValidateMatch; the wall colour is an Art/Palette token, never a "...Key" field: that reads as a Strings key).
+-- UI FINAL R2 (the motion kit; F8 and F9): Config/ValidateUIMotion's checks (its header lists them); Config.UI.Scale's
+-- referenceWidth > 0 and a soft text drop's px and alpha.
 -- Convention: every string field whose name ends in "Key" (nameKey, textKey, ...) is a Strings path; validate()
 -- resolves each one with Strings.resolve, in Config and in the Catalog, Boxes and QuestDefs data.
 
@@ -1210,6 +1212,7 @@ local function checkUI(problems: Problems)
 	local p = "Config.UI"
 	local scale = UI.Scale
 	expectPositive(problems, `{p}.Scale.referenceHeight`, scale.referenceHeight)
+	expectPositive(problems, `{p}.Scale.referenceWidth`, scale.referenceWidth)
 	expect(problems, scale.min > 0 and scale.min <= scale.max, `{p}.Scale must satisfy 0 < min <= max`)
 	eachField(
 		problems,
@@ -1373,6 +1376,11 @@ local function checkUI(problems: Problems)
 		end
 		if role.color ~= nil then
 			expectText(problems, `{path}.color`, role.color)
+		end
+		local soft = role.soft
+		if soft ~= nil then
+			expectCount(problems, `{path}.soft.px`, soft.px, 1)
+			expectBetween(problems, `{path}.soft.alpha`, soft.alpha, 0, 1)
 		end
 	end
 	expectBoolean(problems, `{p}.Sticker.buttonCaps`, sticker.buttonCaps)
@@ -3704,6 +3712,24 @@ local function checkJellyRipple(problems: Problems, layout: any)
 	end
 end
 
+-- UI FINAL R2: the motion kit's F8 / F9 checks (Config/ValidateUIMotion: apart, so this script stays under Roblox's
+-- 200,000-character Source limit), on this script's check helpers.
+local uiMotion = require(script.ValidateUIMotion)({
+	add = add,
+	expect = expect,
+	expectPositive = expectPositive,
+	expectNonNegative = expectNonNegative,
+	expectCount = expectCount,
+	expectBetween = expectBetween,
+	expectBoolean = expectBoolean,
+	isNumber = isNumber,
+	show = show,
+	studs = studs,
+	sortedKeys = sortedKeys,
+	maxFlickerHz = MAX_FLICKER_HZ,
+	feelSlack = FEEL_SLACK,
+}, UI, Audio)
+
 -- F8 Audio: pitchMin in (0, 1], pitchMax >= 1; countdownPitch has 3 values within [pitchMin, pitchMax] (and the
 -- sudden-death go pitch too); every cap >= 1 (perKeyCap, othersThrowMax; VoiceCaps and the cooldowns >= 0 are
 -- checkAudio's); the new ducks within [0, 1]; and, with AssetTable, every toastSounds and perKeyCap key is a sound slot.
@@ -3723,6 +3749,7 @@ local function checkFeelAudio(problems: Problems, AssetTableModule: any?)
 			expectBetween(problems, `{p}.countdownPitch[{index}]`, pitch, low, high)
 		end
 		expectBetween(problems, `{p}.suddenDeathGoPitch`, Audio.suddenDeathGoPitch, low, high)
+		uiMotion.pitches(problems, p, low, high) -- UI FINAL R2: the UI pitches
 	end
 	local perKeyCap = Audio.perKeyCap :: { [string]: number }
 	for _, key in sortedKeys(perKeyCap) do
@@ -3783,25 +3810,17 @@ local function checkFeelSpring(problems: Problems, path: string, omega: unknown,
 	end
 end
 
--- F9 UI juice: ms > 0 for buttonError, coinFlight, toast, badgePop and readyPop; 1 <= coinFlight.minCoins <= maxCoins;
--- the springs (buttonRelease.spring, Vfx.HeldBoing, Anim.held.motionJiggle, Anim.jellyRipple.pathB) pass
--- checkFeelSpring. Also <= 3 Hz (§9.12, §18.1 #4): the "no" wiggle (buttonError.cycles · 1000 / ms) and the coin pill
--- bounce (1000 / coinFlight.bounceMinGapMs: a flight's coins land 45 ms apart, so the gap sets the rate).
+-- F9 UI juice: ms > 0 for buttonShake, buttonPress, coinFlight, toast, badgePop and readyPop; 1 <= coinFlight.count <=
+-- maxCoins; the springs (Vfx.HeldBoing, Anim.held.motionJiggle, Anim.jellyRipple.pathB) pass checkFeelSpring. Also
+-- <= 3 Hz (§9.12, §18.1 #4): the coin pill bounce (1000 / coinFlight.bounceMinGapMs: a flight's coins land about 60 ms
+-- apart, so the gap sets the rate). UI FINAL R2 (the motion kit; checkUIJuice's R2 half below): the curves, the loops,
+-- the swings, the tracks, the bars, toggles and shines, the coin flight and the design effects.
 local function checkUIJuice(problems: Problems)
 	local motion = UI.motion :: any
 	local p = "F9: Config.UI.motion"
-	for _, name in { "buttonError", "coinFlight", "toast", "badgePop", "readyPop" } do
+	for _, name in { "buttonShake", "buttonPress", "coinFlight", "toast", "badgePop", "readyPop" } do
 		local entry = motion[name]
 		expectPositive(problems, `{p}.{name}.ms`, if type(entry) == "table" then entry.ms else nil)
-	end
-	local wiggle = motion.buttonError
-	if type(wiggle) == "table" and isNumber(wiggle.cycles) and isNumber(wiggle.ms) and wiggle.ms > 0 then
-		local hz = wiggle.cycles * 1000 / wiggle.ms
-		expect(
-			problems,
-			hz <= MAX_FLICKER_HZ + FEEL_SLACK,
-			`{p}.buttonError wiggles at {studs(hz)} Hz (cycles · 1000 / ms), above {MAX_FLICKER_HZ} Hz (§9.12)`
-		)
 	end
 	local flight = motion.coinFlight
 	expectPositive(problems, `{p}.coinFlight.bounceMinGapMs`, flight.bounceMinGapMs)
@@ -3813,19 +3832,18 @@ local function checkUIJuice(problems: Problems)
 			`{p}.coinFlight.bounceMinGapMs lets the pill bounce at {studs(hz)} Hz, above {MAX_FLICKER_HZ} Hz (§9.12)`
 		)
 	end
-	expectCount(problems, `{p}.coinFlight.minCoins`, flight.minCoins, 1)
+	expectCount(problems, `{p}.coinFlight.count`, flight.count, 1)
 	expect(
 		problems,
-		isNumber(flight.minCoins) and isNumber(flight.maxCoins) and flight.minCoins <= flight.maxCoins,
-		`{p}.coinFlight.minCoins ({show(flight.minCoins)}) must be <= maxCoins ({show(flight.maxCoins)})`
+		isNumber(flight.count) and isNumber(flight.maxCoins) and flight.count <= flight.maxCoins,
+		`{p}.coinFlight.count ({show(flight.count)}) must be <= maxCoins ({show(flight.maxCoins)})`
 	)
-	local release = motion.buttonRelease.spring
-	checkFeelSpring(problems, "Config.UI.motion.buttonRelease.spring", release.omega, release.zeta)
 	checkFeelSpring(problems, "Config.Vfx.HeldBoing", Vfx.HeldBoing.omega, Vfx.HeldBoing.zeta)
 	local jiggle = Anim.held.motionJiggle
 	checkFeelSpring(problems, "Config.Anim.held.motionJiggle", jiggle.omega, jiggle.zeta)
 	local pathB = Anim.jellyRipple.pathB
 	checkFeelSpring(problems, "Config.Anim.jellyRipple.pathB", pathB.omega, pathB.zeta)
+	uiMotion.motion(problems)
 end
 
 -- F10 Editable meshes per client: Budgets.editableMeshes >= (1 when jellyRipple.pathA) + 1: one ripple skin, never two

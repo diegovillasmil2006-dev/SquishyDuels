@@ -188,6 +188,8 @@ return function(t: Context)
 
 	local Theme = t.requireClient("UI/Theme")
 	local TOUCH = Config.UI.Touch
+	-- UI FINAL R2 (P1): a primary Button's frame, its 56 px face and the 5 px lip under it (Button.frameHeight).
+	local BUTTON_FRAME = TOUCH.primaryButton + Config.UI.Sticker.lip.button
 	local EPS = 1e-6
 	local SCREENS = {
 		{ label = "667x375", size = Vector2.new(667, 375) },
@@ -243,7 +245,7 @@ return function(t: Context)
 				`detailLayout {screen.label} text x{textScale}: buttons pinned, wrapped, never overlapping`,
 				function()
 					local l = InventoryFormat.panelLayout(screen.size)
-					local buttonHeight = TOUCH.primaryButton
+					local buttonHeight = BUTTON_FRAME
 					local gap = InventoryFormat.PANEL.gap
 					local between = InventoryFormat.PANEL.buttonGap -- fix round 2: the buttons' own gap
 					for _, widths in buttonSets(textScale) do
@@ -278,12 +280,12 @@ return function(t: Context)
 	t.test("detailLayout: Studio's 893x673 with three buttons keeps them on screen (the Part 6 fold)", function()
 		local l = InventoryFormat.panelLayout(Vector2.new(893, 673))
 		local widths = buttonSets(1)[4]
-		local d = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, TOUCH.primaryButton, 6, widths)
+		local d = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, BUTTON_FRAME, 6, widths)
 		-- Actual px from the panel's top edge: the buttons end inside the panel's content box.
 		local bottom = (l.bodyTop + d.buttonsTop + d.buttonsHeight) * l.scale
 		expect.truthy(bottom <= l.contentHeight * l.scale + EPS)
 		-- No buttons: the list takes the whole column.
-		local none = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, TOUCH.primaryButton, 6, {})
+		local none = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, BUTTON_FRAME, 6, {})
 		expect.equal(none.rows, 0)
 		expect.equal(none.scrollHeight, l.detailHeight)
 		expect.equal(none.buttonsHeight, 0)
@@ -392,7 +394,7 @@ return function(t: Context)
 						local d = InventoryFormat.detailLayout(
 							l.detailWidth,
 							l.detailHeight,
-							TOUCH.primaryButton,
+							BUTTON_FRAME,
 							InventoryFormat.PANEL.gap,
 							widths
 						)
@@ -594,13 +596,8 @@ return function(t: Context)
 			local l = InventoryFormat.panelLayout(PHONE, chrome.top, CARD_WIDTH)
 			expect.equal(l.class, "compact")
 			expect.equal(l.columns, 3)
-			local d = InventoryFormat.detailLayout(
-				l.detailWidth,
-				l.detailHeight,
-				TOUCH.primaryButton,
-				PANEL.gap,
-				buttonSets(1)[4]
-			)
+			local d =
+				InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, BUTTON_FRAME, PANEL.gap, buttonSets(1)[4])
 			expect.equal(d.rows, 1)
 			-- Fix round 2: the reserve under the well is the list gap, the name line, the gap and the rarity tag (the tag
 			-- was cut in half above the buttons).

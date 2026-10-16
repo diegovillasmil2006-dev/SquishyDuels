@@ -38,9 +38,10 @@
 -- * Feel pass (§18.5.2 B1, B2, B5; pure rules in UI/HudFormat): the capsule has the Button press feel (silent: it opens
 --   the Shop, so ui.open plays); every gain bounces it and wiggles the coin disc; a spend squishes it and counts down;
 --   the gain held from Matched to Returning lands when the HUD shows again (a flight from the result panel's reward
---   label, setGainSource, or a count-up); flyCoins(from, amount) is the one place coin flights start (UI/CoinFlight
---   into SD_Overlay, landing on the coin disc); under ReducedMotion no flight, bounce or wiggle. A tile's badge pops when
---   its count rises. The tiles, Settings, the tracker and the CTA open screens: silent (ui.open plays).
+--   label, setGainSource, or a count-up); flyCoins(from, amount, count?) is the one place coin flights start
+--   (UI/CoinFlight into SD_Overlay, landing on the coin disc); under ReducedMotion no flight, bounce or wiggle. A
+--   tile's badge pops when its count rises. The tiles, Settings, the tracker and the CTA open screens: silent
+--   (ui.open plays).
 -- * Layout (Part 8 device pass, rebuilt for the foam HUD; pure maths in UI/HudFormat): HudFormat.leftColumnPlan picks the
 --   Grip card's layout (regular / compact, GripController reads columnPlan()), whether Hud_Left holds the coin capsule
 --   and the Grip card stacked or side by side and the tiles' arrangement (a column, two columns, or a row) so the left
@@ -65,7 +66,7 @@
 -- it shows and is not queued (no bounce loop; nothing under ReducedMotion). The coach card moved to the bottom middle
 -- (OnboardingController), so the centre column stays open.
 -- Public: leftColumn(), LEFT_ORDER, setFocusEntry(object?), setFocusTarget(key, object?), element(name), coinsAnchor(),
--- isShown(), VisibilityChanged, LayoutChanged, layoutRects(), flyCoins(from, amount), setGainSource(label?),
+-- isShown(), VisibilityChanged, LayoutChanged, layoutRects(), flyCoins(from, amount, count?), setGainSource(label?),
 -- debugCoinFlight(amount), columnPlan(), ColumnPlanChanged, setColumnItem(key, present), textScale(), debugState().
 
 -- Services
@@ -458,15 +459,17 @@ local function usableSource(): GuiObject?
 	return source
 end
 
-local function flyCoins(from: CoinFlight.Source, amount: number): boolean
+local function flyCoins(from: CoinFlight.Source, amount: number, count: number?): boolean
 	local anchor = coinIcon
 	if anchor == nil or not shown or not finiteNumber(amount) then
 		return false
 	end
-	local options: CoinFlight.Options = { parent = UIController.screenGui(OVERLAY_GUI), scale = UIController.scale() }
+	local options: CoinFlight.Options =
+		{ parent = UIController.screenGui(OVERLAY_GUI), scale = UIController.scale(), count = count }
 	local ok = CoinFlight.play(from, anchor, amount, function(i: number, k: number)
 		bounce()
-		SoundController.play(COIN_SOUND)
+		-- UI FINAL R2: each landing a semitone higher (the design's coin(i), lib:145; plan §2.2).
+		SoundController.play(COIN_SOUND, { pitch = SoundController.coinPitch(i) })
 		if i == 1 then
 			awaitingLanding = false
 			startCount(displayedCoins, targetCoins, CoinFlight.countMs(k), COIN_MOTION.style, COIN_MOTION.direction)
@@ -583,7 +586,7 @@ local function setBadge(id: string, n: number)
 	if previous == nil or count <= previous or HudFormat.badgeText(count) == nil then
 		return
 	end
-	local badge = tile.button.root:FindFirstChild("Badge")
+	local badge = tile.button.visual:FindFirstChild("Badge") -- UI FINAL R2: on the drawn button (SD_Visual)
 	if badge == nil or not badge:IsA("GuiObject") then
 		return
 	end
@@ -655,7 +658,7 @@ local function refreshTracker()
 		view.ready = ready
 		view.bar:setAccent(if ready then "gold" else "mint")
 	end
-	-- A new quest jumps to its share; the same quest moving eases (Config.UI.motion.barFill).
+	-- A new quest jumps to its share; the same quest moving eases (the bar variant's fillMs, Config.UI.Sticker.bars).
 	view.bar:set(picked.fraction, trackedId == picked.id)
 	trackedId = picked.id
 end
@@ -1093,7 +1096,7 @@ local function buildTiles(c: Cleanup.Cleanup, gui: ScreenGui)
 				icon = item.icon,
 				layoutOrder = index,
 				parent = row,
-				sound = false, -- opens a screen: ui.open plays instead (§18.5.2 B3)
+				-- UI FINAL R2 (G2.7): a tile's click is silent by kind (ui.open plays instead); its hover sound plays
 				onActivated = function()
 					UIController.open(item.screen, item.params)
 				end,
@@ -1281,13 +1284,14 @@ local function buildRight(c: Cleanup.Cleanup, gui: ScreenGui)
 		name = item.button,
 		text = Strings.resolve(item.textKey) or item.id,
 		kind = "tile",
+		fx = item.fx :: any, -- UI FINAL R2: "icon" (H:157), not the tiles' "nav"
 		accent = item.accent :: any,
 		icon = item.icon,
 		iconSize = COLUMN.settingsIconPx,
 		width = COLUMN.settingsSize,
 		height = COLUMN.settingsSize,
 		parent = slot,
-		sound = false, -- opens a screen: ui.open plays instead
+		-- UI FINAL R2 (G2.7): a tile's click is silent by kind (ui.open plays instead); its hover sound plays
 		onActivated = function()
 			UIController.open(item.screen, item.params)
 		end,
@@ -1431,9 +1435,11 @@ end
 
 -- Flies "+amount" coins from `from` (a GuiObject, a GUI-space point or a world point) into the coin disc (§18.5.2 B2).
 -- The shown number counts up to the current Coins from the first landing. Returns false when nothing flies (the HUD is
--- hidden, amount < coinFlight.minAmount, ReducedMotion): the number then follows StateDelta as usual.
-function HudController.flyCoins(from: CoinFlight.Source, amount: number): boolean
-	return flyCoins(from, amount)
+-- hidden, amount < coinFlight.minAmount without a count, ReducedMotion): the number then follows StateDelta as usual.
+-- UI FINAL R2 (G2.8): `count` coins fly (a claim passes Config.UI.Fx.events.questClaim / dailyClaim.coins, a paid
+-- squeeze 1; R4 / R8 wire them), else the design's 8 (H:663).
+function HudController.flyCoins(from: CoinFlight.Source, amount: number, count: number?): boolean
+	return flyCoins(from, amount, count)
 end
 
 -- The result panel's reward label, which the duel reward flies from once the HUD shows again (§18.5.2 B1, B7); nil

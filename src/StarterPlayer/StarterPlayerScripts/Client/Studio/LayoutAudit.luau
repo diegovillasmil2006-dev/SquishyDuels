@@ -41,7 +41,9 @@
 --   * Only visible objects: Visible on it and every ancestor, in an Enabled ScreenGui whose name starts with "SD_"
 --     (the game's guis; not Roblox's TouchGui / Freecam, not the Studio sound picker SD_SoundPicker), without the
 --     ModalWash backdrop between two stacked modals (it bleeds past SD_Modal on purpose) and without the mirrored
---     copies SD_Drop / SD_Face of Theme.stickerText (UI FINAL R1: their label, the source of truth, is audited). An
+--     copies SD_Drop / SD_Face of Theme.stickerText (UI FINAL R1: their label, the source of truth, is audited), and
+--     (UI FINAL R2) the moving shine strips SD_Shine, the soft shadows SD_SoftShadow and a Button's gamepad ring
+--     SD_FocusRing (decoration that reaches past its box on purpose). An
 --     object with no area is counted in `checked` but left out of the rules that need a box.
 --   * offscreen: an edge outside its ScreenGui's AbsolutePosition / AbsoluteSize box by more than 1 px, unless the
 --     object is inside a ScrollingFrame.
@@ -56,7 +58,9 @@
 --     child) intersecting by more than 2 px on both axes, inside the clip of their ScrollingFrame / ClipsDescendants
 --     ancestors. A frame that shows text counts as its own box when it draws a background, else as the union of its
 --     text children (a transparent holder the size of a card, like a card's Overlay, is not a box the player sees).
---     Two layer roots (registered modal roots, stacked on purpose) are never compared.
+--     Two layer roots (registered modal roots, stacked on purpose) are never compared. UI FINAL R2 (PR1): a Button's
+--     box here is its drawn face (its SD_Visual child), not its hit box, which may be larger (touch minimum); the
+--     smallTargets rule keeps reading the hit box.
 --   * primaryOk (modals): spec.primary() is a GuiObject inside the modal's root, visible, Selectable and with an area.
 --   * brokenWords: a wrapped text (TextWrapped, not TextScaled) with a word wider than its text box (AbsoluteSize.X
 --     less its UIPadding) by more than TEXT_FIT_SLACK_PX, which the engine breaks mid-word ("Squishie / s" on the first
@@ -122,6 +126,7 @@ export type Node = {
 	wideWord: string?,
 	wideWordPx: number?, -- that word's width in actual px
 	textBoxPx: number?, -- the width the text can use, in actual px (AbsoluteSize.X less its UIPadding)
+	face: Rect?, -- UI FINAL R2: a Button's drawn face (its SD_Visual), the box the overlap rule compares
 	children: { Node }, -- the visible GuiObject children
 }
 
@@ -253,7 +258,14 @@ local EXCLUDED_GUIS: { [string]: boolean } = { SD_SoundPicker = true } -- a Stud
 -- Backdrops left out of every rule: UIController's ModalWash between two stacked modals reaches past SD_Modal's edges
 -- on purpose (over the top bar inset, like SD_Dimmer) and holds nothing (integration of the foam fix batch). UI FINAL
 -- R1: a text drop's two mirrored copies (Theme.stickerText) would read as text overlapping its own label.
-local EXCLUDED_OBJECTS: { [string]: boolean } = { ModalWash = true, SD_Drop = true, SD_Face = true }
+local EXCLUDED_OBJECTS: { [string]: boolean } = {
+	ModalWash = true,
+	SD_Drop = true,
+	SD_Face = true,
+	SD_Shine = true,
+	SD_SoftShadow = true,
+	SD_FocusRing = true,
+}
 local HUD_GUI = "SD_Hud"
 local OVERLAY_GUI = "SD_Overlay"
 local TOASTS = "Toasts" -- UIController's toast column in SD_Overlay
@@ -414,7 +426,7 @@ end
 -- anything else: nil (not compared).
 function LayoutAudit.overlapRect(node: Node): Rect?
 	if node.button or showsText(node) then
-		return node.rect
+		return node.face or node.rect
 	end
 	local texts: { Rect } = {}
 	for _, child in node.children do
@@ -880,6 +892,10 @@ nodeOf = function(object: GuiObject, path: string, parentScale: number, layers: 
 		layer = if layers[object] then true else nil,
 		children = {},
 	}
+	local visual = if object:IsA("GuiButton") then object:FindFirstChild("SD_Visual") else nil
+	if visual and visual:IsA("GuiObject") then
+		node.face = rectOf(visual)
+	end
 	if object:IsA("TextLabel") or object:IsA("TextButton") or object:IsA("TextBox") then
 		local text = object :: any
 		node.text = text.Text

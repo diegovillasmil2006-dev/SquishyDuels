@@ -369,7 +369,7 @@ local function layoutDetail()
 	if d == nil or l == nil or not UIController.isOpen(SCREEN) then
 		return
 	end
-	local buttonHeight = Layout.touchBase(TOUCH.primaryButton, l.scale)
+	local buttonHeight = Layout.touchBase(Button.frameHeight("primary"), l.scale) -- UI FINAL R2 (P1): face + lip
 	local balanceLine = Theme.lineHeight("Small", Enum.FontWeight.Bold)
 	local info = lastBuy
 	local buyBox: ShopFormat.BuyBox? = nil

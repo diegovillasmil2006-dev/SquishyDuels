@@ -423,6 +423,18 @@ local Palette = {
 	StickerUltTop = Color3.fromHex("#FFD79A"), -- H:234: the Ultimate chip (with StickerGoldEnd)
 	StickerUltText = Color3.fromHex("#4A2600"), -- H:234
 	StickerThrowChip = Color3.fromHex("#4A3A6E"), -- H:233: the throw-style chip
+	-- Effects (UI FINAL R2, the motion kit: UI/UiFx's design effects and Config.UI.Fx's events).
+	StickerFxYellow = Color3.fromHex("#FFD84A"), -- lib:221: the burst and rain pieces
+	StickerFxPink = Color3.fromHex("#FF6FA3"), -- lib:221
+	StickerFxCyan = Color3.fromHex("#5FE0E8"), -- lib:221
+	StickerFxGreen = Color3.fromHex("#8DF27A"), -- lib:221; the purchase ring (H:868)
+	StickerFxPurple = Color3.fromHex("#B98CFF"), -- lib:221
+	StickerFxIce = Color3.fromHex("#9EF7FF"), -- H:815: the box wobble's sparks
+	StickerPinkSoft = Color3.fromHex("#FF9CC2"), -- H:774: the match found / level-up / squeeze sparks (H:139's dots)
+	StickerGripFloat = Color3.fromHex("#9EF7D2"), -- H:704: the "+N Grip" float
+	StickerCoinFlash = Color3.fromHex("#FFF3A0"), -- H:577: the coin landing's sparks and flash
+	StickerSpendFloat = Color3.fromHex("#FF7A8A"), -- H:673: the "-N" spend float
+	StickerPriceShort = Color3.fromHex("#FFB3BE"), -- H:946: an "off" button's price (OPEN, H:278; our coin BUY)
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

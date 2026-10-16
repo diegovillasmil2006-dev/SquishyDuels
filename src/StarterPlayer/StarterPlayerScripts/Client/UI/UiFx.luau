@@ -27,6 +27,29 @@
 -- fading in place; punch and shake do nothing.
 -- Pure (unit-tested in Edit mode): TIERS, counts(tier, fewer), rayRect(i, n, length, spinDeg), sparkleAt(...),
 -- fallAt(...).
+-- UI FINAL R2 (plan work/ui/PLAN.md §2.1; added below, the tiers above stay for every caller the design does not
+-- cover): the design's own effects (hud-lib.js FX, lib:215-268), their numbers in Config.UI.Fx:
+--   UiFx.sparks(at, opts?) -> boolean   the design's burst (lib:219): n pieces, `stars` of them the pinched
+--            four-point star (lib:225: the img.fx.spark picture tinted, a 45° diamond while it has no id, T10), the
+--            rest circles with an ink ring, flung out, falling, shrinking and clearing
+--   UiFx.ring(at, color?, size?) -> boolean   a ring growing .2 -> 1.3 as it fades (lib:236)
+--   UiFx.rain(n?, colors?, parent?) -> boolean   outlined confetti falling across the whole layer (lib:243), or
+--            across `parent` (an overlay: the rain goes with it); PR14: halved on a compact screen or with fewer
+--            effects
+--   UiFx.float(at, text, color?, kind?, opts?) -> TextLabel?   a number popping up as it rises (lib:255), in the
+--            Sticker text role "float" at `kind`'s size; returns its label (a caller may change its Text while it
+--            rises, e.g. a fold), nil when nothing is drawn; opts.parent draws it in a caller's frame (its layer
+--            and visibility), `at` a point in that frame's base px
+--   UiFx.jolt(root, px) -> boolean   the design's jolt (T6, lib:299-303): Config.UI.Fx.jolt.frames random offsets
+--            of px x (1 - i / frames), then 0, linear over its ms, added to the root's own offset; only with Camera
+--            shake on (setShakeGate) and never under ReducedMotion. UiFx.shake (above) stays for its callers
+--   UiFx.colors(names, extra?)   Art/Palette names (or the caller's own, e.g. a rarity's) as colours;
+--   UiFx.designCount()   design effects running;   UiFx.setShakeGate(fn?)   the jolt's Camera shake gate
+-- Each is one holder in the layer whose pieces ONE Scheduler render effect moves, ending by itself (no cap: the
+-- design has none; the box reveal keeps its own budget, Config.UI.Fx.events.boxBurst). Every curve is
+-- Config.UI.curves' exact cubic-bezier (Anim/Tweens.curve). Under ReducedMotion sparks, rings, rain and jolts draw
+-- nothing (the design's own rule, lib:220, 237, 244, 300) and a float holds still, fading out at its end. Pure:
+-- sparkCount, sparkPieces, sparkAt, rainCount, joltOffsets, joltAt.
 
 -- Services
 
@@ -36,6 +59,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local AssetTable = require(Shared.AssetTable)
 local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
 
@@ -64,6 +88,33 @@ export type TierSpec = {
 export type Options = { neutral: boolean?, radius: number? }
 
 export type CascadeOptions = { from: number?, ms: number?, staggerMs: number?, maxStaggerMs: number? }
+
+-- UI FINAL R2: the design effects' options (Config.UI.Fx gives every default) and one burst piece (base px, ms,
+-- radians, degrees).
+export type SparkOptions = {
+	n: number?,
+	spread: number?,
+	up: number?,
+	grav: number?,
+	size: number?,
+	stars: number?,
+	colors: { Color3 }?,
+	ms: number?,
+	angle: number?, -- launched around this angle (± cone / 2) instead of all around
+}
+export type Spark = {
+	star: boolean,
+	color: Color3,
+	size: number,
+	dx: number,
+	dy: number,
+	grav: number,
+	spin: number,
+	ms: number,
+}
+-- parent: draw in this frame instead of the layer (it keeps that frame's layer and visibility); `at` is then a
+-- point in its base px.
+export type FloatOptions = { dx: number?, rise: number?, ms: number?, parent: GuiObject? }
 
 type Piece = {
 	kind: "ray" | "sparkle" | "confetti" | "droplet",
@@ -130,6 +181,11 @@ local PUNCH_PEAK = 1.18
 local PUNCH_MS = 300
 local SHAKE_PX = 9
 local SHAKE_DECAY = 2.4 -- trauma per second
+-- UI FINAL R2: the design effects.
+local FX = Config.UI.Fx
+local DIAMOND = math.sqrt(0.5) -- a square turned 45° spans its side / DIAMOND
+local SPARK_IMAGE_KEY = "img.fx.spark" -- lib:225's pinched star (pack 2)
+local REDUCED_FADE_SECONDS = Config.UI.motion.reducedMotionMaxFadeMs / 1000
 
 -- Module table
 
@@ -625,6 +681,476 @@ function UiFx.shake(object: GuiObject, trauma: number)
 		object.AnchorPoint = Vector2.new(shake.rest.X + dx / size.X, shake.rest.Y + dy / size.Y)
 		return true
 	end, "render")
+end
+
+-- UI FINAL R2: the design effects (see the header) ------------------------------------------------------------------
+
+type DesignFx = { holder: Frame, handle: Scheduler.Handle?, done: boolean }
+type Drop = { frame: Frame, base: UDim2, sway: number, spin: number, delay: number, life: number }
+type Jolt = { offsets: { Vector2 }, applied: Vector2, elapsed: number, handle: Scheduler.Handle? }
+
+local designActive: { DesignFx } = {}
+local designRng = Random.new()
+local jolts: { [GuiObject]: Jolt } = {}
+local shakeGate: (() -> boolean)? = nil
+
+local function finishDesign(fx: DesignFx)
+	if fx.done then
+		return
+	end
+	fx.done = true
+	local handle = fx.handle
+	if handle then
+		handle:disconnect()
+	end
+	fx.holder:Destroy()
+	local index = table.find(designActive, fx)
+	if index then
+		table.remove(designActive, index)
+	end
+end
+
+-- A clear holder at `centre` (layer base px) for one effect's pieces.
+local function designHolder(name: string, centre: Vector2): Frame
+	return Create("Frame", {
+		Name = name,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(centre.X, centre.Y),
+		Size = UDim2.fromOffset(0, 0),
+		Active = false,
+		ZIndex = HOLDER_Z,
+	})
+end
+
+-- Shows `holder` in `parent` (the layer, or a caller's overlay) and steps it (`step(elapsed seconds) -> alive`) until
+-- it is done or gone; a step that errors ends the effect too (its pieces go) and the Scheduler logs it.
+local function launch(parent: Instance, holder: Frame, step: (elapsed: number) -> boolean)
+	local fx: DesignFx = { holder = holder, handle = nil, done = false }
+	holder.Parent = parent
+	table.insert(designActive, fx)
+	local elapsed = 0
+	fx.handle = Scheduler.add(function(dt: number): boolean
+		if fx.done then
+			return false
+		end
+		elapsed += dt
+		if holder.Parent == nil then
+			finishDesign(fx)
+			return false
+		end
+		local ok, alive = pcall(step, elapsed)
+		if ok and alive then
+			return true
+		end
+		finishDesign(fx)
+		if not ok then
+			error(alive, 0)
+		end
+		return false
+	end, "render")
+end
+
+-- Art/Palette colour names as colours: `extra` first (a caller's own names, e.g. "rarityBase"), white when unknown.
+function UiFx.colors(names: { string }, extra: { [string]: Color3 }?): { Color3 }
+	local out: { Color3 } = {}
+	for _, name in names do
+		local value = if extra and extra[name] then extra[name] else (Palette :: any)[name]
+		table.insert(out, if typeof(value) == "Color3" then value else WHITE)
+	end
+	return out
+end
+
+local SPARK_COLORS = UiFx.colors(FX.sparks.colors)
+local RAIN_COLORS = UiFx.colors(FX.rain.colors)
+
+-- The design burst's piece count: n (default Config.UI.Fx.sparks.n), whole and >= 0. Fewer effects keeps it (PR14
+-- halves only the rain, lib:243-254).
+function UiFx.sparkCount(n: number?): number
+	return math.max(0, math.floor(n or FX.sparks.n))
+end
+
+-- The pieces of a design burst (lib:221-233), drawn from `rng`: colours in turn, `stars` of them stars.
+function UiFx.sparkPieces(opts: SparkOptions?, rng: Random): { Spark }
+	local spec = FX.sparks
+	local o: SparkOptions = opts or {}
+	local colors = if o.colors and #o.colors > 0 then o.colors else SPARK_COLORS
+	local stars = o.stars or spec.stars
+	local spread = o.spread or spec.spread
+	local up = o.up or spec.up
+	local size = o.size or spec.size
+	local ms = o.ms or spec.ms
+	local pieces: { Spark } = {}
+	for i = 1, UiFx.sparkCount(o.n) do
+		local angle = if o.angle then o.angle + (rng:NextNumber() - 0.5) * spec.cone else rng:NextNumber() * 2 * math.pi
+		local reach = spread * (spec.reachMin + rng:NextNumber() * spec.reachSpan)
+		table.insert(pieces, {
+			star = rng:NextNumber() < stars,
+			color = colors[(i - 1) % #colors + 1],
+			size = size * (spec.sizeMin + rng:NextNumber() * spec.sizeSpan),
+			dx = math.cos(angle) * reach,
+			dy = math.sin(angle) * reach - up,
+			grav = o.grav or spec.grav,
+			spin = (rng:NextNumber() - 0.5) * 2 * spec.spinDeg,
+			ms = ms + rng:NextNumber() * spec.jitterMs,
+		})
+	end
+	return pieces
+end
+
+-- A burst piece u (0..1) into its life (lib:229-233: three keyframes, the whole run eased by Config.UI.Fx.sparks.curve,
+-- linear between them): its offset from the centre, scale, rotation and transparency.
+function UiFx.sparkAt(piece: Spark, u: number): (Vector2, number, number, number)
+	local spec = FX.sparks
+	local e = Tweens.curve(spec.curve)(math.clamp(u, 0, 1))
+	local peak, travel = spec.peakAt, spec.peakTravel
+	if e <= peak then
+		local k = e / peak
+		return Vector2.new(piece.dx * travel * k, piece.dy * travel * k), spec.peakScale * k, piece.spin * 0.5 * k, 0
+	end
+	local k = (e - peak) / (1 - peak)
+	local x = piece.dx * (travel + (1 - travel) * k)
+	local y = piece.dy * travel + (piece.dy + piece.grav - piece.dy * travel) * k
+	return Vector2.new(x, y), spec.peakScale + (spec.endScale - spec.peakScale) * k, piece.spin * (0.5 + 0.5 * k), k
+end
+
+-- The rain's piece count (PR14): n (default Config.UI.Fx.rain.n), halved (rounded up) on a compact screen or with
+-- fewer effects.
+function UiFx.rainCount(n: number?, fewer: boolean, compact: boolean): number
+	local count = math.max(0, math.floor(n or FX.rain.n))
+	return if fewer or compact then math.ceil(count / 2) else count
+end
+
+-- The jolt's offsets (lib:301): `frames` random offsets of px x (1 - i / frames) on each axis (i from 0), then 0.
+function UiFx.joltOffsets(px: number, frames: number, rng: Random): { Vector2 }
+	local out: { Vector2 } = {}
+	for i = 0, frames - 1 do
+		local d = px * (1 - i / frames)
+		table.insert(out, Vector2.new((rng:NextNumber() - 0.5) * 2 * d, (rng:NextNumber() - 0.5) * 2 * d))
+	end
+	table.insert(out, Vector2.zero)
+	return out
+end
+
+-- The offset of a jolt `elapsed` seconds in (linear between its offsets over Config.UI.Fx.jolt.ms, lib:302).
+function UiFx.joltAt(offsets: { Vector2 }, elapsed: number): Vector2
+	local total = FX.jolt.ms / 1000
+	if not (elapsed < total) or #offsets < 2 then
+		return Vector2.zero
+	end
+	local position = math.max(0, elapsed) / total * (#offsets - 1)
+	local index = math.floor(position) + 1
+	local a, b = offsets[index], offsets[math.min(index + 1, #offsets)]
+	return a:Lerp(b, position - (index - 1))
+end
+
+-- Design effects running now (tests and leak checks).
+function UiFx.designCount(): number
+	return #designActive
+end
+
+-- The gate of the jolt: the player's Camera shake setting (UIController installs it; a UI module never reads the
+-- controllers). nil: on.
+function UiFx.setShakeGate(fn: (() -> boolean)?)
+	shakeGate = fn
+end
+
+-- The design's jolt (T6, lib:299-303): `root` (the HUD, a window) shaken by UiFx.joltOffsets, added to its own
+-- Position offset (a caller's move in between is kept), over Config.UI.Fx.jolt.ms; only with Camera shake on and never
+-- under ReducedMotion (lib:300). A new jolt on the same root replaces the running one. Returns whether it plays.
+function UiFx.jolt(root: GuiObject, px: number): boolean
+	local gate = shakeGate
+	if Tweens.reducedMotion() or root.Parent == nil or not (px > 0) or (gate ~= nil and not gate()) then
+		return false
+	end
+	local current = jolts[root]
+	local applied = Vector2.zero
+	if current then
+		applied = current.applied
+		local handle = current.handle
+		if handle then
+			handle:disconnect()
+		end
+	end
+	local jolt: Jolt = {
+		offsets = UiFx.joltOffsets(px, FX.jolt.frames, designRng),
+		applied = applied,
+		elapsed = 0,
+		handle = nil,
+	}
+	jolts[root] = jolt
+	local function place(offset: Vector2)
+		local x, y = math.round(offset.X), math.round(offset.Y)
+		local p = root.Position
+		root.Position =
+			UDim2.new(p.X.Scale, p.X.Offset - jolt.applied.X + x, p.Y.Scale, p.Y.Offset - jolt.applied.Y + y)
+		jolt.applied = Vector2.new(x, y)
+	end
+	jolt.handle = Scheduler.add(function(dt: number): boolean
+		jolt.elapsed += dt
+		if not root.Parent or jolt.elapsed >= FX.jolt.ms / 1000 then
+			place(Vector2.zero)
+			if jolts[root] == jolt then
+				jolts[root] = nil
+			end
+			return false
+		end
+		place(UiFx.joltAt(jolt.offsets, jolt.elapsed))
+		return true
+	end, "render")
+	return true
+end
+
+-- One burst star (lib:225's pinched four-point star): the img.fx.spark picture tinted, or while it has no id a square
+-- turned 45° (a diamond of the same span).
+local function star(color: Color3, size: number, parent: Instance): GuiObject
+	local content = AssetTable.image(SPARK_IMAGE_KEY)
+	if content then
+		return Create("ImageLabel", {
+			Name = "Star",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundTransparency = 1,
+			Image = content,
+			ImageColor3 = color,
+			Size = UDim2.fromOffset(size, size),
+			Active = false,
+			Parent = parent,
+		})
+	end
+	return Create("Frame", {
+		Name = "Star",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(size * DIAMOND, size * DIAMOND),
+		Rotation = 45,
+		Active = false,
+		Parent = parent,
+	})
+end
+
+function UiFx.sparks(at: GuiObject | Vector2, opts: SparkOptions?): boolean
+	local gui = layer()
+	if gui == nil or Tweens.reducedMotion() then
+		return false
+	end
+	local centre = centreOf(at, gui)
+	if centre == nil then
+		return false
+	end
+	local pieces = UiFx.sparkPieces(opts, designRng)
+	if #pieces == 0 then
+		return false
+	end
+	local holder = designHolder("SD_Sparks", centre)
+	local frames: { GuiObject } = {}
+	local scales: { UIScale } = {}
+	local strokes: { [number]: UIStroke } = {}
+	local turned: { [number]: number } = {}
+	for index, piece in pieces do
+		local frame: GuiObject
+		if piece.star then
+			frame = star(piece.color, piece.size, holder)
+		else
+			frame = circle("Spark", piece.size, piece.color, holder)
+			strokes[index] = Theme.stroke(Theme.Colors.inkUI, FX.sparks.outlinePx, frame)
+		end
+		turned[index] = frame.Rotation
+		frames[index] = frame
+		scales[index] = Create("UIScale", { Scale = 0, Parent = frame })
+	end
+	launch(gui, holder, function(elapsed: number): boolean
+		local alive = false
+		for index, piece in pieces do
+			local u = elapsed * 1000 / piece.ms
+			local offset, size, turn, clear = UiFx.sparkAt(piece, u)
+			local frame = frames[index]
+			frame.Position = UDim2.fromOffset(offset.X, offset.Y)
+			frame.Rotation = turned[index] + turn
+			if frame:IsA("ImageLabel") then
+				frame.ImageTransparency = clear
+			else
+				frame.BackgroundTransparency = clear
+			end
+			scales[index].Scale = size
+			local stroke = strokes[index]
+			if stroke then
+				stroke.Transparency = clear
+			end
+			alive = alive or u < 1
+		end
+		return alive
+	end)
+	return true
+end
+
+function UiFx.ring(at: GuiObject | Vector2, color: Color3?, size: number?): boolean
+	local gui = layer()
+	if gui == nil or Tweens.reducedMotion() then
+		return false
+	end
+	local centre = centreOf(at, gui)
+	if centre == nil then
+		return false
+	end
+	local spec = FX.ring
+	local ease = Tweens.curve(spec.curve)
+	local holder = designHolder("SD_Ring", centre)
+	local ring = circle("Ring", size or spec.size, WHITE, holder)
+	ring.BackgroundTransparency = 1
+	local stroke = Theme.stroke(color or UiFx.colors({ spec.color })[1], spec.borderPx, ring)
+	pcall(function()
+		(stroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner -- the CSS border-box (H:18)
+	end)
+	local scale: UIScale = Create("UIScale", { Scale = spec.scaleFrom, Parent = ring })
+	launch(gui, holder, function(elapsed: number): boolean
+		local u = math.min(elapsed * 1000 / spec.ms, 1)
+		local e = ease(u)
+		scale.Scale = spec.scaleFrom + (spec.scaleTo - spec.scaleFrom) * e
+		stroke.Transparency = math.clamp(e, 0, 1)
+		return u < 1
+	end)
+	return true
+end
+
+function UiFx.rain(n: number?, colors: { Color3 }?, parent: GuiObject?): boolean
+	local gui = layer()
+	if gui == nil or Tweens.reducedMotion() then
+		return false
+	end
+	local spec = FX.rain
+	local ease = Tweens.curve(spec.curve)
+	local absolute = gui.AbsoluteSize
+	local breakpoints = Config.UI.Breakpoints
+	local compact = absolute.Y < breakpoints.compactBelowHeight or absolute.X < breakpoints.compactBelowWidth
+	local count = UiFx.rainCount(n, UiPrefs.get("fewerEffects"), compact)
+	if count == 0 then
+		return false
+	end
+	local palette = if colors and #colors > 0 then colors else RAIN_COLORS
+	local size = (if parent then parent.AbsoluteSize else absolute) / layerScale(gui)
+	local holder: Frame = Create("Frame", {
+		Name = "SD_Rain",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Active = false,
+		ZIndex = HOLDER_Z,
+	})
+	local drops: { Drop } = {}
+	for i = 1, count do
+		local width = spec.sizeMin + designRng:NextNumber() * spec.sizeSpan
+		local height = if designRng:NextNumber() < spec.tallShare then width * spec.tall else width
+		local x = designRng:NextNumber() * size.X
+		local y = -spec.startMinPx - designRng:NextNumber() * spec.startSpanPx
+		local frame: Frame = Create("Frame", {
+			Name = "Confetti",
+			BackgroundColor3 = palette[(i - 1) % #palette + 1],
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(x, y),
+			Size = UDim2.fromOffset(width, height),
+			Active = false,
+			Parent = holder,
+		})
+		local round = designRng:NextNumber() < spec.roundShare
+		Create("UICorner", { CornerRadius = if round then UDim.new(0.5, 0) else UDim.new(0, 2), Parent = frame })
+		Theme.stroke(Theme.Colors.inkUI, spec.outlinePx, frame)
+		table.insert(drops, {
+			frame = frame,
+			base = frame.Position,
+			sway = (designRng:NextNumber() - 0.5) * 2 * spec.swayPx,
+			spin = (designRng:NextNumber() - 0.5) * 2 * spec.spinDeg,
+			delay = designRng:NextNumber() * spec.delayMs / 1000,
+			life = (spec.ms + designRng:NextNumber() * spec.jitterMs) / 1000,
+		})
+	end
+	local fall = size.Y
+	launch(parent or gui, holder, function(elapsed: number): boolean
+		local alive = false
+		for _, drop in drops do
+			local u = math.clamp((elapsed - drop.delay) / drop.life, 0, 1)
+			local e = ease(u)
+			local x, y, turn
+			if e <= 0.5 then
+				local k = e * 2
+				x, y, turn = drop.sway * k, fall * spec.fallShare * k, drop.spin * 0.5 * k
+			else
+				local k = (e - 0.5) * 2
+				local half = fall * spec.fallShare
+				x = drop.sway - 1.4 * drop.sway * k
+				y = half + (fall + spec.pastPx - half) * k
+				turn = drop.spin * (0.5 + 0.5 * k)
+			end
+			drop.frame.Position = drop.base + UDim2.fromOffset(x, y)
+			drop.frame.Rotation = turn
+			alive = alive or u < 1
+		end
+		return alive
+	end)
+	return true
+end
+
+function UiFx.float(
+	at: GuiObject | Vector2,
+	text: string,
+	color: Color3?,
+	kind: Theme.TextKind?,
+	opts: FloatOptions?
+): TextLabel?
+	local o: FloatOptions = opts or {}
+	local parent = o.parent
+	local gui = layer()
+	local target: Instance? = parent or gui
+	if target == nil then
+		return nil
+	end
+	local centre = if parent then (if typeof(at) == "Vector2" then at else nil) else centreOf(at, gui :: ScreenGui)
+	if centre == nil then
+		return nil
+	end
+	local spec = FX.float
+	local holder = designHolder("SD_Float", centre)
+	local label: TextLabel = Create("TextLabel", {
+		Name = "Text",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Text = text,
+		Active = false,
+		Parent = holder,
+	})
+	-- lib:259: the role's flat 6 px stroke (3 px outside) and 3 px drop, at the call's size and colour.
+	Theme.stickerText(label, "float")
+	label.TextSize = Theme.textSize(kind or (spec.kind :: Theme.TextKind))
+	label.TextColor3 = color or UiFx.colors({ spec.color })[1]
+	label.TextWrapped = false
+	local reduced = Tweens.reducedMotion()
+	local dx = o.dx or (designRng:NextNumber() - 0.5) * 2 * spec.dxPx
+	local rise = o.rise or spec.risePx
+	local life = (o.ms or spec.ms) / 1000
+	-- lib:262-266 (Config.UI.Fx.float.frames: x / y as shares of the drift and the rise)
+	local frames: { Tweens.Pose } = {}
+	for _, frame in spec.frames do
+		local pose = (table.clone(frame) :: any) :: Tweens.Pose
+		pose.x = if frame.x then frame.x * dx else nil
+		pose.y = if frame.y then frame.y * rise else nil
+		table.insert(frames, pose)
+	end
+	local poser = Tweens.poser(label)
+	if not reduced then
+		poser:set(Tweens.poseAt(frames, 0, nil, spec.curve))
+	end
+	launch(target, holder, function(elapsed: number): boolean
+		local u = if life > 0 then math.min(elapsed / life, 1) else 1
+		if reduced then
+			-- Still, then a fade over the last reducedMotionMaxFadeMs.
+			poser:set({ alpha = math.clamp((life - elapsed) / REDUCED_FADE_SECONDS, 0, 1) })
+		else
+			poser:set(Tweens.poseAt(frames, u, nil, spec.curve)) -- the whole run eased (lib:267)
+		end
+		return u < 1
+	end)
+	return label
 end
 
 return UiFx

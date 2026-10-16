@@ -1447,6 +1447,9 @@ return function(t: Context)
 				Prize = 52,
 				Reveal = 64,
 				Congrats = 82,
+				D17 = 17, -- UI FINAL R2 (PR2): the design's 17 / 19 / 23 kept exact
+				D19 = 19,
+				D23 = 23,
 			}
 		do
 			expect.equal(size[kind], px)
@@ -1454,6 +1457,8 @@ return function(t: Context)
 		for _, px in size do
 			expect.truthy(px >= 16)
 		end
+		-- UI FINAL R2 (PR1): the design's fit min(w / 1440, h / 810) (H:624) inside the floor and the cap.
+		expect.deepEqual(Config.UI.Scale, { referenceWidth = 1440, referenceHeight = 810, min = 0.85, max = 1.25 })
 		local sticker = Config.UI.Sticker
 		expect.deepEqual(sticker.border, { thin = 3, normal = 4, heavy = 5 })
 		expect.equal(sticker.lip.button, 5)
@@ -2280,43 +2285,237 @@ return function(t: Context)
 
 		-- Config.UI
 		local motion = ui.motion
-		-- UI overhaul (2026-10-11): the elastic modal pop (0.9 -> 1.03 -> 1 over 300 ms), a 150 ms squish on close,
-		-- hover 1.05 over 120 ms, press 0.94 over 70 ms.
-		expect.equal(motion.modalOpen.scaleFrom, 0.9)
-		expect.equal(motion.modalOpen.overshoot, 1.03)
-		expect.equal(motion.modalOpen.ms, 300)
-		expect.equal(motion.modalClose.scaleTo, 0.9)
-		expect.equal(motion.modalClose.visualMs, 150)
-		expect.equal(motion.buttonHover.scale, 1.05)
-		expect.equal(motion.buttonHover.ms, 120)
-		expect.equal(motion.buttonHover.fillDelta, 0.07) -- UI FINAL R1: the design's brightness(1.07), H:637
-		expect.equal(motion.buttonPressed.scale, 0.94)
-		expect.equal(motion.buttonPressed.ms, 70)
-		expect.deepEqual(motion.buttonRelease.spring, { omega = 20, zeta = 0.35 })
-		-- Reading (§18.1 #4 over B3's 2 cycles in 200 ms = 10 Hz): 1 cycle over 340 ms, 2.9 Hz.
-		expect.deepEqual(motion.buttonError, { wigglePx = 4, cycles = 1, ms = 340 })
-		expect.equal(motion.toast.popFrom, 0.9)
+		-- UI FINAL R2 (the design's motion, plan work/ui/PLAN.md R2; `H:n` = "Squishy Duels HUD.dc.html" line n,
+		-- `lib:n` = uploads/hud-lib.js line n): the window pop .55 -> 1.035 -> .99 -> 1 over 500 ms (sdPop, H:25,
+		-- H:181), the close to .82 and 20 px lower over 190 ms (H:686-687), the backdrop over 250 ms (H:178); the hover
+		-- by the design's kind over 380 ms (H:634-635) with the exact filter (H:637); the press squash over 667 ms and
+		-- the "no" shake over 1000 ms (PR4, PR5: the design's own frames, slowed to 3 Hz). CSS scale(s) translateY(y)
+		-- moves y x s: the pop rises 40 x .55 = 22 px, the close sinks 24 x .82 = 20 px.
+		expect.equal(motion.modalOpen.scaleFrom, 0.55)
+		expect.equal(motion.modalOpen.overshoot, 1.035)
+		expect.equal(motion.modalOpen.ms, 500)
+		expect.equal(motion.modalOpen.backdropMs, 250)
+		expect.equal(motion.modalOpen.curve, "windows") -- H:181
+		expect.deepEqual(
+			motion.modalOpen.frames,
+			{
+				{ at = 0, scale = 0.55, y = 22 },
+				{ at = 0.6, scale = 1.035, y = -4 },
+				{ at = 0.8, scale = 0.99 },
+				{ at = 1, scale = 1, y = 0 },
+			} :: { any }
+		)
+		expect.equal(motion.modalClose.scaleTo, 0.82)
+		expect.equal(motion.modalClose.visualMs, 190)
+		expect.equal(motion.modalClose.ms, 190)
+		expect.equal(motion.modalClose.curve, "close") -- H:686: cubic-bezier(.5,0,.75,0)
+		-- Today's tween (until R3 plays the curve): Quart In, 0.006 off (Cubic In is 0.111 off).
+		expect.equal(motion.modalClose.style, Enum.EasingStyle.Quart)
+		expect.deepEqual(
+			motion.modalClose.frames,
+			{ { at = 0, scale = 1, y = 0 }, { at = 1, scale = 0.82, y = 20 } } :: { any }
+		)
+		-- T9: i x 28 ms apart, no cap (H:934).
+		expect.deepEqual(motion.cardIn, {
+			staggerMs = 28, -- H:934
+			maxStaggerMs = math.huge,
+			ms = 420, -- H:203
+			scaleFrom = 0.9, -- H:31
+			curve = "rise", -- H:203
+			frames = { { at = 0, y = 18, scale = 0.9, alpha = 0 }, { at = 1, y = 0, scale = 1, alpha = 1 } } :: { any },
+		})
+		expect.deepEqual(motion.buttonHover, {
+			ms = 380, -- H:635
+			curve = "hover",
+			filterMs = 200,
+			filterCurve = "ease",
+			brightness = 1.07, -- H:637
+			saturate = 1.06,
+		})
+		expect.deepEqual(motion.hover, {
+			btn = { scale = 1.04, y = -3 },
+			nav = { scale = 1.13, rot = -4 },
+			tab = { scale = 1.05, y = -2 },
+			card = { scale = 1.035, y = -5 },
+			x = { scale = 1.1, rot = 90 },
+			icon = { scale = 1.12 },
+			row = { x = 4 },
+		})
+		expect.equal(motion.buttonPress.ms, 667)
+		expect.equal(motion.buttonPress.designMs, 460) -- lib:293
+		expect.equal(motion.buttonPress.amount, 0.14) -- lib:289
+		expect.deepEqual(motion.buttonPress.amountByKind, { nav = 1.4, card = 0.7 }) -- H:644
+		expect.equal(motion.buttonPress.decoratedAxis, "sy") -- a reading (Button.decoratedScale)
+		expect.deepEqual(motion.buttonShake.steps, { 0, -1, 1, -0.8, 0.6, -0.3, 0 }) -- lib:297
+		expect.deepEqual(
+			{ motion.buttonShake.ms, motion.buttonShake.designMs, motion.buttonShake.px, motion.buttonShake.pillPx },
+			{ 1000, 420, 9, 12 }
+		)
+		expect.equal(motion.buttonPressed, nil) -- retired (PR4)
+		expect.equal(motion.buttonRelease, nil)
+		expect.equal(motion.buttonError, nil) -- retired (PR5)
+		-- §1.4: the nav icon's 0 / -12 / 9 / -4 / 0 wiggle (H:639, 520 ms: 3.8 Hz) over 668 ms (3 Hz).
+		expect.deepEqual(motion.navWiggle, { ms = 668, designMs = 520, angles = { 0, -12, 9, -4, 0 } })
+		expect.deepEqual(motion.focus, { outerStrokePx = 3, innerStrokePx = 2 })
+		-- The toast: sdToast (H:33, H:175, H:661).
+		expect.equal(motion.toast.ms, 290)
+		expect.equal(motion.toast.slidePx, 30)
+		expect.equal(motion.toast.popFrom, 0.8)
+		expect.equal(motion.toast.autoDismissSeconds, 2.9)
+		expect.equal(motion.toast.maxStacked, 3)
 		expect.equal(motion.toast.nudgeScale, 1.06)
 		expect.equal(motion.toast.nudgeMs, 160)
+		expect.equal(motion.toast.lifeMs, 2900)
+		expect.equal(motion.toast.curve, "ease")
+		expect.equal(#motion.toast.frames, 5)
 		expect.deepEqual(motion.badgePop, { from = 1.4, ms = 220 })
 		expect.deepEqual(motion.readyPop, { from = 1.3, ms = 220 })
 		expect.deepEqual(motion.coinCounter.pillBounce, { scale = 1.08, upMs = 70, downMs = 160 })
 		expect.deepEqual(motion.coinCounter.spend, { scale = 0.95, downMs = 60, upMs = 140, countMs = 300 })
 		expect.equal(motion.coinCounter.iconWiggleDeg, 12)
+		expect.deepEqual(motion.coinCounter.flash, {
+			flipMs = 560, -- H:571
+			comboFlipMs = 380,
+			comboGapMs = 260, -- H:565
+			curve = "coinFlip",
+			iconPeak = 1.45, -- H:568
+			numberScale = 1.22, -- H:574
+			numberRisePx = 3,
+			numberMs = 480,
+			numberCurve = "search",
+			ringFromPx = 8, -- H:575
+			ringToPx = 16,
+			ringAlpha = 0.7,
+			ringMs = 560,
+			glowMs = 600, -- H:572
+			raysMs = 700, -- H:573
+		})
+		-- The design's fly (lib:269-286): 8 coins a gain (H:663), 46 px, 60 ms apart, 720 ms + up to 220, through a
+		-- point up to 130 px to either side and 50-190 px up, landing at 0.55; at most 10 coins.
 		expect.deepEqual(motion.coinFlight, {
 			minAmount = 50,
-			coinsPer = 40,
-			minCoins = 3,
-			maxCoins = 8,
-			iconPx = 22,
-			ms = 520,
-			staggerMs = 45,
-			arcPx = 120,
-			startScale = 0.7,
-			scaleInMs = 120,
+			count = 8,
+			maxCoins = 10,
+			iconPx = 46,
+			ms = 720,
+			jitterMs = 220,
+			staggerMs = 60,
+			startJitterPx = 15,
+			arcXPx = 130,
+			arcUpMinPx = 50,
+			arcUpMaxPx = 190,
+			midAt = 0.32,
+			midScale = 1.15,
+			endScale = 0.55,
+			spinDeg = 45,
+			curve = "fly",
+			legCurve = "flyLeg",
 			bounceMinGapMs = 334, -- reading (§18.1 #4 over B2's 60 ms): <= 3 Hz
 			countTailMs = 400,
 		})
+		-- The idle loops (H:23-43): periods, amounts and curves.
+		local idle = motion.idle
+		expect.deepEqual(idle.bob, { periodS = 3.1, risePx = 6, rotDeg = 2, curve = "easeInOut" })
+		expect.deepEqual(idle.coin, { periodS = 4.5, risePx = 3, rotDeg = 8, curve = "easeInOut" })
+		expect.deepEqual(idle.float, { periodS = 3.6, risePx = 12, rotDeg = 3, curve = "easeInOut" })
+		expect.deepEqual(idle.pulse, { periodS = 1, scale = 1.07, curve = "easeInOut" })
+		expect.equal(idle.badge.periodS, 2.6)
+		expect.deepEqual(
+			idle.dot,
+			{ periodS = 1, alphaFrom = 0.35, scaleFrom = 0.8, scaleTo = 1.15, curve = "easeInOut" }
+		)
+		expect.deepEqual(
+			idle.ring,
+			{ periodS = 1.8, alphaFrom = 0.9, scaleFrom = 0.9, scaleTo = 1.5, curve = "easeOut" }
+		)
+		expect.deepEqual(idle.twinkle, { periodS = 2.2, scaleFrom = 0.3, rotDeg = 90, curve = "easeInOut" })
+		expect.deepEqual(
+			idle.shine,
+			{ periodS = 2.6, holdShare = 0.55, fromShare = -2, toShare = 9, curve = "easeInOut" }
+		) -- H:28
+		expect.deepEqual(idle.spin, { periodS = 16, curve = "linear" })
+		-- The other loops (G2.4): sdLvIdle .45 s alternate, sdLvWave from 1.9 + .07 i s, sdHint 1 s.
+		expect.equal(motion.loops.lvIdle.periodS, 0.45) -- H:51
+		expect.equal(motion.loops.lvIdle.alternate, true)
+		expect.deepEqual({ motion.loops.lvWave.delayS, motion.loops.lvWave.delayStepS }, { 1.9, 0.07 }) -- H:61
+		expect.equal(motion.loops.hint.periodS, 1) -- H:68
+		-- The design's timing functions (G2.3).
+		local curves = ui.curves
+		expect.deepEqual(curves.ease, { 0.25, 0.1, 0.25, 1 })
+		expect.deepEqual(curves.easeOut, { 0, 0, 0.58, 1 })
+		expect.deepEqual(curves.hover, { 0.3, 1.9, 0.45, 1 }) -- H:635
+		expect.deepEqual(curves.switch, { 0.3, 1.8, 0.5, 1 }) -- H:197, H:437
+		expect.deepEqual(curves.windows, { 0.2, 1.35, 0.4, 1 }) -- H:181
+		expect.deepEqual(curves.bars, { 0.3, 1.5, 0.5, 1 }) -- H:85
+		expect.deepEqual(curves.close, { 0.5, 0, 0.75, 0 }) -- H:686
+		expect.deepEqual(curves.fly, { 0.25, 0.7, 0.35, 1 }) -- lib:283
+		expect.deepEqual(curves.flyLeg, { 0.55, 0, 0.85, 0.55 }) -- lib:281
+		-- The bars, toggles and shines (P7, P9, G2.5, G4.13).
+		local sticker = ui.Sticker
+		expect.deepEqual(
+			{ sticker.bars.grip.height, sticker.bars.grip.fillMs, sticker.bars.grip.minFillPx },
+			{ 14, 550, 10 }
+		) -- H:84-85
+		expect.deepEqual({ sticker.bars.quest.height, sticker.bars.quest.fillMs }, { 20, 600 }) -- H:367
+		expect.deepEqual({ sticker.bars.odds.height, sticker.bars.odds.fillMs }, { 12, 0 }) -- H:271: no transition
+		-- PR2: the design's 23 and 19 px kept exact (H:101, H:159).
+		expect.equal(sticker.text.navLabel.kind, "D23")
+		expect.equal(sticker.text.settingsLabel.kind, "D19")
+		expect.equal(sticker.barFillCurve, "bars")
+		expect.deepEqual(sticker.barShines, { grip = "grip", quest = "quest" })
+		expect.deepEqual(
+			{ sticker.shines.cta.px, sticker.shines.cta.alpha, sticker.shines.cta.periodS },
+			{ 54, 0.6, 3.4 }
+		) -- H:127
+		expect.deepEqual(
+			{ sticker.shines.grip.px, sticker.shines.grip.alpha, sticker.shines.grip.periodS },
+			{ 22, 0.75, 2.6 }
+		) -- H:85
+		expect.deepEqual(
+			{ sticker.shines.quest.px, sticker.shines.quest.alpha, sticker.shines.quest.periodS },
+			{ 26, 0.7, 3 }
+		) -- H:367
+		expect.deepEqual({ sticker.toggles.large.knobMs, sticker.toggles.large.trackMs }, { 350, 250 }) -- H:437
+		expect.deepEqual({ sticker.toggles.small.knobMs, sticker.toggles.small.trackMs }, { 300, 200 }) -- H:197
+		expect.equal(sticker.toggleKnobCurve, "switch")
+		-- The design's effects (lib:219-268) and their events (H:744, H:774).
+		local fx = ui.Fx
+		expect.equal(fx.maxActive, nil) -- no cap: the design has none
+		expect.deepEqual(fx.jolt, { frames = 8, ms = 380 }) -- lib:299-303
+		expect.equal(fx.sparks.n, 16)
+		expect.equal(fx.sparks.stars, 0.55)
+		expect.equal(fx.sparks.spread, 150)
+		expect.equal(fx.sparks.ms, 820)
+		expect.equal(fx.sparks.curve, "sparks") -- lib:233
+		expect.equal(fx.ring.ms, 520)
+		expect.equal(fx.rain.n, 60)
+		expect.equal(fx.float.ms, 1050)
+		expect.deepEqual(fx.events.questClaim.sparks, { n = 22, spread = 180 })
+		expect.equal(fx.events.questClaim.coins, 10) -- H:746
+		expect.equal(fx.events.dailyClaim.coins, 10) -- H:856
+		expect.equal(fx.events.matchFound.jolt, 7)
+		expect.deepEqual({ fx.events.levelUp.slamJolt, fx.events.levelUp.jolt }, { 5, 14 }) -- H:719-726
+		-- §9.15: 1 rays picture + the 2 rings + 21 pieces = 24 moving frames.
+		expect.equal(fx.events.boxBurst.maxPieces, 21)
+		expect.equal(#fx.events.boxBurst.rings, 2)
+		-- PR18: Epic / Exclusive (index 2 on) get the design's rain after the burst (H:830).
+		expect.deepEqual(fx.events.boxBurst.rarityRain, {
+			n = 50,
+			perRarity = 20,
+			fromRarity = 2,
+			colors = { "rarityBase", "rarityLight", "White", "StickerFxYellow" },
+		})
+		-- lib:262-266: the float's pop, x / y as shares of its drift and rise.
+		expect.deepEqual(
+			fx.float.frames,
+			{
+				{ at = 0, x = 0, y = 0, scale = 0.3, alpha = 0 },
+				{ at = 0.18, x = 0.3, y = -0.25, scale = 1.25, alpha = 1 },
+				{ at = 0.6, x = 0.6, y = -0.55, scale = 1, alpha = 1 },
+				{ at = 1, x = 1, y = -1, scale = 0.9, alpha = 0 },
+			} :: { any }
+		)
+		expect.equal(fx.events.boxLand.jolt, 6) -- H:602
 
 		-- Config.Audio
 		for category, ms in { throw = 60, wobble = 80, pop = 60, hover = 60, hitConfirm = 50, error = 250 } do
@@ -2338,6 +2537,21 @@ return function(t: Context)
 		expect.equal(audio.Ducking.knockout, 0.5)
 		expect.equal(audio.Ducking.knockoutSeconds, 0.6)
 		expect.equal(audio.Ducking.telegraph, 0.8)
+		-- UI FINAL R2 (plan §2.2): the design's sounds as pitches of the UI keys (H:638, lib:145, lib:152, lib:191).
+		expect.deepEqual(audio.uiPitch, {
+			hover = { btn = 1, nav = 0.8, tab = 1.3, card = 1.15, x = 1, icon = 1, row = 1 },
+			tab = 1.3,
+			card = 1.15,
+			toggleOn = 1.2,
+			toggleOff = 0.9,
+			slideFrom = 0.8,
+			slideSpan = 0.9,
+			slideStepShare = 0.05,
+			coinSteps = 10,
+			slot = { semitone = 1 }, -- G2.6: 2^(i/12)
+			tick = { lo = 0.643 }, -- G2.6
+		})
+		expect.deepEqual(audio.buttonSilentKinds, { tile = true, close = true }) -- G2.7: UIController plays their sound
 		expect.deepEqual(audio.toastSounds, {
 			["grip.levelUp"] = "ui.gripUnlock",
 			["grip.rankUp"] = "ui.gripUnlock",
@@ -2559,30 +2773,27 @@ return function(t: Context)
 		expect.truthy(containsAll(range, { "F8:", "countdownPitch[3]" }))
 	end)
 
-	t.test("F9 reports a 3.3 Hz boing, a zeta of 1, bad coin counts, bad wiggles and a fast pill bounce", function()
+	t.test("F9 reports a 3.3 Hz boing, a bad coin count, a bad or fast shake and a fast pill bounce", function()
 		-- §18.14 #9: ω 22 with ζ 0.3 wobbles at 3.34 Hz.
 		local boing = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
 			vfx.HeldBoing.omega = 22
 		end)
 		expect.truthy(containsAll(boing, { "F9:", "HeldBoing", "Hz", "above 3 Hz" }))
-		local spring = validateBrokenCopy(t.Shared, "UI", function(ui)
-			ui.motion.buttonRelease.spring.zeta = 1
-		end)
-		expect.truthy(containsAll(spring, { "F9:", "buttonRelease.spring zeta" }))
+		-- UI FINAL R2: the coin count above maxCoins (G2.8); the shake's ms (PR5).
 		local coins = validateBrokenCopy(t.Shared, "UI", function(ui)
-			ui.motion.coinFlight.minCoins = 9
+			ui.motion.coinFlight.count = 11
 		end)
-		expect.truthy(containsAll(coins, { "F9:", "minCoins (9) must be <= maxCoins" }))
+		expect.truthy(containsAll(coins, { "F9:", "coinFlight.count (11) must be <= maxCoins (10)" }))
 		local wiggle = validateBrokenCopy(t.Shared, "UI", function(ui)
-			ui.motion.buttonError.ms = 0
+			ui.motion.buttonShake.ms = 0
 		end)
-		expect.truthy(containsAll(wiggle, { "F9:", "buttonError.ms" }))
-		-- §18.1 #4: B3's literal "2 cycles over 200 ms" wiggles at 10 Hz; a 60 ms bounce gap bounces the pill at 16.7 Hz.
+		expect.truthy(containsAll(wiggle, { "F9:", "buttonShake.ms" }))
+		-- PR5: the design's own 420 ms shake swings 70 ms apart (7.14 Hz); a 60 ms bounce gap bounces the pill at 16.7
+		-- Hz.
 		local fastWiggle = validateBrokenCopy(t.Shared, "UI", function(ui)
-			ui.motion.buttonError.cycles = 2
-			ui.motion.buttonError.ms = 200
+			ui.motion.buttonShake.ms = 420
 		end)
-		expect.truthy(containsAll(fastWiggle, { "F9:", "buttonError wiggles at 10.00 Hz", "above 3 Hz" }))
+		expect.truthy(containsAll(fastWiggle, { "F9:", "buttonShake swings", "7.14 Hz", "above 3 Hz" }))
 		local fastBounce = validateBrokenCopy(t.Shared, "UI", function(ui)
 			ui.motion.coinFlight.bounceMinGapMs = 60
 		end)
@@ -2592,6 +2803,101 @@ return function(t: Context)
 		end)
 		expect.truthy(containsAll(jiggle, { "F9:", "motionJiggle", "above 3 Hz" }))
 	end)
+
+	t.test(
+		"F9 (UI FINAL R2) reports a fast loop, swing or wiggle, a bad curve or track, bad effect counts and pitches",
+		function()
+			-- The design's own 4 Hz press squash (lib:290) as a loop period would be too fast.
+			local idle = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.idle.pulse.periodS = 0.25
+			end)
+			expect.truthy(containsAll(idle, { "F9:", "idle.pulse", "4.00 Hz", "above 3 Hz" }))
+			-- H:639's own 520 ms wiggle is 3.85 Hz (§1.4).
+			local nav = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.navWiggle.ms = 520
+			end)
+			expect.truthy(containsAll(nav, { "F9:", "navWiggle", "3.85 Hz", "above 3 Hz" }))
+			local track = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.modalOpen.frames[2].at = 0.9
+			end)
+			expect.truthy(containsAll(track, { "F9:", "modalOpen.frames", "in order" }))
+			local open = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.cardIn.frames[1].at = 0.1
+			end)
+			expect.truthy(containsAll(open, { "F9:", "cardIn.frames", "from 0 to 1" }))
+			local sparks = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Fx.events.questClaim.sparks.n = 0
+			end)
+			expect.truthy(containsAll(sparks, { "F9:", "Fx.events.questClaim.sparks.n" }))
+			local stars = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Fx.sparks.stars = 1.5
+			end)
+			expect.truthy(containsAll(stars, { "F9:", "Fx.sparks.stars" }))
+			-- §9.15: the box reveal never moves more than 24 frames: 1 rays picture + its 2 rings + 21 pieces.
+			local budget = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Fx.events.boxBurst.maxPieces = 22
+			end)
+			expect.truthy(containsAll(budget, { "F9:", "boxBurst", "2 rings", "= 25 moving frames", "<= 24" }))
+			-- PR18: the rain after the burst needs its pieces.
+			local rain = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Fx.events.boxBurst.rarityRain.n = 0
+			end)
+			expect.truthy(containsAll(rain, { "F9:", "boxBurst.rarityRain.n" }))
+			local float = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Fx.float.frames[3].at = 0.1
+			end)
+			expect.truthy(containsAll(float, { "F9:", "Fx.float.frames", "in order" }))
+			-- PR4: a squash so deep the nav's (x 1.4) turns inside out; the design's 460 ms swings at 4.35 Hz.
+			local squash = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.buttonPress.amount = 0.8
+			end)
+			expect.truthy(containsAll(squash, { "F9:", "buttonPress.amount (0.8)", "above 0" }))
+			local press = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.buttonPress.ms = 460
+			end)
+			expect.truthy(containsAll(press, { "F9:", "buttonPress swings", "4.35 Hz", "above 3 Hz" }))
+			-- G2.3: a curve's x outside 0..1 is no cubic-bezier; a curve name must be known.
+			local curve = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.curves.hover = { 1.3, 1.9, 0.45, 1 }
+			end)
+			expect.truthy(containsAll(curve, { "F9:", "curves.hover", "x1 and x2 must be in 0..1" }))
+			local named = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.modalOpen.curve = "nope"
+			end)
+			expect.truthy(containsAll(named, { "F9:", "modalOpen.curve", "is not a Config.UI.curves name" }))
+			-- G2.4: sdLvIdle at .15 s alternate swings at 3.33 Hz; a shine strip 0 px wide; a claim's 11 coins.
+			local loop = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.loops.lvIdle.periodS = 0.15
+			end)
+			expect.truthy(containsAll(loop, { "F9:", "loops.lvIdle", "3.33 Hz", "above 3 Hz" }))
+			local shine = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Sticker.shines.cta.px = 0
+			end)
+			expect.truthy(containsAll(shine, { "F9:", "Sticker.shines.cta.px" }))
+			local claim = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Fx.events.questClaim.coins = 11
+			end)
+			expect.truthy(containsAll(claim, { "F9:", "questClaim.coins (11)", "1..coinFlight.maxCoins" }))
+			-- G2.6, G2.7: the slot step and the tick pitch; a silent kind must be a boolean.
+			local slot = validateBrokenCopy(t.Shared, "Audio", function(audio)
+				audio.uiPitch.slot.semitone = 0
+			end)
+			expect.truthy(containsAll(slot, { "F8:", "uiPitch.slot.semitone" }))
+			local silent = validateBrokenCopy(t.Shared, "Audio", function(audio)
+				audio.buttonSilentKinds.tile = "yes"
+			end)
+			expect.truthy(containsAll(silent, { "F8:", "buttonSilentKinds.tile" }))
+			-- F8: the UI pitches stay inside [pitchMin, pitchMax] (the coin pings top out at 2^(9/12)).
+			local pitch = validateBrokenCopy(t.Shared, "Audio", function(audio)
+				audio.uiPitch.hover.nav = 3
+			end)
+			expect.truthy(containsAll(pitch, { "F8:", "uiPitch.hover.nav" }))
+			local steps = validateBrokenCopy(t.Shared, "Audio", function(audio)
+				audio.uiPitch.coinSteps = 14
+			end)
+			expect.truthy(containsAll(steps, { "F8:", "uiPitch.coinSteps" }))
+		end
+	)
 
 	t.test("F10 reports room for 1 editable mesh when a ripple skin and the knead shell need 2", function()
 		local problems = validateBrokenCopy(t.Shared, "Vfx", function(vfx)

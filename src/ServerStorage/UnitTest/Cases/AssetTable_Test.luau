@@ -5,6 +5,8 @@
 --     the 10 of spec phase 5 (the dash and the four Epic ultimates), the 16 of the Inspect showcases (final polish
 --     2026-10-11: the design's own inspect one-shots, 2D SFX) and the 5 of feature 1 (2026-10-11: the charge throw and
 --     the catch, each note naming its file) and the 2 of the 2026-10-15 dash + double jump overhaul, 70 in all;
+--   * UI FINAL R2's 2 sound keys (the design's ui.pop and ui.levelTone, plan work/ui/PLAN.md §3 pack 2) are counted
+--     apart from those 70 (R2_SOUND_KEYS): each is a sound slot, once;
 --   * a PENDING slot (id nil) carries no metadata (no source, licence, verifiedAt or variants);
 --   * an approved slot has an integer id > 0, a volume in (0, 2], a source, a licence and verifiedAt as YYYY-MM-DD,
 --     and so does each variant; no id repeats within a key;
@@ -99,6 +101,9 @@ local SOUND_KEYS = {
 	"sfx.crushBurst",
 }
 
+-- UI FINAL R2 (plan work/ui/PLAN.md §3 pack 2): the design's two new clips, counted apart from SOUND_KEYS.
+local R2_SOUND_KEYS = { "ui.pop", "ui.levelTone" }
+
 -- Spec phase2-squeeze §3.10: the knead's wax sounds (Controllers/KneadAudio), counted apart from the §18.6 set.
 local WAX_PREFIX = "sfx.wax."
 local WAX_KEYS = {
@@ -186,13 +191,27 @@ return function(t: Context)
 		for _, slot in soundSlots() do
 			expect.falsy(seen[slot.key])
 			seen[slot.key] = true
-			-- The knead's wax sounds (spec phase2-squeeze §3.10) are checked on their own (WAX_KEYS, below).
-			if string.sub(slot.key, 1, #WAX_PREFIX) ~= WAX_PREFIX then
+			-- The knead's wax sounds (spec phase2-squeeze §3.10) are checked on their own (WAX_KEYS, below), and so
+			-- are UI FINAL R2's 2 (R2_SOUND_KEYS, below).
+			if string.sub(slot.key, 1, #WAX_PREFIX) ~= WAX_PREFIX and not table.find(R2_SOUND_KEYS, slot.key) then
 				table.insert(keys, slot.key)
 			end
 		end
 		expect.equal(#keys, 70)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
+	end)
+
+	-- UI FINAL R2 (plan work/ui/PLAN.md §3 pack 2): ui.pop and ui.levelTone are sound slots, each once.
+	t.test("UI FINAL R2's 2 sound keys: ui.pop and ui.levelTone, once each", function()
+		for _, key in R2_SOUND_KEYS do
+			local count = 0
+			for _, slot in soundSlots() do
+				if slot.key == key then
+					count += 1
+				end
+			end
+			expect.equal(count, 1)
+		end
 	end)
 
 	-- Feature 1 (2026-10-11; uploaded 2026-10-12): the hand sounds 2D, the catch's 3D at the catch for the other
@@ -249,8 +268,8 @@ return function(t: Context)
 	end)
 
 	-- UI FINAL R1 (plan work/ui/PLAN.md §3): the image keys, the existing 18 and the design's 15 pictures (rendered in
-	-- R0, uploaded by the user; nil until then).
-	t.test("the image key set: the existing 18 and the design's 15 new pictures", function()
+	-- R0, uploaded by the user; nil until then). UI FINAL R2: pack 2's 70 (§3: rendered in R0b, ids in R10b).
+	t.test("the image key set: the existing 18, the design's 15 new pictures and pack 2's 70", function()
 		local keys = {}
 		for _, slot in AssetTable.all() do
 			if slot.kind == "image" then
@@ -293,6 +312,76 @@ return function(t: Context)
 				"img.fx.raysReveal",
 				"img.fx.dots",
 				"img.fx.glow",
+				"img.fx.spark",
+				"img.squishy.kitty_bread",
+				"img.squishy.toast",
+				"img.squishy.banana",
+				"img.squishy.butter",
+				"img.squishy.chocolate",
+				"img.squishy.bird",
+				"img.squishy.donut",
+				"img.squishy.dragon",
+				"img.squishy.boba_bear",
+				"img.squishy.pancake_pup",
+				"img.squishy.mochi_fox",
+				"img.squishy.strawberry_frog",
+				"img.squishy.cloud_bunny",
+				"img.squishy.cupcake_axolotl",
+				"img.squishy.kitty_bread.white",
+				"img.squishy.toast.white",
+				"img.squishy.banana.white",
+				"img.squishy.butter.white",
+				"img.squishy.chocolate.white",
+				"img.squishy.bird.white",
+				"img.squishy.donut.white",
+				"img.squishy.dragon.white",
+				"img.squishy.boba_bear.white",
+				"img.squishy.pancake_pup.white",
+				"img.squishy.mochi_fox.white",
+				"img.squishy.strawberry_frog.white",
+				"img.squishy.cloud_bunny.white",
+				"img.squishy.cupcake_axolotl.white",
+				"img.nav.squishies.white",
+				"img.nav.boxes.white",
+				"img.nav.shop.white",
+				"img.nav.quests.white",
+				"img.nav.daily.white",
+				"img.nav.duel.white",
+				"img.nav.settings.white",
+				"img.coin.white",
+				"img.fx.radial.coinGlow",
+				"img.fx.radial.scrimWindow",
+				"img.fx.radial.plateCommon",
+				"img.fx.radial.plateUncommon",
+				"img.fx.radial.plateEpic",
+				"img.fx.radial.plateExclusive",
+				"img.fx.radial.stageCommon",
+				"img.fx.radial.stageUncommon",
+				"img.fx.radial.stageEpic",
+				"img.fx.radial.stageExclusive",
+				"img.fx.radial.congrats",
+				"img.fx.radial.congratsDisc",
+				"img.fx.radial.revealScrim",
+				"img.fx.radial.revealTintCommon",
+				"img.fx.radial.revealTintUncommon",
+				"img.fx.radial.revealTintEpic",
+				"img.fx.radial.revealTintExclusive",
+				"img.fx.radial.revealFlash",
+				"img.fx.radial.levelScrim",
+				"img.fx.radial.bubble",
+				"img.fx.radial.flashDisc",
+				"img.fx.radial.medallion",
+				"img.fx.shadowWindow",
+				"img.fx.shadowCta",
+				"img.fx.raysCoin",
+				"img.icon.gem",
+				"img.fx.raysCongrats",
+				"img.fx.beam",
+				"img.fx.blob",
+				"img.fx.raysLevelUp",
+				"img.fx.ribbon",
+				"img.fx.halfRing",
+				"img.fx.dashRing",
 			})
 		)
 	end)

@@ -68,8 +68,10 @@ return function(t: Context)
 			local soundKeys: { [string]: boolean } = {}
 			local count = 0
 			for _, slot in AssetTable.all() do
-				-- The knead's wax sounds (spec phase2-squeeze §3.10) are uploaded renders played by region, never picked.
-				if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." then
+				-- The knead's wax sounds (spec phase2-squeeze §3.10) are uploaded renders played by region, never
+				-- picked; so are UI FINAL R2's two design renders (ui.pop, ui.levelTone: plan work/ui/PLAN.md §3).
+				local render = slot.key == "ui.pop" or slot.key == "ui.levelTone"
+				if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." and not render then
 					soundKeys[slot.key] = true
 					count += 1
 				end

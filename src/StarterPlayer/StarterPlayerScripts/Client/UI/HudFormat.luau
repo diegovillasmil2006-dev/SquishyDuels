@@ -131,6 +131,7 @@ export type NavItem = {
 	place: NavPlace,
 	accent: string, -- Theme accent name of its face
 	icon: string, -- IconGlyph name
+	fx: string?, -- UI FINAL R2: its design hover kind (Button spec.fx) when not its Button kind's own
 }
 
 export type BannerKind = "info" | "warn"
@@ -334,6 +335,7 @@ local NAV: { NavItem } = {
 		place = "settings",
 		accent = "plum", -- UI overhaul (Candy UI): the neutral plum tile
 		icon = "settings",
+		fx = "icon", -- UI FINAL R2: the Settings sticker's data-fx="icon" (H:157): 1.12, no tilt, no wiggle
 	},
 }
 
@@ -391,7 +393,7 @@ local COLUMN = table.freeze({
 	trackerWidth = 256, -- the quest tracker card (the design's 320)
 	bannerWidth = 256, -- Hud_DataBanner
 	ctaWidth = 240, -- the Duel CTA (the design's 300 × 116)
-	ctaHeight = 92, -- Button.CTA_HEIGHT
+	ctaHeight = 92 + STICKER.lip.cta, -- UI FINAL R2 (P1): the CTA's frame, its 92 px face (Button.CTA_HEIGHT) + the lip
 	ctaCompactHeight = 64, -- phones: a medium CTA
 	ctaIconPx = 44,
 	ctaCompactIconPx = 32,
@@ -1107,7 +1109,7 @@ function HudFormat.columnLayouts(
 ): { ColumnPlan }
 	local ts = textScaleOf(textScale)
 	local screen = validScreen(screenPx)
-	local scale = Layout.uiScale(screen.Y)
+	local scale = Layout.uiScale(screen.Y, screen.X) -- UI FINAL R2 (PR1): the live UIScale's fit
 	local canvas = Vector2.new(screen.X / scale, screen.Y / scale)
 	local compact = layoutClass == "compact"
 	local narrow = compact or (parts ~= nil and parts.touch == true)

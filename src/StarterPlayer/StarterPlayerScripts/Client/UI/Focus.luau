@@ -11,7 +11,11 @@
 -- * decorate(button, radius?): the custom SelectionImageObject (outer InkUI 3 px + inner white 2 px strokes, readable
 --   on light and dark backgrounds; UI FINAL R1, plan §2: the ink outside, as white is 1.1:1 on the pink windows), its
 --   corners following the button's corner radius (foam UI: default Theme.Radius.button; one ring per radius, built
---   once). Button prompts are text ("E", "X", "R2", "B") in Strings.
+--   once). Button prompts are text ("E", "X", "R2", "B") in Strings. UI FINAL R2 (PR24): `insets` { top, bottom }
+--   (base px) keep the ring off the part of the object that is not the drawn face (a Button's lip under it, a
+--   chip's touch padding), so it goes round the face; one ring per radius and insets. The Button itself takes its
+--   design hover pose while selected and draws a copy of the ring inside its posed face (UI/Components/Button);
+--   blank() is the clear selection image it gives its hit box instead (Roblox's selection stays).
 -- AutoSelectGuiEnabled stays on (V).
 
 -- Services
@@ -32,6 +36,9 @@ local Theme = require(script.Parent.Theme)
 
 export type Token = { previous: GuiObject?, restored: boolean }
 
+-- UI FINAL R2 (PR24): what the ring leaves out at the top and the bottom of the object (base px).
+export type Insets = { top: number, bottom: number }
+
 -- Constants
 
 local FOCUS = Config.UI.motion.focus
@@ -43,7 +50,8 @@ local Focus = {}
 
 -- Private
 
-local selectionImages: { [number]: Frame } = {}
+local selectionImages: { [string]: Frame } = {}
+local blankImage: Frame? = nil
 
 local function isUsable(object: GuiObject?): boolean
 	if object == nil or object.Parent == nil then
@@ -77,19 +85,22 @@ function Focus.isGamepad(): boolean
 end
 
 -- The shared selection adornment for objects with `radiusPx` corners (default Theme.Radius.button; built once per
--- radius, never parented: Roblox draws it over the selected object). The rings are concentric with the object's
--- corners.
-function Focus.selectionImage(radiusPx: number?): Frame
+-- radius and insets, never parented: Roblox draws it over the selected object). The rings are concentric with the
+-- object's corners; UI FINAL R2 (PR24): `insets` move them in from its top and bottom (the face of a Button).
+function Focus.selectionImage(radiusPx: number?, insets: Insets?): Frame
 	local radius = math.max(0, math.floor(radiusPx or Theme.Radius.button))
-	local cached = selectionImages[radius]
+	local top = if insets then math.max(0, insets.top) else 0
+	local bottom = if insets then math.max(0, insets.bottom) else 0
+	local key = `{radius}:{top}:{bottom}`
+	local cached = selectionImages[key]
 	if cached then
 		return cached
 	end
 	local outer: Frame = Create("Frame", {
 		Name = "SD_FocusRing",
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, OUTSET_PX * 2, 1, OUTSET_PX * 2),
-		Position = UDim2.fromOffset(-OUTSET_PX, -OUTSET_PX),
+		Size = UDim2.new(1, OUTSET_PX * 2, 1, OUTSET_PX * 2 - top - bottom),
+		Position = UDim2.fromOffset(-OUTSET_PX, top - OUTSET_PX),
 	})
 	Theme.corner(radius + OUTSET_PX, outer)
 	Theme.stroke(Theme.Colors.inkUI, FOCUS.outerStrokePx, outer)
@@ -102,13 +113,28 @@ function Focus.selectionImage(radiusPx: number?): Frame
 	})
 	Theme.corner(radius + FOCUS.innerStrokePx, inner)
 	Theme.stroke(Theme.Colors.white, FOCUS.innerStrokePx, inner)
-	selectionImages[radius] = outer
+	selectionImages[key] = outer
 	return outer
 end
 
-function Focus.decorate(object: GuiObject, radiusPx: number?)
+-- UI FINAL R2 (PR24): a clear selection image (built once, never parented), for an object that draws its own ring.
+function Focus.blank(): Frame
+	local made = blankImage
+	if made then
+		return made
+	end
+	local frame: Frame = Create("Frame", {
+		Name = "SD_FocusBlank",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+	})
+	blankImage = frame
+	return frame
+end
+
+function Focus.decorate(object: GuiObject, radiusPx: number?, insets: Insets?)
 	object.Selectable = true
-	object.SelectionImageObject = Focus.selectionImage(radiusPx)
+	object.SelectionImageObject = Focus.selectionImage(radiusPx, insets)
 end
 
 -- Selects `target` when the player uses a gamepad (nil-safe). Returns true when the selection changed.

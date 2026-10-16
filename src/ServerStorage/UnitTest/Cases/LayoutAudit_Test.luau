@@ -8,7 +8,8 @@
 --   * actualTextPx = TextSize × the UIScale product; every Config.UI.TextSize kind stays >= minTextSize at the
 --     smallest UI scale;
 --   * overlapRect: a button or a text object is its box; a frame with a visible text child is its box when it draws a
---     background, else the union of its text children; anything else is not compared;
+--     background, else the union of its text children; anything else is not compared; UI FINAL R2 (PR1): a Button
+--     with a drawn face (SD_Visual) is that face, its hit box still read by tooSmall;
 --   * evaluate catches Part 6's "Not oUltimate" card tags (the "Not owned" badge and the "Ultimate" badge on a 112 px
 --     card) and passes the fixed layout (InventoryFormat.cardTags' second row), without flagging the card's full-size
 --     transparent Overlay against its Content; it finds offscreen, text overflow, small targets, small text, and the
@@ -141,6 +142,9 @@ return function(t: Context)
 	t.test("overlapRect: what a node shows for the overlap rule", function()
 		local button = node("B", 0, 0, 100, 50, { button = true })
 		expect.deepEqual(LayoutAudit.overlapRect(button), button.rect)
+		-- UI FINAL R2 (PR1): a chip's 37 px face inside its 52 px hit box is compared by its face.
+		local chip = node("C", 0, 0, 120, 52, { button = true, face = { x = 0, y = 7.5, w = 120, h = 37 } })
+		expect.deepEqual(LayoutAudit.overlapRect(chip), chip.face)
 		local label = text("L", 5, 5, 60, 20, "Hello")
 		expect.deepEqual(LayoutAudit.overlapRect(label), label.rect)
 		expect.equal(LayoutAudit.overlapRect(text("E", 5, 5, 60, 20, "")), nil) -- an empty label shows nothing

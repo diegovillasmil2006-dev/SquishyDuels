@@ -28,6 +28,10 @@
 --   * CountBadge 32 px (H:102) and the yellow "!" (H:120); Chip 30 px (H:232); ProgressBar variants (Config.UI.Sticker
 --     .bars); the two Toggle switches (H:197, H:437); the Slider's 36 px knob (H:445); the cream Keycap with the ink
 --     lip (H:171); setSurface repaints a panel.
+-- UI FINAL R2 (plan work/ui/PLAN.md R2: P1, P2, P7-P9, P11, P12, T3, T4, PR4, PR5, PR24): the root is a transparent
+-- hit box and the drawn button its SD_Visual child (button.visual: the face, bands, content, badge and shine); the
+-- frame is the face + the lip (a close X 76 x 82); the cta's shine strip is built with it and crosses by itself
+-- (Anim/UiIdle skips an unparented strip, so nothing moves here); the bars draw their border inside their height.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -62,6 +66,7 @@ return function(t: Context)
 	local CountBadge = t.requireClient("UI/Components/CountBadge")
 	local Keycap = t.requireClient("UI/Components/Keycap")
 	local ProgressBar = t.requireClient("UI/Components/ProgressBar")
+	local Tweens = t.requireClient("Anim/Tweens")
 	local Slider = t.requireClient("UI/Components/Slider")
 	local Toggle = t.requireClient("UI/Components/Toggle")
 	local Theme = t.requireClient("UI/Theme")
@@ -73,24 +78,28 @@ return function(t: Context)
 	local WHITE = Color3.new(1, 1, 1)
 	local MIN_TARGET = Config.UI.Touch.minTarget
 	local STICKER = Config.UI.Sticker
+	-- UI FINAL R2: the idle loops (Anim/UiIdle: the shine strips, the rays) run on a private Scheduler here, so no
+	-- frame event is connected (as Scheduler_Test).
+	t.requireClient("Anim/UiIdle").setScheduler(t.requireClient("Anim/Scheduler").new(false))
 
 	t.test("every Button kind: stable name, Label and Reason, touch height, one ink outline, no rim", function()
 		for _, kind in { "primary", "secondary", "cancel", "tile", "cta", "close" } do
 			local button =
 				Button.new({ name = "Test_" .. kind .. "Button", text = "Go", kind = kind, onActivated = noop })
 			local root = button.root
+			local visual = button.visual -- UI FINAL R2 (T3): the drawn button
 			local style = Button.style(kind)
 			expect.equal(root.Name, "Test_" .. kind .. "Button")
 			expect.truthy(root:FindFirstChild("Label", true) ~= nil)
 			expect.truthy(root:FindFirstChild("Reason", true) ~= nil)
 			expect.truthy(root.Size.Y.Offset >= MIN_TARGET)
-			expect.truthy(root:FindFirstChild("SD_Foam") ~= nil)
-			expect.equal(root:FindFirstChild("SD_Rim"), nil)
-			expect.equal(strokesOf(root), 1)
-			local stroke = root:FindFirstChildOfClass("UIStroke") :: UIStroke
+			expect.truthy(visual:FindFirstChild("SD_Foam") ~= nil)
+			expect.equal(visual:FindFirstChild("SD_Rim"), nil)
+			expect.equal(strokesOf(visual), 1)
+			local stroke = visual:FindFirstChildOfClass("UIStroke") :: UIStroke
 			expect.equal(stroke.Color, Theme.Colors.inkUI)
 			expect.equal(stroke.Thickness, style.border)
-			expect.equal(root.BackgroundTransparency, 0)
+			expect.equal(visual.BackgroundTransparency, 0)
 			if kind == "tile" then
 				-- The tile's foam plate until R4: the outline outside the box, the foam tile bands.
 				expect.falsy(style.inner)
@@ -173,12 +182,12 @@ return function(t: Context)
 		expect.equal(root.AutomaticSize, Enum.AutomaticSize.None)
 		expect.equal(root.Size.X.Offset, Button.TILE_SIZE) -- H:99: 118 × 104
 		expect.equal(root.Size.Y.Offset, Button.TILE_HEIGHT)
-		local content = root:FindFirstChild("Content") :: Frame
+		local content = tile.visual:FindFirstChild("Content") :: Frame
 		expect.truthy(content:FindFirstChild("Icon") ~= nil and content:FindFirstChild("Label") ~= nil)
 		local icon = content:FindFirstChild("Icon") :: Frame
 		local label = content:FindFirstChild("Label") :: TextLabel
 		expect.truthy(icon.LayoutOrder < label.LayoutOrder)
-		local badge = root:FindFirstChild("Badge") :: Frame
+		local badge = tile.visual:FindFirstChild("Badge") :: Frame
 		expect.truthy(badge.Visible)
 		expect.equal((badge:FindFirstChild("Count") :: TextLabel).Text, "3")
 		tile:setBadge(0)
@@ -186,14 +195,15 @@ return function(t: Context)
 		-- A tile label is the Chip kind: outlined white on the accent (Candy UI: the rule starts at 16 px).
 		expect.equal(label.TextColor3, WHITE)
 		-- UI FINAL R1: no shine stripes on a tile (the sweep strip is the cta's).
-		expect.equal(root:FindFirstChild("SD_Shine"), nil)
+		expect.equal(tile.visual:FindFirstChild("SD_Shine"), nil)
 		tile:destroy()
 
 		-- The close kind: a square red X, its label kept but hidden.
 		-- UI FINAL R1: 76 by default, its picture 46 / 76 of it (H:252).
 		local close = Button.new({ name = "Test_CloseButton", text = "Close", kind = "close", onActivated = noop })
-		expect.equal(close.root.Size.X.Offset, close.root.Size.Y.Offset)
-		expect.equal(close.root.Size.Y.Offset, 76)
+		-- UI FINAL R2 (P1): the face wide (76), the face + the lip tall (82).
+		expect.equal(close.root.Size.X.Offset, 76)
+		expect.equal(close.root.Size.Y.Offset, 76 + STICKER.lip.closeX)
 		expect.equal((close.root:FindFirstChild("Icon", true) :: Frame).Size.X.Offset, 46)
 		local small =
 			Button.new({ name = "Small_CloseButton", text = "Close", kind = "close", height = 52, onActivated = noop })
@@ -209,9 +219,9 @@ return function(t: Context)
 
 		local plain = Button.new({ name = "NoBadge", text = "Go", onActivated = noop })
 		plain:setBadge(0)
-		expect.equal(plain.root:FindFirstChild("Badge"), nil) -- no badge built for nothing
+		expect.equal(plain.visual:FindFirstChild("Badge"), nil) -- no badge built for nothing
 		plain:setBadge(2)
-		expect.truthy((plain.root:FindFirstChild("Badge") :: Frame).Visible)
+		expect.truthy((plain.visual:FindFirstChild("Badge") :: Frame).Visible)
 		plain:destroy()
 	end)
 
@@ -255,8 +265,8 @@ return function(t: Context)
 		-- line reaches the lip at large text sizes).
 		expect.equal(reason.TextColor3, WHITE)
 		expect.truthy((reason:FindFirstChild("SD_Outline") :: UIStroke).Enabled)
-		expect.equal((button.root:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.disabledStroke)
-		local points = (button.root:FindFirstChild("SD_Foam") :: UIGradient).Color.Keypoints
+		expect.equal((button.visual:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.disabledStroke)
+		local points = (button.visual:FindFirstChild("SD_Foam") :: UIGradient).Color.Keypoints
 		local lilac = false
 		for _, point in points do
 			lilac = lilac or point.Value == Palette.StickerDisabledEnd
@@ -265,7 +275,7 @@ return function(t: Context)
 		button:setState("normal")
 		expect.falsy(reason.Visible)
 		expect.equal(label.TextColor3, WHITE)
-		expect.equal((button.root:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.inkUI)
+		expect.equal((button.visual:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.inkUI)
 		button:destroy()
 	end)
 
@@ -278,7 +288,7 @@ return function(t: Context)
 			onActivated = noop,
 		})
 		button:setState("disabled", "Finish the quest first")
-		expect.equal(button.root.Size.Y.Offset, math.max(52, MIN_TARGET))
+		expect.equal(button.root.Size.Y.Offset, math.max(52 + STICKER.lip.button, MIN_TARGET)) -- UI FINAL R2 (P1)
 		local reason = button.root:FindFirstChild("Reason", true) :: TextLabel
 		expect.truthy(reason.Visible)
 		expect.equal(reason.TextColor3, WHITE)
@@ -307,35 +317,35 @@ return function(t: Context)
 
 		local button = Button.new({ name = "W", text = "Confirm: 25,000 Coins", onActivated = noop })
 		local label = button.root:FindFirstChild("Label", true) :: TextLabel
-		expect.equal(button.root.AutomaticSize, Enum.AutomaticSize.X)
+		-- UI FINAL R2 (T3): the content's natural width sizes the root (the hit box has no AutomaticSize of its own).
+		local content = button.visual:FindFirstChild("Content") :: Frame
+		expect.equal(button.root.AutomaticSize, Enum.AutomaticSize.None)
+		expect.equal(content.AutomaticSize, Enum.AutomaticSize.X)
 		expect.falsy(label.TextWrapped)
 		button:setWidth(120)
-		expect.equal(button.root.AutomaticSize, Enum.AutomaticSize.None)
+		expect.equal(content.AutomaticSize, Enum.AutomaticSize.None)
 		expect.equal(button.root.Size.X.Offset, 120)
 		expect.truthy(label.TextWrapped)
 		button:setWidth(nil)
-		expect.equal(button.root.AutomaticSize, Enum.AutomaticSize.X)
+		expect.equal(content.AutomaticSize, Enum.AutomaticSize.X)
 		expect.falsy(label.TextWrapped)
 		button:destroy()
 
-		-- UI FINAL R1: only a cta carries the sweep strip, and only while its width is fixed (an overlay would inflate
-		-- an automatic width); a primary never does.
+		-- UI FINAL R2 (P2): the cta's strip is built with it (it crosses by itself, Anim/UiIdle) and kept through any
+		-- width (it sits in SD_Visual, so it never inflates an automatic width); a primary never has one.
 		local primary = Button.new({ name = "P", text = "Buy", kind = "primary", onActivated = noop })
 		primary:setWidth(160)
 		expect.equal(primary.root:FindFirstChild("SD_Shine"), nil)
+		expect.equal(primary.visual:FindFirstChild("SD_Shine"), nil)
 		primary:destroy()
 		local cta = Button.new({ name = "Hud_DuelButton", text = "DUEL", kind = "cta", onActivated = noop })
-		expect.equal(cta.root:FindFirstChild("SD_Shine"), nil)
-		cta:setWidth(350)
-		local strip = cta.root:FindFirstChild("SD_Shine") :: Frame
-		expect.truthy(cta.root:FindFirstChild("SD_Shine") ~= nil)
+		local strip = cta.visual:FindFirstChild("SD_Shine") :: Frame
+		expect.truthy(cta.visual:FindFirstChild("SD_Shine") ~= nil)
 		expect.equal(strip.ZIndex, 0)
-		local gradient = strip:FindFirstChildOfClass("UIGradient") :: UIGradient
-		expect.equal(gradient.Offset.X, -1) -- out of sight until sweep()
-		cta:setWidth(360)
-		expect.equal(cta.root:FindFirstChild("SD_Shine"), strip) -- kept, not rebuilt
+		cta:setWidth(350)
+		expect.equal(cta.visual:FindFirstChild("SD_Shine"), strip) -- kept, not rebuilt
 		cta:setWidth(nil)
-		expect.equal(cta.root:FindFirstChild("SD_Shine"), nil)
+		expect.equal(cta.visual:FindFirstChild("SD_Shine"), strip)
 		cta:destroy()
 	end)
 
@@ -548,5 +558,475 @@ return function(t: Context)
 		end
 		expect.truthy(sawMid)
 		panel:Destroy()
+	end)
+
+	-- UI FINAL R2 (plan work/ui/PLAN.md R2: P1, T3, T4, P11, P12, P2, PR4, PR5, PR24) ---------------------------------
+
+	t.test(
+		"frame = face + lip (P1): every kind's root is its face and lip, the drawn button fills the hit box",
+		function()
+			for _, kind in { "primary", "secondary", "cancel", "tile", "cta", "close" } do
+				local style = Button.style(kind)
+				expect.equal(Button.frameHeight(kind), style.height + style.lip)
+				local button = Button.new({ name = "F_" .. kind, text = "Go", kind = kind, onActivated = noop })
+				expect.equal(button.root.Size.Y.Offset, math.max(style.height + style.lip, MIN_TARGET))
+				expect.equal(button.root.BackgroundTransparency, 1) -- a transparent hit box
+				expect.equal(button.visual.Name, "SD_Visual")
+				expect.equal(button.visual.Parent, button.root)
+				expect.equal(button.visual.Size, UDim2.fromScale(1, 1))
+				expect.equal(button.visual.AnchorPoint, Vector2.new(0.5, 0.5))
+				button:destroy()
+			end
+			expect.equal(Button.frameHeight("cta"), Button.CTA_HEIGHT + STICKER.lip.cta) -- 92 + 7 = 99 (H:126)
+			expect.equal(Button.frameHeight("close"), 76 + STICKER.lip.closeX) -- 82 (H:252)
+			-- A given height is the face: a 60 px EQUIP (H:245) is 65 tall.
+			local equip = Button.new({ name = "E", text = "Equip", kind = "primary", height = 60, onActivated = noop })
+			expect.equal(equip.root.Size.Y.Offset, 60 + STICKER.lip.button)
+			equip:destroy()
+		end
+	)
+
+	t.test("the hover kinds (H:634) and the exact hover filter brightness(1.07) saturate(1.06) (T4, H:637)", function()
+		expect.equal(Button.fxOf("primary"), "btn")
+		expect.equal(Button.fxOf("secondary"), "btn")
+		expect.equal(Button.fxOf("cancel"), "btn")
+		expect.equal(Button.fxOf("cta"), "btn")
+		expect.equal(Button.fxOf("tile"), "nav")
+		expect.equal(Button.fxOf("close"), "x")
+		expect.equal(Button.fxOf("tile", "icon"), "icon") -- the Settings sticker (H:157)
+		local HOVER = Config.UI.motion.hover
+		expect.deepEqual(HOVER.btn, { scale = 1.04, y = -3 })
+		expect.deepEqual(HOVER.nav, { scale = 1.13, rot = -4 })
+		expect.deepEqual(HOVER.x, { scale = 1.1, rot = 90 })
+		expect.deepEqual(HOVER.row, { x = 4 })
+		-- The CSS filter on the green face's top stop #A6F796: x1.07 clamped, then the saturate matrix (s = 1.06).
+		local c = Palette.StickerGreenTop
+		local r, g, b = math.min(1, c.R * 1.07), math.min(1, c.G * 1.07), math.min(1, c.B * 1.07)
+		local s = 1.06
+		local want = Color3.new(
+			math.clamp((0.213 + 0.787 * s) * r + (0.715 - 0.715 * s) * g + (0.072 - 0.072 * s) * b, 0, 1),
+			math.clamp((0.213 - 0.213 * s) * r + (0.715 + 0.285 * s) * g + (0.072 - 0.072 * s) * b, 0, 1),
+			math.clamp((0.213 - 0.213 * s) * r + (0.715 - 0.715 * s) * g + (0.072 + 0.928 * s) * b, 0, 1)
+		)
+		local got = Button.hoverColor(c)
+		expect.near(got.R, want.R, 1e-6)
+		expect.near(got.G, want.G, 1e-6)
+		expect.near(got.B, want.B, 1e-6)
+		expect.truthy(got.G > c.G) -- brighter
+		-- White stays white; black stays black.
+		local white, black = Button.hoverColor(Color3.new(1, 1, 1)), Button.hoverColor(Color3.new(0, 0, 0))
+		for _, channel in { "R", "G", "B" } do
+			expect.near((white :: any)[channel], 1, 1e-6)
+			expect.near((black :: any)[channel], 0, 1e-6)
+		end
+	end)
+
+	t.test(
+		"the press squash (PR4, lib:287-293) over 667 ms and the 'no' shake (PR5, lib:295-297) over 1000 ms",
+		function()
+			local PRESS = Config.UI.motion.buttonPress
+			expect.equal(PRESS.ms, 667)
+			expect.equal(PRESS.designMs, 460)
+			local a = PRESS.amount
+			local sx, sy = Button.squashAt(0.2, a)
+			expect.near(sx, 1 + a, 1e-6)
+			expect.near(sy, 1 - a, 1e-6)
+			sx, sy = Button.squashAt(0.45, a)
+			expect.near(sx, 1 - 0.5 * a, 1e-6)
+			expect.near(sy, 1 + 0.6 * a, 1e-6)
+			sx, sy = Button.squashAt(0.7, a * 1.4) -- a nav sticker (H:644)
+			expect.near(sx, 1 + 0.2 * a * 1.4, 1e-6)
+			expect.near(sy, 1 - 0.15 * a * 1.4, 1e-6)
+			sx, sy = Button.squashAt(1, a)
+			expect.near(sx, 1, 1e-9)
+			expect.near(sy, 1, 1e-9)
+			-- Each swing eased ease-out (per segment): a tenth into the first, more than a tenth of the way.
+			local early = Button.squashAt(0.02, a)
+			expect.truthy(early - 1 > a * 0.1)
+			-- The swings between extremes 167 ms apart: 3 Hz (§9.12).
+			expect.truthy((0.45 - 0.2) * PRESS.ms >= 1000 / 6 - 1e-6)
+			local SHAKE = Config.UI.motion.buttonShake
+			expect.equal(SHAKE.ms, 1000)
+			expect.equal(SHAKE.px, 9) -- H:643
+			expect.equal(SHAKE.pillPx, 12) -- H:676
+			local steps = SHAKE.steps
+			for index, v in steps do
+				local x, turn = Button.shakeAt((index - 1) / (#steps - 1), 9)
+				expect.near(x, v * 9, 1e-6)
+				expect.near(turn, v * SHAKE.rotDeg, 1e-6)
+			end
+			expect.truthy(SHAKE.ms / (#steps - 1) >= 1000 / 6 - 1e-6)
+		end
+	)
+
+	t.test("one sound per click (G2.7): tile and close clicks silent by kind, the hover kept", function()
+		expect.truthy(Config.Audio.buttonSilentKinds.tile)
+		expect.truthy(Config.Audio.buttonSilentKinds.close)
+		expect.equal(Config.Audio.buttonSilentKinds.primary, nil)
+		-- The hover pitch by kind (H:638): nav .8, card 1.15, tab 1.3, else 1.
+		local pitch = Config.Audio.uiPitch.hover
+		expect.equal(pitch.nav, 0.8)
+		expect.equal(pitch.card, 1.15)
+		expect.equal(pitch.tab, 1.3)
+		expect.equal(pitch.btn, 1)
+	end)
+
+	t.test("off (P11): the normal face, the subtext in the price colour; setOff(false) back", function()
+		local open = Button.new({
+			name = "Boxes_OpenButton",
+			text = "Open",
+			kind = "primary",
+			icon = "coin",
+			subtext = "500",
+			onActivated = noop,
+		})
+		local face = (open.visual:FindFirstChild("SD_Foam") :: UIGradient).Color.Keypoints
+		open:setOff(true, Palette.StickerPriceShort)
+		expect.truthy(open:isOff())
+		expect.equal(open:getState(), "normal") -- still activatable (the design's click handler runs, H:643)
+		local sub = open.visual:FindFirstChild("Subtext", true) :: TextLabel
+		expect.equal(sub.TextColor3, Palette.StickerPriceShort) -- H:946
+		local same = (open.visual:FindFirstChild("SD_Foam") :: UIGradient).Color.Keypoints
+		expect.equal(#same, #face)
+		expect.equal(same[1].Value, face[1].Value) -- the normal face, not the lilac
+		open:setOff(false)
+		expect.falsy(open:isOff())
+		expect.equal(sub.TextColor3, WHITE)
+		open:destroy()
+	end)
+
+	t.test("overrides (P12) and the chip size (H:402): a 34 px face in a touch-sized hit box", function()
+		local custom = Button.new({
+			name = "O",
+			text = "Go",
+			kind = "primary",
+			radius = 16,
+			border = 3,
+			lip = 4,
+			onActivated = noop,
+		})
+		expect.equal((custom.visual:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius, UDim.new(0, 16))
+		expect.equal((custom.visual:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness, 3)
+		expect.equal(custom.root.Size.Y.Offset, Button.style("primary").height + 4)
+		custom:destroy()
+		local chip = Button.new({ name = "Daily_ClaimChip", text = "Claim!", size = "chip", onActivated = noop })
+		expect.equal(chip.root.Size.Y.Offset, math.max(34 + STICKER.lip.bar, MIN_TARGET))
+		expect.equal(chip.visual.Size, UDim2.new(1, 0, 0, 34 + STICKER.lip.bar)) -- the face keeps its size (PR1)
+		expect.equal((chip.visual:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness, STICKER.border.thin)
+		expect.equal((chip.visual:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius, UDim.new(0, 12))
+		local label = chip.root:FindFirstChild("Label", true) :: TextLabel
+		expect.equal(label:GetAttribute("SD_TextKind"), "Body") -- 18 px (H:402)
+		expect.equal(label.Text, "CLAIM!") -- capitals (Q5)
+		local points = (chip.visual:FindFirstChild("SD_Foam") :: UIGradient).Color.Keypoints
+		local green2 = false
+		for _, point in points do
+			green2 = green2 or point.Value == Palette.StickerGreen2End
+		end
+		expect.truthy(green2) -- #A6F796 -> #38C150
+		chip:destroy()
+		-- 2 stops: the accent's top and end only (no mid).
+		local two = Button.new({ name = "T", text = "Go", kind = "primary", stops = 2, onActivated = noop })
+		local twoPoints = (two.visual:FindFirstChild("SD_Foam") :: UIGradient).Color.Keypoints
+		for _, point in twoPoints do
+			expect.truthy(point.Value ~= Palette.StickerGreenMid)
+		end
+		two:destroy()
+	end)
+
+	t.test("the cta's shine (P2): a holder inset by the border, the face's height, corner 23, a 54 px strip", function()
+		local cta =
+			Button.new({ name = "Hud_DuelButton", text = "DUEL", kind = "cta", width = 350, onActivated = noop })
+		local style = Button.style("cta")
+		local clip = cta.visual:FindFirstChild("SD_Shine") :: Frame
+		expect.truthy(cta.visual:FindFirstChild("SD_Shine") ~= nil)
+		expect.truthy(clip.ClipsDescendants)
+		expect.equal(clip.ZIndex, 0) -- under the content
+		local b = style.border
+		expect.equal(clip.Position, UDim2.fromOffset(b - style.paddingX, b))
+		expect.equal(clip.Size, UDim2.new(1, 2 * style.paddingX - 2 * b, 1, -2 * b - style.lip))
+		expect.equal((clip:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius, UDim.new(0, 23)) -- H:127
+		local strip = clip:FindFirstChild("Strip") :: Frame
+		local shine = STICKER.shines.cta
+		expect.equal(strip.Size, UDim2.new(0, shine.px, 1, 2 * shine.overhangPx)) -- 54 px, top / bottom -10
+		expect.equal(strip.Position.Y.Offset, -shine.overhangPx)
+		expect.equal(strip.BackgroundTransparency, 1) -- the holder UiIdle moves
+		-- H:28 skewX(-20deg): the band itself turned 20°, strip x cos 20° wide (54 px across), its gradient unturned.
+		local band = strip:FindFirstChild("Band") :: Frame
+		expect.truthy(strip:FindFirstChild("Band") ~= nil)
+		expect.equal(band.Rotation, shine.slantDeg)
+		expect.equal(band.Size.X.Offset, math.round(shine.px * math.cos(math.rad(shine.slantDeg)))) -- whole px
+		expect.equal((band:FindFirstChildOfClass("UIGradient") :: UIGradient).Rotation, 0)
+		expect.truthy(clip.Visible)
+		cta:sweep() -- kept, a no-op
+		cta:destroy()
+		local primary = Button.new({ name = "P", text = "Buy", kind = "primary", width = 160, onActivated = noop })
+		expect.equal(primary.visual:FindFirstChild("SD_Shine"), nil)
+		primary:destroy()
+	end)
+
+	t.test(
+		"the focus ring (PR24): drawn in SD_Visual round the face (the lip left out), shown while selected",
+		function()
+			local button = Button.new({ name = "R", text = "Go", kind = "primary", onActivated = noop })
+			local outset = Config.UI.motion.focus.outerStrokePx + Config.UI.motion.focus.innerStrokePx
+			local padX = Button.style("primary").paddingX
+			expect.equal(button.root.Selectable, true)
+			expect.equal((button.root.SelectionImageObject :: Frame).BackgroundTransparency, 1) -- a clear hit-box image
+			expect.equal(#(button.root.SelectionImageObject :: Frame):GetChildren(), 0)
+			local ring = button.visual:FindFirstChild("SD_FocusRing") :: Frame
+			expect.truthy(button.visual:FindFirstChild("SD_FocusRing") ~= nil)
+			expect.falsy(ring.Visible)
+			-- SD_Visual's side padding is reached back over; the lip under the face is left out.
+			expect.equal(ring.Size, UDim2.new(1, 2 * outset + 2 * padX, 1, 2 * outset - STICKER.lip.button))
+			expect.equal(ring.Position, UDim2.fromOffset(-outset - padX, -outset))
+			local seam = button :: any
+			seam:_simulate("select")
+			expect.truthy(ring.Visible)
+			seam:_simulate("unselect")
+			expect.falsy(ring.Visible)
+			button:destroy()
+			-- The chip's face is its own SD_Visual (centred in the touch box): the ring goes round it.
+			local chip = Button.new({ name = "C", text = "Claim!", size = "chip", onActivated = noop })
+			local chipRing = chip.visual:FindFirstChild("SD_FocusRing") :: Frame
+			expect.equal(chipRing.Position, UDim2.fromOffset(-outset - 20, -outset)) -- H:402's padding 20
+			chip:destroy()
+		end
+	)
+
+	t.test("Toggle (G1.1, P7): the knob over 300 / 350 ms on the switch curve, the track over 200 / 250 ms", function()
+		local small, large = STICKER.toggles.small, STICKER.toggles.large
+		expect.equal(small.knobMs, 300) -- H:197
+		expect.equal(small.trackMs, 200)
+		expect.equal(large.knobMs, 350) -- H:437
+		expect.equal(large.trackMs, 250)
+		local k, c, done = Toggle.motionAt("large", 0)
+		expect.near(k, 0, 1e-9)
+		expect.near(c, 0, 1e-9)
+		expect.falsy(done)
+		k, c, done = Toggle.motionAt("large", 250)
+		expect.near(c, 1, 1e-9) -- the track has arrived
+		expect.falsy(done) -- the knob has not
+		expect.truthy(k > 1) -- the design's overshoot (cubic-bezier(.3,1.8,.5,1))
+		k, c, done = Toggle.motionAt("large", 350)
+		expect.near(k, 1, 1e-9)
+		expect.truthy(done)
+		k, c, done = Toggle.motionAt("small", 300)
+		expect.near(k, 1, 1e-9)
+		expect.truthy(done)
+	end)
+
+	t.test("Chip (P8, H:232, H:234): its icon 20 px, 6 px from the text", function()
+		local chip = Chip.new({ name = "Stat", text = "x2", icon = "coin" })
+		expect.equal((chip.root:FindFirstChildOfClass("UIListLayout") :: UIListLayout).Padding, UDim.new(0, 6))
+		local icon = chip.root:FindFirstChild("Icon") :: Frame
+		expect.equal(icon.Size, UDim2.fromOffset(20, 20))
+		chip:destroy()
+	end)
+
+	t.test("ProgressBar (P9, G2.5): the border inside the design height, the Grip min fill and shine", function()
+		local bars = STICKER.bars
+		-- The default (stat) bar is its design's 14 px with the 3 px border inside, the fill in the track inside it.
+		local stat = ProgressBar.new({ name = "Stat" })
+		expect.equal(stat.root.Size.Y.Offset, bars.stat.height)
+		local track = stat.root:FindFirstChild("Track") :: Frame
+		expect.equal(track.Position, UDim2.fromOffset(bars.stat.border, bars.stat.border))
+		expect.equal(track.Size, UDim2.new(1, -2 * bars.stat.border, 1, -2 * bars.stat.border))
+		expect.equal(stat.fill.Parent, track)
+		stat:destroy()
+		-- The design heights (H:84, H:187, H:240, H:271, H:367).
+		expect.equal(bars.grip.height, 14)
+		expect.equal(bars.collected.height, 16)
+		expect.equal(bars.stat.height, 14)
+		expect.equal(bars.odds.height, 12)
+		expect.equal(bars.quest.height, 20)
+		expect.equal(bars.grip.fillMs, 550)
+		expect.equal(bars.quest.fillMs, 600)
+		expect.equal(STICKER.barFillCurve, "bars")
+		-- The Grip bar: never narrower than 10 px (H:85 min-width), shown at 0 too; its 22 px shine strip.
+		local grip = ProgressBar.new({ name = "Grip", variant = "grip" })
+		expect.truthy(grip.fill.Visible)
+		local min = grip.fill:FindFirstChildOfClass("UISizeConstraint") :: UISizeConstraint
+		expect.equal(min.MinSize, Vector2.new(bars.grip.minFillPx, 0))
+		local strip = grip.fill:FindFirstChild("SD_Shine") :: Frame
+		expect.equal(strip.Size, UDim2.new(0, STICKER.shines.grip.px, 1, 0))
+		local gripBand = strip:FindFirstChild("Band") :: Frame
+		expect.equal(gripBand.Rotation, STICKER.shines.grip.slantDeg) -- H:28: it leans like the CTA's
+		grip:destroy()
+		local quest = ProgressBar.new({ name = "Quest", variant = "quest" })
+		expect.equal((quest.fill:FindFirstChild("SD_Shine") :: Frame).Size.X.Offset, STICKER.shines.quest.px)
+		quest:destroy()
+		-- A bar too thin for its border keeps a 2 px track (the compact Grip card's 4 px bar).
+		local thin = ProgressBar.new({ name = "Thin", heightPx = 4 })
+		expect.equal((thin.root:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness, 1)
+		expect.equal((thin.root:FindFirstChild("Track") :: Frame).Size, UDim2.new(1, -2, 1, -2))
+		thin:destroy()
+	end)
+
+	t.test("ProgressBar.fillAt: the design's overshoot shows inside the track, never past its end (H:84)", function()
+		local peak = 0
+		for step = 0, 100 do
+			local u = step / 100
+			local full = ProgressBar.fillAt(0.5, 1, u)
+			expect.truthy(full >= 0.5 - 1e-9 and full <= 1)
+			peak = math.max(peak, ProgressBar.fillAt(0.5, 0.9, u))
+		end
+		expect.near(ProgressBar.fillAt(0.5, 1, 1), 1, 1e-9)
+		expect.truthy(peak > 0.9 and peak <= 1) -- cubic-bezier(.3,1.5,.5,1) peaks at 1.08 of the way
+		expect.near(ProgressBar.fillAt(0.2, 0, 1), 0, 1e-9)
+	end)
+
+	t.test("a face whose frame is under the touch minimum keeps its size, centred in a 52 px hit box (PR1)", function()
+		local tab = Button.new({ name = "Tab", text = "Epic", kind = "primary", height = 42, onActivated = noop })
+		local frame = 42 + STICKER.lip.button -- H:194's 42 px tab with the lip: 47
+		expect.equal(tab.root.Size.Y.Offset, MIN_TARGET)
+		expect.equal(tab.visual.Size, UDim2.new(1, 0, 0, frame))
+		expect.equal(tab.visual.Position, UDim2.fromScale(0.5, 0.5))
+		tab:destroy()
+	end)
+
+	t.test("hover and focus pose SD_Visual by kind about the face's centre, the hit box stays (T3, PR24)", function()
+		if Tweens.reducedMotion() then
+			return -- the poses rest under ReducedMotion (this Studio has it on)
+		end
+		local button = Button.new({ name = "P", text = "Equip", kind = "primary", onActivated = noop })
+		local seam = button :: any
+		local rootPosition = button.root.Position
+		local pose = button.visual:FindFirstChild("SD_Pose") :: UIScale
+		seam:_simulate("hover")
+		seam:_simulate("frame", 1) -- a second later: arrived
+		expect.equal(button.visual.Position, UDim2.new(0.5, 0, 0.5, -3)) -- btn: up 3 (H:634)
+		expect.near(pose.Scale, 1.04, UDIM_TOLERANCE) -- a 32-bit float
+		expect.equal(button.root.Position, rootPosition) -- the hit box never moves
+		seam:_simulate("unhover")
+		seam:_simulate("frame", 1)
+		expect.equal(button.visual.Position, UDim2.fromScale(0.5, 0.5))
+		expect.near(pose.Scale, 1, 1e-9)
+		-- PR24: a gamepad selection gives the same pose.
+		seam:_simulate("select")
+		seam:_simulate("frame", 1)
+		expect.equal(button.visual.Position, UDim2.new(0.5, 0, 0.5, -3))
+		button:destroy()
+		-- The close X turns 90° about its face (76 x 76), not its frame with the 6 px lip: 3 px left and up.
+		local close = Button.new({ name = "X", text = "Close", kind = "close", onActivated = noop })
+		local closeSeam = close :: any
+		closeSeam:_simulate("hover")
+		closeSeam:_simulate("frame", 1)
+		expect.near(close.visual.Rotation, 90, 1e-9)
+		expect.equal(close.visual.Position, UDim2.new(0.5, -3, 0.5, -3))
+		close:destroy()
+	end)
+
+	t.test(
+		"presses: an off press plays ui.error and the shake and still acts (P11); a touch waits for the tap",
+		function()
+			local keys: { string } = {}
+			Button.setSoundHook(function(key: string)
+				table.insert(keys, key)
+			end)
+			local ran = 0
+			local open = Button.new({
+				name = "Boxes_OpenButton",
+				text = "Open",
+				kind = "primary",
+				onActivated = function()
+					ran += 1
+				end,
+			})
+			local seam = open :: any
+			open:setOff(true, Palette.StickerPriceShort)
+			seam:_simulate("press", Enum.UserInputType.MouseButton1) -- the mouse: on pointer-down (H:611, H:643)
+			expect.deepEqual(keys, { "ui.error" })
+			if not Tweens.reducedMotion() then
+				seam:_simulate("frame", 0.25)
+				expect.truthy(open.visual.Rotation ~= 0) -- the shake's turn (lib:297)
+			end
+			seam:_simulate("activate", Enum.UserInputType.MouseButton1)
+			expect.equal(ran, 1) -- the design's click handler runs too (deny follows)
+			expect.deepEqual(keys, { "ui.error" }) -- no second error, no click
+			-- A disabled button and a touch: nothing at touch-down (a scroll may start there), the error on the tap.
+			table.clear(keys)
+			open:setOff(false)
+			open:setState("disabled", "Not enough Coins")
+			seam:_simulate("press", Enum.UserInputType.Touch)
+			expect.deepEqual(keys, {})
+			seam:_simulate("activate", Enum.UserInputType.Touch)
+			expect.deepEqual(keys, { "ui.error" })
+			expect.equal(ran, 1) -- a disabled button never acts
+			-- A live button: a touch squashes at once, the tap acts and clicks once.
+			table.clear(keys)
+			open:setState("normal")
+			seam:_simulate("press", Enum.UserInputType.Touch)
+			seam:_simulate("activate", Enum.UserInputType.Touch)
+			expect.equal(ran, 2)
+			expect.deepEqual(keys, { "ui.click" })
+			open:destroy()
+			-- The cta's shine hides while its shake turns it (Roblox stops clipping under a turn).
+			if not Tweens.reducedMotion() then
+				local cta = Button.new({ name = "D", text = "DUEL", kind = "cta", width = 350, onActivated = noop })
+				local ctaSeam = cta :: any
+				cta:setState("disabled")
+				ctaSeam:_simulate("press", Enum.UserInputType.MouseButton1)
+				ctaSeam:_simulate("frame", 0.25)
+				expect.falsy((cta.visual:FindFirstChild("SD_Shine") :: Frame).Visible)
+				ctaSeam:_simulate("frame", 2) -- the shake is over
+				expect.truthy((cta.visual:FindFirstChild("SD_Shine") :: Frame).Visible)
+				cta:destroy()
+			end
+			Button.setSoundHook(nil)
+		end
+	)
+
+	t.test(
+		"one sound per click (G2.7): a tile or close X click is silent, its hover sounds even with sound = false",
+		function()
+			local keys: { string } = {}
+			Button.setSoundHook(function(key: string)
+				table.insert(keys, key)
+			end)
+			for _, kind in { "tile", "close" } do
+				table.clear(keys)
+				local button = Button.new({ name = "S", text = "Go", kind = kind, sound = false, onActivated = noop })
+				local seam = button :: any
+				seam:_simulate("hover")
+				seam:_simulate("activate") -- a gamepad press
+				expect.deepEqual(keys, { "ui.hover" })
+				button:destroy()
+			end
+			-- Any other kind: sound = false silences both; clickSound = false the click only.
+			table.clear(keys)
+			local quiet = Button.new({ name = "Q", text = "Go", kind = "primary", sound = false, onActivated = noop })
+			local quietSeam = quiet :: any
+			quietSeam:_simulate("hover")
+			quietSeam:_simulate("activate")
+			expect.deepEqual(keys, {})
+			quiet:destroy()
+			local own =
+				Button.new({ name = "O", text = "Go", kind = "primary", clickSound = false, onActivated = noop })
+			local ownSeam = own :: any
+			ownSeam:_simulate("hover")
+			ownSeam:_simulate("activate")
+			expect.deepEqual(keys, { "ui.hover" })
+			own:destroy()
+			local plain = Button.new({ name = "N", text = "Go", kind = "primary", onActivated = noop })
+			table.clear(keys)
+			local plainSeam = plain :: any
+			plainSeam:_simulate("activate")
+			expect.deepEqual(keys, { "ui.click" })
+			plain:destroy()
+			Button.setSoundHook(nil)
+		end
+	)
+
+	t.test("decorated objects press on the squash's sy track (a reading); the width keeps out 1 px rounding", function()
+		local PRESS = Config.UI.motion.buttonPress
+		-- .86 at 20% (lib:290): a tap on the coin pill or a box card still shows a press.
+		expect.near(Button.decoratedScale(Button.squashAt(0.2, PRESS.amount)), 1 - PRESS.amount, 1e-9)
+		expect.near(Button.decoratedScale(Button.squashAt(0.45, PRESS.amount)), 1 + 0.6 * PRESS.amount, 1e-9)
+		-- While it moves, a re-measure within 1 px keeps the width; a real change or a still button takes it.
+		expect.equal(Button.settledWidth(100, 101, true), 100)
+		expect.equal(Button.settledWidth(100, 99, true), 100)
+		expect.equal(Button.settledWidth(100, 102, true), 102)
+		expect.equal(Button.settledWidth(100, 101, false), 101)
+		expect.equal(Button.settledWidth(0, 101, true), 101)
 	end)
 end

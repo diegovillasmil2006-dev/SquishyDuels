@@ -279,7 +279,7 @@ function InspectPanel.layoutFor(
 ): PanelLayout
 	local screenX = if finite(sizePx.X) and sizePx.X > 0 then sizePx.X else FALLBACK_SCREEN.X
 	local screenY = if finite(sizePx.Y) and sizePx.Y > 0 then sizePx.Y else FALLBACK_SCREEN.Y
-	local scale = Layout.uiScale(screenY)
+	local scale = Layout.uiScale(screenY, screenX) -- UI FINAL R2 (PR1): the live UIScale's fit
 	local width = math.floor(Layout.modalWidth(screenX, scale, MARGIN_PX))
 	if width <= 0 then
 		width = UI_CONFIG.modalMaxWidth
@@ -296,7 +296,8 @@ function InspectPanel.layoutFor(
 	local compact = class == "compact"
 	local share = if compact then STAGE_SHARE_COMPACT else STAGE_SHARE_REGULAR
 	local closeHeight = Layout.touchBase(TOUCH.closeButton, scale)
-	local buttonHeight = Layout.touchBase(if compact then TOUCH.minTarget else TOUCH.primaryButton, scale)
+	-- UI FINAL R2 (P1): a button's frame (face + lip).
+	local buttonHeight = Layout.touchBase(if compact then TOUCH.minTarget else Button.frameHeight("primary"), scale)
 	local textMultiplier = if textScale ~= nil and finite(textScale) and textScale > 0 then textScale else 1
 	local smallPx = math.floor(UI_CONFIG.TextSize.Small * textMultiplier + 0.5)
 	local captionHeight = math.ceil(CAPTION_LINES * smallPx * LINE_HEIGHT)
@@ -681,7 +682,7 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		local tabPad = tab:FindFirstChildOfClass("UIPadding")
 		local padY = if tabPad then tabPad.PaddingTop.Offset + tabPad.PaddingBottom.Offset else 0
 		local tabHeight = math.ceil(Theme.lineHeight(TAB_KIND)) + padY
-		local closeHeight = Layout.touchBase(TOUCH.closeButton, Layout.uiScale(screenSize().Y))
+		local closeHeight = Layout.touchBase(TOUCH.closeButton, Layout.uiScale(screenSize().Y, screenSize().X))
 		local chrome = InventoryFormat.hangingChrome(tabHeight, closeHeight, PANEL_PADDING)
 		rootPad.PaddingTop = UDim.new(0, chrome.top)
 		tab.Position = UDim2.new(0.5, 0, 0, -chrome.top)

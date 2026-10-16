@@ -2,7 +2,8 @@
 -- UILayout_Test: the pure UI layout maths (StarterPlayerScripts.Client.UI.Layout) and the modal stack
 -- (UI.ModalStack) used by UIController. Server only (ServerStorage.UnitTest). Pure: no instances.
 -- Contract (DESIGN §11.1, §11.2, §10.3):
---   * UIScale = clamp(height / 800, 0.85, 1.25); "compact" below 500 px tall or 700 px wide;
+--   * UIScale = clamp(height / 810, 0.85, 1.25), and with the width too (UI FINAL R2, PR1) the design's fit
+--     clamp(min(width / 1440, height / 810), 0.85, 1.25) (H:624); "compact" below 500 px tall or 700 px wide;
 --   * text size = base × the PreferredTextSize multiplier (unknown kinds use Body); touch targets never below
 --     Config.UI.Touch.minTargetFloor actual px; modal width capped at Config.UI.modalMaxWidth;
 --   * the modal stack holds at most Config.UI.modalStackMax screens: a full stack closes its newest first; reopening
@@ -45,6 +46,24 @@ return function(t: Context)
 		expect.near(Layout.uiScale(0 / 0), UI.Scale.min)
 		expect.near(Layout.uiScale(-5), UI.Scale.min)
 		expect.near(Layout.uiScale(880), 880 / UI.Scale.referenceHeight)
+	end)
+
+	-- UI FINAL R2 (PR1, decided 2026-10-15): the design's fit min(w / 1440, h / 810) (H:624) inside the game's floor
+	-- and cap, at the five check sizes (plan §1.5).
+	t.test("UIScale with the width: the design's fit inside the floor and the cap (PR1)", function()
+		expect.equal(UI.Scale.referenceWidth, 1440)
+		expect.equal(UI.Scale.referenceHeight, 810)
+		expect.near(Layout.uiScale(720, 1280), 720 / 810, 1e-9) -- 0.889, the _desktop compare size
+		expect.near(Layout.uiScale(768, 1366), 768 / 810, 1e-9) -- 0.948 (the height decides)
+		expect.near(Layout.uiScale(1080, 1920), UI.Scale.max, 1e-9) -- 1.333 capped at 1.25
+		expect.near(Layout.uiScale(768, 1024), UI.Scale.min, 1e-9) -- 0.711 (the width decides) floored at 0.85
+		expect.near(Layout.uiScale(390, 844), UI.Scale.min, 1e-9) -- a phone in landscape
+		expect.near(Layout.uiScale(844, 390), UI.Scale.min, 1e-9) -- in portrait: the design's 0.27, floored
+		expect.near(Layout.uiScale(900, 1400), 1400 / 1440, 1e-9) -- 0.972: the width decides
+		-- A missing or bad width leaves the height alone to decide.
+		expect.near(Layout.uiScale(880, 0 / 0), 880 / 810, 1e-9)
+		expect.near(Layout.uiScale(880, -1), 880 / 810, 1e-9)
+		expect.near(Layout.uiScale(0 / 0, 1280), UI.Scale.min, 1e-9)
 	end)
 
 	t.test("layout class: compact on small screens", function()

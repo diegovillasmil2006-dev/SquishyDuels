@@ -327,15 +327,16 @@ local function playNav(key: string)
 	SoundController.play(key)
 end
 
--- Every Button sound comes through here (Button.setSoundHook).
-local function buttonSound(key: string)
+-- Every Button sound comes through here (Button.setSoundHook); UI FINAL R2: with the pitch of the button's design
+-- hover kind (Config.Audio.uiPitch.hover).
+local function buttonSound(key: string, pitch: number?)
 	if key == SOUND_CLICK and os.clock() - lastNavSoundAt < NAV_CLICK_GUARD then
 		return
 	end
 	if key ~= SOUND_HOVER then
 		markAction()
 	end
-	SoundController.play(key)
+	SoundController.play(key, if pitch and pitch ~= 1 then { pitch = pitch } else nil)
 end
 
 local function lastInputIsGamepad(): boolean
@@ -394,7 +395,7 @@ local function trackHudSize(hud: ScreenGui)
 		if size.X <= 0 or size.Y <= 0 then
 			return
 		end
-		local scale = Layout.uiScale(size.Y)
+		local scale = Layout.uiScale(size.Y, size.X) -- UI FINAL R2 (PR1): the design's fit
 		local class: Layout.LayoutClass = Layout.layoutClass(size.X, size.Y)
 		local changed = scale ~= currentScale or class ~= currentClass
 		if changed then
@@ -1516,6 +1517,14 @@ function UIController.init()
 	UiFx.setLayer(UIController.screenGui(OVERLAY_GUI))
 	c:add(function()
 		UiFx.setLayer(nil)
+	end)
+	-- UI FINAL R2 (T6): the design's jolts follow the player's Camera shake setting (the design's state.shake).
+	UiFx.setShakeGate(function(): boolean
+		local settings = StateController.get("settings")
+		return not (type(settings) == "table" and settings.cameraShake == false)
+	end)
+	c:add(function()
+		UiFx.setShakeGate(nil)
 	end)
 	-- The toast column's place follows the screen (toastsBelow).
 	c:add(UIController.screenGui(OVERLAY_GUI):GetPropertyChangedSignal("AbsoluteSize"):Connect(placeToasts))

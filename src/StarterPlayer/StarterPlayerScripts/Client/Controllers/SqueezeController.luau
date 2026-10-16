@@ -106,11 +106,11 @@
 --     of its kind adds its amount to that line's number instead.
 --     First person (spec 2026-10-11 §3.8): while FirstPersonController.look() is on, the held model is hidden and the
 --     toy shows in the overlay, so the lines float at the overlay toy instead ("+N Coins", common.coinsGain): the
---     bottom centre on ViewmodelController.toyScreenPoint() (hudOffsetOf, pure), Grip one step higher, as big outlined
---     numerals (HudNumber, the kind's colour, the InkUI outline, coinCounter floatPx over floatMs; no rise under
---     ReducedMotion) in SD_Hud's SqueezeOverlayPopups frame, a reply within half its float folding into it
---     (foldsInto). Both are read through inline requires, so this module adds no top-level local; with no toy point it
---     falls back to the billboard.
+--     point on ViewmodelController.toyScreenPoint() (hudOffsetOf, pure), Grip one step higher, as the design's floats
+--     (UI FINAL R2: UI/UiFx.float, the kind's colour, the size and drift of Config.UI.Fx.events.squeeze; still and
+--     fading under ReducedMotion), a reply within half a coinCounter float folding into it (foldsInto). All are read
+--     through inline requires, so this module adds no top-level local; with no toy point it falls back to the
+--     billboard.
 
 -- Services
 
@@ -406,8 +406,13 @@ end
 -- Popups ------------------------------------------------------------------------------------------------------------
 
 -- Spec 2026-10-11 §3.8: one line floating at the first-person toy, `at` (an SD_Hud offset) in the SqueezeOverlayPopups
--- frame: its bottom centre on `at`, a Grip line one step higher (lineLiftPx's steps), a big outlined numeral in the
--- kind's colour (popupColor) with the InkUI outline, rising and fading. Returns its label (nil without the frame).
+-- frame, a Grip line one step higher (lineLiftPx's steps), at most MAX_POPUPS at once (the oldest goes). UI FINAL R2
+-- (plan §2.1 squeeze row, H:703-704): drawn by UI/UiFx.float in that frame (so it keeps SD_Hud's layer and hides
+-- with the HUD), the design's float (the Sticker role "float": a 6 px ink stroke and a 3 px drop; it pops in,
+-- rises and fades, lib:255-268) centred on that point, in the design's colour, size and drift of
+-- Config.UI.Fx.events.squeeze (coinFloat / gripFloat; popupColor when the colour is unknown). Read through an inline
+-- require (no top-level local). Returns its label (a fold changes its Text), nil when nothing is drawn. AFFECTED
+-- 2026-10-15: the amounts still come from the capsules' squeeze value (wired to the new income later).
 local function showOverlayLine(line: string, kind: PopupKind, at: Vector2): TextLabel?
 	local l = floatLabel
 	if l == nil or line == "" then
@@ -418,31 +423,14 @@ local function showOverlayLine(line: string, kind: PopupKind, at: Vector2): Text
 	if #existing >= MAX_POPUPS then
 		existing[1]:Destroy()
 	end
-	local rise = if Tweens.reducedMotion() then 0 else FLOAT.floatPx
 	local y = at.Y - (SqueezeController.lineLiftPx(kind, 0) - SqueezeController.lineLiftPx("coins", 0))
-	local label = Theme.label({
-		Name = "Popup",
-		Text = line,
-		AnchorPoint = Vector2.new(0.5, 1),
-		Position = UDim2.fromOffset(at.X, y),
-		Size = UDim2.fromOffset(LINE_WIDTH, 0),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Parent = container,
-	}, "HudNumber", nil, SqueezeController.popupColor(kind))
-	Theme.noOutline(label) -- UI FINAL R1: its own outline below is the only one (it fades with the face)
-	local stroke = Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.text, label)
-	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-	local goals: { [string]: any } = { TextTransparency = 1 }
-	if rise > 0 then
-		goals.Position = UDim2.fromOffset(at.X, y - rise)
-	end
-	local tween = Tweens.fade(label, goals, FLOAT.floatMs)
-	-- Foam fix: the outline fades with the face (before, the Mint / Lilac face faded and left a dark outline).
-	Tweens.fade(stroke, { Transparency = 1 }, FLOAT.floatMs)
-	tween.Completed:Once(function()
-		label:Destroy()
-	end)
-	return label
+	local float = Config.UI.Fx.events.squeeze[if kind == "coins" then "coinFloat" else "gripFloat"]
+	-- The design's float colour (H:703 #FFE36B, H:704 #9EF7D2), else the kind's popup colour.
+	local named = (Palette :: any)[float.color]
+	local color = if typeof(named) == "Color3" then named else SqueezeController.popupColor(kind)
+	local UiFx = require(script.Parent.Parent.UI.UiFx)
+	local options = { dx = float.dx, parent = container :: GuiObject }
+	return UiFx.float(Vector2.new(at.X, y), line, color, float.kind, options)
 end
 
 -- Feel: Foam Mat pulse (§18.5.1 A3) ---------------------------------------------------------------------------------
@@ -1312,15 +1300,16 @@ end
 
 -- Foam UI: the colour of a floating line (with the InkUI outline): Coins in CoinGold (the coin colour, used only for
 -- Coins, §7.2), Grip in the UI Mint, anything else in Lilac (the old slow-training kind "afk"; none since Phase 6);
--- the line's words always say which it is. UI FINAL R1: the world floats keep the Candy Mint and Lavender (plan §4:
--- world UI is kept; the R1 accents moved to the design's hues), until R2 restyles the squeeze floats.
+-- the line's words always say which it is. UI FINAL R2: the world floats (kept in the world, plan §4; the squeeze
+-- button that anchors the design's floats stays removed, Q2) take the design's float colours: Grip the "+N Grip" mint
+-- (H:704), anything else the float's default white (lib:255); Coins stay CoinGold.
 function SqueezeController.popupColor(kind: string): Color3
 	if kind == "coins" then
 		return Palette.CoinGold
 	elseif kind == "grip" then
-		return Palette.CandyMint
+		return Palette.StickerGripFloat
 	end
-	return Palette.CandyLavender
+	return Palette.White
 end
 
 -- Puffs for another player's squeeze `distance` studs from this client (§18.5.1 A1): Effects.othersSqueezePuffs

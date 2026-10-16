@@ -1350,7 +1350,7 @@ end
 -- result state measured (every result button shown, the saving note reserved), so the panel never grows off screen.
 local function revealStageHeight(): number
 	local items: { Layout.WrapItem } = {}
-	local buttonHeight = Layout.touchBase(TOUCH.primaryButton, UIController.scale())
+	local buttonHeight = Layout.touchBase(Button.frameHeight("primary"), UIController.scale()) -- UI FINAL R2 (P1)
 	for _, text in { Strings.common.equip, Strings.common.inspect, Strings.box.openAnother, Strings.common.close } do
 		table.insert(items, { w = Button.widthFor(text), h = buttonHeight })
 	end

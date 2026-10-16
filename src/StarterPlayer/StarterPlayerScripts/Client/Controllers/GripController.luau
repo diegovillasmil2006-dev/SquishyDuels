@@ -731,7 +731,8 @@ local function refreshCard()
 	-- Foam fix 2: the goal line reads the short form (cardGoal), so it keeps to one line.
 	setLabel(k.goalLabel, model.cardGoal)
 	setLabel(k.compactLabel, model.levelCompact)
-	-- The first value is set at once; later changes ease (Config.UI.motion.barFill; at once under ReducedMotion).
+	-- The first value is set at once; later changes ease (the bar variant's fillMs, Config.UI.Sticker.bars; at once
+	-- under ReducedMotion).
 	if not k.barSet or math.abs(k.bar:get() - model.fraction) > BAR_EPSILON then
 		k.bar:set(model.fraction, k.barSet)
 		k.compactBar:set(model.fraction, k.barSet)

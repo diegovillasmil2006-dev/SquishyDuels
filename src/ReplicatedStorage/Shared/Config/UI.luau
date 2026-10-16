@@ -11,12 +11,32 @@ export type Tween = {
 export type ScreenGuiSpec = { displayOrder: number, insets: Enum.ScreenInsets }
 -- UI FINAL R1 (Sticker): a design surface's inset highlight and bevel; a text role; a component variant's numbers.
 export type StickerSurface = { highlightPx: number, highlightAlpha: number, bevelPx: number?, bevelAlpha: number? }
-export type StickerTextRole = { kind: string, stroke: number, drop: number?, color: string? }
+export type StickerTextRole = {
+	kind: string,
+	stroke: number,
+	drop: number?,
+	color: string?,
+	soft: { px: number, alpha: number, color: string? }?, -- UI FINAL R2 (T5): a soft text drop
+}
 export type StickerVariant = { [string]: number }
+-- UI FINAL R2: one frame of a motion `frames` track (Anim/Tweens.Pose): at 0..1; base px, a non-uniform scale
+-- (sx, sy), a scale, degrees, opacity.
+export type MotionPose = {
+	at: number,
+	x: number?,
+	y: number?,
+	sx: number?,
+	sy: number?,
+	scale: number?,
+	rot: number?,
+	alpha: number?,
+}
 
 local UI = {
-	-- UIScale = clamp(SD_Hud.AbsoluteSize.Y / referenceHeight, min, max), recomputed on size change.
-	Scale = { referenceHeight = 800, min = 0.85, max = 1.25 },
+	-- UIScale = clamp(min(SD_Hud.AbsoluteSize.X / referenceWidth, AbsoluteSize.Y / referenceHeight), min, max),
+	-- recomputed on size change. UI FINAL R2 (PR1, decided 2026-10-15): the design's fit min(w / 1440, h / 810)
+	-- (H:624, its 1440 x 810 canvas H:73) inside the game's floor and cap.
+	Scale = { referenceWidth = 1440, referenceHeight = 810, min = 0.85, max = 1.25 },
 
 	-- Layout class "compact" if AbsoluteSize.Y < compactBelowHeight or X < compactBelowWidth, else "regular".
 	Breakpoints = { compactBelowHeight = 500, compactBelowWidth = 700 },
@@ -75,6 +95,11 @@ local UI = {
 		Prize = 52, -- H:545 the congrats item title
 		Reveal = 64, -- H:490 the reveal name
 		Congrats = 82, -- H:539 the CONGRATULATIONS letters
+		-- UI FINAL R2 (PR2, decided 2026-10-15): the design's 17, 19 and 23 kept exact (each >= 16, so checkUI's
+		-- 13 / Scale.min floor allows them; R1 rounded them to 18 / 20 / 22).
+		D17 = 17, -- H:131, H:151, H:324, H:495
+		D19 = 19, -- H:159, H:162, H:278, H:369, H:390, H:546
+		D23 = 23, -- H:101-119 the nav labels
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -96,46 +121,95 @@ local UI = {
 		SD_Fade = { displayOrder = 40, insets = Enum.ScreenInsets.None },
 	} :: { [string]: ScreenGuiSpec },
 
-	-- UI motion and button states (§9.13, with the feel pass values of §18.5.2 / §18.8; UI overhaul 2026-10-11: the
-	-- elastic, snappy targets of the overhaul brief). Under ReducedMotion scale effects are off and fades <= maxFadeMs.
+	-- UI motion and button states (§9.13, with the feel pass values of §18.5.2 / §18.8; UI FINAL R2: the design's
+	-- motion, plan work/ui/PLAN.md §2 and R2; `H:n` = "Squishy Duels HUD.dc.html" line n, `lib:n` = uploads/hud-lib.js
+	-- line n). Under ReducedMotion scale effects are off and fades <= reducedMotionMaxFadeMs. A `frames` list is a
+	-- design @keyframes as poses (Anim/Tweens.Pose: { at = 0..1, x, y = base px, sx, sy, scale, rot = degrees, alpha };
+	-- a frame names only what it moves) that Anim/Tweens.keyframes plays on an inner holder; `curve` names a
+	-- Config.UI.curves entry (the design's cubic-bezier, played exactly by Anim/Tweens.bezier). R3 (windows), R5
+	-- (cards) and R9 (toasts) switch to the tracks; `style` / `direction` stay the TweenService fallback today's code
+	-- reads until then.
 	motion = {
 		-- UI overhaul: the panel pops scaleFrom -> overshoot over overshootShare of ms (Quad Out), then settles to 1 (Quad
 		-- InOut), rising riseShare of its height into place; the backdrop fades in over backdropMs. `style` / `direction`
-		-- stay the one-tween fallback (the banner's pop).
+		-- stay the one-tween fallback (the banner's pop). UI FINAL R2: the design's sdPop (H:25, .5 s, H:181), without
+		-- its fade and tilt (plan §1.4 RL3); the scrim's sdFade .25 s (H:178).
 		modalOpen = {
-			ms = 300, -- overhaul: 240 -> 300 (two phases)
+			ms = 500, -- H:181
 			style = Enum.EasingStyle.Back,
 			direction = Enum.EasingDirection.Out,
-			scaleFrom = 0.9, -- overhaul: 0.88 -> 0.9
-			overshoot = 1.03,
+			curve = "windows", -- H:181
+			scaleFrom = 0.55, -- H:25
+			overshoot = 1.035, -- H:25 (60%)
 			overshootShare = 0.6,
 			riseShare = 0.03,
 			dimmerTransparency = 0.5, -- the Backdrop colour 1 -> 0.5
-			backdropMs = 150,
+			backdropMs = 250, -- H:178
+			-- H:25. CSS scale(...) translateY(...): the move is inside the scale, so 40 px at .55 moves 22 px and -4 px
+			-- at 1.035 moves -4.
+			frames = {
+				{ at = 0, scale = 0.55, y = 22 },
+				{ at = 0.6, scale = 1.035, y = -4 },
+				{ at = 0.8, scale = 0.99 },
+				{ at = 1, scale = 1, y = 0 },
+			} :: { MotionPose },
 		},
 		-- The logical close is immediate; visually the root stays visualMs while UIScale goes 1 -> scaleTo (§18.5.2 B4).
+		-- UI FINAL R2: the design's close (H:683-690): 190 ms to .82 and 20 px lower, cubic-bezier(.5,0,.75,0)
+		-- (`curve`; today's tween: Quart In, 0.006 off), the scrim fading out with it; no fade of the window (plan §1.4
+		-- RL3).
 		modalClose = {
-			ms = 160, -- overhaul: 120 -> 160 (the backdrop)
-			style = Enum.EasingStyle.Quad,
+			ms = 190, -- H:686 (the backdrop)
+			style = Enum.EasingStyle.Quart,
 			direction = Enum.EasingDirection.In,
-			scaleTo = 0.9, -- overhaul: a brief inward squish
-			visualMs = 150,
+			curve = "close", -- H:686
+			scaleTo = 0.82, -- H:687
+			visualMs = 190, -- H:686
+			-- H:687 scale(.82) translateY(24px): the move is inside the scale, 24 x .82 = 20 px.
+			frames = { { at = 0, scale = 1, y = 0 }, { at = 1, scale = 0.82, y = 20 } } :: { MotionPose },
 		},
-		-- UI overhaul: collectible cards pop in one after another the first time a grid fills (and when a tab or filter
-		-- shows a new set): staggerMs apart, never more than maxStaggerMs for the whole set, each scaleFrom -> 1 over ms.
-		cardIn = { staggerMs = 18, maxStaggerMs = 260, ms = 220, scaleFrom = 0.86 },
+		-- Collectible cards pop in one after another the first time a grid fills (and when a tab or filter shows a new
+		-- set): staggerMs apart, each scaleFrom -> 1 over ms. UI FINAL R2: the design's sdRise (H:31: 18 px lower, .9,
+		-- clear; .42 s cubic-bezier(.2,1.3,.4,1), H:203) on the card's inner holder (R5), i x 28 ms apart with no cap
+		-- (H:934, plan T9: maxStaggerMs is math.huge, kept as a field for UiFx.cascade's default).
+		cardIn = {
+			staggerMs = 28, -- H:934
+			maxStaggerMs = math.huge, -- T9: no cap
+			ms = 420, -- H:203
+			scaleFrom = 0.9, -- H:31
+			curve = "rise", -- H:203
+			-- H:31
+			frames = {
+				{ at = 0, y = 18, scale = 0.9, alpha = 0 },
+				{ at = 1, y = 0, scale = 1, alpha = 1 },
+			} :: { MotionPose },
+		},
 		-- UI overhaul: a tab's content settles in (never the whole panel): scaleFrom -> 1 over ms.
 		tabSettle = { ms = 140, scaleFrom = 0.97 },
 		tabSwitch = { ms = 120, slidePx = 12 },
 		-- §18.5.2 B5: a UIScale pop popFrom -> 1 (Back Out, ms) with the slide; a re-armed toast nudges nudgeScale -> 1.
+		-- UI FINAL R2: the design's sdToast (H:33, 2.9 s `ease`, per keyframe): in from 30 px up at .8 over its first
+		-- 10% (to 5 px down at 1.04, at rest by 16%), out 16 px up at .95 over its last 14%; gone after 2.9 s (H:175,
+		-- H:661), at most 3 (H:660). `frames` spans lifeMs (R9); ms / slidePx / popFrom give today's slide its
+		-- entrance. Also the duel toast's time (DuelController reads autoDismissSeconds). Until R9 plays `frames`,
+		-- today's exit starts at autoDismissSeconds and slides slidePx up over ms.
 		toast = {
-			ms = 200,
-			slidePx = 16,
-			autoDismissSeconds = 2.5,
-			maxStacked = 3,
-			popFrom = 0.9,
+			ms = 290, -- H:33: 10% of 2.9 s
+			slidePx = 30, -- H:33
+			autoDismissSeconds = 2.9, -- H:661
+			maxStacked = 3, -- H:660
+			popFrom = 0.8, -- H:33
 			nudgeScale = 1.06,
 			nudgeMs = 160,
+			lifeMs = 2900, -- H:175
+			curve = "ease", -- H:175
+			frames = { -- H:33
+				{ at = 0, y = -30, scale = 0.8, alpha = 0 },
+				{ at = 0.1, y = 5, scale = 1.04, alpha = 1 },
+				{ at = 0.16, y = 0, scale = 1 },
+				{ at = 0.86, y = 0, scale = 1, alpha = 1 },
+				{ at = 1, y = -16, scale = 0.95, alpha = 0 },
+			} :: { MotionPose },
 		},
 		coinCounter = {
 			countUpMs = 400,
@@ -148,52 +222,219 @@ local UI = {
 			pillBounce = { scale = 1.08, upMs = 70, downMs = 160 },
 			spend = { scale = 0.95, downMs = 60, upMs = 140, countMs = 300 },
 			iconWiggleDeg = 12,
+			-- UI FINAL R2: a coin landing on the pill (coinFlash, H:562-578; R4 draws it): the coin flips (a width
+			-- 1 -> 0 -> 1 for rotateY) and peaks iconPeak over flipMs (comboFlipMs when it lands within comboGapMs of
+			-- the last), `curve`; the number goes numberScale and numberRisePx up, white, over numberMs
+			-- (numberCurve); a coin-yellow ring around the pill grows ringFromPx -> ringToPx at ringAlpha over ringMs;
+			-- the glow over glowMs and the rays over raysMs (ease-out).
+			flash = {
+				flipMs = 560, -- H:571
+				comboFlipMs = 380, -- H:571
+				comboGapMs = 260, -- H:565
+				curve = "coinFlip", -- H:571
+				iconPeak = 1.45, -- H:568
+				numberScale = 1.22, -- H:574
+				numberRisePx = 3, -- H:574
+				numberMs = 480, -- H:574
+				numberCurve = "search", -- H:574: cubic-bezier(.2,1.4,.4,1)
+				ringFromPx = 8, -- H:575
+				ringToPx = 16, -- H:575
+				ringAlpha = 0.7, -- H:575
+				ringMs = 560, -- H:575
+				glowMs = 600, -- H:572
+				raysMs = 700, -- H:573
+			},
 		},
-		-- "+N" coin flights into the pill (§18.5.2 B2, UI/CoinFlight): only for amounts >= minAmount; coins =
-		-- clamp(round(amount / coinsPer), minCoins, maxCoins), each arcing arcPx over ms (Quad In), staggerMs apart;
-		-- the count-up lasts (k - 1) · staggerMs + countTailMs.
+		-- "+N" coin flights into the pill (§18.5.2 B2, UI/CoinFlight): only for amounts >= minAmount unless the caller
+		-- gives the count. UI FINAL R2: the design's fly (lib:269-286): `count` coins a gain (H:663; a claim passes
+		-- Config.UI.Fx.events.*.coins, a paid squeeze 1, plan G2.8), at most maxCoins in the air, staggerMs apart;
+		-- iconPx coins (img.coin) leave within startJitterPx of the source, swing through a point up to arcXPx to
+		-- either side and arcUpMinPx..arcUpMaxPx above it (at midAt of the run eased by `curve`; the second leg eased
+		-- by `legCurve`), growing 0 -> midScale and landing at endScale, turned up to ±spinDeg on the way (these px x
+		-- the UI scale, lib:277-278's k); each flies ms + 0..jitterMs. The count-up lasts (k - 1) · staggerMs +
+		-- countTailMs.
 		coinFlight = {
 			minAmount = 50,
-			coinsPer = 40,
-			minCoins = 3,
-			maxCoins = 8,
-			iconPx = 22,
-			ms = 520,
-			staggerMs = 45,
-			arcPx = 120,
-			startScale = 0.7,
-			scaleInMs = 120,
-			-- Reading (§18.1 #4 and §9.12 over B2's "at most once per 60 ms"): coins land 45 ms apart, so a 60 ms gap
-			-- bounced the pill (and restarted the icon wiggle) about 11 times a second; >= 334 ms keeps it <= 3 Hz.
+			count = 8, -- H:663
+			maxCoins = 10, -- plan §2.1 (H:746, H:856: 10 on a claim)
+			iconPx = 46, -- lib:275
+			ms = 720, -- lib:283
+			jitterMs = 220, -- lib:283
+			staggerMs = 60, -- lib:284
+			startJitterPx = 15, -- lib:277
+			arcXPx = 130, -- lib:278
+			arcUpMinPx = 50, -- lib:278
+			arcUpMaxPx = 190, -- lib:278
+			midAt = 0.32, -- lib:281
+			midScale = 1.15, -- lib:281
+			endScale = 0.55, -- lib:282
+			spinDeg = 45, -- lib:281
+			curve = "fly", -- lib:283 (the whole run)
+			legCurve = "flyLeg", -- lib:281 (the second leg)
+			-- Reading (§18.1 #4 and §9.12 over B2's "at most once per 60 ms"): coins land 60 ms apart, so a 60 ms gap
+			-- bounced the pill (and restarted the icon wiggle) about 16 times a second; >= 334 ms keeps it <= 3 Hz.
 			bounceMinGapMs = 334,
-			countTailMs = 400,
+			countTailMs = 400, -- >= jitterMs: the count-up never ends before the last coin lands
 		},
-		-- UI FINAL (R1): the hover brightens by the design's brightness(1.07) (H:637); the per-kind hover and press
-		-- motion (H:634-644) comes in R2 (PLAN.md R2: Button's newFeel).
-		buttonHover = { ms = 120, scale = 1.05, fillDelta = 0.07 }, -- overhaul: 80 ms 1.04 -> 120 ms 1.05
-		buttonPressed = { ms = 70, scale = 0.94, fillDelta = -0.1 }, -- overhaul: 60 ms 0.92 -> 70 ms 0.94
-		-- The springy release (§18.5.2 B3): Util/Spring from the current scale to the target (≈ 2.98 Hz, under §9.12's
-		-- 3 Hz); ms / style / direction stay as the fallback tween.
-		buttonRelease = {
-			ms = 140,
-			style = Enum.EasingStyle.Back,
-			direction = Enum.EasingDirection.Out,
-			spring = { omega = 20, zeta = 0.35 },
+		-- UI FINAL R2 (plan §2 T3 T4, PR24): a mouse hover (or a gamepad focus) poses a Button's inner SD_Visual by its
+		-- design kind (`hover`) over ms with `curve`; a live face's gradient stops take the design's filter
+		-- brightness(brightness) saturate(saturate) (H:637, computed exactly, Button.hoverColor) over filterMs with
+		-- filterCurve; never on an "off" or disabled face (H:637). The laid-out root (the hit box) never moves.
+		buttonHover = {
+			ms = 380, -- H:635
+			curve = "hover", -- H:635
+			filterMs = 200, -- H:635
+			filterCurve = "ease", -- H:635
+			brightness = 1.07, -- H:637
+			saturate = 1.06, -- H:637
 		},
-		-- A disabled press: a "no" wiggle of Position ±wigglePx, cycles cycles over ms, fading out (§18.5.2 B3).
-		-- Reading (§18.1 #4 and §9.12 over B3's "2 cycles, 200 ms", which is 10 Hz): 1 cycle over 340 ms (2.9 Hz).
-		buttonError = { wigglePx = 4, cycles = 1, ms = 340 },
+		-- H:634: each design hover kind's pose (base px, a scale, degrees). Button kinds take btn (primary, secondary,
+		-- cancel, cta), nav (tile), x (close); spec.fx picks another (the Settings sticker's "icon", H:157).
+		hover = {
+			btn = { scale = 1.04, y = -3 },
+			nav = { scale = 1.13, rot = -4 },
+			tab = { scale = 1.05, y = -2 },
+			card = { scale = 1.035, y = -5 },
+			x = { scale = 1.1, rot = 90 },
+			icon = { scale = 1.12 },
+			row = { x = 4 },
+		} :: { [string]: { [string]: number } },
+		-- PR4 (decided 2026-10-15, "A, closest to the design"): the design's press squash (lib:287-293, on pointer-down
+		-- H:611): a = amount x the kind's amountByKind (H:644: nav 1.4, card .7, else 1); each frame's sx / sy is
+		-- 1 + a x its coefficient (lib:290-292), added to the hover pose. Only slowed: ms instead of designMs, each
+		-- segment eased `curve` (ease-out), so its swings between extremes are 167 ms apart = 3.0 Hz (§9.12). A text
+		-- or ViewportFrame takes its uniform part, sqrt(sx x sy); a decorated object (Button.decorate: it may sit in a
+		-- layout, so only a UIScale) takes its `decoratedAxis` series as the uniform scale (reading: the sy track, .86
+		-- at 20%, so a tap still shows a press; sqrt(sx x sy) stays within 1% of 1).
+		buttonPress = {
+			ms = 667,
+			designMs = 460, -- lib:293
+			curve = "easeOut", -- lib:293
+			amount = 0.14, -- lib:289
+			amountByKind = { nav = 1.4, card = 0.7 }, -- H:644
+			decoratedAxis = "sy", -- reading (above)
+			frames = { -- lib:290-292: coefficients of a
+				{ at = 0, sx = 0, sy = 0 },
+				{ at = 0.2, sx = 1, sy = -1 },
+				{ at = 0.45, sx = -0.5, sy = 0.6 },
+				{ at = 0.7, sx = 0.2, sy = -0.15 },
+				{ at = 1, sx = 0, sy = 0 },
+			} :: { MotionPose },
+		},
+		-- PR5 (decided 2026-10-15): the design's "no" shake (lib:295-297): x = step x px, rotation = step x rotDeg, px
+		-- 9 on a button (H:643) and 12 on the coin pill (H:676). Only slowed: ms instead of designMs, each segment
+		-- eased `curve`, so the swings are 167 ms apart = 3.0 Hz (§9.12).
+		buttonShake = {
+			ms = 1000,
+			designMs = 420, -- lib:297
+			curve = "easeOut", -- lib:297
+			steps = { 0, -1, 1, -0.8, 0.6, -0.3, 0 }, -- lib:297
+			rotDeg = 2, -- lib:297
+			px = 9, -- H:643
+			pillPx = 12, -- H:676
+		},
+		-- A nav sticker's icon wiggles through these angles when the mouse comes over it (H:639: designMs, 3.8 Hz; PR6:
+		-- held to 3 Hz over ms; R4 wires it).
+		navWiggle = { ms = 668, designMs = 520, angles = { 0, -12, 9, -4, 0 } },
 		-- Pops (Back Out): the HUD badge when its count rises (§18.5.2 B5); READY and the opponent's Rush chip (B8).
 		badgePop = { from = 1.4, ms = 220 },
 		readyPop = { from = 1.3, ms = 220 },
-		focus = { scale = 1.04, outerStrokePx = 3, innerStrokePx = 2 }, -- Ink outer + white inner stroke (UI FINAL R1)
-		-- Reading (foam UI, spec 2026-10-09; DESIGN gives no number): a ProgressBar fill easing to a new value.
-		barFill = { ms = 300, style = Enum.EasingStyle.Quad, direction = Enum.EasingDirection.Out },
+		-- UI FINAL R2 (PR24): a focused Button takes its hover pose (Button), so the focus has no scale of its own.
+		focus = { outerStrokePx = 3, innerStrokePx = 2 }, -- Ink outer + white inner stroke (UI FINAL R1)
 		disabledTextOpacity = 0.6, -- plus a reason text; still selectable
 		loadingSpinnerDelayMs = 150, -- e.g. box Open waiting for the reply
 		skeletonPulseMaxHz = 1,
 		ultReadyPulseSeconds = 0.9, -- static under ReducedMotion
 		reducedMotionMaxFadeMs = 120,
+		-- UI FINAL R2: the design's perpetual loops (H:23-43), Anim/UiIdle on inner holders, each eased `curve` per
+		-- segment (the CSS ease-in-out; ring ease-out; spin linear). periodS is each kind's default; a caller passes
+		-- the period (and the delay) its design line uses. Every period >= 1/3 s (§9.12: <= 3 Hz, Config F9). Under
+		-- ReducedMotion every loop rests at its 0% pose (plan T11, PR9).
+		idle = {
+			bob = { periodS = 3.1, risePx = 6, rotDeg = 2, curve = "easeInOut" }, -- H:23, H:100: up and -2° at half
+			coin = { periodS = 4.5, risePx = 3, rotDeg = 8, curve = "easeInOut" }, -- H:24, H:78: -8° -> 8°, up at half
+			float = { periodS = 3.6, risePx = 12, rotDeg = 3, curve = "easeInOut" }, -- H:34, H:93: -3° -> 3°, up
+			pulse = { periodS = 1, scale = 1.07, curve = "easeInOut" }, -- H:29, H:89
+			badge = { -- H:32, H:102: still, then a pop and a wobble in the last 30%
+				periodS = 2.6,
+				curve = "easeInOut",
+				frames = {
+					{ at = 0, scale = 1, rot = 0 },
+					{ at = 0.7, scale = 1, rot = 0 },
+					{ at = 0.78, scale = 1.3, rot = -12 },
+					{ at = 0.86, scale = 1, rot = 10 },
+					{ at = 0.93, rot = -4 },
+					{ at = 1, scale = 1, rot = 0 },
+				} :: { MotionPose },
+			},
+			-- H:35, H:139
+			dot = { periodS = 1, alphaFrom = 0.35, scaleFrom = 0.8, scaleTo = 1.15, curve = "easeInOut" },
+			ring = { periodS = 1.8, alphaFrom = 0.9, scaleFrom = 0.9, scaleTo = 1.5, curve = "easeOut" }, -- H:43, H:168
+			twinkle = { periodS = 2.2, scaleFrom = 0.3, rotDeg = 90, curve = "easeInOut" }, -- H:40, H:221
+			-- H:28: a px strip holds at fromShare of its own width (out of sight on the left) for holdShare of the
+			-- period, then crosses to toShare (ease-in-out on that segment); each use gives its period
+			-- (Config.UI.Sticker.shines).
+			shine = { periodS = 2.6, holdShare = 0.55, fromShare = -2, toShare = 9, curve = "easeInOut" },
+			spin = { periodS = 16, curve = "linear" }, -- H:30, H:219 (the rays: 18 s H:266, 20 s H:296, 26 s H:474)
+		} :: { [string]: { [string]: any } },
+		-- UI FINAL R2 (plan §2 G2.4): the design's other looping @keyframes, played by UiIdle.addFrames on a holder its
+		-- step makes (R7 reveal hint, R9 level-up): periodS, alternate (CSS `alternate`), delayS (+ delayStepS x i for
+		-- the i-th letter), curve per segment, frames. All <= 3 Hz (Config F9).
+		loops = {
+			lvIdle = { -- H:51, H:523: sdLvIdle .45 s ease-in-out infinite alternate
+				periodS = 0.45,
+				alternate = true,
+				curve = "easeInOut",
+				frames = {
+					{ at = 0, y = 0, sx = 1, sy = 1 },
+					{ at = 1, y = -16, sx = 0.94, sy = 1.06 },
+				} :: { MotionPose },
+			},
+			lvJelly = { -- H:57, H:517: sdLvJelly 1.6 s ease-in-out infinite
+				periodS = 1.6,
+				curve = "easeInOut",
+				frames = {
+					{ at = 0, sx = 1, sy = 1, rot = 0 },
+					{ at = 0.25, sx = 1.06, sy = 0.95, rot = 0 },
+					{ at = 0.5, sx = 0.97, sy = 1.04, rot = -2 },
+					{ at = 0.75, sx = 1.03, sy = 0.98, rot = 2 },
+					{ at = 1, sx = 1, sy = 1, rot = 0 },
+				} :: { MotionPose },
+			},
+			lvWave = { -- H:61, H:527, H:999: sdLvWave 1.2 s ease-in-out infinite, from 1.9 + .07 i s
+				periodS = 1.2,
+				delayS = 1.9,
+				delayStepS = 0.07,
+				curve = "easeInOut",
+				frames = { { at = 0, y = 0 }, { at = 0.5, y = -7 }, { at = 1, y = 0 } } :: { MotionPose },
+			},
+			lvPulse = { -- H:63, H:515: sdLvPulse 1.1 s ease-in-out infinite
+				periodS = 1.1,
+				curve = "easeInOut",
+				frames = { { at = 0, scale = 1 }, { at = 0.5, scale = 0.7 }, { at = 1, scale = 1 } } :: { MotionPose },
+			},
+			-- H:64, H:510: sdLvBubble 2.4-4.0 s linear infinite (each bubble its own period in that span); y is a share
+			-- of the screen height (-115vh) applied by the caller.
+			lvBubble = {
+				periodS = 2.4,
+				periodMaxS = 4,
+				curve = "linear",
+				frames = {
+					{ at = 0, alpha = 0, x = 0, y = 0, scale = 0.6 },
+					{ at = 0.15, alpha = 0.9 },
+					{ at = 1, alpha = 0, x = 40, y = -1.15, scale = 1.15 },
+				} :: { MotionPose },
+			},
+			hint = { -- H:68, H:484: sdHint 1 s ease-in-out infinite
+				periodS = 1,
+				curve = "easeInOut",
+				frames = {
+					{ at = 0, alpha = 0.6, scale = 1 },
+					{ at = 0.5, alpha = 1, scale = 1.08 },
+					{ at = 1, alpha = 0.6, scale = 1 },
+				} :: { MotionPose },
+			},
+		} :: { [string]: { [string]: any } },
 	},
 
 	confirmSeconds = 3, -- inline two-step spend confirm reverts after this (§11.5)
@@ -455,16 +696,19 @@ local UI = {
 			qpop = { highlightPx = 3, highlightAlpha = 0.45 }, -- H:162
 			row = { highlightPx = 3, highlightAlpha = 0.1 }, -- H:363, H:433: quest and settings rows
 			card = { highlightPx = 2, highlightAlpha = 0.1 }, -- H:935: the squishy cards
+			chip = { highlightPx = 2, highlightAlpha = 0.55 }, -- H:402: Button size "chip" (UI FINAL R2, P12)
 		} :: { [string]: StickerSurface },
 		-- Text roles (Theme.stickerText): the kind (Config.UI.TextSize), the CSS -webkit-text-stroke width (the ink
 		-- outline is half of it), the solid ink drop under the letters (text-shadow: 0 Npx 0 #1E1428; a mirrored copy,
-		-- only from 3 px) and a Palette colour (default white).
+		-- only from 3 px) and a Palette colour (default white). UI FINAL R2 (T5, PR3): `soft` = the design's thin soft
+		-- drop (text-shadow: 0 Npx 0 rgba(c, a) of 1-2 px): a copy px lower in the Palette colour (default the ink) at
+		-- alpha, no outline, behind the letters, which keep the game's thinnest ink outline (stroke 3 = 1.5 px).
 		text = {
 			windowTitle = { kind = "Window", stroke = 9, drop = 5 }, -- H:184
 			settingsTitle = { kind = "WindowSmall", stroke = 8, drop = 5 }, -- H:429
 			duel = { kind = "Duel", stroke = 8, drop = 4 }, -- H:130
-			navLabel = { kind = "H2", stroke = 7, drop = 3 }, -- H:101 (23 px -> 22)
-			settingsLabel = { kind = "Button", stroke = 6, drop = 3 }, -- H:159 (19 px -> 20)
+			navLabel = { kind = "D23", stroke = 7, drop = 3 }, -- H:101 (23 px, PR2)
+			settingsLabel = { kind = "D19", stroke = 6, drop = 3 }, -- H:159 (19 px, PR2)
 			coin = { kind = "Coin", stroke = 6, drop = 3, color = "StickerCoinText" }, -- H:79
 			found = { kind = "Found", stroke = 7, drop = 4 }, -- H:151
 			hero = { kind = "Hero", stroke = 8, drop = 4 }, -- H:95
@@ -484,28 +728,58 @@ local UI = {
 			badgeMark = { kind = "Button", stroke = 4 }, -- H:120 (the daily "!", 20 px)
 			small = { kind = "Small", stroke = 4 }, -- H:89 (14 px -> 16)
 			gripText = { kind = "Small", stroke = 3.5 }, -- H:87 (12 px -> 16)
+			-- UI FINAL R2: UI/UiFx.float's numbers (lib:259: a 6 px stroke and a 3 px drop; the call gives the size).
+			float = { kind = "Title", stroke = 6, drop = 3 },
+			-- UI FINAL R2: the toast's text (H:175: 18 px white, text-shadow 0 2px 0 rgba(30,20,40,.6); R9 draws it).
+			toastText = { kind = "Body", stroke = 3, soft = { px = 2, alpha = 0.6 } },
 		} :: { [string]: StickerTextRole },
 		-- Q5 (the user, 2026-10-14): big button labels in capitals (a display transform; Strings stay as they are).
 		buttonCaps = true,
 		-- UI/Components/ProgressBar variants: the track's border, its alpha (the Grip track is white at .7), an inner
-		-- shade along its top (troughShade), and the fill's top highlight; colours in ProgressBar (Palette). The moving
-		-- shine strips (H:85, H:367) come with R2's idle loops.
+		-- shade along its top (troughShade), and the fill's top highlight; colours in ProgressBar (Palette). UI FINAL
+		-- R2 (P9, G2.5): `height` is the design's border-box height (the border drawn inside it; the default heightPx),
+		-- the fill eases over fillMs with barFillCurve (H:85, H:187, H:240, H:367; the odds and volume fills have no
+		-- transition, H:271, H:444: they jump), the Grip fill is never narrower than minFillPx (H:85 min-width), and
+		-- barShines names the moving strip a bar draws (shines).
 		bars = {
-			grip = { border = 3, troughAlpha = 0.7, fillHighlightPx = 3, fillHighlightAlpha = 0.55 }, -- H:84-85
-			stat = { border = 3, fillHighlightPx = 3, fillHighlightAlpha = 0.45 }, -- H:240
-			quest = {
+			grip = { -- H:84-85
+				height = 14,
+				border = 3,
+				troughAlpha = 0.7,
+				fillHighlightPx = 3,
+				fillHighlightAlpha = 0.55,
+				fillMs = 550,
+				minFillPx = 10,
+			},
+			stat = { height = 14, border = 3, fillHighlightPx = 3, fillHighlightAlpha = 0.45, fillMs = 600 }, -- H:240
+			quest = { -- H:367
+				height = 20,
 				border = 3,
 				troughShadePx = 3,
 				troughShadeAlpha = 0.35,
 				fillHighlightPx = 4,
 				fillHighlightAlpha = 0.5,
-			}, -- H:367
-			odds = { border = 3, fillHighlightPx = 2, fillHighlightAlpha = 0.4 }, -- H:271
-			collected = { border = 3 }, -- H:187
-			volume = { border = 3, fillHighlightPx = 3, fillHighlightAlpha = 0.5 }, -- H:444
+				fillMs = 600,
+			},
+			-- H:271: no transition (the fill jumps)
+			odds = { height = 12, border = 3, fillHighlightPx = 2, fillHighlightAlpha = 0.4, fillMs = 0 },
+			collected = { height = 16, border = 3, fillMs = 600 }, -- H:187
+			volume = { height = 20, border = 3, fillHighlightPx = 3, fillHighlightAlpha = 0.5, fillMs = 0 }, -- H:444
+		} :: { [string]: StickerVariant },
+		barFillCurve = "bars", -- H:85, H:187, H:240, H:367
+		barShines = { grip = "grip", quest = "quest" } :: { [string]: string }, -- H:85, H:367
+		-- UI FINAL R2 (G4.13, P2): the moving shine strips (sdShine, H:28; Anim/UiIdle's "shine"): px wide, white at
+		-- alpha in its middle (a UIGradient at Rotation slantDeg for skewX(-20deg)), one pass every periodS; the CTA's
+		-- runs overhangPx past the face's top and bottom inside a holder inset by its border (H:127).
+		shines = {
+			cta = { px = 54, alpha = 0.6, periodS = 3.4, overhangPx = 10, slantDeg = 20 }, -- H:127
+			grip = { px = 22, alpha = 0.75, periodS = 2.6, overhangPx = 0, slantDeg = 20 }, -- H:85
+			quest = { px = 26, alpha = 0.7, periodS = 3, overhangPx = 0, slantDeg = 20 }, -- H:367
 		} :: { [string]: StickerVariant },
 		-- UI/Components/Toggle's two switches: size, border, the knob (size, border, its top inset and left edge off /
-		-- on, inside the border), the knob's drop (small) or bevel (large), the track's top shade (large).
+		-- on, inside the border), the knob's drop (small) or bevel (large), the track's top shade (large). UI FINAL R2
+		-- (G1.1, P7): the knob slides over knobMs (toggleKnobCurve, H:197, H:437) and the track's colour eases over
+		-- trackMs (toggleTrackCurve: H:197 transition .2s, H:437 .25s).
 		toggles = {
 			small = { -- H:197, H:1010 (the Squishies "Show locked" switch)
 				width = 56,
@@ -518,6 +792,8 @@ local UI = {
 				knobOn = 26,
 				knobDropPx = 2,
 				knobDropAlpha = 0.4,
+				knobMs = 300, -- H:197
+				trackMs = 200, -- H:197
 			},
 			large = { -- H:437, H:980 (the Settings switches)
 				width = 80,
@@ -532,9 +808,266 @@ local UI = {
 				knobBevelAlpha = 0.12,
 				trackShadePx = 3,
 				trackShadeAlpha = 0.25,
+				knobMs = 350, -- H:437
+				trackMs = 250, -- H:437
 			},
 		} :: { [string]: StickerVariant },
+		toggleKnobCurve = "switch", -- H:197, H:437
+		toggleTrackCurve = "ease", -- H:197, H:437
 	},
+
+	-- UI FINAL R2 (the motion kit; plan work/ui/PLAN.md §2.1): the design's own effects (hud-lib.js FX, lib:215-268),
+	-- drawn by UI/UiFx.sparks / ring / rain / float next to its Candy tiers, and the design's events that fire them
+	-- (H:703-874; each screen's round wires its own, R3-R9). Base px. Colours are Art/Palette names; "rarityBase" /
+	-- "rarityLight" are the revealed rarity's RarityStyle ui colours, passed by the caller. `jolt` is the design's
+	-- jolt in px (UiFx.jolt, lib:299-303: only while Camera shake is on, none under ReducedMotion). Under
+	-- ReducedMotion only the float draws (lib:220, 237, 244). Every curve is a Config.UI.curves name.
+	Fx = {
+		-- lib:299-303 (T6): `frames` random offsets of px x (1 - i / frames) in x and y, then back to 0, linear over
+		-- ms.
+		jolt = { frames = 8, ms = 380 },
+		-- lib:219-235: n pieces size x (sizeMin .. sizeMin + sizeSpan), `stars` of them four-point stars (lib:225: the
+		-- img.fx.spark picture, tinted; a 45° diamond while it has no id), the rest circles with an outlinePx ink ring;
+		-- each launched at a random angle (or `angle` ± cone / 2) spread x (reachMin .. reachMin + reachSpan) out and
+		-- `up` higher, turning up to ±spinDeg; peakTravel of the way at peakScale by peakAt of its life, then grav
+		-- lower at endScale and clear at the end (the whole run eased by `curve`, lib:233); each over ms + 0..jitterMs.
+		sparks = {
+			n = 16, -- lib:221
+			size = 13, -- lib:223
+			sizeMin = 0.55, -- lib:223
+			sizeSpan = 0.9, -- lib:223
+			stars = 0.55, -- lib:223
+			spread = 150, -- lib:228
+			reachMin = 0.35, -- lib:228
+			reachSpan = 0.85, -- lib:228
+			up = 40, -- lib:228
+			grav = 110, -- lib:232
+			cone = 1.2, -- lib:227 (radians)
+			spinDeg = 300, -- lib:228
+			peakAt = 0.35, -- lib:231
+			peakTravel = 0.7, -- lib:231
+			peakScale = 1.25, -- lib:231
+			endScale = 0.1, -- lib:232
+			ms = 820, -- lib:233
+			jitterMs = 420, -- lib:233
+			outlinePx = 2.5, -- lib:225
+			curve = "sparks", -- lib:233
+			-- lib:221
+			colors = { "StickerFxYellow", "StickerFxPink", "StickerFxCyan", "StickerFxGreen", "StickerFxPurple" },
+		},
+		-- lib:236-242: a ring `size` wide with a borderPx border, scaleFrom -> scaleTo while it fades, over ms
+		-- (`curve`).
+		ring = { size = 160, borderPx = 6, scaleFrom = 0.2, scaleTo = 1.3, ms = 520, color = "White", curve = "ring" },
+		-- lib:243-254: n pieces across the screen, from startMinPx .. + startSpanPx above it, sizeMin .. + sizeSpan
+		-- wide (tallShare of them `tall` x as high, roundShare round, the rest radius 2) with an outlinePx ink ring;
+		-- swaying up to ±swayPx (and back -0.4 x of it at the end) and turning up to ±spinDeg while they fall fallShare
+		-- of the screen by half time and pastPx below it at the end, over ms + 0..jitterMs after 0..delayMs (the whole
+		-- run eased by `curve`, lib:252). PR14 (= A): the design's counts, halved only on the compact layout or with
+		-- UiPrefs.fewerEffects.
+		rain = {
+			n = 60, -- lib:243
+			sizeMin = 8, -- lib:248
+			sizeSpan = 8, -- lib:248
+			tallShare = 0.5, -- lib:248
+			tall = 1.8, -- lib:248
+			roundShare = 0.4, -- lib:249
+			outlinePx = 2, -- lib:249
+			startMinPx = 30, -- lib:249
+			startSpanPx = 80, -- lib:249
+			swayPx = 80, -- lib:251
+			spinDeg = 540, -- lib:251
+			fallShare = 0.55, -- lib:252
+			pastPx = 120, -- lib:252
+			ms = 1900, -- lib:252
+			jitterMs = 1400, -- lib:252
+			delayMs = 600, -- lib:252
+			curve = "rain", -- lib:252
+			colors = {
+				"StickerFxYellow",
+				"StickerFxPink",
+				"StickerFxCyan",
+				"StickerFxGreen",
+				"StickerFxPurple",
+				"White",
+			}, -- lib:245
+		},
+		-- lib:255-268: a number that pops .3 -> 1.25 (18%) -> 1 (60%) -> .9 as it rises risePx (and drifts dx, ±dxPx
+		-- when the call gives none) and fades in and out, over ms (the whole run eased by `curve`, lib:267), in the
+		-- Sticker text role `float` at the call's size; under ReducedMotion it holds still and fades out at its end.
+		-- `frames` is lib:262-266 with x / y as shares of the drift and the rise (y up is negative).
+		float = {
+			kind = "Title",
+			risePx = 80,
+			dxPx = 15,
+			ms = 1050,
+			color = "White",
+			curve = "ring", -- lib:267
+			frames = {
+				{ at = 0, x = 0, y = 0, scale = 0.3, alpha = 0 },
+				{ at = 0.18, x = 0.3, y = -0.25, scale = 1.25, alpha = 1 },
+				{ at = 0.6, x = 0.6, y = -0.55, scale = 1, alpha = 1 },
+				{ at = 1, x = 1, y = -1, scale = 0.9, alpha = 0 },
+			} :: { MotionPose },
+		},
+		-- The design's events (each `sparks` overrides the defaults above; `rings` = { color, size, delayMs? }; `coins`
+		-- = the coin flight's coins, H:663; `jolt` = UiFx.jolt px). Each screen's round wires its own (R4-R9).
+		events = {
+			questClaim = { -- H:744-746
+				sparks = { n = 22, spread = 180 },
+				rings = { { color = "StickerCoinText", size = 160 } },
+				coins = 10,
+			},
+			dailyClaim = { -- H:854-856
+				sparks = { n = 28, spread = 230 },
+				rings = { { color = "StickerCoinText", size = 280 } },
+				coins = 10,
+			},
+			duelJoin = { -- H:762
+				sparks = {
+					n = 14,
+					spread = 170,
+					colors = { "StickerFxPink", "StickerFxCyan", "StickerFxYellow", "White" },
+				},
+			},
+			matchFound = { -- H:774-775
+				sparks = {
+					n = 30,
+					spread = 260,
+					ms = 1000,
+					colors = { "StickerFxYellow", "White", "StickerPinkSoft", "StickerFxCyan" },
+				},
+				rings = { { color = "StickerCoinText", size = 360 } },
+				jolt = 7,
+			},
+			-- H:815-816: wobble j (0, 1, 2) adds perWobble's n, spread and jolt j times.
+			boxWobble = {
+				sparks = { n = 6, spread = 140, size = 10, colors = { "White", "StickerFxYellow", "StickerFxIce" } },
+				perWobble = { n = 5, spread = 60, jolt = 3 },
+				jolt = 3,
+			},
+			-- H:822-830: two rings, then (delayMs later) n + perRarity x the rarity's index pieces, at most maxPieces.
+			-- §9.15 counts every animated frame of the reveal (BoxController :60): 1 rays picture + the 2 rings (alive
+			-- 0-520 ms, over the burst from 120 ms) + 21 pieces = 24; sparks still alive from the last wobble
+			-- (boxWobble) count in the same 24. PR18 (decided 2026-10-15): from the rarity index fromRarity on (Epic,
+			-- Exclusive) the design's rain (H:830: n + perRarity x the index pieces in these colours) falls once the
+			-- burst's pieces are gone, R7 capping it to the frames then free in the same 24.
+			boxBurst = {
+				rings = { { color = "White", size = 420 }, { color = "rarityLight", size = 700 } },
+				sparks = {
+					n = 30,
+					spread = 380,
+					up = 80,
+					ms = 1150,
+					size = 16,
+					colors = { "rarityBase", "rarityLight", "White", "StickerFxYellow" },
+				},
+				delayMs = 120,
+				perRarity = 12,
+				maxPieces = 21,
+				jolt = 14,
+				rarityRain = { -- H:830
+					n = 50,
+					perRarity = 20,
+					fromRarity = 2,
+					colors = { "rarityBase", "rarityLight", "White", "StickerFxYellow" },
+				},
+			},
+			equip = { sparks = { n = 16, spread = 140 } }, -- H:845
+			-- H:871: the rain falls over the congrats overlay; R6 passes that overlay as UiFx.rain's parent, so the
+			-- rain goes when the overlay closes and never falls on over the play area.
+			purchase = { -- H:868, H:871
+				sparks = { n = 30, spread = 240 },
+				rings = { { color = "StickerFxGreen", size = 240 } },
+				rain = 90,
+				rainDelayMs = 300,
+				jolt = 8,
+			},
+			-- H:719-726 (the full level-up, the user's Q3): a slam jolt at slamMs, then at atMs three rings, the burst,
+			-- the rain and the big jolt.
+			levelUp = {
+				slamMs = 460,
+				slamJolt = 5,
+				atMs = 1000,
+				rings = {
+					{ color = "White", size = 420, delayMs = 0 },
+					{ color = "StickerCoinText", size = 620, delayMs = 110 },
+					{ color = "StickerMintTop", size = 820, delayMs = 220 },
+				},
+				sparks = {
+					n = 48,
+					spread = 420,
+					up = 80,
+					ms = 1300,
+					size = 16,
+					colors = { "StickerCoinText", "StickerMintTop", "White", "StickerPinkSoft", "StickerFxPurple" },
+				},
+				rain = 80,
+				jolt = 14,
+			},
+			squeeze = { -- H:703-705
+				sparks = {
+					n = 8,
+					spread = 100,
+					up = 70,
+					size = 10,
+					colors = { "StickerPinkSoft", "White", "StickerFxYellow" },
+				},
+				coinFloat = { color = "StickerCoinText", kind = "Name", dx = -34 },
+				gripFloat = { color = "StickerGripFloat", kind = "H2", dx = 34 },
+			},
+			-- H:577: each landing's sparks (`big` for the last coin of a flight).
+			coinLand = {
+				sparks = {
+					n = 6,
+					spread = 70,
+					up = 20,
+					grav = 40,
+					size = 10,
+					stars = 0.9,
+					ms = 520,
+					colors = { "StickerCoinFlash", "StickerFxYellow", "White" },
+				},
+				big = { n = 12, spread = 110 },
+			},
+			-- H:673: the "-N" float at the pill's centre + xShare x its width, + yShare x its height.
+			spend = {
+				float = {
+					color = "StickerSpendFloat",
+					kind = "HudNumber",
+					rise = -40,
+					dx = 10,
+					at = { xShare = 0.2, yShare = 0.9 },
+				},
+			},
+			boxLand = { jolt = 6 }, -- H:602: the box landing's jolt (with the stamp sound), R7
+		},
+	},
+
+	-- UI FINAL R2 (plan §0 easing rule, G2.3): every design timing function as cubic-bezier numbers { x1, y1, x2, y2 },
+	-- played exactly by Anim/Tweens.bezier (the CSS keywords at their standard numbers). `H:n` / `lib:n` cite each.
+	curves = {
+		ease = { 0.25, 0.1, 0.25, 1 }, -- CSS `ease`
+		easeIn = { 0.42, 0, 1, 1 }, -- CSS `ease-in`
+		easeOut = { 0, 0, 0.58, 1 }, -- CSS `ease-out`
+		easeInOut = { 0.42, 0, 0.58, 1 }, -- CSS `ease-in-out`
+		linear = { 0, 0, 1, 1 }, -- CSS `linear`
+		hover = { 0.3, 1.9, 0.45, 1 }, -- H:635
+		switch = { 0.3, 1.8, 0.5, 1 }, -- H:197, H:437
+		slot = { 0.2, 1.6, 0.4, 1 }, -- H:141, H:149 (slot, found)
+		stars = { 0.2, 1.5, 0.4, 1 }, -- H:457, H:515, H:527 (confirm, stars, letters)
+		search = { 0.2, 1.4, 0.4, 1 }, -- H:136, H:251, H:398, H:490, H:574 (search, sticker, sdUp, stamp, coin number)
+		windows = { 0.2, 1.35, 0.4, 1 }, -- H:181
+		rise = { 0.2, 1.3, 0.4, 1 }, -- H:203, H:489, H:525, H:937 (rise, reveal, unfurl, pick)
+		bars = { 0.3, 1.5, 0.5, 1 }, -- H:85, H:187, H:240, H:367
+		coinFlip = { 0.2, 1.2, 0.4, 1 }, -- H:571
+		close = { 0.5, 0, 0.75, 0 }, -- H:686
+		ringFill = { 0.5, 0, 0.9, 0.6 }, -- H:513
+		sparks = { 0.15, 0.7, 0.35, 1 }, -- lib:233
+		ring = { 0.2, 0.8, 0.3, 1 }, -- lib:241, lib:267 (ring, float)
+		rain = { 0.3, 0.1, 0.7, 1 }, -- lib:252
+		fly = { 0.25, 0.7, 0.35, 1 }, -- lib:283
+		flyLeg = { 0.55, 0, 0.85, 0.55 }, -- lib:281
+	} :: { [string]: { number } },
 }
 
 return UI

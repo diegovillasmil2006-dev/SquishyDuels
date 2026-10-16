@@ -62,6 +62,11 @@ return function(t: Context)
 		expect.equal(HudFormat.navAt("cta")[1].button, "Hud_DuelButton")
 		expect.equal(HudFormat.navAt("cta")[1].screen, "queue")
 		expect.equal(HudFormat.navAt("settings")[1].button, "Hud_SettingsButton")
+		-- UI FINAL R2: the Settings sticker hovers as the design's "icon" (H:157), the tiles as their kind's "nav".
+		expect.equal(HudFormat.navAt("settings")[1].fx, "icon")
+		for _, item in HudFormat.navAt("tile") do
+			expect.equal(item.fx, nil)
+		end
 		-- Spec "Left column": Squishies Strawberry, Boxes Lilac, Shop the new accent, Quests the quest mint, Daily Sky.
 		local accents = {}
 		for _, item in HudFormat.navAt("tile") do
@@ -941,7 +946,7 @@ return function(t: Context)
 			for _, screen in PCS do
 				-- 1024×768 is narrow enough that the longest step may be taller than the band (checked: never over a group).
 				local mustFit = screen.X / screen.Y > 1.5
-				local scale = Layout.uiScale(screen.Y)
+				local scale = Layout.uiScale(screen.Y, screen.X) -- UI FINAL R2 (PR1): the live fit (1024×768: 0.85)
 				local canvas = Vector2.new(screen.X / scale, screen.Y / scale)
 				local plan = HudFormat.leftColumnPlan(screen, classOf(screen), 1)
 				local left = { x = COLUMN.edge, y = COLUMN.edge, w = plan.width, h = plan.leftBottom - COLUMN.edge }
@@ -1056,6 +1061,7 @@ return function(t: Context)
 	t.test("the Duel CTA's widest width (ctaWidth): its queued texts, at least the design's width on PCs", function()
 		local Button = t.requireClient("UI/Components/Button")
 		expect.equal(COLUMN.ctaPadding, Button.style("cta").paddingX)
+		expect.equal(COLUMN.ctaHeight, Button.frameHeight("cta")) -- UI FINAL R2 (P1): the 92 px face + the 7 px lip
 		local clock = Strings.format(Strings.hud.duelSearchingTime, { time = "88:88" })
 		for _, ts in TEXT_SCALES do
 			expect.truthy(HudFormat.ctaWidth(false, ts) >= COLUMN.ctaWidth)

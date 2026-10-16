@@ -54,9 +54,15 @@
 --   / 2) and, for a role with a drop of DROP_MIN_PX or more, the solid ink drop under the letters: the label stays the
 --   source of truth (Text, TextColor3, TextTransparency; TextBounds read on it) with its own glyphs hidden
 --   (MaxVisibleGraphemes 0), and two mirrored children draw it: SD_Drop (ink, `drop` px lower) and SD_Face (its colour,
---   above), each with the outline. radial(frame, inner, outer, mid?, midAt?) is the design's radial-gradient (the
---   img.fx.glow picture over the outer colour; a vertical gradient of the same stops while it has no id); rays(...) a
---   rays picture (nothing while its id is nil); setSurface(panel, colors) repaints a Theme.panel in exact colours.
+--   above), each with the outline. UI FINAL R2 (T5, PR3): a role's `soft` drop (the design's 1-2 px text-shadow at an
+--   alpha) is drawn the same way, its SD_Drop in the soft colour at that alpha with no outline. setSurface(panel,
+--   colors) repaints a Theme.panel in exact colours.
+-- * UI FINAL R2: radial(frame, key, fallback) is the design's radial-gradient as its exact picture (pack 2, alpha
+--   baked; P3), else the fallback: the outer colour at its alpha with the img.fx.glow picture tinted the inner colour
+--   (and a mid one) centred where the CSS centres it; rays(parent, key, sizePx, alpha, periodS, centreY?) a rays
+--   picture centred at centreY of its parent (P4), turning through Anim/UiIdle; softShadow(wrapper, key, spec) the
+--   design's soft box-shadow as a 9-slice picture behind the wrapper's target (T1, T2; the glow tinted while nil);
+--   shineBand(strip, alpha, slantDeg) the leaning white band of the design's sdShine in a px strip (H:28, G4.13).
 -- * Still the Candy UI (UI overhaul 2026-10-11) until R3: headerTab()'s jelly plate (its shine and the header glow),
 --   rim(), shine(), bubbles(); panelColors() and stickerColors() return the new tokens.
 
@@ -74,6 +80,7 @@ local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
 local Layout = require(script.Parent.Layout)
 local Create = require(script.Parent.Create)
+local UiIdle = require(script.Parent.Parent.Anim.UiIdle)
 
 -- Types
 
@@ -99,6 +106,9 @@ export type TextKind =
 	| "Prize"
 	| "Reveal"
 	| "Congrats"
+	| "D17"
+	| "D19"
+	| "D23"
 
 export type AccentName =
 	"strawberry"
@@ -119,6 +129,7 @@ export type AccentName =
 	| "cancel"
 	| "yellow"
 	| "ult"
+	| "greenChip"
 -- `light`: ink text at every size; `dark`: white text at every size; neither: the outlined-text rule. UI FINAL R1: the
 -- gradient's stops, `top`, `mid` at `midAt` (a share of the height; 3-stop gradients only) and `shade` (the end stop);
 -- `face` is the main colour (the mid stop, else the top).
@@ -174,6 +185,34 @@ export type Foam = {
 	paint: (self: Foam, colors: FoamColors, mode: FoamMode?) -> (),
 	setBands: (self: Foam, top: number, bevel: number, drop: number) -> (),
 	setStroke: (self: Foam, color: Color3, thickness: number?) -> (),
+}
+
+-- UI FINAL R2: a design surface given as numbers (Config.UI.Sticker.surfaces' shape; a button's own, P12).
+export type Surface = { highlightPx: number, highlightAlpha: number, bevelPx: number?, bevelAlpha: number? }
+
+-- UI FINAL R2 (P3): radial's look while its picture has no id: the outer colour at outerAlpha, the glow tinted the
+-- inner colour at innerAlpha centred at `centre` (a share of the box, default the middle) and, for a 3-stop radial,
+-- a glow tinted `mid` at midAlpha under it, the inner one then sized to the mid stop (midAt of the radius).
+export type RadialFallback = {
+	inner: Color3,
+	outer: Color3,
+	mid: Color3?,
+	midAt: number?,
+	innerAlpha: number?,
+	midAlpha: number?,
+	outerAlpha: number?,
+	centre: Vector2?,
+}
+
+-- UI FINAL R2 (T1, T2): a soft box-shadow `0 offsetY blurPx rgba(color, alpha)`; the picture's own render: imagePx
+-- square with marginPx of shadow around the box (its 9-slice centre inside the margins).
+export type SoftShadowSpec = {
+	offsetY: number,
+	blurPx: number,
+	alpha: number,
+	color: Color3?,
+	marginPx: number?,
+	imagePx: number?,
 }
 
 export type HeaderTabOptions = {
@@ -270,7 +309,11 @@ local GLOW_IMAGE_KEY = "img.fx.glow"
 local GLOW_IMAGE_NAME = "SD_Glow"
 local RADIAL_NAME = "SD_Radial"
 local RAYS_NAME = "SD_Rays"
-local SPIN_ATTR = "SD_SpinSeconds"
+-- UI FINAL R2: the mid stop's glow (radial's fallback), the soft shadow and its render's default margin and size (R0b).
+local GLOW_MID_NAME = "SD_GlowMid"
+local SOFT_SHADOW_NAME = "SD_SoftShadow"
+local SHADOW_MARGIN_PX = 120
+local SHADOW_IMAGE_PX = 512
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 
@@ -369,6 +412,8 @@ local ACCENTS: { [string]: Accent } = {
 	disabled = stops(Palette.StickerDisabledTop, Palette.StickerDisabledEnd), -- H:246
 	cancel = stops(Palette.StickerCancelTop, Palette.StickerCancelEnd), -- H:462
 	yellow = stops(Palette.StickerYellowTop, Palette.StickerYellowEnd), -- H:120
+	-- UI FINAL R2 (P12): the CLAIM! chip's green, Button size "chip" (H:402).
+	greenChip = stops(Palette.StickerGreenTop, Palette.StickerGreen2End),
 	-- H:234: the Ultimate chip's gold (its dark text is the ink here); the touch Ultimate and ULT READY.
 	ult = stops(Palette.StickerUltTop, Palette.StickerGoldEnd, nil, true),
 }
@@ -515,8 +560,10 @@ end
 
 -- stickerText's text drop: SD_Drop (ink, `drop` px lower) and SD_Face (the label's colour, above it) mirror `label`,
 -- whose own glyphs are hidden. The label stays the source of truth: its text properties, colour, ZIndex and outline
--- are copied on every change (connected once per label; a copy never writes the label, so nothing loops).
-local function mirrorDrop(label: TextLabel, drop: number)
+-- are copied on every change (connected once per label; a copy never writes the label, so nothing loops). UI FINAL
+-- R2 (T5): with `soft` the drop is the design's soft text-shadow: its colour (a Palette name, default the ink) at its
+-- alpha of the label's opacity, with no outline.
+local function mirrorDrop(label: TextLabel, drop: number, soft: { px: number, alpha: number, color: string? }?)
 	local function copy(name: string, offsetY: number): TextLabel
 		local existing = label:FindFirstChild(name)
 		if existing and existing:IsA("TextLabel") then
@@ -541,7 +588,11 @@ local function mirrorDrop(label: TextLabel, drop: number)
 			(dropLabel :: any)[property] = (label :: any)[property];
 			(faceLabel :: any)[property] = (label :: any)[property]
 		end
-		dropLabel.TextColor3 = Theme.Colors.inkUI
+		local softColor = if soft and soft.color then (Palette :: any)[soft.color] else nil
+		dropLabel.TextColor3 = if typeof(softColor) == "Color3" then softColor else Theme.Colors.inkUI
+		if soft then
+			dropLabel.TextTransparency = 1 - (1 - label.TextTransparency) * soft.alpha
+		end
 		faceLabel.TextColor3 = label.TextColor3
 		dropLabel.ZIndex = label.ZIndex
 		faceLabel.ZIndex = label.ZIndex + 1
@@ -549,7 +600,7 @@ local function mirrorDrop(label: TextLabel, drop: number)
 		local stroke = if outline and outline:IsA("UIStroke") then outline else nil
 		local on = stroke ~= nil and stroke.Enabled
 		local thickness = if stroke then stroke.Thickness else OUTLINE_PX
-		setOutline(dropLabel, on, thickness)
+		setOutline(dropLabel, on and soft == nil, thickness)
 		setOutline(faceLabel, on, thickness)
 	end
 	if label:GetAttribute(MIRROR_ATTR) ~= true then
@@ -798,9 +849,12 @@ end
 -- UI FINAL R1: the colours of a design surface on `accent` (Config.UI.Sticker.surfaces[surface], default "primary"):
 -- its face gradient (top -> mid -> shade), with `highlight` the inset highlight band (the top stop towards white by
 -- highlightAlpha), the bevel band (the shade towards black, or the surface's tint, by bevelAlpha) and the ink drop.
-function Theme.surfaceColors(accent: Accent, surface: string?, highlight: boolean?): FoamColors
-	local name = surface or "primary"
-	local spec = Theme.Sticker.surfaces[name] or Theme.Sticker.surfaces.primary
+-- UI FINAL R2 (P12): `surface` may be a Surface table (a button's own numbers; no tint).
+function Theme.surfaceColors(accent: Accent, surface: (string | Surface)?, highlight: boolean?): FoamColors
+	local name = if type(surface) == "string" then surface else "primary"
+	local spec: Surface = if type(surface) == "table"
+		then surface
+		else Theme.Sticker.surfaces[name] or Theme.Sticker.surfaces.primary
 	local bevelAlpha = spec.bevelAlpha
 	local colors: StickerColors = {
 		face = accent.top,
@@ -808,7 +862,9 @@ function Theme.surfaceColors(accent: Accent, surface: string?, highlight: boolea
 		midAt = accent.midAt,
 		faceEnd = accent.shade,
 		top = if highlight then accent.top:Lerp(WHITE, spec.highlightAlpha) else accent.top,
-		bevel = if bevelAlpha then accent.shade:Lerp(SURFACE_TINTS[name] or BLACK, bevelAlpha) else accent.shade,
+		bevel = if bevelAlpha
+			then accent.shade:Lerp((if type(surface) == "table" then nil else SURFACE_TINTS[name]) or BLACK, bevelAlpha)
+			else accent.shade,
 		drop = Theme.Colors.inkUI,
 	}
 	return colors :: any
@@ -1032,52 +1088,85 @@ function Theme.stickerText(label: TextLabel, roleName: string): TextLabel
 	Theme.text(label, role.kind :: TextKind, nil, if typeof(named) == "Color3" then named else nil)
 	setOutline(label, true, role.stroke / 2)
 	local drop = role.drop or 0
-	if drop >= DROP_MIN_PX then
+	local soft = (role :: any).soft
+	if soft then
+		mirrorDrop(label, soft.px, soft)
+	elseif drop >= DROP_MIN_PX then
 		mirrorDrop(label, drop)
 	end
 	return label
 end
 
--- The design's radial-gradient on `frame` (H:167, H:178, H:218): the img.fx.glow picture tinted `inner` over the
--- `outer` colour; while that picture has no id, a vertical gradient of the same stops (inner -> mid at midAt -> outer;
--- a reading). Returns the glow picture or the gradient.
-function Theme.radial(frame: GuiObject, inner: Color3, outer: Color3, mid: Color3?, midAt: number?): Instance
-	local content = AssetTable.image(GLOW_IMAGE_KEY)
+-- UI FINAL R2 (P3, plan §2): the design's radial-gradient on `frame` as the exact picture `key` (pack 2, the CSS radial
+-- rendered with its alpha: an ImageLabel SD_Radial stretched over the frame, whose own background goes clear); while
+-- that picture has no id, `fallback` (RadialFallback): the outer colour at outerAlpha, the img.fx.glow picture tinted
+-- the inner colour at innerAlpha centred at `centre`, and for a 3-stop radial a glow tinted `mid` (midAlpha, default
+-- innerAlpha) under it, the inner glow then sized to the mid stop. With neither picture, only the outer colour (a
+-- reading). Calling it again reuses what it made. Returns the picture or the inner glow (nil: the outer colour alone).
+function Theme.radial(frame: GuiObject, key: string, fallback: RadialFallback): ImageLabel?
+	local function image(name: string): ImageLabel
+		local existing = frame:FindFirstChild(name)
+		if existing and existing:IsA("ImageLabel") then
+			return existing
+		end
+		return Create("ImageLabel", {
+			Name = name,
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			ScaleType = Enum.ScaleType.Stretch,
+			Active = false,
+			ZIndex = frame.ZIndex,
+			Parent = frame,
+		})
+	end
+	local content = AssetTable.image(key)
 	if content then
-		frame.BackgroundColor3 = outer
-		local existing = frame:FindFirstChild(GLOW_IMAGE_NAME)
-		local glow: ImageLabel = if existing and existing:IsA("ImageLabel")
-			then existing
-			else Create("ImageLabel", {
-				Name = GLOW_IMAGE_NAME,
-				BackgroundTransparency = 1,
-				Size = UDim2.fromScale(1, 1),
-				Active = false,
-				ZIndex = frame.ZIndex,
-				Parent = frame,
-			})
-		glow.Image = content
-		glow.ImageColor3 = inner
-		return glow
+		frame.BackgroundTransparency = 1
+		local picture = image(RADIAL_NAME)
+		picture.Image = content
+		return picture
 	end
-	frame.BackgroundColor3 = WHITE
-	local points = { ColorSequenceKeypoint.new(0, inner) }
-	if mid and midAt and midAt > MID_EDGE and midAt < 1 - MID_EDGE then
-		table.insert(points, ColorSequenceKeypoint.new(midAt, mid))
+	frame.BackgroundColor3 = fallback.outer
+	frame.BackgroundTransparency = 1 - (fallback.outerAlpha or 1)
+	local glow = AssetTable.image(GLOW_IMAGE_KEY)
+	if glow == nil then
+		return nil
 	end
-	table.insert(points, ColorSequenceKeypoint.new(1, outer))
-	local existing = frame:FindFirstChild(RADIAL_NAME)
-	local gradient: UIGradient = if existing and existing:IsA("UIGradient")
-		then existing
-		else Create("UIGradient", { Name = RADIAL_NAME, Rotation = 90, Parent = frame })
-	gradient.Color = ColorSequence.new(points)
-	return gradient
+	local centre = fallback.centre or Vector2.new(0.5, 0.5)
+	local mid, midAt = fallback.mid, fallback.midAt
+	local innerAlpha = fallback.innerAlpha or 1
+	if mid and midAt then
+		local ring = image(GLOW_MID_NAME)
+		ring.Image = glow
+		ring.ImageColor3 = mid
+		ring.ImageTransparency = 1 - (fallback.midAlpha or innerAlpha)
+		ring.Position = UDim2.fromScale(centre.X, centre.Y)
+	end
+	local inner = image(GLOW_IMAGE_NAME)
+	inner.Image = glow
+	inner.ImageColor3 = fallback.inner
+	inner.ImageTransparency = 1 - innerAlpha
+	inner.Position = UDim2.fromScale(centre.X, centre.Y)
+	local share = if mid and midAt then math.clamp(midAt * 2, 0.05, 1) else 1
+	inner.Size = UDim2.fromScale(share, share)
+	return inner
 end
 
--- A rays picture (`key`: img.fx.rays / raysDetail / raysReveal; H:219, H:266, H:474) centred in `parent`, `sizePx`
--- square, at `alpha` (ImageTransparency 1 - alpha), at the parent's ZIndex; its turn period (`periodS`) is kept as the
--- SD_SpinSeconds attribute for R2's idle loops. Nil, nothing drawn, while the picture has no id.
-function Theme.rays(parent: GuiObject, key: string, sizePx: number, alpha: number, periodS: number): ImageLabel?
+-- A rays picture (`key`: img.fx.rays / raysDetail / raysReveal; H:219, H:266, H:474) centred in `parent` (UI FINAL R2,
+-- P4: at `centreY` of its height, default the middle: H:219 60%, H:266 55%, H:296 38%, H:407 46%, H:474 46%, H:509 44%,
+-- H:538 45%), `sizePx` square, at `alpha` (ImageTransparency 1 - alpha), at the parent's ZIndex, turning once every
+-- `periodS` (Anim/UiIdle's spin, the design's sdSpin; at rest under ReducedMotion). Nil, nothing drawn, while the
+-- picture has no id.
+function Theme.rays(
+	parent: GuiObject,
+	key: string,
+	sizePx: number,
+	alpha: number,
+	periodS: number,
+	centreY: number?
+): ImageLabel?
 	local content = AssetTable.image(key)
 	if content == nil then
 		return nil
@@ -1086,7 +1175,7 @@ function Theme.rays(parent: GuiObject, key: string, sizePx: number, alpha: numbe
 		Name = RAYS_NAME,
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, centreY or 0.5),
 		Size = UDim2.fromOffset(sizePx, sizePx),
 		Image = content,
 		ImageTransparency = 1 - alpha,
@@ -1094,8 +1183,83 @@ function Theme.rays(parent: GuiObject, key: string, sizePx: number, alpha: numbe
 		ZIndex = parent.ZIndex,
 		Parent = parent,
 	})
-	rays:SetAttribute(SPIN_ATTR, periodS)
+	UiIdle.add(rays, "spin", { periodS = periodS })
 	return rays
+end
+
+-- UI FINAL R2 (G4.13, H:28): the design's shine band in `strip` (a clear px-wide holder that Anim/UiIdle's "shine"
+-- moves inside a ClipsDescendants parent): a white band, clear at its sides and white at `alpha` in its middle,
+-- turned `slantDeg` (skewX(-20deg) leans the band's sides 20° and keeps it the strip's width across; a turn of a
+-- band strip x cos(slantDeg) wide does the same, the gradient unturned, so no hard edge shows), tall enough to
+-- cover the strip after the turn. Roblox stops clipping under a turned ancestor: the caller hides the strip then.
+function Theme.shineBand(strip: Frame, alpha: number, slantDeg: number): Frame
+	local turn = math.rad(slantDeg)
+	local width = math.round(strip.Size.X.Offset * math.cos(turn)) -- a UDim offset is whole px
+	local band: Frame = Create("Frame", {
+		Name = "Band",
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(0, width, 1 / math.cos(turn), math.round(width * math.tan(turn))),
+		Rotation = slantDeg,
+		Active = false,
+		ZIndex = strip.ZIndex,
+		Parent = strip,
+	})
+	Create("UIGradient", {
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 1 - alpha),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = band,
+	})
+	return band
+end
+
+-- UI FINAL R2 (T1, T2, plan §2): the design's soft box-shadow behind the target that fills `wrapper` (a transparent
+-- frame that takes the layout and the motion; a child cannot draw under its parent with ZIndexBehavior Sibling): an
+-- ImageLabel SD_SoftShadow at ZIndex 0 in the wrapper (the target above it), `spec.offsetY` lower. With the picture
+-- `key` (pack 2: the CSS shadow rendered around a box, imagePx square, marginPx of shadow on every side, colour and
+-- alpha baked) it is a 9-slice reaching marginPx past the wrapper; while it has no id, the img.fx.glow picture tinted
+-- spec.color at spec.alpha, blurPx past the wrapper. Nil when neither picture has an id. Calling it again reuses it.
+function Theme.softShadow(wrapper: GuiObject, key: string, spec: SoftShadowSpec): ImageLabel?
+	local content = AssetTable.image(key)
+	local glow = if content then nil else AssetTable.image(GLOW_IMAGE_KEY)
+	if content == nil and glow == nil then
+		return nil
+	end
+	local existing = wrapper:FindFirstChild(SOFT_SHADOW_NAME)
+	local shadow: ImageLabel = if existing and existing:IsA("ImageLabel")
+		then existing
+		else Create("ImageLabel", {
+			Name = SOFT_SHADOW_NAME,
+			BackgroundTransparency = 1,
+			Active = false,
+			ZIndex = 0,
+			Parent = wrapper,
+		})
+	if content then
+		local margin = spec.marginPx or SHADOW_MARGIN_PX
+		local size = spec.imagePx or SHADOW_IMAGE_PX
+		shadow.Image = content
+		shadow.ScaleType = Enum.ScaleType.Slice
+		shadow.SliceCenter = Rect.new(margin, margin, size - margin, size - margin)
+		shadow.ImageColor3 = WHITE
+		shadow.ImageTransparency = 0
+		shadow.Position = UDim2.fromOffset(-margin, spec.offsetY - margin)
+		shadow.Size = UDim2.new(1, 2 * margin, 1, 2 * margin)
+	else
+		local blur = spec.blurPx
+		shadow.Image = glow :: string
+		shadow.ScaleType = Enum.ScaleType.Stretch
+		shadow.ImageColor3 = spec.color or Theme.Colors.inkUI
+		shadow.ImageTransparency = 1 - spec.alpha
+		shadow.Position = UDim2.fromOffset(-blur, spec.offsetY - blur)
+		shadow.Size = UDim2.new(1, 2 * blur, 1, 2 * blur)
+	end
+	return shadow
 end
 
 -- The accent glow across a window's header area (Candy UI): a frame over the panel's top padding (it follows the

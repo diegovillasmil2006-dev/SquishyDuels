@@ -116,12 +116,13 @@ return function(t: Context)
 				local top = math.max(math.ceil(UI.Touch.closeButton / 2), math.ceil(tab / 2)) + 6
 				local chrome = above + top + 20
 				-- The volumes field (12 px padding; per slider: its label line, the 52 px track, the caption line,
-				-- 2 px gaps; 12 between them), the switches field (two 52 px rows), Replay (56), 12 px between the
+				-- 2 px gaps; 12 between them), the switches field (two 52 px rows), Replay (UI FINAL R2, P1: its 56 px
+				-- face + the 5 px lip), 12 px between the
 				-- three and the body's 3 px paddings.
 				local slider = 1.25 * UI.TextSize.Body * textScale + 2 + MIN + 2 + 1.25 * UI.TextSize.Small * textScale
 				local volumes = 24 + 2 * slider + 12
 				local switches = 24 + 2 * MIN + 12
-				local content = volumes + switches + UI.Touch.primaryButton + 2 * 12 + 6
+				local content = volumes + switches + UI.Touch.primaryButton + UI.Sticker.lip.button + 2 * 12 + 6
 				local body = SettingsFormat.bodyHeight(screen.Y, content, chrome, SHARE, MIN)
 				expect.truthy(body + chrome <= screen.Y * SHARE + 1e-6)
 				expect.truthy(body >= MIN)
@@ -164,7 +165,7 @@ return function(t: Context)
 			local slider = 1.25 * UI.TextSize.Body + 2 + MIN
 			local volumes = 24 + 2 * slider + 12
 			local switches = 24 + 2 * MIN + 12
-			local content = volumes + switches + UI.Touch.primaryButton + 2 * 12 + 6
+			local content = volumes + switches + UI.Touch.primaryButton + UI.Sticker.lip.button + 2 * 12 + 6
 			local body = SettingsFormat.bodyHeight(screen.Y, content, chrome, 0.86, MIN)
 			local switchesTop = 3 + volumes + 12
 			-- At least the field's padding and a slice of "Camera shake" show above the fold.

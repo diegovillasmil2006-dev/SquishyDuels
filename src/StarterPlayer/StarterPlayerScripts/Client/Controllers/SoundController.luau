@@ -67,7 +67,7 @@
 -- handle to stop a voice (the caps need one).
 -- The rules (admit, groupVolume, categoryOf, cooldownSeconds, cooldownKey, voiceExpired, pitchVariance, pitchFor,
 -- pickVariant, othersAllowed, otherKindOf, audible, resolveGroup, auditionAllowed, duckProduct, duelDucks,
--- missingKeys) are pure and unit-tested in Edit mode.
+-- missingKeys, coinPitch, slotPitch) are pure and unit-tested in Edit mode.
 
 -- Services
 
@@ -784,6 +784,24 @@ function SoundController.pitchFor(variance: number, roll: number, mult: number?)
 	local v = if isFiniteNumber(variance) then math.max(variance, 0) else 0
 	local m = if isFiniteNumber(mult) and (mult :: number) > 0 then mult :: number else 1
 	return math.clamp((1 + (2 * r - 1) * v) * m, AUDIO.pitchMin, AUDIO.pitchMax)
+end
+
+-- UI FINAL R2 (the design's coin(landed), H:667 and lib:145): the play pitch of the i-th coin landing of a flight,
+-- i % coinSteps semitones up: the 1st a semitone up, the 9th 9, the 10th back at 1 (Config.Audio.uiPitch.coinSteps).
+function SoundController.coinPitch(i: number): number
+	if not isFiniteNumber(i) or i < 1 then
+		return 1
+	end
+	return 2 ^ ((math.floor(i) % AUDIO.uiPitch.coinSteps) / 12)
+end
+
+-- UI FINAL R2 (the design's slot(i), H:760, H:768, lib:177 note(i, 659)): the play pitch of the i-th filled queue slot
+-- (i from 0), i x uiPitch.slot.semitone semitones up; clamped to [pitchMin, pitchMax].
+function SoundController.slotPitch(i: number): number
+	if not isFiniteNumber(i) or i < 0 then
+		return 1
+	end
+	return math.clamp(2 ^ (math.floor(i) * AUDIO.uiPitch.slot.semitone / 12), AUDIO.pitchMin, AUDIO.pitchMax)
 end
 
 -- Which of `n` choices to play (1-based; 0 when n < 1) for a roll in [0, 1). With n >= 2 it never repeats `last`

@@ -79,6 +79,36 @@ local Audio = {
 	-- The final pitch (random variation × the play option's `pitch`) is clamped to [pitchMin, pitchMax] (§18.6).
 	pitchMin = 0.5,
 	pitchMax = 2,
+	-- UI FINAL R2 (plan work/ui/PLAN.md §2.2): the design's sounds (hud-lib.js SFX, lib:134-191, and its handlers) as
+	-- the play option `pitch` of the UI keys that stand in for them. `lib:n` = uploads/hud-lib.js line n, `H:n` =
+	-- "Squishy Duels HUD.dc.html" line n.
+	uiPitch = {
+		-- ui.hover over a button by its design hover kind (H:638: nav .8, card 1.15, tab 1.3, else 1;
+		-- Config.UI.motion.hover)
+		hover = { btn = 1, nav = 0.8, tab = 1.3, card = 1.15, x = 1, icon = 1, row = 1 },
+		-- ui.click for a tab pick and the coin pill (the design's tab sound, H:75, lib:138; reading: its pitch)
+		tab = 1.3,
+		card = 1.15, -- ui.click for a card pick (the design's card sound, H:318, lib:137; reading)
+		toggleOn = 1.2, -- ui.click for a switch going on / off (lib:152's rising / falling pair; reading)
+		toggleOff = 0.9,
+		-- the slider's ui.hover tick at slideFrom + slideSpan × value (lib:191: 500 + 900 v Hz; reading)
+		slideFrom = 0.8,
+		slideSpan = 0.9,
+		slideStepShare = 0.05, -- one tick per 5% of travel (H:898)
+		-- ui.coin goes landing % coinSteps semitones up: the 1st +1 .. the 9th +9, the 10th at the base (H:667,
+		-- lib:145)
+		coinSteps = 10,
+		-- slot(i) (H:760, H:768; lib:177 note(i, 659)): ui.click i x semitone semitones up; the 1v1 search's two
+		-- slots: 0 (you, on join), 1 (the opponent, on match), R4
+		slot = { semitone = 1 },
+		-- tick(false) every 700 ms while searching (H:763, H:768): ui.hover at lib:178's 900 Hz against lib:134's
+		-- 1400 Hz hover (900 / 1400), R4
+		tick = { lo = 0.643 },
+	},
+	-- UI FINAL R2 (plan §2.2 G2.7, one sound per click): the Button kinds whose own click is silent because their
+	-- action plays its sound (the nav tiles and Settings: ui.open; the close X: ui.back, both from UIController); their
+	-- hover sound stays (H:638).
+	buttonSilentKinds = { tile = true, close = true },
 
 	-- 3D sounds.
 	Spatial = {

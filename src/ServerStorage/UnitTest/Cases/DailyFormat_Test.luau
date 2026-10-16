@@ -315,11 +315,13 @@ return function(t: Context)
 					local line = 1.25 * UI.TextSize.Small * textScale
 					-- Foam UI: the header tab (an H2 line, 2 × 4 px padding and its 2 + 5 + 3 px bands) and Close hang
 					-- half above the panel; the top padding leaves room for their lower halves (+ 6 px), the bottom
-					-- padding is 20; one 12 px gap, then Claim (56) or, once claimed, the countdown (an H2 line).
+					-- padding is 20; one 12 px gap, then Claim (UI FINAL R2, P1: its 56 px face + the 5 px lip) or,
+					-- once claimed, the countdown (an H2 line).
 					local tab = 1.25 * UI.TextSize.H2 * textScale + 18
 					local above = math.max(tab, UI.Touch.closeButton) / 2
 					local top = math.max(math.ceil(UI.Touch.closeButton / 2), math.ceil(tab / 2)) + 6
-					local pinned = math.max(UI.Touch.primaryButton, 1.25 * UI.TextSize.H2 * textScale)
+					local claim = UI.Touch.primaryButton + UI.Sticker.lip.button
+					local pinned = math.max(claim, 1.25 * UI.TextSize.H2 * textScale)
 					local chrome = above + top + PADDING + 12 + pinned
 					-- A day card (all as tall as the tallest): 6 px padding on top, 12 at the bottom (the foam bands),
 					-- the label, the coin (22), Coins (2 lines), the Treat Box (3 lines), Today and the check (18)

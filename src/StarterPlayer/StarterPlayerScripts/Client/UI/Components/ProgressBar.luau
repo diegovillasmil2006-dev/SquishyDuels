@@ -2,7 +2,7 @@
 -- ProgressBar (client only). Foam UI restyle (spec 2026-10-09, "Progress bar (Biscuit track, accent fill, ink
 -- stroke)"; Butter progress bars remapped to Mint): the Grip bar, quest progress, stat bars.
 --   local bar = ProgressBar.new({ name = "Bar", fraction = 0.4, parent = card })   -- fills its parent's width
---   bar:set(0.64, true)   -- eases there (Config.UI.motion.barFill; at once under ReducedMotion)
+--   bar:set(0.64, true)   -- eases there (the variant's fillMs on Config.UI.curves.bars; at once under ReducedMotion)
 --   bar:setAccent("sky")
 -- A Biscuit pill track with the InkUI 2 px outline of bars; the fill is a pill in the accent (default Mint) with its
 -- shade along the bottom (FILL_BEVEL_SHARE of the height). The fill hides at 0. The bar shows a share only: a "12 / 20"
@@ -16,8 +16,15 @@
 -- the accent's gradient (top -> shade; the Grip bar its own green, the collected bar the yellow, the volume bar the
 -- pink) under its top highlight. Readings: the border stays outside the box (a caller's height is the inner track, as
 -- before, until each screen's own round sizes it); the fill is a pill (Roblox clips to rectangles, not the round
--- track); no rim; the moving shine strips (H:85, H:367) come with R2's idle loops and the Grip bar's 3 px ink lip
--- (H:84) with R4's Grip row.
+-- track); no rim; the Grip bar's 3 px ink lip (H:84) comes with R4's Grip row.
+-- UI FINAL R2 (P9, G2.5; H:84-85, H:187, H:240, H:271, H:367): the border is drawn INSIDE the bar's height (the
+-- design's border-box; heightPx defaults to the variant's design height, Config.UI.Sticker.bars) and the fill sits
+-- inside it (a bar too thin for its border keeps a 2 px track: the border thins to fit, a reading); the fill eases
+-- to a new value over the variant's fillMs on the design's cubic-bezier(.3,1.5,.5,1) (Config.UI.Sticker
+-- .barFillCurve, a Scheduler render effect), drawn at most full: the curve's overshoot past 100% is cut at the
+-- track's end as the design's trough clips it (overflow:hidden, H:84, H:187, H:240, H:367; ProgressBar.fillAt,
+-- pure); the Grip fill is never narrower than minFillPx (H:85 min-width: shown at 0 too); the Grip and quest fills
+-- carry their moving shine strip (Config.UI.Sticker.barShines / shines, Anim/UiIdle "shine", Theme.shineBand).
 
 -- Services
 
@@ -34,7 +41,9 @@ local UI = script.Parent.Parent
 local Client = UI.Parent
 local Create = require(UI.Create)
 local Theme = require(UI.Theme)
+local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
+local UiIdle = require(Client.Anim.UiIdle)
 
 -- Types
 
@@ -43,7 +52,7 @@ export type Spec = {
 	fraction: number?, -- 0..1 (default 0)
 	accent: Theme.AccentName?, -- default "mint" (the fill, unless the variant has its own)
 	variant: Variant?, -- default "stat"
-	heightPx: number?, -- base px; default 14
+	heightPx: number?, -- base px, the border inside it; default the variant's design height
 	widthPx: number?, -- base px; nil = the parent's width
 	layoutOrder: number?,
 	parent: Instance?,
@@ -91,7 +100,9 @@ local function fillColors(variant: string, accent: Theme.Accent): Theme.FoamColo
 	}
 	return colors :: any
 end
-local MOTION = Config.UI.motion.barFill
+local STICKER = Config.UI.Sticker
+local FILL_CURVE = Tweens.curve(STICKER.barFillCurve) -- H:85, H:187, H:240, H:367
+local MIN_TRACK_PX = 2 -- reading: a bar too thin for its border keeps this much track
 
 -- Module table
 
@@ -109,11 +120,20 @@ function ProgressBar.clamp(fraction: number?): number
 	return math.clamp(fraction, 0, 1)
 end
 
+-- UI FINAL R2: the fill's share u (0..1) into an eased change from `from` to `to`: the design's overshoot curve,
+-- never past the track (the trough clips it, H:84) nor below 0.
+function ProgressBar.fillAt(from: number, to: number, u: number): number
+	return math.clamp(from + (to - from) * FILL_CURVE(math.clamp(u, 0, 1)), 0, 1)
+end
+
 function ProgressBar.new(spec: Spec): ProgressBar
 	local cleanup = Cleanup.new()
-	local height = spec.heightPx or DEFAULT_HEIGHT_PX
 	local variant: string = if spec.variant and VARIANTS[spec.variant] then spec.variant else DEFAULT_VARIANT
 	local look = VARIANTS[variant]
+	local height = spec.heightPx or look.height or DEFAULT_HEIGHT_PX
+	-- UI FINAL R2 (P9): the border inside the height; a MIN_TRACK_PX track at least.
+	local border = math.clamp(math.floor((height - MIN_TRACK_PX) / 2), 0, look.border or Theme.Stroke.bar)
+	local innerHeight = height - 2 * border
 	local root: Frame = Create("Frame", {
 		Name = spec.name,
 		BackgroundColor3 = if look.troughAlpha then Theme.Colors.white else Theme.Colors.track,
@@ -124,43 +144,81 @@ function ProgressBar.new(spec: Spec): ProgressBar
 	})
 	cleanup:add(root)
 	if look.troughShadePx then
-		-- H:367: the quest trough's inner shade along its top (the trough's own colour towards black).
+		-- H:367: the quest trough's inner shade along its top (the trough's own colour towards black), under the
+		-- border.
 		Theme.foam(root, {
 			radius = height,
 			stroke = 0,
 			mode = "tint",
-			top = look.troughShadePx,
+			top = border + look.troughShadePx,
 			colors = { face = Theme.Colors.track, top = Theme.Colors.track:Lerp(BLACK, look.troughShadeAlpha or 0) },
 		})
 	else
 		Theme.corner(height, root)
 	end
-	Theme.stroke(
-		if DEEP_BORDER[variant] then Palette.StickerInkDeep else Theme.Colors.inkUI,
-		look.border or Theme.Stroke.bar,
-		root
-	)
+	if border > 0 then
+		local stroke =
+			Theme.stroke(if DEEP_BORDER[variant] then Palette.StickerInkDeep else Theme.Colors.inkUI, border, root)
+		pcall(function()
+			(stroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner -- H:84: the border-box
+		end)
+	end
+	-- The track inside the border: the fill's room.
+	local inner: Frame = Create("Frame", {
+		Name = "Track",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(border, border),
+		Size = UDim2.new(1, -2 * border, 1, -2 * border),
+		Parent = root,
+	})
+	local minFill = look.minFillPx or 0
 	local fill: Frame = Create("Frame", {
 		Name = "Fill",
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(0, 1),
-		Visible = false,
-		Parent = root,
+		Visible = minFill > 0,
+		ClipsDescendants = true,
+		Parent = inner,
 	})
+	if minFill > 0 then
+		Create("UISizeConstraint", { MinSize = Vector2.new(minFill, 0), Parent = fill }) -- H:85 min-width
+	end
 	local accent = Theme.accent(spec.accent or "mint")
 	local foam = Theme.foam(fill, {
-		radius = height,
+		radius = innerHeight,
 		stroke = 0,
 		top = look.fillHighlightPx or 0,
 		colors = fillColors(variant, accent),
-		fixedHeight = height,
+		fixedHeight = innerHeight,
 	})
+	-- UI FINAL R2 (G4.13): the Grip / quest fill's moving shine strip (H:85, H:367).
+	local shineName = (STICKER.barShines :: any)[variant]
+	if shineName then
+		local shine = (STICKER.shines :: any)[shineName]
+		local strip: Frame = Create("Frame", {
+			Name = "SD_Shine",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(0, shine.px, 1, 0),
+			Active = false,
+			Parent = fill,
+		})
+		Theme.shineBand(strip, shine.alpha, shine.slantDeg) -- H:28: the leaning band
+		local handle = UiIdle.add(strip, "shine", { periodS = shine.periodS })
+		cleanup:add(function()
+			if handle then
+				handle:remove()
+			end
+		end)
+	end
 
 	local value = 0
-	local tween: Tween? = nil
+	local motion: Scheduler.Handle? = nil
 	local function stopTween()
-		Tweens.cancel(tween)
-		tween = nil
+		local current = motion
+		motion = nil
+		if current then
+			current:disconnect()
+		end
 	end
 	cleanup:add(stopTween)
 
@@ -171,23 +229,27 @@ function ProgressBar.new(spec: Spec): ProgressBar
 	function self.set(_: ProgressBar, fraction: number, animate: boolean?)
 		value = ProgressBar.clamp(fraction)
 		stopTween()
-		local goal = UDim2.fromScale(value, 1)
-		if value > 0 then
+		local shownAtZero = minFill > 0 -- H:85: the Grip fill keeps its min-width at 0
+		local ms = look.fillMs or 0
+		if animate and ms > 0 and not Tweens.reducedMotion() then
+			local from = fill.Size.X.Scale
+			local to = value
 			fill.Visible = true
-		end
-		if animate and not Tweens.reducedMotion() then
-			local played = Tweens.play(fill, MOTION.ms, { Size = goal }, MOTION.style, MOTION.direction)
-			tween = played
-			if value <= 0 then
-				played.Completed:Connect(function(state: Enum.PlaybackState)
-					if state == Enum.PlaybackState.Completed and value <= 0 then
-						fill.Visible = false
-					end
-				end)
-			end
+			local elapsed = 0
+			motion = Scheduler.add(function(dt: number): boolean
+				elapsed += dt
+				local u = math.min(elapsed * 1000 / ms, 1)
+				fill.Size = UDim2.fromScale(ProgressBar.fillAt(from, to, u), 1)
+				if u >= 1 then
+					fill.Visible = to > 0 or shownAtZero
+					motion = nil
+					return false
+				end
+				return true
+			end, "render")
 		else
-			fill.Size = goal
-			fill.Visible = value > 0
+			fill.Size = UDim2.fromScale(value, 1)
+			fill.Visible = value > 0 or shownAtZero
 		end
 	end
 

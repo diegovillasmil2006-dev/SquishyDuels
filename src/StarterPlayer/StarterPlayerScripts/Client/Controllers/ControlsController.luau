@@ -38,6 +38,9 @@
 --     with Throw (104 px × UIScale, never below 72) and Ultimate (80 px × UIScale) above-left of it, inside the safe
 --     insets, outside the thumbstick zone (lower-left 40% × 45%) and the jump button (read from
 --     PlayerGui.TouchGui.TouchControlFrame.JumpButton, else Roblox's default spot), 16 px apart (touchLayout, pure).
+--     UIScale here is touchScale(screen) (pure), the HUD's own UI scale (UI/Layout.uiScale of the width and the
+--     height, UI FINAL R2's PR1), so the HUD, the practice panel and the first-person pad, which lay out around
+--     touchLayout(screen, UIController.scale()), keep clear of the very boxes drawn.
 --     Shown only while PreferredInput is Touch and the Duel or Practice context is live; Ultimate only while
 --     setTouchAvailable("Ultimate", true) (the locked loadout has an ultimate). Spec phase 5: a third round button, Dash
 --     (dashButton × UIScale, in Sky), left of Throw and a little lower, else above it (touchLayout keeps it `gap` from
@@ -112,6 +115,7 @@ local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local Layout = require(Client.UI.Layout)
 local Theme = require(Client.UI.Theme)
 
 -- Types
@@ -172,7 +176,6 @@ local ALL_CONTEXTS: { Context } = { "Lobby", "Duel", "Practice", "Modal", "Inspe
 local TRIGGER_THRESHOLD = Config.Combat.Aim.triggerThreshold
 local TRIGGERS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.ButtonR2] = true, [Enum.KeyCode.ButtonL2] = true }
 local TOUCH = Config.UI.Touch
-local UI_SCALE = Config.UI.Scale
 local ATTR_MATCH_ID = "SD_MatchId"
 local ATTR_DUEL_PHASE = "SD_DuelPhase"
 -- Phases with the Duel context on (§5.4): the HUD and the throw keys belong to the duel from Preparing to Result.
@@ -514,8 +517,9 @@ end
 
 -- Touch buttons ---------------------------------------------------------------------------------------------------
 
-local function uiScaleOf(height: number): number
-	return math.clamp(height / UI_SCALE.referenceHeight, UI_SCALE.min, UI_SCALE.max)
+-- UI FINAL R2 (PR1): the UI scale of `screen` (the HUD's, Layout.uiScale: width and height).
+function ControlsController.touchScale(screen: Vector2): number
+	return Layout.uiScale(screen.Y, screen.X)
 end
 
 -- The jump button's rectangle in `gui` space, read from the TouchGui when it exists.
@@ -575,14 +579,15 @@ local function layoutTouch()
 	if size.X <= 0 or size.Y <= 0 then
 		return
 	end
-	local layout = ControlsController.touchLayout(size, uiScaleOf(size.Y), jumpRect(gui))
+	local scale = ControlsController.touchScale(size)
+	local layout = ControlsController.touchLayout(size, scale, jumpRect(gui))
 	local rects: { [string]: Rect } =
 		{ Throw = layout.throw, Ultimate = layout.ultimate, Dash = layout.dash, Catch = layout.catch }
 	for name, widget in touchWidgets do
 		local rect = rects[name]
 		widget.button.Position = UDim2.fromOffset(rect.x, rect.y)
 		widget.button.Size = UDim2.fromOffset(rect.w, rect.h)
-		widget.label.TextSize = math.max(MIN_TEXT_SIZE, math.floor(TOUCH_TEXT_SIZE * uiScaleOf(size.Y)))
+		widget.label.TextSize = math.max(MIN_TEXT_SIZE, math.floor(TOUCH_TEXT_SIZE * scale))
 	end
 end
 

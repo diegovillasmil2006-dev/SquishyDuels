@@ -344,7 +344,7 @@ local function layoutDetail()
 	add(d.equip, d.equipText, d.equipReason)
 	add(d.inspect, Strings.common.inspect)
 	add(d.viewInShop, Strings.inspect.viewInShop)
-	local buttonHeight = Layout.touchBase(TOUCH.primaryButton, l.scale)
+	local buttonHeight = Layout.touchBase(Button.frameHeight("primary"), l.scale) -- UI FINAL R2 (P1): face + lip
 	local placed = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, buttonHeight, PANEL.gap, widths)
 	lastDetail = placed
 	d.scroll.Size = UDim2.fromOffset(l.detailWidth, placed.scrollHeight)

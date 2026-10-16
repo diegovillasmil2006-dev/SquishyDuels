@@ -15,6 +15,9 @@
 -- on track StickerToggleOnTop -> StickerGreen2End, the off track StickerSwitchOff, the white knob at the design's
 -- places inside the border (small: 20 px with its ink drop 2 px lower at .4; large: 28 px with a 3 px ink border and a
 -- 3 px bevel at .12), the large track's inner shade (3 px at .25). The row stays one button the touch minimum tall.
+-- UI FINAL R2 (G1.1, P7; H:197, H:437): a flip slides the knob over the variant's knobMs (300 / 350) on the design's
+-- cubic-bezier(.3,1.8,.5,1) and eases the track's colour over trackMs (200 / 250, `ease`): Config.UI.Sticker.toggles,
+-- one Scheduler render effect while it moves (Toggle.motionAt, pure); setValue and ReducedMotion snap.
 
 -- Services
 
@@ -30,10 +33,13 @@ local Log = require(Shared.Util.Log)
 local Strings = require(Shared.Strings)
 
 local UI = script.Parent.Parent
+local Client = UI.Parent
 local Create = require(UI.Create)
 local Focus = require(UI.Focus)
 local Layout = require(UI.Layout)
 local Theme = require(UI.Theme)
+local Scheduler = require(Client.Anim.Scheduler)
+local Tweens = require(Client.Anim.Tweens)
 
 -- Types
 
@@ -63,6 +69,8 @@ export type Toggle = {
 
 local TOUCH = Config.UI.Touch
 local TOGGLES = Config.UI.Sticker.toggles
+local KNOB_CURVE = Tweens.curve(Config.UI.Sticker.toggleKnobCurve) -- H:197, H:437
+local TRACK_CURVE = Tweens.curve(Config.UI.Sticker.toggleTrackCurve)
 local DEFAULT_VARIANT = "small"
 local STATE_WIDTH = 60
 local ON_TEXT = Strings.common.on
@@ -88,6 +96,15 @@ local Toggle = {}
 local log = Log.new("Toggle")
 
 -- Public
+
+-- UI FINAL R2: a flip `elapsedMs` in, on `variant` ("small" / "large"): the knob's share of its way (0..1, past 1 on
+-- the design's overshoot), the track colour's share (0..1) and whether both have arrived.
+function Toggle.motionAt(variant: Variant, elapsedMs: number): (number, number, boolean)
+	local look = TOGGLES[variant] or TOGGLES[DEFAULT_VARIANT]
+	local knobU = if look.knobMs > 0 then math.clamp(elapsedMs / look.knobMs, 0, 1) else 1
+	local trackU = if look.trackMs > 0 then math.clamp(elapsedMs / look.trackMs, 0, 1) else 1
+	return KNOB_CURVE(knobU), math.clamp(TRACK_CURVE(trackU), 0, 1), knobU >= 1 and trackU >= 1
+end
 
 -- The width (base px) a toggle (default variant "small") needs for `text` on one line at the player's text size, with
 -- its state text and switch.
@@ -186,27 +203,64 @@ function Toggle.new(spec: Spec): Toggle
 		knobDrop = made
 	end
 
-	local function paint()
-		local face = if value then ON_TOP else OFF_FILL
+	-- The knob's left edge (inside the border) and the track's top / end colours now; draw() writes them.
+	local shownX = if value then look.knobOn else look.knobOff
+	local shownFace, shownEnd = OFF_FILL, OFF_FILL
+	local motion: Scheduler.Handle? = nil
+	local function trackColors(on: boolean): (Color3, Color3)
+		return if on then ON_TOP else OFF_FILL, if on then ON_END else OFF_FILL
+	end
+	local function draw(x: number, face: Color3, faceEnd: Color3)
+		shownX, shownFace, shownEnd = x, face, faceEnd
 		switch.BackgroundColor3 = face
 		track:paint({
 			face = face,
-			faceEnd = if value then ON_END else nil,
+			faceEnd = faceEnd,
 			top = face:Lerp(BLACK, look.trackShadeAlpha or 0),
 		})
-		local x = look.border + (if value then look.knobOn else look.knobOff)
+		local left = look.border + math.round(x)
 		local y = look.border + look.knobTop
-		knob.Position = UDim2.fromOffset(x, y)
+		knob.Position = UDim2.fromOffset(left, y)
 		local drop = knobDrop
 		if drop then
-			drop.Position = UDim2.fromOffset(x, y + (look.knobDropPx or 0))
+			drop.Position = UDim2.fromOffset(left, y + (look.knobDropPx or 0))
 		end
+	end
+	local function stopMotion()
+		local current = motion
+		motion = nil
+		if current then
+			current:disconnect()
+		end
+	end
+	cleanup:add(stopMotion)
+
+	-- UI FINAL R2: `animate` slides the knob and eases the track from where they are (Toggle.motionAt).
+	local function paint(animate: boolean?)
 		stateLabel.Text = if value then ON_TEXT else OFF_TEXT
+		stopMotion()
+		local toX = if value then look.knobOn else look.knobOff
+		local toFace, toEnd = trackColors(value)
+		if not animate or Tweens.reducedMotion() then
+			draw(toX, toFace, toEnd)
+			return
+		end
+		local fromX, fromFace, fromEnd = shownX, shownFace, shownEnd
+		local elapsed = 0
+		motion = Scheduler.add(function(dt: number): boolean
+			elapsed += dt
+			local k, c, done = Toggle.motionAt(variant :: Variant, elapsed * 1000)
+			draw(fromX + (toX - fromX) * k, fromFace:Lerp(toFace, c), fromEnd:Lerp(toEnd, c))
+			if done then
+				motion = nil
+			end
+			return not done
+		end, "render")
 	end
 
 	cleanup:add(root.Activated:Connect(function()
 		value = not value
-		paint()
+		paint(true)
 		local ok, err = pcall(function(): any
 			spec.onChanged(value)
 			return nil

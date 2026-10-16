@@ -187,6 +187,62 @@ return function(t: Context)
 		end
 	end)
 
+	-- UI FINAL R2 (plan §2.2): the design's sounds as pitches of the UI keys (Config.Audio.uiPitch).
+	t.test(
+		"UI pitches: a coin landing rises a semitone a coin, the 10th wraps (H:667, lib:145); every UI pitch fits",
+		function()
+			-- The design's coin(landed): landed counts from 1, note(landed % 10).
+			expect.near(SoundController.coinPitch(1), 2 ^ (1 / 12), 1e-12)
+			expect.near(SoundController.coinPitch(2), 2 ^ (2 / 12), 1e-12)
+			expect.near(SoundController.coinPitch(9), 2 ^ (9 / 12), 1e-12)
+			expect.near(SoundController.coinPitch(10), 1, 1e-12) -- the 10th wraps to the base
+			expect.near(SoundController.coinPitch(11), 2 ^ (1 / 12), 1e-12)
+			expect.near(SoundController.coinPitch(0 / 0), 1, 1e-12)
+			for i = 1, 30 do
+				local pitch = SoundController.coinPitch(i)
+				expect.truthy(pitch >= AUDIO.pitchMin and pitch <= AUDIO.pitchMax)
+				-- With no variation the play's pitch comes through exactly.
+				expect.near(SoundController.pitchFor(0, 0.5, pitch), pitch, 1e-12)
+			end
+			local ui = AUDIO.uiPitch
+			local values = { ui.tab, ui.card, ui.toggleOn, ui.toggleOff, ui.slideFrom, ui.slideFrom + ui.slideSpan }
+			for _, pitch in ui.hover do
+				table.insert(values, pitch)
+			end
+			for _, pitch in values do
+				expect.truthy(pitch >= AUDIO.pitchMin and pitch <= AUDIO.pitchMax)
+			end
+			-- The coin batch (§11.9, 80 ms) against the 60 ms landings: about one ping in two plays, still rising.
+			local cooldown = SoundController.cooldownSeconds("ui.coin")
+			local stagger = Config.UI.motion.coinFlight.staggerMs / 1000
+			local last, heard = -math.huge, {}
+			for i = 1, 10 do
+				local at = (i - 1) * stagger
+				if at - last >= cooldown - 1e-9 then
+					last = at
+					table.insert(heard, SoundController.coinPitch(i))
+				end
+			end
+			expect.truthy(#heard >= 4)
+			for index = 2, #heard do
+				expect.truthy(heard[index] > heard[index - 1])
+			end
+		end
+	)
+
+	-- UI FINAL R2 (G2.6): the design's slot(i) (H:760, H:768, lib:177): the i-th filled queue slot (from 0) a semitone
+	-- higher each; the tick's low pitch inside the play range.
+	t.test("slotPitch: a semitone a slot from the base, clamped; the tick's low pitch fits", function()
+		expect.near(SoundController.slotPitch(0), 1, 1e-12)
+		expect.near(SoundController.slotPitch(1), 2 ^ (1 / 12), 1e-12)
+		expect.near(SoundController.slotPitch(3), 2 ^ (3 / 12), 1e-12)
+		expect.near(SoundController.slotPitch(2.7), 2 ^ (2 / 12), 1e-12)
+		expect.near(SoundController.slotPitch(-1), 1, 1e-12)
+		expect.near(SoundController.slotPitch(0 / 0), 1, 1e-12)
+		expect.near(SoundController.slotPitch(100), AUDIO.pitchMax, 1e-12) -- clamped
+		expect.truthy(AUDIO.uiPitch.tick.lo >= AUDIO.pitchMin and AUDIO.uiPitch.tick.lo <= AUDIO.pitchMax)
+	end)
+
 	t.test("pickVariant: n = 0 and n = 1; never repeats the last pick; covers every variant", function()
 		expect.equal(SoundController.pickVariant(0, nil, 0.5), 0)
 		for _, roll in { 0, 0.4, 0.999, 1 } do

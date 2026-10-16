@@ -33,6 +33,14 @@
 --     border drawn inside;
 --   * stickerText mirrors a label into an ink drop and a face for a role with a drop; radial / rays fall back with no
 --     picture uploaded.
+-- UI FINAL R2 (plan work/ui/PLAN.md R2: P3, P4, T1, T2, T5):
+--   * radial(frame, key, fallback): the exact picture when `key` has an id (SD_Radial, the frame's own background
+--     clear); else the outer colour at its alpha and the img.fx.glow picture tinted the inner colour at its alpha,
+--     centred at `centre`, with the mid ring (SD_GlowMid) of a 3-stop radial; reused when called again;
+--   * rays(..., centreY): placed at centreY of the parent; nil while the picture has no id;
+--   * a text role with `soft` (the toast's H:175) mirrors a soft drop: the ink at its alpha of the label's opacity,
+--     no outline on it; softShadow puts SD_SoftShadow (ZIndex 0) under the target, the 9-slice picture or the
+--     tinted glow.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -189,6 +197,9 @@ return function(t: Context)
 	local AssetTable = t.requireShared("AssetTable")
 	local Config = t.requireShared("Config")
 	local Theme = t.requireClient("UI/Theme")
+	-- UI FINAL R2: the idle loops (Anim/UiIdle: the shine strips, the rays) run on a private Scheduler here, so no
+	-- frame event is connected (as Scheduler_Test).
+	t.requireClient("Anim/UiIdle").setScheduler(t.requireClient("Anim/Scheduler").new(false))
 
 	t.test("the Candy UI tokens have their values", function()
 		for name, hex in UI_HEX do
@@ -745,30 +756,109 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("radial and rays: with no picture uploaded, a vertical gradient of the stops and no rays", function()
-		local frame = Instance.new("Frame")
+	t.test("radial (P3): the picture with its id, else the outer colour at its alpha and the tinted glows", function()
 		local white, red, blue = Color3.new(1, 1, 1), Color3.new(1, 0, 0), Color3.new(0, 0, 1)
-		local made = Theme.radial(frame, white, blue, red, 0.55)
-		if AssetTable.image("img.fx.glow") == nil then
-			expect.truthy(made:IsA("UIGradient"))
-			local gradient = made :: UIGradient
-			expect.equal(gradient.Name, "SD_Radial")
-			expect.equal(gradient.Rotation, 90)
-			local points = gradient.Color.Keypoints
-			expect.equal(#points, 3)
-			expect.truthy(sameColor(points[1].Value, white))
-			expect.near(points[2].Time, 0.55, 1e-4)
-			expect.truthy(sameColor(points[2].Value, red))
-			expect.truthy(sameColor(points[3].Value, blue))
-			expect.truthy(sameColor(frame.BackgroundColor3, white))
-			expect.equal(frame:FindFirstChild("SD_Glow"), nil)
-			-- Again: the same gradient.
-			expect.equal(Theme.radial(frame, white, blue), made)
+		local key = "img.fx.radial.coinGlow"
+		local fallback = {
+			inner = white,
+			outer = blue,
+			mid = red,
+			midAt = 0.3,
+			innerAlpha = 0.8,
+			outerAlpha = 0.5,
+			centre = Vector2.new(0.5, 0.38),
+		}
+		local frame = Instance.new("Frame")
+		local made = Theme.radial(frame, key, fallback)
+		if AssetTable.image(key) then
+			-- The exact picture over the frame, whose own background goes clear.
+			local picture = made :: ImageLabel
+			expect.equal(picture.Name, "SD_Radial")
+			expect.equal(picture.ScaleType, Enum.ScaleType.Stretch)
+			expect.equal(picture.Image, AssetTable.image(key))
+			expect.equal(frame.BackgroundTransparency, 1)
+		else
+			expect.truthy(sameColor(frame.BackgroundColor3, blue))
+			expect.near(frame.BackgroundTransparency, 0.5, 1e-4)
+			if AssetTable.image("img.fx.glow") then
+				local inner = made :: ImageLabel
+				expect.equal(inner.Name, "SD_Glow")
+				expect.truthy(sameColor(inner.ImageColor3, white))
+				expect.near(inner.ImageTransparency, 0.2, 1e-4)
+				expect.equal(inner.Position, UDim2.fromScale(0.5, 0.38))
+				expect.near(inner.Size.X.Scale, 0.6, 1e-4) -- the inner glow reaches the mid stop (midAt of the radius)
+				local ring = frame:FindFirstChild("SD_GlowMid") :: ImageLabel
+				expect.truthy(frame:FindFirstChild("SD_GlowMid") ~= nil)
+				expect.truthy(sameColor(ring.ImageColor3, red))
+				expect.near(ring.ImageTransparency, 0.2, 1e-4) -- midAlpha defaults to innerAlpha
+				expect.equal(ring.Position, UDim2.fromScale(0.5, 0.38))
+				expect.equal(Theme.radial(frame, key, fallback), made) -- reused, not rebuilt
+			else
+				expect.equal(made, nil) -- neither picture: the outer colour alone
+			end
 		end
-		if AssetTable.image("img.fx.rays") == nil then
-			expect.equal(Theme.rays(frame, "img.fx.rays", 520, 0.28, 18), nil)
+		frame:Destroy()
+	end)
+
+	t.test("rays (P4): at centreY of the parent; nil while the picture has no id", function()
+		local frame = Instance.new("Frame")
+		local rays = Theme.rays(frame, "img.fx.rays", 520, 0.28, 18, 0.6)
+		if AssetTable.image("img.fx.rays") then
+			local made = rays :: ImageLabel
+			expect.equal(made.Name, "SD_Rays")
+			expect.equal(made.Position, UDim2.fromScale(0.5, 0.6)) -- H:219: 60%
+			expect.equal(made.Size, UDim2.fromOffset(520, 520))
+			expect.near(made.ImageTransparency, 0.72, 1e-4)
+		else
+			expect.equal(rays, nil)
 			expect.equal(frame:FindFirstChild("SD_Rays"), nil)
 		end
 		frame:Destroy()
+	end)
+
+	t.test("stickerText soft (T5): the toast's soft drop (H:175) without an outline, the label outlined", function()
+		local role = Theme.Sticker.text.toastText
+		expect.deepEqual(role.soft, { px = 2, alpha = 0.6 })
+		local label = Instance.new("TextLabel")
+		label.Text = "Saved"
+		Theme.stickerText(label, "toastText")
+		local drop = label:FindFirstChild("SD_Drop") :: TextLabel
+		expect.truthy(label:FindFirstChild("SD_Drop") ~= nil and label:FindFirstChild("SD_Face") ~= nil)
+		expect.equal(drop.Position.Y.Offset, role.soft.px)
+		expect.truthy(sameColor(drop.TextColor3, Theme.Colors.inkUI))
+		expect.near(drop.TextTransparency, 1 - role.soft.alpha, 1e-4) -- rgba(30,20,40,.6)
+		local dropOutline = drop:FindFirstChild("SD_Outline") :: UIStroke?
+		expect.truthy(dropOutline == nil or not dropOutline.Enabled)
+		expect.equal((label:FindFirstChild("SD_Outline") :: UIStroke).Thickness, role.stroke / 2)
+		label.TextTransparency = 0.5
+		task.wait() -- property signals are deferred
+		expect.near(drop.TextTransparency, 1 - 0.5 * role.soft.alpha, 1e-4) -- it fades with the label
+		label:Destroy()
+	end)
+
+	t.test("softShadow (T1, T2): the 9-slice picture or the tinted glow under the target, offsetY lower", function()
+		local wrapper = Instance.new("Frame")
+		local spec = { offsetY = 14, blurPx = 40, alpha = 0.45 } -- test numbers (each window passes its design line)
+		local shadow = Theme.softShadow(wrapper, "img.fx.shadowWindow", spec)
+		if AssetTable.image("img.fx.shadowWindow") then
+			local made = shadow :: ImageLabel
+			expect.equal(made.Name, "SD_SoftShadow")
+			expect.equal(made.ZIndex, 0)
+			expect.equal(made.ScaleType, Enum.ScaleType.Slice)
+			expect.equal(made.Position, UDim2.fromOffset(-120, 14 - 120)) -- the render's 120 px margin
+			expect.equal(made.Size, UDim2.new(1, 240, 1, 240))
+		elseif AssetTable.image("img.fx.glow") then
+			local made = shadow :: ImageLabel
+			expect.equal(made.Name, "SD_SoftShadow")
+			expect.equal(made.ZIndex, 0)
+			expect.truthy(sameColor(made.ImageColor3, Theme.Colors.inkUI))
+			expect.near(made.ImageTransparency, 0.55, 1e-4)
+			expect.equal(made.Position, UDim2.fromOffset(-40, 14 - 40))
+			expect.equal(made.Size, UDim2.new(1, 80, 1, 80))
+		else
+			expect.equal(shadow, nil)
+		end
+		expect.equal(Theme.softShadow(wrapper, "img.fx.shadowWindow", spec), shadow) -- reused
+		wrapper:Destroy()
 	end)
 end

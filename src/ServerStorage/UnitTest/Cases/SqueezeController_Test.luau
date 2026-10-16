@@ -44,7 +44,8 @@
 --     amount into it, so up to 12 replies a second keep the Coins and Grip lines of the one pool apart, never snap a
 --     slot back before its fade, and show the same totals.
 -- Foam UI (2026-10-09): popupColor: the floating lines are CoinGold for Coins only, Mint for Grip and Lilac for slow
--- training (the "afk" kind keeps its colour; nothing shows it since Phase 6).
+-- training (the "afk" kind keeps its colour; nothing shows it since Phase 6). UI FINAL R2: Grip in the design's float
+-- mint (H:704), anything else white (the design float's default, lib:255).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -659,12 +660,12 @@ return function(t: Context)
 		expect.equal(SqueezeController.popupSlot({ [1] = 12, [2] = 13, [3] = 11 }, max), 3)
 	end)
 
-	t.test("popup colours (foam UI): CoinGold only for Coins, Grip Mint, slow training Lilac", function()
+	t.test("popup colours: CoinGold only for Coins, the design's Grip float mint, white for anything else", function()
 		local Palette = t.requireShared("Art/Palette")
 		expect.equal(SqueezeController.popupColor("coins"), Palette.CoinGold)
-		-- Candy UI (2026-10-11): the Mint and Lavender accents.
-		expect.equal(SqueezeController.popupColor("grip"), Palette.CandyMint)
-		expect.equal(SqueezeController.popupColor("afk"), Palette.CandyLavender)
+		-- UI FINAL R2: the design's "+N Grip" float colour (H:704) and the float's default white (lib:255).
+		expect.equal(SqueezeController.popupColor("grip"), Palette.StickerGripFloat)
+		expect.equal(SqueezeController.popupColor("afk"), Palette.White)
 		-- The reserved coin colours never mark a Grip line.
 		for _, kind in { "grip", "afk" } do
 			local color = SqueezeController.popupColor(kind)

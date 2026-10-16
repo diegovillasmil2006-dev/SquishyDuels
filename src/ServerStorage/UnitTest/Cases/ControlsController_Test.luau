@@ -16,7 +16,9 @@
 --     through Returning; movement (PlayerModule controls) is frozen in Positioning and Countdown only;
 --   * analog triggers (R2 / L2) count as pressed above Config.Combat.Aim.triggerThreshold, with one Begin / End edge;
 --   * touch buttons: Throw 104 px × UIScale (never below 72), Ultimate 80 px × UIScale above-left of it, 16 px from
---     the jump button, inside the screen and out of the lower-left thumbstick zone (40% × 45%).
+--     the jump button, inside the screen and out of the lower-left thumbstick zone (40% × 45%); UI FINAL R2 (PR1):
+--     their UIScale is touchScale(screen), the HUD's own (Layout.uiScale of the width and the height), so every
+--     touchLayout caller (the HUD, the practice panel, the first-person pad) models the boxes drawn.
 -- Part 5 (DESIGN §17.3.2, §17.12): End is treated like Cancel: Begin -> block -> End reaches the handler and passes;
 --   a Begin that arrives while the action is not live never does. Driven through casCallbackFor() (no CAS binding).
 -- Part 6 (DESIGN §10.6): Inspect's R2 / L2 zoom begins past Config.Inspect.Input.triggerDeadzone (0.05), so its speed
@@ -246,14 +248,10 @@ return function(t: Context)
 
 	t.test("touch buttons: sizes, the jump-button gap, on screen and out of the thumbstick zone", function()
 		local touch = Config.UI.Touch
-		local scaleConfig = Config.UI.Scale
-		local function uiScale(height: number): number
-			return math.clamp(height / scaleConfig.referenceHeight, scaleConfig.min, scaleConfig.max)
-		end
 		local screens =
 			{ Vector2.new(1280, 720), Vector2.new(667, 375), Vector2.new(1920, 1080), Vector2.new(812, 375) }
 		for _, screen in screens do
-			local scale = uiScale(screen.Y)
+			local scale = Controls.touchScale(screen)
 			local layout = Controls.touchLayout(screen, scale, nil)
 			local throw, ult = layout.throw, layout.ultimate
 			expect.near(throw.w, math.max(touch.throwButton * scale, touch.throwButtonMin), 1e-9)
@@ -720,7 +718,6 @@ return function(t: Context)
 
 	t.test("the touch Catch button: its size, on screen, out of the thumbstick zone, apart from the others", function()
 		local touch = Config.UI.Touch
-		local scaleConfig = Config.UI.Scale
 		-- The phones, then big screens whose 120 px jump button crowds Throw's corner (the catch goes further out).
 		local screens = {
 			Vector2.new(1280, 720),
@@ -735,7 +732,7 @@ return function(t: Context)
 			Vector2.new(2560, 1440),
 		}
 		for _, screen in screens do
-			local scale = math.clamp(screen.Y / scaleConfig.referenceHeight, scaleConfig.min, scaleConfig.max)
+			local scale = Controls.touchScale(screen)
 			local layout = Controls.touchLayout(screen, scale, nil)
 			local catch = layout.catch
 			expect.near(catch.w, math.max(touch.catchButton * scale, touch.minTargetFloor), 1e-9)
@@ -793,7 +790,6 @@ return function(t: Context)
 
 	t.test("the touch Dash button: its size, on screen, out of the thumbstick zone, apart from the others", function()
 		local touch = Config.UI.Touch
-		local scaleConfig = Config.UI.Scale
 		local screens = {
 			Vector2.new(1280, 720),
 			Vector2.new(667, 375),
@@ -802,7 +798,7 @@ return function(t: Context)
 			Vector2.new(844, 390),
 		}
 		for _, screen in screens do
-			local scale = math.clamp(screen.Y / scaleConfig.referenceHeight, scaleConfig.min, scaleConfig.max)
+			local scale = Controls.touchScale(screen)
 			local layout = Controls.touchLayout(screen, scale, nil)
 			local dash = layout.dash
 			expect.near(dash.w, math.max(touch.dashButton * scale, touch.minTargetFloor), 1e-9)
@@ -823,6 +819,24 @@ return function(t: Context)
 				or jump.y + jump.h + touch.gap <= dash.y + 1e-6
 			expect.truthy(apart)
 		end
+	end)
+
+	-- UI FINAL R2 (PR1): one scale for the touch buttons and every layout that keeps clear of them.
+	t.test("touchScale is the HUD's UI scale (Layout.uiScale of the width and the height)", function()
+		local Layout = t.requireClient("UI/Layout")
+		for _, screen in
+			{
+				Vector2.new(1280, 720),
+				Vector2.new(1920, 1080),
+				Vector2.new(1024, 768),
+				Vector2.new(844, 390),
+				Vector2.new(390, 844),
+			}
+		do
+			expect.near(Controls.touchScale(screen), Layout.uiScale(screen.Y, screen.X), 1e-12)
+		end
+		-- A tablet: the width decides (1024 / 1440 = .71, held at the floor .85), as the HUD's own scale.
+		expect.near(Controls.touchScale(Vector2.new(1024, 768)), Config.UI.Scale.min, 1e-12)
 	end)
 
 	t.test("touch buttons keep 16 px from the jump button read from TouchGui", function()
