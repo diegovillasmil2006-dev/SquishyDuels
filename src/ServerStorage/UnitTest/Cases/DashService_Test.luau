@@ -15,6 +15,10 @@
 --     probe of at least the maps' 29-stud platforms; nothing under it: the map floor), so a dash on a platform passes.
 --     Review fix: the live probe is a body-radius Spherecast, so a dasher whose HRP centre is just past a platform edge
 --     (where a thin ray misses) is on the ground (a real Part in the Workspace, destroyed after).
+--   * Power-ups v1.1 (2026-10-16): on an ffa port, port.dashCooldownFree(fighter) (the dash boost) skips the cooldown
+--     and nothing else; once it is false the cooldown counts from the last boosted dash; a duel port's is never read.
+--     Review fix: one dash after the other (the next once the last one's pose clip has played, with the usual
+--     tolerance): chained at that pace for a whole boost, every dash is accepted with its own guard allowance.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -346,6 +350,73 @@ return function(t: Context)
 			close()
 			deck:Destroy()
 			assert(ok, err)
+		end
+	)
+
+	-- Power-ups v1.1 (2026-10-16): the dash boost.
+	t.test(
+		"FFA dash boost: port.dashCooldownFree skips the cooldown (one dash after the other) for that fighter only",
+		function()
+			local DashMath = t.requireShared("DashMath")
+			local clip = DashMath.eventSeconds(DASH.visualFrames) -- the client's dash lives at least this long
+			local world = setupMap(Vector3.new(0, STAND, 0), 0)
+			local port = CombatService.portOf(world.fighter)
+			local free = true
+			local asked: { any } = {}
+			port.dashCooldownFree = function(f: any): boolean
+				table.insert(asked, f)
+				return free
+			end
+			expect.truthy((DashService.requestDash(81, 1, RIGHT, world.clock.now())))
+			world.clock.advance(clip)
+			expect.truthy((DashService.requestDash(81, 2, -RIGHT, world.clock.now()))) -- no cooldown while it lives
+			expect.equal(asked[1], world.fighter)
+			-- Review fix: one at a time: not before the last one's clip (less the usual tolerance) has played.
+			world.clock.advance(clip - DASH.cooldownToleranceSeconds - 0.05)
+			expect.equal(select(2, DashService.requestDash(81, 3, RIGHT, world.clock.now())), "dash.cooldown")
+			world.clock.advance(0.06)
+			expect.truthy((DashService.requestDash(81, 4, RIGHT, world.clock.now()))) -- just inside the tolerance
+			-- Chained at the client's pace for a whole boost: every dash accepted, each with its own guard allowance.
+			local seq = 4
+			for _ = 1, math.floor(5 / clip) do
+				world.clock.advance(clip)
+				seq += 1
+				local now = world.clock.now()
+				expect.truthy((DashService.requestDash(81, seq, if seq % 2 == 0 then RIGHT else -RIGHT, now)))
+				local allowance = world.fighter.guard.dash
+				expect.near(allowance.startAt, now - DASH.guardLeadSeconds, 1e-9)
+				expect.near(allowance.studs, DASH.distanceStuds + DASH.guardSlackStuds, 1e-4)
+			end
+			local chained = #started(world)
+			expect.equal(chained, 3 + math.floor(5 / clip))
+			-- Every other check still holds (here: rooted by an ultimate).
+			world.clock.advance(clip)
+			world.fighter.rootedUntil = world.clock.now() + 1
+			seq += 1
+			expect.equal(select(2, DashService.requestDash(81, seq, RIGHT, world.clock.now())), "dash.busy")
+			world.fighter.rootedUntil = -math.huge
+			-- The boost is over: the cooldown counts from the last boosted dash.
+			free = false
+			seq += 1
+			expect.equal(select(2, DashService.requestDash(81, seq, RIGHT, world.clock.now())), "dash.cooldown")
+			world.clock.advance(DASH.cooldownSeconds)
+			seq += 1
+			expect.truthy((DashService.requestDash(81, seq, RIGHT, world.clock.now())))
+			expect.equal(#started(world), chained + 1)
+			close()
+			-- A duel port's field is never read: the cooldown holds.
+			local duel = setup(nil)
+			local duelPort = CombatService.portOf(duel.fighter)
+			local duelAsked = 0
+			duelPort.dashCooldownFree = function(): boolean
+				duelAsked += 1
+				return true
+			end
+			expect.truthy((DashService.requestDash(81, 1, RIGHT, duel.clock.now())))
+			duel.clock.advance(0.3)
+			expect.equal(select(2, DashService.requestDash(81, 2, -RIGHT, duel.clock.now())), "dash.cooldown")
+			expect.equal(duelAsked, 0)
+			close()
 		end
 	)
 end

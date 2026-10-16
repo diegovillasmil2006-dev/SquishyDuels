@@ -30,6 +30,12 @@
 --     passed through without asking the owner; a lane or the roller hits on the floor it was cast from (a jump too),
 --     never a player on a level above it or on a lower level under its path; releaseFighter drops one leaver (no
 --     target, recipient or registration) while its throw in flight still hits, and never touches a duel.
+--   * Power-ups v1.1 (2026-10-16), an ffa port: the thrower is handed to cooldownMultiplier (review fix: the rapid
+--     throw's, which gives the shortest cooldown, CooldownClamp.Min) and throwSpeedMultiplier (the throw boost:
+--     ThrowStarted's and the projectile's velocity), a duel's
+--     closure gets no argument and its throwSpeedMultiplier is never read; a `blocked` outcome (a shield) ends the
+--     throw at the victim with ThrowImpact blocked = true, no Hit and no hit count, and a lane flies on past it; the
+--     guard's speed limit grows with port.movement's walk speed (never below the configured one).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -1387,6 +1393,173 @@ return function(t: Context)
 			expect.equal(CombatService.getFighter(1), da)
 		end
 	)
+
+	-- Power-ups v1.1 (2026-10-16): the port callbacks MatchService answers for a buffed fighter, and the shield. -------
+
+	t.test(
+		"FFA power-ups: the thrower is handed to cooldownMultiplier (rapid throw) and throwSpeedMultiplier (boost)",
+		function()
+			setup()
+			local rootA = rootPart(A_ROOT, Vector3.new(0, 0, 1))
+			local a = fighter(1, "A", rootA, nil)
+			local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+			local port = mapPort({ a, b }, false)
+			local asked: { any } = {}
+			-- What MatchService answers for a live rapid throw (review fix): Min / the clamped catalog cooldown.
+			local shortest = RULES.CooldownClamp.Min
+			local rapid = shortest / math.clamp(THROW.cooldown, shortest, RULES.CooldownClamp.Max)
+			port.cooldownMultiplier = function(f: any?): number
+				table.insert(asked, f or false)
+				return if f == a then rapid else 1
+			end
+			port.throwSpeedMultiplier = function(f: any): number
+				return if f == a then 1.4 else 1
+			end
+			expect.truthy((throwAt(1, rootA, B_ROOT, nil)))
+			expect.equal(asked[1], a)
+			local first = payloads("ThrowStarted")[1]
+			expect.near(first.velocity.Magnitude, THROW.speed * 1.4, 1e-3) -- every client draws the boosted flight
+			local info = CombatService.projectileInfo(first.projId)
+			expect.near((info.velocity - first.velocity).Magnitude, 0, 1e-9) -- the server's own projectile too
+			expect.near(first.nextThrowAt, first.releaseAt + shortest, 1e-9) -- the shortest cooldown (SPEC P3)
+			-- The next throw at once is refused; one the shortest cooldown later is accepted.
+			expect.equal(select(2, throwAt(2, rootA, B_ROOT, nil)), "throw.cooldown")
+			clock.advance(shortest)
+			expect.truthy((throwAt(3, rootA, B_ROOT, nil)))
+			expect.equal(#payloads("ThrowStarted"), 2)
+			-- A duel port: its closure is called with no argument and a throwSpeedMultiplier field is never read.
+			setup()
+			local da, _, _, rootDa, _, duelPort = duel(nil, nil)
+			local args = -1
+			duelPort.cooldownMultiplier = function(...: any): number
+				args = select("#", ...)
+				return 1
+			end
+			duelPort.throwSpeedMultiplier = function(): number
+				return 3
+			end
+			expect.truthy((throwAt(1, rootDa, B_ROOT, nil)))
+			expect.equal(args, 0)
+			local duelThrow = payloads("ThrowStarted")[1]
+			expect.near(duelThrow.velocity.Magnitude, THROW.speed, 1e-3)
+			expect.near(duelThrow.nextThrowAt, duelThrow.releaseAt + THROW.cooldown, 1e-9)
+			expect.equal(da.activeProjectiles, 1)
+		end
+	)
+
+	t.test(
+		"FFA shield: a blocked outcome ends the throw at the victim (ThrowImpact blocked), with no Hit and no hit count",
+		function()
+			setup()
+			local rootA = rootPart(A_ROOT, Vector3.new(0, 0, 1))
+			local a = fighter(1, "A", rootA, nil)
+			local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+			local port = mapPort({ a, b }, false)
+			local asked = 0
+			port.applyHits = function(hits: { any }): { [number]: any }
+				local outcomes = {}
+				for index, hit in hits do
+					asked += 1
+					outcomes[index] = { lives = 0, invulnUntil = hit.at, eliminated = false, blocked = true }
+				end
+				return outcomes
+			end
+			local hitInfos = {}
+			local connection = CombatService.Hit:connect(function(info: any)
+				table.insert(hitInfos, info)
+			end)
+			expect.truthy((throwAt(1, rootA, B_ROOT, nil)))
+			runFor(1.5)
+			local hits = impacts("player")
+			expect.equal(#hits, 1)
+			expect.equal(hits[1].victimId, 2)
+			expect.equal(hits[1].blocked, true)
+			expect.equal(hits[1].eliminated, false)
+			expect.equal(asked, 1) -- the throw ended at the shield: it never comes back for the unshielded player
+			expect.equal(CombatService.projectileCount(), 0)
+			expect.equal(a.activeProjectiles, 0)
+			expect.equal(a.hits, 0)
+			expect.equal(#hitInfos, 0)
+			expect.equal(CombatService.counters().impacts.blocked, 1)
+			connection:disconnect()
+
+			-- A lane flies on past a shield and still hits the enemy behind it, each once.
+			setup()
+			local la = fighter(1, "A", tableRoot(A_ROOT), nil)
+			local shielded = fighter(2, "A", tableRoot(Vector3.new(0, 3, 0)), nil)
+			local behind = fighter(3, "A", tableRoot(Vector3.new(2, 3, 30)), nil)
+			local lanePort = mapPort({ la, shielded, behind }, false)
+			local seen: { any } = {}
+			lanePort.applyHits = function(list: { any }): { [number]: any }
+				local outcomes = {}
+				for index, hit in list do
+					table.insert(seen, hit.victim)
+					outcomes[index] = {
+						lives = 0,
+						invulnUntil = hit.at,
+						eliminated = hit.victim ~= shielded,
+						blocked = if hit.victim == shielded then true else nil,
+					}
+				end
+				return outcomes
+			end
+			laneAt(la)
+			runFor(0.9 + 80 / 260 + 0.2)
+			expect.deepEqual(seen, { shielded, behind })
+			local laneHits = impacts("player")
+			expect.equal(#laneHits, 2)
+			expect.equal(laneHits[1].blocked, true)
+			expect.equal(laneHits[2].blocked, nil)
+			expect.equal(laneHits[2].eliminated, true)
+		end
+	)
+
+	t.test("FFA guard: a speed-boosted fighter (port.movement) may run that much faster without a pivot", function()
+		setup()
+		local rootA = rootPart(Vector3.new(-80, 3, 0), Vector3.new(1, 0, 0))
+		local a = fighter(1, "A", rootA, { UserId = 1 })
+		local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+		local port = mapPort({ a, b }, false)
+		local limit = Config.Combat.MovementGuard.maxHorizontalSpeed
+		local boosted = RULES.Movement.WalkSpeed * 1.6
+		port.movement = function(): (number, number)
+			return boosted, RULES.Movement.JumpHeight
+		end
+		local speed = limit * 1.3 -- above the plain limit, under the boosted one (30 × 1.6 = 48)
+		expect.truthy(speed < limit * boosted / RULES.Movement.WalkSpeed)
+		local now = clock.now()
+		local x = -80
+		for i = 0, 5 do
+			rootA.CFrame = CFrame.new(x + speed * 0.2 * i, 3, 0)
+			CombatService.guardStep(now + 0.2 * i)
+		end
+		expect.equal(CombatService.counters().guardPivots, 0)
+		-- The boost is over: the same speed is over-speed again (3 samples in a row).
+		port.movement = function(): (number, number)
+			return RULES.Movement.WalkSpeed, RULES.Movement.JumpHeight
+		end
+		x = rootA.Position.X
+		local start = now + 1.0 -- the last sample above
+		for i = 1, 3 do
+			rootA.CFrame = CFrame.new(x + speed * 0.2 * i, 3, 0)
+			CombatService.guardStep(start + 0.2 * i)
+		end
+		expect.equal(CombatService.counters().guardPivots, 1)
+		-- A walk speed below the match's never lowers the limit.
+		setup()
+		local rootS = rootPart(Vector3.new(-80, 3, 0), Vector3.new(1, 0, 0))
+		local s = fighter(1, "A", rootS, { UserId = 1 })
+		local slowPort = mapPort({ s, fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil) }, false)
+		slowPort.movement = function(): (number, number)
+			return 1, RULES.Movement.JumpHeight
+		end
+		local walk = limit * 0.9
+		for i = 0, 5 do
+			rootS.CFrame = CFrame.new(-80 + walk * 0.2 * i, 3, 0)
+			CombatService.guardStep(now + 0.2 * i)
+		end
+		expect.equal(CombatService.counters().guardPivots, 0)
+	end)
 
 	t.test("unregisterMatch drops the match's projectiles without impacts", function()
 		setup()

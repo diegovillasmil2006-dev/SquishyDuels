@@ -95,6 +95,24 @@
 --   everyone else, TDM the other team), never on the practice targets; the ultimate needs its charge, as in a duel,
 --   never the practice cooldown. MatchChanged resets the cooldown at a new match and at Active and ends the windups at
 --   the match's end, as DuelChanged does. No new top-level local (module fields and StateController calls only).
+-- Power-ups v1.1 (2026-10-16, SPEC P3): in a match the context carries the own power-ups from the view's you.buffs
+--   (StateController.buffMultiplier): rapid throw's cooldownMultiplier (Config.Match.PowerUps.kinds.rapidThrow) and
+--   throw boost's speedMultiplier (kinds.throwBoost), 1 while they are off. The aim is solved for the boosted speed
+--   (throwDirection: speed × ThrowCharge.speedFactor(c) × speedMultiplier, as the server's launch), so the faster
+--   throw still lands on the reticle. The cooldown gate stays the server's nextThrowAt from ThrowStarted, which the
+--   server already works out with rapid throw's multiplier, so the client is never looser than the server (a pickup in
+--   the middle of a cooldown does not shorten that cooldown on either side). Other players' boosted throws need
+--   nothing here: ThrowStarted carries their velocity (ProjectileRenderer draws it). Still no new top-level local.
+--   Review fixes (2026-10-16): the throw boost is read for the moment the request reaches the server (half the ping
+--   plus Config.Combat.Lag.halfPingExtraSeconds after the press, where the server reads it), so a throw pressed as
+--   the boost ends is solved for the speed it is launched at. In a match the client mirrors the server's
+--   Rules.MaxActiveProjectilesPerPlayer (throw.tooMany): while that many own throws fly (ThrowStarted until their
+--   ThrowImpact, or OWN_PROJECTILE_SECONDS), a press sends nothing and starts no windup (atThrowCap; the reticle shows
+--   "cooling"); a held Throw starts charging once one lands, a tap is dropped. Duels and practice are unchanged.
+--   Integration (2026-10-16): the match context's cooldownMultiplier is the server's own number for a live rapid
+--   throw (rapidCooldownMultiplier, pure: MatchService's throwCooldownMultiplier, kinds.rapidThrow.cooldownMultiplier
+--   kept at or above CooldownClamp.Min / the clamped catalog cooldown, so the cooldown is exactly CooldownClamp.Min),
+--   read at the request's arrival like the throw boost; still informational (the gate is the server's nextThrowAt).
 
 -- Services
 
@@ -206,6 +224,7 @@ type Ctx = {
 	kind: "duel" | "practice" | "match", -- FFA/TDM v1: "match"
 	def: Types.SquishyDef,
 	cooldownMultiplier: number,
+	speedMultiplier: number?, -- power-ups v1.1: throw boost in a match (nil = 1)
 }
 
 type UltAnim = {
@@ -224,8 +243,9 @@ type PopIn = { spring: Spring.Spring<number>, untilClock: number }
 
 type Pending = { seq: number, sentAt: number, windup: number }
 
--- An own projectile remembered for hit confirmation; a Dragon Rush lane can hit more than once.
-type OwnProjectile = { untilAt: number, lane: boolean }
+-- An own projectile remembered for hit confirmation; a Dragon Rush lane can hit more than once. Power-ups v1.1 review
+-- fix: `throw` = an own throw (ThrowStarted), the kind the server's MaxActiveProjectilesPerPlayer counts.
+type OwnProjectile = { untilAt: number, lane: boolean, throw: boolean? }
 
 type Shoulder = { humanoid: Humanoid, saved: Vector3 }
 
@@ -1007,7 +1027,26 @@ local function throwContext(now: number): (Ctx?, string?)
 			if matchDef == nil then
 				return nil, "throw.context"
 			end
-			return { kind = "match", def = matchDef, cooldownMultiplier = 1 }, nil
+			-- Power-ups v1.1 (see the header): rapid throw and throw boost while they live, else 1. Review fix: the
+			-- throw boost as the server reads it, when a request sent now arrives. Integration (2026-10-16): the rapid
+			-- throw too, as the server's number (rapidCooldownMultiplier), read at that same moment.
+			local okPing, ping = pcall(function(): any
+				return localPlayer():GetNetworkPing()
+			end)
+			local arrival = now
+				+ (if okPing and isNumber(ping) and ping > 0 then ping / 2 else 0)
+				+ COMBAT.Lag.halfPingExtraSeconds
+			local matchCtx: Ctx = {
+				kind = "match",
+				def = matchDef,
+				cooldownMultiplier = ThrowController.rapidCooldownMultiplier(
+					StateController.buffMultiplier(mv, "rapidThrow", "cooldownMultiplier", arrival),
+					matchDef.throw.cooldown,
+					RULES.CooldownClamp
+				),
+				speedMultiplier = StateController.buffMultiplier(mv, "throwBoost", "speedMultiplier", arrival),
+			}
+			return matchCtx, nil
 		end
 		local live = PHASE_THROW[m.phase] == true or (m.phase == "Countdown" and now >= m.phaseEndsAt)
 		if not live then
@@ -1240,9 +1279,10 @@ local function originHintOf(root: BasePart): Vector3
 end
 
 -- Feature 1: solved for the charged speed (ThrowCharge.speedFactor(c)), the speed the server gives this throw.
+-- Power-ups v1.1: times the context's throw boost (a match only; 1 otherwise).
 local function throwDirection(ctx: Ctx, origin: Vector3, aimPoint: Vector3, forward: Vector3, c: number): Vector3
 	local throw = ctx.def.throw
-	local speed = throw.speed * ThrowCharge.speedFactor(c)
+	local speed = throw.speed * ThrowCharge.speedFactor(c) * (ctx.speedMultiplier or 1)
 	local raw = ProjectileMath.solveLaunchDir(origin, aimPoint, speed, throw.gravity)
 	return ThrowController.limitDirection(raw, forward, ctx.kind == "practice")
 end
@@ -1466,10 +1506,52 @@ local function readyFor(ctx: Ctx): number
 	return nextThrowAt - ctx.def.throw.windup
 end
 
+-- Power-ups v1.1 review fix (pure): a throw of context `kind` waits while `live` own throws fly and the server's
+-- MaxActiveProjectilesPerPlayer (`max`) would refuse one more; a match only (duels and practice keep the server's
+-- throw.tooMany answer, as before).
+function ThrowController.projectileCapped(kind: string, live: number, max: number): boolean
+	return kind == "match" and live >= max
+end
+
+-- Power-ups v1.1 review fix: projectileCapped with the own throws in the air now (see the header).
+function ThrowController.atThrowCap(kind: string): boolean
+	if kind ~= "match" then
+		return false
+	end
+	local live = 0
+	for _, own in ownProjectiles do
+		if own.throw then
+			live += 1
+		end
+	end
+	return ThrowController.projectileCapped(kind, live, RULES.MaxActiveProjectilesPerPlayer)
+end
+
+-- Power-ups v1.1 integration (2026-10-16, pure): the throw cooldown multiplier the server hands ThrowRules for a live
+-- rapid throw (MatchService's throwCooldownMultiplier, the same steps): `multiplier` (StateController.buffMultiplier of
+-- kinds.rapidThrow.cooldownMultiplier; 1 or more is kept as it is), at or above clamp.Min / the clamped catalog
+-- `cooldown` (nil: clamp.Min), so ThrowRules' clamp(cooldown) × it is the shortest cooldown, clamp.Min.
+function ThrowController.rapidCooldownMultiplier(
+	multiplier: number,
+	cooldown: number?,
+	clamp: { Min: number, Max: number }
+): number
+	if multiplier >= 1 then
+		return multiplier
+	end
+	local seconds = if type(cooldown) == "number" then cooldown else clamp.Min
+	return math.max(multiplier, clamp.Min / math.clamp(seconds, clamp.Min, clamp.Max))
+end
+
 -- Feature 1: a throw may start charging (or fire) now: nothing in flight, no windup, no root, the cooldown over and
--- the hands free.
+-- the hands free. Power-ups v1.1 review fix: and, in a match, fewer own throws flying than the server allows.
 local function canCharge(ctx: Ctx, now: number): boolean
-	return pending == nil and not ownWindupBusy() and not isRooted(now) and not handsBusy(now) and now >= readyFor(ctx)
+	return pending == nil
+		and not ownWindupBusy()
+		and not isRooted(now)
+		and not handsBusy(now)
+		and now >= readyFor(ctx)
+		and not ThrowController.atThrowCap(ctx.kind)
 end
 
 -- Feature 1: the walk speed while charging (Charge.walkFactor, design: html:437), written on the own Humanoid; put back
@@ -1559,6 +1641,9 @@ local function tryThrow(fromPress: boolean): boolean
 			bufferedAt = now -- kept by step() only if the throw becomes possible within the buffer
 		end
 		return true
+	end
+	if ThrowController.atThrowCap(ctx.kind) then
+		return true -- power-ups v1.1 review fix: refused here (nothing sent, no windup, not buffered)
 	end
 	local ready = readyFor(ctx)
 	if now >= ready then
@@ -1748,7 +1833,8 @@ local function onThrowStarted(raw: unknown)
 	end
 	local w = windups[thrower]
 	if thrower == localPlayer() then
-		ownProjectiles[payload.projId] = { untilAt = payload.releaseAt + OWN_PROJECTILE_SECONDS, lane = false }
+		ownProjectiles[payload.projId] =
+			{ untilAt = payload.releaseAt + OWN_PROJECTILE_SECONDS, lane = false, throw = true }
 		local p = pending
 		if p and payload.seq == p.seq then
 			pending = nil
@@ -2009,7 +2095,9 @@ local function updateAim(now: number)
 			state.reason = nil
 		end
 	else
-		state.state = if now < state.readyAt or pending ~= nil then "cooling" else "ready"
+		-- Power-ups v1.1 review fix: in a match, "cooling" too while the own throws in the air are at the server's cap.
+		local waiting = now < state.readyAt or pending ~= nil or ThrowController.atThrowCap(ctx.kind)
+		state.state = if waiting then "cooling" else "ready"
 		state.reason = nil
 	end
 end
@@ -2163,7 +2251,12 @@ local function step(dt: number, _clock: number): boolean
 			local pressed = bufferedAt
 			local buffer = rulesNumber("InputBufferSeconds", RULES.InputBufferSeconds)
 			local ready = readyFor(ctx)
-			local keeps = pressed == nil or ThrowController.bufferKeeps(pressed, math.max(ready, rootedUntil), buffer)
+			-- Power-ups v1.1 review fix: a press let go while the own throws are at the server's cap is dropped.
+			local keeps = pressed == nil
+				or (
+					not ThrowController.atThrowCap(ctx.kind)
+					and ThrowController.bufferKeeps(pressed, math.max(ready, rootedUntil), buffer)
+				)
 			local action = ThrowController.holdStep(held, charge ~= nil, canCharge(ctx, now), pressed ~= nil, keeps)
 			if action == "start" then
 				startCharge(ctx, now)
@@ -2301,6 +2394,9 @@ function ThrowController.throwAt(point: Vector3): (boolean, string?)
 	end
 	if pending ~= nil or ownWindupBusy() or isRooted(now) or now < readyFor(ctx) or handsBusy(now) then
 		return false, "throw.cooldown"
+	end
+	if ThrowController.atThrowCap(ctx.kind) then
+		return false, "throw.tooMany" -- power-ups v1.1 review fix: the server's reason
 	end
 	return fire(ctx, point, nil)
 end

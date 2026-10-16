@@ -79,6 +79,15 @@
 --   touches the capsule; releaseFighter drops one fighter who left a running match (SPEC D6) while the rest play on;
 --   groundProbe / groundUnder are the open map's ground under a player (a body-radius Spherecast), shared by
 --   DashService and AbilityService.
+-- * Power-ups v1.1 (2026-10-16, MatchService's pads; every change is for an ffa port only): a throw asks
+--   port.cooldownMultiplier(thrower) (the rapid throw's 0) and the new optional port.throwSpeedMultiplier(thrower) (the
+--   throw boost; ThrowRules multiplies the launch speed, so ThrowStarted's velocity already carries it for every
+--   client); an applied outcome with `blocked` (the victim's shield, MatchRules shieldBlocked) is an impact that ends
+--   the throw at the victim (a lane or the roller flies on past it; an area counts it) with ThrowImpact `blocked =
+--   true` and eliminated false, but no hit: no Hit / Eliminated signal (no ult charge, no telegraph cancel, no quest
+--   hit) and no hit counters; the movement guard's speed limit (and a root's stopping distance) grows with the new
+--   optional port.movement(fighter) walk speed over Config.Duel.Rules.Movement.WalkSpeed (the speed boost), never
+--   below the configured limit.
 -- * CombatLog counters (§12 #23): rejections per reason and throws / hits / wins per squishy; userIds only in logs.
 --   A payload failure that only ThrowRules can see (the seq window, §5.6 #2) is reported to NetService as a violation.
 -- Signals (upward communication, §2.6): Hit(info), Eliminated(info), ThrowAccepted(info).
@@ -172,6 +181,8 @@ export type HitOutcome = {
 	lives: number,
 	invulnUntil: number,
 	eliminated: boolean,
+	-- Power-ups v1.1 (2026-10-16, an ffa port only): the victim's shield took the hit (no K.O.); see the header.
+	blocked: boolean?,
 }
 
 -- How CombatService talks to the owner of a match (DuelService; FFA/TDM v1: MatchService). Every call is synchronous
@@ -185,7 +196,17 @@ export type MatchPort = {
 	ffa: boolean?,
 	teams: boolean?,
 	phase: () -> string, -- Types.DuelPhase (MatchService maps MatchRules' phases onto these names, SPEC D1)
-	cooldownMultiplier: () -> number, -- DuelRules.cooldownMultiplier
+	-- DuelRules.cooldownMultiplier. Power-ups v1.1 (2026-10-16): an ffa port is handed the thrower (MatchService: the
+	-- rapid throw's multiplier while it lives); a duel's closure takes no argument and is called with none.
+	cooldownMultiplier: (fighter: Fighter?) -> number,
+	-- Power-ups v1.1 (2026-10-16), optional, read only on an ffa port (nil = 1 / false / the plain movement):
+	-- × the fighter's throw launch speed now (the throw boost);
+	throwSpeedMultiplier: ((fighter: Fighter) -> number)?,
+	-- true while the fighter's dash has no cooldown (the dash boost; DashService);
+	dashCooldownFree: ((fighter: Fighter) -> boolean)?,
+	-- the walk speed and jump height the fighter has when standing free now (Config.Duel.Rules.Movement × its speed /
+	-- super jump power-ups): the movement guard's speed limit and AbilityService's movement at a root's end.
+	movement: ((fighter: Fighter) -> (number, number))?,
 	placement: (fighter: Fighter) -> CFrame?, -- where the fighter stands on its own pad (§5.4 height included)
 	-- DuelRules.canBeHit (FFA/TDM v1: MatchRules.canBeHit; `attacker` is passed only for an ffa port, a duel's closure
 	-- takes two arguments).
@@ -1116,6 +1137,34 @@ local function rewind(candidate: Candidate)
 	candidate.proj.lastT = candidate.a
 end
 
+-- Power-ups v1.1 (2026-10-16, an ffa port): the victim's shield took this hit (the owner's outcome says `blocked`). It is
+-- an impact, so the projectile never meets the unshielded victim again a step later: a throw ends at the shield, a lane
+-- or the roller flies on past it (hitOnce), an area counts it. ThrowImpact carries blocked = true (no K.O.); it is no
+-- hit: no Hit / Eliminated signal, no hit counters. The knockback grace stays (the client may still push the victim).
+local function applyShieldBlock(candidate: Candidate, victim: Fighter, outcome: HitOutcome)
+	local proj = candidate.proj
+	victim.invulnUntil = outcome.invulnUntil
+	MovementRules.grace(victim.guard, candidate.time + GUARD.hitGraceSeconds)
+	proj.hitOnce[victim] = true
+	bump(counters.impacts, "blocked")
+	local payload = impactPayload(candidate)
+	payload.victimId = victim.userId
+	payload.livesLeft = outcome.lives
+	payload.invulnUntil = outcome.invulnUntil
+	payload.knockbackDir = candidate.direction
+	payload.eliminated = false
+	payload.blocked = true
+	sendTo(proj, "ThrowImpact", payload, candidate.position)
+	if proj.area ~= nil then
+		proj.areaHits += 1
+	end
+	if proj.flyOn or proj.area ~= nil then
+		rewind(candidate)
+	else
+		finish(proj)
+	end
+end
+
 local function applyPlayerHit(candidate: Candidate)
 	local proj = candidate.proj
 	local outcome = candidate.outcome
@@ -1123,6 +1172,10 @@ local function applyPlayerHit(candidate: Candidate)
 	local port = proj.port
 	if outcome == nil or victim == nil or port == nil then
 		rewind(candidate)
+		return
+	end
+	if port.ffa and outcome.blocked == true then
+		applyShieldBlock(candidate, victim, outcome) -- power-ups v1.1: a shield, not a hit
 		return
 	end
 	local attacker = proj.owner :: Fighter
@@ -1443,7 +1496,10 @@ local function duelState(fighter: Fighter, port: MatchPort, now: number): ThrowR
 		ownHalf = if port.ffa then arena.zones.Bounds else arena.zones[HALF_BY_SIDE[fighter.side]],
 		ping = pingOf(fighter.player),
 		throw = fighter.throw,
-		cooldownMultiplier = port.cooldownMultiplier(),
+		-- Power-ups v1.1: an ffa port answers for this thrower (the rapid throw); a duel's takes no argument.
+		cooldownMultiplier = if port.ffa then port.cooldownMultiplier(fighter) else port.cooldownMultiplier(),
+		-- Power-ups v1.1: the throw boost (an ffa port only; nil = 1).
+		speedMultiplier = if port.ffa and port.throwSpeedMultiplier then port.throwSpeedMultiplier(fighter) else nil,
 		isClear = function(from: Vector3, to: Vector3): boolean
 			return Workspace:Raycast(from, to - from, arena.raycastParams) == nil
 		end,
@@ -2075,6 +2131,23 @@ function CombatService.noteTeleport(fighter: Fighter)
 	MovementRules.grace(fighter.guard, serverNow() + GUARD.teleportGraceSeconds)
 end
 
+-- Power-ups v1.1 (2026-10-16): the Config copy MovementRules reads for a fighter `factor` times faster than the match
+-- walk speed (the speed boost): maxHorizontalSpeed × factor, everything else the live Config. nil for factor <= 1 (the
+-- live Config itself). Cached per factor (a handful of values: Config.Match.PowerUps.kinds.speed.walkMultiplier).
+local fasterGuards: { [number]: MovementRules.MovementConfig } = {}
+local function guardConfigFor(factor: number): MovementRules.MovementConfig?
+	if not (factor > 1) then
+		return nil
+	end
+	local cached = fasterGuards[factor]
+	if cached == nil then
+		local guard = setmetatable({ maxHorizontalSpeed = GUARD.maxHorizontalSpeed * factor }, { __index = GUARD })
+		cached = { Combat = setmetatable({ MovementGuard = guard }, { __index = Config.Combat }), Duel = Config.Duel }
+		fasterGuards[factor] = cached
+	end
+	return cached
+end
+
 -- One movement-guard sample of one fighter (§5.7): pivot back, or hand an out-of-bounds to the match owner.
 local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 	if fighter.player == nil or not fighter.isAlive() then
@@ -2083,10 +2156,18 @@ local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 	local root = fighter.getRoot()
 	local zones = port.arena.zones
 	local own = zones[HALF_BY_SIDE[fighter.side]]
+	local speedFactor = 1 -- power-ups v1.1: how much faster than the match walk speed this fighter may walk
 	if port.ffa then
 		-- FFA/TDM v1: an open map has no halves and no neutral band; its Bounds is the own zone and the only one.
 		own = zones.Bounds
 		zones = if own then { Bounds = own } else {}
+		local movement = port.movement
+		if movement then
+			local walk = movement(fighter)
+			if type(walk) == "number" and walk == walk then
+				speedFactor = math.max(1, walk / RULES.Movement.WalkSpeed) -- the speed boost (never a lower limit)
+			end
+		end
 	end
 	if root == nil or own == nil then
 		return
@@ -2118,15 +2199,16 @@ local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 		holdAt = if pad then pad.Position else nil
 	end
 	local holdSlack = if rooted and not countdown
-		then RULES.Movement.WalkSpeed * math.min(pingOf(fighter.player), THROW_CFG.originPingCapSeconds)
+		then RULES.Movement.WalkSpeed * speedFactor * math.min(pingOf(fighter.player), THROW_CFG.originPingCapSeconds)
 		else 0
+	local guardCfg = guardConfigFor(speedFactor) -- power-ups v1.1: nil (the live Config) unless speed-boosted
 	local verdict = MovementRules.evaluate(fighter.guard, {
 		position = root.Position,
 		insideGeometry = insideGeometry,
 		held = countdown or rooted,
 		holdAt = holdAt,
 		holdSlack = holdSlack,
-	}, { own = own, neutral = zones.Neutral, opponent = opponentHalf, floorY = port.arena.floorY }, now)
+	}, { own = own, neutral = zones.Neutral, opponent = opponentHalf, floorY = port.arena.floorY }, now, guardCfg)
 	if verdict.action == "pivotBack" then
 		counters.guardPivots += 1
 		countersDirty = true

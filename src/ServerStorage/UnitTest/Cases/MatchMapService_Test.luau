@@ -7,6 +7,9 @@
 -- the asked mode (at random) and release frees it; recordFrom reads an unparented Model (pads, power-up pads, the
 -- collidable parts, the spawn set) and refuses a map without the pads its mode needs; the box queries (OverlapParams)
 -- leave out meshes without Box collision fidelity (critic fix 2026-10-15). Config tables are passed in.
+-- Power-ups v1.1 (2026-10-16): powerUpPad gives a pad's name, its box centre and the top of its collidable parts (Diego's
+-- *_COL, under the floating pickup; a turned part's turned box; none: the box's bottom); recordFrom lists one record
+-- per power-up pad in the order of powerUpPads.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -250,4 +253,92 @@ return function(t: Context)
 			folder:Destroy()
 		end
 	)
+
+	-- Power-ups v1.1 (2026-10-16): Diego's pads are Models (*_Ring, *_Fill, a floating *_Pickup, the pad and its *_COL
+	-- proxy, the only collidable part); a player stands on the COL's top, not on the box's top (the pickup's).
+	t.test(
+		"powerUpPad: the name, the box centre, and the top of the collidable part (none: the box's bottom)",
+		function()
+			local pad = Instance.new("Model")
+			pad.Name = "JAR_PowerUp_Pad_01"
+			local function part(name: string, y: number, size: Vector3, collide: boolean, cf: CFrame?): Part
+				local p = Instance.new("Part")
+				p.Name = name
+				p.Anchored = true
+				p.CanCollide = collide
+				p.Size = size
+				p.CFrame = cf or CFrame.new(7500, y, 0)
+				p.Parent = pad
+				return p
+			end
+			part("SH_PowerUp_Pad", 8.25, Vector3.new(8, 0.5, 8), false)
+			part("SH_PowerUp_Pad_COL", 8.25, Vector3.new(8, 0.5, 8), true)
+			part("SH_PowerUp_Pad_Pickup", 11.59, Vector3.new(3.7, 3.5, 1.5), false)
+			-- The box the caller passes (a Model's GetBoundingBox): pad bottom 8 .. pickup top 13.34.
+			local box = CFrame.new(7500, (8 + 13.34) / 2, 0)
+			local size = Vector3.new(8, 13.34 - 8, 8)
+			local record = MatchMapService.powerUpPad(pad, box, size)
+			expect.equal(record.name, "JAR_PowerUp_Pad_01")
+			expect.near((record.position - box.Position).Magnitude, 0, 1e-6)
+			expect.near(record.top, 8.5, 1e-4)
+			-- A turned collidable part: the top of its turned box.
+			local turned = part(
+				"Tilted_COL",
+				20,
+				Vector3.new(4, 1, 2),
+				true,
+				CFrame.new(7500, 20, 0) * CFrame.Angles(0, 0, math.rad(90))
+			)
+			expect.near(MatchMapService.powerUpPad(pad, box, size).top, 22, 1e-4) -- 4 studs tall now: 20 + 2
+			turned:Destroy()
+			-- Nothing collides: the box's bottom (the pad lies on the floor under it).
+			pad:FindFirstChild("SH_PowerUp_Pad_COL"):Destroy()
+			expect.near(MatchMapService.powerUpPad(pad, box, size).top, 8, 1e-4)
+			-- A single part pad: its own top.
+			local single = Instance.new("Part")
+			single.Name = "TBC_PowerUp_Pad_02"
+			single.CanCollide = true
+			single.Size = Vector3.new(6, 0.5, 6)
+			single.CFrame = CFrame.new(6020, 0.25, 0)
+			local one = MatchMapService.powerUpPad(single, single.CFrame, single.Size)
+			expect.equal(one.name, "TBC_PowerUp_Pad_02")
+			expect.near(one.top, 0.5, 1e-6)
+			single:Destroy()
+			pad:Destroy()
+		end
+	)
+
+	t.test("recordFrom: each power-up pad's record (name, centre, top) next to its position", function()
+		local model = Instance.new("Model")
+		model.Name = "TBC"
+		model:SetAttribute("Mode", "TDM")
+		model:SetAttribute("MapCode", "TBC")
+		model.WorldPivot = CFrame.new(6000, 0, 0)
+		local function part(name: string, position: Vector3, size: Vector3): Part
+			local p = Instance.new("Part")
+			p.Name = name
+			p.Anchored = true
+			p.Size = size
+			p.CFrame = CFrame.new(position)
+			p.Parent = model
+			return p
+		end
+		part("TBC_Spawn_Red_01", Vector3.new(6000, 0.25, -100), Vector3.new(30, 0.5, 20))
+		part("TBC_Spawn_Blue_01", Vector3.new(6000, 0.25, 100), Vector3.new(30, 0.5, 20))
+		part("TBC_PowerUp_Pad_01", Vector3.new(6020, 0.25, 0), Vector3.new(6, 0.5, 6))
+		part("TBC_PowerUp_Pad_02", Vector3.new(5980, 8.25, 0), Vector3.new(6, 0.5, 6))
+		local record = MatchMapService.recordFrom(model, CFG)
+		assert(record ~= nil, "no record")
+		local pads = record.powerUps :: { any }
+		expect.equal(#pads, 2)
+		expect.equal(#record.powerUpPads, 2)
+		local byName = {}
+		for index, pad in pads do
+			byName[pad.name] = pad
+			expect.near((pad.position - record.powerUpPads[index]).Magnitude, 0, 1e-6) -- the same order
+		end
+		expect.near(byName.TBC_PowerUp_Pad_01.top, 0.5, 1e-6)
+		expect.near(byName.TBC_PowerUp_Pad_02.top, 8.5, 1e-6)
+		model:Destroy()
+	end)
 end

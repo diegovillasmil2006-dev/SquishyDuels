@@ -51,6 +51,12 @@
 --   (arena.bounds; no halves) and there is no floor height (FloorMaterial only: Diego's maps have platforms, and the
 --   server checks the ground under the player too). The glow follows the team (StateController.matchSide: TDM Blue
 --   Mint, else Strawberry); in a match every other player's dash is the other-player priority (-1) and low particles.
+-- * Power-ups v1.1 (2026-10-16, SPEC P3): while the own dash boost lives (the match view's you.buffs.dashBoost,
+--   StateController.hasBuff) the gate skips the cooldown (GateFacts.cooldownFree), as DashService does for it, and the
+--   touch Dash button shows ready. The client is the stricter side: the boost must still live half a round trip later
+--   (Player:GetNetworkPing() / 2), when the request reaches the server. Every other rule is unchanged. Review fix
+--   (2026-10-16): plus Config.Combat.Lag.halfPingExtraSeconds (the frames GetNetworkPing leaves out, as the server's
+--   lag model), and the touch button uses the same time as the gate.
 -- API: gate(facts), contextFor(duelOn, practiceOn, duelView, matchView), pushoffFoot(key), plantFoot(key),
 --   holdWeight(frame), tintFor(side), glowFor(side), ghostTimes(), blocked(lagStuds), parseDashStarted(raw) (pure,
 --   unit-tested); endDistance(origin, dir, zone); isDashing(), counts(); init(), destroy().
@@ -105,6 +111,7 @@ export type GateFacts = {
 	grounded: boolean,
 	now: number, -- server time
 	lastDashAt: number, -- server time of the own last dash (-math.huge before one)
+	cooldownFree: boolean?, -- power-ups v1.1: a match dash boost lives (no cooldown)
 }
 
 -- One dash on screen (the own predicted one, or another player's from DashStarted).
@@ -143,6 +150,8 @@ local KEYS = ANIM.keys :: any -- { [DashKey]: { DashMath.Key } }
 local FX = Config.Vfx.Dash
 local HITBOX = Config.Combat.Hitbox
 local ZONE_TOLERANCE = Config.Combat.Throw.zoneToleranceStuds
+-- Power-ups v1.1 review fix: a request reaches the server at most this much after half the ping (as ThrowRules' lag).
+local PRESS_ARRIVAL_EXTRA = Config.Combat.Lag.halfPingExtraSeconds
 local STANDING_HEIGHT = HITBOX.radius - HITBOX.bottomOffset -- the HRP over the floor when standing (3.0)
 local LIVE_PHASES: { [string]: boolean } = { Active = true, SuddenDeath = true }
 local REASON_CONTEXT = "dash.context"
@@ -314,6 +323,21 @@ local function ultBusy(): boolean
 	return phase == "cast" or phase == "telegraph"
 end
 
+-- Power-ups v1.1: the own dash boost still lives when a press sent now reaches the server. Review fix: that is half
+-- the ping plus PRESS_ARRIVAL_EXTRA later (GetNetworkPing leaves out the frames before the request is sent and handled;
+-- the server's own lag model, Config.Combat.Lag), and the touch button uses the same time, so it stops showing ready
+-- exactly when the gate stops allowing.
+local function dashBoostFree(match: StateController.MatchView?, now: number): boolean
+	if match == nil then
+		return false
+	end
+	local ok, ping = pcall(function(): any
+		return localPlayer():GetNetworkPing()
+	end)
+	local lead = (if ok and isFiniteNumber(ping) and ping > 0 then ping / 2 else 0) + PRESS_ARRIVAL_EXTRA
+	return StateController.hasBuff(match, "dashBoost", now + lead)
+end
+
 local function factsNow(now: number, root: BasePart?, humanoid: Humanoid?): GateFacts
 	local context = currentContext()
 	local view = StateController.duel()
@@ -343,6 +367,7 @@ local function factsNow(now: number, root: BasePart?, humanoid: Humanoid?): Gate
 		grounded = grounded,
 		now = now,
 		lastDashAt = lastDashAt,
+		cooldownFree = dashBoostFree(match, now), -- power-ups v1.1
 	}
 end
 
@@ -715,7 +740,9 @@ local function updateTouch(now: number)
 	if not ControlsController.touchButtonsShown() then
 		return
 	end
-	local ready = lastDashAt + DASH.cooldownSeconds
+	-- Power-ups v1.1: the dash boost shows the button ready (review fix: as long as the gate allows a press).
+	local free = currentContext() == "match" and dashBoostFree(StateController.match(), now)
+	local ready = if free then now else lastDashAt + DASH.cooldownSeconds
 	local progress = ThrowController.cooldownProgress(now, lastDashAt, ready)
 	local label: string? = nil
 	if progress < 1 then
@@ -767,7 +794,8 @@ function DashController.gate(facts: GateFacts): string?
 	if not facts.grounded then
 		return REASON_AIRBORNE
 	end
-	if facts.now < facts.lastDashAt + DASH.cooldownSeconds then
+	-- Power-ups v1.1: no cooldown while a match dash boost lives (cooldownFree).
+	if facts.cooldownFree ~= true and facts.now < facts.lastDashAt + DASH.cooldownSeconds then
 		return REASON_COOLDOWN
 	end
 	return nil

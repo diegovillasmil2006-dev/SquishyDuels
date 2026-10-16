@@ -13,6 +13,8 @@
 --   the server's Result says `charged = false` (§2.10, §11.3).
 -- FFA/TDM v1 (2026-10-15): match.* holds every Free for All / Team Deathmatch text (MatchService toasts, refusals, the
 -- client's test readout).
+-- Power-ups v1.1 (2026-10-16): match.powerUp.<kind> (the pickup toast), match.readout.powerUp and
+-- match.readout.powerUpName.<kind> (the test readout's live power-ups).
 
 export type FormatArgs = { [string]: any }
 
@@ -415,10 +417,23 @@ local Strings = {
 			practice = "Leave the Practice Range first.",
 			noMaps = "{mode} isn't available on this server yet.",
 		},
+		-- Power-ups v1.1 (2026-10-16): the toast MatchService sends the player who took a pad, by Config.Match.PowerUps
+		-- kind.
+		powerUp = {
+			shield = "SHIELD!",
+			speed = "SPEED BOOST!",
+			throwBoost = "THROW BOOST!",
+			ultCharge = "ULT CHARGE!",
+			dashBoost = "DASH BOOST!",
+			rapidThrow = "RAPID THROW!",
+			superJump = "SUPER JUMP!",
+			teamLife = "+1 TEAM LIFE!",
+		},
 		-- The client's test readout (one Components/Chip at the top, until Diego's arena HUD): the mode's piece, then the
 		-- extra pieces that apply, joined with `separator`. {mine} / {target} = your K.O.s / the mode's koTarget,
 		-- {leaderName} / {leaderKos} = the leader, {redLives} / {blueLives} = the team lives, {time} = m:ss left in the
-		-- phase, {pct} = your storm bar (0-100), {seconds} = seconds until you are back in.
+		-- phase, {pct} = your storm bar (0-100), {seconds} = seconds until you are back in. Power-ups v1.1 (2026-10-16):
+		-- powerUp = one live power-up, {name} = its powerUpName.<kind> text below, {seconds} = whole seconds left.
 		readout = {
 			ffa = "K.O. {mine}/{target} · 1st {leaderName} {leaderKos} · {time}",
 			tdm = "RED {redLives} · BLUE {blueLives} · {time}",
@@ -428,6 +443,16 @@ local Strings = {
 			out = "OUT",
 			waiting = "Get ready…",
 			separator = " · ",
+			powerUp = "{name} {seconds}s",
+			-- The short names of the timed power-ups (Config.Match.PowerUps kinds with seconds).
+			powerUpName = {
+				shield = "SHIELD",
+				speed = "SPEED",
+				throwBoost = "THROW",
+				dashBoost = "DASH",
+				rapidThrow = "RAPID",
+				superJump = "JUMP",
+			},
 		},
 	},
 

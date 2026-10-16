@@ -6,6 +6,8 @@
 -- Where DESIGN names a payload field but not its exact type, the reading is marked "reading:".
 -- FFA/TDM v1 (2026-10-15): MatchMode, MatchParticipantView, MatchStateView (the MatchState remote) and the MatchJoin /
 -- MatchLeave calls.
+-- Power-ups v1.1 (2026-10-16): MatchYouView.buffs (the live timed power-ups), MatchPadView / MatchStateView.pads (the
+-- map's power-up pads and when each is ready) and ThrowImpactPayload.blocked (a shield took the hit).
 
 -- == Catalog (§4.1) ==
 
@@ -316,6 +318,8 @@ export type MatchParticipantView = {
 
 -- The receiving player's own state. Server times; respawnAt = while knocked out (nil when standing or out);
 -- protectUntil = the spawn protection's end (0 = none); stormBar 0..1 (TDM); out = TDM, no team life left.
+-- Power-ups v1.1 (2026-10-16): buffs = the player's live timed power-ups, Config.Match.PowerUps kind -> the server
+-- time it ends (an ended or used-up one is left out; a K.O. clears them all).
 export type MatchYouView = {
 	userId: number,
 	team: string?,
@@ -324,7 +328,13 @@ export type MatchYouView = {
 	protectUntil: number,
 	stormBar: number,
 	out: boolean,
+	buffs: { [string]: number },
 }
+
+-- Power-ups v1.1 (2026-10-16): one power-up pad of the map: its instance name under the map's model (the client finds
+-- it for Diego's MapAnimations_<code>.Collect(padModel, seconds)) and the server time it is ready again (0 = ready).
+-- A pickup raises readyAt to the pickup time + Config.Match.PowerUps.padRefillSeconds.
+export type MatchPadView = { name: string, readyAt: number }
 
 -- MatchRules' outcome: kind "win" | "draw" | "cancelled" | "void"; reason koTarget, wiped, timeUp, overtime,
 -- overtimeTimeout, lastPlayer, notEnoughPlayers, shutdown, error or empty; winners = every winning userId.
@@ -342,6 +352,8 @@ export type MatchArenaView = { floorY: number, bounds: ArenaZone, centre: Vector
 -- The MatchState payload (one per player): sent on the first view, every phase change, K.O., respawn, team-lives
 -- change and outcome, plus the own view when `you.stormBar` moved (at most Config.Match.Storm.sampleHz a second).
 -- A last view with phase "Returning", then the cleared attributes (SD_MatchId "") end it on the client.
+-- Power-ups v1.1 (2026-10-16): also on every pickup (everyone: a pad's readyAt rose), a shield used up, and to the
+-- player whose timed power-up just ended.
 export type MatchStateView = {
 	matchId: string,
 	mode: MatchMode,
@@ -358,6 +370,7 @@ export type MatchStateView = {
 	arena: MatchArenaView,
 	storm: { startRadius: number }?, -- TDM only (StormMath.startRadius of the map's footprint)
 	outcome: MatchOutcomeView?,
+	pads: { MatchPadView }, -- power-ups v1.1: every power-up pad of the map (empty when it has none)
 }
 
 -- One queue entry (§5.4), as QueueService keeps it and Logic/Matchmaker reads it. `priority` is
@@ -543,6 +556,9 @@ export type ThrowImpactPayload = {
 	-- reading (not in §2.8's field list): kind "target" names the practice target that was hit (its TargetId), so
 	-- the client squishes the right one (§5.11) without guessing from the position.
 	targetId: string?,
+	-- Power-ups v1.1 (2026-10-16, Free for All / Team Deathmatch only): true = the victim's shield took this hit (kind
+	-- "player", eliminated false: no K.O., the shield is used up; the throw ends there). nil = a normal hit.
+	blocked: boolean?,
 }
 
 export type UltimatePhase = "telegraph" | "release" | "cancel"

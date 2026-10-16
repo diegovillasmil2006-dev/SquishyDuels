@@ -9,6 +9,12 @@
 -- respawnInsetStuds, wall), the client's test readout (readoutHz) and the spread at the lobby return points
 -- (returnSpreadStuds). Read by Server/Services/MatchService, MatchMapService, Logic/MatchSpawns, CombatService
 -- (Maps.groundProbeStuds) and the client's MatchController.
+-- Power-ups v1.1 (2026-10-16, jayyyyy's pads): who takes a pad (PowerUps.pickupRadiusStuds / pickupHeightStuds,
+-- sampled at Storm.sampleHz in both modes) and what each timed power-up does (kinds.*: speed walkMultiplier, superJump
+-- jumpMultiplier, rapidThrow cooldownMultiplier, throwBoost speedMultiplier). Read by Server/Services/MatchService (the
+-- pads, the movement and the port callbacks CombatService and DashService ask) and the client's Throw / Dash
+-- controllers (their predictions mirror the same numbers). Review fixes (2026-10-16): rapid throw's 0 means the
+-- shortest cooldown (CooldownClamp.Min), not none; the dash boost is one dash after the other.
 --
 -- The rules in plain words:
 --   * One hit = knocked out (K.O.) in both modes. Back in after respawnSeconds with spawnProtectSeconds of safety.
@@ -19,7 +25,8 @@
 --   * A tie at time-up goes to overtime: the next K.O. decides it (TDM: the team that scores it wins; FFA: the first
 --     time one player alone leads). After overtimeMaxSeconds without a winner it is a draw [P] (a safety net).
 --   * Power-up pads give one random power-up (PowerUps.kinds, equal chance; teamLife only in TDM); a pad refills
---     PowerUps.padRefillSeconds after a pickup.
+--     PowerUps.padRefillSeconds after a pickup. A standing player takes a ready pad by standing on it (within
+--     pickupRadiusStuds of its centre, pickupHeightStuds of standing height on it).
 
 export type Mode = {
 	teams: boolean, -- TDM: Red vs Blue; FFA: everyone for themselves
@@ -34,6 +41,12 @@ export type PowerUp = {
 	seconds: number?, -- how long it lasts (nil = instant)
 	ultFraction: number?, -- ultCharge: share of the full ult meter it adds
 	teamsOnly: boolean?, -- only in a mode with teams (TDM)
+	-- Power-ups v1.1 (2026-10-16): what a timed kind changes while it lasts.
+	walkMultiplier: number?, -- speed: × Config.Duel.Rules.Movement.WalkSpeed
+	jumpMultiplier: number?, -- superJump: × Config.Duel.Rules.Movement.JumpHeight
+	-- rapidThrow: × the throw cooldown, never below Config.Duel.Rules.CooldownClamp.Min (0 = that shortest cooldown)
+	cooldownMultiplier: number?,
+	speedMultiplier: number?, -- throwBoost: × the throw's launch speed
 }
 
 local Match = {
@@ -128,16 +141,23 @@ local Match = {
 
 	PowerUps = {
 		padRefillSeconds = 20,
+		-- Power-ups v1.1 (2026-10-16): a standing player whose HumanoidRootPart is within pickupRadiusStuds of a ready
+		-- pad's centre (horizontally) and within pickupHeightStuds of standing height on the pad's top takes it.
+		pickupRadiusStuds = 4, -- [P]
+		pickupHeightStuds = 6, -- [P]
 		-- Pick order (also the random roll's order). Boosts last 6 s; dash boost 5 s (user).
 		order = { "shield", "speed", "throwBoost", "ultCharge", "dashBoost", "rapidThrow", "superJump", "teamLife" },
 		kinds = {
 			shield = { seconds = 6 } :: PowerUp, -- blocks the next hit while it lasts
-			speed = { seconds = 6 } :: PowerUp, -- run faster
-			throwBoost = { seconds = 6 } :: PowerUp, -- throws hit harder
+			speed = { seconds = 6, walkMultiplier = 1.6 } :: PowerUp, -- run faster (user: x1.6)
+			throwBoost = { seconds = 6, speedMultiplier = 1.4 } :: PowerUp, -- throws fly 40% faster (user)
 			ultCharge = { ultFraction = 0.5 } :: PowerUp, -- [P] instant: half the ult meter
-			dashBoost = { seconds = 5 } :: PowerUp, -- no dash cooldown
-			rapidThrow = { seconds = 6 } :: PowerUp, -- no wait between throws
-			superJump = { seconds = 6 } :: PowerUp, -- jump much higher
+			-- no dash cooldown: one dash after the other (the next once the last one's pose has played, 0.4 s;
+			-- DashService), under Config.Net's DashRequest bucket
+			dashBoost = { seconds = 5 } :: PowerUp,
+			-- no wait between throws: the shortest cooldown, Config.Duel.Rules.CooldownClamp.Min (0.6 s; MatchService)
+			rapidThrow = { seconds = 6, cooldownMultiplier = 0 } :: PowerUp,
+			superJump = { seconds = 6, jumpMultiplier = 2 } :: PowerUp, -- jump 2x as high (user)
 			teamLife = { teamsOnly = true } :: PowerUp, -- +1 team life; at 0 lives a knocked-out teammate comes back
 		},
 	},

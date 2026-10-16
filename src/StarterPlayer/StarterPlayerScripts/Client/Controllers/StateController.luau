@@ -59,6 +59,12 @@
 --   (FFA: everyone else; TDM: the other team), enemyIds(view), matchParticipant(view, userId), matchSide(view,
 --   userId) (TDM Blue = "B", else "A"; the side letters of the dash / jump glow), isMatchId(id). A DuelResult for a
 --   match id is not passed on (no 1v1 result card for a match).
+--   Power-ups v1.1 (2026-10-16, SPEC P2/P3): the payload's `you.buffs` (power -> server time it ends; only live ones)
+--   become you.buffs (a full `you` without buffs has none; a partial one keeps them) and its `pads` ({name, readyAt},
+--   server time; 0 / -inf = ready, stored as 0) the view's pads (kept when a state leaves them out). Pure helpers:
+--   hasBuff(view, power, now) (live while now < its end, as MatchRules.hasBuff) and buffMultiplier(view, power, field,
+--   now, powerUps?) (that kind's Config.Match.PowerUps number while it lives, else 1): ThrowController's rapid throw
+--   and throw boost, DashController's dash boost.
 -- * Lobby lock (§5.4, §11.1): from Matched through Returning, isLobbyLocked() is true (LobbyLockChanged): menus,
 --   equip, Inspect, boxes and shop refuse to open. FFA/TDM v1: also for the whole match view.
 -- The reducers (reduceProfile, normalizeField, trackNewOwned, reduceQueue, reduceDuel, reduceMatch, lobbyLocked,
@@ -150,6 +156,14 @@ export type MatchYou = {
 	protectUntil: number, -- server time
 	stormBar: number, -- 0..1
 	out: boolean, -- TDM: no team life left
+	buffs: { [string]: number }, -- power-ups v1.1: power -> server time it ends (Config.Match.PowerUps.kinds keys)
+}
+
+-- Power-ups v1.1 (SPEC P2): one power-up pad of the map, by its model's name (a Workspace.DuelMaps child, e.g.
+-- "JAR_PowerUp_Pad_01"); readyAt = the server time it refills (0 = ready).
+export type MatchPad = {
+	name: string,
+	readyAt: number,
 }
 
 export type MatchOutcome = {
@@ -182,6 +196,7 @@ export type MatchView = {
 	arena: MatchArena,
 	storm: { startRadius: number }?,
 	outcome: MatchOutcome?,
+	pads: { MatchPad }, -- power-ups v1.1 (empty until the server sends them)
 	charges: { [number]: number }, -- ultimate charge by userId (UltimateCharge)
 	receivedAt: number, -- os.clock() of the last MatchState
 }
@@ -413,6 +428,36 @@ local function findPlayer(players: { MatchPlayer }, userId: number): MatchPlayer
 	return nil
 end
 
+-- Power-ups v1.1: the own live power-ups (power name -> finite end time; other entries are skipped), nil when the
+-- payload has no table.
+local function buffsFrom(raw: unknown): { [string]: number }?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local buffs: { [string]: number } = {}
+	for power, untilAt in raw :: any do
+		if type(power) == "string" and finite(untilAt) then
+			buffs[power] = untilAt
+		end
+	end
+	return buffs
+end
+
+-- Power-ups v1.1: the map's power-up pads ({name, readyAt}; a readyAt that is not a finite number, -inf included,
+-- is 0 = ready); nil when the payload has no list. Entries without a name are skipped.
+local function padsFrom(raw: unknown): { MatchPad }?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local pads: { MatchPad } = {}
+	for _, entry in raw :: any do
+		if type(entry) == "table" and type(entry.name) == "string" and entry.name ~= "" then
+			table.insert(pads, { name = entry.name, readyAt = if finite(entry.readyAt) then entry.readyAt else 0 })
+		end
+	end
+	return pads
+end
+
 -- The own state: a full `you` (it has a userId) replaces the old one; one without a userId (a partial update of the
 -- same match, e.g. the storm bar) changes only the fields it has. The name and squishy come from the players entry.
 local function matchYouFrom(raw: unknown, players: { MatchPlayer }, old: MatchYou?): MatchYou?
@@ -431,6 +476,8 @@ local function matchYouFrom(raw: unknown, players: { MatchPlayer }, old: MatchYo
 	local userId: number = if partial then (old :: MatchYou).userId else t.userId
 	local entry = findPlayer(players, userId)
 	local stormBar = field("stormBar", finite(t.stormBar)) or 0
+	-- Power-ups v1.1: a full you without buffs has none; a partial one keeps the old ones.
+	local buffs = buffsFrom(t.buffs) or (if partial and old then old.buffs else {})
 	return {
 		userId = userId,
 		displayName = if entry then entry.displayName elseif old then old.displayName else "",
@@ -441,6 +488,7 @@ local function matchYouFrom(raw: unknown, players: { MatchPlayer }, old: MatchYo
 		protectUntil = field("protectUntil", finite(t.protectUntil)) or 0,
 		stormBar = math.clamp(stormBar, 0, 1),
 		out = field("out", type(t.out) == "boolean") == true,
+		buffs = buffs,
 	}
 end
 
@@ -1089,7 +1137,8 @@ end
 -- FFA/TDM v1 (SPEC C4/C5): applies one match event to the current match view (nil = not in a match). Returns the new
 -- view (the same table when nothing changes, nil when the match is over for this client). A state of a new match needs
 -- matchId, a DuelPhase-named phase, phaseEndsAt, mode ("ffa" / "tdm") and you (with its userId); a state of the same
--- match keeps every field it leaves out, and never moves the match back a phase.
+-- match keeps every field it leaves out, and never moves the match back a phase. Power-ups v1.1: you.buffs and pads
+-- (see the header).
 function StateController.reduceMatch(view: MatchView?, event: MatchEvent): MatchView?
 	if event.kind == "state" then
 		local raw = event.state
@@ -1148,6 +1197,7 @@ function StateController.reduceMatch(view: MatchView?, event: MatchEvent): Match
 			arena = keep("arena", matchArenaFrom(s.arena)) or { floorY = 0, bounds = nil, centre = nil },
 			storm = keep("storm", storm),
 			outcome = keep("outcome", outcomeFrom(s.outcome)),
+			pads = keep("pads", padsFrom(s.pads)) or {}, -- power-ups v1.1
 			charges = if old then table.clone(old.charges) else {},
 			receivedAt = event.now,
 		}
@@ -1249,6 +1299,32 @@ function StateController.matchSide(view: MatchView?, userId: number, teamNames: 
 		return "B"
 	end
 	return "A"
+end
+
+-- Power-ups v1.1 (SPEC P3): whether the local player's power-up `power` lives at server time `now` (its end in
+-- you.buffs is still ahead, as MatchRules.hasBuff). False outside a match.
+function StateController.hasBuff(view: MatchView?, power: string, now: number): boolean
+	local buffs = if view then view.you.buffs else nil
+	local untilAt = if buffs then buffs[power] else nil
+	return untilAt ~= nil and now < untilAt
+end
+
+-- Power-ups v1.1 (SPEC P3): the number `field` of that power-up's Config.Match.PowerUps.kinds entry (`powerUps` in
+-- tests) while it lives at `now`, else 1 (no effect; also when the Config has no such number >= 0).
+function StateController.buffMultiplier(
+	view: MatchView?,
+	power: string,
+	field: string,
+	now: number,
+	powerUps: any?
+): number
+	if not StateController.hasBuff(view, power, now) then
+		return 1
+	end
+	local kinds = (powerUps or Config.Match.PowerUps).kinds
+	local kind = if type(kinds) == "table" then kinds[power] else nil
+	local value = if type(kind) == "table" then kind[field] else nil
+	return if finite(value) and value >= 0 then value else 1
 end
 
 -- FFA/TDM v1 (SPEC C2): a match id ("match:<GUID>"), not a duel's.

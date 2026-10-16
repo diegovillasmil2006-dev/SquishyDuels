@@ -24,6 +24,10 @@
 --   waits); a press let go before it was ready still throws uncharged when the throw becomes ready inside the input
 --   buffer, and is dropped outside it; a running charge is the release's (nil); localCharge() is nil, nil, false with
 --   nothing running; Config.Duel.Rules.HoldToCharge replaces HoldToRepeat.
+-- Power-ups v1.1 review fix (2026-10-16): in a 12-player match a throw waits while the own throws in the air reach
+--   the server's MaxActiveProjectilesPerPlayer (projectileCapped); duels and practice never wait for it; outside a
+--   match atThrowCap is false. Integration (2026-10-16): rapidCooldownMultiplier gives the server's number, so a live
+--   rapid throw's cooldown is exactly CooldownClamp.Min.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -816,5 +820,36 @@ return function(t: Context)
 		expect.equal(ThrowController.rejectSound(12, nil), nil) -- nothing pending (it timed out)
 		-- The "nope" never spams: its cooldown is 250 ms.
 		expect.equal(Config.Audio.cooldownMs.error, 250)
+	end)
+
+	t.test("power-ups review fix: a match throw waits while the server's projectile cap is reached", function()
+		local max = Config.Duel.Rules.MaxActiveProjectilesPerPlayer
+		expect.equal(ThrowController.projectileCapped("match", max - 1, max), false)
+		expect.equal(ThrowController.projectileCapped("match", max, max), true) -- the server would say throw.tooMany
+		expect.equal(ThrowController.projectileCapped("match", max + 1, max), true)
+		-- Duels and practice keep the server's answer (unchanged).
+		expect.equal(ThrowController.projectileCapped("duel", max, max), false)
+		expect.equal(ThrowController.projectileCapped("practice", max, max), false)
+		-- Edit mode: no own throw in the air, and outside a match it is never capped.
+		expect.equal(ThrowController.atThrowCap("match"), false)
+		expect.equal(ThrowController.atThrowCap("duel"), false)
+	end)
+
+	t.test("power-ups integration: a match's rapid throw multiplier is the server's (the shortest cooldown)", function()
+		-- MatchService.throwCooldownMultiplier's steps, with the clamp passed in (no cached Config).
+		local clamp = { Min = 0.6, Max = 2.0 }
+		local function cooldownOf(multiplier: number, cooldown: number?): number
+			local seconds = if cooldown then cooldown else clamp.Min
+			return math.clamp(seconds, clamp.Min, clamp.Max)
+				* ThrowController.rapidCooldownMultiplier(multiplier, cooldown, clamp)
+		end
+		expect.near(ThrowController.rapidCooldownMultiplier(0, 1.5, clamp), 0.6 / 1.5, 1e-12)
+		expect.near(cooldownOf(0, 1.5), clamp.Min, 1e-9) -- ThrowRules: clamp(cooldown) × multiplier = Min
+		expect.near(cooldownOf(0, 5), clamp.Min, 1e-9) -- above Max: clamped first, as ThrowRules
+		expect.near(cooldownOf(0, 0.3), clamp.Min, 1e-9) -- below Min: Min
+		expect.near(cooldownOf(0, nil), clamp.Min, 1e-9) -- no catalog cooldown: Min
+		expect.near(ThrowController.rapidCooldownMultiplier(0.8, 1.5, clamp), 0.8, 1e-12) -- 0.8 × 1.5 s > Min: kept
+		expect.equal(ThrowController.rapidCooldownMultiplier(1, 1.5, clamp), 1) -- no rapid throw
+		expect.equal(ThrowController.rapidCooldownMultiplier(1.2, 1.5, clamp), 1.2)
 	end)
 end

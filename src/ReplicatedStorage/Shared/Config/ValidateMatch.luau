@@ -11,6 +11,10 @@
 -- gatherSeconds and readoutHz, whole rewardCoins >= 0, a boolean outOfBoundsIsKo, a footprint (X, Z > 0) and a spot
 -- count for every mode, Bounds that reach down to the kill line, a positive ground probe length, the spawn distances,
 -- the storm's sampleHz and inset, and its test wall (transparency in [0, 1], a height, an Art/Palette colour token).
+-- Power-ups v1.1 (2026-10-16): a positive pickupRadiusStuds and pickupHeightStuds, and each timed power-up's number
+-- when the kind is listed: speed walkMultiplier >= 1 (the movement guard widens its limit by it), superJump
+-- jumpMultiplier >= 1 with the super jump plus the double jump under Maps.boundsTop (a player above the Bounds can't be
+-- hit), rapidThrow cooldownMultiplier in [0, 1], throwBoost speedMultiplier >= 1.
 
 type Problems = { string }
 
@@ -160,6 +164,40 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 				typeof(Palette[wall.color]) == "Color3",
 				`{s}.wall.color {show(wall.color)} must be an Art/Palette colour token`
 			)
+		end
+
+		-- Power-ups v1.1 (2026-10-16): the pickup reach and the timed power-ups' numbers (a kind that is not listed is
+		-- skipped: the order / kinds checks above already report it).
+		local k = `{p}.PowerUps.kinds`
+		expectPositive(problems, `{p}.PowerUps.pickupRadiusStuds`, pu.pickupRadiusStuds)
+		expectPositive(problems, `{p}.PowerUps.pickupHeightStuds`, pu.pickupHeightStuds)
+		local function atLeastOne(path: string, value: unknown)
+			expect(
+				problems,
+				isNumber(value) and (value :: number) >= 1,
+				`{path} must be a number >= 1 (got {show(value)})`
+			)
+		end
+		if pu.kinds.speed then
+			atLeastOne(`{k}.speed.walkMultiplier`, pu.kinds.speed.walkMultiplier)
+		end
+		local superJump = pu.kinds.superJump
+		if superJump then
+			atLeastOne(`{k}.superJump.jumpMultiplier`, superJump.jumpMultiplier)
+			local doubleJump = Duel.Rules.DoubleJump
+			local extra = if doubleJump and isNumber(doubleJump.heightStuds) then doubleJump.heightStuds else 0
+			local rise = Duel.Rules.Movement.JumpHeight * (tonumber(superJump.jumpMultiplier) or 1) + extra
+			expect(
+				problems,
+				not isNumber(maps.boundsTop) or rise < maps.boundsTop,
+				`{k}.superJump.jumpMultiplier: the super jump + double jump ({show(rise)} studs) must stay under Maps.boundsTop`
+			)
+		end
+		if pu.kinds.rapidThrow then
+			expectBetween(problems, `{k}.rapidThrow.cooldownMultiplier`, pu.kinds.rapidThrow.cooldownMultiplier, 0, 1)
+		end
+		if pu.kinds.throwBoost then
+			atLeastOne(`{k}.throwBoost.speedMultiplier`, pu.kinds.throwBoost.speedMultiplier)
 		end
 	end
 end

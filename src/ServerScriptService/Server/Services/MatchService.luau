@@ -64,6 +64,26 @@
 --   during Result; the Heartbeat tick steps MatchRules only when a timer is due; a match that fails to register is
 --   cleaned up at once; a later joiner of a mode waiting for a free map gets match.waitingMap; a void after an error
 --   says match.voidError.
+-- * Power-ups v1.1 (2026-10-16, jayyyyy's pads; SPEC powerups P1-P3, P6): each match has its own pads (the map's
+--   powerUps, all ready at the start, Logic/PowerUpRules). While the match is live (Active / Overtime), at
+--   Config.Match.Storm.sampleHz in both modes, a standing, present player whose root is within
+--   PowerUps.pickupRadiusStuds of a ready pad's centre (horizontally) and pickupHeightStuds of standing height on its
+--   top takes it (the nearest one when several stand there; one pickup per player per sample): the pad refills
+--   padRefillSeconds later, PowerUpRules.roll picks the kind with the server's Random, MatchRules `pickup` does the
+--   rest, and the player gets the match.powerUp.<kind> toast. Effects: speed and super jump change the standing
+--   movement (Config.Duel.Rules.Movement × kinds.speed.walkMultiplier / kinds.superJump.jumpMultiplier) at once and
+--   again when they end, never while an ultimate roots the player (AbilityService gives port.movement back at the
+--   root's end) and never on a frozen body; the port answers CombatService and DashService for the buffed fighter
+--   (cooldownMultiplier(fighter) = the rapid throw's, throwSpeedMultiplier = the throw boost's, dashCooldownFree = the
+--   dash boost, movement = the buffed walk speed and jump height); ultCharge goes to AbilityService.addChargeFraction;
+--   a shield-blocked hit is an applied outcome with `blocked` (CombatService ends the throw at the shield, no K.O.);
+--   teamLife (TDM) and its revive are MatchRules' (the revived player respawns like any respawn). The views carry
+--   you.buffs (the live timed power-ups) and pads ({name, readyAt}), re-sent on every pickup, used-up shield and, to
+--   that player, when a timed power-up ends. The pads are idle before Active and after the end.
+--   Review fixes (2026-10-16): the rapid throw's "no wait" is the shortest cooldown
+--   (Config.Duel.Rules.CooldownClamp.Min), not none; a pad is taken only once the match is up to the sample's time (a
+--   hit that K.O.s the taker, or the time-up, lands first, so MatchRules always accepts the pickup); a speed / super
+--   jump that ends in Result goes back too.
 -- Every collaborator is reached through `deps` (useDeps in tests; init() builds the real ones), so the service is
 -- unit-tested with fakes, without Players, remotes, Studio or a Heartbeat (tests call tick(now)).
 
@@ -90,6 +110,7 @@ local WorldLayout = require(Shared.World.WorldLayout)
 local Logic = script.Parent.Parent.Logic
 local MatchRules = require(Logic.MatchRules)
 local MatchSpawns = require(Logic.MatchSpawns)
+local PowerUpRules = require(Logic.PowerUpRules)
 local Services = script.Parent
 local AbilityService = require(Services.AbilityService)
 local CharacterService = require(Services.CharacterService)
@@ -126,6 +147,8 @@ export type AbilityDeps = {
 	detachMatch: (matchId: string) -> (),
 	detachFighter: (userId: number) -> (), -- one leaver's caster forgotten (area A; before releaseFighter)
 	isReady: (userId: number) -> boolean,
+	-- Power-ups v1.1: the ult charge power-up (AbilityService.addChargeFraction); optional (nil: nothing happens).
+	addCharge: ((userId: number, fraction: number) -> boolean)?,
 }
 
 export type MapDeps = {
@@ -181,7 +204,11 @@ type Participant = {
 	savedMovement: SavedMovement?,
 	throws: number,
 	sentStormBar: number, -- the storm bar of the last view this player got
+	buffsCheckedAt: number, -- power-ups v1.1: buffs ending at or before this were already handled (expireBuffs)
 }
+
+-- Power-ups v1.1: one pad of a match (the map's PowerUpPad, with its PowerUpRules state).
+type MatchPad = { name: string, position: Vector3, top: number, pad: PowerUpRules.Pad }
 
 type Match = {
 	matchId: string,
@@ -199,6 +226,11 @@ type Match = {
 	endedFired: boolean,
 	nextStormAt: number,
 	createdAt: number,
+	-- Power-ups v1.1:
+	pads: { MatchPad },
+	nextPadAt: number, -- the next pickup sample
+	nextBuffAt: number, -- the earliest end of a live timed power-up (math.huge = none)
+	now: number, -- the server time of the latest step (the views' "live" buffs)
 }
 
 type Ticket = { player: any, userId: number, joinedAt: number }
@@ -287,6 +319,7 @@ local CODE = table.freeze({
 	duelQueue = "match.refused.duelQueue",
 	practice = "match.refused.practice",
 	noMaps = "match.refused.noMaps",
+	powerUp = "match.powerUp.", -- power-ups v1.1: + the Config.Match.PowerUps kind (the pickup toast)
 })
 
 -- Module table
@@ -464,15 +497,62 @@ local function freezeMovement(p: Participant, knockedOut: boolean)
 	end
 end
 
--- Active (and a respawn): Config.Duel.Rules.Movement, turning on again.
-local function matchMovement(p: Participant)
+-- Power-ups v1.1: the Config.Match.PowerUps kind's number `field` while p's power-up of that kind lives at `now`, else
+-- `default` (also when the Config has no such number).
+local function buffNumber(
+	match: Match,
+	p: Participant,
+	power: string,
+	field: string,
+	now: number,
+	default: number
+): number
+	if not MatchRules.hasBuff(match.state, p.userId, power, now) then
+		return default
+	end
+	local kind = cfg().PowerUps.kinds[power]
+	local value = if kind then kind[field] else nil
+	return if type(value) == "number" and value == value then value else default
+end
+
+-- Power-ups v1.1: the walk speed and jump height a standing `p` has at `now`: Config.Duel.Rules.Movement × the live
+-- speed / super jump power-ups.
+local function buffedMovement(match: Match, p: Participant, now: number): (number, number)
+	return MOVEMENT.WalkSpeed * buffNumber(match, p, "speed", "walkMultiplier", now, 1),
+		MOVEMENT.JumpHeight * buffNumber(match, p, "superJump", "jumpMultiplier", now, 1)
+end
+
+-- Power-ups v1.1: the throw cooldown multiplier of p's fighter at `now` (CombatService hands it to ThrowRules): 1, or
+-- the live rapid throw's kinds.rapidThrow.cooldownMultiplier. Review fix (2026-10-16, SPEC P3): "no wait" is the
+-- shortest cooldown, Config.Duel.Rules.CooldownClamp.Min (0.6 s), not none. ThrowRules clamps the catalog cooldown
+-- first and multiplies after, so the multiplier is kept at or above Min / that clamped cooldown. That is at most
+-- 1 / Min throws a second, under Config.Net's ThrowRequest and ChargeStart buckets (an honest client never hits them).
+local function throwCooldownMultiplier(match: Match, p: Participant, fighter: Fighter, now: number): number
+	local multiplier = buffNumber(match, p, "rapidThrow", "cooldownMultiplier", now, 1)
+	if multiplier >= 1 then
+		return multiplier
+	end
+	local stats = (fighter :: any).throw -- CombatService's fighter always has it (a test's fake may not)
+	if type(stats) ~= "table" then
+		local def = Catalog.get(p.squishyId) or Catalog.get(Catalog.starterId())
+		stats = if def then def.throw else nil
+	end
+	local clamp = RULES.CooldownClamp
+	local cooldown = if stats and type(stats.cooldown) == "number" then stats.cooldown else clamp.Min
+	return math.max(multiplier, clamp.Min / math.clamp(cooldown, clamp.Min, clamp.Max))
+end
+
+-- Active (and a respawn): Config.Duel.Rules.Movement, turning on again. Power-ups v1.1: with the live speed / super
+-- jump power-ups (buffedMovement at the latest step's time).
+local function matchMovement(match: Match, p: Participant)
 	local humanoid = getDeps().humanoid(p.ref)
 	if humanoid == nil then
 		return
 	end
 	saveMovement(p, humanoid)
-	humanoid.WalkSpeed = MOVEMENT.WalkSpeed
-	humanoid.JumpHeight = MOVEMENT.JumpHeight
+	local walk, jump = buffedMovement(match, p, match.now)
+	humanoid.WalkSpeed = walk
+	humanoid.JumpHeight = jump
 	local saved = p.savedMovement
 	if humanoid.UseJumpPower and saved then
 		humanoid.JumpPower = saved.jumpPower
@@ -499,10 +579,33 @@ local function movementForState(match: Match, p: Participant)
 	if phase == "Waiting" or phase == "Countdown" then
 		freezeMovement(p, false)
 	elseif standing(match, p) then
-		matchMovement(p)
+		matchMovement(match, p)
 	else
 		freezeMovement(p, true)
 	end
+end
+
+-- Power-ups v1.1: a pickup or a power-up's end changes a standing player's movement at once. Not while everyone is held
+-- (Waiting, Countdown) or the return runs, the player is knocked out (frozen) or an ultimate roots them (WalkSpeed 0 on
+-- the server: AbilityService gives port.movement back at the root's end). Review fix (2026-10-16): Result is not held
+-- (players still walk there), so a speed / super jump that ends in Result goes back too.
+local function refreshMovement(match: Match, p: Participant, now: number)
+	local phase = match.state.phase
+	if
+		not active(p)
+		or match.returning
+		or match.closed
+		or phase == "Waiting"
+		or phase == "Countdown"
+		or not standing(match, p)
+	then
+		return
+	end
+	local rootedUntil = (p.fighter :: any).rootedUntil
+	if type(rootedUntil) == "number" and now < rootedUntil then
+		return
+	end
+	matchMovement(match, p)
 end
 
 -- Private: attributes and views ----------------------------------------------------------------------------------------
@@ -563,6 +666,28 @@ local function playersView(match: Match): { Types.MatchParticipantView }
 	return list
 end
 
+-- Power-ups v1.1: the player's live timed power-ups (kind -> server time it ends) at the latest step's time.
+local function buffsView(match: Match, r: MatchRules.Participant?): { [string]: number }
+	local out: { [string]: number } = {}
+	if r then
+		for power, untilAt in r.buffs do
+			if type(untilAt) == "number" and untilAt > match.now then
+				out[power] = untilAt
+			end
+		end
+	end
+	return out
+end
+
+-- Power-ups v1.1: every pad of the match, {name, readyAt} (server time; 0 = ready).
+local function padsView(match: Match): { Types.MatchPadView }
+	local list: { Types.MatchPadView } = {}
+	for _, entry in match.pads do
+		table.insert(list, { name = entry.name, readyAt = finiteOrZero(entry.pad.readyAt) })
+	end
+	return list
+end
+
 local function viewFor(match: Match, p: Participant, players: { Types.MatchParticipantView }): Types.MatchStateView
 	local state = match.state
 	local map = match.map
@@ -585,6 +710,7 @@ local function viewFor(match: Match, p: Participant, players: { Types.MatchParti
 			protectUntil = finiteOrZero(if r then r.protectUntil else nil), -- 0 = none
 			stormBar = if r then r.stormBar else 0,
 			out = r ~= nil and r.out,
+			buffs = buffsView(match, r), -- power-ups v1.1
 		},
 		players = players,
 		teamLives = if match.mode.teams then table.clone(state.teamLives) else nil,
@@ -600,6 +726,7 @@ local function viewFor(match: Match, p: Participant, players: { Types.MatchParti
 				winners = table.clone(outcome.winners),
 			}
 			else nil,
+		pads = padsView(match), -- power-ups v1.1
 	}
 	return view
 end
@@ -781,6 +908,7 @@ stepMatch = function(match: Match, event: Event, now: number?)
 	end
 	local state, effects = MatchRules.step(match.state, event, t)
 	match.state = state
+	match.now = math.max(match.now, t) -- power-ups v1.1: the time the views' live buffs are read at
 	syncFighters(match)
 	for _, effect in effects do
 		perform(match, effect)
@@ -977,7 +1105,7 @@ local function onPhase(match: Match, phase: string, startedAt: number)
 		for _, p in match.list do
 			p.fighter.nextThrowAt = startedAt -- as a duel: nextThrowAt = the Active start
 			if active(p) and standing(match, p) then
-				matchMovement(p)
+				matchMovement(match, p)
 			end
 		end
 	elseif phase == "Closed" then
@@ -1002,7 +1130,7 @@ local function onRespawn(match: Match, effect: Effect)
 	if not pivotTo(match, p, respawnSpotFor(match, p)) then
 		replaceParticipant(match, p) -- no character right now: the re-placement places it once it is back
 	end
-	matchMovement(p)
+	matchMovement(match, p)
 end
 
 local function onOut(match: Match, effect: Effect)
@@ -1010,6 +1138,42 @@ local function onOut(match: Match, effect: Effect)
 	local p = match.byUserId[effect.userId]
 	if p and active(p) then
 		notify(p.ref, CODE.outNoLives, nil, "warn")
+	end
+end
+
+-- Power-ups v1.1: a pad was taken (MatchRules accepted the pickup): the picker's toast; everyone's view (the pad).
+local function onPickup(match: Match, effect: Effect)
+	match.stateDirty = true
+	local p = match.byUserId[effect.userId]
+	if p and active(p) and type(effect.power) == "string" then
+		notify(p.ref, CODE.powerUp .. effect.power, nil, "success")
+	end
+end
+
+-- Power-ups v1.1: a timed power-up until effect.untilAt: its end is watched (expireBuffs) and a speed / super jump
+-- changes the movement now.
+local function onBuff(match: Match, effect: Effect)
+	match.stateDirty = true
+	local untilAt = effect.untilAt
+	if type(untilAt) == "number" and untilAt < match.nextBuffAt then
+		match.nextBuffAt = untilAt
+	end
+	local p = match.byUserId[effect.userId]
+	if p and (effect.power == "speed" or effect.power == "superJump") then
+		refreshMovement(match, p, match.now)
+	end
+end
+
+-- Power-ups v1.1: the ult charge power-up: `fraction` of the full meter (AbilityService sends UltimateCharge).
+local function onUltCharge(match: Match, effect: Effect)
+	match.stateDirty = true -- ultReady in the players list may change
+	local addCharge = getDeps().ability.addCharge
+	if addCharge == nil or type(effect.fraction) ~= "number" then
+		return
+	end
+	local ok, err = try(addCharge, effect.userId, effect.fraction)
+	if not ok then
+		log:warn(`ult charge for user {effect.userId} failed:`, err)
 	end
 end
 
@@ -1129,8 +1293,15 @@ perform = function(match: Match, effect: Effect)
 		onOut(match, effect)
 	elseif kind == "closed" then
 		startReturn(match)
+	elseif kind == "pickup" then
+		onPickup(match, effect)
+	elseif kind == "buff" then
+		onBuff(match, effect)
+	elseif kind == "ultCharge" then
+		onUltCharge(match, effect)
 	else
-		-- teamLives, and the power-up effects MatchRules supports (pads stay idle in v1): the views carry them.
+		-- teamLives, and power-ups v1.1's revived (its respawn effect places the player) and shieldBlocked (the shield is
+		-- used up): the views carry them.
 		match.stateDirty = true
 	end
 end
@@ -1181,8 +1352,28 @@ local function buildPort(match: Match): MatchPort
 		phase = function(): string
 			return wirePhaseOf(match)
 		end,
-		cooldownMultiplier = function(): number
-			return 1 -- D1 (rapidThrow will pass the fighter later)
+		-- D1: 1. Power-ups v1.1: CombatService hands the thrower; its live rapid throw gives the shortest cooldown
+		-- (throwCooldownMultiplier).
+		cooldownMultiplier = function(fighter: Fighter?): number
+			local p = if fighter then participantOfFighter(match, fighter) else nil
+			return if p and fighter then throwCooldownMultiplier(match, p, fighter, getDeps().now()) else 1
+		end,
+		-- Power-ups v1.1: the throw boost (× the launch speed), the dash boost and the buffed standing movement.
+		throwSpeedMultiplier = function(fighter: Fighter): number
+			local p = participantOfFighter(match, fighter)
+			return if p then buffNumber(match, p, "throwBoost", "speedMultiplier", getDeps().now(), 1) else 1
+		end,
+		dashCooldownFree = function(fighter: Fighter): boolean
+			local p = participantOfFighter(match, fighter)
+			return p ~= nil and MatchRules.hasBuff(match.state, p.userId, "dashBoost", getDeps().now())
+		end,
+		movement = function(fighter: Fighter): (number, number)
+			local p = participantOfFighter(match, fighter)
+			if p == nil or not active(p) or match.returning or match.closed then
+				-- (AbilityService's detach un-roots a caster who is leaving or already back in the lobby: no boost there)
+				return MOVEMENT.WalkSpeed, MOVEMENT.JumpHeight
+			end
+			return buffedMovement(match, p, getDeps().now())
 		end,
 		placement = function(fighter: Fighter): CFrame?
 			local p = participantOfFighter(match, fighter)
@@ -1208,28 +1399,49 @@ local function buildPort(match: Match): MatchPort
 			-- `now` = the time the projectiles were swept to: the timers never run past what was simulated.
 			local state, effects = MatchRules.step(match.state, { kind = "hits", hits = list }, now)
 			match.state = state
+			match.now = math.max(match.now, now)
 			syncFighters(match)
 			local used: { [number]: boolean } = {}
-			for i, effect in effects do
-				if effect.kind == "ko" and effect.by ~= nil then
-					for index, hit in hits do
-						if
-							not used[index]
-							and hit.victim.userId == effect.victim
-							and hit.attacker.userId == effect.by
-							and math.min(hit.at, now) == effect.at
-						then
-							used[index] = true
-							outcomes[index] = {
-								lives = livesAfter(match, effects, i, match.byUserId[effect.victim]),
-								invulnUntil = effect.at,
-								eliminated = true,
-							}
-							break
-						end
+			-- The first unused hit of `victimId` by `byId` at `at` (MatchRules clamps impact times to `now`).
+			local function claim(victimId: number, byId: number, at: number): number?
+				for index, hit in hits do
+					if
+						not used[index]
+						and hit.victim.userId == victimId
+						and hit.attacker.userId == byId
+						and math.min(hit.at, now) == at
+					then
+						used[index] = true
+						return index
 					end
 				end
-				-- A shieldBlocked hit (no power-ups in v1) is refused here: its projectile flies on.
+				return nil
+			end
+			for i, effect in effects do
+				if effect.kind == "ko" and effect.by ~= nil then
+					local index = claim(effect.victim, effect.by, effect.at)
+					if index then
+						outcomes[index] = {
+							lives = livesAfter(match, effects, i, match.byUserId[effect.victim]),
+							invulnUntil = effect.at,
+							eliminated = true,
+						}
+					end
+				elseif effect.kind == "shieldBlocked" then
+					-- Power-ups v1.1: the shield took it. An applied, blocked outcome, so CombatService ends the throw at
+					-- the shield (no K.O.) instead of letting it fly on into the unshielded player a step later.
+					local index = claim(effect.userId, effect.by, effect.at)
+					if index then
+						local victim = match.byUserId[effect.userId]
+						local team = if victim then victim.team else nil
+						outcomes[index] = {
+							lives = if match.mode.teams and team then match.state.teamLives[team] or 0 else 0,
+							invulnUntil = effect.at,
+							eliminated = false,
+							blocked = true,
+						}
+					end
+				end
 				table.insert(match.pending, effect)
 			end
 			return outcomes
@@ -1306,8 +1518,18 @@ local function newParticipant(match: Match, ref: any, team: string?, now: number
 		savedMovement = nil,
 		throws = 0,
 		sentStormBar = 0,
+		buffsCheckedAt = -math.huge,
 	}
 	return p
+end
+
+-- Power-ups v1.1: the match's own pads (every one ready), from the map record's power-up pads (none in an older record).
+local function padsOf(map: MapRecord): { MatchPad }
+	local list: { MatchPad } = {}
+	for _, pad in map.powerUps or {} do
+		table.insert(list, { name = pad.name, position = pad.position, top = pad.top, pad = PowerUpRules.newPad() })
+	end
+	return list
 end
 
 -- D5 backstop: a character of a moved, active player alive outside the map is re-placed. Not once the match has ended
@@ -1370,6 +1592,125 @@ local function sampleStorm(match: Match, now: number)
 	end
 end
 
+-- Power-ups v1.1: who takes `entry` now: the nearest eligible player in reach (see samplePads), or nil.
+local function padTaker(
+	match: Match,
+	entry: MatchPad,
+	took: { [Participant]: boolean },
+	radius: number,
+	height: number
+): Participant?
+	local d = getDeps()
+	local best: Participant? = nil
+	local bestDistance = math.huge
+	for _, p in match.list do
+		if
+			not took[p]
+			and active(p)
+			and standing(match, p)
+			and not p.placing
+			and not p.positioning
+			and d.isAlive(p.ref)
+		then
+			local root = d.getRoot(p.ref)
+			local position = if root then root.Position else nil
+			if position then
+				local dx, dz = position.X - entry.position.X, position.Z - entry.position.Z
+				local flat = math.sqrt(dx * dx + dz * dz)
+				local rise = math.abs(position.Y - (entry.top + standHeight(p)))
+				if flat <= radius and rise <= height and flat < bestDistance then
+					best, bestDistance = p, flat
+				end
+			end
+		end
+	end
+	return best
+end
+
+-- Power-ups v1.1 (P1): who takes a pad, Config.Match.Storm.sampleHz times a second while the match is live (both
+-- modes). A ready pad goes to the nearest standing, present player (a live character in the map, no teleport in
+-- flight) within PowerUps.pickupRadiusStuds of its centre and pickupHeightStuds of standing height on its top; one
+-- pickup per player per sample. PowerUpRules.take refills it padRefillSeconds later, PowerUpRules.roll picks the kind
+-- with the server's Random and MatchRules `pickup` does the rest (perform: the toast, the buff, the ult charge).
+-- Review fix (2026-10-16): before the first pad is taken the match is brought up to `now` (a tick step: the projectiles
+-- swept to now, the timers run), then the taker is chosen again. A hit that K.O.s the taker, or the time-up, lands
+-- first, so MatchRules always accepts the pickup and a pad is never used up with nobody getting it.
+local function samplePads(match: Match, now: number)
+	if #match.pads == 0 or match.returning or not MatchRules.isLive(match.state) or now < match.nextPadAt then
+		return
+	end
+	local d = getDeps()
+	local c = cfg()
+	local pu = c.PowerUps
+	match.nextPadAt = now + 1 / c.Storm.sampleHz
+	local radius, height = pu.pickupRadiusStuds, pu.pickupHeightStuds
+	if type(radius) ~= "number" or type(height) ~= "number" then
+		return -- an older Config without the pickup reach: the pads stay idle
+	end
+	local took: { [Participant]: boolean } = {}
+	local synced = false
+	for _, entry in match.pads do
+		if PowerUpRules.isReady(entry.pad, now) then
+			local best = padTaker(match, entry, took, radius, height)
+			if best and not synced then
+				synced = true
+				stepMatch(match, { kind = "tick" }, now)
+				if match.closed or match.returning or not MatchRules.isLive(match.state) then
+					return
+				end
+				best = padTaker(match, entry, took, radius, height)
+			end
+			if best then
+				local taken, pad = PowerUpRules.take(entry.pad, now, c)
+				if taken then
+					entry.pad = pad
+					took[best] = true
+					match.stateDirty = true -- everyone sees the pad go (its readyAt)
+					local power = PowerUpRules.roll(match.modeId, d.rng:NextNumber(), c)
+					stepMatch(match, { kind = "pickup", userId = best.userId, power = power }, now)
+					if match.closed or not MatchRules.isLive(match.state) then
+						return
+					end
+				end
+			end
+		end
+	end
+end
+
+-- Power-ups v1.1: when a timed power-up ends (MatchRules keeps only its end time; no effect fires) the player's
+-- movement goes back (speed, super jump) and their own view drops it. Runs when the earliest end is due.
+local function expireBuffs(match: Match, now: number)
+	if now < match.nextBuffAt or match.closed then
+		return
+	end
+	local nextAt = math.huge
+	local changed: { Participant } = {}
+	for _, p in match.list do
+		local r = record(match, p)
+		if r and active(p) then
+			local ended = false
+			for _, untilAt in r.buffs do
+				if type(untilAt) == "number" then
+					if untilAt <= now then
+						ended = ended or untilAt > p.buffsCheckedAt
+					elseif untilAt < nextAt then
+						nextAt = untilAt
+					end
+				end
+			end
+			p.buffsCheckedAt = now
+			if ended then
+				table.insert(changed, p)
+				refreshMovement(match, p, now)
+			end
+		end
+	end
+	match.nextBuffAt = nextAt
+	if #changed > 0 then
+		sendState(match, changed)
+	end
+end
+
 -- When MatchRules next has a timer due: the phase end or the earliest respawn (MatchRules' advance() runs nothing
 -- else; arrivals, hits, the storm and leaves are events of their own).
 local function nextDueAt(state: MatchState): number
@@ -1387,8 +1728,15 @@ local function tickMatch(match: Match, now: number)
 	if match.closed then
 		return
 	end
+	match.now = math.max(match.now, now)
 	checkPresence(match)
 	sampleStorm(match, now)
+	if not match.closed then
+		samplePads(match, now) -- power-ups v1.1
+	end
+	if not match.closed then
+		expireBuffs(match, now) -- power-ups v1.1
+	end
 	if not match.closed and now >= nextDueAt(match.state) then
 		-- Only when a timer is due: no projectile sweep (syncTo) or state copy every Heartbeat for nothing. port.sync
 		-- and the hits still bring the match up to date whenever combat asks.
@@ -1750,6 +2098,10 @@ function MatchService.startMatch(refs: { any }, modeId: string, map: any?, match
 		endedFired = false,
 		nextStormAt = -math.huge,
 		createdAt = now,
+		pads = padsOf(useMap), -- power-ups v1.1: per match, all ready
+		nextPadAt = -math.huge,
+		nextBuffAt = math.huge,
+		now = now,
 	}
 	local spawns = useMap.spawns
 	local built, why = try(function()
@@ -1982,6 +2334,7 @@ defaultDeps = function(): Deps
 			detachMatch = AbilityService.detachMatch,
 			detachFighter = AbilityService.detachFighter,
 			isReady = AbilityService.isReady,
+			addCharge = AbilityService.addChargeFraction, -- power-ups v1.1
 		},
 		maps = {
 			acquire = function(modeId: string, matchId: string): any?

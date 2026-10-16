@@ -21,7 +21,11 @@
 --     stores UltimateCharge for anyone (ultReady at chargeMax) and ends like the duel view (and at once when
 --     SD_MatchId no longer names it); isEnemy / enemyIds: FFA
 --     everyone else, TDM the other team, never oneself or a stranger; matchSide: TDM Blue "B", else "A"; a match view
---     locks the lobby; a "match:" id is a match id.
+--     locks the lobby; a "match:" id is a match id;
+--   * power-ups v1.1 (2026-10-16, SPEC P2/P3): you.buffs (power -> finite end; junk skipped; a full you without them
+--     has none, a partial one keeps them) and pads ({name, readyAt}; -inf or junk readyAt = 0, nameless entries
+--     skipped; kept when left out); hasBuff live while now < its end; buffMultiplier = that kind's Config number while
+--     it lives, else 1 (the Config table is passed in).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -691,6 +695,71 @@ return function(t: Context)
 		expect.equal(StateController.matchSide(ffa, 2, names), "A")
 		expect.equal(StateController.matchSide(nil, 2, names), nil)
 	end)
+
+	-- Power-ups v1.1 (2026-10-16): the own buffs and the map's pads -------------------------------------------------
+
+	t.test("power-ups: you.buffs and pads are read and kept like the other fields of the same match", function()
+		local raw = matchState("match:p", "Active")
+		raw.you.buffs = { throwBoost = 506, rapidThrow = 503, junk = "x", [5] = 9 } :: any
+		raw.pads = {
+			{ name = "JAR_PowerUp_Pad_01", readyAt = -math.huge },
+			{ name = "JAR_PowerUp_Pad_02", readyAt = 520 },
+			{ name = "JAR_PowerUp_Pad_03", readyAt = 0 / 0 },
+			{ readyAt = 3 },
+			"junk",
+		} :: any
+		local v1 = StateController.reduceMatch(nil, stateEvent(raw, 10))
+		expect.deepEqual(v1.you.buffs, { throwBoost = 506, rapidThrow = 503 })
+		expect.equal(#v1.pads, 3)
+		expect.equal(v1.pads[1].name, "JAR_PowerUp_Pad_01")
+		expect.equal(v1.pads[1].readyAt, 0) -- -inf: ready
+		expect.equal(v1.pads[2].readyAt, 520)
+		expect.equal(v1.pads[3].readyAt, 0)
+		-- A partial you (the storm bar) keeps the buffs; a state without pads keeps them.
+		local bar = StateController.reduceMatch(v1, stateEvent({ matchId = "match:p", you = { stormBar = 0.2 } }, 11))
+		expect.equal(bar.you.buffs, v1.you.buffs)
+		expect.equal(bar.pads, v1.pads)
+		-- A full you without buffs has none (a K.O. clears them); an empty pads list replaces the old one.
+		local ko = matchState("match:p", "Active", { alive = false, respawnAt = 503 })
+		ko.pads = {}
+		local v2 = StateController.reduceMatch(bar, stateEvent(ko, 12))
+		expect.deepEqual(v2.you.buffs, {})
+		expect.equal(#v2.pads, 0)
+		-- A view from a server without power-ups: none.
+		local plain = StateController.reduceMatch(nil, stateEvent(matchState("match:q", "Active")))
+		expect.deepEqual(plain.you.buffs, {})
+		expect.deepEqual(plain.pads, {})
+	end)
+
+	t.test(
+		"power-ups: hasBuff while now < its end; buffMultiplier = the kind's number while it lives, else 1",
+		function()
+			-- A Config.Match.PowerUps-shaped table (passed in, as MatchRules_Test does).
+			local powerUps = {
+				kinds = {
+					throwBoost = { seconds = 6, speedMultiplier = 1.4 },
+					rapidThrow = { seconds = 6, cooldownMultiplier = 0 },
+					speed = { seconds = 6, walkMultiplier = -2 },
+				},
+			}
+			local raw = matchState("match:p", "Active")
+			raw.you.buffs = { throwBoost = 506, rapidThrow = 503, speed = 510 }
+			local view = StateController.reduceMatch(nil, stateEvent(raw))
+			expect.equal(StateController.hasBuff(view, "throwBoost", 505.9), true)
+			expect.equal(StateController.hasBuff(view, "throwBoost", 506), false)
+			expect.equal(StateController.hasBuff(view, "shield", 500), false)
+			expect.equal(StateController.hasBuff(nil, "throwBoost", 500), false)
+			local mult = StateController.buffMultiplier
+			expect.equal(mult(view, "throwBoost", "speedMultiplier", 500, powerUps), 1.4)
+			expect.equal(mult(view, "rapidThrow", "cooldownMultiplier", 500, powerUps), 0)
+			expect.equal(mult(view, "rapidThrow", "cooldownMultiplier", 503, powerUps), 1) -- over
+			expect.equal(mult(view, "throwBoost", "cooldownMultiplier", 500, powerUps), 1) -- no such number
+			expect.equal(mult(view, "speed", "walkMultiplier", 500, powerUps), 1) -- below 0: ignored
+			expect.equal(mult(view, "dashBoost", "speedMultiplier", 500, powerUps), 1) -- not live
+			expect.equal(mult(nil, "throwBoost", "speedMultiplier", 500, powerUps), 1)
+			expect.equal(mult(view, "throwBoost", "speedMultiplier", 500, {}), 1) -- a Config without kinds
+		end
+	)
 
 	t.test("lobby lock: a match view locks the lobby too; match ids", function()
 		local idle = { state = "Idle", searching = 0, duelsInProgress = 0, arenasFree = 6 }

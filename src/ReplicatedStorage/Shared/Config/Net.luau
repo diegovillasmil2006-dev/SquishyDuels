@@ -5,6 +5,7 @@
 -- Grip has no remote of its own (§17.9 #1): the only Grip-related calls are the capsule remotes (Phase 3: rate 1,
 -- burst 1, one in flight). TrainerUpgrade went with the trainers (build plan Phase 6).
 -- FFA/TDM v1 (2026-10-15): MatchJoin and MatchLeave (the client's /ffa, /tdm and /leave chat commands).
+-- Power-ups v1.1 review fix (2026-10-16): DashRequest's rate covers the dash boost (one dash after the other).
 
 export type RemoteRate = {
 	rate: number, -- tokens refilled per second
@@ -27,8 +28,13 @@ local Net = {
 		ThrowRequest = { rate = 3, burst = 4 }, -- §5.6 #1: over the bucket = silent drop
 		UltimateRequest = { rate = 0.5, burst = 2 },
 		-- Spec phase 5: the dash's 2 s cooldown is DashRules' (the client sends at most one per cooldown); the bucket
-		-- only stops floods.
-		DashRequest = { rate = 1, burst = 3 },
+		-- only stops floods. Power-ups v1.1 review fix (2026-10-16): the match dash boost has no cooldown, one dash
+		-- after the other (at most one per pose clip, Config.Duel.Rules.Dash visualFrames / visualFps = 0.4 s: 2.5 a
+		-- second), so the rate is above that: an honest boosted dasher never runs the bucket down to where network
+		-- jitter could make the server drop (and count) a dash the client already made. Duels still get one per 2 s
+		-- (DashRules). Rapid throw needs no change: its shortest cooldown (0.6 s) is 1.7 throws and ChargeStarts a
+		-- second, under ThrowRequest's and ChargeStart's 3.
+		DashRequest = { rate = 3, burst = 3 },
 		-- 2026-10-15: the double jump (one per air time, DoubleJumpRules' serverIntervalSeconds); the bucket only stops
 		-- floods.
 		DoubleJumpRequest = { rate = 3, burst = 4 },

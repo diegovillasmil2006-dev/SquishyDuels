@@ -10,7 +10,12 @@
 --     "STORM {pct}%" while the own storm bar is above 0 (any bar shows at least 1%), "OVERTIME" in overtime, "Back in
 --     {seconds}" while knocked out ("OUT" in TDM with no team life left); a piece without a text is left out;
 --   * the storm wall's radius: none in FFA, outside the live phase or before stormStartSeconds; StormMath's radius from
---     the Active start otherwise.
+--     the Active start otherwise;
+--   * power-ups v1.1 (2026-10-16, SPEC P4): the own live power-ups in the kinds' order with whole seconds left (at
+--     least 1), listed in the readout as "{name} {seconds}s" after overtime (a kind without a name, or no powerUp
+--     text, is left out); a pad's refill plays only when its readyAt rose above the one last played and lies ahead.
+--     Review fix (2026-10-16): no power-up pieces outside the live phase (Result, Returning); the refill handed to
+--     Diego's Collect ends a head start early, and one shorter than his pop is not played.
 -- The texts and team names are passed in (the place's Strings may not have the match.readout keys yet).
 
 type Context = {
@@ -188,4 +193,61 @@ return function(t: Context)
 		noStart.activeStartedAt = nil
 		expect.equal(MatchFormat.stormRadius(noStart, 1000 + 330, STORM), nil)
 	end)
+
+	-- Power-ups v1.1 (2026-10-16) ---------------------------------------------------------------------------------
+
+	-- As Config.Match.PowerUps.order (passed in).
+	local ORDER = { "shield", "speed", "throwBoost", "ultCharge", "dashBoost", "rapidThrow", "superJump", "teamLife" }
+
+	t.test("power-ups: the live ones in order with seconds left, listed in the readout after overtime", function()
+		local texts: any = table.clone(TEXTS)
+		texts.powerUp = "{name} {seconds}s"
+		texts.powerUpNames = { speed = "SPEED", throwBoost = "THROW BOOST", rapidThrow = "RAPID THROW" }
+		local v = view({ matchPhase = "Overtime" })
+		v.you.buffs = { rapidThrow = 1000.2, speed = 1003.5, throwBoost = 999, superJump = 1004 }
+		expect.deepEqual(MatchFormat.powerUpsLeft(v, 1000, ORDER), {
+			{ power = "speed", seconds = 4 },
+			{ power = "rapidThrow", seconds = 1 },
+			{ power = "superJump", seconds = 4 },
+		})
+		-- superJump has no name here: left out. The ended throw boost is not listed.
+		expect.equal(
+			MatchFormat.readout(v, 1000, texts, TEAMS, ORDER),
+			"K.O. 3/25 · 1st Bo 7 · 2:05 · OVERTIME · SPEED 4s · RAPID THROW 1s"
+		)
+		-- No powerUp text (Strings without it): no power-up pieces.
+		expect.equal(MatchFormat.readout(v, 1000, TEXTS, TEAMS, ORDER), "K.O. 3/25 · 1st Bo 7 · 2:05 · OVERTIME")
+		-- No buffs table (a view from before power-ups): none.
+		expect.deepEqual(MatchFormat.powerUpsLeft(view(), 1000, ORDER), {})
+		-- Review fix: once the match is over (Result, Returning) the readout lists none, though the view still has them.
+		local over = view({ phase = "Result", matchPhase = "Result" })
+		over.you.buffs = { speed = 1003.5 }
+		expect.equal(MatchFormat.readout(over, 1000, texts, TEAMS, ORDER), "K.O. 3/25 · 1st Bo 7 · 2:05")
+		over.phase = "Returning"
+		expect.equal(MatchFormat.readout(over, 1000, texts, TEAMS, ORDER), "K.O. 3/25 · 1st Bo 7 · 2:05")
+	end)
+
+	t.test("power-ups: a pad's refill plays once per pickup, only while it lies ahead", function()
+		expect.near(MatchFormat.padCollectSeconds(1020, nil, 1000), 20, 1e-9)
+		expect.near(MatchFormat.padCollectSeconds(1040, 1020, 1021), 19, 1e-9) -- the next pickup of that pad
+		expect.equal(MatchFormat.padCollectSeconds(1020, 1020, 1001), nil) -- already played
+		expect.equal(MatchFormat.padCollectSeconds(0, nil, 1000), nil) -- ready
+		expect.equal(MatchFormat.padCollectSeconds(1000, nil, 1000), nil) -- refilled just now
+		expect.equal(MatchFormat.padCollectSeconds(-math.huge, nil, 1000), nil)
+		expect.equal(MatchFormat.padCollectSeconds(0 / 0, nil, 1000), nil)
+	end)
+
+	t.test(
+		"power-ups review fix: Diego's refill ends a head start early; one shorter than his pop is not played",
+		function()
+			-- One pickup sample (5 Hz) early, so his Collect is ready again before the server can report the next pickup.
+			expect.near(MatchFormat.collectRefill(20, 0.2, 0.4) :: number, 19.8, 1e-9)
+			expect.near(MatchFormat.collectRefill(20, 0, 0.4) :: number, 20, 1e-9) -- no head start
+			expect.near(MatchFormat.collectRefill(20, 0 / 0, 0.4) :: number, 20, 1e-9) -- a bad head start counts as none
+			expect.near(MatchFormat.collectRefill(20, -1, 0.4) :: number, 20, 1e-9) -- never later than the server
+			expect.equal(MatchFormat.collectRefill(0.5, 0.2, 0.4), nil) -- 0.3 s: shorter than his pop
+			expect.near(MatchFormat.collectRefill(0.7, 0.2, 0.4) :: number, 0.5, 1e-9) -- longer than the pop: played
+			expect.equal(MatchFormat.collectRefill(0 / 0, 0.2, 0.4), nil)
+		end
+	)
 end

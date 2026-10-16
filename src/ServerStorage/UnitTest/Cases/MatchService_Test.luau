@@ -24,6 +24,17 @@
 --     re-placement in Result; a tick with no timer due steps nothing; every map in use: one waitingMap, a later
 --     joiner hears it too, the match starts once a map is free; a failed registration is undone; QueueService.Joined
 --     drops the ticket; RestartScheduled voids only a match that can't finish (maxRemaining); match.voidError.
+--   * power-ups v1.1 (2026-10-16): the views carry every pad ({name, readyAt}, 0 = ready) and you.buffs; a standing
+--     player on a ready pad takes it in Active only (never in the Countdown, too high above it or knocked out), with the
+--     match.powerUp.<kind> toast, the buff in their view and the pad's readyAt + padRefillSeconds in everyone's; the
+--     nearer player takes a shared pad and nobody takes two in one sample; speed / super jump change the movement while
+--     they live (not while rooted) and give it back when they end; the port's cooldownMultiplier(fighter),
+--     throwSpeedMultiplier, dashCooldownFree and movement answer for the buffed fighter only; ult charge reaches
+--     AbilityService; a shield makes one hit a blocked outcome; a TDM team life adds a life or brings back the
+--     teammate out longest; every kind has its toast and every timed one its readout name.
+--     Review fixes (2026-10-16): the rapid throw's multiplier gives the shortest cooldown (CooldownClamp.Min, never
+--     below); a pad stays ready when the projectile sweep K.O.s its taker in that step, or the time-up ends the match
+--     there; a speed boost that ends in Result gives the plain movement back.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -60,6 +71,8 @@ type World = {
 	releasedFighters: { any }, -- CombatService.releaseFighter calls
 	detachedUsers: { number }, -- AbilityService.detachFighter calls
 	syncs: number, -- CombatService.syncTo calls
+	onSync: ((now: number) -> ())?, -- runs once inside the next syncTo (a projectile the sweep brings in)
+	charged: { { userId: number, fraction: number } }, -- power-ups v1.1: AbilityService.addChargeFraction calls
 	flush: () -> (),
 }
 
@@ -110,6 +123,22 @@ return function(t: Context)
 		cfg.Spawns = { spotsPerPad = { tdm = 6, ffa = 2 }, edgeStuds = 4, occupiedStuds = 4, raycastUpStuds = 40 }
 		cfg.Storm.sampleHz = 5
 		cfg.Storm.respawnInsetStuds = 6
+		-- Power-ups v1.1 (2026-10-16): the pickup reach and the timed power-ups' numbers.
+		local pu = cfg.PowerUps
+		pu.padRefillSeconds = 20
+		pu.pickupRadiusStuds = 4
+		pu.pickupHeightStuds = 6
+		pu.kinds.shield.seconds = 6
+		pu.kinds.speed.seconds = 6
+		pu.kinds.speed.walkMultiplier = 1.6
+		pu.kinds.superJump.seconds = 6
+		pu.kinds.superJump.jumpMultiplier = 2
+		pu.kinds.rapidThrow.seconds = 6
+		pu.kinds.rapidThrow.cooldownMultiplier = 0
+		pu.kinds.throwBoost.seconds = 6
+		pu.kinds.throwBoost.speedMultiplier = 1.4
+		pu.kinds.dashBoost.seconds = 5
+		pu.kinds.ultCharge.ultFraction = 0.5
 		return cfg
 	end
 
@@ -184,6 +213,8 @@ return function(t: Context)
 			releasedFighters = {},
 			detachedUsers = {},
 			syncs = 0,
+			onSync = nil,
+			charged = {},
 			flush = function() end,
 		}
 		w.flush = function()
@@ -320,8 +351,13 @@ return function(t: Context)
 					return true
 				end,
 				noteTeleport = function() end,
-				syncTo = function()
+				syncTo = function(now: number)
 					w.syncs += 1
+					local hook = w.onSync
+					if hook then
+						w.onSync = nil
+						hook(now)
+					end
 				end,
 				-- As area A's releaseFighter: the port gets a new fighters list without that fighter.
 				releaseFighter = function(fighter: any): boolean
@@ -351,6 +387,10 @@ return function(t: Context)
 				end,
 				isReady = function(): boolean
 					return false
+				end,
+				addCharge = function(userId: number, fraction: number): boolean
+					table.insert(w.charged, { userId = userId, fraction = fraction })
+					return true
 				end,
 			},
 			maps = {
@@ -1133,6 +1173,340 @@ return function(t: Context)
 		MatchService.tick(a + 1 + cfg.respawnSeconds)
 		expect.equal(w.humanoids[blueId].WalkSpeed, 0) -- out: no respawn
 		close()
+	end)
+
+	-- Power-ups v1.1 (2026-10-16) ---------------------------------------------------------------------------------------
+
+	-- One power-up pad on the map (40 studs from the centre on X and Z: no spawn spot or test position is near it), set
+	-- before the match starts; its top is 0.5, so a standing R15 root is at 0.5 + 3.1.
+	local PAD_AT = Vector3.new(CENTRE.X + 40, 0.25, 40)
+	local PAD_NAME = "JAR_PowerUp_Pad_01"
+	local function withPad(w: World, mapIndex: number?)
+		w.maps[mapIndex or 1].powerUps = { { name = PAD_NAME, position = PAD_AT, top = 0.5 } }
+	end
+	local function onPad(w: World, userId: number, above: number?)
+		w.roots[userId].Position = Vector3.new(PAD_AT.X + 1, 0.5 + 3.1 + (above or 0), PAD_AT.Z - 1)
+	end
+	local function offPad(w: World, userId: number)
+		w.roots[userId].Position = Vector3.new(CENTRE.X - 30, 3.1, -30)
+	end
+	-- A Config.Match copy whose roll can only pick `kind`.
+	local function onlyKind(kind: string, cfg: any?): any
+		local c = cfg or baseConfig()
+		c.PowerUps.order = { kind }
+		return c
+	end
+	local function hasCode(w: World, player: any, code: string): boolean
+		return table.find(codesOf(w, player), code) ~= nil
+	end
+
+	t.test("pads: a standing player on a ready pad takes it in Active only; the toast, the buff, the refill", function()
+		local cfg = onlyKind("shield")
+		local w = setup(3, cfg)
+		withPad(w)
+		for _, player in w.players do
+			MatchService.join(player, "ffa")
+		end
+		local first = lastView(w, w.players[1])
+		expect.deepEqual(first.pads, { { name = PAD_NAME, readyAt = 0 } }) -- every pad, ready
+		expect.deepEqual(first.you.buffs, {})
+		w.flush()
+		expect.equal(w.port.phase(), "Countdown")
+		onPad(w, 1)
+		MatchService.tick(w.clock.now()) -- the Countdown: the pads are idle
+		expect.falsy(hasCode(w, w.players[1], "match.powerUp.shield"))
+		local a = w.clock.now() + cfg.countdownSeconds
+		w.clock.set(a)
+		MatchService.tick(a)
+		expect.equal(w.port.phase(), "Active")
+		local takenAt = a + 0.01
+		MatchService.tick(takenAt)
+		expect.truthy(hasCode(w, w.players[1], "match.powerUp.shield"))
+		expect.equal(w.notices[#w.notices].kind, "success")
+		local view = lastView(w, w.players[1])
+		expect.equal(view.you.buffs.shield, takenAt + cfg.PowerUps.kinds.shield.seconds)
+		expect.equal(view.pads[1].readyAt, takenAt + cfg.PowerUps.padRefillSeconds)
+		expect.equal(lastView(w, w.players[2]).pads[1].readyAt, takenAt + cfg.PowerUps.padRefillSeconds) -- everyone
+		expect.deepEqual(lastView(w, w.players[2]).you.buffs, {})
+		-- Not ready: the next player on it gets nothing until it refills; then they do.
+		offPad(w, 1)
+		onPad(w, 2)
+		MatchService.tick(takenAt + 1)
+		expect.falsy(hasCode(w, w.players[2], "match.powerUp.shield"))
+		MatchService.tick(takenAt + cfg.PowerUps.padRefillSeconds)
+		expect.truthy(hasCode(w, w.players[2], "match.powerUp.shield"))
+		-- Too high above it (a jump), or knocked out on it: no pickup.
+		local again = takenAt + 2 * cfg.PowerUps.padRefillSeconds
+		offPad(w, 2)
+		onPad(w, 3, cfg.PowerUps.pickupHeightStuds + 1)
+		MatchService.tick(again)
+		expect.falsy(hasCode(w, w.players[3], "match.powerUp.shield"))
+		hit(w, 3, 1, again + 0.1)
+		expect.falsy(fighterOf(w, 3).isAlive())
+		onPad(w, 3)
+		MatchService.tick(again + 0.5)
+		expect.falsy(hasCode(w, w.players[3], "match.powerUp.shield"))
+		expect.equal(lastView(w, w.players[1]).pads[1].readyAt, again) -- still ready since player 2's pickup
+		close()
+	end)
+
+	t.test("pads: two players on one pad: the nearer one takes it, and one pickup per player per sample", function()
+		local cfg = onlyKind("speed")
+		local w = setup(3, cfg)
+		w.maps[1].powerUps = {
+			{ name = "JAR_PowerUp_Pad_01", position = PAD_AT, top = 0.5 },
+			{ name = "JAR_PowerUp_Pad_02", position = PAD_AT + Vector3.new(4, 0, 0), top = 0.5 },
+		}
+		local a = live(w, "ffa")
+		-- Player 1 reaches both pads (1.5 and 2.5 studs); player 2 only the first (0.5 studs; 4.5 from the second).
+		w.roots[1].Position = Vector3.new(PAD_AT.X + 1.5, 3.6, PAD_AT.Z)
+		w.roots[2].Position = Vector3.new(PAD_AT.X - 0.5, 3.6, PAD_AT.Z)
+		MatchService.tick(a + 0.01)
+		-- The first pad went to the nearer player 2 (not to player 1, first in the list), the second to player 1.
+		expect.truthy(hasCode(w, w.players[2], "match.powerUp.speed"))
+		local count = 0
+		for _, code in codesOf(w, w.players[1]) do
+			if code == "match.powerUp.speed" then
+				count += 1
+			end
+		end
+		expect.equal(count, 1) -- one pickup per player per sample, though both pads were in reach
+		local pads = lastView(w, w.players[1]).pads
+		expect.truthy(pads[1].readyAt > 0 and pads[2].readyAt > 0)
+		close()
+	end)
+
+	t.test(
+		"pads review fix: the sweep's K.O. of the taker, or the time-up, lands first: the pad stays ready, no pickup",
+		function()
+			local w = setup(2, onlyKind("speed"))
+			withPad(w)
+			local a = live(w, "ffa")
+			onPad(w, 1)
+			-- A projectile the sample's sweep brings in hits player 1 on the pad (CombatService.syncTo -> applyHits).
+			w.onSync = function(now: number)
+				hit(w, 1, 2, now)
+			end
+			MatchService.tick(a + 0.01)
+			expect.falsy(fighterOf(w, 1).isAlive())
+			expect.falsy(hasCode(w, w.players[1], "match.powerUp.speed"))
+			expect.equal(lastView(w, w.players[2]).pads[1].readyAt, 0) -- not used up
+			expect.equal(w.humanoids[1].WalkSpeed, 0) -- frozen where it fell, no boost
+			close()
+
+			-- The time-up at the sample: player 1 leads, so the match ends there and nobody takes the pad.
+			local v = setup(2, onlyKind("speed"))
+			withPad(v)
+			local b = live(v, "ffa")
+			hit(v, 2, 1, b + 1) -- player 1 leads 1-0
+			MatchService.tick(b + 1 + v.cfg.respawnSeconds) -- player 2 is back
+			onPad(v, 1)
+			MatchService.tick(b + v.cfg.Modes.ffa.matchSeconds)
+			expect.equal(v.port.phase(), "Result")
+			expect.falsy(hasCode(v, v.players[1], "match.powerUp.speed"))
+			expect.equal(lastView(v, v.players[1]).pads[1].readyAt, 0)
+			expect.deepEqual(lastView(v, v.players[1]).you.buffs, {})
+			close()
+		end
+	)
+
+	t.test("Result review fix: a speed boost that ends in Result gives the plain movement back", function()
+		local MOVEMENT = Config.Duel.Rules.Movement
+		local cfg = onlyKind("speed")
+		cfg.Modes.ffa.koTarget = 1
+		local w = setup(2, cfg)
+		withPad(w)
+		local a = live(w, "ffa")
+		onPad(w, 1)
+		local takenAt = a + 0.01
+		MatchService.tick(takenAt)
+		expect.near(w.humanoids[1].WalkSpeed, MOVEMENT.WalkSpeed * cfg.PowerUps.kinds.speed.walkMultiplier, 1e-9)
+		hit(w, 2, 1, a + 1) -- the winning K.O.: Result (players still walk there)
+		expect.equal(w.port.phase(), "Result")
+		local ends = takenAt + cfg.PowerUps.kinds.speed.seconds
+		expect.truthy(ends < a + 1 + cfg.resultSeconds) -- it ends inside Result
+		MatchService.tick(ends)
+		expect.equal(w.humanoids[1].WalkSpeed, MOVEMENT.WalkSpeed)
+		expect.equal(lastView(w, w.players[1]).you.buffs.speed, nil)
+		expect.equal(w.humanoids[2].WalkSpeed, 0) -- the K.O.'d body stays frozen
+		close()
+	end)
+
+	t.test("speed and super jump: the movement × their multipliers while they live, back when they end", function()
+		local MOVEMENT = Config.Duel.Rules.Movement
+		local cfg = onlyKind("speed")
+		local w = setup(2, cfg)
+		withPad(w)
+		local a = live(w, "ffa")
+		onPad(w, 1)
+		local takenAt = a + 0.01
+		MatchService.tick(takenAt)
+		local fast = MOVEMENT.WalkSpeed * cfg.PowerUps.kinds.speed.walkMultiplier
+		expect.near(w.humanoids[1].WalkSpeed, fast, 1e-9)
+		expect.equal(w.humanoids[2].WalkSpeed, MOVEMENT.WalkSpeed)
+		local walk, jump = w.port.movement(fighterOf(w, 1))
+		expect.near(walk, fast, 1e-9)
+		expect.equal(jump, MOVEMENT.JumpHeight)
+		expect.equal((w.port.movement(fighterOf(w, 2))), MOVEMENT.WalkSpeed)
+		local ends = takenAt + cfg.PowerUps.kinds.speed.seconds
+		MatchService.tick(ends - 0.05)
+		expect.near(w.humanoids[1].WalkSpeed, fast, 1e-9)
+		MatchService.tick(ends)
+		expect.equal(w.humanoids[1].WalkSpeed, MOVEMENT.WalkSpeed)
+		expect.equal(lastView(w, w.players[1]).you.buffs.speed, nil) -- its own view drops it
+		w.clock.set(ends)
+		expect.equal((w.port.movement(fighterOf(w, 1))), MOVEMENT.WalkSpeed)
+		close()
+
+		-- Super jump; and a player rooted by an ultimate keeps the root (the port still reports the buffed movement).
+		local cfg2 = onlyKind("superJump")
+		local v = setup(2, cfg2)
+		withPad(v)
+		local b = live(v, "ffa")
+		onPad(v, 1)
+		MatchService.tick(b + 0.01)
+		expect.near(v.humanoids[1].JumpHeight, MOVEMENT.JumpHeight * cfg2.PowerUps.kinds.superJump.jumpMultiplier, 1e-9)
+		expect.equal(v.humanoids[1].WalkSpeed, MOVEMENT.WalkSpeed)
+		local rooted = fighterOf(v, 2)
+		rooted.rootedUntil = b + 100
+		v.humanoids[2].WalkSpeed, v.humanoids[2].JumpHeight = 0, 0 -- AbilityService's root
+		offPad(v, 1)
+		onPad(v, 2)
+		MatchService.tick(b + 0.01 + cfg2.PowerUps.padRefillSeconds)
+		expect.truthy(hasCode(v, v.players[2], "match.powerUp.superJump"))
+		expect.equal(v.humanoids[2].JumpHeight, 0)
+		v.clock.set(b + 0.02 + cfg2.PowerUps.padRefillSeconds)
+		local _, rootedJump = v.port.movement(rooted)
+		expect.near(rootedJump, MOVEMENT.JumpHeight * cfg2.PowerUps.kinds.superJump.jumpMultiplier, 1e-9)
+		-- Gone from the match (AbilityService's detach un-roots them in the lobby): the plain movement, no boost.
+		MatchService.leave(v.players[2])
+		expect.equal(select(2, v.port.movement(rooted)), MOVEMENT.JumpHeight)
+		close()
+	end)
+
+	t.test(
+		"rapid throw, throw boost, dash boost: the port answers for the buffed fighter only, while it lives",
+		function()
+			local cfg = onlyKind("rapidThrow")
+			cfg.PowerUps.padRefillSeconds = 1
+			local w = setup(2, cfg)
+			withPad(w)
+			local a = live(w, "ffa")
+			local f1, f2 = fighterOf(w, 1), fighterOf(w, 2)
+			onPad(w, 1)
+			MatchService.tick(a + 0.01)
+			-- Review fix: "no wait" is the shortest cooldown, so the multiplier is Min / the thrower's clamped catalog
+			-- cooldown (ThrowRules clamps first). The fake fighter has no throw stats: its squishy's (the starter's).
+			local Catalog = t.requireShared("Catalog")
+			local clamp = Config.Duel.Rules.CooldownClamp
+			local starter = Catalog.get(Catalog.starterId()).throw.cooldown
+			expect.near(w.port.cooldownMultiplier(f1), clamp.Min / math.clamp(starter, clamp.Min, clamp.Max), 1e-9)
+			f1.throw = { cooldown = 1.5 }
+			expect.near(w.port.cooldownMultiplier(f1), clamp.Min / 1.5, 1e-9)
+			cfg.PowerUps.kinds.rapidThrow.cooldownMultiplier = 0.8 -- a gentler one (0.8 × 1.5 s > Min) stays as it is
+			expect.near(w.port.cooldownMultiplier(f1), 0.8, 1e-9)
+			cfg.PowerUps.kinds.rapidThrow.cooldownMultiplier = 0
+			expect.equal(w.port.cooldownMultiplier(f2), 1)
+			expect.equal(w.port.cooldownMultiplier(), 1)
+			expect.equal(w.port.throwSpeedMultiplier(f1), 1)
+			expect.falsy(w.port.dashCooldownFree(f1))
+			cfg.PowerUps.order = { "throwBoost" }
+			MatchService.tick(a + 1.01)
+			expect.equal(w.port.throwSpeedMultiplier(f1), cfg.PowerUps.kinds.throwBoost.speedMultiplier)
+			expect.equal(w.port.throwSpeedMultiplier(f2), 1)
+			cfg.PowerUps.order = { "dashBoost" }
+			MatchService.tick(a + 2.01)
+			expect.truthy(w.port.dashCooldownFree(f1))
+			expect.falsy(w.port.dashCooldownFree(f2))
+			-- They end with their seconds (the clock is the callbacks' time).
+			w.clock.set(a + 0.01 + cfg.PowerUps.kinds.rapidThrow.seconds)
+			expect.equal(w.port.cooldownMultiplier(f1), 1)
+			w.clock.set(a + 2.01 + cfg.PowerUps.kinds.dashBoost.seconds)
+			expect.falsy(w.port.dashCooldownFree(f1))
+			expect.equal(w.port.throwSpeedMultiplier(f1), 1)
+			close()
+		end
+	)
+
+	t.test(
+		"ult charge goes to AbilityService; a shield blocks one hit (a blocked outcome), the next one K.O.s",
+		function()
+			local cfg = onlyKind("ultCharge")
+			local w = setup(2, cfg)
+			withPad(w)
+			local a = live(w, "ffa")
+			onPad(w, 1)
+			MatchService.tick(a + 0.01)
+			expect.deepEqual(w.charged, { { userId = 1, fraction = cfg.PowerUps.kinds.ultCharge.ultFraction } })
+			expect.deepEqual(lastView(w, w.players[1]).you.buffs, {}) -- instant: no buff
+			close()
+
+			local v = setup(2, onlyKind("shield"))
+			withPad(v)
+			local b = live(v, "ffa")
+			onPad(v, 2)
+			MatchService.tick(b + 0.01)
+			expect.truthy(lastView(v, v.players[2]).you.buffs.shield ~= nil)
+			local blocked = hit(v, 2, 1, b + 1)
+			expect.deepEqual(blocked, { lives = 0, invulnUntil = b + 1, eliminated = false, blocked = true })
+			expect.truthy(fighterOf(v, 2).isAlive())
+			expect.equal(lastView(v, v.players[2]).you.buffs.shield, nil) -- used up
+			local ko = hit(v, 2, 1, b + 1.5)
+			expect.equal(ko.eliminated, true)
+			expect.equal(ko.blocked, nil)
+			expect.falsy(fighterOf(v, 2).isAlive())
+			close()
+		end
+	)
+
+	t.test("TDM team life: +1 life for the picker's team; at 0 lives the teammate out longest comes back", function()
+		local cfg = onlyKind("teamLife")
+		local w = setup(2, cfg)
+		withPad(w, 2)
+		local a = live(w, "tdm")
+		local team = w.players[1]:GetAttribute("SD_Team")
+		onPad(w, 1)
+		MatchService.tick(a + 0.01)
+		expect.truthy(hasCode(w, w.players[1], "match.powerUp.teamLife"))
+		expect.equal(lastView(w, w.players[2]).teamLives[team], cfg.Modes.tdm.teamLives + 1)
+		close()
+
+		local c2 = onlyKind("teamLife")
+		c2.Modes.tdm.teamLives = 0
+		local v = setup(4, c2)
+		withPad(v, 2)
+		local b = live(v, "tdm")
+		local red, blue = {}, {}
+		for _, player in v.players do
+			table.insert(if player:GetAttribute("SD_Team") == c2.teamNames[1] then red else blue, player.UserId)
+		end
+		hit(v, red[1], blue[1], b + 1) -- no team life: out
+		expect.truthy(lastView(v, v.players[red[1]]).you.out)
+		onPad(v, red[2])
+		MatchService.tick(b + 1.5)
+		local back = lastView(v, v.players[red[1]])
+		expect.truthy(back.you.alive)
+		expect.falsy(back.you.out)
+		expect.equal(back.teamLives[c2.teamNames[1]], 0) -- the new life was spent on the revive
+		expect.truthy(fighterOf(v, red[1]).isAlive())
+		expect.equal(v.humanoids[red[1]].WalkSpeed, Config.Duel.Rules.Movement.WalkSpeed)
+		expect.truthy(inMap(v.roots[red[1]].Position))
+		close()
+	end)
+
+	t.test("every power-up kind has its pickup toast; every timed one its readout name", function()
+		local Strings = t.requireShared("Strings")
+		for _, kind in Config.Match.PowerUps.order do
+			if Strings.resolve(`match.powerUp.{kind}`) == nil then
+				error(`match.powerUp.{kind} has no Strings text`)
+			end
+			if Config.Match.PowerUps.kinds[kind].seconds ~= nil then
+				expect.truthy(Strings.resolve(`match.readout.powerUpName.{kind}`) ~= nil)
+			end
+		end
+		local readout = Strings.match.readout.powerUp
+		expect.truthy(string.find(readout, "{name}", 1, true) ~= nil)
+		expect.truthy(string.find(readout, "{seconds}", 1, true) ~= nil)
 	end)
 
 	-- Runs last: every code the cases above saw (and every other one MatchService sends) has its Strings text.

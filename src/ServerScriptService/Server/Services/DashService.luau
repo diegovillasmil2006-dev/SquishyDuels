@@ -25,6 +25,12 @@
 --   Review fix (2026-10-15): the cast is a Spherecast of the body's radius, not a thin ray, so a dasher whose HRP
 --   centre is just past a platform edge (the Humanoid still stands on it, and the client's FloorMaterial gate passes)
 --   is on the ground here too; the probe and its length live in CombatService, shared with AbilityService.
+-- * Power-ups v1.1 (2026-10-16): on an ffa port whose optional port.dashCooldownFree(fighter) says so (MatchService:
+--   the dash boost lives), the cooldown is skipped; every other check stays, and the accepted dash still records
+--   lastDashAt, so the cooldown counts from the last boosted dash once the boost ends. Review fix (2026-10-16): one
+--   dash after the other, not any number at once: a boosted dash waits until the last one's pose clip has played
+--   (DashMath.eventSeconds(visualFrames), 0.4 s, with DashRules' cooldownToleranceSeconds), as the client's gate
+--   already does (its dash lives at least that long). At most 2.5 dashes a second: under the DashRequest bucket.
 -- Per player (userId) for the session: lastSeq and lastDashAt; playerRemoving forgets them.
 -- Tests swap the clock, the sender, the violation reporter, the Spherecast and the ground probe with useDeps.
 
@@ -37,6 +43,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
+local DashMath = require(Shared.DashMath)
 local PracticeTargets = require(Shared.Practice.PracticeTargets)
 local Types = require(Shared.Types)
 local Logic = script.Parent.Parent.Logic
@@ -68,6 +75,8 @@ type DasherState = { lastSeq: number, lastDashAt: number }
 -- Constants
 
 local DASH = Config.Duel.Rules.Dash
+-- Power-ups v1.1 review fix: the dash boost's spacing, the dash's pose clip (the client's CLIP_SECONDS).
+local BOOST_SPACING_SECONDS = DashMath.eventSeconds(DASH.visualFrames)
 local HALF_BY_SIDE: { [string]: string } = { A = "HalfA", B = "HalfB" }
 local REMOTE_DASH = "DashRequest"
 local REMOTE_STARTED = "DashStarted"
@@ -169,6 +178,12 @@ function DashService.requestDash(who: any, seq: unknown, dir: unknown, clientTim
 			-- ground under the dasher, so a dash on a platform is not "airborne".
 			state.zone = port.arena.zones.Bounds
 			state.floorY = CombatService.groundUnder(port.arena, if root then root.Position else nil, deps.ground)
+			-- Power-ups v1.1 (2026-10-16): the dash boost: no cooldown while it lives. Review fix: DashRules' cooldown
+			-- check then waits BOOST_SPACING_SECONDS after the last dash instead of cooldownSeconds (one at a time).
+			local cooldownFree = port.dashCooldownFree
+			if cooldownFree and cooldownFree(fighter) then
+				state.lastDashAt = memory.lastDashAt - DASH.cooldownSeconds + BOOST_SPACING_SECONDS
+			end
 		end
 	elseif player and PracticeService.isPracticing(player) then
 		local actor = CombatService.practiceActor(player)

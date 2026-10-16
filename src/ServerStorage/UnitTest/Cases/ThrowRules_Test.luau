@@ -13,6 +13,9 @@
 -- handsBusyUntil (a catch window or a crush) is throw.busy; the charge c is measured from chargeStartAt to the press,
 -- from the throw's ready moment (nextThrowAt - windup, not before chargeFloorAt) at the earliest, clamped 0..1 (no
 -- start = 0), and the velocity is × (1 + speedGain·c).
+-- Power-ups v1.1 (2026-10-16): speedMultiplier (the throw boost) scales the velocity only (nil = exactly the old one).
+-- Review fix: the rapid throw's multiplier from MatchService (Min / the clamped cooldown) gives exactly the shortest
+-- cooldown, CooldownClamp.Min (the clamp comes first): the next throw at once is refused, one Min later is accepted.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -587,6 +590,41 @@ return function(t: Context)
 		-- The direction is the aim, whatever the charge.
 		expect.near((full.direction - plain.direction).Magnitude, 0, FLOAT_TOLERANCE)
 	end)
+
+	-- Power-ups v1.1 (2026-10-16): the Free for All / Team Deathmatch throw boost and rapid throw.
+	t.test(
+		"power-ups: speedMultiplier scales the launch speed (nil = 1); the rapid throw's cooldown is the shortest one",
+		function()
+			local speedGain = Config.Combat.Charge.speedGain
+			local plain = validate(input(), duelState())
+			local boosted = validate(input(), duelState({ speedMultiplier = 1.4 }))
+			expect.truthy(boosted.ok)
+			expect.near(boosted.velocity.Magnitude, THROW.speed * 1.4, 1e-3)
+			expect.near((boosted.direction - plain.direction).Magnitude, 0, FLOAT_TOLERANCE)
+			expect.equal(boosted.gravity, plain.gravity)
+			expect.equal(boosted.nextThrowAt, plain.nextThrowAt) -- the boost never touches the cooldown
+			-- With a charge: both factors.
+			local both = validate(input(), duelState({ speedMultiplier = 1.4, chargeStartAt = NOW - 5 }))
+			expect.near(both.velocity.Magnitude, THROW.speed * (1 + speedGain) * 1.4, 1e-3)
+			-- No multiplier is exactly the old velocity.
+			expect.equal(validate(input(), duelState({ speedMultiplier = nil })).velocity, plain.velocity)
+			-- Rapid throw (review fix): the clamp comes first, then × MatchService's Min / the clamped cooldown, so the
+			-- cooldown is exactly CooldownClamp.Min (SPEC P3: "no wait" = the shortest cooldown).
+			local clamp = Config.Duel.Rules.CooldownClamp
+			local rapidMultiplier = clamp.Min / math.clamp(THROW.cooldown, clamp.Min, clamp.Max)
+			local rapid = validate(input(), duelState({ cooldownMultiplier = rapidMultiplier }))
+			expect.near(rapid.nextThrowAt, (rapid.releaseAt :: number) + clamp.Min, TIME_TOLERANCE)
+			local state = duelState({ cooldownMultiplier = rapidMultiplier })
+			ThrowRules.apply(state, rapid)
+			state.activeProjectiles = 1
+			expectRejected(validate(input({ seq = 2 }), state), "throw.cooldown") -- not at once
+			local later = clamp.Min
+			local next =
+				ThrowRules.validate(input({ seq = 3, clientTime = NOW + later - 0.05 }), state, Config, NOW + later)
+			expect.truthy(next.ok)
+			expect.near(next.releaseAt :: number, (rapid.releaseAt :: number) + clamp.Min, TIME_TOLERANCE)
+		end
+	)
 
 	-- §12 #10 Lifetime and Bounds -----------------------------------------------------------------------------------
 

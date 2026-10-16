@@ -13,7 +13,8 @@
 --   * a DashStarted payload is used only when every field has its type and dir is a flat unit vector;
 --   * FFA/TDM v1 (2026-10-15): the Duel input context with a 12-player match view (and no duel view) is the "match"
 --     context, gated like a duel (Active only, inside the zone: the map's Bounds; a knocked-out player is not alive);
---   * 2026-10-15 overhaul: the effects take the team glow (A Strawberry, B Mint), the ghosts ghostEverySeconds apart.
+--   * 2026-10-15 overhaul: the effects take the team glow (A Strawberry, B Mint), the ghosts ghostEverySeconds apart;
+--   * power-ups v1.1 (2026-10-16, SPEC P3): a live dash boost (cooldownFree) skips only the cooldown.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -90,6 +91,27 @@ return function(t: Context)
 		expect.equal(DashController.gate(gate({ context = "match", inZone = false })), "dash.context")
 		expect.equal(DashController.gate(gate({ context = "match", alive = false })), "dash.context")
 		expect.equal(DashController.gate(gate({ context = "match", grounded = false })), "dash.airborne")
+	end)
+
+	t.test("power-ups v1.1: a live dash boost skips the cooldown and nothing else", function()
+		local soon = 100 - DASH.cooldownSeconds + 0.1
+		expect.equal(DashController.gate(gate({ context = "match", lastDashAt = soon })), "dash.cooldown")
+		expect.equal(DashController.gate(gate({ context = "match", lastDashAt = soon, cooldownFree = true })), nil)
+		expect.equal(DashController.gate(gate({ context = "match", lastDashAt = 100, cooldownFree = true })), nil)
+		expect.equal(
+			DashController.gate(gate({ context = "match", lastDashAt = soon, cooldownFree = false })),
+			"dash.cooldown"
+		)
+		local free = { context = "match", lastDashAt = 100, cooldownFree = true }
+		local function with(key: string, value: any): any
+			local o = table.clone(free) :: { [string]: any }
+			o[key] = value
+			return gate(o)
+		end
+		expect.equal(DashController.gate(with("dashing", true)), "dash.busy")
+		expect.equal(DashController.gate(with("grounded", false)), "dash.airborne")
+		expect.equal(DashController.gate(with("phase", "Countdown")), "dash.context")
+		expect.equal(DashController.gate(with("alive", false)), "dash.context")
 	end)
 
 	t.test(

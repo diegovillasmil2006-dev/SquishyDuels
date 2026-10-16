@@ -37,6 +37,20 @@
 --   accepts it), true after; the server re-places a character that dies anyway.
 -- * Catch (D8): no catch in a match; the touch Catch button hides (ControlsController.setTouchAvailable) and the dock's
 --   catch meter stays hidden while a match view exists.
+-- * Power-up pads (power-ups v1.1, 2026-10-16, SPEC P4; no new art): when a pad's readyAt (the view's pads, server
+--   time) rises above the one last played and still lies ahead, Diego's MapAnimations_<mapCode>.Collect(padModel,
+--   readyAt - now) plays its pop and refill timer (MatchFormat.padCollectSeconds; padModel = the map's descendant with
+--   the pad's name). Only once the map animations run (their Start registers the pads): checked on every MatchChanged
+--   and right after they start (a pad taken before that still shows its refill). In a pcall; Diego's modules are never
+--   changed. The readout lists the own live power-ups with their seconds left (MatchFormat.readout).
+--   Review fixes (2026-10-16): his refill timer gets a head start of one pickup sample (1 / Config.Match.Storm
+--   .sampleHz, MatchFormat.collectRefill), so it is over before the server can report the pad taken again (his Collect
+--   ignores a pad still refilling), and a refill shorter than his pop (DIEGO_POP_SECONDS) is not played. His Start
+--   registers only the pads whose parts are on this client, so it waits (streaming: the pad Models are there from the
+--   join, their MeshParts stream in by distance) until every pad of the view has its _Pickup, _Ring and _Fill parts,
+--   at most PAD_STREAM_WAIT_SECONDS, then starts anyway (warned once). It also waits while a refill handed to his
+--   Collect on the same map in an earlier match still plays (his stop() leaves it running; a Start then would record
+--   the vanished pickup's size and keep that pad tiny on this client for the session).
 -- API: attachDuelHud(hooks) -> detach (DuelController only); counts() (Studio debug); init(), start(), destroy().
 -- Require direction (§7): StateController, NetController, ControlsController, ThrowController and UIController (plus
 -- UI helpers and shared modules); DuelController requires this module in its init, never the other way round.
@@ -94,6 +108,13 @@ type Look = {
 	segments: { BasePart },
 	wallRadius: number?, -- the radius last drawn
 	readoutAt: number, -- os.clock() of the next readout refresh
+	-- Power-ups v1.1: Diego's running map animations module and its map (both nil until Start ran), the readyAt last
+	-- played per pad name, and the pad models found so far.
+	animationsModule: any?,
+	map: Instance?,
+	padsShown: { [string]: number },
+	padModels: { [string]: Instance },
+	streamDeadline: number?, -- review fix: os.clock() after which Start no longer waits for the pads to stream in
 }
 
 -- Constants
@@ -123,6 +144,12 @@ local WALL_OVERLAP = 1.05
 local WALL_REDRAW_STUDS = 0.02
 local ANIMATION_PHASES: { [string]: boolean } = { Countdown = true, Active = true }
 local ANIMATION_RETRY_SECONDS = 1 -- review fix: how often a map that has not streamed in yet is looked for again
+-- Power-ups v1.1 review fixes (client timing, not game numbers): the parts Diego's setupPad looks for in a pad (by name
+-- ending), the longest wait for them to stream in before his Start, and his Collect's own animations (the pickup's pop
+-- 0.08 + 0.1 + 0.14 s, the refill's pop 0.35 s), rounded up.
+local PAD_PARTS = { "_Pickup", "_Ring", "_Fill" }
+local PAD_STREAM_WAIT_SECONDS = 5
+local DIEGO_POP_SECONDS = 0.4
 
 -- `require` with a runtime-found ModuleScript (Diego's map scripts); the analyzer cannot resolve these paths.
 local dynamicRequire = require :: (ModuleScript) -> any
@@ -140,7 +167,10 @@ local current: Look? = nil
 local readout: Chip.Chip? = nil
 local resetToken = 0
 local warned: { [string]: boolean } = {}
-local stats = { joins = 0, leaves = 0, looks = 0, lighting = 0, animations = 0 }
+local stats = { joins = 0, leaves = 0, looks = 0, lighting = 0, animations = 0, collects = 0 }
+-- Power-ups v1.1 review fix: per map code, the os.clock() at which the last refill handed to Diego's Collect is over
+-- (kept across matches: his stop() does not end it).
+local refillEnds: { [string]: number } = {}
 
 local function warnOnce(key: string, ...: any)
 	if not warned[key] then
@@ -265,9 +295,38 @@ local function startLighting(lc: Cleanup.Cleanup, code: string)
 	end
 end
 
+-- Power-ups v1.1 review fix: whether `model` holds a BasePart whose name ends in `suffix` (as Diego's findChild).
+local function hasPart(model: Instance, suffix: string): boolean
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") and string.sub(d.Name, -#suffix) == suffix then
+			return true
+		end
+	end
+	return false
+end
+
+-- Power-ups v1.1 review fix: every pad of the view is on this client with the parts Diego's setupPad uses.
+local function padsStreamed(map: Instance, view: StateController.MatchView): boolean
+	for _, pad in view.pads do
+		local model = map:FindFirstChild(pad.name, true)
+		if model == nil then
+			return false
+		end
+		for _, suffix in PAD_PARTS do
+			if not hasPart(model, suffix) then
+				return false
+			end
+		end
+	end
+	return true
+end
+
 -- Review fix: the flag is set only once Start ran, or when it cannot run at all (no code, no module, no Start, Start
--- failed); a map model that is not on this client yet (streaming) is looked for again later (stepLook).
-local function startAnimations(state: Look, code: string)
+-- failed); a map model that is not on this client yet (streaming) is looked for again later (stepLook). Power-ups
+-- v1.1 review fixes: it also waits while a refill of an earlier match on this map still plays, and (at most
+-- PAD_STREAM_WAIT_SECONDS) until the view's pads have streamed in (see the header).
+local function startAnimations(state: Look, view: StateController.MatchView)
+	local code = view.mapCode
 	if code == "" then
 		state.animations = true
 		return
@@ -282,6 +341,21 @@ local function startAnimations(state: Look, code: string)
 		warnOnce("map:" .. code, `no {MAPS_FOLDER} model with {ATTR_MAP_CODE} {code} yet; its animations wait for it`)
 		return
 	end
+	local clock = os.clock()
+	if clock < (refillEnds[code] or -math.huge) then
+		return -- a refill handed to Collect in an earlier match on this map still plays
+	end
+	local deadline = state.streamDeadline
+	if deadline == nil then
+		deadline = clock + PAD_STREAM_WAIT_SECONDS
+		state.streamDeadline = deadline
+	end
+	if not padsStreamed(map, view) then
+		if clock < deadline then
+			return
+		end
+		warnOnce("pads:" .. code, `{code}'s power-up pads have not all streamed in; its map animations start anyway`)
+	end
 	state.animations = true
 	local ok, stop = pcall(animations.Start, map)
 	if not ok then
@@ -289,6 +363,8 @@ local function startAnimations(state: Look, code: string)
 		return
 	end
 	stats.animations += 1
+	state.animationsModule = animations -- power-ups v1.1: the pads' Collect (syncPads)
+	state.map = map
 	if type(stop) == "function" then
 		state.cleanup:add(function()
 			local okStop, errStop = pcall(stop)
@@ -296,6 +372,41 @@ local function startAnimations(state: Look, code: string)
 				log:warn(`{MAP_ANIMATIONS_PREFIX}{code} stop failed:`, errStop)
 			end
 		end)
+	end
+end
+
+-- Power-ups v1.1 (SPEC P4): Diego's pad pop and refill timer for every pad whose readyAt rose since it was last played
+-- (see the header). Nothing before the map animations run.
+local function syncPads(state: Look, view: StateController.MatchView, now: number)
+	local animations, map = state.animationsModule, state.map
+	if animations == nil or map == nil or type(animations.Collect) ~= "function" then
+		return
+	end
+	-- Review fix: one pickup sample of head start for his refill timer (see the header).
+	local hz = (MATCH.Storm :: any).sampleHz
+	local headStart = if type(hz) == "number" and hz > 0 then 1 / hz else 0
+	for _, pad in view.pads do
+		local seconds = MatchFormat.padCollectSeconds(pad.readyAt, state.padsShown[pad.name], now)
+		local model = if seconds then state.padModels[pad.name] or map:FindFirstChild(pad.name, true) else nil
+		if seconds and model then
+			state.padModels[pad.name] = model
+			state.padsShown[pad.name] = pad.readyAt
+			local refill = MatchFormat.collectRefill(seconds, headStart, DIEGO_POP_SECONDS)
+			if refill then
+				local endsAt = os.clock() + refill + DIEGO_POP_SECONDS
+				refillEnds[view.mapCode] = math.max(refillEnds[view.mapCode] or -math.huge, endsAt)
+				local ok, err = pcall(animations.Collect, model, refill)
+				if ok then
+					stats.collects += 1
+				else
+					warnOnce(
+						"collect:" .. pad.name,
+						`{MAP_ANIMATIONS_PREFIX}{view.mapCode}.Collect({pad.name}) failed:`,
+						err
+					)
+				end
+			end
+		end
 	end
 end
 
@@ -512,12 +623,15 @@ local function stepLook(state: Look): boolean
 	guarded("wall", updateWall, state, view, now)
 	guarded("readout", updateReadout, state, view, now)
 	-- Review fix: the map animations start once the phase reaches Countdown and the map is on this client; a map not
-	-- streamed in yet is looked for again every ANIMATION_RETRY_SECONDS.
+	-- streamed in yet is looked for again every ANIMATION_RETRY_SECONDS (power-ups v1.1: so are its pads, and an
+	-- earlier match's refill on it, see startAnimations).
 	local clock = os.clock()
 	if not state.animations and ANIMATION_PHASES[view.phase] and clock >= state.animationsAt then
 		state.animationsAt = clock + ANIMATION_RETRY_SECONDS
-		if not guarded("animations", startAnimations, state, view.mapCode) then
+		if not guarded("animations", startAnimations, state, view) then
 			state.animations = true -- never retried after an error
+		elseif state.animationsModule ~= nil then
+			guarded("pads", syncPads, state, view, now) -- power-ups v1.1: pads taken before the start
 		end
 	end
 	return true
@@ -542,6 +656,11 @@ local function beginLook(view: StateController.MatchView)
 		segments = {},
 		wallRadius = nil,
 		readoutAt = -math.huge,
+		animationsModule = nil,
+		map = nil,
+		padsShown = {},
+		padModels = {},
+		streamDeadline = nil,
 	}
 	current = state
 	stats.looks += 1
@@ -580,6 +699,9 @@ local function onMatchChanged(view: StateController.MatchView?, old: StateContro
 		beginLook(view)
 		state = current
 	end
+	if state ~= nil then
+		guarded("pads", syncPads, state, view, Workspace:GetServerTimeNow()) -- power-ups v1.1 (SPEC P4)
+	end
 	local phaseChanged = old == nil or old.matchId ~= view.matchId or old.phase ~= view.phase
 	if not phaseChanged or state == nil then
 		return
@@ -617,6 +739,7 @@ function MatchController.counts(): { [string]: any }
 		looks = stats.looks,
 		lighting = stats.lighting,
 		animations = stats.animations,
+		collects = stats.collects, -- power-ups v1.1
 	}
 end
 

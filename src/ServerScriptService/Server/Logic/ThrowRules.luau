@@ -29,6 +29,10 @@
 --      throw was ready (nextThrowAt - windup, and not before chargeFloorAt), whichever is later, clamped 0..1 (no
 --      record = 0); velocity = direction × speed × (1 + speedGain·c) (Config.Combat.Charge; design: html:330). The
 --      client never sends a charge or a speed.
+--      Power-ups v1.1 (2026-10-16): × state.speedMultiplier too (the Free for All / Team Deathmatch throw boost,
+--      Config.Match.PowerUps.kinds.throwBoost; nil = 1, duels and practice never set it). The clamp comes first and the
+--      multiplier after, so the rapid throw's multiplier (MatchService, review fix 2026-10-16) is Min / the clamped
+--      cooldown there: its cooldown is exactly CooldownClamp.Min, the shortest one (a multiplier of 0 would be none).
 -- Rejections echo the seq (when it was valid) and the unchanged nextThrowAt for ThrowRejected(seq, reason, nextThrowAt).
 -- The thrown squishy's stats always come from the server (the match snapshot), never from the client (§12 #3).
 --
@@ -91,6 +95,9 @@ export type ThrowState = {
 	chargeStartAt: number?,
 	handsBusyUntil: number?,
 	chargeFloorAt: number?,
+	-- Power-ups v1.1 (2026-10-16): × the launch speed (the throw boost of a Free for All / Team Deathmatch fighter);
+	-- nil = 1.
+	speedMultiplier: number?,
 }
 
 export type Decision = {
@@ -321,6 +328,7 @@ function ThrowRules.validate(input: ThrowInput, state: ThrowState, cfg: ThrowCon
 	local chargeCfg = c.Combat.Charge or Config.Combat.Charge -- a test's older Config copy may have none
 	local readyPressAt = math.max(state.nextThrowAt - throw.windup, state.chargeFloorAt or -math.huge)
 	local charge = ThrowCharge.measure(state.chargeStartAt, now - lag, readyPressAt, chargeCfg.seconds)
+	local boost = if state.speedMultiplier ~= nil then state.speedMultiplier else 1 -- power-ups v1.1 (throw boost)
 	return {
 		ok = true,
 		violation = false,
@@ -331,7 +339,7 @@ function ThrowRules.validate(input: ThrowInput, state: ThrowState, cfg: ThrowCon
 		releaseAt = releaseAt,
 		direction = direction,
 		origin = origin,
-		velocity = direction * (throw.speed * ThrowCharge.speedFactor(charge, chargeCfg.speedGain)),
+		velocity = direction * (throw.speed * ThrowCharge.speedFactor(charge, chargeCfg.speedGain) * boost),
 		gravity = throw.gravity,
 		radius = throw.radius,
 		lag = lag,

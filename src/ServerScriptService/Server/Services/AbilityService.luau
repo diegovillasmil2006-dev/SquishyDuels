@@ -49,6 +49,10 @@
 --   LaneSpec.floorY); Rain Check's centre and drops sit on the ground under the aimed enemy, and its drop targets are
 --   the enemies within targetRadius of the centre, nearest first (far ones no longer use up drops); detachFighter
 --   forgets one player who left a running match (SPEC D6) while the rest play on.
+-- * Power-ups v1.1 (2026-10-16, MatchService's pads): addChargeFraction(userId, fraction) is the ult charge power-up
+--   (fraction × chargeMax onto the meter, clamped, UltimateCharge sent at once); the end of a root on an ffa port gives
+--   the standing caster port.movement(fighter) (its live speed / super jump power-ups) instead of the plain
+--   Config.Duel.Rules.Movement. A shield-blocked hit is no Hit (CombatService), so it never cancels a telegraph.
 -- Nothing the client sends is trusted for charge, timers, origin, length, targets or drop points (§12 #3).
 -- Tests swap the clock, the sender, the scheduler and the world queries (room, Spherecast, ground) with useDeps;
 -- setCharge fills a meter for tests and Studio checks.
@@ -329,6 +333,15 @@ local function setRooted(caster: Caster, rooted: boolean)
 	local port = caster.port
 	if not rooted and port and port.ffa and not isAlive(caster) then
 		return -- FFA/TDM v1: knocked out; the match service owns this frozen body's movement until the respawn
+	end
+	local movement = if port and port.ffa then port.movement else nil
+	local fighter = caster.fighter
+	if not rooted and movement and fighter then
+		-- Power-ups v1.1 (2026-10-16): back to the match movement with the caster's live speed / super jump power-ups.
+		local walk, jump = movement(fighter)
+		humanoid.WalkSpeed = walk
+		humanoid.JumpHeight = jump
+		return
 	end
 	humanoid.WalkSpeed = if rooted then 0 else MOVEMENT.WalkSpeed
 	humanoid.JumpHeight = if rooted then 0 else MOVEMENT.JumpHeight
@@ -929,6 +942,20 @@ function AbilityService.setCharge(userId: number, charge: number): boolean
 		return false
 	end
 	caster.charge = math.clamp(charge, 0, caster.ability.chargeMax)
+	sendCharge(caster, serverNow(), true)
+	return true
+end
+
+-- Power-ups v1.1 (2026-10-16): the ult charge power-up (MatchService, MatchRules' ultCharge effect): adds `fraction` of
+-- the full meter (fraction × chargeMax, clamped to 0..chargeMax) to an attached participant's charge and sends
+-- UltimateCharge at once. False without one (no ultimate in the match snapshot) or with a fraction that is not a
+-- finite number in (0, 1].
+function AbilityService.addChargeFraction(userId: number, fraction: number): boolean
+	local caster = duelCasters[userId]
+	if caster == nil or type(fraction) ~= "number" or not (fraction > 0 and fraction <= 1) then
+		return false
+	end
+	addCharge(caster, caster.ability.chargeMax * fraction)
 	sendCharge(caster, serverNow(), true)
 	return true
 end

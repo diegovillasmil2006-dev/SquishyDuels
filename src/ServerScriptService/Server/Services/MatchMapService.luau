@@ -14,7 +14,10 @@
 --   - the spawn pads: instances named *_Spawn_Red_* / *_Spawn_Blue_* (TDM; Red is Config.Match.teamNames[1], Blue
 --     [2]) or *_Spawn_Ffa_* (FFA; the ".001" copies too), matched without case: their box (a Model's
 --     GetBoundingBox, a part's CFrame and Size); the map's MatchSpawns set is built from them;
---   - the power-up pads *_PowerUp_Pad_* (positions only; unused in v1);
+--   - the power-up pads *_PowerUp_Pad_* (positions only; unused in v1). Power-ups v1.1 (2026-10-16): also `powerUps`,
+--     one PowerUpPad per pad: its instance name (the client's Collect animation finds it by name), its box centre and
+--     its top (powerUpPad: the highest top of its collidable parts, Diego's *_COL; none: the box's bottom), which
+--     MatchService's pickup test reads;
 --   - raycast(origin, direction) -> hit position with the map's RaycastParams (MatchSpawns' storm respawn).
 --   A map without the attributes, the footprint or the pads its mode needs (TDM: a Red and a Blue pad; FFA: a pad) is
 --   skipped with one warning.
@@ -22,8 +25,8 @@
 --   hasMode(modeId) -> whether this server has any map of that mode. A rescan keeps every map a running match holds in
 --   use (review fix 2026-10-15). A map added at runtime needs a server restart: the Studio command bar has its own
 --   require cache, so a scan() from there reads into a separate copy of this module.
--- The pure helpers (modeOf, padKind, boundsFor, pickFree, boxQueryParts) and recordFrom on an unparented model are
--- unit-tested; useMaps(records) replaces the registry (tests).
+-- The pure helpers (modeOf, padKind, boundsFor, pickFree, boxQueryParts, powerUpPad) and recordFrom on an unparented
+-- model are unit-tested; useMaps(records) replaces the registry (tests).
 
 -- Services
 
@@ -43,6 +46,8 @@ local MatchSpawns = require(script.Parent.Parent.Logic.MatchSpawns)
 
 export type Zone = Types.ArenaZone
 export type PadKind = "Red" | "Blue" | "Ffa" | "PowerUp"
+-- Power-ups v1.1 (2026-10-16): one power-up pad: its instance name, its box centre and the height a player stands on.
+export type PowerUpPad = { name: string, position: Vector3, top: number }
 
 export type MapRecord = {
 	model: Instance?,
@@ -59,6 +64,7 @@ export type MapRecord = {
 	pads: { MatchSpawns.Pad },
 	spawns: MatchSpawns.SpawnSet,
 	powerUpPads: { Vector3 },
+	powerUps: { PowerUpPad }?, -- power-ups v1.1 (the same pads, in the same order; nil in an older record)
 	raycast: MatchSpawns.Raycast,
 	inUse: boolean,
 	matchId: string?,
@@ -97,22 +103,39 @@ local function boxOf(instance: Instance): (CFrame?, Vector3?)
 	return nil, nil
 end
 
--- Every pad under `root` (a matched instance is not searched further).
-local function collectPads(root: Instance, teams: { string }, pads: { MatchSpawns.Pad }, powerUps: { Vector3 })
+-- Every pad under `root` (a matched instance is not searched further). Power-ups v1.1: `records` gets each power-up
+-- pad's PowerUpPad too.
+local function collectPads(
+	root: Instance,
+	teams: { string },
+	pads: { MatchSpawns.Pad },
+	powerUps: { Vector3 },
+	records: { PowerUpPad }
+)
 	for _, child in root:GetChildren() do
 		local kind = MatchMapService.padKind(child.Name)
 		local cf, size = boxOf(child)
 		if kind ~= nil and cf ~= nil and size ~= nil then
 			if kind == "PowerUp" then
 				table.insert(powerUps, cf.Position)
+				table.insert(records, MatchMapService.powerUpPad(child, cf, size))
 			else
 				local team = if kind == "Red" then teams[1] elseif kind == "Blue" then teams[2] else nil
 				table.insert(pads, { cframe = cf, size = size, team = team })
 			end
 		else
-			collectPads(child, teams, pads, powerUps)
+			collectPads(child, teams, pads, powerUps, records)
 		end
 	end
+end
+
+-- Power-ups v1.1: the highest point of a part's box (any rotation), in world Y.
+local function partTop(part: BasePart): number
+	local cf, size = part.CFrame, part.Size
+	local reach = math.abs(cf.RightVector.Y) * size.X
+		+ math.abs(cf.UpVector.Y) * size.Y
+		+ math.abs(cf.LookVector.Y) * size.Z
+	return cf.Position.Y + reach / 2
 end
 
 local function collidableParts(model: Instance): { Instance }
@@ -191,6 +214,28 @@ function MatchMapService.boundsFor(centre: Vector3, floorY: number, footprint: V
 	}
 end
 
+-- Power-ups v1.1 (2026-10-16): one power-up pad's record from its instance and its box (boxOf: a Model's bounding box,
+-- a part's CFrame and Size). The top a player stands on is the highest top of its collidable parts (the instance
+-- itself when it is a part; Diego's pads stand on their *_COL proxy, under the floating pickup the box also holds);
+-- with none, the box's bottom (a pad that does not collide lies on the floor under it).
+function MatchMapService.powerUpPad(instance: Instance, cframe: CFrame, size: Vector3): PowerUpPad
+	local top: number? = nil
+	local parts: { Instance } = if instance:IsA("BasePart") then { instance } else instance:GetDescendants()
+	for _, part in parts do
+		if part:IsA("BasePart") and (part :: BasePart).CanCollide then
+			local y = partTop(part :: BasePart)
+			if top == nil or y > top then
+				top = y
+			end
+		end
+	end
+	return {
+		name = instance.Name,
+		position = cframe.Position,
+		top = if top ~= nil then top else cframe.Position.Y - size.Y / 2,
+	}
+end
+
 -- A random free record of `modeId` (r in [0, 1)), or nil.
 function MatchMapService.pickFree(list: { MapRecord }, modeId: string, r: number): MapRecord?
 	local free: { MapRecord } = {}
@@ -222,7 +267,8 @@ function MatchMapService.recordFrom(model: Instance, cfg: any?): (MapRecord?, st
 	end
 	local pads: { MatchSpawns.Pad } = {}
 	local powerUps: { Vector3 } = {}
-	collectPads(model, c.teamNames, pads, powerUps)
+	local powerUpRecords: { PowerUpPad } = {}
+	collectPads(model, c.teamNames, pads, powerUps, powerUpRecords)
 	if c.Modes[modeId].teams then
 		if not (hasTeam(pads, c.teamNames[1]) and hasTeam(pads, c.teamNames[2])) then
 			return nil, "a Red and a Blue spawn pad are needed"
@@ -258,6 +304,7 @@ function MatchMapService.recordFrom(model: Instance, cfg: any?): (MapRecord?, st
 		pads = pads,
 		spawns = MatchSpawns.build(pads, centre, floorY, modeId, c),
 		powerUpPads = powerUps,
+		powerUps = powerUpRecords,
 		raycast = function(origin: Vector3, direction: Vector3): Vector3?
 			local result = Workspace:Raycast(origin, direction, raycastParams)
 			return if result then result.Position else nil

@@ -24,6 +24,9 @@
 --     starts from the ground under the caster (a duel never probes it) and a lane cast on a platform hits there; Rain
 --     Check lands on the aimed enemy's level and hits it there; detachFighter forgets a leaver (its telegraph cancelled,
 --     no refund, no release) and never touches a duel.
+--   * Power-ups v1.1 (2026-10-16): addChargeFraction adds fraction × chargeMax (clamped) and sends UltimateCharge at
+--     once (false without a caster or with a fraction outside (0, 1]); on an ffa port a root's end gives the caster
+--     port.movement(fighter) (the buffed walk speed and jump height), without the callback or on a duel the plain one.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -817,6 +820,85 @@ return function(t: Context)
 			AbilityService.detachFighter(91)
 			expect.truthy(AbilityService.chargeOf(91) ~= nil)
 			closeWorld()
+		end
+	)
+
+	-- Power-ups v1.1 (2026-10-16). ----------------------------------------------------------------------------------
+
+	t.test(
+		"addChargeFraction (the ult charge power-up) adds a share of the meter, clamped, and sends it at once",
+		function()
+			local world = ultWorld("bird")
+			local V = Config.Abilities.flock_volley
+			local before = AbilityService.chargeOf(91) :: number
+			local sentBefore = #world.sent
+			expect.truthy(AbilityService.addChargeFraction(91, 0.5))
+			expect.near(AbilityService.chargeOf(91) :: number, math.min(V.chargeMax, before + V.chargeMax * 0.5), 1e-9)
+			local charge: any = nil
+			for i = sentBefore + 1, #world.sent do
+				local entry = world.sent[i]
+				if entry.remote == "UltimateCharge" and entry.payload.ownerId == 91 then
+					charge = entry.payload.charge
+				end
+			end
+			expect.equal(charge, math.floor(AbilityService.chargeOf(91) :: number))
+			expect.truthy(AbilityService.addChargeFraction(91, 1))
+			expect.equal(AbilityService.chargeOf(91), V.chargeMax) -- never past the full meter
+			expect.truthy(AbilityService.isReady(91))
+			expect.falsy(AbilityService.addChargeFraction(999, 0.5)) -- no caster
+			expect.falsy(AbilityService.addChargeFraction(91, 0))
+			expect.falsy(AbilityService.addChargeFraction(91, 1.5))
+			expect.falsy(AbilityService.addChargeFraction(91, 0 / 0))
+			closeWorld()
+		end
+	)
+
+	t.test(
+		"FFA: a root's end gives the caster port.movement (its speed / super jump); a duel the plain movement",
+		function()
+			local MOVEMENT = Config.Duel.Rules.Movement
+			local function withHumanoid(world: World): any
+				local humanoid = { WalkSpeed = 25.6, JumpHeight = 14.4 }
+				world.rootA.Parent = {
+					FindFirstChildOfClass = function(_self: any, className: string): any
+						return if className == "Humanoid" then humanoid else nil
+					end,
+				}
+				return humanoid
+			end
+			local V = Config.Abilities.flock_volley
+			local world = mapWorld("bird", nil, nil)
+			local humanoid = withHumanoid(world)
+			world.port.movement = function(f: any): (number, number)
+				expect.equal(f, world.caster)
+				return 25.6, 14.4
+			end
+			ready(world)
+			local start = world.clock.now()
+			expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start)))
+			expect.equal(humanoid.WalkSpeed, 0) -- rooted
+			expect.equal(humanoid.JumpHeight, 0)
+			runDelays(world, start + V.telegraphSeconds + V.recoverySeconds + 0.1)
+			expect.equal(humanoid.WalkSpeed, 25.6)
+			expect.equal(humanoid.JumpHeight, 14.4)
+			closeWorld()
+			-- An ffa port without the callback, and a duel port with one: the plain match movement.
+			for _, makeWorld in { "map", "duel" } do
+				local w = if makeWorld == "map" then (mapWorld("bird", nil, nil)) else ultWorld("bird")
+				local h = withHumanoid(w)
+				if makeWorld == "duel" then
+					w.port.movement = function(): (number, number)
+						return 99, 99
+					end
+				end
+				ready(w)
+				local at = w.clock.now()
+				expect.truthy((AbilityService.requestUltimate(91, 1, AIM, at)))
+				runDelays(w, at + V.telegraphSeconds + V.recoverySeconds + 0.1)
+				expect.equal(h.WalkSpeed, MOVEMENT.WalkSpeed)
+				expect.equal(h.JumpHeight, MOVEMENT.JumpHeight)
+				closeWorld()
+			end
 		end
 	)
 end
