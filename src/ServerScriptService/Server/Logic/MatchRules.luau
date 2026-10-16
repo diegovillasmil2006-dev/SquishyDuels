@@ -24,6 +24,9 @@
 --     next K.O. wins (a storm K.O. counts for the other team). Overtime ends after overtimeMaxSeconds as a draw.
 --   * Leaving: the player is gone for the rest of the match (no respawn). FFA with one player left: that player wins;
 --     with none: void. TDM: a team with nobody left in it is wiped.
+--   * Out of bounds (jayyyyy 2026-10-15: falling off or leaving the map "counts as a knockout"): the service sends `oob`
+--     when Config.Match.outOfBoundsIsKo is on; it is a K.O. with no attacker, like a storm K.O. (TDM: costs a team life,
+--     in Overtime it counts for the other team; FFA: nobody scores).
 --   * Storm (TDM only, Config.Match.Storm, StormMath): the service samples who stands in the storm; each standing,
 --     present player's bar moves by the time since their last sample; a full bar is a storm K.O. (no attacker).
 --   * Power-ups (the pickup event; PowerUpRules picks the kind and owns the pads): timed kinds become a buff until
@@ -41,10 +44,11 @@
 --   storm {inStorm = {[userId] = true}} TDM: who stands in the storm right now (sampled a few times a second)
 --   pickup {userId, power}              a power-up pad was taken (PowerUpRules.roll chose `power`)
 --   leave {userId}                      disconnect or left the match
+--   oob {userId}                        that standing player fell off / left the map (a K.O., cause "outOfBounds")
 --   shutdown, error                     void the match
 -- Effects ({ kind = ..., ... }):
 --   phase {phase, startedAt, endsAt}    `endsAt = math.huge` means no timer (Closed)
---   ko {victim, by?, cause, at}         cause "hit" or "storm"
+--   ko {victim, by?, cause, at}         cause "hit", "storm" or "outOfBounds"
 --   respawn {userId, at, protectUntil}  place the player at a spawn and protect them
 --   out {userId, at}                    TDM: no team life left for them
 --   teamLives {team, lives}
@@ -96,7 +100,7 @@ export type Participant = {
 	knockedOut: number,
 	stormBar: number,
 	stormAt: number?, -- time of the last storm sample
-	buffs: { [string]: number }, -- power -> until
+	buffs: { [string]: number? }, -- power -> until
 }
 
 export type OutcomeKind = "win" | "draw" | "cancelled" | "void"
@@ -313,7 +317,10 @@ local function knockOut(s: MatchState, victim: Participant, by: Participant?, ca
 	if by then
 		by.kos += 1
 	end
-	table.insert(fx, { kind = "ko", victim = victim.userId, by = if by then by.userId else nil, cause = cause, at = at })
+	table.insert(
+		fx,
+		{ kind = "ko", victim = victim.userId, by = if by then by.userId else nil, cause = cause, at = at }
+	)
 	if s.mode.teams then
 		local team = victim.team :: string
 		if s.teamLives[team] > 0 then
@@ -623,6 +630,11 @@ local function handle(s: MatchState, event: Event, now: number, fx: Effects)
 		handlePickup(s, event, now, fx)
 	elseif kind == "leave" then
 		handleLeave(s, event, now, fx)
+	elseif kind == "oob" then
+		local p = s.participants[event.userId]
+		if p and MatchRules.isLive(s) and p.present and p.alive then
+			knockOut(s, p, nil, "outOfBounds", now, fx)
+		end
 	end
 end
 

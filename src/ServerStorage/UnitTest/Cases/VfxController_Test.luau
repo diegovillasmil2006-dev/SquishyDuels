@@ -29,6 +29,8 @@
 --   * the Dragon Rush head (Anim/NearFade.rushHead, resolved once per head): the local caster's own head fades in
 --     over its first 3-8 studs in first person only (duel and practice: the same lane numbers); any first-person
 --     viewer's head fades within 4.5 studs of the camera; third person keeps the end fade alone.
+-- FFA/TDM v1 (2026-10-15, SPEC D3): an eliminated match player's held squishy comes back once the match view showed
+-- them knocked out and alive again, never before the elimination effect hid it; outside the view the old rule only.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -437,5 +439,25 @@ return function(t: Context)
 		expect.equal(headFade(length / speed, false, false, target), 0)
 		-- The end fade is never lowered by either.
 		expect.equal(NearFade.rushHead(0.6, length, 20, true, true), 0.6)
+	end)
+
+	-- FFA/TDM v1 (2026-10-15) ----------------------------------------------------------------------------------------
+
+	t.test("a match respawn brings the held squishy back after the knock-out was seen and the effect hid it", function()
+		local effectEnd = Config.Anim.elimination.endMs / 1000
+		local respawned, seen = VfxController.matchRespawned(false, nil, 10)
+		expect.falsy(respawned) -- not in the match view: the old rule only
+		expect.equal(seen, false)
+		respawned, seen = VfxController.matchRespawned(false, true, 10)
+		expect.falsy(respawned) -- the view has not shown the knock-out yet (the impact came first)
+		expect.equal(seen, false)
+		respawned, seen = VfxController.matchRespawned(seen, false, 0.5)
+		expect.falsy(respawned)
+		expect.equal(seen, true)
+		respawned = VfxController.matchRespawned(seen, true, effectEnd - 0.01)
+		expect.falsy(respawned) -- the effect has not hidden it yet
+		respawned, seen = VfxController.matchRespawned(seen, true, effectEnd + 0.01)
+		expect.truthy(respawned)
+		expect.equal(seen, true)
 	end)
 end

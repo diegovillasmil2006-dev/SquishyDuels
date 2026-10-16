@@ -4,6 +4,8 @@
 -- §5.4 (phases and queue states), §17.10 (Grip: schemaVersion 2, the StateDelta grip field, SqueezeResult fields),
 -- §6.9 (Part 7: DailyClaimResult).
 -- Where DESIGN names a payload field but not its exact type, the reading is marked "reading:".
+-- FFA/TDM v1 (2026-10-15): MatchMode, MatchParticipantView, MatchStateView (the MatchState remote) and the MatchJoin /
+-- MatchLeave calls.
 
 -- == Catalog (§4.1) ==
 
@@ -295,6 +297,69 @@ export type DuelStateView = {
 	rules: { [string]: any }, -- reading: this match's copy of Config.Duel.Rules
 }
 
+-- == Free for All / Team Deathmatch views (FFA/TDM v1, 2026-10-15; MatchService -> the MatchState remote) ==
+
+export type MatchMode = "ffa" | "tdm"
+
+-- One match player as everyone sees them. `team` is Config.Match.teamNames[1] / [2] in TDM, nil in FFA; `kos` = the
+-- K.O.s they scored, `knockedOut` = the times they were knocked out; `alive` = standing in the map right now.
+export type MatchParticipantView = {
+	userId: number,
+	displayName: string,
+	squishyId: string,
+	team: string?,
+	kos: number,
+	knockedOut: number,
+	alive: boolean,
+	ultReady: boolean,
+}
+
+-- The receiving player's own state. Server times; respawnAt = while knocked out (nil when standing or out);
+-- protectUntil = the spawn protection's end (0 = none); stormBar 0..1 (TDM); out = TDM, no team life left.
+export type MatchYouView = {
+	userId: number,
+	team: string?,
+	alive: boolean,
+	respawnAt: number?,
+	protectUntil: number,
+	stormBar: number,
+	out: boolean,
+}
+
+-- MatchRules' outcome: kind "win" | "draw" | "cancelled" | "void"; reason koTarget, wiped, timeUp, overtime,
+-- overtimeTimeout, lastPlayer, notEnoughPlayers, shutdown, error or empty; winners = every winning userId.
+export type MatchOutcomeView = {
+	kind: string,
+	reason: string,
+	winnerUserId: number?,
+	winnerTeam: string?,
+	winners: { number },
+}
+
+-- The map: its floor height, the Bounds box the combat code reads, and its centre (the storm's centre).
+export type MatchArenaView = { floorY: number, bounds: ArenaZone, centre: Vector3 }
+
+-- The MatchState payload (one per player): sent on the first view, every phase change, K.O., respawn, team-lives
+-- change and outcome, plus the own view when `you.stormBar` moved (at most Config.Match.Storm.sampleHz a second).
+-- A last view with phase "Returning", then the cleared attributes (SD_MatchId "") end it on the client.
+export type MatchStateView = {
+	matchId: string,
+	mode: MatchMode,
+	mapCode: string, -- the map's MapCode (Diego's MapLighting / MapAnimations_<code>)
+	mapName: string,
+	phase: DuelPhase, -- the DuelPhase name (Waiting -> Positioning, Overtime -> Active, Closed -> Returning)
+	matchPhase: string, -- the real MatchRules phase: Waiting, Countdown, Active, Overtime, Result, Closed
+	phaseEndsAt: number, -- server time (workspace:GetServerTimeNow()); 0 = no timer
+	activeStartedAt: number?, -- server time Active began (the storm and the match timer)
+	you: MatchYouView,
+	players: { MatchParticipantView },
+	teamLives: { [string]: number }?, -- TDM
+	koTarget: number?, -- FFA
+	arena: MatchArenaView,
+	storm: { startRadius: number }?, -- TDM only (StormMath.startRadius of the map's footprint)
+	outcome: MatchOutcomeView?,
+}
+
 -- One queue entry (§5.4), as QueueService keeps it and Logic/Matchmaker reads it. `priority` is
 -- Config.Duel.Matchmaking.NormalPriority or RequeuePriority (requeued after the opponent bailed). `rating` is nil in
 -- v1 (getRating returns nil: pure FIFO; it never reads lobby stats). `player` is nil in pure tests.
@@ -366,6 +431,9 @@ export type PromptGamePassCall = (passKey: string) -> ()
 export type PolicyRetryCall = () -> ()
 export type SetSettingsCall = (settings: SettingsPatch) -> ()
 export type OnboardingStepCall = (stepId: ClientOnboardingStep) -> ()
+-- FFA/TDM v1 (2026-10-15): the /ffa, /tdm and /leave chat commands.
+export type MatchJoinCall = (mode: MatchMode) -> ()
+export type MatchLeaveCall = () -> ()
 
 -- == Remote payloads: server → client (§2.8) ==
 

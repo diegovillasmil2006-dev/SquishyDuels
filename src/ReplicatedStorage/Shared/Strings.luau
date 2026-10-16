@@ -11,6 +11,8 @@
 -- * Server reason codes (§2.10) live only under `reason.*` and are read with `Strings.reasonText(code)`.
 --   "No Coins were spent" is never part of a reason text: the client adds `common.noCoinsSpent` only when
 --   the server's Result says `charged = false` (§2.10, §11.3).
+-- FFA/TDM v1 (2026-10-15): match.* holds every Free for All / Team Deathmatch text (MatchService toasts, refusals, the
+-- client's test readout).
 
 export type FormatArgs = { [string]: any }
 
@@ -369,6 +371,64 @@ local Strings = {
 		rematchWaitingFor = "Waiting for {name}…",
 		rematchAsked = "{name} wants a rematch!",
 		rematchStarting = "Starting…",
+	},
+
+	-- FFA/TDM v1 (2026-10-15): Free for All / Team Deathmatch inside the lobby server. The Notify toasts MatchService
+	-- sends and the client's test readout (MatchController). Placeholders: {mode} = a match.mode.* name, {team} = a
+	-- match.team.* name, {name} = a display name, {count} / {max} = players queued / the mode's maxPlayers, {seconds} =
+	-- Config.Match.gatherSeconds (or what is left of it).
+	match = {
+		mode = {
+			ffa = "Free for All",
+			tdm = "Team Deathmatch",
+		},
+		-- Keyed by Config.Match.teamNames, lowercased.
+		team = {
+			red = "Red",
+			blue = "Blue",
+		},
+		joined = "You joined the {mode} queue: {count}/{max} players.",
+		left = "You left the {mode} queue.",
+		leftForDuel = "You joined the duel queue, so you left the {mode} queue.",
+		startingIn = "{mode} starts in {seconds} seconds!",
+		waitingPlayers = "Waiting for more players to start {mode}…",
+		waitingMap = "Every {mode} map is in use. You'll start when one is free.",
+		notQueued = "You're not in a match queue.",
+		youLeft = "You left the match.",
+		notArrived = "You couldn't reach the map in time, so you're back in the lobby.",
+		outOfBounds = "Out of bounds: back to a spawn.",
+		outOfBoundsKo = "You fell off the map: knocked out!",
+		outNoLives = "Your team is out of lives, so you're out. Cheer on your team!",
+		youWin = "You win the match!",
+		winner = "{name} wins the match!",
+		teamWins = "{team} team wins!",
+		draw = "The match ended in a draw.",
+		cancelled = "Not enough players arrived, so the match was cancelled.",
+		void = "The server is shutting down. This match won't count.",
+		voidError = "Something went wrong, so this match won't count.",
+		-- MatchJoin refusals (the first that applies).
+		refused = {
+			closing = "The server is restarting soon, so matches are paused.",
+			alreadyQueued = "You're already in a match queue. Type /leave to leave it.",
+			inMatch = "You're already in a duel or a match.",
+			duelQueue = "Leave the duel queue first.",
+			practice = "Leave the Practice Range first.",
+			noMaps = "{mode} isn't available on this server yet.",
+		},
+		-- The client's test readout (one Components/Chip at the top, until Diego's arena HUD): the mode's piece, then the
+		-- extra pieces that apply, joined with `separator`. {mine} / {target} = your K.O.s / the mode's koTarget,
+		-- {leaderName} / {leaderKos} = the leader, {redLives} / {blueLives} = the team lives, {time} = m:ss left in the
+		-- phase, {pct} = your storm bar (0-100), {seconds} = seconds until you are back in.
+		readout = {
+			ffa = "K.O. {mine}/{target} · 1st {leaderName} {leaderKos} · {time}",
+			tdm = "RED {redLives} · BLUE {blueLives} · {time}",
+			storm = "STORM {pct}%",
+			overtime = "OVERTIME",
+			backIn = "Back in {seconds}",
+			out = "OUT",
+			waiting = "Get ready…",
+			separator = " · ",
+		},
 	},
 
 	-- Hit and elimination feedback (§9.8, §9.9).

@@ -167,6 +167,12 @@
 --   bigWordSeconds, for both duelists, at CatchController.Caught / Burst (none over the "Dragon Rush incoming!" banner;
 --   no "SQUISHED!" when the burst takes the thrower's last life: VfxController's "K.O.!" says it). The catcher's hit
 --   marker and ui.hitConfirm at the burst (design: html:365), while the match is live.
+-- FFA/TDM v1 (2026-10-15; the 12-player Free for All / Team Deathmatch, SPEC D13): this module still follows only the
+-- duel view; MatchController draws the "match look" with this HUD's pieces (the reticle, "Hit!", the key dock without
+-- the catch meter, the 3-2-1 countdown), handed over by one attachDuelHud call in init (no new top-level local: about
+-- 180 of Luau's 200). The own hit marker also shows in a match (onHitConfirmed). Review fix: the match hides the top
+-- bar with hideBar(h, "match", ...) (so a result card's layout never shows it again) and closes a 1v1 result card
+-- left open from a duel just before (closeResult).
 
 -- Services
 
@@ -2742,7 +2748,12 @@ end
 -- An own projectile hit the opponent (ThrowController.HitConfirmed): the hit marker at the reticle (§9.8 attacker).
 local function onHitConfirmed(impact: Types.ThrowImpactPayload)
 	local h = hud
-	if h == nil or StateController.duel() == nil or type(impact) ~= "table" or impact.kind ~= "player" then
+	if
+		h == nil
+		or (StateController.duel() or StateController.match()) == nil
+		or type(impact) ~= "table"
+		or impact.kind ~= "player"
+	then
 		return
 	end
 	hitClock = os.clock()
@@ -2790,6 +2801,27 @@ function DuelController.init()
 		sideCompact, sideNeed, sideSettle, stateText, barBottomPx = nil, 0, 0, nil, nil
 		table.clear(barHidden)
 	end)
+	-- FFA/TDM v1 (see the header): the match look's hooks into this HUD.
+	c:add(require(script.Parent.MatchController).attachDuelHud({
+		hud = function(): Hud?
+			return hud
+		end,
+		reticle = updateReticle,
+		hints = updateHints,
+		countdown = updateCountdown,
+		ultReady = updateUltReady,
+		hideCountdown = hideCountdown,
+		setCountdown = function(endsAt: number?)
+			countdownEndsAt, countdownText = endsAt, nil
+		end,
+		reset = function(h: Hud)
+			resetMeter(h.ultMeter)
+			resetMeter(h.throwMeter)
+			ultFull, hitClock = false, -math.huge
+		end,
+		hideBar = hideBar, -- review fix: the top bar hides through barHidden (reason "match")
+		closeResult = closeResult, -- review fix: a 1v1 result card still open closes when a match starts
+	}))
 
 	local bindable = Instance.new("BindableEvent")
 	bindable.Name = "SD_ResetIntercept"

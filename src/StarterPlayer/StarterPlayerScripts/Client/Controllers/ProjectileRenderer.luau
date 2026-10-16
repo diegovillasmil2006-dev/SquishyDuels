@@ -44,7 +44,9 @@
 -- * Match end: when the duel view ends (Result, Returning, Cancelled, Void) every duel projectile still in flight is
 --   removed at once; one whose splat has started (the match-ending hit: its ThrowImpact and DuelState(Result) arrive
 --   in the same frame) plays it out. When the view goes away (back in the lobby) every duel projectile is removed and
---   the idle pool is emptied. Practice projectiles end by impact or lifetime.
+--   the idle pool is emptied. Practice projectiles end by impact or lifetime. FFA/TDM v1 (2026-10-15): the 12-player
+--   match view (StateController.MatchChanged) ends its projectiles the same way, and a match throw's shadow sits at the
+--   map's floorY (the match view's arena) instead of the practice lane's.
 -- * Flight styles (squishy overhaul spec 2026-10-09 §3.2, option A: the face always leads; the server path never
 --   changes). Each pooled model owns one Anim/SquishRig (made with the model, from its blueprint's `motion`), which
 --   this module alone steps. Every projectile shows the squish face all flight long and is posed
@@ -694,6 +696,10 @@ local function floorYFor(duel: boolean): number
 		local y = arena and arena.floorY
 		if type(y) == "number" then
 			return y
+		end
+		local match = StateController.match() -- FFA/TDM v1: the map's floor
+		if match and type(match.arena.floorY) == "number" then
+			return match.arena.floorY
 		end
 	end
 	return PracticeTargets.FLOOR_Y
@@ -1873,6 +1879,7 @@ function ProjectileRenderer.init()
 	track(CatchController.Caught:connect(onCaught))
 	track(CatchController.Burst:connect(onBurst))
 	track(StateController.DuelChanged:connect(onDuelChanged))
+	track(StateController.MatchChanged:connect(onDuelChanged)) -- FFA/TDM v1: the same phase / matchId fields
 	c:add(function()
 		ProjectileRenderer.clear()
 		table.clear(connections)

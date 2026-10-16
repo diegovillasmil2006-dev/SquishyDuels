@@ -4,6 +4,7 @@
 -- C->S remote has an entry here and that every entry here is a C->S remote. Rates are [P].
 -- Grip has no remote of its own (§17.9 #1): the only Grip-related calls are the capsule remotes (Phase 3: rate 1,
 -- burst 1, one in flight). TrainerUpgrade went with the trainers (build plan Phase 6).
+-- FFA/TDM v1 (2026-10-15): MatchJoin and MatchLeave (the client's /ffa, /tdm and /leave chat commands).
 
 export type RemoteRate = {
 	rate: number, -- tokens refilled per second
@@ -63,6 +64,10 @@ local Net = {
 		OnboardingStep = { rate = 2, burst = 5 },
 		-- Batch 3 (FriendDuelService): no arguments; a press only sets the player's own wish for the offered rematch.
 		RematchRequest = { rate = 0.5, burst = 2 },
+		-- FFA/TDM v1 (2026-10-15, MatchService): the /ffa, /tdm and /leave chat commands; a person types them, so the
+		-- bucket only stops floods.
+		MatchJoin = { rate = 1, burst = 3 },
+		MatchLeave = { rate = 1, burst = 3 },
 	} :: { [string]: RemoteRate },
 
 	-- Per-player cap over all C->S remotes together (§2.7 step 2). Burst 80 (was 40): it holds SqueezeRequest's

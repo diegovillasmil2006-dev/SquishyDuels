@@ -48,10 +48,21 @@
 --   SD_DuelPhase (back in the lobby, §2.9): at once after Result/Returning/Cancelled/Void, otherwise once the view is
 --   older than STALE_CLEAR_SECONDS (an attribute change racing a brand-new match's first DuelState never clears it).
 --   A queue left on "Matched" when the duel ends becomes Idle locally.
+-- * Match (FFA/TDM v1, 2026-10-15; the 12-player Free for All / Team Deathmatch in this lobby server, SPEC C4/C5): the
+--   MatchState remote (one view per player: phase with DuelPhase names, the real MatchRules phase in matchPhase, you,
+--   players, team lives, K.O. target, arena bounds, storm, outcome) and UltimateCharge: match() / MatchChanged(new,
+--   old), a view of its own (reduceMatch), so DuelChanged never fires for a match and the 1v1 screens stay quiet. A
+--   MatchState for the same match may leave fields out (e.g. only `you` for the storm bar): they keep their value. The
+--   own `you` gets displayName and squishyId from its players entry. The view ends like the duel view (SD_DuelPhase
+--   cleared), and at once when SD_MatchId no longer names the match (review fix: a /leave mid-match gets no final
+--   "Returning" view). charge(userId) reads the duel's or the match's charges. Pure helpers: isEnemy(view, userId)
+--   (FFA: everyone else; TDM: the other team), enemyIds(view), matchParticipant(view, userId), matchSide(view,
+--   userId) (TDM Blue = "B", else "A"; the side letters of the dash / jump glow), isMatchId(id). A DuelResult for a
+--   match id is not passed on (no 1v1 result card for a match).
 -- * Lobby lock (§5.4, §11.1): from Matched through Returning, isLobbyLocked() is true (LobbyLockChanged): menus,
---   equip, Inspect, boxes and shop refuse to open.
--- The reducers (reduceProfile, normalizeField, trackNewOwned, reduceQueue, reduceDuel, lobbyLocked, deepEqual) are
--- pure and unit-tested in Edit mode.
+--   equip, Inspect, boxes and shop refuse to open. FFA/TDM v1: also for the whole match view.
+-- The reducers (reduceProfile, normalizeField, trackNewOwned, reduceQueue, reduceDuel, reduceMatch, lobbyLocked,
+-- deepEqual) are pure and unit-tested in Edit mode.
 
 -- Services
 
@@ -116,6 +127,71 @@ export type DuelEvent =
 	| { kind: "charge", charge: any }
 	| { kind: "cleared", now: number }
 
+-- FFA/TDM v1 (SPEC C4): one participant of a 12-player match (MatchParticipantView).
+export type MatchPlayer = {
+	userId: number,
+	displayName: string,
+	squishyId: string,
+	team: string?, -- TDM: "Red" / "Blue" (Config.Match.teamNames)
+	kos: number,
+	knockedOut: number,
+	alive: boolean,
+	ultReady: boolean,
+}
+
+-- The own state in a match: the payload's `you` plus the own players entry's name and squishy.
+export type MatchYou = {
+	userId: number,
+	displayName: string,
+	squishyId: string,
+	team: string?,
+	alive: boolean,
+	respawnAt: number?, -- server time (knocked out, coming back)
+	protectUntil: number, -- server time
+	stormBar: number, -- 0..1
+	out: boolean, -- TDM: no team life left
+}
+
+export type MatchOutcome = {
+	kind: string,
+	reason: string,
+	winnerUserId: number?,
+	winnerTeam: string?,
+	winners: { number },
+}
+
+export type MatchArena = {
+	floorY: number,
+	bounds: Types.ArenaZone?,
+	centre: Vector3?,
+}
+
+export type MatchView = {
+	matchId: string,
+	mode: string, -- "ffa" | "tdm"
+	mapCode: string,
+	mapName: string,
+	phase: Types.DuelPhase, -- SPEC D1: the DuelPhase name (Overtime is "Active")
+	matchPhase: string, -- the real MatchRules phase (Waiting, Countdown, Active, Overtime, Result, Closed)
+	phaseEndsAt: number, -- server time, 0 = no timer
+	activeStartedAt: number?, -- server time the Active phase began (the storm and the timer)
+	you: MatchYou,
+	players: { MatchPlayer },
+	teamLives: { [string]: number }?,
+	koTarget: number?,
+	arena: MatchArena,
+	storm: { startRadius: number }?,
+	outcome: MatchOutcome?,
+	charges: { [number]: number }, -- ultimate charge by userId (UltimateCharge)
+	receivedAt: number, -- os.clock() of the last MatchState
+}
+
+export type MatchEvent =
+	{ kind: "state", state: any, now: number }
+	| { kind: "charge", charge: any }
+	-- matchId: the SD_MatchId attribute at that moment ("" = none; nil = not read).
+	| { kind: "cleared", now: number, matchId: string? }
+
 export type QueueKind = "owner" | "counts" | "invalid"
 
 -- The new-squishy tracker (trackNewOwned): `baseline` = ids known before (nil until the first owned set arrives),
@@ -146,6 +222,7 @@ local OUTCOMES: { [string]: boolean } = { win = true, loss = true, draw = true, 
 -- a new match's first DuelState never wipes it (remote events and attribute replication are not ordered together).
 local STALE_CLEAR_SECONDS = 1
 local ATTR_DUEL_PHASE = "SD_DuelPhase"
+local ATTR_MATCH_ID = "SD_MatchId" -- FFA/TDM v1 review fix: "" = in no match (ends a match view at once)
 local NET_CLIENT = Config.Net.Client
 local ABILITIES = Config.Abilities
 local DATA = Config.Data
@@ -173,6 +250,10 @@ local FIELD_UNSEEN = "unseenReveals"
 local HELD_FIELDS: { string } = { FIELD_COINS, FIELD_OWNED }
 local HELD_FIELD_SET: { [string]: boolean } = { [FIELD_COINS] = true, [FIELD_OWNED] = true }
 local REVEAL_HOLD_MAX_SECONDS = Config.UI.Boxes.revealHoldMaxSeconds
+-- FFA/TDM v1: the match modes, the second team (side "B", SPEC D2) and the match id prefix (SPEC C2).
+local MATCH_MODES: { [string]: boolean } = { ffa = true, tdm = true }
+local MATCH_ID_PREFIX = "match:"
+local REMOTE_MATCH_STATE = "MatchState"
 
 -- Module table
 
@@ -189,6 +270,8 @@ StateController.QueueCountsChanged = Signal.new() :: Signal.Signal<QueueCounts>
 StateController.DuelChanged = Signal.new() :: Signal.Signal<DuelView?, DuelView?>
 StateController.DuelResultReceived = Signal.new() :: Signal.Signal<Types.DuelResultPayload>
 StateController.LobbyLockChanged = Signal.new() :: Signal.Signal<boolean>
+-- FFA/TDM v1: the match view (new, old).
+StateController.MatchChanged = Signal.new() :: Signal.Signal<MatchView?, MatchView?>
 
 -- Private
 
@@ -217,6 +300,7 @@ local ownedTracker: OwnedTracker = { baseline = nil, fresh = {} }
 local counts: QueueCounts = emptyCounts()
 local queueView: QueueView = idleQueue(counts)
 local duelView: DuelView? = nil
+local matchView: MatchView? = nil -- FFA/TDM v1
 local lastResult: Types.DuelResultPayload? = nil
 local locked = false
 local endedMatches: { [string]: boolean } = {} -- match ids whose view ended (late messages are ignored)
@@ -284,8 +368,136 @@ local function copyView(view: DuelView): DuelView
 	return copy
 end
 
+-- FFA/TDM v1: the match payload readers (server data, still checked before use). ---------------------------------
+
+local function matchPlayerFrom(raw: unknown): MatchPlayer?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local t = raw :: any
+	if not finite(t.userId) then
+		return nil
+	end
+	return {
+		userId = t.userId,
+		displayName = if type(t.displayName) == "string" then t.displayName else "",
+		squishyId = if type(t.squishyId) == "string" then t.squishyId else Catalog.starterId(),
+		team = if type(t.team) == "string" then t.team else nil,
+		kos = countOr(t.kos, 0),
+		knockedOut = countOr(t.knockedOut, 0),
+		alive = t.alive ~= false,
+		ultReady = t.ultReady == true,
+	}
+end
+
+-- The players list (malformed entries are skipped).
+local function matchPlayersFrom(raw: unknown): { MatchPlayer }
+	local list: { MatchPlayer } = {}
+	if type(raw) == "table" then
+		for _, entry in raw :: any do
+			local player = matchPlayerFrom(entry)
+			if player then
+				table.insert(list, player)
+			end
+		end
+	end
+	return list
+end
+
+local function findPlayer(players: { MatchPlayer }, userId: number): MatchPlayer?
+	for _, player in players do
+		if player.userId == userId then
+			return player
+		end
+	end
+	return nil
+end
+
+-- The own state: a full `you` (it has a userId) replaces the old one; one without a userId (a partial update of the
+-- same match, e.g. the storm bar) changes only the fields it has. The name and squishy come from the players entry.
+local function matchYouFrom(raw: unknown, players: { MatchPlayer }, old: MatchYou?): MatchYou?
+	local t: any = if type(raw) == "table" then raw else {}
+	local partial = not finite(t.userId)
+	if partial and old == nil then
+		return nil
+	end
+	local base: any = if partial then old else nil
+	local function field(key: string, valid: boolean): any
+		if valid then
+			return t[key]
+		end
+		return if base then base[key] else nil
+	end
+	local userId: number = if partial then (old :: MatchYou).userId else t.userId
+	local entry = findPlayer(players, userId)
+	local stormBar = field("stormBar", finite(t.stormBar)) or 0
+	return {
+		userId = userId,
+		displayName = if entry then entry.displayName elseif old then old.displayName else "",
+		squishyId = if entry then entry.squishyId elseif old then old.squishyId else Catalog.starterId(),
+		team = field("team", type(t.team) == "string") or (if entry then entry.team else nil),
+		alive = field("alive", type(t.alive) == "boolean") ~= false,
+		respawnAt = field("respawnAt", finite(t.respawnAt)),
+		protectUntil = field("protectUntil", finite(t.protectUntil)) or 0,
+		stormBar = math.clamp(stormBar, 0, 1),
+		out = field("out", type(t.out) == "boolean") == true,
+	}
+end
+
+local function matchArenaFrom(raw: unknown): MatchArena?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local t = raw :: any
+	local bounds = t.bounds
+	local okBounds = type(bounds) == "table" and typeof(bounds.cframe) == "CFrame" and typeof(bounds.size) == "Vector3"
+	return {
+		floorY = if finite(t.floorY) then t.floorY else 0,
+		bounds = if okBounds then { cframe = bounds.cframe, size = bounds.size } else nil,
+		centre = if typeof(t.centre) == "Vector3" then t.centre else nil,
+	}
+end
+
+local function teamLivesFrom(raw: unknown): { [string]: number }?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local lives: { [string]: number } = {}
+	for team, value in raw :: any do
+		if type(team) == "string" and finite(value) then
+			lives[team] = math.max(0, math.floor(value))
+		end
+	end
+	return lives
+end
+
+local function outcomeFrom(raw: unknown): MatchOutcome?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local t = raw :: any
+	if type(t.kind) ~= "string" then
+		return nil
+	end
+	local winners: { number } = {}
+	if type(t.winners) == "table" then
+		for _, id in t.winners do
+			if finite(id) then
+				table.insert(winners, id)
+			end
+		end
+	end
+	return {
+		kind = t.kind,
+		reason = if type(t.reason) == "string" then t.reason else "",
+		winnerUserId = if finite(t.winnerUserId) then t.winnerUserId else nil,
+		winnerTeam = if type(t.winnerTeam) == "string" then t.winnerTeam else nil,
+		winners = winners,
+	}
+end
+
 local function setLock()
-	local now = StateController.lobbyLocked(queueView, duelView)
+	local now = StateController.lobbyLocked(queueView, duelView, matchView)
 	if now ~= locked then
 		locked = now
 		StateController.LobbyLockChanged:fire(now)
@@ -308,6 +520,20 @@ local function setDuel(newView: DuelView?)
 	StateController.DuelChanged:fire(newView, old)
 	if newView == nil and queueView.state == "Matched" then
 		setQueue(idleQueue(counts)) -- back in the lobby: Matched is over even if no Idle status came
+	end
+	setLock()
+end
+
+-- FFA/TDM v1: the match view, as setDuel.
+local function setMatch(newView: MatchView?)
+	local old = matchView
+	if newView == old then
+		return
+	end
+	matchView = newView
+	StateController.MatchChanged:fire(newView, old)
+	if newView == nil and queueView.state == "Matched" then
+		setQueue(idleQueue(counts))
 	end
 	setLock()
 end
@@ -469,6 +695,23 @@ local function onDuelEvent(event: DuelEvent)
 		endedMatches[old.matchId] = true
 	end
 	setDuel(result)
+end
+
+-- FFA/TDM v1: one match event (MatchState, UltimateCharge, the cleared SD_DuelPhase), as onDuelEvent.
+local function onMatchEvent(event: MatchEvent)
+	if event.kind == "state" and type(event.state) == "table" and endedMatches[(event.state :: any).matchId] then
+		return -- a late MatchState of a match this client already left
+	end
+	local ok, result = pcall(StateController.reduceMatch, matchView, event)
+	if not ok then
+		log:error("match state update failed:", result)
+		return
+	end
+	local old = matchView
+	if result == nil and old ~= nil then
+		endedMatches[old.matchId] = true
+	end
+	setMatch(result)
 end
 
 -- Public: pure reducers ----------------------------------------------------------------------------------------------
@@ -843,9 +1086,180 @@ function StateController.reduceDuel(view: DuelView?, event: DuelEvent): DuelView
 	return view
 end
 
--- True from Matched through Returning (§5.4: menus, equip, Inspect, boxes and shop are blocked).
-function StateController.lobbyLocked(queue: QueueView, duel: DuelView?): boolean
-	return queue.state == "Matched" or duel ~= nil
+-- FFA/TDM v1 (SPEC C4/C5): applies one match event to the current match view (nil = not in a match). Returns the new
+-- view (the same table when nothing changes, nil when the match is over for this client). A state of a new match needs
+-- matchId, a DuelPhase-named phase, phaseEndsAt, mode ("ffa" / "tdm") and you (with its userId); a state of the same
+-- match keeps every field it leaves out, and never moves the match back a phase.
+function StateController.reduceMatch(view: MatchView?, event: MatchEvent): MatchView?
+	if event.kind == "state" then
+		local raw = event.state
+		if type(raw) ~= "table" then
+			return view
+		end
+		local s = raw :: any
+		if type(s.matchId) ~= "string" then
+			return view
+		end
+		local old: MatchView? = if view ~= nil and view.matchId == s.matchId then view else nil
+		local phase: string? = if type(s.phase) == "string" then s.phase elseif old then old.phase else nil
+		local phaseIndex = if phase then PHASE_ORDER[phase] else nil
+		local phaseEndsAt: number? = if finite(s.phaseEndsAt) then s.phaseEndsAt elseif old then old.phaseEndsAt else nil
+		local mode: string? = if type(s.mode) == "string" then s.mode elseif old then old.mode else nil
+		if phaseIndex == nil or phaseEndsAt == nil or mode == nil or not MATCH_MODES[mode] then
+			return view
+		end
+		if old and phaseIndex < (PHASE_ORDER[old.phase] or 0) then
+			return view -- a match never goes back a phase
+		end
+		local players = if type(s.players) == "table"
+			then matchPlayersFrom(s.players)
+			elseif old then old.players
+			else {}
+		local you = matchYouFrom(s.you, players, if old then old.you else nil)
+		if you == nil then
+			return view
+		end
+		local function keep(key: string, value: any): any
+			if value ~= nil then
+				return value
+			end
+			return if old then (old :: any)[key] else nil
+		end
+		local storm = if type(s.storm) == "table" and finite(s.storm.startRadius)
+			then { startRadius = s.storm.startRadius :: number }
+			else nil
+		return {
+			matchId = s.matchId,
+			mode = mode,
+			mapCode = keep("mapCode", if type(s.mapCode) == "string" then s.mapCode else nil) or "",
+			mapName = keep("mapName", if type(s.mapName) == "string" then s.mapName else nil) or "",
+			phase = phase :: any,
+			-- The real phase; a state with a new phase but no matchPhase never keeps the old one.
+			matchPhase = if type(s.matchPhase) == "string"
+				then s.matchPhase
+				elseif type(s.phase) == "string" or old == nil then phase :: string
+				else (old :: MatchView).matchPhase,
+			phaseEndsAt = phaseEndsAt,
+			activeStartedAt = keep("activeStartedAt", if finite(s.activeStartedAt) then s.activeStartedAt else nil),
+			you = you,
+			players = players,
+			teamLives = keep("teamLives", teamLivesFrom(s.teamLives)),
+			koTarget = keep("koTarget", if finite(s.koTarget) then s.koTarget else nil),
+			arena = keep("arena", matchArenaFrom(s.arena)) or { floorY = 0, bounds = nil, centre = nil },
+			storm = keep("storm", storm),
+			outcome = keep("outcome", outcomeFrom(s.outcome)),
+			charges = if old then table.clone(old.charges) else {},
+			receivedAt = event.now,
+		}
+	elseif event.kind == "charge" then
+		local raw = event.charge
+		if view == nil or type(raw) ~= "table" then
+			return view
+		end
+		local c = raw :: any
+		if not finite(c.ownerId) or not finite(c.charge) then
+			return view
+		end
+		local newView = table.clone(view)
+		newView.charges = table.clone(view.charges)
+		newView.charges[c.ownerId] = math.max(0, c.charge)
+		local players = table.clone(view.players)
+		for index, player in players do
+			if player.userId == c.ownerId then
+				local chargeMax = chargeMaxFor(player.squishyId)
+				local copy = table.clone(player)
+				copy.ultReady = chargeMax ~= nil and c.charge >= chargeMax
+				players[index] = copy
+			end
+		end
+		newView.players = players
+		return newView
+	elseif event.kind == "cleared" then
+		if view == nil then
+			return nil
+		end
+		-- Review fix: SD_MatchId no longer naming this match ends it at once too (a /leave mid-match gets no final
+		-- "Returning" view, and its last view can be newer than STALE_CLEAR_SECONDS).
+		local left = event.matchId ~= nil and event.matchId ~= view.matchId
+		if END_PHASES[view.phase] or left or event.now - view.receivedAt > STALE_CLEAR_SECONDS then
+			return nil
+		end
+		return view
+	end
+	return view
+end
+
+-- FFA/TDM v1: a participant of the match view by userId (nil when not in it).
+function StateController.matchParticipant(view: MatchView?, userId: number): MatchPlayer?
+	if view == nil then
+		return nil
+	end
+	return findPlayer(view.players, userId)
+end
+
+-- FFA/TDM v1 (SPEC C5): whether `userId` is an enemy of the local player in the match: in FFA every other participant,
+-- in TDM a participant of the other team. Never the local player, never someone outside the match.
+function StateController.isEnemy(view: MatchView?, userId: number): boolean
+	if view == nil or userId == view.you.userId then
+		return false
+	end
+	local player = findPlayer(view.players, userId)
+	if player == nil then
+		return false
+	end
+	if view.mode == "tdm" then
+		return player.team ~= view.you.team
+	end
+	return true
+end
+
+-- FFA/TDM v1 (SPEC C5): the userIds of every enemy in the match (isEnemy), in the players' order.
+function StateController.enemyIds(view: MatchView?): { number }
+	local ids: { number } = {}
+	if view == nil then
+		return ids
+	end
+	for _, player in view.players do
+		if StateController.isEnemy(view, player.userId) then
+			table.insert(ids, player.userId)
+		end
+	end
+	return ids
+end
+
+-- FFA/TDM v1 (SPEC D2): a participant's side letter for the team looks (the dash / double jump glow): TDM's second team
+-- (Blue, Config.Match.teamNames[2], or `teamNames` in tests) is "B", everyone else in the match "A" (FFA: all "A");
+-- nil for someone outside the match.
+function StateController.matchSide(view: MatchView?, userId: number, teamNames: { string }?): Types.Side?
+	if view == nil then
+		return nil
+	end
+	local team: string? = nil
+	if userId == view.you.userId then
+		team = view.you.team
+	else
+		local player = findPlayer(view.players, userId)
+		if player == nil then
+			return nil
+		end
+		team = player.team
+	end
+	local names = teamNames or Config.Match.teamNames
+	if view.mode == "tdm" and team ~= nil and team == names[2] then
+		return "B"
+	end
+	return "A"
+end
+
+-- FFA/TDM v1 (SPEC C2): a match id ("match:<GUID>"), not a duel's.
+function StateController.isMatchId(id: unknown): boolean
+	return type(id) == "string" and string.sub(id, 1, #MATCH_ID_PREFIX) == MATCH_ID_PREFIX
+end
+
+-- True from Matched through Returning (§5.4: menus, equip, Inspect, boxes and shop are blocked). FFA/TDM v1: and for
+-- the whole match view (`match`).
+function StateController.lobbyLocked(queue: QueueView, duel: DuelView?, match: MatchView?): boolean
+	return queue.state == "Matched" or duel ~= nil or match ~= nil
 end
 
 -- True for a DuelResult payload the HUD can show.
@@ -1078,6 +1492,11 @@ function StateController.duel(): DuelView?
 	return duelView
 end
 
+-- FFA/TDM v1: the local player's match view (nil outside a 12-player match).
+function StateController.match(): MatchView?
+	return matchView
+end
+
 function StateController.lastResult(): Types.DuelResultPayload?
 	return lastResult
 end
@@ -1086,10 +1505,14 @@ function StateController.isLobbyLocked(): boolean
 	return locked
 end
 
--- The ultimate charge of a participant (0 when none was sent).
+-- The ultimate charge of a participant (0 when none was sent): the duel's, else (FFA/TDM v1) the match's.
 function StateController.charge(userId: number): number
 	local view = duelView
-	return if view then view.charges[userId] or 0 else 0
+	if view then
+		return view.charges[userId] or 0
+	end
+	local m = matchView
+	return if m then m.charges[userId] or 0 else 0
 end
 
 -- Lifecycle --------------------------------------------------------------------------------------------------------
@@ -1142,13 +1565,25 @@ function StateController.init()
 	end))
 	c:add(NetController.onUltimateCharge(function(charge: any)
 		onDuelEvent({ kind = "charge", charge = charge })
+		onMatchEvent({ kind = "charge", charge = charge }) -- FFA/TDM v1
 	end))
 	c:add(NetController.onDuelResult(function(result: any)
-		if StateController.isValidResult(result) then
+		-- FFA/TDM v1: never the 1v1 result card for a match (the server sends none; a match id is skipped anyway).
+		if StateController.isValidResult(result) and not StateController.isMatchId(result.matchId) then
 			lastResult = result
 			StateController.DuelResultReceived:fire(result)
 		end
 	end))
+	-- FFA/TDM v1 (SPEC C3): the match state channel. A place whose Remotes SPEC has no MatchState yet must still boot
+	-- (NetController.on asserts the name), so it is connected in a pcall.
+	local okMatch, matchConnection = pcall(NetController.on, REMOTE_MATCH_STATE, function(state: any)
+		onMatchEvent({ kind = "state", state = state, now = os.clock() })
+	end)
+	if okMatch then
+		c:add(matchConnection)
+	else
+		log:warn("no MatchState remote; the match view stays off:", matchConnection)
+	end
 
 	local pendingClear: thread? = nil
 	c:add(function()
@@ -1159,10 +1594,17 @@ function StateController.init()
 	end)
 	local player = Players.LocalPlayer
 	if player then
+		-- FFA/TDM v1 review fix: the SD_MatchId attribute ("" = in no match) goes with the match view's cleared event.
+		local function matchIdNow(): string
+			local id = player:GetAttribute(ATTR_MATCH_ID)
+			return if type(id) == "string" then id else ""
+		end
 		c:add(player:GetAttributeChangedSignal(ATTR_DUEL_PHASE):Connect(function()
 			local phase = player:GetAttribute(ATTR_DUEL_PHASE)
 			if phase == "" or phase == nil then
 				onDuelEvent({ kind = "cleared", now = os.clock() })
+				-- FFA/TDM v1: the match view ends the same way, and at once when SD_MatchId is cleared too.
+				onMatchEvent({ kind = "cleared", now = os.clock(), matchId = matchIdNow() })
 				-- A view too new to clear now (see STALE_CLEAR_SECONDS) is cleared once it is old enough, if the
 				-- player is still out of any match by then.
 				if pendingClear then
@@ -1173,8 +1615,17 @@ function StateController.init()
 					local later = player:GetAttribute(ATTR_DUEL_PHASE)
 					if later == "" or later == nil then
 						onDuelEvent({ kind = "cleared", now = os.clock() })
+						onMatchEvent({ kind = "cleared", now = os.clock(), matchId = matchIdNow() })
 					end
 				end)
+			end
+		end))
+		-- FFA/TDM v1 review fix: SD_MatchId may arrive cleared after SD_DuelPhase (attribute signals can fire one by
+		-- one), so its own clear ends the match view too while the phase is already clear. The duel view is untouched.
+		c:add(player:GetAttributeChangedSignal(ATTR_MATCH_ID):Connect(function()
+			local phase = player:GetAttribute(ATTR_DUEL_PHASE)
+			if (phase == "" or phase == nil) and matchIdNow() == "" then
+				onMatchEvent({ kind = "cleared", now = os.clock(), matchId = "" })
 			end
 		end))
 	end

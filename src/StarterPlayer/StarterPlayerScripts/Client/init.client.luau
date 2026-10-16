@@ -46,6 +46,8 @@ type Module = {
 -- helpers and shared modules).
 -- Spec phase 5: DashController (the dash) right after ThrowController, whose windup and ultimate state it reads.
 -- 2026-10-15: DoubleJumpController (the duel's double jump) right after DashController, whose state and glow it reads.
+-- FFA/TDM v1 (2026-10-15): MatchController (the 12-player match's chat commands, look, lighting, storm wall and test
+-- readout) right after DuelController, whose HUD pieces it borrows (DuelController's init hands them over).
 -- Feature 1 (2026-10-11): CatchController (the catch) right after ThrowController too, whose charge and hands it
 -- drives; the overlay, the duel HUD, the projectiles and the VFX read it.
 -- Build plan Phase 5: CapsuleController (the base capsules' feel and the capsule card) with the feature screens, after
@@ -83,6 +85,7 @@ local CONTROLLER_ORDER = {
 	"CapsuleController",
 	"QueueController",
 	"DuelController",
+	"MatchController",
 	"UltReadyTagController",
 	"SettingsController",
 	"OnboardingController",

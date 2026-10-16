@@ -484,4 +484,46 @@ return function(t: Context)
 		expect.equal(list[3].userId, 2)
 		expect.equal(MatchRules.activeSeconds(s, a + 30), 30)
 	end)
+
+	-- Out of bounds (jayyyyy 2026-10-15: falling off the map "counts as a knockout") ---------------------------------
+
+	t.test(
+		"oob: a K.O. with no attacker that respawns; TDM costs a team life; ignored when down or not live",
+		function()
+			local s, a = live("ffa", FFA3)
+			local fx
+			s, fx = step(s, { kind = "oob", userId = 2 }, a + 1)
+			local ko = kinds(fx, "ko")[1]
+			expect.equal(ko.victim, 2)
+			expect.equal(ko.by, nil)
+			expect.equal(ko.cause, "outOfBounds")
+			expect.equal(MatchRules.participant(s, 2).knockedOut, 1)
+			expect.equal(MatchRules.participant(s, 1).kos + MatchRules.participant(s, 3).kos, 0)
+			s, fx = step(s, { kind = "oob", userId = 2 }, a + 2) -- already down
+			expect.equal(#kinds(fx, "ko"), 0)
+			s, fx = step(s, { kind = "tick" }, a + 1 + M.respawnSeconds)
+			expect.equal(kinds(fx, "respawn")[1].userId, 2)
+
+			local tdm, b = live("tdm", TDM4)
+			tdm = step(tdm, { kind = "oob", userId = 3 }, b + 1)
+			expect.equal(tdm.teamLives.Blue, M.Modes.tdm.teamLives - 1)
+
+			local early = MatchRules.new(MATCH_ID, "ffa", FFA3, T0, M)
+			for _, e in FFA3 do
+				early = step(early, { kind = "arrived", userId = e.userId }, T0)
+			end
+			early, fx = step(early, { kind = "oob", userId = 1 }, T0 + 1) -- Countdown: not live
+			expect.equal(#kinds(fx, "ko"), 0)
+		end
+	)
+
+	t.test("oob in TDM overtime counts for the other team", function()
+		local s, a = live("tdm", TDM4)
+		local endAt = a + M.Modes.tdm.matchSeconds
+		s = step(s, { kind = "tick" }, endAt)
+		expect.equal(s.phase, "Overtime")
+		s = step(s, { kind = "oob", userId = 1 }, endAt + 1)
+		expect.equal(s.outcome.reason, "overtime")
+		expect.equal(s.outcome.winnerTeam, "Blue")
+	end)
 end

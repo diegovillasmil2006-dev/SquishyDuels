@@ -18,8 +18,15 @@
 -- * Refused: nothing is sent (the client's gate mirrors these rules, so an honest client is refused only at a race);
 --   a payload failure counts toward NetService's abuse mute. A refused dash gets no guard allowance: whatever the
 --   client moved stays under the normal movement guard.
+-- * FFA/TDM v1 (2026-10-15, MatchService on Diego's DuelMaps; SPEC D16): for a port with `ffa = true` (an open map, no
+--   halves) the place check and the end clamp use the map's Bounds, and the ground check measures from the ground under
+--   the dasher (CombatService.groundUnder: a downward cast from the server HRP against the map's RaycastParams; no
+--   hit: the map floor), so a dash works on the maps' raised platforms. Duel ports keep every line of the 1v1 path.
+--   Review fix (2026-10-15): the cast is a Spherecast of the body's radius, not a thin ray, so a dasher whose HRP
+--   centre is just past a platform edge (the Humanoid still stands on it, and the client's FloorMaterial gate passes)
+--   is on the ground here too; the probe and its length live in CombatService, shared with AbilityService.
 -- Per player (userId) for the session: lastSeq and lastDashAt; playerRemoving forgets them.
--- Tests swap the clock, the sender, the violation reporter and the Spherecast with useDeps.
+-- Tests swap the clock, the sender, the violation reporter, the Spherecast and the ground probe with useDeps.
 
 -- Services
 
@@ -51,6 +58,9 @@ export type Deps = {
 	reportViolation: (player: any, remote: string) -> (),
 	-- The distance at which a sphere of `radius` moved from `origin` along `direction` meets Geometry (Spherecast).
 	cast: (origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?,
+	-- FFA/TDM v1: the height of the first ground at most `distance` studs below `origin`, or nil
+	-- (CombatService.groundProbe, a body-radius Spherecast).
+	ground: CombatService.GroundProbe,
 }
 
 type DasherState = { lastSeq: number, lastDashAt: number }
@@ -87,6 +97,9 @@ local function defaultDeps(): Deps
 		cast = function(origin: Vector3, radius: number, direction: Vector3, params: RaycastParams): number?
 			local hit = Workspace:Spherecast(origin, radius, direction, params)
 			return if hit then hit.Distance else nil
+		end,
+		ground = function(origin: Vector3, distance: number, params: RaycastParams): number?
+			return CombatService.groundProbe(origin, distance, params)
 		end,
 	}
 end
@@ -151,6 +164,12 @@ function DashService.requestDash(who: any, seq: unknown, dir: unknown, clientTim
 			zone = port.arena.zones[HALF_BY_SIDE[fighter.side] or ""],
 			cast = caster(port.arena.raycastParams),
 		}
+		if port.ffa then
+			-- FFA/TDM v1 (server_map D1, SPEC D16): no halves (the place check and the end clamp use Bounds) and the
+			-- ground under the dasher, so a dash on a platform is not "airborne".
+			state.zone = port.arena.zones.Bounds
+			state.floorY = CombatService.groundUnder(port.arena, if root then root.Position else nil, deps.ground)
+		end
 	elseif player and PracticeService.isPracticing(player) then
 		local actor = CombatService.practiceActor(player)
 		local root = CharacterService.getRoot(player)
@@ -215,13 +234,14 @@ function DashService.requestDash(who: any, seq: unknown, dir: unknown, clientTim
 	return true, nil
 end
 
--- Swaps the clock, the sender, the violation reporter and the Spherecast (tests). Missing fields keep the live
--- default; nil restores every default.
+-- Swaps the clock, the sender, the violation reporter, the Spherecast and the ground probe (tests). Missing fields keep
+-- the live default; nil restores every default.
 function DashService.useDeps(newDeps: {
 	now: (() -> number)?,
 	send: ((remote: string, recipients: { any }, ...any) -> ())?,
 	reportViolation: ((player: any, remote: string) -> ())?,
 	cast: ((origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?)?,
+	ground: ((origin: Vector3, distance: number, params: RaycastParams) -> number?)?,
 }?)
 	local base = defaultDeps()
 	if newDeps then
@@ -229,6 +249,7 @@ function DashService.useDeps(newDeps: {
 		base.send = newDeps.send or base.send
 		base.reportViolation = newDeps.reportViolation or base.reportViolation
 		base.cast = newDeps.cast or base.cast
+		base.ground = newDeps.ground or base.ground
 	end
 	deps = base
 end

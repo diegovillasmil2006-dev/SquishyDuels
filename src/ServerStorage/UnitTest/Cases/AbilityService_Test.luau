@@ -16,6 +16,14 @@
 --     ahead, 60 studs long, at 55 studs/s; Rain Check centres on the opponent's spot at the release with 5 drops at
 --     the design's times, the last on that spot; Bubble Pop's flight ends after 1.2 s; no room is ult.noRoom (not for
 --     Rain Check); the minimum interval is the design's cooldown; Dragon Rush keeps its lane, now with its ultimateId.
+--   * FFA/TDM v1 (2026-10-15), an ffa port (an open map with only Bounds, everyone on side A): an ultimate starts
+--     anywhere inside Bounds + zoneToleranceStuds and never outside; its paths are cut at the map's Bounds; Rain Check
+--     centres on the standing enemy nearest the aim at the release (clamped into Bounds) with drops on the enemies
+--     near the centre; a caster knocked out during the wind-up without a hit (a storm K.O.) gets no ultimate. Review
+--     fixes: an enemy near the centre gets a drop wherever it is in the fighters list (far ones use none); an ffa cast
+--     starts from the ground under the caster (a duel never probes it) and a lane cast on a platform hits there; Rain
+--     Check lands on the aimed enemy's level and hits it there; detachFighter forgets a leaver (its telegraph cancelled,
+--     no refund, no release) and never touches a duel.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -211,6 +219,8 @@ return function(t: Context)
 		port: any,
 		castDistance: number?, -- what the fake Spherecast returns (nil = clear)
 		blocked: boolean, -- what the fake room check returns
+		-- FFA/TDM v1: the fake ground probe (the ground's height under a position; nil = nothing under anything)
+		ground: ((origin: Vector3) -> number?)?,
 	}
 
 	local function tableRoot(position: Vector3): any
@@ -229,6 +239,7 @@ return function(t: Context)
 			port = nil,
 			castDistance = nil,
 			blocked = false,
+			ground = nil,
 		}
 		CombatService.destroy()
 		CombatService.useDeps({
@@ -252,6 +263,10 @@ return function(t: Context)
 			end,
 			cast = function(): number?
 				return world.castDistance
+			end,
+			ground = function(origin: Vector3): number?
+				local probe = world.ground
+				return if probe then probe(origin) else nil
 			end,
 		})
 		local function newFighter(userId: number, side: string, id: string, root: any): any
@@ -539,4 +554,269 @@ return function(t: Context)
 		expect.equal(info.kind, "lane")
 		closeWorld()
 	end)
+
+	-- FFA/TDM v1 (2026-10-15): the same world as an open map (an ffa port: only the map's Bounds, everyone on side A,
+	-- as MatchService builds it), with more enemies standing at `others` (users 93, 94, ...). Returns the world and the
+	-- enemies' roots (B's first); a root with `alive = false` is a knocked-out enemy.
+	local MAP_BOUNDS = { cframe = CFrame.new(0, 42.5, 0), size = Vector3.new(200, 115, 200) }
+
+	local function mapWorld(squishyId: string, bAt: Vector3?, others: { Vector3 }?): (World, { any })
+		local world = ultWorld(squishyId, bAt)
+		AbilityService.detachMatch("ult-phase5")
+		CombatService.unregisterMatch("ult-phase5")
+		local port = world.port
+		port.ffa = true
+		port.arena.zones = { Bounds = MAP_BOUNDS }
+		local roots: { any } = { world.rootB }
+		port.fighters[2].isAlive = function(): boolean
+			return world.rootB.alive ~= false
+		end
+		local extra: { Vector3 } = others or {}
+		for index, at in extra do
+			local root = tableRoot(at)
+			table.insert(roots, root)
+			table.insert(
+				port.fighters,
+				CombatService.newFighter({
+					userId = 92 + index,
+					side = "A",
+					squishyId = Catalog.starterId(),
+					getRoot = function(): BasePart?
+						return root
+					end,
+					isAlive = function(): boolean
+						return root.alive ~= false
+					end,
+					now = world.clock.now(),
+				})
+			)
+		end
+		for _, f in port.fighters do
+			f.side = "A"
+		end
+		CombatService.registerMatch(port)
+		AbilityService.attachMatch(port)
+		return world, roots
+	end
+
+	local function onSpot(position: Vector3, spot: Vector3): boolean
+		return (position - spot).Magnitude < 1e-4
+	end
+
+	t.test("FFA: an ultimate starts anywhere inside the map's Bounds (no halves), never outside them", function()
+		local world = mapWorld("bird", nil, nil)
+		local V = Config.Abilities.flock_volley
+		world.rootA.Position = Vector3.new(0, STAND, -2) -- a duel's neutral band
+		local okEmpty, empty = AbilityService.requestUltimate(91, 1, AIM, world.clock.now())
+		expect.falsy(okEmpty)
+		expect.equal(empty, "ult.notReady") -- the place passed; only the meter is missing
+		local outside = MAP_BOUNDS.size.X / 2 + Config.Combat.Throw.zoneToleranceStuds + 1
+		world.rootA.Position = Vector3.new(outside, STAND, 0)
+		local okOut, out = AbilityService.requestUltimate(91, 2, AIM, world.clock.now())
+		expect.falsy(okOut)
+		expect.equal(out, "ult.context")
+		ready(world)
+		world.rootA.Position = Vector3.new(60, STAND, 70) -- far past any duel arena, still on the map
+		local ok, reason = AbilityService.requestUltimate(91, 3, AIM, world.clock.now())
+		expect.equal(reason, nil)
+		expect.truthy(ok)
+		runDelays(world, world.clock.now() + 1)
+		local release = events(world, "release")[1]
+		assert(release ~= nil, "no release")
+		for _, shot in release.shots do
+			-- No cover: each bird flies to the map's Bounds (Z = 100 is nearer than maxLength), not to a duel arena's.
+			local expected = AbilityService.clampToBounds(shot.origin, shot.dir, V.maxLength, MAP_BOUNDS)
+			expect.near(shot.length, expected, 1e-3)
+			expect.truthy(expected < V.maxLength)
+		end
+		expect.truthy(AbilityService.castInsideBounds(Vector3.new(0, STAND, -2), { Bounds = MAP_BOUNDS }))
+		expect.falsy(AbilityService.castInsideBounds(Vector3.new(outside, STAND, 0), { Bounds = MAP_BOUNDS }))
+		expect.falsy(AbilityService.castInsideBounds(Vector3.new(0, STAND, -2), {}))
+		closeWorld()
+	end)
+
+	t.test(
+		"FFA Rain Check: the zone centres on the standing enemy nearest the aim; enemies near it get drops",
+		function()
+			-- B 38° off the aim; C nearly on it and further; D 6° off it, next to C.
+			local world, roots = mapWorld(
+				"cloud_bunny",
+				Vector3.new(30, STAND, 0),
+				{ Vector3.new(-3, STAND, 30), Vector3.new(-8, STAND, 34) }
+			)
+			local C = Config.Abilities.rain_check
+			ready(world)
+			local start = world.clock.now()
+			expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start)))
+			roots[2].Position = Vector3.new(-4, STAND, 32) -- C moves during the wind-up: the release decides
+			runDelays(world, start + C.telegraphSeconds + 0.01)
+			local release = events(world, "release")[1]
+			assert(release ~= nil, "no release")
+			expect.equal(release.ultimateId, "rain_check")
+			expect.truthy(onSpot(release.center, Vector3.new(-4, 0, 32)))
+			expect.equal(#release.drops, C.drops)
+			expect.truthy(onSpot(release.drops[C.drops].position, Vector3.new(-4, 0, 32))) -- the last drop on C
+			local onD = false
+			for _, drop in release.drops do
+				onD = onD or onSpot(drop.position, Vector3.new(-8, 0, 34))
+			end
+			expect.truthy(onD) -- D stands within targetRadius of the centre: a drop on its spot too
+			closeWorld()
+
+			-- C knocked out (parked, unhittable): the zone goes to the next enemy nearest the aim, D.
+			local world2, roots2 = mapWorld(
+				"cloud_bunny",
+				Vector3.new(30, STAND, 0),
+				{ Vector3.new(-4, STAND, 32), Vector3.new(-8, STAND, 34) }
+			)
+			roots2[2].alive = false
+			ready(world2)
+			local start2 = world2.clock.now()
+			expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start2)))
+			runDelays(world2, start2 + C.telegraphSeconds + 0.01)
+			local release2 = events(world2, "release")[1]
+			assert(release2 ~= nil, "no release")
+			expect.truthy(onSpot(release2.center, Vector3.new(-8, 0, 34)))
+			closeWorld()
+		end
+	)
+
+	t.test("FFA: a caster knocked out during the wind-up without a hit (a storm K.O.) gets no ultimate", function()
+		local world = mapWorld("bird", nil, nil)
+		ready(world)
+		local start = world.clock.now()
+		expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start)))
+		world.caster.isAlive = function(): boolean
+			return false
+		end
+		runDelays(world, start + Config.Abilities.flock_volley.telegraphSeconds + 0.01)
+		expect.equal(#events(world, "release"), 0)
+		expect.equal(#events(world, "cancel"), 1)
+		expect.equal(AbilityService.chargeOf(91), 0) -- no refund
+		expect.equal(CombatService.projectileCount(), 0)
+		closeWorld()
+	end)
+
+	-- Review fixes (2026-10-15). -------------------------------------------------------------------------------------
+
+	local function impactsOn(world: World, victimId: number): number
+		local count = 0
+		for _, entry in world.sent do
+			if
+				entry.remote == "ThrowImpact"
+				and entry.payload.kind == "player"
+				and entry.payload.victimId == victimId
+			then
+				count += 1
+			end
+		end
+		return count
+	end
+
+	-- 20-stud platforms: anything higher than 15 studs stands (or jumps) over one.
+	local function platformGround(origin: Vector3): number?
+		return if origin.Y > 15 then 20 else 0
+	end
+
+	t.test("FFA Rain Check: an enemy near the centre gets a drop even listed after many far enemies", function()
+		-- Five far enemies listed first, then the aimed one (C), then D next to it, last.
+		local world, roots = mapWorld("cloud_bunny", Vector3.new(60, STAND, 0), {
+			Vector3.new(60, STAND, 60),
+			Vector3.new(-60, STAND, 60),
+			Vector3.new(70, STAND, -30),
+			Vector3.new(-70, STAND, -30),
+			Vector3.new(50, STAND, 90),
+			Vector3.new(-4, STAND, 32),
+			Vector3.new(-8, STAND, 34),
+		})
+		local C = Config.Abilities.rain_check
+		ready(world)
+		local start = world.clock.now()
+		expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start)))
+		runDelays(world, start + C.telegraphSeconds + 0.01)
+		local release = events(world, "release")[1]
+		assert(release ~= nil, "no release")
+		expect.truthy(onSpot(release.center, Vector3.new(-4, 0, 32)))
+		expect.truthy(onSpot(release.drops[C.drops].position, Vector3.new(-4, 0, 32))) -- the last drop on C
+		expect.truthy(onSpot(release.drops[C.drops - 1].position, Vector3.new(-8, 0, 34))) -- the next one on D
+		for index = 1, 6 do
+			local far = roots[index].Position
+			for _, drop in release.drops do
+				expect.falsy(onSpot(drop.position, Vector3.new(far.X, 0, far.Z)))
+			end
+		end
+		closeWorld()
+	end)
+
+	t.test("FFA: a cast starts from the ground under the caster, so a lane cast on a platform hits there", function()
+		local D = Config.Abilities.dragon_rush
+		local world = mapWorld("dragon", Vector3.new(0, 20 + STAND, 0), nil) -- B on the same platform, ahead
+		world.ground = platformGround
+		world.rootA.Position = Vector3.new(0, 20 + STAND, -40)
+		ready(world)
+		local start = world.clock.now()
+		expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start)))
+		local telegraph = events(world, "telegraph")[1]
+		expect.near(telegraph.origin.Y, 20 + D.laneHeightAboveFloor, 1e-4) -- not under the platform
+		runDelays(world, start + D.telegraphSeconds + 0.01)
+		expect.equal(#events(world, "release"), 1)
+		world.clock.advance(1)
+		CombatService.step()
+		expect.equal(impactsOn(world, 92), 1)
+		closeWorld()
+		-- A duel never asks for the ground: its cast stays on the arena floor.
+		local duel = ultWorld("dragon")
+		local asked = 0
+		duel.ground = function(): number?
+			asked += 1
+			return 20
+		end
+		ready(duel)
+		expect.truthy((AbilityService.requestUltimate(91, 1, AIM, duel.clock.now())))
+		expect.equal(asked, 0)
+		expect.near(events(duel, "telegraph")[1].origin.Y, D.laneHeightAboveFloor, 1e-4)
+		closeWorld()
+	end)
+
+	t.test("FFA Rain Check: the zone lands on the aimed enemy's level (a platform) and hits it there", function()
+		local C = Config.Abilities.rain_check
+		-- The caster on the map floor; B far off the aim; C on a 20-stud platform ahead.
+		local world = mapWorld("cloud_bunny", Vector3.new(60, STAND, 0), { Vector3.new(-4, 20 + STAND, 32) })
+		world.ground = platformGround
+		ready(world)
+		local start = world.clock.now()
+		expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start)))
+		runDelays(world, start + C.telegraphSeconds + 0.01)
+		local release = events(world, "release")[1]
+		assert(release ~= nil, "no release")
+		expect.truthy(onSpot(release.center, Vector3.new(-4, 20, 32)))
+		expect.truthy(onSpot(release.drops[C.drops].position, Vector3.new(-4, 20, 32)))
+		local lastLand = release.drops[C.drops].landAt
+		world.clock.advance(math.max(0, lastLand + 0.1 - world.clock.now()))
+		CombatService.step()
+		expect.truthy(impactsOn(world, 93) >= 1)
+		closeWorld()
+	end)
+
+	t.test(
+		"FFA: detachFighter forgets a leaver: its telegraph is cancelled, no refund, no release; duels untouched",
+		function()
+			local world = mapWorld("bird", nil, nil)
+			ready(world)
+			local start = world.clock.now()
+			expect.truthy((AbilityService.requestUltimate(91, 1, AIM, start)))
+			AbilityService.detachFighter(91)
+			expect.equal(#events(world, "cancel"), 1)
+			expect.equal(AbilityService.chargeOf(91), nil) -- forgotten: no charge, no UltimateCharge
+			expect.falsy(AbilityService.isReady(91))
+			runDelays(world, start + Config.Abilities.flock_volley.telegraphSeconds + 1)
+			expect.equal(#events(world, "release"), 0)
+			expect.equal(CombatService.projectileCount(), 0)
+			closeWorld()
+			ultWorld("bird") -- a duel
+			AbilityService.detachFighter(91)
+			expect.truthy(AbilityService.chargeOf(91) ~= nil)
+			closeWorld()
+		end
+	)
 end

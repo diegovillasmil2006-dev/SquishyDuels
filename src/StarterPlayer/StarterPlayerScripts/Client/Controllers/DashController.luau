@@ -45,9 +45,15 @@
 --   other-player priority (-1).
 -- * Touch: the Dash button's cooldown look every render frame while the touch buttons show
 --   (ControlsController.setTouchState, the throw button's format).
--- API: gate(facts), pushoffFoot(key), plantFoot(key), holdWeight(frame), tintFor(side), glowFor(side),
---   ghostTimes(), blocked(lagStuds), parseDashStarted(raw) (pure, unit-tested); endDistance(origin, dir, zone);
---   isDashing(), counts(); init(), destroy().
+-- * FFA/TDM v1 (2026-10-15; the 12-player match, SPEC D16): a third context, "match" (the Duel input context with
+--   StateController.match() and no duel view; contextFor): the same live phases (Active; overtime is "Active"), alive
+--   only while the match view says so (a knocked-out player stays frozen in place), the zone is the map's Bounds
+--   (arena.bounds; no halves) and there is no floor height (FloorMaterial only: Diego's maps have platforms, and the
+--   server checks the ground under the player too). The glow follows the team (StateController.matchSide: TDM Blue
+--   Mint, else Strawberry); in a match every other player's dash is the other-player priority (-1) and low particles.
+-- API: gate(facts), contextFor(duelOn, practiceOn, duelView, matchView), pushoffFoot(key), plantFoot(key),
+--   holdWeight(frame), tintFor(side), glowFor(side), ghostTimes(), blocked(lagStuds), parseDashStarted(raw) (pure,
+--   unit-tested); endDistance(origin, dir, zone); isDashing(), counts(); init(), destroy().
 
 -- Services
 
@@ -87,10 +93,10 @@ export type Foot = "Left" | "Right"
 
 -- What the gate needs to know about the local player at a press (gathered fresh for each press).
 export type GateFacts = {
-	context: string?, -- the live input context: "duel" | "practice"
-	phase: string?, -- duel: the match phase
+	context: string?, -- the live input context: "duel" | "practice" | "match" (FFA/TDM v1)
+	phase: string?, -- duel / match: the match phase
 	alive: boolean,
-	inZone: boolean, -- duel: the HRP inside the own half + zoneToleranceStuds (practice: ignored)
+	inZone: boolean, -- duel: the HRP inside the own half (match: the Bounds) + zoneToleranceStuds (practice: ignored)
 	dashing: boolean,
 	rooted: boolean, -- an ultimate's telegraph or recovery
 	windup: boolean, -- a throw windup
@@ -217,19 +223,27 @@ local function playSound(key: string, options: SoundController.PlayOptions?)
 end
 
 local function currentContext(): string?
-	if ControlsController.isContextActive("Duel") then
-		return "duel"
-	elseif ControlsController.isContextActive("Practice") then
-		return "practice"
-	end
-	return nil
+	return DashController.contextFor(
+		ControlsController.isContextActive("Duel"),
+		ControlsController.isContextActive("Practice"),
+		StateController.duel(),
+		StateController.match()
+	)
 end
 
--- The box a dash stays inside: the own half (duel) or the practice range bounds; nil when the view has none yet.
+-- The box a dash stays inside: the own half (duel), the map's Bounds (match) or the practice range bounds; nil when
+-- the view has none yet.
 local function zoneFor(context: string): Types.ArenaZone?
 	if context == "practice" then
 		local bounds = PracticeTargets.BOUNDS
 		return { cframe = CFrame.new(bounds.position), size = bounds.size }
+	elseif context == "match" then
+		local match = StateController.match() -- FFA/TDM v1: no halves, the whole map
+		local bounds = if match then match.arena.bounds else nil
+		if bounds == nil or typeof(bounds.cframe) ~= "CFrame" or typeof(bounds.size) ~= "Vector3" then
+			return nil
+		end
+		return bounds
 	end
 	local view = StateController.duel()
 	if view == nil then
@@ -243,10 +257,13 @@ local function zoneFor(context: string): Types.ArenaZone?
 	return zone
 end
 
--- The floor under a dasher: the arena slot's (duel) or the lane's (practice).
+-- The floor under a dasher: the arena slot's (duel) or the lane's (practice). FFA/TDM v1: none in a match (raised
+-- platforms; FloorMaterial alone, SPEC D16).
 local function floorYFor(context: string?): number?
 	if context == "practice" then
 		return PracticeTargets.FLOOR_Y
+	elseif context == "match" then
+		return nil
 	end
 	local view = StateController.duel()
 	local arena = view and view.arena
@@ -267,7 +284,7 @@ end
 local function sideOf(userId: number): string?
 	local view = StateController.duel()
 	if view == nil then
-		return nil
+		return StateController.matchSide(StateController.match(), userId) -- FFA/TDM v1 (nil outside a match)
 	elseif view.you.userId == userId then
 		return view.you.side
 	elseif view.opponent.userId == userId then
@@ -276,6 +293,7 @@ local function sideOf(userId: number): string?
 	return nil
 end
 
+-- FFA/TDM v1: in a match only the own dash is at priority 0 (no single opponent).
 local function soundPriorityFor(userId: number): number
 	local view = StateController.duel()
 	if userId == localPlayer().UserId or (view ~= nil and view.opponent.userId == userId) then
@@ -299,11 +317,12 @@ end
 local function factsNow(now: number, root: BasePart?, humanoid: Humanoid?): GateFacts
 	local context = currentContext()
 	local view = StateController.duel()
+	local match = if context == "match" then StateController.match() else nil -- FFA/TDM v1
 	local inZone = true
 	local grounded = humanoid ~= nil and humanoid.FloorMaterial ~= Enum.Material.Air
 	if root ~= nil then
-		if context == "duel" then
-			inZone = insideZone(zoneFor("duel"), root.Position, ZONE_TOLERANCE)
+		if context == "duel" or context == "match" then
+			inZone = insideZone(zoneFor(context), root.Position, ZONE_TOLERANCE)
 		end
 		local floorY = floorYFor(context)
 		if floorY ~= nil and root.Position.Y - floorY > STANDING_HEIGHT + DASH.groundToleranceStuds then
@@ -312,8 +331,9 @@ local function factsNow(now: number, root: BasePart?, humanoid: Humanoid?): Gate
 	end
 	return {
 		context = context,
-		phase = if view then view.phase else nil,
-		alive = root ~= nil and humanoid ~= nil and humanoid.Health > 0,
+		phase = if view then view.phase elseif match then match.phase else nil,
+		-- FFA/TDM v1: a knocked-out match player keeps a living Humanoid (frozen in place) but is not alive.
+		alive = root ~= nil and humanoid ~= nil and humanoid.Health > 0 and (match == nil or match.you.alive),
 		inZone = inZone,
 		dashing = dashes[localPlayer()] ~= nil,
 		rooted = ThrowController.getUltState().rooted,
@@ -738,7 +758,7 @@ function DashController.gate(facts: GateFacts): string?
 	if context == nil or not facts.alive then
 		return REASON_CONTEXT
 	end
-	if context == "duel" and (not LIVE_PHASES[facts.phase or ""] or not facts.inZone) then
+	if (context == "duel" or context == "match") and (not LIVE_PHASES[facts.phase or ""] or not facts.inZone) then
 		return REASON_CONTEXT
 	end
 	if facts.dashing or facts.rooted or facts.windup or facts.ultBusy or facts.crushing == true then
@@ -749,6 +769,18 @@ function DashController.gate(facts: GateFacts): string?
 	end
 	if facts.now < facts.lastDashAt + DASH.cooldownSeconds then
 		return REASON_COOLDOWN
+	end
+	return nil
+end
+
+-- FFA/TDM v1: the dash context from the input contexts and the views: "duel" (the Duel context with a duel view),
+-- "match" (the Duel context with a 12-player match view and no duel view), "duel" too while the Duel context waits for
+-- its first view (the gate then refuses: no live phase), "practice", or nil. Pure.
+function DashController.contextFor(duelOn: boolean, practiceOn: boolean, duelView: any?, matchView: any?): string?
+	if duelOn then
+		return if duelView == nil and matchView ~= nil then "match" else "duel"
+	elseif practiceOn then
+		return "practice"
 	end
 	return nil
 end

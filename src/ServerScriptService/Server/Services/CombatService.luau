@@ -62,6 +62,23 @@
 --     thrower loses 1 life even inside its invulnerability; user decision 2026-10-11), then CatchEvent "burst" with
 --     the outcome; a match that ended meanwhile loses no life (the burst is still sent, without lives). Hit (and
 --     Eliminated) fire for it as for any hit. unregisterMatch drops a crush with its match.
+-- * FFA/TDM v1 (2026-10-15, MatchService on Diego's DuelMaps; SPEC D2, D8, D15, C1): a port with `ffa = true` is N
+--   fighters on an open map. Its arena has no halves and no neutral band, only Bounds; every other fighter is an enemy,
+--   except the own team when `teams = true` (TDM: side "A" = Red, "B" = Blue; FFA: everyone is "A"). Then: canDamage
+--   never hits oneself or (TDM) a teammate and hands the attacker to port.canBeHit(victim, at, attacker); a throw,
+--   lane or Epic ultimate tests every enemy's capsule and the earliest entry wins; an area hit takes the first enemy
+--   in reach, then the next one on the following steps; the throw's place checks (ThrowRules 5 and 10) and the
+--   movement guard use Bounds (no neutral or opponent half); the guard's inside-cover probe counts a MeshPart only
+--   with Box collision fidelity (its bounding box is then its shape; a Hull / PreciseConvexDecomposition / Default
+--   one is skipped); no catch (CatchRequest is catch.context, no window is ever tested). Duel ports (no `ffa`) keep
+--   every line of the 1v1 path.
+--   Review fixes (2026-10-15): canDamage also refuses a victim whose isAlive() is false (a dead character still
+--   standing in the map is no K.O., SPEC D3/D5); the maps have levels, so a lane or the roller tests victims against
+--   the floor it was cast from (LaneSpec / UltSpec floorY): a player on a level above it (feet higher than a double
+--   jump, or than the roller's clearHeight) is not on it, and one on a lower level is hit only where the sweep really
+--   touches the capsule; releaseFighter drops one fighter who left a running match (SPEC D6) while the rest play on;
+--   groundProbe / groundUnder are the open map's ground under a player (a body-radius Spherecast), shared by
+--   DashService and AbilityService.
 -- * CombatLog counters (§12 #23): rejections per reason and throws / hits / wins per squishy; userIds only in logs.
 --   A payload failure that only ThrowRules can see (the seq window, §5.6 #2) is reported to NetService as a violation.
 -- Signals (upward communication, §2.6): Hit(info), Eliminated(info), ThrowAccepted(info).
@@ -130,12 +147,12 @@ export type Fighter = {
 	handsBackAt: number,
 }
 
--- The arena of one match, from the ArenaService slot.
+-- The arena of one match, from the ArenaService slot (FFA/TDM v1: from the MatchMapService map record).
 export type ArenaInfo = {
 	slot: number,
 	floorY: number,
 	killY: number,
-	zones: { [string]: Zone }, -- HalfA, Neutral, HalfB, Bounds
+	zones: { [string]: Zone }, -- HalfA, Neutral, HalfB, Bounds (FFA/TDM v1, an ffa port: Bounds only)
 	geometry: Instance?,
 	raycastParams: RaycastParams,
 	overlapParams: OverlapParams,
@@ -157,15 +174,22 @@ export type HitOutcome = {
 	eliminated: boolean,
 }
 
--- How CombatService talks to the owner of a match (DuelService). Every call is synchronous and must not yield.
+-- How CombatService talks to the owner of a match (DuelService; FFA/TDM v1: MatchService). Every call is synchronous
+-- and must not yield.
 export type MatchPort = {
 	matchId: string,
 	arena: ArenaInfo,
-	fighters: { Fighter }, -- the two duelists
-	phase: () -> string, -- Types.DuelPhase
+	fighters: { Fighter }, -- the two duelists (FFA/TDM v1: every fighter of the match)
+	-- FFA/TDM v1 (2026-10-15, SPEC D2/C1; nil for duels): `ffa` = N fighters on an open map (arena.zones has only
+	-- Bounds; no halves, no neutral band); `teams` = TDM: fighters of the same side are teammates (never hit).
+	ffa: boolean?,
+	teams: boolean?,
+	phase: () -> string, -- Types.DuelPhase (MatchService maps MatchRules' phases onto these names, SPEC D1)
 	cooldownMultiplier: () -> number, -- DuelRules.cooldownMultiplier
 	placement: (fighter: Fighter) -> CFrame?, -- where the fighter stands on its own pad (§5.4 height included)
-	canBeHit: (victim: Fighter, at: number) -> boolean, -- DuelRules.canBeHit
+	-- DuelRules.canBeHit (FFA/TDM v1: MatchRules.canBeHit; `attacker` is passed only for an ffa port, a duel's closure
+	-- takes two arguments).
+	canBeHit: (victim: Fighter, at: number, attacker: Fighter?) -> boolean,
 	-- One step's hits on this match, in impact order, found while sweeping up to server time `now`. Returns the
 	-- applied ones by index (missing = refused).
 	applyHits: (hits: { HitRequest }, now: number) -> { [number]: HitOutcome },
@@ -211,7 +235,14 @@ export type LaneSpec = {
 	speed: number,
 	releaseAt: number,
 	stoppedByGeometry: boolean, -- E is on cover: the end impact is `geometry`, else `expired`
+	-- FFA/TDM v1 (review fix): the floor the lane flies over (the ground under the caster); read only on an ffa port,
+	-- nil = the arena floor.
+	floorY: number?,
 }
+
+-- FFA/TDM v1 (review fix): a ground probe: the height of the first ground at most `distance` studs below `origin`, or
+-- nil (groundProbe; DashService and AbilityService tests pass fakes).
+export type GroundProbe = (origin: Vector3, distance: number, params: RaycastParams) -> number?
 
 -- An Epic ultimate's projectile (AbilityService, spec phase 5): a Flock Volley bird, the Sprinkle Roller or a Bubble
 -- Pop bubble, a straight sweep like a lane over a length that already stops at cover and Bounds.
@@ -371,6 +402,20 @@ local REMOTE_CHARGE = "ChargeStart"
 local REMOTE_CATCH = "CatchRequest"
 local REMOTE_CATCH_EVENT = "CatchEvent"
 local REASON_INVALID = "net.invalid"
+-- FFA/TDM v1 (2026-10-15, SPEC D8): a catch press from a fighter of an ffa port is refused with this reason.
+local REASON_CATCH_CONTEXT = "catch.context"
+-- FFA/TDM v1 (review fix): on an open map a lane (§5.9) still hits a player jumping on its floor, even at the top of a
+-- double jump; feet higher than this above its floor are on another level (a deck over its path) and are not on it.
+-- (The double jump is read safely: a Studio session's cached Config may not have it yet.)
+local LANE_JUMP_REACH = RULES.Movement.JumpHeight
+	+ (if (RULES :: any).DoubleJump then (RULES :: any).DoubleJump.heightStuds else 0)
+-- FFA/TDM v1 (SPEC D16): how far below a server HRP the ground probe looks (Diego's standable tops reach 29 studs;
+-- deeper is airborne anyway): [P] Config.Match.Maps.groundProbeStuds (30, checked by Config.validate). The 30 here is
+-- only for a Studio session whose cached Config has no such field yet.
+local MATCH_MAPS = if (Config :: any).Match then (Config :: any).Match.Maps else nil
+local GROUND_PROBE_STUDS: number = if MATCH_MAPS and type(MATCH_MAPS.groundProbeStuds) == "number"
+	then MATCH_MAPS.groundProbeStuds
+	else 30
 
 -- Module table
 
@@ -503,6 +548,23 @@ local function opponentOf(port: MatchPort, fighter: Fighter): Fighter?
 	return nil
 end
 
+-- FFA/TDM v1 (2026-10-15, SPEC C1): true when `other` is an enemy of `fighter` in an ffa port: anyone else, except the
+-- own team (the same side) when port.teams. Only the port.ffa branches use it (no table built per sub-step).
+local function isEnemy(port: MatchPort, fighter: Fighter, other: Fighter): boolean
+	return other ~= fighter and not (port.teams == true and other.side == fighter.side)
+end
+
+-- FFA/TDM v1 (SPEC C1): every enemy of `fighter` in an ffa port (see isEnemy), in port.fighters order.
+local function enemiesOf(port: MatchPort, fighter: Fighter): { Fighter }
+	local list: { Fighter } = {}
+	for _, other in port.fighters do
+		if isEnemy(port, fighter, other) then
+			table.insert(list, other)
+		end
+	end
+	return list
+end
+
 -- Real players of a match (the test dummy is never a recipient; NetService skips it too).
 local function audienceOf(port: MatchPort): { Player }
 	local list: { Player } = {}
@@ -616,7 +678,10 @@ local function insideBounds(proj: Projectile, position: Vector3): boolean
 end
 
 -- canDamage (§5.5): attacker and victim on different sides of the same live match, victim outside invulnerability
--- and with its HRP inside that arena's Bounds.
+-- and with its HRP inside that arena's Bounds. FFA/TDM v1 (an ffa port): never oneself, teammates only in TDM (the
+-- side letter), never a victim whose isAlive() is false (a K.O.'d player, or a dead character still standing in the
+-- map: MatchRules does not know that death, SPEC D3/D5); the owner's canBeHit also gets the attacker (MatchRules:
+-- alive, spawn protection, team, self).
 local function canDamage(
 	port: MatchPort,
 	attacker: Fighter,
@@ -624,11 +689,20 @@ local function canDamage(
 	rootPosition: Vector3,
 	at: number
 ): boolean
-	if attacker == victim or attacker.side == victim.side then
-		return false
-	end
-	if not port.canBeHit(victim, at) then
-		return false
+	if port.ffa then
+		if not isEnemy(port, attacker, victim) or not victim.isAlive() then
+			return false
+		end
+		if not port.canBeHit(victim, at, attacker) then
+			return false
+		end
+	else
+		if attacker == victim or attacker.side == victim.side then
+			return false
+		end
+		if not port.canBeHit(victim, at) then
+			return false
+		end
 	end
 	local bounds = port.arena.zones.Bounds
 	return bounds == nil or HitMath.inZone(rootPosition, bounds, 0)
@@ -654,6 +728,38 @@ local function makeCandidate(
 		targetId = nil,
 		outcome = nil,
 	}
+end
+
+-- FFA/TDM v1 (2026-10-15): the first fraction of sub-step `s` at which the projectile touches the capsule of a player
+-- whose HRP is at rootPosition, or nil: the same test as the duel branch of sweep (the roller horizontally and none once
+-- the feet clear clearHeight; a lane at standing height, §5.9; else the capsule), for any victim of an ffa port.
+-- Review fix: the maps have levels, so the floor is the one the lane or roller was cast from (proj.floorY, else the map
+-- floor). Those floor tests hold only for a player on that floor (or jumping from it): a lane skips feet higher than
+-- LANE_JUMP_REACH above it (a deck over its path), and a player on a lower level (feet below that floor) is tested
+-- with the real capsule, so only a sweep that really touches it hits.
+local function entryFraction(
+	proj: Projectile,
+	port: MatchPort,
+	s: ProjectileMath.SubStep,
+	rootPosition: Vector3
+): number?
+	local floorY = proj.floorY or port.arena.floorY
+	local below = UltRules.feetPoint(rootPosition).Y < floorY
+	local clearHeight = proj.clearHeight
+	if clearHeight ~= nil and not below then
+		if UltRules.feetAbove(rootPosition, floorY, clearHeight) then
+			return nil
+		end
+		return UltRules.flatEntry(s.p0, s.p1, proj.radius, rootPosition)
+	end
+	local capsuleRoot = rootPosition
+	if proj.kind == "lane" and not below then
+		if UltRules.feetAbove(rootPosition, floorY, LANE_JUMP_REACH) then
+			return nil
+		end
+		capsuleRoot = Vector3.new(rootPosition.X, floorY + LANE_ROOT_HEIGHT, rootPosition.Z)
+	end
+	return HitMath.capsuleEntry(s.p0, s.p1, proj.radius, HitMath.capsule(capsuleRoot))
 end
 
 -- The earliest impact inside one sub-step, or nil.
@@ -690,7 +796,9 @@ local function sweep(proj: Projectile, s: ProjectileMath.SubStep): Candidate?
 	-- 1b. Feature 1: the opponent's open catch window, before the hit test (design: html:614-615). Only a normal duel
 	-- throw is caught (never an ultimate, a lane or a practice throw); a tie with a capsule entry is the catch.
 	local port = proj.port
-	if port and proj.kind == "throw" then
+	if port and port.ffa then
+		-- FFA/TDM v1 (SPEC D8): no catch in a match (requestCatch refuses the press), so there is no window to test.
+	elseif port and proj.kind == "throw" then
 		local catcher = opponentOf(port, proj.owner :: Fighter)
 		local catcherRoot = if catcher then catcher.getRoot() else nil
 		if catcher and catcherRoot and catcher.isAlive() and LIVE_PHASES[port.phase()] then
@@ -712,8 +820,25 @@ local function sweep(proj: Projectile, s: ProjectileMath.SubStep): Candidate?
 		end
 	end
 
-	-- 2. Capsules.
-	if port then
+	-- 2. Capsules. FFA/TDM v1: every enemy not hit yet (lanes and the roller fly on); the earliest entry that may be
+	-- damaged wins, so a nearer victim is always hit first whatever the fighters' order.
+	if port and port.ffa then
+		local attacker = proj.owner :: Fighter
+		for _, victim in port.fighters do
+			local root = if isEnemy(port, attacker, victim) and not proj.hitOnce[victim] then victim.getRoot() else nil
+			if root then
+				local fraction = entryFraction(proj, port, s, root.Position)
+				if fraction and fraction < bestFraction then
+					local at = ProjectileMath.impactTime(proj.releaseAt, s.a, s.b, fraction)
+					if canDamage(port, attacker, victim, root.Position, at) then
+						local candidate = makeCandidate(proj, "player", s, fraction, nil)
+						candidate.victim = victim
+						best, bestFraction = candidate, fraction
+					end
+				end
+			end
+		end
+	elseif port then
 		local attacker = proj.owner :: Fighter
 		local victim = opponentOf(port, attacker)
 		local root = if victim then victim.getRoot() else nil
@@ -787,6 +912,26 @@ local function areaVictim(proj: Projectile, area: Area): Candidate?
 		outcome = nil,
 	}
 	local port = proj.port
+	if port and port.ffa then
+		-- FFA/TDM v1: the first enemy in reach that may be damaged; the next steps take the others (hitOnce).
+		local attacker = proj.owner :: Fighter
+		for _, victim in port.fighters do
+			local root = if isEnemy(port, attacker, victim) and not proj.hitOnce[victim] then victim.getRoot() else nil
+			if
+				root
+				and UltRules.feetWithin(root.Position, floorPoint, area.radius)
+				and canDamage(port, attacker, victim, root.Position, area.at)
+			then
+				candidate.victim = victim
+				local away = flatUnit(root.Position - area.center)
+				if away ~= Vector3.zero then
+					candidate.direction = away -- knockback away from the drop or the pop
+				end
+				return candidate
+			end
+		end
+		return nil
+	end
 	if port then
 		local attacker = proj.owner :: Fighter
 		local victim = opponentOf(port, attacker)
@@ -1294,7 +1439,8 @@ local function duelState(fighter: Fighter, port: MatchPort, now: number): ThrowR
 		alive = fighter.isAlive(),
 		rootCFrame = if root then root.CFrame else nil,
 		rooted = now < fighter.rootedUntil,
-		ownHalf = arena.zones[HALF_BY_SIDE[fighter.side]],
+		-- FFA/TDM v1: an open map has no halves, so ThrowRules' place checks (5 and 10) use Bounds + zoneToleranceStuds.
+		ownHalf = if port.ffa then arena.zones.Bounds else arena.zones[HALF_BY_SIDE[fighter.side]],
 		ping = pingOf(fighter.player),
 		throw = fighter.throw,
 		cooldownMultiplier = port.cooldownMultiplier(),
@@ -1430,6 +1576,58 @@ end
 -- The port of a registered fighter's match.
 function CombatService.portOf(fighter: Fighter): MatchPort?
 	return portOf[fighter]
+end
+
+-- FFA/TDM v1 (2026-10-15, SPEC C1): the enemies of `fighter` in an ffa port: every other fighter, minus the own team
+-- (the same side) when port.teams. AbilityService (Rain Check's centre) uses the same rule.
+function CombatService.enemiesOf(port: MatchPort, fighter: Fighter): { Fighter }
+	return enemiesOf(port, fighter)
+end
+
+-- FFA/TDM v1 (2026-10-15, SPEC D6; review fix): one fighter leaves a running ffa match (/leave, or the game) while the
+-- others play on (MatchService, with AbilityService.detachFighter). It is no longer a fighter of its port (no target,
+-- no recipient, no guard) nor registered (its next requests go down the lobby / practice path). Its projectiles
+-- already in flight keep their port, so their hits still resolve (MatchRules still counts the leaver's hits). The port
+-- gets a new fighters list, so a loop over the old one is never disturbed. Nothing happens for an unregistered fighter
+-- or a duel port (a duel ends as a whole). True when the fighter was released.
+function CombatService.releaseFighter(fighter: Fighter): boolean
+	local port = portOf[fighter]
+	if port == nil or not port.ffa then
+		return false
+	end
+	portOf[fighter] = nil
+	if fighters[fighter.userId] == fighter then
+		fighters[fighter.userId] = nil
+	end
+	local kept: { Fighter } = {}
+	for _, other in port.fighters do
+		if other ~= fighter then
+			table.insert(kept, other)
+		end
+	end
+	port.fighters = kept
+	return true
+end
+
+-- FFA/TDM v1 (2026-10-15, SPEC D16; review fix): the open map's ground probe: the Y of the first hit of a downward
+-- Spherecast of the capsule's radius from `origin` (a server HRP), at most `distance` studs long, against the map's
+-- RaycastParams; nil when nothing is there. The sphere is the body's footprint, so a platform edge the Humanoid still
+-- stands on with its centre past it counts (a thin ray from the centre would miss it and find the floor below).
+function CombatService.groundProbe(origin: Vector3, distance: number, params: RaycastParams): number?
+	local hit = Workspace:Spherecast(origin, HITBOX.radius, Vector3.new(0, -distance, 0), params)
+	return if hit then hit.Position.Y else nil
+end
+
+-- FFA/TDM v1 (review fix): the floor under a player whose server HRP is at rootPosition on an open map: `probe` (default
+-- groundProbe) over GROUND_PROBE_STUDS, else (no root, nothing below) the map floor. DashService's ground check and
+-- AbilityService's ultimate floor both use it, so they never disagree.
+function CombatService.groundUnder(arena: ArenaInfo, rootPosition: Vector3?, probe: GroundProbe?): number
+	if rootPosition == nil then
+		return arena.floorY
+	end
+	local ground: GroundProbe = probe or CombatService.groundProbe
+	local y = ground(rootPosition, GROUND_PROBE_STUDS, arena.raycastParams)
+	return if y ~= nil then y else arena.floorY
 end
 
 -- The practice throw state of a player (AbilityService reads rootedUntil / windupUntil / nextThrowAt).
@@ -1602,11 +1800,16 @@ end
 
 -- Feature 1: one catch press (CatchRequest) by `who` (a Player, or a registered fighter / its userId), checked by
 -- Logic/CatchRules against the server's state; accepted, it opens the window and drops a charge (design: html:344).
--- Returns (accepted, reason?).
+-- FFA/TDM v1: a fighter of an ffa port is refused (catch.context) before anything else. Returns (accepted, reason?).
 function CombatService.requestCatch(who: any, clientTime: unknown): (boolean, string?)
 	local now = serverNow()
 	local fighter, player = resolve(who)
 	local port = if fighter then portOf[fighter] else nil
+	if port and port.ffa then
+		-- FFA/TDM v1 (SPEC D8): no catch in matches yet (the client's gate refuses too); nothing opens, nothing changes.
+		bump(counters.rejected, REASON_CATCH_CONTEXT)
+		return false, REASON_CATCH_CONTEXT
+	end
 	if port then
 		local sync = port.sync
 		if sync then
@@ -1644,8 +1847,9 @@ function CombatService.requestCatch(who: any, clientTime: unknown): (boolean, st
 end
 
 -- Launches a Dragon Rush lane (AbilityService, §5.9): a straight sweep at `speed` from origin over `length` studs,
--- starting at releaseAt. Duel lanes test the caster's opponent with the normal canDamage; practice lanes test only
--- practice targets. Returns the projId (sent in UltimateEvent release).
+-- starting at releaseAt. Duel lanes test the caster's opponent with the normal canDamage (FFA/TDM v1: every enemy, each
+-- once, against the floor the lane flies over, spec.floorY); practice lanes test only practice targets. Returns the
+-- projId (sent in UltimateEvent release).
 function CombatService.launchLane(spec: LaneSpec): number
 	local caster = spec.caster
 	local port = if caster then portOf[caster] else nil
@@ -1673,6 +1877,7 @@ function CombatService.launchLane(spec: LaneSpec): number
 		hitOnce = {},
 		endKind = if spec.stoppedByGeometry then "geometry" else "expired",
 		flyOn = true,
+		floorY = spec.floorY, -- FFA/TDM v1 (review fix): read only by an ffa port's capsule test (entryFraction)
 		areaHits = 0,
 	}
 	addProjectile(proj)
@@ -1690,7 +1895,8 @@ end
 
 -- Launches an Epic ultimate's projectile (AbilityService, spec phase 5): a Flock Volley bird, the Sprinkle Roller or a
 -- Bubble Pop bubble; a straight gravity-0 sweep from origin over `length` studs starting at releaseAt (see the header).
--- Duel ones test the caster's opponent with the normal canDamage, practice ones only practice targets. Returns the projId.
+-- Duel ones test the caster's opponent with the normal canDamage (FFA/TDM v1: every enemy, the nearest entry first),
+-- practice ones only practice targets. Returns the projId.
 function CombatService.launchUlt(spec: UltSpec): number
 	local owner: any, kind: ProjectileKind, port: MatchPort?, ownerId: number = ultOwner(spec.caster, spec.player)
 	local speed = math.max(spec.speed, 1e-3)
@@ -1726,7 +1932,8 @@ function CombatService.launchUlt(spec: UltSpec): number
 end
 
 -- Schedules one area hit (a Rain Check drop, spec phase 5) at server time spec.at: the caster's opponent (or the
--- practice targets) whose feet are within spec.radius of spec.position is hit; a miss sends nothing. Returns the projId.
+-- practice targets; FFA/TDM v1: every enemy) whose feet are within spec.radius of spec.position is hit; a miss sends
+-- nothing. Returns the projId.
 function CombatService.launchArea(spec: AreaSpec): number
 	local owner: any, kind: ProjectileKind, port: MatchPort?, ownerId: number = ultOwner(spec.caster, spec.player)
 	local proj: Projectile = {
@@ -1876,6 +2083,11 @@ local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 	local root = fighter.getRoot()
 	local zones = port.arena.zones
 	local own = zones[HALF_BY_SIDE[fighter.side]]
+	if port.ffa then
+		-- FFA/TDM v1: an open map has no halves and no neutral band; its Bounds is the own zone and the only one.
+		own = zones.Bounds
+		zones = if own then { Bounds = own } else {}
+	end
 	if root == nil or own == nil then
 		return
 	end
@@ -1884,6 +2096,12 @@ local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 	-- round or turned cover has empty "inside" corners, so players walking NEXT TO it were snapped back = stutter).
 	local insideGeometry = false
 	for _, part in Workspace:GetPartBoundsInBox(root.CFrame, GUARD.geometryProbeSize, port.arena.overlapParams) do
+		-- FFA/TDM v1 (SPEC D15): Diego's maps collide through MeshPart proxies. Only a Box-fidelity MeshPart's bounding
+		-- box is its shape; a Hull / PreciseConvexDecomposition / Default one is bigger than its shape (the stutter class
+		-- above), so it is skipped. Parts keep their real shape.
+		if port.ffa and part:IsA("MeshPart") and (part :: MeshPart).CollisionFidelity ~= Enum.CollisionFidelity.Box then
+			continue
+		end
 		local shape = if part:IsA("Part") then (part :: Part).Shape.Name else "Block"
 		if part.CanCollide and HitMath.pointInShape(root.Position, part.CFrame, part.Size, shape) then
 			insideGeometry = true

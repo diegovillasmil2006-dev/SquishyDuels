@@ -6,7 +6,9 @@
 -- When (Machine.wanted, pure):
 --   * duels: Countdown, Active and SuddenDeath; Result for Config.FirstPerson.resultHoldSeconds (0.4 s, the last hit
 --     lands from your eyes) when already in it; today's camera in the queue, Preparing and Positioning, and at once on
---     Returning, Cancelled, Void and the duel view gone;
+--     Returning, Cancelled, Void and the duel view gone; FFA/TDM v1 (2026-10-15): the 12-player match view's phase
+--     (StateController.match(), DuelPhase names) feeds the same rows when there is no duel view, still as mode "duel"
+--     (the duel HUD and the hand read that name);
 --   * practice (answer 3): inside the throw box (PracticeController.ZoneChanged / isInZone) while no screen blocks the
 --     controls (ControlsController.BlockChanged / isBlocked: any modal, Inspect and the reveal included); it ends
 --     practiceExitDelaySeconds (0.3 s) after the zone turns off (walking the box's edge never flips it), at once on a
@@ -542,9 +544,13 @@ function FirstPersonController.init()
 	end))
 	c:add(player:GetAttributeChangedSignal(ATTR_MATCH_ID):Connect(readMatch))
 	c:add(player:GetAttributeChangedSignal(ATTR_DUEL_PHASE):Connect(readMatch))
-	c:add(StateController.DuelChanged:connect(function(view: StateController.DuelView?)
-		Machine.setPhase(machine, if view then view.phase else nil)
-	end))
+	-- The phase: the duel view's, else (FFA/TDM v1) the match view's.
+	local function readPhase()
+		local view, match = StateController.duel(), StateController.match()
+		Machine.setPhase(machine, if view then view.phase elseif match then match.phase else nil)
+	end
+	c:add(StateController.DuelChanged:connect(readPhase))
+	c:add(StateController.MatchChanged:connect(readPhase))
 	c:add(PracticeController.ZoneChanged:connect(function(inside: boolean)
 		Machine.setZone(machine, inside)
 	end))
@@ -562,8 +568,7 @@ function FirstPersonController.init()
 	end)
 
 	readMatch()
-	local view = StateController.duel()
-	Machine.setPhase(machine, if view then view.phase else nil)
+	readPhase()
 	Machine.setZone(machine, PracticeController.isInZone())
 	Machine.setFlag(machine, "blocked", ControlsController.isBlocked())
 	if player.Character then

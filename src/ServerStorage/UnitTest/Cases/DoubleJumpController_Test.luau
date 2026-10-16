@@ -8,7 +8,9 @@
 --   * the launch speed is sqrt(2·g·h);
 --   * the flip: no turn and no tuck at 0, a full spinDegrees turn about the key's axis by spinSeconds, weight 0 at
 --     `seconds`; ReducedMotion tucks without turning; F / B turn about X, L / R about Z, in opposite senses;
---   * a DoubleJumped payload is used only with every field of its type and a key of F / B / L / R.
+--   * a DoubleJumped payload is used only with every field of its type and a key of F / B / L / R;
+--   * FFA/TDM v1 (2026-10-15): with no duel view the 12-player match view's phase gates the jump the same way, and a
+--     knocked-out match player (alive false in the view) cannot jump; a duel view always wins.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -56,6 +58,26 @@ return function(t: Context)
 		for _, busy in { { canJump = false }, { rooted = true }, { ultBusy = true }, { dashing = true } } do
 			expect.equal(DoubleJump.gate(facts(busy)), "jump.busy")
 		end
+	end)
+
+	t.test("the match view: its phase gates the jump; knocked out cannot jump; a duel view wins", function()
+		local standing = { phase = "Active", you = { alive = true } }
+		local knocked = { phase = "Active", you = { alive = false } }
+		local phase, canAct = DoubleJump.viewFacts(nil, standing)
+		expect.equal(phase, "Active")
+		expect.equal(canAct, true)
+		expect.equal(DoubleJump.gate(facts({ phase = phase, alive = canAct })), nil)
+		phase, canAct = DoubleJump.viewFacts(nil, knocked)
+		expect.equal(canAct, false)
+		expect.equal(DoubleJump.gate(facts({ phase = phase, alive = canAct })), "jump.context")
+		phase = DoubleJump.viewFacts(nil, { phase = "Countdown", you = { alive = true } })
+		expect.equal(DoubleJump.gate(facts({ phase = phase })), "jump.context")
+		phase, canAct = DoubleJump.viewFacts({ phase = "SuddenDeath" }, knocked)
+		expect.equal(phase, "SuddenDeath")
+		expect.equal(canAct, true)
+		phase, canAct = DoubleJump.viewFacts(nil, nil)
+		expect.equal(phase, nil)
+		expect.equal(canAct, true)
 	end)
 
 	t.test("a held key is one press; a press needs pressGapSeconds of quiet", function()

@@ -3,6 +3,12 @@
 -- answers 2026-10-15; plan scratch work/tdmffa/PLAN.md). Shared, data only. Read by Server/Logic/MatchRules (the match
 -- state machine), Server/Logic/PowerUpRules and Shared/StormMath (also used by the client to draw the storm).
 -- Values marked [P] are provisional (not given by the user; tune after the first live tests).
+-- FFA/TDM v1 (2026-10-15, played inside the lobby server): the in-server queue (gatherSeconds), no rewards yet
+-- (rewardCoins), out of bounds = a K.O. (outOfBoundsIsKo), the maps' footprints, Bounds height and ground
+-- probe (Maps), the spawn spots (Spawns), the storm's sampling, safe respawn and test wall (Storm.sampleHz,
+-- respawnInsetStuds, wall), the client's test readout (readoutHz) and the spread at the lobby return points
+-- (returnSpreadStuds). Read by Server/Services/MatchService, MatchMapService, Logic/MatchSpawns, CombatService
+-- (Maps.groundProbeStuds) and the client's MatchController.
 --
 -- The rules in plain words:
 --   * One hit = knocked out (K.O.) in both modes. Back in after respawnSeconds with spawnProtectSeconds of safety.
@@ -57,11 +63,50 @@ local Match = {
 	resultSeconds = 8, -- [P] the end screen before players go back
 	minPlayers = 2, -- fewer present at the countdown cancels the match
 
+	-- FFA/TDM v1 (2026-10-15): the in-server queue (/ffa, /tdm). Once minPlayers are queued for a mode this many
+	-- seconds pass before the match starts (at once when the queue reaches maxPlayers or everyone in the server).
+	gatherSeconds = 10, -- [P]
+	rewardCoins = 0, -- [P] v1 pays nothing yet (no Coins, quests, weekly wins or badges)
+	-- jayyyyy 2026-10-15: falling off or leaving the map "counts as a knockout" (TDM: costs a team life; FFA: you wait
+	-- respawnSeconds like any K.O.). false would only put the player back at a spawn.
+	outOfBoundsIsKo = true,
+	readoutHz = 4, -- [P] the client's test readout chip refreshes this many times a second
+	returnSpreadStuds = 4, -- [P] players sent back to the same lobby return point stand this far apart (rings of 6)
+
+	-- Diego's maps in Workspace.DuelMaps (MatchMapService). footprint = the floor size (X x Z) by the map's Mode
+	-- attribute. The Bounds box the combat code reads spans the footprint from floorY + boundsBottomOffset (the kill
+	-- line: Config.Duel OutOfBounds.KillYOffset) to floorY + boundsTop (throw arcs, platforms up to 29 studs, the super
+	-- jump). Studio scan 2026-10-15: walls 20 tall at the footprint edge.
+	Maps = {
+		footprint = {
+			TDM = Vector3.new(160, 0, 240), -- [P]
+			FFA = Vector3.new(200, 0, 200), -- [P]
+		},
+		boundsBottomOffset = -15, -- [P]
+		boundsTop = 100, -- [P]
+		-- [P] how far below a server HRP the ground probe looks (CombatService.groundUnder: the dash's ground check and
+		-- the ultimates' floor on these maps); more than the highest standable top (29 studs)
+		groundProbeStuds = 30,
+	},
+
+	-- Spawn spots on the maps' spawn pads (Logic/MatchSpawns): spotsPerPad points per pad (by mode), each at least
+	-- edgeStuds from the pad's edges; a respawn avoids spots with a standing player within occupiedStuds; a respawn
+	-- moved into the storm's safe circle is raised onto geometry by a downward raycast from raycastUpStuds above.
+	Spawns = {
+		spotsPerPad = { tdm = 6, ffa = 2 }, -- [P] TDM: one pad per team for 6 players; FFA: 8 pads for 12
+		edgeStuds = 4, -- [P]
+		occupiedStuds = 4, -- [P]
+		raycastUpStuds = 40, -- [P]
+	},
+
 	-- The storm (TDM only), like Fortnite's: a circle around the map's centre that shrinks in steps; outside it a
 	-- player's storm bar fills (barFillSeconds of time outside in total = K.O.) and inside it slowly drains.
 	-- It starts as the circle around the whole map (StormMath.startRadius) and is shown from stormStartSeconds. Each
 	-- step shrinks it to radiusFraction of that start radius over shrinkSeconds, beginning at shrinkAt (seconds of
 	-- Active); warnSeconds before each shrink the HUD warns. With these numbers it reaches its smallest circle at 9:20.
+	-- FFA/TDM v1: the server samples every standing player sampleHz times a second; a respawn that would land in the
+	-- storm moves onto the safe circle, respawnInsetStuds inside its edge. `wall` is the client's test placeholder
+	-- (one see-through cylinder, until Diego's storm design): its transparency, height and Art/Palette colour token.
 	Storm = {
 		stormStartSeconds = 300, -- 5:00, half of TDM's 10 minutes
 		warnSeconds = 30, -- [P] "Storm is coming in 0:30"
@@ -72,6 +117,13 @@ local Match = {
 		},
 		barFillSeconds = 3,
 		barDrainSeconds = 9, -- [P] a full bar empties in 9 s back inside ("slowly")
+		sampleHz = 5, -- [P]
+		respawnInsetStuds = 6, -- [P]
+		wall = {
+			transparency = 0.6, -- [P]
+			heightStuds = 120, -- [P]
+			color = "Sky", -- [P] an Art/Palette token (a "...Key" name would be read as a Strings key by Config.validate)
+		},
 	},
 
 	PowerUps = {

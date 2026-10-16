@@ -69,14 +69,17 @@ return function(t: Context)
 		expect.falsy(StormMath.inStorm(centre, 10, centre))
 	end)
 
-	t.test("stepBar: fills over barFillSeconds in the storm, drains over barDrainSeconds outside, stays in 0..1", function()
-		expect.near(StormMath.stepBar(FAKE, 0, true, 1.5), 0.5, 1e-9)
-		expect.near(StormMath.stepBar(FAKE, 0.5, false, 4.5), 0, 1e-9)
-		expect.equal(StormMath.stepBar(FAKE, 0.9, true, 5), 1)
-		expect.equal(StormMath.stepBar(FAKE, 0.1, false, 5), 0)
-		expect.equal(StormMath.stepBar(FAKE, 0.4, true, 0), 0.4)
-		expect.equal(StormMath.stepBar(FAKE, 0.4, true, -1), 0.4)
-	end)
+	t.test(
+		"stepBar: fills over barFillSeconds in the storm, drains over barDrainSeconds outside, stays in 0..1",
+		function()
+			expect.near(StormMath.stepBar(FAKE, 0, true, 1.5), 0.5, 1e-9)
+			expect.near(StormMath.stepBar(FAKE, 0.5, false, 4.5), 0, 1e-9)
+			expect.equal(StormMath.stepBar(FAKE, 0.9, true, 5), 1)
+			expect.equal(StormMath.stepBar(FAKE, 0.1, false, 5), 0)
+			expect.equal(StormMath.stepBar(FAKE, 0.4, true, 0), 0.4)
+			expect.equal(StormMath.stepBar(FAKE, 0.4, true, -1), 0.4)
+		end
+	)
 
 	t.test("Config: the storm starts at stormStartSeconds and reaches its last circle before TDM's time-up", function()
 		local first = STORM.steps[1]

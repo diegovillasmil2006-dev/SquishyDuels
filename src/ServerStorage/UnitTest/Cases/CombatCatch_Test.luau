@@ -17,7 +17,8 @@
 --     inside invulnerability), Hit fires, CatchEvent "burst" carries the lives; the match ending meanwhile: no life;
 --   * the press: cooldownSeconds (1.3) after a missed catch, busy while crushing (until handsBackSeconds after a catch:
 --     its own wait, unchanged), only in a live duel; it drops a charge record; no throw while the hands are open or
---     crushing (throw.busy).
+--     crushing (throw.busy);
+--   * FFA/TDM v1 (2026-10-15, SPEC D8): a fighter of an ffa port is refused (catch.context) and no window is tested.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -544,5 +545,29 @@ return function(t: Context)
 		expect.truthy((throwAt(2, 2, A_ROOT)))
 		local started = payloads("ThrowStarted")
 		expect.equal(started[#started].power, 0) -- the press dropped the charge
+	end)
+
+	-- FFA/TDM v1 (2026-10-15, SPEC D8): no catch in a match yet ------------------------------------------------------
+
+	t.test("FFA/TDM v1: a catch press in an ffa port is catch.context and no window is ever tested", function()
+		setup()
+		local _, b, state = duel()
+		local port = CombatService.portOf(b)
+		port.ffa = true
+		port.teams = true -- TDM: A and B are on different teams, so each is the other's enemy
+		local ok, reason = CombatService.requestCatch(2, clock.now())
+		expect.falsy(ok)
+		expect.equal(reason, "catch.context")
+		expect.equal(b.catchOpensAt, -math.huge)
+		local counters = CombatService.counters()
+		expect.equal(counters.rejected["catch.context"], 1)
+		expect.equal(counters.catchWindows, 0)
+		-- Even a window left open by hand is never tested: A's throw hits B.
+		b.catchOpensAt, b.catchClosesAt = clock.now(), clock.now() + 5
+		expect.truthy((throwAt(1, 1, B_ROOT)))
+		runFor(1.5)
+		expect.equal(#catchEvents("caught"), 0)
+		expect.equal(#impacts("player"), 1)
+		expect.equal(#state.hits, 1)
 	end)
 end

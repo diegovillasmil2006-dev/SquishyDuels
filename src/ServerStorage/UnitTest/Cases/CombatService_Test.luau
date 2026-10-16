@@ -22,6 +22,14 @@
 --     so an owner that syncs before running its timers counts a hit that lands just before a phase deadline;
 --   * the movement guard pivots a player back out of the neutral zone and hands a fall below KillY to the match owner;
 --     it holds a fighter on its pad in Countdown and in place during a Dragon Rush root.
+--   * FFA/TDM v1 (2026-10-15), a port with `ffa` (N fighters, an open map with only Bounds): everyone else is an enemy
+--     (FFA: all on side A), never oneself, never a teammate in TDM (`teams`); canBeHit is handed the attacker; of two
+--     enemies met in one sub-step the earlier entry is hit; a lane hits every enemy on its line once; an area hit
+--     takes every enemy in reach; throws are accepted anywhere inside Bounds; the guard has Bounds as its only zone and
+--     counts a MeshPart as cover only with Box collision fidelity. Review fixes: a victim whose isAlive() is false is
+--     passed through without asking the owner; a lane or the roller hits on the floor it was cast from (a jump too),
+--     never a player on a level above it or on a lower level under its path; releaseFighter drops one leaver (no
+--     target, recipient or registration) while its throw in flight still hits, and never touches a duel.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -43,10 +51,21 @@ type PortState = {
 	oob: { number },
 }
 
+-- FFA/TDM v1: the fake open-map owner's record (invulnerability by userId; every attacker canBeHit was handed).
+type MapState = {
+	phase: string,
+	invuln: { [number]: number },
+	hits: { any },
+	attackers: { any },
+	oob: { number },
+}
+
 local STEP = 1 / 60
 local A_ROOT = Vector3.new(0, 3, -40)
 local B_ROOT = Vector3.new(0, 3, 20)
 local LIVE: { [string]: boolean } = { Active = true, SuddenDeath = true }
+-- FFA/TDM v1: an open map's Bounds as MatchMapService builds it (footprint 200 x 200, floor - 15 .. floor + 100).
+local MAP_BOUNDS = { cframe = CFrame.new(0, 42.5, 0), size = Vector3.new(200, 115, 200) }
 
 return function(t: Context)
 	local expect = t.expect
@@ -939,6 +958,433 @@ return function(t: Context)
 			local ends = impacts("expired")
 			expect.equal(#ends, 1) -- the pop with nobody near
 			expect.near((ends[1].position - popAt).Magnitude, 0, 0.05)
+		end
+	)
+
+	-- FFA/TDM v1 (2026-10-15): a fake N-fighter owner on an open map (port.ffa; port.teams for TDM). Its arena has only
+	-- MAP_BOUNDS; one hit is a K.O. (eliminated, then invulnerable for HitInvulnSeconds, by userId); canBeHit records
+	-- the attacker it was handed (false when none). Registered, every fighter may throw at once.
+	local function mapPort(list: { any }, teams: boolean): (any, MapState)
+		local state: MapState = { phase = "Active", invuln = {}, hits = {}, attackers = {}, oob = {} }
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Include
+		params.FilterDescendantsInstances = {}
+		local overlap = OverlapParams.new()
+		overlap.FilterType = Enum.RaycastFilterType.Include
+		overlap.FilterDescendantsInstances = {}
+		local port = {
+			matchId = "match:map-test",
+			arena = {
+				slot = 0,
+				floorY = 0,
+				killY = RULES.OutOfBounds.KillYOffset,
+				zones = { Bounds = MAP_BOUNDS },
+				geometry = nil,
+				raycastParams = params,
+				overlapParams = overlap,
+			},
+			fighters = list,
+			ffa = true,
+			teams = teams,
+			phase = function(): string
+				return state.phase
+			end,
+			cooldownMultiplier = function(): number
+				return 1
+			end,
+			placement = function(): CFrame?
+				return CFrame.new(A_ROOT)
+			end,
+			canBeHit = function(victim: any, at: number, attacker: any?): boolean
+				table.insert(state.attackers, attacker or false)
+				return LIVE[state.phase] == true and at >= (state.invuln[victim.userId] or -math.huge)
+			end,
+			applyHits = function(hits: { any }): { [number]: any }
+				local outcomes = {}
+				for index, hit in hits do
+					local id = hit.victim.userId
+					if hit.at >= (state.invuln[id] or -math.huge) then
+						table.insert(state.hits, hit)
+						state.invuln[id] = hit.at + RULES.HitInvulnSeconds
+						outcomes[index] = { lives = 0, invulnUntil = state.invuln[id], eliminated = true }
+					end
+				end
+				return outcomes
+			end,
+			flush = function() end,
+			throwAccepted = function() end,
+			outOfBounds = function(f: any)
+				table.insert(state.oob, f.userId)
+			end,
+		}
+		CombatService.registerMatch(port)
+		for _, f in list do
+			f.nextThrowAt = clock.now() -- Active start
+		end
+		return port, state
+	end
+
+	local function drop(caster: any, position: Vector3)
+		CombatService.launchArea({
+			caster = caster,
+			player = nil,
+			squishyId = "cloud_bunny",
+			position = position,
+			radius = ULT.rain_check.dropHitRadius,
+			at = clock.now() + 0.5,
+			floorY = 0,
+		})
+	end
+
+	t.test("FFA: everyone else is an enemy (all on side A); canBeHit is handed the attacker", function()
+		setup()
+		local rootA = rootPart(A_ROOT, Vector3.new(0, 0, 1))
+		local a = fighter(1, "A", rootA, nil)
+		local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+		local _, state = mapPort({ a, b }, false)
+		expect.truthy((throwAt(1, rootA, B_ROOT, nil)))
+		runFor(1.5)
+		local hits = impacts("player")
+		expect.equal(#hits, 1)
+		expect.equal(hits[1].victimId, 2)
+		expect.equal(hits[1].eliminated, true)
+		expect.equal(#state.hits, 1)
+		expect.equal(state.hits[1].attacker, a)
+		expect.truthy(#state.attackers >= 1)
+		for _, attacker in state.attackers do
+			expect.equal(attacker, a)
+		end
+	end)
+
+	t.test("TDM: no friendly hits: a throw at a teammate flies through it; the same throw at an enemy hits", function()
+		setup()
+		local rootA = rootPart(A_ROOT, Vector3.new(0, 0, 1))
+		local a = fighter(1, "A", rootA, nil)
+		local mate = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+		local foe = fighter(3, "B", rootPart(Vector3.new(60, 3, 60), Vector3.new(0, 0, -1)), nil)
+		local _, state = mapPort({ a, mate, foe }, true)
+		expect.truthy((throwAt(1, rootA, B_ROOT, nil)))
+		runFor(RULES.ProjectileMaxLifetime + 0.5)
+		expect.equal(#impacts("player"), 0)
+		expect.equal(#state.hits, 0)
+		expect.equal(#state.attackers, 0) -- a teammate is never even offered to the owner
+		expect.equal(#impacts("expired"), 1)
+		setup()
+		local rootA2 = rootPart(A_ROOT, Vector3.new(0, 0, 1))
+		local a2 = fighter(1, "A", rootA2, nil)
+		local mate2 = fighter(2, "A", rootPart(Vector3.new(60, 3, 60), Vector3.new(0, 0, -1)), nil)
+		local foe2 = fighter(3, "B", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+		local _, state2 = mapPort({ a2, mate2, foe2 }, true)
+		expect.truthy((throwAt(1, rootA2, B_ROOT, nil)))
+		runFor(1.5)
+		local hits = impacts("player")
+		expect.equal(#hits, 1)
+		expect.equal(hits[1].victimId, 3)
+		expect.equal(#state2.hits, 1)
+	end)
+
+	t.test("FFA: two enemies met in one sub-step: the earlier entry is hit, whatever the fighters' order", function()
+		setup()
+		local a = fighter(1, "A", tableRoot(Vector3.new(0, STAND, -12)), nil)
+		local near = fighter(2, "A", tableRoot(Vector3.new(0, STAND, -5)), nil) -- entry 2.2 studs before its axis
+		local far = fighter(3, "A", tableRoot(Vector3.new(1, STAND, -3)), nil) -- 1 stud off the line: entry ~2 later
+		local _, state = mapPort({ a, far, near }, false)
+		CombatService.launchUlt(ultSpec(a, { origin = Vector3.new(0, 4.8, -10), releaseAt = clock.now(), length = 60 }))
+		clock.advance(0.6) -- one step of 6 sub-steps of 7.5 studs: the first one reaches both capsules
+		CombatService.step()
+		expect.equal(#state.hits, 1)
+		expect.equal(state.hits[1].victim, near)
+		local hits = impacts("player")
+		expect.equal(#hits, 1)
+		expect.equal(hits[1].victimId, 2)
+		expect.equal(CombatService.projectileCount(), 0) -- a bird ends at its first hit
+	end)
+
+	t.test("FFA: a Dragon Rush lane hits every enemy on its line, each once, and flies on to its end", function()
+		setup()
+		local a = fighter(1, "A", tableRoot(A_ROOT), nil)
+		local b = fighter(2, "A", tableRoot(Vector3.new(0, 3, 0)), nil)
+		local c = fighter(3, "A", tableRoot(Vector3.new(2, 3, 30)), nil)
+		local _, state = mapPort({ a, c, b }, false)
+		laneAt(a)
+		runFor(0.9 + 80 / 260 + 0.2)
+		expect.equal(#state.hits, 2)
+		expect.equal(state.hits[1].victim, b)
+		expect.equal(state.hits[2].victim, c)
+		expect.equal(state.hits[1].kind, "lane")
+		expect.equal(#impacts("player"), 2)
+		expect.equal(#impacts("geometry"), 1) -- it still ends at its endpoint
+		expect.equal(CombatService.projectileCount(), 0)
+	end)
+
+	t.test("FFA: an area hit takes every enemy in reach (one per step) and never its own caster", function()
+		setup()
+		local a = fighter(1, "A", tableRoot(Vector3.new(0, STAND, 20)), nil) -- the caster stands in its own drop
+		local b = fighter(2, "A", tableRoot(Vector3.new(0.5, STAND, 20.5)), nil)
+		local c = fighter(3, "A", tableRoot(Vector3.new(-0.5, STAND, 19.5)), nil)
+		local _, state = mapPort({ a, b, c }, false)
+		drop(a, Vector3.new(0, 0, 20))
+		runFor(1)
+		expect.equal(#state.hits, 2)
+		local hitIds = {}
+		for _, payload in impacts("player") do
+			hitIds[payload.victimId] = true
+		end
+		expect.deepEqual(hitIds, { [2] = true, [3] = true })
+		expect.equal(CombatService.projectileCount(), 0)
+		-- Alone in its own drop: nothing is hit and nothing is sent (a miss).
+		setup()
+		local solo = fighter(1, "A", tableRoot(Vector3.new(0, STAND, 20)), nil)
+		local other = fighter(2, "A", tableRoot(Vector3.new(40, STAND, 20)), nil)
+		local _, soloState = mapPort({ solo, other }, false)
+		drop(solo, Vector3.new(0, 0, 20))
+		runFor(1)
+		expect.equal(#soloState.hits, 0)
+		expect.equal(#impacts(nil), 0)
+	end)
+
+	t.test("TDM: an area hit over a teammate and an enemy hits only the enemy", function()
+		setup()
+		local a = fighter(1, "A", tableRoot(A_ROOT), nil)
+		local mate = fighter(2, "A", tableRoot(Vector3.new(0.5, STAND, 20)), nil)
+		local foe = fighter(3, "B", tableRoot(Vector3.new(-0.5, STAND, 20)), nil)
+		local _, state = mapPort({ a, mate, foe }, true)
+		drop(a, Vector3.new(0, 0, 20))
+		runFor(1)
+		expect.equal(#state.hits, 1)
+		expect.equal(state.hits[1].victim, foe)
+		expect.equal(#impacts("player"), 1)
+	end)
+
+	t.test("FFA: throws are accepted anywhere inside the map's Bounds (no halves) and refused outside them", function()
+		setup()
+		local rootA = rootPart(Vector3.new(0, 3, 0), Vector3.new(0, 0, 1)) -- a duel's neutral band
+		local a = fighter(1, "A", rootA, nil)
+		local b = fighter(2, "A", rootPart(Vector3.new(0, 3, 40), Vector3.new(0, 0, -1)), nil)
+		mapPort({ a, b }, false)
+		local target = Vector3.new(0, 3, 40)
+		local ok, reason = throwAt(1, rootA, target, nil)
+		expect.equal(reason, nil)
+		expect.truthy(ok)
+		a.nextThrowAt = -math.huge
+		rootA.CFrame = CFrame.lookAt(Vector3.new(80, 3, 90), target) -- far past any duel arena, still on the map
+		expect.truthy((throwAt(2, rootA, target, nil)))
+		a.nextThrowAt = -math.huge
+		rootA.CFrame = CFrame.new(MAP_BOUNDS.size.X / 2 + Config.Combat.Throw.zoneToleranceStuds + 1, 3, 0)
+		local okOut, reasonOut = throwAt(3, rootA, target, nil)
+		expect.falsy(okOut)
+		expect.equal(reasonOut, "throw.context")
+		expect.equal(#payloads("ThrowStarted"), 2)
+	end)
+
+	t.test("FFA guard: Bounds is the only zone (no neutral band, no halves); leaving it goes to the owner", function()
+		setup()
+		local rootA = rootPart(Vector3.new(0, 3, 0), Vector3.new(0, 0, 1))
+		local a = fighter(1, "A", rootA, { UserId = 1 })
+		local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+		local _, state = mapPort({ a, b }, false)
+		local now = clock.now()
+		CombatService.guardStep(now) -- a duel's neutral band
+		rootA.CFrame = CFrame.new(0, 3, 4)
+		CombatService.guardStep(now + 0.2)
+		rootA.CFrame = CFrame.new(0, 3, 9) -- a duel's other half
+		CombatService.guardStep(now + 0.4)
+		rootA.CFrame = CFrame.new(0, 3 + 29, 9) -- the top of the maps' highest platform
+		CombatService.guardStep(now + 0.6)
+		expect.equal(CombatService.counters().guardPivots, 0)
+		expect.equal(#state.oob, 0)
+		rootA.CFrame = CFrame.new(MAP_BOUNDS.size.X / 2 + RULES.OutOfBounds.HalfToleranceStuds + 1, 3, 9)
+		CombatService.guardStep(now + 0.8)
+		expect.deepEqual(state.oob, { 1 })
+		rootA.CFrame = CFrame.new(0, RULES.OutOfBounds.KillYOffset - 5, 9)
+		CombatService.guardStep(now + 1.0)
+		expect.deepEqual(state.oob, { 1, 1 })
+	end)
+
+	t.test("FFA guard: a MeshPart is cover only with Box collision fidelity; a Part keeps its real shape", function()
+		setup()
+		local rootA = rootPart(Vector3.new(30, 3, 30), Vector3.new(0, 0, 1))
+		local a = fighter(1, "A", rootA, { UserId = 1 })
+		local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+		local port = mapPort({ a, b }, false)
+		-- A collision proxy around the player (Diego's _COL MeshParts are Box or Hull) and a plain block 30 studs away.
+		local mesh = Instance.new("MeshPart")
+		pcall(function()
+			mesh.Size = Vector3.new(6, 6, 6) -- (an empty MeshPart keeps its default box otherwise; the HRP is at its centre)
+		end)
+		mesh.CFrame = CFrame.new(30, 3, 30)
+		mesh.Anchored = true
+		pcall(function()
+			mesh.CollisionFidelity = Enum.CollisionFidelity.Hull
+		end)
+		mesh.Parent = workspace
+		local block = Instance.new("Part")
+		block.Size = Vector3.new(6, 6, 6)
+		block.CFrame = CFrame.new(60, 3, 30)
+		block.Anchored = true
+		block.Parent = workspace
+		port.arena.overlapParams.FilterDescendantsInstances = { mesh, block }
+		local ok, err = pcall(function()
+			local now = clock.now()
+			if mesh.CollisionFidelity == Enum.CollisionFidelity.Box then
+				-- This Studio context would not make a scripted, mesh-less MeshPart Hull (seen 2026-10-15): move it away
+				-- so the rest of the case (the block, then Box fidelity) still runs.
+				mesh.CFrame = CFrame.new(30, 3, -60)
+			end
+			CombatService.guardStep(now) -- inside a Hull (or Default) MeshPart's box: its box is not its shape
+			expect.equal(CombatService.counters().guardPivots, 0)
+			rootA.CFrame = CFrame.new(60, 3, 30) -- inside the block
+			CombatService.guardStep(now + 0.2)
+			expect.equal(CombatService.counters().guardPivots, 1)
+			expect.near((rootA.Position - Vector3.new(30, 3, 30)).Magnitude, 0, 1e-3) -- back to the last valid spot
+			mesh.CFrame = CFrame.new(30, 3, 30)
+			-- With Box fidelity the box is the shape. Setting it needs plugin security (the MCP / command bar run).
+			local boxSet = pcall(function()
+				mesh.CollisionFidelity = Enum.CollisionFidelity.Box
+			end)
+			if boxSet then
+				CombatService.guardStep(now + 0.4)
+				expect.equal(CombatService.counters().guardPivots, 2)
+			end
+		end)
+		mesh:Destroy()
+		block:Destroy()
+		assert(ok, err)
+	end)
+
+	t.test(
+		"FFA: a victim that is not alive (a dead body still in the map) is passed through; the owner is not asked",
+		function()
+			setup()
+			local rootA = rootPart(A_ROOT, Vector3.new(0, 0, 1))
+			local a = fighter(1, "A", rootA, nil)
+			local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), nil)
+			local alive = false
+			b.isAlive = function(): boolean
+				return alive
+			end
+			local _, state = mapPort({ a, b }, false)
+			expect.truthy((throwAt(1, rootA, B_ROOT, nil)))
+			runFor(RULES.ProjectileMaxLifetime + 0.5)
+			expect.equal(#impacts("player"), 0)
+			expect.equal(#state.hits, 0)
+			expect.equal(#state.attackers, 0) -- canBeHit is never even asked
+			-- An area hit on the body: nothing either; the same drop on the living player hits.
+			drop(a, Vector3.new(B_ROOT.X, 0, B_ROOT.Z))
+			runFor(1)
+			expect.equal(#state.hits, 0)
+			expect.equal(#state.attackers, 0)
+			alive = true
+			drop(a, Vector3.new(B_ROOT.X, 0, B_ROOT.Z))
+			runFor(1)
+			expect.equal(#state.hits, 1)
+			expect.equal(state.hits[1].victim, b)
+		end
+	)
+
+	t.test(
+		"FFA: a lane hits on the floor it was cast from (a jump too), not a level above it or below its path",
+		function()
+			setup()
+			-- Cast from a 20-stud platform: the lane flies over floor 20 (sphere 20.5 .. 28.5).
+			local a = fighter(1, "A", tableRoot(Vector3.new(0, 20 + STAND, -40)), nil)
+			local onDeck = fighter(2, "A", tableRoot(Vector3.new(0, 20 + STAND, -20)), nil)
+			local jumper = fighter(3, "A", tableRoot(Vector3.new(2, 20 + STAND + RULES.Movement.JumpHeight, -10)), nil)
+			local above = fighter(4, "A", tableRoot(Vector3.new(0, 40 + STAND, 0)), nil) -- a deck 20 studs over the lane
+			local below = fighter(5, "A", tableRoot(Vector3.new(0, STAND, 10)), nil) -- on the map floor under its path
+			local _, state = mapPort({ a, below, above, jumper, onDeck }, false)
+			CombatService.launchLane({
+				caster = a,
+				player = nil,
+				squishyId = "dragon",
+				origin = Vector3.new(0, 20 + 4.5, -38),
+				direction = Vector3.new(0, 0, 1),
+				length = 80,
+				radius = 4,
+				speed = 260,
+				releaseAt = clock.now() + 0.1,
+				stoppedByGeometry = false,
+				floorY = 20,
+			})
+			runFor(0.1 + 80 / 260 + 0.2)
+			expect.equal(#state.hits, 2)
+			expect.equal(state.hits[1].victim, onDeck)
+			expect.equal(state.hits[2].victim, jumper)
+			-- A lane on the map floor (no floorY: the map's) skips a player on a deck right over its line.
+			setup()
+			local a2 = fighter(1, "A", tableRoot(A_ROOT), nil)
+			local foe = fighter(2, "A", tableRoot(Vector3.new(0, STAND, 0)), nil)
+			local deck = fighter(3, "A", tableRoot(Vector3.new(3, 20 + STAND, 10)), nil)
+			local _, state2 = mapPort({ a2, deck, foe }, false)
+			laneAt(a2)
+			runFor(0.9 + 80 / 260 + 0.2)
+			expect.equal(#state2.hits, 1)
+			expect.equal(state2.hits[1].victim, foe)
+			-- The roller cast from the platform: a player on it is hit, one on the floor below its path is not.
+			setup()
+			local R = ULT.sprinkle_roller
+			local a3 = fighter(1, "A", tableRoot(Vector3.new(0, 20 + STAND, -40)), nil)
+			local under = fighter(2, "A", tableRoot(Vector3.new(0, STAND, -20)), nil)
+			local onTop = fighter(3, "A", tableRoot(Vector3.new(0, 20 + STAND, -10)), nil)
+			local _, state3 = mapPort({ a3, under, onTop }, false)
+			CombatService.launchUlt(ultSpec(a3, {
+				squishyId = "donut",
+				origin = Vector3.new(0, 20 + R.laneHeightAboveFloor, -34),
+				length = R.maxLength,
+				radius = R.radius,
+				speed = R.speed,
+				releaseAt = clock.now() + 0.1,
+				flyOn = true,
+				clearHeight = R.clearHeight,
+				floorY = 20,
+			}))
+			runFor(0.1 + R.maxLength / R.speed + 0.2)
+			expect.equal(#state3.hits, 1)
+			expect.equal(state3.hits[1].victim, onTop)
+		end
+	)
+
+	t.test(
+		"FFA: releaseFighter drops a leaver (no target, recipient or registration); its throw in flight still hits",
+		function()
+			setup()
+			local pa, pb, pc = { UserId = 1 }, { UserId = 2 }, { UserId = 3 }
+			local rootA = rootPart(A_ROOT, Vector3.new(0, 0, 1))
+			local rootC = rootPart(Vector3.new(30, 3, -10), B_ROOT - Vector3.new(30, 3, -10)) -- facing B
+			local a = fighter(1, "A", rootA, pa)
+			local b = fighter(2, "A", rootPart(B_ROOT, Vector3.new(0, 0, -1)), pb)
+			local c = fighter(3, "A", rootC, pc)
+			local port, state = mapPort({ a, b, c }, false)
+			local originC = releaseOrigin(rootC)
+			local dirC = ProjectileMath.solveLaunchDir(originC, B_ROOT, THROW.speed, THROW.gravity)
+			expect.truthy((CombatService.requestThrow(3, 1, dirC, originC, clock.now()))) -- C throws at B, then leaves
+			expect.truthy(CombatService.releaseFighter(c))
+			expect.falsy(CombatService.releaseFighter(c)) -- once
+			expect.equal(CombatService.getFighter(3), nil) -- its next requests take the lobby path
+			expect.equal(CombatService.portOf(c), nil)
+			expect.equal(#port.fighters, 2)
+			expect.equal(CombatService.getFighter(1), a)
+			runFor(1.5)
+			local hits = impacts("player")
+			expect.equal(#hits, 1)
+			expect.equal(hits[1].victimId, 2)
+			expect.equal(state.hits[1].attacker, c)
+			for _, entry in sent do
+				if entry.remote == "ThrowImpact" then
+					expect.deepEqual(entry.recipients, { pa, pb }) -- the leaver gets nothing any more
+				end
+			end
+			-- A throw at the leaver's spot flies through it.
+			a.nextThrowAt = -math.huge
+			rootA.CFrame = CFrame.lookAt(A_ROOT, rootC.Position)
+			expect.truthy((throwAt(2, rootA, rootC.Position, nil)))
+			runFor(RULES.ProjectileMaxLifetime + 0.5)
+			expect.equal(#state.hits, 1)
+			-- A duel is never touched: both duelists stay.
+			setup()
+			local da = duel(nil, nil)
+			expect.falsy(CombatService.releaseFighter(da))
+			expect.equal(CombatService.getFighter(1), da)
 		end
 	)
 

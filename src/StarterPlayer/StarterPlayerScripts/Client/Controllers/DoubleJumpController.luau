@@ -28,8 +28,12 @@
 --   DoubleJump/Land and sfx.dashPlant.
 -- * Network: DoubleJumpRequest(seq, key, clientTime) through NetController; DoubleJumped {userId, key, at, startAt}
 --   plays the same flip, effects and sounds on the other player's character from its arrival. The own one is ignored.
--- API: gate(facts), isFreshPress(now, last), launchSpeed(gravity, height), poseAt(key, t, reduced), spinAxis(key),
---   parseDoubleJumped(raw) (pure, unit-tested); counts(); init(), destroy().
+-- * FFA/TDM v1 (2026-10-15; the 12-player match): "only when dueling" now also means a Free for All / Team
+--   Deathmatch match (the Duel input context with StateController.match()): its phase gates the same way (Active;
+--   overtime is "Active"), and a knocked-out player (alive in the match view false, the body frozen in place) cannot
+--   jump (viewFacts). The glow follows the team (StateController.matchSide); every other player's jump is -1.
+-- API: gate(facts), viewFacts(duelView, matchView), isFreshPress(now, last), launchSpeed(gravity, height),
+--   poseAt(key, t, reduced), spinAxis(key), parseDoubleJumped(raw) (pure, unit-tested); counts(); init(), destroy().
 
 -- Services
 
@@ -166,6 +170,17 @@ function DoubleJumpController.gate(facts: GateFacts): string?
 	return nil
 end
 
+-- FFA/TDM v1: the gate's phase and whether the match lets the player act, from the views: the duel view's phase; else
+-- the 12-player match view's phase, with its own `you.alive` (false while knocked out); else no phase. Pure.
+function DoubleJumpController.viewFacts(duelView: any?, matchView: any?): (string?, boolean)
+	if duelView ~= nil then
+		return duelView.phase, true
+	elseif matchView ~= nil then
+		return matchView.phase, matchView.you.alive ~= false
+	end
+	return nil, true
+end
+
 -- A JumpRequest is a new press when none came in the last pressGapSeconds (a held key repeats it every frame).
 function DoubleJumpController.isFreshPress(now: number, last: number): boolean
 	return now - last >= RULES.pressGapSeconds
@@ -262,7 +277,7 @@ end
 local function sideOf(userId: number): string?
 	local view = StateController.duel()
 	if view == nil then
-		return nil
+		return StateController.matchSide(StateController.match(), userId) -- FFA/TDM v1 (nil outside a match)
 	elseif view.you.userId == userId then
 		return view.you.side
 	elseif view.opponent.userId == userId then
@@ -287,12 +302,12 @@ local function canJump(humanoid: Humanoid): boolean
 end
 
 local function factsNow(humanoid: Humanoid?, root: BasePart?): GateFacts
-	local view = StateController.duel()
+	local phase, canAct = DoubleJumpController.viewFacts(StateController.duel(), StateController.match())
 	local ult = ThrowController.localUlt()
 	return {
 		inDuel = ControlsController.isContextActive("Duel"),
-		phase = if view then view.phase else nil,
-		alive = humanoid ~= nil and root ~= nil and humanoid.Health > 0,
+		phase = phase,
+		alive = humanoid ~= nil and root ~= nil and humanoid.Health > 0 and canAct,
 		airborneFor = if airborneSince then os.clock() - airborneSince else nil,
 		used = usedThisAir,
 		canJump = humanoid ~= nil and canJump(humanoid),
@@ -482,7 +497,12 @@ local function tryDoubleJump(): boolean
 	local character = player.Character
 	local root = rootOf(character)
 	local humanoid = humanoidOf(character)
-	if DoubleJumpController.gate(factsNow(humanoid, root)) ~= nil or character == nil or root == nil or humanoid == nil then
+	if
+		DoubleJumpController.gate(factsNow(humanoid, root)) ~= nil
+		or character == nil
+		or root == nil
+		or humanoid == nil
+	then
 		stats.refused += 1
 		return false
 	end

@@ -8,6 +8,8 @@
 -- client only, and a queued client's idleness is ReportIdle). The capsule remotes (Phase 3) only buy and fill the
 -- caller's own capsules: the server checks them with CapsuleMath and never takes a price or a Grip amount from them.
 -- TrainerUpgrade went with the trainers (build plan Phase 6).
+-- FFA/TDM v1 (2026-10-15): MatchJoin(mode) and MatchLeave (the client's chat commands), MatchState (the server's
+-- per-player Free for All / Team Deathmatch view, Types.MatchStateView).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -179,6 +181,11 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- Batch 3 (FriendDuelService): Rematch on the duel result card. No argument: the server takes the opponent from its
 	-- own MatchEnded record (the offer) and starts nothing until both players asked.
 	RematchRequest = c2s("RemoteEvent", {}),
+	-- FFA/TDM v1 (2026-10-15, MatchService): the client's /ffa and /tdm chat commands send the mode ("ffa" | "tdm",
+	-- Types.MatchMode) as a plain string; /leave drops the queue ticket or leaves the match. No reply: the outcome is a
+	-- Notify toast (match.*).
+	MatchJoin = c2s("RemoteEvent", { arg("mode", "string") }),
+	MatchLeave = c2s("RemoteEvent", {}),
 
 	-- Server -> client
 	-- The only state channel (Types.StateDeltaFields, incl. `grip` from Part 5): one monotonic `v` per player.
@@ -217,6 +224,10 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	UltimateCharge = s2c("participants", { arg("charge", "table") }),
 	-- Each participant gets its own result.
 	DuelResult = s2c("participants", { arg("result", "table") }),
+	-- FFA/TDM v1 (2026-10-15): the Free for All / Team Deathmatch state channel, Types.MatchStateView, each match player
+	-- its own view (on every phase change, K.O., respawn, team-lives change and outcome, and its own storm bar). The
+	-- result rides in its `outcome`: there is no MatchResult remote in v1.
+	MatchState = s2c("participants", { arg("state", "table") }),
 } :: { [string]: RemoteSpec })
 
 Remotes.SPEC = SPEC

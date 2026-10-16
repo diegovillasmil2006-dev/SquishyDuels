@@ -38,9 +38,20 @@
 --   Practice never gives charge. "A found match ends the session": attachMatch cancels a practice telegraph or
 --   recovery of either player (UltimateEvent cancel, movement restored while they are still in the lobby), so a
 --   practice root can never end inside the arena and unfreeze the Countdown.
+-- * FFA/TDM v1 (2026-10-15, MatchService on Diego's DuelMaps; SPEC D9): for a port with `ffa = true` (an open map, no
+--   halves) the place rule is the map's Bounds + zoneToleranceStuds; Rain Check centres on the enemy nearest the aim at
+--   the release (UltRules.practiceCenter over every standing enemy's feet, within maxLength; else the aim's fallback),
+--   clamped into Bounds, every enemy a drop target; a caster no longer standing at the release (a storm K.O. never goes
+--   through Hit) gets no ultimate (cancel, no refund); and a knocked-out caster's movement is never restored here (the
+--   match service froze it and gives it back at the respawn). Duel ports keep every line of the 1v1 path.
+--   Review fixes (2026-10-15): the maps have levels, so an ffa cast's floor is the ground under the caster
+--   (CombatService.groundUnder) and its lane, roller, birds and bubble start and test from there (a lane carries it as
+--   LaneSpec.floorY); Rain Check's centre and drops sit on the ground under the aimed enemy, and its drop targets are
+--   the enemies within targetRadius of the centre, nearest first (far ones no longer use up drops); detachFighter
+--   forgets one player who left a running match (SPEC D6) while the rest play on.
 -- Nothing the client sends is trusted for charge, timers, origin, length, targets or drop points (§12 #3).
--- Tests swap the clock, the sender, the scheduler and the two world queries with useDeps; setCharge fills a meter for
--- tests and Studio checks.
+-- Tests swap the clock, the sender, the scheduler and the world queries (room, Spherecast, ground) with useDeps;
+-- setCharge fills a meter for tests and Studio checks.
 
 -- Services
 
@@ -156,6 +167,9 @@ export type Deps = {
 	overlaps: (origin: Vector3, radius: number, params: OverlapParams) -> boolean,
 	-- The distance at which a sphere of `radius` moved from `origin` along `direction` meets Geometry (Spherecast).
 	cast: (origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?,
+	-- FFA/TDM v1 (review fix): the height of the first ground at most `distance` studs below `origin`, or nil
+	-- (CombatService.groundProbe).
+	ground: CombatService.GroundProbe,
 }
 
 -- Constants
@@ -207,6 +221,9 @@ local function defaultDeps(): Deps
 		cast = function(origin: Vector3, radius: number, direction: Vector3, params: RaycastParams): number?
 			local hit = Workspace:Spherecast(origin, radius, direction, params)
 			return if hit then hit.Distance else nil
+		end,
+		ground = function(origin: Vector3, distance: number, params: RaycastParams): number?
+			return CombatService.groundProbe(origin, distance, params)
 		end,
 	}
 end
@@ -308,6 +325,10 @@ local function setRooted(caster: Caster, rooted: boolean)
 	local humanoid = if model then model:FindFirstChildOfClass("Humanoid") else nil
 	if humanoid == nil then
 		return
+	end
+	local port = caster.port
+	if not rooted and port and port.ffa and not isAlive(caster) then
+		return -- FFA/TDM v1: knocked out; the match service owns this frozen body's movement until the respawn
 	end
 	humanoid.WalkSpeed = if rooted then 0 else MOVEMENT.WalkSpeed
 	humanoid.JumpHeight = if rooted then 0 else MOVEMENT.JumpHeight
@@ -472,13 +493,67 @@ local function opponentOf(caster: Caster): (BasePart?, Zone?)
 	return nil, half
 end
 
+-- FFA/TDM v1 (2026-10-15, SPEC D9): Rain Check on an open map. The centre is the standing enemy nearest the aim
+-- (UltRules.practiceCenter over their feet, within the practice cone and maxLength; none: the aim's fallback), clamped
+-- into the map's Bounds. Review fixes: the centre lies on the ground under that enemy (the maps have levels; no enemy:
+-- the caster's floor), and the drop targets are the aimed enemy first (it gets the last drop), then the other standing
+-- enemies within targetRadius of the centre, nearest first (UltRules.rainDrops gives target i the slot drops - i + 1,
+-- so far enemies must not use slots up whatever the fighters' order).
+local function openMapRain(
+	caster: Caster,
+	port: MatchPort,
+	fighter: Fighter,
+	event: Types.UltimateEventPayload,
+	fallback: Vector3
+): (Vector3, { UltRules.Drop })
+	local feet: { Vector3 } = {}
+	local roots: { Vector3 } = {}
+	for _, enemy in CombatService.enemiesOf(port, fighter) do
+		local root = if enemy.isAlive() then enemy.getRoot() else nil
+		if root then
+			table.insert(feet, UltRules.feetPoint(root.Position))
+			table.insert(roots, root.Position)
+		end
+	end
+	local ability = caster.ability
+	local aimed = UltRules.practiceCenter(event.origin, event.dir, feet, ability.maxLength)
+	local aimedIndex = if aimed then table.find(feet, aimed) else nil
+	local floorY = if aimedIndex
+		then CombatService.groundUnder(port.arena, roots[aimedIndex], deps.ground)
+		else caster.floorY
+	local center = UltRules.rainCenter(aimed, fallback, port.arena.zones.Bounds, floorY)
+	local reach = ability.targetRadius or 0
+	local near: { { spot: Vector3, distance: number } } = {}
+	for index, spot in feet do
+		local distance = Vector3.new(spot.X - center.X, 0, spot.Z - center.Z).Magnitude
+		if index ~= aimedIndex and distance < reach then
+			table.insert(near, { spot = spot, distance = distance })
+		end
+	end
+	table.sort(near, function(x, y): boolean
+		return x.distance < y.distance
+	end)
+	local targets: { Vector3 } = {}
+	if aimed then
+		table.insert(targets, aimed)
+	end
+	for _, entry in near do
+		table.insert(targets, entry.spot)
+	end
+	return center, UltRules.rainDrops(center, ability, event.telegraphEndsAt, targets)
+end
+
 -- Rain Check at the release: the centre (the opponent's spot clamped into its half; practice: the target nearest the
--- aim) and its drops (design: fp.js:348-357).
+-- aim; FFA/TDM v1: openMapRain) and its drops (design: fp.js:348-357).
 local function rainDrops(caster: Caster, event: Types.UltimateEventPayload): (Vector3, { UltRules.Drop })
 	local ability = caster.ability
 	local floorY = caster.floorY
 	local releaseAt = event.telegraphEndsAt
 	local fallback = event.origin + event.dir * RAIN_FALLBACK_STUDS
+	local openPort, openFighter = caster.port, caster.fighter
+	if openPort and openPort.ffa and openFighter then
+		return openMapRain(caster, openPort, openFighter, event, fallback)
+	end
 	if caster.port then
 		local root, half = opponentOf(caster)
 		local spot = if root then root.Position else nil
@@ -517,6 +592,7 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 				speed = event.speed,
 				releaseAt = event.telegraphEndsAt,
 				stoppedByGeometry = caster.stoppedByGeometry,
+				floorY = caster.floorY, -- FFA/TDM v1 (review fix): the floor it flies over (read on ffa ports only)
 			})
 			local out = released(event)
 			out.projId = projId
@@ -603,6 +679,7 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 			local center, drops = rainDrops(caster, event)
 			local out = released(event)
 			local list: { Types.UltimateDrop } = {}
+			local port = caster.port
 			for _, drop in drops do
 				local projId = CombatService.launchArea({
 					caster = caster.fighter,
@@ -611,7 +688,8 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 					position = drop.position,
 					radius = ability.dropHitRadius or 0,
 					at = drop.landAt,
-					floorY = caster.floorY,
+					-- FFA/TDM v1 (review fix): an open map's drops lie at the centre's height (the aimed enemy's ground).
+					floorY = if port and port.ffa then drop.position.Y else caster.floorY,
 				})
 				table.insert(list, {
 					projId = projId,
@@ -646,6 +724,11 @@ local function release(caster: Caster, token: number)
 		end
 		if not LIVE_PHASES[port.phase()] then
 			cancel(caster, 0) -- the match ended during the telegraph: no lane, no refund
+			return
+		end
+		if port.ffa and not isAlive(caster) then
+			-- FFA/TDM v1: knocked out during the telegraph without a Hit (a storm K.O.): no ultimate, no refund.
+			cancel(caster, 0)
 			return
 		end
 	end
@@ -710,6 +793,13 @@ function AbilityService.castFromOwnHalf(rootPosition: Vector3, zones: { [string]
 	return half ~= nil and HitMath.inZone(rootPosition, half, ZONE_TOLERANCE)
 end
 
+-- FFA/TDM v1 (2026-10-15): the place rule of an open map (an ffa port, no halves): the caster's HRP inside the map's
+-- Bounds widened by Config.Combat.Throw.zoneToleranceStuds, as a throw there. False without Bounds.
+function AbilityService.castInsideBounds(rootPosition: Vector3, zones: { [string]: Zone }): boolean
+	local bounds = zones.Bounds
+	return bounds ~= nil and HitMath.inZone(rootPosition, bounds, ZONE_TOLERANCE)
+end
+
 -- The longest distance (<= length) along the horizontal `dir` from `origin` that stays inside the box `zone` (X and Z
 -- only: the lane flies at a fixed height). 0 when the origin is already outside.
 function AbilityService.clampToBounds(origin: Vector3, dir: Vector3, length: number, zone: Zone): number
@@ -756,7 +846,8 @@ local function endPractice(player: Player?)
 	setRooted(caster, false)
 end
 
--- Starts tracking the ultimates of a registered match (DuelService, after CombatService.registerMatch).
+-- Starts tracking the ultimates of a registered match (DuelService, after CombatService.registerMatch; FFA/TDM v1:
+-- MatchService the same way).
 function AbilityService.attachMatch(port: MatchPort)
 	attached[port.matchId] = port
 	for _, fighter in port.fighters do
@@ -792,6 +883,25 @@ function AbilityService.detachMatch(matchId: string)
 			duelCasters[userId] = nil
 		end
 	end
+end
+
+-- FFA/TDM v1 (2026-10-15, SPEC D6; review fix): one player leaves a running ffa match while the rest play on
+-- (MatchService, before CombatService.releaseFighter): a pending telegraph is cancelled (no refund; the others get the
+-- cancel), a pending release or recovery end does nothing and the caster is forgotten (no more charge or
+-- UltimateCharge). Its projectiles already in flight fly on. Nothing happens without a caster or on a duel port.
+function AbilityService.detachFighter(userId: number)
+	local caster = duelCasters[userId]
+	local port = if caster then caster.port else nil
+	if caster == nil or port == nil or not port.ffa then
+		return
+	end
+	cancel(caster, 0)
+	caster.token += 1
+	if caster.phase == "recovery" then
+		caster.phase = "idle"
+		setRooted(caster, false)
+	end
+	duelCasters[userId] = nil
 end
 
 -- True when this participant's ultimate can be used now (DuelState.ultReady).
@@ -861,7 +971,12 @@ function AbilityService.requestUltimate(
 		end
 		-- Own half + tolerance, like a throw (§5.6 #5): the lane never starts past the opponent's cover.
 		local ownRoot = fighter.getRoot()
-		if ownRoot and not AbilityService.castFromOwnHalf(ownRoot.Position, port.arena.zones, fighter.side) then
+		if port.ffa then
+			-- FFA/TDM v1 (server_map C1): an open map has no halves: anywhere inside its Bounds + tolerance, like a throw.
+			if ownRoot and not AbilityService.castInsideBounds(ownRoot.Position, port.arena.zones) then
+				return reject(player, REASON_CONTEXT)
+			end
+		elseif ownRoot and not AbilityService.castFromOwnHalf(ownRoot.Position, port.arena.zones, fighter.side) then
 			return reject(player, REASON_CONTEXT)
 		end
 		if found == nil then
@@ -878,6 +993,10 @@ function AbilityService.requestUltimate(
 			overlapParams = port.arena.overlapParams,
 			bounds = zone,
 		}
+		if port.ffa then
+			-- FFA/TDM v1 (review fix): the maps have levels: the cast starts from the ground under the caster.
+			ctx.floorY = CombatService.groundUnder(port.arena, if ownRoot then ownRoot.Position else nil, deps.ground)
+		end
 	elseif player and PracticeService.isPracticing(player) then
 		local squishyId = InventoryService.getEquipped(player)
 		local id, ability = abilityOf(squishyId)
@@ -983,6 +1102,7 @@ function AbilityService.useDeps(newDeps: {
 	delay: ((seconds: number, fn: (...any) -> (), ...any) -> ())?,
 	overlaps: ((origin: Vector3, radius: number, params: OverlapParams) -> boolean)?,
 	cast: ((origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?)?,
+	ground: CombatService.GroundProbe?,
 }?)
 	local base = defaultDeps()
 	if newDeps then
@@ -991,6 +1111,7 @@ function AbilityService.useDeps(newDeps: {
 		base.delay = newDeps.delay or base.delay
 		base.overlaps = newDeps.overlaps or base.overlaps
 		base.cast = newDeps.cast or base.cast
+		base.ground = newDeps.ground or base.ground
 	end
 	deps = base
 end

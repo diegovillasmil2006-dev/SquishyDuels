@@ -14,7 +14,14 @@
 --     the wrong shape keeps the old one; an identical resend is no change; new squishies are tracked per session;
 --   * reveal holds (Part 7 review fix, §9.11): a held box result's refund is left out of the shown Coins and its new
 --     squishy out of owned; only an unseen entry that first appears in a partial state is held, and seeing it or a
---     full state ends the hold.
+--     full state ends the hold;
+--   * FFA/TDM v1 (2026-10-15, SPEC C4/C5): the 12-player match view (reduceMatch) starts from a MatchState with a
+--     mode and a DuelPhase-named phase, takes the own name and squishy from the players, never goes back a phase,
+--     keeps what a later state of the same match leaves out (a `you` without a userId changes only its own fields),
+--     stores UltimateCharge for anyone (ultReady at chargeMax) and ends like the duel view (and at once when
+--     SD_MatchId no longer names it); isEnemy / enemyIds: FFA
+--     everyone else, TDM the other team, never oneself or a stranger; matchSide: TDM Blue "B", else "A"; a match view
+--     locks the lobby; a "match:" id is a match id.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -457,5 +464,242 @@ return function(t: Context)
 		start, stop = step({ R2 = true }, after, before, false, true)
 		expect.deepEqual(start, {})
 		expect.deepEqual(stop, { "R2" })
+	end)
+
+	-- FFA/TDM v1 (2026-10-15): the 12-player match view ------------------------------------------------------------
+
+	local function matchState(matchId: string, phase: string, overrides: { [string]: any }?): any
+		local o: { [string]: any } = overrides or {}
+		return {
+			matchId = matchId,
+			mode = o.mode or "ffa",
+			mapCode = "JAR",
+			mapName = "Jelly Arcade",
+			phase = phase,
+			matchPhase = o.matchPhase or phase,
+			phaseEndsAt = 1000,
+			activeStartedAt = o.activeStartedAt,
+			you = {
+				userId = 1,
+				team = o.youTeam,
+				alive = o.alive ~= false,
+				respawnAt = o.respawnAt,
+				protectUntil = 0,
+				stormBar = o.stormBar or 0,
+				out = false,
+			},
+			players = o.players or {
+				{
+					userId = 1,
+					displayName = "Me",
+					squishyId = "kitty_bread",
+					team = o.youTeam,
+					kos = 2,
+					knockedOut = 1,
+					alive = true,
+					ultReady = false,
+				},
+				{
+					userId = 2,
+					displayName = "Two",
+					squishyId = "dragon",
+					team = o.twoTeam,
+					kos = 5,
+					knockedOut = 0,
+					alive = true,
+					ultReady = false,
+				},
+				{
+					userId = 3,
+					displayName = "Three",
+					squishyId = "kitty_bread",
+					team = o.threeTeam,
+					kos = 0,
+					knockedOut = 3,
+					alive = false,
+					ultReady = false,
+				},
+			},
+			teamLives = o.teamLives,
+			koTarget = if o.mode == "tdm" then nil else 25,
+			arena = {
+				floorY = 0,
+				bounds = { cframe = CFrame.new(7500, 42.5, 0), size = Vector3.new(200, 115, 200) },
+				centre = Vector3.new(7500, 0, 0),
+			},
+			storm = o.storm,
+		}
+	end
+
+	t.test("match: a new match starts a fresh view; you takes its name and squishy; phases never go back", function()
+		local v1 = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Positioning"), 10))
+		expect.truthy(v1)
+		expect.equal(v1.matchId, "match:a")
+		expect.equal(v1.mode, "ffa")
+		expect.equal(v1.mapCode, "JAR")
+		expect.equal(v1.phase, "Positioning")
+		expect.equal(v1.matchPhase, "Positioning")
+		expect.equal(v1.receivedAt, 10)
+		expect.equal(v1.you.displayName, "Me")
+		expect.equal(v1.you.squishyId, "kitty_bread")
+		expect.equal(#v1.players, 3)
+		expect.equal(v1.players[2].kos, 5)
+		expect.equal(v1.players[3].alive, false)
+		expect.equal(v1.koTarget, 25)
+		expect.equal(v1.arena.bounds.size, Vector3.new(200, 115, 200))
+		expect.equal(v1.arena.centre, Vector3.new(7500, 0, 0))
+		-- Overtime keeps the DuelPhase name Active (SPEC D1); the real phase is matchPhase.
+		local v2 = StateController.reduceMatch(v1, stateEvent(matchState("match:a", "Active"), 11))
+		local v3 = StateController.reduceMatch(
+			v2,
+			stateEvent(matchState("match:a", "Active", { matchPhase = "Overtime" }), 12)
+		)
+		expect.equal(v3.phase, "Active")
+		expect.equal(v3.matchPhase, "Overtime")
+		expect.equal(StateController.reduceMatch(v3, stateEvent(matchState("match:a", "Countdown"), 13)), v3)
+		-- Another match id: a fresh view.
+		local other = StateController.reduceMatch(v3, stateEvent(matchState("match:b", "Positioning"), 14))
+		expect.equal(other.matchId, "match:b")
+		expect.equal(other.matchPhase, "Positioning")
+	end)
+
+	t.test("match: malformed MatchState payloads and DuelState-shaped ones are ignored", function()
+		local good = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Active")))
+		expect.equal(StateController.reduceMatch(nil, stateEvent(duelState("m1", "Active"))), nil) -- no mode
+		expect.equal(StateController.reduceMatch(good, stateEvent(matchState("match:a", "Dancing"))), good)
+		local badMode = matchState("match:c", "Active", { mode = "ctf" })
+		expect.equal(StateController.reduceMatch(nil, stateEvent(badMode)), nil)
+		local noYou = matchState("match:c", "Active")
+		noYou.you = nil
+		expect.equal(StateController.reduceMatch(nil, stateEvent(noYou)), nil)
+		local badTime = matchState("match:c", "Active")
+		badTime.phaseEndsAt = 0 / 0
+		expect.equal(StateController.reduceMatch(nil, stateEvent(badTime)), nil)
+		expect.equal(StateController.reduceMatch(good, stateEvent("nope")), good)
+		-- A malformed player entry is skipped, the rest are kept.
+		local junk = matchState("match:d", "Active")
+		table.insert(junk.players, { userId = "x" })
+		table.insert(junk.players, "junk")
+		expect.equal(#StateController.reduceMatch(nil, stateEvent(junk)).players, 3)
+	end)
+
+	t.test(
+		"match: a later state of the same match keeps what it leaves out; a partial you changes its fields",
+		function()
+			local v1 = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Active"), 10))
+			-- The storm bar alone (no userId in you, no players, no phase): only that field moves.
+			local bar =
+				StateController.reduceMatch(v1, stateEvent({ matchId = "match:a", you = { stormBar = 0.4 } }, 11))
+			expect.equal(bar.phase, "Active")
+			expect.equal(bar.mode, "ffa")
+			expect.equal(bar.players, v1.players)
+			expect.near(bar.you.stormBar, 0.4, 1e-9)
+			expect.equal(bar.you.alive, true)
+			expect.equal(bar.you.squishyId, "kitty_bread")
+			expect.equal(bar.koTarget, 25)
+			expect.equal(bar.receivedAt, 11)
+			-- A full you replaces the old one: knocked out with a respawn time, then standing again (no respawnAt).
+			local ko = StateController.reduceMatch(
+				bar,
+				stateEvent(matchState("match:a", "Active", { alive = false, respawnAt = 503 }), 12)
+			)
+			expect.equal(ko.you.alive, false)
+			expect.equal(ko.you.respawnAt, 503)
+			expect.equal(ko.you.stormBar, 0)
+			local back = StateController.reduceMatch(ko, stateEvent(matchState("match:a", "Active"), 13))
+			expect.equal(back.you.alive, true)
+			expect.equal(back.you.respawnAt, nil)
+			-- A partial you with nothing before it is not a view.
+			expect.equal(
+				StateController.reduceMatch(nil, stateEvent({ matchId = "match:z", you = { stormBar = 1 } })),
+				nil
+			)
+		end
+	)
+
+	t.test("match: UltimateCharge is kept for anyone and marks ultReady at chargeMax", function()
+		local chargeMax = Config.Abilities.dragon_rush.chargeMax
+		local view = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Active")))
+		local full =
+			StateController.reduceMatch(view, { kind = "charge", charge = { ownerId = 2, charge = chargeMax } })
+		expect.equal(full.charges[2], chargeMax)
+		expect.equal(full.players[2].ultReady, true)
+		expect.equal(view.players[2].ultReady, false) -- the old view is untouched
+		local mine =
+			StateController.reduceMatch(full, { kind = "charge", charge = { ownerId = 1, charge = chargeMax } })
+		expect.equal(mine.players[1].ultReady, false) -- Kitty Bread has no ultimate
+		expect.equal(mine.charges[1], chargeMax)
+		expect.equal(StateController.reduceMatch(mine, { kind = "charge", charge = { ownerId = 2 } }), mine)
+		expect.equal(StateController.reduceMatch(nil, { kind = "charge", charge = { ownerId = 2, charge = 1 } }), nil)
+		local later = StateController.reduceMatch(full, stateEvent(matchState("match:a", "Result")))
+		expect.equal(later.charges[2], chargeMax)
+	end)
+
+	t.test("match: a cleared SD_DuelPhase ends the view after the end phases or once it is stale", function()
+		local returning = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Returning"), 100))
+		expect.equal(StateController.reduceMatch(returning, { kind = "cleared", now = 100 }), nil)
+		local fresh = StateController.reduceMatch(nil, stateEvent(matchState("match:b", "Positioning"), 100))
+		expect.equal(StateController.reduceMatch(fresh, { kind = "cleared", now = 100.2 }), fresh)
+		expect.equal(StateController.reduceMatch(fresh, { kind = "cleared", now = 105 }), nil)
+		expect.equal(StateController.reduceMatch(nil, { kind = "cleared", now = 1 }), nil)
+		-- Review fix: SD_MatchId cleared too (a /leave mid-match: no final Returning view) ends even a fresh view;
+		-- SD_MatchId still naming the match keeps the stale rule.
+		local live = StateController.reduceMatch(nil, stateEvent(matchState("match:c", "Active"), 100))
+		expect.equal(StateController.reduceMatch(live, { kind = "cleared", now = 100.2, matchId = "" }), nil)
+		expect.equal(StateController.reduceMatch(live, { kind = "cleared", now = 100.2, matchId = "match:c" }), live)
+		expect.equal(StateController.reduceMatch(live, { kind = "cleared", now = 100.2, matchId = "match:other" }), nil)
+	end)
+
+	t.test("match: enemies are everyone else in FFA and the other team in TDM, never oneself or a stranger", function()
+		local ffa = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Active")))
+		expect.equal(StateController.isEnemy(ffa, 2), true)
+		expect.equal(StateController.isEnemy(ffa, 3), true) -- knocked out is still an enemy (aim skips the fallen)
+		expect.equal(StateController.isEnemy(ffa, 1), false)
+		expect.equal(StateController.isEnemy(ffa, 99), false)
+		expect.equal(StateController.isEnemy(nil, 2), false)
+		expect.deepEqual(StateController.enemyIds(ffa), { 2, 3 })
+		local tdm = StateController.reduceMatch(
+			nil,
+			stateEvent(matchState("match:t", "Active", {
+				mode = "tdm",
+				youTeam = "Red",
+				twoTeam = "Blue",
+				threeTeam = "Red",
+				teamLives = { Red = 40, Blue = 39 },
+			}))
+		)
+		expect.equal(tdm.you.team, "Red")
+		expect.equal(tdm.teamLives.Blue, 39)
+		expect.equal(StateController.isEnemy(tdm, 2), true)
+		expect.equal(StateController.isEnemy(tdm, 3), false) -- a teammate
+		expect.deepEqual(StateController.enemyIds(tdm), { 2 })
+		expect.deepEqual(StateController.enemyIds(nil), {})
+		expect.equal(StateController.matchParticipant(tdm, 3).displayName, "Three")
+		expect.equal(StateController.matchParticipant(tdm, 99), nil)
+	end)
+
+	t.test("match: matchSide gives TDM's second team the B side, everyone else A, a stranger nil", function()
+		local names = { "Red", "Blue" }
+		local tdm = StateController.reduceMatch(
+			nil,
+			stateEvent(matchState("match:t", "Active", { mode = "tdm", youTeam = "Red", twoTeam = "Blue" }))
+		)
+		expect.equal(StateController.matchSide(tdm, 1, names), "A")
+		expect.equal(StateController.matchSide(tdm, 2, names), "B")
+		expect.equal(StateController.matchSide(tdm, 99, names), nil)
+		local ffa = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Active")))
+		expect.equal(StateController.matchSide(ffa, 2, names), "A")
+		expect.equal(StateController.matchSide(nil, 2, names), nil)
+	end)
+
+	t.test("lobby lock: a match view locks the lobby too; match ids", function()
+		local idle = { state = "Idle", searching = 0, duelsInProgress = 0, arenasFree = 6 }
+		local view = StateController.reduceMatch(nil, stateEvent(matchState("match:a", "Positioning")))
+		expect.equal(StateController.lobbyLocked(idle :: any, nil, view), true)
+		expect.equal(StateController.lobbyLocked(idle :: any, nil, nil), false)
+		expect.equal(StateController.lobbyLocked(idle :: any, nil), false) -- the duel-only call still works
+		expect.equal(StateController.isMatchId("match:1234"), true)
+		expect.equal(StateController.isMatchId("1234-abcd"), false)
+		expect.equal(StateController.isMatchId(nil), false)
 	end)
 end

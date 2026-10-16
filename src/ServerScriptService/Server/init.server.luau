@@ -36,6 +36,8 @@ type Module = {
 -- CapsuleService between GripService (it pays Grip) and SqueezeService (whose paid squeezes push the capsules).
 -- Batch 3 (friends): FriendDuelService right after QueueService (it starts duels through it); ShowOffService last (it
 -- reads the duel results, Grip levels and FriendDuelService's friend matches).
+-- FFA/TDM v1 (2026-10-15): MatchMapService then MatchService after FriendDuelService: MatchService reads
+-- CharacterService, CombatService, AbilityService, QueueService (state, Joined), NetService and MatchMapService.
 local SERVICE_ORDER = {
 	"MonetizationService",
 	"NetService",
@@ -60,6 +62,8 @@ local SERVICE_ORDER = {
 	"DuelService",
 	"QueueService",
 	"FriendDuelService",
+	"MatchMapService", -- FFA/TDM v1 (2026-10-15): Diego's maps in Workspace.DuelMaps (read once at init)
+	"MatchService", -- FFA/TDM v1: the in-server Free for All / Team Deathmatch (reads the duel services above)
 	"BoxService",
 	"ShopService",
 	"QuestService",

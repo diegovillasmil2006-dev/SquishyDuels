@@ -11,6 +11,8 @@
 --   * the held arm's offset fades in over 0.9 frames and out over the last 3 (avatar.js:160-162);
 --   * the ribbons take the dasher's team tint: side A Strawberry, side B Mint, practice Strawberry;
 --   * a DashStarted payload is used only when every field has its type and dir is a flat unit vector;
+--   * FFA/TDM v1 (2026-10-15): the Duel input context with a 12-player match view (and no duel view) is the "match"
+--     context, gated like a duel (Active only, inside the zone: the map's Bounds; a knocked-out player is not alive);
 --   * 2026-10-15 overhaul: the effects take the team glow (A Strawberry, B Mint), the ghosts ghostEverySeconds apart.
 
 type Context = {
@@ -69,6 +71,25 @@ return function(t: Context)
 		expect.equal(DashController.gate(gate({ grounded = false })), "dash.airborne")
 		expect.equal(DashController.gate(gate({ lastDashAt = 100 - DASH.cooldownSeconds + 0.1 })), "dash.cooldown")
 		expect.equal(DashController.gate(gate({ lastDashAt = 100 - DASH.cooldownSeconds })), nil)
+	end)
+
+	-- FFA/TDM v1 (2026-10-15): the 12-player match ----------------------------------------------------------------
+
+	t.test("the match context: the Duel context with a match view and no duel view; gated like a duel", function()
+		local duelView, matchView = { phase = "Active" }, { phase = "Active" }
+		expect.equal(DashController.contextFor(true, false, nil, matchView), "match")
+		expect.equal(DashController.contextFor(true, false, duelView, nil), "duel")
+		expect.equal(DashController.contextFor(true, false, duelView, matchView), "duel") -- a duel view wins
+		expect.equal(DashController.contextFor(true, false, nil, nil), "duel") -- waiting for the first view
+		expect.equal(DashController.contextFor(false, true, nil, matchView), "practice")
+		expect.equal(DashController.contextFor(false, false, nil, matchView), nil)
+		expect.equal(DashController.gate(gate({ context = "match" })), nil)
+		expect.equal(DashController.gate(gate({ context = "match", phase = "Countdown" })), "dash.context")
+		expect.equal(DashController.gate(gate({ context = "match", phase = "Positioning" })), "dash.context")
+		expect.equal(DashController.gate(gate({ context = "match", phase = "Result" })), "dash.context")
+		expect.equal(DashController.gate(gate({ context = "match", inZone = false })), "dash.context")
+		expect.equal(DashController.gate(gate({ context = "match", alive = false })), "dash.context")
+		expect.equal(DashController.gate(gate({ context = "match", grounded = false })), "dash.airborne")
 	end)
 
 	t.test(

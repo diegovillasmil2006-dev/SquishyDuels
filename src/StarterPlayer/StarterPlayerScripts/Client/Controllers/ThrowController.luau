@@ -87,6 +87,14 @@
 -- Match view and ultimate charges: StateController (duel(), DuelChanged, charge(userId)); remote events through
 -- NetController.on.
 -- No lobby stat is read here: throws use only the match snapshot's squishy (duel) or SD_Equipped (practice).
+-- FFA/TDM v1 (2026-10-15; the 12-player Free for All / Team Deathmatch, SPEC C5/C6): a third kind, "match", while the
+--   Duel input context is on and StateController.match() is set (no duel view): the same live-phase rule (Active, the
+--   Countdown's last instant; overtime is "Active"), the match's own squishy (you.squishyId), cooldown multiplier 1,
+--   nothing while knocked out (you.alive false: "throw.context"), no own half (the server keeps the throw inside the
+--   map's Bounds); aim assist and the missing-ray reach anchor on every live enemy (StateController.enemyIds: FFA
+--   everyone else, TDM the other team), never on the practice targets; the ultimate needs its charge, as in a duel,
+--   never the practice cooldown. MatchChanged resets the cooldown at a new match and at Active and ends the windups at
+--   the match's end, as DuelChanged does. No new top-level local (module fields and StateController calls only).
 
 -- Services
 
@@ -137,7 +145,7 @@ export type AimState = {
 	readyAt: number, -- server time from which a press is accepted
 	nextThrowAt: number, -- server time, from the server
 	progress: number, -- 0 (just thrown) .. 1 (ready)
-	kind: ("duel" | "practice")?,
+	kind: ("duel" | "practice" | "match")?,
 	-- Feature 1 (2026-10-11): the local charge c (0 when not charging), whether it is full, and the held toy's colour
 	-- (its Catalog accent) for the reticle's charge fill.
 	charging: boolean,
@@ -195,7 +203,7 @@ export type UltimateEvent = Types.UltimateEventPayload
 export type MatchView = StateController.DuelView
 
 type Ctx = {
-	kind: "duel" | "practice",
+	kind: "duel" | "practice" | "match", -- FFA/TDM v1: "match"
 	def: Types.SquishyDef,
 	cooldownMultiplier: number,
 }
@@ -987,7 +995,19 @@ local function throwContext(now: number): (Ctx?, string?)
 	if ControlsController.isContextActive("Duel") then
 		local m = match
 		if m == nil then
-			return nil, "throw.context"
+			-- FFA/TDM v1: a 12-player match has its own view (see the header); knocked out, nothing is thrown.
+			local mv = StateController.match()
+			if mv == nil or not mv.you.alive then
+				return nil, "throw.context"
+			end
+			local matchLive = PHASE_THROW[mv.phase] == true or (mv.phase == "Countdown" and now >= mv.phaseEndsAt)
+			local matchDef = if matchLive
+				then Catalog.get(mv.you.squishyId) or Catalog.get(Catalog.starterId())
+				else nil
+			if matchDef == nil then
+				return nil, "throw.context"
+			end
+			return { kind = "match", def = matchDef, cooldownMultiplier = 1 }, nil
 		end
 		local live = PHASE_THROW[m.phase] == true or (m.phase == "Countdown" and now >= m.phaseEndsAt)
 		if not live then
@@ -1052,6 +1072,25 @@ local function opponentCentre(): Vector3?
 	return nil
 end
 
+-- FFA/TDM v1: every enemy of the match (StateController.enemyIds) standing in the view and alive here, as its capsule
+-- centre and character (aim assist, the missing ray's reach). Empty outside a match.
+function ThrowController.enemyTargets(): { { centre: Vector3, model: Instance? } }
+	local list: { { centre: Vector3, model: Instance? } } = {}
+	local view = StateController.match()
+	if view == nil then
+		return list
+	end
+	for _, userId in StateController.enemyIds(view) do
+		local participant = StateController.matchParticipant(view, userId)
+		local enemy = if participant and participant.alive then Players:GetPlayerByUserId(userId) else nil
+		local root = if enemy then aliveRoot(enemy) else nil
+		if enemy and root then
+			table.insert(list, { centre = ThrowController.capsuleCentre(root.Position), model = enemy.Character })
+		end
+	end
+	return list
+end
+
 -- Practice target floor points (tagged models, streamed in), with their models.
 local function practiceTargets(): { { model: Model, base: Vector3 } }
 	local list = {}
@@ -1096,6 +1135,10 @@ local function missReachFor(ray: Ray): number
 		local centre = opponentCentre()
 		if centre then
 			table.insert(anchors, centre)
+		end
+	elseif StateController.match() ~= nil then
+		for _, target in ThrowController.enemyTargets() do -- FFA/TDM v1: the enemies, never the practice targets
+			table.insert(anchors, target.centre)
 		end
 	else
 		for _, target in practiceTargets() do
@@ -1152,6 +1195,8 @@ local function assisted(ctx: Ctx, ray: Ray?, aimPoint: Vector3): Vector3
 			local model: Instance? = if opponent then opponent.Character else nil
 			table.insert(candidates, { centre = centre, model = model })
 		end
+	elseif ctx.kind == "match" then
+		candidates = ThrowController.enemyTargets() -- FFA/TDM v1: every live enemy
 	else
 		for _, target in practiceTargets() do
 			local model: Instance? = target.model
@@ -1587,7 +1632,7 @@ local function tryUltimate(aimPoint: Vector3?): (boolean, string?)
 		return false, "ult.notReady"
 	end
 	local player = localPlayer()
-	if ctx.kind == "duel" then
+	if ctx.kind == "duel" or ctx.kind == "match" then -- FFA/TDM v1: the charge, never the practice cooldown
 		if StateController.charge(player.UserId) < ability.chargeMax then
 			return false, "ult.notReady"
 		end
@@ -1994,7 +2039,7 @@ local function updateTouch(now: number)
 		local ultProgress = 1
 		if ult.ready then
 			ultLabel = Strings.resolve("duel.ultReady")
-		elseif ctx and ctx.kind == "duel" then
+		elseif ctx and (ctx.kind == "duel" or ctx.kind == "match") then
 			ultProgress = math.clamp(ult.charge / math.max(ult.chargeMax, 1), 0, 1)
 			local template = Strings.resolve("common.percent")
 			if template then
@@ -2153,7 +2198,7 @@ function ThrowController.getUltState(): UltState
 	local chargeMax = if ability then ability.chargeMax else 100
 	local ready = false
 	if ability ~= nil and ctx ~= nil then
-		if ctx.kind == "duel" then
+		if ctx.kind == "duel" or ctx.kind == "match" then
 			ready = charge >= chargeMax and not isRooted(now)
 		else
 			ready = now >= practiceUltReadyAt and not isRooted(now)
@@ -2328,6 +2373,27 @@ function ThrowController.init()
 	track(StateController.DuelChanged:connect(function(view: MatchView?)
 		setMatch(view)
 	end))
+	-- FFA/TDM v1: the 12-player match view gets setMatch's cooldown reset and end visuals (its `match` stays the duel's).
+	track(
+		StateController.MatchChanged:connect(function(view: StateController.MatchView?, old: StateController.MatchView?)
+			if view == nil then
+				if old ~= nil then
+					endMatchVisuals()
+					nextThrowAt, readyAt, lastReleaseAt = 0, 0, 0
+				end
+			elseif PHASE_ENDED[view.phase] then
+				if old == nil or not PHASE_ENDED[old.phase] then
+					endMatchVisuals()
+				end
+			else
+				local newMatch = old == nil or old.matchId ~= view.matchId
+				local activeStart = view.phase == "Active" and old ~= nil and not PHASE_THROW[old.phase]
+				if newMatch or activeStart then
+					nextThrowAt, readyAt, lastReleaseAt = 0, 0, 0
+				end
+			end
+		end)
+	)
 	track(NetController.on("ThrowStarted", onThrowStarted))
 	track(NetController.on("ThrowRejected", onThrowRejected))
 	track(NetController.on("ThrowImpact", onThrowImpact))

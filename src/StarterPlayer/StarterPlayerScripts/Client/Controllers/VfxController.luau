@@ -35,7 +35,9 @@
 --   duelists, and the held squishy shrinks away; at 1100 ms a white pop ring (0 -> 3 studs, 0.25 s) where it vanished.
 --   The body is never faded. The held squishy comes back when the player's SD_DuelPhase is
 --   Returning or "" (back in the lobby). The eliminator sees a "K.O.!" banner; the eliminated player's camera shakes
---   0.6° / 250 ms.
+--   0.6° / 250 ms. FFA/TDM v1 (2026-10-15; SPEC D3: a knocked-out match player keeps the same character and respawns
+--   where the server pivots it): in the local 12-player match view it also comes back once that player is alive again
+--   after the view showed them knocked out, and not before the elimination effect hid it (matchRespawned, pure).
 -- Sounds (§18.6, SoundController, silent while the slot ids are nil): sfx.impactBoing at a "player" / "target" hit,
 --   sfx.impactSoft at "geometry" / "expired" / "fizzle" (the last two × softImpactMinorVolume), both on the contact
 --   frame; Dragon Rush: sfx.dragonTelegraph (tracked, stopped with a trackedStopFadeMs fade on cancel), the optional
@@ -184,7 +186,8 @@ type Ghost = {
 	invulnUntil: number, -- server time
 }
 
-type Eliminated = { player: Player, restored: boolean }
+-- FFA/TDM v1: `koSeen` = the match view showed the player knocked out; `startedAt` = os.clock() of the effect.
+type Eliminated = { player: Player, restored: boolean, koSeen: boolean?, startedAt: number? }
 
 -- The lighting values a zone preset sets (nil = that instance is missing).
 export type LightingValues = { contrast: number?, saturation: number?, density: number? }
@@ -580,6 +583,19 @@ end
 -- lands 2-3 studs from the eyes: Config.FirstPerson.victimImpactScale (a quarter); everyone else's 1.
 function VfxController.impactScale(localIsVictim: boolean, firstPerson: boolean): number
 	return if localIsVictim and firstPerson then Config.FirstPerson.victimImpactScale else 1
+end
+
+-- FFA/TDM v1 (SPEC D3, pure): whether an eliminated match player's held squishy comes back now, and the new koSeen.
+-- `alive` is their `alive` in the local match view (nil: not in it, the old rule only); `since` = seconds since their
+-- elimination effect began. It comes back once the view has shown them knocked out and alive again, and the effect has
+-- hidden it (since >= the effect's end), so the effect never hides it again after.
+function VfxController.matchRespawned(koSeen: boolean, alive: boolean?, since: number): (boolean, boolean)
+	if alive == nil then
+		return false, koSeen
+	elseif alive == false then
+		return false, true
+	end
+	return koSeen and since >= ELIM_END_S, koSeen
 end
 
 -- The "player" / "target" impact burst at `scale` (§9.8): the accent and white puff counts (Hit.puffs × scale,
@@ -1229,7 +1245,7 @@ local function playStandard(player: Player, attackerId: number?)
 	if attackerId ~= nil and attackerId == Players.LocalPlayer.UserId then
 		koBanner()
 	end
-	eliminated[player] = { player = player, restored = false }
+	eliminated[player] = { player = player, restored = false, koSeen = false, startedAt = os.clock() }
 	local started = os.clock()
 	local confettiDone = false
 	local finished = false
@@ -1319,11 +1335,22 @@ local ELIMINATION_REGISTRY: { [string]: (Player, number?) -> () } = {
 	epic_pending = playStandard,
 }
 
--- The held squishy comes back once the eliminated player is Returning or back in the lobby.
+-- The held squishy comes back once the eliminated player is Returning or back in the lobby. FFA/TDM v1: or alive
+-- again in the local match view (matchRespawned).
 local function restoreEliminated()
+	local match = StateController.match()
 	for player, entry in eliminated do
 		local phase = player:GetAttribute(ATTR_DUEL_PHASE)
-		if player.Parent == nil or phase == nil or phase == "" or phase == "Returning" then
+		local respawned = false
+		if match ~= nil then
+			local participant = StateController.matchParticipant(match, player.UserId)
+			respawned, entry.koSeen = VfxController.matchRespawned(
+				entry.koSeen == true,
+				if participant then participant.alive else nil,
+				os.clock() - (entry.startedAt or 0)
+			)
+		end
+		if player.Parent == nil or phase == nil or phase == "" or phase == "Returning" or respawned then
 			eliminated[player] = nil
 			if player.Parent ~= nil and not entry.restored then
 				entry.restored = true
