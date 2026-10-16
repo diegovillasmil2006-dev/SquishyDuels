@@ -76,6 +76,7 @@ local FirstPerson = require(script.FirstPerson)
 local Grip = require(script.Grip)
 local Inspect = require(script.Inspect)
 local Knead = require(script.Knead)
+local Match = require(script.Match)
 local Monetization = require(script.Monetization)
 local Net = require(script.Net)
 local Onboarding = require(script.Onboarding)
@@ -199,6 +200,7 @@ local Config = {
 	Grip = Grip,
 	Inspect = Inspect,
 	Knead = Knead,
+	Match = Match,
 	Monetization = Monetization,
 	Net = Net,
 	Onboarding = Onboarding,
@@ -3039,6 +3041,94 @@ local function checkDebug(problems: Problems)
 	end
 end
 
+-- Config.Match (Free for All / Team Deathmatch rules, user 2026-10-15): positive timings, two different team names,
+-- each mode's win numbers, the storm's steps in time order (from stormStartSeconds, never overlapping, radius
+-- fractions falling inside (0, 1)) and done before a storm mode's time-up, and every power-up in the order with one
+-- known effect (seconds > 0, ultFraction in (0, 1], or the teams-only team life).
+local function checkMatch(problems: Problems)
+	local p = "Config.Match"
+	local m: any = Match
+	for _, name in { "waitSeconds", "countdownSeconds", "respawnSeconds", "overtimeMaxSeconds", "resultSeconds" } do
+		expectPositive(problems, `{p}.{name}`, m[name])
+	end
+	expectNonNegative(problems, `{p}.spawnProtectSeconds`, m.spawnProtectSeconds)
+	expectCount(problems, `{p}.minPlayers`, m.minPlayers, 2)
+	local teams = m.teamNames
+	expect(
+		problems,
+		type(teams) == "table" and #teams == 2 and type(teams[1]) == "string" and teams[1] ~= teams[2],
+		`{p}.teamNames must be two different names`
+	)
+	local storm = m.Storm
+	local steps = storm.steps
+	for _, modeId in sortedKeys(m.Modes) do
+		local mode = m.Modes[modeId]
+		local q = `{p}.Modes.{modeId}`
+		expectBoolean(problems, `{q}.teams`, mode.teams)
+		expectBoolean(problems, `{q}.storm`, mode.storm)
+		expectCount(problems, `{q}.maxPlayers`, mode.maxPlayers, m.minPlayers)
+		expectPositive(problems, `{q}.matchSeconds`, mode.matchSeconds)
+		if mode.teams then
+			expectCount(problems, `{q}.teamLives`, mode.teamLives, 0)
+		else
+			expectCount(problems, `{q}.koTarget`, mode.koTarget, 1)
+		end
+		local last = steps[#steps]
+		expect(
+			problems,
+			not mode.storm or (last ~= nil and last.shrinkAt + last.shrinkSeconds <= mode.matchSeconds),
+			`{q}: the storm must reach its last circle by matchSeconds`
+		)
+	end
+	local s = `{p}.Storm`
+	expectNonNegative(problems, `{s}.stormStartSeconds`, storm.stormStartSeconds)
+	for _, name in { "warnSeconds", "barFillSeconds", "barDrainSeconds" } do
+		expectPositive(problems, `{s}.{name}`, storm[name])
+	end
+	expectCount(problems, `#{s}.steps`, #steps, 1)
+	local prevEnd, prevFraction = storm.stormStartSeconds, 1
+	for index, step in steps do
+		local q = `{s}.steps[{index}]`
+		expectPositive(problems, `{q}.shrinkSeconds`, step.shrinkSeconds)
+		expect(
+			problems,
+			isNumber(step.shrinkAt) and step.shrinkAt >= prevEnd,
+			`{q}.shrinkAt must be at or after stormStartSeconds and the previous step's end`
+		)
+		expect(
+			problems,
+			isNumber(step.radiusFraction) and step.radiusFraction > 0 and step.radiusFraction < prevFraction,
+			`{q}.radiusFraction must be > 0 and below the previous step's`
+		)
+		prevEnd = (tonumber(step.shrinkAt) or 0) + (tonumber(step.shrinkSeconds) or 0)
+		prevFraction = tonumber(step.radiusFraction) or 0
+	end
+	local pu = m.PowerUps
+	expectPositive(problems, `{p}.PowerUps.padRefillSeconds`, pu.padRefillSeconds)
+	local listed: { [string]: boolean } = {}
+	for _, kind in pu.order do
+		listed[kind] = true
+		local row = pu.kinds[kind]
+		local q = `{p}.PowerUps.kinds.{kind}`
+		if row == nil then
+			add(problems, `{q} is missing (it is in PowerUps.order)`)
+		elseif row.seconds ~= nil then
+			expectPositive(problems, `{q}.seconds`, row.seconds)
+		elseif row.ultFraction ~= nil then
+			expect(
+				problems,
+				isNumber(row.ultFraction) and row.ultFraction > 0 and row.ultFraction <= 1,
+				`{q}.ultFraction must be in (0, 1]`
+			)
+		else
+			expect(problems, kind == "teamLife" and row.teamsOnly == true, `{q} has no effect`)
+		end
+	end
+	for _, kind in sortedKeys(pu.kinds) do
+		expect(problems, listed[kind] == true, `{p}.PowerUps.kinds.{kind} is not in PowerUps.order`)
+	end
+end
+
 -- Private: Grip checks (DESIGN §17.9 table; each rule has a negative unit test in Config_Test) ----------------------
 
 local function studs(value: number): string
@@ -4519,6 +4609,9 @@ function Config.validate(deps: ValidateDeps?): { string }
 	end)
 	guarded(problems, "Config.Debug", function()
 		checkDebug(problems)
+	end)
+	guarded(problems, "Config.Match", function()
+		checkMatch(problems)
 	end)
 
 	-- Grip (§17.9): G1-G3, G5 and the Capsule block on Config alone; G8 with WorldLayout.
