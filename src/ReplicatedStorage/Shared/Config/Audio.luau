@@ -2,6 +2,7 @@
 -- Config.Audio: SoundGroup mix, voice caps, cooldowns, pitch variation, 3D settings and ducking (DESIGN §11.9), with
 -- the feel pass sound wiring values (§18.6, §18.8).
 -- Shared (read by the client SoundController), data only. All [P]. Sound ids live only in AssetTable.luau.
+-- Music job (2026-10-16): battleMusic (the duel music in duels and matches) and matchStingDelaySeconds.
 
 -- A CompressorSoundEffect on a group (Threshold dB, Ratio, Attack / Release seconds, GainMakeup dB).
 export type Compressor = { threshold: number, ratio: number, attack: number, release: number, makeup: number }
@@ -146,6 +147,25 @@ local Audio = {
 		knockoutSeconds = 0.6,
 		telegraph = 0.8,
 	},
+
+	-- Music job (2026-10-16): while the local player's duel or match view is in one of these phases (DuelPhase names; a
+	-- match uses them too, SPEC D1) the music is `key`, whatever the audio zone says (Diego's match maps have no zone);
+	-- Preparing (still in the lobby), Cancelled and Void keep the zone's music. Returning keeps it until the view ends
+	-- back in the lobby, so the lobby music comes back with one crossfade. No design for music exists: proposal.
+	battleMusic = {
+		key = "music.duel",
+		phases = {
+			Positioning = true,
+			Countdown = true,
+			Active = true,
+			SuddenDeath = true,
+			Result = true,
+			Returning = true,
+		} :: { [string]: boolean },
+	},
+	-- Music job: a match's result sting (duel.win / duel.lose / duel.draw, as a duel's) plays this long after the
+	-- outcome arrives: Diego's end sound starts 250 ms after the final K.O. ("Squishy Duels Match HUD.dc.html" M:570).
+	matchStingDelaySeconds = 0.25,
 
 	-- Toast code -> the sound key NotifyController passes to UIController.toast (§18.5.2 B5, §18.6). Keeps the only
 	-- lobby-stat sound key out of the duel-path files.

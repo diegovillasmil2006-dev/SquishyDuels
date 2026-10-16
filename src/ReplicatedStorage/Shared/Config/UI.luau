@@ -1307,6 +1307,38 @@ local UI = {
 		},
 	},
 
+	-- Match HUD M4 (2026-10-16; plan work/matchhud2/PLAN.md §4 M4 = v1 M3a, v1 §1.3, §1.9): the in-match screens of
+	-- Diego's "Squishy Duels Match HUD.dc.html" (Client/Controllers/MatchHudController; checks: Config/ValidateMatchHud).
+	-- gui = their ScreenGui SD_MatchHud, made on first use (a controller-owned layer, so not in ScreenGuis, which
+	-- UIController makes at boot), inside Roblox's safe area (the shared UIScale). DisplayOrder 14 [P] (critic fix: the
+	-- plan's 12 is taken by the touch buttons' SD_Touch, ControlsController TOUCH_DISPLAY_ORDER; 13 by
+	-- SD_PracticeReticle): over the touch buttons (the boot cover, intro and countdown cover the whole screen; no piece
+	-- enters the touch cluster during Active, v1 §1.4), under SD_Dimmer 19, the modals and SD_Overlay's sparks.
+	-- enabled = one switch per piece in a real match (a Studio preview builds every piece): all off until the step that
+	-- builds a piece turns it on with the owner's yes [P]. compact.fitMin = the smallest nested UIScale of a piece bigger
+	-- than the safe area (v1 §1.3b) [P].
+	Match = {
+		gui = { displayOrder = 14, insets = Enum.ScreenInsets.CoreUISafeInsets } :: ScreenGuiSpec,
+		enabled = {
+			topBar = false, -- M5 (waits for Diego's big-match bar)
+			feed = false, -- M6 kill feed
+			medal = false, -- M6 SQUISHED! medal
+			card = false, -- M7 knocked-out card
+			respawn = false, -- M7 RESPAWNING IN bar and vignette
+			boot = false, -- M8 Loading arena cover
+			intro = false, -- M8 intro card
+			introOrbit = false, -- M8 the map fly-over behind it (owner Q6: yes)
+			countdown = false, -- M8 3-2-1 SQUISH!
+			killerCam = false, -- M7 the camera on your killer while you wait (owner Q6: yes)
+			finish = false, -- M9 VICTORY / DEFEAT splash
+			results = false, -- M9 results bar, LOBBY / PLAY AGAIN
+			podium = false, -- M10a / M10b 3D podium (owner Q2: his podium exactly)
+			cards = false, -- M10c podium cards (hidden from players until Diego's fix, owner Q2)
+			replay = false, -- M11-M13 final-kill replay (owner Q1: yes, last)
+		} :: { [string]: boolean },
+		compact = { fitMin = 0.6 },
+	},
+
 	-- UI FINAL R2 (plan §0 easing rule, G2.3): every design timing function as cubic-bezier numbers { x1, y1, x2, y2 },
 	-- played exactly by Anim/Tweens.bezier (the CSS keywords at their standard numbers). `H:n` / `lib:n` cite each.
 	curves = {
@@ -1331,6 +1363,10 @@ local UI = {
 		rain = { 0.3, 0.1, 0.7, 1 }, -- lib:252
 		fly = { 0.25, 0.7, 0.35, 1 }, -- lib:283
 		flyLeg = { 0.55, 0, 0.85, 0.55 }, -- lib:281
+		-- Match HUD M4 (v1 §1.5; M = "Squishy Duels Match HUD.dc.html"): the countdown beat M:489 and the card entry
+		-- M:558 (both whole-run), the podium ribbon M:331 and the replay banner M:298 (sdMfUnfurl; not `rise`).
+		beat = { 0.2, 1, 0.4, 1 },
+		unfurl = { 0.3, 1.3, 0.5, 1 },
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The killer's banner

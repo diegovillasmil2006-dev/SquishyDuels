@@ -409,6 +409,24 @@ return function(t: Context)
 		)
 	end)
 
+	t.test(
+		"the owner's 1v1 tab (2026-10-16): TDM / FFA join the match queue; 1v1 or no picker the 1v1 queue",
+		function()
+			expect.equal(HudFormat.duelAction(true, "tdm"), "match")
+			expect.equal(HudFormat.duelAction(true, "ffa"), "match")
+			expect.equal(HudFormat.duelAction(true, "1v1"), "queue") -- the 3rd tab: today's 1v1 queue (QueueJoin)
+			expect.equal(HudFormat.duelAction(false, "tdm"), "queue") -- no picker: the DUEL button as before it
+			expect.equal(HudFormat.duelAction(true, nil), "queue")
+			expect.equal(HudFormat.duelAction(true, "tdm", { Modes = { ffa = {} } }), "queue")
+			expect.equal(HudFormat.duelAction(true, "ffa", { Modes = { ffa = {} } }), "match")
+			-- The tab's words exist (Strings, [P]: Diego may rename them).
+			local modes = Strings.hud.modes
+			for _, key in { "duel", "duelChip", "duelShort" } do
+				expect.truthy(type(modes[key]) == "string" and #modes[key] > 0)
+			end
+		end
+	)
+
 	t.test("the quest tracker's status (H:995): Ready to claim! for a claimable quest, else its reward", function()
 		expect.deepEqual(
 			HudFormat.trackerStatus({ state = "claim", reward = 50 } :: any),
@@ -1158,6 +1176,113 @@ return function(t: Context)
 		end
 	end)
 
+	-- The owner's 1v1 tab (2026-10-16): Diego's picker now holds three tabs (TEAM DEATHMATCH, FREE FOR ALL, DUEL 1v1;
+	-- UI/Components/SegmentedTabs, N:154-158). HudController.layoutCta draws them with the full names where they fit,
+	-- else the design's short ones (N:710-711 MODES.*.tab: "TEAM 6v6", "FREE FOR ALL"; the 1v1 tab's "1v1"), else ([P])
+	-- each tab's chip word alone ("6v6", "SOLO", "1v1"), so the DUEL area (the button and the picker under it) fits at
+	-- the top middle over no HUD group on every screen at every text size. The chip words are needed only on the
+	-- 667x375 phone at Larger / Largest text (392 / 373 px of room for 408 / 436 px of short tabs; the two tabs fitted
+	-- there); on PCs from 1280x720 up at the default text size the full names fit. The widths are SegmentedTabs' own
+	-- sums (widths, size) from the text estimate (the Studio layout audit measures the real boxes).
+	t.test("the DUEL picker with the 1v1 tab (2026-10-16): it fits at the top middle at every size", function()
+		local STICKER = Config.UI.Sticker
+		local PICKER = STICKER.hud.picker
+		local modes = Strings.hud.modes
+		local tabs = {
+			{ label = modes.tdm, chip = modes.tdmChip, short = modes.tdmShort },
+			{ label = modes.ffa, chip = modes.ffaChip, short = modes.ffaShort },
+			{ label = modes.duel, chip = modes.duelChip, short = modes.duelShort },
+		}
+		local function textPx(text: string, kind: string, ts: number): number
+			return math.ceil(HudFormat.textWidth(text, HudFormat.kindPx(kind, ts)))
+		end
+		-- SegmentedTabs:size(short, chips): the well's border and padding, the gaps between the tabs, and each tab's
+		-- border, paddings and label (the full one with the gap and its chip: text and padding; the short name or the
+		-- chip word alone in the label's style).
+		local function pickerWidth(fit: string, ts: number): number
+			local frame = 2 * PICKER.tabBorder + PICKER.tabPadLeft + PICKER.tabPadRight
+			local width = 2 * (PICKER.border + PICKER.padding) + (#tabs - 1) * PICKER.tabGap
+			for _, tab in tabs do
+				if fit == "chips" then
+					width += frame + textPx(tab.chip, "Small", ts)
+				elseif fit == "short" then
+					width += frame + textPx(tab.short, "Small", ts)
+				else
+					width += frame + textPx(tab.label, "Small", ts)
+					width += PICKER.tabGapInside + textPx(tab.chip, "Chip", ts) + 2 * PICKER.chipPad
+				end
+			end
+			return width
+		end
+		-- SegmentedTabs' root: the well's top band and lip around the 52 px tab boxes.
+		local bands = Layout.stickerBands(PICKER.border, PICKER.highlightPx, 0, PICKER.lip)
+		local pickerHeight = bands.top - PICKER.highlightPx + TOUCH.minTarget + bands.drop
+		for _, screen in ALL do
+			local class = classOf(screen)
+			local compact = class == "compact"
+			local origin = HudFormat.origins(compact)
+			for _, ts in TEXT_SCALES do
+				local plan = HudFormat.leftColumnPlan(screen, class, ts)
+				local c = plan.canvas
+				local rightWidth = if compact then COLUMN.settingsSize else COLUMN.trackerWidth
+				local blockers = {
+					{ x = origin.left.X, y = origin.left.Y, w = plan.width, h = plan.leftBottom - origin.left.Y },
+					HudFormat.badgeReachRect({
+						x = origin.nav.X,
+						y = plan.tilesTop,
+						w = plan.tilesWidth,
+						h = plan.tilesHeight,
+					}),
+					{
+						x = c.X - origin.right.X - rightWidth,
+						y = origin.right.Y,
+						w = rightWidth,
+						h = if compact then COLUMN.settingsSize else COLUMN.settingsHeight + COLUMN.rightGap + 100,
+					},
+				}
+				-- HudController.areaSize: the idle button at its phone scale, the picker (never scaled) a lip gap under.
+				local s = HudFormat.ctaScales(compact).idle
+				local gap = Layout.lipGap(PICKER.gap, math.round(STICKER.lip.cta * s))
+				local buttonWidth = math.ceil(HudFormat.ctaWidth(false, ts) * s)
+				local function place(fit: string): (any, Vector2)
+					local size = Vector2.new(
+						math.max(buttonWidth, pickerWidth(fit, ts)),
+						math.ceil(COLUMN.ctaHeight * s) + gap + pickerHeight
+					)
+					return HudFormat.ctaPlacement({ canvas = c, size = size, blockers = blockers, top = origin.ctaTop }),
+						size
+				end
+				local label = `{screen.X}x{screen.Y} text {ts}`
+				-- HudController.layoutCta's order: the full names, else the short ones, else the chip words.
+				local fit = "full"
+				local spot, size = place(fit)
+				for _, narrower in { "short", "chips" } do
+					if spot.fits then
+						break
+					end
+					fit = narrower
+					spot, size = place(fit)
+				end
+				if not spot.fits then
+					error(`the DUEL picker has no room at the top: {label} ({size.X} wide)`)
+				end
+				local area = { x = spot.x, y = spot.y, w = size.X, h = size.Y }
+				for _, rect in blockers do
+					if overlaps(area, rect) then
+						error(`the DUEL picker covers a HUD group: {label}`)
+					end
+				end
+				local smallPhone = compact and screen.X < 812 and ts > UI.PreferredTextScale.Large
+				if fit == "chips" and not smallPhone then
+					error(`the DUEL picker needs the chip words alone: {label}`)
+				end
+				if not compact and ts == 1 and screen.X >= 1280 and fit ~= "full" then
+					error(`the DUEL picker's full names have no room at the top: {label}`)
+				end
+			end
+		end
+	end)
+
 	t.test(
 		"the DUEL area's scales (PR1, PR2): phones draw only the idle button smaller; texts and taps keep",
 		function()
@@ -1363,6 +1488,16 @@ return function(t: Context)
 			expect.deepEqual(picker.cta, { left = "coins", right = "settings", down = "mode:tdm" })
 			expect.deepEqual(picker["mode:tdm"], { up = "cta", right = "mode:ffa", down = "coach" })
 			expect.deepEqual(picker["mode:ffa"], { up = "cta", left = "mode:tdm", down = "coach" })
+			-- The owner's 1v1 tab (2026-10-16), the third: FREE FOR ALL links right to it, it links left back.
+			local three = HudFormat.focusLinks({
+				left = { "coins" },
+				tiles = {},
+				right = { "settings" },
+				cta = "cta",
+				modes = { "mode:tdm", "mode:ffa", "mode:1v1" },
+			})
+			expect.deepEqual(three["mode:ffa"], { up = "cta", left = "mode:tdm", right = "mode:1v1" })
+			expect.deepEqual(three["mode:1v1"], { up = "cta", left = "mode:ffa" })
 			-- UI FINAL R4: while searching (the cancel X is the CTA) Down reaches the queue pill's first hint button
 			-- (its buttons link Up to Cancel themselves: no link is written on the hint here), else the coach card.
 			local hint = HudFormat.focusLinks({

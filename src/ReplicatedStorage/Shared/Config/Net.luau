@@ -6,6 +6,9 @@
 -- burst 1, one in flight). TrainerUpgrade went with the trainers (build plan Phase 6).
 -- FFA/TDM v1 (2026-10-15): MatchJoin and MatchLeave (the client's /ffa, /tdm and /leave chat commands).
 -- Power-ups v1.1 review fix (2026-10-16): DashRequest's rate covers the dash boost (one dash after the other).
+-- Auto-clicker check (2026-10-16): AutoClick = the Config/AutoClick module (Config.Net.AutoClick; a child module, so
+-- Config/init does not grow; Config/ValidateAutoClick checks it). The client now sends fresh squeeze presses over the
+-- paid cap too (at most AutoClick.clientPressesPerSecond = 18 a second, none while replies are late).
 
 export type RemoteRate = {
 	rate: number, -- tokens refilled per second
@@ -43,12 +46,14 @@ local Net = {
 		ChargeStart = { rate = 3, burst = 4 },
 		CatchRequest = { rate = 2, burst = 3 },
 		-- The flood guard (> 20/s dropped silently, = Config.Squeeze.floodPerSecond): an honest client sends at most
-		-- the paid-squeeze cap (Config.Squeeze: bucketCapacity inside bucketCapacity × cycleSeconds, 2 in 0.9 s; Batch 1
-		-- #2), so it is never rate-limited, counted as a violation or muted; a macro above 20/s still is, once it has
-		-- used up the burst. Burst 60 is far more than 5 s of the paid cap: after a network stall the queued presses
-		-- arrive at once and are never violations (Config.validate: burst >= 5 s of the cap, Global.burst >= this
-		-- burst). The paid-squeeze cap itself (2 at once, then 1 per 0.45 s, the hold rhythm) is a game-state check in
-		-- SqueezeService (Config.Squeeze), not this bucket.
+		-- AutoClick.clientPressesPerSecond (18) a second plus the paid cap's own (auto-clicker check 2026-10-16:
+		-- presses over the paid cap are sent too, so the server sees the real rhythm; before, at most the paid-squeeze
+		-- cap, 2 in 0.9 s), so it is never rate-limited, counted as a violation or muted; a macro above 20/s still is,
+		-- once it has used up the burst. After a network stall the queued presses arrive at once: the client stops
+		-- sending presses over the paid cap once a reply is late (about 1 s), so the queue stays far under burst 60
+		-- (Config.validate: burst >= 5 s of the cap, Global.burst >= this burst). The paid-squeeze cap itself (2 at
+		-- once, then 1 per 0.45 s, the hold rhythm) is a game-state check in SqueezeService (Config.Squeeze), not this
+		-- bucket.
 		SqueezeRequest = { rate = 20, burst = 60 },
 		BoxOpen = { rate = 0.5, burst = 1, oneInFlight = true },
 		AckReveal = { rate = 5, burst = 5 },
@@ -87,7 +92,10 @@ local Net = {
 		windowSeconds = 60,
 		muteSeconds = 30,
 	},
-	kickOnAbuse = false, -- no automatic kicks in v1
+	kickOnAbuse = false, -- no automatic kicks in v1 (the auto-clicker check's steps are AutoClick's, below)
+
+	-- Auto-clicker check (2026-10-16): Config/AutoClick (every value and why).
+	AutoClick = require(script.Parent.AutoClick),
 
 	maxAbsNumber = 1e6, -- finite numbers only: x == x and |x| < maxAbsNumber
 	-- Server timestamps (ThrowRequest/UltimateRequest clientTime = workspace:GetServerTimeNow(), §5.6) are Unix

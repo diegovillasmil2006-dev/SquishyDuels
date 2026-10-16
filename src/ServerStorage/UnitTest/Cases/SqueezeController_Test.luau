@@ -9,10 +9,14 @@
 --   * sendDue: a fresh press always goes at once (no reply, nextAt or rhythm to wait for); a hold repeat goes at
 --     max(nextAt + leadSeconds, lastSend + Hold.repeatSeconds), one full squeeze animation; with no reply the next
 --     repeat waits repeatSeconds + replyGraceSeconds;
---   * underCap: the client sends at most bucketCapacity (2) requests inside bucketCapacity × cycleSeconds (0.9 s), the
---     server's paid-squeeze cap (Batch 1 #2: squeezes pay up to the hold rhythm), so clicking at any speed sends no
---     more than the server pays and never gets squeeze.tooFast; a press over it is not sent (it still squishes on
---     screen: trySend, checked in Play only);
+--   * underCap: at most bucketCapacity (2) requests inside bucketCapacity × cycleSeconds (0.9 s) pass it, the server's
+--     paid-squeeze cap (Batch 1 #2: squeezes pay up to the hold rhythm), so those never get squeeze.tooFast;
+--   * auto-clicker check (2026-10-16), pressSendable: a fresh press over the paid cap is still sent while fewer than
+--     Config.Net.AutoClick.clientPressesPerSecond sends fall inside the last second and no reply is late by more than
+--     Hold.repeatSeconds + replyGraceSeconds; modelled with trySend's rule (underCap, else pressSendable for a fresh
+--     press): a person's every press is sent, a fast macro is held at that ceiling, never above the flood guard in any
+--     second, the server still pays only the hold rhythm, and a network stall queues no more than the paid cap's own
+--     sends (far under the remote's burst). (trySend itself runs in Play only.)
 --   * holdStopReason: every §17.3.2 stop rule (release, match, context, block, 600 s, 60 s while Searching); since
 --     spec 2026-10-11 §5 (squeeze anywhere) where the player stands never stops a hold (no "station" or "locked" stop);
 --     a simulated 60 Hz hold against the server's cap repeats every repeatSeconds, never gets tooFast and stops at
@@ -213,7 +217,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"clicking at any speed: the client sends no more than the paid cap and the server never says tooFast",
+		"underCap at any click speed: no more than the paid cap passes it and the server never says tooFast to those",
 		function()
 			-- Steady 3, 8 and 12 clicks a second for a minute: some presses are not sent, about the hold rhythm is.
 			for _, rate in { 3, 8, 12 } do
@@ -252,7 +256,7 @@ return function(t: Context)
 		end
 	)
 
-	t.test("a macro at 30 clicks a second: the client sends no more than the paid cap", function()
+	t.test("a macro at 30 clicks a second: no more than the paid cap passes underCap", function()
 		local presses = {}
 		for i = 1, 300 do
 			table.insert(presses, T0 + (i - 1) / 30)
@@ -261,6 +265,136 @@ return function(t: Context)
 		expect.truthy(#sent <= CAP + 10 / CYCLE)
 		expect.equal(serverTooFast(sent), 0)
 	end)
+
+	-- Auto-clicker check (2026-10-16): fresh presses over the paid cap are sent too (pressSendable) ------------------
+
+	local PRESS_CAP = Config.Net.AutoClick.clientPressesPerSecond
+	local STALL = HOLD.repeatSeconds + HOLD.replyGraceSeconds
+
+	t.test("pressSendable: under the press ceiling inside the last second, and never while a reply is late", function()
+		local sent = {}
+		for i = 1, PRESS_CAP - 1 do
+			table.insert(sent, T0 + (i - 1) * 0.01)
+		end
+		local now = T0 + 0.5
+		expect.truthy(SqueezeController.pressSendable(sent, now, nil, PRESS_CAP, STALL))
+		table.insert(sent, T0 + 0.3)
+		expect.falsy(SqueezeController.pressSendable(sent, now, nil, PRESS_CAP, STALL)) -- the ceiling is full
+		expect.truthy(SqueezeController.pressSendable(sent, T0 + 1, nil, PRESS_CAP, STALL)) -- the first left the second
+		-- A reply is waited for: fine up to STALL seconds, then nothing over the cap goes.
+		expect.truthy(SqueezeController.pressSendable({}, T0 + STALL - 0.01, T0, PRESS_CAP, STALL))
+		expect.falsy(SqueezeController.pressSendable({}, T0 + STALL + 0.01, T0, PRESS_CAP, STALL))
+		expect.truthy(PRESS_CAP + CAP <= Config.Squeeze.floodPerSecond)
+	end)
+
+	-- Review fix (2026-10-16, job autoclick): the off switch also stops the extra presses.
+	t.test("pressCap: the ceiling while the check is on; 0 when it is off or its config is refused", function()
+		local validate = t.requireShared("Config/ValidateAutoClick")
+		local live = Config.Net.AutoClick
+		expect.equal(SqueezeController.pressCap(live, validate(Config, Strings)), live.clientPressesPerSecond)
+		local off = table.clone(live)
+		off.enabled = false
+		expect.equal(SqueezeController.pressCap(off, {}), 0)
+		expect.equal(SqueezeController.pressCap(live, { "Config.Net.AutoClick.maxPerSecond must be ..." }), 0)
+		-- With 0 nothing over the paid cap is ever sendable.
+		expect.falsy(SqueezeController.pressSendable({}, T0, nil, 0, STALL))
+	end)
+
+	-- trySend's rule for presses at `pressAt` (clock seconds): under the paid cap a press is sent; over it a fresh press
+	-- is sent while pressSendable. Every reply comes `rtt` seconds after its send (nil: no reply at all, a stall).
+	-- Returns the send times.
+	local function trySendModel(pressAt: { number }, rtt: number?): { number }
+		local recent, presses, sent = {}, {}, {}
+		local waitingSince: number? = nil
+		local replyAt: { number } = {}
+		for _, at in pressAt do
+			while rtt ~= nil and #replyAt > 0 and replyAt[1] <= at do
+				table.remove(replyAt, 1)
+				waitingSince = nil -- onResult
+			end
+			local paid = SqueezeController.underCap(recent, at, CAP, WINDOW)
+			if paid or SqueezeController.pressSendable(presses, at, waitingSince, PRESS_CAP, STALL) then
+				table.insert(sent, at)
+				table.insert(recent, at)
+				while #recent > CAP do
+					table.remove(recent, 1)
+				end
+				table.insert(presses, at)
+				while #presses > PRESS_CAP do
+					table.remove(presses, 1)
+				end
+				if waitingSince == nil then
+					waitingSince = at
+				end
+				if rtt ~= nil then
+					table.insert(replyAt, at + rtt)
+				end
+			end
+		end
+		return sent
+	end
+
+	-- The most sends inside any rolling second.
+	local function busiestSecond(sent: { number }): number
+		local most = 0
+		for i = 1, #sent do
+			local inside = 0
+			for j = i, #sent do
+				if sent[j] - sent[i] < 1 - 1e-9 then
+					inside += 1
+				end
+			end
+			most = math.max(most, inside)
+		end
+		return most
+	end
+
+	t.test(
+		"over the paid cap: a person's every press is sent; a macro is held at the ceiling; the pay is the same",
+		function()
+			for _, rate in { 6, 8, 12, 15 } do
+				local presses = {}
+				for i = 1, 60 * rate do
+					table.insert(presses, T0 + (i - 1) / rate)
+				end
+				local sent = trySendModel(presses, 0.15)
+				expect.equal(#sent, #presses) -- the server sees every press (it times them)
+				local paid = #sent - serverTooFast(sent)
+				expect.truthy(paid <= CAP + 60 / CYCLE) -- still the hold rhythm
+			end
+			for _, rate in { 30, 100, 1000 } do
+				local presses = {}
+				for i = 1, 30 * rate do
+					table.insert(presses, T0 + (i - 1) / rate)
+				end
+				for _, rtt in { 0.05, 0.3, 0.8 } do
+					local sent = trySendModel(presses, rtt)
+					local busiest = busiestSecond(sent)
+					if busiest > Config.Squeeze.floodPerSecond then
+						error(
+							`{rate}/s at rtt {rtt}: {busiest} sends inside one second (flood guard {Config.Squeeze.floodPerSecond})`
+						)
+					end
+					expect.truthy(#sent >= 30 * (PRESS_CAP - 1)) -- held at the ceiling, not below it
+					expect.truthy(#sent - serverTooFast(sent) <= CAP + 30 / CYCLE)
+				end
+			end
+		end
+	)
+
+	t.test(
+		"a network stall: presses over the cap stop once a reply is late; the queue stays far under the burst",
+		function()
+			local presses = {}
+			for i = 1, 10 * 50 do -- 10 s of a 50/s macro with no reply at all
+				table.insert(presses, T0 + (i - 1) / 50)
+			end
+			local sent = trySendModel(presses, nil)
+			-- The ceiling's first second, then only the paid cap's own sends (2 per 0.9 s).
+			expect.truthy(#sent <= PRESS_CAP + CAP + math.ceil(10 / WINDOW) * CAP)
+			expect.truthy(#sent < Config.Net.Remotes.SqueezeRequest.burst)
+		end
+	)
 
 	t.test(
 		"12 presses a second (a human's fastest; over-cap presses still play) stay inside the particle budget",

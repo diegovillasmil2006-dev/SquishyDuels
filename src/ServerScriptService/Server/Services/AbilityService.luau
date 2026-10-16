@@ -53,6 +53,14 @@
 --   (fraction × chargeMax onto the meter, clamped, UltimateCharge sent at once); the end of a root on an ffa port gives
 --   the standing caster port.movement(fighter) (its live speed / super jump power-ups) instead of the plain
 --   Config.Duel.Rules.Movement. A shield-blocked hit is no Hit (CombatService), so it never cancels a telegraph.
+-- * Bubble Pop bounce (2026-10-16; design: ults.js:6 "bounces once"; owner yes 2026-10-14): a kind with `bounces`
+--   (the bubble) whose path ends on cover (the Spherecast's hit, not the Bounds or maxLength) bounces off it once: the
+--   second leg starts at that end, goes along UltRules.bounceDir (the direction mirrored on the hit normal's flat part;
+--   review fix: only off a surface close to upright, |normal.Y| under bounceMaxNormalY, so a floor, a ceiling, a ramp
+--   or a round prop's top pops it as before) and is swept like the first (cover, then the Bounds) over what is left of
+--   maxLength,
+--   so the whole flight still lasts popSeconds. Found at the request with the first leg (server only), handed to
+--   CombatService.launchUlt and sent in the release as `bounce` {origin, dir, length} for the clients to draw.
 -- Nothing the client sends is trusted for charge, timers, origin, length, targets or drop points (§12 #3).
 -- Tests swap the clock, the sender, the scheduler and the world queries (room, Spherecast, ground) with useDeps;
 -- setCharge fills a meter for tests and Studio checks.
@@ -110,6 +118,8 @@ export type AbilityDef = {
 	staggerSeconds: number?,
 	clearHeight: number?,
 	splashRadius: number?,
+	bounces: number?, -- Bubble Pop bounce (2026-10-16)
+	bounceMaxNormalY: number?, -- Bubble Pop bounce review fix (2026-10-16; typed here by the small1 merge)
 	drops: number?,
 	firstShadowSeconds: number?,
 	dropStepSeconds: number?,
@@ -142,6 +152,7 @@ type Caster = {
 	event: Types.UltimateEventPayload?, -- the current telegraph (then release)
 	stoppedByGeometry: boolean,
 	shots: { Shot }?, -- Flock Volley: the birds' paths
+	bounce: CombatService.UltBounce?, -- Bubble Pop bounce (2026-10-16): the leg after its bounce (nil = none)
 	floorY: number, -- the floor of the current cast
 	sentCharge: number,
 	sentAt: number,
@@ -156,7 +167,13 @@ type CastContext = {
 }
 
 -- A kind's paths for the telegraph (prepare) and its projectiles at the release (launch).
-type Prepared = { origin: Vector3, length: number, stoppedByGeometry: boolean, shots: { Shot }? }
+type Prepared = {
+	origin: Vector3,
+	length: number,
+	stoppedByGeometry: boolean,
+	shots: { Shot }?,
+	bounce: CombatService.UltBounce?, -- Bubble Pop bounce (2026-10-16)
+}
 type Behaviour = {
 	prepare: (caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3) -> (string?, Prepared?),
 	launch: (caster: Caster, event: Types.UltimateEventPayload) -> Types.UltimateEventPayload,
@@ -169,8 +186,9 @@ export type Deps = {
 	delay: (seconds: number, fn: (...any) -> (), ...any) -> (),
 	-- True when a sphere of `radius` at `origin` overlaps the place's Geometry (GetPartBoundsInRadius).
 	overlaps: (origin: Vector3, radius: number, params: OverlapParams) -> boolean,
-	-- The distance at which a sphere of `radius` moved from `origin` along `direction` meets Geometry (Spherecast).
-	cast: (origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?,
+	-- The distance at which a sphere of `radius` moved from `origin` along `direction` meets Geometry (Spherecast), and
+	-- the surface normal there (Bubble Pop bounce, 2026-10-16; a fake may leave it out: no bounce).
+	cast: (origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> (number?, Vector3?),
 	-- FFA/TDM v1 (review fix): the height of the first ground at most `distance` studs below `origin`, or nil
 	-- (CombatService.groundProbe).
 	ground: CombatService.GroundProbe,
@@ -222,9 +240,17 @@ local function defaultDeps(): Deps
 		overlaps = function(origin: Vector3, radius: number, params: OverlapParams): boolean
 			return #Workspace:GetPartBoundsInRadius(origin, radius, params) > 0
 		end,
-		cast = function(origin: Vector3, radius: number, direction: Vector3, params: RaycastParams): number?
+		cast = function(
+			origin: Vector3,
+			radius: number,
+			direction: Vector3,
+			params: RaycastParams
+		): (number?, Vector3?)
 			local hit = Workspace:Spherecast(origin, radius, direction, params)
-			return if hit then hit.Distance else nil
+			if hit == nil then
+				return nil, nil
+			end
+			return hit.Distance, hit.Normal
 		end,
 		ground = function(origin: Vector3, distance: number, params: RaycastParams): number?
 			return CombatService.groundProbe(origin, distance, params)
@@ -274,6 +300,7 @@ local function newCaster(
 		event = nil,
 		stoppedByGeometry = false,
 		shots = nil,
+		bounce = nil,
 		floorY = 0,
 		sentCharge = -1,
 		sentAt = -math.huge,
@@ -422,7 +449,8 @@ end
 
 -- A straight sweep's room and end (the Dragon Rush rule, §5.9): a sphere of `radius` overlapping Geometry at `origin`
 -- is ult.noRoom (unless `room` is false: the later birds of a volley share the first one's start); the end is the
--- Spherecast distance along dir (at most maxLength), clamped to the Bounds.
+-- Spherecast distance along dir (at most maxLength), clamped to the Bounds. Bubble Pop bounce (2026-10-16): also the
+-- cover's surface normal when the path stops on cover (nil otherwise, or from a fake cast without one).
 local function sweepPath(
 	ctx: CastContext,
 	origin: Vector3,
@@ -430,38 +458,53 @@ local function sweepPath(
 	radius: number,
 	maxLength: number,
 	room: boolean
-): (string?, number, boolean)
+): (string?, number, boolean, Vector3?)
 	local overlapParams = ctx.overlapParams
 	if room and overlapParams and deps.overlaps(origin, radius, overlapParams) then
-		return REASON_NO_ROOM, 0, false
+		return REASON_NO_ROOM, 0, false, nil
 	end
 	local length = maxLength
 	local stoppedByGeometry = false
+	local normal: Vector3? = nil
 	local raycastParams = ctx.raycastParams
 	if raycastParams then
-		local hit = deps.cast(origin, radius, dir * maxLength, raycastParams)
+		local hit, hitNormal = deps.cast(origin, radius, dir * maxLength, raycastParams)
 		if hit then
 			length = hit
 			stoppedByGeometry = true
+			normal = hitNormal
 		end
 	end
 	local clamped = AbilityService.clampToBounds(origin, dir, length, ctx.bounds)
 	if clamped < length then
 		length = clamped
 		stoppedByGeometry = false
+		normal = nil
 	end
-	return nil, length, stoppedByGeometry
+	return nil, length, stoppedByGeometry, normal
 end
 
--- One straight sweep from O (Dragon Rush, the roller, the bubble).
+-- One straight sweep from O (Dragon Rush, the roller, the bubble). Bubble Pop bounce (2026-10-16): a kind with
+-- `bounces` whose sweep ends on cover gets its second leg from there (see the header); nothing is left: no bounce.
 local function prepareSweep(caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3): (string?, Prepared?)
 	local ability = caster.ability
 	local origin = AbilityService.laneOrigin(rootPosition, ctx.floorY, dir, ability)
-	local reason, length, stoppedByGeometry = sweepPath(ctx, origin, dir, ability.radius, ability.maxLength, true)
+	local reason, length, stoppedByGeometry, normal =
+		sweepPath(ctx, origin, dir, ability.radius, ability.maxLength, true)
 	if reason then
 		return reason, nil
 	end
-	return nil, { origin = origin, length = length, stoppedByGeometry = stoppedByGeometry }
+	local prepared: Prepared = { origin = origin, length = length, stoppedByGeometry = stoppedByGeometry }
+	local bounceDir = if normal and (ability.bounces or 0) >= 1
+		then UltRules.bounceDir(dir, normal, ability.bounceMaxNormalY or 0)
+		else nil
+	local left = ability.maxLength - length
+	if bounceDir and left > EPSILON then
+		local from = origin + dir * length
+		local _, more, stoppedAgain = sweepPath(ctx, from, bounceDir, ability.radius, left, false)
+		prepared.bounce = { origin = from, dir = bounceDir, length = more, stoppedByGeometry = stoppedAgain }
+	end
+	return nil, prepared
 end
 
 local function released(event: Types.UltimateEventPayload): Types.UltimateEventPayload
@@ -488,6 +531,7 @@ local function launchAlong(caster: Caster, event: Types.UltimateEventPayload): n
 		flyOn = ability.kind == "roller",
 		clearHeight = ability.clearHeight,
 		splashRadius = ability.splashRadius,
+		bounce = caster.bounce, -- Bubble Pop bounce (2026-10-16; nil for the roller)
 	})
 end
 
@@ -671,12 +715,17 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 			return out
 		end,
 	},
-	-- Bubble Pop: one bubble that pops at its first contact, cover or after popSeconds (design: ults.js:6).
+	-- Bubble Pop: one bubble that pops at its first contact, cover or after popSeconds (design: ults.js:6). Bubble Pop
+	-- bounce (2026-10-16): the first cover bounces it once (prepareSweep); the release carries that leg.
 	bubble = {
 		prepare = prepareSweep,
 		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
 			local out = released(event)
 			out.projId = launchAlong(caster, event)
+			local bounce = caster.bounce
+			if bounce then
+				out.bounce = { origin = bounce.origin, dir = bounce.dir, length = bounce.length }
+			end
 			return out
 		end,
 	},
@@ -1097,6 +1146,7 @@ function AbilityService.requestUltimate(
 	caster.token += 1
 	caster.stoppedByGeometry = prepared.stoppedByGeometry
 	caster.shots = prepared.shots
+	caster.bounce = prepared.bounce
 	caster.floorY = ctx.floorY
 	if thrower then
 		thrower.rootedUntil = telegraphEndsAt + ability.recoverySeconds
@@ -1128,7 +1178,7 @@ function AbilityService.useDeps(newDeps: {
 	send: ((remote: string, recipients: { any }, ...any) -> ())?,
 	delay: ((seconds: number, fn: (...any) -> (), ...any) -> ())?,
 	overlaps: ((origin: Vector3, radius: number, params: OverlapParams) -> boolean)?,
-	cast: ((origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> number?)?,
+	cast: ((origin: Vector3, radius: number, direction: Vector3, params: RaycastParams) -> (number?, Vector3?))?,
 	ground: CombatService.GroundProbe?,
 }?)
 	local base = defaultDeps()

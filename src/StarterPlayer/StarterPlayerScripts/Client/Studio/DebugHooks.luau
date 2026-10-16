@@ -149,6 +149,15 @@
 --                                                overlay: a number freezes it at t seconds for pictures
 --                                                (ViewmodelController.debugInspect), true plays it live (inspect(), as
 --                                                R), nil lets the overlay live again; { ok, state }
+-- Match HUD M4 (2026-10-16; plan work/matchhud2/PLAN.md §4 M4, v1 §1.9):
+--   SD_DebugClient:Invoke("matchHud", state?, opts?)  MatchHudController.debugShow: shows one pretend match state
+--                                                (Studio/MatchHudFixtures, e.g. "tdm_knockedOut", "ffa_endWin") with
+--                                                every match HUD piece built and its moments played once; opts =
+--                                                { players = 4..12 }; refused during a real match; state nil ends the
+--                                                preview and lists the states (one harness loops them with
+--                                                "layoutAudit"); { ok, state, pieces, phase, matchPhase, players,
+--                                                moments, outcome, compact, scale } or { ok, states }; also
+--                                                "matchHudState": MatchHudController.debugState()
 -- The feel-pass modules of other lanes (JellyRippleController, SplatController, MeshQuota), the Part 7 screens of the
 -- other lanes (ShopController, QuestController, DailyController, OnboardingController), the Part 6 controllers
 -- (InspectController, CollectionController) and the new functions on built ones are looked up when a command runs
@@ -1005,6 +1014,26 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 	ripplePathB = ripplePathB,
 	ripplePoke = ripplePoke,
 	juice = juice,
+	-- Match HUD M4 (looked up at run time, like the other lanes' modules).
+	matchHud = function(state: unknown, opts: unknown): Reply
+		local show = functionOf(optionalModule("Controllers", "MatchHudController"), "debugShow")
+		if show == nil then
+			return missing("MatchHudController.debugShow")
+		end
+		if state ~= nil and type(state) ~= "string" then
+			return { ok = false, error = "matchHud needs a state name or nil" }
+		end
+		return show(state, if type(opts) == "table" then opts else nil)
+	end,
+	matchHudState = function(): Reply
+		local read = functionOf(optionalModule("Controllers", "MatchHudController"), "debugState")
+		if read == nil then
+			return missing("MatchHudController.debugState")
+		end
+		local state = read()
+		state.ok = true
+		return state
+	end,
 }
 
 local function onInvoke(command: unknown, ...: any): Reply

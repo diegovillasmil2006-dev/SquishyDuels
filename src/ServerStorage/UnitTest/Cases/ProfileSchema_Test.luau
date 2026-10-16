@@ -19,7 +19,10 @@
 --     survive a JSON save and load unchanged;
 --   * Match HUD M2 (2026-10-16): stats.winStreak joined schema 2 the same way (CURRENT stays 2): defaults 0, an older
 --     v2 profile gets 0 from reconcile (no sanitize problem), a saved streak is kept, and sanitize fixes a negative,
---     fractional, non-finite or wrong-type one like every counter.
+--     fractional, non-finite or wrong-type one like every counter;
+--   * auto-clicker check (2026-10-16): autoClick (the last strike) joined schema 2 the same way: defaults {step = 0,
+--     at = 0}, an older v2 profile gets it from reconcile (no problem), a saved strike is kept, and sanitize keeps step
+--     a whole number in [0, 3] and at a whole number in [0, now + 300] (non-finite -> 0, wrong type -> the default).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -136,6 +139,7 @@ return function(t: Context)
 		expected.samePair = {} -- filled by reconcile (no migration step)
 		expected.capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } } -- the same
 		expected.stats.winStreak = 0 -- Match HUD M2: the same
+		expected.autoClick = { step = 0, at = 0 } -- auto-clicker check (2026-10-16): the same
 		return expected
 	end
 
@@ -171,6 +175,7 @@ return function(t: Context)
 		expect.deepEqual(d.grip, { total = 0, rested = { value = Config.Grip.Rested.burst, at = NOW } })
 		expect.deepEqual(d.samePair, {})
 		expect.deepEqual(d.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
+		expect.deepEqual(d.autoClick, { step = 0, at = 0 }) -- auto-clicker check (2026-10-16): no strike
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -620,5 +625,54 @@ return function(t: Context)
 		expect.equal(result.status, "ok")
 		expect.deepEqual(result.problems, {})
 		expect.deepEqual(result.profile.capsules, profile.capsules)
+	end)
+
+	-- The last auto-clicker strike (auto-clicker check, 2026-10-16) -------------------------------------------------------
+
+	t.test(
+		"autoClick joins schema 2 without a new version: an older v2 profile gets no strike, a saved one stays",
+		function()
+			expect.equal(ProfileSchema.CURRENT, 2)
+			local older = load(FIXTURE_V1).profile :: any
+			older.autoClick = nil -- a v2 profile saved before the field existed
+			local result = load(older)
+			expect.equal(result.status, "ok")
+			expect.equal(result.fromVersion, 2)
+			expect.equal(result.migrated, false)
+			expect.deepEqual(result.problems, {})
+			expect.deepEqual(result.profile.autoClick, { step = 0, at = 0 })
+			local kept = load(FIXTURE_V1).profile :: any
+			kept.autoClick = { step = 2, at = NOW - 600 }
+			local again = load(kept)
+			expect.deepEqual(again.problems, {})
+			expect.deepEqual(again.profile.autoClick, { step = 2, at = NOW - 600 })
+		end
+	)
+
+	t.test("sanitize autoClick: step a whole number in [0, 3], at in [0, now + 300]; broken values forget", function()
+		local function fixedStrike(value: any): (any, { string })
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.autoClick = value
+			local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return (fixed :: any).autoClick, problems
+		end
+		local cases: { { any } } = {
+			{ "garbage", { step = 0, at = 0 } },
+			{ { step = 7, at = NOW }, { step = 3, at = NOW } },
+			{ { step = -1, at = NOW }, { step = 0, at = NOW } },
+			{ { step = 1.5, at = NOW }, { step = 1, at = NOW } },
+			{ { step = 0 / 0, at = 0 / 0 }, { step = 0, at = 0 } },
+			{ { step = "2", at = NOW }, { step = 0, at = NOW } },
+			{ { step = 2, at = NOW + 10_000 }, { step = 2, at = NOW + 300 } }, -- a far-future strike is clamped
+			{ { step = 1, at = -5 }, { step = 1, at = 0 } },
+		}
+		for _, case in cases do
+			local strike, problems = fixedStrike(case[1])
+			expect.deepEqual(strike, case[2])
+			expect.truthy(#problems > 0)
+		end
+		local strike, problems = fixedStrike({ step = 3, at = NOW - 1 })
+		expect.deepEqual(strike, { step = 3, at = NOW - 1 })
+		expect.deepEqual(problems, {})
 	end)
 end

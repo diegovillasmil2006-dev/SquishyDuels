@@ -27,9 +27,10 @@
 --     when the limit is disabled, as shipped since spec 2026-10-11 §5: the limit state is then left alone);
 --     coins = baseCoins when paid, else Economy.SqueezeLimit.emptyCoins (Phase 3: a pad adds no Coin bonus)
 -- Batch 1 #2 (replaces "every click pays", 2026-10-06): squeezes pay up to the hold rhythm and no faster. There is
--- no squeeze timer; a hold never meets step 7, and the client sends no more than the cap (a click over it only
--- squishes on screen). A request over it (a macro, or rarely network jitter) gets squeeze.tooFast (no Coins, no Grip,
--- no capsule push; the client shows nothing for it), and above 20/s the flood guard drops it.
+-- no squeeze timer; a hold never meets step 7. A request over it (fast clicks, which the client sends since the
+-- auto-clicker check of 2026-10-16, at most 18 a second; a macro; rarely network jitter) gets squeeze.tooFast (no
+-- Coins, no Grip, no capsule push; the client shows nothing for it), and above 20/s the flood guard drops it.
+-- SqueezeService asks AutoClickService about every request before this decide().
 -- Reading (why a bucket of 2, not 1): network jitter bunches a hold's presses on arrival; the spare token absorbs
 -- that, where a bucket of 1 would answer honest holds with squeeze.tooFast. The price is one extra paid squeeze after
 -- a rest (the hourly earnings limit is off since spec 2026-10-11 §5).

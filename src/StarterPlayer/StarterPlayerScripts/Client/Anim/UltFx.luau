@@ -17,7 +17,9 @@
 --     held to 3 Hz) from shadowAt for shadowSeconds, then the drop falling from over the centre to its point along k²
 --     in fallSeconds, then a splash ring, 8 puffs and sfx.ultRainDrop.
 --   Bubble Pop: the Axolotl in its bubble shell (UltBubbleShell) on the design's 0.9 m arc; at its server end (a hit
---     or its pop) the pop ring (6 studs), 26 puffs and sfx.ultBubblePop.
+--     or its pop) the pop ring (6 studs), 26 puffs and sfx.ultBubblePop. Bubble Pop bounce (2026-10-16): with the
+--     release's `bounce` the path turns there onto the bounce leg (the Axolotl faces its new way) and the arc spans the
+--     whole flight; the design draws no effect at a bounce, so none is drawn.
 -- * A bird's or the bubble's model goes at its ThrowImpact (the hit itself, its puffs, knockback and hit-stop are
 --   VfxController's, as for a throw); the roller rolls on to its end. Cancel stops the charge sound.
 -- * ReducedMotion: no pulse, roll, wobble or bob (FxPool halves the particles).
@@ -66,6 +68,9 @@ export type ProjInfo = {
 	untilAt: number, -- server time to forget it
 }
 
+-- Bubble Pop bounce (2026-10-16): past `at` studs along the flight the path goes on from `origin` along `dir`.
+export type Bounce = { at: number, origin: Vector3, dir: Vector3 }
+
 type Flight = {
 	projId: number,
 	kind: string, -- "volley" | "roller" | "bubble"
@@ -85,6 +90,7 @@ type Flight = {
 	endAt: number?, -- server time it ended (its ThrowImpact)
 	endPosition: Vector3?,
 	popped: boolean,
+	bounce: Bounce?, -- the bubble's bounce (`length` is then both legs)
 }
 
 type Drop = {
@@ -169,10 +175,23 @@ function UltFx.glidePoint(origin: Vector3, dir: Vector3, speed: number, t: numbe
 	return origin + dir * speed * math.max(t, 0) + Vector3.new(0, lift, 0)
 end
 
--- A plain sine arc over the server path (the bubble: fp.js:241, arc 0.9 m).
-function UltFx.arcPoint(origin: Vector3, dir: Vector3, speed: number, t: number, duration: number, arc: number): Vector3
+-- A plain sine arc over the server path (the bubble: fp.js:241, arc 0.9 m). Bubble Pop bounce (2026-10-16): with
+-- `bounce` the path turns onto the bounce leg past bounce.at studs; the arc spans the whole flight (k = t / duration).
+function UltFx.arcPoint(
+	origin: Vector3,
+	dir: Vector3,
+	speed: number,
+	t: number,
+	duration: number,
+	arc: number,
+	bounce: Bounce?
+): Vector3
 	local k = if duration > 0 then math.clamp(t / duration, 0, 1) else 1
-	return origin + dir * speed * math.max(t, 0) + Vector3.new(0, math.sin(math.pi * k) * arc, 0)
+	local studs = speed * math.max(t, 0)
+	local onPath = if bounce and studs > bounce.at
+		then bounce.origin + bounce.dir * (studs - bounce.at)
+		else origin + dir * studs
+	return onPath + Vector3.new(0, math.sin(math.pi * k) * arc, 0)
 end
 
 -- The roller's scale t seconds after its release: rollerScaleFrom -> rollerScaleTo by the design's backOut.
@@ -410,6 +429,7 @@ local function newFlight(
 		endAt = nil,
 		endPosition = nil,
 		popped = false,
+		bounce = nil,
 	}
 	local model = flight.model
 	if model then
@@ -470,7 +490,15 @@ local function stepFlight(flight: Flight, now: number): boolean
 			pop(
 				flight,
 				flight.endPosition
-					or UltFx.arcPoint(flight.origin, flight.dir, flight.speed, t, duration, FX.bubbleArcStuds)
+					or UltFx.arcPoint(
+						flight.origin,
+						flight.dir,
+						flight.speed,
+						t,
+						duration,
+						FX.bubbleArcStuds,
+						flight.bounce
+					)
 			)
 		end
 		endFlight(flight)
@@ -478,7 +506,8 @@ local function stepFlight(flight: Flight, now: number): boolean
 	end
 	if t > duration + FX.lingerSeconds then
 		if flight.kind == "bubble" then
-			pop(flight, flight.origin + flight.dir * flight.length)
+			-- the path's end (arc 0 there), past the bounce when it has one
+			pop(flight, UltFx.arcPoint(flight.origin, flight.dir, flight.speed, duration, duration, 0, flight.bounce))
 		end
 		endFlight(flight)
 		return false
@@ -521,8 +550,10 @@ local function stepFlight(flight: Flight, now: number): boolean
 			emitter.Enabled = t <= duration
 		end
 	else -- bubble
-		position = UltFx.arcPoint(flight.origin, flight.dir, flight.speed, along, duration, FX.bubbleArcStuds)
-		frame = CFrame.lookAt(position, position + flight.dir)
+		local bounce = flight.bounce
+		position = UltFx.arcPoint(flight.origin, flight.dir, flight.speed, along, duration, FX.bubbleArcStuds, bounce)
+		local heading = if bounce and flight.speed * along > bounce.at then bounce.dir else flight.dir
+		frame = CFrame.lookAt(position, position + heading)
 		local shell = flight.shell
 		if shell then
 			shell.CFrame = CFrame.new(position)
@@ -805,7 +836,7 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 		if projId == nil then
 			return
 		end
-		newFlight(
+		local flight = newFlight(
 			kind,
 			casterId,
 			squishyId,
@@ -818,7 +849,20 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			event.telegraphEndsAt,
 			floorY
 		)
-		remember(projId, event.telegraphEndsAt + event.length / math.max(event.speed, 1))
+		-- Bubble Pop bounce (2026-10-16): the server's bounce leg, read only when it has the right shape.
+		local b: any = event.bounce
+		if
+			kind == "bubble"
+			and type(b) == "table"
+			and typeof(b.origin) == "Vector3"
+			and typeof(b.dir) == "Vector3"
+			and type(b.length) == "number"
+			and b.length >= 0
+		then
+			flight.bounce = { at = event.length, origin = b.origin, dir = b.dir }
+			flight.length = event.length + b.length
+		end
+		remember(projId, event.telegraphEndsAt + flight.length / math.max(event.speed, 1))
 		if kind == "roller" then
 			local cframe, size = UltFx.lanePlate(event.origin, event.dir, ability.maxLength, event.radius, floorY)
 			local part = FxPool.default():acquirePart({

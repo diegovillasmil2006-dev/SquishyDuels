@@ -21,6 +21,13 @@
 --   UltRules.rainDrops(center, ability, releaseAt, targets)  -> { Drop } (design: fp.js:352-357, 371)
 --   UltRules.practiceCenter(origin, dir, targets, maxLength) -> Vector3?: the practice target nearest the aim within
 --                                                              the practice cone and maxLength (nil = none)
+--   UltRules.bounceDir(dir, normal, maxNormalY)              -> Vector3?: Bubble Pop bounce (2026-10-16): the flat
+--                                                              direction after bouncing off a surface with `normal`,
+--                                                              mirrored on its horizontal part (the bubble flies at one
+--                                                              height); nil for a direction that does not go into the
+--                                                              surface, and (review fix) for a surface that is not
+--                                                              close to upright: |unit normal.Y| >= maxNormalY (a
+--                                                              floor, a ceiling, a ramp, the top of a round prop)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -177,6 +184,18 @@ function UltRules.practiceCenter(origin: Vector3, dir: Vector3, targets: { Vecto
 		end
 	end
 	return best
+end
+
+function UltRules.bounceDir(dir: Vector3, normal: Vector3, maxNormalY: number): Vector3?
+	local d, n = flat(dir), flat(normal)
+	if d == nil or n == nil or math.abs(normal.Unit.Y) >= maxNormalY then
+		return nil
+	end
+	local into = d:Dot(n)
+	if into > -EPSILON then
+		return nil
+	end
+	return flat(d - n * (2 * into))
 end
 
 return table.freeze(UltRules)

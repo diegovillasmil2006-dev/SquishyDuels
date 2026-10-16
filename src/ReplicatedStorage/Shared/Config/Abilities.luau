@@ -12,7 +12,9 @@
 --   rain    a zone of `radius` centred on the opponent at the release; `drops` drops, each with a shadow first, hit a
 --           player whose feet are within dropHitRadius of the drop when it lands.
 --   bubble  one projectile of `radius` at `speed`; it pops on a player, at cover or after popSeconds, and a player whose
---           feet are within splashRadius of the pop (on the floor) is hit.
+--           feet are within splashRadius of the pop (on the floor) is hit. Bubble Pop bounce (2026-10-16): the first
+--           `bounces` covers it meets bounce it off (mirrored on the cover's side, same speed) instead of popping it;
+--           its whole path, bounce included, is still maxLength (= speed × popSeconds).
 -- Every kind fills the shared fields its way: `radius` (the hit radius: lane sphere, projectile, half lane width, zone),
 -- `speed` (travel), maxLength (the longest path; rain: the farthest practice target the zone may centre on),
 -- laneHeightAboveFloor (the flight height; rain: the height the drops fall from) and originForwardStuds.
@@ -63,6 +65,8 @@ export type Ability = {
 	-- bubble
 	popSeconds: number?,
 	splashRadius: number?,
+	bounces: number?, -- Bubble Pop bounce (2026-10-16): covers bounced off before one pops it (0 or 1)
+	bounceMaxNormalY: number?, -- review fix (2026-10-16): only a surface with |unit normal.Y| below this bounces it
 	-- rain
 	drops: number?,
 	firstShadowSeconds: number?,
@@ -235,7 +239,7 @@ local Abilities = {
 		radius = 1.3,
 		laneHeightAboveFloor = 4.8, -- build choice 2026-10-11 (NOT IN DESIGN): the throw release height, no gravity
 		speed = 40, -- design: ults.js:6, fp.js:359 (s(40))
-		maxLength = 48, -- speed × popSeconds: it pops after 1.2 s (design: ults.js:6)
+		maxLength = 48, -- speed × popSeconds: it pops after 1.2 s (design: ults.js:6), a bounce included
 		recoverySeconds = 0.35, -- user decision 2026-10-11: as Dragon Rush
 		cancelOnHitDuringTelegraph = true, -- user decision 2026-10-11: as Dragon Rush
 		refundOnCancel = 0.5, -- user decision 2026-10-11: as Dragon Rush
@@ -247,6 +251,14 @@ local Abilities = {
 		originForwardStuds = 2, -- build choice 2026-10-11 (NOT IN DESIGN): as Dragon Rush
 		popSeconds = 1.2, -- design: ults.js:6 ("pops on contact or after 1.2 s")
 		splashRadius = 6, -- design: ults.js:6, fp.js:361 (s(6), from the pop point on the floor)
+		-- Bubble Pop bounce (2026-10-16; owner yes 2026-10-14): design: ults.js:6 ("40 st/s, bounces once"). What it
+		-- bounces off is NOT IN DESIGN (spec phase5-moves §1.8): [P] cover only (not players, the floor or the Bounds).
+		-- shortcut: AbilityService builds one bounce leg, so any value above 1 still bounces once; a list of legs if the
+		-- design ever asks for more.
+		bounces = 1,
+		-- Review fix (2026-10-16), NOT IN DESIGN [P]: only cover close to upright bounces it (|unit normal.Y| < 0.5,
+		-- steeper than 60°): a floor, a ceiling, a ramp of Diego's maps or a round prop's top pops it as before.
+		bounceMaxNormalY = 0.5,
 	},
 } :: { [string]: Ability }
 

@@ -50,10 +50,15 @@
 --   audio zones drive them once a zone source is set (setZoneSource: WorldBinder.currentZone + ZoneChanged; WorldBinder
 --   is a higher layer, so the HUD wires it, reading): the zone's musicKey and ambienceKey, and its musicMul as the
 --   "zone" duck.
+--   Music job (2026-10-16): while the local player's duel or match view (StateController duel() / match()) is in one
+--   of Config.Audio.battleMusic.phases, the music is battleMusic.key (music.duel) instead of the zone's (musicFor; the
+--   match maps have no audio zone); DuelChanged, MatchChanged and every zone change re-apply it, and setMusic keeps a
+--   key that is already playing, so the same music never restarts or doubles.
 -- * Ducking (§11.9, §18.6): duck(reason, mult?) -> release; the default multipliers are Config.Audio.Ducking[reason]
 --   (boxReveal 0.5, countdown 0.6, result 0.6, inspect 0.8, knockout 0.5, telegraph 0.8). duckFor(reason, seconds?)
 --   releases itself after `seconds` (default Ducking[reason .. "Seconds"], e.g. knockoutSeconds 0.6). Countdown and
---   Result are applied here from the duel view; the others are called by their owners.
+--   Result are applied here from the duel view (music job, 2026-10-16: or the match view, which uses the same phase
+--   names); the others are called by their owners.
 -- * Studio auditions (§18.7; only while Config.Debug.soundPicker, which is false outside Studio): audition(key, id?,
 --   volume?) makes a candidate id the only choice of that key (playable through every real code path), id = nil
 --   drops it, clearAuditions() drops all. Reading: the candidate enters through the one choice function that play,
@@ -241,6 +246,7 @@ local duckTimers: { [thread]: boolean } = {}
 local musicVoice: Voice? = nil
 local ambienceVoice: Voice? = nil
 local musicKey: string? = nil
+local zoneMusicKey: string? = nil -- music job: the audio zone's music (applyZone), played outside battles
 local ambienceKey: string? = nil
 local crossfading = false
 local random = Random.new()
@@ -686,8 +692,14 @@ local function setDuck(reason: string, mult: number?)
 	applyGroupVolume("Music", true)
 end
 
+-- Music job (2026-10-16): the battle music while a duel or match runs, else the zone's (musicFor).
+local function applyMusic()
+	SoundController.setMusic(SoundController.musicFor(zoneMusicKey, StateController.duel(), StateController.match()))
+end
+
 local function applyDuelDucks()
-	local wanted = SoundController.duelDucks(StateController.duel())
+	-- Music job: a match view uses the duel's phase names (SPEC D1), so its Countdown and Result duck the same way.
+	local wanted = SoundController.duelDucks(StateController.duel() or StateController.match() :: any)
 	for _, reason in { DUCK_COUNTDOWN, DUCK_RESULT } do
 		if ducks[reason] ~= wanted[reason] then
 			setDuck(reason, wanted[reason])
@@ -911,6 +923,29 @@ function SoundController.duelDucks(view: { phase: any }?): { [string]: number }
 	return wanted
 end
 
+-- Music job (2026-10-16): the music to play: battle.key (default Config.Audio.battleMusic; tests pass their own) while
+-- the duel or the match view is in one of battle.phases, else the zone's `zoneKey` (nil = silence).
+function SoundController.musicFor(
+	zoneKey: string?,
+	duel: { phase: any }?,
+	match: { phase: any }?,
+	battle: { key: string, phases: { [string]: boolean } }?
+): string?
+	local rules: any = if battle ~= nil then battle else AUDIO.battleMusic
+	if type(rules) ~= "table" or type(rules.key) ~= "string" or type(rules.phases) ~= "table" then
+		return zoneKey
+	end
+	local duelPhase = if duel ~= nil then duel.phase else nil
+	local matchPhase = if match ~= nil then match.phase else nil
+	if
+		(type(duelPhase) == "string" and rules.phases[duelPhase] == true)
+		or (type(matchPhase) == "string" and rules.phases[matchPhase] == true)
+	then
+		return rules.key
+	end
+	return zoneKey
+end
+
 -- Whether a new sound may play in `groupName`, and which playing voice (an index into `playing`) to stop for it.
 -- Returns (true, nil) with room, (true, index) when the oldest stealable voice makes room, (false, nil) to drop it.
 -- A voice is stealable when it is not looping and its priority is not above the new one. A key listed in `perKeyCap`
@@ -1095,7 +1130,8 @@ function SoundController.setAmbience(key: string?)
 	ambienceVoice = crossfadeTo(ambienceVoice, key)
 end
 
--- Applies an audio zone: its music, its ambience and its music multiplier (the "zone" duck).
+-- Applies an audio zone: its music (music job, 2026-10-16: unless a battle's music plays, musicFor), its ambience and
+-- its music multiplier (the "zone" duck).
 function SoundController.applyZone(zone: ZoneLike?)
 	local music = if zone and type(zone.musicKey) == "string" and zone.musicKey ~= "" then zone.musicKey else nil
 	local ambience = if zone
@@ -1103,7 +1139,8 @@ function SoundController.applyZone(zone: ZoneLike?)
 			and zone.ambienceKey ~= ""
 		then zone.ambienceKey
 		else nil
-	SoundController.setMusic(music)
+	zoneMusicKey = music
+	applyMusic()
 	SoundController.setAmbience(ambience)
 	local mul = if zone and type(zone.musicMul) == "number" then zone.musicMul else nil
 	if ducks[DUCK_ZONE] ~= mul then
@@ -1295,6 +1332,11 @@ function SoundController.init()
 	end))
 	c:add(StateController.DuelChanged:connect(function()
 		applyDuelDucks()
+		applyMusic() -- music job (2026-10-16): the battle music
+	end))
+	c:add(StateController.MatchChanged:connect(function()
+		applyDuelDucks()
+		applyMusic()
 	end))
 	c:add(function()
 		for thread in duckTimers do
@@ -1317,6 +1359,7 @@ function SoundController.init()
 		table.clear(recentLog)
 		poolFolder = nil
 		musicVoice, ambienceVoice, musicKey, ambienceKey = nil, nil, nil, nil
+		zoneMusicKey = nil
 		crossfading = false
 	end)
 	applyAllVolumes()

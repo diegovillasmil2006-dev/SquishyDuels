@@ -22,7 +22,11 @@
 --     sound is dropped;
 --   * Studio auditions only while Config.Debug.soundPicker; they never count as approved ids;
 --   * recent(): the last recentLogSize attempts {key, t, result} (played, noId, cooldown, caps, distance);
---   * a sound slot without an id (PENDING) is silent and listed once for the startup warning.
+--   * a sound slot without an id (PENDING) is silent and listed once for the startup warning;
+--   * music job (2026-10-16): the music is Config.Audio.battleMusic.key (music.duel) while the duel or the match view is
+--     in a battle phase (Positioning through Returning), else the zone's; Preparing, Cancelled and Void keep the zone's.
+--     Review fix (2026-10-16): both keys are Music slots, silent until the owner picks their sounds in the Studio
+--     sound picker (no id is asserted here).
 -- Fake ids below are tiny integers built at run time; no real asset id appears here.
 
 type Context = {
@@ -343,6 +347,67 @@ return function(t: Context)
 		expect.deepEqual(SoundController.duelDucks({ phase = "Countdown" }), { countdown = AUDIO.Ducking.countdown })
 		expect.deepEqual(SoundController.duelDucks({ phase = "Result" }), { result = AUDIO.Ducking.result })
 		expect.deepEqual(SoundController.duelDucks({ phase = "Active" }), {})
+	end)
+
+	-- Music job (2026-10-16): music.duel in duels and matches, the audio zone's music otherwise.
+	t.test("musicFor: the battle music while a duel or a match runs, the zone's music otherwise", function()
+		local battle = { key = "music.duel", phases = { Countdown = true, Active = true, Result = true } }
+		expect.equal(SoundController.musicFor("music.lobby", nil, nil, battle), "music.lobby")
+		expect.equal(SoundController.musicFor(nil, nil, nil, battle), nil)
+		expect.equal(SoundController.musicFor("music.lobby", { phase = "Countdown" }, nil, battle), "music.duel")
+		expect.equal(SoundController.musicFor("music.lobby", nil, { phase = "Result" }, battle), "music.duel")
+		expect.equal(SoundController.musicFor(nil, nil, { phase = "Active" }, battle), "music.duel") -- a map, no zone
+		-- A phase outside the list keeps the zone's music (still in the lobby, or the duel never started).
+		expect.equal(SoundController.musicFor("music.lobby", { phase = "Preparing" }, nil, battle), "music.lobby")
+		expect.equal(
+			SoundController.musicFor("music.lobby", { phase = "Cancelled" }, { phase = "Void" }, battle),
+			"music.lobby"
+		)
+		-- Odd input: a view without a phase, a broken rule table.
+		expect.equal(SoundController.musicFor("music.lobby", {} :: any, nil, battle), "music.lobby")
+		expect.equal(SoundController.musicFor("music.lobby", { phase = "Active" }, nil, {} :: any), "music.lobby")
+	end)
+
+	t.test("the battle music rules: a 2D Music slot, every phase a duel and a match play in", function()
+		local battle = AUDIO.battleMusic
+		local slots: { [string]: any } = {}
+		for _, candidate in AssetTable.all() do
+			if candidate.kind == "sound" and (candidate.key == battle.key or candidate.key == "music.lobby") then
+				slots[candidate.key] = candidate
+			end
+		end
+		-- Review fix (2026-10-16): the slots exist; their ids come from the owner's pick (the sound picker), not here.
+		for _, key in { battle.key, "music.lobby" } do
+			expect.truthy(slots[key] ~= nil)
+			expect.equal(slots[key].group, "Music")
+			expect.equal(slots[key].spatial, false)
+		end
+		-- Every listed phase is a DuelPhase name; the lobby-side ones are not listed.
+		local duelPhases = {
+			Preparing = true,
+			Positioning = true,
+			Countdown = true,
+			Active = true,
+			SuddenDeath = true,
+			Result = true,
+			Returning = true,
+			Cancelled = true,
+			Void = true,
+		}
+		for phase, on in battle.phases do
+			expect.truthy(duelPhases[phase] == true and on == true)
+		end
+		for _, phase in { "Preparing", "Cancelled", "Void" } do
+			expect.equal(battle.phases[phase], nil)
+		end
+		-- The phases a match sends (MatchService WIRE_PHASE: Waiting, Countdown, Active / Overtime, Result, Closed) and a
+		-- duel's from the teleport on all play it.
+		for _, phase in { "Positioning", "Countdown", "Active", "SuddenDeath", "Result", "Returning" } do
+			expect.equal(SoundController.musicFor("music.lobby", nil, { phase = phase }), battle.key)
+			expect.equal(SoundController.musicFor("music.lobby", { phase = phase }, nil), battle.key)
+		end
+		-- The match result sting's wait (Diego's 250 ms, M:570).
+		expect.near(AUDIO.matchStingDelaySeconds, 0.25, 1e-9)
 	end)
 
 	t.test("duckFor: the knockout duck holds, then releases itself; an early release works", function()

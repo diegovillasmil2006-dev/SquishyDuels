@@ -10,6 +10,10 @@
 -- the equipped squishy, the timing and every amount are the server's. No squeeze timer; squeezes pay up to the hold
 -- rhythm (Batch 1 #2; Config.Squeeze: 2 at once, then 1 per 0.45 s): over it -> squeeze.tooFast with no Coins, no Grip
 -- and no capsule push.
+-- Auto-clicker check (2026-10-16): before anything else every request goes to AutoClickService.check(p, os.clock) (the
+-- server's own arrival time; floods included). A reason back (squeeze.autoClick on a catch, squeeze.tooFast during its
+-- penalty) is the reply at once, like any rejection: no Coins, no Grip, no stats, no capsule push, no token used. The
+-- strikes, kicks and bans are AutoClickService's.
 --   * dropped (flood guard) -> nothing, no reply; a flood is logged once ([SD][abuse]) when SqueezeRules says so;
 --   * rejected -> SqueezeResult{ok = false, coins = 0, total, limit, reason, nextAt, grip = 0, gripTotal, doubled =
 --     false}; no token used before step 7 and nothing earned (squeeze.noCharacter, squeeze.inDuel, data.notReady);
@@ -65,6 +69,7 @@ local Server = script.Parent.Parent
 local SqueezeRules = require(Server.Logic.SqueezeRules)
 
 local Services = script.Parent
+local AutoClickService = require(Services.AutoClickService)
 local CapsuleService = require(Services.CapsuleService)
 local CharacterService = require(Services.CharacterService)
 local EconomyService = require(Services.EconomyService)
@@ -97,6 +102,7 @@ export type Deps = {
 	setSqueezeAt: (player: any, at: number) -> (),
 	reply: (player: any, result: SqueezeResult) -> (),
 	pushCapsules: (player: any, rootPosition: Vector3) -> (), -- CapsuleService.push (a paid squeeze)
+	autoClick: (player: any, now: number) -> string?, -- AutoClickService.check: nil, or the reason to refuse with
 }
 
 -- One problem the stale-lobby check found.
@@ -222,6 +228,7 @@ local function defaultDeps(): Deps
 		pushCapsules = function(player: any, rootPosition: Vector3)
 			CapsuleService.push(player, rootPosition)
 		end,
+		autoClick = AutoClickService.check,
 	}
 end
 
@@ -376,6 +383,30 @@ function SqueezeService.request(player: any): SqueezeResult?
 	local profile = deps.profileOf(player)
 	local ready = status == STATUS_READY and type(profile) == "table" and isLimitState(profile.squeezeLimit)
 	local limit: Types.SqueezeLimitState = if ready then profile.squeezeLimit else { value = 0, at = osNow }
+
+	local function reject(reason: string?, nextAt: number): SqueezeResult
+		countRejection(reason)
+		local rejected: SqueezeResult = {
+			ok = false,
+			coins = 0,
+			total = coinsOf(profile),
+			limit = if ready then limitPoints(limit, osNow) else 0,
+			reason = reason,
+			nextAt = nextAt,
+			grip = 0,
+			gripTotal = gripTotalOf(profile),
+			doubled = false,
+		}
+		deps.reply(player, rejected)
+		return rejected
+	end
+
+	-- Auto-clicker check (2026-10-16): first, on the arrival time; a refusal uses no token of the paid cap.
+	local autoClickReason = deps.autoClick(player, now)
+	if autoClickReason ~= nil then
+		return reject(autoClickReason, serverNow + SqueezeRules.secondsUntilNext(session.state.bucket, now))
+	end
+
 	local position, alive = deps.rootOf(player)
 	local root = if alive then position else nil
 	local equipped = deps.equippedOf(player)
@@ -404,25 +435,8 @@ function SqueezeService.request(player: any): SqueezeResult?
 		return nil
 	end
 
-	local function reject(reason: string?): SqueezeResult
-		countRejection(reason)
-		local rejected: SqueezeResult = {
-			ok = false,
-			coins = 0,
-			total = coinsOf(profile),
-			limit = if ready then limitPoints(limit, osNow) else 0,
-			reason = reason,
-			nextAt = decision.nextAt,
-			grip = 0,
-			gripTotal = gripTotalOf(profile),
-			doubled = false,
-		}
-		deps.reply(player, rejected)
-		return rejected
-	end
-
 	if decision.outcome == "rejected" then
-		return reject(decision.reason)
+		return reject(decision.reason, decision.nextAt)
 	end
 
 	-- Accepted (steps 8, 8a, 9). Nothing below yields, so the in-memory change is one step. The limit and the stats
@@ -438,7 +452,7 @@ function SqueezeService.request(player: any): SqueezeResult?
 		return true
 	end)
 	if not committed then
-		return reject(REASON_NOT_READY)
+		return reject(REASON_NOT_READY, decision.nextAt)
 	end
 	local gain = GripService.addFromSqueeze(player, tier)
 	local gained = if decision.coins > 0 then deps.grantCoins(player, decision.coins, COIN_REASON) else 0

@@ -10,6 +10,11 @@
 -- ProjectileMaxLifetime + 5 s after the release), ThrowImpact, UltimateEvent (a release's lane dir and radius per
 -- projId) and StateController.DuelChanged; one Scheduler render effect (step) does everything else. Piece presence is
 -- polled every presencePollSeconds inside step (no other connections).
+-- Bubble Pop bounce (review fix 2026-10-16, job small1/bubblepop): a bubble release with a `bounce` leg (laneFor, pure)
+-- keeps that leg's dir for the impact at its end, and its bounce is answered like the old pop on that cover: at the
+-- bounce's server time (telegraphEndsAt + length / speed) step plays rushHit at the bounce point along the first leg's
+-- dir (the existing wobble; nothing new is drawn). Any ThrowImpact of the bubble before then (it popped on a player)
+-- drops that bounce.
 --
 -- Places (a frame from layout space to the world, and the real pieces streamed in there):
 --   * "arena": while the duel view is positioned (Positioning .. Result), from DuelState numbers only:
@@ -125,7 +130,9 @@ local ThrowController = require(script.Parent.ThrowController)
 -- Types
 
 type ThrowInfo = { radius: number, practice: boolean, own: boolean, untilAt: number }
-type LaneInfo = { dir: Vector3, radius: number, untilAt: number }
+-- Review fix (2026-10-16): a bubble's bounce, answered at server time `at` at `position` along `dir` (its first leg's).
+export type BounceInfo = { at: number, position: Vector3, dir: Vector3 }
+export type LaneInfo = { dir: Vector3, radius: number, untilAt: number, bounce: BounceInfo? }
 
 -- A real piece streamed in at a place: its container (the cover Model, or the backstop part), its Body, the parts the
 -- skin hides and what they were before.
@@ -1513,17 +1520,10 @@ end
 
 local function onUltimateEvent(raw: unknown)
 	local event = ThrowController.parseUltimateEvent(raw)
-	if event == nil or event.phase ~= "release" or type(event.projId) ~= "number" then
-		return
+	local lane = JellyRippleController.laneFor(event)
+	if event and lane then
+		lanes[event.projId :: number] = lane
 	end
-	if event.dir.Magnitude < 1e-6 or not (event.radius > 0) then
-		return
-	end
-	lanes[event.projId :: number] = {
-		dir = event.dir,
-		radius = event.radius,
-		untilAt = event.telegraphEndsAt + MAX_LIFETIME + SLACK_SECONDS,
-	}
 end
 
 -- One impact (also a Studio poke). Returns what was shown.
@@ -1550,6 +1550,10 @@ local function onThrowImpact(raw: unknown)
 	local impact = ThrowController.parseImpact(raw)
 	if impact == nil then
 		return
+	end
+	local ended = lanes[impact.projId]
+	if ended then
+		ended.bounce = nil -- review fix (2026-10-16): a bubble that popped before its bounce never bounces
 	end
 	if impact.kind ~= "geometry" then
 		-- Any impact ends a throw; a Dragon Rush lane flies on through players and ends with expired or fizzle.
@@ -1613,6 +1617,16 @@ local function step(dt: number, now: number): boolean
 		end
 	end
 	for projId, lane in lanes do
+		local bounce = lane.bounce
+		if bounce and server >= bounce.at then
+			-- Review fix (2026-10-16): the bubble's bounce gets the wobble its pop on that cover used to get.
+			lane.bounce = nil
+			local ok, err =
+				pcall(rushHit, { dir = bounce.dir, radius = lane.radius, untilAt = lane.untilAt }, bounce.position, now)
+			if not ok then
+				log:warn("a bounce response failed:", err)
+			end
+		end
 		if server > lane.untilAt then
 			lanes[projId] = nil
 		end
@@ -1621,6 +1635,40 @@ local function step(dt: number, now: number): boolean
 end
 
 -- Public ----------------------------------------------------------------------------------------------------------
+
+-- Review fix (2026-10-16, Bubble Pop bounce; pure): what a parsed UltimateEvent leaves for the cover's response, or nil
+-- for one that is not a usable release (no projId, no dir, no radius). The lane (dir, radius) answers the impact at
+-- its end; a bubble with a well-formed `bounce` {origin, dir, length} (and a speed) gets its second leg's dir there,
+-- and `bounce` = the wobble due where its first leg met the cover (bounce.origin) at server time telegraphEndsAt +
+-- length / speed, along the first leg's dir (as its pop there was answered before the bounce existed).
+function JellyRippleController.laneFor(event: any): LaneInfo?
+	if type(event) ~= "table" or event.phase ~= "release" or type(event.projId) ~= "number" then
+		return nil
+	end
+	if typeof(event.dir) ~= "Vector3" or event.dir.Magnitude < 1e-6 or not (event.radius > 0) then
+		return nil
+	end
+	local lane: LaneInfo = {
+		dir = event.dir,
+		radius = event.radius,
+		untilAt = event.telegraphEndsAt + MAX_LIFETIME + SLACK_SECONDS,
+		bounce = nil,
+	}
+	local b = event.bounce
+	if
+		type(b) == "table"
+		and typeof(b.origin) == "Vector3"
+		and typeof(b.dir) == "Vector3"
+		and b.dir.Magnitude > 1e-6
+		and type(event.length) == "number"
+		and type(event.speed) == "number"
+		and event.speed > 0
+	then
+		lane.bounce = { at = event.telegraphEndsAt + event.length / event.speed, position = b.origin, dir = event.dir }
+		lane.dir = b.dir
+	end
+	return lane
+end
 
 -- One slab of a segment-versus-box test along one box axis: the segment p + d·t (t in [tMin, tMax]) narrowed to where
 -- that axis lies within [-half, half]. An empty range comes back as tMin > tMax.

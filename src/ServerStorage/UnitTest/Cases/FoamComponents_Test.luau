@@ -643,6 +643,22 @@ return function(t: Context)
 		expect.equal(label.Text, "TEAM DEATHMATCH")
 		expect.truthy(chip.Visible)
 		expect.equal(tabs:size().X, size.X)
+		-- [P] The narrowest fit (2026-10-16, three tabs with the owner's 1v1 tab): each tab's chip word alone in its
+		-- name's place, no chip, narrower than the short names; still 52 px tall; back to the full names after.
+		expect.truthy(tabs:size(true, true).X < tabs:size(true).X)
+		expect.equal(tabs:size(false, true).X, size.X) -- the chip words only go with the short fit
+		tabs:setShort(true, true)
+		expect.equal(label.Text, "6v6")
+		expect.falsy(chip.Visible)
+		expect.equal((tabs.tabs.ffa:FindFirstChild("Label", true) :: TextLabel).Text, "SOLO")
+		expect.equal(tabs:size().X, tabs:size(true, true).X)
+		expect.equal(tabs.tabs.tdm.Size.Y.Offset, MIN_TARGET)
+		tabs:setShort(true)
+		expect.equal(label.Text, "TEAM 6v6")
+		tabs:setShort(false)
+		expect.equal(label.Text, "TEAM DEATHMATCH")
+		expect.truthy(chip.Visible)
+		expect.equal(tabs:size().X, size.X)
 		-- The gradient's turn: 10 degrees on the screen is about 2 in a 220 x 42 tab's own 0..1 space (a UIGradient
 		-- rotates there); 0 and 90 stay; a bad size leaves it.
 		local turned = math.deg(math.atan(math.tan(math.rad(10)) * 42 / 220))

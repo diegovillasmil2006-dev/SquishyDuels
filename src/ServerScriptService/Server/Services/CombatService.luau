@@ -88,6 +88,11 @@
 --   hit) and no hit counters; the movement guard's speed limit (and a root's stopping distance) grows with the new
 --   optional port.movement(fighter) walk speed over Config.Duel.Rules.Movement.WalkSpeed (the speed boost), never
 --   below the configured limit.
+-- * Bubble Pop bounce (2026-10-16; design: ults.js:6 "bounces once"): a bubble launched with a `bounce` leg
+--   (AbilityService found it at the request: its first leg ends on cover) does not pop at that cover: the moment its
+--   first leg ends, the projectile becomes its second leg (origin, direction and length from the bounce, the same
+--   speed, releaseAt moved to the bounce time), sends nothing there and pops at that leg's end, on a player or after the
+--   rest of its time, as before. Duels and ffa ports alike; the bounce is never its own impact.
 -- * CombatLog counters (§12 #23): rejections per reason and throws / hits / wins per squishy; userIds only in logs.
 --   A payload failure that only ThrowRules can see (the seq window, §5.6 #2) is reported to NetService as a violation.
 -- Signals (upward communication, §2.6): Hit(info), Eliminated(info), ThrowAccepted(info).
@@ -282,7 +287,12 @@ export type UltSpec = {
 	flyOn: boolean?, -- true: flies on through the victim it hits (the roller); else ends at its first hit
 	clearHeight: number?, -- the roller: horizontal hits only, none while the feet are higher than this above floorY
 	splashRadius: number?, -- the bubble: it pops at its first contact or end; feet this close to the pop are hit
+	bounce: UltBounce?, -- Bubble Pop bounce (2026-10-16): the leg it flies after its first leg ends on cover
 }
+
+-- Bubble Pop bounce (2026-10-16): the bubble's second leg, from the end of its first one (on the cover it bounces off):
+-- `length` studs along the flat unit `dir`; stoppedByGeometry = it ends on cover too (else the Bounds or its time).
+export type UltBounce = { origin: Vector3, dir: Vector3, length: number, stoppedByGeometry: boolean }
 
 -- One area hit at one server time (a Rain Check drop).
 export type AreaSpec = {
@@ -340,6 +350,7 @@ type Projectile = {
 	floorY: number?, -- the floor its feet tests read
 	clearHeight: number?, -- the roller's horizontal test and jump rule
 	splashRadius: number?, -- a bubble: its pop becomes an area hit
+	bounce: UltBounce?, -- a bubble's leg after its bounce, until it is flown (Bubble Pop bounce, 2026-10-16)
 	area: Area?, -- an area hit waiting for (or at) its time
 	areaHits: number, -- victims / targets its area already hit
 	charge: number?, -- feature 1: a throw's charge (ThrowStarted.power)
@@ -1106,6 +1117,20 @@ local function simulate(proj: Projectile, now: number): Candidate?
 	end
 
 	local position = ProjectileMath.positionAt(proj.origin, proj.velocity, proj.gravity, proj.lastT)
+	local bounce = proj.bounce
+	if bounce and proj.lastT >= proj.maxT then
+		-- Bubble Pop bounce (2026-10-16): the first leg ended on cover, so the bubble flies on as its second leg from the
+		-- bounce time (no impact here); this runs once (the bounce is used up), then the new leg is swept at once.
+		local speed = proj.velocity.Magnitude
+		proj.bounce = nil
+		proj.releaseAt += proj.maxT
+		proj.origin = bounce.origin
+		proj.velocity = bounce.dir * speed
+		proj.lastT = 0
+		proj.maxT = math.max(bounce.length, 0) / speed
+		proj.endKind = if bounce.stoppedByGeometry then "geometry" else "expired"
+		return simulate(proj, now)
+	end
 	if proj.lastT >= proj.maxT or not insideBounds(proj, position) then
 		local ended: Candidate = {
 			proj = proj,
@@ -1952,7 +1977,8 @@ end
 -- Launches an Epic ultimate's projectile (AbilityService, spec phase 5): a Flock Volley bird, the Sprinkle Roller or a
 -- Bubble Pop bubble; a straight gravity-0 sweep from origin over `length` studs starting at releaseAt (see the header).
 -- Duel ones test the caster's opponent with the normal canDamage (FFA/TDM v1: every enemy, the nearest entry first),
--- practice ones only practice targets. Returns the projId.
+-- practice ones only practice targets. A bubble with spec.bounce flies that leg after its first one (Bubble Pop bounce,
+-- 2026-10-16). Returns the projId.
 function CombatService.launchUlt(spec: UltSpec): number
 	local owner: any, kind: ProjectileKind, port: MatchPort?, ownerId: number = ultOwner(spec.caster, spec.player)
 	local speed = math.max(spec.speed, 1e-3)
@@ -1981,6 +2007,7 @@ function CombatService.launchUlt(spec: UltSpec): number
 		floorY = spec.floorY,
 		clearHeight = spec.clearHeight,
 		splashRadius = spec.splashRadius,
+		bounce = spec.bounce, -- Bubble Pop bounce (2026-10-16)
 		areaHits = 0,
 	}
 	addProjectile(proj)
@@ -2033,7 +2060,8 @@ function CombatService.projectileCount(): number
 	return count
 end
 
--- A copy of a live projectile (tests and Studio checks: its releaseAt is the one ThrowStarted carried), or nil.
+-- A copy of a live projectile (tests and Studio checks: its releaseAt is the one ThrowStarted carried), or nil. A bubble
+-- that bounced shows its second leg (origin, velocity, maxT, and releaseAt = the bounce time; Bubble Pop bounce).
 function CombatService.projectileInfo(projId: number): ProjectileInfo?
 	for _, proj in projectiles do
 		if proj.projId == projId and not proj.done then

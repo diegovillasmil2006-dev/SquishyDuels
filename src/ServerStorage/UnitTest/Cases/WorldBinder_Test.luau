@@ -5,6 +5,7 @@
 --   * stand prompts are enabled only while a UI handler is registered for the tag (register/unregister; unknown tags
 --     are refused);
 --   * audio zones: the highest priority containing zone wins (the squeeze zone inside the lobby zone), nil outside;
+--     music job (2026-10-16): with no character to test (dead, respawning) the zone stays as it was (zoneFor);
 --   * the Jelly gates, pod signs and lock decor are gone with the giant pads (build plan Phase 6): no gateShouldBlock,
 --     padNear, lockVisible, podSignText or setGripSource;
 --   * Part 8 (tools/mcp/stand-prompts.lua relies on it): the 7 stand tags, one prompt per tagged stand (6 stands + 14
@@ -61,6 +62,33 @@ return function(t: Context)
 		local plot = WorldBinder.pickZone(candidates, Vector3.new(0, 3, -122)) -- plot 1, north of the hub
 		expect.equal(plot and plot.zoneId, "lobby")
 		expect.equal(WorldBinder.pickZone(candidates, Vector3.new(400, 3, 0)), nil)
+	end)
+
+	-- Music job (2026-10-16): a respawn never restarts the music.
+	t.test("zoneFor: the picked zone's info; with no character the current zone stays", function()
+		local candidates = {}
+		for _, zone in WorldLayout.AudioZones do
+			table.insert(candidates, {
+				zoneId = zone.zoneId,
+				priority = zone.priority,
+				musicKey = zone.musicKey,
+				ambienceKey = zone.ambienceKey,
+				musicMul = zone.musicMul,
+				cframe = CFrame.new(zone.position),
+				size = zone.size,
+			})
+		end
+		local lobby = WorldBinder.zoneFor(candidates, Vector3.new(0, 3, 0), nil)
+		expect.equal(lobby and lobby.zoneId, "lobby")
+		expect.equal(lobby and lobby.musicKey, "music.lobby")
+		expect.equal((lobby :: any).cframe, nil) -- the info only, as currentZone() hands it out
+		-- Dead or respawning (no root to test): whatever zone it was stays.
+		expect.equal(WorldBinder.zoneFor(candidates, nil, lobby), lobby)
+		expect.equal(WorldBinder.zoneFor(candidates, nil, nil), nil)
+		-- With a character outside every zone (a match map far east): nil.
+		expect.equal(WorldBinder.zoneFor(candidates, Vector3.new(6000, 3, 0), lobby), nil)
+		local mat = WorldBinder.zoneFor(candidates, Vector3.new(-64, 3, 0), lobby)
+		expect.equal(mat and mat.zoneId, "squeeze")
 	end)
 
 	t.test("the Jelly gate, pod sign and lock decor helpers are gone (build plan Phase 6)", function()

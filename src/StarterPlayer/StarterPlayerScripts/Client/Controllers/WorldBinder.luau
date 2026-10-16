@@ -16,7 +16,8 @@
 -- * Audio zones: every Config.Audio.zoneCheckSeconds (0.25 s, §7.7) the local character's HumanoidRootPart is tested
 --   against the lobby zones of WorldLayout.AudioZones plus every streamed-in `SD_AudioZone` volume (arena clones
 --   carry theirs); the highest priority wins. currentZone() and the ZoneChanged signal expose it (SoundController
---   comes later).
+--   comes later). Music job (2026-10-16): while there is no character (dead, respawning) the zone stays as it was
+--   (zoneFor), so a respawn never restarts the music.
 -- Build plan Phase 6 removed the Jelly gates (SD_GripGate), the giant pads' pod signs (SD_GripSign) and lock decor
 -- (SD_GripLock) with their binders and the Grip level source (setGripSource).
 
@@ -320,19 +321,7 @@ end
 
 local function updateZone()
 	local root = localRoot()
-	local zone: ZoneInfo? = nil
-	if root then
-		local picked = WorldBinder.pickZone(zoneCandidates(), root.Position)
-		if picked then
-			zone = {
-				zoneId = picked.zoneId,
-				priority = picked.priority,
-				musicKey = picked.musicKey,
-				ambienceKey = picked.ambienceKey,
-				musicMul = picked.musicMul,
-			}
-		end
-	end
+	local zone = WorldBinder.zoneFor(zoneCandidates(), if root then root.Position else nil, currentZone)
 	local previous = currentZone
 	local previousId = if previous then previous.zoneId else nil
 	local nextId = if zone then zone.zoneId else nil
@@ -386,6 +375,26 @@ function WorldBinder.pickZone(candidates: { ZoneCandidate }, position: Vector3):
 		end
 	end
 	return best
+end
+
+-- Pure (music job, 2026-10-16): the zone after a check at `position` (the local character's root): pickZone's zone
+-- (its info only), nil outside every zone. With no position (no character: dead or respawning) `current` stays, so the
+-- music never fades out and restarts on a respawn.
+function WorldBinder.zoneFor(candidates: { ZoneCandidate }, position: Vector3?, current: ZoneInfo?): ZoneInfo?
+	if position == nil then
+		return current
+	end
+	local picked = WorldBinder.pickZone(candidates, position)
+	if picked == nil then
+		return nil
+	end
+	return {
+		zoneId = picked.zoneId,
+		priority = picked.priority,
+		musicKey = picked.musicKey,
+		ambienceKey = picked.ambienceKey,
+		musicMul = picked.musicMul,
+	}
 end
 
 -- Lifecycle ---------------------------------------------------------------------------------------------------------

@@ -30,6 +30,10 @@
 --   pickerShown(userId, match) UI FINAL R4: whether the DUEL button shows the TDM / FFA picker (Config.Match testers,
 --   or
 --                              everyone with pickerForEveryone)
+--   duelAction(pickerOn, mode, match?)
+--                              the owner's 1v1 tab (2026-10-16): a DUEL press with TEAM DEATHMATCH / FREE FOR ALL
+--                              picked joins the match queue ("match"); with the 1v1 tab (or no picker) the 1v1 queue
+--                              ("queue")
 --   trackerStatus(card)        UI FINAL R4: the quest tracker's status line: "Ready to claim!" (ready, the coin yellow)
 --                              or "+N coins" (H:995)
 -- Feel pass (§18.5.2 B1-B2; UI FINAL R4: the design's coin landing, H:562-578, H:663-675):
@@ -677,6 +681,18 @@ function HudFormat.pickerShown(userId: number?, match: any?): boolean
 		return true
 	end
 	return type(userId) == "number" and type(m.pickerTesters) == "table" and table.find(m.pickerTesters, userId) ~= nil
+end
+
+-- The owner's 1v1 tab (2026-10-16): what a DUEL press starts. A picked match mode (a key of Config.Match.Modes: TEAM
+-- DEATHMATCH, FREE FOR ALL) joins the in-server match queue ("match": MatchJoin(mode)); the 1v1 tab, any other pick
+-- or no picker the 1v1 queue ("queue": the "queue" screen's QueueJoin, as before the picker). `match` defaults to
+-- Config.Match.
+function HudFormat.duelAction(pickerOn: boolean, mode: string?, match: any?): "match" | "queue"
+	local modes = (match or Config.Match).Modes
+	if pickerOn and type(mode) == "string" and type(modes) == "table" and modes[mode] ~= nil then
+		return "match"
+	end
+	return "queue"
 end
 
 -- UI FINAL R4 (H:995): the quest tracker's status line: "Ready to claim!" for a quest ready to claim, else its reward

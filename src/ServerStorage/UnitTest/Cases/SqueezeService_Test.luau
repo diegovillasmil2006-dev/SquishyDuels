@@ -28,7 +28,12 @@
 --     training is gone, so GripService has nothing to disable);
 --   * one player's paid squeezes above Config.Grip.squeezeAlertPerHour in a rolling hour log one [SD][abuse] warning
 --     (spec 2026-10-12 §12; log only: the squeezes still pay; 8,000 since Batch 1 #2, so only riding the paid cap for
---     a whole hour passes it); the alert re-arms once the hour's squeezes are back under it.
+--     a whole hour passes it); the alert re-arms once the hour's squeezes are back under it;
+--   * auto-clicker check (2026-10-16): every request goes to AutoClickService.check first with its os.clock arrival
+--     time; a reason back is the reply (squeeze.autoClick / squeeze.tooFast) with no Coins, no Grip, no stats, no
+--     capsule push and no token of the paid cap used; wired to the real AutoClickService (enforce = "full"), a steady
+--     10/s macro is caught (one squeeze.autoClick, then a silent penalty) and a minute's hold never is (review fix
+--     2026-10-16: 19/s is the client ceiling's rhythm, never judged). The other cases switch it off.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -102,7 +107,8 @@ return function(t: Context)
 		return CapsuleMath.squeezeGrip(world.profile.capsules)
 	end
 
-	local function fresh(): World
+	-- `autoClick` = SqueezeService's AutoClickService.check dependency (auto-clicker check 2026-10-16); nil = off.
+	local function fresh(autoClick: ((player: any, now: number) -> string?)?): World
 		local world: World = {
 			clock = FakeClock.new(500),
 			unix = FakeClock.new(UNIX_START),
@@ -206,6 +212,10 @@ return function(t: Context)
 			end,
 			pushCapsules = function(_player: any, rootPosition: Vector3)
 				table.insert(world.pushes, rootPosition)
+			end,
+			-- Auto-clicker check (2026-10-16): off unless a case passes one (the cases at the end).
+			autoClick = autoClick or function(_player: any, _now: number): string?
+				return nil
 			end,
 		})
 		GripService.playerAdded(world.player)
@@ -702,5 +712,140 @@ return function(t: Context)
 		end)
 		expect.equal(#problems, 0)
 		finish()
+	end)
+
+	-- Auto-clicker check (2026-10-16) --------------------------------------------------------------------------------
+
+	t.test(
+		"AutoClickService is asked first, with the arrival time; its reason is the reply and costs nothing",
+		function()
+			local asked: { number } = {}
+			local answer: string? = "squeeze.autoClick"
+			local world = fresh(function(_player: any, now: number): string?
+				table.insert(asked, now)
+				return answer
+			end)
+			local refused = SqueezeService.request(world.player)
+			expect.deepEqual(asked, { world.clock.now() })
+			expect.equal(refused.ok, false)
+			expect.equal(refused.reason, "squeeze.autoClick")
+			expect.equal(refused.coins, 0)
+			expect.equal(refused.grip, 0)
+			expect.near(refused.nextAt, world.server.now(), 1e-6) -- the paid cap's tokens are all still there
+			answer = "squeeze.tooFast" -- the penalty
+			expect.equal(SqueezeService.request(world.player).reason, "squeeze.tooFast")
+			expect.equal(world.profile.coins, 0)
+			expect.equal(world.profile.grip.total, 0)
+			expect.equal(world.profile.stats.squeezes, 0)
+			expect.equal(#world.pushes, 0)
+			expect.equal(#world.squeezed, 0)
+			expect.equal(world.squeezeAt, nil)
+			-- Let through again: the whole bucket pays at once (the refusals used no token).
+			answer = nil
+			local replies = click(world, SQ.bucketCapacity, 0)
+			for _, result in replies do
+				expect.equal(result.ok, true)
+			end
+			expect.equal(world.profile.stats.squeezes, SQ.bucketCapacity)
+			finish()
+		end
+	)
+
+	-- A world whose SqueezeService asks the real AutoClickService, on the test's clocks; its kicks and bans are only
+	-- counted, never real.
+	local function wiredWorld(): (World, { kicks: number, bans: number })
+		local AutoClickService = t.requireServer("Services/AutoClickService")
+		local world = fresh(AutoClickService.check)
+		local seen = { kicks = 0, bans = 0 }
+		AutoClickService.reset()
+		AutoClickService.useDeps({
+			unixNow = world.unix.now,
+			isStudio = function(): boolean
+				return false
+			end,
+			profileOf = function(): any
+				return world.profile
+			end,
+			mutate = function(_player: any, fn: (profile: any) -> any): (boolean, any)
+				return true, fn(world.profile)
+			end,
+			requestSave = function() end,
+			banningEnabled = function(): boolean
+				return true
+			end,
+			ban = function(): (boolean, string?)
+				seen.bans += 1
+				return true, nil
+			end,
+			kick = function(): (boolean, string?)
+				seen.kicks += 1
+				return true, nil
+			end,
+			inGame = function(): boolean
+				return false
+			end,
+			later = function(fn: () -> ())
+				fn()
+			end,
+			rules = function(): any
+				local copy = table.clone(Config.Net.AutoClick)
+				copy.enforce = "full" -- the owner's steps (review fix 2026-10-16: the live value starts at "log")
+				return copy
+			end,
+		})
+		return world, seen
+	end
+
+	local function unwire()
+		local AutoClickService = t.requireServer("Services/AutoClickService")
+		AutoClickService.reset()
+		AutoClickService.useDeps(nil)
+		finish()
+	end
+
+	t.test(
+		"wired: a steady 10/s macro is caught once (squeeze.autoClick), then pays nothing during the penalty",
+		function()
+			local world, seen = wiredWorld()
+			local AUTO = Config.Net.AutoClick
+			local perSecond = 10
+			local replies = click(world, 60 * perSecond, 1 / perSecond)
+			local caughtAt: number? = nil
+			local warnings = 0
+			for i, result in replies do
+				if result.reason == "squeeze.autoClick" then
+					warnings += 1
+					caughtAt = caughtAt or i
+				end
+			end
+			expect.equal(warnings, 1) -- one short warning; the penalty is silent (squeeze.tooFast)
+			local index = caughtAt :: number
+			expect.truthy(index ~= nil and index <= AUTO.windowIntervals + 1) -- rule B's first window
+			for i = index + 1, #replies do
+				if replies[i].ok then
+					error(`press {i} paid during the penalty`) -- the 20 s after the catch are inside the 30 s penalty
+				end
+			end
+			expect.equal(world.profile.autoClick.step, 1)
+			expect.near(world.profile.autoClick.at, world.unix.now() - (#replies - index) / perSecond, 1e-3)
+			expect.equal(seen.kicks, 0) -- step 1 only warns
+			expect.equal(seen.bans, 0)
+			unwire()
+		end
+	)
+
+	t.test("wired: holding for a minute (the hold rhythm) is never judged and every press pays", function()
+		local world = wiredWorld()
+		local spacing = Config.Grip.Hold.repeatSeconds
+		local count = math.floor(60 / spacing)
+		local replies = click(world, count, spacing)
+		for i, result in replies do
+			if not result.ok then
+				error(`press {i}: {tostring(result.reason)}`)
+			end
+		end
+		expect.equal(world.profile.stats.squeezes, count)
+		expect.equal(world.profile.autoClick, nil) -- no strike was ever written
+		unwire()
 	end)
 end

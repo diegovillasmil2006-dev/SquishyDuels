@@ -15,7 +15,11 @@
 -- still writes them. Match HUD M2 (2026-10-16): `stats.winStreak` (the Free for All / Team Deathmatch win streak,
 -- default 0, a counter like the other stats) joined schema 2 the same way: no new version, so a server without it keeps
 -- it as an unknown stat (a version would make a player who saved on a new server READONLY on an old one during a
--- rolling update); reconcile fills it, sanitize clamps it with the other counters.
+-- rolling update); reconcile fills it, sanitize clamps it with the other counters. Auto-clicker check (2026-10-16):
+-- `autoClick = {step = 0, at = 0}` (the last auto-clicker strike: step 1 warned, 2 kicked, 3 banned, and its os.time;
+-- AutoClickService reads it so a rejoin within Config.Net.AutoClick.memorySeconds keeps the step) joined schema 2 the
+-- same way; sanitize: step a whole number in [0, AutoClickRules.MAX_STEP], at a whole number in [0, now + 300], and
+-- a non-finite one 0 (forgotten: a broken record never punishes anyone).
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -64,6 +68,7 @@ local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local TableUtil = require(Shared.Util.TableUtil)
 local Types = require(Shared.Types)
+local AutoClickRules = require(script.Parent.AutoClickRules)
 local DuelRewards = require(script.Parent.DuelRewards)
 
 -- Types
@@ -438,6 +443,7 @@ function ProfileSchema.defaults(now: number): Profile
 		samePair = {},
 		-- Spec 2026-10-12 §7: one capsule free, Kitty Bread at Lv 1.
 		capsules = { slots = 1, list = { { level = 1, squishyId = starter } } },
+		autoClick = { step = 0, at = 0 }, -- auto-clicker check (2026-10-16): no strike
 	}
 	return profile
 end
@@ -629,6 +635,13 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 
 	-- Capsules (spec 2026-10-12 §6-§7).
 	fixCapsules(d, catalog, problems)
+
+	-- Auto-clicker check (2026-10-16): the last strike (see the header).
+	local autoClick = ensureTable(d, "autoClick", function()
+		return { step = 0, at = 0 }
+	end, "autoClick", problems)
+	fixInt(autoClick, "step", 0, AutoClickRules.MAX_STEP, 0, "autoClick.step", problems)
+	fixInt(autoClick, "at", 0, now + FUTURE_SLACK_SECONDS, 0, "autoClick.at", problems)
 
 	return d, problems
 end

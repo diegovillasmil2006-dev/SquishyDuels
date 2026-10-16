@@ -3,7 +3,8 @@
 -- visuals (spec phase 5 §1.5-§1.8). Server only (ServerStorage.UnitTest). Edit mode: no instances.
 -- Contract (design numbers in Config.Vfx.Ultimates and Config.Abilities):
 --   * a drawn bird follows the server's straight path plus the design's glide arc (0.3 m peak) and wobble, and a drawn
---     bubble the design's 0.9 m sine arc: on the path at both ends (fp.js:241);
+--     bubble the design's 0.9 m sine arc: on the path at both ends (fp.js:241); Bubble Pop bounce (2026-10-16): a
+--     bounced bubble follows its first leg up to the bounce, then the bounce leg, with one arc over the whole flight;
 --   * the roller grows 0.5 -> 2.3 with the design's backOut over 0.3 s (fp.js:242, 342);
 --   * the lane marker is a flat 6 × 60 plate on the floor along the lane (fp.js:340-341);
 --   * a drop falls from 13 studs over the zone's centre to its point along k² in 0.3 s (fp.js:356, 371);
@@ -50,6 +51,39 @@ return function(t: Context)
 		local mid = UltFx.arcPoint(origin, dir, speed, duration / 2, duration, FX.bubbleArcStuds)
 		expect.near(mid.Y - origin.Y, 0.9 / 0.28, 1e-4)
 		near(UltFx.arcPoint(origin, dir, speed, duration, duration, FX.bubbleArcStuds), origin + dir * speed * duration)
+	end)
+
+	t.test("a bounced bubble turns onto its bounce leg there; one 0.9 m arc spans the whole flight", function()
+		local origin, dir = Vector3.new(0, 4.8, -38), Vector3.new(0, 0, 1)
+		local speed, duration = A.bubble_pop.speed, A.bubble_pop.popSeconds
+		local bounceAt = 30 -- studs: the first leg ends on cover at Z -8
+		local bounce = { at = bounceAt, origin = origin + dir * bounceAt, dir = Vector3.new(1, 0, 0) }
+		local arc = FX.bubbleArcStuds
+		local function lift(t: number): Vector3
+			return Vector3.new(0, math.sin(math.pi * t / duration) * arc, 0)
+		end
+		-- Before the bounce: the first leg, as without one.
+		local before = 0.5
+		near(
+			UltFx.arcPoint(origin, dir, speed, before, duration, arc, bounce),
+			origin + dir * speed * before + lift(before)
+		)
+		-- At the bounce itself: on the cover.
+		local at = bounceAt / speed
+		near(UltFx.arcPoint(origin, dir, speed, at, duration, arc, bounce), bounce.origin + lift(at))
+		-- After it: along the bounce leg; the flight's end is back on the path (arc 0).
+		local after = 1.0
+		near(
+			UltFx.arcPoint(origin, dir, speed, after, duration, arc, bounce),
+			bounce.origin + bounce.dir * (speed * after - bounceAt) + lift(after)
+		)
+		near(
+			UltFx.arcPoint(origin, dir, speed, duration, duration, arc, bounce),
+			bounce.origin + bounce.dir * (speed * duration - bounceAt)
+		)
+		-- The arc's top is halfway through the whole flight, not at the bounce.
+		local mid = UltFx.arcPoint(origin, dir, speed, duration / 2, duration, arc, bounce)
+		expect.near(mid.Y - origin.Y, 0.9 / 0.28, 1e-4)
 	end)
 
 	t.test("the roller grows 0.5 -> 2.3 with the design's backOut over 0.3 s, overshooting on the way", function()

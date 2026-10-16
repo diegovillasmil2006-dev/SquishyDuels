@@ -15,6 +15,8 @@
 -- client's test readout).
 -- Power-ups v1.1 (2026-10-16): match.powerUp.<kind> (the pickup toast), match.readout.powerUp and
 -- match.readout.powerUpName.<kind> (the test readout's live power-ups).
+-- Auto-clicker check (2026-10-16): reason.squeeze.autoClick (the warning) and autoClick.kick / kickNoBan / ban.
+-- Bubble Pop bounce (2026-10-16): ability.bubblePop.description says it bounces off cover once.
 
 export type FormatArgs = { [string]: any }
 
@@ -105,6 +107,9 @@ local Strings = {
 			-- Spec 2026-10-11 §5 (squeeze anywhere): a squeeze with no living character, the one refusal left of the old
 			-- station checks (the mat and pad-level codes are gone). Same words as queue.notReady.
 			noCharacter = "Wait until your character has loaded, then try again.",
+			-- Auto-clicker check (2026-10-16): the short warning of the first catch (once; the client shows it as a
+			-- toast and stops a hold). The next catch is a kick (autoClick.kick).
+			autoClick = "Robot-fast squeezes don't count! Turn off any auto-clicker, or you'll be removed from the game.",
 		},
 		box = {
 			restricted = BOX_RESTRICTED_TEXT,
@@ -186,6 +191,16 @@ local Strings = {
 		restartSoon = "This server will restart in {time}.",
 	},
 
+	-- Auto-clicker check (2026-10-16; server AutoClickService): the kick message (Player:Kick, the 2nd catch) and the
+	-- ban's DisplayReason (Players:BanAsync, at most 400 characters, filtered by Roblox; the 3rd catch). {hours} =
+	-- Config.Net.AutoClick.banSeconds / 3600. Review fix (2026-10-16): kickNoBan is the kick when no ban can follow
+	-- (Players.BanningEnabled off, or a test account), so the message never promises one.
+	autoClick = {
+		kick = "You were removed for using an auto-clicker. Turn it off and come back! If it happens again soon, you can't play for {hours} hours.",
+		kickNoBan = "You were removed for using an auto-clicker. Turn it off and come back!",
+		ban = "Auto-clickers aren't allowed in Squishy Duels. You can play again in {hours} hours.",
+	},
+
 	-- Lobby HUD (§11.6).
 	hud = {
 		nav = {
@@ -214,6 +229,11 @@ local Strings = {
 			ffa = "FREE FOR ALL",
 			ffaChip = "SOLO",
 			ffaShort = "FREE FOR ALL",
+			-- [P] The owner's 1v1 tab (2026-10-16: keep all of 1v1, a 3rd tab now; not in Diego's design, he may
+			-- rename it): "DUEL" + "1v1" like TEAM DEATHMATCH + 6v6; the short name alone where there is no room.
+			duel = "DUEL",
+			duelChip = "1v1",
+			duelShort = "1v1",
 		},
 		-- The quest tracker card (top right): "Ready to claim!" in the coin yellow, else its reward (H:995).
 		questReady = "Ready to claim!", -- UI overhaul: the tracker's quest is done and not claimed
@@ -510,12 +530,13 @@ local Strings = {
 			ready = "Rain Check ready",
 			description = "A rain cloud parks over your opponent and drops 5 raindrops. Each drop casts a shadow first, so walk out of the zone.",
 		},
-		-- design: ults.js:6 ("Slow and very visible: back off or bait the early pop.")
+		-- design: ults.js:6 ("Slow and very visible: back off or bait the early pop."). Bubble Pop bounce (2026-10-16):
+		-- the design's "bounces once" (ults.js:6) off cover.
 		bubblePop = {
 			name = "Bubble Pop",
 			incoming = "Bubble Pop incoming!",
 			ready = "Bubble Pop ready",
-			description = "Sends a slow bubble that pops with a big splash when it touches someone, hits cover or after a moment. Back off or make it pop early.",
+			description = "Sends a slow bubble that bounces off cover once, then pops with a big splash when it touches someone, hits cover again or after a moment. Back off or make it pop early.",
 		},
 	},
 

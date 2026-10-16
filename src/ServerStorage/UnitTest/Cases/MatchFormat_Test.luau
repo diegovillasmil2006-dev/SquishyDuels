@@ -16,6 +16,10 @@
 --     text, is left out); a pad's refill plays only when its readyAt rose above the one last played and lies ahead.
 --     Review fix (2026-10-16): no power-up pieces outside the live phase (Result, Returning); the refill handed to
 --     Diego's Collect ends a head start early, and one shorter than his pop is not played.
+--   * music job (2026-10-16): the local player's result of a finished match is the server's MatchRewards result (FFA
+--     winner / TDM winning team "win", the others "loss"; a draw "draw", in FFA only for the tied leaders), nil for a
+--     cancelled or void match or without an outcome; each result's jingle (DuelFormat) is a sound slot (its id comes
+--     from the owner's pick in the sound picker; review fix 2026-10-16).
 -- The texts and team names are passed in (the place's Strings may not have the match.readout keys yet).
 
 type Context = {
@@ -23,6 +27,7 @@ type Context = {
 	expect: any,
 	requireShared: (path: string) -> any,
 	requireClient: (path: string) -> any,
+	requireServer: (path: string) -> any,
 }
 
 return function(t: Context)
@@ -250,4 +255,76 @@ return function(t: Context)
 			expect.equal(MatchFormat.collectRefill(0 / 0, 0.2, 0.4), nil)
 		end
 	)
+
+	-- Music job (2026-10-16): the local player's result of a finished match (MatchController's result sting).
+	local function ended(you: any, outcome: any): any
+		return { you = you, outcome = outcome }
+	end
+
+	t.test("resultOf: FFA and TDM wins and losses, draws; nothing for cancelled, void or no outcome", function()
+		local me = { userId = 1 } -- FFA: no team
+		expect.equal(MatchFormat.resultOf(ended(me, { kind = "win", winnerUserId = 1, winners = { 1 } })), "win")
+		expect.equal(MatchFormat.resultOf(ended(me, { kind = "win", winnerUserId = 2, winners = { 2 } })), "loss")
+		local red = { userId = 1, team = "Red" }
+		expect.equal(MatchFormat.resultOf(ended(red, { kind = "win", winnerTeam = "Red", winners = { 1, 3 } })), "win")
+		expect.equal(MatchFormat.resultOf(ended(red, { kind = "win", winnerTeam = "Blue", winners = { 2 } })), "loss")
+		-- TDM: both teams wiped at once is a draw for everyone.
+		expect.equal(MatchFormat.resultOf(ended(red, { kind = "draw", winners = {} })), "draw")
+		-- FFA: overtime ran out tied: the tied leaders draw, the others lose; no leaders listed: a draw.
+		local tie = { kind = "draw", winners = { 1, 4 } }
+		expect.equal(MatchFormat.resultOf(ended(me, tie)), "draw")
+		expect.equal(MatchFormat.resultOf(ended({ userId = 9 }, tie)), "loss")
+		expect.equal(MatchFormat.resultOf(ended(me, { kind = "draw", winners = {} })), "draw")
+		-- Nothing to sting.
+		expect.equal(MatchFormat.resultOf(ended(me, nil)), nil)
+		expect.equal(MatchFormat.resultOf(ended(me, { kind = "cancelled", winners = {} })), nil)
+		expect.equal(MatchFormat.resultOf(ended(me, { kind = "void", winners = {} })), nil)
+		expect.equal(MatchFormat.resultOf(nil), nil)
+		-- A view without `you` (malformed) never wins.
+		expect.equal(MatchFormat.resultOf({ outcome = { kind = "win", winnerUserId = 1, winners = { 1 } } }), "loss")
+	end)
+
+	t.test("resultOf agrees with the server's MatchRewards (the win streak), and each result has its jingle", function()
+		local MatchRewards = t.requireServer("Logic/MatchRewards")
+		local DuelFormat = t.requireClient("UI/DuelFormat")
+		local AssetTable = t.requireShared("AssetTable")
+		local outcomes: { any } = {
+			{ kind = "win", winnerUserId = 1, winners = { 1 } },
+			{ kind = "win", winnerUserId = 2, winners = { 2 } },
+			{ kind = "win", winnerTeam = "Red", winners = { 1 } },
+			{ kind = "win", winnerTeam = "Blue", winners = { 2 } },
+			{ kind = "draw", winners = {} },
+			{ kind = "draw", winners = { 1, 2 } },
+			{ kind = "draw", winners = { 2, 3 } },
+			{ kind = "cancelled", winners = {} },
+			{ kind = "void", winners = {} },
+		}
+		local jingles = { win = "duel.win", loss = "duel.lose", draw = "duel.draw" }
+		-- Review fix (2026-10-16): each jingle is a sound slot; its id comes from the owner's pick (the sound picker).
+		local soundKeys: { [string]: boolean } = {}
+		for _, slot in AssetTable.all() do
+			if slot.kind == "sound" then
+				soundKeys[slot.key] = true
+			end
+		end
+		for _, outcome in outcomes do
+			for _, team in { "Red", "Blue", "" } do -- "" = FFA (no team)
+				local you = { userId = 1, team = if team ~= "" then team else nil }
+				local pay = MatchRewards.forPlayer(outcome, {
+					userId = 1,
+					team = you.team,
+					present = true,
+					isBot = false,
+					throws = 3,
+				})
+				local result = MatchFormat.resultOf(ended(you, outcome))
+				expect.equal(result, if pay then pay.result else nil)
+				if result ~= nil then
+					local jingle = DuelFormat.resultStyle(result).jingle
+					expect.equal(jingle, jingles[result])
+					expect.truthy(soundKeys[jingle] == true)
+				end
+			end
+		end
+	end)
 end

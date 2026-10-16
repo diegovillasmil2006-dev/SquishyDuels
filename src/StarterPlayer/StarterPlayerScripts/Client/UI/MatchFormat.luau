@@ -39,6 +39,12 @@
 --   The readout lists every live power-up after the overtime piece: `powerUp` "{name} {seconds}s" (e.g. "SPEED 4s"),
 --   {name} = match.readout.powerUpName.<kind> (Texts.powerUpNames); a kind without a name is left out. Review fix: only
 --   in the live phase (Active, overtime too); at Result and Returning nothing can be thrown or dashed any more.
+-- Music job (2026-10-16):
+--   resultOf(view) -> "win" | "loss" |     the local player's result of the finished match, the server's MatchRewards
+--     "draw" | nil                         rule (the win streak's): FFA the winner wins, everyone else loses; TDM the
+--                                          winning team wins; a draw draws, except an FFA draw (overtime ran out tied)
+--                                          where only the tied leaders draw and the others lose; nil without an
+--                                          outcome and for a cancelled / void match (MatchController's result sting)
 
 -- Services
 
@@ -99,6 +105,27 @@ MatchFormat.COMMANDS = table.freeze({
 	["/tdm"] = { action = "join", mode = "tdm" },
 	["/leave"] = { action = "leave" },
 })
+
+-- Music job (2026-10-16): the local player's result of a finished match (see the header; the same rule as the
+-- server's MatchRewards.resultOf, so the sting always agrees with the win streak).
+function MatchFormat.resultOf(view: any): string?
+	local outcome = if type(view) == "table" then view.outcome else nil
+	if type(outcome) ~= "table" or (outcome.kind ~= "win" and outcome.kind ~= "draw") then
+		return nil
+	end
+	local you = if type(view.you) == "table" then view.you else {}
+	if outcome.kind == "draw" then
+		local winners = outcome.winners
+		if you.team == nil and type(winners) == "table" and #winners > 0 then
+			return if table.find(winners, you.userId) ~= nil then "draw" else "loss"
+		end
+		return "draw"
+	end
+	if outcome.winnerTeam ~= nil then
+		return if you.team == outcome.winnerTeam then "win" else "loss"
+	end
+	return if outcome.winnerUserId ~= nil and outcome.winnerUserId == you.userId then "win" else "loss"
+end
 
 -- Private
 

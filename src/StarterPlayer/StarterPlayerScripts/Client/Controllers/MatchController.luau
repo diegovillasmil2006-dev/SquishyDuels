@@ -51,9 +51,15 @@
 --   at most PAD_STREAM_WAIT_SECONDS, then starts anyway (warned once). It also waits while a refill handed to his
 --   Collect on the same map in an earlier match still plays (his stop() leaves it running; a Start then would record
 --   the vanished pickup's size and keep that pad tiny on this client for the session).
+-- * Result sting (music job, 2026-10-16): once per match, when the view's outcome first arrives, the local player's
+--   result (MatchFormat.resultOf, the win streak's rule) plays a duel's jingle (DuelFormat.resultStyle: duel.win /
+--   duel.lose / duel.draw) Config.Audio.matchStingDelaySeconds later (Diego's end sound starts 250 ms after the final
+--   K.O., "Squishy Duels Match HUD.dc.html" M:570); nothing for a cancelled or void match, nothing once the look ended
+--   (its cleanup cancels the wait). The duel music itself is SoundController's (Config.Audio.battleMusic).
 -- API: attachDuelHud(hooks) -> detach (DuelController only); counts() (Studio debug); init(), start(), destroy().
--- Require direction (§7): StateController, NetController, ControlsController, ThrowController and UIController (plus
--- UI helpers and shared modules); DuelController requires this module in its init, never the other way round.
+-- Require direction (§7): StateController, NetController, ControlsController, SoundController, ThrowController and
+-- UIController (plus UI helpers and shared modules); DuelController requires this module in its init, never the other
+-- way round.
 
 -- Services
 
@@ -73,11 +79,13 @@ local Palette = require(Shared.Art.Palette)
 
 local Client = script.Parent.Parent
 local Chip = require(Client.UI.Components.Chip)
+local DuelFormat = require(Client.UI.DuelFormat)
 local MatchFormat = require(Client.UI.MatchFormat)
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
+local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local ThrowController = require(script.Parent.ThrowController)
 local UIController = require(script.Parent.UIController)
@@ -115,6 +123,7 @@ type Look = {
 	padsShown: { [string]: number },
 	padModels: { [string]: Instance },
 	streamDeadline: number?, -- review fix: os.clock() after which Start no longer waits for the pads to stream in
+	stung: boolean, -- music job: the result sting was handled (played or not needed)
 }
 
 -- Constants
@@ -637,6 +646,24 @@ local function stepLook(state: Look): boolean
 	return true
 end
 
+-- Music job (2026-10-16): the result sting, once per match (see the header).
+local function playResultSting(state: Look, view: StateController.MatchView)
+	if state.stung or view.outcome == nil then
+		return
+	end
+	state.stung = true
+	local result = MatchFormat.resultOf(view)
+	local jingle = if result ~= nil then DuelFormat.resultStyle(result).jingle else nil
+	if jingle == nil then
+		return
+	end
+	local key: string = jingle
+	local seconds = (Config.Audio :: any).matchStingDelaySeconds
+	state.cleanup:add(task.delay(if type(seconds) == "number" and seconds > 0 then seconds else 0, function()
+		SoundController.play(key)
+	end))
+end
+
 local function endLook()
 	local state = current
 	current = nil
@@ -661,6 +688,7 @@ local function beginLook(view: StateController.MatchView)
 		padsShown = {},
 		padModels = {},
 		streamDeadline = nil,
+		stung = false,
 	}
 	current = state
 	stats.looks += 1
@@ -701,6 +729,7 @@ local function onMatchChanged(view: StateController.MatchView?, old: StateContro
 	end
 	if state ~= nil then
 		guarded("pads", syncPads, state, view, Workspace:GetServerTimeNow()) -- power-ups v1.1 (SPEC P4)
+		guarded("sting", playResultSting, state, view) -- music job (2026-10-16)
 	end
 	local phaseChanged = old == nil or old.matchId ~= view.matchId or old.phase ~= view.phase
 	if not phaseChanged or state == nil then

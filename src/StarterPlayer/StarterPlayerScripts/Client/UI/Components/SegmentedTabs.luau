@@ -4,8 +4,10 @@
 -- picked (the DUEL button's TEAM DEATHMATCH / FREE FOR ALL picker, N:154-158, N:1252-1256).
 --   local picker = SegmentedTabs.new({ name = "Hud_DuelModes", tabs = { ... }, selected = "tdm",
 --   	onSelect = function(id) ... end, parent = wrap })
---   picker:select("ffa");   picker:selected() -> "ffa";   picker.tabs.ffa (the tab's TextButton);   picker:size(short?)
---   picker:setShort(on)   (each tab's `short` name alone, no chip: the HUD's narrow fit);   picker:destroy()
+--   picker:select("ffa");   picker:selected() -> "ffa";   picker.tabs.ffa (the tab's TextButton)
+--   picker:size(short?, chips?)   picker:setShort(on, chips?)   (each tab's `short` name alone, no chip: the HUD's
+--   narrow fit; with `chips` (2026-10-16, the owner's 1v1 tab makes three: [P] not in the design) the narrowest fit,
+--   each tab's chip word alone in its name's place, e.g. "6v6", "SOLO", "1v1");   picker:destroy()
 --   SegmentedTabs.gradientRotation(degrees, width, height)   pure: a screen angle as a UIGradient's Rotation
 -- The well (N:154): #2A1D45, a 4 px ink border drawn inside, radius 20, the 3 px highlight at .08, the 5 px ink lip,
 -- 5 px of padding round the tabs and 6 between them. Each tab (N:156-158) is a 52 px touch box (PR1) holding its 42 px
@@ -61,8 +63,9 @@ export type SegmentedTabs = {
 	order: { string }, -- the tab ids left to right
 	select: (self: SegmentedTabs, id: string) -> (),
 	selected: (self: SegmentedTabs) -> string,
-	size: (self: SegmentedTabs, short: boolean?) -> Vector2, -- base px, from its tabs (the HUD places the DUEL area)
-	setShort: (self: SegmentedTabs, on: boolean) -> (),
+	-- base px, from its tabs (the HUD places the DUEL area); `chips` (with `short`) the chip words alone
+	size: (self: SegmentedTabs, short: boolean?, chips: boolean?) -> Vector2,
+	setShort: (self: SegmentedTabs, on: boolean, chips: boolean?) -> (),
 	destroy: (self: SegmentedTabs) -> (),
 }
 
@@ -75,8 +78,9 @@ type Parts = {
 	label: TextLabel,
 	chip: Frame,
 	chipText: TextLabel,
-	full: number, -- the tab's width with its name and chip, and with its short name alone
+	full: number, -- the tab's width with its name and chip, with its short name alone, and with its chip word alone
 	short: number,
+	chips: number,
 	chipWidth: number,
 }
 
@@ -197,19 +201,21 @@ function SegmentedTabs.new(spec: Spec): SegmentedTabs
 	end
 
 	-- A tab's widths from its texts at the player's text size (Theme.textWidth; the picker's texts never change):
-	-- the border, the paddings, the label, the gap and the chip (its text and padding); short = the short name alone.
-	local function widths(label: string, chipText: string, shortLabel: string): (number, number, number)
+	-- the border, the paddings, the label, the gap and the chip (its text and padding); short = the short name alone;
+	-- chips = the chip's word alone in the label's place (2026-10-16).
+	local function widths(label: string, chipText: string, shortLabel: string): (number, number, number, number)
 		local frame = 2 * PICKER.tabBorder + PICKER.tabPadLeft + PICKER.tabPadRight
 		local chip = math.ceil(Theme.textWidth(chipText, "Chip")) + 2 * PICKER.chipPad
 		local full = frame + math.ceil(Theme.textWidth(label, "Small")) + PICKER.tabGapInside + chip
-		return full, frame + math.ceil(Theme.textWidth(shortLabel, "Small")), chip
+		local short = frame + math.ceil(Theme.textWidth(shortLabel, "Small"))
+		return full, short, chip, frame + math.ceil(Theme.textWidth(chipText, "Small"))
 	end
-	local isShort = false
-	-- A tab at its width (the full or the short one): its hit box and its gradient's turn for that face.
+	local isShort, isChips = false, false
+	-- A tab at its width (the full, the short or the chips one): its hit box and its gradient's turn for that face.
 	local function fit(tab: Tab, p: Parts)
-		local width = if isShort then p.short else p.full
+		local width = if isChips then p.chips elseif isShort then p.short else p.full
 		tabs[tab.id].Size = UDim2.fromOffset(width, HIT)
-		p.label.Text = if isShort then tab.short or tab.label else tab.label
+		p.label.Text = if isChips then tab.chip elseif isShort then tab.short or tab.label else tab.label
 		p.chip.Visible = not isShort
 		p.gradient.Rotation = SegmentedTabs.gradientRotation(tab.rotation, width, PICKER.tabHeight)
 	end
@@ -331,7 +337,7 @@ function SegmentedTabs.new(spec: Spec): SegmentedTabs
 			ZIndex = 3,
 			Parent = chip,
 		}, "Chip")
-		local full, short, chipWidth = widths(tab.label, tab.chip, tab.short or tab.label)
+		local full, short, chipWidth, chips = widths(tab.label, tab.chip, tab.short or tab.label)
 		local made: Parts = {
 			face = face,
 			lip = lip,
@@ -343,6 +349,7 @@ function SegmentedTabs.new(spec: Spec): SegmentedTabs
 			chipText = chipText,
 			full = full,
 			short = short,
+			chips = chips,
 			chipWidth = chipWidth,
 		}
 		parts[tab.id] = made
@@ -390,21 +397,23 @@ function SegmentedTabs.new(spec: Spec): SegmentedTabs
 		return current
 	end
 
-	function self.size(_: SegmentedTabs, short: boolean?): Vector2
+	function self.size(_: SegmentedTabs, short: boolean?, chips: boolean?): Vector2
 		local useShort = if short == nil then isShort else short
+		local useChips = if short == nil then isChips else useShort and chips == true
 		local width = 2 * (border + padding) + math.max(0, #order - 1) * PICKER.tabGap
 		for _, id in order do
 			local p = parts[id]
-			width += if useShort then p.short else p.full
+			width += if useChips then p.chips elseif useShort then p.short else p.full
 		end
 		return Vector2.new(width, root.Size.Y.Offset)
 	end
 
-	function self.setShort(_: SegmentedTabs, on: boolean)
-		if on == isShort then
+	function self.setShort(_: SegmentedTabs, on: boolean, chips: boolean?)
+		local onChips = on and chips == true
+		if on == isShort and onChips == isChips then
 			return
 		end
-		isShort = on
+		isShort, isChips = on, onChips
 		for _, tab in spec.tabs do
 			local p = parts[tab.id]
 			if p then

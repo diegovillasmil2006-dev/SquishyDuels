@@ -15,6 +15,9 @@
 -- Match HUD M2 (2026-10-16, owner Q3 / Q4; the results pills M:361-363 and the WIN STREAK box M:186-189):
 -- ProfileStats.winStreak (the saved win streak) and MatchRewardView / MatchOutcomeView.mine (what the match paid the
 -- receiving player, in Coins and Grip, and their streak before and after).
+-- Auto-clicker check (2026-10-16): AutoClickMemory, the profile's `autoClick` (the last auto-clicker strike), and the
+-- squeeze.autoClick reason of SqueezeResultPayload.
+-- Bubble Pop bounce (2026-10-16): UltimateBounce / UltimateEventPayload.bounce (the bubble's leg after its bounce).
 
 -- == Catalog (§4.1) ==
 
@@ -122,6 +125,9 @@ export type SamePairRecord = { [string]: { number } }
 -- (1..Capsule.maxLevel) and the squishy in it (nil = empty; a squishy sits in one capsule at a time).
 export type CapsuleState = { level: number, squishyId: string? }
 export type CapsulesState = { slots: number, list: { CapsuleState } }
+-- Auto-clicker check (2026-10-16): the last strike (server Services/AutoClickService): step 0 none, 1 warned, 2 kicked,
+-- 3 banned; at = its os.time (0 = none). A rejoin within Config.Net.AutoClick.memorySeconds keeps the step.
+export type AutoClickMemory = { step: number, at: number }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema).
@@ -147,6 +153,7 @@ export type ProfileV1 = {
 	grip: GripState, -- schemaVersion 2 (§17.10)
 	samePair: SamePairRecord, -- added within schemaVersion 2 (reconcile fills it; no migration)
 	capsules: CapsulesState, -- added within schemaVersion 2 (reconcile fills it; no old saves to fix, spec 2026-10-12 §14)
+	autoClick: AutoClickMemory, -- added within schemaVersion 2 the same way (2026-10-16); never sent to the client
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
@@ -523,7 +530,9 @@ export type SqueezeResultPayload = {
 	coins: number, -- Coins this squeeze paid (the "+N" popup only when > 0)
 	total: number, -- the Coins balance after it
 	limit: number, -- reading: whole points left in the squeeze Coins limit (floor of SqueezeLimit.current)
-	reason: string?, -- a §2.10 code when ok = false (squeeze.tooFast, squeeze.noCharacter, data.notReady, ...)
+	-- a §2.10 code when ok = false (squeeze.tooFast, squeeze.noCharacter, data.notReady, ...; squeeze.autoClick once
+	-- per auto-clicker strike, 2026-10-16)
+	reason: string?,
 	-- Server time (workspace:GetServerTimeNow() scale) of the next token of the paid-squeeze cap:
 	-- GetServerTimeNow() + max(0, 1 - tokens) × Config.Squeeze.cycleSeconds, converted by SqueezeService from its
 	-- os.clock() bucket (§17.10). Only a hold repeat looks at it (SqueezeController.sendDue).
@@ -624,6 +633,10 @@ export type UltimatePhase = "telegraph" | "release" | "cancel"
 -- Spec phase 5: one Flock Volley bird (its own projectile) and one Rain Check drop (an area hit), in a release.
 export type UltimateShot = { projId: number, origin: Vector3, dir: Vector3, length: number, releaseAt: number }
 export type UltimateDrop = { projId: number, position: Vector3, shadowAt: number, landAt: number }
+-- Bubble Pop bounce (2026-10-16): the bubble's second leg. It starts at `origin` (the end of the first leg, `length`
+-- studs from the event's origin, on the cover it bounces off) the moment the first leg ends, and flies `length` studs
+-- along `dir` (flat unit) at the event's speed.
+export type UltimateBounce = { origin: Vector3, dir: Vector3, length: number }
 export type UltimateEventPayload = {
 	phase: UltimatePhase,
 	casterId: number,
@@ -639,6 +652,7 @@ export type UltimateEventPayload = {
 	shots: { UltimateShot }?, -- release: Flock Volley's birds
 	center: Vector3?, -- release: Rain Check's zone centre, on the floor
 	drops: { UltimateDrop }?, -- release: Rain Check's drops
+	bounce: UltimateBounce?, -- release: Bubble Pop's leg after it bounced off cover (nil = no bounce)
 }
 
 -- Spec phase 5: an accepted dash, to the participants (practice: nearby players) so their clients play its pose and

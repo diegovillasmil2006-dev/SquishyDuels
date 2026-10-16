@@ -19,6 +19,8 @@
 -- Match HUD M2 (2026-10-16): Rewards is a table with a boolean `enabled` (it replaced rewardCoins, whole Coins >= 0;
 -- the pay's amounts and rules are Config.Economy.DuelRewards', which Config/init's economy check covers). The helpers'
 -- expectCoins is no longer used here; Config/init still passes it (the Helpers shape is unchanged).
+-- Match HUD M4 (2026-10-16): last, Config.UI.Match (the in-match screens' layer) through Config/ValidateMatchHud, on
+-- the same helpers and the sibling Config/UI (its header lists the rules), so Config/init does not grow.
 
 type Problems = { string }
 
@@ -41,6 +43,7 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 	local add, expect, expectPositive, expectNonNegative = h.add, h.expect, h.expectPositive, h.expectNonNegative
 	local expectCount, expectBetween, expectBoolean, expectText =
 		h.expectCount, h.expectBetween, h.expectBoolean, h.expectText
+	local checkHud = require(script.Parent.ValidateMatchHud)(h, require(script.Parent.UI)) -- Match HUD M4
 	local isNumber, show, sortedKeys = h.isNumber, h.show, h.sortedKeys
 
 	return function(problems: Problems)
@@ -217,5 +220,6 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 			end
 		end
 		expectBoolean(problems, `{p}.pickerForEveryone`, m.pickerForEveryone)
+		checkHud(problems) -- Match HUD M4: Config.UI.Match
 	end
 end

@@ -48,6 +48,8 @@ type Module = {
 -- 2026-10-15: DoubleJumpController (the duel's double jump) right after DashController, whose state and glow it reads.
 -- FFA/TDM v1 (2026-10-15): MatchController (the 12-player match's chat commands, look, lighting, storm wall and test
 -- readout) right after DuelController, whose HUD pieces it borrows (DuelController's init hands them over).
+-- Match HUD M4 (2026-10-16): MatchHudController (the base layer of Diego's in-match screens) right after
+-- MatchController; it requires only StateController and UIController.
 -- Feature 1 (2026-10-11): CatchController (the catch) right after ThrowController too, whose charge and hands it
 -- drives; the overlay, the duel HUD, the projectiles and the VFX read it.
 -- Kill banners (2026-10-16): KillBannerController (the killer's kill banner, its sound and burst) last: it listens to
@@ -88,6 +90,7 @@ local CONTROLLER_ORDER = {
 	"QueueController",
 	"DuelController",
 	"MatchController",
+	"MatchHudController",
 	"UltReadyTagController",
 	"SettingsController",
 	"OnboardingController",

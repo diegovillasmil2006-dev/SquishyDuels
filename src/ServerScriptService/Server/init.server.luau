@@ -38,6 +38,8 @@ type Module = {
 -- reads the duel results, Grip levels and FriendDuelService's friend matches).
 -- FFA/TDM v1 (2026-10-15): MatchMapService then MatchService after FriendDuelService: MatchService reads
 -- CharacterService, CombatService, AbilityService, QueueService (state, Joined), NetService and MatchMapService.
+-- Auto-clicker check (2026-10-16): AutoClickService right before SqueezeService, which requires it and asks it about
+-- every squeeze (it reads profiles through StateService's data port).
 local SERVICE_ORDER = {
 	"MonetizationService",
 	"NetService",
@@ -52,6 +54,7 @@ local SERVICE_ORDER = {
 	"BaseService",
 	"GripService",
 	"CapsuleService",
+	"AutoClickService", -- 2026-10-16: the auto-clicker check SqueezeService asks first (validates its config at init)
 	"SqueezeService",
 	"PracticeService",
 	"ArenaService",

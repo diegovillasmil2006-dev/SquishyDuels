@@ -9,8 +9,10 @@
 -- The bucket below is the paid-squeeze cap: 2 at once, then 1 every cycleSeconds (= Grip.Hold.repeatSeconds, 0.45 s),
 -- so over any t seconds at most 2 + t / 0.45 squeezes pay (8,000 an hour, G3), whether held, clicked or sent by a
 -- macro. A request over it is squeeze.tooFast: no Coins, no Grip, no capsule push, and the client shows nothing for
--- it. The client sends at most bucketCapacity requests inside bucketCapacity × cycleSeconds; a click over that still
--- squishes on screen but is not sent. Config.validate: bucketCapacity >= 1, floodPerSecond >= the cap (capacity and
+-- it. Auto-clicker check (2026-10-16): the client still sends a click over the cap (it pays nothing), at most
+-- Config.Net.AutoClick.clientPressesPerSecond a second and none while a reply is late, so the server sees the real
+-- press rhythm (before, a click over bucketCapacity inside bucketCapacity × cycleSeconds only squished on screen; a
+-- hold repeat over it still is not sent). Config.validate: bucketCapacity >= 1, floodPerSecond >= the cap (capacity and
 -- 1 / cycleSeconds), Config.Net.Remotes.SqueezeRequest.rate = floodPerSecond (its burst holds 5 s of the cap),
 -- floodLogDrops >= that burst - floodPerSecond, Grip.Hold.repeatSeconds >= the release pop end of every rarity
 -- (Config.Anim.squeeze) and = cycleSeconds, padMargin in [0, 2] and heightAbove in (0, 8].

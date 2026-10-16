@@ -27,8 +27,14 @@
 --   finds the pad itself) goes at once, without waiting for the last reply. It is sent while the client is under the
 --   server's paid-squeeze cap (Config.Squeeze: 2 at once, then 1 per cycleSeconds = Hold.repeatSeconds): it never
 --   sends more than Config.Squeeze.bucketCapacity requests inside bucketCapacity × cycleSeconds (0.9 s, underCap,
---   pure). A fresh press over it still squishes on screen but is not sent (it pays nothing, no "+N", nothing negative
---   shown). While held, the repeat goes at a relaxed rhythm of one full squeeze animation: max(nextAt +
+--   pure). Auto-clicker check (2026-10-16): a fresh press over it is still sent, so the server sees the real press
+--   rhythm (it pays nothing: squeeze.tooFast, no "+N", nothing negative shown), at most
+--   Config.Net.AutoClick.clientPressesPerSecond inside any rolling second and none while a reply is late by more than
+--   Hold.repeatSeconds + replyGraceSeconds (pressSendable, pure: a network stall would queue them up against the
+--   remote's flood limits); past that it only squishes on screen. A hold repeat over the cap is still not sent.
+--   Review fix (2026-10-16): none at all while the check is off (pressCap: Config.Net.AutoClick.enabled false, or a
+--   config Config/ValidateAutoClick refuses, as the server's check does).
+--   While held, the repeat goes at a relaxed rhythm of one full squeeze animation: max(nextAt +
 --   Hold.leadSeconds, lastSend + Hold.repeatSeconds) (SqueezeResult.nextAt is SERVER time,
 --   Workspace:GetServerTimeNow()); with no SqueezeResult within repeatSeconds + Hold.replyGraceSeconds (a flood-guard
 --   drop has no reply) the next repeat goes anyway (sendDue, pure). Clicking pays no faster than holding. "+N Coins"
@@ -133,6 +139,7 @@ local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
+local ValidateAutoClick = require(Shared.Config.ValidateAutoClick)
 local WorldLayout = require(Shared.World.WorldLayout)
 
 local Client = script.Parent.Parent
@@ -267,9 +274,13 @@ type FloatLabel = {
 
 local STATION_RADIUS = Config.Squeeze.stationRadius
 -- The client side of the server's paid-squeeze cap (Batch 1 #2): at most CAP sends inside CAP_WINDOW seconds
--- (bucketCapacity in bucketCapacity × cycleSeconds = 2 in 0.9 s); a fresh press over it plays but is not sent.
+-- (bucketCapacity in bucketCapacity × cycleSeconds = 2 in 0.9 s). Auto-clicker check (2026-10-16): a fresh press over
+-- it is still sent (pressSendable): at most PRESS_CAP a second, none once a reply is STALL_SECONDS late. Review fix
+-- (2026-10-16): PRESS_CAP is pressCap's, set by init(): 0 while the check is off.
 local CAP = Config.Squeeze.bucketCapacity
 local CAP_WINDOW = Config.Squeeze.bucketCapacity * Config.Squeeze.cycleSeconds
+local PRESS_CAP = 0
+local STALL_SECONDS = Config.Grip.Hold.repeatSeconds + Config.Grip.Hold.replyGraceSeconds
 local OTHERS_CULL_STUDS = Config.Squeeze.othersCullStuds
 local HOLD: HoldConfig = Config.Grip.Hold
 local RESTED_MULT = Config.Grip.Rested.mult
@@ -339,6 +350,8 @@ local labelShown = false -- the floating label shows (labelShownFor)
 local virtualHeld = false
 local sendState: SendState = { lastSendAt = nil, replied = true, nextAt = 0 }
 local recentSends: { number } = {} -- os.clock() of the last CAP sends (underCap)
+local pressSends: { number } = {} -- os.clock() of the last PRESS_CAP sends (pressSendable)
+local waitingSince: number? = nil -- os.clock() of the first send since the last reply (nil: none waits)
 local sends = 0
 local lastStopReason: StopReason? = nil
 local lastResult: Result? = nil
@@ -832,15 +845,19 @@ end
 
 -- Sends one SqueezeRequest if it is due (a fresh press always is; a hold repeat follows sendDue) and the client is
 -- under the paid-squeeze cap (underCap); anywhere in the lobby (spec 2026-10-11 §5: the server finds the pad).
--- Plays the local squeeze at once (it restarts from the top on every press). Returns true when it was sent. A fresh
--- press over the cap still squishes on screen but is not sent, so it pays nothing and shows no "+N" (Batch 1 #2).
+-- Plays the local squeeze at once (it restarts from the top on every press). Returns true when it was sent.
+-- Auto-clicker check (2026-10-16): a fresh press over the cap is still sent while pressSendable (it pays nothing and
+-- shows no "+N": the server only times it); one past that, or a hold repeat over the cap, only squishes on screen.
 local function trySend(fresh: boolean): boolean
 	local now = serverNow()
 	if now < SqueezeController.sendDue(sendState, fresh, HOLD) then
 		return false
 	end
 	local clock = os.clock()
-	if not SqueezeController.underCap(recentSends, clock, CAP, CAP_WINDOW) then
+	if
+		not SqueezeController.underCap(recentSends, clock, CAP, CAP_WINDOW)
+		and not (fresh and SqueezeController.pressSendable(pressSends, clock, waitingSince, PRESS_CAP, STALL_SECONDS))
+	then
 		if fresh then
 			SqueezeController.playLocal()
 		end
@@ -852,6 +869,13 @@ local function trySend(fresh: boolean): boolean
 	table.insert(recentSends, clock)
 	while #recentSends > CAP do
 		table.remove(recentSends, 1)
+	end
+	table.insert(pressSends, clock)
+	while #pressSends > PRESS_CAP do
+		table.remove(pressSends, 1)
+	end
+	if waitingSince == nil then
+		waitingSince = clock
 	end
 	sendState.lastSendAt = now
 	sendState.replied = false
@@ -967,6 +991,7 @@ local function onResult(raw: unknown)
 	end
 	lastResult = result
 	sendState.replied = true
+	waitingSince = nil -- a reply came: no stall (pressSendable)
 	local nextAt = result.nextAt
 	if nextAt then
 		sendState.nextAt = nextAt
@@ -1133,8 +1158,9 @@ end
 
 -- §17.3.2 (Batch 1 #2: squeezes pay up to the hold rhythm): the server time at which the next SqueezeRequest may go
 -- out. A fresh press goes at once (-math.huge: it never waits for a reply, the server's nextAt or the hold rhythm; only
--- underCap can hold it back). A hold repeat goes at max(nextAt + leadSeconds, lastSend + repeatSeconds): one full
--- squeeze animation per repeat (Config.Grip.Hold.repeatSeconds), later only while the cap's bucket is empty. While the
+-- underCap and, over the cap, pressSendable can hold it back). A hold repeat goes at max(nextAt + leadSeconds,
+-- lastSend + repeatSeconds): one full squeeze animation per repeat (Config.Grip.Hold.repeatSeconds), later only while
+-- the cap's bucket is empty. While the
 -- reply to the last send is missing, a hold repeat waits until lastSend + repeatSeconds + replyGraceSeconds (a
 -- flood-guard drop has no reply, so the hold never stalls).
 -- Reading: DESIGN's "max(nextAt, serverNow) + 0.05 s" is evaluated every frame, so "serverNow + 0.05" would never be
@@ -1164,6 +1190,34 @@ function SqueezeController.underCap(sentAt: { number }, now: number, capacity: n
 		end
 	end
 	return inWindow < capacity
+end
+
+-- Auto-clicker check (2026-10-16): whether a fresh press over the paid cap is still sent (it pays nothing; the server
+-- times the presses, server AutoClickService): fewer than `capacity` sends inside the last second (`sentAt`, the clock
+-- times of the recent sends; Config.Net.AutoClick.clientPressesPerSecond, under the server's flood guard) and no reply
+-- late: `waitingSince` (the clock time of the first send since the last reply, nil when none waits) at most
+-- `stallSeconds` ago. In a network stall the presses would queue up and arrive at once, over the remote's limits.
+function SqueezeController.pressSendable(
+	sentAt: { number },
+	now: number,
+	waitingSince: number?,
+	capacity: number,
+	stallSeconds: number
+): boolean
+	if waitingSince ~= nil and now - waitingSince > stallSeconds then
+		return false
+	end
+	return SqueezeController.underCap(sentAt, now, capacity, 1)
+end
+
+-- Review fix (2026-10-16, job autoclick): pressSendable's capacity: `rules.clientPressesPerSecond` while the check is
+-- on (rules.enabled and no `problems` from Config/ValidateAutoClick, the server's own check), else 0 (the off switch:
+-- the server would only answer them squeeze.tooFast, so none is sent).
+function SqueezeController.pressCap(
+	rules: { enabled: boolean, clientPressesPerSecond: number },
+	problems: { string }
+): number
+	return if rules.enabled == true and #problems == 0 then rules.clientPressesPerSecond else 0
 end
 
 -- §17.3.2: why a running hold must stop now, or nil to keep going (checked every frame and before every send). Where
@@ -1553,6 +1607,7 @@ end
 -- Lifecycle
 
 function SqueezeController.init()
+	PRESS_CAP = SqueezeController.pressCap(Config.Net.AutoClick, ValidateAutoClick(Config, Strings))
 	local c = Cleanup.new()
 	cleanup = c
 	c:add(ControlsController.bindAction(ACTION, onAction))
@@ -1606,6 +1661,8 @@ function SqueezeController.init()
 		table.clear(coinPopups)
 		table.clear(lineFolds)
 		table.clear(recentSends)
+		table.clear(pressSends)
+		waitingSince = nil
 	end)
 end
 
