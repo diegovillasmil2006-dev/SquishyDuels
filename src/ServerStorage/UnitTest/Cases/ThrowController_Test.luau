@@ -598,6 +598,20 @@ return function(t: Context)
 		end
 	)
 
+	t.test("aimHits: a hit far past the opponent (the next arena slot) counts as a miss (bug 2026-10-15)", function()
+		local margin = Config.Combat.Aim.farHitMarginStuds
+		-- the opponent ~60 studs along the ray; the neighbour slot's near end rail at ~163, an off-lane dome at ~191
+		expect.falsy(ThrowController.aimHits(163, 60, margin, 200))
+		expect.falsy(ThrowController.aimHits(191, 60, margin, 200))
+		-- the opponent, cover before him, and the floor or cover just behind him stay hits
+		expect.truthy(ThrowController.aimHits(60, 60, margin, 200))
+		expect.truthy(ThrowController.aimHits(25, 60, margin, 200))
+		expect.truthy(ThrowController.aimHits(60 + margin, 60, margin, 200))
+		-- no hit is never a hit; nothing to anchor on (missAt = the cap) keeps every hit as before
+		expect.falsy(ThrowController.aimHits(nil, 60, margin, 200))
+		expect.truthy(ThrowController.aimHits(190, 200, margin, 200))
+	end)
+
 	t.test("an aim ray into open sky stops at the opponent's distance, not 200 studs (no lob to the moon)", function()
 		-- Part 4 user test: camera 12 studs behind pad A, the opponent on pad B 88 studs away, the crosshair a little
 		-- above the opponent (sky). The old 200-stud point gave a ~34° lob landing far past the court.

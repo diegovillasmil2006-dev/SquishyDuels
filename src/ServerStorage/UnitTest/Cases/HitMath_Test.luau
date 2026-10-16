@@ -273,4 +273,31 @@ return function(t: Context)
 		expect.truthy(HitMath.inZone(Vector3.new(100, 0, 4.5), zone))
 		expect.falsy(HitMath.inZone(Vector3.new(104.5, 0, 0), zone))
 	end)
+
+	-- pointInShape (user bug 2026-10-15: the movement guard snapped players standing next to round cover back) -------
+
+	t.test("pointInShape: a stump (Cylinder) is round: box corner outside, middle inside", function()
+		-- Pinewood's Cover_A_Stump1.Body: 3.5 long along its X axis, 6.3 across; stood up (axis along world Y).
+		local cf = CFrame.new(10, 1.75, -30) * CFrame.Angles(0, 0, math.rad(90))
+		local size = Vector3.new(3.5, 6.3, 6.3)
+		local d = 4.15 * math.cos(math.rad(45)) -- 45 degrees off the centre, 1 stud clear of the side (radius 3.15)
+		expect.falsy(HitMath.pointInShape(Vector3.new(10 + d, 1.75, -30 + d), cf, size, "Cylinder"))
+		expect.truthy(HitMath.pointInShape(Vector3.new(11, 1.75, -30), cf, size, "Cylinder"))
+		expect.falsy(HitMath.pointInShape(Vector3.new(11, 4, -30), cf, size, "Cylinder")) -- above its top
+		-- the old bounding box would have counted that 45-degree point
+		local box = Vector3.new(6.3, 3.5, 6.3)
+		local corner = Vector3.new(10 + d, 1.75, -30 + d)
+		expect.truthy(HitMath.pointInShape(corner, CFrame.new(10, 1.75, -30), box, "Block"))
+	end)
+
+	t.test("pointInShape: a Ball's box corner is outside, its centre inside; a turned Block uses its box", function()
+		local ball = CFrame.new(0, 3, 0)
+		expect.truthy(HitMath.pointInShape(Vector3.new(0, 3, 0), ball, Vector3.new(4, 4, 4), "Ball"))
+		expect.falsy(HitMath.pointInShape(Vector3.new(1.8, 4.8, 1.8), ball, Vector3.new(4, 4, 4), "Ball"))
+		-- a crate turned 17 degrees about Y: a world-axis corner point sits outside its own box
+		local crate = CFrame.new(0, 2, 0) * CFrame.Angles(0, math.rad(17), 0)
+		local size = Vector3.new(4, 4, 4)
+		expect.truthy(HitMath.pointInShape(Vector3.new(0, 2, 0), crate, size, "Block"))
+		expect.falsy(HitMath.pointInShape(Vector3.new(2.3, 2, 2.3), crate, size, "Block"))
+	end)
 end

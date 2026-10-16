@@ -1880,11 +1880,16 @@ local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 		return
 	end
 	local opponentHalf = zones[HALF_BY_SIDE[if fighter.side == "A" then "B" else "A"]]
-	local insideGeometry = #Workspace:GetPartBoundsInBox(
-			root.CFrame,
-			GUARD.geometryProbeSize,
-			port.arena.overlapParams
-		) > 0
+	-- The box query is only a cheap first pass over bounding boxes; each hit's real shape decides (user bug 2026-10-15:
+	-- round or turned cover has empty "inside" corners, so players walking NEXT TO it were snapped back = stutter).
+	local insideGeometry = false
+	for _, part in Workspace:GetPartBoundsInBox(root.CFrame, GUARD.geometryProbeSize, port.arena.overlapParams) do
+		local shape = if part:IsA("Part") then (part :: Part).Shape.Name else "Block"
+		if part.CanCollide and HitMath.pointInShape(root.Position, part.CFrame, part.Size, shape) then
+			insideGeometry = true
+			break
+		end
+	end
 	-- Held in place: the Countdown freeze on the own pad, or a Dragon Rush root (telegraph + recovery) where the
 	-- player stands, with the stopping distance a root that starts mid-run takes to reach this server.
 	local countdown = port.phase() == "Countdown"

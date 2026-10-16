@@ -208,7 +208,7 @@ return function(t: Context)
 	end
 
 	-- Two duelists on their pads (A at -Z facing +Z, B at +Z facing -Z) in a registered Active match.
-	local function duel(boundsSize: Vector3?, playerA: any?): (any, any, PortState, Part, Part)
+	local function duel(boundsSize: Vector3?, playerA: any?): (any, any, PortState, Part, Part, any)
 		local rootA = rootPart(A_ROOT, Vector3.new(0, 0, 1))
 		local rootB = rootPart(B_ROOT, Vector3.new(0, 0, -1))
 		local a = fighter(1, "A", rootA, playerA)
@@ -217,7 +217,7 @@ return function(t: Context)
 		CombatService.registerMatch(port)
 		a.nextThrowAt = clock.now() -- Active start
 		b.nextThrowAt = clock.now()
-		return a, b, state, rootA, rootB
+		return a, b, state, rootA, rootB, port
 	end
 
 	local function releaseOrigin(root: Part): Vector3
@@ -667,6 +667,33 @@ return function(t: Context)
 		expect.truthy(late.ended)
 		expect.equal(late.outcome.winner, "B")
 		expect.equal(late.participants.B.lives, RULES.Lives)
+	end)
+
+	t.test("movement guard: walking NEXT TO round cover never pivots back; inside it does (bug 2026-10-15)", function()
+		setup()
+		local _, _, _, rootA, _, port = duel(nil, { UserId = 1 })
+		-- Pinewood's stump: a Cylinder 3.5 long (its X axis, stood up) and 6.3 across, on the floor of A's half.
+		local stump = Instance.new("Part")
+		stump.Shape = Enum.PartType.Cylinder
+		stump.Size = Vector3.new(3.5, 6.3, 6.3)
+		stump.CFrame = CFrame.new(10, 1.75, -30) * CFrame.Angles(0, 0, math.rad(90))
+		stump.Anchored = true
+		stump.Parent = workspace
+		port.arena.overlapParams.FilterDescendantsInstances = { stump }
+		local ok, err = pcall(function()
+			local now = clock.now()
+			local d = 4.15 * math.cos(math.rad(45)) -- 45 degrees off its centre, 1 stud clear of its side
+			rootA.CFrame = CFrame.new(10 + d + 2, 3, -30 + d + 2)
+			CombatService.guardStep(now)
+			rootA.CFrame = CFrame.new(10 + d, 3, -30 + d) -- inside the stump's bounding box, outside the stump
+			CombatService.guardStep(now + 0.2)
+			expect.equal(CombatService.counters().guardPivots, 0)
+			rootA.CFrame = CFrame.new(10.5, 3, -30) -- inside the stump itself
+			CombatService.guardStep(now + 0.4)
+			expect.equal(CombatService.counters().guardPivots, 1)
+		end)
+		stump:Destroy()
+		assert(ok, err)
 	end)
 
 	t.test("movement guard: Countdown holds the fighter on its pad; a Dragon Rush root holds it in place", function()

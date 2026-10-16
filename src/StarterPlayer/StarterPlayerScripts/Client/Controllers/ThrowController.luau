@@ -667,6 +667,17 @@ function ThrowController.applyAimAssist(
 	return aimPoint:Lerp(target, math.clamp(strength, 0, 1)), true
 end
 
+-- True when a camera ray's hit becomes the aim point: a hit no farther than missAt + margin (missAt = missReach). A
+-- farther hit (user bug 2026-10-15: the NEXT arena slot 160-200 studs behind the opponent; the arc to it went "to the
+-- sky") counts like open sky, so the throw leaves along the crosshair. No hit: false. missAt >= maxReach (nothing to
+-- anchor on): every hit counts, as before. Pure.
+function ThrowController.aimHits(hitDistance: number?, missAt: number, margin: number, maxReach: number): boolean
+	if hitDistance == nil then
+		return false
+	end
+	return missAt >= maxReach or hitDistance <= missAt + margin
+end
+
 -- Flat ultimate direction from `from` toward `to`; the fallback heading when they are (almost) above each other.
 function ThrowController.flatAim(from: Vector3, to: Vector3, fallback: Vector3): Vector3
 	local flat = Vector3.new(to.X - from.X, 0, to.Z - from.Z)
@@ -1107,8 +1118,11 @@ local function cameraAim(): (Vector3?, Vector2, boolean, Ray?, boolean)
 	local ray = camera:ViewportPointToRay(screen.X, screen.Y)
 	local reach = COMBAT.Aim.maxRayStuds
 	local result = Workspace:Raycast(ray.Origin, ray.Direction * reach, refreshAimParams())
-	local point = if result then result.Position else ray.Origin + ray.Direction.Unit * missReachFor(ray)
-	return point, screen, centered, ray, result ~= nil
+	local missAt = missReachFor(ray)
+	local hit =
+		ThrowController.aimHits(if result then result.Distance else nil, missAt, COMBAT.Aim.farHitMarginStuds, reach)
+	local point = if hit and result then result.Position else ray.Origin + ray.Direction.Unit * missAt
+	return point, screen, centered, ray, hit
 end
 
 local function hasLineOfSight(from: Vector3, to: Vector3, targetModel: Instance?): boolean

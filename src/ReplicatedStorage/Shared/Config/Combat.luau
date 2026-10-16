@@ -78,6 +78,10 @@ local Combat = {
 	-- Aiming and throw input (§5.10).
 	Aim = {
 		maxRayStuds = 200, -- mouse ray without a hit aims this far along the ray
+		-- A ray hit farther than the miss distance (the opponent's / farthest practice target's) + this many
+		-- studs counts as a miss: the throw leaves along the crosshair (user bug 2026-10-15: a crosshair just past
+		-- the opponent hit the NEXT arena slot 160-200 studs away; the arc went "to the sky"). Covers the backstop.
+		farHitMarginStuds = 10,
 		touchShoulderOffsetStuds = 1.75, -- Humanoid.CameraOffset = HRP:VectorToObjectSpace(camRight * 1.75)
 		triggerThreshold = 0.5, -- ButtonR2 / ButtonL2 count as pressed above this
 	},

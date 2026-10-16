@@ -16,6 +16,7 @@
 --   HitMath.capsuleEntry(p0, p1, sphereRadius, capsule) -> number?       first touching fraction of the step p0->p1
 --   HitMath.laneHit(origin, endpoint, radius, capsule)  -> (boolean, dist) a sphere swept origin->endpoint (a lane)
 --   HitMath.inZone(point, zone, horizontalMargin?)      -> boolean       zone box {cframe, size}; margin grows X and Z
+--   HitMath.pointInShape(point, cframe, size, shape)    -> boolean       inside the real shape (Block/Ball/Cylinder)
 --
 -- Reading (DESIGN §5.5 gives sEntry = max(0, s - sqrt(R² - dist²)/|step|)): that closed form is exact only when the
 -- step is perpendicular to the capsule axis. capsuleEntry returns the exact first touch for any step direction: the
@@ -134,6 +135,23 @@ function HitMath.inZone(point: Vector3, zone: Zone, horizontalMargin: number?): 
 	return math.abs(localPoint.X) <= half.X + margin
 		and math.abs(localPoint.Y) <= half.Y
 		and math.abs(localPoint.Z) <= half.Z + margin
+end
+
+-- True when `point` lies inside a part's real shape: the movement guard's "inside cover" check (user bug 2026-10-15: a
+-- bounding-box test flagged players standing NEXT TO round or turned cover and snapped them back several times a
+-- second). `shape` is the PartType name: "Ball" (radius = half the smallest side), "Cylinder" (axis along the part's X:
+-- |x| <= length / 2 and the distance from the axis <= half the smaller of Y and Z), anything else the part's own
+-- (turned) box.
+function HitMath.pointInShape(point: Vector3, cframe: CFrame, size: Vector3, shape: string): boolean
+	local p = cframe:PointToObjectSpace(point)
+	local half = size / 2
+	if shape == "Ball" then
+		return p.Magnitude <= math.min(half.X, half.Y, half.Z)
+	elseif shape == "Cylinder" then
+		local radius = math.min(half.Y, half.Z)
+		return math.abs(p.X) <= half.X and p.Y * p.Y + p.Z * p.Z <= radius * radius
+	end
+	return math.abs(p.X) <= half.X and math.abs(p.Y) <= half.Y and math.abs(p.Z) <= half.Z
 end
 
 return table.freeze(HitMath)

@@ -659,6 +659,7 @@ local function checkCombat(problems: Problems)
 	end
 
 	expectPositive(problems, `{p}.Aim.maxRayStuds`, Combat.Aim.maxRayStuds)
+	expectNonNegative(problems, `{p}.Aim.farHitMarginStuds`, Combat.Aim.farHitMarginStuds)
 	expectNonNegative(problems, `{p}.Aim.touchShoulderOffsetStuds`, Combat.Aim.touchShoulderOffsetStuds)
 	expectBetween(problems, `{p}.Aim.triggerThreshold`, Combat.Aim.triggerThreshold, 0, 1)
 
