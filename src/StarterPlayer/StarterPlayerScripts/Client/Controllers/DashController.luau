@@ -346,11 +346,15 @@ local function coverParams(): RaycastParams
 	return params
 end
 
-local function endDistance(origin: Vector3, dir: Vector3, zone: Types.ArenaZone?): number
+-- The dash's length: distanceStuds, cut at cover and walls and kept inside the zone. The Spherecast starts one body
+-- radius BEHIND the HRP (bug fix 2026-10-15): a shapecast skips parts it already overlaps at its start, so cover the
+-- body is touching was ignored and a dash into it got its full 14 studs of push (a player was flung).
+function DashController.endDistance(origin: Vector3, dir: Vector3, zone: Types.ArenaZone?): number
 	local distance = DASH.distanceStuds
-	local hit = Workspace:Spherecast(origin, DASH.bodyRadiusStuds, dir * distance, coverParams())
+	local back = DASH.bodyRadiusStuds
+	local hit = Workspace:Spherecast(origin - dir * back, DASH.bodyRadiusStuds, dir * (distance + back), coverParams())
 	if hit then
-		distance = math.clamp(hit.Distance, 0, distance)
+		distance = math.clamp(hit.Distance - back, 0, distance)
 	end
 	if zone ~= nil then
 		distance = math.min(distance, DashMath.clampToZone(origin, dir, distance, zone, DASH.bodyRadiusStuds))
@@ -396,7 +400,7 @@ local function startMove(dash: Dash)
 	mover.VelocityConstraintMode = Enum.VelocityConstraintMode.Plane
 	mover.PrimaryTangentAxis = Vector3.xAxis
 	mover.SecondaryTangentAxis = Vector3.zAxis
-	mover.MaxForce = math.huge
+	mover.MaxForce = dash.root.AssemblyMass * DASH.maxAccelStuds -- never an unlimited push (bug fix 2026-10-15)
 	mover.PlaneVelocity = Vector2.zero
 	attachment.Parent = dash.root
 	mover.Parent = dash.root
@@ -422,6 +426,10 @@ local function stepMove(dash: Dash, dt: number)
 	end
 	local step = math.max(dt, MIN_STEP)
 	local travelled = (dash.root.Position - from):Dot(dash.dir)
+	if DashController.blocked(DashMath.offsetAt(t, dash.distance, DASH.seconds) - travelled) then
+		endMove(dash) -- it ran into something: stop pushing (bug fix 2026-10-15)
+		return
+	end
 	local target = DashMath.offsetAt(t + step, dash.distance, DASH.seconds)
 	local speed = math.clamp((target - travelled) / step, 0, DashMath.speedAt(0, dash.distance, DASH.seconds))
 	mover.PlaneVelocity = Vector2.new(dash.dir.X * speed, dash.dir.Z * speed)
@@ -679,7 +687,7 @@ local function tryDash(): boolean
 	local camera = Workspace.CurrentCamera
 	local frame = if camera then camera.CFrame else root.CFrame
 	local _, dir = DashMath.snapDirection(humanoid.MoveDirection, frame.LookVector, frame.RightVector)
-	local distance = endDistance(root.Position, dir, zoneFor(context))
+	local distance = DashController.endDistance(root.Position, dir, zoneFor(context))
 	if NetController.dashRequest(dir, now) == nil then
 		stats.refused += 1
 		return false
@@ -749,6 +757,11 @@ end
 -- Public: pure helpers (unit-tested)
 
 -- The reason code a press is refused for (the server's codes, Logic/DashRules), or nil when it may dash.
+-- True when the body lags more than blockedLagStuds behind the dash's eased path: it ran into something. Pure.
+function DashController.blocked(lagStuds: number): boolean
+	return lagStuds > DASH.blockedLagStuds
+end
+
 function DashController.gate(facts: GateFacts): string?
 	local context = facts.context
 	if context == nil or not facts.alive then

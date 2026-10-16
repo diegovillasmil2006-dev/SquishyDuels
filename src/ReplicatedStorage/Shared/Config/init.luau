@@ -781,6 +781,8 @@ local function checkDuel(problems: Problems)
 		"ribbonSeconds",
 		"cooldownSeconds",
 		"bodyRadiusStuds",
+		"maxAccelStuds",
+		"blockedLagStuds",
 	}, expectPositive)
 	eachField(problems, d, dash, {
 		"cooldownToleranceSeconds",

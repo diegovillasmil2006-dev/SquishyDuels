@@ -120,4 +120,34 @@ return function(t: Context)
 			expect.equal(DashController.parseDashStarted(copy), nil)
 		end
 	end)
+
+	-- Bug fix 2026-10-15 (a player was flung spinning and flying in a 2-player duel) ---------------------------------
+
+	t.test("blocked: the move stops once the body lags more than blockedLagStuds behind its path", function()
+		expect.falsy(DashController.blocked(0))
+		expect.falsy(DashController.blocked(DASH.blockedLagStuds))
+		expect.truthy(DashController.blocked(DASH.blockedLagStuds + 0.01))
+		expect.truthy(DASH.maxAccelStuds > 0 and DASH.maxAccelStuds < math.huge)
+	end)
+
+	t.test("endDistance: cover the body already touches stops the dash (no free 14 studs into it)", function()
+		local wall = Instance.new("Part")
+		wall.Name = "SD_DashTestWall"
+		wall.Size = Vector3.new(20, 10, 2)
+		wall.CFrame = CFrame.new(500, 5, 501.5) -- its near face at Z 500.5
+		wall.Anchored = true
+		wall.Parent = workspace
+		local ok, err = pcall(function()
+			local dir = Vector3.new(0, 0, 1)
+			-- the HRP 0.5 studs from the face (the body touching it), facing it: no dash distance
+			expect.near(DashController.endDistance(Vector3.new(500, 3, 500), dir, nil), 0, 1e-3)
+			-- 6 studs away: the dash stops at the wall, a body radius short of the face
+			local d = DashController.endDistance(Vector3.new(500, 3, 494.5), dir, nil)
+			expect.near(d, 6 - DASH.bodyRadiusStuds, 0.05)
+			-- facing away from it: the full dash
+			expect.near(DashController.endDistance(Vector3.new(500, 3, 500), -dir, nil), DASH.distanceStuds, 1e-3)
+		end)
+		wall:Destroy()
+		assert(ok, err)
+	end)
 end

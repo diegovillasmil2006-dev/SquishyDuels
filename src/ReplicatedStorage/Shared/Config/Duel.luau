@@ -74,6 +74,12 @@ local Duel = {
 			guardSlackStuds = 2,
 			guardLeadSeconds = 0.25,
 			guardTailSeconds = 0.5,
+			-- Bug fix 2026-10-15 (2-player test: a player was flung spinning and flying): the dash's mover pushes with
+			-- at most this acceleration (studs/s², times the character's mass) instead of an unlimited force, and the
+			-- move ends as soon as the body lags blockedLagStuds behind its eased path (it ran into something), so a
+			-- dash can never keep shoving the body into cover. 12,000 still reaches the 191 studs/s peak in a frame.
+			maxAccelStuds = 12000,
+			blockedLagStuds = 2,
 		},
 	},
 
