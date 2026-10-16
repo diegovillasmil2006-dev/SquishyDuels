@@ -138,6 +138,36 @@ local function uploaded(id: number, volume: number, file: string, variants: { So
 	}
 end
 
+-- Free Creator Store sounds from Roblox's licensed Pro Sound Effects library (2026-10-15 dash + double jump overhaul,
+-- VillasmilGaming; no ElevenLabs key on that PC): each loads in this place (ContentProvider:PreloadAsync Success that
+-- day). `name` is the Creator Store title and take number.
+local STORE_DATE = "2026-10-15"
+local PSE_LICENSE =
+	"Free Creator Store audio from Roblox's licensed Pro Sound Effects library ('Courtesy of Pro Sound Effects')"
+local PSE_SEARCH = "Wood Swish Ruler Whoosh"
+
+local function pse(id: number, volume: number, name: string): SoundVariant
+	return {
+		id = id,
+		volume = volume,
+		source = `Creator Store audio '{name}' by ProSoundEffects (search: "{PSE_SEARCH}")`,
+		license = PSE_LICENSE,
+		verifiedAt = STORE_DATE,
+	}
+end
+
+-- soundSlot's `approved` argument from Pro Sound Effects takes: the first is the slot's id, the rest its variants.
+local function pseSlot(main: SoundVariant, variants: { SoundVariant }): ApprovedSound
+	return {
+		id = main.id,
+		volume = main.volume,
+		source = main.source,
+		license = main.license,
+		verifiedAt = main.verifiedAt,
+		variants = variants,
+	}
+end
+
 -- §14.2 sound slots and §14.3 animation and image slots, in document order.
 local SLOTS: { AssetSlot } = {
 	-- SFX (§14.2)
@@ -265,6 +295,29 @@ local SLOTS: { AssetSlot } = {
 		nil,
 		"the dash plant (frame 7); design fx.js:47 land(false), fp.js:517; rendered sfx_dashPlant.wav (0.23 s)",
 		uploaded(74110085743096, 1, "sfx.dashPlant (dash landing).wav")
+	),
+	-- The 2026-10-15 dash + double jump overhaul: an air rush over the dash's push-off, and the double jump's whoosh.
+	soundSlot(
+		"sfx.dashWhoosh",
+		"SFX",
+		true,
+		nil,
+		"the dash's air rush at the start, over sfx.dash; 3 takes of PSE 'Wood Swish Ruler Whoosh Fast Movement In Air' (0.6 s)",
+		pseSlot(pse(9126283272, 0.7, "Wood Swish Ruler Whoosh Fast Movement In Air 13 (SFX)"), {
+			pse(9126284094, 0.7, "Wood Swish Ruler Whoosh Fast Movement In Air 5 (SFX)"),
+			pse(9126283906, 0.7, "Wood Swish Ruler Whoosh Fast Movement In Air 2 (SFX)"),
+		})
+	),
+	soundSlot(
+		"sfx.doubleJump",
+		"SFX",
+		true,
+		nil,
+		"the double jump's whoosh (sfx.dash pitched up plays under it); 3 takes of the same PSE swish set (0.6 s)",
+		pseSlot(pse(9126284298, 0.8, "Wood Swish Ruler Whoosh Fast Movement In Air 10 (SFX)"), {
+			pse(9126284292, 0.8, "Wood Swish Ruler Whoosh Fast Movement In Air 8 (SFX)"),
+			pse(9126283052, 0.8, "Wood Swish Ruler Whoosh Fast Movement In Air 6 (SFX)"),
+		})
 	),
 	soundSlot(
 		"sfx.ultCharge.bird",

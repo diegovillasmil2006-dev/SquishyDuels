@@ -81,6 +81,18 @@ local Duel = {
 			maxAccelStuds = 12000,
 			blockedLagStuds = 2,
 		},
+		-- The double jump (2026-10-15, VillasmilGaming: "only when dueling"). The jumper's client moves its own
+		-- HumanoidRootPart (as for the dash) and tells the server (Logic/DoubleJumpRules), which shows it to the match.
+		DoubleJump = {
+			heightStuds = 6, -- the second jump's height from wherever it starts (the first: Movement.JumpHeight 7.2)
+			minAirSeconds = 0.12, -- in the air this long before the second jump (the first jump's own press is not it)
+			maxPerAir = 1, -- second jumps between two landings
+			-- A held jump key repeats UserInputService.JumpRequest every frame: a request is a new press only after this
+			-- long without one.
+			pressGapSeconds = 0.09,
+			-- The server shows at most one double jump this often per player (one per air time).
+			serverIntervalSeconds = 0.3,
+		},
 	},
 
 	-- QueueService / Matchmaker (§5.4). Order: priority descending, then joinedAt.

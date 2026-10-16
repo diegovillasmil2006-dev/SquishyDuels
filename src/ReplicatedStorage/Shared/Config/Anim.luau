@@ -449,6 +449,8 @@ local Anim = {
 	-- (avatar.js:77). R = the design's mirror(L) (avatar.js:69-76, 100), worked out key by key. No R6 dash pose
 	-- (NOT IN DESIGN).
 	dash = {
+		-- 2026-10-15 overhaul: every key also bends the hips and knees (a lunge F, a back-step B, a crouched side-slide
+		-- L / R, R mirroring L; X only: +X a leg forward, -X a knee back), so the dash reads as a dash, not a walk.
 		-- "Locomotion: Movement · Dash/Jump: Action · Throw: Action2 (upper mask)" (design: main.js:313): over the hold
 		-- (1), under the throw and ultimate poses (2).
 		priority = 1.5,
@@ -466,6 +468,10 @@ local Anim = {
 						Neck = Vector3.new(14, 0, 0),
 						LeftShoulder = Vector3.new(-20, 0, -12),
 						LeftElbow = Vector3.new(35, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 				{
@@ -477,6 +483,10 @@ local Anim = {
 						Neck = Vector3.new(28, 0, 0),
 						LeftShoulder = Vector3.new(-48, 0, -12),
 						LeftElbow = Vector3.new(40, 0, 0),
+						RightHip = Vector3.new(35, 0, 0),
+						LeftHip = Vector3.new(-20, 0, 0),
+						RightKnee = Vector3.new(-45, 0, 0),
+						LeftKnee = Vector3.new(-10, 0, 0),
 					},
 				},
 				{
@@ -488,6 +498,10 @@ local Anim = {
 						Neck = Vector3.new(34, 0, 0),
 						LeftShoulder = Vector3.new(-60, 0, -14),
 						LeftElbow = Vector3.new(30, 0, 0),
+						RightHip = Vector3.new(50, 0, 0),
+						LeftHip = Vector3.new(-35, 0, 0),
+						RightKnee = Vector3.new(-30, 0, 0),
+						LeftKnee = Vector3.new(-25, 0, 0),
 					},
 				},
 				{
@@ -499,6 +513,10 @@ local Anim = {
 						Neck = Vector3.new(-4, 0, 0),
 						LeftShoulder = Vector3.new(25, 0, -20),
 						LeftElbow = Vector3.new(55, 0, 0),
+						RightHip = Vector3.new(-15, 0, 0),
+						LeftHip = Vector3.new(30, 0, 0),
+						RightKnee = Vector3.new(-30, 0, 0),
+						LeftKnee = Vector3.new(-40, 0, 0),
 					},
 				},
 				{
@@ -510,6 +528,10 @@ local Anim = {
 						Neck = Vector3.new(0, 0, 0),
 						LeftShoulder = Vector3.new(-5, 0, -9),
 						LeftElbow = Vector3.new(14, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 			},
@@ -523,6 +545,10 @@ local Anim = {
 						Neck = Vector3.new(-10, 0, 0),
 						LeftShoulder = Vector3.new(10, 0, -14),
 						LeftElbow = Vector3.new(40, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 				{
@@ -534,6 +560,10 @@ local Anim = {
 						Neck = Vector3.new(-22, 0, 0),
 						LeftShoulder = Vector3.new(30, 0, -18),
 						LeftElbow = Vector3.new(45, 0, 0),
+						RightHip = Vector3.new(20, 0, 0),
+						LeftHip = Vector3.new(-15, 0, 0),
+						RightKnee = Vector3.new(-35, 0, 0),
+						LeftKnee = Vector3.new(-15, 0, 0),
 					},
 				},
 				{
@@ -545,6 +575,10 @@ local Anim = {
 						Neck = Vector3.new(-26, 0, 0),
 						LeftShoulder = Vector3.new(40, 0, -20),
 						LeftElbow = Vector3.new(50, 0, 0),
+						RightHip = Vector3.new(30, 0, 0),
+						LeftHip = Vector3.new(-35, 0, 0),
+						RightKnee = Vector3.new(-40, 0, 0),
+						LeftKnee = Vector3.new(-20, 0, 0),
 					},
 				},
 				{
@@ -556,6 +590,10 @@ local Anim = {
 						Neck = Vector3.new(12, 0, 0),
 						LeftShoulder = Vector3.new(-15, 0, -16),
 						LeftElbow = Vector3.new(40, 0, 0),
+						RightHip = Vector3.new(15, 0, 0),
+						LeftHip = Vector3.new(-10, 0, 0),
+						RightKnee = Vector3.new(-30, 0, 0),
+						LeftKnee = Vector3.new(-35, 0, 0),
 					},
 				},
 				{
@@ -567,6 +605,10 @@ local Anim = {
 						Neck = Vector3.new(0, 0, 0),
 						LeftShoulder = Vector3.new(-5, 0, -9),
 						LeftElbow = Vector3.new(14, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 			},
@@ -580,6 +622,10 @@ local Anim = {
 						Neck = Vector3.new(8, 0, 12),
 						LeftShoulder = Vector3.new(-10, 0, -20),
 						LeftElbow = Vector3.new(30, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 				{
@@ -591,6 +637,10 @@ local Anim = {
 						Neck = Vector3.new(8, 0, -26),
 						LeftShoulder = Vector3.new(0, 0, -55),
 						LeftElbow = Vector3.new(20, 0, 0),
+						RightHip = Vector3.new(10, 0, 0),
+						LeftHip = Vector3.new(30, 0, 0),
+						RightKnee = Vector3.new(-15, 0, 0),
+						LeftKnee = Vector3.new(-40, 0, 0),
 					},
 				},
 				{
@@ -602,6 +652,10 @@ local Anim = {
 						Neck = Vector3.new(6, 0, -34),
 						LeftShoulder = Vector3.new(0, 0, -70),
 						LeftElbow = Vector3.new(15, 0, 0),
+						RightHip = Vector3.new(18, 0, 0),
+						LeftHip = Vector3.new(35, 0, 0),
+						RightKnee = Vector3.new(-22, 0, 0),
+						LeftKnee = Vector3.new(-45, 0, 0),
 					},
 				},
 				{
@@ -613,6 +667,10 @@ local Anim = {
 						Neck = Vector3.new(4, 0, -2),
 						LeftShoulder = Vector3.new(0, 0, -30),
 						LeftElbow = Vector3.new(30, 0, 0),
+						RightHip = Vector3.new(25, 0, 0),
+						LeftHip = Vector3.new(15, 0, 0),
+						RightKnee = Vector3.new(-35, 0, 0),
+						LeftKnee = Vector3.new(-25, 0, 0),
 					},
 				},
 				{
@@ -624,6 +682,10 @@ local Anim = {
 						Neck = Vector3.new(0, 0, 0),
 						LeftShoulder = Vector3.new(-5, 0, -9),
 						LeftElbow = Vector3.new(14, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 			},
@@ -637,6 +699,10 @@ local Anim = {
 						Neck = Vector3.new(8, 0, -12),
 						LeftShoulder = Vector3.new(-6, 0, -10),
 						LeftElbow = Vector3.new(30, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 				{
@@ -648,6 +714,10 @@ local Anim = {
 						Neck = Vector3.new(8, 0, 26),
 						LeftShoulder = Vector3.new(0, 0, -10),
 						LeftElbow = Vector3.new(20, 0, 0),
+						RightHip = Vector3.new(30, 0, 0),
+						LeftHip = Vector3.new(10, 0, 0),
+						RightKnee = Vector3.new(-40, 0, 0),
+						LeftKnee = Vector3.new(-15, 0, 0),
 					},
 				},
 				{
@@ -659,6 +729,10 @@ local Anim = {
 						Neck = Vector3.new(6, 0, 34),
 						LeftShoulder = Vector3.new(0, 0, -10),
 						LeftElbow = Vector3.new(20, 0, 0),
+						RightHip = Vector3.new(35, 0, 0),
+						LeftHip = Vector3.new(18, 0, 0),
+						RightKnee = Vector3.new(-45, 0, 0),
+						LeftKnee = Vector3.new(-22, 0, 0),
 					},
 				},
 				{
@@ -670,6 +744,10 @@ local Anim = {
 						Neck = Vector3.new(4, 0, 2),
 						LeftShoulder = Vector3.new(0, 0, -10),
 						LeftElbow = Vector3.new(30, 0, 0),
+						RightHip = Vector3.new(15, 0, 0),
+						LeftHip = Vector3.new(25, 0, 0),
+						RightKnee = Vector3.new(-25, 0, 0),
+						LeftKnee = Vector3.new(-35, 0, 0),
 					},
 				},
 				{
@@ -681,9 +759,38 @@ local Anim = {
 						Neck = Vector3.new(0, 0, 0),
 						LeftShoulder = Vector3.new(-3, 0, -10),
 						LeftElbow = Vector3.new(20, 0, 0),
+						RightHip = Vector3.new(0, 0, 0),
+						LeftHip = Vector3.new(0, 0, 0),
+						RightKnee = Vector3.new(-4, 0, 0),
+						LeftKnee = Vector3.new(-4, 0, 0),
 					},
 				},
 			},
+		},
+	},
+
+	-- The double jump's flip (2026-10-15, DoubleJumpController.poseAt): an override layer over the hold (1) and the dash
+	-- (1.5), under the throw and ultimate poses (2). The body tucks (`tuck`, the poses' convention: +X a leg or arm
+	-- forward, -X a knee back, -X on Waist / Neck curls forward) and the Root turns spinDegrees about X (F a front flip,
+	-- B a back flip) or Z (L / R side flips), Quad Out over spinSeconds (720 deg/s on average). The held right arm is not
+	-- in it: the hold pose keeps the toy.
+	doubleJump = {
+		priority = 1.6,
+		seconds = 0.62, -- the whole clip
+		spinSeconds = 0.5,
+		spinDegrees = 360,
+		tuckInSeconds = 0.07,
+		tuckOutFromSeconds = 0.36, -- the tuck opens from here to spinSeconds
+		fadeFromSeconds = 0.5, -- the weight goes w^2 to 0 from here to `seconds`
+		tuck = {
+			Waist = Vector3.new(-20, 0, 0),
+			Neck = Vector3.new(-14, 0, 0),
+			LeftShoulder = Vector3.new(70, 0, -10),
+			LeftElbow = Vector3.new(95, 0, 0),
+			RightHip = Vector3.new(95, 0, 0),
+			LeftHip = Vector3.new(95, 0, 0),
+			RightKnee = Vector3.new(-115, 0, 0),
+			LeftKnee = Vector3.new(-115, 0, 0),
 		},
 	},
 

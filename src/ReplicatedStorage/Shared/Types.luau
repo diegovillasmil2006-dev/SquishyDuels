@@ -508,6 +508,15 @@ export type DashStartedPayload = {
 	startAt: number,
 }
 
+-- 2026-10-15: an accepted double jump, to the match's players so their clients play its flip and effects; the
+-- jumper's own client already moved. Server times.
+export type DoubleJumpedPayload = {
+	userId: number,
+	key: string, -- "F" | "B" | "L" | "R": the flip (DoubleJumpController.poseAt)
+	at: Vector3, -- the server HRP at the request
+	startAt: number,
+}
+
 export type UltimateChargePayload = { ownerId: number, charge: number }
 
 export type DuelOutcome = "win" | "loss" | "draw" | "cancelled" | "void"

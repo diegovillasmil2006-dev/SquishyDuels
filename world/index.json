@@ -24,6 +24,12 @@
 		"container": "ReplicatedStorage"
 	},
 	{
+		"file": "ReplicatedStorage/SD_MoveVfx.rbxm",
+		"class": "Folder",
+		"name": "SD_MoveVfx",
+		"container": "ReplicatedStorage"
+	},
+	{
 		"file": "ReplicatedStorage/SD_ShapeLibrary.rbxm",
 		"class": "Folder",
 		"name": "SD_ShapeLibrary",

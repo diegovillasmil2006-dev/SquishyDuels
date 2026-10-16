@@ -26,25 +26,28 @@
 --   is off while it moves (the design ignores a jump during a dash, fp.js:532). At `seconds` the constraint goes and
 --   the horizontal speed is zeroed. A dash the server refuses is not pulled back: the server's movement guard handles
 --   that move like any other (the gate makes it a race only).
--- * Pose (third person, R15 only: no R6 dash pose, NOT IN DESIGN): the design's dash keys (Config.Anim.dash; its legs
---   and pelvis offset have no joint here) sampled at visualFps (DashMath.sampleKeys) as the "dash" override layer at
---   DashMath.weightAt and Config.Anim.dash.priority, plus the held arm's `hold` degrees as the "dashHold" additive
---   layer on RightShoulder X (-hold at holdWeight) while the hold pose shows and no throw or ultimate pose does (the
---   design's throw replaces the held arm, avatar.js:185-191).
--- * Effects (design: fp.js:516-517, 529, 539; FxPool, FxShapes): at the push-off (pushoffFrame) 12 cream puffs and a
---   white ring at the push-off foot (pushoffFoot) and sfx.dash; at the plant (plantFrame) 8 puffs at the plant foot
---   (plantFoot) and sfx.dashPlant; the design's puffs fly nearly flat (fx.js:103), Roblox has no flat burst, so they
---   fly in a dome (no puff under the floor). For ribbonSeconds: three camera-facing ribbons (Trails on the HRP;
---   reading: the design's waist is the HRP's centre) in the dasher's team tint (tintFor) and tiny white specks flying
---   back along the dash (the design's 60% a frame, at 60 fps; fewer with ReducedMotion, FxPool halves the puffs).
+-- * Pose (third person, R15 only: no R6 dash pose, NOT IN DESIGN): the dash keys (Config.Anim.dash: the design's
+--   upper body plus, since the 2026-10-15 overhaul, a lunge on the hips and knees) sampled at visualFps
+--   (DashMath.sampleKeys) as the "dash" override layer at DashMath.weightAt and Config.Anim.dash.priority, plus the
+--   held arm's `hold` degrees as the "dashHold" additive layer on RightShoulder X (-hold at holdWeight) while the hold
+--   pose shows and no throw or ultimate pose does (the design's throw replaces the held arm, avatar.js:185-191).
+-- * Effects (2026-10-15 overhaul, VillasmilGaming: "way better, stunning"; the VFX Studio library ReplicatedStorage
+--   SD_MoveVfx, played by Anim/MoveVfx, in the dasher's team glow, glowFor): at the start Dash/Start at the push-off
+--   foot (pushoffFoot) along the dash, sfx.dash and sfx.dashWhoosh; while t < ribbonSeconds Dash/Body on the HRP and
+--   Dash/Skid on the floor under it; Config.Vfx.Dash.ghosts afterimages (Anim/Afterimage) every ghostEverySeconds from
+--   the start; at plantFrame Dash/Plant at the plant foot (plantFoot) and sfx.dashPlant. The own dash also gets
+--   Dash/SpeedLines in front of the camera (first person hides the own body, so this is what the dasher sees of it) and
+--   a FOV kick (CameraController.punch, off with settings.cameraShake or ReducedMotion, and while a throw holds the
+--   FOV). Players who are neither this one nor the duel opponent get fewer particles (MoveVfx `low`).
 -- * Other players: DashStarted {userId, dir, from, to, startAt} plays the same pose, effects and sounds on their
 --   character from its arrival (their movement arrives through replication with the same delay). The own DashStarted
 --   is ignored (the dash already plays). Sounds of a player who is neither this one nor the duel opponent play at the
 --   other-player priority (-1).
 -- * Touch: the Dash button's cooldown look every render frame while the touch buttons show
 --   (ControlsController.setTouchState, the throw button's format).
--- API: gate(facts), pushoffFoot(key), plantFoot(key), holdWeight(frame), tintFor(side), parseDashStarted(raw) (pure,
---   unit-tested); isDashing(), counts(); init(), destroy().
+-- API: gate(facts), pushoffFoot(key), plantFoot(key), holdWeight(frame), tintFor(side), glowFor(side),
+--   ghostTimes(), blocked(lagStuds), parseDashStarted(raw) (pure, unit-tested); endDistance(origin, dir, zone);
+--   isDashing(), counts(); init(), destroy().
 
 -- Services
 
@@ -65,10 +68,10 @@ local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 
 local Client = script.Parent.Parent
-local FxPool = require(Client.Anim.FxPool)
-local FxShapes = require(Client.Anim.FxShapes)
+local Afterimage = require(Client.Anim.Afterimage)
+local MoveVfx = require(Client.Anim.MoveVfx)
 local Scheduler = require(Client.Anim.Scheduler)
-local Tweens = require(Client.Anim.Tweens)
+local CameraController = require(script.Parent.CameraController)
 local CatchController = require(script.Parent.CatchController)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
@@ -105,14 +108,18 @@ type Dash = {
 	root: BasePart,
 	key: DashKey,
 	dir: Vector3, -- flat unit
-	tint: Color3,
+	glow: Color3,
 	soundPriority: number,
+	low: boolean, -- fewer particles (a player who is neither this one nor the opponent)
+	own: boolean,
+	floorY: number?,
 	startClock: number, -- os.clock() of the press (own) or the arrival (others)
-	pushed: boolean,
 	planted: boolean,
-	trails: { Trail },
-	trailsStopped: boolean,
-	specks: ParticleEmitter?,
+	holdsStopped: boolean,
+	body: MoveVfx.Handle?,
+	skid: MoveVfx.Handle?,
+	lines: MoveVfx.Handle?,
+	ghostsDone: number,
 	-- The own dash's move:
 	from: Vector3?,
 	distance: number,
@@ -128,10 +135,8 @@ local DASH = Config.Duel.Rules.Dash
 local ANIM = Config.Anim.dash
 local KEYS = ANIM.keys :: any -- { [DashKey]: { DashMath.Key } }
 local FX = Config.Vfx.Dash
-local TEXTURES = Config.Vfx.Textures
 local HITBOX = Config.Combat.Hitbox
 local ZONE_TOLERANCE = Config.Combat.Throw.zoneToleranceStuds
-local REDUCED_MULTIPLIER = Config.Vfx.reducedParticleMultiplier
 local STANDING_HEIGHT = HITBOX.radius - HITBOX.bottomOffset -- the HRP over the floor when standing (3.0)
 local LIVE_PHASES: { [string]: boolean } = { Active = true, SuddenDeath = true }
 local REASON_CONTEXT = "dash.context"
@@ -147,21 +152,19 @@ local RIG_R15 = "R15"
 local CLIENT_FX = "SD_ClientFx"
 local MOVER_NAME = "SD_Dash"
 local SOUND_DASH = "sfx.dash"
+local SOUND_WHOOSH = "sfx.dashWhoosh"
 local SOUND_PLANT = "sfx.dashPlant"
+local VFX_START = "Dash/Start"
+local VFX_BODY = "Dash/Body"
+local VFX_SKID = "Dash/Skid"
+local VFX_PLANT = "Dash/Plant"
+local VFX_LINES = "Dash/SpeedLines"
 local OTHER_SOUND_PRIORITY = -1 -- as VfxController's other players' sounds
 local FOOT_LIFT = 0.03 / 0.28 -- design: fp.js:515 (the foot point 0.03 m over the floor)
-local DESIGN_FPS = 60 -- the design's "a frame" chances run at 60 fps
-local DOME_SPREAD = Vector2.new(90, 90) -- a burst over the upper half (see the header)
 local MIN_STEP = 1 / 240
-local PUFF_COLORS = { Palette.DashPuff, Palette.DashPuffShade } -- design: fp.js:516-517
+local LINES_AHEAD = 9 -- studs in front of the camera (the template's SD_Ahead)
 local CLIP_SECONDS = DashMath.eventSeconds(DASH.visualFrames)
-local LIVE_SECONDS = (function(): number
-	local longest = 0
-	for _, ribbon in FX.ribbons do
-		longest = math.max(longest, ribbon.lifetime)
-	end
-	return math.max(CLIP_SECONDS, DASH.ribbonSeconds + longest)
-end)()
+local LIVE_SECONDS = math.max(CLIP_SECONDS, DASH.ribbonSeconds, (FX.ghosts - 1) * FX.ghostEverySeconds)
 
 -- Module table
 
@@ -173,7 +176,6 @@ local log = Log.new("Dash")
 local cleanup: Cleanup.Cleanup? = nil
 local dashes: { [Player]: Dash } = {}
 local lastDashAt = -math.huge -- server time of the own last dash
-local random = Random.new()
 local stats = { sent = 0, refused = 0, remote = 0 }
 
 -- Private: helpers
@@ -471,6 +473,11 @@ end
 
 -- Private: effects
 
+-- The floor height under a dasher: the arena's or the lane's when known, else the standing height under its HRP.
+local function floorUnder(dash: Dash): number
+	return dash.floorY or (dash.root.Position.Y - STANDING_HEIGHT)
+end
+
 -- The design's foot point (fp.js:515): under the foot, FOOT_LIFT over the floor.
 local function footPoint(dash: Dash, foot: Foot): Vector3
 	local character = dash.character
@@ -484,129 +491,85 @@ local function footPoint(dash: Dash, foot: Foot): Vector3
 	return Vector3.new(p.X, p.Y - STANDING_HEIGHT + FOOT_LIFT, p.Z)
 end
 
-local function puffs(
-	at: Vector3,
-	count: number,
-	speed: number,
-	size: number,
-	lifetime: number,
-	drag: number,
-	gravity: number
-)
-	local pool = FxPool.default()
-	local each = math.max(1, math.floor(count / #PUFF_COLORS))
-	for _, color in PUFF_COLORS do
-		pool:emit(at, each, {
-			Texture = TEXTURES.smoke,
-			Color = ColorSequence.new(color),
-			Size = NumberSequence.new(size, 0),
-			Lifetime = NumberRange.new(lifetime * 0.7, lifetime * 1.3), -- design: fx.js:104-105
-			Speed = NumberRange.new(speed * 0.45, speed * 1.2), -- design: fx.js:104
-			SpreadAngle = DOME_SPREAD,
-			Drag = drag,
-			Acceleration = Vector3.new(0, gravity, 0),
-			LightEmission = 0,
-			Rate = 0,
-		})
+-- A frame at `at` looking along the dash, up = world up.
+local function along(dash: Dash, at: Vector3): CFrame
+	return CFrame.lookAt(at, at + dash.dir)
+end
+
+local function vfxOptions(dash: Dash): MoveVfx.Options
+	return { tint = dash.glow, low = dash.low }
+end
+
+local function fovKick()
+	if not StateController.settings().cameraShake or CameraController.fovOwner() ~= nil then
+		return
+	end
+	CameraController.punch(FX.fovKickDeg, FX.fovKickAttackMs, FX.fovKickReleaseMs)
+end
+
+local function startEffects(dash: Dash)
+	local at = footPoint(dash, DashController.pushoffFoot(dash.key))
+	MoveVfx.burst(VFX_START, along(dash, at), vfxOptions(dash))
+	playSound(SOUND_DASH, { at = at, priority = dash.soundPriority })
+	playSound(SOUND_WHOOSH, { at = dash.root, priority = dash.soundPriority })
+	dash.body = MoveVfx.hold(VFX_BODY, vfxOptions(dash))
+	dash.skid = MoveVfx.hold(VFX_SKID, vfxOptions(dash))
+	for _, handle in { dash.body, dash.skid } do
+		if handle then
+			handle:setOn(true)
+		end
+	end
+	if dash.own then
+		dash.lines = MoveVfx.hold(VFX_LINES, vfxOptions(dash))
+		if dash.lines then
+			dash.lines:setOn(true)
+		end
+		fovKick()
 	end
 end
 
-local function pushoff(dash: Dash)
-	local at = footPoint(dash, DashController.pushoffFoot(dash.key))
-	puffs(at, FX.pushoffPuffs, FX.pushoffSpeed, FX.pushoffSize, FX.pushoffLifetime, FX.pushoffDrag, FX.pushoffGravity)
-	FxShapes.ring(at, Vector3.yAxis, FX.ringToStuds, FX.ringSeconds, Palette.White, FX.ringTransparencyFrom)
-	playSound(SOUND_DASH, { at = at, priority = dash.soundPriority })
+local function moveHolds(dash: Dash)
+	local p = dash.root.Position
+	local body = dash.body
+	if body then
+		body:set(along(dash, p))
+	end
+	local skid = dash.skid
+	if skid then
+		skid:set(along(dash, Vector3.new(p.X, floorUnder(dash), p.Z)))
+	end
+	local lines = dash.lines
+	local camera = Workspace.CurrentCamera
+	if lines and camera then
+		local view = camera.CFrame
+		lines:set(view + view.LookVector * LINES_AHEAD)
+	end
+end
+
+local function stopHolds(dash: Dash)
+	dash.holdsStopped = true
+	for _, handle in { dash.body, dash.skid, dash.lines } do
+		if handle then
+			handle:stop()
+		end
+	end
+	dash.body, dash.skid, dash.lines = nil, nil, nil
+end
+
+local function ghost(dash: Dash)
+	local color = dash.glow:Lerp(Palette.White, FX.ghostTintToWhite)
+	Afterimage.spawn(dash.character, color, { transparency = FX.ghostTransparency, seconds = FX.ghostSeconds })
 end
 
 local function plant(dash: Dash)
 	local at = footPoint(dash, DashController.plantFoot(dash.key))
-	puffs(at, FX.plantPuffs, FX.plantSpeed, FX.plantSize, FX.plantLifetime, FX.plantDrag, FX.plantGravity)
+	MoveVfx.burst(VFX_PLANT, along(dash, at), vfxOptions(dash))
 	playSound(SOUND_PLANT, { at = at, priority = dash.soundPriority })
-end
-
-local function startTrails(dash: Dash)
-	local pool = FxPool.default()
-	for _, ribbon in FX.ribbons do
-		local half = ribbon.width / 2
-		local color = if ribbon.tintFirst
-			then ColorSequence.new(dash.tint, Palette.White)
-			else ColorSequence.new(Palette.White, dash.tint)
-		local trail = pool:acquireTrail(
-			dash.root,
-			Vector3.new(0, ribbon.height + half, 0),
-			Vector3.new(0, ribbon.height - half, 0),
-			{
-				Lifetime = ribbon.lifetime,
-				Color = color,
-				Transparency = NumberSequence.new(1 - ribbon.opacity, 1),
-				WidthScale = NumberSequence.new(1, 0),
-				FaceCamera = true,
-				LightEmission = 0,
-			}
-		)
-		if trail then
-			table.insert(dash.trails, trail)
-		end
-	end
-	local rate = FX.speedLineChance * DESIGN_FPS * (if Tweens.reducedMotion() then REDUCED_MULTIPLIER else 1)
-	local specks = pool:acquireEmitter({
-		Texture = TEXTURES.smoke,
-		Color = ColorSequence.new(Palette.White),
-		Size = NumberSequence.new(FX.speedLineSize),
-		Lifetime = NumberRange.new(FX.speedLineLifetime),
-		Speed = NumberRange.new(FX.speedLineSpeed),
-		SpreadAngle = Vector2.zero,
-		EmissionDirection = Enum.NormalId.Front,
-		Drag = FX.speedLineDrag,
-		Acceleration = Vector3.zero,
-		LightEmission = 0,
-		Rate = rate,
-	})
-	dash.specks = specks
-end
-
--- The specks' emitter jumps to a random point of the spread box around the waist each frame, facing back along the
--- dash (EmissionDirection Front), so each speck starts somewhere else (design: fp.js:539).
-local function moveSpecks(dash: Dash)
-	local specks = dash.specks
-	local attachment = if specks then specks.Parent else nil
-	if specks == nil or attachment == nil or not attachment:IsA("Attachment") then
-		return
-	end
-	local spread = FX.speedLineSpread
-	local offset = Vector3.new(
-		random:NextNumber(-1, 1) * spread.X,
-		FX.speedLineLift + random:NextNumber(-1, 1) * spread.Y,
-		random:NextNumber(-1, 1) * spread.Z
-	)
-	local at = dash.root.Position + offset
-	attachment.WorldCFrame = CFrame.lookAt(at, at - dash.dir)
-	specks.Enabled = true
-end
-
-local function stopTrails(dash: Dash)
-	dash.trailsStopped = true
-	for _, trail in dash.trails do
-		trail.Enabled = false -- the drawn ribbon fades over its lifetime, then finishDash releases it
-	end
-	local specks = dash.specks
-	if specks then
-		specks.Enabled = false
-	end
 end
 
 local function finishDash(dash: Dash)
 	endMove(dash)
-	local pool = FxPool.default()
-	for _, trail in dash.trails do
-		pool:release(trail)
-	end
-	table.clear(dash.trails)
-	local specks = dash.specks
-	if specks then
-		dash.specks = nil
-		pool:release(specks)
-	end
+	stopHolds(dash)
 	clearPose(dash.player)
 	if dashes[dash.player] == dash then
 		dashes[dash.player] = nil
@@ -618,20 +581,26 @@ local function startDash(player: Player, character: Model, root: BasePart, dir: 
 	if old then
 		finishDash(old)
 	end
+	local side = sideOf(player.UserId)
+	local priority = soundPriorityFor(player.UserId)
 	local dash: Dash = {
 		player = player,
 		character = character,
 		root = root,
 		key = DashMath.poseKey(dir, root.CFrame.LookVector),
 		dir = dir,
-		tint = DashController.tintFor(sideOf(player.UserId)),
-		soundPriority = soundPriorityFor(player.UserId),
+		glow = DashController.glowFor(side),
+		soundPriority = priority,
+		low = priority < 0,
+		own = own,
+		floorY = floorYFor(currentContext()),
 		startClock = os.clock(),
-		pushed = false,
 		planted = false,
-		trails = {},
-		trailsStopped = false,
-		specks = nil,
+		holdsStopped = false,
+		body = nil,
+		skid = nil,
+		lines = nil,
+		ghostsDone = 0,
 		from = if own then root.Position else nil,
 		distance = distance,
 		mover = nil,
@@ -640,13 +609,14 @@ local function startDash(player: Player, character: Model, root: BasePart, dir: 
 		jumpOff = false,
 	}
 	dashes[player] = dash
-	startTrails(dash)
+	startEffects(dash)
+	moveHolds(dash)
 	if own then
 		startMove(dash)
 	end
 end
 
--- One render frame of a dash: its pose, its push-off and plant, its ribbons. False once it is over.
+-- One render frame of a dash: its pose, its ghosts and plant, its held effects. False once it is over.
 local function stepDash(dash: Dash): boolean
 	if dash.root.Parent == nil then
 		return false
@@ -654,18 +624,19 @@ local function stepDash(dash: Dash): boolean
 	local t = os.clock() - dash.startClock
 	local frame = DashMath.frameAt(t)
 	applyPose(dash, frame)
-	if not dash.pushed and frame >= DASH.pushoffFrame then
-		dash.pushed = true
-		pushoff(dash)
+	local times = DashController.ghostTimes()
+	while dash.ghostsDone < #times and t >= times[dash.ghostsDone + 1] do
+		dash.ghostsDone += 1
+		ghost(dash)
 	end
 	if not dash.planted and frame >= DASH.plantFrame then
 		dash.planted = true
 		plant(dash)
 	end
 	if t < DASH.ribbonSeconds then
-		moveSpecks(dash)
-	elseif not dash.trailsStopped then
-		stopTrails(dash)
+		moveHolds(dash)
+	elseif not dash.holdsStopped then
+		stopHolds(dash)
 	end
 	return t < LIVE_SECONDS
 end
@@ -756,12 +727,12 @@ end
 
 -- Public: pure helpers (unit-tested)
 
--- The reason code a press is refused for (the server's codes, Logic/DashRules), or nil when it may dash.
 -- True when the body lags more than blockedLagStuds behind the dash's eased path: it ran into something. Pure.
 function DashController.blocked(lagStuds: number): boolean
 	return lagStuds > DASH.blockedLagStuds
 end
 
+-- The reason code a press is refused for (the server's codes, Logic/DashRules), or nil when it may dash.
 function DashController.gate(facts: GateFacts): string?
 	local context = facts.context
 	if context == nil or not facts.alive then
@@ -805,6 +776,20 @@ end
 -- The ribbons' team tint: side B Mint, else (side A, practice) Strawberry, the design runner's (fp.js:510, 529).
 function DashController.tintFor(side: string?): Color3
 	return if side == "B" then Palette.DashRibbonMint else Palette.DashRibbonStrawberry
+end
+
+-- The effects' team glow (the 2026-10-15 overhaul's stronger tint of the same teams): side B Mint, else Strawberry.
+function DashController.glowFor(side: string?): Color3
+	return if side == "B" then Palette.DashGlowMint else Palette.DashGlowStrawberry
+end
+
+-- When the afterimages appear, seconds from the dash's start: Config.Vfx.Dash.ghosts of them, ghostEverySeconds apart.
+function DashController.ghostTimes(): { number }
+	local times = {}
+	for i = 1, FX.ghosts do
+		table.insert(times, (i - 1) * FX.ghostEverySeconds)
+	end
+	return times
 end
 
 -- A DashStarted payload, or nil when a field is missing, of the wrong type or not finite, or dir is not a flat unit.

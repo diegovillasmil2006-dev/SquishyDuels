@@ -2770,8 +2770,6 @@ end
 
 -- Spec phase 5: the dash's pose clip (Config.Anim.dash) and the effects of the dash and the Epic ultimates
 -- (Config.Vfx.Dash, Config.Vfx.Ultimates) keep the joint, flicker, spin and particle limits.
-local MAX_DASH_RIBBONS = 3 -- the design's budget: "<= 3 ribbons and <= 24 puffs per dash" (shots/01-tp-dash.jpg)
-local MAX_DASH_PUFFS = 24
 local function checkMoves(problems: Problems)
 	local dash = Anim.dash
 	local p = "Config.Anim.dash"
@@ -2795,33 +2793,75 @@ local function checkMoves(problems: Problems)
 		end
 	end
 
+	-- The 2026-10-15 overhaul: the dash's ghosts and FOV kick, the afterimages, and the double jump (its move, flip and
+	-- effects). The particles themselves are the VFX Studio library's (MoveVfx_Test checks their budgets).
 	local fx = Vfx.Dash
 	local f = "Config.Vfx.Dash"
-	eachField(problems, f, fx, {
-		"pushoffPuffs",
-		"pushoffSpeed",
-		"pushoffSize",
-		"pushoffLifetime",
-		"ringToStuds",
-		"ringSeconds",
-		"plantPuffs",
-		"plantSpeed",
-		"plantSize",
-		"plantLifetime",
-		"speedLineSpeed",
-		"speedLineSize",
-		"speedLineLifetime",
+	eachField(problems, f, fx, { "ghostEverySeconds", "ghostSeconds", "fovKickAttackMs", "fovKickReleaseMs" }, expectPositive)
+	expect(
+		problems,
+		isInteger(fx.ghosts) and fx.ghosts >= 0 and fx.ghosts <= Vfx.Afterimage.maxLive,
+		`{f}.ghosts must be a whole number from 0 to Config.Vfx.Afterimage.maxLive`
+	)
+	for _, field in { "ghostTransparency", "ghostTintToWhite" } do
+		expectBetween(problems, `{f}.{field}`, fx[field], 0, 1)
+	end
+	expectBetween(problems, `{f}.fovKickDeg`, fx.fovKickDeg, 0, Vfx.Punch.maxFovDeg)
+	local ghost = Vfx.Afterimage
+	expectBetween(problems, "Config.Vfx.Afterimage.transparency", ghost.transparency, 0, 1)
+	expectPositive(problems, "Config.Vfx.Afterimage.seconds", ghost.seconds)
+	expectCount(problems, "Config.Vfx.Afterimage.maxLive", ghost.maxLive, 1)
+
+	local jfx = Vfx.DoubleJump
+	local jf = "Config.Vfx.DoubleJump"
+	eachField(problems, jf, jfx, {
+		"bodySeconds",
+		"footTrailSeconds",
+		"ghostSeconds",
+		"whooshPitch",
+		"pushPitch",
+		"pushVolume",
+		"landVolume",
+		"landMinSeconds",
+		"landSlackStuds",
+		"landWithinSeconds",
+		"fovKickAttackMs",
+		"fovKickReleaseMs",
 	}, expectPositive)
+	for _, field in { "ghostTransparency", "ghostTintToWhite" } do
+		expectBetween(problems, `{jf}.{field}`, jfx[field], 0, 1)
+	end
+	expectBetween(problems, `{jf}.fovKickDeg`, jfx.fovKickDeg, 0, Vfx.Punch.maxFovDeg)
+	expect(problems, jfx.landWithinSeconds > jfx.landMinSeconds, `{jf}.landWithinSeconds must be above landMinSeconds`)
+
+	local jump = Duel.Rules.DoubleJump
+	local jr = "Config.Duel.Rules.DoubleJump"
+	eachField(
+		problems,
+		jr,
+		jump,
+		{ "heightStuds", "minAirSeconds", "pressGapSeconds", "serverIntervalSeconds" },
+		expectPositive
+	)
+	expectCount(problems, `{jr}.maxPerAir`, jump.maxPerAir, 1)
+
+	local flip = Anim.doubleJump
+	local fp = "Config.Anim.doubleJump"
+	eachField(problems, fp, flip, { "priority", "seconds", "spinSeconds", "tuckInSeconds" }, expectPositive)
 	expect(
 		problems,
-		#fx.ribbons <= MAX_DASH_RIBBONS and #fx.ribbons <= Vfx.Budgets.activeTrails,
-		`{f}.ribbons must be at most {MAX_DASH_RIBBONS}`
+		flip.tuckInSeconds < flip.tuckOutFromSeconds
+			and flip.tuckOutFromSeconds < flip.spinSeconds
+			and flip.spinSeconds <= flip.fadeFromSeconds
+			and flip.fadeFromSeconds < flip.seconds,
+		`{fp} must keep tuckInSeconds < tuckOutFromSeconds < spinSeconds <= fadeFromSeconds < seconds`
 	)
 	expect(
 		problems,
-		fx.pushoffPuffs + fx.plantPuffs <= MAX_DASH_PUFFS,
-		`{f}.pushoffPuffs + plantPuffs must be at most {MAX_DASH_PUFFS}`
+		isNumber(flip.spinDegrees) and flip.spinDegrees >= 0 and flip.spinDegrees / flip.spinSeconds <= MAX_ROLL_DEG_PER_SECOND + FEEL_SLACK,
+		`{fp}.spinDegrees / spinSeconds must stay at or under {MAX_ROLL_DEG_PER_SECOND} deg/s on average`
 	)
+	checkPoseAngles(problems, `{fp}.tuck`, flip.tuck, Anim.joints.R15)
 
 	local ult = Vfx.Ultimates
 	local u = "Config.Vfx.Ultimates"

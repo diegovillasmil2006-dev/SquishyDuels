@@ -4,7 +4,7 @@
 --   * the sound key set is exactly the 37 of §18.6 (the 34 of §14.2 plus ui.gripUnlock, sfx.jellyWobble, sfx.pop),
 --     the 10 of spec phase 5 (the dash and the four Epic ultimates), the 16 of the Inspect showcases (final polish
 --     2026-10-11: the design's own inspect one-shots, 2D SFX) and the 5 of feature 1 (2026-10-11: the charge throw and
---     the catch, each note naming its file), 68 in all;
+--     the catch, each note naming its file) and the 2 of the 2026-10-15 dash + double jump overhaul, 70 in all;
 --   * a PENDING slot (id nil) carries no metadata (no source, licence, verifiedAt or variants);
 --   * an approved slot has an integer id > 0, a volume in (0, 2], a source, a licence and verifiedAt as YYYY-MM-DD,
 --     and so does each variant; no id repeats within a key;
@@ -66,6 +66,8 @@ local SOUND_KEYS = {
 	"amb.arena",
 	"sfx.dash",
 	"sfx.dashPlant",
+	"sfx.dashWhoosh", -- the 2026-10-15 dash + double jump overhaul
+	"sfx.doubleJump",
 	"sfx.ultCharge.bird",
 	"sfx.ultCharge.donut",
 	"sfx.ultCharge.cloud_bunny",
@@ -178,7 +180,7 @@ return function(t: Context)
 		return found
 	end
 
-	t.test("the sound key set is the 37 of §18.6, spec phase 5's 10, the 16 inspect ones and feature 1's 5", function()
+	t.test("the sound key set is the 37 of §18.6, spec phase 5's 10, the 16 inspect ones, feature 1's 5 and the 2026-10-15 overhaul's 2", function()
 		local keys = {}
 		local seen: { [string]: boolean } = {}
 		for _, slot in soundSlots() do
@@ -189,7 +191,7 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 68)
+		expect.equal(#keys, 70)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 

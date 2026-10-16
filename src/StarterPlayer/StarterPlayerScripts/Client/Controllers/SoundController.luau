@@ -193,6 +193,8 @@ local CATEGORY: { [string]: string } = {
 	-- Spec phase 5: the dash, and the Epic ultimates' drop and pop impacts.
 	["sfx.dash"] = "dash",
 	["sfx.dashPlant"] = "dash",
+	["sfx.dashWhoosh"] = "dash", -- 2026-10-15 overhaul
+	["sfx.doubleJump"] = "dash",
 	["sfx.ultRainDrop"] = "impact",
 	["sfx.ultBubblePop"] = "impact",
 }

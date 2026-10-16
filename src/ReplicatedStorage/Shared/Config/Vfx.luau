@@ -235,44 +235,49 @@ local Vfx = {
 		headScale = 3.2,
 	},
 
-	-- The dash's effects (spec phase 5 §1.2; design: fp.js:506-546, the third-person "Watch a dash"), drawn by
-	-- DashController for every dasher. Sizes and speeds in studs: the design writes metres, and 1 stud = 0.28 m
-	-- (kit.js:3), so a design value of m metres is m / 0.28 studs. Particle drag: the design multiplies speed by
-	-- exp(-drag·dt) (fx.js:135), Roblox halves it every 1/Drag s, so Drag = drag / ln 2. Colours: Art/Palette Dash*.
-	-- Small game-feel tier: no shake, no hit-stop, no camera effect for the dasher (user decision 2026-10-11).
+	-- The dash's effects (2026-10-15 overhaul, VillasmilGaming: "way better ... stunning vfxs"; they replace the design's
+	-- puffs, ring and ribbons of fp.js:506-546). The particles, rings and ribbons are the VFX Studio library's
+	-- (ReplicatedStorage.SD_MoveVfx/Dash, SDTools.Builders.MoveVfxBuilder; VFX Studio is their editor), played by
+	-- Anim/MoveVfx in the dasher's team glow (Art/Palette DashGlow*). These are DashController's own numbers. The held
+	-- effects run while t < Config.Duel.Rules.Dash.ribbonSeconds.
 	Dash = {
-		pushoffPuffs = 12, -- design: fp.js:516
-		pushoffSpeed = 2 / 0.28, -- design: fp.js:516 (2 m/s)
-		pushoffSize = 0.07 / 0.28, -- design: fp.js:516
-		pushoffLifetime = 0.5, -- design: fp.js:516
-		pushoffDrag = 4.5 / math.log(2), -- design: fp.js:516 (drag 4.5)
-		pushoffGravity = 0.4 / 0.28, -- design: fp.js:516 (gravity 0.4 m/s², a slow rise)
-		ringToStuds = 2 * 0.8 / 0.28, -- the push-off ring's diameter: radius 0.1 -> 0.8 m (design: fp.js:516)
-		ringSeconds = 0.3, -- design: fp.js:516
-		ringTransparencyFrom = 1 - 0.55, -- opacity 0.55 (design: fp.js:516)
-		plantPuffs = 8, -- design: fp.js:517
-		plantSpeed = 1.4 / 0.28, -- design: fp.js:517
-		plantSize = 0.06 / 0.28, -- design: fp.js:517
-		plantLifetime = 0.45, -- design: fp.js:517
-		plantDrag = 5 / math.log(2), -- design: fp.js:517
-		plantGravity = 0.3 / 0.28, -- design: fp.js:517
-		-- Three ribbons while the dash runs (Config.Duel.Rules.Dash.ribbonSeconds), at the waist + `height`, in the dasher's
-		-- team tint (side A Strawberry, side B Mint; practice: Strawberry, the design runner's), `tintFirst` = the colour
-		-- goes tint -> white with age, else white -> tint (design: fp.js:529).
-		ribbons = {
-			{ height = 0.3 / 0.28, width = 0.32 / 0.28, lifetime = 0.2, opacity = 0.5, tintFirst = true },
-			{ height = -0.2 / 0.28, width = 0.2 / 0.28, lifetime = 0.16, opacity = 0.4, tintFirst = false },
-			{ height = 0.75 / 0.28, width = 0.12 / 0.28, lifetime = 0.14, opacity = 0.35, tintFirst = false },
-		},
-		-- Speed lines while the ribbons run: one white particle a frame with this chance, at the waist ± spread, moving
-		-- back along the dash (design: fp.js:539).
-		speedLineChance = 0.6,
-		speedLineSpeed = 3 / 0.28,
-		speedLineSize = 0.025 / 0.28,
-		speedLineLifetime = 0.2,
-		speedLineDrag = 2 / math.log(2),
-		speedLineSpread = Vector3.new(0.3 / 0.28, 0.7 / 0.28, 0.3 / 0.28), -- ± (0.3, -0.6..0.8, 0.3) m, centred
-		speedLineLift = 0.1 / 0.28,
+		ghosts = 4, -- afterimages (Anim/Afterimage), the first at the start ...
+		ghostEverySeconds = 0.05, -- ... then this far apart
+		ghostSeconds = 0.3, -- each one's fade
+		ghostTransparency = 0.45, -- its start
+		ghostTintToWhite = 0.25, -- its colour: the team glow this far toward white
+		-- The dasher's own FOV kick (CameraController.punch, capped at Punch.maxFovDeg; off with settings.cameraShake,
+		-- under ReducedMotion and while a throw holds the FOV). It replaces 2026-10-11's "no camera effect for the
+		-- dasher" (the 2026-10-15 overhaul asked for a dash that feels far better).
+		fovKickDeg = 4,
+		fovKickAttackMs = 45,
+		fovKickReleaseMs = 260,
+	},
+
+	-- Afterimages (2026-10-15, Anim/Afterimage): a ghost of a character's visible parts in one Neon colour, fading out.
+	Afterimage = {
+		transparency = 0.45, -- the default start
+		seconds = 0.3, -- the default fade
+		maxLive = 10, -- live ghosts at once (each copies ~15-20 parts); more are dropped
+	},
+
+	-- The double jump's effects (2026-10-15, DoubleJumpController): SD_MoveVfx/DoubleJump in the jumper's team glow.
+	DoubleJump = {
+		bodySeconds = 0.35, -- DoubleJump/Body follows the HRP this long (the rise)
+		footTrailSeconds = 0.42, -- DoubleJump/FootTrail on both feet (the flip's arcs)
+		ghostSeconds = 0.35, -- one afterimage where it pushed off
+		ghostTransparency = 0.5,
+		ghostTintToWhite = 0.35,
+		whooshPitch = 1.12, -- sfx.doubleJump a little higher than the dash's whoosh
+		pushPitch = 1.25, -- sfx.dash under it, higher: the push on the air
+		pushVolume = 0.7,
+		landVolume = 0.8, -- sfx.dashPlant on the landing
+		landMinSeconds = 0.15, -- no landing before this (it is still leaving the ground)
+		landSlackStuds = 0.6, -- the floor within the standing height + this under the HRP = landed
+		landWithinSeconds = 3, -- a landing later than this gets no Land burst
+		fovKickDeg = 2.5, -- the own jump's FOV kick (as the dash's)
+		fovKickAttackMs = 40,
+		fovKickReleaseMs = 220,
 	},
 
 	-- The four Epic ultimates' effects (spec phase 5 §1.4-§1.8; design: fp.js:236-372), drawn by Anim/UltFx from the

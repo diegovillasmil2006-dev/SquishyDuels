@@ -567,10 +567,18 @@ return function(t: Context)
 				vfx.Ultimates.rollerSpinDegPerSecond = math.deg(22) -- the design's own 22 rad/s
 			end)
 			expect.truthy(containsAll(spin, { "Ultimates", "rollerSpinDegPerSecond" }))
-			local puffs = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
-				vfx.Dash.plantPuffs = 20
+			local kick = validateBrokenCopy(t.Shared, "Vfx", function(vfx)
+				vfx.Dash.fovKickDeg = 30 -- over Punch.maxFovDeg (the 2026-10-15 overhaul's FOV kick)
 			end)
-			expect.truthy(containsAll(puffs, { "Config.Vfx.Dash", "plantPuffs" }))
+			expect.truthy(containsAll(kick, { "Config.Vfx.Dash", "fovKickDeg" }))
+			local flip = validateBrokenCopy(t.Shared, "Anim", function(anim)
+				anim.doubleJump.spinSeconds = 0.2 -- 1800 deg/s on average
+			end)
+			expect.truthy(containsAll(flip, { "Config.Anim.doubleJump" }))
+			local tuck = validateBrokenCopy(t.Shared, "Anim", function(anim)
+				anim.doubleJump.tuck.LeftAnkle = Vector3.new(10, 0, 0)
+			end)
+			expect.truthy(containsAll(tuck, { "Config.Anim.doubleJump.tuck", "LeftAnkle" }))
 		end
 	)
 

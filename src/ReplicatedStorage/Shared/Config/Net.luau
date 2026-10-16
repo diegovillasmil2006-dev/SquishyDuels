@@ -28,6 +28,9 @@ local Net = {
 		-- Spec phase 5: the dash's 2 s cooldown is DashRules' (the client sends at most one per cooldown); the bucket
 		-- only stops floods.
 		DashRequest = { rate = 1, burst = 3 },
+		-- 2026-10-15: the double jump (one per air time, DoubleJumpRules' serverIntervalSeconds); the bucket only stops
+		-- floods.
+		DoubleJumpRequest = { rate = 3, burst = 4 },
 		-- Feature 1 (2026-10-11): the client sends one ChargeStart before each throw (ThrowRequest's own bucket); the
 		-- catch's cooldown is CombatService's (Config.Combat.Catch.cooldownSeconds), the bucket only stops floods.
 		ChargeStart = { rate = 3, burst = 4 },

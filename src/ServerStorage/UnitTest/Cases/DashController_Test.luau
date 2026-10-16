@@ -10,7 +10,8 @@
 --     right foot for an R dash, else the left (fp.js:516-517);
 --   * the held arm's offset fades in over 0.9 frames and out over the last 3 (avatar.js:160-162);
 --   * the ribbons take the dasher's team tint: side A Strawberry, side B Mint, practice Strawberry;
---   * a DashStarted payload is used only when every field has its type and dir is a flat unit vector.
+--   * a DashStarted payload is used only when every field has its type and dir is a flat unit vector;
+--   * 2026-10-15 overhaul: the effects take the team glow (A Strawberry, B Mint), the ghosts ghostEverySeconds apart.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -96,6 +97,21 @@ return function(t: Context)
 		expect.equal(DashController.tintFor("A"), Palette.DashRibbonStrawberry)
 		expect.equal(DashController.tintFor("B"), Palette.DashRibbonMint)
 		expect.equal(DashController.tintFor(nil), Palette.DashRibbonStrawberry)
+	end)
+
+	-- 2026-10-15 overhaul: the effects' team glow and the afterimages' timing.
+	t.test("the effects take the team glow and the ghosts come ghostEverySeconds apart from the start", function()
+		expect.equal(DashController.glowFor("A"), Palette.DashGlowStrawberry)
+		expect.equal(DashController.glowFor("B"), Palette.DashGlowMint)
+		expect.equal(DashController.glowFor(nil), Palette.DashGlowStrawberry)
+		local fx = Config.Vfx.Dash
+		local times = DashController.ghostTimes()
+		expect.equal(#times, fx.ghosts)
+		expect.equal(times[1], 0)
+		for i = 2, #times do
+			expect.near(times[i] - times[i - 1], fx.ghostEverySeconds, 1e-9)
+		end
+		expect.truthy(times[#times] < DASH.seconds + DASH.ribbonSeconds)
 	end)
 
 	t.test("a DashStarted payload needs every field typed and a flat unit dir", function()

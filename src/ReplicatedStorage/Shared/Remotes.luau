@@ -140,6 +140,13 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 		arg("dir", "Vector3"),
 		arg("clientTime", "serverTime"),
 	}),
+	-- 2026-10-15 (DoubleJumpService, Logic/DoubleJumpRules): the double jump's flip key ("F" | "B" | "L" | "R"); the
+	-- jumper's client already moved, the server only decides whether the match is shown it.
+	DoubleJumpRequest = c2s("RemoteEvent", {
+		arg("seq", "integer"),
+		arg("key", "string"),
+		arg("clientTime", "serverTime"),
+	}),
 	-- Feature 1 (2026-10-11; CombatService): the charge throw's start, the press time only (validated like ThrowRequest's
 	-- clientTime, §5.6 #7); the next ThrowRequest's charge is measured from it by the server, never sent by the client.
 	ChargeStart = c2s("RemoteEvent", { arg("clientTime", "serverTime") }),
@@ -201,6 +208,8 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	UltimateEvent = s2c("participantsOrNearby", { arg("event", "table") }),
 	-- Types.DashStartedPayload (spec phase 5): participants incl. the dasher; practice: nearby players.
 	DashStarted = s2c("participantsOrNearby", { arg("dash", "table") }),
+	-- Types.DoubleJumpedPayload (2026-10-15): the match's players incl. the jumper (duels only).
+	DoubleJumped = s2c("participants", { arg("jump", "table") }),
 	-- Types.CatchEventPayload (feature 1): a catch ("caught": the catcher crushes the thrower's toy) and its burst
 	-- ("burst": the thrower loses a life), to the two duelists.
 	CatchEvent = s2c("participants", { arg("event", "table") }),

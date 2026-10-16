@@ -45,6 +45,7 @@ type Module = {
 -- the world layer; of the controllers it requires only StateController (plus SquishyCache, Scheduler, Tweens, the UI
 -- helpers and shared modules).
 -- Spec phase 5: DashController (the dash) right after ThrowController, whose windup and ultimate state it reads.
+-- 2026-10-15: DoubleJumpController (the duel's double jump) right after DashController, whose state and glow it reads.
 -- Feature 1 (2026-10-11): CatchController (the catch) right after ThrowController too, whose charge and hands it
 -- drives; the overlay, the duel HUD, the projectiles and the VFX read it.
 -- Build plan Phase 5: CapsuleController (the base capsules' feel and the capsule card) with the feature screens, after
@@ -65,6 +66,7 @@ local CONTROLLER_ORDER = {
 	"ThrowController",
 	"CatchController",
 	"DashController",
+	"DoubleJumpController",
 	"FirstPersonController",
 	"ViewmodelController",
 	"SqueezeController",

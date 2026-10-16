@@ -313,6 +313,9 @@ local Palette = {
 	DashPuffShade = Color3.fromHex("#E6D2B5"), -- design: fp.js:516
 	DashRibbonStrawberry = Color3.fromHex("#F8CAD4"), -- design: fp.js:529 (the strawberry runner's ribbons)
 	DashRibbonMint = Color3.fromHex("#BDEAD6"), -- design: main.js:341, arena.js:186 (the mint team's)
+	-- 2026-10-15 dash + double jump overhaul: the effects' stronger team glow (Anim/MoveVfx tints, the afterimages).
+	DashGlowStrawberry = Color3.fromHex("#FF7FAA"),
+	DashGlowMint = Color3.fromHex("#4FD8AE"),
 	UltSprinkleLane = Color3.fromHex("#F68FB4"), -- design: fp.js:340 (Sprinkle Roller's lane), fp.js:243 (a sprinkle)
 	UltSprinkleBlue = Color3.fromHex("#7FD3F7"), -- design: fp.js:243
 	UltSprinkleYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:243

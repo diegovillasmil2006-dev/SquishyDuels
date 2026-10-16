@@ -56,6 +56,7 @@ local SERVICE_ORDER = {
 	"CombatService",
 	"AbilityService",
 	"DashService", -- spec phase 5: the dash (needs CombatService's fighters and guards)
+	"DoubleJumpService", -- 2026-10-15: the duel's double jump (needs CombatService's fighters)
 	"DuelService",
 	"QueueService",
 	"FriendDuelService",
