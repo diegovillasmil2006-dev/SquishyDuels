@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<script src="uploads/hud-lib.js?v=5"></script>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#2A1D45}
+*{box-sizing:border-box}
+body{font-family:Fredoka,sans-serif;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+a{color:#FF6FA3}a:hover{color:#FF4F8E}
+img{-webkit-user-drag:none}
+@keyframes sdBob{0%,100%{transform:translateY(0) rotate(0)}50%{transform:translateY(-6px) rotate(-2deg)}}
+@keyframes sdFade{from{opacity:0}to{opacity:1}}
+@keyframes sdShine{0%,55%{transform:translateX(-200%) skewX(-20deg)}100%{transform:translateX(900%) skewX(-20deg)}}
+@keyframes sdPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.07)}}
+@keyframes sdSpin{to{transform:rotate(360deg)}}
+@keyframes sdUp{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:none}}
+@keyframes sdTwinkle{0%,100%{opacity:0;transform:scale(.3) rotate(0)}50%{opacity:1;transform:scale(1) rotate(90deg)}}
+@keyframes sdSlot{0%{transform:scale(0)}65%{transform:scale(1.35)}100%{transform:scale(1)}}
+@keyframes sdDot{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+@keyframes sdMfUnfurl{0%{opacity:0;clip-path:inset(0 50% 0 50%);transform:scaleY(.6)}20%{opacity:1}70%{clip-path:inset(-60px -60px -60px -60px);transform:scaleY(1.08)}100%{opacity:1;clip-path:inset(-60px -60px -60px -60px);transform:none}}
+@keyframes sdMfLet{0%{opacity:0;transform:translateY(70px) scale(.2) rotate(-24deg)}55%{opacity:1;transform:translateY(-20px) scale(1.28,1.12) rotate(7deg)}78%{transform:translateY(5px) scale(.94,1.05) rotate(-2deg)}100%{opacity:1;transform:none}}
+@keyframes sdLvWave{0%,100%{translate:0 0}50%{translate:0 -7px}}
+@keyframes sdMfTailL{0%{opacity:0;transform:translateX(90px) scaleX(.3)}100%{opacity:1;transform:none}}
+@keyframes sdMfTailR{0%{opacity:0;transform:translateX(-90px) scaleX(.3)}100%{opacity:1;transform:none}}
+@keyframes sdMfInL{0%{opacity:0;transform:translateX(-640px) rotate(-40deg)}70%{opacity:1;transform:translateX(16px) rotate(8deg)}85%{transform:translateX(-5px) rotate(-3deg)}100%{opacity:1;transform:none}}
+@keyframes sdMfInR{0%{opacity:0;transform:translateX(640px) rotate(40deg)}70%{opacity:1;transform:translateX(-16px) rotate(-8deg)}85%{transform:translateX(5px) rotate(3deg)}100%{opacity:1;transform:none}}
+@keyframes sdMfVs{0%{opacity:0;transform:scale(4.5) rotate(-35deg)}50%{opacity:1;transform:scale(.75) rotate(10deg)}72%{transform:scale(1.18) rotate(-9deg)}100%{opacity:1;transform:rotate(-6deg)}}
+@keyframes smFeedIn{0%{opacity:0;transform:translateX(70px) scale(.6,.9)}55%{opacity:1;transform:translateX(-8px) scale(1.06,.96)}75%{transform:translateX(3px) scale(.98,1.02)}100%{opacity:1;transform:none}}
+@keyframes smFeedOut{from{opacity:1;transform:none}to{opacity:0;transform:translateX(40px) scale(.9)}}
+@keyframes smMedal{0%{opacity:0;transform:scale(2.6) rotate(-10deg)}14%{opacity:1;transform:scale(.86) rotate(2deg)}22%{transform:scale(1.08)}30%{transform:scale(1)}82%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-40px) scale(.9)}}
+@keyframes smDrop{0%{opacity:0;transform:translateY(-90px)}60%{opacity:1;transform:translateY(8px)}100%{opacity:1;transform:none}}
+@keyframes smBarT{from{transform:translateY(-100%)}to{transform:none}}
+@keyframes smBarB{from{transform:translateY(100%)}to{transform:none}}
+@keyframes smBlink{0%,49%{opacity:1}50%,100%{opacity:.15}}
+@keyframes smFill{from{width:0%}to{width:100%}}
+@keyframes smLetter{0%{opacity:0;transform:scale(3) rotate(-18deg)}55%{opacity:1;transform:scale(.85) rotate(4deg)}75%{transform:scale(1.12)}100%{opacity:1;transform:none}}
+@keyframes smRise{from{opacity:0;transform:translateY(40px) scale(.8)}to{opacity:1;transform:none}}
+@keyframes smToyIn{0%{opacity:0;transform:translateX(120px) scale(.3) rotate(40deg)}60%{opacity:1;transform:translateX(-8px) scale(1.12) rotate(-12deg)}100%{opacity:1;transform:rotate(-8deg)}}
+@keyframes smToyBob{0%,100%{translate:0 0}50%{translate:0 -7px}}
+@keyframes smPlate{0%{opacity:0;transform:translate(-50%,40px) scale(.6)}60%{opacity:1;transform:translate(-50%,-6px) scale(1.04)}100%{opacity:1;transform:translate(-50%,0) scale(1)}}
+@keyframes smStampOut{0%,70%{opacity:1}100%{opacity:0;transform:scale(1.2)}}
+@keyframes smMvp{0%,100%{transform:translateX(-50%) rotate(-4deg)}50%{transform:translateX(-50%) rotate(4deg) scale(1.06)}}
+</style>
+</helmet>
+<div ref="{{ rootRef }}" style="position:fixed;inset:0;overflow:hidden;background:#BFE4FF;font-family:Fredoka,sans-serif">
+<iframe ref="{{ stageRef }}" onLoad="{{ stageLoad }}" src="uploads/match-stage.html?v=1" title="Arena" style="position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none;opacity:{{ stageOp }};transition:opacity 1s ease"></iframe>
+<div ref="{{ hudRef }}" style="position:absolute;left:0;top:0;width:1440px;height:810px;transform-origin:0 0">
+
+<sc-if value="{{ deadOn }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;pointer-events:none;background:radial-gradient(130% 100% at 50% 50%,rgba(70,20,80,0) 40%,rgba(140,40,110,.35) 75%,rgba(46,14,58,.72) 100%);-webkit-backdrop-filter:saturate(.4) brightness(.95);backdrop-filter:saturate(.4) brightness(.95);animation:sdFade .4s ease both"></div>
+</sc-if>
+
+<sc-if value="{{ sbTdm }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:0;right:0;top:14px;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;animation:smDrop .55s cubic-bezier(.2,1.3,.4,1) both">
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="display:flex;gap:8px">
+      <sc-for list="{{ teamA }}" as="p" hint-placeholder-count="2">
+        <div style="position:relative;flex:none">
+          <div style="position:relative;width:62px;height:62px;border:4px solid #1E1428;border-radius:18px;background:{{ p.bg }};box-shadow:0 4px 0 #1E1428,inset 0 4px 0 rgba(255,255,255,.45),inset 0 -6px 0 rgba(0,0,0,.12);display:grid;place-items:center;overflow:hidden;filter:{{ p.f }};transition:filter .3s"><img src="{{ p.pic }}" alt="" draggable="false" style="width:58px;height:58px;object-fit:cover"></div>
+          <span style="position:absolute;right:-8px;bottom:-9px;min-width:28px;height:22px;padding:0 5px;border:3px solid #1E1428;border-radius:9px;background:#2A1D45;display:grid;place-items:center;font-weight:700;font-size:13px;line-height:1;color:#fff">{{ p.lv }}</span>
+          <sc-if value="{{ p.you }}"><span style="position:absolute;left:50%;top:-15px;margin-left:-21px;width:42px;height:21px;border:3px solid #1E1428;border-radius:8px;background:linear-gradient(180deg,#FFF08A,#FFB627);font-size:11px;font-weight:700;color:#fff;-webkit-text-stroke:2.5px #1E1428;paint-order:stroke fill;display:grid;place-items:center">YOU</span></sc-if>
+          <sc-if value="{{ p.dead }}"><span style="position:absolute;left:50%;top:50%;margin:-17px 0 0 -17px;width:34px;height:34px;border:3px solid #1E1428;border-radius:50%;background:#FF5A6E;display:grid;place-items:center;font-weight:700;font-size:17px;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;animation:sdSlot .3s cubic-bezier(.2,1.6,.4,1) both">{{ p.rs }}</span></sc-if>
+        </div>
+      </sc-for>
+    </div>
+    <span ref="{{ scoreARef }}" style="min-width:66px;text-align:center;font-weight:700;font-size:60px;line-height:1;color:#FF8496;-webkit-text-stroke:11px #1E1428;paint-order:stroke fill;text-shadow:0 5px 0 #1E1428">{{ scoreA }}</span>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px;height:52px;padding:0 20px 0 10px;border:4px solid #1E1428;border-radius:999px;background:#2A1D45;box-shadow:0 5px 0 #1E1428,inset 0 3px 0 rgba(255,255,255,.1)"><img src="uploads/hud-icons/clock.svg" alt="" style="width:32px;height:32px"><span style="min-width:62px;font-weight:700;font-size:28px;line-height:1;color:#fff;font-variant-numeric:tabular-nums">{{ timeText }}</span></div>
+      <span style="height:24px;padding:0 10px;border:3px solid #1E1428;border-radius:999px;background:{{ goalBg }};display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;letter-spacing:.04em;white-space:nowrap">{{ goalText }}</span>
+    </div>
+    <span ref="{{ scoreBRef }}" style="min-width:66px;text-align:center;font-weight:700;font-size:60px;line-height:1;color:#7CC4FF;-webkit-text-stroke:11px #1E1428;paint-order:stroke fill;text-shadow:0 5px 0 #1E1428">{{ scoreB }}</span>
+    <div style="display:flex;gap:8px">
+      <sc-for list="{{ teamB }}" as="p" hint-placeholder-count="2">
+        <div style="position:relative;flex:none">
+          <div style="position:relative;width:62px;height:62px;border:4px solid #1E1428;border-radius:18px;background:{{ p.bg }};box-shadow:0 4px 0 #1E1428,inset 0 4px 0 rgba(255,255,255,.45),inset 0 -6px 0 rgba(0,0,0,.12);display:grid;place-items:center;overflow:hidden;filter:{{ p.f }};transition:filter .3s"><img src="{{ p.pic }}" alt="" draggable="false" style="width:58px;height:58px;object-fit:cover"></div>
+          <span style="position:absolute;right:-8px;bottom:-9px;min-width:28px;height:22px;padding:0 5px;border:3px solid #1E1428;border-radius:9px;background:#2A1D45;display:grid;place-items:center;font-weight:700;font-size:13px;line-height:1;color:#fff">{{ p.lv }}</span>
+          <sc-if value="{{ p.dead }}"><span style="position:absolute;left:50%;top:50%;margin:-17px 0 0 -17px;width:34px;height:34px;border:3px solid #1E1428;border-radius:50%;background:#FF5A6E;display:grid;place-items:center;font-weight:700;font-size:17px;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;animation:sdSlot .3s cubic-bezier(.2,1.6,.4,1) both">{{ p.rs }}</span></sc-if>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;width:400px">
+    <div style="position:relative;flex:1;height:14px;border:3px solid #1E1428;border-radius:999px;background:rgba(30,20,40,.55);overflow:hidden"><div style="position:absolute;right:0;top:0;bottom:0;width:{{ barA }};border-radius:999px;background:linear-gradient(180deg,#FFB8C3,#FF6B81);box-shadow:inset 0 3px 0 rgba(255,255,255,.5);transition:width .5s cubic-bezier(.3,1.5,.5,1)"></div></div>
+    <div style="position:relative;flex:1;height:14px;border:3px solid #1E1428;border-radius:999px;background:rgba(30,20,40,.55);overflow:hidden"><div style="position:absolute;left:0;top:0;bottom:0;width:{{ barB }};border-radius:999px;background:linear-gradient(180deg,#B8E4FF,#5DB4FF);box-shadow:inset 0 3px 0 rgba(255,255,255,.5);transition:width .5s cubic-bezier(.3,1.5,.5,1)"></div></div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ sbFfa }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;left:0;right:0;top:14px;display:flex;flex-direction:column;align-items:center;gap:12px;pointer-events:none;animation:smDrop .55s cubic-bezier(.2,1.3,.4,1) both">
+  <div style="display:flex;align-items:center;gap:10px">
+    <div style="display:flex;align-items:center;gap:8px;height:52px;padding:0 20px 0 10px;border:4px solid #1E1428;border-radius:999px;background:#2A1D45;box-shadow:0 5px 0 #1E1428,inset 0 3px 0 rgba(255,255,255,.1)"><img src="uploads/hud-icons/clock.svg" alt="" style="width:32px;height:32px"><span style="min-width:62px;font-weight:700;font-size:28px;line-height:1;color:#fff;font-variant-numeric:tabular-nums">{{ timeText }}</span></div>
+    <span style="height:30px;padding:0 12px;border:3px solid #1E1428;border-radius:999px;background:{{ goalBg }};display:grid;place-items:center;font-size:15px;font-weight:700;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;letter-spacing:.04em;white-space:nowrap">{{ goalText }}</span>
+  </div>
+  <div style="display:flex;gap:10px">
+    <sc-for list="{{ ffaRow }}" as="p" hint-placeholder-count="6">
+      <div style="position:relative;flex:none">
+        <div style="position:relative;width:56px;height:56px;border:4px solid {{ p.bd }};border-radius:17px;background:{{ p.bg }};box-shadow:0 4px 0 #1E1428,inset 0 4px 0 rgba(255,255,255,.45);display:grid;place-items:center;overflow:hidden;filter:{{ p.f }};transition:filter .3s"><img src="{{ p.pic }}" alt="" draggable="false" style="width:52px;height:52px;object-fit:cover"></div>
+        <span style="position:absolute;left:50%;bottom:-12px;margin-left:-17px;width:34px;height:24px;border:3px solid #1E1428;border-radius:9px;background:linear-gradient(180deg,#FFF08A,#FFB627);display:grid;place-items:center;font-weight:700;font-size:15px;line-height:1;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill">{{ p.kills }}</span>
+        <sc-if value="{{ p.crown }}"><img src="uploads/hud-icons/trophy.svg" alt="" style="position:absolute;left:-12px;top:-14px;width:30px;height:30px;transform:rotate(-16deg);filter:drop-shadow(0 2px 0 #1E1428)"></sc-if>
+        <sc-if value="{{ p.you }}"><span style="position:absolute;right:-12px;top:-12px;height:20px;padding:0 6px;border:3px solid #1E1428;border-radius:8px;background:#FF5D97;font-size:10px;font-weight:700;color:#fff;-webkit-text-stroke:2.5px #1E1428;paint-order:stroke fill;display:grid;place-items:center">YOU</span></sc-if>
+        <sc-if value="{{ p.dead }}"><span style="position:absolute;left:50%;top:50%;margin:-16px 0 0 -16px;width:32px;height:32px;border:3px solid #1E1428;border-radius:50%;background:#FF5A6E;display:grid;place-items:center;font-weight:700;font-size:16px;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill">{{ p.rs }}</span></sc-if>
+      </div>
+    </sc-for>
+  </div>
+</div>
+</sc-if>
+
+<div style="position:absolute;right:18px;top:16px;display:flex;flex-direction:column;align-items:flex-end;gap:8px;pointer-events:none;z-index:3">
+  <sc-for list="{{ feed }}" as="e" hint-placeholder-count="0">
+    <sc-if value="{{ e.show }}">
+      <div style="display:flex;align-items:center;gap:8px;height:50px;padding:0 6px;border:4px solid {{ e.bd }};border-radius:16px;background:rgba(36,24,58,.9);box-shadow:0 4px 0 #1E1428{{ e.glow }};transform-origin:100% 50%;animation:{{ e.anim }}">
+        <div style="flex:none;width:36px;height:36px;border:3px solid #1E1428;border-radius:11px;background:{{ e.kbg }};overflow:hidden;display:grid;place-items:center"><img src="{{ e.kpic }}" alt="" style="width:34px;height:34px;object-fit:cover"></div>
+        <span style="font-size:17px;font-weight:700;color:{{ e.kc }};-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ e.kn }}</span>
+        <div style="position:relative;flex:none;width:50px;height:34px">
+          <span style="position:absolute;left:0;top:9px;width:16px;height:4px;border-radius:2px;background:rgba(255,255,255,.55)"></span><span style="position:absolute;left:4px;top:17px;width:12px;height:4px;border-radius:2px;background:rgba(255,255,255,.4)"></span><span style="position:absolute;left:0;top:25px;width:14px;height:4px;border-radius:2px;background:rgba(255,255,255,.3)"></span>
+          <img src="{{ e.tpic }}" alt="" style="position:absolute;right:0;top:0;width:34px;height:34px;object-fit:contain;transform:rotate(-18deg);filter:drop-shadow(0 2px 0 #1E1428)">
+        </div>
+        <span style="font-size:17px;font-weight:700;color:{{ e.vc }};-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ e.vn }}</span>
+        <div style="flex:none;width:36px;height:36px;border:3px solid #1E1428;border-radius:11px;background:{{ e.vbg }};overflow:hidden;display:grid;place-items:center;filter:grayscale(.85) brightness(.85)"><img src="{{ e.vpic }}" alt="" style="width:34px;height:34px;object-fit:cover;transform:scale(1.25,.7) translateY(6px)"></div>
+        <sc-if value="{{ e.hasTag }}"><span style="flex:none;height:28px;padding:0 9px;border:3px solid #1E1428;border-radius:10px;background:{{ e.tagBg }};display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;letter-spacing:.03em;white-space:nowrap">{{ e.tag }}</span></sc-if>
+      </div>
+    </sc-if>
+  </sc-for>
+</div>
+
+<div style="position:absolute;left:0;right:0;top:470px;height:0;display:flex;justify-content:center;pointer-events:none;z-index:4">
+  <sc-for list="{{ medals }}" as="m" hint-placeholder-count="0">
+    <sc-if value="{{ m.show }}">
+      <div style="position:absolute;top:0;display:flex;flex-direction:column;align-items:center;gap:6px;animation:smMedal 1.9s cubic-bezier(.2,1.3,.4,1) both">
+        <div style="position:relative;width:96px;height:96px">
+          <div style="position:absolute;left:-60px;top:-60px;width:216px;height:216px;border-radius:50%;background:repeating-conic-gradient(rgba(255,227,107,.75) 0 9deg,transparent 9deg 22deg);-webkit-mask:radial-gradient(circle,#000 20%,transparent 66%);mask:radial-gradient(circle,#000 20%,transparent 66%);animation:sdSpin 6s linear infinite"></div>
+          <div style="position:absolute;inset:0;border:5px solid #1E1428;border-radius:50%;background:radial-gradient(circle at 50% 35%,#FFF6C8,#FFC23A);box-shadow:0 6px 0 #1E1428,inset 0 5px 0 rgba(255,255,255,.6);overflow:hidden;display:grid;place-items:center"><img src="{{ m.pic }}" alt="" style="width:84px;height:84px;object-fit:cover;transform:scale(1.3,.62) translateY(22px)"></div>
+          <span style="position:absolute;right:-18px;top:-8px;height:30px;padding:0 9px;border:4px solid #1E1428;border-radius:999px;background:linear-gradient(180deg,#A6F796,#38C150);display:grid;place-items:center;font-weight:700;font-size:17px;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill">+1</span>
+        </div>
+        <span style="font-weight:700;font-size:42px;line-height:1;color:#FFE36B;-webkit-text-stroke:9px #1E1428;paint-order:stroke fill;text-shadow:0 5px 0 #1E1428;white-space:nowrap">{{ m.title }}</span>
+        <span style="font-weight:700;font-size:20px;line-height:1;color:#fff;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ m.sub }}</span>
+        <sc-if value="{{ m.hasStreak }}"><span style="display:flex;align-items:center;gap:4px;height:32px;padding:0 12px 0 4px;border:3px solid #1E1428;border-radius:999px;background:linear-gradient(180deg,#FFB25C,#FF4F6E);box-shadow:0 3px 0 #1E1428"><img src="uploads/hud-icons/flame.svg" alt="" style="width:28px;height:28px;margin-top:-4px"><span style="font-weight:700;font-size:16px;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ m.streak }}</span></span></sc-if>
+      </div>
+    </sc-if>
+  </sc-for>
+</div>
+
+<sc-if value="{{ cardOn }}" hint-placeholder-val="{{ false }}">
+<div ref="{{ cardRef }}" style="position:absolute;left:22px;bottom:{{ cardB }}px;width:486px;display:flex;flex-direction:column;gap:8px;pointer-events:none;z-index:6;transform-origin:0 100%">
+  <div style="display:flex;align-items:center;gap:8px;padding-left:4px">
+    <sc-if value="{{ cardFinal }}"><span style="height:32px;padding:0 12px;border:4px solid #1E1428;border-radius:999px;background:linear-gradient(180deg,#FFF08A,#FFB627);box-shadow:0 3px 0 #1E1428;display:grid;place-items:center;font-size:16px;font-weight:700;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;letter-spacing:.05em;white-space:nowrap">FINAL KILL</span></sc-if>
+    <span style="height:30px;padding:0 11px;border:3px solid #1E1428;border-radius:999px;background:{{ cardVbg }};display:grid;place-items:center;font-size:15px;font-weight:700;color:#fff;-webkit-text-stroke:3.5px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ cardVn }}</span>
+    <span style="font-size:15px;font-weight:700;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap">squished by</span>
+    <span style="height:30px;padding:0 11px;border:3px solid #1E1428;border-radius:999px;background:{{ cardKbg }};display:grid;place-items:center;font-size:15px;font-weight:700;color:#fff;-webkit-text-stroke:3.5px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ cardKn }}</span>
+  </div>
+  <div style="position:relative;border:5px solid #1E1428;border-radius:26px;overflow:hidden;background:#6C47F5;box-shadow:0 8px 0 #1E1428,0 22px 40px rgba(15,8,25,.45)">
+    <div style="position:relative;height:140px;overflow:hidden;background:radial-gradient(circle,rgba(255,255,255,.26) 0 4px,transparent 5px) 0 0/24px 24px,{{ cardBan }}">
+      <div style="position:absolute;right:-110px;top:-170px;width:480px;height:480px;border-radius:50%;background:repeating-conic-gradient(rgba(255,255,255,.32) 0 8deg,transparent 8deg 20deg);-webkit-mask:radial-gradient(circle,#000 18%,transparent 64%);mask:radial-gradient(circle,#000 18%,transparent 64%);animation:sdSpin 14s linear infinite"></div>
+      <div style="position:absolute;left:20px;top:18px;display:flex;flex-direction:column;align-items:flex-start;gap:7px">
+        <span style="height:24px;padding:0 10px;border:3px solid #1E1428;border-radius:999px;background:{{ cardRc }};display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;letter-spacing:.06em;text-transform:uppercase">{{ cardRarity }}</span>
+        <span style="font-weight:700;font-size:36px;line-height:1;color:#fff;-webkit-text-stroke:8px #1E1428;paint-order:stroke fill;text-shadow:0 4px 0 #1E1428;white-space:nowrap">{{ cardToy }}</span>
+        <span style="font-size:15px;font-weight:700;color:#fff;text-shadow:0 2px 0 rgba(30,20,40,.65);white-space:nowrap">“{{ cardTitle }}”</span>
+      </div>
+      <div style="position:absolute;right:10px;top:-14px;width:172px;height:172px;animation:smToyIn .7s .12s cubic-bezier(.2,1.4,.4,1) both"><img src="{{ cardToyPic }}" alt="" style="width:172px;height:172px;object-fit:contain;filter:drop-shadow(0 8px 0 rgba(30,20,40,.35));animation:smToyBob 2.4s .9s ease-in-out infinite"></div>
+      <div style="position:absolute;left:214px;top:22px;width:22px;height:22px;background:#FFFFFF;clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);animation:sdTwinkle 1.8s .3s ease-in-out infinite"></div>
+      <div style="position:absolute;left:258px;top:96px;width:16px;height:16px;background:#FFF3A6;clip-path:polygon(50% 0,62% 38%,100% 50%,62% 62%,50% 100%,38% 62%,0 50%,38% 38%);animation:sdTwinkle 1.8s .9s ease-in-out infinite"></div>
+      <div style="position:absolute;top:-20px;bottom:-20px;left:0;width:70px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:sdShine 2.8s .6s ease-in-out infinite"></div>
+    </div>
+    <div style="position:relative;display:flex;align-items:center;gap:14px;height:106px;padding:0 16px 0 14px;border-top:5px solid #1E1428;background:linear-gradient(180deg,#9775FF,#6C47F5);box-shadow:inset 0 3px 0 rgba(255,255,255,.14)">
+      <div style="flex:none;width:76px;height:76px;border:4px solid #1E1428;border-radius:20px;background:{{ cardKbg }};box-shadow:0 4px 0 #1E1428,inset 0 4px 0 rgba(255,255,255,.4);overflow:hidden;display:grid;place-items:center"><img src="{{ cardHead }}" alt="" style="width:72px;height:72px;object-fit:cover"></div>
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+        <span style="font-weight:700;font-size:26px;line-height:1;color:#fff;-webkit-text-stroke:6px #1E1428;paint-order:stroke fill;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ cardKn }}</span>
+        <span style="font-size:14px;font-weight:600;color:#E9E1FF">{{ cardHandle }}</span>
+      </div>
+      <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:3px">
+        <div style="display:flex;align-items:center;gap:3px;height:42px;padding:0 12px 0 4px;border:3px solid #1E1428;border-radius:14px;background:linear-gradient(180deg,#B5FBE0,#2FC48F);box-shadow:inset 0 3px 0 rgba(255,255,255,.55),0 3px 0 #1E1428"><img src="uploads/hud-icons/grip.svg" alt="" style="width:32px;height:32px"><span style="font-weight:700;font-size:24px;line-height:1;color:#fff;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill">{{ cardLv }}</span></div>
+        <span style="font-size:11px;font-weight:700;color:#E9E1FF;letter-spacing:.08em">GRIP LEVEL</span>
+      </div>
+      <div style="flex:none;display:flex;flex-direction:column;align-items:center;gap:3px">
+        <div style="display:flex;align-items:center;gap:3px;height:42px;padding:0 12px 0 4px;border:3px solid #1E1428;border-radius:14px;background:linear-gradient(180deg,#FFB25C,#FF4F6E);box-shadow:inset 0 3px 0 rgba(255,255,255,.5),0 3px 0 #1E1428"><img src="uploads/hud-icons/flame.svg" alt="" style="width:32px;height:32px;margin-top:-4px"><span style="font-weight:700;font-size:24px;line-height:1;color:#fff;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill">{{ cardWs }}</span></div>
+        <span style="font-size:11px;font-weight:700;color:#E9E1FF;letter-spacing:.08em">WIN STREAK</span>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ respOn }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;left:50%;bottom:30px;width:380px;margin-left:-190px;display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none;animation:smRise .4s cubic-bezier(.2,1.4,.4,1) both">
+    <div style="display:flex;align-items:baseline;gap:10px"><span style="font-weight:700;font-size:20px;color:#fff;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill;letter-spacing:.06em">RESPAWNING IN</span><span style="font-weight:700;font-size:40px;line-height:1;color:#FFE36B;-webkit-text-stroke:8px #1E1428;paint-order:stroke fill;text-shadow:0 4px 0 #1E1428">{{ respText }}</span></div>
+    <div style="position:relative;width:100%;height:20px;border:4px solid #1E1428;border-radius:999px;background:rgba(30,20,40,.6);overflow:hidden;box-shadow:0 4px 0 #1E1428"><div style="position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:linear-gradient(180deg,#B5FBE0,#2FC48F);box-shadow:inset 0 3px 0 rgba(255,255,255,.55);animation:smFill 3s linear both"></div></div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ countOn }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;pointer-events:none">
+    <div style="position:absolute;left:50%;top:50%;width:1100px;height:1100px;margin:-550px 0 0 -550px;border-radius:50%;background:repeating-conic-gradient(rgba(255,227,107,.35) 0 7deg,transparent 7deg 18deg);-webkit-mask:radial-gradient(circle,#000 8%,transparent 58%);mask:radial-gradient(circle,#000 8%,transparent 58%);animation:sdSpin 18s linear infinite"></div>
+    <span style="position:relative;font-weight:700;font-size:26px;color:#fff;-webkit-text-stroke:6px #1E1428;paint-order:stroke fill;letter-spacing:.08em;animation:sdUp .4s ease both">{{ countLabel }}</span>
+    <div ref="{{ countRef }}" style="position:relative;display:grid;place-items:center">
+      <span style="grid-area:1/1;font-weight:700;line-height:1;font-size:{{ countSize }}px;color:#1E1428;-webkit-text-stroke:22px #1E1428;paint-order:stroke fill;text-shadow:0 12px 0 #1E1428">{{ countText }}</span>
+      <span style="grid-area:1/1;font-weight:700;line-height:1;font-size:{{ countSize }}px;color:transparent;background:linear-gradient(180deg,#FFFBD0 0%,#FFE36B 25%,#FF9CC2 50%,#B98CFF 72%,#9AF5D2 100%);-webkit-background-clip:text;background-clip:text">{{ countText }}</span>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ introOn }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 50%,rgba(42,29,69,.12) 0%,rgba(30,20,40,.55) 100%);animation:sdFade .5s ease both">
+    <div style="position:relative;width:800px;display:flex;flex-direction:column;align-items:center;gap:18px;padding:66px 34px 30px;border:5px solid #1E1428;border-radius:34px;background:linear-gradient(180deg,#FFD6EC 0%,#FFAFD6 100%);box-shadow:0 10px 0 #1E1428,0 34px 70px rgba(15,8,25,.5);animation:smRise .55s cubic-bezier(.2,1.3,.4,1) both">
+      <div style="position:absolute;left:50%;top:-46px;width:560px;height:90px;margin-left:-280px;border:6px solid #1E1428;border-radius:28px;background:{{ introHeadBg }};box-shadow:inset 0 5px 0 rgba(255,255,255,.55),inset 0 -8px 0 rgba(40,10,60,.18),0 8px 0 #1E1428;display:flex;align-items:center;justify-content:center;gap:12px;overflow:hidden">
+        <div style="position:absolute;top:-20px;bottom:-20px;left:0;width:70px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:sdShine 3.4s 1s ease-in-out infinite"></div>
+        <span style="position:relative;font-weight:700;font-size:40px;line-height:1;letter-spacing:.03em;color:#fff;-webkit-text-stroke:9px #1E1428;paint-order:stroke fill;text-shadow:0 5px 0 #1E1428;white-space:nowrap">SWEETSHOP STADIUM</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="height:32px;padding:0 12px;border:3px solid #1E1428;border-radius:999px;background:#1E1428;display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff;letter-spacing:.04em">{{ introMode }}</span>
+        <span style="font-size:18px;font-weight:700;color:#8A2468">{{ introGoal }}</span>
+      </div>
+      <sc-if value="{{ introTdm }}">
+        <div style="display:flex;align-items:center;gap:18px">
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="align-self:flex-start;height:28px;padding:0 12px;border:3px solid #1E1428;border-radius:999px;background:linear-gradient(180deg,#FFB8C3,#FF6B81);display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;letter-spacing:.05em">STRAWBERRY</span>
+            <sc-for list="{{ introA }}" as="r" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:10px;width:290px;height:66px;padding:0 10px 0 7px;border:4px solid #1E1428;border-radius:20px;background:linear-gradient(180deg,#A385FF,#7A57F2);box-shadow:0 5px 0 #1E1428,inset 0 3px 0 rgba(255,255,255,.12);animation:{{ r.a }}">
+                <div style="flex:none;width:50px;height:50px;border:3px solid #1E1428;border-radius:15px;background:{{ r.bg }};overflow:hidden;display:grid;place-items:center"><img src="{{ r.head }}" alt="" style="width:48px;height:48px;object-fit:cover"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:18px;font-weight:700;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span><span style="font-size:12px;font-weight:600;color:#EDE4FF">Grip {{ r.lv }} · {{ r.toyName }}</span></div>
+                <img src="{{ r.pic }}" alt="" style="flex:none;width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 3px 0 rgba(30,20,40,.3));animation:sdBob 2.6s ease-in-out infinite">
+              </div>
+            </sc-for>
+          </div>
+          <div style="flex:none;position:relative;width:78px;height:78px;animation:sdMfVs .55s .5s cubic-bezier(.2,1.3,.4,1) both"><div style="position:absolute;inset:0;border:5px solid #1E1428;border-radius:50%;background:radial-gradient(circle at 50% 35%,#FFF6B8 0%,#FFC23A 55%,#F59A12 100%);box-shadow:0 6px 0 #1E1428,inset 0 4px 0 rgba(255,255,255,.6)"></div><span style="position:absolute;inset:0;display:grid;place-items:center;padding-bottom:4px;font-weight:700;font-size:34px;line-height:1;color:#fff;-webkit-text-stroke:8px #1E1428;paint-order:stroke fill">VS</span></div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <span style="align-self:flex-end;height:28px;padding:0 12px;border:3px solid #1E1428;border-radius:999px;background:linear-gradient(180deg,#B8E4FF,#5DB4FF);display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;letter-spacing:.05em">BLUEBERRY</span>
+            <sc-for list="{{ introB }}" as="r" hint-placeholder-count="2">
+              <div style="display:flex;align-items:center;gap:10px;width:290px;height:66px;padding:0 10px 0 7px;border:4px solid #1E1428;border-radius:20px;background:linear-gradient(180deg,#A385FF,#7A57F2);box-shadow:0 5px 0 #1E1428,inset 0 3px 0 rgba(255,255,255,.12);animation:{{ r.a }}">
+                <div style="flex:none;width:50px;height:50px;border:3px solid #1E1428;border-radius:15px;background:{{ r.bg }};overflow:hidden;display:grid;place-items:center"><img src="{{ r.head }}" alt="" style="width:48px;height:48px;object-fit:cover"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:18px;font-weight:700;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span><span style="font-size:12px;font-weight:600;color:#EDE4FF">Grip {{ r.lv }} · {{ r.toyName }}</span></div>
+                <img src="{{ r.pic }}" alt="" style="flex:none;width:52px;height:52px;object-fit:contain;filter:drop-shadow(0 3px 0 rgba(30,20,40,.3));animation:sdBob 2.6s ease-in-out infinite">
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ introFfa }}">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;width:100%">
+          <sc-for list="{{ introAll }}" as="r" hint-placeholder-count="6">
+            <div style="display:flex;align-items:center;gap:10px;height:66px;padding:0 8px 0 7px;border:4px solid #1E1428;border-radius:20px;background:linear-gradient(180deg,#A385FF,#7A57F2);box-shadow:0 5px 0 #1E1428,inset 0 3px 0 rgba(255,255,255,.12);animation:{{ r.a }}">
+              <div style="flex:none;width:50px;height:50px;border:3px solid #1E1428;border-radius:15px;background:{{ r.bg }};overflow:hidden;display:grid;place-items:center"><img src="{{ r.head }}" alt="" style="width:48px;height:48px;object-fit:cover"></div>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-size:17px;font-weight:700;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.name }}</span><span style="font-size:12px;font-weight:600;color:#EDE4FF">Grip {{ r.lv }}</span></div>
+              <img src="{{ r.pic }}" alt="" style="flex:none;width:46px;height:46px;object-fit:contain">
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+      <div data-fx="btn" onClick="{{ play }}" style="position:relative;margin-top:6px;display:flex;align-items:center;justify-content:center;gap:12px;width:330px;height:86px;border:5px solid #1E1428;border-radius:28px;background:linear-gradient(180deg,#FFA6C8 0%,#FF5D97 55%,#EE3B7B 100%);box-shadow:inset 0 -8px 0 rgba(150,20,70,.3),inset 0 4px 0 rgba(255,255,255,.6),0 7px 0 #1E1428;cursor:pointer;animation:sdPulse 1.6s ease-in-out infinite">
+        <div style="position:absolute;inset:0;border-radius:23px;overflow:hidden;pointer-events:none"><div style="position:absolute;top:-10px;bottom:-10px;left:0;width:54px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.6),transparent);animation:sdShine 3s ease-in-out infinite"></div></div>
+        <span style="width:0;height:0;border-left:30px solid #fff;border-top:20px solid transparent;border-bottom:20px solid transparent;filter:drop-shadow(0 4px 0 #1E1428);pointer-events:none"></span>
+        <span style="font-weight:700;font-size:48px;line-height:1;color:#fff;-webkit-text-stroke:9px #1E1428;paint-order:stroke fill;text-shadow:0 4px 0 #1E1428;letter-spacing:.04em;pointer-events:none">PLAY</span>
+      </div>
+      <span style="font-size:14px;font-weight:600;color:#8A2468">Click or press Space · sound on</span>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ endOn }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;pointer-events:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;overflow:hidden;background:{{ endBg }};animation:sdFade .3s ease both">
+  <div style="position:absolute;left:50%;top:46%;width:1600px;height:1600px;margin:-800px 0 0 -800px;border-radius:50%;background:repeating-conic-gradient({{ endRay }} 0 6deg,transparent 6deg 16deg);-webkit-mask:radial-gradient(circle,#000 8%,transparent 56%);mask:radial-gradient(circle,#000 8%,transparent 56%);animation:sdSpin 22s linear infinite"></div>
+  <div style="position:relative;display:flex">
+    <sc-for list="{{ endLetters }}" as="l" hint-placeholder-count="8"><span style="display:inline-block;font-weight:700;font-size:124px;line-height:1;color:{{ l.c2 }};-webkit-text-stroke:16px #1E1428;paint-order:stroke fill;text-shadow:0 9px 0 #1E1428;white-space:pre;animation:{{ l.a }}">{{ l.c }}</span></sc-for>
+  </div>
+  <span style="position:relative;font-weight:700;font-size:28px;letter-spacing:.05em;color:#fff;-webkit-text-stroke:7px #1E1428;paint-order:stroke fill;text-shadow:0 4px 0 #1E1428;animation:sdUp .45s .55s ease both;white-space:nowrap">{{ endSub }}</span>
+  <sc-if value="{{ endTdm }}">
+    <div style="position:relative;display:flex;align-items:center;gap:14px;margin-top:6px;animation:sdUp .45s .75s ease both">
+      <sc-for list="{{ teamA }}" as="p" hint-placeholder-count="2"><div style="width:62px;height:62px;border:4px solid #1E1428;border-radius:18px;background:{{ p.bg }};box-shadow:0 4px 0 #1E1428;overflow:hidden;display:grid;place-items:center"><img src="{{ p.pic }}" alt="" style="width:58px;height:58px;object-fit:cover"></div></sc-for>
+      <span style="font-weight:700;font-size:64px;line-height:1;color:#FF8496;-webkit-text-stroke:11px #1E1428;paint-order:stroke fill;text-shadow:0 5px 0 #1E1428">{{ scoreA }}</span>
+      <span style="font-weight:700;font-size:30px;color:#fff;-webkit-text-stroke:6px #1E1428;paint-order:stroke fill">–</span>
+      <span style="font-weight:700;font-size:64px;line-height:1;color:#7CC4FF;-webkit-text-stroke:11px #1E1428;paint-order:stroke fill;text-shadow:0 5px 0 #1E1428">{{ scoreB }}</span>
+      <sc-for list="{{ teamB }}" as="p" hint-placeholder-count="2"><div style="width:62px;height:62px;border:4px solid #1E1428;border-radius:18px;background:{{ p.bg }};box-shadow:0 4px 0 #1E1428;overflow:hidden;display:grid;place-items:center"><img src="{{ p.pic }}" alt="" style="width:58px;height:58px;object-fit:cover"></div></sc-for>
+    </div>
+  </sc-if>
+</div>
+</sc-if>
+
+<sc-if value="{{ repOn }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;pointer-events:none">
+  <div ref="{{ linesRef }}" style="position:absolute;left:50%;top:50%;width:2200px;height:2200px;margin:-1100px 0 0 -1100px;border-radius:50%;background:repeating-conic-gradient(rgba(255,255,255,0) 0deg 3.4deg,rgba(255,255,255,.7) 3.4deg 3.9deg,rgba(255,255,255,0) 3.9deg 7.5deg,rgba(255,240,200,.45) 7.5deg 7.8deg,rgba(255,255,255,0) 7.8deg 11deg);-webkit-mask:radial-gradient(circle,transparent 17%,rgba(0,0,0,.85) 34%,#000 50%);mask:radial-gradient(circle,transparent 17%,rgba(0,0,0,.85) 34%,#000 50%);opacity:0;transition:opacity .3s ease;animation:sdSpin 40s linear infinite"></div>
+  <div style="position:absolute;left:0;right:0;top:0;height:76px;background:#1E1428;animation:smBarT .5s cubic-bezier(.2,1,.3,1) both"><div style="position:absolute;left:0;right:0;bottom:-10px;height:10px;background:radial-gradient(circle,#FF6FA3 0 3px,transparent 4px) 0 0/22px 10px"></div></div>
+  <div style="position:absolute;left:0;right:0;bottom:0;height:76px;background:#1E1428;animation:smBarB .5s cubic-bezier(.2,1,.3,1) both"><div style="position:absolute;left:0;right:0;top:-10px;height:10px;background:radial-gradient(circle,#FF6FA3 0 3px,transparent 4px) 0 0/22px 10px"></div></div>
+  <div style="position:absolute;left:0;right:0;top:20px;display:flex;flex-direction:column;align-items:center;gap:12px">
+    <div style="position:relative;width:560px;height:100px">
+      <svg width="120" height="104" viewBox="0 0 120 104" style="position:absolute;left:-74px;top:2px;overflow:visible;animation:sdMfTailL .42s .5s cubic-bezier(.2,1.4,.4,1) both"><path d="M114 11 H8 L36 56 L8 100 H114 Z" fill="#C2306A" stroke="#1E1428" stroke-width="6" stroke-linejoin="round"></path></svg>
+      <svg width="120" height="104" viewBox="0 0 120 104" style="position:absolute;right:-74px;top:2px;overflow:visible;animation:sdMfTailR .42s .5s cubic-bezier(.2,1.4,.4,1) both"><g transform="translate(120 0) scale(-1 1)"><path d="M114 11 H8 L36 56 L8 100 H114 Z" fill="#C2306A" stroke="#1E1428" stroke-width="6" stroke-linejoin="round"></path></g></svg>
+      <div style="position:absolute;inset:0;animation:sdMfUnfurl .5s .2s cubic-bezier(.3,1.3,.5,1) both">
+        <div style="position:absolute;inset:0;border:6px solid #1E1428;border-radius:30px;background:linear-gradient(180deg,#FFA6C8 0%,#FF5D97 55%,#EE3B7B 100%);box-shadow:inset 0 6px 0 rgba(255,255,255,.55),inset 0 -9px 0 rgba(150,20,70,.3),0 8px 0 #1E1428;overflow:hidden"><div style="position:absolute;top:-20px;bottom:-20px;left:0;width:80px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.7),transparent);animation:sdShine 2.6s 1.2s ease-in-out infinite"></div></div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding-bottom:6px">
+          <sc-for list="{{ repLetters }}" as="l" hint-placeholder-count="10"><span style="display:inline-block;min-width:{{ l.w }};font-weight:700;font-size:74px;line-height:1;color:#fff;-webkit-text-stroke:12px #1E1428;paint-order:stroke fill;text-shadow:0 6px 0 #1E1428;white-space:pre;animation:{{ l.a }}">{{ l.c }}</span></sc-for>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;animation:sdUp .4s .9s ease both">
+      <span style="display:flex;align-items:center;gap:7px;height:34px;padding:0 12px 0 10px;border:3px solid #1E1428;border-radius:999px;background:#2A1D45;box-shadow:0 3px 0 #1E1428"><span style="width:12px;height:12px;border-radius:50%;background:#FF4F6E;box-shadow:0 0 8px #FF4F6E;animation:smBlink 1s steps(1) infinite"></span><span style="font-weight:700;font-size:15px;color:#fff;letter-spacing:.08em">REPLAY</span></span>
+      <span ref="{{ tcRef }}" style="min-width:132px;font-weight:700;font-size:28px;line-height:1;color:#fff;-webkit-text-stroke:6px #1E1428;paint-order:stroke fill;text-shadow:0 3px 0 #1E1428;font-variant-numeric:tabular-nums"></span>
+      <span ref="{{ spdRef }}" style="height:34px;padding:0 12px;border:3px solid #1E1428;border-radius:999px;background:linear-gradient(180deg,#9DEFFA,#1FA6C9);display:grid;place-items:center;font-weight:700;font-size:15px;color:#fff;-webkit-text-stroke:3.5px #1E1428;paint-order:stroke fill;letter-spacing:.05em;opacity:0;transform:scale(.6);transition:opacity .2s,transform .3s cubic-bezier(.2,1.6,.4,1);white-space:nowrap">{{ slowText }}</span>
+    </div>
+  </div>
+  <sc-if value="{{ impactOn }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;left:{{ impX }}px;top:{{ impY }}px;width:0;height:0;animation:smStampOut 2.6s ease both">
+      <div style="position:absolute;left:-330px;top:-200px;width:660px;display:flex;justify-content:center">
+        <sc-for list="{{ impLetters }}" as="l" hint-placeholder-count="9"><span style="display:inline-block;font-weight:700;font-size:88px;line-height:1;color:{{ l.col }};-webkit-text-stroke:14px #1E1428;paint-order:stroke fill;text-shadow:0 8px 0 #1E1428;white-space:pre;animation:{{ l.a }}">{{ l.c }}</span></sc-for>
+      </div>
+    </div>
+  </sc-if>
+  <div data-fx="btn" onClick="{{ skip }}" style="position:absolute;right:26px;bottom:14px;display:flex;align-items:center;gap:10px;height:48px;padding:0 10px 0 18px;border:4px solid #1E1428;border-radius:16px;background:linear-gradient(180deg,#C4B4F0,#9B86DB);box-shadow:inset 0 3px 0 rgba(255,255,255,.35),0 4px 0 #0B0612;pointer-events:auto;cursor:pointer;animation:sdUp .4s 1s ease both">
+    <span style="font-weight:700;font-size:20px;line-height:1;color:#fff;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill;letter-spacing:.04em;pointer-events:none">SKIP</span>
+    <span style="display:flex;pointer-events:none"><span style="width:0;height:0;border-left:11px solid #fff;border-top:8px solid transparent;border-bottom:8px solid transparent;filter:drop-shadow(0 2px 0 #1E1428)"></span><span style="width:0;height:0;border-left:11px solid #fff;border-top:8px solid transparent;border-bottom:8px solid transparent;filter:drop-shadow(0 2px 0 #1E1428)"></span></span>
+    <span style="height:28px;padding:0 8px;border:3px solid #1E1428;border-radius:9px;background:#FFF6EA;display:grid;place-items:center;font-size:13px;font-weight:700;color:#1E1428;pointer-events:none">Space</span>
+  </div>
+  <div ref="{{ invRef }}" style="position:absolute;inset:0;opacity:0;-webkit-backdrop-filter:invert(1) contrast(1.6) saturate(0);backdrop-filter:invert(1) contrast(1.6) saturate(0)"></div>
+  <div ref="{{ flashRef }}" style="position:absolute;inset:0;opacity:0;background:radial-gradient(circle at 50% 50%,#FFFFFF 0%,#FFF6D8 50%,rgba(255,255,255,.85) 100%)"></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ podOn }}" hint-placeholder-val="{{ false }}">
+<div style="position:absolute;inset:0;pointer-events:none">
+  <div style="position:absolute;left:0;right:0;top:24px;display:flex;flex-direction:column;align-items:center;gap:12px">
+    <div style="position:relative;width:600px;height:100px;animation:sdMfUnfurl .55s .25s cubic-bezier(.3,1.3,.5,1) both">
+      <div style="position:absolute;inset:0;border:6px solid #1E1428;border-radius:30px;background:{{ podRibbon }};box-shadow:inset 0 6px 0 rgba(255,255,255,.65),inset 0 -10px 0 rgba(120,60,0,.2),0 9px 0 #1E1428,0 20px 30px rgba(10,5,20,.35);overflow:hidden"><div style="position:absolute;left:16px;right:16px;top:12px;bottom:16px;border:3px dashed rgba(120,60,0,.28);border-radius:22px"></div><div style="position:absolute;top:-20px;bottom:-20px;left:0;width:90px;background:linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent);animation:sdShine 2.8s 1.4s ease-in-out infinite"></div></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding-bottom:6px">
+        <sc-for list="{{ podLetters }}" as="l" hint-placeholder-count="8"><span style="display:inline-block;min-width:{{ l.w }};font-weight:700;font-size:76px;line-height:1;color:#fff;-webkit-text-stroke:12px #1E1428;paint-order:stroke fill;text-shadow:0 6px 0 #1E1428;white-space:pre;animation:{{ l.a }}">{{ l.c }}</span></sc-for>
+      </div>
+    </div>
+    <span style="height:36px;padding:0 16px;border:4px solid #1E1428;border-radius:999px;background:#2A1D45;box-shadow:0 4px 0 #1E1428;display:grid;place-items:center;font-weight:700;font-size:17px;color:#fff;letter-spacing:.05em;white-space:nowrap;animation:sdUp .45s .8s ease both">{{ podSub }}</span>
+  </div>
+  <sc-for list="{{ plates }}" as="c" hint-placeholder-count="0">
+    <div style="position:absolute;left:{{ c.x }}px;top:{{ c.y }}px;width:{{ c.w }}px;animation:smPlate .55s {{ c.d }} cubic-bezier(.2,1.3,.4,1) both">
+      <sc-if value="{{ c.mvp }}"><span style="position:absolute;left:50%;top:-22px;z-index:2;display:flex;align-items:center;gap:4px;height:34px;padding:0 12px 0 6px;border:4px solid #1E1428;border-radius:999px;background:linear-gradient(180deg,#FFF08A,#FFB627);box-shadow:0 4px 0 #1E1428;animation:smMvp 1.6s ease-in-out infinite"><img src="uploads/hud-icons/star.svg" alt="" style="width:24px;height:24px"><span style="font-weight:700;font-size:17px;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;letter-spacing:.06em">MVP</span></span></sc-if>
+      <div style="position:relative;border:5px solid #1E1428;border-radius:24px;background:linear-gradient(180deg,#A385FF,#7A57F2);box-shadow:0 7px 0 #1E1428,0 18px 30px rgba(15,8,25,.35);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:{{ c.headBg }};border-bottom:4px solid #1E1428;box-shadow:inset 0 4px 0 rgba(255,255,255,.45)">
+          <div style="flex:none;position:relative;width:46px;height:46px;border:4px solid #1E1428;border-radius:50%;background:{{ c.medal }};box-shadow:0 3px 0 #1E1428,inset 0 3px 0 rgba(255,255,255,.7);display:grid;place-items:center"><span style="font-weight:700;font-size:24px;line-height:1;color:#fff;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill">{{ c.rank }}</span></div>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:2px"><span style="font-weight:700;font-size:21px;line-height:1.05;color:#fff;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ c.name }}</span><span style="font-size:12px;font-weight:700;color:#1E1428;opacity:.75;white-space:nowrap">{{ c.toyName }}</span></div>
+          <sc-if value="{{ c.you }}"><span style="flex:none;height:22px;padding:0 7px;border:3px solid #1E1428;border-radius:8px;background:#FF5D97;display:grid;place-items:center;font-size:11px;font-weight:700;color:#fff;-webkit-text-stroke:2.5px #1E1428;paint-order:stroke fill">YOU</span></sc-if>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:10px 10px 6px">
+          <sc-for list="{{ c.stats }}" as="st" hint-placeholder-count="3"><div style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 2px;border-radius:12px;background:rgba(30,20,40,.28)"><span style="font-weight:700;font-size:28px;line-height:1;color:{{ st.col }};-webkit-text-stroke:6px #1E1428;paint-order:stroke fill">{{ st.v }}</span><span style="font-size:10px;font-weight:700;color:#EDE4FF;letter-spacing:.08em;white-space:nowrap">{{ st.l }}</span></div></sc-for>
+        </div>
+        <div style="display:flex;gap:6px;padding:4px 10px 12px">
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;gap:3px;height:34px;border:3px solid #1E1428;border-radius:12px;background:linear-gradient(180deg,#B5FBE0,#2FC48F);box-shadow:inset 0 3px 0 rgba(255,255,255,.55)"><img src="uploads/hud-icons/grip.svg" alt="" style="width:24px;height:24px"><span style="font-weight:700;font-size:15px;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap">Grip {{ c.lv }}</span></span>
+          <span style="flex:1;display:flex;align-items:center;justify-content:center;gap:3px;height:34px;border:3px solid #1E1428;border-radius:12px;background:linear-gradient(180deg,#FFB25C,#FF4F6E);box-shadow:inset 0 3px 0 rgba(255,255,255,.5)"><img src="uploads/hud-icons/flame.svg" alt="" style="width:24px;height:24px;margin-top:-3px"><span style="font-weight:700;font-size:15px;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ c.ws }}</span><sc-if value="{{ c.wsUp }}"><span style="font-weight:700;font-size:13px;color:#FFE36B;-webkit-text-stroke:3px #1E1428;paint-order:stroke fill;animation:sdSlot .4s 1s cubic-bezier(.2,1.6,.4,1) both">+1</span></sc-if></span>
+        </div>
+      </div>
+    </div>
+  </sc-for>
+  <div style="position:absolute;left:50%;bottom:18px;width:1080px;margin-left:-540px;display:flex;align-items:center;gap:14px;height:88px;padding:0 14px;border:5px solid #1E1428;border-radius:28px;background:#2A1D45;box-shadow:0 7px 0 #1E1428,inset 0 3px 0 rgba(255,255,255,.08);pointer-events:auto;animation:smRise .5s 2.9s cubic-bezier(.2,1.3,.4,1) both">
+    <div style="flex:none;height:58px;padding:0 18px;border:4px solid #1E1428;border-radius:18px;background:{{ resBg }};box-shadow:inset 0 4px 0 rgba(255,255,255,.5),0 4px 0 #1E1428;display:grid;place-items:center;font-weight:700;font-size:26px;line-height:1;color:#fff;-webkit-text-stroke:6px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ resText }}</div>
+    <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px">
+      <span style="display:flex;align-items:center;gap:6px;height:46px;padding:0 14px 0 6px;border:3px solid #1E1428;border-radius:999px;background:#5B36D9"><img src="uploads/upgraded_v1/coin_currency.png" alt="" style="width:36px;height:36px"><span style="font-weight:700;font-size:22px;color:#FFE36B;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill">+{{ rewCoins }}</span></span>
+      <span style="display:flex;align-items:center;gap:6px;height:46px;padding:0 14px 0 6px;border:3px solid #1E1428;border-radius:999px;background:#5B36D9"><img src="uploads/hud-icons/grip.svg" alt="" style="width:34px;height:34px"><span style="font-weight:700;font-size:22px;color:#9AF5D2;-webkit-text-stroke:5px #1E1428;paint-order:stroke fill;white-space:nowrap">+{{ rewGrip }} Grip</span></span>
+      <span style="display:flex;align-items:center;gap:6px;height:46px;padding:0 14px 0 6px;border:3px solid #1E1428;border-radius:999px;background:#5B36D9"><img src="uploads/hud-icons/flame.svg" alt="" style="width:34px;height:34px;margin-top:-4px"><span style="font-weight:700;font-size:18px;color:#fff;-webkit-text-stroke:4px #1E1428;paint-order:stroke fill;white-space:nowrap">{{ rewStreak }}</span></span>
+    </div>
+    <div data-fx="btn" onClick="{{ toLobby }}" style="flex:none;width:150px;height:58px;border:4px solid #1E1428;border-radius:18px;background:linear-gradient(180deg,#9DEFFA 0%,#3CC6E2 55%,#1FA6C9 100%);box-shadow:inset 0 -6px 0 rgba(0,0,0,.15),inset 0 3px 0 rgba(255,255,255,.55),0 5px 0 #1E1428;display:grid;place-items:center;font-weight:700;font-size:24px;line-height:1;color:#fff;-webkit-text-stroke:6px #1E1428;paint-order:stroke fill;cursor:pointer">LOBBY</div>
+    <div data-fx="btn" onClick="{{ again }}" style="flex:none;width:220px;height:58px;border:4px solid #1E1428;border-radius:18px;background:linear-gradient(180deg,#A6F796 0%,#4CD45C 55%,#2FB447 100%);box-shadow:inset 0 -6px 0 rgba(0,0,0,.15),inset 0 3px 0 rgba(255,255,255,.55),0 5px 0 #1E1428;display:grid;place-items:center;font-weight:700;font-size:24px;line-height:1;color:#fff;-webkit-text-stroke:6px #1E1428;paint-order:stroke fill;cursor:pointer;animation:sdPulse 1.4s ease-in-out infinite">PLAY AGAIN</div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ bootOn }}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:radial-gradient(ellipse at 50% 45%,#C9B6FF 0%,#6C47F5 60%,#2A1D45 100%)">
+    <img src="uploads/duel_emblem.png" alt="" style="width:150px;height:150px;object-fit:contain;animation:sdBob 1.6s ease-in-out infinite;filter:drop-shadow(0 8px 0 rgba(20,10,30,.4))">
+    <span style="font-weight:700;font-size:30px;color:#fff;-webkit-text-stroke:7px #1E1428;paint-order:stroke fill;text-shadow:0 4px 0 #1E1428">Loading arena</span>
+    <div style="display:flex;gap:6px"><span style="width:10px;height:10px;border-radius:50%;background:#FF9CC2;animation:sdDot 1s ease-in-out infinite"></span><span style="width:10px;height:10px;border-radius:50%;background:#FF9CC2;animation:sdDot 1s .2s ease-in-out infinite"></span><span style="width:10px;height:10px;border-radius:50%;background:#FF9CC2;animation:sdDot 1s .4s ease-in-out infinite"></span></div>
+  </div>
+</sc-if>
+</div>
+<div ref="{{ fxRef }}" style="position:fixed;inset:0;pointer-events:none;z-index:50;overflow:hidden"></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;mode&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;TDM&quot;, &quot;FFA&quot;], &quot;default&quot;: &quot;TDM&quot;, &quot;tsType&quot;: &quot;'TDM' | 'FFA'&quot;, &quot;section&quot;: &quot;Match&quot;}, &quot;matchLength&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;Quick&quot;, &quot;Normal&quot;, &quot;Long&quot;], &quot;default&quot;: &quot;Normal&quot;, &quot;tsType&quot;: &quot;'Quick' | 'Normal' | 'Long'&quot;, &quot;section&quot;: &quot;Match&quot;}, &quot;slowMo&quot;: {&quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 0.25, &quot;min&quot;: 0.1, &quot;max&quot;: 1, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Final kill&quot;}, &quot;uiScale&quot;: {&quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 1, &quot;min&quot;: 0.8, &quot;max&quot;: 1.25, &quot;step&quot;: 0.05, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;HUD&quot;}}">
+class Component extends DCLogic {
+  rootRef = React.createRef(); hudRef = React.createRef(); fxRef = React.createRef(); stageRef = React.createRef();
+  cardRef = React.createRef(); countRef = React.createRef(); scoreARef = React.createRef(); scoreBRef = React.createRef();
+  tcRef = React.createRef(); spdRef = React.createRef(); linesRef = React.createRef(); flashRef = React.createRef(); invRef = React.createRef();
+  NAMES = ['MochiMaster', 'xXBobaXx', 'SquishQueen', 'ToastyBoi', 'JellyBean_7', 'PuddingPop', 'NoodleNinja', 'BunBunz', 'SprinkleKid', 'CocoaCat', 'WobbleWiz', 'GummyGamer'];
+  TITLES = { KittyBread: 'Loaf of Doom', Toast: 'Crispy Sniper', Banana: 'Peel Dealer', Butter: 'Smooth Operator', Chocolate: 'Cocoa Crusher', Donut: 'Ring Leader', BobaBear: 'Pearl Pounder', PancakePup: 'Flapjack Flinger', MochiFox: 'Stretch Fox', StrawberryFrog: 'Berry Hopper', Dragon: 'Sky Scorcher', Birdie: 'Fluff Flyer', CloudBunny: 'Cloud Crusher', CupcakeAxolotl: 'Frosting Fiend' };
+  TEAM = [
+    { name: 'STRAWBERRY', hex: '#FF6B81', txt: '#FF94A5', bg: 'linear-gradient(180deg,#FFB8C3 0%,#FF6B81 58%,#E84A64 100%)' },
+    { name: 'BLUEBERRY', hex: '#5DB4FF', txt: '#8FCBFF', bg: 'linear-gradient(180deg,#B8E4FF 0%,#5DB4FF 58%,#3B93EE 100%)' },
+  ];
+  FFA = [
+    { hex: '#FF6FA3', bg: 'linear-gradient(180deg,#FFC6DC,#FF6FA3)' }, { hex: '#36C2DA', bg: 'linear-gradient(180deg,#B8F5FA,#36C2DA)' },
+    { hex: '#FFC23A', bg: 'linear-gradient(180deg,#FFF3A6,#FFC23A)' }, { hex: '#3FCC95', bg: 'linear-gradient(180deg,#C2F7E0,#3FCC95)' },
+    { hex: '#A07BF5', bg: 'linear-gradient(180deg,#E4D4FF,#A07BF5)' }, { hex: '#FF9A4D', bg: 'linear-gradient(180deg,#FFD6B3,#FF9A4D)' },
+  ];
+  MEDAL = ['radial-gradient(circle at 50% 35%,#FFF6B8,#FFC23A 60%,#F59A12)', 'radial-gradient(circle at 50% 35%,#FFFFFF,#CFD6F2 60%,#9AA6CF)', 'radial-gradient(circle at 50% 35%,#FFE2CC,#FFAE78 60%,#E07A3E)'];
+  HEADBG = ['linear-gradient(180deg,#FFF3A6,#FFC23A)', 'linear-gradient(180deg,#F4F6FF,#C9D2F0)', 'linear-gradient(180deg,#FFE2CC,#FFAE78)'];
+  state = { ready: false, phase: 'boot', thumbs: {}, heads: {}, players: [], st: {}, score: [0, 0], feed: [], medals: [], card: null, count: 3, secs: 180, fin: null, anchors: null, ranks: null, impact: null, tick: 0 };
+  _t = []; _lk = {}; _fid = 0; _mid = 0;
+  T(ms, fn) { const id = setTimeout(fn, ms); this._t.push(id); return id; }
+  clearT() { this._t.forEach(clearTimeout); this._t = []; }
+  get H() { const H = window.SDHUD; if (H) { if (H.FX.getLayer !== this._gl) { this._gl = this._gl || (() => this.fxRef.current); H.FX.getLayer = this._gl; H.FX.layer = null; } H.FX.k = this.k || 1; } return H; }
+  get mode() { return this.props.mode === 'FFA' ? 'FFA' : 'TDM'; }
+  get target() { const L = { Quick: [5, 3], Normal: [10, 6], Long: [15, 9] }[this.props.matchLength] || [10, 6]; return this.mode === 'TDM' ? L[0] : L[1]; }
+  pl(id) { return this.state.players.find((p) => p.id === id); }
+  th(id) { const H = window.SDHUD; return this.state.thumbs[id] || (H ? (id === 'KittyBread' ? H.ICON.squishies : H.BLANK) : ''); }
+  hd(p) { return (p && this.state.heads[p.id]) || (p ? this.th(p.toy) : ''); }
+  post(m) { const f = this.stageRef.current; if (f && f.contentWindow) f.contentWindow.postMessage(m, '*'); }
+  sp(x, y) { const k = this.k || 1; return { x: x * k, y: y * k }; }
+
+  componentDidMount() {
+    const boot = () => { if (!window.SDHUD) { this._bt = setTimeout(boot, 40); return; } this.snd = new window.SDHUD.SFX(); this.fit(); this.forceUpdate(); };
+    boot();
+    this._fit = () => this.fit(); addEventListener('resize', this._fit);
+    this._msg = (e) => this.onMsg(e); addEventListener('message', this._msg);
+    const root = this.rootRef.current;
+    this._down = (e) => { if (this.snd) this.snd.ensure(); const el = e.target.closest && e.target.closest('[data-fx]'); if (el && this.H) { this.H.FX.squash(el, 1); if (this.snd) this.snd.press(); } };
+    this._over = (e) => this.hov(e, true); this._out = (e) => this.hov(e, false);
+    root.addEventListener('pointerdown', this._down); root.addEventListener('pointerover', this._over); root.addEventListener('pointerout', this._out);
+    this._key = (e) => this.key(e); addEventListener('keydown', this._key);
+    this._iv = setInterval(() => this.tick(), 200);
+  }
+  componentWillUnmount() {
+    removeEventListener('resize', this._fit); removeEventListener('message', this._msg); removeEventListener('keydown', this._key);
+    clearInterval(this._iv); clearTimeout(this._bt); this.clearT();
+  }
+  componentDidUpdate(pp) {
+    if (pp && (pp.mode !== this.props.mode || pp.matchLength !== this.props.matchLength) && this.state.ready) this.setup();
+    if (pp && pp.uiScale !== this.props.uiScale) this.fit();
+  }
+  fit() {
+    const el = this.hudRef.current; if (!el) return;
+    const k = Math.max(0.4, Math.min(innerWidth / 1440, innerHeight / 810)) * (this.props.uiScale ?? 1);
+    this.k = k; this.vw = innerWidth / k; this.vh = innerHeight / k; if (window.SDHUD) window.SDHUD.FX.k = k;
+    el.style.width = this.vw + 'px'; el.style.height = this.vh + 'px'; el.style.transform = `scale(${k})`;
+    if (this.state.phase === 'podium' || this.state.phase === 'replay') this.forceUpdate();
+  }
+  hov(e, on) {
+    const el = e.target.closest && e.target.closest('[data-fx]'); if (!el) return;
+    const rel = e.relatedTarget; if (rel && el.contains(rel)) return;
+    el.style.transition = 'transform .38s cubic-bezier(.3,1.9,.45,1), filter .2s';
+    el.style.transform = on ? 'translateY(-3px) scale(1.04)' : ''; el.style.filter = on ? 'brightness(1.07) saturate(1.06)' : '';
+    if (on && this.snd) this.snd.hover(1);
+  }
+  key(e) {
+    if (this.snd) this.snd.ensure();
+    if (e.code !== 'Space' || e.repeat) return;
+    e.preventDefault();
+    if (this.state.phase === 'intro') this.play(); else if (this.state.phase === 'replay') this.skip(); else if (this.state.phase === 'podium') this.again();
+  }
+  tick() {
+    const s = this.state; if (s.phase !== 'live' && s.phase !== 'end') return;
+    const patch = {};
+    if (s.phase === 'live' && this.goAt) { const secs = Math.max(0, 180 - (performance.now() - this.goAt) / 1000); if (Math.ceil(secs) !== Math.ceil(s.secs)) patch.secs = secs; }
+    if (Object.values(s.st).some((x) => !x.alive)) patch.tick = s.tick + 1;
+    if (Object.keys(patch).length) this.setState(patch);
+  }
+
+  /* ---------- match setup ---------- */
+  makeRoster() {
+    const H = window.SDHUD, tdm = this.mode === 'TDM', n = tdm ? 4 : 6, yourToy = 'KittyBread';
+    const names = this.NAMES.slice().sort(() => Math.random() - 0.5), toys = H.TOYS.map((t) => t.id).filter((id) => id !== yourToy).sort(() => Math.random() - 0.5);
+    return Array.from({ length: n }, (_, i) => {
+      const you = i === 0, team = tdm ? (i < 2 ? 0 : 1) : -1, C = tdm ? this.TEAM[team] : this.FFA[i], name = you ? 'You' : names[i];
+      return { id: 'p' + i, you, name, handle: you ? '@squishfan_05' : '@' + name.toLowerCase().replace(/[^a-z0-9_]/g, ''), toy: you ? yourToy : toys[i], team, hex: C.hex, txt: C.txt || C.hex, bg: C.bg, lv: you ? 5 : 3 + Math.floor(Math.random() * 58), ws: you ? 2 : Math.floor(Math.random() * 7) };
+    });
+  }
+  setup() {
+    if (!window.SDHUD) return;
+    this.clearT(); this._lk = {}; this._fb = false; this.goAt = 0;
+    const players = this.makeRoster(), st = {};
+    players.forEach((p) => { st[p.id] = { k: 0, d: 0, s: 0, b: 0, alive: true, rAt: 0 }; });
+    this.setState({ phase: 'intro', players, st, score: [0, 0], feed: [], medals: [], card: null, fin: null, anchors: null, ranks: null, impact: null, secs: 180, count: 3, heads: {} });
+    this.post({ type: 'ms-setup', mode: this.mode, target: this.target, seed: (Math.random() * 1e9) | 0, players: players.map((p) => ({ id: p.id, team: p.team, hex: parseInt(p.hex.slice(1), 16), toy: p.toy })) });
+  }
+  play = () => {
+    if (this.state.phase !== 'intro' || !this.snd) return;
+    this.snd.ensure(); this.snd.whoosh(true); this.post({ type: 'ms-count' });
+    this.setState({ phase: 'count', count: 3 });
+    [3, 2, 1, 0].forEach((n, i) => this.T(300 + i * 800, () => this.countBeat(n)));
+    this.T(300 + 4 * 800 - 120, () => { this.post({ type: 'ms-go' }); this.goAt = performance.now(); this.setState({ phase: 'live' }); });
+  };
+  countBeat(n) {
+    const H = this.H;
+    this.setState({ count: n }, () => {
+      const el = this.countRef.current;
+      if (el) el.animate([{ transform: 'scale(3.4) rotate(-16deg)', opacity: 0 }, { transform: 'scale(.82,.9) rotate(4deg)', opacity: 1, offset: 0.45 }, { transform: 'scale(1.12,1.04) rotate(-2deg)', offset: 0.68 }, { transform: 'scale(1)', opacity: 1, offset: 0.85 }, { transform: 'scale(.92)', opacity: n ? 0.0 : 1 }], { duration: 780, easing: 'cubic-bezier(.2,1,.4,1)', fill: 'both' });
+    });
+    const c = this.sp(this.vw / 2, this.vh / 2);
+    if (n) { this.snd.clockTick(true); this.snd.slam(); H.FX.ring(c.x, c.y, '#FFFFFF', 300); }
+    else { this.snd.mfImpact(); H.FX.burst(c.x, c.y, { n: 40, spread: 460, size: 15, dur: 1100, up: 60 }); [0, 90, 180].forEach((d, i) => this.T(d, () => H.FX.ring(c.x, c.y, ['#FFE36B', '#FF8FBF', '#7DE8F2'][i], 420 + i * 220))); H.FX.jolt(this.hudRef.current, 12); }
+  }
+
+  /* ---------- stage messages ---------- */
+  onMsg(e) {
+    const m = e.data || {}; if (!m.type) return;
+    const f = this.stageRef.current; if (f && e.source && e.source !== f.contentWindow) return;
+    switch (m.type) {
+      case 'ms-ready': if (!this.state.ready) { this.setState({ ready: true }, () => this.setup()); } break;
+      case 'sd-thumbs': this.setState({ thumbs: m.thumbs || {} }); break;
+      case 'ms-heads': this.setState({ heads: m.heads || {} }); break;
+      case 'ms-kill': this.onKill(m); break;
+      case 'ms-respawn': this.onRespawn(m.id); break;
+      case 'ms-throw': if (this.snd && (m.by === 'p0' || m.d < 9)) this.snd.toss(); break;
+      case 'ms-rev': this.onRev(m); break;
+      case 'ms-rt': this.onRT(m); break;
+      case 'ms-impact': this.onImpact(m); break;
+      case 'ms-replay-done': this.T(450, () => this.toPodium()); break;
+      case 'ms-land': this.onLand(m); break;
+      case 'ms-anchors': this.setState({ anchors: m.list || [] }); if (this.snd) this.snd.open(); break;
+    }
+  }
+  splat(g = 1) { const s = this.snd; if (!s) return; s.tone(170, 0.24, { to: 48, g: 0.3 * g }); s.noise(0.2, { f: 2200, to: 260, type: 'lowpass', g: 0.25 * g }); s.tone(900, 0.06, { to: 1500, type: 'triangle', g: 0.05 * g, at: 0.03 }); }
+  onKill(m) {
+    const s = this.state, k = this.pl(m.killer), v = this.pl(m.victim); if (!k || !v || !this.snd) return;
+    const st = { ...s.st }, ks = { ...st[k.id] }, vs = { ...st[v.id] }, now = performance.now();
+    ks.k++; ks.s++; ks.b = Math.max(ks.b, ks.s); vs.d++; vs.s = 0; vs.alive = false; vs.rAt = now + 3000;
+    st[k.id] = ks; st[v.id] = vs;
+    const lk = this._lk[k.id] || { t: 0, n: 0 }, multi = now - lk.t < 4000 ? lk.n + 1 : 1; this._lk[k.id] = { t: now, n: multi };
+    let tag = '', tagBg = '';
+    if (m.final) { tag = 'FINAL KILL'; tagBg = 'linear-gradient(180deg,#FFF08A,#FFB627)'; }
+    else if (!this._fb) { tag = 'FIRST BLOOD'; tagBg = 'linear-gradient(180deg,#FF8A9A,#E83A5A)'; }
+    else if (multi >= 3) { tag = 'TRIPLE!'; tagBg = 'linear-gradient(180deg,#E4B8FF,#9A63E8)'; }
+    else if (multi === 2) { tag = 'DOUBLE!'; tagBg = 'linear-gradient(180deg,#9DEFFA,#1FA6C9)'; }
+    else if (ks.s >= 3) { tag = ks.s + ' STREAK'; tagBg = 'linear-gradient(180deg,#FFB25C,#FF4F6E)'; }
+    this._fb = true;
+    const e = { id: ++this._fid, k: k.id, v: v.id, tag, tagBg, you: k.you ? 'k' : v.you ? 'v' : '', show: true, out: false };
+    this.setState({ st, score: this.mode === 'TDM' && m.score ? m.score : s.score, feed: [...s.feed, e] });
+    this.T(4600, () => this.setState((x) => ({ feed: x.feed.map((f) => (f.id === e.id ? { ...f, out: true } : f)) })));
+    this.T(5000, () => this.setState((x) => ({ feed: x.feed.map((f) => (f.id === e.id ? { ...f, show: false } : f)) })));
+    this.snd.card();
+    if (this.mode === 'TDM') requestAnimationFrame(() => { const el = (k.team === 0 ? this.scoreARef : this.scoreBRef).current; if (el && this.H) { this.H.FX.squash(el, 1.6); const c = this.H.FX.center(el); this.H.FX.burst(c.x, c.y, { n: 10, spread: 90, colors: [k.hex, '#FFFFFF', '#FFE36B'] }); } });
+    if (k.you) this.youKill(v, ks.s, multi);
+    else if (v.you && !m.final) this.youDie(k, v);
+    else this.splat(0.45);
+    if (m.final) this.onFinal(k, v);
+  }
+  youKill(v, streak, multi) {
+    const md = { id: ++this._mid, title: multi >= 3 ? 'TRIPLE SQUISH!' : multi === 2 ? 'DOUBLE SQUISH!' : 'SQUISHED!', sub: v.name, pic: this.hd(v), streak: streak + ' squish streak', hasStreak: streak >= 2, show: true };
+    this.setState((s) => ({ medals: [...s.medals, md] }));
+    this.T(1950, () => this.setState((s) => ({ medals: s.medals.map((x) => (x.id === md.id ? { ...x, show: false } : x)) })));
+    this.snd.stamp(); this.T(90, () => this.snd.claim()); this.splat(0.8);
+    const c = this.sp(this.vw / 2, 520); this.T(160, () => { this.H.FX.burst(c.x, c.y, { n: 26, spread: 230, size: 13 }); this.H.FX.ring(c.x, c.y, '#FFE36B', 260); });
+  }
+  youDie(k, v) {
+    this.snd.error(); this.splat(1.1); this.H.FX.jolt(this.hudRef.current, 10);
+    this.showCard('dead', k, v);
+  }
+  onRespawn(id) {
+    this.setState((s) => (s.st[id] ? { st: { ...s.st, [id]: { ...s.st[id], alive: true } } } : null));
+    if (id === 'p0' && this.state.phase === 'live') { this.hideCard(); if (this.snd) this.snd.pop(); }
+  }
+  showCard(kind, k, v) {
+    this.setState({ card: { kind, k: k.id, v: v.id } }, () => {
+      const el = this.cardRef.current; if (!el) return;
+      el.animate([{ transform: 'translate(-60px,260px) scale(.55) rotate(-8deg)', opacity: 0 }, { transform: 'translate(6px,-12px) scale(1.04) rotate(1deg)', opacity: 1, offset: 0.6 }, { transform: 'translate(0,3px) scale(.99)', offset: 0.8 }, { transform: 'none', opacity: 1 }], { duration: 620, easing: 'cubic-bezier(.2,1,.4,1)', fill: 'both' });
+    });
+    this.snd.whoosh(true); this.T(260, () => this.snd.card());
+  }
+  hideCard() {
+    const el = this.cardRef.current;
+    if (!el || !this.state.card) { this.setState({ card: null }); return; }
+    el.animate([{ transform: 'none', opacity: 1 }, { transform: 'translate(-30px,120px) scale(.8)', opacity: 0 }], { duration: 260, easing: 'cubic-bezier(.5,0,.75,0)', fill: 'forwards' }).onfinish = () => this.setState({ card: null });
+  }
+  onFinal(k, v) {
+    const you = this.pl('p0'), win = this.mode === 'TDM' ? k.team === you.team : k.you;
+    this.setState({ fin: { k: k.id, v: v.id, win }, phase: 'end', card: null });
+    this.T(250, () => { if (win) { this.snd.fanfare(); this.H.FX.rain(90); } else { [0, -3, -7, -12].forEach((sm, i) => this.snd.tone(this.snd.note(sm, 523.25), 0.5, { at: i * 0.16, type: 'triangle', g: 0.06, verb: 0.4 })); this.snd.tone(110, 0.8, { at: 0.5, to: 55, g: 0.2 }); } });
+    this.T(2900, () => this.toReplay());
+  }
+  toReplay() {
+    const f = this.state.fin; if (!f) return;
+    this.setState({ phase: 'replay', impact: null });
+    this.post({ type: 'ms-replay', slow: this.props.slowMo ?? 0.25 });
+    this.snd.whoosh(true); this.snd.mfCharge(); this.T(260, () => this.snd.mfLetters(10, 0.045, 523.25));
+    this.T(700, () => this.showCard('final', this.pl(f.k), this.pl(f.v)));
+  }
+  onRev(m) {
+    if (!this.snd || this.state.phase !== 'replay') return;
+    if (m.k === 'throw') { this.snd.toss(); this.snd.whoosh(true); }
+    else if (m.k === 'hit' && !m.fin) this.splat(0.7);
+    else if (m.k === 'poof') this.snd.pop();
+  }
+  onRT(m) {
+    const tc = this.tcRef.current, sp = this.spdRef.current, ln = this.linesRef.current;
+    if (tc) { const t = Math.max(0, m.t), mm = Math.floor(t / 60), ss = t % 60; tc.textContent = String(mm).padStart(2, '0') + ':' + ss.toFixed(2).padStart(5, '0'); }
+    const slow = m.sp < 0.9;
+    if (sp) { sp.style.opacity = slow ? 1 : 0; sp.style.transform = slow ? 'scale(1)' : 'scale(.6)'; }
+    if (ln) ln.style.opacity = slow ? Math.min(1, (1 - m.sp) * 1.2).toFixed(2) : 0;
+    if (slow !== this._slow) { this._slow = slow; if (slow && this.snd) { this.snd.tone(140, 1.4, { to: 55, g: 0.12, a: 0.2 }); this.snd.noise(1.2, { f: 1800, to: 300, q: 1, g: 0.05, a: 0.3 }); } }
+  }
+  onImpact(m) {
+    const H = this.H; if (!H) return;
+    const x = Math.max(320, Math.min(this.vw - 320, m.x * this.vw)), y = Math.max(240, Math.min(this.vh - 200, m.y * this.vh));
+    this.setState({ impact: { x, y } });
+    const fl = this.flashRef.current, iv = this.invRef.current;
+    if (iv) iv.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: 130, easing: 'steps(2,end)' });
+    if (fl) fl.animate([{ opacity: 0 }, { opacity: 0.9, offset: 0.12 }, { opacity: 0 }], { duration: 650, delay: 90, easing: 'ease-out' });
+    this.snd.mfImpact(); this.snd.burst(); this.splat(1.3); this.T(140, () => this.snd.vsSlam());
+    const c = this.sp(m.x * this.vw, m.y * this.vh);
+    H.FX.burst(c.x, c.y, { n: 46, spread: 520, size: 16, dur: 1300, up: 50 });
+    [0, 100, 200].forEach((d, i) => this.T(d, () => H.FX.ring(c.x, c.y, ['#FFFFFF', '#FFE36B', '#FF8FBF'][i], 380 + i * 260)));
+    H.FX.jolt(this.hudRef.current, 16);
+  }
+  skip = () => { if (this.state.phase !== 'replay') return; this.post({ type: 'ms-skip' }); };
+
+  /* ---------- podium ---------- */
+  rankIds() {
+    const s = this.state, st = s.st, by = (a, b) => st[b.id].k - st[a.id].k || st[a.id].d - st[b.id].d;
+    if (this.mode === 'TDM') { const fk = this.pl(s.fin.k); return s.players.filter((p) => p.team === fk.team).sort(by).map((p) => p.id); }
+    const r = s.players.slice().sort(by).map((p) => p.id), w = s.fin.k; return [w, ...r.filter((id) => id !== w)];
+  }
+  toPodium() {
+    if (this.state.phase !== 'replay' || !this.state.fin) return;
+    const ranks = this.rankIds();
+    this.hideCard();
+    this.setState({ phase: 'podium', ranks, anchors: null, impact: null });
+    this.post({ type: 'ms-podium', ranks });
+    this.snd.whoosh(true); this.T(200, () => this.snd.fanfare());
+  }
+  onLand(m) {
+    if (!this.snd) return;
+    this.snd.slam(); if (m.rank === 1) { this.snd.claim(); this.H.FX.rain(70); }
+    this.H.FX.jolt(this.hudRef.current, m.rank === 1 ? 9 : 5);
+  }
+  again = () => { if (this.state.phase !== 'podium') return; this.setup(); };
+  toLobby = () => { location.href = 'Squishy Duels HUD.dc.html'; };
+
+  renderVals() {
+    const H = window.SDHUD, s = this.state;
+    const base = {
+      rootRef: this.rootRef, hudRef: this.hudRef, fxRef: this.fxRef, stageRef: this.stageRef, cardRef: this.cardRef, countRef: this.countRef,
+      scoreARef: this.scoreARef, scoreBRef: this.scoreBRef, tcRef: this.tcRef, spdRef: this.spdRef, linesRef: this.linesRef, flashRef: this.flashRef, invRef: this.invRef,
+      stageLoad: () => this.post({ type: 'sd-hello' }), stageOp: s.ready ? 1 : 0, bootOn: !s.ready || !H, play: this.play, skip: this.skip, again: this.again, toLobby: this.toLobby,
+    };
+    if (!H) return base;
+    const ph = s.phase, tdm = this.mode === 'TDM', now = performance.now(), me = this.pl('p0');
+    const th = (id) => this.th(id), hd = (p) => this.hd(p);
+    const rs = (p) => Math.max(1, Math.ceil(((s.st[p.id] || {}).rAt - now) / 1000));
+    const dead = (p) => s.st[p.id] && !s.st[p.id].alive;
+    const tile = (p) => ({ pic: hd(p), bg: p.bg, lv: String(p.lv), you: p.you, dead: dead(p) && ph === 'live', rs: String(rs(p)), f: dead(p) ? 'grayscale(1) brightness(.75)' : 'none' });
+    const teamA = s.players.filter((p) => p.team === 0).map(tile), teamB = s.players.filter((p) => p.team === 1).map(tile);
+    const kills = (p) => (s.st[p.id] || {}).k || 0;
+    const ffaSorted = s.players.slice().sort((a, b) => kills(b) - kills(a) || (s.st[a.id] || {}).d - (s.st[b.id] || {}).d);
+    const lead = ffaSorted[0];
+    const ffaRow = ffaSorted.map((p) => ({ ...tile(p), kills: String(kills(p)), crown: !!lead && p === lead && kills(p) > 0, bd: p.you ? '#FFE36B' : '#1E1428' }));
+    const secs = Math.ceil(s.secs), ot = ph === 'live' && s.secs <= 0;
+    const sbOn = ph === 'count' || ph === 'live';
+    const nameC = (p) => (p.you ? '#FFE36B' : p.txt);
+
+    const feed = s.feed.map((e) => {
+      const k = this.pl(e.k), v = this.pl(e.v); if (!k || !v) return { show: false };
+      return { show: e.show && (ph === 'live' || ph === 'end'), anim: e.out ? 'smFeedOut .4s ease-in both' : 'smFeedIn .5s cubic-bezier(.2,1.4,.4,1) both', kpic: hd(k), vpic: hd(v), kbg: k.bg, vbg: v.bg, kn: k.name, vn: v.name, kc: nameC(k), vc: nameC(v), tpic: th(k.toy),
+        bd: e.you === 'k' ? '#FFE36B' : e.you === 'v' ? '#FF5A6E' : '#1E1428', glow: e.you === 'k' ? ',0 0 0 3px rgba(255,227,107,.3)' : e.you === 'v' ? ',0 0 0 3px rgba(255,90,110,.3)' : '', hasTag: !!e.tag, tag: e.tag, tagBg: e.tagBg };
+    });
+    const medals = s.medals.map((m) => ({ ...m, show: m.show && ph === 'live' }));
+
+    const c = s.card, ck = c ? this.pl(c.k) : null, cv = c ? this.pl(c.v) : null, ct = ck ? H.TOY[ck.toy] : null, cr = ct ? H.RAR[ct.rarity] : H.RAR.Common;
+    const card = {
+      cardOn: !!(ck && cv && (ph === 'live' || ph === 'replay' || ph === 'podium')), cardFinal: !!c && c.kind === 'final', cardB: c && c.kind === 'final' ? 92 : 22,
+      cardKn: ck ? ck.name : '', cardVn: cv ? cv.name : '', cardKbg: ck ? ck.bg : '#6C47F5', cardVbg: cv ? cv.bg : '#6C47F5', cardHead: hd(ck), cardHandle: ck ? ck.handle : '',
+      cardToy: ct ? ct.name : '', cardToyPic: ck ? th(ck.toy) : H.BLANK, cardRarity: ct ? ct.rarity : '', cardRc: cr.c, cardTitle: ck ? this.TITLES[ck.toy] || 'Squishy Slinger' : '',
+      cardBan: `linear-gradient(115deg,${cr.l} 0%,${cr.c} 52%,${cr.d} 100%)`, cardLv: ck ? String(ck.lv) : '', cardWs: ck ? String(ck.ws) : '',
+    };
+    const meDead = me && dead(me) && ph === 'live';
+    const cnt = s.count;
+    const introRow = (p, i, side) => ({ name: p.name, lv: String(p.lv), bg: p.bg, head: hd(p), pic: th(p.toy), toyName: H.TOY[p.toy] ? H.TOY[p.toy].name : '', a: (side < 0 ? 'sdMfInL' : side > 0 ? 'sdMfInR' : 'sdUp') + ' .55s ' + (0.25 + i * 0.08).toFixed(2) + 's cubic-bezier(.2,1.2,.4,1) both' });
+
+    const fin = s.fin, fk = fin ? this.pl(fin.k) : null, win = !!(fin && fin.win);
+    const letters = (str, d0, step, col) => Array.from(str).map((ch, i) => ({ c: ch, w: ch === ' ' ? '24px' : '0px', c2: col, a: 'sdMfLet .5s ' + (d0 + i * step).toFixed(3) + 's cubic-bezier(.2,1.5,.4,1) both, sdLvWave 1.8s ' + (d0 + 1 + i * 0.09).toFixed(2) + 's ease-in-out infinite' }));
+    const endTitle = tdm ? (win ? 'VICTORY!' : 'DEFEAT') : win ? 'YOU WIN!' : 'MATCH OVER';
+    const endSub = tdm ? (win ? 'THE ENEMY TEAM WAS SQUISHED' : 'YOUR TEAM WAS SQUISHED') : fk ? (fk.you ? 'YOU' : fk.name.toUpperCase()) + ' HIT ' + this.target + ' SQUISHES' : '';
+
+    let plates = [];
+    if (ph === 'podium' && s.anchors && s.ranks) {
+      const winTeam = fk ? fk.team : -1, vw = this.vw || 1440, vh = this.vh || 810;
+      plates = s.anchors.map((a, i) => {
+        const p = this.pl(a.id); if (!p) return null; const x = s.st[p.id] || { k: 0, d: 0, b: 0 }, r = a.rank;
+        const winner = tdm ? p.team === winTeam : r === 1;
+        return { x: (a.fx * vw).toFixed(1), y: (a.fy * vh + 16).toFixed(1), w: tdm ? 300 : 238, d: (0.1 + i * 0.14).toFixed(2) + 's', rank: String(r), name: p.name, you: p.you, toyName: H.TOY[p.toy] ? H.TOY[p.toy].name : '',
+          medal: this.MEDAL[Math.min(2, r - 1)], headBg: tdm ? p.bg : this.HEADBG[Math.min(2, r - 1)], mvp: tdm && r === 1, lv: String(p.lv), ws: String(winner ? p.ws + 1 : p.ws), wsUp: winner,
+          stats: [{ v: String(x.k), l: 'SQUISHES', col: '#FFE36B' }, { v: String(x.d), l: 'SQUISHED', col: '#FFB3BE' }, { v: String(x.b), l: 'BEST STREAK', col: '#9AF5D2' }] };
+      }).filter(Boolean);
+    }
+    const myRank = s.ranks ? s.ranks.indexOf('p0') + 1 : 0, mine = me ? s.st[me.id] || { k: 0 } : { k: 0 };
+    const ord = (n) => n + (n % 10 === 1 && n !== 11 ? 'ST' : n % 10 === 2 && n !== 12 ? 'ND' : n % 10 === 3 && n !== 13 ? 'RD' : 'TH');
+    const resText = tdm ? (win ? 'VICTORY' : 'DEFEAT') : ord(Math.max(1, myRank)) + ' PLACE';
+    const podTitle = tdm ? (win ? 'VICTORY!' : 'DEFEAT') : myRank === 1 ? '1ST PLACE!' : 'PODIUM';
+
+    return {
+      ...base, ...card,
+      introOn: ph === 'intro', introTdm: tdm, introFfa: !tdm, introMode: tdm ? 'TEAM DEATHMATCH 2v2' : 'FREE FOR ALL',
+      introGoal: tdm ? 'First team to ' + this.target + ' squishes wins' : 'First to ' + this.target + ' squishes wins',
+      introHeadBg: tdm ? 'linear-gradient(180deg,rgba(255,255,255,.42) 0%,rgba(255,255,255,0) 48%,rgba(40,10,60,.12) 100%),linear-gradient(90deg,#FF6B81 0%,#FF7A8E 22%,#B48CFF 50%,#5DB4FF 78%,#4FA8F5 100%)' : 'linear-gradient(180deg,#FFF6B8 0%,#FFD95A 42%,#FFB627 74%,#F59A12 100%)',
+      introA: s.players.filter((p) => p.team === 0).map((p, i) => introRow(p, i, -1)), introB: s.players.filter((p) => p.team === 1).map((p, i) => introRow(p, i, 1)), introAll: s.players.map((p, i) => introRow(p, i, 0)),
+      countOn: ph === 'count', countText: cnt > 0 ? String(cnt) : 'SQUISH!', countSize: cnt > 0 ? 230 : 150, countLabel: cnt > 0 ? 'GET READY' : 'GO GO GO',
+      sbTdm: sbOn && tdm, sbFfa: sbOn && !tdm, teamA, teamB, ffaRow, scoreA: String(s.score[0]), scoreB: String(s.score[1]),
+      barA: Math.round((Math.min(this.target, s.score[0]) / this.target) * 100) + '%', barB: Math.round((Math.min(this.target, s.score[1]) / this.target) * 100) + '%',
+      timeText: ot ? '0:00' : H.clock(secs), goalText: ot ? 'OVERTIME' : 'FIRST TO ' + this.target, goalBg: ot ? 'linear-gradient(180deg,#FF8A9A,#E83A5A)' : 'linear-gradient(180deg,#FFF08A,#FFB627)',
+      feed, medals, deadOn: !!meDead, respOn: !!meDead, respText: me ? String(rs(me)) : '',
+      endOn: ph === 'end', endTdm: tdm, endSub, endBg: win ? 'radial-gradient(ellipse at 50% 46%,rgba(255,236,150,.55) 0%,rgba(60,24,96,.55) 75%)' : 'radial-gradient(ellipse at 50% 46%,rgba(255,140,170,.4) 0%,rgba(30,14,48,.7) 75%)',
+      endRay: win ? 'rgba(255,227,107,.55)' : 'rgba(255,143,191,.35)', endLetters: letters(endTitle, 0.05, 0.05, win ? '#FFE36B' : '#FF8A9A'),
+      repOn: ph === 'replay', repLetters: letters('FINAL KILL', 0.35, 0.045, '#FFFFFF'), slowText: 'SLOW-MO ' + (this.props.slowMo ?? 0.25) + '×',
+      impactOn: ph === 'replay' && !!s.impact, impX: s.impact ? s.impact.x.toFixed(1) : 0, impY: s.impact ? s.impact.y.toFixed(1) : 0,
+      impLetters: Array.from('SQUISHED!').map((ch, i) => ({ c: ch, col: i % 2 ? '#FF9CC2' : '#FFE36B', a: 'smLetter .45s ' + (0.12 + i * 0.04).toFixed(2) + 's cubic-bezier(.2,1.5,.4,1) both, sdLvWave 1.2s ' + (0.8 + i * 0.08).toFixed(2) + 's ease-in-out infinite' })),
+      podOn: ph === 'podium', podLetters: letters(podTitle, 0.35, 0.05, '#FFFFFF'), plates,
+      podRibbon: win || myRank === 1 ? 'linear-gradient(180deg,#FFF6B8 0%,#FFD95A 42%,#FFB627 74%,#F59A12 100%)' : 'linear-gradient(180deg,#E4D4FF 0%,#B79CFF 50%,#8E6BF0 100%)',
+      podSub: (tdm ? 'TEAM DEATHMATCH · ' + (fk ? this.TEAM[fk.team].name + ' WINS' : '') : 'FREE FOR ALL · ' + (fk ? fk.name.toUpperCase() + ' WINS' : '')) + ' · SWEETSHOP STADIUM',
+      resText, resBg: win || myRank === 1 ? 'linear-gradient(180deg,#FFF08A,#FFB627)' : myRank > 0 && myRank <= 3 ? 'linear-gradient(180deg,#E4D4FF,#A07BF5)' : 'linear-gradient(180deg,#FF8A9A,#E83A5A)',
+      rewCoins: H.fmt(60 + mine.k * 15 + (win || myRank === 1 ? 120 : 0)), rewGrip: H.fmt(40 + mine.k * 12 + (win || myRank === 1 ? 60 : 15)),
+      rewStreak: me ? (win || (!tdm && myRank === 1) ? 'Win streak ' + (me.ws + 1) : 'Streak reset') : '',
+    };
+  }
+}
+</script>
+</body>
+</html>
