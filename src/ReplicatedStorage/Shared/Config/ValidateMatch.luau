@@ -8,7 +8,7 @@
 -- each mode's win numbers, the storm's steps in time order (from stormStartSeconds, never overlapping, radius
 -- fractions falling inside (0, 1)) and done before a storm mode's time-up, and every power-up in the order with one
 -- known effect (seconds > 0, ultFraction in (0, 1], or the teams-only team life). FFA/TDM v1 (2026-10-15): a positive
--- gatherSeconds and readoutHz, whole rewardCoins >= 0, a boolean outOfBoundsIsKo, a footprint (X, Z > 0) and a spot
+-- gatherSeconds and readoutHz, a boolean outOfBoundsIsKo, a footprint (X, Z > 0) and a spot
 -- count for every mode, Bounds that reach down to the kill line, a positive ground probe length, the spawn distances,
 -- the storm's sampleHz and inset, and its test wall (transparency in [0, 1], a height, an Art/Palette colour token).
 -- Power-ups v1.1 (2026-10-16): a positive pickupRadiusStuds and pickupHeightStuds, and each timed power-up's number
@@ -16,6 +16,9 @@
 -- jumpMultiplier >= 1 with the super jump plus the double jump under Maps.boundsTop (a player above the Bounds can't be
 -- hit), rapidThrow cooldownMultiplier in [0, 1], throwBoost speedMultiplier >= 1.
 -- UI FINAL R4: the DUEL picker's testers (whole userIds) and a boolean pickerForEveryone.
+-- Match HUD M2 (2026-10-16): Rewards is a table with a boolean `enabled` (it replaced rewardCoins, whole Coins >= 0;
+-- the pay's amounts and rules are Config.Economy.DuelRewards', which Config/init's economy check covers). The helpers'
+-- expectCoins is no longer used here; Config/init still passes it (the Helpers shape is unchanged).
 
 type Problems = { string }
 
@@ -38,7 +41,7 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 	local add, expect, expectPositive, expectNonNegative = h.add, h.expect, h.expectPositive, h.expectNonNegative
 	local expectCount, expectBetween, expectBoolean, expectText =
 		h.expectCount, h.expectBetween, h.expectBoolean, h.expectText
-	local expectCoins, isNumber, show, sortedKeys = h.expectCoins, h.isNumber, h.show, h.sortedKeys
+	local isNumber, show, sortedKeys = h.isNumber, h.show, h.sortedKeys
 
 	return function(problems: Problems)
 		local p = "Config.Match"
@@ -125,7 +128,12 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 
 		-- FFA/TDM v1 (2026-10-15): the in-server queue, the maps, the spawn spots, the storm's sampling and test wall.
 		expectPositive(problems, `{p}.gatherSeconds`, m.gatherSeconds)
-		expectCoins(problems, `{p}.rewardCoins`, m.rewardCoins)
+		-- Match HUD M2 (2026-10-16): the match pay switch (it replaced rewardCoins).
+		local rewards = m.Rewards
+		expect(problems, type(rewards) == "table", `{p}.Rewards must be a table (got {show(rewards)})`)
+		if type(rewards) == "table" then
+			expectBoolean(problems, `{p}.Rewards.enabled`, rewards.enabled)
+		end
 		expectBoolean(problems, `{p}.outOfBoundsIsKo`, m.outOfBoundsIsKo)
 		expectPositive(problems, `{p}.readoutHz`, m.readoutHz)
 		expectNonNegative(problems, `{p}.returnSpreadStuds`, m.returnSpreadStuds)

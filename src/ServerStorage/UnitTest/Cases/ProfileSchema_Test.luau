@@ -16,7 +16,10 @@
 --     sorted, both caps);
 --   * capsules (spec 2026-10-12 §6-§7) joined schema 2 the same way: one free Kitty Bread capsule at Lv 1, sanitize
 --     fails closed (slots and levels clamped, one entry per slot, a squishy owned and in one capsule only), and they
---     survive a JSON save and load unchanged.
+--     survive a JSON save and load unchanged;
+--   * Match HUD M2 (2026-10-16): stats.winStreak joined schema 2 the same way (CURRENT stays 2): defaults 0, an older
+--     v2 profile gets 0 from reconcile (no sanitize problem), a saved streak is kept, and sanitize fixes a negative,
+--     fractional, non-finite or wrong-type one like every counter.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -132,6 +135,7 @@ return function(t: Context)
 		}
 		expected.samePair = {} -- filled by reconcile (no migration step)
 		expected.capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } } -- the same
+		expected.stats.winStreak = 0 -- Match HUD M2: the same
 		return expected
 	end
 
@@ -509,6 +513,40 @@ return function(t: Context)
 	-- Capsules (progression spec 2026-10-12 §6-§7) ---------------------------------------------------------------------
 
 	local STARTER_CAPSULES = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }
+
+	-- The win streak (Match HUD M2, 2026-10-16) --------------------------------------------------------------------------
+
+	t.test("winStreak joins schema 2 without a new version: defaults 0, an older v2 profile gets 0", function()
+		expect.equal(ProfileSchema.CURRENT, 2)
+		expect.equal(ProfileSchema.defaults(NOW).stats.winStreak, 0)
+		local older = load(FIXTURE_V1).profile :: any
+		older.stats.winStreak = nil -- a v2 profile saved before the stat existed
+		local result = load(older)
+		expect.equal(result.status, "ok")
+		expect.equal(result.fromVersion, 2)
+		expect.equal(result.migrated, false)
+		expect.deepEqual(result.problems, {})
+		expect.equal(result.profile.stats.winStreak, 0)
+		expect.equal(result.profile.schemaVersion, ProfileSchema.CURRENT)
+		-- A saved streak is kept as it is.
+		local kept = load(FIXTURE_V1).profile :: any
+		kept.stats.winStreak = 7
+		local again = load(kept)
+		expect.deepEqual(again.problems, {})
+		expect.equal(again.profile.stats.winStreak, 7)
+	end)
+
+	t.test("sanitize winStreak: negative, fractional, non-finite or not a number -> a whole number >= 0", function()
+		local cases: { { any } } =
+			{ { -4, 0 }, { 3.9, 3 }, { 0 / 0, 0 }, { math.huge, 0 }, { "5", 0 }, { 2 ^ 60, 2 ^ 53 } }
+		for _, case in cases do
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.stats.winStreak = case[1]
+			local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			expect.equal(fixed.stats.winStreak, case[2])
+			expect.equal(#problems, 1)
+		end
+	end)
 
 	t.test("capsules join schema 2 without a new version: an older v2 profile gets the free capsule", function()
 		local older = load(FIXTURE_V1).profile :: any

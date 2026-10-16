@@ -17,7 +17,11 @@
 --   * a level-up toasts grip.levelUp (grip.padUnlocked went with the giant pads, build plan Phase 6), broadcasts
 --     grip.rankUp to the lobby players and asks for a "soon" save; an unknown tier (only tier 1, the Foam Mats, is
 --     left) trains nothing and GripService.canUseTier is gone;
---   * a capsule-only profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired.
+--   * a capsule-only profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired;
+--   * Match HUD M2 (2026-10-16): a match pay (addFromMatch) trains squeezes × an own squeeze's Grip (the highest
+--     capsule level's power), never doubled and without a Double Grip point, each squeeze one event (never clamped at
+--     the top level), with the level toasts; nothing unready, frozen, or for a squeezes count outside 1..the largest
+--     duel pay (MatchRewards.maxSqueezes()).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -271,6 +275,63 @@ return function(t: Context)
 		expect.equal(GripService.addFromCapsule(world.player, power), 0)
 		finish()
 	end)
+
+	-- Match HUD M2 (2026-10-16): the Grip half of a Free for All / Team Deathmatch pay.
+	t.test("a match pay trains squeezes × an own squeeze's Grip: never doubled, no Double Grip point used", function()
+		local world = fresh()
+		world.profile.grip.rested = { value = 5, at = UNIX_START }
+		world.profile.capsules =
+			{ slots = 2, list = { { level = 12, squishyId = "kitty_bread" }, { level = 23 } :: any } }
+		local before = TableUtil.deepCopy(world.profile)
+		local perSqueeze = CapsuleMath.power(23) :: number -- the highest capsule level (an empty one counts)
+		expect.equal(GripService.addFromMatch(world.player, 600), 600 * perSqueeze)
+		expect.equal(world.profile.grip.total, 600 * perSqueeze)
+		expect.deepEqual(world.profile.grip.rested, before.grip.rested)
+		expect.equal(world.profile.coins, before.coins)
+		expect.deepEqual(world.profile.stats, before.stats)
+		expect.truthy(table.find(world.dirty, "grip") ~= nil)
+		expect.equal(GripService.levelOf(world.player), GripMath.levelFor(600 * perSqueeze))
+		-- A level-up from a match pay toasts like any gain.
+		local levelUps = 0
+		for _, n in world.notices do
+			if n.code == "grip.levelUp" then
+				levelUps += 1
+			end
+		end
+		expect.truthy(levelUps >= 1)
+		finish()
+	end)
+
+	t.test("a match pay at the top capsule level is never clamped per event (each squeeze is one event)", function()
+		local world = fresh()
+		world.profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
+		local top = CapsuleMath.power(100) :: number
+		expect.truthy(600 * top > Config.Grip.maxGripPerEvent) -- one event of the whole pay would be clamped
+		expect.equal(GripService.addFromMatch(world.player, 600), 600 * top)
+		finish()
+	end)
+
+	t.test(
+		"a match pay gives nothing unready, frozen, or for a squeezes count outside 1..the largest duel pay",
+		function()
+			local world = fresh()
+			-- One above the largest duel pay: the live one, which addFromMatch's guard reads (review fix, not 601).
+			local above = t.requireServer("Logic/MatchRewards").maxSqueezes() + 1
+			for _, bad in { 0, -5, 1.5, 0 / 0, math.huge, above } do
+				expect.equal(GripService.addFromMatch(world.player, bad), 0)
+			end
+			expect.equal(world.profile.grip.total, 0)
+			world.status = "offline"
+			expect.equal(GripService.addFromMatch(world.player, 180), 0)
+			world.status = "ready"
+			world.frozen = true
+			expect.equal(GripService.addFromMatch(world.player, 180), 0)
+			expect.equal(world.profile.grip.total, 0)
+			world.frozen = false
+			expect.equal(GripService.addFromMatch(world.player, 1), ownGrip(world))
+			finish()
+		end
+	)
 
 	t.test("nothing is trained while the profile is not ready", function()
 		local world = fresh()

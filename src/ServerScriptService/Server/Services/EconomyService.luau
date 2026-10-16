@@ -30,6 +30,14 @@
 --   (DuelService passes 0 or 1).
 -- * The caller decides the save of a Coin grant or spend (§3.4: squeeze rides the autosave, boxes and the shop save
 --   "now"); grantDuelResult asks for "soon" itself.
+-- * Match HUD M2 (2026-10-16, owner Q3 / Q4): grantMatchResult(p, matchId, pay) records one Free for All / Team
+--   Deathmatch result (Logic/MatchRewards' Pay) in one step: stats.winStreak becomes MatchRewards.nextStreak (a win
+--   +1, anything else 0) and pay.squeezes are paid as Coins with reason "match" (squeezes × the Coins of one
+--   squeeze, MatchRewards.squeezeWorth, of that moment); a "soon" save when something changed. Exactly once per
+--   player per matchId (plan v2 §4 M2; review fix 2026-10-16): a matchId already granted to that player is a no-op
+--   (alreadyGranted). The record is in memory (the newest MATCHES_REMEMBERED matches), not in the profile: a match
+--   never leaves the server that runs it, and the owner chose no hourly cap, so no saved record is needed.
+--   winStreak(p) reads the saved streak. 1v1 duels (grantDuelResult) never touch the streak.
 -- Failures come back as a short kind ("invalid", "reason", "notReady", "savePending", "notEnoughCoins"); CODES maps
 -- the kinds that have a §2.10 code. Collaborators are reached through `deps` (useDeps in tests).
 
@@ -48,6 +56,7 @@ local Pricing = require(Shared.Pricing)
 local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
 local DuelRewards = require(script.Parent.Parent.Logic.DuelRewards)
+local MatchRewards = require(script.Parent.Parent.Logic.MatchRewards)
 local StateService = require(script.Parent.StateService)
 
 -- Types
@@ -79,6 +88,16 @@ export type DuelGrant = {
 	blockedReason: string?, -- duel.noRewardsOffline when the profile is not ready
 }
 
+-- Match HUD M2: what grantMatchResult did.
+export type MatchGrant = {
+	coins: number, -- Coins really added
+	recorded: boolean, -- the profile step ran (the streak is set)
+	alreadyGranted: boolean, -- this matchId was already granted to this player (on this server): nothing happened
+	streakBefore: number,
+	streakAfter: number,
+	blockedReason: string?, -- duel.noRewardsOffline when the profile is not ready
+}
+
 -- Constants
 
 local ECONOMY = Config.Economy
@@ -86,6 +105,11 @@ local MAX_COINS = ECONOMY.maxCoins
 local DUEL_LOG_CAP = Config.Data.caps.duelLog
 -- The guard counts squeezes, so a legit reward passes at any squeeze value (its Coins stop at maxCoins).
 local MAX_DUEL_SQUEEZES = math.max(ECONOMY.DuelRewards.win, ECONOMY.DuelRewards.loss, ECONOMY.DuelRewards.draw)
+local MAX_MATCH_SQUEEZES = MatchRewards.maxSqueezes() -- Match HUD M2: a match pays a duel's amounts
+local REASON_MATCH = "match"
+-- Match HUD M2 review fix (reading): matches whose grants are remembered for the exactly-once check. A server runs a
+-- few matches at once and a repeat can only come while its match is ending, so 64 is far more than ever needed.
+local MATCHES_REMEMBERED = 64
 local STATUS_READY = "ready"
 local REASON_DEBUG = "debug"
 local REASON_REFUND = "refund"
@@ -121,6 +145,10 @@ EconomyService.CODES = table.freeze({
 
 local log = Log.new("Economy")
 local deps: Deps? = nil
+-- Match HUD M2 review fix: matchId -> the players (UserId) grantMatchResult recorded for it on this server, and the
+-- matchIds oldest first (only the newest MATCHES_REMEMBERED are kept).
+local matchGrants: { [string]: { [any]: boolean } } = {}
+local matchGrantOrder: { string } = {}
 
 local function defaultDeps(): Deps
 	return {
@@ -212,6 +240,28 @@ local function coinsChanged(player: any, coins: number, delta: number, reason: s
 	EconomyService.CoinsChanged:fire(player, coins, delta, reason)
 end
 
+-- Match HUD M2 review fix: a player's key in matchGrants (the UserId; the ref itself for a test player without one).
+local function grantKeyOf(player: any): any
+	local id = if type(player) == "table" or (typeof(player) == "Instance" and player:IsA("Player"))
+		then player.UserId
+		else nil
+	return if type(id) == "number" then id else player
+end
+
+-- Match HUD M2 review fix: remembers that `matchId` was granted to `key`; the oldest match is forgotten past the cap.
+local function rememberMatchGrant(matchId: string, key: any)
+	local granted = matchGrants[matchId]
+	if granted == nil then
+		granted = {}
+		matchGrants[matchId] = granted
+		table.insert(matchGrantOrder, matchId)
+		while #matchGrantOrder > MATCHES_REMEMBERED do
+			matchGrants[table.remove(matchGrantOrder, 1) :: string] = nil
+		end
+	end
+	(granted :: { [any]: boolean })[key] = true
+end
+
 -- Public: pure helpers (unit-tested) -----------------------------------------------------------------------------------
 
 -- Any value as a Coin balance: an integer in [0, maxCoins] (non-finite or missing -> 0, fractions floored).
@@ -264,9 +314,12 @@ end
 
 -- Public: API ----------------------------------------------------------------------------------------------------------
 
--- Uses these collaborators (nil = the real ones; tests).
+-- Uses these collaborators (nil = the real ones; tests). Match HUD M2: also forgets the match grants (each test starts
+-- with none).
 function EconomyService.useDeps(newDeps: Deps?)
 	deps = newDeps
+	matchGrants = {}
+	matchGrantOrder = {}
 end
 
 -- True when the player's profile is ready (grants allowed; DuelService's profileReady hook).
@@ -303,6 +356,14 @@ function EconomyService.samePair(player: any): Types.SamePairRecord
 	local profile = getDeps().data.getProfile(player)
 	local record = if type(profile) == "table" then profile.samePair else nil
 	return if type(record) == "table" then record else {}
+end
+
+-- Match HUD M2: the player's saved Free for All / Team Deathmatch win streak (0 without a profile; MatchService's
+-- SD_WinStreak attribute).
+function EconomyService.winStreak(player: any): number
+	local profile = getDeps().data.getProfile(player)
+	local stats = if type(profile) == "table" then profile.stats else nil
+	return MatchRewards.streakOf(if type(stats) == "table" then stats.winStreak else nil)
 end
 
 -- Adds `amount` Coins for `reason`. Returns (added, failure?): added is what was really added (clamped at maxCoins;
@@ -488,6 +549,68 @@ function EconomyService.grantDuelResult(
 		if grant.coins > 0 then
 			coinsChanged(player, after, grant.coins, reason)
 		end
+		getDeps().data.requestSave(player, SAVE_SOON)
+	end
+	return grant
+end
+
+-- Match HUD M2 (2026-10-16): records one Free for All / Team Deathmatch result for a real player (see the header): in
+-- one step stats.winStreak = MatchRewards.nextStreak(the saved streak, pay) and pay.squeezes (a whole number up to the
+-- largest duel reward, else 0 with a warning) paid as Coins with reason "match", then a "soon" save when something
+-- changed. Exactly once per player and matchId: a repeat changes nothing and returns alreadyGranted (its streakBefore
+-- = streakAfter = the saved streak). Never yields.
+function EconomyService.grantMatchResult(player: any, matchId: string, pay: MatchRewards.Pay): MatchGrant
+	local grant: MatchGrant = {
+		coins = 0,
+		recorded = false,
+		alreadyGranted = false,
+		streakBefore = 0,
+		streakAfter = 0,
+		blockedReason = nil,
+	}
+	if type(pay) ~= "table" or type(matchId) ~= "string" or matchId == "" then
+		log:warn(`grantMatchResult: no pay or no match id ({tostring(matchId)}); nothing recorded`)
+		return grant
+	end
+	local key = grantKeyOf(player)
+	local granted = matchGrants[matchId]
+	if granted ~= nil and granted[key] then
+		grant.alreadyGranted = true
+		grant.streakBefore = EconomyService.winStreak(player)
+		grant.streakAfter = grant.streakBefore
+		return grant
+	end
+	local squeezes = pay.squeezes
+	if not isWhole(squeezes) or squeezes > MAX_MATCH_SQUEEZES then
+		log:warn(`grantMatchResult: invalid pay {tostring(squeezes)} for match {matchId}; the streak only`)
+		squeezes = 0
+	end
+	local after = 0
+	local ok = edit(player, function(profile: any)
+		local stats = statsOf(profile)
+		grant.streakBefore = MatchRewards.streakOf(stats.winStreak)
+		grant.streakAfter = MatchRewards.nextStreak(grant.streakBefore, pay)
+		stats.winStreak = grant.streakAfter
+		if squeezes > 0 then
+			local coinsPerSqueeze = MatchRewards.squeezeWorth(profile)
+			grant.coins = addCoinsTo(profile, CapsuleMath.rewardCoins(squeezes, coinsPerSqueeze), REASON_MATCH)
+			after = profile.coins
+		end
+	end)
+	if not ok then
+		grant.blockedReason = CODE_NO_REWARDS_OFFLINE
+		return grant
+	end
+	grant.recorded = true
+	rememberMatchGrant(matchId, key)
+	local streakChanged = grant.streakAfter ~= grant.streakBefore
+	if streakChanged then
+		getDeps().markDirty(player, "stats")
+	end
+	if grant.coins > 0 then
+		coinsChanged(player, after, grant.coins, REASON_MATCH)
+	end
+	if streakChanged or grant.coins > 0 then
 		getDeps().data.requestSave(player, SAVE_SOON)
 	end
 	return grant

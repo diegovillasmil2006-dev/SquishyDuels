@@ -4,10 +4,10 @@
 -- state machine), Server/Logic/PowerUpRules and Shared/StormMath (also used by the client to draw the storm).
 -- Values marked [P] are provisional (not given by the user; tune after the first live tests).
 -- FFA/TDM v1 (2026-10-15, played inside the lobby server): the in-server queue (gatherSeconds), no rewards yet
--- (rewardCoins), out of bounds = a K.O. (outOfBoundsIsKo), the maps' footprints, Bounds height and ground
--- probe (Maps), the spawn spots (Spawns), the storm's sampling, safe respawn and test wall (Storm.sampleHz,
--- respawnInsetStuds, wall), the client's test readout (readoutHz) and the spread at the lobby return points
--- (returnSpreadStuds). Read by Server/Services/MatchService, MatchMapService, Logic/MatchSpawns, CombatService
+-- (rewardCoins; Rewards since Match HUD M2), out of bounds = a K.O. (outOfBoundsIsKo), the maps' footprints, Bounds
+-- height and ground probe (Maps), the spawn spots (Spawns), the storm's sampling, safe respawn and test wall
+-- (Storm.sampleHz, respawnInsetStuds, wall), the client's test readout (readoutHz) and the spread at the lobby return
+-- points (returnSpreadStuds). Read by Server/Services/MatchService, MatchMapService, Logic/MatchSpawns, CombatService
 -- (Maps.groundProbeStuds) and the client's MatchController.
 -- Power-ups v1.1 (2026-10-16, jayyyyy's pads): who takes a pad (PowerUps.pickupRadiusStuds / pickupHeightStuds,
 -- sampled at Storm.sampleHz in both modes) and what each timed power-up does (kinds.*: speed walkMultiplier, superJump
@@ -15,6 +15,9 @@
 -- pads, the movement and the port callbacks CombatService and DashService ask) and the client's Throw / Dash
 -- controllers (their predictions mirror the same numbers). Review fixes (2026-10-16): rapid throw's 0 means the
 -- shortest cooldown (CooldownClamp.Min), not none; the dash boost is one dash after the other.
+-- Match HUD M2 (2026-10-16, owner Q3 / Q4): Rewards (it replaces rewardCoins = 0): the switch of the match pay and the
+-- win streak, read by Server/Services/MatchService; the amounts and rules are Config.Economy.DuelRewards'
+-- (Server/Logic/MatchRewards).
 --
 -- The rules in plain words:
 --   * One hit = knocked out (K.O.) in both modes. Back in after respawnSeconds with spawnProtectSeconds of safety.
@@ -79,7 +82,13 @@ local Match = {
 	-- FFA/TDM v1 (2026-10-15): the in-server queue (/ffa, /tdm). Once minPlayers are queued for a mode this many
 	-- seconds pass before the match starts (at once when the queue reaches maxPlayers or everyone in the server).
 	gatherSeconds = 10, -- [P]
-	rewardCoins = 0, -- [P] v1 pays nothing yet (no Coins, quests, weekly wins or badges)
+	-- Match HUD M2 (2026-10-16, owner): a match pays like a 1v1 duel (Config.Economy.DuelRewards: the win / loss / draw
+	-- squeezes, at least minOwnThrows own throws and the min Active seconds), as Coins AND Grip, with no hourly cap. A
+	-- win (a team win or FFA 1st, paid or not) is +1 win streak; a loss, a draw or leaving a live match resets it
+	-- (cancelled / void and 1v1 duels never touch it). Still no quests, weekly wins or badges.
+	Rewards = {
+		enabled = false, -- [P] off until M9 shows the pay on screen (the results bar), with the owner's yes
+	},
 	-- jayyyyy 2026-10-15: falling off or leaving the map "counts as a knockout" (TDM: costs a team life; FFA: you wait
 	-- respawnSeconds like any K.O.). false would only put the player back at a spawn.
 	outOfBoundsIsKo = true,

@@ -12,7 +12,10 @@
 -- nobody but the two owners has played yet, so there are no old saves to fix). The same way back: build plan Phase 6
 -- removed slow training and the trainers, so `grip.afk` (the bank) and `grip.trainer` left defaults and sanitize with
 -- no new version (and no refund); an old save keeps them as unknown fields nothing reads, and the frozen v1 -> v2 step
--- still writes them.
+-- still writes them. Match HUD M2 (2026-10-16): `stats.winStreak` (the Free for All / Team Deathmatch win streak,
+-- default 0, a counter like the other stats) joined schema 2 the same way: no new version, so a server without it keeps
+-- it as an unknown stat (a version would make a player who saved on a new server READONLY on an old one during a
+-- rolling update); reconcile fills it, sanitize clamps it with the other counters.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -111,6 +114,7 @@ local STAT_KEYS = {
 	"duelsDrawn",
 	"eliminations",
 	"boxesOpened",
+	"winStreak", -- Match HUD M2 (2026-10-16): no new version (see the header)
 }
 local LOG_KEYS = { "boxLog", "shopLog", "receipts", "duelLog" }
 local VOLUME_KEYS = { "music", "sfx" }

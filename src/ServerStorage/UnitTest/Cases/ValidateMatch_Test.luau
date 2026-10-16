@@ -5,7 +5,8 @@
 -- Config/init's check helpers and a deep copy of Config.Match, so a case breaks one value and reads the problems.
 -- Contract: the live Config.Match has no problem; the power-up pickup reach (pickupRadiusStuds, pickupHeightStuds) must
 -- be > 0; speed walkMultiplier, superJump jumpMultiplier and throwBoost speedMultiplier must be numbers >= 1; the super
--- jump plus the double jump must stay under Maps.boundsTop; rapidThrow cooldownMultiplier must be in [0, 1].
+-- jump plus the double jump must stay under Maps.boundsTop; rapidThrow cooldownMultiplier must be in [0, 1]. Match HUD
+-- M2 (2026-10-16): Rewards must be a table with a boolean `enabled` (false in the live Config; rewardCoins is gone).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -188,4 +189,24 @@ return function(t: Context)
 			expectT.falsy(containsText(problems, "jumpMultiplier"))
 		end
 	)
+
+	t.test("match HUD M2: Rewards is a table with a boolean enabled, off in the live Config (until M9)", function()
+		expectT.equal(Config.Match.Rewards.enabled, false)
+		expectT.equal(Config.Match.rewardCoins, nil) -- replaced by Rewards
+		expectT.truthy(containsText(
+			problemsOf(function(match: any)
+				match.Rewards = nil
+			end),
+			"Config.Match.Rewards must be a table"
+		))
+		expectT.truthy(containsText(
+			problemsOf(function(match: any)
+				match.Rewards.enabled = "yes"
+			end),
+			"Config.Match.Rewards.enabled must be a boolean"
+		))
+		expectT.equal(#problemsOf(function(match: any)
+			match.Rewards.enabled = true
+		end), 0)
+	end)
 end

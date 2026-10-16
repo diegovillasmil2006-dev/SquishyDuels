@@ -47,8 +47,9 @@
 --   K.O., respawn, out, team-lives change and outcome, plus the player's own view when its storm bar moved (at most
 --   sampleHz). Then a final view with phase "Returning", then the attributes clear.
 -- * The end (MatchRules `ended`, once): the outcome in the view, a toast to every participant (match.youWin /
---   match.winner {name} / match.teamWins {team} / match.draw / match.cancelled / match.void) and MatchEnded. v1 pays
---   nothing (Config.Match.rewardCoins = 0): no Coins, no DuelResult, no quests, weekly wins or badges. `closed` (after
+--   match.winner {name} / match.teamWins {team} / match.draw / match.cancelled / match.void) and MatchEnded. The pay
+--   is Match HUD M2's (below; off while Config.Match.Rewards.enabled is false): no DuelResult, no quests, weekly wins
+--   or badges. `closed` (after
 --   Result, or at once for a void): everyone still in the map goes to the least-recently-used lobby return point
 --   (WorldLayout.ReturnPoints, spread by Config.Match.returnSpreadStuds), movement is restored, the attributes clear,
 --   the port is unregistered and detached, the map is released and the match is forgotten.
@@ -84,6 +85,33 @@
 --   (Config.Duel.Rules.CooldownClamp.Min), not none; a pad is taken only once the match is up to the sample's time (a
 --   hit that K.O.s the taker, or the time-up, lands first, so MatchRules always accepts the pickup); a speed / super
 --   jump that ends in Result goes back too.
+-- * Match HUD M1 (2026-10-16, the data of Diego's Match HUD: the kill feed and the final K.O. M:497-516, 567-572, the
+--   respawn seconds M:73, 88, 113, 641, the streaks M:149, 349, 527, the standings M:610-614, 688): every MatchRules
+--   `ko` becomes a HUD event {seq (1, 2, ... per match), kind "ko", at, victim, by (nil for a storm / out-of-bounds
+--   K.O.), cause, final, streak (the attacker's after it), livesLeft (TDM: the victim's team lives after it, 0 when
+--   out)}; the attacker's streak +1 (bestStreak = its best), the victim's streak 0. The events go out in the next view
+--   sent to everyone (`events`, then forgotten); a view sent to one player (the storm bar, a power-up's end) has none.
+--   Effects are performed in batches (one MatchRules step: stepMatch's loop, or the port's flush); each batch has its
+--   own number (stepId), and perform gets the batch and the effect's index (the K.O.'s team lives). A win by koTarget,
+--   wiped or overtime marks the last K.O. of its own batch `final` and keeps it as outcome.finalKo (a wipe by a leave,
+--   a time-up or a draw has none). The players list carries respawnAt, out, protectUntil, streak and bestStreak; the
+--   outcome carries the standings (MatchRules.standings order, present players only: a leaver is never on the
+--   podium), built once at the end so every later view repeats the same list.
+-- * Match HUD M2 (2026-10-16, owner Q3 / Q4; the results pills M:361-363, the WIN STREAK box M:186-189, the podium
+--   chip M:353): while Config.Match.Rewards.enabled ([P] false until M9), the single end pays every present, real
+--   player of a win or a draw like a 1v1 duel (Logic/MatchRewards: the duel's squeezes, throws and Active time, no
+--   hourly cap) through deps.rewards: EconomyService.grantMatchResult (Coins with reason "match" and the win streak,
+--   one profile step) and, when the profile took it and the pay is not 0, GripService.addFromMatch (the same squeezes
+--   as Grip). A win (a team win, FFA 1st; paid or not) is +1 win streak, a loss or a draw 0; leaving a live match
+--   (Countdown, Active, Overtime: /leave or the game) is 0 through the same step, nothing paid; cancelled / void pay
+--   and touch nothing. What a player was paid ({coins, grip, streakBefore, streakAfter}) is outcome.mine in their own
+--   view only (nil when not paid). The Player attribute SD_WinStreak (server-written, like SD_GripLevel) holds the
+--   saved streak: set when a profile loads (init's DataService Loaded hook, refreshWinStreak) and after every grant.
+--   Exactly once: the single end pays each player once, and grantMatchResult itself takes a matchId once per player
+--   (a repeat is alreadyGranted: no Grip, no mine). Review fixes (2026-10-16): the pay rules come from
+--   deps.rewards.config (tests) or the live Config; a leave that MatchRules no longer took (the leave's own step ended
+--   the match first) is no leave: that player was present at the end, is paid like everyone present and keeps the
+--   streak their result gives.
 -- Every collaborator is reached through `deps` (useDeps in tests; init() builds the real ones), so the service is
 -- unit-tested with fakes, without Players, remotes, Studio or a Heartbeat (tests call tick(now)).
 
@@ -108,6 +136,7 @@ local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
 local Logic = script.Parent.Parent.Logic
+local MatchRewards = require(Logic.MatchRewards)
 local MatchRules = require(Logic.MatchRules)
 local MatchSpawns = require(Logic.MatchSpawns)
 local PowerUpRules = require(Logic.PowerUpRules)
@@ -115,12 +144,15 @@ local Services = script.Parent
 local AbilityService = require(Services.AbilityService)
 local CharacterService = require(Services.CharacterService)
 local CombatService = require(Services.CombatService)
+local EconomyService = require(Services.EconomyService)
+local GripService = require(Services.GripService)
 local InventoryService = require(Services.InventoryService)
 local MatchMapService = require(Services.MatchMapService)
 local NetService = require(Services.NetService)
 local PracticeService = require(Services.PracticeService)
 local QueueService = require(Services.QueueService)
 local ShutdownService = require(Services.ShutdownService)
+local StateService = require(Services.StateService)
 
 -- Types
 
@@ -157,6 +189,15 @@ export type MapDeps = {
 	hasMode: (modeId: string) -> boolean,
 }
 
+-- Match HUD M2: the match pay (EconomyService / GripService). Optional: nil = nothing is paid.
+export type RewardDeps = {
+	grant: (ref: any, matchId: string, pay: MatchRewards.Pay) -> EconomyService.MatchGrant, -- grantMatchResult
+	addGrip: (ref: any, squeezes: number) -> number, -- GripService.addFromMatch
+	winStreak: (ref: any) -> number, -- EconomyService.winStreak: the saved streak
+	-- The pay rules (a Config-shaped table with Economy.DuelRewards; tests pass their copy); nil = the live Config.
+	config: MatchRewards.RewardConfig?,
+}
+
 export type Deps = {
 	now: () -> number, -- server time
 	clock: () -> number, -- os.clock (timeouts, the return-point LRU)
@@ -181,6 +222,7 @@ export type Deps = {
 	combat: CombatDeps,
 	ability: AbilityDeps,
 	maps: MapDeps,
+	rewards: RewardDeps?, -- Match HUD M2 (nil: no pay, as in the older tests' fakes)
 	heartbeat: boolean, -- tick matches every Heartbeat (false in tests: they call tick)
 	matchConfig: any?, -- a Config.Match-shaped table (tests pass their copy); nil = the live Config.Match
 }
@@ -205,10 +247,16 @@ type Participant = {
 	throws: number,
 	sentStormBar: number, -- the storm bar of the last view this player got
 	buffsCheckedAt: number, -- power-ups v1.1: buffs ending at or before this were already handled (expireBuffs)
+	streak: number, -- Match HUD M1: K.O.s since this player was last knocked out
+	bestStreak: number, -- Match HUD M1: the longest streak of this match
 }
 
 -- Power-ups v1.1: one pad of a match (the map's PowerUpPad, with its PowerUpRules state).
 type MatchPad = { name: string, position: Vector3, top: number, pad: PowerUpRules.Pad }
+
+-- Match HUD M1: a HUD event (its wire view) kept until the next view sent to everyone; `step` = the batch (stepId) of
+-- the effect it came from.
+type HudEvent = { view: Types.MatchEventView, step: number }
 
 type Match = {
 	matchId: string,
@@ -231,6 +279,13 @@ type Match = {
 	nextPadAt: number, -- the next pickup sample
 	nextBuffAt: number, -- the earliest end of a live timed power-up (math.huge = none)
 	now: number, -- the server time of the latest step (the views' "live" buffs)
+	-- Match HUD M1:
+	events: { HudEvent }, -- since the last view sent to everyone
+	eventSeq: number, -- the last HUD event's seq
+	stepId: number, -- the batch of effects being performed (bumped once per perform loop)
+	finalKo: HudEvent?, -- the K.O. that ended the match (koTarget, wiped, overtime)
+	standings: { Types.MatchStandingView }?, -- built once, with the outcome
+	rewards: { [number]: Types.MatchRewardView }, -- Match HUD M2: userId -> what the end paid them (outcome.mine)
 }
 
 type Ticket = { player: any, userId: number, joinedAt: number }
@@ -272,6 +327,7 @@ local ATTR_PHASE = "SD_DuelPhase"
 local ATTR_MATCH_PHASE = "SD_MatchPhase"
 local ATTR_MODE = "SD_MatchMode"
 local ATTR_TEAM = "SD_Team"
+local ATTR_WIN_STREAK = "SD_WinStreak" -- Match HUD M2: the saved win streak, on every player (lobby too)
 local MATCH_ID_PREFIX = "match:"
 -- D1: MatchRules phase -> the DuelPhase name on the wire and in SD_DuelPhase (Overtime is NOT SuddenDeath).
 local WIRE_PHASE: { [string]: Types.DuelPhase } = {
@@ -643,7 +699,8 @@ local function finiteOrZero(value: number?): number
 	return value
 end
 
--- Everyone still in the match (a player who left or never arrived is not listed: no enemy, no leader).
+-- Everyone still in the match (a player who left or never arrived is not listed: no enemy, no leader). Match HUD M1:
+-- with their respawn time, out, spawn protection and streaks (every tile's respawn seconds and streak, M:73, 149).
 local function playersView(match: Match): { Types.MatchParticipantView }
 	local d = getDeps()
 	local list: { Types.MatchParticipantView } = {}
@@ -660,7 +717,27 @@ local function playersView(match: Match): { Types.MatchParticipantView }
 				knockedOut = r.knockedOut,
 				alive = r.present and r.alive,
 				ultReady = ok and ready == true,
+				respawnAt = r.respawnAt,
+				out = r.out,
+				protectUntil = finiteOrZero(r.protectUntil), -- 0 = none
+				streak = p.streak,
+				bestStreak = p.bestStreak,
 			})
+		end
+	end
+	return list
+end
+
+-- Match HUD M1: the standings at the end (MatchRules.standings order), present players only (a leaver, or a player
+-- who never arrived, is not on the podium), each with their final stats. "Present" is MatchRules' own, as for the
+-- outcome's winner (review 2026-10-16): a /leave in the very step that ended the match is one MatchRules ignored, so
+-- that player finished the match and stays listed (else the winner could be missing from the standings).
+local function standingsView(match: Match): { Types.MatchStandingView }
+	local list: { Types.MatchStandingView } = {}
+	for _, r in MatchRules.standings(match.state) do
+		local p = match.byUserId[r.userId]
+		if r.present and p ~= nil then
+			table.insert(list, { userId = r.userId, kos = r.kos, knockedOut = r.knockedOut, bestStreak = p.bestStreak })
 		end
 	end
 	return list
@@ -688,7 +765,14 @@ local function padsView(match: Match): { Types.MatchPadView }
 	return list
 end
 
-local function viewFor(match: Match, p: Participant, players: { Types.MatchParticipantView }): Types.MatchStateView
+-- Match HUD M1: `events` = the HUD events of a view sent to everyone (nil for a view sent to one player). Match HUD M2:
+-- the outcome's `mine` is the receiver's own pay.
+local function viewFor(
+	match: Match,
+	p: Participant,
+	players: { Types.MatchParticipantView },
+	events: { Types.MatchEventView }?
+): Types.MatchStateView
 	local state = match.state
 	local map = match.map
 	local r = record(match, p)
@@ -724,22 +808,39 @@ local function viewFor(match: Match, p: Participant, players: { Types.MatchParti
 				winnerUserId = outcome.winnerUserId,
 				winnerTeam = outcome.winnerTeam,
 				winners = table.clone(outcome.winners),
+				-- Match HUD M1: the final K.O. (M:567-572) and the standings (M:610-614, 688), frozen at the end.
+				finalKo = if match.finalKo then table.clone(match.finalKo.view) else nil,
+				standings = match.standings or {},
+				-- Match HUD M2: what the end paid this receiver (the results pills, M:361-363); nil when not paid.
+				mine = if match.rewards[p.userId] then table.clone(match.rewards[p.userId]) else nil,
 			}
 			else nil,
 		pads = padsView(match), -- power-ups v1.1
+		events = events, -- Match HUD M1
 	}
 	return view
 end
 
--- Sends MatchState to every active participant (or only to those in `only`); the players list is built once.
+-- Sends MatchState to every active participant (or only to those in `only`); the players list is built once. Match
+-- HUD M1: a send to everyone carries the HUD events since the previous one (then they are forgotten); a send to
+-- `only` carries none (they wait for the next send to everyone).
 local function sendState(match: Match, only: { Participant }?)
 	local d = getDeps()
 	local players = playersView(match)
+	local events: { Types.MatchEventView }? = nil
+	if only == nil then
+		local list: { Types.MatchEventView } = {}
+		for _, event in match.events do
+			table.insert(list, table.clone(event.view))
+		end
+		events = list
+		match.events = {}
+	end
 	for _, p in only or match.list do
 		if active(p) then
 			local r = record(match, p)
 			p.sentStormBar = if r then r.stormBar else 0
-			local ok, err = try(d.fire, REMOTE_STATE, p.ref, viewFor(match, p, players))
+			local ok, err = try(d.fire, REMOTE_STATE, p.ref, viewFor(match, p, players, events))
 			if not ok then
 				log:warn(`MatchState to user {p.userId} failed:`, err)
 			end
@@ -892,10 +993,11 @@ end
 
 -- Private: lifecycle -----------------------------------------------------------------------------------------------------
 
-local perform: (match: Match, effect: Effect) -> ()
+local perform: (match: Match, effect: Effect, effects: { Effect }, index: number) -> ()
 
 -- One MatchRules event: the new state is stored first, then its effects run (none of them yields). The projectiles
--- are swept up to the same time first (CombatService.syncTo), as in DuelService.stepMatch.
+-- are swept up to the same time first (CombatService.syncTo), as in DuelService.stepMatch. Match HUD M1: the effects
+-- are one batch (a new stepId; a flush that syncTo runs first is a batch of its own).
 stepMatch = function(match: Match, event: Event, now: number?)
 	if match.closed then
 		return
@@ -910,8 +1012,9 @@ stepMatch = function(match: Match, event: Event, now: number?)
 	match.state = state
 	match.now = math.max(match.now, t) -- power-ups v1.1: the time the views' live buffs are read at
 	syncFighters(match)
-	for _, effect in effects do
-		perform(match, effect)
+	match.stepId += 1
+	for index, effect in effects do
+		perform(match, effect, effects, index)
 	end
 	if match.stateDirty and not match.closed then
 		match.stateDirty = false
@@ -1231,13 +1334,169 @@ local function summaryOf(match: Match, outcome: any): MatchSummary
 	}
 end
 
--- The single end (MatchRules `ended`): the toasts and MatchEnded. Exactly once. No rewards in v1.
+-- The TDM team lives right after the K.O. at effects[index] (the next teamLives / out of the victim's team). Match
+-- HUD M1: moved above perform, which reads it too (the K.O. event's livesLeft).
+local function livesAfter(match: Match, effects: { Effect }, index: number, victim: Participant?): number
+	if not match.mode.teams or victim == nil or victim.team == nil then
+		return 0
+	end
+	for i = index + 1, #effects do
+		local e = effects[i]
+		if e.kind == "teamLives" and e.team == victim.team then
+			return e.lives
+		elseif e.kind == "out" and e.userId == victim.userId then
+			return 0
+		elseif e.kind == "ko" then
+			break
+		end
+	end
+	return match.state.teamLives[victim.team] or 0
+end
+
+-- Match HUD M1: the MatchRules `ko` at effects[index] of the batch being performed becomes a HUD event (the kill feed,
+-- M:516: killer, victim, final, score): the attacker's streak +1 (bestStreak its best, M:149, 349, 527), the victim's
+-- streak 0 whatever the cause.
+local function recordKo(match: Match, effect: Effect, effects: { Effect }, index: number)
+	local victim = match.byUserId[effect.victim]
+	local by = if effect.by ~= nil then match.byUserId[effect.by] else nil
+	if victim then
+		victim.streak = 0
+	end
+	local streak: number? = nil
+	if by then
+		by.streak += 1
+		by.bestStreak = math.max(by.bestStreak, by.streak)
+		streak = by.streak
+	end
+	match.eventSeq += 1
+	table.insert(match.events, {
+		view = {
+			seq = match.eventSeq,
+			kind = "ko",
+			at = effect.at,
+			victim = effect.victim,
+			by = effect.by,
+			cause = effect.cause,
+			final = false,
+			streak = streak,
+			livesLeft = if match.mode.teams then livesAfter(match, effects, index, victim) else nil,
+		},
+		step = match.stepId,
+	})
+end
+
+-- Match HUD M1: a win by koTarget, wiped or overtime was decided by the last K.O. of this batch (M:567-572): it is
+-- marked final and kept as outcome.finalKo. Nothing for a wipe by a leave (no K.O. in the batch), a time-up or a draw.
+local function markFinalKo(match: Match, outcome: any)
+	local reason = outcome.reason
+	if outcome.kind ~= "win" or not (reason == "koTarget" or reason == "wiped" or reason == "overtime") then
+		return
+	end
+	for i = #match.events, 1, -1 do
+		local event = match.events[i]
+		if event.step ~= match.stepId then
+			return -- an earlier batch
+		elseif event.view.kind == "ko" then
+			event.view.final = true
+			match.finalKo = event
+			return
+		end
+	end
+end
+
+-- Match HUD M2: the pay's collaborators while Config.Match.Rewards is on ([P] off until M9), else nil.
+local function payDeps(): RewardDeps?
+	local switch = cfg().Rewards
+	return if type(switch) == "table" and switch.enabled == true then getDeps().rewards else nil
+end
+
+-- Match HUD M2: one profile step of p's result (EconomyService.grantMatchResult: the Coins and the win streak), then
+-- SD_WinStreak. nil when the grant failed.
+local function grantResult(
+	rewards: RewardDeps,
+	match: Match,
+	p: Participant,
+	pay: MatchRewards.Pay
+): EconomyService.MatchGrant?
+	local ok, grant = try(rewards.grant, p.ref, match.matchId, pay)
+	if not ok or type(grant) ~= "table" then
+		log:warn(`the match pay of user {p.userId} failed:`, grant)
+		return nil
+	end
+	if grant.recorded then
+		setAttribute(p.ref, ATTR_WIN_STREAK, grant.streakAfter)
+	end
+	return grant
+end
+
+-- Match HUD M2 (owner Q3 / Q4): the single end pays every present, real player of a win or a draw like a 1v1 duel
+-- (MatchRewards): the Coins and the win streak in one step, then the same squeezes as Grip. A paid player keeps
+-- {coins, grip, streakBefore, streakAfter} for their own view (outcome.mine, M:361-363). Called once (onEnded).
+-- Review fix (2026-10-16): "present" is MatchRules' (as the outcome and the standings): a player whose /leave came in
+-- the very step that ended the match (MatchRules took the end first and ignored the leave) finished it and is paid
+-- like everyone present. A grant the profile did not take (not ready, or alreadyGranted) pays no Grip and no mine.
+local function payParticipants(match: Match, outcome: any)
+	local rewards = payDeps()
+	if rewards == nil then
+		return
+	end
+	for _, p in match.list do
+		local r = record(match, p)
+		local pay = if r
+			then MatchRewards.forPlayer(outcome, {
+				userId = p.userId,
+				team = p.team,
+				present = r.present,
+				isBot = r.isBot,
+				throws = p.throws,
+			}, rewards.config)
+			else nil
+		local grant = if pay then grantResult(rewards, match, p, pay) else nil
+		if pay and pay.eligible and grant and grant.recorded then
+			local grip = 0
+			if pay.squeezes > 0 then
+				local ok, gained = try(rewards.addGrip, p.ref, pay.squeezes)
+				grip = if ok and type(gained) == "number" then gained else 0
+			end
+			match.rewards[p.userId] = {
+				coins = grant.coins,
+				grip = grip,
+				streakBefore = grant.streakBefore,
+				streakAfter = grant.streakAfter,
+			}
+		end
+	end
+end
+
+-- Match HUD M2: leaving now costs the win streak (owner Q4 "leaving early"): Countdown, Active or Overtime.
+local function streakAtStake(match: Match): boolean
+	local state = match.state
+	return not state.ended and (state.phase == "Countdown" or MatchRules.isLive(state))
+end
+
+-- Match HUD M2: a player who left a live match: the win streak -> 0 through the same profile step, nothing paid.
+-- Review fix (2026-10-16): only when MatchRules took the leave (`left`). When the leave's own step ended the match
+-- first (a time-up due within the frame, or a K.O. its projectile sweep brought in), MatchRules ignored the leave: the
+-- player was present at the end, payParticipants paid their result, and their streak follows it.
+local function resetLeaverStreak(match: Match, p: Participant)
+	local r = record(match, p)
+	local rewards = payDeps()
+	if rewards and r and r.left then
+		grantResult(rewards, match, p, MatchRewards.left())
+	end
+end
+
+-- The single end (MatchRules `ended`): the toasts and MatchEnded. Exactly once. Match HUD M1: the final K.O. and the
+-- standings, kept for every later view. Match HUD M2: the pay (payParticipants, before the view that shows it).
 local function onEnded(match: Match, outcome: any)
 	if match.endedFired then
 		return
 	end
 	match.endedFired = true
 	match.stateDirty = true
+	markFinalKo(match, outcome)
+	match.standings = standingsView(match)
+	payParticipants(match, outcome)
 	local winner = if outcome.winnerUserId then match.byUserId[outcome.winnerUserId] else nil
 	for _, p in match.list do
 		if active(p) then
@@ -1259,7 +1518,7 @@ local function onEnded(match: Match, outcome: any)
 			end
 		end
 	end
-	-- v1: Config.Match.rewardCoins is 0 and nothing is paid (no EconomyService reason, quests or weekly wins yet).
+	-- No quests, weekly wins or badges for a match yet (the pay is payParticipants', above).
 	local summary = summaryOf(match, outcome)
 	log:info(
 		string.format(
@@ -1277,7 +1536,8 @@ local function onEnded(match: Match, outcome: any)
 	MatchService.MatchEnded:fire(summary)
 end
 
-perform = function(match: Match, effect: Effect)
+-- Match HUD M1: `effects` = the batch being performed and `index` = this effect's place in it (the K.O.'s team lives).
+perform = function(match: Match, effect: Effect, effects: { Effect }, index: number)
 	local kind = effect.kind
 	if kind == "phase" then
 		onPhase(match, effect.phase, effect.startedAt or getDeps().now())
@@ -1286,6 +1546,7 @@ perform = function(match: Match, effect: Effect)
 			onEnded(match, effect.outcome)
 		end
 	elseif kind == "ko" then
+		recordKo(match, effect, effects, index)
 		onKo(match, effect)
 	elseif kind == "respawn" then
 		onRespawn(match, effect)
@@ -1304,24 +1565,6 @@ perform = function(match: Match, effect: Effect)
 		-- used up): the views carry them.
 		match.stateDirty = true
 	end
-end
-
--- The TDM team lives right after the K.O. at effects[index] (the next teamLives / out of the victim's team).
-local function livesAfter(match: Match, effects: { Effect }, index: number, victim: Participant?): number
-	if not match.mode.teams or victim == nil or victim.team == nil then
-		return 0
-	end
-	for i = index + 1, #effects do
-		local e = effects[i]
-		if e.kind == "teamLives" and e.team == victim.team then
-			return e.lives
-		elseif e.kind == "out" and e.userId == victim.userId then
-			return 0
-		elseif e.kind == "ko" then
-			break
-		end
-	end
-	return match.state.teamLives[victim.team] or 0
 end
 
 local function participantOfFighter(match: Match, fighter: Fighter): Participant?
@@ -1449,8 +1692,9 @@ local function buildPort(match: Match): MatchPort
 		flush = function()
 			local effects = match.pending
 			match.pending = {}
-			for _, effect in effects do
-				perform(match, effect)
+			match.stepId += 1 -- Match HUD M1: a batch of its own
+			for index, effect in effects do
+				perform(match, effect, effects, index)
 			end
 			if match.stateDirty and not match.closed then
 				match.stateDirty = false
@@ -1519,6 +1763,8 @@ local function newParticipant(match: Match, ref: any, team: string?, now: number
 		throws = 0,
 		sentStormBar = 0,
 		buffsCheckedAt = -math.huge,
+		streak = 0, -- Match HUD M1
+		bestStreak = 0,
 	}
 	return p
 end
@@ -1999,7 +2245,7 @@ function MatchService.join(player: any, mode: unknown): (boolean, string?)
 end
 
 -- MatchLeave (D6): drops the queue ticket, or leaves the running match (back to the lobby at once). True when
--- something happened; else the match.notQueued toast.
+-- something happened; else the match.notQueued toast. Match HUD M2: leaving a live match resets the win streak.
 function MatchService.leave(player: any): boolean
 	if dropTicket(player, CODE.left) then
 		tickQueues(getDeps().now())
@@ -2008,12 +2254,16 @@ function MatchService.leave(player: any): boolean
 	local match, p = participantOf(player)
 	if match and p then
 		if not match.returning then -- the return is already bringing them back
+			local atStake = streakAtStake(match)
 			p.gone = true
 			if matchOfUser[p.userId] == match then
 				matchOfUser[p.userId] = nil
 			end
 			match.stateDirty = true -- the others' views drop the leaver even when the leave changes nothing else
 			stepMatch(match, { kind = "leave", userId = p.userId })
+			if atStake then
+				resetLeaverStreak(match, p)
+			end
 			releaseParticipant(p)
 			-- At once (attributes cleared, movement back); a teleport still streaming returns them again once it lands.
 			getDeps().spawn(returnOne, match, p, nil)
@@ -2102,6 +2352,12 @@ function MatchService.startMatch(refs: { any }, modeId: string, map: any?, match
 		nextPadAt = -math.huge,
 		nextBuffAt = math.huge,
 		now = now,
+		events = {}, -- Match HUD M1
+		eventSeq = 0,
+		stepId = 0,
+		finalKo = nil,
+		standings = nil,
+		rewards = {}, -- Match HUD M2
 	}
 	local spawns = useMap.spawns
 	local built, why = try(function()
@@ -2343,6 +2599,11 @@ defaultDeps = function(): Deps
 			release = MatchMapService.release,
 			hasMode = MatchMapService.hasMode,
 		},
+		rewards = { -- Match HUD M2
+			grant = EconomyService.grantMatchResult,
+			addGrip = GripService.addFromMatch,
+			winStreak = EconomyService.winStreak,
+		},
 		heartbeat = true,
 		matchConfig = nil,
 	}
@@ -2368,6 +2629,10 @@ function MatchService.init()
 	ShutdownService.RestartScheduled:connect(function(_restartAt: number, _reason: string)
 		MatchService.onRestartScheduled()
 	end)
+	-- Match HUD M2: SD_WinStreak from every loaded profile (as GripService's SD_GripLevel baseline).
+	StateService.dataPort().onLoaded(function(player: any)
+		MatchService.refreshWinStreak(player)
+	end)
 end
 
 function MatchService.start()
@@ -2381,18 +2646,35 @@ function MatchService.start()
 end
 
 -- Leaving the game: the ticket goes, a running match gets MatchRules `leave` (no return: the character is gone).
+-- Match HUD M2: leaving a live match resets the win streak (this hook runs before DataService's: the profile still
+-- takes the change).
 function MatchService.playerRemoving(player: Player)
 	dropTicket(player, nil)
 	local match, p = participantOf(player)
 	if match and p then
+		local atStake = streakAtStake(match)
 		p.gone = true
 		if matchOfUser[p.userId] == match then
 			matchOfUser[p.userId] = nil
 		end
 		match.stateDirty = true -- the others' views drop the leaver
 		stepMatch(match, { kind = "leave", userId = p.userId })
+		if atStake then
+			resetLeaverStreak(match, p)
+		end
 		releaseParticipant(p) -- a rejoin gets a fresh lobby fighter, not this one (its closures hold the old Player)
 	end
+end
+
+-- Match HUD M2: SD_WinStreak = the player's saved win streak (init calls it whenever a profile loads). Nothing without
+-- the pay's collaborators.
+function MatchService.refreshWinStreak(player: any)
+	local rewards = getDeps().rewards
+	if rewards == nil then
+		return
+	end
+	local ok, streak = try(rewards.winStreak, player)
+	setAttribute(player, ATTR_WIN_STREAK, if ok and type(streak) == "number" then streak else 0)
 end
 
 -- Not called by the bootstrap; used by leak checks.

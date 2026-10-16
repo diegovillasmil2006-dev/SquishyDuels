@@ -19,7 +19,14 @@
 --     none), never twice for one matchId, per player; expired times and opponents dropped on every result; at most
 --     samePairFullRewards times per opponent and Config.Data.caps.samePair opponents (the least recent go);
 --   * end to end through a real DataService core: Coins, a squishy and a duel result survive a release and a reload
---     (memory store and FakeDataStore), and the same matchId never pays twice.
+--     (memory store and FakeDataStore), and the same matchId never pays twice;
+--   * Match HUD M2 (2026-10-16): grantMatchResult pays a match's squeezes × the squeeze value of that moment with
+--     reason "match" and sets stats.winStreak (a win +1, anything else 0; a missing one counts as 0) in one step,
+--     with a "soon" save only when something changed; no duelLog entry, same-pair time or duel stat; an unready
+--     profile records nothing (duel.noRewardsOffline); a pay above the largest duel reward or not whole pays no
+--     Coins; exactly once per player and matchId (a repeat is alreadyGranted and changes nothing; another player of
+--     the same match, or a grant refused as unready, is not blocked); winStreak(p) reads the saved streak; 1v1 duel
+--     results never touch it.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -48,6 +55,7 @@ local VALUE = 10 -- the squeeze value of newProfile's capsules: a new player's (
 return function(t: Context)
 	local expect = t.expect
 	local EconomyService = t.requireServer("Services/EconomyService")
+	local MatchRewards = t.requireServer("Logic/MatchRewards")
 	local StateService = t.requireServer("Services/StateService")
 	local Config = t.requireShared("Config")
 	local ECONOMY = Config.Economy
@@ -516,6 +524,174 @@ return function(t: Context)
 		local capped = EconomyService.grantDuelResult(player, "top-2", "win", duelResult("win", 600, 8, "top-2"))
 		expect.equal(capped.coins, 5)
 		expect.equal(profile.coins, ECONOMY.maxCoins)
+	end)
+
+	-- Match results (Match HUD M2, 2026-10-16) --------------------------------------------------------------------------
+
+	local function matchPay(result: string, squeezes: number, streakUp: boolean): any
+		return { result = result, eligible = squeezes > 0, squeezes = squeezes, streakUp = streakUp }
+	end
+
+	t.test("grantMatchResult: a paid win pays reason match, the streak +1, in one step with a soon save", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		profile.stats.winStreak = 2
+		local reasons: { string } = {}
+		local connection = EconomyService.CoinsChanged:connect(function(_p: any, _c: number, _d: number, reason: string)
+			table.insert(reasons, reason)
+		end)
+		local grant = EconomyService.grantMatchResult(player, "match:1", matchPay("win", 600, true))
+		connection:disconnect()
+		expect.deepEqual(
+			grant,
+			{ coins = 600 * VALUE, recorded = true, alreadyGranted = false, streakBefore = 2, streakAfter = 3 }
+		)
+		expect.equal(w.mutations, 1) -- Coins and the streak in one step
+		expect.equal(profile.coins, 600 * VALUE)
+		expect.equal(profile.stats.coinsEarned, 600 * VALUE)
+		expect.equal(profile.stats.winStreak, 3)
+		expect.equal(EconomyService.winStreak(player), 3)
+		expect.deepEqual(reasons, { "match" })
+		expect.truthy(EconomyService.isReason("match"))
+		expect.deepEqual(w.saves, { { player = player, reason = "soon" } })
+		expect.deepEqual(dirtyFields(w), { "coins", "stats" })
+		-- A match is not a 1v1 duel: no duelLog entry, no same-pair time, no duel stats.
+		expect.deepEqual(profile.duelLog, {})
+		expect.equal(profile.samePair, nil)
+		expect.equal(profile.stats.duelsPlayed, 0)
+		expect.equal(profile.stats.duelsWon, 0)
+	end)
+
+	t.test(
+		"grantMatchResult: a loss pays and resets the streak; an unpaid end only resets it; no change, no save",
+		function()
+			local w = setup()
+			local player, profile = readyPlayer(w, 0)
+			-- newProfile has no stats.winStreak (an older profile before reconcile): it counts as 0.
+			local first = EconomyService.grantMatchResult(player, "match:1", matchPay("win", 600, true))
+			expect.equal(first.streakBefore, 0)
+			expect.equal(first.streakAfter, 1)
+			local loss = EconomyService.grantMatchResult(player, "match:2", matchPay("loss", 180, false))
+			expect.deepEqual(
+				loss,
+				{ coins = 180 * VALUE, recorded = true, alreadyGranted = false, streakBefore = 1, streakAfter = 0 }
+			)
+			expect.equal(profile.coins, 780 * VALUE)
+			-- Nothing paid and the streak already 0: recorded, but nothing changed, so no save and no dirty field.
+			local saves, dirty = #w.saves, #w.dirty
+			local idle = EconomyService.grantMatchResult(player, "match:3", matchPay("loss", 0, false))
+			expect.deepEqual(
+				idle,
+				{ coins = 0, recorded = true, alreadyGranted = false, streakBefore = 0, streakAfter = 0 }
+			)
+			expect.equal(#w.saves, saves)
+			expect.equal(#w.dirty, dirty)
+			-- Leaving a live match (MatchRewards.left()): the streak goes to 0, no Coins.
+			profile.stats.winStreak = 5
+			local left = EconomyService.grantMatchResult(
+				player,
+				"match:4",
+				{ result = "left", eligible = false, squeezes = 0, streakUp = false }
+			)
+			expect.deepEqual(
+				left,
+				{ coins = 0, recorded = true, alreadyGranted = false, streakBefore = 5, streakAfter = 0 }
+			)
+			expect.equal(profile.coins, 780 * VALUE)
+			expect.equal(#w.saves, saves + 1)
+		end
+	)
+
+	t.test("grantMatchResult pays its squeezes × the squeeze value of that moment; Coins stop at maxCoins", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		profile.capsules = { slots = 1, list = { { level = 30, squishyId = "toast" } } } -- Toast Lv 30: 1,385
+		expect.equal(EconomyService.grantMatchResult(player, "m-1", matchPay("draw", 300, false)).coins, 300 * 1_385)
+		profile.coins = ECONOMY.maxCoins - 5
+		local capped = EconomyService.grantMatchResult(player, "m-2", matchPay("win", 600, true))
+		expect.equal(capped.coins, 5)
+		expect.equal(profile.coins, ECONOMY.maxCoins)
+	end)
+
+	t.test("grantMatchResult: an unready profile records nothing; a bad pay pays no Coins", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		profile.stats.winStreak = 4
+		w.statuses[player] = "offline"
+		local blocked = EconomyService.grantMatchResult(player, "match:1", matchPay("win", 600, true))
+		expect.deepEqual(blocked, {
+			coins = 0,
+			recorded = false,
+			alreadyGranted = false,
+			streakBefore = 0,
+			streakAfter = 0,
+			blockedReason = "duel.noRewardsOffline",
+		})
+		expect.equal(w.mutations, 0)
+		expect.equal(profile.stats.winStreak, 4)
+		w.statuses[player] = "ready"
+		-- Above the largest duel reward (the live one, which the guard reads), or not whole: no Coins (the streak still
+		-- moves). One match each (a matchId is granted once).
+		for index, bad in { MatchRewards.maxSqueezes() + 1, 1.5, -1, 0 / 0 } do
+			local grant = EconomyService.grantMatchResult(player, `match:bad{index}`, matchPay("win", bad, true))
+			expect.equal(grant.coins, 0)
+			expect.equal(grant.recorded, true)
+		end
+		expect.equal(profile.coins, 0)
+		expect.equal(profile.stats.winStreak, 8)
+		-- No pay or no match id: nothing at all.
+		local mutations = w.mutations
+		expect.equal(EconomyService.grantMatchResult(player, "", matchPay("win", 600, true)).recorded, false)
+		expect.equal(EconomyService.grantMatchResult(player, "match:3", nil :: any).recorded, false)
+		expect.equal(w.mutations, mutations)
+		expect.equal(EconomyService.winStreak({ UserId = 2 }), 0) -- no profile
+	end)
+
+	t.test("grantMatchResult pays once per matchId: a repeat is alreadyGranted and changes nothing", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		profile.stats.winStreak = 2
+		local first = EconomyService.grantMatchResult(player, "match:1", matchPay("win", 600, true))
+		expect.equal(first.recorded, true)
+		local mutations, saves, dirty = w.mutations, #w.saves, #w.dirty
+		local again = EconomyService.grantMatchResult(player, "match:1", matchPay("win", 600, true))
+		expect.deepEqual(
+			again,
+			{ coins = 0, recorded = false, alreadyGranted = true, streakBefore = 3, streakAfter = 3 }
+		)
+		-- The left() reset of a player already granted this match changes nothing either.
+		expect.equal(EconomyService.grantMatchResult(player, "match:1", MatchRewards.left()).alreadyGranted, true)
+		expect.equal(w.mutations, mutations)
+		expect.equal(#w.saves, saves)
+		expect.equal(#w.dirty, dirty)
+		expect.equal(profile.coins, 600 * VALUE)
+		expect.equal(profile.stats.winStreak, 3)
+		-- Another player of the same match is paid; the next match pays again.
+		local other = { UserId = 2 }
+		w.profiles[other] = newProfile(0)
+		w.statuses[other] = "ready"
+		expect.equal(EconomyService.grantMatchResult(other, "match:1", matchPay("loss", 180, false)).coins, 180 * VALUE)
+		expect.equal(EconomyService.grantMatchResult(player, "match:2", matchPay("win", 600, true)).coins, 600 * VALUE)
+		expect.equal(profile.stats.winStreak, 4)
+		-- A grant refused while the profile was not ready changed nothing, so it is not remembered.
+		w.statuses[player] = "offline"
+		expect.equal(EconomyService.grantMatchResult(player, "match:3", matchPay("win", 600, true)).recorded, false)
+		w.statuses[player] = "ready"
+		expect.equal(EconomyService.grantMatchResult(player, "match:3", matchPay("win", 600, true)).recorded, true)
+		-- useDeps (a new test world) forgets every match.
+		local fresh = setup()
+		fresh.profiles[player] = profile
+		fresh.statuses[player] = "ready"
+		expect.equal(EconomyService.grantMatchResult(player, "match:1", matchPay("win", 600, true)).recorded, true)
+	end)
+
+	t.test("1v1 duels never touch the win streak", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		profile.stats.winStreak = 4
+		EconomyService.grantDuelResult(player, MATCH_ID, "loss", duelResult("loss", 180))
+		EconomyService.grantDuelResult(player, "duel-2", "win", duelResult("win", 600, 7, "duel-2"))
+		expect.equal(profile.stats.winStreak, 4)
 	end)
 
 	-- The same-pair record (§6.7, §12 #15) ------------------------------------------------------------------------------

@@ -26,6 +26,13 @@
 --     has none, a partial one keeps them) and pads ({name, readyAt}; -inf or junk readyAt = 0, nameless entries
 --     skipped; kept when left out); hasBuff live while now < its end; buffMultiplier = that kind's Config number while
 --     it lives, else 1 (the Config table is passed in).
+--   * match HUD M1 (2026-10-16): players get respawnAt / out / protectUntil / streak / bestStreak and the outcome
+--     finalKo / standings (defaults from an older payload); newMatchMoments keeps the well-formed events above the last
+--     seq, sorted, each once; matchMomentsStep hands each moment out once, starts again with a new match and never
+--     answers another match's state; the roster cache keeps a player who left (slots from the first view, later ones
+--     after); the Result freeze keeps the first view with an outcome until the match view ends.
+--   * match HUD M2 (2026-10-16): outcome.mine ({coins, grip, streakBefore, streakAfter}, whole counts >= 0, floored)
+--     is read when well-formed, else nil (missing from an older server or when not paid).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -760,6 +767,253 @@ return function(t: Context)
 			expect.equal(mult(view, "throwBoost", "speedMultiplier", 500, {}), 1) -- a Config without kinds
 		end
 	)
+
+	-- Match HUD M1 (2026-10-16): the HUD data, the moments, the roster cache and the Result freeze ---------------------
+
+	local function ko(seq: number, victim: number, by: number?, extra: { [string]: any }?): any
+		local event: { [string]: any } =
+			{ seq = seq, kind = "ko", at = 500 + seq, victim = victim, by = by, cause = "hit" }
+		for key, value in extra or {} do
+			event[key] = value
+		end
+		return event
+	end
+
+	t.test("match HUD M1: players and the outcome read the new fields, with defaults from an older payload", function()
+		local old = StateController.reduceMatch(nil, stateEvent(matchState("match:h", "Active")))
+		for _, player in old.players do
+			expect.equal(player.respawnAt, nil)
+			expect.equal(player.out, false)
+			expect.equal(player.protectUntil, 0)
+			expect.equal(player.streak, 0)
+			expect.equal(player.bestStreak, 0)
+		end
+		local raw = matchState("match:h", "Result")
+		raw.players[2].respawnAt = 512
+		raw.players[2].protectUntil = 0 / 0
+		raw.players[2].streak = 3
+		raw.players[2].bestStreak = 4.7
+		raw.players[3].out = true
+		raw.players[3].streak = -1
+		raw.outcome = {
+			kind = "win",
+			reason = "koTarget",
+			winnerUserId = 2,
+			winners = { 2 },
+			finalKo = ko(9, 3, 2, { final = true, streak = 5, livesLeft = "x" }),
+			standings = {
+				{ userId = 2, kos = 25, knockedOut = 0, bestStreak = 7 },
+				{ userId = 1, kos = 2, knockedOut = 1 },
+				{ kos = 9 },
+				"junk",
+			},
+		}
+		local view = StateController.reduceMatch(old, stateEvent(raw))
+		local two, three = view.players[2], view.players[3]
+		expect.equal(two.respawnAt, 512)
+		expect.equal(two.protectUntil, 0)
+		expect.equal(two.streak, 3)
+		expect.equal(two.bestStreak, 4)
+		expect.equal(three.out, true)
+		expect.equal(three.streak, 0)
+		expect.deepEqual(
+			view.outcome.finalKo,
+			{ seq = 9, kind = "ko", at = 509, victim = 3, by = 2, cause = "hit", final = true, streak = 5 }
+		)
+		expect.deepEqual(view.outcome.standings, {
+			{ userId = 2, kos = 25, knockedOut = 0, bestStreak = 7 },
+			{ userId = 1, kos = 2, knockedOut = 1, bestStreak = 0 },
+		})
+		-- An older server's outcome: no finalKo, no standings.
+		local plain = matchState("match:i", "Result")
+		plain.outcome = { kind = "draw", reason = "overtimeTimeout", winners = {} }
+		local drawn = StateController.reduceMatch(nil, stateEvent(plain))
+		expect.equal(drawn.outcome.finalKo, nil)
+		expect.deepEqual(drawn.outcome.standings, {})
+		-- Moments are never stored in the view.
+		expect.equal((drawn :: any).events, nil)
+	end)
+
+	t.test("match HUD M2: outcome.mine reads what the match paid you; nil when missing or malformed", function()
+		local raw = matchState("match:m2", "Result")
+		raw.outcome = {
+			kind = "win",
+			reason = "koTarget",
+			winnerUserId = 1,
+			winners = { 1 },
+			mine = { coins = 6000.9, grip = 6000, streakBefore = 2, streakAfter = 3 },
+		}
+		local view = StateController.reduceMatch(nil, stateEvent(raw))
+		expect.deepEqual(view.outcome.mine, { coins = 6000, grip = 6000, streakBefore = 2, streakAfter = 3 })
+		for _, bad in
+			{
+				{ coins = 10, grip = 10, streakBefore = 0 }, -- a field missing
+				{ coins = -1, grip = 10, streakBefore = 0, streakAfter = 0 },
+				{ coins = 10, grip = 0 / 0, streakBefore = 0, streakAfter = 0 },
+				{ coins = 10, grip = 10, streakBefore = "2", streakAfter = 3 },
+				"junk",
+			} :: { any }
+		do
+			local broken = matchState("match:m2b", "Result")
+			broken.outcome = { kind = "win", reason = "koTarget", winnerUserId = 1, winners = { 1 }, mine = bad }
+			expect.equal(StateController.reduceMatch(nil, stateEvent(broken)).outcome.mine, nil)
+		end
+		-- Not paid (or an older server): no mine.
+		local plain = matchState("match:m2c", "Result")
+		plain.outcome = { kind = "draw", reason = "overtimeTimeout", winners = {} }
+		expect.equal(StateController.reduceMatch(nil, stateEvent(plain)).outcome.mine, nil)
+	end)
+
+	t.test("match HUD M1: newMatchMoments keeps the well-formed events above lastSeq, sorted, each once", function()
+		local raw = {
+			ko(4, 2, 1, { streak = 2 }),
+			ko(2, 3, nil, { cause = "storm", livesLeft = 39 }),
+			ko(3, 1, 2, { final = true }),
+			ko(1, 2, 1), -- already handed out
+			ko(3, 9, 9), -- a repeated seq: once
+			{ seq = 5, kind = "ko", at = 505 }, -- a K.O. without its victim
+			{ seq = 6.5, kind = "ko", at = 506, victim = 2 },
+			{ seq = 7, kind = 3, at = 507, victim = 2 },
+			{ seq = 8, kind = "ko", at = 0 / 0, victim = 2 },
+			"junk",
+		}
+		local moments, last = StateController.newMatchMoments(1, raw)
+		expect.equal(last, 4)
+		expect.equal(#moments, 3)
+		expect.deepEqual(
+			moments[1],
+			{ seq = 2, kind = "ko", at = 502, victim = 3, cause = "storm", final = false, livesLeft = 39 }
+		)
+		expect.equal(moments[2].seq, 3)
+		expect.equal(moments[2].final, true)
+		expect.equal(moments[3].seq, 4)
+		expect.equal(moments[3].streak, 2)
+		-- A later kind with no victim is kept (Diego's alerts, later).
+		local later = StateController.newMatchMoments(0, { { seq = 1, kind = "pickup", at = 9 } })
+		expect.equal(later[1].kind, "pickup")
+		-- Nothing new: the same seq back.
+		local none, same = StateController.newMatchMoments(4, raw)
+		expect.equal(#none, 0)
+		expect.equal(same, 4)
+		local empty, still = StateController.newMatchMoments(4, nil)
+		expect.equal(#empty, 0)
+		expect.equal(still, 4)
+	end)
+
+	t.test(
+		"match HUD M1: matchMomentsStep: each moment once, a new match starts again, never another match's",
+		function()
+			local tracker = { matchId = nil, lastSeq = 0 }
+			local raw = matchState("match:m", "Active")
+			raw.events = { ko(1, 2, 1) }
+			local view = StateController.reduceMatch(nil, stateEvent(raw))
+			local moments, t1 = StateController.matchMomentsStep(tracker, view, raw)
+			expect.equal(#moments, 1)
+			expect.deepEqual(t1, { matchId = "match:m", lastSeq = 1 })
+			expect.deepEqual(tracker, { matchId = nil, lastSeq = 0 }) -- the input is never modified
+			-- The same events again (a resend): nothing; the next one: only it.
+			expect.equal(#StateController.matchMomentsStep(t1, view, raw), 0)
+			raw.events = { ko(1, 2, 1), ko(2, 3, 1) }
+			local next2, t2 = StateController.matchMomentsStep(t1, view, raw)
+			expect.equal(#next2, 1)
+			expect.equal(next2[1].seq, 2)
+			-- A state without events (the storm bar to one player) changes nothing.
+			local bar = { matchId = "match:m", you = { stormBar = 0.5 } }
+			local quiet, t3 = StateController.matchMomentsStep(t2, view, bar)
+			expect.equal(#quiet, 0)
+			expect.equal(t3.lastSeq, 2)
+			-- A late state of another match than the current view: nothing, and the count is kept.
+			local stray = matchState("match:old", "Returning")
+			stray.events = { ko(7, 2, 1) }
+			local none, t4 = StateController.matchMomentsStep(t3, view, stray)
+			expect.equal(#none, 0)
+			expect.equal(t4, t3)
+			expect.equal(#StateController.matchMomentsStep(t3, nil, raw), 0)
+			-- A new match: its seq 1 is new again.
+			local fresh = matchState("match:n", "Positioning")
+			fresh.events = { ko(1, 3, 2) }
+			local newView = StateController.reduceMatch(view, stateEvent(fresh))
+			local first, t5 = StateController.matchMomentsStep(t3, newView, fresh)
+			expect.equal(#first, 1)
+			expect.deepEqual(t5, { matchId = "match:n", lastSeq = 1 })
+		end
+	)
+
+	t.test("match HUD M1: the roster cache keeps a player who left; slots come from the first view", function()
+		local v1 = StateController.reduceMatch(nil, stateEvent(matchState("match:r", "Countdown")))
+		local roster = StateController.nextMatchRoster(nil, v1)
+		expect.equal(roster.matchId, "match:r")
+		expect.equal(roster.count, 3)
+		expect.deepEqual(
+			roster.entries[2],
+			{ userId = 2, displayName = "Two", squishyId = "dragon", team = nil, slot = 2 }
+		)
+		expect.equal(roster.entries[3].slot, 3)
+		-- Player 3 leaves (the next view has no row for them): still named, same slots.
+		local raw = matchState("match:r", "Active")
+		table.remove(raw.players, 3)
+		local v2 = StateController.reduceMatch(v1, stateEvent(raw))
+		expect.equal(#v2.players, 2)
+		local kept = StateController.nextMatchRoster(roster, v2)
+		expect.equal(kept, roster) -- nothing changed: the same table
+		expect.equal(kept.entries[3].displayName, "Three")
+		-- A later player (not in the first view) goes after the others; a renamed one keeps its slot.
+		local raw3 = matchState("match:r", "Active")
+		raw3.players[1].displayName = "Me2"
+		table.insert(raw3.players, {
+			userId = 7,
+			displayName = "Seven",
+			squishyId = "toast",
+			kos = 0,
+			knockedOut = 0,
+			alive = true,
+			ultReady = false,
+		})
+		local v3 = StateController.reduceMatch(v2, stateEvent(raw3))
+		local grown = StateController.nextMatchRoster(kept, v3)
+		expect.equal(grown.entries[7].slot, 4)
+		expect.equal(grown.count, 4)
+		expect.equal(grown.entries[1].displayName, "Me2")
+		expect.equal(grown.entries[1].slot, 1)
+		expect.equal(kept.entries[1].displayName, "Me") -- the input is never modified
+		expect.equal(kept.entries[7], nil)
+		-- Another match starts a new roster; no view, none.
+		local other = StateController.reduceMatch(v3, stateEvent(matchState("match:s", "Positioning")))
+		local fresh = StateController.nextMatchRoster(grown, other)
+		expect.equal(fresh.matchId, "match:s")
+		expect.equal(fresh.entries[7], nil)
+		expect.equal(StateController.nextMatchRoster(grown, nil), nil)
+	end)
+
+	t.test("match HUD M1: the Result freeze keeps the first view with an outcome (players and standings)", function()
+		local live = StateController.reduceMatch(nil, stateEvent(matchState("match:f", "Active")))
+		expect.equal(StateController.nextMatchResult(nil, live), nil)
+		local raw = matchState("match:f", "Result")
+		raw.outcome = {
+			kind = "win",
+			reason = "timeUp",
+			winnerUserId = 2,
+			winners = { 2 },
+			standings = { { userId = 2, kos = 5, knockedOut = 0, bestStreak = 5 } },
+		}
+		local result = StateController.reduceMatch(live, stateEvent(raw))
+		local frozen = StateController.nextMatchResult(nil, result)
+		expect.equal(frozen, result)
+		-- Player 3 goes back to the lobby during Result: the next view drops them; the freeze does not.
+		local later = matchState("match:f", "Result")
+		table.remove(later.players, 3)
+		later.outcome = raw.outcome
+		local after = StateController.reduceMatch(result, stateEvent(later))
+		expect.equal(#after.players, 2)
+		local still = StateController.nextMatchResult(frozen, after)
+		expect.equal(still, frozen)
+		expect.equal(#still.players, 3)
+		expect.equal(still.outcome.standings[1].userId, 2)
+		-- The match view ends (or another match starts): the freeze goes.
+		expect.equal(StateController.nextMatchResult(frozen, nil), nil)
+		local nextMatch = StateController.reduceMatch(after, stateEvent(matchState("match:g", "Positioning")))
+		expect.equal(StateController.nextMatchResult(frozen, nextMatch), nil)
+	end)
 
 	t.test("lobby lock: a match view locks the lobby too; match ids", function()
 		local idle = { state = "Idle", searching = 0, duelsInProgress = 0, arenasFree = 6 }

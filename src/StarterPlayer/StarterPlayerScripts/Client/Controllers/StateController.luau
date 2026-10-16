@@ -65,6 +65,22 @@
 --   hasBuff(view, power, now) (live while now < its end, as MatchRules.hasBuff) and buffMultiplier(view, power, field,
 --   now, powerUps?) (that kind's Config.Match.PowerUps number while it lives, else 1): ThrowController's rapid throw
 --   and throw boost, DashController's dash boost.
+--   Match HUD M1 (2026-10-16, the data of Diego's Match HUD: kill feed and final K.O. M:497-516, 567-572, respawn
+--   seconds M:73, 88, 113, 641, streaks M:149, 349, 527, standings M:610-614, 688): every players entry gets respawnAt
+--   (nil when standing or out), out, protectUntil (0 = none), streak and bestStreak (0 from an older server); the
+--   outcome gets finalKo (a MatchMoment, nil when the match did not end on a K.O.) and standings ({userId, kos,
+--   knockedOut, bestStreak}, empty from an older server). The HUD events of a MatchState (`events`, Types.
+--   MatchEventView) are moments (MatchMoment; the MatchEvent name is the reducer's input), never stored in the view:
+--   MatchMoments(moments, view) fires once per new moment (seq above the last one of the same match, sorted by seq;
+--   malformed ones dropped), after MatchChanged, only for the state of the current match. Two client caches for the
+--   end screens, updated before MatchChanged fires: matchRoster() (userId -> {userId, displayName, squishyId, team,
+--   slot}, every player ever seen in this match, so the feed, cards and podium still name a player who left; slot =
+--   the place in the first view's players list, later arrivals after them) and matchResult() (the first view with an
+--   outcome, kept for the whole Result: a LOBBY / PLAY AGAIN by someone else makes a later view without them). Pure
+--   helpers: newMatchMoments(lastSeq, raw), matchMomentsStep(tracker, view, raw), nextMatchRoster(roster, view),
+--   nextMatchResult(frozen, view).
+--   Match HUD M2 (2026-10-16, the results pills M:361-363): the outcome gets `mine` (a MatchReward: the Coins and
+--   Grip this match paid you and your win streak before / after; nil when not paid, malformed or from an older server).
 -- * Lobby lock (§5.4, §11.1): from Matched through Returning, isLobbyLocked() is true (LobbyLockChanged): menus,
 --   equip, Inspect, boxes and shop refuse to open. FFA/TDM v1: also for the whole match view.
 -- The reducers (reduceProfile, normalizeField, trackNewOwned, reduceQueue, reduceDuel, reduceMatch, lobbyLocked,
@@ -143,7 +159,45 @@ export type MatchPlayer = {
 	knockedOut: number,
 	alive: boolean,
 	ultReady: boolean,
+	-- Match HUD M1 (defaults from an older server: nil / false / 0):
+	respawnAt: number?, -- server time they stand again (knocked out; nil when standing or out)
+	out: boolean, -- TDM: no team life left
+	protectUntil: number, -- server time their spawn protection ends (0 = none)
+	streak: number, -- K.O.s since they were last knocked out
+	bestStreak: number, -- the longest streak of this match
 }
+
+-- Match HUD M1: one HUD event of a match (Types.MatchEventView, parsed). kind "ko" now (victim always set); seq counts
+-- from 1 per match; at = server time.
+export type MatchMoment = {
+	seq: number,
+	kind: string,
+	at: number,
+	victim: number?,
+	by: number?, -- nil for a storm or out-of-bounds K.O.
+	cause: string?, -- "hit" | "storm" | "outOfBounds"
+	final: boolean, -- this K.O. ended the match
+	streak: number?, -- the attacker's streak after it
+	livesLeft: number?, -- TDM: the victim's team lives after it
+}
+
+-- Match HUD M1: one line of the final standings (Types.MatchStandingView).
+export type MatchStanding = { userId: number, kos: number, knockedOut: number, bestStreak: number }
+
+-- Match HUD M1: a player of the roster cache; slot = the place in the first view's players list (later ones after).
+export type MatchRosterEntry = {
+	userId: number,
+	displayName: string,
+	squishyId: string,
+	team: string?,
+	slot: number,
+}
+
+-- Match HUD M1: every player ever seen in one match (never dropped while it lasts); count = the highest slot.
+export type MatchRoster = { matchId: string, entries: { [number]: MatchRosterEntry }, count: number }
+
+-- Match HUD M1: the last moment seq handed out for a match (matchMomentsStep).
+export type MomentTracker = { matchId: string?, lastSeq: number }
 
 -- The own state in a match: the payload's `you` plus the own players entry's name and squishy.
 export type MatchYou = {
@@ -172,7 +226,14 @@ export type MatchOutcome = {
 	winnerUserId: number?,
 	winnerTeam: string?,
 	winners: { number },
+	finalKo: MatchMoment?, -- Match HUD M1: the K.O. that ended it (nil: no such K.O.)
+	standings: { MatchStanding }, -- Match HUD M1: present players at the end, MatchRules.standings order
+	mine: MatchReward?, -- Match HUD M2: what this match paid you (nil: not paid)
 }
+
+-- Match HUD M2: what a match paid you (Types.MatchRewardView): Coins and Grip really added, your win streak before and
+-- after it (the results pills, M:361-363).
+export type MatchReward = { coins: number, grip: number, streakBefore: number, streakAfter: number }
 
 export type MatchArena = {
 	floorY: number,
@@ -287,6 +348,8 @@ StateController.DuelResultReceived = Signal.new() :: Signal.Signal<Types.DuelRes
 StateController.LobbyLockChanged = Signal.new() :: Signal.Signal<boolean>
 -- FFA/TDM v1: the match view (new, old).
 StateController.MatchChanged = Signal.new() :: Signal.Signal<MatchView?, MatchView?>
+-- Match HUD M1: the new HUD moments of the current match (sorted by seq) and its view (after MatchChanged).
+StateController.MatchMoments = Signal.new() :: Signal.Signal<{ MatchMoment }, MatchView>
 
 -- Private
 
@@ -316,6 +379,9 @@ local counts: QueueCounts = emptyCounts()
 local queueView: QueueView = idleQueue(counts)
 local duelView: DuelView? = nil
 local matchView: MatchView? = nil -- FFA/TDM v1
+local matchRoster: MatchRoster? = nil -- Match HUD M1: the roster cache of the current match
+local matchResult: MatchView? = nil -- Match HUD M1: the first view with an outcome (the Result freeze)
+local momentTracker: MomentTracker = { matchId = nil, lastSeq = 0 } -- Match HUD M1
 local lastResult: Types.DuelResultPayload? = nil
 local locked = false
 local endedMatches: { [string]: boolean } = {} -- match ids whose view ended (late messages are ignored)
@@ -402,7 +468,63 @@ local function matchPlayerFrom(raw: unknown): MatchPlayer?
 		knockedOut = countOr(t.knockedOut, 0),
 		alive = t.alive ~= false,
 		ultReady = t.ultReady == true,
+		-- Match HUD M1:
+		respawnAt = if finite(t.respawnAt) then t.respawnAt else nil,
+		out = t.out == true,
+		protectUntil = if finite(t.protectUntil) then t.protectUntil else 0,
+		streak = countOr(t.streak, 0),
+		bestStreak = countOr(t.bestStreak, 0),
 	}
+end
+
+-- Match HUD M1: one HUD event (Types.MatchEventView), nil when malformed: it needs a whole seq >= 1, a kind and a
+-- finite time; a "ko" also needs its victim. Optional fields of the wrong type are left out.
+local function momentFrom(raw: unknown): MatchMoment?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local t = raw :: any
+	if
+		not isCount(t.seq)
+		or t.seq < 1
+		or t.seq ~= math.floor(t.seq)
+		or type(t.kind) ~= "string"
+		or not finite(t.at)
+	then
+		return nil
+	end
+	if t.kind == "ko" and not finite(t.victim) then
+		return nil
+	end
+	return {
+		seq = t.seq,
+		kind = t.kind :: string,
+		at = t.at,
+		victim = if finite(t.victim) then t.victim else nil,
+		by = if finite(t.by) then t.by else nil,
+		cause = if type(t.cause) == "string" then t.cause else nil,
+		final = t.final == true,
+		streak = if isCount(t.streak) then math.floor(t.streak) else nil,
+		livesLeft = if isCount(t.livesLeft) then math.floor(t.livesLeft) else nil,
+	}
+end
+
+-- Match HUD M1: the final standings (entries without a finite userId are skipped); empty without a list.
+local function standingsFrom(raw: unknown): { MatchStanding }
+	local list: { MatchStanding } = {}
+	if type(raw) == "table" then
+		for _, entry in raw :: any do
+			if type(entry) == "table" and finite(entry.userId) then
+				table.insert(list, {
+					userId = entry.userId,
+					kos = countOr(entry.kos, 0),
+					knockedOut = countOr(entry.knockedOut, 0),
+					bestStreak = countOr(entry.bestStreak, 0),
+				})
+			end
+		end
+	end
+	return list
 end
 
 -- The players list (malformed entries are skipped).
@@ -519,6 +641,23 @@ local function teamLivesFrom(raw: unknown): { [string]: number }?
 	return lives
 end
 
+-- Match HUD M2: what a match paid you, nil unless all four numbers are whole counts >= 0 (fractions floored).
+local function rewardFrom(raw: unknown): MatchReward?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local t = raw :: any
+	if not (isCount(t.coins) and isCount(t.grip) and isCount(t.streakBefore) and isCount(t.streakAfter)) then
+		return nil
+	end
+	return {
+		coins = math.floor(t.coins),
+		grip = math.floor(t.grip),
+		streakBefore = math.floor(t.streakBefore),
+		streakAfter = math.floor(t.streakAfter),
+	}
+end
+
 local function outcomeFrom(raw: unknown): MatchOutcome?
 	if type(raw) ~= "table" then
 		return nil
@@ -541,6 +680,9 @@ local function outcomeFrom(raw: unknown): MatchOutcome?
 		winnerUserId = if finite(t.winnerUserId) then t.winnerUserId else nil,
 		winnerTeam = if type(t.winnerTeam) == "string" then t.winnerTeam else nil,
 		winners = winners,
+		finalKo = momentFrom(t.finalKo), -- Match HUD M1
+		standings = standingsFrom(t.standings),
+		mine = rewardFrom(t.mine), -- Match HUD M2
 	}
 end
 
@@ -572,13 +714,16 @@ local function setDuel(newView: DuelView?)
 	setLock()
 end
 
--- FFA/TDM v1: the match view, as setDuel.
+-- FFA/TDM v1: the match view, as setDuel. Match HUD M1: the roster cache and the Result freeze follow it first, so
+-- MatchChanged's handlers read them up to date.
 local function setMatch(newView: MatchView?)
 	local old = matchView
 	if newView == old then
 		return
 	end
 	matchView = newView
+	matchRoster = StateController.nextMatchRoster(matchRoster, newView)
+	matchResult = StateController.nextMatchResult(matchResult, newView)
 	StateController.MatchChanged:fire(newView, old)
 	if newView == nil and queueView.state == "Matched" then
 		setQueue(idleQueue(counts))
@@ -745,7 +890,8 @@ local function onDuelEvent(event: DuelEvent)
 	setDuel(result)
 end
 
--- FFA/TDM v1: one match event (MatchState, UltimateCharge, the cleared SD_DuelPhase), as onDuelEvent.
+-- FFA/TDM v1: one match event (MatchState, UltimateCharge, the cleared SD_DuelPhase), as onDuelEvent. Match HUD M1:
+-- then a MatchState's new HUD moments of the current match (MatchMoments).
 local function onMatchEvent(event: MatchEvent)
 	if event.kind == "state" and type(event.state) == "table" and endedMatches[(event.state :: any).matchId] then
 		return -- a late MatchState of a match this client already left
@@ -760,6 +906,13 @@ local function onMatchEvent(event: MatchEvent)
 		endedMatches[old.matchId] = true
 	end
 	setMatch(result)
+	if event.kind == "state" and result ~= nil then
+		local moments, tracker = StateController.matchMomentsStep(momentTracker, result, event.state)
+		momentTracker = tracker
+		if #moments > 0 then
+			StateController.MatchMoments:fire(moments, result)
+		end
+	end
 end
 
 -- Public: pure reducers ----------------------------------------------------------------------------------------------
@@ -1239,6 +1392,102 @@ function StateController.reduceMatch(view: MatchView?, event: MatchEvent): Match
 	return view
 end
 
+-- Match HUD M1: the new HUD moments of a MatchState's `events` (raw): the well-formed ones with a seq above lastSeq,
+-- sorted by seq (a repeated seq once). Returns them and the highest seq handed out (lastSeq when there is none).
+function StateController.newMatchMoments(lastSeq: number, raw: unknown): ({ MatchMoment }, number)
+	local list: { MatchMoment } = {}
+	if type(raw) ~= "table" then
+		return list, lastSeq
+	end
+	for _, entry in raw :: any do
+		local moment = momentFrom(entry)
+		if moment and moment.seq > lastSeq then
+			table.insert(list, moment)
+		end
+	end
+	table.sort(list, function(a: MatchMoment, b: MatchMoment): boolean
+		return a.seq < b.seq
+	end)
+	local moments: { MatchMoment } = {}
+	local last = lastSeq
+	for _, moment in list do
+		if moment.seq > last then
+			table.insert(moments, moment)
+			last = moment.seq
+		end
+	end
+	return moments, last
+end
+
+-- Match HUD M1: the moments of one MatchState (raw) once it made `view` (the current match view): none unless the state
+-- is of that match (a late state of another match hands out nothing); the seq count starts again with each match.
+-- Returns the moments and the new tracker (the input is never modified).
+function StateController.matchMomentsStep(
+	tracker: MomentTracker,
+	view: MatchView?,
+	raw: unknown
+): ({ MatchMoment }, MomentTracker)
+	if view == nil or type(raw) ~= "table" or (raw :: any).matchId ~= view.matchId then
+		return {}, tracker
+	end
+	local lastSeq = if tracker.matchId == view.matchId then tracker.lastSeq else 0
+	local moments, newSeq = StateController.newMatchMoments(lastSeq, (raw :: any).events)
+	return moments, { matchId = view.matchId, lastSeq = newSeq }
+end
+
+-- Match HUD M1: the roster cache step (see the header). A view of another match starts a new roster from its players
+-- (slot = the place in the list); a view of the same match updates each listed player's name, squishy and team and
+-- adds new players after the others; nobody is dropped while the match lasts. nil without a view. The input is never
+-- modified (an unchanged roster is returned as the same table).
+function StateController.nextMatchRoster(roster: MatchRoster?, view: MatchView?): MatchRoster?
+	if view == nil then
+		return nil
+	end
+	local same = roster ~= nil and roster.matchId == view.matchId
+	local entries: { [number]: MatchRosterEntry } = if roster and same then roster.entries else {}
+	local count = if roster and same then roster.count else 0
+	local copied = not same
+	for _, player in view.players do
+		local entry = entries[player.userId]
+		if
+			entry == nil
+			or entry.displayName ~= player.displayName
+			or entry.squishyId ~= player.squishyId
+			or entry.team ~= player.team
+		then
+			if not copied then
+				entries = table.clone(entries)
+				copied = true
+			end
+			local slot = if entry then entry.slot else count + 1
+			count = math.max(count, slot)
+			entries[player.userId] = {
+				userId = player.userId,
+				displayName = player.displayName,
+				squishyId = player.squishyId,
+				team = player.team,
+				slot = slot,
+			}
+		end
+	end
+	if roster and not copied then
+		return roster
+	end
+	return { matchId = view.matchId, entries = entries, count = count }
+end
+
+-- Match HUD M1: the Result freeze step (see the header): the first view of the match with an outcome is kept while the
+-- match view lasts; nil before the outcome and without a view.
+function StateController.nextMatchResult(frozen: MatchView?, view: MatchView?): MatchView?
+	if view == nil then
+		return nil
+	end
+	if frozen ~= nil and frozen.matchId == view.matchId then
+		return frozen
+	end
+	return if view.outcome ~= nil then view else nil
+end
+
 -- FFA/TDM v1: a participant of the match view by userId (nil when not in it).
 function StateController.matchParticipant(view: MatchView?, userId: number): MatchPlayer?
 	if view == nil then
@@ -1571,6 +1820,17 @@ end
 -- FFA/TDM v1: the local player's match view (nil outside a 12-player match).
 function StateController.match(): MatchView?
 	return matchView
+end
+
+-- Match HUD M1: every player seen in the current match (see the header); nil outside a match.
+function StateController.matchRoster(): MatchRoster?
+	return matchRoster
+end
+
+-- Match HUD M1: the first view of the current match with an outcome (the end screens read it, never a later view);
+-- nil before the end and outside a match.
+function StateController.matchResult(): MatchView?
+	return matchResult
 end
 
 function StateController.lastResult(): Types.DuelResultPayload?

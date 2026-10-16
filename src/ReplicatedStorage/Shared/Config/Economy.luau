@@ -6,6 +6,8 @@
 -- squeeze value, shared CapsuleMath), duel rewards counted in squeezes, refunds as a share of the box price and the
 -- "capsule" Coin reason. Since Phase 3 every reward counted in squeezes pays CapsuleMath.rewardCoins(squeezes, the
 -- player's squeeze value) Coins at the moment it is granted, and an own squeeze pays the squeeze value.
+-- Match HUD M2 (2026-10-16): the "match" Coin reason (a Free for All / Team Deathmatch result, EconomyService.
+-- grantMatchResult). Its amounts and rules are DuelRewards' below (owner: a match pays like a 1v1 duel, no hourly cap).
 
 local Economy = {
 	startingCoins = 0,
@@ -15,12 +17,13 @@ local Economy = {
 
 	-- The closed list of reasons for EconomyService.grantCoins / trySpend (§6.1). "capsule" = capsule upgrades, slots
 	-- and squeezes (spec 2026-10-12, lobby spec 2026-10-11 §6; CapsuleService). "debug" is Studio only. "trainer" went
-	-- with the trainers (build plan Phase 6).
+	-- with the trainers (build plan Phase 6). "match" = a Free for All / Team Deathmatch result (Match HUD M2).
 	CoinReasons = {
 		"squeeze",
 		"duel_win",
 		"duel_loss",
 		"duel_draw",
+		"match",
 		"quest",
 		"starter",
 		"daily",
@@ -60,6 +63,9 @@ local Economy = {
 	-- Duel rewards (§6.7), computed by Logic/DuelRewards and granted once on the transition into Result.
 	-- Spec 2026-10-12 §9: counted in squeezes, 3× the old 200 / 60 / 100; EconomyService.grantDuelResult turns them
 	-- into Coins with the player's squeeze value when it pays.
+	-- Match HUD M2 (2026-10-16, owner): a Free for All / Team Deathmatch result pays the same win / loss / draw
+	-- squeezes as Coins AND as Grip, with the same minOwnThrows and min Active seconds, but no same-pair or hourly cap
+	-- (Server/Logic/MatchRewards reads this table; Config.Match.Rewards.enabled switches it on).
 	DuelRewards = {
 		win = 600,
 		loss = 180,

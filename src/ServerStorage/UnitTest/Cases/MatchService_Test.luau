@@ -35,6 +35,24 @@
 --     Review fixes (2026-10-16): the rapid throw's multiplier gives the shortest cooldown (CooldownClamp.Min, never
 --     below); a pad stays ready when the projectile sweep K.O.s its taker in that step, or the time-up ends the match
 --     there; a speed boost that ends in Result gives the plain movement back.
+--   * match HUD M1 (2026-10-16): each K.O. is one HUD event {seq, kind "ko", at, victim, by, cause, final, streak,
+--     livesLeft} in the next view sent to everyone (seq 1, 2, ...; never twice); a storm or out-of-bounds K.O. has no
+--     `by`; a view sent to one player (the storm bar) has no events; players carry respawnAt, out, protectUntil, streak
+--     and bestStreak (a K.O. resets the victim's streak); livesLeft = the TDM team lives after it (0 when out); the
+--     K.O. that wins by koTarget (an ultimate's too), wipes a team or wins overtime is final and is outcome.finalKo in
+--     the same view (and every later one); a time-up or a wipe by a leave has none; a flush nested in stepMatch is a
+--     batch of its own (only the deciding K.O. is final); outcome.standings = MatchRules order without a leaver, the
+--     same list in every later view.
+--   * match HUD M2 (2026-10-16): with Config.Match.Rewards off nothing is paid and outcome.mine is nil; on, the end
+--     pays (through the fake EconomyService / GripService, with the test's own pay rules as deps.rewards.config) FFA
+--     1st a duel win (+1 streak), the others a duel loss, the TDM winning team a win and the losers a loss, a draw a
+--     duel draw (streak 0), each only with 3 own throws and the min Active time (else 0; a win still +1 streak, a loss
+--     0); the same squeezes as Grip for the paid players; mine only in the receiver's view, repeated later, paid
+--     once; SD_WinStreak follows every grant and refreshWinStreak sets it from the saved streak; leaving a live match
+--     (Countdown, Active: /leave or the game) resets the streak with nothing paid, leaving while Waiting or in Result
+--     does not; cancelled / void pay and touch nothing. Review fixes (2026-10-16): a leave that the step it starts
+--     ends first (MatchRules took the end) is no leave: that player is paid as present and keeps the streak their
+--     result gives; a grant that comes back alreadyGranted pays no Grip and no mine and writes no SD_WinStreak.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -73,6 +91,13 @@ type World = {
 	syncs: number, -- CombatService.syncTo calls
 	onSync: ((now: number) -> ())?, -- runs once inside the next syncTo (a projectile the sweep brings in)
 	charged: { { userId: number, fraction: number } }, -- power-ups v1.1: AbilityService.addChargeFraction calls
+	-- Match HUD M2: the pay fakes (setup's withRewards): EconomyService.grantMatchResult / GripService.addFromMatch
+	-- calls and each user's saved win streak.
+	grants: { { userId: number, matchId: string, pay: any } },
+	grips: { { userId: number, squeezes: number } },
+	streaks: { [number]: number },
+	grantedBefore: { [number]: boolean }, -- users whose grant comes back alreadyGranted (EconomyService's once rule)
+	payRules: any, -- deps.rewards.config: this world's copy of PAY_RULES (a case may tune it)
 	flush: () -> (),
 }
 
@@ -101,6 +126,20 @@ return function(t: Context)
 	local seenCodes: { [string]: boolean } = {} -- every Notify code the cases saw (checked by the last case)
 	local CENTRE = Vector3.new(6000, 0, 0)
 	local LOBBY = Vector3.new(0, 3, 0)
+	-- Match HUD M2 (review fix): the pay rules of every pay case (the duel's numbers spelled out), passed to
+	-- MatchService as deps.rewards.config, so a tuned or stale Config.Economy changes no expectation.
+	local PAY_RULES = {
+		Economy = {
+			DuelRewards = {
+				win = 600,
+				loss = 180,
+				draw = 300,
+				minOwnThrows = 3,
+				winMinActiveSeconds = 20,
+				lossMinActiveSeconds = 45,
+			},
+		},
+	}
 
 	-- Config.Match with every value the cases rely on spelled out (the place's Config may be an older copy).
 	local function baseConfig(): any
@@ -112,7 +151,7 @@ return function(t: Context)
 		cfg.resultSeconds = 8
 		cfg.minPlayers = 2
 		cfg.gatherSeconds = 10
-		cfg.rewardCoins = 0
+		cfg.Rewards = { enabled = false } -- Match HUD M2 (it replaced rewardCoins = 0): off unless a case turns it on
 		cfg.outOfBoundsIsKo = false
 		cfg.returnSpreadStuds = 4
 		cfg.Maps = {
@@ -183,8 +222,9 @@ return function(t: Context)
 		}
 	end
 
-	-- A world of `count` players in the server, nobody queued yet.
-	local function setup(count: number, cfg: any?): World
+	-- A world of `count` players in the server, nobody queued yet. Match HUD M2: `withRewards` wires fake pay
+	-- collaborators (a grant pays squeezes × 10 Coins and moves the saved streak; Grip pays squeezes × 10).
+	local function setup(count: number, cfg: any?, withRewards: boolean?): World
 		local c = cfg or baseConfig()
 		local w: World = {
 			clock = FakeClock.new(T0),
@@ -215,6 +255,11 @@ return function(t: Context)
 			syncs = 0,
 			onSync = nil,
 			charged = {},
+			grants = {},
+			grips = {},
+			streaks = {},
+			grantedBefore = {},
+			payRules = deepCopy(PAY_RULES),
 			flush = function() end,
 		}
 		w.flush = function()
@@ -417,6 +462,40 @@ return function(t: Context)
 					return false
 				end,
 			},
+			rewards = if withRewards
+				then {
+					grant = function(ref: any, matchId: string, pay: any): any
+						table.insert(w.grants, { userId = ref.UserId, matchId = matchId, pay = pay })
+						local before = w.streaks[ref.UserId] or 0
+						if w.grantedBefore[ref.UserId] then -- EconomyService's exactly-once: nothing happens
+							return {
+								coins = 0,
+								recorded = false,
+								alreadyGranted = true,
+								streakBefore = before,
+								streakAfter = before,
+							}
+						end
+						local after = if pay.streakUp then before + 1 else 0
+						w.streaks[ref.UserId] = after
+						return {
+							coins = pay.squeezes * 10,
+							recorded = true,
+							alreadyGranted = false,
+							streakBefore = before,
+							streakAfter = after,
+						}
+					end,
+					addGrip = function(ref: any, squeezes: number): number
+						table.insert(w.grips, { userId = ref.UserId, squeezes = squeezes })
+						return squeezes * 10
+					end,
+					winStreak = function(ref: any): number
+						return w.streaks[ref.UserId] or 0
+					end,
+					config = w.payRules,
+				}
+				else nil,
 			heartbeat = false,
 			matchConfig = c,
 		})
@@ -1508,6 +1587,749 @@ return function(t: Context)
 		expect.truthy(string.find(readout, "{name}", 1, true) ~= nil)
 		expect.truthy(string.find(readout, "{seconds}", 1, true) ~= nil)
 	end)
+
+	-- Match HUD M1 (2026-10-16) -----------------------------------------------------------------------------------------
+
+	-- Every MatchState payload `player` got, oldest first.
+	local function viewsOf(w: World, player: any): { any }
+		local out = {}
+		for _, entry in w.sent do
+			if entry.name == "MatchState" and entry.player == player then
+				table.insert(out, entry.payload)
+			end
+		end
+		return out
+	end
+
+	-- Every HUD event `player` got, in the order they came.
+	local function eventsOf(w: World, player: any): { any }
+		local out = {}
+		for _, view in viewsOf(w, player) do
+			for _, event in view.events or {} do
+				table.insert(out, event)
+			end
+		end
+		return out
+	end
+
+	local function rowOf(view: any, userId: number): any
+		for _, row in view.players do
+			if row.userId == userId then
+				return row
+			end
+		end
+		return nil
+	end
+
+	-- The userIds of each TDM team (Red, Blue).
+	local function teamsOf(w: World): ({ number }, { number })
+		local red, blue = {}, {}
+		for _, player in w.players do
+			table.insert(if player:GetAttribute("SD_Team") == w.cfg.teamNames[1] then red else blue, player.UserId)
+		end
+		return red, blue
+	end
+
+	t.test("match HUD M1: a hit K.O. is one HUD event in everyone's next view; seq rises by 1; never twice", function()
+		local w = setup(3)
+		local a = live(w, "ffa")
+		for _, player in w.players do
+			expect.deepEqual(lastView(w, player).events, {}) -- a view sent to everyone always has the list
+		end
+		hit(w, 2, 1, a + 1)
+		local first = { seq = 1, kind = "ko", at = a + 1, victim = 2, by = 1, cause = "hit", final = false, streak = 1 }
+		for _, player in w.players do
+			expect.deepEqual(lastView(w, player).events, { first })
+		end
+		hit(w, 3, 1, a + 1.5)
+		local second =
+			{ seq = 2, kind = "ko", at = a + 1.5, victim = 3, by = 1, cause = "hit", final = false, streak = 2 }
+		for _, player in w.players do
+			expect.deepEqual(lastView(w, player).events, { second })
+			expect.deepEqual(eventsOf(w, player), { first, second })
+		end
+		close()
+	end)
+
+	t.test(
+		"match HUD M1: players carry respawnAt, out, protectUntil, streak and bestStreak; a K.O. resets the victim's streak",
+		function()
+			local w = setup(3)
+			local a = live(w, "ffa")
+			for _, row in lastView(w, w.players[3]).players do
+				expect.equal(row.respawnAt, nil)
+				expect.equal(row.out, false)
+				expect.equal(row.protectUntil, 0)
+				expect.equal(row.streak, 0)
+				expect.equal(row.bestStreak, 0)
+			end
+			hit(w, 2, 1, a + 1)
+			hit(w, 3, 1, a + 1.2)
+			local view = lastView(w, w.players[3])
+			expect.equal(rowOf(view, 2).respawnAt, a + 1 + w.cfg.respawnSeconds)
+			expect.equal(rowOf(view, 3).respawnAt, a + 1.2 + w.cfg.respawnSeconds)
+			expect.equal(rowOf(view, 1).streak, 2)
+			expect.equal(rowOf(view, 1).bestStreak, 2)
+			local back = a + 1 + w.cfg.respawnSeconds
+			MatchService.tick(back)
+			view = lastView(w, w.players[3])
+			expect.equal(rowOf(view, 2).respawnAt, nil)
+			expect.equal(rowOf(view, 2).protectUntil, back + w.cfg.spawnProtectSeconds)
+			-- Player 2, back, knocks player 1 out: 1's streak is 0 (the best stays 2), 2's is 1.
+			hit(w, 1, 2, back + w.cfg.spawnProtectSeconds + 0.5)
+			view = lastView(w, w.players[3])
+			expect.equal(rowOf(view, 1).streak, 0)
+			expect.equal(rowOf(view, 1).bestStreak, 2)
+			expect.equal(rowOf(view, 2).streak, 1)
+			expect.equal(rowOf(view, 2).bestStreak, 1)
+			expect.equal(view.events[1].by, 2)
+			expect.equal(view.events[1].streak, 1)
+			-- Player 1's throw still in flight knocks player 3 out (an attacker need not stand): streak 1, the best stays 2.
+			hit(w, 3, 1, back + w.cfg.spawnProtectSeconds + 0.6)
+			view = lastView(w, w.players[3])
+			expect.equal(rowOf(view, 1).streak, 1)
+			expect.equal(rowOf(view, 1).bestStreak, 2)
+			expect.equal(view.events[1].streak, 1)
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M1: TDM K.O.s carry livesLeft (the team lives after it, 0 when out); out shows in players",
+		function()
+			local w = setup(2)
+			local a = live(w, "tdm")
+			local red, blue = teamsOf(w)
+			hit(w, blue[1], red[1], a + 1)
+			local view = lastView(w, w.players[red[1]])
+			local lives = view.teamLives[w.cfg.teamNames[2]]
+			expect.equal(lives, w.cfg.Modes.tdm.teamLives - 1)
+			expect.deepEqual(view.events, {
+				{
+					seq = 1,
+					kind = "ko",
+					at = a + 1,
+					victim = blue[1],
+					by = red[1],
+					cause = "hit",
+					final = false,
+					streak = 1,
+					livesLeft = lives,
+				},
+			})
+			close()
+
+			-- Two K.O.s of one team in one batch: each has the lives right after it.
+			local u = setup(4)
+			local t0 = live(u, "tdm")
+			local redU, blueU = teamsOf(u)
+			local function request(victim: number, at: number): any
+				return {
+					attacker = fighterOf(u, redU[1]),
+					victim = fighterOf(u, victim),
+					at = at,
+					kind = "throw",
+					projId = 1,
+					position = u.roots[victim].Position,
+				}
+			end
+			u.port.applyHits({ request(blueU[1], t0 + 1), request(blueU[2], t0 + 1.1) }, t0 + 1.1)
+			u.port.flush()
+			local both = lastView(u, u.players[redU[1]]).events
+			expect.equal(#both, 2)
+			expect.equal(both[1].livesLeft, u.cfg.Modes.tdm.teamLives - 1)
+			expect.equal(both[2].livesLeft, u.cfg.Modes.tdm.teamLives - 2)
+			expect.equal(both[2].streak, 2)
+			close()
+
+			local c = baseConfig()
+			c.Modes.tdm.teamLives = 0
+			local v = setup(4, c)
+			local b = live(v, "tdm")
+			local red2, blue2 = teamsOf(v)
+			hit(v, blue2[1], red2[1], b + 1)
+			local after = lastView(v, v.players[red2[1]])
+			expect.equal(after.outcome, nil) -- the other Blue player still stands
+			expect.equal(after.events[1].livesLeft, 0)
+			expect.equal(rowOf(after, blue2[1]).out, true)
+			expect.equal(rowOf(after, blue2[1]).respawnAt, nil)
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M1: the K.O. that reaches koTarget (an ultimate's too) is final and is outcome.finalKo",
+		function()
+			local cfg = baseConfig()
+			cfg.Modes.ffa.koTarget = 2
+			local w = setup(3, cfg)
+			local a = live(w, "ffa")
+			hit(w, 2, 1, a + 1)
+			expect.equal(lastView(w, w.players[2]).outcome, nil)
+			-- The deciding K.O. is an ultimate's (a Dragon Rush lane): its hit goes through applyHits like a throw's.
+			w.port.applyHits({
+				{
+					attacker = fighterOf(w, 1),
+					victim = fighterOf(w, 3),
+					at = a + 2,
+					kind = "lane",
+					projId = 7,
+					position = w.roots[3].Position,
+				},
+			}, a + 2)
+			w.port.flush()
+			local final =
+				{ seq = 2, kind = "ko", at = a + 2, victim = 3, by = 1, cause = "hit", final = true, streak = 2 }
+			for _, player in w.players do
+				local view = lastView(w, player)
+				expect.equal(view.phase, "Result")
+				expect.equal(view.outcome.reason, "koTarget")
+				expect.deepEqual(view.events, { final }) -- the same view as the outcome
+				expect.deepEqual(view.outcome.finalKo, final)
+			end
+			-- Every later view repeats it (the last one, Returning), with no new events.
+			MatchService.tick(a + 2 + cfg.resultSeconds)
+			local returning = lastView(w, w.players[1])
+			expect.equal(returning.phase, "Returning")
+			expect.deepEqual(returning.outcome.finalKo, final)
+			expect.deepEqual(returning.events, {})
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M1: TDM: the K.O. that wipes a team, or wins overtime, is final and is outcome.finalKo",
+		function()
+			local c = baseConfig()
+			c.Modes.tdm.teamLives = 0
+			local w = setup(2, c)
+			local a = live(w, "tdm")
+			local red, blue = teamsOf(w)
+			hit(w, blue[1], red[1], a + 1)
+			local view = lastView(w, w.players[blue[1]])
+			expect.equal(view.outcome.reason, "wiped")
+			local final = {
+				seq = 1,
+				kind = "ko",
+				at = a + 1,
+				victim = blue[1],
+				by = red[1],
+				cause = "hit",
+				final = true,
+				streak = 1,
+				livesLeft = 0,
+			}
+			expect.deepEqual(view.events, { final })
+			expect.deepEqual(view.outcome.finalKo, final)
+			close()
+
+			-- Equal lives at time-up: Overtime, and the next K.O. decides it.
+			local c2 = baseConfig()
+			c2.Modes.tdm.storm = false
+			local v = setup(2, c2)
+			local b = live(v, "tdm")
+			local red2, blue2 = teamsOf(v)
+			local up = b + c2.Modes.tdm.matchSeconds
+			v.clock.set(up)
+			MatchService.tick(up)
+			expect.equal(lastView(v, v.players[1]).matchPhase, "Overtime")
+			hit(v, red2[1], blue2[1], up + 1)
+			local ot = lastView(v, v.players[1])
+			expect.equal(ot.outcome.reason, "overtime")
+			expect.equal(ot.outcome.winnerTeam, c2.teamNames[2])
+			local finalKo = ot.outcome.finalKo
+			expect.equal(finalKo.victim, red2[1])
+			expect.equal(finalKo.by, blue2[1])
+			expect.equal(finalKo.cause, "hit")
+			expect.equal(finalKo.final, true)
+			expect.equal(finalKo.livesLeft, c2.Modes.tdm.teamLives - 1)
+			expect.deepEqual(ot.events, { finalKo })
+			close()
+		end
+	)
+
+	t.test("match HUD M1: no finalKo for a time-up win, nor for a TDM wipe by a leave right after a K.O.", function()
+		local w = setup(2)
+		local a = live(w, "ffa")
+		hit(w, 2, 1, a + 1)
+		MatchService.tick(a + w.cfg.Modes.ffa.matchSeconds)
+		local view = lastView(w, w.players[2])
+		expect.equal(view.outcome.reason, "timeUp")
+		expect.equal(view.outcome.finalKo, nil)
+		close()
+
+		local c = baseConfig()
+		c.Modes.tdm.teamLives = 0
+		local v = setup(4, c)
+		local b = live(v, "tdm")
+		local red, blue = teamsOf(v)
+		-- The leave's projectile sweep brings a K.O. in (a batch of its own), then the leave wipes Blue.
+		v.onSync = function(now: number)
+			hit(v, blue[1], red[1], now)
+		end
+		v.clock.set(b + 1)
+		MatchService.leave(v.players[blue[2]])
+		local last = lastView(v, v.players[red[1]])
+		expect.equal(last.outcome.reason, "wiped")
+		expect.equal(last.outcome.winnerTeam, c.teamNames[1])
+		expect.equal(last.outcome.finalKo, nil)
+		local events = eventsOf(v, v.players[red[1]])
+		expect.equal(#events, 1)
+		expect.equal(events[1].victim, blue[1])
+		expect.equal(events[1].final, false)
+		close()
+	end)
+
+	t.test(
+		"match HUD M1: a flush nested in stepMatch is a batch of its own: only the deciding K.O. is final",
+		function()
+			local c = baseConfig()
+			c.Modes.tdm.teamLives = 0
+			c.outOfBoundsIsKo = true
+			local w = setup(4, c)
+			local a = live(w, "tdm")
+			local red, blue = teamsOf(w)
+			-- The oob step's sweep (CombatService.syncTo) K.O.s blue[1] first: Blue still has blue[2] standing.
+			w.onSync = function(now: number)
+				hit(w, blue[1], red[1], now)
+			end
+			w.clock.set(a + 1)
+			w.roots[blue[2]].Position = Vector3.new(CENTRE.X, -40, 0) -- then blue[2] falls off: Blue is wiped
+			w.port.outOfBounds(fighterOf(w, blue[2]))
+			local views = viewsOf(w, w.players[red[1]])
+			local nested, last = views[#views - 1], views[#views]
+			expect.deepEqual(nested.events, {
+				{
+					seq = 1,
+					kind = "ko",
+					at = a + 1,
+					victim = blue[1],
+					by = red[1],
+					cause = "hit",
+					final = false,
+					streak = 1,
+					livesLeft = 0,
+				},
+			})
+			expect.equal(nested.outcome, nil)
+			-- An out-of-bounds K.O. has no attacker (and no streak): the client never replays it.
+			local final = {
+				seq = 2,
+				kind = "ko",
+				at = a + 1,
+				victim = blue[2],
+				cause = "outOfBounds",
+				final = true,
+				livesLeft = 0,
+			}
+			expect.deepEqual(last.events, { final })
+			expect.equal(last.outcome.reason, "wiped")
+			expect.deepEqual(last.outcome.finalKo, final)
+			close()
+		end
+	)
+
+	t.test("match HUD M1: a storm K.O. has no attacker; storm-bar views (to one player) carry no events", function()
+		local cfg = baseConfig()
+		cfg.Storm.stormStartSeconds = 10
+		cfg.Storm.steps = { { shrinkAt = 10, shrinkSeconds = 10, radiusFraction = 0.1 } }
+		cfg.Storm.barFillSeconds = 1
+		cfg.Storm.sampleHz = 5
+		local w = setup(2, cfg)
+		local a = live(w, "tdm")
+		local red, blue = teamsOf(w)
+		w.roots[blue[1]].Position = Vector3.new(CENTRE.X, 3, 100) -- far outside the last circle
+		w.roots[red[1]].Position = Vector3.new(CENTRE.X, 3, 0)
+		local sentBefore = #w.sent
+		local now = a + 20
+		for _ = 1, 20 do
+			MatchService.tick(now)
+			if not fighterOf(w, blue[1]).isAlive() then
+				break
+			end
+			now += 0.2
+		end
+		local partial, events = 0, {}
+		for i = sentBefore + 1, #w.sent do
+			local entry = w.sent[i]
+			if entry.player == w.players[blue[1]] then
+				if entry.payload.events == nil then
+					partial += 1
+				else
+					for _, event in entry.payload.events do
+						table.insert(events, event)
+					end
+				end
+			end
+		end
+		expect.truthy(partial >= 2)
+		expect.equal(#events, 1)
+		expect.equal(events[1].cause, "storm")
+		expect.equal(events[1].victim, blue[1])
+		expect.equal(events[1].by, nil)
+		expect.equal(events[1].streak, nil)
+		expect.equal(events[1].livesLeft, cfg.Modes.tdm.teamLives - 1)
+		close()
+	end)
+
+	t.test(
+		"match HUD M1: outcome.standings: MatchRules order, present players only, the same in later views",
+		function()
+			local w = setup(3)
+			local a = live(w, "ffa")
+			hit(w, 1, 3, a + 1) -- player 3 leads with 2 K.O.s ...
+			hit(w, 2, 3, a + 1.1)
+			local back = a + 1.1 + w.cfg.respawnSeconds + w.cfg.spawnProtectSeconds
+			MatchService.tick(back)
+			hit(w, 2, 1, back + 0.5) -- player 1: 1 K.O., best streak 1
+			MatchService.leave(w.players[3]) -- ... and leaves: never on the podium
+			MatchService.tick(a + w.cfg.Modes.ffa.matchSeconds)
+			local view = lastView(w, w.players[1])
+			expect.equal(view.outcome.reason, "timeUp")
+			expect.equal(view.outcome.winnerUserId, 1)
+			local standings = {
+				{ userId = 1, kos = 1, knockedOut = 1, bestStreak = 1 },
+				{ userId = 2, kos = 0, knockedOut = 2, bestStreak = 0 },
+			}
+			expect.deepEqual(view.outcome.standings, standings)
+			expect.deepEqual(lastView(w, w.players[2]).outcome.standings, standings)
+			-- Player 2 goes back to the lobby in Result: player 1's next view drops them from players, not the standings.
+			MatchService.leave(w.players[2])
+			local later = lastView(w, w.players[1])
+			expect.equal(#later.players, 1)
+			expect.deepEqual(later.outcome.standings, standings)
+			close()
+		end
+	)
+
+	-- Match HUD M2 (2026-10-16): the match pay and the win streak ------------------------------------------------------
+
+	local DUEL_PAY = PAY_RULES.Economy.DuelRewards -- a match pays a duel's squeezes (the test's copy, deps.rewards.config)
+	-- Active seconds that pay a win and a loss; that pay a win but not a loss; that pay neither.
+	local PAYS_ALL = DUEL_PAY.lossMinActiveSeconds + 5
+	local PAYS_WIN_ONLY = (DUEL_PAY.winMinActiveSeconds + DUEL_PAY.lossMinActiveSeconds) / 2
+	local PAYS_NONE = DUEL_PAY.winMinActiveSeconds / 4
+
+	-- `n` server-accepted throws for each of these users (CombatService's throwAccepted callback).
+	local function throwsFor(w: World, userIds: { number }, n: number)
+		for _, userId in userIds do
+			for _ = 1, n do
+				w.port.throwAccepted(fighterOf(w, userId))
+			end
+		end
+	end
+
+	local function payOf(result: string, squeezes: number, streakUp: boolean): any
+		return { result = result, eligible = squeezes > 0, squeezes = squeezes, streakUp = streakUp }
+	end
+
+	t.test(
+		"match HUD M2: Rewards off (the default): nothing paid, no mine; SD_WinStreak still shows the saved one",
+		function()
+			local cfg = baseConfig()
+			cfg.Modes.ffa.koTarget = 1
+			local w = setup(2, cfg, true)
+			w.streaks[1] = 4
+			MatchService.refreshWinStreak(w.players[1]) -- what init's DataService Loaded hook does
+			expect.equal(w.players[1]:GetAttribute("SD_WinStreak"), 4)
+			local a = live(w, "ffa")
+			throwsFor(w, { 1, 2 }, 3)
+			hit(w, 2, 1, a + 50)
+			for _, player in w.players do
+				local view = lastView(w, player)
+				expect.equal(view.outcome.kind, "win")
+				expect.equal(view.outcome.mine, nil)
+			end
+			expect.deepEqual(w.grants, {})
+			expect.deepEqual(w.grips, {})
+			expect.equal(w.streaks[1], 4)
+			close()
+
+			-- Without the pay collaborators (the older fakes) nothing is set at all.
+			local v = setup(1)
+			MatchService.refreshWinStreak(v.players[1])
+			expect.equal(v.players[1]:GetAttribute("SD_WinStreak"), nil)
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M2: FFA 1st is paid a duel win (+1 streak), the others a duel loss; mine only in their own view",
+		function()
+			local cfg = baseConfig()
+			cfg.Modes.ffa.koTarget = 1
+			cfg.Rewards.enabled = true
+			local w = setup(3, cfg, true)
+			w.streaks[1] = 2
+			w.streaks[3] = 5
+			local a = live(w, "ffa")
+			local matchId = w.port.matchId
+			throwsFor(w, { 1, 2 }, 3)
+			throwsFor(w, { 3 }, 2) -- too few own throws (AFK): not paid; a loss, so the streak resets
+			hit(w, 2, 1, a + PAYS_ALL) -- enough Active time for a win and a loss
+			expect.deepEqual(w.grants, {
+				{ userId = 1, matchId = matchId, pay = payOf("win", DUEL_PAY.win, true) },
+				{ userId = 2, matchId = matchId, pay = payOf("loss", DUEL_PAY.loss, false) },
+				{ userId = 3, matchId = matchId, pay = payOf("loss", 0, false) },
+			})
+			-- The same squeezes as Grip, only for the paid players.
+			expect.deepEqual(
+				w.grips,
+				{ { userId = 1, squeezes = DUEL_PAY.win }, { userId = 2, squeezes = DUEL_PAY.loss } }
+			)
+			local first = { coins = DUEL_PAY.win * 10, grip = DUEL_PAY.win * 10, streakBefore = 2, streakAfter = 3 }
+			local second = { coins = DUEL_PAY.loss * 10, grip = DUEL_PAY.loss * 10, streakBefore = 0, streakAfter = 0 }
+			expect.deepEqual(lastView(w, w.players[1]).outcome.mine, first)
+			expect.deepEqual(lastView(w, w.players[2]).outcome.mine, second)
+			expect.equal(lastView(w, w.players[3]).outcome.mine, nil) -- not paid
+			expect.equal(w.players[1]:GetAttribute("SD_WinStreak"), 3)
+			expect.equal(w.players[2]:GetAttribute("SD_WinStreak"), 0)
+			expect.equal(w.players[3]:GetAttribute("SD_WinStreak"), 0)
+			-- Exactly once: the Returning view repeats mine and nothing is paid again.
+			MatchService.tick(a + PAYS_ALL + cfg.resultSeconds)
+			local returning = lastView(w, w.players[1])
+			expect.equal(returning.phase, "Returning")
+			expect.deepEqual(returning.outcome.mine, first)
+			expect.equal(#w.grants, 3)
+			expect.equal(#w.grips, 2)
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M2: TDM: the winning team +1, the losers 0 (a short loss is not paid); a draw resets all",
+		function()
+			local c = baseConfig()
+			c.Modes.tdm.teamLives = 0
+			c.Rewards.enabled = true
+			local w = setup(2, c, true)
+			local a = live(w, "tdm")
+			local red, blue = teamsOf(w)
+			w.streaks[red[1]] = 1
+			w.streaks[blue[1]] = 5
+			throwsFor(w, { red[1], blue[1] }, 3)
+			hit(w, blue[1], red[1], a + PAYS_WIN_ONLY) -- Blue wiped: long enough to pay the win, not the loss
+			expect.equal(lastView(w, w.players[red[1]]).outcome.winnerTeam, c.teamNames[1])
+			expect.deepEqual(w.grants, {
+				{ userId = red[1], matchId = w.port.matchId, pay = payOf("win", DUEL_PAY.win, true) },
+				{ userId = blue[1], matchId = w.port.matchId, pay = payOf("loss", 0, false) },
+			})
+			expect.equal(w.streaks[red[1]], 2)
+			expect.equal(w.streaks[blue[1]], 0)
+			expect.deepEqual(w.grips, { { userId = red[1], squeezes = DUEL_PAY.win } })
+			expect.equal(lastView(w, w.players[red[1]]).outcome.mine.streakAfter, 2)
+			expect.equal(lastView(w, w.players[blue[1]]).outcome.mine, nil)
+			close()
+
+			-- Equal lives at time-up, then overtime runs out: a draw, paid as a duel draw, every streak back to 0.
+			local c2 = baseConfig()
+			c2.Modes.tdm.storm = false
+			c2.Rewards.enabled = true
+			local v = setup(2, c2, true)
+			local b = live(v, "tdm")
+			v.streaks[1] = 3
+			v.streaks[2] = 3
+			throwsFor(v, { 1, 2 }, 3)
+			local up = b + c2.Modes.tdm.matchSeconds
+			v.clock.set(up)
+			MatchService.tick(up)
+			local over = up + c2.overtimeMaxSeconds
+			v.clock.set(over)
+			MatchService.tick(over)
+			expect.equal(lastView(v, v.players[1]).outcome.kind, "draw")
+			for _, grant in v.grants do
+				expect.deepEqual(grant.pay, payOf("draw", DUEL_PAY.draw, false))
+			end
+			expect.equal(#v.grants, 2)
+			expect.equal(v.streaks[1], 0)
+			expect.equal(v.streaks[2], 0)
+			expect.deepEqual(
+				lastView(v, v.players[2]).outcome.mine,
+				{ coins = DUEL_PAY.draw * 10, grip = DUEL_PAY.draw * 10, streakBefore = 3, streakAfter = 0 }
+			)
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M2: leaving a live match resets the streak (nothing paid), in Result not; cancelled / void: nothing",
+		function()
+			local cfg = baseConfig()
+			cfg.Rewards.enabled = true
+			local w = setup(3, cfg, true)
+			w.streaks[2] = 2
+			w.streaks[3] = 6
+			local a = live(w, "ffa")
+			local matchId = w.port.matchId
+			MatchService.leave(w.players[3]) -- /leave in Active
+			expect.deepEqual(w.grants, { { userId = 3, matchId = matchId, pay = payOf("left", 0, false) } })
+			expect.equal(w.streaks[3], 0)
+			expect.equal(w.players[3]:GetAttribute("SD_WinStreak"), 0)
+			-- Leaving the game in Active: the same; it also ends the match (player 1 is the last one), a win that
+			-- came too soon to pay (no Active time, no throws). Review fix (owner §12 Q4): still a win, so player 1's
+			-- streak +1 (a quitter never wipes the winner's streak); nothing paid, so no mine.
+			w.streaks[1] = 7
+			w.clock.set(a + PAYS_NONE)
+			w.players[2].Parent = nil
+			MatchService.playerRemoving(w.players[2])
+			expect.equal(lastView(w, w.players[1]).outcome.reason, "lastPlayer")
+			expect.deepEqual(w.grants[2], { userId = 1, matchId = matchId, pay = payOf("win", 0, true) })
+			expect.deepEqual(w.grants[3], { userId = 2, matchId = matchId, pay = payOf("left", 0, false) })
+			expect.equal(w.streaks[1], 8)
+			expect.equal(w.players[1]:GetAttribute("SD_WinStreak"), 8)
+			expect.equal(w.streaks[2], 0)
+			expect.deepEqual(w.grips, {})
+			expect.equal(lastView(w, w.players[1]).outcome.mine, nil)
+			close()
+
+			-- Leaving in Result: the match is over, the pay is done: nothing more.
+			local c2 = baseConfig()
+			c2.Modes.ffa.koTarget = 1
+			c2.Rewards.enabled = true
+			local v = setup(2, c2, true)
+			local b = live(v, "ffa")
+			throwsFor(v, { 1, 2 }, 3)
+			hit(v, 2, 1, b + PAYS_ALL)
+			expect.equal(#v.grants, 2)
+			MatchService.leave(v.players[2])
+			expect.equal(#v.grants, 2)
+			expect.equal(v.streaks[1], 1)
+			close()
+
+			-- Cancelled (too few arrived) and void (shutdown): nothing paid, no streak touched.
+			local u = setup(2, c2, true)
+			u.failTeleport[2] = true
+			u.streaks[1] = 4
+			MatchService.join(u.players[1], "ffa")
+			MatchService.join(u.players[2], "ffa")
+			u.flush()
+			MatchService.tick(u.clock.now())
+			expect.equal(lastView(u, u.players[1]).outcome.kind, "cancelled")
+			expect.deepEqual(u.grants, {})
+			expect.equal(u.streaks[1], 4)
+			close()
+			local s = setup(2, c2, true)
+			live(s, "ffa")
+			throwsFor(s, { 1, 2 }, 3)
+			MatchService.voidAll("shutdown")
+			expect.equal(lastView(s, s.players[1]).outcome.kind, "void")
+			expect.deepEqual(s.grants, {})
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M2 review fix: leaving in the Countdown resets the streak; leaving while Waiting does not",
+		function()
+			local cfg = baseConfig()
+			cfg.Rewards.enabled = true
+			local w = setup(4, cfg, true)
+			for id = 1, 4 do
+				w.streaks[id] = 3
+			end
+			for _, player in w.players do
+				MatchService.join(player, "ffa")
+			end
+			local matchId = w.port.matchId
+			expect.equal(w.port.phase(), "Positioning")
+			MatchService.leave(w.players[4]) -- Waiting (Positioning): nothing at stake yet
+			expect.deepEqual(w.grants, {})
+			expect.equal(w.streaks[4], 3)
+			w.flush() -- the other three arrive: the Countdown
+			expect.equal(w.port.phase(), "Countdown")
+			MatchService.leave(w.players[3]) -- the Countdown is leaving early
+			expect.deepEqual(w.grants, { { userId = 3, matchId = matchId, pay = payOf("left", 0, false) } })
+			expect.equal(w.streaks[3], 0)
+			expect.equal(w.players[3]:GetAttribute("SD_WinStreak"), 0)
+			-- A Countdown leave that cancels the match (too few left): only the leaver's streak goes.
+			MatchService.leave(w.players[2])
+			expect.equal(lastView(w, w.players[1]).outcome.kind, "cancelled")
+			expect.equal(#w.grants, 2)
+			expect.deepEqual(w.grants[2], { userId = 2, matchId = matchId, pay = payOf("left", 0, false) })
+			expect.equal(w.streaks[2], 0)
+			expect.equal(w.streaks[1], 3)
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M2 review fix: a leave in the step that ends the match is no leave: paid as present, streak kept",
+		function()
+			for _, how in { "leave", "game" } do
+				local cfg = baseConfig()
+				cfg.Rewards.enabled = true
+				local w = setup(3, cfg, true)
+				w.streaks[2] = 4
+				local a = live(w, "ffa")
+				local matchId = w.port.matchId
+				throwsFor(w, { 1, 2, 3 }, 3)
+				hit(w, 1, 2, a + 1) -- player 2 leads 1-0
+				-- The time-up is due but no tick has run: player 2's leave steps the match, MatchRules ends it first
+				-- (player 2, still present, leads: they win) and ignores the leave.
+				w.clock.set(a + cfg.Modes.ffa.matchSeconds)
+				if how == "leave" then
+					MatchService.leave(w.players[2])
+				else
+					w.players[2].Parent = nil
+					MatchService.playerRemoving(w.players[2])
+				end
+				local view = lastView(w, w.players[1])
+				expect.equal(view.outcome.reason, "timeUp")
+				expect.equal(view.outcome.winnerUserId, 2)
+				expect.equal(view.outcome.standings[1].userId, 2) -- the winner is in the standings
+				expect.equal(#view.players, 2) -- but no longer in the match
+				expect.deepEqual(w.grants, {
+					{ userId = 1, matchId = matchId, pay = payOf("loss", DUEL_PAY.loss, false) },
+					{ userId = 2, matchId = matchId, pay = payOf("win", DUEL_PAY.win, true) },
+					{ userId = 3, matchId = matchId, pay = payOf("loss", DUEL_PAY.loss, false) },
+				})
+				expect.equal(w.streaks[2], 5) -- +1, never reset by the leave MatchRules did not take
+				expect.equal(w.players[2]:GetAttribute("SD_WinStreak"), 5)
+				expect.equal(#w.grips, 3)
+				close()
+			end
+		end
+	)
+
+	t.test(
+		"match HUD M2 review fix: the pay rules are deps.rewards.config's (the test's copy), not the live Config",
+		function()
+			local cfg = baseConfig()
+			cfg.Modes.ffa.koTarget = 1
+			cfg.Rewards.enabled = true
+			local w = setup(2, cfg, true)
+			w.payRules.Economy.DuelRewards.win = 900
+			w.payRules.Economy.DuelRewards.minOwnThrows = 1
+			local a = live(w, "ffa")
+			throwsFor(w, { 1, 2 }, 1) -- one own throw each: paid only under the tuned copy
+			hit(w, 2, 1, a + PAYS_ALL)
+			expect.deepEqual(w.grants[1].pay, payOf("win", 900, true))
+			expect.deepEqual(w.grants[2].pay, payOf("loss", DUEL_PAY.loss, false))
+			close()
+		end
+	)
+
+	t.test(
+		"match HUD M2 review fix: a grant the profile refuses as already granted pays no Grip and no mine",
+		function()
+			local cfg = baseConfig()
+			cfg.Modes.ffa.koTarget = 1
+			cfg.Rewards.enabled = true
+			local w = setup(2, cfg, true)
+			w.streaks[2] = 3
+			w.grantedBefore[2] = true
+			local a = live(w, "ffa")
+			throwsFor(w, { 1, 2 }, 3)
+			hit(w, 2, 1, a + PAYS_ALL)
+			expect.equal(#w.grants, 2) -- asked once each
+			expect.deepEqual(w.grips, { { userId = 1, squeezes = DUEL_PAY.win } })
+			expect.equal(lastView(w, w.players[2]).outcome.mine, nil)
+			expect.equal(w.players[2]:GetAttribute("SD_WinStreak"), nil) -- not written by a refused grant
+			expect.equal(w.streaks[2], 3)
+			expect.truthy(lastView(w, w.players[1]).outcome.mine ~= nil)
+			close()
+		end
+	)
 
 	-- Runs last: every code the cases above saw (and every other one MatchService sends) has its Strings text.
 	t.test("every toast MatchService sends has a match.* text with its placeholders", function()

@@ -8,6 +8,13 @@
 -- MatchLeave calls.
 -- Power-ups v1.1 (2026-10-16): MatchYouView.buffs (the live timed power-ups), MatchPadView / MatchStateView.pads (the
 -- map's power-up pads and when each is ready) and ThrowImpactPayload.blocked (a shield took the hit).
+-- Match HUD M1 (2026-10-16, the data Diego's Match HUD reads: kill feed and final K.O. M:497-516, 567-572, respawn
+-- seconds M:73, 88, 113, 641, streaks M:149, 349, 527, standings M:610-614, 688): MatchEventView (one K.O. of the
+-- feed), MatchStandingView, every player's respawnAt / out / protectUntil / streak / bestStreak, outcome.finalKo and
+-- outcome.standings, MatchStateView.events.
+-- Match HUD M2 (2026-10-16, owner Q3 / Q4; the results pills M:361-363 and the WIN STREAK box M:186-189):
+-- ProfileStats.winStreak (the saved win streak) and MatchRewardView / MatchOutcomeView.mine (what the match paid the
+-- receiving player, in Coins and Grip, and their streak before and after).
 
 -- == Catalog (§4.1) ==
 
@@ -60,6 +67,9 @@ export type ProfileStats = {
 	duelsDrawn: number,
 	eliminations: number,
 	boxesOpened: number,
+	-- Match HUD M2 (2026-10-16): Free for All / Team Deathmatch wins in a row (a team win or FFA 1st +1, paid or not;
+	-- a loss, a draw or leaving a live match -> 0; 1v1 duels never touch it). Joined schema 2 without a new version.
+	winStreak: number,
 }
 
 export type SqueezeLimitState = { value: number, at: number } -- §6.3 (a rate limit, not a currency)
@@ -305,6 +315,9 @@ export type MatchMode = "ffa" | "tdm"
 
 -- One match player as everyone sees them. `team` is Config.Match.teamNames[1] / [2] in TDM, nil in FFA; `kos` = the
 -- K.O.s they scored, `knockedOut` = the times they were knocked out; `alive` = standing in the map right now.
+-- Match HUD M1 (2026-10-16): respawnAt = server time they stand again (nil when standing or out); out = TDM, no team
+-- life left; protectUntil = their spawn protection's end (server time, 0 = none); streak = K.O.s since they were last
+-- knocked out; bestStreak = the longest streak of this match.
 export type MatchParticipantView = {
 	userId: number,
 	displayName: string,
@@ -314,7 +327,29 @@ export type MatchParticipantView = {
 	knockedOut: number,
 	alive: boolean,
 	ultReady: boolean,
+	respawnAt: number?,
+	out: boolean,
+	protectUntil: number,
+	streak: number,
+	bestStreak: number,
 }
+
+-- One HUD event of a match (Match HUD M1, 2026-10-16): seq counts from 1 per match. kind "ko" now; later "revived",
+-- "pickup", "shieldBlocked" (alerts, power-ups) once Diego designs them. at = server time.
+export type MatchEventView = {
+	seq: number,
+	kind: string,
+	at: number,
+	victim: number?, -- ko
+	by: number?, -- ko: the attacker; nil for a storm or out-of-bounds K.O.
+	cause: string?, -- ko: "hit" | "storm" | "outOfBounds" (MatchRules ko effect; an ultimate's hit is "hit")
+	final: boolean?, -- ko: this K.O. ended the match (outcome win by koTarget, wiped or overtime)
+	streak: number?, -- ko: the attacker's streak after it (K.O.s since they were last knocked out); nil without one
+	livesLeft: number?, -- ko, TDM: the victim's team lives after it (0 when the victim is out); nil in FFA
+}
+
+-- One line of the final standings (Match HUD M1): present players only, their stats frozen when the outcome is made.
+export type MatchStandingView = { userId: number, kos: number, knockedOut: number, bestStreak: number }
 
 -- The receiving player's own state. Server times; respawnAt = while knocked out (nil when standing or out);
 -- protectUntil = the spawn protection's end (0 = none); stormBar 0..1 (TDM); out = TDM, no team life left.
@@ -338,13 +373,25 @@ export type MatchPadView = { name: string, readyAt: number }
 
 -- MatchRules' outcome: kind "win" | "draw" | "cancelled" | "void"; reason koTarget, wiped, timeUp, overtime,
 -- overtimeTimeout, lastPlayer, notEnoughPlayers, shutdown, error or empty; winners = every winning userId.
+-- Match HUD M1 (2026-10-16): finalKo = the K.O. that ended the match (a win by koTarget, wiped or overtime; nil
+-- otherwise; only cause "hit" has a `by`); standings = MatchRules.standings order (most K.O.s, fewest times knocked
+-- out, entrant order) of the players present at the end, the same list in every later view.
+-- Match HUD M2 (2026-10-16): mine = what this match paid the receiving player (in their own view only); nil for a
+-- cancelled / void match, while Config.Match.Rewards is off, and for anyone not paid.
 export type MatchOutcomeView = {
 	kind: string,
 	reason: string,
 	winnerUserId: number?,
 	winnerTeam: string?,
 	winners: { number },
+	finalKo: MatchEventView?,
+	standings: { MatchStandingView },
+	mine: MatchRewardView?,
 }
+
+-- Match HUD M2 (owner 2026-10-16): what a match paid one player (Coins and Grip really added) and their win streak
+-- before and after it (Diego's results pills, M:361-363).
+export type MatchRewardView = { coins: number, grip: number, streakBefore: number, streakAfter: number }
 
 -- The map: its floor height, the Bounds box the combat code reads, and its centre (the storm's centre).
 export type MatchArenaView = { floorY: number, bounds: ArenaZone, centre: Vector3 }
@@ -354,6 +401,8 @@ export type MatchArenaView = { floorY: number, bounds: ArenaZone, centre: Vector
 -- A last view with phase "Returning", then the cleared attributes (SD_MatchId "") end it on the client.
 -- Power-ups v1.1 (2026-10-16): also on every pickup (everyone: a pad's readyAt rose), a shield used up, and to the
 -- player whose timed power-up just ended.
+-- Match HUD M1 (2026-10-16): a view sent to everyone carries `events` (the HUD events since the previous such view,
+-- by seq; empty when none); a view sent only to its owner (the storm bar, a power-up's end) has none.
 export type MatchStateView = {
 	matchId: string,
 	mode: MatchMode,
@@ -371,6 +420,7 @@ export type MatchStateView = {
 	storm: { startRadius: number }?, -- TDM only (StormMath.startRadius of the map's footprint)
 	outcome: MatchOutcomeView?,
 	pads: { MatchPadView }, -- power-ups v1.1: every power-up pad of the map (empty when it has none)
+	events: { MatchEventView }?, -- Match HUD M1: the HUD events since the previous view sent to everyone
 }
 
 -- One queue entry (§5.4), as QueueService keeps it and Logic/Matchmaker reads it. `priority` is
