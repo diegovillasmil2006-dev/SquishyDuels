@@ -18,6 +18,12 @@
 		"container": "ReplicatedStorage"
 	},
 	{
+		"file": "ReplicatedStorage/SD_KillVfx.rbxm",
+		"class": "Folder",
+		"name": "SD_KillVfx",
+		"container": "ReplicatedStorage"
+	},
+	{
 		"file": "ReplicatedStorage/SD_MoveVfx.rbxm",
 		"class": "Folder",
 		"name": "SD_MoveVfx",

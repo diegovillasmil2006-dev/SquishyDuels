@@ -8,6 +8,7 @@
 --     100 ms at E;
 --   * knockback: 22 studs/s along the flattened direction plus 8 up, × 1.5 for Dragon Rush;
 --   * elimination registry: standard, epic_pending plays standard while the epic effect is off, unknown -> standard;
+--     kill banners (2026-10-16): every kill set of Art/KillStyle is its own effect;
 --   * arena lighting (§7.4, §7.8): Config.Vfx.ZonePresets.Arena from arena entry until the duel view ends, then the
 --     values saved on entry;
 --   * duel juice (§18.4): the hit-stop only for the local victim or thrower (never geometry, never spectators, never
@@ -17,10 +18,9 @@
 --     the Dragon roar for the caster and the other duelist, the telegraph duck only for the targeted duelist;
 --   * sound priorities (§18.6): impact and Dragon sounds keep theirs when the local player is the thrower, the victim
 --     or the thrower's duel opponent; another player's throw or Rush plays at -1 (dropped first);
---   * Part 8 (§11.2): the "K.O.!" banner never covers the duel HUD's top bar, even at its pop, and stays on the screen
---     at 667×375, 1280×720 and 1920×1080, Medium and the largest text (30% down when there is room, as built);
---   * foam fix 2: the time the "K.O.!" banner has gone (1.2 s after this client's hit-stop), which the duel result
---     card waits for; nothing waits after clear().
+--   * foam fix 2: the time the K.O. moment has gone (1.2 s after this client's hit-stop), which the duel result card
+--     waits for; nothing waits after clear() (kill banners 2026-10-16: the "K.O.!" text and its layout test are gone;
+--     the kill banner replaced it).
 -- First person (spec 2026-10-10 §3.10):
 --   * no SD_HitFlash ghost on the own character in first person (a Highlight can draw on the hidden body); other
 --     players' ghosts and the own one in third person as before;
@@ -139,6 +139,10 @@ return function(t: Context)
 		expect.equal(VfxController.eliminationEffect("confetti_cannon"), "standard")
 		if not Config.Anim.elimination.epicEnabled then
 			expect.equal(VfxController.eliminationEffect("epic_pending"), "standard")
+		end
+		-- Kill banners (2026-10-16): each kill set is its own effect.
+		for _, id in t.requireShared("Art/KillStyle").IDS do
+			expect.equal(VfxController.eliminationEffect(id), id)
 		end
 	end)
 
@@ -337,37 +341,6 @@ return function(t: Context)
 		-- Reading: an unknown thrower (or no local player, Edit mode) keeps the priority.
 		expect.equal(VfxController.soundPriority(2, nil, nil, ME, nil), 2)
 		expect.equal(VfxController.soundPriority(2, OTHER, nil, nil, nil), 2)
-	end)
-
-	t.test("K.O. banner (Part 8): under the duel top bar on short screens, 30% down otherwise, on screen", function()
-		local Layout = t.requireClient("UI/Layout")
-		local UI = Config.UI
-		-- SD_Vfx is full-bleed without a UIScale: px are the screen's. The banner is 12% of the screen tall and pops
-		-- from 1.3; the duel top bar (DuelController) is about 110 base px tall at Medium text, 12 px from the top
-		-- (Part 8 numbers, kept as the model: the foam side cards made it about 102 base px, 135 with the opponent's
-		-- Dragon Rush chip; koBannerCenterY reads the real bar at runtime, so a taller bar only moves the banner lower).
-		local popHalf = 0.12 * 1.3 / 2
-		for _, actual in { Vector2.new(667, 375), Vector2.new(1280, 720), Vector2.new(1920, 1080) } do
-			local scale = Layout.uiScale(actual.Y)
-			for _, textScale in { 1, UI.PreferredTextScale.Largest } do
-				local barBottom = (12 + 110 * textScale) * scale
-				local centre = VfxController.koBannerCenterY(actual.Y, barBottom)
-				local half = actual.Y * popHalf
-				expect.truthy(centre >= actual.Y * 0.3 - 1e-6) -- never higher than as built
-				expect.truthy(centre - half >= barBottom + 8 - 1e-6) -- the bar's lives stay in view
-				expect.truthy(centre + half <= actual.Y - 12 + 1e-6) -- on the screen
-				if actual.Y >= 1080 or (actual.Y >= 720 and textScale == 1) then
-					expect.near(centre, actual.Y * 0.3, 1e-6) -- room to spare: as built
-				end
-			end
-		end
-		-- The phone: lower than 30% (the banner covered the lives row before).
-		expect.truthy(VfxController.koBannerCenterY(375, (12 + 110) * Layout.uiScale(375)) > 375 * 0.3 + 1)
-		-- No bar (the HUD hidden) or bad numbers: 30% down; a bar reaching the bottom: kept on screen.
-		expect.near(VfxController.koBannerCenterY(375, nil), 112.5, 1e-6)
-		expect.near(VfxController.koBannerCenterY(375, 0 / 0), 112.5, 1e-6)
-		expect.near(VfxController.koBannerCenterY(375, 370), 375 - 12 - 375 * popHalf, 1e-6)
-		expect.equal(VfxController.koBannerCenterY(0 / 0, 100), 0)
 	end)
 
 	t.test("K.O. banner (foam fix 2): when it has gone, for the duel result card to wait on", function()

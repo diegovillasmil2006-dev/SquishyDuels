@@ -20,7 +20,16 @@
 
 export type Rarity = "Common" | "Uncommon" | "Epic" | "Exclusive"
 export type TrailKind = "ribbon" | "twinRibbon" | "comet" | "ember"
-export type EliminationEffectId = "standard" | "epic_pending"
+-- The kill set (Art/KillStyle, kill banners 2026-10-16): "standard" for every Common and Uncommon squishy, one of its
+-- own for each squishy above Uncommon. "epic_pending" (before 2026-10-16) still plays the standard set.
+export type EliminationEffectId =
+	"standard"
+	| "epic_pending"
+	| "feather_storm"
+	| "sprinkle_blast"
+	| "cloudburst"
+	| "bubble_burst"
+	| "dragon_blaze"
 
 export type SquishyDef = {
 	id: string,

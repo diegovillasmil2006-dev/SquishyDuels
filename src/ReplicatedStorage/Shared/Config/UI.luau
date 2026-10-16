@@ -115,6 +115,7 @@ local UI = {
 	ScreenGuis = {
 		SD_Hud = { displayOrder = 10, insets = Enum.ScreenInsets.CoreUISafeInsets },
 		SD_DuelHud = { displayOrder = 11, insets = Enum.ScreenInsets.CoreUISafeInsets },
+		SD_KillBanner = { displayOrder = 15, insets = Enum.ScreenInsets.CoreUISafeInsets }, -- under every modal
 		SD_Dimmer = { displayOrder = 19, insets = Enum.ScreenInsets.None },
 		SD_Modal = { displayOrder = 20, insets = Enum.ScreenInsets.CoreUISafeInsets },
 		SD_Overlay = { displayOrder = 30, insets = Enum.ScreenInsets.CoreUISafeInsets },
@@ -1331,6 +1332,31 @@ local UI = {
 		fly = { 0.25, 0.7, 0.35, 1 }, -- lib:283
 		flyLeg = { 0.55, 0, 0.85, 0.55 }, -- lib:281
 	} :: { [string]: { number } },
+
+	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The killer's banner
+	-- is a medallion bottom-centre (below the crosshair, above the bottom HUD) that gains one ornament per K.O. without
+	-- being knocked out (1-5) and its crown at 6; every K.O. after the 6th shows the 6k banner again. Px at UI scale 1
+	-- (SD_KillBanner carries the UI scale); seconds; angles in degrees from the top, clockwise.
+	KillBanner = {
+		discPx = 104, -- the medallion's diameter
+		discMinPx = 64, -- never smaller
+		discShare = 0.15, -- and at most this share of the gui's height
+		centerYShare = 0.76, -- the medallion's centre, down from the top
+		compactCenterYShare = 0.7, -- below Breakpoints.compactBelowHeight (phones: clear of the thumb buttons)
+		ornamentRadius = 0.66, -- the ornaments' centres from the medallion's centre, × the disc
+		slotAngles = { 0, -38, 38, -76, 76 }, -- the 1k..5k ornaments
+		crownAngle = 118, -- the 6k crown pieces at ±crownAngle
+		tiers = 6,
+		introSeconds = 0.32, -- the pop
+		holdSeconds = 1.6,
+		outroSeconds = 0.36, -- the shrink and fade
+		popScale = 1.18, -- the medallion's overshoot
+		replaceFromScale = 0.82, -- a K.O. during a banner restarts it from this scale (no blink)
+		staggerSeconds = 0.035, -- the earlier ornaments appear this far apart
+		newestAt = 0.2, -- the new ornament (or the 6k crown) pops this long after the hit
+		newestPopScale = 1.45, -- the new ornament's overshoot
+		reducedFadeSeconds = 0.15, -- ReducedMotion: a plain fade in and out, no pop or spin
+	},
 }
 
 return UI

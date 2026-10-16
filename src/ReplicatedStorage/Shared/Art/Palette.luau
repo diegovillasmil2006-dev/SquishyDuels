@@ -454,6 +454,21 @@ local Palette = {
 	StickerTdmBlue = Color3.fromHex("#5DB4FF"), -- N:710 (68%)
 	StickerTdmBlueEnd = Color3.fromHex("#7CC6FF"), -- N:710
 
+	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
+	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.
+	KillBirdBlue = Color3.fromHex("#7CC0F5"), -- Birdie's accent: the Feather Storm ring and feathers
+	KillBirdSky = Color3.fromHex("#DDF0FF"), -- the Feather Storm disc
+	KillDonutCream = Color3.fromHex("#FFF0F4"), -- the Sprinkle Blast disc
+	KillDonutDough = Color3.fromHex("#F6C27A"), -- the Sprinkle Blast mini donuts' dough
+	KillCloudLilac = Color3.fromHex("#D5C8F6"), -- Cloud Bunny's accent: the Cloudburst glow
+	KillCloudMist = Color3.fromHex("#F3EFFF"), -- the Cloudburst disc
+	KillAxolotlPink = Color3.fromHex("#F9AFCB"), -- Cupcake Axolotl's accent: the Bubble Burst ring and gills
+	KillAxolotlAqua = Color3.fromHex("#9FE3E0"), -- the Bubble Burst bubbles and glow
+	KillAxolotlPearl = Color3.fromHex("#FFF4F8"), -- the Bubble Burst disc
+	KillDragonTeal = Color3.fromHex("#3FB8AF"), -- the Dragon's accent: the Dragon's Blaze ring and wings
+	KillDragonNight = Color3.fromHex("#2B2440"), -- the Dragon's Blaze disc
+	KillDragonFire = Color3.fromHex("#FF9A3C"), -- the Dragon's Blaze glow
+
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),
 	CoinRing = Color3.fromHex("#D99A1E"),

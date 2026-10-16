@@ -447,7 +447,15 @@ return function(t: Context)
 		end
 		expect.deepEqual(
 			orders,
-			{ SD_Hud = 10, SD_DuelHud = 11, SD_Dimmer = 19, SD_Modal = 20, SD_Overlay = 30, SD_Fade = 40 }
+			{
+				SD_Hud = 10,
+				SD_DuelHud = 11,
+				SD_KillBanner = 15, -- kill banners (2026-10-16): above the HUDs, under every modal
+				SD_Dimmer = 19,
+				SD_Modal = 20,
+				SD_Overlay = 30,
+				SD_Fade = 40,
+			}
 		)
 		expect.throws(function()
 			ModalStack.new(0)

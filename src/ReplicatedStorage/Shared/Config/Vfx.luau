@@ -498,6 +498,18 @@ local Vfx = {
 		idlePerKind = 24, -- released instances kept per kind (emitter, trail, part); extra ones are destroyed
 		releaseMarginSeconds = 0.1, -- an emitter is reused this long after its burst's longest particle lifetime
 	},
+
+	-- Kill banners and kill effects (2026-10-16; ReplicatedStorage.SD_KillVfx, made for the VFX Studio plugin, played by
+	-- Anim/KillVfx). The banner burst sits burstDepthStuds in front of the killer's camera behind the banner (its
+	-- template is made for a disc of radius 1 stud, so it is scaled to the banner's size at that depth). A kill effect
+	-- plays where the K.O.'d squishy vanishes (the elimination effect's foam puff, Config.Anim.elimination), for anyone
+	-- within farStuds of the camera. At most maxBursts banner bursts and maxKills kill effects live at once.
+	KillFx = {
+		burstDepthStuds = 3.2,
+		farStuds = 160,
+		maxBursts = 3,
+		maxKills = 8,
+	},
 }
 
 return Vfx

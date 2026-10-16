@@ -171,6 +171,11 @@ local function expectProvenance(label: string, entry: any)
 	end
 end
 
+-- Kill banners (2026-10-16): the 6 kill sound sheets (one per kill set of Art/KillStyle) and the VFX Studio library
+-- textures, checked on their own below.
+local KILL_SOUND_PREFIX = "sfx.kill."
+local KILL_IMAGE_PREFIX = "img.kill."
+
 return function(t: Context)
 	local expect = t.expect
 	local AssetTable = t.requireShared("AssetTable")
@@ -193,7 +198,11 @@ return function(t: Context)
 			seen[slot.key] = true
 			-- The knead's wax sounds (spec phase2-squeeze §3.10) are checked on their own (WAX_KEYS, below), and so
 			-- are UI FINAL R2's 2 (R2_SOUND_KEYS, below).
-			if string.sub(slot.key, 1, #WAX_PREFIX) ~= WAX_PREFIX and not table.find(R2_SOUND_KEYS, slot.key) then
+			if
+				string.sub(slot.key, 1, #WAX_PREFIX) ~= WAX_PREFIX
+				and not table.find(R2_SOUND_KEYS, slot.key)
+				and string.sub(slot.key, 1, #KILL_SOUND_PREFIX) ~= KILL_SOUND_PREFIX -- kill banners: below
+			then
 				table.insert(keys, slot.key)
 			end
 		end
@@ -272,7 +281,7 @@ return function(t: Context)
 	t.test("the image key set: the existing 18, the design's 15 new pictures and pack 2's 70", function()
 		local keys = {}
 		for _, slot in AssetTable.all() do
-			if slot.kind == "image" then
+			if slot.kind == "image" and string.sub(slot.key, 1, #KILL_IMAGE_PREFIX) ~= KILL_IMAGE_PREFIX then
 				table.insert(keys, slot.key)
 			end
 		end
@@ -527,6 +536,37 @@ return function(t: Context)
 			end
 		end
 		expect.deepEqual(sorted(optionalKeys), sorted(OPTIONAL_KEYS))
+	end)
+
+	-- Kill banners (2026-10-16): one sound sheet per kill set, 2D SFX, required, each with an approved group upload and its
+	-- file named in the notes; every img.kill.* slot holds a VFX Studio library texture with its provenance.
+	t.test("kill banners: a sound sheet per kill set and the VFX Studio textures", function()
+		local KillStyle = t.requireShared("Art/KillStyle")
+		local sheets: { string } = {}
+		for _, slot in soundSlots() do
+			if string.sub(slot.key, 1, #KILL_SOUND_PREFIX) == KILL_SOUND_PREFIX then
+				table.insert(sheets, slot.key)
+				expect.equal(slot.group, "SFX")
+				expect.equal(slot.spatial, false)
+				expect.equal(slot.optional, nil)
+				expect.truthy(string.find(slot.notes, ".ogg'", 1, true) ~= nil)
+				expectProvenance(slot.key, slot)
+			end
+		end
+		local wanted: { string } = {}
+		for _, id in KillStyle.IDS do
+			table.insert(wanted, (KillStyle.get(id) :: any).sound)
+		end
+		expect.deepEqual(sorted(sheets), sorted(wanted))
+		local images = 0
+		for _, slot in AssetTable.all() do
+			if slot.kind == "image" and string.sub(slot.key, 1, #KILL_IMAGE_PREFIX) == KILL_IMAGE_PREFIX then
+				images += 1
+				expectProvenance(slot.key, slot)
+				expect.truthy(string.find(slot.source, "VFX Studio", 1, true) ~= nil)
+			end
+		end
+		expect.truthy(images >= 20)
 	end)
 
 	t.test("contentIdFor accepts positive integers only", function()

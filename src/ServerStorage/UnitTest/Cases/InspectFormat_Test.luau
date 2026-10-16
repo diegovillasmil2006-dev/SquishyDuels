@@ -101,7 +101,10 @@ return function(t: Context)
 			)
 			expect.equal(view.coinsSub, Strings.capsule.powerNote)
 			expect.equal(view.statsCaption, Strings.inspect.statsCaption)
-			expect.equal(view.elimination, "Elimination: Standard") -- §10.8 #7 (Epics too, until the effect ships)
+			-- §10.8 #7; kill banners (2026-10-16): each squishy above Uncommon names its own kill set, the rest Standard.
+			local effectName = Strings.resolve("elimination." .. def.eliminationEffectId) or Strings.elimination.standard
+			expect.equal(view.elimination, "Elimination: " .. effectName)
+			expect.equal(effectName == Strings.elimination.standard, def.eliminationEffectId == "standard")
 			expect.equal(view.howToGetTitle, Strings.inspect.howToGet)
 			expect.equal(view.shopPrice, def.shopPrice)
 			expect.equal(view.yaw, def.inspect.yaw)

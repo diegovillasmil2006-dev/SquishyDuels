@@ -38,6 +38,15 @@
 --   0.6° / 250 ms. FFA/TDM v1 (2026-10-15; SPEC D3: a knocked-out match player keeps the same character and respawns
 --   where the server pivots it): in the local 12-player match view it also comes back once that player is alive again
 --   after the view showed them knocked out, and not before the elimination effect hid it (matchRespawned, pure).
+-- Kill banners and kill effects (2026-10-16, VillasmilGaming: Valorant-style; Art/KillStyle): the effectId is the
+--   attacker's kill set (eliminationEffect -> KillStyle.resolve: "standard" for every Common and Uncommon squishy, its
+--   own for each squishy above Uncommon; "epic_pending" stays standard unless Config.Anim.elimination.epicEnabled), and
+--   every set plays this sequence. At 700 ms the set's kill effect, made for the VFX Studio plugin (Anim/KillVfx
+--   Kill/<set>, ReplicatedStorage.SD_KillVfx), takes the foam puff's place; the standard one is that pastel puff and
+--   keeps the tumbling confetti parts, a custom set's replaces them too; without the library the old puff plays. The
+--   eliminator's "K.O.!" text became the kill banner: KoDealt(effectId) fires at that moment and Controllers/
+--   KillBannerController draws the banner, plays its sound and its burst (koBannerUntil keeps its timing). Anim/KillVfx
+--   and Art/KillStyle are required inline (no new top-level local).
 -- Sounds (§18.6, SoundController, silent while the slot ids are nil): sfx.impactBoing at a "player" / "target" hit,
 --   sfx.impactSoft at "geometry" / "expired" / "fizzle" (the last two × softImpactMinorVolume), both on the contact
 --   frame; Dragon Rush: sfx.dragonTelegraph (tracked, stopped with a trackedStopFadeMs fade on cancel), the optional
@@ -78,14 +87,14 @@
 -- (FxPool), 5 confetti parts without spin; the held boing follows the held rig's ReducedMotion rule (its squish face
 -- without the jiggle). Sounds never change with ReducedMotion.
 -- Highlights stay within Config.Vfx.Budgets.highlights together with ProjectileRenderer's.
--- Part 8 (layout pass, §11.2): the "K.O.!" banner (TextScaled, so it always fits) sits 30% down, or lower on a short
--- screen so it never covers the duel HUD's top bar where the opponent's life pip pops (koBannerCenterY, pure,
--- unit-tested at 667×375, 1280×720, 1920×1080 and the largest text). Reading (audited, unchanged): the hit vignette's
+-- Part 8 (layout pass, §11.2): the "K.O.!" text banner is gone (kill banners 2026-10-16: KillBannerController's
+-- banner sits bottom-centre, under every modal). Reading (audited, unchanged): the hit vignette's
 -- four edge bands are non-interactive (Active false) and cover 18% from each edge at <= 20% opacity, so they never
 -- take a tap or hide a button.
--- Foam fix 2 (2026-10-09): koBannerUntil() is the os.clock() at which the eliminator's "K.O.!" banner has gone (from the
--- impact, counting this client's hit-stop, so it is known before the banner shows; koBannerEndsAt, pure). The duel
--- result card (DuelController) waits until then, so the banner, which draws over SD_Modal, never sits on its title.
+-- Foam fix 2 (2026-10-09): koBannerUntil() is the os.clock() at which the eliminator's K.O. moment has gone (from the
+-- impact, counting this client's hit-stop, so it is known before it shows; koBannerEndsAt, pure). The duel result card
+-- (DuelController) waits until then (kill banners 2026-10-16: the kill banner pops in that time; it draws under
+-- SD_Modal, so the card covers its last second).
 -- Feature 1 (2026-10-11, the charge throw and the catch; design: the combat-effects page "Squishy Combat FP v2.html"):
 -- the catch's world effects (Anim/CatchFx: the catch ring and sparks where the throw was caught, then the burst's
 -- pieces, sparks, puffs and ring at the catcher's hands; none for a first-person catcher, whose overlay draws its own)
@@ -277,18 +286,10 @@ local ELIM_DIZZY_S = ELIM.dizzyEndMs / 1000
 local ELIM_END_S = ELIM.endMs / 1000
 -- reading: the dizzy pose blends in and out over this long.
 local DIZZY_BLEND_S = 0.1
--- reading: the "OUT!" / "K.O.!" texts stay this long, then fade.
+-- reading: the "OUT!" text stays this long, then fades; KO_BANNER_S is the K.O. moment the duel result card waits for
+-- (the kill banner's pop since 2026-10-16).
 local OUT_LABEL_S = 1.6
 local KO_BANNER_S = 1.2
--- Part 8 (readings: the banner's look as built, 50% × 12% of the screen, 30% down; its place keeps the duel HUD's top
--- bar clear, VfxController.koBannerCenterY). The bar is DuelController's SD_DuelHud.TopBar (stable names).
-local KO_BANNER_WIDTH = 0.5
-local KO_BANNER_HEIGHT = 0.12
-local KO_BANNER_Y = 0.3
-local KO_BANNER_GAP_PX = 8
-local KO_BANNER_EDGE_PX = 12
-local DUEL_HUD_GUI = "SD_DuelHud"
-local DUEL_TOP_BAR = "TopBar"
 local POP_FROM = 1.3
 local POP_MS = 250
 -- reading: the held squishy's wobble while dizzy (scale amplitude, Hz).
@@ -315,6 +316,9 @@ local VfxController = {}
 
 -- Fired with (victimId, attackerId?) when an elimination effect starts (tests, debug).
 VfxController.Eliminated = Signal.new() :: Signal.Signal<number, number?>
+-- Kill banners (2026-10-16): fired with the server's effectId (the attacker's kill set, Art/KillStyle) at the local
+-- player's K.O. moment (after the hit-stop, where the "K.O.!" text showed). Controllers/KillBannerController listens.
+VfxController.KoDealt = Signal.new() :: Signal.Signal<string?>
 
 -- Private
 
@@ -412,15 +416,13 @@ function VfxController.knockbackVelocity(direction: Vector3, multiplier: number)
 	return unit * KNOCKBACK.Horizontal * multiplier + Vector3.new(0, KNOCKBACK.Vertical * multiplier, 0)
 end
 
--- The elimination effect for an effectId (registry, §9.9); unknown ids play the standard one.
+-- The elimination effect for an effectId (registry, §9.9): a kill set of Art/KillStyle (kill banners 2026-10-16), or
+-- "epic_pending" while Config.Anim.elimination.epicEnabled; anything else plays the standard one.
 function VfxController.eliminationEffect(effectId: string?): string
-	if effectId == "epic_pending" and not ELIM.epicEnabled then
-		return "standard"
+	if effectId == "epic_pending" then
+		return if ELIM.epicEnabled then "epic_pending" else "standard"
 	end
-	if effectId == "standard" or effectId == "epic_pending" then
-		return effectId :: string
-	end
-	return "standard"
+	return require(Shared.Art.KillStyle).resolve(effectId)
 end
 
 -- True when the duel view calls for the Arena lighting preset: the match reached Positioning (the player was moved
@@ -543,30 +545,15 @@ function VfxController.soundPriority(
 	return OTHER_SOUND_PRIORITY
 end
 
--- Part 8 (§11.2): the "K.O.!" banner's centre (px from the top of SD_Vfx, a full-bleed gui without UIScale) on a
--- screen `screenHeight` tall. The banner is KO_BANNER_HEIGHT of the screen tall and sits KO_BANNER_Y down, or lower so
--- that even at its pop (POP_FROM) it starts KO_BANNER_GAP_PX under `barBottom` (the duel HUD's top bar's bottom in the
--- same px; nil = no bar on screen), so the opponent's lives stay visible as one pops; never past KO_BANNER_EDGE_PX
--- from the bottom (then the bar is left behind it, as before).
-function VfxController.koBannerCenterY(screenHeight: number, barBottom: number?): number
-	local h = if screenHeight == screenHeight and screenHeight > 0 and screenHeight < math.huge then screenHeight else 0
-	local half = h * KO_BANNER_HEIGHT * POP_FROM / 2
-	local y = h * KO_BANNER_Y
-	if barBottom and barBottom == barBottom and math.abs(barBottom) < math.huge then
-		y = math.max(y, barBottom + KO_BANNER_GAP_PX + half)
-	end
-	return math.max(h * KO_BANNER_Y, math.min(y, h - KO_BANNER_EDGE_PX - half))
-end
-
--- Foam fix 2: the os.clock() at which a "K.O.!" banner has gone when it shows after a hit-stop of `holdSeconds` (nil,
--- negative or bad = none) from `clock`.
+-- Foam fix 2: the os.clock() at which a K.O. moment (the kill banner's pop since 2026-10-16) has gone when it shows
+-- after a hit-stop of `holdSeconds` (nil, negative or bad = none) from `clock`.
 function VfxController.koBannerEndsAt(clock: number, holdSeconds: number?): number
 	local hold = holdSeconds
 	local wait = if hold and hold == hold and hold > 0 and hold < math.huge then hold else 0
 	return clock + wait + KO_BANNER_S
 end
 
--- Foam fix 2: the os.clock() at which the eliminator's "K.O.!" banner (showing, or waiting for this client's hit-stop)
+-- Foam fix 2: the os.clock() at which the eliminator's K.O. moment (showing, or waiting for this client's hit-stop)
 -- has gone; 0 when there is none. DuelController holds the result card until then.
 function VfxController.koBannerUntil(): number
 	return koUntil
@@ -1044,87 +1031,11 @@ local function billboardText(adornee: BasePart, label: string, color: Color3, li
 	})
 end
 
--- The bottom of the duel HUD's top bar in `screen`'s px (both guis' AbsolutePositions share one space), or nil while
--- it is not on screen.
-local function duelBarBottom(screen: ScreenGui): number?
-	local playerGui = screen.Parent
-	local hud = playerGui and playerGui:FindFirstChild(DUEL_HUD_GUI)
-	if hud == nil or not hud:IsA("ScreenGui") or not hud.Enabled then
-		return nil
-	end
-	local bar = hud:FindFirstChild(DUEL_TOP_BAR)
-	if bar == nil or not bar:IsA("GuiObject") or not bar.Visible or bar.AbsoluteSize.Y <= 0 then
-		return nil
-	end
-	return bar.AbsolutePosition.Y + bar.AbsoluteSize.Y - screen.AbsolutePosition.Y
-end
-
-local function koBanner()
-	local screen = ensureGui()
-	if screen == nil then
-		koUntil = 0
-		return
-	end
+-- Kill banners (2026-10-16): the eliminator's K.O. moment. The "K.O.!" text became the kill banner, drawn by
+-- KillBannerController from KoDealt (the attacker's kill set); koUntil keeps its timing for the duel result card.
+local function koBanner(effectId: string?)
 	koUntil = VfxController.koBannerEndsAt(os.clock(), nil)
-	local label = Instance.new("TextLabel")
-	label.Name = "Vfx_KoBanner"
-	label.AnchorPoint = Vector2.new(0.5, 0.5)
-	-- Part 8: under the duel HUD's top bar on a short screen (VfxController.koBannerCenterY), 30% down otherwise (also
-	-- while the gui has no size yet, just made).
-	local height = screen.AbsoluteSize.Y
-	label.Position = if height > 0
-		then UDim2.new(0.5, 0, 0, math.floor(VfxController.koBannerCenterY(height, duelBarBottom(screen)) + 0.5))
-		else UDim2.fromScale(0.5, KO_BANNER_Y)
-	label.Size = UDim2.fromScale(KO_BANNER_WIDTH, KO_BANNER_HEIGHT)
-	label.BackgroundTransparency = 1
-	label.FontFace = Font.fromEnum(Enum.Font.FredokaOne)
-	label.TextScaled = true
-	label.TextColor3 = Palette.Lemon
-	label.Text = text("combat.ko")
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Palette.Ink
-	stroke.Thickness = 4
-	stroke.Parent = label
-	local size = Instance.new("UITextSizeConstraint")
-	size.MaxTextSize = Config.UI.TextSize.Countdown
-	size.Parent = label
-	local scale = Instance.new("UIScale")
-	scale.Parent = label
-	label.Parent = screen
-	Tweens.scale(
-		scale,
-		POP_FROM,
-		1,
-		{ ms = POP_MS, style = Enum.EasingStyle.Back, direction = Enum.EasingDirection.Out }
-	)
-	local started = os.clock()
-	local done = false
-	addEffect({
-		step = function(_dt: number, _now: number): boolean
-			if done then
-				return false
-			end
-			local t = os.clock() - started
-			if t >= KO_BANNER_S then
-				done = true
-				label:Destroy()
-				return false
-			end
-			local fadeFrom = KO_BANNER_S * 0.7
-			if t > fadeFrom then
-				local u = (t - fadeFrom) / (KO_BANNER_S - fadeFrom)
-				label.TextTransparency = u
-				stroke.Transparency = u
-			end
-			return true
-		end,
-		stop = function()
-			if not done then
-				done = true
-				label:Destroy()
-			end
-		end,
-	})
+	VfxController.KoDealt:fire(effectId)
 end
 
 local function confetti(at: Vector3)
@@ -1230,7 +1141,7 @@ local function eliminationSound(victim: Player, attackerId: number?, at: Vector3
 	end
 end
 
-local function playStandard(player: Player, attackerId: number?)
+local function playStandard(player: Player, attackerId: number?, effectId: string?)
 	local character = player.Character
 	local head = character and character:FindFirstChild("Head")
 	local root = rootOf(player)
@@ -1243,7 +1154,7 @@ local function playStandard(player: Player, attackerId: number?)
 		shake(SHAKE.eliminated)
 	end
 	if attackerId ~= nil and attackerId == Players.LocalPlayer.UserId then
-		koBanner()
+		koBanner(effectId)
 	end
 	eliminated[player] = { player = player, restored = false, koSeen = false, startedAt = os.clock() }
 	local started = os.clock()
@@ -1294,8 +1205,19 @@ local function playStandard(player: Player, attackerId: number?)
 					local held = HeldSquishyController.getModel(player)
 					local at = if held then held:GetPivot().Position elseif root then root.Position else nil
 					if at then
-						confetti(at)
-						confettiParts(at)
+						-- Kill banners (2026-10-16): the kill set's VFX Studio kill effect takes the foam puff's place;
+						-- the standard set keeps the tumbling confetti parts. Without the library, the old puff.
+						local KillStyle = require(Shared.Art.KillStyle)
+						local KillVfx = require(script.Parent.Parent.Anim.KillVfx)
+						local style = KillStyle.get(KillStyle.resolve(effectId)) :: KillStyle.Style
+						if KillVfx.has(style.killVfx) then
+							KillVfx.kill(style.killVfx, at)
+						else
+							confetti(at)
+						end
+						if style.id == KillStyle.STANDARD then
+							confettiParts(at)
+						end
 					end
 					lastAt = at
 					eliminationSound(player, attackerId, at)
@@ -1330,9 +1252,15 @@ local function playStandard(player: Player, attackerId: number?)
 	VfxController.Eliminated:fire(player.UserId, attackerId)
 end
 
-local ELIMINATION_REGISTRY: { [string]: (Player, number?) -> () } = {
+local ELIMINATION_REGISTRY: { [string]: (Player, number?, string?) -> () } = {
 	standard = playStandard,
 	epic_pending = playStandard,
+	-- Kill banners (2026-10-16): every kill set of Art/KillStyle plays the same sequence with its own kill effect.
+	feather_storm = playStandard,
+	sprinkle_blast = playStandard,
+	cloudburst = playStandard,
+	bubble_burst = playStandard,
+	dragon_blaze = playStandard,
 }
 
 -- The held squishy comes back once the eliminated player is Returning or back in the lobby. FFA/TDM v1: or alive
@@ -1994,7 +1922,7 @@ local function handleImpact(impact: Types.ThrowImpactPayload, noKnockback: boole
 			end
 			if impact.eliminated == true then
 				local effect = ELIMINATION_REGISTRY[VfxController.eliminationEffect(impact.effectId)]
-				effect(victim, attackerId)
+				effect(victim, attackerId, impact.effectId)
 			end
 		end)
 	else
@@ -2003,7 +1931,7 @@ local function handleImpact(impact: Types.ThrowImpactPayload, noKnockback: boole
 				punchCamera(punch)
 			end
 			if impact.eliminated == true and attackerId ~= nil and attackerId == localId then
-				koBanner() -- e.g. the Studio test dummy: no character here, but the eliminator still sees K.O.!
+				koBanner(impact.effectId) -- e.g. the Studio test dummy: no character here, the kill banner still shows
 			end
 		end)
 	end
@@ -2261,7 +2189,7 @@ function VfxController.debugJuice(name: string, opts: { [string]: any }?): (bool
 			victimId = localPlayer.UserId,
 			invulnUntil = serverNow() + 1,
 			eliminated = options.eliminated == true,
-			effectId = "standard",
+			effectId = if type(options.effectId) == "string" then options.effectId else "standard", -- kill banners: any set
 		}
 		handleImpact(impact, true)
 		return true, nil

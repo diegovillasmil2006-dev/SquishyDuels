@@ -168,6 +168,39 @@ local function pseSlot(main: SoundVariant, variants: { SoundVariant }): Approved
 	}
 end
 
+-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners). The sound sheets are original synthesis (the
+-- KillSynth script's own instruments: no samples, no third-party audio), uploaded to the DIJAY Studios group through
+-- Open Cloud; each sheet holds a kill set's 6 escalating kill sounds, one per Config.Audio.killBanner slot. The
+-- textures are public Image assets from the VFX Studio plugin's texture library (the plugin lists them for use in
+-- experiences); each loads in this place (ContentProvider:PreloadAsync Success, 2026-10-16).
+local KILL_DATE = "2026-10-16"
+local KILL_SOUND_LICENSE = "Group-owned upload; original synthesis (KillSynth 2026-10-16), no third-party audio"
+local VFX_STUDIO_LICENSE = "Public Image asset listed in the VFX Studio plugin's texture library (for use in experiences)"
+
+-- soundSlot's `approved` argument for a kill banner sheet.
+local function killSheet(id: number, file: string): ApprovedSound
+	return {
+		id = id,
+		volume = 1,
+		source = `DIJAY Studios group upload (Open Cloud): '{file}'`,
+		license = KILL_SOUND_LICENSE,
+		verifiedAt = KILL_DATE,
+	}
+end
+
+-- An image slot holding a VFX Studio library texture: `name` is its Creator Store title, `by` its creator.
+local function vfxStudio(key: string, id: number, name: string, by: string, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `VFX Studio plugin texture library: '{name}' by {by}`,
+		license = VFX_STUDIO_LICENSE,
+		verifiedAt = KILL_DATE,
+		notes = use,
+	}
+end
+
 -- §14.2 sound slots and §14.3 animation and image slots, in document order.
 local SLOTS: { AssetSlot } = {
 	-- SFX (§14.2)
@@ -786,6 +819,57 @@ local SLOTS: { AssetSlot } = {
 		"loop; ≥ 60 s; prefer licensed-partner music; search: toy+shop+music, music+box+loop, happy+ukulele+loop"
 	),
 	optional(soundSlot("music.duel", "Music", false, nil, "optional; loop; ≥ 60 s; search: playful+tension+loop")),
+	-- Kill banners (2026-10-16): one sheet per kill set (Art/KillStyle), 2D for the killer only. Tier n (n K.O.s
+	-- without being knocked out; 6 and up repeat the 6th) plays [(n - 1)·slot, (n - 1)·slot + soundSeconds] of the
+	-- sheet (Config.Audio.killBanner, Sound.PlaybackRegion). 6 x 3 s = 18 s per file.
+	soundSlot(
+		"sfx.kill.standard",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Common and Uncommon squishies (Candy Pop: squishy pop, thump, marimba climb; 6k: bells and sparkles); file 'sfx_kill_standard.ogg'",
+		killSheet(104891426141969, "sfx_kill_standard.ogg")
+	),
+	soundSlot(
+		"sfx.kill.feather_storm",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Birdie (Feather Storm: wing flutter, whistled bird call; 6k: a flock and a bell); file 'sfx_kill_feather_storm.ogg'",
+		killSheet(89629009040996, "sfx_kill_feather_storm.ogg")
+	),
+	soundSlot(
+		"sfx.kill.sprinkle_blast",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Donut (Sprinkle Blast: rubbery boings, sprinkle tinkles; 6k: a boing chord and sprinkle rain); file 'sfx_kill_sprinkle_blast.ogg'",
+		killSheet(78274707655801, "sfx_kill_sprinkle_blast.ogg")
+	),
+	soundSlot(
+		"sfx.kill.cloudburst",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Cloud Bunny (Cloudburst: wind swell, harp; thunder from 4k; 6k: thunder crack and rain); file 'sfx_kill_cloudburst.ogg'",
+		killSheet(85018958917330, "sfx_kill_cloudburst.ogg")
+	),
+	soundSlot(
+		"sfx.kill.bubble_burst",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Cupcake Axolotl (Bubble Burst: tuned bubbles, underwater blub; 6k: a bubble cascade and a splash); file 'sfx_kill_bubble_pop.ogg'",
+		killSheet(104085535105999, "sfx_kill_bubble_pop.ogg")
+	),
+	soundSlot(
+		"sfx.kill.dragon_blaze",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Dragon (Dragon's Blaze: taiko, fire whoosh, brass stab; growl from 4k; 6k: roar, gong, full brass); file 'sfx_kill_dragon_blaze.ogg'",
+		killSheet(111003549387980, "sfx_kill_dragon_blaze.ogg")
+	),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -920,6 +1004,37 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.fx.ribbon", "image", IMAGE_NOTE),
 	otherSlot("img.fx.halfRing", "image", IMAGE_NOTE),
 	otherSlot("img.fx.dashRing", "image", IMAGE_NOTE),
+
+	-- Kill banners and kill effects (2026-10-16): VFX Studio library textures for the SD_KillVfx emitters
+	-- (SDTools.Builders.KillVfxBuilder) and the kill banner (UI/KillBanner). Sheets keep the library's grid.
+	vfxStudio("img.kill.flash", 12934685982, "Images/Circle_Mask_01", "Code_ABU", "a soft round glow: banner flashes"),
+	vfxStudio("img.kill.splat", 88765597194916, "Images/2024-02-28_14-11-52_Blast1", "XxOmqxXNerd", "a cartoon impact splat behind the banner"),
+	vfxStudio("img.kill.burst", 14197758636, "Images/0034", "Quantum1zed", "a radial burst: the 5k and 6k rays"),
+	vfxStudio("img.kill.shockRing", 16878151803, "Images/3 (1)", "Z0nito", "a thin glowing ring: shock rings"),
+	vfxStudio("img.kill.softRing", 12363693873, "Images/rounded_14", "futabalIs", "a soft thick ring: donut and floor rings"),
+	vfxStudio("img.kill.sparkle", 15452013947, "Images/star", "Crackop", "a solid four-point sparkle"),
+	vfxStudio("img.kill.twinkle", 109202808131008, "Texture", "k3rxse", "a soft glowing twinkle"),
+	vfxStudio("img.kill.feather", 6602421253, "Images/petal2", "Emi1o", "a petal: feathers and axolotl gills"),
+	vfxStudio("img.kill.cloud", 290833005, "smoke", "Sofloann", "a cartoon cloud"),
+	vfxStudio("img.kill.puffs", 13828988163, "Images/Mist3", "3k3x", "cartoon puffs, a 4x4 flipbook"),
+	vfxStudio("img.kill.bubble", 12363676882, "Images/sphere_41", "futabalIs", "a glossy bubble"),
+	vfxStudio("img.kill.bubblePop", 12800351913, "Images/Bubble03 - Copy", "Epistylia", "bubbles popping, a 2x2 flipbook"),
+	vfxStudio("img.kill.splash", 136795493746726, "Texture", "k3rxse", "cartoon splashes, a 4x4 flipbook (glaze and water)"),
+	vfxStudio("img.kill.sprinkle", 73401697522953, "Images/SmallTicTac (1)", "XxOmqxXNerd", "a pill: sprinkles and rain streaks"),
+	vfxStudio("img.kill.fire", 91844401982114, "Images_cartoony_fire", "XxOmqxXNerd", "cartoon fire, a 2x2 flipbook"),
+	vfxStudio("img.kill.explosion", 11696029985, "a", "ms_d0ss", "a cartoon explosion, a 4x4 flipbook"),
+	vfxStudio("img.kill.tealSmoke", 14374273963, "Images/fluid14", "chunchbunch", "teal dragon smoke, a 4x4 flipbook"),
+	vfxStudio("img.kill.heart", 107362491349840, "Images/Heart_01", "k3rxse", "a soft heart"),
+	vfxStudio("img.kill.lightning", 14052694884, "Images/n1", "Quantum1zed", "a lightning bolt"),
+	vfxStudio("img.kill.frameArcs", 12362768191, "Images/target_27", "ZZSSVVDD", "banner frame: four arcs (Candy Pop)"),
+	vfxStudio("img.kill.frameNotch", 113974948433764, "Images/51_Sem_Titulo_20241208194817", "No²³ (group)", "banner frame: a notched ring (Feather Storm)"),
+	vfxStudio("img.kill.frameTicks", 12362738407, "Images/target_2", "ZZSSVVDD", "banner frame: radial ticks (Feather Storm 6k)"),
+	vfxStudio("img.kill.frameSpikes", 71625533541727, "Images/019e6ca4578af6ece3d8e70e92e63829", "No²³ (group)", "banner frame: a ring of spikes (Candy Pop 6k)"),
+	vfxStudio("img.kill.frameOrnate", 75548700533773, "373 Sem Título2_20241115155826", "HF_185", "banner frame: an ornate ring (Cloudburst)"),
+	vfxStudio("img.kill.frameSegments", 12362776008, "Images/target_34", "ZZSSVVDD", "banner frame: ring segments (Sprinkle Blast)"),
+	vfxStudio("img.kill.frameSun", 794950602, "Cool Glowing Spawn Decal", "D0ubleH3lix", "banner frame: wavy sun rays (Bubble Burst 6k)"),
+	vfxStudio("img.kill.frameDragon", 11902232976, "Images/circle (2)", "JamProfessional", "banner frame: a dragon ring (Dragon's Blaze)"),
+	vfxStudio("img.kill.dragonWing", 12403174434, "211", "Ekzotericheskiy", "a tribal dragon: the Dragon's Blaze 6k wings"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

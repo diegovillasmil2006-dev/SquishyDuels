@@ -603,7 +603,9 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 			description = KeyText.get(ability.descriptionKey, { seconds = ability.telegraphSeconds }),
 		})
 	end
-	d.elimination.Text = Strings.format(Strings.inspect.elimination, { name = Strings.elimination.standard })
+	-- Kill banners (2026-10-16): the squishy's own kill set name (Strings elimination.<id>), Standard otherwise.
+	local eliminationName = Strings.resolve("elimination." .. def.eliminationEffectId) or Strings.elimination.standard
+	d.elimination.Text = Strings.format(Strings.inspect.elimination, { name = eliminationName })
 	local price = def.shopPrice
 	d.price.Visible = not entry.owned and price ~= nil
 	if price then

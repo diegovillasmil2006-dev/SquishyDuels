@@ -573,6 +573,13 @@ local Strings = {
 	-- Elimination effect names (§9.9). `epic_pending` shows Standard until the Epic effect ships.
 	elimination = {
 		standard = "Standard",
+		-- Kill banners 2026-10-16 (Art/KillStyle): each squishy above Uncommon has its own kill banner, kill sounds and
+		-- kill effect.
+		feather_storm = "Feather Storm",
+		sprinkle_blast = "Sprinkle Blast",
+		cloudburst = "Cloudburst",
+		bubble_burst = "Bubble Burst",
+		dragon_blaze = "Dragon's Blaze",
 	},
 
 	-- Inspect (§10.7, §10.8, §10.9, §10.6).

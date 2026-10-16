@@ -283,6 +283,17 @@ local Audio = {
 		bedEpsilon = 2e-4,
 		startMax = 1.5,
 	},
+
+	-- Kill banners (2026-10-16): the sound sheets (AssetTable sfx.kill.*, one per kill set). Tier n plays
+	-- [(n - 1)·slotSeconds, (n - 1)·slotSeconds + soundSeconds] of its sheet; 2D, for the killer only, at `volume`,
+	-- never pitched (variance 0), at `priority` (above impacts: a kill sound is never the one dropped).
+	killBanner = {
+		tiers = 6,
+		slotSeconds = 3,
+		soundSeconds = 2.9,
+		volume = 0.9,
+		priority = 4,
+	},
 }
 
 return Audio

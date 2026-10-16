@@ -50,6 +50,8 @@ type Module = {
 -- readout) right after DuelController, whose HUD pieces it borrows (DuelController's init hands them over).
 -- Feature 1 (2026-10-11): CatchController (the catch) right after ThrowController too, whose charge and hands it
 -- drives; the overlay, the duel HUD, the projectiles and the VFX read it.
+-- Kill banners (2026-10-16): KillBannerController (the killer's kill banner, its sound and burst) last: it listens to
+-- VfxController and StateController and draws in its own SD_KillBanner gui.
 -- Build plan Phase 5: CapsuleController (the base capsules' feel and the capsule card) with the feature screens, after
 -- DailyController; it requires ControlsController (its pointer claim) and SqueezeController (the home tap), both above.
 local CONTROLLER_ORDER = {
@@ -93,6 +95,7 @@ local CONTROLLER_ORDER = {
 	"VfxController",
 	"JellyRippleController",
 	"SplatController",
+	"KillBannerController",
 }
 
 -- Studio only, appended after the controllers; each needs its Config.Debug flag (always false outside Studio).

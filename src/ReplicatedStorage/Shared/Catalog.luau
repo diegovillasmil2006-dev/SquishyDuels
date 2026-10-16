@@ -27,6 +27,8 @@
 --   inspect      default 3/4 view, degrees.
 --   power        optional squishy power for one squishy (spec 2026-10-12 §6: tunable without touching the others); no
 --                def sets one today, so each uses Config.Economy.SquishyPower by rarity.
+--   eliminationEffectId  the kill set (Art/KillStyle; kill banners 2026-10-16): its kill banner, kill sounds and kill
+--                effect. Every Common and Uncommon squishy shares "standard"; each squishy above Uncommon has its own.
 
 local Config = require(script.Parent.Config)
 local TableUtil = require(script.Parent.Util.TableUtil)
@@ -115,7 +117,7 @@ local DEFS: { SquishyDef } = {
 		shopPrice = 1_700_000_000,
 		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 },
 		ultimateId = "flock_volley", -- spec phase 5: the design's Epic ultimate (ults.js:3), paid for out of the budget
-		eliminationEffectId = "epic_pending", -- shows Standard until the Epic effect is approved (§9.9)
+		eliminationEffectId = "feather_storm", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
 		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#7CC0F5" }, -- Twin ribbon + sparkle
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.30 },
 		hold = { grip = Vector3.new(0, -0.50, 0.10), heldYaw = 35 },
@@ -129,7 +131,7 @@ local DEFS: { SquishyDef } = {
 		shopPrice = 1_700_000_000,
 		throw = { speed = 92, gravity = 38, radius = 1.3, cooldown = 1.00, windup = 0.19 },
 		ultimateId = "sprinkle_roller", -- spec phase 5 (ults.js:4)
-		eliminationEffectId = "epic_pending",
+		eliminationEffectId = "sprinkle_blast", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
 		visuals = { trail = "twinRibbon", flightSpin = "roll", accent = "#FF8FB1" },
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
 		hold = { grip = Vector3.new(0, -0.60, 0.32), heldYaw = 35 }, -- z 0.32: held from behind (thin squishy)
@@ -143,7 +145,7 @@ local DEFS: { SquishyDef } = {
 		shopPrice = 1_100_000_000_000, -- the guaranteed Coin path to Dragon (§6.6)
 		throw = { speed = 92, gravity = 35, radius = 1.0, cooldown = 1.05, windup = 0.19 },
 		ultimateId = "dragon_rush", -- paid for out of the power budget (§5.8)
-		eliminationEffectId = "standard",
+		eliminationEffectId = "dragon_blaze", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
 		visuals = { trail = "ember", flightSpin = "wobble", accent = "#3FB8AF" }, -- Ember comet
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.30, squeezeFx = "dragon_steam" },
 		hold = { grip = Vector3.new(0, -0.60, 0.10), heldYaw = 35 },
@@ -212,7 +214,7 @@ local DEFS: { SquishyDef } = {
 		shopPrice = 1_700_000_000,
 		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 }, -- = bird
 		ultimateId = "rain_check", -- spec phase 5 (ults.js:5)
-		eliminationEffectId = "epic_pending",
+		eliminationEffectId = "cloudburst", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
 		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#D5C8F6" },
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.42 },
 		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
@@ -226,7 +228,7 @@ local DEFS: { SquishyDef } = {
 		shopPrice = 1_700_000_000,
 		throw = { speed = 92, gravity = 38, radius = 1.3, cooldown = 1.00, windup = 0.19 }, -- = donut
 		ultimateId = "bubble_pop", -- spec phase 5 (ults.js:6)
-		eliminationEffectId = "epic_pending",
+		eliminationEffectId = "bubble_burst", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
 		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#F9AFCB" },
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
 		hold = { grip = Vector3.new(0, -0.50, 0.10), heldYaw = 35 },

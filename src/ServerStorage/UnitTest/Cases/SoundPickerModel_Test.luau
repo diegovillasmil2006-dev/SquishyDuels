@@ -69,8 +69,9 @@ return function(t: Context)
 			local count = 0
 			for _, slot in AssetTable.all() do
 				-- The knead's wax sounds (spec phase2-squeeze §3.10) are uploaded renders played by region, never
-				-- picked; so are UI FINAL R2's two design renders (ui.pop, ui.levelTone: plan work/ui/PLAN.md §3).
-				local render = slot.key == "ui.pop" or slot.key == "ui.levelTone"
+				-- picked; so are UI FINAL R2's two design renders (ui.pop, ui.levelTone: plan work/ui/PLAN.md §3) and
+				-- the kill banner sheets (sfx.kill.*, 2026-10-16: original renders played by region).
+				local render = slot.key == "ui.pop" or slot.key == "ui.levelTone" or string.sub(slot.key, 1, 9) == "sfx.kill."
 				if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." and not render then
 					soundKeys[slot.key] = true
 					count += 1

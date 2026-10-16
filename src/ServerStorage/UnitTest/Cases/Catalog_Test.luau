@@ -121,7 +121,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.18,
 		trail = "twinRibbon",
 		ultimate = "flock_volley", -- spec phase 5: the design's Epic ultimates (ults.js:3)
-		elimination = "epic_pending",
+		elimination = "feather_storm",
 		shopPrice = 1_700_000_000,
 	},
 	{
@@ -135,7 +135,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.19,
 		trail = "twinRibbon",
 		ultimate = "sprinkle_roller", -- ults.js:4
-		elimination = "epic_pending",
+		elimination = "sprinkle_blast",
 		shopPrice = 1_700_000_000,
 	},
 	{
@@ -149,7 +149,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.19,
 		trail = "ember", -- "Ember comet"
 		ultimate = "dragon_rush",
-		elimination = "standard",
+		elimination = "dragon_blaze",
 		shopPrice = 1_100_000_000_000,
 	},
 	-- Spec 2026-10-09 §3.3: appended after Dragon; each throw is a copy of a same-rarity sibling.
@@ -214,7 +214,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.18,
 		trail = "twinRibbon",
 		ultimate = "rain_check", -- ults.js:5
-		elimination = "epic_pending",
+		elimination = "cloudburst",
 		shopPrice = 1_700_000_000,
 	},
 	{
@@ -228,7 +228,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.19,
 		trail = "twinRibbon",
 		ultimate = "bubble_pop", -- ults.js:6
-		elimination = "epic_pending",
+		elimination = "bubble_burst",
 		shopPrice = 1_700_000_000,
 	},
 }
@@ -651,6 +651,31 @@ return function(t: Context)
 	t.test("elimination effects match DESIGN §4.2", function()
 		for _, row in EXPECTED do
 			expect.equal(Catalog.get(row.id).eliminationEffectId, row.elimination)
+		end
+	end)
+
+	-- Kill banners (2026-10-16): Common and Uncommon squishies share the standard kill set; every squishy above
+	-- Uncommon has a kill set of its own (Art/KillStyle), built around it, and no two share one.
+	t.test("kill sets: standard up to Uncommon, one of its own above Uncommon", function()
+		local KillStyle = t.requireShared("Art/KillStyle")
+		local Rarity = t.requireShared("Rarity")
+		local uncommon = Rarity.index("Uncommon")
+		local owners: { [string]: string } = {}
+		for _, def in Catalog.list() do
+			local index = Rarity.index(def.rarity)
+			if index <= uncommon then
+				expect.equal(def.eliminationEffectId, KillStyle.STANDARD)
+			else
+				local style = KillStyle.get(def.eliminationEffectId)
+				expect.truthy(style ~= nil)
+				expect.truthy(def.eliminationEffectId ~= KillStyle.STANDARD)
+				expect.equal(style and style.squishyId, def.id)
+				expect.falsy(owners[def.eliminationEffectId])
+				owners[def.eliminationEffectId] = def.id
+			end
+		end
+		for _, id in KillStyle.IDS do
+			expect.truthy(id == KillStyle.STANDARD or owners[id] ~= nil)
 		end
 	end)
 
