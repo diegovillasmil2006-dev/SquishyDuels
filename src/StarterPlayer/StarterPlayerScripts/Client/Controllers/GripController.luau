@@ -24,6 +24,16 @@
 --   compact (phones): one row of at most Config.UI.Grip.compactRowMaxHeight base px, grip.hudLevelCompact plus a
 --   compactBarHeight bar, as wide as its line needs (HudFormat.gripCompactWidth: on phones it sits beside the coin
 --   capsule); the chip and the goal live in the panel, and a new goal is shown once as a toast.
+--   UI FINAL R4 (plan work/ui/PLAN.md R4 "Grip row", G4.14; `H:n` = "Squishy Duels HUD.dc.html" line n): the regular
+--   layout is the design's bare row (H:82-90): no card face; padding-left 6; the bar column (200 wide, H:83): the Grip
+--   bar (Components/ProgressBar "grip": 14 px border-box, white .7 trough, its fill and 22 px shine, H:84-85) over its
+--   3 px ink lip, and "{have} / {need} Grip" (the Sticker role gripText, H:87); beside it, 14 px up, the Double Grip
+--   chip (H:89: the bolt pulsing 1 s and "2x ~{minutes} min", hud.gripBoost, plan FD3); under the row the goal line
+--   (UD4, kept: AFFECTED 2026-10-15, it names capsule buys). The level shows on HudController's GRIP float
+--   (setGripLevel, H:92-96; its number pops with the compact label's, §18.5.1 A9); the rank stays in the panel.
+--   Hud_GripButton is the row's invisible tap target (no hover look: H:82 has no data-fx; at least the touch minimum
+--   tall, the row centred in it, PR1); on each Grip gain after the baseline the row squashes (H:707: FX.squash(grip,
+--   .3), the press squash's sy series on its UIScale, PR4).
 --   The card sits in HudController's top-left column (HudController.leftColumn(), a UIListLayout) at
 --   HudController.LEFT_ORDER.grip, centred in a fixed-size slot (Hud_GripSlot, foam fix: its press feel's scale never
 --   moves the tiles under it): under the coin capsule, or beside it on phones (the column plan's `left`); the tiles
@@ -100,7 +110,9 @@ local SqueezeLimit = require(Shared.SqueezeLimit)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
+local UiIdle = require(Client.Anim.UiIdle)
 local Button = require(Client.UI.Components.Button)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
@@ -131,10 +143,11 @@ export type CardModel = {
 	level: number,
 	levelText: string, -- grip.hudLevel
 	levelCompact: string, -- grip.hudLevelCompact
-	rankText: string, -- grip.rank.* (the regular card's title; the level shows on its level tile)
+	rankText: string, -- grip.rank.* (UI FINAL R4: the panel; the regular row shows no rank)
 	barText: string, -- grip.hudBar or grip.hudMax
 	fraction: number, -- 0..1: have / need, the numbers barText shows (1 at the top)
 	chip: string?, -- grip.restedChip, nil while Double Grip is empty or off
+	boost: string?, -- UI FINAL R4: the bare row's chip, hud.gripBoost "2x ~{minutes} min" (H:89), nil the same
 	goal: string?, -- the next-goal line (the panel; the compact layout's toast)
 	cardGoal: string?, -- the regular card's goal line (foam fix 2: the short grip.hudGoal* form of the same goal)
 	goalKey: string?, -- its Strings key (GripMath.Goal.textKey)
@@ -148,10 +161,9 @@ type Card = {
 	slot: Frame, -- the fixed-size holder in HudController's column (the press scale never moves the list)
 	root: TextButton,
 	body: Frame, -- holds the one visible layout (the root has no padding)
+	face: Frame, -- UI FINAL R4: the compact card's foam (the regular row is bare, H:82)
 	regular: Frame,
 	compact: Frame,
-	levelLabel: TextLabel, -- the level number on the level tile
-	rankLabel: TextLabel,
 	bar: ProgressBar.ProgressBar,
 	barLabel: TextLabel,
 	chipRow: Frame,
@@ -159,9 +171,12 @@ type Card = {
 	goalLabel: TextLabel,
 	compactLabel: TextLabel,
 	compactBar: ProgressBar.ProgressBar,
-	levelScales: { UIScale }, -- the level pop (§18.5.1 A9): on the level tile's number and the compact level label
+	levelScales: { UIScale }, -- the level pop (§18.5.1 A9): on the compact level label (UI FINAL R4: the regular row
+	-- shows no level; HudController's GRIP float does)
 	levelTweens: { Tween },
 	barSet: boolean, -- the bars got their first value (later values ease)
+	squash: UIScale, -- UI FINAL R4: the row's squash on a Grip gain (H:707)
+	squashHandle: Scheduler.Handle?,
 }
 
 type PanelRefs = {
@@ -199,7 +214,11 @@ local CARD_WIDTH = COLUMN.cardWidth
 local CARD_ORDER = HudController.LEFT_ORDER.grip
 local COMPACT_ROW_GAP = 2 -- between the compact row's label and its bar (HudFormat.gripCompactRowHeight)
 local CARD_BANDS = Theme.Foam.panel -- the card's foam: bevel 5 + drop 4 under its content
-local LEVEL_TILE_RADIUS = 14
+-- UI FINAL R4 (H:82-90): the bare row's numbers (Config.UI.Sticker.hud.grip) and the Grip bar with its 3 px lip (H:84).
+local HUD_GRIP = Config.UI.Sticker.hud.grip
+local BAR_PX = Config.UI.Sticker.bars.grip.height
+local BAR_LIP_PX = Config.UI.Sticker.lip.bar
+local PRESS = Config.UI.motion.buttonPress
 local BAR_EPSILON = 1e-4 -- the bar eases only when its share really changed (the card refreshes every few seconds)
 -- Foam fix (like Quests, Daily and Settings): Close straddles the panel's top edge this far from its right edge.
 local CLOSE_INSET = 16
@@ -273,6 +292,15 @@ local function serverNow(): number
 	return Workspace:GetServerTimeNow()
 end
 
+-- Double Grip's whole minutes at server time `now` (0 while it is empty or off).
+local function restedMinutes(v: GripView, now: number): number
+	local rested = v.rested
+	if not RESTED.enabled or rested == nil then
+		return 0
+	end
+	return GripMath.restedMinutes(SqueezeLimit.current(rested, now, RESTED))
+end
+
 local function inMatch(): boolean
 	local player = Players.LocalPlayer
 	if player == nil then
@@ -340,145 +368,156 @@ local function caption(props: { [string]: any }): TextLabel
 	return Theme.label(props, "Small", nil, Theme.Colors.ink2)
 end
 
--- The regular layout (spec "Grip card", redesign-check.jpg): a Mint level tile ("GRIP" over the level) beside the rank,
--- the bar, "{have} / {need} Grip", the Double Grip line with a clock and the next goal (§17.7).
+-- UI FINAL R4 (H:82-90, G4.14): the regular layout is the design's bare Grip row, 6 in from the left (H:82; its goal
+-- line too): the bar column (200 wide, 3 apart, H:83): the Grip bar over its 3 px ink lip (H:84), then "{have} /
+-- {need} Grip" (gripText, H:87); 10 to its right (centred) the Double Grip chip, raised by its 14 px bottom padding
+-- (H:89 margin-top -14 in a centred row: 7 up either way): the bolt pulsing 1 s, 2 apart from "2x ~{minutes} min"
+-- (boost). Under the row the goal line (UD4, kept; in the row's text look, a reading), wrapped at the row's width
+-- (HudFormat.gripGoalWidth; applyCardLayout follows the text size).
 local function buildRegular(c: Cleanup.Cleanup, body: Frame): (Frame, { [string]: any })
 	local regular: Frame = Create("Frame", {
 		Name = "Regular",
 		LayoutOrder = 1,
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
 		Parent = body,
 	})
+	Create("UIPadding", { PaddingLeft = UDim.new(0, COLUMN.gripPadLeft), Parent = regular })
 	Theme.list(
-		Enum.FillDirection.Horizontal,
-		COLUMN.cardGap,
+		Enum.FillDirection.Vertical,
+		COLUMN.listGap,
 		regular,
 		Enum.HorizontalAlignment.Left,
 		Enum.VerticalAlignment.Top
 	)
-	local bands = Theme.Foam.button
-	local tile: Frame = Create("Frame", {
-		Name = "LevelTile",
+	local row: Frame = Create("Frame", {
+		Name = "Row",
 		LayoutOrder = 1,
-		BorderSizePixel = 0,
-		Size = UDim2.fromOffset(COLUMN.levelTileWidth, COLUMN.levelTileHeight),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = regular,
-	})
-	Theme.foam(tile, {
-		radius = LEVEL_TILE_RADIUS,
-		top = bands.top,
-		bevel = bands.bevel,
-		drop = bands.drop,
-		colors = Theme.accentColors("mint", true),
-	})
-	Create("UIPadding", {
-		PaddingTop = UDim.new(0, bands.top + 2),
-		PaddingBottom = UDim.new(0, bands.bevel + bands.drop),
-		Parent = tile,
-	})
-	Theme.list(Enum.FillDirection.Vertical, 0, tile)
-	local tag = Theme.label({
-		Name = "Tag",
-		Text = text("grip.levelTag"),
-		LayoutOrder = 1,
+		BackgroundTransparency = 1,
 		Size = UDim2.fromOffset(0, 0),
 		AutomaticSize = Enum.AutomaticSize.XY,
-		TextWrapped = false,
-		Parent = tile,
-	}, "Chip")
-	Theme.textOnColor(tag) -- InkUI (the Chip kind is under the 18 px outline size)
-	local levelLabel = Theme.label({
-		Name = "Level",
-		LayoutOrder = 2,
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		TextWrapped = false,
-		Parent = tile,
-	}, "H2")
-	Theme.textOnColor(levelLabel) -- white with the InkUI outline
-
-	local info: Frame = Create("Frame", {
-		Name = "Info",
-		LayoutOrder = 2,
-		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(HudFormat.gripInfoWidth(), 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = regular,
-	})
-	Theme.list(
-		Enum.FillDirection.Vertical,
-		COLUMN.listGap,
-		info,
-		Enum.HorizontalAlignment.Left,
-		Enum.VerticalAlignment.Top
-	)
-	-- Foam fix: every line left-aligned like the design (Theme.label centres by default).
-	local rankLabel = Theme.label({
-		Name = "Rank",
-		LayoutOrder = 1,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = info,
-	}, "Button")
-	local gripBar = ProgressBar.new({
-		name = "Bar",
-		accent = "mint",
-		heightPx = COLUMN.barHeight,
-		layoutOrder = 2,
-		parent = info,
-	})
-	c:add(gripBar)
-	local barLabel = caption({
-		Name = "BarText",
-		LayoutOrder = 3,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = info,
-	})
-	local chipRow: Frame = Create("Frame", {
-		Name = "Chip",
-		LayoutOrder = 4,
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Visible = false,
-		Parent = info,
 	})
 	Theme.list(
 		Enum.FillDirection.Horizontal,
-		COLUMN.listGap,
-		chipRow,
+		COLUMN.gripRowGap,
+		row,
+		Enum.HorizontalAlignment.Left,
+		Enum.VerticalAlignment.Center
+	)
+	-- A text longer than the bar widens the column (its 200 is the least; HudFormat.gripRowWidth).
+	local column: Frame = Create("Frame", {
+		Name = "BarColumn",
+		LayoutOrder = 1,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(COLUMN.gripBarWidth, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Parent = row,
+	})
+	Theme.list(
+		Enum.FillDirection.Vertical,
+		COLUMN.gripBarGap,
+		column,
 		Enum.HorizontalAlignment.Left,
 		Enum.VerticalAlignment.Top
 	)
-	local clock = IconGlyph.new({
-		name = "Icon",
-		icon = "clock",
-		sizePx = COLUMN.chipIconPx,
-		tone = "light", -- Candy UI: on the dark card
-		layoutOrder = 1,
-		parent = chipRow,
+	local barHolder: Frame = Create("Frame", {
+		Name = "BarHolder",
+		LayoutOrder = 1,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(COLUMN.gripBarWidth, COLUMN.gripBarHeight),
+		Parent = column,
 	})
-	c:add(clock)
-	local chipLabel = caption({
-		Name = "Text",
+	-- H:84 box-shadow 0 3px 0 #1E1428: the bar's shape in the ink, 3 px lower, behind it.
+	local lip: Frame = Create("Frame", {
+		Name = "Lip",
+		BackgroundColor3 = Theme.Colors.inkUI,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, BAR_LIP_PX),
+		Size = UDim2.new(1, 0, 0, BAR_PX),
+		ZIndex = 0,
+		Parent = barHolder,
+	})
+	Theme.corner(BAR_PX, lip)
+	local gripBar = ProgressBar.new({
+		name = "Bar",
+		variant = "grip",
+		widthPx = COLUMN.gripBarWidth,
+		parent = barHolder,
+	})
+	c:add(gripBar)
+	local barLabel = Theme.label({
+		Name = "BarText",
 		LayoutOrder = 2,
-		Size = UDim2.new(1, -(COLUMN.chipIconPx + COLUMN.listGap), 0, 0),
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		TextWrapped = false,
 		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = column,
+	}, "Small")
+	Theme.stickerText(barLabel, "gripText") -- H:87
+	barLabel.TextWrapped = false
+	local chipRow: Frame = Create("Frame", {
+		Name = "Chip",
+		LayoutOrder = 2,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Visible = false,
+		Parent = row,
+	})
+	Create("UIPadding", { PaddingBottom = UDim.new(0, HUD_GRIP.boostRaise), Parent = chipRow })
+	Theme.list(
+		Enum.FillDirection.Horizontal,
+		COLUMN.boostGap,
+		chipRow,
+		Enum.HorizontalAlignment.Left,
+		Enum.VerticalAlignment.Center
+	)
+	-- The bolt's pulse plays on its picture inside a cell no layout places (UiIdle's inner holder).
+	local boltCell: Frame = Create("Frame", {
+		Name = "BoltCell",
+		LayoutOrder = 1,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(COLUMN.boltPx, COLUMN.boltPx),
 		Parent = chipRow,
 	})
-	local goalLabel = caption({
-		Name = "Goal",
-		LayoutOrder = 5,
-		Visible = false,
+	local bolt = IconGlyph.image("img.icon.bolt", { name = "Bolt", sizePx = COLUMN.boltPx, parent = boltCell })
+	-- Centre-anchored: the pulse's UIScale scales about the AnchorPoint, so it breathes about its centre (CSS 50%).
+	bolt.AnchorPoint = Vector2.new(0.5, 0.5)
+	bolt.Position = UDim2.fromScale(0.5, 0.5)
+	local pulse = UiIdle.add(bolt, "pulse", { periodS = HUD_GRIP.boltPulseS }) -- H:89 sdPulse 1s
+	if pulse then
+		c:add(function()
+			pulse:remove()
+		end)
+	end
+	local chipLabel = Theme.label({
+		Name = "Text",
+		LayoutOrder = 2,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		TextWrapped = false,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = info,
-	})
+		Parent = chipRow,
+	}, "Small")
+	Theme.stickerText(chipLabel, "boost") -- H:89
+	chipLabel.TextWrapped = false
+	local goalLabel = Theme.label({
+		Name = "Goal",
+		LayoutOrder = 2,
+		Visible = false,
+		Size = UDim2.fromOffset(HudFormat.gripGoalWidth(), 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = regular,
+	}, "Small")
+	Theme.stickerText(goalLabel, "gripText")
+	goalLabel.TextWrapped = true
 	return regular,
 		{
-			levelLabel = levelLabel,
-			rankLabel = rankLabel,
 			bar = gripBar,
 			barLabel = barLabel,
 			chipRow = chipRow,
@@ -490,36 +529,46 @@ end
 local function buildCard(c: Cleanup.Cleanup)
 	-- Foam fix: the card sits centred in a fixed-size slot in the column (applyCardLayout sizes both), so the list only
 	-- sees the slot and the press feel's scale (hover 1.04) never moves the tiles under it.
+	local startSize = UDim2.fromOffset(HudFormat.gripRowWidth(), HudFormat.gripCardHeight("regular", nil, 1))
 	local slot: Frame = Create("Frame", {
 		Name = "Hud_GripSlot",
 		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(CARD_WIDTH, COLUMN.levelTileHeight),
+		Size = startSize,
 		LayoutOrder = CARD_ORDER,
 		Visible = false,
 	})
+	-- UI FINAL R4: the regular row's invisible tap target (H:82: no face and no press look, no data-fx); the compact
+	-- card keeps its foam on Face. Its UIScale "Scale" is the row's squash on a Grip gain (squashRow).
 	local root: TextButton = Create("TextButton", {
 		Name = "Hud_GripButton",
 		Text = "",
 		AutoButtonColor = false,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(CARD_WIDTH, COLUMN.levelTileHeight),
+		Size = startSize,
 		Visible = false,
 		Parent = slot,
 	})
-	cardFoam(root)
+	local face: Frame = Create("Frame", {
+		Name = "Face",
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 0,
+		Visible = false,
+		Parent = root,
+	})
+	cardFoam(face)
+	local squash: UIScale = Create("UIScale", { Name = "Scale", Scale = 1, Parent = root })
 	Focus.decorate(root, Theme.Radius.panel)
-	-- The Button press feel; silent: it opens the Grip panel (ui.open plays).
-	c:add(Button.decorate(root, { sound = false }))
-	-- Part 8: one layout at a time (the other is invisible, so the list skips it). The root's height follows the body
+	-- Part 8: one layout at a time (the other is invisible, so the list skips it). The root's size follows the body
 	-- (applyCardLayout): no AutomaticSize.
 	local body: Frame = Create("Frame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(COLUMN.cardPadLeft, COLUMN.cardPadTop),
-		Size = UDim2.new(1, -(COLUMN.cardPadLeft + COLUMN.cardPadRight), 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
 		Parent = root,
 	})
 	Theme.list(Enum.FillDirection.Vertical, 0, body, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
@@ -561,9 +610,14 @@ local function buildCard(c: Cleanup.Cleanup)
 		parent = compact,
 	})
 	c:add(compactBar)
-	local levelScales: { UIScale } = {}
-	for _, label in { parts.levelLabel :: TextLabel, compactLabel } do
-		table.insert(levelScales, Create("UIScale", { Name = "LevelPop", Scale = 1, Parent = label }))
+	-- UI FINAL R4: the compact label and HudController's GRIP float (the regular row's level) pop (§18.5.1 A9; the
+	-- burst stays on the compact label, the first: the float sits over the play area's top).
+	local levelScales: { UIScale } = { Create("UIScale", { Name = "LevelPop", Scale = 1, Parent = compactLabel }) }
+	local floatLevel = HudController.gripLevelLabel()
+	if floatLevel then
+		local floatPop: UIScale = Create("UIScale", { Name = "LevelPop", Scale = 1, Parent = floatLevel })
+		c:add(floatPop) -- the label is HudController's: the scale goes with this card
+		table.insert(levelScales, floatPop)
 	end
 
 	c:add(root.Activated:Connect(function()
@@ -583,10 +637,9 @@ local function buildCard(c: Cleanup.Cleanup)
 		slot = slot,
 		root = root,
 		body = body,
+		face = face,
 		regular = regular,
 		compact = compact,
-		levelLabel = parts.levelLabel,
-		rankLabel = parts.rankLabel,
 		bar = parts.bar,
 		barLabel = parts.barLabel,
 		chipRow = parts.chipRow,
@@ -597,8 +650,10 @@ local function buildCard(c: Cleanup.Cleanup)
 		levelScales = levelScales,
 		levelTweens = {},
 		barSet = false,
+		squash = squash,
+		squashHandle = nil,
 	}
-	-- The root follows the body's height (the layout changes it, and wrapping lines at a new text size).
+	-- The root follows the body's size (the layout changes it, and the lines at a new text size).
 	c:add(body:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		applyCardLayout()
 	end))
@@ -608,6 +663,11 @@ local function buildCard(c: Cleanup.Cleanup)
 		if k then
 			for _, tween in k.levelTweens do
 				tween:Cancel()
+			end
+			local handle = k.squashHandle
+			k.squashHandle = nil
+			if handle then
+				handle:disconnect()
 			end
 		end
 	end)
@@ -638,6 +698,34 @@ local function popLevel()
 	end
 end
 
+-- UI FINAL R4 (H:707: FX.squash(grip, .3) on each Grip gain; PR4): the press squash's series for the row's amount
+-- (buttonPress.amount x hud.grip.squash), drawn as Button.decoratedScale on the root's UIScale (a new one restarts
+-- it); none under ReducedMotion or while the card is hidden.
+local function squashRow()
+	local k = card
+	if k == nil or not k.root.Visible or Tweens.reducedMotion() then
+		return
+	end
+	local running = k.squashHandle
+	if running then
+		running:disconnect()
+	end
+	local scale = k.squash
+	local amount = PRESS.amount * HUD_GRIP.squash
+	local duration = PRESS.ms / 1000
+	local elapsed = 0
+	k.squashHandle = Scheduler.add(function(dt: number): boolean
+		elapsed += dt
+		local u = math.min(elapsed / duration, 1)
+		scale.Scale = if u >= 1 then 1 else Button.decoratedScale(Button.squashAt(u, amount))
+		if u >= 1 then
+			k.squashHandle = nil
+			return false
+		end
+		return true
+	end, "render")
+end
+
 local function setLabel(label: TextLabel, value: string?)
 	local shown = value ~= nil and value ~= ""
 	label.Visible = shown
@@ -655,8 +743,8 @@ local function currentModel(): CardModel?
 	return GripController.cardModel(v, serverNow(), capsules, StateController.coins(), StateController.owned())
 end
 
--- The card's own press-feel scale (Button.decorate's UIScale "Scale" on the root; 1 without it), so its measured sizes
--- are read unscaled (foam fix: a hovered card measured its body 4% taller and grew itself on top of the scale).
+-- The card's own scale (its UIScale "Scale" on the root, UI FINAL R4: the row's squash; 1 without it), so its measured
+-- sizes are read unscaled (foam fix: a hovered card measured its body 4% taller and grew itself on top of the scale).
 local function feelScale(root: GuiObject): number
 	local scale = root:FindFirstChild("Scale")
 	return if scale and scale:IsA("UIScale") and scale.Scale > 0 then scale.Scale else 1
@@ -664,7 +752,8 @@ end
 
 -- Part 8: the card's layout from HudController's column plan (regular / compact / hidden), whether it is up, and its
 -- size: compact = the touch-sized tap target (HudFormat.gripCardHeight) as wide as its line (gripCompactWidth);
--- regular = the body plus the paddings. Its slot in the column takes the same, unscaled size.
+-- regular (UI FINAL R4) = the bare row's measured size (before it has one: HudFormat.gripRowWidth / gripCardHeight).
+-- Its slot in the column takes the same, unscaled size.
 applyCardLayout = function()
 	local k = card
 	if k == nil then
@@ -684,26 +773,40 @@ applyCardLayout = function()
 	local compactLayout = mode == "compact"
 	k.regular.Visible = not compactLayout
 	k.compact.Visible = compactLayout
+	k.face.Visible = compactLayout
 	local scale = UIController.scale() * feelScale(k.root)
+	local textScale = HudController.textScale()
 	local width, height = CARD_WIDTH, 0
+	local hitHeight = 0 -- UI FINAL R4: the root (the tap target) can be taller than the slot
 	if compactLayout then
-		height = HudFormat.gripCardHeight("compact", HudController.textScale(), plan.scale)
-		width = HudFormat.gripCompactWidth(k.compactLabel.Text, HudController.textScale())
+		height = HudFormat.gripCardHeight("compact", textScale, plan.scale)
+		width = HudFormat.gripCompactWidth(k.compactLabel.Text, textScale)
 		local body = (height - CARD_BANDS.bevel - CARD_BANDS.drop) / 2
 		k.body.AnchorPoint = Vector2.new(0, 0.5)
 		k.body.Position = UDim2.fromOffset(COLUMN.cardPadding + 4, body)
+		k.body.AutomaticSize = Enum.AutomaticSize.Y
 		k.body.Size = UDim2.new(1, -2 * (COLUMN.cardPadding + 4), 0, 0)
 	else
-		k.body.AnchorPoint = Vector2.new(0, 0)
-		k.body.Position = UDim2.fromOffset(COLUMN.cardPadLeft, COLUMN.cardPadTop)
-		k.body.Size = UDim2.new(1, -(COLUMN.cardPadLeft + COLUMN.cardPadRight), 0, 0)
-		local bodyHeight = if scale > 0 then k.body.AbsoluteSize.Y / scale else 0
+		-- The row centred in its tap target, which is at least the touch minimum tall (PR1: the max-level row with no
+		-- goal line is about 40); the slot keeps the row's own size, so the column does not move.
+		k.body.AnchorPoint = Vector2.new(0, 0.5)
+		k.body.Position = UDim2.fromScale(0, 0.5)
+		k.body.AutomaticSize = Enum.AutomaticSize.XY
+		k.body.Size = UDim2.fromOffset(0, 0)
+		local goalSize = UDim2.fromOffset(HudFormat.gripGoalWidth(textScale), 0)
+		if k.goalLabel.Size ~= goalSize then
+			k.goalLabel.Size = goalSize
+		end
+		local measured = if scale > 0 then k.body.AbsoluteSize / scale else Vector2.zero
+		width = math.ceil(if measured.X > 0 then measured.X else HudFormat.gripRowWidth(textScale))
 		height =
-			math.ceil(COLUMN.cardPadTop + math.max(bodyHeight, HudFormat.levelTileHeight(1)) + COLUMN.cardPadBottom)
+			math.ceil(if measured.Y > 0 then measured.Y else HudFormat.gripCardHeight("regular", textScale, plan.scale))
+		hitHeight = math.max(height, Config.UI.Touch.minTarget)
 	end
 	local size = UDim2.fromOffset(width, height)
-	if k.root.Size ~= size then
-		k.root.Size = size
+	local hit = UDim2.fromOffset(width, math.max(height, hitHeight))
+	if k.root.Size ~= hit then
+		k.root.Size = hit
 	end
 	if k.slot.Size ~= size then
 		k.slot.Size = size
@@ -718,16 +821,16 @@ local function refreshCard()
 	local model = currentModel()
 	cardPresent = model ~= nil and not suppressed()
 	HudController.setColumnItem("grip", cardPresent)
+	-- UI FINAL R4 (H:92-96): the level shows on HudController's GRIP float while the card is up.
+	HudController.setGripLevel(if cardPresent and model then model.level else nil)
 	if model == nil then
 		applyCardLayout()
 		return
 	end
 	local compactLayout = HudController.columnPlan().grip ~= "regular"
-	setLabel(k.levelLabel, tostring(model.level))
-	setLabel(k.rankLabel, model.rankText)
 	setLabel(k.barLabel, model.barText)
-	k.chipRow.Visible = model.chip ~= nil
-	setLabel(k.chipLabel, model.chip)
+	k.chipRow.Visible = model.boost ~= nil
+	setLabel(k.chipLabel, model.boost)
 	-- Foam fix 2: the goal line reads the short form (cardGoal), so it keeps to one line.
 	setLabel(k.goalLabel, model.cardGoal)
 	setLabel(k.compactLabel, model.levelCompact)
@@ -998,6 +1101,9 @@ local function onGrip(raw: any)
 	if GripController.shouldPopLevel(change) and not suppressed() then
 		popLevel()
 	end
+	if GripController.shouldSquash(change, if old then old.total else nil, newView.total) and not suppressed() then
+		squashRow()
+	end
 end
 
 local function onLobbyLock()
@@ -1057,6 +1163,11 @@ end
 -- (never the session's first state or a full state that replaced the profile: that level was loaded, not earned).
 function GripController.shouldPopLevel(change: GripChange): boolean
 	return change.fireLevel and not change.baseline
+end
+
+-- UI FINAL R4 (H:707): whether a grip state squashes the row: Grip gained after the silent baseline.
+function GripController.shouldSquash(change: GripChange, oldTotal: number?, newTotal: number): boolean
+	return not change.baseline and oldTotal ~= nil and newTotal > oldTotal
 end
 
 -- A goal's identity for the "new goal" toast: its Strings key plus its text; a capsule goal's key plus its capsule
@@ -1134,11 +1245,7 @@ end
 
 -- "Double Grip: about {minutes} min" for a Grip state at server time `now`, or nil while it is empty or off.
 function GripController.restedChip(v: GripView, now: number): string?
-	local rested = v.rested
-	if not RESTED.enabled or rested == nil then
-		return nil
-	end
-	local minutes = GripMath.restedMinutes(SqueezeLimit.current(rested, now, RESTED))
+	local minutes = restedMinutes(v, now)
 	return if minutes > 0 then text("grip.restedChip", { minutes = minutes }) else nil
 end
 
@@ -1147,7 +1254,7 @@ end
 -- top; foam fix, user decision 2026-10-09: the fill is have / need too, the same numbers the words show, so 42,000 /
 -- 66,000 reads about two thirds full; full at the top), the Double Grip chip and the next goal (Batch 1: a capsule
 -- buy first when `capsules` is given, an unlock only with a spare in `owned`; foam fix 2: and its short form for the
--- regular card, CARD_GOAL_KEYS).
+-- regular card, CARD_GOAL_KEYS; UI FINAL R4: the bare row's chip, boost).
 function GripController.cardModel(v: GripView, now: number, capsules: any?, coins: number?, owned: any?): CardModel
 	local progress = GripMath.progress(v.total)
 	local lv = progress.level
@@ -1156,6 +1263,7 @@ function GripController.cardModel(v: GripView, now: number, capsules: any?, coin
 	local fraction = if progress.isMax or progress.need <= 0 then 1 else progress.have / progress.need
 	local goal = GripMath.nextGoal({ total = v.total, capsules = capsules, coins = coins, owned = owned })
 	local goalArgs = if goal then GripController.goalArgs(goal) else nil
+	local minutes = restedMinutes(v, now)
 	return {
 		level = lv,
 		levelText = text("grip.hudLevel", { level = lv, rank = rankText }),
@@ -1166,6 +1274,7 @@ function GripController.cardModel(v: GripView, now: number, capsules: any?, coin
 			else text("grip.hudBar", { have = Format.coins(progress.have), need = Format.coins(progress.need) }),
 		fraction = math.clamp(fraction, 0, 1),
 		chip = GripController.restedChip(v, now),
+		boost = if minutes > 0 then text("hud.gripBoost", { minutes = minutes }) else nil, -- UI FINAL R4 (H:89)
 		goal = if goal then text(goal.textKey, goalArgs) else nil,
 		cardGoal = if goal then text(CARD_GOAL_KEYS[goal.textKey] or goal.textKey, goalArgs) else nil,
 		goalKey = if goal then goal.textKey else nil,
@@ -1195,6 +1304,7 @@ function GripController.debugState(): { [string]: any }
 		cardMode = HudController.columnPlan().grip, -- Part 8: regular / compact / hidden (HudFormat.leftColumnPlan)
 		cardHeight = if k then k.root.AbsoluteSize.Y else nil, -- px on screen (>= 44 on the compact card)
 		chip = if model then model.chip else nil,
+		boost = if model then model.boost else nil, -- UI FINAL R4: the bare row's chip
 		goal = if model then model.goal else nil,
 		suppressed = suppressed(),
 		panelOpen = UIController.isOpen(SCREEN_PANEL),
@@ -1259,6 +1369,7 @@ function GripController.init()
 		if cardPresent then
 			cardPresent = false
 			HudController.setColumnItem("grip", false)
+			HudController.setGripLevel(nil)
 		end
 		table.clear(toastedGoals)
 	end)

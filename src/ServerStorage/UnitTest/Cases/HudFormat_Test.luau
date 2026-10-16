@@ -31,6 +31,20 @@
 -- the coins "+N" rises only as far as the HUD's top (gainRise); the toast column keeps air beside a badge hanging past
 -- the tile row (badgeReachRect). Foam fix 3: the "+N" reads "+12,450" (gainText); on phones it sits on the capsule's
 -- top edge over its number, clear of the Grip card beside it and inside the HUD (gainSpot); PCs keep fix 2's spot.
+-- UI FINAL R4 (plan work/ui/PLAN.md R4; `H:n` = "Squishy Duels HUD.dc.html" line n, `N:n` = Diego's newer file): the
+-- "+N" float and the disc wiggle are gone (gainText, gainRise, gainSpot, iconWiggle; a gain shows the coin flash);
+-- a landing shows floor(amount / k) more per coin, the last one the rest (coinStep), its bright flash at most once per
+-- bounceMinGapMs, the last coin's kept (flashPlan, PR7); the DUEL area reads DUEL / Join the queue, and while Searching
+-- the search bar's Finding match, its clock and its queue line (ctaModel); the testers' mode picker (pickerShown); the
+-- tracker's status (trackerStatus); the design's spots (origins: Hud_Left 24 / 18, the tiles 14 / 150, the right
+-- column 22 / 16, the DUEL area at 30; phones the edge), the faceless 118 x 104 tiles with no gap, the bare Grip row
+-- (gripRowWidth, gripGoalWidth, gripCardHeight), the 63 px coin pill (pillHeight, pillWidth), the DUEL button's 350
+-- (ctaWidth) and the search / found bars' room (barWidth, barParts); the toast column top 200 (N:197) and the coach
+-- card's own band line (coachLine 110). Review fixes: a claim's flight only raises the number, whichever of its
+-- StateDelta and its reply comes first (flightShows); the GRIP float not on phones nor in first person
+-- (gripFloatShown); phones scale only the idle DUEL button, the search bar keeps its second line on every screen
+-- (ctaScales, PR1, PR2); MATCH FOUND under the duel HUD's top bar (foundSpot); Down from the searching bar's cancel X
+-- to the queue pill's hint (focusLinks `hint`).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -149,10 +163,8 @@ return function(t: Context)
 		expect.equal(HudFormat.coinGain(50, 55), 5)
 		expect.equal(HudFormat.coinGain(55, 40), nil)
 		expect.equal(HudFormat.coinGain(40, 40), nil)
-		-- Foam fix 3: the "+N" groups its thousands like the capsule.
-		expect.equal(HudFormat.gainText(5), "+5")
-		expect.equal(HudFormat.gainText(12450), "+12,450")
-		expect.equal(HudFormat.gainText(1234567), "+" .. Format.coins(1234567))
+		-- UI FINAL R4 (G4.11): no "+N" text any more (a gain shows the coin flash).
+		expect.equal((HudFormat :: any).gainText, nil)
 	end)
 
 	t.test("badges: claimable quests, an unclaimed daily reward, capped numbers", function()
@@ -214,21 +226,78 @@ return function(t: Context)
 		expect.deepEqual(HudFormat.releaseHeld(nil, 60, true, false), { kind = "none" })
 	end)
 
-	t.test("coins: the disc wiggles 0 -> -12° -> 0 over 200 ms", function()
-		local Config = t.requireShared("Config")
-		local deg = Config.UI.motion.coinCounter.iconWiggleDeg
-		local start, startDone = HudFormat.iconWiggle(0)
-		expect.equal(start, 0)
-		expect.falsy(startDone)
-		local mid = HudFormat.iconWiggle(0.1)
-		expect.near(mid, -deg, 1e-6)
-		local final, done = HudFormat.iconWiggle(0.2)
-		expect.equal(final, 0)
-		expect.truthy(done)
-		for i = 1, 19 do
-			local r = HudFormat.iconWiggle(i / 100)
-			expect.truthy(r <= 0 and r >= -deg)
+	t.test("coin landings (G4.10, H:663-668): each coin shows floor(amount / k) more, the last one the rest", function()
+		expect.equal(HudFormat.coinStep(100, 8, 1), 12)
+		expect.equal(HudFormat.coinStep(100, 8, 7), 84)
+		expect.equal(HudFormat.coinStep(100, 8, 8), 100)
+		expect.equal(HudFormat.coinStep(5, 8, 3), 0) -- fewer Coins than coins: the number moves at the last one
+		expect.equal(HudFormat.coinStep(5, 8, 8), 5)
+		expect.equal(HudFormat.coinStep(100, 0, 1), 100)
+		expect.equal(HudFormat.coinStep(0 / 0, 8, 1), 0)
+		for i = 1, 7 do
+			expect.truthy(HudFormat.coinStep(1234, 8, i) <= HudFormat.coinStep(1234, 8, i + 1))
 		end
+		-- The disc wiggle went with the "+N" (UI FINAL R4).
+		expect.equal((HudFormat :: any).iconWiggle, nil)
+	end)
+
+	t.test("coin flash (PR7): at most one per bounceMinGapMs; the last coin's is kept for when the gap ends", function()
+		local Config = t.requireShared("Config")
+		local gap = Config.UI.motion.coinFlight.bounceMinGapMs / 1000
+		expect.equal((HudFormat.flashPlan(10, nil, false)), "now")
+		expect.equal((HudFormat.flashPlan(10 + gap, 10, false)), "now")
+		expect.equal((HudFormat.flashPlan(10 + gap / 2, 10, false)), "skip")
+		local kind, at = HudFormat.flashPlan(10 + gap / 2, 10, true)
+		expect.equal(kind, "later")
+		expect.near(at :: number, 10 + gap, 1e-9)
+		expect.equal((HudFormat.flashPlan(10, 0 / 0, true)), "now")
+		-- 3 Hz at most (§9.12).
+		expect.truthy(gap >= 1 / 3 - 1e-6)
+	end)
+
+	t.test("a claim's flight (G4.10): the shown number only rises from the old one, whichever comes first", function()
+		local function run(target: (i: number) -> number?): { number }
+			local shown = {}
+			for i = 1, 8 do
+				table.insert(shown, HudFormat.flightShows(1000, target(i), 100, 8, i))
+			end
+			return shown
+		end
+		local function rising(list: { number }, from: number, to: number)
+			local last = from
+			for _, n in list do
+				expect.truthy(n >= last and n <= to)
+				last = n
+			end
+			expect.equal(list[#list], to)
+		end
+		-- The StateDelta first (the number held at 1,000: HudController's flightWaitMs), then the flight of 100.
+		local deltaFirst = run(function()
+			return 1100
+		end)
+		expect.deepEqual(deltaFirst, { 1012, 1024, 1036, 1048, 1060, 1072, 1084, 1100 })
+		rising(deltaFirst, 1000, 1100)
+		-- The reply first: the number stays at 1,000 until the delta, then steps on.
+		local replyFirst = run(function(i: number): number?
+			return if i <= 3 then 1000 else 1100
+		end)
+		expect.deepEqual(replyFirst, { 1000, 1000, 1000, 1048, 1060, 1072, 1084, 1100 })
+		rising(replyFirst, 1000, 1100)
+		-- A spend during the flight wins at once; no newest value known: the steps, then the whole amount.
+		expect.equal(HudFormat.flightShows(1000, 900, 100, 8, 2), 900)
+		expect.equal(HudFormat.flightShows(1000, nil, 100, 8, 2), 1024)
+		expect.equal(HudFormat.flightShows(1000, nil, 100, 8, 8), 1100)
+		local Config = t.requireShared("Config")
+		local wait = Config.UI.motion.coinCounter.flightWaitMs
+		expect.truthy(type(wait) == "number" and wait > 0 and wait < Config.UI.motion.coinFlight.ms)
+	end)
+
+	t.test("the GRIP float (H:92-96): with the HUD up and a level, not on phones, not in first person", function()
+		expect.truthy(HudFormat.gripFloatShown(true, 5, false, false))
+		expect.falsy(HudFormat.gripFloatShown(false, 5, false, false)) -- the HUD hidden (a duel)
+		expect.falsy(HudFormat.gripFloatShown(true, nil, false, false)) -- no Grip state
+		expect.falsy(HudFormat.gripFloatShown(true, 5, true, false)) -- phones: the compact card shows the level
+		expect.falsy(HudFormat.gripFloatShown(true, 5, false, true)) -- practice in first person: over the targets
 	end)
 
 	t.test("key hints: the action with its key as text, plain on touch; the keycap's key", function()
@@ -293,30 +362,62 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the Duel CTA: DUEL / Join the queue; IN QUEUE with the queue's clock while Searching", function()
+	t.test("the DUEL area: DUEL / Join the queue; Searching: Finding match, its clock and the queue line", function()
 		expect.deepEqual(
 			HudFormat.ctaModel(nil, 100),
-			{ queued = false, title = Strings.hud.duelCta, subtext = Strings.hud.duelJoin }
+			{ queued = false, title = Strings.hud.duelCta, subtext = Strings.hud.duelJoin, time = "" }
 		)
 		expect.equal(HudFormat.ctaModel({ state = "Idle" }, 100).queued, false)
 		expect.equal(HudFormat.ctaModel({ state = "Matched", joinedAt = 10 }, 100).queued, false)
-		local queued = HudFormat.ctaModel({ state = "Searching", joinedAt = 1000 }, 1023.6)
+		-- UI FINAL R4 (H:139, H:142): the search bar's "Finding match", its m:ss and the position line (plan FD1).
+		local queue = { state = "Searching", joinedAt = 1000, position = 2, searching = 3, arenasFree = 6 }
+		local queued = HudFormat.ctaModel(queue, 1023.6)
 		expect.deepEqual(queued, {
 			queued = true,
-			title = Strings.hud.duelQueued,
-			subtext = Strings.format(Strings.hud.duelSearchingTime, { time = "0:23" }),
+			title = Strings.hud.findingMatch,
+			subtext = Strings.format(Strings.queue.position, { n = 2 }),
+			time = "0:23",
 		})
 		-- The same clock as the queue pill's title.
 		local QueueFormat = t.requireClient("UI/QueueFormat")
-		local pill = QueueFormat.pill(
-			{ state = "Searching", joinedAt = 1000, position = 1, searching = 1, arenasFree = 6 },
-			1023.6,
-			nil,
-			nil
+		local pill = QueueFormat.pill(queue, 1023.6, nil, nil)
+		expect.truthy(string.find(pill.title, queued.time, 1, true) ~= nil)
+		-- No arena free for the head pair: the arena line (QueueFormat.searchLine, never the hint).
+		local waiting = HudFormat.ctaModel(
+			{ state = "Searching", joinedAt = 1000, position = 1, searching = 2, arenasFree = 0 },
+			1001
 		)
-		expect.truthy(string.find(pill.title, "0:23", 1, true) ~= nil)
-		expect.truthy(string.find(queued.subtext, "0:23", 1, true) ~= nil)
-		expect.equal(HudFormat.ctaModel({ state = "Searching" }, 50).subtext, Strings.hud.duelSearching)
+		expect.equal(waiting.subtext, Strings.queue.waitingArena)
+		-- Before joinedAt and the counts arrive: no clock, no line.
+		local bare = HudFormat.ctaModel({ state = "Searching" }, 50)
+		expect.equal(bare.title, Strings.hud.findingMatch)
+		expect.equal(bare.time, "")
+		expect.equal(bare.subtext, "")
+	end)
+
+	t.test("the mode picker (UI FINAL R4, N:144-162): Config.Match testers, or everyone with the [P] switch", function()
+		local match = t.requireShared("Config").Match
+		for _, id in match.pickerTesters do
+			expect.truthy(HudFormat.pickerShown(id))
+		end
+		expect.equal(HudFormat.pickerShown(1, { pickerTesters = { 8963996639 }, pickerForEveryone = false }), false)
+		expect.equal(HudFormat.pickerShown(1, { pickerTesters = {}, pickerForEveryone = true }), true)
+		expect.equal(HudFormat.pickerShown(nil, { pickerTesters = { 1 }, pickerForEveryone = false }), false)
+		expect.equal(
+			HudFormat.pickerShown(8963996639, { pickerTesters = { 8963996639 }, pickerForEveryone = false }),
+			true
+		)
+	end)
+
+	t.test("the quest tracker's status (H:995): Ready to claim! for a claimable quest, else its reward", function()
+		expect.deepEqual(
+			HudFormat.trackerStatus({ state = "claim", reward = 50 } :: any),
+			{ text = Strings.hud.questReady, ready = true }
+		)
+		expect.deepEqual(HudFormat.trackerStatus({ state = "inProgress", reward = 1200 } :: any), {
+			text = Strings.format(Strings.hud.trackerReward, { coins = Format.coins(1200) }),
+			ready = false,
+		})
 	end)
 
 	-- Layout ---------------------------------------------------------------------------------------------------------
@@ -468,13 +569,18 @@ return function(t: Context)
 						expect.truthy(layout.gripHeight > 0)
 						-- The parts add up: the edge, the capsule and the card (stacked, or side by side: the taller of
 						-- the two), the gap, the tiles (phones: tight gaps). Only the compact card goes beside.
-						local innerGap, tilesGap = HudFormat.leftGaps(class == "compact", layout.grip)
+						-- UI FINAL R4: from the design's spots (origins; phones the edge).
+						local compact = class == "compact"
+						local origin = HudFormat.origins(compact)
+						local innerGap, tilesGap = HudFormat.leftGaps(compact, layout.grip)
 						local leftBottom = if layout.left == "beside"
-							then COLUMN.edge + math.max(layout.pillHeight, layout.gripHeight)
-							else COLUMN.edge + layout.pillHeight + innerGap + layout.gripHeight
+							then origin.left.Y + math.max(layout.pillHeight, layout.gripHeight)
+							else origin.left.Y + layout.pillHeight + innerGap + layout.gripHeight
 						expect.truthy(layout.left == "stack" or layout.grip == "compact")
 						expect.near(layout.leftBottom, leftBottom, 1e-6)
-						expect.near(layout.tilesTop, layout.leftBottom + tilesGap, 1e-6)
+						-- The tiles a gap under Hud_Left; on regular layouts never above the design's nav top (H:98).
+						local under = layout.leftBottom + tilesGap
+						expect.near(layout.tilesTop, if compact then under else math.max(origin.nav.Y, under), 1e-6)
 						expect.near(layout.bottom, layout.tilesTop + layout.tilesHeight, 1e-6)
 						expect.truthy(layout.tilesTop > layout.leftBottom)
 					end
@@ -517,7 +623,7 @@ return function(t: Context)
 			local noGrip = HudFormat.leftColumnPlan(screen, class, 1, { grip = false })
 			expect.equal(noGrip.grip, "hidden")
 			expect.equal(noGrip.gripHeight, 0)
-			expect.near(noGrip.leftBottom, COLUMN.edge + noGrip.pillHeight, 1e-6)
+			expect.near(noGrip.leftBottom, HudFormat.origins(class == "compact").left.Y + noGrip.pillHeight, 1e-6)
 			local both = HudFormat.leftColumnPlan(screen, class, 1)
 			expect.truthy(noGrip.bottom <= both.bottom)
 			-- Two tiles registered: a shorter left side.
@@ -627,9 +733,14 @@ return function(t: Context)
 	-- put the Squishies "3" on the coin capsule's outline.
 	t.test("the tiles keep a count badge's reach plus air under Hud_Left (foam fix 2)", function()
 		local CountBadge = t.requireClient("UI/Components/CountBadge")
-		-- The badge: CountBadge.SIZE_PX tall, centred Button's BADGE_INSET (5) inside the tile's corner; UI FINAL R1:
-		-- its border is drawn inside it (H:102), so nothing reaches past its box.
-		expect.truthy(COLUMN.badgeReach >= CountBadge.SIZE_PX / 2 - 5)
+		-- UI FINAL R4 (H:102, H:32): the badge sits inside the sticker (right 8, top 0); only its sdBadge pop (the
+		-- loop's peak scale, about its centre) reaches past the tile's top, never past its right.
+		local peak = 1
+		for _, frame in Config.UI.motion.idle.badge.frames do
+			peak = math.max(peak, frame.scale or 1)
+		end
+		expect.equal(COLUMN.badgeReach, math.ceil((peak - 1) * CountBadge.SIZE_PX / 2 - 1e-6))
+		expect.truthy((peak - 1) * CountBadge.SIZE_PX / 2 <= Config.UI.Sticker.hud.nav.badgeRight)
 		for _, compact in { true, false } do
 			for _, grip in { "compact", "hidden" } do
 				local _, toTiles = HudFormat.leftGaps(compact, grip)
@@ -644,68 +755,10 @@ return function(t: Context)
 		expect.equal(regular, COLUMN.tilesGap)
 	end)
 
-	-- Foam fix 2: the coins "+N" starts beside the capsule's middle and rises only as far as the HUD's top (it floated
-	-- up from the capsule's top into Roblox's top bar).
-	t.test("the coins '+N' rises at most floatPx and never past the HUD's top", function()
-		local float = Config.UI.motion.coinCounter.floatPx
-		local pill = HudFormat.pillHeight(1, 0.85)
-		local label = HudFormat.kindPx("HudNumber", 1) * HudFormat.TEXT_METRICS.lineHeight
-		local rise = HudFormat.gainRise(pill, label)
-		expect.truthy(rise > 0 and rise <= float)
-		-- Its top at the end of the rise: the capsule's middle less half the label less the rise.
-		expect.truthy(COLUMN.edge + pill / 2 - label / 2 - rise >= -1e-6)
-		expect.equal(HudFormat.gainRise(pill, 200), 0) -- already reaching the top: no rise
-		expect.equal(HudFormat.gainRise(1000, 10), float)
-		expect.equal(HudFormat.gainRise(0 / 0, 10), 0)
-	end)
-
-	-- Foam fix 3: on phones the Grip card sits right of the capsule ("beside"), so the "+N" printed over it. There it sits
-	-- on the capsule's top edge over the number's right end, in the small display kind, inside the HUD (Roblox's top bar
-	-- is right above it); a stacked column (PCs) keeps fix 2's spot beside the capsule's middle.
-	t.test("the coins '+N' sits beside a stacked capsule, and on a phone's capsule clear of the Grip card", function()
-		local float = Config.UI.motion.coinCounter.floatPx
-		local metrics = HudFormat.TEXT_METRICS
-		for _, textScale in { 1, 1.45 } do
-			local pill = HudFormat.pillHeight(textScale, 1.25)
-			local spot = HudFormat.gainSpot(false, pill, textScale)
-			expect.equal(spot.kind, "HudNumber")
-			expect.equal(spot.anchorX, 0)
-			expect.truthy(spot.x > 0) -- its left edge right of the capsule
-			expect.equal(spot.yScale, 0.5)
-			expect.equal(spot.y, 0)
-			local label = HudFormat.kindPx("HudNumber", textScale) * metrics.lineHeight
-			expect.near(spot.rise, HudFormat.gainRise(pill, label), 1e-6)
-		end
-		for _, textScale in { 1, 1.15, 1.3, 1.45 } do
-			local pill = HudFormat.pillHeight(textScale, 0.85)
-			local spot = HudFormat.gainSpot(true, pill, textScale)
-			local label = HudFormat.kindPx(spot.kind, textScale) * metrics.lineHeight
-			local where = `text scale {textScale}`
-			-- Its right edge at the number's right end, inside the capsule (the Grip card starts right of it).
-			expect.equal(spot.anchorX, 1)
-			expect.truthy(spot.x <= -COLUMN.capsulePadRight)
-			-- On the capsule's top edge, or just under it, and never above the HUD's top while it rises.
-			expect.equal(spot.yScale, 0)
-			expect.truthy(spot.y >= 0)
-			expect.truthy(spot.rise >= 0 and spot.rise <= float)
-			if not (COLUMN.edge + spot.y - label / 2 - spot.rise >= -1e-6) then
-				error("the '+N' reaches above the HUD's top at " .. where)
-			end
-			-- At least the 13 px minimum at the phone scale.
-			expect.truthy(HudFormat.kindPx(spot.kind, textScale) * 0.85 >= Config.UI.minTextSize)
-		end
-		local pill = HudFormat.pillHeight(1, 0.85)
-		local spot = HudFormat.gainSpot(true, pill, 1)
-		expect.equal(spot.kind, "Chip")
-		expect.equal(spot.y, 0) -- centred on the edge at the standard text size
-		-- A gain is never more than the total the capsule shows, so its "+N" ends inside the capsule's left end.
-		for _, n in { 5, 480, 12450, 999999 } do
-			local gain = HudFormat.textWidth(HudFormat.gainText(n), HudFormat.kindPx(spot.kind, 1), "title")
-			local total = HudFormat.textWidth(HudFormat.coinsText(n), HudFormat.kindPx("HudNumber", 1), "title")
-			expect.truthy(gain <= total + COLUMN.capsuleTextGap)
-		end
-		local bad = HudFormat.gainSpot(true, 0 / 0, 0 / 0)
-		expect.truthy(bad.rise >= 0 and bad.rise <= float)
+	-- UI FINAL R4 (G4.11): the "+N" float is gone with its spot and rise (a gain shows the coin flash, H:562-578).
+	t.test("no coins '+N' any more: gainRise and gainSpot are gone", function()
+		expect.equal((HudFormat :: any).gainRise, nil)
+		expect.equal((HudFormat :: any).gainSpot, nil)
 	end)
 
 	-- Foam fix 2: the toast column keeps beside the tile row's box plus a badge's reach (badgeReachRect, the box
@@ -752,10 +805,13 @@ return function(t: Context)
 		for _, ts in TEXT_SCALES do
 			for _, compact in { false, true } do
 				local w, h = HudFormat.tileSize(compact, ts)
-				local base = if compact then COLUMN.tileSizeCompact else COLUMN.tileSize
-				expect.truthy(w >= base and h >= base)
+				-- UI FINAL R4 (H:99-101): at least the nav sticker's 118 x 104 (phones: the 58 px tile), as wide as the
+				-- widest label in the nav's D23 (phones: Chip).
+				expect.truthy(w >= (if compact then COLUMN.tileSizeCompact else COLUMN.tileWidth))
+				expect.truthy(h >= (if compact then COLUMN.tileSizeCompact else COLUMN.tileHeight))
+				local kind = if compact then "Chip" else "D23"
 				for _, label in HudFormat.worstCaseTexts().tiles do
-					local needed = HudFormat.textWidth(label, HudFormat.kindPx("Chip", ts), "title")
+					local needed = HudFormat.textWidth(label, HudFormat.kindPx(kind, ts), "title")
 					expect.truthy(w >= needed + 2 * COLUMN.tilePadding)
 				end
 			end
@@ -770,6 +826,13 @@ return function(t: Context)
 		expect.deepEqual(box("row", 1000), { 5, 1, 5 * 80 + 4 * gap, 80 })
 		expect.deepEqual(box("row", 3 * 80 + 2 * gap), { 3, 2, 3 * 80 + 2 * gap, 2 * 80 + gap })
 		expect.deepEqual({ HudFormat.tilesBox("row", 0, 80, 80, 1000) }, { 0, 0, 0, 0 })
+		-- UI FINAL R4: the design's nav column has no gap (H:98); phones keep 10 px between their two columns.
+		expect.equal(COLUMN.tileGap, 0)
+		local g = COLUMN.tileGapCompact
+		expect.deepEqual({ HudFormat.tilesBox("grid", 5, 80, 80, 1000, g) }, { 2, 3, 2 * 80 + g, 3 * 80 + 2 * g })
+		-- The picture less the label's pull plus one D23 line fits in the design's 104 at the default text size.
+		local _, height = HudFormat.tileSize(false, 1)
+		expect.equal(height, COLUMN.tileHeight)
 	end)
 
 	t.test("the compact Grip card: one row <= 40 base, one tap target >= the touch minimum (>= 44 px)", function()
@@ -785,12 +848,24 @@ return function(t: Context)
 			end
 		end
 		expect.equal(HudFormat.gripCardHeight("hidden", 1, 1), 0)
-		-- The regular card grows with the text and is never shorter than its level tile.
+		-- UI FINAL R4 (H:82-90): the bare row: the bar with its lip, the gap and "{have} / {need} Grip", then the goal
+		-- line (UD4) wrapped at the row's width; it grows with the text and stays a touch target (Hud_GripButton).
 		expect.truthy(HudFormat.gripCardHeight("regular", LARGEST, 1) > HudFormat.gripCardHeight("regular", 1, 1))
-		expect.truthy(
-			HudFormat.gripCardHeight("regular", 1, 1)
-				>= HudFormat.levelTileHeight(1) + COLUMN.cardPadTop + COLUMN.cardPadBottom
+		local texts = HudFormat.worstCaseTexts()
+		local small = HudFormat.kindPx("Small", 1)
+		local line = math.ceil(small * HudFormat.TEXT_METRICS.lineHeight - 1e-6)
+		local goal = HudFormat.textHeight(texts.gripGoal, small, HudFormat.gripGoalWidth(1))
+		expect.equal(
+			HudFormat.gripCardHeight("regular", 1, 1),
+			COLUMN.gripBarHeight + COLUMN.gripBarGap + line + COLUMN.listGap + goal
 		)
+		expect.truthy(HudFormat.gripCardHeight("regular", 1, 1) >= Layout.touchBase(TOUCH.minTarget, 1))
+		-- Its width: the padding, the 200 px bar column (or its text), the gap and the Double Grip chip (H:83-89).
+		local bar = math.max(COLUMN.gripBarWidth, HudFormat.textWidth(texts.gripBar, small))
+		local chip = COLUMN.boltPx + COLUMN.boostGap + HudFormat.textWidth(texts.gripChip, small)
+		expect.equal(HudFormat.gripRowWidth(1), math.ceil(COLUMN.gripPadLeft + bar + COLUMN.gripRowGap + chip))
+		expect.equal(HudFormat.gripGoalWidth(1), HudFormat.gripRowWidth(1) - COLUMN.gripPadLeft)
+		expect.equal(COLUMN.gripBarHeight, Config.UI.Sticker.bars.grip.height + Config.UI.Sticker.lip.bar) -- H:84
 	end)
 
 	t.test("worst-case texts: every onboarding step in every input, the longest Grip lines, the tiles", function()
@@ -808,6 +883,10 @@ return function(t: Context)
 		expect.truthy(#texts.coins >= #Strings.common.loading)
 		expect.equal(#texts.tiles, 5)
 		expect.equal(texts.tiles[1], Strings.hud.nav.squishies)
+		-- UI FINAL R4 (H:89, FD3): the bare row's chip at a full Double Grip.
+		local GripMath = t.requireShared("GripMath")
+		local minutes = GripMath.restedMinutes(Config.Grip.Rested.burst)
+		expect.equal(texts.gripChip, Strings.format(Strings.hud.gripBoost, { minutes = minutes }))
 		expect.equal(HudFormat.worstCaseTexts(), texts) -- computed once
 	end)
 
@@ -857,7 +936,8 @@ return function(t: Context)
 		local canvas = Vector2.new(1422, 800)
 		local left = { x = 12, y = 12, w = 270, h = 200 }
 		local right = { x = 1154, y = 12, w = 256, h = 160 }
-		local line = COLUMN.toastTop - COLUMN.rowGap
+		-- UI FINAL R4: the coach card's band keeps its old line (coachLine 110) now the toasts start at 200 (N:197).
+		local line = COLUMN.coachLine - COLUMN.rowGap
 		-- A short text: the preferred width, centred.
 		local short = HudFormat.coachPlacement({
 			canvas = canvas,
@@ -1009,11 +1089,14 @@ return function(t: Context)
 		expect.falsy(crowded.fits)
 		expect.near(crowded.x, (700 - size.X) / 2, 1e-6)
 
-		-- Every screen, with the real left side (sized for its widest texts), the tiles' badge reach and the top-right
-		-- group: the widest (queued) CTA fits at the top over none of them; on PCs at every text size, centred.
+		-- Every screen, with the real left side (sized for its widest texts) at the design's spots (UI FINAL R4:
+		-- origins), the tiles' badge reach and the top-right group: the DUEL button fits at its top (PR10) over none
+		-- of them, on PCs at every text size centred unless the left column pushes it; there the search bar keeps its
+		-- dots and its second line in the room its band leaves (barWidth, barParts).
 		for _, screen in ALL do
 			local class = classOf(screen)
 			local compact = class == "compact"
+			local origin = HudFormat.origins(compact)
 			local scales: { number } = if compact then { 1 } else TEXT_SCALES
 			for _, ts in scales do
 				local plan = HudFormat.leftColumnPlan(screen, class, ts)
@@ -1022,56 +1105,173 @@ return function(t: Context)
 					HudFormat.ctaWidth(compact, ts),
 					if compact then COLUMN.ctaCompactHeight else COLUMN.ctaHeight
 				)
-				local column = { x = COLUMN.edge, y = COLUMN.edge, w = plan.width, h = plan.leftBottom - COLUMN.edge }
+				local column = {
+					x = origin.left.X,
+					y = origin.left.Y,
+					w = plan.width,
+					h = plan.leftBottom - origin.left.Y,
+				}
 				local tileBox = HudFormat.badgeReachRect({
-					x = COLUMN.edge,
+					x = origin.nav.X,
 					y = plan.tilesTop,
 					w = plan.tilesWidth,
 					h = plan.tilesHeight,
 				})
 				local rightWidth = if compact then COLUMN.settingsSize else COLUMN.trackerWidth
 				local rightGroup = {
-					x = c.X - COLUMN.edge - rightWidth,
-					y = COLUMN.edge,
+					x = c.X - origin.right.X - rightWidth,
+					y = origin.right.Y,
 					w = rightWidth,
-					h = if compact then COLUMN.settingsSize else COLUMN.settingsSize + COLUMN.rowGap + 100,
+					h = if compact then COLUMN.settingsSize else COLUMN.settingsHeight + COLUMN.rightGap + 100,
 				}
+				local blockers = { column, tileBox, rightGroup }
 				local place = HudFormat.ctaPlacement({
 					canvas = c,
 					size = ctaSize,
-					blockers = { column, tileBox, rightGroup },
+					blockers = blockers,
+					top = origin.ctaTop,
 				})
 				local label = `{screen.X}x{screen.Y} text {ts}: x {place.x}`
 				if not place.fits then
 					error("the Duel CTA has no room at the top: " .. label)
 				end
+				expect.equal(place.y, origin.ctaTop)
 				local cta = { x = place.x, y = place.y, w = ctaSize.X, h = ctaSize.Y }
-				for _, rect in { column, tileBox, rightGroup } do
+				for _, rect in blockers do
 					if overlaps(cta, rect) then
 						error("the Duel CTA covers a HUD group: " .. label)
 					end
 				end
 				if not compact then
-					expect.near(place.x + ctaSize.X / 2, c.X / 2, 1e-6)
+					local centred = (c.X - ctaSize.X) / 2
+					local pushed = column.x + column.w + COLUMN.rowGap
+					expect.truthy(math.abs(place.x - centred) < 1e-6 or math.abs(place.x - pushed) < 1e-6)
+				end
+				-- The search bar at its full size on phones too (never scaled, HudFormat.ctaScales): its room keeps
+				-- its dots and second line on every screen (phones 441 at 667x375, 649 at 844x390).
+				local low, high = HudFormat.freeSpan(c, origin.ctaTop, COLUMN.barHeight, blockers)
+				local bar = HudFormat.barWidth(COLUMN.searchWidth, high - low)
+				if not HudFormat.barParts(bar).line2 then
+					error(`the search bar loses its second line at {label} ({bar} wide)`)
 				end
 			end
 		end
 	end)
 
-	t.test("the Duel CTA's widest width (ctaWidth): its queued texts, at least the design's width on PCs", function()
-		local Button = t.requireClient("UI/Components/Button")
-		expect.equal(COLUMN.ctaPadding, Button.style("cta").paddingX)
-		expect.equal(COLUMN.ctaHeight, Button.frameHeight("cta")) -- UI FINAL R2 (P1): the 92 px face + the 7 px lip
-		local clock = Strings.format(Strings.hud.duelSearchingTime, { time = "88:88" })
-		for _, ts in TEXT_SCALES do
-			expect.truthy(HudFormat.ctaWidth(false, ts) >= COLUMN.ctaWidth)
-			-- The queued clock line, the icon, the gap and the paddings fit.
-			local line = HudFormat.textWidth(clock, HudFormat.kindPx("Chip", ts), "title")
-			local least = COLUMN.ctaCompactIconPx + COLUMN.ctaLineGap + line + 2 * COLUMN.ctaPadding
-			expect.truthy(HudFormat.ctaWidth(true, ts) >= least)
+	t.test(
+		"the DUEL area's scales (PR1, PR2): phones draw only the idle button smaller; texts and taps keep",
+		function()
+			local regular, compact = HudFormat.ctaScales(false), HudFormat.ctaScales(true)
+			expect.deepEqual(regular, { idle = 1, search = 1, picker = 1 })
+			expect.deepEqual(compact, { idle = COLUMN.ctaCompactScale, search = 1, picker = 1 })
+			-- At the smallest UI scale the search bar's 16 px texts, its 52 px cancel X and the picker's 52 px tabs
+			-- stay over the floors (minTextSize 13, the 44 px touch floor); at the idle button's scale they would not.
+			local least = UI.Scale.min
+			for _, scales in { regular, compact } do
+				expect.truthy(UI.TextSize.Small * scales.search * least >= UI.minTextSize)
+				expect.truthy(TOUCH.minTarget * scales.search * least >= TOUCH.minTargetFloor)
+				expect.truthy(TOUCH.minTarget * scales.picker * least >= TOUCH.minTargetFloor)
+			end
+			expect.falsy(TOUCH.minTarget * compact.idle * least >= TOUCH.minTargetFloor)
+			expect.falsy(UI.TextSize.Small * compact.idle * least >= UI.minTextSize)
+			-- N:145: the picker 14 under the button's face, so 7 past its 7 px lip (Layout.lipGap).
+			expect.equal(COLUMN.pickerGap, Config.UI.Sticker.hud.picker.gap - Config.UI.Sticker.lip.cta)
 		end
-		expect.truthy(HudFormat.ctaWidth(true, LARGEST) > HudFormat.ctaWidth(true, 1))
+	)
+
+	t.test(
+		"MATCH FOUND's spot (G4.2): the DUEL area's last place, under the duel HUD's top bar once it shows",
+		function()
+			local canvas = Vector2.new(1440, 810)
+			local rect = { x = 545, y = 30, w = 350, h = 103 }
+			expect.equal(HudFormat.foundSpot(rect, canvas, false, nil), Vector2.new(720, 30))
+			-- No rect (the area never showed): the canvas centre at the DUEL area's top (phones: their own top).
+			expect.equal(
+				HudFormat.foundSpot(nil, canvas, false, nil),
+				Vector2.new(720, HudFormat.origins(false).ctaTop)
+			)
+			expect.equal(HudFormat.foundSpot(nil, canvas, true, nil), Vector2.new(720, HudFormat.origins(true).ctaTop))
+			-- The duel HUD's top bar ends at 96: a row gap under it; a bar that ends above the spot changes nothing.
+			expect.equal(HudFormat.foundSpot(rect, canvas, false, 96), Vector2.new(720, 96 + COLUMN.rowGap))
+			expect.equal(HudFormat.foundSpot(rect, canvas, false, 10), Vector2.new(720, 30))
+			expect.equal(HudFormat.foundSpot(rect, canvas, false, 0 / 0), Vector2.new(720, 30))
+		end
+	)
+
+	t.test("the DUEL button's width (ctaWidth): the design's 350, wider only for its texts; phones scaled", function()
+		local Button = t.requireClient("UI/Components/Button")
+		expect.equal(COLUMN.ctaHeight, Button.frameHeight("cta")) -- UI FINAL R2 (P1): the 92 px face + the 7 px lip
+		expect.equal(COLUMN.ctaWidth, 350) -- H:126
+		expect.equal(COLUMN.ctaCompactHeight, math.ceil(COLUMN.ctaHeight * COLUMN.ctaCompactScale - 1e-6))
+		local sticker = Config.UI.Sticker
+		local frame = 2 * sticker.border.heavy + sticker.hud.cta.padLeft + sticker.hud.cta.padRight
+		for _, ts in TEXT_SCALES do
+			local regular = HudFormat.ctaWidth(false, ts)
+			expect.truthy(regular >= COLUMN.ctaWidth)
+			-- Its paddings (the emblem's 128, 24 on the right, the 5 px border each side) and the wider text fit.
+			local title = HudFormat.textWidth(Strings.hud.duelCta, HudFormat.kindPx("Duel", ts), "title")
+			local sub = HudFormat.textWidth(Strings.hud.duelJoin, HudFormat.kindPx("D17", ts), "title")
+			expect.truthy(regular >= frame + math.max(title, sub))
+			-- Phones: the same button drawn at the compact scale (its second line hidden).
+			expect.truthy(HudFormat.ctaWidth(true, ts) <= math.ceil(regular * COLUMN.ctaCompactScale))
+		end
+		expect.equal(HudFormat.ctaWidth(false, 1), COLUMN.ctaWidth)
+		expect.equal(HudFormat.ctaWidth(true, 1), math.ceil(COLUMN.ctaWidth * COLUMN.ctaCompactScale))
+		expect.truthy(HudFormat.ctaWidth(false, LARGEST) > HudFormat.ctaWidth(false, 1))
 	end)
+
+	t.test(
+		"the design's spots (UI FINAL R4, Sticker.hud): Hud_Left, the tiles, the right column, the DUEL area",
+		function()
+			local hud = Config.UI.Sticker.hud
+			local regular = HudFormat.origins(false)
+			expect.equal(regular.left, Vector2.new(hud.left.x, hud.left.y)) -- H:74: 24, 18
+			expect.equal(regular.nav, Vector2.new(hud.nav.x, hud.nav.y)) -- H:98: 14, 150
+			expect.equal(regular.right, Vector2.new(hud.right.edge, hud.right.top)) -- H:156: 22, 16
+			expect.equal(regular.ctaTop, hud.cta.top) -- PR10: 30
+			local compact = HudFormat.origins(true)
+			expect.equal(compact.left, Vector2.new(COLUMN.edge, COLUMN.edge))
+			expect.equal(compact.nav, Vector2.new(COLUMN.edge, COLUMN.edge))
+			expect.equal(compact.ctaTop, math.ceil(hud.cta.top * COLUMN.ctaCompactScale - 1e-6))
+			-- PR10: the emblem pokes 12 above the button (its top -24 and the 6 px bob, H:23, H:128): still in the HUD.
+			local poke = hud.cta.top - hud.cta.designTop
+			expect.truthy(regular.ctaTop - poke >= 0)
+			expect.truthy(compact.ctaTop - poke * COLUMN.ctaCompactScale >= -1e-6)
+			-- The toasts start at N:197's 200, under the idle DUEL button and the search bar (and under the testers'
+			-- picker when it reaches lower: UIController.toastsBelow).
+			expect.equal(COLUMN.toastTop, 200)
+			expect.truthy(COLUMN.toastTop >= regular.ctaTop + math.max(COLUMN.ctaHeight, COLUMN.barHeight))
+		end
+	)
+
+	t.test(
+		"the coin pill (H:75, G4.23): the 58 px face and the 5 px lip; at least 220 wide, its number after 68",
+		function()
+			expect.equal(HudFormat.pillHeight(1), COLUMN.pillFace + COLUMN.pillLip) -- 63
+			expect.truthy(HudFormat.pillHeight(1) >= TOUCH.minTarget)
+			expect.truthy(HudFormat.pillHeight(LARGEST) >= HudFormat.pillHeight(1))
+			expect.equal(HudFormat.pillWidth(1, "0"), COLUMN.pillMinWidth)
+			local number = HudFormat.textWidth("999.99M", HudFormat.kindPx("Coin", 1), "title")
+			local wide = 2 * COLUMN.pillBorder + COLUMN.pillPadLeft + number + COLUMN.pillPadRight
+			expect.equal(HudFormat.pillWidth(1, "999.99M"), math.max(COLUMN.pillMinWidth, math.ceil(wide)))
+			expect.truthy(HudFormat.pillWidth(1) >= HudFormat.pillWidth(1, "0"))
+		end
+	)
+
+	t.test(
+		"search / found bars: the design's width, narrower only to their room; under dropBelow lines drop",
+		function()
+			local search = Config.UI.Sticker.hud.search
+			expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 900), COLUMN.searchWidth)
+			expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 400), 400)
+			expect.equal(HudFormat.barWidth(COLUMN.foundWidth, -5), 0)
+			expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 0 / 0), COLUMN.searchWidth)
+			expect.deepEqual(HudFormat.barParts(COLUMN.searchWidth), { dots = true, line2 = true })
+			expect.deepEqual(HudFormat.barParts(search.dropBelow), { dots = true, line2 = true })
+			expect.deepEqual(HudFormat.barParts(search.dropBelow - 1), { dots = false, line2 = false })
+			expect.equal(COLUMN.barHeight, search.face + Config.UI.Sticker.lip.search) -- 96 + 7 (H:136)
+		end
+	)
 
 	t.test(
 		"gamepad links: Down walks the tile column; the Duel CTA sits between the left column and Settings",
@@ -1150,6 +1350,31 @@ return function(t: Context)
 			expect.deepEqual(grid.t2, { up = "grip", down = "t4", left = "t1", right = "cta" })
 			expect.deepEqual(grid.t4, { up = "t2", left = "t3", right = "cta" })
 			expect.deepEqual(grid.t5, { up = "t3", right = "cta" })
+			-- UI FINAL R4 (N:144-162): the testers' mode picker under the DUEL button: Down from it to the first tab,
+			-- left / right between the tabs, Up back, Down on to the coach card's button.
+			local picker = HudFormat.focusLinks({
+				left = { "coins" },
+				tiles = {},
+				right = { "settings" },
+				cta = "cta",
+				coach = "coach",
+				modes = { "mode:tdm", "mode:ffa" },
+			})
+			expect.deepEqual(picker.cta, { left = "coins", right = "settings", down = "mode:tdm" })
+			expect.deepEqual(picker["mode:tdm"], { up = "cta", right = "mode:ffa", down = "coach" })
+			expect.deepEqual(picker["mode:ffa"], { up = "cta", left = "mode:tdm", down = "coach" })
+			-- UI FINAL R4: while searching (the cancel X is the CTA) Down reaches the queue pill's first hint button
+			-- (its buttons link Up to Cancel themselves: no link is written on the hint here), else the coach card.
+			local hint = HudFormat.focusLinks({
+				left = { "coins" },
+				tiles = {},
+				right = { "settings" },
+				cta = "cta",
+				coach = "coach",
+				hint = "hint",
+			})
+			expect.deepEqual(hint.cta, { left = "coins", right = "settings", down = "hint" })
+			expect.equal(hint.hint, nil)
 			-- The Grip panel's chain (chainLinks) went with its pad cards (build plan Phase 6).
 			expect.equal((HudFormat :: any).chainLinks, nil)
 		end

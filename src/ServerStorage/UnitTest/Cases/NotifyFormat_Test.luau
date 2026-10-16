@@ -18,6 +18,8 @@
 --     starts under anything above it that the moved column meets;
 --   * lobby HUD (spec 2026-10-11): what hangs in from above chains: a rect counts when it starts at or above the
 --     running top (the Duel CTA at the top middle, then the coach card or the queue pill right under it).
+--   * UI FINAL R4: the column's default top is the design's 200 (N:197) on its 810 px canvas while the lobby HUD shows,
+--     keeping that share on a shorter canvas (a phone's 441: about 109), else the game's own 110 (duels, matches).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -143,6 +145,23 @@ return function(t: Context)
 		expect.equal(NotifyFormat.toastTop(441, 140, 110, 0 / 0), 140)
 		expect.equal(NotifyFormat.toastTop(0 / 0, 140, 110, 8), 110)
 	end)
+
+	t.test(
+		"toast column default top (UI FINAL R4): the lobby HUD's 200 of 810, its share when shorter; else 110",
+		function()
+			local Config = t.requireShared("Config")
+			local lobby = Config.UI.Sticker.hud.toastTop
+			local design = Config.UI.Scale.referenceHeight
+			expect.equal(lobby, 200) -- N:197
+			expect.equal(NotifyFormat.defaultTop(810, lobby, 110, design), 200)
+			expect.equal(NotifyFormat.defaultTop(1000, lobby, 110, design), 200) -- never lower than the design's top
+			expect.near(NotifyFormat.defaultTop(441, lobby, 110, design), 200 * 441 / design, 1e-9) -- a phone: ~109
+			-- Duels and matches (the lobby HUD hidden): the game's own top under the duel HUD's top row.
+			expect.equal(NotifyFormat.defaultTop(810, nil, 110, design), 110)
+			expect.equal(NotifyFormat.defaultTop(810, 0 / 0, 110, design), 110)
+			expect.equal(NotifyFormat.defaultTop(0 / 0, lobby, 110, design), 200)
+		end
+	)
 
 	t.test("toast clearance (integration): only what hangs into the centred column from above counts", function()
 		-- A phone canvas (785 base wide): the 420-wide column spans x 182.5 .. 602.5.

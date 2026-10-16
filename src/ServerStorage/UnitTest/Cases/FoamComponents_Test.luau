@@ -32,6 +32,11 @@
 -- hit box and the drawn button its SD_Visual child (button.visual: the face, bands, content, badge and shine); the
 -- frame is the face + the lip (a close X 76 x 82); the cta's shine strip is built with it and crosses by itself
 -- (Anim/UiIdle skips an unparented strip, so nothing moves here); the bars draw their border inside their height.
+-- UI FINAL R4 (plan R4; P13, PR1, PR6, G4.22, G4.23): the tile is the faceless nav sticker (no face, no outline, no
+-- bands; its picture in SD_Bob > SD_Wiggle, the label drawn over it, the badge inside it at right 8, top 0, H:99-102)
+-- with the 0 / -12 / 9 / -4 / 0 hover wiggle (Button.wiggleAt); the search bar's cancel X is a 48 px face in the 52 px
+-- hit box (H:145); the coin pill is the design's 58 px pill with its 5 px lip and the 78 px coin over it (H:75-81);
+-- SegmentedTabs is the testers' TDM / FFA picker (N:144-162).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -93,20 +98,23 @@ return function(t: Context)
 			expect.truthy(root:FindFirstChild("Label", true) ~= nil)
 			expect.truthy(root:FindFirstChild("Reason", true) ~= nil)
 			expect.truthy(root.Size.Y.Offset >= MIN_TARGET)
-			expect.truthy(visual:FindFirstChild("SD_Foam") ~= nil)
 			expect.equal(visual:FindFirstChild("SD_Rim"), nil)
-			expect.equal(strokesOf(visual), 1)
-			local stroke = visual:FindFirstChildOfClass("UIStroke") :: UIStroke
-			expect.equal(stroke.Color, Theme.Colors.inkUI)
-			expect.equal(stroke.Thickness, style.border)
-			expect.equal(visual.BackgroundTransparency, 0)
 			if kind == "tile" then
-				-- The tile's foam plate until R4: the outline outside the box, the foam tile bands.
-				expect.falsy(style.inner)
-				expect.equal(style.border, Theme.Stroke.ink)
-				local foamTile = Theme.Foam.tile
-				expect.equal(style.top + style.bevel + style.drop, foamTile.top + foamTile.bevel + foamTile.drop)
+				-- UI FINAL R4 (P13): the faceless nav sticker: no face, no outline, no bands (its picture is the
+				-- button).
+				expect.truthy(style.faceless)
+				expect.equal(visual:FindFirstChild("SD_Foam"), nil)
+				expect.equal(strokesOf(visual), 0)
+				expect.equal(visual.BackgroundTransparency, 1)
+				expect.equal(style.border, 0)
+				expect.equal(style.top + style.bevel + style.drop, 0)
 			else
+				expect.truthy(visual:FindFirstChild("SD_Foam") ~= nil)
+				expect.equal(strokesOf(visual), 1)
+				local stroke = visual:FindFirstChildOfClass("UIStroke") :: UIStroke
+				expect.equal(stroke.Color, Theme.Colors.inkUI)
+				expect.equal(stroke.Thickness, style.border)
+				expect.equal(visual.BackgroundTransparency, 0)
 				expect.truthy(style.inner)
 				-- The bands: the border and the highlight on top, the bevel, the border and the lip at the bottom.
 				local look = STICKER.surfaces[style.surface]
@@ -196,7 +204,26 @@ return function(t: Context)
 		expect.equal(label.TextColor3, WHITE)
 		-- UI FINAL R1: no shine stripes on a tile (the sweep strip is the cta's).
 		expect.equal(tile.visual:FindFirstChild("SD_Shine"), nil)
+		-- UI FINAL R4 (P13, H:99-102): no face; the picture in SD_Bob > SD_Wiggle (the bob and the hover wiggle), the
+		-- label drawn over it, the badge inside the sticker (its right edge 8 in, its top on the tile's).
+		expect.equal(tile.visual.BackgroundTransparency, 1)
+		expect.equal(tile.visual:FindFirstChild("SD_Foam"), nil)
+		local bob = icon:FindFirstChild("SD_Bob")
+		expect.truthy(bob ~= nil and bob:FindFirstChild("SD_Wiggle") ~= nil)
+		expect.equal(label.ZIndex, 2)
+		-- Centre-anchored at its resting 32 px, so its sdBadge pop (a UIScale) grows about its centre (H:32).
+		expect.equal(badge.AnchorPoint, Vector2.new(0.5, 0.5))
+		expect.equal(badge.Position.Y.Offset, STICKER.hud.nav.badgeTop + CountBadge.SIZE_PX / 2)
+		expect.equal(badge.Position.X.Scale, 1)
 		tile:destroy()
+		-- The hover wiggle (PR6, H:639): 0 / -12 / 9 / -4 / 0 evenly over navWiggle.ms, linear between; 0 outside.
+		expect.equal(Button.wiggleAt(0), 0)
+		expect.near(Button.wiggleAt(0.125), -6, 1e-9)
+		expect.near(Button.wiggleAt(0.25), -12, 1e-9)
+		expect.near(Button.wiggleAt(0.5), 9, 1e-9)
+		expect.near(Button.wiggleAt(0.75), -4, 1e-9)
+		expect.equal(Button.wiggleAt(1), 0)
+		expect.equal(Button.wiggleAt(1.5), 0)
 
 		-- The close kind: a square red X, its label kept but hidden.
 		-- UI FINAL R1: 76 by default, its picture 46 / 76 of it (H:252).
@@ -216,6 +243,29 @@ return function(t: Context)
 		close:setState("normal")
 		expect.falsy(closeLabel.Visible)
 		close:destroy()
+		-- UI FINAL R4 (G4.22, H:145): the search bar's cancel X: a 48 px face (+ its 4 px lip) in the 52 px hit box.
+		local hud = STICKER.hud.cancelX
+		local cancel = Button.new({
+			name = "Queue_CancelButton",
+			text = "Cancel",
+			kind = "close",
+			accent = "cancelX",
+			height = hud.face,
+			radius = hud.radius,
+			border = hud.border,
+			lip = hud.lip,
+			highlight = { px = hud.highlightPx, a = hud.highlightAlpha },
+			bevel = { px = 0, a = 0 },
+			iconSize = hud.iconPx,
+			onActivated = noop,
+		})
+		expect.equal(cancel.root.Size, UDim2.fromOffset(MIN_TARGET, MIN_TARGET))
+		expect.equal(cancel.visual.Size, UDim2.new(0, hud.face, 1, 0))
+		expect.equal((cancel.root:FindFirstChild("Icon", true) :: Frame).Size.X.Offset, hud.iconPx)
+		expect.equal((cancel.visual:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness, hud.border)
+		cancel:destroy()
+		expect.equal(Theme.Accents.cancelX.top, Palette.StickerCancelRedTop) -- #FF8A8A -> #F0344A
+		expect.equal(Theme.Accents.cancelX.shade, Palette.StickerCloseEnd)
 
 		local plain = Button.new({ name = "NoBadge", text = "Go", onActivated = noop })
 		plain:setBadge(0)
@@ -310,7 +360,7 @@ return function(t: Context)
 			1
 		)
 		expect.equal(Button.widthFor("Go"), wide) -- the default kind has the primary padding and capitals
-		expect.equal(Button.style("tile").bevel, Theme.Foam.tile.bevel) -- the tile keeps its foam plate until R4
+		expect.equal(Button.style("tile").bevel, 0) -- UI FINAL R4 (P13): the faceless sticker has no bands
 		expect.equal(Button.style("cta").drop, STICKER.border.heavy + STICKER.lip.cta)
 		expect.equal(Button.style("nope" :: any).accent, "cyan")
 		expect.equal(Button.style("close").accent, "red")
@@ -471,16 +521,52 @@ return function(t: Context)
 		chip:destroy()
 	end)
 
-	t.test("CoinCapsule and CoinIcon: a touch-sized coin button and a foam coin", function()
+	t.test("CoinCapsule (UI FINAL R4, H:75-81) and CoinIcon: the design's coin pill and a foam coin", function()
+		local hud = STICKER.hud.coins
+		local border = STICKER.border.normal
 		local capsule = CoinCapsule.new({ name = "Hud_CoinsButton", text = "0" })
 		expect.equal(capsule.root.Name, "Hud_CoinsButton")
 		expect.truthy(capsule.root:IsA("TextButton"))
-		expect.truthy(capsule.root.Size.Y.Offset >= MIN_TARGET)
-		expect.equal(capsule.disc.root.Parent, capsule.root)
-		expect.equal(capsule.capsule.Parent, capsule.root)
-		capsule:setText("12,450")
-		expect.equal(capsule.label.Text, "12,450")
+		-- G4.23: the 58 px face and the 5 px lip, 63 tall (>= the touch minimum); at least 220 wide (H:75).
+		expect.equal(capsule.root.Size.Y.Offset, math.max(hud.face + STICKER.lip.button, MIN_TARGET))
+		expect.equal(capsule.root.Size.X.Offset, hud.minWidth)
+		expect.equal(capsule.visual.Name, "SD_Visual")
+		expect.equal(capsule.visual.Parent, capsule.root)
+		expect.equal(capsule.capsule.Parent, capsule.visual)
+		expect.truthy(capsule.capsule:FindFirstChild("SD_Foam") ~= nil)
+		expect.equal(strokesOf(capsule.capsule), 1)
+		-- The number after the 68 px padding, 10 on the right, both inside the 4 px border (H:18 border-box).
+		local padding = capsule.capsule:FindFirstChildOfClass("UIPadding") :: UIPadding
+		expect.equal(padding.PaddingLeft.Offset, border + hud.padLeft)
+		expect.equal(padding.PaddingRight.Offset, border + hud.padRight)
+		-- The 78 px coin over the face at (-14, -12) of its padding edge (H:78), in its sdCoin holder > Flip.
+		local coin = capsule.visual:FindFirstChild("Coin") :: Frame
+		expect.equal(coin.Size, UDim2.fromOffset(hud.coinPx, hud.coinPx))
+		expect.equal(coin.Position, UDim2.fromOffset(border + hud.coinX, border + hud.coinY))
+		expect.truthy(coin.ZIndex > capsule.capsule.ZIndex)
+		local flip = capsule.disc.root.Parent :: Frame
+		expect.equal(flip.Name, "Flip")
+		expect.equal((flip.Parent :: Frame).Name, "SD_Idle")
+		-- A longer number widens the pill.
+		capsule:setText("999.99M")
+		expect.equal(capsule.label.Text, "999.99M")
+		local wide = math.ceil(2 * border + hud.padLeft + Theme.textWidth("999.99M", "Coin") + hud.padRight)
+		expect.equal(capsule.root.Size.X.Offset, math.max(hud.minWidth, wide))
+		-- The squash, the shake and a flash start without an error (nothing is drawn in Edit mode).
+		capsule:squash(0.8)
+		capsule:shake()
+		capsule:flash(true, false)
 		capsule:destroy()
+		expect.equal(capsule.root.Parent, nil)
+		-- The flip's track (H:566-571): a whole turn, its white copy at .9 at the peak (brightness 1.9).
+		local FLASH = Config.UI.motion.coinCounter.flash
+		local peak = CoinCapsule.flashTrack(FLASH.flipFrames, 0.35, "linear")
+		expect.near(peak.rot :: number, 180, 1e-6)
+		expect.near(peak.scale :: number, 1.45, 1e-6)
+		expect.near(peak.alpha :: number, 0.9, 1e-6)
+		local done = CoinCapsule.flashTrack(FLASH.flipFrames, 1, "linear")
+		expect.near(done.rot :: number, 360, 1e-6)
+		expect.near(done.alpha :: number, 0, 1e-6)
 
 		local coin = CoinIcon.new({ name = "Coin", sizePx = 22 })
 		local coinImage = AssetTable.image("img.coin")
@@ -495,6 +581,81 @@ return function(t: Context)
 			expect.equal((disc:FindFirstChildOfClass("UIStroke") :: UIStroke).Color, Theme.Colors.inkUI)
 		end
 		coin:destroy()
+	end)
+
+	t.test("SegmentedTabs (UI FINAL R4, N:144-162): the testers' TDM / FFA picker, one tab picked", function()
+		local SegmentedTabs = t.requireClient("UI/Components/SegmentedTabs")
+		local picked: { string } = {}
+		local tabs = SegmentedTabs.new({
+			name = "Hud_DuelModes",
+			tabs = {
+				{
+					id = "tdm",
+					label = "TEAM DEATHMATCH",
+					chip = "6v6",
+					short = "TEAM 6v6",
+					rotation = 10,
+					stops = { { at = 0, color = WHITE }, { at = 1, color = Palette.StickerTdmBlue } },
+				},
+				{
+					id = "ffa",
+					label = "FREE FOR ALL",
+					chip = "SOLO",
+					short = "FREE FOR ALL", -- the design's MODES.FFA.tab is its name (N:712)
+					rotation = 90,
+					stops = { { at = 0, color = WHITE } },
+				},
+			},
+			selected = "tdm",
+			onSelect = function(id: string)
+				table.insert(picked, id)
+			end,
+		})
+		expect.equal(tabs.root.Name, "Hud_DuelModes")
+		expect.deepEqual(tabs.order, { "tdm", "ffa" })
+		expect.equal(tabs:selected(), "tdm")
+		for _, id in tabs.order do
+			local hit = tabs.tabs[id]
+			expect.truthy(hit:IsA("TextButton"))
+			expect.equal(hit.Size.Y.Offset, MIN_TARGET) -- PR1: each tab's 42 px face in a 52 px touch box
+		end
+		-- A pick by code repaints without reporting; the same tab again does nothing.
+		tabs:select("ffa")
+		expect.equal(tabs:selected(), "ffa")
+		tabs:select("nope")
+		expect.equal(tabs:selected(), "ffa")
+		expect.deepEqual(picked, {})
+		local size = tabs:size()
+		expect.truthy(size.X >= tabs.tabs.tdm.Size.X.Offset + tabs.tabs.ffa.Size.X.Offset)
+		expect.truthy(size.Y >= MIN_TARGET)
+		-- The narrow fit: each tab's short name alone (N:711-712 MODES.*.tab), no chip, narrower; still 52 px tall.
+		local label = tabs.tabs.tdm:FindFirstChild("Label", true) :: TextLabel
+		local chip = tabs.tabs.tdm:FindFirstChild("Chip", true) :: Frame
+		expect.truthy(tabs:size(true).X < size.X)
+		tabs:setShort(true)
+		expect.equal(label.Text, "TEAM 6v6")
+		expect.falsy(chip.Visible)
+		expect.equal(tabs:size().X, tabs:size(true).X)
+		expect.equal(tabs.tabs.tdm.Size.Y.Offset, MIN_TARGET)
+		expect.equal((tabs.tabs.ffa:FindFirstChild("Label", true) :: TextLabel).Text, "FREE FOR ALL")
+		expect.falsy((tabs.tabs.ffa:FindFirstChild("Chip", true) :: Frame).Visible)
+		tabs:setShort(false)
+		expect.equal(label.Text, "TEAM DEATHMATCH")
+		expect.truthy(chip.Visible)
+		expect.equal(tabs:size().X, size.X)
+		-- The gradient's turn: 10 degrees on the screen is about 2 in a 220 x 42 tab's own 0..1 space (a UIGradient
+		-- rotates there); 0 and 90 stay; a bad size leaves it.
+		local turned = math.deg(math.atan(math.tan(math.rad(10)) * 42 / 220))
+		expect.near(SegmentedTabs.gradientRotation(10, 220, 42), turned, 1e-9)
+		expect.truthy(turned > 1.5 and turned < 2.5)
+		expect.near(SegmentedTabs.gradientRotation(90, 220, 42), 90, 1e-9)
+		expect.near(SegmentedTabs.gradientRotation(0, 220, 42), 0, 1e-9)
+		expect.equal(SegmentedTabs.gradientRotation(10, 0, 42), 10)
+		local face = tabs.tabs.tdm:FindFirstChild("Face") :: Frame
+		local gradient = face:FindFirstChildOfClass("UIGradient") :: UIGradient
+		expect.truthy(gradient.Rotation > 0 and gradient.Rotation < 10)
+		tabs:destroy()
+		expect.equal(tabs.root.Parent, nil)
 	end)
 
 	t.test("Toggle and Slider keep their parts; the design's two switches and the volume slider", function()

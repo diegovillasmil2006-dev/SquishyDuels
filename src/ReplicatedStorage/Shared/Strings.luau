@@ -159,6 +159,7 @@ local Strings = {
 		coinsAmount = "{coins} Coins",
 		coinsGain = "+{coins} Coins",
 		plusAmount = "+{n}",
+		minusAmount = "-{n}", -- UI FINAL R4: a spend's float on the coin pill (H:673)
 		percent = "{value}%",
 		secondsShort = "{seconds}s", -- a cooldown's remaining seconds on a button (§11.6)
 		progress = "{progress}/{goal}",
@@ -196,16 +197,30 @@ local Strings = {
 			duel = "Duel",
 			settings = "Settings",
 		},
-		-- Foam restyle (spec 2026-10-09): the Duel CTA (top middle since the lobby HUD of 2026-10-11) and its queued state, which matches the queue
-		-- pill's clock; {time} = m:ss since joining.
+		-- The DUEL button (top middle; UI FINAL R4, the design's H:130-131) and, while the 1v1 queue searches, its bar
+		-- (H:139; the time is m:ss beside it), then MATCH FOUND with the opponent's name (H:151; the design's "Starting
+		-- in 3…" is the arena's own countdown here, plan FD2).
 		duelCta = "DUEL",
 		duelJoin = "Join the queue",
-		duelQueued = "IN QUEUE",
-		duelSearching = "Searching",
-		duelSearchingTime = "Searching · {time}",
-		-- The quest tracker card (top right): its label; the section name (quest.section.*) sits beside it.
-		questTracker = "QUEST",
+		findingMatch = "Finding match",
+		matchFound = "MATCH FOUND!",
+		matchOpponent = "Opponent: {name}",
+		-- UI FINAL R4: the DUEL mode picker for testers (Diego's newer file N:710-711; Config.Match.picker*); its short
+		-- names when there is no room for the full ones (the design's MODES.*.tab, N:711-712, its search bar's chip).
+		modes = {
+			tdm = "TEAM DEATHMATCH",
+			tdmChip = "6v6",
+			tdmShort = "TEAM 6v6",
+			ffa = "FREE FOR ALL",
+			ffaChip = "SOLO",
+			ffaShort = "FREE FOR ALL",
+		},
+		-- The quest tracker card (top right): "Ready to claim!" in the coin yellow, else its reward (H:995).
 		questReady = "Ready to claim!", -- UI overhaul: the tracker's quest is done and not claimed
+		trackerReward = "+{coins} coins", -- H:995
+		-- UI FINAL R4: the Double Grip chip beside the Grip bar (H:89; a pool of minutes, not a clock, plan FD3).
+		gripBoost = "2x ~{minutes} min",
+		notEnoughCoins = "Not enough coins!", -- H:676: a spend the Coins don't cover (the pill shakes)
 	},
 
 	-- Touch / on-screen action buttons (§5.10, §6.3).

@@ -435,6 +435,24 @@ local Palette = {
 	StickerCoinFlash = Color3.fromHex("#FFF3A0"), -- H:577: the coin landing's sparks and flash
 	StickerSpendFloat = Color3.fromHex("#FF7A8A"), -- H:673: the "-N" spend float
 	StickerPriceShort = Color3.fromHex("#FFB3BE"), -- H:946: an "off" button's price (OPEN, H:278; our coin BUY)
+	-- The lobby HUD (UI FINAL R4; `N:n` = Diego's newer "Squishy Duels TDMFFA animations and hud/Squishy Duels
+	-- HUD.dc.html" line n, its DUEL mode picker).
+	StickerDuelSubDrop = Color3.fromHex("#780A32"), -- H:131: "Join the queue"'s soft drop (at .55)
+	StickerCreamYellow = Color3.fromHex("#FFF3A6"), -- H:149: MATCH FOUND's top stop
+	StickerFoundText = Color3.fromHex("#5A3200"), -- H:151: "Opponent: {name}" on MATCH FOUND
+	StickerSlotMintTop = Color3.fromHex("#A8F6D8"), -- H:983: your queue slot (with StickerGripEnd)
+	StickerSlotPinkTop = Color3.fromHex("#FFB3CB"), -- H:983: the opponent's queue slot
+	StickerSlotPinkEnd = Color3.fromHex("#F2557F"), -- H:983
+	StickerTrackerStatus = Color3.fromHex("#B9AEDA"), -- H:995: the tracker's "+N coins"; N:1256: an off mode tab
+	StickerCoinGlowIn = Color3.fromHex("#FFF6AA"), -- H:76: the coin landing's glow (the radial's fallback)
+	StickerCoinGlowMid = Color3.fromHex("#FFD63C"), -- H:76
+	StickerCoinRays = Color3.fromHex("#FFF08C"), -- H:77: the coin landing's rays (the rays picture's tint)
+	StickerShadowCta = Color3.fromHex("#3C1432"), -- H:126: the DUEL button's soft shadow (at .25)
+	StickerPickerWell = Color3.fromHex("#2A1D45"), -- N:154: the mode picker's well
+	StickerTdmRedTop = Color3.fromHex("#FF8597"), -- N:710: the TEAM DEATHMATCH tab (100deg, 4 stops)
+	StickerTdmRed = Color3.fromHex("#FF6B81"), -- N:710 (32%)
+	StickerTdmBlue = Color3.fromHex("#5DB4FF"), -- N:710 (68%)
+	StickerTdmBlueEnd = Color3.fromHex("#7CC6FF"), -- N:710
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

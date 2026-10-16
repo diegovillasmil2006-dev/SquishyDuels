@@ -158,6 +158,33 @@ return function(t: Context)
 		end
 	end)
 
+	t.test(
+		"UI FINAL R4 (H:653-654): keys 1-5 open the HUD's windows in the lobby, and switch them over a window",
+		function()
+			local keys =
+				{ Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }
+			for index, key in keys do
+				expect.equal(Controls.contextOf("Nav" .. index), "Lobby")
+				expect.deepEqual(Controls.inputsOf("Nav" .. index), { key })
+				expect.equal(Controls.contextOf("ModalNav" .. index), "Modal")
+				expect.deepEqual(Controls.inputsOf("ModalNav" .. index), { key })
+			end
+			expect.equal(Controls.contextOf("Nav6"), nil)
+			-- No other action takes a number key (keyboard only: no gamepad button, no touch button).
+			local others =
+				{ "Squeeze", "Squishies", "InspectEquipped", "FocusHud", "ModalBack", "Throw", "Ultimate", "Catch" }
+			for _, action in others do
+				local inputs = Controls.inputsOf(action) :: { EnumItem }
+				for _, key in keys do
+					expect.equal(table.find(inputs, key), nil)
+				end
+			end
+			-- Over a window the switch is an overlay action: it sinks the key only while the Modal context is on.
+			expect.equal(Controls.priorityOfAction("ModalNav1"), Enum.ContextActionPriority.High.Value)
+			expect.equal(Controls.priorityOfAction("Nav1"), Controls.priorityOfAction("Squishies"))
+		end
+	)
+
 	t.test("binding an unknown action is an error", function()
 		expect.throws(function()
 			Controls.bindAction("NoSuchAction", function()

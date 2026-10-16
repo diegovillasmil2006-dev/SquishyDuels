@@ -18,6 +18,8 @@
 --     "The board is taking a break…" while no read works, the ranked lines "1. Ana · 12 wins" ("1 win"), "No wins yet
 --     this week. Be the first!" alone for an empty week, and the player's own line: their place and wins, their
 --     week's wins outside the read, or how to get on the board.
+--   * UI FINAL R4 (moved from R8): iconFor(card): a quest that names a squishy shows it, else its category's picture
+--     (squeeze, duel, practice); the cards carry their QuestDefs id (defId) and named squishy.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -94,6 +96,36 @@ return function(t: Context)
 		expect.equal(over.fraction, 1)
 		-- An unknown template is left out.
 		expect.equal(QuestFormat.dailyCard(entry(3, "no_such_quest", 5, 0), ctx, SWAPS), nil)
+	end)
+
+	t.test("quest pictures (UI FINAL R4, iconFor): the named squishy, else the category's picture", function()
+		local with = QuestFormat.dailyCard(entry(2, "squeeze_with", 60, 10, { squishy = "toast" }), ctx, SWAPS)
+		expect.equal(with.defId, "squeeze_with")
+		expect.equal(with.squishy, "toast")
+		expect.deepEqual(QuestFormat.iconFor(with), { squishy = "toast" })
+		local pictures = { squeeze = "img.icon.squeeze", duel = "img.nav.duel", practice = "img.icon.match" }
+		local plain = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 37), ctx, SWAPS)
+		expect.equal(plain.squishy, nil)
+		expect.deepEqual(QuestFormat.iconFor(plain), { image = pictures.squeeze })
+		expect.deepEqual(
+			QuestFormat.iconFor(QuestFormat.dailyCard(entry(3, "duel_win", 3, 0), ctx, SWAPS)),
+			{ image = pictures.duel }
+		)
+		expect.deepEqual(
+			QuestFormat.iconFor(QuestFormat.dailyCard(entry(4, "practice_hits", 20, 0), ctx, SWAPS)),
+			{ image = pictures.practice }
+		)
+		-- A squishy quest without its squishy falls back to its category's picture.
+		local unnamed = QuestFormat.dailyCard(entry(5, "duel_win_with", 3, 0), ctx, SWAPS)
+		expect.deepEqual(QuestFormat.iconFor(unnamed), { image = pictures.duel })
+		-- Starter tasks carry their QuestDefs id too.
+		for _, starter in QuestFormat.starterCards(nil) do
+			local def = QuestDefs.get(starter.id)
+			expect.equal(starter.defId, starter.id)
+			expect.deepEqual(QuestFormat.iconFor(starter), { image = pictures[def.category] })
+		end
+		-- An unknown quest has no picture.
+		expect.deepEqual(QuestFormat.iconFor({ defId = "no_such_quest" } :: any), {})
 	end)
 
 	t.test("swap: unfinished daily quests while a free swap is left", function()

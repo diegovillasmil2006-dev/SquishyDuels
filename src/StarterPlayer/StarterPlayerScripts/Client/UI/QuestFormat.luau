@@ -12,6 +12,9 @@
 --   namer(quests)         (questId) -> the quest's line or nil, for DuelFormat.result's quest lines
 --   starterClaimable(quests)   starter tasks done and not claimed (HudController adds them to the Quests badge, which
 --                         counts the daily quests through HudFormat.questBadge)
+--   iconFor(card)         UI FINAL R4 (moved from R8): the quest's picture: the squishy a quest names (squeeze_with,
+--                         duel_win_with, hits_with), else its category's (squeeze img.icon.squeeze, duel img.nav.duel,
+--                         practice img.icon.match); the cards carry their defId and named squishy for it
 --   bodyHeight(screenH, contentH, chromeH, maxShare, minH)   Part 8 (§11.2): the scrolling sections' height (base
 --                         px): the content's, capped so the whole panel (body + chrome: header, footer, paddings)
 --                         stays within maxShare of the screen height; never under minH (unit-tested at 667×375,
@@ -65,7 +68,13 @@ export type Card = {
 	stateText: string, -- quest.inProgress / common.claim / common.claimed
 	canSwap: boolean,
 	equipSquishy: string?, -- the Equip shortcut's squishy (owned, not equipped), or nil
+	defId: string?, -- UI FINAL R4: its QuestDefs id (the daily template or the starter task)
+	squishy: string?, -- UI FINAL R4: the squishy a daily quest names ({squishy}), or nil
 }
+
+-- UI FINAL R4 (moved from R8; plan R4 "Quest tracker"): a quest's picture: an AssetTable image key, or the squishy it
+-- names (drawn by UI/Components/SquishyImage).
+export type Icon = { image: string?, squishy: string? }
 
 export type Context = {
 	owned: { [string]: any }?, -- profile.owned (squishyId -> entry)
@@ -91,6 +100,13 @@ export type TopWins = { lines: { string }, note: string?, you: string? }
 local QUESTS = Config.Economy.Quests
 local DAILY_KIND: CardKind = "daily"
 local STARTER_KIND: CardKind = "starter"
+-- UI FINAL R4 (plan R4): the picture of each QuestDefs category (the pack 1 pictures: squeeze.svg, the duel emblem,
+-- match.svg for practice; lib:73-83 draws a picture per quest, plan FD7: by category).
+local CATEGORY_IMAGES: { [string]: string } = {
+	squeeze = "img.icon.squeeze",
+	duel = "img.nav.duel",
+	practice = "img.icon.match",
+}
 
 -- Module table
 
@@ -162,6 +178,8 @@ local function card(
 		stateText = stateTextOf(state),
 		canSwap = false,
 		equipSquishy = nil,
+		defId = nil,
+		squishy = nil,
 	}
 end
 
@@ -214,7 +232,9 @@ function QuestFormat.dailyCard(entry: unknown, ctx: Context, swapsLeft: number):
 	local reward = CapsuleMath.rewardCoins(whole(e.reward, 0), CapsuleMath.squeezeValue(ctx.capsules))
 	local result = card(e.id, DAILY_KIND, title, whole(e.progress, 0), whole(e.goal, 1), reward, done, claimed)
 	result.canSwap = not done and swapsLeft > 0
+	result.defId = e.def
 	local id = e.squishy
+	result.squishy = if type(id) == "string" then id else nil
 	if not done and type(id) == "string" and ctx.owned and ctx.owned[id] ~= nil and ctx.equipped ~= id then
 		result.equipSquishy = id
 	end
@@ -239,10 +259,25 @@ function QuestFormat.starterCards(starter: unknown, capsules: any?): { Card }
 			local done = claimed or progress >= variant.goal
 			local title = QuestDefs.text(def.id, variant.goal)
 			local reward = CapsuleMath.rewardCoins(variant.reward, value)
-			table.insert(cards, card(def.id, STARTER_KIND, title, progress, variant.goal, reward, done, claimed))
+			local made = card(def.id, STARTER_KIND, title, progress, variant.goal, reward, done, claimed)
+			made.defId = def.id
+			table.insert(cards, made)
 		end
 	end
 	return cards
+end
+
+-- UI FINAL R4 (see Icon): a quest that names a squishy shows that squishy; else its category's picture; an unknown
+-- quest none.
+function QuestFormat.iconFor(c: Card): Icon
+	local def = if c.defId then QuestDefs.get(c.defId) else nil
+	if def == nil then
+		return { image = nil, squishy = nil }
+	end
+	if def.needsSquishy and c.squishy ~= nil then
+		return { image = nil, squishy = c.squishy }
+	end
+	return { image = CATEGORY_IMAGES[def.category], squishy = nil }
 end
 
 -- Starter tasks ready to claim (done, not claimed).

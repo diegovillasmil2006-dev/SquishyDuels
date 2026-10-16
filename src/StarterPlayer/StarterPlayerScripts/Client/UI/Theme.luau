@@ -130,6 +130,8 @@ export type AccentName =
 	| "yellow"
 	| "ult"
 	| "greenChip"
+	| "blueBar"
+	| "cancelX"
 -- `light`: ink text at every size; `dark`: white text at every size; neither: the outlined-text rule. UI FINAL R1: the
 -- gradient's stops, `top`, `mid` at `midAt` (a share of the height; 3-stop gradients only) and `shade` (the end stop);
 -- `face` is the main colour (the mid stop, else the top).
@@ -416,6 +418,10 @@ local ACCENTS: { [string]: Accent } = {
 	greenChip = stops(Palette.StickerGreenTop, Palette.StickerGreen2End),
 	-- H:234: the Ultimate chip's gold (its dark text is the ink here); the touch Ultimate and ULT READY.
 	ult = stops(Palette.StickerUltTop, Palette.StickerGoldEnd, nil, true),
+	-- UI FINAL R4: the quest bar's blue fill (lib:37, H:956: the HUD quest tracker, an unfinished quest).
+	blueBar = stops(Palette.StickerBlueBarTop, Palette.StickerBlueBarEnd),
+	-- UI FINAL R4: the DUEL search bar's cancel X (H:145: #FF8A8A -> #F0344A).
+	cancelX = stops(Palette.StickerCancelRedTop, Palette.StickerCloseEnd),
 }
 Theme.Accents = table.freeze(ACCENTS)
 

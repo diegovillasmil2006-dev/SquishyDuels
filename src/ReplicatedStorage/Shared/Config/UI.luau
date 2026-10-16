@@ -219,8 +219,17 @@ local UI = {
 			floatMs = 700,
 			-- §18.5.2 B1: the pill bounces on every gain (scale over upMs Quad Out, back over downMs Back Out) and the
 			-- coin icon rotates 0 -> -iconWiggleDeg -> 0; spending squishes it and counts down over countMs, no float.
+			-- UI FINAL R4 (G4.11): the gain bounce, the disc wiggle and the "+N" float above are no longer drawn (a
+			-- gain shows only the coin flash); Config/init still checks floatMs, so they stay until a clean-up.
 			pillBounce = { scale = 1.08, upMs = 70, downMs = 160 },
-			spend = { scale = 0.95, downMs = 60, upMs = 140, countMs = 300 },
+			-- UI FINAL R4 (G4.10, H:671-675): a spend drops the number at once (countMs 0) and squashes the pill's face
+			-- by `squash` (H:674: FX.squash(pill, .8), on the press squash's frames and time, PR4); its "-N" float is
+			-- Config.UI.Fx.events.spend.
+			spend = { squash = 0.8, countMs = 0 },
+			-- UI FINAL R4 (G4.10, reading): a claim's StateDelta (the new Coins) arrives before its reply, which starts
+			-- the coin flight (QuestController.claim): a flight-sized gain with nothing in the air holds the old number
+			-- this long for the flight that claims it, so the number only rises; with no flight it lands then.
+			flightWaitMs = 250,
 			iconWiggleDeg = 12,
 			-- UI FINAL R2: a coin landing on the pill (coinFlash, H:562-578; R4 draws it): the coin flips (a width
 			-- 1 -> 0 -> 1 for rotateY) and peaks iconPeak over flipMs (comboFlipMs when it lands within comboGapMs of
@@ -243,7 +252,73 @@ local UI = {
 				ringMs = 560, -- H:575
 				glowMs = 600, -- H:572
 				raysMs = 700, -- H:573
+				-- UI FINAL R4 (G4.6-G4.9): the tracks HudController plays per landing (PR7: the bright parts at most
+				-- once per coinFlight.bounceMinGapMs, the last coin's never dropped). Each is a Web Animations run (one
+				-- easing over the whole run, the frames linear): flip = rotateY in `rot` (drawn as the coin's width
+				-- |cos rot| x its scale) with the white copy's opacity in `alpha` (brightness 1.9 / 1.2 less 1,
+				-- H:568-569); halo = the drop-shadow(0 0 10px #FFF3A0) glow's opacity (H:568); number = its pop and
+				-- rise with numberColors (Palette names) at the same frames (H:574); ring = the pill's yellow ring in
+				-- `x` px at `alpha` (H:575); glow and rays (H:572-573; the rays skipped under ReducedMotion, H:573).
+				flipFrames = {
+					{ at = 0, rot = 0, scale = 1, alpha = 0 },
+					{ at = 0.35, rot = 180, scale = 1.45, alpha = 0.9 },
+					{ at = 0.7, rot = 330, scale = 0.9, alpha = 0.2 },
+					{ at = 1, rot = 360, scale = 1, alpha = 0 },
+				} :: { MotionPose },
+				haloFrames = {
+					{ at = 0, alpha = 0 },
+					{ at = 0.35, alpha = 1 },
+					{ at = 0.7, alpha = 0 },
+					{ at = 1, alpha = 0 },
+				} :: { MotionPose },
+				numberFrames = {
+					{ at = 0, scale = 1, y = 0 },
+					{ at = 0.25, scale = 1.22, y = -3 },
+					{ at = 0.6, scale = 0.97 },
+					{ at = 1, scale = 1, y = 0 },
+				} :: { MotionPose },
+				numberColors = { "StickerCoinText", "White", "StickerCoinFlash", "StickerCoinText" },
+				ringFrames = {
+					{ at = 0, x = 0, alpha = 0 },
+					{ at = 0.3, x = 8, alpha = 0.7 },
+					{ at = 1, x = 16, alpha = 0 },
+				} :: { MotionPose },
+				ringCurve = "easeOut", -- H:575
+				glowFrames = {
+					{ at = 0, alpha = 0, scale = 0.4 },
+					{ at = 0.25, alpha = 1, scale = 1.15 },
+					{ at = 1, alpha = 0, scale = 1.5 },
+				} :: { MotionPose },
+				glowCurve = "easeOut", -- H:572
+				raysFrames = {
+					{ at = 0, alpha = 0, scale = 0.3, rot = 0 },
+					{ at = 0.3, alpha = 1, scale = 1, rot = 40 },
+					{ at = 1, alpha = 0, scale = 1.25, rot = 90 },
+				} :: { MotionPose },
+				raysCurve = "easeOut", -- H:573
 			},
+		},
+		-- UI FINAL R4 (G4.1, H:25): the duel bar's entrance on each state change, the design's sdPop on its inner
+		-- holder: the search bar over searchMs on searchCurve (H:136), MATCH FOUND over foundMs on foundCurve (H:149),
+		-- each segment eased (a CSS animation). The bar does not clip, so its fade and tilt are drawn (plan §1.4 RL3).
+		ctaPop = {
+			searchMs = 450, -- H:136
+			foundMs = 500, -- H:149
+			searchCurve = "search", -- H:136
+			foundCurve = "slot", -- H:149
+			-- H:25: scale(.55) translateY(40px): the move is inside the scale, 40 x .55 = 22 px.
+			frames = {
+				{ at = 0, scale = 0.55, y = 22, rot = -2, alpha = 0 },
+				{ at = 0.6, scale = 1.035, y = -4, rot = 0.4, alpha = 1 },
+				{ at = 0.8, scale = 0.99 },
+				{ at = 1, scale = 1, y = 0, rot = 0, alpha = 1 },
+			} :: { MotionPose },
+		},
+		-- UI FINAL R4 (H:36, H:141): a queue slot's fill pops in (sdSlot .35 s, the slot curve).
+		slotPop = {
+			ms = 350, -- H:141
+			curve = "slot", -- H:141
+			frames = { { at = 0, scale = 0 }, { at = 0.65, scale = 1.35 }, { at = 1, scale = 1 } } :: { MotionPose },
 		},
 		-- "+N" coin flights into the pill (§18.5.2 B2, UI/CoinFlight): only for amounts >= minAmount unless the caller
 		-- gives the count. UI FINAL R2: the design's fly (lib:269-286): `count` coins a gain (H:663; a claim passes
@@ -732,6 +807,17 @@ local UI = {
 			float = { kind = "Title", stroke = 6, drop = 3 },
 			-- UI FINAL R2: the toast's text (H:175: 18 px white, text-shadow 0 2px 0 rgba(30,20,40,.6); R9 draws it).
 			toastText = { kind = "Body", stroke = 3, soft = { px = 2, alpha = 0.6 } },
+			-- UI FINAL R4 (the lobby HUD): "Join the queue" (H:131: 17 px white, text-shadow 0 2px 0
+			-- rgba(120,10,50,.55); PR3 adds the 1.5 px ink outline), the "GRIP" tag over the level (H:94: 18 px
+			-- #9AF5D2, stroke 5), the Double Grip chip (H:89: 14 px -> 16, #FFE36B, stroke 4), the search bar's time
+			-- (H:139: 16 px #FFE36B; PR3 outline), the quest tracker's title (the quest row's H:366: 20 px white,
+			-- text-shadow 0 2px 0 rgba(30,20,40,.5); PR3 outline) and its progress (H:366: 20 px, stroke 4).
+			duelSub = { kind = "D17", stroke = 3, soft = { px = 2, alpha = 0.55, color = "StickerDuelSubDrop" } },
+			gripTag = { kind = "Body", stroke = 5, color = "StickerMintTop" },
+			boost = { kind = "Small", stroke = 4, color = "StickerCoinText" },
+			searchTime = { kind = "Small", stroke = 3, color = "StickerCoinText" },
+			trackerTitle = { kind = "Button", stroke = 3, soft = { px = 2, alpha = 0.5 } },
+			trackerProgress = { kind = "Button", stroke = 4 },
 		} :: { [string]: StickerTextRole },
 		-- Q5 (the user, 2026-10-14): big button labels in capitals (a display transform; Strings stay as they are).
 		buttonCaps = true,
@@ -814,6 +900,183 @@ local UI = {
 		} :: { [string]: StickerVariant },
 		toggleKnobCurve = "switch", -- H:197, H:437
 		toggleTrackCurve = "ease", -- H:197, H:437
+		-- UI FINAL R4 (the lobby HUD, plan work/ui/PLAN.md R4; `N:n` = Diego's newer "Squishy Duels TDMFFA animations
+		-- and hud/Squishy Duels HUD.dc.html" line n, its DUEL mode picker): the design's spots and parts in base px,
+		-- read through UI/HudFormat.COLUMN (the layout maths) and the HUD controllers. Phones (the compact class) keep
+		-- the game's own spots (COLUMN.edge); every other size uses these.
+		hud = {
+			left = { x = 24, y = 18, gap = 14 }, -- H:74: the coin pill and the Grip row's column
+			coins = { -- H:75-81
+				face = 58,
+				minWidth = 220,
+				padLeft = 68,
+				padRight = 10,
+				gap = 12,
+				coinPx = 78, -- H:78
+				coinX = -14,
+				coinY = -12,
+				glowPx = 106, -- H:76
+				glowX = -28,
+				glowY = -26,
+				raysPx = 146, -- H:77
+				raysX = -48,
+				raysY = -46,
+				raysAlpha = 0.9, -- H:77
+				haloPx = 10, -- H:568: drop-shadow(0 0 10px #FFF3A0) around the coin
+			},
+			grip = { -- H:82-90
+				pull = 4, -- H:82 margin-top -4
+				padLeft = 6,
+				gap = 10,
+				barWidth = 200, -- H:83
+				barGap = 3,
+				boostRaise = 14, -- H:89 margin-top -14
+				boostGap = 2,
+				boltPx = 22,
+				boltPulseS = 1, -- H:89 sdPulse 1s
+				squash = 0.3, -- H:707: FX.squash(grip, .3) on each Grip gain (buttonPress.amount x this)
+			},
+			gripFloat = { top = 300, gap = 6, periodS = 3.6 }, -- H:92-96
+			nav = { -- H:98-120
+				x = 14,
+				y = 150,
+				width = 118,
+				height = 104,
+				iconPx = 92,
+				labelPull = 28, -- H:101 margin-top -28
+				shadowPx = 5, -- H:100 drop-shadow(0 5px 0 rgba(30,20,40,.3))
+				shadowAlpha = 0.3,
+				bobS = 3.1, -- H:100 sdBob 3.1s, each tile .3 s later (H:105-118)
+				bobStepS = 0.3,
+				badgeRight = 8, -- H:102: right 8, top 0
+				badgeTop = 0,
+			},
+			-- H:102, H:115, H:120: the badges' sdBadge delays (Squishies 0, Quests .4, Daily .8)
+			badgeDelays = { squishies = 0, quests = 0.4, daily = 0.8 } :: { [string]: number },
+			right = { edge = 22, top = 16, gap = 12 }, -- H:156
+			settings = { -- H:157-159
+				width = 92,
+				height = 90,
+				iconPx = 70,
+				labelPull = 12,
+				shadowPx = 4,
+				shadowAlpha = 0.3,
+			},
+			cta = { -- H:126-133
+				top = 30, -- PR10 (decided 2026-10-15): the design's 18 (H:123) + the 12 px the emblem pokes up
+				designTop = 18, -- H:123
+				width = 350,
+				padLeft = 128,
+				padRight = 24,
+				textGap = 4,
+				emblemPx = 132, -- H:128
+				emblemX = -10,
+				emblemY = -24,
+				emblemShadowPx = 5,
+				emblemShadowAlpha = 0.3,
+				emblemBobS = 2.4,
+				shadowY = 16, -- H:126: 0 16px 30px rgba(60,20,50,.25)
+				shadowBlur = 30,
+				shadowAlpha = 0.25,
+				-- Phones (reading): the design's CTA drawn at today's phone CTA height (64 base px) over its 99 px
+				-- frame, the second line hidden (it would be under the 16 px text floor).
+				compactScale = 64 / 99,
+			},
+			search = { -- H:135-146
+				width = 560,
+				face = 96,
+				padLeft = 104,
+				padRight = 14,
+				gap = 16,
+				columnGap = 8,
+				line1Gap = 10,
+				line2Gap = 5, -- H:140
+				emblemPx = 108, -- H:137
+				emblemX = -6,
+				emblemY = -10,
+				emblemPulseS = 0.9,
+				dotPx = 7, -- H:139
+				dotGap = 3,
+				dotDelayS = 0.2,
+				playersPad = 6, -- H:142
+				tickMs = 700, -- H:763, H:768: tick(false) every 700 ms while searching (the 1v1 queue)
+				dropBelow = 420, -- plan R4: narrower than this, the dots and the second line drop
+			},
+			slots = { -- H:141
+				px = 24,
+				border = 3,
+				radius = 8,
+				fill = 18,
+				fillRadius = 5,
+				highlightPx = 3,
+				highlightAlpha = 0.55,
+			},
+			found = { -- H:148-152
+				width = 420,
+				face = 96,
+				padLeft = 120,
+				padRight = 24,
+				gap = 14,
+				columnGap = 4,
+				midAt = 0.6, -- H:149: #FFC23A at 60%
+				iconPx = 112, -- H:150
+				iconX = 4,
+				iconY = -18,
+				iconPulseS = 0.6,
+				swapDelayMs = 350, -- H:772: the opponent's slot fills, then the found bar
+			},
+			cancelX = { -- H:145: 48 + lip 4, a 52 px touch box (PR1)
+				face = 48,
+				border = 4,
+				radius = 16,
+				lip = 4,
+				iconPx = 28,
+				highlightPx = 3,
+				highlightAlpha = 0.5,
+			},
+			picker = { -- N:154-158, N:1255-1256 (testers: Config.Match.picker)
+				gap = 14, -- N:145: under the DUEL button
+				padding = 5,
+				tabGap = 6,
+				border = 4,
+				radius = 20,
+				lip = 5,
+				highlightPx = 3,
+				highlightAlpha = 0.08,
+				tabHeight = 42,
+				tabPadLeft = 14,
+				tabPadRight = 9,
+				tabBorder = 3,
+				tabRadius = 14,
+				tabGapInside = 8,
+				tabLip = 3, -- N:1255: 0 3px 0 #1E1428 on the picked tab
+				tabHighlightPx = 3,
+				tabHighlightAlpha = 0.5,
+				chipHeight = 22,
+				chipPad = 7,
+				chipRadius = 8,
+				offChipAlpha = 0.08, -- N:1256: rgba(255,255,255,.08)
+				-- N:710: linear-gradient(100deg, ...): 100 - 90 degrees on the screen (SegmentedTabs turns it into the
+				-- tab's own 0..1 space, where a UIGradient rotates, from the tab's size).
+				tdmRotation = 10,
+				tdmStops = { 0, 0.32, 0.68, 1 } :: { number }, -- N:710: the four stops' places
+				ffaRotation = 90, -- N:711: linear-gradient(180deg, ...)
+			},
+			-- The design computes the tracker (H:994-996) but draws none: its insides are the quest row's (H:363-367),
+			-- its card the plan's card numbers (plan R4: radius 20, the 2 px highlight at .1, H:935), a uniform pad.
+			tracker = {
+				width = 320, -- reading: the right column's width (no design line)
+				pad = 12, -- reading (the quest row's left padding, H:363)
+				gap = 16, -- H:363
+				iconTile = 70, -- H:364
+				iconPx = 58,
+				iconBorder = 4,
+				iconRadius = 18,
+				textGap = 8, -- H:365
+				titleGap = 10, -- H:366: the title to "x/y"
+			},
+			toastTop = 200, -- N:197: the toast column's top (the newer file; was 132, H:174)
+		},
 	},
 
 	-- UI FINAL R2 (the motion kit; plan work/ui/PLAN.md §2.1): the design's own effects (hud-lib.js FX, lib:215-268),

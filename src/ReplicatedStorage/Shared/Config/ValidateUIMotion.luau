@@ -337,6 +337,47 @@ return function(h: Helpers, UI: any, Audio: any): Checks
 			`{f}.events.boxBurst: 1 rays picture + {#(burst.rings or {})} rings + maxPieces ({show(burst.maxPieces)}) `
 				.. `= {show(frames)} moving frames, must be <= {REVEAL_FRAME_MAX} (§9.15) with maxPieces >= 1`
 		)
+
+		-- UI FINAL R4 (the lobby HUD): Config.UI.Sticker.hud's numbers finite, its alphas, midAt and gradient stops in
+		-- 0..1, the compact CTA scale and the toast top positive, and its loops (bob, pulse, float) <= 3 Hz.
+		local hud = sticker.hud
+		local h4 = "F9: Config.UI.Sticker.hud"
+		if type(hud) ~= "table" then
+			add(problems, `{h4} is missing`)
+			return
+		end
+		for _, group in sortedKeys(hud) do
+			local entry = hud[group]
+			if type(entry) == "table" then
+				for _, field in sortedKeys(entry) do
+					local value = entry[field]
+					local path = `{h4}.{group}.{tostring(field)}`
+					if type(field) == "string" and (string.sub(field, -5) == "Alpha" or field == "midAt") then
+						expectBetween(problems, path, value, 0, 1)
+					elseif type(value) == "table" then
+						for index, share in value do
+							expectBetween(problems, `{path}[{tostring(index)}]`, share, 0, 1) -- gradient stops
+						end
+					else
+						expect(problems, isNumber(value), `{path} must be a finite number (got {show(value)})`)
+					end
+				end
+			else
+				expectPositive(problems, `{h4}.{group}`, entry)
+			end
+		end
+		expectPositive(problems, `{h4}.cta.compactScale`, hud.cta and hud.cta.compactScale)
+		local loops = {
+			{ "nav.bobS", hud.nav and hud.nav.bobS },
+			{ "cta.emblemBobS", hud.cta and hud.cta.emblemBobS },
+			{ "search.emblemPulseS", hud.search and hud.search.emblemPulseS },
+			{ "found.iconPulseS", hud.found and hud.found.iconPulseS },
+			{ "grip.boltPulseS", hud.grip and hud.grip.boltPulseS },
+			{ "gripFloat.periodS", hud.gripFloat and hud.gripFloat.periodS },
+		}
+		for _, loop in loops do
+			checkLoop(problems, `{h4}.{loop[1]}`, loop[2])
+		end
 	end
 
 	-- F8: the UI pitches (Config.Audio.uiPitch, plan §2.2); the coin pings top out at 2^((coinSteps - 1) / 12).

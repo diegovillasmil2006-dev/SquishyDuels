@@ -2371,9 +2371,11 @@ return function(t: Context)
 		expect.deepEqual(motion.badgePop, { from = 1.4, ms = 220 })
 		expect.deepEqual(motion.readyPop, { from = 1.3, ms = 220 })
 		expect.deepEqual(motion.coinCounter.pillBounce, { scale = 1.08, upMs = 70, downMs = 160 })
-		expect.deepEqual(motion.coinCounter.spend, { scale = 0.95, downMs = 60, upMs = 140, countMs = 300 })
+		-- UI FINAL R4 (G4.10, H:671-675): a spend drops the number at once and squashes the pill (FX.squash(pill, .8)).
+		expect.deepEqual(motion.coinCounter.spend, { squash = 0.8, countMs = 0 })
 		expect.equal(motion.coinCounter.iconWiggleDeg, 12)
-		expect.deepEqual(motion.coinCounter.flash, {
+		local flash = motion.coinCounter.flash
+		local flashNumbers = {
 			flipMs = 560, -- H:571
 			comboFlipMs = 380,
 			comboGapMs = 260, -- H:565
@@ -2389,6 +2391,42 @@ return function(t: Context)
 			ringMs = 560,
 			glowMs = 600, -- H:572
 			raysMs = 700, -- H:573
+			ringCurve = "easeOut", -- UI FINAL R4: H:575, H:572, H:573
+			glowCurve = "easeOut",
+			raysCurve = "easeOut",
+		}
+		for key, value in flashNumbers do
+			expect.equal(flash[key], value)
+		end
+		-- UI FINAL R4 (G4.6-G4.9): the landing's tracks (H:566-575).
+		expect.deepEqual(flash.flipFrames, {
+			{ at = 0, rot = 0, scale = 1, alpha = 0 },
+			{ at = 0.35, rot = 180, scale = 1.45, alpha = 0.9 },
+			{ at = 0.7, rot = 330, scale = 0.9, alpha = 0.2 },
+			{ at = 1, rot = 360, scale = 1, alpha = 0 },
+		})
+		expect.deepEqual(
+			flash.numberFrames,
+			{
+				{ at = 0, scale = 1, y = 0 },
+				{ at = 0.25, scale = 1.22, y = -3 },
+				{ at = 0.6, scale = 0.97 },
+				{ at = 1, scale = 1, y = 0 },
+			} :: { any }
+		)
+		expect.deepEqual(flash.numberColors, { "StickerCoinText", "White", "StickerCoinFlash", "StickerCoinText" })
+		expect.deepEqual(
+			flash.ringFrames,
+			{ { at = 0, x = 0, alpha = 0 }, { at = 0.3, x = 8, alpha = 0.7 }, { at = 1, x = 16, alpha = 0 } }
+		)
+		-- UI FINAL R4: the DUEL area's pops (H:25, H:136, H:149) and a queue slot's fill (H:36, H:141).
+		expect.deepEqual({ motion.ctaPop.searchMs, motion.ctaPop.foundMs }, { 450, 500 })
+		expect.deepEqual({ motion.ctaPop.searchCurve, motion.ctaPop.foundCurve }, { "search", "slot" })
+		expect.deepEqual(motion.ctaPop.frames[1], { at = 0, scale = 0.55, y = 22, rot = -2, alpha = 0 })
+		expect.deepEqual(motion.slotPop, {
+			ms = 350,
+			curve = "slot",
+			frames = { { at = 0, scale = 0 }, { at = 0.65, scale = 1.35 }, { at = 1, scale = 1 } },
 		})
 		-- The design's fly (lib:269-286): 8 coins a gain (H:663), 46 px, 60 ms apart, 720 ms + up to 220, through a
 		-- point up to 130 px to either side and 50-190 px up, landing at 0.55; at most 10 coins.
@@ -2561,6 +2599,70 @@ return function(t: Context)
 		-- Config.Debug: Studio-only flags (the runner is in Studio, or Lune's IsStudio stub).
 		expect.equal(Config.Debug.soundPicker, Config.Debug.isStudio)
 		expect.equal(Config.Debug.forceRipplePathB, false)
+	end)
+
+	-- UI FINAL R4 (the lobby HUD, plan R4; `H:n` = "Squishy Duels HUD.dc.html" line n, `N:n` = Diego's newer file).
+	t.test("UI FINAL R4: the HUD's design numbers, its text roles and the DUEL picker's testers", function()
+		local sticker = Config.UI.Sticker
+		local hud = sticker.hud
+		expect.deepEqual({ hud.left.x, hud.left.y, hud.left.gap }, { 24, 18, 14 }) -- H:74
+		expect.deepEqual(
+			{ hud.coins.face, hud.coins.minWidth, hud.coins.padLeft, hud.coins.padRight },
+			{ 58, 220, 68, 10 }
+		)
+		expect.deepEqual({ hud.coins.coinPx, hud.coins.coinX, hud.coins.coinY }, { 78, -14, -12 }) -- H:76
+		expect.deepEqual({ hud.grip.barWidth, hud.grip.boostRaise, hud.grip.squash }, { 200, 14, 0.3 }) -- H:83, 89, 707
+		expect.deepEqual({ hud.gripFloat.top, hud.gripFloat.gap, hud.gripFloat.periodS }, { 300, 6, 3.6 }) -- H:92-93
+		expect.deepEqual({ hud.nav.x, hud.nav.y, hud.nav.width, hud.nav.height }, { 14, 150, 118, 104 }) -- H:98-99
+		expect.deepEqual({ hud.nav.iconPx, hud.nav.labelPull, hud.nav.bobS }, { 92, 28, 3.1 }) -- H:100-101
+		expect.deepEqual({ hud.right.edge, hud.right.top, hud.right.gap }, { 22, 16, 12 }) -- H:156
+		expect.deepEqual({ hud.settings.width, hud.settings.height, hud.settings.iconPx }, { 92, 90, 70 }) -- H:157-158
+		expect.deepEqual({ hud.cta.top, hud.cta.designTop, hud.cta.width }, { 30, 18, 350 }) -- PR10, H:123, H:126
+		expect.deepEqual({ hud.cta.padLeft, hud.cta.padRight, hud.cta.emblemPx }, { 128, 24, 132 }) -- H:126-128
+		expect.deepEqual({ hud.search.width, hud.search.face, hud.search.tickMs }, { 560, 96, 700 }) -- H:136, H:763
+		expect.deepEqual({ hud.found.width, hud.found.face, hud.found.swapDelayMs }, { 420, 96, 350 }) -- H:149, H:772
+		expect.deepEqual(
+			{ hud.cancelX.face, hud.cancelX.lip, hud.cancelX.radius, hud.cancelX.iconPx },
+			{ 48, 4, 16, 28 }
+		)
+		expect.deepEqual({ hud.slots.px, hud.slots.fill, hud.slots.radius }, { 24, 18, 8 }) -- H:141
+		expect.deepEqual({ hud.picker.gap, hud.picker.tabHeight, hud.picker.chipHeight }, { 14, 42, 22 }) -- N:145-158
+		expect.equal(hud.tracker.width, 320)
+		expect.equal(hud.toastTop, 200) -- N:197
+		-- The design's text looks (H:79-151; PR2: every size at least 16).
+		expect.deepEqual(
+			sticker.text.duelSub,
+			{ kind = "D17", stroke = 3, soft = { px = 2, alpha = 0.55, color = "StickerDuelSubDrop" } }
+		)
+		expect.deepEqual(sticker.text.gripTag, { kind = "Body", stroke = 5, color = "StickerMintTop" }) -- H:94
+		expect.deepEqual(sticker.text.boost, { kind = "Small", stroke = 4, color = "StickerCoinText" }) -- H:89
+		expect.deepEqual(sticker.text.searchTime, { kind = "Small", stroke = 3, color = "StickerCoinText" }) -- H:139
+		-- Everyone sees the TDM / FFA picker under DUEL (the user, 2026-10-16; [P] pickerForEveryone).
+		expect.deepEqual(Config.Match.pickerTesters, { 8963996639, 136002404 })
+		expect.equal(Config.Match.pickerForEveryone, true)
+	end)
+
+	t.test("UI FINAL R4: the validator reports a bad HUD alpha, a fast HUD loop and a bad picker tester", function()
+		local alpha = validateBrokenCopy(t.Shared, "UI", function(ui)
+			ui.Sticker.hud.nav.shadowAlpha = 1.5
+		end)
+		expect.truthy(containsAll(alpha, { "F9:", "Sticker.hud.nav.shadowAlpha" }))
+		local bob = validateBrokenCopy(t.Shared, "UI", function(ui)
+			ui.Sticker.hud.nav.bobS = 0.25
+		end)
+		expect.truthy(containsAll(bob, { "F9:", "Sticker.hud.nav.bobS", "4.00 Hz", "above 3 Hz" }))
+		local stop = validateBrokenCopy(t.Shared, "UI", function(ui)
+			ui.Sticker.hud.picker.tdmStops[2] = 1.4
+		end)
+		expect.truthy(containsAll(stop, { "F9:", "Sticker.hud.picker.tdmStops[2]" }))
+		local tester = validateBrokenCopy(t.Shared, "Match", function(match)
+			match.pickerTesters = { 8963996639, 1.5 }
+		end)
+		expect.truthy(containsAll(tester, { "Config.Match.pickerTesters[2]" }))
+		local everyone = validateBrokenCopy(t.Shared, "Match", function(match)
+			match.pickerForEveryone = "yes"
+		end)
+		expect.truthy(containsAll(everyone, { "Config.Match.pickerForEveryone" }))
 	end)
 
 	-- Feel pass rules F1-F11 (DESIGN §18.9; each with a planted bad value, §18.10 L1) ---------------------------------

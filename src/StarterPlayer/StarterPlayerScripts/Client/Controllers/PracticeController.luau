@@ -45,8 +45,9 @@
 -- reticle's look (DuelController draws the same one), so the two stay alike.
 -- Integration (2026-10-09, the foam HUD moved things): the left spot goes under the whole left side, Hud_Left plus the
 -- tile group Hud_Nav under it (unionRect); the right spot also goes under the coach card (Hud_OnboardingCard); the
--- panel never covers the Duel CTA (Hud_DuelButton; at the top middle since spec 2026-10-11, one of the frames above
--- it). The reticle follows the duel reticle's foam look: InkUI outlines with round joins, the state text in the Chip
+-- panel never covers the Duel CTA (UI FINAL R4: the whole DUEL area Hud_CtaWrap, the button, the search bar and the
+-- testers' mode picker; at the top middle since spec 2026-10-11, one of the frames above it). The reticle follows the
+-- duel reticle's foam look: InkUI outlines with round joins, the state text in the Chip
 -- display kind.
 -- Overlays fix (2026-10-09): the reticle's state text moves in from a screen edge so it is never cut off
 -- (DuelFormat.reticleLabelOffset, shared with the duel reticle).
@@ -214,7 +215,7 @@ local PANEL_GAP = 8 -- HudController's row gap
 -- SD_Hud frames of other modules the panel keeps clear of (stable names: HudController's, QueueController's pill,
 -- OnboardingController's coach card). Lobby HUD (spec 2026-10-11): the Duel CTA sits at the top middle, so the right
 -- spot goes under it where they share columns and the top spot slides left past it.
-local HUD_FRAMES_ABOVE = { "Hud_Nav", "Hud_Right", "QueuePill", "Hud_OnboardingCard", "Hud_DuelButton" }
+local HUD_FRAMES_ABOVE = { "Hud_Nav", "Hud_Right", "QueuePill", "Hud_OnboardingCard", "Hud_CtaWrap" }
 -- Integration (foam HUD): the left side is the column (Hud_Left) and the tiles under it (Hud_Nav); the first spot goes
 -- under both (unionRect).
 local HUD_LEFT_FRAMES = { "Hud_Left", "Hud_Nav" }

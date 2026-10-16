@@ -43,6 +43,18 @@
 -- Batch 3 (friends, review #6): Queue_InviteButton ("Invite friends") joins the no-opponent hint's row after Practice
 -- when SocialService:CanSendGameInviteAsync said yes (asked once at start, in pcall; an error hides it). A press opens
 -- Roblox's own invite window (SocialService:PromptGameInvite, in pcall): no server call, no count, no reward.
+-- UI FINAL R4 (plan work/ui/PLAN.md R4; `H:n` = "Squishy Duels HUD.dc.html" line n), over the pill notes above:
+-- * The title, time and queue line now live in HudController's DUEL search bar (H:135-146). Cancel is the bar's
+--   cancel X [G4.22] (H:145): Queue_CancelButton (same name, same "queue" focus target, now while Searching) sits in
+--   HudController.cancelSlot() at the bar's right end (the pill's row only while the HUD has no slot): a 48 px face +
+--   4 px lip in the 52 px hit box (PR1), border 4, radius 16, #FF8A8A -> #F0344A (Theme accent cancelX), inset 3 at .5,
+--   no bevel, the close icon 28, hover kind x; a press plays ui.back (H:786 duelCancel) and leaves the queue.
+-- * [PR19] The pill shows only while the no-opponent hint is due: in the search bar's face (H:136: plum, border 5
+--   inside, radius 28, inset 4 at .12, the 7 px lip), the hint (Small, #EDE4FF, H:142) over Keep waiting / Practice
+--   (the cyan chips) and Invite friends (the green chip), the design's chip size (H:402) in 52 px hit boxes; the clock
+--   and the title are gone. Its buttons link left / right and up to Cancel.
+-- * Matched [G4.2, G4.3]: HudController.matchFound (the opponent's slot fills, then MATCH FOUND in SD_Overlay at the
+--   DUEL area's place) replaces the banner, with QueueFormat.matchedText ("Opponent: {name}" once the name is known).
 
 -- Services
 
@@ -64,12 +76,13 @@ local WorldLayout = require(Shared.World.WorldLayout)
 local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
 local Create = require(Client.UI.Create)
-local IconGlyph = require(Client.UI.Components.IconGlyph)
+local Layout = require(Client.UI.Layout)
 local QueueFormat = require(Client.UI.QueueFormat)
 local Theme = require(Client.UI.Theme)
 local Waypoint = require(Client.UI.Waypoint)
 local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
+local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
 local WorldBinder = require(script.Parent.WorldBinder)
@@ -83,23 +96,22 @@ local ATTR_LIVE_KEY = "SD_LiveKey"
 local HUD_GUI = "SD_Hud"
 local PRACTICE_WAYPOINT = "practice"
 local MAX_SLOTS = Config.Duel.Arena.MaxSlots
-local MATCHED_SECONDS = Config.UI.Queue.matchedBannerSeconds
-local TOUCH = Config.UI.Touch
 local PILL_TOP = 12 -- until the first layout pass (QueueFormat.pillPlacement places it)
 local PILL_WIDTH = 460 -- phones (QueueFormat's own width)
 local PILL_WIDE = 520 -- PCs: the title fits one line beside Cancel
 local PILL_PADDING = 12
-local PILL_GAP = 8
-local ICON_PX = 24
+-- UI FINAL R4: the pill in the search bar's face (H:136) and the bar's cancel X (H:145).
+local STICKER = Config.UI.Sticker
+local PILL_BORDER = STICKER.border.heavy
+local CANCEL_X = STICKER.hud.cancelX
+local BACK_SOUND = "ui.back" -- H:786: duelCancel plays the close sound
 local TICK_SECONDS = 0.25 -- the pill's clock shows whole seconds
 local PROMPT_REFRESH_TICKS = 4 -- the podium prompt text is re-checked once a second
 local NOTIFY_AREAS = { "queue.", "duel." }
 local COACH_FRAME = "Hud_OnboardingCard" -- OnboardingController's coach card (the pill keeps clear of it)
 local FOCUS_KEY = "queue" -- HudController.setFocusTarget
--- The duel HUD's top bar (DuelController's stable name) the matched banner sits under, and the duel phases it shows
--- in (from the countdown on, the countdown disc and the top bar take over).
-local DUEL_GUI = "SD_DuelHud"
-local DUEL_TOP_BAR = "TopBar"
+local HINT_FOCUS_KEY = "queueHint" -- UI FINAL R4: the pill's first hint button (HudController.setFocusTarget)
+-- The duel phases MATCH FOUND stays in (from the countdown on, the countdown disc and the top bar take over).
 local MATCHED_PHASES: { [string]: boolean } = { Preparing = true, Positioning = true }
 
 -- Module table
@@ -113,7 +125,6 @@ local cleanup: Cleanup.Cleanup? = nil
 local pill: Frame? = nil
 local textsFrame: Frame? = nil
 local hintRow: Frame? = nil
-local titleLabel: TextLabel? = nil
 local detailLabel: TextLabel? = nil
 local keepButton: Button.Button? = nil
 local practiceButton: Button.Button? = nil
@@ -150,44 +161,45 @@ local function setIfChanged(object: any, property: string, value: any)
 	end
 end
 
--- Gamepad links while the pill shows: the pill's buttons left / right in order; Cancel is HudController's "queue"
--- focus target (the HUD's right column reaches it), cleared while the pill hides.
+-- Gamepad: Cancel is HudController's "queue" focus target while Searching (UI FINAL R4: the DUEL area's selectable is
+-- the search bar's cancel X); while the pill shows, its buttons link left / right in order and up to Cancel, and the
+-- first one is the "queueHint" target (the cancel X's Down).
 local function linkGamepad(shown: boolean)
 	local cancel = cancelButton
 	if cancel == nil then
 		return
 	end
-	HudController.setFocusTarget(FOCUS_KEY, if shown then cancel.root else nil)
+	local searching = StateController.queue().state == "Searching" and not StateController.isLobbyLocked()
+	HudController.setFocusTarget(FOCUS_KEY, if searching then cancel.root else nil)
 	if not shown then
+		HudController.setFocusTarget(HINT_FOCUS_KEY, nil)
 		return
 	end
 	local order: { GuiObject } = {}
-	for _, button in { keepButton, practiceButton, inviteButton, cancelButton } do
+	for _, button in { keepButton, practiceButton, inviteButton } do
 		if button and button.root.Visible then
 			table.insert(order, button.root)
 		end
 	end
+	-- UI FINAL R4: the first hint button is the searching bar's Down (HudFormat.focusLinks `hint`).
+	HudController.setFocusTarget(HINT_FOCUS_KEY, order[1])
 	for index, object in order do
 		setIfChanged(object, "NextSelectionLeft", order[index - 1])
 		setIfChanged(object, "NextSelectionRight", order[index + 1])
+		setIfChanged(object, "NextSelectionUp", cancel.root)
 	end
 end
 
--- Overlays fix: the width (base px) of the wider of the pill's title and detail line, each on one line, measured from
--- QueueFormat.measureSample at the player's text size; measured again only when a sample or the text size changes.
--- (Theme.textWidth may yield the first time it meets a text.)
-local function measureTexts(title: string, detail: string?)
-	local titleSample = QueueFormat.measureSample(title)
-	local detailSample = if detail then QueueFormat.measureSample(detail) else ""
-	local key = `{Theme.textSize("Body")}\n{titleSample}\n{detailSample}`
+-- Overlays fix: the width (base px) of the pill's hint line on one line, measured from QueueFormat.measureSample at
+-- the player's text size; measured again only when the sample or the text size changes. (Theme.textWidth may yield the
+-- first time it meets a text.)
+local function measureTexts(detail: string?)
+	local sample = if detail then QueueFormat.measureSample(detail) else ""
+	local key = `{Theme.textSize("Small")}\n{sample}`
 	if key == measuredKey then
 		return
 	end
-	local width = Theme.textWidth(titleSample, "Body", Enum.FontWeight.Bold)
-	if detail then
-		width = math.max(width, Theme.textWidth(detailSample, "Small"))
-	end
-	measuredKey, measuredText = key, width
+	measuredKey, measuredText = key, if detail then Theme.textWidth(sample, "Small") else 0
 end
 
 -- A button's width in base px without its press feel (Button's UIScale "Scale": hover 1.04, press 0.92). Review fix:
@@ -198,11 +210,10 @@ local function restingWidth(button: Button.Button, scale: number): number
 	return button.root.AbsoluteSize.X / scale / k
 end
 
--- The pill's width (QueueFormat.pillWidth): hugging its texts, Cancel and, while they show, the hint's buttons; at most
--- `cap`. Until the texts are measured, `cap`.
+-- The pill's width (QueueFormat.pillWidth): hugging its hint line and, while they show, the hint's buttons (UI FINAL
+-- R4: no clock and no Cancel in it); at most `cap`. Until the texts are measured, `cap`.
 local function hugWidth(scale: number, cap: number): number
-	local cancel = cancelButton
-	if measuredKey == nil or cancel == nil then
+	if measuredKey == nil then
 		return cap
 	end
 	local hint = 0
@@ -215,11 +226,11 @@ local function hugWidth(scale: number, cap: number): number
 		hint += restingWidth(invite, scale) + Theme.Padding.small -- Batch 3: Invite friends in the same row
 	end
 	return QueueFormat.pillWidth({
-		padding = PILL_PADDING,
-		icon = ICON_PX,
-		gap = PILL_GAP,
+		padding = PILL_BORDER + PILL_PADDING,
+		icon = 0,
+		gap = 0,
 		text = measuredText,
-		cancel = restingWidth(cancel, scale),
+		cancel = 0,
 		hint = hint,
 	}, cap)
 end
@@ -264,11 +275,10 @@ local function layoutPill()
 	lastPlacement = place
 	setIfChanged(frame, "Position", UDim2.fromOffset(math.floor(place.x + 0.5), math.floor(place.y + 0.5)))
 	setIfChanged(frame, "Size", UDim2.fromOffset(math.floor(place.width), 0))
-	-- The text column gets what the clock and Cancel leave.
-	local texts, cancel = textsFrame, cancelButton
-	if texts and cancel then
-		local cancelWidth = restingWidth(cancel, scale)
-		local width = math.max(60, math.floor(place.width - 2 * PILL_PADDING - ICON_PX - cancelWidth - 2 * PILL_GAP))
+	-- The hint line gets the pill's width inside its border and padding.
+	local texts = textsFrame
+	if texts then
+		local width = math.max(60, math.floor(place.width - 2 * (PILL_BORDER + PILL_PADDING)))
 		setIfChanged(texts, "Size", UDim2.fromOffset(width, 0))
 	end
 	linkGamepad(true)
@@ -283,12 +293,12 @@ local function refreshPill()
 	local now = serverNow()
 	aloneSince = QueueFormat.nextAloneSince(aloneSince, view, now)
 	local model = QueueFormat.pill(view, now, aloneSince, hintDismissedAt)
-	local visible = model.visible and not StateController.isLobbyLocked()
+	-- UI FINAL R4 [PR19]: only the no-opponent hint (the DUEL search bar shows the rest).
+	local visible = model.visible and model.showHint and not StateController.isLobbyLocked()
 	frame.Visible = visible
-	local title, detail = titleLabel, detailLabel
-	if visible and title and detail then
-		measureTexts(model.title, model.detail)
-		setIfChanged(title, "Text", model.title)
+	local detail = detailLabel
+	if visible and detail then
+		measureTexts(model.detail)
 		setIfChanged(detail, "Text", model.detail or "")
 		setIfChanged(detail, "Visible", model.detail ~= nil)
 		for _, button in { keepButton, practiceButton } do
@@ -358,13 +368,8 @@ local function showMatched()
 		return
 	end
 	matchedBannerFor = key
-	-- Overlays fix: under the duel HUD's top bar once that shows (UIController follows it); 20% down until then.
-	local bar = UIController.screenGui(DUEL_GUI):FindFirstChild(DUEL_TOP_BAR)
-	matchedBanner = UIController.banner(text, {
-		seconds = MATCHED_SECONDS,
-		color = Theme.Colors.mint,
-		below = if bar and bar:IsA("GuiObject") then bar else nil,
-	})
+	-- UI FINAL R4 [G4.2, G4.3] (H:767-783): the DUEL area's MATCH FOUND (the banner's handle shape).
+	matchedBanner = HudController.matchFound(text)
 end
 
 -- Overlays fix: the matched banner leaves once the countdown starts (the countdown disc sits under the top bar, which
@@ -375,53 +380,51 @@ local function dismissMatchedAfter(view: StateController.DuelView)
 	end
 end
 
--- The pill (foam restyle): a foam card; its top row is a clock, the title over the detail line, and Cancel; the
--- no-opponent hint's Keep waiting / Practice wrap in a row under it.
+-- The pill (UI FINAL R4 [PR19], H:136, H:142, H:402): the search bar's face (plum, its 5 px border inside, radius 28,
+-- inset 4 at .12, the 7 px lip) holding the no-opponent hint (Small, #EDE4FF) over Keep waiting / Practice / Invite
+-- friends, which wrap in a row under it.
 local function buildPill(c: Cleanup.Cleanup)
-	local frame = Theme.panel({
+	local bands = Layout.stickerBands(PILL_BORDER, STICKER.surfaces.search.highlightPx, 0, STICKER.lip.search)
+	local frame: Frame = Create("Frame", {
 		Name = "QueuePill",
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, PILL_TOP),
 		Size = UDim2.fromOffset(PILL_WIDTH, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0,
 		Visible = false,
-		Parent = UIController.screenGui(HUD_GUI),
-	}, Theme.Radius.panel, PILL_PADDING)
+	})
+	Theme.foam(frame, {
+		radius = STICKER.radius.duel,
+		stroke = PILL_BORDER,
+		inner = true,
+		top = bands.top,
+		drop = bands.drop,
+		colors = Theme.surfaceColors(Theme.accent("plum"), "search", true),
+	})
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, PILL_BORDER + PILL_PADDING),
+		PaddingRight = UDim.new(0, PILL_BORDER + PILL_PADDING),
+		PaddingTop = UDim.new(0, PILL_BORDER + PILL_PADDING),
+		PaddingBottom = UDim.new(0, bands.drop + PILL_PADDING),
+		Parent = frame,
+	})
+	frame.Parent = UIController.screenGui(HUD_GUI)
 	c:add(frame)
 	-- Integration: the toasts start under the pill (under the Duel CTA; NotifyFormat chains them, spec 2026-10-11).
 	UIController.toastsBelow("queue", frame)
 	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.small, frame, Enum.HorizontalAlignment.Left)
-	local top: Frame = Create("Frame", {
-		Name = "Top",
+	local texts: Frame = Create("Frame", {
+		Name = "Texts",
 		LayoutOrder = 1,
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
+		Size = UDim2.fromOffset(PILL_WIDTH - 2 * (PILL_BORDER + PILL_PADDING), 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = frame,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, PILL_GAP, top, Enum.HorizontalAlignment.Left)
-	local clock = IconGlyph.new({ name = "Icon", icon = "clock", sizePx = ICON_PX, tone = "light", layoutOrder = 1 }) -- on the dark pill
-	clock.root.Parent = top
-	c:add(clock)
-	local texts: Frame = Create("Frame", {
-		Name = "Texts",
-		LayoutOrder = 2,
-		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(PILL_WIDTH - 200, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = top,
-	})
-	Theme.list(Enum.FillDirection.Vertical, 2, texts, Enum.HorizontalAlignment.Left)
 	textsFrame = texts
-	titleLabel = Theme.label({
-		Name = "Title",
-		LayoutOrder = 1,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = texts,
-	}, "Body", Enum.FontWeight.Bold)
 	detailLabel = Theme.label({
 		Name = "Detail",
-		LayoutOrder = 2,
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = texts,
 	}, "Small", nil, Theme.Colors.ink2)
@@ -442,7 +445,8 @@ local function buildPill(c: Cleanup.Cleanup)
 	local keep = Button.new({
 		name = "Queue_KeepWaitingButton",
 		text = Strings.queue.keepWaiting,
-		height = TOUCH.minTarget,
+		size = "chip", -- [PR19] (H:402) on the cyan face (H:247)
+		accent = "cyan",
 		layoutOrder = 1,
 		parent = row,
 		onActivated = function()
@@ -456,7 +460,8 @@ local function buildPill(c: Cleanup.Cleanup)
 	local practice = Button.new({
 		name = "Queue_PracticeButton",
 		text = Strings.queue.practice,
-		height = TOUCH.minTarget,
+		size = "chip",
+		accent = "cyan",
 		layoutOrder = 2,
 		parent = row,
 		onActivated = function()
@@ -475,7 +480,7 @@ local function buildPill(c: Cleanup.Cleanup)
 	local invite = Button.new({
 		name = "Queue_InviteButton",
 		text = Strings.queue.inviteFriends,
-		height = TOUCH.minTarget,
+		size = "chip", -- the green chip (H:402)
 		layoutOrder = 3,
 		parent = row,
 		onActivated = function()
@@ -488,26 +493,39 @@ local function buildPill(c: Cleanup.Cleanup)
 	invite.root.Visible = false
 	c:add(invite)
 	inviteButton = invite
+	-- UI FINAL R4 [G4.22] (H:145): the search bar's cancel X (see the header).
+	local slot = HudController.cancelSlot()
+	if slot == nil then
+		log:warn("the HUD has no DUEL search bar cancel slot; Cancel stays in the queue pill")
+	end
 	local cancel = Button.new({
 		name = "Queue_CancelButton",
 		text = Strings.common.cancel,
-		kind = "primary",
-		height = TOUCH.closeButton,
-		layoutOrder = 3,
-		parent = top,
+		kind = "close",
+		accent = "cancelX",
+		height = CANCEL_X.face,
+		radius = CANCEL_X.radius,
+		border = CANCEL_X.border,
+		lip = CANCEL_X.lip,
+		highlight = { px = CANCEL_X.highlightPx, a = CANCEL_X.highlightAlpha },
+		bevel = { px = 0, a = 0 },
+		iconSize = CANCEL_X.iconPx,
+		fx = "x",
+		layoutOrder = 4,
+		parent = slot or row,
 		onActivated = function()
+			SoundController.play(BACK_SOUND)
 			QueueController.leave()
 		end,
 	})
 	c:add(cancel)
 	cancelButton = cancel
 	pill = frame
-	-- The pill's height and Cancel's width (the text column) decide its place.
+	-- The pill's height decides its place.
 	c:add(frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutPill))
-	c:add(cancel.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutPill))
 	c:add(function()
 		linkGamepad(false)
-		pill, titleLabel, detailLabel, textsFrame, hintRow = nil, nil, nil, nil, nil
+		pill, detailLabel, textsFrame, hintRow = nil, nil, nil, nil
 		keepButton, practiceButton, inviteButton, cancelButton, lastPlacement = nil, nil, nil, nil, nil
 		measuredKey, measuredText = nil, 0
 	end)
@@ -575,6 +593,8 @@ function QueueController.debugState(): { [string]: any }
 			then { x = place.x, y = place.y, width = place.width, spot = place.spot, fits = place.fits }
 			else nil,
 		hint = keepButton ~= nil and keepButton.root.Visible,
+		-- UI FINAL R4: Cancel sits in the DUEL search bar (HudController.cancelSlot).
+		cancelInBar = cancelButton ~= nil and cancelButton.root.Parent == HudController.cancelSlot(),
 	}
 end
 

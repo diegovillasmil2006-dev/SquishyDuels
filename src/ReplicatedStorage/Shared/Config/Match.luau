@@ -85,6 +85,14 @@ local Match = {
 	outOfBoundsIsKo = true,
 	readoutHz = 4, -- [P] the client's test readout chip refreshes this many times a second
 	returnSpreadStuds = 4, -- [P] players sent back to the same lobby return point stand this far apart (rings of 6)
+	-- UI FINAL R4 (the user, 2026-10-15: "testers get the new picker", work/tdmffa/PLAN.md D3 / D5): the HUD's DUEL
+	-- button shows Diego's TEAM DEATHMATCH / FREE FOR ALL picker under it (N:144-162) and joins this in-server queue
+	-- (MatchJoin) for these userIds (the co-owners jayyyyy2806 and VillasmilGaming), or for everyone with
+	-- pickerForEveryone; everyone else keeps the 1v1 DUEL button. A display gate only (the server's MatchJoin checks
+	-- stay as they are); the chat commands /ffa /tdm /leave work for everyone as before. The user, 2026-10-16: the
+	-- picker is for EVERYONE.
+	pickerTesters = { 8963996639, 136002404 },
+	pickerForEveryone = true, -- [P]
 
 	-- Diego's maps in Workspace.DuelMaps (MatchMapService). footprint = the floor size (X x Z) by the map's Mode
 	-- attribute. The Bounds box the combat code reads spans the footprint from floorY + boundsBottomOffset (the kill

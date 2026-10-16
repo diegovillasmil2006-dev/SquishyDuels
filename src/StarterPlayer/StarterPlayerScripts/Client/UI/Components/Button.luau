@@ -15,11 +15,14 @@
 --              face Touch.primaryButton 56 (the design's CLAIM / GO, H:370-371; its EQUIP is 60, H:245)
 --   secondary  cyan 3-stop, the same shape (the default kind; the design's FIND IN BOXES, GO, reveal EQUIP, H:247)
 --   cancel     the lilac CANCEL (H:462): highlight 3 at .3, no bevel
---   tile       the nav tile: the icon (spec.icon) above its outlined label (Chip kind by default), a fixed TILE_SIZE ×
---              TILE_HEIGHT box (the design's sticker, H:99) unless width / height are given, an optional count badge.
---              Until R4 gives it the design's faceless sticker and its picture (img.nav.*), it keeps its foam plate
---              (an outer 3 px ink outline, the Theme.Foam.tile bands, radius 20) in its accent's sticker colours, so
---              the lobby nav keeps a visible face and press state
+--   tile       the nav sticker (UI FINAL R4, P13; H:99-102, H:157-159): no face, no outline, no plate: the picture
+--              (img.nav.*, IconGlyph's slot; its drawn shape while the id is nil) IS the button, with the design's
+--              drop shadow (spec.iconShadow), the label (spec.textRole, e.g. navLabel) pulled up over it by
+--              spec.labelPull and drawn above it; a fixed TILE_SIZE x TILE_HEIGHT box unless width / height are given;
+--              the picture sits in SD_Bob (UiIdle's bob, spec.bob) and SD_Wiggle (the nav hover's wiggle, H:639,
+--              Config.UI.motion.navWiggle: PR6), and the hover's brightness is a white copy of the picture
+--              (img.nav.<name>.white, pack 2; none while nil, G4.20) at the filter's .07; the count badge at the
+--              design's spot (right 8, top 0, H:102) in spec.badgeAccent with its sdBadge loop (spec.badgeDelay)
 --   cta        the big call to action (the Duel button, H:126): pink 3-stop, border 5, radius 28, lip 7, highlight 4 at
 --              .6, bevel 8 at .3 towards the duel tint, face CTA_HEIGHT; the one kind with the moving shine strip
 --   close      the chunky red X (H:252): border 5, radius 24, lip 6, highlight 4 at .5, bevel 6 at .18, a face square
@@ -72,6 +75,10 @@
 --   * Overrides (P12): radius, border, lip, stops = 2 (the accent's top and end only), highlight / bevel = { px, a };
 --     size = "chip" (H:402: a 34 px face, padding 20, border 3, radius 12, the green #A6F796 -> #38C150, inset 2 at
 --     .55, lip 3, the label 18 px with a 4 px stroke).
+--   * UI FINAL R4: padLeft / padRight (the DUEL button's 0 24 0 128, H:126), align = "left" (its texts from the left
+--     padding), textGap (between the label and the subtext, H:129), textRole / subtextRole (Theme.stickerText roles,
+--     e.g. "duel" and "duelSub"); a close X whose face is under the touch minimum (the search bar's 48 px cancel X,
+--     H:145) keeps its face size, centred in the 52 px hit box (PR1).
 --   * The cta's shine (P2, G4.13): a 54 px strip in a holder inset by the border, the face's height, corner 23
 --     (H:127), crossing every 3.4 s (Anim/UiIdle "shine", Config.UI.Sticker.shines.cta), its band leaning 20°
 --     (Theme.shineBand, H:28); hidden while SD_Visual is turned (the shake), as Roblox stops clipping under a turn.
@@ -115,6 +122,7 @@ local UserInputService = game:GetService("UserInputService")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local AssetTable = require(Shared.AssetTable)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
@@ -167,6 +175,19 @@ export type Spec = {
 	highlight: { px: number, a: number }?,
 	bevel: { px: number, a: number }?,
 	size: "chip"?,
+	-- UI FINAL R4 (see the header).
+	padLeft: number?,
+	padRight: number?,
+	align: "left"?,
+	textGap: number?,
+	textRole: string?,
+	subtextRole: string?,
+	labelPull: number?, -- a tile: base px its label is pulled up over the picture (H:101, H:159)
+	iconShadow: { px: number, alpha: number, color: Color3? }?, -- a tile: the picture's drop shadow (H:100, H:158)
+	bob: { periodS: number, delayS: number? }?, -- a tile: the picture's sdBob (H:100-118)
+	badgeAccent: Theme.AccentName?, -- a tile: the badge's face ("yellow": the daily "!", H:120)
+	badgeMark: string?, -- a tile: the badge shows this text (e.g. "!") instead of the count
+	badgeDelay: number?, -- a tile: the badge's sdBadge delay (s; nil = no loop; H:102, H:115, H:120)
 }
 
 export type Button = {
@@ -207,6 +228,7 @@ export type Style = {
 	height: number, -- the default face (UI FINAL R2, P1)
 	iconPx: number, -- the default icon size
 	caps: boolean, -- the label shows in capitals (Q5)
+	faceless: boolean?, -- UI FINAL R4 (P13): no face at all (the nav sticker: its picture is the button)
 }
 
 export type DecorateOptions = {
@@ -300,6 +322,11 @@ local KIND_FX: { [string]: Fx } = {
 }
 local SILENT_KINDS = Config.Audio.buttonSilentKinds :: { [string]: boolean }
 local HOVER_PITCH = Config.Audio.uiPitch.hover :: { [string]: number }
+-- UI FINAL R4 (P13): the nav sticker (Config.UI.Sticker.hud.nav, H:99-102): its label's pull, the badge's spot inside
+-- the tile, the hover wiggle (PR6) and the white copy that draws the hover's brightness (pack 2's ".white" pictures).
+local NAV = STICKER.hud.nav
+local WIGGLE = MOTION.navWiggle
+local WHITE_SUFFIX = ".white"
 
 -- A sticker kind's style (UI FINAL R1): its bands from the border, the surface's highlight and bevel, and the lip.
 -- UI FINAL R2 (P12): `surface` may be a surface table (a button's own highlight / bevel).
@@ -363,23 +390,24 @@ local STYLES: { [string]: Style } = {
 		TOUCH.primaryButton,
 		24
 	),
-	-- The nav tile keeps its foam plate until R4 (see the header): an outer ink outline, the Theme.Foam.tile bands, in
-	-- its accent's sticker colours; no capitals (H:101 "Squishies").
+	-- UI FINAL R4 (P13): the faceless nav sticker (see the header); no capitals (H:101 "Squishies"). Its radius is the
+	-- gamepad ring's.
 	tile = {
 		accent = "strawberry",
 		surface = "primary",
-		radius = Theme.Radius.tile,
-		border = Theme.Stroke.ink,
-		inner = false,
+		radius = STICKER.radius.tile,
+		border = 0,
+		inner = true,
 		lip = 0,
-		top = Theme.Foam.tile.top,
-		bevel = Theme.Foam.tile.bevel,
-		drop = Theme.Foam.tile.drop,
-		shift = (Theme.Foam.tile.bevel + Theme.Foam.tile.drop - Theme.Foam.tile.top) / 2,
+		top = 0,
+		bevel = 0,
+		drop = 0,
+		shift = 0,
 		paddingX = TILE_PADDING_X,
 		height = TILE_HEIGHT,
 		iconPx = TILE_ICON_PX,
 		caps = false,
+		faceless = true,
 	},
 	cta = sticker(
 		"strawberry",
@@ -758,6 +786,19 @@ function Button.decoratedScale(sx: number, sy: number): number
 	return if PRESS.decoratedAxis == "sx" then sx else sy
 end
 
+-- UI FINAL R4 (PR6, H:639): the nav sticker's hover wiggle at u (0..1) of Config.UI.motion.navWiggle.ms: its angles
+-- (degrees) evenly spaced, linear between them (the Web Animations default); 0 outside the run.
+function Button.wiggleAt(u: number): number
+	local angles = WIGGLE.angles
+	if not (u > 0 and u < 1) or #angles < 2 then
+		return 0
+	end
+	local span = u * (#angles - 1)
+	local index = math.floor(span) + 1
+	local k = span - (index - 1)
+	return angles[index] + (angles[index + 1] - angles[index]) * k
+end
+
 -- UI FINAL R2: the automatic width to keep: `measured`, unless the button is `moving` (or scaled by a UIScale above it)
 -- and `measured` is within WIDTH_SLACK_PX of the `natural` width it has (a scaled size's rounding, not a new text).
 function Button.settledWidth(natural: number, measured: number, moving: boolean): number
@@ -878,7 +919,14 @@ function Button.new(spec: Spec): Button
 	-- UI FINAL R2 (P1): the face, the frame (face + lip) and the hit box (the frame, at least the touch minimum).
 	local height = spec.height or style.height
 	local frameHeight = height + style.lip
-	local fixedWidth: number? = spec.width or (if tile then TILE_SIZE elseif iconOnly then height else nil)
+	-- UI FINAL R4 (PR1): a close X narrower than the touch minimum keeps its face width inside a minimum-wide hit box.
+	local fixedWidth: number? = spec.width
+		or (if tile then TILE_SIZE elseif iconOnly then math.max(height, TOUCH.minTarget) else nil)
+	local faceWidth: number? = if iconOnly and spec.width == nil and height < TOUCH.minTarget then height else nil
+	-- UI FINAL R4: the side paddings (the DUEL button's own, H:126) and the faceless sticker (P13).
+	local padLeft = spec.padLeft or style.paddingX
+	local padRight = spec.padRight or style.paddingX
+	local faceless = style.faceless == true
 	-- G2.7: a silent kind's `sound = false` silences its click only (the design keeps every hover sound, H:638).
 	local hoverOn = spec.sound ~= false or SILENT_KINDS[kind] == true
 	local clickOn = spec.sound ~= false and spec.clickSound ~= false and not SILENT_KINDS[kind]
@@ -909,23 +957,29 @@ function Button.new(spec: Spec): Button
 		Name = "SD_Visual",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = if frameHeight < rootHeight then UDim2.new(1, 0, 0, frameHeight) else UDim2.fromScale(1, 1),
+		Size = UDim2.new(
+			if faceWidth then UDim.new(0, faceWidth) else UDim.new(1, 0),
+			if frameHeight < rootHeight then UDim.new(0, frameHeight) else UDim.new(1, 0)
+		),
+		BackgroundTransparency = if faceless then 1 else 0,
 		BorderSizePixel = 0,
 		Active = false,
 		Parent = root,
 	})
-	local foam = Theme.foam(visual, {
-		radius = style.radius,
-		stroke = style.border,
-		inner = style.inner,
-		top = style.top,
-		bevel = style.bevel,
-		drop = style.drop,
-		colors = Theme.surfaceColors(accent, surfaceSpec, true),
-	})
+	local foam: Theme.Foam? = if faceless
+		then nil
+		else Theme.foam(visual, {
+			radius = style.radius,
+			stroke = style.border,
+			inner = style.inner,
+			top = style.top,
+			bevel = style.bevel,
+			drop = style.drop,
+			colors = Theme.surfaceColors(accent, surfaceSpec, true),
+		})
 	Create("UIPadding", {
-		PaddingLeft = UDim.new(0, style.paddingX),
-		PaddingRight = UDim.new(0, style.paddingX),
+		PaddingLeft = UDim.new(0, padLeft),
+		PaddingRight = UDim.new(0, padRight),
 		Parent = visual,
 	})
 	-- UI FINAL R2 (P2, G4.13): the moving shine strip (H:127): a holder inset by the border on every side, the face's
@@ -949,8 +1003,8 @@ function Button.new(spec: Spec): Button
 		local clip: Frame = Create("Frame", {
 			Name = "SD_Shine",
 			BackgroundTransparency = 1,
-			Position = UDim2.fromOffset(b - style.paddingX, b),
-			Size = UDim2.new(1, 2 * style.paddingX - 2 * b, 1, -2 * b - style.lip),
+			Position = UDim2.fromOffset(b - padLeft, b),
+			Size = UDim2.new(1, padLeft + padRight - 2 * b, 1, -2 * b - style.lip),
 			ClipsDescendants = true,
 			Active = false,
 			ZIndex = 0,
@@ -988,7 +1042,16 @@ function Button.new(spec: Spec): Button
 		AutomaticSize = if fixedWidth then Enum.AutomaticSize.None else Enum.AutomaticSize.X,
 		Parent = visual,
 	})
-	Theme.list(Enum.FillDirection.Vertical, if stacked then TILE_GAP else 0, content)
+	-- UI FINAL R4: the faceless sticker's label is pulled up over its picture (H:101: margin-top -28; a negative list
+	-- gap, the label drawn above), top-aligned; spec.align = "left" lines the content up on the left padding.
+	local labelPull = if faceless then spec.labelPull or NAV.labelPull else 0
+	Theme.list(
+		Enum.FillDirection.Vertical,
+		if faceless then -labelPull elseif stacked then TILE_GAP else 0,
+		content,
+		if spec.align == "left" then Enum.HorizontalAlignment.Left else Enum.HorizontalAlignment.Center,
+		if faceless then Enum.VerticalAlignment.Top else Enum.VerticalAlignment.Center
+	)
 
 	-- A row (keycap, icon, the label over the subtext) for a non-tile button with any of those parts.
 	local line: Frame? = nil
@@ -1011,12 +1074,70 @@ function Button.new(spec: Spec): Button
 			LayoutOrder = 3,
 			Parent = row,
 		})
-		Theme.list(Enum.FillDirection.Vertical, 0, texts, Enum.HorizontalAlignment.Left)
+		Theme.list(Enum.FillDirection.Vertical, spec.textGap or 0, texts, Enum.HorizontalAlignment.Left)
 		line = row
 	end
 
 	local icon: IconGlyph.IconGlyph? = nil
-	if iconName then
+	-- UI FINAL R4 (P13): the faceless sticker's picture: Icon (laid out, the icon size) > SD_Bob (sdBob) > SD_Wiggle
+	-- (the hover wiggle) > the picture with its drop shadow and, over it, its white copy (the hover's brightness).
+	local picture: Frame? = nil
+	local wiggle: Frame? = nil
+	local brighten: ImageLabel? = nil
+	local slot = if iconName then IconGlyph.slotOf(iconName) else nil
+	local pictureId = if faceless and slot then AssetTable.image(slot) else nil
+	if faceless and iconName then
+		local size = spec.iconSize or style.iconPx
+		local holder: Frame = Create("Frame", {
+			Name = "Icon",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(size, size),
+			LayoutOrder = 0,
+			Parent = content,
+		})
+		local bob: Frame = Create("Frame", {
+			Name = "SD_Bob",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Parent = holder,
+		})
+		local turn: Frame = Create("Frame", {
+			Name = "SD_Wiggle",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			Parent = bob,
+		})
+		if pictureId and slot then
+			local image =
+				IconGlyph.image(slot, { name = "Picture", sizePx = size, shadow = spec.iconShadow, parent = turn })
+			image.Size = UDim2.fromScale(1, 1)
+			local white = IconGlyph.image(slot .. WHITE_SUFFIX, { name = "SD_Brighten", sizePx = size, parent = turn })
+			white.Size = UDim2.fromScale(1, 1)
+			white.ZIndex = 2
+			local whiteImage = white:FindFirstChild("Image")
+			if whiteImage and whiteImage:IsA("ImageLabel") and white.Visible then
+				whiteImage.ImageTransparency = 1
+				brighten = whiteImage
+			end
+		else
+			icon = IconGlyph.new({ name = "Picture", icon = iconName, sizePx = size, parent = turn })
+			cleanup:add(icon)
+			local glyph = icon :: IconGlyph.IconGlyph
+			glyph.root.Size = UDim2.fromScale(1, 1)
+		end
+		if spec.bob then
+			local handle = UiIdle.add(bob, "bob", { periodS = spec.bob.periodS, delayS = spec.bob.delayS })
+			if handle then
+				cleanup:add(function()
+					handle:remove()
+				end)
+			end
+		end
+		picture = holder
+		wiggle = turn
+	elseif iconName then
 		icon = IconGlyph.new({
 			name = "Icon",
 			icon = iconName,
@@ -1046,8 +1167,15 @@ function Button.new(spec: Spec): Button
 		AutomaticSize = if wraps then Enum.AutomaticSize.Y else Enum.AutomaticSize.XY,
 		TextXAlignment = if inLine then Enum.TextXAlignment.Left else Enum.TextXAlignment.Center,
 		TextWrapped = wraps,
+		-- UI FINAL R4: the sticker's label over its picture (H:101 z-index 1).
+		ZIndex = if faceless then 2 else 1,
 		Parent = texts or content,
 	}, textKind)
+	-- UI FINAL R4: the design's text roles (outline, drop, colour; Config.UI.Sticker.text).
+	if spec.textRole then
+		Theme.stickerText(label, spec.textRole)
+		label.TextWrapped = wraps
+	end
 	local subLabel: TextLabel? = nil
 	if spec.subtext ~= nil and texts then
 		subLabel = Theme.label({
@@ -1061,6 +1189,10 @@ function Button.new(spec: Spec): Button
 			TextWrapped = false,
 			Parent = texts,
 		}, "Chip")
+		if spec.subtextRole and subLabel then
+			Theme.stickerText(subLabel, spec.subtextRole)
+			subLabel.TextWrapped = false
+		end
 	end
 	local reasonWraps = fixedWidth ~= nil
 	local reasonLabel = Theme.label({
@@ -1107,15 +1239,42 @@ function Button.new(spec: Spec): Button
 		if current then
 			return current
 		end
-		local made = CountBadge.new({ name = "Badge", parent = visual })
-		made.root.AnchorPoint = Vector2.new(0.5, 0.5)
-		made.root.Position = UDim2.new(1, style.paddingX - BADGE_INSET, 0, BADGE_INSET)
+		local made = CountBadge.new({ name = "Badge", accent = spec.badgeAccent, parent = visual })
+		if faceless then
+			-- UI FINAL R4 (H:102): inside the sticker, its right edge 8 from the tile's and its top on the tile's; the
+			-- sdBadge loop (H:32) on the badge itself (no layout places it). Centre-anchored at its 32 px resting size
+			-- (CountBadge.SIZE_PX), so the loop's pop (a UIScale, about the AnchorPoint) grows evenly round it as the
+			-- CSS transform-origin does (a wider count or text size grows it both ways: stated).
+			local half = CountBadge.SIZE_PX / 2
+			made.root.AnchorPoint = Vector2.new(0.5, 0.5)
+			made.root.Position = UDim2.new(1, padRight - NAV.badgeRight - half, 0, NAV.badgeTop + half)
+			if spec.badgeDelay ~= nil then
+				local handle = UiIdle.add(made.root, "badge", { delayS = spec.badgeDelay })
+				if handle then
+					cleanup:add(function()
+						handle:remove()
+					end)
+				end
+			end
+		else
+			made.root.AnchorPoint = Vector2.new(0.5, 0.5)
+			made.root.Position = UDim2.new(1, padRight - BADGE_INSET, 0, BADGE_INSET)
+		end
 		cleanup:add(made)
 		badge = made
 		return made
 	end
+	-- UI FINAL R4: a badge with a mark (the daily "!", H:120) shows it for any count >= 1.
+	local function showBadge(count: number?)
+		local made = ensureBadge()
+		if spec.badgeMark ~= nil then
+			made:setText(if CountBadge.text(count) ~= nil then spec.badgeMark else nil)
+		else
+			made:setCount(count)
+		end
+	end
 	if spec.badge then
-		ensureBadge():setCount(spec.badge)
+		showBadge(spec.badge)
 	end
 
 	-- UI FINAL R2 (PR24): the gamepad focus ring drawn in SD_Visual round the face (the lip left out), so it takes the
@@ -1124,8 +1283,8 @@ function Button.new(spec: Spec): Button
 	root.SelectionImageObject = Focus.blank()
 	local focusRing = (Focus.selectionImage(style.radius, { top = 0, bottom = style.lip }):Clone() :: any) :: Frame
 	-- SD_Visual's side padding moves its children in: the ring reaches back out over it.
-	focusRing.Position -= UDim2.fromOffset(style.paddingX, 0)
-	focusRing.Size += UDim2.fromOffset(2 * style.paddingX, 0)
+	focusRing.Position -= UDim2.fromOffset(padLeft, 0)
+	focusRing.Size += UDim2.fromOffset(padLeft + padRight, 0)
 	focusRing.Visible = false
 	focusRing.ZIndex = FOCUS_RING_Z
 	focusRing.Parent = visual
@@ -1175,7 +1334,16 @@ function Button.new(spec: Spec): Button
 			return state == "normal" and not off
 		end,
 		function(mix: number)
-			foam:paint(surfaceColors(mix))
+			local face = foam
+			if face then
+				face:paint(surfaceColors(mix))
+			end
+			-- UI FINAL R4 (G4.20): the faceless sticker brightens through its picture's white copy (brightness 1.07:
+			-- .07 of white over it; pictures cannot go above 1, plan §1.4).
+			local white = brighten
+			if white then
+				white.ImageTransparency = 1 - (HOVER.brightness - 1) * mix
+			end
 		end,
 		false,
 		style.lip / 2,
@@ -1187,8 +1355,9 @@ function Button.new(spec: Spec): Button
 	-- Text and icon colours of the current state and accent (the outlined-text rule on an accent face).
 	local function paintText()
 		local disabled = state == "disabled"
-		local shown: { TextLabel } = { label }
-		if subLabel then
+		-- UI FINAL R4: a label styled by a design text role keeps its role's colour and outline.
+		local shown: { TextLabel } = if spec.textRole then {} else { label }
+		if subLabel and not spec.subtextRole then
 			table.insert(shown, subLabel)
 		end
 		for _, text in shown do
@@ -1213,9 +1382,42 @@ function Button.new(spec: Spec): Button
 	end
 
 	local function refreshVisual()
-		foam:paint(surfaceColors(if feel.live() then feel.filterMix() else 0))
-		foam:setStroke(if state == "disabled" then Theme.Colors.disabledStroke else Theme.Colors.inkUI)
+		local face = foam
+		if face == nil then
+			return -- UI FINAL R4: the faceless sticker has nothing to paint
+		end
+		face:paint(surfaceColors(if feel.live() then feel.filterMix() else 0))
+		face:setStroke(if state == "disabled" then Theme.Colors.disabledStroke else Theme.Colors.inkUI)
 	end
+
+	-- UI FINAL R4 (PR6, H:639): the nav sticker's picture wiggles once on a mouse hover, added on top of its bob
+	-- (SD_Wiggle under SD_Bob), linear over navWiggle.ms; none under ReducedMotion.
+	local wiggleHandle: Scheduler.Handle? = nil
+	local function playWiggle()
+		local turn = wiggle
+		if turn == nil or fx ~= "nav" or Tweens.reducedMotion() then
+			return
+		end
+		if wiggleHandle then
+			wiggleHandle:disconnect()
+		end
+		local started = os.clock()
+		wiggleHandle = Scheduler.add(function(_dt: number, now: number): boolean
+			local u = (now - started) * MS / WIGGLE.ms
+			turn.Rotation = Button.wiggleAt(u)
+			if u >= 1 then
+				wiggleHandle = nil
+				return false
+			end
+			return true
+		end, "render")
+	end
+	cleanup:add(function()
+		if wiggleHandle then
+			wiggleHandle:disconnect()
+			wiggleHandle = nil
+		end
+	end)
 
 	-- UI FINAL R2: an automatic width follows the content's natural width (as AutomaticSize X did; a caller's own root
 	-- width is kept as a minimum). Measured from the content (its AbsoluteSize over every UIScale up to the ScreenGui);
@@ -1237,7 +1439,7 @@ function Button.new(spec: Spec): Button
 		end
 		local absolute = content.AbsoluteSize.X
 		local measured = if absolute > 0
-			then math.ceil(absolute / scaleChain(content) - 0.01) + 2 * style.paddingX
+			then math.ceil(absolute / scaleChain(content) - 0.01) + padLeft + padRight
 			else Button.widthFor(label.Text, if reasonLabel.Visible then reasonLabel.Text else nil, textKind, kind)
 		if not exact then
 			measured = Button.settledWidth(naturalWidth, measured, feel.moving() or not scalesAtRest(content))
@@ -1299,6 +1501,7 @@ function Button.new(spec: Spec): Button
 		if hoverOn and state ~= "loading" then
 			playSound(SOUND_HOVER, HOVER_PITCH[fx])
 		end
+		playWiggle() -- UI FINAL R4 (PR6): the nav sticker's picture (mouse hover only)
 	end
 	local function hoverEnd()
 		feel.hovered = false
@@ -1413,6 +1616,10 @@ function Button.new(spec: Spec): Button
 		if glyph and stacked then
 			glyph.root.Visible = not loading
 		end
+		local art = picture
+		if art then
+			art.Visible = not loading -- UI FINAL R4: the faceless sticker's picture
+		end
 		reasonLabel.Text = if disabled and reason then reason else ""
 		reasonLabel.Visible = disabled and reason ~= nil and reason ~= ""
 		spinner.Visible = loading
@@ -1521,7 +1728,7 @@ function Button.new(spec: Spec): Button
 		if badge == nil and CountBadge.text(count) == nil then
 			return
 		end
-		ensureBadge():setCount(count)
+		showBadge(count)
 	end
 
 	-- UI FINAL R2 (P2): the strip crosses by itself every Config.UI.Sticker.shines.cta.periodS (UiIdle); kept for its

@@ -15,7 +15,9 @@
 --     takes the top centre and says so (fits = false);
 --   * overlays fix (2026-10-09): the pill hugs its contents (clock, texts, Cancel; the hint row when wider), capped at
 --     today's widths; its width is measured with every digit as an 8 so the ticking clock never changes it; a pill
---     narrower than 320 still gets its free spot at its own width.
+--     narrower than 320 still gets its free spot at its own width;
+--   * UI FINAL R4: searchLine (the DUEL search bar's second line: the arena or position line, never the hint);
+--     matchedText is MATCH FOUND's second line, "Opponent: {name}", empty before the name is known.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -353,12 +355,38 @@ return function(t: Context)
 		end
 	)
 
-	t.test("matched text: the real name, or the plain 'Opponent found!'", function()
+	t.test("matched text (UI FINAL R4, H:151): 'Opponent: {name}' under MATCH FOUND, empty before the name", function()
 		expect.equal(
 			QueueFormat.matchedText("Builderman"),
-			Strings.format(Strings.queue.matched, { name = "Builderman" })
+			Strings.format(Strings.hud.matchOpponent, { name = "Builderman" })
 		)
-		expect.equal(QueueFormat.matchedText(nil), Strings.queue.opponentFound)
-		expect.equal(QueueFormat.matchedText(""), Strings.queue.opponentFound)
+		expect.equal(QueueFormat.matchedText(nil), "")
+		expect.equal(QueueFormat.matchedText(""), "")
 	end)
+
+	t.test(
+		"search line (UI FINAL R4, H:142): the arena or position line, never the hint; nil when not Searching",
+		function()
+			expect.equal(QueueFormat.searchLine(view()), Strings.format(Strings.queue.position, { n = 1 }))
+			expect.equal(
+				QueueFormat.searchLine(view({ messageKey = "queue.waitingArena" })),
+				Strings.queue.waitingArena
+			)
+			expect.equal(
+				QueueFormat.searchLine(view({ arenasFree = 0, searching = 2, position = 1 })),
+				Strings.queue.waitingArena
+			)
+			-- The no-opponent hint is the pill's own line, not the bar's.
+			expect.equal(
+				QueueFormat.searchLine(view({ messageKey = "queue.noOpponent" })),
+				Strings.format(Strings.queue.position, { n = 1 })
+			)
+			-- No position yet: no line.
+			expect.equal(QueueFormat.searchLine({ state = "Searching", searching = 1, arenasFree = 6 }), nil)
+			expect.equal(QueueFormat.searchLine(view({ state = "Idle" })), nil)
+			-- The pill's detail is the same line while no hint is due.
+			local pill = QueueFormat.pill(view({ position = 3, searching = 4 }), 1001, nil, nil)
+			expect.equal(pill.detail, QueueFormat.searchLine(view({ position = 3, searching = 4 })))
+		end
+	)
 end

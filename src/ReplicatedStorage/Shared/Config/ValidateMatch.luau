@@ -15,6 +15,7 @@
 -- when the kind is listed: speed walkMultiplier >= 1 (the movement guard widens its limit by it), superJump
 -- jumpMultiplier >= 1 with the super jump plus the double jump under Maps.boundsTop (a player above the Bounds can't be
 -- hit), rapidThrow cooldownMultiplier in [0, 1], throwBoost speedMultiplier >= 1.
+-- UI FINAL R4: the DUEL picker's testers (whole userIds) and a boolean pickerForEveryone.
 
 type Problems = { string }
 
@@ -199,5 +200,14 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 		if pu.kinds.throwBoost then
 			atLeastOne(`{k}.throwBoost.speedMultiplier`, pu.kinds.throwBoost.speedMultiplier)
 		end
+		-- UI FINAL R4: the DUEL picker's testers (whole userIds >= 1) and its switch for everyone.
+		local testers = m.pickerTesters
+		expect(problems, type(testers) == "table", `{p}.pickerTesters must be a list of userIds`)
+		if type(testers) == "table" then
+			for index, id in testers do
+				expectCount(problems, `{p}.pickerTesters[{index}]`, id, 1)
+			end
+		end
+		expectBoolean(problems, `{p}.pickerForEveryone`, m.pickerForEveryone)
 	end
 end

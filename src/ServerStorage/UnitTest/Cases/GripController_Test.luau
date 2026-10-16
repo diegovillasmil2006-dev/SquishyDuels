@@ -26,6 +26,9 @@
 --   * Foam fix 3: panelLayout gives the panel its whole height share back (fix 2 took Close's hang out of it, and on a
 --     phone no pad card showed); it shrinks only to keep Close's top PANEL.edge inside the screen. introShown: the
 --     panel's intro line hides on the compact layout.
+--   * UI FINAL R4 (H:82-90, H:707): the bare row's chip, cardModel.boost "2x ~{minutes} min" (hud.gripBoost, FD3; nil
+--     while Double Grip is empty, like the panel's chip); shouldSquash: the row squashes for Grip gained after the
+--     silent baseline only.
 -- Strings are compared by value through the test's own Strings copy (the controller requires the real one).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -200,6 +203,29 @@ return function(t: Context)
 	end)
 
 	-- HUD card -------------------------------------------------------------------------------------------------------
+
+	t.test("UI FINAL R4: the bare row's Double Grip chip reads 2x ~{minutes} min, gone while it is empty", function()
+		local full = GripController.cardModel(view(0, GRIP.Rested.burst), NOW)
+		expect.equal(full.boost, s("hud.gripBoost", { minutes = 9 }))
+		expect.equal(GripController.cardModel(view(0, 0), NOW).boost, nil)
+		expect.equal(GripController.cardModel(view(0), NOW).boost, nil)
+		-- The same minutes as the panel's chip, refilled with time.
+		local later = GripController.cardModel(view(0, 0), NOW + 60)
+		expect.equal(later.boost, s("hud.gripBoost", { minutes = 1 }))
+		expect.equal(later.chip, s("grip.restedChip", { minutes = 1 }))
+	end)
+
+	t.test("UI FINAL R4 (H:707): the row squashes for Grip gained after the silent baseline only", function()
+		local first = GripController.gripChange(false, false, nil, 500, nil, 1)
+		expect.falsy(GripController.shouldSquash(first, nil, 500))
+		local full = GripController.gripChange(true, true, 100, 500, 1, 1)
+		expect.falsy(GripController.shouldSquash(full, 100, 500))
+		local rise = GripController.gripChange(true, false, 100, 150, 1, 1)
+		expect.truthy(GripController.shouldSquash(rise, 100, 150))
+		local drop = GripController.gripChange(true, false, 150, 100, 1, 1)
+		expect.falsy(GripController.shouldSquash(drop, 150, 100))
+		expect.falsy(GripController.shouldSquash(rise, 150, 150))
+	end)
 
 	t.test("a new player's card: Lv 1, the bar toward Lv 2 and Firm Grip as the next goal", function()
 		local model = GripController.cardModel(view(0, GRIP.Rested.burst), NOW)

@@ -20,6 +20,9 @@
 --                            under `belowBottom` (the bottom of what toasts must not cover, e.g. the lobby's coach
 --                            card) when that is lower; never past the middle of the canvas (spec: the coach card never
 --                            overlaps toasts)
+--   defaultTop(canvasH, lobbyTop?, playTop, designCanvasH)   UI FINAL R4: the toast column's default top: the lobby
+--                            HUD's design top (N:197) at most its share of the design's canvas while it shows, else
+--                            the game's own (duels and matches)
 --   toastClearance(rects, canvasW, columnW, defaultTop, gap?)   integration (2026-10-09): the lowest bottom of the rects
 --                            that hang into the centred toast column from above (they share its columns and start at or
 --                            above defaultTop: the Duel CTA at the top middle, the duel top bar), or nil; a rect lower
@@ -265,6 +268,20 @@ function NotifyFormat.toastTop(canvasHeight: number, belowBottom: number?, defau
 	end
 	local h = if finite(canvasHeight) then math.max(0, canvasHeight) else 0
 	return math.min(result, math.max(top, h * TOAST_MAX_TOP_SHARE))
+end
+
+-- UI FINAL R4: the toast column's default top (base px) on a canvas `canvasHeight` tall: `lobbyTop` (the lobby HUD's,
+-- N:197, while it shows) at most its share of a `designCanvas` tall canvas (a shorter one keeps the share: phone first,
+-- 200 of 810 is about 110 of a phone's 441), else `playTop` (duels and matches).
+function NotifyFormat.defaultTop(canvasHeight: number, lobbyTop: number?, playTop: number, designCanvas: number): number
+	if not finite(lobbyTop) then
+		return playTop
+	end
+	local top = lobbyTop :: number
+	if finite(canvasHeight) and finite(designCanvas) and canvasHeight > 0 and designCanvas > 0 then
+		return math.min(top, top * canvasHeight / designCanvas)
+	end
+	return top
 end
 
 -- The lowest bottom (base px) of the rects that hang into the toast column from above: each shares columns with the

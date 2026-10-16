@@ -8,6 +8,8 @@
 --        Config.Duel.Matchmaking.NoOpponentHintSeconds (20 s); Keep waiting hides it for another 20 s. Detail: the
 --        hint text, else "All arenas are in use. You're next." (the server's messageKey, or no arena free while this
 --        ticket is one of the first two), else "You're #{n} in the queue".
+--   searchLine(view)                  UI FINAL R4: that detail without the hint (the arena or the position line, or
+--                                     nil): the DUEL search bar's second line (H:142; plan FD1, the real queue line)
 --   nextAloneSince(prev, view, now)   when the "alone" clock started (nil = someone else is searching / not queued)
 --   boardText(liveKey, counts, max)   the podium board's live lines (SD_LiveKey queue.boardWaiting / boardActive)
 --   promptAttribute(state)            which baked prompt key to show: SD_AltTextKey ("Leave Queue") while Searching
@@ -15,7 +17,8 @@
 --   messageText(key)                  a queue message (fills {minutes} of queue.timedOut from Config)
 --   toastKey(old, new)                the message of a QueueStatus update that should pop a toast, if any (never the
 --                                     arena wait or the no-opponent hint: the pill shows those itself)
---   matchedText(name)                 "Opponent found: {name}", or "Opponent found!" before the name is known
+--   matchedText(name)                 UI FINAL R4 (H:151, plan FD2): MATCH FOUND's second line, "Opponent: {name}", or
+--                                     "" before the name is known (the bar's title already says it)
 --   pillPlacement(input)              where the pill goes in SD_Hud's base px (Part 8; foam restyle, spec 2026-10-09:
 --                                     the Duel CTA shows the queued state; lobby HUD, spec 2026-10-11: the CTA sits at
 --                                     the top middle): right under the Duel CTA, centred on it, when that spot is free;
@@ -186,18 +189,24 @@ function QueueFormat.pill(view: QueueLike, now: number, aloneSince: number?, hin
 	local snoozed = hintDismissedAt ~= nil and now - hintDismissedAt < HINT_SECONDS
 	local due = view.messageKey == NO_OPPONENT or (aloneSince ~= nil and now - aloneSince >= HINT_SECONDS)
 	local showHint = due and not snoozed
-	local detail: string? = nil
-	if showHint then
-		detail = Strings.queue.noOpponent
-	elseif
+	local detail = if showHint then Strings.queue.noOpponent else QueueFormat.searchLine(view)
+	return { visible = true, title = title, detail = detail, showCancel = true, showHint = showHint }
+end
+
+-- UI FINAL R4: the queue's own line without the hint (see the header); nil when not Searching or nothing to say.
+function QueueFormat.searchLine(view: QueueLike): string?
+	if view.state ~= "Searching" then
+		return nil
+	end
+	if
 		view.messageKey == WAITING_ARENA
 		or (view.arenasFree <= 0 and view.searching >= HEAD_PAIR and (view.position or math.huge) <= HEAD_PAIR)
 	then
-		detail = Strings.queue.waitingArena
+		return Strings.queue.waitingArena
 	elseif view.position then
-		detail = Strings.format(Strings.queue.position, { n = view.position })
+		return Strings.format(Strings.queue.position, { n = view.position })
 	end
-	return { visible = true, title = title, detail = detail, showCancel = true, showHint = showHint }
+	return nil
 end
 
 function QueueFormat.boardText(liveKey: unknown, counts: CountsLike, maxSlots: number): string?
@@ -243,9 +252,9 @@ end
 
 function QueueFormat.matchedText(name: string?): string
 	if name and name ~= "" then
-		return Strings.format(Strings.queue.matched, { name = name })
+		return Strings.format(Strings.hud.matchOpponent, { name = name })
 	end
-	return Strings.queue.opponentFound
+	return ""
 end
 
 -- Where the pill goes (see the header). In order, the first free spot wins:

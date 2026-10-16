@@ -64,6 +64,8 @@
 -- duel HUD's top bar; lobby HUD, spec 2026-10-11: "cta" the Duel CTA at the top middle, with the coach card or the
 -- pill right under it, chained by NotifyFormat.toastClearance / toastTop), re-placed when one of them moves, resizes or
 -- shows / hides, and on every new toast.
+-- UI FINAL R4: setToastTop(px?) moves the column's default top to the lobby HUD's design top while that shows
+-- (HudController), else back to TOAST_TOP.
 -- Overlays fix (2026-10-09): toastsBeside(key, ...objects) keeps the toast column beside what is registered there
 -- (HudController: the left column, the tiles and the right column; on a phone the tile row ran under the
 -- centred column): NotifyFormat.toastColumn moves it aside, narrows it (not below TOAST_MIN_WIDTH) or puts it under
@@ -205,6 +207,9 @@ local TOAST_WIDTH = 420
 -- reading: §9.13 gives the toast motion, not its place. Top centre, below the queue pill and the duel HUD's top
 -- row (both about 90 base px tall), so a toast never covers the timer or the queue status.
 local TOAST_TOP = 110
+-- UI FINAL R4: while the lobby HUD shows, the design's toast column top instead (setToastTop: N:197's 200 on its
+-- 810 px canvas, Config.UI.Scale.referenceHeight; NotifyFormat.defaultTop keeps its share on a shorter canvas).
+local TOAST_TOP_CANVAS = UI.Scale.referenceHeight
 local TOAST_GAP = 8 -- reading (foam UI): base px between toastsBelow's object and the first toast
 local TOAST_DOT_PX = 14 -- the accent dot before a toast's text (foam UI)
 local TOAST_DOT_GAP = 10
@@ -276,6 +281,7 @@ local toasts: { Toast } = {}
 local toastSerial = 0 -- LayoutOrder: newer toasts below older ones
 -- toastsBelow(key, object): the toast column starts under these while they show and hang into it.
 local toastBelow: { [string]: GuiObject? } = {}
+local lobbyToastTop: number? = nil -- UI FINAL R4: setToastTop (the lobby HUD's column top while it shows)
 local toastBelowCleanups: { [string]: Cleanup.Cleanup } = {}
 -- toastsBeside(key, ...objects): the toast column keeps beside these while they show.
 local toastBeside: { [string]: { GuiObject } } = {}
@@ -771,7 +777,7 @@ local function placeColumn(adding: number, resized: boolean?)
 		width = TOAST_WIDTH,
 		minWidth = TOAST_MIN_WIDTH,
 		height = height,
-		defaultTop = TOAST_TOP,
+		defaultTop = NotifyFormat.defaultTop(canvas.Y, lobbyToastTop, TOAST_TOP, TOAST_TOP_CANVAS),
 		gap = TOAST_GAP,
 		edge = TOAST_EDGE,
 		above = above,
@@ -1069,6 +1075,18 @@ function UIController.toast(text: string, kind: ToastKind?, opts: ToastOptions?)
 	Tweens.scale(scale, TOAST.popFrom, 1, BACK_OUT)
 	playToastSound(toast, sound)
 	armToast(toast)
+end
+
+-- UI FINAL R4: the toast column's top while the lobby HUD shows (HudController: Config.UI.Sticker.hud.toastTop, the
+-- design's N:197, a shorter canvas keeping its share); nil = the game's own TOAST_TOP (duels and matches, under the
+-- duel HUD's top row).
+function UIController.setToastTop(px: number?)
+	local top = if type(px) == "number" and px == px and px > 0 and px < math.huge then px else nil
+	if top == lobbyToastTop then
+		return
+	end
+	lobbyToastTop = top
+	placeToasts()
 end
 
 -- Foam UI (spec: the lobby's coach card never overlaps toasts): while the object registered under `key` shows, starts
