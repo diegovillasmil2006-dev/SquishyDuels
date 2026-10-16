@@ -35,7 +35,7 @@ type EmitterSpec = ThrowVfxBuilder.EmitterSpec
 -- Constants
 
 local GENERATOR_ID = "move_vfx"
-local VERSION = 1
+local VERSION = 3 -- 2: the first playtest's polish (warmer, stronger dust; a team ring on the landing); 3: bolder speed lines
 local ROOT_NAME = "SD_MoveVfx"
 local TEX = ThrowVfxBuilder.TEXTURES
 local WAIST = 2.6 -- the HumanoidRootPart's centre over the floor is 3; the flash sits a little lower
@@ -51,8 +51,8 @@ end
 local C = {
 	White = hex("#FFFFFF"),
 	Cream = hex("#FFF4E6"),
-	Dust = hex("#F4E6D3"),
-	DustDeep = hex("#E6D2B5"),
+	Dust = hex("#E9D3B8"), -- warm enough to read on the pastel arena floors (the cream of v1 vanished on them)
+	DustDeep = hex("#D2B48F"),
 	Cloud = hex("#F7F4FF"),
 	LampGlow = hex("#FFF6DC"),
 }
@@ -262,7 +262,7 @@ local function dashStart(): Part
 			texture = TEX.smoke,
 			color = { C.Dust, C.DustDeep },
 			size = { { 0, 0.9 }, { 1, 2.6 } },
-			transparency = { { 0, 0.25 }, { 0.5, 0.6 }, { 1, 1 } },
+			transparency = { { 0, 0.12 }, { 0.5, 0.5 }, { 1, 1 } },
 			lifetime = { 0.4, 0.7 },
 			speed = { 10, 18 },
 			spread = Vector2.new(35, 18),
@@ -303,8 +303,8 @@ end
 local function dashBody(): Part
 	local part = carrier("Body", "While it dashes, on the HumanoidRootPart: team ribbon, white core, wind lines, motes")
 	ribbon(part, "Main", Vector3.zero, 2.2, false, {
-		transparency = { { 0, 0.3 }, { 0.6, 0.6 }, { 1, 1 } },
-		lifetime = 0.22,
+		transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+		lifetime = 0.26,
 		lightEmission = 0.35,
 		widthTo = 0.2,
 		faceCamera = true,
@@ -405,7 +405,7 @@ local function dashSkid(): Part
 			texture = TEX.smoke,
 			color = { C.Dust, C.DustDeep },
 			size = { { 0, 0.6 }, { 1, 1.8 } },
-			transparency = { { 0, 0.35 }, { 1, 1 } },
+			transparency = { { 0, 0.22 }, { 1, 1 } },
 			lifetime = { 0.3, 0.55 },
 			speed = { 2, 5 },
 			rate = 55,
@@ -447,8 +447,8 @@ local function dashPlant(): Part
 			name = "Dust",
 			texture = TEX.smoke,
 			color = { C.Dust, C.DustDeep },
-			size = { { 0, 0.8 }, { 1, 2 } },
-			transparency = { { 0, 0.3 }, { 0.5, 0.6 }, { 1, 1 } },
+			size = { { 0, 0.8 }, { 1, 2.2 } },
+			transparency = { { 0, 0.15 }, { 0.5, 0.5 }, { 1, 1 } },
 			lifetime = { 0.35, 0.6 },
 			speed = { 6, 11 },
 			spread = Vector2.new(50, 15),
@@ -495,11 +495,11 @@ local function dashSpeedLines(): Part
 				name = "Streak",
 				texture = TEX.dot,
 				color = C.White,
-				size = { { 0, 0.1 }, { 1, 0.06 } },
-				transparency = { { 0, 1 }, { 0.2, 0.35 }, { 1, 1 } },
+				size = { { 0, 0.14 }, { 1, 0.08 } },
+				transparency = { { 0, 1 }, { 0.2, 0.3 }, { 1, 1 } },
 				lifetime = { 0.12, 0.16 },
 				speed = { 60, 80 },
-				rate = 22,
+				rate = 28,
 				spread = Vector2.new(6, 6),
 				squash = { { 0, -6 }, { 1, -4 } },
 				orientation = Enum.ParticleOrientation.VelocityParallel,
@@ -609,18 +609,18 @@ local function jumpLand(): Part
 			name = "Dust",
 			texture = TEX.smoke,
 			color = { C.Dust, C.DustDeep },
-			size = { { 0, 0.7 }, { 1, 1.8 } },
-			transparency = { { 0, 0.3 }, { 0.5, 0.6 }, { 1, 1 } },
-			lifetime = { 0.35, 0.6 },
-			speed = { 7, 11 },
+			size = { { 0, 0.9 }, { 1, 2.3 } },
+			transparency = { { 0, 0.12 }, { 0.5, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4, 0.65 },
+			speed = { 8, 12 },
 			spread = Vector2.new(85, 85),
 			drag = 6,
 			accel = Vector3.new(0, 2, 0),
 			rotSpeed = { -60, 60 },
 			lightInfluence = 0.5,
-			emitCount = 10,
+			emitCount = 14,
 		},
-		flatRing("Ring", C.White, 0.6, 5.5, 0.26, { alpha = 0.2 }),
+		flatRing("Ring", C.White, 0.6, 5.5, 0.26, { alpha = 0.15, tint = true }),
 		sparkles("Sparkles", 5, { 3, 6 }, 0.55, Vector2.new(60, 60)),
 	})
 	return part

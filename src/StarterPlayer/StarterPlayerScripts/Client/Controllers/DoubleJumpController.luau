@@ -393,7 +393,7 @@ local function startEffects(jump: Jump)
 		transparency = FX.ghostTransparency,
 		seconds = FX.ghostSeconds,
 	})
-	playSound(SOUND_JUMP, { at = root, priority = jump.soundPriority })
+	playSound(SOUND_JUMP, { at = root, priority = jump.soundPriority, pitch = FX.whooshPitch })
 	playSound(SOUND_PUSH, { at = feet, priority = jump.soundPriority, pitch = FX.pushPitch, volume = FX.pushVolume })
 	if jump.own then
 		fovKick()

@@ -244,8 +244,8 @@ local Vfx = {
 		ghosts = 4, -- afterimages (Anim/Afterimage), the first at the start ...
 		ghostEverySeconds = 0.05, -- ... then this far apart
 		ghostSeconds = 0.3, -- each one's fade
-		ghostTransparency = 0.45, -- its start
-		ghostTintToWhite = 0.25, -- its colour: the team glow this far toward white
+		ghostTransparency = 0.55, -- its start
+		ghostTintToWhite = 0.08, -- its colour: the team glow this far toward white (Neon blooms a pale tint to white)
 		-- The dasher's own FOV kick (CameraController.punch, capped at Punch.maxFovDeg; off with settings.cameraShake,
 		-- under ReducedMotion and while a throw holds the FOV). It replaces 2026-10-11's "no camera effect for the
 		-- dasher" (the 2026-10-15 overhaul asked for a dash that feels far better).
@@ -266,8 +266,8 @@ local Vfx = {
 		bodySeconds = 0.35, -- DoubleJump/Body follows the HRP this long (the rise)
 		footTrailSeconds = 0.42, -- DoubleJump/FootTrail on both feet (the flip's arcs)
 		ghostSeconds = 0.35, -- one afterimage where it pushed off
-		ghostTransparency = 0.5,
-		ghostTintToWhite = 0.35,
+		ghostTransparency = 0.55,
+		ghostTintToWhite = 0.12,
 		whooshPitch = 1.12, -- sfx.doubleJump a little higher than the dash's whoosh
 		pushPitch = 1.25, -- sfx.dash under it, higher: the push on the air
 		pushVolume = 0.7,
