@@ -445,7 +445,7 @@ local Strings = {
 		youLeft = "You left the match.",
 		notArrived = "You couldn't reach the map in time, so you're back in the lobby.",
 		outOfBounds = "Out of bounds: back to a spawn.",
-		outOfBoundsKo = "You fell off the map: knocked out!",
+		outOfBoundsKo = "You fell off the map: squished!", -- Match HUD M7: the owner's word (plan §2)
 		outNoLives = "Your team is out of lives, so you're out. Cheer on your team!",
 		youWin = "You win the match!",
 		winner = "{name} wins the match!",
@@ -499,6 +499,61 @@ local Strings = {
 				rapidThrow = "RAPID",
 				superJump = "JUMP",
 			},
+		},
+	},
+
+	-- Match HUD M6 / M7 (2026-10-17; M = "Squishy Duels Match HUD.dc.html"): the kill feed's tags (M:523-527) and its
+	-- words for a K.O. with nobody to blame (owner 2026-10-16: a feed line for storm and fall K.O.s too, [P]); the
+	-- "squished by" card (M:158-188; its storm / fall versions [P]); the RESPAWNING bar (M:197); the squishies'
+	-- titles on the card (M:388, by Catalog id; Birdie is `bird`) and the title of one not in the list (M:664).
+	matchHud = {
+		you = "You", -- your own name in the feed and on the card (M:651, M:659)
+		feed = {
+			final = "FINAL KILL",
+			firstBlood = "FIRST BLOOD",
+			triple = "TRIPLE!",
+			double = "DOUBLE!",
+			streak = "{n} STREAK",
+			-- The cause chip of a line with no attacker, by MatchRules' K.O. cause.
+			cause = {
+				storm = "STORM",
+				outOfBounds = "FELL",
+				other = "SQUISHED",
+			},
+		},
+		card = {
+			finalKill = "FINAL KILL",
+			squishedBy = "squished by",
+			title = "“{title}”",
+			handle = "@{name}",
+			gripLevel = "GRIP LEVEL",
+			winStreak = "WIN STREAK",
+			-- A K.O. with no attacker: the pill after "squished by", the big name and the line under it.
+			cause = {
+				storm = { pill = "THE STORM", name = "The Storm", line = "Stay inside the safe zone!" },
+				outOfBounds = { pill = "A FALL", name = "Fell off!", line = "Watch your step near the edge!" },
+				other = { pill = "BAD LUCK", name = "Squished!", line = "Shake it off and jump back in!" },
+			},
+		},
+		respawn = {
+			label = "RESPAWNING IN",
+		},
+		titles = {
+			kitty_bread = "Loaf of Doom",
+			toast = "Crispy Sniper",
+			banana = "Peel Dealer",
+			butter = "Smooth Operator",
+			chocolate = "Cocoa Crusher",
+			donut = "Ring Leader",
+			boba_bear = "Pearl Pounder",
+			pancake_pup = "Flapjack Flinger",
+			mochi_fox = "Stretch Fox",
+			strawberry_frog = "Berry Hopper",
+			dragon = "Sky Scorcher",
+			bird = "Fluff Flyer",
+			cloud_bunny = "Cloud Crusher",
+			cupcake_axolotl = "Frosting Fiend",
+			fallback = "Squishy Slinger",
 		},
 	},
 

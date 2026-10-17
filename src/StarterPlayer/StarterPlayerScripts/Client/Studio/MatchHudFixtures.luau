@@ -8,7 +8,8 @@
 -- * States "<mode>_<moment>", modes tdm (6 v 6: Red = Strawberry with you, Blue = Blueberry) and ffa (12); the
 --   moments follow the render index work/matchhud2/shots/INDEX.md: waiting (boot cover + intro card), countdown3,
 --   countdownGo, live, firstBlood (FIRST BLOOD feed line), yourSquish (SQUISHED! medal), knockedOut (card + respawn
---   bar, 2 s left), respawnBar (0.7 s left), score (mid match, your TRIPLE), feedBusy (three K.O.s, one a fall with no
+--   bar, 2 s left), knockedOutFall / knockedOutStorm (tdm only) (Match HUD M7: the same with nobody to blame: the card's
+--   fall / storm version), respawnBar (0.7 s left), score (mid match, your TRIPLE), feedBusy (three K.O.s, one a fall with no
 --   attacker), overtime, storm (tdm only: the storm up, your bar at 60 %), protected (spawn protection), powerUps (your
 --   live power-ups), endWin, endLose (each with its final squish: the replay and the podium use these two), draw
 --   (overtime ran out) and cancelled.
@@ -87,6 +88,8 @@ local MOMENTS = {
 	"firstBlood",
 	"yourSquish",
 	"knockedOut",
+	"knockedOutFall",
+	"knockedOutStorm",
 	"respawnBar",
 	"score",
 	"feedBusy",
@@ -99,7 +102,7 @@ local MOMENTS = {
 	"draw",
 	"cancelled",
 }
-local TDM_ONLY: { [string]: boolean } = { storm = true }
+local TDM_ONLY: { [string]: boolean } = { storm = true, knockedOutStorm = true }
 local LIVE_FOR = 20 -- live: seconds since Active began
 local SCORE_FOR = 240 -- score: mid match
 
@@ -405,6 +408,19 @@ local STEPS: { [string]: (b: Builder) -> () } = {
 	end,
 	knockedOut = function(b)
 		ko(b, b.ids[1], foe(b, b.ids[1]), 1)
+		syncYou(b)
+	end,
+	-- Match HUD M7: squished with nobody to blame (owner 2026-10-16: a card and a feed line for these too).
+	knockedOutFall = function(b)
+		ko(b, b.ids[1], nil, 1, "outOfBounds")
+		syncYou(b)
+	end,
+	knockedOutStorm = function(b)
+		local p = b.p
+		local since = MATCH.Storm.stormStartSeconds + 60
+		p.activeStartedAt = b.now - since
+		p.phaseEndsAt = b.now + MATCH.Modes[p.mode].matchSeconds - since
+		ko(b, b.ids[1], nil, 1, "storm")
 		syncYou(b)
 	end,
 	respawnBar = function(b)

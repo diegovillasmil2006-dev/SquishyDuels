@@ -2,11 +2,14 @@
 -- MatchHudController_Test: StarterPlayerScripts.Client.Controllers.MatchHudController (Match HUD M4, 2026-10-16: the
 -- base layer of the in-match screens; plan work/matchhud2/PLAN.md §4 M4 = v1 M3a, v1 §1.9). Server only
 -- (ServerStorage.UnitTest), Edit mode in Studio: no LocalPlayer (the ScreenGui stays unparented), Config.Debug
--- .debugHooks is on, so the Studio preview runs. Fake pieces (added to PIECES and removed again) record their calls.
+-- .debugHooks is on, so the Studio preview runs. Fake pieces (in PIECES instead of the real ones, which are put back)
+-- record their calls.
 -- Contract:
 --   * init / start / destroy run cleanly with no match;
---   * nothing shows in a real match yet: every Config.UI.Match.enabled switch is off, and a real match view (fired on
---     StateController.MatchChanged) builds no piece and no per-frame effect; the view's end stops the session;
+--   * a real match view (fired on StateController.MatchChanged) builds only the pieces whose Config.UI.Match.enabled
+--     switch is on (Match HUD M6 / M7: feed, card, respawn; the medal and the killer camera stay off), so a piece with
+--     no switch makes no piece and no per-frame effect; the view's end stops the session;
+--   * Match HUD M6 / M7: PIECES are the respawn bar, the card and the feed, in that draw order;
 --   * debugShow(state) builds every piece of a preview whatever its switch, updates each once at once, plays the
 --     state's moments once in seq order, and debugShow(nil) destroys the pieces (last built first) and lists the
 --     states; an unknown state is refused with the list;
@@ -56,18 +59,19 @@ return function(t: Context)
 		}
 	end
 
-	-- Runs `fn` with `specs` in PIECES, then puts the list back and ends any session.
+	-- Runs `fn` with only `specs` in PIECES (Match HUD M6 / M7: the real pieces are set aside), then puts the list back
+	-- and ends any session.
 	local function withPieces(specs: { any }, fn: () -> ...any)
+		local real = table.clone(Hud.PIECES)
+		table.clear(Hud.PIECES)
 		for _, spec in specs do
 			table.insert(Hud.PIECES, spec)
 		end
 		local ok, err = pcall(fn)
 		Hud.destroy()
-		for _, spec in specs do
-			local index = table.find(Hud.PIECES, spec)
-			if index then
-				table.remove(Hud.PIECES, index)
-			end
+		table.clear(Hud.PIECES)
+		for _, spec in real do
+			table.insert(Hud.PIECES, spec)
 		end
 		if not ok then
 			error(err, 0)
@@ -84,6 +88,15 @@ return function(t: Context)
 		return n
 	end
 
+	t.test("Match HUD M6 / M7: the pieces are respawn, card, feed in draw order, each with its switch", function()
+		local names = {}
+		for _, spec in Hud.PIECES do
+			table.insert(names, spec.name)
+			expect.truthy(type(Config.UI.Match.enabled[spec.name]) == "boolean")
+		end
+		expect.deepEqual(names, { "respawn", "card", "feed" })
+	end)
+
 	t.test("init / start / destroy run cleanly in Edit mode (no LocalPlayer, no match)", function()
 		Hud.init()
 		Hud.start()
@@ -91,13 +104,16 @@ return function(t: Context)
 		Hud.destroy()
 	end)
 
-	t.test("nothing shows in a real match yet: every switch off, no piece, no per-frame effect", function()
+	t.test("a real match builds only switched-on pieces: none with no switch, no per-frame effect then", function()
 		for name, on in Config.UI.Match.enabled do
-			expect.equal(on, false)
+			expect.truthy(type(on) == "boolean")
 			expect.truthy(type(name) == "string")
 		end
+		-- Match HUD M6 / M7: the medal (Diego's kill banner is that moment) and the killer camera are not built.
+		expect.equal(Config.UI.Match.enabled.medal, false)
+		expect.equal(Config.UI.Match.enabled.killerCam, false)
 		local calls = {}
-		withPieces({ fake("feed", calls) }, function()
+		withPieces({ fake("noSwitch", calls) }, function()
 			Hud.init()
 			local view = assert(Fixtures.build("tdm_live", 1.8e9, { youId = 7 })).view
 			StateController.MatchChanged:fire(view, nil)

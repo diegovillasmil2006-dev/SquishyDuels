@@ -870,6 +870,30 @@ local SLOTS: { AssetSlot } = {
 		"kill banner sheet, Dragon (Dragon's Blaze: taiko, fire whoosh, brass stab; growl from 4k; 6k: roar, gong, full brass); file 'sfx_kill_dragon_blaze.ogg'",
 		killSheet(111003549387980, "sfx_kill_dragon_blaze.ogg")
 	),
+	-- Match HUD M6 / M7 (2026-10-17; the M3 pack: the design's recipes rendered, uploaded by the user, normalised to
+	-- -1 dBFS: set each volume from its normGainDb when the id comes in). While an id is nil a look-alike plays
+	-- (UI/Match: sfx.impactSoft, ui.error, sfx.inspect.whoosh).
+	soundSlot(
+		"match.splat",
+		"SFX",
+		false,
+		nil,
+		"M:515 splat(1): a K.O. in the feed, you squished; file 'match_splat.wav'"
+	),
+	soundSlot(
+		"match.knockedOut",
+		"SFX",
+		false,
+		nil,
+		"lib:151 error(): you got squished (M:548); file 'match_knockedOut.wav'"
+	),
+	soundSlot(
+		"match.whoosh",
+		"UI",
+		false,
+		nil,
+		"lib:176 whoosh(true): the card comes in (M:560); file 'match_whoosh.wav'"
+	),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1004,6 +1028,13 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.fx.ribbon", "image", IMAGE_NOTE),
 	otherSlot("img.fx.halfRing", "image", IMAGE_NOTE),
 	otherSlot("img.fx.dashRing", "image", IMAGE_NOTE),
+	-- Match HUD M7 (2026-10-17; the M3 pack, "Squishy Duels match uploads", uploaded by the user): the "squished by"
+	-- card's banner rays and dots, its Grip icon and the knocked-out vignette. While an id is nil the card uses
+	-- img.fx.rays, img.fx.dots and img.icon.squeeze, and the vignette two edge gradients (UI/Match).
+	otherSlot("img.fx.raysCard", "image", IMAGE_NOTE),
+	otherSlot("img.fx.dotsCard", "image", IMAGE_NOTE),
+	otherSlot("img.icon.grip", "image", IMAGE_NOTE),
+	otherSlot("img.fx.radial.matchVignette", "image", IMAGE_NOTE),
 
 	-- Kill banners and kill effects (2026-10-16): VFX Studio library textures for the SD_KillVfx emitters
 	-- (SDTools.Builders.KillVfxBuilder) and the kill banner (UI/KillBanner). Sheets keep the library's grid.

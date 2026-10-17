@@ -1392,6 +1392,26 @@ local UI = {
 			float = { kind = "Title", stroke = 6, drop = 3 },
 			-- UI FINAL R2: the toast's text (H:175: 18 px white, text-shadow 0 2px 0 rgba(30,20,40,.6); R9 draws it).
 			toastText = { kind = "Body", stroke = 3, soft = { px = 2, alpha = 0.6 } },
+			-- Match HUD M6 / M7 (2026-10-17; M = "Squishy Duels Match HUD.dc.html"): a kill feed name (M:124: 17 px,
+			-- stroke 4; its colour is the player's) and tag (M:132: 13 px -> 16, stroke 3); the card's FINAL KILL chip
+			-- (M:158: 16 px, stroke 4), name pills (M:159: 15 px -> 16, stroke 3.5), "squished by" (M:160: stroke 4), the
+			-- squishy's name (M:168: 36 px, stroke 8, drop 4) and title (M:169: 15 px -> 16, soft drop 0 2 .65), the
+			-- killer's name (M:179: 26 px, stroke 6), @handle (M:180: 14 px -> 16 #E9E1FF; PR3's thinnest outline), the
+			-- Grip / streak numbers (M:183: 24 px, stroke 5) and captions (M:184: 11 px -> 16 #E9E1FF); RESPAWNING IN
+			-- (M:197: 20 px, stroke 5) and its number (40 px #FFE36B, stroke 8, drop 4).
+			matchFeedName = { kind = "D17", stroke = 4 },
+			matchFeedTag = { kind = "Small", stroke = 3 },
+			matchCardFinal = { kind = "Chip", stroke = 4 },
+			matchCardPill = { kind = "Small", stroke = 3.5 },
+			matchCardBy = { kind = "Small", stroke = 4 },
+			matchCardName = { kind = "Found", stroke = 8, drop = 4 },
+			matchCardTitle = { kind = "Small", stroke = 3, soft = { px = 2, alpha = 0.65 } },
+			matchCardKiller = { kind = "HudNumber", stroke = 6 },
+			matchCardHandle = { kind = "Small", stroke = 3, color = "MatchCardHandle" },
+			matchCardStat = { kind = "Big", stroke = 5 },
+			matchCardCaption = { kind = "Small", stroke = 3, color = "MatchCardHandle" },
+			matchRespawnLabel = { kind = "Button", stroke = 5 },
+			matchRespawnNumber = { kind = "Hero", stroke = 8, drop = 4, color = "StickerCoinText" },
 			-- UI FINAL R4 (the lobby HUD): "Join the queue" (H:131: 17 px white, text-shadow 0 2px 0
 			-- rgba(120,10,50,.55); PR3 adds the 1.5 px ink outline), the "GRIP" tag over the level (H:94: 18 px
 			-- #9AF5D2, stroke 5), the Double Grip chip (H:89: 14 px -> 16, #FFE36B, stroke 4), the search bar's time
@@ -2395,15 +2415,15 @@ local UI = {
 		gui = { displayOrder = 14, insets = Enum.ScreenInsets.CoreUISafeInsets } :: ScreenGuiSpec,
 		enabled = {
 			topBar = false, -- M5 (waits for Diego's big-match bar)
-			feed = false, -- M6 kill feed
-			medal = false, -- M6 SQUISHED! medal
-			card = false, -- M7 knocked-out card
-			respawn = false, -- M7 RESPAWNING IN bar and vignette
+			feed = true, -- M6 kill feed (2026-10-17: on, with look-alike pictures and sounds until the owner's upload)
+			medal = false, -- M6 SQUISHED! medal: not built, Diego's kill banner (KillBannerController) is that moment
+			card = true, -- M7 "squished by" card
+			respawn = true, -- M7 RESPAWNING IN bar and vignette
 			boot = false, -- M8 Loading arena cover
 			intro = false, -- M8 intro card
 			introOrbit = false, -- M8 the map fly-over behind it (owner Q6: yes)
 			countdown = false, -- M8 3-2-1 SQUISH!
-			killerCam = false, -- M7 the camera on your killer while you wait (owner Q6: yes)
+			killerCam = false, -- M7 the camera on your killer while you wait (owner Q6: yes; not built yet, M7 notes)
 			finish = false, -- M9 VICTORY / DEFEAT splash
 			results = false, -- M9 results bar, LOBBY / PLAY AGAIN
 			podium = false, -- M10a / M10b 3D podium (owner Q2: his podium exactly)
@@ -2411,6 +2431,190 @@ local UI = {
 			replay = false, -- M11-M13 final-kill replay (owner Q1: yes, last)
 		} :: { [string]: boolean },
 		compact = { fitMin = 0.6 },
+		-- Match HUD M6 (2026-10-17; plan §4 M6 = v1 M4; `M:n` = the design's line): the kill feed (UI/Match/KillFeed),
+		-- top right, newest at the bottom. Base px (SD_MatchHud carries the UI scale). A row: 50 high + the 4 px ink lip
+		-- drawn under it (inside its box, the house rule), the next one 8 below the face (the lip takes 4 of it); the
+		-- player who squished, the 3 speed bars and their squishy, the one squished (greyed and squashed) and a tag.
+		-- Reading: Roblox scales a whole row evenly, so M's scale(sx, sy) frames are their even part sqrt(sx * sy).
+		feed = {
+			right = 18, -- M:120
+			top = 16,
+			rowGap = 8,
+			face = 50, -- M:122
+			lip = 4,
+			border = 4,
+			radius = 16,
+			padX = 6,
+			gap = 8,
+			fillAlpha = 0.9, -- rgba(36,24,58,.9)
+			glow = 3, -- 0 0 0 3px at .3 around your rows
+			glowAlpha = 0.3,
+			head = { size = 36, border = 3, radius = 11 }, -- M:123, M:131
+			nameRole = "matchFeedName", -- M:124, M:130
+			weapon = { -- M:125-128
+				width = 50,
+				height = 34,
+				toy = 34,
+				toyRot = -18,
+				toyDrop = 2,
+				barHeight = 4,
+				bars = {
+					{ w = 16, x = 0, y = 9, alpha = 0.55 },
+					{ w = 12, x = 4, y = 17, alpha = 0.4 },
+					{ w = 14, x = 0, y = 25, alpha = 0.3 },
+				},
+			},
+			victim = { sx = 1.25, sy = 0.7, y = 6, gray = 0.85, brightness = 0.85, inkAlpha = 0.15 }, -- M:131; inkAlpha [P]
+			tag = { height = 28, padX = 9, border = 3, radius = 10, role = "matchFeedTag" }, -- M:132
+			enter = { -- smFeedIn M:39, M:655
+				ms = 500,
+				curve = "search",
+				frames = {
+					{ at = 0, alpha = 0, x = 70, scale = 0.735 },
+					{ at = 0.55, alpha = 1, x = -8, scale = 1.009 },
+					{ at = 0.75, x = 3, scale = 1 },
+					{ at = 1, alpha = 1 },
+				} :: { MotionPose },
+			},
+			leave = { -- smFeedOut M:40, out at 4.6 s, gone at 5.0 s (M:531-532)
+				atMs = 4600,
+				ms = 400,
+				curve = "easeIn",
+				frames = { { at = 0, alpha = 1 }, { at = 1, alpha = 0, x = 40, scale = 0.9 } } :: { MotionPose },
+			},
+			multiWindowS = 4, -- M:521 DOUBLE! / TRIPLE!
+			streakMin = 3, -- M:527 "{n} STREAK"
+			maxRows = 5, -- [P] v1 §1.3d (M keeps every row)
+			compactMaxRows = 2, -- [P] phones: clear of the touch buttons
+		},
+		-- Match HUD M7 (plan §4 M7 = v1 M5, §12): the "squished by" card (UI/Match/DeathCard, M:155-193), bottom left,
+		-- 486 wide. With touch controls it sits `gap` above the thumbstick zone (owner 2026-10-16: never over the
+		-- thumbstick corner), shrunk to fit down to Match.compact.fitMin; on other compact screens to compactShare of the
+		-- height (v1 §1.3e). Reading: M's soft 0 22px 40px shadow under the body is not drawn.
+		card = {
+			left = 22, -- M:156
+			bottom = 22,
+			top = 8, -- [P] never above this
+			gap = 16, -- [P] from the thumbstick zone (Config.UI.Touch.gap)
+			compactShare = 0.62, -- [P] v1 §1.3e
+			width = 486,
+			rowGap = 8, -- the header to the body
+			header = { height = 32, gap = 8, padLeft = 4 }, -- M:157
+			finalChip = { height = 32, padX = 12, border = 4, lip = 3, role = "matchCardFinal" }, -- M:158 (M13's card)
+			pill = { height = 30, padX = 11, border = 3, role = "matchCardPill" }, -- M:159, M:161
+			byRole = "matchCardBy", -- M:160
+			body = { border = 5, radius = 26, lip = 8 }, -- M:163
+			banner = { -- M:164-175
+				height = 140,
+				rotation = 25, -- [P] v1 §1.6: CSS 115deg - 90
+				mid = 0.52,
+				dots = { tile = 24, alpha = 0.26 },
+				rays = { size = 480, fromRight = 130, alpha = 0.32, spinS = 14 }, -- right -110, 480 wide: centre 130 in
+				textX = 20,
+				textY = 18,
+				textGap = 7,
+				nameRole = "matchCardName",
+				titleRole = "matchCardTitle",
+				toy = { size = 172, right = 10, top = -14, shadowPx = 8, shadowAlpha = 0.35 },
+				twinkles = {
+					{ size = 22, x = 214, y = 22, delayS = 0.3, cream = false },
+					{ size = 16, x = 258, y = 96, delayS = 0.9, cream = true },
+				},
+				twinkleS = 1.8,
+				shine = { px = 70, overhang = 20, alpha = 0.6, slantDeg = 20, periodS = 2.8, delayS = 0.6 },
+			},
+			info = { -- M:176-191
+				height = 106,
+				borderTop = 5,
+				padLeft = 14,
+				padRight = 16,
+				gap = 14,
+				highlight = 3,
+				highlightAlpha = 0.14,
+				head = { size = 76, border = 4, radius = 20, lip = 4, highlight = 4, highlightAlpha = 0.4 },
+				nameGap = 4,
+				nameRole = "matchCardKiller",
+				handleRole = "matchCardHandle",
+				box = {
+					height = 42,
+					padLeft = 4,
+					padRight = 12,
+					gap = 3,
+					border = 3,
+					radius = 14,
+					lip = 3,
+					icon = 32,
+					highlight = 3,
+					gripAlpha = 0.55,
+					streakAlpha = 0.5,
+					flameY = -4,
+					captionGap = 3,
+					numberRole = "matchCardStat",
+					captionRole = "matchCardCaption",
+				},
+			},
+			show = { -- M:558 (whole run)
+				ms = 620,
+				wholeRun = "beat",
+				frames = {
+					{ at = 0, alpha = 0, x = -60, y = 260, scale = 0.55, rot = -8 },
+					{ at = 0.6, alpha = 1, x = 6, y = -12, scale = 1.04, rot = 1 },
+					{ at = 0.8, x = 0, y = 3, scale = 0.99 },
+					{ at = 1, alpha = 1 },
+				} :: { MotionPose },
+			},
+			hide = { -- M:565 (whole run)
+				ms = 260,
+				wholeRun = "close",
+				frames = { { at = 0, alpha = 1 }, { at = 1, alpha = 0, x = -30, y = 120, scale = 0.8 } } :: { MotionPose },
+			},
+			toyIn = { -- smToyIn M:49, M:171 (reading: the toy grows in; its own fade is not drawn)
+				ms = 700,
+				delayMs = 120,
+				curve = "search",
+				frames = {
+					{ at = 0, x = 120, scale = 0.3, rot = 40 },
+					{ at = 0.6, x = -8, scale = 1.12, rot = -12 },
+					{ at = 1, rot = -8 },
+				} :: { MotionPose },
+			},
+			toyBob = { periodS = 2.4, delayS = 0.9, risePx = 7 }, -- smToyBob M:50
+			clickDelayMs = 260, -- M:560
+			jolt = 10, -- M:548
+			preview = { grip = 37, streak = 4 }, -- Studio previews only: the pretend players' Grip level and win streak
+		},
+		-- Match HUD M7: the RESPAWNING IN bar (UI/Match/RespawnBar, M:195-200), bottom centre, and v1 §1.3h: beside the
+		-- card, else above it, when they would meet, never on the thumbstick zone (each place tried at each of `scales`;
+		-- [P] it may cover the touch buttons, which do nothing while you are knocked out).
+		respawn = {
+			bottom = 30, -- M:196
+			width = 380,
+			gap = 16, -- [P] v1 §1.3h cardGap; also from the touch areas
+			top = 8,
+			rowGap = 8, -- the label row to the bar
+			labelGap = 10, -- M:197
+			labelRole = "matchRespawnLabel",
+			numberRole = "matchRespawnNumber",
+			bar = { height = 20, border = 4, lip = 4, troughAlpha = 0.6, highlight = 3, highlightAlpha = 0.55 }, -- M:198
+			enter = { -- smRise M:48, M:196
+				ms = 400,
+				curve = "search",
+				frames = { { at = 0, alpha = 0, y = 40, scale = 0.8 }, { at = 1, alpha = 1 } } :: { MotionPose },
+			},
+			scales = { 1, 0.9, 0.8, 0.7, 0.6 }, -- [P]
+		},
+		-- Match HUD M7: the knocked-out vignette (M:61: the radial picture over the whole screen, `margin` past the safe
+		-- area for the notch [P]) and backdrop-filter saturate(.4) brightness(.95) as a client ColorCorrectionEffect;
+		-- sdFade .4 s in, gone at once at the respawn. While img.fx.radial.matchVignette has no id: M:61's stops on two
+		-- edge gradients (clear in the middle `clearShare` of each axis) [P].
+		vignette = {
+			fadeMs = 400,
+			curve = "ease",
+			saturation = -0.6,
+			brightness = -0.05,
+			margin = 64,
+			fallback = { clearShare = 0.4, midAlpha = 0.35, edgeAlpha = 0.72 },
+		},
 	},
 
 	-- UI FINAL R2 (plan §0 easing rule, G2.3): every design timing function as cubic-bezier numbers { x1, y1, x2, y2 },

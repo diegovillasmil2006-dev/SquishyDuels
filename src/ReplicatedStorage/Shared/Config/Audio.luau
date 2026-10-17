@@ -314,6 +314,15 @@ local Audio = {
 		volume = 0.9,
 		priority = 4,
 	},
+
+	-- Match HUD M6 / M7 (2026-10-17; `M:n` = "Squishy Duels Match HUD.dc.html" line n): M:515's splat(g) is one file
+	-- played at volume g: another player's K.O. in the kill feed .45 (M:537), you squished 1.1 (M:548). Your own K.O.s
+	-- play Diego's kill banner sound (killBanner above), never these. The feed row's and the card's click is ui.click at
+	-- uiPitch.card (M:533, M:560).
+	matchHud = {
+		splatOthers = 0.45,
+		splatYou = 1.1,
+	},
 }
 
 return Audio

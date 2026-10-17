@@ -9,7 +9,8 @@
 -- theirs in private constants, so ValidateMatchHud_Test pins those); every enabled switch is a boolean;
 -- compact.fitMin is in (0, 1]. For the steps to come (v1 §1.1, §1.5), anywhere under Match: a field named `text` or
 -- ending in `Text` names a Config.UI.TextSize kind (M's px are built as text kinds, never raw sizes), and a field
--- named `curve` or `wholeRun` names a Config.UI.curves entry.
+-- named `curve` or `wholeRun` names a Config.UI.curves entry. Match HUD M6 / M7 (2026-10-17): a field named `role` or
+-- ending in `Role` names a Config.UI.Sticker.text role.
 
 type Problems = { string }
 
@@ -45,6 +46,13 @@ return function(h: Helpers, UI: any): (problems: Problems) -> ()
 					problems,
 					type(child) == "string" and UI.curves[child] ~= nil,
 					`{at} must name a Config.UI.curves entry (got {show(child)})`
+				)
+			elseif type(key) == "string" and (key == "role" or string.sub(key, -4) == "Role") then
+				-- Match HUD M6 / M7: a label's look is a Config.UI.Sticker.text role (Theme.stickerText).
+				expect(
+					problems,
+					type(child) == "string" and UI.Sticker.text[child] ~= nil,
+					`{at} must name a Config.UI.Sticker.text role (got {show(child)})`
 				)
 			end
 		end

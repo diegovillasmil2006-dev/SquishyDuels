@@ -3,7 +3,12 @@
 -- §1.9, §2.4): the base layer of every in-match screen of Diego's "Squishy Duels Match HUD.dc.html" (M). It draws
 -- nothing of M itself: each later step adds one piece module to PIECES (M6 kill feed and medal, M7 knocked-out card
 -- and respawn bar, M8 boot cover / intro / countdown, M9 end splash and results, M10 podium, M13 replay; M5's top bar
--- waits for Diego) with its Config.UI.Match.enabled switch. Today the list is empty, so a real match shows nothing new.
+-- waits for Diego) with its Config.UI.Match.enabled switch. Match HUD M6 / M7 (2026-10-17): PIECES = the RESPAWNING
+-- bar with the vignette ("respawn", drawn first: the vignette is behind everything), the "squished by" card ("card")
+-- and the kill feed ("feed"), in UI/Match; M6's SQUISHED! medal is not built (Diego's kill banner is that moment). ctx
+-- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
+-- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
+-- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
 -- * Layer: the ScreenGui SD_MatchHud (spec Config.UI.Match.gui: DisplayOrder 14, over the touch buttons' SD_Touch 12
 --   and SD_PracticeReticle 13, under SD_Dimmer 19; CoreUISafeInsets, so Roblox's top-left buttons and the notch stay
 --   clear and UIController gives it the shared UIScale), made on first use through UIController.screenGui with that
@@ -54,6 +59,11 @@ local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 local Create = require(Client.UI.Create)
 local MatchHudFormat = require(Client.UI.MatchHudFormat)
+local DeathCard = require(Client.UI.Match.DeathCard)
+local KillFeed = require(Client.UI.Match.KillFeed)
+local RespawnBar = require(Client.UI.Match.RespawnBar)
+local ControlsController = require(script.Parent.ControlsController)
+local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
 
@@ -73,6 +83,7 @@ type Session = {
 -- Constants
 
 local HUD = Config.UI.Match
+local TOUCH = Config.UI.Touch
 local GUI_NAME = "SD_MatchHud"
 local ROOT_NAME = "Root"
 local FIXTURES = "MatchHudFixtures" -- Client/Studio, required only by a Studio preview
@@ -86,7 +97,11 @@ local dynamicRequire = require :: (ModuleScript) -> any
 local MatchHudController = {}
 
 -- The pieces, in draw order (a later one draws over an earlier one). Each later step adds its module's spec here.
-local PIECES: { MatchHudFormat.PieceSpec } = {}
+local PIECES: { MatchHudFormat.PieceSpec } = {
+	{ name = "respawn", new = RespawnBar.new }, -- M7
+	{ name = "card", new = DeathCard.new }, -- M7
+	{ name = "feed", new = KillFeed.new }, -- M6
+}
 MatchHudController.PIECES = PIECES
 
 -- Private
@@ -109,6 +124,15 @@ local function call(live: Live, method: string, ...: any)
 			warned[key] = true
 			log:warn(`match HUD piece {key} failed:`, err)
 		end
+	end
+end
+
+-- Match HUD M6 / M7: a piece's sound; `fallback` plays while `key` has nothing to play (no id yet: the design's
+-- sounds wait for the owner's upload). A sound never stops a piece.
+local function playSound(key: string, opts: { [string]: any }?, fallback: string?)
+	local ok, played = pcall(SoundController.play, key, opts :: any)
+	if fallback and not (ok and played) then
+		pcall(SoundController.play, fallback, opts :: any)
 	end
 end
 
@@ -174,6 +198,18 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 		end,
 		roster = roster,
 		result = result,
+		play = playSound,
+		touchAreas = function(): { MatchHudFormat.Area }
+			if ControlsController.preferredInput() ~= Enum.PreferredInput.Touch then
+				return {}
+			end
+			local size, scale = gui.AbsoluteSize, UIController.scale()
+			return MatchHudFormat.touchAreas(size, scale, ControlsController.touchLayout(size, scale, nil), TOUCH)
+		end,
+		toastsBeside = function(key: string, object: GuiObject?)
+			UIController.toastsBeside(key, object)
+		end,
+		shared = {},
 	}
 	for _, spec in specs do
 		local ok, piece = pcall(spec.new, ctx)

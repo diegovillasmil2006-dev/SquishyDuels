@@ -549,6 +549,34 @@ local Palette = {
 	StickerRibbonFace = Color3.fromHex("#FF5C9A"), -- H:526: the band
 	StickerRibbonTail = Color3.fromHex("#C2306A"), -- H:526: the tails (the picture only)
 
+	-- Match HUD M6 / M7 (2026-10-17; M = "Squishy Duels Match HUD.dc.html"): the players' colours (M:389-395: TDM
+	-- Strawberry / Blueberry, the name and the 180deg head / pill stops around StickerTdmRed / StickerTdmBlue; FFA's six,
+	-- top -> hex, three of them already here: StickerFxPink, StickerGoldMid over StickerCreamYellow), the kill feed row
+	-- (M:122 rgba(36,24,58,.9)), its border when you were squished (M:656), TRIPLE! (M:525), the card's @handle and
+	-- captions (M:180, M:184) and the vignette's stops (M:61, its picture's fallback).
+	MatchTeamRedTop = Color3.fromHex("#FFB8C3"), -- M:389
+	MatchTeamRedEnd = Color3.fromHex("#E84A64"),
+	MatchTeamRedText = Color3.fromHex("#FF94A5"),
+	MatchTeamBlueTop = Color3.fromHex("#B8E4FF"), -- M:390
+	MatchTeamBlueEnd = Color3.fromHex("#3B93EE"),
+	MatchTeamBlueText = Color3.fromHex("#8FCBFF"),
+	MatchFfaPinkTop = Color3.fromHex("#FFC6DC"), -- M:392
+	MatchFfaCyan = Color3.fromHex("#36C2DA"),
+	MatchFfaCyanTop = Color3.fromHex("#B8F5FA"),
+	MatchFfaMint = Color3.fromHex("#3FCC95"), -- M:393
+	MatchFfaMintTop = Color3.fromHex("#C2F7E0"),
+	MatchFfaPurple = Color3.fromHex("#A07BF5"), -- M:394
+	MatchFfaPurpleTop = Color3.fromHex("#E4D4FF"),
+	MatchFfaOrange = Color3.fromHex("#FF9A4D"),
+	MatchFfaOrangeTop = Color3.fromHex("#FFD6B3"),
+	MatchFeedRow = Color3.fromHex("#24183A"), -- M:122 (at .9)
+	MatchFeedYouDown = Color3.fromHex("#FF5A6E"), -- M:656: your row when you were squished (and its .3 glow)
+	MatchTripleTop = Color3.fromHex("#E4B8FF"), -- M:525
+	MatchTripleEnd = Color3.fromHex("#9A63E8"),
+	MatchCardHandle = Color3.fromHex("#E9E1FF"), -- M:180, M:184
+	MatchVignetteMid = Color3.fromHex("#8C286E"), -- M:61: rgba(140,40,110,.35) at 75%
+	MatchVignetteEdge = Color3.fromHex("#2E0E3A"), -- M:61: rgba(46,14,58,.72) at 100%
+
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.
 	KillBirdBlue = Color3.fromHex("#7CC0F5"), -- Birdie's accent: the Feather Storm ring and feathers

@@ -7,7 +7,8 @@
 -- Contract: the live Config.UI.Match has no problem; Match must be a table; gui.displayOrder a whole number >= 0 used
 -- by no Config.UI.ScreenGuis entry nor by a controller-owned layer (SD_Touch 12, ...); every enabled switch a
 -- boolean; compact.fitMin in (0, 1]; anywhere under Match a `text` / `...Text` field names a Config.UI.TextSize kind
--- and a `curve` / `wholeRun` field a Config.UI.curves entry.
+-- and a `curve` / `wholeRun` field a Config.UI.curves entry; Match HUD M6 / M7: a `role` / `...Role` field a
+-- Config.UI.Sticker.text role.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -176,6 +177,19 @@ return function(t: Context)
 			ui.Match.feed = { row = { text = "Body", curve = "beat" } }
 		end)
 		expectT.equal(#fine, 0)
+	end)
+
+	-- Match HUD M6 / M7 (2026-10-17): a label's look is a Config.UI.Sticker.text role.
+	t.test("a role field names a Sticker text role", function()
+		local problems = problemsOf(function(ui: any)
+			ui.Match.feed.nameRole = "noSuchRole"
+			ui.Match.feed.tag.role = 7
+		end)
+		expectT.truthy(containsText(problems, "Config.UI.Match.feed.nameRole must name a Config.UI.Sticker.text role"))
+		expectT.truthy(containsText(problems, "Config.UI.Match.feed.tag.role must name a Config.UI.Sticker.text role"))
+		expectT.equal(#problemsOf(function(ui: any)
+			ui.Match.feed.nameRole = "matchCardPill"
+		end), 0)
 	end)
 
 	t.test("Config.validate reaches the check through Config/ValidateMatch", function()

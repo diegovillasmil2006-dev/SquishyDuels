@@ -14,7 +14,8 @@
 --   "In the lane!") stay hidden. Review fix (2026-10-15): the top bar hides through DuelController's hideBar (reason
 --   "match", undone when the match ends), and a 1v1 result card still open from a duel just before is closed. The
 --   storm wall, the readout and the map animations each run in their own pcall, so a failure there never stops the
---   reticle, the dock or the countdown.
+--   reticle, the dock or the countdown. Match HUD M7 (2026-10-17): while you are knocked out the dock hides (with
+--   Config.UI.Match.enabled.respawn: MatchHudController's RESPAWNING bar sits there).
 -- * Readout (D13, a TEST READOUT until Diego's arena HUD): one Components/Chip at the top centre of SD_DuelHud, its text
 --   MatchFormat.readout (K.O.s and the leader, or the team lives; the timer; the storm bar; overtime; the respawn wait),
 --   refreshed Config.Match.readoutHz times a second (every frame when that is missing); toasts start under it while it
@@ -618,7 +619,12 @@ local function stepLook(state: Look): boolean
 			local aim = ThrowController.getAimState()
 			hk.countdown(h, now)
 			hk.ultReady(view)
-			hk.hints(h, view, aim)
+			-- Match HUD M7: the key dock (bottom centre) hides while you are knocked out: the RESPAWNING bar is there.
+			if view.you.alive or not Config.UI.Match.enabled.respawn then
+				hk.hints(h, view, aim)
+			else
+				h.hints.Visible = false
+			end
 			h.catchMeter.frame.Visible = false -- D8: no catch in a match (the dock shows its meter every frame)
 			hk.reticle(h, view, aim, now)
 			return nil

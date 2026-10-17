@@ -176,6 +176,9 @@ end
 local KILL_SOUND_PREFIX = "sfx.kill."
 local KILL_IMAGE_PREFIX = "img.kill."
 
+-- Match HUD M6 / M7 (2026-10-17): the match screens' sounds of the M3 pack, checked on their own below.
+local MATCH_SOUND_KEYS = { "match.splat", "match.knockedOut", "match.whoosh" }
+
 return function(t: Context)
 	local expect = t.expect
 	local AssetTable = t.requireShared("AssetTable")
@@ -202,12 +205,28 @@ return function(t: Context)
 				string.sub(slot.key, 1, #WAX_PREFIX) ~= WAX_PREFIX
 				and not table.find(R2_SOUND_KEYS, slot.key)
 				and string.sub(slot.key, 1, #KILL_SOUND_PREFIX) ~= KILL_SOUND_PREFIX -- kill banners: below
+				and not table.find(MATCH_SOUND_KEYS, slot.key) -- Match HUD M6 / M7: below
 			then
 				table.insert(keys, slot.key)
 			end
 		end
 		expect.equal(#keys, 70)
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
+	end)
+
+	-- Match HUD M6 / M7 (2026-10-17): the M3 pack's 3 sounds the match screens play, once each, PENDING until the owner's
+	-- upload (a look-alike plays meanwhile), 2D.
+	t.test("Match HUD M6 / M7's 3 sound keys: match.splat, match.knockedOut, match.whoosh, once each, 2D", function()
+		for _, key in MATCH_SOUND_KEYS do
+			local found = 0
+			for _, slot in soundSlots() do
+				if slot.key == key then
+					found += 1
+					expect.equal(slot.spatial, false)
+				end
+			end
+			expect.equal(found, 1)
+		end
 	end)
 
 	-- UI FINAL R2 (plan work/ui/PLAN.md §3 pack 2): ui.pop and ui.levelTone are sound slots, each once.
@@ -391,6 +410,11 @@ return function(t: Context)
 				"img.fx.ribbon",
 				"img.fx.halfRing",
 				"img.fx.dashRing",
+				-- Match HUD M7 (2026-10-17): the M3 pack's card and vignette pictures.
+				"img.fx.raysCard",
+				"img.fx.dotsCard",
+				"img.icon.grip",
+				"img.fx.radial.matchVignette",
 			})
 		)
 	end)
