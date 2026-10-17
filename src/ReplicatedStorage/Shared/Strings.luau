@@ -1125,6 +1125,15 @@ local Strings = {
 			object = "Pen space",
 		},
 		rate = "+{coins}/s",
+		-- Pens3 phase 10: the base gate (lobby design v6, P3D:250 and :277): the line under the owner's name on the
+		-- owner sign ({n} the base number) and the visitor board's heart and count ({count} the visitors who squeezed
+		-- today; 0 until phase 18).
+		gate = {
+			base = "BASE {n}",
+			heart = "\u{2665}",
+			visitor = "{count} visitor",
+			visitors = "{count} visitors",
+		},
 		-- Pens3 phase 6: the stand-in pen screen (PenController, UI/PenScreen; Diego draws the real one). {placed} /
 		-- {spots} the squishies in the pen and its open spots, {toys} / {max} the Toy Box and its toyBoxMax, {name} a
 		-- squishy's name, {level} its level.

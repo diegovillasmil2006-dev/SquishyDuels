@@ -22,7 +22,9 @@
 -- the newest buyBackMax; buyBackDecision finds a live entry (net.invalid, pen.buyBackGone, inventory.full). Phase 8
 -- (fusion): fuseDecision takes 3 of one kind and form (net.invalid, inventory.notOwned, pen.locked, pen.fuseMismatch,
 -- pen.fuseTop for Rainbow); the keeper is the highest level (a tie: a placed one, then the lower id), the result its
--- next form at its level, and every input's coating is listed for the bag.
+-- next form at its level, and every input's coating is listed for the bag. Phase 10 (the pen look): segmentFrames is
+-- K's fence at a spot count in build order (front from the gate out, the sides, the back), newSegments what a growing
+-- pen gains, decorOf the tier's decor (K:4170-4189: tier 2 bulbs + lamps, tier 3 also the bow + trees).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -282,6 +284,84 @@ return function(t: Context)
 		expect.equal(PenMath.wanderRect(2, 2), nil)
 		expect.equal(PenMath.wanderRect(13, 2), nil)
 	end)
+
+	-- Pens3 phase 10 (the pen look): the fence's segments and the tier decor.
+	local function spots(frames: { CFrame }): { string }
+		local list = {}
+		for _, frame in frames do
+			table.insert(list, string.format("%g,%g", frame.Position.X, frame.Position.Z))
+		end
+		return list
+	end
+
+	t.test(
+		"segmentFrames: K's segments in build order (front from the gate out, sides, the back); none off-step",
+		function()
+			-- 16 × 12 at 3 spots, front z 19, gate gap x -4..4: one front pair, 3 per side, 4 at the back (z 7).
+			expect.deepEqual(spots(PenMath.segmentFrames(3)), {
+				"-6,19",
+				"6,19",
+				"-8,17",
+				"8,17",
+				"-8,13",
+				"8,13",
+				"-8,9",
+				"8,9",
+				"-6,7",
+				"-2,7",
+				"2,7",
+				"6,7",
+			})
+			local side = PenMath.segmentFrames(3)[3]
+			expect.near(math.abs(side.RightVector.Z), 1, 1e-6) -- a side segment runs along the plot's Z
+			expect.near(math.abs(PenMath.segmentFrames(3)[1].RightVector.X), 1, 1e-6)
+			local WorldLayout = t.requireShared("World/WorldLayout")
+			for count = 3, 12 do
+				local step = WorldLayout.Bases.pen.steps[count]
+				local back = if step.backWall == "shelf" then step.w / 4 else 0 -- a fence until phase 11's shelf
+				expect.equal(#PenMath.segmentFrames(count), step.fence + back)
+			end
+			expect.deepEqual(PenMath.segmentFrames(2), {})
+			expect.deepEqual(PenMath.segmentFrames(13), {})
+		end
+	)
+
+	t.test(
+		"newSegments: the segments a pen gains when it grows, in build order; none when only the tier moves",
+		function()
+			-- 3 -> 4 spots (16 × 12 -> 16 × 16): one more piece down each side and the whole back, 4 deeper.
+			expect.deepEqual(spots(PenMath.newSegments(3, 4)), { "-8,5", "8,5", "-6,3", "-2,3", "2,3", "6,3" })
+			-- 4 -> 5 (16 × 16 -> 24 × 16): a front pair further out, both sides 4 wider out, the back's two new
+			-- ends (its middle 4 pieces stand where they stood).
+			expect.equal(#PenMath.newSegments(4, 5), 2 + 8 + 2)
+			-- 9 -> 10: the same 24 × 32 fence, only the tier changes.
+			expect.deepEqual(PenMath.newSegments(9, 10), {})
+			expect.deepEqual(PenMath.newSegments(6, 6), {})
+			-- Two spots at once (a grant): everything new at 7 spots that 5 did not have.
+			expect.equal(#PenMath.newSegments(5, 7), 4 + 6)
+		end
+	)
+
+	t.test(
+		"decorOf: K's tier adds: tier 1 plain, tier 2 the gate bulbs and 2 lamps, tier 3 also the bow and 2 trees",
+		function()
+			local none = { bulbs = false, lamps = false, bow = false, trees = false }
+			local mint = { bulbs = true, lamps = true, bow = false, trees = false }
+			local royal = { bulbs = true, lamps = true, bow = true, trees = true }
+			for count = 3, 5 do
+				expect.deepEqual(PenMath.decorOf(count), none)
+			end
+			for count = 6, 9 do
+				expect.deepEqual(PenMath.decorOf(count), mint)
+			end
+			for count = 10, 12 do
+				expect.deepEqual(PenMath.decorOf(count), royal)
+			end
+			expect.deepEqual(PenMath.decorOf(2), none)
+			expect.deepEqual(PenMath.decorOf(13), none)
+			expect.deepEqual(PenMath.decorOf(nil :: any), none)
+		end
+	)
 
 	-- Pens3 phase 5: the Toy Box (D1:254-258).
 	t.test("room: the pen's spots plus the Toy Box's toyBoxMax, less every item; 0 for anything not a pen", function()

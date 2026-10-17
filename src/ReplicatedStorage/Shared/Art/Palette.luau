@@ -581,6 +581,23 @@ local Palette = {
 	PenFormRainbow5 = Color3.fromHex("#5FE0E8"),
 	PenFormRainbow6 = Color3.fromHex("#7FA8FF"),
 	PenFormRainbow7 = Color3.fromHex("#B98CFF"),
+	-- Pens3 phase 10 (the pen look: the gate, LK:87-96, and the tier decor, LK:235-244; `P3D:n` = "Squishy Lobby
+	-- 3D.html" line n). World only (BaseService); the gate posts and the trees reuse the PenFence* tier colours.
+	PenGateGlow = Color3.fromHex("#FFF0A0"), -- K:80 the material Glow (Neon): the gate bulbs and the lamps' candy
+	PenGateBadge = Color3.fromHex("#FFD84A"), -- K:49 Lemon: the number badge
+	PenGateBoard = Color3.fromHex("#8EEAD0"), -- K:37 MintIcing: the visitor board
+	PenGateBoardFace = Color3.fromHex("#E9FFF7"), -- P3D:277 the board's face
+	PenGateHeart = Color3.fromHex("#FF6FA3"), -- P3D:277 its heart
+	PenGateBaseText = Color3.fromHex("#7B4DFF"), -- P3D:250 the owner sign's "BASE n"
+	PenDecorIcing = Color3.fromHex("#FF8FBF"), -- K:31 PinkIcing: the gate bow, the lamps' swirl, the trunk stripes
+	PenDecorFrosting = Color3.fromHex("#FFF6EC"), -- K:7 Frosting: the lamp pole and the tree trunk
+	-- P3D:244 PCOL: the disc behind the owner's headshot, by base number ((n - 1) % 6 + 1).
+	PenOwnerDisc1 = Color3.fromHex("#FF6FA3"),
+	PenOwnerDisc2 = Color3.fromHex("#5FE0E8"),
+	PenOwnerDisc3 = Color3.fromHex("#B98CFF"),
+	PenOwnerDisc4 = Color3.fromHex("#FFD84A"),
+	PenOwnerDisc5 = Color3.fromHex("#8DF27A"),
+	PenOwnerDisc6 = Color3.fromHex("#FF9C5B"),
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

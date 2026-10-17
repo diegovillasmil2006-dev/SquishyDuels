@@ -116,6 +116,17 @@
 --                                   always the weakest one that can eat (the lowest level, then the fewest Coins a
 --                                   second at Lv 1, then the lower id), until no placed squishy below `cap` has the
 --                                   pieces of its next step. steps 0 = nothing to feed.
+-- Pens3 phase 10 (the pen look, lobby design v6; WorldLayout.Bases.pen):
+--   PenMath.segmentFrames(spots) -> {CFrame}: the plot-local frame of every fence segment of steps[spots] (BaseService
+--                                   draws one at each; moved here from it), in build order: the front pieces from the
+--                                   gate gap out (left, then right), the two sides from the front back (turned so their
+--                                   X runs along the plot's Z), then the back from -X (K's "shelf" back wall stays a
+--                                   fence until phase 11); {} for a spot count with no step
+--   PenMath.newSegments(from, to) -> {CFrame}: the frames of segmentFrames(to) that segmentFrames(from) has not, in
+--                                   build order: what a pen growing from `from` to `to` spots pops in (A14 FenceGrow)
+--   PenMath.decorOf(spots)       -> {bulbs, lamps, bow, trees}: the tier decor of steps[spots] (K:4170-4189
+--                                   "adds", K:700 notes): tier 2 the gate bulbs + 2 lollipop lamps, tier 3 also the
+--                                   gate bow + 2 gumdrop trees; none at tier 1 or for a spot count with no step
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -141,6 +152,8 @@ export type FoodDef = { id: string, nameKey: string, price: number, from: number
 export type FoodBuy = { food: FoodDef, count: number, price: number }
 export type FeedStep = { item: Types.PenItem, food: FoodDef, pieces: number }
 export type FeedPlan = { levels: { [number]: number }, used: { [string]: number }, steps: number }
+-- Pens3 phase 10: the tier decor a pen shows (decorOf).
+export type Decor = { bulbs: boolean, lamps: boolean, bow: boolean, trees: boolean }
 
 -- Constants
 
@@ -166,12 +179,18 @@ local CODE_FOOD_FULL = "food.full"
 local CODE_NOT_ENOUGH = "food.notEnough"
 local CODE_MAX_LEVEL = "pen.maxLevel"
 local BIOMES_REACHED = 1 -- shortcut: phase 13 (the highway) reads profile.highway.biome instead
+local ALONG_Z = CFrame.Angles(0, math.pi / 2, 0) -- pens3 phase 10: a side segment, its X along the plot's Z
 
 -- Module table
 
 local PenMath = {}
 
 -- Private
+
+-- Pens3 phase 10: a segment frame's spot on the plot (centistuds; + 0 makes -0 a 0).
+local function spotKey(frame: CFrame): string
+	return `{math.round(frame.Position.X * 100) + 0},{math.round(frame.Position.Z * 100) + 0}`
+end
 
 local function isWhole(n: unknown): boolean
 	return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge and math.floor(n) == n
@@ -789,6 +808,50 @@ function PenMath.wanderRect(spots: number, studs: number): Rect?
 		minZ = LAYOUT.frontZ - step.d + inset,
 		maxZ = LAYOUT.frontZ - inset,
 	}
+end
+
+function PenMath.segmentFrames(spots: number): { CFrame }
+	local frames: { CFrame } = {}
+	local step = LAYOUT.steps[spots]
+	if step == nil then
+		return frames
+	end
+	local seg, half = LAYOUT.segment, step.w / 2
+	local gate = LAYOUT.gateWidth / 2
+	for i = 0, (half - gate) / seg - 1 do
+		local x = gate + seg / 2 + i * seg
+		table.insert(frames, CFrame.new(-x, 0, LAYOUT.frontZ))
+		table.insert(frames, CFrame.new(x, 0, LAYOUT.frontZ))
+	end
+	for i = 0, step.d / seg - 1 do
+		local z = LAYOUT.frontZ - seg / 2 - i * seg
+		table.insert(frames, CFrame.new(-half, 0, z) * ALONG_Z)
+		table.insert(frames, CFrame.new(half, 0, z) * ALONG_Z)
+	end
+	for i = 0, step.w / seg - 1 do
+		table.insert(frames, CFrame.new(-half + seg / 2 + i * seg, 0, LAYOUT.frontZ - step.d))
+	end
+	return frames
+end
+
+function PenMath.newSegments(from: number, to: number): { CFrame }
+	local old: { [string]: boolean } = {}
+	for _, frame in PenMath.segmentFrames(from) do
+		old[spotKey(frame)] = true
+	end
+	local new: { CFrame } = {}
+	for _, frame in PenMath.segmentFrames(to) do
+		if not old[spotKey(frame)] then
+			table.insert(new, frame)
+		end
+	end
+	return new
+end
+
+function PenMath.decorOf(spots: number): Decor
+	local step = LAYOUT.steps[spots]
+	local tier = if step then step.tier else 0
+	return { bulbs = tier >= 2, lamps = tier >= 2, bow = tier >= 3, trees = tier >= 3 }
 end
 
 return table.freeze(PenMath)

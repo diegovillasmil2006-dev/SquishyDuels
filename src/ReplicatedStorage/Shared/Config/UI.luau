@@ -1257,6 +1257,50 @@ local UI = {
 			{ t_ms = 200, value = 1.15, style = Enum.EasingStyle.Back, dir = Enum.EasingDirection.Out },
 			{ t_ms = 350, value = 1, style = Enum.EasingStyle.Sine, dir = Enum.EasingDirection.Out },
 		},
+		-- Pens3 phase 10 (the pen look; Controllers/PenLookController; Anim/Timeline keys; no motion under
+		-- ReducedMotion): K:5607-5639 A10 SignAssignPop, the owner sign's scale when a player is given the base;
+		-- K:5673-5710 A12 GateBowWiggle, the bow's turn about its Z (degrees) when the pen reaches tier III or its
+		-- owner walks in; K:5749-5781 A14 FenceGrow, each new fence segment's height scale after a pen upgrade,
+		-- growStaggerMs apart in build order (a segment waits at the first key until its turn, so it pops in).
+		signAssign = {
+			{ t_ms = 0, value = 0.2 },
+			{ t_ms = 250, value = 1.15, style = Enum.EasingStyle.Back, dir = Enum.EasingDirection.Out },
+			{ t_ms = 400, value = 1, style = Enum.EasingStyle.Sine, dir = Enum.EasingDirection.Out },
+		},
+		gateBow = {
+			{ t_ms = 0, value = 0 },
+			{ t_ms = 150, value = 12, style = Enum.EasingStyle.Quad, dir = Enum.EasingDirection.Out },
+			{ t_ms = 350, value = -8, style = Enum.EasingStyle.Sine, dir = Enum.EasingDirection.InOut },
+			{ t_ms = 600, value = 0, style = Enum.EasingStyle.Sine, dir = Enum.EasingDirection.Out },
+		},
+		fenceGrow = {
+			{ t_ms = 0, value = 0.01 },
+			{ t_ms = 250, value = 1.15, style = Enum.EasingStyle.Back, dir = Enum.EasingDirection.Out },
+			{ t_ms = 350, value = 1, style = Enum.EasingStyle.Sine, dir = Enum.EasingDirection.Out },
+		},
+		growStaggerMs = 40,
+		-- K:4627-4645 E15 PenUpgradePoof: `count` particles of `size` studs living `seconds` at each segment as it pops
+		-- in, `lift` studs up (reading: the fence's middle), one of `colors` per segment in turn (an emitter is one
+		-- colour; K's 5, Palette's same candy set); speed, cone and fall from P3D:524-537's burst (18 studs/s ×
+		-- 0.6-1.2, up within 34°, gravity 30, shrinking to 0.15 of its size). FxPool halves the count under
+		-- ReducedMotion (K's fallback "Emit 3").
+		poof = {
+			count = 6,
+			size = 0.5,
+			endSize = 0.075,
+			seconds = 0.4,
+			lift = 1.6,
+			speedMin = 10.8,
+			speedMax = 21.6,
+			spreadDeg = 34,
+			gravity = 30,
+			colors = { "StickerFxYellow", "StickerFxPink", "StickerFxCyan", "StickerFxGreen", "StickerFxPurple" },
+		},
+		-- K:4662-4676 E17 SignGlint: `count` white sparkle of `size` for `seconds` on the own PEN SPACE sign's price
+		-- face (`out` studs in front of it, reading) when it turns from too expensive to can buy, once per price; off
+		-- under ReducedMotion (K's fallback). E15 and E17 use the engine's sparkles texture (Config.Vfx.Textures)
+		-- until K's sparkle.png (K:7901-7903) is uploaded.
+		glint = { count = 1, size = 0.8, seconds = 0.4, out = 0.2 },
 		-- Pens3 phase 4 [P]: the coins-while-away pop-up's rain (UiFx.rain inside the congrats overlay, as a buy's).
 		awayRain = 60,
 		awayRainDelayMs = 300,

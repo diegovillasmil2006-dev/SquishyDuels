@@ -59,6 +59,8 @@ type Module = {
 -- Pens3 phase 1: PenController (the walking pen squishies, their coin labels and the own PEN SPACE sign) in
 -- CapsuleController's slot after DailyController; CapsuleController no longer starts (the capsule remotes have no
 -- server handler since PenService replaced CapsuleService; its module stays until pens3 phase 3).
+-- Pens3 phase 10: PenLookController (the gate's and the fence's motion, the own sign's glint) right after
+-- PenController, whose signState it reads.
 local CONTROLLER_ORDER = {
 	"NetController",
 	"StateController",
@@ -93,6 +95,7 @@ local CONTROLLER_ORDER = {
 	"QuestController",
 	"DailyController",
 	"PenController",
+	"PenLookController",
 	"QueueController",
 	"DuelController",
 	"MatchController",

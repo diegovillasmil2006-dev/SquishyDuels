@@ -42,6 +42,8 @@
 -- Pens3 phase 9: every Config food has a name; every BuyFood / Feed / FeedAll refusal code has a text; the pen
 -- screen's food texts (the hint, the food row, the BUY FOOD cards, the sell confirm's food line) exist with their
 -- placeholders and never press a kid.
+-- Pens3 phase 10: the gate's texts (P3D:250, :277): BASE n under the owner's name, the heart and 1 visitor / N
+-- visitors on the visitor board.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -978,6 +980,13 @@ return function(t: Context)
 			expect.falsy(string.find(string.lower(text), "now", 1, true))
 			expect.falsy(string.find(text, "!", 1, true))
 		end
+	end)
+
+	t.test("pens3 phase 10: the gate's texts: BASE n, the heart, 1 visitor and N visitors (P3D:250, :277)", function()
+		expect.equal(Strings.format(Strings.pen.gate.base, { n = 3 }), "BASE 3")
+		expect.equal(Strings.pen.gate.heart, "\u{2665}")
+		expect.equal(Strings.format(Strings.pen.gate.visitor, { count = 1 }), "1 visitor")
+		expect.equal(Strings.format(Strings.pen.gate.visitors, { count = 0 }), "0 visitors")
 	end)
 
 	t.test("pens3 phase 4: the away pop-up's texts exist with their placeholders and never press a kid", function()

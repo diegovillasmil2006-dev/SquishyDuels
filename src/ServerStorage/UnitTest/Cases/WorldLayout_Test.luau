@@ -31,6 +31,8 @@
 --     8-stud gate gap, 4-stud segments, the steps 3..12 exactly as K has them, every step inside the plot; the PEN
 --     SPACE sign at (10, 0, 20.3) facing the gate side; the spawn at local z 22.5 between the gate and the pen,
 --     facing the pen;
+--   * pens3 phase 10: the gate in the gate gap at (0, 0, 19), the lamps at (±12.75, 0, 20.25), the trees at (±13.55,
+--     0, 0) (L:187-193), all facing the gate side, inside every plot; the +X tree gold, the -X one pink;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -1331,6 +1333,36 @@ return function(t: Context)
 		expect.truthy(vectorNear(sign.LookVector, Vector3.new(0, 0, 1), 1e-6)) -- its face toward the gate side
 		for index = 1, 10 do
 			expect.truthy(WorldLayout.inPlot(index, (WorldLayout.plotFrame(index) :: CFrame) * sign.Position))
+		end
+	end)
+
+	-- Pens3 phase 10: the gate and the tier decor (lobby design v6 layout.json, L:187-193, turned like the pen).
+	t.test("pens3 phase 10: the gate in the gate gap, 2 lamps at the front corners, 2 trees by the sides", function()
+		local pen = WorldLayout.Bases.pen
+		local toward = Vector3.new(0, 0, 1) -- every piece's front faces the gate side, like the sign
+		expect.truthy(vectorNear(pen.gate.Position, Vector3.new(0, 0, pen.frontZ)))
+		expect.truthy(vectorNear(pen.gate.LookVector, toward, 1e-6))
+		expect.equal(#pen.lamps, 2)
+		expect.equal(#pen.trees, 2)
+		local wide = pen.steps[12]
+		for index, side in { 1, -1 } do
+			local lamp = pen.lamps[index]
+			expect.truthy(vectorNear(lamp.Position, Vector3.new(side * 12.75, 0, 20.25)))
+			expect.truthy(vectorNear(lamp.LookVector, toward, 1e-6))
+			expect.truthy(lamp.Position.Z > pen.frontZ and math.abs(lamp.Position.X) > wide.w / 2) -- outside the pen
+			local tree = pen.trees[index]
+			expect.truthy(vectorNear(tree.at.Position, Vector3.new(side * 13.55, 0, 0)))
+			expect.truthy(vectorNear(tree.at.LookVector, toward, 1e-6))
+			expect.truthy(math.abs(tree.at.Position.X) > wide.w / 2) -- beside the side fence
+		end
+		-- L:192-193: the +X tree in the Royal post's gold, the -X one in its pink rail colour.
+		expect.equal(pen.trees[1].color, "PenFenceRoyalPost")
+		expect.equal(pen.trees[2].color, "PenFenceRoyalRail")
+		for index = 1, 10 do
+			local frame = WorldLayout.plotFrame(index) :: CFrame
+			for _, at in { pen.gate, pen.lamps[1], pen.lamps[2], pen.trees[1].at, pen.trees[2].at } do
+				expect.truthy(WorldLayout.inPlot(index, frame * at.Position))
+			end
 		end
 	end)
 

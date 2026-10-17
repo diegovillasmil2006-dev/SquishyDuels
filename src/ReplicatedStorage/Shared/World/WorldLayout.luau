@@ -847,9 +847,25 @@ local Bases = {
 			[12] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
 		} :: { [number]: PenStep },
 		signs = { pen = CFrame.new(10, 0, 20.3) * CFrame.Angles(0, math.pi, 0) },
-		-- Pens3 phase 3: the most parts BaseService draws for one pen (12 spots: 26 fence segments of 2 rails and 3
-		-- pickets, 27 posts with their balls, 5 colliders, the sign's 3 parts); the lobby budget adds it to every plot.
-		maxParts = 192,
+		-- Pens3 phase 10 (L:187-193, turned like the sign: every front toward +Z): the gate (pen_gate_01) in the gate
+		-- gap; the 2 lollipop lamps at the front corners (tier 2 on) and the 2 gumdrop trees by the side fences (tier
+		-- 3), each tree's canopy a Palette token (L's GumdropTint tints: the Royal post's gold at +X, its rail pink at
+		-- -X).
+		-- L's rotated bases give the trees' x as 13.55 ± 0.04 (its 0.125-stud world grid).
+		gate = CFrame.new(0, 0, 19) * CFrame.Angles(0, math.pi, 0),
+		lamps = {
+			CFrame.new(12.75, 0, 20.25) * CFrame.Angles(0, math.pi, 0),
+			CFrame.new(-12.75, 0, 20.25) * CFrame.Angles(0, math.pi, 0),
+		},
+		trees = {
+			{ at = CFrame.new(13.55, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalPost" },
+			{ at = CFrame.new(-13.55, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalRail" },
+		},
+		-- The most parts BaseService draws for one pen (pens3 phase 3; phase 10: 12 spots = 26 fence segments of 3
+		-- pickets, 25 posts with their balls (the gate's posts stand on the other 2), the 10 rail runs, 5 colliders,
+		-- the sign's 3 parts, the gate's 8 with its 7 bulbs and the 13-part bow, 2 lamps of 2 and 2 trees of 6); the
+		-- lobby budget adds it to every plot.
+		maxParts = 190,
 	},
 	-- Spec §8: plot i's colour (full: rim, fence caps, gate; light: the plinth floor); an open plot is grey (§4).
 	colors = baseColors,
@@ -1495,7 +1511,7 @@ local WorldLayout = {
 		-- Spec §7 part budget, checked by the lobby generator with every plot at its worst (pens3 phase 3: its static
 		-- parts + a full pen, Bases.pen.maxParts): the whole island, the hub (everything but the bases, the garden, the
 		-- beach and the sky), one base, and the garden + beach + sky. [P] baseParts: 220 held the capsules; a plot's 80
-		-- static parts + the 192 of a full pen need 272.
+		-- static parts + the 190 of a full pen (phase 10: with its gate and tier III decor) need 270.
 		islandParts = 5200,
 		hubParts = 2000,
 		baseParts = 280,

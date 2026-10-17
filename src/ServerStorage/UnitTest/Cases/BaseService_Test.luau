@@ -20,6 +20,13 @@
 --     a missing plot model draws no pen and nothing fails;
 --   * pens3 phase 3: no pen draws more parts than WorldLayout.Bases.pen.maxParts (the lobby budget's worst plot),
 --     and the full 12-spot pen draws exactly that many.
+--   * pens3 phase 10 (the pen look, lobby design v6): each fence segment keeps LK's 3 pickets, the rails run the
+--     outline in 10 straight runs (one part per run; the parts budget), no fence post stands under the gate's posts;
+--     the gate (LK:87-96) in the gate gap: posts in the tier's post colour, the sign frame in the plot's colour, the
+--     owner sign (display name, "BASE n", the headshot asked once per user and cached), the number badge n and the
+--     visitor board ("0 visitors" until phase 18); the tier decor of PenMath.decorOf (tier 2: 7 gate bulbs + 2
+--     lollipop lamps; tier 3: + the bow + 2 gumdrop trees) where L puts it; the base Model's SD_PenOwner (the owner's
+--     UserId); the full pen plus the plot's 80 static parts stays within Budgets.baseParts.
 --   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
 --     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
 
@@ -42,10 +49,11 @@ return function(t: Context)
 		models: { [number]: Model }, -- the fake plot models (owner view)
 		pens: { [any]: any }, -- player -> a ready profile's pen
 		friends: { [any]: any }, -- player -> the friend who invited them (or whom they followed) in this server
+		headshots: { { id: number, done: (image: string?) -> () } }, -- pens3 phase 10: the headshots asked for
 	}
 
 	local function fresh(): World
-		local w: World = { delays = {}, asked = {}, made = {}, models = {}, pens = {}, friends = {} }
+		local w: World = { delays = {}, asked = {}, made = {}, models = {}, pens = {}, friends = {}, headshots = {} }
 		BaseService.reset()
 		BaseService.useDeps({
 			delay = function(seconds: number, fn: () -> ())
@@ -66,6 +74,9 @@ return function(t: Context)
 			end,
 			friendOf = function(player: any): any
 				return w.friends[player]
+			end,
+			headshotOf = function(userId: number, done: (image: string?) -> ())
+				table.insert(w.headshots, { id = userId, done = done })
 			end,
 		})
 		return w
@@ -385,7 +396,7 @@ return function(t: Context)
 	)
 
 	t.test(
-		"each segment is LK's pen_fence: 2 rails and 3 pickets; one post and ball top per corner, never two",
+		"each segment keeps LK's 3 pickets; one post and ball per corner, never two, none under the gate's posts",
 		function()
 			local w = fresh()
 			local model = plotModel(w, 1)
@@ -396,7 +407,7 @@ return function(t: Context)
 			local posts: { [string]: number } = {}
 			local tops = 0
 			for _, segment in segments(model, 1) do
-				expect.equal(count(segment.model, "Rail"), 2)
+				expect.equal(count(segment.model, "Rail"), 0) -- pens3 phase 10: the rails run the outline (Rails)
 				expect.equal(count(segment.model, "Picket"), 3)
 				for _, part in segment.model:GetChildren() do
 					if part.Name == "Post" then
@@ -416,12 +427,326 @@ return function(t: Context)
 					error(`two posts at {key}`)
 				end
 			end
-			-- 16 x 12: (16 + 12) × 2 / 4 = 14 post spots round the outline, but the one in the middle of the gate gap.
-			expect.equal(n, 13)
+			-- 16 x 12: (16 + 12) × 2 / 4 = 14 post spots round the outline, but the one in the middle of the gate gap
+			-- and (pens3 phase 10) the 2 at its ends, where the gate's posts stand.
+			expect.equal(n, 11)
 			expect.equal(tops, n)
+			expect.equal(posts["-4.00,19.00"], nil)
+			expect.equal(posts["4.00,19.00"], nil)
 			finish(w)
 		end
 	)
+
+	-- Pens3 phase 10: the pen look (lobby design v6) ------------------------------------------------------------
+
+	-- `part`'s centre in `at`'s frame.
+	local function localOf(at: CFrame, part: Instance): Vector3
+		return at:PointToObjectSpace((part :: BasePart).CFrame.Position)
+	end
+
+	local function named(parent: Instance, name: string): { BasePart }
+		local list = {}
+		for _, d in parent:GetDescendants() do
+			if d.Name == name and d:IsA("BasePart") then
+				table.insert(list, d)
+			end
+		end
+		return list
+	end
+
+	local function vectorNear(a: Vector3, b: Vector3): boolean
+		return (a - b).Magnitude < 1e-3
+	end
+
+	t.test(
+		"the rails run the outline: 10 straight runs at LK's heights, as long as the segments' rails were",
+		function()
+			for _, spots in { 3, 5, 9, 12 } do
+				local w = fresh()
+				local model = plotModel(w, 1)
+				local a = newPlayer(w, "A")
+				w.pens[a] = pen(spots)
+				BaseService.playerAdded(a)
+				local step = PEN.steps[spots]
+				local rails = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Rails") :: Instance
+				local frame = WorldLayout.plotFrame(1) :: CFrame
+				local length = 0
+				expect.equal(#rails:GetChildren(), 10)
+				for _, part in rails:GetChildren() do
+					local rail = part :: Part
+					expect.equal(rail.Name, "Rail")
+					expect.equal(rail.Shape, Enum.PartType.Cylinder)
+					expect.near(rail.Size.Y, 0.44, 1e-3) -- LK:85 r 0.22
+					local y = localOf(frame, rail).Y
+					expect.truthy(near(y, 1.2) or near(y, 2.4))
+					expect.equal(rail.Color, TIERS[step.tier].rail)
+					expect.falsy(rail.CanCollide or rail.CanQuery or rail.CanTouch or rail.CastShadow)
+					length += rail.Size.X
+				end
+				expect.near(length, 2 * PEN.segment * #segments(model, 1), 1e-3) -- 2 rails of 4 studs a segment
+				finish(w)
+			end
+		end
+	)
+
+	t.test(
+		"the gate (LK:87-96): posts, the frame in the plot's colour, the owner sign, the badge, 0 visitors",
+		function()
+			local w = fresh()
+			local model2 = plotModel(w, 2)
+			local model = plotModel(w, 1)
+			local a = { UserId = 77 } -- a plain-table player with a UserId (Folder players have none)
+			w.pens[a] = pen(3)
+			BaseService.playerAdded(a :: any)
+			local gate = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Model
+			expect.truthy((gate :: Model?) ~= nil and gate:IsA("Model"))
+			local at = (WorldLayout.plotFrame(1) :: CFrame) * PEN.gate
+			expect.near((gate.WorldPivot.Position - at.Position).Magnitude, 0, 1e-3)
+			expect.near((gate.WorldPivot.LookVector - at.LookVector).Magnitude, 0, 1e-3)
+			expect.equal(model:GetAttribute("SD_PenOwner"), 77)
+			-- The posts: r 0.6, 12 tall at x ±4, balls r 0.8 at y 12.3, in the tier's post colour; they block (K:
+			-- "block").
+			local posts = named(gate, "GatePost")
+			expect.equal(#posts, 2)
+			for _, post in posts do
+				expect.near(post.Size.X, 12, 1e-3)
+				expect.near(post.Size.Y, 1.2, 1e-3)
+				local p = localOf(at, post)
+				expect.near(math.abs(p.X), 4, 1e-3)
+				expect.near(p.Y, 6, 1e-3)
+				expect.equal(post.Color, TIERS[1].post)
+				expect.truthy(post.CanCollide)
+			end
+			local balls = named(gate, "GatePostTop")
+			expect.equal(#balls, 2)
+			expect.near(balls[1].Size.X, 1.6, 1e-3)
+			expect.near(localOf(at, balls[1]).Y, 12.3, 1e-3)
+			-- The sign frame (8.4 × 3.6 × 0.3 from y 8.4, z 0.3) in the plot's colour.
+			local frameBox = named(gate, "SignFrame")[1]
+			expect.truthy(vectorNear(frameBox.Size, Vector3.new(8.4, 3.6, 0.3)))
+			expect.truthy(vectorNear(localOf(at, frameBox), Vector3.new(0, 10.2, 0.3)))
+			expect.equal(frameBox.Color, Palette[WorldLayout.Bases.colors[1].full])
+			-- The owner sign (7.4 × 3 × 0.4 at y 10.2): the display name, BASE 1 and the headshot, on its front.
+			local sign = named(gate, "OwnerSign")[1]
+			expect.truthy(vectorNear(sign.Size, Vector3.new(7.4, 3, 0.4)))
+			expect.truthy(vectorNear(localOf(at, sign), Vector3.new(0, 10.2, 0)))
+			expect.equal(sign.Color, Palette.PenSignFace)
+			local gui = sign:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+			expect.equal(gui.Face, Enum.NormalId.Front)
+			expect.equal((gui:FindFirstChild("OwnerName", true) :: TextLabel).Text, "Name of table")
+			expect.equal((gui:FindFirstChild("BaseLine", true) :: TextLabel).Text, "BASE 1")
+			expect.truthy((gui:FindFirstChild("Headshot", true) :: ImageLabel):IsA("ImageLabel"))
+			-- The number badge (a Lemon disc r 1.1 facing the front at y 12.6) reads the base number.
+			local badge = named(gate, "NumberBadge")[1] :: Part
+			expect.equal(badge.Shape, Enum.PartType.Cylinder)
+			expect.truthy(vectorNear(badge.Size, Vector3.new(0.4, 2.2, 2.2)))
+			expect.truthy(vectorNear(localOf(at, badge), Vector3.new(0, 12.6, -0.1)))
+			expect.equal(badge.Color, Palette.PenGateBadge)
+			local badgeGui = badge:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+			-- Its Right face (the cylinder's +X end) looks the way the gate's front does.
+			expect.truthy(vectorNear(badge.CFrame.RightVector, at.LookVector))
+			expect.equal(badgeGui.Face, Enum.NormalId.Right)
+			expect.equal((badgeGui:FindFirstChild("Number", true) :: TextLabel).Text, "1")
+			-- The visitor board (2.6 × 1.2 × 0.25 at (-2.3, 7.55, -0.05)): a heart and 0 visitors until phase 18.
+			local board = named(gate, "VisitorBoard")[1]
+			expect.truthy(vectorNear(board.Size, Vector3.new(2.6, 1.2, 0.25)))
+			expect.truthy(vectorNear(localOf(at, board), Vector3.new(-2.3, 7.55, -0.05)))
+			expect.equal(board.Color, Palette.PenGateBoard)
+			expect.equal((board:FindFirstChild("Heart", true) :: TextLabel).Text, Strings.pen.gate.heart)
+			expect.equal((board:FindFirstChild("Count", true) :: TextLabel).Text, "0 visitors")
+			-- Every part but the posts stays out of collisions; none is queried, touched or casts a shadow.
+			for _, d in gate:GetDescendants() do
+				if d:IsA("BasePart") then
+					expect.truthy(d.Anchored)
+					expect.falsy(d.CanQuery or d.CanTouch or d.CastShadow)
+					expect.equal(d.CanCollide, d.Name == "GatePost")
+				end
+			end
+			-- The plot's name sign still shows the owner (no gate label is called "Owner").
+			expect.equal(ownerText(model), "Name of table")
+			-- The second plot reads 2.
+			local b = newPlayer(w, "B")
+			w.pens[b] = pen(3)
+			BaseService.playerAdded(b)
+			local gate2 = (model2:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Model
+			expect.equal((gate2:FindFirstChild("Number", true) :: TextLabel).Text, "2")
+			expect.equal((gate2:FindFirstChild("BaseLine", true) :: TextLabel).Text, "BASE 2")
+			expect.equal(model2:GetAttribute("SD_PenOwner"), nil) -- a Folder player has no UserId
+			BaseService.playerRemoving(a :: any)
+			expect.equal(model:GetAttribute("SD_PenOwner"), nil)
+			finish(w)
+		end
+	)
+
+	t.test("visitorText: the hearts board's line (P3D:277), 1 visitor or N visitors", function()
+		expect.equal(BaseService.visitorText(0), "0 visitors")
+		expect.equal(BaseService.visitorText(1), "1 visitor")
+		expect.equal(BaseService.visitorText(3), "3 visitors")
+	end)
+
+	t.test(
+		"tier decor (K:4170-4189 at L:187-193): none at tier 1, bulbs + 2 lamps at 2, + bow + 2 trees at 3",
+		function()
+			for spots = 3, 12 do
+				local w = fresh()
+				local model = plotModel(w, 1)
+				local a = newPlayer(w, "A")
+				w.pens[a] = pen(spots)
+				BaseService.playerAdded(a)
+				local folder = model:FindFirstChild("Pen") :: Instance
+				local tier = PEN.steps[spots].tier
+				local gate = folder:FindFirstChild("Gate") :: Model
+				local at = (WorldLayout.plotFrame(1) :: CFrame) * PEN.gate
+				local bulbs = named(gate, "GateBulb")
+				expect.equal(#bulbs, if tier >= 2 then 7 else 0)
+				for _, bulb in bulbs do
+					local p = localOf(at, bulb)
+					expect.near(p.Y, 12.15, 1e-3)
+					expect.near(p.Z, 0.1, 1e-3)
+					expect.truthy(math.abs(p.X) <= 3.6 + 1e-3)
+					expect.near(bulb.Size.X, 0.5, 1e-3)
+					expect.equal(bulb.Material, Enum.Material.Neon)
+					expect.equal(bulb.Color, Palette.PenGateGlow)
+				end
+				local bow = gate:FindFirstChild("Bow") :: Model?
+				expect.equal(bow ~= nil, tier >= 3)
+				if bow then
+					expect.truthy(vectorNear(at:PointToObjectSpace(bow.WorldPivot.Position), Vector3.new(0, 13.5, 0)))
+					expect.equal(#named(bow, "BowLoop"), 12)
+					expect.equal(#named(bow, "BowKnot"), 1)
+					for _, d in bow:GetDescendants() do
+						if d:IsA("BasePart") then
+							expect.equal(d.Color, Palette.PenDecorIcing)
+						end
+					end
+				end
+				local lamps, trees = {}, {}
+				for _, child in folder:GetChildren() do
+					if child.Name == "Lamp" then
+						table.insert(lamps, child :: Model)
+					elseif child.Name == "Tree" then
+						table.insert(trees, child :: Model)
+					end
+				end
+				expect.equal(#lamps, if tier >= 2 then 2 else 0)
+				expect.equal(#trees, if tier >= 3 then 2 else 0)
+				local frame = WorldLayout.plotFrame(1) :: CFrame
+				for index, lamp in lamps do
+					local want = frame * PEN.lamps[index]
+					expect.near((lamp.WorldPivot.Position - want.Position).Magnitude, 0, 1e-3)
+					local pole = named(lamp, "LampPole")[1]
+					expect.near(pole.Size.X, 8.2, 1e-3)
+					expect.near(localOf(want, pole).Y, 4.1, 1e-3)
+					expect.equal(pole.Color, Palette.PenDecorFrosting)
+					expect.truthy(pole.CanCollide)
+					local candy = named(lamp, "LampCandy")[1]
+					expect.truthy(vectorNear(localOf(want, candy), Vector3.new(0, 9.2, 0)))
+					expect.equal(candy.Material, Enum.Material.Neon)
+					expect.equal(candy.Color, Palette.PenGateGlow)
+					local swirl = candy:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+					local rings = 0
+					for _, d in swirl:GetDescendants() do
+						if d:IsA("UIStroke") then
+							rings += 1
+							expect.equal(d.Color, Palette.PenDecorIcing)
+						end
+					end
+					expect.equal(rings, 2) -- the swirl's 2 rings are drawn on the candy's front, not built
+				end
+				for index, tree in trees do
+					local want = frame * PEN.trees[index].at
+					expect.near((tree.WorldPivot.Position - want.Position).Magnitude, 0, 1e-3)
+					local trunk = named(tree, "Trunk")[1]
+					expect.near(trunk.Size.X, 5, 1e-3)
+					expect.equal(trunk.Color, Palette.PenDecorFrosting)
+					expect.truthy(trunk.CanCollide)
+					expect.equal(#named(tree, "TrunkStripe"), 3)
+					local top = named(tree, "CanopyTop")[1]
+					expect.truthy(vectorNear(top.Size, Vector3.new(6, 4.2, 6)))
+					expect.near(localOf(want, top).Y, 6.7, 1e-3)
+					expect.equal(
+						(top:FindFirstChildOfClass("SpecialMesh") :: SpecialMesh).MeshType,
+						Enum.MeshType.Sphere
+					)
+					expect.equal(top.Color, Palette[PEN.trees[index].color])
+					expect.equal(named(tree, "CanopyBase")[1].Color, Palette[PEN.trees[index].color])
+				end
+				for _, d in folder:GetDescendants() do
+					local parent = d.Parent
+					if d:IsA("BasePart") and parent and (parent.Name == "Lamp" or parent.Name == "Tree") then
+						expect.falsy(d.CanQuery or d.CanTouch or d.CastShadow)
+						expect.equal(d.CanCollide, d.Name == "LampPole" or d.Name == "Trunk")
+					end
+				end
+				finish(w)
+			end
+		end
+	)
+
+	t.test("the decor follows the owner's tier on a redraw; an empty base shows none", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		local function decor(): { [string]: number }
+			local found = { Lamp = 0, Tree = 0, Bow = 0 }
+			local folder = model:FindFirstChild("Pen")
+			if folder then
+				for _, d in folder:GetDescendants() do
+					if found[d.Name] ~= nil and d:IsA("Model") then
+						found[d.Name] += 1
+					end
+				end
+			end
+			return found
+		end
+		w.pens[a] = pen(9)
+		BaseService.playerAdded(a)
+		expect.deepEqual(decor(), { Lamp = 2, Tree = 0, Bow = 0 })
+		w.pens[a] = pen(10) -- a spot bought: tier III
+		BaseService.refresh(a)
+		expect.deepEqual(decor(), { Lamp = 2, Tree = 2, Bow = 1 })
+		BaseService.playerRemoving(a) -- the base is empty: no pen, no gate, no decor
+		expect.equal(model:FindFirstChild("Pen"), nil)
+		expect.deepEqual(decor(), { Lamp = 0, Tree = 0, Bow = 0 })
+		finish(w)
+	end)
+
+	t.test("the headshot: asked once per user, cached, painted when it comes; asked again after a failure", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = { UserId = 77 }
+		w.pens[a] = pen(3)
+		BaseService.playerAdded(a :: any)
+		local function image(): string
+			local gate = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Instance
+			return (gate:FindFirstChild("Headshot", true) :: ImageLabel).Image
+		end
+		expect.equal(#w.headshots, 1)
+		expect.equal(w.headshots[1].id, 77)
+		expect.equal(image(), "")
+		BaseService.refresh(a :: any) -- still asking: not asked twice
+		expect.equal(#w.headshots, 1)
+		w.headshots[1].done("rbxthumb://type=AvatarHeadShot&id=77&w=150&h=150")
+		expect.equal(image(), "rbxthumb://type=AvatarHeadShot&id=77&w=150&h=150") -- painted on the gate there now
+		BaseService.refresh(a :: any)
+		expect.equal(#w.headshots, 1) -- cached
+		expect.equal(image(), "rbxthumb://type=AvatarHeadShot&id=77&w=150&h=150")
+		-- A failed ask (nil) is asked again on the next draw; a Folder player (no UserId) asks nothing.
+		plotModel(w, 2)
+		plotModel(w, 3)
+		local b = { UserId = 88 }
+		w.pens[b] = pen(3)
+		BaseService.playerAdded(b :: any)
+		expect.equal(#w.headshots, 2)
+		w.headshots[2].done(nil)
+		BaseService.refresh(b :: any)
+		expect.equal(#w.headshots, 3)
+		local c = newPlayer(w, "C")
+		w.pens[c] = pen(3)
+		BaseService.playerAdded(c)
+		expect.equal(#w.headshots, 3)
+		finish(w)
+	end)
 
 	t.test("5 invisible colliders hold the pen's outline, the front split by the gate gap", function()
 		for _, spots in { 3, 9 } do
@@ -460,6 +785,8 @@ return function(t: Context)
 
 	-- Pens3 phase 3: LobbyBuilder's part budget counts every plot with this many runtime parts.
 	t.test("no pen draws more parts than Bases.pen.maxParts; the full pen draws exactly that many", function()
+		-- Pens3 phase 10: with the plot's 80 static parts (WorldLayout Budgets' note) a full pen fits baseParts.
+		expect.truthy(PEN.maxParts + 80 <= WorldLayout.Budgets.baseParts)
 		for spots = 3, 12 do
 			local w = fresh()
 			local model = plotModel(w, 1)
