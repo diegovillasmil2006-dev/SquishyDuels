@@ -4,8 +4,10 @@
 --   currentStep(done, unavailable?)   the lowest Config.Onboarding step not in `done` (steps complete in any order)
 --                            and not unavailable, or nil
 --   isComplete(done, unavailable?)    every available step done
---   goal()                   the Coins goal of the firstBox step: the cheapest Catalog shopPrice (a 10,000 Common; Batch
---                            1: the 150,000 Snack Box was out of a new player's reach; a box still completes the step)
+--   goal(owned?)             the Coins goal of the firstBox step: the cheapest Pricing.shopPrice for `owned` (pens3
+--                            phase 5: a new player's 3,000 Welcome price of a Common, V4:161; nil owned = a new
+--                            player's; Batch 1: the 150,000 Snack Box was out of a new player's reach; a box still
+--                            completes the step)
 --   squeezeHint(input)       onboarding.squeezeHint.<keyboard | touch | gamepad> (spec 2026-10-11: "Click or press E",
 --                            "Tap the screen", "Press X")
 --   guidance(step)           (waypoint, pulse): a WorldLayout.waypoint name ("shop", "duel") or a HudController.element
@@ -32,6 +34,7 @@ local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local Pricing = require(Shared.Pricing)
 local Strings = require(Shared.Strings)
 
 -- Types
@@ -50,6 +53,7 @@ export type Context = {
 	ready: boolean, -- the profile is ready (not loading, offline or read-only)
 	replay: { [string]: boolean }?, -- replay mode: the steps done in this local replay (saved flags ignored)
 	coins: number?,
+	owned: { [string]: any }?, -- profile.owned (pens3 phase 5: the firstBox goal is the player's cheapest price)
 	input: InputKind?,
 	unavailable: { [string]: boolean }?, -- step ids passed over (their screen is not registered)
 }
@@ -117,10 +121,10 @@ local function skipped(ctx: Context): boolean
 	return type(onboarding) == "table" and onboarding.skipped == true
 end
 
-local function cheapestShopPrice(): number?
+local function cheapestShopPrice(owned: { [string]: any }?): number?
 	local best: number? = nil
 	for _, def in Catalog.list() do
-		local price = def.shopPrice
+		local price = Pricing.shopPrice(def.id, owned or {})
 		if finite(price) and not def.robuxOnly and (best == nil or (price :: number) < (best :: number)) then
 			best = price
 		end
@@ -154,8 +158,8 @@ function OnboardingFormat.isComplete(done: { [string]: boolean }?, unavailable: 
 	return OnboardingFormat.currentStep(done, unavailable) == nil
 end
 
-function OnboardingFormat.goal(): number
-	return cheapestShopPrice() or 0
+function OnboardingFormat.goal(owned: { [string]: any }?): number
+	return cheapestShopPrice(owned) or 0
 end
 
 function OnboardingFormat.squeezeHint(input: InputKind?): string
@@ -170,7 +174,7 @@ end
 
 function OnboardingFormat.text(step: Step, ctx: Context): string
 	local template = Strings.resolve(step.textKey) or ""
-	local goal = OnboardingFormat.goal()
+	local goal = OnboardingFormat.goal(ctx.owned)
 	local coins = if finite(ctx.coins) then math.clamp(math.floor(ctx.coins :: number), 0, goal) else 0
 	return Strings.format(template, {
 		starterName = starterName(),

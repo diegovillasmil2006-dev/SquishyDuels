@@ -26,7 +26,9 @@
 --   * pens3 phase 4: awayText(gift): the away pop-up's prize line ("{coins} Coins") and its body with the time away in
 --     words (h, h + min, min, under a minute); nil (nothing to show) for a gift of no whole Coins; a gift in the state
 --     shows the pop-up (Diego's congrats overlay in the SD_Prompt layer) once, a new gift replaces it, destroy() takes
---     it away. Engine only (the offline runner has no Destroying signal or CollectionService).
+--     it away. Engine only (the offline runner has no Destroying signal or CollectionService);
+--   * pens3 phase 5: syncWaits(plot, own, revealOpen): the own pen's walkers wait while the box reveal plays (a copy
+--     never walks in before its reveal; the reveal's close syncs it); every other base syncs at once.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -201,6 +203,13 @@ return function(t: Context)
 		expect.equal(Scheduler.count(), effects)
 		expect.equal(PenController.debugState().started, false)
 		PenController.destroy() -- twice is fine
+	end)
+
+	t.test("syncWaits: only the own pen waits, and only while the box reveal plays (pens3 phase 5)", function()
+		expect.equal(PenController.syncWaits(3, 3, true), true) -- a copy waits for its reveal
+		expect.equal(PenController.syncWaits(3, 3, false), false)
+		expect.equal(PenController.syncWaits(4, 3, true), false) -- another base: at once
+		expect.equal(PenController.syncWaits(3, nil, true), false) -- no plot yet: nothing is own
 	end)
 
 	-- Pens3 phase 4: the coins-while-away pop-up (a stand-in on Diego's congrats overlay).

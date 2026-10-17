@@ -1,17 +1,22 @@
 --!strict
--- BoxFormat (client only, pure). DESIGN §6.4 (boxes, presentation contract), §6.5 (duplicate refunds), §6.10 (the
--- eligibility table and the odds disclosure items 1-7), §7.6 / §7.7 (the box counter prompt and the in-world odds
--- board), §9.11 (the reveal timeline), §18.1 (ReducedMotion), §18.6 (box.shake / box.open / reveal.<rarity> rows).
--- What BoxController shows, as plain data; every number and text comes from Boxes, Catalog, Rarity, Pricing, Config
+-- BoxFormat (client only, pure). DESIGN §6.4 (boxes, presentation contract), §6.10 (the eligibility table and the odds
+-- disclosure items 1-7), §7.6 / §7.7 (the box counter prompt and the in-world odds board), §9.11 (the reveal
+-- timeline), §18.1 (ReducedMotion), §18.6 (box.shake / box.open / reveal.<rarity> rows).
+-- What BoxController shows, as plain data; every number and text comes from Boxes, Catalog, Rarity, PenMath, Config
 -- and Strings (the same data the server draws from), nothing is typed here:
 --   boxName(boxId) / priceText(boxId)        "Snack Box" / "400 Coins" (common.coinsAmount; box.freeOnly when free)
 --   oddsRows(boxId, owned)                   §6.10 #4: one row per item in Boxes order (name, rarity text + pips,
---                                            the exact percent text "32.00%", Owned, the refund line, Inspect)
+--                                            the exact percent text "32.00%", Owned, Inspect)
 --   raritySummary(boxId) / totalText(boxId)  §6.10 #2 "Chances by rarity: Epic 6.00% · …" / #5 "Total: 100.00%"
 --   openView(input)                          the area under the disclosure (§6.10 table, §11.5, §11.6), see OpenView
 --   retryWait(now, retryAt, unknownAt)       seconds before Try again may be pressed (see the function)
---   revealSoundKey(rarity) / resultText(isDuplicate, refund)   reveal.<rarity> / "NEW!" or the duplicate line
---                                            "Already in your collection · +N Coins" (PR21)
+--   revealSoundKey(rarity) / resultText(isDuplicate)   reveal.<rarity> / "NEW!" or the duplicate line
+--                                            "Already in your collection" (PR21)
+-- Pens3 phase 5 (copies, ECONOMY_V3): a squishy you own again is a copy for the pen (no refund line, no Coins in the
+-- reveal); a box you own every squishy of still opens; a full Toy Box (PenMath.room 0) blocks OPEN with
+-- reason.inventory.full; a restricted account opens the paid boxes in a fixed order (never random, D1:235) and its
+-- card shows the next squishy first (OpenView.nextText, Boxes.fixedItem of the boxOrder state field); its box counter
+-- opens the boxes again (only "unknown" still goes to the shop).
 --   boardText(policy, boxId)                 the in-world odds board's live line (or the restricted / unknown note)
 --   oddsLines(items)                         the board's odds lines: one per rarity when its items share one weight
 --                                            (spec 2026-10-09 §3.3), else one per item
@@ -47,7 +52,7 @@ local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
-local Pricing = require(Shared.Pricing)
+local PenMath = require(Shared.PenMath)
 local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
 
@@ -64,8 +69,6 @@ export type OddsRow = {
 	percentText: string, -- "32.00%"
 	owned: boolean,
 	ownedText: string?, -- common.owned when owned
-	refund: number, -- Pricing.duplicateRefund(boxId): a share of the box price, the same on every row (spec 2026-10-12 §8)
-	refundText: string, -- box.refundLine "If you already own it: +37,500 Coins"
 	inspect: boolean, -- Inspect is offered for every row, owned or not (§6.10 #4)
 }
 
@@ -105,19 +108,10 @@ export type OrbitInput = {
 }
 export type Ledger = { { n: number, untilS: number } }
 
--- Which control the open area shows: the two-step ConfirmButton, the Try again button, the shop button, or none.
-export type OpenButton = "confirm" | "retry" | "shop"
+-- Which control the open area shows: the two-step ConfirmButton, the Try again button, or none.
+export type OpenButton = "confirm" | "retry"
 
-export type OpenKind =
-	"open"
-	| "confirm"
-	| "checking"
-	| "retry"
-	| "shopDirect"
-	| "complete"
-	| "saving"
-	| "needCoins"
-	| "freeOnly"
+export type OpenKind = "open" | "confirm" | "checking" | "retry" | "full" | "saving" | "needCoins" | "freeOnly"
 
 export type OpenInput = {
 	box: string, -- box id
@@ -129,6 +123,8 @@ export type OpenInput = {
 	profileReady: boolean?, -- dataStatus.status == "ready" (default true)
 	armed: boolean?, -- the ConfirmButton is waiting for its second press
 	retryWaitSeconds: number?, -- seconds before Try again works again (Config.Monetization.Policy.manualRetryMinSeconds)
+	pen: any?, -- StateDelta.pen (pens3 phase 5: PenMath.room 0 = the Toy Box is full; nil = not known yet)
+	boxOrder: any?, -- StateDelta.boxOrder (pens3 phase 5: the fixed-order opens so far, per paid box id)
 }
 
 export type OpenView = {
@@ -141,6 +137,7 @@ export type OpenView = {
 	price: number, -- the box's Coin cost (0 when free)
 	missing: number, -- Coins still missing (0 when they cover the price)
 	howToEarn: boolean, -- show the "How to earn Coins" text button
+	nextText: string?, -- pens3 phase 5, restricted: box.nextItem "Next in this box: Toast" (shown before the open)
 }
 
 -- One reveal to play: from a BoxOpen reply or a StateDelta.unseenReveals entry.
@@ -148,8 +145,7 @@ export type Reveal = {
 	requestId: string, -- the GUID, or "daily:<day>" for the free Treat Box
 	boxId: string,
 	squishyId: string,
-	isDuplicate: boolean,
-	refund: number,
+	isDuplicate: boolean, -- the kind was owned before: a copy (pens3 phase 5)
 }
 
 -- Constants
@@ -260,7 +256,6 @@ end
 function BoxFormat.oddsRows(boxId: string, owned: { [string]: any }?): { OddsRow }
 	local have = owned or {}
 	local rows: { OddsRow } = {}
-	local refund = Pricing.duplicateRefund(boxId)
 	for _, odds in Boxes.odds(boxId) do
 		local def = Catalog.get(odds.id)
 		local rarity = if def then def.rarity else ""
@@ -277,8 +272,6 @@ function BoxFormat.oddsRows(boxId: string, owned: { [string]: any }?): { OddsRow
 			percentText = percentText(odds.text),
 			owned = isOwned,
 			ownedText = if isOwned then Strings.common.owned else nil,
-			refund = refund,
-			refundText = Strings.format(Strings.box.refundLine, { coins = Format.coins(refund) }),
 			inspect = true,
 		})
 	end
@@ -304,9 +297,9 @@ end
 
 -- Public: the open area (§6.10 table, §11.5, §11.6) --------------------------------------------------------------------
 
--- What the area under the disclosure shows. Order: free-only, then the policy (restricted, unknown, anything but
--- eligible = checking), then the profile (not ready, save pending), complete, the lobby lock, the Coins, the armed
--- confirm, open.
+-- What the area under the disclosure shows. Order: free-only, then the policy (unknown, anything but eligible or
+-- restricted = checking; restricted needs its next squishy, else checking too), then the profile (not ready, save
+-- pending), the Toy Box full, the lobby lock, the Coins, the armed confirm, open.
 function BoxFormat.openView(input: OpenInput): OpenView
 	local box = Boxes.get(input.box)
 	local cost = if box then box.cost else nil
@@ -332,14 +325,11 @@ function BoxFormat.openView(input: OpenInput): OpenView
 		return view
 	end
 	local policy = if type(input.policy) == "string" and POLICY_STATES[input.policy] then input.policy else "checking"
-	if policy == "restricted" then
-		view.kind = "shopDirect"
-		view.button = "shop"
-		view.text = Strings.box.shopDirect
-		view.enabled = true
-		view.note = Strings.box.restrictedNote
-		return view
-	elseif policy == "unknown" then
+	-- Pens3 phase 5 (D1:235): a restricted account's open is the fixed order's next squishy, shown first; while it is
+	-- not known (no boxOrder yet) there is no Open (never a blind open).
+	local order = if policy == "restricted" and type(input.boxOrder) == "table" then input.boxOrder[input.box] else nil
+	local nextId = if order ~= nil then Boxes.fixedItem(input.box, order) else nil
+	if policy == "unknown" then
 		local wait = if finite(input.retryWaitSeconds) then math.ceil(input.retryWaitSeconds :: number) else 0
 		view.kind = "retry"
 		view.button = "retry"
@@ -348,11 +338,15 @@ function BoxFormat.openView(input: OpenInput): OpenView
 		view.reason = if wait > 0 then Strings.format(Strings.common.secondsShort, { seconds = wait }) else nil
 		view.note = Strings.box.unknownNote
 		return view
-	elseif policy ~= "eligible" then
+	elseif policy ~= "eligible" and nextId == nil then
 		view.kind = "checking"
 		view.text = Strings.box.checkingButton
 		view.note = Strings.reasonText("box.checking")
 		return view
+	end
+	if nextId ~= nil then
+		view.nextText = Strings.format(Strings.box.nextItem, { name = squishyName(nextId) })
+		view.note = Strings.box.restrictedNote
 	end
 	if input.profileReady == false then
 		view.reason = Strings.data.loadFailed
@@ -363,9 +357,9 @@ function BoxFormat.openView(input: OpenInput): OpenView
 		view.reason = Strings.reasonText("box.saving")
 		return view
 	end
-	if Boxes.isComplete(input.box, input.owned or {}) and not Config.Economy.AllowOpenWhenComplete then
-		view.kind = "complete"
-		view.reason = Strings.reasonText("box.complete")
+	if input.pen ~= nil and PenMath.room(input.pen) == 0 then
+		view.kind = "full"
+		view.reason = Strings.reasonText("inventory.full")
 		return view
 	end
 	if input.inLobby == false then
@@ -515,11 +509,14 @@ function BoxFormat.tilesThatFit(width: number): number
 	return math.clamp(math.floor((w + toys.gap) / (toys.tile + toys.gap)), 0, toys.max)
 end
 
--- H:260 (FD5): the band's subtitle shows while a box can still give a new squishy.
+-- H:260 (FD5): the band's subtitle shows while a box can still give a new squishy (one of its items is not owned).
 function BoxFormat.subtitleShown(owned: { [string]: any }?): boolean
+	local have = owned or {}
 	for _, box in Boxes.list() do
-		if not Boxes.isComplete(box.id, owned or {}) then
-			return true
+		for _, entry in box.items do
+			if have[entry.id] == nil then
+				return true
+			end
 		end
 	end
 	return false
@@ -845,19 +842,9 @@ function BoxFormat.revealSoundKey(rarity: string): string
 	return REVEAL_SOUNDS[rarity] or REVEAL_SOUNDS.Common
 end
 
--- "NEW!", or the duplicate line (H:492) "Already in your collection" with our refund after it (PR21:
--- "· +{coins} Coins" when there is one).
-function BoxFormat.resultText(isDuplicate: boolean, refund: number): string
-	if isDuplicate then
-		local coins = wholeCoins(refund)
-		if coins > 0 then
-			return Strings.box.revealDuplicate
-				.. Strings.box.listSeparator
-				.. Strings.format(Strings.box.revealRefund, { coins = Format.coins(coins) })
-		end
-		return Strings.box.revealDuplicate
-	end
-	return Strings.box.revealNew
+-- "NEW!", or the duplicate line (H:492) "Already in your collection" (pens3 phase 5: a copy for the pen, no Coins).
+function BoxFormat.resultText(isDuplicate: boolean): string
+	return if isDuplicate then Strings.box.revealDuplicate else Strings.box.revealNew
 end
 
 -- Public: the world (§7.6, §7.7) ---------------------------------------------------------------------------------------
@@ -940,15 +927,16 @@ function BoxFormat.boardText(policy: string?, boxId: string): string
 	return table.concat(lines, LINE_BREAK)
 end
 
--- The counter prompt's text key (§7.6): "Shop Squishies" for restricted AND unknown, else "See Boxes".
+-- The counter prompt's text key (§7.6): "Shop Squishies" for unknown, else "See Boxes" (pens3 phase 5: restricted
+-- accounts open the boxes in a fixed order).
 function BoxFormat.promptKey(policy: string?): string
-	if policy == "restricted" or policy == "unknown" then
+	if policy == "unknown" then
 		return "prompt.shopDirect"
 	end
 	return "prompt.seeBoxes"
 end
 
--- The screen the counter opens: the shop (filtered to the stand's box) for restricted and unknown, else the boxes.
+-- The screen the counter opens: the shop (filtered to the stand's box) for unknown, else the boxes.
 function BoxFormat.standScreen(policy: string?): string
 	return if BoxFormat.promptKey(policy) == "prompt.shopDirect" then "shop" else "boxes"
 end
@@ -981,7 +969,6 @@ function BoxFormat.revealFromEntry(entry: unknown): Reveal?
 		boxId = box,
 		squishyId = squishy :: string,
 		isDuplicate = e.dup == true,
-		refund = wholeCoins(e.refund),
 	}
 end
 

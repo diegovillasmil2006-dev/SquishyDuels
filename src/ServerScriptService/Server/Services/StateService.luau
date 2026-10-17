@@ -34,6 +34,9 @@
 -- * capsules: no longer sent (pens3 phase 2); an old save's profile.capsules is an unknown field nothing reads.
 -- * pen = profile.pen {spots, nextId, items} as stored (pens3 phase 1: the squeeze value of every client text, the
 --   owner's sign and coin labels; PenService marks it on every buy and new squishy).
+-- * boxOrder = profile.boxOrder {snack, sweet} as stored (pens3 phase 5: Boxes.fixedItem(box, n) is the next squishy a
+--   restricted account gets, which its box card shows; BoxService marks it). profile.giftQueue and profile.gifts are
+--   never sent.
 --
 -- dataPort() is the one reading of DataService for this layer (EconomyService, InventoryService and
 -- PreferencesService use it as their default, and so do services above them). portFrom(source) builds the same port
@@ -117,6 +120,7 @@ local FIELDS: { string } = {
 	"topWins", -- Batch 3 (review #10): the weekly wins board, a session field
 	"pen", -- pens3 phase 1: the profile's pen as stored
 	"awayGift", -- pens3 phase 4: the coins-while-away gift of this session, a session field
+	"boxOrder", -- pens3 phase 5: the profile's fixed-order counts as stored
 }
 local FIELD_SET: { [string]: boolean } = {}
 for _, field in FIELDS do

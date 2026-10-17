@@ -40,6 +40,11 @@
 --   PenMath.wanderRect(spots, studs) -> {minX, maxX, minZ, maxZ}?: where the centre of a squishy `studs` long may walk,
 --                                   in plot-local studs: inside the steps[spots] fence (WorldLayout.Bases.pen), half its
 --                                   size plus edgeMargin in from every side; nil for a spot count with no step
+--   PenMath.room(pen)            -> number: how many more squishies fit (pens3 phase 5, D1:254-258): the open spots
+--                                   plus the Toy Box's toyBoxMax, less every item, never below 0; 0 for anything that
+--                                   is not a pen (fail closed: nothing is granted into a broken pen). 0 = the Toy Box
+--                                   is full.
+--                                   shortcut: the shelf spots (placedMax, phase 11) do not count yet; add them then.
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -145,6 +150,14 @@ function PenMath.placed(pen: any): { Types.PenItem }
 		list[index] = nil
 	end
 	return list
+end
+
+function PenMath.room(pen: any): number
+	local spots = spotsOf(pen)
+	if spots == nil or type(pen.items) ~= "table" or not isWhole(pen.nextId) then
+		return 0
+	end
+	return math.max(0, spots + PEN.toyBoxMax - #pen.items)
 end
 
 function PenMath.rate(pen: any): number

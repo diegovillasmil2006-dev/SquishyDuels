@@ -2,7 +2,7 @@
 -- BoxCard (client only). UI FINAL R7 (plan work/ui/PLAN.md R7 G7.15-G7.19, PR20, PR22, P11; `H:n` = "Squishy Duels
 -- HUD.dc.html" line n, `lib:n` = uploads/hud-lib.js line n; numbers in Config.UI.Boxes): one of the Boxes window's
 -- design cards (H:264-278), drawn into a cell BoxController places:
---   local card = BoxCard.new({ boxId = "snack", index = 1, parent = row, onOpen = fn, onRetry = fn, onShop = fn })
+--   local card = BoxCard.new({ boxId = "snack", index = 1, parent = row, onOpen = fn, onRetry = fn, scale = fn })
 --   card:layout(width, height, column, plate, tiles)   card:paint(view, owned)   card:rise()   card:destroy()
 -- The card: the purple face (StickerCardTop -> StickerCardBottom, H:264: border 4 inside, radius 24, the inset 3 at
 -- .12, the 6 px lip), column gap 12, padding 14, rising in with sdRise (.5 s, card i after i x 90 ms). Its column:
@@ -21,11 +21,13 @@
 --   * OPEN (H:276-278): the green 62 + lip 5, "OPEN" (the boxOpen role) and the price pill (36 high, padding 0 10 0 4, gap
 --     4, border 3, full radius, ink at .45, the coin 28, the price in the boxPrice role: white, or StickerPriceShort when
 --     the Coins do not cover it: P11's off state, its press ui.error + the shake, then the caller's deny); a free-only box
---     shows box.freeOnly instead (FD5); "unknown" shows Try again, "restricted" OPEN's own button with img.nav.shop and
---     box.shopDirect at the largest kind that fits (PR22); every other state OPEN disabled with its reason.
+--     shows box.freeOnly instead (FD5); "unknown" shows Try again; every other state OPEN disabled with its reason.
+--   * Pens3 phase 5 (D1:235), a restricted account (the fixed order, never random): OPEN as above and, in the toy
+--     tiles' row, the next squishy it gives (view.nextText, box.nextItem "Next in this box: Toast"; a stand-in in the
+--     card's free-only line role until Diego draws it, measured with Theme.textBoundsAt at spec.scale()).
 --   * `side`: the room right of the column (the selected card's stats well, PR20; BoxController fills it).
 -- No hover on the card (only on its buttons). Stable names: Boxes_Box_<id> (the cell), Boxes_OpenButton,
--- Boxes_RetryButton, Boxes_ShopDirectButton.
+-- Boxes_RetryButton, NextItem (the stand-in label).
 
 -- Services
 
@@ -66,7 +68,7 @@ export type Spec = {
 	parent: Instance,
 	onOpen: () -> (), -- OPEN pressed (live or off)
 	onRetry: () -> (),
-	onShop: () -> (),
+	scale: (() -> number)?, -- the UI scale the card is drawn at (its UIScale; Theme.textBoundsAt), default 1
 }
 
 export type BoxCard = {
@@ -76,7 +78,6 @@ export type BoxCard = {
 	side: Frame,
 	open: Button.Button,
 	retry: Button.Button,
-	shop: Button.Button,
 	layout: (self: BoxCard, width: number, height: number, column: number, plate: number, tiles: boolean) -> (),
 	paint: (self: BoxCard, view: BoxFormat.OpenView, owned: { [string]: any }?) -> (),
 	rise: (self: BoxCard) -> (),
@@ -101,8 +102,6 @@ local PLATES = {
 } :: { [string]: { Color3 } }
 local TINTS = { sweet = Palette.BoxTintSweet, treat = Palette.BoxTintTreat } :: { [string]: Color3 }
 local GIFT_BOX = "gift_box"
--- PR22: the shop label's kinds, largest first (Open 27 down to 16)
-local SHOP_KINDS: { Theme.TextKind } = { "Open", "Big", "Button", "Small" }
 
 -- Module table
 
@@ -436,22 +435,6 @@ function BoxCard.new(spec: Spec): BoxCard
 	})
 	c:add(retry)
 	retry.root.Visible = false
-	local shopKind: Theme.TextKind = "Small"
-	local shop = Button.new({
-		name = "Boxes_ShopDirectButton",
-		text = Strings.box.shopDirect,
-		kind = "primary",
-		width = width,
-		height = OPEN.face,
-		icon = "shop",
-		iconSize = OPEN.shopIcon,
-		textKind = shopKind,
-		sound = false, -- opens a screen: ui.open plays instead
-		parent = slot,
-		onActivated = spec.onShop,
-	})
-	c:add(shop)
-	shop.root.Visible = false
 	local freeSize = Theme.textBounds(Strings.box.freeOnly, (Theme.Sticker.text[OPEN.freeRole] :: any).kind, nil, width)
 	local free = Theme.label({
 		Name = "FreeOnly",
@@ -464,9 +447,41 @@ function BoxCard.new(spec: Spec): BoxCard
 		Parent = slot,
 	}, (Theme.Sticker.text[OPEN.freeRole] :: any).kind)
 	Theme.stickerText(free, OPEN.freeRole)
+	-- Pens3 phase 5 (see the header): the fixed order's next squishy, a stand-in in the free-only line's role, in the
+	-- toy tiles' row (placeNext); no text = hidden.
+	local freeKind: Theme.TextKind = (Theme.Sticker.text[OPEN.freeRole] :: any).kind
+	local nextLabel = Theme.label({
+		Name = "NextItem",
+		Text = "",
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = true,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Bottom,
+		Visible = false,
+		Parent = column,
+	}, freeKind)
+	Theme.stickerText(nextLabel, OPEN.freeRole)
 
-	local shown: { column: number, plate: number, tiles: boolean } = { column = 0, plate = CARD.plate, tiles = true }
+	local shown: { column: number, height: number, plate: number, tiles: boolean } =
+		{ column = 0, height = 0, plate = CARD.plate, tiles = true }
 	local lastOwned: { [string]: any }? = nil
+
+	-- The next squishy's line in the toy tiles' row, above OPEN (it grows up when it needs more than the row), sized
+	-- at the drawn size: text under a UIScale lays out wider than Theme.textBounds says, and a wrapped label too
+	-- small draws nothing.
+	local function placeNext()
+		local text = nextLabel.Text
+		local on = text ~= ""
+		nextLabel.Visible = on
+		tilesFrame.Visible = shown.tiles and not on
+		if on then
+			local scale = if spec.scale then spec.scale() else 1
+			local height = math.max(TOYS.tile, Theme.textBoundsAt(text, freeKind, shown.column, scale).Y + 2)
+			local bottom = shown.height - OPEN.face - LIP - CARD.gap
+			nextLabel.Position = UDim2.fromOffset(0, bottom - height)
+			nextLabel.Size = UDim2.fromOffset(shown.column, height)
+		end
+	end
 
 	local function buildTiles()
 		local count = if shown.tiles then BoxFormat.tilesThatFit(shown.column) else 0
@@ -520,7 +535,7 @@ function BoxCard.new(spec: Spec): BoxCard
 		column.Size = UDim2.fromOffset(columnWidth, innerHeight)
 		side.Position = UDim2.fromOffset(inner + columnWidth + CARD.gap, inner)
 		side.Size = UDim2.fromOffset(math.max(0, cellWidth - 2 * inner - columnWidth - CARD.gap), innerHeight)
-		shown.column, shown.plate, shown.tiles = columnWidth, plateHeight, tiles
+		shown.column, shown.height, shown.plate, shown.tiles = columnWidth, innerHeight, plateHeight, tiles
 		-- top to bottom: the plate, the name, the odds; the tiles and OPEN at the bottom (H:273: margin-top auto)
 		local y = 0
 		plate.Visible = plateHeight > 0
@@ -537,30 +552,14 @@ function BoxCard.new(spec: Spec): BoxCard
 		local openHeight = OPEN.face + LIP
 		slot.Position = UDim2.fromOffset(0, innerHeight - openHeight)
 		slot.Size = UDim2.fromOffset(columnWidth, openHeight)
-		for _, button in { open, retry, shop } do
+		for _, button in { open, retry } do
 			button:setWidth(columnWidth)
 		end
 		tilesFrame.Visible = tiles
 		tilesFrame.Position = UDim2.fromOffset(0, innerHeight - openHeight - CARD.gap - TOYS.tile)
 		tilesFrame.Size = UDim2.fromOffset(columnWidth, TOYS.tile)
-		-- PR22: the shop label at the largest kind that fits beside its icon
-		local room = columnWidth - 2 * Button.PADDING_X - OPEN.shopIcon - OPEN.gap
-		local pick: Theme.TextKind = SHOP_KINDS[#SHOP_KINDS]
-		for _, kind in SHOP_KINDS do
-			local candidate: Theme.TextKind = kind :: any
-			if Theme.textWidth(Button.displayText(Strings.box.shopDirect, "primary"), candidate) <= room then
-				pick = candidate
-				break
-			end
-		end
-		if pick ~= shopKind then
-			shopKind = pick
-			local label = shop.visual:FindFirstChild("Label", true)
-			if label and label:IsA("TextLabel") then
-				Theme.text(label, pick)
-			end
-		end
 		buildTiles()
+		placeNext()
 	end
 
 	function self.parts(_: BoxCard): BoxFormat.CardParts
@@ -578,7 +577,6 @@ function BoxCard.new(spec: Spec): BoxCard
 		local freeOnly = kind == "freeOnly"
 		open.root.Visible = view.button == "confirm"
 		retry.root.Visible = view.button == "retry"
-		shop.root.Visible = view.button == "shop"
 		free.Visible = freeOnly
 		if view.button == "confirm" then
 			local short = kind == "needCoins"
@@ -591,6 +589,8 @@ function BoxCard.new(spec: Spec): BoxCard
 			retry:setState(if view.enabled then "normal" else "disabled", view.reason)
 		end
 		buildTiles()
+		nextLabel.Text = view.nextText or ""
+		placeNext()
 	end
 
 	-- H:264: sdRise, card i after i x 90 ms (on every open).
@@ -619,7 +619,6 @@ function BoxCard.new(spec: Spec): BoxCard
 	self.side = side
 	self.open = open
 	self.retry = retry
-	self.shop = shop
 	return self
 end
 

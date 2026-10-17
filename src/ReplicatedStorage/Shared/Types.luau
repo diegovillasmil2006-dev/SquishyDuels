@@ -20,7 +20,9 @@
 -- Bubble Pop bounce (2026-10-16): UltimateBounce / UltimateEventPayload.bounce (the bubble's leg after its bounce).
 -- Weekly quests (2026-10-17): WeeklyState, ProfileV1.weekly and QuestsView.weekly.
 -- Pens (pens3 phase 1, 2026-10-17): PenItem, PenState, ProfileV1.pen, the `pen` state field, PenResult and the
--- PenBuySpot call. Phase 4 (coins while away): PenState.awayRate and AwayGift, the `awayGift` state field.
+-- PenBuySpot call. Phase 4 (coins while away): PenState.awayRate and AwayGift, the `awayGift` state field. Phase 5
+-- (copies): ProfileV1.giftQueue / boxOrder / gifts, the `boxOrder` state field; BoxResult has no refund any more (an
+-- old boxLog entry keeps its `refund`, unread).
 
 -- == Catalog (§4.1) ==
 
@@ -107,8 +109,8 @@ export type BoxLogEntry = {
 	req: string,
 	box: string,
 	squishy: string,
-	dup: boolean,
-	refund: number,
+	dup: boolean, -- pens3 phase 5: the kind was owned before (a copy)
+	refund: number?, -- only in entries from before pens3 phase 5 (copies replaced the refund)
 	cost: number,
 	at: number,
 	seen: boolean,
@@ -167,6 +169,12 @@ export type ProfileV1 = {
 	autoClick: AutoClickMemory, -- added within schemaVersion 2 the same way (2026-10-16); never sent to the client
 	weekly: WeeklyState, -- weekly quests, added within schemaVersion 2 the same way (2026-10-17)
 	pen: PenState, -- the pen (pens3 phase 1), added within schemaVersion 2 the same way
+	-- Pens3 phase 5, added within schemaVersion 2 the same way: free squishies waiting for room in the Toy Box (kind
+	-- ids, oldest first), the fixed-order opens per paid box (restricted accounts) and the once-per-account gifts
+	-- given.
+	giftQueue: { string },
+	boxOrder: { [string]: number },
+	gifts: { [string]: boolean },
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
@@ -251,6 +259,9 @@ export type Snapshot = {
 	topWins: TopWinsView, -- Batch 3
 	pen: PenState, -- pens3 phase 1: the profile's pen as stored (the squeeze value of every client text, the sign)
 	awayGift: AwayGift, -- pens3 phase 4: {coins = 0, seconds = 0} until the load pays one (the client shows it once)
+	-- Pens3 phase 5: the profile's fixed-order opens per paid box (Boxes.fixedItem(boxId, n) is the next squishy a
+	-- restricted account gets; the box card shows it before the open).
+	boxOrder: { [string]: number },
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -273,6 +284,7 @@ export type StateDeltaFields = {
 	topWins: TopWinsView?,
 	pen: PenState?,
 	awayGift: AwayGift?,
+	boxOrder: { [string]: number }?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -295,6 +307,7 @@ export type StateField =
 	| "topWins"
 	| "pen"
 	| "awayGift"
+	| "boxOrder"
 
 export type SnapshotLoading = { status: "loading" }
 
@@ -482,9 +495,10 @@ export type SettingsPatch = { music: number?, sfx: number?, cameraShake: boolean
 -- reading (Part 7): "skip" = Config.Onboarding.skipStepId, the "Skip tutorial" link (sets onboarding.skipped).
 export type ClientOnboardingStep = "welcome" | "inspect" | "skip"
 
--- reading: `charged` is false when the squishy was already owned (no charge, `shop.owned`).
+-- Pens3 phase 5: a buy always charges (an owned squishy is bought again as a copy); every refusal is a ResultErr.
 export type ShopResult = { squishyId: string, charged: boolean, savePending: boolean }
-export type BoxResult = { squishyId: string, isDuplicate: boolean, refund: number, savePending: boolean }
+-- Pens3 phase 5: `isDuplicate` = the kind was owned before (the squishy is a copy); there is no refund.
+export type BoxResult = { squishyId: string, isDuplicate: boolean, savePending: boolean }
 -- reading: day 7 carries the free Treat Box result so the reveal can play at once (§6.9). Readings (Part 7):
 -- `treatRequestId` is the free Treat Box's boxLog key "daily:<dayIndex>" (§3.4), the id AckReveal sends. A missed day
 -- only pauses the streak (review quick win 2026-10-14), so there is no reset flag.

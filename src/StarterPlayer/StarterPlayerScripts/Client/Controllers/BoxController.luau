@@ -3,8 +3,8 @@
 -- the odds disclosure items 1-7), §7.6 / §7.7 (the box counter prompt and the in-world odds board), §9.11 (the box
 -- reveal), §9.15 (1 viewport, <= 24 UI frames), §11.1-§11.6 (Boxes screen, states, focus, spend confirmation), §18.1
 -- (ReducedMotion), §18.6 (box.shake / box.open / reveal.<rarity>). Words and numbers come from UI/BoxFormat (pure).
--- The client only sends intents (a box id and a request id); the server decides the price, the policy, the draw, the
--- refund and the save (§6.1, §12). Lobby only: UIController refuses and closes both screens from Matched through
+-- The client only sends intents (a box id and a request id); the server decides the price, the policy, the draw and
+-- the save (§6.1, §12). Lobby only: UIController refuses and closes both screens from Matched through
 -- Returning (lobbyOnly), and the reveal queue waits for the lobby.
 --
 -- UI FINAL R7 (Diego's Boxes window and box reveal, plan work/ui/PLAN.md R7; `H:n` = "Squishy Duels HUD.dc.html"
@@ -15,7 +15,7 @@
 --   three design cards (UI/BoxCard, H:264-278: the plate with the rays and the floating box art, the name, one odds row
 --   per rarity with the exact percent, the toy tiles, OPEN with its price pill). PR20: the selected card is 2fr and
 --   carries §6.10 items 3-6 on its right in the design's stats well (H:236: "What's inside & chances", one row per item
---   in the odds-row look with its toy tile, the exact percent, Owned, the refund line and Inspect; the note and the
+--   in the odds-row look with its toy tile, the exact percent, Owned and Inspect; the note and the
 --   status; "Total: 100.00%"; the footer); an unselected card's OPEN selects it first (L1 / R1 cycle too). A row too
 --   narrow for minFr cards scrolls sideways (with its scroll bar). Compact: box.details shows / hides items 3-5 in the
 --   well (items 1, 2 and 6 stay).
@@ -26,16 +26,18 @@
 --   pill's shake and "Not enough coins!", whose tap is "How to earn Coins": the Waypoint to the Squeeze mat). The other
 --   §6.10 states stay on the selected card's Open area: checking (disabled "Checking…" + the note), unknown (Try again,
 --   fires PolicyRetry, disabled with the seconds left until Config.Monetization.Policy.manualRetryMinSeconds after the
---   later of the last press and the arrival of "unknown", BoxFormat.retryWait), restricted (OPEN's own button with
---   img.nav.shop and "Shop squishies directly", PR22: opens "shop" with {tab = "squishies", boxId}), the Treat Box
---   (box.freeOnly, no Open), complete / saving / duel / profile not ready (disabled with the reason). No Robux upsell and
---   no Coin Store link anywhere here (§6.10).
+--   later of the last press and the arrival of "unknown", BoxFormat.retryWait), the Treat Box (box.freeOnly, no Open),
+--   Toy Box full (pens3 phase 5, reason.inventory.full) / saving / duel / profile not ready (disabled with the reason).
+--   No Robux upsell and no Coin Store link anywhere here (§6.10). Pens3 phase 5, restricted accounts (the fixed order,
+--   never random, D1:235): OPEN works as for eligible ones, the card shows the next squishy first (BoxFormat.openView's
+--   nextText from the boxOrder state field, BoxCard's stand-in line) and the reveal has no AGAIN (the next squishy is
+--   seen on the card before every open).
 -- * BoxOpen: a new HttpService GUID per open, reused on the next open when the last reply did not settle the request
 --   (BoxFormat.isIndeterminate); NetController.invokeAsync("BoxOpen", boxId, requestId) while the reveal already plays.
 --   A refusal closes the reveal (unseen, unacknowledged) and toasts its reason (NotifyController.showResult:
 --   common.noCoinsSpent only when charged == false). No reply after Config.UI.Boxes.stillCheckingSeconds, or an
 --   error.generic reply: box.stillChecking, and the outcome comes from the unseen reveals (below); the client never
---   claims a refund or a result itself.
+--   claims a result itself.
 -- * Reveal ("boxReveal", modal, over Boxes or on its own): UI/BoxReveal draws it in its own full-screen layer
 --   (Config.UI.Boxes.reveal.layer, between SD_Modal and the confirm dialog's SD_Prompt); the screen's own root is an
 --   empty placeholder in SD_Modal (the modal stack, the lobby lock, Back and the focus stay UIController's). Skip (PR21:
@@ -44,16 +46,17 @@
 --   not equipped; not on a preview), AGAIN (a paid box: short of Coins -> deny; else the confirm dialog over the reveal,
 --   whose BUY closes it and opens the next 40 ms later, H:1020), NICE! (closes it with ui.pop, H:835), a tap on the
 --   squishy = Inspect (params {squishyId, owned = true, source = "boxReveal"}; the stage keeps the model for it), drag /
---   wheel / pinch to look around. SoundController.duck("boxReveal") until the result. A duplicate refund >=
---   Config.UI.motion.coinFlight.minAmount flies to the Coins pill (HudController.flyCoins). AckReveal(requestId) is
---   sent once per reveal when its result is on screen; closing or skipping never calls a reward remote.
+--   wheel / pinch to look around. SoundController.duck("boxReveal") until the result. A duplicate is a copy for the pen
+--   (pens3 phase 5: no Coins come back). AckReveal(requestId) is sent once per reveal when its result is on screen;
+--   closing or skipping never calls a reward remote.
 -- * Unseen replay (one rule for rejoin, the day-7 Treat Box "daily:<day>" and the BoxOpen timeout): every
 --   StateController unseenReveals entry whose requestId is not in this client's in-flight BoxOpen set and was not played
 --   this session is queued and played one at a time (BoxFormat.pendingReveals). debugHoldReveals(true) pauses the
 --   unseen ones (reply reveals still play).
--- * World: WorldBinder.registerStand("SD_BoxStand"): eligible / checking open "boxes" on the stand's BoxId box;
---   restricted / unknown open "shop" filtered to it (the boxes screen when no shop exists). Like QueueController does for
---   its podium, the prompt is relabelled locally from its SD_TextKey / SD_AltTextKey ("See Boxes" / "Shop Squishies",
+-- * World: WorldBinder.registerStand("SD_BoxStand"): eligible / checking / restricted (pens3 phase 5) open "boxes" on
+--   the stand's BoxId box; unknown opens "shop" filtered to it (the boxes screen when no shop exists). Like
+--   QueueController does for its podium, the prompt is relabelled locally from its SD_TextKey / SD_AltTextKey
+--   ("See Boxes" / "Shop Squishies",
 --   BoxFormat.promptKey) and the odds board's live line "Body" shows BoxFormat.boardText, on policy changes, stream-in
 --   and once a second.
 -- Readings (DESIGN is silent):
@@ -61,15 +64,16 @@
 --     Any other close counts as seen (AckReveal), like a skip. While it animates, Backspace / ButtonB skip to the result
 --     (a UIController.pushBack handler) instead of closing it unseen; at the result they close it.
 --   * No result before the reveal (§9.11 "no fake-outs"; Part 7 review fix): StateController holds each new unseen
---     result (the Coins pill shows the spend but not the refund; the odds rows, Squishies and the NEW badge do not show
---     the new squishy) until ack() releases it at the result (after the refund's coin flight has started) or on a
---     close counted as seen. A reveal closed by a match keeps its hold (Config.UI.Boxes.revealHoldMaxSeconds at most).
+--     result (the odds rows, Squishies and the NEW badge do not show the new squishy) until ack() releases it at the
+--     result or on a close counted as seen; PenController keeps the own pen as it was while the reveal plays (a copy
+--     walks in once it closes). A reveal closed by a match keeps its hold (Config.UI.Boxes.revealHoldMaxSeconds at
+--     most).
 --   * Reveals wait while Inspect is open (the two share the one viewport stage); init pumps again when Inspect closes.
 -- Studio: debugRevealPreview(id) queues a local reveal of the squishy (source "preview": no remote, no grant, no hold,
 -- nothing acknowledged; no EQUIP or AGAIN) in a box that holds it (snack otherwise).
 -- History kept from the Candy UI: each box keeps its own colour on its plate (lib:44-46 now), the reveal's escalation is
 -- the design's own FX (UiFx's design effects replace BOX_LOOK's tiers, plan §2.1).
--- Stable names: Boxes_CloseButton, Boxes_Box_<id> (with Boxes_OpenButton / Boxes_RetryButton / Boxes_ShopDirectButton),
+-- Stable names: Boxes_CloseButton, Boxes_Box_<id> (with Boxes_OpenButton / Boxes_RetryButton),
 -- Boxes_DetailsButton, Boxes_Row_<i> (with Boxes_InspectButton); Reveal_SkipButton, Reveal_EquipButton,
 -- Reveal_AgainButton, Reveal_NiceButton; the dialog's Confirm_BuyButton / Confirm_CancelButton.
 
@@ -126,7 +130,6 @@ type Row = {
 	rarity: RarityTag.RarityTag,
 	percent: TextLabel,
 	owned: TextLabel,
-	refund: TextLabel,
 	inspect: Button.Button,
 	squishyId: string?,
 }
@@ -185,9 +188,7 @@ local GENERIC = "error.generic"
 local POLICY_UNKNOWN = "unknown"
 local ROOT_PART = "HumanoidRootPart"
 local SOUND_BACK = "ui.back" -- H:886: the confirm dialog's CANCEL / scrim
-local MOTION = Config.UI.motion
 local TOUCH = Config.UI.Touch
-local FLIGHT = MOTION.coinFlight
 local RETRY_SECONDS = Config.Monetization.Policy.manualRetryMinSeconds
 local STILL_CHECKING_SECONDS = Config.UI.Boxes.stillCheckingSeconds
 local BOXES_UI = Config.UI.Boxes
@@ -294,6 +295,8 @@ local function currentView(boxId: string?): BoxFormat.OpenView
 		profileReady = StateController.isProfileReady(),
 		armed = false, -- UI FINAL R7: the confirm dialog is the second step (PR13)
 		retryWaitSeconds = retryWait(),
+		pen = StateController.get("pen"), -- pens3 phase 5: the Toy Box full block
+		boxOrder = StateController.get("boxOrder"), -- pens3 phase 5: a restricted account's next squishy
 	})
 end
 
@@ -377,7 +380,6 @@ local function refreshRows()
 			row.percent.Text = data.percentText
 			row.owned.Text = data.ownedText or ""
 			row.owned.Visible = data.ownedText ~= nil
-			row.refund.Text = data.refundText
 			row.inspect.root.Visible = inspectable and data.inspect
 		else
 			row.squishyId = nil
@@ -496,8 +498,8 @@ local function scanUnseen()
 	pump()
 end
 
--- Seen: AckReveal once, and StateController shows the result it held back until now (the refund in the Coins pill, the
--- new squishy in owned and as NEW; reveal holds, Part 7 review fix).
+-- Seen: AckReveal once, and StateController shows the result it held back until now (the new squishy in owned and as
+-- NEW; reveal holds, Part 7 review fix).
 local function ack(run: Run)
 	local reveal = run.entry.reveal
 	if run.acked or reveal == nil then
@@ -525,14 +527,9 @@ local function releaseHolds(run: Run)
 	end
 end
 
--- The result is on screen (BoxReveal): the holds end, the refund flies, then AckReveal (the refund the hold kept off the
--- pill lands with the coins: no second "+N").
+-- The result is on screen (BoxReveal): the holds end, then AckReveal.
 local function reachedResult(run: Run)
 	releaseHolds(run)
-	local reveal = run.entry.reveal
-	if reveal and reveal.isDuplicate and reveal.refund >= FLIGHT.minAmount then
-		HudController.flyCoins(run.view.root, reveal.refund)
-	end
 	ack(run)
 end
 
@@ -665,7 +662,13 @@ local function startRun(entry: QueueEntry): boolean
 			savePending = entry.savePending,
 			canEquip = not preview,
 			equipped = reveal ~= nil and StateController.equipped() == reveal.squishyId,
-			againPrice = if box and box.paid and not preview then box.cost else nil,
+			-- pens3 phase 5: no AGAIN for a fixed order (restricted): its card shows the next squishy before each open
+			againPrice = if box
+					and box.paid
+					and not preview
+					and StateController.get("policy") == "eligible"
+				then box.cost
+				else nil,
 			againOff = box ~= nil and box.cost ~= nil and coins() < box.cost,
 			inspectable = UIController.isRegistered(INSPECT_SCREEN),
 			scale = UIController.scale(),
@@ -841,7 +844,6 @@ openPaid = function(boxId: string): { [string]: any }
 				boxId = boxId,
 				squishyId = squishyId,
 				isDuplicate = data.isDuplicate == true,
-				refund = if type(data.refund) == "number" and data.refund == data.refund then data.refund else 0,
 			}
 			if statusRequest == requestId then
 				setStatus(nil, nil)
@@ -928,8 +930,8 @@ local function measuredLabel(
 	return label
 end
 
--- One stats well row (PR20): the toy tile, the rarity pill, the name, the exact percent; Owned and the refund line;
--- Inspect. Placed by layoutWell.
+-- One stats well row (PR20): the toy tile, the rarity pill, the name, the exact percent; Owned; Inspect. Placed by
+-- layoutWell.
 local function buildRow(c: Cleanup.Cleanup, parent: Instance, index: number): Row
 	local root: Frame = Create("Frame", {
 		Name = "Boxes_Row_" .. index,
@@ -960,7 +962,6 @@ local function buildRow(c: Cleanup.Cleanup, parent: Instance, index: number): Ro
 	local percent = measuredLabel(root, "Percent", "100.00%", "Small", nil, BOXES_UI.oddsPctRole)
 	percent.TextXAlignment = Enum.TextXAlignment.Right
 	local owned = measuredLabel(root, "Owned", Strings.common.owned, "Small", nil, "confirmDesc")
-	local refund = measuredLabel(root, "Refund", "", "Small", nil, "confirmDesc")
 	local row: Row
 	local inspect = Button.new({
 		name = "Boxes_InspectButton",
@@ -984,7 +985,6 @@ local function buildRow(c: Cleanup.Cleanup, parent: Instance, index: number): Ro
 		rarity = rarity,
 		percent = percent,
 		owned = owned,
-		refund = refund,
 		inspect = inspect,
 		squishyId = nil,
 	}
@@ -992,7 +992,7 @@ local function buildRow(c: Cleanup.Cleanup, parent: Instance, index: number): Ro
 end
 
 -- The well's rows and texts placed for its inner `width` (base px): line 1 the tile, the pill, the name and the percent
--- (right); line 2 Owned, the refund line and Inspect (right). Returns nothing; the list stacks the rows.
+-- (right); line 2 Owned and Inspect (right). Returns nothing; the list stacks the rows.
 layoutWell = function(width: number)
 	local w = well
 	if w == nil then
@@ -1018,24 +1018,20 @@ layoutWell = function(width: number)
 		row.name.TextTruncate = Enum.TextTruncate.AtEnd
 		local inspectShown = row.inspect.root.Visible
 		local beside = width - x - 120
-		-- Too little room beside Inspect (narrow cards): Owned and the refund line go under it at full width.
+		-- Too little room beside Inspect (narrow cards): Owned goes under it at full width.
 		local stacked = inspectShown and beside < 140
 		local textWidth = math.max(0, if inspectShown and not stacked then beside else width - x)
 		local textTop = line1 + 4 + (if stacked then inspectHeight + 4 else 0)
-		local refundHeight = math.ceil(Theme.textBounds(row.refund.Text, "Small", nil, textWidth).Y) + 2
 		local ownedHeight = if row.owned.Visible then math.ceil(Theme.lineHeight("Small")) + 2 else 0
 		row.owned.Position = UDim2.fromOffset(x, textTop)
 		row.owned.Size = UDim2.fromOffset(textWidth, ownedHeight)
-		row.refund.Position = UDim2.fromOffset(x, textTop + ownedHeight)
-		row.refund.Size = UDim2.fromOffset(textWidth, refundHeight)
-		row.refund.TextWrapped = true
 		row.inspect.root.AnchorPoint = Vector2.new(1, 0)
 		row.inspect.root.Position = UDim2.fromOffset(width, line1 + 2)
 		local height = math.max(
 			ROW_TILE,
 			if stacked
-				then textTop + ownedHeight + refundHeight
-				else line1 + 4 + math.max(ownedHeight + refundHeight, if inspectShown then inspectHeight else 0)
+				then textTop + ownedHeight
+				else line1 + 4 + math.max(ownedHeight, if inspectShown then inspectHeight else 0)
 		)
 		row.root.Size = UDim2.fromOffset(width, height)
 	end
@@ -1201,10 +1197,7 @@ local function build(parent: Instance): GuiObject
 				NetController.fire("PolicyRetry")
 				refresh()
 			end,
-			onShop = function()
-				UIController.close(SCREEN, "shopDirect")
-				UIController.open(SHOP_SCREEN, { tab = "squishies", boxId = boxId })
-			end,
+			scale = UIController.scale, -- pens3 phase 5: the next squishy's line is measured at the drawn size
 		})
 		c:add(card)
 		cards[boxId] = card
@@ -1435,7 +1428,6 @@ function BoxController.debugState(): { [string]: any }
 		state.boxId = run.entry.boxId
 		state.squishyId = if reveal then reveal.squishyId else nil
 		state.isDuplicate = if reveal then reveal.isDuplicate else nil
-		state.refund = if reveal then reveal.refund else nil
 		state.source = run.entry.source
 		state.acked = run.acked
 		runState = state
@@ -1460,12 +1452,13 @@ function BoxController.debugState(): { [string]: any }
 		revealOpen = UIController.isOpen(REVEAL_SCREEN),
 		selected = selectedBox,
 		policy = StateController.get("policy"),
-		coins = StateController.coins(), -- as shown (a held reveal's refund left out)
+		coins = StateController.coins(),
 		serverCoins = StateController.serverValue("coins"),
 		ownedShown = keys(StateController.owned() :: any),
 		heldReveals = StateController.heldRevealIds(),
 		view = {
 			kind = view.kind,
+			nextText = view.nextText,
 			button = view.button,
 			text = view.text,
 			enabled = view.enabled,
@@ -1498,8 +1491,8 @@ function BoxController.debugState(): { [string]: any }
 end
 
 -- Studio (SD_DebugClient "openBox"): the real flow on `boxId` from the confirm dialog's BUY on: the screen opens on it,
--- the Open area must allow it (eligible, enough Coins, not complete, not saving), then the reveal starts and BoxOpen is
--- sent. Yields until the reply.
+-- the Open area must allow it (eligible or restricted, enough Coins, the Toy Box not full, not saving), then the reveal
+-- starts and BoxOpen is sent. Yields until the reply.
 function BoxController.debugOpen(boxId: unknown): { [string]: any }
 	local id = validBox(boxId)
 	if id == nil then
@@ -1531,7 +1524,7 @@ function BoxController.debugSkip(): boolean
 end
 
 -- Studio only: plays the box reveal of `squishyId` as a local preview (no remote, no grant; spec 2026-10-09 §6 Studio
--- check 3): queued first, as a new squishy with no refund, in the first box that holds it (snack otherwise). It
+-- check 3): queued first, as a new squishy, in the first box that holds it (snack otherwise). It
 -- plays when the queue does (the lobby, the reveal screen, Inspect closed); `playing` says whether it started now.
 function BoxController.debugRevealPreview(squishyId: unknown): { [string]: any }
 	local def = if type(squishyId) == "string" then Catalog.get(squishyId) else nil
@@ -1545,11 +1538,7 @@ function BoxController.debugRevealPreview(squishyId: unknown): { [string]: any }
 	local boxId = if #containing > 0 then containing[1].boxId else firstPaidBox()
 	local requestId = "preview:" .. HttpService:GenerateGUID(false)
 	enqueue(
-		entryOf(
-			{ requestId = requestId, boxId = boxId, squishyId = def.id, isDuplicate = false, refund = 0 },
-			"preview",
-			false
-		),
+		entryOf({ requestId = requestId, boxId = boxId, squishyId = def.id, isDuplicate = false }, "preview", false),
 		true
 	)
 	pump()
@@ -1620,8 +1609,6 @@ function BoxController.init()
 			local view = currentView()
 			if view.button == "retry" then
 				return card.retry.root
-			elseif view.button == "shop" then
-				return card.shop.root
 			end
 			return card.open.root
 		end,
@@ -1695,7 +1682,7 @@ function BoxController.init()
 		end
 	end))
 
-	for _, field in { "coins", "owned", "dataStatus" } do
+	for _, field in { "coins", "owned", "dataStatus", "pen", "boxOrder" } do -- pens3 phase 5: pen, boxOrder
 		c:add(StateController.changed(field):connect(function()
 			refresh()
 		end))

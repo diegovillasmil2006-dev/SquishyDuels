@@ -33,6 +33,9 @@
 -- grip.idleBody's second line names the pen); every PenBuySpot refusal code has a text under reason.pen.*; the pen
 -- sign, prompt, coin label, onboarding step and Grip goal texts exist with their placeholders. Pens3 phase 4: the
 -- coins-while-away texts (away.*) exist with their placeholders, and none presses a kid (no countdown, no claim now).
+-- Pens3 phase 5: reason.inventory.full (Toy Box full), shop.welcomePrice, box.nextItem (the fixed order's next item),
+-- the firstBox step names the Welcome price; the box footer promises a copy (never Coins) and the restricted note says
+-- boxes open in a fixed order; none of them presses a kid.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -42,7 +45,8 @@ type Context = {
 	requireFake: (name: string) -> any,
 }
 
--- DESIGN §2.10, in its order.
+-- DESIGN §2.10, in its order (pens3 phase 5: box.restricted, box.complete and shop.owned are gone, no server sends
+-- them any more).
 local REASON_CODES = {
 	"error.generic",
 	"error.connect",
@@ -72,15 +76,12 @@ local REASON_CODES = {
 	"ult.notReady",
 	"ult.noRoom",
 	"squeeze.tooFast",
-	"box.restricted",
 	"box.checking",
 	"box.unknown",
-	"box.complete",
 	"box.paused",
 	"box.saving",
 	"shop.priceChanged",
 	"shop.notForSale",
-	"shop.owned",
 	"quest.notReady",
 	"quest.alreadyClaimed",
 	"quest.swapUsed",
@@ -788,7 +789,10 @@ return function(t: Context)
 		function()
 			expect.equal(Strings.resolve("onboarding.equip"), nil)
 			expect.equal(Strings.resolve("onboarding.firstBoxShop"), nil)
-			expect.equal(Strings.onboarding.firstBox, "Get your first new squishy in the Shop. {coins}/{goal} Coins")
+			expect.equal( -- pens3 phase 5: the first of each Common costs the Welcome price
+				Strings.onboarding.firstBox,
+				"Get a new squishy in the Shop: your first of each Common has a Welcome price! {coins}/{goal} Coins"
+			)
 			for _, key in
 				{
 					"onboarding.capsule",
@@ -898,6 +902,41 @@ return function(t: Context)
 		-- A gift, not a deal: no countdown, no "claim now", nothing to lose.
 		for _, word in { "now", "hurry", "lose", "left", "expire", "only", "claim" } do
 			expect.falsy(string.find(string.lower(Strings.away.body), word, 1, true))
+		end
+	end)
+
+	t.test("pens3 phase 5: Toy Box full, the Welcome price, the next box item and copies, all true and calm", function()
+		expect.equal(Strings.reasonText("inventory.full"), "Your Toy Box is full. Make room first!")
+		expect.equal(Strings.format(Strings.shop.welcomePrice, { coins = "3K" }), "Welcome price: first one 3K")
+		expect.equal(Strings.format(Strings.box.nextItem, { name = "Toast" }), "Next in this box: Toast")
+		expect.equal(
+			Strings.format(Strings.onboarding.firstBox, { coins = "1,200", goal = "3,000" }),
+			"Get a new squishy in the Shop: your first of each Common has a Welcome price! 1,200/3,000 Coins"
+		)
+		-- Copies: a squishy you own again is never turned into Coins.
+		expect.falsy(string.find(Strings.box.footer, "Coins", 1, true))
+		expect.truthy(string.find(Strings.box.footer, "copy", 1, true))
+		-- Restricted accounts open boxes in a fixed order and see what comes next.
+		expect.truthy(string.find(Strings.box.restrictedNote, "fixed order", 1, true))
+		expect.truthy(string.find(Strings.box.restrictedNote, "next", 1, true))
+		-- The Welcome price never runs out: no timer, no pressure.
+		for _, text in { Strings.shop.welcomePrice, Strings.box.nextItem, Strings.onboarding.firstBox } do
+			for _, word in { "now", "hurry", "left", "expire", "only", "today", "limited", "ends" } do
+				expect.falsy(string.find(string.lower(text), word, 1, true))
+			end
+		end
+		-- The texts copies and fixed orders made untrue are gone with their last readers.
+		for _, key in
+			{
+				"reason.box.restricted",
+				"reason.box.complete",
+				"reason.shop.owned",
+				"box.refundLine",
+				"box.revealRefund",
+				"box.shopDirect",
+			}
+		do
+			expect.equal(Strings.resolve(key), nil)
 		end
 	end)
 end

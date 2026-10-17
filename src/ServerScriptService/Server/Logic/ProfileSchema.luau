@@ -39,7 +39,13 @@
 -- bug gets there: grants stop at the cap from phase 5). Pens3 phase 4: `pen.awayRate` (the pen's Coins a second at the
 -- last save, stamped by DataService; what the next load pays the time away from) joined the same way: default 0
 -- (reconcile gives an older pen 0, so its first load after phase 4 pays no away Coins); sanitize turns a non-finite,
--- negative or non-number rate into 0 (fails closed: no away Coins).
+-- negative or non-number rate into 0 (fails closed: no away Coins). Pens3 phase 5 (copies) joined the same way:
+-- `giftQueue = {}` (free squishies waiting for room in the Toy Box, kind ids oldest first; none is owned yet): not a
+-- table -> {}, only Catalog kinds kept in order (each drop logged), more than Pen.giftQueueMax all kept and logged
+-- (only a bug gets there); `boxOrder = {snack = 0, sweet = 0}` (one count per paid box: the fixed-order opens of a
+-- restricted account): each a whole number in [0, 2^53] (non-finite -> 0), other keys kept; `gifts = {frog = false}`
+-- (the once-per-account gifts given): fails closed, a non-boolean flag or a gifts value that is not a table counts
+-- every gift as given (never twice).
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -81,6 +87,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local TableUtil = require(Shared.Util.TableUtil)
@@ -139,6 +146,12 @@ local STAT_KEYS = {
 	"winStreak", -- Match HUD M2 (2026-10-16): no new version (see the header)
 }
 local LOG_KEYS = { "boxLog", "shopLog", "receipts", "duelLog" }
+local PAID_BOX_IDS: { string } = {} -- pens3 phase 5: the boxOrder keys, in Boxes order
+for _, box in Boxes.list() do
+	if box.paid then
+		table.insert(PAID_BOX_IDS, box.id)
+	end
+end
 local VOLUME_KEYS = { "music", "sfx" }
 local SWITCH_KEYS = { "cameraShake", "showTips" }
 
@@ -479,6 +492,48 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 	pen.items = items
 end
 
+-- Pens3 phase 5 (see the header): the gift queue, the fixed box orders and the gifts given. Fixed in place, noted.
+local function fixGifts(d: any, catalog: CatalogLike, fresh: any, problems: { string })
+	local queue = ensureTable(d, "giftQueue", function()
+		return {}
+	end, "giftQueue", problems)
+	local kept: { string } = {}
+	local count = 0
+	for _ in queue do
+		count += 1
+	end
+	for index, id in ipairs(queue) do
+		if catalog.isValidId(id) then
+			table.insert(kept, id)
+		else
+			note(problems, `giftQueue[{index}]`, id, "removed")
+		end
+	end
+	if #kept ~= count then
+		d.giftQueue = kept
+		note(problems, "giftQueue", count, #kept)
+	end
+	if #kept > PEN.giftQueueMax then
+		note(problems, "giftQueue (over giftQueueMax, all kept)", #kept, #kept)
+	end
+
+	local order = ensureTable(d, "boxOrder", function()
+		return {}
+	end, "boxOrder", problems)
+	for _, id in PAID_BOX_IDS do
+		fixInt(order, id, 0, MAX_COUNTER, 0, `boxOrder.{id}`, problems)
+	end
+
+	local gifts = ensureTable(d, "gifts", function()
+		local given = {}
+		for key in fresh.gifts do
+			given[key] = true -- fail closed: a broken record never gives a gift twice
+		end
+		return given
+	end, "gifts", problems)
+	fixFlagMap(gifts, true, "gifts", problems)
+end
+
 local function versionOf(d: any): number
 	local v = tonumber(d.schemaVersion)
 	if v == nil or v ~= v or v < 1 then
@@ -534,7 +589,14 @@ function ProfileSchema.defaults(now: number): Profile
 			items = { { id = 1, kind = starter, form = 0, level = 1, coat = 0 } },
 			awayRate = 0, -- pens3 phase 4: the pen's rate at the last save (DataService stamps it)
 		},
+		-- Pens3 phase 5: no gift waiting for room, no fixed-order box opened, the Frog gift still to come.
+		giftQueue = {},
+		boxOrder = {},
+		gifts = { frog = false },
 	}
+	for _, id in PAID_BOX_IDS do
+		profile.boxOrder[id] = 0
+	end
 	return profile
 end
 
@@ -715,6 +777,7 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 
 	-- The pen (pens3 phase 1, see the header).
 	fixPen(d, catalog, now, problems)
+	fixGifts(d, catalog, fresh, problems) -- pens3 phase 5
 
 	-- Auto-clicker check (2026-10-16): the last strike (see the header).
 	local autoClick = ensureTable(d, "autoClick", function()

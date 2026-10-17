@@ -361,7 +361,7 @@ local function grant(userId: unknown, what: unknown): Reply
 	return {
 		ok = InventoryService.owns(player, what),
 		added = result.added,
-		refund = result.refund,
+		copy = result.copy, -- pens3 phase 5: owned already, so one more copy
 		error = result.refused,
 	}
 end
@@ -673,7 +673,11 @@ function DebugHooks.playerAdded(player: Player)
 		end
 		local added = 0
 		for _, def in Catalog.list() do
-			if EconomyService.grantSquishy(player, def.id, GRANT_SOURCE).added then
+			-- Pens3 phase 5: a grant of an owned kind is a copy, so only the missing kinds are granted.
+			if
+				not InventoryService.owns(player, def.id)
+				and EconomyService.grantSquishy(player, def.id, GRANT_SOURCE).added
+			then
 				added += 1
 			end
 		end

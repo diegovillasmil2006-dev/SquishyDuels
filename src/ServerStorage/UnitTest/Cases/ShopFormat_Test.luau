@@ -3,11 +3,14 @@
 -- (ServerStorage.UnitTest). Pure: no instances, no LocalPlayer, no MarketplaceService.
 -- Contract (DESIGN §11.6 Shop, §6.6, §6.10 restricted shortcut, §6.11 Robux off, §11.3, §11.5, §2.10, §3.11):
 --   * params: {tab = "coins"} opens the Coins tab; a squishyId or a boxId opens the Squishies tab; junk is dropped;
---   * card states: Owned, Buy with the price, need Coins with the missing amount, purchasing, not sold;
+--   * card states: Owned (the free starter only), Buy with the price, need Coins with the missing amount, purchasing,
+--     not sold; pens3 phase 5: the price is Pricing.shopPrice (the Welcome price for a Common not owned yet, with the
+--     shop.welcomePrice line; the Catalog price after), and an owned squishy is bought again as a copy;
 --   * sort: rarity, then price, then name; the box filter keeps only Boxes.get(boxId).items;
---   * Buy is disabled during the duel lock, while the profile loads / is OFFLINE / READONLY, and while a save is pending;
---   * a ShopBuy Result: success (charged), owned (charged = false: "No Coins were spent."), failed (the reason, plus
---     "No Coins were spent." only when charged == false); a call that never reached the server keeps its request id;
+--   * Buy is disabled during the duel lock, while the profile loads / is OFFLINE / READONLY, while a save is pending
+--     and while the Toy Box is full (pens3 phase 5, PenMath.room 0);
+--   * a ShopBuy Result: success (charged), failed (the reason, plus "No Coins were spent." only when charged == false);
+--     a call that never reached the server keeps its request id;
 --   * the Coins tab: only shop.coinsUnavailable while no bundle is offered (always in v1, and while Grip forbids
 --     bundles); offered bundles show their amount and "…" / "Unavailable" / "{price} Robux".
 --   * Foam UI restyle (2026-10-09): priceNumber is the bare price ("7,500") and cardLine the card's line with the
@@ -76,7 +79,9 @@ return function(t: Context)
 			local state, missing = ShopFormat.cardState(price, owned, coins, buying)
 			return { state = state, missing = missing }
 		end
-		expect.deepEqual(card(1200, true, 0, false), { state = "owned", missing = 0 })
+		-- Pens3 phase 5: an owned squishy that is sold can be bought again (a copy for the pen).
+		expect.deepEqual(card(1200, true, 0, false), { state = "needCoins", missing = 1200 })
+		expect.deepEqual(card(1200, true, 5000, false), { state = "buy", missing = 0 })
 		expect.deepEqual(card(nil, true, 0, false), { state = "owned", missing = 0 }) -- the free starter
 		expect.deepEqual(card(nil, false, 99999, false), { state = "notSold", missing = 0 })
 		expect.deepEqual(card(1200, false, 5000, true), { state = "purchasing", missing = 0 })
@@ -132,12 +137,31 @@ return function(t: Context)
 		end
 		expect.equal(byId.kitty_bread.state, "owned")
 		expect.equal(byId.toast.state, "buy")
-		-- Spec 2026-10-12 §6 prices: Toast 10K, Butter 2.7M, Birdie 1.7B, Dragon 1.1T.
-		expect.equal(byId.toast.price, 10_000)
+		-- ECONOMY_V3:163 (pens3 phase 5): a Common not owned yet has the Welcome price (D1:202), Butter 1.875M,
+		-- Birdie 1.8B, Dragon 1.1T.
+		expect.equal(byId.toast.price, Config.Economy.Pen.welcomePrice.Common)
+		expect.equal(byId.toast.price, 3_000)
+		expect.equal(byId.toast.welcomeText, Strings.format(Strings.shop.welcomePrice, { coins = "3,000" }))
+		expect.equal(byId.butter.price, 1_875_000)
+		expect.equal(byId.butter.welcomeText, nil)
 		expect.equal(byId.butter.state, "buy")
 		expect.equal(byId.bird.state, "needCoins")
-		expect.equal(byId.bird.missing, 1_697_000_000)
+		expect.equal(byId.bird.missing, 1_797_000_000)
 		expect.equal(byId.dragon.missing, 1_099_997_000_000)
+		expect.equal(byId.kitty_bread.welcomeText, nil)
+		-- Once owned, a Common costs its Catalog price and can be bought again as a copy (no Welcome line).
+		local again = ShopFormat.entries(Catalog.list(), { kitty_bread = { at = 0 }, toast = { at = 1 } }, 3_000_000)
+		for _, e in again do
+			if e.id == "toast" then
+				expect.equal(e.owned, true)
+				expect.equal(e.price, Catalog.get("toast").shopPrice)
+				expect.equal(e.price, 789_000)
+				expect.equal(e.state, "buy")
+				expect.equal(e.welcomeText, nil)
+			elseif e.id == "banana" then
+				expect.equal(e.price, 3_000) -- each Common has its own Welcome price
+			end
+		end
 		-- A buy in flight marks only that card.
 		local buying = ShopFormat.entries(Catalog.list(), owned, 3_000_000, "toast", nil)
 		for _, e in buying do
@@ -190,11 +214,25 @@ return function(t: Context)
 		expect.equal(ShopFormat.spendBlock(status("offline"), false), Strings.reason.data.offline)
 		expect.equal(ShopFormat.spendBlock(status("readonly"), false), Strings.reason.data.readOnly)
 		expect.equal(ShopFormat.spendBlock(status("ready", true), false), Strings.reason.box.saving)
+		-- Pens3 phase 5: a full Toy Box (3 spots + toyBoxMax squishies: PenMath.room 0) blocks Buy before any Coins
+		-- move; no pen state yet = not known (the server decides).
+		local items = {}
+		for i = 1, 3 + Config.Economy.Pen.toyBoxMax do
+			table.insert(items, { id = i, kind = "toast" })
+		end
+		local full = { spots = 3, nextId = #items + 1, items = items }
+		expect.equal(ShopFormat.spendBlock(status("ready"), false, full), Strings.reasonText("inventory.full"))
+		expect.equal(ShopFormat.spendBlock(status("ready"), false, nil), nil)
+		expect.equal(
+			ShopFormat.spendBlock(status("ready"), false, { spots = 4, nextId = #items + 1, items = items }),
+			nil
+		)
+		expect.equal(ShopFormat.spendBlock(status("ready"), true, full), Strings.common.lockedInDuel)
 	end)
 
 	-- Buy results --------------------------------------------------------------------------------------------------
 
-	t.test("buyOutcome: success, owned (charged = false) and the save-pending flag", function()
+	t.test("buyOutcome: success (an owned squishy is bought again as a copy) and the save-pending flag", function()
 		local ok = ShopFormat.buyOutcome({
 			ok = true,
 			v = 1,
@@ -207,14 +245,11 @@ return function(t: Context)
 			data = { squishyId = "dragon", charged = true, savePending = true },
 		})
 		expect.equal(pending.savePending, true)
-		local owned = ShopFormat.buyOutcome({
-			ok = true,
-			v = 1,
-			data = { squishyId = "toast", charged = false, savePending = false },
-		})
-		expect.equal(owned.kind, "owned")
-		expect.equal(owned.squishyId, "toast")
-		expect.equal(owned.text, Strings.reason.shop.owned .. " " .. Strings.common.noCoinsSpent)
+		-- Pens3 phase 5: no "already owned" answer any more (reason.shop.owned is gone).
+		expect.equal((Strings.reason.shop :: any).owned, nil)
+		local full = ShopFormat.buyOutcome({ ok = false, v = 1, reason = "inventory.full", charged = false })
+		expect.equal(full.kind, "failed")
+		expect.equal(full.text, Strings.reasonText("inventory.full") .. " " .. Strings.common.noCoinsSpent)
 	end)
 
 	t.test("buyOutcome: a server refusal says no Coins were spent; a lost call keeps its request id", function()
@@ -449,9 +484,18 @@ return function(t: Context)
 			end
 			return e
 		end
-		expect.deepEqual(ShopFormat.featuredView(entry({ owned = true }), "x", "toast"), {
+		-- Pens3 phase 5: OWNED only for the free starter (owned, not sold); an owned squishy that is sold shows BUY
+		-- (a copy).
+		local starter: any = entry({ owned = true })
+		starter.price = nil
+		expect.deepEqual(ShopFormat.featuredView(starter, "x", "toast"), {
 			mode = "owned",
 			priceText = nil,
+			reason = nil,
+		})
+		expect.deepEqual(ShopFormat.featuredView(entry({ owned = true }), nil, nil), {
+			mode = "buy",
+			priceText = "10,000",
 			reason = nil,
 		})
 		local free: any = entry({})

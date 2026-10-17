@@ -12,6 +12,9 @@
 -- spots bought at its sign, PenService). Every reward counted in squeezes now pays PenMath.rewardCoins(squeezes,
 -- PenMath.squeezeValue(profile.pen)); the capsules pay nothing any more (their code goes in phases 2-3).
 -- Pens3 phase 4: the "away" Coin reason (the pen's Coins for the time away, EconomyService.grantAway).
+-- Pens3 phase 5: DuplicatePolicy "copy" (a squishy you own again is one more copy in your pen, never Coins);
+-- DuplicateRefund and AllowOpenWhenComplete are gone. The "refund" reason stays: it gives back a spend whose squishy
+-- could not be granted.
 
 local Economy = {
 	startingCoins = 0,
@@ -110,16 +113,9 @@ local Economy = {
 	-- The pen (pens3 phase 1): Config/Pen (spots, prices, what a squishy earns; checked by Config/ValidatePen).
 	Pen = require(script.Parent.Pen),
 
-	-- Duplicate box results (§6.5). "exclude_owned" is the documented alternative and is not built.
-	DuplicatePolicy = "refund" :: "refund" | "exclude_owned",
-	-- Spec 2026-10-12 §8: a double gives back `percent` % of the box price, rounded down (Snack 37,500, Sweet
-	-- 112,500,000); a free box (no price: the day-7 Treat Box) gives back that share of the `freeBoxPriceOf` box's price.
-	-- Replaces the refunds by rarity (100 / 150 / 300 / 1,000). Pricing.duplicateRefund(boxId) reads it.
-	DuplicateRefund = {
-		percent = 25,
-		freeBoxPriceOf = "snack",
-	},
-	AllowOpenWhenComplete = false, -- a box whose every item is owned cannot be opened (box.complete)
+	-- Duplicate results (§6.5). Pens3 phase 5: "copy" (every box result, shop buy or gift adds a pen item, so a squishy
+	-- you own again is a copy; the Toy Box cap, Config/Pen toyBoxMax, is the limit). Was "refund".
+	DuplicatePolicy = "copy" :: "copy",
 	MinSecondsBetweenOpens = 2, -- per player, plus one open in flight (keeps box writes inside the budget)
 
 	-- Friendly tip after repeated losses (§6.13). Session memory only.

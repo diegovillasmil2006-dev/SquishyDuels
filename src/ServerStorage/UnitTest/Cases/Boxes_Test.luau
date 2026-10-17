@@ -3,10 +3,14 @@
 -- Contract (DESIGN §6.4, §6.10, §13.2 Part 7 L1; spec 2026-10-09 §3.3; spec 2026-10-12 §8): the box data exactly
 -- (snack 150,000 / sweet 450,000,000 paid, treat free-only with no cost; ordered items, each new squishy right after its
 -- same-rarity siblings, Dragon last; nameKey box.<id>.name; Kitty Bread in no box); every box's weights sum to
--- WeightTotal (10,000); each rarity's total is split equally across its items; the "xx.xx" texts come from integer math
--- and add up to "100.00"; byRarity is rarity descending (Snack: Uncommon 20.00 · Common 80.00);
--- isComplete is true only when every item is owned; containing lists every box a squishy is in; paidById holds only
--- the paid boxes; everything is frozen. Tables are compared by value.
+-- WeightTotal (10,000); each rarity's total is split equally across its items, except Mochi Fox and Strawberry Frog
+-- (pens3 phase 5: Rare-to-be, their own weight until their rarity moves in phase 22); the "xx.xx" texts come from
+-- integer math and add up to "100.00"; byRarity is rarity descending (Snack: Uncommon 24.00 · Common 76.00);
+-- containing lists every box a squishy is in; paidById holds only the paid boxes; everything is frozen. Pens3 phase 5:
+-- the V3 odds (Soft 1,900 / 800 / 400; Sweet the 4 Epics 2,499 and Dragon 4; Royal 1,400 / 900 / 600 / 350), and the
+-- fixed orders of restricted accounts (smooth weighted round-robin, V4:248-252): Soft a cycle of 25 with Mochi Fox at
+-- box 11 and Strawberry Frog at 12, Sweet 2,500 with the Dragon at box 501, each item as often as its weight says
+-- (rounded, a tie to the earlier item), repeating; isComplete is gone (copies). Tables are compared by value.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -15,28 +19,23 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- Spec 2026-10-12 §8 (Snack and Sweet; each rarity's share split equally) and spec 2026-10-09 §3.3 (Treat), as {id,
--- weight} pairs in table order.
+-- Pens3 phase 5 (ECONOMY_V3:159-161; Snack = Soft, Treat = Royal), as {id, weight} pairs in table order.
 local EXPECTED_ITEMS: { [string]: { { any } } } = {
 	snack = {
-		{ "toast", 2000 },
-		{ "banana", 2000 },
-		{ "boba_bear", 2000 },
-		{ "pancake_pup", 2000 },
-		{ "butter", 500 },
-		{ "chocolate", 500 },
-		{ "mochi_fox", 500 },
-		{ "strawberry_frog", 500 },
+		{ "toast", 1900 },
+		{ "banana", 1900 },
+		{ "boba_bear", 1900 },
+		{ "pancake_pup", 1900 },
+		{ "butter", 800 },
+		{ "chocolate", 800 },
+		{ "mochi_fox", 400 },
+		{ "strawberry_frog", 400 },
 	},
 	sweet = {
-		{ "butter", 1500 },
-		{ "chocolate", 1500 },
-		{ "mochi_fox", 1500 },
-		{ "strawberry_frog", 1500 },
-		{ "bird", 999 },
-		{ "donut", 999 },
-		{ "cloud_bunny", 999 },
-		{ "cupcake_axolotl", 999 },
+		{ "bird", 2499 },
+		{ "donut", 2499 },
+		{ "cloud_bunny", 2499 },
+		{ "cupcake_axolotl", 2499 },
 		{ "dragon", 4 },
 	},
 	treat = {
@@ -44,16 +43,19 @@ local EXPECTED_ITEMS: { [string]: { { any } } } = {
 		{ "banana", 1400 },
 		{ "boba_bear", 1400 },
 		{ "pancake_pup", 1400 },
-		{ "butter", 850 },
-		{ "chocolate", 850 },
-		{ "mochi_fox", 850 },
-		{ "strawberry_frog", 850 },
-		{ "bird", 250 },
-		{ "donut", 250 },
-		{ "cloud_bunny", 250 },
-		{ "cupcake_axolotl", 250 },
+		{ "butter", 900 },
+		{ "chocolate", 900 },
+		{ "mochi_fox", 600 },
+		{ "strawberry_frog", 600 },
+		{ "bird", 350 },
+		{ "donut", 350 },
+		{ "cloud_bunny", 350 },
+		{ "cupcake_axolotl", 350 },
 	},
 }
+
+-- Pens3 phase 5: their rarity moves to Rare in phase 22; until then they weigh less than the other Uncommons.
+local RARE_TO_BE: { [string]: boolean } = { mochi_fox = true, strawberry_frog = true }
 
 -- "xx.xx%" with exactly two decimals.
 local PERCENT_PATTERN = "^%d+%.%d%d$"
@@ -108,12 +110,13 @@ return function(t: Context)
 		end
 	end)
 
-	-- Spec 2026-10-09 §3.3: each rarity's total is split equally across that rarity's items.
+	-- Spec 2026-10-09 §3.3: each rarity's total is split equally across that rarity's items (pens3 phase 5: Mochi Fox
+	-- and Strawberry Frog are their own group until they become Rare in phase 22).
 	t.test("every item of a rarity has the same weight in a box; Dragon stays last", function()
 		for _, box in Boxes.list() do
 			local weightOf: { [string]: number } = {}
 			for _, entry in box.items do
-				local rarity = Catalog.get(entry.id).rarity
+				local rarity = if RARE_TO_BE[entry.id] then "Rare-to-be" else Catalog.get(entry.id).rarity
 				local first = weightOf[rarity]
 				if first == nil then
 					weightOf[rarity] = entry.weight
@@ -163,7 +166,7 @@ return function(t: Context)
 			expect.equal(sum, 10000)
 			expect.equal(Boxes.totalText(box.id), "100.00")
 		end
-		expect.deepEqual(Boxes.odds("snack")[1], { id = "toast", weight = 2000, percent = 20, text = "20.00" })
+		expect.deepEqual(Boxes.odds("snack")[1], { id = "toast", weight = 1900, percent = 19, text = "19.00" })
 		expect.deepEqual(Boxes.odds("nope"), {})
 		expect.equal(Boxes.totalText("nope"), nil)
 	end)
@@ -176,9 +179,9 @@ return function(t: Context)
 			end
 			return out
 		end
-		expect.deepEqual(summary("snack"), { { "Uncommon", "20.00" }, { "Common", "80.00" } })
-		expect.deepEqual(summary("sweet"), { { "Exclusive", "0.04" }, { "Epic", "39.96" }, { "Uncommon", "60.00" } })
-		expect.deepEqual(summary("treat"), { { "Epic", "10.00" }, { "Uncommon", "34.00" }, { "Common", "56.00" } })
+		expect.deepEqual(summary("snack"), { { "Uncommon", "24.00" }, { "Common", "76.00" } })
+		expect.deepEqual(summary("sweet"), { { "Exclusive", "0.04" }, { "Epic", "99.96" } })
+		expect.deepEqual(summary("treat"), { { "Epic", "14.00" }, { "Uncommon", "30.00" }, { "Common", "56.00" } })
 		for _, box in Boxes.list() do
 			local sum = 0
 			for _, row in Boxes.byRarity(box.id) do
@@ -189,23 +192,86 @@ return function(t: Context)
 		expect.deepEqual(Boxes.byRarity("nope"), {})
 	end)
 
-	t.test("isComplete is true only when every item of the box is owned", function()
-		local owned: { [string]: any } = { kitty_bread = {} }
-		expect.falsy(Boxes.isComplete("snack", owned))
-		for _, entry in Boxes.get("snack").items do
-			owned[entry.id] = { at = 0, src = "box" }
+	t.test("isComplete is gone: with copies every box always gives something (pens3 phase 5)", function()
+		expect.equal((Boxes :: any).isComplete, nil)
+	end)
+
+	-- Pens3 phase 5 (restricted accounts, D1:235, V4:248-252): the fixed orders.
+	t.test(
+		"the Soft Box's fixed order: a cycle of 25, Mochi Fox at box 11, Strawberry Frog at 12, repeating",
+		function()
+			local snack = Boxes.get("snack")
+			expect.equal(snack.fixedCycle, 25)
+			local order: { string } = {}
+			for n = 0, 24 do
+				table.insert(order, Boxes.fixedItem("snack", n))
+			end
+			expect.equal(
+				table.concat(order, " "),
+				table.concat({
+					"toast banana boba_bear pancake_pup butter chocolate", -- boxes 1-6
+					"toast banana boba_bear pancake_pup mochi_fox strawberry_frog", -- 7-12
+					"toast banana boba_bear pancake_pup butter chocolate", -- 13-18
+					"toast banana boba_bear pancake_pup toast banana boba_bear", -- 19-25
+				}, " ")
+			)
+			expect.equal(order[11], "mochi_fox")
+			expect.equal(order[12], "strawberry_frog")
+			for n = 0, 24 do
+				expect.equal(Boxes.fixedItem("snack", n + 25), order[n + 1]) -- the cycle repeats
+				expect.equal(Boxes.fixedItem("snack", n + 25 * 4000), order[n + 1])
+			end
 		end
-		expect.truthy(Boxes.isComplete("snack", owned))
-		-- Owning the Snack Box items does not complete the Sweet Box (its Epics and Dragon are missing).
-		expect.falsy(Boxes.isComplete("sweet", owned))
-		for _, entry in Boxes.get("sweet").items do
-			owned[entry.id] = { at = 0, src = "shop" }
+	)
+
+	t.test("the Sweet Box's fixed order: 2,500 long, the Dragon once at box 501, each Epic 625 or 624 times", function()
+		local sweet = Boxes.get("sweet")
+		expect.equal(sweet.fixedCycle, 2500)
+		local counts: { [string]: number } = {}
+		local dragonAt: { number } = {}
+		for n = 0, sweet.fixedCycle - 1 do
+			local id = Boxes.fixedItem("sweet", n) :: string
+			counts[id] = (counts[id] or 0) + 1
+			if id == "dragon" then
+				table.insert(dragonAt, n + 1)
+			end
 		end
-		expect.truthy(Boxes.isComplete("sweet", owned))
-		owned.butter = nil -- in both boxes
-		expect.falsy(Boxes.isComplete("snack", owned))
-		expect.falsy(Boxes.isComplete("sweet", owned))
-		expect.falsy(Boxes.isComplete("nope", owned))
+		expect.deepEqual(dragonAt, { 501 })
+		expect.deepEqual(counts, { bird = 625, donut = 625, cloud_bunny = 625, cupcake_axolotl = 624, dragon = 1 })
+		expect.equal(Boxes.fixedItem("sweet", 2500 + 500), "dragon")
+	end)
+
+	t.test("every paid box's fixed order has each item as often as its weight says (rounded)", function()
+		for _, box in Boxes.list() do
+			if not box.paid then
+				expect.equal(box.fixedCycle, nil)
+				expect.equal(Boxes.fixedItem(box.id, 0), nil) -- a free box is never in a fixed order
+				continue
+			end
+			local cycle = box.fixedCycle :: number
+			local counts: { [string]: number } = {}
+			for n = 0, cycle - 1 do
+				local id = Boxes.fixedItem(box.id, n) :: string
+				counts[id] = (counts[id] or 0) + 1
+			end
+			for _, entry in box.items do
+				local fair = entry.weight * cycle / Boxes.WeightTotal
+				local got = counts[entry.id] or 0
+				if math.abs(got - fair) >= 1 then
+					error(`{box.id}: {entry.id} {got} times in {cycle}, its weight says {fair}`)
+				end
+			end
+		end
+	end)
+
+	t.test("fixedItem: nil for an unknown box, a free box or a count that is not a whole number >= 0", function()
+		for _, bad in { -1, 1.5, 0 / 0, math.huge, "3", true } :: { any } do
+			expect.equal(Boxes.fixedItem("snack", bad), nil)
+		end
+		expect.equal(Boxes.fixedItem("snack", nil), nil)
+		expect.equal(Boxes.fixedItem("nope", 0), nil)
+		expect.equal(Boxes.fixedItem("treat", 0), nil)
+		expect.equal(Boxes.fixedItem(nil, 0), nil)
 	end)
 
 	t.test("containing lists every box a squishy is in, with its chance and whether the box is paid", function()
@@ -217,8 +283,7 @@ return function(t: Context)
 		for _, row in butter do
 			table.insert(seen, { row.boxId, row.text, row.paid })
 		end
-		local expected: { { any } } =
-			{ { "snack", "5.00", true }, { "sweet", "15.00", true }, { "treat", "8.50", false } }
+		local expected: { { any } } = { { "snack", "8.00", true }, { "treat", "9.00", false } }
 		expect.deepEqual(seen, expected)
 		expect.deepEqual(Boxes.containing("nope"), {})
 	end)

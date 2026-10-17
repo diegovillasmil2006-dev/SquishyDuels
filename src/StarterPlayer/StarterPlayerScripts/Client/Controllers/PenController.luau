@@ -40,8 +40,13 @@
 --   ui.coin sound and the overlay's rain (Config.UI.Pen.awayRain). A tap, AWESOME! or back closes it. The Coins are
 --   already in the pill (the server paid them on load): nothing to claim, no timer. A gift shows when it arrives (or is
 --   there at start); StateController fires only on a new value, so a resent one never shows twice.
--- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText), init(),
--- start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
+-- * No result before its reveal (pens3 phase 5, §9.11 "no fake-outs"): a box result is a new pen item (a copy when
+--   the kind is owned), and BaseService draws it on the plot at once; so while BoxController's "boxReveal" screen is
+--   open the own pen's sync waits (its walkers keep walking as they were) and runs when the reveal closes (syncWaits).
+--   shortcut: only the reveal screen is watched; a free reward drawn before its reveal opens (the day-7 Treat Box
+--   behind the Daily window) still walks in first; hold on StateController's reveal holds if that matters.
+-- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
+-- syncWaits), init(), start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
 
 -- Services
 
@@ -152,6 +157,7 @@ local REMOTE_BUY = "PenBuySpot"
 local SOUND_PURCHASE = "ui.purchase"
 local SOUND_AWAY = "ui.coin" -- pens3 phase 4: the away pop-up opens
 local FIELD_AWAY = "awayGift"
+local REVEAL_SCREEN = "boxReveal" -- pens3 phase 5: BoxController's box reveal (the own pen waits for it)
 local CONFIRM = Config.UI.confirm -- the congrats overlay's layer (ShopController's)
 local LABEL_KIND: Theme.TextKind = "Coin"
 local COMMON_STUDS = P.rarityStuds.Common
@@ -373,7 +379,10 @@ local function queueSync(pen: Pen)
 	pen.queued = true
 	task.defer(function()
 		pen.queued = false
-		if pens[pen.plot] == pen then
+		if
+			pens[pen.plot] == pen
+			and not PenController.syncWaits(pen.plot, ownPlot(), UIController.isOpen(REVEAL_SCREEN))
+		then
 			local ok, err = pcall(function()
 				sync(pen)
 			end)
@@ -655,6 +664,12 @@ function PenController.hopLift(t: number, studs: number, reduced: boolean): numb
 	return P.hopHeight * studs / COMMON_STUDS * math.sin(math.pi * u)
 end
 
+-- Pens3 phase 5: true while the pen of `plot` must keep its walkers as they are: it is the own plot (`own`) and the box
+-- reveal plays (`revealOpen`; see the header).
+function PenController.syncWaits(plot: number, own: number?, revealOpen: boolean): boolean
+	return revealOpen and plot == own
+end
+
 -- Pens3 phase 4: the away pop-up's prize line and body for a gift {coins, seconds}; nil when it paid no whole Coins.
 function PenController.awayText(gift: any): (string?, string?)
 	local coins = if type(gift) == "table" then gift.coins else nil
@@ -804,6 +819,13 @@ function PenController.start()
 		c:add(StateController.changed(field):connect(paintOwnSign))
 	end
 	c:add(StateController.changed(FIELD_AWAY):connect(showAway))
+	c:add(UIController.ScreenClosed:connect(function(name: string)
+		local plot = ownPlot()
+		local own = if name == REVEAL_SCREEN and plot then pens[plot] else nil
+		if own then
+			queueSync(own) -- the result the reveal showed walks in now
+		end
+	end))
 	local player = Players.LocalPlayer
 	if player then
 		c:add(player:GetAttributeChangedSignal(ATTR_PLOT):Connect(function()

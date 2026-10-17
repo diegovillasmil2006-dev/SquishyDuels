@@ -7,9 +7,9 @@
 -- no accent trips the splat red guard; every nameKey exists in Strings and every blueprintId in
 -- Art/SquishyBlueprints; throw stats sit inside Config.Combat.Bands; squishy power follows
 -- Config.Economy.SquishyPower unless overridden (Phase 3: the per-squishy squeeze Coins are gone); shop prices are the
--- spec 2026-10-12 §6 ladder; the API is get, list, isValidId, starterId, byRarity and getPower; entries
--- cannot be changed. Rarity has the canonical ORDER, name keys, pips and hasTrail; RarityStyle and Palette carry the
--- §4.3 and §7.2 values, and every rarity label reaches 4.5:1 contrast on its colour.
+-- ECONOMY_V3:163 prices (pens3 phase 5, each at most its box ceiling); the API is get, list, isValidId, starterId,
+-- byRarity and getPower; entries cannot be changed. Rarity has the canonical ORDER, name keys, pips and hasTrail;
+-- RarityStyle and Palette carry the §4.3 and §7.2 values, and every rarity label reaches 4.5:1 contrast on its colour.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -70,7 +70,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.05,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 	},
 	{
 		id = "banana",
@@ -82,7 +82,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 0.95,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 	},
 	{
 		id = "butter",
@@ -95,7 +95,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.15,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2_700_000,
+		shopPrice = 1_875_000,
 	},
 	{
 		id = "chocolate",
@@ -108,7 +108,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.18,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2_700_000,
+		shopPrice = 1_875_000,
 	},
 	{
 		id = "bird",
@@ -122,7 +122,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "flock_volley", -- spec phase 5: the design's Epic ultimates (ults.js:3)
 		elimination = "feather_storm",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 	},
 	{
 		id = "donut",
@@ -136,7 +136,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "sprinkle_roller", -- ults.js:4
 		elimination = "sprinkle_blast",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 	},
 	{
 		id = "dragon",
@@ -163,7 +163,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.00,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 	},
 	{
 		id = "pancake_pup",
@@ -175,7 +175,7 @@ local EXPECTED: { Expected } = {
 		cooldown = 1.05,
 		windup = 0.18,
 		elimination = "standard",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 	},
 	{
 		id = "mochi_fox",
@@ -188,7 +188,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.15,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2_700_000,
+		shopPrice = 3_750_000,
 	},
 	{
 		id = "strawberry_frog",
@@ -201,7 +201,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.18,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 2_700_000,
+		shopPrice = 3_750_000,
 	},
 	{
 		id = "cloud_bunny",
@@ -215,7 +215,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "rain_check", -- ults.js:5
 		elimination = "cloudburst",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 	},
 	{
 		id = "cupcake_axolotl",
@@ -229,7 +229,7 @@ local EXPECTED: { Expected } = {
 		trail = "twinRibbon",
 		ultimate = "bubble_pop", -- ults.js:6
 		elimination = "bubble_burst",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 	},
 }
 
@@ -545,8 +545,10 @@ return function(t: Context)
 		end
 	end)
 
-	-- Spec 2026-10-12 §6: the squishy ladder (were DESIGN §4.2's 1,200 / 2,500 / 7,500 / 25,000).
-	t.test("shop prices match the spec 2026-10-12 ladder and the starter is not sold", function()
+	-- Pens3 phase 5 (ECONOMY_V3:163, each at most its Pricing.ceiling): Commons 789K (the first one 3K,
+	-- Pricing.shopPrice), Butter / Chocolate 1.875M, Mochi Fox / Strawberry Frog 3.75M, Epics 1.8B, Dragon 1.1T (were
+	-- the spec 2026-10-12 §6 ladder 10K / 2.7M / 1.7B / 1.1T).
+	t.test("shop prices match the V3 prices and the starter is not sold", function()
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
 			if def.shopPrice ~= row.shopPrice then

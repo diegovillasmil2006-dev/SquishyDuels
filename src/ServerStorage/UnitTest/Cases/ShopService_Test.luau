@@ -3,17 +3,19 @@
 -- Server only (ServerStorage.UnitTest). Edit mode: the real EconomyService runs on a fake data port (READY profiles in a
 -- table, mutate like DataService), the "now" save, the shutdown flags, the duel lock and both clocks are fakes; players
 -- are plain tables. Prices come from the test's Catalog copy; tables are compared by value.
--- Contract (DESIGN §6.6, §3.4, §3.11, §12 #3 #4 #6 #7 #14):
---   * a buy charges shopPrice once (reason "shop"), adds the squishy (src "shop"), appends shopLog {req, squishy,
---     price, at} (cap Config.Data.caps.shopLog), awaits the "now" save and answers {squishyId, charged = true,
---     savePending = not saved};
---   * the same requestId replays the stored result with no charge; an owned squishy answers ok {charged = false};
+-- Contract (DESIGN §6.6, §3.4, §3.11, §12 #3 #4 #6 #7 #14; pens3 phase 5):
+--   * a buy charges Pricing.shopPrice(id, owned) once (reason "shop"): the Welcome price (3,000) for the first of a
+--     Common, the Catalog price after that; it adds the squishy (a pen item; src "shop" when the kind is new, a copy
+--     when it is owned), appends shopLog {req, squishy, price, at} (cap Config.Data.caps.shopLog), awaits the "now"
+--     save and answers {squishyId, charged = true, savePending = not saved};
+--   * the same requestId replays the stored result with no charge (whatever the price is now);
 --   * refusals in the §6.6 order, each with charged = false and no Coin change: net.invalid, shop.notForSale,
---     shop.priceChanged (the client price is only compared), data.notReady, box.saving (savePending), purchase.unavailable
---     (closing / restart), inventory.lockedInDuel, economy.notEnoughCoins;
+--     shop.priceChanged (the client price is only compared; a Common's full price before the first one is a wrong
+--     price too), data.notReady, inventory.full (the Toy Box is full, before any Coins move), box.saving
+--     (savePending), purchase.unavailable (closing / restart), inventory.lockedInDuel, economy.notEnoughCoins;
 --   * one buy in flight per player and one charged buy per second (net.rateLimited);
---   * every Catalog price is valid at boot (nothing disabled); Dragon's 1.1T price (spec 2026-10-12 §6) is bought
---     with its exact expectedPrice, above the 1e6 bound of plain integer arguments.
+--   * every Catalog price is valid at boot (nothing disabled); Dragon's 1.1T price is bought with its exact
+--     expectedPrice, above the 1e6 bound of plain integer arguments.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -27,7 +29,7 @@ local NOW = 1_790_000_000
 local REQ_A = "aaaaaaaa-0000-0000-0000-000000000001"
 local REQ_B = "bbbbbbbb-0000-0000-0000-000000000002"
 local REQ_C = "cccccccc-0000-0000-0000-000000000003"
-local COINS = 1_000_000 -- a few Commons (10,000 each, spec 2026-10-12 §6)
+local COINS = 1_000_000 -- a few Welcome prices and one full Common price
 
 return function(t: Context)
 	local expect = t.expect
@@ -37,8 +39,9 @@ return function(t: Context)
 	local Config = t.requireShared("Config")
 	local FakeClock = t.requireFake("FakeClock")
 
-	local TOAST = Catalog.get("toast").shopPrice
-	local BANANA = Catalog.get("banana").shopPrice
+	local WELCOME = Config.Economy.Pen.welcomePrice.Common -- the first of each Common (D1:202)
+	local TOAST = Catalog.get("toast").shopPrice -- every Toast after the first
+	local PEN = Config.Economy.Pen
 
 	local function newProfile(coins: number): any
 		return {
@@ -47,6 +50,9 @@ return function(t: Context)
 			equipped = "kitty_bread",
 			stats = { coinsEarned = 0, coinsSpent = 0, boxesOpened = 0 },
 			shopLog = {},
+			-- Pens3 phase 5: a pen (a buy adds an item) and the gift queue.
+			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
+			giftQueue = {},
 		}
 	end
 
@@ -141,65 +147,80 @@ return function(t: Context)
 		expect.deepEqual(result, { ok = false, reason = reason, charged = false })
 	end
 
-	t.test("a buy charges the shop price once, adds the squishy, logs it and awaits the now save", function()
+	t.test("the first of a Common costs the Welcome price; it is added, logged and the now save is awaited", function()
 		local w = setup()
 		local p, profile = readyPlayer(w, COINS)
-		local result = ShopService.buy(p, "toast", TOAST, REQ_A)
+		expect.equal(WELCOME, 3_000)
+		local result = ShopService.buy(p, "toast", WELCOME, REQ_A)
 		expect.deepEqual(result, { ok = true, data = { squishyId = "toast", charged = true, savePending = false } })
-		expect.equal(profile.coins, COINS - TOAST)
+		expect.equal(profile.coins, COINS - WELCOME)
 		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
-		expect.deepEqual(profile.shopLog, { { req = REQ_A, squishy = "toast", price = TOAST, at = NOW } })
-		expect.equal(profile.stats.coinsSpent, TOAST)
+		expect.equal(profile.pen.items[2].kind, "toast") -- it walks in the pen
+		expect.deepEqual(profile.shopLog, { { req = REQ_A, squishy = "toast", price = WELCOME, at = NOW } })
+		expect.equal(profile.stats.coinsSpent, WELCOME)
 		expect.equal(w.saves, 1)
 	end)
 
-	t.test(
-		"the same requestId replays the stored result with no second charge; owned answers charged = false",
-		function()
-			local w = setup()
-			local p, profile = readyPlayer(w, COINS)
-			ShopService.buy(p, "toast", TOAST, REQ_A)
-			w.clock.advance(5)
-			local replay = ShopService.buy(p, "toast", TOAST, REQ_A)
-			expect.deepEqual(replay, { ok = true, data = { squishyId = "toast", charged = true, savePending = false } })
-			local owned = ShopService.buy(p, "toast", TOAST, REQ_B)
-			expect.deepEqual(owned, { ok = true, data = { squishyId = "toast", charged = false, savePending = false } })
-			expect.equal(profile.coins, COINS - TOAST)
-			expect.equal(#profile.shopLog, 1)
-			expect.equal(w.saves, 1)
-		end
-	)
+	t.test("once owned, a Common costs its full price and buys a copy; a replay is never charged twice", function()
+		local w = setup()
+		local p, profile = readyPlayer(w, COINS)
+		ShopService.buy(p, "toast", WELCOME, REQ_A)
+		w.clock.advance(5)
+		local replay = ShopService.buy(p, "toast", WELCOME, REQ_A)
+		expect.deepEqual(replay, { ok = true, data = { squishyId = "toast", charged = true, savePending = false } })
+		expect.equal(profile.coins, COINS - WELCOME)
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_B), "shop.priceChanged") -- the Welcome price is used up
+		expect.equal(TOAST, 789_000)
+		local copy = ShopService.buy(p, "toast", TOAST, REQ_B)
+		expect.deepEqual(copy, { ok = true, data = { squishyId = "toast", charged = true, savePending = false } })
+		expect.equal(profile.coins, COINS - WELCOME - TOAST)
+		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
+		expect.equal(#profile.pen.items, 3) -- Kitty Bread and two Toasts
+		expect.equal(#profile.shopLog, 2)
+		expect.equal(w.saves, 2)
+	end)
 
 	t.test("refusals in order, each with charged = false and no Coin change", function()
 		local w = setup()
 		local p, profile = readyPlayer(w, COINS)
 		refused(ShopService.buy(p, "unicorn", 100, REQ_A), "net.invalid")
-		refused(ShopService.buy(p, "toast", TOAST, "not-a-guid"), "net.invalid")
+		refused(ShopService.buy(p, "toast", WELCOME, "not-a-guid"), "net.invalid")
 		refused(ShopService.buy(p, "kitty_bread", 0, REQ_A), "shop.notForSale")
-		refused(ShopService.buy(p, "toast", TOAST - 1, REQ_A), "shop.priceChanged")
-		refused(ShopService.buy(p, "toast", TOAST + 0.5, REQ_A), "shop.priceChanged")
-		refused(ShopService.buy(p, "toast", tostring(TOAST), REQ_A), "shop.priceChanged")
-		refused(ShopService.buy({ UserId = 2 }, "toast", TOAST, REQ_A), "data.notReady") -- no profile yet
+		refused(ShopService.buy(p, "toast", WELCOME - 1, REQ_A), "shop.priceChanged")
+		refused(ShopService.buy(p, "toast", WELCOME + 0.5, REQ_A), "shop.priceChanged")
+		refused(ShopService.buy(p, "toast", tostring(WELCOME), REQ_A), "shop.priceChanged")
+		refused(ShopService.buy(p, "toast", TOAST, REQ_A), "shop.priceChanged") -- not owned: the Welcome price is due
+		refused(ShopService.buy({ UserId = 2 }, "toast", WELCOME, REQ_A), "data.notReady") -- no profile yet
 		w.statuses[p] = "offline"
-		refused(ShopService.buy(p, "toast", TOAST, REQ_A), "data.notReady")
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_A), "data.notReady")
 		w.statuses[p] = "ready"
+		-- Pens3 phase 5: a full Toy Box, before any Coins move.
+		local items = profile.pen.items
+		for i = #items + 1, profile.pen.spots + PEN.toyBoxMax do
+			table.insert(items, { id = i, kind = "banana", form = 0, level = 1, coat = 0 })
+		end
+		profile.pen.nextId = #items + 1
+		profile.owned.banana = { at = 1, src = "box" }
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_A), "inventory.full")
+		table.remove(items) -- room for one again
 		w.pending[p] = true
-		refused(ShopService.buy(p, "toast", TOAST, REQ_A), "box.saving")
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_A), "box.saving")
 		w.pending[p] = nil
 		w.closing = true
-		refused(ShopService.buy(p, "toast", TOAST, REQ_A), "purchase.unavailable")
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_A), "purchase.unavailable")
 		w.closing = false
 		w.restart = true
-		refused(ShopService.buy(p, "toast", TOAST, REQ_A), "purchase.unavailable")
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_A), "purchase.unavailable")
 		w.restart = false
 		w.locked[p] = true
-		refused(ShopService.buy(p, "toast", TOAST, REQ_A), "inventory.lockedInDuel")
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_A), "inventory.lockedInDuel")
 		w.locked[p] = nil
-		profile.coins = TOAST - 1
-		refused(ShopService.buy(p, "toast", TOAST, REQ_A), "economy.notEnoughCoins")
-		expect.equal(profile.coins, TOAST - 1)
+		profile.coins = WELCOME - 1
+		refused(ShopService.buy(p, "toast", WELCOME, REQ_A), "economy.notEnoughCoins")
+		expect.equal(profile.coins, WELCOME - 1)
 		expect.equal(profile.owned.toast, nil)
 		expect.deepEqual(profile.shopLog, {})
+		expect.deepEqual(profile.giftQueue, {}) -- a buy never waits in the queue
 		expect.equal(w.saves, 0)
 	end)
 
@@ -209,12 +230,12 @@ return function(t: Context)
 			local w = setup()
 			local p, profile = readyPlayer(w, COINS)
 			w.saveResult = false
-			local result = ShopService.buy(p, "toast", TOAST, REQ_A)
+			local result = ShopService.buy(p, "toast", WELCOME, REQ_A)
 			expect.deepEqual(result, { ok = true, data = { squishyId = "toast", charged = true, savePending = true } })
 			expect.equal(profile.owned.toast ~= nil, true) -- the change stays in memory (§3.11)
 			w.clock.advance(5)
-			refused(ShopService.buy(p, "banana", BANANA, REQ_B), "box.saving")
-			expect.equal(profile.coins, COINS - TOAST)
+			refused(ShopService.buy(p, "banana", WELCOME, REQ_B), "box.saving")
+			expect.equal(profile.coins, COINS - WELCOME)
 		end
 	)
 
@@ -224,17 +245,17 @@ return function(t: Context)
 		local inner: any = nil
 		w.onSave = function(player: any)
 			if inner == nil then
-				inner = ShopService.buy(player, "banana", BANANA, REQ_B) -- arrives while the first awaits its save
+				inner = ShopService.buy(player, "banana", WELCOME, REQ_B) -- arrives while the first awaits its save
 			end
 		end
-		ShopService.buy(p, "toast", TOAST, REQ_A)
+		ShopService.buy(p, "toast", WELCOME, REQ_A)
 		refused(inner, "net.rateLimited")
 		w.clock.advance(0.5)
-		refused(ShopService.buy(p, "banana", BANANA, REQ_C), "net.rateLimited")
+		refused(ShopService.buy(p, "banana", WELCOME, REQ_C), "net.rateLimited")
 		w.clock.advance(0.5)
-		local ok = ShopService.buy(p, "banana", BANANA, REQ_C)
+		local ok = ShopService.buy(p, "banana", WELCOME, REQ_C)
 		expect.equal(ok.ok, true)
-		expect.equal(profile.coins, COINS - TOAST - BANANA)
+		expect.equal(profile.coins, COINS - 2 * WELCOME)
 	end)
 
 	t.test("shopLog keeps the newest Config.Data.caps.shopLog entries", function()
@@ -248,7 +269,7 @@ return function(t: Context)
 			)
 		end
 		profile.coins = COINS
-		ShopService.buy(p, "toast", TOAST, REQ_A)
+		ShopService.buy(p, "toast", WELCOME, REQ_A)
 		expect.equal(#profile.shopLog, cap)
 		expect.equal(profile.shopLog[cap].req, REQ_A)
 		expect.equal(profile.shopLog[1].at, 2)

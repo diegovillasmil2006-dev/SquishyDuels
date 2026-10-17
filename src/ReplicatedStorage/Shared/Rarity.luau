@@ -10,8 +10,8 @@
 --   Rarity.isValid(r)       -> boolean
 --   Rarity.compare(a, b)    -> number: < 0 when a ranks below b, 0 when equal, > 0 when above. Anything that is
 --                              not a rarity ranks below Common. Sort "rarity descending" with compare(x, y) > 0.
--- A duplicate box result's refund no longer depends on the rarity (spec 2026-10-12 §8): Pricing.duplicateRefund(boxId)
--- (Rarity.refund is gone).
+-- Rarity.refund is gone (spec 2026-10-12 §8); since pens3 phase 5 a duplicate box result is a copy for the pen, with no
+-- refund at all.
 
 local Types = require(script.Parent.Types)
 

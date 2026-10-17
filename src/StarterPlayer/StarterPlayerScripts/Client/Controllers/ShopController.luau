@@ -1,11 +1,11 @@
 --!strict
 -- ShopController (client only). DESIGN §11.6 (Shop screen), §6.6 (direct shop: the guaranteed Coin path to Dragon),
--- §11.5 (two-step spend confirm), §6.10 (the restricted "Shop squishies directly" shortcut), §6.11 (Robux: coin bundles
+-- §11.5 (two-step spend confirm), §6.10 (the "Shop squishies directly" shortcut), §6.11 (Robux: coin bundles
 -- off until real ids, no passes), §11.3 (states), §11.4 (focus, L1 / R1), §2.8 (ShopBuy, PromptCoinBundle),
 -- §18.5.2 / §18.6 (sounds), §12 (the server decides everything).
 -- The "shop" modal (lobby only; refused and closed from Matched through Returning by UIController). Opened by the HUD
--- Shop button, the HUD coin pill ({tab = "coins"}), the Squishies screen's "View in Shop" ({squishyId}), the Boxes
--- screen's restricted shortcut ({boxId}: only that box's items) and the shop counter's prompt
+-- Shop button, the HUD coin pill ({tab = "coins"}), the Squishies screen's "View in Shop" ({squishyId}), the box
+-- counter while the box check is unknown ({boxId}: only that box's items) and the shop counter's prompt
 -- (WorldBinder.registerStand("SD_ShopCounter")). Params: {tab = "squishies" | "coins", squishyId?, boxId?}
 -- (UI/ShopFormat.params).
 -- UI FINAL R6 (the Shop window = Diego's design, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line n;
@@ -14,22 +14,24 @@
 --   pill shows them, G6.1). The body (H:294): 330 | 1fr, gap 20, padding 20 / 24 / 24.
 -- * The featured card (H:295-312) is the selected squishy: the gold -> orange -> purple card with the rays, the two
 --   stars and the gem twinkling, the art 230 floating (tap it = Inspect, G6.7), the name (featuredName), the line
---   "{Rarity} · x{n} power" (FD4; AFFECTED 2026-10-15: the capsule power), and BUY (green, the coin 36 and the price,
---   pulsing) or the lilac OWNED bar. The LIMITED row, the Inspect button, "You got X!" and Equip now are not built
---   (UD5, G6.7: EQUIP stays one tap away in Squishies).
+--   "{Rarity} · x{n} power" (FD4; AFFECTED 2026-10-15: the capsule power; pens3 phase 5: and under it the Welcome
+--   price line, shop.welcomePrice, while it applies: a stand-in, calm, no timer), and BUY (green, the coin 36 and the
+--   price, pulsing; pens3 phase 5: also for a squishy you own, a copy) or the lilac OWNED bar (the free starter). The
+--   LIMITED row, the Inspect button, "You got X!" and Equip now are not built (UD5, G6.7: EQUIP stays one tap away in
+--   Squishies).
 -- * BUY (PR13): the first press opens the design's confirm dialog (UI/Components/ConfirmDialog: the squishy in the
 --   medallion, its name, "Balance after: {n}", CANCEL / BUY with the coin and the price), whose BUY sends
 --   NetController.invokeAsync("ShopBuy", id, price, requestId) with the Catalog price (compared only) and a GUID per buy,
 --   reused when the same buy is pressed again after a call that never reached the server's decision
 --   (ShopFormat.requestIdFor / buyOutcome). Short of Coins, BUY is the "off" BUY (P11: its price #FFB3BE, a press plays
 --   ui.error and the shake) and nothing opens (H:799, H:1020); the duel lock, a loading / OFFLINE / READONLY profile, a
---   pending save or another buy in flight disable it with the reason (ShopFormat.spendBlock).
+--   pending save, a full Toy Box (pens3 phase 5) or another buy in flight disable it with the reason
+--   (ShopFormat.spendBlock). The price is the entry's (Pricing.shopPrice: the Welcome price first, pens3 phase 5).
 -- * A real buy (H:867-871): the design's purchase burst and green ring at the dialog's BUY, the purchase sound (its
 --   fanfare's nearest, RL8), then the congrats overlay (UI/CongratsOverlay, in the dialog's layer above SD_Modal), its
 --   rain after 300 ms and the jolt (Config.UI.Fx.events.purchase); AWESOME! or a tap closes it. A pending save adds
---   the box.saving note; ok with charged = false -> Owned ("You already own this squishy. No Coins were spent.");
---   refusals show Strings.reasonText (common.noCoinsSpent only when charged == false). Coins are never shown or
---   granted locally: the HUD counts down on the StateDelta.
+--   the box.saving note; refusals (pens3 phase 5: inventory.full too) show Strings.reasonText (common.noCoinsSpent
+--   only when charged == false). Coins are never shown or granted locally: the HUD counts down on the StateDelta.
 -- * The right column (H:314): the box filter row ([All] [<box name>]) while a box filter is on, then the list:
 --   "SQUISHIES" (the sectionHead role, H:315) over the cards (Shop_Card_<id>: preview, name, rarity, the coin and the
 --   price / Owned / need Coins / Loading… / not for sale; sorted by rarity, price, name) and, only while a coin bundle
@@ -232,7 +234,6 @@ local detailOpen = false -- a phone shows the featured card instead of the list
 local coinsShown = false -- the COINS section is drawn (a bundle is offered)
 local buying: string? = nil -- the squishy a ShopBuy is running for
 local pendingRequest: ShopFormat.Pending? = nil
-local lastSuccess: string? = nil -- the squishy just bought (OWNED at once, before the StateDelta)
 local prices: { [string]: ShopFormat.PriceState } = {}
 local promptingKey: string? = nil
 local promptToken = 0
@@ -297,7 +298,7 @@ local function layoutDetail()
 	local border = FEATURED.border
 	local textWidth = math.max(1, l.featuredWidth - 2 * border - 2 * FEATURED.text.padX)
 	local nameHeight = Theme.textBounds(d.name.Text, "Found", nil, textWidth).Y
-	local lineHeight = Theme.textBounds(d.line.Text, "Small", nil, textWidth).Y
+	local lineHeight = Theme.textBoundsAt(d.line.Text, "Small", textWidth, UIController.scale()).Y
 	local placed = ShopFormat.featuredLayout(l.featuredHeight, nameHeight, lineHeight)
 	lastDetail = placed
 	d.well.Size = UDim2.new(1, 0, 0, placed.artArea)
@@ -328,18 +329,14 @@ local function refreshDetail(list: { ShopFormat.Entry })
 		d.icon:setCatalogId(entry.id)
 	end
 	d.name.Text = entry.name
-	d.line.Text = ShopFormat.featuredLine(entry.rarity, Catalog.getPower(entry.id))
-	local block = ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked())
+	local line = ShopFormat.featuredLine(entry.rarity, Catalog.getPower(entry.id))
+	d.line.Text = if entry.welcomeText then line .. "\n" .. entry.welcomeText else line
+	local block =
+		ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked(), StateController.get("pen"))
 	if block == nil and buying ~= nil and buying ~= entry.id then
 		block = Strings.common.loading -- another buy is still running (one in flight)
 	end
-	-- Just bought: OWNED shows at once, even before the StateDelta marks it owned.
-	local shown = entry
-	if lastSuccess == entry.id and not entry.owned then
-		shown = table.clone(entry)
-		shown.owned = true
-	end
-	local view = ShopFormat.featuredView(shown, block, buying)
+	local view = ShopFormat.featuredView(entry, block, buying)
 	lastView = view
 	local owned = view.mode == "owned"
 	d.owned.Visible = owned
@@ -689,9 +686,6 @@ local function setDetailOpen(open: boolean)
 end
 
 local function selectCard(id: string)
-	if selected ~= id then
-		lastSuccess = nil
-	end
 	selected = id
 	SoundController.play("ui.click")
 	refresh()
@@ -978,7 +972,6 @@ local function buySelected(id: string, price: number)
 	local requestId, pending = ShopFormat.requestIdFor(pendingRequest, id, price, newRequestId)
 	pendingRequest = pending
 	buying = id
-	lastSuccess = nil
 	refresh()
 	local result = NetController.invokeAsync(REMOTE_BUY, id, price, requestId)
 	buying = nil
@@ -989,7 +982,6 @@ local function buySelected(id: string, price: number)
 	local dialog = confirmDialog
 	local at: GuiObject? = if dialog then dialog.buy.root else nil
 	if outcome.kind == "success" then
-		lastSuccess = id
 		local name = if def then Strings.resolve(def.nameKey) or id else id
 		-- One sound per action (§18.5.2 B5): ui.purchase (§18.6; H:868 / H:871, RL8), then the congrats overlay.
 		SoundController.play(SOUND_PURCHASE)
@@ -1004,9 +996,6 @@ local function buySelected(id: string, price: number)
 		if outcome.savePending then
 			UIController.toast(Strings.reasonText("box.saving"), "info", { sound = false })
 		end
-	elseif outcome.kind == "owned" then
-		closeConfirm()
-		UIController.toast(outcome.text or Strings.common.owned, "info")
 	else
 		closeConfirm()
 		UIController.toast(outcome.text or Strings.error.generic, "warn", { sound = "ui.error" })
@@ -1018,7 +1007,8 @@ end
 local function openConfirm()
 	local id = selected
 	local def = if id then Catalog.get(id) else nil
-	local price = if def then def.shopPrice else nil
+	local entry = entryOf(currentEntries(), id)
+	local price = if entry then entry.price else nil -- pens3 phase 5: Pricing.shopPrice (the Welcome price first)
 	if id == nil or def == nil or price == nil or buying ~= nil or confirmDialog ~= nil then
 		return
 	end
@@ -1718,7 +1708,6 @@ function ShopController.debugState(): { [string]: any }
 		detailOpen = detailOpen,
 		visible = visible,
 		buying = buying,
-		lastSuccess = lastSuccess,
 		featured = if view then view.mode else nil,
 		confirmOpen = confirmDialog ~= nil,
 		congratsOpen = congrats ~= nil,
@@ -1754,7 +1743,6 @@ function ShopController.init()
 			if id and Catalog.isValidId(id) then
 				selected = id
 			end
-			lastSuccess = nil
 			-- A phone opened on a squishy ("View in Shop") shows its featured card; else the list.
 			detailOpen = id ~= nil and UIController.layoutClass() == "compact"
 			local oc = Cleanup.new()
@@ -1803,7 +1791,7 @@ function ShopController.init()
 	c:add(WorldBinder.registerStand(COUNTER_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { "coins", "owned", "equipped", "dataStatus", "monetization" } do
+	for _, field in { "coins", "owned", "equipped", "dataStatus", "monetization", "pen" } do
 		c:add(StateController.changed(field):connect(function()
 			ShopController.refresh()
 		end))
@@ -1849,8 +1837,7 @@ function ShopController.init()
 		panel, loadingLabel, filterRow, filterAll, filterBox = nil, nil, nil, nil, nil
 		frames, closeButton, backButton, panelLayout, lastDetail, lastView = nil, nil, nil, nil, nil, nil
 		gridLayout, packLayout, detail, cardLines, shownView = nil, nil, nil, nil, nil
-		tab, boxFilter, selected, buying, pendingRequest, lastSuccess =
-			ShopFormat.TAB_SQUISHIES, nil, nil, nil, nil, nil
+		tab, boxFilter, selected, buying, pendingRequest = ShopFormat.TAB_SQUISHIES, nil, nil, nil, nil
 		detailOpen, coinsShown = false, false
 	end)
 	log:debug("ready")

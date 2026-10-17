@@ -11,8 +11,8 @@
 --     loading (or once the session takes no more changes), inventory.notOwned for an unowned squishy; OFFLINE /
 --     READONLY may equip only the starter (no save); success sets profile.equipped (through DataService.mutate for a
 --     ready profile) and SD_Equipped, marks the state field, saves "soon", fires Equipped;
---   * duplicate hooks (§6.5): isDuplicate follows ownership, duplicateRefund(boxId) a quarter of the box price (spec
---     2026-10-12 §8);
+--   * duplicate hooks (§6.5): isDuplicate follows ownership (pens3 phase 5: a duplicate is a copy, so the refund hook
+--     is gone);
 --   * end to end through a real DataService core (memory store and FakeDataStore): the equipped choice survives a
 --     release and a reload on another server (acceptance 6, §13.3).
 
@@ -289,14 +289,13 @@ return function(t: Context)
 
 	-- Duplicate hooks (§6.5) ------------------------------------------------------------------------------------------
 
-	t.test("duplicate hooks follow ownership and the box's refund", function()
+	t.test("the duplicate hook follows ownership; copies left no refund hook (pens3 phase 5)", function()
 		local w = setup()
 		local player = fakePlayer("J")
 		withProfile(w, player, "ready", { "bird" })
 		expect.truthy(InventoryService.isDuplicate(player, "bird"))
 		expect.falsy(InventoryService.isDuplicate(player, "donut"))
-		expect.equal(InventoryService.duplicateRefund("sweet"), 112_500_000) -- 25% of 450,000,000
-		expect.equal(InventoryService.duplicateRefund("unicorn"), 0)
+		expect.equal((InventoryService :: any).duplicateRefund, nil)
 		player:Destroy()
 	end)
 

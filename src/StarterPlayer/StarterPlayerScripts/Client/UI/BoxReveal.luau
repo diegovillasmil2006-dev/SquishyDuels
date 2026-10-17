@@ -27,7 +27,8 @@
 -- 700 rings at (50%, 48%), 120 ms later reveal.<rarity> and the burst (30 + 12 x the rarity index pieces, PR18), then
 -- for Epic and Exclusive the rain once those pieces are gone. Every jolt for every rarity, only with Camera shake on
 -- (UiFx.jolt). The results (H:487-500) count from the burst: NEW! +.3 s (sdReveal), the name +.35, the rarity pill +.45
--- (mixed case, its own pill, G7.12), the duplicate line +.5 (with our refund, PR21), the buttons +.6 (EQUIP when the
+-- (mixed case, its own pill, G7.12), the duplicate line +.5 (PR21; pens3 phase 5: a copy, no Coins; measured at the
+-- drawn size, Theme.textBoundsAt, so its slot holds the drawn text), the buttons +.6 (EQUIP when the
 -- squishy is not equipped, AGAIN on a paid box, NICE!), the drag hint +1 s. Skip (PR21) is the reset pill's look,
 -- bottom right, from 0 ms.
 -- §9.15 (PR18): 1 viewport and at most Config.Vfx.Effects.boxRevealUiFrames animated UI frames: the rays picture, the
@@ -200,9 +201,12 @@ local function hsl(h: number, sat: number, l: number): Color3
 	return Color3.new(channel(h + 1 / 3), channel(h), channel(h - 1 / 3))
 end
 
-local function textSize(text: string, role: string, wrap: number?): Vector2
+-- `scale` (the layer's UIScale): measured at the drawn size (Theme.textBoundsAt).
+local function textSize(text: string, role: string, wrap: number?, scale: number?): Vector2
 	local kind = (Theme.Sticker.text[role] :: any).kind
-	local bounds = Theme.textBounds(text, kind, nil, wrap)
+	local bounds = if scale
+		then Theme.textBoundsAt(text, kind, wrap, scale)
+		else Theme.textBounds(text, kind, nil, wrap)
 	return Vector2.new(math.ceil(bounds.X) + 6, math.ceil(bounds.Y) + 2)
 end
 
@@ -213,9 +217,10 @@ local function roleLabel(
 	order: number,
 	text: string,
 	role: string,
-	wrap: number?
+	wrap: number?,
+	scale: number?
 ): (Frame, TextLabel)
-	local size = textSize(text, role, wrap)
+	local size = textSize(text, role, wrap, scale)
 	local slot: Frame = Create("Frame", {
 		Name = name,
 		BackgroundTransparency = 1,
@@ -978,8 +983,8 @@ function BoxReveal.start(spec: Spec): Run
 		local raritySlot = pill(resultBlock, "Rarity", 3, rarityText, R.rarityPill, base, base)
 		rise(raritySlot:FindFirstChild("Pose") :: GuiObject, UP_FRAMES, R.upMs, delays.rarityMs, R.upCurve)
 		if reveal.isDuplicate then
-			local text = BoxFormat.resultText(true, reveal.refund)
-			local _dupeSlot, dupeLabel = roleLabel(resultBlock, "Duplicate", 4, text, R.dupeRole, wrap)
+			local text = BoxFormat.resultText(true)
+			local _dupeSlot, dupeLabel = roleLabel(resultBlock, "Duplicate", 4, text, R.dupeRole, wrap, uiScale.Scale)
 			rise(dupeLabel, UP_FRAMES, R.dupeUpMs, delays.dupeMs, "ease")
 		end
 		if savePending then

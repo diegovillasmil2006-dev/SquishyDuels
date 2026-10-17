@@ -1,15 +1,19 @@
 --!strict
 -- ShopService (server only). DESIGN §2.3, §2.8 (ShopBuy), §3.4, §3.11, §6.6, §12 #3, #4, #6, #7, #14.
 -- Direct Coin purchases: every squishy with a Catalog shopPrice can be bought by every player (the guaranteed Coin
--- path to Dragon). The client sends only (squishyId, expectedPrice, requestId); the price is the Catalog's.
+-- path to Dragon). The client sends only (squishyId, expectedPrice, requestId); the price is the server's:
+-- Pricing.shopPrice(id, profile.owned) (pens3 phase 5: the Welcome price for the first of a Common, D1:202, else the
+-- Catalog shopPrice). An owned squishy is bought again as a copy (pens3 phase 5, copies).
 -- buy(p, squishyId, expectedPrice, requestId), in the §6.6 order:
 --   1. a Catalog id (and a GUID requestId), else net.invalid;
 --   2. shopPrice nil (the free starter) or a price disabled at boot -> shop.notForSale;
---   3. expectedPrice a whole Coin amount (Validate.coins: up to maxCoins, since prices reach 1.1T, spec 2026-10-12 §6)
---      equal to shopPrice, else shop.priceChanged (it is only compared, never charged);
+--   3. expectedPrice not a whole Coin amount (Validate.coins: up to maxCoins, since prices reach 1.1T) ->
+--      shop.priceChanged;
 --   4. no profile in memory yet -> data.notReady;
 --   5. shopLog.req == requestId -> the stored result (replay: no charge, charged = true as first answered);
---   6. already owned -> ok {charged = false} (shop.owned: "No Coins were spent" may show);
+--   6. expectedPrice ~= Pricing.shopPrice(id, owned) -> shop.priceChanged (it is only compared, never charged; checked
+--      after the replay because the price moves once the squishy is owned); then (pens3 phase 5, was "already owned
+--      -> ok {charged = false}") the Toy Box full (PenMath.room 0, D1:254-258) -> inventory.full;
 --   7. profile not READY -> data.notReady;
 --   8. a failed save pending -> box.saving (Reading: §3.11 blocks shop buys while savePending and §2.10 has no shop
 --      code for it; "Saving your collection…" is the right sentence);
@@ -37,6 +41,7 @@ local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local PenMath = require(Shared.PenMath)
 local Pricing = require(Shared.Pricing)
 local Types = require(Shared.Types)
 local Validate = require(Shared.Util.Validate)
@@ -54,7 +59,7 @@ export type ShopResult = Types.ShopResult
 
 export type Economy = {
 	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?),
-	grantSquishy: (player: any, id: string, source: string) -> { added: boolean, refund: number, refused: string? },
+	grantSquishy: (player: any, id: string, source: string) -> { added: boolean, refused: string? },
 	grantCoins: (player: any, amount: number, reason: string) -> (number, string?),
 }
 
@@ -87,6 +92,7 @@ local CODE_NOT_READY = "data.notReady"
 local CODE_SAVING = "box.saving"
 local CODE_UNAVAILABLE = "purchase.unavailable"
 local CODE_LOCKED = "inventory.lockedInDuel"
+local CODE_FULL = "inventory.full" -- pens3 phase 5: the Toy Box is full
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
 local CODE_GENERIC = "error.generic"
 
@@ -174,14 +180,13 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 		return refuse(CODE_INVALID)
 	end
 	local id = def.id
-	local price = def.shopPrice
-	if price == nil or disabled[id] ~= nil then
+	if def.shopPrice == nil or disabled[id] ~= nil then
 		return refuse(CODE_NOT_FOR_SALE)
 	end
-	if Validate.coins(expectedPrice) == nil or expectedPrice ~= price then
+	if Validate.coins(expectedPrice) == nil then
 		return refuse(CODE_PRICE_CHANGED)
 	end
-	-- 4-6: replay and ownership (the stored state is the idempotency key, §3.4)
+	-- 4-6: replay, this player's price and the room (the stored state is the idempotency key, §3.4)
 	local data = d.data
 	local profile = data.getProfile(player)
 	if type(profile) ~= "table" then
@@ -192,9 +197,12 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 		local stored = if type(prior.squishy) == "string" then prior.squishy else id
 		return NetService.ok(resultFrom(stored, true, data.savePending(player)))
 	end
-	local owned = profile.owned
-	if type(owned) == "table" and owned[id] ~= nil then
-		return NetService.ok(resultFrom(id, false, data.savePending(player)))
+	local price = Pricing.shopPrice(id, profile.owned) :: number -- sold (step 2), so never nil
+	if expectedPrice ~= price then
+		return refuse(CODE_PRICE_CHANGED)
+	end
+	if PenMath.room(profile.pen) <= 0 then
+		return refuse(CODE_FULL)
 	end
 	-- 7-10: context gates
 	if data.status(player) ~= STATUS_READY then
@@ -228,8 +236,8 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 	lastChargeAt[player] = d.clock()
 	local grant = d.economy.grantSquishy(player, id, SOURCE_SHOP)
 	if grant.refused ~= nil or not grant.added then
-		-- Cannot happen after a successful spend in the same step (the id is valid and not owned); never keep Coins
-		-- for nothing: the spend is given back.
+		-- Cannot happen after a successful spend in the same step (the id is valid and the room was checked); never
+		-- keep Coins for nothing: the spend is given back.
 		log:error(`buy {id}: the squishy could not be granted ({tostring(grant.refused)}); refunding {price}`)
 		d.economy.grantCoins(player, price, REASON_REFUND)
 		return refuse(CODE_GENERIC)

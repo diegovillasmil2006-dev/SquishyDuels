@@ -1,31 +1,29 @@
 --!strict
 -- Pricing: the price rules that tie the shop to the boxes (DESIGN §6.5, §6.6). Shared (Config.validate, server
--- BoxService / ShopService / EconomyService, client screens). Pure; no instances, no yields.
+-- ShopService, client screens). Pure; no instances, no yields.
 --
 -- API:
 --   Pricing.ceiling(id)             -> number?: floor(min over the paid boxes containing `id` of cost × 10000 / weight),
---                                      the expected box spend for that squishy (spec 2026-10-12 §8: Commons 750,000,
---                                      Uncommons 3,000,000, Epics 4,504,504,504, Dragon 1,125,000,000,000); nil when
---                                      no paid box contains it (Kitty Bread). Config.validate checks every Catalog
---                                      shopPrice <= its ceiling (Roblox's "direct purchase priced on expected value"
---                                      alternative, §6.6).
---   Pricing.duplicateRefund(boxId)  -> Coins for a duplicate result of that box (spec 2026-10-12 §8):
---                                      floor(price × Config.Economy.DuplicateRefund.percent / 100) under DuplicatePolicy
---                                      "refund", where a free box (no cost: the day-7 Treat Box) counts the price of the
---                                      DuplicateRefund.freeBoxPriceOf box (Snack 37,500, Sweet 112,500,000, Treat
---                                      37,500); 0 for an unknown box, a non-string or another policy.
+--                                      the expected box spend for that squishy (pens3 phase 5: Commons 789,473, Butter
+--                                      and Chocolate 1,875,000, Mochi Fox and Strawberry Frog 3,750,000, Epics
+--                                      1,800,720,288, Dragon 1,125,000,000,000); nil when no paid box contains it
+--                                      (Kitty Bread). Config.validate checks every Catalog shopPrice <= its ceiling
+--                                      (Roblox's "direct purchase priced on expected value" alternative, §6.6).
+--   Pricing.shopPrice(id, owned)    -> number?: what the shop charges for `id` now (pens3 phase 5, D1:202): the Welcome
+--                                      price (Config.Economy.Pen.welcomePrice[rarity], Commons 3,000) while `owned`
+--                                      (profile.owned) has no entry for it, else the Catalog shopPrice; nil when it is
+--                                      not sold. `owned` that is not a table pays the full price (fail closed).
+--                                      Config/ValidatePen keeps every Welcome price at or below the shopPrice.
+-- Pens3 phase 5: copies replaced the duplicate refund (Pricing.duplicateRefund is gone).
 --
 -- Integer math only: floor(a / b) of whole numbers is (a // b), and the floor of a minimum is the minimum of the
--- floors, so no float noise can move a ceiling or a refund by one Coin.
+-- floors, so no float noise can move a ceiling by one Coin.
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
 local Boxes = require(script.Parent.Boxes)
+local Catalog = require(script.Parent.Catalog)
 local Config = require(script.Parent.Config)
-
--- Constants
-
-local PERCENT = 100
 
 -- Module table
 
@@ -51,22 +49,17 @@ function Pricing.ceiling(id: string): number?
 	return best
 end
 
-function Pricing.duplicateRefund(boxId: unknown): number
-	local economy = Config.Economy
-	local box = Boxes.get(boxId)
-	if economy.DuplicatePolicy ~= "refund" or box == nil then
-		return 0
+function Pricing.shopPrice(id: unknown, owned: unknown): number?
+	local def = Catalog.get(id)
+	local price = if def then def.shopPrice else nil
+	if def == nil or price == nil then
+		return nil
 	end
-	local refund = economy.DuplicateRefund
-	local price = box.cost
-	if price == nil then
-		local priced = Boxes.get(refund.freeBoxPriceOf)
-		price = if priced then priced.cost else nil
+	local welcome = Config.Economy.Pen.welcomePrice[def.rarity]
+	if welcome ~= nil and type(owned) == "table" and (owned :: any)[def.id] == nil then
+		return welcome
 	end
-	if type(price) ~= "number" then
-		return 0
-	end
-	return (price * refund.percent) // PERCENT
+	return price
 end
 
 return table.freeze(Pricing)

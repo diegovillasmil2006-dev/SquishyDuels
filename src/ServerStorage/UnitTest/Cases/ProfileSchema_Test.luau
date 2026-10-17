@@ -33,7 +33,11 @@
 --     owned; nextId above every id; a pen past toyBoxMax + placedMax kept whole and logged; JSON round trip unchanged;
 --   * pens3 phase 4: pen.awayRate (the pen's rate at the last save) joined the same way: defaults 0, an older pen gets
 --     0 from reconcile (no problem), a saved rate is kept, and sanitize turns a non-finite, negative or non-number
---     rate into 0 (logged; fails closed: no away Coins).
+--     rate into 0 (logged; fails closed: no away Coins);
+--   * pens3 phase 5: giftQueue {}, boxOrder {snack = 0, sweet = 0} and gifts {frog = false} joined the same way (an
+--     older profile gets them from reconcile, no problem; saved values survive JSON); sanitize keeps only Catalog kinds
+--     in the queue, in order (a long queue is all kept and logged), makes each paid box's count a whole number >= 0
+--     (other keys kept), and fails closed on gifts (a broken flag or table counts every gift as given).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -156,6 +160,9 @@ return function(t: Context)
 		expected.stats.winStreak = 0 -- Match HUD M2: the same
 		expected.autoClick = { step = 0, at = 0 } -- auto-clicker check (2026-10-16): the same
 		expected.weekly = { week = -1, active = {} } -- weekly quests (2026-10-17): the same
+		expected.giftQueue = {} -- pens3 phase 5: the same
+		expected.boxOrder = { snack = 0, sweet = 0 }
+		expected.gifts = { frog = false }
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
 		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") }, awayRate = 0 }
 		for _, kind in { "banana", "toast" } do
@@ -213,6 +220,10 @@ return function(t: Context)
 		expect.deepEqual(d.autoClick, { step = 0, at = 0 }) -- auto-clicker check (2026-10-16): no strike
 		-- Pens3 phase 1: Kitty Bread walks in the 3 free spots.
 		expect.deepEqual(d.pen, { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") }, awayRate = 0 })
+		-- Pens3 phase 5: no gift waiting, no fixed-order box opened, the Frog gift still to come.
+		expect.deepEqual(d.giftQueue, {})
+		expect.deepEqual(d.boxOrder, { snack = 0, sweet = 0 })
+		expect.deepEqual(d.gifts, { frog = false })
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -901,4 +912,106 @@ return function(t: Context)
 			expect.equal(garbage.awayRate, 0)
 		end
 	)
+
+	-- Pens3 phase 5 (copies): the gift queue, the fixed box orders, the gifts given ----------------------------------
+
+	-- The sanitize notes whose path starts with `prefix`.
+	local function notesAbout(problems: { string }, prefix: string): number
+		local count = 0
+		for _, problem in problems do
+			if string.sub(problem, 1, #prefix) == prefix then
+				count += 1
+			end
+		end
+		return count
+	end
+
+	t.test(
+		"giftQueue, boxOrder and gifts join schema 2 without a new version: an older profile gets them, no problem",
+		function()
+			expect.equal(ProfileSchema.CURRENT, 2)
+			local older = load(FIXTURE_V1).profile :: any
+			older.giftQueue, older.boxOrder, older.gifts = nil, nil, nil -- a v2 profile saved before phase 5
+			local result = load(older)
+			expect.equal(result.fromVersion, 2)
+			expect.equal(result.migrated, false)
+			expect.deepEqual(result.problems, {})
+			expect.deepEqual(result.profile.giftQueue, {})
+			expect.deepEqual(result.profile.boxOrder, { snack = 0, sweet = 0 })
+			expect.deepEqual(result.profile.gifts, { frog = false })
+			-- Saved values stay, through JSON too.
+			local HttpService = game:GetService("HttpService")
+			local kept = load(FIXTURE_V1).profile :: any
+			kept.giftQueue = { "strawberry_frog", "bird" }
+			kept.boxOrder = { snack = 11, sweet = 2_500 }
+			kept.gifts = { frog = true }
+			local again = load(HttpService:JSONDecode(HttpService:JSONEncode(kept)))
+			expect.deepEqual(again.problems, {})
+			expect.deepEqual(again.profile.giftQueue, { "strawberry_frog", "bird" })
+			expect.deepEqual(again.profile.boxOrder, { snack = 11, sweet = 2_500 })
+			expect.deepEqual(again.profile.gifts, { frog = true })
+		end
+	)
+
+	t.test(
+		"sanitize giftQueue: only Catalog kinds stay, in order; not a list fixed; a long queue kept, logged",
+		function()
+			local function fixedQueue(value: any): ({ string }, { string })
+				local profile = load(FIXTURE_V1).profile :: any
+				profile.giftQueue = value
+				local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+				return fixed.giftQueue, problems
+			end
+			local queue, problems = fixedQueue({ "toast", "unicorn", 5 :: any, "bird" })
+			expect.deepEqual(queue, { "toast", "bird" }) -- a kind gone or not a kind is dropped (none is owned yet)
+			expect.equal(notesAbout(problems, "giftQueue"), 3) -- each drop, and the new length
+			local garbage, garbageProblems = fixedQueue("frog")
+			expect.deepEqual(garbage, {})
+			expect.equal(notesAbout(garbageProblems, "giftQueue"), 1)
+			local notAList: any = { "toast", "banana" }
+			notAList.x = "bird" -- a key outside the list part (only a bug or a hand edit makes one)
+			local mixed = fixedQueue(notAList)
+			expect.deepEqual(mixed, { "toast", "banana" })
+			-- More than giftQueueMax can only come from a bug: every one is kept (squishies someone was given).
+			local long: { string } = {}
+			for _ = 1, Config.Economy.Pen.giftQueueMax + 2 do
+				table.insert(long, "toast")
+			end
+			local kept, longProblems = fixedQueue(long)
+			expect.equal(#kept, Config.Economy.Pen.giftQueueMax + 2)
+			expect.equal(notesAbout(longProblems, "giftQueue (over giftQueueMax, all kept)"), 1)
+			-- A good queue is not touched.
+			local good, goodProblems = fixedQueue({ "toast", "toast", "dragon" })
+			expect.deepEqual(good, { "toast", "toast", "dragon" })
+			expect.equal(notesAbout(goodProblems, "giftQueue"), 0)
+		end
+	)
+
+	t.test("sanitize boxOrder: a whole number >= 0 per paid box (broken -> 0, logged); other keys kept", function()
+		local profile = load(FIXTURE_V1).profile :: any
+		profile.boxOrder = { snack = 7.9, sweet = -3, mystery = 4 }
+		local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+		expect.deepEqual(fixed.boxOrder, { snack = 7, sweet = 0, mystery = 4 })
+		expect.equal(notesAbout(problems, "boxOrder"), 2)
+		profile.boxOrder = { snack = 0 / 0, sweet = "12" }
+		fixed = ProfileSchema.sanitize(profile, { now = NOW })
+		expect.deepEqual(fixed.boxOrder, { snack = 0, sweet = 0 })
+		profile.boxOrder = "garbage"
+		fixed = ProfileSchema.sanitize(profile, { now = NOW })
+		expect.deepEqual(fixed.boxOrder, { snack = 0, sweet = 0 })
+	end)
+
+	t.test("sanitize gifts: fail closed, a broken flag or a broken table counts every gift as given", function()
+		local profile = load(FIXTURE_V1).profile :: any
+		profile.gifts = { frog = "yes", [3] = true }
+		local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+		expect.deepEqual(fixed.gifts, { frog = true }) -- never given twice
+		expect.equal(notesAbout(problems, "gifts"), 2)
+		profile.gifts = "garbage"
+		fixed = ProfileSchema.sanitize(profile, { now = NOW })
+		expect.deepEqual(fixed.gifts, { frog = true })
+		profile.gifts = { frog = false }
+		local _, clean = ProfileSchema.sanitize(profile, { now = NOW })
+		expect.equal(notesAbout(clean, "gifts"), 0)
+	end)
 end

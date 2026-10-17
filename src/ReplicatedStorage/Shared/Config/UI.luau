@@ -773,8 +773,8 @@ local UI = {
 	-- stillCheckingSeconds shows box.stillChecking; the outcome then arrives with the next StateDelta.
 	Boxes = {
 		stillCheckingSeconds = 10, -- [P]
-		-- Reading (Part 7 review fix, §9.11 "no fake-outs"): StateController hides a new box result (the duplicate
-		-- refund in the Coins, the new squishy in owned) until its reveal reaches the result; a reveal that has not
+		-- Reading (Part 7 review fix, §9.11 "no fake-outs"): StateController hides a new box result (the new squishy in
+		-- owned; pens3 phase 5: no refund any more) until its reveal reaches the result; a reveal that has not
 		-- played after this many seconds (e.g. queued behind another result left open) shows its result anyway.
 		revealHoldMaxSeconds = 30,
 		-- UI FINAL R7 (plan work/ui/PLAN.md R7; `H:n` = "Squishy Duels HUD.dc.html" line n, `stage:n` = its
@@ -782,7 +782,7 @@ local UI = {
 		-- selected card 2fr, the others 1fr, never narrower than minFr, else the row scrolls sideways), the design's
 		-- card (H:264-278), its odds rows (H:270-272), toy tiles (H:273-274), OPEN (H:276-278) and the stats well of the
 		-- selected card (H:236; PR20: §6.10 items 3-6, one row per item: the toy tile, the name, the pill, the exact
-		-- percent, Owned, the refund line, Inspect). The plate shrinks with a short body (never under plateMin, else it
+		-- percent, Owned, Inspect). The plate shrinks with a short body (never under plateMin, else it
 		-- hides) and the tiles drop when they do not fit (readings).
 		body = { gap = 20, padTop = 22, padSide = 24, padBottom = 26, minFr = 210 }, -- H:262
 		card = {
@@ -825,7 +825,6 @@ local UI = {
 			priceAlpha = 0.45,
 			coin = 28,
 			priceRole = "boxPrice", -- H:278: 19 px, stroke 4
-			shopIcon = 28, -- PR22: img.nav.shop in the coin's place
 			freeRole = "confirmDesc", -- FD5: the Treat Box's box.freeOnly line in OPEN's place
 		},
 		well = { gap = 12, border = 4, radius = 18, inset = { px = 3, alpha = 0.3 }, pad = 10, rowGap = 8 }, -- H:236

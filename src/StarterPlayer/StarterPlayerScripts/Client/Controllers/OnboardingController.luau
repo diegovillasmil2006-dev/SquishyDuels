@@ -171,6 +171,7 @@ local function context(): OnboardingFormat.Context
 		ready = StateController.isProfileReady(),
 		replay = replay,
 		coins = StateController.coins(),
+		owned = StateController.owned(), -- pens3 phase 5: the firstBox goal is this player's cheapest price
 		input = inputKind(),
 		unavailable = unavailable(),
 	}

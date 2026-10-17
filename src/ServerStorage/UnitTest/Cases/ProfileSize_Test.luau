@@ -6,7 +6,8 @@
 -- onboarding step, the v2 Grip block,
 -- an old save's 4 capsules at the top level (unknown since pens3 phase 2), a full pen (pens3 phase 1: toyBoxMax +
 -- placedMax = 71 items, each Rainbow Galaxy at the top level with an id near 2^53; phase 4: its awayRate a large
--- fractional Coins a second), and long worst-case values
+-- fractional Coins a second; phase 5: a full gift queue of giftQueueMax of the longest kind ids, both fixed box
+-- orders at 2^53, the Frog gift given), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -155,6 +156,18 @@ return function(t: Context)
 				coat = #pen.coatMult - 1,
 			})
 		end
+		-- Pens3 phase 5: every gift a full Toy Box can hold back, each the longest kind id; both box orders at 2^53.
+		local longest = ""
+		for _, def in defs do
+			if #def.id > #longest then
+				longest = def.id
+			end
+		end
+		p.giftQueue = table.create(pen.giftQueueMax, longest)
+		for id in p.boxOrder do
+			p.boxOrder[id] = BIG_COUNTER
+		end
+		p.gifts.frog = true
 		return p
 	end
 
@@ -190,6 +203,9 @@ return function(t: Context)
 		expect.equal(decoded.grip.total, p.grip.total)
 		expect.deepEqual(decoded.capsules, p.capsules)
 		expect.deepEqual(decoded.pen, p.pen) -- pens3 phase 1: 71 items, ids near 2^53, exact (phase 4: awayRate too)
+		expect.equal(#decoded.giftQueue, Config.Economy.Pen.giftQueueMax) -- pens3 phase 5: the full queue
+		expect.deepEqual(decoded.boxOrder, p.boxOrder)
+		expect.deepEqual(decoded.gifts, { frog = true })
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

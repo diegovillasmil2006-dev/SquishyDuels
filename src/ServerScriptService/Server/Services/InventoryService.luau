@@ -16,9 +16,8 @@
 --   Success sets profile.equipped and SD_Equipped, marks the state field and fires Equipped(p, id, oldId).
 -- * Loaded / status changes: the profile's choice (sanitized) becomes SD_Equipped; a ready profile whose choice is not
 --   owned or unknown is corrected to the starter (§3.3).
--- * Duplicate policy hooks (§6.5): isDuplicate(p, id) and duplicateRefund(boxId) for the box flow (Part 7; a refund
---   is a share of the box price since spec 2026-10-12 §8); the policy itself is EconomyService.duplicateRefund (the one
---   writer of Coins and ownership).
+-- * Duplicate policy hook (§6.5): isDuplicate(p, id) (owned already). Pens3 phase 5: a duplicate is one more copy in
+--   the pen (EconomyService.grantSquishy, the one writer of Coins and ownership), so duplicateRefund is gone.
 -- Collaborators are reached through `deps` (useDeps in tests; the defaults use StateService.dataPort()). A player who
 -- left is never tracked again (a late StatusChanged, e.g. from a failed final save, would otherwise leave an entry).
 
@@ -32,7 +31,6 @@ local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Log = require(Shared.Util.Log)
 local Signal = require(Shared.Util.Signal)
-local EconomyService = require(script.Parent.EconomyService)
 local NetService = require(script.Parent.NetService)
 local StateService = require(script.Parent.StateService)
 
@@ -193,14 +191,9 @@ function InventoryService.getEquipped(player: any): string
 	return equippedByPlayer[player] or Catalog.starterId()
 end
 
--- §6.5 hooks for the box flow: is this squishy a duplicate for the player, and what does a duplicate from that box
--- refund.
+-- §6.5 hook for the box flow: is this squishy a duplicate (a copy) for the player.
 function InventoryService.isDuplicate(player: any, id: string): boolean
 	return InventoryService.owns(player, id)
-end
-
-function InventoryService.duplicateRefund(boxId: string): number
-	return EconomyService.duplicateRefund(boxId)
 end
 
 -- Equips `id` (EquipSquishy, §2.8: Result<nil>). Returns NetService.ok() or NetService.err(code). Never yields.

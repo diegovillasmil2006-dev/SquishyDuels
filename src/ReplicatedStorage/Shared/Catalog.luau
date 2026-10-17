@@ -5,8 +5,9 @@
 -- anywhere else. All numbers are [P]. Box membership and odds live in Boxes.luau, prices are checked against box
 -- odds by Pricing.luau, the throw power budget is checked by server Logic/PowerBudget (§5.8), and the cross-checks
 -- (bands, rarities, ultimate ids, starter, Strings keys) run in Config.validate().
--- Shop prices follow the squishy ladder of spec 2026-10-12 §6 (Commons 10K, Uncommons 2.7M, Epics 1.7B, Dragon 1.1T;
--- were 1,200 / 2,500 / 7,500 / 25,000), each under its box ceiling (Pricing.ceiling).
+-- Shop prices are ECONOMY_V3:163's (pens3 phase 5: Commons 789K, Butter and Chocolate 1.875M, Mochi Fox and Strawberry
+-- Frog 3.75M, Epics 1.8B, Dragon 1.1T; were the spec 2026-10-12 §6 ladder 10K / 2.7M / 1.7B / 1.1T), each at most its
+-- box ceiling (Pricing.ceiling); the first of each Common costs the Welcome price instead (Pricing.shopPrice).
 --
 -- API:
 --   Catalog.get(id)              -> SquishyDef? (nil for an unknown id or a non-string)
@@ -62,7 +63,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.toast.name",
 		rarity = "Common",
 		blueprintId = "toast",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 		throw = { speed = 105, gravity = 25, radius = 0.8, cooldown = 1.05, windup = 0.18 },
 		eliminationEffectId = "standard",
 		visuals = { flightSpin = "roll", accent = "#C9853F" },
@@ -75,7 +76,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.banana.name",
 		rarity = "Common",
 		blueprintId = "banana",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 		throw = { speed = 88, gravity = 50, radius = 1.2, cooldown = 0.95, windup = 0.18 },
 		eliminationEffectId = "standard",
 		visuals = { flightSpin = "roll", accent = "#FFE066" },
@@ -88,7 +89,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.butter.name",
 		rarity = "Uncommon",
 		blueprintId = "butter",
-		shopPrice = 2_700_000,
+		shopPrice = 1_875_000, -- the Pricing.ceiling (pens3 phase 5)
 		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 },
 		eliminationEffectId = "standard",
 		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#FFD86B" }, -- Ribbon (gold)
@@ -101,7 +102,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.chocolate.name",
 		rarity = "Uncommon",
 		blueprintId = "chocolate",
-		shopPrice = 2_700_000,
+		shopPrice = 1_875_000, -- the Pricing.ceiling (pens3 phase 5)
 		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 },
 		eliminationEffectId = "standard",
 		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#7A4632" }, -- Ribbon (cocoa)
@@ -114,7 +115,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.bird.name",
 		rarity = "Epic",
 		blueprintId = "bird",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 },
 		ultimateId = "flock_volley", -- spec phase 5: the design's Epic ultimate (ults.js:3), paid for out of the budget
 		eliminationEffectId = "feather_storm", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
@@ -128,7 +129,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.donut.name",
 		rarity = "Epic",
 		blueprintId = "donut",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 		throw = { speed = 92, gravity = 38, radius = 1.3, cooldown = 1.00, windup = 0.19 },
 		ultimateId = "sprinkle_roller", -- spec phase 5 (ults.js:4)
 		eliminationEffectId = "sprinkle_blast", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
@@ -158,7 +159,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.bobaBear.name",
 		rarity = "Common",
 		blueprintId = "boba_bear",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 		throw = { speed = 95, gravity = 35, radius = 1.0, cooldown = 1.00, windup = 0.18 }, -- = kitty_bread
 		eliminationEffectId = "standard",
 		visuals = { flightSpin = "wobble", accent = "#B07A52" },
@@ -171,7 +172,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.pancakePup.name",
 		rarity = "Common",
 		blueprintId = "pancake_pup",
-		shopPrice = 10_000,
+		shopPrice = 789_000,
 		throw = { speed = 105, gravity = 25, radius = 0.8, cooldown = 1.05, windup = 0.18 }, -- = toast
 		eliminationEffectId = "standard",
 		visuals = { flightSpin = "roll", accent = "#C8752A" },
@@ -184,7 +185,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.mochiFox.name",
 		rarity = "Uncommon",
 		blueprintId = "mochi_fox",
-		shopPrice = 2_700_000,
+		shopPrice = 3_750_000, -- the Pricing.ceiling (pens3 phase 5; Rare-to-be, phase 22)
 		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = butter
 		eliminationEffectId = "standard",
 		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#F39A4C" },
@@ -197,7 +198,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.strawberryFrog.name",
 		rarity = "Uncommon",
 		blueprintId = "strawberry_frog",
-		shopPrice = 2_700_000,
+		shopPrice = 3_750_000, -- the Pricing.ceiling (pens3 phase 5; Rare-to-be, phase 22)
 		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = chocolate
 		eliminationEffectId = "standard",
 		-- The design's trail start: the body red (#EE4A5C) is too near the reserved Danger red (splat red guard).
@@ -211,7 +212,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.cloudBunny.name",
 		rarity = "Epic",
 		blueprintId = "cloud_bunny",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 }, -- = bird
 		ultimateId = "rain_check", -- spec phase 5 (ults.js:5)
 		eliminationEffectId = "cloudburst", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)
@@ -225,7 +226,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.cupcakeAxolotl.name",
 		rarity = "Epic",
 		blueprintId = "cupcake_axolotl",
-		shopPrice = 1_700_000_000,
+		shopPrice = 1_800_000_000,
 		throw = { speed = 92, gravity = 38, radius = 1.3, cooldown = 1.00, windup = 0.19 }, -- = donut
 		ultimateId = "bubble_pop", -- spec phase 5 (ults.js:6)
 		eliminationEffectId = "bubble_burst", -- kill banners 2026-10-16: its own kill set (Art/KillStyle)

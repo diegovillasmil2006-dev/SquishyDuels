@@ -4,14 +4,19 @@
 -- confirm), §2.10 / §11.3 ("No Coins were spent" only when charged = false), §3.11 (spends blocked while savePending).
 -- What ShopController shows, as plain data (no instances, no services beyond the shared modules):
 --   TABS / params(raw) / nextTab(tab, dir)  "squishies" | "coins"; open params {tab?, squishyId?, boxId?} cleaned up
---   cardState(price, owned, coins, buying)  owned / notSold / purchasing / needCoins / buy, and the missing Coins
+--   cardState(price, owned, coins, buying)  owned (the free starter) / notSold / purchasing / needCoins / buy, and the
+--                                           missing Coins
 --   entries(defs, owned, coins, buying, onlyIds?)  one entry per Catalog squishy (only the box's items when a box
---                                           filter is on), sorted: rarity, then price, then name (before)
+--                                           filter is on), sorted: rarity, then price, then name (before); pens3
+--                                           phase 5: the price is Pricing.shopPrice(id, owned) (the Welcome price of a
+--                                           Common not owned yet, with its shop.welcomePrice line `welcomeText`; no
+--                                           timer, it never runs out), and an owned squishy is bought again as a copy
 --   boxItemIds(boxId)                       the set of squishy ids in a box (Boxes.get(boxId).items), nil if unknown
 --   keepSelection(selected, entries)        the selection while it is still listed, else the first entry
 --   priceText(price) / cardStatusText(e)    "1,200 Coins"; the card's status line for each state
---   spendBlock(dataStatus, locked)          the reason text that disables Buy (duel lock, data not ready, save pending)
---   buyOutcome(result)                      what one ShopBuy Result means for the screen (success / owned / failed)
+--   spendBlock(dataStatus, locked, pen?)    the reason text that disables Buy (duel lock, data not ready, save pending,
+--                                           pens3 phase 5: the Toy Box full)
+--   buyOutcome(result)                      what one ShopBuy Result means for the screen (success / failed)
 --   requestIdFor(pending, id, price, newId) the request id of a buy press: a retry of the same buy after an answer
 --                                           that never reached the server reuses it (§3.4 idempotency)
 --   bundlesAllowed(gripCfg) / robuxText(p) / coinsView(offered, bundles, prices, allowed)  the Coins tab
@@ -36,14 +41,16 @@
 --   featuredLine(rarity, power) / featuredView(entry, block, buying)   the line under the name (H:309, FD4) and what
 --                                           the featured card's button shows: BUY with the price, the "off" BUY
 --                                           when the Coins are short (P11), BUY disabled with a reason, the
---                                           spinner while buying, or OWNED (H:311)
+--                                           spinner while buying, or OWNED (H:311; the free starter only)
 -- Readings (DESIGN is silent):
 -- * Sort: rarity ascending (Common first), then shop price ascending (not sold last), then name: the cheapest way in
 --   first. The Squishies screen sorts rarity descending; the shop is a price list.
--- * Card priority: owned > not sold > purchasing > need Coins > buy (a not-sold squishy you own reads "Owned").
+-- * Card priority: owned (not sold) > not sold > purchasing > need Coins > buy (a not-sold squishy you own reads
+--   "Owned"; pens3 phase 5: a sold one you own is bought again as a copy).
 -- * Buy is disabled while the duel lock holds (common.lockedInDuel), while the profile loads (common.loading), is
 --   OFFLINE / READONLY (reason.data.offline / readOnly: §11.3 "purchases disabled"), or a save is pending
---   (reason.box.saving, §3.11; the server refuses the same with box.saving).
+--   (reason.box.saving, §3.11; the server refuses the same with box.saving), or (pens3 phase 5) the Toy Box is full
+--   (reason.inventory.full, PenMath.room 0; no pen state yet = not known, the server decides).
 -- * A ShopBuy Result with ok = false and no `charged` never reached the server's decision (a local refusal, a
 --   timeout or a lost reply), so the next press of the same buy at the same price reuses its request id: if the first
 --   one did go through, the server replays its stored result instead of charging twice. Every server refusal carries
@@ -63,6 +70,8 @@ local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local PenMath = require(Shared.PenMath)
+local Pricing = require(Shared.Pricing)
 local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
@@ -84,19 +93,20 @@ export type Entry = {
 	def: Types.SquishyDef,
 	name: string,
 	rarity: Types.Rarity,
-	price: number?, -- Catalog shopPrice; nil = not sold
+	price: number?, -- Pricing.shopPrice(id, owned) (pens3 phase 5: the Welcome price first); nil = not sold
 	owned: boolean,
 	state: CardState,
 	missing: number, -- Coins still missing (needCoins only; else 0)
+	welcomeText: string?, -- pens3 phase 5: shop.welcomePrice while the Welcome price applies (D1:202)
 }
 
-export type OutcomeKind = "success" | "owned" | "failed"
+export type OutcomeKind = "success" | "failed"
 
 export type Outcome = {
 	kind: OutcomeKind,
-	squishyId: string?, -- from the server's data (success / owned)
+	squishyId: string?, -- from the server's data (success)
 	savePending: boolean, -- success, but the awaited save failed (box.saving)
-	text: string?, -- the toast text of an owned / failed outcome
+	text: string?, -- the toast text of a failed outcome
 	retry: boolean, -- failed without reaching the server's decision: keep the request id for the next press
 }
 
@@ -213,7 +223,8 @@ end
 -- Public: tabs and params ------------------------------------------------------------------------------------------
 
 -- The open params with defaults: {tab = "coins"} opens the Coins tab (the HUD coin pill); a squishyId (Squishies
--- screen "View in Shop") or a boxId (the restricted "Shop squishies directly") opens the Squishies tab. Unknown or
+-- screen "View in Shop") or a boxId (the box counter's "Shop Squishies" while the box check is unknown; pens3 phase 5:
+-- restricted accounts open the boxes in a fixed order instead) opens the Squishies tab. Unknown or
 -- malformed values are dropped.
 function ShopFormat.params(raw: unknown): Params
 	local result: Params = { tab = TAB_SQUISHIES }
@@ -254,12 +265,10 @@ end
 -- Public: cards ------------------------------------------------------------------------------------------------------
 
 -- A card's state and the Coins still missing (0 unless needCoins). `buying` = a ShopBuy for this squishy is running.
+-- Pens3 phase 5: owning a squishy that is sold does not stop a buy (a copy); "owned" is the not-sold starter's.
 function ShopFormat.cardState(price: number?, owned: boolean, coins: number, buying: boolean): (CardState, number)
-	if owned then
-		return "owned", 0
-	end
 	if price == nil then
-		return "notSold", 0
+		return (if owned then "owned" else "notSold"), 0
 	end
 	if buying then
 		return "purchasing", 0
@@ -301,9 +310,10 @@ function ShopFormat.entries(
 	for _, def in defs do
 		if onlyIds == nil or onlyIds[def.id] == true then
 			local isOwned = owned[def.id] ~= nil
-			local price = def.shopPrice
+			local price = Pricing.shopPrice(def.id, owned)
 			local state, missing = ShopFormat.cardState(price, isOwned, coins, buying == def.id)
 			local cardState: CardState = state :: CardState -- (cast: a multi-value return widens its literals)
+			local welcome = price ~= nil and def.shopPrice ~= nil and price < def.shopPrice
 			table.insert(list, {
 				id = def.id,
 				def = def,
@@ -313,6 +323,9 @@ function ShopFormat.entries(
 				owned = isOwned,
 				state = cardState,
 				missing = missing,
+				welcomeText = if welcome
+					then Strings.format(Strings.shop.welcomePrice, { coins = Format.coins(price :: number) })
+					else nil,
 			})
 		end
 	end
@@ -392,45 +405,37 @@ function ShopFormat.cardStatusText(entry: Entry): string
 end
 
 -- The reason text that disables Buy, or nil when buying is allowed (the server checks everything again).
--- `status` = StateController.dataStatus(); `locked` = the duel lock (Matched through Returning).
-function ShopFormat.spendBlock(status: Types.DataStatus?, locked: boolean): string?
+-- `status` = StateController.dataStatus(); `locked` = the duel lock (Matched through Returning); `pen` = the pen state
+-- (pens3 phase 5: PenMath.room 0 = the Toy Box is full; nil = not known).
+function ShopFormat.spendBlock(status: Types.DataStatus?, locked: boolean, pen: any?): string?
 	if locked then
 		return Strings.common.lockedInDuel
 	end
-	if status == nil then
-		return nil
-	end
-	local name = status.status
+	local name = if status then status.status else nil
 	if name == "loading" then
 		return Strings.common.loading
 	elseif name == "offline" then
 		return Strings.reasonText("data.offline")
 	elseif name == "readonly" then
 		return Strings.reasonText("data.readOnly")
-	elseif status.savePending == true then
+	elseif status and status.savePending == true then
 		return Strings.reasonText("box.saving")
+	elseif pen ~= nil and PenMath.room(pen) == 0 then
+		return Strings.reasonText("inventory.full")
 	end
 	return nil
 end
 
 -- Public: buying ------------------------------------------------------------------------------------------------------
 
--- What one ShopBuy Result (NetController.invokeAsync) means: success (charged; "You got X!" and Equip now), owned (ok
--- with charged = false: nothing was spent, the card reads Owned) or failed (the reason; "No Coins were spent." only
--- when the server said charged = false; `retry` when the call never reached the server's decision).
+-- What one ShopBuy Result (NetController.invokeAsync) means: success (charged; the congrats overlay; pens3 phase 5: an
+-- owned squishy bought again is a copy, the server has no "already owned" answer any more) or failed (the reason; "No
+-- Coins were spent." only when the server said charged = false; `retry` when the call never reached the server's
+-- decision).
 function ShopFormat.buyOutcome(result: { [string]: any }): Outcome
 	if result.ok == true then
 		local data = if type(result.data) == "table" then result.data else {}
 		local squishyId = if type(data.squishyId) == "string" then data.squishyId else nil
-		if data.charged == false then
-			return {
-				kind = "owned",
-				squishyId = squishyId,
-				savePending = false,
-				text = NotifyFormat.resultText({ reason = "shop.owned", charged = false }),
-				retry = false,
-			}
-		end
 		return {
 			kind = "success",
 			squishyId = squishyId,
@@ -625,15 +630,15 @@ function ShopFormat.featuredLine(rarity: string, power: number): string
 end
 
 -- What the featured card's button shows for `entry` (nil: nothing selected), with `block` the spendBlock reason (or
--- another buy in flight) and `buying` the id a ShopBuy runs for. Priority: owned > not sold > buying > blocked >
--- short > buy. AFFECTED 2026-10-15: with duplicates and fusion owning one may stop blocking another buy; OWNED is
--- wired to today's rule (one of each).
+-- another buy in flight) and `buying` the id a ShopBuy runs for. Priority: owned (not sold) > not sold > buying >
+-- blocked > short > buy. Pens3 phase 5 (copies): owning a squishy that is sold no longer stops another buy; OWNED is
+-- the not-sold starter's.
 function ShopFormat.featuredView(entry: Entry?, block: string?, buying: string?): FeaturedView
 	if entry == nil then
 		return { mode = "notSold", priceText = nil, reason = nil }
 	end
 	local priceText = ShopFormat.priceNumber(entry.price)
-	if entry.owned then
+	if entry.owned and entry.price == nil then
 		return { mode = "owned", priceText = nil, reason = nil }
 	elseif entry.price == nil then
 		return { mode = "notSold", priceText = nil, reason = Strings.reasonText("shop.notForSale") }

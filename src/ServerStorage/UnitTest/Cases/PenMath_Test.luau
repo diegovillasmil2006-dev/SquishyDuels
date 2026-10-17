@@ -8,6 +8,7 @@
 -- the rest, at most maxTickSeconds of time at once; rewardCoins = floor(squeezes × value) clamped to maxCoins; the
 -- base attribute text round-trips; the walk area keeps a squishy inside the fence. Phase 4: awayCoins = floor(5% ×
 -- the saved rate × the seconds away), the seconds clamped to [0, now - createdAt], no limit, clamped to maxCoins.
+-- Phase 5: room = spots + toyBoxMax - the items (never below 0; 0 for a broken pen): 0 means the Toy Box is full.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -243,5 +244,26 @@ return function(t: Context)
 		expect.near(big.minZ, 19 - 32 + 3.3, 1e-9)
 		expect.equal(PenMath.wanderRect(2, 2), nil)
 		expect.equal(PenMath.wanderRect(13, 2), nil)
+	end)
+
+	-- Pens3 phase 5: the Toy Box (D1:254-258).
+	t.test("room: the pen's spots plus the Toy Box's toyBoxMax, less every item; 0 for anything not a pen", function()
+		local items = { item("kitty_bread") }
+		expect.equal(PenMath.room(pen(3, items)), 3 + PEN.toyBoxMax - 1)
+		for _ = 2, 3 + PEN.toyBoxMax - 1 do
+			table.insert(items, item("toast"))
+		end
+		expect.equal(PenMath.room(pen(3, items)), 1) -- 3 placed, 49 unplaced
+		table.insert(items, item("toast"))
+		expect.equal(PenMath.room(pen(3, items)), 0) -- 50 unplaced: the Toy Box is full
+		expect.equal(PenMath.room(pen(4, items)), 1) -- a spot bought makes room for one more
+		table.insert(items, item("toast"))
+		table.insert(items, item("toast"))
+		expect.equal(PenMath.room(pen(3, items)), 0) -- never below 0
+		-- Fail closed: nil, spots out of range, items not a table, a broken nextId.
+		expect.equal(PenMath.room(nil), 0)
+		expect.equal(PenMath.room({ spots = 2, nextId = 2, items = {} }), 0)
+		expect.equal(PenMath.room({ spots = 3, nextId = 2, items = "x" }), 0)
+		expect.equal(PenMath.room({ spots = 3, nextId = 0 / 0, items = {} }), 0)
 	end)
 end

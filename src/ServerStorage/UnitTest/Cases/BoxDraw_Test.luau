@@ -44,14 +44,14 @@ return function(t: Context)
 				expect.equal(BoxDraw.pick(items, acc + 1), items[index + 1].id)
 			end
 		end
-		-- Snack (spec 2026-10-12 §8): toast 1..2000, banana ..4000, boba_bear ..6000, pancake_pup ..8000, butter ..8500,
-		-- chocolate ..9000, mochi_fox ..9500, strawberry_frog ..10000.
-		expect.equal(BoxDraw.pick(items, 2000), "toast")
-		expect.equal(BoxDraw.pick(items, 2001), "banana")
-		expect.equal(BoxDraw.pick(items, 8000), "pancake_pup")
-		expect.equal(BoxDraw.pick(items, 8001), "butter")
-		expect.equal(BoxDraw.pick(items, 9500), "mochi_fox")
-		expect.equal(BoxDraw.pick(items, 9501), "strawberry_frog")
+		-- Soft (pens3 phase 5, ECONOMY_V3:159): toast 1..1900, banana ..3800, boba_bear ..5700, pancake_pup ..7600,
+		-- butter ..8400, chocolate ..9200, mochi_fox ..9600, strawberry_frog ..10000.
+		expect.equal(BoxDraw.pick(items, 1900), "toast")
+		expect.equal(BoxDraw.pick(items, 1901), "banana")
+		expect.equal(BoxDraw.pick(items, 7600), "pancake_pup")
+		expect.equal(BoxDraw.pick(items, 7601), "butter")
+		expect.equal(BoxDraw.pick(items, 9600), "mochi_fox")
+		expect.equal(BoxDraw.pick(items, 9601), "strawberry_frog")
 	end)
 
 	t.test("pick: r outside 1..sum, a fraction or NaN gives nil", function()
@@ -67,10 +67,10 @@ return function(t: Context)
 	t.test("draw asks the rng for NextInteger(1, 10000) once and returns the picked id", function()
 		local box = Boxes.get("sweet")
 		local low = FakeRng.new({ 1 })
-		expect.equal(BoxDraw.draw(box, low), "butter")
+		expect.equal(BoxDraw.draw(box, low), "bird") -- pens3 phase 5: the Sweet Box holds only Epics and Dragon
 		expect.equal(FakeRng.calls(low), 1)
 		expect.equal(BoxDraw.draw(box, FakeRng.new({ Boxes.WeightTotal })), "dragon")
-		-- Sweet (spec 2026-10-12 §8): 9,997-10,000 is Dragon (0.04%); cupcake_axolotl ends at 9996.
+		-- Sweet (pens3 phase 5): 9,997-10,000 is Dragon (0.04%); cupcake_axolotl ends at 9996.
 		expect.equal(BoxDraw.draw(box, FakeRng.new({ 9996 })), "cupcake_axolotl")
 		expect.equal(BoxDraw.draw(box, FakeRng.new({ 9997 })), "dragon")
 		-- The scripted rng refuses values outside the requested range, so 1..10000 is what draw asked for.

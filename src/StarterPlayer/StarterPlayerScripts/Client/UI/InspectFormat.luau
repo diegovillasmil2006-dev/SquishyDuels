@@ -15,6 +15,8 @@
 --   * "How to get" (§10.8 #8) lists every box from Boxes.containing, the free Treat Box included, with its exact
 --     percent text, in every policy state (§6.10 shows the odds in all four), then "Shop: {price} Coins" when the
 --     squishy has a shopPrice. "View in Shop" needs the shop screen (ctx.shopAvailable) and an unowned squishy.
+--   * Pens3 phase 5: the price is Pricing.shopPrice, what the player pays now: the Welcome price for a Common not owned
+--     yet (D1:202), else the Catalog price (an owned squishy is bought again as a copy).
 --   * Elimination (§10.8 #7): the Strings text of the def's eliminationEffectId under `elimination.`; an effect with no
 --     text there (epic_pending) shows Standard, as §9.9 says until the Epic effect ships.
 --   * The trail (§10.8 #5) is "Trail: {name}" (trail.label) with the gradient of RarityStyle.trailColorSequence and
@@ -35,6 +37,7 @@ local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local Pricing = require(Shared.Pricing)
 local Rarity = require(Shared.Rarity)
 local RarityStyle = require(Shared.Art.RarityStyle)
 local Strings = require(Shared.Strings)
@@ -197,7 +200,7 @@ local function eliminationOf(def: Types.SquishyDef): string
 	return Strings.format(Strings.inspect.elimination, { name = name })
 end
 
-local function howToGetOf(def: Types.SquishyDef): { HowToGetLine }
+local function howToGetOf(def: Types.SquishyDef, price: number?): { HowToGetLine }
 	local lines: { HowToGetLine } = {}
 	for _, row in Boxes.containing(def.id) do
 		table.insert(lines, {
@@ -209,7 +212,6 @@ local function howToGetOf(def: Types.SquishyDef): { HowToGetLine }
 			boxId = row.boxId,
 		})
 	end
-	local price = def.shopPrice
 	if price ~= nil then
 		table.insert(lines, {
 			kind = "shop",
@@ -233,8 +235,8 @@ function InspectFormat.view(id: string, ctx: ViewContext): View?
 	local rarity: string = def.rarity
 	local info = Rarity.get(rarity)
 	local badgeKey = badgeKeyOf(owned, equipped)
-	local price = def.shopPrice
-	local howToGet: { HowToGetLine } = if owned then {} else howToGetOf(def)
+	local price = Pricing.shopPrice(def.id, if owned then { [def.id] = true } else {}) -- pens3 phase 5 (see the header)
+	local howToGet: { HowToGetLine } = if owned then {} else howToGetOf(def, price)
 	local view: View = {
 		id = def.id,
 		blueprintId = def.blueprintId,

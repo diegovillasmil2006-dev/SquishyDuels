@@ -5,8 +5,9 @@
 --   * the card shows the lowest incomplete Config.Onboarding step; steps complete in any order;
 --   * shown only for a ready profile that has not skipped and has a step left;
 --   * the welcome card has [Got it] and names the starter; the others have one "Skip tutorial" link;
---   * the squeeze hint follows the input kind; the firstBox step reads {coins}/{goal}: the cheapest shop price (a
---     10,000 Common) and a Shop waypoint for everyone (Batch 1, never the 150K Snack Box);
+--   * the squeeze hint follows the input kind; the firstBox step reads {coins}/{goal}: the cheapest shop price for the
+--     player (pens3 phase 5: Pricing.shopPrice, so a new player's 3,000 Welcome price of a Common) and a Shop waypoint
+--     for everyone (Batch 1, never the 150K Snack Box);
 --   * guidance: waypoints "shop" / "duel", the "squishies" pulse (inspect); the squeeze and pen steps have none
 --     (spec 2026-10-11 §5: the squeeze text says squeeze anywhere, so it sends no one to a mat; pens3 phase 1: a new
 --     player spawns facing their own pen); penBought is the replay's pen sign (the pen's spots rose);
@@ -26,14 +27,16 @@ return function(t: Context)
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
+	local Pricing = t.requireShared("Pricing")
 	local Strings = t.requireShared("Strings")
 	local STEPS = Config.Onboarding.Steps
 
-	local function cheapest(): number
+	local function cheapest(owned: { [string]: any }): number
 		local best = math.huge
 		for _, def in Catalog.list() do
-			if type(def.shopPrice) == "number" and not def.robuxOnly then
-				best = math.min(best, def.shopPrice)
+			local price = Pricing.shopPrice(def.id, owned)
+			if type(price) == "number" and not def.robuxOnly then
+				best = math.min(best, price)
 			end
 		end
 		return best
@@ -114,11 +117,24 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("firstBox: the cheapest shop squishy (a 10,000 Common) and the Shop for everyone", function()
-		local price = cheapest()
-		expect.equal(price, 10_000)
-		expect.equal(OnboardingFormat.goal(), price)
-		local model = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 150 }))
+	t.test("firstBox: the cheapest shop squishy (a 3,000 Welcome price Common) and the Shop for everyone", function()
+		-- Pens3 phase 5 (V4:161): a new player owns the starter only, so every Common has its Welcome price.
+		local starterOnly = { [Catalog.starterId()] = { at = 0, src = "starter" } }
+		local price = cheapest(starterOnly)
+		expect.equal(price, 3_000)
+		expect.equal(price, Config.Economy.Pen.welcomePrice.Common)
+		expect.equal(OnboardingFormat.goal(starterOnly), price)
+		expect.equal(OnboardingFormat.goal(nil), price) -- no owned map yet: a new player's
+		-- Every Common owned: the cheapest is a Common copy at its Catalog price.
+		local commons = table.clone(starterOnly)
+		for _, def in Catalog.list() do
+			if def.rarity == "Common" then
+				commons[def.id] = { at = 0, src = "shop" }
+			end
+		end
+		expect.equal(OnboardingFormat.goal(commons), cheapest(commons))
+		expect.equal(OnboardingFormat.goal(commons), 789_000)
+		local model = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 150, owned = starterOnly }))
 		expect.equal(model.stepId, "firstBox")
 		expect.equal(
 			model.text,
@@ -127,7 +143,7 @@ return function(t: Context)
 		expect.equal(model.waypoint, "shop")
 		expect.equal(model.pulse, nil)
 		-- {coins} is capped at the goal.
-		local rich = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 999_999 }))
+		local rich = OnboardingFormat.model(ctx(doneBefore("firstBox"), { coins = 999_999, owned = starterOnly }))
 		expect.equal(
 			rich.text,
 			Strings.format(Strings.onboarding.firstBox, { coins = Format.coins(price), goal = Format.coins(price) })

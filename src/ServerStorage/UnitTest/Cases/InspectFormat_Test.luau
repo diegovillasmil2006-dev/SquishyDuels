@@ -7,7 +7,8 @@
 --     five stat bars of InventoryFormat.statBars fully resolved, the trail (Commons "No
 --     trail"), Dragon's ultimate from Config.Abilities, "Elimination: Standard", the Catalog `inspect` view); unowned
 --     shows "Preview · Not owned" and "How to get" = one line per Boxes.containing row (the free Treat Box too) with
---     its exact percent, then "Shop: {price} Coins"; owned shows no How to get; View in Shop needs an unowned squishy
+--     its exact percent, then "Shop: {price} Coins" (pens3 phase 5: Pricing.shopPrice, the Welcome price for a Common
+--     not owned yet); owned shows no How to get; View in Shop needs an unowned squishy
 --     with a price and the shop screen; an unknown id gives nil;
 --   * equipState follows the Squishies screen (InventoryFormat.equipState);
 --   * openAction: Closed opens; otherwise the same id does nothing and another id selects;
@@ -34,6 +35,7 @@ return function(t: Context)
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
+	local Pricing = t.requireShared("Pricing")
 	local Rarity = t.requireShared("Rarity")
 	local RarityStyle = t.requireShared("Art/RarityStyle")
 	local Strings = t.requireShared("Strings")
@@ -55,7 +57,8 @@ return function(t: Context)
 		end
 	end
 
-	-- The How to get lines built straight from Boxes, BoxFormat and Catalog.
+	-- The How to get lines built straight from Boxes, BoxFormat and Pricing (pens3 phase 5: the price a player who does
+	-- not own it pays, so the Welcome price for a Common).
 	local function expectedHowToGet(def: any): { any }
 		local lines = {}
 		for _, row in Boxes.containing(def.id) do
@@ -68,10 +71,11 @@ return function(t: Context)
 				boxId = row.boxId,
 			})
 		end
-		if def.shopPrice then
+		local price = Pricing.shopPrice(def.id, {})
+		if price then
 			table.insert(lines, {
 				kind = "shop",
-				text = Strings.format(Strings.inspect.shopPrice, { price = Format.coins(def.shopPrice) }),
+				text = Strings.format(Strings.inspect.shopPrice, { price = Format.coins(price) }),
 			})
 		end
 		return lines
@@ -102,7 +106,7 @@ return function(t: Context)
 			expect.equal(view.elimination, "Elimination: " .. effectName)
 			expect.equal(effectName == Strings.elimination.standard, def.eliminationEffectId == "standard")
 			expect.equal(view.howToGetTitle, Strings.inspect.howToGet)
-			expect.equal(view.shopPrice, def.shopPrice)
+			expect.equal(view.shopPrice, Pricing.shopPrice(def.id, {})) -- unowned: the Welcome price for a Common
 			expect.equal(view.yaw, def.inspect.yaw)
 			expect.equal(view.pitch, def.inspect.pitch)
 
@@ -226,14 +230,19 @@ return function(t: Context)
 				end
 				expect.equal(boxLines, #Boxes.containing(def.id))
 			end
-			-- §6.10 numbers (spec 2026-10-12 §6, §8: Epics left the Snack Box), as the player reads them.
+			-- §6.10 numbers (ECONOMY_V3, pens3 phase 5), as the player reads them.
 			local bird = InspectFormat.view("bird", UNOWNED)
 			assert(bird ~= nil, "no view")
 			local texts = {}
 			for _, line in bird.howToGet do
 				table.insert(texts, line.text)
 			end
-			expect.deepEqual(texts, { "Sweet Box: 9.99%", "Treat Box: 2.50%", "Shop: 1.70B Coins" })
+			expect.deepEqual(texts, { "Sweet Box: 24.99%", "Treat Box: 3.50%", "Shop: 1.80B Coins" })
+			-- A Common not owned yet shows its Welcome price (D1:202), the price its first one costs.
+			local toast = InspectFormat.view("toast", UNOWNED)
+			assert(toast ~= nil, "no view")
+			expect.equal(toast.shopPrice, 3_000)
+			expect.equal(toast.howToGet[#toast.howToGet].text, "Shop: 3,000 Coins")
 			expect.equal(bird.previewBadge, "Preview · Not owned") -- foam fix batch: sentence case, not all caps
 			-- The free starter is in no box and not sold: nothing to list, no View in Shop.
 			local kitty = InspectFormat.view("kitty_bread", UNOWNED)
@@ -255,6 +264,7 @@ return function(t: Context)
 			expect.equal(owned.canViewInShop, false)
 			expect.equal(owned.owned, true)
 			expect.equal(owned.equipped, false)
+			expect.equal(owned.shopPrice, def.shopPrice) -- owned: the Catalog price (a copy)
 			local equipped = InspectFormat.view(def.id, { owned = true, equipped = true })
 			assert(equipped ~= nil, "no view")
 			expect.equal(equipped.badgeKey, "common.equipped")

@@ -45,8 +45,9 @@
 -- since Phase 3: CoinsByRarity is gone), no hourly limit, G3's 8,000 squeezes an hour and the 8,000-squeeze alert
 -- (spec 2026-10-12 §12; Batch 1 #2).
 -- Big-number progression (spec 2026-10-12, Phase 1): the 9 Qa caps, 100 levels and their totals, the ranks, squishy
--- power, duel rewards, refunds; negatives for G1's rising totals, SquishyPower, a Catalog power override and the
--- refund share. Pens3 phase 3: no Config.Grip.Capsule block (its negatives went with it); allowCoinBundles false.
+-- power, duel rewards; negatives for G1's rising totals, SquishyPower and a Catalog power override. Pens3 phase 3: no
+-- Config.Grip.Capsule block (its negatives went with it); allowCoinBundles false. Pens3 phase 5: DuplicatePolicy "copy"
+-- (no DuplicateRefund, no AllowOpenWhenComplete), and any other policy is reported.
 -- Pens3 phase 2: maxGripPerEvent 500B (G5: one Grip below 4 × the top squeeze value fails), gripAlertPerHour 400T, no
 -- "capsule" Coin reason and 9 badges.
 -- Phase 6 (build plan: slow training removed): no Config.Grip.Afk (G9 went with it) and no slow-training popup values
@@ -884,7 +885,7 @@ return function(t: Context)
 
 	-- Big-number progression (spec 2026-10-12, Phase 1) --------------------------------------------------------------
 
-	t.test("the big-number values: 9 Qa caps, 100 levels, ranks, squishy power, duel rewards, refunds", function()
+	t.test("the big-number values: 9 Qa caps, 100 levels, ranks, squishy power, duel rewards, copies", function()
 		local economy, grip = Config.Economy, Config.Grip
 		expect.equal(economy.maxCoins, 9_000_000_000_000_000)
 		expect.equal(grip.maxGrip, 9_000_000_000_000_000)
@@ -908,7 +909,9 @@ return function(t: Context)
 		expect.equal(economy.DuelRewards.win, 600)
 		expect.equal(economy.DuelRewards.draw, 450) -- batch B (owner 2026-10-17): was 300
 		expect.equal(economy.DuelRewards.loss, 350) -- batch B (owner 2026-10-17): was 180
-		expect.deepEqual(economy.DuplicateRefund, { percent = 25, freeBoxPriceOf = "snack" })
+		expect.equal(economy.DuplicatePolicy, "copy") -- pens3 phase 5: a squishy owned again is a copy, never Coins
+		expect.equal(economy.DuplicateRefund, nil)
+		expect.equal(economy.AllowOpenWhenComplete, nil)
 		expect.equal(table.find(economy.CoinReasons, "capsule"), nil) -- pens3 phase 2: gone with CapsuleService
 		expect.equal(grip.maxGripPerEvent, 500_000_000_000) -- pens3 phase 2 (ECONOMY_V3)
 		expect.equal(grip.allowCoinBundles, false) -- pens3 phase 3: was allowBundlesWithCapsules
@@ -958,15 +961,11 @@ return function(t: Context)
 		expect.truthy(containsText(Config.validate({ Catalog = fake }), "Catalog.dragon.power must be an integer >= 1"))
 	end)
 
-	t.test("validate reports a refund of the whole box price and a free-box price from a free box", function()
-		local whole = validateBrokenCopy(t.Shared, "Economy", function(economy)
-			economy.DuplicateRefund.percent = 100
+	t.test("validate reports a duplicate policy other than copy (pens3 phase 5)", function()
+		local refund = validateBrokenCopy(t.Shared, "Economy", function(economy)
+			economy.DuplicatePolicy = "refund"
 		end)
-		expect.truthy(containsText(whole, "Config.Economy.DuplicateRefund.percent"))
-		local free = validateBrokenCopy(t.Shared, "Economy", function(economy)
-			economy.DuplicateRefund.freeBoxPriceOf = "treat"
-		end)
-		expect.truthy(containsAll(free, { "DuplicateRefund.freeBoxPriceOf", "must be a paid box" }))
+		expect.truthy(containsAll(refund, { "Config.Economy.DuplicatePolicy", 'must be "copy"' }))
 	end)
 
 	-- G6 Strings names: every rank and pad key has its grip.* text.

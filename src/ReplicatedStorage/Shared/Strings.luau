@@ -26,6 +26,12 @@
 -- Pens3 phase 3: the capsule texts are gone (reason.capsule.*, onboarding.capsule, the capsule card, the capsule goals,
 -- base.capsuleLevel / unlockPrice); capsule.power / powerNote are squishy.power / powerNote now (same texts).
 -- Pens3 phase 4 ([P] texts): away.* (the coins-while-away pop-up).
+-- Pens3 phase 5 ([P] texts): reason.inventory.full (the Toy Box is full), shop.welcomePrice (D1:202), box.nextItem (a
+-- fixed-order box shows its next squishy before you open it, D1:235), onboarding.firstBox names the Welcome price; the
+-- box footer and the restricted note say what is true now (a squishy you own again is a copy; restricted accounts
+-- open boxes in a fixed order). With their last readers (the client half): reason.box.restricted / complete,
+-- reason.shop.owned (no server sends them), box.refundLine / revealRefund (no refunds) and box.shopDirect (the
+-- restricted Boxes card opens now) are gone.
 
 export type FormatArgs = { [string]: any }
 
@@ -35,7 +41,7 @@ local ERROR_TEXT = {
 	connect = "Couldn't connect to the game server. Please rejoin.",
 }
 local BOX_RESTRICTED_TEXT =
-	"Coin boxes aren't available on your account. You can buy any squishy directly in the Shop, and day 7 of Daily Rewards gives a free Treat Box."
+	"Coin boxes open in a fixed order on your account, so you see the next squishy first, and day 7 of Daily Rewards gives a free Treat Box."
 local BOX_UNKNOWN_TEXT = "Couldn't check box availability. Try again."
 
 local MAX_LOGGED_CODE_LENGTH = 64
@@ -64,6 +70,8 @@ local Strings = {
 		inventory = {
 			notOwned = "You don't own this squishy yet.",
 			lockedInDuel = "You can change squishies after the duel.",
+			-- Pens3 phase 5: a paid box open or a shop buy while the Toy Box holds toyBoxMax unplaced squishies.
+			full = "Your Toy Box is full. Make room first!",
 		},
 		queue = {
 			unavailable = "Duels are unavailable right now.",
@@ -121,17 +129,14 @@ local Strings = {
 			autoClick = "Robot-fast squeezes don't count! Turn off any auto-clicker, or you'll be removed from the game.",
 		},
 		box = {
-			restricted = BOX_RESTRICTED_TEXT,
 			checking = "Checking box availability…",
 			unknown = BOX_UNKNOWN_TEXT,
-			complete = "You own every squishy in this box!",
 			paused = "Boxes are paused while the server restarts soon.",
 			saving = "Saving your collection…",
 		},
 		shop = {
 			priceChanged = "The price changed. Please check it and try again.",
 			notForSale = "This squishy isn't sold in the shop.",
-			owned = "You already own this squishy.",
 		},
 		quest = {
 			notReady = "This quest isn't finished yet.",
@@ -836,24 +841,23 @@ local Strings = {
 		unknownNote = BOX_UNKNOWN_TEXT,
 		openButton = "Open: {cost} Coins",
 		checkingButton = "Checking…",
-		shopDirect = "Shop squishies directly",
 		chancesByRarity = "Chances by rarity: {list}",
 		rarityChance = "{rarity} {percent}%",
 		listSeparator = " · ",
 		insideHeading = "What's inside & chances",
-		refundLine = "If you already own it: +{coins} Coins",
 		total = "Total: {percent}%",
-		footer = "Chances are the same for every player and never change. If you get a squishy you already own, you get the Coins shown instead.",
+		footer = "Chances are the same for every player and never change. A squishy you already own is one more copy for your pen.",
+		-- Pens3 phase 5: a fixed-order box's next squishy ({name} = its name), shown before you open (D1:235).
+		nextItem = "Next in this box: {name}",
 		details = "Details: items & chances",
 		needCoins = { one = "You need {missing} more Coin", many = "You need {missing} more Coins" },
 		howToEarn = "How to earn Coins",
 		stillChecking = "Still checking your box…",
 		revealNew = "NEW!",
-		-- UI FINAL R7 (`H:n` = "Squishy Duels HUD.dc.html" line n): the duplicate line (H:492) with our refund after
-		-- listSeparator (PR21; AFFECTED 2026-10-15: duplicates will be kept for fusion or sold), the band's subtitle
-		-- (H:260), OPEN (H:277), the hints (H:484, H:495) and the result buttons (H:498-499).
+		-- UI FINAL R7 (`H:n` = "Squishy Duels HUD.dc.html" line n): the duplicate line (H:492; pens3 phase 5: a copy
+		-- for the pen, no Coins), the band's subtitle (H:260), OPEN (H:277), the hints (H:484, H:495) and the result
+		-- buttons (H:498-499).
 		revealDuplicate = "Already in your collection",
-		revealRefund = "+{coins} Coins",
 		subtitle = "Every box can hold a new squishy",
 		open = "Open",
 		tapToOpen = "Tap the box to open it!",
@@ -886,6 +890,9 @@ local Strings = {
 		congratsTitle = "CONGRATULATIONS!",
 		youGot = "You got",
 		awesome = "AWESOME!",
+		-- Pens3 phase 5 (D1:202): the first of each Common you don't own yet ({coins} = Format.coins of the Welcome
+		-- price); it never runs out.
+		welcomePrice = "Welcome price: first one {coins}",
 	},
 
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).
@@ -1007,7 +1014,8 @@ local Strings = {
 		squeeze = "Squeeze squishies anywhere to earn Coins. {squeezeHint}.",
 		-- Pens3 phase 1: the pen step (the first pen spot bought at the sign; it replaced Batch 1's capsule step).
 		pen = "Your squishies earn Coins in your pen. Buy more pen space at the sign!",
-		firstBox = "Get your first new squishy in the Shop. {coins}/{goal} Coins",
+		-- Pens3 phase 5: {goal} = the cheapest Welcome price (3K; V4:161 points new players to the cheap Commons).
+		firstBox = "Get a new squishy in the Shop: your first of each Common has a Welcome price! {coins}/{goal} Coins",
 		-- Lobby HUD spec 2026-10-11 §2: Inspect is in the Squishies screen now (no equipped card). Batch 1: it follows
 		-- the capsule card, so it names the squishy.
 		inspect = "Open Squishies, press Inspect to see your squishy in 3D. Spin it, then try Squeeze.",

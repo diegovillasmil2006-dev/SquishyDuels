@@ -5,21 +5,25 @@
 --   1. profile READY, else data.notReady;
 --   2. boxLog.req == requestId -> the stored BoxResult (a replay: no charge, no new draw);
 --   3. Boxes.paidById[boxId] (a paid box that passed the boot check), else net.invalid (unknown, free-only, disabled);
---   4. PolicyGateService.canBuyPaidRandom (eligible ONLY), else box.restricted (fail closed, §6.10);
+--   4. (pens3 phase 5: no refusal here any more) PolicyGateService.canBuyPaidRandom (eligible ONLY) picks how step 10
+--      draws: an eligible account at random, every other one (restricted, checking, unknown: fail closed, §6.10) in the
+--      box's fixed order, Boxes.fixedItem(box, profile.boxOrder[box]) (D1:235: the box card shows it before the open,
+--      so it is never a gamble), with boxOrder[box] + 1 in the step that logs it;
 --   5. ShutdownService.isClosing() or isRestartPending() -> box.paused;
 --   6. a failed save pending -> box.saving (§3.11; EconomyService.trySpend's "savePending" maps to it too);
 --   7. matched or in a match (InventoryService.isLocked) -> inventory.lockedInDuel;
---   8. every item owned (Boxes.isComplete) while Config.Economy.AllowOpenWhenComplete is false -> box.complete;
+--   8. pens3 phase 5: the Toy Box full (PenMath.room 0, D1:254-258) -> inventory.full, before any Coins move (was
+--      box.complete: with copies every box always gives something);
 --   9. Config.Economy.MinSecondsBetweenOpens (2 s) since this player's last open -> net.rateLimited (Reading: only
 --      opens that charged start the window: the rule keeps box writes inside the DataStore budget, §3.11, and a
 --      refusal writes nothing);
---  10. EconomyService.trySpend(p, cost, "box") (economy.notEnoughCoins), BoxDraw.draw(box, rng) with the one server
---      Random.new() (never sent to clients), EconomyService.grantSquishy(p, id, "box", boxId) (a duplicate is refunded
---      a share of the box price there, reason "refund", §6.5, spec 2026-10-12 §8: Pricing.duplicateRefund), then one
---      DataService.mutate appending the boxLog entry {req, box, squishy,
---      dup, refund, cost, at, seen = false} (cap Config.Data.caps.boxLog) and stats.boxesOpened + 1, and
---      markDirty("unseenReveals"). Nothing yields between the spend and the log append (one in-memory change).
---  11. DataService.saveNowAsync (awaited; the reveal's anticipation covers it) -> ok {squishyId, isDuplicate, refund,
+--  10. EconomyService.trySpend(p, cost, "box") (economy.notEnoughCoins), the draw (BoxDraw.draw(box, rng) with the one
+--      server Random.new(), never sent to clients; or the fixed order, step 4), EconomyService.grantSquishy(p, id,
+--      "box") (a pen item; a copy when the kind is owned: never Coins), then one DataService.mutate appending the
+--      boxLog entry {req, box, squishy, dup, cost, at, seen = false} (cap Config.Data.caps.boxLog; dup = a copy),
+--      stats.boxesOpened + 1 (and the fixed order's count), and markDirty("unseenReveals"). Nothing yields between the
+--      spend and the log append (one in-memory change).
+--  11. DataService.saveNowAsync (awaited; the reveal's anticipation covers it) -> ok {squishyId, isDuplicate,
 --      savePending = not saved}. A failed save keeps the change in memory and blocks spends until a save succeeds.
 -- Every refusal carries charged = false (nothing was taken). Reading: the BoxOpen remote is also one-in-flight in
 -- NetService; open() refuses a second concurrent call itself (net.rateLimited) so direct callers are serialized too.
@@ -29,11 +33,12 @@
 -- grantFree(p, boxId, openId) -> BoxResult?: the free Treat Box (day 7 of Daily Rewards, §6.9): a box that is not
 --   paid, no cost, no policy check, idempotent by boxLog.req = openId ("daily:<dayIndex>"), the same draw, grant and
 --   boxLog entry (cost 0, seen = false) and stats.boxesOpened + 1; it does NOT save (DailyRewardService saves "now"
---   with the claim). nil when the profile is not ready or the box is not a valid free box. Reading: a free box whose
---   items are all owned still opens (a duplicate refund; every outcome gives something).
+--   with the claim). nil when the profile is not ready or the box is not a valid free box. It is free, so it is
+--   random for every account. Pens3 phase 5: with the Toy Box full its squishy waits in profile.giftQueue (a free
+--   reward is never refused; it drops in when there is room) and the reveal still plays.
 -- Fail closed at boot (§2.6 "invalid box entries are disabled"): a box whose weights are not valid (BoxDraw.isValid),
---   that names an id missing from the Catalog, or (paid) whose cost is not a positive whole number or not above its
---   duplicate refund (§6.5: opening can never earn Coins) is logged and never opened.
+--   that names an id missing from the Catalog, or (paid) whose cost is not a positive whole number or that has no fixed
+--   order (pens3 phase 5: Boxes.fixedItem, so a restricted account can open it too) is logged and never opened.
 -- useDeps(overrides?) swaps the collaborators (tests: data port, save, economy, policy, flags, clocks, rng).
 -- init() registers the BoxOpen and AckReveal handlers and never yields.
 
@@ -48,7 +53,7 @@ local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
-local Pricing = require(Shared.Pricing)
+local PenMath = require(Shared.PenMath)
 local Types = require(Shared.Types)
 local Validate = require(Shared.Util.Validate)
 local Server = script.Parent.Parent
@@ -69,13 +74,13 @@ type BoxDef = Boxes.BoxDef
 
 export type Economy = {
 	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?),
-	-- `boxId` = the box the squishy came from (its duplicate refund, spec 2026-10-12 §8).
+	-- Pens3 phase 5: `mayWait` = a free box's squishy waits in the gift queue when the Toy Box is full.
 	grantSquishy: (
 		player: any,
 		id: string,
 		source: string,
-		boxId: string?
-	) -> { added: boolean, refund: number, refused: string? },
+		mayWait: boolean?
+	) -> { added: boolean, copy: boolean, queued: boolean, refused: string? },
 	grantCoins: (player: any, amount: number, reason: string) -> (number, string?),
 }
 
@@ -83,7 +88,7 @@ export type Deps = {
 	data: StateService.DataPort,
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 	economy: Economy,
-	canBuyPaidRandom: (player: any) -> boolean, -- PolicyGateService: eligible only
+	canBuyPaidRandom: (player: any) -> boolean, -- PolicyGateService: eligible only (else the fixed order)
 	isClosing: () -> boolean,
 	isRestartPending: () -> boolean,
 	isLocked: (player: any) -> boolean, -- InventoryService.isLocked: matched or in a match
@@ -104,17 +109,16 @@ local STATUS_READY = "ready"
 local SAVE_SOON = "soon"
 local FIELD_UNSEEN = "unseenReveals"
 local FIELD_STATS = "stats"
+local FIELD_BOX_ORDER = "boxOrder" -- pens3 phase 5
 local BOX_LOG_CAP = Config.Data.caps.boxLog
 local MIN_SECONDS_BETWEEN = Config.Economy.MinSecondsBetweenOpens
-local ALLOW_OPEN_WHEN_COMPLETE = Config.Economy.AllowOpenWhenComplete
 
 local CODE_INVALID = "net.invalid"
 local CODE_RATE_LIMITED = "net.rateLimited"
 local CODE_NOT_READY = "data.notReady"
-local CODE_RESTRICTED = "box.restricted"
 local CODE_PAUSED = "box.paused"
 local CODE_SAVING = "box.saving"
-local CODE_COMPLETE = "box.complete"
+local CODE_FULL = "inventory.full" -- pens3 phase 5: the Toy Box is full
 local CODE_LOCKED = "inventory.lockedInDuel"
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
 local CODE_GENERIC = "error.generic"
@@ -189,21 +193,35 @@ local function resultFrom(entry: any, savePending: boolean): BoxResult
 	return {
 		squishyId = if type(entry.squishy) == "string" then entry.squishy else "",
 		isDuplicate = entry.dup == true,
-		refund = if type(entry.refund) == "number" then entry.refund else 0,
 		savePending = savePending,
 	}
 end
 
--- Draws, grants and logs one box result for a player whose profile is ready. Never yields. Returns the boxLog entry,
--- or nil when the draw or the grant failed (nothing was granted; the caller gives back what it took).
-local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number): Types.BoxLogEntry?
+-- Pens3 phase 5: the opens so far in the box's fixed order (profile.boxOrder[boxId]: a whole number >= 0, else 0).
+local function fixedCountOf(profile: any, boxId: string): number
+	local order = if type(profile) == "table" then profile.boxOrder else nil
+	local n = if type(order) == "table" then order[boxId] else nil
+	local whole = type(n) == "number" and n == n and n >= 0 and n < math.huge and math.floor(n) == n
+	return if whole then n else 0
+end
+
+-- Draws (or, `fixed`, takes the fixed order's next item: pens3 phase 5), grants and logs one box result for a player
+-- whose profile is ready. Never yields. Returns the boxLog entry, or nil when the draw or the grant failed (nothing was
+-- granted; the caller gives back what it took). A free box's squishy waits in the gift queue when the Toy Box is full.
+local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number, fixed: boolean): Types.BoxLogEntry?
 	local d = getDeps()
-	local drawn, id = pcall(BoxDraw.draw, box, d.rng)
+	local fixedAt: number? = if fixed then fixedCountOf(d.data.getProfile(player), box.id) else nil
+	local drawn: boolean, id: any = true, nil
+	if fixedAt ~= nil then
+		id = Boxes.fixedItem(box.id, fixedAt)
+	else
+		drawn, id = pcall(BoxDraw.draw, box, d.rng)
+	end
 	if not drawn or not Catalog.isValidId(id) then
 		log:error(`box {box.id}: the draw failed ({tostring(id)})`)
 		return nil
 	end
-	local grant = d.economy.grantSquishy(player, id, SOURCE_BOX, box.id)
+	local grant = d.economy.grantSquishy(player, id, SOURCE_BOX, not box.paid)
 	if grant.refused ~= nil then
 		log:error(`box {box.id}: {id} could not be granted to user {userIdOf(player)} ({grant.refused})`)
 		return nil
@@ -212,8 +230,7 @@ local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number)
 		req = req,
 		box = box.id,
 		squishy = id,
-		dup = not grant.added,
-		refund = grant.refund,
+		dup = grant.copy,
 		cost = cost,
 		at = d.now(),
 		seen = false,
@@ -232,6 +249,14 @@ local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number)
 		end
 		local opened = stats.boxesOpened
 		stats.boxesOpened = (if type(opened) == "number" and opened == opened then opened else 0) + 1
+		if fixedAt ~= nil then
+			local order = profile.boxOrder
+			if type(order) ~= "table" then
+				order = {}
+				profile.boxOrder = order
+			end
+			order[box.id] = fixedAt + 1
+		end
 		return nil
 	end)
 	if not logged then
@@ -240,6 +265,9 @@ local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number)
 	end
 	d.markDirty(player, FIELD_UNSEEN)
 	d.markDirty(player, FIELD_STATS)
+	if fixedAt ~= nil then
+		d.markDirty(player, FIELD_BOX_ORDER)
+	end
 	return entry
 end
 
@@ -264,9 +292,7 @@ local function openLocked(player: any, boxId: unknown, requestId: unknown): any
 	if box == nil or disabled[box.id] ~= nil then
 		return refuse(CODE_INVALID)
 	end
-	if not d.canBuyPaidRandom(player) then
-		return refuse(CODE_RESTRICTED)
-	end
+	local fixed = not d.canBuyPaidRandom(player) -- pens3 phase 5: never refused, never random (step 4)
 	if d.isClosing() or d.isRestartPending() then
 		return refuse(CODE_PAUSED)
 	end
@@ -276,8 +302,8 @@ local function openLocked(player: any, boxId: unknown, requestId: unknown): any
 	if d.isLocked(player) then
 		return refuse(CODE_LOCKED)
 	end
-	if not ALLOW_OPEN_WHEN_COMPLETE and Boxes.isComplete(box.id, profile.owned) then
-		return refuse(CODE_COMPLETE)
+	if PenMath.room(profile.pen) <= 0 then
+		return refuse(CODE_FULL)
 	end
 	local last = lastOpenAt[player]
 	if last ~= nil and d.clock() - last < MIN_SECONDS_BETWEEN then
@@ -297,7 +323,7 @@ local function openLocked(player: any, boxId: unknown, requestId: unknown): any
 		return refuse(CODE_GENERIC)
 	end
 	lastOpenAt[player] = d.clock()
-	local entry = drawAndGrant(player, box, request, cost)
+	local entry = drawAndGrant(player, box, request, cost, fixed)
 	if entry == nil then
 		d.economy.grantCoins(player, cost, REASON_REFUND) -- never keep Coins for nothing
 		return refuse(CODE_GENERIC)
@@ -306,12 +332,12 @@ local function openLocked(player: any, boxId: unknown, requestId: unknown): any
 	local saved = d.saveNow(player)
 	log:info(
 		string.format(
-			"open user=%s box=%s squishy=%s dup=%s refund=%d saved=%s",
+			"open user=%s box=%s squishy=%s copy=%s fixed=%s saved=%s",
 			userIdOf(player),
 			box.id,
 			entry.squishy,
 			tostring(entry.dup),
-			entry.refund,
+			tostring(fixed),
 			tostring(saved)
 		)
 	)
@@ -395,7 +421,7 @@ function BoxService.grantFree(player: any, boxId: string, openId: string): BoxRe
 	if prior ~= nil then
 		return resultFrom(prior, data.savePending(player))
 	end
-	local entry = drawAndGrant(player, box, req, 0)
+	local entry = drawAndGrant(player, box, req, 0, false) -- free: random for every account
 	if entry == nil then
 		return nil
 	end
@@ -427,11 +453,8 @@ function BoxService.checkBoxes(): { [string]: string }
 				or math.floor(cost) ~= cost
 			then
 				found[box.id] = "cost is not a positive whole number"
-			else
-				local refund = Pricing.duplicateRefund(box.id)
-				if refund >= cost then
-					found[box.id] = `the duplicate refund {refund} is not below the cost {cost}`
-				end
+			elseif Boxes.fixedItem(box.id, 0) == nil then
+				found[box.id] = "it has no fixed order for restricted accounts (fixedCycle)" -- pens3 phase 5
 			end
 		end
 	end

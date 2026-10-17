@@ -11,7 +11,12 @@
 --   * coinsPerPower, levelGain, minSqueezeValue, tickSeconds and maxTickSeconds are positive numbers (levelGain >= 1);
 --   * maxLevel is a whole number >= 1; toyBoxMax a whole number >= 0; placedMax a whole number >= maxSpots;
 --   * buyCooldownSeconds and signHoldSeconds are numbers >= 0;
---   * awayRate (phase 4: the share of the saved pen rate paid for time away) is a number in [0, 1].
+--   * awayRate (phase 4: the share of the saved pen rate paid for time away) is a number in [0, 1];
+--   * phase 5: giftQueueMax a whole number >= 0; welcomePrice a table of rarity -> whole Coins >= 1, each rarity with
+--     at least one squishy sold in the shop and the price never above any of their shopPrices (so a Welcome price
+--     also stays under every Pricing.ceiling); frogGift {kind = a Catalog squishy, seconds = a number >= 0}.
+
+local Catalog = require(script.Parent.Parent.Catalog)
 
 local P = "Config.Economy.Pen"
 local POSITIVE = { "coinsPerPower", "levelGain", "minSqueezeValue", "tickSeconds", "maxTickSeconds" }
@@ -112,5 +117,38 @@ return function(config: any): { string }
 	end
 	local away = c.awayRate
 	expect(isNumber(away) and away >= 0 and away <= 1, `{P}.awayRate must be a number in [0, 1] (got {show(away)})`)
+
+	expect(
+		isWhole(c.giftQueueMax) and c.giftQueueMax >= 0,
+		`{P}.giftQueueMax must be a whole number >= 0 (got {show(c.giftQueueMax)})`
+	)
+	local welcome = c.welcomePrice
+	if type(welcome) ~= "table" then
+		table.insert(problems, `{P}.welcomePrice must be a table of rarity -> Coins`)
+	else
+		for rarity, price in welcome do
+			local lowest = math.huge -- stays huge for a rarity nobody sells
+			for _, def in Catalog.byRarity(rarity) do
+				if def.shopPrice ~= nil then
+					lowest = math.min(lowest, def.shopPrice)
+				end
+			end
+			expect(
+				isWhole(price) and price >= 1 and lowest < math.huge and price <= lowest,
+				`{P}.welcomePrice.{tostring(rarity)} must be whole Coins >= 1 for a rarity sold in the shop, `
+					.. `at most its lowest shopPrice (got {show(price)})`
+			)
+		end
+	end
+	local frog = c.frogGift
+	if type(frog) ~= "table" then
+		table.insert(problems, `{P}.frogGift must be a table with a kind and seconds`)
+	else
+		expect(Catalog.isValidId(frog.kind), `{P}.frogGift.kind must be a Catalog squishy (got {show(frog.kind)})`)
+		expect(
+			isNumber(frog.seconds) and frog.seconds >= 0,
+			`{P}.frogGift.seconds must be a number >= 0 (got {show(frog.seconds)})`
+		)
+	end
 	return problems
 end

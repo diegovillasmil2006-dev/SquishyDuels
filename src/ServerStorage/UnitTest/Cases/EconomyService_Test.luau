@@ -9,15 +9,19 @@
 --     takes no more changes (the final leave snapshot) earn and spend nothing; spends also need no pending failed
 --     save; every change marks coins + stats and fires CoinsChanged(player, coins, delta, reason); coinsEarned /
 --     coinsSpent count real changes;
---   * grantSquishy adds {at, src}; a box duplicate is refunded a quarter of that box's price (spec 2026-10-12 §8),
---     any other duplicate changes nothing; Coins stop at 9 Qa, exact to the Coin;
+--   * grantSquishy adds {at, src} for a new kind; Coins stop at 9 Qa, exact to the Coin;
 --   * grantDuelResult records the duelLog entry (capped, oldest dropped), the duel stats and the Coins exactly once per
 --     matchId, then asks for a "soon" save; an unready profile records nothing (duel.noRewardsOffline); the reward is
 --     counted in squeezes and pays squeezes × the squeeze value of that moment (Phase 3, spec 2026-10-12 §9), up to
 --     the top squeeze value and never past maxCoins; rewardCoins(profile, squeezes) is that conversion; pens3
 --     phase 1: the squeeze value is the pen's (PenMath.squeezeValue(profile.pen)), the capsules count for nothing;
 --   * pens3 phase 1: a newly owned kind adds exactly one plain Lv 1 pen item (id = pen.nextId, nextId + 1) in the same
---     step as its owned entry; a duplicate adds none;
+--     step as its owned entry; pens3 phase 5 (copies): every grant adds one, a kind owned again is a copy (its owned
+--     entry stays, never Coins) and SquishyGranted fires for each; a full Toy Box (PenMath.room 0) refuses a grant
+--     with "full" and changes nothing, unless it may wait (free rewards): then the kind joins profile.giftQueue
+--     (oldest first, at most giftQueueMax, not owned yet); dropGifts puts queued kinds in, oldest first, while there is
+--     room; grantGift gives a squishy once per account (profile.gifts[key], set in the same step), queued when full;
+--     an unready profile gets nothing and keeps its flag;
 --   * the same-pair record (§6.7, §12 #15): a time only for a fully rewarded result (reduced and zero-Coin ones add
 --     none), never twice for one matchId, per player; expired times and opponents dropped on every result; at most
 --     samePairFullRewards times per opponent and Config.Data.caps.samePair opponents (the least recent go);
@@ -66,6 +70,7 @@ return function(t: Context)
 	local MatchRewards = t.requireServer("Logic/MatchRewards")
 	local StateService = t.requireServer("Services/StateService")
 	local Config = t.requireShared("Config")
+	local PenMath = t.requireShared("PenMath")
 	local ECONOMY = Config.Economy
 
 	-- A plain pen item (pens3 phase 1).
@@ -91,7 +96,19 @@ return function(t: Context)
 			},
 			duelLog = {},
 			pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } },
+			giftQueue = {}, -- pens3 phase 5
+			gifts = { frog = false },
 		}
+	end
+
+	-- Pens3 phase 5: fills the profile's Toy Box (spots + toyBoxMax items in all), so PenMath.room is 0.
+	local function fillToyBox(profile: any)
+		local pen = profile.pen
+		while #pen.items < pen.spots + ECONOMY.Pen.toyBoxMax do
+			table.insert(pen.items, penItem(pen.nextId, "toast"))
+			pen.nextId += 1
+		end
+		profile.owned.toast = profile.owned.toast or { at = 1, src = "box" }
 	end
 
 	local function recorderDeps(w: World, port: any): any
@@ -357,57 +374,151 @@ return function(t: Context)
 		end)
 		local result = EconomyService.grantSquishy(player, "toast", "shop")
 		connection:disconnect()
-		expect.deepEqual(result, { added = true, refund = 0 })
+		expect.deepEqual(result, { added = true, copy = false, queued = false })
 		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
 		expect.deepEqual(granted, { { p = player, id = "toast", source = "shop" } })
 		expect.deepEqual(dirtyFields(w), { "owned" })
 	end)
 
-	t.test("pens3 phase 1: a newly owned kind adds exactly one pen item in the same step; a duplicate none", function()
+	t.test("every grant adds one plain Lv 1 pen item in the same step (pens3 phase 1, copies since phase 5)", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		expect.deepEqual(EconomyService.grantSquishy(player, "toast", "shop"), { added = true, refund = 0 })
+		expect.deepEqual(
+			EconomyService.grantSquishy(player, "toast", "shop"),
+			{ added = true, copy = false, queued = false }
+		)
 		expect.equal(w.mutations, 1) -- owned and the pen in one step
-		expect.deepEqual(profile.pen, {
-			spots = 3,
-			nextId = 3,
-			items = { penItem(1, "kitty_bread"), penItem(2, "toast") },
-		})
-		-- A duplicate (a box refund, a shop or other one) adds no item.
-		EconomyService.grantSquishy(player, "toast", "box", "snack")
-		EconomyService.grantSquishy(player, "toast", "grant")
-		expect.equal(#profile.pen.items, 2)
+		expect.deepEqual(profile.pen.items, { penItem(1, "kitty_bread"), penItem(2, "toast") })
 		expect.equal(profile.pen.nextId, 3)
-		expect.deepEqual(EconomyService.grantSquishy(player, "dragon", "box", "sweet"), { added = true, refund = 0 })
+		expect.deepEqual(
+			EconomyService.grantSquishy(player, "dragon", "box"),
+			{ added = true, copy = false, queued = false }
+		)
 		expect.deepEqual(profile.pen.items[3], penItem(3, "dragon"))
 		expect.equal(profile.pen.nextId, 4)
 	end)
 
-	t.test("a box duplicate is refunded a quarter of the box price; any other duplicate changes nothing", function()
+	t.test("copies: a squishy owned again adds a copy item, never Coins; its owned entry stays", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
 		profile.owned.toast = { at = 5, src = "box" }
-		profile.owned.dragon = { at = 6, src = "shop" }
-		-- Spec 2026-10-12 §8: 25% of the box price; the free Treat Box counts the Snack Box's.
-		local toastRefund = 37_500
-		expect.equal(EconomyService.duplicateRefund("snack"), toastRefund)
-		expect.equal(EconomyService.duplicateRefund("sweet"), 112_500_000)
-		expect.equal(EconomyService.duplicateRefund("treat"), toastRefund)
-		expect.equal(EconomyService.duplicateRefund("nope"), 0)
-		local reasons: { string } = {}
-		local connection = EconomyService.CoinsChanged:connect(function(_p: any, _c: number, _d: number, reason: string)
-			table.insert(reasons, reason)
+		local granted: { string } = {}
+		local connection = EconomyService.SquishyGranted:connect(function(_p: any, id: string, source: string)
+			table.insert(granted, `{id}:{source}`)
 		end)
-		local dup = EconomyService.grantSquishy(player, "toast", "box", "snack")
-		expect.deepEqual(dup, { added = false, refund = toastRefund })
-		expect.equal(profile.coins, toastRefund)
-		expect.deepEqual(profile.owned.toast, { at = 5, src = "box" })
-		local shopDup = EconomyService.grantSquishy(player, "dragon", "shop")
+		for _, source in { "box", "shop", "grant" } do
+			local copy = EconomyService.grantSquishy(player, "toast", source)
+			expect.deepEqual(copy, { added = true, copy = true, queued = false })
+		end
 		connection:disconnect()
-		expect.deepEqual(shopDup, { added = false, refund = 0 })
-		expect.equal(profile.coins, toastRefund)
-		expect.deepEqual(reasons, { "refund" })
-		expect.deepEqual(dirtyFields(w), { "coins", "stats" })
+		expect.deepEqual(granted, { "toast:box", "toast:shop", "toast:grant" }) -- each copy walks in the pen
+		expect.deepEqual(profile.owned.toast, { at = 5, src = "box" })
+		expect.equal(#profile.pen.items, 4)
+		expect.deepEqual(profile.pen.items[4], penItem(4, "toast"))
+		expect.equal(profile.coins, 0)
+		expect.deepEqual(dirtyFields(w), {}) -- no Coins and no new kind (PenService sends the pen on SquishyGranted)
+		expect.equal(EconomyService.duplicateRefund, nil)
+	end)
+
+	t.test(
+		"a full Toy Box refuses a grant and changes nothing, unless it may wait: then it queues, not owned",
+		function()
+			local w = setup()
+			local player, profile = readyPlayer(w, 0)
+			fillToyBox(profile)
+			local items = #profile.pen.items
+			local fired = 0
+			local connection = EconomyService.SquishyGranted:connect(function()
+				fired += 1
+			end)
+			expect.deepEqual(
+				EconomyService.grantSquishy(player, "dragon", "box"),
+				{ added = false, copy = false, queued = false, refused = "full" }
+			)
+			expect.equal(profile.owned.dragon, nil)
+			expect.deepEqual(profile.giftQueue, {})
+			-- A free reward waits in the queue, oldest first; it is owned only once it drops in.
+			expect.deepEqual(
+				EconomyService.grantSquishy(player, "dragon", "box", true),
+				{ added = false, copy = false, queued = true }
+			)
+			expect.deepEqual(
+				EconomyService.grantSquishy(player, "toast", "grant", true),
+				{ added = false, copy = true, queued = true }
+			)
+			expect.deepEqual(profile.giftQueue, { "dragon", "toast" })
+			expect.equal(profile.owned.dragon, nil)
+			expect.equal(#profile.pen.items, items)
+			expect.equal(fired, 0)
+			-- At most giftQueueMax wait; past that even a free reward is refused (logged), nothing changes.
+			while #profile.giftQueue < ECONOMY.Pen.giftQueueMax do
+				table.insert(profile.giftQueue, "toast")
+			end
+			expect.equal(EconomyService.grantSquishy(player, "bird", "grant", true).refused, "full")
+			expect.equal(#profile.giftQueue, ECONOMY.Pen.giftQueueMax)
+			connection:disconnect()
+			-- A broken pen takes nothing (fail closed).
+			profile.pen = nil
+			expect.equal(EconomyService.grantSquishy(player, "bird", "shop").refused, "full")
+		end
+	)
+
+	t.test("dropGifts puts queued gifts in, oldest first, while there is room, each owned and announced", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		fillToyBox(profile)
+		profile.giftQueue = { "dragon", "bird", "toast" }
+		local granted: { string } = {}
+		local connection = EconomyService.SquishyGranted:connect(function(_p: any, id: string, source: string)
+			table.insert(granted, `{id}:{source}`)
+		end)
+		expect.equal(EconomyService.dropGifts(player), 0) -- still full: nothing moves
+		expect.deepEqual(profile.giftQueue, { "dragon", "bird", "toast" })
+		profile.pen.spots += 2 -- two spots bought: room for two
+		local before = w.mutations
+		expect.equal(EconomyService.dropGifts(player), 2)
+		expect.equal(w.mutations, before + 1) -- one step
+		connection:disconnect()
+		expect.deepEqual(profile.giftQueue, { "toast" })
+		expect.deepEqual(granted, { "dragon:grant", "bird:grant" })
+		expect.deepEqual(profile.owned.dragon, { at = NOW, src = "grant" })
+		expect.deepEqual(profile.owned.bird, { at = NOW, src = "grant" })
+		expect.equal(profile.pen.items[#profile.pen.items].kind, "bird")
+		expect.equal(PenMath.room(profile.pen), 0)
+		expect.deepEqual(dirtyFields(w), { "owned" })
+		-- An empty queue or an unready profile does nothing.
+		profile.giftQueue = {}
+		expect.equal(EconomyService.dropGifts(player), 0)
+		profile.giftQueue = { "toast" }
+		profile.pen.spots += 1
+		w.statuses[player] = "offline"
+		expect.equal(EconomyService.dropGifts(player), 0)
+		expect.deepEqual(profile.giftQueue, { "toast" })
+	end)
+
+	t.test("grantGift gives a squishy once per account (gifts[key] in the same step), queued when full", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		local before = w.mutations
+		expect.equal(EconomyService.grantGift(player, "frog", "strawberry_frog"), true)
+		expect.equal(w.mutations, before + 1) -- the flag and the squishy in one step
+		expect.equal(profile.gifts.frog, true)
+		expect.deepEqual(profile.owned.strawberry_frog, { at = NOW, src = "grant" })
+		expect.equal(profile.pen.items[2].kind, "strawberry_frog")
+		expect.equal(EconomyService.grantGift(player, "frog", "strawberry_frog"), false) -- never twice
+		expect.equal(#profile.pen.items, 2)
+		-- A full Toy Box: the gift waits in the queue, and counts as given.
+		local fullPlayer, full = readyPlayer(w, 0)
+		fillToyBox(full)
+		expect.equal(EconomyService.grantGift(fullPlayer, "frog", "strawberry_frog"), true)
+		expect.deepEqual(full.giftQueue, { "strawberry_frog" })
+		expect.equal(full.gifts.frog, true)
+		-- Not ready: nothing given, the flag stays for later.
+		local later, laterProfile = readyPlayer(w, 0)
+		w.statuses[later] = "loading"
+		expect.equal(EconomyService.grantGift(later, "frog", "strawberry_frog"), false)
+		expect.equal(laterProfile.gifts.frog, false)
+		expect.equal(EconomyService.grantGift(player, "frog", "unicorn"), false) -- not a squishy
 	end)
 
 	t.test("grantSquishy refuses unknown ids, unknown sources and unready profiles", function()
@@ -978,7 +1089,10 @@ return function(t: Context)
 		expect.equal(first.isPersisted(player), persisted)
 		EconomyService.useDeps(recorderDeps(w, StateService.portFrom(first)))
 		expect.equal(EconomyService.grantCoins(player, 25, "squeeze"), 25)
-		expect.deepEqual(EconomyService.grantSquishy(player, "toast", "shop"), { added = true, refund = 0 })
+		expect.deepEqual(
+			EconomyService.grantSquishy(player, "toast", "shop"),
+			{ added = true, copy = false, queued = false }
+		)
 		local grant = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 200, 77))
 		-- Pens3 phase 1: Kitty Bread and the new Toast walk in the pen now, 10 + 10 a squeeze.
 		local value = 2 * VALUE

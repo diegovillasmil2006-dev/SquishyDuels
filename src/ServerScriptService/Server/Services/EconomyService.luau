@@ -23,11 +23,14 @@
 --   (exactly once together with DuelService's single end, §12 #14; a replay never adds a second same-pair time). It
 --   asks for a "soon" save. findLog / appendLog are the same helpers for the other logs (boxLog, shopLog, receipts,
 --   Part 7).
--- * Squishies: grantSquishy(p, id, source, boxId?) adds an owned entry {at, src}; a duplicate from a box is refunded
---   a share of that box's price when DuplicatePolicy is "refund" (§6.5; spec 2026-10-12 §8: duplicateRefund(boxId) =
---   Pricing.duplicateRefund); a duplicate from any other source changes nothing. Pens3 phase 1: a newly owned kind
---   also gets its pen item {id = pen.nextId, kind, form = 0, level = 1, coat = 0} (and nextId + 1) in the same step
---   (PenService shows it on SquishyGranted); a duplicate adds no item (copies come in phase 5).
+-- * Squishies (pens3 phase 5: DuplicatePolicy "copy", D1:254-258): grantSquishy(p, id, source, mayWait?) adds a pen
+--   item {id = pen.nextId, kind, form = 0, level = 1, coat = 0} (and nextId + 1), and an owned entry {at, src} when the
+--   kind is new, in one step; a kind owned again is a copy (never Coins). SquishyGranted fires for every item added
+--   (PenService shows it). The Toy Box full (PenMath.room 0): refused with "full" and nothing changes, unless mayWait
+--   (a free reward): then the kind joins profile.giftQueue (oldest first, at most Pen.giftQueueMax; not owned until it
+--   drops in). Nothing is ever sold automatically. dropGifts(p) drops queued kinds in, oldest first, while there is
+--   room (PenService: after a spot buy and on load). grantGift(p, key, id) gives `id` once per account: profile.gifts
+--   [key] is set in the same step as the grant (or the queue), so it is never given twice.
 -- * Reading: stats.coinsEarned / coinsSpent count every real grant and spend except the Studio-only "debug" reason,
 --   so Studio tests never inflate them. Reading: stats.eliminations counts opponents eliminated in recorded results
 --   (DuelService passes 0 or 1).
@@ -45,8 +48,8 @@
 --   the last save, DataService), lastSeenAt, createdAt, now), with reason "away", and stamps lastSeenAt = now in the
 --   SAME step: the time away counted is the time stamped as paid, so a second call pays 0, and a crash before the next
 --   save loses the grant and the stamp together (the next load pays that time once). A "soon" save when it paid.
--- Failures come back as a short kind ("invalid", "reason", "notReady", "savePending", "notEnoughCoins"); CODES maps
--- the kinds that have a §2.10 code. Collaborators are reached through `deps` (useDeps in tests).
+-- Failures come back as a short kind ("invalid", "reason", "notReady", "savePending", "notEnoughCoins", "full"); CODES
+-- maps the kinds that have a §2.10 code. Collaborators are reached through `deps` (useDeps in tests).
 
 -- Services
 
@@ -59,7 +62,6 @@ local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
-local Pricing = require(Shared.Pricing)
 local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
 local DuelRewards = require(script.Parent.Parent.Logic.DuelRewards)
@@ -68,7 +70,7 @@ local StateService = require(script.Parent.StateService)
 
 -- Types
 
-export type Failure = "invalid" | "reason" | "notReady" | "savePending" | "notEnoughCoins"
+export type Failure = "invalid" | "reason" | "notReady" | "savePending" | "notEnoughCoins" | "full"
 
 export type Deps = {
 	data: StateService.DataPort,
@@ -77,8 +79,10 @@ export type Deps = {
 	debugAllowed: () -> boolean, -- the Studio-only "debug" reason
 }
 
--- What grantSquishy did. `refused` is set when nothing could change (no profile, unknown id, ...).
-export type SquishyGrant = { added: boolean, refund: number, refused: Failure? }
+-- What grantSquishy did (pens3 phase 5): `added` = a pen item was added; `copy` = the kind was owned before; `queued` =
+-- the Toy Box was full and it waits in profile.giftQueue; `refused` is set when nothing changed (no profile, unknown
+-- id, the Toy Box full, ...).
+export type SquishyGrant = { added: boolean, copy: boolean, queued: boolean, refused: Failure? }
 
 -- The duel result as DuelService passes it (computed by Logic/DuelRewards, §6.7).
 export type DuelResultInput = {
@@ -120,8 +124,7 @@ local REASON_AWAY = "away" -- pens3 phase 4
 local MATCHES_REMEMBERED = 64
 local STATUS_READY = "ready"
 local REASON_DEBUG = "debug"
-local REASON_REFUND = "refund"
-local SOURCE_BOX = "box"
+local SOURCE_GRANT = "grant" -- pens3 phase 5: a gift, or a queued squishy that drops in
 local SAVE_SOON = "soon"
 local CODE_NO_REWARDS_OFFLINE = "duel.noRewardsOffline"
 local OWNED_SOURCES: { [string]: boolean } = { starter = true, box = true, shop = true, grant = true }
@@ -139,7 +142,8 @@ local EconomyService = {}
 
 -- (player, coins, delta, reason) after every change of a player's Coins.
 EconomyService.CoinsChanged = Signal.new() :: Signal.Signal<Player, number, number, string>
--- (player, squishyId, source) when a squishy is added to a collection (not for duplicates).
+-- (player, squishyId, source) when a squishy joins the pen (pens3 phase 5: a copy too; not for a queued gift until it
+-- drops in, then with source "grant").
 EconomyService.SquishyGranted = Signal.new() :: Signal.Signal<Player, string, string>
 
 -- §2.10 codes for the failure kinds that have one ("savePending" is the caller's: box.saving, capsule.paused, ...).
@@ -147,6 +151,7 @@ EconomyService.CODES = table.freeze({
 	notReady = "data.notReady",
 	notEnoughCoins = "economy.notEnoughCoins",
 	invalid = "net.invalid",
+	full = "inventory.full", -- pens3 phase 5: the Toy Box is full
 })
 
 -- Private
@@ -270,6 +275,41 @@ local function rememberMatchGrant(matchId: string, key: any)
 	(granted :: { [any]: boolean })[key] = true
 end
 
+-- Pens3 phase 5: adds one squishy to a profile inside an edit (see the header). Never yields.
+local function addSquishyTo(profile: any, id: string, source: string, mayWait: boolean): SquishyGrant
+	local owned = profile.owned
+	if type(owned) ~= "table" then
+		owned = {}
+		profile.owned = owned
+	end
+	local copy = owned[id] ~= nil
+	local pen = profile.pen
+	if PenMath.room(pen) <= 0 then
+		local queue = profile.giftQueue
+		if mayWait and type(queue) == "table" and #queue < ECONOMY.Pen.giftQueueMax then
+			table.insert(queue, id)
+			return { added = false, copy = copy, queued = true, refused = nil }
+		end
+		return { added = false, copy = copy, queued = false, refused = "full" }
+	end
+	if not copy then
+		owned[id] = { at = getDeps().now(), src = source :: Types.OwnedSource }
+	end
+	table.insert(pen.items, { id = pen.nextId, kind = id, form = 0, level = 1, coat = 0 })
+	pen.nextId += 1
+	return { added = true, copy = copy, queued = false, refused = nil }
+end
+
+-- After grants landed: the new kinds' owned field and one SquishyGranted per pen item added.
+local function squishiesAdded(player: any, ids: { string }, newKind: boolean, source: string)
+	if newKind then
+		getDeps().markDirty(player, "owned")
+	end
+	for _, id in ids do
+		EconomyService.SquishyGranted:fire(player, id, source)
+	end
+end
+
 -- Public: pure helpers (unit-tested) -----------------------------------------------------------------------------------
 
 -- Any value as a Coin balance: an integer in [0, maxCoins] (non-finite or missing -> 0, fractions floored).
@@ -290,13 +330,6 @@ end
 function EconomyService.rewardCoins(profile: unknown, squeezes: number): number
 	local pen = if type(profile) == "table" then (profile :: any).pen else nil
 	return PenMath.rewardCoins(squeezes, PenMath.squeezeValue(pen))
-end
-
--- The Coins a duplicate from this box is worth under the duplicate policy (§6.5; spec 2026-10-12 §8): a share of the
--- box's price (Pricing.duplicateRefund) when DuplicatePolicy is "refund"; 0 for an unknown box or the (unbuilt)
--- "exclude_owned" policy.
-function EconomyService.duplicateRefund(boxId: unknown): number
-	return Pricing.duplicateRefund(boxId)
 end
 
 -- The first entry of a log whose `keyField` equals `key` (duelLog.matchId, boxLog.req, shopLog.req, receipts.id).
@@ -442,49 +475,69 @@ function EconomyService.trySpend(player: any, amount: number, reason: string): (
 	return true, nil
 end
 
--- Adds a squishy to the collection (§6.5). Already owned: a box duplicate is refunded duplicateRefund(boxId) (reason
--- "refund"; `boxId` = the box it came from), any other source changes nothing. Returns {added, refund, refused?}.
--- Never yields.
-function EconomyService.grantSquishy(player: any, id: string, source: string, boxId: string?): SquishyGrant
+-- Adds a squishy to the pen (§6.5, pens3 phase 5: a copy when owned; see the header). `mayWait` (a free reward): a
+-- full Toy Box queues it instead of refusing. Returns {added, copy, queued, refused?}. Never yields.
+function EconomyService.grantSquishy(player: any, id: string, source: string, mayWait: boolean?): SquishyGrant
 	if not Catalog.isValidId(id) or not OWNED_SOURCES[source] then
 		log:warn(`grantSquishy: invalid id {tostring(id)} or source {tostring(source)}`)
-		return { added = false, refund = 0, refused = "invalid" }
+		return { added = false, copy = false, queued = false, refused = "invalid" }
 	end
-	local added, refund, after = false, 0, 0
+	local grant: SquishyGrant = { added = false, copy = false, queued = false, refused = "notReady" }
 	local ok = edit(player, function(profile: any)
-		local owned = profile.owned
-		if type(owned) ~= "table" then
-			owned = {}
-			profile.owned = owned
-		end
-		if owned[id] ~= nil then
-			local worth = if source == SOURCE_BOX then EconomyService.duplicateRefund(boxId) else 0
-			if worth > 0 then
-				refund = addCoinsTo(profile, worth, REASON_REFUND)
-				after = profile.coins
-			end
-			return
-		end
-		local entry: Types.OwnedEntry = { at = getDeps().now(), src = source :: Types.OwnedSource }
-		owned[id] = entry
-		added = true
-		-- Pens3 phase 1: its pen item in the same step (a loaded profile always has a pen: reconcile and sanitize).
-		local pen = profile.pen
-		if type(pen) == "table" and type(pen.items) == "table" and type(pen.nextId) == "number" then
-			table.insert(pen.items, { id = pen.nextId, kind = id, form = 0, level = 1, coat = 0 })
-			pen.nextId += 1
-		end
+		grant = addSquishyTo(profile, id, source, mayWait == true)
 	end)
 	if not ok then
-		return { added = false, refund = 0, refused = "notReady" }
+		return { added = false, copy = false, queued = false, refused = "notReady" }
 	end
-	if added then
-		getDeps().markDirty(player, "owned")
-		EconomyService.SquishyGranted:fire(player, id, source)
-	elseif refund > 0 then
-		coinsChanged(player, after, refund, REASON_REFUND)
+	if grant.refused == "full" then
+		log:info(`grantSquishy: user {tostring(grantKeyOf(player))}'s Toy Box is full; {id} ({source}) not granted`)
 	end
-	return { added = added, refund = refund, refused = nil }
+	squishiesAdded(player, if grant.added then { id } else {}, grant.added and not grant.copy, source)
+	return grant
+end
+
+-- Pens3 phase 5: drops queued gifts into the pen, oldest first, while there is room (one step; see the header).
+-- Returns how many dropped. Never yields.
+function EconomyService.dropGifts(player: any): number
+	local dropped: { string } = {}
+	local newKind = false
+	edit(player, function(profile: any)
+		local queue = profile.giftQueue
+		while type(queue) == "table" and #queue > 0 and PenMath.room(profile.pen) > 0 do
+			local id = table.remove(queue, 1) :: string -- a Catalog kind (sanitize keeps only those)
+			local grant = addSquishyTo(profile, id, SOURCE_GRANT, false)
+			newKind = newKind or not grant.copy
+			table.insert(dropped, id)
+		end
+	end)
+	squishiesAdded(player, dropped, newKind, SOURCE_GRANT)
+	return #dropped
+end
+
+-- Pens3 phase 5: gives `id` once per account (profile.gifts[key] set in the same step; queued when the Toy Box is
+-- full). Returns true when it was given now. Never yields.
+function EconomyService.grantGift(player: any, key: string, id: string): boolean
+	if not Catalog.isValidId(id) then
+		log:warn(`grantGift: {tostring(id)} is not a squishy`)
+		return false
+	end
+	local grant: SquishyGrant? = nil
+	edit(player, function(profile: any)
+		local gifts = profile.gifts
+		if type(gifts) ~= "table" or gifts[key] ~= false then
+			return -- given already (or no record to stamp: fail closed)
+		end
+		grant = addSquishyTo(profile, id, SOURCE_GRANT, true)
+		if (grant :: SquishyGrant).refused == nil then
+			gifts[key] = true
+		end
+	end)
+	local given = grant :: SquishyGrant?
+	if given == nil or given.refused ~= nil then
+		return false
+	end
+	squishiesAdded(player, if given.added then { id } else {}, given.added and not given.copy, SOURCE_GRANT)
+	return true
 end
 
 -- Records one finished duel for a real player and pays its reward, exactly once per matchId (§3.4, §3.11, §6.7):

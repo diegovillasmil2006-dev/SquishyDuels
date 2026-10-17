@@ -11,7 +11,8 @@
 --     out), session
 --     fields (policy "checking", monetization with no
 --     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it,
---     pens3 phase 4's awayGift {coins = 0, seconds = 0} until PenService sets it),
+--     pens3 phase 4's awayGift {coins = 0, seconds = 0} until PenService sets it; pens3 phase 5's boxOrder as
+--     stored, while giftQueue and gifts never go out),
 --     dataStatus {status, persisted, savePending, banner};
 --   * Loaded sends one full StateDelta; later changes go out as one partial StateDelta per batch with v + 1, only for
 --     fields whose value changed; nothing partial before the first full state; the sweep catches unmarked changes;
@@ -100,6 +101,10 @@ return function(t: Context)
 			-- An old save's capsules (pens3 phase 2: an unknown field, never sent).
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
 			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
+			-- Pens3 phase 5: the fixed-order counts go out; the gift queue and the gifts given never do.
+			boxOrder = { snack = 3, sweet = 0 },
+			giftQueue = { "toast" },
+			gifts = { frog = true },
 		}
 	end
 
@@ -225,6 +230,7 @@ return function(t: Context)
 		local snap = reply.data
 		expect.deepEqual(keysOf(snap), {
 			"awayGift",
+			"boxOrder",
 			"coins",
 			"daily",
 			"dataStatus",
@@ -267,6 +273,11 @@ return function(t: Context)
 		expect.deepEqual(snap.practice, { throws = 0, hits = 0, accuracy = 0 })
 		expect.deepEqual(snap.topWins, { loaded = false, top = {}, wins = 0 }) -- Batch 3: until the first board read
 		expect.deepEqual(snap.awayGift, { coins = 0, seconds = 0 }) -- pens3 phase 4: no gift until PenService pays one
+		-- Pens3 phase 5: the fixed-order counts (the box card shows a restricted account's next squishy); the gift
+		-- queue and the gifts given stay on the server.
+		expect.deepEqual(snap.boxOrder, { snack = 3, sweet = 0 })
+		expect.equal(snap.giftQueue, nil)
+		expect.equal(snap.gifts, nil)
 		expect.deepEqual(
 			snap.dataStatus,
 			{ status = "ready", persisted = false, savePending = false, banner = "data.studioMemory" }
@@ -550,7 +561,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list is DESIGN's StateDelta list plus grip, topWins, pen and awayGift", function()
+	t.test("the field list is DESIGN's StateDelta list plus grip, topWins, pen, awayGift and boxOrder", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -570,6 +581,7 @@ return function(t: Context)
 			"topWins",
 			"pen",
 			"awayGift", -- pens3 phase 4: the coins-while-away gift, a session field
+			"boxOrder", -- pens3 phase 5: the fixed-order counts (profile.boxOrder)
 		})
 	end)
 

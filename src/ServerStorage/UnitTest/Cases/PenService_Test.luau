@@ -13,7 +13,11 @@
 --   * a buy: one spend with reason "pen", spots + 1 through mutate, the base redrawn and the "pen" field sent once
 --     (showPen), the awaited "now" save, the reply {pen, charged = true, savePending}; 1 call a second, one at a time;
 --   * pens3 phase 4: a loaded profile gets its Coins for the time away from EconomyService.grantAway (once per load),
---     and a gift that paid goes to the client as the awayGift session field {coins, seconds}; a gift of 0 sends none.
+--     and a gift that paid goes to the client as the awayGift session field {coins, seconds}; a gift of 0 sends none;
+--   * pens3 phase 5: a bought spot makes room, so the buy drops queued gifts in (EconomyService.dropGifts) before the
+--     reply's pen is copied, and a load drops them in too; the Frog gift (Pen.frogGift) is asked for once a session,
+--     frogGift.seconds after the player joined and only while the profile is READY (EconomyService.grantGift keeps it
+--     once per account).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -54,6 +58,9 @@ return function(t: Context)
 		away: { [any]: { number } }, -- grantAway's answer per player: {coins, seconds}
 		awayCalls: { any },
 		gifts: { { player: any, gift: any } },
+		drops: { any }, -- pens3 phase 5: dropGifts calls
+		dropAdds: { [any]: any }, -- an item dropGifts puts in that player's pen
+		frogAsks: { { player: any, key: string, kind: string } }, -- grantGift calls
 	}
 
 	local function newProfile(): any
@@ -86,6 +93,9 @@ return function(t: Context)
 			away = {},
 			awayCalls = {},
 			gifts = {},
+			drops = {},
+			dropAdds = {},
+			frogAsks = {},
 		}
 		PenService.reset()
 		PenService.useDeps({
@@ -154,6 +164,19 @@ return function(t: Context)
 			end,
 			setAwayGift = function(player: any, gift: any)
 				table.insert(w.gifts, { player = player, gift = gift })
+			end,
+			dropGifts = function(player: any): number
+				table.insert(w.drops, player)
+				local item = w.dropAdds[player]
+				if item ~= nil then
+					table.insert(w.profiles[player].pen.items, item)
+					return 1
+				end
+				return 0
+			end,
+			grantGift = function(player: any, key: string, kind: string): boolean
+				table.insert(w.frogAsks, { player = player, key = key, kind = kind })
+				return true
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -359,6 +382,55 @@ return function(t: Context)
 		expect.deepEqual(w.awayCalls, { w.a, w.b })
 		expect.equal(#w.gifts, 1)
 		expect.equal(#w.grants, 0) -- the pen's tick is not involved
+		finish()
+	end)
+
+	-- Copies, the Toy Box and gifts (pens3 phase 5) -------------------------------------------------------------------
+
+	t.test("a bought spot drops queued gifts in before the reply's pen is copied; a load drops them in too", function()
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.coins = 2_000
+		local gift = { id = 9, kind = "strawberry_frog", form = 0, level = 1, coat = 0 }
+		w.dropAdds[w.a] = gift
+		local reply = PenService.buy(w.a, 1_500)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(w.drops, { w.a })
+		expect.deepEqual(reply.data.pen.items[2], gift) -- the client sees the gift that dropped in
+		-- A refused buy drops nothing.
+		expectRefused(PenService.buy(w.a, 1), "pen.priceChanged")
+		expect.equal(#w.drops, 1)
+		-- A load drops queued gifts in (the room may have grown since the last session).
+		PenService.loaded(w.b)
+		expect.deepEqual(w.drops, { w.a, w.b })
+		finish()
+	end)
+
+	t.test("the Frog gift is asked for once a session, frogGift.seconds after joining, only while READY", function()
+		local w = fresh()
+		expect.deepEqual(PEN.frogGift, { kind = "strawberry_frog", seconds = 180 })
+		PenService.step(1)
+		expect.deepEqual(w.frogAsks, {}) -- too early
+		w.clock += PEN.frogGift.seconds - 1
+		PenService.step(1)
+		expect.deepEqual(w.frogAsks, {})
+		w.clock += 1
+		w.status[w.b] = "offline" -- not ready: waits
+		PenService.step(1)
+		expect.deepEqual(w.frogAsks, { { player = w.a, key = "frog", kind = "strawberry_frog" } })
+		w.status[w.b] = "ready"
+		PenService.step(1)
+		PenService.step(1)
+		expect.deepEqual(w.frogAsks, {
+			{ player = w.a, key = "frog", kind = "strawberry_frog" },
+			{ player = w.b, key = "frog", kind = "strawberry_frog" },
+		})
+		-- A new session asks again (grantGift itself keeps it once per account).
+		PenService.playerRemoving(w.a)
+		PenService.playerAdded(w.a)
+		w.clock += PEN.frogGift.seconds
+		PenService.step(1)
+		expect.equal(#w.frogAsks, 3)
 		finish()
 	end)
 end

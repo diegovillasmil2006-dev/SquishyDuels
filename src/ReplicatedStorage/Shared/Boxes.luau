@@ -6,8 +6,14 @@
 -- Rules (§6.4): weights are integers that sum to exactly WeightTotal (10,000) per box, so a chance is weight / 100
 -- with two exact decimals ("32.00"; no rounding disclaimer). Items are ordered arrays (draws and displays are
 -- deterministic). Kitty Bread is in no box. Snack and Sweet are paid random items (Coins); the Treat Box is free-only
--- (day 7 of Daily Rewards), has no cost and can never be bought. Config.validate checks the sums, ids, refunds and the
--- free box; Pricing derives the shop price ceilings from these weights.
+-- (day 7 of Daily Rewards), has no cost and can never be bought. Config.validate checks the sums, ids and the free box;
+-- Pricing derives the shop price ceilings from these weights.
+-- Pens3 phase 5 (copies): a box always gives a squishy (a copy when you own it), so isComplete is gone. Restricted
+-- accounts (PolicyGateService: anything but "eligible") open the paid boxes in a fixed order instead of a random draw
+-- (D1:235, V3:163): each paid box's `fixedCycle` items, built once from its weights by smooth weighted round-robin
+-- (SIM sequenceOf, V4:248-252: every step adds each item's weight to its counter, takes the item with the highest
+-- counter, a tie to the earlier item, and takes WeightTotal off it), so a rare item comes at its fair place and each
+-- item comes as often as its weight says (rounded). The order repeats; profile.boxOrder[boxId] counts the opens.
 --
 -- API:
 --   Boxes.WeightTotal                -> 10000
@@ -18,12 +24,12 @@
 --   Boxes.percentText(weight)        -> "32.00": weight / 100 with two decimals, integer math (no float rounding)
 --   Boxes.odds(boxId)                -> { OddsRow } {id, weight, percent, text} in item order (empty for an unknown id)
 --   Boxes.byRarity(boxId)            -> { RarityRow } {rarity, weight, percent, text}, rarity descending
---                                       (Snack: Uncommon 20.00 · Common 80.00)
+--                                       (Snack: Uncommon 24.00 · Common 76.00)
 --   Boxes.totalText(boxId)           -> "100.00" (the sum of the weights), nil for an unknown id
---   Boxes.isComplete(boxId, owned)   -> true when every item of the box is a key of `owned` (profile.owned); false
---                                       for an unknown or empty box. BoxService refuses an open with box.complete while
---                                       Config.Economy.AllowOpenWhenComplete is false (§6.4).
 --   Boxes.containing(squishyId)      -> { ContainingRow } {boxId, weight, percent, text, paid} in list order
+--   Boxes.fixedItem(boxId, n)        -> string?: the squishy of open n + 1 in the box's fixed order (n = the opens so
+--                                       far, a whole number >= 0; the order repeats every fixedCycle); nil for a free
+--                                       or unknown box or a bad n. The server opens it, the box card shows it first.
 --
 -- Readings:
 --   * Items are `{ id = "toast", weight = 2000 }` instead of DESIGN's positional `{"toast", 3200}` pairs (same order;
@@ -48,6 +54,7 @@ export type BoxDef = {
 	cost: number?, -- Coins; nil for the free-only box
 	paid: boolean, -- a paid random item (§6.10): opened with Coins through BoxOpen
 	freeOnly: boolean?, -- only granted for free (the day-7 Treat Box); never sold
+	fixedCycle: number?, -- pens3 phase 5, paid boxes: the length of the fixed order restricted accounts open
 	items: { BoxItem }, -- ordered; weights sum to WeightTotal
 }
 
@@ -69,26 +76,27 @@ local function item(id: string, weight: number): BoxItem
 	return { id = id, weight = weight }
 end
 
--- §6.4, in order. Spec 2026-10-12 §8 (squishy prices now far apart, so each box covers a narrower range): Snack 150K,
--- Commons 80% (20% each) and Uncommons 20% (5% each), Epics left it; Sweet 450M, Uncommons 60% (15% each), Epics 39.96%
--- (9.99% each) and Dragon 0.04%; Treat unchanged (Commons 56%, Uncommons 34%, Epics 10%). A rarity's share is split
--- equally across its items (spec 2026-10-09 §3.3); new items sit right after their same-rarity siblings and Dragon
--- stays last.
+-- §6.4, in order. Pens3 phase 5 (ECONOMY_V3:159-161; Snack = the Soft Box, Treat = the Royal Box): Soft 150K, the 4
+-- Commons 19% each, Butter and Chocolate 8% each, Mochi Fox and Strawberry Frog 4% each (Rare-to-be: their rarity moves
+-- in phase 22); Sweet 450M, the 4 Epics 24.99% each and Dragon 0.04%; Royal (free on day 7, never sold) Commons 14%,
+-- Butter and Chocolate 9%, Mochi Fox and Strawberry Frog 6%, Epics 3.5% each. New items sit right after their
+-- same-rarity siblings and Dragon stays last.
 local LIST: { BoxDef } = {
 	{
 		id = "snack",
 		nameKey = "box.snack.name",
 		cost = 150_000,
 		paid = true,
+		fixedCycle = 25, -- V3:163: Toast, Banana, Boba 5, Pup 4, Butter, Choco 2, Fox, Frog 1 (Fox at 11, Frog at 12)
 		items = {
-			item("toast", 2000),
-			item("banana", 2000),
-			item("boba_bear", 2000),
-			item("pancake_pup", 2000),
-			item("butter", 500),
-			item("chocolate", 500),
-			item("mochi_fox", 500),
-			item("strawberry_frog", 500),
+			item("toast", 1900),
+			item("banana", 1900),
+			item("boba_bear", 1900),
+			item("pancake_pup", 1900),
+			item("butter", 800),
+			item("chocolate", 800),
+			item("mochi_fox", 400),
+			item("strawberry_frog", 400),
 		},
 	},
 	{
@@ -96,15 +104,12 @@ local LIST: { BoxDef } = {
 		nameKey = "box.sweet.name",
 		cost = 450_000_000,
 		paid = true,
+		fixedCycle = 2500, -- V3:163: each Epic about 625 times, the Dragon once (at box 501, V4:252)
 		items = {
-			item("butter", 1500),
-			item("chocolate", 1500),
-			item("mochi_fox", 1500),
-			item("strawberry_frog", 1500),
-			item("bird", 999),
-			item("donut", 999),
-			item("cloud_bunny", 999),
-			item("cupcake_axolotl", 999),
+			item("bird", 2499),
+			item("donut", 2499),
+			item("cloud_bunny", 2499),
+			item("cupcake_axolotl", 2499),
 			item("dragon", 4),
 		},
 	},
@@ -119,24 +124,51 @@ local LIST: { BoxDef } = {
 			item("banana", 1400),
 			item("boba_bear", 1400),
 			item("pancake_pup", 1400),
-			item("butter", 850),
-			item("chocolate", 850),
-			item("mochi_fox", 850),
-			item("strawberry_frog", 850),
-			item("bird", 250),
-			item("donut", 250),
-			item("cloud_bunny", 250),
-			item("cupcake_axolotl", 250),
+			item("butter", 900),
+			item("chocolate", 900),
+			item("mochi_fox", 600),
+			item("strawberry_frog", 600),
+			item("bird", 350),
+			item("donut", 350),
+			item("cloud_bunny", 350),
+			item("cupcake_axolotl", 350),
 		},
 	},
 }
 
+-- The box's fixed order (see the header): `count` squishy ids by smooth weighted round-robin over its weights.
+local function roundRobin(items: { BoxItem }, count: number): { string }
+	local counters = table.create(#items, 0)
+	local total = 0
+	for _, entry in items do
+		total += entry.weight
+	end
+	local order = table.create(count)
+	for _ = 1, count do
+		local best = 1
+		for index, entry in items do
+			counters[index] += entry.weight
+			if counters[index] > counters[best] then
+				best = index
+			end
+		end
+		counters[best] -= total
+		table.insert(order, items[best].id)
+	end
+	return order
+end
+
 local BY_ID: { [string]: BoxDef } = {}
 local PAID_BY_ID: { [string]: BoxDef } = {}
+local FIXED_ORDERS: { [string]: { string } } = {}
 for _, box in LIST do
 	BY_ID[box.id] = box
 	if box.paid then
 		PAID_BY_ID[box.id] = box
+	end
+	local cycle = box.fixedCycle
+	if box.paid and type(cycle) == "number" and cycle >= 1 and math.floor(cycle) == cycle then
+		FIXED_ORDERS[box.id] = table.freeze(roundRobin(box.items, cycle))
 	end
 	for _, entry in box.items do
 		table.freeze(entry)
@@ -147,6 +179,7 @@ end
 table.freeze(LIST)
 table.freeze(BY_ID)
 table.freeze(PAID_BY_ID)
+table.freeze(FIXED_ORDERS)
 
 -- Module table
 
@@ -243,17 +276,12 @@ function Boxes.totalText(boxId: string): string?
 	return Boxes.percentText(total)
 end
 
-function Boxes.isComplete(boxId: string, owned: { [string]: any }): boolean
-	local box = Boxes.get(boxId)
-	if box == nil or #box.items == 0 or type(owned) ~= "table" then
-		return false
+function Boxes.fixedItem(boxId: unknown, n: unknown): string?
+	local order = if type(boxId) == "string" then FIXED_ORDERS[boxId] else nil
+	if order == nil or type(n) ~= "number" or n ~= n or n < 0 or n == math.huge or math.floor(n) ~= n then
+		return nil
 	end
-	for _, entry in box.items do
-		if owned[entry.id] == nil then
-			return false
-		end
-	end
-	return true
+	return order[n % #order + 1]
 end
 
 function Boxes.containing(squishyId: string): { ContainingRow }

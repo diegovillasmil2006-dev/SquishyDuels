@@ -47,8 +47,8 @@
 -- Dragon charge), Inspect's squeeze axis, and Grip.squeezeAlertPerHour in 1..maxSqueezesPerHour.
 -- Big-number progression (spec 2026-10-12, Phase 1): G1 over 100 levels (the totals rise strictly; a level may cost
 -- less than the one before), G3 as a squeeze count, G5 covering 4 × the top pen squeeze, SquishyPower and a Catalog
--- `power` override (whole numbers >= 1), the refund share (Economy.DuplicateRefund, under 100%, its free-box price from
--- a paid box), and "capsule" among the G7 training words (pens3 phase 3: the Capsule block's checks are gone).
+-- `power` override (whole numbers >= 1), and "capsule" among the G7 training words (pens3 phase 3: the Capsule block's
+-- checks are gone). Pens3 phase 5: DuplicatePolicy must be "copy" (the refund share and AllowOpenWhenComplete left).
 -- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead and Config.Wax have a row for every Config.Anim.rig feel, each
 -- share, time and gain in range and every spring <= 3 Hz except jelly's per-vertex knead spring (the design's own 3.59
 -- Hz wobble, a documented exception); the crunch rhythm <= 3 presses a second; the wax switch Config.Wax.enabled (user
@@ -144,7 +144,6 @@ local MAX_IDLE_KICK_SECONDS = 1200 -- G5: Roblox disconnects idle players after 
 local MAX_QUEUED_HOLD_SECONDS = 120 -- G5
 local MAX_WAVE_COURANT = 0.5 -- F7: the ripple's wave speed × substep / spacing
 local SECONDS_PER_HOUR = 3600
-local PERCENT = 100
 local MAX_PAD_MARGIN = 2 -- Config.Squeeze.padMargin (G9's limit before Phase 6)
 local MAX_PAD_HEIGHT_ABOVE = 8 -- Config.Squeeze.heightAbove (G9's limit before Phase 6)
 local DATASTORE_VALUE_LIMIT = 4_194_304 -- characters per DataStore value (§3.5)
@@ -412,14 +411,6 @@ local function checkEconomy(problems: Problems, rarities: { string })
 	for rarity, power in Economy.SquishyPower do
 		expectCount(problems, `{p}.SquishyPower.{rarity}`, power, 1)
 	end
-	-- Spec 2026-10-12 §8: below 100%, so opening a paid box can never earn Coins (checkBoxes checks freeBoxPriceOf).
-	local refund = Economy.DuplicateRefund
-	expect(
-		problems,
-		isInteger(refund.percent) and refund.percent >= 0 and refund.percent < PERCENT,
-		`{p}.DuplicateRefund.percent must be a whole number in 0..99 (got {show(refund.percent)})`
-	)
-	expectId(problems, `{p}.DuplicateRefund.freeBoxPriceOf`, refund.freeBoxPriceOf)
 
 	local limit = Economy.SqueezeLimit
 	expectBoolean(problems, `{p}.SqueezeLimit.enabled`, limit.enabled)
@@ -460,12 +451,9 @@ local function checkEconomy(problems: Problems, rarities: { string })
 	expectNonNegative(problems, `{p}.Quests.practiceTargetRepeatSeconds`, quests.practiceTargetRepeatSeconds)
 
 	local policy: string = Economy.DuplicatePolicy
-	if policy == "exclude_owned" then
-		add(problems, `{p}.DuplicatePolicy "exclude_owned" is not built (it needs per-player odds, DESIGN §6.5)`)
-	elseif policy ~= "refund" then
-		add(problems, `{p}.DuplicatePolicy must be "refund" or "exclude_owned" (got {show(policy)})`)
+	if policy ~= "copy" then
+		add(problems, `{p}.DuplicatePolicy must be "copy" (got {show(policy)}; pens3 phase 5)`)
 	end
-	expectBoolean(problems, `{p}.AllowOpenWhenComplete`, Economy.AllowOpenWhenComplete)
 	expectPositive(problems, `{p}.MinSecondsBetweenOpens`, Economy.MinSecondsBetweenOpens)
 
 	local tip = Economy.LossTip
@@ -4026,14 +4014,6 @@ local function checkBoxes(problems: Problems, Boxes: any, defs: { [string]: any 
 		problems,
 		freeBox ~= nil and freeBox.paid ~= true,
 		`Config.Economy.Daily.freeBoxId {show(Economy.Daily.freeBoxId)} must be a free-only box in Boxes`
-	)
-	-- Spec 2026-10-12 §8: a free box's double refunds a share of this paid box's price.
-	local pricedAs = Economy.DuplicateRefund.freeBoxPriceOf
-	local priced = byId[pricedAs]
-	expect(
-		problems,
-		priced ~= nil and priced.paid == true,
-		`Config.Economy.DuplicateRefund.freeBoxPriceOf {show(pricedAs)} must be a paid box in Boxes`
 	)
 	return list
 end

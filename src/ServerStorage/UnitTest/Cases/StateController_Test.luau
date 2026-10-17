@@ -314,6 +314,11 @@ return function(t: Context)
 			expect.equal((norm(field, "nope")), false)
 			expect.equal((norm(field, {})), true)
 		end
+		-- Pens3 phase 5: boxOrder (the fixed-order opens per paid box) is a table field too.
+		expect.equal((norm("boxOrder", 3)), false)
+		local ok0, order = norm("boxOrder", { snack = 10, sweet = 0 })
+		expect.equal(ok0, true)
+		expect.deepEqual(order, { snack = 10, sweet = 0 })
 		-- Unknown fields from a newer server are kept as sent.
 		local ok, value = norm("somethingNew", 5)
 		expect.equal(ok, true)

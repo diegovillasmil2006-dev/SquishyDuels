@@ -25,6 +25,12 @@
 --   step, so a second Loaded of the same profile pays nothing. A gift that paid goes to the owner's client as the
 --   session field awayGift {coins, seconds} (StateService), which shows it once. This handler runs after
 --   GripService's (it connects in an earlier init), whose welcome toasts read the loaded lastSeenAt.
+-- * Pens3 phase 5 (copies, D1:254-258): a bought spot makes room in the Toy Box, so the buy drops queued gifts in
+--   (EconomyService.dropGifts) before the reply's pen is copied; a load drops them in too. The free Frog gift
+--   (Pen.frogGift, SIM:226): the tick asks EconomyService.grantGift(p, "frog", kind) once a session, frogGift.seconds
+--   after the player joined, while the profile is READY; grantGift keeps it once per account (profile.gifts.frog).
+--   Reading: "minute 3 of the first play" is minute 3 of the first session that lasts that long (play time is not
+--   saved).
 -- Every profile write goes through DataService.mutate (the data port). Dependencies are injectable (useDeps) so unit
 -- tests run with fake profiles and players (plain tables); init() never yields; playerAdded / playerRemoving never
 -- yield.
@@ -70,6 +76,8 @@ export type Deps = {
 	showPen: (player: any) -> (),
 	grantAway: (player: any) -> (number, number), -- EconomyService.grantAway: (Coins added, seconds counted)
 	setAwayGift: (player: any, gift: Types.AwayGift) -> (), -- StateService.setSessionField(p, "awayGift", gift)
+	dropGifts: (player: any) -> number, -- pens3 phase 5: EconomyService.dropGifts (how many dropped in)
+	grantGift: (player: any, key: string, kind: string) -> boolean, -- pens3 phase 5: EconomyService.grantGift
 }
 
 -- What the remote answers: NetService.ok(Types.PenResult) or NetService.err(reason, false).
@@ -78,11 +86,14 @@ export type Reply = { ok: boolean, data: Types.PenResult?, reason: string?, char
 type Session = {
 	carry: number, -- the part of a Coin the tick owes (PenMath.payStep)
 	boughtAt: number, -- deps.clock() of the last spot bought (the cooldown)
+	joinedAt: number, -- pens3 phase 5: deps.clock() at playerAdded (the Frog gift's time)
+	frogAsked: boolean, -- pens3 phase 5: the Frog gift was asked for this session
 }
 
 -- Constants
 
 local PEN = Config.Economy.Pen
+local FROG_KEY = "frog" -- profile.gifts.frog
 local COIN_REASON = "pen"
 local REMOTE_BUY = "PenBuySpot"
 local FIELD_PEN = "pen"
@@ -162,6 +173,12 @@ local function defaultDeps(): Deps
 		setAwayGift = function(player: any, gift: Types.AwayGift)
 			StateService.setSessionField(player, FIELD_AWAY_GIFT, gift)
 		end,
+		dropGifts = function(player: any): number
+			return EconomyService.dropGifts(player)
+		end,
+		grantGift = function(player: any, key: string, kind: string): boolean
+			return EconomyService.grantGift(player, key, kind)
+		end,
 	}
 end
 
@@ -187,6 +204,13 @@ local function pay(player: any, session: Session, dt: number)
 	session.carry = carry
 	if coins > 0 then
 		deps.grantCoins(player, coins, COIN_REASON)
+	end
+	-- Pens3 phase 5: the Frog gift, once a session (see the header).
+	if not session.frogAsked and deps.clock() - session.joinedAt >= PEN.frogGift.seconds then
+		session.frogAsked = true
+		if deps.grantGift(player, FROG_KEY, PEN.frogGift.kind) then
+			log:info(`user {userIdOf(player)} got the {PEN.frogGift.kind} gift`)
+		end
 	end
 end
 
@@ -259,6 +283,7 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 		session.boughtAt = deps.clock()
 	end
 	log:info(`user {userIdOf(player)} bought pen spot {spot} for {price} Coins`)
+	deps.dropGifts(player) -- pens3 phase 5: the new spot makes room for a waiting gift
 	deps.showPen(player)
 	local data: Types.PenResult = {
 		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
@@ -278,6 +303,7 @@ function PenService.loaded(player: any)
 		deps.setAwayGift(player, { coins = coins, seconds = seconds })
 		log:info(`user {userIdOf(player)} got {coins} Coins for {seconds} s away`)
 	end
+	deps.dropGifts(player) -- pens3 phase 5: gifts that waited for room
 end
 
 -- Public: tests -----------------------------------------------------------------------------------------------------
@@ -330,7 +356,7 @@ end
 
 function PenService.playerAdded(player: Player)
 	if sessions[player] == nil then
-		sessions[player] = { carry = 0, boughtAt = -math.huge }
+		sessions[player] = { carry = 0, boughtAt = -math.huge, joinedAt = deps.clock(), frogAsked = false }
 	end
 end
 

@@ -30,7 +30,7 @@ local Pen = {
 	coatMult = { 1, 1.5, 2, 3, 4, 6, 8, 12 }, -- coat 0 none, then Wax, Glitter, Jelly, Frost, Chrome, Neon, Galaxy
 	minSqueezeValue = 10, -- an own squeeze, and every reward counted in squeezes, is worth at least this
 	maxLevel = 70, -- 10 levels for each of the 7 biomes
-	toyBoxMax = 50, -- unplaced squishies (phase 5 stops grants at the cap)
+	toyBoxMax = 50, -- unplaced squishies (D1:254-258: at the cap paid opens and shop buys stop, free ones wait)
 	placedMax = 21, -- 12 pen spots + 8 shelf spots + the TOP spot (phase 11)
 
 	tickSeconds = 1, -- the pen pays every second
@@ -41,6 +41,16 @@ local Pen = {
 	-- Pens3 phase 4 (owner decision): time away pays this share of the pen's Coins a second as saved at the last save
 	-- (profile.pen.awayRate), for every second away, with no limit and no idle rule (PenMath.awayCoins).
 	awayRate = 0.05,
+
+	-- Pens3 phase 5 (copies). A free squishy (a gift, the day-7 Royal Box) that finds the Toy Box full waits in
+	-- profile.giftQueue (kind ids, oldest first) and drops in as soon as there is room; at most this many wait. [P]
+	giftQueueMax = 50,
+	-- The first squishy of each kind of these rarities costs this in the shop while the kind is not owned (D1:202,
+	-- "Welcome price: first one 3K"; it never runs out). ValidatePen keeps it at or below each one's shopPrice.
+	welcomePrice = { Common = 3_000 } :: { [string]: number },
+	-- The free gift of the first play (SIM:226): this squishy once per account (profile.gifts.frog), this many seconds
+	-- into a session.
+	frogGift = { kind = "strawberry_frog", seconds = 180 },
 }
 
 return Pen

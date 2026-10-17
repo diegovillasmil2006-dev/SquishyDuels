@@ -2,23 +2,27 @@
 -- BoxFormat_Test: StarterPlayerScripts.Client.UI.BoxFormat (what the Boxes screen, the reveal and the box counter show).
 -- Server only (ServerStorage.UnitTest). Pure: no instances.
 -- Contract (DESIGN §6.4, §6.5, §6.10, §7.6, §7.7, §9.11, §18.1, §18.6):
---   * the odds rows equal Boxes (ids, order, weights, the exact "xx.xx%" texts), with the rarity text + pips, Owned and
---     the refund line from Pricing; every box's percent texts add up to exactly 100.00% and "Total: 100.00%";
---   * the rarity summary is rarity descending (Snack: Uncommon 20.00% · Common 80.00%; spec 2026-10-12 §8);
+--   * the odds rows equal Boxes (ids, order, weights, the exact "xx.xx%" texts), with the rarity text + pips and Owned
+--     (pens3 phase 5: no refund line, a squishy you own again is a copy); every box's percent texts add up to exactly
+--     100.00% and "Total: 100.00%";
+--   * the rarity summary is rarity descending (Snack: Uncommon 24.00% · Common 76.00%; ECONOMY_V3 odds);
 --   * the open area follows the §6.10 table: checking -> disabled "Checking…" + the checking note; unknown -> Try again
 --     + the unknown note (disabled while the retry waits: 30 s from the later of the last press and the arrival of
---     "unknown", retryWait); restricted -> "Shop squishies directly" + the restricted note;
---     the Treat Box -> box.freeOnly, no Open; eligible -> "Open: {cost} Coins", needCoins / complete / saving / the duel
---     lock disabled with a reason; armed -> the confirm texts; an unknown policy fails closed (checking); no Robux text;
+--     "unknown", retryWait); restricted (pens3 phase 5) -> OPEN like eligible, with "Next in this box: {name}" (the
+--     fixed order's next squishy from boxOrder) and the restricted note, and no Open while that next squishy is not
+--     known (checking);
+--     the Treat Box -> box.freeOnly, no Open; eligible -> "Open: {cost} Coins", needCoins / Toy Box full / saving / the
+--     duel lock disabled with a reason; armed -> the confirm texts; an unknown policy fails closed (checking); no
+--     Robux text;
 --   * UI FINAL R7 (plan work/ui/PLAN.md R7): the reveal timeline (the drop lands at 750 ms, a tap every 1.1 s or the
 --     player's advances one tap, the third bursts about 4.05 s in, only once the reply is in, the result idle 1.5 s
 --     later; skip lands with every move done), the design's curves and springs, the sounds per moment, the flash
 --     under Config.Vfx.Flash (PR16), the §9.15 frame ledger with the burst and the rain (PR18), the orbit (T14), the
---     duplicate line with the refund (PR21), the window's card row (PR20), card layout, odds rows, toy tiles and
---     subtitle;
---   * the odds board and the counter prompt (restricted and unknown -> "Shop Squishies" and the shop); the board groups
---     a rarity into one line ("Common 80.00% — 20.00% each: Toast, …") only when its items share one weight (spec
---     2026-10-09 §3.3), else one line per item;
+--     duplicate line (PR21; no Coins since pens3 phase 5), the window's card row (PR20), card layout, odds rows, toy
+--     tiles and subtitle;
+--   * the odds board and the counter prompt (unknown -> "Shop Squishies" and the shop; restricted -> the boxes since
+--     pens3 phase 5); the board groups a rarity into one line ("Common 76.00% — 19.00% each: Toast, …") only when its
+--     items share one weight (spec 2026-10-09 §3.3), else one line per item;
 --   * the unseen-reveal rule: malformed entries are dropped, skipped ids are left out, each id once.
 
 type Context = {
@@ -35,7 +39,6 @@ return function(t: Context)
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
-	local Pricing = t.requireShared("Pricing")
 	local Rarity = t.requireShared("Rarity")
 	local Strings = t.requireShared("Strings")
 
@@ -61,7 +64,7 @@ return function(t: Context)
 		end
 	end
 
-	t.test("odds rows equal the Boxes config, with rarity, Owned and the refund line", function()
+	t.test("odds rows equal the Boxes config, with rarity and Owned (no refund line: copies)", function()
 		for _, box in Boxes.list() do
 			local owned = { [box.items[1].id] = { at = 0, src = "box" } }
 			local rows = BoxFormat.oddsRows(box.id, owned)
@@ -77,11 +80,9 @@ return function(t: Context)
 				expect.equal(row.rarity, def.rarity)
 				expect.equal(row.rarityText, rarityName(def.rarity))
 				expect.equal(row.pips, Rarity.get(def.rarity).pips)
-				expect.equal(row.refund, Pricing.duplicateRefund(box.id)) -- a share of the box price (spec 2026-10-12 §8)
-				expect.equal(
-					row.refundText,
-					Strings.format(Strings.box.refundLine, { coins = Format.coins(row.refund) })
-				)
+				-- Pens3 phase 5: a squishy you own again is a copy for the pen, never Coins back.
+				expect.equal(row.refund, nil)
+				expect.equal(row.refundText, nil)
 				expect.equal(row.owned, i == 1)
 				expect.equal(row.ownedText, if i == 1 then Strings.common.owned else nil)
 				expect.equal(row.inspect, true) -- Inspect for owned and unowned rows (§6.10 #4)
@@ -112,12 +113,9 @@ return function(t: Context)
 			end
 			return Strings.format(Strings.box.chancesByRarity, { list = table.concat(list, Strings.box.listSeparator) })
 		end
-		-- Spec 2026-10-12 §8: Epics left the Snack Box; Dragon is 0.04% of the Sweet Box.
-		expect.equal(BoxFormat.raritySummary("snack"), summary({ { "Uncommon", "20.00" }, { "Common", "80.00" } }))
-		expect.equal(
-			BoxFormat.raritySummary("sweet"),
-			summary({ { "Exclusive", "0.04" }, { "Epic", "39.96" }, { "Uncommon", "60.00" } })
-		)
+		-- ECONOMY_V3:159-161 (pens3 phase 5): Soft 4 x 19% Commons; Sweet 4 Epics and Dragon at 0.04%.
+		expect.equal(BoxFormat.raritySummary("snack"), summary({ { "Uncommon", "24.00" }, { "Common", "76.00" } }))
+		expect.equal(BoxFormat.raritySummary("sweet"), summary({ { "Exclusive", "0.04" }, { "Epic", "99.96" } }))
 	end)
 
 	t.test("box name and price: Coins for the paid boxes, free-only for the Treat Box", function()
@@ -140,7 +138,14 @@ return function(t: Context)
 	end)
 
 	t.test("open area: the §6.10 policy states", function()
-		local base = { box = "snack", coins = 200_000, owned = {}, savePending = false, inLobby = true }
+		local base = {
+			box = "snack",
+			coins = 200_000,
+			owned = {},
+			savePending = false,
+			inLobby = true,
+			boxOrder = { snack = 0, sweet = 0 },
+		}
 		local function with(changes: { [string]: any }): any
 			local input = table.clone(base)
 			for key, value in changes do
@@ -166,12 +171,41 @@ return function(t: Context)
 		expect.equal(waiting.enabled, false)
 		expect.equal(waiting.reason, Strings.format(Strings.common.secondsShort, { seconds = 13 }))
 
+		-- Pens3 phase 5 (D1:235): a restricted account opens the paid boxes in a fixed order, never random, and sees
+		-- the next squishy before it opens (Boxes.fixedItem of its boxOrder count).
 		local restricted = with({ policy = "restricted" })
-		expect.equal(restricted.kind, "shopDirect")
-		expect.equal(restricted.button, "shop")
-		expect.equal(restricted.text, Strings.box.shopDirect)
+		expect.equal(restricted.kind, "open")
+		expect.equal(restricted.button, "confirm")
+		expect.equal(restricted.text, Strings.format(Strings.box.openButton, { cost = "150.0K" }))
 		expect.equal(restricted.enabled, true)
 		expect.equal(restricted.note, Strings.box.restrictedNote)
+		expect.equal(restricted.nextText, Strings.format(Strings.box.nextItem, { name = "Toast" }))
+		expect.equal(Boxes.fixedItem("snack", 0), "toast")
+		local eleventh = with({ policy = "restricted", boxOrder = { snack = 10, sweet = 0 } })
+		expect.equal(eleventh.nextText, Strings.format(Strings.box.nextItem, { name = "Mochi Fox" }))
+		local sweet = with({ policy = "restricted", box = "sweet", coins = 450_000_000, boxOrder = { sweet = 500 } })
+		expect.equal(sweet.kind, "open")
+		expect.equal(sweet.nextText, Strings.format(Strings.box.nextItem, { name = "Dragon" })) -- box 501 (V4:252)
+		local again = with({ policy = "restricted", box = "sweet", coins = 450_000_000, boxOrder = { sweet = 3000 } })
+		expect.equal(again.nextText, sweet.nextText) -- the order repeats every fixedCycle (2,500)
+		-- Its blocks are the eligible ones (short of Coins here), and the next squishy still shows.
+		local short = with({ policy = "restricted", coins = 10 })
+		expect.equal(short.kind, "needCoins")
+		expect.equal(short.nextText, restricted.nextText)
+		-- No boxOrder yet (or a broken count): the next squishy is not known, so no Open (never a blind open).
+		-- (false = no boxOrder field at all)
+		for _, order in { false, "x", {}, { snack = -1 }, { snack = 1.5 }, { snack = "3" } } :: { any } do
+			local input: any = { box = "snack", policy = "restricted", coins = 200_000 }
+			if order ~= false then
+				input.boxOrder = order
+			end
+			local blind = BoxFormat.openView(input)
+			expect.equal(blind.kind, "checking")
+			expect.equal(blind.enabled, false)
+			expect.equal(blind.nextText, nil)
+		end
+		-- Eligible accounts draw at random: no next squishy is shown.
+		expect.equal(with({ policy = "eligible" }).nextText, nil)
 
 		-- Fail closed: no policy yet, or an unexpected value, is "checking" (§6.10 server rule).
 		expect.equal(with({ policy = nil }).kind, "checking")
@@ -233,7 +267,7 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("open area: eligible blocks (Coins, complete, saving, duel, profile) and the armed confirm", function()
+	t.test("open area: eligible blocks (Coins, Toy Box full, saving, duel, profile) and the armed confirm", function()
 		local poor = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 149_880, owned = {} })
 		expect.equal(poor.kind, "needCoins")
 		expect.equal(poor.enabled, false)
@@ -244,19 +278,41 @@ return function(t: Context)
 		expect.equal(BoxFormat.needCoinsText(1), Strings.format(Strings.box.needCoins.one, { missing = "1" }))
 		expect.equal(BoxFormat.openView({ box = "snack", policy = "eligible", owned = {} }).kind, "needCoins")
 
+		-- Pens3 phase 5: owning every squishy of a box no longer blocks it (a copy comes); a full Toy Box does
+		-- (PenMath.room 0: 3 spots + toyBoxMax unplaced), before any Coins move. No pen state yet: the server decides.
 		local all = {}
 		for _, item in Boxes.get("snack").items do
 			all[item.id] = { at = 0, src = "box" }
 		end
-		local complete = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, owned = all })
-		expect.equal(complete.kind, "complete")
-		expect.equal(complete.enabled, false)
-		expect.equal(complete.reason, Strings.reasonText("box.complete"))
-		-- The policy comes first: a restricted player who owns everything still gets the shop alternative.
 		expect.equal(
-			BoxFormat.openView({ box = "snack", policy = "restricted", coins = 200_000, owned = all }).kind,
-			"shopDirect"
+			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, owned = all }).kind,
+			"open"
 		)
+		local items = {}
+		for i = 1, 3 + Config.Economy.Pen.toyBoxMax do
+			table.insert(items, { id = i, kind = "toast" })
+		end
+		local fullPen = { spots = 3, nextId = #items + 1, items = items }
+		local full =
+			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, owned = {}, pen = fullPen })
+		expect.equal(full.kind, "full")
+		expect.equal(full.enabled, false)
+		expect.equal(full.reason, Strings.reasonText("inventory.full"))
+		local roomy = { spots = 4, nextId = fullPen.nextId, items = items } -- a pen spot bought: room for one more
+		expect.equal(
+			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, pen = roomy }).kind,
+			"open"
+		)
+		-- Restricted accounts have the same block (their next squishy still shows).
+		local fullRestricted = BoxFormat.openView({
+			box = "snack",
+			policy = "restricted",
+			coins = 200_000,
+			pen = fullPen,
+			boxOrder = { snack = 0 },
+		})
+		expect.equal(fullRestricted.kind, "full")
+		expect.equal(fullRestricted.nextText, Strings.format(Strings.box.nextItem, { name = "Toast" }))
 
 		local saving =
 			BoxFormat.openView({ box = "snack", policy = "eligible", coins = 200_000, owned = {}, savePending = true })
@@ -280,7 +336,7 @@ return function(t: Context)
 		expect.equal(armed.enabled, true)
 		expect.equal(armed.text, Strings.format(Strings.spend.confirm, { price = "450.00M" }))
 		expect.equal(armed.note, Strings.format(Strings.spend.balanceAfter, { balance = "500" }))
-		for _, view in { poor, complete, saving, duel, offline, armed } do
+		for _, view in { poor, full, saving, duel, offline, armed } do
 			noRobux(view)
 		end
 	end)
@@ -529,16 +585,14 @@ return function(t: Context)
 		end
 	)
 
-	t.test("result text: NEW!, or the duplicate line with our refund (PR21)", function()
-		expect.equal(BoxFormat.resultText(false, 0), Strings.box.revealNew)
-		expect.equal(
-			BoxFormat.resultText(true, 1000),
-			Strings.box.revealDuplicate
-				.. Strings.box.listSeparator
-				.. Strings.format(Strings.box.revealRefund, { coins = "1,000" })
-		)
-		expect.equal(BoxFormat.resultText(true, 0), Strings.box.revealDuplicate)
-	end)
+	t.test(
+		"result text: NEW!, or the duplicate line (PR21; a copy for the pen, no Coins since pens3 phase 5)",
+		function()
+			expect.equal(BoxFormat.resultText(false), Strings.box.revealNew)
+			expect.equal(BoxFormat.resultText(true), Strings.box.revealDuplicate)
+			expect.falsy(string.find(BoxFormat.resultText(true), "Coins", 1, true))
+		end
+	)
 	t.test("odds board: the stand's box rows, or the restricted / unknown note", function()
 		local text = BoxFormat.boardText("eligible", "snack")
 		local lines = string.split(text, "\n")
@@ -574,18 +628,19 @@ return function(t: Context)
 			})
 		end
 
+		-- ECONOMY_V3 (pens3 phase 5): the 4 Commons share 19%; the Uncommons do not share one weight (8% / 4%).
 		local snack = string.split(BoxFormat.boardText("eligible", "snack"), "\n")
-		expect.equal(#snack, 3) -- the header, then Common and Uncommon in item order (spec 2026-10-12 §8)
-		expect.equal(snack[2], "Common 80.00% — 20.00% each: Toast, Banana, Boba Bear, Pancake Pup")
-		expect.equal(
-			snack[3],
-			group("Uncommon", "20.00", "5.00", { "Butter", "Chocolate", "Mochi Fox", "Strawberry Frog" })
-		)
+		expect.deepEqual(table.move(snack, 2, #snack, 1, {}), {
+			"Common 76.00% — 19.00% each: Toast, Banana, Boba Bear, Pancake Pup",
+			line("butter", "8.00"),
+			line("chocolate", "8.00"),
+			line("mochi_fox", "4.00"),
+			line("strawberry_frog", "4.00"),
+		})
 
 		-- Dragon, alone in its rarity, keeps its own line.
 		expect.deepEqual(BoxFormat.oddsLines(Boxes.get("sweet").items), {
-			group("Uncommon", "60.00", "15.00", { "Butter", "Chocolate", "Mochi Fox", "Strawberry Frog" }),
-			group("Epic", "39.96", "9.99", { "Birdie", "Donut", "Cloud Bunny", "Cupcake Axolotl" }),
+			group("Epic", "99.96", "24.99", { "Birdie", "Donut", "Cloud Bunny", "Cupcake Axolotl" }),
 			line("dragon", "0.04"),
 		})
 
@@ -606,15 +661,15 @@ return function(t: Context)
 		expect.deepEqual(BoxFormat.oddsLines({}), {})
 	end)
 
-	t.test("counter prompt: Shop Squishies for restricted AND unknown (§7.6)", function()
-		expect.equal(BoxFormat.promptKey("restricted"), "prompt.shopDirect")
+	t.test("counter prompt: Shop Squishies for unknown (§7.6); restricted opens the boxes (pens3 phase 5)", function()
+		expect.equal(BoxFormat.promptKey("restricted"), "prompt.seeBoxes") -- the fixed order opens there
 		expect.equal(BoxFormat.promptKey("unknown"), "prompt.shopDirect")
 		expect.equal(BoxFormat.promptKey("checking"), "prompt.seeBoxes")
 		expect.equal(BoxFormat.promptKey("eligible"), "prompt.seeBoxes")
 		expect.equal(BoxFormat.promptKey(nil), "prompt.seeBoxes")
 		expect.truthy(Strings.resolve(BoxFormat.promptKey("unknown")))
 		expect.truthy(Strings.resolve(BoxFormat.promptKey("eligible")))
-		expect.equal(BoxFormat.standScreen("restricted"), "shop")
+		expect.equal(BoxFormat.standScreen("restricted"), "boxes")
 		expect.equal(BoxFormat.standScreen("unknown"), "shop")
 		expect.equal(BoxFormat.standScreen("checking"), "boxes")
 		expect.equal(BoxFormat.standScreen("eligible"), "boxes")
@@ -626,13 +681,14 @@ return function(t: Context)
 			{ req = guid, box = "snack", squishy = "toast", dup = true, refund = 100, cost = 400, at = 1, seen = false }
 		local daily =
 			{ req = "daily:20000", box = "treat", squishy = "bird", dup = false, refund = 0, cost = 0, at = 2 }
+		-- An entry from before pens3 phase 5 still carries `refund`: it is not read (copies).
 		expect.deepEqual(
 			BoxFormat.revealFromEntry(entry),
-			{ requestId = guid, boxId = "snack", squishyId = "toast", isDuplicate = true, refund = 100 }
+			{ requestId = guid, boxId = "snack", squishyId = "toast", isDuplicate = true }
 		)
 		expect.deepEqual(
 			BoxFormat.revealFromEntry(daily),
-			{ requestId = "daily:20000", boxId = "treat", squishyId = "bird", isDuplicate = false, refund = 0 }
+			{ requestId = "daily:20000", boxId = "treat", squishyId = "bird", isDuplicate = false }
 		)
 		local bads: { any } = {
 			"x",
@@ -665,7 +721,7 @@ return function(t: Context)
 			expect.truthy(BoxFormat.isIndeterminate(reason))
 		end
 		expect.truthy(BoxFormat.isIndeterminate(nil))
-		for _, reason in { "economy.notEnoughCoins", "box.restricted", "box.complete", "box.saving", "box.paused" } do
+		for _, reason in { "economy.notEnoughCoins", "inventory.full", "box.saving", "box.paused" } do
 			expect.falsy(BoxFormat.isIndeterminate(reason))
 		end
 	end)
@@ -730,8 +786,10 @@ return function(t: Context)
 	end)
 
 	t.test("toyTiles: rarest first (item order inside a rarity), at most max, owned or a silhouette", function()
+		-- Pens3 phase 5: the Sweet Box holds 5 squishies (fewer than max: every one); the Treat Box's 12 stop at max.
+		expect.equal(#BoxFormat.toyTiles("treat", nil, 6), 6)
 		local tiles = BoxFormat.toyTiles("sweet", { dragon = true }, 6)
-		expect.equal(#tiles, 6)
+		expect.equal(#tiles, 5)
 		expect.equal(tiles[1].id, "dragon")
 		expect.equal(tiles[1].owned, true)
 		expect.equal(tiles[2].owned, false)

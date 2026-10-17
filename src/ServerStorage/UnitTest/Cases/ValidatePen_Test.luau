@@ -2,7 +2,8 @@
 -- ValidatePen_Test: unit tests for ReplicatedStorage.Shared.Config.ValidatePen (the pen, pens3 phase 1). Server only
 -- (ServerStorage.UnitTest). Pure: broken copies of Config.Economy.Pen.
 -- Contract (Config/ValidatePen header): the shipped Config is valid and holds the plan's numbers; a missing section is
--- one problem; each broken value is reported by name (phase 4: awayRate, a share in [0, 1]).
+-- one problem; each broken value is reported by name (phase 4: awayRate, a share in [0, 1]; phase 5: giftQueueMax, the
+-- Welcome prices (whole Coins, a rarity with sold squishies, never above their shop price) and the Frog gift).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -68,6 +69,10 @@ return function(t: Context)
 		expect.equal(pen.buyCooldownSeconds, 1)
 		expect.equal(pen.signHoldSeconds, 0.5)
 		expect.equal(pen.awayRate, 0.05) -- pens3 phase 4 (owner: 5% of the pen's rate while away)
+		-- Pens3 phase 5: the gift queue (D1:254-258, [P] 50), the Welcome price (D1:202) and the Frog gift (SIM:226).
+		expect.equal(pen.giftQueueMax, 50)
+		expect.deepEqual(pen.welcomePrice, { Common = 3_000 })
+		expect.deepEqual(pen.frogGift, { kind = "strawberry_frog", seconds = 180 })
 	end)
 
 	t.test("a missing section is one problem", function()
@@ -106,6 +111,17 @@ return function(t: Context)
 			{ changes = { awayRate = -0.05 }, field = "awayRate" }, -- pens3 phase 4: a share in [0, 1]
 			{ changes = { awayRate = 1.5 }, field = "awayRate" },
 			{ changes = { awayRate = 0 / 0 }, field = "awayRate" },
+			-- Pens3 phase 5.
+			{ changes = { giftQueueMax = -1 }, field = "giftQueueMax" },
+			{ changes = { giftQueueMax = 1.5 }, field = "giftQueueMax" },
+			{ changes = { welcomePrice = 3_000 }, field = "welcomePrice" },
+			{ changes = { welcomePrice = { Common = 0 } }, field = "welcomePrice.Common" },
+			{ changes = { welcomePrice = { Common = 2_999.5 } }, field = "welcomePrice.Common" },
+			{ changes = { welcomePrice = { Common = 789_001 } }, field = "welcomePrice.Common" }, -- above the price
+			{ changes = { welcomePrice = { Rare = 3_000 } }, field = "welcomePrice.Rare" }, -- no sold squishy
+			{ changes = { frogGift = "frog" }, field = "frogGift" },
+			{ changes = { frogGift = { kind = "unicorn", seconds = 180 } }, field = "frogGift.kind" },
+			{ changes = { frogGift = { kind = "strawberry_frog", seconds = -1 } }, field = "frogGift.seconds" },
 		}
 		for _, case in cases do
 			local problems = validate(broken(case.changes))
