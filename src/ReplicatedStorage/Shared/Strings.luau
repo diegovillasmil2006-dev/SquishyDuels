@@ -779,8 +779,17 @@ local Strings = {
 		howToEarn = "How to earn Coins",
 		stillChecking = "Still checking your box…",
 		revealNew = "NEW!",
-		revealDuplicate = "Already owned: +{coins} Coins",
-		openAnother = "Open another",
+		-- UI FINAL R7 (`H:n` = "Squishy Duels HUD.dc.html" line n): the duplicate line (H:492) with our refund after
+		-- listSeparator (PR21; AFFECTED 2026-10-15: duplicates will be kept for fusion or sold), the band's subtitle
+		-- (H:260), OPEN (H:277), the hints (H:484, H:495) and the result buttons (H:498-499).
+		revealDuplicate = "Already in your collection",
+		revealRefund = "+{coins} Coins",
+		subtitle = "Every box can hold a new squishy",
+		open = "Open",
+		tapToOpen = "Tap the box to open it!",
+		dragHint = "Drag to spin · Scroll to zoom",
+		again = "Again",
+		nice = "Nice!",
 	},
 
 	-- Shop (§6.6, §6.11, §7.7, §11.6). Robux prices only come from GetProductInfoAsync.

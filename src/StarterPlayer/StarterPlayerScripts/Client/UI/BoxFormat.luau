@@ -10,37 +10,31 @@
 --   raritySummary(boxId) / totalText(boxId)  §6.10 #2 "Chances by rarity: Epic 6.00% · …" / #5 "Total: 100.00%"
 --   openView(input)                          the area under the disclosure (§6.10 table, §11.5, §11.6), see OpenView
 --   retryWait(now, retryAt, unknownAt)       seconds before Try again may be pressed (see the function)
---   revealTimes(reduced) / revealPhase(t, reduced) / wobble(t, reduced) / soundCues(rarity, reduced)
---                                            the §9.11 timeline in ms (ReducedMotion: anticipation 300 ms without
---                                            hops, then the same phases shifted earlier; the reveal is a crossfade)
---   revealSoundKey(rarity) / resultText(isDuplicate, refund)   reveal.<rarity> / "NEW!" or "Already owned: +N Coins"
+--   revealSoundKey(rarity) / resultText(isDuplicate, refund)   reveal.<rarity> / "NEW!" or the duplicate line
+--                                            "Already in your collection · +N Coins" (PR21)
 --   boardText(policy, boxId)                 the in-world odds board's live line (or the restricted / unknown note)
 --   oddsLines(items)                         the board's odds lines: one per rarity when its items share one weight
 --                                            (spec 2026-10-09 §3.3), else one per item
 --   promptKey(policy) / standScreen(policy)  the counter prompt's text key and the screen it opens (§7.6)
 --   revealFromEntry(entry) / pendingReveals(unseen, skip)   the unseen-reveal replay rule (see BoxController)
 --   isIndeterminate(reason)                  a BoxOpen reply that does not settle the request (retry with the same id)
---   REVEAL_PANEL / revealStageHeight(screenBaseHeight, parts, class)   Part 8: the reveal panel's 3D stage height,
---                                            the class height unless the rest of the panel (title, result info,
---                                            saving note, wrapped buttons, gaps, padding) would push the panel past
---                                            REVEAL_PANEL.heightShare of the screen (the largest text on a phone did:
---                                            about 517 base px on a 441 px tall screen); then it shrinks, never below
---                                            REVEAL_PANEL.stageMin (fix round 2: heightShare is the Boxes panel's,
---                                            less shorterBy, so on a phone the reveal ends inside the Boxes panel)
 -- Foam UI restyle (spec 2026-10-09):
 --   costText(boxId)                          a paid box's cost as a bare number ("400") beside the coin icon on its
 --                                            card (fewer words); nil for a free-only box (it shows box.freeOnly)
---   The reveal's title is a header tab (Theme.headerTab, the box name) straddling the panel's top edge: RevealParts
---   .title is the whole tab. revealStageHeight's sum (title + 4 gaps + 2 paddings) still covers the panel with its tab
---   (half the tab above the panel, the other half and the 6 px tab gap inside its top padding, 3 gaps between the 4
---   rows, the bottom padding): about 11 base px to spare.
+-- UI FINAL R7 (plan work/ui/PLAN.md R7; `H:n` = "Squishy Duels HUD.dc.html" line n, `stage:n` = its
+-- uploads/box-stage.html line n; numbers in Config.UI.Boxes and Config.Anim.boxReveal):
+--   the window: cardColumns(inner, count, selected, gap, minFr) (H:262, PR20: the selected card 2fr, sideways scroll
+--   when the row does not fit), cardLayout(height, parts) (the plate and the tiles in a short body), cardOdds(boxId)
+--   (H:271: one row per rarity, lowest first, the exact percent, the bar max(minPct, p)%), toyTiles(boxId, owned, max)
+--   (H:945: rarest first), tilesThatFit(width), subtitleShown(owned) (H:260, FD5);
+--   the reveal: revealStart() / revealAdvance(state, dt, tapped, replied) / revealSkip(state) (the drop, the idle and
+--   its three taps, the burst once the reply is in, the result idle; stage:254-332, G7.20), the curves bounceOut,
+--   elastic, dropPose, idlePose, lidTarget, boxExit, toyPose, resultBob, beamPose, wavePose, seamAlpha, spring,
+--   flashAlpha (PR16), soundCue(event, rarity) (§18.6, RL8), the §9.15 frame ledger budgetFree / budgetTake with
+--   burstPieces / rainPieces (PR18), and orbitStart / orbitStep / orbitEye (stage:45-48, T14).
 -- Readings (DESIGN is silent; each marked where it applies):
---   * §9.11 "3 accelerating wobbles (c 0.92 ↔ 1.06)" over 0-900 ms with box.shake at 0 / 300 / 600 (§18.6), under
---     §18.1 #4's "nothing wobbles faster than 3 Hz": each 300 ms wobble is one half-swing (squash, stretch with a small
---     hop, squash), so c swings once per 600 ms (1.7 Hz); "accelerating" = each swing stronger (WOBBLE_STRENGTH).
---   * ReducedMotion: the wobble and the hops are off (§18.1: scale pops and bounces off); the 300 ms anticipation keeps
---     its neutral glow and its three box.shake cues (sounds never change), 100 ms apart.
 --   * The checking state's note is Strings.reasonText("box.checking") (Strings has the text only under reason.box).
+--   * A third tap before the BoxOpen reply holds the box in its idle (its last tap's shake) until the reply (G7.20).
 
 -- Services
 
@@ -75,15 +69,41 @@ export type OddsRow = {
 	inspect: boolean, -- Inspect is offered for every row, owned or not (§6.10 #4)
 }
 
--- The reveal panel's rows other than the stage, in base px at the player's text size (revealStageHeight).
-export type RevealParts = {
-	title: number, -- the box name: the whole header tab (its H2 line, padding and foam bands)
-	name: number, -- the squishy name (Title)
-	rarity: number, -- the rarity tag
-	result: number, -- "NEW!" / "Already owned: +N Coins"
-	saving: number, -- the "Saving your collection…" note (reserved: it may show)
-	buttons: number, -- the result buttons, wrapped (Layout.wrapRow height)
+-- UI FINAL R7: the card row (cardColumns), a card's vertical parts (cardLayout), its odds rows and toy tiles.
+export type CardColumns = { fr: number, widths: { number }, total: number, scroll: boolean }
+export type CardParts = {
+	name: number, -- the box name's line (base px)
+	odds: number, -- the odds rows block
+	tiles: number, -- the toy tiles' row
+	open: number, -- OPEN's face and lip
 }
+export type CardLayout = { plate: number, tiles: boolean }
+export type CardOdds = { rarity: string, text: string, share: number }
+export type ToyTile = { id: string, owned: boolean }
+
+-- UI FINAL R7: the reveal's timeline (revealAdvance) and its events, the orbit, the frame ledger.
+export type RevealStage = "drop" | "idle" | "open" | "inspect"
+export type RevealState = {
+	phase: RevealStage,
+	t: number, -- seconds in the drop / the idle, or since the burst (open and inspect)
+	total: number, -- seconds since the drop began (the idle waves)
+	taps: number, -- 0..Config.Anim.boxReveal.taps
+	auto: number, -- seconds since the last tap (the automatic tap at autoTapS)
+	held: boolean, -- the last tap came before the BoxOpen reply: the burst waits for it
+}
+export type RevealEvent = { kind: "land" | "tap" | "burst" | "ready", tap: number? } -- tap: 0, 1, 2 (H:812's j)
+export type SoundEvent = "land" | "tap" | "burst" | "reveal" | "close"
+export type SoundCue = { key: string, pitch: number?, variance: number?, delayMs: number? }
+export type Orbit = { theta: number, phi: number, radius: number, dTheta: number, dPhi: number, auto: boolean }
+export type OrbitInput = {
+	dragX: number?, -- px moved this frame
+	dragY: number?,
+	height: number?, -- the stage's height in px (a drag of one height turns 2 pi)
+	zoom: number?, -- wheel ticks (+ in) or a pinch's scale change
+	padX: number?, -- the right stick, -1..1
+	padY: number?,
+}
+export type Ledger = { { n: number, untilS: number } }
 
 -- Which control the open area shows: the two-step ConfirmButton, the Try again button, the shop button, or none.
 export type OpenButton = "confirm" | "retry" | "shop"
@@ -123,17 +143,6 @@ export type OpenView = {
 	howToEarn: boolean, -- show the "How to earn Coins" text button
 }
 
-export type RevealPhase = "anticipation" | "pop" | "reveal" | "highlight" | "result"
-
-export type RevealTimes = {
-	anticipationEnd: number, -- ms from the reply
-	popEnd: number,
-	revealEnd: number,
-	highlightEnd: number,
-}
-
-export type SoundCue = { atMs: number, key: string, variance: number? }
-
 -- One reveal to play: from a BoxOpen reply or a StateDelta.unseenReveals entry.
 export type Reveal = {
 	requestId: string, -- the GUID, or "daily:<day>" for the free Treat Box
@@ -146,13 +155,14 @@ export type Reveal = {
 -- Constants
 
 local REVEAL = Config.Anim.boxReveal
+local BOXES_UI = Config.UI.Boxes
+local BURST = Config.UI.Fx.events.boxBurst
 local POLICY_STATES: { [string]: boolean } = { checking = true, eligible = true, restricted = true, unknown = true }
 local LINE_BREAK = "\n"
--- reading (§9.11 gives "small hops", no number): the stretch wobble's hop at its peak, studs at gift-box scale 1.
-local HOP_STUDS = 0.12
--- reading: each wobble stronger than the last ("accelerating").
-local WOBBLE_STRENGTH = { 0.5, 0.75, 1 }
-local SHAKE_COUNT = 3
+local SOUND_LAND = "ui.click" -- RL8: the design's stamp (lib:184) is a low ui.click (REVEAL.landPitch)
+local SOUND_CLOSE = "ui.pop" -- H:835: NICE! / the close
+local PHI_EPSILON = 1e-6 -- OrbitControls' polar limits keep the camera off the poles
+local DAMPING_FPS = 60 -- OrbitControls damps once a frame at 60 fps
 -- The reveal sound of each rarity (§18.6); quoted so tools/check.ps1 check (f) finds every key asked for.
 local REVEAL_SOUNDS: { [string]: string } = {
 	Common = "reveal.common",
@@ -172,27 +182,6 @@ local INDETERMINATE: { [string]: boolean } = {
 }
 local REQUEST_ID_PATTERN = "^%x+%-%x+%-%x+%-%x+%-%x+$"
 local DAILY_ID_PATTERN = "^daily:%d+$"
--- The reveal panel (base px; BoxController builds it). Readings: the width and the two stage heights are Part 7's; the
--- panel is alone and centred, so it may use heightShare of the screen; stageMin keeps a stage a phone player can tap
--- (about 100 actual px at scale 0.85, like InspectPanel_Test's floor).
--- Fix batch (2026-10-09): the outlined rarity tag and result chip touched with infoGap 2 and the result buttons read
--- as one joined button at 6, so infoGap is 6 and the buttons have their own buttonGap 10 (both counted below).
--- Fix round 2 (2026-10-09): on a phone the reveal was as tall as the Boxes panel behind it, so the two outlines doubled
--- up at the corners. The reveal now keeps within the Boxes panel's share (0.88, was 0.94) less shorterBy (15 base =
--- 12.75 px at the phone's 0.85), and stageMin is 88 (75 px at 0.85; was 120, the reading above): on phones the stage
--- sits at its minimum, so the panel ends inside the Boxes one. Still a stage that shows the squishy and takes the tap.
-local REVEAL_PANEL = {
-	width = 560,
-	stage = 340,
-	stageCompact = 200,
-	stageMin = 88,
-	heightShare = 0.88,
-	shorterBy = 15,
-	padding = 12, -- Theme.Padding.medium
-	gap = 6, -- Theme.Padding.small, between the panel's rows
-	infoGap = 6, -- between the name, the rarity tag and the result line
-	buttonGap = 10, -- between the result buttons (and their rows when they wrap)
-}
 
 -- Module table
 
@@ -201,7 +190,6 @@ local BoxFormat = {}
 BoxFormat.REVEAL_SOUNDS = REVEAL_SOUNDS
 BoxFormat.SOUND_SHAKE = SOUND_SHAKE
 BoxFormat.SOUND_OPEN = SOUND_OPEN
-BoxFormat.REVEAL_PANEL = REVEAL_PANEL
 
 -- Private
 
@@ -435,74 +423,421 @@ function BoxFormat.needCoinsText(missing: number): string
 	})
 end
 
--- Public: the reveal timeline (§9.11) -----------------------------------------------------------------------------------
+-- Public: the Boxes window (UI FINAL R7) --------------------------------------------------------------------------------
 
--- The phase boundaries in ms after the reply. ReducedMotion: anticipation reducedMotionAnticipationMs, the rest keeps
--- its durations, shifted earlier by the difference.
-function BoxFormat.revealTimes(reduced: boolean): RevealTimes
-	local anticipation = if reduced then REVEAL.reducedMotionAnticipationMs else REVEAL.anticipationEndMs
-	local shift = REVEAL.anticipationEndMs - anticipation
+-- H:262 + PR20: the widths of `count` cards on a row `inner` base px wide with `gap` between them. The selected card
+-- (index `selected`) is 2fr + gap (its own card column as wide as the others, the stats well beside it), the others
+-- 1fr; fr is never under `minFr`, and `scroll` says the row is then wider than `inner` (it scrolls sideways).
+function BoxFormat.cardColumns(inner: number, count: number, selected: number, gap: number, minFr: number): CardColumns
+	local n = math.max(1, math.floor(if finite(count) then count else 1))
+	local g = if finite(gap) then math.max(0, gap) else 0
+	local room = if finite(inner) then math.max(0, inner) else 0
+	local fr = math.max(if finite(minFr) then minFr else 0, (room - n * g) / (n + 1))
+	local widths: { number } = {}
+	for i = 1, n do
+		widths[i] = if i == selected then 2 * fr + g else fr
+	end
+	local total = (n + 1) * fr + n * g
+	return { fr = fr, widths = widths, total = total, scroll = total > room + 0.5 }
+end
+
+-- A card `height` base px tall (its face and lip, H:264): the plate's height and whether the toy tiles show. The
+-- plate takes what the other parts leave, at most Config.UI.Boxes.card.plate; under plateMin the tiles go first, then
+-- the plate (readings: a short phone body keeps the name, the odds and OPEN).
+function BoxFormat.cardLayout(height: number, parts: CardParts): CardLayout
+	local card = BOXES_UI.card
+	local h = if finite(height) then height else 0
+	local function px(n: number): number
+		return if finite(n) and n > 0 then n else 0
+	end
+	-- padding and border twice, the lip, and the column gaps between plate, name, odds, tiles and OPEN
+	local frame = 2 * (card.pad + card.border) + card.lip
+	local without = frame + px(parts.name) + px(parts.odds) + px(parts.open) + 3 * card.gap
+	local withTiles = without + px(parts.tiles) + card.gap
+	local function plateFor(used: number): number
+		return math.min(card.plate, math.floor(h - used))
+	end
+	if plateFor(withTiles) >= card.plateMin then
+		return { plate = plateFor(withTiles), tiles = true }
+	elseif plateFor(without) >= card.plateMin then
+		return { plate = plateFor(without), tiles = false }
+	end
+	return { plate = 0, tiles = false }
+end
+
+-- H:271 (lib:44-46 odds): one row per rarity in the box, lowest first, with the exact percent ("80.00%") and the bar's
+-- share max(minPct, p) / 100.
+function BoxFormat.cardOdds(boxId: string): { CardOdds }
+	local rows = Boxes.byRarity(boxId)
+	local list: { CardOdds } = {}
+	for i = #rows, 1, -1 do
+		local row = rows[i]
+		table.insert(list, {
+			rarity = row.rarity,
+			text = percentText(row.text),
+			share = math.clamp(math.max(BOXES_UI.odds.minPct, row.percent) / 100, 0, 1),
+		})
+	end
+	return list
+end
+
+-- H:945: the box's items rarest first (item order inside a rarity), at most `max`, each with whether it is owned (a
+-- silhouette when not, H:948).
+function BoxFormat.toyTiles(boxId: string, owned: { [string]: any }?, max: number?): { ToyTile }
+	local box = Boxes.get(boxId)
+	local have = owned or {}
+	local ranked: { { id: string, rank: number, order: number } } = {}
+	for order, entry in (if box then box.items else {}) :: { Boxes.BoxItem } do
+		local def = Catalog.get(entry.id)
+		table.insert(ranked, { id = entry.id, rank = if def then Rarity.index(def.rarity) or 0 else 0, order = order })
+	end
+	table.sort(ranked, function(a, b): boolean
+		if a.rank ~= b.rank then
+			return a.rank > b.rank
+		end
+		return a.order < b.order
+	end)
+	local limit = if finite(max) then math.max(0, math.floor(max :: number)) else BOXES_UI.toys.max
+	local tiles: { ToyTile } = {}
+	for _, item in ranked do
+		if #tiles >= limit then
+			break
+		end
+		table.insert(tiles, { id = item.id, owned = have[item.id] ~= nil })
+	end
+	return tiles
+end
+
+-- How many toy tiles fit a column `width` base px wide (H:273: 42 px apart by 4), never more than toys.max.
+function BoxFormat.tilesThatFit(width: number): number
+	local toys = BOXES_UI.toys
+	local w = if finite(width) then width else 0
+	return math.clamp(math.floor((w + toys.gap) / (toys.tile + toys.gap)), 0, toys.max)
+end
+
+-- H:260 (FD5): the band's subtitle shows while a box can still give a new squishy.
+function BoxFormat.subtitleShown(owned: { [string]: any }?): boolean
+	for _, box in Boxes.list() do
+		if not Boxes.isComplete(box.id, owned or {}) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Public: the reveal (UI FINAL R7; stage:254-342) -----------------------------------------------------------------------
+
+function BoxFormat.revealStart(): RevealState
+	return { phase = "drop", t = 0, total = 0, taps = 0, auto = 0, held = false }
+end
+
+-- One frame (`dt` seconds) of the reveal's timeline (stage:254-263, 301-332): the drop lands after dropMs; in the idle
+-- each tap (`tapped`: the player's, this frame) or an automatic one every autoTapS advances ONE tap (never a skip); the
+-- last tap bursts, but only once the BoxOpen reply is in (`replied`, G7.20; before it the box is held in its idle);
+-- resultAtS after the burst the result idle begins ("ready"). Changes `state`; returns this frame's events in order.
+function BoxFormat.revealAdvance(state: RevealState, dt: number, tapped: boolean, replied: boolean): { RevealEvent }
+	local events: { RevealEvent } = {}
+	local step = if finite(dt) then math.max(0, dt) else 0
+	state.total += step
+	state.t += step
+	local function burst()
+		state.phase = "open"
+		state.t = 0
+		state.held = false
+		table.insert(events, { kind = "burst" })
+	end
+	if state.phase == "drop" then
+		if state.t >= REVEAL.dropMs / 1000 then
+			state.phase = "idle"
+			state.t = 0
+			state.auto = 0
+			table.insert(events, { kind = "land" })
+		end
+	elseif state.phase == "idle" then
+		if state.held then
+			if replied then
+				burst()
+			end
+		else
+			state.auto += step
+			if tapped or state.auto > REVEAL.autoTapS then
+				state.taps += 1
+				state.auto = 0
+				table.insert(events, { kind = "tap", tap = state.taps - 1 })
+				if state.taps >= REVEAL.taps then
+					if replied then
+						burst()
+					else
+						state.held = true
+					end
+				end
+			end
+		end
+	elseif state.phase == "open" then
+		if state.t > REVEAL.resultAtS then
+			state.phase = "inspect"
+			table.insert(events, { kind = "ready" })
+		end
+	end
+	return events
+end
+
+-- Skip (PR21): straight to the result idle with every move done (the caller checks the reply is in).
+function BoxFormat.revealSkip(state: RevealState)
+	state.phase = "inspect"
+	state.taps = REVEAL.taps
+	state.held = false
+	state.auto = 0
+	state.t = math.max(REVEAL.resultAtS, REVEAL.toy.fromS + REVEAL.toy.growS, REVEAL.coins.lifeS)
+end
+
+-- stage:286: easeOutBounce (n 7.5625, d 2.75; Roblox's Bounce Out).
+function BoxFormat.bounceOut(x: number): number
+	local n, d = 7.5625, 2.75
+	local u = math.clamp(if finite(x) then x else 0, 0, 1)
+	if u < 1 / d then
+		return n * u * u
+	elseif u < 2 / d then
+		u -= 1.5 / d
+		return n * u * u + 0.75
+	elseif u < 2.5 / d then
+		u -= 2.25 / d
+		return n * u * u + 0.9375
+	end
+	u -= 2.625 / d
+	return n * u * u + 0.984375
+end
+
+-- stage:287: the design's elastic out (not Roblox's): 2^(-10x) sin((10x - .75) 2 pi / 3) + 1, 0 at 0, 1 from 1.
+function BoxFormat.elastic(x: number): number
+	if not finite(x) or x <= 0 then
+		return 0
+	elseif x >= 1 then
+		return 1
+	end
+	return 2 ^ (-10 * x) * math.sin((x * 10 - 0.75) * (2 * math.pi / 3)) + 1
+end
+
+-- stage:302-303: the drop `t` seconds in: the box's height (units), yaw (radians) and the floor blob's scale and alpha.
+function BoxFormat.dropPose(t: number): (number, number, number, number)
+	local k = math.clamp((if finite(t) then t else 0) / (REVEAL.dropMs / 1000), 0, 1)
+	local floor = REVEAL.floor
+	return REVEAL.dropHeight * (1 - BoxFormat.bounceOut(k)),
+		REVEAL.restYaw + (1 - k) * math.pi * REVEAL.dropTurns,
+		floor.from + k * (1 - floor.from),
+		k
+end
+
+-- stage:306-308: the idle's bob (units, added to the hop), roll (radians) and yaw at `total` seconds after `taps` taps.
+function BoxFormat.idlePose(total: number, taps: number): (number, number, number)
+	local idle = REVEAL.idle
+	local time = if finite(total) then total else 0
+	local w = idle.roll + taps * idle.rollPerTap
+	return math.sin(time * idle.bobRate) * idle.bobY,
+		math.sin(time * (idle.rollRate + taps * idle.rollRatePerTap)) * w,
+		REVEAL.restYaw + math.sin(time * REVEAL.idleYaw.rate) * REVEAL.idleYaw.amp
+end
+
+-- stage:309, 320: where the lid spring aims: ajar by taps in the idle, open after the burst ("royal" opens less).
+function BoxFormat.lidTarget(phase: RevealStage, taps: number, kind: string?): number
+	local lid = REVEAL.lid
+	if phase == "open" or phase == "inspect" then
+		return if kind == "royal" then lid.openRoyal else lid.open
+	end
+	return lid.rest + taps * lid.perTap
+end
+
+-- stage:324-325: the box's exit `t` seconds after the burst: its scale factor, whether it spins and whether it is gone.
+function BoxFormat.boxExit(t: number): (number, boolean, boolean)
+	local exit = REVEAL.exit
+	local sk = math.clamp(((if finite(t) then t else 0) - exit.fromS) / exit.spanS, 0, 1)
+	if sk >= 1 then
+		return 0, false, true
+	elseif sk <= 0 then
+		return 1, false, false
+	end
+	return math.max(0.001, (1 + math.sin(sk * math.pi) * exit.swell) * (1 - sk * sk)), true, false
+end
+
+-- stage:326: true once the exit is far enough for its poof.
+function BoxFormat.exitPoofs(t: number): boolean
+	local exit = REVEAL.exit
+	return math.clamp(((if finite(t) then t else 0) - exit.fromS) / exit.spanS, 0, 1) >= exit.poofAt
+end
+
+-- stage:327-330: the squishy `t` seconds after the burst: its scale (a share of its fit, the elastic), its centre's
+-- height (units), its yaw (radians, 3 pi -> 0) and its opacity (0 -> 1 over toyFadeS).
+function BoxFormat.toyPose(t: number): (number, number, number, number)
+	local toy = REVEAL.toy
+	local time = if finite(t) then t else 0
+	local tk = math.clamp((time - toy.fromS) / toy.growS, 0, 1)
+	return math.max(0.001, BoxFormat.elastic(tk)),
+		toy.y + math.min(1, tk * toy.riseRate) * toy.rise,
+		(1 - math.min(1, tk * toy.spinRate)) * math.pi * toy.spins,
+		math.clamp((time - toy.fromS) / REVEAL.toyFadeS, 0, 1)
+end
+
+-- stage:328: the result idle's bob (units) at `total` seconds.
+function BoxFormat.resultBob(total: number): number
+	return math.sin((if finite(total) then total else 0) * REVEAL.resultBob.rate) * REVEAL.resultBob.amp
+end
+
+-- stage:323: the beam `t` seconds after the burst: its width and height factors and its alpha.
+function BoxFormat.beamPose(t: number): (number, number, number)
+	local beam = REVEAL.beam
+	local time = if finite(t) then t else 0
+	local bk = math.clamp(time / beam.growS, 0, 1)
+	return 0.2 + bk * 0.9, 0.01 + bk, beam.alpha * (1 - math.clamp((time - beam.fadeFromS) / beam.fadeS, 0, 1))
+end
+
+-- stage:342: the floor ring wave at `w` (0..1, w += rate / s): its scale and alpha (gone at 1).
+function BoxFormat.wavePose(w: number): (number, number)
+	local wave = REVEAL.wave
+	local u = if finite(w) then w else 1
+	if u >= 1 then
+		return wave.from + wave.grow, 0
+	end
+	return wave.from + math.max(0, u) * wave.grow, wave.alpha * (1 - math.max(0, u))
+end
+
+-- stage:311: Royal's seam glow alpha at `total` seconds after `taps` taps.
+function BoxFormat.seamAlpha(total: number, taps: number): number
+	local seam = REVEAL.seam
+	local time = if finite(total) then total else 0
+	return math.clamp(seam.base + taps * seam.perTap + math.sin(time * seam.rate) * seam.wave, 0, 1)
+end
+
+-- stage:294-295: one step of x'' = -k (x - target) - c x' (semi-implicit Euler, as the design): the new x and x'.
+function BoxFormat.spring(x: number, v: number, target: number, k: number, c: number, dt: number): (number, number)
+	local a = -k * (x - target) - c * v
+	local nv = v + a * dt
+	return x + nv * dt, nv
+end
+
+-- PR16: the burst's flash alpha `ms` after it: the design's 0 -> .85 at 10% -> 0 over 700 ms with `ease` on the whole
+-- run (H:822), drawn under Config.Vfx.Flash: the peak at most maxOverlayOpacity, never before minPeakMs.
+function BoxFormat.flashAlpha(ms: number, ease: (number) -> number): number
+	local flash = BOXES_UI.reveal.flash
+	local cap = Config.Vfx.Flash
+	local t = if finite(ms) then ms else flash.ms
+	if t <= 0 or t >= flash.ms then
+		return 0
+	end
+	local peak = math.min(flash.designPeak, cap.maxOverlayOpacity)
+	-- the peak's place on the eased run: the design's 10%, or later so it is reached at minPeakMs at the earliest
+	local at = math.max(flash.designPeakAt, ease(math.clamp(cap.minPeakMs / flash.ms, 0, 1)))
+	local p = ease(t / flash.ms)
+	if p < at then
+		return peak * p / at
+	end
+	return peak * math.max(0, 1 - (p - at) / (1 - at))
+end
+
+-- §18.6 / RL8: each reveal moment's sound: the landing's low stamp, a tap's rattle (box.shake), the burst's pop
+-- (box.open), reveal.<rarity> revealDelayMs later (H:827-828), the close's pop (H:835).
+function BoxFormat.soundCue(event: SoundEvent, rarity: string?): SoundCue
+	if event == "land" then
+		return { key = SOUND_LAND, pitch = REVEAL.landPitch }
+	elseif event == "tap" then
+		return { key = SOUND_SHAKE }
+	elseif event == "burst" then
+		return { key = SOUND_OPEN, variance = 0 }
+	elseif event == "reveal" then
+		return { key = BoxFormat.revealSoundKey(rarity or ""), variance = 0, delayMs = REVEAL.revealDelayMs }
+	end
+	return { key = SOUND_CLOSE }
+end
+
+-- §9.15 / PR18: the animated UI frames still free at `now` (seconds) out of `total`, given the ledger of what is alive.
+function BoxFormat.budgetFree(ledger: Ledger, now: number, total: number): number
+	local used = 0
+	for _, entry in ledger do
+		if entry.untilS > now then
+			used += entry.n
+		end
+	end
+	return math.max(0, total - used)
+end
+
+-- Takes up to `want` frames for `lifeS` seconds from `now`: records them and returns how many were granted.
+function BoxFormat.budgetTake(ledger: Ledger, now: number, want: number, lifeS: number, total: number): number
+	for i = #ledger, 1, -1 do
+		if ledger[i].untilS <= now then
+			table.remove(ledger, i)
+		end
+	end
+	local n =
+		math.min(math.max(0, math.floor(if finite(want) then want else 0)), BoxFormat.budgetFree(ledger, now, total))
+	if n > 0 then
+		table.insert(ledger, { n = n, untilS = now + math.max(0, lifeS) })
+	end
+	return n
+end
+
+-- PR18 (H:829): the burst's pieces for the rarity `rarity`: 30 + 12 x its index (Common 0), within the free frames
+-- and Config.UI.Fx.events.boxBurst.maxPieces.
+function BoxFormat.burstPieces(rarity: string, free: number): number
+	local idx = (Rarity.index(rarity) or 1) - 1
+	return math.max(0, math.min(BURST.sparks.n + BURST.perRarity * idx, BURST.maxPieces, math.floor(free)))
+end
+
+-- PR18 (H:830): the rain once the burst's pieces are gone: Epic and Exclusive only, within the free frames.
+function BoxFormat.rainPieces(rarity: string, free: number): number
+	local idx = (Rarity.index(rarity) or 1) - 1
+	local rain = BURST.rarityRain
+	if idx < rain.fromRarity then
+		return 0
+	end
+	return math.max(0, math.min(rain.n + rain.perRarity * idx, math.floor(free)))
+end
+
+-- stage:44, 248: the orbit at the design's camera (the eye around the target, OrbitControls' spherical angles).
+function BoxFormat.orbitStart(): Orbit
+	local offset = REVEAL.camera.eye - REVEAL.camera.target
+	local radius = offset.Magnitude
 	return {
-		anticipationEnd = anticipation,
-		popEnd = REVEAL.popEndMs - shift,
-		revealEnd = REVEAL.revealEndMs - shift,
-		highlightEnd = REVEAL.highlightEndMs - shift,
+		theta = math.atan2(offset.X, offset.Z),
+		phi = math.acos(math.clamp(offset.Y / radius, -1, 1)),
+		radius = radius,
+		dTheta = 0,
+		dPhi = 0,
+		auto = false,
 	}
 end
 
--- The phase at `tMs` and the progress inside it (0..1; the result phase reports 1).
-function BoxFormat.revealPhase(tMs: number, reduced: boolean): (RevealPhase, number)
-	local times = BoxFormat.revealTimes(reduced)
-	local t = if finite(tMs) then math.max(0, tMs) else 0
-	local function progress(from: number, to: number): number
-		return if to > from then math.clamp((t - from) / (to - from), 0, 1) else 1
+-- T14 (stage:45-48): one frame of the orbit: a drag turns it (2 pi per stage height), the right stick turns it, the
+-- wheel / pinch zooms (zoomStep per tick, the distance in [minDist, maxDist] units), the turntable adds
+-- autoRotateDegS while `auto`; the turn eases out with OrbitControls' damping (per 60 fps frame).
+function BoxFormat.orbitStep(orbit: Orbit, dt: number, input: OrbitInput?): Orbit
+	local o = REVEAL.orbit
+	local step = if finite(dt) then math.max(0, dt) else 0
+	local i: OrbitInput = input or {}
+	local height = if finite(i.height) and (i.height :: number) > 0 then i.height :: number else 1
+	local dTheta = orbit.dTheta - 2 * math.pi * (i.dragX or 0) / height
+	local dPhi = orbit.dPhi - 2 * math.pi * (i.dragY or 0) / height
+	dTheta -= (i.padX or 0) * o.padTurnRadS * step
+	dPhi -= (i.padY or 0) * o.padTurnRadS * step
+	if orbit.auto then
+		dTheta -= math.rad(o.autoRotateDegS) * step
 	end
-	if t < times.anticipationEnd then
-		return "anticipation", progress(0, times.anticipationEnd)
-	elseif t < times.popEnd then
-		return "pop", progress(times.anticipationEnd, times.popEnd)
-	elseif t < times.revealEnd then
-		return "reveal", progress(times.popEnd, times.revealEnd)
-	elseif t < times.highlightEnd then
-		return "highlight", progress(times.revealEnd, times.highlightEnd)
-	end
-	return "result", 1
+	local share = 1 - (1 - o.damping) ^ (step * DAMPING_FPS)
+	local zoom = i.zoom or 0
+	local radius = orbit.radius * (if zoom ~= 0 then o.zoomStep ^ zoom else 1)
+	return {
+		theta = orbit.theta + dTheta * share,
+		phi = math.clamp(orbit.phi + dPhi * share, PHI_EPSILON, math.pi - PHI_EPSILON),
+		radius = math.clamp(radius, o.minDist, o.maxDist),
+		dTheta = dTheta * (1 - share),
+		dPhi = dPhi * (1 - share),
+		auto = orbit.auto,
+	}
 end
 
--- The anticipation wobble at `tMs`: (c, hop) = the gift box's scale on its up axis (the other axes get 1/√c) and its
--- hop in studs at scale 1. (1, 0) outside the anticipation and under ReducedMotion. See the header's reading: three
--- half-swings (squash, stretch with a hop, squash), each stronger, c always within [wobbleCMin, wobbleCMax].
-function BoxFormat.wobble(tMs: number, reduced: boolean): (number, number)
-	if reduced or not finite(tMs) then
-		return 1, 0
-	end
-	local total = REVEAL.anticipationEndMs
-	if tMs <= 0 or tMs >= total then
-		return 1, 0
-	end
-	local count = math.max(1, REVEAL.anticipationWobbles)
-	local window = total / count
-	local index = math.min(count - 1, math.floor(tMs / window))
-	local u = (tMs - index * window) / window
-	local strength = WOBBLE_STRENGTH[math.min(index + 1, #WOBBLE_STRENGTH)] or 1
-	local wave = math.sin(math.pi * u) * strength
-	if index % 2 == 0 then
-		return 1 - (1 - REVEAL.wobbleCMin) * wave, 0
-	end
-	return 1 + (REVEAL.wobbleCMax - 1) * wave, HOP_STUDS * wave
-end
-
--- The reveal's sounds (§18.6): box.shake at each wobble (0 / 300 / 600 ms; 0 / 100 / 200 under ReducedMotion), box.open
--- at the pop, reveal.<rarity> at the reveal. box.open and reveal.* play with no pitch variation.
-function BoxFormat.soundCues(rarity: string, reduced: boolean): { SoundCue }
-	local times = BoxFormat.revealTimes(reduced)
-	local cues: { SoundCue } = {}
-	for i = 0, SHAKE_COUNT - 1 do
-		table.insert(cues, { atMs = times.anticipationEnd * i / SHAKE_COUNT, key = SOUND_SHAKE })
-	end
-	table.insert(cues, { atMs = times.anticipationEnd, key = SOUND_OPEN, variance = 0 })
-	table.insert(cues, { atMs = times.popEnd, key = BoxFormat.revealSoundKey(rarity), variance = 0 })
-	return cues
+-- The orbit's eye in the design's units (OrbitControls: from the target along its spherical angles).
+function BoxFormat.orbitEye(orbit: Orbit): Vector3
+	local s = math.sin(orbit.phi)
+	return REVEAL.camera.target
+		+ Vector3.new(s * math.sin(orbit.theta), math.cos(orbit.phi), s * math.cos(orbit.theta)) * orbit.radius
 end
 
 -- reveal.<rarity> for the server's rarity (the Common sound for anything unknown).
@@ -510,10 +845,17 @@ function BoxFormat.revealSoundKey(rarity: string): string
 	return REVEAL_SOUNDS[rarity] or REVEAL_SOUNDS.Common
 end
 
--- "NEW!" or "Already owned: +{coins} Coins" (§9.11 rarity highlight).
+-- "NEW!", or the duplicate line (H:492) "Already in your collection" with our refund after it (PR21:
+-- "· +{coins} Coins" when there is one).
 function BoxFormat.resultText(isDuplicate: boolean, refund: number): string
 	if isDuplicate then
-		return Strings.format(Strings.box.revealDuplicate, { coins = Format.coins(wholeCoins(refund)) })
+		local coins = wholeCoins(refund)
+		if coins > 0 then
+			return Strings.box.revealDuplicate
+				.. Strings.box.listSeparator
+				.. Strings.format(Strings.box.revealRefund, { coins = Format.coins(coins) })
+		end
+		return Strings.box.revealDuplicate
 	end
 	return Strings.box.revealNew
 end
@@ -659,30 +1001,6 @@ function BoxFormat.pendingReveals(unseen: unknown, skip: (requestId: string) -> 
 		end
 	end
 	return list
-end
-
--- Part 8: the reveal panel's stage height -------------------------------------------------------------------------------
-
--- The 3D stage's height (base px) in the reveal panel on a screen `screenBaseHeight` base px tall: the class height
--- (REVEAL_PANEL.stage, or stageCompact when `class` is "compact") unless the panel's other rows (`parts`, with the gaps
--- and padding) leave less room under REVEAL_PANEL.heightShare of the screen less shorterBy (fix round 2: inside the
--- Boxes panel behind it); never below REVEAL_PANEL.stageMin.
-function BoxFormat.revealStageHeight(screenBaseHeight: number, parts: RevealParts, class: string): number
-	local maxStage = if class == "compact" then REVEAL_PANEL.stageCompact else REVEAL_PANEL.stage
-	local function px(n: number): number
-		return if finite(n) and n > 0 then n else 0
-	end
-	local info = px(parts.name) + px(parts.rarity) + px(parts.result) + 2 * REVEAL_PANEL.infoGap
-	-- Five rows (title, stage, info, saving, buttons): four gaps, and the padding above and below.
-	local other = px(parts.title)
-		+ info
-		+ px(parts.saving)
-		+ px(parts.buttons)
-		+ 4 * REVEAL_PANEL.gap
-		+ 2 * REVEAL_PANEL.padding
-	local height = if finite(screenBaseHeight) and screenBaseHeight > 0 then screenBaseHeight else 0
-	local room = math.floor(height * REVEAL_PANEL.heightShare - REVEAL_PANEL.shorterBy - other)
-	return math.clamp(room, REVEAL_PANEL.stageMin, maxStage)
 end
 
 return BoxFormat

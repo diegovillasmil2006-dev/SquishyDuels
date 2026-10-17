@@ -10,23 +10,16 @@
 --     "unknown", retryWait); restricted -> "Shop squishies directly" + the restricted note;
 --     the Treat Box -> box.freeOnly, no Open; eligible -> "Open: {cost} Coins", needCoins / complete / saving / the duel
 --     lock disabled with a reason; armed -> the confirm texts; an unknown policy fails closed (checking); no Robux text;
---   * the reveal timeline: 0 / 900 / 1150 / 1750 / 2350 ms; ReducedMotion: anticipation 300 ms, no wobble or hop, the
---     same phase lengths after it; the wobble stays inside [0.92, 1.06] and swings at most 3 times a second;
---   * the sounds: box.shake at 0 / 300 / 600, box.open at 900, reveal.<rarity> at 1150 (shifted under ReducedMotion);
+--   * UI FINAL R7 (plan work/ui/PLAN.md R7): the reveal timeline (the drop lands at 750 ms, a tap every 1.1 s or the
+--     player's advances one tap, the third bursts about 4.05 s in, only once the reply is in, the result idle 1.5 s
+--     later; skip lands with every move done), the design's curves and springs, the sounds per moment, the flash
+--     under Config.Vfx.Flash (PR16), the §9.15 frame ledger with the burst and the rain (PR18), the orbit (T14), the
+--     duplicate line with the refund (PR21), the window's card row (PR20), card layout, odds rows, toy tiles and
+--     subtitle;
 --   * the odds board and the counter prompt (restricted and unknown -> "Shop Squishies" and the shop); the board groups
 --     a rarity into one line ("Common 80.00% — 20.00% each: Toast, …") only when its items share one weight (spec
 --     2026-10-09 §3.3), else one line per item;
 --   * the unseen-reveal rule: malformed entries are dropped, skipped ids are left out, each id once.
---   * Part 8 (§11.2 audit): revealStageHeight keeps the class stage while the reveal panel fits, else shrinks it so the
---     panel stays inside REVEAL_PANEL.heightShare of the screen (never below stageMin) at 667×375, 893×673, 1280×720
---     and 1920×1080, at the default, Large and Largest text sizes.
---   * Foam UI restyle (2026-10-09): costText is a paid box's cost as a bare number (the card's coin says Coins), nil for
---     the free box; revealStageHeight's `title` is the whole header tab, and the panel with the half of the tab above
---     it stays inside heightShare of the screen.
---   * Foam fix batch (2026-10-09): REVEAL_PANEL.infoGap keeps the outlined rarity tag and result chip apart and
---     buttonGap the result buttons; the stage height still keeps the panel on screen with both.
---   * Foam fix round 2 (2026-10-09): the reveal keeps within the Boxes panel's share less shorterBy (at least 12 px on
---     a phone), so on 844×390 and 667×375 phones it ends inside the Boxes panel behind it (the stage at its minimum).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -292,117 +285,260 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("reveal timeline: DESIGN's phases; ReducedMotion anticipation 300 ms, same lengths after", function()
-		local normal = BoxFormat.revealTimes(false)
-		expect.deepEqual(normal, {
-			anticipationEnd = REVEAL.anticipationEndMs,
-			popEnd = REVEAL.popEndMs,
-			revealEnd = REVEAL.revealEndMs,
-			highlightEnd = REVEAL.highlightEndMs,
-		})
-		expect.deepEqual(normal, { anticipationEnd = 900, popEnd = 1150, revealEnd = 1750, highlightEnd = 2350 })
-		local reduced = BoxFormat.revealTimes(true)
-		expect.equal(reduced.anticipationEnd, REVEAL.reducedMotionAnticipationMs)
-		expect.equal(reduced.anticipationEnd, 300)
-		expect.equal(reduced.popEnd - reduced.anticipationEnd, normal.popEnd - normal.anticipationEnd)
-		expect.equal(reduced.revealEnd - reduced.popEnd, normal.revealEnd - normal.popEnd)
-		expect.equal(reduced.highlightEnd - reduced.revealEnd, normal.highlightEnd - normal.revealEnd)
+	-- UI FINAL R7: the reveal's timeline (stage:254-332, G7.20) ----------------------------------------------------------
 
-		local function phase(tMs: number, isReduced: boolean): string
-			local name = BoxFormat.revealPhase(tMs, isReduced)
-			return name
+	-- Steps `state` by `dt` until `untilS` seconds passed; returns every event in order with its time.
+	local function play(state: any, untilS: number, dt: number, replied: boolean, tapsAt: { number }?): { any }
+		local out = {}
+		local time = 0
+		local pending: { number } = table.clone(tapsAt or {})
+		while time < untilS - 1e-9 do
+			time += dt
+			local tapped = false
+			if pending[1] and time >= pending[1] - 1e-9 then
+				table.remove(pending, 1)
+				tapped = true
+			end
+			for _, event in BoxFormat.revealAdvance(state, dt, tapped, replied) do
+				table.insert(out, { kind = event.kind, tap = event.tap, at = time })
+			end
 		end
-		expect.equal(phase(0, false), "anticipation")
-		expect.equal(phase(899, false), "anticipation")
-		expect.equal(phase(900, false), "pop")
-		expect.equal(phase(1150, false), "reveal")
-		expect.equal(phase(1750, false), "highlight")
-		expect.equal(phase(2349, false), "highlight")
-		expect.equal(phase(2350, false), "result")
-		expect.equal(phase(299, true), "anticipation")
-		expect.equal(phase(300, true), "pop")
-		expect.equal(phase(550, true), "reveal")
-		expect.equal(phase(1750, true), "result")
-		local _, half = BoxFormat.revealPhase(450, false)
-		expect.near(half, 0.5, 1e-9)
-		local _, done = BoxFormat.revealPhase(99999, false)
-		expect.equal(done, 1)
-		expect.equal(phase(-5, false), "anticipation")
-		expect.equal(phase(0 / 0, false), "anticipation")
+		return out
+	end
+
+	t.test(
+		"reveal: the drop lands at 750 ms, a tap every 1.1 s, the third bursts at about 4.05 s, ready 1.5 s later",
+		function()
+			local state = BoxFormat.revealStart()
+			local events = play(state, 6, 1 / 120, true)
+			local kinds = {}
+			for _, e in events do
+				table.insert(kinds, e.kind)
+			end
+			expect.deepEqual(kinds, { "land", "tap", "tap", "tap", "burst", "ready" })
+			expect.near(events[1].at, REVEAL.dropMs / 1000, 1 / 120 + 1e-6)
+			for j = 0, 2 do
+				expect.equal(events[2 + j].tap, j)
+				-- each tap restarts the 1.1 s count on its frame (as stage:256, 313): at most a frame late per tap
+				expect.near(events[2 + j].at, REVEAL.dropMs / 1000 + (j + 1) * REVEAL.autoTapS, (j + 2) / 120 + 1e-6)
+			end
+			expect.near(events[5].at, 4.05, 4 / 120 + 1e-6) -- the plan's "about 4.05 s after the drop starts"
+			expect.near(events[6].at - events[5].at, REVEAL.resultAtS, 2 / 120)
+			expect.equal(state.phase, "inspect")
+		end
+	)
+
+	t.test("reveal: a player's tap advances one tap (never a skip); taps during the drop do nothing", function()
+		local state = BoxFormat.revealStart()
+		local events = play(state, 1.2, 1 / 60, true, { 0.2, 0.9, 1.0 })
+		local taps = 0
+		for _, e in events do
+			if e.kind == "tap" then
+				taps += 1
+			end
+			expect.falsy(e.kind == "burst")
+		end
+		expect.equal(taps, 2) -- the 0.2 s tap fell in the drop
+		expect.equal(state.taps, 2)
+		expect.equal(state.phase, "idle")
 	end)
 
-	t.test("wobble: inside [cMin, cMax], hops only on the stretch, <= 3 Hz, off under ReducedMotion", function()
-		local lowest, highest = 1, 1
-		local signs = {}
-		for tMs = 0, REVEAL.anticipationEndMs, 5 do
-			local c, hop = BoxFormat.wobble(tMs, false)
-			expect.truthy(c >= REVEAL.wobbleCMin - 1e-9 and c <= REVEAL.wobbleCMax + 1e-9)
-			expect.truthy(hop >= 0)
-			if hop > 0 then
-				expect.truthy(c > 1) -- a hop only while stretching
-			end
-			lowest, highest = math.min(lowest, c), math.max(highest, c)
-			local sign = if c < 1 - 1e-9 then -1 elseif c > 1 + 1e-9 then 1 else 0
-			if sign ~= 0 and signs[#signs] ~= sign then
-				table.insert(signs, sign)
-			end
-			local rc, rhop = BoxFormat.wobble(tMs, true)
-			expect.equal(rc, 1)
-			expect.equal(rhop, 0)
+	t.test("reveal: the burst waits for the BoxOpen reply (the box is held after its third tap)", function()
+		local state = BoxFormat.revealStart()
+		local events = play(state, 8, 1 / 60, false)
+		local kinds = {}
+		for _, e in events do
+			table.insert(kinds, e.kind)
 		end
-		expect.near(lowest, REVEAL.wobbleCMin, 1e-3) -- the last, strongest squash reaches 0.92
-		expect.truthy(highest > 1)
-		-- Squash, stretch, squash: 3 half-swings in 900 ms, each >= 1 / (2 · 3 Hz).
-		expect.deepEqual(signs, { -1, 1, -1 })
-		expect.truthy(REVEAL.anticipationEndMs / #signs >= 1000 / (2 * 3))
-		local c0, h0 = BoxFormat.wobble(REVEAL.anticipationEndMs + 1, false)
-		expect.equal(c0, 1)
-		expect.equal(h0, 0)
+		expect.deepEqual(kinds, { "land", "tap", "tap", "tap" })
+		expect.equal(state.held, true)
+		expect.equal(state.phase, "idle")
+		local late = BoxFormat.revealAdvance(state, 1 / 60, true, true)
+		expect.equal(#late, 1)
+		expect.equal(late[1].kind, "burst")
+		expect.equal(state.taps, REVEAL.taps)
 	end)
 
-	t.test("sounds: box.shake ×3, box.open at the pop, reveal.<rarity> at the reveal (§18.6)", function()
-		local expectedKeys: { [string]: string } = {
-			Common = "reveal.common",
-			Uncommon = "reveal.uncommon",
-			Epic = "reveal.epic",
-			Exclusive = "reveal.exclusive",
-		}
-		for rarity, key in expectedKeys do
-			expect.equal(BoxFormat.revealSoundKey(rarity), key)
-			local cues = BoxFormat.soundCues(rarity, false)
-			local list: { string } = {}
-			for _, cue in cues do
-				table.insert(list, string.format("%d %s", cue.atMs, cue.key))
-			end
-			expect.deepEqual(list, {
-				"0 box.shake",
-				"300 box.shake",
-				"600 box.shake",
-				"900 box.open",
-				"1150 " .. key,
-			})
-			expect.equal(cues[4].variance, 0)
-			expect.equal(cues[5].variance, 0)
-			local reduced: { string } = {}
-			for _, cue in BoxFormat.soundCues(rarity, true) do
-				table.insert(reduced, string.format("%d %s", cue.atMs, cue.key))
-			end
-			expect.deepEqual(reduced, {
-				"0 box.shake",
-				"100 box.shake",
-				"200 box.shake",
-				"300 box.open",
-				"550 " .. key,
-			})
-		end
-		expect.equal(BoxFormat.revealSoundKey("Nope"), "reveal.common")
+	t.test("reveal: skip lands in the result idle with every move done", function()
+		local state = BoxFormat.revealStart()
+		play(state, 1, 1 / 60, true)
+		BoxFormat.revealSkip(state)
+		expect.equal(state.phase, "inspect")
+		expect.equal(state.taps, REVEAL.taps)
+		local mul, _, hidden = BoxFormat.boxExit(state.t)
+		expect.equal(hidden, true)
+		expect.equal(mul, 0)
+		local scale, y, yaw, alpha = BoxFormat.toyPose(state.t)
+		expect.near(scale, 1, 1e-9)
+		expect.near(y, REVEAL.toy.y + REVEAL.toy.rise, 1e-9)
+		expect.near(yaw, 0, 1e-9)
+		expect.near(alpha, 1, 1e-9)
 	end)
 
-	t.test("result text: NEW! or the duplicate refund", function()
+	t.test("reveal curves: the design's bounce, elastic, drop, exit, entrance, beam and wave", function()
+		expect.equal(BoxFormat.bounceOut(0), 0)
+		expect.near(BoxFormat.bounceOut(1), 1, 1e-9)
+		expect.near(BoxFormat.bounceOut(0.5), 0.765625, 1e-9) -- stage:286 at x = .5
+		expect.equal(BoxFormat.elastic(0), 0)
+		expect.equal(BoxFormat.elastic(1), 1)
+		expect.truthy(BoxFormat.elastic(0.2) > 1) -- it overshoots
+		local height, yaw, blobScale, blobAlpha = BoxFormat.dropPose(0)
+		expect.near(height, REVEAL.dropHeight, 1e-9)
+		expect.near(yaw, REVEAL.restYaw + math.pi * REVEAL.dropTurns, 1e-9)
+		expect.near(blobScale, REVEAL.floor.from, 1e-9)
+		expect.equal(blobAlpha, 0)
+		height, yaw = BoxFormat.dropPose(REVEAL.dropMs / 1000)
+		expect.near(height, 0, 1e-9)
+		expect.near(yaw, REVEAL.restYaw, 1e-9)
+		expect.equal(BoxFormat.boxExit(0.1), 1)
+		local mid, spinning = BoxFormat.boxExit(0.2)
+		expect.truthy(spinning and mid > 0 and mid < 1.25)
+		expect.falsy(BoxFormat.exitPoofs(0.3))
+		expect.truthy(BoxFormat.exitPoofs(0.36))
+		local s0, _, spin0, a0 = BoxFormat.toyPose(0.36)
+		expect.near(s0, 0.001, 1e-9)
+		expect.near(spin0, math.pi * REVEAL.toy.spins, 1e-9)
+		expect.equal(a0, 0)
+		local _, _, _, aHalf = BoxFormat.toyPose(0.56)
+		expect.near(aHalf, 0.5, 1e-6)
+		local sx, sy, alpha = BoxFormat.beamPose(0)
+		expect.near(sx, 0.2, 1e-9)
+		expect.near(sy, 0.01, 1e-9)
+		expect.near(alpha, REVEAL.beam.alpha, 1e-9)
+		local _, _, gone = BoxFormat.beamPose(0.7 + 1e-6)
+		expect.near(gone, 0, 1e-6)
+		local waveScale, waveAlpha = BoxFormat.wavePose(0)
+		expect.near(waveScale, REVEAL.wave.from, 1e-9)
+		expect.near(waveAlpha, REVEAL.wave.alpha, 1e-9)
+		local _, waveGone = BoxFormat.wavePose(1)
+		expect.equal(waveGone, 0)
+		expect.near(BoxFormat.lidTarget("idle", 2, "soft"), REVEAL.lid.rest + 2 * REVEAL.lid.perTap, 1e-9)
+		expect.equal(BoxFormat.lidTarget("open", 3, "royal"), REVEAL.lid.openRoyal)
+		expect.equal(BoxFormat.lidTarget("inspect", 3, "sweet"), REVEAL.lid.open)
+	end)
+
+	t.test("reveal springs settle on their target (stage:294-295)", function()
+		local x, v = 1, -9
+		for _ = 1, 240 do
+			x, v = BoxFormat.spring(x, v, 1, REVEAL.squash.k, REVEAL.squash.c, 1 / 60)
+		end
+		expect.near(x, 1, 1e-3)
+		expect.near(v, 0, 1e-2)
+	end)
+
+	t.test(
+		"sounds per moment: the low stamp, box.shake per tap, box.open, reveal.<rarity> 120 ms later, ui.pop",
+		function()
+			local land = BoxFormat.soundCue("land")
+			expect.equal(land.key, "ui.click")
+			expect.equal(land.pitch, REVEAL.landPitch)
+			expect.equal(BoxFormat.soundCue("tap").key, "box.shake")
+			local burst = BoxFormat.soundCue("burst")
+			expect.equal(burst.key, "box.open")
+			expect.equal(burst.variance, 0)
+			for rarity, key in BoxFormat.REVEAL_SOUNDS do
+				local cue = BoxFormat.soundCue("reveal", rarity)
+				expect.equal(cue.key, key)
+				expect.equal(cue.delayMs, REVEAL.revealDelayMs)
+				expect.equal(cue.variance, 0)
+			end
+			expect.equal(BoxFormat.soundCue("reveal", "Nope").key, "reveal.common")
+			expect.equal(BoxFormat.soundCue("close").key, "ui.pop")
+			expect.equal(BoxFormat.revealSoundKey("Nope"), "reveal.common")
+		end
+	)
+
+	t.test("PR16: the flash peaks at most at the flash cap, not before minPeakMs, and is gone by 700 ms", function()
+		local Tweens = t.requireClient("Anim/Tweens")
+		local cap = Config.Vfx.Flash
+		for _, ease in
+			{
+				function(u: number): number
+					return u
+				end,
+				Tweens.curve("easeOut"),
+			}
+		do
+			local peak, peakAt = 0, 0
+			for ms = 0, 800, 2 do
+				local a = BoxFormat.flashAlpha(ms, ease)
+				if a > peak + 1e-9 then
+					peak, peakAt = a, ms
+				end
+			end
+			expect.truthy(peak <= cap.maxOverlayOpacity + 1e-9)
+			expect.truthy(peak > cap.maxOverlayOpacity * 0.9)
+			expect.truthy(peakAt >= cap.minPeakMs - 2 - 1e-6) -- the 2 ms sampling step
+			expect.equal(BoxFormat.flashAlpha(700, ease), 0)
+			expect.equal(BoxFormat.flashAlpha(0, ease), 0)
+		end
+	end)
+
+	t.test(
+		"PR18: the frame ledger never grants more than the budget; the burst and the rain take what is left",
+		function()
+			local total = Config.Vfx.Effects.boxRevealUiFrames
+			local ledger = {}
+			expect.equal(BoxFormat.budgetTake(ledger, 0, 16, 1.2, total), 16) -- the third tap's sparks
+			expect.equal(BoxFormat.budgetFree(ledger, 0.5, total), total - 16)
+			expect.equal(BoxFormat.budgetTake(ledger, 0.5, 30, 1, total), total - 16)
+			expect.equal(BoxFormat.budgetFree(ledger, 0.6, total), 0)
+			expect.equal(BoxFormat.budgetTake(ledger, 0.6, 5, 1, total), 0)
+			expect.equal(BoxFormat.budgetFree(ledger, 1.3, total), 16) -- the first entry ran out
+			expect.equal(BoxFormat.budgetFree(ledger, 2, total), total)
+			-- rays (1) + rings (2) + at most 21 pieces = 24
+			local burst = Config.UI.Fx.events.boxBurst
+			expect.equal(1 + 2 + burst.maxPieces, total)
+			expect.equal(BoxFormat.burstPieces("Exclusive", total), burst.maxPieces)
+			expect.equal(BoxFormat.burstPieces("Common", 5), 5)
+			expect.equal(BoxFormat.burstPieces("Common", 0), 0)
+			-- the rain: Epic and Exclusive only, within the free frames
+			expect.equal(BoxFormat.rainPieces("Common", total), 0)
+			expect.equal(BoxFormat.rainPieces("Uncommon", total), 0)
+			expect.equal(BoxFormat.rainPieces("Epic", 10), 10)
+			expect.equal(BoxFormat.rainPieces("Exclusive", 0), 0)
+		end
+	)
+
+	t.test(
+		"T14: the orbit starts at the design's camera, the drag turns it, the zoom stays in 4-11, the turntable 13.2°/s",
+		function()
+			local orbit = BoxFormat.orbitStart()
+			local eye = BoxFormat.orbitEye(orbit)
+			expect.near((eye - REVEAL.camera.eye).Magnitude, 0, 1e-6)
+			local zoomed = BoxFormat.orbitStep(orbit, 1 / 60, { zoom = 100 })
+			expect.near(zoomed.radius, REVEAL.orbit.minDist, 1e-9)
+			zoomed = BoxFormat.orbitStep(orbit, 1 / 60, { zoom = -100 })
+			expect.near(zoomed.radius, REVEAL.orbit.maxDist, 1e-9)
+			local turned = orbit
+			for _ = 1, 120 do
+				turned =
+					BoxFormat.orbitStep(turned, 1 / 60, { dragX = if turned == orbit then 100 else 0, height = 800 })
+			end
+			expect.near(turned.theta, orbit.theta - 2 * math.pi * 100 / 800, 1e-3)
+			local spinning = table.clone(orbit)
+			spinning.auto = true
+			for _ = 1, 600 do -- 10 s: the damping's ramp is long over
+				spinning = BoxFormat.orbitStep(spinning, 1 / 60, nil)
+			end
+			local before = spinning.theta
+			for _ = 1, 60 do
+				spinning = BoxFormat.orbitStep(spinning, 1 / 60, nil)
+			end
+			expect.near(math.deg(before - spinning.theta), REVEAL.orbit.autoRotateDegS, 0.05)
+		end
+	)
+
+	t.test("result text: NEW!, or the duplicate line with our refund (PR21)", function()
 		expect.equal(BoxFormat.resultText(false, 0), Strings.box.revealNew)
-		expect.equal(BoxFormat.resultText(true, 1000), Strings.format(Strings.box.revealDuplicate, { coins = "1,000" }))
+		expect.equal(
+			BoxFormat.resultText(true, 1000),
+			Strings.box.revealDuplicate
+				.. Strings.box.listSeparator
+				.. Strings.format(Strings.box.revealRefund, { coins = "1,000" })
+		)
+		expect.equal(BoxFormat.resultText(true, 0), Strings.box.revealDuplicate)
 	end)
-
 	t.test("odds board: the stand's box rows, or the restricted / unknown note", function()
 		local text = BoxFormat.boardText("eligible", "snack")
 		local lines = string.split(text, "\n")
@@ -534,123 +670,92 @@ return function(t: Context)
 		end
 	end)
 
-	-- Part 8: the reveal panel's stage height (DESIGN §11.2 audit) ---------------------------------------------------
-	-- At 667×375 (a phone, compact), 893×673 (Studio's window), 1280×720 and 1920×1080, at the default and the largest
-	-- text size (text from a generous per-character estimate): the stage keeps its class height when the panel fits,
-	-- shrinks so the whole panel stays inside REVEAL_PANEL.heightShare of the screen, never below stageMin, and a larger
-	-- text never gives a taller stage.
+	-- UI FINAL R7: the Boxes window (H:262-278, PR20) --------------------------------------------------------------------
 
-	local Layout = t.requireClient("UI/Layout")
-	local PANEL = BoxFormat.REVEAL_PANEL
-	local TEXT = Config.UI.TextSize
-	local EM, LINE = 0.6, 1.3
-	local REVEAL_SCREENS = {
-		{ label = "667x375", size = Vector2.new(667, 375) },
-		{ label = "893x673", size = Vector2.new(893, 673) },
-		{ label = "1280x720", size = Vector2.new(1280, 720) },
-		{ label = "1920x1080", size = Vector2.new(1920, 1080) },
-	}
+	local CARDS = Config.UI.Boxes
 
-	-- The reveal's other rows at a text scale (every result button shown, the saving note reserved).
-	local function revealParts(textScale: number): any
-		local inner = PANEL.width - 2 * PANEL.padding
-		local items = {}
-		for _, text in { Strings.common.equip, Strings.common.inspect, Strings.box.openAnother, Strings.common.close } do
-			table.insert(
-				items,
-				{ w = #text * TEXT.Button * textScale * EM + 2 * 18 + 4, h = Config.UI.Touch.primaryButton }
-			)
-		end
-		local savingWidth = #Strings.reasonText("box.saving") * TEXT.Small * textScale * EM
-		return {
-			-- Foam restyle: the title is a header tab (its H2 line, 2 × 4 px padding and the 2 / 5 / 3 foam bands) and the
-			-- result line a Chip (Button kind, at least 26 px).
-			title = TEXT.H2 * textScale * LINE + 18,
-			name = TEXT.Title * textScale * LINE,
-			rarity = TEXT.Small * textScale * LINE + 4,
-			result = math.max(26, TEXT.Button * textScale * LINE),
-			saving = math.ceil(savingWidth / inner) * TEXT.Small * textScale * LINE,
-			buttons = Layout.wrapRow(items, inner, PANEL.buttonGap).height, -- fix batch: the buttons' own gap
-		}
-	end
-
-	-- Foam fix batch (2026-10-09): the name, the outlined rarity tag and the outlined result chip never touch (their
-	-- 2 px outlines are drawn outside their boxes), and the chunky result buttons keep a clear gap.
-	t.test("REVEAL_PANEL: the result rows and buttons keep clear gaps", function()
-		local Theme = t.requireClient("UI/Theme")
-		expect.truthy(PANEL.infoGap >= 2 * Theme.Stroke.bar + 2)
-		expect.truthy(PANEL.buttonGap > PANEL.gap)
-		expect.truthy(PANEL.buttonGap >= 2 * Theme.Stroke.ink + 4)
+	t.test("cardColumns: the selected card 2fr + gap, the others 1fr; sideways scroll under minFr", function()
+		local body = CARDS.body
+		-- the design's 1060 window: 1060 - 2 x 5 border - 2 x 24 padding = 1002 inside
+		local wide = BoxFormat.cardColumns(1002, 3, 2, body.gap, body.minFr)
+		expect.near(wide.fr, (1002 - 3 * body.gap) / 4, 1e-9)
+		expect.near(wide.widths[2], 2 * wide.fr + body.gap, 1e-9)
+		expect.near(wide.widths[1], wide.fr, 1e-9)
+		expect.near(wide.widths[1] + wide.widths[2] + wide.widths[3] + 2 * body.gap, 1002, 1e-6)
+		expect.equal(wide.scroll, false)
+		local narrow = BoxFormat.cardColumns(600, 3, 1, body.gap, body.minFr)
+		expect.equal(narrow.fr, body.minFr)
+		expect.equal(narrow.scroll, true)
+		expect.truthy(narrow.total > 600)
+		local bad = BoxFormat.cardColumns(0 / 0, 0, 1, -5, 100)
+		expect.equal(#bad.widths, 1)
 	end)
 
-	local function otherRows(p: any): number
-		return p.title
-			+ p.name
-			+ p.rarity
-			+ p.result
-			+ 2 * PANEL.infoGap
-			+ p.saving
-			+ p.buttons
-			+ 4 * PANEL.gap
-			+ 2 * PANEL.padding
-	end
+	t.test("cardLayout: the plate 178 with room, else smaller; the tiles go first, then the plate", function()
+		local parts = { name = 32, odds = 4 * 22 + 3 * 6, tiles = 42, open = 67 }
+		local roomy = BoxFormat.cardLayout(560, parts)
+		expect.equal(roomy.plate, CARDS.card.plate)
+		expect.equal(roomy.tiles, true)
+		local frame = 2 * (CARDS.card.pad + CARDS.card.border) + CARDS.card.lip
+		local fixed = frame + parts.name + parts.odds + parts.open + 4 * CARDS.card.gap + parts.tiles
+		local tight = BoxFormat.cardLayout(fixed + 100, parts)
+		expect.equal(tight.plate, 100)
+		expect.equal(tight.tiles, true)
+		local noTiles = BoxFormat.cardLayout(fixed + CARDS.card.plateMin - 10, parts)
+		expect.equal(noTiles.tiles, false)
+		expect.truthy(noTiles.plate >= CARDS.card.plateMin)
+		local phone = BoxFormat.cardLayout(200, parts)
+		expect.equal(phone.plate, 0)
+		expect.equal(phone.tiles, false)
+	end)
 
-	for _, screen in REVEAL_SCREENS do
-		t.test(`revealStageHeight {screen.label}: the panel stays on screen at every text size`, function()
-			local scale = Layout.uiScale(screen.size.Y)
-			local class = Layout.layoutClass(screen.size.X, screen.size.Y)
-			local baseHeight = screen.size.Y / scale
-			local maxStage = if class == "compact" then PANEL.stageCompact else PANEL.stage
-			local previous = math.huge
-			for _, textScale in { 1, Config.UI.PreferredTextScale.Large, Config.UI.PreferredTextScale.Largest } do
-				local parts = revealParts(textScale)
-				local stage = BoxFormat.revealStageHeight(baseHeight, parts, class)
-				expect.truthy(stage >= PANEL.stageMin and stage <= maxStage)
-				expect.equal(stage, math.floor(stage)) -- whole base px
-				if stage > PANEL.stageMin then
-					-- The whole panel inside heightShare of the screen less shorterBy (so inside the screen and shorter
-					-- than the Boxes panel behind it, fix round 2).
-					expect.truthy(otherRows(parts) + stage <= baseHeight * PANEL.heightShare - PANEL.shorterBy + 1e-6)
+	t.test("cardOdds: one row per rarity, lowest first, the exact percent and the bar's max(6, p) share", function()
+		for _, box in Boxes.list() do
+			local rows = BoxFormat.cardOdds(box.id)
+			local byRarity = Boxes.byRarity(box.id)
+			expect.equal(#rows, #byRarity)
+			local total = 0
+			for i, row in rows do
+				local source = byRarity[#byRarity - i + 1]
+				expect.equal(row.rarity, source.rarity)
+				expect.equal(row.text, source.text .. "%")
+				expect.near(row.share, math.max(CARDS.odds.minPct, source.percent) / 100, 1e-9)
+				total += hundredths(source.text)
+				if i > 1 then
+					expect.truthy(Rarity.index(row.rarity) > Rarity.index(rows[i - 1].rarity))
 				end
-				expect.truthy(stage <= previous)
-				previous = stage
-				-- The panel is narrower than the screen.
-				expect.truthy(PANEL.width <= screen.size.X / scale)
 			end
-			if class == "regular" then
-				-- A regular screen at the default text keeps Part 7's stage.
-				expect.equal(BoxFormat.revealStageHeight(baseHeight, revealParts(1), class), PANEL.stage)
-			end
-		end)
-	end
-
-	-- Foam fix round 2 (2026-10-09): on a phone the reveal was as tall as the Boxes panel behind it (the stage at its
-	-- minimum), so the two outlines doubled up at the corners.
-	t.test("REVEAL_PANEL: never taller than the Boxes panel, and on phones it ends inside it", function()
-		local InventoryFormat = t.requireClient("UI/InventoryFormat")
-		local boxesShare = InventoryFormat.PANEL.heightShare -- the Boxes panel's share (BoxController MAX_HEIGHT_SHARE)
-		expect.truthy(PANEL.heightShare <= boxesShare)
-		expect.truthy(PANEL.shorterBy * Layout.uiScale(375) >= 12) -- at least 12 px on a phone
-		-- SD_Modal on the two phones (the safe area, as in the foam shots), Medium text. The shots measured the reveal's
-		-- rows other than the stage at 202 base px (the panel was 322 with the 120 px stage); the stage here comes from
-		-- the generous estimate above, which keeps the phone stage at its minimum.
-		local MEASURED_ROWS = 202
-		for _, actual in { Vector2.new(844, 312), Vector2.new(667, 297) } do
-			local scale = Layout.uiScale(actual.Y)
-			local baseHeight = actual.Y / scale
-			local stage = BoxFormat.revealStageHeight(baseHeight, revealParts(1), "compact")
-			expect.truthy(MEASURED_ROWS + stage <= baseHeight * boxesShare - PANEL.shorterBy + 1e-6)
-			expect.truthy(stage * scale >= 70) -- still a stage you can see the squishy in and tap to skip
+			expect.equal(total, 10000)
 		end
 	end)
 
-	t.test("revealStageHeight: a bad screen height or bad parts give a safe stage", function()
-		local parts = revealParts(1)
-		expect.equal(BoxFormat.revealStageHeight(0 / 0, parts, "regular"), PANEL.stageMin)
-		expect.equal(BoxFormat.revealStageHeight(-5, parts, "compact"), PANEL.stageMin)
-		local bad = { title = 0 / 0, name = -1, rarity = math.huge, result = 0, saving = 0, buttons = 0 }
-		local stage = BoxFormat.revealStageHeight(2000, bad, "regular")
-		expect.equal(stage, PANEL.stage)
-		expect.equal(BoxFormat.revealStageHeight(2000, parts, "compact"), PANEL.stageCompact)
+	t.test("toyTiles: rarest first (item order inside a rarity), at most max, owned or a silhouette", function()
+		local tiles = BoxFormat.toyTiles("sweet", { dragon = true }, 6)
+		expect.equal(#tiles, 6)
+		expect.equal(tiles[1].id, "dragon")
+		expect.equal(tiles[1].owned, true)
+		expect.equal(tiles[2].owned, false)
+		for i = 2, #tiles do
+			local a = Rarity.index(Catalog.get(tiles[i - 1].id).rarity)
+			local b = Rarity.index(Catalog.get(tiles[i].id).rarity)
+			expect.truthy(a >= b)
+		end
+		expect.equal(#BoxFormat.toyTiles("snack", nil, 2), 2)
+		expect.equal(#BoxFormat.toyTiles("nope", nil, 6), 0)
+		expect.equal(BoxFormat.tilesThatFit(42), 1)
+		expect.equal(BoxFormat.tilesThatFit(42 * 4 + 4 * 3), 4)
+		expect.equal(BoxFormat.tilesThatFit(9999), CARDS.toys.max)
+		expect.equal(BoxFormat.tilesThatFit(10), 0)
+	end)
+
+	t.test("subtitle: shown while a box can still give a new squishy (H:260, FD5)", function()
+		expect.equal(BoxFormat.subtitleShown({}), true)
+		local all = {}
+		for _, box in Boxes.list() do
+			for _, item in box.items do
+				all[item.id] = true
+			end
+		end
+		expect.equal(BoxFormat.subtitleShown(all), false)
 	end)
 end

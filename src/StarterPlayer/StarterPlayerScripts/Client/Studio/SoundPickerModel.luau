@@ -736,13 +736,14 @@ function SoundPickerModel.storyboard(key: string, seconds: number?): { Cue }?
 		unduck(telegraph)
 		play(telegraph, "sfx.throwDragon")
 		play(telegraph + travel, "sfx.dragonChomp")
-	else -- Gift boxes: wobbles across the anticipation, the lid pop, then the reveal (§9.11 timings)
-		local wobbles = math.max(BOX.anticipationWobbles, 1)
-		local openAt = BOX.anticipationEndMs / 1000
-		local revealAt = BOX.popEndMs / 1000
+	else -- Gift boxes (UI FINAL R7): the three automatic taps after the landing, the burst, then the reveal
+		local wobbles = math.max(BOX.taps, 1)
+		local landAt = BOX.dropMs / 1000
+		local openAt = landAt + wobbles * BOX.autoTapS
+		local revealAt = openAt + BOX.revealDelayMs / 1000
 		duck(0, "boxReveal")
-		for i = 0, wobbles - 1 do
-			play(i * openAt / wobbles, "box.shake")
+		for i = 1, wobbles do
+			play(landAt + i * BOX.autoTapS, "box.shake")
 		end
 		play(openAt, "box.open")
 		play(revealAt, if string.sub(key, 1, 7) == "reveal." then key else REVEAL_FALLBACK)

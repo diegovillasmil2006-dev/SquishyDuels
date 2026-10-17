@@ -34,6 +34,11 @@
 -- Reading (§10.5 orbit): DESIGN writes CFrame.fromEulerAnglesYXZ(−pitch, yaw, 0); with the camera placed at
 -- centre + dir·dist that puts it BELOW the model for a positive pitch, while Catalog's default pitch (12°) and
 -- StaticIcon.viewDirection mean "from above". orbitCFrame uses +pitch (from above), the same direction as StaticIcon.
+-- UI FINAL R7 (the box reveal's full-screen stage, plan work/ui/PLAN.md R7 G7.1, G7.8): stage:setManualCamera(cframe,
+-- fovDeg, lightDirection, ambient, lightColor) pins the camera where the caller puts it (the design's fixed camera and
+-- its orbit, set again by the caller each frame): the fit and the orbit leave it alone, the key light keeps
+-- lightDirection in world space (stage:40) and the viewport takes ambient / lightColor; resetLook() (and a new
+-- setModel's caller) goes back to the fit, the Inspect lighting and Framing.vFovDeg.
 -- Pure, unit-tested in Edit mode: fitDistance, orbitCFrame, projectPoint, lightDirection.
 
 -- Services
@@ -95,6 +100,14 @@ export type Stage = {
 	setGlow: (self: Stage, color: Color3?, opacity: number) -> (),
 	setTint: (self: Stage, color: Color3?, amount: number) -> (),
 	setShadowWiden: (self: Stage, factor: number) -> (),
+	setManualCamera: (
+		self: Stage,
+		cframe: CFrame,
+		fovDeg: number,
+		lightDirection: Vector3,
+		ambient: Color3,
+		lightColor: Color3
+	) -> (),
 	resetLook: (self: Stage) -> (),
 	clearLayers: (self: Stage) -> (),
 	isAlive: (self: Stage) -> boolean,
@@ -315,6 +328,7 @@ local function build(): Stage
 	local framing: Framing? = nil
 	local yaw, pitch, zoom = ORBIT.defaultYawDeg, ORBIT.defaultPitchDeg, 1
 	local shadowWiden = 1
+	local manualLight: Vector3? = nil -- UI FINAL R7: set while the caller drives the camera (setManualCamera)
 	local effect: Scheduler.Handle? = nil
 	local sizeConnection: RBXScriptConnection? = nil
 
@@ -345,7 +359,7 @@ local function build(): Stage
 
 	local function applyCamera()
 		local f = framing
-		if f == nil then
+		if f == nil or manualLight ~= nil then
 			return
 		end
 		camera.CFrame = ViewportStage.orbitCFrame(f.center, f.pivotRotation, yaw, pitch, currentDistance())
@@ -385,6 +399,12 @@ local function build(): Stage
 		if not alive or not attached then
 			effect = nil
 			return false
+		end
+		local light = manualLight
+		if light then
+			viewport.LightDirection = light
+			shadow.Visible = false
+			return true
 		end
 		viewport.LightDirection = ViewportStage.lightDirection(camera.CFrame)
 		updateShadow()
@@ -575,7 +595,31 @@ local function build(): Stage
 	end
 
 	-- Back to the neutral look: no glow, no tint, the panel stroke, shadow 1, default view.
+	-- UI FINAL R7: the caller's camera (see the header); resetLook() ends it.
+	function self.setManualCamera(
+		_: Stage,
+		cframe: CFrame,
+		fovDeg: number,
+		lightDirection: Vector3,
+		ambient: Color3,
+		lightColor: Color3
+	)
+		manualLight = if lightDirection.Magnitude > EPSILON then lightDirection.Unit else LIGHTING.lightDirection.Unit
+		camera.FieldOfView = math.clamp(positive(fovDeg, FRAMING.vFovDeg), 1, 120)
+		camera.CFrame = cframe
+		viewport.Ambient = ambient
+		viewport.LightColor = lightColor
+		viewport.LightDirection = manualLight :: Vector3
+	end
+
 	function self.resetLook(s: Stage)
+		if manualLight then
+			manualLight = nil
+			camera.FieldOfView = FRAMING.vFovDeg
+			viewport.Ambient = LIGHTING.ambient
+			viewport.LightColor = LIGHTING.lightColor
+			viewport.ImageTransparency = 0
+		end
 		s:setGlow(nil, 0)
 		s:setTint(nil, 0)
 		s:setRarity(nil)

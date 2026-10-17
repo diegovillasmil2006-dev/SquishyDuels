@@ -804,28 +804,78 @@ local Anim = {
 		sparkles = 12,
 	},
 
-	-- Box reveal (§9.11), uses the Inspect viewport stage.
+	-- Box reveal (§9.11), uses the Inspect viewport stage. UI FINAL R7 (plan work/ui/PLAN.md R7; `stage:n` = Diego's
+	-- uploads/box-stage.html line n, `H:n` = "Squishy Duels HUD.dc.html" line n): the design's 3D box stage in its own
+	-- units (UI/BoxReveal multiplies every length by the scene scale, so the squishy is toy.fit units on its largest
+	-- side): the drop (0-750 ms, easeOutBounce), the idle with its three taps (the player's, or one every autoTapS), the
+	-- burst once the BoxOpen reply is in, the box's exit, the squishy's entrance and the result idle with the orbit.
+	-- Springs are x'' = -k (x - target) - c x' (stage:294-296). Replaces the 0.9 s wobble timeline.
 	boxReveal = {
-		anticipationEndMs = 900, -- 3 accelerating wobbles with small hops, neutral glow
-		anticipationWobbles = 3,
-		wobbleCMin = 0.92,
-		wobbleCMax = 1.06,
-		popEndMs = 1150, -- lid pops
-		popConfettiDots = 16,
-		revealEndMs = 1750, -- squishy rises, scale 0.3 -> 1 on a spring
-		revealScaleFrom = 0.3,
-		revealOmega = 14,
-		revealZeta = 0.5,
-		highlightEndMs = 2350, -- rarity colour, label + pips
-		glowMaxOpacity = 0.45, -- never a white flash
-		lightRayFrames = 8,
-		turntableDegPerSecond = 20,
-		skipTapAfterMs = 250, -- a tap/click after this jumps to the final state
-		-- The result buttons (Equip, Inspect, Open another, Close) ignore presses for this long after they appear: they
-		-- take Skip's place, so the click or tap that skipped (or a quick second tap) would otherwise press one of them
-		-- (Part 8 acceptance: a real Skip click pressed Open another and the result vanished unseen).
+		dropMs = 750, -- stage:302
+		dropHeight = 7, -- stage:241
+		restYaw = -0.35, -- stage:302, stage:308 (radians)
+		dropTurns = 1.2, -- stage:302: the yaw unwinds (1 - k) x 1.2 pi to restYaw
+		autoTapS = 1.1, -- stage:313
+		taps = 3, -- stage:262
+		squash = { k = 340, c = 15, min = 0.6, land = -9, tap = 10, tapPerTap = 2 }, -- stage:257, 294, 297, 304
+		-- stage:257, 295, 309, 320: the lid spring, its idle aim, each tap's kick and the open angle (Royal -1.95)
+		lid = {
+			k = 260,
+			c = 11,
+			rest = -0.06,
+			perTap = -0.05,
+			kick = 7,
+			kickPerTap = 3,
+			open = -2.2,
+			openRoyal = -1.95,
+		},
+		sweetRise = 0.6, -- stage:335: the Sweet dome rises by -lid x this
+		hop = { gravity = 22, kick = 3.2, kickPerTap = 0.6, hardBelow = -2, landSquash = 1.2, landSquashMax = 10 },
+		idle = { bobY = 0.04, bobRate = 2.2, roll = 0.025, rollPerTap = 0.03, rollRate = 5, rollRatePerTap = 5 },
+		idleYaw = { amp = 0.15, rate = 1.1 }, -- stage:308
+		light = { idle = 1.5, idlePerTap = 2.5, decay = 12, tap = 3, tapPerTap = 4, burst = 10, burstDecay = 30 },
+		lightGlowAt = 10, -- reading: the inner light's glow is fully shown at this intensity (the burst's)
+		-- stage:259, 304, 312, 326, 331: the 3D sparkles, drawn as budgeted 2D pieces (PR18)
+		sparkles = { idle = 3, idlePerTap = 6, seam = 14, seamPerTap = 10, dust = 26, poof = 40, result = 4 },
+		ears = { flick = 0.5, decay = 0.02 }, -- stage:260, 299
+		crownRadS = 0.8, -- stage:300
+		seam = { base = 0.2, perTap = 0.27, wave = 0.08, rate = 12 }, -- stage:311
+		beam = { growS = 0.3, alpha = 0.5, fadeFromS = 0.25, fadeS = 0.45, height = 7, bottom = 1.1 }, -- stage:221, 323
+		wave = { rate = 1.6, from = 0.6, grow = 3, alpha = 0.8, inner = 0.8 }, -- stage:223, 342
+		lidFly = { vx = 1, vy = 9, vz = 1.5, gravity = 20, spin = 12, tumble = 2 }, -- stage:270, 318-319
+		coins = { -- stage:226, 271-274, 337-340
+			n = 16,
+			radius = 0.15,
+			thick = 0.045,
+			upMin = 6,
+			upSpan = 4,
+			outMin = 2,
+			outSpan = 2.5,
+			spin = 14,
+			gravity = 16,
+			floor = 0.08,
+			bounce = -0.45,
+			drag = 0.7,
+			lifeS = 1.8,
+			shrinkS = 0.3,
+		},
+		exit = { fromS = 0.12, spanS = 0.26, swell = 0.25, spin = 14, poofAt = 0.85, sink = 2 }, -- stage:315, 324-326
+		toy = { fit = 2, fromS = 0.36, growS = 0.9, y = 0.5, rise = 0.8, riseRate = 1.4, spins = 3, spinRate = 1.25 },
+		toyFadeS = 0.4, -- stage:330
+		resultAtS = 1.5, -- stage:332
+		resultBob = { amp = 0.08, rate = 1.6 }, -- stage:328
+		floor = { blob = 3.4, blobAlpha = 0.55, from = 0.4 }, -- stage:71, 219, 303
+		camera = { fovDeg = 34, eye = Vector3.new(0, 2.3, 8.4), target = Vector3.new(0, 1.05, 0) }, -- stage:44, 248
+		keyLight = Vector3.new(3, 6, 5), -- stage:40: the key light's position (it shines toward the origin)
+		-- stage:45-47: OrbitControls (damping .08, distance 4-11, autoRotateSpeed 2.2 = 13.2 deg/s); the wheel's zoom
+		-- step (0.95 a tick) and the drag's turn (2 pi per screen height) are OrbitControls' defaults; padTurnRadS is
+		-- the right stick's turn at full tilt (reading).
+		orbit = { damping = 0.08, minDist = 4, maxDist = 11, autoRotateDegS = 13.2, zoomStep = 0.95, padTurnRadS = 2 },
+		revealDelayMs = 120, -- H:827: the reveal sound and the burst 120 ms after the burst's rings
+		landPitch = 0.6, -- RL8 reading: the landing's stamp is a low ui.click
+		-- The result buttons (EQUIP, AGAIN, NICE!) ignore presses for this long after they appear (Part 8 acceptance: the
+		-- press that skipped would otherwise land on one of them).
 		resultInputGuardMs = 350,
-		reducedMotionAnticipationMs = 300, -- no hops; the reveal is a crossfade
 	},
 
 	-- Duel start and end presentation (§9.14).

@@ -2384,12 +2384,13 @@ end
 
 -- UI FINAL R4 (H:676): a spend the Coins do not cover: the pill's "no" shake (12 px, PR5) and the error toast "Not
 -- enough coins!", silent (the press already played ui.error, H:643). Its coin icon and red face come with R9's toasts.
-function HudController.denyCoins()
+-- UI FINAL R7 (G7.16): `onTap` makes the toast a tap target (the Boxes window's "How to earn Coins").
+function HudController.denyCoins(onTap: (() -> ())?)
 	local capsule = coins
 	if capsule and shown then
 		capsule:shake()
 	end
-	UIController.toast(Strings.hud.notEnoughCoins, "error", { sound = false })
+	UIController.toast(Strings.hud.notEnoughCoins, "error", { sound = false, action = onTap })
 end
 
 -- The result panel's reward label, which the duel reward flies from once the HUD shows again (§18.5.2 B1, B7); nil

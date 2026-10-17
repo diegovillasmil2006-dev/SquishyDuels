@@ -155,7 +155,8 @@ export type DebugScreen = {
 export type ToastKind = "info" | "success" | "warn" | "error"
 
 -- toast() options (§18.5.2 B5): `sound` is a sound key, or false for none; nil = ui.toast (ui.error for warn / error).
-export type ToastOptions = { sound: (string | boolean)? }
+-- UI FINAL R7: `action` makes the toast a tap target (the deny toast's "How to earn Coins", plan R7 G7.16).
+export type ToastOptions = { sound: (string | boolean)?, action: (() -> ())? }
 
 export type ScreenGuiSpec = { displayOrder: number, insets: Enum.ScreenInsets }
 
@@ -1162,6 +1163,17 @@ function UIController.toast(text: string, kind: ToastKind?, opts: ToastOptions?)
 		Parent = panel,
 	}, "Body", Enum.FontWeight.Bold)
 	local scale: UIScale = Create("UIScale", { Name = "Pop", Parent = panel })
+	local action = if opts then opts.action else nil
+	local tap: TextButton? = if action
+		then Create("TextButton", {
+			Name = "SD_ToastTap",
+			Text = "",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 10,
+			Parent = panel,
+		})
+		else nil
 	holder.Parent = container
 	local toast: Toast = {
 		text = text,
@@ -1173,6 +1185,12 @@ function UIController.toast(text: string, kind: ToastKind?, opts: ToastOptions?)
 		soundAt = -math.huge,
 	}
 	table.insert(toasts, toast)
+	if tap and action then
+		tap.Activated:Connect(function()
+			dismissToast(toast)
+			action()
+		end)
+	end
 	if not Tweens.reducedMotion() then
 		Tweens.play(panel, TOAST.ms, { Position = UDim2.fromOffset(0, 0) })
 	end

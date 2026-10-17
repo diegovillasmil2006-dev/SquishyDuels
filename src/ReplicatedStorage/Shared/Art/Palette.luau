@@ -380,6 +380,50 @@ local Palette = {
 	StickerTextGrey = Color3.fromHex("#C9BFD9"), -- H:530: the level-up pill's old level
 	StickerCollected = Color3.fromHex("#FFE3EF"), -- H:186: "Collected"
 	StickerBoxHeaderText = Color3.fromHex("#0B4B5E"), -- H:260: the Boxes subtitle on the cyan band
+	-- UI FINAL R7 (the Boxes window and the box reveal; `lib:n` = uploads/hud-lib.js, `stage:n` = uploads/box-stage.html):
+	-- the card plates (lib:44-46; the Royal plate's top is StickerFeaturedTop), the reveal's scrim and flash (H:471,
+	-- H:503), the stage's ambient and floor blob (stage:39, stage:71), the gift tints of the art's fallback, and the
+	-- three box models (Art/BoxSoft, BoxSweet, BoxRoyal: stage:58-186, their beam and inner light colours).
+	StickerBoxSnackTop = Color3.fromHex("#9BF1F8"), -- lib:44: the Soft box plate
+	StickerBoxSnackEnd = Color3.fromHex("#2CB8D4"),
+	StickerBoxSweetTop = Color3.fromHex("#D9B8FF"), -- lib:45
+	StickerBoxSweetEnd = Color3.fromHex("#8D5BEA"),
+	StickerBoxTreatEnd = Color3.fromHex("#F2A31B"), -- lib:46 (its top: StickerFeaturedTop #FFE58A)
+	StickerRevealScrimIn = Color3.fromHex("#7850C8"), -- H:471: rgba(120,80,200,.9) at 0%
+	StickerRevealScrimOut = Color3.fromHex("#1E103C"), -- H:471: rgba(30,16,60,.95) at 80%
+	StickerRevealFlashMid = Color3.fromHex("#FFF6D8"), -- H:503: the flash's 45% stop
+	BoxStageAmbient = Color3.fromHex("#D9C8F0"), -- stage:39: the hemisphere light's ground colour
+	BoxFloorBlob = Color3.fromHex("#140A28"), -- stage:71: rgba(20,10,40,.55) -> 0
+	BoxTintSweet = Color3.fromHex("#D9C6FF"), -- the Sweet box art's fallback gift tint
+	BoxTintTreat = Color3.fromHex("#FFE6A6"), -- the Royal box art's fallback gift tint
+	BoxSoftPolka = Color3.fromHex("#8FF3F8"), -- stage:58: the polka gradient's top (to #3FCFE2)
+	BoxSoftRibbon = Color3.fromHex("#FF6F9E"), -- stage:103
+	BoxSoftBlush = Color3.fromHex("#FF8FB8"), -- stage:112
+	BoxSoftEar = Color3.fromHex("#7FE9F2"), -- stage:121
+	BoxSoftEarInner = Color3.fromHex("#FFB3CF"), -- stage:122
+	BoxSoftLight = Color3.fromHex("#FFE7F2"), -- stage:126
+	BoxSoftPart = Color3.fromHex("#FF9CC2"), -- stage:126: its sparkles (with White, BoxSoftPolka, StickerCoinText)
+	BoxSweetStripeA = Color3.fromHex("#FFB8DA"), -- stage:63
+	BoxSweetStripeB = Color3.fromHex("#D7B4FF"), -- stage:63
+	BoxSweetBand = Color3.fromHex("#7FF0C8"), -- stage:131
+	BoxSweetCream = Color3.fromHex("#FFF5FA"), -- stage:132
+	BoxSweetDome = Color3.fromHex("#FF8FC4"), -- stage:139
+	BoxSweetCherry = Color3.fromHex("#FF2E55"), -- stage:151
+	BoxSweetStem = Color3.fromHex("#3FAF5E"), -- stage:153
+	BoxSweetLight = Color3.fromHex("#FFD6F0"), -- stage:155
+	BoxSweetBeam = Color3.fromHex("#FFB8E0"), -- stage:155
+	BoxSprinkleGreen = Color3.fromHex("#9BF58A"), -- stage:142 (with StickerCoinText, BoxSoftEar, White)
+	BoxSprinklePurple = Color3.fromHex("#C9A0FF"), -- stage:142
+	BoxSprinkleRed = Color3.fromHex("#FF6F7E"), -- stage:142
+	BoxRoyalVelvet = Color3.fromHex("#6B2BE0"), -- stage:159 (the gold: StickerGoldMid #FFC23A, stage:78)
+	BoxRoyalGemCyan = Color3.fromHex("#3FE0FF"), -- stage:176
+	BoxRoyalGemPink = Color3.fromHex("#FF3FA4"), -- stage:167, stage:176
+	BoxRoyalGemGreen = Color3.fromHex("#5CF27A"), -- stage:176
+	BoxRoyalGemYellow = Color3.fromHex("#FFE14A"), -- stage:176
+	BoxRoyalKeyhole = Color3.fromHex("#FFF3B0"), -- stage:168
+	BoxRoyalSeam = Color3.fromHex("#FFE38A"), -- stage:169
+	BoxRoyalLight = Color3.fromHex("#FFD36B"), -- stage:186 (its beam: Lemon #FFD86B)
+	BoxRoyalSheen = Color3.fromHex("#FF9CF0"), -- stage:159, stage:186: the velvet sheen, a sparkle colour
 	-- Buttons and badges (each a top / mid / end or top / end gradient, 180deg).
 	StickerGreenTop = Color3.fromHex("#A6F796"), -- H:245: the primary (green) buttons
 	StickerGreenMid = Color3.fromHex("#4CD45C"), -- H:245 (55%)

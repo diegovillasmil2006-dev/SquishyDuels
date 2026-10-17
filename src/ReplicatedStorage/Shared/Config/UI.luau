@@ -100,6 +100,7 @@ local UI = {
 		D17 = 17, -- H:131, H:151, H:324, H:495
 		D19 = 19, -- H:159, H:162, H:278, H:369, H:390, H:546
 		D23 = 23, -- H:101-119 the nav labels
+		Open = 27, -- UI FINAL R7 (T12): H:277 OPEN
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -763,6 +764,116 @@ local UI = {
 		-- refund in the Coins, the new squishy in owned) until its reveal reaches the result; a reveal that has not
 		-- played after this many seconds (e.g. queued behind another result left open) shows its result anyway.
 		revealHoldMaxSeconds = 30,
+		-- UI FINAL R7 (plan work/ui/PLAN.md R7; `H:n` = "Squishy Duels HUD.dc.html" line n, `stage:n` = its
+		-- uploads/box-stage.html), base px. The window's body (H:262: three columns, gap 20, padding 22 24 26; PR20: the
+		-- selected card 2fr, the others 1fr, never narrower than minFr, else the row scrolls sideways), the design's
+		-- card (H:264-278), its odds rows (H:270-272), toy tiles (H:273-274), OPEN (H:276-278) and the stats well of the
+		-- selected card (H:236; PR20: §6.10 items 3-6, one row per item: the toy tile, the name, the pill, the exact
+		-- percent, Owned, the refund line, Inspect). The plate shrinks with a short body (never under plateMin, else it
+		-- hides) and the tiles drop when they do not fit (readings).
+		body = { gap = 20, padTop = 22, padSide = 24, padBottom = 26, minFr = 210 }, -- H:262
+		card = {
+			gap = 12, -- H:264
+			pad = 14,
+			border = 4,
+			radius = 24,
+			lip = 6,
+			inset = { px = 3, alpha = 0.12 },
+			-- H:264: sdRise .5 s cubic-bezier(.2,1.3,.4,1), card i after i x 90 ms (its fade not drawn, plan RL3)
+			rise = {
+				ms = 500,
+				curve = "rise",
+				stepMs = 90,
+				frames = { { at = 0, y = 18, scale = 0.9 }, { at = 1, y = 0, scale = 1 } } :: { MotionPose },
+			},
+			plate = 178, -- H:265
+			plateMin = 72, -- reading: the smallest plate drawn (a short phone body), else it hides
+			plateBorder = 4,
+			plateRadius = 18,
+			plateHighlight = { px = 5, alpha = 0.4 }, -- H:265: inset 0 5px 0 rgba(255,255,255,.4)
+			rays = { px = 520, alpha = 0.28, centreY = 0.55, spinS = 18 }, -- H:266
+			art = { px = 176, floatS = 2.8, delayStepS = 0.5, shadow = { px = 8, alpha = 0.3 } }, -- H:267
+			nameRole = "boxName", -- H:269
+		},
+		odds = { pill = 96, bar = 12, pct = 40, gap = 8, rowGap = 6, minPct = 6, pillHeight = 22 }, -- H:271
+		oddsPill = { padTop = 2, padX = 8, border = 3, role = "rarityPill" }, -- H:271
+		oddsBar = { border = 3, fillHighlight = { px = 2, alpha = 0.4 } }, -- H:271
+		oddsPctRole = "oddsPct", -- H:271: 14 px -> 16 (PR2), white, bold
+		toys = { tile = 42, gap = 4, border = 3, radius = 12, px = 40, max = 6 }, -- H:273-274
+		open = {
+			face = 62, -- H:276: 62 + lip 5, border 4, radius 18, gap 10
+			gap = 10,
+			labelRole = "boxOpen", -- H:277: 27 px, stroke 6
+			priceH = 36, -- H:278: padding 0 10 0 4, gap 4, border 3, full radius, rgba(30,20,40,.45)
+			pricePadLeft = 4,
+			pricePadRight = 10,
+			priceGap = 4,
+			priceBorder = 3,
+			priceAlpha = 0.45,
+			coin = 28,
+			priceRole = "boxPrice", -- H:278: 19 px, stroke 4
+			shopIcon = 28, -- PR22: img.nav.shop in the coin's place
+			freeRole = "confirmDesc", -- FD5: the Treat Box's box.freeOnly line in OPEN's place
+		},
+		well = { gap = 12, border = 4, radius = 18, inset = { px = 3, alpha = 0.3 }, pad = 10, rowGap = 8 }, -- H:236
+		subtitleKind = "Small", -- H:260: 16 px #0B4B5E (StickerBoxHeaderText), bold, no outline
+		-- The reveal overlay (H:470-505, stage:*): its own full-screen layer between SD_Modal and the confirm dialog's
+		-- SD_Prompt (a controller-owned layer, so not in ScreenGuis [P]); the scrim (H:471: ellipse at 50% 45%), the
+		-- rarity tint (H:473: at 50% 46%, alpha .9) and rays (H:474), the 3D stage's fade (H:478), the flash (H:503,
+		-- H:822 under Config.Vfx.Flash: PR16), the texts by screen share (H:482, H:488, H:494) with their delays from the
+		-- burst (H:489-499; sdUp H:44, sdReveal H:38), the NEW! pill (H:489), the rarity pill (H:491), the buttons
+		-- (H:497-499), the Skip pill (PR21: the reset pill's look, H:359) and the close (H:837-840).
+		reveal = {
+			layerName = "SD_Reveal",
+			layer = { displayOrder = 22, insets = Enum.ScreenInsets.None } :: ScreenGuiSpec,
+			scrimFadeMs = 300, -- H:471: sdFade .3s ease
+			scrimCentreY = 0.45,
+			scrimInnerAlpha = 0.9,
+			scrimOuterAlpha = 0.95,
+			scrimOuterAt = 0.8,
+			tintFadeMs = 400, -- H:473
+			tintCentreY = 0.46,
+			tintAlpha = 0.9,
+			rays = { px = 1500, alpha = 0.12, centreY = 0.46, spinS = 26 }, -- H:474
+			stageFadeMs = 250, -- H:478: transition: opacity .25s
+			flash = { ms = 700, designPeak = 0.85, designPeakAt = 0.1, centreY = 0.45, midAt = 0.45, outerAlpha = 0.85 },
+			boxBlock = { bottom = 0.09, gap = 10, nameRole = "revealBox", hintRole = "tapHint" }, -- H:482-484
+			nameUp = { ms = 400, delayMs = 200, curve = "ease" }, -- H:483: sdUp .4s .2s ease
+			hintS = 1, -- H:484: sdHint 1s
+			resultBlock = { top = 0.07, gap = 12 }, -- H:488
+			newPill = { height = 42, padX = 18, border = 4, lip = 5, role = "button" }, -- H:489: 24 px stroke 5
+			nameRole = "revealName", -- H:490
+			rarityPill = {
+				height = 38,
+				padX = 20,
+				border = 4,
+				lip = 4,
+				highlight = { px = 3, alpha = 0.4 },
+				role = "tab",
+			},
+			dupeRole = "confirmDesc", -- H:492: 16 px #F3EDFF
+			bottomBlock = { bottom = 0.06, gap = 14 }, -- H:494
+			dragRole = "dragHint", -- H:495: 17 px, stroke 4
+			buttonGap = 14, -- H:496
+			equip = { width = 180, face = 62, role = "buttonLarge" }, -- H:497: cyan, 26 px stroke 6
+			again = { width = 230, face = 62, gap = 8, coin = 30, role = "againLabel", priceRole = "againPrice" }, -- H:498
+			nice = { width = 180, face = 62, role = "buttonLarge" }, -- H:499: green, 26 px stroke 6
+			-- From the burst (H:489-499): NEW! +.3 s (sdReveal .6 s), the name +.35, the rarity pill +.45 (sdUp .45 s
+			-- search), the duplicate line +.5 (sdUp .4 s ease), the buttons +.6 (sdUp .45 s search), the drag hint +1 s.
+			delays = { newMs = 300, nameMs = 350, rarityMs = 450, dupeMs = 500, buttonsMs = 600, dragMs = 1000 },
+			upMs = 450,
+			upCurve = "search",
+			dupeUpMs = 400,
+			newMs = 600,
+			newCurve = "rise",
+			-- PR21: Skip, the reset pill's look (H:359: 36 high, border 3, full radius, StickerWell, 16 px #F3EDFF)
+			skip = { height = 36, padX = 16, border = 3, role = "confirmDesc", margin = 16 },
+			closeMs = 200, -- H:837: opacity 1 -> 0 and scale 1 -> 1.06 over 200 ms (linear)
+			closeScale = 1.06,
+			removeMs = 190, -- H:840
+			againDelayMs = 40, -- H:1020: the next box opens 40 ms after AGAIN's BUY closed this one
+			tapMovePx = 8, -- reading: a press that moves less than this is a tap (Inspect), more a drag (spin)
+		},
 	},
 
 	-- Shop screen (§11.6). Reading (DESIGN gives no number): the Squishies tab card width in base px, like
@@ -1303,6 +1414,17 @@ local UI = {
 			rarityPill = { kind = "Small", stroke = 3, soft = { px = 1, alpha = 0.5 } },
 			cardRibbon = { kind = "Small", stroke = 3, soft = { px = 1, alpha = 0.6 } },
 			cardNew = { kind = "Small", stroke = 3 },
+			-- UI FINAL R7 (the Boxes window and the box reveal): OPEN (H:277: 27 px, stroke 6) and its price (H:278: 19 px,
+			-- stroke 4), an odds row's percent (H:271: 14 px -> 16 white, PR3's thinnest outline), the tap hint (H:484:
+			-- 22 px #FFE36B, stroke 5), the drag hint (H:495: 17 px, stroke 4), AGAIN (H:498: 24 px, stroke 6) and its
+			-- price (20 px, stroke 5).
+			boxOpen = { kind = "Open", stroke = 6 },
+			boxPrice = { kind = "D19", stroke = 4 },
+			oddsPct = { kind = "Small", stroke = 3 },
+			tapHint = { kind = "H2", stroke = 5, color = "StickerCoinText" },
+			dragHint = { kind = "D17", stroke = 4 },
+			againLabel = { kind = "Big", stroke = 6 },
+			againPrice = { kind = "Button", stroke = 5 },
 		} :: { [string]: StickerTextRole },
 		-- UI FINAL R5 (UI/Components/RarityTag variants, PR2: a 16 px label grows a pill only by the measured extra): the
 		-- card pill (H:209: 22 border-box, padding 2 9 0, border 3, the rarity's card colour, pips beside it) and the

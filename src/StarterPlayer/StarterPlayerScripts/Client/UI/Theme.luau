@@ -127,6 +127,7 @@ export type TextKind =
 	| "D17"
 	| "D19"
 	| "D23"
+	| "Open" -- UI FINAL R7 (T12): OPEN, 27 px (H:277)
 
 export type AccentName =
 	"strawberry"

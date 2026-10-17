@@ -446,12 +446,13 @@ return function(t: Context)
 				table.insert(times[cue.key], cue.at)
 			end
 		end
+		-- UI FINAL R7: a tap every 1.1 s after the 750 ms drop, the burst on the third, the reveal 120 ms later
 		expect.equal(#times["box.shake"], 3)
-		for i, at in { 0, 0.3, 0.6 } do
+		for i, at in { 1.85, 2.95, 4.05 } do
 			expect.near(times["box.shake"][i], at, 1e-9)
 		end
-		expect.near(times["box.open"][1], 0.9, 1e-9)
-		expect.near(times["reveal.epic"][1], 1.15, 1e-9)
+		expect.near(times["box.open"][1], 4.05, 1e-9)
+		expect.near(times["reveal.epic"][1], 4.17, 1e-9)
 		expect.equal(times["reveal.common"], nil) -- a reveal key plays itself, not the fallback
 		local coin = Model.storyboard("ui.coin")
 		expect.equal(#coin, 5)

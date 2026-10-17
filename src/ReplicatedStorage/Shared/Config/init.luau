@@ -1737,10 +1737,10 @@ local function checkAnim(problems: Problems, rarities: { string })
 	local box = Anim.boxReveal
 	expect(
 		problems,
-		box.anticipationEndMs < box.popEndMs and box.popEndMs < box.revealEndMs and box.revealEndMs < box.highlightEndMs,
-		`{p}.boxReveal phases must be in order: anticipation < pop < reveal < highlight`
+		box.dropMs > 0 and box.autoTapS > 0 and box.taps >= 1 and box.resultAtS > box.toy.fromS,
+		`{p}.boxReveal needs dropMs > 0, autoTapS > 0, taps >= 1 and resultAtS > toy.fromS`
 	)
-	expectBetween(problems, `{p}.boxReveal.glowMaxOpacity`, box.glowMaxOpacity, 0, 1)
+	expectBetween(problems, `{p}.boxReveal.orbit.damping`, box.orbit.damping, 0, 1)
 	expectBetween(problems, `{p}.boxReveal.resultInputGuardMs`, box.resultInputGuardMs, 0, 1000)
 end
 
