@@ -19,13 +19,22 @@
 --   blendInSeconds and out over blendOutSeconds (poseWeight, pure).
 -- * Effects: the dash's skid (MoveVfx Dash/Skid on the floor under the HRP, in Sky) and sfx.dashWhoosh at Slide.pitch;
 --   another player's at the other-player priority (-1) with fewer particles.
--- API: gate(facts), speedAt(t), poseWeight(t, length) (pure, unit-tested); isSliding(), counts(); init(), start(),
---   destroy().
+-- * Touch (phones and tablets, 2026-10-17): a round Slide button (its own ScreenGui SD_SlideTouch, safe insets, with the
+--   duel's SD_Touch order) shows while touchShown() (pure): touch input, the Lobby context on, not the throw box, not in
+--   a duel or a match, no screen blocking the controls, alive. touchRect() (pure) puts it left of Roblox's jump button,
+--   bottoms aligned, Config.UI.Touch.gap apart, Touch.dashButton x the UI scale (at least the touch floor): inside the
+--   duel Throw button's box, which the lobby HUD already keeps clear on narrow layouts. A press slides as C does (the
+--   same gate). Its shade (touchProgress, pure): clear when a slide would start, clearing from the bottom while the
+--   cooldown runs, shaded while standing or in the air. Studio: Workspace attribute SD_PhonePreview (the phone HUD
+--   preview) shows it with the mouse too.
+-- API: gate(facts), speedAt(t), poseWeight(t, length), touchShown(facts), touchRect(screen, uiScale, jump),
+--   touchProgress(now, lastSlideAt, canSlide) (pure, unit-tested); isSliding(), counts(); init(), start(), destroy().
 
 -- Services
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 -- Requires
@@ -35,10 +44,12 @@ local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
+local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
 local MoveVfx = require(Client.Anim.MoveVfx)
 local Scheduler = require(Client.Anim.Scheduler)
+local Theme = require(Client.UI.Theme)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
@@ -57,6 +68,25 @@ export type GateFacts = {
 	sliding: boolean,
 	now: number, -- os.clock()
 	lastSlideAt: number, -- os.clock()
+}
+
+export type TouchFacts = {
+	touch: boolean, -- touch is the input (or the Studio phone preview)
+	lobby: boolean,
+	practice: boolean,
+	inMatch: boolean,
+	blocked: boolean, -- a screen blocks the controls (ControlsController.isBlocked)
+	alive: boolean,
+}
+
+export type Rect = { x: number, y: number, w: number, h: number }
+
+type TouchView = {
+	gui: ScreenGui,
+	button: TextButton,
+	gradient: UIGradient,
+	label: TextLabel,
+	progress: number,
 }
 
 type Slide = {
@@ -95,6 +125,12 @@ local OTHER_PRIORITY = -1
 local FLOOR_PROBE = 8 -- studs down from the HRP to look for the floor under a slide
 local FLOOR_LIFT = 0.1
 local MIN_STEP = 1 / 240
+local TOUCH = Config.UI.Touch
+local TOUCH_GUI_NAME = "SD_SlideTouch"
+local TOUCH_DISPLAY_ORDER = 12 -- with SD_Touch (the duel's round buttons, never shown in the lobby)
+local TOUCH_ACCENT = "sky" -- as the duel's Dash
+local TOUCH_SHADE_TRANSPARENCY = 0.45 -- the shaded part (ControlsController's touch buttons' look)
+local PHONE_PREVIEW = "SD_PhonePreview" -- Studio: UIController's phone HUD preview
 
 -- Module table
 
@@ -108,6 +144,7 @@ local slides: { [Player]: Slide } = {}
 local seen: { [Player]: number } = {} -- the last SD_SlideAt seen on each player's character
 local lastSlideAt = -math.huge
 local stats = { sent = 0, refused = 0, remote = 0 }
+local touchView: TouchView? = nil
 
 -- Pure ---------------------------------------------------------------------------------------------------------------
 
@@ -149,6 +186,36 @@ function LobbyMoveController.poseWeight(t: number, length: number): number
 	local into = math.clamp(t / SLIDE.blendInSeconds, 0, 1)
 	local out = math.clamp((length - t) / SLIDE.blendOutSeconds, 0, 1)
 	return math.min(into, out)
+end
+
+-- Whether the touch Slide button shows (see the header).
+function LobbyMoveController.touchShown(facts: TouchFacts): boolean
+	return facts.touch
+		and facts.lobby
+		and not facts.practice
+		and not facts.inMatch
+		and not facts.blocked
+		and facts.alive
+end
+
+-- The touch Slide button's box in `screen` px (the safe-inset space) at `uiScale`, beside the jump button `jump` (nil:
+-- Roblox's default spot, as ControlsController.touchLayout).
+function LobbyMoveController.touchRect(screen: Vector2, uiScale: number, jump: Rect?): Rect
+	local j = ControlsController.touchLayout(screen, uiScale, jump :: any).jump
+	local size = math.max(TOUCH.dashButton * uiScale, TOUCH.minTargetFloor)
+	local x = math.clamp(j.x - TOUCH.gap - size, 0, math.max(screen.X - size, 0))
+	local y = math.clamp(j.y + j.h - size, 0, math.max(screen.Y - size, 0))
+	return { x = x, y = y, w = size, h = size }
+end
+
+-- The button's clear share: the cooldown's progress while it runs (0 just used .. 1), then 1 when a slide would start
+-- now and 0 when it would not (standing, in the air).
+function LobbyMoveController.touchProgress(now: number, lastSlide: number, canSlide: boolean): number
+	local cooled = math.clamp((now - lastSlide) / SLIDE.cooldownSeconds, 0, 1)
+	if cooled < 1 then
+		return cooled
+	end
+	return if canSlide then 1 else 0
 end
 
 -- Private ----------------------------------------------------------------------------------------------------------------
@@ -442,6 +509,153 @@ local function onSlideInput(inputState: Enum.UserInputState, _input: InputObject
 	return trySlide()
 end
 
+-- The touch Slide button ---------------------------------------------------------------------------------------------
+
+-- The shade over the button: its top (1 - progress) shaded, the clear part growing upward (ControlsController's look).
+local function setShade(view: TouchView, progress: number)
+	local edge = math.clamp(1 - progress, 0, 1)
+	local shaded = TOUCH_SHADE_TRANSPARENCY
+	local keys: { NumberSequenceKeypoint }
+	if edge <= 0.001 then
+		keys = { NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 1) }
+	elseif edge >= 0.999 then
+		keys = { NumberSequenceKeypoint.new(0, shaded), NumberSequenceKeypoint.new(1, shaded) }
+	else
+		keys = {
+			NumberSequenceKeypoint.new(0, shaded),
+			NumberSequenceKeypoint.new(edge, shaded),
+			NumberSequenceKeypoint.new(math.min(edge + 0.001, 0.999), 1),
+			NumberSequenceKeypoint.new(1, 1),
+		}
+	end
+	view.gradient.Transparency = NumberSequence.new(keys)
+	view.progress = progress
+end
+
+local function buildTouch(c: Cleanup.Cleanup)
+	local playerGui = localPlayer():FindFirstChildOfClass("PlayerGui")
+	if playerGui == nil or touchView ~= nil then
+		return
+	end
+	local gui = Instance.new("ScreenGui")
+	gui.Name = TOUCH_GUI_NAME
+	gui.ResetOnSpawn = false
+	gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	gui.DisplayOrder = TOUCH_DISPLAY_ORDER
+	gui.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
+	gui.Enabled = false
+	local button = Instance.new("TextButton")
+	button.Name = "Touch_SlideButton"
+	button.AutoButtonColor = false
+	button.BackgroundTransparency = 0
+	button.Text = ""
+	-- An opaque foam disc in Sky, as the duel's round buttons (ControlsController).
+	local bands = Theme.Foam.tile
+	Theme.foam(button, {
+		radius = Theme.Radius.pill,
+		top = bands.top,
+		bevel = bands.bevel,
+		drop = bands.drop,
+		colors = Theme.accentColors(TOUCH_ACCENT, true),
+		fixedHeight = TOUCH.dashButton,
+	})
+	local shade = Instance.new("Frame")
+	shade.Name = "Cooldown"
+	shade.Size = UDim2.fromScale(1, 1)
+	shade.BackgroundColor3 = Theme.Colors.inkUI
+	shade.BorderSizePixel = 0
+	shade.Active = false
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.5, 0)
+	corner.Parent = shade
+	local gradient = Instance.new("UIGradient")
+	gradient.Rotation = 90 -- keypoint 0 at the top, 1 at the bottom
+	gradient.Parent = shade
+	shade.Parent = button
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Position = UDim2.fromScale(0, -(bands.bevel + bands.drop - bands.top) / 2 / TOUCH.dashButton)
+	label.FontFace = Theme.font("Button")
+	label.TextSize = Config.UI.TextSize.Button
+	label.TextWrapped = true
+	label.Text = Strings.controls.slide
+	label.ZIndex = 2
+	Theme.textOnColor(label, "Button") -- the outlined-text rule: white with the InkUI outline
+	label.Parent = button
+	button.Parent = gui
+	c:add(button.InputBegan:Connect(function(input: InputObject)
+		local kind = input.UserInputType
+		if kind == Enum.UserInputType.Touch or kind == Enum.UserInputType.MouseButton1 then
+			trySlide()
+		end
+	end))
+	local view: TouchView = { gui = gui, button = button, gradient = gradient, label = label, progress = -1 }
+	setShade(view, 0)
+	touchView = view
+	c:add(gui)
+	c:add(function()
+		touchView = nil
+	end)
+	gui.Parent = playerGui
+end
+
+local function touchInput(): boolean
+	if ControlsController.preferredInput() == Enum.PreferredInput.Touch then
+		return true
+	end
+	return RunService:IsStudio() and type(Workspace:GetAttribute(PHONE_PREVIEW)) == "number"
+end
+
+-- Each render frame: whether the button shows, where, and its shade.
+local function stepTouch()
+	local view = touchView
+	if view == nil then
+		return
+	end
+	local player = localPlayer()
+	local character = player.Character
+	local humanoid = humanoidOf(character)
+	local root = rootOf(character)
+	local facts = factsNow(os.clock(), character, humanoid, root)
+	local shown = LobbyMoveController.touchShown({
+		touch = touchInput(),
+		lobby = facts.lobby,
+		practice = facts.practice,
+		inMatch = facts.inMatch,
+		blocked = ControlsController.isBlocked(),
+		alive = facts.alive,
+	})
+	if view.gui.Enabled ~= shown then
+		view.gui.Enabled = shown
+	end
+	if not shown then
+		return
+	end
+	local size = view.gui.AbsoluteSize
+	if size.X > 0 and size.Y > 0 then
+		local scale = ControlsController.touchScale(size)
+		local rect = LobbyMoveController.touchRect(size, scale, ControlsController.jumpRectIn(view.gui))
+		local position, dims = UDim2.fromOffset(rect.x, rect.y), UDim2.fromOffset(rect.w, rect.h)
+		if view.button.Position ~= position then
+			view.button.Position = position
+		end
+		if view.button.Size ~= dims then
+			view.button.Size = dims
+		end
+		local textSize = math.max(Config.UI.minTextSize, math.floor(Config.UI.TextSize.Button * scale))
+		if view.label.TextSize ~= textSize then
+			view.label.TextSize = textSize
+		end
+	end
+	local canSlide = LobbyMoveController.gate(facts) == nil
+	local progress = LobbyMoveController.touchProgress(facts.now, lastSlideAt, canSlide)
+	if math.abs(progress - view.progress) > 0.002 or (progress >= 1) ~= (view.progress >= 1) then
+		setShade(view, progress)
+	end
+end
+
 -- Other players' slides: their character's SD_SlideAt changed (the server accepted one).
 local function watchOthers()
 	local me = localPlayer()
@@ -482,6 +696,7 @@ end
 
 local function stepRender(_dt: number, _now: number): boolean
 	watchOthers()
+	stepTouch()
 	for _, slide in slides do
 		if not stepSlide(slide) then
 			finishSlide(slide)
@@ -515,6 +730,7 @@ function LobbyMoveController.start()
 	local c = cleanup or Cleanup.new()
 	cleanup = c
 	c:add(ControlsController.bindAction(ACTION, onSlideInput))
+	buildTouch(c)
 	c:add(Scheduler.add(stepJoint, "joint"))
 	c:add(Scheduler.add(stepRender, "render"))
 	c:add(function()

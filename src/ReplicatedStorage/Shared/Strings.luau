@@ -265,6 +265,7 @@ local Strings = {
 		throw = "Throw",
 		ultimate = "Ultimate",
 		dash = "Dash", -- spec phase 5: the touch Dash button (user decision 2026-10-11)
+		slide = "Slide", -- 2026-10-17: the lobby's touch Slide button (LobbyMoveController)
 		-- Feature 1 (2026-10-11): the touch Catch button and the dock's caption (design: html:96 "Catch").
 		catch = "Catch",
 		squeeze = "Squeeze",

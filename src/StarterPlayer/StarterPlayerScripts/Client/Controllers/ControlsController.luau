@@ -1150,6 +1150,12 @@ end
 
 -- Public: touch buttons
 
+-- The jump button's box in `gui` space (the TouchGui's JumpButton while it shows), else nil (touchLayout then takes
+-- Roblox's default spot). 2026-10-17: the lobby's touch Slide button (LobbyMoveController) sits beside it.
+function ControlsController.jumpRectIn(gui: ScreenGui): Rect?
+	return jumpRect(gui)
+end
+
 -- Shows or hides a touch button whenever touch controls are up (Ultimate only for a loadout with an ultimate).
 function ControlsController.setTouchAvailable(button: TouchButton, available: boolean)
 	if touchAvailable[button] == available then

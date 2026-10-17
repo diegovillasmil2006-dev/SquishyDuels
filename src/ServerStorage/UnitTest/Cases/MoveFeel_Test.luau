@@ -11,7 +11,10 @@
 --     down, capped, smaller in third person;
 --   * Config.LobbyMove: a quicker lobby run, a slide that pushes past the run and eases out, its pose over the dash's
 --     and under the throw's; the remote, its rate and the LobbySlide action (C in the Lobby context);
---   * LobbyMoveController (pure): gate, speedAt, poseWeight; LobbyMoveService (pure): inLobby, validate.
+--   * LobbyMoveController (pure): gate, speedAt, poseWeight; the touch Slide button (touchShown: touch in the lobby
+--     only; touchRect: left of the jump button, bottoms aligned, a gap apart, a touch target, on screen, out of the
+--     thumbstick zone and inside the duel Throw button's box the HUD keeps clear; touchProgress); LobbyMoveService
+--     (pure): inLobby, validate.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -25,6 +28,7 @@ return function(t: Context)
 	local expect = t.expect
 	local Config = t.requireShared("Config")
 	local Remotes = t.requireShared("Remotes")
+	local Strings = t.requireShared("Strings")
 	local Feel = t.requireClient("Controllers/MoveFeelController")
 	local Slide = t.requireClient("Controllers/LobbyMoveController")
 	local Controls = t.requireClient("Controllers/ControlsController")
@@ -173,6 +177,55 @@ return function(t: Context)
 		expect.equal(Slide.poseWeight(SLIDE.seconds, SLIDE.seconds), 0)
 		expect.equal(Slide.poseWeight(-1, SLIDE.seconds), 0)
 		expect.equal(Slide.poseWeight(0 / 0, SLIDE.seconds), 0)
+	end)
+
+	t.test("the touch Slide button: touch in the lobby only, beside the jump button, its shade", function()
+		local TOUCH = Config.UI.Touch
+		local function facts(over: { [string]: any }?): any
+			local base = { touch = true, lobby = true, practice = false, inMatch = false, blocked = false, alive = true }
+			for k, v in over or {} do
+				base[k] = v
+			end
+			return base
+		end
+		expect.truthy(Slide.touchShown(facts()))
+		for _, key in { "touch", "lobby", "alive" } do
+			expect.falsy(Slide.touchShown(facts({ [key] = false })))
+		end
+		for _, key in { "practice", "inMatch", "blocked" } do
+			expect.falsy(Slide.touchShown(facts({ [key] = true })))
+		end
+		for _, screen in { Vector2.new(844, 332), Vector2.new(667, 317), Vector2.new(1024, 708), Vector2.new(1920, 1036) } do
+			for _, given in { false, true } do
+				local scale = Controls.touchScale(screen)
+				local jumpGiven = if given then { x = screen.X - 110, y = screen.Y - 100, w = 80, h = 80 } else nil
+				local rect = Slide.touchRect(screen, scale, jumpGiven)
+				local layout = Controls.touchLayout(screen, scale, jumpGiven)
+				local jump = layout.jump
+				local label = `{screen.X}x{screen.Y} jump given {given}`
+				expect.near(rect.w, rect.h, 1e-9)
+				expect.truthy(rect.w >= TOUCH.minTargetFloor - 1e-6)
+				expect.near(rect.x + rect.w + TOUCH.gap, jump.x, 1e-6) -- left of the jump button, a gap apart
+				expect.near(rect.y + rect.h, jump.y + jump.h, 1e-6) -- bottoms aligned
+				expect.truthy(rect.x >= 0 and rect.y >= 0 and rect.x + rect.w <= screen.X and rect.y + rect.h <= screen.Y)
+				for _, corner in { Vector2.new(rect.x, rect.y + rect.h), Vector2.new(rect.x, rect.y) } do
+					if Controls.inThumbZone(corner, screen) then
+						error(`the Slide button reaches the thumbstick zone: {label}`)
+					end
+				end
+				-- Inside the duel Throw button's box (HudController keeps that clear on narrow layouts).
+				local throw = layout.throw
+				expect.truthy(rect.x >= throw.x - 1e-6 and rect.x + rect.w <= throw.x + throw.w + 1e-6)
+				expect.truthy(rect.y >= throw.y - 1e-6 and rect.y + rect.h <= throw.y + throw.h + 1e-6)
+			end
+		end
+		-- The shade: the cooldown's progress, then clear only when a slide would start.
+		expect.near(Slide.touchProgress(10, 10, true), 0, 1e-9)
+		expect.near(Slide.touchProgress(10 + SLIDE.cooldownSeconds / 2, 10, true), 0.5, 1e-9)
+		expect.equal(Slide.touchProgress(10 + SLIDE.cooldownSeconds, 10, true), 1)
+		expect.equal(Slide.touchProgress(10 + SLIDE.cooldownSeconds, 10, false), 0)
+		expect.equal(Slide.touchProgress(5, -math.huge, true), 1)
+		expect.equal(Strings.controls.slide, "Slide")
 	end)
 
 	t.test("LobbyMoveService: lobby only, alive, the cooldown with its tolerance", function()
