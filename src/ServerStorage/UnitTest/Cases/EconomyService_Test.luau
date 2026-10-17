@@ -232,6 +232,7 @@ return function(t: Context)
 		for _, reason in ECONOMY.CoinReasons do
 			expect.truthy(EconomyService.isReason(reason))
 		end
+		expect.falsy(EconomyService.isReason("capsule")) -- pens3 phase 2: gone with CapsuleService
 	end)
 
 	t.test("a grant is clamped at maxCoins (9 Qa) and returns what was really added", function()

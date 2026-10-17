@@ -45,9 +45,10 @@
 -- since Phase 3: CoinsByRarity is gone), no hourly limit, G3's 8,000 squeezes an hour and the 8,000-squeeze alert
 -- (spec 2026-10-12 §12; Batch 1 #2).
 -- Big-number progression (spec 2026-10-12, Phase 1): the 9 Qa caps, 100 levels and their totals, the ranks, squishy
--- power, duel rewards, refunds and maxGripPerEvent = CP(100) × 2; negatives for G1's rising totals, G5's CP(100) event,
--- the Capsule block, SquishyPower, a Catalog power override and the refund share. Phase 3: the capsule tick (0.25 s)
--- and tap push (0.15), with their negatives.
+-- power, duel rewards, refunds; negatives for G1's rising totals, the Capsule block, SquishyPower, a Catalog power
+-- override and the refund share. Phase 3: the capsule tick (0.25 s) and tap push (0.15), with their negatives.
+-- Pens3 phase 2: maxGripPerEvent 500B (G5: one Grip below 4 × the top squeeze value fails), gripAlertPerHour 400T, no
+-- "capsule" Coin reason and 9 badges.
 -- Phase 6 (build plan: slow training removed): no Config.Grip.Afk (G9 went with it) and no slow-training popup values
 -- in UI.Grip; the pad test's padMargin 1 and heightAbove 6 live in Config.Squeeze, which reports values above 2 and 8.
 -- Phase 6 (trainers removed): no Config.Grip.Trainer (G4 and G6's wiring half went with it), no next-goal upgrade
@@ -56,7 +57,7 @@
 -- Config.Anim.giantPad (G10), forcePadPathB or grip.padUnlocked toast sound; 2 editable meshes; no starter_jelly or
 -- QuestDefs minTier.
 -- Batch 3 (friends, review #6 and #10): Config.Social (the 20th section) holds the duel pads, the rematch window, the
--- weekly wins board and the 12 badges (no ids until the owners create them); validate reports a rematch window shorter
+-- weekly wins board and the 9 badges (no ids until the owners create them); validate reports a rematch window shorter
 -- than the result card's life, a Studio board store without "_STUDIO", a board read past 100 entries and every kind of
 -- broken badge entry; RematchRequest is a client -> server RemoteEvent with no arguments and its own bucket.
 --
@@ -263,8 +264,8 @@ return function(t: Context)
 		expect.deepEqual(net.Remotes.SqueezeRequest, { rate = 20, burst = 60 })
 		expect.deepEqual(net.Global, { rate = 30, burst = 80 })
 		expect.equal(grip.Hold.repeatSeconds, 0.45)
-		-- Kept from the old 12-a-second cap's hour (far above the honest maximum now).
-		expect.equal(grip.gripAlertPerHour, (3600 * 12 + 12) * grip.maxGripPerEvent)
+		-- Pens3 phase 2 [P]: above the honest top hour at SV 9.9B (about 3.3e14).
+		expect.equal(grip.gripAlertPerHour, 400_000_000_000_000)
 		-- Squeeze anywhere (spec 2026-10-11 §5): no hourly limit (the shared module stays, dormant).
 		expect.deepEqual(Config.Economy.SqueezeLimit, { enabled = false, perHour = 600, burst = 300, emptyCoins = 0 })
 	end)
@@ -908,17 +909,24 @@ return function(t: Context)
 		expect.equal(economy.DuelRewards.draw, 450) -- batch B (owner 2026-10-17): was 300
 		expect.equal(economy.DuelRewards.loss, 350) -- batch B (owner 2026-10-17): was 180
 		expect.deepEqual(economy.DuplicateRefund, { percent = 25, freeBoxPriceOf = "snack" })
-		expect.truthy(table.find(economy.CoinReasons, "capsule") ~= nil)
-		-- CP(100) × Rested.mult (spec §12); the alert holds an hour of them at the cap (checked above).
-		expect.equal(grip.maxGripPerEvent, 920_525_589 * grip.Rested.mult)
+		expect.equal(table.find(economy.CoinReasons, "capsule"), nil) -- pens3 phase 2: gone with CapsuleService
+		expect.equal(grip.maxGripPerEvent, 500_000_000_000) -- pens3 phase 2 (ECONOMY_V3)
 		expect.equal(grip.allowBundlesWithCapsules, false)
 	end)
 
-	t.test("G5 reports a per-event cap one Grip below CP(100) × Rested.mult", function()
-		local problems = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.maxGripPerEvent = 1_841_051_177
+	-- Pens3 phase 2: G5 covers 4 × the top squeeze value (Double Grip × 2, the Squeaky Ring × 2): 21 placed Rainbow
+	-- Galaxy Exclusives at Lv 70, 39,797,105,083.3 Grip.
+	t.test("G5 reports a per-event cap one Grip below 4 × the top squeeze value", function()
+		local event = math.ceil(21 * 10 * 64 * 4 * 12 * 1.15 ^ 69 * 4)
+		expect.equal(event, 39_797_105_084)
+		local low = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.maxGripPerEvent = event - 1
 		end)
-		expect.truthy(containsAll(problems, { "G5:", "maxGripPerEvent", "CP(100)" }))
+		expect.truthy(containsAll(low, { "G5:", "maxGripPerEvent", "4 × the top squeeze value", "3.98e+10" }))
+		local exact = validateBrokenCopy(t.Shared, "Grip", function(grip)
+			grip.maxGripPerEvent = event
+		end)
+		expect.falsy(containsText(exact, "maxGripPerEvent"))
 	end)
 
 	t.test("validate reports capsule tiers that do not fill maxLevel, slower tiers and falling Grip gates", function()
@@ -1125,9 +1133,9 @@ return function(t: Context)
 	-- Part 7 (DESIGN §17.9 G7 / G7b, §17.12 Part 7 negatives, §6.8 QuestDefs, §11.6, PROGRESS readings) ---------------
 
 	t.test("the Part 7 values: no cosmetic benefits, skip id, UI readings", function()
-		-- Phase 6: the "trainer" Coin reason is gone, so the capsule reason sits just before "debug".
+		-- Phase 6: the "trainer" Coin reason is gone; pens3 phase 2: "capsule" too, so "pen" sits just before "debug".
 		local reasons = Config.Economy.CoinReasons
-		expect.equal(table.find(reasons, "capsule"), (table.find(reasons, "debug") :: number) - 1)
+		expect.equal(table.find(reasons, "pen"), (table.find(reasons, "debug") :: number) - 1)
 		expect.deepEqual(Config.Monetization.CosmeticBenefits, {})
 		expect.equal(Config.Onboarding.skipStepId, "skip")
 		expect.equal(Config.UI.Boxes.stillCheckingSeconds, 10)
@@ -1149,7 +1157,7 @@ return function(t: Context)
 
 	-- Batch 3 (friends) ------------------------------------------------------------------------------------------
 
-	t.test("Batch 3 values: the pads, the rematch window, the weekly board, 12 badges without ids", function()
+	t.test("Batch 3 values: the pads, the rematch window, the weekly board, 9 badges without ids", function()
 		local social = Config.Social
 		expect.deepEqual(
 			social.Pads,
@@ -1164,7 +1172,7 @@ return function(t: Context)
 		expect.equal(social.Board.weekOffsetSeconds, 4 * 86400) -- 1970-01-01 was a Thursday: weeks start on Monday
 		expect.equal(social.Badges.checkSeconds, 15)
 		expect.equal(social.Badges.maxTries, 3)
-		expect.equal(#social.Badges.list, 12)
+		expect.equal(#social.Badges.list, 9) -- pens3 phase 2: the 3 capsule badges went
 		for _, badge in social.Badges.list do
 			expect.equal(badge.id, nil) -- the owners create the badges, then paste the ids
 		end

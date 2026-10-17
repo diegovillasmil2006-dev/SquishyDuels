@@ -4,8 +4,8 @@
 -- same-pair record (Config.Data.caps.samePair opponents x samePairFullRewards times, §6.7), every catalog
 -- squishy owned (14 since the 2026-10-09 overhaul), 3 quests, 4 weekly quests (2026-10-17), every starter task and
 -- onboarding step, the v2 Grip block,
--- 4 capsules at the top level (spec 2026-10-12), a full pen (pens3 phase 1: toyBoxMax + placedMax = 71 items, each
--- Rainbow Galaxy at the top level with an id near 2^53), and long worst-case values
+-- an old save's 4 capsules at the top level (unknown since pens3 phase 2), a full pen (pens3 phase 1: toyBoxMax +
+-- placedMax = 71 items, each Rainbow Galaxy at the top level with an id near 2^53), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -134,10 +134,10 @@ return function(t: Context)
 			end
 			p.samePair[string.format("%d", 9_999_999_000 + i)] = times
 		end
-		-- Every slot unlocked, each capsule at the top level with a different squishy (spec 2026-10-12 §6-§7).
-		p.capsules = { slots = #Config.Grip.Capsule.slotPrices, list = {} }
+		-- Pens3 phase 2: an old save keeps its capsules (an unknown field now): the worst case has 4 slots at Lv 100.
+		p.capsules = { slots = 4, list = {} }
 		for _, id in { "dragon", "bird", "donut", "cloud_bunny" } do
-			table.insert(p.capsules.list, { level = Config.Grip.Capsule.maxLevel, squishyId = id })
+			table.insert(p.capsules.list, { level = 100, squishyId = id })
 		end
 		-- Pens3 phase 1: the fullest pen (every Toy Box and placed spot), every squishy at its top, the longest ids.
 		local pen = Config.Economy.Pen

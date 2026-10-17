@@ -30,8 +30,7 @@
 --   or data.loadFailed (a stored value that is not a profile, or no reason). DataService sends none of these texts.
 -- * grip = {total, rested} (§17.10), copied from profile.grip (build plan Phase 6: an old save's slow-training
 --   bank, grip.afk, and its trainer, grip.trainer, are not sent); StateService is not a duel-path file.
--- * capsules = profile.capsules {slots, list} as stored (build plan Phase 5; since pens3 phase 1 nothing pays from it
---   or shows it, and it goes in phase 2).
+-- * capsules: no longer sent (pens3 phase 2); an old save's profile.capsules is an unknown field nothing reads.
 -- * pen = profile.pen {spots, nextId, items} as stored (pens3 phase 1: the squeeze value of every client text, the
 --   owner's sign and coin labels; PenService marks it on every buy and new squishy).
 --
@@ -114,7 +113,6 @@ local FIELDS: { string } = {
 	"unseenReveals",
 	"practice",
 	"grip",
-	"capsules",
 	"topWins", -- Batch 3 (review #10): the weekly wins board, a session field
 	"pen", -- pens3 phase 1: the profile's pen as stored
 }

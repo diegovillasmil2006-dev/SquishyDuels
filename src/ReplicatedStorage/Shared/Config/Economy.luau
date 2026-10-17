@@ -18,9 +18,9 @@ local Economy = {
 	-- number up to about 9.007 Qa exactly.
 	maxCoins = 9_000_000_000_000_000,
 
-	-- The closed list of reasons for EconomyService.grantCoins / trySpend (§6.1). "capsule" = capsule upgrades, slots
-	-- and squeezes (spec 2026-10-12, lobby spec 2026-10-11 §6; CapsuleService). "debug" is Studio only. "trainer" went
-	-- with the trainers (build plan Phase 6). "match" = a Free for All / Team Deathmatch result (Match HUD M2).
+	-- The closed list of reasons for EconomyService.grantCoins / trySpend (§6.1). "debug" is Studio only. "trainer"
+	-- went with the trainers (build plan Phase 6), "capsule" with CapsuleService (pens3 phase 2). "match" = a Free for
+	-- All / Team Deathmatch result (Match HUD M2).
 	CoinReasons = {
 		"squeeze",
 		"duel_win",
@@ -35,7 +35,6 @@ local Economy = {
 		"box",
 		"shop",
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
-		"capsule",
 		"debug",
 	},
 

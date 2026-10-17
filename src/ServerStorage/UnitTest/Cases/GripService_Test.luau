@@ -9,15 +9,14 @@
 --     or when the session takes no more changes (every write goes through mutate); the total stops at maxGrip and the
 --     gain says what it really gained; step() drops the session of a player who already left;
 --   * pens3 phase 1: an own squeeze trains PenMath.squeezeGrip(profile.pen), the floor of the pen's squeeze value (10
---     without a pen; a capsule counts for nothing), whatever the pad; a capsule squeeze (addFromCapsule, unused since
---     pens3 phase 1, removed in phase 2) trains its power, never doubled and without a Double Grip point; Grip events
---     above gripAlertPerHour in a rolling hour set the anomaly alert, which re-arms an hour later;
+--     without a pen; a capsule counts for nothing), whatever the pad; addFromCapsule is gone (pens3 phase 2); Grip
+--     events above gripAlertPerHour (400T) in a rolling hour set the anomaly alert, which re-arms an hour later;
 --   * a load sets the level silently (no level-up or rank-up toast), with grip.headStart after a v1 -> v2 migration;
 --     grip.welcomeBack only when Double Grip grew by welcomeBackMinGain since the last save (lastSeenAt, §17.3.4);
 --   * a level-up toasts grip.levelUp (grip.padUnlocked went with the giant pads, build plan Phase 6), broadcasts
 --     grip.rankUp to the lobby players and asks for a "soon" save; an unknown tier (only tier 1, the Foam Mats, is
 --     left) trains nothing and GripService.canUseTier is gone;
---   * a capsule-only profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired;
+--   * Grip alone (a match's Grip half) that reaches Lv 5 keeps the starter progress and Coins with QuestService wired;
 --   * Match HUD M2 (2026-10-16): a match pay (addFromMatch) trains squeezes × an own squeeze's Grip (the pen's, pens3
 --     phase 1), never doubled and without a Double Grip point, each squeeze one event (never clamped when the whole
 --     pay is above maxGripPerEvent), with the level toasts; nothing unready, frozen, or for a squeezes count outside
@@ -35,7 +34,6 @@ return function(t: Context)
 	local expect = t.expect
 	local GripService = t.requireServer("Services/GripService")
 	local FakeClock = t.requireFake("FakeClock")
-	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
 	local GripMath = t.requireShared("GripMath")
 	local PenMath = t.requireShared("PenMath")
@@ -181,6 +179,7 @@ return function(t: Context)
 				"disableStation",
 				"isStationDisabled",
 				"upgradeTrainer",
+				"addFromCapsule", -- pens3 phase 2
 			}
 		do
 			expect.equal((GripService :: any)[name], nil)
@@ -190,8 +189,8 @@ return function(t: Context)
 		expect.equal(world.profile.grip.trainer, nil) -- and no trainer
 		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.equal(gain.grip, ownGrip(world))
-		expect.equal(GripService.addFromCapsule(world.player, 10), 10)
-		expect.equal(world.profile.grip.total, gain.grip + 10)
+		expect.equal(GripService.addFromMatch(world.player, 1), ownGrip(world))
+		expect.equal(world.profile.grip.total, gain.grip + ownGrip(world))
 		finish()
 	end)
 
@@ -202,7 +201,7 @@ return function(t: Context)
 		wait(world, 3600)
 		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.truthy(gain.grip > 0)
-		GripService.addFromCapsule(world.player, 10)
+		GripService.addFromMatch(world.player, 1)
 		expect.deepEqual(world.profile.grip.afk, { value = 5, at = UNIX_START })
 		expect.equal(world.profile.grip.trainer, 8)
 		finish()
@@ -255,28 +254,6 @@ return function(t: Context)
 		end
 	)
 
-	t.test("a capsule squeeze trains its power: never doubled, no Double Grip point used, quests untouched", function()
-		local world = fresh()
-		world.profile.grip.rested = { value = 5, at = UNIX_START }
-		local before = TableUtil.deepCopy(world.profile)
-		local power = CapsuleMath.power(23) :: number
-		expect.equal(GripService.addFromCapsule(world.player, power), power)
-		expect.equal(world.profile.grip.total, power)
-		expect.deepEqual(world.profile.grip.rested, before.grip.rested)
-		expect.equal(world.profile.coins, before.coins)
-		expect.deepEqual(world.profile.quests, before.quests)
-		expect.deepEqual(world.profile.stats, before.stats)
-		expect.truthy(table.find(world.dirty, "grip") ~= nil)
-		expect.equal(GripService.levelOf(world.player), GripMath.levelFor(power))
-		-- Not ready, or a session that takes no more changes: nothing.
-		world.status = "offline"
-		expect.equal(GripService.addFromCapsule(world.player, power), 0)
-		world.status = "ready"
-		world.frozen = true
-		expect.equal(GripService.addFromCapsule(world.player, power), 0)
-		finish()
-	end)
-
 	-- Match HUD M2 (2026-10-16): the Grip half of a Free for All / Team Deathmatch pay.
 	t.test("a match pay trains squeezes × an own squeeze's Grip: never doubled, no Double Grip point used", function()
 		local world = fresh()
@@ -304,10 +281,10 @@ return function(t: Context)
 
 	t.test("a big match pay is never clamped per event (each squeeze is one event)", function()
 		local world = fresh()
-		-- 12 Rainbow Galaxy Dragons at Lv 26: about 12M a squeeze (pens3 phase 1 makes none yet; later phases will).
+		-- 12 Rainbow Galaxy Dragons at Lv 70: about 5.7B a squeeze, 3.4T the whole pay (pens3 phase 2: a 500B cap).
 		local items = {}
 		for id = 1, 12 do
-			table.insert(items, penItem(id, "dragon", 2, 26, 7))
+			table.insert(items, penItem(id, "dragon", 2, 70, 7))
 		end
 		world.profile.pen = { spots = 12, nextId = 13, items = items }
 		local top = PenMath.squeezeGrip(world.profile.pen)
@@ -400,24 +377,30 @@ return function(t: Context)
 		finish()
 	end)
 
-	-- Phase 3: Grip events now reach maxGripPerEvent (CP(100) × 2), so the alert can be crossed again (spec 2026-10-12
-	-- §12: gripAlertPerHour = 43,212 of the biggest events). Events at maxGripPerEvent, one more than the alert holds.
+	-- Pens3 phase 2: gripAlertPerHour is 400T (an honest top hour is about 3.3e14). The largest match pays of a top pen
+	-- (12 Rainbow Galaxy Dragons at Lv 70, about 3.4T each) up to the alert, then one more.
 	t.test("Grip above gripAlertPerHour in a rolling hour sets the anomaly alert; it re-arms an hour later", function()
 		local world = fresh()
 		local key = tostring(world.player.UserId)
-		local event = Config.Grip.maxGripPerEvent
-		local events = Config.Grip.gripAlertPerHour // event -- exactly the alert: not above it
-		expect.equal(events * event, Config.Grip.gripAlertPerHour)
-		for _ = 1, events do
-			GripService.addFromCapsule(world.player, event)
+		local items = {}
+		for id = 1, 12 do
+			table.insert(items, penItem(id, "dragon", 2, 70, 7))
 		end
-		expect.equal(world.profile.grip.total, Config.Grip.gripAlertPerHour)
+		world.profile.pen = { spots = 12, nextId = 13, items = items }
+		local squeezes = t.requireServer("Logic/MatchRewards").maxSqueezes()
+		local pay = PenMath.squeezeGrip(world.profile.pen) * squeezes
+		local pays = Config.Grip.gripAlertPerHour // pay -- the most pays not above the alert
+		for _ = 1, pays do
+			GripService.addFromMatch(world.player, squeezes)
+		end
+		expect.equal(world.profile.grip.total, pays * pay)
+		expect.truthy(pays * pay <= Config.Grip.gripAlertPerHour)
 		expect.falsy(GripService.debugState().players[key].alerted)
-		GripService.addFromCapsule(world.player, event) -- the hour passes the alert
+		GripService.addFromMatch(world.player, squeezes) -- the hour passes the alert
 		expect.truthy(GripService.debugState().players[key].alerted)
 		-- An hour later the counter only holds the new gain: the alert re-arms.
 		wait(world, 3600 + 60)
-		GripService.addFromCapsule(world.player, 1)
+		GripService.addFromSqueeze(world.player, 1)
 		expect.falsy(GripService.debugState().players[key].alerted)
 		finish()
 	end)
@@ -553,8 +536,8 @@ return function(t: Context)
 		finish()
 	end)
 
-	-- Phase 6: capsule Grip is the idle Grip left (was: slow-training ticks on a pad).
-	t.test("Part 7: a capsule-only profile reaching Lv 5 keeps starter progress and Coins with quests wired", function()
+	-- Pens3 phase 2: a match's Grip half stands in for the gone capsule Grip (a Grip gain with no Coins or squeeze).
+	t.test("Part 7: Grip alone reaching Lv 5 keeps starter progress and Coins with quests wired", function()
 		local world = fresh()
 		local QuestService = t.requireServer("Services/QuestService")
 		local questNotices: { string } = {}
@@ -605,11 +588,11 @@ return function(t: Context)
 		world.profile.grip.total = target - 1
 		GripService.refreshBaseline(world.player, false)
 		local before = TableUtil.deepCopy(world.profile)
-		expect.equal(GripService.addFromCapsule(world.player, 10), 10)
+		expect.equal(GripService.addFromMatch(world.player, 1), 10)
 		expect.equal(GripService.levelOf(world.player), 5)
-		for _ = 1, 3 do -- more capsule squeezes at Lv 5
+		for _ = 1, 3 do -- more Grip at Lv 5
 			wait(world, 4)
-			GripService.addFromCapsule(world.player, 10)
+			GripService.addFromMatch(world.player, 1)
 		end
 		GripService.refreshBaseline(world.player, true) -- a reload: the silent baseline and the load toasts
 		QuestService.ensureQuests(world.player) -- a load never moves progress either

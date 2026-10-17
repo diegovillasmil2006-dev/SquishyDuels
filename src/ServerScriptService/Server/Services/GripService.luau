@@ -8,9 +8,6 @@
 --     grip.rested with Config.Grip.Rested) and the Grip is PenMath.squeezeGrip(profile.pen) (pens3 phase 1: 1 squeeze
 --     value of Grip, floored; the pad does not change it; an unknown tier still pays nothing) × Rested.mult when
 --     doubled;
---   * addFromCapsule(p, amount) - one capsule squeeze (CapsuleService, Phase 3): `amount` Grip (the capsule's power),
---     never doubled and never using a Double Grip point (lobby spec 2026-10-11 §5.4), with the same clamps, anomaly
---     counter, toasts and level changes as a squeeze;
 --   * addFromMatch(p, squeezes) - Match HUD M2 (2026-10-16): the Grip half of a Free for All / Team Deathmatch pay
 --     (MatchService, on the match's single end; the owner chose Coins AND Grip for matches knowing Grip was "never a
 --     currency": it stays never sold, and duel code still never reads it). `squeezes` squeezes × the Grip of one
@@ -20,7 +17,8 @@
 --     counter, toasts and level changes as a squeeze.
 -- Build plan Phase 6 removed slow training (the per-player tick on a pad, its bank grip.afk and Config.Grip.Afk) and
 -- the trainers (upgradeTrainer, the TrainerUpgrade RF and grip.trainer): an old save's grip.afk and grip.trainer are
--- unknown fields nothing reads, and a grip field without them is valid.
+-- unknown fields nothing reads, and a grip field without them is valid. Pens3 phase 2 removed addFromCapsule (with
+-- CapsuleService).
 -- Every gain is clamped to Config.Grip.maxGripPerEvent and the total to maxGrip (a clamp logs [SD][abuse]); a
 -- rolling-hour counter per player logs [SD][abuse] above gripAlertPerHour (a log only, §17.9 #12). The profile write
 -- itself (inside DataService.mutate) is arithmetic only; toasts, the level and LevelChanged follow once it is done.
@@ -503,29 +501,6 @@ function GripService.addFromSqueeze(player: any, tier: number): SqueezeGain
 	deps.markDirty(player, FIELD)
 	afterGain(session, written.before, written.after, written.gain)
 	return { grip = written.gain, gripTotal = written.after, doubled = written.doubled }
-end
-
--- One capsule squeeze (CapsuleService, Phase 3): `amount` Grip, never doubled (lobby spec 2026-10-11 §5.4) and not an
--- own squeeze. Returns what the total really gained (0 unless ready).
-function GripService.addFromCapsule(player: any, amount: number): number
-	local session = ensureSession(player)
-	local grip = readyGrip(player)
-	if grip == nil or not Config.Grip.enabled then
-		return 0
-	end
-	if session.level == nil then
-		setLevel(session, GripMath.levelFor(grip.total), true) -- the Loaded baseline was missed: set it silently
-	end
-	local written = writeGrip(player, function(live: GripState): Written
-		local before = addToTotal(session, live, clampEvent(session, amount, "capsule"))
-		return { gain = live.total - before, before = before, after = live.total, doubled = false }
-	end)
-	if written == nil then
-		return 0 -- the session stopped taking changes
-	end
-	deps.markDirty(player, FIELD)
-	afterGain(session, written.before, written.after, written.gain)
-	return written.gain
 end
 
 -- Match HUD M2 (2026-10-16): the Grip of a match's pay, `squeezes` × the Grip of one squeeze (see the header). Returns

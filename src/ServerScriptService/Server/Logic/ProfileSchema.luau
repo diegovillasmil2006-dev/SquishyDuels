@@ -12,7 +12,8 @@
 -- nobody but the two owners has played yet, so there are no old saves to fix). The same way back: build plan Phase 6
 -- removed slow training and the trainers, so `grip.afk` (the bank) and `grip.trainer` left defaults and sanitize with
 -- no new version (and no refund); an old save keeps them as unknown fields nothing reads, and the frozen v1 -> v2 step
--- still writes them. Match HUD M2 (2026-10-16): `stats.winStreak` (the Free for All / Team Deathmatch win streak,
+-- still writes them. Pens3 phase 2 removed `capsules` the same way (an old save keeps it, unread; no refund).
+-- Match HUD M2 (2026-10-16): `stats.winStreak` (the Free for All / Team Deathmatch win streak,
 -- default 0, a counter like the other stats) joined schema 2 the same way: no new version, so a server without it keeps
 -- it as an unknown stat (a version would make a player who saved on a new server READONLY on an old one during a
 -- rolling update); reconcile fills it, sanitize clamps it with the other counters. Auto-clicker check (2026-10-16):
@@ -56,10 +57,7 @@
 --        non-array table is rebuilt from them); a time later than now + 300 becomes now (reading: clamped, not
 --        dropped, so it still counts for at most one window instead of never expiring); an empty list is dropped;
 --        then sorted ascending with both caps (samePairFullRewards times per opponent, Data.caps.samePair opponents;
---        DuelRewards.capSamePair); capsules (spec 2026-10-12 §6-§7, fails closed): slots a whole number in
---        [1, #Capsule.slotPrices], one {level, squishyId} per unlocked slot (a missing one -> an empty Lv 1 capsule,
---        extra entries dropped), level a whole number in [1, Capsule.maxLevel], a squishy that is not owned, not in
---        the Catalog or already in an earlier capsule (one capsule each) taken out (the capsule stays, empty).
+--        DuelRewards.capSamePair).
 -- load(raw, opts) runs the whole pipeline and also returns the start version (DataService keeps it as migratedFrom,
 -- GripService shows grip.headStart once, §17.10).
 --
@@ -120,7 +118,6 @@ export type LoadResult = {
 
 local CURRENT = 2
 local FUTURE_SLACK_SECONDS = Config.Data.timestampSkewSeconds -- §17.9 #6: a timer stamped after now + 300 -> now
-local CAPSULE = Config.Grip.Capsule
 local PEN = Config.Economy.Pen
 local MAX_COUNTER = 2 ^ 53
 local SECONDS_PER_DAY = 86400
@@ -389,52 +386,6 @@ local function fixSamePair(d: any, now: number, problems: { string })
 	end
 end
 
--- The capsules (see the header): fixed in place, every fix noted. Runs after `owned` is fixed.
-local function fixCapsules(d: any, catalog: CatalogLike, problems: { string })
-	local capsules = ensureTable(d, "capsules", function()
-		return { slots = 1, list = { { level = 1, squishyId = catalog.starterId() } } }
-	end, "capsules", problems)
-	fixInt(capsules, "slots", 1, #CAPSULE.slotPrices, 1, "capsules.slots", problems)
-	local list = ensureTable(capsules, "list", function()
-		return {}
-	end, "capsules.list", problems)
-	local kept: { any } = {}
-	local inUse: { [string]: boolean } = {}
-	for index = 1, capsules.slots do
-		local path = `capsules.list[{index}]`
-		local capsule = list[index]
-		if type(capsule) ~= "table" then
-			note(problems, path, capsule, "empty Lv 1")
-			capsule = { level = 1 }
-		end
-		fixInt(capsule, "level", 1, CAPSULE.maxLevel, 1, path .. ".level", problems)
-		local id = capsule.squishyId
-		if id ~= nil then
-			if type(id) ~= "string" or d.owned[id] == nil or not catalog.isValidId(id) or inUse[id] then
-				note(problems, path .. ".squishyId", id, nil)
-				capsule.squishyId = nil
-			else
-				inUse[id] = true
-			end
-		end
-		kept[index] = capsule
-	end
-	local count = 0
-	for _ in list do
-		count += 1
-	end
-	local present = 0
-	for index = 1, capsules.slots do
-		if list[index] ~= nil then
-			present += 1
-		end
-	end
-	if count ~= present then
-		note(problems, "capsules.list", count, #kept)
-	end
-	capsules.list = kept
-end
-
 -- The pen (pens3 phase 1, see the header): fixed in place, every fix noted. Runs after `owned` is fixed.
 local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { string })
 	local pen = ensureTable(d, "pen", function()
@@ -566,8 +517,6 @@ function ProfileSchema.defaults(now: number): Profile
 			rested = { value = Config.Grip.Rested.burst, at = now },
 		},
 		samePair = {},
-		-- Spec 2026-10-12 §7: one capsule free, Kitty Bread at Lv 1.
-		capsules = { slots = 1, list = { { level = 1, squishyId = starter } } },
 		autoClick = { step = 0, at = 0 }, -- auto-clicker check (2026-10-16): no strike
 		weekly = { week = -1, active = {} }, -- weekly quests (2026-10-17): none until the first check
 		-- Pens3 phase 1: the starter walks in the free spots.
@@ -754,9 +703,6 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 
 	-- Same-pair record (§6.7, §12 #15).
 	fixSamePair(d, now, problems)
-
-	-- Capsules (spec 2026-10-12 §6-§7).
-	fixCapsules(d, catalog, problems)
 
 	-- The pen (pens3 phase 1, see the header).
 	fixPen(d, catalog, now, problems)

@@ -165,7 +165,7 @@ export type ProfileV1 = {
 	duelLog: { DuelLogEntry }, -- cap 30
 	grip: GripState, -- schemaVersion 2 (§17.10)
 	samePair: SamePairRecord, -- added within schemaVersion 2 (reconcile fills it; no migration)
-	capsules: CapsulesState, -- added within schemaVersion 2 (reconcile fills it; no old saves to fix, spec 2026-10-12 §14)
+	-- (pens3 phase 2: `capsules` left with no new version; an old save keeps it as an unknown field nothing reads)
 	autoClick: AutoClickMemory, -- added within schemaVersion 2 the same way (2026-10-16); never sent to the client
 	weekly: WeeklyState, -- weekly quests, added within schemaVersion 2 the same way (2026-10-17)
 	pen: PenState, -- the pen (pens3 phase 1), added within schemaVersion 2 the same way
@@ -234,8 +234,6 @@ export type QuestsView = {
 -- Every state field, all present: the reply to RequestSnapshot and the content of a full StateDelta.
 -- `grip` (§17.10) is the profile's GripState as stored; the client derives the level, rank and Double Grip minutes
 -- with the same pure GripMath. Never sent into a duel view: Grip never reaches duel code (§17.2 rule 1).
--- `capsules` (build plan Phase 5) is the profile's CapsulesState as stored, for the owner's capsule card, the squeeze
--- value of the reward texts and the owner's capsule pops (other players' capsules are read from their base's models).
 export type Snapshot = {
 	coins: number,
 	owned: { [string]: OwnedEntry },
@@ -252,7 +250,6 @@ export type Snapshot = {
 	unseenReveals: { BoxLogEntry }, -- boxLog entries with seen = false
 	practice: PracticeStats,
 	grip: GripState,
-	capsules: CapsulesState,
 	topWins: TopWinsView, -- Batch 3
 	pen: PenState, -- pens3 phase 1: the profile's pen as stored (the squeeze value of every client text, the sign)
 }
@@ -274,7 +271,6 @@ export type StateDeltaFields = {
 	unseenReveals: { BoxLogEntry }?,
 	practice: PracticeStats?,
 	grip: GripState?,
-	capsules: CapsulesState?,
 	topWins: TopWinsView?,
 	pen: PenState?,
 }
@@ -296,7 +292,6 @@ export type StateField =
 	| "unseenReveals"
 	| "practice"
 	| "grip"
-	| "capsules"
 	| "topWins"
 	| "pen"
 
@@ -498,10 +493,6 @@ export type DailyClaimResult = {
 	treat: BoxResult?,
 	treatRequestId: string?,
 }
--- CapsuleUpgrade / CapsuleUnlock / CapsuleSet data (lobby spec 2026-10-11 §6, Phase 3): `capsules` = the caller's own
--- capsules after the call; `charged` is false when no Coins were taken (an unlock replay, any CapsuleSet);
--- `savePending` = the awaited "now" save failed (CapsuleSet: a failed save is pending).
-export type CapsuleResult = { capsules: CapsulesState, charged: boolean, savePending: boolean }
 -- PenBuySpot data (pens3 phase 1): `pen` = the caller's own pen after the buy; `charged` true (every refusal is a
 -- ResultErr with charged = false); `savePending` = the awaited "now" save failed.
 export type PenResult = { pen: PenState, charged: boolean, savePending: boolean }
@@ -529,10 +520,6 @@ export type ShopBuyCall = (squishyId: string, expectedPrice: number, requestId: 
 export type QuestClaimCall = (questId: string) -> Result<nil>
 export type QuestSwapCall = (questId: string) -> Result<nil>
 export type DailyClaimCall = () -> Result<DailyClaimResult>
--- slot = 1..#Config.Grip.Capsule.slotPrices of the caller's own capsules; expectedPrice is compared, never charged.
-export type CapsuleUpgradeCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
-export type CapsuleUnlockCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
-export type CapsuleSetCall = (slot: number, squishyId: string) -> Result<CapsuleResult>
 -- Pens3 phase 1: buys the caller's own next pen spot; expectedPrice is compared, never charged.
 export type PenBuySpotCall = (expectedPrice: number) -> Result<PenResult>
 export type PromptCoinBundleCall = (bundleKey: string) -> ()

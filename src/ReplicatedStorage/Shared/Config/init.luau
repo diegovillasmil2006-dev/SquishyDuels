@@ -46,7 +46,7 @@
 -- §3, §5, §6): the 3D Lab viewmodel values (arm parts, colours, outline, held toy, pop-in, squeeze, focus, throw extras,
 -- Dragon charge), Inspect's squeeze axis, and Grip.squeezeAlertPerHour in 1..maxSqueezesPerHour.
 -- Big-number progression (spec 2026-10-12, Phase 1): G1 over 100 levels (the totals rise strictly; a level may cost
--- less than the one before), G3 as a squeeze count, G5 covering CP(100) × Rested.mult, the Capsule block (tiers fit
+-- less than the one before), G3 as a squeeze count, G5 covering 4 × the top pen squeeze, the Capsule block (tiers fit
 -- maxLevel, intervals fall, Grip gates rise, growth > 1, slot prices rise from a free slot 1, the biggest price fits
 -- maxCoins), SquishyPower and a Catalog `power` override (whole numbers >= 1), the refund share (Economy.DuplicateRefund,
 -- under 100%, its free-box price from a paid box), and "capsule" among the G7 training words. Phase 3: the capsule
@@ -181,8 +181,6 @@ local BADGE_RULES: { [string]: boolean } = {
 	joined = true,
 	stat = true,
 	gripLevel = true,
-	capsuleSlots = true,
-	capsuleLevel = true,
 	ownRarityAll = true,
 	own = true,
 	flag = true,
@@ -3141,14 +3139,8 @@ local function checkGripPads(problems: Problems)
 	end
 end
 
--- Capsule power CP(level) and the Coins from level to level + 1, from the Config.Grip.Capsule data (CapsuleMath's
--- formulas, spec 2026-10-12 §3, §5: Config cannot require CapsuleMath, which requires Config).
-local function capsulePower(capsule: any, level: number): number
-	local power = capsule.power
-	local tier = math.ceil(level / capsule.levelsPerTier)
-	return math.round(power.base * power.growth ^ (level - 1) * power.tierMultiplier ^ (tier - 1))
-end
-
+-- The Coins from capsule level to level + 1, from the Config.Grip.Capsule data (CapsuleMath's formula, spec
+-- 2026-10-12 §5: Config cannot require CapsuleMath, which requires Config).
 local function capsulePrice(capsule: any, level: number): number
 	local price = capsule.price
 	local raw = price.base * price.growth ^ (level - 1)
@@ -3157,8 +3149,8 @@ local function capsulePrice(capsule: any, level: number): number
 	return if level % capsule.levelsPerTier == 0 then rounded * price.evolveMultiplier else rounded
 end
 
--- G5 Caps and timers: maxGripPerEvent covers the biggest event (a squeeze at the top capsule level, CP(maxLevel) ×
--- Rested.mult, spec 2026-10-12 §12); Double Grip refills slower
+-- G5 Caps and timers: maxGripPerEvent covers 4 × the top squeeze value (pens3 phase 2: Double Grip × 2, the Squeaky
+-- Ring × 2; each placed spot a top Exclusive of Economy.Pen); Double Grip refills slower
 -- than holding Squeeze spends it; Hold.maxSeconds < idleReminderSeconds < 1200 (idle kick); Hold.queuedSeconds < 120.
 -- Reading (2026-10-06): the refill rule compared with 3600 / Squeeze.cycleSeconds, the accepted rate
 -- when the cycle was the 1.5 s squeeze timer; the rule uses the hold-to-squeeze rhythm, 3600 / Hold.repeatSeconds
@@ -3170,13 +3162,19 @@ local function checkGripCaps(problems: Problems)
 	expectPositive(problems, `{p}.Rested.perHour`, rested.perHour)
 	expectCount(problems, `{p}.Rested.burst`, rested.burst, 1)
 	expect(problems, isNumber(rested.mult) and rested.mult >= 1, `{p}.Rested.mult must be a number >= 1`)
-	local capsule = Grip.Capsule
-	local capsuleEvent = capsulePower(capsule, capsule.maxLevel) * (if rested.enabled then rested.mult else 1)
+	local pen = Economy.Pen
+	local event = pen.placedMax
+		* pen.coinsPerPower
+		* Economy.SquishyPower.Exclusive
+		* pen.formMult[#pen.formMult]
+		* pen.coatMult[#pen.coatMult]
+		* pen.levelGain ^ (pen.maxLevel - 1)
+		* 4
 	expect(
 		problems,
-		isNumber(Grip.maxGripPerEvent) and Grip.maxGripPerEvent >= capsuleEvent,
-		`G5: {p}.maxGripPerEvent ({show(Grip.maxGripPerEvent)}) must be >= the biggest Grip event (CP({capsule.maxLevel})`
-			.. ` × Rested.mult = {capsuleEvent})`
+		isNumber(Grip.maxGripPerEvent) and Grip.maxGripPerEvent >= event,
+		`G5: {p}.maxGripPerEvent ({show(Grip.maxGripPerEvent)}) must be >= 4 × the top squeeze value`
+			.. ` ({string.format("%.4g", event)})`
 	)
 	expectPositive(problems, `{p}.Hold.repeatSeconds`, hold.repeatSeconds)
 	if isNumber(hold.repeatSeconds) and hold.repeatSeconds > 0 then
@@ -4341,7 +4339,7 @@ local function checkSocial(problems: Problems, rarities: { string }, defs: { [st
 		local kind = if type(rule) == "table" then rule.kind else nil
 		if type(kind) ~= "string" or not BADGE_RULES[kind] then
 			add(problems, `{at}.rule.kind {show(kind)} is not a badge rule`)
-		elseif kind == "stat" or kind == "gripLevel" or kind == "capsuleSlots" or kind == "capsuleLevel" then
+		elseif kind == "stat" or kind == "gripLevel" then
 			expectCount(problems, `{at}.rule.atLeast`, rule.atLeast, 1)
 			if kind == "stat" then
 				expectText(problems, `{at}.rule.stat`, rule.stat)

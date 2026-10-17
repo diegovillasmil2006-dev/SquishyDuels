@@ -22,8 +22,8 @@
 --            again on a later check, at most maxTries times. `id` = the badge's id from the Creator Dashboard: none
 --            yet (the owners make the badges and paste the ids here); a badge without an id is never awarded.
 --            Rule kinds (Logic/BadgeRules): joined; stat {stat, atLeast} (profile.stats); gripLevel {atLeast};
---            capsuleSlots {atLeast}; capsuleLevel {atLeast} (the best capsule); ownRarityAll {rarity}; own
---            {squishyId}; flag {flag} (a session flag: duelBuddies = finished a duel the pads or Rematch started).
+--            ownRarityAll {rarity}; own {squishyId}; flag {flag} (a session flag: duelBuddies = finished a duel the
+--            pads or Rematch started). Pens3 phase 2: the 3 capsule badges went with the capsules (none had an id).
 
 export type BadgeRule = {
 	kind: string,
@@ -57,9 +57,6 @@ local Social = {
 			{ key = "wins_10", id = nil, rule = { kind = "stat", stat = "duelsWon", atLeast = 10 } }, -- Duelist
 			{ key = "wins_100", id = nil, rule = { kind = "stat", stat = "duelsWon", atLeast = 100 } }, -- Duel Champion
 			{ key = "duel_buddies", id = nil, rule = { kind = "flag", flag = "duelBuddies" } }, -- Duel Buddies
-			{ key = "capsule_2", id = nil, rule = { kind = "capsuleSlots", atLeast = 2 } }, -- Growing Base
-			{ key = "capsule_jelly", id = nil, rule = { kind = "capsuleLevel", atLeast = 11 } }, -- Evolved!
-			{ key = "capsule_royal", id = nil, rule = { kind = "capsuleLevel", atLeast = 91 } }, -- Royal Capsule
 			{ key = "grip_master", id = nil, rule = { kind = "gripLevel", atLeast = 50 } }, -- Grip Master
 			{ key = "commons_all", id = nil, rule = { kind = "ownRarityAll", rarity = "Common" } }, -- Common Collector
 			{ key = "dragon", id = nil, rule = { kind = "own", squishyId = "dragon" } }, -- Dragon Keeper

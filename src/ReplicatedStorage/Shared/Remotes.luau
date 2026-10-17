@@ -4,10 +4,9 @@
 -- client (NetController.connectAsync). The folder lives at ReplicatedStorage.SD_Remotes, outside `Shared`, because
 -- Rojo `$path` nodes delete unknown children. Per-remote rate limits live in Config.Net, keyed by the same names.
 -- Grip (§17.2 rule 5, §17.9 #1): there is no Grip remote. Grip comes only from an accepted SqueezeRequest and from the
--- server's own capsule ticks; the client never says "I am on a pad" or "I am idle" (the idle card is
--- client only, and a queued client's idleness is ReportIdle). The capsule remotes (Phase 3) only buy and fill the
--- caller's own capsules: the server checks them with CapsuleMath and never takes a price or a Grip amount from them.
--- TrainerUpgrade went with the trainers (build plan Phase 6).
+-- server's own match pay; the client never says "I am on a pad" or "I am idle" (the idle card is client only, and a
+-- queued client's idleness is ReportIdle). TrainerUpgrade went with the trainers (build plan Phase 6), the capsule
+-- remotes with CapsuleService (pens3 phase 2).
 -- FFA/TDM v1 (2026-10-15): MatchJoin(mode) and MatchLeave (the client's chat commands), MatchState (the server's
 -- per-player Free for All / Team Deathmatch view, Types.MatchStateView).
 
@@ -167,12 +166,6 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	QuestClaim = c2s("RemoteFunction", { arg("questId", "questId") }),
 	QuestSwap = c2s("RemoteFunction", { arg("questId", "questId") }),
 	DailyClaim = c2s("RemoteFunction", {}), -- data: Types.DailyClaimResult
-	-- Capsules (lobby spec 2026-10-11 §6, Phase 3; CapsuleService): only the caller's own capsules, so no remote takes
-	-- a base, plot or player id. slot = 1..#Config.Grip.Capsule.slotPrices; expectedPrice is compared, never charged.
-	-- data: Types.CapsuleResult {capsules, charged, savePending}.
-	CapsuleUpgrade = c2s("RemoteFunction", { arg("slot", "integer"), arg("expectedPrice", "coins") }),
-	CapsuleUnlock = c2s("RemoteFunction", { arg("slot", "integer"), arg("expectedPrice", "coins") }),
-	CapsuleSet = c2s("RemoteFunction", { arg("slot", "integer"), arg("squishyId", "squishyId") }),
 	-- Pens3 phase 1 (PenService): buys the caller's own next pen spot (no remote takes a base, plot or player id).
 	-- expectedPrice is compared, never charged. data: Types.PenResult {pen, charged, savePending}.
 	PenBuySpot = c2s("RemoteFunction", { arg("expectedPrice", "coins") }),

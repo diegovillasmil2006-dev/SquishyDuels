@@ -222,13 +222,12 @@ local Grip = {
 	-- only riding the cap with no break for an hour (more than the client sends) passes it. Validator: a whole number
 	-- in 1..maxSqueezesPerHour.
 	squeezeAlertPerHour = 8_000,
-	-- CP(100) × Rested.mult = 920,525,589 × 2 (spec 2026-10-12 §12; was 600) (G5). A capsule squeeze gives CP.
-	maxGripPerEvent = 1_841_051_178,
-	-- (43200 + 12) × maxGripPerEvent: rolling-hour anomaly log, sized at the old 12-a-second cap's hour plus its burst at
-	-- the biggest Grip event (spec 2026-10-12 §12) and kept as it is (Batch 1 #2): the honest maximum with 4 Lv 100
-	-- capsules (own squeezes at the hold rhythm, Double Grip's points, every paid squeeze pushing the capsules) is about
-	-- 2.3e13 an hour, far under it.
-	gripAlertPerHour = 79_555_503_503_736,
+	-- Pens3 phase 2 (ECONOMY_V3): at least 4 × the top squeeze value (Double Grip 2 × Squeaky Ring 2: 4.0e10 at the
+	-- top SV 9.96e9, G5 computes it from Config.Economy.Pen). Was CP(100) × 2 = 1,841,051,178 (the capsules).
+	maxGripPerEvent = 500_000_000_000,
+	-- [P] Rolling-hour anomaly log (log only). The honest top hour at SV 9.9B is about 3.3e14 (8,000 squeezes × Ring 2,
+	-- Double Grip's 1,440 doubled squeezes, 120 highway landings × 60 squeezes × Ring 2); the old 7.96e13 flagged it.
+	gripAlertPerHour = 400_000_000_000_000,
 	-- G-E / G7b (lobby spec 2026-10-11 §11; was allowBundlesWithTrainer): coin bundles stay off while capsules turn Coins
 	-- into Grip power.
 	allowBundlesWithCapsules = false,

@@ -1,9 +1,9 @@
 --!strict
 -- BadgeRules_Test: ServerScriptService.Server.Logic.BadgeRules, which badges a profile has earned (Batch 3, review #10;
--- the user's 12 badges, Config.Social.Badges). Server only (ServerStorage.UnitTest). Pure: plain profile tables.
--- Contract: every rule kind just below and at its threshold (capsule Lv 10 / 11 and 90 / 91, Grip Lv 49 / 50, 1 and 2
--- capsule slots, the duel stats); all 5 Commons (the starter among them); the Dragon; the session flag; joined is
--- always earned; an unknown rule kind earns nothing; the shipped list is the plan's 12 badges with their rules.
+-- the user's badges, Config.Social.Badges). Server only (ServerStorage.UnitTest). Pure: plain profile tables.
+-- Contract: every rule kind just below and at its threshold (Grip Lv 49 / 50, the duel stats); all 5 Commons (the
+-- starter among them); the Dragon; the session flag; joined is always earned; an unknown rule kind earns nothing; the
+-- shipped list is the plan's 12 badges less the 3 capsule ones (pens3 phase 2: an old save's capsules earn nothing).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -22,7 +22,6 @@ return function(t: Context)
 		return {
 			owned = { kitty_bread = { at = 1, src = "starter" } },
 			stats = { duelsPlayed = 0, duelsWon = 0 },
-			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
 		}
 	end
 
@@ -30,7 +29,7 @@ return function(t: Context)
 		return BadgeRules.earned(p, level or 1, flags or {}, Config.Social.Badges.list)
 	end
 
-	t.test("the shipped list: the plan's 12 badges with their rules, in order", function()
+	t.test("the shipped list: the plan's 12 badges less the 3 capsule ones, in order", function()
 		local keys = {}
 		for _, badge in Config.Social.Badges.list do
 			table.insert(keys, badge.key)
@@ -42,9 +41,6 @@ return function(t: Context)
 			"wins_10",
 			"wins_100",
 			"duel_buddies",
-			"capsule_2",
-			"capsule_jelly",
-			"capsule_royal",
 			"grip_master",
 			"commons_all",
 			"dragon",
@@ -72,18 +68,16 @@ return function(t: Context)
 		expect.truthy(earned(p).wins_100)
 	end)
 
-	t.test("capsules: a second slot, the best capsule at Lv 11 (Jelly) and Lv 91 (Royal)", function()
+	-- Pens3 phase 2: capsuleSlots and capsuleLevel are no rule kinds any more; an old save's capsules earn nothing.
+	t.test("an old save's capsules earn nothing: the capsule rule kinds are gone", function()
 		local p = profile()
-		expect.falsy(earned(p).capsule_2)
-		p.capsules = { slots = 2, list = { { level = 10 }, { level = 3 } } }
-		expect.truthy(earned(p).capsule_2)
-		expect.falsy(earned(p).capsule_jelly)
-		p.capsules.list[2].level = 11
-		expect.truthy(earned(p).capsule_jelly)
-		p.capsules.list[1].level = 90
-		expect.falsy(earned(p).capsule_royal)
-		p.capsules.list[1].level = 91
-		expect.truthy(earned(p).capsule_royal)
+		p.capsules = { slots = 4, list = { { level = 100, squishyId = "kitty_bread" } } }
+		local list = {
+			{ key = "capsule_2", rule = { kind = "capsuleSlots", atLeast = 2 } },
+			{ key = "capsule_royal", rule = { kind = "capsuleLevel", atLeast = 91 } },
+		}
+		expect.deepEqual(BadgeRules.earned(p, 1, {}, list), {})
+		expect.deepEqual(earned(p), { welcome = true })
 	end)
 
 	t.test("Grip Master at Grip Lv 50, not 49", function()

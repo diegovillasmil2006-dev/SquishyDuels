@@ -7,7 +7,8 @@
 --   * RequestSnapshot: {status = "loading"} while loading, the full Snapshot when loaded;
 --   * the Snapshot holds every field: profile projections (quests with starter, unseenReveals = boxLog entries with
 --     seen = false, grip = {total, rested}: Phase 6, an old save's grip.afk and grip.trainer are not sent; pens3
---     phase 1: pen as stored, and it goes out like any field when marked), session
+--     phase 1: pen as stored, and it goes out like any field when marked; phase 2: an old save's capsules never go
+--     out), session
 --     fields (policy "checking", monetization with no
 --     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it),
 --     dataStatus {status, persisted, savePending, banner};
@@ -95,6 +96,7 @@ return function(t: Context)
 			duelLog = {},
 			-- An old save (Phase 6): it still holds the slow-training bank and the trainer, which are never sent.
 			grip = { total = 50, trainer = 1, rested = { value = 1200, at = 1 }, afk = { value = 120, at = 1 } },
+			-- An old save's capsules (pens3 phase 2: an unknown field, never sent).
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
 			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
 		}
@@ -221,7 +223,6 @@ return function(t: Context)
 		expect.equal(reply.ok, true)
 		local snap = reply.data
 		expect.deepEqual(keysOf(snap), {
-			"capsules",
 			"coins",
 			"daily",
 			"dataStatus",
@@ -252,8 +253,7 @@ return function(t: Context)
 		expect.equal(#snap.unseenReveals, 1)
 		expect.equal(snap.unseenReveals[1].req, "new-one")
 		expect.deepEqual(snap.grip, { total = 50, rested = { value = 1200, at = 1 } }) -- no afk or trainer (Phase 6)
-		-- Phase 5: the owner's capsules as stored (the capsule card, the squeeze value of the reward texts).
-		expect.deepEqual(snap.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
+		expect.equal(snap.capsules, nil) -- pens3 phase 2: an old save's capsules are never sent
 		-- Pens3 phase 1: the owner's pen as stored (the squeeze value of every client text, the sign).
 		expect.deepEqual(snap.pen, {
 			spots = 3,
@@ -543,7 +543,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list is DESIGN's StateDelta list plus grip, capsules, topWins and pen", function()
+	t.test("the field list is DESIGN's StateDelta list plus grip, topWins and pen", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -560,25 +560,9 @@ return function(t: Context)
 			"unseenReveals",
 			"practice",
 			"grip",
-			"capsules",
 			"topWins",
 			"pen",
 		})
-	end)
-
-	-- Phase 5: a capsule change reaches the owner's client like any other field (CapsuleService marks it; the sweep
-	-- catches it anyway).
-	t.test("a changed capsule goes out in the next partial StateDelta", function()
-		local w = setup()
-		local player, profile = loadedPlayer(w)
-		profile.capsules.list[1].level = 2
-		StateService.markDirty(player, "capsules")
-		runDeferred(w)
-		expect.equal(#w.sent, 2)
-		expect.deepEqual(
-			w.sent[2].fields,
-			{ capsules = { slots = 1, list = { { level = 2, squishyId = "kitty_bread" } } } }
-		)
 	end)
 
 	-- Pens3 phase 1: a pen change (a spot bought, a new squishy) reaches the owner's client in the next delta.
