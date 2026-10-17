@@ -42,6 +42,11 @@
 -- (HudFormat.coachBottomPlacement, clear of the HUD groups and, on narrow layouts, the thumbstick zone and the touch
 -- buttons), so the centre column stays open (the Duel CTA and the toasts at the top, the character in the middle); it
 -- no longer pushes the toasts down. It wears a Coral rim (guidance) and pops in when a new step shows.
+-- UI FINAL R9 (plan R9 "Screens the design lacks", a reading built from the kit; `H:n` = "Squishy Duels HUD.dc.html"
+-- line n): the card is the purple row (the card's radius 20, H:203, H:433) without the Coral rim; Got it is the small
+-- green chip (H:402, a 34 px face in the 52 px touch box); Skip is a text link in the design's link colour (H:20:
+-- #FF6FA3, #FF4F8E on hover, underlined, the thinnest ink outline, PR3) on a 52 px touch box with Button's feel. Its
+-- pop stays. AFFECTED 2026-10-15: its steps still teach capsules (OnboardingFormat), rewired with the new systems.
 -- Public: startReplay(), debugState().
 
 -- Services
@@ -54,6 +59,7 @@ local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local Palette = require(Shared.Art.Palette)
 local Strings = require(Shared.Strings)
 local WorldLayout = require(Shared.World.WorldLayout)
 
@@ -112,7 +118,7 @@ local cleanup: Cleanup.Cleanup? = nil
 local card: Frame? = nil
 local textLabel: TextLabel? = nil
 local gotItButton: Button.Button? = nil
-local skipButton: Button.Button? = nil
+local skipButton: { root: TextButton }? = nil -- UI FINAL R9: the text link (its Label child holds the text)
 local replay: { [string]: boolean }? = nil -- the local replay's done set (nil = no replay)
 local pendingDone: { [string]: boolean } = {} -- steps sent by this client and not yet in the saved state
 local pendingSkip = false
@@ -387,6 +393,46 @@ local function onInspectOpened()
 	end
 end
 
+-- UI FINAL R9: the Skip link (see the header): a 52 px touch box holding the underlined pink text, its hover colour
+-- with Button's feel (its hover and click sounds).
+local function buildSkipLink(c: Cleanup.Cleanup, parent: Instance): TextButton
+	local text = Strings.onboarding.skip
+	local kind: Theme.TextKind = "Small"
+	local width = math.ceil(Theme.textWidth(text, kind)) + 2 * Theme.Padding.small
+	local root: TextButton = Create("TextButton", {
+		Name = "Onboarding_SkipButton",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(width, TOUCH.minTarget),
+		LayoutOrder = 3,
+	})
+	local label = Theme.label({
+		Name = "Label",
+		Text = text,
+		AutomaticSize = Enum.AutomaticSize.None,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 0, 0, math.ceil(Theme.lineHeight(kind))),
+		TextWrapped = false,
+		Parent = root,
+	}, kind, nil, Palette.StickerFxPink) -- H:20: a { color: #FF6FA3 }
+	-- The underline is drawn by RichText around the same text (the Label keeps the plain text for tests and audits).
+	label.RichText = true
+	label.Text = "<u>" .. text .. "</u>"
+	label:SetAttribute("SD_PlainText", text)
+	c:add(root.MouseEnter:Connect(function()
+		label.TextColor3 = Palette.StickerHeaderPinkEnd -- H:20: a:hover { color: #FF4F8E }
+	end))
+	c:add(root.MouseLeave:Connect(function()
+		label.TextColor3 = Palette.StickerFxPink
+	end))
+	c:add(Button.decorate(root, { fx = "btn" }))
+	root.Parent = parent
+	c:add(root)
+	return root
+end
+
 local function buildCard(c: Cleanup.Cleanup)
 	local frame = Theme.panel({
 		Name = "Hud_OnboardingCard",
@@ -394,7 +440,7 @@ local function buildCard(c: Cleanup.Cleanup)
 		Size = UDim2.fromOffset(COLUMN.coachWidth, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Visible = false,
-	}, Theme.Radius.panel, COLUMN.coachPadding)
+	}, Config.UI.Sticker.radius.card, COLUMN.coachPadding) -- UI FINAL R9: the purple row's radius 20 (H:203, H:433)
 	Theme.list(
 		Enum.FillDirection.Horizontal,
 		COLUMN.coachGap,
@@ -415,36 +461,28 @@ local function buildCard(c: Cleanup.Cleanup)
 		name = "Onboarding_GotItButton",
 		text = Strings.common.gotIt,
 		kind = "primary",
-		height = TOUCH.minTarget,
+		size = "chip", -- UI FINAL R9: the small green chip (H:402) in its touch box
 		layoutOrder = 2,
 		parent = frame,
 		onActivated = onGotIt,
 	})
 	c:add(gotIt)
 	gotItButton = gotIt
-	local skip = Button.new({
-		name = "Onboarding_SkipButton",
-		text = Strings.onboarding.skip,
-		height = TOUCH.minTarget,
-		layoutOrder = 3,
-		parent = frame,
-		onActivated = onSkip,
-	})
-	skip.root.Visible = false
-	c:add(skip)
-	skipButton = skip
+	local skip = buildSkipLink(c, frame)
+	c:add(skip.Activated:Connect(onSkip))
+	skip.Visible = false
+	skipButton = { root = skip }
 	frame.Parent = UIController.screenGui(HUD_GUI)
 	c:add(frame)
 	card = frame
-	-- UI overhaul: guidance wears the brand colour on its rim; a new step pops in (refresh).
-	Theme.rim(frame, Theme.Accents.strawberry.face, 0.15, Theme.Stroke.medium)
+	-- UI overhaul: a new step pops in (refresh). UI FINAL R9: no Coral rim (the purple row).
 	Create("UIScale", { Name = "Pop", Parent = frame })
 	-- UI overhaul: at the bottom middle the card no longer meets the toasts (they stay under the Duel CTA).
 	-- The text's width follows the visible button's real width; the place follows the card's height.
 	c:add(gotIt.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		layoutCard()
 	end))
-	c:add(skip.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	c:add(skip:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
 		layoutCard()
 	end))
 end
@@ -511,9 +549,13 @@ layoutCard = function()
 end
 
 -- The text a Button shows (its "Label"), for debugState.
-local function buttonLabel(button: Button.Button?): string?
+local function buttonLabel(button: { root: TextButton }?): string?
 	local label = if button then button.root:FindFirstChild("Label", true) else nil
-	return if label and label:IsA("TextLabel") then label.Text else nil
+	if label == nil or not label:IsA("TextLabel") then
+		return nil
+	end
+	local plain = label:GetAttribute("SD_PlainText") -- UI FINAL R9: the link's text without its underline tags
+	return if type(plain) == "string" then plain else label.Text
 end
 
 -- Public -------------------------------------------------------------------------------------------------------------

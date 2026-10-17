@@ -21,6 +21,10 @@
 --   error toast). This module only passes the mapped key of a code in Config.Audio.toastSounds (grip.levelUp,
 --   grip.rankUp -> ui.gripUnlock), so that key stays out of the duel-path files; a merged held
 --   toast plays the mapped key of the newest held code that has one. Every key is silent until an id is approved.
+-- * UI FINAL R9 (plan work/ui/PLAN.md R9): present(code, presenter) -> unpresent: where a code would become its toast
+--   (after the routes and the hold-back), presenter(code, args, kind) may draw it its own way and return true (no
+--   toast); false or an error keeps the toast. QuestController: quest.complete as the design's quest pop (H:162);
+--   GripController: grip.levelUp as the level-up show (H:506-535). A merged held toast is always a toast.
 
 -- Services
 
@@ -44,6 +48,8 @@ local UIController = require(script.Parent.UIController)
 -- Types
 
 export type Handler = (code: string, args: Types.NotifyArgs?, kind: Types.NotifyKind) -> ()
+-- UI FINAL R9: true = drawn its own way (no toast).
+export type Presenter = (code: string, args: Types.NotifyArgs?, kind: Types.NotifyKind) -> boolean
 
 type Route = { prefix: string, handler: Handler }
 
@@ -63,6 +69,7 @@ NotifyController.Notified = Signal.new() :: Signal.Signal<string, Types.NotifyAr
 local log = Log.new("Notify")
 local cleanup: Cleanup.Cleanup? = nil
 local routes: { Route } = {}
+local presenters: { [string]: Presenter } = {} -- UI FINAL R9: present(code, presenter)
 local held: { string } = {}
 local heldKind: Types.NotifyKind = "info"
 local heldSound: string? = nil
@@ -74,9 +81,15 @@ local function holding(): boolean
 	return StateController.isLobbyLocked() or next(holds) ~= nil
 end
 
--- `sound` is a code's mapped key (Config.Audio.toastSounds); nil lets UIController pick ui.toast / ui.error.
-local function toast(text: string, kind: Types.NotifyKind, sound: string?)
-	UIController.toast(text, kind, if sound then { sound = sound } else nil)
+-- `sound` is a code's mapped key (Config.Audio.toastSounds); nil lets UIController pick ui.toast / ui.error. UI FINAL
+-- R9: `opts` the caller's toast options (its picture, NotifyController.show).
+local function toast(text: string, kind: Types.NotifyKind, sound: string?, opts: UIController.ToastOptions?)
+	local options: UIController.ToastOptions? = opts
+	if sound then
+		options = if opts then table.clone(opts) else {}
+		(options :: UIController.ToastOptions).sound = sound
+	end
+	UIController.toast(text, kind, options)
 end
 
 local function routeFor(code: string): Route?
@@ -99,7 +112,7 @@ local function flushHeld()
 	heldSound = nil
 end
 
-local function handle(code: unknown, args: unknown, kind: unknown)
+local function handle(code: unknown, args: unknown, kind: unknown, opts: UIController.ToastOptions?)
 	local text = NotifyFormat.textFor(code, args)
 	if text == nil then
 		local label = if type(code) == "string" then string.sub(code, 1, 64) else typeof(code)
@@ -132,15 +145,30 @@ local function handle(code: unknown, args: unknown, kind: unknown)
 		heldSound = sound or heldSound
 		return
 	end
-	toast(text, toastKind, sound)
+	local presenter = presenters[name]
+	if presenter then
+		local ok, drawn = pcall(presenter, name, cleanArgs, toastKind)
+		if not ok then
+			log:error(`presenter {name} failed:`, drawn)
+		elseif drawn == true then
+			return
+		end
+	end
+	toast(text, toastKind, sound, opts)
 end
 
 -- Public -------------------------------------------------------------------------------------------------------------
 
 -- Shows a message code exactly like a server Notify (routes and hold-back included). `args` takes any table (e.g.
--- {level = 5}); only its string and number values fill placeholders (UI/NotifyFormat).
-function NotifyController.show(code: string, args: { [string]: any }?, kind: Types.NotifyKind?)
-	handle(code, args, kind or "info")
+-- {level = 5}); only its string and number values fill placeholders (UI/NotifyFormat). UI FINAL R9: `opts` are the
+-- toast's options (e.g. { squishy = id }: the equip toast's picture, H:846); a held toast keeps none.
+function NotifyController.show(
+	code: string,
+	args: { [string]: any }?,
+	kind: Types.NotifyKind?,
+	opts: UIController.ToastOptions?
+)
+	handle(code, args, kind or "info", opts)
 end
 
 -- Toasts a failed Result (§2.7) with its reason text; "No Coins were spent." is added only when charged == false.
@@ -164,6 +192,19 @@ function NotifyController.route(prefix: string, handler: Handler): () -> ()
 		local index = table.find(routes, entry)
 		if index then
 			table.remove(routes, index)
+		end
+	end
+end
+
+-- UI FINAL R9: `code` (exact) is drawn by `presenter` where it would be toasted (see the header). One presenter per
+-- code; the newest wins. Returns a function that removes it.
+function NotifyController.present(code: string, presenter: Presenter): () -> ()
+	assert(type(code) == "string" and code ~= "", "[SD][Notify] present needs a code")
+	assert(type(presenter) == "function", "[SD][Notify] present needs a presenter")
+	presenters[code] = presenter
+	return function()
+		if presenters[code] == presenter then
+			presenters[code] = nil
 		end
 	end
 end
@@ -204,6 +245,7 @@ function NotifyController.init()
 	end))
 	c:add(function()
 		table.clear(routes)
+		table.clear(presenters)
 		table.clear(holds)
 		held = {}
 		heldSound = nil

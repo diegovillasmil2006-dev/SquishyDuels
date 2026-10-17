@@ -35,6 +35,10 @@
 --                                     never asks for more room than that
 --   measureSample(text)               the text a width is measured from: every digit as "8", so the ticking clock and
 --                                     a new queue position never change the pill's width
+-- UI FINAL R9 (G9.4, H:779): teleportStarts(old, new)   true when the duel view `new` starts the move to the arena:
+--                                     it is in Preparing and `old` was none, another match or another phase (the
+--                                     "Teleporting to the arena…" toast once per match). AFFECTED 2026-10-15: TDM / FFA
+--                                     move after the Match Found cinematic and the vote (work/tdmffa T0, T6).
 
 -- Services
 
@@ -105,6 +109,7 @@ export type PillParts = {
 
 -- Constants
 
+local TELEPORT_PHASE = "Preparing" -- UI FINAL R9: the duel phase the arena move starts in (Types.DuelPhase)
 local MATCHMAKING = Config.Duel.Matchmaking
 local HINT_SECONDS = MATCHMAKING.NoOpponentHintSeconds
 local SECONDS_PER_MINUTE = 60
@@ -248,6 +253,17 @@ function QueueFormat.toastKey(old: QueueLike, new: QueueLike): string?
 		return key
 	end
 	return nil
+end
+
+-- UI FINAL R9 (G9.4): the duel view's move to the arena starts (see the header).
+function QueueFormat.teleportStarts(
+	old: { matchId: string, phase: string }?,
+	new: { matchId: string, phase: string }?
+): boolean
+	if new == nil or new.phase ~= TELEPORT_PHASE then
+		return false
+	end
+	return old == nil or old.matchId ~= new.matchId or old.phase ~= TELEPORT_PHASE
 end
 
 function QueueFormat.matchedText(name: string?): string

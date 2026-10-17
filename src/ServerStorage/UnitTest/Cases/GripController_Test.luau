@@ -451,4 +451,19 @@ return function(t: Context)
 		expect.equal(GripController.introShown("regular"), true)
 		expect.equal(GripController.introShown("compact"), false)
 	end)
+
+	-- UI FINAL R9 (G9.13, UD8): the level-up show plays for a level that rose after the silent baseline (and then the
+	-- server's grip.levelUp toast is dropped: NotifyController.present); never for a load or a level that did not rise.
+	t.test("levelUpShow: only a level that rose after the baseline plays the show", function()
+		local before = GRIP.LevelTotals[5] - 1
+		local after = GRIP.LevelTotals[5]
+		local earned = GripController.gripChange(true, false, before, after, 4, 5)
+		expect.equal(GripController.levelUpShow(earned, 4, 5), true)
+		local loaded = GripController.gripChange(false, false, nil, after, nil, 5)
+		expect.equal(GripController.levelUpShow(loaded, nil, 5), false)
+		local full = GripController.gripChange(true, true, before, after, 4, 5)
+		expect.equal(GripController.levelUpShow(full, 4, 5), false)
+		local same = GripController.gripChange(true, false, 100, 150, 1, 1)
+		expect.equal(GripController.levelUpShow(same, 1, 1), false)
+	end)
 end

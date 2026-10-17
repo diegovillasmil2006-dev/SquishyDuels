@@ -17,7 +17,9 @@
 --   time (its button shows the spinner). Locked state (§11.3): a profile that is not ready disables the buttons with
 --   reason.data.notReady.
 -- * Completion and rollover toasts (quest.complete, quest.autoCollected) are server Notify codes: NotifyController shows
---   them.
+--   them. UI FINAL R9 (G9.1-G9.3, H:161-162, H:739): quest.complete (its args.questId) is the design's quest pop in the
+--   HUD tracker's slot (UI/QuestPop, through NotifyController.present: after the hold-back) with the quest's title
+--   (QuestFormat.namer) and ui.toast 150 ms later; without a shown tracker (phones, no title) it stays the toast.
 -- Times are server times (workspace:GetServerTimeNow()).
 -- Batch 3 (friends, review #10; user decision Q3 B): "Top Wins This Week" (QuestFormat.topWins of the topWins state,
 -- ShowOffService's weekly board, refreshed by the server about once a minute): the top entries, a note before the
@@ -70,6 +72,7 @@ local MotionTrack = require(Client.UI.MotionTrack)
 local NotifyFormat = require(Client.UI.NotifyFormat)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local QuestFormat = require(Client.UI.QuestFormat)
+local QuestPop = require(Client.UI.QuestPop)
 local SquishyImage = require(Client.UI.Components.SquishyImage)
 local Theme = require(Client.UI.Theme)
 local UiFx = require(Client.UI.UiFx)
@@ -147,6 +150,8 @@ local TICK_SECONDS = 1 -- the reset pill counts down once a second while the scr
 local REASON_NOT_READY = "data.notReady"
 local REASON_ALREADY_CLAIMED = "quest.alreadyClaimed"
 local EQUIPPED_TOAST = "inspect.equippedToast"
+local NOTICE_COMPLETE = "quest.complete" -- UI FINAL R9: the quest pop (args.questId)
+local SOUND_CHIME = "ui.toast" -- UI FINAL R9 (H:739): the pop's chime
 local CLAIMED: QuestFormat.CardState = "claimed"
 local CLAIMABLE: QuestFormat.CardState = "claim"
 -- UI FINAL R8 (Config.UI.Quests, H:350-381, H:742-755).
@@ -638,7 +643,12 @@ local function go(view: RowView)
 			QueueController.joinAsync()
 		elseif route == "squeeze" then
 			showWaypoint(SQUEEZE_WAYPOINT)
-			UIController.toast(QuestFormat.goToast(ControlsController.preferredInput().Name), "info")
+			-- UI FINAL R9: the design's squeeze picture on the toast (H:750).
+			UIController.toast(
+				QuestFormat.goToast(ControlsController.preferredInput().Name),
+				"info",
+				{ icon = "img.icon.squeeze" }
+			)
 		else
 			showWaypoint(PRACTICE_WAYPOINT)
 		end
@@ -1251,6 +1261,25 @@ function QuestController.init()
 	c:add(WorldBinder.registerStand(STAND_TAG, function()
 		UIController.open(SCREEN)
 	end))
+	-- UI FINAL R9 (G9.2, G9.3): the quest pop in the tracker's slot; false keeps the toast.
+	c:add(NotifyController.present(NOTICE_COMPLETE, function(_code: string, args: any): boolean
+		local id = if type(args) == "table" then args.questId else nil
+		local title = if type(id) == "string" then QuestFormat.namer(StateController.get(FIELD))(id) else nil
+		local tracker = HudController.element("tracker")
+		local gui = if tracker then tracker:FindFirstAncestorWhichIsA("ScreenGui") else nil
+		if title == nil or tracker == nil or not tracker.Visible or gui == nil or not gui.Enabled then
+			return false
+		end
+		QuestPop.show({
+			anchor = tracker,
+			title = title,
+			onChime = function()
+				SoundController.play(SOUND_CHIME)
+			end,
+		})
+		return true
+	end))
+	c:add(QuestPop.stop)
 	for _, field in { FIELD, "owned", "equipped", "dataStatus", "capsules", TOP_WINS_FIELD } do
 		c:add(StateController.changed(field):connect(refresh))
 	end

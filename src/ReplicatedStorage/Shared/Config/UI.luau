@@ -194,9 +194,9 @@ local UI = {
 		-- §18.5.2 B5: a UIScale pop popFrom -> 1 (Back Out, ms) with the slide; a re-armed toast nudges nudgeScale -> 1.
 		-- UI FINAL R2: the design's sdToast (H:33, 2.9 s `ease`, per keyframe): in from 30 px up at .8 over its first
 		-- 10% (to 5 px down at 1.04, at rest by 16%), out 16 px up at .95 over its last 14%; gone after 2.9 s (H:175,
-		-- H:661), at most 3 (H:660). `frames` spans lifeMs (R9); ms / slidePx / popFrom give today's slide its
-		-- entrance. Also the duel toast's time (DuelController reads autoDismissSeconds). Until R9 plays `frames`,
-		-- today's exit starts at autoDismissSeconds and slides slidePx up over ms.
+		-- H:661), at most 3 (H:660). `frames` spans lifeMs (UI FINAL R9: UIController plays them on every toast; a
+		-- re-armed toast goes back to its rest at 16%). Also the duel toast's time (DuelController reads
+		-- autoDismissSeconds); popFrom also times the coach card's pop (OnboardingController).
 		toast = {
 			ms = 290, -- H:33: 10% of 2.9 s
 			slidePx = 30, -- H:33
@@ -213,6 +213,19 @@ local UI = {
 				{ at = 0.16, y = 0, scale = 1 },
 				{ at = 0.86, y = 0, scale = 1, alpha = 1 },
 				{ at = 1, y = -16, scale = 0.95, alpha = 0 },
+			} :: { MotionPose },
+		},
+		-- UI FINAL R9 (G9.1, H:67, H:162, H:739): the quest-complete pop's sdQPop, 2.8 s `ease` per keyframe: in from
+		-- 30 px right at .7 (to 6 px left at 1.05 by 12%, at rest by 20%), out 20 px right over its last 18%.
+		qpop = {
+			lifeMs = 2800, -- H:162, H:739
+			curve = "ease", -- H:162
+			frames = { -- H:67
+				{ at = 0, x = 30, scale = 0.7, alpha = 0 },
+				{ at = 0.12, x = -6, scale = 1.05, alpha = 1 },
+				{ at = 0.2, x = 0, scale = 1 },
+				{ at = 0.82, x = 0, scale = 1, alpha = 1 },
+				{ at = 1, x = 20, alpha = 0 },
 			} :: { MotionPose },
 		},
 		coinCounter = {
@@ -492,12 +505,12 @@ local UI = {
 				curve = "easeInOut",
 				frames = { { at = 0, scale = 1 }, { at = 0.5, scale = 0.7 }, { at = 1, scale = 1 } } :: { MotionPose },
 			},
-			-- H:64, H:510: sdLvBubble 2.4-4.0 s linear infinite (each bubble its own period in that span); y is a share
-			-- of the screen height (-115vh) applied by the caller.
+			-- H:64, H:510: sdLvBubble 2.4-4.0 s ease-in infinite (each bubble its own period in that span); y is a share
+			-- of the screen height (-115vh) applied by the caller (UI FINAL R9: UI/LevelUpShow).
 			lvBubble = {
 				periodS = 2.4,
 				periodMaxS = 4,
-				curve = "linear",
+				curve = "easeIn", -- H:510 (UI FINAL R9: was "linear")
 				frames = {
 					{ at = 0, alpha = 0, x = 0, y = 0, scale = 0.6 },
 					{ at = 0.15, alpha = 0.9 },
@@ -1404,6 +1417,16 @@ local UI = {
 			dayFoot = { kind = "Small", stroke = 3, soft = { px = 2, alpha = 0.6 } },
 			questReward = { kind = "D19", stroke = 4, color = "StickerCoinText" },
 			tabBadge = { kind = "Small", stroke = 3 },
+			-- UI FINAL R9: a Settings row's label (H:435: 20 px white; PR3's thinnest outline), its On / Off (H:436:
+			-- 14 px -> 16 #EDE4FF) and the volume's value (H:447: 20 px, stroke 4); the quest pop's tag (H:162: 13 px
+			-- -> 16 #E6FFF4, stroke 3) and title (H:162: 19 px, stroke 5); the level-up's unlock line (H:531: 28 px,
+			-- stroke 7, drop 4).
+			settingsRow = { kind = "Button", stroke = 3 },
+			settingsState = { kind = "Small", stroke = 3, color = "StickerTextMuted" },
+			settingsValue = { kind = "Button", stroke = 4 },
+			qpopTag = { kind = "Small", stroke = 3, color = "StickerQuestPopText" },
+			qpopTitle = { kind = "D19", stroke = 5 },
+			levelUnlock = { kind = "Large", stroke = 7, drop = 4 },
 			-- UI FINAL R5 (the Squishies window): the header pill's count (H:188: 20 px #FFE36B, stroke 4); the tab and
 			-- card name (H:194, H:208: 15 px -> 16 (PR2) white, text-shadow 0 2px 0 rgba(30,20,40,.5); PR3 outline); the
 			-- rarity and EQUIPPED pills (H:209, H:228-229: 11-12 px -> 16, text-shadow 0 1px 0 at .5); the Equipped
@@ -1517,6 +1540,265 @@ local UI = {
 		} :: { [string]: StickerVariant },
 		toggleKnobCurve = "switch", -- H:197, H:437
 		toggleTrackCurve = "ease", -- H:197, H:437
+		-- UI FINAL R9 (plan work/ui/PLAN.md R9; `H:n` = "Squishy Duels HUD.dc.html" line n): the Settings window's
+		-- body and rows (H:431-447, Controllers/SettingsController, UI/Components/Toggle's row look): the body's
+		-- padding and the rows' gap (H:431); a row 74 + the 5 px lip, padding 0 16 0 10, gap 14, border 4, radius 20,
+		-- the row surface (H:433); the icon 50 (H:434); the large switch (H:437); the volume row's slider area 44 and
+		-- its value 48 wide (H:443-447).
+		settings = {
+			bodyPad = { top = 20, x = 26, bottom = 24 }, -- H:431: padding 20px 26px 24px
+			rowGap = 12, -- H:431
+			row = { face = 74, lip = 5, padLeft = 10, padRight = 16, gap = 14, border = 4, radius = 20 }, -- H:433
+			icon = 50, -- H:434, H:441
+			volume = { area = 44, value = 48 }, -- H:443, H:447
+		},
+		-- UI FINAL R9 (H:174-175): a toast pill: 52 + the 5 px lip, border 4, full radius, padding 0 20 0 8, the
+		-- picture 40 (contain), gap 10, the toastText role (18 px white, the soft drop); the column's gap 8 (H:174).
+		-- Reading: a toast with no picture pads its text padRight on both sides; a text too long for the column wraps
+		-- and the pill grows by its extra lines.
+		toast = {
+			face = 52, -- H:175
+			lip = 5, -- H:175
+			border = 4, -- H:175
+			padLeft = 8, -- H:175
+			padRight = 20, -- H:175
+			gap = 10, -- H:175
+			icon = 40, -- H:175
+			columnGap = 8, -- H:174
+			textRole = "toastText", -- H:175
+		},
+		-- UI FINAL R9 (G9.1-G9.3, H:161-162, H:739): the quest-complete pop: 60 + the 5 px lip, border 4, full radius,
+		-- padding 0 18 0 8, gap 10, the check 42, the two lines 3 apart (qpopTag over qpopTitle); the chime 150 ms
+		-- after it shows (H:739).
+		qpop = {
+			face = 60, -- H:162
+			lip = 5, -- H:162
+			border = 4, -- H:162
+			padLeft = 8, -- H:162
+			padRight = 18, -- H:162
+			gap = 10, -- H:162
+			check = 42, -- H:162
+			textGap = 3, -- H:162
+			chimeDelayMs = 150, -- H:739
+		},
+		-- UI FINAL R9 (G9.10-G9.25, UD8: the user's Q3, the design's whole show; UI/LevelUpShow): every number of the
+		-- level-up show (H:506-535, its keyframes H:44-65, the timers H:715-731, the lists H:999-1002), base px of the
+		-- design's 1440 x 810 canvas (the UI scale). `frames` are the @keyframes as poses (Anim/Tweens.poseAt), each
+		-- segment eased `curve` unless the design gives the whole animation one timing function.
+		levelUp = {
+			layer = { name = "SD_LevelUp", displayOrder = 24, insets = Enum.ScreenInsets.None }, -- H:506-507 (z 25)
+			lifeMs = 4200, -- H:730
+			centreY = 0.44, -- H:509, H:511
+			-- G9.15 (PR1, H:624): the content's box kept fitMargin inside the safe area at most (a UIScale <= 1)
+			fit = { width = 500, height = 560, margin = 32 },
+			scrim = { innerAlpha = 0.5, outerAlpha = 0.6, outerAt = 0.72, fadeMs = 300, curve = "ease" }, -- H:508
+			rays = { -- H:509, H:49: sdLvRays 4.2 s linear (the whole show)
+				px = 1600,
+				curve = "linear",
+				frames = {
+					{ at = 0, alpha = 0, scale = 0.3, rot = 0 },
+					{ at = 0.23, alpha = 0, scale = 0.3, rot = 0 },
+					{ at = 0.3, alpha = 1, scale = 1, rot = 15 },
+					{ at = 1, alpha = 1, scale = 1.05, rot = 110 },
+				} :: { MotionPose },
+			},
+			bubbles = { -- H:510, H:1000 (randomised once per session and kept); loops.lvBubble's frames
+				n = 16,
+				xFrom = 4, -- % of the width: 4 + 6 i + 0..4
+				xStep = 6,
+				xJitter = 4,
+				sizeFrom = 18, -- px: 18 + 0..38
+				sizeJitter = 38,
+				bottom = -90, -- H:510: bottom -90px
+				border = 2, -- H:510: 2px solid rgba(255,255,255,.8)
+				borderAlpha = 0.8,
+				periodFrom = 2.4, -- s: 2.4 + 0..1.6
+				periodJitter = 1.6,
+				delayFrom = 1.0, -- s: 1 + 0..1.8
+				delayJitter = 1.8,
+				dotShare = 0.12, -- H:510: radial-gradient(circle at 32% 30%, #fff 0 12%, ...): the fallback's dot
+				dotX = 0.32,
+				dotY = 0.3,
+			},
+			suck = { -- H:512, H:1001, H:54: sdLvSuck .45 s ease-in
+				n = 10,
+				stepDeg = 36,
+				px = 18,
+				border = 3,
+				delayS = 0.55, -- + (i mod 3) x delayStepS
+				delayStepS = 0.05,
+				delayCycle = 3,
+				ms = 450,
+				curve = "easeIn",
+				colors = { "StickerCoinText", "StickerMintTop", "StickerPinkSoft", "StickerFxPurple", "White" },
+				frames = {
+					{ at = 0, x = 250, scale = 1.4, alpha = 0 },
+					{ at = 0.3, alpha = 1 },
+					{ at = 1, x = 30, scale = 0.4, alpha = 0 },
+				} :: { MotionPose },
+			},
+			ring = { -- H:513, H:52-53: sdLvRing 4.2 s ease; the arc's sdLvFill .45 s cubic-bezier(.5,0,.9,.6) .55 s
+				box = 340,
+				r = 150,
+				inkPx = 30,
+				whitePx = 18,
+				whiteAlpha = 0.25,
+				arcPx = 18,
+				arcDelayMs = 550,
+				arcMs = 450,
+				arcCurve = "ringFill",
+				dashPx = 6, -- the pink dashed ring (img.fx.dashRing, pack 2; none while it has no id): stroke 6, 14 / 22
+				curve = "ease",
+				frames = {
+					{ at = 0, alpha = 0, scale = 0.6 },
+					{ at = 0.1, alpha = 0, scale = 0.6 },
+					{ at = 0.13, alpha = 1, scale = 1 },
+					{ at = 0.22, scale = 0.96 },
+					{ at = 0.235, alpha = 1, scale = 1.04 },
+					{ at = 0.28, alpha = 0, scale = 1.7 },
+					{ at = 1, alpha = 0, scale = 1.7 },
+				} :: { MotionPose },
+			},
+			flash = { -- H:514, H:55: sdLvFlash .55 s ease-out 1 s both (PR17: at most Config.Vfx.Flash's opacity)
+				px = 300,
+				delayMs = 1000,
+				ms = 550,
+				curve = "easeOut",
+				midAt = 0.6, -- the fallback's 60% stop (StickerFlashGlow at .8); #fff to 40%, clear at 72%
+				midAlpha = 0.8,
+				frames = { { at = 0, alpha = 1, scale = 0.2 }, { at = 1, alpha = 0, scale = 3 } } :: { MotionPose },
+			},
+			stars = { -- H:515, H:1002: sdLvTw .5 s cubic-bezier(.2,1.5,.4,1) 1.1 + .07 i s; sdLvPulse from 1.6 + .15 i s
+				offsets = {
+					{ x = -215, y = -70, px = 44 },
+					{ x = 175, y = -100, px = 38 },
+					{ x = -170, y = 60, px = 34 },
+					{ x = 190, y = 40, px = 46 },
+					{ x = -90, y = -170, px = 30 },
+					{ x = 110, y = -175, px = 34 },
+				},
+				ms = 500,
+				delayS = 1.1,
+				stepS = 0.07,
+				curve = "stars",
+				pulseDelayS = 1.6,
+				pulseStepS = 0.15,
+				frames = {
+					{ at = 0, alpha = 0, scale = 0, rot = -120 },
+					{ at = 1, alpha = 1, scale = 1, rot = 0 },
+				} :: { MotionPose },
+			},
+			number = { -- H:516-519, H:56-58
+				width = 400,
+				height = 224,
+				textSize = 100, -- Roblox's TextSize cap; times `scale` = the design's 210 px
+				scale = 2.1,
+				inkStroke = 10, -- on screen: -webkit-text-stroke 20px behind the fill
+				drop = 12, -- H:518: text-shadow 0 12px 0 #1E1428
+				delayMs = 1000, -- sdLvInflate .7 s cubic-bezier(.2,1.4,.4,1) 1 s
+				ms = 700,
+				curve = "search",
+				jellyDelayS = 1.8, -- sdLvJelly 1.6 s ease-in-out 1.8 s infinite (loops.lvJelly)
+				gradPeriodS = 2.4, -- sdLvGrad 2.4 s ease-in-out infinite alternate
+				gradCurve = "easeInOut",
+				gradShare = 1 / 2.2, -- background-size 220%
+				gradStops = { -- H:519
+					{ pos = 0, color = "StickerLevelGradTop" },
+					{ pos = 0.22, color = "StickerCoinText" },
+					{ pos = 0.44, color = "StickerPinkSoft" },
+					{ pos = 0.62, color = "StickerFxPurple" },
+					{ pos = 0.8, color = "StickerMintTop" },
+					{ pos = 1, color = "StickerCoinText" },
+				},
+				frames = {
+					{ at = 0, alpha = 0, sx = 0, sy = 0 },
+					{ at = 0.4, alpha = 1, sx = 1.4, sy = 0.78 },
+					{ at = 0.6, sx = 0.84, sy = 1.22 },
+					{ at = 0.8, sx = 1.08, sy = 0.95 },
+					{ at = 1, alpha = 1, sx = 1, sy = 1 },
+				} :: { MotionPose },
+			},
+			squishy = { -- H:522-523, H:50-51: sdLvSq 4.2 s ease; sdLvIdle from 1.6 s (loops.lvIdle)
+				px = 160,
+				shadow = { px = 6, alpha = 0.45 }, -- H:523: drop-shadow(0 6px 0 rgba(30,20,40,.45))
+				curve = "ease",
+				idleDelayS = 1.6,
+				frames = {
+					{ at = 0, alpha = 0, y = -560, sx = 0.9, sy = 1.1, rot = 0 },
+					{ at = 0.04, alpha = 0, y = -560, sx = 0.9, sy = 1.1, rot = 0 },
+					{ at = 0.05, alpha = 1, y = -560, sx = 0.9, sy = 1.1, rot = 0 },
+					{ at = 0.11, y = 0, sx = 1.32, sy = 0.66, rot = 0 },
+					{ at = 0.135, y = -28, sx = 0.9, sy = 1.12, rot = 0 },
+					{ at = 0.155, y = 0, sx = 1.08, sy = 0.94, rot = 0 },
+					{ at = 0.17, y = 0, sx = 0.86, sy = 1.1, rot = -4 },
+					{ at = 0.19, y = 0, sx = 0.74, sy = 1.2, rot = 4 },
+					{ at = 0.21, y = 0, sx = 0.64, sy = 1.3, rot = -5 },
+					{ at = 0.23, y = 0, sx = 0.54, sy = 1.42, rot = 5 },
+					{ at = 0.24, y = 0, sx = 1.35, sy = 0.6, rot = 0 },
+					{ at = 0.29, y = -260, sx = 0.6, sy = 0.6, rot = -340 },
+					{ at = 0.33, y = -186, sx = 0.62, sy = 0.48, rot = -360 },
+					{ at = 0.36, alpha = 1, y = -200, sx = 0.55, sy = 0.55, rot = -360 },
+					{ at = 1, alpha = 1, y = -200, sx = 0.55, sy = 0.55, rot = -360 },
+				} :: { MotionPose },
+				-- its brightness 1 -> 1.6 (23%) -> 2 (24%) -> none (29%): a white copy at brightness - 1 (G4.6's mapping)
+				glow = {
+					{ at = 0, alpha = 0 },
+					{ at = 0.23, alpha = 0.6 },
+					{ at = 0.24, alpha = 1 },
+					{ at = 0.29, alpha = 0 },
+					{ at = 1, alpha = 0 },
+				} :: { MotionPose },
+			},
+			ribbon = { -- H:525-527, H:59-61
+				width = 460,
+				height = 84,
+				y = 100,
+				band = { x = 32, y = 8, width = 396, height = 60, radius = 10, stroke = 5 }, -- H:526
+				gloss = { x = 42, y = 15, width = 376, height = 10, radius = 5, alpha = 0.4 }, -- H:526
+				unfurlDelayMs = 1150, -- sdLvUnfurl .5 s cubic-bezier(.2,1.3,.4,1) 1.15 s
+				unfurlMs = 500,
+				unfurlCurve = "rise",
+				grow = 20, -- clip-path inset(-20px): the clip reaches 20 px past the ribbon on every side
+				unfurl = {
+					{ at = 0, sx = 0, sy = 84 / 124, scale = 0.8 },
+					{ at = 0.7, sx = 1, sy = 1, scale = 1.08 },
+					{ at = 1, sx = 1, sy = 1, scale = 1 },
+				} :: { MotionPose },
+				letterDelayS = 1.3, -- sdLvLetIn .45 s cubic-bezier(.2,1.5,.4,1) 1.3 + .035 i s (H:999)
+				letterStepS = 0.035,
+				letterMs = 450,
+				letterCurve = "stars",
+				letterRole = "ribbon", -- H:527: 38 px, stroke 7, drop 4
+				letter = {
+					{ at = 0, alpha = 0, y = 30, scale = 0.3 },
+					{ at = 0.6, alpha = 1, y = -10, scale = 1.25 },
+					{ at = 1, alpha = 1, y = 0, scale = 1 },
+				} :: { MotionPose },
+			},
+			pill = { -- H:529-530: the column at (-150, 196), 300 wide, gap 10; the pill padding 8 20, gap 10, border 3
+				y = 196,
+				width = 300,
+				columnGap = 10,
+				padY = 8,
+				padX = 20,
+				gap = 10,
+				border = 3,
+				kind = "Big", -- 24 px, no outline
+				delayMs = 1500, -- sdUp .45 s cubic-bezier(.2,1.4,.4,1) 1.5 s
+				ms = 450,
+				curve = "search",
+			},
+			unlock = { gift = 44, gap = 8, role = "levelUnlock", delayMs = 1750, ms = 500, curve = "search" }, -- H:531
+			up = { { at = 0, alpha = 0, y = 30 }, { at = 1, alpha = 1, y = 0 } } :: { MotionPose }, -- H:44: sdUp
+			exit = { -- H:65, H:507: sdLvWrap 4.2 s ease: whole until 88%, then out to 0 at 1.3 about the screen centre
+				curve = "ease",
+				frames = {
+					{ at = 0, alpha = 1, scale = 1 },
+					{ at = 0.88, alpha = 1, scale = 1 },
+					{ at = 1, alpha = 0, scale = 1.3 },
+				} :: { MotionPose },
+			},
+		},
 		-- UI FINAL R4 (the lobby HUD, plan work/ui/PLAN.md R4; `N:n` = Diego's newer "Squishy Duels TDMFFA animations
 		-- and hud/Squishy Duels HUD.dc.html" line n, its DUEL mode picker): the design's spots and parts in base px,
 		-- read through UI/HudFormat.COLUMN (the layout maths) and the HUD controllers. Phones (the compact class) keep
@@ -2024,10 +2306,11 @@ local UI = {
 				jolt = 8,
 			},
 			-- H:719-726 (the full level-up, the user's Q3): a slam jolt at slamMs, then at atMs three rings, the burst,
-			-- the rain and the big jolt.
+			-- the rain and the big jolt. UI FINAL R9 (G9.12): the rising tone (ui.levelTone) at toneMs (H:720).
 			levelUp = {
 				slamMs = 460,
 				slamJolt = 5,
+				toneMs = 560,
 				atMs = 1000,
 				rings = {
 					{ color = "White", size = 420, delayMs = 0 },

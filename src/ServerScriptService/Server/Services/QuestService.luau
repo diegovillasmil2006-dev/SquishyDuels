@@ -417,8 +417,10 @@ local function applyEvents(player: any, events: { QuestEvent }): { QuestLine }
 	if #lines > 0 then
 		deps.markDirty(player, FIELD)
 	end
-	for _ = 1, #completed do
-		deps.notify(player, NOTICE_COMPLETE, nil, "success")
+	-- UI FINAL R9 (G9.2, H:162): the quest's id rides along, so the client's quest pop names the quest.
+	for _, questId in completed do
+		local args: Types.NotifyArgs = { questId = questId }
+		deps.notify(player, NOTICE_COMPLETE, args, "success")
 	end
 	return lines
 end

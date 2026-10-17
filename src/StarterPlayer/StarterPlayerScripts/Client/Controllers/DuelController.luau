@@ -181,6 +181,12 @@
 -- sticker hangs above it (Theme.fittedChrome) on the screen; its note on the pink body takes the window's text colour
 -- (H:196).
 -- AFFECTED 2026-10-15: a 1v1 dialog; the TDM / FFA leave flow comes later (work/tdmffa/PLAN.md).
+-- UI FINAL R9 (plan R9 "Screens the design lacks", readings built from the kit): the result card is a Theme.window
+-- (kind "duel") with the DUEL band (Strings.hud.duelCta) and its img.nav.duel sticker, the outcome title, its pop and
+-- its lines on the pink body (the window's text colour, H:196), Rematch the green primary, Queue again the gold
+-- (H:498), Close the band's 76 px X (it shows with the pinned row, after the return); the layout counts the band, what
+-- hangs above it and the lip. The forfeit dialog's buttons take the design's kinds (CANCEL lilac, the green, 24 px,
+-- H:462-463). AFFECTED 2026-10-15: 1v1 screens; the TDM / FFA results and leave flow come with work/tdmffa T6.
 
 -- Services
 
@@ -1089,6 +1095,8 @@ local function buildDialog(gui: ScreenGui, c: Cleanup.Cleanup): (Frame, Frame, T
 	local cancel = Button.new({
 		name = "Duel_ForfeitCancelButton",
 		text = Strings.duel.forfeitNo,
+		kind = "cancel", -- UI FINAL R9: CANCEL's lilac (H:462)
+		textRole = "button", -- H:462: 24 px, stroke 5
 		height = TOUCH.primaryButton,
 		layoutOrder = 1,
 		parent = row,
@@ -1099,6 +1107,7 @@ local function buildDialog(gui: ScreenGui, c: Cleanup.Cleanup): (Frame, Frame, T
 		name = "Duel_ForfeitConfirmButton",
 		text = Strings.duel.forfeitYes,
 		kind = "primary",
+		textRole = "button", -- UI FINAL R9: H:463's green, 24 px
 		height = TOUCH.primaryButton,
 		layoutOrder = 2,
 		parent = row,
@@ -1556,16 +1565,20 @@ local function openResult(model: DuelFormat.ResultModel, opponent: { userId: num
 
 	local panelCleanup = Cleanup.new()
 	local modalGui = UIController.screenGui(MODAL_GUI)
-	local frame = Theme.panel({
+	local frame = Theme.window({
 		Name = "DuelResult",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, LAYOUT.RESULT_ANCHOR_Y, if reduced then 0 else LAYOUT.RESULT_SLIDE_PX),
 		Size = UDim2.fromOffset(LAYOUT.RESULT_WIDTH, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = modalGui,
-	}, Theme.Radius.panel, Theme.Padding.large)
+	}, "duel", Theme.Padding.large)
 	panelCleanup:add(frame)
 	Focus.prepareGroup(frame)
+	-- UI FINAL R9: the DUEL band and its sticker (H:126-130's pink), at the kind's chrome scale for this screen.
+	Theme.headerTab(frame, Strings.hud.duelCta)
+	Theme.fitWindow(frame, require(Client.UI.Layout).windowFit(modalGui.AbsoluteSize, "duel").k)
+	Theme.playSticker(frame)
 	-- Part 8 (DuelFormat.resultLayout): Stack holds the title (pinned on top, so its pop is never clipped by the
 	-- scroll), the lines in Content inside the Body scroll, and the Queue again / Close row pinned under it, so on a
 	-- phone at the largest text the lines scroll while the title and the buttons stay in view. The confetti layer
@@ -1635,6 +1648,9 @@ local function openResult(model: DuelFormat.ResultModel, opponent: { userId: num
 			TextXAlignment = Enum.TextXAlignment.Center,
 			Parent = content,
 		}, kind, nil, color)
+		if color == nil then
+			Theme.textOnWindow(label) -- UI FINAL R9: on the pink body (H:196)
+		end
 		table.insert(lines, resultLine(label))
 		return label, #lines
 	end
@@ -1789,6 +1805,7 @@ local function openResult(model: DuelFormat.ResultModel, opponent: { userId: num
 		name = "Result_QueueAgainButton",
 		text = Strings.duel.queueAgain,
 		kind = "primary",
+		accent = "gold", -- UI FINAL R9: the design's gold (H:498, AGAIN)
 		height = TOUCH.primaryButton,
 		layoutOrder = 1,
 		parent = buttons,
@@ -1802,16 +1819,20 @@ local function openResult(model: DuelFormat.ResultModel, opponent: { userId: num
 	local close = Button.new({
 		name = "Result_CloseButton",
 		text = Strings.common.close,
-		height = TOUCH.closeButton,
-		layoutOrder = 2,
-		parent = buttons,
+		kind = "close", -- UI FINAL R9: the band's X (H:252)
 		sound = false, -- a Close button plays ui.back (§18.6), as Back / ButtonB do through UIController.back
 		onActivated = function()
 			closeResult()
 			SoundController.play("ui.back")
 		end,
 	})
+	Theme.attachClose(frame, close.root)
 	panelCleanup:add(close)
+	-- UI FINAL R9: the X shows with the pinned row (after the return), as Close did in it.
+	close.root.Visible = buttons.Visible
+	panelCleanup:add(buttons:GetPropertyChangedSignal("Visible"):Connect(function()
+		close.root.Visible = buttons.Visible
+	end))
 	-- Batch 3 (friends): Rematch and the opponent's ask over the row (see the header).
 	local rematchLine = Theme.label({
 		Name = "RematchLine",
@@ -1821,12 +1842,12 @@ local function openResult(model: DuelFormat.ResultModel, opponent: { userId: num
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = buttons,
 	}, "Body", Enum.FontWeight.Bold)
+	Theme.textOnWindow(rematchLine) -- UI FINAL R9: on the pink body (H:196)
 	local rematch: Button.Button
 	rematch = Button.new({
 		name = "Result_RematchButton",
 		text = Strings.duel.rematch,
-		kind = "primary",
-		accent = "mint",
+		kind = "primary", -- UI FINAL R9: the green (H:245)
 		height = TOUCH.primaryButton,
 		layoutOrder = 0,
 		parent = buttons,
@@ -1927,9 +1948,16 @@ local function openResult(model: DuelFormat.ResultModel, opponent: { userId: num
 		if not (scale > 0) or screen.Y <= 0 then
 			return
 		end
-		-- The pinned title's height without its pop (its own UIScale is divided out).
+		-- The pinned title's height without its pop (its own UIScale is divided out). UI FINAL R9: the window's top
+		-- (its border, the band and the body's padding), what hangs above it and its bottom padding with the lip.
 		local titlePop = if titleScale.Scale > 0 then titleScale.Scale else 1
-		local chrome = 2 * Theme.Padding.large + title.AbsoluteSize.Y / (scale * titlePop) + Theme.Padding.small
+		local fitted = Theme.fittedChrome(frame)
+		local chrome = fitted.top
+			+ fitted.above
+			+ Theme.Padding.large
+			+ UI_CONFIG.Sticker.lip.window
+			+ title.AbsoluteSize.Y / (scale * titlePop)
+			+ Theme.Padding.small
 		if buttons.Visible then
 			chrome += Theme.Padding.small + buttons.AbsoluteSize.Y / scale
 		end

@@ -299,6 +299,8 @@ local Strings = {
 		boardHint = "Matches start automatically when an opponent is found.",
 		-- Batch 3 (review #6): beside Practice in the "no one else is in the queue" hint; Roblox's own invite window.
 		inviteFriends = "Invite friends",
+		-- UI FINAL R9 (G9.4, H:779): the pink toast when the move to the arena starts.
+		teleporting = "Teleporting to the arena…",
 	},
 
 	-- Duel HUD, banners and result panel (§5.2, §5.4, §6.13, §9.14, §11.6).
@@ -837,6 +839,7 @@ local Strings = {
 		inProgress = "In progress",
 		swap = "Swap",
 		complete = "Quest complete! Claim your reward.",
+		completeTag = "QUEST COMPLETE", -- UI FINAL R9 (H:162): the quest pop's tag over the quest's title
 		autoCollected = "Quest reward collected",
 		-- UI FINAL R8 (the design's reset pill, H:359, H:1027): {clock} is "{h}h {MM}m", or "m:ss" in the last hour.
 		footer = "Resets in {clock}",
@@ -917,12 +920,15 @@ local Strings = {
 		title = "Settings",
 		music = "Music",
 		sfx = "Sound effects",
-		cameraShake = "Camera shake",
+		cameraShake = "Screen shake", -- UI FINAL R9 (H:979)
 		showTips = "Show tips",
 		firstPerson = "First-person duels", -- session switch, never saved (first-person spec 2026-10-10 §3.8)
 		replayTutorial = "Replay tutorial",
 		noMusic = "No music yet",
 		noSfx = "No sound effects yet",
+		-- UI FINAL R9 (H:979, H:442; Q6): the Reduced motion switch (a session switch, UiPrefs) and the volume row.
+		reducedMotion = "Reduced motion",
+		volume = "Volume",
 	},
 
 	-- Onboarding card (§11.8). Keyed by step id. {goal} = the cheapest shop price from the Catalog (Batch 1).
@@ -1128,6 +1134,11 @@ local Strings = {
 		-- Toasts (Notify codes, Types.GripNotifyCode). rankUp: {name} = the player's display name.
 		levelUp = "Grip Lv {level}!",
 		rankUp = "{name} reached {rank}!",
+		-- UI FINAL R9 (H:527, H:530-531, H:999): the level-up show's ribbon, pill and unlock line.
+		levelUpRibbon = "GRIP LEVEL UP!",
+		levelFrom = "Grip {from}",
+		levelArrow = "→",
+		unlockedPrefix = "Unlocked ",
 		intro = "You trained your Grip! Squeeze more to open new capsule tiers.",
 		welcome = "Double Grip is full: your first squeezes train x{mult} Grip!",
 		welcomeBack = "Welcome back! Double Grip: about {minutes} min.",

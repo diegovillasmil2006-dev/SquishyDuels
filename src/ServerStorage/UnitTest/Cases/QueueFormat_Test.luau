@@ -389,4 +389,18 @@ return function(t: Context)
 			expect.equal(pill.detail, QueueFormat.searchLine(view({ position = 3, searching = 4 })))
 		end
 	)
+
+	-- UI FINAL R9 (G9.4, H:779): "Teleporting to the arena…" once, when a match's view reaches Preparing.
+	t.test("teleportStarts: a match's first Preparing view, never again in it", function()
+		local function v(matchId: string, phase: string): any
+			return { matchId = matchId, phase = phase }
+		end
+		expect.equal(QueueFormat.teleportStarts(nil, v("m1", "Preparing")), true)
+		expect.equal(QueueFormat.teleportStarts(v("m1", "Preparing"), v("m1", "Preparing")), false)
+		expect.equal(QueueFormat.teleportStarts(v("m1", "Preparing"), v("m1", "Positioning")), false)
+		expect.equal(QueueFormat.teleportStarts(v("m0", "Result"), v("m1", "Preparing")), true)
+		expect.equal(QueueFormat.teleportStarts(nil, v("m1", "Positioning")), false)
+		expect.equal(QueueFormat.teleportStarts(v("m1", "Preparing"), nil), false)
+		expect.equal(t.requireShared("Strings").queue.teleporting, "Teleporting to the arena…")
+	end)
 end

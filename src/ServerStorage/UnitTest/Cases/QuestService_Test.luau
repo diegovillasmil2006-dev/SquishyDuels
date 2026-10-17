@@ -288,6 +288,12 @@ return function(t: Context)
 		expect.falsy(quests[2].done)
 		expect.equal(w.profile.starter.progress.starter_squeeze, 2)
 		expect.equal(count(codes(w), "quest.complete"), 1)
+		-- UI FINAL R9 (G9.2): the notice names the quest that finished (the client's pop shows its title).
+		for _, n in w.notices do
+			if n.code == "quest.complete" then
+				expect.equal(n.args.questId, quests[1].id)
+			end
+		end
 		expect.equal(#w.grants, 0) -- progress never pays by itself
 		finish()
 	end)

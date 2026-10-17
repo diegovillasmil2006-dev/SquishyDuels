@@ -533,6 +533,19 @@ local Palette = {
 	StickerDay7End = Color3.fromHex("#9363F0"), -- H:406: the day 7 card (100%)
 	-- UI FINAL R5 (the Squishies window): the All tab's top stop when on (H:928, with StickerHeaderPinkEnd).
 	StickerTabAllTop = Color3.fromHex("#FF9CC4"),
+	-- UI FINAL R9 (toasts, the quest pop and the level-up show): the mint toast and quest pop (H:162, H:846), the pop's
+	-- tag (H:162), the teleport toast's end stop (H:779; its top is StickerPinkSoft), the level-up scrim (H:508), the
+	-- number's top stop (H:519), the flash disc's 60% stop (H:514) and the ribbon (H:526).
+	StickerToastMintTop = Color3.fromHex("#6FE8BC"), -- H:162, H:846
+	StickerToastMintEnd = Color3.fromHex("#20A574"), -- H:162, H:846
+	StickerQuestPopText = Color3.fromHex("#E6FFF4"), -- H:162: "QUEST COMPLETE"
+	StickerToastPinkEnd = Color3.fromHex("#F2468A"), -- H:779
+	StickerLevelScrimIn = Color3.fromHex("#FFF4D2"), -- H:508: rgba(255,244,210,.5) at 0%
+	StickerLevelScrimOut = Color3.fromHex("#2E1256"), -- H:508: rgba(46,18,86,.6) at 72%
+	StickerLevelGradTop = Color3.fromHex("#FFFBD0"), -- H:519: the number's 0% stop
+	StickerFlashGlow = Color3.fromHex("#FFEC8C"), -- H:514: rgba(255,236,140,.8) at 60%
+	StickerRibbonFace = Color3.fromHex("#FF5C9A"), -- H:526: the band
+	StickerRibbonTail = Color3.fromHex("#C2306A"), -- H:526: the tails (the picture only)
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

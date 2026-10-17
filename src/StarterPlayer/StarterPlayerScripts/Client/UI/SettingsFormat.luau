@@ -15,6 +15,15 @@
 --                            (before, a fixed 60 px guess for the chrome)
 --   captionShown(class, hasSound)   foam fix round 2: a slider's no-sound note shows while nothing is approved, never
 --                            on the compact layout (phones: the switches field shows its top under the volumes)
+-- UI FINAL R9 (plan work/ui/PLAN.md R9: G9.9, PR27, PR28; `H:n` = "Squishy Duels HUD.dc.html" line n):
+--   ROWS                     the window's rows in order: the design's Sound effects, Screen shake and Reduced motion
+--                            switches (H:979) and its Volume row (H:440, the SFX volume), then the game's Music volume
+--                            (the Volume row's look) and its extras in the design's row look (Show tips, First-person
+--                            duels, Replay tutorial): each { id, kind ("switch" / "volume" / "action"), text (a
+--                            Strings key), icon (an AssetTable image key, or nil), key (the saved setting it drives) }
+--   soundOn(sfx)             the Sound effects switch's state: the SFX volume is above 0 (no save key of its own)
+--   sfxFor(on, last?)        the SFX volume the switch sets: 0 when off; on, the last volume above 0 this visit, else
+--                            the default (Config.Data.DefaultSettings.sfx)
 
 -- Services
 
@@ -31,17 +40,33 @@ local Types = require(Shared.Types)
 
 export type Edits = { [string]: any }
 
+-- UI FINAL R9: one Settings row (ROWS).
+export type RowKind = "switch" | "volume" | "action"
+export type Row = { id: string, kind: RowKind, text: string, icon: string?, key: string? }
+
 -- Constants
 
 local DATA = Config.Data
 local KEYS: { string } = { "music", "sfx", "cameraShake", "showTips" }
 local VOLUME_KEYS: { [string]: boolean } = { music = true, sfx = true }
+-- UI FINAL R9 (H:979, H:440; PR27, PR28): the rows in order; their stable names are SettingsController's.
+local ROWS: { Row } = {
+	{ id = "sound", kind = "switch", text = "settings.sfx", icon = "img.icon.sound", key = "sfx" }, -- H:979
+	{ id = "cameraShake", kind = "switch", text = "settings.cameraShake", icon = "img.icon.bolt", key = "cameraShake" },
+	{ id = "reducedMotion", kind = "switch", text = "settings.reducedMotion", icon = "img.icon.clock" }, -- UiPrefs
+	{ id = "sfx", kind = "volume", text = "settings.volume", icon = "img.icon.sound", key = "sfx" }, -- H:440-447
+	{ id = "music", kind = "volume", text = "settings.music", icon = "img.icon.sound", key = "music" }, -- PR27
+	{ id = "showTips", kind = "switch", text = "settings.showTips", icon = "img.icon.star", key = "showTips" }, -- PR28
+	{ id = "firstPerson", kind = "switch", text = "settings.firstPerson", icon = "img.nav.duel" }, -- PR28 (session)
+	{ id = "replayTutorial", kind = "action", text = "settings.replayTutorial" }, -- PR28: the chip, no picture
+}
 
 -- Module table
 
 local SettingsFormat = {}
 
 SettingsFormat.KEYS = KEYS
+SettingsFormat.ROWS = ROWS
 
 -- Public
 
@@ -132,6 +157,23 @@ end
 -- just under the fold, so nothing showed that the list goes on).
 function SettingsFormat.captionShown(class: string, hasSound: boolean): boolean
 	return not hasSound and class ~= "compact"
+end
+
+-- UI FINAL R9 (PR27): the Sound effects switch is on while the SFX volume is above 0.
+function SettingsFormat.soundOn(sfx: unknown): boolean
+	return type(sfx) == "number" and sfx == sfx and sfx > DATA.settingsMin
+end
+
+-- UI FINAL R9 (PR27): the SFX volume the Sound effects switch sets: 0 off; on, `last` (the last volume above 0 this
+-- visit) or the default.
+function SettingsFormat.sfxFor(on: boolean, last: number?): number
+	if not on then
+		return DATA.settingsMin
+	end
+	if last ~= nil and SettingsFormat.soundOn(last) then
+		return SettingsFormat.volume(last)
+	end
+	return DATA.DefaultSettings.sfx
 end
 
 return SettingsFormat

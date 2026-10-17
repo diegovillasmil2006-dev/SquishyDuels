@@ -766,7 +766,8 @@ local function equipSelected()
 			confirmedEquip = nil
 			refresh()
 		end)
-		NotifyController.show(EQUIPPED_TOAST, { name = nameOf(id) }, "success")
+		-- UI FINAL R9 (H:846): the mint toast with the squishy's picture.
+		NotifyController.show(EQUIPPED_TOAST, { name = nameOf(id) }, "success", { squishy = id })
 		-- G5.16 (H:845): the design's burst and the 1.2 squash at the stage's squishy, once the server said yes.
 		local d, c = detail, openCleanup
 		if d and c then

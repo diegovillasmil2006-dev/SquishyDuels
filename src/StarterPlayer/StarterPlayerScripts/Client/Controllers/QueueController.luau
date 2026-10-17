@@ -626,6 +626,15 @@ function QueueController.init()
 		if new then
 			dismissMatchedAfter(new)
 		end
+		-- UI FINAL R9 (G9.4, H:779): the pink toast as the move to the arena starts (the whoosh has no sound, RL8; the
+		-- one toast of the Matched -> Returning window, never held).
+		if QueueFormat.teleportStarts(old :: any, new :: any) then
+			UIController.toast(
+				Strings.queue.teleporting,
+				"info",
+				{ icon = "img.nav.duel", face = "teleport", sound = false }
+			)
+		end
 	end))
 	c:add(NetController.onNotify(function(code: string, args: any, kind: any)
 		if type(code) ~= "string" then

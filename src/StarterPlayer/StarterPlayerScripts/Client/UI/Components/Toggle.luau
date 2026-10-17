@@ -23,6 +23,14 @@
 -- in Small (16 px, PR2) with line height 1.1, wrapping on its "\n", in the window's text colour (H:196), and draws the
 -- label and switch inside an unlaid-out holder (toggle.visual: a caller's Button.decorate poses it, the hit box stays).
 -- Toggle.widthFor(text, variant, beside?) measures that group (its widest line).
+-- UI FINAL R9 (G9.6-G9.8, H:433-438, H:634-638, H:889-892; Config.UI.Sticker.settings): spec.row = true is the
+-- design's Settings row: the purple row face (74 + the 5 px lip, border 4, radius 20, padding 0 16 0 10, gap 14, the
+-- row surface's 3 px highlight at .1) drawn in an inner SD_Visual with Button's feel (fx "row": x +4, the hover
+-- brightness, the press squash; the hover sound, no click sound), the picture spec.icon (an AssetTable image key)
+-- in its 50 px slot (kept empty without one), the label growing in the settingsRow role, the On / Off text in
+-- settingsState and the switch; the whole row toggles. A row plays ui.click at Config.Audio.uiPitch toggleOn /
+-- toggleOff (lib:152): a switch going off sounds before onChanged runs and one going on after it (H:891: the Sound
+-- effects switch is heard both ways). Toggle.soundAfterChange(on) is that order (pure).
 
 -- Services
 
@@ -31,6 +39,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local AssetTable = require(Shared.AssetTable)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
@@ -39,8 +48,10 @@ local Strings = require(Shared.Strings)
 
 local UI = script.Parent.Parent
 local Client = UI.Parent
+local Button = require(script.Parent.Button)
 local Create = require(UI.Create)
 local Focus = require(UI.Focus)
+local IconGlyph = require(script.Parent.IconGlyph)
 local Layout = require(UI.Layout)
 local Theme = require(UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
@@ -60,6 +71,8 @@ export type Spec = {
 	stateText: boolean?, -- UI FINAL R5: false = no On / Off text (default shown)
 	labelBeside: "left"?, -- UI FINAL R5: the label right-aligned just left of the switch (see the header)
 	gapPx: number?, -- UI FINAL R5: the label's gap to the switch beside it (default BESIDE_GAP)
+	row: boolean?, -- UI FINAL R9: the design's Settings row (see the header)
+	icon: string?, -- UI FINAL R9: a row's picture (an AssetTable image key)
 }
 
 -- UI FINAL R1: the design's two switches (Config.UI.Sticker.toggles).
@@ -93,6 +106,16 @@ local BLACK = Color3.new(0, 0, 0)
 local BESIDE_GAP = 8 -- H:195: the label to the switch
 local BESIDE_LINE_HEIGHT = 1.1 -- H:196
 local BESIDE_KIND: Theme.TextKind = "Small" -- H:196: 13 px -> 16 (PR2)
+-- UI FINAL R9: the Settings row (Config.UI.Sticker.settings, H:433-438) and its switch sounds (lib:152).
+local SETTINGS = Config.UI.Sticker.settings
+local ROW = SETTINGS.row
+local ROW_SURFACE = Config.UI.Sticker.surfaces.row -- H:433: inset 0 3px 0 rgba(255,255,255,.1)
+local ROW_LABEL_ROLE = "settingsRow"
+local ROW_STATE_ROLE = "settingsState"
+local ROW_LABEL_KIND: Theme.TextKind = "Button" -- the settingsRow role's kind (20 px, H:435)
+local ROW_STATE_KIND: Theme.TextKind = "Small" -- the settingsState role's kind (14 px -> 16, H:436)
+local UI_PITCH = Config.Audio.uiPitch
+local SOUND_CLICK = "ui.click"
 
 -- Everything beside the label (base px): the switch, the state text and their gaps.
 local function chromePx(variant: string): number
@@ -133,20 +156,32 @@ function Toggle.widthFor(text: string, variant: Variant?, beside: boolean?): num
 	return math.ceil(Theme.textWidth(text, "Body")) + chromePx(variant or DEFAULT_VARIANT) + MEASURE_MARGIN_PX
 end
 
+-- UI FINAL R9 (H:891): whether a row's switch sound plays after onChanged (going on: the sound effects are back on
+-- first) rather than before it (going off: heard before they mute).
+function Toggle.soundAfterChange(on: boolean): boolean
+	return on == true
+end
+
+-- UI FINAL R9: the On / Off text's width in a row (base px): the wider of the two, measured.
+local function stateWidth(): number
+	local widest = math.max(Theme.textWidth(ON_TEXT, ROW_STATE_KIND), Theme.textWidth(OFF_TEXT, ROW_STATE_KIND))
+	return math.ceil(widest) + MEASURE_MARGIN_PX
+end
+
 function Toggle.new(spec: Spec): Toggle
 	local cleanup = Cleanup.new()
 	local value = spec.value == true
 	local variant: string = if spec.variant and TOGGLES[spec.variant] then spec.variant else DEFAULT_VARIANT
 	local look = TOGGLES[variant]
 	local chrome = chromePx(variant)
+	local row = spec.row == true
+	local height = if row then ROW.face + ROW.lip else TOUCH.minTarget
 	local root: TextButton = Create("TextButton", {
 		Name = spec.name,
 		Text = "",
 		AutoButtonColor = false,
 		BackgroundTransparency = 1,
-		Size = if spec.widthPx
-			then UDim2.fromOffset(spec.widthPx, TOUCH.minTarget)
-			else UDim2.new(1, 0, 0, TOUCH.minTarget),
+		Size = if spec.widthPx then UDim2.fromOffset(spec.widthPx, height) else UDim2.new(1, 0, 0, height),
 		LayoutOrder = spec.layoutOrder or 0,
 	})
 	cleanup:add(root)
@@ -166,6 +201,67 @@ function Toggle.new(spec: Spec): Toggle
 		})
 	end
 	local besideGap = spec.gapPx or BESIDE_GAP
+	-- UI FINAL R9: the Settings row's face (H:433) in SD_Visual (Button's row feel poses it), its parts in Content.
+	local rowFoam: Theme.Foam? = nil
+	local rowVisual: Frame? = nil
+	local rowStateWidth = 0
+	if row then
+		local visual: Frame = Create("Frame", {
+			Name = "SD_Visual",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			Active = false,
+			Parent = root,
+		})
+		local face: Frame = Create("Frame", {
+			Name = "Face",
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Active = false,
+			Parent = visual,
+		})
+		local bands = Layout.stickerBands(ROW.border, ROW_SURFACE.highlightPx, 0, ROW.lip)
+		rowFoam = Theme.foam(face, {
+			radius = ROW.radius,
+			stroke = ROW.border,
+			inner = true,
+			top = bands.top,
+			drop = bands.drop,
+		})
+		local content: Frame = Create("Frame", {
+			Name = "Content",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 1, -ROW.lip),
+			Active = false,
+			Parent = face,
+		})
+		Create("UIPadding", {
+			PaddingLeft = UDim.new(0, ROW.border + ROW.padLeft),
+			PaddingRight = UDim.new(0, ROW.border + ROW.padRight),
+			PaddingTop = UDim.new(0, ROW.border),
+			PaddingBottom = UDim.new(0, ROW.border),
+			Parent = content,
+		})
+		-- H:434: the picture in its 50 px slot (empty without one: the rows' labels line up).
+		local slot: Frame = Create("Frame", {
+			Name = "IconSlot",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0, 0.5),
+			Size = UDim2.fromOffset(SETTINGS.icon, SETTINGS.icon),
+			Active = false,
+			Parent = content,
+		})
+		local icon = spec.icon
+		if icon and AssetTable.image(icon) then
+			IconGlyph.image(icon, { name = "Icon", sizePx = SETTINGS.icon, parent = slot })
+		end
+		rowStateWidth = stateWidth()
+		rowVisual = visual
+		holder = content
+	end
 
 	local label = Theme.label({
 		Name = "Label",
@@ -176,6 +272,20 @@ function Toggle.new(spec: Spec): Toggle
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = holder,
 	}, "Body")
+	if row then
+		-- H:435: the label grows between the picture and the state text: one line, its measured height.
+		Theme.stickerText(label, ROW_LABEL_ROLE)
+		label.AutomaticSize = Enum.AutomaticSize.None
+		label.TextWrapped = false
+		label.TextTruncate = Enum.TextTruncate.AtEnd
+		label.Position = UDim2.new(0, SETTINGS.icon + ROW.gap, 0.5, 0)
+		label.Size = UDim2.new(
+			1,
+			-(SETTINGS.icon + ROW.gap + ROW.gap + rowStateWidth + ROW.gap + look.width),
+			0,
+			math.ceil(Theme.lineHeight(ROW_LABEL_KIND))
+		)
+	end
 	if beside then
 		Theme.text(label, BESIDE_KIND)
 		Theme.textOnWindow(label) -- H:196: #8A2468 on the pink body
@@ -197,6 +307,14 @@ function Toggle.new(spec: Spec): Toggle
 		Visible = spec.stateText ~= false,
 		Parent = holder,
 	}, "Small", Enum.FontWeight.Bold)
+	if row then
+		-- H:436: On / Off (14 px -> 16, #EDE4FF), ROW.gap before the switch, its measured box.
+		Theme.stickerText(stateLabel, ROW_STATE_ROLE)
+		stateLabel.AutomaticSize = Enum.AutomaticSize.None
+		stateLabel.TextWrapped = false
+		stateLabel.Position = UDim2.new(1, -(look.width + ROW.gap), 0.5, 0)
+		stateLabel.Size = UDim2.fromOffset(rowStateWidth, math.ceil(Theme.lineHeight(ROW_STATE_KIND)))
+	end
 	local switch: Frame = Create("Frame", {
 		Name = "Switch",
 		BorderSizePixel = 0,
@@ -307,15 +425,51 @@ function Toggle.new(spec: Spec): Toggle
 		end, "render")
 	end
 
+	-- UI FINAL R9: the row's face colours, brightened by the hover filter's mix (Button.hoverColor, H:637).
+	local function paintRow(mix: number)
+		local foam = rowFoam
+		if foam == nil then
+			return
+		end
+		local function lit(color: Color3): Color3
+			return if mix > 0 then color:Lerp(Button.hoverColor(color), mix) else color
+		end
+		foam:paint({
+			face = lit(Palette.StickerCardTop),
+			faceEnd = lit(Palette.StickerCardBottom),
+			top = lit(Palette.StickerCardTop:Lerp(WHITE, ROW_SURFACE.highlightAlpha)),
+			drop = Theme.Colors.inkUI,
+		}, "exact")
+	end
+	if row then
+		paintRow(0)
+		local feel: Button.DecorateOptions = {
+			fx = "row", -- H:433, H:634: x +4
+			visual = rowVisual,
+			clickSound = false, -- the switch's own sound (below)
+			pivotPx = ROW.lip / 2,
+			onFilter = paintRow,
+		}
+		cleanup:add(Button.decorate(root, feel))
+	end
+
 	cleanup:add(root.Activated:Connect(function()
 		value = not value
 		paint(true)
+		local pitch = if value then UI_PITCH.toggleOn else UI_PITCH.toggleOff
+		local after = Toggle.soundAfterChange(value)
+		if row and not after then
+			Button.playSound(SOUND_CLICK, pitch)
+		end
 		local ok, err = pcall(function(): any
 			spec.onChanged(value)
 			return nil
 		end)
 		if not ok then
 			log:error(`{spec.name} onChanged failed:`, err)
+		end
+		if row and after then
+			Button.playSound(SOUND_CLICK, pitch)
 		end
 	end))
 

@@ -7,6 +7,7 @@
 --   local feel = Button.decorate(plainGuiButton, { sound = false })   -- the same press feel on a plain button
 --   Button.setSoundHook(function(key, pitch?) SoundController.play(key) end) -- UIController.init (a component never
 --                                                                               requires a controller)
+--   Button.playSound(key, pitch?)   UI FINAL R9: any component's UI sound through that hook (Toggle, Slider)
 -- Kinds (UI FINAL R1, the look kit of the design "Squishy Duels UI FINAL", 2026-10-14; `H:n` = its "Squishy Duels
 -- HUD.dc.html" line n; see Button.style(kind)). Each is a sticker surface (Theme.foam): the accent's gradient face, an
 -- ink border drawn inside the box, the inset highlight along the top and the bevel along the bottom
@@ -734,6 +735,12 @@ end
 -- Installs the function every Button plays its sounds through (UIController.init); nil removes it.
 function Button.setSoundHook(fn: SoundHook?)
 	soundHook = fn
+end
+
+-- UI FINAL R9: a UI sound through the same hook (UI/Components/Toggle's switch and Slider's tick: a component never
+-- requires a controller).
+function Button.playSound(key: string, pitch: number?)
+	playSound(key, pitch)
 end
 
 -- The shape of a kind (an unknown kind gives "secondary").

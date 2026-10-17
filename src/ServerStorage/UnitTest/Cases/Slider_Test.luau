@@ -48,4 +48,22 @@ return function(t: Context)
 		expect.equal(Slider.stepped(50, 1, 0, 0, 100), 51) -- a bad step counts as 1
 		expect.equal(Slider.stepped(0 / 0, 1, 5, 0, 100), 5)
 	end)
+
+	-- UI FINAL R9 (G9.7, H:898, lib:191): the volume tick: the first change always, then only past a 5% move, at
+	-- .8 + .9 x the share.
+	t.test(
+		"tickPitch: the first change ticks, then only past slideStepShare, at slideFrom + slideSpan x share",
+		function()
+			local pitch = t.requireShared("Config").Audio.uiPitch
+			expect.equal(pitch.slideStepShare, 0.05)
+			expect.near(Slider.tickPitch(nil, 0.5) :: number, 0.8 + 0.9 * 0.5, 1e-9)
+			expect.equal(Slider.tickPitch(0.5, 0.54), nil)
+			expect.equal(Slider.tickPitch(0.5, 0.5), nil)
+			expect.near(Slider.tickPitch(0.5, 0.56) :: number, 0.8 + 0.9 * 0.56, 1e-9)
+			expect.near(Slider.tickPitch(0.5, 0.44) :: number, 0.8 + 0.9 * 0.44, 1e-9)
+			expect.near(Slider.tickPitch(nil, 0) :: number, 0.8, 1e-9)
+			expect.near(Slider.tickPitch(0.5, 1) :: number, 1.7, 1e-9)
+			expect.equal(Slider.tickPitch(nil, 0 / 0), nil)
+		end
+	)
 end

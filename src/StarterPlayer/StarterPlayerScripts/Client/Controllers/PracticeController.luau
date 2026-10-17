@@ -707,8 +707,9 @@ local function ensurePanel(): Frame?
 		Visible = false,
 	})
 	Theme.list(Enum.FillDirection.Vertical, 4, frame, Enum.HorizontalAlignment.Left)
-	-- Foam UI: the title as a Sky blue chip (the range's trims are Sky; Chip kind, InkUI by the outlined-text rule).
-	Chip.new({ name = "Title", text = text("practice.panelTitle"), accent = "sky", parent = frame })
+	-- Foam UI: the title as a chip (Chip kind, the outlined-text rule). UI FINAL R9 (plan R9 "Screens the design lacks",
+	-- a reading): the purple card with the DUEL pink title chip (H:126's pink).
+	Chip.new({ name = "Title", text = text("practice.panelTitle"), accent = "pink", parent = frame })
 	panelRows = {}
 	for order, key in { "throws", "hits", "accuracy" } do
 		-- Foam fix 2: left-aligned under the chip (centred rows under a left chip looked lopsided).

@@ -115,18 +115,70 @@ return function(t: Context)
 		expect.equal(NotifyFormat.areaOf(5), nil)
 	end)
 
-	t.test("toast accents (foam UI): one per kind, Danger only for errors, unknown kinds as info", function()
-		expect.equal(NotifyFormat.toastAccent("info"), "sky")
-		expect.equal(NotifyFormat.toastAccent("success"), "mint")
-		expect.equal(NotifyFormat.toastAccent("warn"), "strawberry")
-		expect.equal(NotifyFormat.toastAccent("error"), "danger")
-		expect.equal(NotifyFormat.toastAccent("loud"), "sky")
-		expect.equal(NotifyFormat.toastAccent(nil), "sky")
-		-- Every accent but errors' is a Theme accent (never a reserved colour such as CoinGold).
-		local Theme = t.requireClient("UI/Theme")
-		for _, kind in { "info", "success", "warn" } do
-			expect.truthy(Theme.Accents[NotifyFormat.toastAccent(kind)] ~= nil)
+	-- UI FINAL R9 (H:660, H:846, H:676, H:779): the design's toast faces; a reserved gameplay colour never marks one.
+	t.test(
+		"toast faces (R9): purple info, mint success, red warn and error, pink teleport, unknown kinds as info",
+		function()
+			expect.equal(NotifyFormat.toastAccent("info"), "purple")
+			expect.equal(NotifyFormat.toastAccent("success"), "mint")
+			expect.equal(NotifyFormat.toastAccent("warn"), "red")
+			expect.equal(NotifyFormat.toastAccent("error"), "red")
+			expect.equal(NotifyFormat.toastAccent("loud"), "purple")
+			expect.equal(NotifyFormat.toastAccent(nil), "purple")
+			expect.equal(NotifyFormat.toastAccent("info", "teleport"), "pink")
+			expect.equal(NotifyFormat.toastAccent("error", "unknown"), "red")
+			local Palette = t.requireShared("Art/Palette")
+			local hex: { [string]: { string } } = {
+				purple = { "#A385FF", "#7A57F2" }, -- H:660
+				mint = { "#6FE8BC", "#20A574" }, -- H:846
+				red = { "#FF8A9A", "#E83A5A" }, -- H:676
+				pink = { "#FF9CC2", "#F2468A" }, -- H:779
+			}
+			for face, want in hex do
+				local top, bottom = NotifyFormat.toastColors(face :: any)
+				expect.equal(Palette[top], Color3.fromHex(want[1]))
+				expect.equal(Palette[bottom], Color3.fromHex(want[2]))
+				for _, reserved in Palette.RESERVED do
+					expect.truthy(top ~= reserved and bottom ~= reserved)
+				end
+			end
+			expect.equal(NotifyFormat.toastIcon("success"), "img.icon.check")
+			expect.equal(NotifyFormat.toastIcon("info"), nil)
 		end
+	)
+
+	-- UI FINAL R9 (H:174-175): the pill 52 + lip 5, border 4, padding 0 20 0 8, the picture 40, gap 10; at most 3, 8 apart.
+	t.test("toast pill (R9): its width from the text, with and without a picture; at most 3", function()
+		local Config = t.requireShared("Config")
+		local look = Config.UI.Sticker.toast
+		expect.deepEqual(
+			{ look.face, look.lip, look.border, look.padLeft, look.padRight, look.gap, look.icon, look.columnGap },
+			{ 52, 5, 4, 8, 20, 10, 40, 8 }
+		)
+		expect.equal(NotifyFormat.toastWidth(100, true), 4 + 8 + 40 + 10 + 100 + 20 + 4)
+		expect.equal(NotifyFormat.toastWidth(100, false), 4 + 20 + 100 + 20 + 4)
+		expect.equal(NotifyFormat.toastWidth(0 / 0, false), 48)
+		expect.equal(Config.UI.motion.toast.maxStacked, 3) -- H:660
+	end)
+
+	-- UI FINAL R9 (G9.1-G9.3, H:162, H:67, H:739): the quest pop: 60 + lip 5, border 4, padding 0 18 0 8, the check 42,
+	-- gap 10; sdQPop over 2.8 s; the chime 150 ms later; its width from the wider line.
+	t.test("quest pop (R9): its numbers and its measured width", function()
+		local Config = t.requireShared("Config")
+		local look = Config.UI.Sticker.qpop
+		expect.deepEqual(
+			{ look.face, look.lip, look.border, look.padLeft, look.padRight, look.gap, look.check, look.textGap },
+			{ 60, 5, 4, 8, 18, 10, 42, 3 }
+		)
+		expect.equal(look.chimeDelayMs, 150)
+		local motion = Config.UI.motion.qpop
+		expect.equal(motion.lifeMs, 2800)
+		expect.equal(#motion.frames, 5)
+		expect.equal(motion.frames[2].at, 0.12)
+		local QuestPop = t.requireClient("UI/QuestPop")
+		expect.equal(QuestPop.width(80, 120), 4 + 8 + 42 + 10 + 120 + 18 + 4)
+		expect.equal(QuestPop.width(150, 120), 4 + 8 + 42 + 10 + 150 + 18 + 4)
+		expect.equal(Strings.quest.completeTag, "QUEST COMPLETE")
 	end)
 
 	t.test("toast column top: 110 base, under the coach card when it reaches lower, never past the middle", function()

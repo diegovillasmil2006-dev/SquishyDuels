@@ -13,9 +13,15 @@
 --   merge(list)              the held texts as one toast (one per line)
 --   resultText(result)       a failed Result's reason text, plus "No Coins were spent." when charged == false
 --   areaOf(code)             the code's area prefix including the dot ("queue.") or nil
--- Foam UI restyle (spec 2026-10-09; UIController draws the toasts):
---   toastAccent(kind)        the accent stripe of a toast kind: info "sky", success "mint", warn "strawberry",
---                            error "danger" (Danger is reserved for errors, §7.2); CoinGold never marks a toast
+-- UIController draws the toasts. UI FINAL R9 (plan work/ui/PLAN.md R9 "Toasts"; `H:n` = "Squishy Duels HUD.dc.html"
+-- line n):
+--   toastAccent(kind, face?) the design face of a toast (ToastFace): the default purple card (H:660) for info, mint
+--                            for success (H:846), red for warn and error (H:676), pink for face "teleport" (H:779)
+--   toastColors(face)        that face's two Art/Palette names (top, bottom; the 180deg gradient)
+--   toastIcon(kind)          a kind's own picture (an AssetTable image key): success the check, else none (a caller
+--                            passes its own: the coin, the squeeze, the duel, a squishy)
+--   toastWidth(textWidth, hasIcon)   the pill's width (base px) for a text that wide: its border, padding 0 20 0 8,
+--                            the picture 40 and its gap 10 (Config.UI.Sticker.toast; no picture: padding 20 both sides)
 --   toastTop(canvasH, belowBottom?, defaultTop, gap)   the top of the toast column (base px): defaultTop, or `gap`
 --                            under `belowBottom` (the bottom of what toasts must not cover, e.g. the lobby's coach
 --                            card) when that is lower; never past the middle of the canvas (spec: the coach card never
@@ -43,6 +49,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local Config = require(Shared.Config)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 
@@ -51,8 +58,8 @@ local QueueFormat = require(script.Parent.QueueFormat)
 -- Types
 
 export type ToastKind = Types.NotifyKind
--- A Theme accent name, or "danger" (Theme.Colors.danger, errors only).
-export type ToastAccent = "sky" | "mint" | "strawberry" | "danger"
+-- UI FINAL R9: a toast's design face (toastColors gives its gradient).
+export type ToastAccent = "purple" | "mint" | "red" | "pink"
 -- A box in base px (toastClearance).
 export type Rect = { x: number, y: number, w: number, h: number }
 
@@ -84,12 +91,23 @@ local QUEUE_WORDED_AREAS: { string } = { "queue.", "duel." }
 local LINE_BREAK = "\n"
 local SENTENCE_GAP = " "
 local GENERIC = "error.generic"
+-- UI FINAL R9: the design's toast faces by kind (H:660, H:846, H:676; reading: a warn shows the error's red, the
+-- design's one face for a refused action) and their gradients (180deg, top to bottom).
 local TOAST_ACCENTS: { [string]: ToastAccent } = {
-	info = "sky",
+	info = "purple",
 	success = "mint",
-	warn = "strawberry",
-	error = "danger",
+	warn = "red",
+	error = "red",
 }
+local TOAST_FACES: { [string]: ToastAccent } = { teleport = "pink" } -- H:779
+local TOAST_COLORS: { [string]: { top: string, bottom: string } } = {
+	purple = { top = "StickerCardTop", bottom = "StickerCardBottom" }, -- H:660
+	mint = { top = "StickerToastMintTop", bottom = "StickerToastMintEnd" }, -- H:846
+	red = { top = "StickerRedTop", bottom = "StickerRedEnd" }, -- H:676
+	pink = { top = "StickerPinkSoft", bottom = "StickerToastPinkEnd" }, -- H:779
+}
+local TOAST_ICONS: { [string]: string } = { success = "img.icon.check" } -- the check (H:162)
+local TOAST = Config.UI.Sticker.toast
 local TOAST_MAX_TOP_SHARE = 0.5 -- toastTop: the column never starts past the middle of the canvas
 -- toastColumn: moving the column aside can make it meet something above it it missed while centred; it is placed
 -- this many times at most (each pass only moves it down).
@@ -252,9 +270,28 @@ function NotifyFormat.resultText(result: { [string]: any }): string
 	return text
 end
 
--- The accent stripe of a toast (foam UI): by kind, anything unknown as info.
-function NotifyFormat.toastAccent(kind: unknown): ToastAccent
-	return TOAST_ACCENTS[NotifyFormat.kindOf(kind)]
+-- UI FINAL R9: the design face of a toast: `face` ("teleport") when given, else by kind (anything unknown as info).
+function NotifyFormat.toastAccent(kind: unknown, face: unknown?): ToastAccent
+	local named = if type(face) == "string" then TOAST_FACES[face] else nil
+	return (named or TOAST_ACCENTS[NotifyFormat.kindOf(kind)]) :: ToastAccent
+end
+
+-- UI FINAL R9: a face's gradient as Art/Palette names.
+function NotifyFormat.toastColors(face: ToastAccent): (string, string)
+	local colors = TOAST_COLORS[face] or TOAST_COLORS.purple
+	return colors.top, colors.bottom
+end
+
+-- UI FINAL R9: a kind's own picture (an AssetTable image key), or nil.
+function NotifyFormat.toastIcon(kind: unknown): string?
+	return TOAST_ICONS[NotifyFormat.kindOf(kind)]
+end
+
+-- UI FINAL R9 (H:175): the pill's width for a text `textWidth` wide (base px).
+function NotifyFormat.toastWidth(textWidth: number, hasIcon: boolean): number
+	local text = if finite(textWidth) then math.max(0, textWidth) else 0
+	local left = if hasIcon then TOAST.padLeft + TOAST.icon + TOAST.gap else TOAST.padRight
+	return 2 * TOAST.border + left + text + TOAST.padRight
 end
 
 -- The top (base px) of the toast column on a canvas `canvasHeight` tall: `defaultTop`, or `gap` under `belowBottom`

@@ -28,8 +28,9 @@
 -- * Top right (Hud_Right, H:156): the Settings sticker (Hud_SettingsButton, 92 x 90, H:157-159), the quest tracker
 --   (Hud_QuestTracker: the quest row's look, H:363-367, G4.21: the quest's picture (QuestFormat.iconFor), its title,
 --   "x/y", the quest bar and "Ready to claim!" / "+N coins", H:995; the unclaimed quest closest to done, Starter tasks
---   first, HudFormat.trackedQuest; hidden on the compact layout) and the data banner (Hud_DataBanner,
---   HudFormat.banner).
+--   first, HudFormat.trackedQuest; hidden on the compact layout). UI FINAL R9 (PR19): the data banner
+--   (HudFormat.banner) is the design's error toast held first in the toast column (UIController.holdToast "data";
+--   a pending save in the default face) while the data is missing.
 -- * The GRIP float (Hud_GripFloat, H:92-96; the user, 2026-10-15: on the player's own screen, nothing above heads):
 --   "GRIP" over the Grip level (GripController.setGripLevel), centred at the design's top 300 (at most 300/810 of a
 --   shorter screen), floating 3.6 s; not on phones (the compact Grip card shows the level; it would sit over the
@@ -239,8 +240,6 @@ local settingsSlot: Frame? = nil
 local settingsButton: Button.Button? = nil
 local tracker: Tracker? = nil
 local trackedId: string? = nil
-local bannerFrame: Frame? = nil
-local bannerLabel: TextLabel? = nil
 local ctaWrap: Frame? = nil -- Hud_CtaWrap: the DUEL area
 local ctaScale: UIScale? = nil -- SD_CtaScale: the phone scale of the idle DUEL button only (HudFormat.ctaScales)
 local idleBox: Frame? = nil -- Hud_DuelIdle: the DUEL button and its soft shadow, sized to their drawn size
@@ -588,30 +587,18 @@ end
 -- Banner, badges, tracker --------------------------------------------------------------------------------------------
 
 local function refreshBanner()
-	local frame, label = bannerFrame, bannerLabel
-	if frame == nil or label == nil then
-		return
-	end
 	local status = StateController.dataStatus()
 	if HudFormat.isStudioMemory(status) and not studioLogged then
 		studioLogged = true
 		log:info("Studio memory mode: progress is not saved (the banner is not shown to players)")
 	end
 	local banner = HudFormat.banner(status)
-	local visible = banner ~= nil
-	if frame.Visible ~= visible then
-		frame.Visible = visible
-		queueLayout()
-	end
-	if banner then
-		label.Text = banner.text
-		local stroke = frame:FindFirstChildOfClass("UIStroke")
-		if stroke then
-			-- Offline / read-only are data errors (Danger is for error states, §7.2); a pending save is info (Sky).
-			stroke.Color = if banner.kind == "warn" then Theme.Colors.danger else Theme.accent("sky").face
-			stroke.Thickness = Theme.Sticker.border.normal -- UI FINAL R1: Theme.panel's border (H:203)
-		end
-	end
+	-- UI FINAL R9 (PR19, H:175, H:676): offline / read-only are data errors (the red face); a pending save is info.
+	UIController.holdToast(
+		"data",
+		if banner then banner.text else nil,
+		if banner and banner.kind == "warn" then "error" else "info"
+	)
 end
 
 -- UI FINAL R4: a tile's badge (its count, or the daily "!"; the badge loops sdBadge itself: no pop, G4.11).
@@ -1545,16 +1532,6 @@ local function buildRight(c: Cleanup.Cleanup, gui: ScreenGui)
 	settingsButton = settings
 	settingsSlot = slot
 	buildTracker(c, right)
-	local banner = Theme.panel({
-		Name = "Hud_DataBanner",
-		Size = UDim2.fromOffset(COLUMN.bannerWidth, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Visible = false,
-		LayoutOrder = 3,
-		Parent = right,
-	}, Theme.Radius.button, Theme.Padding.medium)
-	bannerLabel = Theme.label({ Name = "Text", Parent = banner }, "Small")
-	bannerFrame = banner
 	rightColumn = right
 end
 
@@ -2383,14 +2360,14 @@ function HudController.flyCoins(from: CoinFlight.Source, amount: number, count: 
 end
 
 -- UI FINAL R4 (H:676): a spend the Coins do not cover: the pill's "no" shake (12 px, PR5) and the error toast "Not
--- enough coins!", silent (the press already played ui.error, H:643). Its coin icon and red face come with R9's toasts.
+-- enough coins!", silent (the press already played ui.error, H:643); UI FINAL R9: its coin and the red face (H:676).
 -- UI FINAL R7 (G7.16): `onTap` makes the toast a tap target (the Boxes window's "How to earn Coins").
 function HudController.denyCoins(onTap: (() -> ())?)
 	local capsule = coins
 	if capsule and shown then
 		capsule:shake()
 	end
-	UIController.toast(Strings.hud.notEnoughCoins, "error", { sound = false, action = onTap })
+	UIController.toast(Strings.hud.notEnoughCoins, "error", { sound = false, action = onTap, icon = "img.coin" })
 end
 
 -- The result panel's reward label, which the duel reward flies from once the HUD shows again (§18.5.2 B1, B7); nil
@@ -2428,7 +2405,7 @@ function HudController.debugState(): { [string]: any }
 		flyingCoins = CoinFlight.liveCount(),
 		gainSource = gainSource ~= nil,
 		nav = visibleNav,
-		banner = if bannerFrame and bannerFrame.Visible and bannerLabel then bannerLabel.Text else nil,
+		banner = UIController.heldToast("data"), -- UI FINAL R9 (PR19): the held toast
 		-- The left side's plan in base px (HudFormat.leftColumnPlan).
 		column = {
 			grip = plan.grip,
@@ -2598,7 +2575,7 @@ function HudController.init()
 		leftColumn, coinsHolder, coins = nil, nil, nil
 		navRow, navGrid, rightColumn, settingsButton, tracker, trackedId = nil, nil, nil, nil, nil, nil
 		settingsSlot = nil
-		bannerFrame, bannerLabel = nil, nil
+		UIController.holdToast("data", nil)
 		ctaWrap, ctaScale, idleBox, duelButton, picker, search, found = nil, nil, nil, nil, nil, nil, nil
 		idleHolder, lastCtaRect = nil, nil
 		ctaRect, ctaFits, ctaQueued, ctaCompact, holdCta = nil, nil, false, false, false

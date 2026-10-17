@@ -16,6 +16,9 @@
 -- UI FINAL R1 (H:444-446, the Volume row): the track 20 base px tall with its 3 px ink border (drawn outside a 14 px
 -- bar, so it shows the design's 20), StickerTrough; the fill the pink volume gradient under a 3 px highlight at .5; the
 -- knob a 36 px white disc with a 4 px ink border inside it, the 3 px ink lip under it and a 3 px bevel at .12.
+-- UI FINAL R9 (G9.7, H:898, lib:191): a value change by drag, tap or DPad ticks ui.hover at Config.Audio.uiPitch
+-- slideFrom + slideSpan x the knob's share whenever the share moved more than slideStepShare since the last tick (the
+-- first change always ticks), through Button.playSound; Slider.tickPitch(last, share) is that rule (pure).
 
 -- Services
 
@@ -32,6 +35,7 @@ local Palette = require(Shared.Art.Palette)
 local Log = require(Shared.Util.Log)
 
 local UI = script.Parent.Parent
+local Button = require(script.Parent.Button)
 local Create = require(UI.Create)
 local Focus = require(UI.Focus)
 local Layout = require(UI.Layout)
@@ -76,6 +80,8 @@ local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
 local STICK_THRESHOLD = 0.6 -- reading: a sideways stick push counts as one DPad step
 local DISABLED_TRANSPARENCY = 0.5
+local UI_PITCH = Config.Audio.uiPitch -- UI FINAL R9: the tick (H:898, lib:191)
+local SOUND_TICK = "ui.hover"
 
 -- Module table
 
@@ -116,6 +122,18 @@ function Slider.stepped(value: number, direction: number, step: number, min: num
 		result = (math.ceil((v - min) / s - 1e-9) - 1) * s + min
 	end
 	return math.clamp(result, min, max)
+end
+
+-- UI FINAL R9 (H:898): the tick's pitch when the knob's share `share` (0..1) is more than slideStepShare away from the
+-- share of the last tick (`last`; nil = none yet), else nil.
+function Slider.tickPitch(last: number?, share: number): number?
+	if not finite(share) then
+		return nil
+	end
+	if last ~= nil and math.abs(share - last) <= UI_PITCH.slideStepShare then
+		return nil
+	end
+	return UI_PITCH.slideFrom + UI_PITCH.slideSpan * math.clamp(share, 0, 1)
 end
 
 -- Public -------------------------------------------------------------------------------------------------------------
@@ -207,6 +225,16 @@ function Slider.new(spec: Spec): Slider
 		knob.BackgroundTransparency = transparency
 	end
 
+	local tickedAt: number? = nil -- the share of the last tick (UI FINAL R9)
+	local function tick()
+		local share = Slider.fractionOf(value, min, max)
+		local pitch = Slider.tickPitch(tickedAt, share)
+		if pitch then
+			tickedAt = share
+			Button.playSound(SOUND_TICK, pitch)
+		end
+	end
+
 	local function notify(final: boolean)
 		local ok, err = pcall(function(): any
 			spec.onChanged(value, final)
@@ -224,8 +252,12 @@ function Slider.new(spec: Spec): Slider
 		end
 		local newValue = Slider.valueAt((x - track.AbsolutePosition.X) / width, min, max)
 		if newValue ~= value or final then
+			local moved = newValue ~= value
 			value = newValue
 			paint()
+			if moved then
+				tick()
+			end
 			notify(final)
 		end
 	end
@@ -238,6 +270,7 @@ function Slider.new(spec: Spec): Slider
 		if newValue ~= value then
 			value = newValue
 			paint()
+			tick()
 			notify(true)
 		end
 	end

@@ -1206,4 +1206,36 @@ return function(t: Context)
 		expect.equal(Button.settledWidth(100, 101, false), 101)
 		expect.equal(Button.settledWidth(0, 101, true), 101)
 	end)
+
+	-- UI FINAL R9 (G9.6-G9.8, H:433-438, H:891): the Settings row toggle: the purple row face (74 + the 5 px lip) in
+	-- SD_Visual, the 50 px picture slot, the 80 x 42 switch; the switch sound after onChanged when it goes on, before
+	-- it when it goes off.
+	t.test("Toggle row (R9): the design row's parts and its switch sound order", function()
+		local look = Config.UI.Sticker.settings
+		local row = Toggle.new({
+			name = "Settings_SoundToggle",
+			text = "Sound effects",
+			value = true,
+			variant = "large",
+			row = true,
+			icon = "img.icon.sound",
+			onChanged = noop,
+		})
+		expect.equal(row.root.Size.Y.Offset, look.row.face + look.row.lip)
+		expect.truthy(row.root.Size.Y.Offset >= MIN_TARGET)
+		local visual = row.root:FindFirstChild("SD_Visual") :: Frame
+		expect.truthy(visual :: any ~= nil)
+		local face = visual:FindFirstChild("Face") :: Frame
+		expect.truthy(face:FindFirstChild("SD_Foam") ~= nil)
+		local slot = face:FindFirstChild("IconSlot", true) :: Frame
+		expect.equal(slot.Size, UDim2.fromOffset(look.icon, look.icon))
+		local switch = face:FindFirstChild("Switch", true) :: Frame
+		local large = STICKER.toggles.large
+		expect.equal(switch.Size, UDim2.fromOffset(large.width, large.height))
+		local label = face:FindFirstChild("Label", true) :: TextLabel
+		expect.equal(label.AutomaticSize, Enum.AutomaticSize.None) -- measured, never AutomaticSize (scaled GUIs)
+		row:destroy()
+		expect.equal(Toggle.soundAfterChange(true), true)
+		expect.equal(Toggle.soundAfterChange(false), false)
+	end)
 end

@@ -173,4 +173,57 @@ return function(t: Context)
 			expect.truthy(body < content) -- it still scrolls (the rail shows on touch)
 		end
 	end)
+
+	-- UI FINAL R9 (G9.8, G9.9, PR27, PR28; H:431-447, H:979): the design's rows first in its order, then Music in the
+	-- Volume row's look and the game's extras; the body's padding; the Sound effects switch is SFX volume 0.
+	t.test(
+		"R9 rows: Sound effects, Screen shake, Reduced motion, Volume, Music, then Show tips, First-person, Replay",
+		function()
+			local ids, kinds = {}, {}
+			for _, row in SettingsFormat.ROWS do
+				table.insert(ids, row.id)
+				table.insert(kinds, row.kind)
+				expect.truthy(Strings.resolve(row.text) ~= nil)
+			end
+			expect.deepEqual(ids, {
+				"sound",
+				"cameraShake",
+				"reducedMotion",
+				"sfx",
+				"music",
+				"showTips",
+				"firstPerson",
+				"replayTutorial",
+			})
+			expect.deepEqual(kinds, { "switch", "switch", "switch", "volume", "volume", "switch", "switch", "action" })
+			expect.equal(SettingsFormat.ROWS[1].icon, "img.icon.sound") -- H:979
+			expect.equal(SettingsFormat.ROWS[2].icon, "img.icon.bolt")
+			expect.equal(SettingsFormat.ROWS[3].icon, "img.icon.clock")
+			expect.equal(SettingsFormat.ROWS[3].key, nil) -- Q6: a session switch (UiPrefs), never saved
+			expect.equal(SettingsFormat.ROWS[4].key, "sfx") -- H:440: the Volume row drives the sound effects
+			expect.equal(SettingsFormat.ROWS[8].icon, nil) -- PR28: an empty picture slot
+			expect.equal(Strings.settings.cameraShake, "Screen shake")
+			local look = Config.UI.Sticker.settings
+			expect.deepEqual({ look.bodyPad.top, look.bodyPad.x, look.bodyPad.bottom }, { 20, 26, 24 }) -- H:431
+			expect.equal(look.rowGap, 12)
+			expect.deepEqual(
+				{ look.row.face, look.row.lip, look.row.padLeft, look.row.padRight, look.row.gap, look.row.radius },
+				{ 74, 5, 10, 16, 14, 20 }
+			) -- H:433
+			expect.deepEqual({ look.icon, look.volume.area, look.volume.value }, { 50, 44, 48 }) -- H:434, H:443, H:447
+			expect.truthy(look.row.face >= Config.UI.Touch.minTarget) -- phones: every row is a full touch target
+		end
+	)
+
+	t.test("R9 Sound effects switch: off = SFX 0, on = the last volume this visit, else the default 70", function()
+		expect.equal(SettingsFormat.sfxFor(false, 55), 0)
+		expect.equal(SettingsFormat.sfxFor(true, 55), 55)
+		expect.equal(SettingsFormat.sfxFor(true, nil), DEFAULTS.sfx)
+		expect.equal(SettingsFormat.sfxFor(true, 0), DEFAULTS.sfx)
+		expect.equal(SettingsFormat.sfxFor(true, 0 / 0), DEFAULTS.sfx)
+		expect.equal(SettingsFormat.soundOn(70), true)
+		expect.equal(SettingsFormat.soundOn(1), true)
+		expect.equal(SettingsFormat.soundOn(0), false)
+		expect.equal(SettingsFormat.soundOn(nil), false)
+	end)
 end

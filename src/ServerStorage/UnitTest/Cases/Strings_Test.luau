@@ -211,7 +211,9 @@ local PART5_WORDING: { [string]: string } = {
 	["server.restartSoon"] = "This server will restart in {time}.",
 	["settings.music"] = "Music",
 	["settings.sfx"] = "Sound effects",
-	["settings.cameraShake"] = "Camera shake",
+	["settings.cameraShake"] = "Screen shake", -- UI FINAL R9 (H:979)
+	["settings.reducedMotion"] = "Reduced motion", -- UI FINAL R9 (H:979, the user's Q6)
+	["settings.volume"] = "Volume", -- UI FINAL R9 (H:442)
 	["settings.showTips"] = "Show tips",
 	["settings.replayTutorial"] = "Replay tutorial",
 	["settings.noMusic"] = "No music yet",
@@ -428,19 +430,21 @@ return function(t: Context)
 	end)
 
 	-- §11.6 lists the Settings rows (Music, Sound effects, Camera shake, Show tips, Replay tutorial), plus the session
-	-- switch "First-person duels" (first-person spec 2026-10-10 §3.8); an in-game "Reduce motion" switch is an
-	-- unapproved §16 proposal, so the settings texts hold nothing else.
-	t.test("the settings texts are exactly §11.6's rows and the first-person switch (no Reduce motion)", function()
+	-- switch "First-person duels" (first-person spec 2026-10-10 §3.8). UI FINAL R9 (H:979, H:442; the user's Q6): the
+	-- design's Reduced motion switch and its Volume row; the settings texts hold nothing else.
+	t.test("the settings texts are §11.6's rows, the first-person switch and the design's two (R9)", function()
 		local expected = {
 			"cameraShake",
 			"firstPerson",
 			"music",
 			"noMusic",
 			"noSfx",
+			"reducedMotion",
 			"replayTutorial",
 			"sfx",
 			"showTips",
 			"title",
+			"volume",
 		}
 		local keys = {}
 		for key in Strings.settings do
@@ -448,7 +452,7 @@ return function(t: Context)
 		end
 		table.sort(keys)
 		expect.deepEqual(keys, expected)
-		expect.equal(Strings.resolve("settings.reducedMotion"), nil)
+		expect.equal(Strings.resolve("settings.reducedMotion"), "Reduced motion")
 	end)
 
 	-- §17.7 "Changed text" and §17.2 rule 1: the loss tip shows on the duel result panel, so it never names the lobby

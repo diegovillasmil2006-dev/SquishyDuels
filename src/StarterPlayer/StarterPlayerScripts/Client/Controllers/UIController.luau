@@ -93,6 +93,23 @@
 -- * A window's soft shadow (H:182, T1) is a clear SD_SoftShadow frame in SD_Modal right under it (Theme.windowShadow)
 --   that follows its drawn box (pop and close included), its visibility and its layer: open roots take ZIndex
 --   MODAL_Z_STEP (3) x their place in the stack, their shadows the one under, the wash the one under the top's shadow.
+-- UI FINAL R9 (plan work/ui/PLAN.md R9 "Toasts", PR11, PR19; Config.UI.Sticker.toast, Config.UI.motion.toast):
+-- * A toast is the design's pill (H:174-175): 52 + the 5 px lip, border 4, full radius, the toast surface's 3 px
+--   highlight at .35, padding 0 20 0 8, the picture 40 (ToastOptions.icon: an AssetTable image key, or
+--   ToastOptions.squishy: a catalog id drawn as UI/Components/SquishyImage; NotifyFormat.toastIcon(kind) by default),
+--   gap 10, the text in the toastText role (18 px white, the soft drop), measured (no AutomaticSize: it mis-sizes
+--   under the scaled ScreenGui); its face NotifyFormat.toastAccent(kind, opts.face) (purple, mint, red; "teleport"
+--   pink). A text too long for the column wraps and the pill grows by its lines; the pills re-measure when the column
+--   narrows. They sit 8 apart (H:174), the newest at the bottom, at most motion.toast.maxStacked (the oldest leaves).
+-- * Each plays the design's sdToast (motion.toast.frames over lifeMs, `ease` per segment: its pose on SD_Pop and its
+--   fade over everything in it, Tweens.fadeGroup) and is removed at lifeMs; the same text again goes back to its rest
+--   (16%) and nudges; one pushed out by a newer one plays its exit (86%) at once. ReducedMotion: no pose, the fade in
+--   and out at most reducedMotionMaxFadeMs.
+-- * PR11: in SD_Overlay, above the windows (the toasts a window causes stay readable); with no window open the order
+--   is the design's.
+-- * PR19: holdToast(key, text?, kind?) is a held toast (the data banner): first in the column, it plays sdToast's
+--   entrance and rests while held (no exit); holdToast(key, nil) lets it leave with the exit frames. heldToast(key)
+--   is its text. R7's tap action (ToastOptions.action) is kept.
 
 -- Services
 
@@ -105,9 +122,11 @@ local UserInputService = game:GetService("UserInputService")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local AssetTable = require(Shared.AssetTable)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local Palette = require(Shared.Art.Palette)
 local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
 
@@ -115,6 +134,8 @@ local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
+local IconGlyph = require(Client.UI.Components.IconGlyph)
+local SquishyImage = require(Client.UI.Components.SquishyImage)
 local Layout = require(Client.UI.Layout)
 local ModalStack = require(Client.UI.ModalStack)
 local NotifyFormat = require(Client.UI.NotifyFormat)
@@ -156,7 +177,15 @@ export type ToastKind = "info" | "success" | "warn" | "error"
 
 -- toast() options (§18.5.2 B5): `sound` is a sound key, or false for none; nil = ui.toast (ui.error for warn / error).
 -- UI FINAL R7: `action` makes the toast a tap target (the deny toast's "How to earn Coins", plan R7 G7.16).
-export type ToastOptions = { sound: (string | boolean)?, action: (() -> ())? }
+-- UI FINAL R9: `icon` its picture (an AssetTable image key; default NotifyFormat.toastIcon(kind)), `squishy` a
+-- squishy's picture instead (a catalog id), `face` "teleport" for the pink face (NotifyFormat.toastAccent).
+export type ToastOptions = {
+	sound: (string | boolean)?,
+	action: (() -> ())?,
+	icon: string?,
+	squishy: string?,
+	face: string?,
+}
 
 export type ScreenGuiSpec = { displayOrder: number, insets: Enum.ScreenInsets }
 
@@ -190,14 +219,17 @@ type ScreenRecord = {
 	layer: number, -- nextLayer() when open() last put it on top (Back answers the newest layer, ModalStack.backTarget)
 }
 
+-- UI FINAL R9: one toast pill and its sdToast run.
 type Toast = {
 	text: string,
-	holder: Frame,
-	panel: Frame,
-	scale: UIScale,
-	timer: thread?,
+	holder: Frame, -- laid out in the column
+	panel: Frame, -- the pill (in SD_Pop, which takes the pose and the fade)
+	scale: UIScale, -- the re-arm nudge
+	elapsed: number, -- seconds into its sdToast run
+	held: boolean, -- holdToast's: it rests until released
 	closing: boolean,
 	soundAt: number, -- os.clock() of its last sound
+	layout: (width: number) -> (), -- sizes the pill for a column `width` wide
 }
 
 -- Constants
@@ -220,14 +252,22 @@ local TOAST_TOP = 110
 -- 810 px canvas, Config.UI.Scale.referenceHeight; NotifyFormat.defaultTop keeps its share on a shorter canvas).
 local TOAST_TOP_CANVAS = UI.Scale.referenceHeight
 local TOAST_GAP = 8 -- reading (foam UI): base px between toastsBelow's object and the first toast
-local TOAST_DOT_PX = 14 -- the accent dot before a toast's text (foam UI)
-local TOAST_DOT_GAP = 10
-local TOAST_DOT_LINE = 0.65 -- the dot's centre, in Body text sizes from the text's top (about half its first line)
+-- UI FINAL R9 (H:174-175): the pill (Config.UI.Sticker.toast), its surface, its text, its run (motion.toast).
+local PILL = UI.Sticker.toast
+local PILL_SURFACE = UI.Sticker.surfaces.toast -- H:175: inset 0 3px 0 rgba(255,255,255,.35)
+local PILL_TEXT_KIND: Theme.TextKind = "Body" -- the toastText role's kind (18 px)
+local PILL_GAP = Layout.lipGap(PILL.columnGap, PILL.lip) -- H:174: 8 between the faces (the lips inside the boxes)
+local PILL_LINE_PAD = 4 -- reading: a wrapped text keeps this much of the face above and under its lines
+local TOAST_LIFE = TOAST.lifeMs / 1000
+local TOAST_REST = TOAST_LIFE * 0.16 -- H:33: at rest from 16% ...
+local TOAST_EXIT = TOAST_LIFE * 0.86 -- ... to 86%, then out
+local REDUCED_FADE = MOTION.reducedMotionMaxFadeMs / 1000
+local HELD_ORDER = -1 -- PR19: a held toast is first in the column
+local TEXT_MARGIN_PX = 2 -- reading: TextService rounding
 -- Overlays fix (readings): the narrowest the column gets beside the HUD (a 20-character line of Body text), the HUD's
 -- edge distance, and one toast's height in Body text sizes over its paddings (the band a new toast will fill).
 local TOAST_MIN_WIDTH = 280
 local TOAST_EDGE = 12
-local TOAST_LINE = 1.3
 local BANNER_TOP = 0.2
 local BANNER_WIDTH = 640
 local BANNER_GAP = 8 -- reading (Part 8): base px between BannerOptions.below's bottom and the banner
@@ -267,7 +307,6 @@ local GAMEPAD_INPUTS: { [Enum.UserInputType]: boolean } = {
 	[Enum.UserInputType.Gamepad7] = true,
 	[Enum.UserInputType.Gamepad8] = true,
 }
-local BACK_OUT: Tweens.Spec = { ms = TOAST.ms, style = Enum.EasingStyle.Back, direction = Enum.EasingDirection.Out }
 
 -- Module table
 
@@ -289,6 +328,7 @@ local currentClass: Layout.LayoutClass = "regular"
 local loadingCover: Frame? = nil
 local toastHolder: Frame? = nil
 local toasts: { Toast } = {}
+local heldToasts: { [string]: Toast } = {} -- UI FINAL R9: holdToast's (PR19)
 local toastSerial = 0 -- LayoutOrder: newer toasts below older ones
 -- toastsBelow(key, object): the toast column starts under these while they show and hang into it.
 local toastBelow: { [string]: GuiObject? } = {}
@@ -875,7 +915,7 @@ local function placeColumn(adding: number, resized: boolean?)
 	end
 	local height = if scale > 0 then frame.AbsoluteSize.Y / scale else 0
 	if adding > 0 then
-		height += (if height > 0 then Theme.Padding.small else 0) + adding
+		height += (if height > 0 then PILL_GAP else 0) + adding
 	end
 	local column = NotifyFormat.toastColumn({
 		canvas = canvas,
@@ -906,6 +946,13 @@ local function placeColumn(adding: number, resized: boolean?)
 	local size = UDim2.fromOffset(width, 0)
 	if frame.Size ~= size then
 		frame.Size = size
+		-- UI FINAL R9: the pills follow the column's width (a narrower column wraps their text).
+		for _, toast in toasts do
+			toast.layout(width)
+		end
+		for _, toast in heldToasts do
+			toast.layout(width)
+		end
 	end
 end
 
@@ -913,10 +960,9 @@ local function placeToasts()
 	placeColumn(0)
 end
 
--- The height (base px) of a one-line toast: its Body line and its panel paddings (Theme.panel's bottom padding is the
--- larger of its padding and its bands, both 12 here).
+-- The height (base px) of a one-line toast: UI FINAL R9: the pill's face and lip (H:175).
 local function oneToastHeight(): number
-	return Theme.textSize("Body") * TOAST_LINE + 2 * Theme.Padding.medium
+	return PILL.face + PILL.lip
 end
 
 local function toastContainer(): Frame
@@ -932,7 +978,7 @@ local function toastContainer(): Frame
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = UIController.screenGui(OVERLAY_GUI),
 	})
-	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.small, frame, nil, Enum.VerticalAlignment.Top)
+	Theme.list(Enum.FillDirection.Vertical, PILL_GAP, frame, nil, Enum.VerticalAlignment.Top)
 	toastHolder = frame
 	-- The band the column keeps clear grows and shrinks with its toasts (NotifyFormat.toastColumn); a re-place its own
 	-- resize causes goes back to an earlier place for the same toasts only when that one is wider (columnPlaces), so it
@@ -944,37 +990,178 @@ local function toastContainer(): Frame
 	return frame
 end
 
+-- UI FINAL R9: a toast leaves now: out of the list, its exit frames from 86% (held or not).
 local function dismissToast(toast: Toast)
 	if toast.closing then
 		return
 	end
 	toast.closing = true
-	if toast.timer then
-		task.cancel(toast.timer)
-		toast.timer = nil
-	end
+	toast.held = false
 	local index = table.find(toasts, toast)
 	if index then
 		table.remove(toasts, index)
 	end
-	if Tweens.reducedMotion() then
-		toast.holder:Destroy()
-		return
-	end
-	local tween = Tweens.play(toast.panel, TOAST.ms, { Position = UDim2.fromOffset(0, -TOAST.slidePx) })
-	tween.Completed:Once(function()
-		toast.holder:Destroy()
-	end)
+	toast.elapsed = math.max(toast.elapsed, TOAST_EXIT)
 end
 
+-- UI FINAL R9: the same message again: back to its rest (16%), so it stays a full rest longer.
 local function armToast(toast: Toast)
-	if toast.timer then
-		task.cancel(toast.timer)
+	toast.elapsed = math.min(toast.elapsed, TOAST_REST)
+end
+
+-- UI FINAL R9 (H:174-175, H:33): a new pill in the column: its face, picture and measured text, and its sdToast run
+-- (one Scheduler render effect; it removes the toast at lifeMs).
+local function newToast(text: string, kind: ToastKind?, opts: ToastOptions?, held: boolean): Toast
+	local container = toastContainer()
+	local holder: Frame = Create("Frame", {
+		Name = "Toast",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, PILL.face + PILL.lip),
+		ClipsDescendants = false,
+		LayoutOrder = if held then HELD_ORDER else toastSerial,
+	})
+	local pose: Frame = Create("Frame", {
+		Name = "SD_Pop",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		Parent = holder,
+	})
+	local panel: Frame = Create("Frame", {
+		Name = "Panel",
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = pose,
+	})
+	local topName, bottomName =
+		NotifyFormat.toastColors(NotifyFormat.toastAccent(kind, if opts then opts.face else nil))
+	local top, bottom = (Palette :: any)[topName] :: Color3, (Palette :: any)[bottomName] :: Color3
+	local bands = Layout.stickerBands(PILL.border, PILL_SURFACE.highlightPx, 0, PILL.lip)
+	Theme.foam(panel, {
+		radius = PILL.face,
+		stroke = PILL.border,
+		inner = true,
+		top = bands.top,
+		drop = bands.drop,
+		colors = {
+			face = top,
+			faceEnd = bottom,
+			top = top:Lerp(Color3.new(1, 1, 1), PILL_SURFACE.highlightAlpha),
+			drop = Theme.Colors.inkUI,
+		},
+	})
+	local face: Frame = Create("Frame", {
+		Name = "Face",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, -PILL.lip),
+		Parent = panel,
+	})
+	-- H:175: the picture 40 (contain) after the 8 px padding, or a squishy's picture.
+	local squishyId = if opts then opts.squishy else nil
+	local iconKey = if opts and opts.icon then opts.icon else NotifyFormat.toastIcon(kind)
+	local icon: GuiObject? = nil
+	if squishyId then
+		local image =
+			SquishyImage.new(squishyId, { name = "Icon", size = PILL.icon, owned = true, parent = face :: Instance })
+		icon = image.root
+	elseif iconKey and AssetTable.image(iconKey) then
+		icon = IconGlyph.image(iconKey, { name = "Icon", sizePx = PILL.icon, parent = face })
 	end
-	toast.timer = task.delay(TOAST.autoDismissSeconds, function()
-		toast.timer = nil
-		dismissToast(toast)
-	end)
+	if icon then
+		icon.AnchorPoint = Vector2.new(0, 0.5)
+		icon.Position = UDim2.new(0, PILL.border + PILL.padLeft, 0.5, 0)
+	end
+	local label = Theme.label({
+		Name = "Text",
+		Text = text,
+		AutomaticSize = Enum.AutomaticSize.None,
+		AnchorPoint = Vector2.new(0, 0.5),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = face,
+	}, PILL_TEXT_KIND)
+	Theme.stickerText(label, PILL.textRole)
+	local scale: UIScale = Create("UIScale", { Name = "Pop", Parent = panel })
+	local left = PILL.border + (if icon then PILL.padLeft + PILL.icon + PILL.gap else PILL.padRight)
+	local function layout(width: number)
+		local chrome = NotifyFormat.toastWidth(0, icon ~= nil)
+		local room = math.max(1, width - chrome)
+		local natural = math.ceil(Theme.textWidth(text, PILL_TEXT_KIND)) + TEXT_MARGIN_PX
+		local textWidth = math.min(natural, room)
+		local textHeight = math.ceil(Theme.textBounds(text, PILL_TEXT_KIND, nil, textWidth).Y)
+		local faceHeight = math.max(PILL.face, textHeight + 2 * (PILL.border + PILL_LINE_PAD))
+		label.TextWrapped = textWidth < natural
+		label.Position = UDim2.new(0, left, 0.5, 0)
+		label.Size = UDim2.fromOffset(textWidth, textHeight)
+		holder.Size = UDim2.fromOffset(NotifyFormat.toastWidth(textWidth, icon ~= nil), faceHeight + PILL.lip)
+	end
+	layout(container.Size.X.Offset)
+	local action = if opts then opts.action else nil
+	local tap: TextButton? = if action
+		then Create("TextButton", {
+			Name = "SD_ToastTap",
+			Text = "",
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 10,
+			Parent = panel,
+		})
+		else nil
+	holder.Parent = container
+	local toast: Toast = {
+		text = text,
+		holder = holder,
+		panel = panel,
+		scale = scale,
+		elapsed = 0,
+		held = held,
+		closing = false,
+		soundAt = -math.huge,
+		layout = layout,
+	}
+	if tap and action then
+		tap.Activated:Connect(function()
+			dismissToast(toast)
+			action()
+		end)
+	end
+	-- The run: sdToast's pose on SD_Pop and its fade over the whole pill (H:33).
+	local poser = Tweens.poser(pose)
+	local fade = Tweens.fadeGroup(pose)
+	local function frameAt(t: number)
+		if Tweens.reducedMotion() then
+			fade:setAlpha(math.clamp(math.min(t, TOAST_LIFE - t) / REDUCED_FADE, 0, 1))
+			poser:rest()
+			return
+		end
+		local at =
+			Tweens.poseAt((TOAST.frames :: any) :: { Tweens.Pose }, math.clamp(t / TOAST_LIFE, 0, 1), TOAST.curve)
+		fade:setAlpha(at.alpha or 1)
+		at.alpha = nil
+		poser:set(at)
+	end
+	frameAt(0)
+	Scheduler.add(function(dt: number): boolean
+		if holder.Parent == nil then
+			return false
+		end
+		toast.elapsed += dt
+		if toast.held and toast.elapsed > TOAST_REST then
+			toast.elapsed = TOAST_REST
+		end
+		if toast.elapsed >= TOAST_LIFE then
+			toast.closing = true
+			local index = table.find(toasts, toast)
+			if index then
+				table.remove(toasts, index)
+			end
+			holder:Destroy()
+			return false
+		end
+		frameAt(toast.elapsed)
+		return true
+	end, "render")
+	return toast
 end
 
 -- The sound a toast plays (§18.5.2 B5): opts.sound, else ui.error for a warn / error toast, else ui.toast; nil = none.
@@ -1124,79 +1311,35 @@ function UIController.toast(text: string, kind: ToastKind?, opts: ToastOptions?)
 	while #toasts >= TOAST.maxStacked do
 		dismissToast(toasts[1])
 	end
-	local container = toastContainer()
 	placeColumn(oneToastHeight()) -- placed for the band it is about to fill, so it does not jump once it shows
-	local holder: Frame = Create("Frame", {
-		Name = "Toast",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		ClipsDescendants = false,
-		LayoutOrder = toastSerial,
-	})
-	local panel = Theme.panel({
-		Name = "Panel",
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Position = UDim2.fromOffset(0, if Tweens.reducedMotion() then 0 else -TOAST.slidePx),
-		Parent = holder,
-	}, Theme.Radius.button, Theme.Padding.medium)
-	-- Foam UI: the kind as an accent dot on the first line (the text says what happened; the dot adds the colour).
-	local accent = NotifyFormat.toastAccent(kind)
-	local dot: Frame = Create("Frame", {
-		Name = "Accent",
-		BackgroundColor3 = if accent == "danger" then Theme.Colors.danger else Theme.accent(accent).face,
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.fromOffset(0, math.floor(Theme.textSize("Body") * TOAST_DOT_LINE + 0.5)),
-		Size = UDim2.fromOffset(TOAST_DOT_PX, TOAST_DOT_PX),
-		Parent = panel,
-	})
-	Theme.corner(TOAST_DOT_PX, dot)
-	Theme.stroke(Theme.Colors.inkUI, Theme.Stroke.bar, dot)
-	Theme.label({
-		Name = "Text",
-		Text = text,
-		Position = UDim2.fromOffset(TOAST_DOT_PX + TOAST_DOT_GAP, 0),
-		Size = UDim2.new(1, -(TOAST_DOT_PX + TOAST_DOT_GAP), 0, 0),
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = panel,
-	}, "Body", Enum.FontWeight.Bold)
-	local scale: UIScale = Create("UIScale", { Name = "Pop", Parent = panel })
-	local action = if opts then opts.action else nil
-	local tap: TextButton? = if action
-		then Create("TextButton", {
-			Name = "SD_ToastTap",
-			Text = "",
-			BackgroundTransparency = 1,
-			Size = UDim2.fromScale(1, 1),
-			ZIndex = 10,
-			Parent = panel,
-		})
-		else nil
-	holder.Parent = container
-	local toast: Toast = {
-		text = text,
-		holder = holder,
-		panel = panel,
-		scale = scale,
-		timer = nil,
-		closing = false,
-		soundAt = -math.huge,
-	}
+	local toast = newToast(text, kind, opts, false)
 	table.insert(toasts, toast)
-	if tap and action then
-		tap.Activated:Connect(function()
-			dismissToast(toast)
-			action()
-		end)
-	end
-	if not Tweens.reducedMotion() then
-		Tweens.play(panel, TOAST.ms, { Position = UDim2.fromOffset(0, 0) })
-	end
-	Tweens.scale(scale, TOAST.popFrom, 1, BACK_OUT)
 	playToastSound(toast, sound)
-	armToast(toast)
+end
+
+-- UI FINAL R9 (PR19): the held toast under `key` (the data banner: HudController "data"): `text` shows it first in the
+-- column in `kind`'s face (silent) and keeps it at rest while held; a new text replaces it; nil lets it leave with
+-- sdToast's exit frames.
+function UIController.holdToast(key: string, text: string?, kind: ToastKind?)
+	local current = heldToasts[key]
+	if current and text ~= nil and text ~= "" and current.text == text and not current.closing then
+		return
+	end
+	if current then
+		heldToasts[key] = nil
+		dismissToast(current)
+	end
+	if text == nil or text == "" then
+		return
+	end
+	placeColumn(oneToastHeight())
+	heldToasts[key] = newToast(text, kind, { sound = false }, true)
+end
+
+-- UI FINAL R9: the text of the held toast under `key`, or nil.
+function UIController.heldToast(key: string): string?
+	local toast = heldToasts[key]
+	return if toast and not toast.closing then toast.text else nil
 end
 
 -- UI FINAL R4: the toast column's top while the lobby HUD shows (HudController: Config.UI.Sticker.hud.toastTop, the

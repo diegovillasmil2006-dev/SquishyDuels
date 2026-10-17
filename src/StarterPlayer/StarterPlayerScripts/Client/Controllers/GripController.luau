@@ -98,6 +98,21 @@
 --   Layout.windowFit) and what hangs above is the X's 22 px. The column scrolls with the design's scroll bar
 --   (Theme.scrollbar, H:22); the texts on the pink body (the intro, the duel note, the idle card's sentence) take the
 --   window's text colour (H:196).
+-- * UI FINAL R9 (plan work/ui/PLAN.md R9; `H:n` as above):
+--   - The level-up show (G9.10-G9.13, UD8; UI/LevelUpShow): a level that rose after the silent baseline
+--     (levelUpShow) plays the design's full show in its own layer (Config.UI.Sticker.levelUp.layer) with the equipped
+--     squishy and, for a rank reached (GripMath.unlocks, FD8), its unlock line; the card's level pop stays. It waits
+--     (LevelUpShow.merge) from Matched through Returning and while a box reveal is open, and plays when that ends; one
+--     at a time; a level-up during the show plays it again with the new numbers (H:730). Its sounds (G9.12, RL8:
+--     the nearest clips): the slam box.open; the tone ui.levelTone (pack 2); the main hit ui.gripUnlock, ui.purchase
+--     and box.open. The server's grip.levelUp toast and its ui.gripUnlock are dropped while a show plays, waits or
+--     just played (NotifyController.present); with no show it is still the toast. AFFECTED 2026-10-15: capsule tiers
+--     are removed, so only a rank fills the unlock line (the new systems' unlocks later).
+--   - The idle card (the screens the design lacks): the confirm card's look (H:457-458, Config.UI.confirm): the
+--     purple card 480 wide (border 5, radius 30, the 10 px lip, inset 4 at .12, padding 64 28 26, gap 12), the
+--     130 px medallion at -70 (the radial img.fx.radial.medallion, its fallback while it has no id; the 6 px lip,
+--     border 5) holding the squeeze picture bobbing 2.4 s, the title in confirmTitle, the sentence in confirmDesc and
+--     [Keep going] the green 62 px button.
 
 -- Services
 
@@ -113,6 +128,7 @@ local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local GripMath = require(Shared.GripMath)
 local Log = require(Shared.Util.Log)
+local Palette = require(Shared.Art.Palette)
 local SqueezeLimit = require(Shared.SqueezeLimit)
 local Strings = require(Shared.Strings)
 
@@ -126,12 +142,14 @@ local Focus = require(Client.UI.Focus)
 local HudFormat = require(Client.UI.HudFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
+local LevelUpShow = require(Client.UI.LevelUpShow)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local ScrollHint = require(Client.UI.Components.ScrollHint)
 local Theme = require(Client.UI.Theme)
 local UiFx = require(Client.UI.UiFx)
 local HudController = require(script.Parent.HudController)
 local NotifyController = require(script.Parent.NotifyController)
+local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
 
@@ -236,7 +254,21 @@ local PANEL_MARGIN = 24
 local PANEL_HEIGHT_SHARE = 0.86
 local PANEL_EDGE = Theme.Padding.small
 local PANEL_FALLBACK_HEIGHT = 480 -- before SD_Modal has a size
-local IDLE_CARD_WIDTH = 440
+-- UI FINAL R9: the idle card in the confirm card's look (H:457-458) and the level-up show (H:506-535, H:719-722).
+local CONFIRM = Config.UI.confirm
+local IDLE_PICTURE = "img.icon.squeeze"
+local MEDALLION_KEY = "img.fx.radial.medallion"
+local LEVEL_UP_LAYER = Config.UI.Sticker.levelUp.layer
+local LEVEL_UP_NOTICE = "grip.levelUp"
+local REVEAL_SCREEN = "boxReveal" -- BoxController's reveal: the show waits for it (G9.13)
+local OVERLAY_GUI = "SD_Overlay" -- its size is the safe area (CoreUISafeInsets)
+local SHOW_RECENT_SECONDS = 5 -- reading: a grip.levelUp notice this soon after a show is the show's own
+local SHOW_NOTICE_WAIT_SECONDS = 1 -- reading: a notice before its state waits this long for its show
+local LEVEL_UP_SOUNDS: { [string]: { string } } = { -- G9.12 (RL8: the nearest clips)
+	slam = { "box.open" }, -- H:719
+	tone = { "ui.levelTone" }, -- H:720 (pack 2)
+	main = { "ui.gripUnlock", "ui.purchase", "box.open" }, -- H:722
+}
 local TIMER_REFRESH_SECONDS = 5 -- the minute texts change slowly (Double Grip refills 4 points a minute)
 -- §18.5.1 A9: the level label pops 1.25 -> 1 (Back Out, 300 ms). Reading: §18.8 gives no Config key for it.
 local LEVEL_POP = {
@@ -277,6 +309,10 @@ local card: Card? = nil
 local panelRefs: PanelRefs? = nil
 local focusEntrySet = false -- the card is HudController's DPadUp focus entry (only while it is shown)
 local cardPresent = false -- the card wants to show (HudController.setColumnItem "grip")
+-- UI FINAL R9: the level-up show waiting for its turn, the one playing and when the last one started (os.clock()).
+local pendingShow: LevelUpShow.Pending? = nil
+local shownShow: LevelUpShow.Pending? = nil
+local lastShowAt = -math.huge
 
 local function text(key: string, args: { [string]: any }?): string
 	local template = Strings.resolve(key)
@@ -1025,47 +1061,237 @@ local function refreshPanel()
 	setLabel(refs.goalLabel, model.goal)
 end
 
--- The idle card (foam restyle): a foam panel with the "Still there?" header tab, the sentence and [Keep going].
+-- The idle card (UI FINAL R9: the confirm card's look, H:457-458; see the header): the title, the sentence and
+-- [Keep going] under the medallion with the squeeze picture. Its height from its measured parts.
 local function buildIdleCard(parent: Instance): GuiObject
-	local root = Theme.window({
+	local card, medal = CONFIRM.card, CONFIRM.medallion
+	local innerWidth = card.width - 2 * card.padX
+	local titleText, bodyText = text("grip.idleTitle"), text("grip.idleBody")
+	local titleHeight = math.ceil(Theme.textBounds(titleText, "Name", nil, innerWidth).Y)
+	local bodyHeight = math.ceil(Theme.textBounds(bodyText, "Small", nil, innerWidth).Y)
+	local buttonHeight = CONFIRM.buttons.face + Config.UI.Sticker.lip.button
+	local height = card.padTop
+		+ titleHeight
+		+ card.gap
+		+ bodyHeight
+		+ card.gap
+		+ CONFIRM.buttons.marginTop
+		+ buttonHeight
+		+ card.padBottom
+		+ card.lip
+	local root: Frame = Create("Frame", {
 		Name = "GripIdleCard",
+		BorderSizePixel = 0,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(IDLE_CARD_WIDTH, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.fromOffset(card.width, height),
+		Active = true,
 		Parent = parent,
-	}, WINDOW_KIND, Theme.Padding.large)
-	-- UI FINAL R3: the band on the window's top, so the list lives in a child frame (Theme.headerTab).
-	Theme.headerTab(root, text("grip.idleTitle"), { name = "Title" })
+	})
+	local top, bottom = Palette.StickerPillTop, Palette.StickerPillBottom -- H:457: #9775FF -> #6C47F5
+	local bands = Layout.stickerBands(card.border, card.inset.px, 0, card.lip)
+	Theme.foam(root, {
+		radius = card.radius,
+		stroke = card.border,
+		inner = true,
+		top = bands.top,
+		drop = bands.drop,
+		colors = {
+			face = top,
+			faceEnd = bottom,
+			top = top:Lerp(Color3.new(1, 1, 1), card.inset.alpha),
+			drop = Theme.Colors.inkUI,
+		},
+	})
 	local body: Frame = Create("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.fromScale(1, 1),
 		Parent = root,
 	})
-	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.medium, body)
+	Create("UIPadding", {
+		PaddingTop = UDim.new(0, card.padTop),
+		PaddingLeft = UDim.new(0, card.padX),
+		PaddingRight = UDim.new(0, card.padX),
+		PaddingBottom = UDim.new(0, card.padBottom + card.lip),
+		Parent = body,
+	})
+	Theme.list(Enum.FillDirection.Vertical, card.gap, body, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Top)
+	local title = Theme.label({
+		Name = "Title",
+		Text = titleText,
+		AutomaticSize = Enum.AutomaticSize.None,
+		Size = UDim2.new(1, 0, 0, titleHeight),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 1,
+		Parent = body,
+	}, "Name")
+	Theme.stickerText(title, "confirmTitle") -- H:459
 	local sentence = Theme.label({
 		Name = "Body",
-		LayoutOrder = 1,
-		Text = text("grip.idleBody"),
+		Text = bodyText,
+		AutomaticSize = Enum.AutomaticSize.None,
+		Size = UDim2.new(1, 0, 0, bodyHeight),
 		TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 2,
 		Parent = body,
-	}, "Body")
-	Theme.textOnWindow(sentence) -- UI FINAL R3: on the pink body (H:196)
-	Button.new({
+	}, "Small")
+	Theme.stickerText(sentence, "confirmDesc") -- H:460
+	local row: Frame = Create("Frame", {
+		Name = "Buttons",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, CONFIRM.buttons.marginTop + buttonHeight),
+		LayoutOrder = 3,
+		Parent = body,
+	})
+	local keepGoing = Button.new({
 		name = IDLE_BUTTON,
 		text = text("grip.idleButton"),
-		kind = "primary",
-		height = Config.UI.Touch.primaryButton,
-		layoutOrder = 2,
-		parent = body,
+		kind = "primary", -- H:463: the green
+		width = innerWidth,
+		height = CONFIRM.buttons.face,
+		textRole = "button", -- H:462: 24 px, stroke 5
+		parent = row,
 		onActivated = function()
 			-- Only closes the card: it never restarts a hold-to-squeeze (§17.7).
 			UIController.close(SCREEN_IDLE, "keepGoing")
 		end,
 	})
+	keepGoing.root.Position = UDim2.fromOffset(0, CONFIRM.buttons.marginTop)
+	-- H:458: the medallion over the card's top edge: its lip, the radial face, the ring, the picture bobbing.
+	local holder: Frame = Create("Frame", {
+		Name = "Medallion",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, medal.top + medal.px / 2),
+		Size = UDim2.fromOffset(medal.px, medal.px),
+		ZIndex = 3,
+		Parent = root,
+	})
+	local lip: Frame = Create("Frame", {
+		Name = "Lip",
+		BackgroundColor3 = Theme.Colors.inkUI,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, medal.lip),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 1,
+		Parent = holder,
+	})
+	Theme.corner(medal.px, lip)
+	local face: Frame = Create("Frame", {
+		Name = "Face",
+		BackgroundColor3 = Palette.StickerGoldMid,
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		ClipsDescendants = true,
+		ZIndex = 2,
+		Parent = holder,
+	})
+	Theme.corner(medal.px, face)
+	Theme.radial(face, MEDALLION_KEY, {
+		inner = Palette.StickerMedallionTop,
+		outer = Palette.StickerGoldMid,
+		centre = Vector2.new(0.5, medal.centreY),
+	})
+	local ring: Frame = Create("Frame", {
+		Name = "Ring",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 4,
+		Parent = holder,
+	})
+	Theme.corner(medal.px, ring)
+	local ringStroke = Theme.stroke(Theme.Colors.inkUI, medal.border, ring)
+	pcall(function()
+		(ringStroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner -- H:458 border-box
+	end)
+	local bob: Frame = Create("Frame", {
+		Name = "SD_Bob",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(medal.icon, medal.icon),
+		ZIndex = 3,
+		Parent = holder,
+	})
+	IconGlyph.image(IDLE_PICTURE, { name = "Picture", sizePx = medal.icon, parent = bob })
+	UiIdle.add(bob, "bob", { periodS = medal.bobS })
 	return root
+end
+
+-- Level-up show (UI FINAL R9) ------------------------------------------------------------------------------------------
+
+-- G9.13: the show may play now: the lobby (not Matched through Returning) and no box reveal open.
+local function canShow(): boolean
+	return not suppressed() and not UIController.isOpen(REVEAL_SCREEN)
+end
+
+local function playShow(show: LevelUpShow.Pending)
+	shownShow = show
+	lastShowAt = os.clock()
+	local overlay = UIController.screenGui(OVERLAY_GUI)
+	local played: LevelUpShow.Pending = show
+	LevelUpShow.play({
+		layer = UIController.screenGui(LEVEL_UP_LAYER.name, {
+			displayOrder = LEVEL_UP_LAYER.displayOrder,
+			insets = LEVEL_UP_LAYER.insets,
+		}),
+		prev = show.prev,
+		level = show.level,
+		unlock = show.unlock,
+		squishyId = StateController.equipped(),
+		uiScale = UIController.scale,
+		safe = function(): Vector2
+			return overlay.AbsoluteSize
+		end,
+		onCue = function(cue: LevelUpShow.Cue)
+			local keys = LEVEL_UP_SOUNDS[cue]
+			if keys then
+				for _, key in keys do
+					SoundController.play(key)
+				end
+			end
+		end,
+		onDone = function()
+			if shownShow == played then
+				shownShow = nil
+			end
+			task.defer(function()
+				local waiting = pendingShow
+				if waiting and canShow() and not LevelUpShow.isPlaying() then
+					pendingShow = nil
+					playShow(waiting)
+				end
+			end)
+		end,
+	})
+end
+
+-- A waiting show plays once nothing holds it (the lock ended, the reveal closed).
+local function playPendingShow()
+	local waiting = pendingShow
+	if waiting and canShow() and not LevelUpShow.isPlaying() then
+		pendingShow = nil
+		playShow(waiting)
+	end
+end
+
+-- G9.13: a level-up from `prev` to `newLevel`: plays now, again with the new numbers over a playing show (H:730), or
+-- waits.
+local function queueShow(prev: number, newLevel: number)
+	local reached = GripMath.unlocks(prev, newLevel).rank
+	local unlock = if reached then text("grip.rank." .. reached.key) else nil
+	if canShow() then
+		local playingNow = if LevelUpShow.isPlaying() then shownShow else nil
+		playShow(LevelUpShow.merge(playingNow, prev, newLevel, if unlock ~= "" then unlock else nil))
+	else
+		pendingShow = LevelUpShow.merge(pendingShow, prev, newLevel, if unlock ~= "" then unlock else nil)
+	end
+end
+
+-- Whether a show plays, waits or just played (the grip.levelUp toast is its own then).
+local function showActive(): boolean
+	return LevelUpShow.isPlaying() or pendingShow ~= nil or os.clock() - lastShowAt < SHOW_RECENT_SECONDS
 end
 
 -- State -------------------------------------------------------------------------------------------------------------
@@ -1099,6 +1325,9 @@ local function onGrip(raw: any)
 	if GripController.shouldPopLevel(change) and not suppressed() then
 		popLevel()
 	end
+	if GripController.levelUpShow(change, oldLevel, newLevel) then
+		queueShow(oldLevel :: number, newLevel)
+	end
 	if GripController.shouldSquash(change, if old then old.total else nil, newView.total) and not suppressed() then
 		squashRow()
 	end
@@ -1110,6 +1339,7 @@ local function onLobbyLock()
 		UIController.close(SCREEN_PANEL, "matched")
 	end
 	refreshCard()
+	playPendingShow() -- UI FINAL R9: a level-up that waited for the match to end
 end
 
 -- Public: pure helpers (unit-tested) --------------------------------------------------------------------------------
@@ -1161,6 +1391,11 @@ end
 -- (never the session's first state or a full state that replaced the profile: that level was loaded, not earned).
 function GripController.shouldPopLevel(change: GripChange): boolean
 	return change.fireLevel and not change.baseline
+end
+
+-- UI FINAL R9 (G9.13): whether a grip state plays the level-up show: the level rose after the silent baseline.
+function GripController.levelUpShow(change: GripChange, oldLevel: number?, newLevel: number): boolean
+	return GripController.shouldPopLevel(change) and oldLevel ~= nil and newLevel > oldLevel
 end
 
 -- UI FINAL R4 (H:707): whether a grip state squashes the row: Grip gained after the silent baseline.
@@ -1352,6 +1587,26 @@ function GripController.init()
 		end))
 	end
 	c:add(StateController.LobbyLockChanged:connect(onLobbyLock))
+	-- UI FINAL R9 (G9.13): a level-up that waited for a box reveal plays once it closes.
+	c:add(UIController.ScreenClosed:connect(function(name: string)
+		if name == REVEAL_SCREEN then
+			task.defer(playPendingShow)
+		end
+	end))
+	-- UI FINAL R9: the server's grip.levelUp toast goes while its show plays, waits or just played; a notice that
+	-- comes before its grip state waits SHOW_NOTICE_WAIT_SECONDS for the show, else it is still the toast.
+	c:add(NotifyController.present(LEVEL_UP_NOTICE, function(_code: string, args: any, kind: any): boolean
+		if showActive() then
+			return true
+		end
+		local toastText = text(LEVEL_UP_NOTICE, if type(args) == "table" then args else nil)
+		task.delay(SHOW_NOTICE_WAIT_SECONDS, function()
+			if not showActive() and toastText ~= "" then
+				UIController.toast(toastText, kind, { sound = Config.Audio.toastSounds[LEVEL_UP_NOTICE] })
+			end
+		end)
+		return true
+	end))
 	c:add(UIController.LayoutChanged:connect(function()
 		refreshCard()
 		refreshPanel()
@@ -1364,6 +1619,8 @@ function GripController.init()
 		view, level, baselineTotal = nil, nil, nil
 		lastGoalKey, goalBaselineSet = nil, false
 		panelRefs = nil
+		pendingShow, shownShow = nil, nil
+		LevelUpShow.stop()
 		if cardPresent then
 			cardPresent = false
 			HudController.setColumnItem("grip", false)
