@@ -40,6 +40,9 @@
 -- ShutdownService: RestartScheduled clears every ticket with queue.paused and pauses joins; Closing clears the queue.
 -- Batch 3 (friends, review #6): startDirect(a, b) starts a match between two players outside the queue on a live server
 -- (FriendDuelService: the duel pads and Rematch), with QueueJoin's checks for both; forceMatch stays Studio-only.
+-- Practice bot (2026-10-16): startWithBot(player, bot) starts the duel of the ONE Searching player against BotService's
+-- bot (never queued, no record), only while nobody else is Searching, so a real player who queues first always gets
+-- the spot; the player is Matched as after a pairing.
 -- All collaborators are reached through `deps` (useDeps in tests; init() builds the real ones), so the queue rules are
 -- unit-tested without Players, remotes or DuelService.
 
@@ -1006,6 +1009,26 @@ function QueueService.startDirect(a: any, b: any): (boolean, any)
 	end
 	QueueService.Joined:fire(a)
 	QueueService.Joined:fire(b)
+	return true, match
+end
+
+-- Practice bot (2026-10-16, BotService): starts `player`'s duel against `bot` when `player` is the only ticket and the
+-- queue may start matches (as pairOnce: open, not closing, no restart pending). Returns (true, match) with the player
+-- Matched (status sent), or (false, why) with the ticket left as it was.
+function QueueService.startWithBot(player: any, bot: any): (boolean, any)
+	local d = getDeps()
+	local record = records[player]
+	if record == nil or record.state ~= "Searching" or #queue ~= 1 then
+		return false, "notAlone"
+	end
+	if closed or not accepting or d.closing() or d.restartPending() then
+		return false, CODE_UNAVAILABLE
+	end
+	local ok, match = startMatchWith(player, bot)
+	if not ok then
+		return false, match
+	end
+	markMatched(player, bot, match, d.now())
 	return true, match
 end
 

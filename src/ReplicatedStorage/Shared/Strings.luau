@@ -17,6 +17,9 @@
 -- match.readout.powerUpName.<kind> (the test readout's live power-ups).
 -- Auto-clicker check (2026-10-16): reason.squeeze.autoClick (the warning) and autoClick.kick / kickNoBan / ban.
 -- Bubble Pop bounce (2026-10-16): ability.bubblePop.description says it bounces off cover once.
+-- Practice bot (2026-10-16): bot.nameStarts / bot.nameEnds, the word lists of the 1v1 bot's names (Logic/BotRules.name:
+-- <start><end>[_]<number>, e.g. "SquishFan_23"; letters only, kind words, never a real username on purpose;
+-- Config/ValidateBots checks that the longest name fits 20 characters).
 
 export type FormatArgs = { [string]: any }
 
@@ -1079,6 +1082,68 @@ local Strings = {
 		idleButton = "Keep going",
 		-- World: the lobby nameplate.
 		nameplate = "Lv {level} · {rank}",
+	},
+
+	-- Practice bot (2026-10-16): the name word lists (see the header).
+	bot = {
+		nameStarts = {
+			"Squish",
+			"Bouncy",
+			"Mochi",
+			"Pudding",
+			"Bubble",
+			"Sprinkle",
+			"Puffy",
+			"Gummy",
+			"Cocoa",
+			"Cookie",
+			"Noodle",
+			"Pickle",
+			"Waffle",
+			"Biscuit",
+			"Fluffy",
+			"Sunny",
+			"Comet",
+			"Pixel",
+			"Boba",
+			"Taffy",
+			"Doodle",
+			"Sparkle",
+			"Muffin",
+			"Peachy",
+			"Berry",
+			"Toffee",
+			"Squeaky",
+			"Wobbly",
+		},
+		nameEnds = {
+			"Fan",
+			"King",
+			"Queen",
+			"Star",
+			"Pro",
+			"Kid",
+			"Hero",
+			"Champ",
+			"Boss",
+			"Buddy",
+			"Pal",
+			"Ace",
+			"Wiz",
+			"Bean",
+			"Bun",
+			"Pop",
+			"Zoom",
+			"Toss",
+			"Ninja",
+			"Master",
+			"Legend",
+			"Panda",
+			"Fox",
+			"Bear",
+			"Cat",
+			"Pup",
+		},
 	},
 }
 

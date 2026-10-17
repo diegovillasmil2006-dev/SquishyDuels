@@ -50,6 +50,11 @@
 --   the SD_ReturnPoint data), movement is restored and SD_MatchId / SD_DuelPhase are cleared; then the slot is
 --   released (only if it still holds this match) and the match is forgotten.
 -- Lobby stats never enter a match (duel isolation, §17.9 #8).
+-- * Practice bot (2026-10-16, BotService through QueueService.startWithBot): one participant may be a bot (a
+--   Player-shaped table with kind "bot" and isBot = true, on live servers too). It rides the test dummy's server
+--   paths (no Player: no DuelResult, no reward, no save, no quest; its own displayName and squishyId) except that
+--   DuelState shows it as a player (isTestDummy false, its name). The human's reward is computed and paid as in any
+--   duel. A match needs at least one real Player.
 
 -- Services
 
@@ -326,6 +331,11 @@ local function isTestDummy(ref: any): boolean
 	return type(ref) == "table" and ref.isTestDummy == true and ref.kind == "testDummy"
 end
 
+-- The practice bot (BotService), accepted on live servers (see the header).
+local function isBot(ref: any): boolean
+	return type(ref) == "table" and ref.isBot == true and ref.kind == "bot"
+end
+
 -- The Studio test dummy is accepted only in Studio with the harness flag on (§12 #21).
 local function dummyAllowed(): boolean
 	return RunService:IsStudio() and Config.Debug.testHarness == true
@@ -499,7 +509,7 @@ local function participantView(match: Match, p: Participant): Types.DuelParticip
 		side = publicSide(p.side),
 		lives = DuelRules.participant(match.state, p.side).lives,
 		ultReady = AbilityService.isReady(p.userId),
-		isTestDummy = p.isTestDummy,
+		isTestDummy = p.isTestDummy and not isBot(p.ref), -- the practice bot shows its own name
 	}
 end
 
@@ -1025,7 +1035,7 @@ end
 
 local function snapshotSquishy(ref: any): string
 	local id: any = nil
-	if isTestDummy(ref) then
+	if isTestDummy(ref) or isBot(ref) then
 		id = ref.squishyId
 	elseif typeof(ref) == "Instance" and ref:IsA("Player") then
 		id = InventoryService.getEquipped(ref)
@@ -1116,7 +1126,7 @@ local function buildPort(match: Match, fighters: { Fighter }, slot: Slot): Match
 end
 
 local function newParticipant(ref: any, side: Side, now: number): Participant
-	local dummy = isTestDummy(ref)
+	local dummy = isTestDummy(ref) or isBot(ref) -- the practice bot rides the dummy's server paths (see the header)
 	local player: Player? = if dummy then nil else ref
 	local userId = userIdOf(ref) :: number
 	local displayName = if dummy
@@ -1159,6 +1169,7 @@ end
 -- Starts a match between a and b (Players; one may be the Studio test dummy in Studio). `slot` is the arena slot the
 -- caller acquired (QueueService); without one a slot is acquired here. Returns (view, nil) or (nil, why) with an
 -- internal reason (QueueService logs it and releases its slot).
+-- Practice bot (2026-10-16): one of them may be a bot (BotService), on any server; never two non-players.
 function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, string?)
 	if ShutdownService.isClosing() then
 		return nil, "closing"
@@ -1171,7 +1182,7 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, strin
 		if dummy and not dummyAllowed() then
 			return nil, "dummyNotAllowed"
 		end
-		if not dummy and not isRealPlayer(ref) then
+		if not dummy and not isBot(ref) and not isRealPlayer(ref) then
 			return nil, "notAPlayer"
 		end
 		local userId = userIdOf(ref)
@@ -1179,7 +1190,7 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, strin
 			return nil, "alreadyInMatch"
 		end
 	end
-	if isTestDummy(a) and isTestDummy(b) then
+	if not isRealPlayer(a) and not isRealPlayer(b) then
 		return nil, "noRealPlayer"
 	end
 	if userIdOf(a) == userIdOf(b) then

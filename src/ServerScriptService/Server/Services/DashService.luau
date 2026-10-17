@@ -138,7 +138,14 @@ end
 
 -- Validates and accepts one dash (spec phase 5 §3.3). `who` is the Player (DashRequest) or a registered fighter / its
 -- userId (the Studio test dummy). Returns (accepted, reason?).
-function DashService.requestDash(who: any, seq: unknown, dir: unknown, clientTime: unknown): (boolean, string?)
+-- Practice bot (2026-10-16): an accepted dash also returns its end point `to` (the bot moves its own root there, as a
+-- player's client does).
+function DashService.requestDash(
+	who: any,
+	seq: unknown,
+	dir: unknown,
+	clientTime: unknown
+): (boolean, string?, Vector3?)
 	local now = deps.now()
 	local fighter = CombatService.getFighter(who)
 	local player: Player? = if fighter
@@ -246,7 +253,7 @@ function DashService.requestDash(who: any, seq: unknown, dir: unknown, clientTim
 		recipients = PracticeService.audience(from, player)
 	end
 	deps.send(REMOTE_STARTED, recipients, payload)
-	return true, nil
+	return true, nil, to
 end
 
 -- Swaps the clock, the sender, the violation reporter, the Spherecast and the ground probe (tests). Missing fields keep

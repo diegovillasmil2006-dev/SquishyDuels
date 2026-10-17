@@ -1,6 +1,7 @@
 --!strict
 -- Config.Duel: match rules, phase timings, matchmaking and arena slots (DESIGN §5.2-§5.4). Shared, data only.
 -- All [P]. Throw validation, hitbox and lag are in Config.Combat; Dragon Rush is in Config.Abilities.
+-- Practice bot (2026-10-16): Bots = the Config/Bots module (Config.Duel.Bots).
 
 local Duel = {
 	-- DuelRules / CombatService (§5.2).
@@ -150,6 +151,10 @@ local Duel = {
 
 	-- DataModel.ServerRestartScheduled (§3.12): matches that can finish before restart - margin continue.
 	RestartMarginSeconds = 30,
+
+	-- The 1v1 practice bot (2026-10-16): Config/Bots (every value and why; a child module, so Config/init does not
+	-- grow; Config/ValidateBots checks it when BotService starts).
+	Bots = require(script.Parent.Bots),
 }
 
 return Duel

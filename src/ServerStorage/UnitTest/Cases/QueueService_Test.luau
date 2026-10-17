@@ -633,4 +633,46 @@ return function(t: Context)
 		local empty = QueueService.readMatchEnded()
 		expect.deepEqual(empty.participants, {})
 	end)
+
+	-- Practice bot (2026-10-16): BotService starts a lone player's duel against its bot through startWithBot.
+	t.test("startWithBot: only the one Searching player, never while another player waits", function()
+		local w = setup(2)
+		local p1, p2 = w.players[1], w.players[2]
+		local bot = { userId = -200001, kind = "bot", isBot = true }
+		expect.equal((QueueService.startWithBot(p1, bot)), false) -- not Searching
+		join(w, 1)
+		join(w, 2)
+		expect.equal((QueueService.startWithBot(p1, bot)), false) -- a real player is waiting too: they pair instead
+		expect.equal(#w.started, 0)
+		QueueService.leave(p2)
+		local ok, match = QueueService.startWithBot(p1, bot)
+		expect.equal(ok, true)
+		expect.equal(match.matchId, "m1")
+		expect.equal(w.started[1].a, p1)
+		expect.equal(w.started[1].b, bot)
+		expect.truthy(w.started[1].slot ~= nil)
+		expect.equal(QueueService.state(p1), "Matched")
+		expect.equal(QueueService.searchingCount(), 0)
+		expect.equal(lastStatus(w, p1).state, "Matched")
+		expect.equal((QueueService.startWithBot(p1, bot)), false) -- already Matched
+	end)
+
+	t.test("startWithBot: no free arena, a pending restart or a failed start leave the ticket waiting", function()
+		local w = setup(1, 0)
+		local p1 = w.players[1]
+		local bot = { userId = -200002, kind = "bot", isBot = true }
+		join(w, 1)
+		expect.equal((QueueService.startWithBot(p1, bot)), false) -- no slot
+		expect.equal(QueueService.state(p1), "Searching")
+		w.arena.free = 1
+		w.flags.restart = true
+		expect.equal((QueueService.startWithBot(p1, bot)), false)
+		expect.equal(#w.started, 0)
+		w.flags.restart = false
+		w.flags.startFails = true
+		expect.equal((QueueService.startWithBot(p1, bot)), false)
+		expect.equal(w.arena.released, 1) -- the slot went back
+		expect.equal(QueueService.state(p1), "Searching")
+		expect.equal(QueueService.searchingCount(), 1)
+	end)
 end

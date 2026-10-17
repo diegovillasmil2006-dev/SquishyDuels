@@ -40,6 +40,8 @@ type Module = {
 -- CharacterService, CombatService, AbilityService, QueueService (state, Joined), NetService and MatchMapService.
 -- Auto-clicker check (2026-10-16): AutoClickService right before SqueezeService, which requires it and asks it about
 -- every squeeze (it reads profiles through StateService's data port).
+-- Practice bot (2026-10-16): BotService right after FriendDuelService (it fills a lone player's 1v1 duel through
+-- QueueService and plays through CombatService, DashService, AbilityService and DuelService).
 local SERVICE_ORDER = {
 	"MonetizationService",
 	"NetService",
@@ -65,6 +67,7 @@ local SERVICE_ORDER = {
 	"DuelService",
 	"QueueService",
 	"FriendDuelService",
+	"BotService", -- 2026-10-16: the 1v1 practice bot
 	"MatchMapService", -- FFA/TDM v1 (2026-10-15): Diego's maps in Workspace.DuelMaps (read once at init)
 	"MatchService", -- FFA/TDM v1: the in-server Free for All / Team Deathmatch (reads the duel services above)
 	"BoxService",
