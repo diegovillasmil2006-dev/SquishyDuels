@@ -6,6 +6,8 @@
 --                              tile column), Duel (the CTA at the top middle), Settings (the top-right gear tile),
 --                              each with the screen it opens, its stable button name (Hud_<Id>Button, §2.11), its
 --                              place, accent and icon (UI/Components/IconGlyph)
+--   PHONE_RIGHT                Phone HUD B (the owner's pick, 2026-10-17): the tiles that sit in the top-right group
+--                              beside Settings on phones (the compact class; UI/PhoneHud moves them): Daily
 --   visibleNav(isRegistered)   the items whose screen exists (a button never opens nothing, §7.6 / acceptance 5)
 --   banner(dataStatus)         the data-status line: a pending save -> "Saving your collection…" (reason box.saving,
 --                              §3.11) first; else the server's own choice (dataStatus.banner, a Strings key: reading,
@@ -75,13 +77,14 @@
 --                              the HUD, §11.2 / §17.7 L5), else the bottom of the screen. Order tried: regular screens:
 --                              the regular card with a tile column, the compact card with a column, then two columns,
 --                              then a row (each with the regular card first), then the compact card beside the capsule
---                              with a row; phones (compact class; lobby HUD, spec 2026-10-11: phones follow the PC
---                              layout): the compact card beside the capsule, only when that keeps the Duel CTA's widest
---                              width clear at the top middle (ctaWidth), then under it, the tiles always in two columns.
+--                              with a row; phones (compact class; Phone HUD B, the owner's pick 2026-10-17): Diego's
+--                              bare Grip row under the capsule without its goal line (GripController toasts the goal
+--                              there), the tiles but PHONE_RIGHT's (by default) in two columns: 2 x 2.
 --                              If none fits, the shortest is used (fits = false: on phones the two columns reach into
---                              the thumbstick zone, the user's choice; the joystick still starts in the lower-left
---                              corner below them). Sized for the longest texts each part can show (worstCaseTexts), so
---                              the choice only changes with the screen, the layout class, the input and the text size.
+--                              the thumbstick zone, the user's choice; they end above Roblox's fixed thumbstick, and
+--                              the joystick still starts in the lower-left corner below them). Sized for the longest
+--                              texts each part can show (worstCaseTexts), so the choice only changes with the screen,
+--                              the layout class, the input and the text size.
 --                              The Grip card never hides for it (§17.7).
 --                              UI FINAL R4 (the design's spots, Config.UI.Sticker.hud): on regular layouts Hud_Left
 --                              starts at (leftX, leftTop) (H:74), the tiles at (navX, navTop) or a row gap under
@@ -295,9 +298,8 @@ export type CtaInput = {
 	top: number?, -- UI FINAL R4: its top edge (origins().ctaTop); default COLUMN.edge
 }
 export type CtaPlace = { x: number, y: number, fits: boolean }
--- One way to lay out the left side (leftColumnPlan tries them in order). `clearCta`: only when Hud_Left beside keeps the
--- Duel CTA's widest width clear at the top middle (phones).
-type Candidate = { grip: GripMode, tiles: TilesMode, left: LeftMode, clearCta: boolean? }
+-- One way to lay out the left side (leftColumnPlan tries them in order).
+type Candidate = { grip: GripMode, tiles: TilesMode, left: LeftMode }
 
 -- Constants
 
@@ -507,11 +509,13 @@ local REGULAR_ORDER: { Candidate } = {
 	{ grip = "compact", tiles = "row", left = "stack" },
 	{ grip = "compact", tiles = "row", left = "beside" },
 }
--- Lobby HUD (spec 2026-10-11): phones follow the PC layout, the tiles always in two columns.
+-- Phone HUD B (the owner's pick, 2026-10-17): phones stack Diego's bare Grip row under the coin pill (no goal line),
+-- the tiles in two columns.
 local COMPACT_ORDER: { Candidate } = {
-	{ grip = "compact", tiles = "grid", left = "beside", clearCta = true },
-	{ grip = "compact", tiles = "grid", left = "stack" },
+	{ grip = "regular", tiles = "grid", left = "stack" },
 }
+-- Phone HUD B: the tiles that sit beside Settings on phones (see the header).
+local PHONE_RIGHT: { string } = { "daily" }
 
 -- Module table
 
@@ -522,6 +526,7 @@ HudFormat.BADGE_MAX = BADGE_MAX
 HudFormat.COLUMN = COLUMN
 HudFormat.TEXT_METRICS = TEXT_METRICS
 HudFormat.COIN_SHOP = table.freeze({ tab = "coins" }) -- 2026-10-16 (plan [UD5]): see the header
+HudFormat.PHONE_RIGHT = table.freeze(PHONE_RIGHT)
 
 -- Public
 
@@ -1250,8 +1255,7 @@ local function candidates(compact: boolean, gripPresent: boolean): { Candidate }
 		local key = table.concat({ grip, candidate.tiles, left }, "/")
 		if not seen[key] then
 			seen[key] = true
-			local entry: Candidate =
-				{ grip = grip, tiles = candidate.tiles, left = left, clearCta = candidate.clearCta }
+			local entry: Candidate = { grip = grip, tiles = candidate.tiles, left = left }
 			table.insert(list, entry)
 		end
 	end
@@ -1272,9 +1276,9 @@ end
 
 -- Every layout the left side may take for these inputs, in the order leftColumnPlan tries them (see the header).
 -- `parts.grip` says whether the Grip card wants to show (default true), `parts.touch` whether the player uses touch
--- (default false), `parts.tiles` how many tiles show (default every tile), `parts.screenHeight` the whole screen's
--- height in px (default the HUD's); `parts.texts` replaces the worst-case texts. A phone's side-by-side layout is left
--- out when Hud_Left would reach the Duel CTA's widest width centred at the top (clearCta; a row gap kept).
+-- (default false), `parts.tiles` how many tiles show (default every tile; on phones every tile but PHONE_RIGHT's),
+-- `parts.screenHeight` the whole screen's height in px (default the HUD's); `parts.texts` replaces the worst-case
+-- texts (on phones without the Grip row's goal line).
 function HudFormat.columnLayouts(
 	screenPx: Vector2,
 	layoutClass: string,
@@ -1290,19 +1294,26 @@ function HudFormat.columnLayouts(
 	local zone = HudFormat.thumbstickZone(canvas, if parts then parts.screenHeight else nil, scale)
 	local limit = if narrow then math.min(canvas.Y * UI_GRIP.leftColumnMaxFraction, zone.y) else canvas.Y - COLUMN.edge
 	local texts = (parts and parts.texts) or HudFormat.worstCaseTexts()
+	-- Phone HUD B: phones show the Grip row without its goal line.
+	local gripTexts = texts
+	if compact then
+		gripTexts = table.clone(texts)
+		gripTexts.gripGoal = ""
+	end
 	local gripPresent = parts == nil or parts.grip ~= false
-	local tileCount = if parts and parts.tiles ~= nil then math.max(0, parts.tiles) else #texts.tiles
+	local tileCount = if parts and parts.tiles ~= nil
+		then math.max(0, parts.tiles)
+		else math.max(0, #texts.tiles - (if compact then #PHONE_RIGHT else 0))
 	local tileWidth, tileHeight = HudFormat.tileSize(compact, ts, texts.tiles)
 	local pill = HudFormat.pillHeight(ts, scale)
 	local pillWidth = HudFormat.pillWidth(ts, texts.coins)
 	local maxRow = canvas.X - 2 * COLUMN.edge
-	local ctaLeft = (canvas.X - HudFormat.ctaWidth(compact, ts)) / 2
 	-- UI FINAL R4: the design's spots (origins; phones COLUMN.edge) and the tiles' gap.
 	local origin = HudFormat.origins(compact)
 	local tileGap = if compact then COLUMN.tileGapCompact else COLUMN.tileGap
 	local layouts: { ColumnPlan } = {}
 	for _, candidate in candidates(compact, gripPresent) do
-		local gripHeight = HudFormat.gripCardHeight(candidate.grip, ts, scale, texts)
+		local gripHeight = HudFormat.gripCardHeight(candidate.grip, ts, scale, gripTexts)
 		local innerGap, tilesGap = HudFormat.leftGaps(compact, candidate.grip)
 		local beside = candidate.left == "beside" and gripHeight > 0
 		local top = origin.left.Y
@@ -1318,9 +1329,6 @@ function HudFormat.columnLayouts(
 			elseif gripHeight > 0 then HudFormat.gripRowWidth(ts, texts)
 			else 0
 		local width = if beside then pillWidth + innerGap + gripWidth else math.max(pillWidth, gripWidth)
-		if candidate.clearCta and beside and COLUMN.edge + width + COLUMN.rowGap > ctaLeft + FIT_SLACK then
-			continue
-		end
 		table.insert(layouts, {
 			scale = scale,
 			canvas = canvas,

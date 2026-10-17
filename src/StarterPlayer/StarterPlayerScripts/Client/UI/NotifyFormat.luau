@@ -41,6 +41,12 @@
 --                            meets (the HUD groups: on a phone the tile row runs under the centred column): centred
 --                            when the room between them allows, else moved aside, else narrowed down to minWidth;
 --                            with even less room it goes under them (full width, centred)
+-- Phone HUD B (the owner's pick, 2026-10-17):
+--   sideColumn(input)        the phone lobby's column (UIController, compact class while the lobby HUD shows): at the
+--                            right edge, from defaultTop or under what hangs into it from above (the top-right group);
+--                            what its band meets on its left (the DUEL area and its mode chip, the left column) narrows
+--                            it from the left down to minWidth; with less room (the 1v1 search bar across the top)
+--                            toastColumn's place
 
 -- Services
 
@@ -408,6 +414,44 @@ function NotifyFormat.toastColumn(input: ColumnInput): Column
 		end
 	end
 	return { x = x, y = top, width = width }
+end
+
+-- Phone HUD B (see the header): the column at the right edge, `width` wide at most. Every rect (above and beside) its
+-- band meets whose centre is left of the column's centre pushes its left edge `gap` past it; then it starts under what
+-- hangs into its columns from above (clearanceBetween, toastTop), and is placed again for that band.
+function NotifyFormat.sideColumn(input: ColumnInput): Column
+	local canvasWidth = if finite(input.canvas.X) then math.max(0, input.canvas.X) else 0
+	local edge = if finite(input.edge) then math.max(0, input.edge) else 0
+	local gap = if finite(input.gap) then math.max(0, input.gap) else 0
+	local right = canvasWidth - edge
+	local want =
+		math.min(if finite(input.width) then math.max(0, input.width) else 0, math.max(0, canvasWidth - 2 * edge))
+	local least = if finite(input.minWidth) then math.clamp(input.minWidth, 0, want) else want
+	local height = if finite(input.height) then math.max(0, input.height) else 0
+	local defaultTop = if finite(input.defaultTop) then input.defaultTop else 0
+	local rects = table.clone(input.above)
+	table.move(input.beside, 1, #input.beside, #rects + 1, rects)
+	local x, top = right - want, math.max(0, defaultTop)
+	for _ = 1, COLUMN_PASSES do
+		local low = edge
+		for _, rect in rects do
+			local meets = usableRect(rect) and rect.y < top + height and top < rect.y + rect.h
+			if meets and rect.x + rect.w / 2 < (x + right) / 2 then
+				low = math.max(low, rect.x + rect.w + gap)
+			end
+		end
+		if right - low < least or right - low <= 0 then
+			return NotifyFormat.toastColumn(input)
+		end
+		x = math.max(low, right - want)
+		local again =
+			NotifyFormat.toastTop(input.canvas.Y, clearanceBetween(rects, x, right, defaultTop, gap), defaultTop, gap)
+		if again <= top then
+			break
+		end
+		top = again
+	end
+	return { x = x, y = top, width = right - x }
 end
 
 return NotifyFormat

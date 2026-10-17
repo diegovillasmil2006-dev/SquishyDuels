@@ -21,10 +21,11 @@
 -- Grip card never hides while it has a state, else the shortest layout; the compact Grip card's row <= 40 base inside a
 -- touch-sized tap target; the gamepad links walk the tile column and reach the CTA; DPadUp.
 -- Lobby HUD (spec 2026-10-11): the Duel CTA sits at the top middle on every layout, moved only as far as the left and
--- right groups need; the coach card sits right under it (wider when its text needs it); phones follow the PC layout: the
--- compact Grip card under the coin capsule (beside it only when that keeps the top-middle CTA clear) and the tiles in
--- two columns, which may reach into the thumbstick zone (the user's choice); the gamepad links put the CTA between the
--- left column and Settings, Down to the queue pill's Cancel or the coach card's button. No dock.
+-- right groups need; the coach card sits right under it (wider when its text needs it); phones (Phone HUD B, the
+-- owner's pick 2026-10-17): Diego's bare Grip row under the coin capsule without its goal line, Daily beside Settings
+-- (PHONE_RIGHT) and the other tiles 2 x 2, which may reach into the thumbstick zone (the user's choice) but end above
+-- Roblox's fixed thumbstick on real phones; the gamepad links put the CTA between the left column and Settings, Down to
+-- the queue pill's Cancel or the coach card's button. No dock.
 -- Foam fix (2026-10-09): the thumbstick zone is a share of the whole screen (the top bar inset the HUD leaves out
 -- counts); the compact Grip card is as wide as its line. Foam fix 2: the tiles start a count badge's reach plus air
 -- under Hud_Left (not on the regular card);
@@ -460,6 +461,10 @@ return function(t: Context)
 	local function classOf(screen: Vector2): string
 		return Layout.layoutClass(screen.X, screen.Y)
 	end
+	-- Phone HUD B: the top-right group on phones, Daily (a phone tile as wide as its label) a row gap left of Settings.
+	local function phoneRightWidth(): number
+		return (HudFormat.tileSize(true, 1, { Strings.hud.nav.daily })) + COLUMN.rowGap + COLUMN.settingsSize
+	end
 	local function overlaps(a: any, b: any): boolean
 		return a.x < b.x + b.w and b.x < a.x + a.w and a.y < b.y + b.h and b.y < a.y + a.h
 	end
@@ -523,40 +528,44 @@ return function(t: Context)
 		end
 	end)
 
-	t.test(
-		"left side (lobby HUD 2026-10-11): phones keep the compact Grip card and two tile columns, like PCs",
-		function()
-			for _, screen in PHONES do
-				for _, ts in TEXT_SCALES do
-					local plan = HudFormat.leftColumnPlan(screen, "compact", ts)
-					expect.truthy(plan.narrow)
-					expect.equal(plan.grip, "compact")
-					-- The line is still the top of the lower-left thumbstick zone (§11.2, §17.7 L5); the two tile columns may
-					-- reach past it (the user's choice: the joystick still starts in the lower-left corner below them).
-					expect.near(plan.limit, plan.canvas.Y * UI.Grip.leftColumnMaxFraction, 1e-3)
-					expect.near(plan.limit, plan.canvas.Y * (1 - TOUCH.thumbstickZoneHeight), 1e-3)
-					expect.equal(plan.tiles, "grid")
-					expect.equal(plan.columns, 2)
-					expect.equal(plan.rows, 3)
-					-- On these phones the coin capsule and the Grip card side by side would reach the top-middle CTA: stacked.
-					expect.equal(plan.left, "stack")
-					-- Never wider than the screen.
-					expect.truthy(COLUMN.edge + plan.tilesWidth <= plan.canvas.X - COLUMN.edge + 1e-6)
-					-- The tiles are touch targets (>= 44 px on screen).
-					expect.truthy(plan.tileHeight * plan.scale >= TOUCH.minTargetFloor)
-					expect.truthy(plan.tileWidth * plan.scale >= TOUCH.minTargetFloor)
-				end
+	t.test("left side (Phone HUD B, 2026-10-17): phones stack Diego's bare Grip row and the tiles 2 x 2", function()
+		for _, screen in PHONES do
+			for _, ts in TEXT_SCALES do
+				local plan = HudFormat.leftColumnPlan(screen, "compact", ts)
+				expect.truthy(plan.narrow)
+				expect.equal(plan.grip, "regular")
+				-- The line is still the top of the lower-left thumbstick zone (§11.2, §17.7 L5); the two tile columns may
+				-- reach past it (the user's choice: the joystick still starts in the lower-left corner below them).
+				expect.near(plan.limit, plan.canvas.Y * UI.Grip.leftColumnMaxFraction, 1e-3)
+				expect.near(plan.limit, plan.canvas.Y * (1 - TOUCH.thumbstickZoneHeight), 1e-3)
+				expect.equal(plan.tiles, "grid")
+				expect.equal(plan.columns, 2)
+				-- Daily sits beside Settings on phones (PHONE_RIGHT): the other four tiles make two rows.
+				expect.deepEqual(HudFormat.PHONE_RIGHT, { "daily" })
+				expect.equal(plan.rows, 2)
+				expect.equal(plan.left, "stack")
+				-- The row without its goal line (GripController toasts the goal on phones).
+				local line = math.ceil(HudFormat.kindPx("Small", ts) * HudFormat.TEXT_METRICS.lineHeight - 1e-6)
+				expect.equal(plan.gripHeight, COLUMN.gripBarHeight + COLUMN.gripBarGap + line)
+				-- Never wider than the screen.
+				expect.truthy(COLUMN.edge + plan.tilesWidth <= plan.canvas.X - COLUMN.edge + 1e-6)
+				expect.truthy(COLUMN.edge + plan.width <= plan.canvas.X - COLUMN.edge + 1e-6)
+				-- The tiles are touch targets (>= 44 px on screen).
+				expect.truthy(plan.tileHeight * plan.scale >= TOUCH.minTargetFloor)
+				expect.truthy(plan.tileWidth * plan.scale >= TOUCH.minTargetFloor)
 			end
-			-- A short, wide compact window (1280×480): side by side keeps the CTA clear, so the capsule and the card share a
-			-- row (and the left side then ends above the line).
-			local wide = HudFormat.leftColumnPlan(Vector2.new(1280, 480), "compact", 1)
-			expect.equal(wide.left, "beside")
-			expect.equal(wide.tiles, "grid")
-			expect.truthy(wide.fits)
-			local ctaLeft = (wide.canvas.X - HudFormat.ctaWidth(true, 1)) / 2
-			expect.truthy(COLUMN.edge + wide.width + COLUMN.rowGap <= ctaLeft + 1e-6)
 		end
-	)
+		-- A short, wide compact window (1280×480) takes the same plan, and there it ends above the line.
+		local wide = HudFormat.leftColumnPlan(Vector2.new(1280, 480), "compact", 1)
+		expect.equal(wide.grip, "regular")
+		expect.equal(wide.left, "stack")
+		expect.equal(wide.tiles, "grid")
+		expect.truthy(wide.fits)
+		-- The regular class keeps the goal line and every tile (Diego's layout).
+		local pc = HudFormat.leftColumnPlan(Vector2.new(1920, 1080), "regular", 1)
+		expect.equal(pc.rows, 5)
+		expect.truthy(pc.gripHeight > HudFormat.leftColumnPlan(Vector2.new(844, 390), "compact", 1).gripHeight)
+	end)
 
 	t.test("left side: touch on a regular screen keeps the thumbstick zone clear too", function()
 		for _, screen in PCS do
@@ -583,7 +592,6 @@ return function(t: Context)
 					local class = classOf(screen)
 					local parts = { touch = touch }
 					local layouts = HudFormat.columnLayouts(screen, class, ts, parts)
-					-- Phones: side by side only when it keeps the top-middle CTA clear (not on these phones).
 					expect.truthy(#layouts >= (if class == "compact" then 1 else 2))
 					for _, layout in layouts do
 						expect.truthy(layout.grip == "regular" or layout.grip == "compact")
@@ -606,7 +614,8 @@ return function(t: Context)
 						expect.truthy(layout.tilesTop > layout.leftBottom)
 					end
 					if class == "compact" then
-						expect.equal(layouts[1].grip, "compact")
+						expect.equal(#layouts, 1) -- Phone HUD B: one phone layout
+						expect.equal(layouts[1].grip, "regular")
 						expect.equal(layouts[1].tiles, "grid")
 						expect.equal(layouts[1].left, "stack")
 					else
@@ -663,12 +672,12 @@ return function(t: Context)
 		-- No size yet (the HUD at boot): the fallback screen, never an error.
 		local boot = HudFormat.leftColumnPlan(Vector2.zero, "regular", nil)
 		expect.truthy(boot.fits)
-		-- Foam fix: how Hud_Left holds its items is part of the layout (both at the 0.85 phone scale).
+		-- Foam fix: how Hud_Left holds its items is part of the layout (Phone HUD B: phones always stack, so the side by
+		-- side twin is made here).
 		local stacked = HudFormat.leftColumnPlan(Vector2.new(844, 312), "compact", 1, { screenHeight = 370 })
-		local beside = HudFormat.leftColumnPlan(Vector2.new(1280, 480), "compact", 1)
+		local beside = table.clone(stacked)
+		beside.left = "beside"
 		expect.equal(stacked.left, "stack")
-		expect.equal(beside.left, "beside")
-		expect.equal(stacked.scale, beside.scale)
 		expect.falsy(HudFormat.samePlan(stacked, beside))
 	end)
 
@@ -693,15 +702,19 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"phones (lobby HUD 2026-10-11): stacked like the PC, two tile columns, the top middle left to the Duel CTA",
+		"phones (Phone HUD B): the pill over the bare Grip row, the tiles 2 x 2 above Roblox's thumbstick, the top "
+			.. "middle left to the Duel CTA",
 		function()
 			-- SD_Hud's size and the whole screen's height (px): Studio's phone emulator (a 58 px top bar inset) and a phone.
+			-- `phone`: a real phone's size, where the stickers end above Roblox's fixed thumbstick (TouchThumbstick on a
+			-- small screen: 70 px, its frame 90 px above the screen's bottom, as Jump's; reading of Roblox's PlayerModule).
 			local cases = {
 				{ hud = Vector2.new(844, 312), screen = 370 },
-				{ hud = Vector2.new(844, 332), screen = 390 },
+				{ hud = Vector2.new(844, 332), screen = 390, phone = true },
 				{ hud = Vector2.new(667, 297), screen = 355 },
-				{ hud = Vector2.new(667, 317), screen = 375 },
+				{ hud = Vector2.new(667, 317), screen = 375, phone = true },
 			}
+			local FIXED_STICK_PX = 90
 			for _, case in cases do
 				local plan = HudFormat.leftColumnPlan(case.hud, "compact", 1, {
 					touch = true,
@@ -710,13 +723,21 @@ return function(t: Context)
 				local zone = HudFormat.thumbstickZone(plan.canvas, case.screen, plan.scale)
 				local label = `{case.hud.X}x{case.hud.Y} (screen {case.screen}): {plan.left} / {plan.tiles}`
 				expect.near(plan.limit, math.min(plan.canvas.Y * UI.Grip.leftColumnMaxFraction, zone.y), 1e-6)
-				expect.equal(plan.grip, "compact")
+				expect.equal(plan.grip, "regular")
 				expect.equal(plan.left, "stack")
 				expect.equal(plan.tiles, "grid")
 				expect.equal(plan.columns, 2)
-				local innerGap = HudFormat.leftGaps(true, "compact")
+				expect.equal(plan.rows, 2)
+				local innerGap = HudFormat.leftGaps(true, "regular")
 				expect.near(plan.leftBottom, COLUMN.edge + plan.pillHeight + innerGap + plan.gripHeight, 1e-6)
-				-- The Duel CTA (its widest, queued) fits at the top between the left side and the Settings tile.
+				if case.phone then
+					local bottomPx = (case.screen - case.hud.Y) + plan.bottom * plan.scale
+					if bottomPx > case.screen - FIXED_STICK_PX then
+						error(`the stickers reach Roblox's thumbstick ({bottomPx} px): {label}`)
+					end
+				end
+				-- The Duel CTA (its widest, queued) fits at the top between the left side and the top-right group (Daily
+				-- beside Settings on phones).
 				local ctaSize = Vector2.new(HudFormat.ctaWidth(true, 1), COLUMN.ctaCompactHeight)
 				local left = { x = COLUMN.edge, y = COLUMN.edge, w = plan.width, h = plan.leftBottom - COLUMN.edge }
 				local tiles = HudFormat.badgeReachRect({
@@ -725,10 +746,11 @@ return function(t: Context)
 					w = plan.tilesWidth,
 					h = plan.tilesHeight,
 				})
+				local rightWidth = phoneRightWidth()
 				local settings = {
-					x = plan.canvas.X - COLUMN.edge - COLUMN.settingsSize,
+					x = plan.canvas.X - COLUMN.edge - rightWidth,
 					y = COLUMN.edge,
-					w = COLUMN.settingsSize,
+					w = rightWidth,
 					h = COLUMN.settingsSize,
 				}
 				local place = HudFormat.ctaPlacement({
@@ -1138,7 +1160,7 @@ return function(t: Context)
 					w = plan.tilesWidth,
 					h = plan.tilesHeight,
 				})
-				local rightWidth = if compact then COLUMN.settingsSize else COLUMN.trackerWidth
+				local rightWidth = if compact then phoneRightWidth() else COLUMN.trackerWidth
 				local rightGroup = {
 					x = c.X - origin.right.X - rightWidth,
 					y = origin.right.Y,
@@ -1184,15 +1206,16 @@ return function(t: Context)
 	-- The coin pill's "+" (plan [UD5]) on the smallest phone, accepted by the owner (2026-10-17: "that's fine", the
 	-- design everywhere): at 667x375 the "+" (its 12 px gap and 36 px) widens the pill, and with the widest texts
 	-- ("Loading…", 100M+ coins such as "123.45M") the search bar's room falls under dropBelow, so its dots and second
-	-- line drop there. The "+" alone costs it (48 px more room would keep them), and a coin number up to "99,999" keeps
-	-- them. Every other screen keeps them at the widest texts (the DUEL area case above).
-	t.test("the coin pill's + at 667x375 (UD5, accepted): the bar drops line 2 only at the widest texts", function()
+	-- line drop there. Phone HUD B (2026-10-17): Daily beside Settings and the bare Grip row (its Double Grip chip
+	-- reserved) narrow that room further, so on this phone they drop at "99,999" coins too (flagged for the owner in
+	-- work/phonehudB/NOTES.md). Every other screen keeps them at the widest texts (the DUEL area case above).
+	t.test("the search bar at 667x375 (UD5, Phone HUD B): its dots and second line drop there", function()
 		local class = classOf(SMALL_PHONE)
 		local compact = class == "compact"
 		local origin = HudFormat.origins(compact)
 		local function barFor(texts: any?): number
 			local plan = HudFormat.leftColumnPlan(SMALL_PHONE, class, 1, if texts then { texts = texts } else nil)
-			local rightWidth = if compact then COLUMN.settingsSize else COLUMN.trackerWidth
+			local rightWidth = if compact then phoneRightWidth() else COLUMN.trackerWidth
 			local blockers = {
 				{ x = origin.left.X, y = origin.left.Y, w = plan.width, h = plan.leftBottom - origin.left.Y },
 				HudFormat.badgeReachRect({
@@ -1211,14 +1234,13 @@ return function(t: Context)
 			local low, high = HudFormat.freeSpan(plan.canvas, origin.ctaTop, COLUMN.barHeight, blockers)
 			return HudFormat.barWidth(COLUMN.searchWidth, high - low)
 		end
-		local dropBelow = UI.Sticker.hud.search.dropBelow
 		local worst = barFor(nil)
 		expect.truthy(worst > 0)
 		expect.deepEqual(HudFormat.barParts(worst), { dots = false, line2 = false })
-		expect.truthy(worst + COLUMN.pillGap + COLUMN.pillPlus >= dropBelow)
 		local texts = table.clone(HudFormat.worstCaseTexts())
 		texts.coins = Format.coins(99_999)
-		expect.deepEqual(HudFormat.barParts(barFor(texts)), { dots = true, line2 = true })
+		expect.deepEqual(HudFormat.barParts(barFor(texts)), { dots = false, line2 = false })
+		expect.truthy(barFor(texts) >= worst)
 	end)
 
 	-- The owner's 1v1 tab (2026-10-16): Diego's picker now holds three tabs (TEAM DEATHMATCH, FREE FOR ALL, DUEL 1v1;
@@ -1229,6 +1251,9 @@ return function(t: Context)
 	-- 667x375 phone at Larger / Largest text (392 / 373 px of room for 408 / 436 px of short tabs; the two tabs fitted
 	-- there); on PCs from 1280x720 up at the default text size the full names fit. The widths are SegmentedTabs' own
 	-- sums (widths, size) from the text estimate (the Studio layout audit measures the real boxes).
+	-- Phone HUD B (2026-10-17): on phones the mode chip (the picked tab's short name and the swap mark) sits between the
+	-- button and the popped picker, and the popped picker never pushes the DUEL area off its centre (its names shrink
+	-- first), so the chip words are a usual fit there.
 	t.test("the DUEL picker with the 1v1 tab (2026-10-16): it fits at the top middle at every size", function()
 		local STICKER = Config.UI.Sticker
 		local PICKER = STICKER.hud.picker
@@ -1262,6 +1287,15 @@ return function(t: Context)
 		-- SegmentedTabs' root: the well's top band and lip around the 52 px tab boxes.
 		local bands = Layout.stickerBands(PICKER.border, PICKER.highlightPx, 0, PICKER.lip)
 		local pickerHeight = bands.top - PICKER.highlightPx + TOUCH.minTarget + bands.drop
+		-- Phone HUD B: the mode chip, one tab with its short name and the swap mark (SegmentedTabs `mark`).
+		local function chipWidth(ts: number): number
+			local frame = 2 * PICKER.tabBorder + PICKER.tabPadLeft + PICKER.tabPadRight
+			local widest = 0
+			for _, tab in tabs do
+				widest = math.max(widest, textPx(tab.short, "Small", ts))
+			end
+			return 2 * (PICKER.border + PICKER.padding) + frame + PICKER.tabGapInside + PICKER.markPx + widest
+		end
 		for _, screen in ALL do
 			local class = classOf(screen)
 			local compact = class == "compact"
@@ -1269,7 +1303,7 @@ return function(t: Context)
 			for _, ts in TEXT_SCALES do
 				local plan = HudFormat.leftColumnPlan(screen, class, ts)
 				local c = plan.canvas
-				local rightWidth = if compact then COLUMN.settingsSize else COLUMN.trackerWidth
+				local rightWidth = if compact then phoneRightWidth() else COLUMN.trackerWidth
 				local blockers = {
 					{ x = origin.left.X, y = origin.left.Y, w = plan.width, h = plan.leftBottom - origin.left.Y },
 					HudFormat.badgeReachRect({
@@ -1289,36 +1323,60 @@ return function(t: Context)
 				local s = HudFormat.ctaScales(compact).idle
 				local gap = Layout.lipGap(PICKER.gap, math.round(STICKER.lip.cta * s))
 				local buttonWidth = math.ceil(HudFormat.ctaWidth(false, ts) * s)
+				local chip = if compact then Vector2.new(chipWidth(ts), pickerHeight + gap) else Vector2.zero
 				local function place(fit: string): (any, Vector2)
 					local size = Vector2.new(
-						math.max(buttonWidth, pickerWidth(fit, ts)),
-						math.ceil(COLUMN.ctaHeight * s) + gap + pickerHeight
+						math.max(buttonWidth, chip.X, pickerWidth(fit, ts)),
+						math.ceil(COLUMN.ctaHeight * s) + chip.Y + gap + pickerHeight
 					)
 					return HudFormat.ctaPlacement({ canvas = c, size = size, blockers = blockers, top = origin.ctaTop }),
 						size
+				end
+				-- Phone HUD B (HudController.layoutCta): on phones the area keeps the centre the button and the chip alone
+				-- take (the popped picker never moves the DUEL button), the names shrinking until the picker fits there.
+				local centre: number? = nil
+				if compact then
+					local closedSize =
+						Vector2.new(math.max(buttonWidth, chip.X), math.ceil(COLUMN.ctaHeight * s) + chip.Y)
+					local closed = HudFormat.ctaPlacement({
+						canvas = c,
+						size = closedSize,
+						blockers = blockers,
+						top = origin.ctaTop,
+					})
+					centre = closed.x + closedSize.X / 2
+				end
+				local function fits(spot: any, size: Vector2): boolean
+					return spot.fits and (centre == nil or math.abs(spot.x + size.X / 2 - (centre :: number)) < 0.5)
 				end
 				local label = `{screen.X}x{screen.Y} text {ts}`
 				-- HudController.layoutCta's order: the full names, else the short ones, else the chip words.
 				local fit = "full"
 				local spot, size = place(fit)
 				for _, narrower in { "short", "chips" } do
-					if spot.fits then
+					if fits(spot, size) then
 						break
 					end
 					fit = narrower
 					spot, size = place(fit)
 				end
 				if not spot.fits then
-					error(`the DUEL picker has no room at the top: {label} ({size.X} wide)`)
+					-- Phone HUD B: on the 667x375 phone at Largest text the widest texts (the bare Grip row's Double
+					-- Grip chip, "Loading…") leave less room than the DUEL button beside the left column (flagged in
+					-- work/phonehudB/NOTES.md).
+					if not (compact and screen == SMALL_PHONE and ts == LARGEST) then
+						error(`the DUEL picker has no room at the top: {label} ({size.X} wide)`)
+					end
+					continue
 				end
-				local area = { x = spot.x, y = spot.y, w = size.X, h = size.Y }
+				local x = if centre then centre - size.X / 2 else spot.x
+				local area = { x = x, y = spot.y, w = size.X, h = size.Y }
 				for _, rect in blockers do
 					if overlaps(area, rect) then
 						error(`the DUEL picker covers a HUD group: {label}`)
 					end
 				end
-				local smallPhone = compact and screen.X < 812 and ts > UI.PreferredTextScale.Large
-				if fit == "chips" and not smallPhone then
+				if fit == "chips" and not compact then
 					error(`the DUEL picker needs the chip words alone: {label}`)
 				end
 				if not compact and ts == 1 and screen.X >= 1280 and fit ~= "full" then

@@ -69,6 +69,13 @@
 --   pill's first hint button ("queueHint"), else the queue pill's or the coach card's button (both Up back to it), a
 --   tile -> the DUEL button. Only the links this module set are
 --   cleared again.
+-- * Phone HUD B (the owner's pick, 2026-10-17; plan work/phonehud/PROPOSAL.md; phones = the compact class only, every
+--   other layout stays Diego's): the coin pill over Diego's bare Grip row (no goal line) and the tiles 2 x 2
+--   (HudFormat.leftColumnPlan); Daily beside Settings in Hud_Right (HudFormat.PHONE_RIGHT, UI/PhoneHud.placeTiles: a
+--   tile counts in the grid only while it sits in Hud_Nav); under the DUEL button the mode chip, whose tap pops the
+--   picker under it (UI/PhoneHud; the gamepad's Down from DUEL goes to the chip while the picker is closed); the toasts
+--   at the right (UIController's phone column). The phone pieces live in UI/PhoneHud (this file keeps under Luau's 200
+--   top-level locals: it is required where it is used).
 -- Public: leftColumn(), LEFT_ORDER, setFocusEntry(object?), setFocusTarget(key, object?), element(name), coinsAnchor(),
 -- isShown(), VisibilityChanged, LayoutChanged, layoutRects(), flyCoins(from, amount, count?), denyCoins(),
 -- setGainSource(label?), debugCoinFlight(amount), columnPlan(), ColumnPlanChanged, setColumnItem(key, present),
@@ -736,7 +743,8 @@ local function visibleTiles(): { string }
 	local list: { string } = {}
 	for _, id in tileOrder do
 		local tile = tiles[id]
-		if tile and tile.root.Visible then
+		-- Phone HUD B: only the tiles in Hud_Nav (on phones Daily sits beside Settings, UI/PhoneHud.placeTiles).
+		if tile and tile.root.Visible and tile.root.Parent == navRow then
 			table.insert(list, id)
 		end
 	end
@@ -874,10 +882,8 @@ local function refreshCta()
 	if queued ~= ctaQueued then
 		ctaQueued = queued
 		idle.Visible = not queued
-		local tabs = picker
-		if tabs then
-			tabs.root.Visible = pickerOn and not queued
-		end
+		-- The picker (Phone HUD B: on phones the mode chip, the picker only while open).
+		require(Client.UI.PhoneHud).sync(pickerOn and not queued, ctaCompact)
 		bar.root.Visible = queued
 		bar.fills[2].Visible = false -- the opponent's slot fills on Matched (matchFound)
 		if queued then
@@ -934,8 +940,13 @@ local function areaSize(buttonWidth: number, s: number, gap: number, short: bool
 		return Vector2.new(searchWidth, COLUMN.barHeight)
 	end
 	local size = Vector2.new(math.ceil(buttonWidth * s), math.ceil(COLUMN.ctaHeight * s))
+	-- Phone HUD B: the mode chip under the button (Vector2.zero while it hides), the picker under it only while open.
+	local chip = require(Client.UI.PhoneHud).chipSize()
+	if chip.Y > 0 then
+		size = Vector2.new(math.max(size.X, chip.X), size.Y + gap + chip.Y)
+	end
 	local tabs = picker
-	if tabs and pickerOn then
+	if tabs and pickerOn and tabs.root.Visible then
 		local extra = tabs:size(short, chips)
 		size = Vector2.new(math.max(size.X, extra.X), size.Y + gap + extra.Y)
 	end
@@ -969,6 +980,8 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 	if list then
 		setIfChanged(list, "Padding", UDim.new(0, gap))
 	end
+	-- Phone HUD B: the picker or the mode chip for this layout (a hidden DUEL area closes the picker).
+	require(Client.UI.PhoneHud).sync(pickerOn and not ctaQueued and wrap.Visible, compact)
 	if not wrap.Visible then
 		ctaRect = nil
 		return
@@ -1003,19 +1016,36 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 		return size, HudFormat.ctaPlacement({ canvas = canvas, size = size, blockers = blockers, top = origin.ctaTop })
 	end
 	local size, place = placeFor(false)
+	-- Phone HUD B: on phones the popped picker never moves the DUEL button: the area keeps the centre the button and
+	-- the mode chip alone take, and the picker's names shrink to fit there first.
+	local chip = require(Client.UI.PhoneHud).chipSize()
+	local centre: number? = nil
+	if chip.Y > 0 then
+		local closed =
+			Vector2.new(math.max(math.ceil(buttonWidth * s), chip.X), math.ceil(COLUMN.ctaHeight * s) + gap + chip.Y)
+		local spot =
+			HudFormat.ctaPlacement({ canvas = canvas, size = closed, blockers = blockers, top = origin.ctaTop })
+		centre = spot.x + closed.X / 2
+	end
+	local function fits(): boolean
+		return place.fits and (centre == nil or math.abs(place.x + size.X / 2 - (centre :: number)) < 0.5)
+	end
 	local tabs = picker
 	if tabs and pickerOn and not ctaQueued then
 		-- The full names, else the design's short ones, else ([P], 2026-10-16: the three tabs with the owner's 1v1 tab
 		-- overflow the 667x375 phone at Larger / Largest text) each tab's chip word alone (HudFormat_Test).
-		local short, chips = not place.fits, false
+		local short, chips = not fits(), false
 		if short then
 			size, place = placeFor(true)
-			chips = not place.fits
+			chips = not fits()
 			if chips then
 				size, place = placeFor(true, true)
 			end
 		end
 		tabs:setShort(short, chips)
+	end
+	if centre then
+		place = { x = centre - size.X / 2, y = place.y, fits = place.fits }
 	end
 	ctaFits = place.fits
 	setIfChanged(wrap, "Position", UDim2.fromOffset(math.floor(place.x + size.X / 2), math.floor(place.y)))
@@ -1079,6 +1109,11 @@ local function applyFocusLinks()
 		add(tileKeys, "tile:" .. id, tiles[id].root)
 	end
 	local right: { string } = {}
+	-- Phone HUD B: Daily beside Settings on phones (Hud_Right is a row there).
+	for _, id in HudFormat.PHONE_RIGHT do
+		local tile = tiles[id]
+		add(right, "tile:" .. id, if tile and tile.root.Parent == rightColumn then tile.root else nil)
+	end
 	add(right, "settings", if settingsButton then settingsButton.root else nil)
 	add(right, "tracker", if tracker then tracker.root else nil)
 	-- UI FINAL R4: the mode picker's tabs (testers, while idle).
@@ -1088,6 +1123,9 @@ local function applyFocusLinks()
 		for _, id in tabs.order do
 			add(modes, "mode:" .. id, tabs.tabs[id])
 		end
+	end
+	if #modes == 0 then
+		add(modes, "mode:chip", require(Client.UI.PhoneHud).chipButton()) -- Phone HUD B: the closed picker's chip
 	end
 	-- One object each (the Duel CTA, the coach card's button, the queue pill's Cancel), or nil.
 	local function single(key: string, object: GuiObject?): string?
@@ -1154,6 +1192,10 @@ layoutAll = function()
 	end
 	local canvas = gui.AbsoluteSize / scale
 	local compact = UIController.layoutClass() == "compact"
+	-- Phone HUD B: Daily beside Settings on phones, before the plan counts the grid's tiles.
+	if navRow and rightColumn then
+		require(Client.UI.PhoneHud).placeTiles(compact, tiles, tileLabels, navRow, rightColumn)
+	end
 	refreshPlan()
 	layoutTiles(canvas, compact)
 	layoutRight(compact)
@@ -1976,54 +2018,66 @@ local function buildCta(c: Cleanup.Cleanup, gui: ScreenGui)
 		if pink.mid and pink.midAt then
 			table.insert(pinkStops, 2, { at = pink.midAt, color = pink.mid })
 		end
-		local tabs = SegmentedTabs.new({
-			name = "Hud_DuelModes",
-			tabs = {
-				{
-					id = "tdm",
-					label = Strings.hud.modes.tdm,
-					chip = Strings.hud.modes.tdmChip,
-					short = Strings.hud.modes.tdmShort,
-					rotation = spec.tdmRotation,
-					stops = {
-						{ at = tdm[1], color = Palette.StickerTdmRedTop },
-						{ at = tdm[2], color = Palette.StickerTdmRed },
-						{ at = tdm[3], color = Palette.StickerTdmBlue },
-						{ at = tdm[4], color = Palette.StickerTdmBlueEnd },
-					},
-				},
-				{
-					id = "ffa",
-					label = Strings.hud.modes.ffa,
-					chip = Strings.hud.modes.ffaChip,
-					short = Strings.hud.modes.ffaShort,
-					rotation = spec.ffaRotation,
-					stops = {
-						{ at = 0, color = Palette.StickerYellowTop },
-						{ at = 1, color = Palette.StickerGoldMid },
-					},
-				},
-				-- [P] The owner's 1v1 tab (2026-10-16; not in Diego's design, he may restyle it): his tab look with the
-				-- DUEL button's own pink (its accent's three stops, N:146 / H:126), straight down like the FFA tab (N:711).
-				{
-					id = "1v1", -- not a Config.Match mode: the DUEL press joins the 1v1 queue (HudFormat.duelAction)
-					label = Strings.hud.modes.duel,
-					chip = Strings.hud.modes.duelChip,
-					short = Strings.hud.modes.duelShort,
-					rotation = spec.ffaRotation,
-					stops = pinkStops,
+		local modeTabs: { SegmentedTabs.Tab } = {
+			{
+				id = "tdm",
+				label = Strings.hud.modes.tdm,
+				chip = Strings.hud.modes.tdmChip,
+				short = Strings.hud.modes.tdmShort,
+				rotation = spec.tdmRotation,
+				stops = {
+					{ at = tdm[1], color = Palette.StickerTdmRedTop },
+					{ at = tdm[2], color = Palette.StickerTdmRed },
+					{ at = tdm[3], color = Palette.StickerTdmBlue },
+					{ at = tdm[4], color = Palette.StickerTdmBlueEnd },
 				},
 			},
+			{
+				id = "ffa",
+				label = Strings.hud.modes.ffa,
+				chip = Strings.hud.modes.ffaChip,
+				short = Strings.hud.modes.ffaShort,
+				rotation = spec.ffaRotation,
+				stops = {
+					{ at = 0, color = Palette.StickerYellowTop },
+					{ at = 1, color = Palette.StickerGoldMid },
+				},
+			},
+			-- [P] The owner's 1v1 tab (2026-10-16; not in Diego's design, he may restyle it): his tab look with the
+			-- DUEL button's own pink (its accent's three stops, N:146 / H:126), straight down like the FFA tab (N:711).
+			{
+				id = "1v1", -- not a Config.Match mode: the DUEL press joins the 1v1 queue (HudFormat.duelAction)
+				label = Strings.hud.modes.duel,
+				chip = Strings.hud.modes.duelChip,
+				short = Strings.hud.modes.duelShort,
+				rotation = spec.ffaRotation,
+				stops = pinkStops,
+			},
+		}
+		local tabs = SegmentedTabs.new({
+			name = "Hud_DuelModes",
+			tabs = modeTabs,
 			selected = mode,
-			layoutOrder = 2,
+			layoutOrder = 3, -- Phone HUD B: the mode chip (2) sits between the DUEL button and the picker
 			parent = wrap,
 			onSelect = function(id: string)
 				mode = id
 				SoundController.play(CLICK_SOUND, { pitch = UI_PITCH.tab }) -- N:1254: tab()
+				require(Client.UI.PhoneHud).setMode(id) -- Phone HUD B: the chip shows it, the picker closes
 			end,
 		})
 		c:add(tabs)
 		picker = tabs
+		-- Phone HUD B: the mode chip (on phones under the DUEL button; its tap pops the picker under it).
+		require(Client.UI.PhoneHud).buildChip(c, {
+			tabs = modeTabs,
+			selected = mode,
+			wrap = wrap,
+			layoutOrder = 2,
+			picker = tabs,
+			hud = gui,
+			onChange = queueLayout,
+		})
 	end
 	search = buildSearch(c, wrap)
 	found = buildFound(c)
@@ -2399,6 +2453,12 @@ end
 -- Small table for Studio debug hooks.
 function HudController.debugState(): { [string]: any }
 	local visibleNav = visibleTiles()
+	for _, id in HudFormat.PHONE_RIGHT do -- Phone HUD B: Daily beside Settings on phones
+		local tile = tiles[id]
+		if tile and tile.root.Visible and tile.root.Parent == rightColumn then
+			table.insert(visibleNav, id)
+		end
+	end
 	if settingsButton and settingsButton.root.Visible then
 		table.insert(visibleNav, "settings")
 	end
@@ -2437,6 +2497,7 @@ function HudController.debugState(): { [string]: any }
 			mode = mode,
 			searchWidth = searchWidth,
 			idleScale = if ctaScale then ctaScale.Scale else nil, -- HudFormat.ctaScales: phones scale only the button
+			phone = require(Client.UI.PhoneHud).debugState(), -- Phone HUD B: the mode chip and its picker
 		},
 		gripLevel = gripLevel,
 		gripFloat = gripFloat ~= nil and gripFloat.Visible, -- HudFormat.gripFloatShown
@@ -2504,6 +2565,10 @@ function HudController.init()
 	c:add(UIController.LayoutChanged:connect(function()
 		refreshTracker()
 		queueLayout()
+	end))
+	-- Phone HUD B: a window opening closes the popped mode picker.
+	c:add(UIController.ScreenOpened:connect(function()
+		require(Client.UI.PhoneHud).close()
 	end))
 	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(queueLayout))
 	c:add(ControlsController.PreferredInputChanged:connect(queueLayout))

@@ -727,6 +727,49 @@ return function(t: Context)
 		expect.equal(tabs.root.Parent, nil)
 	end)
 
+	t.test("SegmentedTabs mark (Phone HUD B): the swap mark widens each fit; size counts the tabs that show", function()
+		local SegmentedTabs = t.requireClient("UI/Components/SegmentedTabs")
+		local PICKER = STICKER.hud.picker
+		local function tabsOf(mark: string?): any
+			return SegmentedTabs.new({
+				name = "Hud_ModeChip",
+				tabs = {
+					{
+						id = "tdm",
+						label = "TEAM DEATHMATCH",
+						chip = "6v6",
+						short = "TEAM 6v6",
+						rotation = 10,
+						stops = { { at = 0, color = WHITE } },
+					},
+					{
+						id = "ffa",
+						label = "FREE FOR ALL",
+						chip = "SOLO",
+						short = "FREE FOR ALL",
+						rotation = 90,
+						stops = { { at = 0, color = WHITE } },
+					},
+				},
+				selected = "tdm",
+				mark = mark,
+				onSelect = noop,
+			})
+		end
+		local plain, marked = tabsOf(nil), tabsOf("change")
+		expect.equal(plain.tabs.tdm:FindFirstChild("Mark", true), nil)
+		expect.truthy(marked.tabs.tdm:FindFirstChild("Mark", true) ~= nil)
+		local extra = PICKER.tabGapInside + PICKER.markPx
+		expect.equal(marked:size().X - plain:size().X, 2 * extra)
+		expect.equal(marked:size(true).X - plain:size(true).X, 2 * extra)
+		-- The phone's mode chip: the short names, only the picked tab showing.
+		marked:setShort(true)
+		marked.tabs.ffa.Visible = false
+		expect.equal(marked:size().X, 2 * (PICKER.border + PICKER.padding) + marked.tabs.tdm.Size.X.Offset)
+		plain:destroy()
+		marked:destroy()
+	end)
+
 	t.test("Toggle and Slider keep their parts; the design's two switches and the volume slider", function()
 		local toggle =
 			Toggle.new({ name = "Settings_ShowTipsToggle", text = "Show tips", value = true, onChanged = noop })

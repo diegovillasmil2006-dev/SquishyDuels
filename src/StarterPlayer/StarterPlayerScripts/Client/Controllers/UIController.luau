@@ -268,6 +268,8 @@ local TEXT_MARGIN_PX = 2 -- reading: TextService rounding
 -- edge distance, and one toast's height in Body text sizes over its paddings (the band a new toast will fill).
 local TOAST_MIN_WIDTH = 280
 local TOAST_EDGE = 12
+-- Phone HUD B (the owner's pick, 2026-10-17): the phone lobby's toast column at the right (Config.UI.Sticker.hud.phone).
+local PHONE = UI.Sticker.hud.phone
 local BANNER_TOP = 0.2
 local BANNER_WIDTH = 640
 local BANNER_GAP = 8 -- reading (Part 8): base px between BannerOptions.below's bottom and the banner
@@ -886,6 +888,12 @@ end
 -- toastsBelow object that shows and hangs into it from above; sideways clear of the toastsBeside objects its band
 -- meets. The band is the column's height now plus `adding` (a toast about to arrive). `resized`: the column's own size
 -- changed (it returns to a place it took for these toasts only when that one is wider, see columnPlaces).
+-- Phone HUD B (the owner's pick, 2026-10-17): on a phone (the compact class) while the lobby HUD shows, the column sits
+-- at the right instead (NotifyFormat.sideColumn), its pills flush right, at most PHONE.toastMax of them (toast).
+local function phoneColumn(): boolean
+	return currentClass == "compact" and lobbyToastTop ~= nil
+end
+
 local function placeColumn(adding: number, resized: boolean?)
 	local frame = toastHolder
 	if frame == nil then
@@ -917,17 +925,23 @@ local function placeColumn(adding: number, resized: boolean?)
 	if adding > 0 then
 		height += (if height > 0 then PILL_GAP else 0) + adding
 	end
-	local column = NotifyFormat.toastColumn({
+	local phone = phoneColumn()
+	local list = frame:FindFirstChildOfClass("UIListLayout")
+	if list then
+		list.HorizontalAlignment = if phone then Enum.HorizontalAlignment.Right else Enum.HorizontalAlignment.Center
+	end
+	local input: NotifyFormat.ColumnInput = {
 		canvas = canvas,
-		width = TOAST_WIDTH,
-		minWidth = TOAST_MIN_WIDTH,
+		width = if phone then math.min(PHONE.toastWidth, canvas.X * PHONE.toastShare) else TOAST_WIDTH,
+		minWidth = if phone then PHONE.toastMinWidth else TOAST_MIN_WIDTH,
 		height = height,
 		defaultTop = NotifyFormat.defaultTop(canvas.Y, lobbyToastTop, TOAST_TOP, TOAST_TOP_CANVAS),
 		gap = TOAST_GAP,
 		edge = TOAST_EDGE,
 		above = above,
 		beside = beside,
-	})
+	}
+	local column = if phone then NotifyFormat.sideColumn(input) else NotifyFormat.toastColumn(input)
 	local width = math.floor(column.width + 0.5)
 	local position = UDim2.fromOffset(math.floor(column.x + width / 2 + 0.5), math.floor(column.y + 0.5))
 	local place = `{position.X.Offset},{position.Y.Offset},{width}`
@@ -1308,7 +1322,7 @@ function UIController.toast(text: string, kind: ToastKind?, opts: ToastOptions?)
 		end
 	end
 	toastSerial += 1
-	while #toasts >= TOAST.maxStacked do
+	while #toasts >= (if phoneColumn() then PHONE.toastMax else TOAST.maxStacked) do
 		dismissToast(toasts[1])
 	end
 	placeColumn(oneToastHeight()) -- placed for the band it is about to fill, so it does not jump once it shows

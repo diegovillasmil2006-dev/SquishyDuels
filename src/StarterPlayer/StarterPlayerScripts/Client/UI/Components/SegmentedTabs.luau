@@ -22,6 +22,9 @@
 -- draws the scale, not the 2 px lift: Button.decorate is a UIScale only); a press on another tab picks it and calls
 -- onSelect(id) (the caller plays the design's tab() sound, N:1254); picking the picked one does nothing. Gamepad: every
 -- tab is selectable with the Focus ring.
+-- Phone HUD B (2026-10-17, UI/PhoneHud's mode chip): spec.mark draws that IconGlyph (light, hud.picker.markPx) at each
+-- tab's right end, inside its padding, and widens every fit by it and the inside gap; size() counts the tabs that
+-- show (a caller may hide some).
 
 -- Services
 
@@ -37,6 +40,7 @@ local Palette = require(Shared.Art.Palette)
 
 local UI = script.Parent.Parent
 local Button = require(script.Parent.Button)
+local IconGlyph = require(script.Parent.IconGlyph)
 local Create = require(UI.Create)
 local Focus = require(UI.Focus)
 local Layout = require(UI.Layout)
@@ -55,6 +59,7 @@ export type Spec = {
 	onSelect: (id: string) -> (),
 	layoutOrder: number?,
 	parent: Instance?,
+	mark: string?, -- Phone HUD B: an IconGlyph name at each tab's right end (the mode chip's swap mark)
 }
 
 export type SegmentedTabs = {
@@ -204,7 +209,10 @@ function SegmentedTabs.new(spec: Spec): SegmentedTabs
 	-- the border, the paddings, the label, the gap and the chip (its text and padding); short = the short name alone;
 	-- chips = the chip's word alone in the label's place (2026-10-16).
 	local function widths(label: string, chipText: string, shortLabel: string): (number, number, number, number)
-		local frame = 2 * PICKER.tabBorder + PICKER.tabPadLeft + PICKER.tabPadRight
+		local frame = 2 * PICKER.tabBorder
+			+ PICKER.tabPadLeft
+			+ PICKER.tabPadRight
+			+ (if spec.mark then PICKER.tabGapInside + PICKER.markPx else 0)
 		local chip = math.ceil(Theme.textWidth(chipText, "Chip")) + 2 * PICKER.chipPad
 		local full = frame + math.ceil(Theme.textWidth(label, "Small")) + PICKER.tabGapInside + chip
 		local short = frame + math.ceil(Theme.textWidth(shortLabel, "Small"))
@@ -307,6 +315,13 @@ function SegmentedTabs.new(spec: Spec): SegmentedTabs
 			Parent = content,
 		})
 		Theme.list(Enum.FillDirection.Horizontal, PICKER.tabGapInside, content, Enum.HorizontalAlignment.Left)
+		if spec.mark then
+			local mark = IconGlyph.new({ name = "Mark", icon = spec.mark, sizePx = PICKER.markPx, parent = face })
+			mark.root.AnchorPoint = Vector2.new(1, 0.5)
+			mark.root.Position = UDim2.new(1, -(PICKER.tabBorder + PICKER.tabPadRight), 0.5, 0)
+			mark.root.ZIndex = 3
+			cleanup:add(mark)
+		end
 		local label = Theme.label({
 			Name = "Label",
 			Text = tab.label,
@@ -400,10 +415,16 @@ function SegmentedTabs.new(spec: Spec): SegmentedTabs
 	function self.size(_: SegmentedTabs, short: boolean?, chips: boolean?): Vector2
 		local useShort = if short == nil then isShort else short
 		local useChips = if short == nil then isChips else useShort and chips == true
-		local width = 2 * (border + padding) + math.max(0, #order - 1) * PICKER.tabGap
+		local width, shown = 2 * (border + padding), 0
 		for _, id in order do
 			local p = parts[id]
-			width += if useChips then p.chips elseif useShort then p.short else p.full
+			if tabs[id].Visible then
+				width += (if shown > 0 then PICKER.tabGap else 0) + (if useChips
+					then p.chips
+					elseif useShort then p.short
+					else p.full)
+				shown += 1
+			end
 		end
 		return Vector2.new(width, root.Size.Y.Offset)
 	end

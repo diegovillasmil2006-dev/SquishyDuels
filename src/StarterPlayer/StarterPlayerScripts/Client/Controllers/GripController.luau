@@ -73,6 +73,8 @@
 --     Config.UI.Grip.compactRowMaxHeight base px; the whole card, still the ONE tap target Hud_GripButton, is
 --     HudFormat.gripCardHeight("compact") tall: at least Layout.touchBase(Config.UI.Touch.minTarget, scale) (>= 44 px
 --     at scale 0.85). The goal toast follows the card: any card but the regular one toasts a new goal.
+--   - Phone HUD B (the owner's pick, 2026-10-17): phones (the compact class) get the bare regular row without its
+--     goal line (HudFormat.columnLayouts sizes it so), so there the goal is toasted as on the compact card.
 --   - Gamepad (§11.4, §17.7): the panel opens with its primary (Close) selected; the idle card's primary is its Keep
 --     going button.
 --   - The title sits in the header tab and Close straddles the panel's top edge (the panel's top padding holds their
@@ -869,12 +871,12 @@ local function refreshCard()
 		applyCardLayout()
 		return
 	end
-	local compactLayout = HudController.columnPlan().grip ~= "regular"
+	local compactLayout = HudController.columnPlan().grip ~= "regular" or UIController.layoutClass() == "compact"
 	setLabel(k.barLabel, model.barText)
 	k.chipRow.Visible = model.boost ~= nil
 	setLabel(k.chipLabel, model.boost)
 	-- Foam fix 2: the goal line reads the short form (cardGoal), so it keeps to one line.
-	setLabel(k.goalLabel, model.cardGoal)
+	setLabel(k.goalLabel, if compactLayout then nil else model.cardGoal)
 	setLabel(k.compactLabel, model.levelCompact)
 	-- The first value is set at once; later changes ease (the bar variant's fillMs, Config.UI.Sticker.bars; at once
 	-- under ReducedMotion).

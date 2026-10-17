@@ -20,6 +20,8 @@
 --     running top (the Duel CTA at the top middle, then the coach card or the queue pill right under it).
 --   * UI FINAL R4: the column's default top is the design's 200 (N:197) on its 810 px canvas while the lobby HUD shows,
 --     keeping that share on a shorter canvas (a phone's 441: about 109), else the game's own 110 (duels, matches).
+--   * Phone HUD B (2026-10-17): on a phone's lobby the column sits at the right edge under Daily and Settings,
+--     narrowed clear of the DUEL area; with no room beside it (the 1v1 search bar) it is the centred column.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -367,5 +369,61 @@ return function(t: Context)
 		-- Bad numbers never break it.
 		local bad = column({ height = 0 / 0, gap = 0 / 0, minWidth = 0 / 0 })
 		expect.deepEqual(bad, { x = 286.5, y = 110, width = 420 })
+	end)
+
+	-- Phone HUD B (2026-10-17): the phone lobby's column at the right (sideColumn), base px of an 844×390 phone (993 ×
+	-- 391 at 0.85) with the B layout's groups: the left column, the 2 x 2 tiles, the DUEL area (button and mode chip)
+	-- and Daily beside Settings.
+	local function side(overrides: { [string]: any }): (any, any)
+		local input: { [string]: any } = {
+			canvas = Vector2.new(993, 391),
+			width = 300,
+			minWidth = 240,
+			height = 57,
+			defaultTop = 96,
+			gap = 8,
+			edge = 12,
+			above = { { x = 383, y = 20, w = 227, h = 136 } }, -- the DUEL area
+			beside = {
+				{ x = 12, y = 12, w = 242, h = 106 }, -- Hud_Left
+				{ x = 12, y = 116, w = 221, h = 131 }, -- the tiles' reach
+				{ x = 845, y = 12, w = 136, h = 64 }, -- Daily and Settings
+			},
+		}
+		for key, value in overrides do
+			input[key] = value
+		end
+		return NotifyFormat.sideColumn(input :: any), input
+	end
+
+	t.test("side column (Phone HUD B): at the right edge under Daily and Settings, clear of the DUEL area", function()
+		-- The 844x390 phone: the edge in from the right, at the lobby top (Daily and Settings end above it).
+		local placed = side({})
+		expect.deepEqual(placed, { x = 681, y = 96, width = 300 })
+		-- Nothing registered: the same spot.
+		expect.deepEqual((side({ above = {}, beside = {} })), { x = 681, y = 96, width = 300 })
+		-- The 667x375 phone (785 x 373; the column 36% of it): the DUEL area at the middle reaches into it, so it is
+		-- narrowed from the left to a gap right of that, at the same top.
+		local small = side({
+			canvas = Vector2.new(785, 373),
+			width = 785 * 0.36,
+			defaultTop = 92,
+			above = { { x = 279, y = 20, w = 227, h = 136 } },
+			beside = { { x = 12, y = 12, w = 242, h = 106 }, { x = 637, y = 12, w = 136, h = 64 } },
+		})
+		expect.deepEqual(small, { x = 514, y = 92, width = 259 })
+		-- A taller top-right group (a large text size) hangs into it: it starts a gap under it.
+		local tall = side({ beside = { { x = 845, y = 12, w = 136, h = 100 } } })
+		expect.deepEqual(tall, { x = 681, y = 120, width = 300 })
+	end)
+
+	t.test("side column (Phone HUD B): with no room beside the search bar it is the centred column", function()
+		-- The 1v1 search bar (560 wide, never scaled) across the top: less room at the right than minWidth.
+		local search, input = side({ above = { { x = 216.5, y = 20, w = 560, h = 103 } } })
+		expect.deepEqual(search, NotifyFormat.toastColumn(input :: any))
+		expect.truthy(search.x < 681)
+		-- Bad numbers never break it.
+		local bad = side({ height = 0 / 0, gap = 0 / 0, minWidth = 0 / 0, defaultTop = 0 / 0 })
+		expect.truthy(bad.x == bad.x and bad.y == bad.y and bad.width == bad.width)
 	end)
 end

@@ -2631,6 +2631,14 @@ return function(t: Context)
 		expect.deepEqual({ hud.picker.gap, hud.picker.tabHeight, hud.picker.chipHeight }, { 14, 42, 22 }) -- N:145-158
 		expect.equal(hud.tracker.width, 320)
 		expect.equal(hud.toastTop, 200) -- N:197
+		-- Phone HUD B (2026-10-17, readings): the phone toast column and the mode chip's swap mark.
+		local phone = hud.phone
+		expect.deepEqual(
+			{ phone.toastWidth, phone.toastShare, phone.toastMinWidth, phone.toastMax },
+			{ 300, 0.36, 240, 2 }
+		)
+		expect.truthy(phone.toastMinWidth <= phone.toastWidth and phone.toastMax >= 1)
+		expect.equal(hud.picker.markPx, 24)
 		-- The design's text looks (H:79-151; PR2: every size at least 16).
 		expect.deepEqual(
 			sticker.text.duelSub,

@@ -1994,6 +1994,7 @@ local UI = {
 				tdmRotation = 10,
 				tdmStops = { 0, 0.32, 0.68, 1 } :: { number }, -- N:710: the four stops' places
 				ffaRotation = 90, -- N:711: linear-gradient(180deg, ...)
+				markPx = 24, -- Phone HUD B (reading): the mode chip's swap mark (SegmentedTabs `mark`) on the 42 px face
 			},
 			-- The design computes the tracker (H:994-996) but draws none: its insides are the quest row's (H:363-367),
 			-- its card the plan's card numbers (plan R4: radius 20, the 2 px highlight at .1, H:935), a uniform pad.
@@ -2009,6 +2010,15 @@ local UI = {
 				titleGap = 10, -- H:366: the title to "x/y"
 			},
 			toastTop = 200, -- N:197: the toast column's top (the newer file; was 132, H:174)
+			-- Phone HUD B (the owner's pick, 2026-10-17; readings, the design draws no phone layout): on phones (the
+			-- compact class, UI/PhoneHud) the toasts sit at the right under Daily and Settings, at most toastWidth
+			-- and toastShare of the canvas wide (narrowed beside the DUEL area down to toastMinWidth), toastMax of them.
+			phone = {
+				toastWidth = 300,
+				toastShare = 0.36,
+				toastMinWidth = 240,
+				toastMax = 2,
+			},
 		},
 		-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3): the six design windows (H:180-454) and the game's
 		-- own, read through UI/Theme (window, headerTab's band, fitWindow, the sticker, the scrim) and
