@@ -415,6 +415,14 @@ return function(t: Context)
 				"img.fx.dotsCard",
 				"img.icon.grip",
 				"img.fx.radial.matchVignette",
+				-- Pens3 phase 9: the 7 food pictures (the BUY FOOD cards; nil until the owner uploads them).
+				"img.food.candy_drop",
+				"img.food.butter_bun",
+				"img.food.boba_pearl_pop",
+				"img.food.frosty_scoop",
+				"img.food.lava_truffle",
+				"img.food.prism_tart",
+				"img.food.halo_puff",
 			})
 		)
 	end)

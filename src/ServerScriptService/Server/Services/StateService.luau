@@ -39,6 +39,8 @@
 --   never sent.
 -- * buyBack = profile.buyBack as stored (pens3 phase 7: the sales that can still be bought back, the pen screen's sold
 --   cards; PenService marks it on every sale and buy-back). profile.bag (phase 8, the coatings) is never sent.
+-- * food = profile.food {[foodId] = pieces} as stored (pens3 phase 9: the pen screen's food row, FEED buttons and
+--   BUY FOOD cards; PenService marks it on every buy and feed).
 --
 -- dataPort() is the one reading of DataService for this layer (EconomyService, InventoryService and
 -- PreferencesService use it as their default, and so do services above them). portFrom(source) builds the same port
@@ -124,6 +126,7 @@ local FIELDS: { string } = {
 	"awayGift", -- pens3 phase 4: the coins-while-away gift of this session, a session field
 	"boxOrder", -- pens3 phase 5: the profile's fixed-order counts as stored
 	"buyBack", -- pens3 phase 7: the profile's buy-back list as stored
+	"food", -- pens3 phase 9: the profile's food as stored
 }
 local FIELD_SET: { [string]: boolean } = {}
 for _, field in FIELDS do

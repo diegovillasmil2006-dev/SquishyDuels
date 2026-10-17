@@ -1284,6 +1284,9 @@ local UI = {
 			-- holdSeconds on its button, shown on a bar holdBarPx tall over the action row.
 			holdSeconds = 1,
 			holdBarPx = 14,
+			-- Pens3 phase 9 [P]: a BUY FOOD card's two buttons buy this many pieces (at most
+			-- Config.Economy.Food.maxBuy; PenFormat_Test checks it).
+			foodBuy = { few = 1, many = 10 },
 		},
 		-- Pens3 phase 8 (K:3882-3920, the v6 kit's looks; P3D:330-341): a Golden or Rainbow walking squishy keeps its
 		-- parts: every part whose name holds none of faceWords (P3D:330's face, lower case) blends `blend` of the way

@@ -11,6 +11,7 @@
 -- per-player Free for All / Team Deathmatch view, Types.MatchStateView).
 -- Pens3 phase 6: PenPlace(itemId, slot) and PenLock(itemId, locked) (PenService; the pen screen).
 -- Pens3 phases 7-8: SellItems(ids, requestId), SellAll(requestId), BuyBack(itemId) and Fuse(a, b, c) (PenService).
+-- Pens3 phase 9: BuyFood(foodId, count, expectedPrice, requestId), Feed(itemId, requestId) and FeedAll() (PenService).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -188,6 +189,18 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	SellAll = c2s("RemoteFunction", { arg("requestId", "requestId") }),
 	BuyBack = c2s("RemoteFunction", { arg("itemId", "integer") }),
 	Fuse = c2s("RemoteFunction", { arg("a", "integer"), arg("b", "integer"), arg("c", "integer") }),
+	-- Pens3 phase 9 (PenService, the pen screen; no remote takes a base, plot or player id): buy pieces of a food (the
+	-- price is compared, never charged; a requestId makes a retry replay, never buy twice), feed one of the caller's
+	-- squishies one level (its pen item id; a requestId the same) and Feed All (the pen's squishies, the weakest first,
+	-- until the food runs out: a retry finds nothing left to feed). data: Types.FoodResult.
+	BuyFood = c2s("RemoteFunction", {
+		arg("foodId", "string"),
+		arg("count", "integer"),
+		arg("expectedPrice", "coins"),
+		arg("requestId", "requestId"),
+	}),
+	Feed = c2s("RemoteFunction", { arg("itemId", "integer"), arg("requestId", "requestId") }),
+	FeedAll = c2s("RemoteFunction", {}),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

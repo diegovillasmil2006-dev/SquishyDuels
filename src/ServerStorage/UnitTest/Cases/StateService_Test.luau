@@ -12,7 +12,8 @@
 --     fields (policy "checking", monetization with no
 --     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it,
 --     pens3 phase 4's awayGift {coins = 0, seconds = 0} until PenService sets it; pens3 phase 5's boxOrder as
---     stored, while giftQueue and gifts never go out; pens3 phase 7's buyBack as stored, while the bag never goes out),
+--     stored, while giftQueue and gifts never go out; pens3 phase 7's buyBack as stored, while the bag never goes out;
+--     pens3 phase 9's food as stored),
 --     dataStatus {status, persisted, savePending, banner};
 --   * Loaded sends one full StateDelta; later changes go out as one partial StateDelta per batch with v + 1, only for
 --     fields whose value changed; nothing partial before the first full state; the sweep catches unmarked changes;
@@ -115,6 +116,7 @@ return function(t: Context)
 				},
 			},
 			bag = { 0, 0, 0, 0, 0, 0, 1 },
+			food = { candy_drop = 3 }, -- pens3 phase 9: the food goes out as stored
 		}
 	end
 
@@ -246,6 +248,7 @@ return function(t: Context)
 			"daily",
 			"dataStatus",
 			"equipped",
+			"food",
 			"grip",
 			"monetization",
 			"onboarding",
@@ -291,6 +294,7 @@ return function(t: Context)
 		expect.equal(snap.gifts, nil)
 		expect.equal(snap.buyBack[1].price, 1_000) -- pens3 phase 7: as stored
 		expect.equal(snap.bag, nil) -- pens3 phase 8: the bag stays on the server
+		expect.deepEqual(snap.food, { candy_drop = 3 }) -- pens3 phase 9: as stored
 		expect.deepEqual(
 			snap.dataStatus,
 			{ status = "ready", persisted = false, savePending = false, banner = "data.studioMemory" }
@@ -574,7 +578,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list: DESIGN's StateDelta list + grip, topWins, pen, awayGift, boxOrder, buyBack", function()
+	t.test("the field list: DESIGN's list + grip, topWins, pen, awayGift, boxOrder, buyBack, food", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -596,6 +600,7 @@ return function(t: Context)
 			"awayGift", -- pens3 phase 4: the coins-while-away gift, a session field
 			"boxOrder", -- pens3 phase 5: the fixed-order counts (profile.boxOrder)
 			"buyBack", -- pens3 phase 7: the sales that can be bought back (profile.buyBack)
+			"food", -- pens3 phase 9: the food pieces owned (profile.food)
 		})
 	end)
 

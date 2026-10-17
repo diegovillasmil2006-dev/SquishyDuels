@@ -60,6 +60,10 @@
 -- (its Coins were paid; it is no longer owned, so nothing anyone owns is lost); more than Pen.buyBackMax keeps the
 -- newest (logged); an expired entry is kept (PenMath.liveBuyBack leaves it out, the next sale prunes it). The bag: not
 -- a table -> zeros; each count a whole number in [0, 2^53] (non-finite or missing -> 0), any other key dropped; logged.
+-- Pens3 phase 9 (food and levels) joined the same way: `food = {[foodId] = 0 for every Config.Economy.Food food}`
+-- (the pieces owned; reconcile gives an older profile none of each, and a food the Config gains later 0). fixFood
+-- fails closed: not a table -> none of each; each count a whole number in [0, Food.maxPieces] (floored: never more
+-- than was bought; clamped; non-finite or missing -> 0); a key that is not a Config food is dropped; every fix logged.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -144,6 +148,7 @@ export type LoadResult = {
 local CURRENT = 2
 local FUTURE_SLACK_SECONDS = Config.Data.timestampSkewSeconds -- §17.9 #6: a timer stamped after now + 300 -> now
 local PEN = Config.Economy.Pen
+local FOOD = Config.Economy.Food -- pens3 phase 9
 local MAX_COUNTER = 2 ^ 53
 local SECONDS_PER_DAY = 86400
 local DAILY_PATH = "daily."
@@ -645,6 +650,29 @@ local function fixSales(d: any, catalog: CatalogLike, now: number, problems: { s
 	end
 end
 
+-- Pens3 phase 9 (see the header): none of each Config food.
+local function noFood(): { [string]: number }
+	local food: { [string]: number } = {}
+	for _, def in FOOD.foods do
+		food[def.id] = 0
+	end
+	return food
+end
+
+local function fixFood(d: any, problems: { string })
+	local food = ensureTable(d, "food", noFood, "food", problems)
+	local known = noFood()
+	for key, value in table.clone(food) :: { [any]: any } do
+		if known[key] == nil then
+			food[key] = nil
+			note(problems, `food[{show(key)}]`, value, "removed")
+		end
+	end
+	for _, def in FOOD.foods do
+		fixInt(food, def.id, 0, FOOD.maxPieces, 0, `food.{def.id}`, problems)
+	end
+end
+
 local function versionOf(d: any): number
 	local v = tonumber(d.schemaVersion)
 	if v == nil or v ~= v or v < 1 then
@@ -707,6 +735,7 @@ function ProfileSchema.defaults(now: number): Profile
 		gifts = { frog = false },
 		buyBack = {}, -- pens3 phase 7: nothing to buy back
 		bag = table.create(#PEN.coatMult - 1, 0), -- pens3 phase 8: no coating in the bag
+		food = noFood(), -- pens3 phase 9: no food
 	}
 	for _, id in PAID_BOX_IDS do
 		profile.boxOrder[id] = 0
@@ -893,6 +922,7 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 	fixPen(d, catalog, now, problems)
 	fixGifts(d, catalog, fresh, problems) -- pens3 phase 5
 	fixSales(d, catalog, now, problems) -- pens3 phases 7-8
+	fixFood(d, problems) -- pens3 phase 9
 
 	-- Auto-clicker check (2026-10-16): the last strike (see the header).
 	local autoClick = ensureTable(d, "autoClick", function()

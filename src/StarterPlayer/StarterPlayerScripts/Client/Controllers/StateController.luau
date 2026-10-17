@@ -7,7 +7,8 @@
 --   daily, settings, onboarding, policy, dataStatus, monetization, unseenReveals, practice, grip (§17.10), pen
 --   (pens3 phase 1: the player's own pen, Types.PenState {spots, nextId, items}; capsules went in phase 2), boxOrder
 --   (pens3 phase 5: the fixed-order opens per paid box, {snack = n, sweet = n}), buyBack (pens3 phase 7: the sales
---   that can be bought back, Types.BuyBackEntry list); unknown
+--   that can be bought back, Types.BuyBackEntry list), food (pens3 phase 9: the food pieces owned, {[foodId] = n});
+--   unknown
 --   fields are kept as sent. Each known field is checked before it is stored (normalizeField): a value of the wrong
 --   shape is dropped (a partial delta keeps the old value), coins become a whole number >= 0, settings are clamped
 --   with Config.Data defaults filled in, dataStatus gets its booleans (and keeps `banner`, the server's Strings key of
@@ -321,6 +322,7 @@ local TABLE_FIELDS: { [string]: boolean } = {
 	pen = true,
 	boxOrder = true, -- pens3 phase 5: the fixed-order opens per paid box (BoxFormat shows the next squishy)
 	buyBack = true, -- pens3 phase 7: the sales that can be bought back (PenFormat's sold cards)
+	food = true, -- pens3 phase 9: the food pieces owned (PenFormat's food row and FEED buttons)
 }
 local MAX_COMPARE_DEPTH = 16
 -- Reveal holds (see the header): the fields shown without the held results, in fire order (sorted).

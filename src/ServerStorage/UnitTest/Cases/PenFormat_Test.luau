@@ -20,6 +20,12 @@
 --     confirm and CANCEL; selling Golden, Rainbow, Lv 10+ or Epic+ is a hold (needsHold; holdFraction); the live
 --     buy-back entries are sold cards newest first with their minutes, a sold card offers BUY BACK (refused when the
 --     Toy Box is full or the Coins are short).
+--   * pens3 phase 9 (food and levels): a squishy offers FEED last (refused at the top level, PenMath.levelCap, or
+--     with the food it is short of) and its hint is its next step ("Lv N -> N+1: P <food>"; the top level says so);
+--     nothing selected adds FEED ALL (refused when nothing can be fed); the food row lists what you own; the BUY FOOD
+--     cards are the foods on sale (biome 1: Candy Drop) with their price and count, and a card offers BUY 1 / BUY 10
+--     (refused with the missing Coins or a full stack); the sell confirm of a levelled squishy says its food is not
+--     refunded; requestFor reuses a request id only for a retry of the same action.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -80,7 +86,7 @@ return function(t: Context)
 		)
 		expect.equal(view.hint, screen.selectHint)
 		expect.equal(view.selected, nil)
-		expect.deepEqual(actionIds(view), { "sellAll" }) -- pens3 phase 7
+		expect.deepEqual(actionIds(view), { "sellAll", "feedAll" }) -- pens3 phases 7, 9
 		-- No pen yet (no Snapshot): no cards; SELL ALL is refused (nothing to sell).
 		local none = PenFormat.view(nil, 1, true)
 		expect.deepEqual(none.spots, {})
@@ -100,19 +106,19 @@ return function(t: Context)
 			local pen = samplePen()
 			local placed = PenFormat.view(pen, 1, false)
 			expect.equal(placed.selected.id, 1)
-			expect.deepEqual(actionIds(placed), { "putAway", "move", "lock", "sell" }) -- pens3 phase 7: + SELL
+			expect.deepEqual(actionIds(placed), { "putAway", "move", "lock", "sell", "feed" }) -- + SELL, FEED
 			expect.equal(placed.actions[1].text, screen.putAway)
 			expect.equal(placed.actions[1].kind, "primary")
 			expect.equal(placed.actions[1].reason, nil)
 			local toy = PenFormat.view(pen, 3, false)
-			expect.deepEqual(actionIds(toy), { "place", "lock", "sell" }) -- spot 2 is free
+			expect.deepEqual(actionIds(toy), { "place", "lock", "sell", "feed" }) -- spot 2 is free
 			-- A full pen: SWAP instead of PLACE.
 			pen.items[3].slot = 2
 			local full = PenFormat.view(pen, 4, false)
-			expect.deepEqual(actionIds(full), { "swap", "lock", "sell" })
+			expect.deepEqual(actionIds(full), { "swap", "lock", "sell", "feed" })
 			-- A locked one offers UNLOCK.
 			pen.items[4].locked = true
-			expect.deepEqual(actionIds(PenFormat.view(pen, 4, false)), { "swap", "unlock", "sell" })
+			expect.deepEqual(actionIds(PenFormat.view(pen, 4, false)), { "swap", "unlock", "sell", "feed" })
 			expect.equal(PenFormat.view(pen, 4, false).actions[2].text, screen.unlock)
 			-- Picking: only CANCEL, and the hint names the squishy.
 			local picking = PenFormat.view(pen, 4, true)
@@ -127,7 +133,7 @@ return function(t: Context)
 			local gone = PenFormat.view(pen, 99, true)
 			expect.equal(gone.selected, nil)
 			expect.equal(gone.picking, false)
-			expect.deepEqual(actionIds(gone), { "sellAll" })
+			expect.deepEqual(actionIds(gone), { "sellAll", "feedAll" })
 		end
 	)
 
@@ -241,13 +247,14 @@ return function(t: Context)
 		function()
 			local pen = shopPen()
 			local idle = PenFormat.view(pen, nil, false)
-			expect.deepEqual(actionIds(idle), { "sellAll" })
+			expect.deepEqual(actionIds(idle), { "sellAll", "feedAll" })
 			expect.equal(idle.actions[1].text, screen.sellAll)
 			expect.equal(idle.actions[1].reason, nil) -- Toasts 3 and 4 can go
 			local nothing = PenFormat.view(samplePen(), nil, false)
 			expect.equal(nothing.actions[1].reason, Strings.reasonText("pen.nothingToSell"))
 			-- A squishy: SELL after its other actions, refused with the server's reason where it would be.
-			expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse" }) -- 3 Toasts
+			-- 3 Toasts: FUSE; then FEED (pens3 phase 9).
+			expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse", "feed" })
 			expect.equal(PenFormat.view(pen, 3, false).actions[3].reason, nil)
 			expect.equal(PenFormat.view(pen, 1, false).actions[4].reason, Strings.reasonText("pen.sellStarter"))
 			expect.equal(PenFormat.view(pen, 5, false).actions[3].reason, Strings.reasonText("pen.lastCopy"))
@@ -357,7 +364,7 @@ return function(t: Context)
 		pen.items[4].locked = true
 		expect.deepEqual(PenFormat.fuseSet(pen, 2), { 2, 7, 3 })
 		expect.equal(PenFormat.fuseSet(pen, 4), nil) -- locked itself
-		expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse" })
+		expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse", "feed" })
 		for _, it in pen.items do
 			if it.kind == "toast" then
 				it.form = 2
@@ -418,5 +425,141 @@ return function(t: Context)
 		expect.near(PenFormat.holdFraction(10, 10 + seconds / 2), 0.5, 1e-9)
 		expect.equal(PenFormat.holdFraction(10, 10 + seconds * 3), 1)
 		expect.equal(PenFormat.holdFraction(10, 9), 0)
+	end)
+
+	-- Pens3 phase 9: food and levels ---------------------------------------------------------------------------------
+
+	local FOOD = Config.Economy.Food
+	local SCREEN_UI = Config.UI.Pen.screen
+	local CANDY = Strings.resolve("food.candyDrop.name")
+
+	t.test(
+		"view: a squishy offers FEED last, its next step in the hint; refused at the top level or short of food",
+		function()
+			local pen = samplePen()
+			local view = PenFormat.view(pen, 1, false, { food = { candy_drop = 3 } })
+			local feed = view.actions[#view.actions]
+			expect.equal(feed.id, "feed")
+			expect.equal(feed.text, screen.feed)
+			expect.equal(feed.reason, nil)
+			expect.equal(view.hint, Strings.format(screen.feedHint, { level = 1, next = 2, pieces = 1, food = CANDY }))
+			pen.items[1].level = 3 -- Lv 3 -> 4 takes 2
+			local short = PenFormat.view(pen, 1, false, { food = { candy_drop = 1 } })
+			expect.equal(
+				short.actions[#short.actions].reason,
+				Strings.format(screen.needFood, { missing = 1, food = CANDY })
+			)
+			expect.equal(short.hint, Strings.format(screen.feedHint, { level = 3, next = 4, pieces = 2, food = CANDY }))
+			pen.items[1].level = 10 -- the cap at biome 1
+			local top = PenFormat.view(pen, 1, false, { food = { candy_drop = 99, butter_bun = 99 } })
+			expect.equal(top.actions[#top.actions].reason, Strings.reasonText("pen.maxLevel"))
+			expect.equal(top.hint, Strings.format(screen.feedTop, { level = 10 }))
+			-- No food yet (no Snapshot field): short of the step's pieces.
+			pen.items[1].level = 1
+			local none = PenFormat.view(pen, 1, false)
+			expect.equal(
+				none.actions[#none.actions].reason,
+				Strings.format(screen.needFood, { missing = 1, food = CANDY })
+			)
+		end
+	)
+
+	t.test(
+		"view: nothing selected adds FEED ALL (refused when nothing can eat); the food row lists what you own",
+		function()
+			local pen = samplePen()
+			local view = PenFormat.view(pen, nil, false, { food = { candy_drop = 3 } })
+			expect.deepEqual(actionIds(view), { "sellAll", "feedAll" })
+			expect.equal(view.actions[2].text, screen.feedAll)
+			expect.equal(view.actions[2].reason, nil)
+			local item = Strings.format(screen.foodItem, { n = 3, food = CANDY })
+			expect.equal(view.foodLine, Strings.format(screen.foodLine, { list = item }))
+			local hungry = PenFormat.view(pen, nil, false, { food = {} })
+			expect.equal(hungry.actions[2].reason, Strings.reasonText("pen.nothingToFeed"))
+			expect.equal(hungry.foodLine, screen.foodNone)
+			-- Only the pen's squishies eat: a Toy Box full of hungry squishies still has nothing to feed at the cap.
+			for _, it in pen.items do
+				it.level = if it.slot > 0 then 10 else 1
+			end
+			expect.equal(
+				PenFormat.view(pen, nil, false, { food = { candy_drop = 9 } }).actions[2].reason,
+				Strings.reasonText("pen.nothingToFeed")
+			)
+			-- Two foods: band order, joined.
+			local two = PenFormat.view(pen, nil, false, { food = { butter_bun = 2, candy_drop = 1 } })
+			local bun = Strings.format(screen.foodItem, { n = 2, food = Strings.resolve("food.butterBun.name") })
+			local candy = Strings.format(screen.foodItem, { n = 1, food = CANDY })
+			expect.equal(two.foodLine, Strings.format(screen.foodLine, { list = candy .. ", " .. bun }))
+		end
+	)
+
+	t.test(
+		"view: the BUY FOOD cards are the foods on sale; a card offers BUY 1 / BUY 10 with the true reasons",
+		function()
+			local pen = samplePen()
+			local view = PenFormat.view(pen, nil, false, { food = { candy_drop = 2 }, coins = 1_000 })
+			expect.deepEqual(ids(view.foods), { "candy_drop" } :: { any }) -- biome 1: Candy Drop only
+			expect.equal(view.foodHeading, screen.foodHeading)
+			expect.equal(view.foods[1].name, CANDY)
+			expect.equal(view.foods[1].each, Strings.format(screen.foodEach, { coins = Format.coins(400) }))
+			expect.equal(view.foods[1].have, Strings.format(screen.foodHave, { n = 2 }))
+			expect.equal(view.foodSelected, nil)
+			local few, many = SCREEN_UI.foodBuy.few, SCREEN_UI.foodBuy.many
+			expect.truthy(few >= 1 and many > few and many <= FOOD.maxBuy)
+			local picked =
+				PenFormat.view(pen, nil, false, { food = { candy_drop = 2 }, coins = 1_000, foodId = "candy_drop" })
+			expect.equal((picked.foodSelected :: any).id, "candy_drop")
+			expect.deepEqual(actionIds(picked), { "buyFew", "buyMany" })
+			expect.equal(picked.actions[1].text, Strings.format(screen.buyFood, { n = few }))
+			expect.equal(picked.actions[2].text, Strings.format(screen.buyFood, { n = many }))
+			expect.equal(picked.actions[1].reason, nil)
+			local need = Strings.common.needCoins
+			local missing = 400 * many - 1_000
+			expect.equal(
+				picked.actions[2].reason,
+				Strings.format(Strings.plural(missing, need.one, need.many), { missing = Format.coins(missing) })
+			)
+			expect.equal(
+				picked.hint,
+				Strings.format(screen.foodBuyHint, { food = CANDY, coins = Format.coins(400), n = 2 })
+			)
+			local full = PenFormat.view(
+				pen,
+				nil,
+				false,
+				{ food = { candy_drop = FOOD.maxPieces }, coins = 10 ^ 9, foodId = "candy_drop" }
+			)
+			expect.equal(full.actions[1].reason, Strings.reasonText("food.full"))
+			-- A food not on sale yet, or a squishy selected: no food card is.
+			expect.equal(PenFormat.view(pen, nil, false, { foodId = "butter_bun" }).foodSelected, nil)
+			expect.equal(PenFormat.view(pen, 1, false, { foodId = "candy_drop" }).foodSelected, nil)
+		end
+	)
+
+	t.test("view: the sell confirm of a levelled squishy says the food inside is not refunded", function()
+		local pen = shopPen()
+		pen.items[3].level = 4 -- 1 + 1 + 2 Candy Drop
+		local view = PenFormat.view(pen, 3, false, { confirm = "sell" })
+		expect.equal(
+			view.hint,
+			Strings.format(screen.sellNote, { minutes = MINUTES })
+				.. " "
+				.. Strings.format(screen.foodNote, { coins = Format.coins(1_600) })
+		)
+	end)
+
+	t.test("requestFor: a retry of the same action reuses its id; another action gets a new one", function()
+		local made = 0
+		local function newId(): string
+			made += 1
+			return "id" .. made
+		end
+		local id, pending = PenFormat.requestFor(nil, "feed:3", newId)
+		expect.equal(id, "id1")
+		local again, kept = PenFormat.requestFor(pending, "feed:3", newId)
+		expect.equal(again, "id1")
+		expect.equal(kept, pending)
+		local other = PenFormat.requestFor(pending, "feed:4", newId)
+		expect.equal(other, "id2")
 	end)
 end

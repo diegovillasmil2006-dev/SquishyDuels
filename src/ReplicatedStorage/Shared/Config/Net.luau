@@ -75,6 +75,11 @@ local Net = {
 		SellAll = { rate = 2, burst = 3, oneInFlight = true },
 		BuyBack = { rate = 2, burst = 3, oneInFlight = true },
 		Fuse = { rate = 2, burst = 3, oneInFlight = true },
+		-- Pens3 phase 9: the pen screen's buy food, feed and Feed All: PenPlace's 2 a second (a burst of 3), one
+		-- at a time.
+		BuyFood = { rate = 2, burst = 3, oneInFlight = true },
+		Feed = { rate = 2, burst = 3, oneInFlight = true },
+		FeedAll = { rate = 2, burst = 3, oneInFlight = true },
 		PromptCoinBundle = { rate = 0.5, burst = 1 },
 		PromptGamePass = { rate = 0.5, burst = 1 },
 		-- Burst 2: the UI re-enables the button after exactly 30 s, so with network jitter an honest second press can

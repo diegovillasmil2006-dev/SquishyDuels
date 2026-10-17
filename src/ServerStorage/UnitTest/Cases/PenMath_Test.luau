@@ -624,4 +624,165 @@ return function(t: Context)
 			expect.equal(refusal(box, { a.id, b.id, c.id }), "pen.fuseTop")
 		end
 	)
+
+	-- Pens3 phase 9: food and levels ----------------------------------------------------------------------------------
+
+	local FOOD = Config.Economy.Food
+
+	local function foodIds(list: { any }): { string }
+		local out = {}
+		for _, food in list do
+			table.insert(out, food.id)
+		end
+		return out
+	end
+
+	t.test("feedCost: each step's food and pieces; every band's steps sum to the piece table", function()
+		local candy, one = PenMath.feedCost(1)
+		expect.equal((candy :: any).id, "candy_drop")
+		expect.equal(one, 1)
+		expect.equal(select(2, PenMath.feedCost(3)), 2)
+		expect.equal(select(2, PenMath.feedCost(9)), 12) -- Lv 9 -> 10: the last Candy Drop step
+		local bun, first = PenMath.feedCost(10)
+		expect.equal((bun :: any).id, "butter_bun")
+		expect.equal(first, 1)
+		expect.equal(select(2, PenMath.feedCost(19)), 16)
+		expect.equal((PenMath.feedCost(69) :: any).id, "halo_puff")
+		for _, bad in { 0, PEN.maxLevel, 1.5, -1, 0 / 0, "3" } :: { any } do
+			local none, zero = PenMath.feedCost(bad)
+			expect.equal(none, nil)
+			expect.equal(zero, 0)
+		end
+		-- A whole band, step by step (the piece table wins over V2's rounded 17K, 365K, 7.9M, 171M, 3.7B, 80B, 1.7T).
+		local totals: { [string]: number } = {}
+		for level = 1, PEN.maxLevel - 1 do
+			local food, pieces = PenMath.feedCost(level)
+			local def = food :: any
+			totals[def.id] = (totals[def.id] or 0) + pieces * def.price
+		end
+		expect.deepEqual(totals, {
+			candy_drop = 16_800,
+			butter_bun = 371_200,
+			boba_pearl_pop = 8_004_000,
+			frosty_scoop = 174_000_000,
+			lava_truffle = 3_770_000_000,
+			prism_tart = 81_200_000_000,
+			halo_puff = 1_740_000_000_000,
+		})
+	end)
+
+	t.test(
+		"levelCap: 10 a biome, biome 1 (Lv 10) until phase 13; foodsOnSale: the bands that start below it",
+		function()
+			expect.equal(PenMath.levelCap(), 10)
+			expect.deepEqual(foodIds(PenMath.foodsOnSale(PenMath.levelCap())), { "candy_drop" })
+			expect.deepEqual(foodIds(PenMath.foodsOnSale(20)), { "candy_drop", "butter_bun" })
+			expect.equal(#PenMath.foodsOnSale(PEN.maxLevel), #FOOD.foods)
+			expect.equal((PenMath.food("halo_puff") :: any).price, 30_000_000_000)
+			expect.equal(PenMath.food("pizza"), nil)
+			expect.equal(PenMath.foodCount({ candy_drop = 7 }, "candy_drop"), 7)
+			for _, bad in { { candy_drop = -1 }, { candy_drop = 1.5 }, { candy_drop = "7" }, "x", false } :: { any } do
+				expect.equal(PenMath.foodCount(bad, "candy_drop"), 0) -- broken counts as none
+			end
+		end
+	)
+
+	t.test("foodInside: the Coins of the food a squishy's levels took (the sell confirm's line)", function()
+		expect.equal(PenMath.foodInside(item("toast")), 0)
+		expect.equal(PenMath.foodInside(item("toast", 0, 4)), (1 + 1 + 2) * 400)
+		expect.equal(PenMath.foodInside(item("toast", 0, 10)), 16_800)
+		expect.equal(PenMath.foodInside(item("toast", 2, 12)), 16_800 + 2 * 6_400) -- the form adds nothing
+		expect.equal(PenMath.foodInside("x"), 0)
+	end)
+
+	t.test("buyFoodDecision: the price is compared, never taken from the client; the refusals in order", function()
+		local buy, code = PenMath.buyFoodDecision({ candy_drop = 3 }, "candy_drop", 5, 2_000, 10)
+		expect.equal(code, nil)
+		expect.equal((buy :: any).food.id, "candy_drop")
+		expect.equal((buy :: any).count, 5)
+		expect.equal((buy :: any).price, 2_000)
+		local function refusal(food: any, id: any, count: any, price: any, cap: number?): string?
+			local none, why = PenMath.buyFoodDecision(food, id, count, price, cap or 10)
+			expect.equal(none, nil)
+			return why
+		end
+		expect.equal(refusal({}, "pizza", 1, 400), "net.invalid")
+		expect.equal(refusal({}, 5, 1, 400), "net.invalid")
+		expect.equal(refusal({}, "candy_drop", 0, 0), "net.invalid")
+		expect.equal(refusal({}, "candy_drop", 1.5, 600), "net.invalid")
+		expect.equal(refusal({}, "candy_drop", FOOD.maxBuy + 1, 400 * (FOOD.maxBuy + 1)), "net.invalid")
+		expect.equal(refusal({}, "candy_drop", 1, -1), "net.invalid")
+		expect.equal(refusal({}, "butter_bun", 1, 6_400), "food.notYet") -- biome 1: only Candy Drop is sold
+		expect.equal(refusal({ candy_drop = FOOD.maxPieces - 1 }, "candy_drop", 2, 800), "food.full")
+		expect.equal(refusal({}, "candy_drop", 2, 400), "pen.priceChanged")
+		expect.equal(refusal({}, "candy_drop", 1, 401), "pen.priceChanged")
+		expect.equal((PenMath.buyFoodDecision({}, "butter_bun", 1, 6_400, 20) :: any).price, 6_400) -- biome 2
+		expect.equal((PenMath.buyFoodDecision("x", "candy_drop", 1, 400, 10) :: any).count, 1) -- broken food: none
+	end)
+
+	t.test("feedDecision: one level of one owned squishy for its step's pieces; the refusals in order", function()
+		local toast = at(0, item("toast", 0, 3)) -- a Toy Box squishy can be fed too
+		local box = pen(3, { at(1, item("kitty_bread")), toast })
+		local step, code = PenMath.feedDecision(box, { candy_drop = 2 }, toast.id, 10)
+		expect.equal(code, nil)
+		expect.equal((step :: any).item, toast)
+		expect.equal((step :: any).food.id, "candy_drop")
+		expect.equal((step :: any).pieces, 2)
+		local function refusal(state: any, food: any, id: any, cap: number): string?
+			local none, why = PenMath.feedDecision(state, food, id, cap)
+			expect.equal(none, nil)
+			return why
+		end
+		expect.equal(refusal(box, { candy_drop = 9 }, 1.5, 10), "net.invalid")
+		expect.equal(refusal(pen(2, { toast }), { candy_drop = 9 }, toast.id, 10), "net.invalid") -- a broken pen
+		expect.equal(refusal(box, { candy_drop = 9 }, 999, 10), "inventory.notOwned")
+		expect.equal(refusal(box, { candy_drop = 1 }, toast.id, 10), "food.notEnough")
+		expect.equal(refusal(box, { butter_bun = 9 }, toast.id, 10), "food.notEnough") -- the wrong food
+		toast.level = 10
+		expect.equal(refusal(box, { candy_drop = 99, butter_bun = 99 }, toast.id, 10), "pen.maxLevel")
+		-- A higher cap (the biomes of phase 13) opens the next band.
+		local bun = PenMath.feedDecision(box, { butter_bun = 1 }, toast.id, 20)
+		expect.equal((bun :: any).food.id, "butter_bun")
+		toast.level = PEN.maxLevel
+		expect.equal(refusal(box, { halo_puff = 99 }, toast.id, PEN.maxLevel), "pen.maxLevel")
+	end)
+
+	t.test(
+		"feedAllPlan: the pen only, the weakest first (level, coins/s, id), a level at a time, until the food runs out",
+		function()
+			local kitty = at(1, item("kitty_bread", 0, 2)) -- 10/s at Lv 1, here Lv 2
+			local butter = at(2, item("butter")) -- 40/s
+			local toast = at(3, item("toast")) -- 10/s
+			local toy = at(0, item("banana")) -- the Toy Box: never fed by Feed All
+			local box = pen(3, { kitty, butter, toast, toy })
+			local plan = PenMath.feedAllPlan(box, { candy_drop = 1 }, 10)
+			expect.deepEqual(plan.levels, { [toast.id] = 2 }) -- Lv 1, and fewer coins/s than the Butter
+			expect.deepEqual(plan.used, { candy_drop = 1 })
+			expect.equal(plan.steps, 1)
+			plan = PenMath.feedAllPlan(box, { candy_drop = 4 }, 10)
+			-- Toast 1 -> 2, Butter 1 -> 2, then all Lv 2: Kitty Bread (10/s, the lower id) 2 -> 3, Toast 2 -> 3.
+			expect.deepEqual(plan.levels, { [toast.id] = 3, [butter.id] = 2, [kitty.id] = 3 })
+			expect.deepEqual(plan.used, { candy_drop = 4 })
+			expect.equal(plan.steps, 4)
+			-- Plenty: everyone to the cap (Kitty Bread from Lv 2: 41 pieces; the others from Lv 1: 42 each), no more.
+			plan = PenMath.feedAllPlan(box, { candy_drop = 1_000 }, 10)
+			expect.deepEqual(plan.levels, { [kitty.id] = 10, [butter.id] = 10, [toast.id] = 10 })
+			expect.deepEqual(plan.used, { candy_drop = 125 })
+			expect.equal(plan.steps, 26)
+			-- It stops when the food runs out: 5 pieces, Lv 4 -> 5 takes 3; 2 are left and each next step needs 3+.
+			kitty.level, butter.level, toast.level = 4, 5, 6
+			plan = PenMath.feedAllPlan(box, { candy_drop = 5 }, 10)
+			expect.deepEqual(plan.levels, { [kitty.id] = 5 })
+			expect.deepEqual(plan.used, { candy_drop = 3 })
+			-- Nothing to feed: no food, everyone at the cap, a broken pen.
+			expect.equal(PenMath.feedAllPlan(box, {}, 10).steps, 0)
+			expect.equal(PenMath.feedAllPlan(box, { candy_drop = 9 }, 4).steps, 0)
+			expect.deepEqual(PenMath.feedAllPlan(pen(2, { kitty }), { candy_drop = 9 }, 10).levels, {})
+			-- The weakest that can eat: with no Candy Drop for the Lv 9 ones, the Lv 12 Butter still eats Butter Bun.
+			kitty.level, butter.level, toast.level = 9, 12, 9
+			plan = PenMath.feedAllPlan(box, { candy_drop = 5, butter_bun = 2 }, 20)
+			expect.deepEqual(plan.levels, { [butter.id] = 13 })
+			expect.deepEqual(plan.used, { butter_bun = 2 })
+		end
+	)
 end

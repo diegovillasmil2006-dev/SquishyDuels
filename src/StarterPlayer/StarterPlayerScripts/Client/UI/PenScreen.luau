@@ -21,8 +21,12 @@
 --   times it) instead of activating, and setHold(fraction?) shows the hold on Diego's progress bar
 --   (Components/ProgressBar, holdBarPx tall) over the action row (nil hides it). statusRoot is the count line, where
 --   the controller's celebrations start.
+-- * Pens3 phase 9 (food and levels; stand-ins from the same parts, PLACEHOLDERS in work/pens3/p9/NOTES.md): a
+--   "Buy food" heading and grid between the pen spots and the Toy Box, one card face per food on sale (its picture
+--   when AssetTable img.food.<id> has an id, else none; its name, "{price} each", "You have N"; a tap calls onFood),
+--   and the food row (view.foodLine, one line) pinned over the action row (and over the hold bar when it shows).
 --   local s = PenScreen.new({ parent = gui, scale = UIController.scale, onCard = ..., onSold = ..., onAction = ...,
---       onHold = ..., onClose = ... })
+--       onHold = ..., onFood = ..., onClose = ... })
 --   s:fit(screenPx);   s:render(view, busy);   s:setHold(fraction?);   s:primary();   s:destroy()
 
 -- Services
@@ -33,6 +37,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local AssetTable = require(Shared.AssetTable) -- pens3 phase 9: the food pictures
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
@@ -60,6 +65,7 @@ export type Spec = {
 	onSold: (itemId: number) -> (), -- pens3 phase 7: a sold card (its sold item id)
 	onAction: (id: string) -> (),
 	onHold: (id: string, down: boolean) -> (), -- pens3 phase 7: a hold action's press (true) and release (false)
+	onFood: (foodId: string) -> (), -- pens3 phase 9: a BUY FOOD card
 	onClose: () -> (),
 }
 
@@ -95,6 +101,7 @@ local HOLD_INPUTS: { [Enum.UserInputType]: boolean } = {
 	[Enum.UserInputType.Touch] = true,
 }
 local HOLD_KEYS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.ButtonA] = true, [Enum.KeyCode.Return] = true }
+local FOOD_PICTURE = "img.food." -- pens3 phase 9: + the food id (AssetTable)
 
 -- Module table
 
@@ -201,10 +208,12 @@ function PenScreen.new(spec: Spec): PenScreen
 	)
 	local penHeading = newLabel("Pen_PenHeading", HEADING_KIND, scroll, 1)
 	local penGrid = grid("Pen_Spots", 2, scroll)
-	local toyHeading = newLabel("Pen_ToyHeading", HEADING_KIND, scroll, 3)
-	local toyGrid = grid("Pen_ToyBox", 4, scroll)
-	local soldHeading = newLabel("Pen_SoldHeading", HEADING_KIND, scroll, 5) -- pens3 phase 7
-	local soldGrid = grid("Pen_Sold", 6, scroll)
+	local foodHeading = newLabel("Pen_FoodHeading", HEADING_KIND, scroll, 3) -- pens3 phase 9
+	local foodGrid = grid("Pen_Food", 4, scroll)
+	local toyHeading = newLabel("Pen_ToyHeading", HEADING_KIND, scroll, 5)
+	local toyGrid = grid("Pen_ToyBox", 6, scroll)
+	local soldHeading = newLabel("Pen_SoldHeading", HEADING_KIND, scroll, 7) -- pens3 phase 7
+	local soldGrid = grid("Pen_Sold", 8, scroll)
 	local actionRow: Frame = Create("Frame", {
 		Name = "Pen_Actions",
 		BackgroundTransparency = 1,
@@ -220,6 +229,9 @@ function PenScreen.new(spec: Spec): PenScreen
 	holdBar.root.AnchorPoint = Vector2.new(0, 1)
 	holdBar.root.Visible = false
 	local holdShown = false
+	-- Pens3 phase 9: the food row over the action row (and the hold bar).
+	local foodRow = newLabel("Pen_FoodRow", TEXT_KIND, body)
+	foodRow.AnchorPoint = Vector2.new(0, 1)
 
 	local cards: { [string]: Card } = {}
 	local buttons: { Button.Button } = {}
@@ -241,6 +253,8 @@ function PenScreen.new(spec: Spec): PenScreen
 		root.Position = UDim2.new(0.5, 0, 0.5, fit.shift)
 		local top = STICKER.statePill.height + S.gap + (if hint.Visible then hint.Size.Y.Offset + S.gap else 0)
 		local bottom = actionRow.Size.Y.Offset + S.gap + (if holdShown then S.holdBarPx + S.gap else 0)
+		foodRow.Position = UDim2.new(0, 0, 1, -bottom) -- pens3 phase 9
+		bottom += foodRow.Size.Y.Offset + S.gap
 		scroll.Position = UDim2.fromOffset(0, top)
 		scroll.Size = UDim2.new(1, 0, 1, -(top + bottom))
 		holdBar.root.Position = UDim2.new(0, 0, 1, -(actionRow.Size.Y.Offset + S.gap))
@@ -311,6 +325,57 @@ function PenScreen.new(spec: Spec): PenScreen
 			end
 		end))
 		return { root = button, face = face, lock = lock, lines = lines, cleanup = c }
+	end
+
+	-- Pens3 phase 9: a BUY FOOD card (the card face, the food picture when it has an id, three lines).
+	local function newFoodCard(key: string, food: PenFormat.FoodCard): Card
+		local c = Cleanup.new()
+		local button: TextButton = Create("TextButton", {
+			Name = "Pen_Card_" .. key,
+			Text = "",
+			AutoButtonColor = false,
+			Selectable = true,
+		})
+		c:add(button)
+		local face = CardFace.new(button, "Common") -- placeholder: Diego draws the food cards
+		c:add(face)
+		local holder: Frame = Create("Frame", {
+			Name = "Content",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 1, -STICKER.lip.card),
+			ZIndex = 1,
+			Parent = button,
+		})
+		Theme.list(
+			Enum.FillDirection.Vertical,
+			0,
+			holder,
+			Enum.HorizontalAlignment.Center,
+			Enum.VerticalAlignment.Center
+		)
+		local picture = AssetTable.image(FOOD_PICTURE .. food.id)
+		if picture then
+			Create("ImageLabel", {
+				Name = "Picture",
+				BackgroundTransparency = 1,
+				Image = picture,
+				ScaleType = Enum.ScaleType.Fit,
+				Size = UDim2.fromOffset(S.artPx, S.artPx),
+				LayoutOrder = 1,
+				Parent = holder,
+			})
+		end
+		local lines: { TextLabel } = {}
+		for index = 1, 3 do
+			local label = newLabel("Line" .. index, TEXT_KIND, holder, index + 1)
+			label.TextXAlignment = Enum.TextXAlignment.Center
+			table.insert(lines, label)
+		end
+		c:add(Button.decorate(button, { fx = "card" }))
+		c:add(button.Activated:Connect(function()
+			spec.onFood(food.id)
+		end))
+		return { root = button, face = face, lines = lines, cleanup = c }
 	end
 
 	-- One card by key: reused when it exists, else made; painted and placed. A sold card (pens3 phase 7) shows its
@@ -393,6 +458,31 @@ function PenScreen.new(spec: Spec): PenScreen
 			wanted[key] = true
 			show(key, card.item, nil, index, soldGrid, card == view.soldSelected, card)
 		end
+		-- Pens3 phase 9: the BUY FOOD cards.
+		line(foodHeading, view.foodHeading or "", HEADING_KIND, k, width)
+		foodHeading.Visible = view.foodHeading ~= nil
+		foodGrid.Visible = view.foodHeading ~= nil
+		for index, food in view.foods do
+			local key = `food_{food.id}`
+			wanted[key] = true
+			local card = cards[key]
+			if card == nil then
+				card = newFoodCard(key, food)
+				cards[key] = card
+			end
+			local cardText = cardWidth()
+			line(card.lines[1], food.name, TEXT_KIND, k, cardText)
+			line(card.lines[2], food.each, TEXT_KIND, k, cardText)
+			line(card.lines[3], food.have, TEXT_KIND, k, cardText)
+			local picked = view.foodSelected ~= nil and view.foodSelected.id == food.id
+			card.face:paint({ owned = true, selected = picked })
+			card.root.LayoutOrder = index
+			card.root.Parent = foodGrid
+			if picked then
+				selectedKey = key
+			end
+		end
+		line(foodRow, view.foodLine, TEXT_KIND, k, width)
 		for key, card in cards do
 			if not wanted[key] then
 				card.cleanup:clean()

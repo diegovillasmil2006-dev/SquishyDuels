@@ -87,6 +87,35 @@
 --                                   form) -> "pen.fuseTop". Else Fusion {keeper (the highest level; a tie: a placed
 --                                   one, then the lower id: the result is it, in its slot), others, form + 1, level,
 --                                   coats (each input's coating, for the bag)}. No luck, free.
+-- Pens3 phase 9 (food and levels, V2:214-224; Config.Economy.Food): `food` = a profile's food counts {[foodId] =
+-- pieces}; anything that is not a whole count >= 0 counts as none (fail closed).
+--   PenMath.levelCap()           -> number: the highest level a squishy can reach now, Food.levelsPerBiome × the biomes
+--                                   reached, at most Pen.maxLevel.
+--                                   shortcut: biome 1 (Lv 10) until phase 13 adds profile.highway.biome; read it here.
+--   PenMath.food(id)             -> FoodDef?: the Config food with that id
+--   PenMath.foodCount(food, id)  -> number: the pieces of that food owned (0 for anything broken)
+--   PenMath.foodsOnSale(cap)     -> {FoodDef}: the foods whose band starts below `cap`, in band order (a biome's food
+--                                   is sold once you reach it: biome 1 sells Candy Drop only)
+--   PenMath.feedCost(level)      -> (FoodDef?, pieces): the food of the step level -> level + 1 and how many pieces it
+--                                   takes (pieces[level - from + 1]); (nil, 0) past the last band or for a non-level
+--   PenMath.foodInside(item)     -> number: the Coins of the food its levels took (the sell confirm's line; food is
+--                                   never refunded, D1:219)
+--   PenMath.buyFoodDecision(food, id, count, expectedPrice, cap) -> (FoodBuy?, code?): the pure BuyFood checks, the
+--                                   first that applies wins: not a food, count not whole in [1, maxBuy], expectedPrice
+--                                   not whole Coins -> "net.invalid"; its band starts at or above `cap` ->
+--                                   "food.notYet"; more than maxPieces after it -> "food.full"; expectedPrice ~=
+--                                   price × count -> "pen.priceChanged" (compared, never charged). Else {food, count,
+--                                   price}.
+--   PenMath.feedDecision(pen, food, id, cap) -> (FeedStep?, code?): the pure Feed checks: a broken pen or an id that is
+--                                   not whole -> "net.invalid"; no item with that id (pen or Toy Box) ->
+--                                   "inventory.notOwned"; its level at `cap` or above (or no band) -> "pen.maxLevel";
+--                                   fewer pieces of its step's food than it takes -> "food.notEnough". Else {item,
+--                                   food, pieces}: one level up for those pieces.
+--   PenMath.feedAllPlan(pen, food, cap) -> FeedPlan {levels = {[id] = new level}, used = {[foodId] = pieces}, steps}:
+--                                   Feed All over the placed squishies only (never the Toy Box), one level at a time,
+--                                   always the weakest one that can eat (the lowest level, then the fewest Coins a
+--                                   second at Lv 1, then the lower id), until no placed squishy below `cap` has the
+--                                   pieces of its next step. steps 0 = nothing to feed.
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -107,6 +136,11 @@ export type BuyBack = { index: number, entry: Types.BuyBackEntry } -- the entry 
 -- Pens3 phase 8: one Fuse: the keeper becomes the result (form, level), the others go, the coatings go to the bag.
 export type Fusion =
 	{ keeper: Types.PenItem, others: { Types.PenItem }, form: number, level: number, coats: { number } }
+-- Pens3 phase 9: a Config food, one BuyFood, one Feed step, the Feed All plan.
+export type FoodDef = { id: string, nameKey: string, price: number, from: number, to: number }
+export type FoodBuy = { food: FoodDef, count: number, price: number }
+export type FeedStep = { item: Types.PenItem, food: FoodDef, pieces: number }
+export type FeedPlan = { levels: { [number]: number }, used: { [string]: number }, steps: number }
 
 -- Constants
 
@@ -126,6 +160,12 @@ local CODE_GONE = "pen.buyBackGone"
 local CODE_MISMATCH = "pen.fuseMismatch" -- pens3 phase 8
 local CODE_TOP = "pen.fuseTop"
 local FUSE_COUNT = 3 -- D1:227: 3 of the same make the next form
+local FOOD = Config.Economy.Food -- pens3 phase 9
+local CODE_NOT_YET = "food.notYet"
+local CODE_FOOD_FULL = "food.full"
+local CODE_NOT_ENOUGH = "food.notEnough"
+local CODE_MAX_LEVEL = "pen.maxLevel"
+local BIOMES_REACHED = 1 -- shortcut: phase 13 (the highway) reads profile.highway.biome instead
 
 -- Module table
 
@@ -560,6 +600,130 @@ function PenMath.fuseDecision(pen: any, ids: any): (Fusion?, string?)
 		end
 	end
 	return { keeper = keeper, others = others, form = first.form + 1, level = keeper.level, coats = coats }, nil
+end
+
+-- Public: food and levels (pens3 phase 9) -----------------------------------------------------------------------------
+
+function PenMath.levelCap(): number
+	return math.min(PEN.maxLevel, FOOD.levelsPerBiome * BIOMES_REACHED)
+end
+
+function PenMath.food(id: any): FoodDef?
+	for _, food in FOOD.foods do
+		if food.id == id then
+			return food
+		end
+	end
+	return nil
+end
+
+function PenMath.foodCount(food: any, id: string): number
+	local count = if type(food) == "table" then food[id] else nil
+	return if isWhole(count) and count >= 0 then count else 0
+end
+
+function PenMath.foodsOnSale(cap: number): { FoodDef }
+	local list: { FoodDef } = {}
+	for _, food in FOOD.foods do
+		if food.from < cap then
+			table.insert(list, food)
+		end
+	end
+	return list
+end
+
+function PenMath.feedCost(level: any): (FoodDef?, number)
+	if isWhole(level) then
+		for _, food in FOOD.foods do
+			if level >= food.from and level < food.to then
+				return food, FOOD.pieces[level - food.from + 1]
+			end
+		end
+	end
+	return nil, 0
+end
+
+function PenMath.foodInside(item: any): number
+	if not isLook(item) then
+		return 0
+	end
+	local coins = 0
+	for level = 1, item.level - 1 do
+		local food, pieces = PenMath.feedCost(level)
+		coins += if food then pieces * food.price else 0
+	end
+	return math.min(coins, MAX_COINS)
+end
+
+function PenMath.buyFoodDecision(food: any, id: any, count: any, expectedPrice: any, cap: number): (FoodBuy?, string?)
+	local def = PenMath.food(id)
+	if def == nil or not inRange(count, 1, FOOD.maxBuy) or Validate.coins(expectedPrice) == nil then
+		return nil, CODE_INVALID
+	end
+	if def.from >= cap then
+		return nil, CODE_NOT_YET
+	end
+	if PenMath.foodCount(food, def.id) + count > FOOD.maxPieces then
+		return nil, CODE_FOOD_FULL
+	end
+	local price = def.price * count
+	if expectedPrice ~= price then
+		return nil, CODE_PRICE
+	end
+	return { food = def, count = count, price = price }, nil
+end
+
+function PenMath.feedDecision(pen: any, food: any, id: any, cap: number): (FeedStep?, string?)
+	if spotsOf(pen) == nil or type(pen.items) ~= "table" or not isWhole(id) then
+		return nil, CODE_INVALID
+	end
+	local item = PenMath.find(pen, id)
+	if item == nil then
+		return nil, CODE_NOT_OWNED
+	end
+	local def, pieces = PenMath.feedCost(item.level)
+	if def == nil or item.level >= cap then
+		return nil, CODE_MAX_LEVEL
+	end
+	if PenMath.foodCount(food, def.id) < pieces then
+		return nil, CODE_NOT_ENOUGH
+	end
+	return { item = item, food = def, pieces = pieces }, nil
+end
+
+function PenMath.feedAllPlan(pen: any, food: any, cap: number): FeedPlan
+	local plan: FeedPlan = { levels = {}, used = {}, steps = 0 }
+	local left: { [string]: number } = {}
+	for _, def in FOOD.foods do
+		left[def.id] = PenMath.foodCount(food, def.id)
+	end
+	local eaters = {}
+	for _, item in PenMath.placed(pen) do
+		local look = table.clone(item)
+		look.level = 1
+		table.insert(eaters, { item = item, level = item.level, base = PenMath.itemRate(look) })
+	end
+	while true do
+		local best, bestFood, bestPieces = nil, nil, 0
+		for _, eater in eaters do
+			local def, pieces = PenMath.feedCost(eater.level)
+			local weaker = best == nil
+				or eater.level < best.level
+				or (eater.level == best.level and eater.base < best.base)
+				or (eater.level == best.level and eater.base == best.base and eater.item.id < best.item.id)
+			if def ~= nil and eater.level < cap and left[def.id] >= pieces and weaker then
+				best, bestFood, bestPieces = eater, def, pieces
+			end
+		end
+		if best == nil or bestFood == nil then
+			return plan
+		end
+		left[bestFood.id] -= bestPieces
+		plan.used[bestFood.id] = (plan.used[bestFood.id] or 0) + bestPieces
+		best.level += 1
+		plan.levels[best.item.id] = best.level
+		plan.steps += 1
+	end
 end
 
 -- Public: the tick

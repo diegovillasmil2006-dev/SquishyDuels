@@ -58,6 +58,7 @@ return function(t: Context)
 	local NetService = t.requireServer("Services/NetService")
 	local Config = t.requireShared("Config")
 	local Remotes = t.requireShared("Remotes")
+	local PenMath = t.requireShared("PenMath") -- pens3 phase 9: the level cap
 	local TableUtil = t.requireShared("Util/TableUtil")
 	local FakeClock = t.requireFake("FakeClock")
 	local PEN = Config.Economy.Pen
@@ -90,7 +91,17 @@ return function(t: Context)
 		sent: { any }, -- pens3 phase 6: sendPen calls (the pen field alone)
 		now: number, -- pens3 phase 7: os.time (the buy-back's `at`)
 		backSent: { any }, -- sendBuyBack calls
+		foodSent: { any }, -- pens3 phase 9: sendFood calls
 	}
+
+	-- Pens3 phase 9: none of each Config food.
+	local function noFood(): any
+		local food = {}
+		for _, def in Config.Economy.Food.foods do
+			food[def.id] = 0
+		end
+		return food
+	end
 
 	local function newProfile(): any
 		return {
@@ -103,6 +114,7 @@ return function(t: Context)
 			},
 			buyBack = {}, -- pens3 phase 7
 			bag = { 0, 0, 0, 0, 0, 0, 0 }, -- pens3 phase 8
+			food = noFood(), -- pens3 phase 9
 		}
 	end
 
@@ -135,6 +147,7 @@ return function(t: Context)
 			sent = {},
 			now = 1_800_000_000,
 			backSent = {},
+			foodSent = {},
 		}
 		PenService.reset()
 		PenService.useDeps({
@@ -229,6 +242,9 @@ return function(t: Context)
 			end,
 			sendBuyBack = function(player: any)
 				table.insert(w.backSent, player)
+			end,
+			sendFood = function(player: any)
+				table.insert(w.foodSent, player)
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -1073,6 +1089,232 @@ return function(t: Context)
 			expect.equal(w.writes, 0)
 			expect.equal(w.nowSaves, 0)
 			expect.deepEqual(a.bag, { 0, 0, 0, 0, 0, 0, 0 })
+			finish()
+		end
+	)
+
+	-- Pens3 phase 9 (food and levels) ---------------------------------------------------------------------------------
+
+	-- A's pen: Kitty Bread (1) in spot 1 at Lv 1, Butter (2) in spot 2 at Lv 3, Toast (3) in the Toy Box at Lv 1;
+	-- 10,000 Coins.
+	local function foodWorld(): (World, any)
+		local w, a = screenWorld()
+		a.pen.items[2].level = 3
+		a.coins = 10_000
+		return w, a
+	end
+
+	local function levelsOf(profile: any): { number }
+		local list = {}
+		for _, item in profile.pen.items do
+			table.insert(list, item.level)
+		end
+		return list
+	end
+
+	local function foodReply(profile: any, levels: number, charged: boolean): any
+		return {
+			pen = TableUtil.deepCopy(profile.pen),
+			food = TableUtil.deepCopy(profile.food),
+			levels = levels,
+			charged = charged,
+			savePending = false,
+		}
+	end
+
+	t.test("BuyFood, Feed and FeedAll take a food id, a count, a price, an item id, a requestId; 2 a second", function()
+		expect.deepEqual(Remotes.SPEC.BuyFood.args, {
+			{ name = "foodId", type = "string" },
+			{ name = "count", type = "integer" },
+			{ name = "expectedPrice", type = "coins" },
+			{ name = "requestId", type = "requestId" },
+		})
+		expect.deepEqual(
+			Remotes.SPEC.Feed.args,
+			{ { name = "itemId", type = "integer" }, { name = "requestId", type = "requestId" } }
+		)
+		expect.deepEqual(Remotes.SPEC.FeedAll.args, {})
+		for _, name in { "BuyFood", "Feed", "FeedAll" } do
+			expect.equal(Remotes.SPEC[name].kind, "RemoteFunction")
+			expect.equal(Remotes.SPEC[name].dir, "c2s")
+			expect.deepEqual(Config.Net.Remotes[name], { rate = 2, burst = 3, oneInFlight = true })
+		end
+		local clock = FakeClock.new(100)
+		local guard = NetService.newGuard({ clock = clock.now })
+		local player = { UserId = 9 }
+		expect.equal(guard:check(player, "BuyFood", 4, "candy_drop", 2, 800, REQ), "ok")
+		expect.equal(guard:check(player, "BuyFood", 4, "candy_drop", 2, -1, REQ), "invalid")
+		expect.equal(guard:check(player, "Feed", 2, 3, REQ), "ok")
+		expect.equal(guard:check(player, "Feed", 2, 3, "not-a-guid"), "invalid")
+		expect.equal(guard:check(player, "FeedAll", 0), "ok")
+		expect.equal(guard:check(player, "FeedAll", 1, 5), "badArgCount")
+	end)
+
+	t.test(
+		"buy food: the server's price, one 'food' spend, the pieces added, the food sent, an awaited save",
+		function()
+			local w, a = foodWorld()
+			local bBefore = TableUtil.deepCopy(w.profiles[w.b])
+			local reply = PenService.buyFood(w.a, "candy_drop", 10, 4_000, REQ)
+			expect.equal(reply.ok, true)
+			expect.equal(a.food.candy_drop, 10)
+			expect.equal(a.coins, 6_000)
+			expect.deepEqual(w.spends, { { player = w.a, amount = 4_000, reason = "food" } })
+			expect.deepEqual(reply.data, foodReply(a, 0, true))
+			expect.equal(w.writes, 1)
+			expect.deepEqual(w.foodSent, { w.a })
+			expect.deepEqual(w.shown, {}) -- nothing on the plot changes
+			expect.equal(w.nowSaves, 1)
+			expect.deepEqual(w.grants, {})
+			expect.deepEqual(w.profiles[w.b], bBefore) -- only the caller's own food
+			-- A retry of the same request (its answer never arrived) replays: never charged twice.
+			local again = PenService.buyFood(w.a, "candy_drop", 10, 4_000, REQ)
+			expect.equal(again.ok, true)
+			expect.equal(again.data.charged, true) -- as first answered
+			expect.equal(a.food.candy_drop, 10)
+			expect.equal(a.coins, 6_000)
+			expect.equal(#w.spends, 1)
+			expect.equal(w.writes, 1)
+			-- A new request buys again.
+			expect.equal(PenService.buyFood(w.a, "candy_drop", 1, 400, REQ2).ok, true)
+			expect.equal(a.food.candy_drop, 11)
+			finish()
+		end
+	)
+
+	t.test(
+		"buy food refusals, in order: invalid, not ready, unknown, not sold yet, full, price, paused, duel, coins",
+		function()
+			local w, a = foodWorld()
+			for _, case in
+				{
+					{ "candy_drop", 1, 400, "not-a-guid" },
+					{ 5, 1, 400, REQ },
+					{ "candy_drop", 1.5, 600, REQ },
+					{ "candy_drop", 1, -1, REQ },
+					{ "pizza", 1, 400, REQ },
+					{ "candy_drop", 0, 0, REQ },
+					{ "candy_drop", Config.Economy.Food.maxBuy + 1, 400 * (Config.Economy.Food.maxBuy + 1), REQ },
+				} :: { { any } }
+			do
+				expectRefused(PenService.buyFood(w.a, case[1], case[2], case[3], case[4]), "net.invalid")
+			end
+			w.status[w.a] = "offline"
+			expectRefused(PenService.buyFood(w.a, "candy_drop", 1, 400, REQ), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.buyFood(w.a, "butter_bun", 1, 6_400, REQ), "food.notYet") -- biome 1
+			a.food.candy_drop = Config.Economy.Food.maxPieces
+			expectRefused(PenService.buyFood(w.a, "candy_drop", 1, 400, REQ), "food.full")
+			a.food.candy_drop = 0
+			expectRefused(PenService.buyFood(w.a, "candy_drop", 2, 400, REQ), "pen.priceChanged")
+			w.savePending = true
+			expectRefused(PenService.buyFood(w.a, "candy_drop", 1, 400, REQ), "pen.paused")
+			w.savePending = false
+			w.phase[w.a] = "Active"
+			expectRefused(PenService.buyFood(w.a, "candy_drop", 1, 400, REQ), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			a.coins = 399
+			expectRefused(PenService.buyFood(w.a, "candy_drop", 1, 400, REQ), "economy.notEnoughCoins")
+			expect.equal(w.writes, 0)
+			expect.equal(w.nowSaves, 0)
+			expect.deepEqual(w.spends, {})
+			expect.equal(a.food.candy_drop, 0)
+			-- A refused request is not remembered: the same id buys once it can.
+			a.coins = 400
+			expect.equal(PenService.buyFood(w.a, "candy_drop", 1, 400, REQ).ok, true)
+			finish()
+		end
+	)
+
+	t.test("feed: one level for its step's pieces, shown and sent, a soon save; a retry never feeds twice", function()
+		local w, a = foodWorld()
+		a.food.candy_drop = 5
+		local reply = PenService.feed(w.a, 2, REQ) -- the Butter, Lv 3 -> 4: 2 Candy Drop
+		expect.equal(reply.ok, true)
+		expect.deepEqual(levelsOf(a), { 1, 4, 1 })
+		expect.equal(a.food.candy_drop, 3)
+		expect.deepEqual(reply.data, foodReply(a, 1, false))
+		expect.equal(w.writes, 1)
+		expect.deepEqual(w.shown, { w.a }) -- its coin label and card change
+		expect.deepEqual(w.foodSent, { w.a })
+		expect.deepEqual(w.soonSaves, { w.a })
+		expect.equal(w.nowSaves, 0) -- no Coins move: a soon save, like a placement
+		expect.deepEqual(w.spends, {})
+		local again = PenService.feed(w.a, 2, REQ) -- its answer never arrived: the same request
+		expect.equal(again.ok, true)
+		expect.deepEqual(levelsOf(a), { 1, 4, 1 })
+		expect.equal(a.food.candy_drop, 3)
+		expect.equal(w.writes, 1)
+		-- The Toy Box can be fed one at a time.
+		expect.equal(PenService.feed(w.a, 3, REQ2).ok, true)
+		expect.deepEqual(levelsOf(a), { 1, 4, 2 })
+		expect.equal(a.food.candy_drop, 2)
+		finish()
+	end)
+
+	t.test(
+		"feed refusals, in order: invalid, not ready, not owned, top level, not enough food, paused, duel",
+		function()
+			local w, a = foodWorld()
+			a.food.candy_drop = 1
+			for _, case in { { 1.5, REQ }, { "2", REQ }, { 2, "not-a-guid" } } :: { { any } } do
+				expectRefused(PenService.feed(w.a, case[1], case[2]), "net.invalid")
+			end
+			w.status[w.a] = "offline"
+			expectRefused(PenService.feed(w.a, 2, REQ), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.feed(w.a, 99, REQ), "inventory.notOwned")
+			expectRefused(PenService.feed(w.b, 2, REQ), "inventory.notOwned") -- never another player's squishy
+			expectRefused(PenService.feed(w.a, 2, REQ), "food.notEnough") -- Lv 3 -> 4 takes 2
+			a.pen.items[2].level = PenMath.levelCap()
+			expectRefused(PenService.feed(w.a, 2, REQ), "pen.maxLevel")
+			w.closing = true
+			expectRefused(PenService.feed(w.a, 1, REQ), "pen.changePaused")
+			w.closing = false
+			w.phase[w.a] = "Active"
+			expectRefused(PenService.feed(w.a, 1, REQ), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			expect.equal(w.writes, 0)
+			expect.deepEqual(w.soonSaves, {})
+			expect.equal(a.food.candy_drop, 1)
+			finish()
+		end
+	)
+
+	t.test(
+		"feed all: the pen's squishies only, the weakest first, until the food runs out; a retry finds nothing",
+		function()
+			local w, a = foodWorld()
+			a.food.candy_drop = 3
+			-- Kitty Bread Lv 1 -> 2 (1), then Kitty Bread 2 -> 3 (1, still the weakest: the Butter is Lv 3); 1 left,
+			-- and Kitty Bread's Lv 3 -> 4 takes 2 (as does the Butter's): it stops. The Toy Box Toast is never fed.
+			local reply = PenService.feedAll(w.a)
+			expect.equal(reply.ok, true)
+			expect.deepEqual(levelsOf(a), { 3, 3, 1 })
+			expect.equal(a.food.candy_drop, 1)
+			expect.deepEqual(reply.data, foodReply(a, 2, false))
+			expect.equal(w.writes, 1)
+			expect.deepEqual(w.shown, { w.a })
+			expect.deepEqual(w.foodSent, { w.a })
+			expect.deepEqual(w.soonSaves, { w.a })
+			expect.deepEqual(w.spends, {})
+			expectRefused(PenService.feedAll(w.a), "pen.nothingToFeed") -- a retry: nothing left it can feed
+			w.status[w.a] = "offline"
+			expectRefused(PenService.feedAll(w.a), "data.notReady")
+			w.status[w.a] = "ready"
+			a.food.candy_drop = 50
+			w.restart = true
+			expectRefused(PenService.feedAll(w.a), "pen.changePaused")
+			w.restart = false
+			w.phase[w.a] = "Active"
+			expectRefused(PenService.feedAll(w.a), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			expect.equal(w.writes, 1)
+			-- Plenty (Lv 3 -> 10 takes 40 each): both placed squishies to the cap, never past it.
+			a.food.candy_drop = 100
+			expect.equal(PenService.feedAll(w.a).ok, true)
+			expect.deepEqual(levelsOf(a), { PenMath.levelCap(), PenMath.levelCap(), 1 })
+			expect.equal(a.food.candy_drop, 20)
 			finish()
 		end
 	)

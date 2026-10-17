@@ -72,6 +72,14 @@
 --   the face's (isFace), take formColor (Golden: blend 0.7 toward PenFormGolden; Rainbow: blend 0.75 toward the
 --   PenFormRainbow band of the part's middle in the model's height) and the form's material, reflectance and
 --   transparency when it is built (a hidden part stays hidden). Nothing else: no extra meshes, no sparkle yet.
+-- * Pens3 phase 9 (food and levels; stand-ins in the same screen): PenFormat.view also gets StateController's food
+--   and the selected BUY FOOD card (foodId; a tap on one, onFood, selects it). FEED sends Feed(the squishy, a
+--   requestId), FEED ALL FeedAll(), BUY few / many BuyFood(the food, the count, its price × count, a requestId), one at
+--   a time like PenPlace. A requestId is kept (PenFormat.requestFor) until the server answers, so a press after an
+--   answer that never came is the same request (the server replays it, never twice); the Feed key holds the level, so
+--   a press after the new level arrived is a new request. A feed plays ui.levelTone and floats "+N level(s)" from the
+--   count line; a buy ui.purchase. The walker's coin label, the card's "Lv N" and the pen's +N/s follow the level by
+--   the paths they already use (SD_Pen, PenFormat.cardText, PenMath.itemRate).
 -- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
 -- syncWaits, tapHit, isFace, formColor), init(), start(), destroy() (tests and leak checks; the bootstrap never calls
 -- it), debugState().
@@ -213,6 +221,11 @@ local REMOTE_SELL_ALL = "SellAll"
 local REMOTE_BUY_BACK = "BuyBack"
 local REMOTE_FUSE = "Fuse"
 local FIELD_BUY_BACK = "buyBack"
+local REMOTE_BUY_FOOD = "BuyFood" -- pens3 phase 9
+local REMOTE_FEED = "Feed"
+local REMOTE_FEED_ALL = "FeedAll"
+local FIELD_FOOD = "food"
+local FOOD_BUY = P.screen.foodBuy
 local SOUND_SELL = "ui.coin"
 local SOUND_FUSE = "ui.levelTone"
 local FORMS = P.forms
@@ -252,6 +265,8 @@ local soldId: number? = nil -- pens3 phase 7: the selected sold card
 local confirm: PenFormat.ConfirmKind? = nil -- the confirm step open
 local holdAt: number? = nil -- os.clock() of a hold action's press
 local soldMinute = -1 -- the server minute the screen was last drawn in (the sold cards' minutes)
+local foodId: string? = nil -- pens3 phase 9: the selected BUY FOOD card
+local pendingReq: PenFormat.Pending? = nil -- the request a BuyFood / Feed press reuses until the server answers
 local pendingTap: { input: InputObject, from: Vector3, at: number, index: number, look: PenMath.Look }? = nil
 
 local function rnd(): number
@@ -733,6 +748,8 @@ local function currentView(): PenFormat.View
 		coins = StateController.get("coins"),
 		soldId = soldId,
 		confirm = confirm,
+		food = StateController.get(FIELD_FOOD), -- pens3 phase 9
+		foodId = foodId,
 	})
 end
 
@@ -745,6 +762,9 @@ local function render()
 		end
 		if view.soldSelected == nil then
 			soldId = nil -- bought back, or its time is over
+		end
+		if view.foodSelected == nil then
+			foodId = nil -- pens3 phase 9: no longer on sale, or another card was picked
 		end
 		confirm = view.confirm -- a confirm that cannot open any more is closed
 		s:render(view, busy)
@@ -807,6 +827,46 @@ local function sendFor(kind: PenFormat.ConfirmKind, remote: string, ...: any)
 	end
 end
 
+-- Pens3 phase 9: the feel of an accepted feed or buy (see the header).
+local function celebrateFood(kind: string, data: any)
+	local s = screen
+	if kind == "buy" then
+		SoundController.play(SOUND_PURCHASE)
+	elseif type(data.levels) == "number" and data.levels > 0 then
+		SoundController.play(SOUND_FUSE) -- ui.levelTone: the level-up tone
+		if s then
+			local up = Strings.pen.screen.levelsUp
+			UiFx.float(s.statusRoot, Strings.format(Strings.plural(data.levels, up.one, up.many), { n = data.levels }))
+		end
+	end
+	render()
+end
+
+local function newRequestId(): string
+	return HttpService:GenerateGUID(false)
+end
+
+-- Pens3 phase 9: one BuyFood / Feed (key = what it does: its requestId, appended last, is the pending one for the same
+-- key until the server answers) or FeedAll (no key).
+local function sendFood(kind: string, remote: string, key: string?, ...: any)
+	local args = { ... }
+	if key ~= nil then
+		local request
+		request, pendingReq = PenFormat.requestFor(pendingReq, key, newRequestId)
+		table.insert(args, request)
+	end
+	local result = send(remote, table.unpack(args))
+	if result == nil then
+		return
+	end
+	if result.ok or result.charged ~= nil then
+		pendingReq = nil -- the server answered: the next press is a new request
+	end
+	if result.ok and type(result.data) == "table" then
+		celebrateFood(kind, result.data)
+	end
+end
+
 -- The confirm step's confirm: what the view says to send.
 local function confirmNow()
 	local view = currentView()
@@ -860,14 +920,20 @@ local function onCard(slot: number?, itemId: number?)
 	if what == "place" then
 		task.spawn(send, REMOTE_PLACE, a, b)
 	elseif what == "select" then
-		selectedId, picking, soldId, confirm = a, false, nil, nil
+		selectedId, picking, soldId, confirm, foodId = a, false, nil, nil, nil
 		render()
 	end
 end
 
 -- Pens3 phase 7: a sold card.
 local function onSold(itemId: number)
-	selectedId, picking, soldId, confirm = nil, false, itemId, nil
+	selectedId, picking, soldId, confirm, foodId = nil, false, itemId, nil, nil
+	render()
+end
+
+-- Pens3 phase 9: a BUY FOOD card.
+local function onFood(id: string)
+	selectedId, picking, soldId, confirm, foodId = nil, false, nil, nil, id
 	render()
 end
 
@@ -887,8 +953,20 @@ local function onAction(id: string)
 		picking, confirm = false, nil
 		render()
 		return
+	elseif id == "feedAll" then
+		task.spawn(sendFood, "feed", REMOTE_FEED_ALL, nil) -- pens3 phase 9
+		return
+	elseif (id == "buyFew" or id == "buyMany") and view.foodSelected then
+		local card = view.foodSelected
+		local n = if id == "buyFew" then FOOD_BUY.few else FOOD_BUY.many
+		task.spawn(sendFood, "buy", REMOTE_BUY_FOOD, `buy:{card.id}:{n}`, card.id, n, card.price * n)
+		return
 	end
 	if item == nil then
+		return
+	end
+	if id == "feed" then
+		task.spawn(sendFood, "feed", REMOTE_FEED, `feed:{item.id}:{item.level}`, item.id)
 		return
 	end
 	if id == "place" then
@@ -913,6 +991,7 @@ local function buildScreen(parent: Instance): GuiObject
 		onSold = onSold,
 		onAction = onAction,
 		onHold = onHold,
+		onFood = onFood, -- pens3 phase 9
 		onClose = function()
 			UIController.close(SCREEN, "button")
 		end,
@@ -1179,6 +1258,7 @@ function PenController.start()
 		folder = nil
 		screen, selectedId, picking, busy, pendingTap = nil, nil, false, false, nil -- pens3 phase 6
 		soldId, confirm, holdAt, soldMinute = nil, nil, nil, -1 -- pens3 phases 7-8
+		foodId, pendingReq = nil, nil -- pens3 phase 9
 	end)
 	for _, model in CollectionService:GetTagged(TAG_BASE) do
 		watch(model)
@@ -1204,7 +1284,7 @@ function PenController.start()
 				then wanted.itemId
 				elseif type(wanted.kind) == "string" then PenFormat.pickFor(pen, wanted.kind)
 				else nil
-			picking, soldId, confirm, holdAt = false, nil, nil, nil
+			picking, soldId, confirm, holdAt, foodId = false, nil, nil, nil, nil
 			render()
 		end,
 		primary = function(): GuiObject?
@@ -1215,6 +1295,7 @@ function PenController.start()
 	c:add(StateController.changed("pen"):connect(render))
 	c:add(StateController.changed(FIELD_BUY_BACK):connect(render)) -- pens3 phase 7: the sold cards
 	c:add(StateController.changed("coins"):connect(render)) -- BUY BACK's missing Coins and the balance after
+	c:add(StateController.changed(FIELD_FOOD):connect(render)) -- pens3 phase 9: the food row, FEED and BUY FOOD
 	ControlsController.setPointerClaim(claim)
 	c:add(function()
 		ControlsController.setPointerClaim(nil)

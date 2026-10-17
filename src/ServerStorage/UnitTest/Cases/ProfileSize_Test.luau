@@ -10,7 +10,7 @@
 -- orders at 2^53, the Frog gift given; phase 6: every item's slot (the 12 spots, the rest in the Toy Box) and its
 -- lock, false being the longer word; phases 7-8: a full buy-back list of buyBackMax sales, each a Rainbow Galaxy at the
 -- top level with the longest kind id, an id near 2^53, maxCoins paid and a GUID request, and a bag of 2^53 of every
--- coating), and long worst-case values
+-- coating; phase 9: every food at Food.maxPieces), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -192,6 +192,10 @@ return function(t: Context)
 			})
 		end
 		p.bag = table.create(#pen.coatMult - 1, BIG_COUNTER)
+		-- Pens3 phase 9: the most of every food a save can hold.
+		for _, food in Config.Economy.Food.foods do
+			p.food[food.id] = Config.Economy.Food.maxPieces
+		end
 		return p
 	end
 
@@ -233,6 +237,7 @@ return function(t: Context)
 		expect.deepEqual(decoded.buyBack, p.buyBack) -- pens3 phase 7: buyBackMax sales, exact
 		expect.equal(#decoded.buyBack, Config.Economy.Pen.buyBackMax)
 		expect.deepEqual(decoded.bag, p.bag) -- pens3 phase 8
+		expect.deepEqual(decoded.food, p.food) -- pens3 phase 9: string keys, whole counts
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

@@ -37,6 +37,20 @@
 --     nil when it is locked, Rainbow, or there are not 3.
 --   holdFraction(startedAt, now) -> 0..1 over Config.UI.Pen.screen.holdSeconds.
 --   formName(item) -> string: "Golden Toast" / "Rainbow Toast" (pen.screen.formName), a plain one its name.
+-- Pens3 phase 9 (food and levels; the server decides, BuyFood / Feed / FeedAll; the level cap PenMath.levelCap):
+--   view(...) Extra also takes food (StateController's food counts) and foodId (a selected BUY FOOD card):
+--     - a squishy's actions end with FEED (reason: the top level, reason.pen.maxLevel, or the food it is short of,
+--       pen.screen.needFood) and its hint is its next step (feedHint "Lv N -> N+1: P <food>"; feedTop at the cap);
+--     - nothing selected: SELL ALL, then FEED ALL (reason.pen.nothingToFeed when PenMath.feedAllPlan feeds nothing);
+--     - foodLine: the food row (foodLine with "N <food>" for each food owned, band order; foodNone);
+--     - foods / foodHeading: one BUY FOOD card per food on sale (PenMath.foodsOnSale: biome 1 sells Candy Drop),
+--       its name, "{price} each" and "You have N"; a selected one (foodSelected) offers BUY few / BUY many
+--       (Config.UI.Pen.screen.foodBuy; reason: reason.food.full past maxPieces, else the missing Coins) and its hint
+--       foodBuyHint;
+--     - the sell confirm of a levelled squishy adds foodNote with PenMath.foodInside (food is never refunded, D1:223).
+--   requestFor(pending, key, newId) -> (id, pending): the requestId of an action (key = what it does): the pending
+--     one when it is the same action (a retry after an answer that never came), else newId(); keep the pending record
+--     until the server answers.
 
 -- Services
 
@@ -68,6 +82,10 @@ export type ActionId =
 	| "buyBack"
 	| "fuse"
 	| "confirm"
+	| "feed" -- pens3 phase 9
+	| "feedAll"
+	| "buyFew"
+	| "buyMany"
 export type Action = {
 	id: ActionId,
 	text: string,
@@ -78,7 +96,18 @@ export type Action = {
 export type Spot = { slot: number, item: Types.PenItem? }
 export type ConfirmKind = "sell" | "sellAll" | "buyBack" | "fuse"
 export type SoldCard = { id: number, item: Types.PenItem, price: number, time: string }
-export type Extra = { buyBack: any?, now: number?, coins: number?, soldId: number?, confirm: ConfirmKind? }
+-- Pens3 phase 9: a BUY FOOD card, and the request of an action (requestFor).
+export type FoodCard = { id: string, name: string, price: number, count: number, each: string, have: string }
+export type Pending = { key: string, id: string }
+export type Extra = {
+	buyBack: any?,
+	now: number?,
+	coins: number?,
+	soldId: number?,
+	confirm: ConfirmKind?,
+	food: any?, -- pens3 phase 9
+	foodId: string?,
+}
 export type View = {
 	spots: { Spot },
 	toys: { Types.PenItem },
@@ -95,6 +124,11 @@ export type View = {
 	sellIds: { number }?,
 	fuseIds: { number }?,
 	marked: { [number]: boolean },
+	-- Pens3 phase 9.
+	foods: { FoodCard },
+	foodHeading: string?,
+	foodSelected: FoodCard?,
+	foodLine: string,
 }
 export type CardText = { name: string, rate: string, level: string }
 
@@ -104,6 +138,8 @@ local PEN = Config.Economy.Pen
 local SCREEN = Strings.pen.screen
 local SCREEN_UI = Config.UI.Pen.screen -- pens3 phase 7
 local HOLD = PEN.sellHold
+local FOOD = Config.Economy.Food -- pens3 phase 9
+local FOOD_BUY = SCREEN_UI.foodBuy
 
 -- Module table
 
@@ -219,6 +255,85 @@ local function needCoins(missing: number): string
 	return Strings.format(Strings.plural(missing, need.one, need.many), { missing = Format.coins(missing) })
 end
 
+-- Pens3 phase 9: food and levels (see the header) --------------------------------------------------------------------
+
+local function foodName(def: PenMath.FoodDef): string
+	return Strings.resolve(def.nameKey) or def.id
+end
+
+-- A squishy's FEED action and its hint.
+local function feedFor(pen: any, food: any, item: Types.PenItem): (Action, string)
+	local cap = PenMath.levelCap()
+	local _, refused = PenMath.feedDecision(pen, food, item.id, cap)
+	local def, pieces = PenMath.feedCost(item.level)
+	local reason: string? = if refused then Strings.reasonText(refused) else nil
+	if refused == "food.notEnough" and def then
+		local missing = pieces - PenMath.foodCount(food, def.id)
+		reason = Strings.format(SCREEN.needFood, { missing = missing, food = foodName(def) })
+	end
+	local hint = if def and item.level < cap
+		then Strings.format(
+			SCREEN.feedHint,
+			{ level = item.level, next = item.level + 1, pieces = pieces, food = foodName(def) }
+		)
+		else Strings.format(SCREEN.feedTop, { level = item.level })
+	return { id = "feed", text = SCREEN.feed, kind = "secondary", reason = reason }, hint
+end
+
+local function foodLine(food: any): string
+	local parts: { string } = {}
+	for _, def in FOOD.foods do
+		local count = PenMath.foodCount(food, def.id)
+		if count > 0 then
+			table.insert(parts, Strings.format(SCREEN.foodItem, { n = count, food = foodName(def) }))
+		end
+	end
+	return if #parts > 0 then Strings.format(SCREEN.foodLine, { list = table.concat(parts, ", ") }) else SCREEN.foodNone
+end
+
+local function foodCards(food: any): { FoodCard }
+	local cards: { FoodCard } = {}
+	for _, def in PenMath.foodsOnSale(PenMath.levelCap()) do
+		local count = PenMath.foodCount(food, def.id)
+		table.insert(cards, {
+			id = def.id,
+			name = foodName(def),
+			price = def.price,
+			count = count,
+			each = Strings.format(SCREEN.foodEach, { coins = Format.coins(def.price) }),
+			have = Strings.format(SCREEN.foodHave, { n = count }),
+		})
+	end
+	return cards
+end
+
+-- A BUY FOOD card's two buttons (FOOD_BUY.few / many pieces).
+local function buyActions(card: FoodCard, coins: number): { Action }
+	local actions: { Action } = {}
+	for _, choice in { { id = "buyFew", n = FOOD_BUY.few }, { id = "buyMany", n = FOOD_BUY.many } } do
+		local price = card.price * choice.n
+		local reason = if card.count + choice.n > FOOD.maxPieces
+			then Strings.reasonText("food.full")
+			elseif coins < price then needCoins(price - coins)
+			else nil
+		table.insert(actions, {
+			id = choice.id :: ActionId,
+			text = Strings.format(SCREEN.buyFood, { n = choice.n }),
+			kind = if choice.id == "buyFew" then "primary" else "secondary",
+			reason = reason,
+		})
+	end
+	return actions
+end
+
+function PenFormat.requestFor(pending: Pending?, key: string, newId: () -> string): (string, Pending)
+	if pending and pending.key == key then
+		return pending.id, pending
+	end
+	local id = newId()
+	return id, { key = key, id = id }
+end
+
 -- The confirm step (see the header): its question, note, ids and actions; false when it cannot open.
 local function confirmView(view: View, pen: any, extra: Extra, coins: number): boolean
 	local kind = extra.confirm
@@ -243,6 +358,12 @@ local function confirmView(view: View, pen: any, extra: Extra, coins: number): b
 				{ name = PenFormat.cardText(sale.items[1]).name, coins = Format.coins(sale.coins) }
 			)
 			view.hint = Strings.format(SCREEN.sellNote, { minutes = minutes })
+			local inside = PenMath.foodInside(sale.items[1]) -- pens3 phase 9: food is never refunded (D1:223)
+			if inside > 0 then
+				view.hint = (view.hint :: string)
+					.. " "
+					.. Strings.format(SCREEN.foodNote, { coins = Format.coins(inside) })
+			end
 		else
 			local all = SCREEN.confirmSellAll
 			view.status =
@@ -324,11 +445,19 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 		actions = {},
 		sold = soldCards(more.buyBack, more.now or 0),
 		marked = {},
+		foods = foodCards(more.food), -- pens3 phase 9
+		foodLine = foodLine(more.food),
 	}
+	view.foodHeading = if #view.foods > 0 then SCREEN.foodHeading else nil
 	view.soldHeading = if #view.sold > 0 then SCREEN.soldHeading else nil
 	for _, card in view.sold do
 		if selected == nil and card.id == more.soldId then
 			view.soldSelected = card
+		end
+	end
+	for _, card in view.foods do
+		if selected == nil and view.soldSelected == nil and card.id == more.foodId then
+			view.foodSelected = card -- pens3 phase 9
 		end
 	end
 	local coins = more.coins or 0
@@ -343,6 +472,9 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 			if PenFormat.fuseSet(pen, selected.id) then
 				table.insert(view.actions, { id = "fuse", text = SCREEN.fuse, kind = "secondary" })
 			end
+			local feed, hint = feedFor(pen, more.food, selected) -- pens3 phase 9
+			table.insert(view.actions, feed)
+			view.hint = hint
 		end
 	elseif view.soldSelected ~= nil then
 		local price = view.soldSelected.price
@@ -351,6 +483,11 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 			elseif coins < price then needCoins(price - coins)
 			else nil
 		view.actions = { { id = "buyBack", text = SCREEN.buyBack, kind = "primary", reason = reason } }
+	elseif view.foodSelected ~= nil then
+		local card = view.foodSelected -- pens3 phase 9: a BUY FOOD card
+		view.actions = buyActions(card, coins)
+		view.hint =
+			Strings.format(SCREEN.foodBuyHint, { food = card.name, coins = Format.coins(card.price), n = card.count })
 	else
 		local none = #PenMath.sellAllIds(pen) == 0
 		view.actions = {
@@ -359,6 +496,14 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 				text = SCREEN.sellAll,
 				kind = "secondary",
 				reason = if none then Strings.reasonText("pen.nothingToSell") else nil,
+			},
+			{
+				id = "feedAll",
+				text = SCREEN.feedAll,
+				kind = "secondary",
+				reason = if PenMath.feedAllPlan(pen, more.food, PenMath.levelCap()).steps == 0
+					then Strings.reasonText("pen.nothingToFeed")
+					else nil,
 			},
 		}
 	end

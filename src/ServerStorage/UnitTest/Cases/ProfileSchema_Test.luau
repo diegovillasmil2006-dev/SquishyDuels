@@ -48,6 +48,9 @@
 --     (a Catalog kind, form / level / coat in range, a whole id), whole Coins, a finite time no later than now + 300
 --     and a string requestId is dropped (it can't be bought back; its Coins were paid); more than buyBackMax keeps the
 --     newest; the bag becomes one whole count >= 0 per coating (broken -> 0, missing -> 0, extra keys dropped).
+--   * pens3 phase 9: food {[foodId] = 0 for every Config food} joined the same way (reconcile gives an older profile
+--     none of each, and a food the Config gains later 0); sanitize: each count a whole number in [0, maxPieces]
+--     (floored, clamped; broken or missing -> 0), a key that is not a Config food dropped; every fix logged.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -57,6 +60,16 @@ type Context = {
 }
 
 local NOW = 1_800_000_000
+-- Pens3 phase 9: no food (every Config food at 0).
+local NO_FOOD = {
+	candy_drop = 0,
+	butter_bun = 0,
+	boba_pearl_pop = 0,
+	frosty_scoop = 0,
+	lava_truffle = 0,
+	prism_tart = 0,
+	halo_puff = 0,
+}
 local DAY = 86400
 
 -- A complete ProfileV1 exactly as Part 5's first release would have stored it (schemaVersion 1, no grip).
@@ -192,6 +205,7 @@ return function(t: Context)
 		expected.gifts = { frog = false }
 		expected.buyBack = {} -- pens3 phases 7-8: the same
 		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
+		expected.food = NO_FOOD -- pens3 phase 9: the same
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
 		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) }, awayRate = 0 }
 		for _, kind in { "banana", "toast" } do
@@ -261,6 +275,7 @@ return function(t: Context)
 		expect.deepEqual(d.buyBack, {})
 		expect.deepEqual(d.bag, { 0, 0, 0, 0, 0, 0, 0 })
 		expect.equal(#d.bag, #Config.Economy.Pen.coatMult - 1)
+		expect.deepEqual(d.food, NO_FOOD) -- pens3 phase 9: no food
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -1219,4 +1234,70 @@ return function(t: Context)
 		local _, clean = fixedBag({ 0, 1, 0, 0, 0, 0, 3 })
 		expect.equal(notesAbout(clean, "bag"), 0)
 	end)
+
+	-- Pens3 phase 9 (food and levels): food -------------------------------------------------------------------------
+
+	t.test("food joins schema 2 without a new version: an older profile gets none of each, no problem", function()
+		expect.equal(ProfileSchema.CURRENT, 2)
+		local older = load(FIXTURE_V1).profile :: any
+		older.food = nil -- a v2 profile saved before phase 9
+		local result = load(older)
+		expect.equal(result.fromVersion, 2)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.food, NO_FOOD)
+		local HttpService = game:GetService("HttpService")
+		local kept = load(FIXTURE_V1).profile :: any
+		kept.food.candy_drop, kept.food.halo_puff = 12, 3
+		local again = load(HttpService:JSONDecode(HttpService:JSONEncode(kept)))
+		expect.deepEqual(again.problems, {})
+		expect.equal(again.profile.food.candy_drop, 12)
+		expect.equal(again.profile.food.halo_puff, 3)
+		-- A food the Config gains later is filled with 0 by reconcile (here: one missing from an older save).
+		local partial = load(FIXTURE_V1).profile :: any
+		partial.food = { candy_drop = 4 }
+		local filled = load(partial)
+		expect.deepEqual(filled.problems, {})
+		expect.equal(filled.profile.food.candy_drop, 4)
+		expect.equal(filled.profile.food.butter_bun, 0)
+	end)
+
+	t.test(
+		"sanitize food: whole counts in [0, maxPieces] (fail closed), unknown foods dropped, every fix logged",
+		function()
+			local function fixedFood(value: any): ({ [string]: number }, { string })
+				local profile = load(FIXTURE_V1).profile :: any
+				profile.food = value
+				local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+				return fixed.food, problems
+			end
+			local max = Config.Economy.Food.maxPieces
+			local food, problems = fixedFood({
+				candy_drop = 2.7,
+				butter_bun = -1,
+				boba_pearl_pop = 0 / 0,
+				frosty_scoop = "3",
+				lava_truffle = max + 5,
+				prism_tart = 4,
+				pizza = 3, -- not a food
+				[1] = 9, -- not a food id
+			})
+			expect.deepEqual(food, {
+				candy_drop = 2, -- floored: never more than was bought
+				butter_bun = 0,
+				boba_pearl_pop = 0,
+				frosty_scoop = 0,
+				lava_truffle = max,
+				prism_tart = 4,
+				halo_puff = 0, -- missing (reconcile fills it; sanitize alone logs it)
+			})
+			expect.equal(notesAbout(problems, "food"), 8) -- five counts, the missing one, pizza and [1]
+			local garbage, garbageProblems = fixedFood("garbage")
+			expect.deepEqual(garbage, NO_FOOD)
+			expect.equal(notesAbout(garbageProblems, "food"), 1)
+			local full = table.clone(NO_FOOD)
+			full.candy_drop = max
+			local _, clean = fixedFood(full)
+			expect.equal(notesAbout(clean, "food"), 0)
+		end
+	)
 end

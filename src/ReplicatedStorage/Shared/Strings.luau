@@ -37,6 +37,9 @@
 -- Pens3 phases 7-8 ([P] texts): the pen screen's sell, Sell All, buy-back and fusion texts (pen.screen.*) and their
 -- refusals reason.pen.sellStarter / locked / lastCopy / nothingToSell / buyBackGone / fuseMismatch / fuseTop; the
 -- buy-back time is a plain number of minutes (no countdown, no pressure); selectHint names selling and fusing.
+-- Pens3 phase 9 ([P] texts): food.<id>.name (the 7 foods, V2:216-224's names), their refusals reason.food.notYet /
+-- full / notEnough and reason.pen.maxLevel / nothingToFeed, and the pen screen's food texts (pen.screen.feed*, food*,
+-- buyFood, levelsUp, the sell confirm's foodNote); selectHint names feeding. Calm: no "now", no countdown.
 
 export type FormatArgs = { [string]: any }
 
@@ -171,6 +174,15 @@ local Strings = {
 			buyBackGone = "That squishy can't be bought back any more.",
 			fuseMismatch = "Fuse 3 of the same squishy, all in the same form.",
 			fuseTop = "Rainbow is the top form. It can't be fused again.",
+			-- Pens3 phase 9 (Feed / FeedAll; PenMath.feedDecision, feedAllPlan, PenService).
+			maxLevel = "That squishy is at the top level for now.",
+			nothingToFeed = "Nothing to feed. Your pen squishies need more food, or they are at the top level.",
+		},
+		-- Pens3 phase 9 (BuyFood, Feed; PenMath.buyFoodDecision, feedDecision, PenService).
+		food = {
+			notYet = "You can buy this food once you reach its biome.",
+			full = "You have as much of that food as you can carry.",
+			notEnough = "Not enough food for that. Buy some in your pen.",
 		},
 	},
 
@@ -1123,7 +1135,7 @@ local Strings = {
 			toyHeading = "Toy Box",
 			empty = "Empty",
 			toyEmpty = "Your Toy Box is empty.",
-			selectHint = "Tap a squishy to move, lock, sell or fuse it.",
+			selectHint = "Tap a squishy to move, lock, sell, fuse or feed it.",
 			pickHint = "Tap a pen spot for {name}.",
 			level = "Lv {level}",
 			place = "PLACE",
@@ -1158,7 +1170,36 @@ local Strings = {
 			fuseNote = "It keeps the highest level, Lv {level}, and earns {rate}. Fusing is free and always works.",
 			coatNote = "Their coatings go to your bag.",
 			fused = "You made a {name}!",
+			-- Pens3 phase 9: feeding and the stand-in BUY FOOD section. {level} / {next} the levels of a step, {pieces}
+			-- its pieces, {food} a food's name, {missing} / {n} counts, {coins} Coins, {list} foodItem texts joined
+			-- with ", ".
+			feed = "FEED",
+			feedAll = "FEED ALL",
+			feedHint = "Lv {level} -> {next}: {pieces} {food}",
+			feedTop = "Lv {level}: the top level for now.",
+			needFood = "Need {missing} more {food}",
+			foodHeading = "Buy food",
+			foodLine = "Your food: {list}",
+			foodNone = "Your food: none yet.",
+			foodItem = "{n} {food}",
+			foodEach = "{coins} each",
+			foodHave = "You have {n}",
+			foodBuyHint = "{food}: {coins} Coins each. You have {n}.",
+			buyFood = "BUY {n}",
+			foodNote = "Food inside: {coins} Coins, not refunded.", -- the sell confirm (D1:223)
+			levelsUp = { one = "+1 level", many = "+{n} levels" },
 		},
+	},
+
+	-- Pens3 phase 9: the foods (Config.Economy.Food nameKey; V2:216-224).
+	food = {
+		candyDrop = { name = "Candy Drop" },
+		butterBun = { name = "Butter Bun" },
+		bobaPearlPop = { name = "Boba Pearl Pop" },
+		frostyScoop = { name = "Frosty Scoop" },
+		lavaTruffle = { name = "Lava Truffle" },
+		prismTart = { name = "Prism Tart" },
+		haloPuff = { name = "Halo Puff" },
 	},
 
 	-- Coins while away (pens3 phase 4): the pop-up's line under the Coins (PenController; a stand-in on the shop's

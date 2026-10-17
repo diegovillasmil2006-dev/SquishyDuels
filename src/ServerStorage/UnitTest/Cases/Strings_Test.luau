@@ -39,6 +39,9 @@
 -- Pens3 phases 7-8: every SellItems / SellAll / BuyBack / Fuse refusal code has a text under reason.pen.*; the pen
 -- screen's sell, buy-back and fusion texts exist with their placeholders, say what is true (what Sell All keeps, a free
 -- fusion with no luck) and never press a kid (the buy-back time is a plain number, no "hurry").
+-- Pens3 phase 9: every Config food has a name; every BuyFood / Feed / FeedAll refusal code has a text; the pen
+-- screen's food texts (the hint, the food row, the BUY FOOD cards, the sell confirm's food line) exist with their
+-- placeholders and never press a kid.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -1025,6 +1028,54 @@ return function(t: Context)
 			}
 		do
 			expect.equal(Strings.resolve(key), nil)
+		end
+	end)
+
+	-- Pens3 phase 9: every food's name, the codes PenMath.buyFoodDecision / feedDecision and PenService send (the
+	-- others are shared: net.invalid, data.notReady, inventory.notOwned, inventory.lockedInDuel, pen.changePaused,
+	-- pen.paused, pen.priceChanged, economy.notEnoughCoins) and the pen screen's food texts.
+	t.test("pens3 phase 9: food names, refusal codes and the pen screen's food texts, true and calm", function()
+		local Config = t.requireShared("Config")
+		for _, food in Config.Economy.Food.foods do
+			local name = Strings.resolve(food.nameKey)
+			expect.truthy(type(name) == "string" and name ~= "")
+		end
+		expect.equal(Strings.resolve("food.candyDrop.name"), "Candy Drop")
+		expect.equal(Strings.resolve("food.haloPuff.name"), "Halo Puff")
+		for _, code in { "food.notYet", "food.full", "food.notEnough", "pen.maxLevel", "pen.nothingToFeed" } do
+			local text = Strings.resolve("reason." .. code)
+			expect.truthy(type(text) == "string" and text ~= "")
+			expect.equal(Strings.reasonText(code), text)
+		end
+		local screen = Strings.pen.screen
+		expect.equal(
+			Strings.format(screen.feedHint, { level = 3, next = 4, pieces = 2, food = "Candy Drop" }),
+			"Lv 3 -> 4: 2 Candy Drop"
+		)
+		expect.equal(Strings.format(screen.feedTop, { level = 10 }), "Lv 10: the top level for now.")
+		expect.equal(Strings.format(screen.needFood, { missing = 2, food = "Candy Drop" }), "Need 2 more Candy Drop")
+		local item = Strings.format(screen.foodItem, { n = 12, food = "Candy Drop" })
+		expect.equal(Strings.format(screen.foodLine, { list = item }), "Your food: 12 Candy Drop")
+		expect.equal(Strings.format(screen.foodEach, { coins = "400" }), "400 each")
+		expect.equal(Strings.format(screen.foodHave, { n = 3 }), "You have 3")
+		expect.equal(
+			Strings.format(screen.foodBuyHint, { food = "Candy Drop", coins = "400", n = 3 }),
+			"Candy Drop: 400 Coins each. You have 3."
+		)
+		expect.equal(Strings.format(screen.buyFood, { n = 10 }), "BUY 10")
+		expect.equal(Strings.format(screen.foodNote, { coins = "2,744" }), "Food inside: 2,744 Coins, not refunded.")
+		local up = screen.levelsUp
+		expect.equal(Strings.format(Strings.plural(1, up.one, up.many), { n = 1 }), "+1 level")
+		expect.equal(Strings.format(Strings.plural(3, up.one, up.many), { n = 3 }), "+3 levels")
+		for _, key in { "feed", "feedAll", "foodHeading", "foodNone" } do
+			expect.truthy(type(screen[key]) == "string" and screen[key] ~= "")
+		end
+		expect.truthy(string.find(screen.selectHint, "feed", 1, true))
+		-- Calm: buying food never presses a kid.
+		for _, text in { screen.foodHeading, screen.foodBuyHint, screen.foodEach, screen.buyFood, screen.foodNone } do
+			for _, word in { "hurry", "now", "quick", "last chance", "only", "!" } do
+				expect.falsy(string.find(string.lower(text), word, 1, true))
+			end
 		end
 	end)
 end

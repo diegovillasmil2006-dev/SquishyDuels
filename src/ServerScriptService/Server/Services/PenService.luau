@@ -77,6 +77,32 @@
 --   takes the next form at its level with no coating, in its own slot; the other two leave; every input's coating goes
 --   to profile.bag; no luck, no Coins. showPen (the look changes), the awaited save, ok({pen, id, charged = false,
 --   savePending}).
+-- Every profile write goes through DataService.mutate (the data port).--   savePending}).
+-- * Pens3 phase 9 (food and levels, V2:214-224; Config.Economy.Food, checked by Config/ValidateFood in init), every
+--   remote the PenPlace shape (RF; Config.Net: 2 a second, burst 3, one in flight; no remote takes a base, plot or
+--   player id); the level cap is PenMath.levelCap() (10 until phase 13's biomes):
+--   - BuyFood(foodId, count, expectedPrice, requestId): (1) foodId not a string, count not whole, expectedPrice not
+--     whole Coins or the requestId not a GUID -> net.invalid; (2) data.notReady; (3) this session's last bought
+--     requestId: it was bought (a retry whose answer never arrived) -> ok, charged = true as first answered, nothing
+--     changes (never buys twice); (4) PenMath.buyFoodDecision -> net.invalid (not a food, count not in [1, maxBuy]) /
+--     food.notYet (its biome is not reached) / food.full (past maxPieces) / pen.priceChanged (the price is compared,
+--     never charged); (5)-(6) spend(price, "food"): pen.paused / inventory.lockedInDuel / economy.notEnoughCoins. Then
+--     ONE mutate (the pieces added; a write that fails gives the spend back), the food field sent (sendFood), a log
+--     line, the awaited "now" save, ok({pen, food, levels = 0, charged = true, savePending}).
+--   - Feed(itemId, requestId): (1) net.invalid; (2) data.notReady; (3) this session's last fed requestId -> ok, nothing
+--     changes (never feeds twice); (4) PenMath.feedDecision -> net.invalid / inventory.notOwned (the caller's pen or
+--     Toy Box only) / pen.maxLevel / food.notEnough; (5) pen.changePaused; (6) inventory.lockedInDuel. Then ONE mutate
+--     (level + 1, its step's pieces gone), showPen (the coin label and the card show the level: the pen's rate, the
+--     awayRate DataService stamps and the squeeze value all follow PenMath.itemRate's levelGain), sendFood, a "soon"
+--     save and ok({pen, food, levels = 1, charged = false, savePending}).
+--   - FeedAll(): (1) none (no arguments); (2) data.notReady; (3) PenMath.feedAllPlan: the placed squishies only (the
+--     Toy Box never: an owner decision), the weakest first, a level at a time, until the food runs out; nothing to feed
+--     -> pen.nothingToFeed (so a retry, which finds nothing left, never feeds twice); (4) pen.changePaused; (5)
+--     inventory.lockedInDuel. Then ONE mutate (every level, every food used), showPen, sendFood, a "soon" save and
+--     ok({pen, food, levels = the levels gained, charged = false, savePending}).
+--   Reading: Feed / FeedAll save "soon", like PenPlace: no Coins move (food and levels are in the same profile, so a
+--   crash loses both together), and an awaited write per tap would wait on the DataStore's 6 s rule for one key while
+--   a kid taps FEED again and again. A buy moves Coins: awaited. Every refusal carries charged = false, writes nothing.
 -- Every profile write goes through DataService.mutate (the data port). Dependencies are injectable (useDeps) so unit
 -- tests run with fake profiles and players (plain tables); init() never yields; playerAdded / playerRemoving never
 -- yield.
@@ -93,6 +119,7 @@ local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
 local TableUtil = require(Shared.Util.TableUtil)
 local Types = require(Shared.Types)
+local ValidateFood = require(Shared.Config.ValidateFood) -- pens3 phase 9
 local ValidatePen = require(Shared.Config.ValidatePen)
 local Validate = require(Shared.Util.Validate)
 
@@ -128,6 +155,7 @@ export type Deps = {
 	sendPen: (player: any) -> (), -- pens3 phase 6: StateService.markDirty(p, "pen") alone (a lock: nothing to redraw)
 	now: () -> number, -- pens3 phase 7: os.time (a buy-back entry's `at`)
 	sendBuyBack: (player: any) -> (), -- StateService.markDirty(p, "buyBack")
+	sendFood: (player: any) -> (), -- pens3 phase 9: StateService.markDirty(p, "food")
 }
 
 -- What the remote answers: NetService.ok(Types.PenResult) or NetService.err(reason, false).
@@ -138,6 +166,8 @@ type Session = {
 	boughtAt: number, -- deps.clock() of the last spot bought (the cooldown)
 	joinedAt: number, -- pens3 phase 5: deps.clock() at playerAdded (the Frog gift's time)
 	frogAsked: boolean, -- pens3 phase 5: the Frog gift was asked for this session
+	foodReq: string?, -- pens3 phase 9: the requestId of the last BuyFood that charged (a retry replays)
+	feedReq: string?, -- the requestId of the last Feed that levelled (a retry replays)
 }
 
 -- Constants
@@ -168,6 +198,12 @@ local REMOTE_SELL_ALL = "SellAll"
 local REMOTE_BUY_BACK = "BuyBack"
 local REMOTE_FUSE = "Fuse" -- pens3 phase 8
 local FIELD_BUY_BACK = "buyBack"
+local REMOTE_BUY_FOOD = "BuyFood" -- pens3 phase 9
+local REMOTE_FEED = "Feed"
+local REMOTE_FEED_ALL = "FeedAll"
+local FIELD_FOOD = "food"
+local REASON_FOOD = "food"
+local CODE_NOTHING_TO_FEED = "pen.nothingToFeed"
 
 -- Module table
 
@@ -251,6 +287,9 @@ local function defaultDeps(): Deps
 		now = os.time,
 		sendBuyBack = function(player: any)
 			StateService.markDirty(player, FIELD_BUY_BACK)
+		end,
+		sendFood = function(player: any)
+			StateService.markDirty(player, FIELD_FOOD)
 		end,
 	}
 end
@@ -689,6 +728,138 @@ function PenService.fuse(player: any, a: any, b: any, c: any): Reply
 	return NetService.ok(data)
 end
 
+-- Public: food and levels (pens3 phase 9; see the header for the order of the checks) --------------------------------
+
+-- The reply data of a food call: the caller's pen and food, copied (before any save yields).
+local function foodResult(player: any, levels: number, charged: boolean, savePending: boolean): Types.FoodResult
+	local profile = deps.profileOf(player)
+	return {
+		pen = TableUtil.deepCopy(profile.pen),
+		food = TableUtil.deepCopy(profile.food),
+		levels = levels,
+		charged = charged,
+		savePending = savePending,
+	}
+end
+
+function PenService.buyFood(player: any, foodId: any, count: any, expectedPrice: any, requestId: any): Reply
+	local request = Validate.requestId(requestId)
+	local whole = Validate.integer(count) ~= nil and Validate.coins(expectedPrice) ~= nil
+	if type(foodId) ~= "string" or not whole or request == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	if readyPen(player) == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local session = sessions[player]
+	if session ~= nil and session.foodReq == request then
+		return NetService.ok(foodResult(player, 0, true, deps.savePending(player))) -- a retry: it was bought
+	end
+	local food = deps.profileOf(player).food
+	local buy, refused = PenMath.buyFoodDecision(food, foodId, count, expectedPrice, PenMath.levelCap())
+	if buy == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local spendRefused = spend(player, buy.price, REASON_FOOD, false)
+	if spendRefused ~= nil then
+		return NetService.err(spendRefused, false)
+	end
+	local id = buy.food.id
+	local written = deps.mutate(player, function(profile: any): boolean
+		profile.food[id] = PenMath.foodCount(profile.food, id) + buy.count
+		return true
+	end)
+	if not written then
+		-- Cannot happen without a yield after the spend; never keep Coins for nothing: the spend is given back.
+		log:error(`user {userIdOf(player)}: {buy.count} {id} were paid ({buy.price} Coins) but not written`)
+		deps.grantCoins(player, buy.price, REASON_REFUND)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	if session ~= nil then
+		session.foodReq = request
+	end
+	log:info(`user {userIdOf(player)} bought {buy.count} {id} for {buy.price} Coins`)
+	deps.sendFood(player)
+	local data = foodResult(player, 0, true, false)
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
+function PenService.feed(player: any, itemId: any, requestId: any): Reply
+	local request = Validate.requestId(requestId)
+	if Validate.integer(itemId) == nil or request == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local session = sessions[player]
+	if session ~= nil and session.feedReq == request then
+		return NetService.ok(foodResult(player, 0, false, deps.savePending(player))) -- a retry: it was fed
+	end
+	local step, refused = PenMath.feedDecision(pen, deps.profileOf(player).food, itemId, PenMath.levelCap())
+	if step == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local paused = changeRefused(player)
+	if paused ~= nil then
+		return NetService.err(paused, false)
+	end
+	local written = deps.mutate(player, function(profile: any): boolean
+		local live = PenMath.find(profile.pen, itemId)
+		if live == nil then
+			return false
+		end
+		live.level += 1
+		profile.food[step.food.id] -= step.pieces
+		return true
+	end)
+	if not written then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	if session ~= nil then
+		session.feedReq = request
+	end
+	log:info(`user {userIdOf(player)} fed pen item {itemId} {step.pieces} {step.food.id} (Lv {step.item.level})`)
+	deps.showPen(player) -- its coin label and card show the new level
+	deps.sendFood(player)
+	deps.requestSave(player, SAVE_SOON)
+	return NetService.ok(foodResult(player, 1, false, deps.savePending(player)))
+end
+
+function PenService.feedAll(player: any): Reply
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local plan = PenMath.feedAllPlan(pen, deps.profileOf(player).food, PenMath.levelCap())
+	if plan.steps == 0 then
+		return NetService.err(CODE_NOTHING_TO_FEED, false)
+	end
+	local paused = changeRefused(player)
+	if paused ~= nil then
+		return NetService.err(paused, false)
+	end
+	local written = deps.mutate(player, function(profile: any): boolean
+		for _, item in profile.pen.items do
+			item.level = plan.levels[item.id] or item.level
+		end
+		for id, pieces in plan.used do
+			profile.food[id] -= pieces
+		end
+		return true
+	end)
+	if not written then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} fed the pen: {plan.steps} levels`)
+	deps.showPen(player)
+	deps.sendFood(player)
+	deps.requestSave(player, SAVE_SOON)
+	return NetService.ok(foodResult(player, plan.steps, false, deps.savePending(player)))
+end
+
 -- Public: coins while away (see the header) ---------------------------------------------------------------------------
 
 -- DataService.Loaded: the Coins for the time away, and the gift for the client when they paid.
@@ -726,6 +897,10 @@ function PenService.init()
 	if #problems > 0 then
 		error(`[SD][Pen] Config.Economy.Pen is invalid: {table.concat(problems, "; ")}`)
 	end
+	local foodProblems = ValidateFood(Config) -- pens3 phase 9
+	if #foodProblems > 0 then
+		error(`[SD][Pen] Config.Economy.Food is invalid: {table.concat(foodProblems, "; ")}`)
+	end
 	NetService.onInvoke(REMOTE_BUY, function(player: Player, expectedPrice: any): any
 		return PenService.buy(player, expectedPrice)
 	end)
@@ -746,6 +921,18 @@ function PenService.init()
 	end)
 	NetService.onInvoke(REMOTE_FUSE, function(player: Player, a: any, b: any, c: any): any
 		return PenService.fuse(player, a, b, c)
+	end)
+	NetService.onInvoke(
+		REMOTE_BUY_FOOD,
+		function(player: Player, foodId: any, count: any, expectedPrice: any, requestId: any): any
+			return PenService.buyFood(player, foodId, count, expectedPrice, requestId)
+		end
+	)
+	NetService.onInvoke(REMOTE_FEED, function(player: Player, itemId: any, requestId: any): any
+		return PenService.feed(player, itemId, requestId)
+	end)
+	NetService.onInvoke(REMOTE_FEED_ALL, function(player: Player): any
+		return PenService.feedAll(player)
 	end)
 	-- A new squishy (a box, the shop, a Studio grant): its pen item came in the same grant step; show it.
 	EconomyService.SquishyGranted:connect(function(player: Player)

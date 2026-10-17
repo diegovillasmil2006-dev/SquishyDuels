@@ -1051,6 +1051,14 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.fx.dotsCard", "image", IMAGE_NOTE),
 	otherSlot("img.icon.grip", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.matchVignette", "image", IMAGE_NOTE),
+	-- Pens3 phase 9: the food pictures (the pen screen's BUY FOOD cards show one when its id is set).
+	otherSlot("img.food.candy_drop", "image", IMAGE_NOTE),
+	otherSlot("img.food.butter_bun", "image", IMAGE_NOTE),
+	otherSlot("img.food.boba_pearl_pop", "image", IMAGE_NOTE),
+	otherSlot("img.food.frosty_scoop", "image", IMAGE_NOTE),
+	otherSlot("img.food.lava_truffle", "image", IMAGE_NOTE),
+	otherSlot("img.food.prism_tart", "image", IMAGE_NOTE),
+	otherSlot("img.food.halo_puff", "image", IMAGE_NOTE),
 
 	-- Kill banners and kill effects (2026-10-16): VFX Studio library textures for the SD_KillVfx emitters
 	-- (SDTools.Builders.KillVfxBuilder) and the kill banner (UI/KillBanner). Sheets keep the library's grid.

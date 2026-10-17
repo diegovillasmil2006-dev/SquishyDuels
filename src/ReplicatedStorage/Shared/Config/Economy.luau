@@ -16,6 +16,7 @@
 -- DuplicateRefund and AllowOpenWhenComplete are gone. The "refund" reason stays: it gives back a spend whose squishy
 -- could not be granted.
 -- Pens3 phase 7: the "sell" Coin reason (a sale from the pen, and the spend that buys it back, PenService).
+-- Pens3 phase 9: Food (Config/Food) and the "food" Coin reason (food bought in the pen screen, PenService).
 
 local Economy = {
 	startingCoins = 0,
@@ -40,6 +41,7 @@ local Economy = {
 		"box",
 		"shop",
 		"away", -- pens3 phase 4: the pen's Coins for the time away (EconomyService.grantAway)
+		"food", -- pens3 phase 9: food bought for the pen (PenService.buyFood)
 		"sell", -- pens3 phase 7: a sale's Coins, and a buy-back's spend (PenService)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
@@ -114,6 +116,8 @@ local Economy = {
 
 	-- The pen (pens3 phase 1): Config/Pen (spots, prices, what a squishy earns; checked by Config/ValidatePen).
 	Pen = require(script.Parent.Pen),
+	-- Food and levels (pens3 phase 9): Config/Food (the foods, their bands and pieces; checked by Config/ValidateFood).
+	Food = require(script.Parent.Food),
 
 	-- Duplicate results (§6.5). Pens3 phase 5: "copy" (every box result, shop buy or gift adds a pen item, so a squishy
 	-- you own again is a copy; the Toy Box cap, Config/Pen toyBoxMax, is the limit). Was "refund".
