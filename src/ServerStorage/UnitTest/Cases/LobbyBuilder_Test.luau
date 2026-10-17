@@ -968,10 +968,10 @@ return function(t: Context)
 		expect.equal(budgets.baseParts, 280) -- pens3 phase 3 [P]: was 220 with the capsules
 		expect.equal(budgets.gardenParts, 1000)
 		expect.equal(budgets.islandParts, 5200)
-		-- A plot at its worst: a full pen (pens3 phase 3; phase 10: with its gate and tier III decor; BaseService_Test
-		-- pins its count).
+		-- A plot at its worst: a full pen (pens3 phase 3; phase 10: with its gate and tier III decor; phase 11: the
+		-- shelf with its start row, 6 cubby locks and its sign; BaseService_Test pins its count).
 		local worst = WorldLayout.Bases.pen.maxParts
-		expect.equal(worst, 190)
+		expect.equal(worst, 196)
 		local function count(instance: Instance): number
 			local n = 0
 			for _, d in instance:GetDescendants() do

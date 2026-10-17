@@ -26,6 +26,11 @@
 --     cards are the foods on sale (biome 1: Candy Drop) with their price and count, and a card offers BUY 1 / BUY 10
 --     (refused with the missing Coins or a full stack); the sell confirm of a levelled squishy says its food is not
 --     refunded; requestFor reuses a request id only for a retry of the same action.
+--   * pens3 phase 11 (the shelf rows + the TOP spot): the shelf's open spots (13.., slot order) and the TOP spot (21,
+--     once bought) are their own sections (shelf, top) with their headings ("On your shelf placed/open", "TOP spot");
+--     the count line counts the pen's own spots; a shelf squishy is placed (PUT AWAY, MOVE, ...), a Toy Box one PLACEs
+--     while any open spot is free (the shelf's too), and picking taps a shelf or TOP card to move there; walkerItem
+--     maps a walker to the pen's own spots only; a pen with no shelfRows (never after sanitize) shows no shelf.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -561,5 +566,84 @@ return function(t: Context)
 		expect.equal(kept, pending)
 		local other = PenFormat.requestFor(pending, "feed:4", newId)
 		expect.equal(other, "id2")
+	end)
+	-- Pens3 phase 11 ---------------------------------------------------------------------------------------------
+
+	t.test(
+		"view: the shelf's open spots and the TOP spot are their own sections; the count line is the pen's",
+		function()
+			local pen = {
+				spots = 3,
+				nextId = 5,
+				shelfRows = 1,
+				top = false,
+				items = { item(1, "kitty_bread", 1), item(2, "toast", 13), item(3, "butter", 0), item(4, "bird", 2) },
+			}
+			local view = PenFormat.view(pen, nil, false)
+			expect.equal(#view.spots, 3)
+			expect.deepEqual(view.shelf, { { slot = 13, item = pen.items[2] }, { slot = 14 } })
+			expect.equal(view.top, nil)
+			expect.equal(view.shelfHeading, "On your shelf 1/2")
+			expect.equal(view.topHeading, nil)
+			expect.equal(view.status, "Pen 2/3 · Toy Box 1/50") -- the pen's own spots
+			-- The TOP spot bought: its own card and heading; rows 2-4 add their spots.
+			pen.top, pen.shelfRows = true, 4
+			view = PenFormat.view(pen, nil, false)
+			expect.equal(#view.shelf, 8)
+			expect.deepEqual(view.top, { slot = 21 })
+			expect.equal(view.topHeading, screen.topHeading)
+			expect.equal(view.shelfHeading, "On your shelf 1/8")
+			-- No shelfRows (an unsanitized pen): no shelf at all.
+			local old = { spots = 3, nextId = 2, items = { item(1, "kitty_bread", 1) } }
+			local plain = PenFormat.view(old, nil, false)
+			expect.deepEqual(plain.shelf, {})
+			expect.equal(plain.shelfHeading, nil)
+		end
+	)
+
+	t.test(
+		"a shelf squishy is placed; a Toy Box one PLACEs into a free shelf spot; picking moves to a shelf card",
+		function()
+			local pen = {
+				spots = 3,
+				nextId = 7,
+				shelfRows = 1,
+				top = true,
+				items = {
+					item(1, "kitty_bread", 1),
+					item(2, "toast", 2),
+					item(3, "banana", 3),
+					item(4, "butter", 13),
+					item(5, "bird", 0),
+				},
+			}
+			local onShelf = PenFormat.view(pen, 4, false)
+			expect.equal(onShelf.selected, pen.items[4])
+			expect.deepEqual(actionIds(onShelf), { "putAway", "move", "lock", "sell", "feed" })
+			local toy = PenFormat.view(pen, 5, false)
+			expect.deepEqual(actionIds(toy), { "place", "lock", "sell", "feed" }) -- the pen is full, the shelf is not
+			-- Picking: a shelf card and the TOP card take the squishy.
+			local picking = PenFormat.view(pen, 5, true)
+			expect.deepEqual({ PenFormat.tap(picking, 14, nil) }, { "place", 5, 14 } :: { any })
+			expect.deepEqual({ PenFormat.tap(picking, 21, nil) }, { "place", 5, 21 } :: { any })
+			-- Every open spot full: SWAP.
+			table.insert(pen.items, item(6, "toast", 14))
+			pen.items[5].slot = 0
+			table.insert(pen.items, item(7, "toast", 21))
+			expect.deepEqual(actionIds(PenFormat.view(pen, 5, false)), { "swap", "lock", "sell", "feed" })
+		end
+	)
+
+	t.test("walkerItem maps a walker to the pen's own spots, never a shelf squishy", function()
+		local pen = {
+			spots = 3,
+			nextId = 4,
+			shelfRows = 1,
+			top = false,
+			items = { item(1, "toast", 13), item(2, "toast", 1), item(3, "banana", 2) },
+		}
+		local look = { kind = "toast", form = 0, level = 1, coat = 0 }
+		expect.equal(PenFormat.walkerItem(pen, 1, look), 2) -- the first walker is the pen's Toast, not the shelf's
+		expect.equal(PenFormat.walkerItem(pen, 2, look), 2) -- a stale index: the first pen Toast
 	end)
 end

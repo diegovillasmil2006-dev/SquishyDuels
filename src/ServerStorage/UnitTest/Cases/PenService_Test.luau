@@ -43,6 +43,15 @@
 --     pen.changePaused, inventory.lockedInDuel; the highest-level input becomes the next form in its own slot (its
 --     level), the other two go, every coating goes to the bag, no Coins move, an awaited save, the reply {pen, id,
 --     charged = false, savePending}; every refusal has charged = false and writes nothing.
+--   * pens3 phase 11 (the shelf rows + the TOP spot): PenBuyShelf(expectedPrice) (PenBuySpot's shape: only the expected
+--     price, 1 a second, one at a time) buys the caller's own next shelf row, then the TOP spot: bad input net.invalid,
+--     then data.notReady, then pen.shelfMax / pen.priceChanged, then pen.paused (a pending failed save, closing, a
+--     restart, or within buyCooldownSeconds of the last buy: the pen sign's cooldown too), then
+--     inventory.lockedInDuel, then the spend (economy.notEnoughCoins; a "savePending" spend -> pen.paused); a buy is
+--     one "pen" spend, the row (or top = true) through mutate with each new spot taking the best unlocked Toy Box
+--     squishy, queued gifts dropped in, the base and pen shown, the awaited save and the reply {pen, charged = true,
+--     savePending}; every refusal has charged = false and writes nothing; the shelf's squishies are paid by the tick
+--     like the pen's.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -1318,4 +1327,138 @@ return function(t: Context)
 			finish()
 		end
 	)
+	-- The shelf rows and the TOP spot (pens3 phase 11) ---------------------------------------------------------------
+
+	-- A's pen with the shelf's start row (a sanitized save always has shelfRows and top).
+	local function withShelf(w: World, rows: number, top: boolean): any
+		local a = w.profiles[w.a]
+		a.pen.shelfRows, a.pen.top = rows, top
+		return a
+	end
+
+	t.test(
+		"PenBuyShelf takes only the expected price: it names no base, plot or player; 1 a second, one at a time",
+		function()
+			local spec = Remotes.SPEC.PenBuyShelf
+			expect.equal(spec.kind, "RemoteFunction")
+			expect.equal(spec.dir, "c2s")
+			expect.deepEqual(spec.args, { { name = "expectedPrice", type = "coins" } })
+			expect.deepEqual(Config.Net.Remotes.PenBuyShelf, { rate = 1, burst = 1, oneInFlight = true })
+			local clock = FakeClock.new(100)
+			local guard = NetService.newGuard({ clock = clock.now })
+			local player = { UserId = 9 }
+			expect.equal(guard:check(player, "PenBuyShelf", 1, 140_000_000_000_000), "ok")
+			expect.equal(guard:check(player, "PenBuyShelf", 1, 31_000_000), "rateLimited")
+		end
+	)
+
+	t.test("a shelf buy: row 2 for 31M, its 2 spots take the best Toy Box squishies, an awaited save", function()
+		local w = fresh()
+		local a = withShelf(w, 1, false)
+		a.coins = 40_000_000
+		local toast = { id = 2, kind = "toast", form = 0, level = 1, coat = 0, slot = 0, locked = false }
+		local bird = { id = 3, kind = "bird", form = 0, level = 1, coat = 0, slot = 0, locked = false }
+		local dragon = { id = 4, kind = "dragon", form = 0, level = 1, coat = 0, slot = 0, locked = true } -- locked
+		local banana = { id = 5, kind = "banana", form = 0, level = 1, coat = 0, slot = 13, locked = false }
+		local butter = { id = 6, kind = "butter", form = 0, level = 1, coat = 0, slot = 14, locked = false }
+		for _, it in { toast, bird, dragon, banana, butter } do
+			table.insert(a.pen.items, it)
+		end
+		a.pen.items[1].slot, a.pen.spots = 1, 3
+		table.insert(a.pen.items, { id = 7, kind = "toast", form = 0, level = 1, coat = 0, slot = 2, locked = false })
+		table.insert(a.pen.items, { id = 8, kind = "toast", form = 0, level = 1, coat = 0, slot = 3, locked = false })
+		local reply = PenService.buyShelf(w.a, 31_000_000)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = true, savePending = false })
+		expect.equal(a.pen.shelfRows, 2)
+		expect.equal(a.pen.top, false)
+		expect.equal(bird.slot, 15) -- the best unlocked Toy Box squishy takes the first new spot
+		expect.equal(toast.slot, 16)
+		expect.equal(dragon.slot, 0) -- locked: auto-place never moves it
+		expect.equal(a.coins, 9_000_000)
+		expect.deepEqual(w.spends, { { player = w.a, amount = 31_000_000, reason = "pen" } })
+		expect.equal(w.nowSaves, 1)
+		expect.deepEqual(w.shown, { w.a })
+		expect.deepEqual(w.drops, { w.a }) -- the new spots make room for a waiting gift
+		finish()
+	end)
+
+	t.test("rows 2, 3, 4, then the TOP spot, then max; a retry of an old price is never charged twice", function()
+		local w = fresh()
+		local a = withShelf(w, 1, false)
+		a.coins = 10 ^ 15
+		local order = { 31_000_000, 250_000_000_000, 11_000_000_000_000, 140_000_000_000_000 }
+		for index, price in order do
+			local reply = PenService.buyShelf(w.a, price)
+			expect.equal(reply.ok, true)
+			w.clock += PEN.buyCooldownSeconds
+			if index < #order then
+				expect.equal(a.pen.shelfRows, index + 1)
+				expect.equal(a.pen.top, false)
+			end
+			-- The retry: a wrong price now (after the TOP spot: nothing left to buy).
+			expectRefused(
+				PenService.buyShelf(w.a, price),
+				if index < #order then "pen.priceChanged" else "pen.shelfMax"
+			)
+			w.clock += PEN.buyCooldownSeconds
+		end
+		expect.equal(a.pen.shelfRows, 4)
+		expect.equal(a.pen.top, true)
+		expectRefused(PenService.buyShelf(w.a, 140_000_000_000_000), "pen.shelfMax")
+		expect.equal(#w.spends, 4)
+		expect.equal(a.coins, 10 ^ 15 - 31_000_000 - 250_000_000_000 - 11_000_000_000_000 - 140_000_000_000_000)
+		finish()
+	end)
+
+	t.test(
+		"shelf refusals: bad input, not ready, a wrong price, paused, cooling, in a duel, short of Coins: none charged",
+		function()
+			local w = fresh()
+			local a = withShelf(w, 1, false)
+			a.coins = 31_000_000
+			local writes = w.writes
+			for _, bad in { -1, 1.5, 0 / 0, "31000000", true } :: { any } do
+				expectRefused(PenService.buyShelf(w.a, bad), "net.invalid")
+			end
+			w.status[w.a] = "offline"
+			expectRefused(PenService.buyShelf(w.a, 31_000_000), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.buyShelf(w.a, 30_999_999), "pen.priceChanged")
+			for _, flag in { "savePending", "closing", "restart" } do
+				(w :: any)[flag] = true
+				expectRefused(PenService.buyShelf(w.a, 31_000_000), "pen.paused");
+				(w :: any)[flag] = false
+			end
+			w.phase[w.a] = "Active"
+			expectRefused(PenService.buyShelf(w.a, 31_000_000), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			w.spendFails = "savePending"
+			expectRefused(PenService.buyShelf(w.a, 31_000_000), "pen.paused")
+			w.spendFails = nil
+			a.coins = 30_999_999
+			expectRefused(PenService.buyShelf(w.a, 31_000_000), "economy.notEnoughCoins")
+			-- A pen spot bought a moment ago cools the shelf sign too (one buy a second).
+			a.coins = 10 ^ 13
+			expect.equal(PenService.buy(w.a, 1_500).ok, true)
+			expectRefused(PenService.buyShelf(w.a, 31_000_000), "pen.paused")
+			-- A pen without shelfRows (never after sanitize) is not a shelf: net.invalid.
+			a.pen.shelfRows = nil
+			w.clock += PEN.buyCooldownSeconds
+			expectRefused(PenService.buyShelf(w.a, 31_000_000), "net.invalid")
+			expect.equal(#w.spends, 1) -- only the pen spot
+			expect.equal(w.writes, writes + 1)
+			finish()
+		end
+	)
+
+	t.test("the tick pays the shelf's and the TOP spot's squishies like the pen's", function()
+		local w = fresh()
+		local a = withShelf(w, 1, true)
+		table.insert(a.pen.items, { id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 13, locked = false })
+		table.insert(a.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 21, locked = false })
+		PenService.step(1)
+		expect.deepEqual(grantsOf(w, w.a), { { player = w.a, amount = 10 + 40 + 640, reason = "pen" } })
+		finish()
+	end)
 end

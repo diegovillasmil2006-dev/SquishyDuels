@@ -12,6 +12,7 @@
 -- Pens3 phase 6: PenPlace(itemId, slot) and PenLock(itemId, locked) (PenService; the pen screen).
 -- Pens3 phases 7-8: SellItems(ids, requestId), SellAll(requestId), BuyBack(itemId) and Fuse(a, b, c) (PenService).
 -- Pens3 phase 9: BuyFood(foodId, count, expectedPrice, requestId), Feed(itemId, requestId) and FeedAll() (PenService).
+-- Pens3 phase 11: PenBuyShelf(expectedPrice) (PenService; the SHELF SPOTS sign).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -176,6 +177,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- Pens3 phase 1 (PenService): buys the caller's own next pen spot (no remote takes a base, plot or player id).
 	-- expectedPrice is compared, never charged. data: Types.PenResult {pen, charged, savePending}.
 	PenBuySpot = c2s("RemoteFunction", { arg("expectedPrice", "coins") }),
+	-- Pens3 phase 11 (PenService): buys the caller's own next shelf row, then the TOP spot (no remote takes a base,
+	-- plot or player id). expectedPrice is compared, never charged. data: Types.PenResult {pen, charged, savePending}.
+	PenBuyShelf = c2s("RemoteFunction", { arg("expectedPrice", "coins") }),
 	-- Pens3 phase 6 (PenService, the pen screen): one of the caller's own squishies (its pen item id) to a slot (0 =
 	-- the Toy Box; an occupied pen spot swaps), and its lock. data: Types.PenResult {pen, charged = false,
 	-- savePending}.

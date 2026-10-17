@@ -25,6 +25,10 @@
 --   "Buy food" heading and grid between the pen spots and the Toy Box, one card face per food on sale (its picture
 --   when AssetTable img.food.<id> has an id, else none; its name, "{price} each", "You have N"; a tap calls onFood),
 --   and the food row (view.foodLine, one line) pinned over the action row (and over the hold bar when it shows).
+-- * Pens3 phase 11 (the shelf rows + the TOP spot; stand-ins from the same parts, PLACEHOLDERS in
+--   work/pens3/p11/NOTES.md): an "On your shelf" heading and grid under the pen's spots (a card per open shelf spot)
+--   and a "TOP spot" heading and grid with its one card once it is bought; their cards are the pen spots' (a tap
+--   passes the slot: picking moves there). No buy button: the shelf is bought at the SHELF SPOTS sign.
 --   local s = PenScreen.new({ parent = gui, scale = UIController.scale, onCard = ..., onSold = ..., onAction = ...,
 --       onHold = ..., onFood = ..., onClose = ... })
 --   s:fit(screenPx);   s:render(view, busy);   s:setHold(fraction?);   s:primary();   s:destroy()
@@ -208,12 +212,16 @@ function PenScreen.new(spec: Spec): PenScreen
 	)
 	local penHeading = newLabel("Pen_PenHeading", HEADING_KIND, scroll, 1)
 	local penGrid = grid("Pen_Spots", 2, scroll)
-	local foodHeading = newLabel("Pen_FoodHeading", HEADING_KIND, scroll, 3) -- pens3 phase 9
-	local foodGrid = grid("Pen_Food", 4, scroll)
-	local toyHeading = newLabel("Pen_ToyHeading", HEADING_KIND, scroll, 5)
-	local toyGrid = grid("Pen_ToyBox", 6, scroll)
-	local soldHeading = newLabel("Pen_SoldHeading", HEADING_KIND, scroll, 7) -- pens3 phase 7
-	local soldGrid = grid("Pen_Sold", 8, scroll)
+	local shelfHeading = newLabel("Pen_ShelfHeading", HEADING_KIND, scroll, 3) -- pens3 phase 11
+	local shelfGrid = grid("Pen_Shelf", 4, scroll)
+	local topHeading = newLabel("Pen_TopHeading", HEADING_KIND, scroll, 5)
+	local topGrid = grid("Pen_Top", 6, scroll)
+	local foodHeading = newLabel("Pen_FoodHeading", HEADING_KIND, scroll, 7) -- pens3 phase 9
+	local foodGrid = grid("Pen_Food", 8, scroll)
+	local toyHeading = newLabel("Pen_ToyHeading", HEADING_KIND, scroll, 9)
+	local toyGrid = grid("Pen_ToyBox", 10, scroll)
+	local soldHeading = newLabel("Pen_SoldHeading", HEADING_KIND, scroll, 11) -- pens3 phase 7
+	local soldGrid = grid("Pen_Sold", 12, scroll)
 	local actionRow: Frame = Create("Frame", {
 		Name = "Pen_Actions",
 		BackgroundTransparency = 1,
@@ -452,13 +460,25 @@ function PenScreen.new(spec: Spec): PenScreen
 		soldGrid.Visible = view.soldHeading ~= nil
 		selectedKey, firstKey = nil, nil
 		local wanted: { [string]: boolean } = {}
-		for _, spot in view.spots do
-			local item = spot.item
-			local key = `spot{spot.slot}_{if item then `{item.id}_{item.kind}` else "empty"}`
-			wanted[key] = true
-			local ringed = item ~= nil and (item == view.selected or view.marked[item.id] == true)
-			show(key, item, spot.slot, spot.slot, penGrid, ringed)
+		-- A card per spot (pens3 phase 11: the pen's, the shelf's and the TOP spot's grids).
+		local function spotCards(spots: { PenFormat.Spot }, parent: Frame)
+			for _, spot in spots do
+				local item = spot.item
+				local key = `spot{spot.slot}_{if item then `{item.id}_{item.kind}` else "empty"}`
+				wanted[key] = true
+				local ringed = item ~= nil and (item == view.selected or view.marked[item.id] == true)
+				show(key, item, spot.slot, spot.slot, parent, ringed)
+			end
 		end
+		spotCards(view.spots, penGrid)
+		line(shelfHeading, view.shelfHeading or "", HEADING_KIND, k, width)
+		shelfHeading.Visible = view.shelfHeading ~= nil
+		shelfGrid.Visible = view.shelfHeading ~= nil
+		spotCards(view.shelf, shelfGrid)
+		line(topHeading, view.topHeading or "", HEADING_KIND, k, width)
+		topHeading.Visible = view.topHeading ~= nil
+		topGrid.Visible = view.topHeading ~= nil
+		spotCards(if view.top then { view.top } else {}, topGrid)
 		for index, item in view.toys do
 			local key = `toy{item.id}_{item.kind}`
 			wanted[key] = true

@@ -27,6 +27,16 @@
 --     visitor board ("0 visitors" until phase 18); the tier decor of PenMath.decorOf (tier 2: 7 gate bulbs + 2
 --     lollipop lamps; tier 3: + the bow + 2 gumdrop trees) where L puts it; the base Model's SD_PenOwner (the owner's
 --     UserId); the full pen plus the plot's 80 static parts stays within Budgets.baseParts.
+--   * pens3 phase 11 (the shelf rows + the TOP spot, lobby design v6): from 9 spots the back wall is the shelf (no back
+--     fence segments, back rails or back collider); every base draws its "Shelf" at Bases.pen.shelf (LK:182-189: the
+--     back in the plot's colour, the Frosting frame of 11 boards, the bow, one invisible 27.4 × 15.6 × 6 collider: K's
+--     "block"), a glass "Lock" (K:98 Glass, the img.icon.lock picture, CHK:57) over every cubby that is not open, the
+--     TOP spot's pedestal (placeholder) with a lock picture until it is bought; the SHELF SPOTS sign at
+--     Bases.pen.signs.shelf (SD_ShelfSign = plot, SD_Price = the next row's or the TOP spot's price, ShelfPrompt; MAX
+--     with the prompt off once all is open); the base Model's SD_Pen holds the pen's walkers only, SD_Shelf
+--     (PenMath.encodeShelf) the shelf's and the TOP spot's, SD_ShelfRows / SD_ShelfTop the open rows and the TOP spot,
+--     SD_PenRate every placed squishy's Coins a second; no state (any spots x rows x TOP) draws more than
+--     Bases.pen.maxParts, the worst draws exactly that many, and it fits Budgets.baseParts with the plot's 80.
 --   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
 --     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
 
@@ -229,8 +239,9 @@ return function(t: Context)
 		return model
 	end
 
-	-- A ready profile's pen (Types.PenState) with `spots` open spots and the given kinds (ids 1, 2, ...).
-	local function pen(spots: number, kinds: { string }?): any
+	-- A ready profile's pen (Types.PenState) with `spots` open spots and the given kinds (ids 1, 2, ...); pens3 phase
+	-- 11: `rows` shelf rows (default the start row, as every sanitized save has) and the TOP spot `top`.
+	local function pen(spots: number, kinds: { string }?, rows: number?, top: boolean?): any
 		local items = {}
 		for index, kind in (kinds or { "kitty_bread" }) :: { string } do
 			-- Pens3 phase 6: the kinds sit in spots 1, 2, ... in order (the rest in the Toy Box).
@@ -244,7 +255,7 @@ return function(t: Context)
 				locked = false,
 			}
 		end
-		return { spots = spots, nextId = #items + 1, items = items }
+		return { spots = spots, nextId = #items + 1, items = items, shelfRows = rows or 1, top = top == true }
 	end
 
 	local function tints(model: Model): { [string]: Color3 }
@@ -344,7 +355,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"the fence: kit.json's segments on the pen's outline (+ the back fence at 9-12), the tier's colours",
+		"the fence: kit.json's segments on the pen's outline (from 9 spots the shelf is the back), the tier's colours",
 		function()
 			for spots = 3, 12 do
 				local w = fresh()
@@ -354,8 +365,7 @@ return function(t: Context)
 				BaseService.playerAdded(a)
 				local step = PEN.steps[spots]
 				local list = segments(model, 1)
-				local back = if step.backWall == "shelf" then step.w / PEN.segment else 0 -- a fence until phase 11's shelf
-				expect.equal(#list, step.fence + back)
+				expect.equal(#list, step.fence) -- pens3 phase 11: K's count, no back fence where the shelf is the wall
 				local backZ = PEN.frontZ - step.d
 				local front, sides, backs = 0, 0, 0
 				for _, segment in list do
@@ -389,7 +399,7 @@ return function(t: Context)
 				end
 				expect.equal(front, (step.w - PEN.gateWidth) / PEN.segment)
 				expect.equal(sides, 2 * step.d / PEN.segment)
-				expect.equal(backs, step.w / PEN.segment)
+				expect.equal(backs, if step.backWall == "shelf" then 0 else step.w / PEN.segment)
 				finish(w)
 			end
 		end
@@ -459,7 +469,7 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the rails run the outline: 10 straight runs at LK's heights, as long as the segments' rails were",
+		"the rails run the outline: 10 straight runs (8 with the shelf for a back), as long as the segments' were",
 		function()
 			for _, spots in { 3, 5, 9, 12 } do
 				local w = fresh()
@@ -471,7 +481,7 @@ return function(t: Context)
 				local rails = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Rails") :: Instance
 				local frame = WorldLayout.plotFrame(1) :: CFrame
 				local length = 0
-				expect.equal(#rails:GetChildren(), 10)
+				expect.equal(#rails:GetChildren(), if step.backWall == "shelf" then 8 else 10) -- pens3 phase 11
 				for _, part in rails:GetChildren() do
 					local rail = part :: Part
 					expect.equal(rail.Name, "Rail")
@@ -748,7 +758,7 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	t.test("5 invisible colliders hold the pen's outline, the front split by the gate gap", function()
+	t.test("5 invisible colliders hold the pen's outline (4 + the shelf's from 9 spots), the gate gap open", function()
 		for _, spots in { 3, 9 } do
 			local w = fresh()
 			local model = plotModel(w, 1)
@@ -764,7 +774,7 @@ return function(t: Context)
 					table.insert(colliders, child :: BasePart)
 				end
 			end
-			expect.equal(#colliders, 5)
+			expect.equal(#colliders, if step.backWall == "shelf" then 4 else 5) -- pens3 phase 11: the shelf blocks
 			local frontLength = 0
 			for _, part in colliders do
 				expect.equal(part.Transparency, 1)
@@ -784,27 +794,188 @@ return function(t: Context)
 	end)
 
 	-- Pens3 phase 3: LobbyBuilder's part budget counts every plot with this many runtime parts.
-	t.test("no pen draws more parts than Bases.pen.maxParts; the full pen draws exactly that many", function()
+	t.test("no pen state draws more parts than Bases.pen.maxParts; the worst draws exactly that many", function()
 		-- Pens3 phase 10: with the plot's 80 static parts (WorldLayout Budgets' note) a full pen fits baseParts.
 		expect.truthy(PEN.maxParts + 80 <= WorldLayout.Budgets.baseParts)
+		-- Pens3 phase 11: every spot count x every shelf row count x the TOP spot (the shelf and its locks count).
+		local worst = 0
 		for spots = 3, 12 do
+			for rows = 1, Config.Economy.Pen.shelfMaxRows do
+				for _, top in { false, true } do
+					local w = fresh()
+					local model = plotModel(w, 1)
+					local a = newPlayer(w, "A")
+					w.pens[a] = pen(spots, nil, rows, top)
+					BaseService.playerAdded(a)
+					local parts = 0
+					for _, d in (model:FindFirstChild("Pen") :: Instance):GetDescendants() do
+						if d:IsA("BasePart") then
+							parts += 1
+						end
+					end
+					expect.truthy(parts <= PEN.maxParts)
+					worst = math.max(worst, parts)
+					finish(w)
+				end
+			end
+		end
+		expect.equal(worst, PEN.maxParts)
+	end)
+
+	-- Pens3 phase 11: the shelf, its locks, the TOP spot and the SHELF SPOTS sign ------------------------------------
+
+	local AssetTable = t.requireShared("AssetTable")
+
+	local function shelfOf(model: Model): Model
+		return (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Shelf") :: Model
+	end
+
+	t.test(
+		"the shelf (LK:182-189): the back in the plot's colour, the frame, the bow, one collider, at its spot",
+		function()
 			local w = fresh()
 			local model = plotModel(w, 1)
 			local a = newPlayer(w, "A")
-			w.pens[a] = pen(spots)
+			w.pens[a] = pen(3)
 			BaseService.playerAdded(a)
-			local parts = 0
-			for _, d in (model:FindFirstChild("Pen") :: Instance):GetDescendants() do
-				if d:IsA("BasePart") then
-					parts += 1
-				end
+			local shelf = shelfOf(model)
+			expect.truthy((shelf :: Model?) ~= nil and shelf:IsA("Model"))
+			local frame = WorldLayout.plotFrame(1) :: CFrame
+			local at = frame * PEN.shelf.at
+			expect.truthy(vectorNear(shelf.WorldPivot.Position, at.Position))
+			expect.truthy(vectorNear(shelf.WorldPivot.LookVector, at.LookVector))
+			local back = shelf:FindFirstChild("ShelfBack") :: BasePart
+			expect.equal(back.Color, Palette[WorldLayout.Bases.colors[1].full])
+			expect.truthy(vectorNear(back.Size, Vector3.new(27.4, 15.6, 0.6)))
+			expect.truthy(vectorNear(localOf(at, back), Vector3.new(0, 7.8, 2.7)))
+			local boards = named(shelf, "ShelfFrame")
+			expect.equal(#boards, 11) -- 2 sides, the bottom, the middle, the top, 6 dividers (LK:184-185)
+			for _, board in boards do
+				expect.equal(board.Color, Palette.PenDecorFrosting)
 			end
-			expect.truthy(parts <= PEN.maxParts)
-			if spots == 12 then
-				expect.equal(parts, PEN.maxParts)
+			local bow = shelf:FindFirstChild("ShelfBow") :: Model
+			expect.truthy(vectorNear(at:PointToObjectSpace(bow.WorldPivot.Position), Vector3.new(0, 15.6, -0.5)))
+			local colliders = named(shelf, "ShelfCollider")
+			expect.equal(#colliders, 1)
+			local collider = colliders[1]
+			expect.truthy(vectorNear(collider.Size, Vector3.new(27.4, 15.6, 6)))
+			expect.truthy(collider.CanCollide and collider.Transparency == 1)
+			-- Every visible part is decor (the collider holds players off, K: "block").
+			for _, part in shelf:GetDescendants() do
+				if part:IsA("BasePart") and part ~= collider then
+					expect.falsy(part.CanCollide or part.CanQuery or part.CanTouch or part.CastShadow)
+					expect.truthy(part.Anchored)
+				end
 			end
 			finish(w)
 		end
+	)
+
+	t.test(
+		"a glass lock with the lock picture over every closed cubby; the TOP spot's lock until it is bought",
+		function()
+			local function locks(model: Model): { [number]: BasePart }
+				local found = {}
+				for _, part in named(shelfOf(model), "Lock") do
+					found[part:GetAttribute("SD_ShelfSlot") :: number] = part
+				end
+				return found
+			end
+			local w = fresh()
+			local model = plotModel(w, 1)
+			local a = newPlayer(w, "A")
+			w.pens[a] = pen(3, nil, 1, false)
+			BaseService.playerAdded(a)
+			local frame = WorldLayout.plotFrame(1) :: CFrame
+			local at = frame * PEN.shelf.at
+			local closed = locks(model)
+			local slots = {}
+			for slot in closed do
+				table.insert(slots, slot)
+			end
+			table.sort(slots)
+			expect.deepEqual(slots, { 15, 16, 17, 18, 19, 20 }) -- row 1 (13, 14) is open
+			local lock = closed[15]
+			local cubby = PEN.shelf.cubbies[3]
+			expect.truthy(vectorNear(lock.Size, Vector3.new(5.8, 6.3, 0.15))) -- LK:191
+			expect.truthy(vectorNear(localOf(at, lock), Vector3.new(cubby.X, cubby.Y + 0.1 + 3.15, -3.125))) -- L:247
+			expect.equal(lock.Material, Enum.Material.Glass)
+			expect.equal(lock.Color, Palette.PenShelfGlass)
+			expect.near(lock.Transparency, 0.5, 1e-6)
+			local picture = lock:FindFirstChildWhichIsA("ImageLabel", true) :: ImageLabel
+			expect.equal(picture.Image, AssetTable.image("img.icon.lock"))
+			expect.equal((lock:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui).Face, Enum.NormalId.Front)
+			local top = shelfOf(model):FindFirstChild("Top") :: Model
+			expect.truthy((top :: Model?) ~= nil)
+			expect.truthy(top:FindFirstChild("TopLock", true) ~= nil) -- the TOP spot: closed
+			-- Row 3 bought: 2 locks left; the TOP spot bought: no lock picture on it.
+			w.pens[a] = pen(3, nil, 3, true)
+			BaseService.refresh(a)
+			slots = {}
+			for slot in locks(model) do
+				table.insert(slots, slot)
+			end
+			table.sort(slots)
+			expect.deepEqual(slots, { 19, 20 })
+			expect.equal((shelfOf(model):FindFirstChild("Top") :: Model):FindFirstChild("TopLock", true), nil)
+			finish(w)
+		end
+	)
+
+	t.test("the SHELF SPOTS sign: the next row's price, then the TOP spot's; MAX with the prompt off", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		w.pens[a] = pen(3)
+		BaseService.playerAdded(a)
+		local folder = model:FindFirstChild("Pen") :: Instance
+		local sign = folder:FindFirstChild("ShelfSign") :: Model
+		expect.truthy((sign :: Model?) ~= nil and sign:IsA("Model"))
+		expect.equal(sign:GetAttribute("SD_ShelfSign"), 1)
+		expect.equal(sign:GetAttribute("SD_Price"), 31_000_000)
+		local frame = WorldLayout.plotFrame(1) :: CFrame
+		local want = frame * PEN.signs.shelf
+		expect.truthy(vectorNear(sign.WorldPivot.Position, want.Position))
+		expect.truthy(vectorNear(sign.WorldPivot.LookVector, want.LookVector))
+		expect.equal((sign:FindFirstChild("Title", true) :: TextLabel).Text, Strings.pen.shelfSign.title)
+		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Format.coins(31_000_000))
+		local prompt = sign:FindFirstChildWhichIsA("ProximityPrompt", true) :: ProximityPrompt
+		expect.equal(prompt.Name, "ShelfPrompt")
+		expect.truthy(prompt.Enabled)
+		expect.equal(prompt.ObjectText, Strings.pen.shelfPrompt.object)
+		expect.equal(prompt.HoldDuration, Config.Economy.Pen.signHoldSeconds)
+		-- The PEN SPACE sign is still its own (the left one).
+		expect.equal((folder:FindFirstChild("Sign") :: Model):GetAttribute("SD_PenSign"), 1)
+		-- Everything open: MAX, no price, the prompt off (the trillions of rows 3-4 and the TOP spot: Studio, see the
+		-- PEN SPACE sign's 32-bit note).
+		w.pens[a] = pen(3, nil, 4, true)
+		BaseService.refresh(a)
+		sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("ShelfSign") :: Model
+		expect.equal(sign:GetAttribute("SD_Price"), nil)
+		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Strings.pen.sign.max)
+		expect.equal((sign:FindFirstChild("Trim") :: BasePart).Color, Palette.PenSignMax)
+		expect.falsy((sign:FindFirstChildWhichIsA("ProximityPrompt", true) :: ProximityPrompt).Enabled)
+		finish(w)
+	end)
+
+	t.test("SD_Pen holds the walkers, SD_Shelf the shelf's and TOP squishies; SD_PenRate counts them all", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		local p = pen(3, { "kitty_bread", "butter", "toast", "bird", "dragon" }, 1, true)
+		p.items[3].slot, p.items[4].slot, p.items[5].slot = 13, 0, 21
+		w.pens[a] = p
+		BaseService.playerAdded(a)
+		expect.equal(model:GetAttribute("SD_Pen"), "kitty_bread.0.1.0;butter.0.1.0")
+		expect.equal(model:GetAttribute("SD_Shelf"), "13=toast.0.1.0;21=dragon.0.1.0")
+		expect.equal(model:GetAttribute("SD_ShelfRows"), 1)
+		expect.equal(model:GetAttribute("SD_ShelfTop"), true)
+		expect.equal(model:GetAttribute("SD_PenRate"), 10 + 40 + 10 + 640)
+		BaseService.playerRemoving(a)
+		for _, name in { "SD_Shelf", "SD_ShelfRows", "SD_ShelfTop" } do
+			expect.equal(model:GetAttribute(name), nil)
+		end
+		finish(w)
 	end)
 
 	t.test("the PEN SPACE sign: the next spot's price and its hold prompt; MAX with the prompt off at 12", function()

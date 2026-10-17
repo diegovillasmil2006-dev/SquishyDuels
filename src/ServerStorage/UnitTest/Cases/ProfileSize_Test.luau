@@ -8,7 +8,8 @@
 -- placedMax = 71 items, each Rainbow Galaxy at the top level with an id near 2^53; phase 4: its awayRate a large
 -- fractional Coins a second; phase 5: a full gift queue of giftQueueMax of the longest kind ids, both fixed box
 -- orders at 2^53, the Frog gift given; phase 6: every item's slot (the 12 spots, the rest in the Toy Box) and its
--- lock, false being the longer word; phases 7-8: a full buy-back list of buyBackMax sales, each a Rainbow Galaxy at the
+-- lock, false being the longer word; phase 11: every shelf row and the TOP spot bought and filled (placedMax placed);
+-- phases 7-8: a full buy-back list of buyBackMax sales, each a Rainbow Galaxy at the
 -- top level with the longest kind id, an id near 2^53, maxCoins paid and a GUID request, and a bag of 2^53 of every
 -- coating; phase 9: every food at Food.maxPieces), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
@@ -149,6 +150,7 @@ return function(t: Context)
 		local count = pen.toyBoxMax + pen.placedMax
 		-- Pens3 phase 4: the rate at the last save, large and fractional (exact in binary, so JSON keeps it exactly).
 		p.pen = { spots = pen.maxSpots, nextId = BIG_COUNTER, items = {}, awayRate = 99_999_999_999.75 }
+		p.pen.shelfRows, p.pen.top = pen.shelfMaxRows, true -- pens3 phase 11: the whole shelf and the TOP spot
 		local defs = Catalog.list()
 		for i = 1, count do
 			table.insert(p.pen.items, {
@@ -157,7 +159,7 @@ return function(t: Context)
 				form = #pen.formMult - 1,
 				level = pen.maxLevel,
 				coat = #pen.coatMult - 1,
-				slot = if i <= pen.maxSpots then i else 0, -- pens3 phase 6: every spot full, the rest in the Toy Box
+				slot = if i <= pen.placedMax then i else 0, -- phases 6, 11: every spot full, the rest in the Toy Box
 				locked = false,
 			})
 		end

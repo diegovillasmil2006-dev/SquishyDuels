@@ -5,6 +5,7 @@
 -- multipliers ECONOMY_V4's (out5_grip110.txt "COATINGS"). [P] where marked. A child module, so Config/init does not
 -- grow (it is near Roblox's 200,000-character Source limit): exposed through Config/Economy and checked by
 -- Config/ValidatePen when PenService starts. Math: Shared/PenMath. Pens3 phases 7-8: selling, the buy-back (below).
+-- Pens3 phase 11: the shelf rows and the TOP spot (below).
 
 local Pen = {
 	startSpots = 3, -- open from the start
@@ -66,6 +67,22 @@ local Pen = {
 	-- (toyBoxMax + placedMax, so a whole Sell All can be undone), the oldest falling off first.
 	buyBackSeconds = 600,
 	buyBackMax = 71,
+
+	-- Pens3 phase 11 (the show-off shelf, V3:144-151; prices final_hagb_grip110.json "shelfRowPrice" / "topPrice",
+	-- the plan's 31M / 250B / 11T / 140T exactly): rows of shelfRowSpots spots, shelfStartRows open from the start,
+	-- the next one bought at shelfRowPrices[row] up to shelfMaxRows, then the one TOP spot at topPrice (the last buy).
+	-- They earn like the pen's squishies. Slots (PenMath): the pen 1..maxSpots, the shelf maxSpots + 1 .. (row r:
+	-- maxSpots + shelfRowSpots × (r - 1) + 1 ..), the TOP spot placedMax (ValidatePen keeps placedMax = maxSpots +
+	-- shelfMaxRows × shelfRowSpots + 1).
+	shelfStartRows = 1,
+	shelfMaxRows = 4,
+	shelfRowSpots = 2,
+	shelfRowPrices = {
+		[2] = 31_000_000,
+		[3] = 250_000_000_000,
+		[4] = 11_000_000_000_000,
+	} :: { [number]: number },
+	topPrice = 140_000_000_000_000,
 }
 
 return Pen

@@ -7,9 +7,16 @@
 -- A pen is a profile's `pen` = Types.PenState {spots, nextId, items}. An item is Types.PenItem {id, kind, form, level,
 -- coat, slot, locked}: kind a Catalog id, form 0..#formMult - 1, level 1..maxLevel, coat 0..#coatMult - 1, all whole.
 -- Anything else earns 0 and takes no spot (fail closed); a pen whose spots is not a whole number in [startSpots,
--- maxSpots] places nothing. Pens3 phase 6: `slot` says where it is (0 = the Toy Box, 1..spots the pen; 13..20 the
--- shelf and 21 the TOP spot come in phase 11), `locked` keeps it from being sold or fused (phases 7-8) and from
--- auto-place; a lock never stops the player moving it.
+-- maxSpots] places nothing. Pens3 phase 6: `slot` says where it is (0 = the Toy Box, 1..spots the pen), `locked`
+-- keeps it from being sold or fused (phases 7-8) and from auto-place; a lock never stops the player moving it.
+-- Pens3 phase 11 (the show-off shelf, V3:144-151): the pen also has `shelfRows` (Pen.shelfStartRows ..
+-- Pen.shelfMaxRows; ProfileSchema gives every saved pen one; missing or any other value opens no shelf spot nor the
+-- TOP spot: fail closed) and `top` (true once the TOP spot is bought). The open spots: the pen's 1..spots, the
+-- shelf's maxSpots + 1 .. (shelfRowSpots a row: row r is maxSpots + shelfRowSpots × (r - 1) + 1 .. maxSpots +
+-- shelfRowSpots × r, so 13-14, 15-16, 17-18, 19-20) and the TOP spot placedMax (21) when `top` is true. A shelf or
+-- TOP squishy is placed like a pen one: it earns (rate, the squeeze value, the away rate DataService stamps), Feed All
+-- feeds it, it keeps a fusion's tie; it stands still in its cubby (BaseService draws the shelf; the client shows it),
+-- so only the pen's own spots walk (inPen).
 --
 -- API:
 --   PenMath.itemRate(item)       -> number: Coins a second, coinsPerPower × Catalog.getPower(kind) × formMult[form + 1]
@@ -17,21 +24,24 @@
 --                                   Dragon 640); 0 for anything that is not an item
 --   PenMath.better(a, b)         -> boolean: a ranks before b, the higher rate first, a tie to the lower id (the order
 --                                   ProfileSchema derives an old save's slots in, and bestToyBox's)
---   PenMath.placed(pen)          -> {PenItem}: the items in slots 1..spots, in slot order (phase 6; before, the best
---                                   `spots` items); an item with no slot or a slot past the open spots takes none, and
---                                   a repeated slot counts once (the first in the list keeps it)
+--   PenMath.placed(pen)          -> {PenItem}: the items in an open spot (phase 11: the pen's, the shelf's, the
+--                                   TOP spot), in slot order (phase 6; before, the best `spots` items); an item with
+--                                   no slot or a slot that is not open takes none, and a repeated slot counts once
+--                                   (the first in the list keeps it)
 --   PenMath.toyBox(pen)          -> {PenItem}: the items in slot 0 (the Toy Box), in list order
---   PenMath.freeSlot(pen)        -> number: the first open spot (1..spots) no item holds; 0 when every one is taken or
---                                   for a broken pen (a new squishy goes there, else to the Toy Box)
+--   PenMath.freeSlot(pen)        -> number: the first open spot (openSlots order: the pen, the shelf, the TOP spot)
+--                                   no item holds; 0 when every one is taken or for a broken pen (a new squishy goes
+--                                   there, else to the Toy Box; a bought spot's best Toy Box squishy too)
 --   PenMath.find(pen, id)        -> PenItem?: the item with that id
 --   PenMath.bestToyBox(pen)      -> PenItem?: the best unlocked Toy Box item (better), what a newly bought spot takes
 --   PenMath.placeDecision(pen, id, slot) -> (Move?, code?): the pure PenPlace checks, the first that applies wins: a
 --                                   broken pen, an id that is not whole, or a slot that is not a whole number in
 --                                   [0, placedMax] -> "net.invalid"; no item with that id -> "inventory.notOwned"; a
---                                   slot past the open spots -> "pen.spotClosed"; a pen squishy put away (slot 0) while
+--                                   slot that is not open -> "pen.spotClosed"; a placed squishy put away (slot 0) while
 --                                   the Toy Box holds toyBoxMax -> "inventory.full". Else the Move {id, from, to,
 --                                   swapId?}: the item goes to `to`; the item already there (a pen spot, never the Toy
---                                   Box) takes the mover's old slot `from`. from == to changes nothing.
+--                                   Box) takes the mover's old slot `from` (an item in a slot that is not open counts
+--                                   as the Toy Box's: from 0). from == to changes nothing.
 --   PenMath.rate(pen)            -> number: the placed items' Coins a second (the pen's pay)
 --   PenMath.squeezeValue(pen)    -> number: SV = max(minSqueezeValue, rate(pen)); nil or a broken pen gives 10. What an
 --                                   own squeeze and every reward counted in squeezes is worth (coatings in; toys and
@@ -59,10 +69,9 @@
 --                                   in plot-local studs: inside the steps[spots] fence (WorldLayout.Bases.pen), half its
 --                                   size plus edgeMargin in from every side; nil for a spot count with no step
 --   PenMath.room(pen)            -> number: how many more squishies fit (pens3 phase 5, D1:254-258): the open spots
---                                   plus the Toy Box's toyBoxMax, less every item, never below 0; 0 for anything that
---                                   is not a pen (fail closed: nothing is granted into a broken pen). 0 = the Toy Box
---                                   is full.
---                                   shortcut: the shelf spots (placedMax, phase 11) do not count yet; add them then.
+--                                   (phase 11: the shelf's and the TOP spot too) plus the Toy Box's toyBoxMax, less
+--                                   every item, never below 0; 0 for anything that is not a pen (fail closed: nothing
+--                                   is granted into a broken pen). 0 = the Toy Box is full.
 -- Pens3 phase 7 (selling, D1:217-225; the 10-minute buy-back):
 --   PenMath.sellPrice(item)      -> number: sellPrice[rarity] × sellFormMult[form + 1] Coins (level and coat add
 --                                   nothing: food and coatings are not refunded); 0 for anything not an item's look
@@ -120,13 +129,31 @@
 --   PenMath.segmentFrames(spots) -> {CFrame}: the plot-local frame of every fence segment of steps[spots] (BaseService
 --                                   draws one at each; moved here from it), in build order: the front pieces from the
 --                                   gate gap out (left, then right), the two sides from the front back (turned so their
---                                   X runs along the plot's Z), then the back from -X (K's "shelf" back wall stays a
---                                   fence until phase 11); {} for a spot count with no step
+--                                   X runs along the plot's Z), then the back from -X, only where K's back wall is a
+--                                   fence (phase 11: from 9 spots it is the shelf, K:4143-4167); {} for a spot count
+--                                   with no step
 --   PenMath.newSegments(from, to) -> {CFrame}: the frames of segmentFrames(to) that segmentFrames(from) has not, in
 --                                   build order: what a pen growing from `from` to `to` spots pops in (A14 FenceGrow)
 --   PenMath.decorOf(spots)       -> {bulbs, lamps, bow, trees}: the tier decor of steps[spots] (K:4170-4189
 --                                   "adds", K:700 notes): tier 2 the gate bulbs + 2 lollipop lamps, tier 3 also the
 --                                   gate bow + 2 gumdrop trees; none at tier 1 or for a spot count with no step
+-- Pens3 phase 11 (the shelf rows + the TOP spot; Config.Economy.Pen shelf*, topPrice):
+--   PenMath.isOpen(pen, slot)    -> boolean: the slot is an open spot (see the header); false for a broken pen
+--   PenMath.openSlots(pen)       -> {number}: every open spot in slot order (the pen, the shelf, the TOP spot)
+--   PenMath.inPen(pen)           -> {PenItem}: the placed items in the pen's own spots (1..spots, slot order): the
+--                                   walkers (BaseService's SD_Pen)
+--   PenMath.onShelf(pen)         -> {PenItem}: the placed items on the shelf and the TOP spot (slot order)
+--   PenMath.shelfPrice(pen)      -> number?: what the next shelf buy costs: the next row's shelfRowPrices, after the
+--                                   last row the TOP spot's topPrice; nil when all is open (or for a broken pen)
+--   PenMath.shelfDecision(pen, expectedPrice) -> (ShelfBuy?, code?): the pure PenBuyShelf checks, PenBuySpot's order:
+--                                   expectedPrice not whole Coins in [0, maxCoins], or a broken pen or shelfRows ->
+--                                   "net.invalid"; every row and the TOP spot open -> "pen.shelfMax"; expectedPrice ~=
+--                                   shelfPrice -> "pen.priceChanged" (compared, never charged; the prices strictly
+--                                   rise in buy order, so a retry is refused); else ShelfBuy {row (the next row, or nil
+--                                   for the TOP spot), top, price, slots (the spots it opens)}.
+--   PenMath.encodeShelf(items)   -> string: "slot=kind.form.level.coat" per shelf or TOP item joined by ";" (the base's
+--                                   SD_Shelf attribute; entries that are not items are left out)
+--   PenMath.decodeShelf(text)    -> {[slot]: Look}: the reverse, shelf and TOP slots only; malformed entries skipped
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -154,6 +181,8 @@ export type FeedStep = { item: Types.PenItem, food: FoodDef, pieces: number }
 export type FeedPlan = { levels: { [number]: number }, used: { [string]: number }, steps: number }
 -- Pens3 phase 10: the tier decor a pen shows (decorOf).
 export type Decor = { bulbs: boolean, lamps: boolean, bow: boolean, trees: boolean }
+-- Pens3 phase 11: one PenBuyShelf (shelfDecision): the next row (nil for the TOP spot), the price, the spots it opens.
+export type ShelfBuy = { row: number?, top: boolean, price: number, slots: { number } }
 
 -- Constants
 
@@ -180,6 +209,9 @@ local CODE_NOT_ENOUGH = "food.notEnough"
 local CODE_MAX_LEVEL = "pen.maxLevel"
 local BIOMES_REACHED = 1 -- shortcut: phase 13 (the highway) reads profile.highway.biome instead
 local ALONG_Z = CFrame.Angles(0, math.pi / 2, 0) -- pens3 phase 10: a side segment, its X along the plot's Z
+local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11: the shelf's first slot (13)
+local TOP_SLOT = PEN.placedMax -- the TOP spot (21)
+local CODE_SHELF_MAX = "pen.shelfMax"
 
 -- Module table
 
@@ -231,6 +263,12 @@ local function spotsOf(pen: any): number?
 	return if inRange(spots, PEN.startSpots, PEN.maxSpots) then spots else nil
 end
 
+-- Pens3 phase 11: the pen's shelf rows, or nil when missing or broken (no shelf spot opens: fail closed).
+local function rowsOf(pen: any): number?
+	local rows = if type(pen) == "table" then pen.shelfRows else nil
+	return if inRange(rows, PEN.shelfStartRows, PEN.shelfMaxRows) then rows else nil
+end
+
 -- Public: one item and the pen
 
 function PenMath.itemRate(item: any): number
@@ -269,12 +307,41 @@ local function itemsIn(pen: any, lo: number, hi: number): { Types.PenItem }
 	return list
 end
 
+function PenMath.isOpen(pen: any, slot: any): boolean
+	local spots, rows = spotsOf(pen), rowsOf(pen)
+	if spots == nil or not isWhole(slot) then
+		return false
+	end
+	if slot >= 1 and slot <= spots then
+		return true
+	end
+	if rows == nil then
+		return false -- a broken shelfRows opens no shelf spot, nor the TOP spot (fail closed)
+	end
+	return (slot >= SHELF_FIRST and slot < SHELF_FIRST + rows * PEN.shelfRowSpots)
+		or (slot == TOP_SLOT and pen.top == true)
+end
+
+function PenMath.openSlots(pen: any): { number }
+	local list: { number } = {}
+	for slot = 1, TOP_SLOT do
+		if PenMath.isOpen(pen, slot) then
+			table.insert(list, slot)
+		end
+	end
+	return list
+end
+
 function PenMath.placed(pen: any): { Types.PenItem }
-	local list = itemsIn(pen, 1, PEN.maxSpots)
+	local items = if spotsOf(pen) ~= nil then pen.items else nil
 	local taken: { [number]: boolean } = {}
 	local placed: { Types.PenItem } = {}
-	for _, item in list do
-		if not taken[item.slot] then -- a repeated slot counts once: the first in the list keeps it
+	if type(items) ~= "table" then
+		return placed
+	end
+	for _, item in items do
+		-- a repeated slot counts once: the first in the list keeps it
+		if isItem(item) and PenMath.isOpen(pen, item.slot) and not taken[item.slot] then
 			taken[item.slot] = true
 			table.insert(placed, item)
 		end
@@ -289,16 +356,31 @@ function PenMath.toyBox(pen: any): { Types.PenItem }
 	return itemsIn(pen, 0, 0)
 end
 
-function PenMath.freeSlot(pen: any): number
-	local spots = spotsOf(pen)
-	if spots == nil then
-		return 0
+-- Pens3 phase 11: the placed items whose slot is in [lo, hi].
+local function placedIn(pen: any, lo: number, hi: number): { Types.PenItem }
+	local list: { Types.PenItem } = {}
+	for _, item in PenMath.placed(pen) do
+		if item.slot >= lo and item.slot <= hi then
+			table.insert(list, item)
+		end
 	end
+	return list
+end
+
+function PenMath.inPen(pen: any): { Types.PenItem }
+	return placedIn(pen, 1, PEN.maxSpots)
+end
+
+function PenMath.onShelf(pen: any): { Types.PenItem }
+	return placedIn(pen, SHELF_FIRST, TOP_SLOT)
+end
+
+function PenMath.freeSlot(pen: any): number
 	local taken: { [number]: boolean } = {}
 	for _, item in PenMath.placed(pen) do
 		taken[item.slot] = true
 	end
-	for slot = 1, spots :: number do
+	for _, slot in PenMath.openSlots(pen) do
 		if not taken[slot] then
 			return slot
 		end
@@ -338,10 +420,10 @@ function PenMath.placeDecision(pen: any, id: any, slot: any): (Move?, string?)
 	if item == nil then
 		return nil, CODE_NOT_OWNED
 	end
-	if slot > (spots :: number) then
+	if slot ~= 0 and not PenMath.isOpen(pen, slot) then
 		return nil, CODE_CLOSED
 	end
-	local from = if inRange(item.slot, 1, spots :: number) then item.slot else 0 -- not in the pen: the Toy Box's
+	local from = if PenMath.isOpen(pen, item.slot) then item.slot else 0 -- not in an open spot: the Toy Box's
 	if slot == 0 and from ~= 0 and #PenMath.toyBox(pen) >= PEN.toyBoxMax then
 		return nil, CODE_FULL
 	end
@@ -361,7 +443,7 @@ function PenMath.room(pen: any): number
 	if spots == nil or type(pen.items) ~= "table" or not isWhole(pen.nextId) then
 		return 0
 	end
-	return math.max(0, spots + PEN.toyBoxMax - #pen.items)
+	return math.max(0, #PenMath.openSlots(pen) + PEN.toyBoxMax - #pen.items)
 end
 
 function PenMath.rate(pen: any): number
@@ -409,6 +491,42 @@ function PenMath.buyDecision(pen: any, expectedPrice: any): (Buy?, string?)
 	return { spot = spot, price = price }, nil
 end
 
+-- Public: the shelf rows and the TOP spot (pens3 phase 11) ------------------------------------------------------------
+
+function PenMath.shelfPrice(pen: any): number?
+	local rows = rowsOf(pen)
+	if spotsOf(pen) == nil or rows == nil then
+		return nil
+	end
+	if rows < PEN.shelfMaxRows then
+		return PEN.shelfRowPrices[rows + 1]
+	end
+	return if pen.top == true then nil else PEN.topPrice
+end
+
+function PenMath.shelfDecision(pen: any, expectedPrice: any): (ShelfBuy?, string?)
+	local rows = rowsOf(pen)
+	if Validate.coins(expectedPrice) == nil or spotsOf(pen) == nil or rows == nil then
+		return nil, CODE_INVALID
+	end
+	local price = PenMath.shelfPrice(pen)
+	if price == nil then
+		return nil, CODE_SHELF_MAX
+	end
+	if expectedPrice ~= price then
+		return nil, CODE_PRICE
+	end
+	if rows < PEN.shelfMaxRows then
+		local first = SHELF_FIRST + rows * PEN.shelfRowSpots
+		local slots: { number } = {}
+		for slot = first, first + PEN.shelfRowSpots - 1 do
+			table.insert(slots, slot)
+		end
+		return { row = rows + 1, top = false, price = price, slots = slots }, nil
+	end
+	return { top = true, price = price, slots = { TOP_SLOT } }, nil
+end
+
 -- Public: selling, the buy-back and fusion (pens3 phases 7-8)
 
 -- True for a list of `min`..`max` distinct whole numbers (the ids of a sale or a fusion).
@@ -450,12 +568,12 @@ local function isEntry(entry: any): boolean
 	return type(entry) == "table" and isItem(entry.item) and Validate.coins(entry.price) ~= nil and isFinite(entry.at)
 end
 
--- A better fusion keeper: the higher level, then a placed one, then the lower id.
-local function keeps(a: Types.PenItem, b: Types.PenItem, spots: number): boolean
+-- A better fusion keeper: the higher level, then a placed one (pens3 phase 11: the shelf's too), then the lower id.
+local function keeps(a: Types.PenItem, b: Types.PenItem, pen: any): boolean
 	if a.level ~= b.level then
 		return a.level > b.level
 	end
-	local placedA, placedB = inRange(a.slot, 1, spots), inRange(b.slot, 1, spots)
+	local placedA, placedB = PenMath.isOpen(pen, a.slot), PenMath.isOpen(pen, b.slot)
 	if placedA ~= placedB then
 		return placedA
 	end
@@ -604,7 +722,7 @@ function PenMath.fuseDecision(pen: any, ids: any): (Fusion?, string?)
 	end
 	local keeper = first
 	for _, it in items do
-		if keeps(it, keeper, spots :: number) then
+		if keeps(it, keeper, pen) then
 			keeper = it
 		end
 	end
@@ -796,6 +914,32 @@ function PenMath.decode(text: any): { Look }
 	return list
 end
 
+function PenMath.encodeShelf(items: { any }): string
+	local parts: { string } = {}
+	for _, item in items do
+		if isLook(item) and isWhole(item.slot) then
+			table.insert(parts, string.format("%d=%s", item.slot, PenMath.encode({ item })))
+		end
+	end
+	return table.concat(parts, ";")
+end
+
+function PenMath.decodeShelf(text: any): { [number]: Look }
+	local list: { [number]: Look } = {}
+	if type(text) ~= "string" then
+		return list
+	end
+	for _, part in string.split(text, ";") do
+		local slot, look = string.match(part, "^(%d+)=(.+)$")
+		local n = tonumber(slot)
+		local found = if look then PenMath.decode(look)[1] else nil
+		if n and found and n >= SHELF_FIRST and n <= TOP_SLOT then
+			list[n] = found
+		end
+	end
+	return list
+end
+
 function PenMath.wanderRect(spots: number, studs: number): Rect?
 	local step = LAYOUT.steps[spots]
 	if step == nil then
@@ -828,8 +972,10 @@ function PenMath.segmentFrames(spots: number): { CFrame }
 		table.insert(frames, CFrame.new(-half, 0, z) * ALONG_Z)
 		table.insert(frames, CFrame.new(half, 0, z) * ALONG_Z)
 	end
-	for i = 0, step.w / seg - 1 do
-		table.insert(frames, CFrame.new(-half + seg / 2 + i * seg, 0, LAYOUT.frontZ - step.d))
+	if step.backWall == "fence" then -- pens3 phase 11: from 9 spots the back wall is the shelf (K:4143-4167)
+		for i = 0, step.w / seg - 1 do
+			table.insert(frames, CFrame.new(-half + seg / 2 + i * seg, 0, LAYOUT.frontZ - step.d))
+		end
 	end
 	return frames
 end

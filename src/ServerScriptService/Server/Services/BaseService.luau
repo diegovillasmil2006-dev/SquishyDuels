@@ -20,11 +20,11 @@
 --   owner's pen (drawPen; lobby design v6, `LK:n` = lobby-kit.js line n, `K:n` = kit.json line n), built in the plot's
 --   frame from WorldLayout.Bases.pen and its steps[spots]:
 --   - Fence: one Model "Segment" per 4-stud piece of LK:82-85 pen_fence (2 Rails, 3 Pickets and, once per spot on the
---     outline, a Post with its PostTop ball): K's segment count (the front split by the gateWidth gap) plus the back
---     fence at 9-12 spots, where K's back wall is the shelf of phase 11 (placeholder); posts and rails in the tier's
---     colours (Palette PenFence*, K:4170-4189); every visual part out of collisions, queries, touches and shadows.
---     Five invisible Colliders (3.2 tall, 0.5 thick) hold the outline: both front pieces beside the gate, the sides,
---     the back.
+--     outline, a Post with its PostTop ball): K's segment count (the front split by the gateWidth gap; pens3 phase 11:
+--     from 9 spots K's back wall is the shelf, so no back fence there); posts and rails in the tier's colours (Palette
+--     PenFence*, K:4170-4189); every visual part out of collisions, queries, touches and shadows. Five invisible
+--     Colliders (3.2 tall, 0.5 thick) hold the outline: both front pieces beside the gate, the sides, the back (four
+--     from 9 spots: the shelf's collider is the back).
 --   - Sign: the Model "Sign" (LK:96-101 pen_upgrade_sign: Post, the state Trim, the price Face with its SurfaceGui
 --     Title / Row (Icon, Price) / Line) at Bases.pen.signs.pen, attributes SD_PenSign = plot and SD_Price = the next
 --     spot's price (none at maxSpots); the Face's ProximityPrompt (PenPrompt) is a hold of Config.Economy.Pen
@@ -55,6 +55,24 @@
 --     decor.
 --   - The base Model's SD_PenOwner: the owner's UserId (none for a player without one), for the clients' gate and fence
 --     motion (Controllers/PenLookController).
+-- * Pens3 phase 11 (the shelf rows + the TOP spot; `CHK:n` = check/CHECK.md line n):
+--   - Shelf: the Model "Shelf" at Bases.pen.shelf.at on every drawn pen (LK:182-189 base_shelf, K:798-842; at the
+--     plot's back, so from 9 spots it is the pen's back wall): the ShelfBack (27.4 × 15.6 × 0.6) in the plot's colour
+--     (BaseTint), the 11 ShelfFrame boards in Frosting, the "ShelfBow" Model (bowGeo(1.1) at (0, 15.6, -0.5), the
+--     gate bow's stand-in rings) and one invisible ShelfCollider over the whole 27.4 × 15.6 × 6 (K "collision":
+--     "block": nobody climbs into a cubby; every visible part is decor). Over every cubby that is not open
+--     (PenMath.isOpen of its slot, Bases.pen.shelf.cubbies k = slot 12 + k) a "Lock": LK:191's lock_glass (5.8 × 6.3 ×
+--     0.15, K:98 Glass at Transparency 0.5) where L:247 puts it, with the img.icon.lock picture on its front (v6's
+--     padlock is broken, CHK:57), attribute SD_ShelfSlot. The "Top" Model (placeholder: a pedestal, PLAN phase 11): a
+--     Frosting column and a Gold top on the shelf's top behind the bow, the TOP spot's squishy standing on it
+--     (Bases.pen.shelf.top); until the TOP spot is bought, a "TopLock" BillboardGui with the lock picture over it.
+--   - SHELF SPOTS sign: the Model "ShelfSign" at Bases.pen.signs.shelf, the PEN SPACE sign's pieces and states (K:4240:
+--     PEN SPACE left, SHELF SPOTS right), titled pen.shelfSign.title, attributes SD_ShelfSign = plot and SD_Price =
+--     PenMath.shelfPrice (the next row's, then the TOP spot's; none once all is open: MAX), its "ShelfPrompt" a hold
+--     like PenPrompt, off at MAX. The owner's client paints and buys it like the pen's (Controllers/PenController).
+--   - The base Model's SD_Pen holds the pen's walkers only (PenMath.inPen), SD_Shelf the shelf's and the TOP spot's
+--     squishies (PenMath.encodeShelf of PenMath.onShelf; the clients stand them in their cubbies), SD_ShelfRows and
+--     SD_ShelfTop the open rows and the TOP spot; SD_PenRate is every placed squishy's (PenMath.rate).
 --   A plot renders when it is handed out or freed, when its owner's profile loads (the data port's Loaded) and on
 --   refresh(player) after a pen change (PenService: a spot bought, a squishy granted). Until the profile is ready a plot
 --   shows its owner's name and colour only; without the generated plot or with a broken pen nothing is drawn and
@@ -112,7 +130,8 @@ local OWNER_LABEL = "Owner"
 -- Pens3 phase 1: the pen (see the header).
 local PEN = WorldLayout.Bases.pen
 local PEN_FOLDER = "Pen"
-local PEN_ATTRS = { "SD_PenSpots", "SD_Pen", "SD_PenRate", "SD_PenTier", "SD_PenOwner" }
+local PEN_ATTRS =
+	{ "SD_PenSpots", "SD_Pen", "SD_PenRate", "SD_PenTier", "SD_PenOwner", "SD_Shelf", "SD_ShelfRows", "SD_ShelfTop" }
 local TIER_COLORS = { -- K:4170-4189
 	{ post = "PenFenceWaferPost", rail = "PenFenceWaferRail" },
 	{ post = "PenFenceMintPost", rail = "PenFenceMintRail" },
@@ -226,6 +245,54 @@ local HEADSHOT_TYPE = Enum.ThumbnailType.HeadShot
 local HEADSHOT_SIZE = Enum.ThumbnailSize.Size150x150
 local OWNER_DISCS = 6 -- Palette PenOwnerDisc1..6 (P3D:244)
 local VISITORS_TODAY = 0 -- shortcut: phase 18 (visits) counts the visitors; the board reads 0 until then
+-- Pens3 phase 11: the two walk-up signs (LK:96-101 pen_upgrade_sign, K:4240): PEN SPACE and SHELF SPOTS.
+type SignKind = { model: string, at: CFrame, title: string, prompt: string, object: string, attribute: string }
+local SIGNS: { pen: SignKind, shelf: SignKind } = {
+	pen = {
+		model = "Sign",
+		at = PEN.signs.pen,
+		title = Strings.pen.sign.title,
+		prompt = "PenPrompt",
+		object = Strings.pen.prompt.object,
+		attribute = "SD_PenSign",
+	},
+	shelf = {
+		model = "ShelfSign",
+		at = PEN.signs.shelf,
+		title = Strings.pen.shelfSign.title,
+		prompt = "ShelfPrompt",
+		object = Strings.pen.shelfPrompt.object,
+		attribute = "SD_ShelfSign",
+	},
+}
+-- LK:182-189 base_shelf / LK:190-193 shelf_lock, in shelf studs (front -Z, toward the gate): boards as {size, centre}.
+local SHELF = {
+	back = { Vector3.new(27.4, 15.6, 0.6), Vector3.new(0, 7.8, 2.7) },
+	frame = {
+		{ Vector3.new(0.8, 15.6, 6), Vector3.new(-13.3, 7.8, 0) }, -- the sides
+		{ Vector3.new(0.8, 15.6, 6), Vector3.new(13.3, 7.8, 0) },
+		{ Vector3.new(25.8, 1, 6), Vector3.new(0, 0.5, 0) }, -- the bottom
+		{ Vector3.new(25.8, 0.8, 6), Vector3.new(0, 7.9, 0) }, -- the middle shelf (from y 7.5)
+		{ Vector3.new(27.4, 0.8, 6), Vector3.new(0, 15.2, 0) }, -- the top (from y 14.8)
+	},
+	dividers = { -6.6, 0, 6.6 }, -- 0.6 × 6.5 × 6 from y 1 and from y 8.3
+	dividerSize = Vector3.new(0.6, 6.5, 6),
+	dividerY = { 1 + 6.5 / 2, 8.3 + 6.5 / 2 },
+	collider = { Vector3.new(27.4, 15.6, 6), Vector3.new(0, 7.8, 0) }, -- K "block": the piece's whole box
+	bow = CFrame.new(0, 15.6, -0.5), -- LK:187 bowGeo(1.1)
+	bowScale = 1.1,
+	lockSize = Vector3.new(5.8, 6.3, 0.15), -- LK:191 lock_glass, from y 0.1 over the cubby's floor
+	lockY = 0.1 + 6.3 / 2,
+	lockZ = -3.125, -- L:247 shelf_lock_05 in the shelf's frame
+	lockTransparency = 0.5, -- K:98 Glass: "Glass, Transparency 0.5"
+	lockPicture = 2.4, -- reading: the padlock picture's side (studs), about v6's padlock (1.6 wide + its shackle)
+	-- Placeholder (PLAN phase 11, the TOP spot): a Frosting column r 1.5 × 3 and a Gold top r 1.7 × 0.3 on the shelf's
+	-- top, behind the bow, centred under Bases.pen.shelf.top; its lock picture lockPicture studs, lockLift over it.
+	topColumn = Vector3.new(3, 3, 3),
+	topCap = Vector3.new(0.3, 3.4, 3.4),
+	topReflectance = 0.2, -- K:73 Gold: "SmoothPlastic, Reflectance 0.2"
+	topLockLift = 1.6,
+}
 
 -- Module table
 
@@ -406,7 +473,9 @@ local function drawRails(folder: Instance, frame: CFrame, step: WorldLayout.PenS
 			run(front, CFrame.new(side * (gate + front / 2), y, PEN.frontZ))
 			run(step.d, CFrame.new(side * half, y, PEN.frontZ - step.d / 2) * ALONG_Z)
 		end
-		run(step.w, CFrame.new(0, y, PEN.frontZ - step.d))
+		if step.backWall == "fence" then -- pens3 phase 11: from 9 spots the shelf is the back
+			run(step.w, CFrame.new(0, y, PEN.frontZ - step.d))
+		end
 	end
 	rails.Parent = folder
 end
@@ -438,7 +507,9 @@ local function drawColliders(folder: Instance, frame: CFrame, step: WorldLayout.
 			CFrame.new(side * half, y, PEN.frontZ - step.d / 2)
 		)
 	end
-	collider(Vector3.new(step.w, COLLIDER_HEIGHT, COLLIDER_THICK), CFrame.new(0, y, PEN.frontZ - step.d))
+	if step.backWall == "fence" then -- pens3 phase 11: from 9 spots the shelf's collider is the back
+		collider(Vector3.new(step.w, COLLIDER_HEIGHT, COLLIDER_THICK), CFrame.new(0, y, PEN.frontZ - step.d))
+	end
 end
 
 -- The one-line width (px) of a sign text at `px` (TextService; a roomy estimate when it cannot answer).
@@ -465,12 +536,13 @@ local function signLabel(name: string, text: string, px: number, parent: Instanc
 	return label
 end
 
--- The PEN SPACE sign (see the header); `price` is the next spot's, nil at MAX.
-local function drawSign(folder: Instance, frame: CFrame, plot: number, price: number?)
-	local at = frame * PEN.signs.pen
+-- The PEN SPACE sign (see the header; pens3 phase 11: or the SHELF SPOTS sign, `kind`); `price` is the next buy's,
+-- nil at MAX.
+local function drawSign(folder: Instance, frame: CFrame, plot: number, price: number?, kind: SignKind)
+	local at = frame * kind.at
 	local max = price == nil
 	local sign = Instance.new("Model")
-	sign.Name = "Sign"
+	sign.Name = kind.model
 	block(piece("Post", Enum.PartType.Cylinder, SIGN_POST_SIZE, at * SIGN_POST, Palette.PenSignPost, sign))
 	local trim = if max then Palette.PenSignMax else Palette.PenSignCanBuy
 	block(piece("Trim", Enum.PartType.Block, SIGN_TRIM_SIZE, at * SIGN_TRIM, trim, sign))
@@ -482,7 +554,7 @@ local function drawSign(folder: Instance, frame: CFrame, plot: number, price: nu
 	gui.PixelsPerStud = SIGN_PX_PER_STUD
 	gui.LightInfluence = SIGN_LIGHT
 	local width = 1 - 2 * SIGN_INSET
-	local title = signLabel("Title", Strings.pen.sign.title, SIGN_TITLE.px, gui)
+	local title = signLabel("Title", kind.title, SIGN_TITLE.px, gui)
 	title.Position = UDim2.fromScale(SIGN_INSET, SIGN_TITLE.y)
 	title.Size = UDim2.fromScale(width, SIGN_TITLE.h)
 	local row = Instance.new("Frame")
@@ -517,9 +589,9 @@ local function drawSign(folder: Instance, frame: CFrame, plot: number, price: nu
 	line.Size = UDim2.fromScale(width, SIGN_LINE.h)
 	gui.Parent = face
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.Name = "PenPrompt"
-	prompt.ActionText = Strings.pen.prompt.action
-	prompt.ObjectText = Strings.pen.prompt.object
+	prompt.Name = kind.prompt
+	prompt.ActionText = Strings.pen.prompt.action -- "Buy" (pen.shelfPrompt.action says the same)
+	prompt.ObjectText = kind.object
 	prompt.HoldDuration = Config.Economy.Pen.signHoldSeconds
 	prompt.MaxActivationDistance = PROMPT_STUDS
 	prompt.RequiresLineOfSight = false
@@ -527,7 +599,7 @@ local function drawSign(folder: Instance, frame: CFrame, plot: number, price: nu
 	prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
 	prompt.Enabled = not max
 	prompt.Parent = face
-	sign:SetAttribute("SD_PenSign", plot)
+	sign:SetAttribute(kind.attribute, plot)
 	sign:SetAttribute("SD_Price", price)
 	sign.WorldPivot = at
 	sign.Parent = folder
@@ -566,6 +638,30 @@ local function rods(
 			parent
 		)
 	end
+end
+
+-- LK:58 bowGeo(k) at `pivot` (see BOW): a Model `name` of 2 loops (rings of rods) and a knot, its pivot the bow's
+-- origin (A12 / A16 turn it). Pens3 phase 11: the gate's (k 0.9) and the shelf's (k 1.1).
+local function drawBow(parent: Instance, pivot: CFrame, k: number, name: string)
+	local bow = Instance.new("Model")
+	bow.Name = name
+	for _, side in { -1, 1 } do
+		local loop = pivot
+			* CFrame.new(side * BOW.loopX * k, BOW.loopY * k, 0)
+			* CFrame.Angles(0, 0, -side * BOW.loopTurn)
+		rods("BowLoop", BOW.radius * k, BOW.tube * k, loop, BOW.rods, Palette.PenDecorIcing, bow)
+	end
+	local knot = 2 * BOW.knot * k
+	piece(
+		"BowKnot",
+		Enum.PartType.Ball,
+		Vector3.new(knot, knot, knot),
+		pivot * CFrame.new(0, BOW.knot * k, 0),
+		Palette.PenDecorIcing,
+		bow
+	)
+	bow.WorldPivot = pivot
+	bow.Parent = parent
 end
 
 -- A SurfaceGui on `face` (`width` × `height` studs) of `part`, K:7872-7873's way, and its design plane `inset` studs
@@ -735,27 +831,7 @@ local function drawGate(
 		end
 	end
 	if decor.bow then
-		local bow = Instance.new("Model")
-		bow.Name = "Bow"
-		local pivot = at * BOW.at
-		local k = BOW.scale
-		for _, side in { -1, 1 } do
-			local loop = pivot
-				* CFrame.new(side * BOW.loopX * k, BOW.loopY * k, 0)
-				* CFrame.Angles(0, 0, -side * BOW.loopTurn)
-			rods("BowLoop", BOW.radius * k, BOW.tube * k, loop, BOW.rods, Palette.PenDecorIcing, bow)
-		end
-		local knot = 2 * BOW.knot * k
-		piece(
-			"BowKnot",
-			Enum.PartType.Ball,
-			Vector3.new(knot, knot, knot),
-			pivot * CFrame.new(0, BOW.knot * k, 0),
-			Palette.PenDecorIcing,
-			bow
-		)
-		bow.WorldPivot = pivot
-		bow.Parent = gate
+		drawBow(gate, at * BOW.at, BOW.scale, "Bow")
 	end
 	gate.WorldPivot = at
 	gate.Parent = folder
@@ -850,6 +926,99 @@ local function drawDecor(folder: Instance, frame: CFrame, decor: PenMath.Decor)
 	end
 end
 
+-- Pens3 phase 11: a lock picture (img.icon.lock) filling `parent` (a SurfaceGui or a BillboardGui).
+local function lockPicture(parent: Instance)
+	local picture = Instance.new("ImageLabel")
+	picture.Name = "LockPicture"
+	picture.BackgroundTransparency = 1
+	picture.AnchorPoint = Vector2.new(0.5, 0.5)
+	picture.Position = UDim2.fromScale(0.5, 0.5)
+	picture.Size = UDim2.fromScale(1, 1)
+	picture.ScaleType = Enum.ScaleType.Fit
+	picture.Image = AssetTable.image("img.icon.lock") or ""
+	picture.Parent = parent
+end
+
+-- Pens3 phase 11: the shelf, its locks and the TOP spot's pedestal (see the header).
+local function drawShelf(folder: Instance, frame: CFrame, plot: number, pen: any)
+	local at = frame * PEN.shelf.at
+	local shelf = Instance.new("Model")
+	shelf.Name = "Shelf"
+	local tint = Palette[WorldLayout.Bases.colors[plot].full]
+	piece("ShelfBack", Enum.PartType.Block, SHELF.back[1], at * CFrame.new(SHELF.back[2]), tint, shelf)
+	for _, board in SHELF.frame do
+		piece("ShelfFrame", Enum.PartType.Block, board[1], at * CFrame.new(board[2]), Palette.PenDecorFrosting, shelf)
+	end
+	for _, y in SHELF.dividerY do
+		for _, x in SHELF.dividers do
+			local cframe = at * CFrame.new(x, y, 0)
+			piece("ShelfFrame", Enum.PartType.Block, SHELF.dividerSize, cframe, Palette.PenDecorFrosting, shelf)
+		end
+	end
+	drawBow(shelf, at * SHELF.bow, SHELF.bowScale, "ShelfBow") -- K's shelf_bow
+	local collider = block(
+		piece(
+			"ShelfCollider",
+			Enum.PartType.Block,
+			SHELF.collider[1],
+			at * CFrame.new(SHELF.collider[2]),
+			Palette.PenDecorFrosting,
+			shelf
+		)
+	)
+	collider.Transparency = 1
+	for index, cubby in PEN.shelf.cubbies do
+		local slot = Config.Economy.Pen.maxSpots + index
+		if not PenMath.isOpen(pen, slot) then
+			local cframe = at * CFrame.new(cubby.X, cubby.Y + SHELF.lockY, SHELF.lockZ)
+			local lock = piece("Lock", Enum.PartType.Block, SHELF.lockSize, cframe, Palette.PenShelfGlass, shelf)
+			lock.Material = Enum.Material.Glass
+			lock.Transparency = SHELF.lockTransparency
+			lock:SetAttribute("SD_ShelfSlot", slot)
+			local gui = Instance.new("SurfaceGui")
+			gui.Name = "LockGui"
+			gui.Face = Enum.NormalId.Front
+			gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+			gui.PixelsPerStud = GATE_PX_PER_STUD
+			gui.LightInfluence = SIGN_LIGHT
+			gui.MaxDistance = GATE_GUI_STUDS
+			local plane = Instance.new("Frame")
+			plane.Name = "Plane"
+			plane.BackgroundTransparency = 1
+			plane.AnchorPoint = Vector2.new(0.5, 0.5)
+			plane.Position = UDim2.fromScale(0.5, 0.5)
+			plane.Size = UDim2.fromScale(SHELF.lockPicture / SHELF.lockSize.X, SHELF.lockPicture / SHELF.lockSize.Y)
+			plane.Parent = gui
+			lockPicture(plane)
+			gui.Parent = lock
+		end
+	end
+	local spot = PEN.shelf.top
+	local top = Instance.new("Model")
+	top.Name = "Top"
+	local column = SHELF.topColumn
+	local base = at * CFrame.new(spot.X, spot.Y - SHELF.topCap.X - column.X, spot.Z)
+	local columnCFrame = base * CFrame.new(0, column.X / 2, 0) * UPRIGHT
+	piece("TopColumn", Enum.PartType.Cylinder, column, columnCFrame, Palette.PenDecorFrosting, top)
+	local capCFrame = base * CFrame.new(0, column.X + SHELF.topCap.X / 2, 0) * UPRIGHT
+	local cap = piece("TopCap", Enum.PartType.Cylinder, SHELF.topCap, capCFrame, Palette.PenShelfGold, top)
+	cap.Reflectance = SHELF.topReflectance
+	if pen.top ~= true then
+		local gui = Instance.new("BillboardGui")
+		gui.Name = "TopLock"
+		gui.Size = UDim2.fromScale(SHELF.lockPicture, SHELF.lockPicture) -- studs (a BillboardGui's scale)
+		gui.StudsOffsetWorldSpace = Vector3.new(0, SHELF.topCap.X / 2 + SHELF.topLockLift, 0)
+		gui.LightInfluence = 0
+		gui.MaxDistance = GATE_GUI_STUDS
+		lockPicture(gui)
+		gui.Parent = cap
+	end
+	top.WorldPivot = at * CFrame.new(spot)
+	top.Parent = shelf
+	shelf.WorldPivot = at
+	shelf.Parent = folder
+end
+
 -- The owner's pen on the plot (see the header): a fresh "Pen" Folder and the base Model's pen attributes. False (and
 -- nothing drawn) for a spot count with no step.
 local function drawPen(model: Instance, plot: number, pen: any, owner: any, name: string): boolean
@@ -864,12 +1033,17 @@ local function drawPen(model: Instance, plot: number, pen: any, owner: any, name
 	drawFence(folder, frame, step, pen.spots)
 	drawRails(folder, frame, step)
 	drawColliders(folder, frame, step)
-	drawSign(folder, frame, plot, PenMath.spotPrice(pen.spots + 1))
+	drawSign(folder, frame, plot, PenMath.spotPrice(pen.spots + 1), SIGNS.pen)
 	drawGate(folder, frame * PEN.gate, plot, step, decor, owner, name)
 	drawDecor(folder, frame, decor)
+	drawShelf(folder, frame, plot, pen) -- pens3 phase 11
+	drawSign(folder, frame, plot, PenMath.shelfPrice(pen), SIGNS.shelf)
 	folder.Parent = model
 	model:SetAttribute("SD_PenSpots", pen.spots)
-	model:SetAttribute("SD_Pen", PenMath.encode(PenMath.placed(pen)))
+	model:SetAttribute("SD_Pen", PenMath.encode(PenMath.inPen(pen))) -- pens3 phase 11: the walkers only
+	model:SetAttribute("SD_Shelf", PenMath.encodeShelf(PenMath.onShelf(pen)))
+	model:SetAttribute("SD_ShelfRows", pen.shelfRows)
+	model:SetAttribute("SD_ShelfTop", pen.top == true)
 	model:SetAttribute("SD_PenRate", PenMath.rate(pen))
 	model:SetAttribute("SD_PenTier", step.tier)
 	model:SetAttribute("SD_PenOwner", userIdOf(owner))

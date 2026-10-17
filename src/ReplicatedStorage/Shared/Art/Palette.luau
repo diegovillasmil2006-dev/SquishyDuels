@@ -598,6 +598,10 @@ local Palette = {
 	PenOwnerDisc4 = Color3.fromHex("#FFD84A"),
 	PenOwnerDisc5 = Color3.fromHex("#8DF27A"),
 	PenOwnerDisc6 = Color3.fromHex("#FF9C5B"),
+	-- Pens3 phase 11 (the shelf, LK:182-193; World only, BaseService): its back takes the plot's colour (BaseTint), its
+	-- frame PenDecorFrosting (K:7), its bow PenDecorIcing (K:31).
+	PenShelfGlass = Color3.fromHex("#DFF4FF"), -- K:98 the material Glass: a closed cubby's lock glass
+	PenShelfGold = Color3.fromHex("#FFC23C"), -- K:73 the material Gold: the TOP spot's pedestal top (placeholder)
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

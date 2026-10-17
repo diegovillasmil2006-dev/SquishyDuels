@@ -34,7 +34,12 @@
 --     screen and destroy() takes it away (engine only, with the lifecycle case);
 --   * pens3 phase 8: isFace(name): a part named with a face word (eye, mouth, shine, tongue, nostril, ... any case)
 --     keeps its look; formColor(color, form, share): Golden = 0.7 of the way to #FFC93C, Rainbow = 0.75 of the way to
---     the band of the part's height (7 bands, bottom #FF6FA3 .. top #B98CFF), plain = nil (K:3882-3920).
+--     the band of the part's height (7 bands, bottom #FF6FA3 .. top #B98CFF), plain = nil (K:3882-3920);
+--   * pens3 phase 11: shelfPlace(frame, slot, lift, labelY): a shelf squishy stands in its cubby (WorldLayout
+--     Bases.pen.shelf.cubbies, slot 13 + k - 1; the TOP spot 21 on Bases.pen.shelf.top), its bottom on the cubby's
+--     floor (the root `lift` over it), facing the gate like the shelf; its coin label on the board above the cubby
+--     (CHK:57: labelOver over the floor, labelZ in front), the TOP spot's labelY over its root; nil for any other slot;
+--     start() builds no shelf squishy in Edit mode (no SD_Shelf on any base there, even with the 10 tagged bases).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -204,6 +209,7 @@ return function(t: Context)
 		PenController.start()
 		expect.truthy(Workspace:FindFirstChild("SD_PenClient") ~= nil)
 		expect.equal(PenController.debugState().walkers, 0) -- no pen attributes in Edit mode: nothing is built
+		expect.equal(PenController.debugState().shelved, 0) -- pens3 phase 11: nor on the shelves
 		expect.equal(UIController.isRegistered("pen"), true) -- pens3 phase 6: the pen screen
 		PenController.destroy()
 		expect.equal(UIController.isRegistered("pen"), false)
@@ -310,6 +316,36 @@ return function(t: Context)
 			expect.truthy(same(PenController.formColor(white, 2, 0.5), white:Lerp(Color3.fromHex("#8DF27A"), 0.75)))
 			expect.truthy(same(PenController.formColor(white, 2, 1), white:Lerp(Color3.fromHex("#B98CFF"), 0.75)))
 			expect.truthy(same(PenController.formColor(white, 2, -1), white:Lerp(Color3.fromHex("#FF6FA3"), 0.75)))
+		end
+	)
+	t.test(
+		"pens3 phase 11: shelfPlace stands a squishy in its cubby facing the gate, its label above the cubby",
+		function()
+			local WorldLayout = t.requireShared("World/WorldLayout")
+			local SHELF = WorldLayout.Bases.pen.shelf
+			local frame = WorldLayout.plotFrame(3) :: CFrame
+			local at = frame * SHELF.at
+			local function near(a: Vector3, b: Vector3)
+				expect.near((a - b).Magnitude, 0, 1e-3)
+			end
+			-- Slot 13: the first cubby (K's order starts with v6's slot 2, LK:188 (-3.3, 1)).
+			local rest, label = PenController.shelfPlace(frame, 13, 0.9, 2)
+			near((rest :: CFrame).Position, at * Vector3.new(-3.3, 1 + 0.9, -0.5))
+			near((rest :: CFrame).LookVector, at.LookVector) -- toward the gate, like the shelf
+			near(
+				(rest :: CFrame).Position + (label :: Vector3),
+				at * Vector3.new(-3.3, 1 + SHELF.labelOver, SHELF.labelZ)
+			)
+			-- Slot 20: the last cubby (v6's slot 8, upper right of the design = (9.9, 8.3)).
+			local last = PenController.shelfPlace(frame, 20, 0, 2)
+			near((last :: CFrame).Position, at * Vector3.new(9.9, 8.3, -0.5))
+			-- The TOP spot: on its pedestal, the label over the squishy like a walker's.
+			local top, topLabel = PenController.shelfPlace(frame, 21, 1.5, 4.2)
+			near((top :: CFrame).Position, at * (SHELF.top + Vector3.new(0, 1.5, 0)))
+			near(topLabel :: Vector3, Vector3.new(0, 4.2, 0))
+			for _, slot in { 0, 1, 12, 22 } do
+				expect.equal(PenController.shelfPlace(frame, slot, 0, 2), nil)
+			end
 		end
 	)
 end

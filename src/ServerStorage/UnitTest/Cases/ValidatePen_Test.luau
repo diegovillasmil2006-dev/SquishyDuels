@@ -5,7 +5,9 @@
 -- one problem; each broken value is reported by name (phase 4: awayRate, a share in [0, 1]; phase 5: giftQueueMax, the
 -- Welcome prices (whole Coins, a rarity with sold squishies, never above their shop price) and the Frog gift; phase 7:
 -- the sell prices (every rarity, whole Coins, below what it can be bought for, times sellFormMult within maxCoins),
--- sellFormMult, sellMaxIds, sellHold and the buy-back's seconds and size).
+-- sellFormMult, sellMaxIds, sellHold and the buy-back's seconds and size; phase 11: the shelf rows and the TOP spot,
+-- J's prices (final_hagb_grip110.json shelfRowPrice / topPrice) strictly rising in the order they are bought, and
+-- placedMax = the pen's spots + the shelf's + 1).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -29,6 +31,15 @@ return function(t: Context)
 
 	local function prices(changes: { [number]: any }): any
 		local list = table.clone(Config.Economy.Pen.spotPrices)
+		for key, value in changes do
+			list[key] = value
+		end
+		return list
+	end
+
+	-- Pens3 phase 11: Config's shelf row prices with some changed.
+	local function rows(changes: { [number]: any }): any
+		local list = table.clone(Config.Economy.Pen.shelfRowPrices)
 		for key, value in changes do
 			list[key] = value
 		end
@@ -95,6 +106,14 @@ return function(t: Context)
 		expect.deepEqual(pen.sellHold, { form = 1, level = 10, rarity = "Epic" })
 		expect.equal(pen.buyBackSeconds, 600)
 		expect.equal(pen.buyBackMax, pen.toyBoxMax + pen.placedMax)
+		-- Pens3 phase 11: rows of 2, row 1 open from the start, rows 2-4 then the TOP spot at J's exact prices (the
+		-- plan's 31M / 250B / 11T / 140T); 12 + 8 + 1 = 21 placed.
+		expect.equal(pen.shelfStartRows, 1)
+		expect.equal(pen.shelfMaxRows, 4)
+		expect.equal(pen.shelfRowSpots, 2)
+		expect.deepEqual(pen.shelfRowPrices, { [2] = 31_000_000, [3] = 250_000_000_000, [4] = 11_000_000_000_000 })
+		expect.equal(pen.topPrice, 140_000_000_000_000)
+		expect.equal(pen.placedMax, 21)
 	end)
 
 	t.test("a missing section is one problem", function()
@@ -168,6 +187,21 @@ return function(t: Context)
 			{ changes = { buyBackSeconds = 0 }, field = "buyBackSeconds" },
 			{ changes = { buyBackMax = 0 }, field = "buyBackMax" },
 			{ changes = { buyBackMax = 70.5 }, field = "buyBackMax" },
+			-- Pens3 phase 11.
+			{ changes = { shelfStartRows = 0 }, field = "shelfStartRows" },
+			{ changes = { shelfStartRows = 5 }, field = "shelfStartRows" }, -- above shelfMaxRows
+			{ changes = { shelfMaxRows = 2.5 }, field = "shelfMaxRows" },
+			{ changes = { shelfRowSpots = 0 }, field = "shelfRowSpots" },
+			{ changes = { placedMax = 22 }, field = "placedMax" }, -- not 12 + 4 x 2 + 1
+			{ changes = { shelfRowPrices = 31_000_000 }, field = "shelfRowPrices" },
+			{ changes = { shelfRowPrices = rows({ [3] = 31_000_000 }) }, field = "shelfRowPrices[3]" }, -- no rise
+			{ changes = { shelfRowPrices = rows({ [2] = 31_000_000.5 }) }, field = "shelfRowPrices[2]" },
+			{ changes = { shelfRowPrices = rows({ [4] = false :: any }) }, field = "shelfRowPrices[4]" },
+			{ changes = { shelfRowPrices = rows({ [1] = 100 }) }, field = "shelfRowPrices" }, -- the free row
+			{ changes = { shelfRowPrices = rows({ [5] = 9e13 }) }, field = "shelfRowPrices" }, -- past shelfMaxRows
+			{ changes = { topPrice = 11_000_000_000_000 }, field = "topPrice" }, -- not above row 4
+			{ changes = { topPrice = Config.Economy.maxCoins + 1 }, field = "topPrice" },
+			{ changes = { topPrice = "140T" }, field = "topPrice" },
 		}
 		for _, case in cases do
 			local problems = validate(broken(case.changes))

@@ -51,6 +51,12 @@
 --   * pens3 phase 9: food {[foodId] = 0 for every Config food} joined the same way (reconcile gives an older profile
 --     none of each, and a food the Config gains later 0); sanitize: each count a whole number in [0, maxPieces]
 --     (floored, clamped; broken or missing -> 0), a key that is not a Config food dropped; every fix logged.
+--   * pens3 phase 11 (the shelf rows + the TOP spot): pen.shelfRows (default 1) and pen.top (default false) joined
+--     the same way (reconcile gives an older pen the start row; a missing value is the default, not logged); sanitize
+--     clamps shelfRows to a whole number in [1, 4] (non-finite or not a number -> 1) and fails closed on top (not a
+--     boolean -> false), each fix logged; a squishy in a shelf slot that is not open (a row not bought, the TOP spot
+--     not bought) goes to the Toy Box, never dropped, logged; an item with no slot fills the pen, then the shelf, then
+--     the TOP spot.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -207,7 +213,14 @@ return function(t: Context)
 		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
 		expected.food = NO_FOOD -- pens3 phase 9: the same
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
-		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) }, awayRate = 0 }
+		expected.pen = {
+			spots = 3,
+			nextId = 2,
+			items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
+			awayRate = 0,
+			shelfRows = 1, -- pens3 phase 11: the same (reconcile)
+			top = false,
+		}
 		for _, kind in { "banana", "toast" } do
 			if fixture.owned[kind] ~= nil then
 				-- Phase 6: a new item takes the next free spot (all three are Commons: id order).
@@ -263,10 +276,14 @@ return function(t: Context)
 		expect.equal(d.capsules, nil) -- pens3 phase 2: the capsules are gone
 		expect.deepEqual(d.autoClick, { step = 0, at = 0 }) -- auto-clicker check (2026-10-16): no strike
 		-- Pens3 phase 1: Kitty Bread walks in the 3 free spots.
-		expect.deepEqual(
-			d.pen,
-			{ spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) }, awayRate = 0 }
-		)
+		expect.deepEqual(d.pen, {
+			spots = 3,
+			nextId = 2,
+			items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
+			awayRate = 0,
+			shelfRows = 1, -- pens3 phase 11: the shelf's start row, no TOP spot
+			top = false,
+		})
 		-- Pens3 phase 5: no gift waiting, no fixed-order box opened, the Frog gift still to come.
 		expect.deepEqual(d.giftQueue, {})
 		expect.deepEqual(d.boxOrder, { snack = 0, sweet = 0 })
@@ -814,9 +831,11 @@ return function(t: Context)
 				penItem(1, "kitty_bread", 0, 1, 0, 1), -- the default's slot 1
 				penItem(2, "banana", 0, 1, 0, 3),
 				penItem(3, "dragon", 0, 1, 0, 2), -- phase 6: the best of the added items takes the first free spot
-				penItem(4, "toast"), -- the Toy Box: the 3 spots are full
+				penItem(4, "toast", 0, 1, 0, 13), -- pens3 phase 11: the pen is full, the shelf's start row is not
 			},
 			awayRate = 0, -- pens3 phase 4: from reconcile
+			shelfRows = 1, -- pens3 phase 11: from reconcile
+			top = false,
 		})
 		expect.equal(penProblems(result.problems), 6) -- every added item is logged, and its slot
 		-- The next load changes nothing.
@@ -867,6 +886,8 @@ return function(t: Context)
 		expect.deepEqual(pen, {
 			spots = 3,
 			nextId = 11,
+			shelfRows = 1, -- pens3 phase 11: missing -> the start row (not logged)
+			top = false,
 			items = {
 				penItem(7, "kitty_bread", 0, 1, 0, 1),
 				penItem(8, "toast", 0, 1, 0, 2),
@@ -898,6 +919,8 @@ return function(t: Context)
 		expect.deepEqual(pen, {
 			spots = 4,
 			nextId = 5,
+			shelfRows = 1, -- pens3 phase 11
+			top = false,
 			items = {
 				penItem(1, "kitty_bread", 0, 1, 0, 2),
 				penItem(3, "dragon", 1, 9, 0, 1),
@@ -932,9 +955,15 @@ return function(t: Context)
 				penItem(1, "kitty_bread", 2, 70, 7, 1),
 				penItem(4, "toast", 1, 12, 3, 12, true), -- phase 6: a slot and a lock survive
 				penItem(8, "banana"),
+				penItem(6, "bird", 0, 1, 0, 16), -- pens3 phase 11: a shelf slot and the TOP spot survive
+				penItem(7, "dragon", 0, 1, 0, 21),
 			},
 			awayRate = 1_234_567.25, -- pens3 phase 4: a rate with a fraction (a levelled pen)
+			shelfRows = 2,
+			top = true,
 		}
+		profile.owned.bird = { at = 1, src = "shop" }
+		profile.owned.dragon = { at = 1, src = "shop" }
 		local result = load(HttpService:JSONDecode(HttpService:JSONEncode(profile)))
 		expect.equal(result.status, "ok")
 		expect.deepEqual(result.problems, {})
@@ -953,14 +982,15 @@ return function(t: Context)
 				oldItem(4, "banana"),
 				oldItem(5, "dragon"),
 			}
-			-- What the pen paid before phase 6: its best 3 (Dragon, Butter, then Kitty Bread: the lower id of the 10s).
-			local paid = 640 + 40 + 10
+			-- What the pen paid before phase 6: its best 3 (Dragon, Butter, then Kitty Bread: the lower id of the 10s);
+			-- pens3 phase 11: the next two (Toast, Banana) fill the shelf's start row and earn too.
+			local paid = 640 + 40 + 10 + 10 + 10
 			local pen, owned, problems = fixedPen({ spots = 3, nextId = 6, items = items, awayRate = 0 })
 			expect.deepEqual(pen.items, {
 				penItem(1, "kitty_bread", 0, 1, 0, 3),
 				penItem(2, "butter", 0, 1, 0, 2),
-				penItem(3, "toast"),
-				penItem(4, "banana"),
+				penItem(3, "toast", 0, 1, 0, 13),
+				penItem(4, "banana", 0, 1, 0, 14),
 				penItem(5, "dragon", 0, 1, 0, 1),
 			})
 			expect.equal(PenMath.rate(pen), paid) -- the same squishies keep paying
@@ -1300,4 +1330,136 @@ return function(t: Context)
 			expect.equal(notesAbout(clean, "food"), 0)
 		end
 	)
+	-- Pens3 phase 11: the shelf rows and the TOP spot.
+	t.test(
+		"pen.shelfRows and pen.top join schema 2: defaults 1 / false; reconcile fills an older pen, no problem",
+		function()
+			local fresh = ProfileSchema.defaults(NOW) :: any
+			expect.equal(fresh.pen.shelfRows, 1)
+			expect.equal(fresh.pen.top, false)
+			local older = load(FIXTURE_V1).profile :: any
+			older.pen.shelfRows, older.pen.top = nil, nil -- a pen saved before phase 11
+			local result = load(older)
+			expect.equal(result.profile.pen.shelfRows, 1)
+			expect.equal(result.profile.pen.top, false)
+			expect.deepEqual(result.problems, {})
+			-- sanitize alone (no reconcile first): a missing value is the default, not logged.
+			local only = { kitty_bread = { at = 1, src = "starter" } }
+			local pen, _, problems =
+				fixedPen({ spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) } }, only)
+			expect.equal(pen.shelfRows, 1)
+			expect.equal(pen.top, false)
+			expect.equal(penProblems(problems), 0)
+		end
+	)
+
+	t.test("sanitize pen.shelfRows / top: clamped to [1, 4], top fails closed to false; every fix logged", function()
+		local only = { kitty_bread = { at = 1, src = "starter" } }
+		for _, case in
+			{ { 1, 1 }, { 4, 4 }, { 0, 1 }, { 7, 4 }, { 2.5, 2 }, { 0 / 0, 1 }, { "3", 1 }, { -2, 1 } } :: { { any } }
+		do
+			local pen, _, problems = fixedPen({
+				spots = 3,
+				nextId = 2,
+				items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
+				shelfRows = case[1],
+				top = false,
+			}, only)
+			expect.equal(pen.shelfRows, case[2])
+			expect.equal(penProblems(problems), if case[1] == case[2] then 0 else 1)
+		end
+		for _, case in { { true, true }, { false, false }, { "yes", false }, { 1, false } } :: { { any } } do
+			local pen, _, problems = fixedPen({
+				spots = 3,
+				nextId = 2,
+				items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
+				shelfRows = 1,
+				top = case[1],
+			}, only)
+			expect.equal(pen.top, case[2])
+			expect.equal(penProblems(problems), if case[1] == case[2] then 0 else 1)
+		end
+	end)
+
+	t.test("sanitize shelf slots: a closed shelf slot or an unbought TOP spot -> the Toy Box, never dropped", function()
+		local owned = {
+			kitty_bread = { at = 1, src = "starter" },
+			toast = { at = 1, src = "shop" },
+			banana = { at = 1, src = "shop" },
+			bird = { at = 1, src = "shop" },
+			dragon = { at = 1, src = "shop" },
+		}
+		local pen, _, problems = fixedPen({
+			spots = 3,
+			nextId = 7,
+			shelfRows = 1,
+			top = false,
+			items = {
+				penItem(1, "kitty_bread", 0, 1, 0, 1),
+				penItem(2, "toast", 0, 1, 0, 13), -- row 1: open, kept
+				penItem(3, "banana", 0, 1, 0, 15), -- row 2: not bought -> the Toy Box
+				penItem(4, "bird", 0, 1, 0, 21), -- the TOP spot: not bought -> the Toy Box
+				penItem(5, "dragon", 0, 1, 0, 22), -- past the TOP spot -> the Toy Box
+				penItem(6, "toast", 0, 1, 0, 13), -- 13 again -> the Toy Box
+			},
+		}, owned)
+		expect.deepEqual(pen.items, {
+			penItem(1, "kitty_bread", 0, 1, 0, 1),
+			penItem(2, "toast", 0, 1, 0, 13),
+			penItem(3, "banana"),
+			penItem(4, "bird"),
+			penItem(5, "dragon"),
+			penItem(6, "toast"),
+		})
+		expect.equal(penProblems(problems), 4)
+		-- Bought: the same slots are kept.
+		local bought = fixedPen({
+			spots = 3,
+			nextId = 4,
+			shelfRows = 2,
+			top = true,
+			items = {
+				penItem(1, "kitty_bread", 0, 1, 0, 1),
+				penItem(2, "banana", 0, 1, 0, 15),
+				penItem(3, "bird", 0, 1, 0, 21),
+			},
+		}, owned)
+		expect.equal(bought.items[2].slot, 15)
+		expect.equal(bought.items[3].slot, 21)
+		-- No slot (an older save): the pen first, then the shelf's open spots, then the TOP spot, the best first.
+		local filled = fixedPen({
+			spots = 3,
+			nextId = 6,
+			shelfRows = 1,
+			top = true,
+			items = {
+				oldItem(1, "kitty_bread"),
+				oldItem(2, "toast"),
+				oldItem(3, "banana"),
+				oldItem(4, "bird"),
+				oldItem(5, "dragon"),
+			},
+		}, owned)
+		local slots = {}
+		for _, item in filled.items do
+			slots[item.kind] = item.slot
+		end
+		-- Rates: Dragon 640, Bird 160, then the 10s by id (Kitty Bread 1, Toast 2, Banana 3).
+		expect.deepEqual(slots, { dragon = 1, bird = 2, kitty_bread = 3, toast = 13, banana = 14 })
+		filled = fixedPen({
+			spots = 3,
+			nextId = 7,
+			shelfRows = 1,
+			top = true,
+			items = {
+				oldItem(1, "kitty_bread"),
+				oldItem(2, "toast"),
+				oldItem(3, "banana"),
+				oldItem(4, "bird"),
+				oldItem(5, "dragon"),
+				oldItem(6, "toast"),
+			},
+		}, owned)
+		expect.equal(filled.items[6].slot, 21) -- the last open spot: the TOP spot
+	end)
 end

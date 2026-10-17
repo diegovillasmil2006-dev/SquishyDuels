@@ -51,6 +51,14 @@
 --   requestFor(pending, key, newId) -> (id, pending): the requestId of an action (key = what it does): the pending
 --     one when it is the same action (a retry after an answer that never came), else newId(); keep the pending record
 --     until the server answers.
+-- Pens3 phase 11 (the shelf rows + the TOP spot; the server decides, PenPlace):
+--   view(...) also has `shelf` (a card per open shelf spot, 13.. in slot order, PenMath.openSlots) with shelfHeading
+--     (pen.screen.shelfHeading: the squishies on it / its open spots) and `top` (the TOP spot's card once bought) with
+--     topHeading; the count line counts the pen's own spots (PenMath.inPen). A shelf or TOP squishy is placed like a
+--     pen one (its actions, a picking target: tap passes its slot); a Toy Box one PLACEs while any open spot is free
+--     (PenMath.freeSlot: the pen, then the shelf, then the TOP spot). The shelf is bought at the SHELF SPOTS sign only
+--     (no buy button here: the PEN SPACE sign's way, PLAN phase 11).
+--   walkerItem maps a walker to the pen's own spots (PenMath.inPen: BaseService's SD_Pen order).
 
 -- Services
 
@@ -129,6 +137,11 @@ export type View = {
 	foodHeading: string?,
 	foodSelected: FoodCard?,
 	foodLine: string,
+	-- Pens3 phase 11.
+	shelf: { Spot },
+	shelfHeading: string?,
+	top: Spot?,
+	topHeading: string?,
 }
 export type CardText = { name: string, rate: string, level: string }
 
@@ -140,6 +153,8 @@ local SCREEN_UI = Config.UI.Pen.screen -- pens3 phase 7
 local HOLD = PEN.sellHold
 local FOOD = Config.Economy.Food -- pens3 phase 9
 local FOOD_BUY = SCREEN_UI.foodBuy
+local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11
+local TOP_SLOT = PEN.placedMax
 
 -- Module table
 
@@ -428,6 +443,20 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 	for slot = 1, open do
 		table.insert(spots, { slot = slot, item = bySlot[slot] })
 	end
+	-- Pens3 phase 11: the shelf's open spots and the TOP spot.
+	local shelf: { Spot } = {}
+	local top: Spot? = nil
+	local onShelf = #PenMath.onShelf(pen)
+	for _, slot in PenMath.openSlots(pen) do
+		if slot == TOP_SLOT then
+			top = { slot = slot, item = bySlot[slot] }
+		elseif slot >= SHELF_FIRST then
+			table.insert(shelf, { slot = slot, item = bySlot[slot] })
+		end
+	end
+	if top and top.item then
+		onShelf -= 1 -- the TOP spot's squishy is counted under its own heading
+	end
 	local selected = if selectedId ~= nil then PenMath.find(pen, selectedId) else nil
 	local isPlaced = selected ~= nil and bySlot[selected.slot] == selected
 	local isToy = selected ~= nil and table.find(toys, selected) ~= nil
@@ -438,7 +467,10 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 	local view: View = {
 		spots = spots,
 		toys = toys,
-		status = Strings.format(SCREEN.count, { placed = #placed, spots = open, toys = #toys, max = PEN.toyBoxMax }),
+		status = Strings.format(
+			SCREEN.count,
+			{ placed = #PenMath.inPen(pen), spots = open, toys = #toys, max = PEN.toyBoxMax }
+		),
 		hint = if #toys == 0 and open > 0 then SCREEN.toyEmpty elseif selected == nil then SCREEN.selectHint else nil,
 		selected = selected,
 		picking = pickingNow,
@@ -447,6 +479,12 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 		marked = {},
 		foods = foodCards(more.food), -- pens3 phase 9
 		foodLine = foodLine(more.food),
+		shelf = shelf, -- pens3 phase 11
+		shelfHeading = if #shelf > 0
+			then Strings.format(SCREEN.shelfHeading, { placed = onShelf, open = #shelf })
+			else nil,
+		top = top,
+		topHeading = if top then SCREEN.topHeading else nil,
 	}
 	view.foodHeading = if #view.foods > 0 then SCREEN.foodHeading else nil
 	view.soldHeading = if #view.sold > 0 then SCREEN.soldHeading else nil
@@ -542,7 +580,7 @@ function PenFormat.pickFor(pen: any, kind: string): number?
 end
 
 function PenFormat.walkerItem(pen: any, index: number, look: any): number?
-	local placed = PenMath.placed(pen)
+	local placed = PenMath.inPen(pen) -- pens3 phase 11: the walkers are the pen's own spots
 	local at = placed[index]
 	if at ~= nil and sameLook(at, look) then
 		return at.id

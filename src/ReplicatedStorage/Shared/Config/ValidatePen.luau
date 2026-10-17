@@ -19,7 +19,12 @@
 --     rarity is sold for (its shopPrices and its Welcome price: buying to sell always loses) and, times the biggest
 --     sellFormMult, within maxCoins; sellFormMult one whole number >= 1 per form (#formMult), never falling;
 --     sellMaxIds a whole number >= 1; sellHold {form in [0, #formMult - 1], level in [1, maxLevel], rarity a
---     Rarity}; buyBackSeconds a number > 0; buyBackMax a whole number >= 1.
+--     Rarity}; buyBackSeconds a number > 0; buyBackMax a whole number >= 1;
+--   * phase 11 (the shelf): shelfMaxRows and shelfRowSpots whole numbers >= 1, shelfStartRows a whole number in [1,
+--     shelfMaxRows]; placedMax = maxSpots + shelfMaxRows x shelfRowSpots + 1 (the pen, the shelf, the TOP spot);
+--     shelfRowPrices has exactly the keys shelfStartRows + 1 .. shelfMaxRows, each whole Coins in [1, maxCoins],
+--     strictly rising, and topPrice whole Coins in [1, maxCoins] above the last row's (bought last: a retried buy
+--     always carries a wrong price and is never charged twice).
 
 local Catalog = require(script.Parent.Parent.Catalog)
 local Rarity = require(script.Parent.Parent.Rarity)
@@ -221,6 +226,47 @@ return function(config: any): { string }
 	expect(
 		isWhole(c.buyBackMax) and c.buyBackMax >= 1,
 		`{P}.buyBackMax must be a whole number >= 1 (got {show(c.buyBackMax)})`
+	)
+
+	-- Pens3 phase 11: the shelf rows and the TOP spot.
+	local rows, row = c.shelfMaxRows, c.shelfRowSpots
+	expect(isWhole(rows) and rows >= 1, `{P}.shelfMaxRows must be a whole number >= 1 (got {show(rows)})`)
+	expect(isWhole(row) and row >= 1, `{P}.shelfRowSpots must be a whole number >= 1 (got {show(row)})`)
+	local start = c.shelfStartRows
+	expect(
+		isWhole(start) and start >= 1 and isWhole(rows) and start <= rows,
+		`{P}.shelfStartRows must be a whole number in [1, shelfMaxRows] (got {show(start)})`
+	)
+	if isWhole(last) and isWhole(rows) and isWhole(row) then
+		expect(
+			c.placedMax == last + rows * row + 1,
+			`{P}.placedMax must be maxSpots + shelfMaxRows x shelfRowSpots + 1 (got {show(c.placedMax)})`
+		)
+	end
+	local rowPrices = c.shelfRowPrices
+	local previous = 0
+	if type(rowPrices) ~= "table" then
+		table.insert(problems, `{P}.shelfRowPrices must be a table`)
+	elseif isWhole(start) and isWhole(rows) then
+		for key in rowPrices do
+			expect(
+				isWhole(key) and key > start and key <= rows,
+				`{P}.shelfRowPrices has a key {show(key)} outside {start + 1} .. {rows}`
+			)
+		end
+		for index = start + 1, rows do
+			local price = rowPrices[index]
+			expect(
+				isWhole(price) and price >= 1 and price <= maxCoins and price > previous,
+				`{P}.shelfRowPrices[{index}] must be whole Coins in [1, maxCoins], above the last (got {show(price)})`
+			)
+			previous = if isNumber(price) then price else previous
+		end
+	end
+	local top = c.topPrice
+	expect(
+		isWhole(top) and top >= 1 and top <= maxCoins and top > previous,
+		`{P}.topPrice must be a whole number of Coins in [1, maxCoins] above the last row's (got {show(top)})`
 	)
 	return problems
 end

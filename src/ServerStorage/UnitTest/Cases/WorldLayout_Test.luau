@@ -33,6 +33,10 @@
 --     facing the pen;
 --   * pens3 phase 10: the gate in the gate gap at (0, 0, 19), the lamps at (±12.75, 0, 20.25), the trees at (±13.55,
 --     0, 0) (L:187-193), all facing the gate side, inside every plot; the +X tree gold, the -X one pink;
+--   * pens3 phase 11: the SHELF SPOTS sign at (-10, 0, 20.4) facing the gate side (L:189, K:4240: right of the gate);
+--     the shelf (L:194 base_shelf_01, at v6 local z 16 on every base) at (0, 0, -16) facing the gate side, its front
+--     (6 deep, LK:184) the back of a 9+ spot pen; its 8 cubbies (LK:188 slot_1..8) in K's order (K:4194-4203: 2, 3,
+--     1, 4, 6, 7, 5, 8, two to a row) and the TOP spot over its top, all inside every plot;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -1362,6 +1366,50 @@ return function(t: Context)
 			local frame = WorldLayout.plotFrame(index) :: CFrame
 			for _, at in { pen.gate, pen.lamps[1], pen.lamps[2], pen.trees[1].at, pen.trees[2].at } do
 				expect.truthy(WorldLayout.inPlot(index, frame * at.Position))
+			end
+		end
+	end)
+
+	-- Pens3 phase 11: the shelf, its cubbies, the TOP spot and the SHELF SPOTS sign (lobby design v6, turned).
+	t.test("pens3 phase 11: the SHELF SPOTS sign, the shelf at the plot's back, its cubbies in K's order", function()
+		local pen = WorldLayout.Bases.pen
+		local toward = Vector3.new(0, 0, 1)
+		local sign = pen.signs.shelf
+		expect.truthy(vectorNear(sign.Position, Vector3.new(-10, 0, 20.4)))
+		expect.truthy(vectorNear(sign.LookVector, toward, 1e-6))
+		local shelf = pen.shelf
+		expect.truthy(vectorNear(shelf.at.Position, Vector3.new(0, 0, -16)))
+		expect.truthy(vectorNear(shelf.at.LookVector, toward, 1e-6))
+		-- Its front face (3 studs in front of its middle) is the back of every pen whose back wall is the shelf.
+		local front = shelf.at * Vector3.new(0, 0, -3)
+		for spots = 9, 12 do
+			expect.near(front.Z, pen.frontZ - pen.steps[spots].d, 1e-6)
+		end
+		expect.truthy(front.Z < pen.frontZ - pen.steps[8].d) -- before 9 spots it stands behind the pen
+		-- LK:188's slots in K's order, two to a row: the middle pair below, the outer pair below, then the same above.
+		local want = {
+			Vector3.new(-3.3, 1, -0.5),
+			Vector3.new(3.3, 1, -0.5),
+			Vector3.new(-9.9, 1, -0.5),
+			Vector3.new(9.9, 1, -0.5),
+			Vector3.new(-3.3, 8.3, -0.5),
+			Vector3.new(3.3, 8.3, -0.5),
+			Vector3.new(-9.9, 8.3, -0.5),
+			Vector3.new(9.9, 8.3, -0.5),
+		}
+		expect.equal(#shelf.cubbies, 8)
+		expect.equal(#shelf.cubbies, Config.Economy.Pen.shelfMaxRows * Config.Economy.Pen.shelfRowSpots)
+		for index, at in want do
+			expect.truthy(vectorNear(shelf.cubbies[index], at))
+		end
+		expect.truthy(shelf.top.Y > 15.6) -- over the shelf's top (LK:186: 15.6 tall)
+		for index = 1, 10 do
+			local frame = WorldLayout.plotFrame(index) :: CFrame
+			expect.truthy(WorldLayout.inPlot(index, frame * sign.Position))
+			for _, x in { -13.7, 13.7 } do -- the shelf's corners (27.4 wide)
+				for _, z in { -3, 3 } do
+					expect.truthy(WorldLayout.inPlot(index, frame * (shelf.at * Vector3.new(x, 0, z))))
+				end
 			end
 		end
 	end)

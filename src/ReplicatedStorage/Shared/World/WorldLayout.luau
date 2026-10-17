@@ -827,8 +827,10 @@ local Bases = {
 	-- this plot frame (+Z = the gate side): its front fence at z frontZ with the gateWidth gap centred on x 0, built of
 	-- `segment`-stud fence pieces, growing toward -Z. steps[spots] = the pen at that many open spots: w (along x) × d
 	-- (along z) studs, the fence tier (1 Wafer, 2 Mint, 3 Royal), K's fence segment count and its back wall ("shelf"
-	-- from 9 spots: a fence until the shelf of phase 11). edgeMargin = how far a walking squishy keeps from the fence
-	-- (PenMath.wanderRect). signs.pen = the PEN SPACE sign (L:166-194 pen_upgrade_sign_01), facing +Z.
+	-- from 9 spots: the shelf stands there, pens3 phase 11). edgeMargin = how far a walking squishy keeps from the
+	-- fence (PenMath.wanderRect). signs.pen = the PEN SPACE sign (L:166-194 pen_upgrade_sign_01), facing +Z; pens3
+	-- phase 11: signs.shelf = the SHELF SPOTS sign (L:189 pen_upgrade_sign_02 turned: (-10.03, 20.37); K:4240 "PEN
+	-- SPACE (left) and SHELF SPOTS (right)", the plan's (-10, 0, 20.4)).
 	pen = {
 		frontZ = 19,
 		gateWidth = 8,
@@ -846,7 +848,34 @@ local Bases = {
 			[11] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
 			[12] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
 		} :: { [number]: PenStep },
-		signs = { pen = CFrame.new(10, 0, 20.3) * CFrame.Angles(0, math.pi, 0) },
+		signs = {
+			pen = CFrame.new(10, 0, 20.3) * CFrame.Angles(0, math.pi, 0),
+			shelf = CFrame.new(-10, 0, 20.4) * CFrame.Angles(0, math.pi, 0),
+		},
+		-- Pens3 phase 11 (K:798-842 base_shelf, LK:182-189; L:194 / :225 / :246: every base's shelf at v6 local
+		-- (0, 16), turned like the gate, its front toward +Z): the shelf's frame `at` (6 deep: its front is the back of
+		-- a 9+ spot pen); `cubbies` = LK:188's slot_1..8 (x ±3.3 / ±9.9, y 1 and 8.3, z -0.5, in shelf studs) in K's
+		-- order (K:4194-4203: v6 slots 2, 3, 1, 4, 6, 7, 5, 8), so cubby k is pen slot 12 + k and each shelf row is the
+		-- next two (placeholder: v6 opens them one by one, PLAN phase 11); `top` = where the TOP spot's squishy
+		-- stands (placeholder: a pedestal on the shelf's top behind the bow, BaseService); `labelOver` = the coin
+		-- label's centre over a cubby's floor (CHK:57: on the board above the cubby, 6.5 + half its 0.8) and `labelZ`
+		-- its depth (0.2 in front of the shelf's front, reading).
+		shelf = {
+			at = CFrame.new(0, 0, -16) * CFrame.Angles(0, math.pi, 0),
+			cubbies = {
+				Vector3.new(-3.3, 1, -0.5),
+				Vector3.new(3.3, 1, -0.5),
+				Vector3.new(-9.9, 1, -0.5),
+				Vector3.new(9.9, 1, -0.5),
+				Vector3.new(-3.3, 8.3, -0.5),
+				Vector3.new(3.3, 8.3, -0.5),
+				Vector3.new(-9.9, 8.3, -0.5),
+				Vector3.new(9.9, 8.3, -0.5),
+			},
+			top = Vector3.new(0, 18.9, 1.6),
+			labelOver = 6.9,
+			labelZ = -3.2,
+		},
 		-- Pens3 phase 10 (L:187-193, turned like the sign: every front toward +Z): the gate (pen_gate_01) in the gate
 		-- gap; the 2 lollipop lamps at the front corners (tier 2 on) and the 2 gumdrop trees by the side fences (tier
 		-- 3), each tree's canopy a Palette token (L's GumdropTint tints: the Royal post's gold at +X, its rail pink at
@@ -863,9 +892,12 @@ local Bases = {
 		},
 		-- The most parts BaseService draws for one pen (pens3 phase 3; phase 10: 12 spots = 26 fence segments of 3
 		-- pickets, 25 posts with their balls (the gate's posts stand on the other 2), the 10 rail runs, 5 colliders,
-		-- the sign's 3 parts, the gate's 8 with its 7 bulbs and the 13-part bow, 2 lamps of 2 and 2 trees of 6); the
-		-- lobby budget adds it to every plot.
-		maxParts = 190,
+		-- the sign's 3 parts, the gate's 8 with its 7 bulbs and the 13-part bow, 2 lamps of 2 and 2 trees of 6 = 190);
+		-- the lobby budget adds it to every plot. Pens3 phase 11: the worst state is 10-12 spots with the start shelf
+		-- row (the shelf's back wall frees the 6 back segments' 18 pickets, 5 posts + 5 balls, 2 rails and the back
+		-- collider: 159), + the shelf's 1 back, 11 boards, 13-part bow and collider, the TOP spot's 2-part pedestal, 6
+		-- cubby locks and the SHELF SPOTS sign's 3 = 196 (everything bought: 190).
+		maxParts = 196,
 	},
 	-- Spec §8: plot i's colour (full: rim, fence caps, gate; light: the plinth floor); an open plot is grey (§4).
 	colors = baseColors,
@@ -1511,7 +1543,8 @@ local WorldLayout = {
 		-- Spec §7 part budget, checked by the lobby generator with every plot at its worst (pens3 phase 3: its static
 		-- parts + a full pen, Bases.pen.maxParts): the whole island, the hub (everything but the bases, the garden, the
 		-- beach and the sky), one base, and the garden + beach + sky. [P] baseParts: 220 held the capsules; a plot's 80
-		-- static parts + the 190 of a full pen (phase 10: with its gate and tier III decor) need 270.
+		-- static parts + the 190 of a full pen (phase 10: with its gate and tier III decor) need 270; phase 11: + the
+		-- shelf at its worst (Bases.pen.maxParts 196) 276.
 		islandParts = 5200,
 		hubParts = 2000,
 		baseParts = 280,

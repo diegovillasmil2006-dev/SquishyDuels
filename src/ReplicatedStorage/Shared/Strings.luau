@@ -177,6 +177,8 @@ local Strings = {
 			-- Pens3 phase 9 (Feed / FeedAll; PenMath.feedDecision, feedAllPlan, PenService).
 			maxLevel = "That squishy is at the top level for now.",
 			nothingToFeed = "Nothing to feed. Your pen squishies need more food, or they are at the top level.",
+			-- Pens3 phase 11 (PenBuyShelf; PenMath.shelfDecision, PenService).
+			shelfMax = "Your whole shelf and the TOP spot are open!",
 		},
 		-- Pens3 phase 9 (BuyFood, Feed; PenMath.buyFoodDecision, feedDecision, PenService).
 		food = {
@@ -1124,6 +1126,15 @@ local Strings = {
 			action = "Buy",
 			object = "Pen space",
 		},
+		-- Pens3 phase 11: the SHELF SPOTS sign (P3D:255; its can buy / need more / MAX lines are pen.sign's) and its
+		-- prompt.
+		shelfSign = {
+			title = "SHELF SPOTS",
+		},
+		shelfPrompt = {
+			action = "Buy",
+			object = "Shelf spots",
+		},
 		rate = "+{coins}/s",
 		-- Pens3 phase 10: the base gate (lobby design v6, P3D:250 and :277): the line under the owner's name on the
 		-- owner sign ({n} the base number) and the visitor board's heart and count ({count} the visitors who squeezed
@@ -1197,6 +1208,9 @@ local Strings = {
 			buyFood = "BUY {n}",
 			foodNote = "Food inside: {coins} Coins, not refunded.", -- the sell confirm (D1:223)
 			levelsUp = { one = "+1 level", many = "+{n} levels" },
+			-- Pens3 phase 11: the shelf's open spots ({placed} / {open}) and the TOP spot, each its own section.
+			shelfHeading = "On your shelf {placed}/{open}",
+			topHeading = "TOP spot",
 		},
 	},
 

@@ -26,7 +26,7 @@
 -- PenLock calls. Phases 7-8 (selling, the buy-back, fusion): BuyBackEntry, ProfileV1.buyBack / bag, the `buyBack`
 -- state field, SellResult / FuseResult and the SellItems / SellAll / BuyBack / Fuse calls.
 -- Phase 9 (food and levels): FoodCounts, ProfileV1.food, the `food` state field, FoodResult and the BuyFood / Feed /
--- FeedAll calls.
+-- FeedAll calls. Phase 11 (the shelf rows + the TOP spot): PenState.shelfRows / top and the PenBuyShelf call.
 
 -- == Catalog (§4.1) ==
 
@@ -138,7 +138,7 @@ export type AutoClickMemory = { step: number, at: number }
 -- Pens3 phase 1: one squishy of the pen (Shared/PenMath): `id` a whole number unique in the pen (from PenState.nextId),
 -- `kind` a Catalog squishy id, `form` 0 plain / 1 Golden / 2 Rainbow, `level` 1..Config.Economy.Pen.maxLevel, `coat`
 -- 0 none .. 7 (Config.Economy.Pen.coatMult). Phase 1 makes only form 0, level 1, coat 0, one per owned kind. Phase 6:
--- `slot` 0 = the Toy Box, 1..spots the pen (13..20 the shelf and 21 the TOP spot from phase 11; unique except 0),
+-- `slot` 0 = the Toy Box, 1..spots the pen (phase 11: 13..20 the shelf, 2 a row, and 21 the TOP spot; unique except 0),
 -- `locked` = never sold, fused or moved by auto-place (the player can still move it).
 export type PenItem = {
 	id: number,
@@ -151,8 +151,17 @@ export type PenItem = {
 }
 -- The player's pen: `spots` open (Pen.startSpots .. Pen.maxSpots; the items in slots 1..spots walk in it and pay),
 -- `nextId` the id of the next new item, `items` every pen squishy the player has, `awayRate` (phase 4) its Coins a
--- second at the last save (DataService stamps it; the next load pays the time away from it).
-export type PenState = { spots: number, nextId: number, items: { PenItem }, awayRate: number }
+-- second at the last save (DataService stamps it; the next load pays the time away from it). Phase 11: `shelfRows`
+-- the open shelf rows (Pen.shelfStartRows .. Pen.shelfMaxRows; their squishies stand in the shelf and pay too), `top`
+-- true once the TOP spot is bought.
+export type PenState = {
+	spots: number,
+	nextId: number,
+	items: { PenItem },
+	awayRate: number,
+	shelfRows: number,
+	top: boolean,
+}
 -- Phase 4: the Coins the pen paid for the time away on this session's load, and the seconds counted (session only).
 export type AwayGift = { coins: number, seconds: number }
 -- Phase 7: one sale that can be bought back for Config.Economy.Pen.buyBackSeconds: `item` the squishy as it was sold
@@ -577,6 +586,8 @@ export type QuestSwapCall = (questId: string) -> Result<nil>
 export type DailyClaimCall = () -> Result<DailyClaimResult>
 -- Pens3 phase 1: buys the caller's own next pen spot; expectedPrice is compared, never charged.
 export type PenBuySpotCall = (expectedPrice: number) -> Result<PenResult>
+-- Pens3 phase 11: buys the caller's own next shelf row, then the TOP spot; expectedPrice is compared, never charged.
+export type PenBuyShelfCall = (expectedPrice: number) -> Result<PenResult>
 -- Pens3 phase 6: one of the caller's own squishies to a slot (0 = put away; an occupied spot swaps), and its lock.
 export type PenPlaceCall = (itemId: number, slot: number) -> Result<PenResult>
 export type PenLockCall = (itemId: number, locked: boolean) -> Result<PenResult>

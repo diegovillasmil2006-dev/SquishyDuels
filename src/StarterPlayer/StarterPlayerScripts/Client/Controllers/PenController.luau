@@ -80,9 +80,21 @@
 --   a press after the new level arrived is a new request. A feed plays ui.levelTone and floats "+N level(s)" from the
 --   count line; a buy ui.purchase. The walker's coin label, the card's "Lv N" and the pen's +N/s follow the level by
 --   the paths they already use (SD_Pen, PenFormat.cardText, PenMath.itemRate).
+-- * Pens3 phase 11 (the shelf rows + the TOP spot; lobby design v6, `CHK:n` = check/CHECK.md line n):
+--   - The shelf's squishies: the base Model's SD_Shelf (BaseService: PenMath.encodeShelf, slot=look) says what stands
+--     on its shelf. They come from the same pool and cache as the walkers (same model, label, form looks), stand in
+--     their cubby (shelfPlace: WorldLayout Bases.pen.shelf.cubbies in K's order, the TOP spot on the pedestal), facing
+--     the gate, never walking; their coin label sits on the board above the cubby (CHK:57: never under the cubby's
+--     top), the TOP spot's over its squishy. They show and hide with the pen (cullStuds); within animateStuds of the
+--     camera, while the shelf's sphere is on the screen, each plays its kind's show-off loop (Anim/ShowOffTracks,
+--     K:6982: the lift and the turn, from a random point in the loop, P3D:403), back at rest once it stops (beyond
+--     animateStuds, off screen: K:7833's "idle pose beyond"); none under ReducedMotion (they stand still, MEM:66).
+--   - The SHELF SPOTS sign: the own one is painted (trim, icon, line) like the PEN SPACE sign, from its SD_Price; its
+--     ShelfPrompt sends PenBuyShelf(that price) (one buy at a time with the pen's), A13's pop on its face after a buy;
+--     every other base's ShelfPrompt is off here, like their PenPrompts.
 -- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
--- syncWaits, tapHit, isFace, formColor), init(), start(), destroy() (tests and leak checks; the bootstrap never calls
--- it), debugState().
+-- syncWaits, tapHit, isFace, formColor, shelfPlace), init(), start(), destroy() (tests and leak checks; the bootstrap
+-- never calls it), debugState().
 
 -- Services
 
@@ -127,6 +139,7 @@ local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
+local ShowOffTracks = require(Client.Anim.ShowOffTracks) -- pens3 phase 11
 
 -- Types
 
@@ -156,6 +169,11 @@ type Walker = Walk & {
 	icon: ImageLabel,
 	hop: number, -- 0..1 through the hop loop
 	lastLift: number,
+	-- Pens3 phase 11: a shelf squishy's place (shelfPlace) and its loop's start (seconds).
+	rest: CFrame?,
+	labelAt: Vector3?,
+	phase: number?,
+	posed: boolean?, -- away from its rest pose (a show-off frame was written)
 }
 
 type Pen = {
@@ -168,6 +186,8 @@ type Pen = {
 	centre: Vector3,
 	radius: number,
 	cleanup: any, -- Cleanup.Cleanup: its connections and walkers
+	shelf: { [number]: Walker }, -- pens3 phase 11: slot -> its shelf squishy
+	shelfCentre: Vector3,
 }
 
 export type SignState = { state: "canBuy" | "tooExpensive" | "max", trim: string, icon: string, line: string }
@@ -182,6 +202,7 @@ export type DebugState = {
 	pooled: number,
 	shownPens: number,
 	ownPlot: number?,
+	shelved: number, -- pens3 phase 11: the shelves' squishies
 }
 
 -- Constants
@@ -228,6 +249,18 @@ local FIELD_FOOD = "food"
 local FOOD_BUY = P.screen.foodBuy
 local SOUND_SELL = "ui.coin"
 local SOUND_FUSE = "ui.levelTone"
+-- Pens3 phase 11: the shelf (see the header).
+local ATTR_SHELF = "SD_Shelf"
+local SHELF = LAYOUT.shelf
+local SHELF_FIRST = Config.Economy.Pen.maxSpots + 1
+local TOP_SLOT = Config.Economy.Pen.placedMax
+local SHELF_SIGN = "ShelfSign"
+local SHELF_PROMPT = "ShelfPrompt"
+local REMOTE_BUY_SHELF = "PenBuyShelf"
+-- Reading: the shelf's bounding sphere: its middle (half of the 18.9 to the TOP spot) and radius (its 27.4 × 24 × 6
+-- with a Dragon on the TOP spot, halved and rounded up).
+local SHELF_UP = 9.5
+local SHELF_RADIUS = 19
 local FORMS = P.forms
 local RAINBOW = {
 	Palette.PenFormRainbow1,
@@ -393,6 +426,7 @@ local function release(w: Walker)
 	w.model.Parent = nil
 	w.gui.StudsOffsetWorldSpace = Vector3.new(0, w.labelY, 0) -- it may leave mid-hop
 	w.lastLift = 0
+	w.posed = false -- pens3 phase 11: a shelf squishy may leave mid-loop
 	local list = pool[w.key]
 	if list == nil then
 		list = {}
@@ -419,6 +453,56 @@ local function show(pen: Pen, shown: boolean)
 	for _, w in pen.walkers do
 		w.model.Parent = if shown then folder else nil
 	end
+	for _, w in pen.shelf do -- pens3 phase 11
+		w.model.Parent = if shown then folder else nil
+	end
+end
+
+-- Pens3 phase 11: a shelf squishy at its place, lifted and turned by its show-off pose (its label stays put).
+local function placeShelf(w: Walker, lift: number, turn: CFrame)
+	w.root.CFrame = (w.rest :: CFrame) * CFrame.new(0, lift, 0) * turn
+	if lift ~= w.lastLift then
+		w.gui.StudsOffsetWorldSpace = (w.labelAt :: Vector3) - Vector3.new(0, lift, 0)
+		w.lastLift = lift
+	end
+	w.posed = lift ~= 0 or turn ~= CFrame.identity
+end
+
+-- Pens3 phase 11: the shelf's squishies from the base's SD_Shelf (see the header), kept by slot and look.
+local function syncShelf(pen: Pen)
+	local looks = PenMath.decodeShelf(pen.model:GetAttribute(ATTR_SHELF))
+	for slot, w in pen.shelf do
+		local look = looks[slot]
+		if look == nil or lookKey(look) ~= w.key then
+			pen.shelf[slot] = nil
+			release(w)
+		end
+	end
+	for slot, look in looks do
+		local w: Walker? = pen.shelf[slot]
+		if w == nil then
+			local list = pool[lookKey(look)]
+			w = if list and #list > 0 then table.remove(list) else build(look)
+		end
+		local rest, labelAt =
+			PenController.shelfPlace(pen.frame, slot, if w then w.lift else 0, if w then w.labelY else 0)
+		if w and rest and labelAt then
+			if pen.shelf[slot] ~= w then
+				local loop = ShowOffTracks.get(look.kind)
+				w.phase = rnd() * (if loop then loop.length else 1) -- P3D:403: from a random point in its loop
+				pen.shelf[slot] = w
+			end
+			setLabel(w, look)
+			w.look = look
+			w.rest, w.labelAt = rest, labelAt
+			w.lastLift = math.huge -- the label is written at once
+			placeShelf(w, 0, CFrame.identity)
+			w.model.Parent = if pen.shown then folder else nil
+		elseif w then
+			release(w)
+		end
+	end
+	pen.shelfCentre = (pen.frame * SHELF.at * CFrame.new(0, SHELF_UP, 0)).Position
 end
 
 -- The walkers of a base from its attributes (see the header).
@@ -472,6 +556,7 @@ local function sync(pen: Pen)
 		pen.centre = (pen.frame * CFrame.new(0, CENTRE_UP, LAYOUT.frontZ - step.d / 2)).Position
 		pen.radius = math.sqrt((step.w / 2) ^ 2 + (step.d / 2) ^ 2) + SPHERE_PAD
 	end
+	syncShelf(pen) -- pens3 phase 11
 end
 
 local function queueSync(pen: Pen)
@@ -495,15 +580,16 @@ local function queueSync(pen: Pen)
 	end)
 end
 
-local function signOf(pen: Pen?): Instance?
+-- The PEN SPACE sign (pens3 phase 11: or the SHELF SPOTS sign, `name`) of a pen, once it has streamed in.
+local function signOf(pen: Pen?, name: string?): Instance?
 	local found = if pen then pen.model:FindFirstChild(PEN_FOLDER) else nil
-	return if found then found:FindFirstChild(SIGN_NAME) else nil
+	return if found then found:FindFirstChild(name or SIGN_NAME) else nil
 end
 
 -- The own sign's trim, icon and line (see the header); nothing while it has not streamed in.
-local function paintOwnSign()
+local function paintSign(name: string)
 	local plot = ownPlot()
-	local sign = signOf(if plot then pens[plot] else nil)
+	local sign = signOf(if plot then pens[plot] else nil, name)
 	if sign == nil then
 		return
 	end
@@ -524,10 +610,21 @@ local function paintOwnSign()
 	end
 end
 
+-- Both own signs (pens3 phase 11: PEN SPACE and SHELF SPOTS).
+local function paintOwnSign()
+	paintSign(SIGN_NAME)
+	paintSign(SHELF_SIGN)
+end
+
+-- The sign a prompt buys at (pens3 phase 11: PenPrompt the pen's, ShelfPrompt the shelf's), or nil.
+local function signNameOf(prompt: ProximityPrompt): string?
+	return if prompt.Name == PROMPT_NAME then SIGN_NAME elseif prompt.Name == SHELF_PROMPT then SHELF_SIGN else nil
+end
+
 -- Another base's prompt is off here; the own one is on unless the sign is at MAX (as BaseService made it).
 local function setPrompt(pen: Pen, prompt: ProximityPrompt)
 	if pen.plot == ownPlot() then
-		local sign = prompt:FindFirstAncestor(SIGN_NAME)
+		local sign = prompt:FindFirstAncestor(signNameOf(prompt) or SIGN_NAME)
 		prompt.Enabled = sign ~= nil and type(sign:GetAttribute(ATTR_PRICE)) == "number"
 	else
 		prompt.Enabled = false
@@ -538,7 +635,7 @@ local function setPrompts(pen: Pen)
 	local found = pen.model:FindFirstChild(PEN_FOLDER)
 	if found then
 		for _, d in found:GetDescendants() do
-			if d:IsA("ProximityPrompt") and d.Name == PROMPT_NAME then
+			if d:IsA("ProximityPrompt") and signNameOf(d) ~= nil then
 				setPrompt(pen, d)
 			end
 		end
@@ -563,15 +660,17 @@ local function watch(model: Instance)
 		centre = frame.Position,
 		radius = 0,
 		cleanup = pc,
+		shelf = {}, -- pens3 phase 11
+		shelfCentre = frame.Position,
 	}
 	pens[pen.plot] = pen
-	for _, name in { ATTR_SPOTS, ATTR_PEN } do
+	for _, name in { ATTR_SPOTS, ATTR_PEN, ATTR_SHELF } do
 		pc:add(model:GetAttributeChangedSignal(name):Connect(function()
 			queueSync(pen)
 		end))
 	end
 	pc:add(model.DescendantAdded:Connect(function(d: Instance)
-		if d:IsA("ProximityPrompt") and d.Name == PROMPT_NAME then
+		if d:IsA("ProximityPrompt") and signNameOf(d) ~= nil then
 			setPrompt(pen, d)
 		end
 		if pen.plot == ownPlot() and d:FindFirstAncestor(PEN_FOLDER) then
@@ -583,6 +682,10 @@ local function watch(model: Instance)
 			w.model:Destroy()
 		end
 		table.clear(pen.walkers)
+		for _, w in pen.shelf do -- pens3 phase 11
+			w.model:Destroy()
+		end
+		table.clear(pen.shelf)
 	end)
 	setPrompts(pen)
 	queueSync(pen)
@@ -597,10 +700,10 @@ local function unwatch(model: Instance)
 	end
 end
 
--- The price face's pop after an own buy (A13; the one effect steps it).
-local function startPop()
+-- The price face's pop after an own buy (A13; the one effect steps it) on the sign `name`.
+local function startPop(name: string)
 	local plot = ownPlot()
-	local sign = signOf(if plot then pens[plot] else nil)
+	local sign = signOf(if plot then pens[plot] else nil, name)
 	local face = if sign then sign:FindFirstChild("Face") else nil
 	if Tweens.reducedMotion() or face == nil or not face:IsA("BasePart") then
 		return
@@ -630,8 +733,29 @@ end
 -- Pens3 phases 7-8: the pen screen's part of the effect (set with the screen's code below).
 local stepScreen: () -> ()
 
+-- Pens3 phase 11: one frame of a shown pen's shelf (see the header): the show-off loops near the camera and on the
+-- screen, else (and under ReducedMotion) the rest pose, written once.
+local function stepShelf(pen: Pen, eye: Vector3, now: number, reduced: boolean, camera: Camera, tanHalf: number)
+	if next(pen.shelf) == nil then
+		return
+	end
+	local playing = not reduced and (pen.shelfCentre - eye).Magnitude <= P.animateStuds
+	if playing then
+		local point = camera:WorldToViewportPoint(pen.shelfCentre)
+		playing = AmbientMath.sphereOnScreen(point.X, point.Y, point.Z, SHELF_RADIUS, camera.ViewportSize, tanHalf)
+	end
+	for _, w in pen.shelf do
+		if playing then
+			local lift, turn = ShowOffTracks.poseAt(w.look.kind, now + (w.phase or 0), w.studs)
+			placeShelf(w, lift, turn)
+		elseif w.posed then
+			placeShelf(w, 0, CFrame.identity)
+		end
+	end
+end
+
 -- One frame of every pen near the camera and of the sign pop (see the header).
-local function step(dt: number, _now: number): boolean
+local function step(dt: number, now: number): boolean
 	stepPop()
 	stepScreen() -- pens3 phases 7-8
 	local camera = Workspace.CurrentCamera
@@ -647,6 +771,9 @@ local function step(dt: number, _now: number): boolean
 		local near = distance <= P.cullStuds
 		if near ~= pen.shown then
 			show(pen, near)
+		end
+		if near then
+			stepShelf(pen, eye, now, reduced, camera, tanHalf) -- pens3 phase 11
 		end
 		if near and distance <= P.animateStuds and #pen.walkers > 0 then
 			local point = camera:WorldToViewportPoint(pen.centre)
@@ -668,23 +795,24 @@ local function step(dt: number, _now: number): boolean
 	return true
 end
 
-local function buy(prompt: ProximityPrompt)
+-- A buy at the own sign `name` (pens3 phase 11: PenBuySpot at PEN SPACE, PenBuyShelf at SHELF SPOTS).
+local function buy(prompt: ProximityPrompt, name: string, remote: string)
 	local plot = ownPlot()
 	local pen = if plot then pens[plot] else nil
-	local sign = signOf(pen)
+	local sign = signOf(pen, name)
 	local price = if sign then sign:GetAttribute(ATTR_PRICE) else nil
 	if pending or sign == nil or not prompt:IsDescendantOf(sign) or type(price) ~= "number" then
 		return
 	end
 	pending = true
-	local result = NetController.invokeAsync(REMOTE_BUY, price)
+	local result = NetController.invokeAsync(remote, price)
 	pending = false
 	if cleanup == nil then
 		return -- destroyed meanwhile
 	end
 	if result.ok then
 		SoundController.play(SOUND_PURCHASE)
-		startPop()
+		startPop(name)
 	else
 		NotifyController.showResult(result)
 	end
@@ -1155,6 +1283,23 @@ function PenController.labelLayout(aspect: number): LabelLayout
 	return { icon = icon / w, gap = gap / w, text = text / w, height = P.labelInner }
 end
 
+-- Pens3 phase 11: where a shelf squishy stands on the plot of `frame`: its root's CFrame at rest (the model's bottom
+-- on its cubby's floor, `lift` = the root's height over it; facing the gate like the shelf) and its coin label's
+-- offset from the root (world studs; a cubby's: on the board above it, CHK:57; the TOP spot's labelY over the root,
+-- like a walker's); nil for a slot that is not the shelf's or the TOP spot's.
+function PenController.shelfPlace(frame: CFrame, slot: number, lift: number, labelY: number): (CFrame?, Vector3?)
+	local at = frame * SHELF.at
+	if slot == TOP_SLOT then
+		return at * CFrame.new(SHELF.top + Vector3.new(0, lift, 0)), Vector3.new(0, labelY, 0)
+	end
+	if slot < SHELF_FIRST or slot >= SHELF_FIRST + #SHELF.cubbies then
+		return nil, nil
+	end
+	local cubby = SHELF.cubbies[slot - SHELF_FIRST + 1]
+	local rest = at * CFrame.new(cubby + Vector3.new(0, lift, 0))
+	return rest, at * Vector3.new(cubby.X, cubby.Y + SHELF.labelOver, SHELF.labelZ) - rest.Position
+end
+
 -- A fresh walker somewhere in `rect`: random spot and facing, its first wait 0..firstWaitMax s, its speed (P3D:398).
 function PenController.newWalk(rect: PenMath.Rect, random01: () -> number): Walk
 	return {
@@ -1195,12 +1340,15 @@ end
 -- Public: lifecycle --------------------------------------------------------------------------------------------------
 
 function PenController.debugState(): DebugState
-	local walkers, pooled, shown, count = 0, 0, 0, 0
+	local walkers, pooled, shown, count, shelved = 0, 0, 0, 0, 0
 	for _, pen in pens do
 		count += 1
 		walkers += #pen.walkers
 		if pen.shown then
 			shown += 1
+		end
+		for _ in pen.shelf do
+			shelved += 1
 		end
 	end
 	for _, list in pool do
@@ -1214,6 +1362,7 @@ function PenController.debugState(): DebugState
 		pooled = pooled,
 		shownPens = shown,
 		ownPlot = ownPlot(),
+		shelved = shelved,
 	}
 end
 
@@ -1267,7 +1416,9 @@ function PenController.start()
 	c:add(CollectionService:GetInstanceRemovedSignal(TAG_BASE):Connect(unwatch))
 	c:add(ProximityPromptService.PromptTriggered:Connect(function(prompt: ProximityPrompt)
 		if prompt.Name == PROMPT_NAME then
-			task.spawn(buy, prompt)
+			task.spawn(buy, prompt, SIGN_NAME, REMOTE_BUY)
+		elseif prompt.Name == SHELF_PROMPT then
+			task.spawn(buy, prompt, SHELF_SIGN, REMOTE_BUY_SHELF) -- pens3 phase 11
 		end
 	end))
 	for _, field in { "coins", "pen" } do

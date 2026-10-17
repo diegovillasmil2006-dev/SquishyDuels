@@ -64,6 +64,14 @@
 -- (the pieces owned; reconcile gives an older profile none of each, and a food the Config gains later 0). fixFood
 -- fails closed: not a table -> none of each; each count a whole number in [0, Food.maxPieces] (floored: never more
 -- than was bought; clamped; non-finite or missing -> 0); a key that is not a Config food is dropped; every fix logged.
+-- Pens3 phase 11 (the shelf rows + the TOP spot) joined the same way: `pen.shelfRows = Pen.shelfStartRows` and
+-- `pen.top = false` (reconcile gives an older pen the start row, closed TOP). fixPen, before the slots: a missing
+-- value is the default (not logged, like reconcile); shelfRows a whole number in [Pen.shelfStartRows,
+-- Pen.shelfMaxRows] (floored, clamped; non-finite or not a number -> the start), top a boolean (else false: fails
+-- closed, never a TOP spot nobody bought), each fix logged. The slot rule above then reads PenMath.isOpen (the pen's
+-- spots, the open shelf rows' spots 13.., the TOP spot 21 when bought): a squishy in a slot that is not open any more
+-- goes to the Toy Box (never dropped), logged; the items with no slot fill PenMath.openSlots in order (the pen, then
+-- the shelf, then the TOP spot), then the Toy Box.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -429,6 +437,15 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 	end, "pen", problems)
 	fixInt(pen, "spots", PEN.startSpots, PEN.maxSpots, PEN.startSpots, "pen.spots", problems)
 	fixInt(pen, "nextId", 1, MAX_COUNTER, 1, "pen.nextId", problems)
+	-- Pens3 phase 11: the shelf rows and the TOP spot (see the header); a missing value is the default, unlogged.
+	if pen.shelfRows == nil then
+		pen.shelfRows = PEN.shelfStartRows
+	end
+	fixInt(pen, "shelfRows", PEN.shelfStartRows, PEN.shelfMaxRows, PEN.shelfStartRows, "pen.shelfRows", problems)
+	if pen.top == nil then
+		pen.top = false
+	end
+	fixBoolean(pen, "top", false, "pen.top", problems)
 	local rate = pen.awayRate -- nil only before reconcile (it fills 0)
 	if rate ~= nil and not (isFinite(rate) and (rate :: number) >= 0) then
 		pen.awayRate = 0
@@ -518,8 +535,7 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 		if slot == nil then
 			table.insert(unplaced, item)
 		elseif slot ~= 0 then
-			local open = isFinite(slot) and math.floor(slot) == slot and slot >= 1 and slot <= pen.spots
-			if open and not held[slot] then
+			if PenMath.isOpen(pen, slot) and not held[slot] then -- pens3 phase 11: the shelf's and the TOP spot too
 				held[slot] = true
 			else
 				note(problems, `pen.items (slot of {show(item.kind)} {item.id})`, slot, 0)
@@ -534,13 +550,14 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 		end
 	end
 	table.sort(unplaced, PenMath.better)
-	local free = 1
-	for _, item in unplaced do
-		while held[free] do
-			free += 1
+	local free: { number } = {} -- pens3 phase 11: the open spots in order (the pen, the shelf, the TOP spot)
+	for _, slot in PenMath.openSlots(pen) do
+		if not held[slot] then
+			table.insert(free, slot)
 		end
-		item.slot = if free <= pen.spots then free else 0
-		held[free] = true
+	end
+	for index, item in unplaced do
+		item.slot = free[index] or 0
 		note(problems, `pen.items (slot of {show(item.kind)} {item.id})`, nil, item.slot)
 	end
 	pen.items = items
@@ -728,6 +745,8 @@ function ProfileSchema.defaults(now: number): Profile
 			-- Pens3 phase 6: the starter in spot 1, unlocked.
 			items = { { id = 1, kind = starter, form = 0, level = 1, coat = 0, slot = 1, locked = false } },
 			awayRate = 0, -- pens3 phase 4: the pen's rate at the last save (DataService stamps it)
+			shelfRows = PEN.shelfStartRows, -- pens3 phase 11: the shelf's start row open, the TOP spot not bought
+			top = false,
 		},
 		-- Pens3 phase 5: no gift waiting for room, no fixed-order box opened, the Frog gift still to come.
 		giftQueue = {},

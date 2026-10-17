@@ -103,6 +103,16 @@
 --   Reading: Feed / FeedAll save "soon", like PenPlace: no Coins move (food and levels are in the same profile, so a
 --   crash loses both together), and an awaited write per tap would wait on the DataStore's 6 s rule for one key while
 --   a kid taps FEED again and again. A buy moves Coins: awaited. Every refusal carries charged = false, writes nothing.
+-- * Pens3 phase 11 (the shelf rows + the TOP spot, V3:144-151): PenBuyShelf(expectedPrice) (RF; Config.Net: 1 a
+--   second, one in flight), PenBuySpot's shape and refusal order: (1) expectedPrice not whole Coins -> net.invalid; (2)
+--   data.notReady; (3) PenMath.shelfDecision -> net.invalid (no shelfRows: never after sanitize) / pen.shelfMax /
+--   pen.priceChanged (compared, never charged); (4) pen.paused (a pending failed save, closing, a restart, or less than
+--   Pen.buyCooldownSeconds since this player's last pen or shelf buy); (5) inventory.lockedInDuel; (6) the "pen" spend
+--   (economy.notEnoughCoins). Then ONE mutate: shelfRows = the next row (or top = true), and each spot it opens takes
+--   the best unlocked Toy Box squishy (PenMath.bestToyBox into PenMath.freeSlot, as a pen spot does); queued gifts
+--   dropped in, the base redrawn and the pen sent (showPen), a log line, the awaited "now" save and ok({pen, charged =
+--   true, savePending}). Every refusal carries charged = false and writes nothing. The shelf's and the TOP spot's
+--   squishies are paid by the tick with the pen's (PenMath.rate counts every placed squishy).
 -- Every profile write goes through DataService.mutate (the data port). Dependencies are injectable (useDeps) so unit
 -- tests run with fake profiles and players (plain tables); init() never yields; playerAdded / playerRemoving never
 -- yield.
@@ -176,6 +186,7 @@ local PEN = Config.Economy.Pen
 local FROG_KEY = "frog" -- profile.gifts.frog
 local COIN_REASON = "pen"
 local REMOTE_BUY = "PenBuySpot"
+local REMOTE_BUY_SHELF = "PenBuyShelf" -- pens3 phase 11
 local REMOTE_PLACE = "PenPlace" -- pens3 phase 6
 local REMOTE_LOCK = "PenLock"
 local SAVE_SOON = "soon"
@@ -420,6 +431,61 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 	end
 	log:info(`user {userIdOf(player)} bought pen spot {spot} for {price} Coins`)
 	deps.dropGifts(player) -- pens3 phase 5: the new spot makes room for a waiting gift
+	deps.showPen(player)
+	local data: Types.PenResult = {
+		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
+		charged = true,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
+-- Pens3 phase 11: the next shelf row, then the TOP spot (see the header for the order of the checks).
+function PenService.buyShelf(player: any, expectedPrice: any): Reply
+	if Validate.coins(expectedPrice) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local decision, refused = PenMath.shelfDecision(pen, expectedPrice)
+	if decision == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local price = decision.price
+	local spendRefused = spend(player, price, COIN_REASON, true)
+	if spendRefused ~= nil then
+		return NetService.err(spendRefused, false)
+	end
+	local written = deps.mutate(player, function(profile: any): boolean
+		if decision.top then
+			profile.pen.top = true
+		else
+			profile.pen.shelfRows = math.max(profile.pen.shelfRows, decision.row :: number)
+		end
+		for _ in decision.slots do -- each new spot takes the best unlocked Toy Box squishy
+			local best = PenMath.bestToyBox(profile.pen)
+			local slot = PenMath.freeSlot(profile.pen)
+			if best ~= nil and slot ~= 0 then
+				best.slot = slot
+			end
+		end
+		return true
+	end)
+	if not written then
+		-- Cannot happen without a yield after the spend (the session was ready a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: a shelf buy was paid ({price} Coins) but could not be written`)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local session = sessions[player]
+	if session ~= nil then
+		session.boughtAt = deps.clock()
+	end
+	local what = if decision.top then "the TOP spot" else `shelf row {decision.row}`
+	log:info(`user {userIdOf(player)} bought {what} for {price} Coins`)
+	deps.dropGifts(player) -- the new spots make room for a waiting gift
 	deps.showPen(player)
 	local data: Types.PenResult = {
 		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
@@ -903,6 +969,9 @@ function PenService.init()
 	end
 	NetService.onInvoke(REMOTE_BUY, function(player: Player, expectedPrice: any): any
 		return PenService.buy(player, expectedPrice)
+	end)
+	NetService.onInvoke(REMOTE_BUY_SHELF, function(player: Player, expectedPrice: any): any
+		return PenService.buyShelf(player, expectedPrice)
 	end)
 	NetService.onInvoke(REMOTE_PLACE, function(player: Player, itemId: any, slot: any): any
 		return PenService.place(player, itemId, slot)
