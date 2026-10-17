@@ -1,0 +1,331 @@
+--!strict
+-- PenService_Test: unit tests for ServerScriptService.Server.Services.PenService with injected fakes (a fake data
+-- port over plain profiles, recorders for Coins, spends, saves and redraws; players are plain tables; a fake clock).
+-- Server only (ServerStorage.UnitTest). Edit mode: init() and start() are never called; ticks run through step(dt).
+-- Contract (work/pens3/PLAN.md phase 1):
+--   * the tick: each READY player in the server is paid PenMath.payStep of the pen's rate for the real dt (whole
+--     Coins, the rest carried), in ONE grantCoins(p, coins, "pen") per player and tick; no Grip; a player who is not
+--     ready is paid nothing; one player's error does not stop the others; a player who left is never paid;
+--   * PenBuySpot(expectedPrice) buys only the caller's own next spot: bad input net.invalid, then data.notReady, then
+--     pen.max / pen.priceChanged, then pen.paused (a pending failed save, closing, a restart, or within
+--     buyCooldownSeconds of the last buy), then inventory.lockedInDuel, then the spend (economy.notEnoughCoins;
+--     a "savePending" spend -> pen.paused); every refusal has charged = false and writes nothing;
+--   * a buy: one spend with reason "pen", spots + 1 through mutate, the base redrawn and the "pen" field sent once
+--     (showPen), the awaited "now" save, the reply {pen, charged = true, savePending}; 1 call a second, one at a time.
+
+type Context = {
+	test: (name: string, fn: () -> ()) -> (),
+	expect: any,
+	requireShared: (path: string) -> any,
+	requireServer: (path: string) -> any,
+	requireFake: (name: string) -> any,
+}
+
+return function(t: Context)
+	local expect = t.expect
+	local PenService = t.requireServer("Services/PenService")
+	local NetService = t.requireServer("Services/NetService")
+	local Config = t.requireShared("Config")
+	local Remotes = t.requireShared("Remotes")
+	local TableUtil = t.requireShared("Util/TableUtil")
+	local FakeClock = t.requireFake("FakeClock")
+	local PEN = Config.Economy.Pen
+
+	type World = {
+		a: any,
+		b: any,
+		profiles: { [any]: any },
+		status: { [any]: string },
+		phase: { [any]: string },
+		clock: number,
+		savePending: boolean,
+		closing: boolean,
+		restart: boolean,
+		saveOk: boolean,
+		spendFails: string?,
+		grantFails: { [any]: boolean }, -- grantCoins errors for these players
+		grants: { { player: any, amount: number, reason: string } },
+		spends: { { player: any, amount: number, reason: string } },
+		nowSaves: number,
+		shown: { any },
+		writes: number,
+	}
+
+	local function newProfile(): any
+		return {
+			coins = 0,
+			owned = { kitty_bread = { at = 1, src = "starter" } },
+			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
+		}
+	end
+
+	local function fresh(): World
+		local w: World = {
+			a = { UserId = 1 },
+			b = { UserId = 2 },
+			profiles = {},
+			status = {},
+			phase = {},
+			clock = 100,
+			savePending = false,
+			closing = false,
+			restart = false,
+			saveOk = true,
+			spendFails = nil,
+			grantFails = {},
+			grants = {},
+			spends = {},
+			nowSaves = 0,
+			shown = {},
+			writes = 0,
+		}
+		PenService.reset()
+		PenService.useDeps({
+			statusOf = function(player: any): string
+				return w.status[player] or "loading"
+			end,
+			profileOf = function(player: any): any
+				return w.profiles[player]
+			end,
+			-- Like DataService.mutate: READY sessions only.
+			mutate = function(player: any, fn: (profile: any) -> any): (boolean, any)
+				if w.status[player] ~= "ready" then
+					return false, "data.notReady"
+				end
+				w.writes += 1
+				return true, fn(w.profiles[player])
+			end,
+			savePending = function(_player: any): boolean
+				return w.savePending
+			end,
+			isClosing = function(): boolean
+				return w.closing
+			end,
+			isRestartPending = function(): boolean
+				return w.restart
+			end,
+			duelPhaseOf = function(player: any): string
+				return w.phase[player] or ""
+			end,
+			-- Like EconomyService.trySpend over the same fake profile.
+			trySpend = function(player: any, amount: number, reason: string): (boolean, string?)
+				local profile = w.profiles[player]
+				if w.spendFails ~= nil then
+					return false, w.spendFails
+				elseif w.status[player] ~= "ready" then
+					return false, "notReady"
+				elseif profile.coins < amount then
+					return false, "notEnoughCoins"
+				end
+				profile.coins -= amount
+				table.insert(w.spends, { player = player, amount = amount, reason = reason })
+				return true, nil
+			end,
+			grantCoins = function(player: any, amount: number, reason: string): number
+				if w.grantFails[player] then
+					error("grant exploded")
+				end
+				w.profiles[player].coins += amount
+				table.insert(w.grants, { player = player, amount = amount, reason = reason })
+				return amount
+			end,
+			saveNow = function(_player: any): boolean
+				w.nowSaves += 1
+				return w.saveOk
+			end,
+			clock = function(): number
+				return w.clock
+			end,
+			showPen = function(player: any)
+				table.insert(w.shown, player)
+			end,
+		})
+		for _, player in { w.a, w.b } do
+			w.profiles[player] = newProfile()
+			w.status[player] = "ready"
+			PenService.playerAdded(player)
+		end
+		return w
+	end
+
+	local function finish()
+		PenService.reset()
+		PenService.useDeps(nil)
+	end
+
+	local function grantsOf(w: World, player: any): { any }
+		local list = {}
+		for _, grant in w.grants do
+			if grant.player == player then
+				table.insert(list, grant)
+			end
+		end
+		return list
+	end
+
+	local function expectRefused(reply: any, reason: string)
+		expect.equal(reply.ok, false)
+		expect.equal(reply.reason, reason)
+		expect.equal(reply.charged, false)
+	end
+
+	-- The tick ------------------------------------------------------------------------------------------------------
+
+	t.test(
+		"the tick pays the pen's rate in whole Coins with the rest carried, one 'pen' grant a tick, no Grip",
+		function()
+			local w = fresh()
+			local a = w.profiles[w.a]
+			a.pen.items[1].level = 2 -- 11.5 a second
+			PenService.step(1)
+			expect.deepEqual(grantsOf(w, w.a), { { player = w.a, amount = 11, reason = "pen" } })
+			PenService.step(1)
+			expect.deepEqual(grantsOf(w, w.a)[2], { player = w.a, amount = 12, reason = "pen" })
+			expect.equal(a.coins, 23)
+			-- B's Kitty Bread at Lv 1: 10 a second, one grant each tick.
+			expect.deepEqual(grantsOf(w, w.b), {
+				{ player = w.b, amount = 10, reason = "pen" },
+				{ player = w.b, amount = 10, reason = "pen" },
+			})
+			-- Two placed squishies are still one grant a tick.
+			a.owned.butter = { at = 2, src = "box" }
+			table.insert(a.pen.items, { id = 2, kind = "butter", form = 0, level = 1, coat = 0 })
+			local before = #grantsOf(w, w.a)
+			PenService.step(1)
+			local after = grantsOf(w, w.a)
+			expect.equal(#after, before + 1)
+			expect.equal(after[#after].amount, 51) -- 11.5 + 40, and the carried 0 from before: 51.5 -> 51
+			-- A server hitch pays at most maxTickSeconds of time.
+			PenService.step(60)
+			expect.equal(grantsOf(w, w.b)[4].amount, 10 * PEN.maxTickSeconds)
+			finish()
+		end
+	)
+
+	t.test("a player who is not ready is paid nothing; one player's error does not stop the others", function()
+		local w = fresh()
+		w.status[w.a] = "offline"
+		PenService.step(5)
+		expect.equal(#grantsOf(w, w.a), 0)
+		expect.equal(w.profiles[w.b].coins, 50)
+		w.status[w.a] = "ready"
+		w.grantFails[w.b] = true
+		PenService.step(1)
+		expect.equal(w.profiles[w.a].coins, 10) -- the 5 s while not ready never count
+		w.grantFails[w.b] = nil
+		PenService.playerRemoving(w.a) -- left: never paid again
+		PenService.step(1)
+		expect.equal(w.profiles[w.a].coins, 10)
+		expect.equal(w.profiles[w.b].coins, 60)
+		finish()
+	end)
+
+	-- The buy -------------------------------------------------------------------------------------------------------
+
+	t.test(
+		"PenBuySpot takes only the expected price: it names no base, plot or player; 1 a second, one at a time",
+		function()
+			local spec = Remotes.SPEC.PenBuySpot
+			expect.equal(spec.kind, "RemoteFunction")
+			expect.equal(spec.dir, "c2s")
+			expect.deepEqual(spec.args, { { name = "expectedPrice", type = "coins" } })
+			expect.deepEqual(Config.Net.Remotes.PenBuySpot, { rate = 1, burst = 1, oneInFlight = true })
+			local clock = FakeClock.new(100)
+			local guard = NetService.newGuard({ clock = clock.now })
+			local player = { UserId = 9 }
+			expect.equal(guard:check(player, "PenBuySpot", 1, 5_600_000_000_000), "ok") -- prices reach trillions
+			expect.equal(guard:check(player, "PenBuySpot", 1, 3_100), "rateLimited")
+			clock.advance(1)
+			expect.equal(guard:check(player, "PenBuySpot", 1, -1), "invalid")
+			clock.advance(1)
+			expect.equal(guard:check(player, "PenBuySpot", 2, 1_500, "extra"), "badArgCount")
+		end
+	)
+
+	t.test("a buy: one 'pen' spend, spots 3 -> 4, the base and the pen field once, an awaited save", function()
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.coins = 2_000
+		local bBefore = TableUtil.deepCopy(w.profiles[w.b])
+		local reply = PenService.buy(w.a, 1_500)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = true, savePending = false })
+		expect.equal(a.pen.spots, 4)
+		expect.equal(a.coins, 500)
+		expect.deepEqual(w.spends, { { player = w.a, amount = 1_500, reason = "pen" } })
+		expect.equal(w.nowSaves, 1)
+		expect.deepEqual(w.shown, { w.a })
+		expect.deepEqual(w.profiles[w.b], bBefore) -- only the caller's own pen
+		-- A failed now save keeps the buy and says so.
+		a.coins = 10_000
+		w.clock += PEN.buyCooldownSeconds
+		w.saveOk = false
+		local unsaved = PenService.buy(w.a, 3_100)
+		expect.equal(unsaved.data.savePending, true)
+		expect.equal(unsaved.data.charged, true)
+		expect.equal(a.pen.spots, 5)
+		finish()
+	end)
+
+	t.test(
+		"refusals: bad input, not ready, max, a wrong price, paused, in a duel, short of Coins: nothing charged",
+		function()
+			local w = fresh()
+			local a = w.profiles[w.a]
+			a.coins = 1_500
+			local writes = w.writes
+			for _, bad in { -1, 1.5, 0 / 0, "1500", true } :: { any } do
+				expectRefused(PenService.buy(w.a, bad), "net.invalid")
+			end
+			w.status[w.a] = "offline"
+			expectRefused(PenService.buy(w.a, 1_500), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.buy(w.a, 1_499), "pen.priceChanged")
+			w.savePending = true
+			expectRefused(PenService.buy(w.a, 1_500), "pen.paused")
+			w.savePending = false
+			w.closing = true
+			expectRefused(PenService.buy(w.a, 1_500), "pen.paused")
+			w.closing = false
+			w.restart = true
+			expectRefused(PenService.buy(w.a, 1_500), "pen.paused")
+			w.restart = false
+			for _, phase in { "Preparing", "Active", "Returning" } do
+				w.phase[w.a] = phase
+				expectRefused(PenService.buy(w.a, 1_500), "inventory.lockedInDuel")
+			end
+			w.phase[w.a] = ""
+			w.spendFails = "savePending"
+			expectRefused(PenService.buy(w.a, 1_500), "pen.paused")
+			w.spendFails = nil
+			a.coins = 1_499
+			expectRefused(PenService.buy(w.a, 1_500), "economy.notEnoughCoins")
+			a.pen.spots = 12
+			a.coins = 10 ^ 13
+			expectRefused(PenService.buy(w.a, 5_600_000_000_000), "pen.max")
+			expect.equal(#w.spends, 0)
+			expect.equal(w.writes, writes)
+			expect.equal(w.nowSaves, 0)
+			expect.deepEqual(w.shown, {})
+			finish()
+		end
+	)
+
+	t.test("a second buy within buyCooldownSeconds is pen.paused; after it, the next spot sells", function()
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.coins = 10_000
+		expect.equal(PenService.buy(w.a, 1_500).ok, true)
+		w.clock += PEN.buyCooldownSeconds / 2
+		expectRefused(PenService.buy(w.a, 3_100), "pen.paused")
+		expect.equal(#w.spends, 1)
+		w.clock += PEN.buyCooldownSeconds / 2
+		expect.equal(PenService.buy(w.a, 3_100).ok, true)
+		expect.equal(a.pen.spots, 5)
+		-- A retry with the old price is a wrong price: never charged twice.
+		w.clock += PEN.buyCooldownSeconds
+		expectRefused(PenService.buy(w.a, 3_100), "pen.priceChanged")
+		expect.equal(#w.spends, 2)
+		finish()
+	end)
+end

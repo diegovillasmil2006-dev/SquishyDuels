@@ -30,8 +30,10 @@
 --   or data.loadFailed (a stored value that is not a profile, or no reason). DataService sends none of these texts.
 -- * grip = {total, rested} (§17.10), copied from profile.grip (build plan Phase 6: an old save's slow-training
 --   bank, grip.afk, and its trainer, grip.trainer, are not sent); StateService is not a duel-path file.
--- * capsules = profile.capsules {slots, list} as stored (build plan Phase 5: the owner's capsule card, the squeeze
---   value of the reward texts and the owner's capsule pops; CapsuleService marks it on every change).
+-- * capsules = profile.capsules {slots, list} as stored (build plan Phase 5; since pens3 phase 1 nothing pays from it
+--   or shows it, and it goes in phase 2).
+-- * pen = profile.pen {spots, nextId, items} as stored (pens3 phase 1: the squeeze value of every client text, the
+--   owner's sign and coin labels; PenService marks it on every buy and new squishy).
 --
 -- dataPort() is the one reading of DataService for this layer (EconomyService, InventoryService and
 -- PreferencesService use it as their default, and so do services above them). portFrom(source) builds the same port
@@ -114,6 +116,7 @@ local FIELDS: { string } = {
 	"grip",
 	"capsules",
 	"topWins", -- Batch 3 (review #10): the weekly wins board, a session field
+	"pen", -- pens3 phase 1: the profile's pen as stored
 }
 local FIELD_SET: { [string]: boolean } = {}
 for _, field in FIELDS do

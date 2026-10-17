@@ -1282,6 +1282,45 @@ local UI = {
 		upBobMs = 900,
 	},
 
+	-- Pens3 phase 1: the walking pen squishies, their coin labels and the own PEN SPACE sign's pop
+	-- (Controllers/PenController; lobby design v6: `K:n` = kit.json line n, `P3D:n` = "Squishy Lobby 3D.html" line n).
+	-- Studs and seconds. The walk area's edge margin is WorldLayout.Bases.pen.edgeMargin (shared with PenMath).
+	Pen = {
+		animateStuds = 60, -- K:5897 (A17): beyond this from the camera a pen's squishies stand still
+		cullStuds = 220, -- [P] beyond this they are unparented (kept for later)
+		-- A17 PenWanderHop (K:5890-5954): while it walks a squishy hops hopHeight × its size (its studs over the
+		-- Common's, P3D:834) and back once every hopSeconds (Sine Out up, Sine In down); none under ReducedMotion.
+		hopSeconds = 0.36,
+		hopHeight = 0.35,
+		-- P3D:398, 829-833: it walks speedMin..speedMax studs/s toward a random spot of its walk area; within
+		-- arriveStuds of it, it waits waitMin..waitMax s (the first time 0..firstWaitMax s), facing the way it walked.
+		speedMin = 2,
+		speedMax = 3.5,
+		waitMin = 1,
+		waitMax = 3.5,
+		firstWaitMax = 2,
+		arriveStuds = 0.4,
+		-- K:4266-4270: the coin label, a BillboardGui labelSize studs whose bottom is labelLift studs over the model's
+		-- top, seen within labelMaxStuds (labelMaxStudsLow when MeshQuality.forCamera() is "Low"); the coin icon and
+		-- the text are labelInner of its height, labelGap of its height apart; the text's outline labelStrokePx.
+		labelSize = Vector2.new(3.2, 1.2),
+		labelLift = 0.6,
+		labelMaxStuds = 120,
+		labelMaxStudsLow = 60,
+		labelInner = 0.8,
+		labelGap = 0.1,
+		labelStrokePx = 2,
+		-- K:4052-4081: the longest side of a squishy of each rarity.
+		rarityStuds = { Common = 2, Uncommon = 2.8, Epic = 3.8, Exclusive = 5 } :: { [string]: number },
+		-- K:5711-5747 (A13 UpgradeBuyPunch): the price face's scale after an own buy (Anim/Timeline keys).
+		signPop = {
+			{ t_ms = 0, value = 1 },
+			{ t_ms = 80, value = 0.85, style = Enum.EasingStyle.Quad, dir = Enum.EasingDirection.Out },
+			{ t_ms = 200, value = 1.15, style = Enum.EasingStyle.Back, dir = Enum.EasingDirection.Out },
+			{ t_ms = 350, value = 1, style = Enum.EasingStyle.Sine, dir = Enum.EasingDirection.Out },
+		},
+	},
+
 	-- UI FINAL (R1, the look kit; plan work/ui/PLAN.md §2): the sticker look of the design "Squishy Duels UI FINAL"
 	-- (2026-10-14), read through UI/Theme (Theme.Sticker). Base px (1 design px = 1 base px). `H:n` = "Squishy Duels
 	-- HUD.dc.html" line n. Colours are Art/Palette Sticker*; a role's `color` names a Palette token.

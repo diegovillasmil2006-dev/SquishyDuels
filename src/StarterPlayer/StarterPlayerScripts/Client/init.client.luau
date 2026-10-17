@@ -56,8 +56,9 @@ type Module = {
 -- VfxController and StateController and draws in its own SD_KillBanner gui.
 -- Aim arc (2026-10-16): AimArcController (the charge throw's path preview) right after CatchController; of the
 -- controllers it requires only ThrowController (its chargePreview), and its frame effect starts after ThrowController's.
--- Build plan Phase 5: CapsuleController (the base capsules' feel and the capsule card) with the feature screens, after
--- DailyController; it requires ControlsController (its pointer claim) and SqueezeController (the home tap), both above.
+-- Pens3 phase 1: PenController (the walking pen squishies, their coin labels and the own PEN SPACE sign) in
+-- CapsuleController's slot after DailyController; CapsuleController no longer starts (the capsule remotes have no
+-- server handler since PenService replaced CapsuleService; its module stays until pens3 phase 3).
 local CONTROLLER_ORDER = {
 	"NetController",
 	"StateController",
@@ -89,7 +90,7 @@ local CONTROLLER_ORDER = {
 	"BoxController",
 	"QuestController",
 	"DailyController",
-	"CapsuleController",
+	"PenController",
 	"QueueController",
 	"DuelController",
 	"MatchController",

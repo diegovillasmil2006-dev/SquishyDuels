@@ -8,20 +8,20 @@
 --   * a squeeze uses exactly one Double Grip point and doubles its Grip; no point, no doubling; nothing when not ready
 --     or when the session takes no more changes (every write goes through mutate); the total stops at maxGrip and the
 --     gain says what it really gained; step() drops the session of a player who already left;
---   * Phase 3 (spec 2026-10-12 §3, §10): an own squeeze trains the power of the highest capsule level (an empty
---     capsule counts; 10 without capsules), whatever the pad; a capsule squeeze (addFromCapsule) trains
---     its power, never doubled and without a Double Grip point; Grip events above gripAlertPerHour in a rolling hour
---     set the anomaly alert, which re-arms an hour later;
+--   * pens3 phase 1: an own squeeze trains PenMath.squeezeGrip(profile.pen), the floor of the pen's squeeze value (10
+--     without a pen; a capsule counts for nothing), whatever the pad; a capsule squeeze (addFromCapsule, unused since
+--     pens3 phase 1, removed in phase 2) trains its power, never doubled and without a Double Grip point; Grip events
+--     above gripAlertPerHour in a rolling hour set the anomaly alert, which re-arms an hour later;
 --   * a load sets the level silently (no level-up or rank-up toast), with grip.headStart after a v1 -> v2 migration;
 --     grip.welcomeBack only when Double Grip grew by welcomeBackMinGain since the last save (lastSeenAt, §17.3.4);
 --   * a level-up toasts grip.levelUp (grip.padUnlocked went with the giant pads, build plan Phase 6), broadcasts
 --     grip.rankUp to the lobby players and asks for a "soon" save; an unknown tier (only tier 1, the Foam Mats, is
 --     left) trains nothing and GripService.canUseTier is gone;
 --   * a capsule-only profile that reaches Lv 5 keeps its starter progress and Coins with QuestService wired;
---   * Match HUD M2 (2026-10-16): a match pay (addFromMatch) trains squeezes × an own squeeze's Grip (the highest
---     capsule level's power), never doubled and without a Double Grip point, each squeeze one event (never clamped at
---     the top level), with the level toasts; nothing unready, frozen, or for a squeezes count outside 1..the largest
---     duel pay (MatchRewards.maxSqueezes()).
+--   * Match HUD M2 (2026-10-16): a match pay (addFromMatch) trains squeezes × an own squeeze's Grip (the pen's, pens3
+--     phase 1), never doubled and without a Double Grip point, each squeeze one event (never clamped when the whole
+--     pay is above maxGripPerEvent), with the level toasts; nothing unready, frozen, or for a squeezes count outside
+--     1..the largest duel pay (MatchRewards.maxSqueezes()).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -38,6 +38,7 @@ return function(t: Context)
 	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
 	local GripMath = t.requireShared("GripMath")
+	local PenMath = t.requireShared("PenMath")
 	local TableUtil = t.requireShared("Util/TableUtil")
 
 	local REST = Config.Grip.Rested
@@ -59,6 +60,11 @@ return function(t: Context)
 		lobby: { any },
 	}
 
+	-- A pen item (pens3 phase 1), plain Lv 1 unless told.
+	local function penItem(id: number, kind: string, form: number?, level: number?, coat: number?): any
+		return { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
+	end
+
 	local function newProfile(unixNow: number): any
 		return {
 			coins = 50,
@@ -69,13 +75,14 @@ return function(t: Context)
 				total = 0,
 				rested = { value = 0, at = unixNow },
 			},
-			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's
+			-- Pens3 phase 1: a new player's pen, Kitty Bread in the 3 free spots.
+			pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } },
 		}
 	end
 
-	-- Grip of one own squeeze for this profile (Phase 3: the highest capsule level's power).
+	-- Grip of one own squeeze for this profile (pens3 phase 1: the floor of the pen's squeeze value).
 	local function ownGrip(world: any): number
-		return CapsuleMath.squeezeGrip(world.profile.capsules)
+		return PenMath.squeezeGrip(world.profile.pen)
 	end
 
 	local function fresh(): World
@@ -222,33 +229,27 @@ return function(t: Context)
 		local gain = GripService.addFromSqueeze(world.player, 1)
 		expect.equal(gain.doubled, false)
 		expect.equal(gain.grip, ownGrip(world))
-		expect.equal(gain.grip, 10) -- a new player's capsule: CP(1)
+		expect.equal(gain.grip, 10) -- a new player's pen: Kitty Bread, 10 a second
 		expect.equal(gain.gripTotal, world.profile.grip.total)
 		expect.near(world.profile.grip.rested.value, 0, 1e-6)
 		finish()
 	end)
 
 	t.test(
-		"an own squeeze trains the highest capsule level's power (an empty capsule counts), x mult doubled",
+		"an own squeeze trains the floor of the pen's squeeze value (a capsule counts for nothing), x mult doubled",
 		function()
 			local world = fresh()
-			local list: { any } = {
-				{ level = 12, squishyId = "kitty_bread" },
-				{ level = 31 },
-				{ level = 4, squishyId = "dragon" },
-			}
-			world.profile.capsules = { slots = 3, list = list }
+			-- Kitty Bread Lv 2 (11.5) + Dragon (640) = 651.5 a squeeze: 651 Grip.
+			world.profile.pen.items = { penItem(1, "kitty_bread", 0, 2), penItem(2, "dragon") }
+			world.profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 			local plain = GripService.addFromSqueeze(world.player, 1)
-			expect.equal(plain.grip, CapsuleMath.power(31))
+			expect.equal(plain.grip, 651)
 			world.profile.grip.rested = { value = 3, at = UNIX_START }
 			local doubled = GripService.addFromSqueeze(world.player, 1)
 			expect.equal(doubled.doubled, REST.enabled)
-			expect.equal(
-				doubled.grip,
-				if REST.enabled then CapsuleMath.power(31) * REST.mult else CapsuleMath.power(31)
-			)
-			-- Without any capsule field the squeeze trains CP(1), the starter capsule's.
-			world.profile.capsules = nil
+			expect.equal(doubled.grip, if REST.enabled then 651 * REST.mult else 651)
+			-- Without a pen the squeeze trains the least squeeze value, 10.
+			world.profile.pen = nil
 			expect.equal(GripService.addFromSqueeze(world.player, 1).grip, 10 * (if REST.enabled then REST.mult else 1))
 			finish()
 		end
@@ -280,10 +281,9 @@ return function(t: Context)
 	t.test("a match pay trains squeezes × an own squeeze's Grip: never doubled, no Double Grip point used", function()
 		local world = fresh()
 		world.profile.grip.rested = { value = 5, at = UNIX_START }
-		world.profile.capsules =
-			{ slots = 2, list = { { level = 12, squishyId = "kitty_bread" }, { level = 23 } :: any } }
+		table.insert(world.profile.pen.items, penItem(2, "bird"))
 		local before = TableUtil.deepCopy(world.profile)
-		local perSqueeze = CapsuleMath.power(23) :: number -- the highest capsule level (an empty one counts)
+		local perSqueeze = 170 -- Kitty Bread 10 + Bird 160
 		expect.equal(GripService.addFromMatch(world.player, 600), 600 * perSqueeze)
 		expect.equal(world.profile.grip.total, 600 * perSqueeze)
 		expect.deepEqual(world.profile.grip.rested, before.grip.rested)
@@ -302,10 +302,16 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("a match pay at the top capsule level is never clamped per event (each squeeze is one event)", function()
+	t.test("a big match pay is never clamped per event (each squeeze is one event)", function()
 		local world = fresh()
-		world.profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
-		local top = CapsuleMath.power(100) :: number
+		-- 12 Rainbow Galaxy Dragons at Lv 26: about 12M a squeeze (pens3 phase 1 makes none yet; later phases will).
+		local items = {}
+		for id = 1, 12 do
+			table.insert(items, penItem(id, "dragon", 2, 26, 7))
+		end
+		world.profile.pen = { spots = 12, nextId = 13, items = items }
+		local top = PenMath.squeezeGrip(world.profile.pen)
+		expect.truthy(top < Config.Grip.maxGripPerEvent) -- one squeeze is one event under the cap
 		expect.truthy(600 * top > Config.Grip.maxGripPerEvent) -- one event of the whole pay would be clamped
 		expect.equal(GripService.addFromMatch(world.player, 600), 600 * top)
 		finish()

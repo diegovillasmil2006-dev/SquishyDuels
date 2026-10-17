@@ -3,8 +3,8 @@
 -- its sign), §11.3 (states), §11.4 (focus), §18.5.2 B2 (coin flights). The server decides every claim
 -- (DailyRewardService); this module only shows the state and sends DailyClaim. Looks: UI/DailyFormat (pure).
 -- * The "daily" modal (registered in init, so the HUD's Daily button and the SD_DailyStand prompt come alive, §7.6):
---   7 day cards (Day n, its Coins (Phase 5: its squeezes × the `capsules` field's squeeze value, refreshed when the
---   capsules change), "Treat Box" on day 7), the Claim button (Daily_ClaimButton) on today's card, the streak and the
+--   7 day cards (Day n, its Coins (pens3 phase 1: its squeezes × the `pen` field's squeeze value, refreshed when the
+--   pen changes), "Treat Box" on day 7), the Claim button (Daily_ClaimButton) on today's card, the streak and the
 --   time to the next reward (refreshed every second while open).
 --   Locked states (§11.3): a profile that is not ready -> disabled with reason.data.notReady; a pending save -> disabled
 --   with reason.box.saving (§3.11: daily claims are blocked while a save is pending; reading, planner note 3).
@@ -178,7 +178,7 @@ local function savePending(): boolean
 end
 
 local function currentModel(): DailyFormat.Model
-	return DailyFormat.model(dailyState(), serverNow(), StateController.get("capsules"))
+	return DailyFormat.model(dailyState(), serverNow(), StateController.get("pen"))
 end
 
 -- Why the Claim button is disabled now, or nil.
@@ -986,7 +986,7 @@ function DailyController.init()
 	end
 	c:add(StateController.changed(FIELD):connect(onState))
 	c:add(StateController.changed("dataStatus"):connect(onState))
-	c:add(StateController.changed("capsules"):connect(refresh)) -- Phase 5: the squeeze value sets the Coins
+	c:add(StateController.changed("pen"):connect(refresh)) -- pens3 phase 1: the pen's squeeze value sets the Coins
 	c:add(function()
 		table.clear(days)
 		root, grid, claimButton, closeButton = nil, nil, nil, nil

@@ -6,8 +6,8 @@
 -- * The "quests" modal (registered in init, so the HUD's Quests button and the SD_QuestBoard prompt come alive, §7.6):
 --   the Daily quests (one row per quest of the day, or "No quests right now. Check back in {time}."), the Starter
 --   tasks (hidden once all are claimed) and Top Wins, with the time to the next quest day (refreshed every second while
---   open). A row (Quest_<questId>): the quest's picture, its line, "3 / 5" and the bar, the reward (Phase 5: its
---   squeezes × the `capsules` field's squeeze value), Quests_SwapButton on unfinished daily quests while the day's
+--   open). A row (Quest_<questId>): the quest's picture, its line, "3 / 5" and the bar, the reward (pens3 phase 1: its
+--   squeezes × the `pen` field's squeeze value), Quests_SwapButton on unfinished daily quests while the day's
 --   free swap is left, the Quests_EquipButton shortcut when the quest's squishy is owned but not equipped, and CLAIM
 --   (Quests_ClaimButton) / GO (Quests_GoButton) / the claimed check.
 -- * Claim -> NetController.invokeAsync("QuestClaim", questId): on ok the reward flies from the button into the pill
@@ -216,7 +216,7 @@ local function currentBoard(): QuestFormat.Board
 		owned = StateController.owned(),
 		equipped = StateController.equipped(),
 		now = serverNow(),
-		capsules = StateController.get("capsules"), -- Phase 5: rewards = squeezes × the squeeze value
+		pen = StateController.get("pen"), -- pens3 phase 1: rewards = squeezes × the pen's squeeze value
 	})
 end
 
@@ -1332,7 +1332,7 @@ function QuestController.init()
 		return true
 	end))
 	c:add(QuestPop.stop)
-	for _, field in { FIELD, "owned", "equipped", "dataStatus", "capsules", TOP_WINS_FIELD } do
+	for _, field in { FIELD, "owned", "equipped", "dataStatus", "pen", TOP_WINS_FIELD } do
 		c:add(StateController.changed(field):connect(refresh))
 	end
 	c:add(StateController.LobbyLockChanged:connect(function(locked: boolean)

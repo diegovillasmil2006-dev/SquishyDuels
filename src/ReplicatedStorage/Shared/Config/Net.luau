@@ -65,6 +65,8 @@ local Net = {
 		CapsuleUpgrade = { rate = 1, burst = 1, oneInFlight = true },
 		CapsuleUnlock = { rate = 1, burst = 1, oneInFlight = true },
 		CapsuleSet = { rate = 1, burst = 1, oneInFlight = true },
+		-- Pens3 phase 1: the pen's spot buy, the same: 1 a second and one at a time.
+		PenBuySpot = { rate = 1, burst = 1, oneInFlight = true },
 		PromptCoinBundle = { rate = 0.5, burst = 1 },
 		PromptGamePass = { rate = 0.5, burst = 1 },
 		-- Burst 2: the UI re-enables the button after exactly 30 s, so with network jitter an honest second press can

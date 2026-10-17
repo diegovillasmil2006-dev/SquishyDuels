@@ -17,8 +17,8 @@
 --   pure), AlwaysOnTop, LightInfluence 0 and the nameplates' foam chip (Frosting, the chip bands and outline, the Chip
 --   text in InkUI), its bottom Vfx.CoinPopup.startStuds above the Root. Its text (panelLabel, pure, named for the old
 --   panel) is what one own squeeze pays, the same anywhere (Phase 5; since Phase 3 a pad no longer changes it):
---   grip.stationLabelBase with the squeeze value (CapsuleMath.squeezeValue) and the Grip of the highest capsule level
---   (CapsuleMath.squeezeGrip) of StateController's `capsules` field, re-read with the station check. Shown
+--   grip.stationLabelBase with the Coins (PenMath.rewardCoins of one squeeze at PenMath.squeezeValue) and the Grip
+--   (PenMath.squeezeGrip) of StateController's `pen` field (pens3 phase 1), re-read with the station check. Shown
 --   (labelShownFor, pure) only while holding, out of a match, with the lobby unlocked, no screen open (no block) and no
 --   first-person look; it is built once and shown or hidden with Enabled.
 -- * Sending (§17.3.2, §9.6; Batch 1 #2: squeezes pay up to the hold rhythm): there is no squeeze timer and no
@@ -131,12 +131,12 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
+local PenMath = require(Shared.PenMath)
 local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
 local ValidateAutoClick = require(Shared.Config.ValidateAutoClick)
@@ -425,7 +425,7 @@ end
 -- rises and fades, lib:255-268) centred on that point, in the design's colour, size and drift of
 -- Config.UI.Fx.events.squeeze (coinFloat / gripFloat; popupColor when the colour is unknown). Read through an inline
 -- require (no top-level local). Returns its label (a fold changes its Text), nil when nothing is drawn. AFFECTED
--- 2026-10-15: the amounts still come from the capsules' squeeze value (wired to the new income later).
+-- 2026-10-15; pens3 phase 1: the amounts are the server's, paid at the pen's squeeze value.
 local function showOverlayLine(line: string, kind: PopupKind, at: Vector2): TextLabel?
 	local l = floatLabel
 	if l == nil or line == "" then
@@ -797,13 +797,14 @@ local function refreshLabel()
 	local player = localPlayer()
 	local model = if player then HeldSquishyController.getModel(player) else nil
 	local root = if model then model.PrimaryPart else nil
-	local shown = Config.Squeeze.floatingLabel and SqueezeController.labelShownFor({
-		holding = root ~= nil and player ~= nil and HeldSquishyController.isHolding(player),
-		inMatch = inMatch(),
-		lobbyLocked = StateController.isLobbyLocked(),
-		blocked = ControlsController.isBlocked(),
-		firstPerson = require(script.Parent.FirstPersonController).look() ~= nil,
-	})
+	local shown = Config.Squeeze.floatingLabel
+		and SqueezeController.labelShownFor({
+			holding = root ~= nil and player ~= nil and HeldSquishyController.isHolding(player),
+			inMatch = inMatch(),
+			lobbyLocked = StateController.isLobbyLocked(),
+			blocked = ControlsController.isBlocked(),
+			firstPerson = require(script.Parent.FirstPersonController).look() ~= nil,
+		})
 	labelShown = false
 	if not shown or root == nil then
 		l.gui.Enabled = false
@@ -816,7 +817,7 @@ local function refreshLabel()
 	if l.gui.Adornee ~= root then
 		l.gui.Adornee = root
 	end
-	local line = SqueezeController.panelLabel(StateController.get("capsules"))
+	local line = SqueezeController.panelLabel(StateController.get("pen"))
 	if l.text.Text ~= line then
 		l.text.Text = line
 		l.text.TextSize = Theme.textSize("Chip")
@@ -1488,13 +1489,13 @@ function SqueezeController.labelSize(textBounds: Vector2): Vector2
 	)
 end
 
--- The floating label's text (named for the old squeeze panel's pad label): what one own squeeze pays for the
--- `capsules` state field (Phase 5), the same anywhere: grip.stationLabelBase with the squeeze value and the Grip of the
--- highest capsule level (CapsuleMath; a new player's 10 and 10 before the state arrives).
-function SqueezeController.panelLabel(capsules: any?): string
+-- The floating label's text (named for the old squeeze panel's pad label): what one own squeeze pays for the `pen`
+-- state field (pens3 phase 1), the same anywhere: grip.stationLabelBase with the whole Coins and Grip the server pays
+-- at the pen's squeeze value (PenMath; a new player's 10 and 10 before the state arrives).
+function SqueezeController.panelLabel(pen: any?): string
 	return text("grip.stationLabelBase", {
-		coins = Format.coins(CapsuleMath.squeezeValue(capsules)),
-		grip = Format.coins(CapsuleMath.squeezeGrip(capsules)),
+		coins = Format.coins(PenMath.rewardCoins(1, PenMath.squeezeValue(pen))),
+		grip = Format.coins(PenMath.squeezeGrip(pen)),
 	})
 end
 
@@ -1633,6 +1634,7 @@ function SqueezeController.init()
 		shownPrompts[prompt] = nil
 	end))
 	c:add(StateController.changed("grip"):connect(refreshLabel))
+	c:add(StateController.changed("pen"):connect(refreshLabel)) -- pens3 phase 1: a new spot or squishy changes the pay
 	-- The label follows the own held model (a rebuild on an equip or a respawn, or none).
 	c:add(HeldSquishyController.HeldChanged:connect(function(player: Player)
 		if player == localPlayer() then

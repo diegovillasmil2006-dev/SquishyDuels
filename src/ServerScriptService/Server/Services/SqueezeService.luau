@@ -8,11 +8,11 @@
 -- the stale-lobby check disabled or the lobby does not have counts as none), and off a pad the squeeze pays tier 1
 -- (base Coins and Grip, no pad bonus; every station is tier 1 since the giant pads went). The tier, the position,
 -- the equipped squishy, the timing and every amount are the server's. No squeeze timer; squeezes pay up to the hold
--- rhythm (Batch 1 #2; Config.Squeeze: 2 at once, then 1 per 0.45 s): over it -> squeeze.tooFast with no Coins, no Grip
--- and no capsule push.
+-- rhythm (Batch 1 #2; Config.Squeeze: 2 at once, then 1 per 0.45 s): over it -> squeeze.tooFast with no Coins and no
+-- Grip.
 -- Auto-clicker check (2026-10-16): before anything else every request goes to AutoClickService.check(p, os.clock) (the
 -- server's own arrival time; floods included). A reason back (squeeze.autoClick on a catch, squeeze.tooFast during its
--- penalty) is the reply at once, like any rejection: no Coins, no Grip, no stats, no capsule push, no token used. The
+-- penalty) is the reply at once, like any rejection: no Coins, no Grip, no stats, no token used. The
 -- strikes, kicks and bans are AutoClickService's.
 --   * dropped (flood guard) -> nothing, no reply; a flood is logged once ([SD][abuse]) when SqueezeRules says so;
 --   * rejected -> SqueezeResult{ok = false, coins = 0, total, limit, reason, nextAt, grip = 0, gripTotal, doubled =
@@ -20,10 +20,9 @@
 --   * accepted -> the new profile.squeezeLimit and stats.squeezes + 1 are written through DataService.mutate (a
 --     session that stopped taking changes, e.g. its final save started, is answered data.notReady and earns
 --     nothing); Grip through GripService.addFromSqueeze(p, tier) (step 8a, whether or not it paid); Coins (the squeeze
---     value, CapsuleMath.squeezeValue(profile.capsules), when paid, else emptyCoins; spec 2026-10-12 §3, Phase 3: the
---     held squishy and the pad no longer change it) through EconomyService.grantCoins(p, n, "squeeze"); a paid one
---     also pushes the player's capsules (CapsuleService.push with the server-side root position: only inside their
---     own base, lobby spec 2026-10-11 §6); the character attribute
+--     value when paid, PenMath.rewardCoins(1, PenMath.squeezeValue(profile.pen)): pens3 phase 1, the pen's Coins a
+--     second, whole; else emptyCoins; the held squishy and the pad do not change it) through
+--     EconomyService.grantCoins(p, n, "squeeze") (pens3 phase 1: no capsule push any more); the character attribute
 --     SD_SqueezeAt = server time (others see the squeeze, their Foam Mat pulses); Squeezed(p, squishyId, coins, tier)
 --     for the layers above (QuestService, Part 7: onSqueezed(p, id)); then SqueezeResult{ok = true, coins,
 --     total, limit, nextAt, grip, gripTotal, doubled}. `coins` is what the balance really gained (0 at the Coin cap).
@@ -56,10 +55,10 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local PenMath = require(Shared.PenMath)
 local Signal = require(Shared.Util.Signal)
 local SqueezeLimit = require(Shared.SqueezeLimit)
 local Types = require(Shared.Types)
@@ -70,7 +69,6 @@ local SqueezeRules = require(Server.Logic.SqueezeRules)
 
 local Services = script.Parent
 local AutoClickService = require(Services.AutoClickService)
-local CapsuleService = require(Services.CapsuleService)
 local CharacterService = require(Services.CharacterService)
 local EconomyService = require(Services.EconomyService)
 local GripService = require(Services.GripService)
@@ -101,7 +99,6 @@ export type Deps = {
 	markDirty: (player: any, field: string) -> (),
 	setSqueezeAt: (player: any, at: number) -> (),
 	reply: (player: any, result: SqueezeResult) -> (),
-	pushCapsules: (player: any, rootPosition: Vector3) -> (), -- CapsuleService.push (a paid squeeze)
 	autoClick: (player: any, now: number) -> string?, -- AutoClickService.check: nil, or the reason to refuse with
 }
 
@@ -224,9 +221,6 @@ local function defaultDeps(): Deps
 		end,
 		reply = function(player: any, result: SqueezeResult)
 			NetService.fire(REMOTE_RESULT, player, result)
-		end,
-		pushCapsules = function(player: any, rootPosition: Vector3)
-			CapsuleService.push(player, rootPosition)
 		end,
 		autoClick = AutoClickService.check,
 	}
@@ -420,7 +414,7 @@ function SqueezeService.request(player: any): SqueezeResult?
 		station = padAt(root),
 		rootPosition = root,
 		inMatch = deps.duelPhaseOf(player) ~= "",
-		baseCoins = CapsuleMath.squeezeValue(if ready then profile.capsules else nil),
+		baseCoins = PenMath.rewardCoins(1, PenMath.squeezeValue(if ready then profile.pen else nil)),
 		limit = limit,
 	})
 	session.state = decision.state
@@ -463,7 +457,6 @@ function SqueezeService.request(player: any): SqueezeResult?
 	if decision.paid then
 		stats.paid += 1
 		recordSqueeze(player, session)
-		deps.pushCapsules(player, root :: Vector3)
 	end
 	SqueezeService.Squeezed:fire(player, equipped, gained, tier)
 

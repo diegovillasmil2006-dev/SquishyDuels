@@ -173,6 +173,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	CapsuleUpgrade = c2s("RemoteFunction", { arg("slot", "integer"), arg("expectedPrice", "coins") }),
 	CapsuleUnlock = c2s("RemoteFunction", { arg("slot", "integer"), arg("expectedPrice", "coins") }),
 	CapsuleSet = c2s("RemoteFunction", { arg("slot", "integer"), arg("squishyId", "squishyId") }),
+	-- Pens3 phase 1 (PenService): buys the caller's own next pen spot (no remote takes a base, plot or player id).
+	-- expectedPrice is compared, never charged. data: Types.PenResult {pen, charged, savePending}.
+	PenBuySpot = c2s("RemoteFunction", { arg("expectedPrice", "coins") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

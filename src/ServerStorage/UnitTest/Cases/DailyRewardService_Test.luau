@@ -24,7 +24,8 @@ type Context = {
 
 local DAY = 20000
 local DAY_SECONDS = 86400
-local VALUE = 4 * 68 -- the squeeze value of the test profile: Butter (×4) in a Lv 11 capsule (CP 68)
+-- Pens3 phase 1: the squeeze value of the test profile's pen, Kitty Bread (10) + Butter (40) a second.
+local VALUE = 50
 
 return function(t: Context)
 	local expect = t.expect
@@ -60,7 +61,14 @@ return function(t: Context)
 				coins = 0,
 				daily = { lastClaimDay = lastClaimDay, streakDay = streakDay, totalClaims = 4 },
 				boxLog = {},
-				capsules = { slots = 1, list = { { level = 11, squishyId = "butter" } } },
+				pen = {
+					spots = 3,
+					nextId = 3,
+					items = {
+						{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
+						{ id = 2, kind = "butter", form = 0, level = 1, coat = 0 },
+					},
+				},
 			},
 			dirty = {},
 			grants = {},
@@ -143,9 +151,9 @@ return function(t: Context)
 
 	t.test("the day's squeezes pay the squeeze value of the claim's moment (spec 2026-10-12 §9)", function()
 		local w = fresh(DAY - 1, 1)
-		w.profile.capsules.list[1].level = 21 -- Butter Lv 21: 4 × 461
+		table.insert(w.profile.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0 }) -- + 640
 		local reply = DailyRewardService.claim(w.player)
-		expect.equal(reply.data.coins, DAILY.coinsByDay[2] * 4 * 461)
+		expect.equal(reply.data.coins, DAILY.coinsByDay[2] * 690)
 		finish()
 	end)
 

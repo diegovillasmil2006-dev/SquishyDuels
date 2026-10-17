@@ -8,6 +8,9 @@
 -- player's squeeze value) Coins at the moment it is granted, and an own squeeze pays the squeeze value.
 -- Match HUD M2 (2026-10-16): the "match" Coin reason (a Free for All / Team Deathmatch result, EconomyService.
 -- grantMatchResult). Its amounts and rules are DuelRewards' below (owner: a match pays like a 1v1 duel, no hourly cap).
+-- Pens (pens3 phase 1, 2026-10-17): Pen (Config/Pen) and the "pen" Coin reason (the pen's pay every second and the
+-- spots bought at its sign, PenService). Every reward counted in squeezes now pays PenMath.rewardCoins(squeezes,
+-- PenMath.squeezeValue(profile.pen)); the capsules pay nothing any more (their code goes in phases 2-3).
 
 local Economy = {
 	startingCoins = 0,
@@ -31,6 +34,7 @@ local Economy = {
 		"robux",
 		"box",
 		"shop",
+		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"capsule",
 		"debug",
 	},
@@ -101,6 +105,9 @@ local Economy = {
 	-- Weekly quests (owner 2026-10-17): Config/WeeklyQuests (the switch and the week's start; checked by
 	-- Config/ValidateWeeklyQuests). The quests are QuestDefs.weekly().
 	WeeklyQuests = require(script.Parent.WeeklyQuests),
+
+	-- The pen (pens3 phase 1): Config/Pen (spots, prices, what a squishy earns; checked by Config/ValidatePen).
+	Pen = require(script.Parent.Pen),
 
 	-- Duplicate box results (§6.5). "exclude_owned" is the documented alternative and is not built.
 	DuplicatePolicy = "refund" :: "refund" | "exclude_owned",

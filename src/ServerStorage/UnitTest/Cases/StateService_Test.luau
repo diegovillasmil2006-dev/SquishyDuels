@@ -6,7 +6,8 @@
 -- Contract (DESIGN §2.7 state versioning, §2.8 RequestSnapshot / StateDelta, §3.1 / §3.13 / §11.3 banners, §17.10):
 --   * RequestSnapshot: {status = "loading"} while loading, the full Snapshot when loaded;
 --   * the Snapshot holds every field: profile projections (quests with starter, unseenReveals = boxLog entries with
---     seen = false, grip = {total, rested}: Phase 6, an old save's grip.afk and grip.trainer are not sent), session
+--     seen = false, grip = {total, rested}: Phase 6, an old save's grip.afk and grip.trainer are not sent; pens3
+--     phase 1: pen as stored, and it goes out like any field when marked), session
 --     fields (policy "checking", monetization with no
 --     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it),
 --     dataStatus {status, persisted, savePending, banner};
@@ -95,6 +96,7 @@ return function(t: Context)
 			-- An old save (Phase 6): it still holds the slow-training bank and the trainer, which are never sent.
 			grip = { total = 50, trainer = 1, rested = { value = 1200, at = 1 }, afk = { value = 120, at = 1 } },
 			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
+			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
 		}
 	end
 
@@ -228,6 +230,7 @@ return function(t: Context)
 			"monetization",
 			"onboarding",
 			"owned",
+			"pen",
 			"policy",
 			"practice",
 			"quests",
@@ -251,6 +254,12 @@ return function(t: Context)
 		expect.deepEqual(snap.grip, { total = 50, rested = { value = 1200, at = 1 } }) -- no afk or trainer (Phase 6)
 		-- Phase 5: the owner's capsules as stored (the capsule card, the squeeze value of the reward texts).
 		expect.deepEqual(snap.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
+		-- Pens3 phase 1: the owner's pen as stored (the squeeze value of every client text, the sign).
+		expect.deepEqual(snap.pen, {
+			spots = 3,
+			nextId = 2,
+			items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } },
+		})
 		expect.equal(snap.policy, "checking")
 		expect.deepEqual(snap.monetization, { bundles = {}, passes = {} })
 		expect.deepEqual(snap.practice, { throws = 0, hits = 0, accuracy = 0 })
@@ -534,7 +543,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list is DESIGN's StateDelta list plus grip, capsules and topWins", function()
+	t.test("the field list is DESIGN's StateDelta list plus grip, capsules, topWins and pen", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -553,6 +562,7 @@ return function(t: Context)
 			"grip",
 			"capsules",
 			"topWins",
+			"pen",
 		})
 	end)
 
@@ -569,6 +579,19 @@ return function(t: Context)
 			w.sent[2].fields,
 			{ capsules = { slots = 1, list = { { level = 2, squishyId = "kitty_bread" } } } }
 		)
+	end)
+
+	-- Pens3 phase 1: a pen change (a spot bought, a new squishy) reaches the owner's client in the next delta.
+	t.test("a changed pen goes out in the next partial StateDelta", function()
+		local w = setup()
+		local player, profile = loadedPlayer(w)
+		profile.pen.spots = 4
+		StateService.markDirty(player, "pen")
+		runDeferred(w)
+		expect.equal(#w.sent, 2)
+		expect.deepEqual(w.sent[2].fields, {
+			pen = { spots = 4, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
+		})
 	end)
 
 	-- The DataService reading -----------------------------------------------------------------------------------------

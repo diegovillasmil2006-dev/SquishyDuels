@@ -182,6 +182,8 @@ export type Path = {
 
 -- A base's two colours (Palette tokens): `full` for the rim, the fence caps and the gate, `light` for the plinth.
 export type BaseColors = { full: string, light: string }
+-- Pens3 phase 1: the pen at one spot count (Bases.pen.steps).
+export type PenStep = { w: number, d: number, tier: number, fence: number, backWall: "fence" | "shelf" }
 
 -- Constants
 
@@ -830,10 +832,35 @@ local Bases = {
 	nameSign = { position = Vector3.new(0, 11.6, BASE_DEPTH / 2 - 0.6), size = Vector3.new(9, 2, 0.3) } :: Box,
 	-- Reading: the gate's posts and fence run along the plinth's edges 0.6 inside them.
 	fenceInset = 0.6,
-	-- Reading: the spec's [spawn] faces the gate (§4); spec §2 had it 42 studs behind it (local z -16), but there the
-	-- join camera sat behind the statue (2026-10-16 playtest), so it stands 30 behind (local z -4, spawn -> duel stage
-	-- 104 st, gate -> stage 74 st), facing +Z.
-	spawn = CFrame.new(0, 0, BASE_DEPTH / 2 - 30) * CFrame.Angles(0, math.pi, 0),
+	-- Pens3 phase 1 [P reading]: v6 has no base spawn, so the first view is your own pen: the spawn stands between the
+	-- gate (z +26) and the pen's front (z +19), at local z +22.5, facing -Z, toward the pen. (Before: z -4 facing the
+	-- gate, where the statue blocked the camera; the statue goes with the capsules.)
+	spawn = CFrame.new(0, 0, 22.5),
+	-- Pens3 phase 1: the pen (lobby design v6 kit.json base.pen, K:4084-4189), turned 180° from v6's base frame into
+	-- this plot frame (+Z = the gate side): its front fence at z frontZ with the gateWidth gap centred on x 0, built of
+	-- `segment`-stud fence pieces, growing toward -Z. steps[spots] = the pen at that many open spots: w (along x) × d
+	-- (along z) studs, the fence tier (1 Wafer, 2 Mint, 3 Royal), K's fence segment count and its back wall ("shelf"
+	-- from 9 spots: a fence until the shelf of phase 11). edgeMargin = how far a walking squishy keeps from the fence
+	-- (PenMath.wanderRect). signs.pen = the PEN SPACE sign (L:166-194 pen_upgrade_sign_01), facing +Z.
+	pen = {
+		frontZ = 19,
+		gateWidth = 8,
+		segment = 4,
+		edgeMargin = 0.8,
+		steps = {
+			[3] = { w = 16, d = 12, tier = 1, fence = 12, backWall = "fence" },
+			[4] = { w = 16, d = 16, tier = 1, fence = 14, backWall = "fence" },
+			[5] = { w = 24, d = 16, tier = 1, fence = 18, backWall = "fence" },
+			[6] = { w = 24, d = 20, tier = 2, fence = 20, backWall = "fence" },
+			[7] = { w = 24, d = 24, tier = 2, fence = 22, backWall = "fence" },
+			[8] = { w = 24, d = 28, tier = 2, fence = 24, backWall = "fence" },
+			[9] = { w = 24, d = 32, tier = 2, fence = 20, backWall = "shelf" },
+			[10] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+			[11] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+			[12] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+		} :: { [number]: PenStep },
+		signs = { pen = CFrame.new(10, 0, 20.3) * CFrame.Angles(0, math.pi, 0) },
+	},
 	-- Reading: the back wall's statue (§4: the squishy in capsule 1) stands on a plinth (top 1.2) in front of the back
 	-- wall, facing the gate; it is this tall (max(height, 0.8 × width), like the hub statue).
 	statue = CFrame.new(0, 1.2, -21.5) * CFrame.Angles(0, math.pi, 0),

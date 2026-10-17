@@ -12,8 +12,8 @@
 --   onboarding.skipped). Both act on the card at once (the saved flags follow in a StateDelta). Hidden during duels
 --   (StateController lobby lock; the HUD column hides too), with its guidance.
 -- * Guidance: a waypoint (UI/Waypoint, hidden within Config.Onboarding.waypointHideStuds) to the step's
---   WorldLayout.waypoint target ("shop", "duel"; the squeeze and capsule steps have none since spec 2026-10-11 §5 /
---   Batch 1), or a pulsing Lemon ring on a HUD button (HudController.element("squishies"): the inspect step; lobby
+--   WorldLayout.waypoint target ("shop", "duel"; the squeeze and pen steps have none since spec 2026-10-11 §5 /
+--   pens3 phase 1), or a pulsing Lemon ring on a HUD button (HudController.element("squishies"): the inspect step; lobby
 --   HUD, spec 2026-10-11: no dock, so Inspect is reached through the Squishies list). Reading: the ring's stroke fades in
 --   and out once per PULSE_SECONDS (1 s, under §9.12's 3 Hz and the 1 Hz skeleton pulse); static under ReducedMotion.
 --   The ring is our own frame in SD_Hud that follows the element's box (hidden with the HUD or the element), so
@@ -25,8 +25,8 @@
 -- * "onboarding" is a non-modal screen registered in init, so Settings shows "Replay tutorial", which opens it with
 --   {replay = true}: a local replay from the first step that ignores and never changes the saved flags (no
 --   OnboardingStep is sent). A replay step completes on the local signs of the same events: Got it (welcome), an
---   accepted SqueezeResult (squeeze), stats.boxesOpened rising or a new owned squishy (firstBox), a capsule level or
---   slot rising (capsule, OnboardingFormat.capsuleBought), Inspect opening (inspect), the queue turning Searching
+--   accepted SqueezeResult (squeeze), stats.boxesOpened rising or a new owned squishy (firstBox), the pen's spots
+--   rising (pen, OnboardingFormat.penBought; pens3 phase 1), Inspect opening (inspect), the queue turning Searching
 --   (duel). Skip ends the replay.
 -- * Done: when a run that showed a card completes (not by skipping), the done toast (Config.Onboarding.doneToastKey)
 --   shows once for that run. A full state (a profile recovered after an OFFLINE start, §3.13) is a new baseline: no
@@ -46,7 +46,7 @@
 -- line n): the card is the purple row (the card's radius 20, H:203, H:433) without the Coral rim; Got it is the small
 -- green chip (H:402, a 34 px face in the 52 px touch box); Skip is a text link in the design's link colour (H:20:
 -- #FF6FA3, #FF4F8E on hover, underlined, the thinnest ink outline, PR3) on a 52 px touch box with Button's feel. Its
--- pop stays. AFFECTED 2026-10-15: its steps still teach capsules (OnboardingFormat), rewired with the new systems.
+-- pop stays. AFFECTED 2026-10-15: rewired with the new systems (pens3 phase 1: the pen step replaced capsules).
 -- Public: startReplay(), debugState().
 
 -- Services
@@ -662,9 +662,9 @@ function OnboardingController.init()
 			end
 		end
 	end))
-	c:add(StateController.changed("capsules"):connect(function(value: any, old: any)
-		if replay and not StateController.isApplyingFull() and OnboardingFormat.capsuleBought(value, old) then
-			markReplay("capsule")
+	c:add(StateController.changed("pen"):connect(function(value: any, old: any)
+		if replay and not StateController.isApplyingFull() and OnboardingFormat.penBought(value, old) then
+			markReplay("pen")
 		end
 	end))
 	c:add(StateController.QueueChanged:connect(function(new: StateController.QueueView, old: StateController.QueueView)

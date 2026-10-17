@@ -9,10 +9,10 @@
 --   squeezeHint(input)       onboarding.squeezeHint.<keyboard | touch | gamepad> (spec 2026-10-11: "Click or press E",
 --                            "Tap the screen", "Press X")
 --   guidance(step)           (waypoint, pulse): a WorldLayout.waypoint name ("shop", "duel") or a HudController.element
---                            name ("squishies": the inspect step); the squeeze and capsule steps have neither
+--                            name ("squishies": the inspect step); the squeeze and pen steps have neither
 --   text(step, ctx)          the step's text with {starterName}, {squeezeHint}, {coins}/{goal} filled in
---   capsuleBought(new, old)  the replay's sign of the capsule step: the capsules state's slot count or a capsule's level
---                            rose (a swap or an auto-filled squishy changes neither)
+--   penBought(new, old)      pens3 phase 1: the replay's sign of the pen step: the pen state's spots rose (a new
+--                            squishy in the pen changes nothing)
 --   visible(ctx) / model(ctx) the card, or nil when hidden: shown only for a ready profile that has not skipped and has
 --                            a step left. Replay mode (ctx.replay = the steps done in this local replay) ignores the saved
 --                            flags (done and skipped); the saved state never changes for a replay.
@@ -210,27 +210,13 @@ function OnboardingFormat.done(onboarding: any): { [string]: boolean }
 	return savedDone(onboarding)
 end
 
--- Batch 1: the replay's sign of the capsule step: the slot count or a capsule's level rose (an upgrade or an unlock).
-function OnboardingFormat.capsuleBought(new: any, old: any): boolean
-	if type(new) ~= "table" or type(old) ~= "table" or type(new.list) ~= "table" or type(old.list) ~= "table" then
-		return false
-	end
-	if finite(new.slots) and finite(old.slots) and new.slots > old.slots then
-		return true
-	end
-	for slot, capsule in new.list do
-		local before = old.list[slot]
-		if
-			type(capsule) == "table"
-			and type(before) == "table"
-			and finite(capsule.level)
-			and finite(before.level)
-			and capsule.level > before.level
-		then
-			return true
-		end
-	end
-	return false
+-- Pens3 phase 1: the replay's sign of the pen step: the pen's spots rose (a spot bought at the sign).
+function OnboardingFormat.penBought(new: any, old: any): boolean
+	return type(new) == "table"
+		and type(old) == "table"
+		and finite(new.spots)
+		and finite(old.spots)
+		and new.spots > old.spots
 end
 
 return OnboardingFormat

@@ -6,10 +6,10 @@
 -- anywhere, spec 2026-10-11 §5):
 --   * SqueezeRequest takes no argument: the server finds the pad under its own root position (SqueezeRules.padUnder)
 --     and ignores anything the client sends;
---   * an accepted squeeze on a mat pays the squeeze value (Phase 3, spec 2026-10-12 §3: the best capsule's
---     CapsuleMath.squeezeValue, whatever squishy is held or pad stood on), trains the highest capsule level's power,
---     counts stats.squeezes, sets SD_SqueezeAt (server time), fires Squeezed and replies ok; a paid one pushes the
---     capsules with the server's own root position (CapsuleService.push decides whether that is home);
+--   * an accepted squeeze on a mat pays the squeeze value (pens3 phase 1: the pen's PenMath.squeezeValue, whole,
+--     whatever squishy is held or pad stood on; a capsule counts for nothing), trains its floor in Grip, counts
+--     stats.squeezes, sets SD_SqueezeAt (server time), fires Squeezed and replies ok; an argument the client sends is
+--     ignored (no capsule push any more);
 --   * off every pad, on a pad the lobby does not have or one the stale-lobby check disabled, the squeeze pays the same
 --     and reports tier 1 (Squeezed with tier 1); since the giant pads went (build plan Phase 6) every station is a
 --     tier-1 Foam Mat (squeeze_01..06);
@@ -17,7 +17,7 @@
 --   * the shipped hourly limit is off: every accepted squeeze pays (with the limit switched on, an empty one would give
 --     0 Coins while Grip still rises);
 --   * squeezes pay up to the hold rhythm (Batch 1 #2, replacing every click pays): the bucket's presses all pay Coins
---     and Grip; one more is squeeze.tooFast with no Coins, no Grip, no stats and no capsule push; holding for a minute
+--     and Grip; one more is squeeze.tooFast with no Coins, no Grip and no stats; holding for a minute
 --     pays every press; clicking at 12/s for a minute pays only the hold rhythm (2 + 60 / 0.45 at most, the rest
 --     tooFast, none dropped); a steady 20 requests/s is never dropped; a 25/s macro is capped at 1 accepted per
 --     cycleSeconds (after the bucket) and its excess above 20/s is dropped silently;
@@ -30,8 +30,8 @@
 --     (spec 2026-10-12 §12; log only: the squeezes still pay; 8,000 since Batch 1 #2, so only riding the paid cap for
 --     a whole hour passes it); the alert re-arms once the hour's squeezes are back under it;
 --   * auto-clicker check (2026-10-16): every request goes to AutoClickService.check first with its os.clock arrival
---     time; a reason back is the reply (squeeze.autoClick / squeeze.tooFast) with no Coins, no Grip, no stats, no
---     capsule push and no token of the paid cap used; wired to the real AutoClickService (enforce = "full"), a steady
+--     time; a reason back is the reply (squeeze.autoClick / squeeze.tooFast) with no Coins, no Grip, no stats and no
+--     token of the paid cap used; wired to the real AutoClickService (enforce = "full"), a steady
 --     10/s macro is caught (one squeeze.autoClick, then a silent penalty) and a minute's hold never is (review fix
 --     2026-10-16: 19/s is the client ceiling's rhythm, never judged). The other cases switch it off.
 
@@ -48,7 +48,7 @@ return function(t: Context)
 	local SqueezeService = t.requireServer("Services/SqueezeService")
 	local GripService = t.requireServer("Services/GripService")
 	local FakeClock = t.requireFake("FakeClock")
-	local CapsuleMath = t.requireShared("CapsuleMath")
+	local PenMath = t.requireShared("PenMath")
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
 	local WorldLayout = t.requireShared("World/WorldLayout")
@@ -76,7 +76,6 @@ return function(t: Context)
 		squeezed: { { id: string, coins: number, tier: number } },
 		dirty: { string },
 		frozen: boolean, -- the session takes no more changes (its final save took its snapshot): mutate refuses
-		pushes: { Vector3 }, -- CapsuleService.push calls (the root positions)
 	}
 
 	local function onStation(id: string): Vector3
@@ -95,16 +94,17 @@ return function(t: Context)
 				total = 0,
 				rested = { value = 0, at = UNIX_START },
 			},
-			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }, -- a new player's
+			-- Pens3 phase 1: a new player's pen, Kitty Bread in the 3 free spots.
+			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
 		}
 	end
 
-	-- What one own squeeze pays this profile (Phase 3): the squeeze value and the highest capsule level's power.
+	-- What one own squeeze pays this profile (pens3 phase 1): the pen's squeeze value and its floor in Grip.
 	local function valueOf(world: any): number
-		return CapsuleMath.squeezeValue(world.profile.capsules)
+		return PenMath.rewardCoins(1, PenMath.squeezeValue(world.profile.pen))
 	end
 	local function gripOf(world: any): number
-		return CapsuleMath.squeezeGrip(world.profile.capsules)
+		return PenMath.squeezeGrip(world.profile.pen)
 	end
 
 	-- `autoClick` = SqueezeService's AutoClickService.check dependency (auto-clicker check 2026-10-16); nil = off.
@@ -126,7 +126,6 @@ return function(t: Context)
 			squeezed = {},
 			dirty = {},
 			frozen = false,
-			pushes = {},
 		}
 		local function status(_player: any): string
 			return world.status
@@ -210,9 +209,6 @@ return function(t: Context)
 			reply = function(_player: any, result: any)
 				table.insert(world.replies, result)
 			end,
-			pushCapsules = function(_player: any, rootPosition: Vector3)
-				table.insert(world.pushes, rootPosition)
-			end,
 			-- Auto-clicker check (2026-10-16): off unless a case passes one (the cases at the end).
 			autoClick = autoClick or function(_player: any, _now: number): string?
 				return nil
@@ -247,7 +243,6 @@ return function(t: Context)
 		expect.equal(result.total, coins)
 		expect.equal(world.profile.coins, coins)
 		expect.equal(result.grip, gripOf(world))
-		expect.deepEqual(world.pushes, { world.position }) -- a paid squeeze pushes the capsules from the server's root
 		expect.equal(result.gripTotal, world.profile.grip.total)
 		expect.equal(result.doubled, false)
 		expect.equal(result.limit, if LIMIT.enabled then LIMIT.burst - 1 else LIMIT.burst) -- off: spec 2026-10-11 §5
@@ -283,27 +278,27 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("own squeezes pay the best capsule's value and the highest level's power (x mult doubled)", function()
+	t.test("own squeezes pay the pen's squeeze value, whole, and train its floor in Grip (x mult doubled)", function()
 		local world = fresh()
-		-- Lv 21 Toast: 461 × 1; Lv 5 Dragon: 16 × 64 = 1,024 (the best); an empty Lv 30 capsule: the highest level.
-		local list: { any } =
-			{ { level = 21, squishyId = "toast" }, { level = 5, squishyId = "dragon" }, { level = 30 } }
-		world.profile.capsules = { slots = 3, list = list }
+		-- Pens3 phase 1: Kitty Bread Lv 2 (11.5) + Dragon (640) = 651.5 a squeeze; a capsule counts for nothing.
+		world.profile.pen.items[1].level = 2
+		table.insert(world.profile.pen.items, { id = 2, kind = "dragon", form = 0, level = 1, coat = 0 })
+		world.profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 		local plain = SqueezeService.request(world.player)
-		expect.equal(plain.coins, 1_024)
-		expect.equal(plain.grip, CapsuleMath.power(30))
+		expect.equal(plain.coins, 651)
+		expect.equal(plain.grip, 651)
 		expect.equal(plain.doubled, false)
 		world.profile.grip.rested = { value = 1, at = UNIX_START }
 		world.clock.advance(SQ.cycleSeconds)
 		world.server.advance(SQ.cycleSeconds)
 		local doubled = SqueezeService.request(world.player)
-		expect.equal(doubled.coins, 1_024) -- Double Grip doubles Grip only
+		expect.equal(doubled.coins, 651) -- Double Grip doubles Grip only
 		expect.equal(doubled.doubled, REST.enabled)
-		expect.equal(doubled.grip, (CapsuleMath.power(30) :: number) * (if REST.enabled then REST.mult else 1))
+		expect.equal(doubled.grip, 651 * (if REST.enabled then REST.mult else 1))
 		finish()
 	end)
 
-	t.test("a refused squeeze pushes no capsule; a paid one pushes with the server's root, not the client's", function()
+	t.test("refusals pay nothing; an argument the client sends is ignored", function()
 		local world = fresh()
 		world.phase = "Active" -- in a match: squeeze.inDuel
 		expect.equal(SqueezeService.request(world.player).reason, "squeeze.inDuel")
@@ -311,20 +306,20 @@ return function(t: Context)
 		world.alive = false
 		world.clock.advance(1)
 		expect.equal(SqueezeService.request(world.player).reason, "squeeze.noCharacter")
-		expect.equal(#world.pushes, 0)
+		expect.equal(world.profile.coins, 0)
 		world.alive = true
-		world.position = Vector3.new(5, 3, -120) -- anywhere: CapsuleService decides whether it is home
+		world.position = Vector3.new(5, 3, -120) -- anywhere: a squeeze pays the same everywhere
 		world.clock.advance(1)
 		local forged = (SqueezeService.request :: any)(world.player, Vector3.zero)
 		expect.equal(forged.ok, true)
-		expect.deepEqual(world.pushes, { Vector3.new(5, 3, -120) })
+		expect.equal(forged.coins, valueOf(world))
 		finish()
 	end)
 
 	-- Squeeze anywhere (spec 2026-10-11 §5) ---------------------------------------------------------------------------
 
-	-- One accepted squeeze that paid the base (tier 1; Phase 3: every squeeze pays the squeeze value and the highest
-	-- capsule level's Grip; since Phase 6 every station is tier 1 too).
+	-- One accepted squeeze that paid the base (tier 1; every squeeze pays the squeeze value and, since pens3 phase 1,
+	-- its floor in Grip; since Phase 6 every station is tier 1 too).
 	local function expectBase(world: World, result: any)
 		expect.equal(result.ok, true)
 		expect.equal(result.coins, valueOf(world))
@@ -425,7 +420,7 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("one press over the bucket: squeeze.tooFast, no Coins, no Grip, no stats, no capsule push", function()
+	t.test("one press over the bucket: squeeze.tooFast, no Coins, no Grip, no stats", function()
 		local world = fresh()
 		local replies = click(world, SQ.bucketCapacity, 0) -- the bucket's burst at once: all pay
 		for _, result in replies do
@@ -443,7 +438,6 @@ return function(t: Context)
 		expect.equal(world.profile.squeezeLimit.value, limit)
 		expect.equal(world.profile.stats.squeezes, SQ.bucketCapacity)
 		expect.equal(#world.squeezed, SQ.bucketCapacity)
-		expect.equal(#world.pushes, SQ.bucketCapacity) -- no capsule push for the extra press
 		-- One cycle later the cap has a token again.
 		wait(world, SQ.cycleSeconds)
 		expect.equal(SqueezeService.request(world.player).ok, true)
@@ -451,7 +445,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"holding (one press every Hold.repeatSeconds) for a minute: every press pays and pushes the capsules",
+		"holding (one press every Hold.repeatSeconds) for a minute: every press pays the squeeze value of the pen",
 		function()
 			local world = fresh()
 			local spacing = Config.Grip.Hold.repeatSeconds
@@ -465,13 +459,13 @@ return function(t: Context)
 				end
 			end
 			expect.equal(world.profile.stats.squeezes, count)
-			expect.equal(#world.pushes, count)
+			expect.equal(world.profile.coins, count * valueOf(world))
 			finish()
 		end
 	)
 
 	t.test(
-		"clicking at 12 per second for a minute pays only the hold rhythm: no Coins, Grip or push for the rest",
+		"clicking at 12 per second for a minute pays only the hold rhythm: no Coins and no Grip for the rest",
 		function()
 			local world = fresh()
 			local replies, dropped = click(world, 60 * 12, 1 / 12)
@@ -489,7 +483,6 @@ return function(t: Context)
 			expect.truthy(paid >= cap - 2)
 			expect.equal(world.profile.coins, paid * valueOf(world))
 			expect.equal(world.profile.stats.squeezes, paid)
-			expect.equal(#world.pushes, paid)
 			expect.equal(SqueezeService.counts().dropped, 0)
 			finish()
 		end
@@ -737,7 +730,6 @@ return function(t: Context)
 			expect.equal(world.profile.coins, 0)
 			expect.equal(world.profile.grip.total, 0)
 			expect.equal(world.profile.stats.squeezes, 0)
-			expect.equal(#world.pushes, 0)
 			expect.equal(#world.squeezed, 0)
 			expect.equal(world.squeezeAt, nil)
 			-- Let through again: the whole bucket pays at once (the refusals used no token).

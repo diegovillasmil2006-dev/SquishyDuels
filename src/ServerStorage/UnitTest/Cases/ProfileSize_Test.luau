@@ -4,7 +4,8 @@
 -- same-pair record (Config.Data.caps.samePair opponents x samePairFullRewards times, §6.7), every catalog
 -- squishy owned (14 since the 2026-10-09 overhaul), 3 quests, 4 weekly quests (2026-10-17), every starter task and
 -- onboarding step, the v2 Grip block,
--- 4 capsules at the top level (spec 2026-10-12), and long worst-case values
+-- 4 capsules at the top level (spec 2026-10-12), a full pen (pens3 phase 1: toyBoxMax + placedMax = 71 items, each
+-- Rainbow Galaxy at the top level with an id near 2^53), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -138,6 +139,20 @@ return function(t: Context)
 		for _, id in { "dragon", "bird", "donut", "cloud_bunny" } do
 			table.insert(p.capsules.list, { level = Config.Grip.Capsule.maxLevel, squishyId = id })
 		end
+		-- Pens3 phase 1: the fullest pen (every Toy Box and placed spot), every squishy at its top, the longest ids.
+		local pen = Config.Economy.Pen
+		local count = pen.toyBoxMax + pen.placedMax
+		p.pen = { spots = pen.maxSpots, nextId = BIG_COUNTER, items = {} }
+		local defs = Catalog.list()
+		for i = 1, count do
+			table.insert(p.pen.items, {
+				id = BIG_COUNTER - count - 1 + i,
+				kind = defs[(i - 1) % #defs + 1].id,
+				form = #pen.formMult - 1,
+				level = pen.maxLevel,
+				coat = #pen.coatMult - 1,
+			})
+		end
 		return p
 	end
 
@@ -172,6 +187,7 @@ return function(t: Context)
 		expect.equal(#decoded.receipts, Config.Data.caps.receipts)
 		expect.equal(decoded.grip.total, p.grip.total)
 		expect.deepEqual(decoded.capsules, p.capsules)
+		expect.deepEqual(decoded.pen, p.pen) -- pens3 phase 1: 71 items, ids near 2^53, exact
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

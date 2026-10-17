@@ -19,9 +19,9 @@ local Onboarding = {
 		{ id = "welcome", textKey = "onboarding.welcome", recordedBy = "client", guidance = "none" },
 		-- First accepted squeeze.
 		{ id = "squeeze", textKey = "onboarding.squeeze", recordedBy = "server", guidance = "waypointMat" },
-		-- Batch 1: the first capsule upgrade or unlock (only capsules change what you earn). A new player spawns in their
-		-- base with Kitty Bread in capsule 1, so no waypoint.
-		{ id = "capsule", textKey = "onboarding.capsule", recordedBy = "server", guidance = "none" },
+		-- Pens3 phase 1: the first pen spot bought at the sign (replaces Batch 1's capsule step; an old save keeps its
+		-- done.capsule, which nothing reads). A new player spawns facing their own pen, so no waypoint.
+		{ id = "pen", textKey = "onboarding.pen", recordedBy = "server", guidance = "none" },
 		-- Inspect opened. Lobby HUD (spec 2026-10-11): no dock, so the Squishies tile pulses (its list has Inspect).
 		{ id = "inspect", textKey = "onboarding.inspect", recordedBy = "client", guidance = "pulseSquishies" },
 		-- QueueJoin accepted.

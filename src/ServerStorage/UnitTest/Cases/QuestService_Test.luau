@@ -39,7 +39,8 @@ local NOON = DAY * 86400 + 12 * 3600
 -- Monday, 3 days later.
 local WEEK = (DAY - 4) // 7
 local NEXT_MONDAY = (WEEK + 1) * 7 + 4
-local VALUE = 1_385 -- the squeeze value of the test profile: Toast (×1) in a Lv 30 capsule (CP 1,385)
+-- Pens3 phase 1: the squeeze value of the test profile's pen, Kitty Bread (10) + Toast (10) a second.
+local VALUE = 20
 
 return function(t: Context)
 	local expect = t.expect
@@ -48,7 +49,6 @@ return function(t: Context)
 	local FakeClock = t.requireFake("FakeClock")
 	local FakeRng = t.requireFake("FakeRng")
 	local TableUtil = t.requireShared("Util/TableUtil")
-	local CapsuleMath = t.requireShared("CapsuleMath")
 
 	type World = {
 		clock: any,
@@ -72,7 +72,14 @@ return function(t: Context)
 			equipped = "toast",
 			quests = { day = -1, swapsUsed = 0, active = {} },
 			starter = { progress = {}, claimed = {} },
-			capsules = { slots = 1, list = { { level = 30, squishyId = "toast" } } },
+			pen = {
+				spots = 3,
+				nextId = 3,
+				items = {
+					{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
+					{ id = 2, kind = "toast", form = 0, level = 1, coat = 0 },
+				},
+			},
 		}
 	end
 
@@ -444,10 +451,9 @@ return function(t: Context)
 		local done = entry(1, "squeeze_any", 1, 150)
 		done.progress, done.done = 1, true
 		withQuests(w, { done })
-		w.profile.capsules =
-			{ slots = 2, list = { { level = 30, squishyId = "toast" }, { level = 11, squishyId = "dragon" } } }
+		table.insert(w.profile.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0 }) -- + 640
 		expect.equal(QuestService.claim(w.player, done.id).ok, true)
-		expect.deepEqual(w.grants, { { amount = 150 * 64 * (CapsuleMath.power(11) :: number), reason = "quest" } })
+		expect.deepEqual(w.grants, { { amount = 150 * 660, reason = "quest" } })
 		finish()
 	end)
 

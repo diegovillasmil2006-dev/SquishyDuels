@@ -6,9 +6,9 @@
 -- giant pads (build plan Phase 6); afkGrip and afkMinutes are gone with slow training (Phase 6), and the trainer helpers
 -- (trainer, squeezeGrip, upgradeReady, upgradeDecision, topShopSquishyId) with the trainers (Phase 6; own squeezes pay
 -- CapsuleMath's squeeze value and Grip since Phase 3); restedMinutes 9 when full (holding repeats every
--- Hold.repeatSeconds, 0.45 s, the hold rhythm; it was 30 with the old 1.5 s cycle); nextGoal: with capsules and
--- Coins, the capsule buy first (Batch 1; an unlock only while a spare squishy waits), then the next rank, then max
--- (never a pad since Phase 6).
+-- Hold.repeatSeconds, 0.45 s, the hold rhythm; it was 30 with the old 1.5 s cycle); nextGoal: with a pen and Coins,
+-- the next pen spot first (pens3 phase 1: its price with progress, READY once the Coins cover it; none at 12 spots),
+-- then the next rank, then max (never a pad since Phase 6, never a capsule since pens3 phase 1).
 -- Every table is compared by value (Config here is the runner's copy; GripMath reads the same copy).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -54,12 +54,10 @@ return function(t: Context)
 		return { total = total }
 	end
 
-	local function caps(list: { any }): any
-		return { slots = #list, list = list }
+	-- A pen with `spots` open spots and the starter in it (Types.PenState).
+	local function pen(spots: number): any
+		return { spots = spots, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } }
 	end
-
-	-- Owned squishies: kitty_bread (in Capsule 1 in these tests) and toast, a spare for a new capsule.
-	local WITH_SPARE = { kitty_bread = { at = 1, src = "shop" }, toast = { at = 2, src = "shop" } }
 
 	-- Levels --------------------------------------------------------------------------------------------------
 
@@ -216,7 +214,7 @@ return function(t: Context)
 		expect.deepEqual(GripMath.nextGoal(state(TOTALS[#TOTALS])), { kind = "max", textKey = "grip.goalMax" })
 	end)
 
-	t.test("nextGoal is a rank or max at every level without capsules in the state (Phase 6)", function()
+	t.test("nextGoal is a rank or max at every level without a pen in the state (Phase 6)", function()
 		for level = 1, MAX_LEVEL do
 			local goal: any = GripMath.nextGoal(state(TOTALS[level]))
 			local kind = if goal then goal.kind else "none"
@@ -226,94 +224,46 @@ return function(t: Context)
 		end
 	end)
 
-	-- Batch 1 #7a: the Next line names the capsule buy first.
-	t.test("an affordable capsule upgrade is READY, even when an unlock is cheaper", function()
-		local one = caps({ { level = 1, squishyId = "kitty_bread" } })
-		expect.deepEqual(GripMath.nextGoal({ total = 0, coins = 1_000, capsules = one }), {
-			kind = "capsuleReady",
-			textKey = "grip.goalCapsuleReady",
-			slot = 1,
-			level = 2,
-			have = 1_000,
-			need = 1_000,
-		})
-		-- Lv 5 -> 6 costs 3,200, more than Capsule 2's 2,500 unlock: the affordable upgrade still wins.
-		local five = GripMath.nextGoal({
-			total = 0,
-			coins = 3_300,
-			capsules = caps({ { level = 5, squishyId = "kitty_bread" } }),
-			owned = WITH_SPARE,
-		})
-		expect.equal(five and five.kind, "capsuleReady")
-		expect.equal(five and five.slot, 1)
-		expect.equal(five and five.level, 6)
-		expect.equal(five and five.need, 3_200)
-	end)
-
-	t.test("else the cheapest capsule buy with progress (ties: the lower slot)", function()
-		local one = caps({ { level = 1, squishyId = "kitty_bread" } })
-		expect.deepEqual(GripMath.nextGoal({ total = 0, coins = 120, capsules = one }), {
-			kind = "capsule",
-			textKey = "grip.goalCapsule",
-			slot = 1,
-			level = 2,
-			have = 120,
-			need = 1_000,
-		})
-		local five = caps({ { level = 5, squishyId = "kitty_bread" } })
-		expect.deepEqual(GripMath.nextGoal({ total = 0, coins = 100, capsules = five, owned = WITH_SPARE }), {
-			kind = "unlock",
-			textKey = "grip.goalUnlock",
-			slot = 2,
-			have = 100,
-			need = 2_500,
-		})
-		expect.deepEqual(GripMath.nextGoal({ total = 0, coins = 2_600, capsules = five, owned = WITH_SPARE }), {
-			kind = "unlockReady",
-			textKey = "grip.goalUnlockReady",
-			slot = 2,
-			have = 2_500,
-			need = 2_500,
-		})
-		-- An empty capsule has no upgrade to name.
-		local withEmpty = caps({ { level = 1, squishyId = "kitty_bread" }, { level = 1 } })
-		local first = GripMath.nextGoal({ total = 0, coins = 0, capsules = withEmpty })
-		expect.equal(first and first.slot, 1)
-		expect.equal(first and first.need, 1_000)
-		local two = caps({ { level = 2, squishyId = "kitty_bread" }, { level = 2, squishyId = "toast" } })
-		local tie = GripMath.nextGoal({ total = 0, coins = 0, capsules = two })
-		expect.equal(tie and tie.slot, 1)
-		expect.equal(tie and tie.need, 1_300)
-	end)
-
-	t.test("the unlock waits for a spare squishy: a new capsule would open empty and earn nothing", function()
-		local five = caps({ { level = 5, squishyId = "kitty_bread" } })
-		local function goalWith(owned: any): any
-			return GripMath.nextGoal({ total = 0, coins = 2_600, capsules = five, owned = owned })
+	-- Pens3 phase 1: the Next line names the next pen spot first (it replaced the capsule buy of Batch 1).
+	t.test(
+		"the pen goal: the next spot's price with progress while spots < 12, READY once the Coins cover it",
+		function()
+			expect.deepEqual(GripMath.nextGoal({ total = 0, coins = 120, pen = pen(3) }), {
+				kind = "pen",
+				textKey = "grip.goalPen",
+				have = 120,
+				need = 1_500,
+			})
+			expect.deepEqual(GripMath.nextGoal({ total = 0, coins = 1_500, pen = pen(3) }), {
+				kind = "penReady",
+				textKey = "grip.goalPenReady",
+				have = 1_500,
+				need = 1_500,
+			})
+			local rich = GripMath.nextGoal({ total = 0, coins = 1e9, pen = pen(3) })
+			expect.equal(rich and rich.have, 1_500) -- capped at the price
+			-- 11 spots: the last spot's price (Config.Economy.Pen.spotPrices[12]).
+			local last = GripMath.nextGoal({ total = 0, coins = 0, pen = pen(11) })
+			expect.equal(last and last.kind, "pen")
+			expect.equal(last and last.need, 5_600_000_000_000)
+			-- No Coins in the state yet counts as 0.
+			local noCoins = GripMath.nextGoal({ total = 0, pen = pen(3) })
+			expect.equal(noCoins and noCoins.have, 0)
 		end
-		local upgrade =
-			{ kind = "capsule", textKey = "grip.goalCapsule", slot = 1, level = 6, have = 2_600, need = 3_200 }
-		expect.deepEqual(goalWith(nil), upgrade)
-		-- Only the squishy already in Capsule 1, or an id outside the Catalog (an old save): no spare.
-		expect.deepEqual(goalWith({ kitty_bread = { at = 1, src = "shop" } }), upgrade)
-		expect.deepEqual(goalWith({ kitty_bread = { at = 1, src = "shop" }, nope = { at = 2, src = "box" } }), upgrade)
-		local spare = goalWith(WITH_SPARE)
-		expect.equal(spare and spare.kind, "unlockReady")
-		expect.equal(spare and spare.slot, 2)
-	end)
+	)
 
-	t.test("no capsule buy falls back to the rank", function()
-		local gated = caps({
-			{ level = 10, squishyId = "kitty_bread" },
-			{ level = 10, squishyId = "toast" },
-			{ level = 10, squishyId = "banana" },
-			{ level = 10, squishyId = "butter" },
-		})
-		local blocked = GripMath.nextGoal({ total = 0, coins = 1e9, capsules = gated })
-		expect.equal(blocked and blocked.kind, "rank")
-		local noCapsules = GripMath.nextGoal({ total = 0, coins = 1e9 })
-		expect.equal(noCapsules and noCapsules.kind, "rank")
-		local wrong = GripMath.nextGoal({ total = 0, coins = 1e9, capsules = "x" })
-		expect.equal(wrong and wrong.kind, "rank")
+	t.test("no pen goal at 12 spots, without a pen or with a broken one: the rank", function()
+		local full = GripMath.nextGoal({ total = 0, coins = 1e15, pen = pen(12) })
+		expect.equal(full and full.kind, "rank")
+		local none = GripMath.nextGoal({ total = 0, coins = 1e9 })
+		expect.equal(none and none.kind, "rank")
+		local brokens: { any } = { "x", { spots = "3" }, { spots = 2 }, { spots = 3.5 }, { spots = 13 }, {} }
+		for _, broken in brokens do
+			local goal = GripMath.nextGoal({ total = 0, coins = 1e9, pen = broken })
+			expect.equal(goal and goal.kind, "rank")
+		end
+		-- The max level with a full pen: grip.goalMax.
+		local top = GripMath.nextGoal({ total = TOTALS[#TOTALS], coins = 0, pen = pen(12) })
+		expect.equal(top and top.kind, "max")
 	end)
 end

@@ -12,13 +12,13 @@
 --   nextDay(daily, today)            the streak day the next claim gives: streakDay % 7 + 1 after any claim, also
 --                                    after a missed day; Day 1 for a first claim; while claimed today, today's day
 --   countdownText(now)               "5:03:12" until the next 00:00 UTC (TimeUtil.formatCountdown)
---   model(daily, now, capsules?)     the 7 day cards (daily.dayLabel, Coins, daily.treatBox on the free box
+--   model(daily, now, pen?)          the 7 day cards (daily.dayLabel, Coins, daily.treatBox on the free box
 --                                    day; today highlighted with daily.today; claimed days with a check and
 --                                    common.claimed), the claim state, the welcome back line (daily.welcomeBack with
 --                                    the waiting day, while it is claimable after a missed day) and "Come
 --                                    back in {time}". Phase 5 (progression spec 2026-10-12 §9): a day's Coins are its
---                                    squeezes (coinsByDay) × the squeeze value of `capsules` (the player's capsules state;
---                                    CapsuleMath.rewardCoins, as the server pays at claim time)
+--                                    squeezes (coinsByDay) × the squeeze value of `pen` (pens3 phase 1: the player's pen
+--                                    state; PenMath.rewardCoins, as the server pays at claim time)
 --   signText(daily, now)             the stand sign's status line: daily.ready / daily.wait {time}; nil = unknown
 --   bodyHeight(screenH, contentH, chromeH, maxShare, minH)   Part 8: a scrolling panel part (CapsuleController's): the
 --                                    content's height, capped so the whole panel stays within maxShare of the screen
@@ -49,9 +49,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local PenMath = require(Shared.PenMath)
 local Strings = require(Shared.Strings)
 local TimeUtil = require(Shared.Util.TimeUtil)
 
@@ -189,9 +189,9 @@ function DailyFormat.countdownText(now: number): string
 end
 
 -- The Daily panel.
-function DailyFormat.model(daily: unknown, now: number, capsules: any?): Model
+function DailyFormat.model(daily: unknown, now: number, pen: any?): Model
 	local seconds = if finite(now) then TimeUtil.secondsUntilNextUtcDay(now) else 0
-	local value = CapsuleMath.squeezeValue(capsules)
+	local value = PenMath.squeezeValue(pen)
 	local d = valid(daily)
 	local today = if finite(now) then TimeUtil.utcDay(now) else 0
 	local known = d ~= nil and finite(now)
@@ -207,7 +207,7 @@ function DailyFormat.model(daily: unknown, now: number, capsules: any?): Model
 	local cards: { DayCard } = {}
 	local todayWord = Strings.daily.today
 	for n = 1, DAYS do
-		local coins = CapsuleMath.rewardCoins(COINS_BY_DAY[n], value)
+		local coins = PenMath.rewardCoins(COINS_BY_DAY[n], value)
 		local isToday = known and n == day
 		local claimed = n <= claimedUpTo
 		local isNext = n == nextDay
@@ -237,7 +237,7 @@ function DailyFormat.model(daily: unknown, now: number, capsules: any?): Model
 		known = known,
 		canClaim = can,
 		nextDay = day,
-		coins = CapsuleMath.rewardCoins(COINS_BY_DAY[day], value),
+		coins = PenMath.rewardCoins(COINS_BY_DAY[day], value),
 		treat = day == FREE_BOX_DAY,
 		cards = cards,
 		welcomeBack = welcome,

@@ -26,7 +26,12 @@
 --     number in [0, now + 300] (non-finite -> 0, wrong type -> the default);
 --   * weekly quests (2026-10-17): weekly joined schema 2 the same way: defaults {week = -1, active = {}}, an older v2
 --     profile gets it from reconcile (no problem), a saved week survives a load and the JSON round trip, and sanitize
---     fixes the week (a whole number >= -1) and the entries like the daily quests' (claims fail closed).
+--     fixes the week (a whole number >= -1) and the entries like the daily quests' (claims fail closed);
+--   * pens (pens3 phase 1): pen joined schema 2 the same way: defaults {spots = 3, nextId = 2, items = {Kitty Bread
+--     id 1}}, an older profile gets one plain Lv 1 item per owned kind (logged), and sanitize fails closed without
+--     ever dropping a squishy someone owns: spots a whole number in [3, 12]; a bad or repeated id gets a fresh one; an
+--     unknown kind is dropped (its owned entry stays); form, level and coat clamped; an item not in `owned` makes it
+--     owned; nextId above every id; a pen past toyBoxMax + placedMax kept whole and logged; JSON round trip unchanged.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -130,6 +135,11 @@ return function(t: Context)
 		return ProfileSchema.load(raw, options)
 	end
 
+	-- A pen item (pens3 phase 1), plain Lv 1 unless told.
+	local function penItem(id: number, kind: string, form: number?, level: number?, coat: number?): any
+		return { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
+	end
+
 	local function expectedV2(fixture: any): any
 		local expected = TableUtil.deepCopy(fixture)
 		expected.schemaVersion = 2
@@ -145,7 +155,26 @@ return function(t: Context)
 		expected.stats.winStreak = 0 -- Match HUD M2: the same
 		expected.autoClick = { step = 0, at = 0 } -- auto-clicker check (2026-10-16): the same
 		expected.weekly = { week = -1, active = {} } -- weekly quests (2026-10-17): the same
+		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
+		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } }
+		for _, kind in { "banana", "toast" } do
+			if fixture.owned[kind] ~= nil then
+				table.insert(expected.pen.items, penItem(expected.pen.nextId, kind))
+				expected.pen.nextId += 1
+			end
+		end
 		return expected
+	end
+
+	-- The sanitize notes about the pen (an older save gets its pen items, logged).
+	local function penProblems(problems: { string }): number
+		local count = 0
+		for _, problem in problems do
+			if string.sub(problem, 1, 4) == "pen." or string.sub(problem, 1, 4) == "pen " then
+				count += 1
+			end
+		end
+		return count
 	end
 
 	t.test("CURRENT is 2 and the v1 -> v2 constants are frozen at 10 / 1200 / 120 / 1e9", function()
@@ -181,6 +210,8 @@ return function(t: Context)
 		expect.deepEqual(d.samePair, {})
 		expect.deepEqual(d.capsules, { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } })
 		expect.deepEqual(d.autoClick, { step = 0, at = 0 }) -- auto-clicker check (2026-10-16): no strike
+		-- Pens3 phase 1: Kitty Bread walks in the 3 free spots.
+		expect.deepEqual(d.pen, { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } })
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -192,7 +223,9 @@ return function(t: Context)
 		expect.equal(result.status, "ok")
 		expect.equal(result.fromVersion, 1)
 		expect.equal(result.migrated, true)
-		expect.deepEqual(result.problems, {})
+		-- Pens3 phase 1: the only fixes are the pen items of its other owned kinds (Banana, Toast), logged.
+		expect.equal(#result.problems, 2)
+		expect.equal(penProblems(result.problems), 2)
 		expect.deepEqual(result.profile, expectedV2(FIXTURE_V1))
 		expect.equal(result.profile.grip.total, 12_340)
 		-- the stored value is never changed (migrations run on a deep copy)
@@ -751,5 +784,153 @@ return function(t: Context)
 		expect.equal(#fixed.active, 1)
 		expect.equal(fixed.active[1].claimed, true)
 		expect.equal(fixed.active[1].progress, 0)
+	end)
+
+	-- The pen (pens3 phase 1) -----------------------------------------------------------------------------------------
+
+	-- The pen and owned list sanitize makes of `pen` on a loaded fixture (owns kitty_bread, toast and banana).
+	local function fixedPen(pen: any, owned: any?): (any, any, { string })
+		local profile = load(FIXTURE_V1).profile :: any
+		profile.pen = pen
+		if owned ~= nil then
+			profile.owned = owned
+		end
+		local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+		return (fixed :: any).pen, (fixed :: any).owned, problems
+	end
+
+	t.test("pen joins schema 2 without a new version: an older profile gets one plain item per owned kind", function()
+		expect.equal(ProfileSchema.CURRENT, 2)
+		local older = load(FIXTURE_V1).profile :: any
+		older.pen = nil -- a v2 profile saved before the field existed
+		older.owned.dragon = { at = 5, src = "box" }
+		local result = load(older)
+		expect.equal(result.fromVersion, 2)
+		expect.equal(result.migrated, false)
+		expect.deepEqual(result.profile.pen, {
+			spots = 3,
+			nextId = 5,
+			items = {
+				penItem(1, "kitty_bread"),
+				penItem(2, "banana"),
+				penItem(3, "dragon"),
+				penItem(4, "toast"),
+			},
+		})
+		expect.equal(penProblems(result.problems), 3) -- every added item is logged
+		-- The next load changes nothing.
+		local again = load(result.profile)
+		expect.deepEqual(again.problems, {})
+		expect.deepEqual(again.profile.pen, result.profile.pen)
+	end)
+
+	t.test("sanitize pen: spots clamped, not a table or not a list fixed, form / level / coat clamped", function()
+		local maxLevel = Config.Economy.Pen.maxLevel
+		local pen, _, problems = fixedPen("garbage")
+		expect.equal(pen.spots, 3)
+		expect.equal(#pen.items, 3) -- every owned kind gets its item back
+		expect.truthy(#problems > 0)
+		for _, case in { { 2, 3 }, { 13, 12 }, { 7.6, 7 }, { 0 / 0, 3 }, { "9", 3 } } :: { { any } } do
+			local fixed = fixedPen({ spots = case[1], nextId = 4, items = load(FIXTURE_V1).profile.pen.items })
+			expect.equal(fixed.spots, case[2])
+		end
+		local fixed = fixedPen({
+			spots = 3,
+			nextId = 4,
+			items = {
+				penItem(1, "kitty_bread", 3, 0, 9), -- form above Rainbow, level 0, coat past Galaxy
+				penItem(2, "toast", -1, maxLevel + 5, -2),
+				{ id = 3, kind = "banana", form = 0 / 0, level = "high", coat = math.huge },
+			},
+		})
+		expect.deepEqual(fixed.items, {
+			penItem(1, "kitty_bread", 2, 1, 7),
+			penItem(2, "toast", 0, maxLevel, 0),
+			penItem(3, "banana", 0, 1, 0),
+		})
+		local notList = fixedPen({ spots = 3, nextId = 4, items = "x" })
+		expect.equal(#notList.items, 3) -- rebuilt from owned
+	end)
+
+	t.test("sanitize pen ids: a bad or repeated id gets a fresh one, never dropped; nextId above every id", function()
+		local pen, _, problems = fixedPen({
+			spots = 3,
+			nextId = 2, -- stale: below the ids in use
+			items = {
+				penItem(7, "kitty_bread"),
+				penItem(7, "toast"), -- a repeat: a fresh id
+				penItem(0, "banana"), -- not an id: a fresh one
+				penItem(2.5, "banana", 1), -- a second Banana (a copy), fractional id
+			},
+		})
+		expect.deepEqual(pen, {
+			spots = 3,
+			nextId = 11,
+			items = {
+				penItem(7, "kitty_bread"),
+				penItem(8, "toast"),
+				penItem(9, "banana"),
+				penItem(10, "banana", 1),
+			},
+		})
+		expect.equal(penProblems(problems), 4) -- 3 ids and the stale nextId
+	end)
+
+	t.test("sanitize pen invariants: owned and the pen agree, nothing anyone owns is lost", function()
+		-- An unknown kind is dropped (its owned entry stays, like owned keeps a removed id); a pen squishy that is not
+		-- owned becomes owned; an owned kind with no item gets one.
+		local owned = {
+			kitty_bread = { at = 1, src = "starter" },
+			retired_squishy = { at = 2, src = "box" },
+			toast = { at = 3, src = "shop" },
+		}
+		local pen, fixedOwned, problems = fixedPen({
+			spots = 4,
+			nextId = 3,
+			items = {
+				penItem(1, "kitty_bread"),
+				penItem(2, "retired_squishy"),
+				"garbage" :: any, -- not an item at all
+				penItem(3, "dragon", 1, 9),
+			},
+		}, owned)
+		expect.deepEqual(pen, {
+			spots = 4,
+			nextId = 5,
+			items = { penItem(1, "kitty_bread"), penItem(3, "dragon", 1, 9), penItem(4, "toast") },
+		})
+		expect.deepEqual(fixedOwned.dragon, { at = NOW, src = "grant" })
+		expect.deepEqual(fixedOwned.retired_squishy, { at = 2, src = "box" })
+		expect.truthy(penProblems(problems) >= 3)
+	end)
+
+	t.test("sanitize pen: more items than toyBoxMax + placedMax are all kept, and logged", function()
+		local cap = Config.Economy.Pen.toyBoxMax + Config.Economy.Pen.placedMax
+		local items = {}
+		for id = 1, cap + 3 do
+			table.insert(items, penItem(id, if id % 2 == 0 then "toast" else "kitty_bread"))
+		end
+		table.insert(items, penItem(cap + 4, "banana"))
+		local pen, _, problems = fixedPen({ spots = 12, nextId = cap + 5, items = TableUtil.deepCopy(items) })
+		expect.deepEqual(pen.items, items)
+		expect.equal(penProblems(problems), 1)
+	end)
+
+	t.test("the pen survives a save and load (the HttpService JSON DataStores keep) unchanged", function()
+		local HttpService = game:GetService("HttpService")
+		local profile = load(FIXTURE_V1).profile :: any
+		profile.pen = {
+			spots = 12,
+			nextId = 9,
+			items = {
+				penItem(1, "kitty_bread", 2, 70, 7),
+				penItem(4, "toast", 1, 12, 3),
+				penItem(8, "banana"),
+			},
+		}
+		local result = load(HttpService:JSONDecode(HttpService:JSONEncode(profile)))
+		expect.equal(result.status, "ok")
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.pen, profile.pen)
 	end)
 end

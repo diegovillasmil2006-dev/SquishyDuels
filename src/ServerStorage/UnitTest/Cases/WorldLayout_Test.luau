@@ -27,6 +27,10 @@
 --   * bases (§2, §4, §8): 10 plots 36° apart around the hub centre, gates at radius 96 and backs at 148, facing the
 --     hub, 44 × 52, the capsule pads, their capsule spots and the spawn inside, no two plots sharing ground, a colour
 --     per plot and the open grey; inPlot is the footprint only, never an unknown plot;
+--   * pens3 phase 1: Bases.pen is lobby design v6's base.pen (K:4084-4189) turned into the plot frame: front z 19, an
+--     8-stud gate gap, 4-stud segments, the steps 3..12 exactly as K has them, every step inside the plot; the PEN
+--     SPACE sign at (10, 0, 20.3) facing the gate side; the spawn at local z 22.5 between the gate and the pen,
+--     facing the pen;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -1240,7 +1244,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"a plot holds its 4 capsule pads (x ±13, z -8 / +8) and its spawn facing the gate; plots share no ground",
+		"a plot holds its 4 capsule pads (x ±13, z -8 / +8) and its spawn facing the pen; plots share no ground",
 		function()
 			local bases = WorldLayout.Bases
 			expect.deepEqual(bases.capsulePads, {
@@ -1250,8 +1254,9 @@ return function(t: Context)
 				Vector3.new(13, 0, 8),
 			})
 			expect.equal(bases.capsulePadSize, 8)
-			expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, -4))) -- 30 studs behind the gate
-			expect.truthy(vectorNear(bases.spawn.LookVector, Vector3.new(0, 0, 1), 1e-6)) -- toward the gate
+			-- Pens3 phase 1: between the gate (z 26) and the pen's front (z 19), facing the pen.
+			expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, 22.5)))
+			expect.truthy(vectorNear(bases.spawn.LookVector, Vector3.new(0, 0, -1), 1e-6))
 			local half = bases.capsulePadSize / 2
 			for index = 1, 10 do
 				local frame = WorldLayout.plotFrame(index) :: CFrame
@@ -1290,16 +1295,52 @@ return function(t: Context)
 		expect.equal(WorldLayout.TagCounts.SD_BaseSpawn, 10) -- Phase 4 builds the island: one per plot
 	end)
 
-	t.test("a plot's spawn stands 104 studs from the stage edge and its gate 74 (spec §2), facing the gate", function()
+	t.test("a plot's spawn stands 77.5 studs from the stage edge and its gate 74 (spec §2), facing its pen", function()
 		local bases = WorldLayout.Bases
 		local stage = WorldLayout.Lobby.stageRadius
 		for index = 1, 10 do
 			local frame = WorldLayout.plotFrame(index) :: CFrame
 			local spawn = frame * bases.spawn
-			expect.near(Vector3.new(spawn.Position.X, 0, spawn.Position.Z).Magnitude - stage, 104, 1e-3)
+			expect.near(Vector3.new(spawn.Position.X, 0, spawn.Position.Z).Magnitude - stage, 77.5, 1e-3)
 			local gate = frame * bases.gate
 			expect.near(Vector3.new(gate.X, 0, gate.Z).Magnitude - stage, 74, 1e-3)
-			expect.truthy(vectorNear(spawn.LookVector, -frame.LookVector, 1e-4)) -- toward the gate and the hub
+			expect.truthy(vectorNear(spawn.LookVector, frame.LookVector, 1e-4)) -- away from the hub, to the pen
+		end
+	end)
+
+	-- Pens3 phase 1: the pen (lobby design v6 kit.json base.pen, K:4084-4189), in the plot frame.
+	t.test("pens3 phase 1: Bases.pen is v6's pen turned into the plot frame; every step fits the plot", function()
+		local pen = WorldLayout.Bases.pen
+		expect.equal(pen.frontZ, 19) -- K frontZ -19, turned 180°
+		expect.equal(pen.gateWidth, 8)
+		expect.equal(pen.segment, 4)
+		expect.equal(pen.edgeMargin, 0.8)
+		expect.deepEqual(pen.steps, {
+			[3] = { w = 16, d = 12, tier = 1, fence = 12, backWall = "fence" },
+			[4] = { w = 16, d = 16, tier = 1, fence = 14, backWall = "fence" },
+			[5] = { w = 24, d = 16, tier = 1, fence = 18, backWall = "fence" },
+			[6] = { w = 24, d = 20, tier = 2, fence = 20, backWall = "fence" },
+			[7] = { w = 24, d = 24, tier = 2, fence = 22, backWall = "fence" },
+			[8] = { w = 24, d = 28, tier = 2, fence = 24, backWall = "fence" },
+			[9] = { w = 24, d = 32, tier = 2, fence = 20, backWall = "shelf" },
+			[10] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+			[11] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+			[12] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+		})
+		local bases = WorldLayout.Bases
+		for spots = 3, 12 do
+			local step = pen.steps[spots]
+			-- K's fence count: the perimeter in segments, less the gate gap; from 9 spots the back is the shelf.
+			local back = if step.backWall == "shelf" then step.w else 0
+			expect.equal((2 * step.w + 2 * step.d - pen.gateWidth - back) / pen.segment, step.fence)
+			expect.truthy(step.w / 2 <= bases.width / 2 and pen.frontZ - step.d >= -bases.depth / 2)
+		end
+		expect.truthy(pen.frontZ < bases.spawn.Position.Z and bases.spawn.Position.Z < bases.depth / 2)
+		local sign = pen.signs.pen
+		expect.truthy(vectorNear(sign.Position, Vector3.new(10, 0, 20.3)))
+		expect.truthy(vectorNear(sign.LookVector, Vector3.new(0, 0, 1), 1e-6)) -- its face toward the gate side
+		for index = 1, 10 do
+			expect.truthy(WorldLayout.inPlot(index, (WorldLayout.plotFrame(index) :: CFrame) * sign.Position))
 		end
 	end)
 

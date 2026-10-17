@@ -311,7 +311,7 @@ return function(t: Context)
 		expect.equal((norm("policy", "eligible")), true)
 		expect.equal((norm("policy", "maybe")), false)
 		for _, field in
-			{ "owned", "stats", "squeezeLimit", "quests", "daily", "onboarding", "grip", "practice", "capsules" }
+			{ "owned", "stats", "squeezeLimit", "quests", "daily", "onboarding", "grip", "practice", "capsules", "pen" }
 		do
 			expect.equal((norm(field, "nope")), false)
 			expect.equal((norm(field, {})), true)

@@ -19,6 +19,8 @@
 -- squeeze.autoClick reason of SqueezeResultPayload.
 -- Bubble Pop bounce (2026-10-16): UltimateBounce / UltimateEventPayload.bounce (the bubble's leg after its bounce).
 -- Weekly quests (2026-10-17): WeeklyState, ProfileV1.weekly and QuestsView.weekly.
+-- Pens (pens3 phase 1, 2026-10-17): PenItem, PenState, ProfileV1.pen, the `pen` state field, PenResult and the
+-- PenBuySpot call.
 
 -- == Catalog (§4.1) ==
 
@@ -132,6 +134,13 @@ export type CapsulesState = { slots: number, list: { CapsuleState } }
 -- Auto-clicker check (2026-10-16): the last strike (server Services/AutoClickService): step 0 none, 1 warned, 2 kicked,
 -- 3 banned; at = its os.time (0 = none). A rejoin within Config.Net.AutoClick.memorySeconds keeps the step.
 export type AutoClickMemory = { step: number, at: number }
+-- Pens3 phase 1: one squishy of the pen (Shared/PenMath): `id` a whole number unique in the pen (from PenState.nextId),
+-- `kind` a Catalog squishy id, `form` 0 plain / 1 Golden / 2 Rainbow, `level` 1..Config.Economy.Pen.maxLevel, `coat`
+-- 0 none .. 7 (Config.Economy.Pen.coatMult). Phase 1 makes only form 0, level 1, coat 0, one per owned kind.
+export type PenItem = { id: number, kind: string, form: number, level: number, coat: number }
+-- The player's pen: `spots` open (Pen.startSpots .. Pen.maxSpots; the best `spots` items walk in it and pay), `nextId`
+-- the id of the next new item, `items` every pen squishy the player has.
+export type PenState = { spots: number, nextId: number, items: { PenItem } }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema).
@@ -159,6 +168,7 @@ export type ProfileV1 = {
 	capsules: CapsulesState, -- added within schemaVersion 2 (reconcile fills it; no old saves to fix, spec 2026-10-12 §14)
 	autoClick: AutoClickMemory, -- added within schemaVersion 2 the same way (2026-10-16); never sent to the client
 	weekly: WeeklyState, -- weekly quests, added within schemaVersion 2 the same way (2026-10-17)
+	pen: PenState, -- the pen (pens3 phase 1), added within schemaVersion 2 the same way
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
@@ -244,6 +254,7 @@ export type Snapshot = {
 	grip: GripState,
 	capsules: CapsulesState,
 	topWins: TopWinsView, -- Batch 3
+	pen: PenState, -- pens3 phase 1: the profile's pen as stored (the squeeze value of every client text, the sign)
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -265,6 +276,7 @@ export type StateDeltaFields = {
 	grip: GripState?,
 	capsules: CapsulesState?,
 	topWins: TopWinsView?,
+	pen: PenState?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -286,6 +298,7 @@ export type StateField =
 	| "grip"
 	| "capsules"
 	| "topWins"
+	| "pen"
 
 export type SnapshotLoading = { status: "loading" }
 
@@ -489,6 +502,9 @@ export type DailyClaimResult = {
 -- capsules after the call; `charged` is false when no Coins were taken (an unlock replay, any CapsuleSet);
 -- `savePending` = the awaited "now" save failed (CapsuleSet: a failed save is pending).
 export type CapsuleResult = { capsules: CapsulesState, charged: boolean, savePending: boolean }
+-- PenBuySpot data (pens3 phase 1): `pen` = the caller's own pen after the buy; `charged` true (every refusal is a
+-- ResultErr with charged = false); `savePending` = the awaited "now" save failed.
+export type PenResult = { pen: PenState, charged: boolean, savePending: boolean }
 
 -- QueueJoin data: the player's place in the queue (1 = next). A join from an OFFLINE/READONLY profile still
 -- succeeds and the server also sends Notify("duel.noRewardsOffline", nil, "warn") (§2.8).
@@ -517,6 +533,8 @@ export type DailyClaimCall = () -> Result<DailyClaimResult>
 export type CapsuleUpgradeCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
 export type CapsuleUnlockCall = (slot: number, expectedPrice: number) -> Result<CapsuleResult>
 export type CapsuleSetCall = (slot: number, squishyId: string) -> Result<CapsuleResult>
+-- Pens3 phase 1: buys the caller's own next pen spot; expectedPrice is compared, never charged.
+export type PenBuySpotCall = (expectedPrice: number) -> Result<PenResult>
 export type PromptCoinBundleCall = (bundleKey: string) -> ()
 export type PromptGamePassCall = (passKey: string) -> ()
 export type PolicyRetryCall = () -> ()

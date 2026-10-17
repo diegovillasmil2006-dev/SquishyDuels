@@ -16,8 +16,8 @@
 --     SqueezeLimit;
 --   * cardModel: the HUD card texts (grip.hudLevel, the rank alone for the foam card's title, grip.hudBar /
 --     grip.hudMax, the bar fraction = have / need, the same numbers grip.hudBar shows (foam fix, user decision
---     2026-10-09), the next goal in the §17.7 order (Batch 1: a capsule buy first when capsules are given; then the
---     next rank, then max);
+--     2026-10-09), the next goal in the §17.7 order (pens3 phase 1: the next pen spot first when a pen is given;
+--     then the next rank, then max);
 --   * goalId / shouldToastGoal: on the compact layout a new goal is toasted once per session, never the first one;
 --   * Part 8: the compact card's touch height and width are tested in HudFormat_Test. (headerLayout went with the
 --     panel's Close-only header row, foam fix; scrollDelta went with the pad cards' Show me buttons, Phase 6.)
@@ -66,6 +66,11 @@ return function(t: Context)
 			total = total,
 			rested = if rested then { value = rested, at = NOW } else nil,
 		}
+	end
+
+	-- Pens3 phase 1: a pen state with `spots` open spots and the starter in it (Types.PenState).
+	local function pen(spots: number): any
+		return { spots = spots, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } }
 	end
 
 	-- normalize -------------------------------------------------------------------------------------------------
@@ -314,15 +319,14 @@ return function(t: Context)
 				local row = GRIP.Ranks[index]
 				table.insert(lines, s("grip.hudGoalRank", { rank = s("grip.rank." .. row.key), level = row.level }))
 			end
-			-- Batch 1 #7a: the capsule lines at the widest Format.coins forms that keep to one line (99,999 / 999.9K /
-			-- 99.99M / 999B / 2.90Qa; capsule prices end at 2.9Qa). A 100.00M .. 999.99M price makes 31-32 characters
-			-- and may take a second line, which the card's height plan holds (HudFormat.worstCaseTexts gripGoal).
-			for _, n in { 99_999, 999_999, 99_999_999, 999e9, 2.9e15 } do
-				local coins = Format.coins(n)
-				table.insert(lines, s("grip.hudGoalCapsule", { slot = 4, have = coins, need = coins }))
+			-- Pens3 phase 1: the pen lines have no short form (the card shows them whole): every spot's price, and READY.
+			for spot = 4, 12 do
+				local price = Config.Economy.Pen.spotPrices[spot]
+				local model = GripController.cardModel(view(0), NOW, pen(spot - 1), 0)
+				expect.equal(model.cardGoal, s("grip.goalPen", { need = Format.coins(price) }))
+				table.insert(lines, model.cardGoal :: string)
 			end
-			table.insert(lines, s("grip.goalCapsuleReady", { slot = 4 }))
-			table.insert(lines, s("grip.goalUnlockReady", { slot = 4 }))
+			table.insert(lines, s("grip.goalPenReady"))
 			for _, line in lines do
 				expect.falsy(string.find(line, "Grip Lv", 1, true))
 				if (utf8.len(line) or #line) > 30 then
@@ -349,40 +353,30 @@ return function(t: Context)
 		expect.equal(maxArgs.coins, nil)
 		expect.equal(maxArgs.slot, nil)
 		expect.equal(maxArgs.have, nil)
-		-- Batch 1 #7a: a capsule goal's {slot}, {level} and its Coins as {have} / {need}.
-		local capsuleArgs = GripController.goalArgs({
-			kind = "capsule",
-			textKey = "grip.goalCapsule",
-			slot = 2,
-			level = 5,
-			have = 1234,
-			need = 99_999,
-		})
-		expect.equal(capsuleArgs.slot, 2)
-		expect.equal(capsuleArgs.level, 5)
-		expect.equal(capsuleArgs.have, Format.coins(1234))
-		expect.equal(capsuleArgs.need, Format.coins(99_999))
+		-- Pens3 phase 1: a pen goal's Coins as {have} / {need} (its text reads {need}, the next spot's price).
+		local penArgs = GripController.goalArgs({ kind = "pen", textKey = "grip.goalPen", have = 1234, need = 99_999 })
+		expect.equal(penArgs.slot, nil)
+		expect.equal(penArgs.have, Format.coins(1234))
+		expect.equal(penArgs.need, Format.coins(99_999))
 	end)
 
-	t.test("Batch 1: the goal names the capsule buy first; its toast id ignores the Coins", function()
-		local capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }
-		local saving = GripController.cardModel(view(0), NOW, capsules, 120)
-		local have, need = Format.coins(120), Format.coins(1_000)
-		expect.equal(saving.goalKey, "grip.goalCapsule")
-		expect.equal(saving.goal, s("grip.goalCapsule", { slot = 1, level = 2, have = have, need = need }))
-		expect.equal(saving.cardGoal, s("grip.hudGoalCapsule", { slot = 1, have = have, need = need }))
-		local more = GripController.cardModel(view(0), NOW, capsules, 480)
+	t.test("pens3 phase 1: the goal names the next pen spot first; its toast id ignores the Coins", function()
+		local saving = GripController.cardModel(view(0), NOW, pen(3), 120)
+		expect.equal(saving.goalKey, "grip.goalPen")
+		expect.equal(saving.goal, s("grip.goalPen", { need = Format.coins(1_500) }))
+		expect.equal(saving.goal, "Next: pen space 1,500")
+		expect.equal(saving.cardGoal, saving.goal)
+		local more = GripController.cardModel(view(0), NOW, pen(3), 480)
 		expect.equal(GripController.goalId(more), GripController.goalId(saving))
-		local ready = GripController.cardModel(view(0), NOW, capsules, 1_000)
-		expect.equal(ready.goal, s("grip.goalCapsuleReady", { slot = 1 }))
+		local ready = GripController.cardModel(view(0), NOW, pen(3), 1_500)
+		expect.equal(ready.goal, s("grip.goalPenReady"))
 		expect.equal(ready.cardGoal, ready.goal)
 		expect.truthy(GripController.goalId(ready) ~= GripController.goalId(saving))
-		expect.equal(GripController.cardModel(view(0), NOW, nil, 120).goalKey, "grip.goalRank") -- no capsules: as before
-		-- An unlock only with a spare squishy in `owned` (Lv 5 -> 6 costs 3,200; Capsule 2 opens for 2,500).
-		local five = { slots = 1, list = { { level = 5, squishyId = "kitty_bread" } } }
-		expect.equal(GripController.cardModel(view(0), NOW, five, 2_600).goalKey, "grip.goalCapsule")
-		local owned = { kitty_bread = { at = 1, src = "shop" }, toast = { at = 2, src = "shop" } }
-		expect.equal(GripController.cardModel(view(0), NOW, five, 2_600, owned).goalKey, "grip.goalUnlockReady")
+		expect.equal(GripController.cardModel(view(0), NOW, nil, 120).goalKey, "grip.goalRank") -- no pen: as before
+		expect.equal(GripController.cardModel(view(0), NOW, pen(12), 1e15).goalKey, "grip.goalRank") -- a full pen
+		-- The next spot's price follows the pen: 11 spots -> the 12th.
+		local last = GripController.cardModel(view(0), NOW, pen(11), 0)
+		expect.equal(last.goal, s("grip.goalPen", { need = Format.coins(Config.Economy.Pen.spotPrices[12]) }))
 	end)
 
 	-- Foam fix 2 (2026-10-09): the panel and what hangs above its top edge are centred together, like Quests and

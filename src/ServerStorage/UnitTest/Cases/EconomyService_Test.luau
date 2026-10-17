@@ -14,7 +14,10 @@
 --   * grantDuelResult records the duelLog entry (capped, oldest dropped), the duel stats and the Coins exactly once per
 --     matchId, then asks for a "soon" save; an unready profile records nothing (duel.noRewardsOffline); the reward is
 --     counted in squeezes and pays squeezes × the squeeze value of that moment (Phase 3, spec 2026-10-12 §9), up to
---     the top squeeze value and never past maxCoins; rewardCoins(profile, squeezes) is that conversion;
+--     the top squeeze value and never past maxCoins; rewardCoins(profile, squeezes) is that conversion; pens3
+--     phase 1: the squeeze value is the pen's (PenMath.squeezeValue(profile.pen)), the capsules count for nothing;
+--   * pens3 phase 1: a newly owned kind adds exactly one plain Lv 1 pen item (id = pen.nextId, nextId + 1) in the same
+--     step as its owned entry; a duplicate adds none;
 --   * the same-pair record (§6.7, §12 #15): a time only for a fully rewarded result (reduced and zero-Coin ones add
 --     none), never twice for one matchId, per player; expired times and opponents dropped on every result; at most
 --     samePairFullRewards times per opponent and Config.Data.caps.samePair opponents (the least recent go);
@@ -50,7 +53,7 @@ type World = {
 
 local NOW = 1_790_000_000
 local MATCH_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-local VALUE = 10 -- the squeeze value of newProfile's capsules: a new player's (Kitty Bread at Lv 1)
+local VALUE = 10 -- the squeeze value of newProfile's pen: a new player's (Kitty Bread at Lv 1)
 
 return function(t: Context)
 	local expect = t.expect
@@ -59,6 +62,11 @@ return function(t: Context)
 	local StateService = t.requireServer("Services/StateService")
 	local Config = t.requireShared("Config")
 	local ECONOMY = Config.Economy
+
+	-- A plain pen item (pens3 phase 1).
+	local function penItem(id: number, kind: string, form: number?, level: number?, coat: number?): any
+		return { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
+	end
 
 	local function newProfile(coins: number): any
 		return {
@@ -77,7 +85,7 @@ return function(t: Context)
 				boxesOpened = 0,
 			},
 			duelLog = {},
-			capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } },
+			pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } },
 		}
 	end
 
@@ -349,6 +357,26 @@ return function(t: Context)
 		expect.deepEqual(dirtyFields(w), { "owned" })
 	end)
 
+	t.test("pens3 phase 1: a newly owned kind adds exactly one pen item in the same step; a duplicate none", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		expect.deepEqual(EconomyService.grantSquishy(player, "toast", "shop"), { added = true, refund = 0 })
+		expect.equal(w.mutations, 1) -- owned and the pen in one step
+		expect.deepEqual(profile.pen, {
+			spots = 3,
+			nextId = 3,
+			items = { penItem(1, "kitty_bread"), penItem(2, "toast") },
+		})
+		-- A duplicate (a box refund, a shop or other one) adds no item.
+		EconomyService.grantSquishy(player, "toast", "box", "snack")
+		EconomyService.grantSquishy(player, "toast", "grant")
+		expect.equal(#profile.pen.items, 2)
+		expect.equal(profile.pen.nextId, 3)
+		expect.deepEqual(EconomyService.grantSquishy(player, "dragon", "box", "sweet"), { added = true, refund = 0 })
+		expect.deepEqual(profile.pen.items[3], penItem(3, "dragon"))
+		expect.equal(profile.pen.nextId, 4)
+	end)
+
 	t.test("a box duplicate is refunded a quarter of the box price; any other duplicate changes nothing", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
@@ -493,33 +521,40 @@ return function(t: Context)
 	end)
 
 	-- Phase 3 (spec 2026-10-12 §9): rewards are counted in squeezes and converted when they are granted.
-	t.test("a duel reward pays its squeezes × the squeeze value of that moment (the best capsule)", function()
+	t.test("a duel reward pays its squeezes × the squeeze value of that moment (the pen's)", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		-- Butter Lv 11: 4 × 68 = 272; Toast Lv 30: 1 × 1,385 (the best).
-		profile.capsules = {
-			slots = 2,
-			list = { { level = 11, squishyId = "butter" }, { level = 30, squishyId = "toast" } },
-		}
+		-- Pens3 phase 1: Kitty Bread 10 + Butter 40 a second = 50 a squeeze. A capsule counts for nothing now.
+		table.insert(profile.pen.items, penItem(2, "butter"))
+		profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 		local first = EconomyService.grantDuelResult(player, "m-1", "win", duelResult("win", 600, 7, "m-1"))
-		expect.equal(first.coins, 600 * 1_385)
-		-- The value changes with the capsules: the next result pays the new one.
-		profile.capsules.list[1].level = 21 -- Butter Lv 21: 4 × 461 = 1,844
-		local second = EconomyService.grantDuelResult(player, "m-2", "loss", duelResult("loss", 180, 8, "m-2"))
-		expect.equal(second.coins, 180 * 1_844)
-		expect.equal(profile.coins, 600 * 1_385 + 180 * 1_844)
-		expect.equal(EconomyService.rewardCoins(profile, 300), 300 * 1_844)
-		expect.equal(EconomyService.rewardCoins(nil, 100), 1_000) -- no profile: a new player's value (spec §9)
+		expect.equal(first.coins, 600 * 50)
+		-- The value changes with the pen: the next result pays the new one.
+		table.insert(profile.pen.items, penItem(3, "dragon")) -- + 640
+		local second = EconomyService.grantDuelResult(player, "m-2", "loss", duelResult("loss", 350, 8, "m-2"))
+		expect.equal(second.coins, 350 * 690)
+		expect.equal(profile.coins, 600 * 50 + 350 * 690)
+		expect.equal(EconomyService.rewardCoins(profile, 300), 300 * 690)
+		-- A levelled squishy earns a part of a Coin a second: the reward is floored once, never per squeeze.
+		profile.pen.items = { penItem(1, "kitty_bread", 0, 2) } -- 11.5
+		expect.equal(EconomyService.rewardCoins(profile, 3), 34)
+		expect.equal(EconomyService.rewardCoins(nil, 100), 1_000) -- no profile: a new player's value (10)
 		expect.equal(EconomyService.rewardCoins({}, 100), 1_000)
 	end)
 
 	t.test("at the top squeeze value a duel win still pays in full, and Coins stop at maxCoins", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
-		local top = 64 * 920_525_589 -- Dragon in a Royal Lv 100 capsule (spec §4: 58.9B a squeeze)
+		-- Pens3 phase 1's top: 12 Rainbow Galaxy Dragons at the top level (about 5.7B a squeeze).
+		local items = {}
+		for id = 1, 12 do
+			table.insert(items, penItem(id, "dragon", 2, ECONOMY.Pen.maxLevel, 7))
+		end
+		profile.pen = { spots = 12, nextId = 13, items = items }
+		local top = 12 * 10 * 64 * 4 * 12 * ECONOMY.Pen.levelGain ^ (ECONOMY.Pen.maxLevel - 1)
 		local grant = EconomyService.grantDuelResult(player, "top-1", "win", duelResult("win", 600, 7, "top-1"))
-		expect.equal(grant.coins, 600 * top)
+		expect.near(grant.coins, math.floor(600 * top), 1) -- PenMath sums 12 items: the float order may move 1 Coin
+		expect.truthy(grant.coins > 3e12)
 		profile.coins = ECONOMY.maxCoins - 5
 		local capped = EconomyService.grantDuelResult(player, "top-2", "win", duelResult("win", 600, 8, "top-2"))
 		expect.equal(capped.coins, 5)
@@ -605,8 +640,8 @@ return function(t: Context)
 	t.test("grantMatchResult pays its squeezes × the squeeze value of that moment; Coins stop at maxCoins", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		profile.capsules = { slots = 1, list = { { level = 30, squishyId = "toast" } } } -- Toast Lv 30: 1,385
-		expect.equal(EconomyService.grantMatchResult(player, "m-1", matchPay("draw", 300, false)).coins, 300 * 1_385)
+		table.insert(profile.pen.items, penItem(2, "bird")) -- pens3 phase 1: 10 + 160 a squeeze
+		expect.equal(EconomyService.grantMatchResult(player, "m-1", matchPay("draw", 300, false)).coins, 300 * 170)
 		profile.coins = ECONOMY.maxCoins - 5
 		local capped = EconomyService.grantMatchResult(player, "m-2", matchPay("win", 600, true))
 		expect.equal(capped.coins, 5)
@@ -874,7 +909,9 @@ return function(t: Context)
 		expect.equal(EconomyService.grantCoins(player, 25, "squeeze"), 25)
 		expect.deepEqual(EconomyService.grantSquishy(player, "toast", "shop"), { added = true, refund = 0 })
 		local grant = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 200, 77))
-		expect.equal(grant.coins, 200 * VALUE) -- a new profile's capsule: Kitty Bread at Lv 1
+		-- Pens3 phase 1: Kitty Bread and the new Toast walk in the pen now, 10 + 10 a squeeze.
+		local value = 2 * VALUE
+		expect.equal(grant.coins, 200 * value)
 		expect.equal(EconomyService.trySpend(player, 20, "box"), true)
 		expect.truthy(first.releaseAsync(player))
 		-- After the release the old session takes no changes.
@@ -885,18 +922,19 @@ return function(t: Context)
 		expect.equal(second.loadAsync(player), "ready")
 		EconomyService.useDeps(recorderDeps(w, StateService.portFrom(second)))
 		local profile = second.getProfile(player)
-		expect.equal(profile.coins, 25 + 200 * VALUE - 20)
+		expect.equal(profile.coins, 25 + 200 * value - 20)
 		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
+		expect.deepEqual(profile.pen.items[2], { id = 2, kind = "toast", form = 0, level = 1, coat = 0 }) -- saved too
 		expect.equal(#profile.duelLog, 1)
 		expect.equal(profile.duelLog[1].matchId, MATCH_ID)
 		expect.deepEqual(profile.samePair, { ["77"] = { NOW } }) -- the same-pair record survives too (§6.7)
 		expect.equal(profile.stats.duelsWon, 1)
-		expect.equal(profile.stats.coinsEarned, 25 + 200 * VALUE)
+		expect.equal(profile.stats.coinsEarned, 25 + 200 * value)
 		expect.equal(profile.stats.coinsSpent, 20)
 		-- The same match never pays twice, even on another server.
 		local again = EconomyService.grantDuelResult(player, MATCH_ID, "win", duelResult("win", 200, 77))
 		expect.equal(again.alreadyGranted, true)
-		expect.equal(profile.coins, 25 + 200 * VALUE - 20)
+		expect.equal(profile.coins, 25 + 200 * value - 20)
 		expect.deepEqual(profile.samePair, { ["77"] = { NOW } })
 		second.releaseAsync(player)
 		EconomyService.useDeps(nil)

@@ -8,8 +8,8 @@
 --     claim is Day 1 without that line;
 --   * 7 day cards with "Day n", the Coins of that day and the free Treat Box on day 7; today highlighted; the days of
 --     the cycle already claimed carry "Claimed"; Phase 5 (progression spec 2026-10-12 §9): a day's Coins are its
---     squeezes (Config.Economy.Daily.coinsByDay) × the player's squeeze value (CapsuleMath.squeezeValue of the
---     capsules passed in; a new player's 10 without them), as the server pays at claim time;
+--     squeezes (Config.Economy.Daily.coinsByDay) × the player's squeeze value (pens3 phase 1: PenMath.squeezeValue of
+--     the pen passed in; a new player's 10 without it), as the server pays at claim time;
 --   * once today is claimed: "Come back in {time}" until 00:00 UTC; the sign reads "Ready to claim!" or
 --     "Next reward in {time}", nothing while the state is unknown;
 --   * UI FINAL R8 (the design's Daily window, plan work/ui/PLAN.md R8): the card looks (claimed lilac, today's
@@ -28,14 +28,14 @@ type Context = {
 return function(t: Context)
 	local expect = t.expect
 	local DailyFormat = t.requireClient("UI/DailyFormat")
-	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
+	local PenMath = t.requireShared("PenMath")
 	local Format = t.requireShared("Util/Format")
 	local Strings = t.requireShared("Strings")
 	local DAILY = Config.Economy.Daily
 	local DAYS = #DAILY.coinsByDay
-	-- A new player's squeeze value (no capsule passed in): Kitty Bread in a Lv 1 capsule, 10 Coins.
-	local VALUE = CapsuleMath.squeezeValue(nil)
+	-- A new player's squeeze value (no pen passed in): 10 Coins (Config.Economy.Pen.minSqueezeValue).
+	local VALUE = PenMath.squeezeValue(nil)
 
 	local D = 20000 -- a UTC day index
 	local START = D * 86400 -- 00:00:00 UTC of day D
@@ -151,27 +151,27 @@ return function(t: Context)
 		expect.deepEqual(todayDays(seventh), { 7 })
 	end)
 
-	t.test(
-		"a day's Coins are its squeezes × the squeeze value of the player's best capsule (spec 2026-10-12 §9)",
-		function()
-			-- Butter (power 4) in a Lv 11 capsule (CP 68) beats Kitty Bread at Lv 1: 272 Coins a squeeze.
-			local capsules =
-				{ slots = 2, list = { { level = 1, squishyId = "kitty_bread" }, { level = 11, squishyId = "butter" } } }
-			local value = CapsuleMath.squeezeValue(capsules)
-			expect.equal(value, 272)
-			local model = DailyFormat.model(daily(D - 1, 3), NOON, capsules)
-			for n, card in model.cards do
-				expect.equal(card.coins, DAILY.coinsByDay[n] * value)
-				expect.equal(
-					card.coinsText,
-					Strings.format(Strings.common.coinsAmount, { coins = Format.coins(DAILY.coinsByDay[n] * value) })
-				)
-			end
-			expect.equal(model.coins, DAILY.coinsByDay[4] * value) -- day 4 is next
-			-- The same rule as the server's reward (CapsuleMath.rewardCoins: floored, never past the Coins cap).
-			expect.equal(model.cards[1].coins, CapsuleMath.rewardCoins(DAILY.coinsByDay[1], value))
+	t.test("a day's Coins are its squeezes × the squeeze value of the player's pen (pens3 phase 1)", function()
+		-- Kitty Bread (10/s) and Butter (40/s) walk in the pen: 50 Coins a squeeze.
+		local items: { any } = {
+			{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
+			{ id = 2, kind = "butter", form = 0, level = 1, coat = 0 },
+		}
+		local pen = { spots = 3, nextId = 3, items = items }
+		local value = PenMath.squeezeValue(pen)
+		expect.equal(value, 50)
+		local model = DailyFormat.model(daily(D - 1, 3), NOON, pen)
+		for n, card in model.cards do
+			expect.equal(card.coins, DAILY.coinsByDay[n] * value)
+			expect.equal(
+				card.coinsText,
+				Strings.format(Strings.common.coinsAmount, { coins = Format.coins(DAILY.coinsByDay[n] * value) })
+			)
 		end
-	)
+		expect.equal(model.coins, DAILY.coinsByDay[4] * value) -- day 4 is next
+		-- The same rule as the server's reward (PenMath.rewardCoins: floored, never past the Coins cap).
+		expect.equal(model.cards[1].coins, PenMath.rewardCoins(DAILY.coinsByDay[1], value))
+	end)
 
 	t.test("claimed today: Come back in {time} until 00:00 UTC; the sign counts down", function()
 		local claimed = daily(D, 3)
@@ -293,7 +293,7 @@ return function(t: Context)
 		expect.deepEqual(daysWith(open, "next"), {})
 		expect.deepEqual(daysWith(open, "locked"), { 5, 6, 7 })
 		expect.deepEqual(feet(open), { F.claimed, F.claimed, F.claimed, F.claim, F.locked, F.locked, F.locked })
-		expect.equal(open.cards[1].valueText, Format.coins(CapsuleMath.rewardCoins(DAILY.coinsByDay[1], VALUE)))
+		expect.equal(open.cards[1].valueText, Format.coins(PenMath.rewardCoins(DAILY.coinsByDay[1], VALUE)))
 		expect.equal(open.cards[DAYS].valueText, Strings.daily.treatBox)
 		-- Day 3 claimed today: day 4 is Tomorrow, the days after it locked.
 		local claimed = DailyFormat.model(daily(D, 3), NOON)

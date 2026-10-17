@@ -9,8 +9,8 @@
 -- Grip), 0 when not paid; the win streak +1 for every win (paid or not: §12 Q4, review fix), 0 for a loss, a draw
 -- and for leaving (left());
 -- cancelled / void, a player not present and a bot get nil (nothing paid, the streak untouched); the 7th, 8th ... paid
--- match pays in full (no cap); streakOf / nextStreak keep a whole number >= 0; squeezeWorth = the capsules' squeeze
--- value and own-squeeze Grip (CapsuleMath); maxSqueezes = the largest duel reward.
+-- match pays in full (no cap); streakOf / nextStreak keep a whole number >= 0; squeezeWorth = the pen's squeeze value
+-- and own-squeeze Grip (PenMath, pens3 phase 1; a capsule counts for nothing); maxSqueezes = the largest duel reward.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -38,7 +38,7 @@ local CFG = {
 return function(t: Context)
 	local expect = t.expect
 	local MatchRewards = t.requireServer("Logic/MatchRewards")
-	local CapsuleMath = t.requireShared("CapsuleMath")
+	local PenMath = t.requireShared("PenMath")
 
 	local function player(userId: number, overrides: { [string]: any }?): any
 		local input: any = { userId = userId, team = nil, present = true, isBot = false, throws = 3 }
@@ -171,12 +171,20 @@ return function(t: Context)
 		expect.equal(MatchRewards.nextStreak(5, loss), 0)
 	end)
 
-	t.test("squeezeWorth: the capsules' squeeze value and own-squeeze Grip, a new player's without capsules", function()
-		local capsules: any = { slots = 2, list = { { level = 23, squishyId = "toast" }, { level = 40 } :: any } }
-		local coins, grip = MatchRewards.squeezeWorth({ capsules = capsules })
-		expect.equal(coins, CapsuleMath.squeezeValue(capsules))
-		expect.equal(grip, CapsuleMath.squeezeGrip(capsules))
-		expect.equal(grip, CapsuleMath.power(40)) -- the highest level, an empty capsule included
+	t.test("squeezeWorth: the pen's squeeze value and own-squeeze Grip, a new player's without a pen", function()
+		local pen: any = {
+			spots = 3,
+			nextId = 3,
+			items = {
+				{ id = 1, kind = "kitty_bread", form = 0, level = 2, coat = 0 }, -- 11.5
+				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0 }, -- 40
+			},
+		}
+		local capsules: any = { slots = 1, list = { { level = 40, squishyId = "dragon" } } } -- counts for nothing
+		local coins, grip = MatchRewards.squeezeWorth({ pen = pen, capsules = capsules })
+		expect.equal(coins, PenMath.squeezeValue(pen))
+		expect.near(coins, 51.5, 1e-9)
+		expect.equal(grip, 51) -- floored
 		local newCoins, newGrip = MatchRewards.squeezeWorth(nil)
 		expect.equal(newCoins, 10)
 		expect.equal(newGrip, 10)

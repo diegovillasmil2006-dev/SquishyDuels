@@ -32,8 +32,9 @@ type Module = {
 
 -- Server layers (§2.6 rule 2). MonetizationService is first so ProcessReceipt is assigned before any yield.
 -- GripService is its own layer between CharacterService and SqueezeService (§17.10 "Server layering", §17.11).
--- Phase 3: BaseService after CharacterService (its plot spawn replaces the lobby spawn once Phase 4 builds the plots);
--- CapsuleService between GripService (it pays Grip) and SqueezeService (whose paid squeezes push the capsules).
+-- Phase 3: BaseService after CharacterService (its plot spawn replaces the lobby spawn once Phase 4 builds the plots).
+-- Pens3 phase 1: PenService where CapsuleService was, after BaseService, GripService and EconomyService (it redraws
+-- the base and pays Coins) and before SqueezeService; CapsuleService is no longer started (removed in phase 2).
 -- Batch 3 (friends): FriendDuelService right after QueueService (it starts duels through it); ShowOffService last (it
 -- reads the duel results, Grip levels and FriendDuelService's friend matches).
 -- FFA/TDM v1 (2026-10-15): MatchMapService then MatchService after FriendDuelService: MatchService reads
@@ -55,7 +56,7 @@ local SERVICE_ORDER = {
 	"CharacterService",
 	"BaseService",
 	"GripService",
-	"CapsuleService",
+	"PenService", -- pens3 phase 1: the pen pays every second and sells its spots (validates Config/Pen at init)
 	"AutoClickService", -- 2026-10-16: the auto-clicker check SqueezeService asks first (validates its config at init)
 	"SqueezeService",
 	"PracticeService",

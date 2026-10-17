@@ -1,5 +1,5 @@
 --!strict
--- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 6: Squish
+-- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 7: Squish
 -- Island, lobby bases spec 2026-10-11 §2-§4, §7-§8, build plan Phase 4, without the giant pads since Phase 6, with the
 -- look upgrade's lamps, halos, finishes and Blender mesh sets since 2026-10-14, with the Claude Design hub's stations,
 -- sd/lobby.js, phase 3 spec D1-D14, in its hub sectors). Server only (ServerStorage.UnitTest).
@@ -13,8 +13,9 @@
 --   * the island (§2): the sea, the shallow water, the beach, the grass at Y -0.9, Squish Square at Y 0 with its curb
 --     and 10 paths that stay clear (nothing collidable on them, 8 wide); the duel tower (§2, §7) over the stage;
 --   * the 10 plots (§4): Base_01..10 tagged SD_Base with Plot, at their plot frames, built open (grey, "Open plot" on
---     the live Owner label), every tinted part marked SD_BaseTint, 4 capsule pads with Slot, one SpawnLocation each
---     (SD_BaseSpawn, flush with the plot floor, facing the gate), the gate's 16-stud gap open;
+--     the live Owner label), every tinted part marked SD_BaseTint, no capsule pads or statue plinth (pens3 phase 1:
+--     BaseService draws the pen at runtime), one SpawnLocation each (SD_BaseSpawn, flush with the plot floor, at
+--     WorldLayout.Bases.spawn: facing the pen), the gate's 16-stud gap open;
 --   * the part budget per zone (§7) with every plot at its worst (CapsuleBuilder's templates);
 --   * no giant pad, Jelly gate, pod sign, lock decor, Grip gym or Royal pod any more (build plan Phase 6);
 --   * Neon only on the state rings lit in the design's default states (D7) and the design's lit refill fills
@@ -246,13 +247,13 @@ return function(t: Context)
 		return model
 	end
 
-	t.test("the root is SD_Lobby, unparented, not Atomic, version 6 (the Blender mesh library)", function()
+	t.test("the root is SD_Lobby, unparented, not Atomic, version 7 (pens3 phase 1: no pads or plinth)", function()
 		local root = lobby()
 		expect.equal(root.Name, "SD_Lobby")
 		expect.equal(root.Parent, nil)
 		expect.equal((root :: Model).ModelStreamingMode, Enum.ModelStreamingMode.Default)
-		expect.equal(LobbyBuilder.VERSION, 6)
-		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 6)
+		expect.equal(LobbyBuilder.VERSION, 7)
+		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 7)
 	end)
 
 	t.test("exact tag counts", function()
@@ -811,24 +812,22 @@ return function(t: Context)
 				expect.truthy(owner ~= nil and owner:IsA("TextLabel"))
 				expect.equal((owner :: TextLabel).Text, Strings.resolve("base.openPlot"))
 				expect.equal((owner :: Instance):GetAttribute("SD_TextKey"), nil)
-				-- The 4 capsule pads (Slot 1..4) on their spots, top 0.3.
-				for slot, pad in WorldLayout.Bases.capsulePads do
-					local part = model:FindFirstChild("Pad" .. slot) :: BasePart
-					expect.equal(part:GetAttribute("Slot"), slot)
-					expect.near((part.Position - frame * (pad + Vector3.new(0, 0.15, 0))).Magnitude, 0, TOLERANCE)
-					expect.near(topY(part), 0.3, TOLERANCE)
+				-- Pens3 phase 1: no capsule pads or statue plinth (BaseService draws the pen at runtime).
+				for slot = 1, #WorldLayout.Bases.capsulePads do
+					expect.equal(model:FindFirstChild("Pad" .. slot), nil)
 				end
+				expect.equal(model:FindFirstChild("StatuePlinth"), nil)
 				-- The plinth floor: Roblox's own studs on top (§7), its top the plot floor (Y 0).
 				local floor = model:FindFirstChild("Floor") :: BasePart
 				expect.equal(floor.TopSurface, Enum.SurfaceType.Studs)
 				expect.near(topY(floor), 0, TOLERANCE)
-				expect.equal(model:FindFirstChild("Capsules"), nil) -- BaseService draws the capsules at runtime
+				expect.equal(model:FindFirstChild("Pen"), nil) -- BaseService draws the pen at runtime
 			end
 		end
 	)
 
 	t.test(
-		"each plot's SpawnLocation: SD_BaseSpawn with its Plot, invisible, Neutral, flush with the floor, facing the gate",
+		"each plot's SpawnLocation: SD_BaseSpawn with its Plot, invisible, Neutral, flush with the floor, facing the pen",
 		function()
 			local WorldLayout = t.requireShared("World/WorldLayout")
 			local seen: { [number]: boolean } = {}

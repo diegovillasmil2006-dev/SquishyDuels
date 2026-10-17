@@ -1182,8 +1182,7 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 			table.insert(onboarding, { text = line, gotIt = step.id == "welcome" })
 		end
 	end
-	-- Batch 1 #7a: the capsule goals as the regular card shows them, at the widest Coins text.
-	local capsuleSlot = #grip.Capsule.slotPrices
+	-- Pens3 phase 1: the pen goals as the regular card shows them, at the widest Coins text.
 	local worstCoins = Format.coins(WORST_COINS[#WORST_COINS])
 	local result: ColumnTexts = {
 		coins = longest(coinsTexts),
@@ -1202,9 +1201,8 @@ function HudFormat.worstCaseTexts(): ColumnTexts
 		gripGoal = longest({
 			text("grip.goalRank", { rank = rank, level = topRankLevel }),
 			text("grip.goalMax"),
-			text("grip.goalCapsuleReady", { slot = capsuleSlot }),
-			text("grip.goalUnlockReady", { slot = capsuleSlot }),
-			text("grip.hudGoalCapsule", { slot = capsuleSlot, have = worstCoins, need = worstCoins }),
+			text("grip.goalPen", { need = worstCoins }),
+			text("grip.goalPenReady"),
 		}),
 		tiles = tiles,
 		onboarding = onboarding,

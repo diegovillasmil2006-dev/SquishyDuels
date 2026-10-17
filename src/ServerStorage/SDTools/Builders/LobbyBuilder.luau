@@ -21,7 +21,7 @@
 -- the box Available (reveal ring lit), the shop Purchasable (turntable ring lit), the daily gift Ready (ring lit), the
 -- queue empty (no lights: D2, presentation only), the squeeze meters full, the quest cards in progress. Every plot is
 -- built open: grey, "Open plot",
--- no capsules (BaseService shows the owner's name, colour, capsules and statue at runtime). Neon only on the lit state
+-- no pen (BaseService shows the owner's name, colour and pen at runtime). Neon only on the lit state
 -- rings (D7) and the design's lit refill fills (lobby.js:347-350); no outlines (D8).
 -- The lobby look upgrade (user OK 2026-10-14, numbers in Kit/WorldLook): FIX 1, the lamps SpawnLamp and ShopLamp
 -- and the halos BoxSparkle, ShopSparkle, DailySparkle and a GateSparkle on each plot's NameSign (SD_Sparkle);
@@ -62,9 +62,10 @@
 --     Decor        Lollipop1..4 (Atomic, SD_Ambient spin), in the garden
 --     Bases        Base_01..Base_10 (SD_Base, Plot): plinth floor (studs, SD_BaseTint light) and rim (full), white
 --                  fence with posts every 8 studs and caps (full), the Donut Arch gate (16 wide, icing full) with its
---                  name sign (live line Owner; GateSparkle over the arch), the back wall (44 × 9, cap full), the statue
---                  plinth, the 4 capsule pads
---                  (Slot), the plot's SpawnLocation (SD_BaseSpawn, Plot) and its props (spec §4, §7)
+--                  name sign (live line Owner; GateSparkle over the arch), the back wall (44 × 9, cap full), the
+--                  plot's SpawnLocation (SD_BaseSpawn, Plot; pens3 phase 1: between the gate and the pen, facing the
+--                  pen) and its props (spec §4, §7); pens3 phase 1: no capsule pads or statue plinth (the pen is
+--                  BaseService's, drawn at runtime)
 --     KeepClear / AudioZones (Folders) invisible volumes
 -- Lobby background motion (§18.5.1 A8, D12): Decor/Lollipop1..4 "spin", DailyStand/GiftBox "spinBob",
 -- GiftBoxCounter/GiftBox and SqueezeZone/Statue "breathe" (SD_Ambient + SD_AmbientKind); none of their parts
@@ -127,8 +128,9 @@ type PropPart = { kind: "block" | "cyl" | "ball" | "egg", name: string, size: Ve
 -- Constants
 
 local GENERATOR_ID = "lobby"
-local VERSION = 6 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates; 5: look upgrade;
--- 6: the Blender mesh library, round 1 (falls back to parts)
+local VERSION = 7 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates; 5: look upgrade;
+-- 6: the Blender mesh library, round 1 (falls back to parts); 7: pens3 phase 1, no capsule pads or statue plinth, the
+-- plot spawn faces the pen
 local ROOT_NAME = "SD_Lobby"
 
 local SHAPE_LIBRARY_NAME = "SD_ShapeLibrary"
@@ -205,7 +207,6 @@ local BACK_WALL = Vector3.new(44, 9, 1.6) -- spec §4
 local GATE_PILLAR = Vector3.new(2, 7, 2) -- reading: dough pillars 2 wide, 7 tall
 local DONUT_TUBE = 1.3 -- reading: the arch is half a donut, its tube this thick
 local SPAWN_PAD = Vector3.new(4, 0.2, 4)
-local STATUE_PLINTH = { diameter = 6, height = 1.2 }
 
 -- `require` with a runtime-chosen ModuleScript (the injected Shared clone); the analyzer cannot resolve it.
 local dynamicRequire = require :: (ModuleScript) -> any
@@ -2279,28 +2280,6 @@ local function buildBase(state: State, index: number, folder: Instance)
 	-- FIX 1: the halo 1.2 over the arch's top, against the sky (seen from the plot's spawn and from the hub).
 	local archHalo = F * CFrame.new(0, GATE_PILLAR.Y + archRadius + DONUT_TUBE + 1.2, gateZ)
 	halo(state, "GateSparkle", board, archHalo.Position, WorldLook.HALO.gateSize) -- seen from about 44 studs
-	-- The capsule pads (8 × 8, Slot) and the statue's plinth.
-	for slot, pad in B.capsulePads do
-		local part = Prims.part({
-			name = "Pad" .. slot,
-			size = Vector3.new(B.capsulePadSize, B.capsulePadTop, B.capsulePadSize),
-			cframe = F * CFrame.new(pad + Vector3.new(0, B.capsulePadTop / 2, 0)),
-			color = color(state, "LobbyTrimWhite"),
-			flags = "solid",
-			parent = model,
-		})
-		part:SetAttribute(L.Attributes.Slot, slot)
-	end
-	local statue = (F * B.statue).Position
-	Props.cylinder(
-		model,
-		"StatuePlinth",
-		STATUE_PLINTH.diameter,
-		STATUE_PLINTH.height,
-		CFrame.new(statue - Vector3.new(0, STATUE_PLINTH.height / 2, 0)),
-		color(state, "LobbyTrimWhite"),
-		"solid"
-	)
 	-- The plot's spawn (BaseService: the owner spawns here), invisible, flush with the floor.
 	local spawn = Instance.new("SpawnLocation")
 	spawn.Name = "Spawn"

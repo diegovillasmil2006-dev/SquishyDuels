@@ -7,9 +7,9 @@
 --   * the welcome card has [Got it] and names the starter; the others have one "Skip tutorial" link;
 --   * the squeeze hint follows the input kind; the firstBox step reads {coins}/{goal}: the cheapest shop price (a
 --     10,000 Common) and a Shop waypoint for everyone (Batch 1, never the 150K Snack Box);
---   * guidance: waypoints "shop" / "duel", the "squishies" pulse (inspect); the squeeze and capsule steps have none
---     (spec 2026-10-11 §5: the squeeze text says squeeze anywhere, so it sends no one to a mat); capsuleBought is the
---     replay's capsule sign (Batch 1);
+--   * guidance: waypoints "shop" / "duel", the "squishies" pulse (inspect); the squeeze and pen steps have none
+--     (spec 2026-10-11 §5: the squeeze text says squeeze anywhere, so it sends no one to a mat; pens3 phase 1: a new
+--     player spawns facing their own pen); penBought is the replay's pen sign (the pen's spots rose);
 --   * replay mode ignores the saved flags (done and skipped) and uses its own local set;
 --   * a step whose screen is not registered yet (Inspect before Part 6) is passed over (reading).
 
@@ -135,13 +135,13 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"guidance: none for the capsule step, the Squishies tile pulses for inspect, a waypoint to the duel podium",
+		"guidance: none for the pen step, the Squishies tile pulses for inspect, a waypoint to the duel podium",
 		function()
-			local capsule = OnboardingFormat.model(ctx(doneBefore("capsule")))
-			expect.equal(capsule.stepId, "capsule")
-			expect.equal(capsule.text, Strings.onboarding.capsule)
-			expect.equal(capsule.waypoint, nil)
-			expect.equal(capsule.pulse, nil)
+			local pen = OnboardingFormat.model(ctx(doneBefore("pen")))
+			expect.equal(pen.stepId, "pen")
+			expect.equal(pen.text, Strings.onboarding.pen)
+			expect.equal(pen.waypoint, nil)
+			expect.equal(pen.pulse, nil)
 			-- Lobby HUD (spec 2026-10-11): no dock, so Inspect is reached through the Squishies tile (its list's Inspect).
 			expect.equal(OnboardingFormat.model(ctx(doneBefore("inspect"))).pulse, "squishies")
 			local duel = OnboardingFormat.model(ctx(doneBefore("duel")))
@@ -202,26 +202,29 @@ return function(t: Context)
 		expect.equal(OnboardingFormat.model(notReady), nil)
 	end)
 
-	t.test("Batch 1: capsule follows squeeze, firstBox is last; there is no equip step", function()
-		local ids = {}
-		for _, step in STEPS do
-			table.insert(ids, step.id)
+	t.test(
+		"pens3 phase 1: the pen step follows squeeze (it replaced capsule), firstBox is last; no equip step",
+		function()
+			local ids = {}
+			for _, step in STEPS do
+				table.insert(ids, step.id)
+			end
+			expect.deepEqual(ids, { "welcome", "squeeze", "pen", "inspect", "duel", "firstBox" })
 		end
-		expect.deepEqual(ids, { "welcome", "squeeze", "capsule", "inspect", "duel", "firstBox" })
-	end)
+	)
 
-	t.test("capsuleBought: a level or a slot rose; a swap or an auto-fill does not", function()
-		local before = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }
-		local upgraded = { slots = 1, list = { { level = 2, squishyId = "kitty_bread" } } }
-		local opened: { any } = { { level = 1, squishyId = "kitty_bread" }, { level = 1 } }
-		local unlocked = { slots = 2, list = opened }
-		local swapped = { slots = 1, list = { { level = 1, squishyId = "toast" } } }
-		expect.truthy(OnboardingFormat.capsuleBought(upgraded, before))
-		expect.truthy(OnboardingFormat.capsuleBought(unlocked, before))
-		expect.falsy(OnboardingFormat.capsuleBought(swapped, before))
-		expect.falsy(OnboardingFormat.capsuleBought(before, before))
-		expect.falsy(OnboardingFormat.capsuleBought(nil, before))
-		expect.falsy(OnboardingFormat.capsuleBought(before, nil))
-		expect.falsy(OnboardingFormat.capsuleBought({ slots = 1, list = "x" }, before))
+	t.test("penBought: the pen's spots rose; a new squishy in it or the same pen does not", function()
+		local kitty = { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 }
+		local butter = { id = 2, kind = "butter", form = 0, level = 1, coat = 0 }
+		local before = { spots = 3, nextId = 2, items = { kitty } }
+		local bought = { spots = 4, nextId = 2, items = { kitty } }
+		local granted = { spots = 3, nextId = 3, items = { kitty, butter } }
+		expect.truthy(OnboardingFormat.penBought(bought, before))
+		expect.falsy(OnboardingFormat.penBought(granted, before))
+		expect.falsy(OnboardingFormat.penBought(before, before))
+		expect.falsy(OnboardingFormat.penBought(before, bought)) -- fewer spots (a reset) is no buy
+		expect.falsy(OnboardingFormat.penBought(nil, before))
+		expect.falsy(OnboardingFormat.penBought(bought, nil))
+		expect.falsy(OnboardingFormat.penBought({ spots = "4" }, before))
 	end)
 end

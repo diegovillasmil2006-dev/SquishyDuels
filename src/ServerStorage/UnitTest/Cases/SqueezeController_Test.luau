@@ -24,8 +24,8 @@
 --   * normalizeResult; lineText: "+N" above the squishy, "+N Coins" at the first-person toy, "+N Grip" or
 --     "+N Grip (xM)";
 --   * panelLabel (spec 2026-10-11 §5; Phase 5): what one own squeeze pays, the same anywhere (grip.stationLabelBase,
---     never a pad name or a limit line): the squeeze value (CapsuleMath.squeezeValue) and the Grip of the highest
---     capsule level (CapsuleMath.squeezeGrip) of the capsules state; a new player's 10 / 10 without one;
+--     never a pad name or a limit line): pens3 phase 1: the Coins (PenMath.rewardCoins of one squeeze at
+--     PenMath.squeezeValue) and the Grip (PenMath.squeezeGrip) of the pen state; a new player's 10 / 10 without one;
 --   * hudOffsetOf (spec 2026-10-11 §3.8): the overlay toy's viewport point as an SD_Hud offset, for the lines that
 --     float next to the first-person toy.
 -- Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2; the squeeze panel and its button are gone):
@@ -95,8 +95,8 @@ return function(t: Context)
 	-- Part 5: sending, hold-to-squeeze, results, the station label (§6.3, §17.3.2, §17.7, §17.10) -------------------
 
 	local Strings = t.requireShared("Strings")
-	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Format = t.requireShared("Util/Format")
+	local PenMath = t.requireShared("PenMath")
 	local HOLD = Config.Grip.Hold
 	local REPEAT = HOLD.repeatSeconds
 	local CAP = Config.Squeeze.bucketCapacity
@@ -603,23 +603,29 @@ return function(t: Context)
 
 	-- Squeeze anywhere (spec 2026-10-11 §5); Phase 5: the label shows what an own squeeze really pays ----------------
 
-	t.test("panelLabel: the squeeze value and the highest capsule level's Grip, the same anywhere", function()
-		-- No capsules state yet: a new player's squeeze (Kitty Bread in a Lv 1 capsule: 10 Coins, CP(1) = 10 Grip).
-		expect.equal(SqueezeController.panelLabel(nil), s("grip.stationLabelBase", { coins = "10", grip = "10" }))
-		-- The best capsule pays the Coins (Butter at Lv 11: 4 × 68); the highest level, an empty one too, the Grip.
-		local list: { any } =
-			{ { level = 1, squishyId = "kitty_bread" }, { level = 11, squishyId = "butter" }, { level = 25 } }
-		local capsules = { slots = 3, list = list }
-		expect.equal(
-			SqueezeController.panelLabel(capsules),
-			s("grip.stationLabelBase", {
-				coins = Format.coins(CapsuleMath.squeezeValue(capsules)),
-				grip = Format.coins(CapsuleMath.squeezeGrip(capsules)),
-			})
-		)
-		expect.equal(CapsuleMath.squeezeValue(capsules), 272)
-		expect.equal(CapsuleMath.squeezeGrip(capsules), CapsuleMath.power(25))
-	end)
+	t.test(
+		"panelLabel: what one squeeze pays from the pen's squeeze value, the same anywhere (pens3 phase 1)",
+		function()
+			-- No pen state yet: a new player's squeeze (10 Coins, 10 Grip: Config.Economy.Pen.minSqueezeValue).
+			expect.equal(SqueezeController.panelLabel(nil), s("grip.stationLabelBase", { coins = "10", grip = "10" }))
+			-- Kitty Bread (10/s) and the Bird (160/s) walk in the pen: 170 Coins and 170 Grip a squeeze.
+			local items: { any } = {
+				{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
+				{ id = 2, kind = "bird", form = 0, level = 1, coat = 0 },
+			}
+			local pen = { spots = 3, nextId = 3, items = items }
+			expect.equal(PenMath.squeezeValue(pen), 170)
+			expect.equal(SqueezeController.panelLabel(pen), s("grip.stationLabelBase", { coins = "170", grip = "170" }))
+			-- A levelled squishy earns a fractional rate: the Coins and the Grip are the whole ones the server pays.
+			local levelled =
+				{ spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 2, coat = 0 } } }
+			expect.equal(PenMath.squeezeValue(levelled), 11.5)
+			expect.equal(
+				SqueezeController.panelLabel(levelled),
+				s("grip.stationLabelBase", { coins = "11", grip = "11" })
+			)
+		end
+	)
 
 	-- Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2): the info floats on the held squishy ----------------------
 

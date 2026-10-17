@@ -577,6 +577,23 @@ local Palette = {
 	MatchVignetteMid = Color3.fromHex("#8C286E"), -- M:61: rgba(140,40,110,.35) at 75%
 	MatchVignetteEdge = Color3.fromHex("#2E0E3A"), -- M:61: rgba(46,14,58,.72) at 100%
 
+	-- Pens3 phase 1: the base pen (lobby design v6, `K:n` = kit.json line n, approved by the owner). World only
+	-- (BaseService draws the fence and the sign; PenController the coin labels and the own sign's state).
+	PenFenceWaferPost = Color3.fromHex("#E0A062"), -- K:4170-4189 tier 1 Wafer: post
+	PenFenceWaferRail = Color3.fromHex("#FFF6EC"), -- rail and pickets
+	PenFenceMintPost = Color3.fromHex("#FFF6EC"), -- tier 2 Mint
+	PenFenceMintRail = Color3.fromHex("#8EEAD0"),
+	PenFenceRoyalPost = Color3.fromHex("#FFC23C"), -- tier 3 Royal
+	PenFenceRoyalRail = Color3.fromHex("#FF8FBF"),
+	PenSignCanBuy = Color3.fromHex("#8EEAD0"), -- K:4239-4265 the sign's state trim: can buy (K:129 StateTint's default)
+	PenSignTooExpensive = Color3.fromHex("#CFC8DA"), -- too expensive
+	PenSignMax = Color3.fromHex("#FFC23C"), -- MAX
+	PenSignPost = Color3.fromHex("#E0A062"), -- K:25 the material Wafer (the sign's post)
+	PenSignFace = Color3.fromHex("#FFFDF6"), -- K:86 the material SignFace (the price face)
+	PenSignText = Color3.fromHex("#1E1428"), -- K:92 the material Ink (the face's text)
+	PenLabelText = Color3.fromHex("#FFFFFF"), -- K:4266-4270 the "+N/s" coin label: white text
+	PenLabelStroke = Color3.fromHex("#1E1428"), -- its stroke
+
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.
 	KillBirdBlue = Color3.fromHex("#7CC0F5"), -- Birdie's accent: the Feather Storm ring and feathers

@@ -20,6 +20,9 @@
 -- Practice bot (2026-10-16): bot.nameStarts / bot.nameEnds, the word lists of the 1v1 bot's names (Logic/BotRules.name:
 -- <start><end>[_]<number>, e.g. "SquishFan_23"; letters only, kind words, never a real username on purpose;
 -- Config/ValidateBots checks that the longest name fits 20 characters).
+-- Pens (pens3 phase 1, 2026-10-17; [P] texts): pen.* (the PEN SPACE sign, its prompt, the coin label over a walking
+-- squishy), reason.pen.* (PenBuySpot), onboarding.pen, grip.goalPen / goalPenReady (the Next line's pen goal), and the
+-- three Grip texts that named capsules (grip.panelIntro, grip.intro, grip.idleBody).
 
 export type FormatArgs = { [string]: any }
 
@@ -146,6 +149,12 @@ local Strings = {
 			maxLevel = "This capsule is at the top level.",
 			priceChanged = "The price changed. Please check it again.",
 			paused = "Upgrades are paused for a moment. Try again soon.",
+		},
+		-- Pens3 phase 1 (PenBuySpot; PenMath.buyDecision, PenService).
+		pen = {
+			max = "Your pen is as big as it gets!",
+			paused = "Buying is paused for a moment. Try again soon.",
+			priceChanged = "The price changed. Please check it again.",
 		},
 	},
 
@@ -1001,6 +1010,8 @@ local Strings = {
 		-- Batch 1: the capsule step (the first capsule upgrade or unlock). It shows with about 10 Coins, so it waits
 		-- for the UP! marker (CapsuleController: the upgrade is affordable) instead of pointing at a locked button.
 		capsule = "Capsules in your base earn Coins! When Capsule 1 shows UP!, open it to Upgrade.",
+		-- Pens3 phase 1: the pen step (the first pen spot bought at the sign); the capsule text above goes in phase 3.
+		pen = "Your squishies earn Coins in your pen. Buy more pen space at the sign!",
 		firstBox = "Get your first new squishy in the Shop. {coins}/{goal} Coins",
 		-- Lobby HUD spec 2026-10-11 §2: Inspect is in the Squishies screen now (no equipped card). Batch 1: it follows
 		-- the capsule card, so it names the squishy.
@@ -1111,11 +1122,27 @@ local Strings = {
 		pick = "Pick a squishy",
 		inCapsule = "In capsule {slot}",
 		back = "Back",
-		-- Squishies, Shop and Inspect: what a squishy multiplies in a capsule (progression spec §3, §6).
+		-- Squishies, Shop and Inspect: what a squishy multiplies (progression spec §3, §6; pens3 phase 1: in the pen).
 		power = "x{n} power",
-		powerNote = "Capsule Coins multiplier",
+		powerNote = "Pen Coins multiplier",
 		-- Batch 1 #7b: the bouncing marker over an own capsule whose upgrade the Coins cover now (CapsuleController).
 		up = "UP!",
+	},
+
+	-- The pen (pens3 phase 1): the PEN SPACE sign on the fence (its title, the owner's own state line under the price),
+	-- the sign's ProximityPrompt and the coin label over each walking squishy. {coins} = Format.coins amounts.
+	pen = {
+		sign = {
+			title = "PEN SPACE",
+			canBuy = "Walk up to buy",
+			needMore = "Need {coins} more",
+			max = "MAX",
+		},
+		prompt = {
+			action = "Buy",
+			object = "Pen space",
+		},
+		rate = "+{coins}/s",
 	},
 
 	-- Collection display (§7.6, §7.7).
@@ -1153,6 +1180,11 @@ local Strings = {
 		goalUnlockReady = "Unlock Capsule {slot} · READY!",
 		goalCapsule = "Next: upgrade Capsule {slot} to Lv {level} · {have}/{need} Coins",
 		goalUnlock = "Next: unlock Capsule {slot} · {have}/{need} Coins",
+		-- Pens3 phase 1: the pen goal (GripMath.nextGoal step 0 while spots < 12; replaces the capsule goals above,
+		-- which go in phase 3). {need} = Format.coins of the next spot's price (GripController.goalArgs). Short (at
+		-- most 21 characters), so the HUD card needs no short form.
+		goalPen = "Next: pen space {need}",
+		goalPenReady = "Buy pen space · READY!",
 		-- Foam fix 2: the regular HUD card's goal line (one line in its info column); the panel and toasts keep the above.
 		hudGoalRank = "Next: {rank} at Lv {level}",
 		-- Batch 1 #7a: the card's short form of goalCapsule and goalUnlock. It names Coins, as the bar line above it
@@ -1188,7 +1220,7 @@ local Strings = {
 		},
 		-- Grip panel (one scrolling column).
 		panelTitle = "Grip Training",
-		panelIntro = "Squeezing trains your Grip. Higher Grip opens new capsule tiers.",
+		panelIntro = "Squeezing trains your Grip and earns Coins.", -- pens3 phase 1: no capsule tiers any more
 		restedHelp = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 		-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays.
 		limitNote = "Squeezing earns Coins and trains Grip, anywhere in the lobby.",
@@ -1201,15 +1233,15 @@ local Strings = {
 		levelFrom = "Grip {from}",
 		levelArrow = "→",
 		unlockedPrefix = "Unlocked ",
-		intro = "You trained your Grip! Squeeze more to open new capsule tiers.",
+		intro = "You trained your Grip! Squeeze more to level it up.",
 		welcome = "Double Grip is full: your first squeezes train x{mult} Grip!",
 		welcomeBack = "Welcome back! Double Grip: about {minutes} min.",
 		headStart = "Your past squeezes count: you start at Grip Lv {level}!",
 		-- Idle card (LocalPlayer.Idled after Config.Grip.idleReminderSeconds). The 20 minutes are Roblox's idle kick,
 		-- not a game setting.
 		idleTitle = "Still there?",
-		-- Foam fix 2: one sentence per line. Phase 6: the second names what still stops (the capsules).
-		idleBody = "Roblox disconnects players who are idle for 20 minutes.\nCapsules stop paying when that happens.",
+		-- Foam fix 2: one sentence per line. Pens3 phase 1: the second names what still stops (the pen).
+		idleBody = "Roblox disconnects players who are idle for 20 minutes.\nYour pen stops paying when that happens.",
 		idleButton = "Keep going",
 		-- World: the lobby nameplate.
 		nameplate = "Lv {level} · {rank}",

@@ -5,16 +5,16 @@
 -- Studio DebugHooks through the debug* functions below). There is no Grip remote: Grip comes only from
 --   * addFromSqueeze(p, tier) - step 8a of a squeeze SqueezeService accepted, after the earnings limit decided the
 --     Coins, whether or not it paid. One Double Grip point is used when there is one (SqueezeLimit.spend on
---     grip.rested with Config.Grip.Rested) and the Grip is CapsuleMath.squeezeGrip(profile.capsules) (the power of the
---     highest capsule level, spec 2026-10-12 §3, §10; Phase 3: the pad no longer changes it; an unknown
---     tier still pays nothing) × Rested.mult when doubled;
+--     grip.rested with Config.Grip.Rested) and the Grip is PenMath.squeezeGrip(profile.pen) (pens3 phase 1: 1 squeeze
+--     value of Grip, floored; the pad does not change it; an unknown tier still pays nothing) × Rested.mult when
+--     doubled;
 --   * addFromCapsule(p, amount) - one capsule squeeze (CapsuleService, Phase 3): `amount` Grip (the capsule's power),
 --     never doubled and never using a Double Grip point (lobby spec 2026-10-11 §5.4), with the same clamps, anomaly
 --     counter, toasts and level changes as a squeeze;
 --   * addFromMatch(p, squeezes) - Match HUD M2 (2026-10-16): the Grip half of a Free for All / Team Deathmatch pay
 --     (MatchService, on the match's single end; the owner chose Coins AND Grip for matches knowing Grip was "never a
 --     currency": it stays never sold, and duel code still never reads it). `squeezes` squeezes × the Grip of one
---     squeeze (Logic/MatchRewards.squeezeWorth: today an own squeeze's, the highest capsule level's power), never
+--     squeeze (Logic/MatchRewards.squeezeWorth: an own squeeze's, PenMath.squeezeGrip since pens3 phase 1), never
 --     doubled, no Double Grip point used. Each squeeze is one event under maxGripPerEvent, so a legit pay is never
 --     clamped at any level; a squeezes count outside 1..MatchRewards.maxSqueezes() gives nothing. The same anomaly
 --     counter, toasts and level changes as a squeeze.
@@ -52,11 +52,11 @@ local RunService = game:GetService("RunService")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local GripMath = require(Shared.GripMath)
 local Log = require(Shared.Util.Log)
+local PenMath = require(Shared.PenMath)
 local Signal = require(Shared.Util.Signal)
 local SqueezeLimit = require(Shared.SqueezeLimit)
 local Strings = require(Shared.Strings)
@@ -483,7 +483,7 @@ function GripService.addFromSqueeze(player: any, tier: number): SqueezeGain
 	if session.level == nil then
 		setLevel(session, GripMath.levelFor(grip.total), true) -- the Loaded baseline was missed: set it silently
 	end
-	local power = CapsuleMath.squeezeGrip(deps.profileOf(player).capsules)
+	local power = PenMath.squeezeGrip(deps.profileOf(player).pen)
 	-- Double Grip and the gain are one write through DataService.mutate.
 	local written = writeGrip(player, function(live: GripState): Written
 		local rested = Config.Grip.Rested

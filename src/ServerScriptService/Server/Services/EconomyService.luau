@@ -17,14 +17,17 @@
 --   Config.Data.caps.duelLog, oldest dropped), updates the same-pair record profile.samePair (§6.7, §12 #15:
 --   DuelRewards.recordSamePair drops times older than the rolling window and adds now only for a fully rewarded
 --   result), counts the duel stats and pays the Coins, all in one step (the reward is counted in squeezes, spec
---   2026-10-12 §9: it pays CapsuleMath.rewardCoins(squeezes, the profile's squeeze value) in that same step, so the
---   squeeze value is the one of the moment it is granted), and a matchId already in duelLog is a no-op
+--   2026-10-12 §9: it pays PenMath.rewardCoins(squeezes, the profile's squeeze value: PenMath.squeezeValue of its pen
+--   since pens3 phase 1) in that same step, so the squeeze value is the one of the moment it is granted), and a
+--   matchId already in duelLog is a no-op
 --   (exactly once together with DuelService's single end, §12 #14; a replay never adds a second same-pair time). It
 --   asks for a "soon" save. findLog / appendLog are the same helpers for the other logs (boxLog, shopLog, receipts,
 --   Part 7).
 -- * Squishies: grantSquishy(p, id, source, boxId?) adds an owned entry {at, src}; a duplicate from a box is refunded
 --   a share of that box's price when DuplicatePolicy is "refund" (§6.5; spec 2026-10-12 §8: duplicateRefund(boxId) =
---   Pricing.duplicateRefund); a duplicate from any other source changes nothing.
+--   Pricing.duplicateRefund); a duplicate from any other source changes nothing. Pens3 phase 1: a newly owned kind
+--   also gets its pen item {id = pen.nextId, kind, form = 0, level = 1, coat = 0} (and nextId + 1) in the same step
+--   (PenService shows it on SquishyGranted); a duplicate adds no item (copies come in phase 5).
 -- * Reading: stats.coinsEarned / coinsSpent count every real grant and spend except the Studio-only "debug" reason,
 --   so Studio tests never inflate them. Reading: stats.eliminations counts opponents eliminated in recorded results
 --   (DuelService passes 0 or 1).
@@ -48,10 +51,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local PenMath = require(Shared.PenMath)
 local Pricing = require(Shared.Pricing)
 local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
@@ -278,10 +281,10 @@ function EconomyService.isReason(reason: unknown): boolean
 end
 
 -- A reward counted in squeezes (duels, daily, quests, starter tasks; spec 2026-10-12 §9) as the Coins it pays now:
--- CapsuleMath.rewardCoins(squeezes, the squeeze value of the profile's capsules; a new player's 10 without any).
+-- PenMath.rewardCoins(squeezes, the squeeze value of the profile's pen; a new player's 10 without one; pens3 phase 1).
 function EconomyService.rewardCoins(profile: unknown, squeezes: number): number
-	local capsules = if type(profile) == "table" then (profile :: any).capsules else nil
-	return CapsuleMath.rewardCoins(squeezes, CapsuleMath.squeezeValue(capsules))
+	local pen = if type(profile) == "table" then (profile :: any).pen else nil
+	return PenMath.rewardCoins(squeezes, PenMath.squeezeValue(pen))
 end
 
 -- The Coins a duplicate from this box is worth under the duplicate policy (§6.5; spec 2026-10-12 §8): a share of the
@@ -460,6 +463,12 @@ function EconomyService.grantSquishy(player: any, id: string, source: string, bo
 		local entry: Types.OwnedEntry = { at = getDeps().now(), src = source :: Types.OwnedSource }
 		owned[id] = entry
 		added = true
+		-- Pens3 phase 1: its pen item in the same step (a loaded profile always has a pen: reconcile and sanitize).
+		local pen = profile.pen
+		if type(pen) == "table" and type(pen.items) == "table" and type(pen.nextId) == "number" then
+			table.insert(pen.items, { id = pen.nextId, kind = id, form = 0, level = 1, coat = 0 })
+			pen.nextId += 1
+		end
 	end)
 	if not ok then
 		return { added = false, refund = 0, refused = "notReady" }
@@ -593,7 +602,7 @@ function EconomyService.grantMatchResult(player: any, matchId: string, pay: Matc
 		stats.winStreak = grant.streakAfter
 		if squeezes > 0 then
 			local coinsPerSqueeze = MatchRewards.squeezeWorth(profile)
-			grant.coins = addCoinsTo(profile, CapsuleMath.rewardCoins(squeezes, coinsPerSqueeze), REASON_MATCH)
+			grant.coins = addCoinsTo(profile, PenMath.rewardCoins(squeezes, coinsPerSqueeze), REASON_MATCH)
 			after = profile.coins
 		end
 	end)

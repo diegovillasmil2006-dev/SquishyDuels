@@ -24,6 +24,18 @@
 -- `weekly = {week = -1, active = {}}` (the week index and its quests, QuestService) joined schema 2 the same way;
 -- sanitize: week a whole number in [-1, 2^53] (else -1: the next check makes this week's), the entries like the
 -- daily quests' (claims fail closed; a quest whose definition is gone dropped when opts.questExists is given).
+-- Pens (pens3 phase 1, 2026-10-17): `pen = {spots = 3, nextId = 2, items = {{id = 1, kind = <the starter>, form = 0,
+-- level = 1, coat = 0}}}` joined schema 2 the same way. fixPen is an invariant repair, not a migration (it reads only
+-- the profile itself), and it never drops a squishy someone owns: spots a whole number in [Pen.startSpots,
+-- Pen.maxSpots]; nextId a whole number >= 1; items not a table -> {}, a table that is not a pure list keeps its list
+-- part (logged; the owned rule below brings every owned kind back); each entry: not a table, or a kind not in the
+-- Catalog, dropped (an owned entry stays owned, as `owned` keeps a removed id); form / level / coat whole numbers
+-- clamped to [0, #formMult - 1] / [1, maxLevel] / [0, #coatMult - 1] (non-finite -> 0 / 1 / 0); an id that is not a
+-- whole number in [1, 2^53], or one an earlier entry has, gets a fresh id (the item is kept); then nextId =
+-- max(nextId, the largest id + 1); a pen item whose kind is not owned makes it owned ({at = now, src = "grant"});
+-- every owned Catalog kind without an item gets one plain Lv 1 item (the kind ids in alphabetical order: an older
+-- save gets one item per owned kind); more than Pen.toyBoxMax + Pen.placedMax entries are all kept and logged (only a
+-- bug gets there: grants stop at the cap from phase 5).
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -109,6 +121,7 @@ export type LoadResult = {
 local CURRENT = 2
 local FUTURE_SLACK_SECONDS = Config.Data.timestampSkewSeconds -- §17.9 #6: a timer stamped after now + 300 -> now
 local CAPSULE = Config.Grip.Capsule
+local PEN = Config.Economy.Pen
 local MAX_COUNTER = 2 ^ 53
 local SECONDS_PER_DAY = 86400
 local DAILY_PATH = "daily."
@@ -422,6 +435,91 @@ local function fixCapsules(d: any, catalog: CatalogLike, problems: { string })
 	capsules.list = kept
 end
 
+-- The pen (pens3 phase 1, see the header): fixed in place, every fix noted. Runs after `owned` is fixed.
+local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { string })
+	local pen = ensureTable(d, "pen", function()
+		return { spots = PEN.startSpots, nextId = 1, items = {} }
+	end, "pen", problems)
+	fixInt(pen, "spots", PEN.startSpots, PEN.maxSpots, PEN.startSpots, "pen.spots", problems)
+	fixInt(pen, "nextId", 1, MAX_COUNTER, 1, "pen.nextId", problems)
+	local list = ensureTable(pen, "items", function()
+		return {}
+	end, "pen.items", problems)
+
+	-- The entries: kept in order, fixed field by field; an id is checked once every entry is in.
+	local items: { any } = {}
+	local count, walked = 0, 0
+	for _ in list do
+		count += 1
+	end
+	for index, item in ipairs(list) do
+		walked = index
+		local path = `pen.items[{index}]`
+		if type(item) ~= "table" then
+			note(problems, path, item, "removed")
+		elseif not catalog.isValidId(item.kind) then
+			note(problems, path .. ".kind", item.kind, "removed")
+		else
+			fixInt(item, "form", 0, #PEN.formMult - 1, 0, path .. ".form", problems)
+			fixInt(item, "level", 1, PEN.maxLevel, 1, path .. ".level", problems)
+			fixInt(item, "coat", 0, #PEN.coatMult - 1, 0, path .. ".coat", problems)
+			table.insert(items, item)
+		end
+	end
+	if count ~= walked then
+		note(problems, "pen.items (not a list)", count, walked)
+	end
+
+	-- Ids: unique whole numbers; a bad or repeated one gets a fresh id above every good one.
+	local taken: { [number]: boolean } = {}
+	local renumber: { any } = {}
+	local largest = 0
+	for _, item in items do
+		local id = item.id
+		if isFinite(id) and math.floor(id) == id and id >= 1 and id <= MAX_COUNTER and not taken[id] then
+			taken[id] = true
+			largest = math.max(largest, id)
+		else
+			table.insert(renumber, item)
+		end
+	end
+	if pen.nextId <= largest then
+		note(problems, "pen.nextId", pen.nextId, largest + 1)
+		pen.nextId = largest + 1
+	end
+	for _, item in renumber do
+		note(problems, `pen.items (id of {show(item.kind)})`, item.id, pen.nextId)
+		item.id = pen.nextId
+		pen.nextId += 1
+	end
+
+	-- Owned and the pen agree: a pen squishy is owned, an owned squishy is in the pen.
+	local hasItem: { [string]: boolean } = {}
+	for _, item in items do
+		hasItem[item.kind] = true
+		if d.owned[item.kind] == nil then
+			d.owned[item.kind] = { at = now, src = "grant" }
+			note(problems, `owned.{item.kind} (in the pen)`, nil, "grant")
+		end
+	end
+	local missing: { string } = {}
+	for kind in d.owned do
+		if not hasItem[kind] and catalog.isValidId(kind) then
+			table.insert(missing, kind)
+		end
+	end
+	table.sort(missing)
+	for _, kind in missing do
+		table.insert(items, { id = pen.nextId, kind = kind, form = 0, level = 1, coat = 0 })
+		note(problems, `pen.items (owned {kind})`, nil, pen.nextId)
+		pen.nextId += 1
+	end
+	if #items > PEN.toyBoxMax + PEN.placedMax then
+		note(problems, "pen.items (over toyBoxMax + placedMax, all kept)", #items, #items)
+	end
+	pen.items = items
+end
+
 local function versionOf(d: any): number
 	local v = tonumber(d.schemaVersion)
 	if v == nil or v ~= v or v < 1 then
@@ -472,6 +570,12 @@ function ProfileSchema.defaults(now: number): Profile
 		capsules = { slots = 1, list = { { level = 1, squishyId = starter } } },
 		autoClick = { step = 0, at = 0 }, -- auto-clicker check (2026-10-16): no strike
 		weekly = { week = -1, active = {} }, -- weekly quests (2026-10-17): none until the first check
+		-- Pens3 phase 1: the starter walks in the free spots.
+		pen = {
+			spots = PEN.startSpots,
+			nextId = 2,
+			items = { { id = 1, kind = starter, form = 0, level = 1, coat = 0 } },
+		},
 	}
 	return profile
 end
@@ -653,6 +757,9 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 
 	-- Capsules (spec 2026-10-12 §6-§7).
 	fixCapsules(d, catalog, problems)
+
+	-- The pen (pens3 phase 1, see the header).
+	fixPen(d, catalog, now, problems)
 
 	-- Auto-clicker check (2026-10-16): the last strike (see the header).
 	local autoClick = ensureTable(d, "autoClick", function()

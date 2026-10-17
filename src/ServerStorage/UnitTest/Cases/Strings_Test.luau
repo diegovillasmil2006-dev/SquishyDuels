@@ -29,6 +29,9 @@
 -- daily text speaks of a reset.
 -- Batch 3 (friends, review #6 and #10): the duel pad, Rematch, Invite, player list and weekly board texts, word for
 -- word; none of them rewards inviting or mentions Robux.
+-- Pens3 phase 1: the three Grip texts that named capsules now name what is true (grip.panelIntro, grip.intro, and
+-- grip.idleBody's second line names the pen); every PenBuySpot refusal code has a text under reason.pen.*; the pen
+-- sign, prompt, coin label, onboarding step and Grip goal texts exist with their placeholders.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -245,11 +248,11 @@ local PART5_WORDING: { [string]: string } = {
 	["grip.rank.titan"] = "Titan Grip",
 	["grip.rank.master"] = "Squish Master",
 	["grip.pad.foam"] = "Foam Mats",
-	-- §17.7 panel. Phase 5 (build plan; progression spec 2026-10-12 §3): pads and trainers no longer boost a squeeze
-	-- (the capsules set its pay), and the Grip level's purpose is the capsule tiers. Phase 6: slow training is gone, so
-	-- DESIGN's pad and trainer lines lost their last claim (a pad pays the same as anywhere).
+	-- §17.7 panel. Phase 5 (build plan; progression spec 2026-10-12 §3): pads and trainers no longer boost a squeeze.
+	-- Phase 6: slow training is gone, so DESIGN's pad and trainer lines lost their last claim (a pad pays the same as
+	-- anywhere). Pens3 phase 1: no capsule tiers any more, so the intro says what squeezing does.
 	["grip.panelTitle"] = "Grip Training",
-	["grip.panelIntro"] = "Squeezing trains your Grip. Higher Grip opens new capsule tiers.",
+	["grip.panelIntro"] = "Squeezing trains your Grip and earns Coins.",
 	["grip.restedHelp"] = "Double Grip fills up over time, even while you're away. While it lasts, each squeeze trains x{mult} Grip.",
 	-- Spec 2026-10-11 §5: no hourly limit any more; the note says where squeezing pays (Phase 5: no pad boost).
 	["grip.limitNote"] = "Squeezing earns Coins and trains Grip, anywhere in the lobby.",
@@ -257,15 +260,15 @@ local PART5_WORDING: { [string]: string } = {
 	-- §17.7 toasts
 	["grip.levelUp"] = "Grip Lv {level}!",
 	["grip.rankUp"] = "{name} reached {rank}!",
-	["grip.intro"] = "You trained your Grip! Squeeze more to open new capsule tiers.",
+	["grip.intro"] = "You trained your Grip! Squeeze more to level it up.", -- pens3 phase 1: no capsule tiers
 	["grip.welcome"] = "Double Grip is full: your first squeezes train x{mult} Grip!",
 	["grip.welcomeBack"] = "Welcome back! Double Grip: about {minutes} min.",
 	["grip.headStart"] = "Your past squeezes count: you start at Grip Lv {level}!",
 	-- §17.7 idle card and world
 	["grip.idleTitle"] = "Still there?",
-	-- Foam fix 2: DESIGN's two sentences, one per line (the wrap broke the line after "Slow"). Phase 6: the second one
-	-- names what still stops (the capsules pay only while you are in the server).
-	["grip.idleBody"] = "Roblox disconnects players who are idle for 20 minutes.\nCapsules stop paying when that happens.",
+	-- Foam fix 2: DESIGN's two sentences, one per line (the wrap broke the line after "Slow"). Pens3 phase 1: the second
+	-- one names what still stops (the pen pays only while you are in the server).
+	["grip.idleBody"] = "Roblox disconnects players who are idle for 20 minutes.\nYour pen stops paying when that happens.",
 	["grip.idleButton"] = "Keep going",
 	["grip.nameplate"] = "Lv {level} · {rank}",
 }
@@ -891,6 +894,40 @@ return function(t: Context)
 			local lower = string.lower(text)
 			expect.falsy(string.find(lower, "robux", 1, true))
 			expect.falsy(string.find(lower, "reward", 1, true))
+		end
+	end)
+
+	-- Pens3 phase 1: the codes PenMath.buyDecision and PenService send (the others are shared: net.invalid,
+	-- data.notReady, economy.notEnoughCoins, inventory.lockedInDuel).
+	t.test("pens3 phase 1: every pen refusal code has a text under reason.pen", function()
+		for _, name in { "max", "paused", "priceChanged" } do
+			local text = Strings.resolve("reason.pen." .. name)
+			expect.truthy(type(text) == "string" and text ~= "")
+			expect.equal(Strings.reasonText("pen." .. name), text)
+		end
+	end)
+
+	t.test("pens3 phase 1: the pen sign, prompt, coin label, onboarding step and Grip goal texts", function()
+		expect.equal(Strings.pen.sign.title, "PEN SPACE")
+		expect.equal(Strings.pen.sign.canBuy, "Walk up to buy")
+		expect.equal(Strings.format(Strings.pen.sign.needMore, { coins = "1,200" }), "Need 1,200 more")
+		expect.equal(Strings.pen.sign.max, "MAX")
+		expect.equal(Strings.pen.prompt.action, "Buy")
+		expect.equal(Strings.pen.prompt.object, "Pen space")
+		expect.equal(Strings.format(Strings.pen.rate, { coins = "640" }), "+640/s")
+		expect.equal(
+			Strings.resolve("onboarding.pen"),
+			"Your squishies earn Coins in your pen. Buy more pen space at the sign!"
+		)
+		-- GripMath.nextGoal step 0 (the client half): {need} is the next spot's price (GripController.goalArgs).
+		expect.equal(Strings.format(Strings.grip.goalPen, { need = "1,500" }), "Next: pen space 1,500")
+		expect.equal(Strings.grip.goalPenReady, "Buy pen space · READY!")
+		-- No pen text pushes or times a kid (calm signs, no BUY NOW).
+		for _, text in
+			{ Strings.pen.sign.title, Strings.pen.sign.canBuy, Strings.pen.sign.needMore, Strings.grip.goalPen }
+		do
+			expect.falsy(string.find(string.lower(text), "now", 1, true))
+			expect.falsy(string.find(text, "!", 1, true))
 		end
 	end)
 end

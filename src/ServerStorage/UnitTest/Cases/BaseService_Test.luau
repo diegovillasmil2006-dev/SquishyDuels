@@ -4,18 +4,20 @@
 -- attribute) or plain tables. Server only (ServerStorage.UnitTest). Edit mode: no Player, no world.
 -- Contract (lobby bases spec 2026-10-11 §2, §4, §6; build plan Phase 3):
 --   * 10 plots (WorldLayout.Bases); a joining player gets the lowest free plot, shown in the SD_Plot attribute; a plot
---     freed on leave is handed out again; rejoining gives the lowest free plot (the capsules live in the profile);
+--     freed on leave is handed out again; rejoining gives the lowest free plot (the pen lives in the profile);
 --   * with no plot free the player waits in the hub: the service tries again every 0.5 s for 5 s (10 tries) and gives
 --     the plot that frees meanwhile; after 5 s it stops; a waiting player who leaves stops the retries;
 --   * the plot's spawn is asked for the plot handed out and used only once the world has one (Phase 4);
 --   * the owner view (Phase 4, spec §4, §8): a plot with an owner shows their display name on its name sign and its
---     colour (Bases.colors) on every SD_BaseTint part; an open plot shows "Open plot" and the grey; the owner's capsules
---     from their ready profile: an open slot holds its tier's capsule template (Capsule_<look>) on its spot with
---     "Lv <level>" and its squishy (Squishy_<id>) on the seat, a locked slot the Lock with "Unlock · <price>", and
---     capsule 1's squishy stands as the statue (Statue_<id>); refresh(player) redraws (no duplicates); without the
---     templates, the plot's model or a ready profile, only the name and colour change and nothing fails;
---   * Phase 5: every capsule carries its level (SD_Level) and its squishy (SD_Squishy, none when empty), so every
---     client can show a read-only card and play the upgrade burst for any base.
+--     colour (Bases.colors) on every SD_BaseTint part; an open plot shows "Open plot" and the grey;
+--   * pens3 phase 1 (the pen replaced the capsules and the statue): the owner's pen from their ready profile, in a
+--     "Pen" Folder (lobby design v6): the fence of WorldLayout.Bases.pen.steps[spots] (kit.json's segment count, + the
+--     back fence at 9-12 spots until the shelf; posts and rails in the tier's colours; every visual part out of
+--     collisions, queries, touches and shadows), 5 invisible colliders (the front split by the 8-stud gate gap), the
+--     PEN SPACE sign at Bases.pen.signs.pen (SD_PenSign = plot, SD_Price = the next spot's price, its hold prompt;
+--     MAX with the prompt off at 12 spots) and the base Model's SD_PenSpots / SD_Pen / SD_PenRate / SD_PenTier for the
+--     clients' walking squishies; refresh(player) redraws (no duplicates); an open plot, a profile that is not ready or
+--     a missing plot model draws no pen and nothing fails.
 --   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
 --     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
 
@@ -36,14 +38,12 @@ return function(t: Context)
 		asked: { number },
 		made: { Instance },
 		models: { [number]: Model }, -- the fake plot models (owner view)
-		templates: Instance?,
-		capsules: { [any]: any }, -- player -> a ready profile's capsules
+		pens: { [any]: any }, -- player -> a ready profile's pen
 		friends: { [any]: any }, -- player -> the friend who invited them (or whom they followed) in this server
 	}
 
 	local function fresh(): World
-		local w: World =
-			{ delays = {}, asked = {}, made = {}, models = {}, templates = nil, capsules = {}, friends = {} }
+		local w: World = { delays = {}, asked = {}, made = {}, models = {}, pens = {}, friends = {} }
 		BaseService.reset()
 		BaseService.useDeps({
 			delay = function(seconds: number, fn: () -> ())
@@ -56,11 +56,8 @@ return function(t: Context)
 			plotModel = function(plot: number): Model?
 				return w.models[plot]
 			end,
-			templates = function(): Instance?
-				return w.templates
-			end,
-			capsulesOf = function(player: any): any
-				return w.capsules[player]
+			penOf = function(player: any): any
+				return w.pens[player]
 			end,
 			displayNameOf = function(player: any): string
 				return "Name of " .. tostring(if typeof(player) == "Instance" then player.Name else "table")
@@ -128,7 +125,7 @@ return function(t: Context)
 		local d = newPlayer(w, "D")
 		BaseService.playerAdded(d)
 		expect.equal(BaseService.plotOf(d), 2) -- the lowest free one
-		-- Rejoining gives the lowest free plot, maybe another one (the capsule levels live in the profile).
+		-- Rejoining gives the lowest free plot, maybe another one (the pen lives in the profile).
 		BaseService.playerAdded(b)
 		expect.equal(BaseService.plotOf(b), 4)
 		expect.equal(#w.delays, 0)
@@ -186,7 +183,15 @@ return function(t: Context)
 	local Palette = t.requireShared("Art/Palette")
 	local Strings = t.requireShared("Strings")
 	local Format = t.requireShared("Util/Format")
-	local CapsuleMath = t.requireShared("CapsuleMath")
+	local Config = t.requireShared("Config")
+	local PenMath = t.requireShared("PenMath")
+	local PEN = WorldLayout.Bases.pen
+	local PRICES = Config.Economy.Pen.spotPrices
+	local TIERS = {
+		{ post = Palette.PenFenceWaferPost, rail = Palette.PenFenceWaferRail },
+		{ post = Palette.PenFenceMintPost, rail = Palette.PenFenceMintRail },
+		{ post = Palette.PenFenceRoyalPost, rail = Palette.PenFenceRoyalRail },
+	}
 
 	-- A plot model like the generated one: tinted parts (two "full", one "light") and a name sign's Owner label.
 	local function plotModel(w: World, plot: number): Model
@@ -211,38 +216,13 @@ return function(t: Context)
 		return model
 	end
 
-	-- Templates like CapsuleBuilder's: a capsule per look with a Level label and SD_SeatY, the Lock with its Price
-	-- label, squishies and statues (one part each).
-	local function templates(w: World): Folder
-		local root = Instance.new("Folder")
-		root.Name = "Capsules"
-		local function template(name: string, label: string?): Model
-			local model = Instance.new("Model")
-			model.Name = name
-			local part = Instance.new("Part")
-			part.Parent = model
-			if label then
-				local gui = Instance.new("SurfaceGui")
-				gui.Parent = part
-				local text = Instance.new("TextLabel")
-				text.Name = label
-				text.Parent = gui
-			end
-			model.WorldPivot = CFrame.identity
-			model.Parent = root
-			return model
+	-- A ready profile's pen (Types.PenState) with `spots` open spots and the given kinds (ids 1, 2, ...).
+	local function pen(spots: number, kinds: { string }?): any
+		local items = {}
+		for index, kind in (kinds or { "kitty_bread" }) :: { string } do
+			items[index] = { id = index, kind = kind, form = 0, level = 1, coat = 0 }
 		end
-		for _, look in { "foam", "jelly", "marshmallow" } do
-			template("Capsule_" .. look, "Level"):SetAttribute("SD_SeatY", 1.5)
-		end
-		template("Lock", "Price")
-		template("Squishy_kitty_bread")
-		template("Statue_kitty_bread")
-		template("Squishy_toast")
-		template("Statue_toast")
-		w.templates = root
-		table.insert(w.made, root)
-		return root
+		return { spots = spots, nextId = #items + 1, items = items }
 	end
 
 	local function tints(model: Model): { [string]: Color3 }
@@ -264,12 +244,30 @@ return function(t: Context)
 		return (model:FindFirstChild("Owner", true) :: TextLabel).Text
 	end
 
-	local function labelOf(model: Instance, name: string): string
-		return (model:FindFirstChild(name, true) :: TextLabel).Text
+	local function count(parent: Instance, name: string): number
+		local n = 0
+		for _, child in parent:GetChildren() do
+			if child.Name == name then
+				n += 1
+			end
+		end
+		return n
 	end
 
-	local function near(a: CFrame, b: CFrame): boolean
-		return (a.Position - b.Position).Magnitude < 1e-3 and (a.LookVector - b.LookVector).Magnitude < 1e-3
+	-- The plot-local frame of every fence segment (its Model's WorldPivot) and its parts.
+	local function segments(model: Model, plot: number): { { at: CFrame, model: Model } }
+		local frame = WorldLayout.plotFrame(plot) :: CFrame
+		local fence = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Fence") :: Instance
+		local list = {}
+		for _, child in fence:GetChildren() do
+			expect.truthy(child:IsA("Model") and child.Name == "Segment")
+			table.insert(list, { at = frame:ToObjectSpace((child :: Model).WorldPivot), model = child :: Model })
+		end
+		return list
+	end
+
+	local function near(a: number, b: number): boolean
+		return math.abs(a - b) < 1e-3
 	end
 
 	t.test(
@@ -297,132 +295,242 @@ return function(t: Context)
 		end
 	)
 
+	-- Pens3 phase 1: the pen ---------------------------------------------------------------------------------------
+
+	t.test("the base Model's pen attributes for the clients; an open plot clears them", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		w.pens[a] = pen(3, { "kitty_bread", "butter" })
+		BaseService.playerAdded(a)
+		expect.equal(model:GetAttribute("SD_PenSpots"), 3)
+		expect.equal(model:GetAttribute("SD_Pen"), "butter.0.1.0;kitty_bread.0.1.0") -- the best first (PenMath.placed)
+		expect.equal(model:GetAttribute("SD_PenRate"), 50)
+		expect.equal(model:GetAttribute("SD_PenTier"), 1)
+		expect.equal(model:GetAttribute("SD_Pen"), PenMath.encode(PenMath.placed(w.pens[a])))
+		w.pens[a] = pen(6, { "kitty_bread", "butter", "bird" })
+		BaseService.refresh(a)
+		expect.equal(model:GetAttribute("SD_PenSpots"), 6)
+		expect.equal(model:GetAttribute("SD_PenTier"), 2) -- Mint from 6 spots
+		expect.equal(model:GetAttribute("SD_PenRate"), 210)
+		BaseService.playerRemoving(a)
+		for _, name in { "SD_PenSpots", "SD_Pen", "SD_PenRate", "SD_PenTier" } do
+			expect.equal(model:GetAttribute(name), nil)
+		end
+		expect.equal(model:FindFirstChild("Pen"), nil)
+		finish(w)
+	end)
+
 	t.test(
-		"the owner's capsules: tier look with Lv, the squishy on the seat, locks with prices, the statue (§4)",
+		"the fence: kit.json's segments on the pen's outline (+ the back fence at 9-12), the tier's colours",
+		function()
+			for spots = 3, 12 do
+				local w = fresh()
+				local model = plotModel(w, 1)
+				local a = newPlayer(w, "A")
+				w.pens[a] = pen(spots)
+				BaseService.playerAdded(a)
+				local step = PEN.steps[spots]
+				local list = segments(model, 1)
+				local back = if step.backWall == "shelf" then step.w / PEN.segment else 0 -- a fence until phase 11's shelf
+				expect.equal(#list, step.fence + back)
+				local backZ = PEN.frontZ - step.d
+				local front, sides, backs = 0, 0, 0
+				for _, segment in list do
+					local p = segment.at.Position
+					expect.near(p.Y, 0, 1e-3)
+					if near(p.Z, PEN.frontZ) then
+						front += 1
+						expect.truthy(math.abs(p.X) >= PEN.gateWidth / 2 + PEN.segment / 2 - 1e-3) -- the gate gap stays open
+						expect.truthy(math.abs(p.X) <= step.w / 2 - PEN.segment / 2 + 1e-3)
+					elseif near(math.abs(p.X), step.w / 2) then
+						sides += 1
+						expect.truthy(
+							p.Z <= PEN.frontZ - PEN.segment / 2 + 1e-3 and p.Z >= backZ + PEN.segment / 2 - 1e-3
+						)
+						expect.near(math.abs(segment.at.RightVector.Z), 1, 1e-3) -- turned along the side
+					else
+						expect.truthy(near(p.Z, backZ))
+						backs += 1
+					end
+					-- Every visual part: rails and pickets in the tier's rail colour, posts and balls in its post colour.
+					for _, part in segment.model:GetDescendants() do
+						if part:IsA("BasePart") then
+							expect.falsy(part.CanCollide or part.CanQuery or part.CanTouch or part.CastShadow)
+							expect.truthy(part.Anchored)
+							local want = if part.Name == "Post" or part.Name == "PostTop"
+								then TIERS[step.tier].post
+								else TIERS[step.tier].rail
+							expect.equal(part.Color, want)
+						end
+					end
+				end
+				expect.equal(front, (step.w - PEN.gateWidth) / PEN.segment)
+				expect.equal(sides, 2 * step.d / PEN.segment)
+				expect.equal(backs, step.w / PEN.segment)
+				finish(w)
+			end
+		end
+	)
+
+	t.test(
+		"each segment is LK's pen_fence: 2 rails and 3 pickets; one post and ball top per corner, never two",
 		function()
 			local w = fresh()
 			local model = plotModel(w, 1)
-			templates(w)
 			local a = newPlayer(w, "A")
-			local list: { any } = { { level = 3, squishyId = "kitty_bread" }, { level = 15 } }
-			w.capsules[a] = { slots = 2, list = list }
+			w.pens[a] = pen(3)
 			BaseService.playerAdded(a)
-			local folder = model:FindFirstChild("Capsules") :: Folder
-			expect.truthy((folder :: Folder?) ~= nil)
 			local frame = WorldLayout.plotFrame(1) :: CFrame
-			local spots = WorldLayout.Bases.capsuleSpots
-			-- Slot 1: Lv 3 is Foam (tier 1), holding Kitty Bread on its seat (1.5 up).
-			local first = folder:FindFirstChild("Capsule1") :: Model
-			expect.truthy((first :: Model?) ~= nil)
-			expect.truthy(near(first:GetPivot(), frame * spots[1]))
-			expect.equal(
-				labelOf(first, "Level"),
-				Strings.format(Strings.resolve("base.capsuleLevel") :: string, { level = 3 })
-			)
-			local squishy = folder:FindFirstChild("Squishy1") :: Model
-			expect.truthy(
-				(squishy :: Model?) ~= nil and near(squishy:GetPivot(), frame * spots[1] * CFrame.new(0, 1.5, 0))
-			)
-			-- Slot 2: Lv 15 is Jelly (tier 2), empty.
-			local second = folder:FindFirstChild("Capsule2") :: Model
-			expect.truthy((second :: Model?) ~= nil)
-			expect.equal(second:GetAttribute("SD_SeatY"), 1.5)
-			expect.equal(CapsuleMath.tier(15), 2)
-			expect.equal(labelOf(second, "Level"), "Lv 15")
-			expect.equal(folder:FindFirstChild("Squishy2"), nil)
-			-- Slots 3 and 4 are locked: the Lock with the slot's price.
-			for slot = 3, 4 do
-				local lock = folder:FindFirstChild("Lock" .. slot) :: Model
-				expect.truthy((lock :: Model?) ~= nil and near(lock:GetPivot(), frame * spots[slot]))
-				local price = CapsuleMath.slotPrice(slot) :: number
-				local want =
-					Strings.format(Strings.resolve("base.unlockPrice") :: string, { coins = Format.coins(price) })
-				expect.equal(labelOf(lock, "Price"), want)
+			local posts: { [string]: number } = {}
+			local tops = 0
+			for _, segment in segments(model, 1) do
+				expect.equal(count(segment.model, "Rail"), 2)
+				expect.equal(count(segment.model, "Picket"), 3)
+				for _, part in segment.model:GetChildren() do
+					if part.Name == "Post" then
+						local p = frame:PointToObjectSpace((part :: BasePart).CFrame.Position)
+						local key = string.format("%.2f,%.2f", p.X, p.Z)
+						posts[key] = (posts[key] or 0) + 1
+						expect.near(p.Y, 1.6, 1e-3) -- 3.2 tall from the floor (LK:83)
+					elseif part.Name == "PostTop" then
+						tops += 1
+					end
+				end
 			end
-			-- The statue: capsule 1's squishy on the back wall's plinth.
-			local statue = folder:FindFirstChild("Statue") :: Model
-			expect.truthy((statue :: Model?) ~= nil and near(statue:GetPivot(), frame * WorldLayout.Bases.statue))
-			expect.equal(#folder:GetChildren(), 6) -- 2 capsules, 1 squishy, 2 locks, the statue
-			-- Which template each came from: the look by the tier, the squishy by its id.
-			expect.equal(first:GetAttribute("SD_Template"), "Capsule_foam")
-			expect.equal(second:GetAttribute("SD_Template"), "Capsule_jelly")
-			expect.equal(squishy:GetAttribute("SD_Template"), "Squishy_kitty_bread")
-			expect.equal(statue:GetAttribute("SD_Template"), "Statue_kitty_bread")
-			-- Leaving clears it all.
-			BaseService.playerRemoving(a)
-			expect.equal(model:FindFirstChild("Capsules"), nil)
+			local n = 0
+			for key, seen in posts do
+				n += 1
+				if seen ~= 1 then
+					error(`two posts at {key}`)
+				end
+			end
+			-- 16 x 12: (16 + 12) × 2 / 4 = 14 post spots round the outline, but the one in the middle of the gate gap.
+			expect.equal(n, 13)
+			expect.equal(tops, n)
 			finish(w)
 		end
 	)
 
-	t.test("every capsule carries its level and squishy for the clients' cards (Phase 5)", function()
-		local w = fresh()
-		local model = plotModel(w, 1)
-		templates(w)
-		local a = newPlayer(w, "A")
-		local list: { any } = { { level = 3, squishyId = "kitty_bread" }, { level = 15 } }
-		w.capsules[a] = { slots = 2, list = list }
-		BaseService.playerAdded(a)
-		local folder = model:FindFirstChild("Capsules") :: Folder
-		local first = folder:FindFirstChild("Capsule1") :: Model
-		local second = folder:FindFirstChild("Capsule2") :: Model
-		expect.equal(first:GetAttribute("SD_Level"), 3)
-		expect.equal(first:GetAttribute("SD_Squishy"), "kitty_bread")
-		expect.equal(second:GetAttribute("SD_Level"), 15)
-		expect.equal(second:GetAttribute("SD_Squishy"), nil) -- empty
-		finish(w)
+	t.test("5 invisible colliders hold the pen's outline, the front split by the gate gap", function()
+		for _, spots in { 3, 9 } do
+			local w = fresh()
+			local model = plotModel(w, 1)
+			local a = newPlayer(w, "A")
+			w.pens[a] = pen(spots)
+			BaseService.playerAdded(a)
+			local folder = model:FindFirstChild("Pen") :: Instance
+			local frame = WorldLayout.plotFrame(1) :: CFrame
+			local step = PEN.steps[spots]
+			local colliders = {}
+			for _, child in folder:GetChildren() do
+				if child.Name == "Collider" then
+					table.insert(colliders, child :: BasePart)
+				end
+			end
+			expect.equal(#colliders, 5)
+			local frontLength = 0
+			for _, part in colliders do
+				expect.equal(part.Transparency, 1)
+				expect.truthy(part.CanCollide and part.Anchored)
+				expect.falsy(part.CanTouch or part.CanQuery or part.CastShadow)
+				expect.near(part.Size.Y, 3.2, 1e-3)
+				local p = frame:PointToObjectSpace(part.CFrame.Position)
+				expect.near(p.Y, 1.6, 1e-3)
+				if near(p.Z, PEN.frontZ) then
+					frontLength += part.Size.X
+					expect.truthy(math.abs(p.X) - part.Size.X / 2 >= PEN.gateWidth / 2 - 1e-3) -- never in the gate gap
+				end
+			end
+			expect.near(frontLength, step.w - PEN.gateWidth, 1e-3)
+			finish(w)
+		end
 	end)
 
-	t.test("refresh(player) redraws after a capsule change, without duplicates; the profile can come later", function()
+	t.test("the PEN SPACE sign: the next spot's price and its hold prompt; MAX with the prompt off at 12", function()
 		local w = fresh()
 		local model = plotModel(w, 1)
-		templates(w)
 		local a = newPlayer(w, "A")
-		BaseService.playerAdded(a) -- the profile is still loading: name and colour only
-		expect.equal(ownerText(model), "Name of A")
-		expect.equal(model:FindFirstChild("Capsules"), nil)
-		w.capsules[a] = { slots = 1, list = { { level = 1 } } }
-		BaseService.refresh(a) -- the profile loaded (the data port's Loaded)
-		local folder = model:FindFirstChild("Capsules") :: Folder
-		expect.equal(#folder:GetChildren(), 4) -- 1 capsule, 3 locks; no squishy, no statue
-		local list: { any } = { { level = 2, squishyId = "toast" }, { level = 1 } }
-		w.capsules[a] = { slots = 2, list = list }
-		BaseService.refresh(a) -- CapsuleService: an unlock and a set
-		local capsules = 0
-		for _, child in model:GetChildren() do
-			if child.Name == "Capsules" then
-				capsules += 1
+		w.pens[a] = pen(3)
+		BaseService.playerAdded(a)
+		local sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Sign") :: Model
+		expect.truthy((sign :: Model?) ~= nil and sign:IsA("Model"))
+		expect.equal(sign:GetAttribute("SD_PenSign"), 1)
+		expect.equal(sign:GetAttribute("SD_Price"), 1_500)
+		local frame = WorldLayout.plotFrame(1) :: CFrame
+		local want = frame * PEN.signs.pen
+		expect.near((sign.WorldPivot.Position - want.Position).Magnitude, 0, 1e-3)
+		expect.near((sign.WorldPivot.LookVector - want.LookVector).Magnitude, 0, 1e-3)
+		local face = sign:FindFirstChild("Face") :: BasePart
+		local gui = face:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+		expect.equal(gui.Face, Enum.NormalId.Front)
+		expect.equal((gui:FindFirstChild("Title", true) :: TextLabel).Text, Strings.pen.sign.title)
+		expect.equal((gui:FindFirstChild("Price", true) :: TextLabel).Text, Format.coins(1_500))
+		expect.equal((gui:FindFirstChild("Line", true) :: TextLabel).Text, "") -- the owner's client writes it
+		expect.equal((sign:FindFirstChild("Trim") :: BasePart).Color, Palette.PenSignCanBuy)
+		local prompt = face:FindFirstChildOfClass("ProximityPrompt") :: ProximityPrompt
+		expect.truthy(prompt.Enabled)
+		expect.equal(prompt.ActionText, Strings.pen.prompt.action)
+		expect.equal(prompt.ObjectText, Strings.pen.prompt.object)
+		expect.equal(prompt.HoldDuration, Config.Economy.Pen.signHoldSeconds)
+		expect.equal(prompt.MaxActivationDistance, 10)
+		expect.equal(prompt.RequiresLineOfSight, false)
+		for _, part in sign:GetDescendants() do
+			if part:IsA("BasePart") then
+				expect.falsy(part.CanTouch or part.CastShadow)
 			end
 		end
-		expect.equal(capsules, 1)
-		folder = model:FindFirstChild("Capsules") :: Folder
-		expect.equal(#folder:GetChildren(), 6) -- 2 capsules, the toast, 2 locks, the statue
-		expect.equal((folder:FindFirstChild("Statue") :: Instance):GetAttribute("SD_Template"), "Statue_toast")
-		expect.equal(labelOf(folder:FindFirstChild("Capsule1") :: Instance, "Level"), "Lv 2")
-		-- A player without a plot: nothing happens.
-		BaseService.refresh(newPlayer(w, "Nobody"))
+		-- 6 spots: the 7th spot's price (reading: the offline runner keeps a number attribute in 32 bits, so the
+		-- trillions of spots 11-12 are checked in Studio); 12: MAX, no price, the prompt off, the gold trim.
+		w.pens[a] = pen(6)
+		BaseService.refresh(a)
+		sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Sign") :: Model
+		expect.equal(sign:GetAttribute("SD_Price"), PRICES[7])
+		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Format.coins(PRICES[7]))
+		w.pens[a] = pen(12)
+		BaseService.refresh(a)
+		sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Sign") :: Model
+		expect.equal(sign:GetAttribute("SD_Price"), nil)
+		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Strings.pen.sign.max)
+		expect.equal((sign:FindFirstChild("Trim") :: BasePart).Color, Palette.PenSignMax)
+		expect.falsy((sign:FindFirstChildWhichIsA("ProximityPrompt", true) :: ProximityPrompt).Enabled)
 		finish(w)
 	end)
 
-	t.test("without templates, the plot's model or a known squishy, only what can be drawn is drawn", function()
-		local w = fresh()
-		local a = newPlayer(w, "A")
-		w.capsules[a] = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } }
-		BaseService.playerAdded(a) -- no plot model: nothing to draw, nothing fails
-		expect.equal(BaseService.plotOf(a), 1)
-		local model = plotModel(w, 1)
-		BaseService.refresh(a) -- no templates: the name and the colour only
-		expect.equal(ownerText(model), "Name of A")
-		expect.equal(model:FindFirstChild("Capsules"), nil)
-		templates(w)
-		w.capsules[a] = { slots = 1, list = { { level = 1, squishyId = "not_a_squishy" } } }
-		BaseService.refresh(a)
-		local folder = model:FindFirstChild("Capsules") :: Folder
-		expect.truthy(folder:FindFirstChild("Capsule1") ~= nil)
-		expect.equal(folder:FindFirstChild("Squishy1"), nil)
-		expect.equal(folder:FindFirstChild("Statue"), nil)
-		finish(w)
-	end)
+	t.test(
+		"refresh redraws one pen; the profile can come later; nothing without a model or for an open plot",
+		function()
+			local w = fresh()
+			local a = newPlayer(w, "A")
+			w.pens[a] = pen(3)
+			BaseService.playerAdded(a) -- no plot model: nothing to draw, nothing fails
+			expect.equal(BaseService.plotOf(a), 1)
+			local model = plotModel(w, 1)
+			local b = newPlayer(w, "B")
+			local model2 = plotModel(w, 2)
+			BaseService.playerAdded(b) -- the profile is still loading: name and colour only
+			expect.equal(ownerText(model2), "Name of B")
+			expect.equal(model2:FindFirstChild("Pen"), nil)
+			w.pens[b] = pen(4)
+			BaseService.refresh(b) -- the profile loaded (the data port's Loaded)
+			BaseService.refresh(b) -- PenService: a spot bought
+			expect.equal(count(model2, "Pen"), 1)
+			BaseService.refresh(a)
+			expect.equal(count(model, "Pen"), 1)
+			-- Never the capsules or the statue any more (pens3 phase 1).
+			expect.equal(model:FindFirstChild("Capsules"), nil)
+			-- An open plot draws no pen.
+			local model3 = plotModel(w, 3)
+			BaseService.refresh(newPlayer(w, "Nobody")) -- a player without a plot: nothing happens
+			expect.equal(model3:FindFirstChild("Pen"), nil)
+			-- A broken pen draws nothing and fails nothing.
+			w.pens[b] = { spots = 99, items = "x" }
+			BaseService.refresh(b)
+			expect.equal(model2:FindFirstChild("Pen"), nil)
+			expect.equal(model2:GetAttribute("SD_Pen"), nil)
+			finish(w)
+		end
+	)
 
 	t.test("a full server: the 11th waits in the hub, retries every 0.5 s and gets the plot that frees", function()
 		local w = fresh()

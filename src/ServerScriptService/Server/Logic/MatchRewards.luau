@@ -27,10 +27,9 @@
 -- few throws or too little Active time) still counts +1 (the plan's older "a win that did not pay -> 0" is not in the
 -- owner's §12 answer; it also let a quitter wipe the winner's streak).
 --
--- squeezeWorth is the ONE place that knows what a squeeze is worth for match pay: today the capsules' squeeze value
--- (CapsuleMath.squeezeValue, the Coins a duel reward pays per squeeze too) and the Grip of an own squeeze
--- (CapsuleMath.squeezeGrip). Capsules are being removed (owner 2026-10-15: a pen of walking squishies replaces them):
--- the pen economy swaps this one function.
+-- squeezeWorth is the ONE place that knows what a squeeze is worth for match pay: since pens3 phase 1 the pen's
+-- squeeze value (PenMath.squeezeValue, the Coins a duel reward pays per squeeze too) and the Grip of an own squeeze
+-- (PenMath.squeezeGrip, its floor).
 --
 -- API:
 --   MatchRewards.forPlayer(outcome, player, cfg?) -> Pay?   (outcome = MatchRules' outcome; player = PlayerInput)
@@ -44,8 +43,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Config = require(Shared.Config)
+local PenMath = require(Shared.PenMath)
 
 -- Types
 
@@ -153,8 +152,8 @@ function MatchRewards.nextStreak(before: unknown, pay: Pay): number
 end
 
 function MatchRewards.squeezeWorth(profile: unknown): (number, number)
-	local capsules = if type(profile) == "table" then (profile :: any).capsules else nil
-	return CapsuleMath.squeezeValue(capsules), CapsuleMath.squeezeGrip(capsules)
+	local pen = if type(profile) == "table" then (profile :: any).pen else nil
+	return PenMath.squeezeValue(pen), PenMath.squeezeGrip(pen)
 end
 
 function MatchRewards.maxSqueezes(cfg: RewardConfig?): number

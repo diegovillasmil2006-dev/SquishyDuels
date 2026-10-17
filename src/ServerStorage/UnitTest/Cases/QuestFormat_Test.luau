@@ -4,8 +4,8 @@
 -- Contract (DESIGN §6.8, §11.6):
 --   * a daily card: the QuestDefs text (goal and squishy name filled in), "3/5" progress with its bar, "+1,500 Coins",
 --     and its state In progress / Claim / Claimed; Phase 5 (progression spec 2026-10-12 §9): a quest's or starter
---     task's reward is its squeezes × the player's squeeze value (CapsuleMath.squeezeValue of ctx.capsules; a new
---     player's 10 without them), the Coins the server pays at claim time (card.reward is those Coins);
+--     task's reward is its squeezes × the player's squeeze value (pens3 phase 1: PenMath.squeezeValue of ctx.pen; a
+--     new player's 10 without it), the Coins the server pays at claim time (card.reward is those Coins);
 --   * Swap on unfinished daily quests while a free swap is left (none once used, none on a finished quest);
 --   * the Equip shortcut when the quest's squishy is owned but not equipped (and the quest is unfinished);
 --   * a Starter section with every QuestDefs starter task (progress from profile.starter), hidden once all are claimed;
@@ -38,9 +38,9 @@ type Context = {
 return function(t: Context)
 	local expect = t.expect
 	local QuestFormat = t.requireClient("UI/QuestFormat")
-	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
+	local PenMath = t.requireShared("PenMath")
 	local QuestDefs = t.requireShared("QuestDefs")
 	local Strings = t.requireShared("Strings")
 	local SWAPS = Config.Economy.Quests.freeSwapsPerDay
@@ -78,8 +78,8 @@ return function(t: Context)
 	end
 
 	local ctx = { owned = { kitty_bread = {}, toast = {} }, equipped = "kitty_bread", now = NOW }
-	-- A new player's squeeze value (no capsules in the context): Kitty Bread in a Lv 1 capsule, 10 Coins.
-	local VALUE = CapsuleMath.squeezeValue(nil)
+	-- A new player's squeeze value (no pen in the context): 10 Coins (Config.Economy.Pen.minSqueezeValue).
+	local VALUE = PenMath.squeezeValue(nil)
 
 	t.test("daily card: title, progress, reward and the three states", function()
 		local open = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 37), ctx, SWAPS)
@@ -205,26 +205,23 @@ return function(t: Context)
 		expect.equal(QuestFormat.starterClaimable(nil), 0)
 	end)
 
-	t.test(
-		"rewards are the squeezes × the squeeze value of the capsules in the context (spec 2026-10-12 §9)",
-		function()
-			-- Dragon (power 64) in a Lv 21 capsule: 64 × CP(21) Coins a squeeze.
-			local capsules = { slots = 1, list = { { level = 21, squishyId = "dragon" } } }
-			local value = CapsuleMath.squeezeValue(capsules)
-			expect.equal(value, 64 * (CapsuleMath.power(21) :: number))
-			local rich = { owned = ctx.owned, equipped = ctx.equipped, now = NOW, capsules = capsules }
-			local defs = QuestDefs.starter()
-			local board = QuestFormat.board(quests({ entry(1, "squeeze_any", 100, 37) }), rich)
-			expect.equal(board.daily[1].reward, 150 * value)
-			expect.equal(
-				board.daily[1].rewardText,
-				Strings.format(Strings.common.coinsGain, { coins = Format.coins(150 * value) })
-			)
-			for i, def in defs do
-				expect.equal(board.starter[i].reward, CapsuleMath.rewardCoins(def.variants[1].reward, value))
-			end
+	t.test("rewards are the squeezes × the squeeze value of the pen in the context (pens3 phase 1)", function()
+		-- The Dragon (power 64) walks in the pen: 640 Coins a second, so 640 Coins a squeeze.
+		local pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "dragon", form = 0, level = 1, coat = 0 } } }
+		local value = PenMath.squeezeValue(pen)
+		expect.equal(value, 640)
+		local rich = { owned = ctx.owned, equipped = ctx.equipped, now = NOW, pen = pen }
+		local defs = QuestDefs.starter()
+		local board = QuestFormat.board(quests({ entry(1, "squeeze_any", 100, 37) }), rich)
+		expect.equal(board.daily[1].reward, 150 * value)
+		expect.equal(
+			board.daily[1].rewardText,
+			Strings.format(Strings.common.coinsGain, { coins = Format.coins(150 * value) })
+		)
+		for i, def in defs do
+			expect.equal(board.starter[i].reward, PenMath.rewardCoins(def.variants[1].reward, value))
 		end
-	)
+	end)
 
 	t.test("reset line and empty state count down to 00:00 UTC", function()
 		expect.equal(QuestFormat.resetText(NOW), Strings.format(Strings.quest.footer, { clock = "18h 53m" }))
@@ -448,7 +445,7 @@ return function(t: Context)
 		expect.equal(first.id, string.format("w%d_1", W))
 		expect.equal(first.title, QuestDefs.text("weekly_squeeze", 1000))
 		expect.equal(first.progressText, "250 / 1000")
-		expect.equal(first.reward, CapsuleMath.rewardCoins(150, VALUE))
+		expect.equal(first.reward, PenMath.rewardCoins(150, VALUE))
 		expect.equal(first.state, "inProgress")
 		expect.falsy(first.canSwap)
 		expect.equal(first.equipSquishy, nil)
