@@ -1,97 +1,54 @@
 --!strict
 -- ShopController (client only). DESIGN §11.6 (Shop screen), §6.6 (direct shop: the guaranteed Coin path to Dragon),
 -- §11.5 (two-step spend confirm), §6.10 (the restricted "Shop squishies directly" shortcut), §6.11 (Robux: coin bundles
--- off until real ids, no passes), §11.3 (states), §11.4 (focus, L1 / R1), §2.8 (ShopBuy, EquipSquishy,
--- PromptCoinBundle), §18.5.2 / §18.6 (sounds), §12 (the server decides everything).
+-- off until real ids, no passes), §11.3 (states), §11.4 (focus, L1 / R1), §2.8 (ShopBuy, PromptCoinBundle),
+-- §18.5.2 / §18.6 (sounds), §12 (the server decides everything).
 -- The "shop" modal (lobby only; refused and closed from Matched through Returning by UIController). Opened by the HUD
 -- Shop button, the HUD coin pill ({tab = "coins"}), the Squishies screen's "View in Shop" ({squishyId}), the Boxes
 -- screen's restricted shortcut ({boxId}: only that box's items) and the shop counter's prompt
 -- (WorldBinder.registerStand("SD_ShopCounter")). Params: {tab = "squishies" | "coins", squishyId?, boxId?}
 -- (UI/ShopFormat.params).
--- * Header: title (hud.nav.shop), the player's Coins (coin icon + common.coinsAmount), Close. Tabs Squishies / Coins
---   (shop.tabSquishies / shop.tabCoins; L1 / R1 switch them). No passes tab or line (§6.11).
--- * Squishies tab: with a box filter, a chip row [All] [<box name>] (All clears the filter); the grid of cards
---   (Shop_Card_<id>: preview, name, rarity, status: price / Owned / need Coins / Loading… / not for sale; sorted by
---   rarity, price, name) next to the detail panel (preview, name, rarity, price, Owned or not-for-sale line, Buy,
---   Inspect, and after a purchase "You got {name}!" with "Equip now").
--- * Buy (Shop_BuyButton) is a UI/Components/ConfirmButton: first press "Confirm: {price} Coins" + "Balance after", a
---   second press within Config.UI.confirmSeconds sends NetController.invokeAsync("ShopBuy", id, price, requestId)
---   with the Catalog price (compared only) and a GUID per buy, reused when the same buy is pressed again after a call
---   that never reached the server's decision (ShopFormat.requestIdFor / buyOutcome). Disabled with the missing amount
---   when the Coins are short, and with a reason while the duel lock holds, the profile loads / is OFFLINE / READONLY or
---   a save is pending (ShopFormat.spendBlock). Success: the shop.success toast with the ui.purchase sound (one sound per
---   action, §18.5.2 B5), the card reads Owned, "Equip now" (EquipSquishy) in the detail panel; a pending save adds the
---   box.saving note. ok with charged = false -> Owned ("You already own this squishy. No Coins were spent."). Refusals
---   show Strings.reasonText (common.noCoinsSpent only when charged == false). Coins are never shown or granted
---   locally: the HUD counts down on the StateDelta (its spend squish, §18.5.2 B1).
--- * Inspect (Shop_InspectButton) opens the Part 6 "inspect" screen {squishyId, owned, source = "shop"}; it shows only
---   once that screen is registered. Unowned squishies can be inspected; they cannot be equipped (§6.6).
--- * Coins tab: only shop.coinsUnavailable while no bundle is offered (StateController monetization.bundles is empty:
---   always in v1, every productId is nil) - no buy buttons, no "coming soon". The bundle path exists but is unreachable
---   until the server offers bundles: rows with the amount from Config and the Robux price from GetProductInfoAsync on
---   the client ("…" / "Unavailable" / "{price} Robux"); Buy fires PromptCoinBundle(key); PromptProductPurchaseFinished
---   only stops the spinner. Coins and the "+{n} Coins" toast come only from StateDelta after ProcessReceipt.
+-- UI FINAL R6 (the Shop window = Diego's design, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line n;
+-- Config.UI.Shop, Config.UI.confirm; the layout maths in UI/ShopFormat):
+-- * The window (R3): the gold "SHOP" band (Q9, H:291-292) with the sticker and the 76 px X; no coins readout (the HUD
+--   pill shows them, G6.1). The body (H:294): 330 | 1fr, gap 20, padding 20 / 24 / 24.
+-- * The featured card (H:295-312) is the selected squishy: the gold -> orange -> purple card with the rays, the two
+--   stars and the gem twinkling, the art 230 floating (tap it = Inspect, G6.7), the name (featuredName), the line
+--   "{Rarity} · x{n} power" (FD4; AFFECTED 2026-10-15: the capsule power), and BUY (green, the coin 36 and the price,
+--   pulsing) or the lilac OWNED bar. The LIMITED row, the Inspect button, "You got X!" and Equip now are not built
+--   (UD5, G6.7: EQUIP stays one tap away in Squishies).
+-- * BUY (PR13): the first press opens the design's confirm dialog (UI/Components/ConfirmDialog: the squishy in the
+--   medallion, its name, "Balance after: {n}", CANCEL / BUY with the coin and the price), whose BUY sends
+--   NetController.invokeAsync("ShopBuy", id, price, requestId) with the Catalog price (compared only) and a GUID per buy,
+--   reused when the same buy is pressed again after a call that never reached the server's decision
+--   (ShopFormat.requestIdFor / buyOutcome). Short of Coins, BUY is the "off" BUY (P11: its price #FFB3BE, a press plays
+--   ui.error and the shake) and nothing opens (H:799, H:1020); the duel lock, a loading / OFFLINE / READONLY profile, a
+--   pending save or another buy in flight disable it with the reason (ShopFormat.spendBlock).
+-- * A real buy (H:867-871): the design's purchase burst and green ring at the dialog's BUY, the purchase sound (its
+--   fanfare's nearest, RL8), then the congrats overlay (UI/CongratsOverlay, in the dialog's layer above SD_Modal), its
+--   rain after 300 ms and the jolt (Config.UI.Fx.events.purchase); AWESOME! or a tap closes it. A pending save adds
+--   the box.saving note; ok with charged = false -> Owned ("You already own this squishy. No Coins were spent.");
+--   refusals show Strings.reasonText (common.noCoinsSpent only when charged == false). Coins are never shown or
+--   granted locally: the HUD counts down on the StateDelta.
+-- * The right column (H:314): the box filter row ([All] [<box name>]) while a box filter is on, then the list:
+--   "SQUISHIES" (the sectionHead role, H:315) over the cards (Shop_Card_<id>: preview, name, rarity, the coin and the
+--   price / Owned / need Coins / Loading… / not for sale; sorted by rarity, price, name) and, only while a coin bundle
+--   is offered (G6.6; never in v1: every productId is nil), "COINS" over the pack cards (H:330-340: cream, the coin
+--   92 bobbing, the amount, the green price bar with the Robux price: "…" / "Unavailable" / "{price} Robux";
+--   Shop_Bundle_<key>Button fires PromptCoinBundle(key); PromptProductPurchaseFinished only stops the spinner). The
+--   shop.coinsUnavailable note is not drawn. Theme.scrollbar on the list (G5.18).
+-- * Desktops have no tab chips: L1 / R1 jump between the drawn sections (ShopFormat.nextTab). A phone (the compact
+--   class) shows the list, or after a card's tap the featured card across the body (the separate detail state) with
+--   a Back chip in the band (Shop_BackButton); its tab chips show over the list while COINS is drawn.
+-- * The gamepad focus on open: the selected card (the list), BUY (the phone's featured card), else Close.
 -- Readings (DESIGN is silent):
--- * §11.6 "cards with Coin price, Inspect, Buy": the cards show the price and state; Inspect and Buy sit in the detail
---   panel of the selected card, the same grid + detail layout as the Squishies screen (a 150 px card has no room for
---   "Confirm: 25,000 Coins"). Opening with {squishyId} selects that card.
--- * The card frames use the rarity colour and stroke width (Art/RarityStyle); the gradients and shimmer stay on the
---   Squishies screen.
+-- * The card frames use the rarity colour and stroke width (Art/RarityStyle; UI/CardFace); R5 redraws the cards.
 -- * A Robux prompt spinner also stops after PROMPT_TIMEOUT_SECONDS (a prompt the server refused never finishes).
--- Part 8 (DESIGN §11.2, §11.6; the same fold as the Squishies screen's; layout maths in UI/ShopFormat):
--- * Buy (Shop_BuyButton with its "Balance after" line) and Inspect are pinned under the scrolling detail
---   ("DetailButtons", a sibling of the "Detail" ScrollingFrame), wrapped in the narrow column by ShopFormat.detailLayout
---   from their measured widths; the line under Buy is always reserved, so arming moves nothing. When the widest text
---   Buy can show ("Confirm: 25,000 Coins" at a large text size on a phone) is wider than the column, Buy takes the
---   column's width and wraps its label (ShopFormat.buyBox, ConfirmButton:setWidth). Equip now stays in the success area
---   inside the list; the list scrolls to it when a purchase succeeds.
--- * The panel's sizes come from ShopFormat.panelLayout: the header and every chip (tabs, box filter) are touch-sized
---   (they were 44 base = 37 px at scale 0.85, under §11.2's minimum). On phones the detail preview is
---   DETAIL_ICON_COMPACT_PX.
--- * Cards: InventoryFormat.cardSize keeps 150 × 184 at the default text size and grows only when the player's text
---   needs it; the rarity tag stacks when side by side does not fit; the status line wraps under the coin.
--- * The gamepad focus on open: the selected card (Squishies tab) or the tab's chip, else Close.
--- Foam UI restyle (spec 2026-10-09; look and layout only, every button does what it did):
--- * The title is a header tab in the Shop tile's accent (Theme.headerTab, accent "shop"); the panel's top padding
---   follows it (ShopFormat.panelLayout's topPadding) and the panel sits a quarter of the tab lower so both are centred.
---   The header row shows the player's Coins as the coin and a bare number (fewer words) and Close.
--- * The tab and filter chips are foam Buttons (Strawberry when on, Frosting otherwise).
--- * Cards are foam cards with a rarity rim (as on the Squishies screen; the face is the light Sky when selected, a light
---   Mint when owned); names in the Button display kind; the status line is ShopFormat.cardLine: a buyable card shows
---   the coin and the bare price.
--- * The detail column: the preview in a Biscuit inset well, the price as the coin and a HudNumber, the Coins tab's note
---   in an inset field.
--- Foam fix batch (2026-10-09; on an 844×390 phone the cards' prices and "Owned" lines were cut in half and the detail
--- showed only the preview; layout maths in UI/ShopFormat and UI/InventoryFormat):
--- * Close hangs on the panel's top-right corner level with the header tab (as on Quests, Daily and Settings); the
---   Close-only header row is gone and the player's Coins sit at the tab row's right end (InventoryFormat.hangingChrome,
---   ShopFormat.panelLayout).
--- * The grid is as wide as the columns that fit in its share (InventoryFormat.gridFit); the detail column takes the
---   rest (before, an empty strip of about 180 px sat before the grid's scrollbar).
--- * The cards are as tall as the status lines they show now (a two-line "Need … more Coins" makes them taller; before,
---   every card kept room for one: about 55 px empty under the text on a PC).
--- * The detail preview shrinks so the squishy's name under it stays in view above Buy and Inspect (previewPx).
--- Foam fix round 2 (2026-10-09; Buy floated in a slot wider than itself, 65-97 px before Inspect; on a phone the rarity
--- tag was hidden under the buttons):
--- * Buy is drawn as wide as its box (the widest text it can show, so arming still moves nothing): Buy and Inspect sit
---   from the column's left edge, ShopFormat.PANEL.buttonGap apart, like the Squishies detail buttons.
--- * The preview leaves room for the name and the rarity tag (RarityTag.tallest); with no room for its smallest size the
---   well hides (InventoryFormat.previewPx 0).
--- * On touch the detail list's scroll bar stays on screen while it is longer than its window (UI/Components/ScrollHint).
--- UI overhaul (2026-10-11, Candy UI): the cards are collectible cards (UI/CardFace, every card in its rarity's colours:
--- they are products; a white frame when selected); the card's status line is Gold for a price and Mint for Owned;
--- inactive tab and filter chips are the plum neutral; Close is the red X; the detail preview is the hero of the column
--- (up to DETAIL_ICON_PX when the column has the room, on a glow in the rarity's colour, bobbing gently while the screen
--- is open) and the price is a Gold number.
--- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel is
--- the design's Shop window (Theme.window "shop", H:288-291: 1060 x 650, shrunk to fit with its sticker and X,
--- ShopFormat.panelLayout / Layout.windowFit, the face's top 310 above the middle) with its gold band (Theme.headerTab:
--- "SHOP", Q9; the sticker, H:346) and the 76 px close X in the band (Theme.attachClose, H:347); Theme.fitWindow lays
--- the chrome out at the window's chrome scale. The loading line on the pink body takes the window's text colour
--- (H:196).
--- Stable names: Shop_CloseButton, Shop_TabSquishiesButton, Shop_TabCoinsButton, Shop_FilterAllButton,
--- Shop_FilterBoxButton, Shop_Card_<id>, Shop_BuyButton, Shop_InspectButton, Shop_EquipNowButton,
--- Shop_Bundle_<key>Button.
+-- * The cards are as tall as the status lines they show now (InventoryFormat.cardSize; the name and the rarity tag
+--   fit at the player's text size; the status line wraps under the coin).
+-- Stable names: Shop_CloseButton, Shop_BackButton, Shop_TabSquishiesButton, Shop_TabCoinsButton,
+-- Shop_FilterAllButton, Shop_FilterBoxButton, Shop_Card_<id>, Shop_BuyButton, Shop_InspectButton,
+-- Shop_Bundle_<key>Button; the dialog's Confirm_BuyButton / Confirm_CancelButton; the overlay's Shop_AwesomeButton.
 
 -- Services
 
@@ -109,8 +66,8 @@ local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
-local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
+local Palette = require(Shared.Art.Palette)
 local RarityStyle = require(Shared.Art.RarityStyle)
 local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
@@ -119,22 +76,24 @@ local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
 local CardFace = require(Client.UI.CardFace)
 local CoinIcon = require(Client.UI.Components.CoinIcon)
-local ConfirmButton = require(Client.UI.Components.ConfirmButton)
+local ConfirmDialog = require(Client.UI.Components.ConfirmDialog)
+local CongratsOverlay = require(Client.UI.CongratsOverlay)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
+local IconGlyph = require(Client.UI.Components.IconGlyph)
 local InventoryFormat = require(Client.UI.InventoryFormat)
 local KeyText = require(Client.UI.KeyText)
 local Layout = require(Client.UI.Layout)
 local RarityTag = require(Client.UI.Components.RarityTag)
-local ScrollHint = require(Client.UI.Components.ScrollHint)
 local ShopFormat = require(Client.UI.ShopFormat)
+local SquishyImage = require(Client.UI.Components.SquishyImage)
 local StaticIcon = require(Client.UI.Components.StaticIcon)
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
+local UiIdle = require(Client.Anim.UiIdle)
 local UiFx = require(Client.UI.UiFx)
 local NetController = require(script.Parent.NetController)
-local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -156,41 +115,40 @@ type Card = {
 -- A tab or filter chip: a foam Button (setAccent: Strawberry when on).
 type Chip = Button.Button
 
+-- UI FINAL R6: the featured card (H:295-312). `well` (the art area) and `icon` (the art) keep the old detail
+-- preview's names: the purchase burst reads them.
 type Detail = {
-	icon: StaticIcon.StaticIcon,
-	well: Frame, -- the inset well around the preview
-	glow: Frame, -- UI overhaul: the rarity glow behind the preview
-	coinsLine: TextLabel, -- UI overhaul: "Coins per squeeze: n"; Phase 5: the capsule power "x16 power"
+	root: Frame, -- "Featured"
+	well: Frame, -- the art area (inside the border, above the text block), with the twinkles
+	fit: UIScale, -- the art at artPx / 230
+	art: Frame, -- the art's float holder (sdFloat)
+	icon: SquishyImage.SquishyImage,
+	inspect: TextButton, -- tap the art = Inspect (G6.7)
+	text: Frame, -- the text block
 	name: TextLabel,
-	rarity: RarityTag.RarityTag,
-	priceRow: Frame,
-	price: TextLabel,
-	status: TextLabel,
+	line: TextLabel,
+	pulse: Frame, -- BUY's sdPulse holder
+	buy: Button.Button,
+	buyLabel: TextLabel?,
+	buyCoin: Frame?,
+	owned: Frame,
 	error: TextLabel,
-	scroll: ScrollingFrame, -- "Detail": the list
-	rail: Frame, -- fix round 2: its scroll bar on touch (ScrollHint), over the list's right edge
-	buttons: Frame, -- "DetailButtons": pinned under the list (Part 8)
-	confirm: ConfirmButton.ConfirmButton,
-	inspect: Button.Button,
-	success: Frame,
-	successLabel: TextLabel,
-	equipNow: Button.Button,
 }
 
--- The frames the panel layout sizes (Part 8: ShopFormat.panelLayout; foam restyle: the header tab; fix batch: no
--- header row, Close hangs on the top-right corner, the player's Coins at the tab row's right end).
+-- The frames the window layout sizes (ShopFormat.panelLayout).
 type Frames = {
-	tabs: Frame,
-	wallet: Frame, -- the player's Coins: the coin and a bare number
+	tabs: Frame, -- the phone's tab chips
 	body: Frame,
-	content: Frame,
-	grid: ScrollingFrame,
-	coins: ScrollingFrame,
+	column: Frame, -- the right column
+	list: ScrollingFrame,
+	cards: Frame,
+	coinsHead: TextLabel,
+	packs: Frame,
 	tab: Frame,
-	padding: UIPadding, -- the panel's (its top follows the tab and Close)
+	padding: UIPadding,
 }
 
-type BundleRowRefs = { root: Frame, name: TextLabel, amount: TextLabel, price: TextLabel, buy: Button.Button }
+type BundleRowRefs = { root: Frame, amount: TextLabel, buy: Button.Button }
 
 -- Constants
 
@@ -200,10 +158,13 @@ local MODAL_GUI = "SD_Modal"
 local COUNTER_TAG = "SD_ShopCounter"
 local REMOTE_BUY = "ShopBuy"
 local REMOTE_BUNDLE = "PromptCoinBundle"
-local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result (Shop, capsules)
-local EQUIPPED_TOAST = "inspect.equippedToast"
-local GENERIC = "error.generic"
+local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result (Shop, capsules); the fanfare's nearest (RL8)
+local SOUND_BACK = "ui.back" -- H:886: the confirm dialog's CANCEL / scrim
 local SHOP = Config.UI.Shop
+local FEATURED = SHOP.featured
+local PACKS = SHOP.packs
+local CONFIRM = Config.UI.confirm
+local PURCHASE = Config.UI.Fx.events.purchase -- H:867-871
 local TOUCH = Config.UI.Touch
 local CARD_WIDTH = SHOP.cardWidth
 local CARD_HEIGHT = 192 -- reading: §11.6 gives the card width only (UI overhaul: 184 -> 192, larger art)
@@ -215,30 +176,19 @@ local CARD_NAME_KIND: Theme.TextKind = "Button" -- foam restyle: larger type, th
 local CARD_STATUS_KIND: Theme.TextKind = "Chip" -- the price / status line in the display font
 local CARD_RADIUS = Theme.Radius.button
 local CARD_BANDS = Theme.Foam.panel.bevel + Theme.Foam.panel.drop -- the foam card's bevel and drop (kept free)
-local DETAIL_ICON_PX = 300 -- UI overhaul: 132 -> 300, the hero fills the column's free height (previewPx caps it)
-local DETAIL_ICON_COMPACT_PX = 88 -- reading (Part 8): on phones more of the detail shows above the pinned buttons
-local DETAIL_ICON_MIN_PX = 48 -- fix batch: the smallest the preview gets so the name stays in view (previewPx)
-local WELL_PAD_PX = 8 -- the inset well around the detail preview
-local PANEL = ShopFormat.PANEL -- margin, height share (0.88: never more of the screen), padding, gaps, grid share
+local PANEL = ShopFormat.PANEL -- the body's padding and gaps, the card grid's gap and the list's chrome
 local CELL_PAD = PANEL.cellPad
-local GRID_SHARE = PANEL.gridShare -- the Squishies screen's split
-local SCROLLBAR_PX = 6
+local LIST_PAD = 4 -- the list's padding round the cards' rims (PANEL.gridChrome counts it with the scroll bar)
 local COIN_PX = 18
-local HEADER_COIN_PX = 30
-local PRICE_COIN_PX = 28
 local STATUS_GAP = 4 -- between the coin and the status text on a card
 local MEASURE_MARGIN_PX = 2 -- Part 8: added to measured texts so laid-out parts never touch
-local BUY_PAD_Y = 4 -- reading: the space above and below a wrapped Buy label
 local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives this
 local WINDOW_KIND = "shop" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:288-349)
+local BUTTON_LIP = Config.UI.Sticker.lip.button -- H:310: 0 5px 0 #1E1428
+local WHITE = Color3.new(1, 1, 1)
 -- UI overhaul: the card faces are UI/CardFace's; the status line's colours (a price in Gold, "Owned" in Mint).
 local STATUS_PRICE_COLOR = Theme.Colors.gold
 local STATUS_OWNED_COLOR = Theme.Accents.mint.face
-local PREVIEW_BOB_PX = 4 -- the detail preview's idle bob (base px) ...
-local PREVIEW_BOB_SECONDS = 2.6 -- ... one cycle
-local PREVIEW_WOBBLE_DEG = 2
-local PREVIEW_GLOW_SHARE = 0.92
-local PREVIEW_GLOW_TRANSPARENCY = 0.7
 
 -- Module table
 
@@ -252,37 +202,38 @@ local openCleanup: Cleanup.Cleanup? = nil
 local panel: Frame? = nil
 local frames: Frames? = nil
 local closeButton: Button.Button? = nil
+local backButton: Chip? = nil
 local panelLayout: ShopFormat.PanelLayout? = nil
-local lastDetail: ShopFormat.DetailLayout? = nil -- the detail column as laid out last (debugState)
+local lastDetail: ShopFormat.FeaturedLayout? = nil -- the featured card as laid out last (debugState)
+local lastView: ShopFormat.FeaturedView? = nil -- what its button shows (refreshDetail)
+local shownView: string? = nil -- the button state painted last (a repaint restarts its motion)
 local cardSize: InventoryFormat.CardSize = { width = CARD_WIDTH, height = CARD_HEIGHT, nameLines = 1, stacked = false }
 -- Fix batch: the status lines the cards show now (refreshGrid); the cards are as tall as these need. Nil = every line a
 -- card can show (before the first refresh).
 local cardLines: { string }? = nil
-local successShown = false -- the success area was showing at the last refresh (scroll to it once when it appears)
-local coinsLabel: TextLabel? = nil
 local loadingLabel: TextLabel? = nil
 local tabChips: { [string]: Chip } = {}
 local filterRow: Frame? = nil
 local filterAll: Chip? = nil
 local filterBox: Chip? = nil
-local squishiesBody: Frame? = nil
-local coinsBody: GuiObject? = nil
-local coinsNote: TextLabel? = nil
-local coinsNoteField: Frame? = nil -- the inset field around the note
-local bundleList: Frame? = nil
 local bundleRows: { [string]: BundleRowRefs } = {}
-local grid: ScrollingFrame? = nil
 local gridLayout: UIGridLayout? = nil
+local packLayout: UIGridLayout? = nil
 local cards: { [string]: Card } = {}
 local detail: Detail? = nil
+local confirmDialog: ConfirmDialog.ConfirmDialog? = nil
+local popConfirmBack: (() -> ())? = nil
+local congrats: CongratsOverlay.CongratsOverlay? = nil
+local popCongratsBack: (() -> ())? = nil
 
 local tab: ShopFormat.Tab = ShopFormat.TAB_SQUISHIES
 local boxFilter: string? = nil
 local selected: string? = nil
+local detailOpen = false -- a phone shows the featured card instead of the list
+local coinsShown = false -- the COINS section is drawn (a bundle is offered)
 local buying: string? = nil -- the squishy a ShopBuy is running for
 local pendingRequest: ShopFormat.Pending? = nil
-local lastSuccess: string? = nil -- the squishy just bought (the "You got X!" line and Equip now)
-local equipping = false
+local lastSuccess: string? = nil -- the squishy just bought (OWNED at once, before the StateDelta)
 local prices: { [string]: ShopFormat.PriceState } = {}
 local promptingKey: string? = nil
 local promptToken = 0
@@ -319,6 +270,11 @@ local function entryOf(list: { ShopFormat.Entry }, id: string?): ShopFormat.Entr
 	return nil
 end
 
+-- The confirm dialog's and the congrats overlay's layer: its own full-screen ScreenGui above SD_Modal.
+local function promptLayer(): ScreenGui
+	return UIController.screenGui(CONFIRM.layerName, CONFIRM.layer)
+end
+
 -- Each chip's painted state, so a refresh repaints only the chips that change (a repaint restarts the press motion).
 local chipActive: { [Chip]: boolean } = {}
 
@@ -330,100 +286,33 @@ local function paintChip(chip: Chip?, active: boolean)
 	chip:setAccent(if active then "strawberry" else "plum")
 end
 
--- Layout: the pinned detail buttons (Part 8) ------------------------------------------------------------------------
+-- Layout: the featured card (H:295-312) -----------------------------------------------------------------------------
 
--- What the Buy can show for the selected squishy (its price, the player's Coins and the reason that blocks it): set
--- by refreshDetail, read by layoutDetail.
-type BuyInfo = { price: number, balance: number, block: string? }
-local lastBuy: BuyInfo? = nil
-
--- The Buy's widest width on one line over every text it can show (idle, armed "Confirm: ...", need Coins, blocked, and
--- the "Balance after" line), and its height with the label wrapped inside `columnWidth`.
-local function measureBuy(info: BuyInfo, columnWidth: number): (number, number)
-	local idle = ConfirmButton.view(ConfirmButton.initial(info.price, info.balance))
-	local armedState = ConfirmButton.initial(info.price, math.max(info.balance, info.price))
-	armedState.phase = "armed"
-	local armed = ConfirmButton.view(armedState)
-	local states: { { text: string, reason: string? } } = {
-		{ text = Strings.shop.buy },
-		{ text = armed.confirmText or Strings.shop.buy },
-		{ text = Strings.shop.buy, reason = idle.needText },
-		{ text = Strings.shop.buy, reason = info.block },
-	}
-	local inner = math.max(1, columnWidth - 2 * Button.PADDING_X)
-	local natural, wrapped = 0, 0
-	for _, state in states do
-		natural = math.max(natural, Button.widthFor(state.text, state.reason))
-		local height = Theme.textBounds(state.text, "Button", nil, inner).Y
-		if state.reason then
-			height += Theme.textBounds(state.reason, "Small", nil, inner).Y
-		end
-		wrapped = math.max(wrapped, height + 2 * BUY_PAD_Y)
-	end
-	local balanceText = armed.balanceText
-	if balanceText then
-		natural = math.max(natural, Theme.textWidth(balanceText, "Small", Enum.FontWeight.Bold) + MEASURE_MARGIN_PX)
-	end
-	return natural, wrapped
-end
-
--- The detail column: Buy and Inspect pinned under the list (ShopFormat.detailLayout); the preview smaller on phones.
--- Only while the screen is open (it runs again from onOpen).
+-- The art area, the art's size and the text block from the card's height and the measured name and line
+-- (ShopFormat.featuredLayout). Only while the screen is open (it runs again from onOpen).
 local function layoutDetail()
 	local d, l = detail, panelLayout
 	if d == nil or l == nil or not UIController.isOpen(SCREEN) then
 		return
 	end
-	local buttonHeight = Layout.touchBase(Button.frameHeight("primary"), l.scale) -- UI FINAL R2 (P1): face + lip
-	local balanceLine = Theme.lineHeight("Small", Enum.FontWeight.Bold)
-	local info = lastBuy
-	local buyBox: ShopFormat.BuyBox? = nil
-	if d.confirm.root.Visible and info then
-		local natural, wrapped = measureBuy(info, l.detailWidth)
-		buyBox = ShopFormat.buyBox(natural, l.detailWidth, buttonHeight, wrapped)
-	end
-	local inspect: ShopFormat.Box? = if d.inspect.root.Visible
-		then { w = Button.widthFor(Strings.common.inspect), h = buttonHeight }
-		else nil
-	local buy: ShopFormat.Box? = if buyBox then { w = buyBox.w, h = buyBox.h } else nil
-	local placed = ShopFormat.detailLayout(l.detailWidth, l.detailHeight, PANEL.gap, buy, balanceLine, inspect)
+	local border = FEATURED.border
+	local textWidth = math.max(1, l.featuredWidth - 2 * border - 2 * FEATURED.text.padX)
+	local nameHeight = Theme.textBounds(d.name.Text, "Found", nil, textWidth).Y
+	local lineHeight = Theme.textBounds(d.line.Text, "Small", nil, textWidth).Y
+	local placed = ShopFormat.featuredLayout(l.featuredHeight, nameHeight, lineHeight)
 	lastDetail = placed
-	d.scroll.Size = UDim2.fromOffset(l.detailWidth, placed.scrollHeight)
-	d.buttons.Position = UDim2.new(1, 0, 0, placed.buttonsTop)
-	d.buttons.Size = UDim2.fromOffset(l.detailWidth, placed.buttonsHeight)
-	local buyRect = placed.buy
-	if buyBox and buyRect then
-		-- Fix round 2: Buy is drawn as wide as its box (its widest text), so it no longer floats in a wider slot with a
-		-- gap before Inspect; the row starts at the column's left edge like the Squishies one.
-		d.confirm:setWidth(buyBox.w)
-		d.confirm.button.root.Size = UDim2.fromOffset(buyBox.w, buyBox.h)
-		d.confirm.root.Position = UDim2.fromOffset(buyRect.x + buyRect.w / 2, buyRect.y)
-	end
-	local inspectRect = placed.inspect
-	if inspectRect then
-		d.inspect.root.Position = UDim2.fromOffset(inspectRect.x + inspectRect.w / 2, inspectRect.y)
-		d.inspect.root.Size = UDim2.fromOffset(0, buttonHeight)
-	end
-	d.rail.Size = UDim2.fromOffset(SCROLLBAR_PX, placed.scrollHeight)
-	-- Fix batch: under the well, the list's gap and the name (Title) stay in view (InventoryFormat.previewPx). Fix round
-	-- 2: and a gap and the rarity tag; with no room for the smallest preview the well hides rather than cut the tag.
-	local iconPx = InventoryFormat.previewPx(
-		placed.scrollHeight,
-		2 * Theme.Padding.small + Theme.lineHeight("Title") + RarityTag.tallest(),
-		WELL_PAD_PX,
-		DETAIL_ICON_MIN_PX,
-		if l.class == "compact" then DETAIL_ICON_COMPACT_PX else DETAIL_ICON_PX
-	)
-	d.well.Visible = iconPx > 0
-	if iconPx > 0 then
-		d.icon.root.Size = UDim2.fromOffset(iconPx, iconPx)
-		d.well.Size = UDim2.new(1, 0, 0, iconPx + 2 * WELL_PAD_PX)
-		local glowPx = math.floor(iconPx * PREVIEW_GLOW_SHARE)
-		d.glow.Size = UDim2.fromOffset(glowPx, glowPx)
-	end
+	d.well.Size = UDim2.new(1, 0, 0, placed.artArea)
+	d.well.Visible = placed.artPx > 0
+	d.fit.Scale = placed.artPx / FEATURED.art.px
+	d.text.Position = UDim2.fromOffset(border, placed.textTop)
+	d.text.Size = UDim2.new(1, -2 * border, 0, placed.textHeight)
+	d.name.Size = UDim2.new(1, 0, 0, math.ceil(nameHeight))
+	d.line.Size = UDim2.new(1, 0, 0, math.ceil(lineHeight))
+	d.buy:setWidth(textWidth)
+	d.buy.root.Size = UDim2.fromOffset(textWidth, FEATURED.buy.face + BUTTON_LIP)
 end
 
--- Detail panel ------------------------------------------------------------------------------------------------------
+-- Featured card -------------------------------------------------------------------------------------------------------
 
 local function refreshDetail(list: { ShopFormat.Entry })
 	local d = detail
@@ -432,75 +321,56 @@ local function refreshDetail(list: { ShopFormat.Entry })
 	end
 	d.error.Visible = hasDataError()
 	local entry = entryOf(list, selected)
+	d.text.Visible = entry ~= nil
 	if entry == nil then
-		d.confirm.root.Visible = false
-		d.success.Visible = false
 		return
 	end
-	d.icon:setSquishy(entry.id)
-	d.icon:setOwned(true)
+	if d.icon:catalogId() ~= entry.id then
+		d.icon:setCatalogId(entry.id)
+	end
 	d.name.Text = entry.name
-	d.rarity:setRarity(entry.rarity)
-	local rarityStyle = RarityStyle.get(entry.rarity)
-	d.glow.BackgroundColor3 = if rarityStyle then rarityStyle.ui.glow else Theme.Colors.ink2
-	-- Phase 5 (progression spec 2026-10-12 §6): what the squishy multiplies in a capsule ("x16 power").
-	d.coinsLine.Text = Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(entry.id) })
-	-- Fewer words (foam restyle): the coin and the bare price.
-	local priceText = ShopFormat.priceNumber(entry.price)
-	d.priceRow.Visible = priceText ~= nil and not entry.owned
-	d.price.Text = priceText or ""
-	local statusText = if entry.state == "owned"
-		then Strings.common.owned
-		elseif entry.state == "notSold" then ShopFormat.cardStatusText(entry)
-		else nil
-	d.status.Visible = statusText ~= nil
-	d.status.Text = statusText or ""
-
-	-- Just bought: the success line shows at once, even before the StateDelta marks it owned.
-	local justBought = lastSuccess == entry.id
-	local buyable = not justBought
-		and (entry.state == "buy" or entry.state == "needCoins" or entry.state == "purchasing")
-	local confirm = d.confirm
-	confirm.root.Visible = buyable
-	if buyable and entry.price then
-		local block = ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked())
-		if block == nil and buying ~= nil and buying ~= entry.id then
-			block = Strings.common.loading -- another buy is still running (one in flight)
-		end
-		confirm:setPrice(entry.price, coinsNow())
-		confirm:setDisabled(block)
-		confirm:setLoading(buying == entry.id)
-		lastBuy = { price = entry.price, balance = coinsNow(), block = block }
-	elseif not buyable then
-		confirm:reset()
+	d.line.Text = ShopFormat.featuredLine(entry.rarity, CapsuleMath.squishyPower(entry.id))
+	local block = ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked())
+	if block == nil and buying ~= nil and buying ~= entry.id then
+		block = Strings.common.loading -- another buy is still running (one in flight)
 	end
-	d.inspect.root.Visible = UIController.isRegistered(INSPECT_SCREEN)
-	layoutDetail()
-
-	-- Part 8: the success area (with Equip now) sits at the end of the list; show it once when it appears.
-	if justBought and not successShown then
-		local scroll = d.scroll
-		task.defer(function()
-			if scroll.Parent ~= nil then
-				local scale = math.max(UIController.scale(), 1e-3)
-				scroll.CanvasPosition = Vector2.new(0, scroll.AbsoluteCanvasSize.Y / scale)
+	-- Just bought: OWNED shows at once, even before the StateDelta marks it owned.
+	local shown = entry
+	if lastSuccess == entry.id and not entry.owned then
+		shown = table.clone(entry)
+		shown.owned = true
+	end
+	local view = ShopFormat.featuredView(shown, block, buying)
+	lastView = view
+	local owned = view.mode == "owned"
+	d.owned.Visible = owned
+	d.pulse.Visible = not owned
+	if not owned then
+		d.buy:setText(view.priceText or Strings.shop.buy)
+		local coin = d.buyCoin
+		if coin then
+			coin.Visible = view.priceText ~= nil
+		end
+		local key = `{view.mode}|{view.reason or ""}`
+		if key ~= shownView then
+			shownView = key
+			if view.mode == "loading" then
+				d.buy:setState("loading")
+			elseif view.mode == "blocked" or view.mode == "notSold" then
+				d.buy:setState("disabled", view.reason)
+			else
+				d.buy:setState("normal")
 			end
-		end)
-	end
-	successShown = justBought
-	d.success.Visible = justBought
-	if justBought then
-		d.successLabel.Text = Strings.format(Strings.shop.success, { name = entry.name })
-		local equipped = StateController.equipped() == entry.id
-		d.equipNow.root.Visible = not equipped
-		if equipping then
-			d.equipNow:setState("loading")
-		elseif StateController.isLobbyLocked() then
-			d.equipNow:setState("disabled", Strings.common.lockedInDuel)
-		else
-			d.equipNow:setState("normal")
+			d.buy:setOff(view.mode == "short")
+		end
+		local label = d.buyLabel
+		if label then
+			-- P11: an "off" BUY's price in StickerPriceShort (H:946); the role's white otherwise.
+			label.TextColor3 = if view.mode == "short" then Palette.StickerPriceShort else WHITE
 		end
 	end
+	d.inspect.Visible = UIController.isRegistered(INSPECT_SCREEN)
+	layoutDetail()
 end
 
 -- Grid ----------------------------------------------------------------------------------------------------------------
@@ -547,7 +417,7 @@ local function refreshGrid(list: { ShopFormat.Entry })
 	paintChip(filterBox, boxFilter ~= nil)
 end
 
--- Coins tab -----------------------------------------------------------------------------------------------------------
+-- Coins (the pack cards, H:330-340) -----------------------------------------------------------------------------------
 
 local function fetchPrice(key: string, productId: number)
 	if prices[key] ~= nil then
@@ -596,49 +466,118 @@ local function promptBundle(key: string)
 	ShopController.refresh()
 end
 
+-- A design surface as a foam face (`top` -> `bottom`, the ink border inside the box, the inset highlight, the lip).
+local function sticker(
+	frame: GuiObject,
+	colors: { top: Color3, bottom: Color3, mid: Color3?, midAt: number? },
+	border: number,
+	radius: number,
+	lip: number,
+	inset: { px: number, alpha: number }
+)
+	local bands = Layout.stickerBands(border, inset.px, 0, lip)
+	local faceColors: any = {
+		face = colors.top,
+		mid = colors.mid,
+		midAt = colors.midAt,
+		faceEnd = colors.bottom,
+		top = colors.top:Lerp(WHITE, inset.alpha),
+		drop = Theme.Colors.inkUI,
+	}
+	Theme.foam(frame, {
+		radius = radius,
+		stroke = border,
+		inner = true,
+		top = bands.top,
+		bevel = bands.bevel,
+		drop = bands.drop,
+		colors = faceColors,
+	})
+end
+
+-- H:330-340: a coin pack card (cream, the coin bobbing, the amount, the green price bar = its buy button).
 local function bundleRow(parent: Instance, row: ShopFormat.BundleRow, order: number): BundleRowRefs
 	local c = cleanup :: Cleanup.Cleanup
-	local frame = Theme.panel({
+	local frame: Frame = Create("Frame", {
 		Name = "Bundle_" .. row.key,
+		BorderSizePixel = 0,
 		LayoutOrder = order,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = parent,
-	}, Theme.Radius.medium, Theme.Padding.medium)
+	})
 	c:add(frame)
-	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.medium, frame, Enum.HorizontalAlignment.Left)
-	local text: Frame = Create("Frame", {
-		Name = "Text",
+	sticker(
+		frame,
+		{ top = Palette.StickerPackTop, bottom = Palette.StickerPackEnd },
+		PACKS.border,
+		PACKS.radius,
+		PACKS.lip,
+		PACKS.inset
+	)
+	Create("UIPadding", {
+		PaddingTop = UDim.new(0, PACKS.padTop),
+		PaddingLeft = UDim.new(0, PACKS.padX),
+		PaddingRight = UDim.new(0, PACKS.padX),
+		PaddingBottom = UDim.new(0, PACKS.padBottom + PACKS.lip),
+		Parent = frame,
+	})
+	Theme.list(Enum.FillDirection.Vertical, PACKS.innerGap, frame, Enum.HorizontalAlignment.Center)
+	local art: Frame = Create("Frame", {
+		Name = "Art",
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(0.6, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, PACKS.iconPx),
 		LayoutOrder = 1,
 		Parent = frame,
 	})
-	Theme.list(Enum.FillDirection.Vertical, 2, text, Enum.HorizontalAlignment.Left)
-	local name = Theme.label({ Name = "Name", LayoutOrder = 1, Parent = text }, "Body", Enum.FontWeight.Bold)
-	local amount = Theme.label({ Name = "Amount", LayoutOrder = 2, Parent = text }, "Small")
-	local price = Theme.label({ Name = "Price", LayoutOrder = 3, Parent = text }, "Small")
+	local bob: Frame = Create("Frame", {
+		Name = "SD_Bob",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(PACKS.iconPx, PACKS.iconPx),
+		Parent = art,
+	})
+	c:add(CoinIcon.new({ name = "Coin", sizePx = PACKS.iconPx, parent = bob }))
+	local handle = UiIdle.add(bob, "bob", { periodS = PACKS.bobS })
+	if handle then
+		c:add(function()
+			handle:remove()
+		end)
+	end
+	local amount = Theme.label({
+		Name = "Amount",
+		TextXAlignment = Enum.TextXAlignment.Center,
+		LayoutOrder = 2,
+		Parent = frame,
+	}, "Big")
+	Theme.stickerText(amount, PACKS.amountRole)
 	local key = row.key
 	local buy = Button.new({
 		name = "Shop_Bundle_" .. key .. "Button",
-		text = Strings.shop.buy,
+		text = row.priceText,
 		kind = "primary",
-		height = TOUCH.primaryButton,
-		layoutOrder = 2,
+		accent = "greenChip", -- H:339: #A6F796 -> #38C150
+		height = PACKS.priceBar,
+		border = PACKS.priceBorder,
+		radius = PACKS.priceRadius,
+		lip = PACKS.priceLip,
+		stops = 2,
+		highlight = { px = PACKS.priceInset.px, a = PACKS.priceInset.alpha },
+		textRole = PACKS.priceRole,
+		layoutOrder = 3,
 		parent = frame,
 		onActivated = function()
 			promptBundle(key)
 		end,
 	})
 	c:add(buy)
-	return { root = frame, name = name, amount = amount, price = price, buy = buy }
+	frame.Parent = parent
+	return { root = frame, amount = amount, buy = buy }
 end
 
-local function refreshCoins()
-	local note, list = coinsNote, bundleList
-	if note == nil or list == nil then
-		return
+-- The COINS section (G6.6): drawn only while a bundle is offered; true when it shows.
+local function refreshCoins(): boolean
+	local list, f = frames and frames.packs, frames
+	if list == nil or f == nil then
+		return false
 	end
 	local monetization = StateController.get("monetization")
 	local offered = if type(monetization) == "table" and type(monetization.bundles) == "table"
@@ -646,18 +585,13 @@ local function refreshCoins()
 		else nil
 	local view =
 		ShopFormat.coinsView(offered, Config.Monetization.CoinBundles, prices, ShopFormat.bundlesAllowed(Config.Grip))
-	note.Visible = view.unavailable
-	note.Text = view.text or ""
-	local field = coinsNoteField
-	if field then
-		field.Visible = view.unavailable
-	end
+	local shownNow = not view.unavailable
+	f.coinsHead.Visible = shownNow
+	list.Visible = shownNow
 	local shown: { [string]: boolean } = {}
 	for index, row in view.rows do
 		shown[row.key] = true
-		if tab == ShopFormat.TAB_COINS then
-			fetchPrice(row.key, row.productId)
-		end
+		fetchPrice(row.key, row.productId)
 		local refs = bundleRows[row.key]
 		if refs == nil then
 			refs = bundleRow(list, row, index)
@@ -666,9 +600,8 @@ local function refreshCoins()
 		local r = refs :: BundleRowRefs
 		r.root.Visible = true
 		r.root.LayoutOrder = index
-		r.name.Text = row.name
 		r.amount.Text = row.coinsText
-		r.price.Text = row.priceText
+		r.buy:setText(row.priceText)
 		if promptingKey == row.key then
 			r.buy:setState("loading")
 		elseif not row.priceReady or StateController.isLobbyLocked() then
@@ -682,9 +615,12 @@ local function refreshCoins()
 			refs.root.Visible = false
 		end
 	end
+	return shownNow
 end
 
 -- Refresh ---------------------------------------------------------------------------------------------------------------
+
+local applyLayout: () -> ()
 
 local function refresh()
 	if panel == nil then
@@ -694,19 +630,12 @@ local function refresh()
 	if loadingLabel then
 		loadingLabel.Visible = not loaded
 	end
-	local coins = StateController.coins()
-	if coinsLabel then
-		coinsLabel.Text = Format.coins(coins or 0) -- beside the coin icon (fewer words, like the HUD's coin capsule)
-		coinsLabel.Visible = coins ~= nil
-	end
 	for name, chip in tabChips do
 		paintChip(chip, name == tab)
 	end
-	if squishiesBody then
-		squishiesBody.Visible = loaded and tab == ShopFormat.TAB_SQUISHIES
-	end
-	if coinsBody then
-		coinsBody.Visible = loaded and tab == ShopFormat.TAB_COINS
+	local f = frames
+	if f then
+		f.body.Visible = loaded
 	end
 	if not loaded then
 		return
@@ -714,42 +643,79 @@ local function refresh()
 	local list = currentEntries()
 	refreshGrid(list)
 	refreshDetail(list)
-	refreshCoins()
+	local coins = refreshCoins()
+	if coins ~= coinsShown then
+		coinsShown = coins
+		local chip = tabChips[ShopFormat.TAB_COINS]
+		if chip then
+			chip.root.Visible = coins
+		end
+		applyLayout() -- the phone's tab chips show with the sections
+	end
 end
 
--- An armed Buy never carries over to another squishy, tab or filter (the player confirms what they armed).
-local function disarm()
-	local d = detail
-	if d and buying == nil then
-		d.confirm:reset()
+-- The sections drawn (COINS only while a bundle is offered, G6.6).
+local function sections(): { ShopFormat.Tab }
+	return ShopFormat.sections(coinsShown)
+end
+
+-- Scrolls the list to `section`'s head (the jump of the tab chips and L1 / R1).
+local function scrollTo(section: ShopFormat.Tab)
+	local f = frames
+	if f == nil then
+		return
+	end
+	if section ~= ShopFormat.TAB_COINS or not coinsShown then
+		f.list.CanvasPosition = Vector2.zero
+		return
+	end
+	local scale = math.max(UIController.scale(), 1e-3)
+	local offset = (f.coinsHead.AbsolutePosition.Y - f.list.AbsolutePosition.Y) / scale
+	f.list.CanvasPosition = Vector2.new(0, math.max(0, f.list.CanvasPosition.Y + offset - LIST_PAD))
+end
+
+-- A phone's featured card (the separate detail state) on or off.
+local function setDetailOpen(open: boolean)
+	if detailOpen == open then
+		return
+	end
+	detailOpen = open
+	applyLayout()
+	refresh()
+	if Focus.isGamepad() then
+		local d = detail
+		local card = if selected then cards[selected] else nil
+		Focus.select(if open and d then d.buy.root elseif card then card.root else nil)
 	end
 end
 
 local function selectCard(id: string)
 	if selected ~= id then
 		lastSuccess = nil
-		disarm()
 	end
 	selected = id
 	SoundController.play("ui.click")
 	refresh()
+	if UIController.layoutClass() == "compact" then
+		setDetailOpen(true)
+	end
 end
 
 local function setTab(newTab: ShopFormat.Tab)
-	if table.find(ShopFormat.TABS, newTab) == nil then
-		return
+	if table.find(sections(), newTab) == nil then
+		newTab = ShopFormat.TAB_SQUISHIES
 	end
 	tab = newTab
-	disarm()
+	setDetailOpen(false)
 	refresh()
-	-- A card in the hidden tab may hold the gamepad selection: move it to the tab's chip.
+	scrollTo(newTab)
 	local chip = tabChips[newTab]
-	if chip and Focus.isGamepad() then
+	if chip and chip.root.Visible and Focus.isGamepad() then
 		Focus.select(chip.root)
 	end
 end
 
--- The grid's columns: the ones panelLayout fitted (InventoryFormat.gridFit; the grid is exactly that wide).
+-- The card grid's columns: the ones panelLayout fitted (InventoryFormat.gridFit in the list).
 local function updateColumns()
 	local layout, l = gridLayout, panelLayout
 	if layout == nil or l == nil then
@@ -758,7 +724,7 @@ local function updateColumns()
 	layout.FillDirectionMaxCells = math.max(1, l.columns)
 end
 
--- Layout: the panel and the cards (Part 8) ----------------------------------------------------------------------------
+-- Layout: the window and the cards (Part 8) ---------------------------------------------------------------------------
 
 -- Every text a card's status line can show (the price, need Coins, Owned, Loading, not for sale).
 local function statusTexts(): { string }
@@ -822,7 +788,7 @@ local function measureCards(): (InventoryFormat.CardSize, number)
 end
 
 -- The cells follow the card size; the rarity tags stack and the status lines wrap when the card needs it. (The grid's
--- width follows in applyLayout: the columns depend on the card width.)
+-- columns follow in applyLayout: they depend on the card width.)
 local function applyCardSize()
 	local size, statusWidth = measureCards()
 	cardSize = size
@@ -868,8 +834,23 @@ local function fitChrome(root: Frame, fit: Layout.WindowFit): number
 	return chrome.top
 end
 
--- Every size of the panel from the ScreenGui's size (ShopFormat.panelLayout), then the detail column.
-local function applyLayout()
+-- The pack cards' cells: PACKS.columns across the list (H:330: repeat(4, 1fr), gap 12), as tall as their parts.
+local function packCell(listWidth: number): Vector2
+	local inner = math.max(1, listWidth - PANEL.gridChrome)
+	local width = math.max(1, math.floor((inner - (PACKS.columns - 1) * PACKS.gap) / PACKS.columns))
+	local height = PACKS.padTop
+		+ PACKS.iconPx
+		+ PACKS.innerGap
+		+ Theme.lineHeight("Big")
+		+ PACKS.innerGap
+		+ math.max(PACKS.priceBar + PACKS.priceLip, TOUCH.minTarget)
+		+ PACKS.padBottom
+		+ PACKS.lip
+	return Vector2.new(width, math.ceil(height))
+end
+
+-- Every size of the window from the ScreenGui's size (ShopFormat.panelLayout), then the featured card.
+applyLayout = function()
 	local root, f = panel, frames
 	if root == nil or f == nil then
 		return
@@ -878,18 +859,17 @@ local function applyLayout()
 	local filtered = row ~= nil and row.Visible
 	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
 	local top = fitChrome(root, Layout.windowFit(screen, WINDOW_KIND))
-	local l = ShopFormat.panelLayout(screen, filtered, top, cardSize.width)
+	local l = ShopFormat.panelLayout(screen, filtered, top, cardSize.width, detailOpen, #sections() > 1)
 	panelLayout = l
 	root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight + Config.UI.Sticker.lip.window) -- the face and its lip
-	f.tabs.Position = UDim2.fromOffset(0, 0)
-	f.tabs.Size = UDim2.new(1, 0, 0, l.chipHeight)
-	f.wallet.Position = UDim2.new(1, 0, 0, l.chipHeight / 2) -- the tab row's right end
-	f.grid.Size = UDim2.new(0, l.gridWidth, 1, 0) -- as wide as its columns; the detail column takes the rest
+	f.tabs.Visible = l.tabsShown
+	f.tabs.Position = UDim2.fromOffset(l.inset, 0)
+	f.tabs.Size = UDim2.fromOffset(l.bodyWidth, l.chipHeight)
 	local chipList: { Chip } = {}
 	for _, chip in tabChips do
 		table.insert(chipList, chip)
 	end
-	for _, chip in { filterAll, filterBox } :: { Chip? } do
+	for _, chip in { filterAll, filterBox, backButton } :: { Chip? } do
 		if chip then
 			table.insert(chipList, chip)
 		end
@@ -897,26 +877,103 @@ local function applyLayout()
 	for _, chip in chipList do
 		chip.root.Size = UDim2.fromOffset(0, l.chipHeight)
 	end
-	f.body.Position = UDim2.fromOffset(0, l.bodyTop)
-	f.body.Size = UDim2.new(1, 0, 1, -l.bodyTop)
-	f.coins.Position = UDim2.fromOffset(0, l.bodyTop)
-	f.coins.Size = UDim2.new(1, 0, 1, -l.bodyTop)
+	local back = backButton
+	if back then
+		back.root.Visible = l.class == "compact" and detailOpen
+	end
+	f.body.Position = UDim2.fromOffset(l.inset, l.bodyTop)
+	f.body.Size = UDim2.fromOffset(l.bodyWidth, l.bodyHeight)
+	local d = detail
+	if d then
+		d.root.Visible = l.featuredShown
+		d.root.Size = UDim2.fromOffset(l.featuredWidth, l.featuredHeight)
+		d.root.Position = UDim2.fromOffset(l.featuredWidth / 2, l.featuredHeight / 2)
+	end
+	f.column.Visible = l.listShown
+	f.column.Position = UDim2.fromOffset(l.listLeft, 0)
+	f.column.Size = UDim2.fromOffset(l.listWidth, l.bodyHeight)
 	if row then
 		row.Size = UDim2.new(1, 0, 0, l.chipHeight)
 	end
-	f.content.Position = UDim2.fromOffset(0, l.listTop)
-	f.content.Size = UDim2.new(1, 0, 1, -l.listTop)
+	f.list.Position = UDim2.fromOffset(0, l.listTop)
+	f.list.Size = UDim2.new(1, 0, 0, l.listHeight)
+	local packs = packLayout
+	if packs then
+		local cell = packCell(l.listWidth)
+		packs.CellSize = UDim2.fromOffset(cell.X, cell.Y)
+	end
 	layoutDetail()
 	updateColumns()
 end
 
 -- Buying ----------------------------------------------------------------------------------------------------------------
 
-local function buySelected()
-	local id = selected
-	local def = if id then Catalog.get(id) else nil
-	local price = if def then def.shopPrice else nil
-	if id == nil or price == nil or buying ~= nil then
+local function closeConfirm()
+	local pop = popConfirmBack
+	popConfirmBack = nil
+	if pop then
+		pop()
+	end
+	local dialog = confirmDialog
+	confirmDialog = nil
+	if dialog then
+		dialog:close()
+	end
+end
+
+local function closeCongrats()
+	local pop = popCongratsBack
+	popCongratsBack = nil
+	if pop then
+		pop()
+	end
+	congrats = nil
+end
+
+-- H:867-871: the purchase burst and ring at the dialog's BUY (`at`), then the congrats overlay with its rain and jolt.
+local function celebrate(id: string, name: string, at: GuiObject?)
+	if at then
+		UiFx.sparks(at, { n = PURCHASE.sparks.n, spread = PURCHASE.sparks.spread })
+		for _, ring in PURCHASE.rings do
+			UiFx.ring(at, UiFx.colors({ ring.color })[1], ring.size)
+		end
+	end
+	closeConfirm()
+	local old = congrats
+	if old then
+		old:destroy()
+		closeCongrats()
+	end
+	local def = Catalog.get(id)
+	local overlay = CongratsOverlay.show({
+		layer = promptLayer(),
+		catalogId = id,
+		title = name,
+		description = if def then ShopFormat.featuredLine(def.rarity, CapsuleMath.squishyPower(id)) else "",
+		scale = UIController.scale(),
+		trackScale = UIController.trackScale,
+		sound = function(key: string)
+			SoundController.play(key)
+		end,
+		onClose = closeCongrats,
+	})
+	congrats = overlay
+	popCongratsBack = UIController.pushBack(function()
+		overlay:close(true) -- UIController.back plays ui.back for it
+	end)
+	task.delay(PURCHASE.rainDelayMs / 1000, function()
+		overlay:rain(PURCHASE.rain)
+	end)
+	local column = overlay.root:FindFirstChild("Column")
+	if column and column:IsA("GuiObject") then
+		UiFx.jolt(column, PURCHASE.jolt)
+	end
+end
+
+-- The confirm dialog's BUY (PR13 step two): one ShopBuy for `id` at its Catalog `price`.
+local function buySelected(id: string, price: number)
+	local def = Catalog.get(id)
+	if buying ~= nil then
 		return
 	end
 	local requestId, pending = ShopFormat.requestIdFor(pendingRequest, id, price, newRequestId)
@@ -930,11 +987,14 @@ local function buySelected()
 	if not outcome.retry then
 		pendingRequest = nil
 	end
+	local dialog = confirmDialog
+	local at: GuiObject? = if dialog then dialog.buy.root else nil
 	if outcome.kind == "success" then
 		lastSuccess = id
 		local name = if def then Strings.resolve(def.nameKey) or id else id
-		-- One sound per action (§18.5.2 B5): the success toast carries ui.purchase (§18.6).
-		UIController.toast(Strings.format(Strings.shop.success, { name = name }), "success", { sound = SOUND_PURCHASE })
+		-- One sound per action (§18.5.2 B5): ui.purchase (§18.6; H:868 / H:871, RL8), then the congrats overlay.
+		SoundController.play(SOUND_PURCHASE)
+		celebrate(id, name, at)
 		-- UI overhaul: the new squishy gets a burst in its rarity's glow on the preview (after the server's yes only).
 		local d = detail
 		local style = if def then RarityStyle.get(def.rarity) else nil
@@ -946,38 +1006,51 @@ local function buySelected()
 			UIController.toast(Strings.reasonText("box.saving"), "info", { sound = false })
 		end
 	elseif outcome.kind == "owned" then
+		closeConfirm()
 		UIController.toast(outcome.text or Strings.common.owned, "info")
 	else
+		closeConfirm()
 		UIController.toast(outcome.text or Strings.error.generic, "warn", { sound = "ui.error" })
-	end
-	local d = detail
-	if d then
-		d.confirm:setLoading(false)
 	end
 	refresh()
 end
 
-local function equipNow()
-	local id = lastSuccess
-	if id == nil or equipping then
+-- The featured BUY (PR13 step one): opens the confirm dialog for the selected squishy.
+local function openConfirm()
+	local id = selected
+	local def = if id then Catalog.get(id) else nil
+	local price = if def then def.shopPrice else nil
+	if id == nil or def == nil or price == nil or buying ~= nil or confirmDialog ~= nil then
 		return
 	end
-	equipping = true
-	refresh()
-	local result = NetController.equipSquishyAsync(id)
-	equipping = false
-	if result.ok then
-		NotifyController.show(EQUIPPED_TOAST, nil, "success")
-	else
-		local reason = result.reason
-		local known = type(reason) == "string" and reason ~= GENERIC and KeyText.has("reason." .. reason)
-		UIController.toast(
-			if known then Strings.reasonText(reason) else Strings.inspect.equipFailed,
-			"warn",
-			{ sound = "ui.error" }
-		)
-	end
-	refresh()
+	local squishyId: string, cost: number = id, price
+	local dialog = ConfirmDialog.open({
+		layer = promptLayer(),
+		title = Strings.resolve(def.nameKey) or squishyId,
+		description = ConfirmDialog.balanceText(coinsNow(), cost),
+		price = cost,
+		catalogId = squishyId,
+		scale = UIController.scale(),
+		trackScale = UIController.trackScale,
+		onBuy = function()
+			buySelected(squishyId, cost)
+		end,
+		onCancel = function(reason: string)
+			confirmDialog = nil
+			local pop = popConfirmBack
+			popConfirmBack = nil
+			if pop then
+				pop()
+			end
+			if reason ~= "back" then
+				SoundController.play(SOUND_BACK) -- UIController.back plays it for Backspace / ButtonB
+			end
+		end,
+	})
+	confirmDialog = dialog
+	popConfirmBack = UIController.pushBack(function()
+		dialog:cancel("back")
+	end)
 end
 
 -- Builders --------------------------------------------------------------------------------------------------------------
@@ -1009,7 +1082,6 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	if def == nil then
 		return
 	end
-	local style = RarityStyle.get(def.rarity)
 	local root: TextButton = Create("TextButton", {
 		Name = "Shop_Card_" .. id,
 		Text = "",
@@ -1018,7 +1090,6 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	})
 	c:add(root)
 	-- UI overhaul: a collectible card (UI/CardFace); paintCard paints its selection.
-	local _ = style
 	local face = CardFace.new(root, def.rarity, {
 		radius = CARD_RADIUS,
 		artCenterY = CARD_PAD + CARD_ICON_PX / 2,
@@ -1104,251 +1175,270 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	}
 end
 
-local function detailLabel(parent: Instance, name: string, order: number, kind: Theme.TextKind): TextLabel
-	return Theme.label({
-		Name = name,
-		LayoutOrder = order,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = parent,
-	}, kind)
-end
-
+-- H:295-312: the featured card (the selected squishy; layoutDetail sizes its parts, refreshDetail fills them).
 local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
-	-- The list (its height comes from layoutDetail: what is left above the pinned buttons).
-	local scroll: ScrollingFrame = Create("ScrollingFrame", {
-		Name = "Detail",
-		BackgroundTransparency = 1,
+	local border = FEATURED.border
+	local root: Frame = Create("Frame", {
+		Name = "Featured",
 		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.fromScale(1, 0),
-		Size = UDim2.new(1 - GRID_SHARE, -PANEL.columnGap, 1, 0),
-		CanvasSize = UDim2.fromScale(0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
-		Selectable = false,
+		AnchorPoint = Vector2.new(0.5, 0.5), -- sdRise scales about the centre
+		Size = UDim2.fromOffset(SHOP.body.featuredWidth, 0),
 		Parent = parent,
 	})
-	-- The left padding keeps the rarity chip's outline inside the list's clipping.
-	Create("UIPadding", {
-		PaddingLeft = UDim.new(0, 3),
-		PaddingRight = UDim.new(0, SCROLLBAR_PX + 4),
-		Parent = scroll,
+	sticker(root, {
+		top = Palette.StickerFeaturedTop,
+		mid = Palette.StickerFeaturedMid,
+		midAt = FEATURED.midAt,
+		bottom = Palette.StickerFeaturedEnd,
+	}, border, FEATURED.radius, FEATURED.lip, FEATURED.inset)
+	-- Inside the border, above the lip: the rays (H:296) and the art area clip there (overflow hidden, H:295).
+	local clip: Frame = Create("Frame", {
+		Name = "Clip",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(border, border),
+		Size = UDim2.new(1, -2 * border, 1, -(2 * border + FEATURED.lip)),
+		ClipsDescendants = true,
+		Parent = root,
 	})
-	-- Fix round 2: on touch the list's scroll bar stays on screen while it is longer than its window (layoutDetail sizes
-	-- the rail with the list).
-	local scrollHint = ScrollHint.new({ scroll = scroll, parent = parent })
-	scrollHint.root.AnchorPoint = Vector2.new(1, 0)
-	scrollHint.root.Position = UDim2.fromScale(1, 0)
-	c:add(scrollHint)
-	Theme.list(
-		Enum.FillDirection.Vertical,
-		Theme.Padding.small,
-		scroll,
-		Enum.HorizontalAlignment.Left,
-		Enum.VerticalAlignment.Top
-	)
-	local errorLabel = detailLabel(scroll, "Error", 1, "Small")
-	errorLabel.Text = Strings.data.loadFailed
-	Theme.textOnWindow(errorLabel) -- UI FINAL R3: on the pink body (H:196; Danger is 1.8:1 on it)
-	errorLabel.Visible = false
-	-- The preview in an inset well (its size follows the layout class, layoutDetail).
-	local well = Theme.inset({
-		Name = "PreviewWell",
-		Size = UDim2.new(1, 0, 0, DETAIL_ICON_PX + 2 * WELL_PAD_PX),
-		LayoutOrder = 2,
-		Parent = scroll,
-	}, Theme.Radius.tile, WELL_PAD_PX)
-	-- UI overhaul: a soft glow in the rarity's colour behind the preview (refreshDetail colours it).
-	local glowPx = math.floor(DETAIL_ICON_PX * PREVIEW_GLOW_SHARE)
-	local glow: Frame = Create("Frame", {
-		Name = "Glow",
-		BackgroundColor3 = Theme.Colors.ink2,
-		BackgroundTransparency = PREVIEW_GLOW_TRANSPARENCY,
-		BorderSizePixel = 0,
+	local rays = FEATURED.rays
+	Theme.rays(clip, "img.fx.rays", rays.px, rays.alpha, rays.spinS, rays.centreY)
+	-- H:301-306: the art area with its twinkles and the art.
+	local well: Frame = Create("Frame", {
+		Name = "Art",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		ZIndex = 2,
+		Parent = clip,
+	})
+	for index, spot in FEATURED.twinkles do
+		local star = IconGlyph.image(spot.key, { name = "Twinkle" .. index, sizePx = spot.px, parent = well })
+		star.AnchorPoint = Vector2.new(if spot.right then 1 else 0, if spot.bottom then 1 else 0)
+		star.Position = UDim2.new(
+			if spot.right then 1 else 0,
+			if spot.right then -spot.right else spot.left or 0,
+			if spot.bottom then 1 else 0,
+			if spot.bottom then -spot.bottom else spot.top or 0
+		)
+		local image = star:FindFirstChild("Image")
+		if image and image:IsA("GuiObject") then
+			image.AnchorPoint = Vector2.new(0.5, 0.5) -- sdTwinkle turns and scales about the centre
+			image.Position = UDim2.fromScale(0.5, 0.5)
+			UiIdle.add(image, "twinkle", { periodS = spot.periodS, delayS = spot.delayS })
+		end
+	end
+	local holder: Frame = Create("Frame", {
+		Name = "Fit",
+		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(glowPx, glowPx),
-		Active = false,
-		ZIndex = 0,
+		Size = UDim2.fromOffset(FEATURED.art.px, FEATURED.art.px),
 		Parent = well,
 	})
-	Theme.corner(9999, glow)
-	local icon = StaticIcon.new({
+	local fit: UIScale = Create("UIScale", { Parent = holder })
+	local art: Frame = Create("Frame", {
+		Name = "SD_Float",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		Parent = holder,
+	})
+	local icon = SquishyImage.new(Catalog.starterId(), {
 		name = "Preview",
-		squishyId = Catalog.starterId(),
-		sizePx = DETAIL_ICON_PX,
-		parent = well,
+		size = FEATURED.art.px,
+		shadow = FEATURED.art.shadow,
+		parent = art :: Instance,
 	})
 	icon.root.AnchorPoint = Vector2.new(0.5, 0.5)
 	icon.root.Position = UDim2.fromScale(0.5, 0.5)
 	c:add(icon)
-	local name = detailLabel(scroll, "Name", 3, "Title")
-	local rarity = RarityTag.new({ name = "Rarity", rarity = "Common", layoutOrder = 4, parent = scroll })
-	c:add(rarity)
-	-- The price as the coin and a bare number (fewer words; refreshDetail).
-	local priceRow: Frame = Create("Frame", {
-		Name = "PriceRow",
+	-- G6.7 (R5 G5.15): a tap on the art opens Inspect (no visible button; focusable for the gamepad, PR24).
+	local inspect: TextButton = Create("TextButton", {
+		Name = "Shop_InspectButton",
+		Text = "",
+		AutoButtonColor = false,
 		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Visible = false,
+		ZIndex = 3,
+		Parent = well,
+	})
+	Focus.decorate(inspect, FEATURED.radius)
+	c:add(Button.decorate(inspect, { sound = false })) -- opens a screen: ui.open plays instead (§18.5.2 B3)
+	c:add(inspect.Activated:Connect(function()
+		local id = selected
+		if id then
+			UIController.open(INSPECT_SCREEN, { squishyId = id, owned = StateController.owns(id), source = SCREEN })
+		end
+	end))
+
+	-- H:307-312: the text block (padding 0 16 16, gap 6): the name, the line, BUY / OWNED.
+	local text: Frame = Create("Frame", {
+		Name = "Text",
+		BackgroundTransparency = 1,
+		ZIndex = 3,
+		Parent = root,
+	})
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, FEATURED.text.padX),
+		PaddingRight = UDim.new(0, FEATURED.text.padX),
+		PaddingBottom = UDim.new(0, FEATURED.text.padBottom),
+		Parent = text,
+	})
+	Theme.list(Enum.FillDirection.Vertical, FEATURED.text.gap, text, Enum.HorizontalAlignment.Left)
+	local name = Theme.label({
+		Name = "Name",
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+		Parent = text,
+	}, "Found")
+	Theme.stickerText(name, FEATURED.nameRole) -- H:308
+	local line = Theme.label({
+		Name = "Line",
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 2,
+		Parent = text,
+	}, "Small")
+	Theme.stickerText(line, FEATURED.lineRole) -- H:309
+	local errorLabel = Theme.label({
+		Name = "Error",
+		Text = Strings.data.loadFailed,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Visible = false,
+		LayoutOrder = 0,
+		Parent = text,
+	}, "Small")
+	local action: Frame = Create("Frame", {
+		Name = "Action",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, FEATURED.buy.marginTop + FEATURED.buy.face),
+		LayoutOrder = 3,
+		Parent = text,
+	})
+	-- H:310: BUY (green 62 + lip 5, the coin 36 and the price, 28 px stroke 6, gap 10), pulsing on its holder.
+	local pulse: Frame = Create("Frame", {
+		Name = "SD_Pulse",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5), -- sdPulse scales about the centre (the CSS transform origin)
+		Position = UDim2.new(0.5, 0, 0, FEATURED.buy.marginTop + (FEATURED.buy.face + BUTTON_LIP) / 2),
+		Size = UDim2.new(1, 0, 0, FEATURED.buy.face + BUTTON_LIP),
+		Parent = action,
+	})
+	local buy = Button.new({
+		name = "Shop_BuyButton",
+		text = Strings.shop.buy,
+		kind = "primary",
+		width = SHOP.body.featuredWidth - 2 * border - 2 * FEATURED.text.padX,
+		height = FEATURED.buy.face,
+		textRole = FEATURED.buy.textRole,
+		keycap = "", -- reserves the row: the coin, then the price (H:310)
+		clickSound = false, -- H:310 data-snd none: the dialog opens without a sound (RL8)
+		parent = pulse,
+		onActivated = function()
+			local view = lastView
+			if view and view.mode == "buy" then
+				openConfirm()
+			end
+			-- "short" (off) or disabled: Button played ui.error and the shake (P11); nothing opens (H:799, H:1020).
+		end,
+	})
+	c:add(buy)
+	local buyLine = buy.visual:FindFirstChild("Line", true)
+	local buyCoin: Frame? = nil
+	if buyLine then
+		local list = buyLine:FindFirstChildOfClass("UIListLayout")
+		if list then
+			list.Padding = UDim.new(0, FEATURED.buy.gap) -- H:310: gap 10
+		end
+		local coin = CoinIcon.new({ name = "Coin", sizePx = FEATURED.buy.coinPx, layoutOrder = 2, parent = buyLine })
+		c:add(coin)
+		buyCoin = coin.root
+	end
+	local label = buy.visual:FindFirstChild("Label", true)
+	-- H:311: OWNED, the lilac bar (no lip, no inset), the check raised 5 and "OWNED", gap 10.
+	local owned: Frame = Create("Frame", {
+		Name = "Owned",
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, FEATURED.buy.marginTop),
+		Size = UDim2.new(1, 0, 0, FEATURED.owned.face),
+		Visible = false,
+		Parent = action,
+	})
+	Theme.foam(owned, {
+		radius = FEATURED.owned.radius,
+		stroke = FEATURED.owned.border,
+		inner = true,
+		colors = { face = Palette.StickerDisabledTop, faceEnd = Palette.StickerDisabledEnd },
+	})
+	local ownedRow: Frame = Create("Frame", {
+		Name = "Row",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(0, 0),
 		AutomaticSize = Enum.AutomaticSize.XY,
-		LayoutOrder = 5,
-		Parent = scroll,
+		Parent = owned,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, 6, priceRow, Enum.HorizontalAlignment.Left)
-	c:add(CoinIcon.new({ name = "Coin", sizePx = PRICE_COIN_PX, layoutOrder = 1, parent = priceRow }))
-	local price = Theme.label({
-		Name = "Price",
+	Theme.list(
+		Enum.FillDirection.Horizontal,
+		FEATURED.owned.gap,
+		ownedRow,
+		Enum.HorizontalAlignment.Center,
+		Enum.VerticalAlignment.Center
+	)
+	local checkSlot: Frame = Create("Frame", {
+		Name = "Check",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(FEATURED.owned.checkPx, FEATURED.owned.checkPx),
+		LayoutOrder = 1,
+		Parent = ownedRow,
+	})
+	local check = IconGlyph.new({ name = "Icon", icon = "check", sizePx = FEATURED.owned.checkPx, parent = checkSlot })
+	check.root.Position = UDim2.fromOffset(0, -FEATURED.owned.checkRaise) -- H:311: margin-top -5
+	c:add(check)
+	local ownedLabel = Theme.label({
+		Name = "Label",
+		Text = Strings.shop.owned,
 		Size = UDim2.fromOffset(0, 0),
 		AutomaticSize = Enum.AutomaticSize.XY,
 		TextWrapped = false,
 		LayoutOrder = 2,
-		Parent = priceRow,
+		Parent = ownedRow,
 	}, "HudNumber")
-	price.TextColor3 = Theme.Colors.gold -- UI overhaul: the price in Gold, with the HudNumber outline
-	local status = detailLabel(scroll, "Status", 6, "Body")
-	status.Visible = false
-	-- UI overhaul: what the squishy earns per squeeze (Catalog), a reason to buy it; refreshDetail fills it.
-	local coinsLine = detailLabel(scroll, "CoinsPerSqueeze", 7, "Body")
-	Theme.textOnWindow(coinsLine) -- UI FINAL R3: on the pink body (H:196; ink2 is 1.4:1 on it)
-
-	-- Part 8: Buy and Inspect are pinned under the list (a sibling of it, not inside it), so they never scroll below
-	-- the fold; layoutDetail places them (no UIListLayout: ShopFormat.detailLayout decides the rows).
-	local buttons: Frame = Create("Frame", {
-		Name = "DetailButtons",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.fromScale(1, 1),
-		Size = UDim2.new(1 - GRID_SHARE, -PANEL.columnGap, 0, 0),
-		Parent = parent,
-	})
-	local confirm = ConfirmButton.new({
-		name = "Shop_BuyButton",
-		accent = "shop", -- UI overhaul: the Lime purchase CTA
-		text = Strings.shop.buy,
-		price = 0,
-		balance = 0,
-		height = TOUCH.primaryButton,
-		layoutOrder = 1,
-		parent = buttons,
-		onConfirm = buySelected,
-	})
-	c:add(confirm)
-	local inspect = Button.new({
-		name = "Shop_InspectButton",
-		text = Strings.common.inspect,
-		height = TOUCH.primaryButton,
-		layoutOrder = 2,
-		parent = buttons,
-		sound = false, -- opens a screen: ui.open plays instead (§18.5.2 B3)
-		onActivated = function()
-			local id = selected
-			if id then
-				UIController.open(INSPECT_SCREEN, { squishyId = id, owned = StateController.owns(id), source = SCREEN })
-			end
-		end,
-	})
-	inspect.root.Visible = false
-	c:add(inspect)
-	confirm.root.AnchorPoint = Vector2.new(0.5, 0) -- centred in its measured slot (layoutDetail)
-	inspect.root.AnchorPoint = Vector2.new(0.5, 0)
-
-	local success: Frame = Create("Frame", {
-		Name = "Success",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 8,
-		Visible = false,
-		Parent = scroll,
-	})
-	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.small, success, Enum.HorizontalAlignment.Left)
-	local successLabel = Theme.label({ Name = "Text", LayoutOrder = 1, Parent = success }, "H2")
-	local equip = Button.new({
-		name = "Shop_EquipNowButton",
-		text = Strings.shop.equipNow,
-		kind = "primary",
-		height = TOUCH.primaryButton,
-		layoutOrder = 2,
-		parent = success,
-		onActivated = equipNow,
-	})
-	c:add(equip)
+	Theme.stickerText(ownedLabel, FEATURED.owned.textRole)
 
 	detail = {
-		icon = icon,
+		root = root,
 		well = well,
-		glow = glow,
-		coinsLine = coinsLine,
-		name = name,
-		rarity = rarity,
-		priceRow = priceRow,
-		price = price,
-		status = status,
-		error = errorLabel,
-		scroll = scroll,
-		rail = scrollHint.root,
-		buttons = buttons,
-		confirm = confirm,
+		fit = fit,
+		art = art,
+		icon = icon,
 		inspect = inspect,
-		success = success,
-		successLabel = successLabel,
-		equipNow = equip,
+		text = text,
+		name = name,
+		line = line,
+		pulse = pulse,
+		buy = buy,
+		buyLabel = if label and label:IsA("TextLabel") then label else nil,
+		buyCoin = buyCoin,
+		owned = owned,
+		error = errorLabel,
 	}
 end
 
-local function buildCoinsBody(c: Cleanup.Cleanup, parent: Instance, top: number): ScrollingFrame
-	local body: ScrollingFrame = Create("ScrollingFrame", {
-		Name = "CoinsBody",
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, top),
-		Size = UDim2.new(1, 0, 1, -top),
-		CanvasSize = UDim2.fromScale(0, 0),
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
-		Selectable = false,
-		Visible = false,
+-- A section head (H:315, H:329: 22 px #FFE36B, stroke 5).
+local function sectionHead(parent: Instance, name: string, text: string, order: number): TextLabel
+	local head = Theme.label({
+		Name = name,
+		Text = text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = order,
 		Parent = parent,
-	})
-	c:add(body)
-	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.medium, body, Enum.HorizontalAlignment.Center)
-	Create("UIPadding", {
-		PaddingTop = UDim.new(0, Theme.Padding.large),
-		PaddingRight = UDim.new(0, SCROLLBAR_PX + 4),
-		Parent = body,
-	})
-	-- The note sits in an inset field (foam restyle); it shows and hides with the note (refreshCoins).
-	local field = Theme.inset({
-		Name = "UnavailableField",
-		LayoutOrder = 1,
-		Size = UDim2.fromScale(0.8, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Parent = body,
-	}, Theme.Radius.button, Theme.Padding.large)
-	local note = Theme.label({
-		Name = "Unavailable",
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Text = Strings.shop.coinsUnavailable,
-		Parent = field,
-	}, "Body")
-	coinsNoteField = field
-	local list: Frame = Create("Frame", {
-		Name = "Bundles",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 2,
-		Parent = body,
-	})
-	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.small, list, Enum.HorizontalAlignment.Center)
-	coinsBody = body
-	coinsNote = note
-	bundleList = list
-	return body
+	}, "H2")
+	Theme.stickerText(head, SHOP.sections.headRole)
+	return head
 end
 
 local function build(parent: Instance): GuiObject
@@ -1364,8 +1454,21 @@ local function build(parent: Instance): GuiObject
 	c:add(root)
 	local chipHeight = Layout.touchBase(TOUCH.minTarget, UIController.scale())
 
+	-- A phone's way back from the featured card to the list: a chip at the band's right end (shown in that state).
+	local back = Button.new({
+		name = "Shop_BackButton",
+		text = Strings.shop.back,
+		height = chipHeight,
+		parent = root,
+		onActivated = function()
+			setDetailOpen(false)
+		end,
+	})
+	back.root.Visible = false
+	c:add(back)
+	backButton = back
 	-- UI FINAL R3: the gold band (H:291-292, Q9; fitChrome lays it out) and the 76 px X in it (H:347).
-	local tab = Theme.headerTab(root, Strings.hud.nav.shop)
+	local tab = Theme.headerTab(root, Strings.hud.nav.shop, { extra = back.root :: GuiObject })
 	local close = Button.new({
 		name = "Shop_CloseButton",
 		text = Strings.common.close,
@@ -1381,11 +1484,12 @@ local function build(parent: Instance): GuiObject
 	c:add(close)
 	closeButton = close
 
-	-- Tabs (L1 / R1): the first row of the content.
+	-- The phone's tab chips (shown over the list while COINS is drawn; desktops jump with L1 / R1).
 	local tabRow: Frame = Create("Frame", {
 		Name = "Tabs",
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, chipHeight),
+		Visible = false,
 		Parent = root,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, tabRow, Enum.HorizontalAlignment.Left)
@@ -1396,93 +1500,69 @@ local function build(parent: Instance): GuiObject
 			setTab(name)
 		end)
 	end
-	-- The player's Coins (the coin and a bare number) at the tab row's right end (fix batch: the header row is gone).
-	local wallet: Frame = Create("Frame", {
-		Name = "Wallet",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0, chipHeight / 2),
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		Parent = root,
-	})
-	Theme.list(
-		Enum.FillDirection.Horizontal,
-		Theme.Padding.small,
-		wallet,
-		Enum.HorizontalAlignment.Right,
-		Enum.VerticalAlignment.Center
-	)
-	c:add(CoinIcon.new({ name = "Coin", sizePx = HEADER_COIN_PX, layoutOrder = 1, parent = wallet }))
-	coinsLabel = Theme.label({
-		Name = "Coins",
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		TextWrapped = false,
-		LayoutOrder = 2,
-		Parent = wallet,
-	}, "HudNumber")
+	tabChips[ShopFormat.TAB_COINS].root.Visible = false
 
-	local top = chipHeight + PANEL.gap
-
-	-- Squishies tab: the box filter row, then the grid and the detail panel.
+	-- H:294: the body: the featured card, then the right column.
 	local body: Frame = Create("Frame", {
-		Name = "SquishiesBody",
+		Name = "Body",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, top),
-		Size = UDim2.new(1, 0, 1, -top),
 		Parent = root,
 	})
-	squishiesBody = body
+	buildDetail(c, body)
+	local column: Frame = Create("Frame", {
+		Name = "Column",
+		BackgroundTransparency = 1,
+		Parent = body,
+	})
 	local row: Frame = Create("Frame", {
 		Name = "FilterRow",
 		BackgroundTransparency = 1,
 		Size = UDim2.new(1, 0, 0, chipHeight),
 		Visible = false,
-		Parent = body,
+		Parent = column,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, row, Enum.HorizontalAlignment.Left)
 	filterRow = row
 	filterAll = chipButton(c, row, "Shop_FilterAllButton", Strings.inventory.filterAll, 1, function()
 		boxFilter = nil
-		disarm()
 		refresh()
 	end)
 	-- The box's own chip only shows the filter that is on (pressing it changes nothing, as before).
 	filterBox = chipButton(c, row, "Shop_FilterBoxButton", "", 2, function() end)
-
-	local content: Frame = Create("Frame", {
-		Name = "Content",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
-		Parent = body,
-	})
-	-- The grid and detail start under the filter row while it shows (applyLayout: ShopFormat.panelLayout's listTop).
+	-- The list starts under the filter row while it shows (applyLayout: ShopFormat.panelLayout's listTop).
 	c:add(row:GetPropertyChangedSignal("Visible"):Connect(function()
 		applyLayout()
 	end))
 
-	local gridFrame: ScrollingFrame = Create("ScrollingFrame", {
-		Name = "Grid",
+	-- H:314: the list of sections (gap 12): SQUISHIES over the cards, COINS over the pack cards.
+	local list: ScrollingFrame = Create("ScrollingFrame", {
+		Name = "List",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.fromScale(GRID_SHARE, 1),
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
 		Selectable = false,
-		Parent = content,
+		Parent = column,
 	})
-	-- Room on every side for the cards' rarity rims (the grid clips its children). The side room is
-	-- ShopFormat.PANEL.gridChrome (4 + the scrollbar + 4), which gridFit counts.
+	Theme.scrollbar(list) -- G5.18 (H:22)
+	-- Room on every side for the cards' rarity rims (the list clips its children): PANEL.gridChrome counts it.
 	Create("UIPadding", {
-		PaddingTop = UDim.new(0, 4),
-		PaddingBottom = UDim.new(0, 4),
-		PaddingLeft = UDim.new(0, 4),
-		PaddingRight = UDim.new(0, SCROLLBAR_PX + 4),
-		Parent = gridFrame,
+		PaddingTop = UDim.new(0, LIST_PAD),
+		PaddingBottom = UDim.new(0, LIST_PAD),
+		PaddingLeft = UDim.new(0, LIST_PAD),
+		PaddingRight = UDim.new(0, Theme.SCROLLBAR_PX + LIST_PAD),
+		Parent = list,
+	})
+	Theme.list(Enum.FillDirection.Vertical, SHOP.sections.gap, list, Enum.HorizontalAlignment.Left)
+	sectionHead(list, "SquishiesHead", Strings.shop.sectionSquishies, 1)
+	local cardsFrame: Frame = Create("Frame", {
+		Name = "Cards",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 2,
+		Parent = list,
 	})
 	local statusWidth: number
 	cardSize, statusWidth = measureCards()
@@ -1491,26 +1571,40 @@ local function build(parent: Instance): GuiObject
 		CellPadding = UDim2.fromOffset(CELL_PAD, CELL_PAD),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		FillDirection = Enum.FillDirection.Horizontal,
-		Parent = gridFrame,
+		Parent = cardsFrame,
 	})
-	grid = gridFrame
 	for _, def in Catalog.list() do
-		buildCard(c, gridFrame, def.id)
+		buildCard(c, cardsFrame, def.id)
 	end
 	for _, card in cards do
 		card.statusLimit.MaxSize = Vector2.new(statusWidth, math.huge)
 	end
-	buildDetail(c, content)
-
-	-- Coins tab.
-	local coins = buildCoinsBody(c, root, top)
+	local coinsHead = sectionHead(list, "CoinsHead", Strings.shop.sectionCoins, 3)
+	coinsHead.Visible = false
+	local packs: Frame = Create("Frame", {
+		Name = "Packs",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 4,
+		Visible = false,
+		Parent = list,
+	})
+	packLayout = Create("UIGridLayout", {
+		CellPadding = UDim2.fromOffset(PACKS.gap, PACKS.gap),
+		FillDirectionMaxCells = PACKS.columns,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		FillDirection = Enum.FillDirection.Horizontal,
+		Parent = packs,
+	})
 	frames = {
 		tabs = tabRow,
-		wallet = wallet,
 		body = body,
-		content = content,
-		grid = gridFrame,
-		coins = coins,
+		column = column,
+		list = list,
+		cards = cardsFrame,
+		coinsHead = coinsHead,
+		packs = packs,
 		tab = tab,
 		padding = root:FindFirstChildOfClass("UIPadding") :: UIPadding,
 	}
@@ -1544,41 +1638,36 @@ local function build(parent: Instance): GuiObject
 	return root
 end
 
--- UI overhaul: the detail preview's idle life while the screen is open: a gentle bob and sway of the one StaticIcon
--- (never every card), still under ReducedMotion.
+-- UI FINAL R6: the featured card's idle life while the screen is open (H:295, H:305, H:310): its rise on open, the
+-- art's sdFloat 3 s and BUY's sdPulse 1.6 s (Anim/UiIdle; at rest under ReducedMotion).
 local function startPreviewBob(c: Cleanup.Cleanup)
 	local d = detail
 	if d == nil then
 		return
 	end
-	local root = d.icon.root
-	local elapsed = 0
-	c:add(Scheduler.add(function(dt: number): boolean
-		if Tweens.reducedMotion() then
-			root.Position = UDim2.fromScale(0.5, 0.5)
-			root.Rotation = 0
-			return true
-		end
-		elapsed = (elapsed + dt) % PREVIEW_BOB_SECONDS
-		local phase = 2 * math.pi * elapsed / PREVIEW_BOB_SECONDS
-		root.Position = UDim2.new(0.5, 0, 0.5, math.sin(phase) * PREVIEW_BOB_PX)
-		root.Rotation = math.sin(phase * 0.5) * PREVIEW_WOBBLE_DEG
-		return true
-	end, "render"))
+	local rise = FEATURED.rise
+	c:add(Scheduler.add(Tweens.keyframes(d.root, rise.frames :: any, { ms = rise.ms, curve = rise.curve }), "render"))
+	local float = UiIdle.add(d.art, "float", { periodS = FEATURED.art.floatS })
+	local pulse = UiIdle.add(d.pulse, "pulse", { periodS = FEATURED.buy.pulseS })
 	c:add(function()
-		root.Position = UDim2.fromScale(0.5, 0.5)
-		root.Rotation = 0
+		if float then
+			float:remove()
+		end
+		if pulse then
+			pulse:remove()
+		end
 	end)
 end
 
--- Gamepad: keeps the selected card inside the grid's visible part (§11.4), only while the screen is open.
+-- Gamepad: keeps the selected card inside the list's visible part (§11.4), only while the screen is open.
 local function followSelection(c: Cleanup.Cleanup)
 	c:add(GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
-		local frame = grid
+		local f = frames
 		local object = GuiService.SelectedObject
-		if frame == nil or object == nil or object.Parent ~= frame then
+		if f == nil or object == nil or object.Parent ~= f.cards then
 			return
 		end
+		local frame = f.list
 		local scale = math.max(UIController.scale(), 1e-3)
 		local topPx = (object.AbsolutePosition.Y - frame.AbsolutePosition.Y) / scale
 		local bottom = topPx + object.AbsoluteSize.Y / scale
@@ -1619,30 +1708,35 @@ function ShopController.debugState(): { [string]: any }
 		end
 	end
 	table.sort(visible)
-	local d = detail
+	local view = lastView
 	return {
 		built = panel ~= nil,
 		open = UIController.isOpen(SCREEN),
 		tab = tab,
+		sections = sections(),
 		boxFilter = boxFilter,
 		selected = selected,
+		detailOpen = detailOpen,
 		visible = visible,
 		buying = buying,
 		lastSuccess = lastSuccess,
-		confirm = if d then d.confirm:getView().mode else nil,
+		featured = if view then view.mode else nil,
+		confirmOpen = confirmDialog ~= nil,
+		congratsOpen = congrats ~= nil,
 		promptingKey = promptingKey,
-		-- Part 8: the card size and the pinned detail buttons (base px); fix batch: the fitted grid
+		-- Part 8: the card size; UI FINAL R6: the body and the featured card (base px)
 		card = { width = cardSize.width, height = cardSize.height, stacked = cardSize.stacked },
-		grid = if panelLayout
-			then { columns = panelLayout.columns, width = panelLayout.gridWidth, detailWidth = panelLayout.detailWidth }
-			else nil,
-		detailButtons = if lastDetail
+		body = if panelLayout
 			then {
-				rows = lastDetail.rows,
-				scrollHeight = lastDetail.scrollHeight,
-				buttonsTop = lastDetail.buttonsTop,
-				buttonsHeight = lastDetail.buttonsHeight,
+				columns = panelLayout.columns,
+				featuredWidth = panelLayout.featuredWidth,
+				featuredHeight = panelLayout.featuredHeight,
+				listWidth = panelLayout.listWidth,
+				listHeight = panelLayout.listHeight,
 			}
+			else nil,
+		featuredLayout = if lastDetail
+			then { artArea = lastDetail.artArea, artPx = lastDetail.artPx, textTop = lastDetail.textTop }
 			else nil,
 	}
 end
@@ -1656,13 +1750,14 @@ function ShopController.init()
 		build = build,
 		onOpen = function(params: any?)
 			local p = ShopFormat.params(params)
-			tab = p.tab
 			boxFilter = p.boxId
 			local id = p.squishyId
 			if id and Catalog.isValidId(id) then
 				selected = id
 			end
 			lastSuccess = nil
+			-- A phone opened on a squishy ("View in Shop") shows its featured card; else the list.
+			detailOpen = id ~= nil and UIController.layoutClass() == "compact"
 			local oc = Cleanup.new()
 			if openCleanup then
 				openCleanup:clean()
@@ -1671,31 +1766,39 @@ function ShopController.init()
 			followSelection(oc)
 			startPreviewBob(oc)
 			refresh()
+			applyLayout()
+			-- The coin pill ({tab = "coins"}) opens at COINS while it is drawn, else at the top (R4 G4.16).
+			tab = if table.find(sections(), p.tab) then p.tab else ShopFormat.TAB_SQUISHIES
+			refresh()
+			task.defer(scrollTo, tab)
 		end,
 		onClose = function()
 			if openCleanup then
 				openCleanup:clean()
 				openCleanup = nil
 			end
-			local d = detail
-			if d and buying == nil then
-				d.confirm:reset()
+			if buying == nil then
+				closeConfirm() -- never left open over another screen (a busy one closes with its answer)
 			end
 		end,
 		primary = function(): GuiObject?
-			-- The selected card (Squishies tab), else the tab's chip, else Close (Part 8: never nothing).
+			-- The phone's featured card: BUY; else the selected card, the tab's chip, Close (never nothing).
+			local d = detail
+			if d and detailOpen and d.root.Visible then
+				return d.buy.root
+			end
 			local card = if selected then cards[selected] else nil
-			if tab ~= ShopFormat.TAB_COINS and card and card.root.Visible then
+			if card and card.root.Visible then
 				return card.root
 			end
 			local chip = tabChips[tab]
-			if chip then
+			if chip and chip.root.Visible then
 				return chip.root
 			end
 			return if closeButton then closeButton.root else nil
 		end,
 		onTab = function(direction: number)
-			setTab(ShopFormat.nextTab(tab, direction))
+			setTab(ShopFormat.nextTab(tab, direction, sections()))
 		end,
 	}))
 	c:add(WorldBinder.registerStand(COUNTER_TAG, function()
@@ -1733,19 +1836,23 @@ function ShopController.init()
 			openCleanup = nil
 		end
 		stopPrompt()
+		closeConfirm()
+		local overlay = congrats
+		if overlay then
+			overlay:destroy()
+		end
+		closeCongrats()
 		table.clear(cards)
 		table.clear(tabChips)
 		table.clear(chipActive)
 		table.clear(bundleRows)
 		table.clear(prices)
-		panel, coinsLabel, loadingLabel, filterRow, filterAll, filterBox = nil, nil, nil, nil, nil, nil
-		frames, closeButton, panelLayout, lastDetail, lastBuy = nil, nil, nil, nil, nil
-		successShown = false
-		squishiesBody, coinsBody, coinsNote, bundleList, grid, gridLayout, detail = nil, nil, nil, nil, nil, nil, nil
-		coinsNoteField, cardLines = nil, nil
+		panel, loadingLabel, filterRow, filterAll, filterBox = nil, nil, nil, nil, nil
+		frames, closeButton, backButton, panelLayout, lastDetail, lastView = nil, nil, nil, nil, nil, nil
+		gridLayout, packLayout, detail, cardLines, shownView = nil, nil, nil, nil, nil
 		tab, boxFilter, selected, buying, pendingRequest, lastSuccess =
 			ShopFormat.TAB_SQUISHIES, nil, nil, nil, nil, nil
-		equipping = false
+		detailOpen, coinsShown = false, false
 	end)
 	log:debug("ready")
 end

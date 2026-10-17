@@ -15,27 +15,28 @@
 --   requestIdFor(pending, id, price, newId) the request id of a buy press: a retry of the same buy after an answer
 --                                           that never reached the server reuses it (§3.4 idempotency)
 --   bundlesAllowed(gripCfg) / robuxText(p) / coinsView(offered, bundles, prices, allowed)  the Coins tab
--- Part 8 layout (DESIGN §11.2, §11.6; the same fold as the Squishies screen's), all base px:
---   PANEL / panelLayout(screenPx, filtered)  the panel, header, tab and filter rows (touch-sized chips), the body and
---                                           the detail column for a ScreenGui of screenPx actual px
---   buyBox(naturalWidth, columnWidth, buttonHeight, wrappedHeight)   the Buy button's box: its natural width (the
---                                           widest text it can show) when that fits the column, else the column's
---                                           width with the label wrapped, as tall as that text needs
---   detailLayout(w, h, gap, buy?, balanceLine, inspect?)   Buy (with its "Balance after" line under it) and Inspect
---                                           pinned under the scrolling detail, wrapped in a narrow column
 -- Foam UI restyle (spec 2026-10-09: fewer words):
 --   priceNumber(price) / cardLine(entry)    the price as a bare number ("1,200") beside the coin icon, and a card's
 --                                           status line with whether the coin shows: the price for a buyable card,
 --                                           the missing Coins (with the coin) or cardStatusText's words otherwise
---   panelLayout(screenPx, filtered, topPadding?)   the panel's real top padding (its header tab's room), like
---                                           InventoryFormat.panelLayout
--- Foam fix batch (2026-10-09; on a phone the cards' prices and the detail were cut off):
---   panelLayout(screenPx, filtered, topPadding?, cardWidth?)   Close hangs on the panel's top-right corner
---                                           (InventoryFormat.hangingChrome), so the tab row starts the content (no
---                                           header row; the player's Coins sit at the tab row's right end); with the
---                                           card width the grid takes only the columns that fit in gridShare
---                                           (InventoryFormat.gridFit) and the detail column the rest
--- Foam fix round 2 (2026-10-09): detailLayout keeps PANEL.buttonGap (12, as on Squishies) between Buy and Inspect.
+-- UI FINAL R6 (the Shop window = Diego's design, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line
+-- n; Config.UI.Shop), all base px:
+--   PANEL / panelLayout(screen, filtered, top?, cardWidth?, detailOpen?, tabs?)   the Shop window (H:289, R3) and
+--                                           its body (H:294: 330 | 1fr, gap 20, padding 20 / 24 / 24 inside the 5 px
+--                                           border): the featured card on the left, the right column (the box filter
+--                                           row, then the scrolling list of sections) with the card grid's columns
+--                                           (InventoryFormat.gridFit). Desktops have no tab chips (L1 / R1 jump
+--                                           between the sections, nextTab); a phone (the compact class) shows one of
+--                                           the two at a time (the plan's separate detail state: `detailOpen`), with
+--                                           the tab chips over the list while there are sections to switch
+--   sections(coinsShown) / nextTab(tab, dir, sections?)   the sections drawn (COINS only while a bundle is offered,
+--                                           G6.6) and the L1 / R1 jump between them
+--   featuredLayout(height, nameHeight, lineHeight)   the featured card (H:295-312): the art area over the text block
+--                                           and the art's size (230, smaller when the area is, hidden under minPx)
+--   featuredLine(rarity, power) / featuredView(entry, block, buying)   the line under the name (H:309, FD4) and what
+--                                           the featured card's button shows: BUY with the price, the "off" BUY
+--                                           when the Coins are short (P11), BUY disabled with a reason, the
+--                                           spinner while buying, or OWNED (H:311)
 -- Readings (DESIGN is silent):
 -- * Sort: rarity ascending (Common first), then shop price ascending (not sold last), then name: the cheapest way in
 --   first. The Squishies screen sorts rarity descending; the shop is a price list.
@@ -116,43 +117,47 @@ export type BundleRow = {
 
 export type CoinsView = { unavailable: boolean, text: string?, rows: { BundleRow } }
 
--- The Shop panel in base px (panelLayout).
+-- The Shop window in base px (panelLayout). UI FINAL R6: every body position is inside the window's content box
+-- (its UIPadding: the band's room on top, PANEL.padding on the sides and the bottom).
 export type PanelLayout = {
 	scale: number,
 	class: string, -- "compact" | "regular"
 	panelWidth: number,
 	panelHeight: number,
-	topPadding: number, -- the panel's top padding (raised by its header tab and the hanging Close)
+	topPadding: number, -- the window's top padding (its band, Theme.fitWindow)
 	contentWidth: number,
 	contentHeight: number,
-	closeHeight: number, -- the Close button hanging on the top-right corner (fix batch: no header row)
-	chipHeight: number, -- the tab chips and the box filter chips
-	bodyTop: number, -- the Squishies / Coins body under the tabs
+	closeHeight: number, -- the close X's hit box (touch-sized)
+	chipHeight: number, -- the tab chips, the box filter chips and the phone's Back chip
+	inset: number, -- the body's extra room on the sides and at the bottom (H:294: 24 inside the 5 px border)
+	bodyWidth: number,
+	tabsShown: boolean, -- the phone's tab chips over the list
+	bodyTop: number, -- the featured card and the right column, under the tab chips
 	bodyHeight: number,
-	listTop: number, -- the grid and detail under the box filter row (0 without a filter)
-	gridWidth: number,
-	columns: number, -- the grid's columns (InventoryFormat.gridFit); 0 when panelLayout was given no card width
-	detailWidth: number,
-	detailHeight: number,
+	featuredShown: boolean,
+	featuredWidth: number,
+	featuredHeight: number, -- its face and lip (the lip hangs into the bottom padding, H:295 box-shadow)
+	listShown: boolean,
+	listLeft: number, -- the right column
+	listWidth: number,
+	listTop: number, -- the list under the box filter row (0 without a filter), inside the right column
+	listHeight: number,
+	gridWidth: number, -- the card grid inside the list: as wide as its columns (InventoryFormat.gridFit)
+	columns: number, -- 0 when panelLayout was given no card width
 	-- UI FINAL R3: the Shop window's chrome scale, centre offset and what hangs above it (Layout.windowFit).
 	chromeScale: number,
 	shift: number,
 	above: number,
 }
 
-export type Box = { w: number, h: number }
+-- UI FINAL R6: the featured card's parts (featuredLayout), base px from the card's top.
+export type FeaturedLayout = { artArea: number, artPx: number, textTop: number, textHeight: number }
 
-export type BuyBox = { w: number, h: number, wraps: boolean }
-
--- The detail column (detailLayout): the list scrolls above, Buy and Inspect are pinned under it.
-export type DetailLayout = {
-	rows: number,
-	scrollHeight: number,
-	buttonsTop: number,
-	buttonsHeight: number,
-	buy: Layout.Rect?, -- the Buy holder (button + "Balance after" line), relative to the button area
-	inspect: Layout.Rect?,
-}
+-- UI FINAL R6: what the featured card's button shows (featuredView): "buy" (BUY, the coin and the price), "short"
+-- (the same, "off": the Coins do not cover it, P11), "blocked" (disabled with `reason`), "loading" (the spinner),
+-- "owned" (the lilac OWNED bar, H:311), "notSold" (disabled with the not-for-sale reason).
+export type FeaturedMode = "buy" | "short" | "blocked" | "loading" | "owned" | "notSold"
+export type FeaturedView = { mode: FeaturedMode, priceText: string?, reason: string? }
 
 -- Constants
 
@@ -160,24 +165,24 @@ local TAB_SQUISHIES = "squishies"
 local TAB_COINS = "coins"
 local TABS: { Tab } = { TAB_SQUISHIES, TAB_COINS }
 local UNKNOWN_RANK = math.huge
-local GRID_SHARE = (Config.UI.Inventory.gridWidthMin + Config.UI.Inventory.gridWidthMax) / 2
 local TOUCH = Config.UI.Touch
--- The panel (base px). Readings: the Squishies screen's margin, height share, padding, gaps, split, tab gap and grid
--- cells (ShopFormat_Test keeps them equal to Theme's tokens and InventoryFormat.PANEL). SUB_GAP is ConfirmButton's gap
--- above "Balance after".
+local SHOP = Config.UI.Shop
+local BODY = SHOP.body
+local WINDOW_BORDER = Config.UI.Sticker.border.heavy -- H:290: the window's 5 px border, drawn inside its box
+-- The window (base px). Readings: the Squishies screen's margin and height share (unused by a fitted window, kept for
+-- Layout.modalPanel). UI FINAL R6: padding = the body's top padding (H:294: 20; the band sits above it, R3), gap = the
+-- chip rows' gap (Theme.Padding.small), columnGap = the 330 | 1fr gap (H:294), cellPad = the card grid's gap (H:330),
+-- gridChrome = the list's padding 4 + Theme.scrollbar's 12 + 4.
 local PANEL = {
 	margin = 24,
 	heightShare = 0.88,
-	padding = 12,
+	padding = BODY.padTop,
 	gap = 6,
-	columnGap = 12,
-	gridShare = GRID_SHARE,
+	columnGap = BODY.gap,
 	tabGap = 6,
-	cellPad = 8,
-	gridChrome = 14,
-	buttonGap = 12, -- fix round 2: between Buy and Inspect (and their rows), as between the Squishies detail buttons
+	cellPad = SHOP.sections.cellGap,
+	gridChrome = 4 + Config.UI.Sticker.window.scrollbarPx + 4,
 }
-local SUB_GAP = 2
 
 -- Module table
 
@@ -187,7 +192,6 @@ ShopFormat.TABS = TABS
 ShopFormat.TAB_SQUISHIES = TAB_SQUISHIES
 ShopFormat.TAB_COINS = TAB_COINS
 ShopFormat.PANEL = PANEL
-ShopFormat.SUB_GAP = SUB_GAP
 
 -- Private
 
@@ -229,11 +233,22 @@ function ShopFormat.params(raw: unknown): Params
 	return result
 end
 
--- L1 / R1 (§11.4): the tab `direction` steps away, wrapping around.
-function ShopFormat.nextTab(tab: Tab, direction: number): Tab
-	local index = table.find(TABS, tab) or 1
+-- L1 / R1 (§11.4): the tab `direction` steps away, wrapping around. UI FINAL R6: among `sections` (the ones drawn,
+-- default TABS), so with COINS hidden it stays on SQUISHIES; a tab that is not drawn starts from the first.
+function ShopFormat.nextTab(tab: Tab, direction: number, sections: { Tab }?): Tab
+	local list = sections or TABS
+	if #list == 0 then
+		return TAB_SQUISHIES
+	end
+	local index = table.find(list, tab) or 1
 	local step = if direction < 0 then -1 else 1
-	return TABS[(index - 1 + step) % #TABS + 1]
+	return list[(index - 1 + step) % #list + 1]
+end
+
+-- UI FINAL R6 (G6.6, H:314-342): the sections the right column draws, in order: SQUISHIES, then COINS only while a
+-- coin bundle is offered (its heading and note are not drawn otherwise).
+function ShopFormat.sections(coinsShown: boolean): { Tab }
+	return if coinsShown then { TAB_SQUISHIES, TAB_COINS } else { TAB_SQUISHIES }
 end
 
 -- Public: cards ------------------------------------------------------------------------------------------------------
@@ -502,21 +517,23 @@ function ShopFormat.coinsView(
 	return { unavailable = false, text = nil, rows = rows }
 end
 
--- Part 8 layout ---------------------------------------------------------------------------------------------------------
+-- UI FINAL R6 layout (the Shop window, H:289-342) ------------------------------------------------------------------
 
--- The Shop panel for a ScreenGui of `screenPx` actual px: Close (hanging on the top-right corner, fix batch: no header
--- row) and the chips touch-sized; the tab row starts the content and the body sits under it; with a box filter
--- (`filtered`) the grid and detail start under the filter row. With `cardWidth` the grid takes only the columns that
--- fit in gridShare of the content width (InventoryFormat.gridFit) and the detail column the rest; without it the plain
--- gridShare split. `topPadding` is the panel's real top padding (InventoryFormat.hangingChrome's top; default
--- PANEL.padding); the bottom keeps PANEL.padding. UI FINAL R3: the panel is the Shop window (H:289: 1060 x 650, shrunk
--- to fit, Layout.windowFit; its lip under the face), its top padding the band's (Theme.fitWindow), with the window's
--- chromeScale, shift and above.
+-- The Shop window for a ScreenGui of `screenPx` actual px (R3: the design's 1060 x 650, shrunk to fit,
+-- Layout.windowFit) and its body (H:294): inside the window's content box (its top padding `topPadding` = the band's
+-- room, Theme.fitWindow; default PANEL.padding) the body takes `inset` more on the sides and at the bottom (the
+-- design's 24 inside the 5 px border, over the window's 20), then the featured card (330, the body's height and its
+-- lip) and, `columnGap` to its right, the right column: the box filter row while `filtered`, then the list. With
+-- `cardWidth` the card grid takes the columns that fit in the list (InventoryFormat.gridFit). On a phone (the compact
+-- class) the body shows one of the two: the list, or with `detailOpen` the featured card across the whole body (the
+-- plan's separate detail state); the tab chips sit over the list while `tabs` (more than one section) is true.
 function ShopFormat.panelLayout(
 	screenPx: Vector2,
 	filtered: boolean,
 	topPadding: number?,
-	cardWidth: number?
+	cardWidth: number?,
+	detailOpen: boolean?,
+	tabs: boolean?
 ): PanelLayout
 	local p = Layout.modalPanel(screenPx, PANEL.margin, PANEL.heightShare, PANEL.padding, "shop")
 	local top = topPadding
@@ -526,13 +543,23 @@ function ShopFormat.panelLayout(
 	local contentHeight = math.max(0, p.contentHeight - ((top :: number) - PANEL.padding))
 	local closeHeight = Layout.touchBase(TOUCH.closeButton, p.scale)
 	local chipHeight = Layout.touchBase(TOUCH.minTarget, p.scale)
-	local bodyTop = chipHeight + PANEL.gap
-	local bodyHeight = math.max(0, contentHeight - bodyTop)
+	local compact = p.class == "compact"
+	local inset = BODY.padSide - BODY.padTop + WINDOW_BORDER
+	local bottomInset = BODY.padBottom - BODY.padTop + WINDOW_BORDER
+	local bodyWidth = math.max(0, p.contentWidth - 2 * inset)
+	local featuredShown = not compact or detailOpen == true
+	local listShown = not compact or detailOpen ~= true
+	local tabsShown = compact and listShown and tabs == true
+	local bodyTop = if tabsShown then chipHeight + PANEL.gap else 0
+	local bodyHeight = math.max(0, contentHeight - bottomInset - bodyTop)
+	local featuredWidth = if compact then bodyWidth else math.min(BODY.featuredWidth, bodyWidth)
+	local listLeft = if compact then 0 else featuredWidth + PANEL.columnGap
+	local listWidth = math.max(0, bodyWidth - listLeft)
 	local listTop = if filtered then chipHeight + PANEL.gap else 0
-	local gridWidth = p.contentWidth * PANEL.gridShare
+	local gridWidth = listWidth
 	local columns = 0
 	if cardWidth ~= nil and cardWidth == cardWidth and cardWidth > 0 and cardWidth < math.huge then
-		local fit = InventoryFormat.gridFit(gridWidth, cardWidth, PANEL.cellPad, PANEL.gridChrome)
+		local fit = InventoryFormat.gridFit(listWidth, cardWidth, PANEL.cellPad, PANEL.gridChrome)
 		gridWidth, columns = fit.width, fit.columns
 	end
 	return {
@@ -545,66 +572,79 @@ function ShopFormat.panelLayout(
 		contentHeight = contentHeight,
 		closeHeight = closeHeight,
 		chipHeight = chipHeight,
+		inset = inset,
+		bodyWidth = bodyWidth,
+		tabsShown = tabsShown,
 		bodyTop = bodyTop,
 		bodyHeight = bodyHeight,
+		featuredShown = featuredShown,
+		featuredWidth = featuredWidth,
+		featuredHeight = bodyHeight + SHOP.featured.lip,
+		listShown = listShown,
+		listLeft = listLeft,
+		listWidth = listWidth,
 		listTop = listTop,
+		listHeight = math.max(0, bodyHeight - listTop),
 		gridWidth = gridWidth,
 		columns = columns,
-		detailWidth = math.max(0, p.contentWidth - gridWidth - PANEL.columnGap),
-		detailHeight = math.max(0, bodyHeight - listTop),
 		chromeScale = p.chromeScale or 1,
 		shift = p.shift or 0,
 		above = p.above or 0,
 	}
 end
 
--- The Buy button's box: `naturalWidth` (its widest text on one line, Button.widthFor) when that fits the column, else
--- the column's width with the label wrapped and the button as tall as `wrappedHeight` (that text wrapped, plus its
--- padding) needs, never below `buttonHeight`.
-function ShopFormat.buyBox(
-	naturalWidth: number,
-	columnWidth: number,
-	buttonHeight: number,
-	wrappedHeight: number
-): BuyBox
-	if naturalWidth <= columnWidth then
-		return { w = naturalWidth, h = buttonHeight, wraps = false }
+-- The featured card (H:295-312) `height` base px tall (its face and lip): the text block at the bottom (H:307:
+-- padding 0 16 16, gap 6: the name `nameHeight` (it may wrap), the line `lineHeight`, then BUY / OWNED's face with
+-- its margin-top; the button's lip hangs into the bottom padding as the design's box-shadow does) and the art area
+-- above it, inside the 4 px border (the LIMITED row is not built, UD5). The art is 230 (H:305), as big as the area
+-- allows, and hidden under minPx (the name, the line and BUY stay).
+function ShopFormat.featuredLayout(height: number, nameHeight: number, lineHeight: number): FeaturedLayout
+	local f = SHOP.featured
+	local face = math.max(0, (if height == height then height else 0) - f.lip)
+	local text = math.max(0, nameHeight)
+		+ f.text.gap
+		+ math.max(0, lineHeight)
+		+ f.text.gap
+		+ f.buy.marginTop
+		+ f.buy.face
+		+ f.text.padBottom
+	local artArea = math.max(0, face - 2 * f.border - text)
+	local artPx = math.min(f.art.px, math.floor(artArea))
+	if artPx < f.art.minPx then
+		artPx = 0
 	end
-	return { w = math.max(0, columnWidth), h = math.max(buttonHeight, math.ceil(wrappedHeight)), wraps = true }
+	return { artArea = artArea, artPx = artPx, textTop = f.border + artArea, textHeight = text }
 end
 
--- The detail column of `detailWidth` × `detailHeight`: Buy (`buy`, with its `balanceLine` px "Balance after" line and
--- SUB_GAP under it, always reserved so arming never moves anything) then Inspect (`inspect`), wrapped and pinned at the
--- bottom, PANEL.buttonGap apart (fix round 2); the list scrolls in what is left above them, `gap` above the buttons. A
--- nil box is a hidden button.
-function ShopFormat.detailLayout(
-	detailWidth: number,
-	detailHeight: number,
-	gap: number,
-	buy: Box?,
-	balanceLine: number,
-	inspect: Box?
-): DetailLayout
-	local items: { Layout.WrapItem } = {}
-	local buyIndex: number? = nil
-	local inspectIndex: number? = nil
-	if buy then
-		table.insert(items, { w = buy.w, h = buy.h + SUB_GAP + math.max(0, balanceLine) })
-		buyIndex = #items
+-- The featured line (H:309; FD4: the design lists the bundle, the game the squishy): "{Rarity} · x{power} power".
+-- AFFECTED 2026-10-15: the power is the capsule multiplier; the line is wired to the new income later.
+function ShopFormat.featuredLine(rarity: string, power: number): string
+	local names = (Strings :: any).rarity[string.lower(rarity)]
+	local name = if type(names) == "table" and type(names.name) == "string" then names.name else rarity
+	return Strings.format(Strings.shop.featuredLine, { rarity = name, power = power })
+end
+
+-- What the featured card's button shows for `entry` (nil: nothing selected), with `block` the spendBlock reason (or
+-- another buy in flight) and `buying` the id a ShopBuy runs for. Priority: owned > not sold > buying > blocked >
+-- short > buy. AFFECTED 2026-10-15: with duplicates and fusion owning one may stop blocking another buy; OWNED is
+-- wired to today's rule (one of each).
+function ShopFormat.featuredView(entry: Entry?, block: string?, buying: string?): FeaturedView
+	if entry == nil then
+		return { mode = "notSold", priceText = nil, reason = nil }
 	end
-	if inspect then
-		table.insert(items, { w = inspect.w, h = inspect.h })
-		inspectIndex = #items
+	local priceText = ShopFormat.priceNumber(entry.price)
+	if entry.owned then
+		return { mode = "owned", priceText = nil, reason = nil }
+	elseif entry.price == nil then
+		return { mode = "notSold", priceText = nil, reason = Strings.reasonText("shop.notForSale") }
+	elseif buying == entry.id then
+		return { mode = "loading", priceText = priceText, reason = nil }
+	elseif block ~= nil then
+		return { mode = "blocked", priceText = priceText, reason = block }
+	elseif entry.missing > 0 then
+		return { mode = "short", priceText = priceText, reason = nil }
 	end
-	local pinned = Layout.pinnedButtons(detailWidth, detailHeight, gap, items, PANEL.buttonGap)
-	return {
-		rows = pinned.rows,
-		scrollHeight = pinned.scrollHeight,
-		buttonsTop = pinned.buttonsTop,
-		buttonsHeight = pinned.buttonsHeight,
-		buy = if buyIndex then pinned.buttons[buyIndex] else nil,
-		inspect = if inspectIndex then pinned.buttons[inspectIndex] else nil,
-	}
+	return { mode = "buy", priceText = priceText, reason = nil }
 end
 
 return ShopFormat

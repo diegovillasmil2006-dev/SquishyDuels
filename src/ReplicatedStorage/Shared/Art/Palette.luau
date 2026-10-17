@@ -435,6 +435,17 @@ local Palette = {
 	StickerCoinFlash = Color3.fromHex("#FFF3A0"), -- H:577: the coin landing's sparks and flash
 	StickerSpendFloat = Color3.fromHex("#FF7A8A"), -- H:673: the "-N" spend float
 	StickerPriceShort = Color3.fromHex("#FFB3BE"), -- H:946: an "off" button's price (OPEN, H:278; our coin BUY)
+	-- The Shop window (UI FINAL R6): the featured card, the coin pack cards, the congrats radial (its alphas in
+	-- Config.UI.Shop.congrats) and the confirm medallion's centre.
+	StickerFeaturedTop = Color3.fromHex("#FFE58A"), -- H:295: the featured card (0%)
+	StickerFeaturedMid = Color3.fromHex("#F5A623"), -- H:295 (45%)
+	StickerFeaturedEnd = Color3.fromHex("#7B4FE0"), -- H:295 (100%)
+	StickerPackTop = Color3.fromHex("#FFF3C4"), -- H:332: a coin pack card
+	StickerPackEnd = Color3.fromHex("#FFD86B"), -- H:332
+	StickerCongratsTop = Color3.fromHex("#FFD65A"), -- H:537: the congrats radial (0%)
+	StickerCongratsMid = Color3.fromHex("#F58C1E"), -- H:537 (35%)
+	StickerCongratsEnd = Color3.fromHex("#7828A0"), -- H:537 (100%)
+	StickerMedallionTop = Color3.fromHex("#FFF6C8"), -- H:458: the confirm medallion's centre (to StickerGoldMid)
 	-- The lobby HUD (UI FINAL R4; `N:n` = Diego's newer "Squishy Duels TDMFFA animations and hud/Squishy Duels
 	-- HUD.dc.html" line n, its DUEL mode picker).
 	StickerDuelSubDrop = Color3.fromHex("#780A32"), -- H:131: "Join the queue"'s soft drop (at .55)

@@ -516,6 +516,56 @@ local UI = {
 	},
 
 	confirmSeconds = 3, -- inline two-step spend confirm reverts after this (§11.5)
+	-- UI FINAL R6 (plan work/ui/PLAN.md R6, PR13; `H:n` = "Squishy Duels HUD.dc.html" line n): the design's confirm
+	-- dialog for a coin spend (H:455-469, UI/Components/ConfirmDialog), base px: its scrim, card (its top shiftY above
+	-- the middle, H:457 margin -200), medallion and buttons, ConfirmButton's double-press guard, the room kept from the
+	-- screen's edges when it shrinks to fit (Sticker.window.margin's reading) and the layer it draws in: its own
+	-- full-screen ScreenGui above SD_Modal (a controller-owned layer, so not in ScreenGuis), shared with the Shop's
+	-- congrats overlay (H:537 z 40).
+	confirm = {
+		scrimAlpha = 0.4, -- H:456: rgba(110,60,220,.4)
+		fadeMs = 200, -- H:456: sdFade .2s ease
+		fadeCurve = "ease", -- H:456
+		card = {
+			width = 480, -- H:457
+			shiftY = -200, -- H:457
+			padTop = 64, -- H:457: padding 64px 28px 26px
+			padX = 28,
+			padBottom = 26,
+			border = 5, -- H:457
+			radius = 30, -- H:457
+			lip = 10, -- H:457
+			gap = 12, -- H:457
+			inset = { px = 4, alpha = 0.12 }, -- H:457: inset 0 4px 0 rgba(255,255,255,.12)
+			shadow = { offsetY = 30, blurPx = 60, alpha = 0.5 }, -- H:457: 0 30px 60px rgba(15,8,25,.5)
+			popMs = 450, -- H:457: sdPop .45s cubic-bezier(.2,1.5,.4,1)
+			popCurve = "stars", -- H:457
+		},
+		medallion = {
+			px = 130, -- H:458
+			top = -70, -- H:458
+			border = 5, -- H:458
+			lip = 6, -- H:458
+			centreY = 0.35, -- H:458: radial-gradient(circle at 50% 35%, ...)
+			stickMs = 600, -- H:458: sdStick .6s .05s cubic-bezier(.2,1.4,.4,1)
+			stickDelayMs = 50,
+			stickCurve = "search",
+			icon = 100, -- H:458
+			bobS = 2.4, -- H:458
+		},
+		buttons = {
+			face = 62, -- H:462-463
+			gap = 12, -- H:461
+			marginTop = 8, -- H:461
+			cancelFlex = 1, -- H:462
+			buyFlex = 1.4, -- H:463
+			coinPx = 30, -- H:464
+		},
+		guardMs = 300, -- UI/Components/ConfirmButton GUARD_SECONDS
+		margin = 12,
+		layerName = "SD_Prompt",
+		layer = { displayOrder = 25, insets = Enum.ScreenInsets.None } :: ScreenGuiSpec,
+	},
 
 	-- ControlsController (§11.7). reading (not in DESIGN, provisional): how long start() waits for the PlayerModule
 	-- that block() uses to stop character movement.
@@ -718,7 +768,133 @@ local UI = {
 	-- Shop screen (§11.6). Reading (DESIGN gives no number): the Squishies tab card width in base px, like
 	-- Inventory.cardWidth (columns = floor(gridWidth / (cardWidth + pad))).
 	Shop = {
-		cardWidth = 150, -- [P]
+		cardWidth = 146, -- [P] UI FINAL R6: 4 columns at gap 12 fill the design's 652 px right column (H:294, H:330)
+		-- UI FINAL R6 (the Shop window, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line n), base px:
+		-- the body (H:294: 330 | 1fr, gap 20, padding 20 24 24), the featured card (H:295-312: the selected squishy),
+		-- the right column's section heads (H:314-315, H:329) and card gap (H:330), the coin pack cards (H:330-340,
+		-- hidden while no bundle is offered) and the congrats overlay after a buy (H:536-549). A track's `frames` are
+		-- the design's @keyframes (Config.UI.motion's pose shape), `curve` a Config.UI.curves name.
+		body = { featuredWidth = 330, gap = 20, padTop = 20, padSide = 24, padBottom = 24 }, -- H:294
+		featured = {
+			border = 4, -- H:295
+			radius = 24, -- H:295
+			lip = 6, -- H:295: 0 6px 0 #1E1428
+			inset = { px = 4, alpha = 0.5 }, -- H:295: inset 0 4px 0 rgba(255,255,255,.5)
+			midAt = 0.45, -- H:295: #FFE58A 0, #F5A623 45%, #7B4FE0 100%
+			-- H:295: sdRise .5s cubic-bezier(.2,1.3,.4,1) (H:31; its fade is not drawn, plan §1.4 RL3)
+			rise = {
+				ms = 500,
+				curve = "rise",
+				frames = { { at = 0, y = 18, scale = 0.9 }, { at = 1, y = 0, scale = 1 } } :: { MotionPose },
+			},
+			rays = { px = 760, alpha = 0.3, centreY = 0.38, spinS = 20 }, -- H:296
+			-- H:302-304: sdTwinkle (H:40) from the art area's corners; the gem is decoration (not a Robux picture)
+			twinkles = {
+				{ key = "img.icon.star", px = 30, left = 34, top = 30, periodS = 2, delayS = 0 }, -- H:302
+				{ key = "img.icon.star", px = 22, right = 30, top = 80, periodS = 2, delayS = 0.7 }, -- H:303
+				{ key = "img.icon.gem", px = 34, right = 40, bottom = 20, periodS = 2.4, delayS = 1.2 }, -- H:304
+			} :: { { [string]: any } },
+			-- H:305: 230 px, drop-shadow(0 10px 0 rgba(30,20,40,.35)), sdFloat 3s; minPx: the smallest it is drawn
+			-- (the old detail preview's DETAIL_ICON_MIN_PX reading), else it hides
+			art = { px = 230, minPx = 48, floatS = 3, shadow = { px = 10, alpha = 0.35 } },
+			text = { padX = 16, padBottom = 16, gap = 6 }, -- H:307
+			nameRole = "featuredName", -- H:308
+			lineRole = "featuredLine", -- H:309
+			lineCoinPx = 22, -- H:309
+			-- H:310: the BUY, 62 + lip 5, margin-top 4, radius 18, gap 10, the coin 36 and the price, sdPulse 1.6s
+			buy = { face = 62, marginTop = 4, gap = 10, coinPx = 36, pulseS = 1.6, textRole = "buyFeatured" },
+			-- H:311: OWNED, the lilac bar 62 high, border 4, radius 18, the check 30 raised 5, gap 10
+			owned = {
+				face = 62,
+				border = 4,
+				radius = 18,
+				checkPx = 30,
+				checkRaise = 5,
+				gap = 10,
+				textRole = "ownedBar",
+			},
+		},
+		sections = { gap = 12, headRole = "sectionHead", cellGap = 12 }, -- H:314-315, H:329-330
+		-- H:330-340: 4 columns, gap 12, padding 12 8 10, gap 6, border 4, radius 20, lip 5, inset 4 .7, the icon 92
+		-- sdBob 2.8s, the amount, the green price bar 38 (border 3, radius 12, inset 2 .55, lip 3)
+		packs = {
+			columns = 4,
+			gap = 12,
+			padTop = 12,
+			padX = 8,
+			padBottom = 10,
+			innerGap = 6,
+			border = 4,
+			radius = 20,
+			lip = 5,
+			inset = { px = 4, alpha = 0.7 },
+			iconPx = 92,
+			iconMinPx = 70,
+			bobS = 2.8,
+			amountRole = "packAmount",
+			priceBar = 38,
+			priceBorder = 3,
+			priceRadius = 12,
+			priceInset = { px = 2, alpha = 0.55 },
+			priceLip = 3,
+			priceRole = "packPrice",
+		},
+		-- H:536-549 (G6.8, G6.9): the radial's alphas (H:537), the rays (H:538), the letters' sdSlam (H:45) per letter
+		-- .05 + .035 i s, the icon's sdReveal (H:38) with its glow disc and float, the texts' and AWESOME!'s sdUp (H:44),
+		-- the close (H:878: fade 1 -> 0 and scale 1 -> 1.08 over 220 ms linear, removed at 210 ms).
+		congrats = {
+			alphas = { top = 0.92, mid = 0.9, midAt = 0.35, outer = 0.96 }, -- H:537
+			centreY = 0.45, -- H:537
+			fadeMs = 300, -- H:537: sdFade .3s ease
+			fadeCurve = "ease",
+			gap = 10, -- H:537
+			rays = { px = 1600, alpha = 0.28, centreY = 0.45, spinS = 20 }, -- H:538
+			letters = {
+				delayS = 0.05, -- H:1005
+				staggerS = 0.035, -- H:1005
+				slamMs = 600, -- H:539
+				curve = "rise", -- H:539: cubic-bezier(.2,1.3,.4,1)
+				frames = { -- H:45
+					{ at = 0, y = -160, scale = 2.4, rot = -12, alpha = 0 },
+					{ at = 0.55, y = 8, sx = 0.9, sy = 1.15, rot = 3, alpha = 1 },
+					{ at = 0.75, y = -6, sx = 1.08, sy = 0.94 },
+					{ at = 1, y = 0, scale = 1, rot = 0, alpha = 1 },
+				} :: { MotionPose },
+			},
+			icon = {
+				holder = 240, -- H:540
+				revealMs = 800, -- H:540: sdReveal .8s cubic-bezier(.2,1.3,.4,1) .55s
+				revealDelayS = 0.55,
+				revealCurve = "rise",
+				frames = { -- H:38
+					{ at = 0, scale = 0, rot = -30, alpha = 0 },
+					{ at = 0.55, scale = 1.25, rot = 8, alpha = 1 },
+					{ at = 0.75, scale = 0.92, rot = -3 },
+					{ at = 1, scale = 1, rot = 0, alpha = 1 },
+				} :: { MotionPose },
+				glowInset = 10, -- H:541
+				glowAlpha = 0.95, -- H:541: rgba(255,255,255,.95) -> 0 at 70%
+				pulseS = 1.6, -- H:541
+				size = 210, -- H:542
+				shadow = { px = 10, alpha = 0.35 }, -- H:542
+				floatS = 3, -- H:542: sdFloat 3s 1.2s
+				floatDelayS = 1.2,
+			},
+			-- H:44 sdUp: 30 px lower and clear -> rest, .45 s
+			up = {
+				ms = 450,
+				frames = { { at = 0, y = 30, alpha = 0 }, { at = 1, y = 0, alpha = 1 } } :: { MotionPose },
+			},
+			youGot = { delayS = 0.9, curve = "ease", textRole = "youGot" }, -- H:544
+			title = { delayS = 1.0, curve = "search", textRole = "prize" }, -- H:545
+			desc = { delayS = 1.1, curve = "ease", textRole = "congratsDesc" }, -- H:546
+			-- H:547: 240 x 66 + lip 5, radius 20, margin-top 12, 30 px stroke 6
+			button = { width = 240, face = 66, radius = 20, marginTop = 12, delayS = 1.25, curve = "search" },
+			closeMs = 220, -- H:878
+			closeScale = 1.08, -- H:878
+			removeMs = 210, -- H:879
+			margin = 12, -- reading: the letters shrink to fit the width less this on each side
+		},
 	},
 
 	-- Grip HUD card, toasts and popups (GripController, §17.7). Timers and gameplay values are in Config.Grip.
@@ -915,6 +1091,21 @@ local UI = {
 			boxName = { kind = "Title", stroke = 6, drop = 4 }, -- H:269
 			day7 = { kind = "Large", stroke = 7, drop = 4 }, -- H:415
 			ribbon = { kind = "Ribbon", stroke = 7, drop = 4 }, -- H:527
+			-- UI FINAL R6 (the Shop window): the featured name (H:308) and line (H:309: 15 px -> 16, PR2; white with a
+			-- soft drop, PR3's thinnest outline), the featured BUY (H:310) and OWNED (H:311), the section heads (H:315),
+			-- a coin pack's amount (H:338) and price (H:339), the confirm dialog's description (H:460: 16 px 600
+			-- #F3EDFF), "You got" (H:544), the congrats description (H:546: 19 px, soft drop 0 2 .7) and AWESOME! (H:547).
+			featuredName = { kind = "Found", stroke = 8, drop = 4 }, -- H:308
+			featuredLine = { kind = "Small", stroke = 3, soft = { px = 2, alpha = 0.6 } }, -- H:309
+			buyFeatured = { kind = "Large", stroke = 6 }, -- H:310
+			ownedBar = { kind = "HudNumber", stroke = 6 }, -- H:311 (26 px)
+			sectionHead = { kind = "H2", stroke = 5, color = "StickerCoinText" }, -- H:315
+			packAmount = { kind = "Big", stroke = 6, drop = 3 }, -- H:338
+			packPrice = { kind = "Body", stroke = 4 }, -- H:339 (18 px)
+			confirmDesc = { kind = "Small", stroke = 3, color = "StickerTextSoft" }, -- H:460
+			youGot = { kind = "Big", stroke = 6 }, -- H:544
+			congratsDesc = { kind = "D19", stroke = 3, soft = { px = 2, alpha = 0.7 } }, -- H:546
+			awesome = { kind = "Title", stroke = 6 }, -- H:547
 			revealName = { kind = "Reveal", stroke = 10, drop = 6 }, -- H:490
 			congrats = { kind = "Congrats", stroke = 13, drop = 6 }, -- H:539
 			prize = { kind = "Prize", stroke = 10, drop = 6, color = "StickerCoinText" }, -- H:545

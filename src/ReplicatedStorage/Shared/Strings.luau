@@ -796,6 +796,17 @@ local Strings = {
 		robuxLoading = "…",
 		robuxUnavailable = "Unavailable",
 		robuxPrice = "{price} Robux",
+		-- UI FINAL R6 (the Shop window; `H:n` = "Squishy Duels HUD.dc.html" line n): the section heads (H:315, H:329),
+		-- the featured line (H:309; {rarity} = a rarity name, {power} = the squishy's capsule power), OWNED (H:311),
+		-- the phone's way back from the featured card to the list, and the congrats overlay (H:539-547).
+		sectionSquishies = "SQUISHIES",
+		sectionCoins = "COINS",
+		featuredLine = "{rarity} · x{power} power",
+		owned = "OWNED",
+		back = "Back",
+		congratsTitle = "CONGRATULATIONS!",
+		youGot = "You got",
+		awesome = "AWESOME!",
 	},
 
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).

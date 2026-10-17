@@ -1132,7 +1132,7 @@ return function(t: Context)
 		expect.equal(Config.Onboarding.skipStepId, "skip")
 		expect.equal(Config.UI.Boxes.stillCheckingSeconds, 10)
 		expect.equal(Config.UI.Boxes.revealHoldMaxSeconds, 30)
-		expect.equal(Config.UI.Shop.cardWidth, 150)
+		expect.equal(Config.UI.Shop.cardWidth, 146) -- UI FINAL R6: 4 columns in the 652 px column
 		expect.equal(Config.Grip.allowBundlesWithCapsules, false)
 	end)
 

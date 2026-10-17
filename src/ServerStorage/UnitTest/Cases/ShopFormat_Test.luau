@@ -10,19 +10,13 @@
 --     "No Coins were spent." only when charged == false); a call that never reached the server keeps its request id;
 --   * the Coins tab: only shop.coinsUnavailable while no bundle is offered (always in v1, and while Grip forbids
 --     bundles); offered bundles show their amount and "…" / "Unavailable" / "{price} Robux".
---   * Part 8 layout (DESIGN §11.2, §11.6) at 667×375, 893×673, 1280×720 and 1920×1080, with and without the box filter,
---     at the default and the largest text size (widths from a generous per-character estimate): panelLayout fits the
---     screen with touch-sized chips; buyBox keeps the natural width when it fits, else the column's width with the
---     wrapped height; detailLayout pins Buy (with its reserved "Balance after" line) and Inspect under the list inside
---     the column, never overlapping; PANEL and SUB_GAP equal the Squishies panel, Theme and ConfirmButton.
 --   * Foam UI restyle (2026-10-09): priceNumber is the bare price ("7,500") and cardLine the card's line with the
---     coin for a buyable card (the bare price) and need Coins, words without it otherwise; panelLayout(..., topPadding)
---     shrinks the content box by the header tab's room and still fits the screen; a bad padding means PANEL.padding.
---   * Foam fix batch (2026-10-09): no header row (Close hangs on the corner): the tab row starts the content; with the
---     card width the grid takes the columns that fit in gridShare (InventoryFormat.gridFit) and the detail column the
---     rest; on an 844×390 phone Buy (its widest text) and Inspect share one row.
---   * Foam fix round 2 (2026-10-09): PANEL.buttonGap (Theme.Padding.medium, as on Squishies) between Buy and Inspect,
---     the row from the column's left edge (Buy is drawn as wide as its box, so it no longer floats in it).
+--     coin for a buyable card (the bare price) and need Coins, words without it otherwise.
+--   * UI FINAL R6 (the Shop window, H:289-342): panelLayout is the design's body (330 | 652, 498 high on a desktop,
+--     4 columns of cards) and fits every screen with touch-sized chips; a phone shows the list or the featured card
+--     (the separate detail state) and the tab chips only over the list; featuredLayout keeps the name, line and BUY
+--     and gives the art 230 or what is left (hidden under minPx); featuredLine / featuredView; COINS only with a
+--     bundle, and L1 / R1 jump between the drawn sections.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -317,109 +311,188 @@ return function(t: Context)
 		expect.equal(ShopFormat.robuxText({ status = "ok", price = 0 / 0 }), Strings.shop.robuxUnavailable)
 		expect.equal(ShopFormat.robuxText({ status = "ok", price = 1250 }), "1,250 Robux")
 	end)
-	-- Part 8 layout ---------------------------------------------------------------------------------------------------
+	-- UI FINAL R6 layout (the Shop window, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line n) -----
 
 	local InventoryFormat = t.requireClient("UI/InventoryFormat")
 	local Theme = t.requireClient("UI/Theme")
-	local ConfirmButton = t.requireClient("UI/Components/ConfirmButton")
 	local TOUCH = Config.UI.Touch
+	local SHOP = Config.UI.Shop
 	local EPS = 1e-6
-	local EM = 0.6 -- per character: wider than Builder Sans Bold really is (a pessimistic estimate)
-	local BUTTON_PADDING = 2 * 18 + 4
+	local CARD_WIDTH = SHOP.cardWidth
+	-- SD_Modal's safe areas (actual px): desktops under Roblox's top bar, a laptop, phones landscape and portrait.
 	local SCREENS = {
+		{ label = "1280x662", size = Vector2.new(1280, 662) },
+		{ label = "1920x1022", size = Vector2.new(1920, 1022) },
+		{ label = "1024x710", size = Vector2.new(1024, 710) },
+		{ label = "844x311", size = Vector2.new(844, 311) },
 		{ label = "667x375", size = Vector2.new(667, 375) },
-		{ label = "893x673", size = Vector2.new(893, 673) },
-		{ label = "1280x720", size = Vector2.new(1280, 720) },
-		{ label = "1920x1080", size = Vector2.new(1920, 1080) },
+		{ label = "390x790", size = Vector2.new(390, 790) },
 	}
+	-- The band's room on a desktop window (R3: the 5 px border, the 98 px band, the body's 20).
+	local DESIGN_TOP = 5 + 98 + 20
 
-	local function overlap(a: any, b: any): boolean
-		return a.x < b.x + b.w - EPS and b.x < a.x + a.w - EPS and a.y < b.y + b.h - EPS and b.y < a.y + a.h - EPS
-	end
-
-	t.test("PANEL and SUB_GAP: the Squishies panel's, Theme's and ConfirmButton's numbers", function()
-		expect.deepEqual(ShopFormat.PANEL, InventoryFormat.PANEL)
-		expect.equal(ShopFormat.PANEL.padding, Theme.Padding.medium)
+	t.test("PANEL: the body's padding and gap (H:294), the card grid's gap (H:330), the list's chrome", function()
+		expect.equal(ShopFormat.PANEL.padding, 20)
+		expect.equal(ShopFormat.PANEL.columnGap, 20)
+		expect.equal(ShopFormat.PANEL.cellPad, 12)
+		expect.equal(ShopFormat.PANEL.gridChrome, 4 + Theme.SCROLLBAR_PX + 4)
 		expect.equal(ShopFormat.PANEL.gap, Theme.Padding.small)
-		expect.equal(ShopFormat.SUB_GAP, ConfirmButton.SUB_GAP)
+		expect.deepEqual(SHOP.body, { featuredWidth = 330, gap = 20, padTop = 20, padSide = 24, padBottom = 24 })
 	end)
 
-	t.test("buyBox: the natural width when it fits, else the column's width and the wrapped height", function()
-		expect.deepEqual(ShopFormat.buyBox(120, 300, 56, 90), { w = 120, h = 56, wraps = false })
-		expect.deepEqual(ShopFormat.buyBox(300, 300, 56, 90), { w = 300, h = 56, wraps = false })
-		expect.deepEqual(ShopFormat.buyBox(340, 300, 56, 90), { w = 300, h = 90, wraps = true })
-		expect.deepEqual(ShopFormat.buyBox(340, 300, 56, 40.2), { w = 300, h = 56, wraps = true })
+	t.test("panelLayout on a desktop: the design's body (H:294), 330 | 652, 498 high, 4 columns of cards", function()
+		local l = ShopFormat.panelLayout(Vector2.new(1280, 662), false, DESIGN_TOP, CARD_WIDTH)
+		expect.equal(l.class, "regular")
+		expect.equal(l.panelWidth, 1060)
+		expect.equal(l.panelHeight, 650)
+		expect.equal(l.inset, 9) -- 24 inside the 5 px border, over the window's 20
+		expect.equal(l.bodyWidth, 1060 - 2 * 5 - 2 * 24)
+		expect.equal(l.bodyHeight, 650 - 2 * 5 - 98 - 20 - 24)
+		expect.equal(l.bodyTop, 0)
+		expect.equal(l.tabsShown, false) -- desktops have no tab chips (L1 / R1 jump between the sections)
+		expect.equal(l.featuredShown, true)
+		expect.equal(l.listShown, true)
+		expect.equal(l.featuredWidth, 330)
+		expect.equal(l.featuredHeight, l.bodyHeight + SHOP.featured.lip)
+		expect.equal(l.listLeft, 350)
+		expect.equal(l.listWidth, 652)
+		expect.equal(l.columns, 4)
+		expect.truthy(l.gridWidth <= l.listWidth + EPS)
+		expect.equal(l.listTop, 0)
+		expect.equal(l.listHeight, l.bodyHeight)
+		local filtered = ShopFormat.panelLayout(Vector2.new(1280, 662), true, DESIGN_TOP, CARD_WIDTH)
+		expect.equal(filtered.listTop, filtered.chipHeight + ShopFormat.PANEL.gap)
+		expect.equal(filtered.listHeight, filtered.bodyHeight - filtered.listTop)
+		expect.equal(filtered.featuredHeight, l.featuredHeight) -- the filter row sits over the list only
 	end)
 
 	for _, screen in SCREENS do
-		for _, filtered in { false, true } do
-			for _, textScale in { 1, Config.UI.PreferredTextScale.Largest } do
-				local name = `{screen.label} filter {filtered} text x{textScale}`
-				t.test(`panelLayout + detailLayout {name}: Buy and Inspect pinned inside the column`, function()
-					local l = ShopFormat.panelLayout(screen.size, filtered)
-					expect.truthy(l.panelWidth * l.scale <= screen.size.X + EPS)
-					expect.truthy(l.panelHeight * l.scale <= screen.size.Y + EPS)
-					expect.truthy(l.chipHeight * l.scale >= TOUCH.minTargetFloor - EPS)
-					expect.truthy(l.closeHeight * l.scale >= TOUCH.minTargetFloor - EPS)
-					expect.near(l.bodyTop, l.chipHeight + ShopFormat.PANEL.gap) -- fix batch: the tab row starts it
-					expect.near(l.bodyTop + l.bodyHeight, l.contentHeight)
-					expect.equal(l.listTop, if filtered then l.chipHeight + ShopFormat.PANEL.gap else 0)
-					expect.near(l.detailHeight, l.bodyHeight - l.listTop)
-					local buttonPx = Config.UI.TextSize.Button * textScale
-					local smallPx = Config.UI.TextSize.Small * textScale
-					local confirmText = Strings.format(Strings.spend.confirm, { price = "25,000" })
-					local natural = #confirmText * buttonPx * EM + BUTTON_PADDING
-					local inner = l.detailWidth - 36
-					local lines = math.ceil(#confirmText * buttonPx * EM / inner)
-					local buyBox = ShopFormat.buyBox(natural, l.detailWidth, 56, lines * buttonPx * 1.3 + 8)
-					expect.truthy(buyBox.w <= l.detailWidth + EPS)
-					local inspect = { w = #Strings.common.inspect * buttonPx * EM + BUTTON_PADDING, h = 56 }
-					local balance = smallPx * 1.3
-					local gap = ShopFormat.PANEL.gap
-					for _, case in { { buy = true, inspect = true }, { buy = true }, { inspect = true } } :: { any } do
-						local buy = if case.buy then { w = buyBox.w, h = buyBox.h } else nil
-						local d = ShopFormat.detailLayout(
-							l.detailWidth,
-							l.detailHeight,
-							gap,
-							buy,
-							balance,
-							if case.inspect then inspect else nil
+		t.test(`panelLayout {screen.label}: the body fits the window, the chips are touch-sized`, function()
+			for _, filtered in { false, true } do
+				for _, detailOpen in { false, true } do
+					for _, tabs in { false, true } do
+						local l =
+							ShopFormat.panelLayout(screen.size, filtered, DESIGN_TOP, CARD_WIDTH, detailOpen, tabs)
+						expect.truthy(l.panelWidth * l.scale <= screen.size.X + EPS)
+						expect.truthy(l.panelHeight * l.scale <= screen.size.Y + EPS)
+						expect.truthy(l.chipHeight * l.scale >= TOUCH.minTargetFloor - EPS)
+						expect.truthy(l.closeHeight * l.scale >= TOUCH.minTargetFloor - EPS)
+						expect.near(l.bodyWidth + 2 * l.inset, l.contentWidth)
+						expect.truthy(l.bodyTop + l.bodyHeight <= l.contentHeight + EPS)
+						expect.truthy(l.featuredShown or l.listShown)
+						if l.class == "compact" then
+							-- A phone: one of the two at a time, across the body; the tab chips over the list only.
+							expect.equal(l.featuredShown, detailOpen)
+							expect.equal(l.listShown, not detailOpen)
+							expect.equal(l.featuredWidth, l.bodyWidth)
+							expect.equal(l.listLeft, 0)
+							expect.equal(l.listWidth, l.bodyWidth)
+							expect.equal(l.tabsShown, tabs and not detailOpen)
+						else
+							expect.equal(l.featuredShown and l.listShown, true)
+							expect.equal(l.tabsShown, false)
+							expect.near(l.featuredWidth + ShopFormat.PANEL.columnGap + l.listWidth, l.bodyWidth)
+						end
+						expect.equal(l.bodyTop, if l.tabsShown then l.chipHeight + ShopFormat.PANEL.gap else 0)
+						local fit = InventoryFormat.gridFit(
+							l.listWidth,
+							CARD_WIDTH,
+							ShopFormat.PANEL.cellPad,
+							ShopFormat.PANEL.gridChrome
 						)
-						expect.near(d.buttonsTop + d.buttonsHeight, l.detailHeight)
-						expect.truthy(d.scrollHeight >= 0)
-						expect.truthy(d.scrollHeight + gap <= d.buttonsTop + EPS)
-						expect.truthy(l.bodyTop + l.listTop + d.buttonsTop + d.buttonsHeight <= l.contentHeight + EPS)
-						local rects = {}
-						if case.buy then
-							local r = d.buy :: any
-							expect.truthy(r ~= nil)
-							-- The holder: the button and its reserved "Balance after" line under it.
-							expect.near(r.h, buyBox.h + ShopFormat.SUB_GAP + balance)
-							table.insert(rects, r)
-						else
-							expect.equal(d.buy, nil)
-						end
-						if case.inspect then
-							table.insert(rects, d.inspect :: any)
-						else
-							expect.equal(d.inspect, nil)
-						end
-						for i, r in rects do
-							expect.truthy(r.x >= -EPS and r.x + r.w <= l.detailWidth + EPS)
-							expect.truthy(r.y + r.h <= d.buttonsHeight + EPS)
-							for j = i + 1, #rects do
-								expect.falsy(overlap(r, rects[j]))
-							end
-						end
-						if not filtered and textScale == 1 then
-							expect.truthy(d.scrollHeight > 0) -- something of the detail always shows
-						end
+						expect.equal(l.columns, fit.columns)
+						expect.near(l.gridWidth, fit.width)
+						expect.equal(l.listTop, if filtered then l.chipHeight + ShopFormat.PANEL.gap else 0)
 					end
-				end)
+				end
 			end
-		end
+			-- No card width: no columns (the plain list width); a bad padding means the body's 20.
+			expect.equal(ShopFormat.panelLayout(screen.size, false, DESIGN_TOP).columns, 0)
+			expect.deepEqual(
+				ShopFormat.panelLayout(screen.size, false, 0 / 0),
+				ShopFormat.panelLayout(screen.size, false)
+			)
+			expect.equal(ShopFormat.panelLayout(screen.size, false, -3).topPadding, ShopFormat.PANEL.padding)
+		end)
 	end
+
+	t.test(
+		"featuredLayout: the text block at the bottom (H:307), the art 230 over it, hidden when it has no room",
+		function()
+			local f = SHOP.featured
+			local text = 44 + f.text.gap + 20 + f.text.gap + f.buy.marginTop + f.buy.face + f.text.padBottom
+			local tall = ShopFormat.featuredLayout(498 + f.lip, 44, 20)
+			expect.equal(tall.textHeight, text)
+			expect.equal(tall.artArea, 498 - 2 * f.border - text)
+			expect.equal(tall.artPx, f.art.px) -- H:305: 230 when the area allows
+			expect.equal(tall.textTop, f.border + tall.artArea)
+			local mid = ShopFormat.featuredLayout(2 * f.border + text + 120 + f.lip, 44, 20)
+			expect.equal(mid.artPx, 120) -- as big as the area
+			local short = ShopFormat.featuredLayout(2 * f.border + text + f.art.minPx - 1 + f.lip, 44, 20)
+			expect.equal(short.artPx, 0) -- under minPx: hidden, the name, line and BUY stay
+			expect.equal(ShopFormat.featuredLayout(10, 44, 20).artArea, 0)
+			expect.equal(ShopFormat.featuredLayout(0 / 0, 44, 20).artPx, 0)
+		end
+	)
+
+	t.test("featuredLine: '{Rarity} · x{power} power' (H:309, FD4)", function()
+		expect.equal(ShopFormat.featuredLine("Common", 16), "Common · x16 power")
+		expect.equal(ShopFormat.featuredLine("Epic", 400), `{Strings.rarity.epic.name} · x400 power`)
+		expect.equal(ShopFormat.featuredLine("Mystery", 2), "Mystery · x2 power") -- unknown: the raw name
+	end)
+
+	t.test("featuredView: OWNED, not sold, the spinner, disabled with a reason, the off BUY and BUY", function()
+		local function entry(fields: { [string]: any }): any
+			local e = { id = "toast", price = 10000, owned = false, missing = 0, state = "buy" }
+			for key, value in fields do
+				e[key] = value
+			end
+			return e
+		end
+		expect.deepEqual(ShopFormat.featuredView(entry({ owned = true }), "x", "toast"), {
+			mode = "owned",
+			priceText = nil,
+			reason = nil,
+		})
+		local free: any = entry({})
+		free.price = nil
+		expect.deepEqual(ShopFormat.featuredView(free, nil, nil), {
+			mode = "notSold",
+			priceText = nil,
+			reason = Strings.reason.shop.notForSale,
+		})
+		expect.equal(ShopFormat.featuredView(entry({}), Strings.common.lockedInDuel, "toast").mode, "loading")
+		expect.deepEqual(ShopFormat.featuredView(entry({}), Strings.common.lockedInDuel, nil), {
+			mode = "blocked",
+			priceText = "10,000",
+			reason = Strings.common.lockedInDuel,
+		})
+		expect.deepEqual(ShopFormat.featuredView(entry({ missing = 500 }), nil, nil), {
+			mode = "short",
+			priceText = "10,000",
+			reason = nil,
+		})
+		expect.deepEqual(ShopFormat.featuredView(entry({}), nil, "banana"), {
+			mode = "buy",
+			priceText = "10,000",
+			reason = nil,
+		})
+		expect.equal(ShopFormat.featuredView(nil, nil, nil).mode, "notSold")
+	end)
+
+	t.test("sections / nextTab: COINS only with a bundle (G6.6); L1 / R1 jump between the drawn sections", function()
+		expect.deepEqual(ShopFormat.sections(false), { "squishies" })
+		expect.deepEqual(ShopFormat.sections(true), { "squishies", "coins" })
+		local one = ShopFormat.sections(false)
+		expect.equal(ShopFormat.nextTab("squishies", 1, one), "squishies")
+		expect.equal(ShopFormat.nextTab("squishies", -1, one), "squishies")
+		expect.equal(ShopFormat.nextTab("coins", 1, one), "squishies") -- a hidden section starts from the first
+		local two = ShopFormat.sections(true)
+		expect.equal(ShopFormat.nextTab("squishies", 1, two), "coins")
+		expect.equal(ShopFormat.nextTab("coins", 1, two), "squishies")
+		expect.equal(ShopFormat.nextTab("squishies", -1, two), "coins")
+		expect.equal(ShopFormat.nextTab("squishies", 1, {}), "squishies")
+	end)
 
 	-- Foam UI restyle (2026-10-09) ------------------------------------------------------------------------------------
 
@@ -443,96 +516,6 @@ return function(t: Context)
 		expect.deepEqual(line(entry("purchasing", 1200, 0)), { text = Strings.common.loading, coin = false })
 		expect.deepEqual(line(entry("notSold", nil, 0)), { text = Strings.reason.shop.notForSale, coin = false })
 	end)
-
-	-- Foam fix batch (2026-10-09) -------------------------------------------------------------------------------------
-
-	local CARD_WIDTH = Config.UI.Shop.cardWidth
-	for _, screen in SCREENS do
-		t.test(
-			`panelLayout {screen.label} with the card width: the grid fits its columns, the detail takes the rest`,
-			function()
-				for _, filtered in { false, true } do
-					local plain = ShopFormat.panelLayout(screen.size, filtered, 32)
-					local l = ShopFormat.panelLayout(screen.size, filtered, 32, CARD_WIDTH)
-					local panel = ShopFormat.PANEL
-					local fit = InventoryFormat.gridFit(
-						plain.contentWidth * panel.gridShare,
-						CARD_WIDTH,
-						panel.cellPad,
-						panel.gridChrome
-					)
-					expect.equal(l.columns, fit.columns)
-					expect.near(l.gridWidth, fit.width)
-					expect.near(l.gridWidth + panel.columnGap + l.detailWidth, l.contentWidth)
-					expect.truthy(l.detailWidth >= plain.detailWidth - EPS)
-					expect.equal(l.bodyTop, plain.bodyTop)
-					expect.equal(l.detailHeight, plain.detailHeight)
-				end
-				expect.equal(ShopFormat.panelLayout(screen.size, false, 32).columns, 0) -- no card width: the plain split
-			end
-		)
-	end
-
-	t.test("844x390 phone: Buy at its widest and Inspect share one row in the detail column", function()
-		-- SD_Modal on an 844×390 phone (the safe area, as measured in the foam shots); 32 = the hanging Close's room.
-		local l = ShopFormat.panelLayout(Vector2.new(844, 311), false, 32, CARD_WIDTH)
-		local buttonPx = Config.UI.TextSize.Button
-		-- Fix round 2: with PANEL.buttonGap (12) the generous 0.6 em guess no longer fits one row; the foam shots measured
-		-- Buy's box for "Confirm: 1,200 Coins" at 200 base on this phone (about 0.4 em a character), so 0.5 em still
-		-- leaves a wide margin.
-		local em = 0.5
-		local confirmText = Strings.format(Strings.spend.confirm, { price = "25,000" })
-		local natural = #confirmText * buttonPx * em + BUTTON_PADDING
-		local buyBox = ShopFormat.buyBox(natural, l.detailWidth, 56, buttonPx * 1.3 + 8)
-		expect.equal(buyBox.wraps, false)
-		local inspect = { w = #Strings.common.inspect * buttonPx * em + BUTTON_PADDING, h = 56 }
-		local d = ShopFormat.detailLayout(
-			l.detailWidth,
-			l.detailHeight,
-			ShopFormat.PANEL.gap,
-			{ w = buyBox.w, h = buyBox.h },
-			Config.UI.TextSize.Small * 1.3,
-			inspect
-		)
-		expect.equal(d.rows, 1)
-		expect.truthy(d.scrollHeight > 0)
-	end)
-
-	-- Foam fix round 2 (2026-10-09): Buy is drawn as wide as its box (ShopController), so the row reads like the Squishies
-	-- one: from the column's left edge, PANEL.buttonGap between the buttons, the list PANEL.gap above them.
-	t.test("detailLayout: Buy at the column's left edge, Inspect PANEL.buttonGap after it, as on Squishies", function()
-		expect.equal(ShopFormat.PANEL.buttonGap, Theme.Padding.medium)
-		local d = ShopFormat.detailLayout(500, 300, ShopFormat.PANEL.gap, { w = 200, h = 56 }, 21, { w = 110, h = 56 })
-		expect.equal(d.rows, 1)
-		local buy, inspect = d.buy :: any, d.inspect :: any
-		expect.equal(buy.x, 0)
-		expect.equal(inspect.x, 200 + ShopFormat.PANEL.buttonGap)
-		expect.equal(inspect.y, buy.y) -- one row, tops level
-		expect.equal(d.scrollHeight, 300 - (56 + ShopFormat.SUB_GAP + 21) - ShopFormat.PANEL.gap)
-	end)
-
-	-- The header tab's room at the top of the panel (an H2 tab: about 29 base px at the default text, 35 at Largest).
-	for _, screen in SCREENS do
-		t.test(`panelLayout {screen.label} with a header tab: the content box shrinks, the rest still fits`, function()
-			for _, filtered in { false, true } do
-				local plain = ShopFormat.panelLayout(screen.size, filtered)
-				expect.equal(plain.topPadding, ShopFormat.PANEL.padding)
-				for _, top in { 29, 35 } do
-					local l = ShopFormat.panelLayout(screen.size, filtered, top)
-					expect.equal(l.topPadding, top)
-					expect.near(l.contentHeight, plain.contentHeight - (top - ShopFormat.PANEL.padding))
-					expect.near(l.bodyTop + l.bodyHeight, l.contentHeight)
-					expect.near(l.detailHeight, l.bodyHeight - l.listTop)
-					expect.truthy(l.detailHeight > 0)
-					-- The panel and the tab's outer half (top - its 6 px gap) fit the screen together.
-					expect.truthy((l.panelHeight + (top - 6)) * l.scale <= screen.size.Y + EPS)
-				end
-				-- A bad padding means the panel padding.
-				expect.deepEqual(ShopFormat.panelLayout(screen.size, filtered, 0 / 0), plain)
-				expect.deepEqual(ShopFormat.panelLayout(screen.size, filtered, -3), plain)
-			end
-		end)
-	end
 
 	-- UI FINAL R3 (plan R3): the panel is the Shop window, the design's 1060 x 650 face on a desktop (H:289), its top
 	-- 310 above the middle (the frame with its 10 px lip 20 below it), its chrome at full size.
