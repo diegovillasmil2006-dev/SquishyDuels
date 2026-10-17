@@ -20,18 +20,25 @@
 --                                    squeezes (coinsByDay) × the squeeze value of `capsules` (the player's capsules state;
 --                                    CapsuleMath.rewardCoins, as the server pays at claim time)
 --   signText(daily, now)             the stand sign's status line: daily.ready / daily.wait {time}; nil = unknown
--- Part 8 layout (§11.2; base px under the ScreenGui UIScale; unit-tested at 667×375, 1280×720, 1920×1080 and the
--- largest text):
---   cardWidth(base, textScale)       a day card's width: the base width grown with the text size (PreferredTextSize),
---                                    so "Claimed" and "500 Coins" still fit their card at the largest text
---   cardsPerRow(rowWidth, card, gap) how many day cards fit on one line of the wrapping row (at least 1)
---   bodyHeight(screenH, contentH, chromeH, maxShare, minH)   the scrolling part of the panel: the content's height,
---                                    capped so the whole panel stays within maxShare of the screen height
--- Foam UI restyle (spec 2026-10-09):
---   cardLook(card)                   a day card's face and outline: today = the Daily tile's Sky blue with the thick
---                                    outline (claimed today too), the free Treat Box day = the Boxes tile's Lilac, a
---                                    day already claimed = Biscuit (recessed), else Frosting. Each look comes with its
---                                    word on the card (Today, Treat Box, Claimed), never colour alone
+--   bodyHeight(screenH, contentH, chromeH, maxShare, minH)   Part 8: a scrolling panel part (CapsuleController's): the
+--                                    content's height, capped so the whole panel stays within maxShare of the screen
+-- UI FINAL R8 (the design's Daily window, plan work/ui/PLAN.md R8; `H:n` = "Squishy Duels HUD.dc.html" line n;
+-- Config.UI.Daily):
+--   a DayCard also says `next` (the day tomorrow's claim gives, "Tomorrow", H:403), `locked` (a later day: the lock,
+--   H:399), its value (the day's Coins as a number beside the coin, H:401, or "Treat Box" on the box day [FD7]) and its
+--   foot (Claimed / Claim! / Tomorrow / Locked, H:964); the Model its streak pill ("Day {n}" [FD6], H:390) and timer
+--   line ("Your reward is ready!" / "Next reward in h:mm:ss", H:1029; nil while unknown)
+--   cardLook(card)                   the card's face (Palette names of its two stops), border and name colours and
+--                                    its icon's alpha (H:965-966): a claimed day the lilac with the dark name and the
+--                                    icon at .5, today's claimable day the yellow with the white border, else the
+--                                    purple card; the box day's card draws its own face (Config.UI.Daily.day7)
+--   cardFace(nameH, valueH)          a day card's natural face height (base px): its padding, border, the name, the
+--                                    icon, the value and the chip, 4 apart (H:395-402)
+--   day7Face(titleH, nameH, footH)   day 7's natural face height (H:406-416, the art at its 170 px)
+--   gridLayout(width, room, compact, cardFace, day7Face)   the grid's boxes (each face + lip; H:393: 1fr 1fr 1fr
+--                                    1.25fr, 2 rows, gap 14, day 7 over both rows): the faces share `room`, never under
+--                                    their natural height; compact (phones, plan R8): 3 columns, day 7 under them at
+--                                    its natural height; and the height the grid takes
 -- Readings: a daily value of the wrong shape counts as unknown (no claim offered, the sign stays as it is). The
 -- free-box day and the squeezes per day come from Config.Economy.Daily (coinsByDay, freeBoxDay).
 
@@ -63,12 +70,18 @@ export type DayCard = {
 	todayText: string?, -- daily.today
 	claimed: boolean, -- claimed in the current cycle (check + text)
 	claimedText: string?, -- common.claimed
+	next: boolean, -- UI FINAL R8: the day tomorrow's claim gives ("Tomorrow", H:403)
+	locked: boolean, -- UI FINAL R8: a later day (the lock, H:399)
+	valueText: string, -- UI FINAL R8: "200" beside the coin, or "Treat Box" on the box day (H:401)
+	foot: string, -- UI FINAL R8: Claimed / Claim! / Tomorrow / Locked (H:964; day 7 shows it)
 }
 
--- A day card's look (foam UI): a Theme accent name ("sky", "lilac", "frosting") or "biscuit" (Theme.Colors.biscuit),
--- and whether its outline is the thick one.
-export type CardFace = "frosting" | "sky" | "lilac" | "biscuit"
-export type CardLook = { face: CardFace, thick: boolean }
+-- UI FINAL R8 (H:965-966): a day card's look as Art/Palette names: its face's two stops, its border, its name.
+export type CardLook = { top: string, bottom: string, border: string, name: string, iconAlpha: number }
+
+-- UI FINAL R8: a box in the grid (base px, from the grid's top-left).
+export type Rect = { x: number, y: number, w: number, h: number }
+export type GridLayout = { cards: { Rect }, day7: Rect, height: number }
 
 export type Model = {
 	known: boolean, -- false: no daily state yet (loading or a profile that did not load)
@@ -81,6 +94,8 @@ export type Model = {
 	welcomeText: string?, -- daily.welcomeBack with the waiting day
 	countdownText: string?, -- "Come back in {time}" once today is claimed
 	secondsLeft: number, -- until the next 00:00 UTC
+	streakText: string, -- UI FINAL R8: "Day {n}" (the day being claimed or claimed today; FD6)
+	timerText: string?, -- UI FINAL R8: daily.readyNow / daily.wait {time}; nil while unknown
 }
 
 -- Constants
@@ -89,6 +104,23 @@ local DAILY = Config.Economy.Daily
 local COINS_BY_DAY: { number } = DAILY.coinsByDay
 local DAYS = #COINS_BY_DAY
 local FREE_BOX_DAY: number = DAILY.freeBoxDay
+local UI = Config.UI.Daily
+local LOOK_CLAIMED: CardLook = {
+	top = "StickerDayClaimedTop",
+	bottom = "StickerDayClaimedEnd",
+	border = "StickerInk",
+	name = "StickerDayClaimedText",
+	iconAlpha = UI.card.claimedIconAlpha,
+}
+local LOOK_TODAY: CardLook = {
+	top = "StickerCreamYellow",
+	bottom = "StickerGoldMid",
+	border = "White",
+	name = "StickerFoundText",
+	iconAlpha = 1,
+}
+local LOOK_PLAIN: CardLook =
+	{ top = "StickerCardTop", bottom = "StickerCardBottom", border = "StickerInk", name = "White", iconAlpha = 1 }
 
 -- Module table
 
@@ -169,12 +201,17 @@ function DailyFormat.model(daily: unknown, now: number, capsules: any?): Model
 	-- Days already claimed in this cycle: before today's claim, the days before the next one;
 	-- once today is claimed, every day up to and including it.
 	local claimedUpTo = if not known then 0 elseif can then day - 1 else day
+	-- UI FINAL R8 (H:963-964): once today is claimed the day after it is "Tomorrow"; the days after that are locked.
+	local nextDay = if known and not can then day + 1 else nil
+	local lockedFrom = if not known then math.huge elseif can then day + 1 else day + 2
 	local cards: { DayCard } = {}
 	local todayWord = Strings.daily.today
 	for n = 1, DAYS do
 		local coins = CapsuleMath.rewardCoins(COINS_BY_DAY[n], value)
 		local isToday = known and n == day
 		local claimed = n <= claimedUpTo
+		local isNext = n == nextDay
+		local locked = n >= lockedFrom
 		table.insert(cards, {
 			day = n,
 			label = Strings.format(Strings.daily.dayLabel, { n = n }),
@@ -186,6 +223,14 @@ function DailyFormat.model(daily: unknown, now: number, capsules: any?): Model
 			todayText = if isToday then todayWord else nil,
 			claimed = claimed,
 			claimedText = if claimed then Strings.common.claimed else nil,
+			next = isNext,
+			locked = locked,
+			valueText = if n == FREE_BOX_DAY then Strings.daily.treatBox else Format.coins(coins),
+			foot = if claimed
+				then Strings.common.claimed
+				elseif isToday then Strings.daily.footClaim
+				elseif isNext then Strings.daily.tomorrow
+				else Strings.daily.footLocked,
 		})
 	end
 	return {
@@ -201,37 +246,96 @@ function DailyFormat.model(daily: unknown, now: number, capsules: any?): Model
 			then Strings.format(Strings.daily.comeBack, { time = TimeUtil.formatCountdown(seconds) })
 			else nil,
 		secondsLeft = seconds,
+		streakText = Strings.format(Strings.daily.dayLabel, { n = day }),
+		timerText = if not known
+			then nil
+			elseif can then Strings.daily.readyNow
+			else Strings.format(Strings.daily.wait, { time = TimeUtil.formatCountdown(seconds) }),
 	}
 end
 
--- A day card's face and outline (foam UI): today first (claimed today or not), then a day already claimed (the Treat
--- Box day too), then the free Treat Box day still to come, else plain.
+-- UI FINAL R8 (H:965-966): a claimed day first (claimed today too), then today's claimable day, else the purple card.
 function DailyFormat.cardLook(card: DayCard): CardLook
-	if card.today then
-		return { face = "sky", thick = true }
-	elseif card.claimed then
-		return { face = "biscuit", thick = false }
-	elseif card.treat then
-		return { face = "lilac", thick = false }
+	if card.claimed then
+		return LOOK_CLAIMED
+	elseif card.today then
+		return LOOK_TODAY
 	end
-	return { face = "frosting", thick = false }
+	return LOOK_PLAIN
 end
 
--- Public: layout (Part 8)
+-- Public: layout (UI FINAL R8)
 
--- A day card's width for the player's text-size multiplier (Theme text size / Config base size; 1 = Medium): never
--- narrower than `baseWidth`, wider in step with the text, whole px.
-function DailyFormat.cardWidth(baseWidth: number, textScale: number): number
-	local scale = if finite(textScale) then math.max(1, textScale) else 1
-	return math.ceil(math.max(0, baseWidth) * scale - 1e-9)
+-- A day card's natural face (H:395-402): border, padding 10 / 10, the name, the 84 px icon, the value and the 34 px
+-- CLAIM! chip (the tallest last line), 4 apart.
+function DailyFormat.cardFace(nameHeight: number, valueHeight: number): number
+	local c = UI.card
+	return 2 * c.border + c.padTop + c.padBottom + nameHeight + c.iconPx + valueHeight + c.chipFace + 3 * c.gap
 end
 
--- How many cards of `cardWidth` with `gap` between them fit on a row `rowWidth` wide (at least one).
-function DailyFormat.cardsPerRow(rowWidth: number, cardWidth: number, gap: number): number
-	if not (cardWidth > 0) or not finite(rowWidth) then
-		return 1
+-- Day 7's natural face (H:406-416): border, padding 14 / 14, "Day 7", the 26 px pill, the 170 px art, the name and the
+-- foot, 6 apart.
+function DailyFormat.day7Face(titleHeight: number, nameHeight: number, footHeight: number): number
+	local d = UI.day7
+	return 2 * d.border
+		+ d.padTop
+		+ d.padBottom
+		+ titleHeight
+		+ d.pill.height
+		+ d.artPx
+		+ nameHeight
+		+ footHeight
+		+ 4 * d.gap
+end
+
+-- The grid (H:393) in a frame `width` wide with `room` base px for the two rows' faces (the lips hang below, as the
+-- design's box-shadow does): boxes of face + lip, whole px. Desktop: columns 1fr 1fr 1fr 1.25fr, the six days in
+-- rows of three, day 7 in the last column over both rows; the faces share the room, never under `cardFace`. Compact
+-- (phones): three columns, the days at `cardFace`, day 7 the full width under them at `day7Face`.
+function DailyFormat.gridLayout(
+	width: number,
+	room: number,
+	compact: boolean,
+	cardFace: number,
+	day7Face: number
+): GridLayout
+	local gap = UI.grid.gap
+	local lip, lip7 = UI.card.lip, UI.day7.lip
+	local w = if finite(width) then math.max(0, width) else 0
+	local cards: { Rect } = {}
+	if compact then
+		local columns = UI.compactColumns
+		local unit = math.max(0, math.floor((w - (columns - 1) * gap) / columns))
+		for i = 1, DAYS - 1 do
+			local col, row = (i - 1) % columns, (i - 1) // columns
+			table.insert(cards, { x = col * (unit + gap), y = row * (cardFace + gap), w = unit, h = cardFace + lip })
+		end
+		local rows = math.ceil((DAYS - 1) / columns)
+		local top = rows * (cardFace + gap)
+		return {
+			cards = cards,
+			day7 = { x = 0, y = top, w = w, h = day7Face + lip7 },
+			height = top + day7Face + lip7,
+		}
 	end
-	return math.max(1, math.floor((rowWidth + math.max(0, gap) + 1e-9) / (cardWidth + math.max(0, gap))))
+	local fr = 0
+	for _, share in UI.grid.columns do
+		fr += share
+	end
+	local columns = #UI.grid.columns
+	local unit = math.max(0, math.floor((w - (columns - 1) * gap) / fr))
+	local share = if finite(room) then (room - gap) / 2 else 0
+	local face = math.max(cardFace, math.floor(share))
+	for i = 1, DAYS - 1 do
+		local col, row = (i - 1) % (columns - 1), (i - 1) // (columns - 1)
+		table.insert(cards, { x = col * (unit + gap), y = row * (face + gap), w = unit, h = face + lip })
+	end
+	local x7 = (columns - 1) * (unit + gap)
+	return {
+		cards = cards,
+		day7 = { x = x7, y = 0, w = math.max(0, w - x7), h = 2 * face + gap + lip7 },
+		height = 2 * face + gap + math.max(lip, lip7),
+	}
 end
 
 -- The height of a panel's scrolling body: its content, capped so the panel (body + `chromeHeight`, the header, the

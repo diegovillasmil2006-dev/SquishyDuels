@@ -3,11 +3,20 @@
 -- result panel (quest lines). What the quest board shows, as plain data. The server owns progress, claims and swaps
 -- (QuestService); this module only displays the `quests` state (Types.QuestsView: the day's quests + the starter tasks).
 --   board(quests, ctx)    the Daily section (one card per active quest) and the Starter section (one card per
---                         QuestDefs starter task), the swaps left, the footer "New quests in {h}h {m}m" and the empty
+--                         QuestDefs starter task), the swaps left, the reset line "Resets in {clock}" and the empty
 --                         sentence "No quests right now. Check back in {time}." when the day has no quest
 --   dailyCard(entry, ctx, swapsLeft) / starterCards(starter, capsules?)   single cards (see Card)
 --   swapsLeft(quests)     Config.Economy.Quests.freeSwapsPerDay - quests.swapsUsed, never below 0
---   footer(now) / emptyText(now)   the two time lines (server time; the next quest day starts at 00:00 UTC)
+--   resetText(now) / emptyText(now)   the two time lines (server time; the next quest day starts at 00:00 UTC)
+-- UI FINAL R8 (the design's Quests window, plan work/ui/PLAN.md R8; `H:n` = "Squishy Duels HUD.dc.html" line n,
+-- `lib:n` = uploads/hud-lib.js line n):
+--   clock(seconds)        lib:306: "{h}h {MM}m", or "m:ss" in the last hour (the reset pill, H:359)
+--   tabs(board)           the tab row (H:358, UD7): Daily, Starter (while a starter task is unclaimed), Top Wins
+--                         (the Batch 3 board), each with its count of quests ready to claim (the badge, H:358)
+--   barGold(card)         the bar's gold fill once a quest is ready or claimed (H:956)
+--   goRoute(card)         GO's route (UD2, H:748-755): the quest's category, "squeeze" / "duel" / "practice"; nil for
+--                         an unknown quest
+--   goToast(preferred)    the squeeze route's toast with the lobby squeeze key of an Enum.PreferredInput name
 --   titleOf(entry)        a daily quest's line from QuestDefs.text (goal and squishy name filled in)
 --   namer(quests)         (questId) -> the quest's line or nil, for DuelFormat.result's quest lines
 --   starterClaimable(quests)   starter tasks done and not claimed (HudController adds them to the Quests badge, which
@@ -23,8 +32,9 @@
 --                         ranked lines "1. Ana · 12 wins", a note ("Checking the board…" before the first read, "The
 --                         board is taking a break…" while no read works, the empty week's "No wins yet this week. Be
 --                         the first!" alone) and the player's own line (place and wins, their week's wins outside the
---                         read, or how to get on the board)
--- A card: the title, the progress "3/5" (common.progress) with its bar fill, the reward "+1,500 Coins"
+--                         read, or how to get on the board); UI FINAL R8 (PR26): the same entries as `rows` (rank,
+--                         name, wins) for the tab's quest-row look
+-- A card: the title, the progress "3 / 5" (quest.progress, H:956) with its bar fill, the reward "+1,500 Coins"
 -- (common.coinsGain), the state In progress / Claim / Claimed, Swap and the Equip shortcut. Phase 5 (progression spec
 -- 2026-10-12 §9): the reward is the quest's squeezes × the squeeze value of ctx.capsules (the player's capsules state;
 -- CapsuleMath.rewardCoins, the Coins the server pays at claim time), and Card.reward is those Coins.
@@ -88,12 +98,20 @@ export type Board = {
 	starter: { Card },
 	starterVisible: boolean, -- false once every starter task is claimed
 	swapsLeft: number,
-	footer: string,
+	reset: string, -- UI FINAL R8: "Resets in {clock}" (H:359)
 	empty: string?, -- the empty sentence when the day has no quest
 }
 
--- Batch 3: what the Quests screen's "Top Wins This Week" section shows.
-export type TopWins = { lines: { string }, note: string?, you: string? }
+-- Batch 3: what the Quests screen's "Top Wins This Week" section shows. UI FINAL R8: `rows` are the ranked entries.
+export type WinsRow = { rank: number, name: string, wins: number }
+export type TopWins = { lines: { string }, rows: { WinsRow }, note: string?, you: string? }
+
+-- UI FINAL R8 (H:358): a tab of the Quests window and its ready count.
+export type TabId = "daily" | "starter" | "topWins"
+export type Tab = { id: TabId, label: string, count: number }
+
+-- UI FINAL R8 (UD2): GO's route.
+export type Route = "squeeze" | "duel" | "practice"
 
 -- Constants
 
@@ -171,7 +189,7 @@ local function card(
 		progress = shown,
 		goal = safeGoal,
 		fraction = shown / safeGoal,
-		progressText = Strings.format(Strings.common.progress, { progress = shown, goal = safeGoal }),
+		progressText = Strings.format(Strings.quest.progress, { progress = shown, goal = safeGoal }),
 		reward = reward,
 		rewardText = Strings.format(Strings.common.coinsGain, { coins = Format.coins(reward) }),
 		state = state,
@@ -194,10 +212,16 @@ function QuestFormat.swapsLeft(quests: unknown): number
 	return math.max(0, QUESTS.freeSwapsPerDay - math.max(0, used))
 end
 
--- "New quests in {h}h {m}m" until the next 00:00 UTC.
-function QuestFormat.footer(now: number): string
-	local hours, minutes = TimeUtil.splitDuration(untilNextDay(now))
-	return Strings.format(Strings.quest.footer, { h = hours, m = minutes })
+-- UI FINAL R8 (lib:306): "{h}h {MM}m" with hours left, else "m:ss" (whole seconds, never below 0).
+function QuestFormat.clock(seconds: number): string
+	local s = if finite(seconds) then math.max(0, math.floor(seconds)) else 0
+	local h, m, x = s // 3600, (s % 3600) // 60, s % 60
+	return if h > 0 then string.format("%dh %02dm", h, m) else string.format("%d:%02d", m, x)
+end
+
+-- UI FINAL R8 (H:359): "Resets in {clock}" until the next 00:00 UTC.
+function QuestFormat.resetText(now: number): string
+	return Strings.format(Strings.quest.footer, { clock = QuestFormat.clock(untilNextDay(now)) })
 end
 
 -- "No quests right now. Check back in {time}." ({time} = the countdown to the next 00:00 UTC).
@@ -317,9 +341,54 @@ function QuestFormat.board(quests: unknown, ctx: Context): Board
 		starter = starter,
 		starterVisible = starterVisible,
 		swapsLeft = swaps,
-		footer = QuestFormat.footer(ctx.now),
+		reset = QuestFormat.resetText(ctx.now),
 		empty = if #daily == 0 then QuestFormat.emptyText(ctx.now) else nil,
 	}
+end
+
+-- UI FINAL R8 (H:358, UD7): the tabs a board shows, each with its count of quests ready to claim.
+function QuestFormat.tabs(b: Board): { Tab }
+	local function ready(cards: { Card }): number
+		local n = 0
+		for _, c in cards do
+			if c.state == "claim" then
+				n += 1
+			end
+		end
+		return n
+	end
+	local list: { Tab } = { { id = "daily", label = Strings.quest.section.daily, count = ready(b.daily) } }
+	if b.starterVisible then
+		table.insert(list, { id = "starter", label = Strings.quest.section.starter, count = ready(b.starter) })
+	end
+	table.insert(list, { id = "topWins", label = Strings.board.title, count = 0 })
+	return list
+end
+
+-- UI FINAL R8 (H:956): the gold fill once ready or claimed, else the blue.
+function QuestFormat.barGold(c: Card): boolean
+	return c.state ~= "inProgress"
+end
+
+-- UI FINAL R8 (UD2, H:748-755): where GO takes the player: the quest's category; nil for an unknown quest.
+function QuestFormat.goRoute(c: Card): Route?
+	local def = if c.defId then QuestDefs.get(c.defId) else nil
+	local category = if def then def.category else nil
+	if category == "squeeze" or category == "duel" or category == "practice" then
+		return category
+	end
+	return nil
+end
+
+-- UI FINAL R8 (H:750): the squeeze route's toast: the lobby squeeze key on keyboard / gamepad (Strings.duel.key, as
+-- the duel dock names it), no key on touch.
+function QuestFormat.goToast(preferred: string): string
+	local keys = Strings.duel.key
+	local key = if preferred == "KeyboardAndMouse"
+		then keys.squeezeMouse
+		elseif preferred == "Gamepad" then keys.squeezeGamepad
+		else nil
+	return if key then Strings.format(Strings.quest.goSqueeze, { key = key }) else Strings.quest.goSqueezeTouch
 end
 
 -- The Quests panel's scrolling body (Part 8): its content's height, capped so the panel stays within `maxShare` of
@@ -364,22 +433,24 @@ end
 function QuestFormat.topWins(view: unknown): TopWins
 	local v: any = view
 	if type(v) ~= "table" or v.loaded ~= true or type(v.top) ~= "table" then
-		return { lines = {}, note = Strings.board.loading }
+		return { lines = {}, rows = {}, note = Strings.board.loading }
 	end
 	local board = Strings.board
 	if v.unavailable == true then
-		return { lines = {}, note = board.unavailable }
+		return { lines = {}, rows = {}, note = board.unavailable }
 	end
 	local lines: { string } = {}
+	local rows: { WinsRow } = {}
 	for _, entry in v.top do
 		if type(entry) == "table" and type(entry.name) == "string" and type(entry.wins) == "number" then
 			local args = { rank = #lines + 1, name = entry.name, wins = Format.coins(entry.wins) }
 			table.insert(lines, Strings.format(Strings.plural(entry.wins, board.line.one, board.line.many), args))
+			table.insert(rows, { rank = #lines, name = entry.name, wins = entry.wins })
 		end
 	end
 	local wins = if type(v.wins) == "number" then v.wins else 0
 	if #lines == 0 and wins == 0 then
-		return { lines = lines, note = board.empty } -- the empty week's note says it all
+		return { lines = lines, rows = rows, note = board.empty } -- the empty week's note says it all
 	end
 	local you: string
 	if type(v.place) == "number" then
@@ -393,7 +464,7 @@ function QuestFormat.topWins(view: unknown): TopWins
 	else
 		you = board.youNone
 	end
-	return { lines = lines, note = if #lines == 0 then board.empty else nil, you = you }
+	return { lines = lines, rows = rows, note = if #lines == 0 then board.empty else nil, you = you }
 end
 
 return QuestFormat

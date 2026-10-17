@@ -479,6 +479,14 @@ local Palette = {
 	StickerScrimPink = Color3.fromHex("#FF96D2"), -- H:178: the scrim's lighter centre (at .28)
 	StickerStickerShadow = Color3.fromHex("#140A1E"), -- H:251: the window sticker's drop shadow (at .35)
 	StickerShadowWindow = Color3.fromHex("#0F0819"), -- H:182: the window's soft shadow (at .5)
+	-- UI FINAL R8 (the Daily and Quests windows): the streak pill (H:390), a claimed day card and its name (H:965-966)
+	-- and the day 7 card's end stop (H:406; its 0% and 50% stops are StickerFeaturedTop and StickerFeaturedMid).
+	StickerStreakTop = Color3.fromHex("#FFB25C"), -- H:390
+	StickerStreakEnd = Color3.fromHex("#FF4F6E"), -- H:390
+	StickerDayClaimedTop = Color3.fromHex("#D8CCF5"), -- H:965: a claimed day card
+	StickerDayClaimedEnd = Color3.fromHex("#BBA9EA"), -- H:965
+	StickerDayClaimedText = Color3.fromHex("#5B3FB0"), -- H:966: a claimed day's name
+	StickerDay7End = Color3.fromHex("#9363F0"), -- H:406: the day 7 card (100%)
 	-- UI FINAL R5 (the Squishies window): the All tab's top stop when on (H:928, with StickerHeaderPinkEnd).
 	StickerTabAllTop = Color3.fromHex("#FF9CC4"),
 

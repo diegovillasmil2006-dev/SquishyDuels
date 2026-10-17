@@ -243,6 +243,9 @@ export type DecorateOptions = {
 	content: GuiObject?,
 	onFilter: ((mix: number) -> ())?,
 	pivotPx: number?,
+	-- UI FINAL R8 (G8.3, H:643): true while the button is "off" (a data-off day card): no hover filter, and a press
+	-- plays ui.error and the "no" shake instead of the squash (PR5; a touch on the finished tap, as Button.new's off).
+	off: (() -> boolean)?,
 }
 
 export type Decorated = {
@@ -846,9 +849,19 @@ function Button.decorate(guiButton: GuiButton, options: DecorateOptions?): Decor
 	local fx: Fx = if options and options.fx then options.fx else "btn"
 	local visual: GuiObject? = if options then options.visual else nil
 	local target: GuiObject = visual or guiButton
+	local off = if options then options.off else nil
+	local function isOff(): boolean
+		return off ~= nil and off()
+	end
 	local feel = newFeel(target, target.Size, if options then options.content else nil, fx, cleanup, function(): boolean
-		return true
+		return not isOff()
 	end, if options then options.onFilter else nil, visual == nil, if options then options.pivotPx or 0 else 0, nil)
+	local function deny()
+		if soundOn then
+			playSound(SOUND_ERROR)
+		end
+		feel.shake()
+	end
 	cleanup:add(feel.scale)
 	cleanup:add(guiButton.MouseEnter:Connect(function()
 		if not lastInputIsMouse() then
@@ -865,10 +878,21 @@ function Button.decorate(guiButton: GuiButton, options: DecorateOptions?): Decor
 		feel.setHover(feel.focused)
 	end))
 	cleanup:add(guiButton.InputBegan:Connect(function(input: InputObject)
-		if isPointer(input) then
+		if not isPointer(input) then
+			return
+		elseif not isOff() then
 			feel.press()
+		elseif input.UserInputType == MOUSE_PRESS then
+			deny()
 		end
 	end))
+	if off then
+		cleanup:add(guiButton.Activated:Connect(function(input: InputObject?)
+			if isOff() and (input == nil or input.UserInputType ~= MOUSE_PRESS) then
+				deny() -- a finished tap, a gamepad or a key (the mouse denied on pointer-down)
+			end
+		end))
+	end
 	cleanup:add(guiButton.SelectionGained:Connect(function()
 		feel.focused = true
 		feel.setHover(true)

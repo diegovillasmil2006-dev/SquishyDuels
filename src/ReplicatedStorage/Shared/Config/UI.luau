@@ -897,6 +897,153 @@ local UI = {
 		},
 	},
 
+	-- UI FINAL R8 (the Daily Rewards window, plan work/ui/PLAN.md R8; `H:n` = "Squishy Duels HUD.dc.html" line n):
+	-- DailyController and UI/DailyFormat. Base px; colours are Art/Palette names; every pill and card border is drawn
+	-- inside its box (CSS border-box) and every lip under its face (our lip takes room, Layout.lipGap).
+	Daily = {
+		body = { padTop = 18, padX = 26, padBottom = 26, gap = 16, topGap = 12 }, -- H:388-389
+		-- H:390: the streak pill (#FFB25C -> #FF4F6E, inset 2 at .5), the flame raised 4 and pulsing 1 s
+		streak = {
+			height = 40,
+			padLeft = 4,
+			padRight = 16,
+			gap = 6,
+			border = 3,
+			iconPx = 34,
+			iconRaise = 4,
+			pulseS = 1,
+			inset = { px = 2, alpha = 0.5 },
+			textRole = "streak",
+		},
+		-- H:391: the timer pill (the well), pushed right
+		timer = { height = 40, padLeft = 4, padRight = 16, gap = 6, border = 3, iconPx = 30, textRole = "wellText" },
+		grid = { columns = { 1, 1, 1, 1.25 }, gap = 14 }, -- H:393: 1fr 1fr 1fr 1.25fr x 2 rows
+		compactColumns = 3, -- plan R8 (phones): 3 columns, Day 7 under them, the grid scrolls
+		-- H:395-404, H:965-966: a day card (column, centred, gap 4, padding 10 8 10, border 4, radius 22, lip 5, the
+		-- surface `day`); the icon 84 with its drop shadow (0 5px 0 at .25), at .5 once claimed; today's icon area
+		-- pulses 1.4 s; the check 60, the lock 34 at (right 14, bottom 0); the CLAIM! chip's face 34 (Button size
+		-- "chip"); sdRise .45 s, i x 50 ms apart (H:31 frames: Config.UI.motion.cardIn).
+		card = {
+			padTop = 10,
+			padX = 8,
+			padBottom = 10,
+			gap = 4,
+			border = 4,
+			radius = 22,
+			lip = 5,
+			iconPx = 84,
+			iconShadow = { px = 5, alpha = 0.25 },
+			claimedIconAlpha = 0.5,
+			pulseS = 1.4,
+			checkPx = 60,
+			lockPx = 34,
+			lockRight = 14,
+			lockBottom = 0,
+			chipFace = 34,
+			nameKind = "Body", -- H:396: 18 px, its colour per state (DailyFormat.cardLook)
+			valueRole = "dayValue", -- H:401
+			nextRole = "dayNext", -- H:403
+			rise = { ms = 450, stepMs = 50, curve = "rise" },
+		},
+		-- H:406-416: day 7 (column 4, both rows; gap 6, padding 14 12 14, border 4 always ink, radius 24, lip 6, inset 4
+		-- at .5; #FFE58A -> #F5A623 at 50% -> #9363F0; clips): the rays 640 at (50%, 46%), white .3, 18 s a turn; "Day 7";
+		-- the MEGA REWARD pill (26, padding 3 10 0, border 3, #FF8A9A -> #E83A5A); the Treat Box art 170 (drop-shadow 0
+		-- 8px 0 at .3, sdFloat 3 s); the twinkles 28 (left 20, top 20) and 22 (right 16, bottom 24), 2 s, .9 s apart; the
+		-- lock 40 at (right 18, top 12); "Treat Box"; the foot; sdRise .5 s after .35 s.
+		day7 = {
+			padTop = 14,
+			padX = 12,
+			padBottom = 14,
+			gap = 6,
+			border = 4,
+			radius = 24,
+			lip = 6,
+			inset = { px = 4, alpha = 0.5 },
+			midAt = 0.5,
+			rays = { px = 640, alpha = 0.3, spinS = 18, centreY = 0.46 },
+			artPx = 170,
+			artShadow = { px = 8, alpha = 0.3 },
+			floatS = 3,
+			pill = { height = 26, padTop = 3, padX = 10, border = 3, textRole = "megaReward" },
+			stars = {
+				{ px = 28, left = 20, top = 20, periodS = 2, delayS = 0 },
+				{ px = 22, right = 16, bottom = 24, periodS = 2, delayS = 0.9 },
+			} :: { { [string]: number } },
+			lockPx = 40,
+			lockRight = 18,
+			lockTop = 12,
+			titleRole = "day7Title", -- H:408
+			nameRole = "day7", -- H:415
+			footRole = "dayFoot", -- H:416
+			rise = { ms = 500, delayMs = 350, curve = "rise" },
+		},
+		-- H:41 sdStamp .5 s cubic-bezier(.2,1.4,.4,1): the check drawn at its rest -10° (also the ReducedMotion rest),
+		-- so the frames are relative to it (0%: -25° -> -15, 60%: -8° -> 2). Also the quest rows' check (H:372).
+		stamp = {
+			ms = 500,
+			curve = "search",
+			restRot = -10,
+			frames = {
+				{ at = 0, scale = 3, rot = -15, alpha = 0 },
+				{ at = 0.6, scale = 0.9, rot = 2, alpha = 1 },
+				{ at = 1, scale = 1, rot = 0, alpha = 1 },
+			} :: { MotionPose },
+		},
+		claimSoundDelayMs = 120, -- H:853: the claim sound after the stamp
+		boxFlow = { closeAfterMs = 750, revealAfterMs = 280 }, -- H:858: the day 7 Treat Box
+	},
+
+	-- UI FINAL R8 (the Quests window, plan R8; H:350-381): QuestController and UI/QuestFormat. Base px.
+	Quests = {
+		body = { padTop = 18, padX = 26, padBottom = 24, gap = 14, tabGap = 10 }, -- H:356-358
+		-- H:358: a tab (46 + lip 4, padding 0 22, border 4, radius 16, inset 3 at .4; mint #9AF5D2 -> #25B886 when
+		-- selected, the purple card otherwise) and its count badge (28 at (right -10, top -12), padding-top 3, sdBadge
+		-- 2.4 s)
+		tab = {
+			face = 46,
+			lip = 4,
+			padX = 22,
+			border = 4,
+			radius = 16,
+			inset = { px = 3, alpha = 0.4 },
+			textRole = "tab",
+			badgePx = 28,
+			badgeRight = -10,
+			badgeTop = -12,
+			badgeS = 2.4,
+		},
+		-- H:359: the reset pill (the well), pushed right
+		reset = { height = 36, padLeft = 4, padRight = 14, gap = 6, border = 3, iconPx = 28, textRole = "wellText" },
+		-- H:361-363: rows 12 apart; a row 94 + lip 5, padding 0 14 0 12, gap 16, border 4 (#FFE36B when ready), radius
+		-- 22, the surface `row`; sdRise .45 s, i x 60 ms apart; a claimed row at .6 (T15). Phones (plan R8): the reward
+		-- and the chips go under the bar, the row grows by them (compactExtra, a reading).
+		row = {
+			face = 94,
+			lip = 5,
+			padLeft = 12,
+			padRight = 14,
+			gap = 16,
+			border = 4,
+			radius = 22,
+			rowsGap = 12,
+			claimedAlpha = 0.6,
+			rise = { ms = 450, stepMs = 60, curve = "rise" },
+			compactExtra = 48,
+		},
+		icon = { tile = 70, px = 58, border = 4, radius = 18 }, -- H:364
+		-- H:365-366: the text column (gap 8): the title (20 px, the soft drop) and "x / y" (20 px, stroke 4), 10 apart,
+		-- at most titleLines lines (a reading: the design has one)
+		text = { gap = 8, titleGap = 10, titleRole = "trackerTitle", progressRole = "trackerProgress", titleLines = 2 },
+		-- H:369: the reward pill (the well), the coin 30
+		reward = { height = 40, padLeft = 4, padRight = 12, gap = 4, border = 3, iconPx = 30, textRole = "questReward" },
+		-- H:370-372: CLAIM (green) / GO (cyan) 126 x 56 + lip 5, radius 16, 24 px stroke 5, CLAIM's sdPulse 1.1 s; the
+		-- claimed check 52 in the 126 slot
+		button = { width = 126, face = 56, lip = 5, radius = 16, textRole = "button", pulseS = 1.1 },
+		checkPx = 52,
+		goDelayMs = 240, -- H:755
+		goWaypointSeconds = 120, -- reading: as BoxController's earn waypoint (WAYPOINT_MAX_SECONDS)
+	},
+
 	-- Grip HUD card, toasts and popups (GripController, §17.7). Timers and gameplay values are in Config.Grip.
 	Grip = {
 		compactRowMaxHeight = 40, -- `compact` layout: the card is one row at most this tall (base px) ...
@@ -1069,6 +1216,7 @@ local UI = {
 			qpop = { highlightPx = 3, highlightAlpha = 0.45 }, -- H:162
 			row = { highlightPx = 3, highlightAlpha = 0.1 }, -- H:363, H:433: quest and settings rows
 			card = { highlightPx = 2, highlightAlpha = 0.1 }, -- H:935: the squishy cards
+			day = { highlightPx = 3, highlightAlpha = 0.2 }, -- H:395: the day cards (UI FINAL R8)
 			chip = { highlightPx = 2, highlightAlpha = 0.55 }, -- H:402: Button size "chip" (UI FINAL R2, P12)
 		} :: { [string]: StickerSurface },
 		-- Text roles (Theme.stickerText): the kind (Config.UI.TextSize), the CSS -webkit-text-stroke width (the ink
@@ -1131,6 +1279,20 @@ local UI = {
 			searchTime = { kind = "Small", stroke = 3, color = "StickerCoinText" },
 			trackerTitle = { kind = "Button", stroke = 3, soft = { px = 2, alpha = 0.5 } },
 			trackerProgress = { kind = "Button", stroke = 4 },
+			-- UI FINAL R8 (the Daily and Quests windows): the streak (H:390: 19 px, stroke 4); the well pills' text (H:359,
+			-- H:391: 14-15 px -> 16 (PR2) #F3EDFF, PR3's thinnest outline); a day's value (H:401: 22 px, stroke 5) and
+			-- "Tomorrow" (H:403: 14 px -> 16 #FFE36B); "Day 7" (H:408: 26 px, stroke 6); MEGA REWARD (H:409: 12 px -> 16);
+			-- the day 7 foot (H:416: 14 px -> 16 white, soft drop 0 2 .6); a quest's reward (H:369: 19 px #FFE36B, stroke
+			-- 4); the tab badge's count (H:358: 15 px -> 16, stroke 3).
+			streak = { kind = "D19", stroke = 4 },
+			wellText = { kind = "Small", stroke = 3, color = "StickerTextSoft" },
+			dayValue = { kind = "H2", stroke = 5 },
+			dayNext = { kind = "Small", stroke = 3, color = "StickerCoinText" },
+			day7Title = { kind = "HudNumber", stroke = 6 },
+			megaReward = { kind = "Small", stroke = 3 },
+			dayFoot = { kind = "Small", stroke = 3, soft = { px = 2, alpha = 0.6 } },
+			questReward = { kind = "D19", stroke = 4, color = "StickerCoinText" },
+			tabBadge = { kind = "Small", stroke = 3 },
 			-- UI FINAL R5 (the Squishies window): the header pill's count (H:188: 20 px #FFE36B, stroke 4); the tab and
 			-- card name (H:194, H:208: 15 px -> 16 (PR2) white, text-shadow 0 2px 0 rgba(30,20,40,.5); PR3 outline); the
 			-- rarity and EQUIPPED pills (H:209, H:228-229: 11-12 px -> 16, text-shadow 0 1px 0 at .5); the Equipped

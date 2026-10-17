@@ -829,8 +829,15 @@ local Strings = {
 		swap = "Swap",
 		complete = "Quest complete! Claim your reward.",
 		autoCollected = "Quest reward collected",
-		footer = "New quests in {h}h {m}m",
+		-- UI FINAL R8 (the design's reset pill, H:359, H:1027): {clock} is "{h}h {MM}m", or "m:ss" in the last hour.
+		footer = "Resets in {clock}",
 		empty = "No quests right now. Check back in {time}.",
+		progress = "{progress} / {goal}", -- UI FINAL R8: a quest row's "x / y" (H:956)
+		go = "Go", -- UI FINAL R8: GO (H:371; the button shows it in capitals, Q5)
+		-- UI FINAL R8 (GO on a squeeze quest, H:750): the toast after the window closes; the key is the lobby squeeze's
+		-- on keyboard / gamepad, none on touch.
+		goSqueeze = "Squeeze your squishy! Press {key}",
+		goSqueezeTouch = "Squeeze your squishy!",
 		-- Keyed by daily quest template id (camelCase of `squeeze_any`, ...).
 		template = {
 			squeezeAny = { one = "Squeeze squishies once", many = "Squeeze squishies {n} times" },
@@ -885,6 +892,15 @@ local Strings = {
 		treatBox = "Treat Box", -- foam fix round 2: "Free Treat Box" wrapped onto a third line on the 84 px day card
 		-- Reading (Part 7; §11.6 "today highlighted" gives no text): the label on today's day card.
 		today = "Today",
+		-- UI FINAL R8 (the design's Daily window): the timer pill while a reward waits (H:1029; `ready` stays the world
+		-- sign's, `wait` is the pill's other line), the CLAIM! chip (H:402), the next day's tag (H:403), the day 7 pill
+		-- (H:409) and day 7's foot (H:964: Claimed = common.claimed / Claim! / Tomorrow = `tomorrow` / Locked).
+		readyNow = "Your reward is ready!",
+		claimTag = "CLAIM!",
+		tomorrow = "Tomorrow",
+		megaReward = "MEGA REWARD",
+		footClaim = "Claim!",
+		footLocked = "Locked",
 	},
 
 	-- Settings (§11.6). Keys match profile.settings fields.

@@ -12,6 +12,9 @@
 -- with its inset highlight (2 px at .5), no rim, the number white in the badge role (18 px, the ink outline 1.5);
 -- accent "yellow" is the daily "!" badge (its surface and role badgeMark: highlight 2 px at .6, 20 px). Padding 8
 -- inside the border.
+-- UI FINAL R8 (H:358): spec.small is the Quests tab's badge: 28 px, padding-top 3, no side padding, the 15 px (16,
+-- PR2) count with a 3 px stroke (the tabBadge role); its size is measured from the text (no AutomaticSize, which
+-- mis-sizes under a scaled ScreenGui), at least 28 square.
 
 -- Services
 
@@ -34,6 +37,7 @@ export type Spec = {
 	name: string,
 	sizePx: number?, -- the height and the minimum width (base px); default 32 (H:102)
 	accent: Theme.AccentName?, -- default the badge red (H:102); "yellow" = the daily "!" (H:120)
+	small: boolean?, -- UI FINAL R8: the Quests tab badge (H:358)
 	layoutOrder: number?,
 	parent: Instance?,
 }
@@ -50,6 +54,9 @@ export type CountBadge = {
 
 local STICKER = Config.UI.Sticker
 local DEFAULT_SIZE_PX = 32 -- H:102
+local SMALL_SIZE_PX = 28 -- H:358
+local SMALL_PAD_TOP = 3 -- H:358
+local MEASURE_MARGIN_PX = 2 -- reading: TextService rounding
 local PADDING_X = 8 + STICKER.border.thin -- H:102: padding 0 8px inside the border
 local MAX = 99
 local Z_INDEX = 4 -- above the tile's content
@@ -80,14 +87,15 @@ end
 
 function CountBadge.new(spec: Spec): CountBadge
 	local cleanup = Cleanup.new()
-	local size = spec.sizePx or DEFAULT_SIZE_PX
+	local small = spec.small == true
+	local size = spec.sizePx or (if small then SMALL_SIZE_PX else DEFAULT_SIZE_PX)
 	local accent = if spec.accent then Theme.accent(spec.accent) else BADGE_RED
 	-- The size is the minimum: a larger text size grows the badge (AutomaticSize XY), so the number always fits.
 	local root: Frame = Create("Frame", {
 		Name = spec.name,
 		BorderSizePixel = 0,
 		Size = UDim2.fromOffset(size, size),
-		AutomaticSize = Enum.AutomaticSize.XY,
+		AutomaticSize = if small then Enum.AutomaticSize.None else Enum.AutomaticSize.XY,
 		Visible = false,
 		ZIndex = Z_INDEX,
 		LayoutOrder = spec.layoutOrder or 0,
@@ -100,12 +108,15 @@ function CountBadge.new(spec: Spec): CountBadge
 		radius = Theme.Radius.pill,
 		stroke = STICKER.border.thin,
 		inner = true,
-		top = STICKER.border.thin + look.highlightPx,
-		colors = Theme.surfaceColors(accent, role, true),
+		top = STICKER.border.thin + (if small then 0 else look.highlightPx), -- H:358: no inset highlight
+		colors = if small
+			then { face = accent.top, faceEnd = accent.shade }
+			else Theme.surfaceColors(accent, role, true),
 	})
 	Create("UIPadding", {
-		PaddingLeft = UDim.new(0, PADDING_X),
-		PaddingRight = UDim.new(0, PADDING_X),
+		PaddingLeft = UDim.new(0, if small then 0 else PADDING_X),
+		PaddingRight = UDim.new(0, if small then 0 else PADDING_X),
+		PaddingTop = UDim.new(0, if small then SMALL_PAD_TOP else 0),
 		Parent = root,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, 0, root)
@@ -121,6 +132,10 @@ function CountBadge.new(spec: Spec): CountBadge
 	}, "Chip")
 	Theme.stickerText(label, role)
 	label.TextWrapped = false -- Theme.text wraps; the badge grows with its number instead
+	if small then
+		label.AutomaticSize = Enum.AutomaticSize.None
+		Theme.stickerText(label, "tabBadge")
+	end
 
 	local self = {} :: CountBadge
 	self.root = root
@@ -129,6 +144,12 @@ function CountBadge.new(spec: Spec): CountBadge
 	function self.setText(_: CountBadge, text: string?)
 		label.Text = text or ""
 		root.Visible = text ~= nil and text ~= ""
+		if small then
+			local kind: Theme.TextKind = Theme.Sticker.text.tabBadge.kind :: Theme.TextKind
+			local width = math.ceil(Theme.textWidth(label.Text, kind)) + MEASURE_MARGIN_PX
+			label.Size = UDim2.fromOffset(width, math.ceil(Theme.lineHeight(kind)))
+			root.Size = UDim2.fromOffset(math.max(size, width + 2 * STICKER.border.thin), size)
+		end
 	end
 
 	function self.setCount(_: CountBadge, n: number?)

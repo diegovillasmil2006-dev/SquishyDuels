@@ -12,11 +12,11 @@
 --     capsules passed in; a new player's 10 without them), as the server pays at claim time;
 --   * once today is claimed: "Come back in {time}" until 00:00 UTC; the sign reads "Ready to claim!" or
 --     "Next reward in {time}", nothing while the state is unknown;
---   * Part 8 layout (§11.2; base px at 667×375, 1280×720 and 1920×1080, Medium and the largest text): the day cards
---     grow with the text so every word of a card fits it, wrap onto a second line when the row is too narrow (one row
---     at Medium text everywhere), and the panel stays within 86% of the screen height with its body scrolling;
---   * foam UI (2026-10-09): today's card is Sky blue with the thick outline (claimed today too), the Treat Box day
---     Lilac, claimed days Biscuit, each with its word; the chrome counts the header tab and Close above the panel.
+--   * UI FINAL R8 (the design's Daily window, plan work/ui/PLAN.md R8): the card looks (claimed lilac, today's
+--     claimable day yellow with the white border, else purple), Tomorrow / locked / the value / the foot, the streak
+--     and timer pills, the stamp's rest and the day 7 flow, and the grid (the design's 4 columns and 2 rows on its
+--     body, never under the natural faces; 3 columns and day 7 under them on phones); bodyHeight stays
+--     (CapsuleController's).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -207,141 +207,194 @@ return function(t: Context)
 		expect.equal(DailyFormat.signText(daily(D, 1), 0 / 0), nil)
 	end)
 
-	t.test("card looks (foam UI): today Sky + thick, Treat Box Lilac, claimed Biscuit, with words", function()
-		local function looks(model: any): { string }
+	-- UI FINAL R8 (the design's Daily window, plan work/ui/PLAN.md R8; `H:n` = "Squishy Duels HUD.dc.html" line n) -----
+
+	local Palette = t.requireShared("Art/Palette")
+	local UI = Config.UI.Daily
+
+	t.test(
+		"card looks (R8, H:965-966): claimed lilac, today's claimable day yellow with the white border, else purple",
+		function()
+			local function looks(model: any): { string }
+				local list = {}
+				for _, card in model.cards do
+					local look = DailyFormat.cardLook(card)
+					table.insert(list, look.top .. "/" .. look.border)
+				end
+				return list
+			end
+			local CLAIMED, TODAY, PLAIN =
+				"StickerDayClaimedTop/StickerInk", "StickerCreamYellow/White", "StickerCardTop/StickerInk"
+			-- Days 1-3 claimed, day 4 today.
+			expect.deepEqual(
+				looks(DailyFormat.model(daily(D - 1, 3), NOON)),
+				{ CLAIMED, CLAIMED, CLAIMED, TODAY, PLAIN, PLAIN, PLAIN }
+			)
+			-- Claimed today: today's card takes the claimed look (the design's i < streak), nothing is yellow.
+			expect.deepEqual(
+				looks(DailyFormat.model(daily(D, 3), NOON)),
+				{ CLAIMED, CLAIMED, CLAIMED, PLAIN, PLAIN, PLAIN, PLAIN }
+			)
+			-- Unknown state: every card plain.
+			expect.deepEqual(looks(DailyFormat.model(nil, NOON)), { PLAIN, PLAIN, PLAIN, PLAIN, PLAIN, PLAIN, PLAIN })
+			-- The two stops (today #FFF3A6 -> #FFC23A, H:965), the names (H:966) and the claimed icon at .5 (H:398).
+			local open = DailyFormat.model(daily(D - 1, 3), NOON)
+			local today, claimed, plain =
+				DailyFormat.cardLook(open.cards[4]),
+				DailyFormat.cardLook(open.cards[1]),
+				DailyFormat.cardLook(open.cards[5])
+			expect.deepEqual(today, {
+				top = "StickerCreamYellow",
+				bottom = "StickerGoldMid",
+				border = "White",
+				name = "StickerFoundText",
+				iconAlpha = 1,
+			})
+			expect.equal(claimed.bottom, "StickerDayClaimedEnd")
+			expect.equal(claimed.name, "StickerDayClaimedText")
+			expect.equal(claimed.iconAlpha, UI.card.claimedIconAlpha)
+			expect.equal(plain.name, "White")
+			for _, look in { today, claimed, plain } do
+				for _, key in { look.top, look.bottom, look.border, look.name } do
+					expect.truthy(typeof((Palette :: any)[key]) == "Color3")
+				end
+			end
+			expect.equal(Palette.StickerCreamYellow:ToHex():upper(), "FFF3A6")
+			expect.equal(Palette.StickerGoldMid:ToHex():upper(), "FFC23A")
+			expect.equal(Palette.StickerDayClaimedTop:ToHex():upper(), "D8CCF5")
+		end
+	)
+
+	t.test("next, locked, the value and the foot (R8, H:399-403, H:964)", function()
+		local function daysWith(model: any, field: string): { number }
 			local list = {}
 			for _, card in model.cards do
-				local look = DailyFormat.cardLook(card)
-				table.insert(list, look.face .. (if look.thick then "+" else ""))
+				if card[field] then
+					table.insert(list, card.day)
+				end
 			end
 			return list
 		end
-		-- Days 1-3 claimed, day 4 today, day 7 the Treat Box still to come.
-		local model = DailyFormat.model(daily(D - 1, 3), NOON)
-		expect.deepEqual(looks(model), { "biscuit", "biscuit", "biscuit", "sky+", "frosting", "frosting", "lilac" })
-		-- Claimed today: today's card keeps Sky blue and the thick outline.
-		expect.deepEqual(
-			looks(DailyFormat.model(daily(D, 3), NOON)),
-			{ "biscuit", "biscuit", "sky+", "frosting", "frosting", "frosting", "lilac" }
-		)
-		-- Day 7 is today: today wins over the Treat Box face.
-		expect.equal(looks(DailyFormat.model(daily(D - 1, 6), NOON))[7], "sky+")
-		-- Unknown state: plain cards, the Treat Box day still Lilac.
-		expect.deepEqual(
-			looks(DailyFormat.model(nil, NOON)),
-			{ "frosting", "frosting", "frosting", "frosting", "frosting", "frosting", "lilac" }
-		)
-		-- Never colour alone: every coloured look comes with its word on the card.
-		for _, state in { daily(D - 1, 3), daily(D, 3), daily(D - 1, 6) } do
-			for _, card in DailyFormat.model(state, NOON).cards do
-				local face = DailyFormat.cardLook(card).face
-				if face == "sky" then
-					expect.equal(card.todayText, Strings.daily.today)
-				elseif face == "biscuit" then
-					expect.equal(card.claimedText, Strings.common.claimed)
-				elseif face == "lilac" then
-					expect.equal(card.treatText, Strings.daily.treatBox)
-				end
+		local function feet(model: any): { string }
+			local list = {}
+			for _, card in model.cards do
+				table.insert(list, card.foot)
 			end
+			return list
 		end
+		local F = {
+			claimed = Strings.common.claimed,
+			claim = Strings.daily.footClaim,
+			tomorrow = Strings.daily.tomorrow,
+			locked = Strings.daily.footLocked,
+		}
+		-- Day 4 claimable: no Tomorrow, the days after it locked.
+		local open = DailyFormat.model(daily(D - 1, 3), NOON)
+		expect.deepEqual(daysWith(open, "next"), {})
+		expect.deepEqual(daysWith(open, "locked"), { 5, 6, 7 })
+		expect.deepEqual(feet(open), { F.claimed, F.claimed, F.claimed, F.claim, F.locked, F.locked, F.locked })
+		expect.equal(open.cards[1].valueText, Format.coins(CapsuleMath.rewardCoins(DAILY.coinsByDay[1], VALUE)))
+		expect.equal(open.cards[DAYS].valueText, Strings.daily.treatBox)
+		-- Day 3 claimed today: day 4 is Tomorrow, the days after it locked.
+		local claimed = DailyFormat.model(daily(D, 3), NOON)
+		expect.deepEqual(daysWith(claimed, "next"), { 4 })
+		expect.deepEqual(daysWith(claimed, "locked"), { 5, 6, 7 })
+		expect.deepEqual(feet(claimed), { F.claimed, F.claimed, F.claimed, F.tomorrow, F.locked, F.locked, F.locked })
+		-- Day 7 claimed today: the cycle is done, nothing is next or locked.
+		local full = DailyFormat.model(daily(D, DAYS), NOON)
+		expect.deepEqual(daysWith(full, "next"), {})
+		expect.deepEqual(daysWith(full, "locked"), {})
+		-- Day 7 claimable: its foot is Claim!.
+		expect.equal(DailyFormat.model(daily(D - 1, 6), NOON).cards[DAYS].foot, F.claim)
+		-- Unknown: no lock, no Tomorrow.
+		local unknown = DailyFormat.model(nil, NOON)
+		expect.deepEqual(daysWith(unknown, "locked"), {})
+		expect.deepEqual(daysWith(unknown, "next"), {})
+		expect.equal(Strings.daily.claimTag, "CLAIM!")
+		expect.deepEqual(F, { claimed = "Claimed", claim = "Claim!", tomorrow = "Tomorrow", locked = "Locked" }) -- H:964
 	end)
 
-	-- Part 8 layout ---------------------------------------------------------------------------------------------------
-
-	local Layout = t.requireClient("UI/Layout")
-	local UI = Config.UI
-	local LARGEST = UI.PreferredTextScale.Largest
-	local SCREENS = { Vector2.new(667, 375), Vector2.new(1280, 720), Vector2.new(1920, 1080) }
-	-- DailyController's numbers: panel 680 (modal margin 24), padding 20, card 84 with 6 px between cards and 6 px of
-	-- padding, the scroll bar's 6 px, the panel at most 86% of the screen.
-	local PANEL_WIDTH, MARGIN, PADDING, CARD, GAP, CARD_PADDING, SCROLLBAR = 680, 24, 20, 84, 6, 6, 6
-	local SHARE = 0.86
-	-- The longest word any day card shows (they wrap between words, never inside one).
-	local function longestWord(): number
-		local longest = 0
-		local model = DailyFormat.model(daily(D - 1, 3), NOON)
-		local texts = { Strings.common.claimed, Strings.daily.today, Strings.daily.treatBox }
-		for _, card in model.cards do
-			table.insert(texts, card.label)
-			table.insert(texts, card.coinsText)
-		end
-		for _, text in texts do
-			for word in string.gmatch(text, "%S+") do
-				longest = math.max(longest, utf8.len(word) or #word)
-			end
-		end
-		return longest
-	end
-
-	t.test("layout (Part 8): cards grow with the text, every word fits, they wrap only when they must", function()
-		local letters = longestWord()
-		expect.truthy(letters >= 5)
-		for _, actual in SCREENS do
-			local scale = Layout.uiScale(actual.Y)
-			local panel = math.min(PANEL_WIDTH, Layout.modalWidth(actual.X, scale, MARGIN))
-			local row = panel - 2 * PADDING - SCROLLBAR
-			for _, textScale in { 1, UI.PreferredTextScale.Large, LARGEST } do
-				local card = DailyFormat.cardWidth(CARD, textScale)
-				expect.truthy(card >= CARD)
-				-- About 0.6 em a letter (Nunito Bold / ExtraBold and Fredoka One, generous) at the card's Small and
-				-- Chip text size (both 16 base px).
-				local wordWidth = letters * 0.6 * UI.TextSize.Small * textScale
-				expect.truthy(wordWidth + 2 * CARD_PADDING <= card)
-				local perRow = DailyFormat.cardsPerRow(row, card, GAP)
-				expect.truthy(perRow >= 1)
-				expect.truthy(perRow * card + (perRow - 1) * GAP <= row + 1e-6)
-				if textScale == 1 then
-					expect.truthy(perRow >= 7) -- one row of 7 at Medium text on every screen
-				end
-			end
-		end
-		expect.equal(DailyFormat.cardWidth(CARD, 1), 84)
-		expect.equal(DailyFormat.cardWidth(CARD, LARGEST), 122)
-		expect.equal(DailyFormat.cardWidth(CARD, 0.5), 84) -- never narrower than the base
-		expect.equal(DailyFormat.cardWidth(CARD, 0 / 0), 84)
-		-- The phone at the largest text: the cards wrap (5 + 2).
-		local phoneScale = Layout.uiScale(375)
-		local phoneRow = math.min(PANEL_WIDTH, Layout.modalWidth(667, phoneScale, MARGIN)) - 2 * PADDING - SCROLLBAR
-		expect.equal(DailyFormat.cardsPerRow(phoneRow, 122, GAP), 5)
-		expect.equal(DailyFormat.cardsPerRow(50, 122, GAP), 1)
+	t.test("the streak and timer pills (R8, H:390-391, H:1029, FD6)", function()
+		local open = DailyFormat.model(daily(D - 1, 3), NOON)
+		expect.equal(open.streakText, Strings.format(Strings.daily.dayLabel, { n = 4 }))
+		expect.equal(open.timerText, Strings.daily.readyNow)
+		expect.equal(Strings.daily.readyNow, "Your reward is ready!")
+		local claimed = DailyFormat.model(daily(D, 3), NOON)
+		expect.equal(claimed.streakText, Strings.format(Strings.daily.dayLabel, { n = 3 }))
+		expect.equal(claimed.timerText, Strings.format(Strings.daily.wait, { time = "12:00:00" }))
+		expect.equal(DailyFormat.model(nil, NOON).timerText, nil)
+		expect.equal(DailyFormat.model(nil, NOON).streakText, Strings.format(Strings.daily.dayLabel, { n = 1 }))
 	end)
 
 	t.test(
-		"layout (Part 8): the panel stays within 86% of the screen, the cards and the welcome back line scroll",
+		"the stamp (H:41) is drawn at its rest -10°, the frames relative to it; the day 7 box flow (H:858)",
 		function()
-			for _, actual in SCREENS do
-				local screen = actual / Layout.uiScale(actual.Y)
-				for _, textScale in { 1, LARGEST } do
-					local line = 1.25 * UI.TextSize.Small * textScale
-					-- Foam UI: the header tab (an H2 line, 2 × 4 px padding and its 2 + 5 + 3 px bands) and Close hang
-					-- half above the panel; the top padding leaves room for their lower halves (+ 6 px), the bottom
-					-- padding is 20; one 12 px gap, then Claim (UI FINAL R2, P1: its 56 px face + the 5 px lip) or,
-					-- once claimed, the countdown (an H2 line).
-					local tab = 1.25 * UI.TextSize.H2 * textScale + 18
-					local above = math.max(tab, UI.Touch.closeButton) / 2
-					local top = math.max(math.ceil(UI.Touch.closeButton / 2), math.ceil(tab / 2)) + 6
-					local claim = UI.Touch.primaryButton + UI.Sticker.lip.button
-					local pinned = math.max(claim, 1.25 * UI.TextSize.H2 * textScale)
-					local chrome = above + top + PADDING + 12 + pinned
-					-- A day card (all as tall as the tallest): 6 px padding on top, 12 at the bottom (the foam bands),
-					-- the label, the coin (22), Coins (2 lines), the Treat Box (3 lines), Today and the check (18)
-					-- with Claimed, 2 px between them.
-					local cardHeight = 6 + 12 + 8 * line + 22 + 18 + 6 * 2
-					for _, rows in { 1, 2 } do
-						-- The welcome back line (2 lines) in its inset field (12 px padding).
-						local reset = 2 * 1.25 * UI.TextSize.Body * textScale + 24
-						local content = rows * cardHeight + (rows - 1) * GAP + 12 + reset + 6
-						local body = DailyFormat.bodyHeight(screen.Y, content, chrome, SHARE, UI.Touch.minTarget)
-						expect.truthy(body + chrome <= screen.Y * SHARE + 1e-6)
-						expect.truthy(body >= UI.Touch.minTarget)
-						expect.truthy(body <= content + 1e-6)
-					end
-				end
-			end
-			-- Short content is shown whole; nothing is ever below the minimum.
-			expect.equal(DailyFormat.bodyHeight(864, 180, 172, SHARE, 52), 180)
-			expect.equal(DailyFormat.bodyHeight(441, 10, 172, SHARE, 52), 52)
-			expect.equal(DailyFormat.bodyHeight(0 / 0, 0 / 0, 0 / 0, SHARE, 52), 52)
+			local stamp = UI.stamp
+			expect.equal(stamp.restRot, -10)
+			local first, mid, last = stamp.frames[1], stamp.frames[2], stamp.frames[#stamp.frames]
+			expect.near(first.rot + stamp.restRot, -25, 1e-9)
+			expect.near(mid.rot + stamp.restRot, -8, 1e-9)
+			expect.near(last.rot + stamp.restRot, -10, 1e-9) -- the reduced-motion rest is the authored one
+			expect.equal(first.scale, 3)
+			expect.equal(first.alpha, 0)
+			expect.near(mid.at, 0.6, 1e-9)
+			expect.equal(stamp.ms, 500)
+			expect.equal(UI.boxFlow.closeAfterMs, 750)
+			expect.equal(UI.boxFlow.revealAfterMs, 280)
+			expect.equal(UI.claimSoundDelayMs, 120)
 		end
 	)
+
+	-- The design's body inside the 980 x 620 window (H:382-393): 980 - 2 x (5 + 26) wide; 620 less the top padding
+	-- (border 5 + band 98 + 18) and the bottom (26 + 5), less the top row (40) and its gap (16).
+	local WIDTH = 980 - 2 * (5 + UI.body.padX)
+	local ROOM = 620 - (5 + 98 + UI.body.padTop) - (UI.body.padBottom + 5) - UI.streak.height - UI.body.gap
+	local TEXT = Config.UI.TextSize
+
+	t.test("grid (R8, H:393): 1fr 1fr 1fr 1.25fr, two rows of 199 on the design body, day 7 over both", function()
+		expect.equal(WIDTH, 918)
+		expect.equal(ROOM, 412)
+		local cardFace = DailyFormat.cardFace(TEXT.Body, TEXT.H2)
+		local day7Face = DailyFormat.day7Face(TEXT.HudNumber, TEXT.Large, 20)
+		expect.truthy(cardFace <= 199) -- the design's card fits its row at Medium text
+		local layout = DailyFormat.gridLayout(WIDTH, ROOM, false, cardFace, day7Face)
+		local lip, lip7 = UI.card.lip, UI.day7.lip
+		expect.equal(#layout.cards, DAYS - 1)
+		expect.deepEqual(layout.cards[1], { x = 0, y = 0, w = 206, h = 199 + lip })
+		expect.deepEqual(layout.cards[3], { x = 440, y = 0, w = 206, h = 199 + lip })
+		expect.deepEqual(layout.cards[4], { x = 0, y = 213, w = 206, h = 199 + lip })
+		expect.deepEqual(layout.day7, { x = 660, y = 0, w = 258, h = 2 * 199 + 14 + lip7 })
+		expect.equal(layout.height, ROOM + math.max(lip, lip7)) -- no scroll: the lips hang into the padding
+		-- A room too small: the faces keep their natural height (the grid scrolls).
+		local short = DailyFormat.gridLayout(WIDTH, 200, false, cardFace, day7Face)
+		expect.equal(short.cards[1].h, cardFace + lip)
+		expect.truthy(short.height > 200)
+		expect.equal(DailyFormat.gridLayout(0 / 0, 0 / 0, false, cardFace, day7Face).cards[1].h, cardFace + lip)
+	end)
+
+	t.test("grid on phones (plan R8): three columns, day 7 under them at its natural height", function()
+		local cardFace = DailyFormat.cardFace(TEXT.Body, TEXT.H2)
+		local day7Face = DailyFormat.day7Face(TEXT.HudNumber, TEXT.Large, 20)
+		local width = 639
+		local layout = DailyFormat.gridLayout(width, 150, true, cardFace, day7Face)
+		local unit = math.floor((width - 2 * 14) / 3)
+		local lip = UI.card.lip
+		expect.deepEqual(layout.cards[1], { x = 0, y = 0, w = unit, h = cardFace + lip })
+		expect.deepEqual(layout.cards[3], { x = 2 * (unit + 14), y = 0, w = unit, h = cardFace + lip })
+		expect.deepEqual(layout.cards[6], { x = 2 * (unit + 14), y = cardFace + 14, w = unit, h = cardFace + lip })
+		expect.deepEqual(layout.day7, { x = 0, y = 2 * (cardFace + 14), w = width, h = day7Face + UI.day7.lip })
+		expect.equal(layout.height, 2 * (cardFace + 14) + day7Face + UI.day7.lip)
+		-- The natural faces (H:395-416): the border, the padding, the lines, the icon / art and the gaps.
+		expect.equal(cardFace, 2 * 4 + 10 + 10 + 18 + 84 + 22 + 34 + 3 * 4)
+		expect.equal(day7Face, 2 * 4 + 14 + 14 + 26 + 26 + 170 + 28 + 20 + 4 * 6)
+	end)
+
+	-- Part 8 (kept for CapsuleController, its one caller now): a scrolling panel part within maxShare of the screen.
+	t.test("bodyHeight: the content's height, capped to the screen share, never under the minimum", function()
+		local SHARE = 0.86
+		expect.equal(DailyFormat.bodyHeight(864, 180, 172, SHARE, 52), 180)
+		expect.equal(DailyFormat.bodyHeight(441, 10, 172, SHARE, 52), 52)
+		expect.equal(DailyFormat.bodyHeight(0 / 0, 0 / 0, 0 / 0, SHARE, 52), 52)
+		expect.near(DailyFormat.bodyHeight(500, 1000, 100, SHARE, 52), 500 * SHARE - 100, 1e-9)
+	end)
 end

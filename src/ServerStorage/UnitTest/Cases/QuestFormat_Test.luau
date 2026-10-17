@@ -9,7 +9,8 @@
 --   * Swap on unfinished daily quests while a free swap is left (none once used, none on a finished quest);
 --   * the Equip shortcut when the quest's squishy is owned but not equipped (and the quest is unfinished);
 --   * a Starter section with every QuestDefs starter task (progress from profile.starter), hidden once all are claimed;
---   * the footer "New quests in {h}h {m}m" to 00:00 UTC; the empty sentence when the day has no quest;
+--   * the reset line "Resets in {clock}" to 00:00 UTC (UI FINAL R8, lib:306: "{h}h {MM}m", "m:ss" in the last
+--     hour); the empty sentence when the day has no quest;
 --   * namer(quests) names daily quests from the state and starter tasks from QuestDefs, nil otherwise;
 --   * Part 8 (§11.2): the Quests panel's scrolling body keeps the whole panel within 86% of the screen height at
 --     667×375, 1280×720 and 1920×1080, Medium and the largest text, never under one touch target; short boards show
@@ -20,6 +21,9 @@
 --     week's wins outside the read, or how to get on the board.
 --   * UI FINAL R4 (moved from R8): iconFor(card): a quest that names a squishy shows it, else its category's picture
 --     (squeeze, duel, practice); the cards carry their QuestDefs id (defId) and named squishy.
+--   * UI FINAL R8 (the design's Quests window): "x / y" (H:956), the tabs with their ready counts (Starter while a
+--     task is unclaimed, Top Wins last), the bar's gold once ready or claimed, GO's route by category, the squeeze
+--     toast's key by input, and the Top Wins rows.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -77,7 +81,8 @@ return function(t: Context)
 	t.test("daily card: title, progress, reward and the three states", function()
 		local open = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 37), ctx, SWAPS)
 		expect.equal(open.title, QuestDefs.text("squeeze_any", 100))
-		expect.equal(open.progressText, Strings.format(Strings.common.progress, { progress = 37, goal = 100 }))
+		expect.equal(open.progressText, Strings.format(Strings.quest.progress, { progress = 37, goal = 100 }))
+		expect.equal(open.progressText, "37 / 100") -- UI FINAL R8 (H:956)
 		expect.near(open.fraction, 0.37, 1e-9)
 		expect.equal(open.reward, 150 * VALUE)
 		expect.equal(open.rewardText, Strings.format(Strings.common.coinsGain, { coins = "1,500" }))
@@ -218,13 +223,21 @@ return function(t: Context)
 		end
 	)
 
-	t.test("footer and empty state count down to 00:00 UTC", function()
-		expect.equal(QuestFormat.footer(NOW), Strings.format(Strings.quest.footer, { h = 18, m = 53 }))
-		expect.equal(QuestFormat.footer(START + 86399), Strings.format(Strings.quest.footer, { h = 0, m = 0 }))
+	t.test("reset line and empty state count down to 00:00 UTC", function()
+		expect.equal(QuestFormat.resetText(NOW), Strings.format(Strings.quest.footer, { clock = "18h 53m" }))
+		expect.equal(QuestFormat.resetText(NOW), "Resets in 18h 53m")
+		expect.equal(QuestFormat.resetText(START + 86399), "Resets in 0:01")
+		-- lib:306: hours and two-digit minutes, else m:ss in the last hour; never below 0.
+		expect.equal(QuestFormat.clock(3600), "1h 00m")
+		expect.equal(QuestFormat.clock(3599), "59:59")
+		expect.equal(QuestFormat.clock(25920), "7h 12m")
+		expect.equal(QuestFormat.clock(65.9), "1:05")
+		expect.equal(QuestFormat.clock(-5), "0:00")
+		expect.equal(QuestFormat.clock(0 / 0), "0:00")
 		local empty = QuestFormat.board(quests({}), ctx)
 		expect.equal(#empty.daily, 0)
 		expect.equal(empty.empty, Strings.format(Strings.quest.empty, { time = "18:53:00" }))
-		expect.equal(empty.footer, QuestFormat.footer(NOW))
+		expect.equal(empty.reset, QuestFormat.resetText(NOW))
 		local full = QuestFormat.board(quests({ entry(1, "squeeze_any", 100, 0) }), ctx)
 		expect.equal(full.empty, nil)
 		-- No state at all: empty, starter tasks still listed.
@@ -293,22 +306,22 @@ return function(t: Context)
 
 	t.test("Top Wins This Week: loading, the ranked lines, an empty week and the player's own line", function()
 		local board = Strings.board
-		expect.deepEqual(QuestFormat.topWins(nil), { lines = {}, note = board.loading })
+		expect.deepEqual(QuestFormat.topWins(nil), { lines = {}, rows = {}, note = board.loading })
 		expect.deepEqual(
 			QuestFormat.topWins({ loaded = false, top = {}, wins = 0 }),
-			{ lines = {}, note = board.loading }
+			{ lines = {}, rows = {}, note = board.loading }
 		)
 		expect.deepEqual(
 			QuestFormat.topWins({ loaded = true, top = {}, wins = 0 }),
-			{ lines = {}, note = "No wins yet this week. Be the first!" } -- the note alone, no second "get on" line
+			{ lines = {}, rows = {}, note = "No wins yet this week. Be the first!" } -- the note alone
 		)
 		expect.deepEqual(
 			QuestFormat.topWins({ loaded = true, unavailable = true, top = {}, wins = 0 }),
-			{ lines = {}, note = "The board is taking a break. Check back soon!" }
+			{ lines = {}, rows = {}, note = "The board is taking a break. Check back soon!" }
 		)
 		expect.deepEqual(
 			QuestFormat.topWins({ loaded = true, top = { { name = "Cy", wins = 1 } }, wins = 0 }),
-			{ lines = { "1. Cy · 1 win" }, you = board.youNone }
+			{ lines = { "1. Cy · 1 win" }, rows = { { rank = 1, name = "Cy", wins = 1 } }, you = board.youNone }
 		)
 		local top: { any } = { { name = "Ana", wins = 1234 }, { name = "Bo", wins = 12 }, { name = 5, wins = "x" } }
 		local view = {
@@ -319,6 +332,7 @@ return function(t: Context)
 		}
 		expect.deepEqual(QuestFormat.topWins(view), {
 			lines = { "1. Ana · 1,234 wins", "2. Bo · 12 wins" }, -- a broken entry is left out
+			rows = { { rank = 1, name = "Ana", wins = 1234 }, { rank = 2, name = "Bo", wins = 12 } }, -- R8 (PR26)
 			you = "You: #1 · 1,234 wins",
 		})
 		expect.equal(
@@ -326,5 +340,79 @@ return function(t: Context)
 			"You: #2 · 1 win"
 		)
 		expect.equal(QuestFormat.topWins({ loaded = true, top = view.top, wins = 3 }).you, "You: 3 wins this week")
+	end)
+
+	-- UI FINAL R8 (the design's Quests window, plan work/ui/PLAN.md R8; `H:n` = "Squishy Duels HUD.dc.html" line n).
+
+	t.test(
+		"tabs (H:358, UD7): Daily, Starter while a task is unclaimed, Top Wins, each with its ready count",
+		function()
+			local function ids(list: { any }): { string }
+				local out = {}
+				for _, tab in list do
+					table.insert(out, tab.id .. ":" .. tab.count)
+				end
+				return out
+			end
+			local state = quests({
+				entry(1, "squeeze_any", 100, 100),
+				entry(2, "duel_win", 1, 1),
+				entry(3, "practice_hits", 20, 0),
+			})
+			local tabs = QuestFormat.tabs(QuestFormat.board(state, ctx))
+			expect.deepEqual(ids(tabs), { "daily:2", "starter:0", "topWins:0" })
+			expect.equal(tabs[1].label, Strings.quest.section.daily)
+			expect.equal(tabs[2].label, Strings.quest.section.starter)
+			expect.equal(tabs[3].label, Strings.board.title)
+			-- A claimed daily quest is not counted; a done starter task is.
+			local defs = QuestDefs.starter()
+			local progress = { [defs[1].id] = defs[1].variants[1].goal }
+			local mixed = quests(
+				{ entry(1, "squeeze_any", 100, 100, { claimed = true }) },
+				0,
+				{ progress = progress, claimed = {} }
+			)
+			expect.deepEqual(
+				ids(QuestFormat.tabs(QuestFormat.board(mixed, ctx))),
+				{ "daily:0", "starter:1", "topWins:0" }
+			)
+			-- Every starter task claimed: no Starter tab.
+			local allClaimed = {}
+			for _, def in defs do
+				allClaimed[def.id] = true
+			end
+			local done = quests({}, 0, { progress = {}, claimed = allClaimed })
+			expect.deepEqual(ids(QuestFormat.tabs(QuestFormat.board(done, ctx))), { "daily:0", "topWins:0" })
+		end
+	)
+
+	t.test("the bar's gold (H:956), GO's route (UD2) and the squeeze toast's key", function()
+		local open = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 37), ctx, SWAPS)
+		local ready = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 100), ctx, SWAPS)
+		local claimed = QuestFormat.dailyCard(entry(1, "squeeze_any", 100, 100, { claimed = true }), ctx, SWAPS)
+		expect.equal(QuestFormat.barGold(open), false)
+		expect.equal(QuestFormat.barGold(ready), true)
+		expect.equal(QuestFormat.barGold(claimed), true)
+		expect.equal(QuestFormat.goRoute(open), "squeeze")
+		expect.equal(QuestFormat.goRoute(QuestFormat.dailyCard(entry(2, "duel_win", 3, 0), ctx, SWAPS)), "duel")
+		expect.equal(
+			QuestFormat.goRoute(QuestFormat.dailyCard(entry(3, "practice_hits", 20, 0), ctx, SWAPS)),
+			"practice"
+		)
+		for _, starter in QuestFormat.starterCards(nil) do
+			expect.equal(QuestFormat.goRoute(starter), QuestDefs.get(starter.id).category)
+		end
+		expect.equal(QuestFormat.goRoute({ defId = "no_such_quest" } :: any), nil)
+		local keys = Strings.duel.key
+		expect.equal(
+			QuestFormat.goToast("KeyboardAndMouse"),
+			Strings.format(Strings.quest.goSqueeze, { key = keys.squeezeMouse })
+		)
+		expect.equal(
+			QuestFormat.goToast("Gamepad"),
+			Strings.format(Strings.quest.goSqueeze, { key = keys.squeezeGamepad })
+		)
+		expect.equal(QuestFormat.goToast("Touch"), Strings.quest.goSqueezeTouch)
+		expect.equal(Strings.quest.goSqueeze, "Squeeze your squishy! Press {key}")
 	end)
 end
