@@ -41,6 +41,15 @@
 --                            bevel sits right above the bottom border, the drop band is the bottom border and the lip
 --   lipGap(gap, lip)         the padding of a list or grid whose items draw a `lip` px ink lip inside their box: the
 --                            design's gap less the lip, so the pitch stays the design's (face + gap)
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n):
+--   windowChrome(kind)       a window kind's design numbers (Config.UI.Sticker.window): its face, margin-top, the
+--                            sticker's and the X's reach off it, the lip, the margin, the frame's designShift
+--   windowFit(screenPx, kind)   the window fitted to the screen: the design's size shrunk to keep it and what hangs
+--                            off it inside the margins, the chrome's scale k, `above` and the centre's `shift`
+--   windowShift(canvasH, frameH, designShift, above, margin)   the frame's design offset below the middle (20 / 19
+--                            px: the face's top at margin-top), clamped so what hangs above and the lip stay inside
+--                            the margins
+--   modalPanel(..., window?)   with a window kind, the panel is windowFit's window (chromeScale, shift, above too)
 -- No instances, no services: unit-tested in Edit mode.
 
 -- Services
@@ -98,6 +107,42 @@ export type ModalPanel = {
 	padding: number,
 	contentWidth: number,
 	contentHeight: number,
+	-- UI FINAL R3 (modalPanel with a window kind): the window's chrome scale, its centre's offset and what hangs
+	-- above it.
+	chromeScale: number?,
+	shift: number?,
+	above: number?,
+}
+
+-- UI FINAL R3: a window kind's design numbers (windowChrome; Config.UI.Sticker.window), base px: its face, its CSS
+-- margin-top, how far its sticker reaches above and left of it and its close X above and right of it, the lip, the
+-- margin kept from the screen's edges, whether it has the small (Settings) band, and designShift: how far below the
+-- middle the centre of its frame (the face and the lip) sits in the design (the face's top at margin-top, H:181).
+export type WindowChrome = {
+	width: number,
+	height: number,
+	marginTop: number,
+	designShift: number,
+	stickerTop: number,
+	stickerLeft: number,
+	closeTop: number,
+	closeRight: number,
+	lip: number,
+	margin: number,
+	small: boolean,
+}
+
+-- UI FINAL R3 (windowFit): a window fitted to the screen, base px: its face (width x height), the chrome's scale k
+-- (the sticker, the band and its title shrink with it), how far the chrome reaches above it at k and how far below
+-- the middle its centre sits (shift), with the screen's UI scale and layout class.
+export type WindowFit = {
+	scale: number,
+	class: LayoutClass,
+	k: number,
+	width: number,
+	height: number,
+	above: number,
+	shift: number,
 }
 
 -- Constants
@@ -201,12 +246,15 @@ end
 -- A modal panel centred in a ScreenGui of `screenPx` actual px, sized like the Squishies, Shop and Boxes panels:
 -- width = modalWidth(screen, scale, margin) (the cap when nothing is left), height = heightShare of the screen; the
 -- content box is inside `padding` on every side. All sizes in base px (under the ScreenGui UIScale). A zero or
--- non-finite screen size falls back to 1280×720.
+-- non-finite screen size falls back to 1280×720. UI FINAL R3: with a window kind (`window`, windowFit) the panel is
+-- that window fitted to the screen (the design's size, shrunk to fit with what hangs off it), with its chromeScale,
+-- shift and above.
 function Layout.modalPanel(
 	screenPx: Vector2,
 	marginBasePx: number,
 	heightShare: number,
-	paddingBasePx: number
+	paddingBasePx: number,
+	window: string?
 ): ModalPanel
 	local x = if finite(screenPx.X) and screenPx.X > 0 then screenPx.X else FALLBACK_SCREEN_X
 	local y = if finite(screenPx.Y) and screenPx.Y > 0 then screenPx.Y else FALLBACK_SCREEN_Y
@@ -218,6 +266,10 @@ function Layout.modalPanel(
 	local share = if finite(heightShare) and heightShare > 0 then math.min(heightShare, 1) else 1
 	local height = y / scale * share
 	local padding = if finite(paddingBasePx) and paddingBasePx > 0 then paddingBasePx else 0
+	local fit = if window then Layout.windowFit(Vector2.new(x, y), window) else nil
+	if fit then
+		width, height = fit.width, fit.height
+	end
 	return {
 		scale = scale,
 		class = Layout.layoutClass(x, y),
@@ -226,6 +278,106 @@ function Layout.modalPanel(
 		padding = padding,
 		contentWidth = math.max(0, width - 2 * padding),
 		contentHeight = math.max(0, height - 2 * padding),
+		chromeScale = if fit then fit.k else nil,
+		shift = if fit then fit.shift else nil,
+		above = if fit then fit.above else nil,
+	}
+end
+
+-- UI FINAL R3: the design numbers of window `kind` (Config.UI.Sticker.window.kinds; nil for an unknown kind): its face
+-- and margin-top (H:181, H:256, H:289, H:351, H:383, H:426), its sticker's reach above and left (H:251: 62 / 40;
+-- Settings' and the small band's H:451: 46 / 30; none without a sticker), the close X's above and right (H:252),
+-- the lip (H:182) and the margin. designShift: the face's centre sits height / 2 + marginTop below the middle and the
+-- 10 px lip hangs under the face (a box-shadow, H:182), so the frame's centre is half the lip lower (20 for the 650 px
+-- windows, 19 for the 620 and 500 ones).
+function Layout.windowChrome(kind: string): WindowChrome?
+	local window = UI.Sticker.window
+	local spec = window.kinds[kind]
+	if spec == nil then
+		return nil
+	end
+	local sticker = window.sticker
+	local small = spec.small == true
+	local hasSticker = spec.sticker ~= nil
+	local lip = UI.Sticker.lip.window
+	return {
+		width = spec.width,
+		height = spec.height,
+		marginTop = spec.marginTop,
+		designShift = spec.height / 2 + spec.marginTop + lip / 2,
+		stickerTop = if hasSticker then -(if small then sticker.smallY else sticker.y) else 0,
+		stickerLeft = if hasSticker then -(if small then sticker.smallX else sticker.x) else 0,
+		closeTop = window.close.top,
+		closeRight = window.close.right,
+		lip = lip,
+		margin = window.margin,
+		small = small,
+	}
+end
+
+-- UI FINAL R3: how far below the middle of a canvas `canvasHeight` tall a centred window `frameHeight` tall (its face
+-- and lip) sits: the design's `designShift` (windowChrome; H:181: 20 px for a 650 px window), moved down so what hangs
+-- above it (`above`) stays `margin` inside the top, or up so its lip stays `margin` inside the bottom; when neither
+-- fits, the top wins (its close X stays reachable). A whole offset; 0 for bad numbers.
+function Layout.windowShift(
+	canvasHeight: number,
+	frameHeight: number,
+	designShift: number,
+	above: number,
+	margin: number
+): number
+	if
+		not (finite(canvasHeight) and finite(frameHeight) and finite(designShift) and finite(above) and finite(margin))
+	then
+		return 0
+	end
+	local low = margin + above + frameHeight / 2 - canvasHeight / 2
+	local high = canvasHeight / 2 - margin - frameHeight / 2
+	if low >= high then
+		return math.ceil(low - EPS)
+	end
+	local whole = math.floor(math.clamp(designShift, low, high) + 0.5)
+	if whole > high + EPS then
+		whole = math.floor(high + EPS)
+	end
+	if whole < low - EPS then
+		whole = math.ceil(low - EPS)
+	end
+	return whole
+end
+
+-- UI FINAL R3 (plan R3: the design's sizes, shrunk to fit): window `kind` (windowChrome) on a ScreenGui of `screenPx`
+-- actual px: k = min(1, the room across over the face and both sides' reach, the room down over the face and the
+-- sticker's reach) is the chrome's scale (the design has no small screens: the sticker, the band and the title shrink
+-- with the window, a reading); the face is the design's, narrowed to keep the sticker (at k) and the X inside the
+-- margins on both sides (it stays centred) and lowered to keep what hangs above (at k) and the lip inside them, 1 px to
+-- spare; `shift` is windowShift's. A bad screen falls back to 1280 x 720; an unknown kind gives the Squishies window.
+function Layout.windowFit(screenPx: Vector2, kind: string): WindowFit
+	local x = if finite(screenPx.X) and screenPx.X > 0 then screenPx.X else FALLBACK_SCREEN_X
+	local y = if finite(screenPx.Y) and screenPx.Y > 0 then screenPx.Y else FALLBACK_SCREEN_Y
+	local chrome = (Layout.windowChrome(kind) or Layout.windowChrome("squishies")) :: WindowChrome
+	local scale = Layout.uiScale(y, x)
+	local canvasW, canvasH = x / scale, y / scale
+	local m = chrome.margin
+	local reach = math.max(chrome.stickerLeft, chrome.closeRight)
+	local k = math.min(
+		1,
+		(canvasW - 2 * m) / (chrome.width + 2 * reach),
+		(canvasH - 2 * m - chrome.lip) / (chrome.height + math.max(chrome.stickerTop, chrome.closeTop))
+	)
+	k = math.max(k, EPS)
+	local side = math.max(chrome.stickerLeft * k, chrome.closeRight)
+	local above = math.max(chrome.stickerTop * k, chrome.closeTop)
+	local width = math.max(1, math.min(chrome.width, math.floor(canvasW - 2 * m - 2 * side)))
+	local height = math.max(1, math.min(chrome.height, math.floor(canvasH - 2 * m - chrome.lip - above) - 1))
+	return {
+		scale = scale,
+		class = Layout.layoutClass(x, y),
+		k = k,
+		width = width,
+		height = height,
+		above = above,
+		shift = Layout.windowShift(canvasH, height + chrome.lip, chrome.designShift, above, m),
 	}
 end
 

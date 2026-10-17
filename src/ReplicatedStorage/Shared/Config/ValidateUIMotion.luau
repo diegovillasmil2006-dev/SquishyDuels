@@ -8,7 +8,8 @@
 -- PR5); every motion `frames` track from 0 to 1 in order; the press squash leaves every kind above 0; the coin
 -- flight's count-up outlasting the jitter; the shines; the design effects' counts whole and >= 1 (the box reveal's
 -- rays, rings and burst <= 24 moving frames, §9.15), the star share in 0..1; the UI pitches (Config.Audio.uiPitch,
--- the highest coin ping included) inside [pitchMin, pitchMax].
+-- the highest coin ping included) inside [pitchMin, pitchMax]. UI FINAL R3: the window frame (Sticker.window) and the
+-- close's removeMs; UI FINAL R4: the lobby HUD (Sticker.hud).
 --   motion(problems)                   F9: the curves, the loops, the swings, the tracks, the bars, toggles and
 --                                      shines, the coin flight and the design effects
 --   pitches(problems, p, low, high)    F8: the UI pitches inside [low, high] and the silent Button kinds
@@ -336,6 +337,81 @@ return function(h: Helpers, UI: any, Audio: any): Checks
 			frames ~= nil and burst.maxPieces >= 1 and frames <= REVEAL_FRAME_MAX,
 			`{f}.events.boxBurst: 1 rays picture + {#(burst.rings or {})} rings + maxPieces ({show(burst.maxPieces)}) `
 				.. `= {show(frames)} moving frames, must be <= {REVEAL_FRAME_MAX} (§9.15) with maxPieces >= 1`
+		)
+
+		-- UI FINAL R3 (the window frame): Config.UI.Sticker.window's kinds (a positive face, a margin-top inside it,
+		-- the band's Palette names, alphas in 0..1), the band and the close X positive, the sticker's loop <= 3 Hz and
+		-- its sdStick track, the scrim's, ring's and shadow's alphas, and the close's removeMs within its visualMs.
+		local window = sticker.window
+		local w3 = "F9: Config.UI.Sticker.window"
+		if type(window) ~= "table" then
+			add(problems, `{w3} is missing`)
+		else
+			for _, name in sortedKeys(window.kinds or {}) do
+				local kind = window.kinds[name]
+				local path = `{w3}.kinds.{name}`
+				expectPositive(problems, `{path}.width`, kind.width)
+				expectPositive(problems, `{path}.height`, kind.height)
+				expect(
+					problems,
+					isNumber(kind.marginTop) and isNumber(kind.height) and math.abs(kind.marginTop) <= kind.height,
+					`{path}.marginTop ({show(kind.marginTop)}) must be a number inside the face's height`
+				)
+				for _, field in { "top", "bottom" } do
+					expect(
+						problems,
+						type(kind[field]) == "string" and kind[field] ~= "",
+						`{path}.{field} must name a Palette colour (got {show(kind[field])})`
+					)
+				end
+				expectBetween(problems, `{path}.highlightAlpha`, kind.highlightAlpha, 0, 1)
+				expectBetween(problems, `{path}.dotsAlpha`, kind.dotsAlpha, 0, 1)
+				for _, field in { "small", "innerRing" } do
+					if kind[field] ~= nil then
+						expectBoolean(problems, `{path}.{field}`, kind[field])
+					end
+				end
+			end
+			for _, field in sortedKeys(window.band or {}) do
+				local value = window.band[field]
+				if string.sub(field, -5) == "Alpha" then
+					expectBetween(problems, `{w3}.band.{field}`, value, 0, 1)
+				else
+					expectPositive(problems, `{w3}.band.{field}`, value)
+				end
+			end
+			local stick = window.sticker or {}
+			for _, field in { "px", "smallPx", "shadowPx", "ms" } do
+				expectPositive(problems, `{w3}.sticker.{field}`, stick[field])
+			end
+			expectNonNegative(problems, `{w3}.sticker.delayMs`, stick.delayMs)
+			expectBetween(problems, `{w3}.sticker.shadowAlpha`, stick.shadowAlpha, 0, 1)
+			checkLoop(problems, `{w3}.sticker.bobS`, stick.bobS)
+			checkTrack(problems, `{w3}.sticker.frames`, stick.frames)
+			for _, field in { "face", "right", "top" } do
+				expectPositive(problems, `{w3}.close.{field}`, window.close and window.close[field])
+			end
+			local scrim = window.scrim or {}
+			expectBetween(problems, `{w3}.scrim.innerAlpha`, scrim.innerAlpha, 0, 1)
+			expectBetween(problems, `{w3}.scrim.outerAlpha`, scrim.outerAlpha, 0, 1)
+			expectBoolean(problems, `{w3}.scrim.closeOnClick`, scrim.closeOnClick)
+			expectPositive(problems, `{w3}.innerRing.px`, window.innerRing and window.innerRing.px)
+			expectBetween(problems, `{w3}.innerRing.alpha`, window.innerRing and window.innerRing.alpha, 0, 1)
+			local shadow = window.shadow or {}
+			expectNonNegative(problems, `{w3}.shadow.offsetY`, shadow.offsetY)
+			expectPositive(problems, `{w3}.shadow.blurPx`, shadow.blurPx)
+			expectBetween(problems, `{w3}.shadow.alpha`, shadow.alpha, 0, 1)
+			expectNonNegative(problems, `{w3}.margin`, window.margin)
+			expectCount(problems, `{w3}.scrollbarPx`, window.scrollbarPx, 1)
+		end
+		local close = motion.modalClose
+		expect(
+			problems,
+			isNumber(close.removeMs)
+				and close.removeMs > 0
+				and isNumber(close.visualMs)
+				and close.removeMs <= close.visualMs,
+			`{p}.modalClose.removeMs ({show(close.removeMs)}) must be > 0 and <= visualMs ({show(close.visualMs)})`
 		)
 
 		-- UI FINAL R4 (the lobby HUD): Config.UI.Sticker.hud's numbers finite, its alphas, midAt and gradient stops in

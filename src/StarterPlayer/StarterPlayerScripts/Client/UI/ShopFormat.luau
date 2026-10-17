@@ -134,6 +134,10 @@ export type PanelLayout = {
 	columns: number, -- the grid's columns (InventoryFormat.gridFit); 0 when panelLayout was given no card width
 	detailWidth: number,
 	detailHeight: number,
+	-- UI FINAL R3: the Shop window's chrome scale, centre offset and what hangs above it (Layout.windowFit).
+	chromeScale: number,
+	shift: number,
+	above: number,
 }
 
 export type Box = { w: number, h: number }
@@ -505,14 +509,16 @@ end
 -- (`filtered`) the grid and detail start under the filter row. With `cardWidth` the grid takes only the columns that
 -- fit in gridShare of the content width (InventoryFormat.gridFit) and the detail column the rest; without it the plain
 -- gridShare split. `topPadding` is the panel's real top padding (InventoryFormat.hangingChrome's top; default
--- PANEL.padding); the bottom keeps PANEL.padding.
+-- PANEL.padding); the bottom keeps PANEL.padding. UI FINAL R3: the panel is the Shop window (H:289: 1060 x 650, shrunk
+-- to fit, Layout.windowFit; its lip under the face), its top padding the band's (Theme.fitWindow), with the window's
+-- chromeScale, shift and above.
 function ShopFormat.panelLayout(
 	screenPx: Vector2,
 	filtered: boolean,
 	topPadding: number?,
 	cardWidth: number?
 ): PanelLayout
-	local p = Layout.modalPanel(screenPx, PANEL.margin, PANEL.heightShare, PANEL.padding)
+	local p = Layout.modalPanel(screenPx, PANEL.margin, PANEL.heightShare, PANEL.padding, "shop")
 	local top = topPadding
 	if top == nil or top ~= top or top == math.huge or top <= PANEL.padding then
 		top = PANEL.padding
@@ -546,6 +552,9 @@ function ShopFormat.panelLayout(
 		columns = columns,
 		detailWidth = math.max(0, p.contentWidth - gridWidth - PANEL.columnGap),
 		detailHeight = math.max(0, bodyHeight - listTop),
+		chromeScale = p.chromeScale or 1,
+		shift = p.shift or 0,
+		above = p.above or 0,
 	}
 end
 

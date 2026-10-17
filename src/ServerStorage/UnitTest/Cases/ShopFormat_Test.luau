@@ -533,4 +533,19 @@ return function(t: Context)
 			end
 		end)
 	end
+
+	-- UI FINAL R3 (plan R3): the panel is the Shop window, the design's 1060 x 650 face on a desktop (H:289), its top
+	-- 310 above the middle (the frame with its 10 px lip 20 below it), its chrome at full size.
+	t.test("UI FINAL R3: panelLayout is the Shop window (H:289): its design size and chrome on desktops", function()
+		for _, size in { Vector2.new(1280, 662), Vector2.new(1920, 1022) } do
+			for _, filtered in { false, true } do
+				local l = ShopFormat.panelLayout(size, filtered)
+				expect.equal(l.panelWidth, 1060)
+				expect.equal(l.panelHeight, 650)
+				expect.equal(l.chromeScale, 1)
+				expect.equal(l.shift, 20)
+				expect.equal(l.above, 62)
+			end
+		end
+	end)
 end

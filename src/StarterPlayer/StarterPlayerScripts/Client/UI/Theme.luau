@@ -63,8 +63,24 @@
 --   picture centred at centreY of its parent (P4), turning through Anim/UiIdle; softShadow(wrapper, key, spec) the
 --   design's soft box-shadow as a 9-slice picture behind the wrapper's target (T1, T2; the glow tinted while nil);
 --   shineBand(strip, alpha, slantDeg) the leaning white band of the design's sdShine in a px strip (H:28, G4.13).
--- * Still the Candy UI (UI overhaul 2026-10-11) until R3: headerTab()'s jelly plate (its shine and the header glow),
---   rim(), shine(), bubbles(); panelColors() and stickerColors() return the new tokens.
+-- * UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; Config.UI.Sticker.window): window(props, kind,
+--   padding?) is the design's window (H:182: the pink body #FFD6EC -> #FFAFD6, a 5 px ink border drawn inside, radius
+--   32, the 10 px ink lip under the face; Active, so a click on it never reaches the scrim under it); headerTab on a
+--   window is the design's header band (H:183-184): the band across the window's top inside its border, its gradient
+--   with the dots and the inset highlight and bevel, its 5 px bottom border, its top corners rounded 27 (a clip
+--   holder: ClipsDescendants ignores UICorner), the title left-aligned in capitals (Q5) in the windowTitle role
+--   (Settings' small band: settingsTitle), an `extra` at its right end (H:185, H:260), the kind's sticker hanging off
+--   the top-left corner (H:251: sdBob from the start, sdStick on every open through playSticker) and the close X at
+--   (right -22, top -22) inside the band (attachClose); the Squishies window's faint inner ring (H:182).
+--   fitWindow(window, k) lays the band out for the chrome scale k (Layout.windowFit: the band, its paddings, the
+--   sticker and the title shrink with a window that shrinks; the title also shrinks to its room, never under 16 base
+--   px; the band's right end keeps clear of the X) and sets the window's top padding (the band, then the body's
+--   padding); it returns { top, above, band, k } (fittedChrome keeps the last; the band fits again when the window's
+--   Size or its extra's size changes). scrim(props) is the window scrim (H:178: the radial picture, else its fallback;
+--   a TextButton, so a click on it closes the top window), scrollbar(frame) the design's scroll bar (H:22). Other
+--   panels keep headerTab's tab (the box reveal, R7; the capsule card, its system is being replaced), without the
+--   Candy shine and header glow, which went with the jelly bubbles. rim() stays (cards, the tab, the coach).
+--   panelColors() and stickerColors() return the new tokens.
 
 -- Services
 
@@ -80,6 +96,8 @@ local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
 local Layout = require(script.Parent.Layout)
 local Create = require(script.Parent.Create)
+local Scheduler = require(script.Parent.Parent.Anim.Scheduler)
+local Tweens = require(script.Parent.Parent.Anim.Tweens)
 local UiIdle = require(script.Parent.Parent.Anim.UiIdle)
 
 -- Types
@@ -218,12 +236,18 @@ export type SoftShadowSpec = {
 }
 
 export type HeaderTabOptions = {
-	accent: AccentName?, -- default "strawberry"
-	textKind: TextKind?, -- default "H2" (a display kind >= 18 px: outlined white on the accent)
-	name: string?, -- default "HeaderTab"
-	align: ("center" | "left")?, -- default "center"
-	inset: number?, -- base px from the panel's left edge when align = "left"
+	accent: AccentName?, -- default "strawberry" (a tab; a window's band takes its kind's colours)
+	textKind: TextKind?, -- default "H2" (a display kind >= 18 px: outlined white on the accent; a band: its role)
+	name: string?, -- default "HeaderTab" (a window's band: "HeaderBand")
+	align: ("center" | "left")?, -- default "center" (a tab)
+	inset: number?, -- base px from the panel's left edge when align = "left" (a tab)
+	extra: GuiObject?, -- UI FINAL R3: a window's band holds it at its right end (H:185, H:260)
 }
+
+-- UI FINAL R3: what a window's fitted chrome takes (fitWindow, fittedChrome; Layout.WindowChrome holds a kind's
+-- design numbers), base px: the window's top padding (its band and the body's padding), how far its sticker or close X
+-- reach above it, the band's height and the chrome scale.
+export type FittedChrome = { top: number, above: number, band: number, k: number }
 
 -- Constants
 
@@ -245,22 +269,6 @@ local DARK_FACE_LUMINANCE = 0.22
 local RIM_NAME = "SD_Rim"
 local RIM_PX = 2
 local RIM_TRANSPARENCY = 0.6
-local SHINE_NAME = "SD_Shine"
-local SHINE_STRENGTH = 0.2 -- the stripes' opacity
-local GLOW_NAME = "SD_HeaderGlow"
-local GLOW_TRANSPARENCY = 0.72 -- the header glow at its top edge (fades to clear)
-local BUBBLES_NAME = "SD_Bubbles"
-local BUBBLE_TRANSPARENCY = 0.93
--- The windows' jelly bubbles: centre (x, y) and size as shares of the window's height (kept inside a 16:10 window).
-local BUBBLES: { { x: number, y: number, s: number } } = {
-	{ x = 0.1, y = 0.8, s = 0.34 },
-	{ x = 0.91, y = 0.22, s = 0.24 },
-	{ x = 0.8, y = 0.86, s = 0.16 },
-	{ x = 0.33, y = 0.4, s = 0.1 },
-	{ x = 0.58, y = 0.7, s = 0.08 },
-	{ x = 0.95, y = 0.62, s = 0.1 },
-	{ x = 0.05, y = 0.36, s = 0.09 },
-}
 
 -- Text measurement: the frame it measures in is this wide when nothing wraps.
 local MEASURE_FRAME_PX = 100000
@@ -318,6 +326,21 @@ local SHADOW_MARGIN_PX = 120
 local SHADOW_IMAGE_PX = 512
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
+-- UI FINAL R3: the window frame (Config.UI.Sticker.window), the names of its parts and their layers inside the band
+-- (the band itself sits above the window's content), the scrim's and the dots' pictures.
+local WINDOW = Config.UI.Sticker.window
+local BAND_NAME = "HeaderBand"
+local BAND_ZINDEX = 5
+local BAND_FACE_Z = 1
+local BAND_TITLE_Z = 2
+local BAND_STICKER_Z = 3
+local BAND_CLOSE_Z = 4
+local DOTS_KEY = "img.fx.dots"
+local SCRIM_KEY = "img.fx.radial.scrimWindow"
+local SHADOW_WINDOW_KEY = "img.fx.shadowWindow"
+-- The title never shrinks under the text floor (plan §1.2: minTextSize at the smallest UI scale, 13 / .85 -> 16).
+local TITLE_MIN_BASE_PX = math.ceil(Config.UI.minTextSize / Config.UI.Scale.min)
+local MIN_CHROME_SCALE = 0.05
 
 -- Module table
 
@@ -367,6 +390,7 @@ Theme.Colors = {
 	stickerBevel = Palette.StickerBevel,
 	gold = Palette.StickerCoinText, -- gold text and bursts: the design's coin yellow (H:79, H:369)
 	backdrop = Palette.StickerScrimPurple, -- the modal dimmer and wash (H:178)
+	scrollThumb = Palette.StickerScrollThumb, -- UI FINAL R3: the scroll bar's thumb (H:22; scrollbar, ScrollHint)
 	-- World UI on light plates (collection plates, nameplates, the squeeze label) keeps the foam inks.
 	worldInk = Palette.InkUI,
 	worldInk2 = Palette.Ink2,
@@ -465,6 +489,32 @@ Theme.Foam = table.freeze({
 
 -- UI FINAL R1: the foam handle of every Theme.panel (setSurface repaints one), dropped when the panel is destroyed.
 local panelFoams: { [GuiObject]: Foam } = setmetatable({}, { __mode = "k" }) :: any
+
+-- UI FINAL R3: every Theme.window's kind, its body padding and its chrome (the band's parts once headerTab made them,
+-- the last fit), dropped with the window.
+type WindowParts = {
+	kind: string,
+	padding: number,
+	band: Frame?,
+	clip: Frame?,
+	face: Frame?,
+	dots: ImageLabel?,
+	title: TextLabel?,
+	titleScale: UIScale?,
+	extra: GuiObject?,
+	sticker: Frame?,
+	stick: Frame?,
+	stickerShadow: ImageLabel?,
+	bobHolder: Frame?,
+	bob: UiIdle.Handle?,
+	ring: Frame?,
+	chrome: FittedChrome?,
+	stickRest: (() -> ())?,
+	hasClose: boolean?,
+	fittedWidth: number?,
+	extraWidth: number?,
+}
+local windows: { [GuiObject]: WindowParts } = setmetatable({}, { __mode = "k" }) :: any
 
 local function preferredName(): string?
 	local ok, value = pcall(function(): any
@@ -1268,54 +1318,446 @@ function Theme.softShadow(wrapper: GuiObject, key: string, spec: SoftShadowSpec)
 	return shadow
 end
 
--- The accent glow across a window's header area (Candy UI): a frame over the panel's top padding (it follows the
--- padding as the screens re-fit their chrome), the accent fading from GLOW_TRANSPARENCY to clear downwards, with the
--- panel's corners, behind the content (ZIndex 0). One per panel.
-local function headerGlow(panel: GuiObject, pad: UIPadding, color: Color3)
-	if panel:FindFirstChild(GLOW_NAME) then
+-- Public: UI FINAL R3, the window frame (see the header) ---------------------------------------------------------
+
+-- A window kind's Config.UI.Sticker.window entry (an unknown kind: the Squishies window's).
+local function windowSpec(kind: string): { [string]: any }
+	local kinds = WINDOW.kinds :: any
+	return kinds[kind] or kinds.squishies
+end
+
+-- A Palette colour by name, else `fallback`.
+local function paletteColor(name: string?, fallback: Color3): Color3
+	local color = if name then (Palette :: any)[name] else nil
+	return if typeof(color) == "Color3" then color else fallback
+end
+
+-- The width of `object` in base px: its offset width when it is sized in px alone (a window: current even before it is
+-- drawn again), else its AbsoluteSize over every UIScale from it up to its ScreenGui, else its offset width; 0 when
+-- neither is known (baseHeight's sibling).
+local function baseWidth(object: GuiObject): number
+	local size = object.Size.X
+	local autoX = object.AutomaticSize == Enum.AutomaticSize.X or object.AutomaticSize == Enum.AutomaticSize.XY
+	if size.Scale == 0 and size.Offset > 0 and not autoX then
+		return size.Offset
+	end
+	local absolute = object.AbsoluteSize.X
+	if absolute > 0 then
+		local scale = 1
+		local node: Instance? = object
+		while node ~= nil do
+			local uiScale = node:FindFirstChildOfClass("UIScale")
+			if uiScale then
+				scale *= uiScale.Scale
+			end
+			if node:IsA("LayerCollector") then
+				break
+			end
+			node = node.Parent
+		end
+		if scale > 0 then
+			return absolute / scale
+		end
+	end
+	return if size.Scale == 0 and size.Offset > 0 then size.Offset else 0
+end
+
+-- The Squishies window's inner ring (H:182) over the window's box, inside its border and above its lip.
+local function placeRing(window: GuiObject, parts: WindowParts)
+	local ring = parts.ring
+	local pad = window:FindFirstChildOfClass("UIPadding")
+	if ring == nil or pad == nil then
 		return
 	end
-	local glow: Frame = Create("Frame", {
-		Name = GLOW_NAME,
-		BackgroundColor3 = color,
+	local border = Theme.Sticker.border.heavy
+	local l, r = pad.PaddingLeft.Offset, pad.PaddingRight.Offset
+	local t, b = pad.PaddingTop.Offset, pad.PaddingBottom.Offset
+	ring.Position = UDim2.fromOffset(border - l, border - t)
+	ring.Size = UDim2.new(1, l + r - 2 * border, 1, t + b - 2 * border - Theme.Sticker.lip.window)
+end
+
+-- The design's window (H:182; see the header): the pink body with its 5 px ink border drawn inside, radius 32 and the
+-- 10 px ink lip under the face (frame = face + lip, plan P1), Active (a click on it never reaches the scrim);
+-- `padding` (default Theme.Padding.medium) on every side of the face, so the bottom one is the padding plus the lip.
+-- `kind` is a Config.UI.Sticker.window.kinds name: headerTab draws its band, fitWindow lays it out. The Squishies
+-- window also gets its inner ring (H:182).
+function Theme.window(props: { [string]: any }, kind: string, paddingPx: number?): Frame
+	local frame: Frame = Create("Frame", {
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		Active = true,
+	})
+	local sticker = Theme.Sticker
+	local border, lip = sticker.border.heavy, sticker.lip.window
+	local bands = Layout.stickerBands(border, 0, 0, lip)
+	Theme.foam(frame, {
+		radius = sticker.radius.window,
+		stroke = border,
+		inner = true,
+		top = bands.top,
+		bevel = bands.bevel,
+		drop = bands.drop,
+		colors = { face = Palette.StickerWindowTop, faceEnd = Palette.StickerWindowBottom, drop = Theme.Colors.inkUI },
+	})
+	local padding = paddingPx or Theme.Padding.medium
+	local pad = Theme.padding(padding, frame)
+	pad.PaddingBottom = UDim.new(0, padding + lip)
+	local parts: WindowParts = { kind = kind, padding = padding }
+	windows[frame] = parts
+	frame.Destroying:Once(function()
+		windows[frame] = nil
+	end)
+	if windowSpec(kind).innerRing then
+		local ring: Frame = Create("Frame", {
+			Name = "SD_InnerRing",
+			BackgroundTransparency = 1,
+			Active = false,
+			ZIndex = 0,
+			Parent = frame,
+		})
+		Theme.corner(sticker.radius.window - border, ring)
+		local stroke = Theme.stroke(WHITE, WINDOW.innerRing.px, ring, 1 - WINDOW.innerRing.alpha)
+		pcall(function()
+			(stroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
+		end)
+		parts.ring = ring
+		placeRing(frame, parts)
+	end
+	for key, value in props do
+		if key ~= "Parent" then
+			(frame :: any)[key] = value
+		end
+	end
+	if props.Parent then
+		frame.Parent = props.Parent
+	end
+	return frame
+end
+
+-- True for a Theme.window.
+function Theme.isWindow(object: Instance): boolean
+	return object:IsA("GuiObject") and windows[object :: GuiObject] ~= nil
+end
+
+-- The kind of a Theme.window, else nil.
+function Theme.windowKind(object: GuiObject): string?
+	local parts = windows[object]
+	return if parts then parts.kind else nil
+end
+
+-- Lays out a window's chrome for the chrome scale `k` (Layout.windowFit's k; default the last one, else 1; see the
+-- header): the band's height (the design's 98 / 92, or the title's line at the player's text size with titlePad over
+-- and under it when that is taller, times k; never shorter than the extra and the bottom border), its paddings (with
+-- an X, the right one keeps the band's end clear of the X's 54 px reach inside the window), the dots' tile, the title
+-- (its UIScale: k, less when its room needs it, never under TITLE_MIN_BASE_PX at the player's text size), the extra at
+-- the right end, the sticker's size and
+-- spot, the inner ring and the window's top padding (the border, the band, then the body's padding). Returns the
+-- chrome; a frame that is not a window gets zeros.
+function Theme.fitWindow(window: GuiObject, k: number?): FittedChrome
+	local parts = windows[window]
+	if parts == nil then
+		return { top = 0, above = 0, band = 0, k = 1 }
+	end
+	local last = parts.chrome
+	local scale = math.clamp(k or (if last then last.k else 1), MIN_CHROME_SCALE, 1)
+	local spec = windowSpec(parts.kind)
+	local small = spec.small == true
+	local b, s = WINDOW.band, WINDOW.sticker
+	local border = Theme.Sticker.border.heavy
+	local pad = window:FindFirstChildOfClass("UIPadding")
+	local band, title = parts.band, parts.title
+	local bandHeight = 0
+	if band and title then
+		local role = Theme.Sticker.text[if small then "settingsTitle" else "windowTitle"]
+		local design = if small then b.smallHeight else b.height
+		bandHeight = math.ceil(math.max(design, Theme.lineHeight(role.kind :: TextKind) + 2 * b.titlePad) * scale)
+		local extra = parts.extra
+		local extraHeight = if extra then baseHeight(extra) else nil
+		if extraHeight then
+			-- a small chrome: the extra (centred above the bottom border) stays inside the band
+			bandHeight = math.max(bandHeight, math.ceil(extraHeight) + b.border)
+		end
+	end
+	local top = if band then border + bandHeight + parts.padding else parts.padding
+	if pad then
+		pad.PaddingTop = UDim.new(0, top)
+	end
+	local padLeft = if pad then pad.PaddingLeft.Offset else 0
+	local padRight = if pad then pad.PaddingRight.Offset else 0
+	if band and title then
+		band.Position = UDim2.fromOffset(-padLeft, -top)
+		band.Size = UDim2.new(1, padLeft + padRight, 0, border + bandHeight)
+		local clip, face, dots = parts.clip, parts.face, parts.dots
+		if clip then
+			clip.Position = UDim2.fromOffset(border, border)
+			clip.Size = UDim2.new(1, -2 * border, 0, bandHeight)
+		end
+		if face then
+			face.Size = UDim2.new(1, 0, 0, bandHeight + b.cornerRadius)
+		end
+		if dots then
+			local tile = math.max(4, math.round(b.dotsTile * scale))
+			dots.Size = UDim2.new(1, 0, 0, bandHeight + b.cornerRadius)
+			dots.TileSize = UDim2.fromOffset(tile, tile)
+		end
+		local hasSticker = spec.sticker ~= nil
+		local leftPad = if hasSticker then (if small then b.smallPadLeft else b.padLeft) else b.plainPad
+		local rightPad = if hasSticker then (if small then b.smallPadRight else b.padRight) else b.plainPad
+		local left, right = math.round(leftPad * scale), math.round(rightPad * scale)
+		if parts.hasClose then -- a small chrome: the band's end stays a gap clear of the X (H:252)
+			right = math.max(right, WINDOW.close.face - WINDOW.close.right - border + math.round(b.gap * scale))
+		end
+		local centre = math.round(border + (bandHeight - b.border) / 2)
+		title.Position = UDim2.fromOffset(border + left, centre)
+		local windowWidth = baseWidth(window)
+		parts.fittedWidth = windowWidth
+		local room = windowWidth - 2 * border - left - right
+		local extra = parts.extra
+		if extra then
+			extra.Position = UDim2.new(1, -(border + right), 0, centre)
+			local extraWidth = baseWidth(extra)
+			parts.extraWidth = extraWidth
+			room -= extraWidth + math.round(b.gap * scale)
+		end
+		local role = Theme.Sticker.text[if small then "settingsTitle" else "windowTitle"]
+		local width = Theme.textWidth(title.Text, role.kind :: TextKind)
+		title.Size =
+			UDim2.fromOffset(math.ceil(width) + MEASURE_MARGIN_PX, math.ceil(Theme.lineHeight(role.kind :: TextKind)))
+		local share = if width <= 0 then scale elseif room <= 0 then 0 else room / width
+		local floor = TITLE_MIN_BASE_PX / math.max(1, Theme.textSize(role.kind)) -- at the player's text size too
+		local titleScale = parts.titleScale
+		if titleScale then
+			titleScale.Scale = math.max(math.min(scale, share), floor)
+		end
+		local sticker, shadow = parts.sticker, parts.stickerShadow
+		if sticker then
+			local px = math.round((if small then s.smallPx else s.px) * scale)
+			local x = (if small then s.smallX else s.x) * scale
+			local y = (if small then s.smallY else s.y) * scale
+			sticker.Size = UDim2.fromOffset(px, px)
+			sticker.Position = UDim2.fromOffset(math.round(x + px / 2), math.round(y + px / 2))
+			if shadow then
+				shadow.Position = UDim2.fromOffset(0, math.round(s.shadowPx * scale))
+			end
+		end
+	end
+	placeRing(window, parts)
+	local above = WINDOW.close.top
+	if spec.sticker ~= nil then
+		above = math.max(above, -(if small then s.smallY else s.y) * scale)
+	end
+	local chrome: FittedChrome = { top = top, above = above, band = bandHeight, k = scale }
+	parts.chrome = chrome
+	return chrome
+end
+
+-- The last chrome fitWindow gave a window (fitted at k = 1 when it has none yet); zeros for a frame that is not one.
+function Theme.fittedChrome(window: GuiObject): FittedChrome
+	local parts = windows[window]
+	if parts and parts.chrome then
+		return parts.chrome
+	end
+	return Theme.fitWindow(window, nil)
+end
+
+-- The design's band on a window (headerTab on a Theme.window; see the header and fitWindow).
+local function buildBand(window: GuiObject, parts: WindowParts, text: string, o: HeaderTabOptions): (Frame, TextLabel)
+	local spec = windowSpec(parts.kind)
+	local small = spec.small == true
+	local b, s = WINDOW.band, WINDOW.sticker
+	local band: Frame = Create("Frame", {
+		Name = o.name or BAND_NAME,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		Active = false,
-		ZIndex = 0,
+		ZIndex = BAND_ZINDEX,
 	})
-	local corner = panel:FindFirstChildOfClass("UICorner")
-	if corner then
-		Create("UICorner", { CornerRadius = corner.CornerRadius, Parent = glow })
-	end
-	Create("UIGradient", {
-		Rotation = 90,
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, GLOW_TRANSPARENCY),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = glow,
+	-- The band's face and dots in a clip holder (its top corners rounded, its bottom square: the rounded bottom of the
+	-- taller face falls outside the clip).
+	local clip: Frame = Create("Frame", {
+		Name = "SD_BandClip",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ClipsDescendants = true,
+		Active = false,
+		ZIndex = BAND_FACE_Z,
+		Parent = band,
 	})
-	local function place()
-		local top = pad.PaddingTop.Offset
-		local sides = pad.PaddingLeft.Offset + pad.PaddingRight.Offset
-		glow.Position = UDim2.fromOffset(-pad.PaddingLeft.Offset, -top)
-		glow.Size = UDim2.new(1, sides, 0, top + TAB_GAP)
+	local face: Frame = Create("Frame", {
+		Name = "SD_BandFace",
+		BorderSizePixel = 0,
+		Active = false,
+		ZIndex = 1,
+		Parent = clip,
+	})
+	local top = paletteColor(spec.top, Theme.Colors.panel)
+	local bottom = paletteColor(spec.bottom, Theme.Colors.bevel)
+	Theme.foam(face, {
+		radius = b.cornerRadius,
+		stroke = 0,
+		top = b.highlightPx,
+		bevel = b.bevelPx,
+		drop = b.border + b.cornerRadius,
+		colors = {
+			face = top,
+			faceEnd = bottom,
+			top = top:Lerp(WHITE, spec.highlightAlpha),
+			bevel = bottom:Lerp(BLACK, b.bevelAlpha),
+			drop = Theme.Colors.inkUI,
+		},
+	})
+	local dotsImage = AssetTable.image(DOTS_KEY)
+	local dots: ImageLabel? = nil
+	if dotsImage then
+		local made: ImageLabel = Create("ImageLabel", {
+			Name = "SD_Dots",
+			BackgroundTransparency = 1,
+			Image = dotsImage,
+			ImageColor3 = WHITE,
+			ImageTransparency = 1 - spec.dotsAlpha,
+			ScaleType = Enum.ScaleType.Tile,
+			Active = false,
+			ZIndex = 2,
+			Parent = clip,
+		})
+		Theme.corner(b.cornerRadius, made)
+		dots = made
+		-- H:183: the band's bottom border paints over its dots background (they are background), so the ink strip
+		-- sits over the dots at the clip's bottom.
+		Create("Frame", {
+			Name = "SD_BandEdge",
+			BackgroundColor3 = Theme.Colors.inkUI,
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0, 1),
+			Position = UDim2.fromScale(0, 1),
+			Size = UDim2.new(1, 0, 0, b.border),
+			Active = false,
+			ZIndex = 3,
+			Parent = clip,
+		})
 	end
-	place()
-	for _, property in { "PaddingTop", "PaddingLeft", "PaddingRight" } do
-		pad:GetPropertyChangedSignal(property):Connect(place)
+	-- The title: left-aligned, in capitals, its size from its role and its UIScale (fitWindow), its box from its
+	-- measure (fitWindow), not AutomaticSize: under a UIScale above 1 an automatic label's box grows by it twice.
+	local title: TextLabel = Create("TextLabel", {
+		Name = "Title",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Active = false,
+		ZIndex = BAND_TITLE_Z,
+		Parent = band,
+	})
+	Theme.stickerText(title, if small then "settingsTitle" else "windowTitle")
+	title.TextWrapped = false
+	title.Text = string.upper(text)
+	local titleScale: UIScale = Create("UIScale", { Name = "SD_TitleScale", Parent = title })
+	local extra = o.extra
+	if extra then
+		extra.AnchorPoint = Vector2.new(1, 0.5)
+		extra.ZIndex = BAND_TITLE_Z
+		extra.Parent = band
 	end
-	glow.Parent = panel
+	-- The sticker (H:251): the spot fitWindow sets > sdStick (playSticker) > sdBob from the start (UiIdle) > the
+	-- picture over its drop shadow. No picture id: no sticker (the band keeps its padding).
+	local key = spec.sticker
+	local image = if type(key) == "string" then AssetTable.image(key) else nil
+	if image then
+		local holder: Frame = Create("Frame", {
+			Name = "SD_Sticker",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Active = false,
+			ZIndex = BAND_STICKER_Z,
+			Parent = band,
+		})
+		local function inner(name: string, parent: Instance): Frame
+			return Create("Frame", {
+				Name = name,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromScale(1, 1),
+				Active = false,
+				ZIndex = BAND_STICKER_Z,
+				Parent = parent,
+			})
+		end
+		local stick = inner("SD_Stick", holder)
+		local bob = inner("SD_StickerBob", stick)
+		local shadow: ImageLabel = Create("ImageLabel", {
+			Name = "SD_StickerShadow",
+			BackgroundTransparency = 1,
+			Image = image,
+			ImageColor3 = Palette.StickerStickerShadow,
+			ImageTransparency = 1 - s.shadowAlpha,
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.fromScale(1, 1),
+			Active = false,
+			ZIndex = 1,
+			Parent = bob,
+		})
+		Create("ImageLabel", {
+			Name = "SD_StickerImage",
+			BackgroundTransparency = 1,
+			Image = image,
+			ScaleType = Enum.ScaleType.Fit,
+			Size = UDim2.fromScale(1, 1),
+			Active = false,
+			ZIndex = 2,
+			Parent = bob,
+		})
+		parts.bob = UiIdle.add(bob, "bob", { periodS = s.bobS })
+		parts.sticker, parts.stick, parts.stickerShadow, parts.bobHolder = holder, stick, shadow, bob
+	end
+	parts.band, parts.clip, parts.face, parts.dots = band, clip, face, dots
+	parts.title, parts.titleScale, parts.extra = title, titleScale, extra
+	band.Parent = window
+	Theme.fitWindow(window, nil)
+	-- Capitals whatever a caller writes later (InspectPanel's name, the Grip panel's title); the band fits it again.
+	title:GetPropertyChangedSignal("Text"):Connect(function()
+		local upper = string.upper(title.Text)
+		if title.Text ~= upper then
+			title.Text = upper
+			return
+		end
+		Theme.fitWindow(window, nil)
+	end)
+	title:GetPropertyChangedSignal("TextSize"):Connect(function()
+		Theme.fitWindow(window, nil)
+	end)
+	-- The title's room follows the window's width and the extra's (a caller sizes the window after fitting it; the
+	-- Collected count or a key hint changes the extra): fit again when either changes by a px or more.
+	window:GetPropertyChangedSignal("Size"):Connect(function()
+		if math.abs(baseWidth(window) - (parts.fittedWidth or 0)) >= 1 then
+			Theme.fitWindow(window, nil)
+		end
+	end)
+	if extra then
+		extra:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			if math.abs(baseWidth(extra) - (parts.extraWidth or 0)) >= 1 then
+				Theme.fitWindow(window, nil)
+			end
+		end)
+	end
+	return band, title
 end
 
 -- A title plate straddling `panel`'s top edge (spec "header-tab title"; Candy UI: a jelly plate): the accent face with
--- a gloss band, the PlumInk outline, an inner rim and two diagonal shine stripes, the title in a display kind (white
--- with the outline, the rule). Its size follows its measured title (textWidth / lineHeight, fitted again when the text
--- or its size changes) instead of AutomaticSize, so the shine overlay can never inflate it; a soft glow of the accent
--- fills the window's header area. It is positioned by hand, so `panel` must not hold a UIListLayout directly (put the
--- list in a child frame) nor clip its descendants. The panel's top padding grows to keep TAB_GAP under the tab's lower
--- half (measured at the current text size). Returns the tab (named options.name or "HeaderTab") and its label.
+-- a gloss band, the PlumInk outline and an inner rim, the title in a display kind (white with the outline, the rule).
+-- Its size follows its measured title (textWidth / lineHeight, fitted again when the text or its size changes)
+-- instead of AutomaticSize. It is positioned by hand, so `panel` must not hold a UIListLayout directly (put the list in
+-- a child frame) nor clip its descendants. The panel's top padding grows to keep TAB_GAP under the tab's lower half
+-- (measured at the current text size). Returns the tab (named options.name or "HeaderTab") and its label. UI FINAL
+-- R3: on a Theme.window it is the design's band instead (buildBand; named options.name or "HeaderBand"; its accent,
+-- textKind, align and inset come from the window's kind); the tab lost the Candy shine stripes and header glow.
 function Theme.headerTab(panel: GuiObject, text: string, options: HeaderTabOptions?): (Frame, TextLabel)
 	local o: HeaderTabOptions = options or {}
+	local parts = windows[panel]
+	if parts then
+		return buildBand(panel, parts, text, o)
+	end
 	local kind: TextKind = o.textKind or "H2"
 	local accentName = o.accent or "strawberry"
 	local bands = Theme.Foam.button
@@ -1372,10 +1814,154 @@ function Theme.headerTab(panel: GuiObject, text: string, options: HeaderTabOptio
 	fit()
 	label:GetPropertyChangedSignal("Text"):Connect(fit)
 	label:GetPropertyChangedSignal("TextSize"):Connect(fit)
-	Theme.shine(tab, TAB_RADIUS)
-	headerGlow(panel, pad, Theme.accent(accentName).face)
 	tab.Parent = panel
 	return tab, label
+end
+
+-- Puts a window's close X (a Button root) into its band at the design's spot (H:252: right -22, top -22 of the
+-- window), over the band's other parts, and fits the band again (its right end keeps clear of the X). Nothing for a
+-- window without a band.
+function Theme.attachClose(window: GuiObject, close: GuiObject)
+	local parts = windows[window]
+	local band = if parts then parts.band else nil
+	if parts == nil or band == nil then
+		return
+	end
+	close.AnchorPoint = Vector2.new(1, 0)
+	close.Position = UDim2.new(1, WINDOW.close.right, 0, -WINDOW.close.top)
+	close.ZIndex = BAND_CLOSE_Z
+	close.Parent = band
+	parts.hasClose = true
+	Theme.fitWindow(window, nil)
+end
+
+-- The window sticker's sdStick (H:27, H:251): from 40 / 60 px up-left, small, turned and clear to its spot over
+-- ms after delayMs, each segment eased by its curve (Config.UI.Sticker.window.sticker; the move at the chrome scale),
+-- on the SD_Stick holder (its fade: Tweens.fadeGroup; its move, scale and turn: Tweens.poser), every time the window
+-- opens (UIController). A replay first puts a running one back at rest. The design remounts the sticker on every open
+-- (sc-if), so its sdBob starts again with it (G3.3). Nothing under ReducedMotion (PR9) or for a window without a
+-- sticker.
+function Theme.playSticker(window: GuiObject)
+	local parts = windows[window]
+	local stick = if parts then parts.stick else nil
+	if parts == nil or stick == nil then
+		return
+	end
+	local running = parts.stickRest
+	if running then
+		running()
+	end
+	if Tweens.reducedMotion() then
+		return
+	end
+	local s = WINDOW.sticker
+	local bobHolder, bob = parts.bobHolder, parts.bob
+	if bobHolder and bob then
+		bob:remove()
+		parts.bob = UiIdle.add(bobHolder, "bob", { periodS = s.bobS })
+	end
+	local k = if parts.chrome then parts.chrome.k else 1
+	local frames: { Tweens.Pose } = {}
+	for _, frame in s.frames :: { any } do
+		local copy: Tweens.Pose = table.clone(frame)
+		local x, y = copy.x, copy.y
+		if x then
+			copy.x = x * k
+		end
+		if y then
+			copy.y = y * k
+		end
+		table.insert(frames, copy)
+	end
+	local fade = Tweens.fadeGroup(stick)
+	local poser = Tweens.poser(stick)
+	local started = os.clock()
+	local handle: Scheduler.Handle? = nil
+	local function settle()
+		fade:restore()
+		poser:rest()
+		if parts.stickRest ~= nil then
+			parts.stickRest = nil
+		end
+	end
+	local function show(u: number)
+		local pose = Tweens.poseAt(frames, u, s.curve)
+		fade:setAlpha(pose.alpha or 1)
+		poser:set({ x = pose.x, y = pose.y, scale = pose.scale, rot = pose.rot })
+	end
+	parts.stickRest = function()
+		local h = handle
+		if h then
+			h:disconnect()
+		end
+		settle()
+	end
+	show(0) -- CSS fill "both": the first frame through the delay
+	handle = Scheduler.add(function(_dt: number, now: number): boolean
+		if stick.Parent == nil then
+			settle()
+			return false
+		end
+		local u = math.clamp(((now - started) * 1000 - s.delayMs) / s.ms, 0, 1)
+		show(u)
+		if u >= 1 then
+			settle()
+			return false
+		end
+		return true
+	end, "render")
+end
+
+-- The window scrim (H:178; see the header): a full-screen TextButton (clear, no text, not selectable, no button
+-- colour) drawing the radial picture img.fx.radial.scrimWindow, else Theme.radial's fallback (the purple at the
+-- outer alpha with the pink glow at the inner one). The caller fades it and closes the top window on Activated.
+function Theme.scrim(props: { [string]: any }): TextButton
+	local button: TextButton = Create("TextButton", {
+		Name = "Dimmer",
+		Text = "",
+		AutoButtonColor = false,
+		Active = true,
+		Selectable = false,
+		BorderSizePixel = 0,
+		BackgroundColor3 = Palette.StickerScrimPurple,
+		Size = UDim2.fromScale(1, 1),
+	})
+	Theme.radial(button, SCRIM_KEY, {
+		inner = Palette.StickerScrimPink,
+		outer = Palette.StickerScrimPurple,
+		innerAlpha = WINDOW.scrim.innerAlpha,
+		outerAlpha = WINDOW.scrim.outerAlpha,
+	})
+	for key, value in props do
+		if key ~= "Parent" then
+			(button :: any)[key] = value
+		end
+	end
+	if props.Parent then
+		button.Parent = props.Parent
+	end
+	return button
+end
+
+-- The window's soft shadow (H:182: 0 34px 70px rgba(15,8,25,.5)) in `wrapper` (a clear frame that follows the window,
+-- UIController), through softShadow: the 9-slice img.fx.shadowWindow, else the glow tinted StickerShadowWindow.
+function Theme.windowShadow(wrapper: GuiObject): ImageLabel?
+	local spec = WINDOW.shadow
+	return Theme.softShadow(wrapper, SHADOW_WINDOW_KEY, {
+		offsetY = spec.offsetY,
+		blurPx = spec.blurPx,
+		alpha = spec.alpha,
+		color = Palette.StickerShadowWindow,
+	})
+end
+
+-- The design's scroll bar (H:22): 12 px, the thumb StickerScrollThumb (its 3 px border and radius 10: plan RL4).
+Theme.SCROLLBAR_PX = WINDOW.scrollbarPx
+function Theme.scrollbar(frame: ScrollingFrame): ScrollingFrame
+	frame.ScrollBarThickness = WINDOW.scrollbarPx
+	frame.ScrollBarImageColor3 = Theme.Colors.scrollThumb
+	frame.ScrollBarImageTransparency = 0
+	return frame
 end
 
 -- Public: Candy UI helpers
@@ -1406,117 +1992,6 @@ function Theme.rim(object: GuiObject, color: Color3?, transparency: number?, thi
 	end)
 	rim.Parent = object
 	return rim
-end
-
--- Two diagonal shine stripes over `object` (Candy UI gloss, like the references' header shine): a white frame over its
--- whole box (its UIPadding undone; corner `radiusPx`, so the stripes stay inside its rounded shape) faded by a UIGradient
--- into two soft bands, at the object's ZIndex (text drawn above it stays on top). Inputs pass through. Only for an
--- object whose size does not follow its children: an overlay inside an automatically sized parent inflates it (Studio
--- check). Returns the frame (an existing one is reused).
-function Theme.shine(object: GuiObject, radiusPx: number?, strength: number?): Frame
-	local existing = object:FindFirstChild(SHINE_NAME)
-	if existing and existing:IsA("Frame") then
-		return existing
-	end
-	local pad = object:FindFirstChildOfClass("UIPadding")
-	local l = if pad then pad.PaddingLeft.Offset else 0
-	local r = if pad then pad.PaddingRight.Offset else 0
-	local t = if pad then pad.PaddingTop.Offset else 0
-	local b = if pad then pad.PaddingBottom.Offset else 0
-	local alpha = 1 - (strength or SHINE_STRENGTH)
-	local soft = alpha + (1 - alpha) * 0.45
-	local frame: Frame = Create("Frame", {
-		Name = SHINE_NAME,
-		BackgroundColor3 = Theme.Colors.white,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(-l, -t),
-		Size = UDim2.new(1, l + r, 1, t + b),
-		Active = false,
-		ZIndex = object.ZIndex,
-	})
-	Theme.corner(radiusPx or Theme.Radius.button, frame)
-	Create("UIGradient", {
-		Rotation = 25,
-		Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0, 1),
-			NumberSequenceKeypoint.new(0.15, 1),
-			NumberSequenceKeypoint.new(0.17, alpha),
-			NumberSequenceKeypoint.new(0.29, alpha),
-			NumberSequenceKeypoint.new(0.31, 1),
-			NumberSequenceKeypoint.new(0.37, 1),
-			NumberSequenceKeypoint.new(0.39, soft),
-			NumberSequenceKeypoint.new(0.44, soft),
-			NumberSequenceKeypoint.new(0.46, 1),
-			NumberSequenceKeypoint.new(1, 1),
-		}),
-		Parent = frame,
-	})
-	frame.Parent = object
-	return frame
-end
-
--- The windows' squishy texture (Candy UI): a few large, faint jelly bubbles behind a window's content (BUBBLES, shares
--- of its height), each with a soft highlight, in a holder over the window's box (its UIPadding undone, inset by the
--- outline) that clips them. ZIndex 0, inputs pass through. Never on a frame whose direct children a UIListLayout or
--- UIGridLayout places (the holder would become an item): nil then. Returns the holder (an existing one is reused).
-function Theme.bubbles(window: GuiObject): Frame?
-	local existing = window:FindFirstChild(BUBBLES_NAME)
-	if existing and existing:IsA("Frame") then
-		return existing
-	end
-	if window:FindFirstChildWhichIsA("UIGridStyleLayout") then
-		return nil
-	end
-	local pad = window:FindFirstChildOfClass("UIPadding")
-	local inset = Theme.Stroke.ink
-	local holder: Frame = Create("Frame", {
-		Name = BUBBLES_NAME,
-		BackgroundTransparency = 1,
-		ClipsDescendants = true,
-		Active = false,
-		ZIndex = 0,
-	})
-	local function place()
-		local l = if pad then pad.PaddingLeft.Offset else 0
-		local r = if pad then pad.PaddingRight.Offset else 0
-		local t = if pad then pad.PaddingTop.Offset else 0
-		local b = if pad then pad.PaddingBottom.Offset else 0
-		holder.Position = UDim2.fromOffset(inset - l, inset - t)
-		holder.Size = UDim2.new(1, l + r - 2 * inset, 1, t + b - 2 * inset)
-	end
-	place()
-	if pad then
-		for _, property in { "PaddingTop", "PaddingBottom", "PaddingLeft", "PaddingRight" } do
-			pad:GetPropertyChangedSignal(property):Connect(place)
-		end
-	end
-	for index, spec in BUBBLES do
-		local bubble: Frame = Create("Frame", {
-			Name = "Bubble" .. index,
-			BackgroundColor3 = Theme.Colors.rim,
-			BackgroundTransparency = BUBBLE_TRANSPARENCY,
-			BorderSizePixel = 0,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(spec.x, spec.y),
-			Size = UDim2.fromScale(spec.s, spec.s),
-			SizeConstraint = Enum.SizeConstraint.RelativeYY,
-			Active = false,
-			ZIndex = 0,
-			Parent = holder,
-		})
-		Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = bubble })
-		Create("UIGradient", {
-			Rotation = 55,
-			Transparency = NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0),
-				NumberSequenceKeypoint.new(0.45, 0.35),
-				NumberSequenceKeypoint.new(1, 0.85),
-			}),
-			Parent = bubble,
-		})
-	end
-	holder.Parent = window
-	return holder
 end
 
 return Theme

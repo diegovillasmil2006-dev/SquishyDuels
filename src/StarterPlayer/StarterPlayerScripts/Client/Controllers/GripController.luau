@@ -91,6 +91,13 @@
 --   Close, and is shorter only to keep Close's top PANEL_EDGE inside the screen (panelLayout); on the compact layout
 --   the intro line hides (introShown; see there); on touch the column has the scroll rail
 --   (UI/Components/ScrollHint, "ScrollRail" on the panel), like Settings.
+-- * UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel and
+--   the idle card are Theme.windows (kind "grip": the grip bar's mint band, H:85, no sticker, a reading: the design
+--   has no Grip window) with their band (Theme.headerTab) and, on the panel, the 76 px close X in the band
+--   (Theme.attachClose, H:252); placePanel lays the chrome out at the window's chrome scale (Theme.fitWindow,
+--   Layout.windowFit) and what hangs above is the X's 22 px. The column scrolls with the design's scroll bar
+--   (Theme.scrollbar, H:22); the texts on the pink body (the intro, the duel note, the idle card's sentence) take the
+--   window's text colour (H:196).
 
 -- Services
 
@@ -220,8 +227,7 @@ local BAR_PX = Config.UI.Sticker.bars.grip.height
 local BAR_LIP_PX = Config.UI.Sticker.lip.bar
 local PRESS = Config.UI.motion.buttonPress
 local BAR_EPSILON = 1e-4 -- the bar eases only when its share really changed (the card refreshes every few seconds)
--- Foam fix (like Quests, Daily and Settings): Close straddles the panel's top edge this far from its right edge.
-local CLOSE_INSET = 16
+local WINDOW_KIND = "grip" -- UI FINAL R3: the panel's and the idle card's Config.UI.Sticker.window kind (a reading)
 local PANEL_BAR_HEIGHT = 14
 local PANEL_MAX_WIDTH = 560
 local PANEL_MARGIN = 24
@@ -862,15 +868,13 @@ end
 
 -- Panel -------------------------------------------------------------------------------------------------------------
 
--- Foam fix 2: sizes and places the panel (panelLayout) with what hangs above its top edge: half the taller of Close and
--- the header tab (measured without the open pop's scale, SD_OpenScale; Close until the tab has a size).
-local function placePanel(root: GuiObject, tab: GuiObject?)
+-- Foam fix 2: sizes and places the panel (panelLayout) with what hangs above its top edge. UI FINAL R3: the band at
+-- the window's chrome scale (Theme.fitWindow); what hangs above is the close X (H:252).
+local function placePanel(root: GuiObject)
 	local scale = UIController.scale()
-	local pop = root:FindFirstChild("SD_OpenScale")
-	local s = scale * (if pop and pop:IsA("UIScale") and pop.Scale > 0 then pop.Scale else 1)
-	local tabHeight = if tab and s > 0 then tab.AbsoluteSize.Y / s else 0
-	local above = math.max(Config.UI.Touch.closeButton, tabHeight) / 2
-	local layout = GripController.panelLayout(UIController.screenGui(MODAL_GUI).AbsoluteSize, scale, above)
+	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
+	local above = Theme.fitWindow(root, Layout.windowFit(screen, WINDOW_KIND).k).above
+	local layout = GripController.panelLayout(screen, scale, above)
 	local size = UDim2.fromOffset(layout.width, layout.height)
 	if root.Size ~= size then
 		root.Size = size
@@ -885,36 +889,28 @@ end
 -- right and one scrolling column: the intro, the level in a Biscuit inset (the bar, the Double Grip line, the goal),
 -- the help lines in a second inset, then the duel note.
 local function buildPanel(parent: Instance): GuiObject
-	local root = Theme.panel({
+	local root = Theme.window({
 		Name = "GripPanel",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Parent = parent,
-	}, Theme.Radius.panel, Theme.Padding.large)
-	-- Foam fix (like Quests, Daily and Settings): room at the top for Close's lower half, then the header tab (it raises
-	-- the padding for its own half). No header row: the column starts right under them (on a phone the old Close-only
-	-- row took about a fifth of the panel).
-	local panelPad = root:FindFirstChildOfClass("UIPadding") :: UIPadding
-	panelPad.PaddingTop = UDim.new(0, math.ceil(Config.UI.Touch.closeButton / 2) + Theme.Padding.small)
-	-- The header tab straddles the panel's top edge (the panel holds no list itself, Theme.headerTab).
+	}, WINDOW_KIND, Theme.Padding.large)
+	-- UI FINAL R3: the band on the window's top (it sets the top padding; the panel holds no list itself) and the
+	-- 76 px X in it (H:252). No header row: the column starts right under the band.
 	local tab, title = Theme.headerTab(root, text("grip.panelTitle"))
-	placePanel(root, tab)
 	local close = Button.new({
 		name = "Grip_CloseButton",
 		text = text("common.close"),
 		kind = "close", -- UI overhaul: the chunky red X
-		height = Config.UI.Touch.closeButton,
 		parent = root,
 		onActivated = function()
 			UIController.close(SCREEN_PANEL, "close")
 		end,
 	})
-	-- Straddles the panel's top edge at the right, like the tab in the middle.
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.Position = UDim2.new(1, Theme.Padding.large - CLOSE_INSET, 0, -panelPad.PaddingTop.Offset)
-	close.root.ZIndex = tab.ZIndex
+	Theme.attachClose(root, close.root)
+	placePanel(root)
 
-	local scroll: ScrollingFrame = Create("ScrollingFrame", {
+	local scroll: ScrollingFrame = Theme.scrollbar(Create("ScrollingFrame", {
 		Name = "Column",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -922,10 +918,8 @@ local function buildPanel(parent: Instance): GuiObject
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = 6,
-		ScrollBarImageColor3 = Theme.Colors.ink2,
 		Parent = root,
-	})
+	}))
 	Theme.list(
 		Enum.FillDirection.Vertical,
 		Theme.Padding.medium,
@@ -937,7 +931,7 @@ local function buildPanel(parent: Instance): GuiObject
 	Create("UIPadding", {
 		PaddingTop = UDim.new(0, 4),
 		PaddingLeft = UDim.new(0, 4),
-		PaddingRight = UDim.new(0, 12),
+		PaddingRight = UDim.new(0, Theme.SCROLLBAR_PX + 6),
 		PaddingBottom = UDim.new(0, 8),
 		Parent = scroll,
 	})
@@ -971,6 +965,7 @@ local function buildPanel(parent: Instance): GuiObject
 		{ Name = "Intro", LayoutOrder = nextOrder(), Text = text("grip.panelIntro"), Parent = scroll },
 		"Body"
 	)
+	Theme.textOnWindow(intro) -- UI FINAL R3: on the pink body (H:196)
 	local header = insetBlock("Level")
 	local levelLabel = Theme.label({ Name = "Level", LayoutOrder = 1, Parent = header }, "H2")
 	local panelBar = ProgressBar.new({
@@ -992,7 +987,9 @@ local function buildPanel(parent: Instance): GuiObject
 		Parent = help,
 	})
 	caption({ Name = "LimitNote", LayoutOrder = 2, Text = text("grip.limitNote"), Parent = help })
-	caption({ Name = "DuelNote", LayoutOrder = nextOrder(), Text = text("grip.duelNote"), Parent = scroll })
+	local duelNote =
+		caption({ Name = "DuelNote", LayoutOrder = nextOrder(), Text = text("grip.duelNote"), Parent = scroll })
+	Theme.textOnWindow(duelNote) -- UI FINAL R3: on the pink body (H:196)
 
 	panelRefs = {
 		root = root,
@@ -1015,7 +1012,7 @@ local function refreshPanel()
 	if refs == nil or not UIController.isOpen(SCREEN_PANEL) then
 		return
 	end
-	placePanel(refs.root, refs.tab)
+	placePanel(refs.root)
 	refs.intro.Visible = GripController.introShown(UIController.layoutClass())
 	local model = currentModel()
 	if model == nil then
@@ -1030,15 +1027,15 @@ end
 
 -- The idle card (foam restyle): a foam panel with the "Still there?" header tab, the sentence and [Keep going].
 local function buildIdleCard(parent: Instance): GuiObject
-	local root = Theme.panel({
+	local root = Theme.window({
 		Name = "GripIdleCard",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(IDLE_CARD_WIDTH, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = parent,
-	}, Theme.Radius.panel, Theme.Padding.large)
-	-- The header tab is placed by hand, so the list lives in a child frame (Theme.headerTab).
+	}, WINDOW_KIND, Theme.Padding.large)
+	-- UI FINAL R3: the band on the window's top, so the list lives in a child frame (Theme.headerTab).
 	Theme.headerTab(root, text("grip.idleTitle"), { name = "Title" })
 	local body: Frame = Create("Frame", {
 		Name = "Content",
@@ -1048,13 +1045,14 @@ local function buildIdleCard(parent: Instance): GuiObject
 		Parent = root,
 	})
 	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.medium, body)
-	Theme.label({
+	local sentence = Theme.label({
 		Name = "Body",
 		LayoutOrder = 1,
 		Text = text("grip.idleBody"),
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = body,
 	}, "Body")
+	Theme.textOnWindow(sentence) -- UI FINAL R3: on the pink body (H:196)
 	Button.new({
 		name = IDLE_BUTTON,
 		text = text("grip.idleButton"),

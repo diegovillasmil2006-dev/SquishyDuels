@@ -60,6 +60,12 @@
 -- Leak rule (§10.11): every instance is built once in new(). show(), setEquip() and setLayout() only set properties:
 -- one RarityTag per rarity (toggled), 5 fixed stat rows, and a fixed pool of "How to get" lines (one per Boxes.list()
 -- box + one shop line) toggled Visible. destroy() removes everything (one Cleanup).
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3): the panel is a Theme.window (kind "inspect": the Squishies
+-- pink band, no sticker, a reading: the design has no Inspect window) of its own size (layoutFor) with its lip under
+-- the face; the squishy's name is the band's title (the windowTitle role in capitals, so §10.8's 28 px reading is
+-- gone) and Close, with its key, sits at the band's right end (its `extra`); Theme.fitWindow lays the band out at the
+-- chrome scale and the panel sits as the design's windows do (Layout.windowShift). The caption under the stage takes
+-- the window's text colour on the pink body (H:196).
 -- Stable names: Inspect, Inspect_Stage, Inspect_CloseButton, Inspect_SqueezeButton, Inspect_ResetViewButton,
 -- Inspect_EquipButton, Inspect_ViewInShopButton.
 -- Knead (spec phase2-squeeze §1.19, §3.6-§3.7): panel:setKnead(view?) shows, while Inspect kneads, Thumb crunch
@@ -91,7 +97,6 @@ local Chip = require(UI.Components.Chip)
 local Create = require(UI.Create)
 local Focus = require(UI.Focus)
 local InspectFormat = require(UI.InspectFormat)
-local InventoryFormat = require(UI.InventoryFormat)
 local Layout = require(UI.Layout)
 local LockIcon = require(UI.Components.LockIcon)
 local ProgressBar = require(UI.Components.ProgressBar)
@@ -181,7 +186,6 @@ local STAGE_SHARE_REGULAR = 0.55 -- reading (task: "about 55%")
 local STAGE_SHARE_COMPACT = 0.5 -- reading (task: "about 50%")
 local CAPTION_LINES = 2 -- the caption's reserved height under the stage, in Small lines
 local LINE_HEIGHT = 1.25
-local NAME_TEXT_PX = 28 -- §10.8
 local FALLBACK_SCREEN = Vector2.new(1280, 720) -- reading: before the ScreenGui has a size
 local STAT_ROWS = 5 -- §10.8: Speed, Size, Reload, Windup, Arc
 local STAT_BAR_PX = 12
@@ -191,12 +195,10 @@ local LOCK_PX = 14
 local SCROLLBAR_PX = 6
 local INFO_INSET_PX = 10 -- the inset field's inner padding around the list
 local SHOP_LINES = 1
-local TAB_KIND: Theme.TextKind = "Title" -- the gap under it: InventoryFormat.PANEL.tabGap (hangingChrome)
 -- Fix batch: the header row is as tall as its badges: the Chip line (LINE_HEIGHT of the Chip size), BADGE_PAD_PX (the
--- chip's padding and the rarity tag's outline room above and below), never below Chip.HEIGHT_PX. Close hangs on the
--- top-right corner CLOSE_INSET from the panel's right edge (as on Quests and Settings).
+-- chip's padding and the rarity tag's outline room above and below), never below Chip.HEIGHT_PX.
 local BADGE_PAD_PX = 8
-local CLOSE_INSET = 16
+local WINDOW_KIND = "inspect" -- UI FINAL R3: its Config.UI.Sticker.window kind (a reading)
 
 -- Module table
 
@@ -349,18 +351,14 @@ end
 function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	local cleanup = Cleanup.new()
 
-	local root = Theme.panel({
+	local root = Theme.window({
 		Name = "Inspect",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(UI_CONFIG.modalMaxWidth, 0),
-	}, Theme.Radius.panel, PANEL_PADDING)
+	}, WINDOW_KIND, PANEL_PADDING)
 	cleanup:add(root)
 	Focus.prepareGroup(root)
-	local rootPad = root:FindFirstChildOfClass("UIPadding") :: UIPadding
-
-	-- The name: a header tab on the panel's top edge -----------------------------------------------------------------
-	local tab, nameLabel = Theme.headerTab(root, "", { textKind = TAB_KIND, name = "NameTab" })
 
 	-- Header row: rarity and ownership (fix batch: Close hangs on the panel's top-right corner, below) --------------------
 	local header: Frame = Create("Frame", { Name = "Header", BackgroundTransparency = 1, Parent = root })
@@ -382,8 +380,7 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	cleanup:add(ownership)
 	local lock = LockIcon.new({ name = "Lock", sizePx = LOCK_PX, layoutOrder = 0, parent = ownership.root })
 	cleanup:add(lock)
-	-- Close (with its key) hangs on the panel's top-right corner, level with the name tab (fitTab places it; drawn over
-	-- the panel's outline like the tab).
+	-- Close (with its key) at the band's right end (UI FINAL R3: the band's extra; fitTab lays the band out).
 	local close = Button.new({
 		name = "Inspect_CloseButton",
 		text = Strings.common.close,
@@ -397,10 +394,10 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 			callbacks.onClose()
 		end,
 	})
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.ZIndex = tab.ZIndex
 	close.root.Modal = true -- frees the cursor in shift lock / first person (§10.4 step 4)
 	cleanup:add(close)
+	-- The name: the window's band title, with Close at its right end ------------------------------------------------
+	local _, nameLabel = Theme.headerTab(root, "", { name = "NameTab", extra = close.root :: GuiObject })
 	local function applyCloseKey()
 		close:setKeycap(closeKey())
 	end
@@ -420,6 +417,7 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		TextYAlignment = Enum.TextYAlignment.Top,
 		Parent = root,
 	}, "Small", nil, Theme.Colors.ink2)
+	Theme.textOnWindow(caption) -- UI FINAL R3: on the pink body (H:196)
 	local stageButtons: Frame = Create("Frame", { Name = "StageButtons", BackgroundTransparency = 1, Parent = root })
 	local stageList =
 		Theme.list(Enum.FillDirection.Horizontal, BUTTON_GAP, stageButtons, Enum.HorizontalAlignment.Center)
@@ -518,7 +516,7 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	Focus.decorate(info)
 	Create("UIPadding", { PaddingRight = UDim.new(0, SCROLLBAR_PX + 4), Parent = info })
 	-- Fix round 2: on touch the list's scroll bar stays on screen while the list is longer than the field.
-	local scrollHint = ScrollHint.new({ scroll = info, parent = infoField })
+	local scrollHint = ScrollHint.new({ scroll = info, parent = infoField, tone = "well" }) -- UI FINAL R3: in the well
 	scrollHint.root.AnchorPoint = Vector2.new(1, 0)
 	scrollHint.root.Position = UDim2.fromScale(1, 0)
 	scrollHint.root.Size = UDim2.new(0, SCROLLBAR_PX, 1, 0)
@@ -669,26 +667,10 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	local class: Layout.LayoutClass = Layout.layoutClass(screenSize().X, screenSize().Y)
 	local current: PanelLayout = InspectPanel.layoutFor(screenSize(), class)
 
-	local function applyNameSize()
-		local size = Theme.textSize("Title") * NAME_TEXT_PX / UI_CONFIG.TextSize.Title
-		nameLabel.TextSize = math.max(UI_CONFIG.minTextSize, math.floor(size + 0.5))
-	end
-
-	-- The header tab and Close at the player's text size (fix batch: InventoryFormat.hangingChrome): the tab stays centred
-	-- on the panel's top edge and Close hangs on the top-right corner, level with it; the panel's top padding keeps the
-	-- gap under their lower halves, and the panel moves down by half of what hangs above it (both centred together).
-	-- Returns the top padding.
-	local function fitTab(): number
-		local tabPad = tab:FindFirstChildOfClass("UIPadding")
-		local padY = if tabPad then tabPad.PaddingTop.Offset + tabPad.PaddingBottom.Offset else 0
-		local tabHeight = math.ceil(Theme.lineHeight(TAB_KIND)) + padY
-		local closeHeight = Layout.touchBase(TOUCH.closeButton, Layout.uiScale(screenSize().Y, screenSize().X))
-		local chrome = InventoryFormat.hangingChrome(tabHeight, closeHeight, PANEL_PADDING)
-		rootPad.PaddingTop = UDim.new(0, chrome.top)
-		tab.Position = UDim2.new(0.5, 0, 0, -chrome.top)
-		close.root.Position = UDim2.new(1, PANEL_PADDING - CLOSE_INSET, 0, -chrome.top)
-		root.Position = UDim2.new(0.5, 0, 0.5, chrome.shift)
-		return chrome.top
+	-- UI FINAL R3: the band (its title and Close) at the window's chrome scale (Layout.windowFit, Theme.fitWindow) at
+	-- the player's text size. Returns the chrome (its top padding and what hangs above).
+	local function fitTab(): Theme.FittedChrome
+		return Theme.fitWindow(root, Layout.windowFit(screenSize(), WINDOW_KIND).k)
 	end
 
 	-- What Equip shows now (setEquip), measured for the row count.
@@ -717,12 +699,22 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 
 	local function apply()
 		local textScale = Theme.textSize("Body") / UI_CONFIG.TextSize.Body
-		local top = fitTab()
+		local chrome = fitTab()
+		local top = chrome.top
 		local first = InspectPanel.layoutFor(screenSize(), class, textScale, nil, top)
 		local l = InspectPanel.layoutFor(screenSize(), class, textScale, measuredRows(first), top)
 		current = l
-		applyNameSize()
-		root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight)
+		-- UI FINAL R3: the face and its lip, placed as the design's windows are (H:181; kept on the screen).
+		local window = Layout.windowChrome(WINDOW_KIND) :: Layout.WindowChrome
+		root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight + window.lip)
+		local shift = Layout.windowShift(
+			screenSize().Y / l.scale,
+			l.panelHeight + window.lip,
+			window.designShift,
+			chrome.above,
+			window.margin
+		)
+		root.Position = UDim2.new(0.5, 0, 0.5, shift)
 		place(header, l.header)
 		place(stageHolder, l.stage)
 		place(caption, l.caption)

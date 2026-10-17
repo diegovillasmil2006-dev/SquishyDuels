@@ -131,10 +131,10 @@ local UI = {
 	-- (cards) and R9 (toasts) switch to the tracks; `style` / `direction` stay the TweenService fallback today's code
 	-- reads until then.
 	motion = {
-		-- UI overhaul: the panel pops scaleFrom -> overshoot over overshootShare of ms (Quad Out), then settles to 1 (Quad
-		-- InOut), rising riseShare of its height into place; the backdrop fades in over backdropMs. `style` / `direction`
-		-- stay the one-tween fallback (the banner's pop). UI FINAL R2: the design's sdPop (H:25, .5 s, H:181), without
-		-- its fade and tilt (plan §1.4 RL3); the scrim's sdFade .25 s (H:178).
+		-- UI FINAL R2: the design's sdPop (H:25, .5 s, H:181), without its fade and tilt (plan §1.4 RL3); the scrim's
+		-- sdFade .25 s (H:178). UI FINAL R3: UIController plays `frames` on the window (its UIScale and its rise),
+		-- each segment eased `curve`; the scrim fades in over backdropMs on backdropCurve; the wash between two stacked
+		-- windows is the Backdrop colour at dimmerTransparency. `style` / `direction` stay the banner's one-tween pop.
 		modalOpen = {
 			ms = 500, -- H:181
 			style = Enum.EasingStyle.Back,
@@ -142,10 +142,9 @@ local UI = {
 			curve = "windows", -- H:181
 			scaleFrom = 0.55, -- H:25
 			overshoot = 1.035, -- H:25 (60%)
-			overshootShare = 0.6,
-			riseShare = 0.03,
 			dimmerTransparency = 0.5, -- the Backdrop colour 1 -> 0.5
 			backdropMs = 250, -- H:178
+			backdropCurve = "ease", -- H:178: sdFade .25s ease
 			-- H:25. CSS scale(...) translateY(...): the move is inside the scale, so 40 px at .55 moves 22 px and -4 px
 			-- at 1.035 moves -4.
 			frames = {
@@ -157,8 +156,10 @@ local UI = {
 		},
 		-- The logical close is immediate; visually the root stays visualMs while UIScale goes 1 -> scaleTo (§18.5.2 B4).
 		-- UI FINAL R2: the design's close (H:683-690): 190 ms to .82 and 20 px lower, cubic-bezier(.5,0,.75,0)
-		-- (`curve`; today's tween: Quart In, 0.006 off), the scrim fading out with it; no fade of the window (plan §1.4
-		-- RL3).
+		-- (`curve`), the scrim fading out with it; no fade of the window (plan §1.4 RL3). UI FINAL R3: UIController
+		-- plays `frames` over visualMs with `curve` on the whole run (a Web Animations easing, H:686) and hides the
+		-- window at removeMs (H:689); the scrim fades out over ms on `curve`. `style` / `direction` stay the wash's
+		-- TweenService fade (the wash is not in the design).
 		modalClose = {
 			ms = 190, -- H:686 (the backdrop)
 			style = Enum.EasingStyle.Quart,
@@ -166,6 +167,7 @@ local UI = {
 			curve = "close", -- H:686
 			scaleTo = 0.82, -- H:687
 			visualMs = 190, -- H:686
+			removeMs = 185, -- H:689: the window goes 5 ms before its animation ends
 			-- H:687 scale(.82) translateY(24px): the move is inside the scale, 24 x .82 = 20 px.
 			frames = { { at = 0, scale = 1, y = 0 }, { at = 1, scale = 0.82, y = 20 } } :: { MotionPose },
 		},
@@ -1077,6 +1079,167 @@ local UI = {
 				titleGap = 10, -- H:366: the title to "x/y"
 			},
 			toastTop = 200, -- N:197: the toast column's top (the newer file; was 132, H:174)
+		},
+		-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3): the six design windows (H:180-454) and the game's
+		-- own, read through UI/Theme (window, headerTab's band, fitWindow, the sticker, the scrim) and
+		-- UI/Layout.windowFit (the size that fits the screen). The window's border, radius and lip are border.heavy,
+		-- radius.window and lip.window. Base px.
+		window = {
+			-- Each kind's face (width x height; the lip hangs under it) and its CSS margin-top (H:181, H:256, H:289,
+			-- H:351, H:383, H:426: centred height / 2 + marginTop px below the true centre), its header band
+			-- (Palette names of the gradient's stops, the top highlight's and the dots' alpha: H:183, H:258, H:291,
+			-- H:353, H:385, H:428), its sticker picture (H:251, H:284, H:346, H:378, H:421, H:451), `small` (the
+			-- Settings band: 92 high, the settingsTitle role, the 150 px sticker, H:428-451) and `innerRing` (H:182:
+			-- Squishies only). Readings for the windows the design lacks (plan R3): grip (the Grip panel and its idle
+			-- card) the grip bar's pair (H:85), no sticker; duel (the forfeit dialog) the DUEL pink (H:126), its
+			-- sticker and Settings' small band (a short question in a 600 px dialog); inspect the Squishies pink, no
+			-- sticker; their sizes are the nearest design window's.
+			kinds = {
+				squishies = {
+					width = 1060,
+					height = 650,
+					marginTop = -310,
+					top = "StickerPinkTop",
+					bottom = "StickerHeaderPinkEnd",
+					highlightAlpha = 0.45,
+					dotsAlpha = 0.28,
+					sticker = "img.nav.squishies",
+					innerRing = true,
+				},
+				boxes = {
+					width = 1060,
+					height = 650,
+					marginTop = -310,
+					top = "StickerHeaderCyanTop",
+					bottom = "StickerHeaderCyanEnd",
+					highlightAlpha = 0.45,
+					dotsAlpha = 0.3,
+					sticker = "img.nav.boxes",
+				},
+				shop = {
+					width = 1060,
+					height = 650,
+					marginTop = -310,
+					top = "StickerHeaderGoldTop",
+					bottom = "StickerHeaderGoldEnd",
+					highlightAlpha = 0.5,
+					dotsAlpha = 0.32,
+					sticker = "img.nav.shop",
+				},
+				quests = {
+					width = 900,
+					height = 620,
+					marginTop = -296,
+					top = "StickerMintTop",
+					bottom = "StickerHeaderMintEnd",
+					highlightAlpha = 0.45,
+					dotsAlpha = 0.3,
+					sticker = "img.nav.quests",
+				},
+				daily = {
+					width = 980,
+					height = 620,
+					marginTop = -296,
+					top = "StickerHeaderPurpleTop",
+					bottom = "StickerHeaderPurpleEnd",
+					highlightAlpha = 0.45,
+					dotsAlpha = 0.28,
+					sticker = "img.nav.daily",
+				},
+				settings = {
+					width = 600,
+					height = 500,
+					marginTop = -236,
+					top = "StickerHeaderLilacTop",
+					bottom = "StickerHeaderLilacEnd",
+					highlightAlpha = 0.4,
+					dotsAlpha = 0.24,
+					sticker = "img.nav.settings",
+					small = true,
+				},
+				grip = {
+					width = 600,
+					height = 500,
+					marginTop = -236,
+					top = "StickerGripTop",
+					bottom = "StickerGripEnd",
+					highlightAlpha = 0.45,
+					dotsAlpha = 0.28,
+				},
+				duel = {
+					width = 600,
+					height = 500,
+					marginTop = -236,
+					top = "StickerPinkTop",
+					bottom = "StickerPinkEnd",
+					highlightAlpha = 0.45,
+					dotsAlpha = 0.28,
+					sticker = "img.nav.duel",
+					small = true,
+				},
+				inspect = {
+					width = 1060,
+					height = 650,
+					marginTop = -310,
+					top = "StickerPinkTop",
+					bottom = "StickerHeaderPinkEnd",
+					highlightAlpha = 0.45,
+					dotsAlpha = 0.28,
+				},
+			},
+			-- The header band (H:183-184, H:428-429): its height (Settings smallHeight), the title's padding with a
+			-- sticker (Settings small*) and without one (plainPad both sides), the gap before its extra (H:183), the
+			-- top highlight and the bevel (inset 0 5px 0 / inset 0 -7px 0 rgba(0,0,0,.12)), its bottom border, the
+			-- rounding of its top corners (the window's 32 less its 5 px border, H:182), the dots' tile (H:183: 26 px)
+			-- and the room kept over and under the title's line at large text sizes (reading).
+			band = {
+				height = 98,
+				smallHeight = 92,
+				padLeft = 176,
+				padRight = 110,
+				smallPadLeft = 140,
+				smallPadRight = 100,
+				plainPad = 110,
+				gap = 18,
+				highlightPx = 5,
+				bevelPx = 7,
+				bevelAlpha = 0.12,
+				border = 5,
+				cornerRadius = 27,
+				dotsTile = 26,
+				titlePad = 5,
+			},
+			-- The sticker (H:251, H:451): px square at (x, y) from the window's top-left (Settings small*), its drop
+			-- shadow (drop-shadow(0 7px 0 rgba(20,10,30,.35))), sdBob over bobS from the start, and sdStick on every
+			-- open (H:27: .75 s after .08 s, each segment eased `curve`; the move is in px).
+			sticker = {
+				px = 190,
+				x = -40,
+				y = -62,
+				smallPx = 150,
+				smallX = -30,
+				smallY = -46,
+				shadowPx = 7,
+				shadowAlpha = 0.35,
+				bobS = 3,
+				ms = 750,
+				delayMs = 80,
+				curve = "search", -- H:251: cubic-bezier(.2,1.4,.4,1)
+				frames = {
+					{ at = 0, x = -40, y = -60, scale = 0.2, rot = -40, alpha = 0 },
+					{ at = 0.6, scale = 1.15, rot = 8, alpha = 1 },
+					{ at = 0.8, scale = 0.95, rot = -4 },
+					{ at = 1, x = 0, y = 0, scale = 1, rot = 0, alpha = 1 },
+				} :: { MotionPose },
+			},
+			close = { face = 76, right = 22, top = 22 }, -- H:252: the X at (right -22, top -22)
+			-- H:178: radial-gradient(ellipse at center, rgba(255,150,210,.28), rgba(110,60,220,.55)); a click on it
+			-- closes the top window (onClick = closeModal).
+			scrim = { innerAlpha = 0.28, outerAlpha = 0.55, closeOnClick = true },
+			innerRing = { px = 3, alpha = 0.05 }, -- H:182: inset 0 0 0 3px rgba(255,255,255,.05)
+			shadow = { offsetY = 34, blurPx = 70, alpha = 0.5 }, -- H:182: 0 34px 70px rgba(15,8,25,.5)
+			margin = 12, -- reading: the room kept from the screen's edges when a window shrinks to fit
+			scrollbarPx = 12, -- H:22: ::-webkit-scrollbar { width: 12px }
 		},
 	},
 

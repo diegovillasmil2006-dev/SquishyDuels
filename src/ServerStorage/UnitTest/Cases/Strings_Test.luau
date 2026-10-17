@@ -535,7 +535,7 @@ return function(t: Context)
 	-- world's board and sign keep their capitals (§7.7, WorldLayout_Test).
 	t.test("the screen titles share one casing; the world signs keep theirs", function()
 		expect.equal(Strings.quest.panelTitle, "Quests")
-		expect.equal(Strings.daily.panelTitle, "Daily Reward")
+		expect.equal(Strings.daily.panelTitle, "Daily Rewards") -- UI FINAL R3: the design's title (H:386)
 		expect.equal(Strings.inspect.previewNotOwned, "Preview · Not owned")
 		expect.equal(Strings.resolve("quest.title"), "QUESTS")
 		expect.equal(Strings.resolve("daily.title"), "DAILY REWARD")

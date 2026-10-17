@@ -836,7 +836,8 @@ local Strings = {
 	-- Daily rewards (§6.9, §7.7, §11.6).
 	daily = {
 		title = "DAILY REWARD", -- the world sign (§7.7); the Daily screen's tab reads panelTitle
-		panelTitle = "Daily Reward", -- foam fix batch: title case like every other screen's header tab
+		-- UI FINAL R3: the design's "DAILY REWARDS" (H:386; the band shows its title in capitals, Q5)
+		panelTitle = "Daily Rewards",
 		ready = "Ready to claim!",
 		wait = "Next reward in {time}",
 		popup = "Daily reward ready",

@@ -589,11 +589,18 @@ return function(t: Context)
 		)
 	end
 
+	-- UI FINAL R3: the Squishies window (H:181) shrunk to the phone with its band on top (Theme.fitWindow: the border,
+	-- the design's 98 px band at the chrome scale, then the body's padding) and its lip under the face: the buttons
+	-- still fit one row and the name and the rarity tag stay whole above them; the preview, which had about 50 px more
+	-- room under the old tab, now hides there (previewPx's 0, fix round 2) until R5 lays the window out anew.
 	t.test(
-		"844x390 phone: the three detail buttons fit one row and the preview and the name show above them",
+		"844x390 phone in the window frame: the three detail buttons fit one row, the name and the tag stay whole",
 		function()
-			local chrome = InventoryFormat.hangingChrome(TAB_HEIGHT, TOUCH.closeButton)
-			local l = InventoryFormat.panelLayout(PHONE, chrome.top, CARD_WIDTH)
+			local window = Config.UI.Sticker.window
+			local fit = InventoryFormat.panelLayout(PHONE, nil, CARD_WIDTH)
+			expect.truthy(fit.chromeScale > 0 and fit.chromeScale < 1)
+			local top = Config.UI.Sticker.border.heavy + math.ceil(window.band.height * fit.chromeScale) + PANEL.padding
+			local l = InventoryFormat.panelLayout(PHONE, top, CARD_WIDTH)
 			expect.equal(l.class, "compact")
 			expect.equal(l.columns, 3)
 			local d =
@@ -604,8 +611,9 @@ return function(t: Context)
 			local tag = Config.UI.TextSize.Chip * 1.3 + 2 * 2 + 2 * 2 -- the chip's line and padding, its outline room
 			local reserve = 2 * Theme.Padding.small + Config.UI.TextSize.Title * 1.3 + tag
 			local icon = InventoryFormat.previewPx(d.scrollHeight, reserve, 8, 48, 88)
-			expect.truthy(icon >= 48 and icon < 88) -- a smaller preview, and the tag whole under the name
-			expect.truthy(2 * 8 + icon + reserve <= d.scrollHeight + EPS)
+			-- Hidden here until R5 (NOTES question 1 to the user): a "no" or R5's new inside flips this on purpose.
+			expect.equal(icon, 0)
+			expect.truthy(2 * 8 + icon + reserve <= d.scrollHeight + EPS) -- the tag whole under the name
 		end
 	)
 
@@ -706,4 +714,22 @@ return function(t: Context)
 			expect.near(speed.fraction, (def.throw.speed - bands.speed.min) / (bands.speed.max - bands.speed.min), 1e-9)
 		end
 	end)
+
+	-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel is
+	-- the Squishies window, the design's 1060 x 650 face on a desktop's SD_Modal (under Roblox's top bar), its top 310
+	-- above the middle (H:181: margin-top -310; the frame with its 10 px lip 20 below), its chrome at full size with
+	-- the sticker reaching 62 above it (H:251).
+	t.test(
+		"UI FINAL R3: panelLayout is the Squishies window (H:181): its design size and chrome on desktops",
+		function()
+			for _, size in { Vector2.new(1280, 662), Vector2.new(1920, 1022), Vector2.new(1024, 710) } do
+				local l = InventoryFormat.panelLayout(size)
+				expect.equal(l.panelWidth, 1060)
+				expect.equal(l.panelHeight, 650)
+				expect.equal(l.chromeScale, 1)
+				expect.equal(l.shift, 20)
+				expect.equal(l.above, 62)
+			end
+		end
+	)
 end

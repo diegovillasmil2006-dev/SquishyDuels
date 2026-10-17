@@ -23,7 +23,7 @@
 --   the `common.lockedInDuel` toast (screens with lobbyOnly = false excepted); non-modal screens just run onOpen
 --   (e.g. "queue"). Modals: built lazily on first open and kept; stack <= Config.UI.modalStackMax (UI/ModalStack; a
 --   spec with closeOnCover closes, reason "replaced", when another modal opens over it: Inspect, §10.10);
---   shared dimmer (1 -> 0.45 over modalOpen.ms, back in 120 ms Quad In); the panel pops (feel pass, below);
+--   the shared dimmer (UI FINAL R3: the scrim, below) fades in and out; the panel pops (UI FINAL R3, below);
 --   ControlsController.block("modal") and the Modal context while any modal is open; focus saved on open and restored
 --   on close (UI/Focus, §11.4); GuiService.MenuOpened closes the top modal; closeAll(reason) when a match is found
 --   (StateController.LobbyLockChanged).
@@ -42,10 +42,9 @@
 --   while the last input is a gamepad, and not when an open, a close, a back or another UI sound (a click, an error)
 --   came within NAV_CLICK_GUARD, because code moved the selection as part of that action (UI/Focus stays sound-free).
 --   The check is deferred, so a Button's click (played after its onActivated) is already known.
--- * Modals: open pops the panel UIScale modalOpen.scaleFrom -> 1 (0.88, 240 ms, Back Out). The logical close is
---   immediate (state, input block, context and focus); visually the root stays modalClose.visualMs (100 ms) while
---   UIScale goes 1 -> modalClose.scaleTo (0.92, Quad In), then hides; reopening during that time cancels the shrink.
---   The banner pops with the open spec too.
+-- * Modals: open pops the panel (UI FINAL R3: the design's sdPop, below). The logical close is immediate (state, input
+--   block, context and focus); visually the root shrinks (UI FINAL R3: the design's close, below), then hides;
+--   reopening during that time cancels the shrink. The banner pops with modalOpen's one-tween spec.
 -- * Toasts: toast(text, kind, opts?) pops UIScale toast.popFrom -> 1 (Back Out) with the slide and plays opts.sound (a
 --   key, or false for none; default ui.toast, or ui.error for a warn / error toast: one sound per action). A repeated
 --   (re-armed) toast nudges toast.nudgeScale -> 1 over nudgeMs and sounds again, unless it was re-armed within nudgeMs
@@ -78,13 +77,22 @@
 -- Foam fix round 2 (2026-10-09): one backdrop at a time (Layout.modalBackdrop): while two modals are open the dimmer
 -- fades out under the wash, so the HUD and the world are as dark as under one modal (the dimmer and the wash together
 -- made Inspect over Squishies darker than usual); the covered modal is darkened as much as they are.
--- UI overhaul (2026-10-11, Candy UI): the dimmer and the wash are the plum Backdrop (Colors.backdrop) at
--- modalOpen.dimmerTransparency, fading in over modalOpen.backdropMs. A modal pops elastically (popIn): UIScale
--- scaleFrom -> overshoot over overshootShare of ms (Quad Out), then -> 1 (Quad InOut), while the root rises riseShare
--- of its height into place (its AnchorPoint eases from that much lower to where it rests); a close or a reopen stops
--- it first (stopPop: the scale and the anchor go back to rest), so open / close spam never strands a panel. A modal root
--- that is a foam window gets the jelly-bubble texture (Theme.bubbles) when it is built. The banner is a dark window
+-- UI overhaul (2026-10-11, Candy UI): the wash is the Backdrop (Colors.backdrop) at modalOpen.dimmerTransparency,
+-- fading in over modalOpen.backdropMs. A close or a reopen stops a running pop first (stopPop: the scale and the
+-- anchor go back to rest), so open / close spam never strands a panel. The banner is a dark window
 -- (Theme.panelColors) with its drop band in its outline colour.
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n):
+-- * The dimmer is the design's scrim (Theme.scrim, H:178: the radial picture or its fallback), faded as a whole
+--   (Tweens.fadeGroup) in over modalOpen.backdropMs on backdropCurve (sdFade .25s ease) and out over modalClose.ms on
+--   its curve; a click on it closes the top modal when that is a Theme.window (H:178 onClick = closeModal; reason
+--   "button", so ui.back plays). The box reveal and the capsule card are not windows: the scrim leaves them open.
+-- * A modal pops with the design's sdPop (H:25, H:181): modalOpen.frames on its SD_OpenScale UIScale and its rise as
+--   its AnchorPoint, each segment eased by modalOpen.curve, over modalOpen.ms (no fade, no tilt: plan RL3); a window's
+--   sticker plays its sdStick (Theme.playSticker). A close plays modalClose.frames over visualMs with its curve on the
+--   whole run (H:686-687) and hides the root at removeMs (H:689).
+-- * A window's soft shadow (H:182, T1) is a clear SD_SoftShadow frame in SD_Modal right under it (Theme.windowShadow)
+--   that follows its drawn box (pop and close included), its visibility and its layer: open roots take ZIndex
+--   MODAL_Z_STEP (3) x their place in the stack, their shadows the one under, the wash the one under the top's shadow.
 
 -- Services
 
@@ -111,6 +119,7 @@ local Layout = require(Client.UI.Layout)
 local ModalStack = require(Client.UI.ModalStack)
 local NotifyFormat = require(Client.UI.NotifyFormat)
 local Theme = require(Client.UI.Theme)
+local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 local UiFx = require(Client.UI.UiFx)
 local ControlsController = require(script.Parent.ControlsController)
@@ -173,10 +182,9 @@ type ScreenRecord = {
 	open: boolean,
 	focusToken: Focus.Token?,
 	openCleanup: Cleanup.Cleanup?,
-	closeTween: Tween?, -- the visual shrink after a logical close (§18.5.2 B4)
 	closeToken: number,
-	openTween: Tween?, -- UI overhaul: the running phase of the elastic pop (popIn)
-	riseTween: Tween?, -- ... and its rise into place
+	-- UI FINAL R3: the running pop (popIn) or close (§18.5.2 B4: the visual close after a logical close).
+	motion: Scheduler.Handle?,
 	restAnchor: Vector2?, -- the root's AnchorPoint at rest while it rises
 	layer: number, -- nextLayer() when open() last put it on top (Back answers the newest layer, ModalStack.backTarget)
 }
@@ -224,8 +232,10 @@ local BANNER_WIDTH = 640
 local BANNER_GAP = 8 -- reading (Part 8): base px between BannerOptions.below's bottom and the banner
 -- Overlays fix: modal roots take ZIndex MODAL_Z_STEP × their place in the stack, the wash the one under the top's; it
 -- reaches WASH_BLEED base px past SD_Modal's edges (reading: over the top-bar inset, like the full-bleed dimmer). A
--- covered modal hides its children of this name (Theme.headerTab's default).
-local MODAL_Z_STEP = 2
+-- covered modal hides its children of this name (Theme.headerTab's default). UI FINAL R3: a step of 3, so each
+-- window's soft shadow sits right under it and the wash under the top window's shadow.
+local MODAL_Z_STEP = 3
+local WINDOW = UI.Sticker.window
 local WASH_BLEED = 200
 local HEADER_TAB = "HeaderTab"
 local BACK_ACTION = "ModalBack"
@@ -301,7 +311,10 @@ local bannerFoam: Theme.Foam? = nil
 local bannerScale: UIScale? = nil
 local bannerFollow: Cleanup.Cleanup? = nil -- re-places the banner while its `below` moves or shows
 local bannerToken = 0
-local dimmer: Frame? = nil
+local dimmer: TextButton? = nil
+local dimmerFade: Tweens.FadeGroup? = nil -- UI FINAL R3: the scrim faded as a whole
+local dimmerAlpha = 0
+local dimmerMotion: Scheduler.Handle? = nil
 local wash: Frame? = nil
 local washedTabs: { [GuiObject]: boolean } = {} -- covered modals' header tabs this module hid
 local fadeFrame: Frame? = nil
@@ -419,43 +432,84 @@ local function setModalContext()
 	ControlsController.setContext("Modal", stack:size() > 0 or #backHandlers > 0)
 end
 
+-- UI FINAL R3: the scrim's fade from where it is to `target` (0..1, its whole look) over `ms` on `curve` (at most
+-- reducedMotionMaxFadeMs under ReducedMotion); a new fade replaces the running one; `done` runs at the end.
+local function fadeDimmer(target: number, ms: number, curve: string, done: (() -> ())?)
+	local fade = dimmerFade
+	if fade == nil then
+		return
+	end
+	local running = dimmerMotion
+	if running then
+		running:disconnect()
+		dimmerMotion = nil
+	end
+	local from = dimmerAlpha
+	local duration = if Tweens.reducedMotion() then math.min(ms, MOTION.reducedMotionMaxFadeMs) else ms
+	if not (duration > 0) or from == target then
+		dimmerAlpha = target
+		fade:setAlpha(target)
+		if done then
+			done()
+		end
+		return
+	end
+	local ease = Tweens.curve(curve)
+	local started = os.clock()
+	dimmerMotion = Scheduler.add(function(_dt: number, now: number): boolean
+		local u = math.clamp((now - started) * 1000 / duration, 0, 1)
+		dimmerAlpha = from + (target - from) * ease(u)
+		fade:setAlpha(dimmerAlpha)
+		if u >= 1 then
+			dimmerAlpha = target
+			dimmerMotion = nil
+			if done then
+				done()
+			end
+			return false
+		end
+		return true
+	end, "render")
+end
+
+-- UI FINAL R3 (H:178: the scrim's onClick = closeModal): a click on the scrim closes the top modal when it is a
+-- Theme.window (reason "button": ui.back plays); the box reveal and the capsule card keep their own ways out.
+local function onScrimClick()
+	if not WINDOW.scrim.closeOnClick then
+		return
+	end
+	local top = stack:top()
+	local record = if top then screens[top] else nil
+	if top and record and record.open and record.root and Theme.isWindow(record.root) then
+		UIController.close(top, "button")
+	end
+end
+
 local function updateDimmer()
 	local frame = dimmer
 	if frame == nil then
 		local gui = UIController.screenGui(DIMMER_GUI)
-		frame = Create("Frame", {
-			Name = "Dimmer",
-			BackgroundColor3 = Theme.Colors.backdrop,
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			Size = UDim2.fromScale(1, 1),
-			Active = false,
-			Visible = false,
-			Parent = gui,
-		})
-		dimmer = frame
+		local scrim = Theme.scrim({ Name = "Dimmer", Visible = false })
+		local fade = Tweens.fadeGroup(scrim) -- its look at full strength, then clear
+		fade:setAlpha(0)
+		dimmerFade = fade
+		dimmerAlpha = 0
+		scrim.Activated:Connect(onScrimClick)
+		scrim.Parent = gui
+		dimmer = scrim
+		frame = scrim
 	end
 	local shown = stack:size() > 0
-	local f = frame :: Frame
+	local f = frame :: TextButton
 	if shown then
 		-- Fix round 2: under two modals the wash alone darkens the screen (Layout.modalBackdrop), so the dimmer fades out
-		-- while the wash fades in (and back); the HUD and the world were darkened twice.
+		-- while the wash fades in (and back); the HUD and the world were darkened twice. UI FINAL R3: it stays shown (a
+		-- click outside both windows still closes the top one).
 		local dim = Layout.modalBackdrop(stack:size()).dimmer
 		f.Visible = true
-		Tweens.fade(
-			f,
-			{ BackgroundTransparency = if dim then MOTION.modalOpen.dimmerTransparency else 1 },
-			MOTION.modalOpen.backdropMs or MOTION.modalOpen.ms
-		)
+		fadeDimmer(if dim then 1 else 0, MOTION.modalOpen.backdropMs, MOTION.modalOpen.backdropCurve)
 	else
-		local tween = Tweens.fade(
-			f,
-			{ BackgroundTransparency = 1 },
-			MOTION.modalClose.ms,
-			MOTION.modalClose.style,
-			MOTION.modalClose.direction
-		)
-		tween.Completed:Once(function()
+		fadeDimmer(0, MOTION.modalClose.ms, MOTION.modalClose.curve, function()
 			if stack:size() == 0 then
 				f.Visible = false
 			end
@@ -516,7 +570,7 @@ local function updateWash()
 	end
 	local f = frame :: Frame
 	if covered then
-		f.ZIndex = #list * MODAL_Z_STEP - 1
+		f.ZIndex = #list * MODAL_Z_STEP - 2 -- UI FINAL R3: under the top window's shadow (its ZIndex - 1)
 		f.Visible = true
 		Tweens.fade(
 			f,
@@ -556,12 +610,14 @@ local function callSafely(label: string, fn: (...any) -> ...any, ...: any)
 	end
 end
 
--- UI overhaul: stops a modal's elastic pop (popIn) and puts its anchor back at rest (the scale is the caller's).
+-- UI overhaul: stops a modal's pop or close (UI FINAL R3: its one motion) and puts its anchor back at rest (the scale
+-- is the caller's).
 local function stopPop(record: ScreenRecord)
-	Tweens.cancel(record.openTween)
-	record.openTween = nil
-	Tweens.cancel(record.riseTween)
-	record.riseTween = nil
+	local motion = record.motion
+	if motion then
+		motion:disconnect()
+		record.motion = nil
+	end
 	local root, rest = record.root, record.restAnchor
 	if root and rest then
 		root.AnchorPoint = rest
@@ -569,50 +625,51 @@ local function stopPop(record: ScreenRecord)
 	record.restAnchor = nil
 end
 
--- UI overhaul: the elastic pop of a modal opening (Config.UI.motion.modalOpen, see the header). At rest at once under
--- ReducedMotion.
+-- UI FINAL R3: one frame of a window's pop or close: `pose`'s scale on its SD_OpenScale and its y (base px, + down) as
+-- the AnchorPoint's offset from `rest` (the UIScale scales about the AnchorPoint, so moving it moves the drawn box by
+-- that share of its drawn height; the move is already in drawn px, CSS scale(s) translateY(y): y x s).
+local function poseRoot(root: GuiObject, scale: UIScale, rest: Vector2, pose: Tweens.Pose)
+	local drawn = root.AbsoluteSize.Y -- the drawn height at the scale of the frame before
+	local from = if scale.Scale > 0 then scale.Scale else 1
+	scale.Scale = pose.scale or 1
+	local height = drawn / from * scale.Scale
+	local lift = if height > 0 then (pose.y or 0) * currentScale / height else 0
+	root.AnchorPoint = Vector2.new(rest.X, rest.Y - lift)
+end
+
+-- UI FINAL R3 (H:25, H:181; see the header): the window's sdPop over modalOpen.ms, each segment eased by its curve, and
+-- a window's sticker's sdStick. At rest at once under ReducedMotion (the sticker too).
 local function popIn(record: ScreenRecord)
 	local scale, root = record.openScale, record.root
 	stopPop(record)
 	if scale == nil or root == nil then
 		return
 	end
+	if Theme.isWindow(root) then
+		Theme.playSticker(root)
+	end
 	local spec = MOTION.modalOpen
 	if Tweens.reducedMotion() then
 		scale.Scale = 1
 		return
 	end
-	local upMs = spec.ms * (spec.overshootShare or 1)
-	local settleMs = math.max(0, spec.ms - upMs)
-	scale.Scale = spec.scaleFrom
-	local up = Tweens.play(
-		scale,
-		upMs,
-		{ Scale = spec.overshoot or 1 },
-		Enum.EasingStyle.Quad,
-		Enum.EasingDirection.Out
-	)
-	record.openTween = up
-	up.Completed:Once(function(state: Enum.PlaybackState)
-		if state == Enum.PlaybackState.Completed and record.openTween == up then
-			record.openTween =
-				Tweens.play(scale, settleMs, { Scale = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	local frames: { Tweens.Pose } = spec.frames :: any
+	local rest = root.AnchorPoint
+	record.restAnchor = rest
+	local started = os.clock()
+	poseRoot(root, scale, rest, Tweens.poseAt(frames, 0, spec.curve))
+	record.motion = Scheduler.add(function(_dt: number, now: number): boolean
+		local u = math.min((now - started) * 1000 / spec.ms, 1)
+		poseRoot(root, scale, rest, Tweens.poseAt(frames, u, spec.curve))
+		if u >= 1 then
+			record.motion = nil
+			root.AnchorPoint = rest
+			record.restAnchor = nil
+			scale.Scale = 1
+			return false
 		end
-	end)
-	local rise = spec.riseShare or 0
-	if rise > 0 then
-		local rest = root.AnchorPoint
-		record.restAnchor = rest
-		root.AnchorPoint = Vector2.new(rest.X, rest.Y - rise)
-		local tween = Tweens.play(root, spec.ms, { AnchorPoint = rest }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-		record.riseTween = tween
-		tween.Completed:Once(function()
-			if record.riseTween == tween then
-				record.riseTween = nil
-				record.restAnchor = nil
-			end
-		end)
-	end
+		return true
+	end, "render")
 end
 
 -- Closes one open modal record (no stack bookkeeping).
@@ -628,28 +685,39 @@ local function closeRecord(name: string, reason: string)
 	end
 	local root = record.root
 	if root then
-		-- §18.5.2 B4: the logical close is now; the panel shrinks for visualMs before it hides (not under
-		-- ReducedMotion, and not when the root is about to be destroyed).
+		-- §18.5.2 B4: the logical close is now; the panel shrinks before it hides (not under ReducedMotion, and not
+		-- when the root is about to be destroyed). UI FINAL R3: the design's close (H:686-689), hidden at removeMs.
 		record.closeToken += 1
 		local token = record.closeToken
-		Tweens.cancel(record.closeTween)
-		record.closeTween = nil
 		stopPop(record) -- UI overhaul: an interrupted pop goes back to rest before the shrink
 		local openScale = record.openScale
 		if openScale == nil or Tweens.reducedMotion() or INSTANT_CLOSE_REASONS[reason] then
 			root.Visible = false
+			if openScale then
+				openScale.Scale = 1
+			end
 		else
 			local close = MOTION.modalClose
-			local tween =
-				Tweens.play(openScale, close.visualMs, { Scale = close.scaleTo }, close.style, close.direction)
-			record.closeTween = tween
-			tween.Completed:Once(function()
-				if record.closeToken == token and not record.open then
-					record.closeTween = nil
-					root.Visible = false
-					openScale.Scale = 1
+			local frames: { Tweens.Pose } = close.frames :: any
+			local rest = root.AnchorPoint
+			record.restAnchor = rest
+			local started = os.clock()
+			record.motion = Scheduler.add(function(_dt: number, now: number): boolean
+				if record.closeToken ~= token or record.open then
+					return false -- reopened: open() put it back at rest
 				end
-			end)
+				local ms = (now - started) * 1000
+				if ms >= close.removeMs then
+					record.motion = nil
+					root.Visible = false
+					root.AnchorPoint = rest
+					record.restAnchor = nil
+					openScale.Scale = 1
+					return false
+				end
+				poseRoot(root, openScale, rest, Tweens.poseAt(frames, ms / close.visualMs, nil, close.curve))
+				return true
+			end, "render")
 		end
 	end
 	if record.openCleanup then
@@ -676,6 +744,43 @@ local function closesWhenCovered(name: string): boolean
 	return record ~= nil and record.spec.closeOnCover == true
 end
 
+-- UI FINAL R3 (H:182, T1): a window's soft shadow: a clear SD_SoftShadow frame in `gui` right under `root` (its ZIndex
+-- less 1) holding Theme.windowShadow, following the window's drawn face (its box less the lip, at the open scale; the
+-- pop and the close included), its visibility and its layer; it goes with the window.
+local function followShadow(root: GuiObject, gui: ScreenGui)
+	local wrapper: Frame = Create("Frame", {
+		Name = "SD_SoftShadow",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Active = false,
+		Visible = false,
+		Parent = gui,
+	})
+	Theme.windowShadow(wrapper)
+	local lip = UI.Sticker.lip.window
+	local function place()
+		local scale = currentScale
+		if not (scale > 0) then
+			return
+		end
+		local pop = root:FindFirstChild("SD_OpenScale")
+		local open = if pop and pop:IsA("UIScale") then pop.Scale else 1
+		local position = (root.AbsolutePosition - gui.AbsolutePosition) / scale
+		local size = root.AbsoluteSize / scale
+		wrapper.Position = UDim2.fromOffset(math.round(position.X), math.round(position.Y))
+		wrapper.Size = UDim2.fromOffset(math.round(size.X), math.max(0, math.round(size.Y - lip * open)))
+		wrapper.ZIndex = root.ZIndex - 1
+		wrapper.Visible = root.Visible
+	end
+	for _, property in { "AbsolutePosition", "AbsoluteSize", "Visible", "ZIndex" } do
+		root:GetPropertyChangedSignal(property):Connect(place)
+	end
+	root.Destroying:Once(function()
+		wrapper:Destroy()
+	end)
+	place()
+end
+
 local function ensureBuilt(name: string, record: ScreenRecord): GuiObject?
 	if record.root then
 		return record.root
@@ -699,9 +804,8 @@ local function ensureBuilt(name: string, record: ScreenRecord): GuiObject?
 	Focus.prepareGroup(root)
 	record.openScale = Create("UIScale", { Name = "SD_OpenScale", Parent = root })
 	record.root = root
-	-- UI overhaul: a foam window gets the jelly-bubble texture behind its content.
-	if root:FindFirstChild("SD_Foam") then
-		Theme.bubbles(root)
+	if Theme.isWindow(root) then
+		followShadow(root, parent)
 	end
 	return root
 end
@@ -1331,8 +1435,7 @@ function UIController.registerScreen(name: string, spec: ScreenSpec): () -> ()
 		log:warn(`screen {name} registered twice; the newer one replaces it`)
 		UIController.close(name, "replaced")
 	end
-	local record: ScreenRecord =
-		{ spec = spec, root = nil, openScale = nil, open = false, closeTween = nil, closeToken = 0, layer = 0 }
+	local record: ScreenRecord = { spec = spec, root = nil, openScale = nil, open = false, closeToken = 0, layer = 0 }
 	screens[name] = record
 	return function()
 		if screens[name] == record then
@@ -1391,8 +1494,7 @@ function UIController.open(name: string, params: any?): boolean
 		record.open = true
 		-- Reopening during the close shrink cancels it (§18.5.2 B4).
 		record.closeToken += 1
-		Tweens.cancel(record.closeTween)
-		record.closeTween = nil
+		stopPop(record) -- UI FINAL R3: the running close and its sink go back to rest
 		record.focusToken = Focus.capture()
 		-- The newest modal draws on top of the one it opened over (updateWash keeps every open root at its place).
 		root.ZIndex = stack:size() * MODAL_Z_STEP

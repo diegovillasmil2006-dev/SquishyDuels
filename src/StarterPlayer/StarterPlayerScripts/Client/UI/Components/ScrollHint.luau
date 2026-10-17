@@ -5,7 +5,7 @@
 -- rail keeps the bar on screen on touch while the list is longer than its window: a faint InkUI track and an InkUI
 -- thumb (Layout.scrollThumb) over the strip where the engine's bar goes (the thumb follows the scroll, so it lines up
 -- with the engine's bar while the list moves). With a mouse, keys or a gamepad it hides (the engine's bar shows there).
---   local hint = ScrollHint.new({ scroll = list, parent = holder })
+--   local hint = ScrollHint.new({ scroll = list, parent = holder, tone = "well"? })
 --   hint.root        the rail (Frame "ScrollRail", not Active, ZIndex 2, hidden until needed): the caller places it over
 --                    the list window's right edge inside `parent` (a frame without a layout), e.g. AnchorPoint (1, 0) at
 --                    Position (1, 0), and sizes it as wide as the list's ScrollBarThickness and as tall as its window
@@ -35,6 +35,8 @@ export type Spec = {
 	scroll: ScrollingFrame,
 	parent: Instance,
 	name: string?, -- default "ScrollRail"
+	-- UI FINAL R3: "window" (default: a list on a pink window body) or "well" (a list inside a well, Theme.inset).
+	tone: ("window" | "well")?,
 }
 
 export type ScrollHint = {
@@ -44,7 +46,7 @@ export type ScrollHint = {
 
 -- Constants
 
-local TRACK_TRANSPARENCY = 0.82 -- reading: a faint lane; the thumb is solid InkUI like the engine's bar
+local TRACK_TRANSPARENCY = 0.82 -- reading: a faint lane under the solid thumb (the design's track is clear, H:22)
 local ZINDEX = 2 -- over the list beside it
 
 -- Module table
@@ -83,10 +85,13 @@ end
 function ScrollHint.new(spec: Spec): ScrollHint
 	local cleanup = Cleanup.new()
 	local scroll = spec.scroll
-	-- Candy UI: a light rail and thumb, so they read on the dark windows.
+	-- UI FINAL R3: on a pink window body the thumb takes the design's scroll bar colour (H:22; Theme.scrollbar); the
+	-- faint lane under it is this rail's touch-hint reading (the design's track is clear). In a well (#5B36D9, where
+	-- that colour would not show) the light pair stays.
+	local well = spec.tone == "well"
 	local rail: Frame = Create("Frame", {
 		Name = spec.name or "ScrollRail",
-		BackgroundColor3 = Theme.Colors.text,
+		BackgroundColor3 = if well then Theme.Colors.text else Theme.Colors.scrollThumb,
 		BackgroundTransparency = TRACK_TRANSPARENCY,
 		BorderSizePixel = 0,
 		Size = UDim2.fromOffset(scroll.ScrollBarThickness, 0), -- nothing shows before the caller sizes it
@@ -99,7 +104,7 @@ function ScrollHint.new(spec: Spec): ScrollHint
 	Theme.corner(Theme.Radius.pill, rail)
 	local thumb: Frame = Create("Frame", {
 		Name = "Thumb",
-		BackgroundColor3 = Theme.Colors.ink2,
+		BackgroundColor3 = if well then Theme.Colors.ink2 else Theme.Colors.scrollThumb,
 		BorderSizePixel = 0,
 		Active = false,
 		Selectable = false,

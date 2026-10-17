@@ -127,6 +127,11 @@
 -- and Exclusive, a brief localized shake of the reveal panel (BOX_LOOK.revealShake); the name, the rarity tag and the
 -- result chip then pop in one after another (BOX_LOOK.infoStaggerMs; "NEW!" pops bigger than a duplicate's refund).
 -- A skip lands on the same final state at once (no sequence). Under ReducedMotion only the bursts' glows show.
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the Boxes
+-- panel is the design's window (Theme.window "boxes", H:255-258: 1060 x 650, shrunk to fit with its sticker and X,
+-- Layout.windowFit, its face's top 310 above the middle) with its cyan band (Theme.headerTab: "SQUISHY BOXES"; the
+-- sticker, H:284) and the 76 px close X in the band (Theme.attachClose, H:285); the footer, the note and the status
+-- line on the pink body take the window's text colour (H:196). The reveal keeps its panel and tab until R7.
 -- Stable names: Boxes_CloseButton, Boxes_Box_<id>, Boxes_DetailsButton, Boxes_Row_<i> (with Boxes_InspectButton),
 -- Boxes_OpenButton, Boxes_RetryButton, Boxes_ShopDirectButton, Boxes_HowToEarnButton; Reveal_SkipButton,
 -- Reveal_EquipButton, Reveal_InspectButton, Reveal_OpenAnotherButton, Reveal_CloseButton.
@@ -342,11 +347,10 @@ local ROW_ICON_PX = 48
 -- The name / rarity / refund column; the chance column takes the rest (fix batch: 0.55, was 0.6, so the percent and
 -- Inspect fit side by side).
 local ROW_INFO_SHARE = 0.55
-local MARGIN_PX = 24
 local MAX_HEIGHT_SHARE = 0.88
 local SCROLLBAR_PX = 6
-local CLOSE_INSET = 16 -- fix batch: Close sits this far from the panel's right edge (as on Quests and Settings)
-local TAB_KIND: Theme.TextKind = "H2" -- the header tab's gap under it: InventoryFormat.PANEL.tabGap (hangingChrome)
+local TAB_KIND: Theme.TextKind = "H2" -- the reveal's header tab; its gap under it: InventoryFormat.PANEL.tabGap
+local WINDOW_KIND = "boxes" -- UI FINAL R3: the Boxes window's Config.UI.Sticker.window kind (H:255-287)
 -- Foam restyle: the selected box card's face, a light Lilac (the Boxes tile's colour).
 local ROW_FILL = Theme.Colors.panelAlt -- an item row on the inset field
 -- UI overhaul: each box's colour (selector card) and its gift's tint (the gift_box model is pink and mint); an
@@ -447,18 +451,14 @@ local function tabHeight(tab: Frame): number
 	return math.ceil(Theme.lineHeight(TAB_KIND)) + padY
 end
 
--- The header tab at the player's text size (foam restyle) and, on the Boxes panel, the Close button hanging on the
--- top-right corner level with it (fix batch; InventoryFormat.hangingChrome): the panel's top padding keeps the tab gap
--- under their lower halves, the tab stays centred on the panel's top edge, and the panel (anchored at its centre) moves
--- down by half of what hangs above it, so the panel and what hangs above it are centred together.
-local function fitTab(root: GuiObject, tab: Frame, padding: UIPadding, minPadding: number, close: GuiObject?)
-	local closeHeight = if close then Layout.touchBase(TOUCH.closeButton, UIController.scale()) else 0
-	local chrome = InventoryFormat.hangingChrome(tabHeight(tab), closeHeight, minPadding)
+-- The reveal's header tab at the player's text size (foam restyle; InventoryFormat.hangingChrome): the panel's top
+-- padding keeps the tab gap under its lower half, the tab stays centred on the panel's top edge, and the panel
+-- (anchored at its centre) moves down by half of what hangs above it, so the panel and the tab are centred together.
+-- (UI FINAL R3: the Boxes window's band and X are Theme.fitWindow's.)
+local function fitTab(root: GuiObject, tab: Frame, padding: UIPadding, minPadding: number)
+	local chrome = InventoryFormat.hangingChrome(tabHeight(tab), 0, minPadding)
 	padding.PaddingTop = UDim.new(0, chrome.top)
 	tab.Position = UDim2.new(0.5, 0, 0, -chrome.top)
-	if close then
-		close.Position = UDim2.new(1, padding.PaddingRight.Offset - CLOSE_INSET, 0, -chrome.top)
-	end
 	root.Position = UDim2.new(0.5, 0, 0.5, chrome.shift)
 end
 
@@ -1835,38 +1835,36 @@ end
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
-	local root = Theme.panel({
+	local root = Theme.window({
 		Name = "Boxes",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(0, Config.UI.modalMaxWidth, MAX_HEIGHT_SHARE, 0),
 		Parent = parent,
-	}, Theme.Radius.panel, Theme.Padding.medium)
+	}, WINDOW_KIND, Theme.Padding.medium)
 	c:add(root)
-	-- The title: a Lilac header tab (the Boxes tile's colour) on the panel's top edge.
-	local tab = Theme.headerTab(root, Strings.box.title, { textKind = TAB_KIND, accent = "lilac" })
-	local rootPad = root:FindFirstChildOfClass("UIPadding") :: UIPadding
-	-- Fix batch: no header row. Close hangs on the top-right corner, level with the tab (fitTab places it; drawn over the
-	-- panel's outline like the tab).
+	-- UI FINAL R3: the cyan band (H:258-259) and the 76 px X in it (H:285).
+	Theme.headerTab(root, Strings.box.title)
 	local close = Button.new({
 		name = "Boxes_CloseButton",
 		text = Strings.common.close,
 		kind = "close", -- UI overhaul: the chunky red X
-		height = TOUCH.closeButton,
 		parent = root,
 		sound = false, -- closing plays ui.back (UIController.close, reason "button")
 		onActivated = function()
 			UIController.close(SCREEN, "button")
 		end,
 	})
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.ZIndex = tab.ZIndex
+	Theme.attachClose(root, close.root)
 	close.root.Modal = true -- frees the cursor in shift lock / first person (§10.4 step 4)
 	c:add(close)
+	-- UI FINAL R3: the design's 1060 x 650 face (its lip under it) shrunk to fit, its chrome at the window's scale,
+	-- its face's top 310 above the middle (H:256; Layout.windowFit, Theme.fitWindow).
 	local function fitWidth()
-		local width = Layout.modalWidth(gui.AbsoluteSize.X, UIController.scale(), MARGIN_PX)
-		root.Size = UDim2.new(0, if width > 0 then width else Config.UI.modalMaxWidth, MAX_HEIGHT_SHARE, 0)
-		fitTab(root, tab, rootPad, Theme.Padding.medium, close.root)
+		local fit = Layout.windowFit(gui.AbsoluteSize, WINDOW_KIND)
+		root.Size = UDim2.fromOffset(fit.width, fit.height + Config.UI.Sticker.lip.window)
+		Theme.fitWindow(root, fit.k)
+		root.Position = UDim2.new(0.5, 0, 0.5, fit.shift)
 	end
 	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitWidth))
 	c:add(UIController.LayoutChanged:connect(function()
@@ -2026,7 +2024,7 @@ local function build(parent: Instance): GuiObject
 	local total = label(scroll, "Total", 6, "Body", Enum.FontWeight.Bold)
 	local footer = label(scroll, "Footer", 7, "Small")
 	footer.Text = Strings.box.footer
-	footer.TextColor3 = Theme.Colors.ink2
+	Theme.textOnWindow(footer) -- UI FINAL R3: on the pink body (H:196)
 
 	local area = buildOpenArea(content)
 	local confirm = ConfirmButton.new({
@@ -2081,9 +2079,11 @@ local function build(parent: Instance): GuiObject
 	local note = label(area, "Note", 4, "Small")
 	note.TextXAlignment = Enum.TextXAlignment.Center
 	note.Visible = false
+	Theme.textOnWindow(note) -- UI FINAL R3: on the pink body (H:196)
 	local status = label(area, "Status", 5, "Small", Enum.FontWeight.Bold)
 	status.TextXAlignment = Enum.TextXAlignment.Center
 	status.Visible = false
+	Theme.textOnWindow(status)
 	local howToEarn = Button.new({
 		name = "Boxes_HowToEarnButton",
 		text = Strings.box.howToEarn,
@@ -2153,6 +2153,7 @@ local function build(parent: Instance): GuiObject
 		Visible = false,
 		Parent = root,
 	}, "H2")
+	Theme.textOnWindow(loadingLabel :: TextLabel)
 
 	panel = root
 	refresh()

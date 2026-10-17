@@ -461,4 +461,157 @@ return function(t: Context)
 			ModalStack.new(0)
 		end)
 	end)
+
+	-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n) -----------
+
+	local WINDOW = UI.Sticker.window
+	local KINDS = { "squishies", "boxes", "shop", "quests", "daily", "settings", "grip", "duel", "inspect" }
+	-- SD_Modal's safe areas (actual px): desktops under Roblox's 58 px top bar, phones under theirs, a portrait phone.
+	local DESKTOPS = { Vector2.new(1280, 662), Vector2.new(1920, 1022), Vector2.new(1024, 710) }
+	local SMALL = { Vector2.new(844, 311), Vector2.new(844, 390), Vector2.new(667, 375), Vector2.new(390, 790) }
+	local EPS = 1e-6
+
+	t.test(
+		"windowChrome: a kind's design numbers and what hangs off it (H:181-182, H:251-252, H:426, H:451)",
+		function()
+			local squishies = Layout.windowChrome("squishies") :: any
+			expect.deepEqual({ squishies.width, squishies.height, squishies.marginTop }, { 1060, 650, -310 }) -- H:181
+			expect.deepEqual({ squishies.stickerTop, squishies.stickerLeft }, { 62, 40 }) -- H:251: left -40, top -62
+			expect.deepEqual({ squishies.closeTop, squishies.closeRight }, { 22, 22 }) -- H:252: right -22, top -22
+			expect.equal(squishies.lip, 10) -- H:182: 0 10px 0 #1E1428
+			expect.equal(squishies.margin, WINDOW.margin)
+			expect.falsy(squishies.small)
+			-- The face's centre 325 - 310 = 15 below the middle, the lip under it: the frame's centre 20 below.
+			expect.equal(squishies.designShift, 20)
+			local settings = Layout.windowChrome("settings") :: any
+			expect.deepEqual(
+				{ settings.width, settings.height, settings.marginTop, settings.stickerTop, settings.stickerLeft },
+				{ 600, 500, -236, 46, 30 } -- H:426, H:451: the 150 px sticker at (-30, -46)
+			)
+			expect.truthy(settings.small)
+			expect.equal(settings.designShift, 19) -- 250 - 236 + 5
+			local grip = Layout.windowChrome("grip") :: any -- no sticker (a reading)
+			expect.deepEqual({ grip.stickerTop, grip.stickerLeft, grip.closeTop }, { 0, 0, 22 })
+			expect.equal(Layout.windowChrome("noSuchKind"), nil)
+		end
+	)
+
+	t.test(
+		"windowFit: desktops get the design's size, the face's top at its margin-top (H:181, H:351, H:426)",
+		function()
+			-- The frame (the face and its 10 px lip) centred 20 / 19 px below the middle: the face's top 310 / 296 /
+			-- 236 above it, as the design's margin-top puts it (the lip is a box-shadow under the face, H:182).
+			local shifts = { squishies = 20, boxes = 20, shop = 20, quests = 19, daily = 19, settings = 19 }
+			for _, size in DESKTOPS do
+				for kind, shift in shifts do
+					local chrome = Layout.windowChrome(kind) :: any
+					local fit = Layout.windowFit(size, kind)
+					expect.equal(fit.k, 1)
+					expect.equal(fit.width, chrome.width)
+					expect.equal(fit.height, chrome.height)
+					expect.equal(fit.shift, shift)
+					expect.equal(fit.shift - (fit.height + chrome.lip) / 2, chrome.marginTop) -- the face's top
+					expect.equal(fit.above, math.max(chrome.stickerTop, chrome.closeTop))
+					expect.near(fit.scale, Layout.uiScale(size.Y, size.X))
+					expect.equal(fit.class, Layout.layoutClass(size.X, size.Y))
+				end
+			end
+		end
+	)
+
+	t.test("windowFit: on small screens the window and its chrome shrink together, all inside the margins", function()
+		for _, size in SMALL do
+			for _, kind in KINDS do
+				local chrome = Layout.windowChrome(kind) :: any
+				local fit = Layout.windowFit(size, kind)
+				local canvasW, canvasH = size.X / fit.scale, size.Y / fit.scale
+				local m = chrome.margin
+				expect.truthy(fit.k > 0 and fit.k <= 1)
+				expect.truthy(fit.width > 0 and fit.width <= chrome.width)
+				expect.truthy(fit.height > 0 and fit.height <= chrome.height)
+				expect.near(fit.above, math.max(chrome.stickerTop * fit.k, chrome.closeTop))
+				local left = (canvasW - fit.width) / 2
+				expect.truthy(left - chrome.stickerLeft * fit.k >= m - EPS) -- the sticker
+				expect.truthy(left + fit.width + chrome.closeRight <= canvasW - m + EPS) -- the X
+				local top = canvasH / 2 + fit.shift - (fit.height + chrome.lip) / 2
+				expect.truthy(top - fit.above >= m - EPS) -- the sticker and the X above
+				expect.truthy(top + fit.height + chrome.lip <= canvasH - m + EPS) -- the lip
+				expect.equal(fit.shift, math.floor(fit.shift)) -- a whole offset
+			end
+		end
+		-- An 844 x 311 phone: the Squishies window keeps most of its width; its chrome is about half the design's.
+		local phone = Layout.windowFit(SMALL[1], "squishies")
+		expect.truthy(phone.width > 800 and phone.k < 0.6)
+		-- A bad screen falls back like modalPanel (1280 x 720).
+		expect.deepEqual(
+			Layout.windowFit(Vector2.new(0, 0 / 0), "squishies"),
+			Layout.windowFit(Vector2.new(1280, 720), "squishies")
+		)
+	end)
+
+	t.test("windowShift: the design's offset, clamped so what hangs above and the lip stay on the canvas", function()
+		expect.equal(Layout.windowShift(810, 660, 20, 62, 12), 20) -- the design canvas: the face's top at -310 (H:181)
+		-- Little room above: moved down so the sticker stays on; never past the bottom margin when there is room.
+		local tight = Layout.windowShift(760, 660, 20, 62, 12)
+		expect.equal(tight, 24) -- 12 + 62 + 330 - 380
+		-- Little room below: moved up.
+		expect.equal(Layout.windowShift(900, 860, 20, 0, 12), 8) -- 450 - 12 - 430
+		-- No room at all: the top wins (the X stays reachable).
+		expect.equal(Layout.windowShift(600, 660, 20, 62, 12), 104) -- 12 + 62 + 330 - 300
+		expect.equal(Layout.windowShift(0 / 0, 660, 20, 62, 12), 0)
+	end)
+
+	-- Quests, Daily and Settings grow with their rows: their controllers give bodyHeight (which keeps MAX_HEIGHT_SHARE
+	-- of the height it gets) the smaller of the canvas and windowFit's face, its lip and what hangs above over that
+	-- share, so the face never passes the fitted design height (plan R3: the design's sizes as the largest); the rest
+	-- scrolls.
+	t.test("auto-height windows: long content keeps the face within its design height (H:351, H:383, H:426)", function()
+		local formats: { [string]: any } = {
+			quests = t.requireClient("UI/QuestFormat"),
+			daily = t.requireClient("UI/DailyFormat"),
+			settings = t.requireClient("UI/SettingsFormat"),
+		}
+		local share, minimum = 0.86, 44 -- the controllers' MAX_HEIGHT_SHARE; a touch target
+		local sizes = table.clone(DESKTOPS)
+		table.move(SMALL, 1, #SMALL, #sizes + 1, sizes)
+		for _, size in sizes do
+			for kind, format in formats do
+				local window = Layout.windowChrome(kind) :: any
+				local fit = Layout.windowFit(size, kind)
+				local canvasH = size.Y / fit.scale
+				local room = math.min(canvasH, (fit.height + window.lip + fit.above) / share)
+				local chrome = 5 + math.ceil(98 * fit.k) + 2 * 20 + 10 + fit.above -- border, band, paddings, lip, above
+				local body = format.bodyHeight(room, 5000, chrome, share, minimum)
+				local face = chrome - fit.above + body - window.lip
+				expect.truthy(face <= fit.height + EPS)
+				expect.truthy(face + window.lip + fit.above <= canvasH * share + EPS)
+			end
+		end
+		-- A 1920 x 1080 desktop: without the cap Settings would grow to 86 % of the screen; with it the face is 500.
+		local fit = Layout.windowFit(DESKTOPS[2], "settings")
+		local canvasH = DESKTOPS[2].Y / fit.scale
+		local room = math.min(canvasH, (fit.height + 10 + fit.above) / share)
+		expect.truthy(room < canvasH)
+		local body = formats.settings.bodyHeight(room, 5000, 150 + fit.above, share, minimum)
+		expect.near(150 + body - 10, 500)
+	end)
+
+	t.test("modalPanel with a window kind: the fitted window and its chrome; without one, as before", function()
+		local sizes = table.clone(DESKTOPS) -- every desktop and every small screen (a mid-list unpack keeps one value)
+		table.move(SMALL, 1, #SMALL, #sizes + 1, sizes)
+		for _, size in sizes do
+			local fit = Layout.windowFit(size, "squishies")
+			local p = Layout.modalPanel(size, 24, 0.88, 12, "squishies")
+			expect.equal(p.panelWidth, fit.width)
+			expect.equal(p.panelHeight, fit.height)
+			expect.near(p.contentWidth, fit.width - 24)
+			expect.near(p.contentHeight, fit.height - 24)
+			expect.equal(p.chromeScale, fit.k)
+			expect.equal(p.shift, fit.shift)
+			expect.equal(p.above, fit.above)
+			local plain = Layout.modalPanel(size, 24, 0.88, 12)
+			expect.equal(plain.chromeScale, nil)
+			expect.near(plain.panelHeight * plain.scale, size.Y * 0.88)
+		end
+	end)
 end

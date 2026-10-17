@@ -38,6 +38,14 @@
 --   FirstPersonController's session switch (on at every join): it reads isEnabled() when built and on every open and
 --   calls only setEnabled; it is never saved, never in the SetSettings patch (Validate.settings refuses an unknown key
 --   whole). The next duel uses it, and the practice range as soon as Settings closes (a modal pauses first person).
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel is
+-- the design's Settings window (Theme.window "settings", H:425-428: 600 wide, shrunk to fit with its sticker and X,
+-- Layout.windowFit; its height still follows its rows) with its lilac small band (Theme.headerTab: "SETTINGS" in the
+-- settingsTitle role, 92 high, H:428-429; the 150 px sticker, H:451) and the 76 px close X in the band
+-- (Theme.attachClose, H:452); fitBody lays the chrome out at the window's chrome scale (Theme.fitWindow), counts what
+-- hangs above in the chrome and places the window as the design does (Layout.windowShift). The body scrolls with the
+-- design's scroll bar (Theme.scrollbar, H:22). Its texts sit in the two wells (white, as before); the design's rows
+-- come in R9.
 -- Stable names: Settings_MusicSlider, Settings_SfxSlider, Settings_CameraShakeToggle, Settings_ShowTipsToggle,
 -- Settings_FirstPersonToggle, Settings_ReplayTutorialButton, Settings_CloseButton.
 
@@ -80,14 +88,11 @@ local SETTINGS = Config.UI.Settings
 local DATA = Config.Data
 local TOUCH = Config.UI.Touch
 local MODAL_GUI = "SD_Modal"
-local PANEL_WIDTH = 560
-local MARGIN_PX = 24
-local SCROLLBAR_PX = 6
+local WINDOW_KIND = "settings" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:425-454)
+local SCROLLBAR_PX = Theme.SCROLLBAR_PX -- UI FINAL R3: the design's 12 px bar (H:22)
 local MAX_HEIGHT_SHARE = 0.86 -- reading: the panel never covers more than this share of the screen height
--- Foam UI (readings: DESIGN gives no numbers): the body's inner padding keeps the fields inside its clip; Close sits
--- CLOSE_INSET from the panel's right edge.
+-- Foam UI (readings: DESIGN gives no numbers): the body's inner padding keeps the fields inside its clip.
 local BODY_PAD_PX = 3
-local CLOSE_INSET = 16
 local MUSIC_GROUPS = { "Music" }
 local SFX_GROUPS = { "SFX", "UI", "Ambient" }
 
@@ -281,20 +286,17 @@ end
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
-	local width = math.min(PANEL_WIDTH, Layout.modalWidth(gui.AbsoluteSize.X, UIController.scale(), MARGIN_PX))
-	local root = Theme.panel({
+	local root = Theme.window({
 		Name = "Settings",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(if width > 0 then width else PANEL_WIDTH, 0),
+		Size = UDim2.fromOffset(Layout.windowFit(gui.AbsoluteSize, WINDOW_KIND).width, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = parent,
-	}, Theme.Radius.panel, Theme.Padding.large)
+	}, WINDOW_KIND, Theme.Padding.large)
 	c:add(root)
-	-- Foam UI: room at the top for Close's lower half, then the header tab (it raises the padding for its own half).
-	local pad = root:FindFirstChildOfClass("UIPadding") :: UIPadding
-	pad.PaddingTop = UDim.new(0, math.ceil(TOUCH.closeButton / 2) + Theme.Padding.small)
-	local tab = Theme.headerTab(root, Strings.settings.title)
+	-- UI FINAL R3: the small band (H:428-429) on the window's top (it sets the top padding).
+	Theme.headerTab(root, Strings.settings.title)
 	-- The header tab sits on the panel itself, so the rows go in a Content frame with the list.
 	local content: Frame = Create("Frame", {
 		Name = "Content",
@@ -309,22 +311,18 @@ local function build(parent: Instance): GuiObject
 		name = "Settings_CloseButton",
 		text = Strings.common.close,
 		kind = "close", -- UI overhaul: the chunky red X
-		height = TOUCH.closeButton,
 		parent = root,
 		onActivated = function()
 			UIController.close(SCREEN, "button")
 		end,
 	})
-	-- Straddles the panel's top edge at the right, like the tab in the middle.
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.Position = UDim2.new(1, Theme.Padding.large - CLOSE_INSET, 0, -pad.PaddingTop.Offset)
-	close.root.ZIndex = tab.ZIndex
+	Theme.attachClose(root, close.root) -- UI FINAL R3: the 76 px X in the band (H:452)
 	close.root.Modal = true -- frees the cursor in shift lock / first person (§10.4 step 4)
 	c:add(close)
 	closeButton = close
 
 	-- The rows scroll when the screen is too short for them (phones in landscape).
-	local body: ScrollingFrame = Create("ScrollingFrame", {
+	local body: ScrollingFrame = Theme.scrollbar(Create("ScrollingFrame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -332,11 +330,9 @@ local function build(parent: Instance): GuiObject
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
 		LayoutOrder = 1,
 		Parent = content,
-	})
+	}))
 	-- Top-aligned (fix batch): a centred list taller than the window was centred on the window, its top out of reach.
 	local list = Theme.list(
 		Enum.FillDirection.Vertical,
@@ -369,21 +365,28 @@ local function build(parent: Instance): GuiObject
 		if not (scale > 0) or not (s > 0) or screen.X <= 0 or screen.Y <= 0 then
 			return
 		end
-		local fit = math.min(PANEL_WIDTH, Layout.modalWidth(screen.X, scale, MARGIN_PX))
-		local size = UDim2.fromOffset(if fit > 0 then fit else PANEL_WIDTH, 0)
+		local fit = Layout.windowFit(screen, WINDOW_KIND) -- UI FINAL R3: the design's 600, shrunk to fit
+		local size = UDim2.fromOffset(fit.width, 0)
 		if root.Size ~= size then
 			root.Size = size
 		end
-		local above = math.max(tab.AbsoluteSize.Y / s, TOUCH.closeButton) / 2
-		local position = UDim2.new(0.5, 0, 0.5, math.floor(above / 2 + 0.5))
+		-- UI FINAL R3: the band at the chrome scale; the sticker and the X hang above it (H:451-452).
+		local above = Theme.fitWindow(root, fit.k).above
+		local window = Layout.windowChrome(WINDOW_KIND) :: Layout.WindowChrome
+		local shift =
+			Layout.windowShift(screen.Y / scale, root.AbsoluteSize.Y / s, window.designShift, above, window.margin)
+		local position = UDim2.new(0.5, 0, 0.5, shift)
 		if root.Position ~= position then
 			root.Position = position
 		end
+		-- UI FINAL R3: the face stays within its fitted design height (H:426, windowFit's height); the rest scrolls.
+		-- bodyHeight keeps MAX_HEIGHT_SHARE of the height it is given, hence the division.
+		local room = math.min(screen.Y / scale, (fit.height + window.lip + above) / MAX_HEIGHT_SHARE)
 		local current = body.AbsoluteSize.Y / s
 		local chrome = root.AbsoluteSize.Y / s - current + above
 		local height = math.ceil(
 			SettingsFormat.bodyHeight(
-				screen.Y / scale,
+				room,
 				list.AbsoluteContentSize.Y / s + 2 * BODY_PAD_PX,
 				chrome,
 				MAX_HEIGHT_SHARE,

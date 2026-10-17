@@ -83,6 +83,12 @@
 -- inactive tab and filter chips are the plum neutral; Close is the red X; the detail preview is the hero of the column
 -- (up to DETAIL_ICON_PX when the column has the room, on a glow in the rarity's colour, bobbing gently while the screen
 -- is open) and the price is a Gold number.
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel is
+-- the design's Shop window (Theme.window "shop", H:288-291: 1060 x 650, shrunk to fit with its sticker and X,
+-- ShopFormat.panelLayout / Layout.windowFit, the face's top 310 above the middle) with its gold band (Theme.headerTab:
+-- "SHOP", Q9; the sticker, H:346) and the 76 px close X in the band (Theme.attachClose, H:347); Theme.fitWindow lays
+-- the chrome out at the window's chrome scale. The loading line on the pink body takes the window's text colour
+-- (H:196).
 -- Stable names: Shop_CloseButton, Shop_TabSquishiesButton, Shop_TabCoinsButton, Shop_FilterAllButton,
 -- Shop_FilterBoxButton, Shop_Card_<id>, Shop_BuyButton, Shop_InspectButton, Shop_EquipNowButton,
 -- Shop_Bundle_<key>Button.
@@ -213,7 +219,6 @@ local DETAIL_ICON_PX = 300 -- UI overhaul: 132 -> 300, the hero fills the column
 local DETAIL_ICON_COMPACT_PX = 88 -- reading (Part 8): on phones more of the detail shows above the pinned buttons
 local DETAIL_ICON_MIN_PX = 48 -- fix batch: the smallest the preview gets so the name stays in view (previewPx)
 local WELL_PAD_PX = 8 -- the inset well around the detail preview
-local CLOSE_INSET = 16 -- Close sits this far from the panel's right edge (as on Quests and Settings)
 local PANEL = ShopFormat.PANEL -- margin, height share (0.88: never more of the screen), padding, gaps, grid share
 local CELL_PAD = PANEL.cellPad
 local GRID_SHARE = PANEL.gridShare -- the Squishies screen's split
@@ -225,7 +230,7 @@ local STATUS_GAP = 4 -- between the coin and the status text on a card
 local MEASURE_MARGIN_PX = 2 -- Part 8: added to measured texts so laid-out parts never touch
 local BUY_PAD_Y = 4 -- reading: the space above and below a wrapped Buy label
 local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives this
-local TAB_KIND: Theme.TextKind = "H2" -- the header tab's gap under it is PANEL.tabGap (InventoryFormat.hangingChrome)
+local WINDOW_KIND = "shop" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:288-349)
 -- UI overhaul: the card faces are UI/CardFace's; the status line's colours (a price in Gold, "Owned" in Mint).
 local STATUS_PRICE_COLOR = Theme.Colors.gold
 local STATUS_OWNED_COLOR = Theme.Accents.mint.face
@@ -855,22 +860,11 @@ fitCardLines = function(list: { ShopFormat.Entry })
 	applyCardSize()
 end
 
--- The header tab and Close at the player's text size (fix batch: InventoryFormat.hangingChrome): the tab stays centred
--- on the panel's top edge and Close hangs on the top-right corner, level with it; the panel's top padding keeps the gap
--- under their lower halves, and the panel moves down by half of what hangs above it (both centred together). Returns
--- the top padding.
-local function fitChrome(root: Frame, f: Frames): number
-	local tabPad = f.tab:FindFirstChildOfClass("UIPadding")
-	local padY = if tabPad then tabPad.PaddingTop.Offset + tabPad.PaddingBottom.Offset else 0
-	local tabHeight = math.ceil(Theme.lineHeight(TAB_KIND)) + padY
-	local chrome = InventoryFormat.hangingChrome(tabHeight, Layout.touchBase(TOUCH.closeButton, UIController.scale()))
-	f.padding.PaddingTop = UDim.new(0, chrome.top)
-	f.tab.Position = UDim2.new(0.5, 0, 0, -chrome.top)
-	local close = closeButton
-	if close then
-		close.root.Position = UDim2.new(1, PANEL.padding - CLOSE_INSET, 0, -chrome.top)
-	end
-	root.Position = UDim2.new(0.5, 0, 0.5, chrome.shift)
+-- UI FINAL R3: the window's band, sticker and X at the window's chrome scale (Theme.fitWindow; Layout.windowFit), and
+-- the face's top 310 px above the middle (H:289, kept on the screen with what hangs off it). Returns the top padding.
+local function fitChrome(root: Frame, fit: Layout.WindowFit): number
+	local chrome = Theme.fitWindow(root, fit.k)
+	root.Position = UDim2.new(0.5, 0, 0.5, fit.shift)
 	return chrome.top
 end
 
@@ -882,10 +876,11 @@ local function applyLayout()
 	end
 	local row = filterRow
 	local filtered = row ~= nil and row.Visible
-	local top = fitChrome(root, f)
-	local l = ShopFormat.panelLayout(UIController.screenGui(MODAL_GUI).AbsoluteSize, filtered, top, cardSize.width)
+	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
+	local top = fitChrome(root, Layout.windowFit(screen, WINDOW_KIND))
+	local l = ShopFormat.panelLayout(screen, filtered, top, cardSize.width)
 	panelLayout = l
-	root.Size = UDim2.new(0, l.panelWidth, PANEL.heightShare, 0)
+	root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight + Config.UI.Sticker.lip.window) -- the face and its lip
 	f.tabs.Position = UDim2.fromOffset(0, 0)
 	f.tabs.Size = UDim2.new(1, 0, 0, l.chipHeight)
 	f.wallet.Position = UDim2.new(1, 0, 0, l.chipHeight / 2) -- the tab row's right end
@@ -911,10 +906,6 @@ local function applyLayout()
 	end
 	f.content.Position = UDim2.fromOffset(0, l.listTop)
 	f.content.Size = UDim2.new(1, 0, 1, -l.listTop)
-	local close = closeButton
-	if close then
-		close.root.Size = UDim2.fromOffset(l.closeHeight, l.closeHeight) -- UI overhaul: the square red X
-	end
 	layoutDetail()
 	updateColumns()
 end
@@ -1160,7 +1151,7 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	)
 	local errorLabel = detailLabel(scroll, "Error", 1, "Small")
 	errorLabel.Text = Strings.data.loadFailed
-	errorLabel.TextColor3 = Theme.Colors.danger
+	Theme.textOnWindow(errorLabel) -- UI FINAL R3: on the pink body (H:196; Danger is 1.8:1 on it)
 	errorLabel.Visible = false
 	-- The preview in an inset well (its size follows the layout class, layoutDetail).
 	local well = Theme.inset({
@@ -1220,7 +1211,7 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	status.Visible = false
 	-- UI overhaul: what the squishy earns per squeeze (Catalog), a reason to buy it; refreshDetail fills it.
 	local coinsLine = detailLabel(scroll, "CoinsPerSqueeze", 7, "Body")
-	coinsLine.TextColor3 = Theme.Colors.ink2
+	Theme.textOnWindow(coinsLine) -- UI FINAL R3: on the pink body (H:196; ink2 is 1.4:1 on it)
 
 	-- Part 8: Buy and Inspect are pinned under the list (a sibling of it, not inside it), so they never scroll below
 	-- the fold; layoutDetail places them (no UIListLayout: ShopFormat.detailLayout decides the rows).
@@ -1363,34 +1354,29 @@ end
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
-	local root = Theme.panel({
+	local root = Theme.window({
 		Name = "Shop",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(0, Config.UI.modalMaxWidth, PANEL.heightShare, 0),
 		Parent = parent,
-	}, Theme.Radius.panel, PANEL.padding)
+	}, WINDOW_KIND, PANEL.padding)
 	c:add(root)
 	local chipHeight = Layout.touchBase(TOUCH.minTarget, UIController.scale())
 
-	-- The title: a header tab in the Shop tile's accent on the panel's top edge (fitChrome follows it).
-	local tab = Theme.headerTab(root, Strings.hud.nav.shop, { textKind = TAB_KIND, accent = "shop" })
-
-	-- Fix batch: no header row. Close hangs on the top-right corner, level with the tab (fitChrome places it; drawn over
-	-- the panel's outline like the tab).
+	-- UI FINAL R3: the gold band (H:291-292, Q9; fitChrome lays it out) and the 76 px X in it (H:347).
+	local tab = Theme.headerTab(root, Strings.hud.nav.shop)
 	local close = Button.new({
 		name = "Shop_CloseButton",
 		text = Strings.common.close,
 		kind = "close", -- UI overhaul: the chunky red X
-		height = TOUCH.closeButton,
 		parent = root,
 		sound = false, -- closing plays ui.back (UIController.close, reason "button")
 		onActivated = function()
 			UIController.close(SCREEN, "button")
 		end,
 	})
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.ZIndex = tab.ZIndex
+	Theme.attachClose(root, close.root)
 	close.root.Modal = true -- frees the cursor in shift lock / first person (§10.4 step 4)
 	c:add(close)
 	closeButton = close
@@ -1538,6 +1524,7 @@ local function build(parent: Instance): GuiObject
 		Visible = false,
 		Parent = root,
 	}, "H2")
+	Theme.textOnWindow(loadingLabel :: TextLabel) -- UI FINAL R3: on the pink body (H:196)
 
 	panel = root
 	-- Part 8: every size follows the ScreenGui, the layout class and the player's text size.

@@ -453,6 +453,21 @@ local Palette = {
 	StickerTdmRed = Color3.fromHex("#FF6B81"), -- N:710 (32%)
 	StickerTdmBlue = Color3.fromHex("#5DB4FF"), -- N:710 (68%)
 	StickerTdmBlueEnd = Color3.fromHex("#7CC6FF"), -- N:710
+	-- The window frame (UI FINAL R3): the header bands' end stops (their top stops StickerPinkTop H:183 and
+	-- StickerMintTop H:353 are already here), the scrim, the sticker's drop shadow and the window's soft shadow.
+	StickerHeaderPinkEnd = Color3.fromHex("#FF4F8E"), -- H:183: the Squishies band (and Inspect's, a reading)
+	StickerHeaderCyanTop = Color3.fromHex("#8FF1F8"), -- H:258: the Boxes band
+	StickerHeaderCyanEnd = Color3.fromHex("#1FB2D2"), -- H:258
+	StickerHeaderGoldTop = Color3.fromHex("#FFE97A"), -- H:291: the Shop band (gold, Q9)
+	StickerHeaderGoldEnd = Color3.fromHex("#FFA41C"), -- H:291
+	StickerHeaderMintEnd = Color3.fromHex("#22B383"), -- H:353: the Quests band
+	StickerHeaderPurpleTop = Color3.fromHex("#CDB2FF"), -- H:385: the Daily Rewards band
+	StickerHeaderPurpleEnd = Color3.fromHex("#8052EE"), -- H:385
+	StickerHeaderLilacTop = Color3.fromHex("#C9B6FF"), -- H:428: the Settings band
+	StickerHeaderLilacEnd = Color3.fromHex("#8B63FF"), -- H:428
+	StickerScrimPink = Color3.fromHex("#FF96D2"), -- H:178: the scrim's lighter centre (at .28)
+	StickerStickerShadow = Color3.fromHex("#140A1E"), -- H:251: the window sticker's drop shadow (at .35)
+	StickerShadowWindow = Color3.fromHex("#0F0819"), -- H:182: the window's soft shadow (at .5)
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

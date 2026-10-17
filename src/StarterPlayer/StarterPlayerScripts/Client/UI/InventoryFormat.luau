@@ -112,6 +112,11 @@ export type PanelLayout = {
 	columns: number, -- the grid's columns (gridFit); 0 when panelLayout was given no card width
 	detailWidth: number,
 	detailHeight: number,
+	-- UI FINAL R3: the window's chrome scale, its centre's offset below the middle and what hangs above it
+	-- (Layout.windowFit of the Squishies window).
+	chromeScale: number,
+	shift: number,
+	above: number,
 }
 
 -- What hangs on the panel's top edge (hangingChrome), base px.
@@ -451,9 +456,11 @@ end
 -- (never below Config.UI.Touch.minTargetFloor actual px). The body under the row holds the grid and the detail column:
 -- with `cardWidth` the grid takes only the columns that fit in gridShare of the content width (gridFit) and the detail
 -- column the rest after the column gap; without it the plain gridShare split. `topPadding` is the panel's real top
--- padding (hangingChrome's top, InventoryFormat.topPadding); the bottom keeps PANEL.padding.
+-- padding (hangingChrome's top, InventoryFormat.topPadding); the bottom keeps PANEL.padding. UI FINAL R3: the panel is
+-- the Squishies window (H:181: 1060 x 650, shrunk to fit, Layout.windowFit; its lip under the face), its top padding
+-- the band's (Theme.fitWindow), with the window's chromeScale, shift and above.
 function InventoryFormat.panelLayout(screenPx: Vector2, topPadding: number?, cardWidth: number?): PanelLayout
-	local p = Layout.modalPanel(screenPx, PANEL.margin, PANEL.heightShare, PANEL.padding)
+	local p = Layout.modalPanel(screenPx, PANEL.margin, PANEL.heightShare, PANEL.padding, "squishies")
 	local top = InventoryFormat.topPadding(topPadding)
 	local contentHeight = math.max(0, p.contentHeight - (top - PANEL.padding))
 	local closeHeight = Layout.touchBase(TOUCH.closeButton, p.scale)
@@ -482,6 +489,9 @@ function InventoryFormat.panelLayout(screenPx: Vector2, topPadding: number?, car
 		columns = columns,
 		detailWidth = math.max(0, p.contentWidth - gridWidth - PANEL.columnGap),
 		detailHeight = bodyHeight,
+		chromeScale = p.chromeScale or 1,
+		shift = p.shift or 0,
+		above = p.above or 0,
 	}
 end
 

@@ -47,6 +47,13 @@
 -- (CARD_ACCENTS: outlined white on Cyan, PlumInk on Gold, light on the dark faces). The track is wider (PANEL_WIDTH,
 -- CARD_WIDTH) and still wraps onto a second row when it does not fit (DailyFormat.cardsPerRow). Claim is a Gold CTA;
 -- Close is the red X.
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel is
+-- the design's Daily Rewards window (Theme.window "daily", H:382-385: 980 wide, shrunk to fit with its sticker and X,
+-- Layout.windowFit; its height still follows its rows) with its purple band (Theme.headerTab: "DAILY REWARDS", H:386;
+-- the sticker, H:421) and the 76 px close X in the band (Theme.attachClose, H:422); fitBody lays the chrome out at the
+-- window's chrome scale (Theme.fitWindow), counts what hangs above in the chrome and places the window as the design
+-- does (Layout.windowShift). The body scrolls with the design's scroll bar (Theme.scrollbar, H:22); the countdown on
+-- the pink body takes the window's text colour (H:196) and a dark clock.
 -- Public: open(), debugState().
 
 -- Services
@@ -103,17 +110,14 @@ local REMOTE = "DailyClaim"
 local FIELD = "daily"
 local MODAL_GUI = "SD_Modal"
 local TOUCH = Config.UI.Touch
-local PANEL_WIDTH = 760 -- UI overhaul: 680 -> 760, the wider cards still fit one row on a PC
-local MARGIN_PX = 24
+local WINDOW_KIND = "daily" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:382-424)
 local CARD_WIDTH = 92 -- UI overhaul: 84 -> 92
 local CARD_TEXT_KIND = "Small" -- the cards' text (their width grows with it)
 local CHECK_PX = 18
 local CHECK_BAR_PX = 3
-local SCROLLBAR_PX = 6
+local SCROLLBAR_PX = Theme.SCROLLBAR_PX -- UI FINAL R3: the design's 12 px bar (H:22)
 local BODY_PAD_PX = 3 -- around the cards in the scrolling body: room for today's thick outline
--- Foam UI (readings: DESIGN gives no numbers): Close sits CLOSE_INSET from the panel's right edge; the day card's coin
--- and the countdown's clock in base px.
-local CLOSE_INSET = 16
+-- Foam UI (readings: DESIGN gives no numbers): the day card's coin and the countdown's clock in base px.
 local CARD_COIN_PX = 22
 local CLOCK_ICON_PX = 24
 -- DailyFormat.cardLook's face names -> the candy surfaces (UI overhaul): a future day raised off the window, today
@@ -274,8 +278,8 @@ local function fitBody()
 	if not (scale > 0) or not (s > 0) or screen.X <= 0 or screen.Y <= 0 then
 		return
 	end
-	local width = math.min(PANEL_WIDTH, Layout.modalWidth(screen.X, scale, MARGIN_PX))
-	local size = UDim2.fromOffset(if width > 0 then math.floor(width) else PANEL_WIDTH, 0)
+	local fit = Layout.windowFit(screen, WINDOW_KIND) -- UI FINAL R3: the design's 980, shrunk to fit
+	local size = UDim2.fromOffset(fit.width, 0)
 	if frame.Size ~= size then
 		frame.Size = size
 	end
@@ -293,16 +297,23 @@ local function fitBody()
 			view.frame.Size = cardSize
 		end
 	end
-	local above = math.max(tab.AbsoluteSize.Y / s, TOUCH.closeButton) / 2
-	local position = UDim2.new(0.5, 0, 0.5, math.floor(above / 2 + 0.5))
+	-- UI FINAL R3: the band at the chrome scale; the sticker and the X hang above it (H:421-422).
+	local above = Theme.fitWindow(frame, fit.k).above
+	local window = Layout.windowChrome(WINDOW_KIND) :: Layout.WindowChrome
+	local shift =
+		Layout.windowShift(screen.Y / scale, frame.AbsoluteSize.Y / s, window.designShift, above, window.margin)
+	local position = UDim2.new(0.5, 0, 0.5, shift)
 	if frame.Position ~= position then
 		frame.Position = position
 	end
+	-- UI FINAL R3: the face stays within its fitted design height (H:383, windowFit's height); the rest scrolls.
+	-- bodyHeight keeps MAX_HEIGHT_SHARE of the height it is given, hence the division.
+	local room = math.min(screen.Y / scale, (fit.height + window.lip + above) / MAX_HEIGHT_SHARE)
 	local current = scroll.AbsoluteSize.Y / s
 	local chrome = frame.AbsoluteSize.Y / s - current + above
 	local height = math.ceil(
 		DailyFormat.bodyHeight(
-			screen.Y / scale,
+			room,
 			list.AbsoluteContentSize.Y / s + 2 * BODY_PAD_PX,
 			chrome,
 			MAX_HEIGHT_SHARE,
@@ -518,20 +529,17 @@ end
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
-	local width = math.min(PANEL_WIDTH, Layout.modalWidth(gui.AbsoluteSize.X, UIController.scale(), MARGIN_PX))
-	local panel = Theme.panel({
+	local panel = Theme.window({
 		Name = "Daily",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(if width > 0 then width else PANEL_WIDTH, 0),
+		Size = UDim2.fromOffset(Layout.windowFit(gui.AbsoluteSize, WINDOW_KIND).width, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = parent,
-	}, Theme.Radius.panel, Theme.Padding.large)
+	}, WINDOW_KIND, Theme.Padding.large)
 	c:add(panel)
-	-- Foam UI: room at the top for Close's lower half, then the header tab (it raises the padding for its own half).
-	local pad = panel:FindFirstChildOfClass("UIPadding") :: UIPadding
-	pad.PaddingTop = UDim.new(0, math.ceil(TOUCH.closeButton / 2) + Theme.Padding.small)
-	local tab = Theme.headerTab(panel, Strings.daily.panelTitle, { accent = "sky" })
+	-- UI FINAL R3: the band (H:385-386) on the window's top (it sets the top padding).
+	local tab = Theme.headerTab(panel, Strings.daily.panelTitle)
 	-- The header tab sits on the panel itself, so the rows go in a Content frame with the list.
 	local content: Frame = Create("Frame", {
 		Name = "Content",
@@ -547,24 +555,20 @@ local function build(parent: Instance): GuiObject
 		name = "Daily_CloseButton",
 		text = Strings.common.close,
 		kind = "close", -- UI overhaul: the chunky red X
-		height = TOUCH.closeButton,
 		parent = panel,
 		sound = false, -- a Close button plays ui.back through UIController.close (§18.6)
 		onActivated = function()
 			UIController.close(SCREEN, "button")
 		end,
 	})
-	-- Straddles the panel's top edge at the right, like the tab in the middle.
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.Position = UDim2.new(1, Theme.Padding.large - CLOSE_INSET, 0, -pad.PaddingTop.Offset)
-	close.root.ZIndex = tab.ZIndex
+	Theme.attachClose(panel, close.root) -- UI FINAL R3: the 76 px X in the band (H:422)
 	close.root.Modal = true -- frees the cursor in shift lock / first person
 	c:add(close)
 	closeButton = close
 
 	-- Part 8: the day cards and the welcome back line scroll when the screen is too short (fitBody); Claim and the
 	-- countdown stay under them.
-	local scroll: ScrollingFrame = Create("ScrollingFrame", {
+	local scroll: ScrollingFrame = Theme.scrollbar(Create("ScrollingFrame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -572,11 +576,9 @@ local function build(parent: Instance): GuiObject
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
 		LayoutOrder = 1,
 		Parent = content,
-	})
+	}))
 	-- Top-aligned (fix batch): a centred list taller than the window is centred on the window, its top out of reach.
 	local scrollList = Theme.list(
 		Enum.FillDirection.Vertical,
@@ -646,7 +648,7 @@ local function build(parent: Instance): GuiObject
 		Parent = content,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, countdown)
-	c:add(IconGlyph.new({ name = "Clock", icon = "clock", sizePx = CLOCK_ICON_PX, tone = "light", parent = countdown }))
+	c:add(IconGlyph.new({ name = "Clock", icon = "clock", sizePx = CLOCK_ICON_PX, tone = "dark", parent = countdown }))
 	countdownRow = countdown
 	countdownLabel = Theme.label({
 		Name = "Countdown",
@@ -658,6 +660,7 @@ local function build(parent: Instance): GuiObject
 		TextWrapped = false,
 		Parent = countdown,
 	}, "H2")
+	Theme.textOnWindow(countdownLabel :: TextLabel) -- UI FINAL R3: on the pink body (H:196)
 	root = panel
 	headerTab = tab
 	body, bodyLayout = scroll, scrollList

@@ -2295,6 +2295,7 @@ return function(t: Context)
 		expect.equal(motion.modalOpen.overshoot, 1.035)
 		expect.equal(motion.modalOpen.ms, 500)
 		expect.equal(motion.modalOpen.backdropMs, 250)
+		expect.equal(motion.modalOpen.backdropCurve, "ease") -- UI FINAL R3: H:178 sdFade .25s ease
 		expect.equal(motion.modalOpen.curve, "windows") -- H:181
 		expect.deepEqual(
 			motion.modalOpen.frames,
@@ -2309,7 +2310,8 @@ return function(t: Context)
 		expect.equal(motion.modalClose.visualMs, 190)
 		expect.equal(motion.modalClose.ms, 190)
 		expect.equal(motion.modalClose.curve, "close") -- H:686: cubic-bezier(.5,0,.75,0)
-		-- Today's tween (until R3 plays the curve): Quart In, 0.006 off (Cubic In is 0.111 off).
+		expect.equal(motion.modalClose.removeMs, 185) -- UI FINAL R3: H:689, the window goes at 185 ms
+		-- The TweenService fallback of a fade with no curve (UI FINAL R3 plays the curve): Quart In, 0.006 off.
 		expect.equal(motion.modalClose.style, Enum.EasingStyle.Quart)
 		expect.deepEqual(
 			motion.modalClose.frames,
@@ -2664,6 +2666,98 @@ return function(t: Context)
 		end)
 		expect.truthy(containsAll(everyone, { "Config.Match.pickerForEveryone" }))
 	end)
+
+	-- UI FINAL R3 (the window frame, plan R3; `H:n` = "Squishy Duels HUD.dc.html" line n).
+	t.test("UI FINAL R3: the windows' design numbers (sizes, bands, sticker, X, scrim, shadow, scroll bar)", function()
+		local window = Config.UI.Sticker.window :: any
+		local sizes = {
+			squishies = { 1060, 650, -310 }, -- H:181
+			boxes = { 1060, 650, -310 }, -- H:256
+			shop = { 1060, 650, -310 }, -- H:289
+			quests = { 900, 620, -296 }, -- H:351
+			daily = { 980, 620, -296 }, -- H:383
+			settings = { 600, 500, -236 }, -- H:426
+		}
+		for name, size in sizes do
+			local kind = window.kinds[name]
+			expect.deepEqual({ kind.width, kind.height, kind.marginTop }, size)
+		end
+		-- The bands' gradients, highlights and dots (H:183, H:258, H:291, H:353, H:385, H:428).
+		local bands: { [string]: { any } } = {
+			squishies = { "StickerPinkTop", "StickerHeaderPinkEnd", 0.45, 0.28 },
+			boxes = { "StickerHeaderCyanTop", "StickerHeaderCyanEnd", 0.45, 0.3 },
+			shop = { "StickerHeaderGoldTop", "StickerHeaderGoldEnd", 0.5, 0.32 },
+			quests = { "StickerMintTop", "StickerHeaderMintEnd", 0.45, 0.3 },
+			daily = { "StickerHeaderPurpleTop", "StickerHeaderPurpleEnd", 0.45, 0.28 },
+			settings = { "StickerHeaderLilacTop", "StickerHeaderLilacEnd", 0.4, 0.24 },
+		}
+		for name, band in bands do
+			local kind = window.kinds[name]
+			expect.deepEqual({ kind.top, kind.bottom, kind.highlightAlpha, kind.dotsAlpha }, band)
+			expect.equal(kind.sticker, "img.nav." .. name) -- H:251, H:284, H:346, H:378, H:421, H:451
+		end
+		expect.truthy(window.kinds.settings.small)
+		expect.truthy(window.kinds.squishies.innerRing)
+		local b = window.band
+		expect.deepEqual({ b.height, b.smallHeight, b.padLeft, b.padRight, b.plainPad }, { 98, 92, 176, 110, 110 })
+		expect.deepEqual({ b.smallPadLeft, b.smallPadRight, b.gap }, { 140, 100, 18 }) -- H:428, H:183
+		expect.deepEqual({ b.highlightPx, b.bevelPx, b.bevelAlpha, b.border }, { 5, 7, 0.12, 5 }) -- H:183
+		expect.deepEqual({ b.cornerRadius, b.dotsTile }, { 27, 26 }) -- H:182 (32 - 5), H:183
+		local s = window.sticker
+		expect.deepEqual({ s.px, s.x, s.y, s.smallPx, s.smallX, s.smallY }, { 190, -40, -62, 150, -30, -46 })
+		expect.deepEqual({ s.shadowPx, s.shadowAlpha, s.bobS }, { 7, 0.35, 3 }) -- H:251
+		expect.deepEqual({ s.ms, s.delayMs, s.curve }, { 750, 80, "search" } :: { any }) -- H:251
+		expect.deepEqual(
+			s.frames,
+			{ -- H:27 (sdStick)
+				{ at = 0, x = -40, y = -60, scale = 0.2, rot = -40, alpha = 0 },
+				{ at = 0.6, scale = 1.15, rot = 8, alpha = 1 },
+				{ at = 0.8, scale = 0.95, rot = -4 },
+				{ at = 1, x = 0, y = 0, scale = 1, rot = 0, alpha = 1 },
+			} :: { any }
+		)
+		expect.deepEqual(window.close, { face = 76, right = 22, top = 22 }) -- H:252
+		expect.deepEqual(window.scrim, { innerAlpha = 0.28, outerAlpha = 0.55, closeOnClick = true }) -- H:178
+		expect.deepEqual(window.innerRing, { px = 3, alpha = 0.05 }) -- H:182
+		expect.deepEqual(window.shadow, { offsetY = 34, blurPx = 70, alpha = 0.5 }) -- H:182
+		expect.equal(window.scrollbarPx, 12) -- H:22
+		expect.equal(window.margin, 12)
+		-- The window's own shape is the kit's: a 5 px border, radius 32, a 10 px lip (H:182).
+		expect.deepEqual(
+			{ Config.UI.Sticker.border.heavy, Config.UI.Sticker.radius.window, Config.UI.Sticker.lip.window },
+			{ 5, 32, 10 }
+		)
+	end)
+
+	t.test(
+		"UI FINAL R3: the validator reports a bad window alpha, size, sticker track and loop, and removeMs",
+		function()
+			local alpha = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Sticker.window.kinds.quests.dotsAlpha = 1.5
+			end)
+			expect.truthy(containsAll(alpha, { "F9:", "Sticker.window.kinds.quests.dotsAlpha" }))
+			local size = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Sticker.window.kinds.daily.width = 0
+			end)
+			expect.truthy(containsAll(size, { "F9:", "Sticker.window.kinds.daily.width" }))
+			local margin = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Sticker.window.kinds.shop.marginTop = -700
+			end)
+			expect.truthy(containsAll(margin, { "F9:", "Sticker.window.kinds.shop.marginTop" }))
+			local track = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Sticker.window.sticker.frames[2].at = 0.9
+			end)
+			expect.truthy(containsAll(track, { "F9:", "Sticker.window.sticker.frames", "in order" }))
+			local bob = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.Sticker.window.sticker.bobS = 0.25
+			end)
+			expect.truthy(containsAll(bob, { "F9:", "Sticker.window.sticker.bobS", "4.00 Hz", "above 3 Hz" }))
+			local remove = validateBrokenCopy(t.Shared, "UI", function(ui)
+				ui.motion.modalClose.removeMs = 400
+			end)
+			expect.truthy(containsAll(remove, { "F9:", "modalClose.removeMs" }))
+		end
+	)
 
 	-- Feel pass rules F1-F11 (DESIGN §18.9; each with a planted bad value, §18.10 L1) ---------------------------------
 

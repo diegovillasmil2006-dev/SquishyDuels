@@ -82,6 +82,12 @@
 -- glow in the rarity's colour and bobs gently while the screen is open (one StaticIcon, Scheduler; still under
 -- ReducedMotion); Reload and Windup bars are Lavender (time: shorter is faster, said by inspect.statsHint under the
 -- stats), the others Cyan.
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel is
+-- the design's Squishies window (Theme.window "squishies", H:180-182: 1060 x 650, shrunk to fit with its sticker and X,
+-- InventoryFormat.panelLayout / Layout.windowFit, the face's top 310 above the middle) with its band (Theme.headerTab:
+-- "SQUISHIES", the Collected chip at its right end as the design's header pill, H:185; the sticker, H:251) and the 76
+-- px close X in the band (Theme.attachClose, H:252); Theme.fitWindow lays the chrome out at the window's chrome scale.
+-- The texts on the pink body (the empty state, the loading line) take the window's text colour (H:196).
 -- Stable names: Squishies_CloseButton, Squishies_Filter<Name>Button, Squishies_ShowNotOwnedToggle,
 -- Squishies_Card_<id>, Squishies_EquipButton, Squishies_InspectButton, Squishies_ViewInShopButton,
 -- Squishies_GoToBoxesButton.
@@ -164,7 +170,6 @@ local DETAIL_ICON_PX = 132
 local DETAIL_ICON_COMPACT_PX = 88 -- reading (Part 8): on phones more of the info shows above the pinned buttons
 local DETAIL_ICON_MIN_PX = 48 -- fix batch: the smallest the preview gets so the name stays in view (previewPx)
 local WELL_PAD_PX = 8 -- the inset well around the detail preview
-local CLOSE_INSET = 16 -- Close and the Collected chip sit this far from the panel's sides (as on Quests and Settings)
 local EMPTY_TOP_PX = 40 -- the filter-empty state: this far under the body's top ...
 local EMPTY_SIDE_PX = 20 -- ... and this far inside the grid's sides
 local LOCK_PIP_PX = 22 -- the compact "Not owned" badge: a round Lilac pip with the lock (DESIGN §11.6 "lock pip")
@@ -197,7 +202,7 @@ local STAT_BAR_PX = 10
 local CONFIRM_SECONDS = 5 -- reading: how long "Equipped" shows before the StateDelta must have arrived
 local SHIMMER_FULL_TURN = 360
 local GENERIC = "error.generic"
-local TAB_KIND: Theme.TextKind = "H2" -- the header tab's gap under it is PANEL.tabGap (InventoryFormat.hangingChrome)
+local WINDOW_KIND = "squishies" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:180-254)
 -- UI overhaul: the card faces are UI/CardFace's (owned: the rarity's colours; not owned: the dark disabled face; the
 -- selected card: a white frame).
 local STAT_TIME: { [string]: boolean } = { reload = true, windup = true } -- shorter is faster (Lavender bars)
@@ -488,26 +493,11 @@ local function applyCardSize()
 	end
 end
 
--- The header tab and Close at the player's text size (fix batch: InventoryFormat.hangingChrome): the tab stays centred
--- on the panel's top edge, Close hangs on the top-right corner and the Collected chip on the top-left corner, level with
--- it; the panel's top padding keeps the gap under their lower halves, and the panel moves down by half of what hangs
--- above it (both centred together). Returns the top padding.
-local function fitChrome(root: Frame, f: Frames): number
-	local tabPad = f.tab:FindFirstChildOfClass("UIPadding")
-	local padY = if tabPad then tabPad.PaddingTop.Offset + tabPad.PaddingBottom.Offset else 0
-	local tabHeight = math.ceil(Theme.lineHeight(TAB_KIND)) + padY
-	local chrome = InventoryFormat.hangingChrome(tabHeight, Layout.touchBase(TOUCH.closeButton, UIController.scale()))
-	f.padding.PaddingTop = UDim.new(0, chrome.top)
-	f.tab.Position = UDim2.new(0.5, 0, 0, -chrome.top)
-	local close = closeButton
-	if close then
-		close.root.Position = UDim2.new(1, PANEL.padding - CLOSE_INSET, 0, -chrome.top)
-	end
-	local collected = collectedChip
-	if collected then
-		collected.root.Position = UDim2.fromOffset(CLOSE_INSET - PANEL.padding, -chrome.top)
-	end
-	root.Position = UDim2.new(0.5, 0, 0.5, chrome.shift)
+-- UI FINAL R3: the window's band, sticker and X at the window's chrome scale (Theme.fitWindow; Layout.windowFit), and
+-- the face's top 310 px above the middle (H:181, kept on the screen with what hangs off it). Returns the top padding.
+local function fitChrome(root: Frame, fit: Layout.WindowFit): number
+	local chrome = Theme.fitWindow(root, fit.k)
+	root.Position = UDim2.new(0.5, 0, 0.5, fit.shift)
 	return chrome.top
 end
 
@@ -517,10 +507,11 @@ local function applyLayout()
 	if root == nil or f == nil then
 		return
 	end
-	local top = fitChrome(root, f)
-	local l = InventoryFormat.panelLayout(UIController.screenGui(MODAL_GUI).AbsoluteSize, top, cardSize.width)
+	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
+	local top = fitChrome(root, Layout.windowFit(screen, WINDOW_KIND))
+	local l = InventoryFormat.panelLayout(screen, top, cardSize.width)
 	panelLayout = l
-	root.Size = UDim2.new(0, l.panelWidth, PANEL.heightShare, 0)
+	root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight + Config.UI.Sticker.lip.window) -- the face and its lip
 	f.filterRow.Position = UDim2.fromOffset(0, 0)
 	f.filterRow.Size = UDim2.new(1, 0, 0, l.rowHeight)
 	for _, chip in chips do
@@ -548,10 +539,6 @@ local function applyLayout()
 	if empty then
 		empty.Position = UDim2.fromOffset(l.gridWidth / 2, EMPTY_TOP_PX)
 		empty.Size = UDim2.fromOffset(math.max(0, l.gridWidth - 2 * EMPTY_SIDE_PX), 0)
-	end
-	local close = closeButton
-	if close then
-		close.root.Size = UDim2.fromOffset(l.closeHeight, l.closeHeight) -- UI overhaul: the square red X
 	end
 	layoutDetail()
 	updateColumns()
@@ -1067,7 +1054,7 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	)
 	local errorLabel = detailLabel(scroll, "Error", 1, "Small")
 	errorLabel.Text = Strings.data.loadFailed
-	errorLabel.TextColor3 = Theme.Colors.danger
+	Theme.textOnWindow(errorLabel) -- UI FINAL R3: on the pink body (H:196; Danger is 1.8:1 on it)
 	errorLabel.Visible = false
 	-- The preview in an inset well (its size follows the layout class, layoutDetail).
 	local well = Theme.inset({
@@ -1182,7 +1169,7 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	local ultimate = detailLabel(scroll, "Ultimate", 21, "Small")
 	local elimination = detailLabel(scroll, "Elimination", 22, "Small")
 	for _, secondary in { trail, ultimate, elimination } do
-		secondary.TextColor3 = Theme.Colors.ink2
+		Theme.textOnWindow(secondary) -- UI FINAL R3: on the pink body (H:196; ink2 is 1.4:1 on it)
 	end
 	local price = detailLabel(scroll, "Price", 23, "Body")
 	price.FontFace = Theme.font("Body", Enum.FontWeight.Bold)
@@ -1273,40 +1260,35 @@ end
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
-	local root = Theme.panel({
+	local root = Theme.window({
 		Name = "Squishies",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.new(0, Config.UI.modalMaxWidth, PANEL.heightShare, 0),
 		Parent = parent,
-	}, Theme.Radius.panel, PANEL.padding)
+	}, WINDOW_KIND, PANEL.padding)
 	c:add(root)
 	local rowHeight = Layout.touchBase(TOUCH.minTarget, UIController.scale())
 
-	-- The title: a Strawberry header tab on the panel's top edge (the Squishies tile's colour; fitChrome follows it).
-	local tab = Theme.headerTab(root, Strings.inventory.title, { textKind = TAB_KIND })
-
-	-- Fix batch: no header row. The collected count hangs on the top-left corner and Close on the top-right corner,
-	-- level with the tab (fitChrome places them; drawn over the panel's outline like the tab).
+	-- UI FINAL R3: the band (H:183-189): the title, and the collected count at its right end (the design's header pill,
+	-- H:185; fitChrome lays them out).
 	local collected = Chip.new({ name = "Collected", text = "", parent = root })
-	collected.root.AnchorPoint = Vector2.new(0, 0.5)
-	collected.root.ZIndex = tab.ZIndex
 	collected.root.Visible = false -- shown with its count once the profile is loaded (refreshGrid)
 	c:add(collected)
 	collectedChip = collected
+	local tab = Theme.headerTab(root, Strings.inventory.title, { extra = collected.root :: GuiObject })
+	-- The 76 px X in the band at the window's top-right corner (H:252).
 	local close = Button.new({
 		name = "Squishies_CloseButton",
 		text = Strings.common.close,
 		kind = "close", -- UI overhaul: the chunky red X
-		height = TOUCH.closeButton,
 		parent = root,
 		sound = false, -- closing plays ui.back (UIController.close, reason "button")
 		onActivated = function()
 			UIController.close(SCREEN, "button")
 		end,
 	})
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.ZIndex = tab.ZIndex
+	Theme.attachClose(root, close.root)
 	close.root.Modal = true -- frees the cursor in shift lock / first person (§10.4 step 4)
 	c:add(close)
 	closeButton = close
@@ -1403,6 +1385,7 @@ local function build(parent: Instance): GuiObject
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = empty,
 	}, "Body")
+	Theme.textOnWindow(emptyLabel :: TextLabel) -- UI FINAL R3: on the pink body (H:196)
 	local boxes = Button.new({
 		name = "Squishies_GoToBoxesButton",
 		text = Strings.inventory.goToBoxes,
@@ -1431,6 +1414,7 @@ local function build(parent: Instance): GuiObject
 		Visible = false,
 		Parent = root,
 	}, "H2")
+	Theme.textOnWindow(loadingLabel :: TextLabel)
 
 	panel = root
 	-- Part 8: every size follows the ScreenGui, the layout class and the player's text size.

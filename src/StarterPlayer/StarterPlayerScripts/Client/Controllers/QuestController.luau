@@ -41,6 +41,14 @@
 -- an empty week, and the player's own line (place and wins). Text only, from the existing label kinds; no new art. On
 -- touch the body keeps its scroll bar on screen (UI/Components/ScrollHint, like Settings), so the section under the
 -- quests can be found on a phone.
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the panel is
+-- the design's Quests window (Theme.window "quests", H:350-353: 900 wide, shrunk to fit with its sticker and X,
+-- Layout.windowFit; its height still follows its rows) with its mint band (Theme.headerTab: "QUESTS", H:354; the
+-- sticker, H:378) and the 76 px close X in the band (Theme.attachClose, H:379); fitBody lays the chrome out at the
+-- window's chrome scale (Theme.fitWindow), counts what hangs above in the chrome and places the window as the design
+-- does (Layout.windowShift). The body scrolls with the design's scroll bar (Theme.scrollbar, H:22); the texts on the
+-- pink body (the section heads with a dark icon, the empty line, the Top Wins lines) take the window's text colour
+-- (H:196). The design's tabs and rows come in R8.
 -- Public: open(), debugState().
 
 -- Services
@@ -114,15 +122,13 @@ local CLAIM_REMOTE = "QuestClaim"
 local SWAP_REMOTE = "QuestSwap"
 local MODAL_GUI = "SD_Modal"
 local TOUCH = Config.UI.Touch
-local PANEL_WIDTH = 600
-local MARGIN_PX = 24
-local SCROLLBAR_PX = 6
+local WINDOW_KIND = "quests" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:350-381)
+local SCROLLBAR_PX = Theme.SCROLLBAR_PX -- UI FINAL R3: the design's 12 px bar (H:22)
 local MAX_HEIGHT_SHARE = 0.86 -- the panel never covers more than this share of the screen height (as Settings)
 local CHECK_PX = 18
 -- Foam UI (readings: DESIGN gives no numbers): the body's inner padding keeps the cards' 2.5 px outline inside its
--- clip; Close sits CLOSE_INSET from the panel's right edge; icons and the reward coin in base px.
+-- clip; icons and the reward coin in base px.
 local BODY_PAD_PX = 3
-local CLOSE_INSET = 16
 local SECTION_ICON_PX = 26
 local FOOTER_ICON_PX = 20
 local REWARD_COIN_PX = 18
@@ -278,6 +284,7 @@ local function refreshTopWins()
 				TextXAlignment = Enum.TextXAlignment.Left,
 				Parent = rows.section.list,
 			}, "Body")
+		Theme.textOnWindow(label) -- UI FINAL R3: on the pink body (H:196)
 		rows.lines[i] = label
 		label.Text = text
 		label.Visible = true
@@ -574,8 +581,8 @@ local function newSection(parent: Instance, name: string, order: number, headerT
 		Parent = parent,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, header, Enum.HorizontalAlignment.Left)
-	c:add(IconGlyph.new({ name = "Icon", icon = icon, sizePx = SECTION_ICON_PX, tone = "light", parent = header }))
-	Theme.label({
+	c:add(IconGlyph.new({ name = "Icon", icon = icon, sizePx = SECTION_ICON_PX, tone = "dark", parent = header }))
+	local title = Theme.label({
 		Name = "Text",
 		Text = headerText,
 		LayoutOrder = 1,
@@ -584,6 +591,7 @@ local function newSection(parent: Instance, name: string, order: number, headerT
 		TextWrapped = false,
 		Parent = header,
 	}, "H2")
+	Theme.textOnWindow(title) -- UI FINAL R3: on the pink body (H:196)
 	local list: Frame = Create("Frame", {
 		Name = name,
 		BackgroundTransparency = 1,
@@ -607,20 +615,17 @@ end
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
-	local width = math.min(PANEL_WIDTH, Layout.modalWidth(gui.AbsoluteSize.X, UIController.scale(), MARGIN_PX))
-	local panel = Theme.panel({
+	local panel = Theme.window({
 		Name = "Quests",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(if width > 0 then width else PANEL_WIDTH, 0),
+		Size = UDim2.fromOffset(Layout.windowFit(gui.AbsoluteSize, WINDOW_KIND).width, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Parent = parent,
-	}, Theme.Radius.panel, Theme.Padding.large)
+	}, WINDOW_KIND, Theme.Padding.large)
 	c:add(panel)
-	-- Foam UI: room at the top for Close's lower half, then the header tab (it raises the padding for its own half).
-	local pad = panel:FindFirstChildOfClass("UIPadding") :: UIPadding
-	pad.PaddingTop = UDim.new(0, math.ceil(TOUCH.closeButton / 2) + Theme.Padding.small)
-	local tab = Theme.headerTab(panel, Strings.quest.panelTitle, { accent = "quests" })
+	-- UI FINAL R3: the band (H:353-354) on the window's top (it sets the top padding).
+	Theme.headerTab(panel, Strings.quest.panelTitle)
 	-- The header tab sits on the panel itself, so the rows go in a Content frame with the list.
 	local content: Frame = Create("Frame", {
 		Name = "Content",
@@ -636,23 +641,19 @@ local function build(parent: Instance): GuiObject
 		name = "Quests_CloseButton",
 		text = Strings.common.close,
 		kind = "close", -- UI overhaul: the chunky red X
-		height = TOUCH.closeButton,
 		parent = panel,
 		sound = false, -- a Close button plays ui.back through UIController.close (§18.6)
 		onActivated = function()
 			UIController.close(SCREEN, "button")
 		end,
 	})
-	-- Straddles the panel's top edge at the right, like the tab in the middle.
-	close.root.AnchorPoint = Vector2.new(1, 0.5)
-	close.root.Position = UDim2.new(1, Theme.Padding.large - CLOSE_INSET, 0, -pad.PaddingTop.Offset)
-	close.root.ZIndex = tab.ZIndex
+	Theme.attachClose(panel, close.root) -- UI FINAL R3: the 76 px X in the band (H:379)
 	close.root.Modal = true -- frees the cursor in shift lock / first person
 	c:add(close)
 	closeButton = close
 
 	-- The sections scroll when the screen is too short for them (phones in landscape).
-	local body: ScrollingFrame = Create("ScrollingFrame", {
+	local body: ScrollingFrame = Theme.scrollbar(Create("ScrollingFrame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
@@ -660,11 +661,9 @@ local function build(parent: Instance): GuiObject
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
 		LayoutOrder = 1,
 		Parent = content,
-	})
+	}))
 	-- Top-aligned (fix batch): a centred list taller than the window was centred on the window, so on a phone the first
 	-- card's top sat above the canvas, out of reach, and the last card's bottom was cut.
 	local list = Theme.list(
@@ -698,21 +697,28 @@ local function build(parent: Instance): GuiObject
 		if not (scale > 0) or not (s > 0) or screen.X <= 0 or screen.Y <= 0 then
 			return
 		end
-		local fitWidth = math.min(PANEL_WIDTH, Layout.modalWidth(screen.X, scale, MARGIN_PX))
-		local panelSize = UDim2.fromOffset(if fitWidth > 0 then math.floor(fitWidth) else PANEL_WIDTH, 0)
+		local fit = Layout.windowFit(screen, WINDOW_KIND) -- UI FINAL R3: the design's 900, shrunk to fit
+		local panelSize = UDim2.fromOffset(fit.width, 0)
 		if panel.Size ~= panelSize then
 			panel.Size = panelSize
 		end
-		local above = math.max(tab.AbsoluteSize.Y / s, TOUCH.closeButton) / 2
-		local position = UDim2.new(0.5, 0, 0.5, math.floor(above / 2 + 0.5))
+		-- UI FINAL R3: the band at the chrome scale; the sticker and the X hang above it (H:378-379).
+		local above = Theme.fitWindow(panel, fit.k).above
+		local window = Layout.windowChrome(WINDOW_KIND) :: Layout.WindowChrome
+		local shift =
+			Layout.windowShift(screen.Y / scale, panel.AbsoluteSize.Y / s, window.designShift, above, window.margin)
+		local position = UDim2.new(0.5, 0, 0.5, shift)
 		if panel.Position ~= position then
 			panel.Position = position
 		end
+		-- UI FINAL R3: the face stays within its fitted design height (H:351, windowFit's height); the rest scrolls.
+		-- bodyHeight keeps MAX_HEIGHT_SHARE of the height it is given, hence the division.
+		local room = math.min(screen.Y / scale, (fit.height + window.lip + above) / MAX_HEIGHT_SHARE)
 		local current = body.AbsoluteSize.Y / s
 		local chrome = panel.AbsoluteSize.Y / s - current + above
 		local height = math.ceil(
 			QuestFormat.bodyHeight(
-				screen.Y / scale,
+				room,
 				list.AbsoluteContentSize.Y / s + 2 * BODY_PAD_PX,
 				chrome,
 				MAX_HEIGHT_SHARE,
@@ -743,6 +749,7 @@ local function build(parent: Instance): GuiObject
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = body,
 	}, "Body")
+	Theme.textOnWindow(emptyLabel :: TextLabel) -- UI FINAL R3: on the pink body (H:196)
 	starterSection = newSection(body, "Starter", 4, Strings.quest.section.starter, "quests")
 	-- Batch 3 (review #10): Top Wins This Week, after the quests.
 	local winsSection = newSection(body, "TopWins", 6, Strings.board.title, "duel")
@@ -762,6 +769,9 @@ local function build(parent: Instance): GuiObject
 			Parent = winsSection.list,
 		}, "Body", Enum.FontWeight.Bold),
 	}
+	local wins = topWins :: TopWinsRows
+	Theme.textOnWindow(wins.note) -- UI FINAL R3: on the pink body (H:196)
+	Theme.textOnWindow(wins.you)
 	-- The footer: the clock and "New quests in {h}h {m}m" in an inset pill.
 	local footer = Theme.inset({
 		Name = "FooterPill",

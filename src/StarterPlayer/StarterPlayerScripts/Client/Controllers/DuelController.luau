@@ -173,6 +173,14 @@
 -- 180 of Luau's 200). The own hit marker also shows in a match (onHitConfirmed). Review fix: the match hides the top
 -- bar with hideBar(h, "match", ...) (so a result card's layout never shows it again) and closes a 1v1 result card
 -- left open from a duel just before (closeResult).
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; `H:n` = "Squishy Duels HUD.dc.html" line n): the forfeit
+-- dialog is a Theme.window (kind "duel": the DUEL pink band, H:126, with the duel sticker and Settings' small band, a
+-- reading: the design has no forfeit dialog) of the kind's 600 px width (the nearest design window, H:426), shrunk
+-- to fit with its chrome at the window's chrome scale like every window (Layout.windowFit, Theme.fitWindow); the
+-- question is its band's title; its sticker flies in on every open (Theme.playSticker); placeDialog keeps what the
+-- sticker hangs above it (Theme.fittedChrome) on the screen; its note on the pink body takes the window's text colour
+-- (H:196).
+-- AFFECTED 2026-10-15: a 1v1 dialog; the TDM / FFA leave flow comes later (work/tdmffa/PLAN.md).
 
 -- Services
 
@@ -357,7 +365,6 @@ local LAYOUT = table.freeze({
 	-- the READY chip centred on the bar clears the caption; the READY chip's height.
 	METER_ROW_GAP = 8,
 	READY_CHIP_PX = 24,
-	DIALOG_WIDTH = 440,
 	DIALOG_ANCHOR_Y = 0.5, -- the forfeit dialog's centre, as built (moved under the top bar when it reaches it)
 	RESULT_WIDTH = 460,
 	RESULT_SLIDE_PX = 40,
@@ -973,7 +980,7 @@ local function placeDialog(h: Hud)
 		screen.Y / scale,
 		barBottomIn(h, gui, scale),
 		h.dialog.AbsoluteSize.Y / scale,
-		h.dialogTab.AbsoluteSize.Y / 2 / scale,
+		Theme.fittedChrome(h.dialog).above, -- UI FINAL R3: its sticker (and the X's room) above it
 		LAYOUT.DIALOG_ANCHOR_Y
 	)
 	setIfChanged(h.dialog, "Position", UDim2.new(0.5, 0, 0, math.floor(centre + 0.5)))
@@ -1019,6 +1026,7 @@ local function openDialog()
 	h.dialogConfirm.root.Modal = true
 	require(script.Parent.FirstPersonController).setDialogOpen(true)
 	placeDialog(h) -- again every frame while it shows (updateFrame), once its size is known
+	Theme.playSticker(h.dialog) -- UI FINAL R3: sdStick on every open (H:251)
 	dialogPop = UIController.pushBack(closeDialog)
 	Focus.select(h.dialogCancel.root)
 end
@@ -1027,22 +1035,32 @@ end
 -- Ultimate button (SD_Touch, 12) sat over the right half of the dialog and took the taps meant for Forfeit; above it,
 -- and Active (so a tap on its background never reaches a touch button under it), both buttons are always reachable.
 -- It is still not a modal (duels never call ControlsController.block, §11.7); Back / ButtonB still close it.
--- Foam UI: the question is the panel's header tab (Theme.headerTab); the note and the buttons sit in Body, since a
--- panel with a header tab holds no UIListLayout itself.
-local function buildDialog(gui: Instance, c: Cleanup.Cleanup): (Frame, Frame, TextLabel, Button.Button, Button.Button)
-	local dialog = Theme.panel({
+-- Foam UI: the question is the panel's header tab (Theme.headerTab; UI FINAL R3: the window's band); the note and the
+-- buttons sit in Body, since a panel with a header tab holds no UIListLayout itself.
+local function buildDialog(gui: ScreenGui, c: Cleanup.Cleanup): (Frame, Frame, TextLabel, Button.Button, Button.Button)
+	local dialog = Theme.window({
 		Name = "ForfeitDialog",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, LAYOUT.DIALOG_ANCHOR_Y),
-		Size = UDim2.fromOffset(LAYOUT.DIALOG_WIDTH, 0),
+		Size = UDim2.fromOffset(Config.UI.Sticker.window.kinds.duel.width, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		Active = true,
 		Visible = false,
 		Parent = gui,
-	}, Theme.Radius.panel, Theme.Padding.large)
+	}, "duel", Theme.Padding.large)
 	c:add(dialog)
 	Focus.prepareGroup(dialog)
 	local tab = Theme.headerTab(dialog, Strings.duel.forfeitConfirm)
+	-- UI FINAL R3: the kind's width and chrome scale for this screen (Layout.windowFit), again when the screen changes
+	-- (not in the every-frame placeDialog: fitWindow measures text).
+	local Layout = require(Client.UI.Layout)
+	local function fitDialog()
+		local fit = Layout.windowFit(gui.AbsoluteSize, "duel")
+		dialog.Size = UDim2.fromOffset(fit.width, 0)
+		Theme.fitWindow(dialog, fit.k)
+	end
+	fitDialog()
+	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitDialog))
 	local body: Frame = Create("Frame", {
 		Name = "Body",
 		BackgroundTransparency = 1,
@@ -1057,6 +1075,7 @@ local function buildDialog(gui: Instance, c: Cleanup.Cleanup): (Frame, Frame, Te
 		TextXAlignment = Enum.TextXAlignment.Center,
 		Parent = body,
 	}, "Body")
+	Theme.textOnWindow(note) -- UI FINAL R3: on the pink body (H:196)
 	local row: Frame = Create("Frame", {
 		Name = "Buttons",
 		LayoutOrder = 2,

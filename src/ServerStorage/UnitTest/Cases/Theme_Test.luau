@@ -41,6 +41,18 @@
 --   * a text role with `soft` (the toast's H:175) mirrors a soft drop: the ink at its alpha of the label's opacity,
 --     no outline on it; softShadow puts SD_SoftShadow (ZIndex 0) under the target, the 9-slice picture or the
 --     tinted glow.
+-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3; Config.UI.Sticker.window):
+--   * window(props, kind, padding): the pink body with one 5 px inner ink border, radius 32, the ink lip under the
+--     face (the bottom padding is the padding plus the lip), Active; the Squishies window's inner ring (H:182);
+--   * headerTab on a window: the band (H:183-184) across its top inside the border, its face and dots in a clip
+--     holder with 27 px corners, the kind's gradient with its highlight and bevel, the title in capitals in its role
+--     from the band's padding, the extra at its right end, the sticker (H:251) at its spot with its drop shadow;
+--     fitWindow scales the band, the paddings, the title (never under 16 base px) and the sticker with the chrome
+--     scale and sets the window's top padding; attachClose puts the X at (right -22, top -22) (H:252); every kind
+--     names Palette colours and a picture slot; headerTab on a panel stays the tab without the Candy shine and
+--     glow; shine and bubbles are gone;
+--   * scrim: a clear, unselectable, full-screen TextButton with the radial picture or its fallback (H:178);
+--     scrollbar: 12 px, the design's thumb colour (H:22); windowShadow: the window's soft shadow (H:182).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -130,6 +142,20 @@ local STICKER_HEX: { [string]: string } = {
 	StickerUltTop = "#FFD79A",
 	StickerUltText = "#4A2600",
 	StickerThrowChip = "#4A3A6E",
+	-- UI FINAL R3 (the window frame).
+	StickerHeaderPinkEnd = "#FF4F8E",
+	StickerHeaderCyanTop = "#8FF1F8",
+	StickerHeaderCyanEnd = "#1FB2D2",
+	StickerHeaderGoldTop = "#FFE97A",
+	StickerHeaderGoldEnd = "#FFA41C",
+	StickerHeaderMintEnd = "#22B383",
+	StickerHeaderPurpleTop = "#CDB2FF",
+	StickerHeaderPurpleEnd = "#8052EE",
+	StickerHeaderLilacTop = "#C9B6FF",
+	StickerHeaderLilacEnd = "#8B63FF",
+	StickerScrimPink = "#FF96D2",
+	StickerStickerShadow = "#140A1E",
+	StickerShadowWindow = "#0F0819",
 }
 local MIN_HUE_GAP_DEG = 20
 local MIN_TEXT_CONTRAST = 4.5
@@ -528,31 +554,34 @@ return function(t: Context)
 		frame:Destroy()
 	end)
 
-	t.test("headerTab: a jelly plate on the panel's top edge, sized from its title, lighting the header", function()
-		local panel = Theme.panel({ Name = "Quests", Size = UDim2.fromOffset(400, 300) }, Theme.Radius.panel, 12)
-		local tab, label = Theme.headerTab(panel, "Quests")
-		expect.equal(tab.Parent, panel)
-		expect.equal(tab.Name, "HeaderTab")
-		expect.equal(label.Text, "Quests")
-		local pad = panel:FindFirstChildOfClass("UIPadding") :: UIPadding
-		expect.truthy(pad.PaddingTop.Offset > 12) -- room for the tab's lower half
-		expect.equal(tab.Position.Y.Offset, -pad.PaddingTop.Offset) -- centred on the panel's top edge
-		expect.equal(tab.AnchorPoint, Vector2.new(0.5, 0.5))
-		expect.truthy(sameColor(label.TextColor3, Color3.new(1, 1, 1))) -- H2 on Coral: outlined white
-		-- Sized from the title (an overlay inside an automatically sized plate would inflate it).
-		expect.equal(tab.AutomaticSize, Enum.AutomaticSize.None)
-		expect.truthy(tab.Size.X.Offset >= Theme.textWidth("Quests", "H2"))
-		local narrow = tab.Size.X.Offset
-		label.Text = "A much longer title"
-		task.wait() -- property signals are deferred: the plate fits itself on the next resumption
-		expect.truthy(tab.Size.X.Offset > narrow)
-		expect.truthy(tab:FindFirstChild("SD_Shine") ~= nil)
-		expect.truthy(tab:FindFirstChild("SD_Rim") ~= nil)
-		local glow = panel:FindFirstChild("SD_HeaderGlow") :: Frame
-		expect.truthy(glow)
-		expect.equal(glow.Size.Y.Offset > pad.PaddingTop.Offset, true)
-		panel:Destroy()
-	end)
+	t.test(
+		"headerTab on a panel: a plate on its top edge, sized from its title (UI FINAL R3: no shine, no glow)",
+		function()
+			local panel = Theme.panel({ Name = "Quests", Size = UDim2.fromOffset(400, 300) }, Theme.Radius.panel, 12)
+			local tab, label = Theme.headerTab(panel, "Quests")
+			expect.equal(tab.Parent, panel)
+			expect.equal(tab.Name, "HeaderTab")
+			expect.equal(label.Text, "Quests")
+			local pad = panel:FindFirstChildOfClass("UIPadding") :: UIPadding
+			expect.truthy(pad.PaddingTop.Offset > 12) -- room for the tab's lower half
+			expect.equal(tab.Position.Y.Offset, -pad.PaddingTop.Offset) -- centred on the panel's top edge
+			expect.equal(tab.AnchorPoint, Vector2.new(0.5, 0.5))
+			expect.truthy(sameColor(label.TextColor3, Color3.new(1, 1, 1))) -- H2 on Coral: outlined white
+			-- Sized from the title (an overlay inside an automatically sized plate would inflate it).
+			expect.equal(tab.AutomaticSize, Enum.AutomaticSize.None)
+			expect.truthy(tab.Size.X.Offset >= Theme.textWidth("Quests", "H2"))
+			local narrow = tab.Size.X.Offset
+			label.Text = "A much longer title"
+			task.wait() -- property signals are deferred: the plate fits itself on the next resumption
+			expect.truthy(tab.Size.X.Offset > narrow)
+			expect.truthy(tab:FindFirstChild("SD_Rim") ~= nil)
+			-- UI FINAL R3: the Candy shine stripes and header glow went with the design's window frame.
+			expect.equal(tab:FindFirstChild("SD_Shine"), nil)
+			expect.equal(panel:FindFirstChild("SD_HeaderGlow"), nil)
+			expect.falsy(Theme.isWindow(panel))
+			panel:Destroy()
+		end
+	)
 
 	t.test("inset: the well, a recessed field with its 4 px ink border drawn inside (H:236)", function()
 		local field = Theme.inset({ Name = "Stats" })
@@ -592,22 +621,16 @@ return function(t: Context)
 		label:Destroy()
 	end)
 
-	t.test("rim, shine and bubbles: one each, out of the way of layouts", function()
+	t.test("rim: one, after the outline (UI FINAL R3: the Candy shine and bubbles are gone)", function()
 		local frame = Instance.new("Frame")
 		local outline = Theme.stroke(Theme.Colors.inkUI, 3, frame)
 		local rim = Theme.rim(frame)
 		expect.equal(Theme.rim(frame), rim) -- reused
 		expect.equal(frame:FindFirstChildOfClass("UIStroke"), outline)
-		local shine = Theme.shine(frame, 12)
-		expect.equal(Theme.shine(frame, 12), shine)
-		expect.falsy(shine.Active)
-		local bubbles = Theme.bubbles(frame)
-		expect.truthy(bubbles ~= nil and (bubbles :: Frame).ZIndex == 0)
 		frame:Destroy()
-		local listed = Instance.new("Frame")
-		Instance.new("UIListLayout").Parent = listed
-		expect.equal(Theme.bubbles(listed), nil) -- would become a list item
-		listed:Destroy()
+		local theme = Theme :: any
+		expect.equal(theme.shine, nil)
+		expect.equal(theme.bubbles, nil)
 	end)
 
 	t.test("setSurface repaints a panel in exact colours, and nothing else", function()
@@ -860,5 +883,301 @@ return function(t: Context)
 		end
 		expect.equal(Theme.softShadow(wrapper, "img.fx.shadowWindow", spec), shadow) -- reused
 		wrapper:Destroy()
+	end)
+
+	-- UI FINAL R3 (the window frame, plan work/ui/PLAN.md R3) -------------------------------------------------------
+
+	local WINDOW = Config.UI.Sticker.window
+	local WHITE, BLACK = Color3.new(1, 1, 1), Color3.new(0, 0, 0)
+
+	local function cornerOf(object: Instance): number?
+		local corner = object:FindFirstChildOfClass("UICorner")
+		return if corner then corner.CornerRadius.Offset else nil
+	end
+
+	t.test("window (H:182): the pink body, its 5 px inner ink border, radius 32, the lip and its padding", function()
+		local window = Theme.window({ Name = "Quests", Size = UDim2.fromOffset(900, 400) }, "quests", 20)
+		expect.equal(window.Name, "Quests")
+		expect.truthy(Theme.isWindow(window))
+		expect.equal(Theme.windowKind(window), "quests")
+		expect.truthy(window.Active) -- a click on the window never reaches the scrim under it
+		local list = strokes(window)
+		expect.equal(#list, 1)
+		expect.equal(list[1].Thickness, Theme.Sticker.border.heavy)
+		expect.truthy(sameColor(list[1].Color, Theme.Colors.inkUI))
+		local position = innerPosition(list[1])
+		if position ~= nil then
+			expect.equal(position, Enum.BorderStrokePosition.Inner)
+		end
+		expect.equal(cornerOf(window), Theme.Sticker.radius.window)
+		local gradient = window:FindFirstChild("SD_Foam") :: UIGradient
+		expect.truthy(sameColor(gradient.Color.Keypoints[1].Value, Palette.StickerWindowTop))
+		expect.truthy(hasColor(gradient.Color, Palette.StickerWindowBottom))
+		expect.truthy(sameColor(gradient.Color.Keypoints[#gradient.Color.Keypoints].Value, Theme.Colors.inkUI))
+		-- The padding on every side of the face; the lip (10, H:182) under it.
+		local pad = window:FindFirstChildOfClass("UIPadding") :: UIPadding
+		expect.equal(pad.PaddingLeft.Offset, 20)
+		expect.equal(pad.PaddingRight.Offset, 20)
+		expect.equal(pad.PaddingBottom.Offset, 20 + Theme.Sticker.lip.window)
+		expect.equal(window:FindFirstChild("SD_InnerRing"), nil) -- the inner ring is the Squishies window's
+		window:Destroy()
+		-- H:182: the Squishies window's inset 0 0 0 3px rgba(255,255,255,.05), inside the border.
+		local squishies = Theme.window({ Size = UDim2.fromOffset(1060, 660) }, "squishies", 12)
+		expect.truthy(squishies:FindFirstChild("SD_InnerRing") ~= nil)
+		local ring = squishies:FindFirstChild("SD_InnerRing") :: Frame
+		expect.equal(ring.ZIndex, 0)
+		expect.equal(cornerOf(ring), Theme.Sticker.radius.window - Theme.Sticker.border.heavy)
+		local ringStroke = ring:FindFirstChildOfClass("UIStroke") :: UIStroke
+		expect.equal(ringStroke.Thickness, WINDOW.innerRing.px)
+		expect.near(ringStroke.Transparency, 1 - WINDOW.innerRing.alpha, 1e-6)
+		expect.truthy(sameColor(ringStroke.Color, WHITE))
+		expect.equal(ring.Position, UDim2.fromOffset(5 - 12, 5 - 12))
+		expect.equal(ring.Size, UDim2.new(1, 24 - 10, 1, 12 + 22 - 10 - 10))
+		squishies:Destroy()
+		local panel = Theme.panel({})
+		expect.falsy(Theme.isWindow(panel))
+		expect.equal(Theme.windowKind(panel), nil)
+		expect.deepEqual(Theme.fitWindow(panel), { top = 0, above = 0, band = 0, k = 1 })
+		panel:Destroy()
+	end)
+
+	t.test(
+		"headerTab on a window: the design's band (H:183-184), the title in capitals, the sticker (H:251)",
+		function()
+			local window = Theme.window({ Name = "Quests", Size = UDim2.fromOffset(900, 400) }, "quests", 20)
+			local band, title = Theme.headerTab(window, "Quests")
+			expect.equal(band.Name, "HeaderBand")
+			expect.equal(band.Parent, window)
+			expect.equal(title.Parent, band)
+			expect.equal(title.Text, "QUESTS") -- Q5: capitals (H:354)
+			expect.equal(title:GetAttribute("SD_TextKind"), Theme.Sticker.text.windowTitle.kind)
+			expect.equal(title.TextXAlignment, Enum.TextXAlignment.Left)
+			expect.falsy(title.TextWrapped)
+			-- Sized from its measure, not AutomaticSize (the Studio sheet: under a UIScale above 1 an automatic label's
+			-- box grows by the scale again, so the 1920 x 1080 Grip title's box reached under the X).
+			expect.equal(title.AutomaticSize, Enum.AutomaticSize.None)
+			expect.truthy(title.Size.X.Offset >= Theme.textWidth("QUESTS", "Window")) -- the windowTitle role's kind
+			expect.truthy(title.Size.Y.Offset >= Theme.lineHeight("Window") - 1e-6)
+			local spec = WINDOW.kinds.quests
+			local b = WINDOW.band
+			local height = math.ceil(math.max(b.height, Theme.lineHeight("Window") + 2 * b.titlePad))
+			expect.equal(height, 98) -- the design's band at the default text size
+			local chrome = Theme.fittedChrome(window)
+			expect.deepEqual(chrome, { top = 5 + 98 + 20, above = 62, band = 98, k = 1 })
+			local pad = window:FindFirstChildOfClass("UIPadding") :: UIPadding
+			expect.equal(pad.PaddingTop.Offset, 5 + 98 + 20) -- the border, the band, the body's padding
+			-- The band covers the window's top (its UIPadding undone), the face inside the 5 px border.
+			expect.equal(band.Position, UDim2.fromOffset(-20, -123))
+			expect.equal(band.Size, UDim2.new(1, 40, 0, 5 + 98))
+			local clip = band:FindFirstChild("SD_BandClip") :: Frame
+			expect.truthy(clip.ClipsDescendants)
+			expect.equal(clip.Position, UDim2.fromOffset(5, 5))
+			expect.equal(clip.Size, UDim2.new(1, -10, 0, 98))
+			-- Its top corners rounded 27 (H:182: 32 less the border): the face is taller than the clip by the radius.
+			local face = clip:FindFirstChild("SD_BandFace") :: Frame
+			expect.equal(cornerOf(face), b.cornerRadius)
+			expect.equal(face.Size, UDim2.new(1, 0, 0, 98 + b.cornerRadius))
+			local stops = (face:FindFirstChild("SD_Foam") :: UIGradient).Color
+			expect.truthy(sameColor(stops.Keypoints[1].Value, Palette.StickerMintTop:Lerp(WHITE, spec.highlightAlpha)))
+			expect.truthy(hasColor(stops, Palette.StickerMintTop))
+			expect.truthy(hasColor(stops, Palette.StickerHeaderMintEnd))
+			expect.truthy(hasColor(stops, Palette.StickerHeaderMintEnd:Lerp(BLACK, b.bevelAlpha)))
+			expect.truthy(sameColor(stops.Keypoints[#stops.Keypoints].Value, Theme.Colors.inkUI))
+			if AssetTable.image("img.fx.dots") then
+				local dots = clip:FindFirstChild("SD_Dots") :: ImageLabel
+				expect.equal(dots.ScaleType, Enum.ScaleType.Tile)
+				expect.equal(dots.TileSize, UDim2.fromOffset(b.dotsTile, b.dotsTile))
+				expect.near(dots.ImageTransparency, 1 - spec.dotsAlpha, 1e-6)
+				-- H:183: the dots are background; the band's 5 px bottom border paints over them.
+				local edge = clip:FindFirstChild("SD_BandEdge") :: Frame
+				expect.truthy(edge.ZIndex > dots.ZIndex)
+				expect.equal(edge.Size, UDim2.new(1, 0, 0, b.border))
+				expect.equal(edge.Position, UDim2.fromScale(0, 1))
+				expect.equal(edge.AnchorPoint, Vector2.new(0, 1))
+			end
+			-- The title from the padding's 176 (H:183), centred on the band above its bottom border.
+			expect.equal(title.Position, UDim2.fromOffset(5 + b.padLeft, math.round(5 + (98 - b.border) / 2)))
+			expect.equal((title:FindFirstChild("SD_TitleScale") :: UIScale).Scale, 1)
+			if AssetTable.image("img.nav.quests") then
+				local sticker = band:FindFirstChild("SD_Sticker") :: Frame
+				expect.equal(sticker.Size, UDim2.fromOffset(190, 190))
+				expect.equal(sticker.Position, UDim2.fromOffset(-40 + 95, -62 + 95)) -- H:251: left -40, top -62
+				local bob = (sticker:FindFirstChild("SD_Stick") :: Frame):FindFirstChild("SD_StickerBob") :: Frame
+				local shadow = bob:FindFirstChild("SD_StickerShadow") :: ImageLabel
+				expect.truthy(sameColor(shadow.ImageColor3, Palette.StickerStickerShadow))
+				expect.near(shadow.ImageTransparency, 1 - WINDOW.sticker.shadowAlpha, 1e-6)
+				expect.equal(shadow.Position, UDim2.fromOffset(0, 7))
+				expect.truthy(bob:FindFirstChild("SD_StickerImage") ~= nil)
+			end
+			-- A caller's text shows in capitals too.
+			title.Text = "Daily"
+			task.wait() -- property signals are deferred
+			expect.equal(title.Text, "DAILY")
+			-- A smaller chrome (a phone): the band, the padding and the sticker shrink; the title too, never under 16.
+			local half = Theme.fitWindow(window, 0.5)
+			expect.deepEqual(half, { top = 5 + 49 + 20, above = 31, band = 49, k = 0.5 })
+			expect.equal(pad.PaddingTop.Offset, 74)
+			local titleScale = (title:FindFirstChild("SD_TitleScale") :: UIScale).Scale
+			expect.truthy(titleScale <= 0.5 + 1e-6 and titleScale >= 16 / Config.UI.TextSize.Window - 1e-6)
+			if AssetTable.image("img.nav.quests") then
+				local sticker = band:FindFirstChild("SD_Sticker") :: Frame
+				expect.equal(sticker.Size, UDim2.fromOffset(95, 95))
+				expect.equal(sticker.Position, UDim2.fromOffset(math.round(-20 + 47.5), math.round(-31 + 47.5)))
+			end
+			expect.deepEqual(Theme.fittedChrome(window), half) -- the last fit
+			-- The close X in the band at (right -22, top -22) of the window (H:252), above the band's parts.
+			local x = Instance.new("TextButton")
+			Theme.attachClose(window, x)
+			expect.equal(x.Parent, band)
+			expect.equal(x.AnchorPoint, Vector2.new(1, 0))
+			expect.equal(x.Position, UDim2.new(1, 22, 0, -22))
+			expect.truthy(x.ZIndex > title.ZIndex)
+			window:Destroy()
+		end
+	)
+
+	t.test("headerTab on a window: the extra (H:185), the small band (H:428), a window without a sticker", function()
+		local squishies = Theme.window({ Size = UDim2.fromOffset(1060, 660) }, "squishies", 12)
+		local chip = Instance.new("Frame")
+		local band = Theme.headerTab(squishies, "Squishies", { extra = chip })
+		expect.equal(chip.Parent, band)
+		expect.equal(chip.AnchorPoint, Vector2.new(1, 0.5))
+		expect.equal(chip.Position.X, UDim.new(1, -(5 + WINDOW.band.padRight)))
+		-- With the X (H:252: 76 px at right -22, so it reaches 54 px into the window) the design's 110 stays at full
+		-- size; a small chrome keeps the extra a gap clear of the X instead of 110 x k.
+		local x = Instance.new("TextButton")
+		x.Size = UDim2.fromOffset(76, 76)
+		Theme.attachClose(squishies, x)
+		expect.equal(chip.Position.X, UDim.new(1, -(5 + WINDOW.band.padRight)))
+		Theme.fitWindow(squishies, 0.38)
+		local reach = WINDOW.close.face - WINDOW.close.right
+		expect.truthy(-chip.Position.X.Offset >= reach + math.round(WINDOW.band.gap * 0.38))
+		squishies:Destroy()
+		-- Settings (H:428-451): 92 high, the settingsTitle role, 140 / 100, the 150 px sticker at (-30, -46).
+		local settings = Theme.window({ Size = UDim2.fromOffset(600, 400) }, "settings", 20)
+		local settingsBand, settingsTitle = Theme.headerTab(settings, "Settings")
+		expect.equal(settingsTitle:GetAttribute("SD_TextKind"), Theme.Sticker.text.settingsTitle.kind)
+		local small = Theme.fittedChrome(settings)
+		expect.equal(small.band, math.ceil(math.max(92, Theme.lineHeight("WindowSmall") + 2 * WINDOW.band.titlePad)))
+		expect.equal(small.above, 46)
+		expect.equal(settingsTitle.Position.X.Offset, 5 + WINDOW.band.smallPadLeft)
+		if AssetTable.image("img.nav.settings") then
+			local sticker = settingsBand:FindFirstChild("SD_Sticker") :: Frame
+			expect.equal(sticker.Size, UDim2.fromOffset(150, 150))
+			expect.equal(sticker.Position, UDim2.fromOffset(-30 + 75, -46 + 75))
+		end
+		-- A caller that sizes the window after fitting it: the band fits again (the title's room follows the width).
+		local titleScale = settingsTitle:FindFirstChild("SD_TitleScale") :: UIScale
+		local before = titleScale.Scale
+		settings.Size = UDim2.fromOffset(260, 400)
+		task.wait() -- property signals are deferred
+		expect.truthy(titleScale.Scale < before)
+		settings:Destroy()
+		-- The Grip panel (a reading: no sticker): 110 on both sides; only the X hangs above it.
+		local grip = Theme.window({ Size = UDim2.fromOffset(600, 400) }, "grip", 20)
+		local gripBand, gripTitle = Theme.headerTab(grip, "Grip Training")
+		expect.equal(gripBand:FindFirstChild("SD_Sticker"), nil)
+		expect.equal(gripTitle.Position.X.Offset, 5 + WINDOW.band.plainPad)
+		expect.equal(Theme.fittedChrome(grip).above, WINDOW.close.top)
+		grip:Destroy()
+	end)
+
+	t.test("headerTab on a window: a tall extra stays inside the band on a small chrome", function()
+		-- Inspect's 57 px Close pill at an 844 x 311 phone's chrome (k .49; the Studio component sheet found it 2.5 px
+		-- over the band's top): the band grows so the centred extra clears its top and its 5 px bottom border.
+		local inspect = Theme.window({ Size = UDim2.fromOffset(924, 318) }, "inspect", 12)
+		local pill = Instance.new("Frame")
+		pill.Size = UDim2.fromOffset(126, 57)
+		Theme.headerTab(inspect, "Cupcake Axolotl", { name = "NameTab", extra = pill })
+		local chrome = Theme.fitWindow(inspect, 0.49)
+		local border = Theme.Sticker.border.heavy
+		local centre = pill.Position.Y.Offset
+		expect.truthy(centre - 57 / 2 >= border) -- under the band's top (the clip starts inside the window's border)
+		expect.truthy(centre + 57 / 2 <= border + chrome.band - WINDOW.band.border + 0.5) -- whole-px centring
+		inspect:Destroy()
+	end)
+
+	t.test("every window kind names Palette colours and, with a sticker, a picture slot", function()
+		local keys: { [string]: boolean } = {}
+		for _, slot in AssetTable.all() do
+			keys[slot.key] = true
+		end
+		for name, kind in WINDOW.kinds do
+			for _, field in { "top", "bottom" } do
+				if typeof(Palette[kind[field]]) ~= "Color3" then
+					error(`window kind {name}: Palette.{kind[field]} is not a colour`)
+				end
+			end
+			if kind.sticker ~= nil and not keys[kind.sticker] then
+				error(`window kind {name}: {kind.sticker} is not an AssetTable slot`)
+			end
+		end
+	end)
+
+	t.test("scrim (H:178): a clear full-screen TextButton with the radial picture or its fallback", function()
+		local scrim = Theme.scrim({ Name = "Dimmer" })
+		expect.truthy(scrim:IsA("TextButton"))
+		expect.equal(scrim.Text, "")
+		expect.falsy(scrim.AutoButtonColor)
+		expect.truthy(scrim.Active)
+		expect.falsy(scrim.Selectable)
+		expect.equal(scrim.Size, UDim2.fromScale(1, 1))
+		if AssetTable.image("img.fx.radial.scrimWindow") then
+			expect.equal(scrim.BackgroundTransparency, 1)
+			expect.truthy(scrim:FindFirstChild("SD_Radial") ~= nil)
+		else
+			expect.truthy(sameColor(scrim.BackgroundColor3, Palette.StickerScrimPurple))
+			expect.near(scrim.BackgroundTransparency, 1 - WINDOW.scrim.outerAlpha, 1e-4)
+			if AssetTable.image("img.fx.glow") then
+				local glow = scrim:FindFirstChild("SD_Glow") :: ImageLabel
+				expect.truthy(sameColor(glow.ImageColor3, Palette.StickerScrimPink))
+				expect.near(glow.ImageTransparency, 1 - WINDOW.scrim.innerAlpha, 1e-4)
+				expect.falsy(glow.Active)
+			end
+		end
+		scrim:Destroy()
+	end)
+
+	t.test("scrollbar (H:22) and the window's soft shadow (H:182)", function()
+		local list = Instance.new("ScrollingFrame")
+		expect.equal(Theme.scrollbar(list), list)
+		expect.equal(list.ScrollBarThickness, 12)
+		expect.equal(Theme.SCROLLBAR_PX, 12)
+		expect.truthy(sameColor(list.ScrollBarImageColor3, Palette.StickerScrollThumb))
+		list:Destroy()
+		-- The thumb shows where it sits (3:1, a UI part): the design's colour on both pink stops; in a well (#5B36D9,
+		-- where that colour is 1.1:1) ScrollHint's "well" tone keeps the light thumb.
+		for _, stop in { Palette.StickerWindowTop, Palette.StickerWindowBottom } do
+			expect.truthy(contrast(Theme.Colors.scrollThumb, stop) >= 3)
+		end
+		expect.truthy(contrast(Theme.Colors.ink2, Theme.Colors.biscuit) >= 3)
+		local wrapper = Instance.new("Frame")
+		local shadow = Theme.windowShadow(wrapper)
+		if AssetTable.image("img.fx.shadowWindow") then
+			expect.equal((shadow :: ImageLabel).ScaleType, Enum.ScaleType.Slice)
+		elseif AssetTable.image("img.fx.glow") then
+			local made = shadow :: ImageLabel
+			expect.truthy(sameColor(made.ImageColor3, Palette.StickerShadowWindow))
+			expect.near(made.ImageTransparency, 1 - WINDOW.shadow.alpha, 1e-4)
+			expect.equal(made.Position, UDim2.fromOffset(-70, 34 - 70))
+		end
+		wrapper:Destroy()
+	end)
+
+	t.test("ScrollHint tones (UI FINAL R3): the design's thumb on a window body, the light one in a well", function()
+		local ScrollHint = t.requireClient("UI/Components/ScrollHint")
+		local holder = Instance.new("Frame")
+		local scroll = Instance.new("ScrollingFrame")
+		scroll.Parent = holder
+		local thumbs: { [string]: Color3 } = { window = Theme.Colors.scrollThumb, well = Theme.Colors.ink2 }
+		for tone, thumb in thumbs do
+			local hint = ScrollHint.new({ scroll = scroll, parent = holder, tone = tone })
+			expect.truthy(sameColor((hint.root:FindFirstChild("Thumb") :: Frame).BackgroundColor3, thumb))
+			hint:destroy()
+		end
+		local default = ScrollHint.new({ scroll = scroll, parent = holder }) -- no tone: a window body
+		expect.truthy(sameColor((default.root:FindFirstChild("Thumb") :: Frame).BackgroundColor3, thumbs.window))
+		default:destroy()
+		holder:Destroy()
 	end)
 end
