@@ -25,6 +25,7 @@
 -- three Grip texts that named capsules (grip.panelIntro, grip.intro, grip.idleBody).
 -- Pens3 phase 3: the capsule texts are gone (reason.capsule.*, onboarding.capsule, the capsule card, the capsule goals,
 -- base.capsuleLevel / unlockPrice); capsule.power / powerNote are squishy.power / powerNote now (same texts).
+-- Pens3 phase 4 ([P] texts): away.* (the coins-while-away pop-up).
 
 export type FormatArgs = { [string]: any }
 
@@ -1086,6 +1087,17 @@ local Strings = {
 			object = "Pen space",
 		},
 		rate = "+{coins}/s",
+	},
+
+	-- Coins while away (pens3 phase 4): the pop-up's line under the Coins (PenController; a stand-in on the shop's
+	-- congrats overlay). {time} = hours / hoursMinutes / minutes / underMinute, {h} and {m} whole hours and minutes.
+	-- A gift, not a deal: no countdown and nothing to claim (the Coins are already in the pill).
+	away = {
+		body = "Your pen kept earning while you were away ({time}).",
+		hours = "{h} h",
+		hoursMinutes = "{h} h {m} min",
+		minutes = "{m} min",
+		underMinute = "less than a minute",
 	},
 
 	-- Collection display (§7.6, §7.7).

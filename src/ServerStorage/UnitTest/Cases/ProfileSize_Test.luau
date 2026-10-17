@@ -5,7 +5,8 @@
 -- squishy owned (14 since the 2026-10-09 overhaul), 3 quests, 4 weekly quests (2026-10-17), every starter task and
 -- onboarding step, the v2 Grip block,
 -- an old save's 4 capsules at the top level (unknown since pens3 phase 2), a full pen (pens3 phase 1: toyBoxMax +
--- placedMax = 71 items, each Rainbow Galaxy at the top level with an id near 2^53), and long worst-case values
+-- placedMax = 71 items, each Rainbow Galaxy at the top level with an id near 2^53; phase 4: its awayRate a large
+-- fractional Coins a second), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -142,7 +143,8 @@ return function(t: Context)
 		-- Pens3 phase 1: the fullest pen (every Toy Box and placed spot), every squishy at its top, the longest ids.
 		local pen = Config.Economy.Pen
 		local count = pen.toyBoxMax + pen.placedMax
-		p.pen = { spots = pen.maxSpots, nextId = BIG_COUNTER, items = {} }
+		-- Pens3 phase 4: the rate at the last save, large and fractional (exact in binary, so JSON keeps it exactly).
+		p.pen = { spots = pen.maxSpots, nextId = BIG_COUNTER, items = {}, awayRate = 99_999_999_999.75 }
 		local defs = Catalog.list()
 		for i = 1, count do
 			table.insert(p.pen.items, {
@@ -187,7 +189,7 @@ return function(t: Context)
 		expect.equal(#decoded.receipts, Config.Data.caps.receipts)
 		expect.equal(decoded.grip.total, p.grip.total)
 		expect.deepEqual(decoded.capsules, p.capsules)
-		expect.deepEqual(decoded.pen, p.pen) -- pens3 phase 1: 71 items, ids near 2^53, exact
+		expect.deepEqual(decoded.pen, p.pen) -- pens3 phase 1: 71 items, ids near 2^53, exact (phase 4: awayRate too)
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

@@ -16,7 +16,8 @@
 --   defaults atomically) and ProfileSchema.load runs migrate -> reconcile -> sanitize. A load that fails after the
 --   retries -> OFFLINE with defaults in memory, never saved, and a background retry every 60 s up to 5 times (it
 --   also takes over a lock once it is stale). Status "ready" fires Loaded.
--- Save (§3.9): a job takes its snapshot when it STARTS (deepCopy, saveSeq + 1, lastSeenAt = now) and writes it only
+-- Save (§3.9): a job takes its snapshot when it STARTS (deepCopy, saveSeq + 1, lastSeenAt = now, and pens3 phase 4's
+--   pen.awayRate = PenMath.rate(pen): the next load pays the time away at this rate) and writes it only
 --   if the lock is still ours and the stored saveSeq is not above the snapshot's (else lock lost -> READONLY +
 --   Notify data.openedElsewhere). A ghost write leaves the stored saveSeq equal to ours, so the retry is accepted.
 --   Reasons: "autosave" every 120 s (random first offset; delayed 15 s while the request budget is below 10),
@@ -86,6 +87,7 @@ local RunService = game:GetService("RunService")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local PenMath = require(Shared.PenMath)
 local Signal = require(Shared.Util.Signal)
 local TableUtil = require(Shared.Util.TableUtil)
 local Types = require(Shared.Types)
@@ -789,6 +791,9 @@ function DataService.newCore(deps: CoreDeps): Core
 			if session.profile ~= nil then
 				session.profile.saveSeq = job.snapshot.saveSeq
 				session.profile.lastSeenAt = job.snapshot.lastSeenAt
+				if type(session.profile.pen) == "table" and type(job.snapshot.pen) == "table" then
+					session.profile.pen.awayRate = job.snapshot.pen.awayRate
+				end
 			end
 			for _, id in job.receipts do
 				session.pendingReceipts[id] = nil
@@ -846,6 +851,9 @@ function DataService.newCore(deps: CoreDeps): Core
 				local snapshot = TableUtil.deepCopy(session.profile)
 				snapshot.saveSeq = session.saveSeq + 1
 				snapshot.lastSeenAt = now()
+				if type(snapshot.pen) == "table" then
+					snapshot.pen.awayRate = PenMath.rate(snapshot.pen)
+				end
 				job.snapshot = snapshot
 				for id in session.pendingReceipts do
 					table.insert(job.receipts, id)

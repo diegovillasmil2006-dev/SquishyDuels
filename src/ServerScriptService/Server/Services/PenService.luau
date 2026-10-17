@@ -8,7 +8,7 @@
 --   with a READY profile, PenMath.payStep(carry, PenMath.rate(pen), dt) (at most Pen.maxTickSeconds of time at once)
 --   and ONE EconomyService.grantCoins(p, coins, "pen") per player and tick, each player in its own pcall. The pen pays
 --   no Grip. The carry (a part of a Coin) lives in this session only: it starts at 0 on join, time while not ready or
---   out of the server never pays (coins for time away come in phase 4).
+--   out of the server never pays here (the time away pays once on the next load, below).
 -- * PenBuySpot(expectedPrice) (RF; Config.Net: 1 a second, one in flight), refusals in the CapsuleUnlock order: (1)
 --   expectedPrice not whole Coins -> net.invalid; (2) no READY profile -> data.notReady; (3) PenMath.buyDecision ->
 --   pen.max / pen.priceChanged (the price is compared, never charged); (4) a pending failed save, the server closing,
@@ -20,6 +20,11 @@
 --   carries charged = false and writes nothing.
 -- * EconomyService.SquishyGranted (a new squishy: its pen item was added in that grant's own step) redraws the base
 --   and sends the `pen` field (showPen).
+-- * Pens3 phase 4, coins while away: on DataService.Loaded, EconomyService.grantAway pays 5% of the pen's rate at the
+--   last save for every second since it (PenMath.awayCoins; no limit, no idle rule) and stamps lastSeenAt in the same
+--   step, so a second Loaded of the same profile pays nothing. A gift that paid goes to the owner's client as the
+--   session field awayGift {coins, seconds} (StateService), which shows it once. This handler runs after
+--   GripService's (it connects in an earlier init), whose welcome toasts read the loaded lastSeenAt.
 -- Every profile write goes through DataService.mutate (the data port). Dependencies are injectable (useDeps) so unit
 -- tests run with fake profiles and players (plain tables); init() never yields; playerAdded / playerRemoving never
 -- yield.
@@ -63,6 +68,8 @@ export type Deps = {
 	clock: () -> number, -- os.clock: the buy cooldown
 	-- BaseService.refresh and StateService.markDirty(p, "pen"): the player's base and client show their pen again
 	showPen: (player: any) -> (),
+	grantAway: (player: any) -> (number, number), -- EconomyService.grantAway: (Coins added, seconds counted)
+	setAwayGift: (player: any, gift: Types.AwayGift) -> (), -- StateService.setSessionField(p, "awayGift", gift)
 }
 
 -- What the remote answers: NetService.ok(Types.PenResult) or NetService.err(reason, false).
@@ -79,6 +86,7 @@ local PEN = Config.Economy.Pen
 local COIN_REASON = "pen"
 local REMOTE_BUY = "PenBuySpot"
 local FIELD_PEN = "pen"
+local FIELD_AWAY_GIFT = "awayGift"
 local STATUS_READY = "ready"
 local ATTR_PHASE = "SD_DuelPhase"
 local CODE_INVALID = "net.invalid"
@@ -147,6 +155,12 @@ local function defaultDeps(): Deps
 		showPen = function(player: any)
 			BaseService.refresh(player)
 			StateService.markDirty(player, FIELD_PEN)
+		end,
+		grantAway = function(player: any): (number, number)
+			return EconomyService.grantAway(player)
+		end,
+		setAwayGift = function(player: any, gift: Types.AwayGift)
+			StateService.setSessionField(player, FIELD_AWAY_GIFT, gift)
 		end,
 	}
 end
@@ -255,6 +269,17 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 	return NetService.ok(data)
 end
 
+-- Public: coins while away (see the header) ---------------------------------------------------------------------------
+
+-- DataService.Loaded: the Coins for the time away, and the gift for the client when they paid.
+function PenService.loaded(player: any)
+	local coins, seconds = deps.grantAway(player)
+	if coins > 0 then
+		deps.setAwayGift(player, { coins = coins, seconds = seconds })
+		log:info(`user {userIdOf(player)} got {coins} Coins for {seconds} s away`)
+	end
+end
+
 -- Public: tests -----------------------------------------------------------------------------------------------------
 
 -- Replaces dependencies (fields not given keep their defaults). nil restores every default.
@@ -286,6 +311,9 @@ function PenService.init()
 	-- A new squishy (a box, the shop, a Studio grant): its pen item came in the same grant step; show it.
 	EconomyService.SquishyGranted:connect(function(player: Player)
 		deps.showPen(player)
+	end)
+	StateService.dataPort().onLoaded(function(player: any)
+		PenService.loaded(player)
 	end)
 end
 

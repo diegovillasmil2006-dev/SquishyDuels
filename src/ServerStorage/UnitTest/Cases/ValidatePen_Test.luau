@@ -2,7 +2,7 @@
 -- ValidatePen_Test: unit tests for ReplicatedStorage.Shared.Config.ValidatePen (the pen, pens3 phase 1). Server only
 -- (ServerStorage.UnitTest). Pure: broken copies of Config.Economy.Pen.
 -- Contract (Config/ValidatePen header): the shipped Config is valid and holds the plan's numbers; a missing section is
--- one problem; each broken value is reported by name.
+-- one problem; each broken value is reported by name (phase 4: awayRate, a share in [0, 1]).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -67,6 +67,7 @@ return function(t: Context)
 		expect.equal(pen.maxTickSeconds, 10)
 		expect.equal(pen.buyCooldownSeconds, 1)
 		expect.equal(pen.signHoldSeconds, 0.5)
+		expect.equal(pen.awayRate, 0.05) -- pens3 phase 4 (owner: 5% of the pen's rate while away)
 	end)
 
 	t.test("a missing section is one problem", function()
@@ -102,6 +103,9 @@ return function(t: Context)
 			{ changes = { toyBoxMax = -1 }, field = "toyBoxMax" },
 			{ changes = { buyCooldownSeconds = -1 }, field = "buyCooldownSeconds" },
 			{ changes = { signHoldSeconds = "long" }, field = "signHoldSeconds" },
+			{ changes = { awayRate = -0.05 }, field = "awayRate" }, -- pens3 phase 4: a share in [0, 1]
+			{ changes = { awayRate = 1.5 }, field = "awayRate" },
+			{ changes = { awayRate = 0 / 0 }, field = "awayRate" },
 		}
 		for _, case in cases do
 			local problems = validate(broken(case.changes))

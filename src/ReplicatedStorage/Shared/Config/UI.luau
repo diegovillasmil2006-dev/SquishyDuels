@@ -1257,6 +1257,9 @@ local UI = {
 			{ t_ms = 200, value = 1.15, style = Enum.EasingStyle.Back, dir = Enum.EasingDirection.Out },
 			{ t_ms = 350, value = 1, style = Enum.EasingStyle.Sine, dir = Enum.EasingDirection.Out },
 		},
+		-- Pens3 phase 4 [P]: the coins-while-away pop-up's rain (UiFx.rain inside the congrats overlay, as a buy's).
+		awayRain = 60,
+		awayRainDelayMs = 300,
 	},
 
 	-- UI FINAL (R1, the look kit; plan work/ui/PLAN.md §2): the sticker look of the design "Squishy Duels UI FINAL"

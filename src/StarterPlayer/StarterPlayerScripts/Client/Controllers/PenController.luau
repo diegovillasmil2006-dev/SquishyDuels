@@ -34,8 +34,14 @@
 --   prompt sends PenBuySpot(the Sign's SD_Price) once at a time; an accepted buy plays ui.purchase and the price face's
 --   pop (A13 UpgradeBuyPunch, Config.UI.Pen.signPop; none under ReducedMotion; HudController squashes the coin pill on
 --   the spend), a refusal shows its reason (NotifyController.showResult).
--- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker), init(), start(),
--- destroy() (tests and leak checks; the bootstrap never calls it), debugState().
+-- * Coins while away (pens3 phase 4): the state field awayGift {coins, seconds} (PenService, once per load) shows a
+--   stand-in pop-up, Diego's congrats overlay (UI/CongratsOverlay, the shop's, in its SD_Prompt layer): "You got" the
+--   Coins (common.coinsAmount), the line away.body with the time away in words, the best pen squishy in the disc, the
+--   ui.coin sound and the overlay's rain (Config.UI.Pen.awayRain). A tap, AWESOME! or back closes it. The Coins are
+--   already in the pill (the server paid them on load): nothing to claim, no timer. A gift shows when it arrives (or is
+--   there at start); StateController fires only on a new value, so a resent one never shows twice.
+-- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText), init(),
+-- start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
 
 -- Services
 
@@ -57,6 +63,7 @@ local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local PenMath = require(Shared.PenMath)
 local Strings = require(Shared.Strings)
+local TimeUtil = require(Shared.Util.TimeUtil)
 local WorldLayout = require(Shared.World.WorldLayout)
 
 local Client = script.Parent.Parent
@@ -66,11 +73,13 @@ local Scheduler = require(Client.Anim.Scheduler)
 local Timeline = require(Client.Anim.Timeline)
 local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
+local CongratsOverlay = require(Client.UI.CongratsOverlay)
 local Theme = require(Client.UI.Theme)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
+local UIController = require(script.Parent.UIController)
 
 -- Types
 
@@ -141,6 +150,9 @@ local SIGN_NAME = "Sign"
 local PROMPT_NAME = "PenPrompt"
 local REMOTE_BUY = "PenBuySpot"
 local SOUND_PURCHASE = "ui.purchase"
+local SOUND_AWAY = "ui.coin" -- pens3 phase 4: the away pop-up opens
+local FIELD_AWAY = "awayGift"
+local CONFIRM = Config.UI.confirm -- the congrats overlay's layer (ShopController's)
 local LABEL_KIND: Theme.TextKind = "Coin"
 local COMMON_STUDS = P.rarityStuds.Common
 local MAX_SPOTS = Config.Economy.Pen.maxSpots
@@ -163,6 +175,8 @@ local effect: Scheduler.Handle? = nil
 local random = Random.new()
 local pending = false -- a PenBuySpot is running
 local pop: { face: BasePart, size: Vector3, at: number }? = nil
+local awayOverlay: CongratsOverlay.CongratsOverlay? = nil -- pens3 phase 4: the open away pop-up
+local awayBack: (() -> ())? = nil -- its back handler (UIController.pushBack)
 
 local function rnd(): number
 	return random:NextNumber()
@@ -562,6 +576,54 @@ local function buy(prompt: ProximityPrompt)
 	paintOwnSign()
 end
 
+-- Pens3 phase 4: the away pop-up is gone (closed, replaced or destroyed): its back handler goes with it.
+local function dropAway()
+	local popBack = awayBack
+	awayBack, awayOverlay = nil, nil
+	if popBack then
+		popBack()
+	end
+end
+
+-- Pens3 phase 4: a gift that paid, as the stand-in pop-up (see the header).
+local function showAway(gift: any)
+	local title, body = PenController.awayText(gift)
+	if title == nil or body == nil then
+		return
+	end
+	local old = awayOverlay
+	if old then
+		old:destroy()
+		dropAway()
+	end
+	local best = PenMath.placed(StateController.get("pen"))[1]
+	SoundController.play(SOUND_AWAY)
+	local overlay: CongratsOverlay.CongratsOverlay
+	overlay = CongratsOverlay.show({
+		layer = UIController.screenGui(CONFIRM.layerName, CONFIRM.layer),
+		catalogId = if best then best.kind else nil,
+		title = title,
+		description = body,
+		scale = UIController.scale(),
+		trackScale = UIController.trackScale,
+		sound = function(key: string)
+			SoundController.play(key)
+		end,
+		onClose = function()
+			if awayOverlay == overlay then
+				dropAway()
+			end
+		end,
+	})
+	awayOverlay = overlay
+	awayBack = UIController.pushBack(function()
+		overlay:close(true) -- UIController.back plays ui.back for it
+	end)
+	task.delay(P.awayRainDelayMs / 1000, function()
+		overlay:rain(P.awayRain)
+	end)
+end
+
 -- Public: the pure parts -------------------------------------------------------------------------------------------
 
 -- The own sign's state for the next spot's price (nil at MAX) and the Coins now (nil = 0).
@@ -591,6 +653,23 @@ function PenController.hopLift(t: number, studs: number, reduced: boolean): numb
 	end
 	local u = (t % P.hopSeconds) / P.hopSeconds
 	return P.hopHeight * studs / COMMON_STUDS * math.sin(math.pi * u)
+end
+
+-- Pens3 phase 4: the away pop-up's prize line and body for a gift {coins, seconds}; nil when it paid no whole Coins.
+function PenController.awayText(gift: any): (string?, string?)
+	local coins = if type(gift) == "table" then gift.coins else nil
+	if type(coins) ~= "number" or not (coins >= 1) then
+		return nil, nil
+	end
+	local h, m = TimeUtil.splitDuration(tonumber(gift.seconds) or 0)
+	local away = Strings.away
+	local time = if h > 0 and m > 0
+		then Strings.format(away.hoursMinutes, { h = h, m = m })
+		elseif h > 0 then Strings.format(away.hours, { h = h })
+		elseif m > 0 then Strings.format(away.minutes, { m = m })
+		else away.underMinute
+	return Strings.format(Strings.common.coinsAmount, { coins = Format.coins(coins) }),
+		Strings.format(away.body, { time = time })
 end
 
 -- "+{coins}/s": the whole Coins a second of a look.
@@ -703,6 +782,11 @@ function PenController.start()
 			handle:disconnect()
 		end
 		effect, pop, pending = nil, nil, false
+		local away = awayOverlay
+		if away then
+			away:destroy()
+			dropAway()
+		end
 		made:Destroy()
 		folder = nil
 	end)
@@ -719,6 +803,7 @@ function PenController.start()
 	for _, field in { "coins", "pen" } do
 		c:add(StateController.changed(field):connect(paintOwnSign))
 	end
+	c:add(StateController.changed(FIELD_AWAY):connect(showAway))
 	local player = Players.LocalPlayer
 	if player then
 		c:add(player:GetAttributeChangedSignal(ATTR_PLOT):Connect(function()
@@ -730,6 +815,7 @@ function PenController.start()
 	end
 	effect = Scheduler.add(step, "render")
 	paintOwnSign()
+	showAway(StateController.get(FIELD_AWAY))
 end
 
 function PenController.destroy()

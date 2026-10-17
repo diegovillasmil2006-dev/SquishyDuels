@@ -10,7 +10,8 @@
 --     phase 1: pen as stored, and it goes out like any field when marked; phase 2: an old save's capsules never go
 --     out), session
 --     fields (policy "checking", monetization with no
---     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it),
+--     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it,
+--     pens3 phase 4's awayGift {coins = 0, seconds = 0} until PenService sets it),
 --     dataStatus {status, persisted, savePending, banner};
 --   * Loaded sends one full StateDelta; later changes go out as one partial StateDelta per batch with v + 1, only for
 --     fields whose value changed; nothing partial before the first full state; the sweep catches unmarked changes;
@@ -223,6 +224,7 @@ return function(t: Context)
 		expect.equal(reply.ok, true)
 		local snap = reply.data
 		expect.deepEqual(keysOf(snap), {
+			"awayGift",
 			"coins",
 			"daily",
 			"dataStatus",
@@ -264,6 +266,7 @@ return function(t: Context)
 		expect.deepEqual(snap.monetization, { bundles = {}, passes = {} })
 		expect.deepEqual(snap.practice, { throws = 0, hits = 0, accuracy = 0 })
 		expect.deepEqual(snap.topWins, { loaded = false, top = {}, wins = 0 }) -- Batch 3: until the first board read
+		expect.deepEqual(snap.awayGift, { coins = 0, seconds = 0 }) -- pens3 phase 4: no gift until PenService pays one
 		expect.deepEqual(
 			snap.dataStatus,
 			{ status = "ready", persisted = false, savePending = false, banner = "data.studioMemory" }
@@ -490,6 +493,10 @@ return function(t: Context)
 		StateService.setSessionField(player, "topWins", board) -- Batch 3: the weekly board (ShowOffService)
 		runDeferred(w)
 		expect.deepEqual(w.sent[3].fields, { topWins = board })
+		-- Pens3 phase 4: the coins-while-away gift (PenService).
+		StateService.setSessionField(player, "awayGift", { coins = 1_800, seconds = 3600 })
+		runDeferred(w)
+		expect.deepEqual(w.sent[4].fields, { awayGift = { coins = 1_800, seconds = 3600 } })
 		expect.throws(function()
 			StateService.setSessionField(player, "coins", 5)
 		end, "session field")
@@ -543,7 +550,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list is DESIGN's StateDelta list plus grip, topWins and pen", function()
+	t.test("the field list is DESIGN's StateDelta list plus grip, topWins, pen and awayGift", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -562,6 +569,7 @@ return function(t: Context)
 			"grip",
 			"topWins",
 			"pen",
+			"awayGift", -- pens3 phase 4: the coins-while-away gift, a session field
 		})
 	end)
 

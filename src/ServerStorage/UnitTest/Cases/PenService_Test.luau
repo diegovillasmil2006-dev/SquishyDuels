@@ -11,7 +11,9 @@
 --     buyCooldownSeconds of the last buy), then inventory.lockedInDuel, then the spend (economy.notEnoughCoins;
 --     a "savePending" spend -> pen.paused); every refusal has charged = false and writes nothing;
 --   * a buy: one spend with reason "pen", spots + 1 through mutate, the base redrawn and the "pen" field sent once
---     (showPen), the awaited "now" save, the reply {pen, charged = true, savePending}; 1 call a second, one at a time.
+--     (showPen), the awaited "now" save, the reply {pen, charged = true, savePending}; 1 call a second, one at a time;
+--   * pens3 phase 4: a loaded profile gets its Coins for the time away from EconomyService.grantAway (once per load),
+--     and a gift that paid goes to the client as the awayGift session field {coins, seconds}; a gift of 0 sends none.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -49,6 +51,9 @@ return function(t: Context)
 		nowSaves: number,
 		shown: { any },
 		writes: number,
+		away: { [any]: { number } }, -- grantAway's answer per player: {coins, seconds}
+		awayCalls: { any },
+		gifts: { { player: any, gift: any } },
 	}
 
 	local function newProfile(): any
@@ -78,6 +83,9 @@ return function(t: Context)
 			nowSaves = 0,
 			shown = {},
 			writes = 0,
+			away = {},
+			awayCalls = {},
+			gifts = {},
 		}
 		PenService.reset()
 		PenService.useDeps({
@@ -138,6 +146,14 @@ return function(t: Context)
 			end,
 			showPen = function(player: any)
 				table.insert(w.shown, player)
+			end,
+			grantAway = function(player: any): (number, number)
+				table.insert(w.awayCalls, player)
+				local answer = w.away[player] or { 0, 0 }
+				return answer[1], answer[2]
+			end,
+			setAwayGift = function(player: any, gift: any)
+				table.insert(w.gifts, { player = player, gift = gift })
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -326,6 +342,23 @@ return function(t: Context)
 		w.clock += PEN.buyCooldownSeconds
 		expectRefused(PenService.buy(w.a, 3_100), "pen.priceChanged")
 		expect.equal(#w.spends, 2)
+		finish()
+	end)
+
+	-- Coins while away (pens3 phase 4) --------------------------------------------------------------------------------
+
+	t.test("a load pays the time away (one grantAway) and a gift that paid is sent as awayGift", function()
+		local w = fresh()
+		w.away[w.a] = { 1_800, 3600 }
+		PenService.loaded(w.a)
+		expect.deepEqual(w.awayCalls, { w.a })
+		expect.deepEqual(w.gifts, { { player = w.a, gift = { coins = 1_800, seconds = 3600 } } })
+		-- Nothing paid (just saved, a pen that earned nothing, a session that is not ready): no gift.
+		w.away[w.b] = { 0, 12 }
+		PenService.loaded(w.b)
+		expect.deepEqual(w.awayCalls, { w.a, w.b })
+		expect.equal(#w.gifts, 1)
+		expect.equal(#w.grants, 0) -- the pen's tick is not involved
 		finish()
 	end)
 end

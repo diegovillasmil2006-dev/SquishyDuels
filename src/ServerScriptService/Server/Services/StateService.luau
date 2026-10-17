@@ -21,7 +21,8 @@
 --   while every productId is nil, §6.11) and practice (PracticeService's session stats; {throws = 0, hits = 0,
 --   accuracy = 0} until set, which is what a session with no practice throw has: Types.Snapshot holds every field) and
 --   topWins (Batch 3: ShowOffService's weekly board, Types.TopWinsView; {loaded = false, top = {}, wins = 0} until
---   set).
+--   set) and awayGift (pens3 phase 4: PenService's coins-while-away gift of this session, Types.AwayGift; {coins = 0,
+--   seconds = 0} until set; the client shows a gift once).
 -- * dataStatus = Types.DataStatus {status, persisted, savePending, banner?}. `banner` (reading) is the Strings key of
 --   the honest status banner (bannerFor, from the status, persisted and DataService.statusReason): Studio memory mode
 --   (ready, persisted = false) data.studioMemory "Studio test: progress is not saved." (§3.1, §11.3); OFFLINE
@@ -115,12 +116,14 @@ local FIELDS: { string } = {
 	"grip",
 	"topWins", -- Batch 3 (review #10): the weekly wins board, a session field
 	"pen", -- pens3 phase 1: the profile's pen as stored
+	"awayGift", -- pens3 phase 4: the coins-while-away gift of this session, a session field
 }
 local FIELD_SET: { [string]: boolean } = {}
 for _, field in FIELDS do
 	FIELD_SET[field] = true
 end
-local SESSION_FIELDS: { [string]: boolean } = { policy = true, monetization = true, practice = true, topWins = true }
+local SESSION_FIELDS: { [string]: boolean } =
+	{ policy = true, monetization = true, practice = true, topWins = true, awayGift = true }
 
 local STATUS_LOADING = "loading"
 local STATUS_READY = "ready"
@@ -144,6 +147,7 @@ local DEFAULT_POLICY: Types.PolicyState = "checking"
 local DEFAULT_MONETIZATION = table.freeze({ bundles = table.freeze({}), passes = table.freeze({}) })
 local DEFAULT_PRACTICE = table.freeze({ throws = 0, hits = 0, accuracy = 0 })
 local DEFAULT_TOP_WINS = table.freeze({ loaded = false, top = table.freeze({}), wins = 0 })
+local DEFAULT_AWAY_GIFT = table.freeze({ coins = 0, seconds = 0 })
 local SWEEP_SECONDS = 1 -- reading: the safety-net compare of every field (see the header)
 
 -- Module table
@@ -272,6 +276,8 @@ local function rawField(field: string, profile: any, values: { [string]: any }, 
 		return if values.practice ~= nil then values.practice else DEFAULT_PRACTICE
 	elseif field == "topWins" then
 		return if values.topWins ~= nil then values.topWins else DEFAULT_TOP_WINS
+	elseif field == "awayGift" then
+		return if values.awayGift ~= nil then values.awayGift else DEFAULT_AWAY_GIFT
 	elseif type(profile) ~= "table" then
 		return nil
 	elseif field == "quests" then
@@ -577,8 +583,8 @@ function StateService.statusChanged(player: any)
 	end
 end
 
--- Sets a session field that is not part of the profile: "policy", "monetization", "practice" or "topWins" (their
--- owners call it on every change). The value is copied.
+-- Sets a session field that is not part of the profile: "policy", "monetization", "practice", "topWins" or "awayGift"
+-- (their owners call it on every change). The value is copied.
 function StateService.setSessionField(player: any, field: string, value: any)
 	assert(SESSION_FIELDS[field], `[SD][State] {field} is not a session field`)
 	local session = sessionOf(player, true)

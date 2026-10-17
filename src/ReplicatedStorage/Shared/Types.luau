@@ -20,7 +20,7 @@
 -- Bubble Pop bounce (2026-10-16): UltimateBounce / UltimateEventPayload.bounce (the bubble's leg after its bounce).
 -- Weekly quests (2026-10-17): WeeklyState, ProfileV1.weekly and QuestsView.weekly.
 -- Pens (pens3 phase 1, 2026-10-17): PenItem, PenState, ProfileV1.pen, the `pen` state field, PenResult and the
--- PenBuySpot call.
+-- PenBuySpot call. Phase 4 (coins while away): PenState.awayRate and AwayGift, the `awayGift` state field.
 
 -- == Catalog (§4.1) ==
 
@@ -134,8 +134,11 @@ export type AutoClickMemory = { step: number, at: number }
 -- 0 none .. 7 (Config.Economy.Pen.coatMult). Phase 1 makes only form 0, level 1, coat 0, one per owned kind.
 export type PenItem = { id: number, kind: string, form: number, level: number, coat: number }
 -- The player's pen: `spots` open (Pen.startSpots .. Pen.maxSpots; the best `spots` items walk in it and pay), `nextId`
--- the id of the next new item, `items` every pen squishy the player has.
-export type PenState = { spots: number, nextId: number, items: { PenItem } }
+-- the id of the next new item, `items` every pen squishy the player has, `awayRate` (phase 4) its Coins a second at the
+-- last save (DataService stamps it; the next load pays the time away from it).
+export type PenState = { spots: number, nextId: number, items: { PenItem }, awayRate: number }
+-- Phase 4: the Coins the pen paid for the time away on this session's load, and the seconds counted (session only).
+export type AwayGift = { coins: number, seconds: number }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema).
@@ -247,6 +250,7 @@ export type Snapshot = {
 	grip: GripState,
 	topWins: TopWinsView, -- Batch 3
 	pen: PenState, -- pens3 phase 1: the profile's pen as stored (the squeeze value of every client text, the sign)
+	awayGift: AwayGift, -- pens3 phase 4: {coins = 0, seconds = 0} until the load pays one (the client shows it once)
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -268,6 +272,7 @@ export type StateDeltaFields = {
 	grip: GripState?,
 	topWins: TopWinsView?,
 	pen: PenState?,
+	awayGift: AwayGift?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -289,6 +294,7 @@ export type StateField =
 	| "grip"
 	| "topWins"
 	| "pen"
+	| "awayGift"
 
 export type SnapshotLoading = { status: "loading" }
 

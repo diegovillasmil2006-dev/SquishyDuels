@@ -10,7 +10,8 @@
 -- and the request budget; release on leave; close (releaseAll) folding redundant saves; join while closing; a
 -- cancelled load; mutate rules; pending receipts; waitForProfileAsync; memory mode; store selection and the _STUDIO
 -- guard; the Studio reload hook; Studio forced save failures (memory failNext -> savePending -> a "soon" retry clears
--- it). Tables are compared by value. UpdateAsync only: the fake fails loudly on any other API.
+-- it); pens3 phase 4: every save stamps pen.awayRate (the pen's rate) next to lastSeenAt. Tables are compared by
+-- value. UpdateAsync only: the fake fails loudly on any other API.
 -- With random() = 0.5: lock poll waits 6 s (6 + (0.5 * 2 - 1) * 2); retry delays 1.25, 2.5, 5, 10 s (throttle x2);
 -- the first autosave is due 60 s after the load.
 
@@ -632,6 +633,27 @@ return function(t: Context)
 		local value = h.store.getRaw(KEY)
 		expect.equal(value.coins, 20)
 		expect.equal(value.saveSeq, 2)
+	end)
+
+	-- Pens3 phase 4: the next load pays the time away at the rate the pen had when it was saved.
+	t.test("every save stamps pen.awayRate = the pen's Coins a second (PenMath.rate) next to lastSeenAt", function()
+		local h = newHarness()
+		h.store.setRaw(KEY, storedProfile(), {}, { 101 })
+		local p = player()
+		h.core.loadAsync(p)
+		expect.equal(h.core.getProfile(p).pen.awayRate, 0) -- a new pen: nothing saved yet
+		h.core.mutate(p, function(profile: any)
+			profile.owned.butter = { at = T0, src = "box" }
+			table.insert(profile.pen.items, { id = 2, kind = "butter", form = 0, level = 1, coat = 0 })
+		end)
+		h.clock.advance(10)
+		expect.equal(h.core.saveNowAsync(p), true)
+		local value = h.store.getRaw(KEY)
+		expect.equal(value.pen.awayRate, 50) -- Kitty Bread 10 + Butter 40
+		expect.equal(value.lastSeenAt, T0 + 10)
+		expect.equal(h.core.getProfile(p).pen.awayRate, 50) -- the profile in memory matches the save
+		expect.truthy(h.core.releaseAsync(p))
+		expect.equal(h.store.getRaw(KEY).pen.awayRate, 50) -- the final write too
 	end)
 
 	t.test("'soon' saves run at max(now + 6, lastWriteAt + 6) and later requests join them", function()

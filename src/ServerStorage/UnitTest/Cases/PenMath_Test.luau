@@ -6,7 +6,8 @@
 -- (nil or a broken pen: 10), and an own squeeze's Grip is its floor; spot prices are the J table (4 = 1,500 ..
 -- 12 = 5.6T), nil for any other spot; a buy is the next spot at its exact price; the tick pays whole Coins and carries
 -- the rest, at most maxTickSeconds of time at once; rewardCoins = floor(squeezes × value) clamped to maxCoins; the
--- base attribute text round-trips; the walk area keeps a squishy inside the fence.
+-- base attribute text round-trips; the walk area keeps a squishy inside the fence. Phase 4: awayCoins = floor(5% ×
+-- the saved rate × the seconds away), the seconds clamped to [0, now - createdAt], no limit, clamped to maxCoins.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -173,6 +174,43 @@ return function(t: Context)
 		expect.equal(PenMath.rewardCoins(0 / 0, 10), 0)
 		expect.equal(PenMath.rewardCoins(10, math.huge), 0)
 		expect.equal(PenMath.rewardCoins(-5, 10), 0)
+	end)
+
+	-- Pens3 phase 4: coins while away (owner: 5% of the pen's rate, no limit, no idle rule).
+	t.test("awayCoins: floor(awayRate × rate × seconds away), the seconds clamped to [0, now - createdAt]", function()
+		local now = 1_800_000_000
+		expect.equal(PEN.awayRate, 0.05)
+		local coins, seconds = PenMath.awayCoins(10, now - 3600, now - 86400, now)
+		expect.equal(coins, 1_800) -- an hour of Kitty Bread at 10 a second: 5% of 36,000
+		expect.equal(seconds, 3600)
+		expect.equal((PenMath.awayCoins(11.5, now - 61, now - 61, now)), 35) -- 35.075, floored
+		expect.equal((PenMath.awayCoins(10, now - 365 * 86400, 0, now)), 15_768_000) -- a year away: no limit
+		-- The createdAt clamp: never more time away than the profile is old.
+		coins, seconds = PenMath.awayCoins(10, now - 10_000, now - 100, now)
+		expect.equal(coins, 50)
+		expect.equal(seconds, 100)
+		expect.equal((PenMath.awayCoins(1e15, now - 1e6, 0, now)), Config.Economy.maxCoins) -- clamped
+	end)
+
+	t.test("awayCoins: no time away, a future time, a bad rate or a bad time pay 0", function()
+		local now = 1_800_000_000
+		local cases: { { any } } = {
+			{ 10, now, 0, now, 0 }, -- just saved
+			{ 10, now + 600, 0, now, 0 }, -- a lastSeenAt in the future (another server's clock)
+			{ 10, now - 3600, now + 60, now, 0 }, -- a createdAt in the future
+			{ 0 / 0, now - 3600, 0, now, 3600 },
+			{ math.huge, now - 3600, 0, now, 3600 },
+			{ -10, now - 3600, 0, now, 3600 },
+			{ "10" :: any, now - 3600, 0, now, 3600 },
+			{ 10, 0 / 0, 0, now, 0 },
+			{ 10, now - 3600, nil, now, 0 },
+			{ 10, now - 3600, 0, math.huge, 0 },
+		}
+		for _, case in cases do
+			local coins, seconds = PenMath.awayCoins(case[1], case[2], case[3], case[4])
+			expect.equal(coins, 0)
+			expect.equal(seconds, case[5])
+		end
 	end)
 
 	t.test("encode / decode: kind.form.level.coat joined by ';' round-trips; junk entries are skipped", function()

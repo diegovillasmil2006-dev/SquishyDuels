@@ -29,7 +29,12 @@
 --     profile records nothing (duel.noRewardsOffline); a pay above the largest duel reward or not whole pays no
 --     Coins; exactly once per player and matchId (a repeat is alreadyGranted and changes nothing; another player of
 --     the same match, or a grant refused as unready, is not blocked); winStreak(p) reads the saved streak; 1v1 duel
---     results never touch it.
+--     results never touch it;
+--   * pens3 phase 4: grantAway pays PenMath.awayCoins of the saved pen.awayRate, lastSeenAt and createdAt (reason
+--     "away") and stamps lastSeenAt = now in the SAME mutate, with a "soon" save when it paid: the same time away never
+--     pays twice (a second call pays 0), an unready session gets and stamps nothing, a broken rate pays 0 (stamped),
+--     Coins stop at maxCoins; end to end, a crash before the first save pays the time once (the next server pays it
+--     all, the lost grant never landed) and a rejoin pays only the seconds since the last save.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -870,13 +875,78 @@ return function(t: Context)
 		expect.equal(why, "savePending")
 	end)
 
+	-- Pens3 phase 4: coins while away ---------------------------------------------------------------------------------
+
+	-- A ready profile saved `away` seconds ago, its pen paying `rate` Coins a second at that save.
+	local function awayProfile(w: World, coins: number, rate: any, away: number): (any, any)
+		local player, profile = readyPlayer(w, coins)
+		profile.createdAt = NOW - 86_400
+		profile.lastSeenAt = NOW - away
+		profile.pen.awayRate = rate
+		return player, profile
+	end
+
+	t.test("grantAway: 5% of the saved pen rate for the time away and the lastSeenAt stamp, in ONE step", function()
+		local w = setup()
+		local player, profile = awayProfile(w, 100, 40, 3600)
+		local seen: { any } = {}
+		local connection = EconomyService.CoinsChanged:connect(
+			function(_p: any, coins: number, delta: number, reason: string)
+				table.insert(seen, { coins = coins, delta = delta, reason = reason })
+			end
+		)
+		local coins, seconds = EconomyService.grantAway(player)
+		expect.equal(coins, 7_200) -- floor(0.05 × 40 × 3,600)
+		expect.equal(seconds, 3600)
+		expect.equal(w.mutations, 1) -- the Coins and the stamp in the same mutate
+		expect.equal(profile.coins, 7_300)
+		expect.equal(profile.lastSeenAt, NOW)
+		expect.equal(profile.stats.coinsEarned, 7_200)
+		expect.deepEqual(dirtyFields(w), { "coins", "stats" })
+		expect.deepEqual(seen, { { coins = 7_300, delta = 7_200, reason = "away" } })
+		expect.deepEqual(w.saves, { { player = player, reason = "soon" } })
+		-- The same time away never pays twice: the stamp marks it as paid.
+		coins, seconds = EconomyService.grantAway(player)
+		connection:disconnect()
+		expect.equal(coins, 0)
+		expect.equal(seconds, 0)
+		expect.equal(profile.coins, 7_300)
+		expect.equal(#seen, 1)
+		expect.equal(#w.saves, 1)
+	end)
+
+	t.test("grantAway: an unready session gets and stamps nothing; a broken rate pays 0; maxCoins holds", function()
+		local w = setup()
+		local player, profile = awayProfile(w, 0, 10, 3600)
+		w.statuses[player] = "offline"
+		expect.equal((EconomyService.grantAway(player)), 0)
+		w.statuses[player] = "ready"
+		w.frozen[player] = true -- the final leave snapshot is taken
+		expect.equal((EconomyService.grantAway(player)), 0)
+		expect.equal(w.mutations, 0)
+		expect.equal(profile.lastSeenAt, NOW - 3600) -- nothing written: the next load still pays this time
+		w.frozen[player] = nil
+		profile.pen.awayRate = 0 / 0
+		expect.equal((EconomyService.grantAway(player)), 0)
+		expect.equal(profile.lastSeenAt, NOW) -- stamped all the same (fails closed)
+		expect.equal(profile.coins, 0)
+		expect.equal(#w.saves, 0)
+		local rich, richProfile = awayProfile(w, ECONOMY.maxCoins - 10, 1e15, 86_400)
+		expect.equal((EconomyService.grantAway(rich)), 10)
+		expect.equal(richProfile.coins, ECONOMY.maxCoins)
+		local bare, bareProfile = awayProfile(w, 5, 10, 3600)
+		bareProfile.pen = nil -- no pen: no saved rate to pay from
+		expect.equal((EconomyService.grantAway(bare)), 0)
+		expect.equal(bareProfile.coins, 5)
+	end)
+
 	-- End to end through a real DataService core ----------------------------------------------------------------------
 
-	-- A DataService core on `store` with a fixed clock and no real waits (spawn / defer run at once).
-	local function newCore(store: any, nonce: string): any
+	-- A DataService core on `store` with a fixed clock (or `now`) and no real waits (spawn / defer run at once).
+	local function newCore(store: any, nonce: string, now: (() -> number)?): any
 		local DataService = t.requireServer("Services/DataService")
 		return DataService.newCore({
-			now = function(): number
+			now = now or function(): number
 				return NOW
 			end,
 			wait = function(_seconds: number) end,
@@ -944,6 +1014,48 @@ return function(t: Context)
 	t.test("memory mode end to end: Coins, a squishy and a duel result survive a release and a reload", function()
 		local InMemoryAdapter = t.requireServer("Data/InMemoryAdapter")
 		persistenceRoundTrip(InMemoryAdapter.new("Memory"), false)
+	end)
+
+	-- Pens3 phase 4: whatever happens between a load and its save, the same time away is paid once.
+	t.test("away coins end to end: a crash before the save pays the time once; a quick rejoin pays seconds", function()
+		local FakeDataStore = t.requireFake("FakeDataStore")
+		local ProfileSchema = t.requireServer("Logic/ProfileSchema")
+		local store = FakeDataStore.new("PlayerData_v1_STUDIO")
+		local w = newWorld()
+		local player = { UserId = 4343 }
+		local stored = ProfileSchema.defaults(NOW - 86_400)
+		stored.lastSeenAt = NOW - 3600 -- saved an hour ago, its Kitty Bread paying 10 a second
+		stored.pen.awayRate = 10
+		store.setRaw("User_4343", stored, {}, { 4343 })
+		local function load(nonce: string): any
+			local core = newCore(store, nonce, function(): number
+				return w.clock
+			end)
+			expect.equal(core.loadAsync(player), "ready")
+			EconomyService.useDeps(recorderDeps(w, StateService.portFrom(core)))
+			return core
+		end
+		load("1111aaaa")
+		expect.equal((EconomyService.grantAway(player)), 1_800) -- 5% of 10 a second for an hour
+		-- That server crashes before any save: the store keeps the old stamp and no away Coins.
+		w.clock = NOW + Config.Data.lockStaleAfter -- its lock is stale: the next server takes over
+		local second = load("2222bbbb")
+		expect.equal(second.getProfile(player).coins, 0)
+		local coins, seconds = EconomyService.grantAway(player)
+		expect.equal(seconds, 3600 + Config.Data.lockStaleAfter) -- the whole time away, paid once
+		expect.equal(coins, math.floor(0.05 * 10 * seconds))
+		expect.equal((EconomyService.grantAway(player)), 0)
+		expect.truthy(second.releaseAsync(player))
+		local saved = store.getRaw("User_4343")
+		expect.equal(saved.coins, coins)
+		expect.equal(saved.lastSeenAt, w.clock)
+		expect.equal(saved.pen.awayRate, 10) -- every save stamps the pen's rate (DataService)
+		-- Back 20 s later: only those 20 s pay.
+		w.clock += 20
+		local third = load("3333cccc")
+		expect.equal((EconomyService.grantAway(player)), 10) -- floor(0.05 × 10 × 20)
+		third.releaseAsync(player)
+		EconomyService.useDeps(nil)
 	end)
 
 	t.test("datastore path end to end (FakeDataStore): the same, through UpdateAsync only", function()

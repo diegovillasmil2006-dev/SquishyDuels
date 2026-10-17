@@ -31,7 +31,8 @@
 -- word; none of them rewards inviting or mentions Robux.
 -- Pens3 phase 1: the three Grip texts that named capsules now name what is true (grip.panelIntro, grip.intro, and
 -- grip.idleBody's second line names the pen); every PenBuySpot refusal code has a text under reason.pen.*; the pen
--- sign, prompt, coin label, onboarding step and Grip goal texts exist with their placeholders.
+-- sign, prompt, coin label, onboarding step and Grip goal texts exist with their placeholders. Pens3 phase 4: the
+-- coins-while-away texts (away.*) exist with their placeholders, and none presses a kid (no countdown, no claim now).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -881,6 +882,22 @@ return function(t: Context)
 		do
 			expect.falsy(string.find(string.lower(text), "now", 1, true))
 			expect.falsy(string.find(text, "!", 1, true))
+		end
+	end)
+
+	t.test("pens3 phase 4: the away pop-up's texts exist with their placeholders and never press a kid", function()
+		expect.equal(Strings.format(Strings.common.coinsAmount, { coins = "1,800" }), "1,800 Coins") -- the prize line
+		expect.equal(
+			Strings.format(Strings.away.body, { time = "1 h" }),
+			"Your pen kept earning while you were away (1 h)."
+		)
+		expect.equal(Strings.format(Strings.away.hours, { h = 3 }), "3 h")
+		expect.equal(Strings.format(Strings.away.hoursMinutes, { h = 1, m = 2 }), "1 h 2 min")
+		expect.equal(Strings.format(Strings.away.minutes, { m = 10 }), "10 min")
+		expect.equal(Strings.away.underMinute, "less than a minute")
+		-- A gift, not a deal: no countdown, no "claim now", nothing to lose.
+		for _, word in { "now", "hurry", "lose", "left", "expire", "only", "claim" } do
+			expect.falsy(string.find(string.lower(Strings.away.body), word, 1, true))
 		end
 	end)
 end

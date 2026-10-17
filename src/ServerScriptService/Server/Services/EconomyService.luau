@@ -41,6 +41,10 @@
 --   (alreadyGranted). The record is in memory (the newest MATCHES_REMEMBERED matches), not in the profile: a match
 --   never leaves the server that runs it, and the owner chose no hourly cap, so no saved record is needed.
 --   winStreak(p) reads the saved streak. 1v1 duels (grantDuelResult) never touch the streak.
+-- * Pens3 phase 4: grantAway(p) pays the Coins for the time away, PenMath.awayCoins(pen.awayRate (the pen's rate at
+--   the last save, DataService), lastSeenAt, createdAt, now), with reason "away", and stamps lastSeenAt = now in the
+--   SAME step: the time away counted is the time stamped as paid, so a second call pays 0, and a crash before the next
+--   save loses the grant and the stamp together (the next load pays that time once). A "soon" save when it paid.
 -- Failures come back as a short kind ("invalid", "reason", "notReady", "savePending", "notEnoughCoins"); CODES maps
 -- the kinds that have a §2.10 code. Collaborators are reached through `deps` (useDeps in tests).
 
@@ -110,6 +114,7 @@ local DUEL_LOG_CAP = Config.Data.caps.duelLog
 local MAX_DUEL_SQUEEZES = math.max(ECONOMY.DuelRewards.win, ECONOMY.DuelRewards.loss, ECONOMY.DuelRewards.draw)
 local MAX_MATCH_SQUEEZES = MatchRewards.maxSqueezes() -- Match HUD M2: a match pays a duel's amounts
 local REASON_MATCH = "match"
+local REASON_AWAY = "away" -- pens3 phase 4
 -- Match HUD M2 review fix (reading): matches whose grants are remembered for the exactly-once check. A server runs a
 -- few matches at once and a repeat can only come while its match is ending, so 64 is far more than ever needed.
 local MATCHES_REMEMBERED = 64
@@ -623,6 +628,34 @@ function EconomyService.grantMatchResult(player: any, matchId: string, pay: Matc
 		getDeps().data.requestSave(player, SAVE_SOON)
 	end
 	return grant
+end
+
+-- Pens3 phase 4: the Coins for the time away and the lastSeenAt stamp, in one step (see the header). Returns (Coins
+-- really added, the seconds counted); (0, 0) when nothing could change. Never yields.
+function EconomyService.grantAway(player: any): (number, number)
+	local now = getDeps().now()
+	local added, seconds, after = 0, 0, 0
+	local ok = edit(player, function(profile: any)
+		local pen = profile.pen
+		local due
+		due, seconds = PenMath.awayCoins(
+			if type(pen) == "table" then pen.awayRate else 0,
+			profile.lastSeenAt,
+			profile.createdAt,
+			now
+		)
+		added = addCoinsTo(profile, due, REASON_AWAY)
+		profile.lastSeenAt = now
+		after = profile.coins
+	end)
+	if not ok then
+		return 0, 0
+	end
+	if added > 0 then
+		coinsChanged(player, after, added, REASON_AWAY)
+		getDeps().data.requestSave(player, SAVE_SOON)
+	end
+	return added, seconds
 end
 
 -- Studio only (Config.Debug.debugCoinReason): sets the player's Coins (DebugHooks setCoins). Returns false elsewhere

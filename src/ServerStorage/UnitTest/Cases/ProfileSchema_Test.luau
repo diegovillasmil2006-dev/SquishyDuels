@@ -30,7 +30,10 @@
 --     id 1}}, an older profile gets one plain Lv 1 item per owned kind (logged), and sanitize fails closed without
 --     ever dropping a squishy someone owns: spots a whole number in [3, 12]; a bad or repeated id gets a fresh one; an
 --     unknown kind is dropped (its owned entry stays); form, level and coat clamped; an item not in `owned` makes it
---     owned; nextId above every id; a pen past toyBoxMax + placedMax kept whole and logged; JSON round trip unchanged.
+--     owned; nextId above every id; a pen past toyBoxMax + placedMax kept whole and logged; JSON round trip unchanged;
+--   * pens3 phase 4: pen.awayRate (the pen's rate at the last save) joined the same way: defaults 0, an older pen gets
+--     0 from reconcile (no problem), a saved rate is kept, and sanitize turns a non-finite, negative or non-number
+--     rate into 0 (logged; fails closed: no away Coins).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -154,7 +157,7 @@ return function(t: Context)
 		expected.autoClick = { step = 0, at = 0 } -- auto-clicker check (2026-10-16): the same
 		expected.weekly = { week = -1, active = {} } -- weekly quests (2026-10-17): the same
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
-		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } }
+		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") }, awayRate = 0 }
 		for _, kind in { "banana", "toast" } do
 			if fixture.owned[kind] ~= nil then
 				table.insert(expected.pen.items, penItem(expected.pen.nextId, kind))
@@ -209,7 +212,7 @@ return function(t: Context)
 		expect.equal(d.capsules, nil) -- pens3 phase 2: the capsules are gone
 		expect.deepEqual(d.autoClick, { step = 0, at = 0 }) -- auto-clicker check (2026-10-16): no strike
 		-- Pens3 phase 1: Kitty Bread walks in the 3 free spots.
-		expect.deepEqual(d.pen, { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } })
+		expect.deepEqual(d.pen, { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") }, awayRate = 0 })
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -749,6 +752,7 @@ return function(t: Context)
 				penItem(3, "dragon"),
 				penItem(4, "toast"),
 			},
+			awayRate = 0, -- pens3 phase 4: from reconcile
 		})
 		expect.equal(penProblems(result.problems), 3) -- every added item is logged
 		-- The next load changes nothing.
@@ -860,10 +864,41 @@ return function(t: Context)
 				penItem(4, "toast", 1, 12, 3),
 				penItem(8, "banana"),
 			},
+			awayRate = 1_234_567.25, -- pens3 phase 4: a rate with a fraction (a levelled pen)
 		}
 		local result = load(HttpService:JSONDecode(HttpService:JSONEncode(profile)))
 		expect.equal(result.status, "ok")
 		expect.deepEqual(result.problems, {})
 		expect.deepEqual(result.profile.pen, profile.pen)
 	end)
+
+	-- Pens3 phase 4: the pen's rate at the last save (DataService stamps it), what the next load pays away time from.
+	t.test(
+		"pen.awayRate joins schema 2: reconcile gives an older pen 0; a bad rate becomes 0, a good one stays",
+		function()
+			local older = load(FIXTURE_V1).profile :: any
+			older.pen.awayRate = nil -- a pen saved before phase 4
+			local result = load(older)
+			expect.equal(result.profile.pen.awayRate, 0)
+			expect.deepEqual(result.problems, {})
+			for _, case in
+				{ { 51.5, 51.5 }, { 0, 0 }, { -10, 0 }, { 0 / 0, 0 }, { math.huge, 0 }, { "50", 0 } } :: { { any } }
+			do
+				local pen, _, problems = fixedPen({
+					spots = 3,
+					nextId = 2,
+					items = { penItem(1, "kitty_bread") },
+					awayRate = case[1],
+				})
+				expect.equal(pen.awayRate, case[2])
+				local logged = false
+				for _, problem in problems do
+					logged = logged or string.sub(problem, 1, 13) == "pen.awayRate:"
+				end
+				expect.equal(logged, case[1] ~= case[2]) -- every fix is logged, a good rate is not
+			end
+			local garbage = fixedPen("garbage")
+			expect.equal(garbage.awayRate, 0)
+		end
+	)
 end

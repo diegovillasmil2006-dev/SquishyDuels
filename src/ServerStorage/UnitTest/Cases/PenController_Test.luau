@@ -22,7 +22,11 @@
 --   * newWalk(rect, random): a fresh walker somewhere in its area, its first wait 0..firstWaitMax s, its speed
 --     speedMin..speedMax studs/s;
 --   * init / start / destroy run cleanly in Edit mode and leave nothing behind (no Workspace.SD_PenClient, no Scheduler
---     effect). Engine only: the offline runner has no engine signals.
+--     effect). Engine only: the offline runner has no engine signals;
+--   * pens3 phase 4: awayText(gift): the away pop-up's prize line ("{coins} Coins") and its body with the time away in
+--     words (h, h + min, min, under a minute); nil (nothing to show) for a gift of no whole Coins; a gift in the state
+--     shows the pop-up (Diego's congrats overlay in the SD_Prompt layer) once, a new gift replaces it, destroy() takes
+--     it away. Engine only (the offline runner has no Destroying signal or CollectionService).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -35,6 +39,8 @@ type Context = {
 return function(t: Context)
 	local expect = t.expect
 	local PenController = t.requireClient("Controllers/PenController")
+	local StateController = t.requireClient("Controllers/StateController")
+	local UIController = t.requireClient("Controllers/UIController")
 	local Scheduler = t.requireClient("Anim/Scheduler")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
@@ -195,5 +201,56 @@ return function(t: Context)
 		expect.equal(Scheduler.count(), effects)
 		expect.equal(PenController.debugState().started, false)
 		PenController.destroy() -- twice is fine
+	end)
+
+	-- Pens3 phase 4: the coins-while-away pop-up (a stand-in on Diego's congrats overlay).
+	t.test("awayText: the Coins as the prize and the time away in words; nothing to show for no Coins", function()
+		local function line(time: string): string
+			return Strings.format(Strings.away.body, { time = time })
+		end
+		local title, body = PenController.awayText({ coins = 1_800, seconds = 3600 })
+		expect.equal(title, "1,800 Coins")
+		expect.equal(body, line("1 h"))
+		title, body = PenController.awayText({ coins = 12_345, seconds = 3725 })
+		expect.equal(title, "12,345 Coins")
+		expect.equal(body, line("1 h 2 min"))
+		expect.equal(select(2, PenController.awayText({ coins = 50, seconds = 600 })), line("10 min"))
+		expect.equal(select(2, PenController.awayText({ coins = 5, seconds = 30 })), line(Strings.away.underMinute))
+		expect.equal(
+			(PenController.awayText({ coins = 2_850_000_000_000_000, seconds = 90 * 86400 })),
+			`{Format.coins(2_850_000_000_000_000)} Coins`
+		)
+		for _, gift in
+			{ nil, {}, { coins = 0, seconds = 99 }, { coins = -3, seconds = 9 }, { coins = 0 / 0 } } :: { any }
+		do
+			expect.equal((PenController.awayText(gift)), nil)
+		end
+	end)
+
+	t.test("a gift shows the away pop-up once; a new gift replaces it; destroy takes it away (engine only)", function()
+		local layer = UIController.screenGui(Config.UI.confirm.layerName, Config.UI.confirm.layer)
+		local function overlays(): number
+			local count = 0
+			for _, child in layer:GetChildren() do
+				if child.Name == "SD_Congrats" then
+					count += 1
+				end
+			end
+			return count
+		end
+		local before = overlays()
+		PenController.start()
+		StateController.setOverride("awayGift", { coins = 1_800, seconds = 3600 })
+		expect.equal(overlays(), before + 1)
+		local column = (layer:FindFirstChild("SD_Congrats") :: any).Column
+		expect.equal(column.Title.Pose.Text.Text, "1,800 Coins")
+		expect.equal(column.Description.Pose.Text.Text, Strings.format(Strings.away.body, { time = "1 h" }))
+		StateController.setOverride("awayGift", { coins = 1_800, seconds = 3600 }) -- the same gift: no second pop-up
+		expect.equal(overlays(), before + 1)
+		StateController.setOverride("awayGift", { coins = 2_000, seconds = 4000 }) -- a new gift replaces it
+		expect.equal(overlays(), before + 1)
+		PenController.destroy()
+		expect.equal(overlays(), before)
+		StateController.setOverride("awayGift", nil)
 	end)
 end

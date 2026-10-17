@@ -37,6 +37,10 @@ local Pen = {
 	maxTickSeconds = 10, -- [P] a server hitch pays at most this much time at once
 	buyCooldownSeconds = 1, -- the server refuses a spot buy this soon after the last one
 	signHoldSeconds = 0.5, -- [P] the sign's prompt is a hold, so a kid walking past never buys by accident
+
+	-- Pens3 phase 4 (owner decision): time away pays this share of the pen's Coins a second as saved at the last save
+	-- (profile.pen.awayRate), for every second away, with no limit and no idle rule (PenMath.awayCoins).
+	awayRate = 0.05,
 }
 
 return Pen

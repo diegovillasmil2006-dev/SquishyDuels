@@ -11,6 +11,7 @@
 -- Pens (pens3 phase 1, 2026-10-17): Pen (Config/Pen) and the "pen" Coin reason (the pen's pay every second and the
 -- spots bought at its sign, PenService). Every reward counted in squeezes now pays PenMath.rewardCoins(squeezes,
 -- PenMath.squeezeValue(profile.pen)); the capsules pay nothing any more (their code goes in phases 2-3).
+-- Pens3 phase 4: the "away" Coin reason (the pen's Coins for the time away, EconomyService.grantAway).
 
 local Economy = {
 	startingCoins = 0,
@@ -34,6 +35,7 @@ local Economy = {
 		"robux",
 		"box",
 		"shop",
+		"away", -- pens3 phase 4: the pen's Coins for the time away (EconomyService.grantAway)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
 	},

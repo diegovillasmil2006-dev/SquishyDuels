@@ -36,7 +36,10 @@
 -- max(nextId, the largest id + 1); a pen item whose kind is not owned makes it owned ({at = now, src = "grant"});
 -- every owned Catalog kind without an item gets one plain Lv 1 item (the kind ids in alphabetical order: an older
 -- save gets one item per owned kind); more than Pen.toyBoxMax + Pen.placedMax entries are all kept and logged (only a
--- bug gets there: grants stop at the cap from phase 5).
+-- bug gets there: grants stop at the cap from phase 5). Pens3 phase 4: `pen.awayRate` (the pen's Coins a second at the
+-- last save, stamped by DataService; what the next load pays the time away from) joined the same way: default 0
+-- (reconcile gives an older pen 0, so its first load after phase 4 pays no away Coins); sanitize turns a non-finite,
+-- negative or non-number rate into 0 (fails closed: no away Coins).
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -389,10 +392,15 @@ end
 -- The pen (pens3 phase 1, see the header): fixed in place, every fix noted. Runs after `owned` is fixed.
 local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { string })
 	local pen = ensureTable(d, "pen", function()
-		return { spots = PEN.startSpots, nextId = 1, items = {} }
+		return { spots = PEN.startSpots, nextId = 1, items = {}, awayRate = 0 }
 	end, "pen", problems)
 	fixInt(pen, "spots", PEN.startSpots, PEN.maxSpots, PEN.startSpots, "pen.spots", problems)
 	fixInt(pen, "nextId", 1, MAX_COUNTER, 1, "pen.nextId", problems)
+	local rate = pen.awayRate -- nil only before reconcile (it fills 0)
+	if rate ~= nil and not (isFinite(rate) and (rate :: number) >= 0) then
+		pen.awayRate = 0
+		note(problems, "pen.awayRate", rate, 0)
+	end
 	local list = ensureTable(pen, "items", function()
 		return {}
 	end, "pen.items", problems)
@@ -524,6 +532,7 @@ function ProfileSchema.defaults(now: number): Profile
 			spots = PEN.startSpots,
 			nextId = 2,
 			items = { { id = 1, kind = starter, form = 0, level = 1, coat = 0 } },
+			awayRate = 0, -- pens3 phase 4: the pen's rate at the last save (DataService stamps it)
 		},
 	}
 	return profile

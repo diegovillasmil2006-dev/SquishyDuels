@@ -30,6 +30,10 @@
 --                                   retry is refused, never charged twice); else the next spot and its price.
 --   PenMath.payStep(carry, rate, dt) -> (coins, carry): dt clamped to [0, maxTickSeconds]; coins = floor(carry +
 --                                   rate × dt) (at most maxCoins), the rest carried to the next tick
+--   PenMath.awayCoins(rate, lastSeenAt, createdAt, now) -> (coins, seconds): coins for time away (phase 4):
+--                                   seconds = now - lastSeenAt clamped to [0, now - createdAt] (whole; a bad time
+--                                   counts 0), coins = floor(Pen.awayRate × rate × seconds) at most maxCoins (a rate
+--                                   that is not a finite number >= 0 counts 0). No limit, no idle rule.
 --   PenMath.encode(items)        -> string: "kind.form.level.coat" per item joined by ";" (the base's SD_Pen attribute;
 --                                   entries that are not items are left out)
 --   PenMath.decode(text)         -> {{kind, form, level, coat}}: the reverse; malformed entries are skipped
@@ -68,6 +72,10 @@ local PenMath = {}
 
 local function isWhole(n: unknown): boolean
 	return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge and math.floor(n) == n
+end
+
+local function isFinite(n: unknown): boolean
+	return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge
 end
 
 local function inRange(n: unknown, lo: number, hi: number): boolean
@@ -191,6 +199,14 @@ function PenMath.payStep(carry: number, rate: number, dt: number): (number, numb
 	local due = amount(carry) + amount(rate) * seconds
 	local coins = math.min(math.floor(due), MAX_COINS)
 	return coins, due - coins
+end
+
+function PenMath.awayCoins(rate: any, lastSeenAt: any, createdAt: any, now: any): (number, number)
+	if not (isFinite(lastSeenAt) and isFinite(createdAt) and isFinite(now)) then
+		return 0, 0
+	end
+	local seconds = math.floor(math.max(0, math.min(now - lastSeenAt, now - createdAt)))
+	return math.min(math.floor(PEN.awayRate * amount(rate) * seconds), MAX_COINS), seconds
 end
 
 -- Public: the base attribute and the walk area

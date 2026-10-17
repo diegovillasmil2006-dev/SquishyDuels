@@ -10,7 +10,8 @@
 --   * formMult and coatMult are non-empty lists of positive numbers that never fall;
 --   * coinsPerPower, levelGain, minSqueezeValue, tickSeconds and maxTickSeconds are positive numbers (levelGain >= 1);
 --   * maxLevel is a whole number >= 1; toyBoxMax a whole number >= 0; placedMax a whole number >= maxSpots;
---   * buyCooldownSeconds and signHoldSeconds are numbers >= 0.
+--   * buyCooldownSeconds and signHoldSeconds are numbers >= 0;
+--   * awayRate (phase 4: the share of the saved pen rate paid for time away) is a number in [0, 1].
 
 local P = "Config.Economy.Pen"
 local POSITIVE = { "coinsPerPower", "levelGain", "minSqueezeValue", "tickSeconds", "maxTickSeconds" }
@@ -109,5 +110,7 @@ return function(config: any): { string }
 		local v = c[field]
 		expect(isNumber(v) and v >= 0, `{P}.{field} must be a number >= 0 (got {show(v)})`)
 	end
+	local away = c.awayRate
+	expect(isNumber(away) and away >= 0 and away <= 1, `{P}.awayRate must be a number in [0, 1] (got {show(away)})`)
 	return problems
 end
