@@ -328,6 +328,8 @@ local Palette = {
 	UltBubblePop = Color3.fromHex("#8FDCC4"), -- design: fp.js:361 (the pop ring and burst)
 	UltBubbleFoam = Color3.fromHex("#DDF4FF"), -- design: fp.js:361
 	UltBubblePink = Color3.fromHex("#F9AFCB"), -- design: fp.js:361
+	UltBounceHeartRed = Color3.fromHex("#EE4A5C"), -- design: fp.js:239 (the Frog's bounce hearts; Bubble Pop's bounce)
+	UltBounceHeartGreen = Color3.fromHex("#6CC56A"), -- design: fp.js:239
 
 	-- Inspect showcases (final polish 2026-10-11): the design's own speck colours of the first-person inspect events,
 	-- overlay only (Anim/InspectTracks). A toy's other specks use its Catalog accent and White.

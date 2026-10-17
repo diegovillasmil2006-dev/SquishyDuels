@@ -14,7 +14,11 @@
 --   * overlayLight (§3.1's closest option), shakeFor (the design's shake curve is CameraController's), screenPoint;
 --   * touchPadRect (over the toy, clear of the touch controls) and releasePoint (the own projectile's start);
 --   * inspectButtonRect (final polish 2026-10-11): the touch Inspect button at the bottom middle, never in the
---     thumbstick zone nor on Throw, Ultimate, Dash or Jump, always on screen.
+--     thumbstick zone nor on Throw, Ultimate, Dash or Jump, always on screen;
+--   * throttle (phone speed fix 2026-10-16): at a 1/30 s interval, 60 Hz frames step every 2nd frame, 45 Hz frames 2 of
+--     every 3, 30 Hz and slower every frame; no interval steps every frame; stepInterval: 1 / hz, 0 (off) for 0, below
+--     0 or not a number, so lowTier.stepHz = 0 never freezes the hands; Config.FirstPerson.lowTier is 30 Hz (0 or
+--     15..60 allowed) with half the throw specks (speckShare 0.5, batch B 2026-10-17).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -403,5 +407,57 @@ return function(t: Context)
 		expect.near(near1, 1.5 / d0, 1e-6)
 		local _, far = ViewmodelMath.releasePoint(camera, toyCam, ratio, d0 + 10)
 		expect.near(far, 1, 1e-9)
+	end)
+
+	t.test("throttle (phone speed fix 2026-10-16): one step per interval on a phase clock", function()
+		local interval = 1 / 30
+		-- Which of n frames of dt step, from a phase that starts due (as the overlay's).
+		local function steps(dt: number, n: number): { boolean }
+			local phase = interval
+			local list: { boolean } = {}
+			for i = 1, n do
+				local due, carried = ViewmodelMath.throttle(phase, dt, interval)
+				expect.truthy(carried >= 0 and carried <= interval)
+				phase = carried
+				list[i] = due
+			end
+			return list
+		end
+		expect.deepEqual(steps(1 / 60, 6), { true, true, false, true, false, true }) -- every 2nd frame: 30 Hz
+		expect.deepEqual(steps(1 / 45, 6), { true, true, true, false, true, true }) -- 2 of every 3: 30 Hz
+		expect.deepEqual(steps(1 / 30, 4), { true, true, true, true })
+		expect.deepEqual(steps(1 / 20, 4), { true, true, true, true }) -- a slow phone is never held back
+		-- The skipped frame's phase is the time since the last step.
+		local due, phase = ViewmodelMath.throttle(0, 1 / 60, interval)
+		expect.falsy(due)
+		expect.near(phase, 1 / 60, 1e-12)
+		-- No interval: every frame steps.
+		local always, rest = ViewmodelMath.throttle(0.5, 1 / 60, 0)
+		expect.truthy(always)
+		expect.equal(rest, 0)
+	end)
+
+	t.test("stepInterval (phone speed fix 2026-10-16): 1 / hz; 0, below 0 or no number switches the cap off", function()
+		expect.near(ViewmodelMath.stepInterval(30), 1 / 30, 1e-12)
+		expect.near(ViewmodelMath.stepInterval(45), 1 / 45, 1e-12)
+		for _, case in { { 0 }, { -5 }, { 0 / 0 }, { nil }, { "30" } } :: { { any } } do
+			local interval = ViewmodelMath.stepInterval(case[1])
+			expect.equal(interval, 0)
+			-- Off: every frame steps (the review's case: 1 / 0 = inf was never due, so the hands froze).
+			for _ = 1, 3 do
+				local due = ViewmodelMath.throttle(0, 1 / 60, interval)
+				expect.truthy(due)
+			end
+		end
+	end)
+
+	t.test("Config.FirstPerson.lowTier: a 30 Hz step cap (0 = off, else 15..60) and half the throw specks", function()
+		local hz = FP.lowTier.stepHz
+		expect.equal(hz, 30)
+		expect.truthy(hz == 0 or (hz >= 15 and hz <= 60))
+		-- Batch B (owner 2026-10-17: "throws make half the sparkles" on phones and tablets); 1 = off, never above.
+		local share = FP.lowTier.speckShare
+		expect.equal(share, 0.5)
+		expect.truthy(share > 0 and share <= 1)
 	end)
 end

@@ -24,6 +24,16 @@ local FirstPerson = {
 	gui = { displayOrder = -1, insets = Enum.ScreenInsets.None }, -- SD_Viewmodel (not in Config.UI.ScreenGuis)
 	padGui = { displayOrder = 6, insets = Enum.ScreenInsets.CoreUISafeInsets }, -- SD_ViewmodelPad (touch only)
 	touchGuiFallbackOrder = 7, -- only if DisplayOrder -1 does not sort under Roblox's TouchGui (Studio check)
+	-- Phone speed fix (2026-10-16, NOT IN DESIGN): on the low tier (Anim/MeshQuality "Low": touch-only devices and
+	-- windows under 700 px wide or 500 px tall) the overlay steps at most stepHz times a second (on a 60 fps phone its
+	-- hands redraw every other frame; the springs get the skipped time, so every motion keeps its timing; the world FOV
+	-- still moves every frame). stepHz = 0 switches the cap off (every frame, as before). Batch B (owner 2026-10-17:
+	-- "throws make half the sparkles"): the duel hands' specks (charge, release, catch, crush) come at speckShare
+	-- there (ReducedMotion's share on top); the Inspect showcases keep every speck. 1 = off.
+	lowTier = {
+		stepHz = 30,
+		speckShare = 0.5,
+	},
 	practiceExitDelaySeconds = 0.3, -- leaving the throw box: first person ends this long after (no flip on the edge)
 	-- The overlay toy squeezes on X: it narrows and grows taller between the two palms (spec 2026-10-11 §3.4;
 	-- design: HANDOFF.md:56). The held rig switches axis only at rest.

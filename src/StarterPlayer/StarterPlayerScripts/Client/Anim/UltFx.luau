@@ -19,13 +19,15 @@
 --   Bubble Pop: the Axolotl in its bubble shell (UltBubbleShell) on the design's 0.9 m arc; at its server end (a hit
 --     or its pop) the pop ring (6 studs), 26 puffs and sfx.ultBubblePop. Bubble Pop bounce (2026-10-16): with the
 --     release's `bounce` the path turns there onto the bounce leg (the Axolotl faces its new way) and the arc spans the
---     whole flight; the design draws no effect at a bounce, so none is drawn.
+--     whole flight. Batch B (owner 2026-10-17: "the Frog's bounce look from the design"): as the drawn bubble turns,
+--     the Strawberry Frog's bounce pass (fp.js:239): bounceHearts hearts (img.kill.heart) in its two colours going up,
+--     a white ring on the floor under it and sfx.pop (bouncePassed, once a flight).
 -- * A bird's or the bubble's model goes at its ThrowImpact (the hit itself, its puffs, knockback and hit-stop are
 --   VfxController's, as for a throw); the roller rolls on to its end. Cancel stops the charge sound.
 -- * ReducedMotion: no pulse, roll, wobble or bob (FxPool halves the particles).
 -- API (VfxController): onEvent(event, ultimateId, ability, deps), projectile(projId) -> ProjInfo?, impact(impact),
--- step(now), clear(), counts(); pure helpers (unit-tested): glidePoint, arcPoint, rollerScale, lanePlate, dropPoint,
--- pulse.
+-- step(now), clear(), counts(); pure helpers (unit-tested): glidePoint, arcPoint, bouncePassed, rollerScale, lanePlate,
+-- dropPoint, pulse.
 
 -- Services
 
@@ -36,6 +38,7 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local AssetTable = require(Shared.AssetTable)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
@@ -91,6 +94,7 @@ type Flight = {
 	endPosition: Vector3?,
 	popped: boolean,
 	bounce: Bounce?, -- the bubble's bounce (`length` is then both legs)
+	bounced: boolean, -- batch B: its bounce look has played
 }
 
 type Drop = {
@@ -149,6 +153,8 @@ local SOUND_RELEASE = "sfx.ultRelease"
 local SOUND_HOVER = "sfx.ultCloudHover"
 local SOUND_DROP = "sfx.ultRainDrop"
 local SOUND_POP = "sfx.ultBubblePop"
+local SOUND_BOUNCE = "sfx.pop" -- design: fp.js:239 (the Frog's bounce pass: sfx.pop())
+local HEART_IMAGE = "img.kill.heart" -- the design's 'heart' burst shape (fp.js:239) as a particle
 local SOUND_CHARGE_PREFIX = "sfx.ultCharge."
 local OTHER_PRIORITY = -1 -- another player's ultimate sounds drop first (§18.6)
 local BIG_PRIORITY = 3
@@ -192,6 +198,11 @@ function UltFx.arcPoint(
 		then bounce.origin + bounce.dir * (studs - bounce.at)
 		else origin + dir * studs
 	return onPath + Vector3.new(0, math.sin(math.pi * k) * arc, 0)
+end
+
+-- Batch B (2026-10-17): whether a drawn bubble `along` seconds into its flight has reached its bounce (false without).
+function UltFx.bouncePassed(speed: number, along: number, bounce: Bounce?): boolean
+	return bounce ~= nil and speed * along >= bounce.at
 end
 
 -- The roller's scale t seconds after its release: rollerScaleFrom -> rollerScaleTo by the design's backOut.
@@ -377,6 +388,30 @@ local function pop(flight: Flight, at: Vector3)
 	play(SOUND_POP, at, flight.casterId)
 end
 
+-- Batch B (owner 2026-10-17): the Strawberry Frog's bounce pass (design: fp.js:239) where the bubble turns (`at`, the
+-- drawn bubble): the hearts going up from it (the burst's normal (0, 1, 0): the upper half only), the white ring on
+-- the floor under it, sfx.pop.
+local function bounceLook(flight: Flight, at: Vector3)
+	FxShapes.ring(
+		Vector3.new(at.X, flight.floorY, at.Z),
+		Vector3.yAxis,
+		FX.bounceRingToStuds,
+		FX.bounceRingSeconds,
+		Palette.White,
+		FX.bounceTransparencyFrom
+	)
+	local pool = FxPool.default()
+	local colors = { Palette.UltBounceHeartRed, Palette.UltBounceHeartGreen }
+	local each = math.max(1, math.floor(FX.bounceHearts / #colors))
+	for _, color in colors do
+		local props = particleProps(color, FX.bounceHeartSize, FX.bounceHeartLifetime, FX.bounceHeartSpeed)
+		props.Texture = AssetTable.image(HEART_IMAGE) or TEXTURES.smoke
+		props.SpreadAngle = Vector2.new(90, 90)
+		pool:emit(at, each, props)
+	end
+	play(SOUND_BOUNCE, at, flight.casterId)
+end
+
 local function attachTrail(flight: Flight, root: BasePart, squishyId: string)
 	local def = Catalog.get(squishyId)
 	local style = if def then RarityStyle.trail(def.visuals.trail) else nil
@@ -430,6 +465,7 @@ local function newFlight(
 		endPosition = nil,
 		popped = false,
 		bounce = nil,
+		bounced = false,
 	}
 	local model = flight.model
 	if model then
@@ -554,6 +590,10 @@ local function stepFlight(flight: Flight, now: number): boolean
 		position = UltFx.arcPoint(flight.origin, flight.dir, flight.speed, along, duration, FX.bubbleArcStuds, bounce)
 		local heading = if bounce and flight.speed * along > bounce.at then bounce.dir else flight.dir
 		frame = CFrame.lookAt(position, position + heading)
+		if not flight.bounced and UltFx.bouncePassed(flight.speed, along, bounce) then
+			flight.bounced = true
+			bounceLook(flight, position)
+		end
 		local shell = flight.shell
 		if shell then
 			shell.CFrame = CFrame.new(position)

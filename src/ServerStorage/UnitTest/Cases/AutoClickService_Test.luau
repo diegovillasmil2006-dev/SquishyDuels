@@ -22,7 +22,11 @@
 --     request let through, no penalty, nothing saved, nobody kicked); "warn" makes every catch the first step (never a
 --     kick or a ban); the kick text names the ban only when one can follow (autoClick.kickNoBan with bans off or a
 --     test account). The machine is a steady 10 a second (the old 19 a second is the client ceiling's rhythm, never
---     judged since the fix).
+--     judged since the fix);
+--   * batch B (owner 2026-10-17): the live config enforces the steps ("full"); a ban is never forgotten, so the next
+--     catch after it (even a year later) is a longer ban: 7 days, then 30 days, then 30 days again, each with
+--     Strings autoClick.banLonger (naming the days) and the step in the PrivateReason; never in Studio; bans off: the
+--     kick with kickNoBan.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -390,6 +394,51 @@ return function(t: Context)
 		expect.equal(countOf(again, "squeeze.autoClick"), 1) -- warned again, not kicked
 		expect.equal(#world.kicks + #world.bans, 0)
 		expect.equal(world.profile.autoClick.step, 1)
+		finish()
+	end)
+
+	-- Batch B (owner 2026-10-17) ---------------------------------------------------------------------------------------
+
+	t.test("the live config enforces the steps: warn, kick, ban (enforce = full)", function()
+		expect.equal(AUTO.enforce, "full")
+	end)
+
+	t.test("after a ban ends, the next catch is a longer ban: 7 days, then 30 days, then 30 days again", function()
+		local YEAR = 365 * 86400
+		local expected = { { 3, 604800, 4 }, { 4, 2592000, 5 }, { 5, 2592000, 5 } } -- saved step, ban, new step
+		for _, case in expected do
+			local saved, seconds, step = case[1], case[2], case[3]
+			local world = fresh({ profile = { autoClick = { step = saved, at = UNIX_START - YEAR } } })
+			local answers = machine(world, 45)
+			expect.equal(countOf(answers, "squeeze.autoClick"), 1)
+			expect.equal(#world.bans, 1)
+			local ban = world.bans[1]
+			expect.equal(ban.Duration, seconds)
+			expect.equal(ban.ApplyToUniverse, true)
+			expect.equal(ban.ApplyDeviceBlock, false)
+			local display = Strings.format(Strings.autoClick.banLonger, { days = seconds // 86400 })
+			expect.equal(ban.DisplayReason, display)
+			expect.truthy(string.find(display, tostring(seconds // 86400), 1, true) ~= nil)
+			expect.truthy(#ban.DisplayReason <= 400)
+			expect.truthy(string.find(ban.PrivateReason, `strike {step}`, 1, true) ~= nil)
+			expect.deepEqual(world.kicks, { display }) -- still in the server after the ban
+			expect.equal(world.profile.autoClick.step, step)
+			finish()
+		end
+		-- A 1-day ban that ended a day ago, then the same in Studio (never banned) and with bans off (the kick).
+		local ended = fresh({ profile = { autoClick = { step = 3, at = UNIX_START - AUTO.memorySeconds - 60 } } })
+		machine(ended, 45)
+		expect.equal(ended.bans[1].Duration, 604800)
+		finish()
+		local studio = fresh({ studio = true, profile = { autoClick = { step = 3, at = UNIX_START - YEAR } } })
+		machine(studio, 45)
+		expect.equal(#studio.bans + #studio.kicks, 0)
+		expect.equal(studio.profile.autoClick.step, 4)
+		finish()
+		local off = fresh({ banning = false, profile = { autoClick = { step = 4, at = UNIX_START - YEAR } } })
+		machine(off, 45)
+		expect.equal(#off.bans, 0)
+		expect.deepEqual(off.kicks, { Strings.autoClick.kickNoBan })
 		finish()
 	end)
 

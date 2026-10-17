@@ -5,6 +5,7 @@
 -- MatPulse, CoinPopup, Ambient. Shared (read by client VFX code and the SquishyBuilder test), data only. All [P].
 -- Budgets are our own limits, not engine limits; when a cap is reached cosmetic effects are dropped first.
 -- VFX never create dynamic lights. Rarity trails are in Art/RarityStyle.
+-- Aim arc (2026-10-16): AimArc, the charge throw's path preview (Controllers/AimArcController), with its design lines.
 
 local Vfx = {
 	-- Engine built-in particle textures (verified AssetFetchStatus Success, §9.15). Not asset ids.
@@ -356,6 +357,15 @@ local Vfx = {
 		popSize = 0.04 / 0.28,
 		popLifetime = 0.6,
 		popGravity = -3 / 0.28,
+		-- Batch B (owner 2026-10-17: "the Frog's bounce look from the design"): where Bubble Pop bounces, the Strawberry
+		-- Frog's bounce pass (design: fp.js:239): 6 hearts (Art/Palette UltBounceHeart*), a white ring, sfx.pop.
+		bounceHearts = 6,
+		bounceHeartSpeed = 1.4 / 0.28,
+		bounceHeartSize = 0.04 / 0.28,
+		bounceHeartLifetime = 0.5,
+		bounceRingToStuds = 2 * 0.5 / 0.28, -- diameter: radius 0.1 -> 0.5 m
+		bounceRingSeconds = 0.3,
+		bounceTransparencyFrom = 1 - 0.6,
 		lingerSeconds = 0.25, -- reading: a drawn projectile fades this long after its server end
 	},
 
@@ -422,6 +432,41 @@ local Vfx = {
 		burstDrag = 1.6 / math.log(2), -- design: fx.js:95 (drag 1.6; Roblox halves the speed every 1 / Drag s)
 		burstRingStuds = 2 * 1.6 / 0.28, -- the ring's diameter (design: html:361, radius 0.1 -> 1.6 m)
 		burstRingSeconds = 0.3, -- design: html:361
+	},
+
+	-- Aim arc (2026-10-16, jayyyyy's yes; Controllers/AimArcController): while the own throw charges, the path it flies
+	-- if let go now and where it lands. design: the same page, html:256-294 ("aim preview: marching dashed arc + landing
+	-- marker"; metres / 0.28 = studs). The path is the game's throw (ProjectileMath and the server's launch), not the
+	-- design's own throw physics (html:269-279). [P] = a build choice, NOT IN DESIGN.
+	AimArc = {
+		dashes = 40, -- design: html:257 (TRAJ_N)
+		showFromCharge = 0.1, -- shown while c > this (design: html:266)
+		fadeInRate = 9, -- the arc's opacity share eases toward 1 at this rate × dt ... (design: html:267)
+		fadeOutRate = 20, -- ... and toward 0 at this one
+		hideBelow = 0.02, -- hidden at or below this share (design: html:268)
+		stepSeconds = 1 / 90, -- the path's samples (design: html:271)
+		startStuds = 1.1 / 0.28, -- the first dash this far along the path from the hand (design: html:281)
+		gapStuds = 0.85 / 0.28, -- dash to dash (design: html:280)
+		marchRate = 2.6, -- the dashes march this many gaps a second (design: html:281)
+		dashLengthStuds = 2 * 0.45 / 0.28, -- a dash's length: the capsule's 2 m × len 0.45 (design: html:257, 280)
+		widthStuds = 0.06 / 0.28, -- a dash's width ... (design: html:287, 0.06 + 0.04c)
+		widthChargeStuds = 0.04 / 0.28, -- ... + this × c
+		widthFrom = 0.6, -- × this at the start, growing to 1 over the first widthRampStuds (design: html:287)
+		widthRampStuds = 6 / 0.28,
+		farFade = 0.4, -- width and length × (1 - farFade · s / total) toward the end (design: html:287)
+		whiteEvery = 4, -- every 4th dash Art/Palette White, the others the toy's accent (design: html:288)
+		opacity = 0.92, -- design: html:291
+		markerStuds = 0.28 / 0.28, -- the landing ring's outer radius ... (design: html:292, 0.28 + 0.2c × ring radius 1)
+		markerChargeStuds = 0.2 / 0.28, -- ... + this × c
+		markerInner = 0.72, -- the ring's inner radius share (design: html:262, RingGeometry 0.72-1)
+		markerDot = 0.22, -- the centre dot's radius share (design: html:262, CircleGeometry 0.22)
+		markerPulse = 0.12, -- size × (1 + markerPulse · sin(markerPulseRate · t)) (design: html:292)
+		markerPulseRate = 12, -- rad/s (1.9 Hz)
+		markerOpacity = 0.85, -- design: html:292
+		markerLiftStuds = 0.012 / 0.28, -- off the hit surface (design: html:292)
+		markerHeightStuds = 0.04, -- [P] the ring's thickness (the design's is flat), under 2 × markerLiftStuds
+		castChordSeconds = 0.1, -- [P] where it lands: one Spherecast per this much of the flight ...
+		maxCasts = 30, -- [P] ... at most this many a frame (Duel.Rules.ProjectileMaxLifetime 3 s), up to the first hit
 	},
 
 	-- Per-effect budgets (§9.15).

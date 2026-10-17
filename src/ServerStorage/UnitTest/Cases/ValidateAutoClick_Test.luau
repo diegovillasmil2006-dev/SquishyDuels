@@ -11,7 +11,8 @@
 -- multiple of it or under 10 blocks; maxMeanGapSeconds 0 or at or above Grip.Hold.repeatSeconds; maxBlockSpreadSeconds
 -- 0 or above 10 ms; burstGapSeconds not above maxMeanGapSeconds; penaltySeconds / memorySeconds not positive;
 -- banSeconds -1 (permanent), under an hour or not whole hours; a missing warning, kick, kickNoBan or ban text, and a
--- kick or ban text without {hours}. A missing AutoClick table is one problem.
+-- kick or ban text without {hours}. A missing AutoClick table is one problem. Batch B (2026-10-17): laterBanSeconds
+-- not a list, not whole days, -1, or not longer than the ban before; a banLonger text missing or without {days}.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -156,6 +157,18 @@ return function(t: Context)
 				c.Net.AutoClick.banSeconds = bad
 			end)
 		end
+		-- Batch B (2026-10-17): the longer bans after the 1st (whole days, each longer than the one before).
+		local bads: { any } = { "7 days", { -1 }, { 90000 }, { 86400 }, { 604800, 604800 }, { 2592000, 604800 } }
+		for _, bad in bads do
+			oneProblem("laterBanSeconds", function(c: any)
+				c.Net.AutoClick.laterBanSeconds = bad
+			end)
+		end
+		for _, good in { {}, { 172800 }, { 604800, 2592000, 7776000 } } do
+			local config = input()
+			config.Net.AutoClick.laterBanSeconds = good
+			expect.deepEqual(validate(config, Strings), {})
+		end
 	end)
 
 	t.test("the texts: the warning, the kick and the ban exist; the kick and ban name {hours}", function()
@@ -180,6 +193,10 @@ return function(t: Context)
 		local noKickNoBan = withTexts({ ["autoClick.kickNoBan"] = "" }) -- review fix (2026-10-16)
 		expect.equal(#noKickNoBan, 1)
 		expect.truthy(string.find(noKickNoBan[1], "autoClick.kickNoBan", 1, true) ~= nil)
+		local noDays = withTexts({ ["autoClick.banLonger"] = "Banned for {hours} hours." }) -- batch B (2026-10-17)
+		expect.equal(#noDays, 1)
+		expect.truthy(string.find(noDays[1], "autoClick.banLonger", 1, true) ~= nil)
+		expect.equal(#withTexts({ ["autoClick.banLonger"] = "" }), 2) -- empty, and so no {days}
 		expect.deepEqual(validate(input(), nil), {}) -- no Strings: the text checks are skipped
 	end)
 

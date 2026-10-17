@@ -44,7 +44,11 @@
 --     html:498-570): a running charge (ThrowController.localCharge, a stand-in here) puts the overlay in the charge
 --     pose with the glow from c 0.2 and the orbit from 0.4 and narrows the world FOV; its end gives the hold back with
 --     the effect parts hidden; the catch (CatchController.localCatch, a stand-in) opens the hands, then the crush shows
---     the caught toy's own copy and bursts it at burstAt (rings), and the hold comes back when the hands are free.
+--     the caught toy's own copy and bursts it at burstAt (rings), and the hold comes back when the hands are free;
+--   * phone speed fix (2026-10-16): on the low tier (a compact screen) the overlay steps every 2nd 60 Hz frame with
+--     the time it skipped (the showcase's specks all come, on time); the world FOV still moves on every frame of a
+--     squeeze focus, as on the high tier; the high tier steps every frame; a throw's release makes half the specks
+--     there (batch B, owner 2026-10-17).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -1406,5 +1410,96 @@ return function(t: Context)
 		local pad = w.guis.SD_ViewmodelPad
 		expect.equal(if pad then pad:FindFirstChild("Viewmodel_InspectButton") else nil, nil) -- keys: R
 		teardown()
+	end)
+
+	t.test("phone fix: the low tier steps every 2nd 60 Hz frame, with the skipped time; all the specks", function()
+		local w = setup("dragon")
+		w.camera.ViewportSize = Vector2.new(640, 360) -- a compact screen: MeshQuality "Low"
+		enter(w, "lobby")
+		expect.truthy(Viewmodel.debugState().lowTier)
+		frames(w, 2) -- the first two frames step (the cap starts due)
+		local before = Viewmodel.debugState().scale -- the pop-in's scale moves on every step
+		frames(w, 1)
+		expect.equal(Viewmodel.debugState().scale, before) -- skipped: nothing is written
+		frames(w, 1)
+		local after = Viewmodel.debugState().scale
+		expect.truthy(after ~= before)
+		-- The step got both frames: the pop-in's scale is the one two 60 Hz steps reach.
+		expect.near(after, ViewmodelMath.backOut(4 * FRAME / FP.equip.seconds), 1e-6)
+		frames(w, 60)
+		expect.truthy(pressInspect(w))
+		frames(w, 50) -- 0.83 s: the roar on time (fp.js:128-129, 182)
+		expect.equal(countOf(w.sounds, "sfx.dragonRoar"), 1)
+		expect.equal(Viewmodel.debugState().specks, 14) -- all 14 embers (a showcase keeps every speck, batch B)
+		teardown()
+		-- The high tier (a wide screen, keyboard and mouse) steps every frame.
+		local h = setup("dragon")
+		enter(h, "lobby")
+		expect.falsy(Viewmodel.debugState().lowTier)
+		frames(h, 2)
+		local first = Viewmodel.debugState().scale
+		frames(h, 1)
+		expect.truthy(Viewmodel.debugState().scale ~= first)
+		teardown()
+	end)
+
+	t.test("phone fix: on the low tier the world FOV still moves on every frame of a squeeze focus", function()
+		-- The world FOV offsets of 20 frames of a squeeze, after 20 frames into it (the focus on its way to 64.5°).
+		local function squeezeFov(viewport: Vector2): ({ number }, boolean)
+			local w = setup()
+			w.camera.ViewportSize = viewport
+			enter(w, "lobby")
+			local low = Viewmodel.debugState().lowTier
+			frames(w, 60)
+			for _ = 1, 20 do
+				press(w, 0.5, 0.15)
+				frames(w, 1)
+			end
+			table.clear(w.fov)
+			for _ = 1, 20 do
+				press(w, 0.5, 0.15)
+				frames(w, 1)
+			end
+			local list = table.clone(w.fov)
+			teardown()
+			return list, low
+		end
+		local low, isLow = squeezeFov(Vector2.new(640, 360)) -- a compact screen: MeshQuality "Low"
+		expect.truthy(isLow)
+		-- One write a frame (the overlay steps only every 2nd one), each a new value: the zoom never moves in 30 Hz steps.
+		expect.equal(#low, 20)
+		for i = 2, #low do
+			expect.truthy(low[i] < 0 and low[i] ~= low[i - 1])
+		end
+		-- The same zoom as the high tier's, within a small fraction of a degree.
+		local high, isHigh = squeezeFov(Vector2.new(1920, 1080))
+		expect.falsy(isHigh)
+		expect.equal(#high, 20)
+		expect.near(low[20], high[20], 0.25)
+	end)
+
+	-- Batch B (owner 2026-10-17: "throws make half the sparkles"): the release's specks on the low tier are
+	-- lowTier.speckShare of the high tier's (each burst rounded as Anim/Specks does); the showcase case above keeps all 14.
+	t.test("phone fix: on the low tier a throw's release makes half the sparkles; the high tier all of them", function()
+		local function releaseSpecks(viewport: Vector2?): (number, boolean)
+			local w = setup()
+			if viewport then
+				w.camera.ViewportSize = viewport
+			end
+			enter(w, "duel")
+			frames(w, 60)
+			throwOnce(w, 0.18, 0.1)
+			frames(w, 2) -- the low tier steps every 2nd 60 Hz frame
+			local state = Viewmodel.debugState()
+			teardown()
+			return state.specks, state.lowTier
+		end
+		local high, highTier = releaseSpecks(nil)
+		local low, lowTier = releaseSpecks(Vector2.new(640, 360)) -- a compact screen: MeshQuality "Low"
+		expect.falsy(highTier)
+		expect.truthy(lowTier)
+		expect.truthy(high >= 4)
+		expect.truthy(low >= 1 and low < high)
+		expect.truthy(low <= math.ceil(high * FP.lowTier.speckShare) + 1) -- two bursts, each rounded half up
 	end)
 end

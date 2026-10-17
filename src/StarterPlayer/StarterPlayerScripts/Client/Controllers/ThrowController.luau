@@ -113,6 +113,12 @@
 --   throw (rapidCooldownMultiplier, pure: MatchService's throwCooldownMultiplier, kinds.rapidThrow.cooldownMultiplier
 --   kept at or above CooldownClamp.Min / the clamped catalog cooldown, so the cooldown is exactly CooldownClamp.Min),
 --   read at the request's arrival like the throw boost; still informational (the gate is the server's nextThrowAt).
+-- Aim arc (2026-10-16, jayyyyy's yes; AimArcController draws it): fire()'s origin + direction moved, unchanged, into
+--   launchFor (one path for a real throw and the preview), the launch speed into launchSpeed (pure: the toy's speed ×
+--   ThrowCharge.speedFactor(c) × the throw boost, ThrowRules' own launch). chargePreview() is the throw a release right
+--   now would launch while a charge runs: launchFor's origin and direction × launchSpeed for the charge the server will
+--   measure, the toy's gravity and radius. The arc's every-frame launchFor does not count in stats.assisted (assisted's
+--   `count`). Still no new top-level local (module fields only).
 
 -- Services
 
@@ -170,6 +176,18 @@ export type AimState = {
 	charge: number,
 	chargeFull: boolean,
 	chargeColor: Color3?,
+}
+
+-- Aim arc (2026-10-16): the throw a release right now would launch (chargePreview): the server's launch (origin,
+-- velocity, the toy's gravity and radius; ProjectileMath.positionAt draws its path), the local charge c and the toy's
+-- accent for the looks.
+export type ChargePreview = {
+	origin: Vector3,
+	velocity: Vector3,
+	gravity: number,
+	radius: number,
+	charge: number,
+	color: Color3?,
 }
 
 export type UltState = {
@@ -1216,8 +1234,9 @@ local function hasLineOfSight(from: Vector3, to: Vector3, targetModel: Instance?
 	return targetModel ~= nil and result.Instance:IsDescendantOf(targetModel)
 end
 
--- Aim assist at throw time for gamepad and touch (§5.10).
-local function assisted(ctx: Ctx, ray: Ray?, aimPoint: Vector3): Vector3
+-- Aim assist at throw time for gamepad and touch (§5.10). Aim arc (2026-10-16): `count` false (the arc's preview) leaves
+-- stats.assisted to real throws.
+local function assisted(ctx: Ctx, ray: Ray?, aimPoint: Vector3, count: boolean?): Vector3
 	if ray == nil then
 		return aimPoint
 	end
@@ -1268,7 +1287,7 @@ local function assisted(ctx: Ctx, ray: Ray?, aimPoint: Vector3): Vector3
 		spec.coneDeg,
 		spec.strength
 	)
-	if moved then
+	if moved and count ~= false then
 		stats.assisted += 1
 	end
 	return point
@@ -1278,11 +1297,17 @@ local function originHintOf(root: BasePart): Vector3
 	return (root.CFrame * CFrame.new(COMBAT.ReleaseOffset)).Position
 end
 
+-- Aim arc (2026-10-16, pure): a throw's launch speed (studs/s), the one ThrowRules gives it: the toy's speed ×
+-- ThrowCharge.speedFactor(c) × the throw boost (nil = 1). Its velocity = the unit direction × this.
+function ThrowController.launchSpeed(throw: { speed: number }, c: number, speedMultiplier: number?): number
+	return throw.speed * ThrowCharge.speedFactor(c) * (speedMultiplier or 1)
+end
+
 -- Feature 1: solved for the charged speed (ThrowCharge.speedFactor(c)), the speed the server gives this throw.
 -- Power-ups v1.1: times the context's throw boost (a match only; 1 otherwise).
 local function throwDirection(ctx: Ctx, origin: Vector3, aimPoint: Vector3, forward: Vector3, c: number): Vector3
 	local throw = ctx.def.throw
-	local speed = throw.speed * ThrowCharge.speedFactor(c) * (ctx.speedMultiplier or 1)
+	local speed = ThrowController.launchSpeed(throw, c, ctx.speedMultiplier)
 	local raw = ProjectileMath.solveLaunchDir(origin, aimPoint, speed, throw.gravity)
 	return ThrowController.limitDirection(raw, forward, ctx.kind == "practice")
 end
@@ -1448,6 +1473,45 @@ local function handsBusy(now: number): boolean
 	return now < handsBusyUntil
 end
 
+-- Aim arc (2026-10-16): where a throw of `ctx` from `root` leaves, exactly as fire() sends it: the origin hint and the
+-- unit direction, or nil, nil and a reason code when it cannot be thrown. `aimPoint` nil = the camera aim now (with aim
+-- assist); `level` = the charge the server will measure (0 uncharged); `countAssist` false = the arc's preview (the
+-- assist counter is for real throws). Moved out of fire() unchanged.
+function ThrowController.launchFor(
+	ctx: Ctx,
+	root: BasePart,
+	aimPoint: Vector3?,
+	ray: Ray?,
+	level: number,
+	countAssist: boolean
+): (Vector3?, Vector3?, string?)
+	if ctx.kind == "duel" and not insideOwnHalf(root.Position) then
+		return nil, nil, "throw.context"
+	end
+	local point = aimPoint
+	local aimRay = ray
+	local missed = false -- the camera ray hit nothing (open sky): the throw leaves along the crosshair (see the header)
+	if point == nil then
+		local camPoint, _, _, camRay, hit = cameraAim()
+		point, aimRay, missed = camPoint, camRay, not hit
+	end
+	if point == nil then
+		return nil, nil, "throw.direction"
+	end
+	if aimPoint == nil then
+		local unassisted = point :: Vector3
+		point = assisted(ctx, aimRay, unassisted, countAssist)
+		if point ~= unassisted then
+			missed = false -- aim assist found a target: aim at it
+		end
+	end
+	local origin = originHintOf(root)
+	local dir = if missed and aimRay
+		then ThrowController.limitDirection(aimRay.Direction, root.CFrame.LookVector, ctx.kind == "practice")
+		else throwDirection(ctx, origin, point :: Vector3, root.CFrame.LookVector, level)
+	return origin, dir, nil
+end
+
 -- Sends one throw toward `aimPoint` (nil = the current camera aim). Returns false and a reason code when it cannot.
 -- Feature 1: `c` = the local charge (0 = uncharged); `chargeSent` = its ChargeStart already left. An uncharged throw
 -- first sends ChargeStart at the same clientTime, so the server's charge record is always this throw's (c = 0).
@@ -1458,30 +1522,10 @@ local function fire(ctx: Ctx, aimPoint: Vector3?, ray: Ray?, c: number?, chargeS
 		return false, "throw.context"
 	end
 	local level = if chargeSent then c or 0 else 0
-	if ctx.kind == "duel" and not insideOwnHalf(root.Position) then
-		return false, "throw.context"
+	local origin, dir, reason = ThrowController.launchFor(ctx, root, aimPoint, ray, level, true)
+	if origin == nil or dir == nil then
+		return false, reason
 	end
-	local point = aimPoint
-	local aimRay = ray
-	local missed = false -- the camera ray hit nothing (open sky): the throw leaves along the crosshair (see the header)
-	if point == nil then
-		local camPoint, _, _, camRay, hit = cameraAim()
-		point, aimRay, missed = camPoint, camRay, not hit
-	end
-	if point == nil then
-		return false, "throw.direction"
-	end
-	if aimPoint == nil then
-		local unassisted = point :: Vector3
-		point = assisted(ctx, aimRay, unassisted)
-		if point ~= unassisted then
-			missed = false -- aim assist found a target: aim at it
-		end
-	end
-	local origin = originHintOf(root)
-	local dir = if missed and aimRay
-		then ThrowController.limitDirection(aimRay.Direction, root.CFrame.LookVector, ctx.kind == "practice")
-		else throwDirection(ctx, origin, point :: Vector3, root.CFrame.LookVector, level)
 	local now = serverNow()
 	local windup = ctx.def.throw.windup
 	if not chargeSent then
@@ -2330,6 +2374,38 @@ function ThrowController.localCharge(): (number?, number?, boolean)
 	local now = serverNow()
 	local c = ThrowCharge.level(running.startAt, now)
 	return c, math.max(0, now - running.startAt), ThrowCharge.isFull(c)
+end
+
+-- Aim arc (2026-10-16, AimArcController reads it every frame): while a charge runs in a throw context, the throw that
+-- letting go now would launch: launchFor's origin and direction (the camera aim, aim assist, the missed-ray rule) ×
+-- launchSpeed for the charge the server will measure (releaseCharge's: c when its ChargeStart left, else 0), the toy's
+-- gravity and radius, c and the toy's accent. nil when no charge runs or nothing could be thrown now.
+function ThrowController.chargePreview(): ChargePreview?
+	local running = charge
+	if running == nil then
+		return nil
+	end
+	local now = serverNow()
+	local ctx = throwContext(now)
+	local root = aliveRoot(localPlayer())
+	if ctx == nil or root == nil then
+		return nil
+	end
+	local c = ThrowCharge.level(running.startAt, now)
+	local level = if running.sent then c else 0
+	local origin, dir = ThrowController.launchFor(ctx, root, nil, nil, level, false)
+	if origin == nil or dir == nil then
+		return nil
+	end
+	local throw = ctx.def.throw
+	return {
+		origin = origin,
+		velocity = dir * ThrowController.launchSpeed(throw, level, ctx.speedMultiplier),
+		gravity = throw.gravity,
+		radius = throw.radius,
+		charge = c,
+		color = running.color,
+	}
 end
 
 -- Feature 1: drops a running charge without a throw (CatchController: a catch press cancels a charge, design:

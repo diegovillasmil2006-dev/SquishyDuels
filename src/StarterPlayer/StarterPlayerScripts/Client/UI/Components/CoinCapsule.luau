@@ -7,13 +7,25 @@
 --   local feel = Button.decorate(coins.root, { sound = false })     -- the hover and press feel (the caller)
 -- root is a transparent TextButton (the tap target, named spec.name, the focus ring with pill corners), as tall as the
 -- pill's frame: its 58 px face and the 5 px ink lip under it (G4.23), at least 220 wide (H:75), wider when the number
--- needs it. Inside it SD_Visual (the squash and the shake play on it, never on the laid-out root) holds:
+-- and the "+" need it (2026-10-16). Inside it SD_Visual (the squash and the shake play on it, never on the laid-out
+-- root) holds:
 --   * Ring: the pill's yellow ring (H:575: box-shadow 0 0 0 Npx rgba(255,227,107,a)), a rounded frame of the face's
 --     size behind the face (the lip draws over it, as the CSS shadow list does) with an outer UIStroke;
 --   * Face: the purple pill (#9775FF -> #6C47F5, H:75): a 4 px ink border drawn inside, the 3 px highlight at .14, the
---     lip, radius half the face; its number (Amount, the Sticker text role "coin": Coin 32 px, #FFE36B, stroke 6, drop
---     3, H:79) after a 68 px left padding, 10 on the right; the number grows from its left middle (H:79
---     transform-origin 0 50%: the list keeps its left edge and centres it);
+--     lip, radius half the face;
+--   * Plus (2026-10-16, the coin pill's "+", owner yes "Add it", plan [UD5]): the green "+" (H:80, numbers in
+--     Config.UI.Sticker.hud.coinPlus): 36 px, radius 12, a 3 px ink border drawn inside, #A6F796 -> #38C150 (Theme
+--     accent greenChip), the 3 px highlight at .6, the 3 px lip; its "+" (hud.coinsPlus) in the Sticker text role
+--     "coinPlus" (Large 28 px, white, stroke 4). It sits at the face's right end, inside the 10 px right padding,
+--     centred on the face's height (H:80 flex:none after the flex:1 number; the number keeps the left edge, so the
+--     "+" is not in the number's list: the number's rise moves the list), over the face. It is a part of the pill, not
+--     a button: the pill's tap, press, hover and sound are its own (H:75; a 36 px target would be under
+--     Config.UI.Touch.minTarget);
+--   * Row (review fix 2026-10-16): a transparent frame of the face's size over the "+" holding the number (Amount, the
+--     Sticker text role "coin": Coin 32 px, #FFE36B, stroke 6, drop 3, H:79) after a 68 px left padding, 10 on the
+--     right; the number grows from its left middle (H:79 transform-origin 0 50%: the list keeps its left edge and
+--     centres it). It draws above the "+" as in the design, where the transformed number (H:79) paints over the later,
+--     plain "+" span (H:80) when its 1.22 pop reaches it;
 --   * Coin: the 78 px coin at (-14, -12) of the pill's padding edge (H:78; inside its border) with, behind it, the
 --     landing's glow (106 px at (-28, -26), the radial img.fx.radial.coinGlow or Theme.radial's fallback, H:76), rays
 --     (146 px at (-48, -46), img.fx.raysCoin, else img.fx.rays tinted #FFF08C, H:77) and halo (the drop-shadow(0 0 10px
@@ -42,6 +54,7 @@ local AssetTable = require(Shared.AssetTable)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
+local Strings = require(Shared.Strings)
 
 local UI = script.Parent.Parent
 local Client = UI.Parent
@@ -87,6 +100,8 @@ local SHAKE = MOTION.buttonShake
 local FACE = HUD.face -- H:75
 local LIP = STICKER.lip.button -- H:75: 0 5px 0 #1E1428
 local BORDER = STICKER.border.normal -- H:75
+local PLUS = STICKER.hud.coinPlus -- H:80 (2026-10-16)
+local PLUS_ACCENT = "greenChip" -- H:80: #A6F796 -> #38C150
 local COIN_IMAGE_WHITE = "img.coin.white"
 local GLOW_KEY = "img.fx.radial.coinGlow"
 local RAYS_KEY = "img.fx.raysCoin"
@@ -168,7 +183,7 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 		Parent = ring,
 	})
 
-	-- H:75: the pill's face with its lip, border, highlight and padding; the number in the coin role (H:79).
+	-- H:75: the pill's face with its lip, border and highlight.
 	local face: Frame = Create("Frame", {
 		Name = "Capsule",
 		BorderSizePixel = 0,
@@ -187,14 +202,23 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 		drop = bands.drop,
 		colors = Theme.surfaceColors(Theme.accent("plum"), "coinPill", true),
 	})
-	-- CSS paddings sit inside the border (H:18 box-sizing: border-box); the border is drawn inside the face here.
+	-- Review fix (2026-10-16): the number in its own transparent Row over the "+" (see the header), with the face's
+	-- padding: CSS paddings sit inside the border (H:18 box-sizing: border-box); the border is drawn inside the face.
+	local row: Frame = Create("Frame", {
+		Name = "Row",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Active = false,
+		ZIndex = 3,
+		Parent = visual,
+	})
 	local padding: UIPadding = Create("UIPadding", {
 		PaddingLeft = UDim.new(0, BORDER + HUD.padLeft),
 		PaddingRight = UDim.new(0, BORDER + HUD.padRight),
 		PaddingBottom = UDim.new(0, LIP),
-		Parent = face,
+		Parent = row,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, HUD.gap, face, Enum.HorizontalAlignment.Left)
+	Theme.list(Enum.FillDirection.Horizontal, HUD.gap, row, Enum.HorizontalAlignment.Left)
 	local label = Theme.label({
 		Name = "Amount",
 		Text = spec.text,
@@ -202,11 +226,46 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 		AutomaticSize = Enum.AutomaticSize.XY,
 		TextWrapped = false,
 		LayoutOrder = 1,
-		Parent = face,
+		Parent = row,
 	}, "Coin")
 	Theme.stickerText(label, "coin")
 	label.TextWrapped = false
 	local pop: UIScale = Create("UIScale", { Name = "SD_Pop", Parent = label })
+
+	-- 2026-10-16 (plan [UD5]): the green "+" at the face's right end (H:80; see the header), its lip inside its box.
+	local plus: Frame = Create("Frame", {
+		Name = "Plus",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -(BORDER + HUD.padRight), 0, (FACE - PLUS.face) / 2),
+		Size = UDim2.fromOffset(PLUS.face, PLUS.face + PLUS.lip),
+		Active = false,
+		ZIndex = 2,
+		Parent = visual,
+	})
+	local plusBands = Layout.stickerBands(PLUS.border, PLUS.highlightPx, 0, PLUS.lip)
+	Theme.foam(plus, {
+		radius = PLUS.radius,
+		stroke = PLUS.border,
+		inner = true,
+		top = plusBands.top,
+		bevel = plusBands.bevel,
+		drop = plusBands.drop,
+		colors = Theme.surfaceColors(
+			Theme.accent(PLUS_ACCENT),
+			{ highlightPx = PLUS.highlightPx, highlightAlpha = PLUS.highlightAlpha },
+			true
+		),
+	})
+	local plusLabel = Theme.label({
+		Name = "Label",
+		Text = Strings.hud.coinsPlus,
+		Size = UDim2.new(1, 0, 0, PLUS.face),
+		AutomaticSize = Enum.AutomaticSize.None,
+		Parent = plus,
+	}, "Large")
+	Theme.stickerText(plusLabel, "coinPlus")
+	plusLabel.TextWrapped = false
 
 	-- H:76-78: the coin with its glow, rays and halo behind it, over the face; CSS absolute offsets are from the
 	-- padding edge, inside the 4 px border.
@@ -217,7 +276,7 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 		Position = UDim2.fromOffset(BORDER + HUD.coinX, BORDER + HUD.coinY),
 		Size = UDim2.fromOffset(coinPx, coinPx),
 		Active = false,
-		ZIndex = 3,
+		ZIndex = 4, -- over the face, the "+" and the number's Row (as before the review fix)
 		Parent = visual,
 	})
 	local glow: Frame = Create("Frame", {
@@ -321,10 +380,10 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 		})
 	end
 
-	-- The width: the number's (Theme.textWidth: never the popped size), the paddings and the border, at least
-	-- minWidth (H:75, a border-box width).
+	-- The width: the number's (Theme.textWidth: never the popped size), the gap and the "+" (2026-10-16, H:80), the
+	-- paddings and the border, at least minWidth (H:75, a border-box width).
 	local function fitWidth()
-		local inner = HUD.padLeft + Theme.textWidth(label.Text, "Coin") + HUD.padRight
+		local inner = HUD.padLeft + Theme.textWidth(label.Text, "Coin") + HUD.gap + PLUS.face + HUD.padRight
 		local width = math.max(HUD.minWidth, math.ceil(2 * BORDER + inner))
 		if root.Size.X.Offset ~= width then
 			root.Size = UDim2.fromOffset(width, root.Size.Y.Offset)

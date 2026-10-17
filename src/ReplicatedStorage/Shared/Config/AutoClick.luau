@@ -14,9 +14,9 @@ local AutoClick = {
 	-- Review fix (2026-10-16): how far a catch goes. "log": only logged ([SD][abuse] ... would warn / kick / ban, with
 	-- the numbers); nobody is warned, slowed, kicked or banned and nothing is saved. "warn": every catch is the first
 	-- step (one warning, penaltySeconds of squeezes that pay nothing; saved as step 1), never a kick or a ban. "full":
-	-- the owner's steps (warn, kick, 1-day ban). Shipped as "log" until the live logs have been read (the human margin
-	-- comes from a model, not from recordings); the owner raises it (CHANGES.md question 1).
-	enforce = "log",
+	-- the owner's steps (warn, kick, 1-day ban, then longer bans). Shipped as "log" (watch only) on 2026-10-16; owner
+	-- 2026-10-17: "turn on warn -> kick -> ban now" (only robot-steady clicking counts, rule B below).
+	enforce = "full",
 
 	-- Client (SqueezeController): a fresh press over the paid-squeeze cap is still sent (it pays nothing,
 	-- squeeze.tooFast), at most this many inside any rolling second, so the server sees the real press rhythm. With the
@@ -51,9 +51,13 @@ local AutoClick = {
 	-- with one short warning; the 2nd catch within memorySeconds of the last one (the same visit or after a rejoin) =
 	-- kicked; the 3rd = banned for banSeconds (Players:BanAsync, only when Players.BanningEnabled is on; else a kick).
 	-- Nothing is judged during the penalty (time to switch the auto-clicker off), and every catch needs new proof.
+	-- Owner 2026-10-17: a ban is never forgotten (memorySeconds is for the warning and the kick only): after it ends,
+	-- the next catch (whenever it comes) is a longer ban, laterBanSeconds in turn (7 days, then 30 days), the last one
+	-- again after that. Each is a whole number of days, longer than the one before. [P]
 	penaltySeconds = 30,
 	memorySeconds = 86400,
 	banSeconds = 86400,
+	laterBanSeconds = { 604800, 2592000 },
 	-- true: the ban does not spread to accounts Roblox thinks belong to the same person (brothers and sisters often
 	-- share one tablet).
 	banExcludeAltAccounts = true,

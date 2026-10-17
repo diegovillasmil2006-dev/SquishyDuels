@@ -16,8 +16,9 @@
 -- default 0, a counter like the other stats) joined schema 2 the same way: no new version, so a server without it keeps
 -- it as an unknown stat (a version would make a player who saved on a new server READONLY on an old one during a
 -- rolling update); reconcile fills it, sanitize clamps it with the other counters. Auto-clicker check (2026-10-16):
--- `autoClick = {step = 0, at = 0}` (the last auto-clicker strike: step 1 warned, 2 kicked, 3 banned, and its os.time;
--- AutoClickService reads it so a rejoin within Config.Net.AutoClick.memorySeconds keeps the step) joined schema 2 the
+-- `autoClick = {step = 0, at = 0}` (the last auto-clicker strike: step 1 warned, 2 kicked, 3 and up banned (each later
+-- ban longer, batch B 2026-10-17), and its os.time; AutoClickService reads it so a rejoin within
+-- Config.Net.AutoClick.memorySeconds keeps a warning or a kick, and a ban is never forgotten) joined schema 2 the
 -- same way; sanitize: step a whole number in [0, AutoClickRules.MAX_STEP], at a whole number in [0, now + 300], and
 -- a non-finite one 0 (forgotten: a broken record never punishes anyone).
 --

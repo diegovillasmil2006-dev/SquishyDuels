@@ -50,6 +50,14 @@
 --       on the world camera's ray through the overlay toy (toyCam, studs in camera space) at D0 = |toyCam| / ratio
 --       (ratio = overlay build scale ÷ held build scale, so a held-size model there looks as big), cut by cover to
 --       hitDistance - 0.5 (at least 1.5); returns the point and D / D0
+--   ViewmodelMath.throttle(phase, dt, interval) -> (boolean, number)   phone speed fix 2026-10-16 (NOT IN DESIGN): a
+--       step cap of one step per `interval` seconds on a phase clock; `phase` is the seconds since the last due step.
+--       Due once phase + dt reaches interval (less 1 %, so two 60 Hz frames make one 30 Hz step despite rounding):
+--       returns true and the phase carried on (phase + dt - interval, held to 0..interval), else false and phase + dt.
+--       interval <= 0 is always due. 60 Hz frames at 1/30 step every 2nd frame, 45 Hz frames 2 of every 3, 30 Hz and
+--       slower every frame
+--   ViewmodelMath.stepInterval(hz) -> number   phone speed fix 2026-10-16: throttle's interval for a cap of `hz` steps a
+--       second: 1 / hz, or 0 (no cap: every frame steps) when hz is 0, below 0 or not a number
 
 -- Services
 
@@ -84,6 +92,7 @@ local EDGE_BITS = { 1, 2, 4 } -- a box corner's X, Y and Z bits (screenBox)
 local COVER_GAP = 0.5 -- §3.6: the own projectile starts this far in front of cover ...
 local MIN_START = 1.5 -- ... and never nearer than this to the camera
 local BUTTON_PASSES = 8 -- inspectButtonRect: at most this many moves up (the touch layout has 4 buttons)
+local THROTTLE_SLACK = 0.99 -- throttle: a step is due at 99 % of its interval (frame-time rounding)
 
 -- Module table
 
@@ -374,6 +383,24 @@ function ViewmodelMath.releasePoint(
 		d = math.max(math.min(hitDistance - COVER_GAP, d0), math.min(MIN_START, d0))
 	end
 	return camera.Position + camera:VectorToWorldSpace(toyCam.Unit) * d, d / d0
+end
+
+function ViewmodelMath.throttle(phase: number, dt: number, interval: number): (boolean, number)
+	if not (interval > 0) then
+		return true, 0
+	end
+	local elapsed = phase + dt
+	if elapsed < interval * THROTTLE_SLACK then
+		return false, elapsed
+	end
+	return true, math.clamp(elapsed - interval, 0, interval)
+end
+
+function ViewmodelMath.stepInterval(hz: number): number
+	if type(hz) ~= "number" or not (hz > 0) then
+		return 0
+	end
+	return 1 / hz
 end
 
 return ViewmodelMath

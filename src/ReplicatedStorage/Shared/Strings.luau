@@ -197,11 +197,14 @@ local Strings = {
 	-- Auto-clicker check (2026-10-16; server AutoClickService): the kick message (Player:Kick, the 2nd catch) and the
 	-- ban's DisplayReason (Players:BanAsync, at most 400 characters, filtered by Roblox; the 3rd catch). {hours} =
 	-- Config.Net.AutoClick.banSeconds / 3600. Review fix (2026-10-16): kickNoBan is the kick when no ban can follow
-	-- (Players.BanningEnabled off, or a test account), so the message never promises one.
+	-- (Players.BanningEnabled off, or a test account), so the message never promises one. Batch B (owner 2026-10-17):
+	-- banLonger is the DisplayReason of every later, longer ban (after a ban ends, the next catch); {days} =
+	-- Config.Net.AutoClick.laterBanSeconds / 86400.
 	autoClick = {
 		kick = "You were removed for using an auto-clicker. Turn it off and come back! If it happens again soon, you can't play for {hours} hours.",
 		kickNoBan = "You were removed for using an auto-clicker. Turn it off and come back!",
 		ban = "Auto-clickers aren't allowed in Squishy Duels. You can play again in {hours} hours.",
+		banLonger = "Auto-clickers aren't allowed in Squishy Duels, and this isn't the first time. You can play again in {days} days.",
 	},
 
 	-- Lobby HUD (§11.6).
@@ -244,6 +247,9 @@ local Strings = {
 		-- UI FINAL R4: the Double Grip chip beside the Grip bar (H:89; a pool of minutes, not a clock, plan FD3).
 		gripBoost = "2x ~{minutes} min",
 		notEnoughCoins = "Not enough coins!", -- H:676: a spend the Coins don't cover (the pill shakes)
+		-- 2026-10-16 (the coin pill's "+", plan [UD5]): the green "+" at the pill's right end (H:80; the pill opens the
+		-- Shop's Coins tab).
+		coinsPlus = "+",
 	},
 
 	-- Touch / on-screen action buttons (§5.10, §6.3).

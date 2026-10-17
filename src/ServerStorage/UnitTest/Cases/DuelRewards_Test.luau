@@ -1,6 +1,7 @@
 --!strict
 -- DuelRewards_Test: unit tests for ServerScriptService.Server.Logic.DuelRewards. Server only (ServerStorage.UnitTest).
--- Contract (DESIGN §6.7, §12 #14, #15): win 600 / loss 180 / draw 300 (Config.Economy.DuelRewards; spec 2026-10-12 §9:
+-- Contract (DESIGN §6.7, §12 #14, #15): win 600 / loss 350 / draw 450 (Config.Economy.DuelRewards; spec 2026-10-12 §9,
+-- batch B owner 2026-10-17: loss and draw raised from 180 / 300;
 -- squeezes, paid as written until Phase 3 multiplies them by the squeeze value); only results that
 -- reached Result from Active or SuddenDeath pay; >= 3 server-accepted own throws; a win needs >= 20 s of Active, a
 -- loss >= 45 s; a draw needs both players at >= 3 throws; Cancelled and Void pay nothing; the same pair gets × 0.25
@@ -115,16 +116,16 @@ return function(t: Context)
 
 	-- Amounts --------------------------------------------------------------------------------------------------------
 
-	t.test("Config amounts are spec 2026-10-12's win 600 / loss 180 / draw 300 (3x DESIGN's)", function()
+	t.test("Config amounts: win 600 (spec 2026-10-12) / loss 350 / draw 450 (owner 2026-10-17)", function()
 		expect.equal(REWARDS.win, 600)
-		expect.equal(REWARDS.loss, 180)
-		expect.equal(REWARDS.draw, 300)
+		expect.equal(REWARDS.loss, 350)
+		expect.equal(REWARDS.draw, 450)
 		expect.equal(REWARDS.minOwnThrows, 3)
 		expect.equal(REWARDS.winMinActiveSeconds, 20)
 		expect.equal(REWARDS.lossMinActiveSeconds, 45)
 	end)
 
-	t.test("a full win and loss pay 600 and 180 with a duelLog entry each", function()
+	t.test("a full win and loss pay 600 and 350 with a duelLog entry each", function()
 		local s = forfeitAt(60, 3, 3)
 		local win = DuelRewards.compute(s, "A", {}, NOW_UNIX, Config)
 		expect.equal(win.outcome, "win")
@@ -134,19 +135,19 @@ return function(t: Context)
 		expect.deepEqual(win.logEntry, { matchId = MATCH_ID, opp = USER_B, result = "win", at = NOW_UNIX, full = true })
 		local loss = DuelRewards.compute(s, "B", {}, NOW_UNIX, Config)
 		expect.equal(loss.outcome, "loss")
-		expect.equal(loss.coins, 180)
+		expect.equal(loss.coins, 350)
 		expect.deepEqual(
 			loss.logEntry,
 			{ matchId = MATCH_ID, opp = USER_A, result = "loss", at = NOW_UNIX, full = true }
 		)
 	end)
 
-	t.test("a draw pays 300 to both when both made 3 throws", function()
+	t.test("a draw pays 450 to both when both made 3 throws", function()
 		local s = drawMatch(3, 3)
 		local all = DuelRewards.computeAll(s, { A = {}, B = {} }, NOW_UNIX, Config)
 		expect.equal(all.A.outcome, "draw")
-		expect.equal(all.A.coins, 300)
-		expect.equal(all.B.coins, 300)
+		expect.equal(all.A.coins, 450)
+		expect.equal(all.B.coins, 450)
 	end)
 
 	-- Minimum Active time (win 20 s, loss 45 s) -------------------------------------------------------------------
@@ -173,7 +174,7 @@ return function(t: Context)
 		-- The winner of the same match (>= 20 s) is paid.
 		expect.equal(DuelRewards.compute(short, "A", {}, NOW_UNIX, Config).coins, 600)
 		local exact = eliminationAt(45, 3, 3)
-		expect.equal(DuelRewards.compute(exact, "B", {}, NOW_UNIX, Config).coins, 180)
+		expect.equal(DuelRewards.compute(exact, "B", {}, NOW_UNIX, Config).coins, 350)
 	end)
 
 	t.test("a forfeit win at exactly 20 s of Active pays the winner", function()
@@ -189,7 +190,7 @@ return function(t: Context)
 		local reward = DuelRewards.compute(s, "A", {}, NOW_UNIX, Config)
 		expect.equal(reward.coins, 0)
 		expect.equal(reward.coinsBlockedReason, "duel.tooShort")
-		expect.equal(DuelRewards.compute(s, "B", {}, NOW_UNIX, Config).coins, 180)
+		expect.equal(DuelRewards.compute(s, "B", {}, NOW_UNIX, Config).coins, 350)
 	end)
 
 	t.test("a draw needs both players at 3 throws", function()
@@ -259,11 +260,11 @@ return function(t: Context)
 		expect.equal(six.base, 600)
 		expect.equal((six.logEntry :: any).full, false) -- a reduced result is not fully rewarded
 		local lossSix = DuelRewards.compute(s, "B", pairHistory(USER_A, { 1, 2, 3, 4, 5, 6 }), NOW_UNIX, Config)
-		expect.equal(lossSix.coins, 45)
+		expect.equal(lossSix.coins, 87) -- 350 × 0.25, floored
 		local drawn = drawMatch(3, 3)
 		expect.equal(
 			DuelRewards.compute(drawn, "A", pairHistory(USER_B, { 1, 2, 3, 4, 5, 6 }), NOW_UNIX, Config).coins,
-			75
+			112 -- 450 × 0.25, floored
 		)
 	end)
 
@@ -458,7 +459,7 @@ return function(t: Context)
 		expect.equal(dummy.logEntry, nil)
 		local real = DuelRewards.compute(s, "A", {}, NOW_UNIX, Config)
 		expect.equal(real.outcome, "loss")
-		expect.equal(real.coins, 180)
+		expect.equal(real.coins, 350)
 	end)
 
 	t.test("the participant may be given as its record instead of its side", function()

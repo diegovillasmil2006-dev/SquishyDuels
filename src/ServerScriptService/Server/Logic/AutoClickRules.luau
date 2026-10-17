@@ -15,10 +15,13 @@
 --                 starts the next one at its last request (tumbling windows: one verdict per window).
 --   reset(state, cfg?)  forgets everything (after a catch: the next catch needs new proof).
 --   memoryStep(memory, unixNow, cfg?) -> the step the profile remembers (profile.autoClick = {step, at}) while its
---     `at` is younger than memorySeconds, else 0; anything malformed -> 0 (never punish on a broken record).
---   nextStep(sessionStep, memory, unixNow, cfg?) -> 1 | 2 | 3: one past the higher of this visit's step and the
---     remembered one, at most 3.
---   actionFor(step) -> "warn" (1) | "kick" (2) | "ban" (3).
+--     `at` is younger than memorySeconds, else 0; a ban (step >= BAN_STEP) is never forgotten (owner 2026-10-17);
+--     anything malformed -> 0 (never punish on a broken record).
+--   nextStep(sessionStep, memory, unixNow, cfg?) -> 1 .. lastStep: one past the higher of this visit's step and the
+--     remembered one, at most the ladder's last step (BAN_STEP + #laterBanSeconds; that ban repeats).
+--   actionFor(step) -> "warn" (1) | "kick" (2) | "ban" (3 and up).
+--   banSeconds(step, cfg?) -> a ban step's length: banSeconds for the 1st ban (step 3), then laterBanSeconds in turn,
+--     the last one again after that (owner 2026-10-17: after a ban ends the next catch is a longer ban).
 -- `now` = os.clock() seconds; `unixNow` = os.time(). cfg = a table shaped like Config.Net.AutoClick (a test's copy);
 -- nil = the live one.
 
@@ -47,6 +50,7 @@ export type Rules = {
 	penaltySeconds: number,
 	memorySeconds: number,
 	banSeconds: number,
+	laterBanSeconds: { number },
 	banExcludeAltAccounts: boolean,
 }
 
@@ -68,20 +72,32 @@ export type Verdict = {
 
 -- Constants
 
-local MAX_STEP = 3
+local BAN_STEP = 3 -- the 1st ban; each later catch is one more (longer) ban step
 local ACTIONS: { Action } = { "warn", "kick", "ban" }
 
 -- Module table
 
 local AutoClickRules = {}
 
-AutoClickRules.MAX_STEP = MAX_STEP
-
 -- Private
 
 local function rules(cfg: Rules?): Rules
 	return if cfg ~= nil then cfg else (Config :: any).Net.AutoClick
 end
+
+-- The longer bans after the 1st one (none when the config has no list: ValidateAutoClick reports that).
+local function later(c: Rules): { number }
+	local list = (c :: any).laterBanSeconds
+	return if type(list) == "table" then list else {}
+end
+
+-- The ladder's last step: its last ban repeats from there.
+local function lastStep(c: Rules): number
+	return BAN_STEP + #later(c)
+end
+
+AutoClickRules.BAN_STEP = BAN_STEP
+AutoClickRules.MAX_STEP = lastStep(rules(nil)) -- the live ladder's last step (ProfileSchema clamps a saved strike to it)
 
 local function isFinite(v: unknown): boolean
 	return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge
@@ -160,19 +176,27 @@ function AutoClickRules.memoryStep(memory: unknown, unixNow: number, cfg: Rules?
 	if not isFinite(step) or not isFinite(at) or step < 1 or math.floor(step) ~= step then
 		return 0
 	end
-	if unixNow - at >= rules(cfg).memorySeconds then
-		return 0
+	local c = rules(cfg)
+	if step < BAN_STEP and unixNow - at >= c.memorySeconds then
+		return 0 -- a warning or a kick is forgotten after memorySeconds; a ban never is (owner 2026-10-17)
 	end
-	return math.min(step, MAX_STEP)
+	return math.min(step, lastStep(c))
 end
 
 function AutoClickRules.nextStep(sessionStep: number, memory: unknown, unixNow: number, cfg: Rules?): number
 	local before = math.max(sessionStep, AutoClickRules.memoryStep(memory, unixNow, cfg))
-	return math.min(before + 1, MAX_STEP)
+	return math.min(before + 1, lastStep(rules(cfg)))
 end
 
 function AutoClickRules.actionFor(step: number): Action
-	return ACTIONS[math.clamp(step, 1, MAX_STEP)]
+	return ACTIONS[math.clamp(step, 1, BAN_STEP)]
+end
+
+function AutoClickRules.banSeconds(step: number, cfg: Rules?): number
+	local c = rules(cfg)
+	local list = later(c)
+	local index = math.min(step - BAN_STEP, #list)
+	return if index >= 1 then list[index] else c.banSeconds
 end
 
 return table.freeze(AutoClickRules)

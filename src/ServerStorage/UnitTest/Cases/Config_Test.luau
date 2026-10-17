@@ -905,8 +905,8 @@ return function(t: Context)
 		)
 		expect.deepEqual(economy.SquishyPower, { Common = 1, Uncommon = 4, Epic = 16, Exclusive = 64 })
 		expect.equal(economy.DuelRewards.win, 600)
-		expect.equal(economy.DuelRewards.draw, 300)
-		expect.equal(economy.DuelRewards.loss, 180)
+		expect.equal(economy.DuelRewards.draw, 450) -- batch B (owner 2026-10-17): was 300
+		expect.equal(economy.DuelRewards.loss, 350) -- batch B (owner 2026-10-17): was 180
 		expect.deepEqual(economy.DuplicateRefund, { percent = 25, freeBoxPriceOf = "snack" })
 		expect.truthy(table.find(economy.CoinReasons, "capsule") ~= nil)
 		-- CP(100) × Rested.mult (spec §12); the alert holds an hour of them at the cap (checked above).

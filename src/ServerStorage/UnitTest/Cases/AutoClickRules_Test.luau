@@ -13,9 +13,10 @@
 --     never is; a pause over burstGapSeconds starts the window again; a slower stream (a held squeeze's 0.45 s) is
 --     never judged however regular;
 --   * reset forgets everything;
---   * the ladder: memoryStep reads a saved strike only while it is younger than memorySeconds (anything malformed -> 0),
---     nextStep is one past the higher of this visit's step and the remembered one (at most 3), actionFor names the
---     steps warn / kick / ban.
+--   * the ladder: memoryStep reads a saved warning or kick only while it is younger than memorySeconds, a ban forever
+--     (batch B, owner 2026-10-17; anything malformed -> 0), nextStep is one past the higher of this visit's step and
+--     the remembered one (at most the ladder's last step, MAX_STEP 5), actionFor names the steps warn / kick / ban (3
+--     and up); banSeconds: 1 day for the 1st ban, then 7 days, then 30 days, then 30 days again.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -251,7 +252,11 @@ return function(t: Context)
 		expect.equal(AutoClickRules.memoryStep({ step = 2, at = NOW - 100 }, NOW, cfg), 2)
 		expect.equal(AutoClickRules.memoryStep({ step = 2, at = NOW - memory + 1 }, NOW, cfg), 2)
 		expect.equal(AutoClickRules.memoryStep({ step = 2, at = NOW - memory }, NOW, cfg), 0) -- a day on: forgotten
-		expect.equal(AutoClickRules.memoryStep({ step = 9, at = NOW }, NOW, cfg), 3)
+		expect.equal(AutoClickRules.memoryStep({ step = 9, at = NOW }, NOW, cfg), AutoClickRules.MAX_STEP)
+		-- Batch B (owner 2026-10-17): a ban is never forgotten, however old (its next catch is a longer ban).
+		expect.equal(AutoClickRules.memoryStep({ step = 3, at = NOW - memory }, NOW, cfg), 3)
+		expect.equal(AutoClickRules.memoryStep({ step = 4, at = NOW - 365 * 86400 }, NOW, cfg), 4)
+		expect.equal(AutoClickRules.memoryStep({ step = 3, at = 0 / 0 }, NOW, cfg), 0) -- still never on a broken one
 		expect.equal(AutoClickRules.memoryStep({ step = 1.5, at = NOW }, NOW, cfg), 0)
 		expect.equal(AutoClickRules.memoryStep({ step = 1, at = 0 / 0 }, NOW, cfg), 0)
 		expect.equal(AutoClickRules.memoryStep({ step = "2", at = NOW }, NOW, cfg), 0)
@@ -259,7 +264,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"nextStep: one past the higher of this visit and the saved strike, at most 3; actionFor names them",
+		"nextStep: one past the higher of this visit and the saved strike, at most MAX_STEP; actionFor names them",
 		function()
 			local cfg = rules()
 			local recent = function(step: number): any
@@ -272,12 +277,39 @@ return function(t: Context)
 			expect.equal(AutoClickRules.nextStep(0, recent(2), NOW, cfg), 3) -- kicked, rejoined within a day: ban
 			expect.equal(AutoClickRules.nextStep(1, recent(2), NOW, cfg), 3)
 			expect.equal(AutoClickRules.nextStep(2, recent(1), NOW, cfg), 3)
-			expect.equal(AutoClickRules.nextStep(3, recent(3), NOW, cfg), 3) -- never past a ban
 			expect.equal(AutoClickRules.nextStep(0, old, NOW, cfg), 1) -- more than a day ago: back to a warning
+			-- Batch B (owner 2026-10-17): after a ban the next catch is the next, longer ban, even a year later; the
+			-- ladder's last ban repeats.
+			local banned = function(step: number): any
+				return { step = step, at = NOW - 365 * 86400 }
+			end
+			expect.equal(AutoClickRules.nextStep(0, banned(3), NOW, cfg), 4)
+			expect.equal(AutoClickRules.nextStep(0, banned(4), NOW, cfg), 5)
+			expect.equal(AutoClickRules.nextStep(0, banned(5), NOW, cfg), 5)
+			expect.equal(AutoClickRules.nextStep(3, recent(3), NOW, cfg), 4)
+			expect.equal(AutoClickRules.MAX_STEP, AutoClickRules.BAN_STEP + #cfg.laterBanSeconds)
+			expect.equal(AutoClickRules.MAX_STEP, 5)
 			expect.equal(AutoClickRules.actionFor(1), "warn")
 			expect.equal(AutoClickRules.actionFor(2), "kick")
 			expect.equal(AutoClickRules.actionFor(3), "ban")
-			expect.equal(AutoClickRules.MAX_STEP, 3)
+			expect.equal(AutoClickRules.actionFor(5), "ban")
+			-- Without longer bans the 1st ban repeats.
+			local flat = rules({ laterBanSeconds = {} })
+			expect.equal(AutoClickRules.nextStep(0, banned(3), NOW, flat), 3)
 		end
 	)
+
+	-- Batch B (owner 2026-10-17, e.g. 1 day, then 7 days, then 30 days [P]).
+	t.test("banSeconds: the 1st ban banSeconds, then laterBanSeconds in turn, the last one again", function()
+		local cfg = rules()
+		expect.equal(cfg.banSeconds, 86400)
+		expect.deepEqual(cfg.laterBanSeconds, { 604800, 2592000 })
+		expect.equal(AutoClickRules.banSeconds(3, cfg), 86400)
+		expect.equal(AutoClickRules.banSeconds(4, cfg), 604800)
+		expect.equal(AutoClickRules.banSeconds(5, cfg), 2592000)
+		expect.equal(AutoClickRules.banSeconds(9, cfg), 2592000)
+		expect.equal(AutoClickRules.banSeconds(4, rules({ laterBanSeconds = {} })), 86400)
+		expect.equal(AutoClickRules.banSeconds(4, rules({ laterBanSeconds = "garbage" })), 86400)
+		expect.equal(AutoClickRules.banSeconds(5), 2592000) -- the live config
+	end)
 end

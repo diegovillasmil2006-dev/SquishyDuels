@@ -8,7 +8,10 @@
 --   * the roller grows 0.5 -> 2.3 with the design's backOut over 0.3 s (fp.js:242, 342);
 --   * the lane marker is a flat 6 × 60 plate on the floor along the lane (fp.js:340-341);
 --   * a drop falls from 13 studs over the zone's centre to its point along k² in 0.3 s (fp.js:356, 371);
---   * every pulse stays at or under 3 Hz: the drop shadow's 30 rad/s is held to 3 Hz (user decision 2026-10-11).
+--   * every pulse stays at or under 3 Hz: the drop shadow's 30 rad/s is held to 3 Hz (user decision 2026-10-11);
+--   * batch B (owner 2026-10-17): a bounced bubble reaches its bounce at bounce.at studs (bouncePassed; never without
+--     a bounce), and its bounce look is the Strawberry Frog's bounce pass (fp.js:239): 6 hearts in #EE4A5C / #6CC56A
+--     at 1.4 m/s, 0.04 m, 0.5 s; a white ring to 0.5 m in 0.3 s at 0.6; its sound and heart picture exist.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -124,5 +127,34 @@ return function(t: Context)
 		expect.near(UltFx.pulse(0.125, 2), 1, 1e-9)
 		expect.near(UltFx.pulse(0.375, 2), 0, 1e-9)
 		expect.truthy(FX.rollerSpinDegPerSecond <= 720)
+	end)
+
+	-- Batch B (owner 2026-10-17: "the Frog's bounce look from the design") -------------------------------------------
+
+	t.test("the bubble's bounce look: when it plays, and the Frog's bounce pass numbers (fp.js:239)", function()
+		local speed = A.bubble_pop.speed
+		local bounce = { at = 20, origin = Vector3.new(0, 4.8, -18), dir = Vector3.new(1, 0, 0) }
+		expect.falsy(UltFx.bouncePassed(speed, 0, bounce))
+		expect.falsy(UltFx.bouncePassed(speed, 19.9 / speed, bounce))
+		expect.truthy(UltFx.bouncePassed(speed, (20 + 1e-6) / speed, bounce)) -- a hair past it (float slack)
+		expect.truthy(UltFx.bouncePassed(speed, 1, bounce))
+		expect.falsy(UltFx.bouncePassed(speed, 1, nil)) -- no bounce leg: no bounce look
+		expect.equal(FX.bounceHearts, 6)
+		expect.near(FX.bounceHeartSpeed, 1.4 / 0.28, 1e-9)
+		expect.near(FX.bounceHeartSize, 0.04 / 0.28, 1e-9)
+		expect.equal(FX.bounceHeartLifetime, 0.5)
+		expect.near(FX.bounceRingToStuds, 2 * 0.5 / 0.28, 1e-9)
+		expect.equal(FX.bounceRingSeconds, 0.3)
+		expect.near(FX.bounceTransparencyFrom, 0.4, 1e-9)
+		local Palette = t.requireShared("Art/Palette")
+		expect.equal(Palette.UltBounceHeartRed, Color3.fromHex("#EE4A5C"))
+		expect.equal(Palette.UltBounceHeartGreen, Color3.fromHex("#6CC56A"))
+		local AssetTable = t.requireShared("AssetTable")
+		expect.truthy(AssetTable.image("img.kill.heart") ~= nil)
+		local soundKnown = false
+		for _, slot in AssetTable.all() do
+			soundKnown = soundKnown or (slot.kind == "sound" and slot.key == "sfx.pop")
+		end
+		expect.truthy(soundKnown)
 	end)
 end

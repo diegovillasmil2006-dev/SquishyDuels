@@ -42,7 +42,13 @@
 -- kick on the overlay camera, no pop-in overshoot (it grows to 1 and stops), no Rush wobble or glow pulse (DESIGN
 -- §9.12). Low tier (MeshQuality "Low" at show, first-person spec 2026-10-10 §5): no idle drift and no breath, so the
 -- full-screen viewport only redraws while something acts (Studio 2026-10-11: the overlay cost about 5 ms a frame on a
--- PC while it redrew every frame).
+-- PC while it redrew every frame). Phone speed fix (2026-10-16, NOT IN DESIGN): on the low tier the overlay's step
+-- (hands, toy, specks) also runs at most Config.FirstPerson.lowTier.stepHz times a second (ViewmodelMath.throttle; the
+-- skipped frames' time goes to the next step, so the springs, tracks, showcases and specks keep their timing; a debug
+-- pose steps every frame; stepHz 0 = off). The world FOV spring, the world camera and the touch pad still step every
+-- frame with that frame's own time (the whole screen's zoom and a lifted finger are never a frame late). Batch B
+-- (owner 2026-10-17): the low tier also spawns lowTier.speckShare of the throw / catch specks (spawnSpecksAt; the
+-- Inspect showcases keep every speck).
 -- One rig, two views (§3.4): HeldSquishyController.setMirror (one callback made at show) hands over the own model's
 -- final out and the scale it put on top of the rig's (its idle, equip pop and overlays: none of them is the design's)
 -- each frame; each step shows the rig's own S (that scale divided out) on the overlay copy with the toy's scale keys on
@@ -319,6 +325,10 @@ type View = {
 	-- Low tier (MeshQuality "Low" at show; first-person spec 2026-10-10 §5): no idle drift and no breath, so at rest
 	-- nothing in the full-screen viewport changes and it does not redraw every frame.
 	still: boolean,
+	-- Phone speed fix (2026-10-16): the low tier's step cap (ViewmodelMath.throttle's phase) and the seconds the skipped
+	-- frames owe the next step.
+	stepPhase: number,
+	stepOwed: number,
 	pose: Pose?,
 	posedRig: SquishRig.Rig?, -- a rig a debug pose pressed or held
 	touchGui: ScreenGui?, -- the fallback: Roblox's TouchGui and its own order
@@ -392,6 +402,8 @@ local INSPECT_POSE = "inspect"
 local INSPECT_BUTTON_NAME = "Viewmodel_InspectButton"
 local SPECK_NAME = "InspectSpeck"
 local REDUCED_SPECKS = Config.Vfx.reducedParticleMultiplier
+-- Phone speed fix (2026-10-16): the low tier's step cap (Config.FirstPerson.lowTier.stepHz; 0 = off, every frame).
+local LOW_STEP_S = ViewmodelMath.stepInterval(FP.lowTier.stepHz)
 local MIN_PART = 0.001 -- studs: Roblox's smallest part size (a speck's first and last frames are smaller)
 local SQUASH_REST, SQUASH_REST_SPEED = 0.002, 0.01 -- the squash spring is at rest (design: toys.js:452)
 local INSPECT_INSET = Config.UI.Touch.inspectButtonInset
@@ -722,7 +734,11 @@ local function spawnSpecksAt(
 	if cap ~= nil and #v.specks >= cap then
 		return
 	end
-	local list = Specks.spawn(spec, at, v.random, if reduced then REDUCED_SPECKS else 1, colours)
+	-- Phone speed fix (batch B, owner 2026-10-17 "do it": throws make half the sparkles): the low tier spawns
+	-- lowTier.speckShare of the duel hands' specks (charge, release, catch, crush); an Inspect showcase keeps them all.
+	local low = v.still and v.kind ~= "inspect"
+	local share = (if reduced then REDUCED_SPECKS else 1) * (if low then FP.lowTier.speckShare else 1)
+	local list = Specks.spawn(spec, at, v.random, share, colours)
 	for _, state in list do
 		if cap ~= nil and #v.specks >= cap then
 			break
@@ -1864,6 +1880,14 @@ local function applyPose(v: View, name: string)
 	end
 end
 
+-- The world FOV spring toward the focus (fp.js:652). Feature 1: a charge narrows the world FOV on the same spring
+-- (Charge.fovNarrowDeg × c; design: html:463). Phone speed fix (2026-10-16): it gets every frame's own time, also on a
+-- frame where the low tier skips the overlay's step.
+local function stepFov(v: View, dt: number)
+	local chargeFov = if v.kind == "charge" then ThrowCharge.fovOffset(v.chargeC) / FOCUS.worldFovPerUnit else 0
+	v.fov, v.fovVel = ViewmodelMath.spring(v.fov, v.fovVel, FOCUS.worldFovTarget * v.focus + chargeFov, SPRINGS.fov, dt)
+end
+
 local function step(v: View, dt: number, now: number): boolean
 	if view ~= v then
 		return false
@@ -1872,9 +1896,28 @@ local function step(v: View, dt: number, now: number): boolean
 	if player == nil then
 		return true
 	end
+	-- Phone speed fix (2026-10-16): the low tier steps the overlay at most lowTier.stepHz times a second, with the time
+	-- it skipped; the world FOV, the world camera and the touch pad step every frame with the frame's own time.
+	local frameDt, due = dt, true
+	if v.still and v.pose == nil then
+		local phase
+		due, phase = ViewmodelMath.throttle(v.stepPhase, dt, LOW_STEP_S)
+		v.stepPhase = phase
+		v.stepOwed += dt
+		if due then
+			dt, v.stepOwed = v.stepOwed, 0
+		end
+	end
 	debug.profilebegin(PROFILE)
 	local serverNow = deps.Workspace:GetServerTimeNow()
 	local reduced = deps.Motion.reducedMotion()
+	if not due then
+		stepFov(v, if HitStop.holding(os.clock()) then frameDt * V2.hitStopTimeScale else frameDt)
+		stepWorldCamera(v, reduced, v.shake) -- no new shake: only the overlay's step raises it
+		stepPad(v, v.camera.CFrame)
+		debug.profileend()
+		return true
+	end
 	keepAxis(v, player)
 	-- The avatar's looks (spec phase1-arms §3.8): a change rebuilds the arms (late appearance, an outfit, own <-> design).
 	v.armsCheckIn -= dt
@@ -1886,11 +1929,12 @@ local function step(v: View, dt: number, now: number): boolean
 	end
 	local posed = v.pose
 	if posed then
-		dt, now = 0, posed.now -- frozen
+		dt, now, frameDt = 0, posed.now, 0 -- frozen
 	else
 		-- Feature 1: a hit-stop (a full charge's release, a catch, a burst) slows the overlay (design: html:422).
 		if HitStop.holding(os.clock()) then
 			dt *= V2.hitStopTimeScale
+			frameDt *= V2.hitStopTimeScale
 		end
 		local holding = v.toy ~= nil and deps.Held.isHolding(player)
 		stepKind(v, holding)
@@ -1900,11 +1944,10 @@ local function step(v: View, dt: number, now: number): boolean
 		stepCatch(v, holding)
 		v.kindT += dt
 	end
-	-- The camera springs first (fp.js:652): the kick back to rest, the world FOV toward the focus, the shake falling.
-	-- Feature 1: a charge narrows the world FOV on the same spring (Charge.fovNarrowDeg × c; design: html:463).
-	local chargeFov = if v.kind == "charge" then ThrowCharge.fovOffset(v.chargeC) / FOCUS.worldFovPerUnit else 0
+	-- The camera springs first (fp.js:652): the kick back to rest, the world FOV toward the focus (with the frame's own
+	-- time: phone speed fix 2026-10-16), the shake falling.
 	v.kick, v.kickVel = ViewmodelMath.spring(v.kick, v.kickVel, 0, SPRINGS.kick, dt)
-	v.fov, v.fovVel = ViewmodelMath.spring(v.fov, v.fovVel, FOCUS.worldFovTarget * v.focus + chargeFov, SPRINGS.fov, dt)
+	stepFov(v, frameDt)
 	v.shake = math.max(0, v.shake - SHAKE.decayPerSecond * dt)
 	local shakeFrom = v.shake
 	if posed == nil then
@@ -2004,6 +2047,8 @@ local function newView(gui: ScreenGui, viewport: ViewportFrame, camera: Camera):
 		padInput = nil,
 		ghost = 0,
 		still = MeshQuality.forCamera(deps.Workspace.CurrentCamera) == "Low",
+		stepPhase = LOW_STEP_S, -- the first frame steps
+		stepOwed = 0,
 		pose = nil,
 		posedRig = nil,
 		touchGui = nil,
@@ -2353,6 +2398,7 @@ function ViewmodelController.debugState(): { [string]: any }
 		padShown = v.pad ~= nil and v.pad.button.Visible,
 		touchGuiRaised = v.touchGui ~= nil,
 		viewportParts = #v.viewport:GetDescendants(),
+		lowTier = v.still, -- phone speed fix 2026-10-16: the overlay's step cap is on (unless lowTier.stepHz is 0)
 	}
 end
 

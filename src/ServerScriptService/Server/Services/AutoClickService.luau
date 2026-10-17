@@ -25,6 +25,9 @@
 --               false}) only when Players.BanningEnabled is on (nothing here changes it); a player still in the
 --               server after it is kicked with the same text. BanningEnabled off or a test account: a kick with
 --               autoClick.kickNoBan; BanAsync failing: the step 2 kick (logged).
+--       4 and up (batch B, owner 2026-10-17: a ban is never forgotten, so the next catch after one ends is a longer
+--               ban): the same with Duration = AutoClickRules.banSeconds(step) (laterBanSeconds in turn, the last one
+--               again) and DisplayReason = Strings autoClick.banLonger (naming the days).
 --   Kicks and bans run after the reply (deps.later); every engine call is in pcall and every outcome is logged. In
 --   Studio (RunService:IsStudio) nobody is kicked or banned: the log says what would have happened (the warning and
 --   the penalty still apply, so the check can be watched).
@@ -82,8 +85,10 @@ local REASON_TOO_FAST = "squeeze.tooFast"
 local TEXT_KICK = "autoClick.kick"
 local TEXT_KICK_NO_BAN = "autoClick.kickNoBan"
 local TEXT_BAN = "autoClick.ban"
+local TEXT_BAN_LONGER = "autoClick.banLonger"
 local SAVE_SOON = "soon"
 local SECONDS_PER_HOUR = 3600
+local SECONDS_PER_DAY = 86400
 local DISPLAY_REASON_MAX = 400 -- BanAsync limits
 local PRIVATE_REASON_MAX = 1000
 
@@ -153,8 +158,13 @@ local function userIdOf(player: any): number
 	return if ok and type(id) == "number" then id else 0
 end
 
-local function textOf(key: string, c: AutoClickRules.Rules): string
-	return Strings.format(Strings.resolve(key) or "", { hours = c.banSeconds // SECONDS_PER_HOUR })
+-- A text naming a ban of `seconds` (default: the 1st ban, banSeconds) in hours and days.
+local function textOf(key: string, c: AutoClickRules.Rules, seconds: number?): string
+	local length = seconds or c.banSeconds
+	return Strings.format(
+		Strings.resolve(key) or "",
+		{ hours = length // SECONDS_PER_HOUR, days = length // SECONDS_PER_DAY }
+	)
 end
 
 -- The numbers of a catch, for the logs and the ban's PrivateReason.
@@ -189,40 +199,41 @@ local function kickNow(player: any, message: string, why: string)
 	end
 end
 
-local function banNow(player: any, detail: string, c: AutoClickRules.Rules)
+local function banNow(player: any, step: number, detail: string, c: AutoClickRules.Rules)
 	local id = userIdOf(player)
+	local seconds = AutoClickRules.banSeconds(step, c)
 	if deps.isStudio() then
-		abuseLog:warn(`Studio: would ban user {id} for {c.banSeconds} s ({detail}); nobody is banned in Studio`)
+		abuseLog:warn(`Studio: would ban user {id} for {seconds} s ({detail}); nobody is banned in Studio`)
 		return
 	end
 	if id <= 0 then
 		abuseLog:warn(`ban of user {id} not applied (not a real account); kicked instead`)
-		kickNow(player, textOf(TEXT_KICK_NO_BAN, c), "strike 3, no account to ban")
+		kickNow(player, textOf(TEXT_KICK_NO_BAN, c), `strike {step}, no account to ban`)
 		return
 	end
 	if not deps.banningEnabled() then
 		abuseLog:warn(
 			`ban of user {id} not applied: Players.BanningEnabled is off (Studio: Players > BanningEnabled); kicked instead`
 		)
-		kickNow(player, textOf(TEXT_KICK_NO_BAN, c), "strike 3, bans off")
+		kickNow(player, textOf(TEXT_KICK_NO_BAN, c), `strike {step}, bans off`)
 		return
 	end
-	local display = textOf(TEXT_BAN, c)
+	local display = textOf(if step > AutoClickRules.BAN_STEP then TEXT_BAN_LONGER else TEXT_BAN, c, seconds)
 	local ok, err = deps.ban({
 		UserIds = { id },
 		ApplyToUniverse = true,
-		Duration = c.banSeconds,
+		Duration = seconds,
 		DisplayReason = string.sub(display, 1, DISPLAY_REASON_MAX),
-		PrivateReason = string.sub(`SD auto-click strike 3 (ban {c.banSeconds} s): {detail}`, 1, PRIVATE_REASON_MAX),
+		PrivateReason = string.sub(`SD auto-click strike {step} (ban {seconds} s): {detail}`, 1, PRIVATE_REASON_MAX),
 		ExcludeAltAccounts = c.banExcludeAltAccounts,
 		ApplyDeviceBlock = false,
 	})
 	if not ok then
 		abuseLog:warn(`ban of user {id} failed ({tostring(err)}); kicked instead`)
-		kickNow(player, textOf(TEXT_KICK, c), "strike 3, ban failed")
+		kickNow(player, textOf(TEXT_KICK, c), `strike {step}, ban failed`)
 		return
 	end
-	abuseLog:warn(`banned user {id} for {c.banSeconds} s ({detail})`)
+	abuseLog:warn(`banned user {id} for {seconds} s ({detail})`)
 	if deps.inGame(player) then
 		kickNow(player, display, "banned")
 	end
@@ -283,7 +294,7 @@ local function strike(
 		end)
 	elseif action == "ban" then
 		deps.later(function()
-			banNow(player, detail, c)
+			banNow(player, step, detail, c)
 		end)
 	end
 	return REASON_AUTO_CLICK

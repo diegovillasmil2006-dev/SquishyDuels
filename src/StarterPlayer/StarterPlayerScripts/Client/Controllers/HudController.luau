@@ -9,7 +9,8 @@
 -- design's HUD. Regular layouts put each group on the design's spot (HudFormat.origins); phones keep COLUMN.edge.
 --
 -- * Top-left column (Hud_Left, H:74): the coin pill (Hud_Coins / Hud_CoinsButton, UI/Components/CoinCapsule, H:75-81;
---   tapping it opens the Shop at its top, H:987, G4.16) and under it GripController's bare Grip row
+--   2026-10-16: with the green "+", H:80, and tapping it opens the Shop, on its Coins tab once a coin pack is on sale,
+--   HudFormat.coinShop, plan [UD5]) and under it GripController's bare Grip row
 --   (LEFT_ORDER.grip). A gain flies the design's coins into the pill (flyCoins; a claim's count, else 8, H:663): each
 --   landing steps the number up (HudFormat.coinStep, the last coin the rest, G4.10), plays ui.coin a semitone higher
 --   (PR8) and the landing's sparks (H:577), and the bright flash (CoinCapsule:flash, H:562-575) at most once per
@@ -1216,7 +1217,10 @@ local function relayoutOnText(c: Cleanup.Cleanup, button: Button.Button)
 end
 
 -- The coin pill (H:75-81): its hover and press feel (Button.decorate without its click: H:75's data-snd tab plays
--- instead, ui.click at Config.Audio.uiPitch.tab); a tap opens the Shop at its top (H:987, G4.16).
+-- instead, ui.click at Config.Audio.uiPitch.tab); 2026-10-16 (the coin pill's "+", owner yes "Add it", plan [UD5]):
+-- with its green "+" (H:80, CoinCapsule) a tap opens the Shop (H:987 openCoins opens the whole shop, G4.16) on its
+-- Coins tab once a coin pack can be bought there (review fix 2026-10-16: HudFormat.coinShop; until then the Shop's
+-- top, so the "+" never lands on a "not available" page).
 local function buildCoins(c: Cleanup.Cleanup, parent: Instance)
 	local holder: Frame = Create("Frame", {
 		Name = "Hud_Coins",
@@ -1234,7 +1238,7 @@ local function buildCoins(c: Cleanup.Cleanup, parent: Instance)
 	c:add(capsule.root.Activated:Connect(function()
 		SoundController.play(CLICK_SOUND, { pitch = UI_PITCH.tab }) -- H:75 data-snd="tab"
 		if UIController.isRegistered(SHOP_SCREEN) then
-			UIController.open(SHOP_SCREEN)
+			UIController.open(SHOP_SCREEN, HudFormat.coinShop(StateController.get("monetization")))
 		end
 	end))
 	coinsHolder = holder

@@ -54,6 +54,8 @@ type Module = {
 -- drives; the overlay, the duel HUD, the projectiles and the VFX read it.
 -- Kill banners (2026-10-16): KillBannerController (the killer's kill banner, its sound and burst) last: it listens to
 -- VfxController and StateController and draws in its own SD_KillBanner gui.
+-- Aim arc (2026-10-16): AimArcController (the charge throw's path preview) right after CatchController; of the
+-- controllers it requires only ThrowController (its chargePreview), and its frame effect starts after ThrowController's.
 -- Build plan Phase 5: CapsuleController (the base capsules' feel and the capsule card) with the feature screens, after
 -- DailyController; it requires ControlsController (its pointer claim) and SqueezeController (the home tap), both above.
 local CONTROLLER_ORDER = {
@@ -71,6 +73,7 @@ local CONTROLLER_ORDER = {
 	"CharacterAnimController",
 	"ThrowController",
 	"CatchController",
+	"AimArcController",
 	"DashController",
 	"DoubleJumpController",
 	"FirstPersonController",

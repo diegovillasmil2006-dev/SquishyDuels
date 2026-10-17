@@ -18,19 +18,23 @@
 --     (0, MAX_SPREAD]; burstGapSeconds above maxMeanGapSeconds;
 --   * penaltySeconds and memorySeconds > 0; banSeconds a whole number of hours, at least one (never -1: no permanent
 --     ban; the texts name the hours);
+--   * laterBanSeconds (batch B, owner 2026-10-17: the longer bans after the 1st) a list of whole numbers of days, each
+--     longer than the one before (the first longer than banSeconds), never -1;
 --   * the texts exist: reason.squeeze.autoClick (the warning), autoClick.kick and autoClick.ban (both name {hours}),
---     autoClick.kickNoBan (the kick when no ban can follow; review fix 2026-10-16).
+--     autoClick.kickNoBan (the kick when no ban can follow; review fix 2026-10-16), autoClick.banLonger (names {days}).
 
 local MIN_BLOCKS = 10
 local MAX_SPREAD = 0.01 -- seconds: anything above would call people machines
 local SECONDS_PER_HOUR = 3600
+local SECONDS_PER_DAY = 86400
 local P = "Config.Net.AutoClick"
 local ENFORCE = { log = true, warn = true, full = true }
-local TEXTS = {
-	{ key = "reason.squeeze.autoClick", hours = false },
-	{ key = "autoClick.kick", hours = true },
-	{ key = "autoClick.kickNoBan", hours = false },
-	{ key = "autoClick.ban", hours = true },
+local TEXTS: { { key: string, names: string? } } = {
+	{ key = "reason.squeeze.autoClick" },
+	{ key = "autoClick.kick", names = "{hours}" },
+	{ key = "autoClick.kickNoBan" },
+	{ key = "autoClick.ban", names = "{hours}" },
+	{ key = "autoClick.banLonger", names = "{days}" },
 }
 
 local function isNumber(v: unknown): boolean
@@ -149,13 +153,30 @@ return function(config: any, strings: any?): { string }
 		isWhole(ban) and ban >= SECONDS_PER_HOUR and ban % SECONDS_PER_HOUR == 0,
 		`{P}.banSeconds must be a whole number of hours, at least 3600 (got {show(ban)}; never -1)`
 	)
+	local later = c.laterBanSeconds
+	local laterOk = type(later) == "table"
+	local previous = if isNumber(ban) then ban else 0
+	if laterOk then
+		for _, seconds in later do
+			if not (isWhole(seconds) and seconds % SECONDS_PER_DAY == 0 and seconds > previous) then
+				laterOk = false
+				break
+			end
+			previous = seconds
+		end
+	end
+	expect(
+		laterOk,
+		`{P}.laterBanSeconds must be a list of whole days, each longer than the ban before (got {show(later)})`
+	)
 
 	if strings ~= nil and type(strings.resolve) == "function" then
 		for _, entry in TEXTS do
 			local text = strings.resolve(entry.key)
 			expect(type(text) == "string" and text ~= "", `{P}: Strings has no text for {entry.key}`)
-			if entry.hours and type(text) == "string" then
-				expect(string.find(text, "{hours}", 1, true) ~= nil, `{P}: Strings {entry.key} must name {"{hours}"}`)
+			local names = entry.names
+			if names and type(text) == "string" then
+				expect(string.find(text, names, 1, true) ~= nil, `{P}: Strings {entry.key} must name {names}`)
 			end
 		end
 	end

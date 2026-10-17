@@ -22,7 +22,8 @@
 --     fractional, non-finite or wrong-type one like every counter;
 --   * auto-clicker check (2026-10-16): autoClick (the last strike) joined schema 2 the same way: defaults {step = 0,
 --     at = 0}, an older v2 profile gets it from reconcile (no problem), a saved strike is kept, and sanitize keeps step
---     a whole number in [0, 3] and at a whole number in [0, now + 300] (non-finite -> 0, wrong type -> the default).
+--     a whole number in [0, AutoClickRules.MAX_STEP] (5 with the live ban ladder, batch B 2026-10-17) and at a whole
+--     number in [0, now + 300] (non-finite -> 0, wrong type -> the default).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -649,7 +650,10 @@ return function(t: Context)
 		end
 	)
 
-	t.test("sanitize autoClick: step a whole number in [0, 3], at in [0, now + 300]; broken values forget", function()
+	t.test("sanitize autoClick: step whole in [0, MAX_STEP], at in [0, now + 300]; broken values forget", function()
+		-- Batch B (2026-10-17): the ladder's last step (a 1st ban, then the longer ones) is the most a record keeps.
+		local MAX_STEP = t.requireServer("Logic/AutoClickRules").MAX_STEP
+		expect.equal(MAX_STEP, 5)
 		local function fixedStrike(value: any): (any, { string })
 			local profile = load(FIXTURE_V1).profile :: any
 			profile.autoClick = value
@@ -658,7 +662,7 @@ return function(t: Context)
 		end
 		local cases: { { any } } = {
 			{ "garbage", { step = 0, at = 0 } },
-			{ { step = 7, at = NOW }, { step = 3, at = NOW } },
+			{ { step = 7, at = NOW }, { step = MAX_STEP, at = NOW } },
 			{ { step = -1, at = NOW }, { step = 0, at = NOW } },
 			{ { step = 1.5, at = NOW }, { step = 1, at = NOW } },
 			{ { step = 0 / 0, at = 0 / 0 }, { step = 0, at = 0 } },
@@ -674,5 +678,8 @@ return function(t: Context)
 		local strike, problems = fixedStrike({ step = 3, at = NOW - 1 })
 		expect.deepEqual(strike, { step = 3, at = NOW - 1 })
 		expect.deepEqual(problems, {})
+		local longest, none = fixedStrike({ step = MAX_STEP, at = NOW - 1 }) -- a later, longer ban is kept
+		expect.deepEqual(longest, { step = MAX_STEP, at = NOW - 1 })
+		expect.deepEqual(none, {})
 	end)
 end

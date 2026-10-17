@@ -1448,6 +1448,9 @@ local UI = {
 			dragHint = { kind = "D17", stroke = 4 },
 			againLabel = { kind = "Big", stroke = 6 },
 			againPrice = { kind = "Button", stroke = 5 },
+			-- 2026-10-16 (the coin pill's "+", plan [UD5]): its "+" (H:80: 28 px white, -webkit-text-stroke 4px, no
+			-- drop).
+			coinPlus = { kind = "Large", stroke = 4 },
 		} :: { [string]: StickerTextRole },
 		-- UI FINAL R5 (UI/Components/RarityTag variants, PR2: a 16 px label grows a pill only by the measured extra): the
 		-- card pill (H:209: 22 border-box, padding 2 9 0, border 3, the rarity's card colour, pips beside it) and the
@@ -1822,6 +1825,17 @@ local UI = {
 				raysY = -46,
 				raysAlpha = 0.9, -- H:77
 				haloPx = 10, -- H:568: drop-shadow(0 0 10px #FFF3A0) around the coin
+			},
+			-- 2026-10-16 (the coin pill's "+", owner yes "Add it", plan [UD5]): the green "+" at the pill's right end
+			-- (H:80: 36 x 36 border-box, border 3, radius 12, inset 0 3px 0 rgba(255,255,255,.6), 0 3px 0 #1E1428), a
+			-- part of the pill (H:75's one tap target), so it has no tap target of its own.
+			coinPlus = { -- H:80
+				face = 36,
+				border = 3,
+				radius = 12,
+				lip = 3,
+				highlightPx = 3,
+				highlightAlpha = 0.6,
 			},
 			grip = { -- H:82-90
 				pull = 4, -- H:82 margin-top -4

@@ -45,6 +45,8 @@
 -- (gripFloatShown); phones scale only the idle DUEL button, the search bar keeps its second line on every screen
 -- (ctaScales, PR1, PR2); MATCH FOUND under the duel HUD's top bar (foundSpot); Down from the searching bar's cancel X
 -- to the queue pill's hint (focusLinks `hint`).
+-- 2026-10-16 (the coin pill's "+", owner yes "Add it", plan [UD5]): the pill's width counts the 12 px gap and the 36 px
+-- "+" (H:75, H:80; pillWidth); a tap opens the Shop's Coins tab (COIN_SHOP), its Robux packs still hidden.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -446,6 +448,7 @@ return function(t: Context)
 	local TOUCH = UI.Touch
 	local COLUMN = HudFormat.COLUMN
 	local PHONES = { Vector2.new(667, 375), Vector2.new(812, 375), Vector2.new(844, 390) }
+	local SMALL_PHONE = PHONES[1] -- iPhone SE size: the coin pill's "+" trade-off (see its own case)
 	local PCS = { Vector2.new(1024, 768), Vector2.new(1280, 720), Vector2.new(1920, 1080) }
 	local ALL = table.clone(PHONES)
 	for _, screen in PCS do
@@ -1166,14 +1169,56 @@ return function(t: Context)
 					expect.truthy(math.abs(place.x - centred) < 1e-6 or math.abs(place.x - pushed) < 1e-6)
 				end
 				-- The search bar at its full size on phones too (never scaled, HudFormat.ctaScales): its room keeps
-				-- its dots and second line on every screen (phones 441 at 667x375, 649 at 844x390).
+				-- its dots and second line on every screen (phones 601 at 844x390 with the coin pill's "+"), sized
+				-- for the widest texts. The one exception, the 667x375 phone at the widest texts (the "+", plan [UD5],
+				-- owner 2026-10-17: "that's fine"), is pinned by its own case below.
 				local low, high = HudFormat.freeSpan(c, origin.ctaTop, COLUMN.barHeight, blockers)
 				local bar = HudFormat.barWidth(COLUMN.searchWidth, high - low)
-				if not HudFormat.barParts(bar).line2 then
+				if screen ~= SMALL_PHONE and not HudFormat.barParts(bar).line2 then
 					error(`the search bar loses its second line at {label} ({bar} wide)`)
 				end
 			end
 		end
+	end)
+
+	-- The coin pill's "+" (plan [UD5]) on the smallest phone, accepted by the owner (2026-10-17: "that's fine", the
+	-- design everywhere): at 667x375 the "+" (its 12 px gap and 36 px) widens the pill, and with the widest texts
+	-- ("Loading…", 100M+ coins such as "123.45M") the search bar's room falls under dropBelow, so its dots and second
+	-- line drop there. The "+" alone costs it (48 px more room would keep them), and a coin number up to "99,999" keeps
+	-- them. Every other screen keeps them at the widest texts (the DUEL area case above).
+	t.test("the coin pill's + at 667x375 (UD5, accepted): the bar drops line 2 only at the widest texts", function()
+		local class = classOf(SMALL_PHONE)
+		local compact = class == "compact"
+		local origin = HudFormat.origins(compact)
+		local function barFor(texts: any?): number
+			local plan = HudFormat.leftColumnPlan(SMALL_PHONE, class, 1, if texts then { texts = texts } else nil)
+			local rightWidth = if compact then COLUMN.settingsSize else COLUMN.trackerWidth
+			local blockers = {
+				{ x = origin.left.X, y = origin.left.Y, w = plan.width, h = plan.leftBottom - origin.left.Y },
+				HudFormat.badgeReachRect({
+					x = origin.nav.X,
+					y = plan.tilesTop,
+					w = plan.tilesWidth,
+					h = plan.tilesHeight,
+				}),
+				{
+					x = plan.canvas.X - origin.right.X - rightWidth,
+					y = origin.right.Y,
+					w = rightWidth,
+					h = if compact then COLUMN.settingsSize else COLUMN.settingsHeight + COLUMN.rightGap + 100,
+				},
+			}
+			local low, high = HudFormat.freeSpan(plan.canvas, origin.ctaTop, COLUMN.barHeight, blockers)
+			return HudFormat.barWidth(COLUMN.searchWidth, high - low)
+		end
+		local dropBelow = UI.Sticker.hud.search.dropBelow
+		local worst = barFor(nil)
+		expect.truthy(worst > 0)
+		expect.deepEqual(HudFormat.barParts(worst), { dots = false, line2 = false })
+		expect.truthy(worst + COLUMN.pillGap + COLUMN.pillPlus >= dropBelow)
+		local texts = table.clone(HudFormat.worstCaseTexts())
+		texts.coins = Format.coins(99_999)
+		expect.deepEqual(HudFormat.barParts(barFor(texts)), { dots = true, line2 = true })
 	end)
 
 	-- The owner's 1v1 tab (2026-10-16): Diego's picker now holds three tabs (TEAM DEATHMATCH, FREE FOR ALL, DUEL 1v1;
@@ -1376,12 +1421,53 @@ return function(t: Context)
 			expect.truthy(HudFormat.pillHeight(1) >= TOUCH.minTarget)
 			expect.truthy(HudFormat.pillHeight(LARGEST) >= HudFormat.pillHeight(1))
 			expect.equal(HudFormat.pillWidth(1, "0"), COLUMN.pillMinWidth)
+			-- 2026-10-16 (plan [UD5]): the number, the design's 12 px gap and the 36 px "+" (H:75, H:80).
+			expect.equal(COLUMN.pillGap, 12)
+			expect.equal(COLUMN.pillPlus, 36)
 			local number = HudFormat.textWidth("999.99M", HudFormat.kindPx("Coin", 1), "title")
-			local wide = 2 * COLUMN.pillBorder + COLUMN.pillPadLeft + number + COLUMN.pillPadRight
+			local wide = 2 * COLUMN.pillBorder
+				+ COLUMN.pillPadLeft
+				+ number
+				+ COLUMN.pillGap
+				+ COLUMN.pillPlus
+				+ COLUMN.pillPadRight
 			expect.equal(HudFormat.pillWidth(1, "999.99M"), math.max(COLUMN.pillMinWidth, math.ceil(wide)))
+			expect.truthy(HudFormat.pillWidth(1, "999.99M") > COLUMN.pillMinWidth) -- the "+" widens a long one
 			expect.truthy(HudFormat.pillWidth(1) >= HudFormat.pillWidth(1, "0"))
+			expect.truthy(HudFormat.pillWidth(LARGEST) >= HudFormat.pillWidth(1))
 		end
 	)
+
+	-- 2026-10-16 (the coin pill's "+", owner yes "Add it", plan [UD5]): a tap on the pill opens the Shop. Review fix
+	-- (2026-10-16): on its Coins tab only once a coin pack can be bought there (ShopFormat.coinsView has rows), else
+	-- the Shop's top (H:987: openCoins opens the whole shop), so the "+" never lands on "Coin packs aren't available".
+	t.test("the coin pill's tap (UD5): the Shop's top until a coin pack is on sale, then its Coins tab", function()
+		local ShopFormat = t.requireClient("UI/ShopFormat")
+		expect.deepEqual(HudFormat.COIN_SHOP, { tab = "coins" })
+		expect.truthy(table.isfrozen(HudFormat.COIN_SHOP))
+		expect.deepEqual(ShopFormat.params(HudFormat.COIN_SHOP), { tab = "coins" })
+		-- Every shipped pack has no productId (Config.Monetization): even offered and allowed, the Coins tab would show
+		-- its note only, so the tap opens the Shop's top (nil params = the squishies tab, as before).
+		local shipped = Config.Monetization.CoinBundles
+		local keys = {}
+		for _, bundle in shipped do
+			table.insert(keys, bundle.key)
+		end
+		local view = ShopFormat.coinsView(keys, shipped, {}, true)
+		expect.truthy(view.unavailable)
+		expect.equal(view.text, Strings.shop.coinsUnavailable)
+		expect.equal(HudFormat.coinShop({ bundles = keys }, shipped, true), nil)
+		expect.equal(HudFormat.coinShop({ bundles = keys }), nil) -- the live Config's defaults
+		expect.deepEqual(ShopFormat.params(HudFormat.coinShop({ bundles = keys })), { tab = "squishies" })
+		-- A pack with a productId, on sale and offered by the server: the Coins tab.
+		local live = { { key = "pack", nameKey = "x", coins = 100, productId = 123, onSale = true } }
+		expect.equal(HudFormat.coinShop({ bundles = { "pack" } }, live, true), HudFormat.COIN_SHOP)
+		-- Not offered, not allowed (capsules on), or no monetization state yet: the Shop's top.
+		expect.equal(HudFormat.coinShop({ bundles = {} }, live, true), nil)
+		expect.equal(HudFormat.coinShop({ bundles = { "pack" } }, live, false), nil)
+		expect.equal(HudFormat.coinShop(nil, live, true), nil)
+		expect.equal(HudFormat.coinShop("garbage", live, true), nil)
+	end)
 
 	t.test(
 		"search / found bars: the design's width, narrower only to their room; under dropBelow lines drop",

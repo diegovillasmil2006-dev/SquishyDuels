@@ -22,6 +22,12 @@
 --   dailyBadge(daily, today)   1 when today's daily reward is unclaimed (UTC day index, §6.9)
 --   badgeText(n)               the badge number (nil for 0; capped at BADGE_MAX)
 --   coinsText(coins)           Format.coins, or "Loading…" before the first value (§11.3)
+--   COIN_SHOP / coinShop(monetization, bundles?, allowed?)
+--                              2026-10-16 (the coin pill's "+", owner yes "Add it", plan [UD5]): the Shop's open params
+--                              of a coin pill tap. Review fix (2026-10-16): COIN_SHOP (its Coins tab) only once a coin
+--                              pack can be bought there (ShopFormat.coinsView has rows: offered by the server, with a
+--                              productId, on sale, bundles allowed); else nil, the Shop's top, as the design's
+--                              openCoins opens the whole shop (H:987) and the Coins tab would only say "not available"
 --   trackedQuest(board)        the quest tracker's quest (spec "Top right"): the unclaimed quest closest to done, the
 --                              Starter tasks first, then the day's quests (UI/QuestFormat.board); nil when there is none
 --   ctaModel(queue, now)       the DUEL area (UI FINAL R4): "DUEL" / "Join the queue" while idle (H:130-131); while the
@@ -150,6 +156,7 @@ local Layout = require(script.Parent.Layout)
 local OnboardingFormat = require(script.Parent.OnboardingFormat)
 local QuestFormat = require(script.Parent.QuestFormat)
 local QueueFormat = require(script.Parent.QueueFormat)
+local ShopFormat = require(script.Parent.ShopFormat)
 
 -- Types
 
@@ -443,6 +450,9 @@ local COLUMN = table.freeze({
 	pillMinWidth = HUD.coins.minWidth,
 	pillPadLeft = HUD.coins.padLeft,
 	pillPadRight = HUD.coins.padRight,
+	-- 2026-10-16 (plan [UD5]): the green "+" after the number (H:80), the design's 12 px gap before it (H:75).
+	pillGap = HUD.coins.gap,
+	pillPlus = HUD.coinPlus.face,
 	settingsSize = 64, -- phones: the Settings tile (top right)
 	settingsWidth = HUD.settings.width, -- H:157: the Settings sticker, 92 x 90
 	settingsHeight = HUD.settings.height,
@@ -511,6 +521,7 @@ HudFormat.NAV = NAV
 HudFormat.BADGE_MAX = BADGE_MAX
 HudFormat.COLUMN = COLUMN
 HudFormat.TEXT_METRICS = TEXT_METRICS
+HudFormat.COIN_SHOP = table.freeze({ tab = "coins" }) -- 2026-10-16 (plan [UD5]): see the header
 
 -- Public
 
@@ -633,6 +644,18 @@ function HudFormat.coinsText(coins: number?): string
 		return Strings.common.loading
 	end
 	return Format.coins(coins)
+end
+
+-- Review fix (2026-10-16, job coinplus): a coin pill tap's Shop params (see the header). `monetization` = the
+-- StateController "monetization" field ({bundles = the offered keys}); `bundles` defaults to
+-- Config.Monetization.CoinBundles and `allowed` to ShopFormat.bundlesAllowed(Config.Grip), as the Shop reads them.
+function HudFormat.coinShop(monetization: unknown, bundles: { any }?, allowed: boolean?): { tab: string }?
+	local offered = if type(monetization) == "table" and type((monetization :: any).bundles) == "table"
+		then (monetization :: any).bundles
+		else nil
+	local on = if allowed == nil then ShopFormat.bundlesAllowed(Config.Grip) else allowed
+	local view = ShopFormat.coinsView(offered, bundles or Config.Monetization.CoinBundles, {}, on)
+	return if view.unavailable then nil else HudFormat.COIN_SHOP
 end
 
 -- The quest tracker's quest (spec "Top right: a Quest tracker card (the unclaimed quest closest to done, Starter quests
@@ -899,12 +922,17 @@ function HudFormat.pillHeight(textScale: number?, _scale: number?): number
 end
 
 -- UI FINAL R4 (H:75): the coin pill's estimated width with this text (default: the widest one): its 4 px border, its
--- 68 px left padding (the coin overhangs it), the number (Coin kind) and its 10 px right padding, at least 220 (a
--- border-box width, H:18).
+-- 68 px left padding (the coin overhangs it), the number (Coin kind), the 12 px gap and the 36 px "+" (2026-10-16,
+-- H:80) and its 10 px right padding, at least 220 (a border-box width, H:18).
 function HudFormat.pillWidth(textScale: number?, coinsText: string?): number
 	local text = coinsText or HudFormat.worstCaseTexts().coins
 	local number = HudFormat.textWidth(text, HudFormat.kindPx("Coin", textScale), "title")
-	local width = 2 * COLUMN.pillBorder + COLUMN.pillPadLeft + number + COLUMN.pillPadRight
+	local width = 2 * COLUMN.pillBorder
+		+ COLUMN.pillPadLeft
+		+ number
+		+ COLUMN.pillGap
+		+ COLUMN.pillPlus
+		+ COLUMN.pillPadRight
 	return math.max(COLUMN.pillMinWidth, math.ceil(width))
 end
 

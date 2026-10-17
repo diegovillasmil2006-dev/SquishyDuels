@@ -37,6 +37,8 @@
 -- with the 0 / -12 / 9 / -4 / 0 hover wiggle (Button.wiggleAt); the search bar's cancel X is a 48 px face in the 52 px
 -- hit box (H:145); the coin pill is the design's 58 px pill with its 5 px lip and the 78 px coin over it (H:75-81);
 -- SegmentedTabs is the testers' TDM / FFA picker (N:144-162).
+-- 2026-10-16 (the coin pill's "+", owner yes "Add it", plan [UD5]): the pill's green "+" (H:80) at its right end, a
+-- part of the pill (no button of its own), and the pill as wide as the number, the gap and the "+" need.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -535,8 +537,14 @@ return function(t: Context)
 		expect.equal(capsule.capsule.Parent, capsule.visual)
 		expect.truthy(capsule.capsule:FindFirstChild("SD_Foam") ~= nil)
 		expect.equal(strokesOf(capsule.capsule), 1)
-		-- The number after the 68 px padding, 10 on the right, both inside the 4 px border (H:18 border-box).
-		local padding = capsule.capsule:FindFirstChildOfClass("UIPadding") :: UIPadding
+		-- The number after the 68 px padding, 10 on the right, both inside the 4 px border (H:18 border-box). Review fix
+		-- (2026-10-16): in its own transparent Row (face-sized, in SD_Visual), so it can draw over the "+".
+		local row = capsule.label.Parent :: Frame
+		expect.equal(row.Name, "Row")
+		expect.equal(row.Parent, capsule.visual)
+		expect.equal(row.BackgroundTransparency, 1)
+		expect.equal(row.Size, capsule.capsule.Size)
+		local padding = row:FindFirstChildOfClass("UIPadding") :: UIPadding
 		expect.equal(padding.PaddingLeft.Offset, border + hud.padLeft)
 		expect.equal(padding.PaddingRight.Offset, border + hud.padRight)
 		-- The 78 px coin over the face at (-14, -12) of its padding edge (H:78), in its sdCoin holder > Flip.
@@ -547,10 +555,55 @@ return function(t: Context)
 		local flip = capsule.disc.root.Parent :: Frame
 		expect.equal(flip.Name, "Flip")
 		expect.equal((flip.Parent :: Frame).Name, "SD_Idle")
-		-- A longer number widens the pill.
+		-- 2026-10-16 (the coin pill's "+", plan [UD5]): the green "+" (H:80): 36 px with its 3 px lip under it, at the
+		-- face's right end inside the 10 px padding and the border, centred on the 58 px face, over the face and under
+		-- the coin; a part of the pill, not a button (the pill is the one tap target, H:75); #A6F796 -> #38C150 with
+		-- the 3 px highlight at .6, a 3 px ink border inside, radius 12; its "+" in the coinPlus role (28 px, white,
+		-- stroke 4, no drop).
+		local PLUS = STICKER.hud.coinPlus
+		expect.deepEqual(
+			{ PLUS.face, PLUS.border, PLUS.radius, PLUS.lip, PLUS.highlightPx, PLUS.highlightAlpha },
+			{ 36, 3, 12, 3, 3, 0.6 }
+		)
+		expect.deepEqual(STICKER.text.coinPlus, { kind = "Large", stroke = 4 })
+		expect.truthy(capsule.visual:FindFirstChild("Plus") ~= nil)
+		local plus = capsule.visual:FindFirstChild("Plus") :: Frame
+		expect.truthy(plus:IsA("Frame"))
+		expect.falsy(plus.Active)
+		expect.equal(plus.Size, UDim2.fromOffset(PLUS.face, PLUS.face + PLUS.lip))
+		expect.equal(plus.AnchorPoint, Vector2.new(1, 0))
+		expect.equal(plus.Position, UDim2.new(1, -(border + hud.padRight), 0, (hud.face - PLUS.face) / 2))
+		expect.truthy(plus.ZIndex > capsule.capsule.ZIndex and plus.ZIndex < coin.ZIndex)
+		-- Review fix (2026-10-16): the number draws over the "+" (H:79's transformed span paints over H:80's during the
+		-- 1.22 pop), and the coin over both (as before).
+		expect.truthy(row.ZIndex > plus.ZIndex and row.ZIndex < coin.ZIndex)
+		expect.equal(strokesOf(plus), 1)
+		expect.equal((plus:FindFirstChildOfClass("UIStroke") :: UIStroke).Thickness, PLUS.border)
+		expect.equal((plus:FindFirstChildOfClass("UICorner") :: UICorner).CornerRadius, UDim.new(0, PLUS.radius))
+		local plusPoints = (plus:FindFirstChild("SD_Foam") :: UIGradient).Color.Keypoints
+		local plusTop = plusPoints[1].Value
+		local wantTop = Palette.StickerGreenTop:Lerp(WHITE, PLUS.highlightAlpha)
+		expect.near(plusTop.R, wantTop.R, 1e-3)
+		expect.near(plusTop.G, wantTop.G, 1e-3)
+		expect.near(plusTop.B, wantTop.B, 1e-3)
+		local greenEnd = false
+		for _, point in plusPoints do
+			greenEnd = greenEnd or point.Value == Palette.StickerGreen2End
+		end
+		expect.truthy(greenEnd)
+		expect.equal(plusPoints[#plusPoints].Value, Theme.Colors.inkUI) -- the lip
+		local plusLabel = plus:FindFirstChild("Label") :: TextLabel
+		expect.equal(plusLabel.Text, Strings.hud.coinsPlus)
+		expect.equal(plusLabel.TextColor3, WHITE)
+		expect.equal(plusLabel.TextSize, Theme.textSize("Large"))
+		expect.equal(plusLabel.Size, UDim2.new(1, 0, 0, PLUS.face))
+		expect.equal((plusLabel:FindFirstChild("SD_Outline") :: UIStroke).Thickness, STICKER.text.coinPlus.stroke / 2)
+		-- A longer number widens the pill: the number, the 12 px gap and the "+" (H:75, H:80).
 		capsule:setText("999.99M")
 		expect.equal(capsule.label.Text, "999.99M")
-		local wide = math.ceil(2 * border + hud.padLeft + Theme.textWidth("999.99M", "Coin") + hud.padRight)
+		local wide = math.ceil(
+			2 * border + hud.padLeft + Theme.textWidth("999.99M", "Coin") + hud.gap + PLUS.face + hud.padRight
+		)
 		expect.equal(capsule.root.Size.X.Offset, math.max(hud.minWidth, wide))
 		-- The squash, the shake and a flash start without an error (nothing is drawn in Edit mode).
 		capsule:squash(0.8)

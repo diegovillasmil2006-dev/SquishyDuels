@@ -66,10 +66,11 @@ local Economy = {
 	-- Match HUD M2 (2026-10-16, owner): a Free for All / Team Deathmatch result pays the same win / loss / draw
 	-- squeezes as Coins AND as Grip, with the same minOwnThrows and min Active seconds, but no same-pair or hourly cap
 	-- (Server/Logic/MatchRewards reads this table; Config.Match.Rewards.enabled switches it on).
+	-- Batch B (owner 2026-10-17): a lost duel pays 350 and a draw 450 (were 180 and 300); matches the same.
 	DuelRewards = {
 		win = 600,
-		loss = 180,
-		draw = 300,
+		loss = 350,
+		draw = 450,
 		minOwnThrows = 3, -- server-accepted throws, for every outcome; a draw needs both players to reach it
 		winMinActiveSeconds = 20, -- a bail before this is Cancelled (must be >= Duel.Rules.EarlyForfeitSeconds)
 		lossMinActiveSeconds = 45,
