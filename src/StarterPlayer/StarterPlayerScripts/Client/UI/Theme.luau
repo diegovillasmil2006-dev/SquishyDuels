@@ -734,6 +734,27 @@ function Theme.lineHeight(kind: TextKind, weight: Enum.FontWeight?): number
 	return Theme.textBounds("Hg", kind, weight).Y
 end
 
+-- The bounds (base px, rounded up) of `text` in `kind` as drawn under a UIScale of `scale`. Scaled text lays out at
+-- the scaled size with every glyph rounded to whole pixels, so it is wider than textBounds says (+2% at 0.85 for
+-- the congrats line, a pixel per letter): sized from textBounds, a word wraps out of sight and a lone glyph vanishes
+-- (found by playing, 2026-10-17).
+function Theme.textBoundsAt(text: string, kind: TextKind, wrapWidth: number?, scale: number): Vector2
+	local s = math.max(scale, 1e-3)
+	local frame = if wrapWidth and wrapWidth > 0 then wrapWidth * s else MEASURE_FRAME_PX
+	local ok, result = pcall(function(): Vector2
+		return TextService:GetTextSize(
+			text,
+			Theme.textSize(kind) * s,
+			MEASURE_FONT,
+			Vector2.new(frame, MEASURE_FRAME_PX)
+		)
+	end)
+	if ok and typeof(result) == "Vector2" then
+		return Vector2.new(math.ceil(result.X / s), math.ceil(result.Y / s))
+	end
+	return Theme.textBounds(text, kind, nil, wrapWidth)
+end
+
 -- Re-applies the text size of every Theme.text object under `root` (PreferredTextSize changed).
 function Theme.refreshText(root: Instance)
 	for _, descendant in root:GetDescendants() do

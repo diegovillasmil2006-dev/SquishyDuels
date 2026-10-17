@@ -482,6 +482,21 @@ return function(t: Context)
 		expect.equal(Theme.textBounds("Squishies", "Small"), Theme.textBounds("Squishies", "Chip"))
 	end)
 
+	t.test("textBoundsAt: measured at the size drawn under a UIScale (found by playing 2026-10-17)", function()
+		local line = "Your pen kept earning while you were away (1 h)."
+		local plain = Theme.textBounds(line, "Body")
+		expect.equal(Theme.textBoundsAt(line, "Body", nil, 1), Vector2.new(math.ceil(plain.X), math.ceil(plain.Y)))
+		-- Under 0.85 the text lays out at 0.85 x its size, each glyph rounded to whole pixels (checked in Studio: the
+		-- drawn widths match this to the pixel); the answer is that, back in base px.
+		local size = Theme.textSize("Body") * 0.85
+		local drawn = game:GetService("TextService")
+			:GetTextSize(line, size, Enum.Font.FredokaOne, Vector2.new(1e5, 1e5))
+		expect.equal(Theme.textBoundsAt(line, "Body", nil, 0.85).X, math.ceil(drawn.X / 0.85))
+		-- A wrap width keeps it inside, on more lines.
+		local wrapped = Theme.textBoundsAt(line, "Body", 80, 0.85)
+		expect.truthy(wrapped.X <= 80 and wrapped.Y > plain.Y)
+	end)
+
 	t.test("panel: the purple card, one inner ink outline (no rim) and room for the lip", function()
 		local holder = Instance.new("Folder")
 		local panel = Theme.panel({ Name = "Card", Size = UDim2.fromOffset(200, 100), Parent = holder }, nil, 6)

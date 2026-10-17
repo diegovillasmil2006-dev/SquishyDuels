@@ -157,10 +157,11 @@ local function riseText(
 	text: string,
 	role: string,
 	wrapWidth: number,
-	spec: { delayS: number, curve: string }
+	spec: { delayS: number, curve: string },
+	scale: number
 ): TextLabel
 	local kind = (Theme.Sticker.text[role] :: any).kind
-	local bounds = Theme.textBounds(text, kind, nil, wrapWidth)
+	local bounds = Theme.textBoundsAt(text, kind, wrapWidth, scale) -- drawn under the column's UIScale
 	local _, pose = slot(parent, name, order, math.ceil(bounds.X) + 4, math.ceil(bounds.Y))
 	local label = Theme.label({
 		Name = "Text",
@@ -263,13 +264,13 @@ function CongratsOverlay.show(spec: Spec): CongratsOverlay
 		LayoutOrder = 1,
 		Parent = column,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, 0, row)
+	local slam = CG.letters
+	Theme.list(Enum.FillDirection.Horizontal, slam.gapPx, row)
 	local rowScale: UIScale = Create("UIScale", { Parent = row })
 	local rowWidth = 0
-	local slam = CG.letters
 	for index, letter in CongratsOverlay.letters(Strings.shop.congratsTitle) do
-		local size = Theme.textBounds(letter.char, "Congrats")
-		rowWidth += size.X
+		local size = Theme.textBoundsAt(letter.char, "Congrats", nil, scale)
+		rowWidth += size.X + (if index > 1 then slam.gapPx else 0)
 		local _, pose = slot(row, "Letter" .. index, index, size.X, size.Y)
 		local label = Theme.label({
 			Name = "Text",
@@ -283,6 +284,13 @@ function CongratsOverlay.show(spec: Spec): CongratsOverlay
 			Parent = pose,
 		}, "Congrats")
 		Theme.stickerText(label, "congrats")
+		-- Theme.text turns wrapping on; a lone glyph a pixel wider than its slot would then not draw at all.
+		for _, text in label:GetDescendants() do
+			if text:IsA("TextLabel") then
+				text.TextWrapped = false
+			end
+		end
+		label.TextWrapped = false
 		c:add(
 			Scheduler.add(
 				Tweens.keyframes(
@@ -347,9 +355,9 @@ function CongratsOverlay.show(spec: Spec): CongratsOverlay
 	if wrapWidth <= 1 then
 		wrapWidth = Config.UI.Scale.referenceWidth - 2 * CG.margin
 	end
-	riseText(c, column, "YouGot", 3, Strings.shop.youGot, CG.youGot.textRole, wrapWidth, CG.youGot)
-	riseText(c, column, "Title", 4, spec.title, CG.title.textRole, wrapWidth, CG.title)
-	riseText(c, column, "Description", 5, spec.description, CG.desc.textRole, wrapWidth, CG.desc)
+	riseText(c, column, "YouGot", 3, Strings.shop.youGot, CG.youGot.textRole, wrapWidth, CG.youGot, scale)
+	riseText(c, column, "Title", 4, spec.title, CG.title.textRole, wrapWidth, CG.title, scale)
+	riseText(c, column, "Description", 5, spec.description, CG.desc.textRole, wrapWidth, CG.desc, scale)
 
 	-- H:547: AWESOME!, 12 px further down, rising in (its fade follows the same run).
 	local b = CG.button

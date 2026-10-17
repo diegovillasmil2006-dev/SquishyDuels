@@ -78,6 +78,12 @@ return function(t: Context)
 			end
 		end
 		expect.equal(count, 16)
+		-- Found by playing (2026-10-17): a wrapping letter a pixel wider than its slot drew nothing (CO G ATU ATIO !).
+		for _, text in letters:GetDescendants() do
+			if text:IsA("TextLabel") then
+				expect.equal(text.TextWrapped, false)
+			end
+		end
 		expect.truthy(column:FindFirstChild("Icon") ~= nil)
 		expect.equal((column:FindFirstChild("YouGot") :: any).Pose.Text.Text, Strings.shop.youGot)
 		expect.equal((column:FindFirstChild("Title") :: any).Pose.Text.Text, "Toast")

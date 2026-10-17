@@ -977,6 +977,7 @@ local UI = {
 				delayS = 0.05, -- H:1005
 				staggerS = 0.035, -- H:1005
 				slamMs = 600, -- H:539
+				gapPx = 3, -- [P] reading (found by playing 2026-10-17): the 6.5 px outline ran into the next letter
 				curve = "rise", -- H:539: cubic-bezier(.2,1.3,.4,1)
 				frames = { -- H:45
 					{ at = 0, y = -160, scale = 2.4, rot = -12, alpha = 0 },
