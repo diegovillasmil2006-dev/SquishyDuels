@@ -1250,7 +1250,7 @@ return function(t: Context)
 				Vector3.new(13, 0, 8),
 			})
 			expect.equal(bases.capsulePadSize, 8)
-			expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, -16))) -- 42 studs behind the gate
+			expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, -4))) -- 30 studs behind the gate
 			expect.truthy(vectorNear(bases.spawn.LookVector, Vector3.new(0, 0, 1), 1e-6)) -- toward the gate
 			local half = bases.capsulePadSize / 2
 			for index = 1, 10 do
@@ -1290,13 +1290,13 @@ return function(t: Context)
 		expect.equal(WorldLayout.TagCounts.SD_BaseSpawn, 10) -- Phase 4 builds the island: one per plot
 	end)
 
-	t.test("a plot's spawn stands 116 studs from the stage edge and its gate 74 (spec §2), facing the gate", function()
+	t.test("a plot's spawn stands 104 studs from the stage edge and its gate 74 (spec §2), facing the gate", function()
 		local bases = WorldLayout.Bases
 		local stage = WorldLayout.Lobby.stageRadius
 		for index = 1, 10 do
 			local frame = WorldLayout.plotFrame(index) :: CFrame
 			local spawn = frame * bases.spawn
-			expect.near(Vector3.new(spawn.Position.X, 0, spawn.Position.Z).Magnitude - stage, 116, 1e-3)
+			expect.near(Vector3.new(spawn.Position.X, 0, spawn.Position.Z).Magnitude - stage, 104, 1e-3)
 			local gate = frame * bases.gate
 			expect.near(Vector3.new(gate.X, 0, gate.Z).Magnitude - stage, 74, 1e-3)
 			expect.truthy(vectorNear(spawn.LookVector, -frame.LookVector, 1e-4)) -- toward the gate and the hub

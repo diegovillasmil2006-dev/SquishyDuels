@@ -407,6 +407,7 @@ local function buildCard(c: Cleanup.Cleanup)
 		Text = "",
 		LayoutOrder = 1,
 		Size = UDim2.fromOffset(COLUMN.coachWidth - 200, 0),
+		AutomaticSize = Enum.AutomaticSize.None, -- layoutCard sets the measured height
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Parent = frame,
 	}, "Body")
@@ -500,7 +501,10 @@ layoutCard = function()
 		frame.Size = size
 	end
 	local labelWidth = math.max(MIN_LABEL_WIDTH, place.width - 2 * COLUMN.coachPadding - buttonWidth - COLUMN.coachGap)
-	local labelSize = UDim2.fromOffset(math.floor(labelWidth), 0)
+	-- Measured height, not AutomaticSize: under SD_Hud's UIScale the automatic box stayed one line tall and hid the
+	-- second line ("...your first squishy is" | "Kitty Bread."). 0.92: the measuring font runs a little narrower.
+	local labelHeight = math.max(Theme.lineHeight(kind), Theme.textBounds(text, kind, nil, labelWidth * 0.92).Y)
+	local labelSize = UDim2.fromOffset(math.floor(labelWidth), math.ceil(labelHeight))
 	if label.Size ~= labelSize then
 		label.Size = labelSize
 	end

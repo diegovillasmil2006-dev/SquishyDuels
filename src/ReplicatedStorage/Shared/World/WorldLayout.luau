@@ -830,9 +830,10 @@ local Bases = {
 	nameSign = { position = Vector3.new(0, 11.6, BASE_DEPTH / 2 - 0.6), size = Vector3.new(9, 2, 0.3) } :: Box,
 	-- Reading: the gate's posts and fence run along the plinth's edges 0.6 inside them.
 	fenceInset = 0.6,
-	-- Reading: the spec's [spawn] faces the gate (§4) 42 studs behind it (§2: spawn -> duel stage 116 st, gate -> stage
-	-- 74 st), so local z -16, facing +Z.
-	spawn = CFrame.new(0, 0, BASE_DEPTH / 2 - 42) * CFrame.Angles(0, math.pi, 0),
+	-- Reading: the spec's [spawn] faces the gate (§4); spec §2 had it 42 studs behind it (local z -16), but there the
+	-- join camera sat behind the statue (2026-10-16 playtest), so it stands 30 behind (local z -4, spawn -> duel stage
+	-- 104 st, gate -> stage 74 st), facing +Z.
+	spawn = CFrame.new(0, 0, BASE_DEPTH / 2 - 30) * CFrame.Angles(0, math.pi, 0),
 	-- Reading: the back wall's statue (§4: the squishy in capsule 1) stands on a plinth (top 1.2) in front of the back
 	-- wall, facing the gate; it is this tall (max(height, 0.8 × width), like the hub statue).
 	statue = CFrame.new(0, 1.2, -21.5) * CFrame.Angles(0, math.pi, 0),
