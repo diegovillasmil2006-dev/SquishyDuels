@@ -28,7 +28,10 @@
 --     shows the pop-up (Diego's congrats overlay in the SD_Prompt layer) once, a new gift replaces it, destroy() takes
 --     it away. Engine only (the offline runner has no Destroying signal or CollectionService);
 --   * pens3 phase 5: syncWaits(plot, own, revealOpen): the own pen's walkers wait while the box reveal plays (a copy
---     never walks in before its reveal; the reveal's close syncs it); every other base syncs at once.
+--     never walks in before its reveal; the reveal's close syncs it); every other base syncs at once;
+--   * pens3 phase 6: tapHit(tap, points, minPx): the walker a tap lands on: the nearest whose middle is within its
+--     drawn radius or minPx (whichever is bigger), none when the tap is past every reach; start() registers the "pen"
+--     screen and destroy() takes it away (engine only, with the lifecycle case).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -198,12 +201,29 @@ return function(t: Context)
 		PenController.start()
 		expect.truthy(Workspace:FindFirstChild("SD_PenClient") ~= nil)
 		expect.equal(PenController.debugState().walkers, 0) -- no pen attributes in Edit mode: nothing is built
+		expect.equal(UIController.isRegistered("pen"), true) -- pens3 phase 6: the pen screen
 		PenController.destroy()
+		expect.equal(UIController.isRegistered("pen"), false)
 		expect.equal(Workspace:FindFirstChild("SD_PenClient"), nil)
 		expect.equal(Scheduler.count(), effects)
 		expect.equal(PenController.debugState().started, false)
 		PenController.destroy() -- twice is fine
 	end)
+
+	t.test(
+		"tapHit: the nearest walker within its drawn radius or minPx; none past every reach (pens3 phase 6)",
+		function()
+			local points = {
+				{ x = 100, y = 100, radius = 10 }, -- far: smaller than a finger
+				{ x = 160, y = 100, radius = 60 }, -- near: big on the screen
+			}
+			expect.equal(PenController.tapHit(Vector2.new(100, 120), points, 28), 1) -- within minPx of the far one
+			expect.equal(PenController.tapHit(Vector2.new(110, 130), points, 28), 2) -- past minPx: the near one's reach
+			expect.equal(PenController.tapHit(Vector2.new(120, 100), points, 28), 2) -- both reach: the nearer share
+			expect.equal(PenController.tapHit(Vector2.new(400, 400), points, 28), nil)
+			expect.equal(PenController.tapHit(Vector2.new(100, 100), {}, 28), nil)
+		end
+	)
 
 	t.test("syncWaits: only the own pen waits, and only while the box reveal plays (pens3 phase 5)", function()
 		expect.equal(PenController.syncWaits(3, 3, true), true) -- a copy waits for its reveal

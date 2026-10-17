@@ -610,15 +610,18 @@ return function(t: Context)
 			expect.equal(SqueezeController.panelLabel(nil), s("grip.stationLabelBase", { coins = "10", grip = "10" }))
 			-- Kitty Bread (10/s) and the Bird (160/s) walk in the pen: 170 Coins and 170 Grip a squeeze.
 			local items: { any } = {
-				{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
-				{ id = 2, kind = "bird", form = 0, level = 1, coat = 0 },
+				{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false },
+				{ id = 2, kind = "bird", form = 0, level = 1, coat = 0, slot = 2, locked = false },
 			}
 			local pen = { spots = 3, nextId = 3, items = items }
 			expect.equal(PenMath.squeezeValue(pen), 170)
 			expect.equal(SqueezeController.panelLabel(pen), s("grip.stationLabelBase", { coins = "170", grip = "170" }))
 			-- A levelled squishy earns a fractional rate: the Coins and the Grip are the whole ones the server pays.
-			local levelled =
-				{ spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 2, coat = 0 } } }
+			local levelled = {
+				spots = 3,
+				nextId = 2,
+				items = { { id = 1, kind = "kitty_bread", form = 0, level = 2, coat = 0, slot = 1, locked = false } },
+			}
 			expect.equal(PenMath.squeezeValue(levelled), 11.5)
 			expect.equal(
 				SqueezeController.panelLabel(levelled),

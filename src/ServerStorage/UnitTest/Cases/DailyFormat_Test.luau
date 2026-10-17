@@ -154,8 +154,8 @@ return function(t: Context)
 	t.test("a day's Coins are its squeezes × the squeeze value of the player's pen (pens3 phase 1)", function()
 		-- Kitty Bread (10/s) and Butter (40/s) walk in the pen: 50 Coins a squeeze.
 		local items: { any } = {
-			{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
-			{ id = 2, kind = "butter", form = 0, level = 1, coat = 0 },
+			{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false },
+			{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false },
 		}
 		local pen = { spots = 3, nextId = 3, items = items }
 		local value = PenMath.squeezeValue(pen)

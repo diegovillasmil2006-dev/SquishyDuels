@@ -222,7 +222,16 @@ return function(t: Context)
 	local function pen(spots: number, kinds: { string }?): any
 		local items = {}
 		for index, kind in (kinds or { "kitty_bread" }) :: { string } do
-			items[index] = { id = index, kind = kind, form = 0, level = 1, coat = 0 }
+			-- Pens3 phase 6: the kinds sit in spots 1, 2, ... in order (the rest in the Toy Box).
+			items[index] = {
+				id = index,
+				kind = kind,
+				form = 0,
+				level = 1,
+				coat = 0,
+				slot = if index <= spots then index else 0,
+				locked = false,
+			}
 		end
 		return { spots = spots, nextId = #items + 1, items = items }
 	end
@@ -306,7 +315,7 @@ return function(t: Context)
 		w.pens[a] = pen(3, { "kitty_bread", "butter" })
 		BaseService.playerAdded(a)
 		expect.equal(model:GetAttribute("SD_PenSpots"), 3)
-		expect.equal(model:GetAttribute("SD_Pen"), "butter.0.1.0;kitty_bread.0.1.0") -- the best first (PenMath.placed)
+		expect.equal(model:GetAttribute("SD_Pen"), "kitty_bread.0.1.0;butter.0.1.0") -- spot order (PenMath.placed)
 		expect.equal(model:GetAttribute("SD_PenRate"), 50)
 		expect.equal(model:GetAttribute("SD_PenTier"), 1)
 		expect.equal(model:GetAttribute("SD_Pen"), PenMath.encode(PenMath.placed(w.pens[a])))

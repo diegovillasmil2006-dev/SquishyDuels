@@ -7,7 +7,8 @@
 -- an old save's 4 capsules at the top level (unknown since pens3 phase 2), a full pen (pens3 phase 1: toyBoxMax +
 -- placedMax = 71 items, each Rainbow Galaxy at the top level with an id near 2^53; phase 4: its awayRate a large
 -- fractional Coins a second; phase 5: a full gift queue of giftQueueMax of the longest kind ids, both fixed box
--- orders at 2^53, the Frog gift given), and long worst-case values
+-- orders at 2^53, the Frog gift given; phase 6: every item's slot (the 12 spots, the rest in the Toy Box) and its
+-- lock, false being the longer word), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -154,6 +155,8 @@ return function(t: Context)
 				form = #pen.formMult - 1,
 				level = pen.maxLevel,
 				coat = #pen.coatMult - 1,
+				slot = if i <= pen.maxSpots then i else 0, -- pens3 phase 6: every spot full, the rest in the Toy Box
+				locked = false,
 			})
 		end
 		-- Pens3 phase 5: every gift a full Toy Box can hold back, each the longest kind id; both box orders at 2^53.

@@ -59,8 +59,17 @@ return function(t: Context)
 	}
 
 	-- A pen item (pens3 phase 1), plain Lv 1 unless told.
+	-- Pens3 phase 6: in spot `id` (these pens hold at most their spots), unlocked.
 	local function penItem(id: number, kind: string, form: number?, level: number?, coat: number?): any
-		return { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
+		return {
+			id = id,
+			kind = kind,
+			form = form or 0,
+			level = level or 1,
+			coat = coat or 0,
+			slot = id,
+			locked = false,
+		}
 	end
 
 	local function newProfile(unixNow: number): any

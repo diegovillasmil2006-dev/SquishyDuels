@@ -76,8 +76,8 @@ return function(t: Context)
 				spots = 3,
 				nextId = 3,
 				items = {
-					{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
-					{ id = 2, kind = "toast", form = 0, level = 1, coat = 0 },
+					{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false },
+					{ id = 2, kind = "toast", form = 0, level = 1, coat = 0, slot = 2, locked = false },
 				},
 			},
 		}
@@ -451,7 +451,10 @@ return function(t: Context)
 		local done = entry(1, "squeeze_any", 1, 150)
 		done.progress, done.done = 1, true
 		withQuests(w, { done })
-		table.insert(w.profile.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0 }) -- + 640
+		table.insert(
+			w.profile.pen.items,
+			{ id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 3, locked = false }
+		) -- + 640
 		expect.equal(QuestService.claim(w.player, done.id).ok, true)
 		expect.deepEqual(w.grants, { { amount = 150 * 660, reason = "quest" } })
 		finish()

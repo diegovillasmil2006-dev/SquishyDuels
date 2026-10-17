@@ -73,9 +73,12 @@ return function(t: Context)
 	local PenMath = t.requireShared("PenMath")
 	local ECONOMY = Config.Economy
 
-	-- A plain pen item (pens3 phase 1).
-	local function penItem(id: number, kind: string, form: number?, level: number?, coat: number?): any
-		return { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
+	-- A plain pen item (pens3 phase 1); pens3 phase 6: in `slot` (default 0, the Toy Box), unlocked.
+	local function penItem(id: number, kind: string, form: number?, level: number?, coat: number?, slot: number?): any
+		local item = { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
+		item.slot = slot or 0
+		item.locked = false
+		return item
 	end
 
 	local function newProfile(coins: number): any
@@ -95,7 +98,7 @@ return function(t: Context)
 				boxesOpened = 0,
 			},
 			duelLog = {},
-			pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") } },
+			pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) } },
 			giftQueue = {}, -- pens3 phase 5
 			gifts = { frog = false },
 		}
@@ -105,7 +108,7 @@ return function(t: Context)
 	local function fillToyBox(profile: any)
 		local pen = profile.pen
 		while #pen.items < pen.spots + ECONOMY.Pen.toyBoxMax do
-			table.insert(pen.items, penItem(pen.nextId, "toast"))
+			table.insert(pen.items, penItem(pen.nextId, "toast", 0, 1, 0, PenMath.freeSlot(pen)))
 			pen.nextId += 1
 		end
 		profile.owned.toast = profile.owned.toast or { at = 1, src = "box" }
@@ -380,23 +383,37 @@ return function(t: Context)
 		expect.deepEqual(dirtyFields(w), { "owned" })
 	end)
 
-	t.test("every grant adds one plain Lv 1 pen item in the same step (pens3 phase 1, copies since phase 5)", function()
-		local w = setup()
-		local player, profile = readyPlayer(w, 0)
-		expect.deepEqual(
-			EconomyService.grantSquishy(player, "toast", "shop"),
-			{ added = true, copy = false, queued = false }
-		)
-		expect.equal(w.mutations, 1) -- owned and the pen in one step
-		expect.deepEqual(profile.pen.items, { penItem(1, "kitty_bread"), penItem(2, "toast") })
-		expect.equal(profile.pen.nextId, 3)
-		expect.deepEqual(
-			EconomyService.grantSquishy(player, "dragon", "box"),
-			{ added = true, copy = false, queued = false }
-		)
-		expect.deepEqual(profile.pen.items[3], penItem(3, "dragon"))
-		expect.equal(profile.pen.nextId, 4)
-	end)
+	t.test(
+		"every grant adds one plain Lv 1 pen item in the same step, in the first free spot, else the Toy Box",
+		function()
+			local w = setup()
+			local player, profile = readyPlayer(w, 0)
+			expect.deepEqual(
+				EconomyService.grantSquishy(player, "toast", "shop"),
+				{ added = true, copy = false, queued = false }
+			)
+			expect.equal(w.mutations, 1) -- owned and the pen in one step
+			expect.deepEqual(
+				profile.pen.items,
+				{ penItem(1, "kitty_bread", 0, 1, 0, 1), penItem(2, "toast", 0, 1, 0, 2) }
+			)
+			expect.equal(profile.pen.nextId, 3)
+			expect.deepEqual(
+				EconomyService.grantSquishy(player, "dragon", "box"),
+				{ added = true, copy = false, queued = false }
+			)
+			expect.deepEqual(profile.pen.items[3], penItem(3, "dragon", 0, 1, 0, 3))
+			expect.equal(profile.pen.nextId, 4)
+			-- Pens3 phase 6: the 3 spots are full, so the next one waits in the Toy Box (a placed squishy never moves).
+			EconomyService.grantSquishy(player, "bird", "box")
+			expect.deepEqual(profile.pen.items[4], penItem(4, "bird"))
+			expect.equal(profile.pen.items[1].slot, 1)
+			-- A spot put away earlier is the first free one again.
+			profile.pen.items[2].slot = 0
+			EconomyService.grantSquishy(player, "banana", "box")
+			expect.deepEqual(profile.pen.items[5], penItem(5, "banana", 0, 1, 0, 2))
+		end
+	)
 
 	t.test("copies: a squishy owned again adds a copy item, never Coins; its owned entry stays", function()
 		local w = setup()
@@ -642,18 +659,18 @@ return function(t: Context)
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
 		-- Pens3 phase 1: Kitty Bread 10 + Butter 40 a second = 50 a squeeze. A capsule counts for nothing now.
-		table.insert(profile.pen.items, penItem(2, "butter"))
+		table.insert(profile.pen.items, penItem(2, "butter", 0, 1, 0, 2))
 		profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 		local first = EconomyService.grantDuelResult(player, "m-1", "win", duelResult("win", 600, 7, "m-1"))
 		expect.equal(first.coins, 600 * 50)
 		-- The value changes with the pen: the next result pays the new one.
-		table.insert(profile.pen.items, penItem(3, "dragon")) -- + 640
+		table.insert(profile.pen.items, penItem(3, "dragon", 0, 1, 0, 3)) -- + 640
 		local second = EconomyService.grantDuelResult(player, "m-2", "loss", duelResult("loss", 350, 8, "m-2"))
 		expect.equal(second.coins, 350 * 690)
 		expect.equal(profile.coins, 600 * 50 + 350 * 690)
 		expect.equal(EconomyService.rewardCoins(profile, 300), 300 * 690)
 		-- A levelled squishy earns a part of a Coin a second: the reward is floored once, never per squeeze.
-		profile.pen.items = { penItem(1, "kitty_bread", 0, 2) } -- 11.5
+		profile.pen.items = { penItem(1, "kitty_bread", 0, 2, 0, 1) } -- 11.5
 		expect.equal(EconomyService.rewardCoins(profile, 3), 34)
 		expect.equal(EconomyService.rewardCoins(nil, 100), 1_000) -- no profile: a new player's value (10)
 		expect.equal(EconomyService.rewardCoins({}, 100), 1_000)
@@ -665,7 +682,7 @@ return function(t: Context)
 		-- Pens3 phase 1's top: 12 Rainbow Galaxy Dragons at the top level (about 5.7B a squeeze).
 		local items = {}
 		for id = 1, 12 do
-			table.insert(items, penItem(id, "dragon", 2, ECONOMY.Pen.maxLevel, 7))
+			table.insert(items, penItem(id, "dragon", 2, ECONOMY.Pen.maxLevel, 7, id))
 		end
 		profile.pen = { spots = 12, nextId = 13, items = items }
 		local top = 12 * 10 * 64 * 4 * 12 * ECONOMY.Pen.levelGain ^ (ECONOMY.Pen.maxLevel - 1)
@@ -757,7 +774,7 @@ return function(t: Context)
 	t.test("grantMatchResult pays its squeezes × the squeeze value of that moment; Coins stop at maxCoins", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		table.insert(profile.pen.items, penItem(2, "bird")) -- pens3 phase 1: 10 + 160 a squeeze
+		table.insert(profile.pen.items, penItem(2, "bird", 0, 1, 0, 2)) -- pens3 phase 1: 10 + 160 a squeeze
 		expect.equal(EconomyService.grantMatchResult(player, "m-1", matchPay("draw", 300, false)).coins, 300 * 170)
 		profile.coins = ECONOMY.maxCoins - 5
 		local capped = EconomyService.grantMatchResult(player, "m-2", matchPay("win", 600, true))
@@ -1109,7 +1126,7 @@ return function(t: Context)
 		local profile = second.getProfile(player)
 		expect.equal(profile.coins, 25 + 200 * value - 20)
 		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
-		expect.deepEqual(profile.pen.items[2], { id = 2, kind = "toast", form = 0, level = 1, coat = 0 }) -- saved too
+		expect.deepEqual(profile.pen.items[2], penItem(2, "toast", 0, 1, 0, 2)) -- saved too (phase 6: spot 2)
 		expect.equal(#profile.duelLog, 1)
 		expect.equal(profile.duelLog[1].matchId, MATCH_ID)
 		expect.deepEqual(profile.samePair, { ["77"] = { NOW } }) -- the same-pair record survives too (§6.7)

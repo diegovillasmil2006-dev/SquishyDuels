@@ -865,6 +865,35 @@ return function(t: Context)
 		end
 	end)
 
+	-- Pens3 phase 6: PenPlace / PenLock's own codes (the others are shared: net.invalid, data.notReady,
+	-- inventory.notOwned, inventory.full, inventory.lockedInDuel).
+	t.test("pens3 phase 6: the pen screen's refusal codes and texts, with their placeholders, calm", function()
+		for _, name in { "spotClosed", "changePaused" } do
+			local text = Strings.resolve("reason.pen." .. name)
+			expect.truthy(type(text) == "string" and text ~= "")
+			expect.equal(Strings.reasonText("pen." .. name), text)
+		end
+		for _, code in { "inventory.notOwned", "inventory.full", "inventory.lockedInDuel" } do
+			expect.truthy(Strings.resolve("reason." .. code) ~= nil)
+		end
+		local screen = Strings.pen.screen
+		expect.equal(
+			Strings.format(screen.count, { placed = 2, spots = 3, toys = 4, max = 50 }),
+			"Pen 2/3 · Toy Box 4/50"
+		)
+		expect.equal(Strings.format(screen.pickHint, { name = "Toast" }), "Tap a pen spot for Toast.")
+		expect.equal(Strings.format(screen.level, { level = 7 }), "Lv 7")
+		for _, key in { "title", "penHeading", "toyHeading", "empty", "toyEmpty", "selectHint", "place", "putAway" } do
+			expect.truthy(type(screen[key]) == "string" and screen[key] ~= "")
+		end
+		for _, key in { "move", "swap", "lock", "unlock", "open" } do
+			expect.truthy(type(screen[key]) == "string" and screen[key] ~= "")
+		end
+		for _, text in { screen.title, screen.selectHint, screen.pickHint, screen.toyEmpty } do
+			expect.falsy(string.find(string.lower(text), "now", 1, true))
+		end
+	end)
+
 	t.test("pens3 phase 1: the pen sign, prompt, coin label, onboarding step and Grip goal texts", function()
 		expect.equal(Strings.pen.sign.title, "PEN SPACE")
 		expect.equal(Strings.pen.sign.canBuy, "Walk up to buy")

@@ -95,7 +95,11 @@ return function(t: Context)
 				rested = { value = 0, at = UNIX_START },
 			},
 			-- Pens3 phase 1: a new player's pen, Kitty Bread in the 3 free spots.
-			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
+			pen = {
+				spots = 3,
+				nextId = 2,
+				items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false } },
+			},
 		}
 	end
 
@@ -282,7 +286,10 @@ return function(t: Context)
 		local world = fresh()
 		-- Pens3 phase 1: Kitty Bread Lv 2 (11.5) + Dragon (640) = 651.5 a squeeze; a capsule counts for nothing.
 		world.profile.pen.items[1].level = 2
-		table.insert(world.profile.pen.items, { id = 2, kind = "dragon", form = 0, level = 1, coat = 0 })
+		table.insert(
+			world.profile.pen.items,
+			{ id = 2, kind = "dragon", form = 0, level = 1, coat = 0, slot = 2, locked = false }
+		)
 		world.profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 		local plain = SqueezeService.request(world.player)
 		expect.equal(plain.coins, 651)

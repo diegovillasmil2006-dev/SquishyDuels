@@ -45,7 +45,14 @@
 -- (only a bug gets there); `boxOrder = {snack = 0, sweet = 0}` (one count per paid box: the fixed-order opens of a
 -- restricted account): each a whole number in [0, 2^53] (non-finite -> 0), other keys kept; `gifts = {frog = false}`
 -- (the once-per-account gifts given): fails closed, a non-boolean flag or a gifts value that is not a table counts
--- every gift as given (never twice).
+-- every gift as given (never twice). Pens3 phase 6 (the pen screen) joined the same way: every pen item has `slot` (0 =
+-- the Toy Box, 1..spots the pen) and `locked` (the default Kitty Bread: slot 1, unlocked). fixPen, after the ids and
+-- the owned rule: a slot that is a whole number in [1, spots] no earlier item holds is kept; 0 is kept; any other
+-- slot (past the open spots, repeated, not a whole number) becomes 0 (the Toy Box: never dropped), logged; then the
+-- items with no slot (an older save, or an item the owned rule added) get one, once, in the order the pen used before
+-- (PenMath.better: the higher rate, then the lower id), the free spots first, then the Toy Box, each logged (so an old
+-- save's best `spots` squishies keep paying); a missing lock is false (not logged, like reconcile), a lock that is not
+-- a boolean false (logged).
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -90,6 +97,7 @@ local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local PenMath = require(Shared.PenMath)
 local TableUtil = require(Shared.Util.TableUtil)
 local Types = require(Shared.Types)
 local AutoClickRules = require(script.Parent.AutoClickRules)
@@ -489,6 +497,40 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 	if #items > PEN.toyBoxMax + PEN.placedMax then
 		note(problems, "pen.items (over toyBoxMax + placedMax, all kept)", #items, #items)
 	end
+
+	-- Pens3 phase 6: slots and locks (see the header). Every item ends in the Toy Box (0) or one open spot of its own.
+	local held: { [number]: boolean } = {}
+	local unplaced: { any } = {}
+	for _, item in items do
+		local slot = item.slot
+		if slot == nil then
+			table.insert(unplaced, item)
+		elseif slot ~= 0 then
+			local open = isFinite(slot) and math.floor(slot) == slot and slot >= 1 and slot <= pen.spots
+			if open and not held[slot] then
+				held[slot] = true
+			else
+				note(problems, `pen.items (slot of {show(item.kind)} {item.id})`, slot, 0)
+				item.slot = 0
+			end
+		end
+		if item.locked == nil then
+			item.locked = false
+		elseif type(item.locked) ~= "boolean" then
+			note(problems, `pen.items (lock of {show(item.kind)} {item.id})`, item.locked, false)
+			item.locked = false
+		end
+	end
+	table.sort(unplaced, PenMath.better)
+	local free = 1
+	for _, item in unplaced do
+		while held[free] do
+			free += 1
+		end
+		item.slot = if free <= pen.spots then free else 0
+		held[free] = true
+		note(problems, `pen.items (slot of {show(item.kind)} {item.id})`, nil, item.slot)
+	end
 	pen.items = items
 end
 
@@ -586,7 +628,8 @@ function ProfileSchema.defaults(now: number): Profile
 		pen = {
 			spots = PEN.startSpots,
 			nextId = 2,
-			items = { { id = 1, kind = starter, form = 0, level = 1, coat = 0 } },
+			-- Pens3 phase 6: the starter in spot 1, unlocked.
+			items = { { id = 1, kind = starter, form = 0, level = 1, coat = 0, slot = 1, locked = false } },
 			awayRate = 0, -- pens3 phase 4: the pen's rate at the last save (DataService stamps it)
 		},
 		-- Pens3 phase 5: no gift waiting for room, no fixed-order box opened, the Frog gift still to come.

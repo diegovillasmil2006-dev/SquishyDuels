@@ -9,6 +9,12 @@
 -- base attribute text round-trips; the walk area keeps a squishy inside the fence. Phase 4: awayCoins = floor(5% ×
 -- the saved rate × the seconds away), the seconds clamped to [0, now - createdAt], no limit, clamped to maxCoins.
 -- Phase 5: room = spots + toyBoxMax - the items (never below 0; 0 for a broken pen): 0 means the Toy Box is full.
+-- Phase 6 (the pen screen): an item's `slot` says where it is (0 = the Toy Box, 1..spots the pen): the pen places the
+-- items in slots 1..spots, in slot order (an item with no slot, or a slot out of the open spots, takes none; a
+-- repeated slot counts once); freeSlot is the first open spot nobody holds (0 when none); toyBox lists the slot-0
+-- items; bestToyBox is the best unlocked one (rate, then id); placeDecision checks a move (net.invalid, then
+-- inventory.notOwned, then pen.spotClosed, then inventory.full for a put away into a full Toy Box): an occupied spot
+-- swaps (the other squishy takes the mover's old place), the same place is a move that changes nothing.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -30,6 +36,21 @@ return function(t: Context)
 
 	local function pen(spots: number, items: { any }): any
 		return { spots = spots, nextId = 100, items = items }
+	end
+
+	-- Pens3 phase 6: an item at a slot (0 = the Toy Box), optionally locked.
+	local function at(slot: number, it: any, locked: boolean?): any
+		it.slot = slot
+		it.locked = locked == true
+		return it
+	end
+
+	-- Phase 6: a pen whose items sit in slots 1, 2, ... in list order, the ones past `spots` in the Toy Box.
+	local function placedPen(spots: number, items: { any }): any
+		for index, it in items do
+			at(if index <= spots then index else 0, it)
+		end
+		return pen(spots, items)
 	end
 
 	t.test("itemRate: 10 / 40 / 160 / 640 by rarity; Golden x2, Rainbow x4, Wax x1.5, x1.15 a level", function()
@@ -64,20 +85,27 @@ return function(t: Context)
 		expect.equal(PenMath.itemRate("kitty_bread"), 0)
 	end)
 
-	t.test("placed: the best `spots` items, the higher rate first, a tie to the lower id", function()
-		local a = item("kitty_bread")
-		local b = item("butter")
-		local c = item("toast") -- 10, the same as a: a has the lower id
-		local d = item("dragon")
-		local e = item("banana")
-		local placed = PenMath.placed(pen(3, { a, b, c, d, e }))
-		expect.deepEqual(placed, { d, b, a })
-		expect.deepEqual(PenMath.placed(pen(4, { e, c, a })), { a, c, e }) -- fewer items than spots: all of them
-		-- An unknown kind earns nothing and takes no spot.
-		expect.deepEqual(PenMath.placed(pen(3, { item("unicorn"), a })), { a })
+	t.test("placed: the items in slots 1..spots, in slot order; no slot or a closed one takes no spot", function()
+		local a = at(2, item("kitty_bread"))
+		local b = at(1, item("butter"))
+		local c = at(0, item("toast")) -- the Toy Box
+		local d = at(3, item("dragon"))
+		local e = at(5, item("banana")) -- a spot past the 3 open ones
+		expect.deepEqual(PenMath.placed(pen(3, { a, b, c, d, e })), { b, a, d })
+		expect.deepEqual(PenMath.placed(pen(5, { a, b, c, d, e })), { b, a, d, e }) -- spot 4 is empty
+		-- A placed squishy never moves for a better one: the Toy Box's Dragon waits.
+		local kitty = at(1, item("kitty_bread"))
+		local dragon = at(0, item("dragon"))
+		expect.deepEqual(PenMath.placed(pen(3, { kitty, dragon })), { kitty })
+		-- Fail closed: no slot, a broken slot, a repeated slot (the first keeps it), an unknown kind.
+		local noSlot = item("toast")
+		local broken = at(1.5, item("toast"))
+		local first = at(2, item("toast"))
+		local twin = at(2, item("banana"))
+		expect.deepEqual(PenMath.placed(pen(3, { noSlot, broken, first, twin, at(3, item("unicorn")) })), { first })
 		expect.deepEqual(PenMath.placed(nil), {})
-		expect.deepEqual(PenMath.placed(pen(2, { a })), {}) -- below startSpots: a broken pen
-		expect.deepEqual(PenMath.placed(pen(13, { a })), {})
+		expect.deepEqual(PenMath.placed(pen(2, { at(1, item("toast")) })), {}) -- below startSpots: a broken pen
+		expect.deepEqual(PenMath.placed(pen(13, { at(1, item("toast")) })), {})
 		expect.deepEqual(PenMath.placed({ spots = 3 }), {})
 	end)
 
@@ -86,15 +114,16 @@ return function(t: Context)
 		expect.equal(PenMath.squeezeValue("garbage"), 10)
 		expect.equal(PenMath.squeezeValue(pen(3, {})), 10)
 		expect.equal(PenMath.rate(pen(3, {})), 0)
-		expect.equal(PenMath.squeezeValue(pen(3, { item("kitty_bread") })), 10)
-		expect.equal(PenMath.squeezeValue(pen(3, { item("dragon") })), 640)
-		local two = pen(3, { item("kitty_bread"), item("butter") })
+		expect.equal(PenMath.squeezeValue(placedPen(3, { item("kitty_bread") })), 10)
+		expect.equal(PenMath.squeezeValue(placedPen(3, { item("dragon") })), 640)
+		expect.equal(PenMath.squeezeValue(pen(3, { at(0, item("dragon")) })), 10) -- in the Toy Box: no pay
+		local two = placedPen(3, { item("kitty_bread"), item("butter") })
 		expect.equal(PenMath.rate(two), 50)
 		expect.equal(PenMath.squeezeValue(two), 50)
-		-- Only the placed spots count: the 4th-best squishy waits.
-		local four = pen(3, { item("kitty_bread"), item("butter"), item("bird"), item("dragon") })
+		-- Only the placed spots count: the 4th squishy waits in the Toy Box.
+		local four = placedPen(3, { item("dragon"), item("bird"), item("butter"), item("kitty_bread") })
 		expect.equal(PenMath.rate(four), 640 + 160 + 40)
-		local levelled = pen(3, { item("kitty_bread", 0, 2) })
+		local levelled = placedPen(3, { item("kitty_bread", 0, 2) })
 		expect.near(PenMath.squeezeValue(levelled), 11.5, 1e-9)
 		expect.equal(PenMath.squeezeGrip(levelled), 11)
 		expect.equal(PenMath.squeezeGrip(nil), 10)
@@ -120,7 +149,7 @@ return function(t: Context)
 		do
 			table.insert(all, item(kind))
 		end
-		expect.equal(PenMath.squeezeValue(pen(12, all)), 1_470)
+		expect.equal(PenMath.squeezeValue(placedPen(12, all)), 1_470)
 	end)
 
 	t.test("spotPrice: the J table; 3, 13, 4.5 and non-numbers give nil", function()
@@ -265,5 +294,95 @@ return function(t: Context)
 		expect.equal(PenMath.room({ spots = 2, nextId = 2, items = {} }), 0)
 		expect.equal(PenMath.room({ spots = 3, nextId = 2, items = "x" }), 0)
 		expect.equal(PenMath.room({ spots = 3, nextId = 0 / 0, items = {} }), 0)
+	end)
+	-- Pens3 phase 6: the pen screen (place, put away, swap, lock).
+	t.test("freeSlot: the first open spot nobody holds, else 0; toyBox: the slot-0 items in list order", function()
+		local kitty = at(1, item("kitty_bread"))
+		local toast = at(3, item("toast"))
+		local banana = at(0, item("banana"))
+		local box = pen(4, { kitty, toast, banana })
+		expect.equal(PenMath.freeSlot(box), 2)
+		expect.deepEqual(PenMath.toyBox(box), { banana })
+		toast.slot = 2
+		expect.equal(PenMath.freeSlot(box), 3)
+		expect.equal(PenMath.freeSlot(pen(3, { at(1, item("toast")), at(2, item("toast")), at(3, item("toast")) })), 0)
+		expect.equal(PenMath.freeSlot(pen(3, {})), 1)
+		expect.equal(PenMath.freeSlot(nil), 0)
+		expect.equal(PenMath.freeSlot(pen(2, {})), 0) -- a broken pen has no spot
+		expect.deepEqual(PenMath.toyBox(nil), {})
+		expect.deepEqual(PenMath.toyBox(pen(3, { item("toast"), at(0, item("unicorn")) })), {}) -- no slot, no kind
+	end)
+
+	t.test("find and bestToyBox: an item by id; the best unlocked Toy Box squishy (rate, then the lower id)", function()
+		local kitty = at(1, item("kitty_bread"))
+		local toastA = at(0, item("toast"))
+		local toastB = at(0, item("toast"))
+		local bird = at(0, item("bird"), true) -- locked: auto-place never moves it
+		local box = pen(4, { kitty, toastB, bird, toastA })
+		expect.equal(PenMath.find(box, kitty.id), kitty)
+		expect.equal(PenMath.find(box, 999), nil)
+		expect.equal(PenMath.find(nil, kitty.id), nil)
+		expect.equal(PenMath.bestToyBox(box), toastA) -- 10 each: the lower id, whatever the list order
+		bird.locked = false
+		expect.equal(PenMath.bestToyBox(box), bird)
+		expect.equal(PenMath.bestToyBox(pen(3, { kitty })), nil)
+		expect.equal(PenMath.bestToyBox(nil), nil)
+	end)
+
+	t.test("placeDecision: an empty spot, a swap, a put away, the same place; every refusal code", function()
+		local kitty = at(1, item("kitty_bread"))
+		local butter = at(2, item("butter"))
+		local toast = at(0, item("toast"))
+		local box = pen(4, { kitty, butter, toast })
+		-- A Toy Box squishy into the empty spot 3.
+		expect.deepEqual(PenMath.placeDecision(box, toast.id, 3), { id = toast.id, from = 0, to = 3 })
+		-- Into an occupied spot: a swap (Kitty Bread goes where the Toast was: the Toy Box).
+		expect.deepEqual(
+			PenMath.placeDecision(box, toast.id, 1),
+			{ id = toast.id, from = 0, to = 1, swapId = kitty.id }
+		)
+		-- Two pen squishies swap spots.
+		expect.deepEqual(
+			PenMath.placeDecision(box, kitty.id, 2),
+			{ id = kitty.id, from = 1, to = 2, swapId = butter.id }
+		)
+		-- Put away: slot 0 (never a swap: the Toy Box holds many).
+		expect.deepEqual(PenMath.placeDecision(box, butter.id, 0), { id = butter.id, from = 2, to = 0 })
+		-- The same place: a move that changes nothing.
+		expect.deepEqual(PenMath.placeDecision(box, kitty.id, 1), { id = kitty.id, from = 1, to = 1 })
+		expect.deepEqual(PenMath.placeDecision(box, toast.id, 0), { id = toast.id, from = 0, to = 0 })
+		-- A locked squishy still moves (a lock only keeps it from being sold or fused, D1:221, D1:230).
+		kitty.locked = true
+		expect.equal((PenMath.placeDecision(box, kitty.id, 0) :: any).to, 0)
+		local function refusal(state: any, id: any, slot: any): string?
+			local move, code = PenMath.placeDecision(state, id, slot)
+			expect.equal(move, nil)
+			return code
+		end
+		expect.equal(refusal(box, 999, 1), "inventory.notOwned")
+		expect.equal(refusal(box, toast.id, 5), "pen.spotClosed") -- a spot not bought yet
+		expect.equal(refusal(box, toast.id, PEN.placedMax), "pen.spotClosed") -- the shelf (phase 11)
+		for _, bad in { -1, PEN.placedMax + 1, 1.5, 0 / 0, "1" } :: { any } do
+			expect.equal(refusal(box, toast.id, bad), "net.invalid")
+		end
+		expect.equal(refusal(box, 1.5, 1), "net.invalid")
+		expect.equal(refusal(nil, toast.id, 1), "net.invalid")
+		expect.equal(refusal(pen(2, { kitty }), kitty.id, 1), "net.invalid") -- a broken pen
+	end)
+
+	t.test("placeDecision: a put away into a full Toy Box is inventory.full; a swap from it is fine", function()
+		local items = { at(1, item("kitty_bread")) }
+		for _ = 1, PEN.toyBoxMax do
+			table.insert(items, at(0, item("toast")))
+		end
+		local box = pen(3, items)
+		local _, code = PenMath.placeDecision(box, items[1].id, 0)
+		expect.equal(code, "inventory.full")
+		-- A Toy Box squishy swapping with a pen one keeps the count: allowed.
+		expect.deepEqual(
+			PenMath.placeDecision(box, items[2].id, 1),
+			{ id = items[2].id, from = 0, to = 1, swapId = items[1].id }
+		)
+		expect.equal((PenMath.placeDecision(box, items[2].id, 2) :: any).to, 2) -- an empty spot: one fewer in the box
 	end)
 end

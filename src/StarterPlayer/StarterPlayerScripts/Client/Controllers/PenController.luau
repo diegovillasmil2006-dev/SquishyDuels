@@ -45,8 +45,21 @@
 --   open the own pen's sync waits (its walkers keep walking as they were) and runs when the reveal closes (syncWaits).
 --   shortcut: only the reveal screen is watched; a free reward drawn before its reveal opens (the day-7 Treat Box
 --   behind the Daily window) still walks in first; hold on StateController's reveal holds if that matters.
+-- * The pen screen (pens3 phase 6; a STAND-IN from Diego's parts, UI/PenScreen, until he draws it): the "pen" modal,
+--   opened from a tap or click on one of the own walking squishies (params {itemId}: PenFormat.walkerItem maps the
+--   walker to its pen squishy) and from the Squishies window's MY PEN button ({kind}: PenFormat.pickFor). It draws
+--   PenFormat.view of StateController's `pen` (again on every pen change and after every reply) and sends PenPlace
+--   (PLACE into the first free spot, PUT AWAY = slot 0, MOVE / SWAP then a tap on a pen spot) and PenLock, one at a
+--   time (the buttons show the spinner meanwhile); a refusal shows its reason (NotifyController.showResult).
+--   The tap: ControlsController.setPointerClaim (CapsuleController's way, one claim at a time) sees every world press
+--   that would squeeze first (never a key, so Diego's slide on C / Ctrl / ButtonB, LobbyMoveController, is
+--   untouched; never a press on the UI, the thumbstick or jump, or in the practice box, and never during a duel or a
+--   match: StateController.isLobbyLocked). It takes the press when it lands within tapMinPx screen px of an own
+--   walker's middle (or its drawn size when bigger; tapHit, pure) within tapStuds of the camera (the walkers are out
+--   of every query, so this is a screen-space test, not a ray), so that press never squeezes; on its release the
+--   screen opens when it was a tap (Config.Inspect.Input tapMaxPixels and tapMaxMs), else it was a camera drag.
 -- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
--- syncWaits), init(), start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
+-- syncWaits, tapHit), init(), start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
 
 -- Services
 
@@ -54,6 +67,7 @@ local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 -- Requires
@@ -79,7 +93,10 @@ local Timeline = require(Client.Anim.Timeline)
 local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
 local CongratsOverlay = require(Client.UI.CongratsOverlay)
+local PenFormat = require(Client.UI.PenFormat)
+local PenScreen = require(Client.UI.PenScreen)
 local Theme = require(Client.UI.Theme)
+local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
@@ -102,6 +119,8 @@ export type Walk = {
 
 type Walker = Walk & {
 	key: string, -- kind.form.coat: the model's look
+	look: PenMath.Look, -- pens3 phase 6: what it shows now (the screen finds its squishy from it)
+	index: number, -- pens3 phase 6: its place in the base's SD_Pen list (the placed order)
 	model: Model,
 	root: BasePart,
 	studs: number,
@@ -127,6 +146,7 @@ type Pen = {
 }
 
 export type SignState = { state: "canBuy" | "tooExpensive" | "max", trim: string, icon: string, line: string }
+export type TapPoint = { x: number, y: number, radius: number } -- pens3 phase 6: a walker on the screen (px)
 export type LabelLayout = { icon: number, gap: number, text: number, height: number } -- shares of the label
 
 export type DebugState = {
@@ -165,6 +185,11 @@ local MAX_SPOTS = Config.Economy.Pen.maxSpots
 local SIGN_POP = Timeline.new(P.signPop)
 local CENTRE_UP = 1.5 -- reading: the pen's bounding sphere sits this high, its radius the half diagonal + SPHERE_PAD
 local SPHERE_PAD = 3
+local SCREEN = "pen" -- pens3 phase 6: the stand-in pen screen
+local MODAL_GUI = "SD_Modal"
+local REMOTE_PLACE = "PenPlace"
+local REMOTE_LOCK = "PenLock"
+local TAP = Config.Inspect.Input -- a tap: under tapMaxPixels and tapMaxMs (the old capsule card's rule)
 
 -- Module table
 
@@ -183,6 +208,12 @@ local pending = false -- a PenBuySpot is running
 local pop: { face: BasePart, size: Vector3, at: number }? = nil
 local awayOverlay: CongratsOverlay.CongratsOverlay? = nil -- pens3 phase 4: the open away pop-up
 local awayBack: (() -> ())? = nil -- its back handler (UIController.pushBack)
+-- Pens3 phase 6: the pen screen.
+local screen: PenScreen.PenScreen? = nil
+local selectedId: number? = nil
+local picking = false -- MOVE / SWAP: the next pen spot tapped takes the selected squishy
+local busy = false -- a PenPlace / PenLock is running
+local pendingTap: { input: InputObject, from: Vector3, at: number, index: number, look: PenMath.Look }? = nil
 
 local function rnd(): number
 	return random:NextNumber()
@@ -274,6 +305,8 @@ local function build(look: PenMath.Look): Walker?
 	gui.Parent = root
 	local walker: any = {
 		key = lookKey(look),
+		look = look,
+		index = 0,
 		model = model,
 		root = root,
 		studs = studs,
@@ -332,7 +365,7 @@ local function sync(pen: Pen)
 		table.insert(list, w)
 	end
 	local kept: { Walker } = {}
-	for _, look in looks do
+	for index, look in looks do
 		local key = lookKey(look)
 		local same = free[key]
 		local w = if same and #same > 0 then table.remove(same) else nil
@@ -353,6 +386,7 @@ local function sync(pen: Pen)
 				w.z = math.clamp(w.z, rect.minZ, rect.maxZ)
 			end
 			setLabel(w, look)
+			w.look, w.index = look, index
 			table.insert(kept, w)
 			place(pen, w, 0)
 			w.model.Parent = if pen.shown then folder else nil
@@ -633,6 +667,136 @@ local function showAway(gift: any)
 	end)
 end
 
+-- Pens3 phase 6: the pen screen (see the header) ---------------------------------------------------------------------
+
+local function currentView(): PenFormat.View
+	return PenFormat.view(StateController.get("pen"), selectedId, picking)
+end
+
+local function render()
+	local s = screen
+	if s and UIController.isOpen(SCREEN) then
+		local view = currentView()
+		if view.selected == nil then
+			selectedId, picking = nil, false -- the squishy is gone
+		end
+		s:render(view, busy)
+	end
+end
+
+-- One PenPlace / PenLock at a time; the server decides, the state delta redraws the screen.
+local function send(remote: string, ...: any)
+	if busy then
+		return
+	end
+	busy = true
+	render()
+	local result = NetController.invokeAsync(remote, ...)
+	busy = false
+	if cleanup == nil then
+		return -- destroyed meanwhile
+	end
+	if result.ok then
+		picking = false
+	else
+		NotifyController.showResult(result)
+	end
+	render()
+end
+
+local function onCard(slot: number?, itemId: number?)
+	local what, a, b = PenFormat.tap(currentView(), slot, itemId)
+	if what == "place" then
+		task.spawn(send, REMOTE_PLACE, a, b)
+	elseif what == "select" then
+		selectedId, picking = a, false
+		render()
+	end
+end
+
+local function onAction(id: string)
+	local view = currentView()
+	local item = view.selected
+	if item == nil then
+		return
+	end
+	if id == "place" then
+		task.spawn(send, REMOTE_PLACE, item.id, PenMath.freeSlot(StateController.get("pen")))
+	elseif id == "putAway" then
+		task.spawn(send, REMOTE_PLACE, item.id, 0)
+	elseif id == "move" or id == "swap" then
+		picking = true
+		render()
+	elseif id == "lock" or id == "unlock" then
+		task.spawn(send, REMOTE_LOCK, item.id, id == "lock")
+	elseif id == "cancel" then
+		picking = false
+		render()
+	end
+end
+
+local function buildScreen(parent: Instance): GuiObject
+	local c = cleanup :: Cleanup.Cleanup
+	local gui = UIController.screenGui(MODAL_GUI)
+	local made = PenScreen.new({
+		parent = parent,
+		scale = UIController.scale,
+		onCard = onCard,
+		onAction = onAction,
+		onClose = function()
+			UIController.close(SCREEN, "button")
+		end,
+	})
+	c:add(made)
+	screen = made
+	made:fit(gui.AbsoluteSize)
+	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+		made:fit(gui.AbsoluteSize)
+	end))
+	return made.root
+end
+
+-- ControlsController's pointer claim: a world press on an own walking squishy waits to open the screen.
+local function claim(input: InputObject): boolean
+	local plot = ownPlot()
+	local pen = if plot then pens[plot] else nil
+	local camera = Workspace.CurrentCamera
+	if pen == nil or not pen.shown or camera == nil or StateController.isLobbyLocked() then
+		return false
+	end
+	local points: { TapPoint } = {}
+	local walkers: { Walker } = {}
+	local tanHalf = math.tan(math.rad(camera.FieldOfView) / 2)
+	local halfHeight = camera.ViewportSize.Y / 2
+	for _, w in pen.walkers do
+		local at, onScreen = camera:WorldToScreenPoint(w.root.Position)
+		if onScreen and at.Z > 0 and at.Z <= P.tapStuds then
+			table.insert(points, { x = at.X, y = at.Y, radius = w.studs / 2 / (at.Z * tanHalf) * halfHeight })
+			table.insert(walkers, w)
+		end
+	end
+	local hit = PenController.tapHit(Vector2.new(input.Position.X, input.Position.Y), points, P.tapMinPx)
+	local w = if hit then walkers[hit] else nil
+	if w == nil then
+		return false
+	end
+	pendingTap = { input = input, from = input.Position, at = os.clock(), index = w.index, look = w.look }
+	return true
+end
+
+local function onInputEnded(input: InputObject)
+	local tap = pendingTap
+	local mouse = input.UserInputType == Enum.UserInputType.MouseButton1
+	if tap == nil or (not mouse and input ~= tap.input) then
+		return
+	end
+	pendingTap = nil
+	local moved = (input.Position - tap.from).Magnitude
+	if moved <= TAP.tapMaxPixels and (os.clock() - tap.at) * 1000 <= TAP.tapMaxMs then
+		UIController.open(SCREEN, { itemId = PenFormat.walkerItem(StateController.get("pen"), tap.index, tap.look) })
+	end
+end
+
 -- Public: the pure parts -------------------------------------------------------------------------------------------
 
 -- The own sign's state for the next spot's price (nil at MAX) and the Coins now (nil = 0).
@@ -685,6 +849,20 @@ function PenController.awayText(gift: any): (string?, string?)
 		else away.underMinute
 	return Strings.format(Strings.common.coinsAmount, { coins = Format.coins(coins) }),
 		Strings.format(away.body, { time = time })
+end
+
+-- Pens3 phase 6: the walker a tap at `tap` (screen px) lands on: the nearest whose middle is within its radius, or
+-- minPx when that is bigger (a finger is wider than a far squishy); nil when none.
+function PenController.tapHit(tap: Vector2, points: { TapPoint }, minPx: number): number?
+	local best, bestShare = nil, math.huge
+	for index, point in points do
+		local reach = math.max(point.radius, minPx)
+		local share = (Vector2.new(point.x, point.y) - tap).Magnitude / reach
+		if share <= 1 and share < bestShare then
+			best, bestShare = index, share
+		end
+	end
+	return best
 end
 
 -- "+{coins}/s": the whole Coins a second of a look.
@@ -767,7 +945,8 @@ function PenController.debugState(): DebugState
 end
 
 function PenController.init()
-	-- Nothing to register: the pens are world objects, the sign's prompt is BaseService's.
+	-- Nothing to register here: the pens are world objects, the sign's prompt is BaseService's, and the pen screen
+	-- (pens3 phase 6) registers in start() so destroy() takes it away.
 end
 
 function PenController.start()
@@ -804,6 +983,7 @@ function PenController.start()
 		end
 		made:Destroy()
 		folder = nil
+		screen, selectedId, picking, busy, pendingTap = nil, nil, false, false, nil -- pens3 phase 6
 	end)
 	for _, model in CollectionService:GetTagged(TAG_BASE) do
 		watch(model)
@@ -819,6 +999,30 @@ function PenController.start()
 		c:add(StateController.changed(field):connect(paintOwnSign))
 	end
 	c:add(StateController.changed(FIELD_AWAY):connect(showAway))
+	-- Pens3 phase 6: the pen screen, the tap that opens it, and its redraw on every pen change.
+	c:add(UIController.registerScreen(SCREEN, {
+		build = buildScreen,
+		onOpen = function(params: any?)
+			local wanted = if type(params) == "table" then params else {}
+			local pen = StateController.get("pen")
+			selectedId = if type(wanted.itemId) == "number"
+				then wanted.itemId
+				elseif type(wanted.kind) == "string" then PenFormat.pickFor(pen, wanted.kind)
+				else nil
+			picking = false
+			render()
+		end,
+		primary = function(): GuiObject?
+			local s = screen
+			return if s then s:primary() else nil
+		end,
+	}))
+	c:add(StateController.changed("pen"):connect(render))
+	ControlsController.setPointerClaim(claim)
+	c:add(function()
+		ControlsController.setPointerClaim(nil)
+	end)
+	c:add(UserInputService.InputEnded:Connect(onInputEnded))
 	c:add(UIController.ScreenClosed:connect(function(name: string)
 		local plot = ownPlot()
 		local own = if name == REVEAL_SCREEN and plot then pens[plot] else nil

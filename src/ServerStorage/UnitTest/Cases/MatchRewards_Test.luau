@@ -176,8 +176,8 @@ return function(t: Context)
 			spots = 3,
 			nextId = 3,
 			items = {
-				{ id = 1, kind = "kitty_bread", form = 0, level = 2, coat = 0 }, -- 11.5
-				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0 }, -- 40
+				{ id = 1, kind = "kitty_bread", form = 0, level = 2, coat = 0, slot = 1, locked = false }, -- 11.5
+				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false }, -- 40
 			},
 		}
 		local capsules: any = { slots = 1, list = { { level = 40, squishyId = "dragon" } } } -- counts for nothing

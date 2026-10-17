@@ -9,6 +9,7 @@
 -- remotes with CapsuleService (pens3 phase 2).
 -- FFA/TDM v1 (2026-10-15): MatchJoin(mode) and MatchLeave (the client's chat commands), MatchState (the server's
 -- per-player Free for All / Team Deathmatch view, Types.MatchStateView).
+-- Pens3 phase 6: PenPlace(itemId, slot) and PenLock(itemId, locked) (PenService; the pen screen).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -172,6 +173,11 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- Pens3 phase 1 (PenService): buys the caller's own next pen spot (no remote takes a base, plot or player id).
 	-- expectedPrice is compared, never charged. data: Types.PenResult {pen, charged, savePending}.
 	PenBuySpot = c2s("RemoteFunction", { arg("expectedPrice", "coins") }),
+	-- Pens3 phase 6 (PenService, the pen screen): one of the caller's own squishies (its pen item id) to a slot (0 =
+	-- the Toy Box; an occupied pen spot swaps), and its lock. data: Types.PenResult {pen, charged = false,
+	-- savePending}.
+	PenPlace = c2s("RemoteFunction", { arg("itemId", "integer"), arg("slot", "integer") }),
+	PenLock = c2s("RemoteFunction", { arg("itemId", "integer"), arg("locked", "boolean") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

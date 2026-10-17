@@ -37,7 +37,12 @@
 --   * pens3 phase 5: giftQueue {}, boxOrder {snack = 0, sweet = 0} and gifts {frog = false} joined the same way (an
 --     older profile gets them from reconcile, no problem; saved values survive JSON); sanitize keeps only Catalog kinds
 --     in the queue, in order (a long queue is all kept and logged), makes each paid box's count a whole number >= 0
---     (other keys kept), and fails closed on gifts (a broken flag or table counts every gift as given).
+--     (other keys kept), and fails closed on gifts (a broken flag or table counts every gift as given);
+--   * pens3 phase 6: every pen item has `slot` (0 = the Toy Box, 1..spots the pen) and `locked`: the default Kitty
+--     Bread sits in slot 1; an item with no slot (an older save) gets one once, from the best-N order the pen used
+--     before (rate, then the lower id: the same squishies keep paying), the rest the Toy Box; a slot past the open
+--     spots, a repeated slot or a broken one goes to the Toy Box (slot 0), never dropped; every fix logged; a missing
+--     lock is false (like reconcile, not logged), a broken one false (logged).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -141,8 +146,25 @@ return function(t: Context)
 		return ProfileSchema.load(raw, options)
 	end
 
-	-- A pen item (pens3 phase 1), plain Lv 1 unless told.
-	local function penItem(id: number, kind: string, form: number?, level: number?, coat: number?): any
+	-- A pen item (pens3 phase 1), plain Lv 1 unless told; pens3 phase 6: in `slot` (default 0, the Toy Box), unlocked
+	-- unless told.
+	local function penItem(
+		id: number,
+		kind: string,
+		form: number?,
+		level: number?,
+		coat: number?,
+		slot: number?,
+		locked: boolean?
+	): any
+		local item = { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
+		item.slot = slot or 0
+		item.locked = locked == true
+		return item
+	end
+
+	-- Phase 6: a pen item as an older save has it (no slot, no lock).
+	local function oldItem(id: number, kind: string, form: number?, level: number?, coat: number?): any
 		return { id = id, kind = kind, form = form or 0, level = level or 1, coat = coat or 0 }
 	end
 
@@ -164,10 +186,11 @@ return function(t: Context)
 		expected.boxOrder = { snack = 0, sweet = 0 }
 		expected.gifts = { frog = false }
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
-		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") }, awayRate = 0 }
+		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) }, awayRate = 0 }
 		for _, kind in { "banana", "toast" } do
 			if fixture.owned[kind] ~= nil then
-				table.insert(expected.pen.items, penItem(expected.pen.nextId, kind))
+				-- Phase 6: a new item takes the next free spot (all three are Commons: id order).
+				table.insert(expected.pen.items, penItem(expected.pen.nextId, kind, 0, 1, 0, expected.pen.nextId))
 				expected.pen.nextId += 1
 			end
 		end
@@ -219,7 +242,10 @@ return function(t: Context)
 		expect.equal(d.capsules, nil) -- pens3 phase 2: the capsules are gone
 		expect.deepEqual(d.autoClick, { step = 0, at = 0 }) -- auto-clicker check (2026-10-16): no strike
 		-- Pens3 phase 1: Kitty Bread walks in the 3 free spots.
-		expect.deepEqual(d.pen, { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread") }, awayRate = 0 })
+		expect.deepEqual(
+			d.pen,
+			{ spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) }, awayRate = 0 }
+		)
 		-- Pens3 phase 5: no gift waiting, no fixed-order box opened, the Frog gift still to come.
 		expect.deepEqual(d.giftQueue, {})
 		expect.deepEqual(d.boxOrder, { snack = 0, sweet = 0 })
@@ -235,9 +261,10 @@ return function(t: Context)
 		expect.equal(result.status, "ok")
 		expect.equal(result.fromVersion, 1)
 		expect.equal(result.migrated, true)
-		-- Pens3 phase 1: the only fixes are the pen items of its other owned kinds (Banana, Toast), logged.
-		expect.equal(#result.problems, 2)
-		expect.equal(penProblems(result.problems), 2)
+		-- Pens3 phase 1: the only fixes are the pen items of its other owned kinds (Banana, Toast), logged; phase 6:
+		-- and the slot each of them gets.
+		expect.equal(#result.problems, 4)
+		expect.equal(penProblems(result.problems), 4)
 		expect.deepEqual(result.profile, expectedV2(FIXTURE_V1))
 		expect.equal(result.profile.grip.total, 12_340)
 		-- the stored value is never changed (migrations run on a deep copy)
@@ -758,14 +785,14 @@ return function(t: Context)
 			spots = 3,
 			nextId = 5,
 			items = {
-				penItem(1, "kitty_bread"),
-				penItem(2, "banana"),
-				penItem(3, "dragon"),
-				penItem(4, "toast"),
+				penItem(1, "kitty_bread", 0, 1, 0, 1), -- the default's slot 1
+				penItem(2, "banana", 0, 1, 0, 3),
+				penItem(3, "dragon", 0, 1, 0, 2), -- phase 6: the best of the added items takes the first free spot
+				penItem(4, "toast"), -- the Toy Box: the 3 spots are full
 			},
 			awayRate = 0, -- pens3 phase 4: from reconcile
 		})
-		expect.equal(penProblems(result.problems), 3) -- every added item is logged
+		expect.equal(penProblems(result.problems), 6) -- every added item is logged, and its slot
 		-- The next load changes nothing.
 		local again = load(result.profile)
 		expect.deepEqual(again.problems, {})
@@ -786,15 +813,15 @@ return function(t: Context)
 			spots = 3,
 			nextId = 4,
 			items = {
-				penItem(1, "kitty_bread", 3, 0, 9), -- form above Rainbow, level 0, coat past Galaxy
-				penItem(2, "toast", -1, maxLevel + 5, -2),
+				oldItem(1, "kitty_bread", 3, 0, 9), -- form above Rainbow, level 0, coat past Galaxy
+				oldItem(2, "toast", -1, maxLevel + 5, -2),
 				{ id = 3, kind = "banana", form = 0 / 0, level = "high", coat = math.huge },
 			},
 		})
-		expect.deepEqual(fixed.items, {
-			penItem(1, "kitty_bread", 2, 1, 7),
-			penItem(2, "toast", 0, maxLevel, 0),
-			penItem(3, "banana", 0, 1, 0),
+		expect.deepEqual(fixed.items, { -- phase 6: the slots from the fixed rates (Toast Lv max, then Kitty Bread)
+			penItem(1, "kitty_bread", 2, 1, 7, 2),
+			penItem(2, "toast", 0, maxLevel, 0, 1),
+			penItem(3, "banana", 0, 1, 0, 3),
 		})
 		local notList = fixedPen({ spots = 3, nextId = 4, items = "x" })
 		expect.equal(#notList.items, 3) -- rebuilt from owned
@@ -805,23 +832,23 @@ return function(t: Context)
 			spots = 3,
 			nextId = 2, -- stale: below the ids in use
 			items = {
-				penItem(7, "kitty_bread"),
-				penItem(7, "toast"), -- a repeat: a fresh id
+				penItem(7, "kitty_bread", 0, 1, 0, 1),
+				penItem(7, "toast", 0, 1, 0, 2), -- a repeat: a fresh id
 				penItem(0, "banana"), -- not an id: a fresh one
-				penItem(2.5, "banana", 1), -- a second Banana (a copy), fractional id
+				penItem(2.5, "banana", 1, 1, 0, 3), -- a second Banana (a copy), fractional id
 			},
 		})
 		expect.deepEqual(pen, {
 			spots = 3,
 			nextId = 11,
 			items = {
-				penItem(7, "kitty_bread"),
-				penItem(8, "toast"),
+				penItem(7, "kitty_bread", 0, 1, 0, 1),
+				penItem(8, "toast", 0, 1, 0, 2),
 				penItem(9, "banana"),
-				penItem(10, "banana", 1),
+				penItem(10, "banana", 1, 1, 0, 3),
 			},
 		})
-		expect.equal(penProblems(problems), 4) -- 3 ids and the stale nextId
+		expect.equal(penProblems(problems), 4) -- 3 ids and the stale nextId (a new id keeps its slot)
 	end)
 
 	t.test("sanitize pen invariants: owned and the pen agree, nothing anyone owns is lost", function()
@@ -836,16 +863,20 @@ return function(t: Context)
 			spots = 4,
 			nextId = 3,
 			items = {
-				penItem(1, "kitty_bread"),
-				penItem(2, "retired_squishy"),
+				penItem(1, "kitty_bread", 0, 1, 0, 2),
+				penItem(2, "retired_squishy", 0, 1, 0, 3),
 				"garbage" :: any, -- not an item at all
-				penItem(3, "dragon", 1, 9),
+				penItem(3, "dragon", 1, 9, 0, 1),
 			},
 		}, owned)
 		expect.deepEqual(pen, {
 			spots = 4,
 			nextId = 5,
-			items = { penItem(1, "kitty_bread"), penItem(3, "dragon", 1, 9), penItem(4, "toast") },
+			items = {
+				penItem(1, "kitty_bread", 0, 1, 0, 2),
+				penItem(3, "dragon", 1, 9, 0, 1),
+				penItem(4, "toast", 0, 1, 0, 3), -- phase 6: the retired squishy's spot is free again
+			},
 		})
 		expect.deepEqual(fixedOwned.dragon, { at = NOW, src = "grant" })
 		expect.deepEqual(fixedOwned.retired_squishy, { at = 2, src = "box" })
@@ -856,7 +887,8 @@ return function(t: Context)
 		local cap = Config.Economy.Pen.toyBoxMax + Config.Economy.Pen.placedMax
 		local items = {}
 		for id = 1, cap + 3 do
-			table.insert(items, penItem(id, if id % 2 == 0 then "toast" else "kitty_bread"))
+			local slot = if id <= 12 then id else 0 -- phase 6: good slots, so only the cap is logged
+			table.insert(items, penItem(id, if id % 2 == 0 then "toast" else "kitty_bread", 0, 1, 0, slot))
 		end
 		table.insert(items, penItem(cap + 4, "banana"))
 		local pen, _, problems = fixedPen({ spots = 12, nextId = cap + 5, items = TableUtil.deepCopy(items) })
@@ -871,8 +903,8 @@ return function(t: Context)
 			spots = 12,
 			nextId = 9,
 			items = {
-				penItem(1, "kitty_bread", 2, 70, 7),
-				penItem(4, "toast", 1, 12, 3),
+				penItem(1, "kitty_bread", 2, 70, 7, 1),
+				penItem(4, "toast", 1, 12, 3, 12, true), -- phase 6: a slot and a lock survive
 				penItem(8, "banana"),
 			},
 			awayRate = 1_234_567.25, -- pens3 phase 4: a rate with a fraction (a levelled pen)
@@ -881,6 +913,75 @@ return function(t: Context)
 		expect.equal(result.status, "ok")
 		expect.deepEqual(result.problems, {})
 		expect.deepEqual(result.profile.pen, profile.pen)
+	end)
+
+	-- Pens3 phase 6: where each squishy is (slot) and its lock.
+	t.test(
+		"pen slots join schema 2: an older save's items get slots once, from the best-N order; locks false",
+		function()
+			local PenMath = t.requireShared("PenMath")
+			local items = {
+				oldItem(1, "kitty_bread"),
+				oldItem(2, "butter"),
+				oldItem(3, "toast"),
+				oldItem(4, "banana"),
+				oldItem(5, "dragon"),
+			}
+			-- What the pen paid before phase 6: its best 3 (Dragon, Butter, then Kitty Bread: the lower id of the 10s).
+			local paid = 640 + 40 + 10
+			local pen, owned, problems = fixedPen({ spots = 3, nextId = 6, items = items, awayRate = 0 })
+			expect.deepEqual(pen.items, {
+				penItem(1, "kitty_bread", 0, 1, 0, 3),
+				penItem(2, "butter", 0, 1, 0, 2),
+				penItem(3, "toast"),
+				penItem(4, "banana"),
+				penItem(5, "dragon", 0, 1, 0, 1),
+			})
+			expect.equal(PenMath.rate(pen), paid) -- the same squishies keep paying
+			expect.equal(penProblems(problems), 5) -- one note per derived slot; a missing lock is not a fix
+			-- Once: the next sanitize finds nothing to fix.
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.pen, profile.owned = pen, owned
+			local _, again = ProfileSchema.sanitize(profile, { now = NOW })
+			expect.deepEqual(again, {})
+		end
+	)
+
+	t.test("sanitize pen slots: closed, repeated or broken -> the Toy Box, never dropped, logged; locks", function()
+		local pen, _, problems = fixedPen({
+			spots = 3,
+			nextId = 9,
+			items = {
+				penItem(1, "kitty_bread", 0, 1, 0, 2), -- good: kept
+				penItem(2, "toast", 0, 1, 0, 2), -- slot 2 again: the Toy Box
+				penItem(3, "banana", 0, 1, 0, 7), -- a spot not bought: the Toy Box
+				penItem(4, "toast", 0, 1, 0, 1.5), -- broken: the Toy Box
+				penItem(5, "toast", 0, 1, 0, -1), -- broken: the Toy Box
+				{ id = 6, kind = "toast", form = 0, level = 1, coat = 0, slot = "1", locked = false },
+				oldItem(7, "banana"), -- no slot: the first free spot (1)
+				{ id = 8, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 0, locked = "yes" }, -- broken
+			},
+		})
+		expect.deepEqual(pen.items, {
+			penItem(1, "kitty_bread", 0, 1, 0, 2),
+			penItem(2, "toast"),
+			penItem(3, "banana"),
+			penItem(4, "toast"),
+			penItem(5, "toast"),
+			penItem(6, "toast"),
+			penItem(7, "banana", 0, 1, 0, 1),
+			penItem(8, "kitty_bread"),
+		})
+		expect.equal(#pen.items, 8) -- nothing anyone owns is lost
+		expect.equal(penProblems(problems), 7) -- 5 slots sent to the Toy Box, 1 derived, 1 lock
+		-- A locked squishy stays locked, wherever it is.
+		local locked = fixedPen({
+			spots = 3,
+			nextId = 3,
+			items = { penItem(1, "kitty_bread", 0, 1, 0, 1, true), penItem(2, "toast", 0, 1, 0, 0, true) },
+		})
+		expect.equal(locked.items[1].locked, true)
+		expect.equal(locked.items[2].locked, true)
 	end)
 
 	-- Pens3 phase 4: the pen's rate at the last save (DataService stamps it), what the next load pays away time from.
@@ -898,7 +999,7 @@ return function(t: Context)
 				local pen, _, problems = fixedPen({
 					spots = 3,
 					nextId = 2,
-					items = { penItem(1, "kitty_bread") },
+					items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
 					awayRate = case[1],
 				})
 				expect.equal(pen.awayRate, case[2])

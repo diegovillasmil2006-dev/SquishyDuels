@@ -32,6 +32,8 @@
 -- open boxes in a fixed order). With their last readers (the client half): reason.box.restricted / complete,
 -- reason.shop.owned (no server sends them), box.refundLine / revealRefund (no refunds) and box.shopDirect (the
 -- restricted Boxes card opens now) are gone.
+-- Pens3 phase 6 ([P] texts): pen.screen.* (the stand-in pen screen: place, put away, swap, lock) and its refusals
+-- reason.pen.spotClosed / changePaused (PenPlace, PenLock).
 
 export type FormatArgs = { [string]: any }
 
@@ -154,6 +156,9 @@ local Strings = {
 			max = "Your pen is as big as it gets!",
 			paused = "Buying is paused for a moment. Try again soon.",
 			priceChanged = "The price changed. Please check it again.",
+			-- Pens3 phase 6 (PenPlace / PenLock; PenMath.placeDecision, PenService).
+			spotClosed = "That pen spot isn't open yet.",
+			changePaused = "Your pen can't change for a moment. Try again soon.",
 		},
 	},
 
@@ -1096,6 +1101,27 @@ local Strings = {
 			object = "Pen space",
 		},
 		rate = "+{coins}/s",
+		-- Pens3 phase 6: the stand-in pen screen (PenController, UI/PenScreen; Diego draws the real one). {placed} /
+		-- {spots} the squishies in the pen and its open spots, {toys} / {max} the Toy Box and its toyBoxMax, {name} a
+		-- squishy's name, {level} its level.
+		screen = {
+			title = "MY PEN",
+			count = "Pen {placed}/{spots} · Toy Box {toys}/{max}",
+			penHeading = "In your pen",
+			toyHeading = "Toy Box",
+			empty = "Empty",
+			toyEmpty = "Your Toy Box is empty.",
+			selectHint = "Tap a squishy to move or lock it.",
+			pickHint = "Tap a pen spot for {name}.",
+			level = "Lv {level}",
+			place = "PLACE",
+			putAway = "PUT AWAY",
+			move = "MOVE",
+			swap = "SWAP",
+			lock = "LOCK",
+			unlock = "UNLOCK",
+			open = "MY PEN", -- the Squishies window's button
+		},
 	},
 
 	-- Coins while away (pens3 phase 4): the pop-up's line under the Coins (PenController; a stand-in on the shop's

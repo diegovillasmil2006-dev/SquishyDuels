@@ -1260,6 +1260,27 @@ local UI = {
 		-- Pens3 phase 4 [P]: the coins-while-away pop-up's rain (UiFx.rain inside the congrats overlay, as a buy's).
 		awayRain = 60,
 		awayRainDelayMs = 300,
+		-- Pens3 phase 6 [P]: a tap or click on one of your own walking squishies opens the pen screen when it lands
+		-- within tapMinPx screen px of the squishy's middle (or its drawn size, when bigger) and the squishy is within
+		-- tapStuds of the camera.
+		tapStuds = 60,
+		tapMinPx = 28,
+		-- Pens3 phase 6 [P]: the STAND-IN pen screen (UI/PenScreen; base px), in Diego's Squishies window frame until
+		-- he draws the real one: cards of his card face (cardSize, cardGap apart, cardPad inside, the squishy artPx,
+		-- the lock lockPx), gap between the rows, bodyPad inside the window's border, cardLift room over the first row
+		-- (a card's hover rises), the action buttons buttonHeight tall.
+		screen = {
+			windowKind = "squishies",
+			cardSize = Vector2.new(112, 150),
+			cardGap = 12,
+			cardPad = 8,
+			artPx = 64,
+			lockPx = 20,
+			gap = 10,
+			bodyPad = 18,
+			cardLift = 6,
+			buttonHeight = 56,
+		},
 	},
 
 	-- UI FINAL (R1, the look kit; plan work/ui/PLAN.md §2): the sticker look of the design "Squishy Duels UI FINAL"

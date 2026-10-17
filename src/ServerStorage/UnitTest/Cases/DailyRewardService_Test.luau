@@ -65,8 +65,8 @@ return function(t: Context)
 					spots = 3,
 					nextId = 3,
 					items = {
-						{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 },
-						{ id = 2, kind = "butter", form = 0, level = 1, coat = 0 },
+						{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false },
+						{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false },
 					},
 				},
 			},
@@ -151,7 +151,10 @@ return function(t: Context)
 
 	t.test("the day's squeezes pay the squeeze value of the claim's moment (spec 2026-10-12 §9)", function()
 		local w = fresh(DAY - 1, 1)
-		table.insert(w.profile.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0 }) -- + 640
+		table.insert(
+			w.profile.pen.items,
+			{ id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 3, locked = false }
+		) -- + 640
 		local reply = DailyRewardService.claim(w.player)
 		expect.equal(reply.data.coins, DAILY.coinsByDay[2] * 690)
 		finish()

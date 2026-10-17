@@ -31,6 +31,25 @@
 --   after the player joined, while the profile is READY; grantGift keeps it once per account (profile.gifts.frog).
 --   Reading: "minute 3 of the first play" is minute 3 of the first session that lasts that long (play time is not
 --   saved).
+-- * Pens3 phase 6 (the pen screen; every squishy has a `slot`, 0 = the Toy Box, and a `locked` flag):
+--   - PenPlace(itemId, slot) (RF; Config.Net: 2 a second, burst 3, one in flight) moves one of the caller's own
+--     squishies (no remote takes a base, plot or player id), refusals in the PenBuySpot order: (1) itemId or slot not
+--     a whole number -> net.invalid; (2) data.notReady; (3) PenMath.placeDecision -> net.invalid / inventory.notOwned
+--     (no such item in the caller's pen) / pen.spotClosed (a spot not bought) / inventory.full (put away into a full
+--     Toy Box); the same place -> ok, nothing written; (4) a pending failed save, closing or a restart pending ->
+--     pen.changePaused; (5) SD_DuelPhase ~= "" -> inventory.lockedInDuel. Then one mutate (the item to its slot; an
+--     occupied spot's squishy to the mover's old one: a swap; slot 0 = put away), the base redrawn and the pen sent
+--     (showPen), a log line, a "soon" save and the reply ok({pen, charged = false, savePending}). Reading: a "soon"
+--     save, not the plan's awaited "now": no Coins move, a crash loses only the placement, and an awaited write per
+--     swap would wait on the DataStore's 6 s rule for one key on every quick second swap (CapsuleSet's choice too).
+--   - PenLock(itemId, locked) (RF, same limits): (1) itemId whole and locked a boolean, else net.invalid; (2)
+--     data.notReady; (3) inventory.notOwned; already so -> ok, nothing written; (4) pen.changePaused; (5)
+--     inventory.lockedInDuel; then one mutate, the pen field sent (sendPen: nothing on the plot shows a lock), the
+--     awaited "now" save (a lock guards against selling from phase 7, so it is written before the reply) and the
+--     reply ok({pen, charged = false, savePending}). A lock never stops the player moving the squishy.
+--   - A bought spot takes the best unlocked Toy Box squishy (PenMath.bestToyBox) in the buy's own mutate, as a new
+--     capsule took the best spare squishy (CapsuleService); a placed squishy never moves on its own.
+--   Every refusal carries charged = false and writes nothing.
 -- Every profile write goes through DataService.mutate (the data port). Dependencies are injectable (useDeps) so unit
 -- tests run with fake profiles and players (plain tables); init() never yields; playerAdded / playerRemoving never
 -- yield.
@@ -78,6 +97,8 @@ export type Deps = {
 	setAwayGift: (player: any, gift: Types.AwayGift) -> (), -- StateService.setSessionField(p, "awayGift", gift)
 	dropGifts: (player: any) -> number, -- pens3 phase 5: EconomyService.dropGifts (how many dropped in)
 	grantGift: (player: any, key: string, kind: string) -> boolean, -- pens3 phase 5: EconomyService.grantGift
+	requestSave: (player: any, reason: string) -> (), -- pens3 phase 6: DataService.requestSave (never yields)
+	sendPen: (player: any) -> (), -- pens3 phase 6: StateService.markDirty(p, "pen") alone (a lock: nothing to redraw)
 }
 
 -- What the remote answers: NetService.ok(Types.PenResult) or NetService.err(reason, false).
@@ -96,6 +117,9 @@ local PEN = Config.Economy.Pen
 local FROG_KEY = "frog" -- profile.gifts.frog
 local COIN_REASON = "pen"
 local REMOTE_BUY = "PenBuySpot"
+local REMOTE_PLACE = "PenPlace" -- pens3 phase 6
+local REMOTE_LOCK = "PenLock"
+local SAVE_SOON = "soon"
 local FIELD_PEN = "pen"
 local FIELD_AWAY_GIFT = "awayGift"
 local STATUS_READY = "ready"
@@ -105,6 +129,8 @@ local CODE_NOT_READY = "data.notReady"
 local CODE_PAUSED = "pen.paused"
 local CODE_IN_DUEL = "inventory.lockedInDuel"
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
+local CODE_CHANGE_PAUSED = "pen.changePaused" -- pens3 phase 6
+local CODE_NOT_OWNED = "inventory.notOwned"
 
 -- Module table
 
@@ -179,6 +205,12 @@ local function defaultDeps(): Deps
 		grantGift = function(player: any, key: string, kind: string): boolean
 			return EconomyService.grantGift(player, key, kind)
 		end,
+		requestSave = function(player: any, reason: string)
+			DataService.requestSave(player, reason :: any)
+		end,
+		sendPen = function(player: any)
+			StateService.markDirty(player, FIELD_PEN)
+		end,
 	}
 end
 
@@ -235,6 +267,22 @@ local function spend(player: any, price: number): string?
 		else CODE_INVALID
 end
 
+-- Pens3 phase 6: (4)-(5) of a place or a lock (see the header). A refusal code, or nil.
+local function changeRefused(player: any): string?
+	if deps.savePending(player) or deps.isClosing() or deps.isRestartPending() then
+		return CODE_CHANGE_PAUSED
+	end
+	if deps.duelPhaseOf(player) ~= "" then
+		return CODE_IN_DUEL
+	end
+	return nil
+end
+
+-- Pens3 phase 6: the reply data of a place or a lock (no Coins move).
+local function penResult(player: any, savePending: boolean): Types.PenResult
+	return { pen = TableUtil.deepCopy(deps.profileOf(player).pen), charged = false, savePending = savePending }
+end
+
 -- Public: the tick ------------------------------------------------------------------------------------------------
 
 -- Pays every session's pen for `dt` seconds (the loop calls it every tick).
@@ -271,6 +319,10 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 	end
 	local written = deps.mutate(player, function(profile: any): boolean
 		profile.pen.spots = math.max(profile.pen.spots, spot)
+		local best = PenMath.bestToyBox(profile.pen) -- pens3 phase 6: the new spot takes the best Toy Box squishy
+		if best ~= nil then
+			best.slot = PenMath.freeSlot(profile.pen)
+		end
 		return true
 	end)
 	if not written then
@@ -290,6 +342,82 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 		charged = true,
 		savePending = false,
 	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
+-- Public: the pen screen (pens3 phase 6; see the header for the order of the checks) ---------------------------------
+
+function PenService.place(player: any, itemId: any, slot: any): Reply
+	if Validate.integer(itemId) == nil or Validate.integer(slot) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local move, refused = PenMath.placeDecision(pen, itemId, slot)
+	if move == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	if move.from == move.to then
+		return NetService.ok(penResult(player, deps.savePending(player))) -- already there: nothing changes
+	end
+	local paused = changeRefused(player)
+	if paused ~= nil then
+		return NetService.err(paused, false)
+	end
+	local written = deps.mutate(player, function(profile: any): boolean
+		for _, item in profile.pen.items do
+			if item.id == move.id then
+				item.slot = move.to
+			elseif move.swapId ~= nil and item.id == move.swapId then
+				item.slot = move.from -- a swap: the other squishy takes the mover's old place
+			end
+		end
+		return true
+	end)
+	if not written then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} moved pen item {move.id} from slot {move.from} to {move.to}`)
+	deps.showPen(player)
+	deps.requestSave(player, SAVE_SOON)
+	return NetService.ok(penResult(player, deps.savePending(player)))
+end
+
+function PenService.lock(player: any, itemId: any, locked: any): Reply
+	if Validate.integer(itemId) == nil or type(locked) ~= "boolean" then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local item = PenMath.find(pen, itemId)
+	if item == nil then
+		return NetService.err(CODE_NOT_OWNED, false)
+	end
+	if (item.locked == true) == locked then
+		return NetService.ok(penResult(player, deps.savePending(player))) -- already so: nothing changes
+	end
+	local paused = changeRefused(player)
+	if paused ~= nil then
+		return NetService.err(paused, false)
+	end
+	local written = deps.mutate(player, function(profile: any): boolean
+		local live = PenMath.find(profile.pen, itemId)
+		if live ~= nil then
+			live.locked = locked
+		end
+		return live ~= nil
+	end)
+	if not written then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} {if locked then "locked" else "unlocked"} pen item {itemId}`)
+	deps.sendPen(player)
+	local data = penResult(player, false) -- copied before the save yields
 	data.savePending = not deps.saveNow(player)
 	return NetService.ok(data)
 end
@@ -333,6 +461,12 @@ function PenService.init()
 	end
 	NetService.onInvoke(REMOTE_BUY, function(player: Player, expectedPrice: any): any
 		return PenService.buy(player, expectedPrice)
+	end)
+	NetService.onInvoke(REMOTE_PLACE, function(player: Player, itemId: any, slot: any): any
+		return PenService.place(player, itemId, slot)
+	end)
+	NetService.onInvoke(REMOTE_LOCK, function(player: Player, itemId: any, locked: any): any
+		return PenService.lock(player, itemId, locked)
 	end)
 	-- A new squishy (a box, the shop, a Studio grant): its pen item came in the same grant step; show it.
 	EconomyService.SquishyGranted:connect(function(player: Player)

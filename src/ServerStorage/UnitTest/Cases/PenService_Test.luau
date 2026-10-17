@@ -17,7 +17,16 @@
 --   * pens3 phase 5: a bought spot makes room, so the buy drops queued gifts in (EconomyService.dropGifts) before the
 --     reply's pen is copied, and a load drops them in too; the Frog gift (Pen.frogGift) is asked for once a session,
 --     frogGift.seconds after the player joined and only while the profile is READY (EconomyService.grantGift keeps it
---     once per account).
+--     once per account);
+--   * pens3 phase 6 (the pen screen): PenPlace(itemId, slot) moves only the caller's own squishy: bad input
+--     net.invalid, then data.notReady, then the decision (inventory.notOwned, pen.spotClosed, inventory.full), then
+--     pen.changePaused (a pending failed save, closing, a restart), then inventory.lockedInDuel; an empty spot takes
+--     it, an occupied one swaps, slot 0 puts it away; the same place answers ok and writes nothing; a move is one
+--     mutate, the base redrawn and the pen sent (showPen), a "soon" save (no Coins move: reading, see PenService's
+--     header) and the reply {pen, charged = false, savePending}; PenLock(itemId, locked) the same checks, the lock in
+--     one mutate, the pen field sent (no redraw: nothing on the plot shows a lock) and the awaited "now" save; every
+--     refusal has charged = false and writes nothing; 2 a second (burst 3), one at a time; a bought spot takes the best
+--     unlocked Toy Box squishy in the buy's own step (a placed squishy never moves).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -61,13 +70,19 @@ return function(t: Context)
 		drops: { any }, -- pens3 phase 5: dropGifts calls
 		dropAdds: { [any]: any }, -- an item dropGifts puts in that player's pen
 		frogAsks: { { player: any, key: string, kind: string } }, -- grantGift calls
+		soonSaves: { any }, -- pens3 phase 6: requestSave(p, "soon") calls
+		sent: { any }, -- pens3 phase 6: sendPen calls (the pen field alone)
 	}
 
 	local function newProfile(): any
 		return {
 			coins = 0,
 			owned = { kitty_bread = { at = 1, src = "starter" } },
-			pen = { spots = 3, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
+			pen = {
+				spots = 3,
+				nextId = 2,
+				items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false } },
+			},
 		}
 	end
 
@@ -96,6 +111,8 @@ return function(t: Context)
 			drops = {},
 			dropAdds = {},
 			frogAsks = {},
+			soonSaves = {},
+			sent = {},
 		}
 		PenService.reset()
 		PenService.useDeps({
@@ -178,6 +195,13 @@ return function(t: Context)
 				table.insert(w.frogAsks, { player = player, key = key, kind = kind })
 				return true
 			end,
+			requestSave = function(player: any, reason: string)
+				expect.equal(reason, "soon")
+				table.insert(w.soonSaves, player)
+			end,
+			sendPen = function(player: any)
+				table.insert(w.sent, player)
+			end,
 		})
 		for _, player in { w.a, w.b } do
 			w.profiles[player] = newProfile()
@@ -228,7 +252,10 @@ return function(t: Context)
 			})
 			-- Two placed squishies are still one grant a tick.
 			a.owned.butter = { at = 2, src = "box" }
-			table.insert(a.pen.items, { id = 2, kind = "butter", form = 0, level = 1, coat = 0 })
+			table.insert(
+				a.pen.items,
+				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false }
+			)
 			local before = #grantsOf(w, w.a)
 			PenService.step(1)
 			local after = grantsOf(w, w.a)
@@ -431,6 +458,200 @@ return function(t: Context)
 		w.clock += PEN.frogGift.seconds
 		PenService.step(1)
 		expect.equal(#w.frogAsks, 3)
+		finish()
+	end)
+	-- The pen screen (pens3 phase 6) --------------------------------------------------------------------------------
+
+	-- A pen item for these cases.
+	local function penItem(id: number, kind: string, slot: number, locked: boolean?): any
+		return { id = id, kind = kind, form = 0, level = 1, coat = 0, slot = slot, locked = locked == true }
+	end
+
+	-- A's pen: Kitty Bread (1) in spot 1, Butter (2) in spot 2, Toast (3) in the Toy Box; spot 3 empty.
+	local function screenWorld(): (World, any)
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.owned.butter = { at = 2, src = "box" }
+		a.owned.toast = { at = 3, src = "shop" }
+		a.pen = {
+			spots = 3,
+			nextId = 4,
+			items = { penItem(1, "kitty_bread", 1), penItem(2, "butter", 2), penItem(3, "toast", 0) },
+		}
+		return w, a
+	end
+
+	local function slotsOf(profile: any): { number }
+		local list = {}
+		for _, item in profile.pen.items do
+			table.insert(list, item.slot)
+		end
+		return list
+	end
+
+	t.test(
+		"PenPlace and PenLock take only an item id and a slot / a lock: no base, plot or player; 2 a second",
+		function()
+			expect.deepEqual(
+				Remotes.SPEC.PenPlace.args,
+				{ { name = "itemId", type = "integer" }, { name = "slot", type = "integer" } }
+			)
+			expect.deepEqual(
+				Remotes.SPEC.PenLock.args,
+				{ { name = "itemId", type = "integer" }, { name = "locked", type = "boolean" } }
+			)
+			for _, name in { "PenPlace", "PenLock" } do
+				expect.equal(Remotes.SPEC[name].kind, "RemoteFunction")
+				expect.equal(Remotes.SPEC[name].dir, "c2s")
+				expect.deepEqual(Config.Net.Remotes[name], { rate = 2, burst = 3, oneInFlight = true })
+			end
+			local clock = FakeClock.new(100)
+			local guard = NetService.newGuard({ clock = clock.now })
+			local player = { UserId = 9 }
+			expect.equal(guard:check(player, "PenPlace", 2, 4, 0), "ok")
+			expect.equal(guard:check(player, "PenPlace", 2, 4, 1.5), "invalid")
+			expect.equal(guard:check(player, "PenPlace", 3, 4, 1, 7), "badArgCount")
+			expect.equal(guard:check(player, "PenLock", 2, 4, true), "ok")
+			expect.equal(guard:check(player, "PenLock", 2, 4, "yes"), "invalid")
+		end
+	)
+
+	t.test("place: a Toy Box squishy into an empty spot, one step, the base and pen shown, a soon save", function()
+		local w, a = screenWorld()
+		local bBefore = TableUtil.deepCopy(w.profiles[w.b])
+		local reply = PenService.place(w.a, 3, 3)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(slotsOf(a), { 1, 2, 3 })
+		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = false, savePending = false })
+		expect.equal(w.writes, 1)
+		expect.deepEqual(w.shown, { w.a })
+		expect.deepEqual(w.soonSaves, { w.a })
+		expect.equal(w.nowSaves, 0) -- no Coins move: a soon save
+		expect.deepEqual(w.profiles[w.b], bBefore) -- only the caller's own pen
+		finish()
+	end)
+
+	t.test("place: an occupied spot swaps; slot 0 puts away; the same place writes nothing", function()
+		local w, a = screenWorld()
+		-- The Toy Box's Toast onto Kitty Bread's spot 1: Kitty Bread goes to the Toy Box.
+		expect.equal(PenService.place(w.a, 3, 1).ok, true)
+		expect.deepEqual(slotsOf(a), { 0, 2, 1 })
+		-- Two pen squishies swap.
+		expect.equal(PenService.place(w.a, 3, 2).ok, true)
+		expect.deepEqual(slotsOf(a), { 0, 1, 2 })
+		-- Put away.
+		expect.equal(PenService.place(w.a, 2, 0).ok, true)
+		expect.deepEqual(slotsOf(a), { 0, 0, 2 })
+		local writes = w.writes
+		local same = PenService.place(w.a, 3, 2)
+		expect.equal(same.ok, true)
+		expect.equal(same.data.charged, false)
+		expect.equal(w.writes, writes)
+		expect.equal(#w.shown, 3)
+		expect.equal(#w.soonSaves, 3)
+		finish()
+	end)
+
+	t.test(
+		"place refusals: bad input, not ready, not owned, a closed spot, a full Toy Box, paused, in a duel",
+		function()
+			local w, a = screenWorld()
+			local bad: { { any } } = { { 1.5, 1 }, { 1, -1 }, { "1", 1 }, { 1, 0 / 0 }, { 1, PEN.placedMax + 1 } }
+			for _, case in bad do
+				expectRefused(PenService.place(w.a, case[1], case[2]), "net.invalid")
+			end
+			w.status[w.a] = "offline"
+			expectRefused(PenService.place(w.a, 3, 3), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.place(w.a, 99, 3), "inventory.notOwned")
+			expectRefused(PenService.place(w.b, 3, 3), "inventory.notOwned") -- B has no item 3: never A's
+			expectRefused(PenService.place(w.a, 3, 4), "pen.spotClosed")
+			w.savePending = true
+			expectRefused(PenService.place(w.a, 3, 3), "pen.changePaused")
+			w.savePending = false
+			w.closing = true
+			expectRefused(PenService.place(w.a, 3, 3), "pen.changePaused")
+			w.closing = false
+			w.restart = true
+			expectRefused(PenService.place(w.a, 3, 3), "pen.changePaused")
+			w.restart = false
+			w.phase[w.a] = "Active"
+			expectRefused(PenService.place(w.a, 3, 3), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			-- A full Toy Box takes no squishy from the pen (a swap from it still works).
+			for id = 4, 3 + Config.Economy.Pen.toyBoxMax - 1 do
+				table.insert(a.pen.items, penItem(id, "toast", 0))
+			end
+			expectRefused(PenService.place(w.a, 1, 0), "inventory.full")
+			expect.equal(w.writes, 0)
+			expect.deepEqual(w.shown, {})
+			expect.deepEqual(w.soonSaves, {})
+			expect.equal(PenService.place(w.a, 3, 1).ok, true) -- the swap
+			expect.equal(a.pen.items[1].slot, 0)
+			finish()
+		end
+	)
+
+	t.test("lock: one step, the pen field sent (no redraw), an awaited save; the same lock writes nothing", function()
+		local w, a = screenWorld()
+		local reply = PenService.lock(w.a, 2, true)
+		expect.equal(reply.ok, true)
+		expect.equal(a.pen.items[2].locked, true)
+		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = false, savePending = false })
+		expect.equal(w.writes, 1)
+		expect.deepEqual(w.sent, { w.a })
+		expect.deepEqual(w.shown, {})
+		expect.equal(w.nowSaves, 1)
+		-- Locked again: nothing changes.
+		expect.equal(PenService.lock(w.a, 2, true).ok, true)
+		expect.equal(w.writes, 1)
+		-- A failed save keeps the lock and says so.
+		w.saveOk = false
+		local unsaved = PenService.lock(w.a, 2, false)
+		expect.equal(a.pen.items[2].locked, false)
+		expect.equal(unsaved.data.savePending, true)
+		-- A locked squishy still moves (a lock only keeps it from being sold or fused).
+		a.pen.items[1].locked = true
+		expect.equal(PenService.place(w.a, 1, 0).ok, true)
+		finish()
+	end)
+
+	t.test("lock refusals: bad input, not ready, not owned, paused, in a duel: nothing written", function()
+		local w = screenWorld()
+		for _, case in { { 1.5, true }, { 1, "yes" }, { 1, nil }, { "1", false } } :: { { any } } do
+			expectRefused(PenService.lock(w.a, case[1], case[2]), "net.invalid")
+		end
+		w.status[w.a] = "offline"
+		expectRefused(PenService.lock(w.a, 1, true), "data.notReady")
+		w.status[w.a] = "ready"
+		expectRefused(PenService.lock(w.a, 99, true), "inventory.notOwned")
+		w.savePending = true
+		expectRefused(PenService.lock(w.a, 1, true), "pen.changePaused")
+		w.savePending = false
+		w.phase[w.a] = "Preparing"
+		expectRefused(PenService.lock(w.a, 1, true), "inventory.lockedInDuel")
+		expect.equal(w.writes, 0)
+		expect.equal(w.nowSaves, 0)
+		expect.deepEqual(w.sent, {})
+		finish()
+	end)
+
+	t.test("a bought spot takes the best unlocked Toy Box squishy in the buy's step; placed ones never move", function()
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.coins = 2_000
+		a.pen.items = {
+			penItem(1, "kitty_bread", 1),
+			penItem(2, "toast", 2),
+			penItem(3, "butter", 3),
+			penItem(4, "dragon", 0, true), -- locked: auto-place never moves it
+			penItem(5, "bird", 0),
+			penItem(6, "banana", 0),
+		}
+		local writes = w.writes
+		expect.equal(PenService.buy(w.a, 1_500).ok, true)
+		expect.equal(w.writes, writes + 1) -- the spot and its squishy in one step
+		expect.deepEqual(slotsOf(a), { 1, 2, 3, 0, 4, 0 })
 		finish()
 	end)
 end

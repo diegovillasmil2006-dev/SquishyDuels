@@ -118,6 +118,9 @@
 --   text over the grid; the data error stays the line at the top of the detail.
 -- * Kill banners (Diego, 2026-10-16): the squishy's kill set line is kept but hidden (the design has no place for it;
 --   NOTES question).
+-- * Pens3 phase 6: an owned squishy's chips end with the MY PEN chip button (Squishies_PenButton; Diego's chip look,
+--   H:402, a STAND-IN until he places it), shown once the "pen" screen exists (PenController): it opens that screen on
+--   the squishy's best copy ({kind}).
 -- Stable names: Squishies_CloseButton, Squishies_Filter<Name>Button, Squishies_ShowNotOwnedToggle,
 -- Squishies_Card_<id>, Squishies_EquipButton, Squishies_EquippedButton, Squishies_InspectButton (the stage),
 -- Squishies_GoToBoxesButton (FIND IN BOXES; View in Shop when restricted).
@@ -175,6 +178,7 @@ local WorldBinder = require(script.Parent.WorldBinder)
 local SCREEN = "squishies"
 local INSPECT_SCREEN = "inspect"
 local SHOP_SCREEN = "shop"
+local PEN_SCREEN = "pen" -- pens3 phase 6 (PenController)
 local BOXES_SCREEN = "boxes"
 local MODAL_GUI = "SD_Modal"
 local ACTION = "Squishies"
@@ -260,6 +264,7 @@ type Detail = {
 	equip: Button.Button,
 	equipped: Button.Button,
 	find: Button.Button,
+	pen: Button.Button, -- pens3 phase 6: MY PEN
 }
 
 type Frames = {
@@ -578,6 +583,7 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 	local canInspect = UIController.isRegistered(INSPECT_SCREEN)
 	d.stage.Active = canInspect
 	d.stage.Selectable = canInspect
+	d.pen.root.Visible = entry.owned and UIController.isRegistered(PEN_SCREEN) -- pens3 phase 6
 
 	local state = InventoryFormat.equipState(entry, {
 		locked = StateController.isLobbyLocked(),
@@ -1273,6 +1279,20 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	local ultimate = detailChip(c, chipRow, "Ultimate", 3)
 	ultimate:setAccent("ult")
 	Theme.textOnLight(ultimate.label, Palette.StickerUltText) -- H:234
+	-- Pens3 phase 6: MY PEN, the pen screen on this squishy (refreshDetail shows it for an owned one).
+	local penButton = Button.new({
+		name = "Squishies_PenButton",
+		text = Strings.pen.screen.open,
+		size = "chip",
+		layoutOrder = 4,
+		parent = chipRow,
+		sound = false, -- opens a screen: ui.open plays instead
+		onActivated = function()
+			UIController.open(PEN_SCREEN, { kind = selected })
+		end,
+	})
+	penButton.root.Visible = false
+	c:add(penButton)
 	IconGlyph.image("img.icon.bolt", { name = "Bolt", sizePx = DETAIL.iconPx, layoutOrder = 1, parent = ultimate.root })
 
 	-- The stats well (H:236-243): rows 72 | 1fr | 92, the blue and purple bars (lib:37-41).
@@ -1416,6 +1436,7 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 		equip = equip,
 		equipped = equipped,
 		find = find,
+		pen = penButton,
 	}
 end
 

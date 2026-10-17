@@ -644,7 +644,10 @@ return function(t: Context)
 		expect.equal(h.core.getProfile(p).pen.awayRate, 0) -- a new pen: nothing saved yet
 		h.core.mutate(p, function(profile: any)
 			profile.owned.butter = { at = T0, src = "box" }
-			table.insert(profile.pen.items, { id = 2, kind = "butter", form = 0, level = 1, coat = 0 })
+			table.insert(
+				profile.pen.items,
+				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false }
+			)
 		end)
 		h.clock.advance(10)
 		expect.equal(h.core.saveNowAsync(p), true)

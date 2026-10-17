@@ -30,7 +30,9 @@
 --   (a free reward): then the kind joins profile.giftQueue (oldest first, at most Pen.giftQueueMax; not owned until it
 --   drops in). Nothing is ever sold automatically. dropGifts(p) drops queued kinds in, oldest first, while there is
 --   room (PenService: after a spot buy and on load). grantGift(p, key, id) gives `id` once per account: profile.gifts
---   [key] is set in the same step as the grant (or the queue), so it is never given twice.
+--   [key] is set in the same step as the grant (or the queue), so it is never given twice. Pens3 phase 6: the new
+--   item takes the first free pen spot (PenMath.freeSlot), else the Toy Box (slot 0), unlocked; a placed squishy never
+--   moves.
 -- * Reading: stats.coinsEarned / coinsSpent count every real grant and spend except the Studio-only "debug" reason,
 --   so Studio tests never inflate them. Reading: stats.eliminations counts opponents eliminated in recorded results
 --   (DuelService passes 0 or 1).
@@ -295,7 +297,8 @@ local function addSquishyTo(profile: any, id: string, source: string, mayWait: b
 	if not copy then
 		owned[id] = { at = getDeps().now(), src = source :: Types.OwnedSource }
 	end
-	table.insert(pen.items, { id = pen.nextId, kind = id, form = 0, level = 1, coat = 0 })
+	local slot = PenMath.freeSlot(pen) -- pens3 phase 6: the first free spot, else the Toy Box (0)
+	table.insert(pen.items, { id = pen.nextId, kind = id, form = 0, level = 1, coat = 0, slot = slot, locked = false })
 	pen.nextId += 1
 	return { added = true, copy = copy, queued = false, refused = nil }
 end

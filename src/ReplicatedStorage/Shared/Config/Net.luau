@@ -66,6 +66,9 @@ local Net = {
 		DailyClaim = { rate = 0.5, burst = 1 },
 		-- Pens3 phase 1: the pen's spot buy: 1 a second and one at a time.
 		PenBuySpot = { rate = 1, burst = 1, oneInFlight = true },
+		-- Pens3 phase 6: the pen screen's place / put away / swap and lock: 2 a second (a burst of 3), one at a time.
+		PenPlace = { rate = 2, burst = 3, oneInFlight = true },
+		PenLock = { rate = 2, burst = 3, oneInFlight = true },
 		PromptCoinBundle = { rate = 0.5, burst = 1 },
 		PromptGamePass = { rate = 0.5, burst = 1 },
 		-- Burst 2: the UI re-enables the button after exactly 30 s, so with network jitter an honest second press can
