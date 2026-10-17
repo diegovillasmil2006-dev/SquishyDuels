@@ -81,6 +81,8 @@
 --   DESIGN: no world action uses it; the Backpack is off) in the Lobby context, so it is live in the lobby look and in
 --   the practice range and never in a match; ViewmodelController plays the held toy's showcase with it (its touch way
 --   is the overlay's own Inspect button).
+-- Movement overhaul (2026-10-17): LobbySlide = C, Left Ctrl, ButtonB in the Lobby context (LobbyMoveController's power
+--   slide; the handler passes in the practice throw box, so PracticeDash keeps C and ButtonB there).
 -- Tap or click to squeeze (lobby HUD spec 2026-10-11 §2): a left click or a touch on the 3D world presses the lobby
 --   Squeeze through pressAction() (so the Lobby context, blocks and the End rule decide as for a key), with the
 --   InputObject (SqueezeController holds while it is down). It comes from UserInputService.InputBegan, never from a
@@ -234,6 +236,9 @@ local ACTIONS: { [string]: ActionDef } = {
 	FocusHud = { context = "Lobby", inputs = { Enum.KeyCode.DPadUp } },
 	-- Final polish (2026-10-11): the first-person Inspect showcase (ViewmodelController).
 	HandInspect = { context = "Lobby", inputs = { Enum.KeyCode.R, Enum.KeyCode.ButtonL1 } },
+	-- Movement overhaul (2026-10-17): the lobby's power slide (LobbyMoveController; it passes in the practice throw
+	-- box, where C and ButtonB are PracticeDash).
+	LobbySlide = { context = "Lobby", inputs = { Enum.KeyCode.C, Enum.KeyCode.LeftControl, Enum.KeyCode.ButtonB } },
 	Throw = {
 		context = "Duel",
 		inputs = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2 },

@@ -578,8 +578,10 @@ return function(t: Context)
 
 	-- Routes (D1: the design's worst real route) ----------------------------------------------------------------------
 
-	t.test("route speed is the uniform WalkSpeed; limits are the design's worst routes (D1)", function()
-		expect.equal(WorldLayout.Routes.walkSpeed, Config.Duel.Rules.Movement.WalkSpeed)
+	-- Movement overhaul (2026-10-17): the lobby runs at Config.LobbyMove.walkSpeed (20) and duels at 22; the routes stay
+	-- timed at the old 16, never faster than the lobby run (so every limit below still holds, with room to spare).
+	t.test("routes are timed no faster than the lobby run; limits are the design's worst routes (D1)", function()
+		expect.truthy(WorldLayout.Routes.walkSpeed <= Config.LobbyMove.walkSpeed)
 		expect.equal(WorldLayout.Routes.maxSeconds, 10) -- box <-> practice 156 studs = 9.75 s (phase 3 spec A2)
 		expect.equal((WorldLayout.Routes :: any).podMaxSeconds, nil) -- the pod exception went with the pods (Phase 6)
 	end)

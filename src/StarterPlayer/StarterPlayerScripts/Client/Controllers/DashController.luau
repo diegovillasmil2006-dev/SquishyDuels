@@ -38,7 +38,8 @@
 --   the start; at plantFrame Dash/Plant at the plant foot (plantFoot) and sfx.dashPlant. The own dash also gets
 --   Dash/SpeedLines in front of the camera (first person hides the own body, so this is what the dasher sees of it) and
 --   a FOV kick (CameraController.punch, off with settings.cameraShake or ReducedMotion, and while a throw holds the
---   FOV). Players who are neither this one nor the duel opponent get fewer particles (MoveVfx `low`).
+--   FOV) and, since the 2026-10-17 movement overhaul, a camera shake (Config.Vfx.Shake.dashStart). Players who are
+--   neither this one nor the duel opponent get fewer particles (MoveVfx `low`).
 -- * Other players: DashStarted {userId, dir, from, to, startAt} plays the same pose, effects and sounds on their
 --   character from its arrival (their movement arrives through replication with the same delay). The own DashStarted
 --   is ignored (the dash already plays). Sounds of a player who is neither this one nor the duel opponent play at the
@@ -546,7 +547,14 @@ local function vfxOptions(dash: Dash): MoveVfx.Options
 end
 
 local function fovKick()
-	if not StateController.settings().cameraShake or CameraController.fovOwner() ~= nil then
+	if not StateController.settings().cameraShake then
+		return
+	end
+	-- Movement overhaul (2026-10-17): the push shakes the camera too (off under ReducedMotion inside shake()). A held
+	-- FOV (the hands' focus, MoveFeelController's speed FOV) skips the punch: the speed FOV already kicks with the dash.
+	local spec = Config.Vfx.Shake.dashStart
+	CameraController.shake(spec.amplitudeDeg, spec.ms / 1000)
+	if CameraController.fovOwner() ~= nil then
 		return
 	end
 	CameraController.punch(FX.fovKickDeg, FX.fovKickAttackMs, FX.fovKickReleaseMs)

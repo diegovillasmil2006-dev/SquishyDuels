@@ -77,6 +77,8 @@ local CONTROLLER_ORDER = {
 	"AimArcController",
 	"DashController",
 	"DoubleJumpController",
+	"MoveFeelController", -- 2026-10-17: the camera's movement feel (speed FOV, lean, bob, landing)
+	"LobbyMoveController", -- 2026-10-17: the lobby's power slide
 	"FirstPersonController",
 	"ViewmodelController",
 	"SqueezeController",

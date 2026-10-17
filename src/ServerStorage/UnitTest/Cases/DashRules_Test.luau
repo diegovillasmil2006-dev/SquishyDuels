@@ -11,7 +11,7 @@
 --   * cooldownSeconds (2.0) since the last accepted dash, less cooldownToleranceSeconds: dash.cooldown;
 --   * a flat unit direction: dash.direction;
 --   * a duel dasher stands in its own half + zoneToleranceStuds (like a throw): dash.context;
---   * the end point: 14 studs, cut at cover (the adapter) and kept bodyRadiusStuds inside the own half (or the
+--   * the end point: distanceStuds (18), cut at cover (the adapter) and kept bodyRadiusStuds inside the own half (or the
 --     practice bounds), so it never crosses into the neutral band.
 
 type Context = {
@@ -61,13 +61,13 @@ return function(t: Context)
 		expect.near((a - b).Magnitude, 0, tolerance or 1e-6)
 	end
 
-	t.test("a dash on the ground in the own half: 14 studs along the direction, from the server HRP", function()
+	t.test("a dash on the ground in the own half: distanceStuds along the direction, from the server HRP", function()
 		local decision = DashRules.validate(input(1, Vector3.new(1, 0, 0)), state(), nil, NOW)
 		expect.truthy(decision.ok)
 		expect.equal(decision.reason, nil)
 		expect.equal(decision.lastSeq, 1)
 		near(decision.from, Vector3.new(0, 3, -30))
-		near(decision.to, Vector3.new(14, 3, -30))
+		near(decision.to, Vector3.new(DASH.distanceStuds, 3, -30))
 		expect.near(decision.distance, DASH.distanceStuds, 1e-9)
 		near(decision.dir, Vector3.new(1, 0, 0))
 	end)
@@ -214,6 +214,6 @@ return function(t: Context)
 		near(back.to, Vector3.new(-16 - DASH.bodyRadiusStuds, 3, -37))
 		local forward = DashRules.validate(input(2, Vector3.new(-1, 0, 0)), s, nil, NOW)
 		expect.truthy(forward.ok)
-		near(forward.to, Vector3.new(-34, 3, -37))
+		near(forward.to, Vector3.new(-20 - DASH.distanceStuds, 3, -37))
 	end)
 end

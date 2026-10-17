@@ -38,7 +38,10 @@ local Duel = {
 			-- Reading: the same 2 studs as the throw position check (Config.Combat.Throw.zoneToleranceStuds).
 			HalfToleranceStuds = 2,
 		},
-		Movement = { WalkSpeed = 16, JumpHeight = 7.2 }, -- uniform for everyone (= StarterPlayer, V)
+		-- Uniform for everyone. Movement overhaul (2026-10-17, VillasmilGaming: "insane fast paced movement", the
+		-- Rivals-style reference): WalkSpeed 16 -> 22. Config.Combat.PowerBudget.dodgeSpeed stays 16, the balance's
+		-- reference speed (the budget was tuned there; Config.validate: it never exceeds this).
+		Movement = { WalkSpeed = 22, JumpHeight = 7.2 },
 		-- Feedback only, applied once by the victim's client. Dragon Rush multiplies it by
 		-- Config.Abilities.dragon_rush.knockbackMultiplier (the single source of that ×1.5).
 		Knockback = { Horizontal = 22, Vertical = 8 }, -- studs/s
@@ -47,7 +50,7 @@ local Duel = {
 		-- the request (Logic/DashRules), clamps the end point with Shared/DashMath and gives the movement guard a
 		-- bounded allowance for that dash only (MovementRules.allowDash). No i-frames.
 		Dash = {
-			distanceStuds = 14, -- design: main.js:310, fp.js:525 (D = s(14))
+			distanceStuds = 18, -- design: main.js:310, fp.js:525 (D = s(14)); movement overhaul 2026-10-17: 18
 			seconds = 0.22, -- design: main.js:310, fp.js:537 (T2 = 0.22)
 			-- The pose clip (design: avatar.js:79-99, 155): keys at frames 0, 2, 4, 7, 12 at 30 fps (0.40 s); the
 			-- push-off puff and sound at frame 2, the plant at frame 7; full weight until frame 9, then w² with
@@ -58,7 +61,9 @@ local Duel = {
 			plantFrame = 7, -- design: avatar.js:83
 			fadeFromFrame = 9, -- design: avatar.js:160 (end - 3)
 			ribbonSeconds = 0.26, -- the ribbons and speed lines run while t < 0.26 s (design: fp.js:539-540)
-			cooldownSeconds = 2.0, -- user decision 2026-10-11 (NOT IN DESIGN: main.js:311 "unassigned (server)")
+			-- user decision 2026-10-11 (NOT IN DESIGN: main.js:311 "unassigned (server)"): 2.0; movement overhaul
+			-- 2026-10-17: 1.3 (dash more often)
+			cooldownSeconds = 1.3,
 			-- build choice 2026-10-11 (NOT IN DESIGN): the server checks the cooldown with this much jitter allowance,
 			-- like a throw's CooldownToleranceSeconds, so an honest client's dash is never refused at the edge.
 			cooldownToleranceSeconds = 0.15,
@@ -78,14 +83,17 @@ local Duel = {
 			-- Bug fix 2026-10-15 (2-player test: a player was flung spinning and flying): the dash's mover pushes with
 			-- at most this acceleration (studs/s², times the character's mass) instead of an unlimited force, and the
 			-- move ends as soon as the body lags blockedLagStuds behind its eased path (it ran into something), so a
-			-- dash can never keep shoving the body into cover. 12,000 still reaches the 191 studs/s peak in a frame.
-			maxAccelStuds = 12000,
+			-- dash can never keep shoving the body into cover. 16,000 still reaches the 245 studs/s peak (3 × 18 / 0.22) in
+			-- a 60 Hz frame (12,000 until the 2026-10-17 movement overhaul's longer dash).
+			maxAccelStuds = 16000,
 			blockedLagStuds = 2,
 		},
 		-- The double jump (2026-10-15, VillasmilGaming: "only when dueling"). The jumper's client moves its own
 		-- HumanoidRootPart (as for the dash) and tells the server (Logic/DoubleJumpRules), which shows it to the match.
 		DoubleJump = {
-			heightStuds = 6, -- the second jump's height from wherever it starts (the first: Movement.JumpHeight 7.2)
+			-- the second jump's height from wherever it starts (the first: Movement.JumpHeight 7.2); 6 until the
+			-- 2026-10-17 movement overhaul
+			heightStuds = 7,
 			minAirSeconds = 0.12, -- in the air this long before the second jump (the first jump's own press is not it)
 			maxPerAir = 1, -- second jumps between two landings
 			-- A held jump key repeats UserInputService.JumpRequest every frame: a request is a new press only after this

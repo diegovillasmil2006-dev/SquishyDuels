@@ -1,6 +1,7 @@
 --!strict
 -- KillBannerController (client only; kill banners 2026-10-16, VillasmilGaming: Valorant-style kill banners). When the
--- local player K.O.s someone, it shows the kill banner (UI/KillBanner in SD_KillBanner), plays the tier's kill sound
+-- local player K.O.s someone, it shows the kill banner (UI/KillBanner in SD_KillBanner; v2 2026-10-17: the set's emblem
+-- slams in top-centre, under the HUD's top bar, clear of the held squishy), plays the tier's kill sound
 -- (the kill set's AssetTable sheet, one region, Config.Audio.killBanner) and the VFX Studio burst behind the banner
 -- (Anim/KillVfx Banner/<set>). Cosmetic only: nothing here changes game state.
 -- * The kill set is the set of the squishy that made the K.O. (Art/KillStyle; Catalog eliminationEffectId): Common and
@@ -151,8 +152,8 @@ local function playBurst(style: KillStyle.Style, tier: number)
 	if camera == nil or current == nil then
 		return
 	end
-	local _, discPx = current:center()
-	local radius = KillVfx.bannerRadius(discPx, camera.ViewportSize.Y, camera.FieldOfView, KILL_FX.burstDepthStuds)
+	local _, emblemPx = current:center() -- the template's disc of radius 1 = the emblem's half width
+	local radius = KillVfx.bannerRadius(emblemPx, camera.ViewportSize.Y, camera.FieldOfView, KILL_FX.burstDepthStuds)
 	KillVfx.banner(style.bannerVfx, tier, burstFrame, radius)
 end
 

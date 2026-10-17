@@ -1894,7 +1894,7 @@ local UI = {
 				shadowAlpha = 0.25,
 				-- Phones (reading): the design's CTA drawn at today's phone CTA height (64 base px) over its 99 px
 				-- frame, the second line hidden (it would be under the 16 px text floor).
-				compactScale = 64 / 99,
+				compactScale = 56 / 99, -- the minimal phone HUD (2026-10-17): 56 px tall (64 before)
 			},
 			search = { -- H:135-146
 				width = 560,
@@ -2638,29 +2638,41 @@ local UI = {
 		unfurl = { 0.3, 1.3, 0.5, 1 },
 	} :: { [string]: { number } },
 
-	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The killer's banner
-	-- is a medallion bottom-centre (below the crosshair, above the bottom HUD) that gains one ornament per K.O. without
-	-- being knocked out (1-5) and its crown at 6; every K.O. after the 6th shows the 6k banner again. Px at UI scale 1
-	-- (SD_KillBanner carries the UI scale); seconds; angles in degrees from the top, clockwise.
+	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The
+	-- killer's banner sits top-centre under the duel / match HUD's top bar (v2: the held squishy at the bottom of the
+	-- screen stays clear): the set's low-fidelity emblem slams in, gains one ornament per K.O. without being knocked
+	-- out (1-5) and its crown at 6; every K.O. after the 6th shows the 6k banner again. Px at UI scale 1 (SD_KillBanner
+	-- carries the UI scale); sizes in emblems (1 = the emblem's width); seconds; angles in degrees from the top.
 	KillBanner = {
-		discPx = 104, -- the medallion's diameter
-		discMinPx = 64, -- never smaller
-		discShare = 0.15, -- and at most this share of the gui's height
-		centerYShare = 0.76, -- the medallion's centre, down from the top
-		compactCenterYShare = 0.7, -- below Breakpoints.compactBelowHeight (phones: clear of the thumb buttons)
-		ornamentRadius = 0.66, -- the ornaments' centres from the medallion's centre, × the disc
+		emblemPx = 118, -- the emblem's width (the banner's hero: Valorant's is about a tenth of the screen)
+		emblemMinPx = 72, -- never smaller
+		emblemShare = 0.17, -- and at most this share of the gui's height
+		topShare = 0.24, -- the centre never sits higher than this share of the height (no top bar: here)
+		gapPx = 10, -- under the top bar ...
+		upperReach = 0.95, -- ... by the banner's reach above its centre (emblems: the top ornaments)
+		ornamentRadius = 0.74, -- the ornaments' centres from the emblem's centre
 		slotAngles = { 0, -38, 38, -76, 76 }, -- the 1k..5k ornaments
 		crownAngle = 118, -- the 6k crown pieces at ±crownAngle
 		tiers = 6,
-		introSeconds = 0.32, -- the pop
-		holdSeconds = 1.6,
-		outroSeconds = 0.36, -- the shrink and fade
-		popScale = 1.18, -- the medallion's overshoot
-		replaceFromScale = 0.82, -- a K.O. during a banner restarts it from this scale (no blink)
-		staggerSeconds = 0.035, -- the earlier ornaments appear this far apart
-		newestAt = 0.2, -- the new ornament (or the 6k crown) pops this long after the hit
-		newestPopScale = 1.45, -- the new ornament's overshoot
-		reducedFadeSeconds = 0.15, -- ReducedMotion: a plain fade in and out, no pop or spin
+		introSeconds = 0.42, -- the slam and its settle
+		holdSeconds = 1.5,
+		outroSeconds = 0.38, -- the squash and the pop away
+		slamAt = 0.11, -- the emblem lands (from slamFrom× and slamTurn°) at this time
+		slamFrom = 2.6,
+		slamTurn = -18,
+		slamDip = 0.86, -- its squash on landing ...
+		popScale = 1.12, -- ... and its bounce
+		replaceFrom = 0.8, -- a K.O. during a banner restarts it from this scale (no blink)
+		shakeEm = 0.07, -- the banner's shake at the slam (emblems, decaying)
+		staggerSeconds = 0.035, -- the earlier ornaments fly in this far apart
+		flyFrom = 1.9, -- from this × their radius, spinning
+		newestAt = 0.22, -- the new ornament (or the 6k crown) slams in this long after the hit
+		newestPopScale = 1.5, -- the new ornament's overshoot
+		shardCount = 14, -- the impact shards
+		shardDistance = 1.9, -- how far they fly (emblems)
+		shardSize = 0.17,
+		slashLength = 3.4, -- the two light slashes (emblems)
+		reducedFadeSeconds = 0.15, -- ReducedMotion: a plain fade in and out, no slam, shake, spin or shards
 	},
 }
 

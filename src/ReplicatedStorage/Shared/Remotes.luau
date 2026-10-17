@@ -148,6 +148,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 		arg("key", "string"),
 		arg("clientTime", "serverTime"),
 	}),
+	-- Movement overhaul (2026-10-17, LobbyMoveService): the lobby slide's start. The slider's client already moves; the
+	-- server checks it (lobby only, alive, its cooldown) and shows it to everyone through the character's SD_SlideAt.
+	SlideRequest = c2s("RemoteEvent", { arg("clientTime", "serverTime") }),
 	-- Feature 1 (2026-10-11; CombatService): the charge throw's start, the press time only (validated like ThrowRequest's
 	-- clientTime, §5.6 #7); the next ThrowRequest's charge is measured from it by the server, never sent by the client.
 	ChargeStart = c2s("RemoteEvent", { arg("clientTime", "serverTime") }),

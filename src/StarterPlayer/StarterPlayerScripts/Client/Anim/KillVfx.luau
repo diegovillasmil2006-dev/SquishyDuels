@@ -14,6 +14,8 @@
 -- studs at the burst's depth, bannerRadius); its emitters are LockedToPart and `place()` is called every frame
 -- (RenderStepped, after the camera) to hold the carrier in front of the camera, so the burst stays on the banner.
 -- Kill effects (kill(path, at)): a burst at `at`, world up; skipped beyond Config.Vfx.KillFx.farStuds from the camera.
+-- The template's "Floor" attachment (its shock rings) is moved onto the floor found within KillFx.floorStuds under
+-- `at` (characters and effects ignored); with no floor there it stays where the template put it.
 -- Budgets: at most KillFx.maxBursts banner bursts and KillFx.maxKills kill effects live at once (one over its cap is
 -- dropped). A missing library (not replicated yet, or deleted) only means no effect.
 --
@@ -28,6 +30,7 @@
 -- Services
 
 local PhysicsService = game:GetService("PhysicsService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -43,6 +46,8 @@ local Tweens = require(script.Parent.Tweens)
 -- Constants
 
 local LIBRARY_NAME = "SD_KillVfx"
+local FLOOR_ATTACHMENT = "Floor"
+local FLOOR_LIFT = 0.15 -- studs over the floor (no z-fighting with it)
 local FX_FOLDER = "SD_ClientFx"
 local OWN_FOLDER = "KillVfx"
 local COSMETIC_GROUP = "SD_Cosmetic"
@@ -225,9 +230,32 @@ local function release(part: BasePart)
 	stopFollowingIfIdle()
 end
 
+-- The floor under `at` within KillFx.floorStuds (players' characters and the effects ignored), or nil.
+local function floorUnder(at: Vector3): Vector3?
+	local ignore: { Instance } = { ownFolder() }
+	for _, player in Players:GetPlayers() do
+		if player.Character then
+			table.insert(ignore, player.Character)
+		end
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = ignore
+	params.IgnoreWater = true
+	local hit = Workspace:Raycast(at, Vector3.new(0, -KILL_FX.floorStuds, 0), params)
+	return if hit then hit.Position else nil
+end
+
 -- Clones `path`, keeps the emitters `keep` allows, scales by `scale`, places it at `at`, plays it. Returns the
 -- carrier, or nil when there is no template or nothing to play.
-local function start(path: string, kind: string, at: CFrame, scale: number, keep: (ParticleEmitter) -> boolean): BasePart?
+local function start(
+	path: string,
+	kind: string,
+	at: CFrame,
+	scale: number,
+	keep: (ParticleEmitter) -> boolean,
+	floor: Vector3?
+): BasePart?
 	local source = template(path)
 	if source == nil then
 		return nil
@@ -255,6 +283,12 @@ local function start(path: string, kind: string, at: CFrame, scale: number, keep
 		return nil
 	end
 	part.CFrame = at
+	if floor then
+		local anchor = part:FindFirstChild(FLOOR_ATTACHMENT)
+		if anchor and anchor:IsA("Attachment") then
+			anchor.WorldPosition = floor + Vector3.new(0, FLOOR_LIFT, 0)
+		end
+	end
 	part.Parent = ownFolder()
 	local m = multiplier()
 	local ends = 0
@@ -287,7 +321,7 @@ function KillVfx.kill(path: string, at: Vector3): boolean
 	end
 	return start(path, "kills", CFrame.new(at), 1, function()
 		return true
-	end) ~= nil
+	end, floorUnder(at)) ~= nil
 end
 
 function KillVfx.banner(path: string, tier: number, place: () -> CFrame?, radius: number): boolean

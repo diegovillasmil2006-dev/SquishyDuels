@@ -23,7 +23,8 @@
 -- * Effects: DoubleJump/Burst under the feet, DoubleJump/Body on the HRP for bodySeconds, DoubleJump/FootTrail on both
 --   feet for footTrailSeconds (the flip's arcs), one afterimage where it pushed off, sfx.doubleJump and sfx.dash
 --   (pitched up: the push on the air). The own jump also gets a small FOV kick (CameraController.punch, off with
---   settings.cameraShake or ReducedMotion, and while a throw holds the FOV). When it lands within landWithinSeconds
+--   settings.cameraShake or ReducedMotion, and while a throw holds the FOV) and a camera shake (2026-10-17,
+--   Config.Vfx.Shake.doubleJump). When it lands within landWithinSeconds
 --   (a ray down from the HRP meets the floor within the standing height + landSlackStuds while it falls):
 --   DoubleJump/Land and sfx.dashPlant.
 -- * Network: DoubleJumpRequest(seq, key, clientTime) through NetController; DoubleJumped {userId, key, at, startAt}
@@ -365,7 +366,14 @@ local function feetOf(character: Model): { BasePart }
 end
 
 local function fovKick()
-	if not StateController.settings().cameraShake or CameraController.fovOwner() ~= nil then
+	if not StateController.settings().cameraShake then
+		return
+	end
+	-- Movement overhaul (2026-10-17): the push on the air shakes the camera too (off under ReducedMotion inside
+	-- shake()); a held FOV skips the punch (the speed FOV already moves with the jump).
+	local spec = Config.Vfx.Shake.doubleJump
+	CameraController.shake(spec.amplitudeDeg, spec.ms / 1000)
+	if CameraController.fovOwner() ~= nil then
 		return
 	end
 	CameraController.punch(FX.fovKickDeg, FX.fovKickAttackMs, FX.fovKickReleaseMs)

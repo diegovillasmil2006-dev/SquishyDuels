@@ -70,7 +70,9 @@
 --   tile -> the DUEL button. Only the links this module set are
 --   cleared again.
 -- * Phone HUD B (the owner's pick, 2026-10-17; plan work/phonehud/PROPOSAL.md; phones = the compact class only, every
---   other layout stays Diego's): the coin pill over Diego's bare Grip row (no goal line) and the tiles 2 x 2
+--   other layout stays Diego's): the coin pill over Diego's bare Grip row (no goal line) and the tiles in one row
+--   (the minimal phone HUD, 2026-10-17, VillasmilGaming: "more minimalistic and smaller": every phone sticker, the
+--   tiles, Daily and Settings, is icon only, 52 base px; the DUEL button 56)
 --   (HudFormat.leftColumnPlan); Daily beside Settings in Hud_Right (HudFormat.PHONE_RIGHT, UI/PhoneHud.placeTiles: a
 --   tile counts in the grid only while it sits in Hud_Nav); under the DUEL button the mode chip, whose tap pops the
 --   picker under it (UI/PhoneHud; the gamepad's Down from DUEL goes to the chip while the picker is closed); the toasts
@@ -610,12 +612,29 @@ local function refreshBanner()
 end
 
 -- UI FINAL R4: a tile's badge (its count, or the daily "!"; the badge loops sdBadge itself: no pop, G4.11).
+-- The minimal phone HUD (2026-10-17): on a phone's 52 px tile the count badge sits on the tile's top-right corner (as
+-- an app icon's), so it no longer covers the picture; elsewhere back at the design's spot (H:102).
+local function placeBadge(button: Button.Button, compact: boolean)
+	local badge = button.visual:FindFirstChild("Badge")
+	if badge == nil or not badge:IsA("GuiObject") then
+		return
+	end
+	local regular = badge:GetAttribute("SD_RegularPosition")
+	if typeof(regular) ~= "UDim2" then
+		regular = badge.Position
+		badge:SetAttribute("SD_RegularPosition", regular)
+	end
+	local inset = COLUMN.badgeCompactInset
+	setIfChanged(badge, "Position", if compact then UDim2.new(1, -inset, 0, inset) else regular)
+end
+
 local function setBadge(id: string, n: number)
 	local tile = badgeTiles[id]
 	if tile == nil then
 		return
 	end
 	tile.button:setBadge(if finiteNumber(n) then n else 0)
+	placeBadge(tile.button, tileCompact == true) -- the badge is made on its first count
 end
 
 local function refreshBadges()
@@ -752,8 +771,8 @@ local function visibleTiles(): { string }
 end
 
 -- UI FINAL R4: a faceless sticker's picture size, the label's pull over it and its text role (the regular stickers'
--- design ones, H:100-101 / H:158-159; phones the game's smaller tile, PR2's 16 px label).
-local function applyStickerLook(button: Button.Button, iconPx: number, pull: number, role: string)
+-- design ones, H:100-101 / H:158-159). The minimal phone HUD (2026-10-17): phones hide the label (`iconOnly`).
+local function applyStickerLook(button: Button.Button, iconPx: number, pull: number, role: string, iconOnly: boolean?)
 	local icon = button.root:FindFirstChild("Icon", true)
 	if icon and icon:IsA("GuiObject") then
 		setIfChanged(icon, "Size", UDim2.fromOffset(iconPx, iconPx))
@@ -768,6 +787,9 @@ local function applyStickerLook(button: Button.Button, iconPx: number, pull: num
 		label:SetAttribute("SD_StickerRole", role)
 		Theme.stickerText(label, role)
 		label.TextWrapped = false
+	end
+	if label and label:IsA("GuiObject") then
+		setIfChanged(label, "Visible", iconOnly ~= true)
 	end
 end
 
@@ -784,11 +806,13 @@ local function layoutTiles(canvas: Vector2, compact: boolean)
 	local iconPx = if compact then COLUMN.tileIconCompactPx else COLUMN.tileIconPx
 	local pull = if compact then COLUMN.tileLabelPullCompact else COLUMN.tileLabelPull
 	local width = if compact then COLUMN.tileSizeCompact else COLUMN.tileWidth
-	for _, id in ids do
-		width = math.max(width, Button.widthFor(tileLabels[id] or id, nil, textKind, "tile"))
+	local height = COLUMN.tileSizeCompact
+	if not compact then -- phones: icon-only squares (HudFormat.tileSize)
+		for _, id in ids do
+			width = math.max(width, Button.widthFor(tileLabels[id] or id, nil, textKind, "tile"))
+		end
+		height = math.max(COLUMN.tileHeight, math.ceil(iconPx - pull + Theme.lineHeight(textKind)))
 	end
-	local base = if compact then COLUMN.tileSizeCompact else COLUMN.tileHeight
-	local height = math.max(base, math.ceil(iconPx - pull + Theme.lineHeight(textKind)))
 	local gap = if compact then COLUMN.tileGapCompact else COLUMN.tileGap
 	local columns = HudFormat.tilesBox(columnPlan.tiles, #ids, width, height, canvas.X - 2 * EDGE_PX, gap)
 	setIfChanged(grid, "CellSize", UDim2.fromOffset(width, height))
@@ -797,7 +821,8 @@ local function layoutTiles(canvas: Vector2, compact: boolean)
 	if tileCompact ~= compact then
 		tileCompact = compact
 		for _, id in tileOrder do
-			applyStickerLook(tiles[id], iconPx, pull, if compact then "small" else "navLabel")
+			applyStickerLook(tiles[id], iconPx, if compact then 0 else pull, if compact then "small" else "navLabel", compact)
+			placeBadge(tiles[id], compact)
 		end
 	end
 	local origin = HudFormat.origins(compact)
@@ -848,15 +873,14 @@ local function layoutRight(compact: boolean)
 		local kind: Theme.TextKind = if compact then "Chip" else "D19"
 		local iconPx = if compact then COLUMN.settingsIconCompactPx else COLUMN.settingsIconPx
 		local pull = if compact then 0 else COLUMN.settingsLabelPull
-		local width = math.max(
-			if compact then COLUMN.settingsSize else COLUMN.settingsWidth,
-			Button.widthFor(label, nil, kind, "tile")
-		)
-		local height = math.max(
-			if compact then COLUMN.settingsSize else COLUMN.settingsHeight,
-			math.ceil(iconPx - pull + Theme.lineHeight(kind))
-		)
-		applyStickerLook(settings, iconPx, pull, if compact then "small" else "settingsLabel")
+		-- The minimal phone HUD (2026-10-17): on phones an icon-only square.
+		local width = if compact
+			then COLUMN.settingsSize
+			else math.max(COLUMN.settingsWidth, Button.widthFor(label, nil, kind, "tile"))
+		local height = if compact
+			then COLUMN.settingsSize
+			else math.max(COLUMN.settingsHeight, math.ceil(iconPx - pull + Theme.lineHeight(kind)))
+		applyStickerLook(settings, iconPx, pull, if compact then "small" else "settingsLabel", compact)
 		setIfChanged(settings.root, "Size", UDim2.fromOffset(width, height))
 		-- The slot keeps the tile's unscaled size, so its hover / press scale never moves the tracker under it.
 		setIfChanged(slot, "Size", UDim2.fromOffset(width, height))

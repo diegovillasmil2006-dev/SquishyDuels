@@ -65,6 +65,7 @@ local SERVICE_ORDER = {
 	"AbilityService",
 	"DashService", -- spec phase 5: the dash (needs CombatService's fighters and guards)
 	"DoubleJumpService", -- 2026-10-15: the duel's double jump (needs CombatService's fighters)
+	"LobbyMoveService", -- 2026-10-17: the lobby run's speed and the lobby slide (Config.LobbyMove)
 	"DuelService",
 	"QueueService",
 	"FriendDuelService",

@@ -53,7 +53,8 @@ local Combat = {
 	-- Movement guard (Logic/MovementRules, §5.7).
 	MovementGuard = {
 		checkHz = 5,
-		maxHorizontalSpeed = 30, -- studs/s
+		-- studs/s; 30 until the 2026-10-17 movement overhaul (WalkSpeed 16 -> 22: the same headroom over the walk)
+		maxHorizontalSpeed = 40,
 		overSpeedSamples = 3, -- consecutive samples above the limit, outside teleport/knockback grace
 		hitGraceSeconds = 0.5, -- grace after a hit (knockback)
 		-- Reading (DESIGN names the grace, not its length): the same 0.5 s after any server PivotTo (pad,
@@ -102,7 +103,9 @@ local Combat = {
 	-- |Σ + ultimate budgetCost| <= tolerance.
 	PowerBudget = {
 		referenceDistance = 40, -- D, studs
-		dodgeSpeed = 16, -- V, studs/s (= Duel.Rules.Movement.WalkSpeed)
+		-- V, studs/s: the balance's reference speed (the WalkSpeed the budget was tuned at). The movement overhaul
+		-- (2026-10-17) made duels faster (Duel.Rules.Movement.WalkSpeed 22) and kept this one: never above WalkSpeed.
+		dodgeSpeed = 16,
 		reactionSeconds = 0.25,
 		baseline = { speed = 95, radius = 1.0, cooldown = 1.0, windup = 0.18 }, -- Kitty Bread
 		studsPerPoint = 0.4, -- 1 point = 0.4 studs of dodge slack at 40 studs ...

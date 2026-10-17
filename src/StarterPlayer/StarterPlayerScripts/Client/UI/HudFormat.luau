@@ -79,7 +79,8 @@
 --                              then a row (each with the regular card first), then the compact card beside the capsule
 --                              with a row; phones (compact class; Phone HUD B, the owner's pick 2026-10-17): Diego's
 --                              bare Grip row under the capsule without its goal line (GripController toasts the goal
---                              there), the tiles but PHONE_RIGHT's (by default) in two columns: 2 x 2.
+--                              there), the tiles but PHONE_RIGHT's (by default) in one row of icon-only stickers (the
+--                              minimal phone HUD, 2026-10-17; 2 x 2 with labels before).
 --                              If none fits, the shortest is used (fits = false: on phones the two columns reach into
 --                              the thumbstick zone, the user's choice; they end above Roblox's fixed thumbstick, and
 --                              the joystick still starts in the lower-left corner below them). Sized for the longest
@@ -426,19 +427,26 @@ local COLUMN = table.freeze({
 	boostGap = HUD.grip.boostGap,
 	tilesGap = 8, -- Hud_Left to the tiles when Hud_Left reaches past navTop (a row gap)
 	tileGap = 0, -- H:98: the nav column has no gap
-	tileGapCompact = 10, -- phones: the two tile columns keep the game's gap
+	tileGapCompact = 8, -- phones: the tile row's gap (minimal phone HUD 2026-10-17; 10 before)
 	-- UI FINAL R4 (H:102, H:32): the badge sits inside the tile (right 8, top 0); only its sdBadge pop (1.3) reaches
 	-- past the tile's top: (1.3 - 1) x 32 / 2 = 5 px. What is above or beside the tiles keeps badgeAir more.
 	badgeReach = 5,
 	badgeAir = 4,
+	-- The minimal phone HUD (2026-10-17): on the 52 px phone tile the badge's centre sits this far inside the tile's
+	-- top-right corner (HudController.placeBadge), so it covers only the picture's corner.
+	badgeCompactInset = 6,
+	badgeCompactReach = 10, -- ... so a 32 px badge (CountBadge.SIZE_PX) hangs 16 - 6 px over the tile row's top
 	tileWidth = HUD.nav.width, -- H:99: the nav sticker, 118 x 104
 	tileHeight = HUD.nav.height,
 	tileIconPx = HUD.nav.iconPx, -- H:100
 	tileLabelPull = HUD.nav.labelPull, -- H:101
 	-- Phones (foam fix): the tile row clears the thumbstick zone; still the touch minimum (>= 44 px at the 0.85 phone
 	-- scale). UI FINAL R4 (reading): the faceless sticker's proportions on the 58 px tile (92 / 104, 28 / 104).
-	tileSizeCompact = 58,
-	tileIconCompactPx = 50,
+	-- Minimal phone HUD (2026-10-17, VillasmilGaming: "more minimalistic and smaller"): icon-only square stickers,
+	-- 52 base px (44.2 px at the 0.85 phone scale: still the touch minimum), the picture filling them (58 / 50 before,
+	-- with a label).
+	tileSizeCompact = 52,
+	tileIconCompactPx = 46,
 	tileLabelPullCompact = 16,
 	tilePadding = 6, -- Button's tile side padding
 	tileBands = 0, -- UI FINAL R4 (P13): the faceless sticker has no bands
@@ -455,18 +463,18 @@ local COLUMN = table.freeze({
 	-- 2026-10-16 (plan [UD5]): the green "+" after the number (H:80), the design's 12 px gap before it (H:75).
 	pillGap = HUD.coins.gap,
 	pillPlus = HUD.coinPlus.face,
-	settingsSize = 64, -- phones: the Settings tile (top right)
+	settingsSize = 52, -- phones: the Settings tile (top right), icon only (64 with its label before 2026-10-17)
 	settingsWidth = HUD.settings.width, -- H:157: the Settings sticker, 92 x 90
 	settingsHeight = HUD.settings.height,
 	settingsIconPx = HUD.settings.iconPx, -- H:158
 	settingsLabelPull = HUD.settings.labelPull, -- H:159
-	settingsIconCompactPx = 28, -- phones: the gear on the 64 px tile
+	settingsIconCompactPx = 40, -- phones: the gear filling the 52 px tile (no label)
 	trackerWidth = HUD.tracker.width, -- the quest tracker card (the quest row's look, H:363)
 	bannerWidth = 256, -- Hud_DataBanner
 	ctaWidth = HUD.cta.width, -- H:126: the DUEL button, 350 x 92
 	ctaHeight = 92 + STICKER.lip.cta, -- UI FINAL R2 (P1): the CTA's frame, its 92 px face (Button.CTA_HEIGHT) + the lip
 	ctaCompactScale = HUD.cta.compactScale, -- phones: the design's CTA at this scale, 64 base px tall
-	ctaCompactHeight = 64,
+	ctaCompactHeight = 56, -- minimal phone HUD (2026-10-17): 64 before
 	ctaTop = HUD.cta.top, -- PR10
 	searchWidth = HUD.search.width, -- H:136
 	foundWidth = HUD.found.width, -- H:149
@@ -509,10 +517,11 @@ local REGULAR_ORDER: { Candidate } = {
 	{ grip = "compact", tiles = "row", left = "stack" },
 	{ grip = "compact", tiles = "row", left = "beside" },
 }
--- Phone HUD B (the owner's pick, 2026-10-17): phones stack Diego's bare Grip row under the coin pill (no goal line),
--- the tiles in two columns.
+-- Phone HUD B (the owner's pick, 2026-10-17): phones stack Diego's bare Grip row under the coin pill (no goal line);
+-- the minimal pass (2026-10-17, VillasmilGaming): the tiles in one row of icon-only stickers under it (two columns
+-- before).
 local COMPACT_ORDER: { Candidate } = {
-	{ grip = "regular", tiles = "grid", left = "stack" },
+	{ grip = "regular", tiles = "row", left = "stack" },
 }
 -- Phone HUD B: the tiles that sit beside Settings on phones (see the header).
 local PHONE_RIGHT: { string } = { "daily" }
@@ -1002,6 +1011,10 @@ end
 -- label needs (all tiles share it, so a column lines up), as tall as the picture less the label's pull plus the label
 -- line (the nav label's D23, H:101). Phones use the smaller tile (Chip labels, the scaled picture and pull).
 function HudFormat.tileSize(compact: boolean, textScale: number?, labels: { string }?): (number, number)
+	if compact then
+		-- The minimal phone HUD (2026-10-17): icon-only square stickers (no label to fit).
+		return COLUMN.tileSizeCompact, COLUMN.tileSizeCompact
+	end
 	local ts = textScaleOf(textScale)
 	local width0 = if compact then COLUMN.tileSizeCompact else COLUMN.tileWidth
 	local height0 = if compact then COLUMN.tileSizeCompact else COLUMN.tileHeight
@@ -1231,6 +1244,10 @@ end
 function HudFormat.leftGaps(compact: boolean, grip: GripMode): (number, number)
 	local inner = if compact then COLUMN.gap else COLUMN.leftGap
 	local toTiles = if grip == "regular" then COLUMN.tilesGap else COLUMN.badgeReach + COLUMN.badgeAir
+	if compact then
+		-- The minimal phone HUD (2026-10-17): room for the corner badges (HudController.placeBadge) over the tile row.
+		toTiles = math.max(toTiles, COLUMN.badgeCompactReach + COLUMN.badgeAir)
+	end
 	return inner, toTiles
 end
 

@@ -3,7 +3,7 @@
 -- (ServerStorage.UnitTest).
 -- Contract (DESIGN §5.7 movement guard, §5.4 out of bounds, §12 #13): sampled at 5 Hz; below KillY (floor - 15) or
 -- outside the own half + 2 studs is out of bounds; the neutral zone, the opponent's half or the inside of Geometry
--- pulls the player back to the last valid position; more than 30 studs/s horizontally for 3 samples in a row, outside
+-- pulls the player back to the last valid position; more than 40 studs/s horizontally (30 until the 2026-10-17 movement overhaul) for 3 samples in a row, outside
 -- the teleport/knockback grace, pulls back too; a pull-back or out-of-bounds starts its own teleport grace. A player
 -- who must stand still (Countdown on the pad, a Dragon Rush root) and drifts more than holdToleranceStuds (+ slack)
 -- from the spot is pulled back to it, outside a grace. Repeated out-of-bounds in Active ends in a forfeit through
@@ -46,9 +46,9 @@ return function(t: Context)
 
 	-- Config ------------------------------------------------------------------------------------------------------------
 
-	t.test("the guard runs at 5 Hz with a 30 studs/s limit over 3 samples", function()
+	t.test("the guard runs at 5 Hz with a 40 studs/s limit over 3 samples", function()
 		expect.equal(GUARD.checkHz, 5)
-		expect.equal(GUARD.maxHorizontalSpeed, 30)
+		expect.equal(GUARD.maxHorizontalSpeed, 40)
 		expect.equal(GUARD.overSpeedSamples, 3)
 		expect.equal(OOB.KillYOffset, -15)
 		expect.equal(OOB.HalfToleranceStuds, 2)
@@ -141,26 +141,26 @@ return function(t: Context)
 
 	-- Speed ---------------------------------------------------------------------------------------------------------------
 
-	t.test("over 30 studs/s for 3 samples in a row pulls back to the last normal position", function()
+	t.test("over 40 studs/s for 3 samples in a row pulls back to the last normal position", function()
 		local guard = MovementRules.new()
 		evaluate(guard, sample(0, 3, -50), T0) -- last normal position
 		local z = -50
 		local verdicts = {}
 		for i = 1, 3 do
-			z += 40 * DT -- 40 studs/s
+			z += 42 * DT -- 42 studs/s (inside the half: 42 x 0.2 = 8.4 studs a sample)
 			table.insert(verdicts, evaluate(guard, sample(0, 3, z), T0 + i * DT))
 		end
 		expect.equal(verdicts[1].action, "ok")
 		expect.equal(verdicts[2].action, "ok")
 		expect.equal(verdicts[3].action, "pivotBack")
 		expect.equal(verdicts[3].reason, "speed")
-		expect.near(verdicts[3].speed, 40, 1e-3)
+		expect.near(verdicts[3].speed, 42, 1e-3)
 		expect.truthy((verdicts[3].target - Vector3.new(0, 3, -50)).Magnitude < 1e-4)
 	end)
 
 	t.test("two fast samples then a normal one reset the streak", function()
 		local guard = MovementRules.new()
-		local positions = { -50, -42, -34, -31, -23, -15 } -- fast, fast, slow, fast, fast
+		local positions = { -50, -41.6, -33.2, -30.2, -21.8, -13.4 } -- fast, fast, slow, fast, fast (42 / 15 studs/s)
 		for i, z in positions do
 			local verdict = evaluate(guard, sample(0, 3, z), T0 + (i - 1) * DT)
 			expect.equal(verdict.action, "ok")
@@ -173,15 +173,15 @@ return function(t: Context)
 		MovementRules.grace(guard, T0 + GUARD.hitGraceSeconds)
 		local z = -50
 		for i = 1, 2 do
-			z += 40 * DT
+			z += 42 * DT
 			expect.equal(evaluate(guard, sample(0, 3, z), T0 + i * DT).action, "ok") -- inside the 0.5 s grace
 		end
 		-- After the grace the streak starts from scratch: two more fast samples are still fine.
 		for i = 3, 4 do
-			z += 40 * DT
+			z += 42 * DT
 			expect.equal(evaluate(guard, sample(0, 3, z), T0 + i * DT).action, "ok")
 		end
-		z += 40 * DT
+		z += 42 * DT
 		expect.equal(evaluate(guard, sample(0, 3, z), T0 + 5 * DT).action, "pivotBack")
 	end)
 

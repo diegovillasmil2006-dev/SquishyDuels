@@ -5,8 +5,12 @@
 --
 -- A set names (colours are Art/Palette tokens, pictures AssetTable image keys):
 --   nameKey          Strings key of its name (elimination.<id>, shown in Inspect)
---   squishyId        the squishy in the medallion (nil: the centre picture `centerImage`, the duel emblem)
---   disc, ring, glow the medallion's face, its inner ring and the glow behind it
+--   squishyId        the squishy the set belongs to (nil: standard, every Common and Uncommon squishy)
+--   emblem           v2 (2026-10-17): the banner's emblem, a low-fidelity sticker of the squishy (flat cel colours, ink
+--                    outline; standard: a squished jelly blob with the game's squish face) — `emblemWhite` is its white
+--                    silhouette (the slam's flash and the ink shadow, tinted)
+--   disc, ring, glow the emblem's backing colours: `ring` the shock rings and slashes, `glow` the glow and rays
+--   shards           the impact shards' colours (Palette tokens, used in turn)
 --   frame            the outer frame ring (spins `spin` degrees/s; tinted, at `size` × the disc)
 --   crownFrame       the extra ring of the 6k banner
 --   ornament         one per K.O. (1k-5k) around the top of the medallion: a picture (`image`, `tint` or its own
@@ -50,7 +54,9 @@ export type Style = {
 	id: string,
 	nameKey: string,
 	squishyId: string?,
-	centerImage: string?,
+	emblem: string,
+	emblemWhite: string,
+	shards: { string },
 	disc: string,
 	ring: string,
 	glow: string,
@@ -68,11 +74,13 @@ export type Style = {
 local STANDARD = "standard"
 
 local STYLES: { [string]: Style } = {
-	-- Candy Pop: every Common and Uncommon squishy. The duel emblem (the crossed candy swords), the game's own stars.
+	-- Candy Pop: every Common and Uncommon squishy. A squished jelly blob emblem, the game's own stars.
 	standard = {
 		id = "standard",
 		nameKey = "elimination.standard",
-		centerImage = "img.nav.duel",
+		emblem = "img.kill.emblem.standard",
+		emblemWhite = "img.kill.emblem.standard.white",
+		shards = { "Lemon", "Strawberry", "Mint", "White" },
 		disc = "Cream",
 		ring = "Lemon",
 		glow = "Strawberry",
@@ -88,6 +96,9 @@ local STYLES: { [string]: Style } = {
 	feather_storm = {
 		id = "feather_storm",
 		nameKey = "elimination.feather_storm",
+		emblem = "img.kill.emblem.feather_storm",
+		emblemWhite = "img.kill.emblem.feather_storm.white",
+		shards = { "White", "KillBirdBlue", "Sky" },
 		squishyId = "bird",
 		disc = "KillBirdSky",
 		ring = "KillBirdBlue",
@@ -104,6 +115,9 @@ local STYLES: { [string]: Style } = {
 	sprinkle_blast = {
 		id = "sprinkle_blast",
 		nameKey = "elimination.sprinkle_blast",
+		emblem = "img.kill.emblem.sprinkle_blast",
+		emblemWhite = "img.kill.emblem.sprinkle_blast.white",
+		shards = { "Lemon", "Mint", "Sky", "Strawberry", "White" },
 		squishyId = "donut",
 		disc = "KillDonutCream",
 		ring = "Strawberry",
@@ -120,6 +134,9 @@ local STYLES: { [string]: Style } = {
 	cloudburst = {
 		id = "cloudburst",
 		nameKey = "elimination.cloudburst",
+		emblem = "img.kill.emblem.cloudburst",
+		emblemWhite = "img.kill.emblem.cloudburst.white",
+		shards = { "White", "Lavender", "Lemon" },
 		squishyId = "cloud_bunny",
 		disc = "KillCloudMist",
 		ring = "Lavender",
@@ -136,6 +153,9 @@ local STYLES: { [string]: Style } = {
 	bubble_burst = {
 		id = "bubble_burst",
 		nameKey = "elimination.bubble_burst",
+		emblem = "img.kill.emblem.bubble_burst",
+		emblemWhite = "img.kill.emblem.bubble_burst.white",
+		shards = { "KillAxolotlAqua", "KillAxolotlPink", "White" },
 		squishyId = "cupcake_axolotl",
 		disc = "KillAxolotlPearl",
 		ring = "KillAxolotlPink",
@@ -153,6 +173,9 @@ local STYLES: { [string]: Style } = {
 	dragon_blaze = {
 		id = "dragon_blaze",
 		nameKey = "elimination.dragon_blaze",
+		emblem = "img.kill.emblem.dragon_blaze",
+		emblemWhite = "img.kill.emblem.dragon_blaze.white",
+		shards = { "KillDragonFire", "ArenaFireTip", "KillDragonTeal" },
 		squishyId = "dragon",
 		disc = "KillDragonNight",
 		ring = "KillDragonTeal",
@@ -174,6 +197,7 @@ for _, style in STYLES do
 	table.freeze(style.crownFrame)
 	table.freeze(style.ornament)
 	table.freeze(style.crown)
+	table.freeze(style.shards)
 	table.freeze(style)
 end
 table.freeze(STYLES)

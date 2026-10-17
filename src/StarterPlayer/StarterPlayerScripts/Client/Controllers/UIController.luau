@@ -451,6 +451,18 @@ local function applyScale()
 	end
 end
 
+-- Studio only (2026-10-17, the minimal phone HUD): Workspace attribute SD_PhonePreview = a UI scale (e.g. 1.5 on a
+-- 697 px tall Studio window: a 459 base px canvas, a phone's) forces the compact class at that scale, so the phone
+-- layout can be looked at in Studio. Never read in a live game.
+local PHONE_PREVIEW = "SD_PhonePreview"
+local function phonePreview(): number?
+	if not game:GetService("RunService"):IsStudio() then
+		return nil
+	end
+	local value = workspace:GetAttribute(PHONE_PREVIEW)
+	return if type(value) == "number" and value > 0 then value else nil
+end
+
 local function trackHudSize(hud: ScreenGui)
 	local function update()
 		local size = hud.AbsoluteSize
@@ -459,6 +471,10 @@ local function trackHudSize(hud: ScreenGui)
 		end
 		local scale = Layout.uiScale(size.Y, size.X) -- UI FINAL R2 (PR1): the design's fit
 		local class: Layout.LayoutClass = Layout.layoutClass(size.X, size.Y)
+		local preview = phonePreview()
+		if preview then
+			scale, class = preview, "compact"
+		end
 		local changed = scale ~= currentScale or class ~= currentClass
 		if changed then
 			currentScale = scale
@@ -468,6 +484,9 @@ local function trackHudSize(hud: ScreenGui)
 		end
 	end
 	hud:GetPropertyChangedSignal("AbsoluteSize"):Connect(update)
+	if game:GetService("RunService"):IsStudio() then
+		workspace:GetAttributeChangedSignal(PHONE_PREVIEW):Connect(update)
+	end
 	update()
 end
 

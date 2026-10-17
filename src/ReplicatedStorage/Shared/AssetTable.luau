@@ -168,14 +168,17 @@ local function pseSlot(main: SoundVariant, variants: { SoundVariant }): Approved
 	}
 end
 
--- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners). The sound sheets are original synthesis (the
--- KillSynth script's own instruments: no samples, no third-party audio), uploaded to the DIJAY Studios group through
--- Open Cloud; each sheet holds a kill set's 6 escalating kill sounds, one per Config.Audio.killBanner slot. The
+-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; v2 2026-10-17: punchier sheets, emblems). The
+-- sound sheets are original synthesis (tools/audio/killsynth.py: no samples, no third-party audio), uploaded to the DIJAY
+-- Studios group through Open Cloud; each sheet holds a kill set's 6 escalating kill sounds, one per
+-- Config.Audio.killBanner slot. The emblems are low-fidelity stickers rendered from the game's own squishy models
+-- (uploaded by VillasmilGaming, 2026-10-17; each loads in this place, PreloadAsync Success). The
 -- textures are public Image assets from the VFX Studio plugin's texture library (the plugin lists them for use in
 -- experiences); each loads in this place (ContentProvider:PreloadAsync Success, 2026-10-16).
-local KILL_DATE = "2026-10-16"
+local KILL_DATE = "2026-10-17" -- v2 sheets and the emblems (checked that day)
 local KILL_SOUND_LICENSE = "Group-owned upload; original synthesis (KillSynth 2026-10-16), no third-party audio"
 local VFX_STUDIO_LICENSE = "Public Image asset listed in the VFX Studio plugin's texture library (for use in experiences)"
+local EMBLEM_LICENSE = "Own upload (VillasmilGaming); a render of the game's own squishy models (no third-party art)"
 
 -- soundSlot's `approved` argument for a kill banner sheet.
 local function killSheet(id: number, file: string): ApprovedSound
@@ -185,6 +188,19 @@ local function killSheet(id: number, file: string): ApprovedSound
 		source = `DIJAY Studios group upload (Open Cloud): '{file}'`,
 		license = KILL_SOUND_LICENSE,
 		verifiedAt = KILL_DATE,
+	}
+end
+
+-- An image slot holding a kill banner emblem (`file` is the uploaded PNG).
+local function killEmblem(key: string, id: number, file: string, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `VillasmilGaming upload (Studio): '{file}'`,
+		license = EMBLEM_LICENSE,
+		verifiedAt = KILL_DATE,
+		notes = use,
 	}
 end
 
@@ -827,48 +843,48 @@ local SLOTS: { AssetSlot } = {
 		"SFX",
 		false,
 		nil,
-		"kill banner sheet, Common and Uncommon squishies (Candy Pop: squishy pop, thump, marimba climb; 6k: bells and sparkles); file 'sfx_kill_standard.ogg'",
-		killSheet(104891426141969, "sfx_kill_standard.ogg")
+		"kill banner sheet, Common and Uncommon squishies (Candy Pop: squishy pop, thump, marimba climb; 6k: bells and sparkles); file 'sfx_kill_standard_v2.ogg'",
+		killSheet(85487378778158, "sfx_kill_standard_v2.ogg")
 	),
 	soundSlot(
 		"sfx.kill.feather_storm",
 		"SFX",
 		false,
 		nil,
-		"kill banner sheet, Birdie (Feather Storm: wing flutter, whistled bird call; 6k: a flock and a bell); file 'sfx_kill_feather_storm.ogg'",
-		killSheet(89629009040996, "sfx_kill_feather_storm.ogg")
+		"kill banner sheet, Birdie (Feather Storm: wing flutter, whistled bird call; 6k: a flock and a bell); file 'sfx_kill_feather_storm_v2.ogg'",
+		killSheet(101356866911300, "sfx_kill_feather_storm_v2.ogg")
 	),
 	soundSlot(
 		"sfx.kill.sprinkle_blast",
 		"SFX",
 		false,
 		nil,
-		"kill banner sheet, Donut (Sprinkle Blast: rubbery boings, sprinkle tinkles; 6k: a boing chord and sprinkle rain); file 'sfx_kill_sprinkle_blast.ogg'",
-		killSheet(78274707655801, "sfx_kill_sprinkle_blast.ogg")
+		"kill banner sheet, Donut (Sprinkle Blast: rubbery boings, sprinkle tinkles; 6k: a boing chord and sprinkle rain); file 'sfx_kill_sprinkle_blast_v2.ogg'",
+		killSheet(121984041164424, "sfx_kill_sprinkle_blast_v2.ogg")
 	),
 	soundSlot(
 		"sfx.kill.cloudburst",
 		"SFX",
 		false,
 		nil,
-		"kill banner sheet, Cloud Bunny (Cloudburst: wind swell, harp; thunder from 4k; 6k: thunder crack and rain); file 'sfx_kill_cloudburst.ogg'",
-		killSheet(85018958917330, "sfx_kill_cloudburst.ogg")
+		"kill banner sheet, Cloud Bunny (Cloudburst: wind swell, harp; thunder from 4k; 6k: thunder crack and rain); file 'sfx_kill_cloudburst_v2.ogg'",
+		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
 	),
 	soundSlot(
 		"sfx.kill.bubble_burst",
 		"SFX",
 		false,
 		nil,
-		"kill banner sheet, Cupcake Axolotl (Bubble Burst: tuned bubbles, underwater blub; 6k: a bubble cascade and a splash); file 'sfx_kill_bubble_pop.ogg'",
-		killSheet(104085535105999, "sfx_kill_bubble_pop.ogg")
+		"kill banner sheet, Cupcake Axolotl (Bubble Burst: tuned bubbles, underwater blub; 6k: a bubble cascade and a splash); file 'sfx_kill_bubble_burst_v2.ogg'",
+		killSheet(132916717444884, "sfx_kill_bubble_burst_v2.ogg")
 	),
 	soundSlot(
 		"sfx.kill.dragon_blaze",
 		"SFX",
 		false,
 		nil,
-		"kill banner sheet, Dragon (Dragon's Blaze: taiko, fire whoosh, brass stab; growl from 4k; 6k: roar, gong, full brass); file 'sfx_kill_dragon_blaze.ogg'",
-		killSheet(111003549387980, "sfx_kill_dragon_blaze.ogg")
+		"kill banner sheet, Dragon (Dragon's Blaze: taiko, fire whoosh, brass stab; growl from 4k; 6k: roar, gong, full brass); file 'sfx_kill_dragon_blaze_v2.ogg'",
+		killSheet(106352691173885, "sfx_kill_dragon_blaze_v2.ogg")
 	),
 	-- Match HUD M6 / M7 (2026-10-17; the M3 pack: the design's recipes rendered, uploaded by the user, normalised to
 	-- -1 dBFS: set each volume from its normGainDb when the id comes in). While an id is nil a look-alike plays
@@ -1066,6 +1082,19 @@ local SLOTS: { AssetSlot } = {
 	vfxStudio("img.kill.frameSun", 794950602, "Cool Glowing Spawn Decal", "D0ubleH3lix", "banner frame: wavy sun rays (Bubble Burst 6k)"),
 	vfxStudio("img.kill.frameDragon", 11902232976, "Images/circle (2)", "JamProfessional", "banner frame: a dragon ring (Dragon's Blaze)"),
 	vfxStudio("img.kill.dragonWing", 12403174434, "211", "Ekzotericheskiy", "a tribal dragon: the Dragon's Blaze 6k wings"),
+	-- Kill banners v2 (2026-10-17): each set's emblem and its white silhouette (the slam's flash, the ink shadow).
+	killEmblem("img.kill.emblem.standard", 101070134805108, "kill_emblem_standard.png", "Candy Pop: a squished jelly blob with the game's squish face and a star"),
+	killEmblem("img.kill.emblem.standard.white", 93336161763338, "kill_emblem_standard_white.png", "Candy Pop: a squished jelly blob with the game's squish face and a star: white silhouette"),
+	killEmblem("img.kill.emblem.feather_storm", 106533902166698, "kill_emblem_feather_storm.png", "Feather Storm: Birdie, low-fidelity"),
+	killEmblem("img.kill.emblem.feather_storm.white", 128305713938623, "kill_emblem_feather_storm_white.png", "Feather Storm: Birdie, low-fidelity: white silhouette"),
+	killEmblem("img.kill.emblem.sprinkle_blast", 79552439839868, "kill_emblem_sprinkle_blast.png", "Sprinkle Blast: Donut, low-fidelity"),
+	killEmblem("img.kill.emblem.sprinkle_blast.white", 137126921710110, "kill_emblem_sprinkle_blast_white.png", "Sprinkle Blast: Donut, low-fidelity: white silhouette"),
+	killEmblem("img.kill.emblem.cloudburst", 88739962234384, "kill_emblem_cloudburst.png", "Cloudburst: Cloud Bunny, low-fidelity"),
+	killEmblem("img.kill.emblem.cloudburst.white", 136570831520750, "kill_emblem_cloudburst_white.png", "Cloudburst: Cloud Bunny, low-fidelity: white silhouette"),
+	killEmblem("img.kill.emblem.bubble_burst", 73334765893192, "kill_emblem_bubble_burst.png", "Bubble Burst: Cupcake Axolotl, low-fidelity"),
+	killEmblem("img.kill.emblem.bubble_burst.white", 125496553543566, "kill_emblem_bubble_burst_white.png", "Bubble Burst: Cupcake Axolotl, low-fidelity: white silhouette"),
+	killEmblem("img.kill.emblem.dragon_blaze", 107936827492507, "kill_emblem_dragon_blaze.png", "Dragon's Blaze: Dragon, low-fidelity"),
+	killEmblem("img.kill.emblem.dragon_blaze.white", 112730103205754, "kill_emblem_dragon_blaze_white.png", "Dragon's Blaze: Dragon, low-fidelity: white silhouette"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

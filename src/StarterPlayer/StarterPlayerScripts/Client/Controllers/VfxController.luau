@@ -41,12 +41,14 @@
 -- Kill banners and kill effects (2026-10-16, VillasmilGaming: Valorant-style; Art/KillStyle): the effectId is the
 --   attacker's kill set (eliminationEffect -> KillStyle.resolve: "standard" for every Common and Uncommon squishy, its
 --   own for each squishy above Uncommon; "epic_pending" stays standard unless Config.Anim.elimination.epicEnabled), and
---   every set plays this sequence. At 700 ms the set's kill effect, made for the VFX Studio plugin (Anim/KillVfx
---   Kill/<set>, ReplicatedStorage.SD_KillVfx), takes the foam puff's place; the standard one is that pastel puff and
---   keeps the tumbling confetti parts, a custom set's replaces them too; without the library the old puff plays. The
---   eliminator's "K.O.!" text became the kill banner: KoDealt(effectId) fires at that moment and Controllers/
---   KillBannerController draws the banner, plays its sound and its burst (koBannerUntil keeps its timing). Anim/KillVfx
---   and Art/KillStyle are required inline (no new top-level local).
+--   every set plays this sequence. The set's kill effect, made for the VFX Studio plugin (Anim/KillVfx Kill/<set>,
+--   ReplicatedStorage.SD_KillVfx), plays at the K.O. itself at the K.O.'d player's HumanoidRootPart (v3 2026-10-17:
+--   it used to wait for 700 ms; its own finisher still pops then) and takes the foam puff's place; the standard set
+--   keeps the tumbling confetti parts at 700 ms, a custom set's effect replaces them too; without the library the old
+--   puff plays at 700 ms. The eliminator's "K.O.!" text became the kill banner: KoDealt(effectId) fires at that moment
+--   and Controllers/KillBannerController draws the banner, plays its sound and its burst (koBannerUntil keeps its
+--   timing); the eliminator's camera also shakes (Config.Vfx.Shake.elimDealt). Anim/KillVfx and Art/KillStyle are
+--   required inline (no new top-level local).
 -- Sounds (§18.6, SoundController, silent while the slot ids are nil): sfx.impactBoing at a "player" / "target" hit,
 --   sfx.impactSoft at "geometry" / "expired" / "fizzle" (the last two × softImpactMinorVolume), both on the contact
 --   frame; Dragon Rush: sfx.dragonTelegraph (tracked, stopped with a trackedStopFadeMs fade on cancel), the optional
@@ -1155,6 +1157,16 @@ local function playStandard(player: Player, attackerId: number?, effectId: strin
 	end
 	if attackerId ~= nil and attackerId == Players.LocalPlayer.UserId then
 		koBanner(effectId)
+		shake(SHAKE.elimDealt)
+	end
+	-- Kill effects v3 (2026-10-17): the kill set's VFX Studio kill effect plays now, at the K.O.'d player.
+	local KillStyle = require(Shared.Art.KillStyle)
+	local KillVfx = require(script.Parent.Parent.Anim.KillVfx)
+	local style = KillStyle.get(KillStyle.resolve(effectId)) :: KillStyle.Style
+	local hasKillFx = KillVfx.has(style.killVfx)
+	local koAt = if root then root.Position elseif anchor then anchor.Position else nil
+	if hasKillFx and koAt then
+		KillVfx.kill(style.killVfx, koAt)
 	end
 	eliminated[player] = { player = player, restored = false, koSeen = false, startedAt = os.clock() }
 	local started = os.clock()
@@ -1205,14 +1217,10 @@ local function playStandard(player: Player, attackerId: number?, effectId: strin
 					local held = HeldSquishyController.getModel(player)
 					local at = if held then held:GetPivot().Position elseif root then root.Position else nil
 					if at then
-						-- Kill banners (2026-10-16): the kill set's VFX Studio kill effect takes the foam puff's place;
-						-- the standard set keeps the tumbling confetti parts. Without the library, the old puff.
-						local KillStyle = require(Shared.Art.KillStyle)
-						local KillVfx = require(script.Parent.Parent.Anim.KillVfx)
-						local style = KillStyle.get(KillStyle.resolve(effectId)) :: KillStyle.Style
-						if KillVfx.has(style.killVfx) then
-							KillVfx.kill(style.killVfx, at)
-						else
+						-- Kill banners (2026-10-16): the kill set's kill effect (played at the K.O.) took the foam
+						-- puff's place; the standard set keeps the tumbling confetti parts. Without the library, the
+						-- old puff.
+						if not hasKillFx then
 							confetti(at)
 						end
 						if style.id == KillStyle.STANDARD then

@@ -41,6 +41,9 @@ local Net = {
 		-- 2026-10-15: the double jump (one per air time, DoubleJumpRules' serverIntervalSeconds); the bucket only stops
 		-- floods.
 		DoubleJumpRequest = { rate = 3, burst = 4 },
+		-- Movement overhaul (2026-10-17): the lobby slide (LobbyMoveService; one per Config.LobbyMove.Slide cooldown,
+		-- 0.9 s); the bucket only stops floods.
+		SlideRequest = { rate = 2, burst = 3 },
 		-- Feature 1 (2026-10-11): the client sends one ChargeStart before each throw (ThrowRequest's own bucket); the
 		-- catch's cooldown is CombatService's (Config.Combat.Catch.cooldownSeconds), the bucket only stops floods.
 		ChargeStart = { rate = 3, burst = 4 },

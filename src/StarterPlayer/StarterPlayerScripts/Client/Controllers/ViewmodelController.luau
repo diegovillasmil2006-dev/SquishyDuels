@@ -36,7 +36,10 @@
 --     telegraph (the design's wind-up, ultTelegraphSeconds) and its glow in the design's colour: Dragon's orange,
 --     else its squishy's rarity colour from Art/RarityStyle (fp.js:460, ultGlowColour).
 -- World camera: the FOV goes base + fov·focus.worldFovPerUnit (the fov spring toward focus.worldFovTarget × the focus
--- share, 70° -> 64.5°) through CameraController.setFovOffset (one owner; base back exactly); the design's shake value
+-- share, 70° -> 64.5°) through CameraController.setFovOffset (one owner; base back exactly), plus the movement overhaul's
+-- speed FOV (2026-10-17: MoveFeelController.fovOffset, relayed here while the overlay shows: setFovRelay at show and
+-- hide), and the overlay camera takes MoveFeelController.overlaySway (the hands bob, sway and roll with the run); the
+-- design's shake value
 -- (falling shake.decayPerSecond a second) through CameraController.shake (ViewmodelMath.shakeFor) only when it rose
 -- and settings.cameraShake is on. ReducedMotion: no world FOV change, no tremor or jitter, no breath, no idle drift or
 -- kick on the overlay camera, no pop-in overshoot (it grows to 1 and stops), no Rush wobble or glow pulse (DESIGN
@@ -430,6 +433,7 @@ local REAL_DEPS = {
 	Cache = SquishyCache,
 	Deformer = SquishDeformer,
 	Motion = Tweens, -- reducedMotion()
+	Move = require(script.Parent.MoveFeelController), -- 2026-10-17: the speed FOV and the hands' sway
 	Workspace = Workspace,
 	Players = Players,
 }
@@ -1827,7 +1831,7 @@ end
 
 -- The world camera: the FOV offset through CameraController (none under ReducedMotion), and the shake when it rose.
 local function stepWorldCamera(v: View, reduced: boolean, shakeFrom: number)
-	local offset = if reduced then 0 else v.fov * FOCUS.worldFovPerUnit
+	local offset = if reduced then 0 else v.fov * FOCUS.worldFovPerUnit + deps.Move.fovOffset()
 	if math.abs(offset) < FOV_REST_DEG then
 		offset = 0
 	end
@@ -1962,7 +1966,7 @@ local function step(v: View, dt: number, now: number): boolean
 	-- The low tier keeps the kick (an action) and drops the idle drift (its time held at 0: sin(0) = 0).
 	local cameraCF = if reduced
 		then CFrame.identity
-		else ViewmodelMath.overlayCamera(if v.still then 0 else now, v.kick, U)
+		else ViewmodelMath.overlayCamera(if v.still then 0 else now, v.kick, U) * deps.Move.overlaySway(U)
 	v.camera.CFrame = cameraCF
 	draw(v, cameraCF)
 	stepWorldCamera(v, reduced, shakeFrom)
@@ -2119,6 +2123,7 @@ local function hide()
 		deps.Held.setMirror(nil)
 		setTouchGui(v, false)
 		deps.Camera.setFovOffset(FOV_OWNER, 0) -- the world FOV's base back exactly
+		deps.Move.setFovRelay(false) -- the speed FOV is MoveFeelController's own again
 	end)
 	destroyToy(v)
 	destroyCaught(v) -- feature 1
@@ -2135,6 +2140,7 @@ local function hide()
 end
 
 local function show(player: Player)
+	deps.Move.setFovRelay(true) -- the speed FOV comes through this overlay's own FOV hold (stepWorldCamera)
 	local gui = deps.UI.screenGui(GUI_NAME, FP.gui :: any)
 	local viewport, camera = overlayOf(gui)
 	local v = newView(gui, viewport, camera)

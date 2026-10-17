@@ -34,7 +34,6 @@ local Button = require(UI.Components.Button)
 local Create = require(UI.Create)
 local HudFormat = require(UI.HudFormat)
 local SegmentedTabs = require(UI.Components.SegmentedTabs)
-local Theme = require(UI.Theme)
 
 -- Types
 
@@ -188,20 +187,17 @@ function PhoneHud.chipButton(): GuiObject?
 	return if tabs and tabs.root.Visible then tabs.tabs[current] else nil
 end
 
--- The PHONE_RIGHT tiles: on phones in Hud_Right before Settings, as wide as their label needs and a phone tile tall (the
--- grid's own sizes, HudController.layoutTiles); else back in the tile grid at their NAV place. Hud_Right is a row on
--- phones, else Diego's column.
+-- The PHONE_RIGHT tiles: on phones in Hud_Right before Settings, a phone tile (the minimal phone HUD, 2026-10-17: an
+-- icon-only square, HudController.layoutTiles hides the label); else back in the tile grid at their NAV place.
+-- Hud_Right is a row on phones, else Diego's column.
 function PhoneHud.placeTiles(
 	isCompact: boolean,
 	tiles: { [string]: Button.Button },
-	labels: { [string]: string },
+	_labels: { [string]: string },
 	nav: Frame,
 	right: Frame
 )
-	local height = math.max(
-		COLUMN.tileSizeCompact,
-		math.ceil(COLUMN.tileIconCompactPx - COLUMN.tileLabelPullCompact + Theme.lineHeight("Chip"))
-	)
+	local side = COLUMN.tileSizeCompact
 	for index, item in HudFormat.NAV do
 		local tile = tiles[item.id]
 		if tile and table.find(HudFormat.PHONE_RIGHT, item.id) then
@@ -212,9 +208,7 @@ function PhoneHud.placeTiles(
 				root.Parent = parent
 			end
 			if isCompact then
-				local label = labels[item.id] or item.id
-				local width = math.max(COLUMN.tileSizeCompact, Button.widthFor(label, nil, "Chip", "tile"))
-				local size = UDim2.fromOffset(width, height)
+				local size = UDim2.fromOffset(side, side)
 				if root.Size ~= size then
 					root.Size = size
 				end

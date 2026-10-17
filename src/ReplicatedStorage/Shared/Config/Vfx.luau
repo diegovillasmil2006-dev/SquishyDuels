@@ -181,6 +181,11 @@ local Vfx = {
 		maxAmplitudeDeg = 1,
 		hitReceived = { amplitudeDeg = 0.5, ms = 200 },
 		eliminated = { amplitudeDeg = 0.6, ms = 250 },
+		elimDealt = { amplitudeDeg = 0.7, ms = 240 }, -- the eliminator, with the kill banner (2026-10-17)
+		-- Movement overhaul (2026-10-17): the own dash's push, the own double jump, a hard landing (MoveFeelController).
+		dashStart = { amplitudeDeg = 0.55, ms = 200 },
+		doubleJump = { amplitudeDeg = 0.4, ms = 170 },
+		landHard = { amplitudeDeg = 0.45, ms = 200 },
 		dragonRushNearby = { amplitudeDeg = 0.8, ms = 260, extraStuds = 10 }, -- local players within R + 10
 	},
 
@@ -547,13 +552,59 @@ local Vfx = {
 	-- Kill banners and kill effects (2026-10-16; ReplicatedStorage.SD_KillVfx, made for the VFX Studio plugin, played by
 	-- Anim/KillVfx). The banner burst sits burstDepthStuds in front of the killer's camera behind the banner (its
 	-- template is made for a disc of radius 1 stud, so it is scaled to the banner's size at that depth). A kill effect
-	-- plays where the K.O.'d squishy vanishes (the elimination effect's foam puff, Config.Anim.elimination), for anyone
-	-- within farStuds of the camera. At most maxBursts banner bursts and maxKills kill effects live at once.
+	-- (v3 2026-10-17: big, at the K.O. itself) plays at the K.O.'d player, for anyone within farStuds of the camera; its
+	-- Floor attachment goes onto the floor found within floorStuds under it. At most maxBursts banner bursts and
+	-- maxKills kill effects live at once; a kill template holds at most maxParticles particles (all its emitters).
+	-- Movement feel (2026-10-17, VillasmilGaming: duel movement like the Rivals-style reference video, camera shake and
+	-- fast movement; Controllers/MoveFeelController). The local player's camera only. Off under ReducedMotion and with
+	-- settings.cameraShake off (it is all camera motion). FP = first person (duels, practice, the lobby zoom), TP = the
+	-- third-person camera. Speeds in studs/s, sizes in studs, the hands in the overlay's design units (du).
+	MoveFeel = {
+		bindName = "SD_MoveFeel",
+		priorityOffset = 2, -- put on after the camera module and the shake (Camera + 1) ...
+		undoBindName = "SD_MoveFeelUndo",
+		undoPriorityOffset = -2, -- ... and taken off before the shake's undo (Camera - 1): no drift, no mixing
+		-- Speed FOV: +fovPerWalk degrees per WalkSpeed of horizontal speed above fovFromShare x WalkSpeed, at most
+		-- fovMaxDeg (a dash's burst reaches it: the dash's FOV kick), on a spring.
+		fovPerWalk = 3.2,
+		fovFromShare = 0.35,
+		fovMaxDeg = 9,
+		fovSpring = { omega = 14, zeta = 0.9 },
+		-- Strafe roll: the camera leans into a sideways run, at most rollDeg at WalkSpeed (TP: rollTpShare of it).
+		rollDeg = 2.4,
+		rollTpShare = 0.4,
+		rollSpring = { omega = 10, zeta = 0.85 },
+		-- View bob (FP, on the ground): bobStuds up and down per step, swayStuds side to side per stride, at
+		-- stepsPerStud x speed steps a second; it fades in and out at bobFadePerSecond.
+		bobStuds = 0.09,
+		swayStuds = 0.06,
+		stepsPerStud = 0.115,
+		bobFadePerSecond = 6,
+		-- Landing: after airSeconds in the air, a dip of dipPerSpeed studs per stud/s of fall speed (at most dipMaxStuds;
+		-- TP: dipTpShare of it) with dipPitchPerStud degrees of pitch per stud, on a spring; a fall at least
+		-- hardLandSpeed fast also shakes (Shake.landHard).
+		airSeconds = 0.22,
+		dipPerSpeed = 0.012,
+		dipMaxStuds = 0.55,
+		dipTpShare = 0.6,
+		dipPitchPerStud = 2.2,
+		dipSpring = { omega = 16, zeta = 0.55 },
+		hardLandSpeed = 38,
+		-- The first-person hands (ViewmodelController's overlay camera): the same bob, roll and dip, a little more (the
+		-- reference's weapon sway).
+		handBobDu = 0.012,
+		handSwayDu = 0.016,
+		handRollDeg = 2.5,
+		handDipPerStud = 0.06,
+	},
+
 	KillFx = {
 		burstDepthStuds = 3.2,
 		farStuds = 160,
 		maxBursts = 3,
-		maxKills = 8,
+		maxKills = 4,
+		maxParticles = 100,
+		floorStuds = 12,
 	},
 }
 

@@ -86,6 +86,7 @@ local Squeeze = require(script.Squeeze)
 local UI = require(script.UI)
 local Vfx = require(script.Vfx)
 local Wax = require(script.Wax)
+local LobbyMove = require(script.LobbyMove)
 
 type Problems = { string }
 type KeyRef = { path: string, key: string }
@@ -208,6 +209,7 @@ local Config = {
 	UI = UI,
 	Vfx = Vfx,
 	Wax = Wax,
+	LobbyMove = LobbyMove,
 }
 
 -- Private: freezing -------------------------------------------------------------------------------------------------
@@ -713,8 +715,8 @@ local function checkCombat(problems: Problems)
 	end
 	expect(
 		problems,
-		budget.dodgeSpeed == Duel.Rules.Movement.WalkSpeed,
-		`{p}.PowerBudget.dodgeSpeed ({budget.dodgeSpeed}) must equal Config.Duel.Rules.Movement.WalkSpeed `
+		budget.dodgeSpeed <= Duel.Rules.Movement.WalkSpeed,
+		`{p}.PowerBudget.dodgeSpeed ({budget.dodgeSpeed}) must not exceed Config.Duel.Rules.Movement.WalkSpeed `
 			.. `({Duel.Rules.Movement.WalkSpeed})`
 	)
 	expectPositive(problems, `{p}.Practice.targetDownSeconds`, Combat.Practice.targetDownSeconds)
@@ -2679,7 +2681,7 @@ local function checkVfx(problems: Problems)
 
 	local shake = Vfx.Shake
 	expectBetween(problems, `{p}.Shake.maxAmplitudeDeg`, shake.maxAmplitudeDeg, 0, 1)
-	for _, name in { "hitReceived", "eliminated", "dragonRushNearby" } do
+	for _, name in { "hitReceived", "eliminated", "dragonRushNearby", "elimDealt", "dashStart", "doubleJump", "landHard" } do
 		local preset = (shake :: any)[name]
 		expectBetween(problems, `{p}.Shake.{name}.amplitudeDeg`, preset.amplitudeDeg, 0, shake.maxAmplitudeDeg)
 		expectPositive(problems, `{p}.Shake.{name}.ms`, preset.ms)

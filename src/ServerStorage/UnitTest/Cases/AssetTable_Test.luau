@@ -563,7 +563,9 @@ return function(t: Context)
 	end)
 
 	-- Kill banners (2026-10-16): one sound sheet per kill set, 2D SFX, required, each with an approved group upload and its
-	-- file named in the notes; every img.kill.* slot holds a VFX Studio library texture with its provenance.
+	-- file named in the notes; every img.kill.* slot holds a VFX Studio library texture with its provenance, except the
+	-- v2 emblems (img.kill.emblem.<set> and its .white silhouette, 2026-10-17): the owner's uploads of the game's own
+	-- squishy renders, one pair per kill set.
 	t.test("kill banners: a sound sheet per kill set and the VFX Studio textures", function()
 		local KillStyle = t.requireShared("Art/KillStyle")
 		local sheets: { string } = {}
@@ -582,15 +584,28 @@ return function(t: Context)
 			table.insert(wanted, (KillStyle.get(id) :: any).sound)
 		end
 		expect.deepEqual(sorted(sheets), sorted(wanted))
-		local images = 0
+		local images, emblems = 0, 0
+		local EMBLEM_PREFIX = KILL_IMAGE_PREFIX .. "emblem."
 		for _, slot in AssetTable.all() do
 			if slot.kind == "image" and string.sub(slot.key, 1, #KILL_IMAGE_PREFIX) == KILL_IMAGE_PREFIX then
-				images += 1
 				expectProvenance(slot.key, slot)
-				expect.truthy(string.find(slot.source, "VFX Studio", 1, true) ~= nil)
+				if string.sub(slot.key, 1, #EMBLEM_PREFIX) == EMBLEM_PREFIX then
+					emblems += 1
+					expect.truthy(string.find(slot.source, "VillasmilGaming upload", 1, true) ~= nil)
+					expect.truthy(string.find(slot.source, ".png'", 1, true) ~= nil)
+				else
+					images += 1
+					expect.truthy(string.find(slot.source, "VFX Studio", 1, true) ~= nil)
+				end
 			end
 		end
 		expect.truthy(images >= 20)
+		expect.equal(emblems, 2 * #KillStyle.IDS)
+		for _, id in KillStyle.IDS do
+			local style = KillStyle.get(id) :: any
+			expect.truthy(AssetTable.image(style.emblem) ~= nil)
+			expect.truthy(AssetTable.image(style.emblemWhite) ~= nil)
+		end
 	end)
 
 	t.test("contentIdFor accepts positive integers only", function()

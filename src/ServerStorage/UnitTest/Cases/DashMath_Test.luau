@@ -27,14 +27,15 @@ return function(t: Context)
 		expect.near((a - b).Magnitude, 0, tolerance or 1e-6)
 	end
 
-	t.test("the design's numbers: 14 studs in 0.22 s, 12 frames at 30 fps, push-off f2, plant f7", function()
-		expect.equal(DASH.distanceStuds, 14)
+	-- Movement overhaul (2026-10-17): 18 studs (the design's 14) and a 1.3 s cooldown (2 s before).
+	t.test("the numbers: 18 studs in 0.22 s, 12 frames at 30 fps, push-off f2, plant f7", function()
+		expect.equal(DASH.distanceStuds, 18)
 		expect.equal(DASH.seconds, 0.22)
 		expect.equal(DASH.visualFrames, 12)
 		expect.equal(DASH.visualFps, 30)
 		expect.equal(DASH.pushoffFrame, 2)
 		expect.equal(DASH.plantFrame, 7)
-		expect.equal(DASH.cooldownSeconds, 2.0)
+		expect.equal(DASH.cooldownSeconds, 1.3)
 	end)
 
 	t.test("the ease-out cubic: 0 at the start, 87.5% halfway, all of it at the end, never past it", function()
