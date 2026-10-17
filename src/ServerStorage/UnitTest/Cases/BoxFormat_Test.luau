@@ -745,6 +745,12 @@ return function(t: Context)
 		expect.truthy(narrow.total > 600)
 		local bad = BoxFormat.cardColumns(0 / 0, 0, 1, -5, 100)
 		expect.equal(#bad.widths, 1)
+		-- Owner 2026-10-17: a tap on the open box hides its list (selected 0): the three cards share the row.
+		local closed = BoxFormat.cardColumns(1002, 3, 0, body.gap, body.minFr)
+		expect.near(closed.widths[1], (1002 - 2 * body.gap) / 3, 1e-9)
+		expect.near(closed.widths[1] + closed.widths[2] + closed.widths[3] + 2 * body.gap, 1002, 1e-6)
+		expect.near(closed.total, 1002, 1e-6)
+		expect.equal(closed.scroll, false)
 	end)
 
 	t.test("cardLayout: the plate 178 with room, else smaller; the tiles go first, then the plate", function()

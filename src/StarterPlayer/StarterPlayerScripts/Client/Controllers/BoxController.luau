@@ -220,6 +220,7 @@ local cards: { [string]: BoxCard.BoxCard } = {}
 local rows: { Row } = {}
 local well: Well? = nil
 local selectedBox: string = "snack"
+local listShown = true -- the selected card's "What's inside & chances" list; a tap on that card hides / shows it
 local detailsOpen = false
 local retryAt: number? = nil -- os.clock() of the last Try again
 local unknownAt: number? = nil -- os.clock() when the policy state last became "unknown" (BoxFormat.retryWait)
@@ -432,9 +433,10 @@ local function refresh()
 end
 
 local function selectBox(id: string)
-	if id == selectedBox then
+	if id == selectedBox and listShown then
 		return
 	end
+	listShown = true
 	selectedBox = id
 	if statusRequest == nil or pendingIds[id] ~= statusRequest then
 		setStatus(nil, nil)
@@ -453,6 +455,17 @@ local function cycleBox(direction: number)
 	end
 	local nextIndex = (index - 1 + direction) % #list + 1
 	selectBox(list[nextIndex].id)
+end
+
+-- A tap on a card (owner 2026-10-17): another box shows its list; the open box's list hides, then shows again.
+local function tapBox(id: string)
+	if id == selectedBox and listShown then
+		listShown = false
+		layoutNow()
+		refresh()
+	else
+		selectBox(id)
+	end
 end
 
 -- Reveals ------------------------------------------------------------------------------------------------------------
@@ -1069,7 +1082,7 @@ local function layoutBody()
 			selectedIndex = i
 		end
 	end
-	local columns = BoxFormat.cardColumns(width, #list, selectedIndex, b.gap, b.minFr)
+	local columns = BoxFormat.cardColumns(width, #list, if listShown then selectedIndex else 0, b.gap, b.minFr)
 	local frame = BOXES_UI.card.pad + BOXES_UI.card.border
 	local column = columns.fr - 2 * frame
 	local x = 0
@@ -1080,7 +1093,7 @@ local function layoutBody()
 			local parts = BoxFormat.cardLayout(cardHeight, card:parts())
 			card:layout(columns.widths[i], cardHeight, column, parts.plate, parts.tiles)
 			card.root.Position = UDim2.fromOffset(x, 0)
-			card.side.Visible = box.id == selectedBox
+			card.side.Visible = listShown and box.id == selectedBox
 			if box.id == selectedBox then
 				w.root.Parent = card.side
 			end
@@ -1091,6 +1104,9 @@ local function layoutBody()
 	w.cards.Size = UDim2.fromOffset(width, height)
 	w.cards.CanvasSize = UDim2.fromOffset(if columns.scroll then columns.total else 0, 0)
 	w.cards.ScrollingEnabled = columns.scroll
+	if not listShown then
+		return
+	end
 	local sideWidth = columns.widths[selectedIndex] - 2 * frame - column - BOXES_UI.card.gap
 	local wellPad = BOXES_UI.well.pad + BOXES_UI.well.border
 	wellWidth = math.max(0, sideWidth - 2 * wellPad - Theme.SCROLLBAR_PX)
@@ -1188,6 +1204,9 @@ local function build(parent: Instance): GuiObject
 			parent = row,
 			onOpen = function()
 				pressOpen(boxId)
+			end,
+			onSelect = function()
+				tapBox(boxId)
 			end,
 			onRetry = function()
 				if retryWait() > 0 then
@@ -1559,6 +1578,7 @@ function BoxController.init()
 	local c = Cleanup.new()
 	cleanup = c
 	selectedBox = firstPaidBox()
+	listShown = true
 
 	c:add(UIController.registerScreen(SCREEN, {
 		build = build,

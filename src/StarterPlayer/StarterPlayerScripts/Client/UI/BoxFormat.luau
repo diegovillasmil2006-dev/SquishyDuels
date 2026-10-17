@@ -426,12 +426,17 @@ function BoxFormat.cardColumns(inner: number, count: number, selected: number, g
 	local n = math.max(1, math.floor(if finite(count) then count else 1))
 	local g = if finite(gap) then math.max(0, gap) else 0
 	local room = if finite(inner) then math.max(0, inner) else 0
-	local fr = math.max(if finite(minFr) then minFr else 0, (room - n * g) / (n + 1))
+	-- `selected` 0 (or out of range): every list hidden, the cards share the row (owner 2026-10-17: tap to hide)
+	local open = finite(selected) and selected >= 1 and selected <= n
+	local fr = math.max(
+		if finite(minFr) then minFr else 0,
+		if open then (room - n * g) / (n + 1) else (room - (n - 1) * g) / n
+	)
 	local widths: { number } = {}
 	for i = 1, n do
-		widths[i] = if i == selected then 2 * fr + g else fr
+		widths[i] = if open and i == selected then 2 * fr + g else fr
 	end
-	local total = (n + 1) * fr + n * g
+	local total = if open then (n + 1) * fr + n * g else n * fr + (n - 1) * g
 	return { fr = fr, widths = widths, total = total, scroll = total > room + 0.5 }
 end
 

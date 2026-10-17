@@ -69,6 +69,7 @@ export type Spec = {
 	onOpen: () -> (), -- OPEN pressed (live or off)
 	onRetry: () -> (),
 	scale: (() -> number)?, -- the UI scale the card is drawn at (its UIScale; Theme.textBoundsAt), default 1
+	onSelect: (() -> ())?, -- a tap on the card itself (not its buttons): show / hide its odds list (owner 2026-10-17)
 }
 
 export type BoxCard = {
@@ -223,6 +224,21 @@ function BoxCard.new(spec: Spec): BoxCard
 		Parent = pose,
 	})
 	sticker(face, Palette.StickerCardTop, Palette.StickerCardBottom, CARD.border, CARD.radius, CARD.lip, CARD.inset)
+	local onSelect = spec.onSelect
+	if onSelect then
+		-- the whole card is the tap (under the column: OPEN, INSPECT and the scrolling list keep their own taps)
+		local tap: TextButton = Create("TextButton", {
+			Name = "SelectTap",
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Selectable = false, -- gamepads switch boxes with L1 / R1
+			ZIndex = 1,
+			Parent = pose,
+		})
+		c:add(tap.Activated:Connect(onSelect))
+	end
 	local inner = CARD.border + CARD.pad
 	local column: Frame = Create("Frame", {
 		Name = "Column",
