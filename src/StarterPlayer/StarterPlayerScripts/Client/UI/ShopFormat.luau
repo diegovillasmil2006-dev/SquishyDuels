@@ -50,8 +50,8 @@
 --   charged = false and gets a fresh id next time.
 -- * The Coins tab lists only bundles the server offers (StateDelta.monetization.bundles) that have a productId in
 --   Config and are on sale; it shows only shop.coinsUnavailable while none are left, and also whenever Grip is on with
---   allowBundlesWithCapsules false (G-E / G7b, fail closed on the client too; lobby spec 2026-10-11 §11, was
---   allowBundlesWithTrainer). No passes tab or line, ever, in v1.
+--   allowCoinBundles false (G-E / G7b, fail closed on the client too; lobby spec 2026-10-11 §11, was
+--   allowBundlesWithTrainer, then allowBundlesWithCapsules). No passes tab or line, ever, in v1.
 
 -- Services
 
@@ -465,13 +465,13 @@ end
 
 -- Public: Coins tab ----------------------------------------------------------------------------------------------------
 
--- False while Grip is on and coin bundles must stay off with the capsules (G-E, G7b): the Coins tab then shows only
+-- False while Grip is on and coin bundles must stay off (allowCoinBundles false; G-E, G7b): the Coins tab shows only
 -- shop.coinsUnavailable whatever the server offers. `gripCfg` = Config.Grip.
-function ShopFormat.bundlesAllowed(gripCfg: { enabled: boolean, allowBundlesWithCapsules: boolean }?): boolean
+function ShopFormat.bundlesAllowed(gripCfg: { enabled: boolean, allowCoinBundles: boolean }?): boolean
 	if gripCfg == nil then
 		return true
 	end
-	return not (gripCfg.enabled == true and gripCfg.allowBundlesWithCapsules ~= true)
+	return not (gripCfg.enabled == true and gripCfg.allowCoinBundles ~= true)
 end
 
 -- A bundle's Robux price text: "…" while loading (or unknown), "Unavailable" on failure, else "{price} Robux".
@@ -617,7 +617,7 @@ function ShopFormat.featuredLayout(height: number, nameHeight: number, lineHeigh
 end
 
 -- The featured line (H:309; FD4: the design lists the bundle, the game the squishy): "{Rarity} · x{power} power".
--- AFFECTED 2026-10-15: the power is the capsule multiplier; the line is wired to the new income later.
+-- AFFECTED 2026-10-15: the power is the pen multiplier (Catalog.getPower); the line is wired to the new income later.
 function ShopFormat.featuredLine(rarity: string, power: number): string
 	local names = (Strings :: any).rarity[string.lower(rarity)]
 	local name = if type(names) == "table" and type(names.name) == "string" then names.name else rarity

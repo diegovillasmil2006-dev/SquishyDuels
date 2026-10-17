@@ -130,7 +130,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
-local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
@@ -554,8 +553,8 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 	d.name.Text = entry.name
 	d.rarity:setRarity(entry.rarity)
 	d.equippedPill.Visible = entry.equipped
-	-- Phase 5 (progression spec 2026-10-12 §6): what the squishy multiplies in a capsule ("x16 power").
-	d.power:setText(Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(entry.id) }))
+	-- Phase 5 (progression spec 2026-10-12 §6): what the squishy multiplies in the pen ("x16 power").
+	d.power:setText(Strings.format(Strings.squishy.power, { n = Catalog.getPower(entry.id) }))
 	local throw = InventoryFormat.throwText(entry.id)
 	d.throw.root.Visible = throw ~= ""
 	d.throw:setText(throw)

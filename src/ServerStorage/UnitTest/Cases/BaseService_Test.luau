@@ -17,7 +17,9 @@
 --     PEN SPACE sign at Bases.pen.signs.pen (SD_PenSign = plot, SD_Price = the next spot's price, its hold prompt;
 --     MAX with the prompt off at 12 spots) and the base Model's SD_PenSpots / SD_Pen / SD_PenRate / SD_PenTier for the
 --     clients' walking squishies; refresh(player) redraws (no duplicates); an open plot, a profile that is not ready or
---     a missing plot model draws no pen and nothing fails.
+--     a missing plot model draws no pen and nothing fails;
+--   * pens3 phase 3: no pen draws more parts than WorldLayout.Bases.pen.maxParts (the lobby budget's worst plot),
+--     and the full 12-spot pen draws exactly that many.
 --   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
 --     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
 
@@ -443,6 +445,28 @@ return function(t: Context)
 				end
 			end
 			expect.near(frontLength, step.w - PEN.gateWidth, 1e-3)
+			finish(w)
+		end
+	end)
+
+	-- Pens3 phase 3: LobbyBuilder's part budget counts every plot with this many runtime parts.
+	t.test("no pen draws more parts than Bases.pen.maxParts; the full pen draws exactly that many", function()
+		for spots = 3, 12 do
+			local w = fresh()
+			local model = plotModel(w, 1)
+			local a = newPlayer(w, "A")
+			w.pens[a] = pen(spots)
+			BaseService.playerAdded(a)
+			local parts = 0
+			for _, d in (model:FindFirstChild("Pen") :: Instance):GetDescendants() do
+				if d:IsA("BasePart") then
+					parts += 1
+				end
+			end
+			expect.truthy(parts <= PEN.maxParts)
+			if spots == 12 then
+				expect.equal(parts, PEN.maxParts)
+			end
 			finish(w)
 		end
 	end)

@@ -4,17 +4,15 @@
 -- Pads are indexed by GripTier (WorldLayout gives each squeeze station its tier). Config.validate checks the rules
 -- G1 (levels), G2 (pads), G5 (caps and timers) and G8 (world, with WorldLayout) from Part 3 on; G3 (squeeze ceiling)
 -- and G6 (Strings names) from Part 5; G7 (Robux allowlist)
--- and G7b (coin bundles stay off while Grip is on and allowBundlesWithCapsules is false) from Part 7.
--- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Lv 1-100 and 9 Qa of Grip, five ranks above Lv 50,
--- the Capsule block (tiers, intervals, capsule power, prices, Grip gates, slots; validate checks it) and G3 as a squeeze
--- count. Since Phase 3 a pad no longer changes
--- what an own squeeze pays (the squeeze value and the highest capsule level's power, CapsuleMath). Phase 6 removed
+-- and G7b (coin bundles stay off while Grip is on and allowCoinBundles is false) from Part 7.
+-- Big-number progression (spec 2026-10-12, Phase 1: numbers only): Lv 1-100 and 9 Qa of Grip, five ranks above Lv 50
+-- and G3 as a squeeze count (its Capsule block went in pens3 phase 3). Since Phase 3 a pad no longer changes
+-- what an own squeeze pays (the pen's squeeze value, PenMath). Phase 6 removed
 -- slow training (the Afk block and G9); the pad test's padMargin / heightAbove moved to Config.Squeeze. Then it removed
 -- the trainers (the Trainer block, its next-goal price rule, G4 and G6's wiring half), and the giant pads and their
 -- Jelly gates (Pads rows 2-4, the Gate block, unlockWaypointSeconds, G10): only the Foam Mats row is left.
 -- Texts live in Strings: pad names `grip.pad.<key>`, ranks `grip.rank.<key>`.
--- Math: shared GripMath (levels, ranks, minutes, next goal), CapsuleMath (the
--- Capsule block) and SqueezeLimit (the Double Grip timer).
+-- Math: shared GripMath (levels, ranks, minutes, next goal) and SqueezeLimit (the Double Grip timer).
 
 export type Pad = {
 	key: string, -- Strings grip.pad.<key>
@@ -24,12 +22,6 @@ export type Pad = {
 }
 
 export type Limit = { enabled: boolean, perHour: number, burst: number }
-
-export type CapsuleTier = {
-	key: string, -- the tier's look (spec 2026-10-12 §4)
-	seconds: number, -- seconds between two squeezes of a capsule of this tier
-	gripLevel: number, -- Grip Level the tier needs (0 = none)
-}
 
 local Grip = {
 	enabled = true,
@@ -169,40 +161,6 @@ local Grip = {
 	Pads = {
 		{ key = "foam", level = 1, coinBonus = 0, gripPercent = 100 },
 	} :: { Pad },
-	-- Capsules (spec 2026-10-12 §3-§7, §10; lobby spec 2026-10-11 §5-§6): 10 tiers × 10 levels (Lv1-100), read by
-	-- shared CapsuleMath; CapsuleService pays from them (Phase 3).
-	-- Validator: the tiers fit maxLevel, intervals fall, Grip gates rise (tier 1 needs none), growth > 1, slot prices
-	-- rise from a free slot 1, the biggest price (Lv 99 -> 100) fits Config.Economy.maxCoins, tickSeconds > 0 and
-	-- tapPush in (0, 1].
-	Capsule = {
-		maxLevel = 100,
-		levelsPerTier = 10,
-		-- Lobby spec §6: CapsuleService moves every capsule forward every tickSeconds; each paid own squeeze while the
-		-- player stands in their own base pushes every capsule tapPush of a squeeze forward.
-		tickSeconds = 0.25,
-		tapPush = 0.15,
-		-- Index = tier (spec §4): the look, the seconds between two squeezes and the Grip Level the tier needs.
-		Tiers = {
-			{ key = "foam", seconds = 4.0, gripLevel = 0 },
-			{ key = "jelly", seconds = 3.5, gripLevel = 10 },
-			{ key = "marshmallow", seconds = 3.1, gripLevel = 20 },
-			{ key = "gummy", seconds = 2.7, gripLevel = 30 },
-			{ key = "taffy", seconds = 2.4, gripLevel = 40 },
-			{ key = "caramel", seconds = 2.1, gripLevel = 50 },
-			{ key = "bubblegum", seconds = 1.9, gripLevel = 60 },
-			{ key = "rainbow", seconds = 1.6, gripLevel = 70 },
-			{ key = "crystal", seconds = 1.4, gripLevel = 80 },
-			{ key = "royal", seconds = 1.3, gripLevel = 90 },
-		} :: { CapsuleTier },
-		-- Capsule power CP(L) = round(base × growth^(L - 1) × tierMultiplier^(tier - 1)) (spec §3): 10 at Lv1,
-		-- 920,525,589 at Lv100. A capsule squeeze pays squishy power × CP Coins and CP Grip.
-		power = { base = 10, growth = 1.13, tierMultiplier = 2 },
-		-- Coins from L to L + 1 = base × growth^(L - 1) rounded to `digits` significant digits; a tier's last level (the
-		-- evolve: 10 -> 11 ... 90 -> 91) costs evolveMultiplier × that rounded price (spec §5: 1K, 28K ... 2.9Qa).
-		price = { base = 1000, growth = 1.34, digits = 2, evolveMultiplier = 2 },
-		-- Coins to unlock each slot, in order (spec §7); slot 1 is free.
-		slotPrices = { 0, 2_500, 80_000, 1_500_000 },
-	},
 	-- Double Grip (G-B): a timer like Economy.SqueezeLimit, filled only by time; new accounts start full.
 	Rested = { enabled = true, perHour = 240, burst = 1200, mult = 2 },
 	-- Hold-to-squeeze (client only, §17.3.2): a click squeezes at once; holding repeats at a relaxed rhythm of one full
@@ -228,9 +186,9 @@ local Grip = {
 	-- [P] Rolling-hour anomaly log (log only). The honest top hour at SV 9.9B is about 3.3e14 (8,000 squeezes × Ring 2,
 	-- Double Grip's 1,440 doubled squeezes, 120 highway landings × 60 squeezes × Ring 2); the old 7.96e13 flagged it.
 	gripAlertPerHour = 400_000_000_000_000,
-	-- G-E / G7b (lobby spec 2026-10-11 §11; was allowBundlesWithTrainer): coin bundles stay off while capsules turn Coins
-	-- into Grip power.
-	allowBundlesWithCapsules = false,
+	-- G-E / G7b (lobby spec 2026-10-11 §11; was allowBundlesWithTrainer, then allowBundlesWithCapsules until pens3
+	-- phase 3): coin bundles stay off while Grip is on.
+	allowCoinBundles = false,
 	-- Lobby nameplate "Lv 23 · Strong Grip" (NameplateController, §17.7): shown within maxDistance studs, hidden when
 	-- the viewer's or the target's SD_DuelPhase ~= "". Reading (DESIGN gives no numbers): it sits headOffsetStuds above
 	-- the head and pops to popScale for popSeconds when the level changes (still under ReducedMotion).

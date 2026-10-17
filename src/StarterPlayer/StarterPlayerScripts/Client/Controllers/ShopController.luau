@@ -62,7 +62,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
-local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
@@ -329,7 +328,7 @@ local function refreshDetail(list: { ShopFormat.Entry })
 		d.icon:setCatalogId(entry.id)
 	end
 	d.name.Text = entry.name
-	d.line.Text = ShopFormat.featuredLine(entry.rarity, CapsuleMath.squishyPower(entry.id))
+	d.line.Text = ShopFormat.featuredLine(entry.rarity, Catalog.getPower(entry.id))
 	local block = ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked())
 	if block == nil and buying ~= nil and buying ~= entry.id then
 		block = Strings.common.loading -- another buy is still running (one in flight)
@@ -949,7 +948,7 @@ local function celebrate(id: string, name: string, at: GuiObject?)
 		layer = promptLayer(),
 		catalogId = id,
 		title = name,
-		description = if def then ShopFormat.featuredLine(def.rarity, CapsuleMath.squishyPower(id)) else "",
+		description = if def then ShopFormat.featuredLine(def.rarity, Catalog.getPower(id)) else "",
 		scale = UIController.scale(),
 		trackScale = UIController.trackScale,
 		sound = function(key: string)

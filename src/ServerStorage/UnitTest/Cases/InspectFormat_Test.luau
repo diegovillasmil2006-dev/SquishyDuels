@@ -3,8 +3,8 @@
 -- (ServerStorage.UnitTest). Pure: no instances, no LocalPlayer.
 -- Contract (DESIGN §10.1, §10.4, §10.7-§10.9):
 --   * view(id, ctx) for all 14 squishies: every field comes from Catalog, Config, Boxes and Strings (name, rarity,
---     its capsule power "x{n} power" (Phase 5: CapsuleMath.squishyPower) over "Capsule Coins multiplier", the five stat
---     bars of InventoryFormat.statBars fully resolved, the trail (Commons "No
+--     its power "x{n} power" (Catalog.getPower; squishy.power since pens3 phase 3) over "Pen Coins multiplier", the
+--     five stat bars of InventoryFormat.statBars fully resolved, the trail (Commons "No
 --     trail"), Dragon's ultimate from Config.Abilities, "Elimination: Standard", the Catalog `inspect` view); unowned
 --     shows "Preview · Not owned" and "How to get" = one line per Boxes.containing row (the free Treat Box too) with
 --     its exact percent, then "Shop: {price} Coins"; owned shows no How to get; View in Shop needs an unowned squishy
@@ -31,7 +31,6 @@ return function(t: Context)
 	local InventoryFormat = t.requireClient("UI/InventoryFormat")
 	local BoxFormat = t.requireClient("UI/BoxFormat")
 	local Boxes = t.requireShared("Boxes")
-	local CapsuleMath = t.requireShared("CapsuleMath")
 	local Catalog = t.requireShared("Catalog")
 	local Config = t.requireShared("Config")
 	local Format = t.requireShared("Util/Format")
@@ -95,11 +94,8 @@ return function(t: Context)
 			expect.equal(view.rarityLabel, Strings.resolve(info.labelKey))
 			expect.equal(view.pips, info.pips)
 			expect.equal(view.caption, Strings.inspect.preview)
-			expect.equal(
-				view.coinsText,
-				Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(def.id) })
-			)
-			expect.equal(view.coinsSub, Strings.capsule.powerNote)
+			expect.equal(view.coinsText, Strings.format(Strings.squishy.power, { n = Catalog.getPower(def.id) }))
+			expect.equal(view.coinsSub, Strings.squishy.powerNote)
 			expect.equal(view.statsCaption, Strings.inspect.statsCaption)
 			-- §10.8 #7; kill banners (2026-10-16): each squishy above Uncommon names its own kill set, the rest Standard.
 			local effectName = Strings.resolve("elimination." .. def.eliminationEffectId) or Strings.elimination.standard

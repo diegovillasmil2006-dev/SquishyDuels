@@ -77,14 +77,14 @@
 -- Self-check (§7.7, spec §7): exact tag counts (WorldLayout.TagCounts), unique StationIds, one moving target, every
 -- prompt disabled, inert SD_Ambient decor, the SurfaceGui budget, one plot Model and one SpawnLocation per plot, the
 -- render rules, nothing collidable standing on a path (the 10 path volumes: the paths stay 8 wide), and the part budget
--- per zone (WorldLayout.Budgets) with every plot's capsules at their worst case (Builders/CapsuleBuilder's templates);
--- any problem fails the build. The keep-clear test (oriented boxes, station models' own parts exempt as in Verify) and
--- a part-count report per zone come back as warnings.
+-- per zone (WorldLayout.Budgets) with every plot at its worst (its static parts + a full pen,
+-- WorldLayout.Bases.pen.maxParts: BaseService draws the pen at runtime); any problem fails the build. The keep-clear
+-- test (oriented boxes, station models' own parts exempt as in Verify) and a part-count report per zone come back as
+-- warnings.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 
-local CapsuleBuilder = require(script.Parent.CapsuleBuilder)
 local Generated = require(script.Parent.Parent.Generated)
 local Prims = require(script.Parent.Parent.Kit.Prims)
 local Props = require(script.Parent.Parent.Kit.Props)
@@ -2486,8 +2486,8 @@ local function zoneParts(root: Instance): Zones
 end
 
 -- Exact tag counts, unique station ids, one moving target, disabled prompts, the plots, the render rules, clear
--- paths and the budgets (§7.7, §17.6, spec §4, §7). `worstPlot`: the parts a plot's capsules, squishies and statue add
--- at their worst (CapsuleBuilder.worstPlotParts).
+-- paths and the budgets (§7.7, §17.6, spec §4, §7). `worstPlot`: the parts a full pen adds to a plot at runtime
+-- (WorldLayout.Bases.pen.maxParts).
 local function selfCheck(state: State, worstPlot: number): ({ string }, Zones, number, number)
 	local L = state.L
 	local problems: { string } = {}
@@ -2752,13 +2752,8 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 	if #missing > 0 then
 		return failure(warnings, "Strings has no text for: " .. table.concat(missing, ", "))
 	end
-	-- The plots' worst case (spec §7) from the capsule templates themselves, built in memory and thrown away.
-	local templates = CapsuleBuilder.build({ scratch = ctx.scratch, Shared = ctx.Shared })
-	if not templates.ok or templates.root == nil then
-		return failure(warnings, "capsule templates (the plots' budget): " .. tostring(templates.error))
-	end
-	local worstPlot = CapsuleBuilder.worstPlotParts(templates.root, #deps.WorldLayout.Bases.capsulePads)
-	templates.root:Destroy()
+	-- The plots' worst case (spec §7): a full pen (pens3 phase 3; it replaced the capsule templates).
+	local worstPlot = deps.WorldLayout.Bases.pen.maxParts
 
 	local library = ReplicatedStorage:FindFirstChild(SHAPE_LIBRARY_NAME)
 	local roundedBox = if library then library:FindFirstChild(ROUNDED_BOX_NAME) else nil

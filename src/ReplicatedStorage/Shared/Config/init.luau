@@ -46,12 +46,9 @@
 -- §3, §5, §6): the 3D Lab viewmodel values (arm parts, colours, outline, held toy, pop-in, squeeze, focus, throw extras,
 -- Dragon charge), Inspect's squeeze axis, and Grip.squeezeAlertPerHour in 1..maxSqueezesPerHour.
 -- Big-number progression (spec 2026-10-12, Phase 1): G1 over 100 levels (the totals rise strictly; a level may cost
--- less than the one before), G3 as a squeeze count, G5 covering 4 × the top pen squeeze, the Capsule block (tiers fit
--- maxLevel, intervals fall, Grip gates rise, growth > 1, slot prices rise from a free slot 1, the biggest price fits
--- maxCoins), SquishyPower and a Catalog `power` override (whole numbers >= 1), the refund share (Economy.DuplicateRefund,
--- under 100%, its free-box price from a paid box), and "capsule" among the G7 training words. Phase 3: the capsule
--- tick and tap push (CoinsByRarity and the Catalog `squeezeCoins` override are gone: own squeezes pay the squeeze
--- value).
+-- less than the one before), G3 as a squeeze count, G5 covering 4 × the top pen squeeze, SquishyPower and a Catalog
+-- `power` override (whole numbers >= 1), the refund share (Economy.DuplicateRefund, under 100%, its free-box price from
+-- a paid box), and "capsule" among the G7 training words (pens3 phase 3: the Capsule block's checks are gone).
 -- Squeeze feel (spec phase2-squeeze §3.11): Config.Knead and Config.Wax have a row for every Config.Anim.rig feel, each
 -- share, time and gain in range and every spring <= 3 Hz except jelly's per-vertex knead spring (the design's own 3.59
 -- Hz wobble, a documented exception); the crunch rhythm <= 3 presses a second; the wax switch Config.Wax.enabled (user
@@ -3139,16 +3136,6 @@ local function checkGripPads(problems: Problems)
 	end
 end
 
--- The Coins from capsule level to level + 1, from the Config.Grip.Capsule data (CapsuleMath's formula, spec
--- 2026-10-12 §5: Config cannot require CapsuleMath, which requires Config).
-local function capsulePrice(capsule: any, level: number): number
-	local price = capsule.price
-	local raw = price.base * price.growth ^ (level - 1)
-	local scale = math.max(1, 10 ^ (math.floor(math.log10(raw)) + 1 - price.digits))
-	local rounded = math.round(raw / scale) * scale
-	return if level % capsule.levelsPerTier == 0 then rounded * price.evolveMultiplier else rounded
-end
-
 -- G5 Caps and timers: maxGripPerEvent covers 4 × the top squeeze value (pens3 phase 2: Double Grip × 2, the Squeaky
 -- Ring × 2; each placed spot a top Exclusive of Economy.Pen); Double Grip refills slower
 -- than holding Squeeze spends it; Hold.maxSeconds < idleReminderSeconds < 1200 (idle kick); Hold.queuedSeconds < 120.
@@ -3238,7 +3225,7 @@ local function num(value: number): string
 end
 
 -- G3 Squeeze ceiling (Part 5; a squeeze count since spec 2026-10-12 §12, because Coins per squeeze now grow with the
--- capsules): attempts = 3600 / Squeeze.cycleSeconds (the most squeezes the server accepts in an hour: the paid cap at
+-- pen): attempts = 3600 / Squeeze.cycleSeconds (the most squeezes the server accepts in an hour: the paid cap at
 -- the hold rhythm since Batch 1 #2); paid = L.enabled and min(L.perHour, attempts) or attempts
 -- (L = Economy.SqueezeLimit) must be <= Grip.maxSqueezesPerHour (8,000).
 local function checkGripSqueezeCeiling(problems: Problems)
@@ -3251,69 +3238,6 @@ local function checkGripSqueezeCeiling(problems: Problems)
 		`G3: the server can pay {num(paid)} squeezes an hour, above Config.Grip.maxSqueezesPerHour `
 			.. `({show(Grip.maxSqueezesPerHour)}) ({num(attempts)} attempts/h from Config.Squeeze.cycleSeconds; `
 			.. `Config.Economy.SqueezeLimit.enabled = {tostring(limit.enabled)}, perHour {num(limit.perHour)})`
-	)
-end
-
--- Capsules (spec 2026-10-12 §4-§7): the tiers fill maxLevel; intervals fall and Grip gates rise (tier 1 needs none);
--- power and price grow (> 1); slot prices rise from a free slot 1; every price fits Economy.maxCoins; the Phase 3 tick
--- and tap push are positive (a push at most one squeeze).
-local function checkGripCapsules(problems: Problems)
-	local p = "Config.Grip.Capsule"
-	local capsule = Grip.Capsule
-	local tiers: { any } = capsule.Tiers
-	expectCount(problems, `{p}.levelsPerTier`, capsule.levelsPerTier, 1)
-	expect(
-		problems,
-		#tiers * capsule.levelsPerTier == capsule.maxLevel,
-		`{p}: {#tiers} tiers of {show(capsule.levelsPerTier)} levels must make maxLevel ({show(capsule.maxLevel)})`
-	)
-	expect(problems, tiers[1] ~= nil and tiers[1].gripLevel == 0, `{p}.Tiers[1] must need no Grip level (gripLevel 0)`)
-	for index, tier in tiers do
-		local path = `{p}.Tiers[{index}]`
-		expectId(problems, `{path}.key`, tier.key)
-		expectPositive(problems, `{path}.seconds`, tier.seconds)
-		expectBetween(problems, `{path}.gripLevel`, tier.gripLevel, 0, Grip.maxLevel)
-		local before = tiers[index - 1]
-		if before then
-			expect(problems, tier.seconds < before.seconds, `{p}: intervals must fall tier by tier ({path}.seconds)`)
-			expect(problems, tier.gripLevel > before.gripLevel, `{p}: Grip gates must rise tier by tier ({path})`)
-		end
-	end
-	local power, price = capsule.power, capsule.price
-	expectCount(problems, `{p}.power.base`, power.base, 1)
-	expect(problems, isNumber(power.growth) and power.growth > 1, `{p}.power.growth must be > 1`)
-	expect(
-		problems,
-		isNumber(power.tierMultiplier) and power.tierMultiplier >= 1,
-		`{p}.power.tierMultiplier must be >= 1`
-	)
-	expectCount(problems, `{p}.price.base`, price.base, 1)
-	expect(problems, isNumber(price.growth) and price.growth > 1, `{p}.price.growth must be > 1`)
-	expectCount(problems, `{p}.price.digits`, price.digits, 1)
-	expect(
-		problems,
-		isNumber(price.evolveMultiplier) and price.evolveMultiplier >= 1,
-		`{p}.price.evolveMultiplier must be >= 1`
-	)
-	expectPositive(problems, `{p}.tickSeconds`, capsule.tickSeconds)
-	expectPositive(problems, `{p}.tapPush`, capsule.tapPush)
-	expect(problems, isNumber(capsule.tapPush) and capsule.tapPush <= 1, `{p}.tapPush must be at most 1 squeeze`)
-	local slots: { any } = capsule.slotPrices
-	expect(problems, slots[1] == 0, `{p}.slotPrices[1] must be 0 (the first capsule is free)`)
-	for index, coins in slots do
-		expectCoins(problems, `{p}.slotPrices[{index}]`, coins)
-		if index > 1 and isNumber(coins) and isNumber(slots[index - 1]) then
-			expect(problems, coins > slots[index - 1], `{p}.slotPrices must rise ({p}.slotPrices[{index}])`)
-		end
-	end
-	local biggest = 0
-	for level = 1, capsule.maxLevel - 1 do
-		biggest = math.max(biggest, capsulePrice(capsule, level))
-	end
-	expect(
-		problems,
-		biggest <= Economy.maxCoins,
-		`{p}: a level up costs up to {num(biggest)} Coins, above Config.Economy.maxCoins ({show(Economy.maxCoins)})`
 	)
 end
 
@@ -3366,7 +3290,7 @@ local function checkGripSettings(problems: Problems)
 		isNumber(Grip.welcomeBackMinGain) and Grip.welcomeBackMinGain <= Grip.Rested.burst,
 		`{p}.welcomeBackMinGain must not exceed Rested.burst ({show(Grip.Rested.burst)}), or the toast never shows`
 	)
-	expectBoolean(problems, `{p}.allowBundlesWithCapsules`, Grip.allowBundlesWithCapsules)
+	expectBoolean(problems, `{p}.allowCoinBundles`, Grip.allowCoinBundles)
 	expectPositive(problems, `{p}.maxSqueezesPerHour`, Grip.maxSqueezesPerHour)
 	-- Spec 2026-10-12 §12: the paid-squeeze alert log; above the ceiling it could never fire.
 	expect(
@@ -4374,8 +4298,8 @@ end
 --   G7: every coin bundle has only the fields key, nameKey, productId, coins, onSale; every game pass has a `benefit`
 --       listed in CosmeticBenefits; no bundle or pass key, pass benefit, nameKey or nameKey text contains (lower-cased,
 --       plain find) grip, train, rested, afk, idle, squeeze, pad, cushion, level or capsule.
---   G7b: while Grip is on and allowBundlesWithCapsules is false, no coin bundle has a productId (G-E). Reading: fails
---        closed, so a missing `enabled` counts as on and anything but allowBundlesWithCapsules = true counts as false.
+--   G7b: while Grip is on and allowCoinBundles is false, no coin bundle has a productId (G-E). Reading: fails
+--        closed, so a missing `enabled` counts as on and anything but allowCoinBundles = true counts as false.
 function Config.robuxProblems(monetization: any, grip: any, resolveText: ((key: string) -> string?)?): { string }
 	local problems: Problems = {}
 	local p = "Config.Monetization"
@@ -4477,12 +4401,12 @@ function Config.robuxProblems(monetization: any, grip: any, resolveText: ((key: 
 	end
 
 	local gripOn = type(grip) ~= "table" or grip.enabled ~= false
-	local bundlesAllowed = type(grip) == "table" and grip.allowBundlesWithCapsules == true
+	local bundlesAllowed = type(grip) == "table" and grip.allowCoinBundles == true
 	if gripOn and not bundlesAllowed then
 		for _, path in configured do
 			add(
 				problems,
-				`G7b: {path}.productId is set while Config.Grip.enabled and allowBundlesWithCapsules is false: coin `
+				`G7b: {path}.productId is set while Config.Grip.enabled and allowCoinBundles is false: coin `
 					.. "bundles stay off while Grip is on (G-E, §6.11)"
 			)
 		end
@@ -4563,7 +4487,7 @@ function Config.validate(deps: ValidateDeps?): { string }
 		checkMatch(problems)
 	end)
 
-	-- Grip (§17.9): G1-G3, G5 and the Capsule block on Config alone; G8 with WorldLayout.
+	-- Grip (§17.9): G1-G3 and G5 on Config alone; G8 with WorldLayout.
 	guarded(problems, "Config.Grip G1", function()
 		checkGripLevels(problems)
 	end)
@@ -4575,9 +4499,6 @@ function Config.validate(deps: ValidateDeps?): { string }
 	end)
 	guarded(problems, "Config.Grip G3", function()
 		checkGripSqueezeCeiling(problems)
-	end)
-	guarded(problems, "Config.Grip.Capsule", function()
-		checkGripCapsules(problems)
 	end)
 	guarded(problems, "Config.Grip settings", function()
 		checkGripSettings(problems)

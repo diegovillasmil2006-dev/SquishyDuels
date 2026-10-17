@@ -797,8 +797,6 @@ local PLATE_TEXT: PlateStyle = { color = "LobbyInk" }
 -- at radius 96 to its back at radius 148, centred on the island centre. A plot frame is a station frame (newFrame):
 -- its local +Z faces the hub, so the gate is at local z +26 and the back at -26.
 local BASE_TOKENS = { "Red", "Orange", "Yellow", "Lime", "Teal", "Sky", "Blue", "Navy", "Purple", "Pink" } -- §8 B1-B10
-local CAPSULE_PADS = { Vector3.new(-13, 0, -8), Vector3.new(13, 0, -8), Vector3.new(-13, 0, 8), Vector3.new(13, 0, 8) }
-local CAPSULE_PAD_TOP = 0.3 -- reading: the pads stand 0.3 proud of the plinth
 local baseFrames: { CFrame } = {}
 local baseColors: { BaseColors } = {}
 local baseModels: { string } = {}
@@ -808,12 +806,6 @@ for index = 1, BASE_COUNT do
 	baseColors[index] = { full = "Base" .. BASE_TOKENS[index], light = "Base" .. BASE_TOKENS[index] .. "Light" }
 	baseModels[index] = string.format("Base_%02d", index)
 end
--- Where each slot's capsule (or its lock) stands: on its pad, its front toward the plot's middle path (reading).
-local capsuleSpots: { CFrame } = {}
-for slot, pad in CAPSULE_PADS do
-	local top = pad + Vector3.new(0, CAPSULE_PAD_TOP, 0)
-	capsuleSpots[slot] = CFrame.lookAt(top, top + Vector3.new(-math.sign(pad.X), 0, 0))
-end
 
 local Bases = {
 	center = Vector3.zero,
@@ -821,11 +813,6 @@ local Bases = {
 	backRadius = BASE_BACK_RADIUS,
 	width = 44,
 	depth = BASE_DEPTH,
-	-- The 8 × 8 capsule pads at local x ±13, z -8 / +8: slot 1 back left, 2 back right, 3 front left, 4 front right.
-	capsulePads = CAPSULE_PADS,
-	capsulePadSize = 8,
-	capsulePadTop = CAPSULE_PAD_TOP,
-	capsuleSpots = capsuleSpots,
 	gate = Vector3.new(0, 0, BASE_DEPTH / 2), -- the Donut Arch gate
 	gateWidth = 16, -- spec §4
 	-- The gate's name sign (§4): a board hanging under the arch's top, its front read from the path (reading: 9 × 2).
@@ -834,7 +821,7 @@ local Bases = {
 	fenceInset = 0.6,
 	-- Pens3 phase 1 [P reading]: v6 has no base spawn, so the first view is your own pen: the spawn stands between the
 	-- gate (z +26) and the pen's front (z +19), at local z +22.5, facing -Z, toward the pen. (Before: z -4 facing the
-	-- gate, where the statue blocked the camera; the statue goes with the capsules.)
+	-- gate, where the statue blocked the camera; the statue went with the capsules.)
 	spawn = CFrame.new(0, 0, 22.5),
 	-- Pens3 phase 1: the pen (lobby design v6 kit.json base.pen, K:4084-4189), turned 180° from v6's base frame into
 	-- this plot frame (+Z = the gate side): its front fence at z frontZ with the gateWidth gap centred on x 0, built of
@@ -860,11 +847,10 @@ local Bases = {
 			[12] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
 		} :: { [number]: PenStep },
 		signs = { pen = CFrame.new(10, 0, 20.3) * CFrame.Angles(0, math.pi, 0) },
+		-- Pens3 phase 3: the most parts BaseService draws for one pen (12 spots: 26 fence segments of 2 rails and 3
+		-- pickets, 27 posts with their balls, 5 colliders, the sign's 3 parts); the lobby budget adds it to every plot.
+		maxParts = 192,
 	},
-	-- Reading: the back wall's statue (§4: the squishy in capsule 1) stands on a plinth (top 1.2) in front of the back
-	-- wall, facing the gate; it is this tall (max(height, 0.8 × width), like the hub statue).
-	statue = CFrame.new(0, 1.2, -21.5) * CFrame.Angles(0, math.pi, 0),
-	statueHeight = 8,
 	-- Spec §8: plot i's colour (full: rim, fence caps, gate; light: the plinth floor); an open plot is grey (§4).
 	colors = baseColors,
 	openColors = { full = "BaseOpen", light = "BaseOpenLight" } :: BaseColors,
@@ -1506,12 +1492,13 @@ local WorldLayout = {
 		maxSeconds = 10, -- between any two activities (§7.5; D1)
 	},
 	Budgets = {
-		-- Spec §7 part budget, checked by the lobby generator with every plot's capsules at their worst case (4 open
-		-- capsules of the biggest look, the 4 biggest squishies in them and the biggest statue): the whole island, the
-		-- hub (everything but the bases, the garden, the beach and the sky), one base, and the garden + beach + sky.
+		-- Spec §7 part budget, checked by the lobby generator with every plot at its worst (pens3 phase 3: its static
+		-- parts + a full pen, Bases.pen.maxParts): the whole island, the hub (everything but the bases, the garden, the
+		-- beach and the sky), one base, and the garden + beach + sky. [P] baseParts: 220 held the capsules; a plot's 80
+		-- static parts + the 192 of a full pen need 272.
 		islandParts = 5200,
 		hubParts = 2000,
-		baseParts = 220,
+		baseParts = 280,
 		gardenParts = 1000,
 		lobbySurfaceGuis = 64, -- Verify fails above this (§17.6; D6: the design's plates)
 		lobbyDynamicLights = 8, -- none casting shadows (2 used: the FIX 1 lamps)
@@ -1566,7 +1553,7 @@ local WorldLayout = {
 		-- Reading (§18.5.1 A8 names the tag and attribute; §18.8 lists only the count): here so LobbyBuilder and
 		-- AmbientController share one spelling.
 		Ambient = "SD_Ambient",
-		-- A plot's Model (attribute Plot): BaseService shows its owner's name, colour, capsules and statue on it.
+		-- A plot's Model (attribute Plot): BaseService shows its owner's name, colour and pen on it.
 		Base = "SD_Base",
 		-- A plot's SpawnLocation (attribute Plot): BaseService spawns the plot's owner there.
 		BaseSpawn = "SD_BaseSpawn",

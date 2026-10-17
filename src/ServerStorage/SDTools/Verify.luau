@@ -9,15 +9,13 @@
 --
 -- API
 --   Verify.verify(target, root, deps?) -> { string }   one line per problem; empty means OK. Targets: "shapes",
---     "lobby", "capsules" (build plan Phase 4), "arena" (Candy Court) and the 5 design arenas
+--     "lobby", "arena" (Candy Court) and the 5 design arenas
 --     "arena_sweetshop_stadium", "arena_pinewood_camp", "arena_pillow_fort_park", "arena_bubble_reef_court",
 --     "arena_arcade_toyworks" (phase 4 spec 2026-10-11 §5.4): every arena target meets the same gameplay rules;
 --     ARENA_CONTRACTS holds what differs per target
---     deps.Shared       the injected Shared clone; "lobby" requires Strings and World/WorldLayout from it, "capsules"
---                       Catalog
+--     deps.Shared       the injected Shared clone; "lobby" requires Strings and World/WorldLayout from it
 --     deps.Strings      a Strings-like table (resolve(key) -> string?); takes precedence over deps.Shared
 --     deps.WorldLayout  a WorldLayout-like table; takes precedence over deps.Shared (unit tests pass fakes)
---     deps.Catalog      a Catalog-like table (list() -> { {id} }); takes precedence over deps.Shared
 --   Verify.afterSwap(target, root) -> { string }   checks that need the tree inside Workspace. Main runs it after the
 --     swap and reports the lines as warnings without rolling back. Only "lobby" has them: the keep-clear test through
 --     Workspace:GetPartBoundsInBox, which also sees parts no generator owns (e.g. the team's Workspace.SD_Manual),
@@ -38,10 +36,6 @@
 -- 1..10 holding exactly one SD_BaseSpawn SpawnLocation of its own plot (Neutral, Duration 0) and none of another; every
 -- SD_BaseTint is "full" or "light"; the §7 render rules (nothing but a SpawnLocation is touched, parts under 2 studs
 -- cast no shadow); the island's part budget (5,200).
--- Capsules (lobby bases spec §4, §5.1, §7; big-number progression spec §4): a Folder "Capsules" holding exactly
--- Capsule_<look> for the 10 tier looks (SD_Look = the look, SD_SeatY > 0, a live "Level" TextLabel, at most 16
--- parts), the Lock (a live "Price" TextLabel, at most 12 parts), and Squishy_<id> and Statue_<id> for every Catalog
--- squishy (at most 12 parts each); every part anchored, never touched, no shadow under 2 studs; no scripts.
 --
 -- Lobby keep-clear rule (§7.7 props rules 1, 3, 5): every SD_KeepClear part (like every SD_AudioZone part) is
 -- invisible with CanCollide, CanQuery and CanTouch false, and no colliding part reaches into it, except
@@ -66,7 +60,6 @@ export type Deps = {
 	Shared: Instance?,
 	Strings: any?,
 	WorldLayout: any?,
-	Catalog: any?,
 }
 
 -- Problem collector: lines grouped by a short category so a repeated problem is listed at most MAX_LINES_PER_KEY
@@ -148,7 +141,7 @@ local ATTR_GRIP_TIER = "GripTier"
 
 -- lobby (§7.5-§7.7, §17.6)
 local LOBBY_ROOT_NAME = "SD_Lobby"
-local LOBBY_MAX_PARTS = 5200 -- lobby bases spec §7: the whole island (the plots' capsules come at runtime)
+local LOBBY_MAX_PARTS = 5200 -- lobby bases spec §7: the whole island (the plots' pens come at runtime)
 local LOBBY_MAX_SURFACE_GUIS = 64 -- phase 3 (D6): the design lobby's plates
 local LOBBY_PEDESTALS = 14 -- phase 3 (D4): the design's curved shelf holds every squishy (lobby.js:278)
 local LOBBY_MAX_LIGHTS = 8
@@ -185,16 +178,6 @@ local LOBBY_TAG_COUNTS: { TagCount } = {
 	{ tag = TAG_BASE_SPAWN, count = LOBBY_BASES },
 }
 
--- capsules (lobby bases spec §4, §5.1, §7; big-number progression spec §4)
-local CAPSULES_ROOT_NAME = "Capsules"
--- Progression spec §4: the 10 tier looks, in tier order (Config.Grip.Capsule.Tiers keys).
-local CAPSULE_LOOKS =
-	{ "foam", "jelly", "marshmallow", "gummy", "taffy", "caramel", "bubblegum", "rainbow", "crystal", "royal" }
-local CAPSULE_MAX_PARTS = 16 -- spec §5.1: "about 16 parts"
-local LOCK_MAX_PARTS = 12
-local SQUISHY_MAX_PARTS = 12 -- spec §7 budget: a low-detail squishy or statue
-local ATTR_LOOK = "SD_Look"
-local ATTR_SEAT = "SD_SeatY"
 -- Tags whose instances are station bodies (exempt from the keep-clear test, see the header).
 local STATION_TAGS = {
 	TAG_SPAWN,
@@ -1176,14 +1159,14 @@ local function checkBases(report: Report, all: { Instance })
 end
 
 -- Lobby bases spec §7 render rules: nothing but a SpawnLocation is touched; a part under SMALL_PART studs casts no
--- shadow. `spawns` false: no part is touched at all (the capsule templates).
-local function checkRenderRules(report: Report, all: { Instance }, spawns: boolean)
+-- shadow.
+local function checkRenderRules(report: Report, all: { Instance })
 	for _, instance in all do
 		if not instance:IsA("BasePart") then
 			continue
 		end
 		local part = instance :: BasePart
-		if part.CanTouch and not (spawns and part:IsA("SpawnLocation")) then
+		if part.CanTouch and not part:IsA("SpawnLocation") then
 			note(report, "CanTouch", string.format("%s is touched (spec §7: CanTouch off)", describe(part)))
 		end
 		if part.CastShadow and math.max(part.Size.X, part.Size.Y, part.Size.Z) < SMALL_PART then
@@ -1264,106 +1247,7 @@ local function verifyLobby(report: Report, root: Instance, deps: Deps?)
 	checkPrompts(report, all, root)
 	checkLobbyBudgets(report, all)
 	checkBases(report, all)
-	checkRenderRules(report, all, true)
-end
-
--- Private: capsules (lobby bases spec §4, §5.1, §7; big-number progression spec §4)
-
--- True when `model` holds a TextLabel `name` without SD_TextKey (a live label: BaseService writes it).
-local function hasLiveLabel(model: Instance, name: string): boolean
-	for _, descendant in model:GetDescendants() do
-		if
-			descendant:IsA("TextLabel")
-			and descendant.Name == name
-			and descendant:GetAttribute(ATTR_TEXT_KEY) == nil
-		then
-			return true
-		end
-	end
-	return false
-end
-
-local function verifyCapsules(report: Report, root: Instance, deps: Deps?)
-	if not root:IsA("Folder") then
-		note(report, "root", string.format("root is a %s, expected a Folder", root.ClassName))
-	end
-	if root.Name ~= CAPSULES_ROOT_NAME then
-		note(report, "root", string.format("root is named %q, expected %q", root.Name, CAPSULES_ROOT_NAME))
-	end
-	local catalog = if deps then deps.Catalog else nil
-	if catalog == nil then
-		local loaded, err = loadShared(if deps then deps.Shared else nil, { "Catalog" })
-		catalog = loaded
-		if err then
-			note(report, "Catalog", err .. ": the squishy and statue templates were not checked")
-		end
-	end
-	type Spec = { maxParts: number, label: string?, look: string? }
-	local expected: { [string]: Spec } = {}
-	for _, look in CAPSULE_LOOKS do
-		expected["Capsule_" .. look] = { maxParts = CAPSULE_MAX_PARTS, label = "Level", look = look }
-	end
-	expected.Lock = { maxParts = LOCK_MAX_PARTS, label = "Price" }
-	local squishiesKnown = type(catalog) == "table" and type(catalog.list) == "function"
-	if squishiesKnown then
-		for _, def in catalog.list() do
-			expected["Squishy_" .. def.id] = { maxParts = SQUISHY_MAX_PARTS }
-			expected["Statue_" .. def.id] = { maxParts = SQUISHY_MAX_PARTS }
-		end
-	end
-	for _, child in root:GetChildren() do
-		local squishyLike = string.sub(child.Name, 1, 8) == "Squishy_" or string.sub(child.Name, 1, 7) == "Statue_"
-		if expected[child.Name] == nil and (squishiesKnown or not squishyLike) then
-			note(report, "templates", string.format("unexpected template %s", child.Name))
-		end
-	end
-	for name, spec in expected do
-		local model = root:FindFirstChild(name)
-		if model == nil then
-			note(report, "templates", string.format("%s is missing", name))
-			continue
-		end
-		if not model:IsA("Model") then
-			note(report, "templates", string.format("%s is a %s, expected a Model", name, model.ClassName))
-			continue
-		end
-		local parts = #partsIn(model)
-		if parts == 0 or parts > spec.maxParts then
-			note(report, "budget", string.format("%s has %d parts, at most %d", name, parts, spec.maxParts))
-		end
-		local label = spec.label
-		if label ~= nil and not hasLiveLabel(model, label) then
-			note(report, "labels", string.format("%s has no live %s label", name, label))
-		end
-		local look = spec.look
-		if look ~= nil then
-			local actual = model:GetAttribute(ATTR_LOOK)
-			if actual ~= look then
-				note(
-					report,
-					ATTR_LOOK,
-					string.format("%s has %s %s, expected %s", name, ATTR_LOOK, tostring(actual), look)
-				)
-			end
-			local seat = model:GetAttribute(ATTR_SEAT)
-			if type(seat) ~= "number" or seat <= 0 then
-				note(
-					report,
-					ATTR_SEAT,
-					string.format("%s has %s %s, expected a height", name, ATTR_SEAT, tostring(seat))
-				)
-			end
-		end
-	end
-	local all = everything(root)
-	for _, instance in all do
-		if instance:IsA("BasePart") and not (instance :: BasePart).Anchored then
-			note(report, "Anchored", string.format("%s is not anchored", describe(instance)))
-		elseif instance:IsA("LuaSourceContainer") then
-			note(report, "scripts", string.format("generated trees hold no scripts: %s", describe(instance)))
-		end
-	end
-	checkRenderRules(report, all, false)
+	checkRenderRules(report, all)
 end
 
 -- Private: arena (§5.3, §7.8)
@@ -1933,7 +1817,6 @@ end
 local CHECKS: { [string]: (report: Report, root: Instance, deps: Deps?) -> () } = {
 	shapes = verifyShapes,
 	lobby = verifyLobby,
-	capsules = verifyCapsules,
 }
 for target, contract in ARENA_CONTRACTS do
 	CHECKS[target] = arenaVerifier(contract)

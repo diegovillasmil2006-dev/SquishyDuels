@@ -5,7 +5,7 @@
 -- .. Squish Master (Lv 50) .. Infinite (Lv 100, spec 2026-10-12 §10); pad, bestTier and canUseTier are gone with the
 -- giant pads (build plan Phase 6); afkGrip and afkMinutes are gone with slow training (Phase 6), and the trainer helpers
 -- (trainer, squeezeGrip, upgradeReady, upgradeDecision, topShopSquishyId) with the trainers (Phase 6; own squeezes pay
--- CapsuleMath's squeeze value and Grip since Phase 3); restedMinutes 9 when full (holding repeats every
+-- the squeeze value and Grip, PenMath's since pens3 phase 1); restedMinutes 9 when full (holding repeats every
 -- Hold.repeatSeconds, 0.45 s, the hold rhythm; it was 30 with the old 1.5 s cycle); nextGoal: with a pen and Coins,
 -- the next pen spot first (pens3 phase 1: its price with progress, READY once the Coins cover it; none at 12 spots),
 -- then the next rank, then max (never a pad since Phase 6, never a capsule since pens3 phase 1).

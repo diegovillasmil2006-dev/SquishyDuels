@@ -267,10 +267,10 @@ return function(t: Context)
 		expect.equal(ShopFormat.coinsView(nil, bundles, {}, true).unavailable, true)
 	end)
 
-	t.test("bundles stay off while Grip is on with allowBundlesWithCapsules false (G-E)", function()
-		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowBundlesWithCapsules = false }), false)
-		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowBundlesWithCapsules = true }), true)
-		expect.equal(ShopFormat.bundlesAllowed({ enabled = false, allowBundlesWithCapsules = false }), true)
+	t.test("bundles stay off while Grip is on with allowCoinBundles false (G-E)", function()
+		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowCoinBundles = false }), false)
+		expect.equal(ShopFormat.bundlesAllowed({ enabled = true, allowCoinBundles = true }), true)
+		expect.equal(ShopFormat.bundlesAllowed({ enabled = false, allowCoinBundles = false }), true)
 		expect.equal(ShopFormat.bundlesAllowed(Config.Grip), false) -- the shipped config
 		local fixture =
 			{ { key = "coins_test", nameKey = "bundle.handful", productId = 1, coins = 1000, onSale = true } }

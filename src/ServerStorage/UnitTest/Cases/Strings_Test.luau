@@ -14,15 +14,15 @@
 -- squeeze hints name a click or a tap, grip.holdPaused names no button (it left DESIGN's words), the Inspect step opens
 -- Squishies, and the Squeeze button's key texts are gone. Final polish (2026-10-11): the duel key hints also name the
 -- dash and the squeeze (they left DESIGN's "Click Throw · Q Ultimate"), and the "In the lane!" warning exists.
--- Phase 3 (lobby bases spec 2026-10-11 §6): every code the capsule remotes send has a text under reason.capsule.*.
 -- Phase 5: pads and trainers no longer boost a squeeze, so no pad, trainer or onboarding text claims one (Grip opens
 -- the capsule tiers); the pad label and "Coins per squeeze" are gone; the capsule card texts and a name for every
 -- capsule tier exist. Phase 6: slow training is gone: its popup, help and bank texts are gone and no text names it
 -- (pads change nothing a player earns now; the idle card says capsules stop paying); so are the trainers: every
 -- trainer text, goal and reason is gone and no text names a trainer; and so are the giant pads and Jelly gates: their
 -- names (only grip.pad.foam is left), pad cards, signs, unlock toast, pad goal and the starter_jelly task texts.
--- Batch 1: the tutorial teaches capsules and points at the Shop (no equip or firstBoxShop text); the capsule goal and
--- UP! texts exist; grip.panelIntro / limitNote say squeezing earns (Batch 1 #2).
+-- Batch 1: the tutorial points at the Shop (no equip or firstBoxShop text); grip.panelIntro / limitNote say squeezing
+-- earns (Batch 1 #2). Pens3 phase 3: every capsule text is gone (the reason codes, the tutorial step, the card, the
+-- goals, the UP! marker, the base plates); squishy.power / powerNote keep capsule.power's texts.
 -- (tools/check.ps1 (c) is meant to cover the codes the server actually emits; until it exists, this case pins the
 -- §2.10 list.)
 -- Review quick win (2026-10-14): a missed day pauses the daily streak: daily.welcomeBack names the waiting day and no
@@ -598,7 +598,7 @@ return function(t: Context)
 			"+1 Coins · +10 Grip per squeeze"
 		)
 		-- No text sends the player to a mat any more.
-		for _, key in { "onboarding.squeeze", "inspect.preview", "capsule.powerNote", "grip.limitNote" } do
+		for _, key in { "onboarding.squeeze", "inspect.preview", "squishy.powerNote", "grip.limitNote" } do
 			local text = Strings.resolve(key)
 			expect.truthy(type(text) == "string" and string.find(string.lower(text), "mat", 1, true) == nil)
 		end
@@ -727,43 +727,12 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("the capsule card texts exist with their placeholders, and every tier has a name", function()
-		local Config = t.requireShared("Config")
-		for _, tier in Config.Grip.Capsule.Tiers do
-			local name = Strings.resolve("capsule.tier." .. tier.key)
-			expect.truthy(type(name) == "string" and name ~= "")
-		end
-		expect.equal(Strings.format(Strings.capsule.title, { slot = 2 }), "Capsule 2")
-		expect.equal(Strings.format(Strings.capsule.tierLevel, { tier = "Jelly", level = 14 }), "Jelly · Lv 14")
-		expect.equal(Strings.format(Strings.capsule.visitor, { name = "Mia" }), "Only Mia can upgrade this.")
-		expect.equal(Strings.format(Strings.capsule.needGrip, { level = 20 }), "Needs Grip Lv 20")
-		expect.equal(Strings.format(Strings.capsule.upgrade, { coins = "1,000" }), "Upgrade · 1,000")
-		expect.equal(Strings.format(Strings.capsule.evolve, { coins = "28,000" }), "Evolve · 28,000")
-		expect.equal(Strings.format(Strings.capsule.power, { n = 16 }), "x16 power")
-		expect.equal(Strings.format(Strings.base.unlockPrice, { coins = "2,500" }), "Unlock · 2,500")
-		for _, key in
-			{
-				"capsule.prompt",
-				"capsule.swap",
-				"capsule.empty",
-				"capsule.speed",
-				"capsule.speedNext",
-				"capsule.coinsHour",
-				"capsule.coinsHourNext",
-				"capsule.gripHour",
-				"capsule.gripHourNext",
-				"capsule.evolveTo",
-				"capsule.unlockFirst",
-				"capsule.locked",
-				"capsule.max",
-				"capsule.pick",
-				"capsule.inCapsule",
-				"capsule.back",
-				"capsule.powerNote",
-			}
-		do
-			local text = Strings.resolve(key)
-			expect.truthy(type(text) == "string" and text ~= "")
+	t.test("pens3 phase 3: squishy.power keeps capsule.power's text; the capsule card texts are gone", function()
+		expect.equal(Strings.format(Strings.squishy.power, { n = 16 }), "x16 power")
+		expect.equal(Strings.squishy.powerNote, "Pen Coins multiplier")
+		local gone = { "capsule.title", "capsule.power", "capsule.powerNote", "base.capsuleLevel", "base.unlockPrice" }
+		for _, key in gone do
+			expect.equal(Strings.resolve(key), nil)
 		end
 	end)
 
@@ -813,42 +782,26 @@ return function(t: Context)
 		end
 	end)
 
-	-- Phase 3: the codes CapsuleMath's checks and CapsuleService send (the others are shared: net.invalid,
-	-- data.notReady, economy.notEnoughCoins, inventory.notOwned, inventory.lockedInDuel).
-	t.test("every capsule refusal code has a text under reason.capsule", function()
-		local codes = { "notNext", "locked", "gripLocked", "maxLevel", "priceChanged", "paused" }
-		for _, name in codes do
-			local text = Strings.resolve("reason.capsule." .. name)
-			expect.truthy(type(text) == "string" and text ~= "")
-			expect.equal(Strings.reasonText("capsule." .. name), text)
-		end
-	end)
-
 	t.test(
-		"Batch 1: the tutorial teaches capsules and points at the Shop; the capsule goal and UP! texts exist",
+		"Batch 1: the tutorial points at the Shop; pens3 phase 3: no capsule step, goal, UP! or reason text",
 		function()
 			expect.equal(Strings.resolve("onboarding.equip"), nil)
 			expect.equal(Strings.resolve("onboarding.firstBoxShop"), nil)
 			expect.equal(Strings.onboarding.firstBox, "Get your first new squishy in the Shop. {coins}/{goal} Coins")
-			expect.equal(
-				Strings.onboarding.capsule,
-				"Capsules in your base earn Coins! When Capsule 1 shows UP!, open it to Upgrade."
-			)
-			expect.equal(Strings.format(Strings.grip.goalCapsuleReady, { slot = 2 }), "Upgrade Capsule 2 · READY!")
-			expect.equal(Strings.format(Strings.grip.goalUnlockReady, { slot = 3 }), "Unlock Capsule 3 · READY!")
-			expect.equal(
-				Strings.format(Strings.grip.goalCapsule, { slot = 1, level = 2, have = "120", need = "1,000" }),
-				"Next: upgrade Capsule 1 to Lv 2 · 120/1,000 Coins"
-			)
-			expect.equal(
-				Strings.format(Strings.grip.goalUnlock, { slot = 2, have = "100", need = "2,500" }),
-				"Next: unlock Capsule 2 · 100/2,500 Coins"
-			)
-			expect.equal(
-				Strings.format(Strings.grip.hudGoalCapsule, { slot = 1, have = "120", need = "1,000" }),
-				"Capsule 1: 120/1,000 Coins"
-			)
-			expect.equal(Strings.capsule.up, "UP!")
+			for _, key in
+				{
+					"onboarding.capsule",
+					"grip.goalCapsuleReady",
+					"grip.goalUnlockReady",
+					"grip.goalCapsule",
+					"grip.goalUnlock",
+					"grip.hudGoalCapsule",
+					"capsule.up",
+					"reason.capsule.paused",
+				}
+			do
+				expect.equal(Strings.resolve(key), nil)
+			end
 		end
 	)
 

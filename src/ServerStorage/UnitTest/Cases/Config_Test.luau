@@ -22,7 +22,7 @@
 -- Part 7 (§17.12 Part 7 L1): G7 and G7b
 -- with the negatives of §17.12 word for word through Config.robuxProblems (pass benefit "grip", a bundle with an extra
 -- rested field, pass keys grip_boost / afk_boost / slow_training_boost / royal_pad_pass, nameKey texts "Golden
--- Gripper" and "Royal Cushion VIP", a productId while allowBundlesWithCapsules is false; spec 2026-10-12 adds a
+-- Gripper" and "Royal Cushion VIP", a productId while allowCoinBundles is false; spec 2026-10-12 adds a
 -- capsule_boost pass key); QuestDefs checks through
 -- Config.validate({ QuestDefs = fake }); Onboarding.skipStepId; UI.Boxes / UI.Shop; the Part 7 values.
 -- Part 6 (Inspect readings): the preview dot, drag speed filter and Collection display values, and their negatives
@@ -45,8 +45,8 @@
 -- since Phase 3: CoinsByRarity is gone), no hourly limit, G3's 8,000 squeezes an hour and the 8,000-squeeze alert
 -- (spec 2026-10-12 §12; Batch 1 #2).
 -- Big-number progression (spec 2026-10-12, Phase 1): the 9 Qa caps, 100 levels and their totals, the ranks, squishy
--- power, duel rewards, refunds; negatives for G1's rising totals, the Capsule block, SquishyPower, a Catalog power
--- override and the refund share. Phase 3: the capsule tick (0.25 s) and tap push (0.15), with their negatives.
+-- power, duel rewards, refunds; negatives for G1's rising totals, SquishyPower, a Catalog power override and the
+-- refund share. Pens3 phase 3: no Config.Grip.Capsule block (its negatives went with it); allowCoinBundles false.
 -- Pens3 phase 2: maxGripPerEvent 500B (G5: one Grip below 4 × the top squeeze value fails), gripAlertPerHour 400T, no
 -- "capsule" Coin reason and 9 badges.
 -- Phase 6 (build plan: slow training removed): no Config.Grip.Afk (G9 went with it) and no slow-training popup values
@@ -911,7 +911,9 @@ return function(t: Context)
 		expect.deepEqual(economy.DuplicateRefund, { percent = 25, freeBoxPriceOf = "snack" })
 		expect.equal(table.find(economy.CoinReasons, "capsule"), nil) -- pens3 phase 2: gone with CapsuleService
 		expect.equal(grip.maxGripPerEvent, 500_000_000_000) -- pens3 phase 2 (ECONOMY_V3)
-		expect.equal(grip.allowBundlesWithCapsules, false)
+		expect.equal(grip.allowCoinBundles, false) -- pens3 phase 3: was allowBundlesWithCapsules
+		expect.equal(grip.allowBundlesWithCapsules, nil)
+		expect.equal(grip.Capsule, nil) -- pens3 phase 3: the capsules are gone
 	end)
 
 	-- Pens3 phase 2: G5 covers 4 × the top squeeze value (Double Grip × 2, the Squeaky Ring × 2): 21 placed Rainbow
@@ -927,63 +929,6 @@ return function(t: Context)
 			grip.maxGripPerEvent = event
 		end)
 		expect.falsy(containsText(exact, "maxGripPerEvent"))
-	end)
-
-	t.test("validate reports capsule tiers that do not fill maxLevel, slower tiers and falling Grip gates", function()
-		local short = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			table.remove(grip.Capsule.Tiers)
-		end)
-		expect.truthy(containsAll(short, { "Config.Grip.Capsule", "must make maxLevel" }))
-		local slower = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.Tiers[2].seconds = 4.5
-		end)
-		expect.truthy(containsAll(slower, { "intervals must fall", "Tiers[2].seconds" }))
-		local gate = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.Tiers[3].gripLevel = 10
-		end)
-		expect.truthy(containsAll(gate, { "Grip gates must rise", "Tiers[3]" }))
-		local first = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.Tiers[1].gripLevel = 1
-		end)
-		expect.truthy(containsText(first, "Config.Grip.Capsule.Tiers[1] must need no Grip level"))
-	end)
-
-	t.test("validate reports capsule growth of 1, unordered or paid-first slots and a price above maxCoins", function()
-		local flat = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.power.growth = 1
-		end)
-		expect.truthy(containsText(flat, "Config.Grip.Capsule.power.growth must be > 1"))
-		local slots = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.slotPrices[3] = 2_500
-		end)
-		expect.truthy(containsAll(slots, { "slotPrices must rise", "slotPrices[3]" }))
-		local paidFirst = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.slotPrices[1] = 10
-		end)
-		expect.truthy(containsText(paidFirst, "Config.Grip.Capsule.slotPrices[1] must be 0"))
-		-- 1,000 × 1.5^98 is far above 9 Qa.
-		local steep = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.price.growth = 1.5
-		end)
-		expect.truthy(containsAll(steep, { "Config.Grip.Capsule", "above Config.Economy.maxCoins" }))
-	end)
-
-	-- Phase 3 (lobby spec 2026-10-11 §6): the capsule tick and the home tap push.
-	t.test("capsules tick every 0.25 s and a home tap pushes 0.15 of a squeeze; validate reports bad values", function()
-		expect.equal(Config.Grip.Capsule.tickSeconds, 0.25)
-		expect.equal(Config.Grip.Capsule.tapPush, 0.15)
-		local stopped = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.tickSeconds = 0
-		end)
-		expect.truthy(containsText(stopped, "Config.Grip.Capsule.tickSeconds must be a number > 0"))
-		local none = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.tapPush = 0
-		end)
-		expect.truthy(containsText(none, "Config.Grip.Capsule.tapPush must be a number > 0"))
-		local big = validateBrokenCopy(t.Shared, "Grip", function(grip)
-			grip.Capsule.tapPush = 1.5
-		end)
-		expect.truthy(containsText(big, "Config.Grip.Capsule.tapPush must be at most 1 squeeze"))
 	end)
 
 	t.test("validate reports a missing or zero squishy power and a Catalog power override of 0", function()
@@ -1141,7 +1086,7 @@ return function(t: Context)
 		expect.equal(Config.UI.Boxes.stillCheckingSeconds, 10)
 		expect.equal(Config.UI.Boxes.revealHoldMaxSeconds, 30)
 		expect.equal(Config.UI.Shop.cardWidth, 146) -- UI FINAL R6: 4 columns in the 652 px column
-		expect.equal(Config.Grip.allowBundlesWithCapsules, false)
+		expect.equal(Config.Grip.allowCoinBundles, false)
 	end)
 
 	t.test("every Part 7 client -> server remote has a rate entry", function()
@@ -1256,7 +1201,7 @@ return function(t: Context)
 	local function noText(_key: string): string?
 		return nil
 	end
-	local gripOn = { enabled = true, allowBundlesWithCapsules = false }
+	local gripOn = { enabled = true, allowCoinBundles = false }
 
 	t.test('G7 reports a pass benefit "grip" (not a cosmetic benefit, and it names the training)', function()
 		local pass = { key = "vip", nameKey = "bundle.handful", benefit = "grip" }
@@ -1312,14 +1257,14 @@ return function(t: Context)
 		expect.truthy(containsAll(passProblems, { "G7:", "GamePasses[1].nameKey", "Royal Cushion VIP", '"cushion"' }))
 	end)
 
-	t.test("G7b reports a productId set while allowBundlesWithCapsules is false (and only then)", function()
+	t.test("G7b reports a productId set while allowCoinBundles is false (and only then)", function()
 		-- A test value only: no product id is ever configured (§6.11, M7).
 		local configured = bundle({ productId = 1 })
 		local problems = Config.robuxProblems(monetization({ configured }), gripOn, noText)
 		expect.truthy(containsAll(problems, { "G7b:", "CoinBundles[1].productId" }))
-		local allowed = { enabled = true, allowBundlesWithCapsules = true }
+		local allowed = { enabled = true, allowCoinBundles = true }
 		expect.equal(#ruleLines(Config.robuxProblems(monetization({ configured }), allowed, noText), "G7b"), 0)
-		local gripOff = { enabled = false, allowBundlesWithCapsules = false }
+		local gripOff = { enabled = false, allowCoinBundles = false }
 		expect.equal(#ruleLines(Config.robuxProblems(monetization({ configured }), gripOff, noText), "G7b"), 0)
 		-- Fail closed: a Grip table without the flag counts as "bundles not allowed".
 		expect.truthy(#ruleLines(Config.robuxProblems(monetization({ configured }), {}, noText), "G7b") > 0)

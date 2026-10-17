@@ -273,28 +273,6 @@ local Palette = {
 	BasePinkLight = Color3.fromHex("#FFBFDA"),
 	BaseOpen = Color3.fromHex("#A7ADB5"), -- reading: an open plot's rim and caps
 	BaseOpenLight = Color3.fromHex("#D9DDE2"), -- reading: an open plot's floor
-	-- The 10 capsule looks (progression spec 2026-10-12 §4; SDTools CapsuleBuilder's look table also uses lobby kit
-	-- tokens): Foam cream, Jelly glossy red, Marshmallow white with toasted trim, Gummy see-through green, Taffy pink and
-	-- white stripes, Caramel amber, Bubblegum bright pink, Rainbow stripes, Crystal icy see-through, Royal purple and
-	-- gold. Readings: the hexes (the spec names the looks only).
-	CapsuleFoam = Color3.fromHex("#FFF1DC"),
-	CapsuleFoamTrim = Color3.fromHex("#F7B8C8"),
-	CapsuleFoamGlass = Color3.fromHex("#FFF8EC"),
-	CapsuleGummy = Color3.fromHex("#3FBF4F"),
-	CapsuleGummyLight = Color3.fromHex("#A6F0A0"),
-	CapsuleGummyGlass = Color3.fromHex("#6EE07A"),
-	CapsuleTaffy = Color3.fromHex("#FF9EC4"),
-	CapsuleTaffyGlass = Color3.fromHex("#FFD6E6"),
-	CapsuleCaramel = Color3.fromHex("#D98A2B"),
-	CapsuleCaramelDark = Color3.fromHex("#8E5A1F"),
-	CapsuleCaramelGlass = Color3.fromHex("#F2B35E"),
-	CapsuleBubblegum = Color3.fromHex("#FF5FB4"),
-	CapsuleBubblegumLight = Color3.fromHex("#FFC2E2"),
-	CapsuleBubblegumGlass = Color3.fromHex("#FF8ACB"),
-	CapsuleRainbowGlass = Color3.fromHex("#E8F7FF"),
-	CapsuleCrystal = Color3.fromHex("#BFE9FF"),
-	CapsuleCrystalGlass = Color3.fromHex("#D8F4FF"),
-	CapsuleRoyalGlass = Color3.fromHex("#CDB8F0"),
 
 	-- The knead screen in Inspect (spec phase2-squeeze §1.16-§1.20; user decision 2026-10-11: the design's exact hex,
 	-- read by UI/Components/WaxMeter, UI/KneadOverlay and Anim/FlakePool). The paper and ink of the design's HUD, its coat

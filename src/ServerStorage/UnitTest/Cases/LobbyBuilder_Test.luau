@@ -16,7 +16,7 @@
 --     the live Owner label), every tinted part marked SD_BaseTint, no capsule pads or statue plinth (pens3 phase 1:
 --     BaseService draws the pen at runtime), one SpawnLocation each (SD_BaseSpawn, flush with the plot floor, at
 --     WorldLayout.Bases.spawn: facing the pen), the gate's 16-stud gap open;
---   * the part budget per zone (§7) with every plot at its worst (CapsuleBuilder's templates);
+--   * the part budget per zone (§7) with every plot at its worst (pens3 phase 3: + a full pen, Bases.pen.maxParts);
 --   * no giant pad, Jelly gate, pod sign, lock decor, Grip gym or Royal pod any more (build plan Phase 6);
 --   * Neon only on the state rings lit in the design's default states (D7) and the design's lit refill fills
 --     (lobby.js:347-350): 9 in all;
@@ -813,7 +813,7 @@ return function(t: Context)
 				expect.equal((owner :: TextLabel).Text, Strings.resolve("base.openPlot"))
 				expect.equal((owner :: Instance):GetAttribute("SD_TextKey"), nil)
 				-- Pens3 phase 1: no capsule pads or statue plinth (BaseService draws the pen at runtime).
-				for slot = 1, #WorldLayout.Bases.capsulePads do
+				for slot = 1, 4 do
 					expect.equal(model:FindFirstChild("Pad" .. slot), nil)
 				end
 				expect.equal(model:FindFirstChild("StatuePlinth"), nil)
@@ -961,23 +961,16 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the part budget per zone (§7): hub 2,000, each plot at its worst 220, garden 1,000, all 5,200", function()
+	t.test("the part budget per zone (§7): hub 2,000, each plot at its worst 280, garden 1,000, all 5,200", function()
 		local WorldLayout = t.requireShared("World/WorldLayout")
 		local budgets = WorldLayout.Budgets
 		expect.equal(budgets.hubParts, 2000)
-		expect.equal(budgets.baseParts, 220)
+		expect.equal(budgets.baseParts, 280) -- pens3 phase 3 [P]: was 220 with the capsules
 		expect.equal(budgets.gardenParts, 1000)
 		expect.equal(budgets.islandParts, 5200)
-		-- A plot at its worst: 4 open capsules of the biggest look holding the 4 biggest squishies, and the statue.
-		local builders = toolsClone:FindFirstChild("Builders") :: Instance
-		local CapsuleBuilder = dynamicRequire(builders:FindFirstChild("CapsuleBuilder") :: ModuleScript)
-		local templateScratch = Cleanup.new()
-		local templates = CapsuleBuilder.build({ scratch = templateScratch, Shared = shared })
-		expect.truthy(templates.ok)
-		local worst = CapsuleBuilder.worstPlotParts(templates.root, 4)
-		templates.root:Destroy()
-		templateScratch:clean()
-		expect.truthy(worst > 4 * 10) -- 4 capsules at least
+		-- A plot at its worst: a full pen (pens3 phase 3; BaseService_Test pins its count).
+		local worst = WorldLayout.Bases.pen.maxParts
+		expect.equal(worst, 192)
 		local function count(instance: Instance): number
 			local n = 0
 			for _, d in instance:GetDescendants() do

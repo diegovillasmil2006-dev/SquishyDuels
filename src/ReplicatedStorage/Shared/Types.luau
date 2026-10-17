@@ -126,11 +126,6 @@ export type DuelLogEntry = { matchId: string, opp: number, result: DuelLogResult
 -- trimmed by time, so the rolling hour is always whole; at most samePairFullRewards times per opponent and
 -- Config.Data.caps.samePair opponents.
 export type SamePairRecord = { [string]: { number } }
--- The player's capsules (lobby bases spec 2026-10-11 §6, progression spec 2026-10-12 §6-§7): `slots` unlocked, a
--- whole number 1..#Config.Grip.Capsule.slotPrices; `list[i]` = the capsule in slot i, one per unlocked slot: its level
--- (1..Capsule.maxLevel) and the squishy in it (nil = empty; a squishy sits in one capsule at a time).
-export type CapsuleState = { level: number, squishyId: string? }
-export type CapsulesState = { slots: number, list: { CapsuleState } }
 -- Auto-clicker check (2026-10-16): the last strike (server Services/AutoClickService): step 0 none, 1 warned, 2 kicked,
 -- 3 banned; at = its os.time (0 = none). A rejoin within Config.Net.AutoClick.memorySeconds keeps the step.
 export type AutoClickMemory = { step: number, at: number }

@@ -25,8 +25,8 @@
 --     TagCounts (10 SD_Base, 10 SD_BaseSpawn since Phase 4);
 --   * first person: no prompt and no squeeze station reaches into the practice throw box;
 --   * bases (§2, §4, §8): 10 plots 36° apart around the hub centre, gates at radius 96 and backs at 148, facing the
---     hub, 44 × 52, the capsule pads, their capsule spots and the spawn inside, no two plots sharing ground, a colour
---     per plot and the open grey; inPlot is the footprint only, never an unknown plot;
+--     hub, 44 × 52, the spawn inside (pens3 phase 3: no capsule pads, spots or statue), no two plots sharing ground, a
+--     colour per plot and the open grey; inPlot is the footprint only, never an unknown plot;
 --   * pens3 phase 1: Bases.pen is lobby design v6's base.pen (K:4084-4189) turned into the plot frame: front z 19, an
 --     8-stud gate gap, 4-stud segments, the steps 3..12 exactly as K has them, every step inside the plot; the PEN
 --     SPACE sign at (10, 0, 20.3) facing the gate side; the spawn at local z 22.5 between the gate and the pen,
@@ -1243,39 +1243,26 @@ return function(t: Context)
 		expect.equal(WorldLayout.plotFrame(11), nil)
 	end)
 
-	t.test(
-		"a plot holds its 4 capsule pads (x ±13, z -8 / +8) and its spawn facing the pen; plots share no ground",
-		function()
-			local bases = WorldLayout.Bases
-			expect.deepEqual(bases.capsulePads, {
-				Vector3.new(-13, 0, -8),
-				Vector3.new(13, 0, -8),
-				Vector3.new(-13, 0, 8),
-				Vector3.new(13, 0, 8),
-			})
-			expect.equal(bases.capsulePadSize, 8)
-			-- Pens3 phase 1: between the gate (z 26) and the pen's front (z 19), facing the pen.
-			expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, 22.5)))
-			expect.truthy(vectorNear(bases.spawn.LookVector, Vector3.new(0, 0, -1), 1e-6))
-			local half = bases.capsulePadSize / 2
-			for index = 1, 10 do
-				local frame = WorldLayout.plotFrame(index) :: CFrame
-				for _, pad in bases.capsulePads do
-					for _, corner in { Vector3.new(-half, 0, -half), Vector3.new(half, 0, half) } do
-						expect.truthy(WorldLayout.inPlot(index, frame * (pad + corner)))
-					end
-				end
-				expect.truthy(WorldLayout.inPlot(index, (frame * bases.spawn).Position))
-				-- No corner of a plot lies on its neighbours' ground.
-				for _, corner in { { -22, -26 }, { 22, -26 }, { -22, 26 }, { 22, 26 } } do
-					local point = frame * Vector3.new(corner[1], 0, corner[2])
-					for _, other in { index % 10 + 1, (index + 8) % 10 + 1 } do
-						expect.falsy(WorldLayout.inPlot(other, point))
-					end
+	t.test("a plot holds its spawn facing the pen (no capsule pads, spots or statue); plots share no ground", function()
+		local bases = WorldLayout.Bases
+		for _, gone in { "capsulePads", "capsulePadSize", "capsulePadTop", "capsuleSpots", "statue", "statueHeight" } do
+			expect.equal((bases :: any)[gone], nil) -- pens3 phase 3
+		end
+		-- Pens3 phase 1: between the gate (z 26) and the pen's front (z 19), facing the pen.
+		expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, 22.5)))
+		expect.truthy(vectorNear(bases.spawn.LookVector, Vector3.new(0, 0, -1), 1e-6))
+		for index = 1, 10 do
+			local frame = WorldLayout.plotFrame(index) :: CFrame
+			expect.truthy(WorldLayout.inPlot(index, (frame * bases.spawn).Position))
+			-- No corner of a plot lies on its neighbours' ground.
+			for _, corner in { { -22, -26 }, { 22, -26 }, { -22, 26 }, { 22, 26 } } do
+				local point = frame * Vector3.new(corner[1], 0, corner[2])
+				for _, other in { index % 10 + 1, (index + 8) % 10 + 1 } do
+					expect.falsy(WorldLayout.inPlot(other, point))
 				end
 			end
 		end
-	)
+	end)
 
 	t.test("inPlot: the plot's footprint at any height; nothing for the hub or an unknown plot", function()
 		local frame = WorldLayout.plotFrame(3) :: CFrame
@@ -1371,8 +1358,6 @@ return function(t: Context)
 			expect.truthy(math.abs(bases.nameSign.position.Z - bases.gate.Z) <= 1)
 			expect.equal(bases.gateWidth, 16) -- §4
 			expect.equal(Strings.resolve("base.openPlot"), "Open plot")
-			expect.equal(Strings.resolve("base.capsuleLevel"), "Lv {level}")
-			expect.equal(Strings.resolve("base.unlockPrice"), "Unlock · {coins}")
 		end
 	)
 
@@ -1397,23 +1382,6 @@ return function(t: Context)
 		expect.equal(typeof(Palette.BaseOpenLight), "Color3")
 		expect.equal(WorldLayout.Attributes.BaseTint, "SD_BaseTint")
 	end)
-
-	t.test(
-		"capsule spots stand on their pads (top 0.3) facing the plot's middle path; the statue faces the gate",
-		function()
-			local bases = WorldLayout.Bases
-			expect.equal(#bases.capsuleSpots, 4)
-			expect.equal(bases.capsulePadTop, 0.3)
-			for slot, spot in bases.capsuleSpots do
-				local pad = bases.capsulePads[slot]
-				expect.truthy(vectorNear(spot.Position, pad + Vector3.new(0, bases.capsulePadTop, 0), 1e-6))
-				expect.truthy(vectorNear(spot.LookVector, Vector3.new(-math.sign(pad.X), 0, 0), 1e-6))
-			end
-			expect.truthy(vectorNear(bases.statue.LookVector, Vector3.new(0, 0, 1), 1e-6))
-			expect.truthy(bases.statue.Position.Z < -bases.depth / 2 + 6) -- in front of the back wall
-			expect.equal(bases.statueHeight, 8)
-		end
-	)
 
 	-- Arena (§5.3, §7.8) --------------------------------------------------------------------------------------------
 

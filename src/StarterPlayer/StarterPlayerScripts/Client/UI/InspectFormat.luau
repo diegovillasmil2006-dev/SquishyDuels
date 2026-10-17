@@ -32,7 +32,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
-local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
@@ -250,9 +249,9 @@ function InspectFormat.view(id: string, ctx: ViewContext): View?
 		badgeText = textOf(badgeKey, badgeKey),
 		previewBadge = if owned then nil else Strings.inspect.previewNotOwned,
 		caption = Strings.inspect.preview,
-		-- Phase 5 (progression spec 2026-10-12 §3, §6): what the squishy multiplies in a capsule ("x16 power").
-		coinsText = Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(def.id) }),
-		coinsSub = Strings.capsule.powerNote,
+		-- Phase 5 (progression spec 2026-10-12 §3, §6): what the squishy multiplies in the pen ("x16 power").
+		coinsText = Strings.format(Strings.squishy.power, { n = Catalog.getPower(def.id) }),
+		coinsSub = Strings.squishy.powerNote,
 		stats = statLines(def),
 		statsCaption = Strings.inspect.statsCaption,
 		trail = trailOf(def),
