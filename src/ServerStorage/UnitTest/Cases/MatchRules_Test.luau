@@ -526,4 +526,22 @@ return function(t: Context)
 		expect.equal(s.outcome.reason, "overtime")
 		expect.equal(s.outcome.winnerTeam, "Blue")
 	end)
+
+	-- Match bots (2026-10-17): `empty` voids the match (MatchService sends it once only bots are left in it).
+	t.test("empty voids the match at once (reason empty); after the end it changes nothing", function()
+		local s, a =
+			live("ffa", { { userId = 1 }, { userId = -200001, isBot = true }, { userId = -200002, isBot = true } })
+		s = step(s, { kind = "leave", userId = 1 }, a + 5)
+		expect.equal(s.ended, false) -- two bots are still present
+		local fx
+		s, fx = step(s, { kind = "empty" }, a + 5)
+		expect.equal(s.outcome.kind, "void")
+		expect.equal(s.outcome.reason, "empty")
+		expect.equal(s.phase, "Closed")
+		expect.equal(#kinds(fx, "closed"), 1)
+		local done = live("ffa", FFA3)
+		done = step(done, { kind = "shutdown" }, a + 1)
+		local _, again = step(done, { kind = "empty" }, a + 2)
+		expect.equal(#again, 0)
+	end)
 end

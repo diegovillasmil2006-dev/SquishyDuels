@@ -112,6 +112,18 @@
 --   deps.rewards.config (tests) or the live Config; a leave that MatchRules no longer took (the leave's own step ended
 --   the match first) is no leave: that player was present at the end, is paid like everyone present and keeps the
 --   streak their result gives.
+-- * Match bots (2026-10-17, owner: bots fill a match up to 12; MatchBotService, attached as deps.bots by attachBots):
+--   while deps.bots.ready(), one queued player is enough to start a match (the gather as above; at once when everyone in
+--   the server is queued), and startFromQueue fills the empty slots up to maxPlayers with deps.bots.take (no yield;
+--   the ones startMatch did not take go back through release). A bot ref is a Player-shaped table (kind "bot", isBot,
+--   squishyId: its squishy) with a character in the Workspace: it plays through the same port, rules, spawns and
+--   movement as a player (MatchRules: arrived from the start; isBot), gets no MatchState and no toast, is never paid
+--   (MatchRewards) and has no win streak. TDM: the players are shuffled and dealt Red, Blue, ... as before, then each
+--   bot joins the smaller team (MatchBotRules.dealTeams: 6 vs 6). A match with bots pays its real players like any match
+--   (owner: bots never block pay; Config.Match.Rewards.enabled still decides, off until M9). Once no real player is
+--   left in it (left, never arrived) a bot match is void (MatchRules `empty`) and goes back as any void. A player who queues while a bot match
+--   runs gets the next match: a running match takes nobody new (MatchRules' entrants are fixed at the start).
+--   botView(ref) is what a bot's pilot may read of its match (the map, live, the storm time, the ready pads).
 -- Every collaborator is reached through `deps` (useDeps in tests; init() builds the real ones), so the service is
 -- unit-tested with fakes, without Players, remotes, Studio or a Heartbeat (tests call tick(now)).
 
@@ -136,6 +148,7 @@ local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
 local Logic = script.Parent.Parent.Logic
+local MatchBotRules = require(Logic.MatchBotRules)
 local MatchRewards = require(Logic.MatchRewards)
 local MatchRules = require(Logic.MatchRules)
 local MatchSpawns = require(Logic.MatchSpawns)
@@ -198,6 +211,14 @@ export type RewardDeps = {
 	config: MatchRewards.RewardConfig?,
 }
 
+-- Match bots (MatchBotService). Optional: nil = no bots.
+export type BotDeps = {
+	ready: () -> boolean, -- take() can give bots now
+	-- Up to `count` bot refs now (no yield; fewer, or none, when it can't). startMatch must follow in the same frame.
+	take: (modeId: string, count: number) -> { any },
+	release: (ref: any) -> (), -- a taken bot that is in no match: destroyed
+}
+
 export type Deps = {
 	now: () -> number, -- server time
 	clock: () -> number, -- os.clock (timeouts, the return-point LRU)
@@ -223,6 +244,7 @@ export type Deps = {
 	ability: AbilityDeps,
 	maps: MapDeps,
 	rewards: RewardDeps?, -- Match HUD M2 (nil: no pay, as in the older tests' fakes)
+	bots: BotDeps?, -- match bots (attachBots; nil: none)
 	heartbeat: boolean, -- tick matches every Heartbeat (false in tests: they call tick)
 	matchConfig: any?, -- a Config.Match-shaped table (tests pass their copy); nil = the live Config.Match
 }
@@ -286,6 +308,7 @@ type Match = {
 	finalKo: HudEvent?, -- the K.O. that ended the match (koTarget, wiped, overtime)
 	standings: { Types.MatchStandingView }?, -- built once, with the outcome
 	rewards: { [number]: Types.MatchRewardView }, -- Match HUD M2: userId -> what the end paid them (outcome.mine)
+	bots: number, -- match bots: how many bots it started with
 }
 
 type Ticket = { player: any, userId: number, joinedAt: number }
@@ -298,6 +321,14 @@ export type MatchInfo = {
 	phase: Types.DuelPhase, -- the D1 name
 	matchPhase: string, -- the MatchRules phase
 	team: string?,
+}
+
+-- What botView returns (read-only): what a match bot's pilot may know of its match now.
+export type BotView = {
+	map: MapRecord,
+	live: boolean, -- Active or Overtime, not ended
+	stormSeconds: number?, -- a storm mode: the Active seconds the storm reads (nil: no storm in this mode)
+	pads: { Vector3 }, -- the ready power-up pads: their centres at the height a player stands on (the pad's top)
 }
 
 -- The MatchEnded payload.
@@ -430,6 +461,11 @@ local function userIdOf(ref: any): number?
 	return nil
 end
 
+-- Match bots: a bot ref (MatchBotService's, a BotService bot), as DuelService tells the practice bot.
+local function isBotRef(ref: any): boolean
+	return type(ref) == "table" and ref.isBot == true and ref.kind == "bot"
+end
+
 local function attributeOf(ref: any, name: string): any
 	if typeof(ref) == "Instance" then
 		return ref:GetAttribute(name)
@@ -461,6 +497,9 @@ local function teamName(team: string): string
 end
 
 local function notify(ref: any, code: string, args: Types.NotifyArgs?, kind: Types.NotifyKind?)
+	if isBotRef(ref) then
+		return -- match bots: no client
+	end
 	local ok, err = try(getDeps().notify, ref, code, args, kind)
 	if not ok then
 		log:warn(`notify {code} failed:`, err)
@@ -837,7 +876,7 @@ local function sendState(match: Match, only: { Participant }?)
 		match.events = {}
 	end
 	for _, p in only or match.list do
-		if active(p) then
+		if active(p) and not isBotRef(p.ref) then -- match bots: no client
 			local r = record(match, p)
 			p.sentStormBar = if r then r.stormBar else 0
 			local ok, err = try(d.fire, REMOTE_STATE, p.ref, viewFor(match, p, players, events))
@@ -1404,10 +1443,12 @@ local function markFinalKo(match: Match, outcome: any)
 	end
 end
 
--- Match HUD M2: the pay's collaborators while Config.Match.Rewards is on ([P] off until M9), else nil.
-local function payDeps(): RewardDeps?
+-- Match HUD M2: the pay's collaborators while Config.Match.Rewards is on ([P] off until M9), else nil. Match bots (owner
+-- 2026-10-17): bots never block pay; the switch decides for every match.
+local function payDeps(_match: Match): RewardDeps?
 	local switch = cfg().Rewards
-	return if type(switch) == "table" and switch.enabled == true then getDeps().rewards else nil
+	local on = type(switch) == "table" and switch.enabled == true
+	return if on then getDeps().rewards else nil
 end
 
 -- Match HUD M2: one profile step of p's result (EconomyService.grantMatchResult: the Coins and the win streak), then
@@ -1436,7 +1477,7 @@ end
 -- the very step that ended the match (MatchRules took the end first and ignored the leave) finished it and is paid
 -- like everyone present. A grant the profile did not take (not ready, or alreadyGranted) pays no Grip and no mine.
 local function payParticipants(match: Match, outcome: any)
-	local rewards = payDeps()
+	local rewards = payDeps(match)
 	if rewards == nil then
 		return
 	end
@@ -1480,7 +1521,7 @@ end
 -- player was present at the end, payParticipants paid their result, and their streak follows it.
 local function resetLeaverStreak(match: Match, p: Participant)
 	local r = record(match, p)
-	local rewards = payDeps()
+	local rewards = payDeps(match)
 	if rewards and r and r.left then
 		grantResult(rewards, match, p, MatchRewards.left())
 	end
@@ -1723,7 +1764,7 @@ end
 local function newParticipant(match: Match, ref: any, team: string?, now: number): Participant
 	local d = getDeps()
 	local userId = userIdOf(ref) :: number
-	local id = d.equipped(ref)
+	local id = if isBotRef(ref) then ref.squishyId else d.equipped(ref) -- match bots: their own random squishy
 	local squishyId = if Catalog.isValidId(id) then id :: string else Catalog.starterId()
 	local side: Types.Side = "A"
 	if team ~= nil and team == cfg().teamNames[2] then
@@ -1829,7 +1870,7 @@ local function sampleStorm(match: Match, now: number)
 	local changed: { Participant } = {}
 	for _, p in match.list do
 		local r = record(match, p)
-		if active(p) and r and r.stormBar ~= p.sentStormBar then
+		if active(p) and r and r.stormBar ~= p.sentStormBar and not isBotRef(p.ref) then
 			table.insert(changed, p)
 		end
 	end
@@ -1970,11 +2011,25 @@ local function nextDueAt(state: MatchState): number
 	return due
 end
 
+-- Match bots: a real player is still in the match (not left, not dropped).
+local function hasRealPlayer(match: Match): boolean
+	for _, p in match.list do
+		if active(p) and not isBotRef(p.ref) then
+			return true
+		end
+	end
+	return false
+end
+
 local function tickMatch(match: Match, now: number)
 	if match.closed then
 		return
 	end
 	match.now = math.max(match.now, now)
+	if match.bots > 0 and not match.state.ended and not hasRealPlayer(match) then
+		stepMatch(match, { kind = "empty" }, now) -- match bots: nobody real is left to play with them
+		return
+	end
 	checkPresence(match)
 	sampleStorm(match, now)
 	if not match.closed then
@@ -2131,6 +2186,40 @@ local function pruneQueue(modeId: string)
 	end
 end
 
+-- Match bots: whether deps.bots can give bots now.
+local function botsReady(): boolean
+	local bots = getDeps().bots
+	if bots == nil then
+		return false
+	end
+	local ok, ready = try(bots.ready)
+	return ok and ready == true
+end
+
+-- Match bots: up to `count` bots from deps.bots now (none without it).
+local function takeBots(modeId: string, count: number): { any }
+	local bots = getDeps().bots
+	if bots == nil or count <= 0 or not botsReady() then
+		return {}
+	end
+	local ok, list = try(bots.take, modeId, count)
+	if not ok or type(list) ~= "table" then
+		log:warn(`taking match bots failed:`, list)
+		return {}
+	end
+	return list
+end
+
+-- Match bots: the taken bots that are in no match go back.
+local function releaseBots(list: { any })
+	local bots = getDeps().bots
+	for _, bot in list do
+		if bots and not inAnyMatch(bot) then
+			try(bots.release, bot)
+		end
+	end
+end
+
 local function startFromQueue(modeId: string, now: number, gather: Gather)
 	local d = getDeps()
 	local mode = cfg().Modes[modeId]
@@ -2148,7 +2237,11 @@ local function startFromQueue(modeId: string, now: number, gather: Gather)
 		end
 		return
 	end
+	-- Match bots: the empty slots, up to maxPlayers (taken now, no yield; startMatch follows at once).
+	local bots = takeBots(modeId, mode.maxPlayers - #refs)
+	table.move(bots, 1, #bots, #refs + 1, refs)
 	local started, why = MatchService.startMatch(refs, modeId, map, matchId)
+	releaseBots(bots)
 	if started == nil then
 		try(d.maps.release, map)
 		log:warn(`could not start {modeId} from the queue: {tostring(why)}`)
@@ -2173,7 +2266,8 @@ local function tickQueue(modeId: string, now: number)
 	pruneQueue(modeId)
 	local queue = queueOf(modeId)
 	local gather = gathers[modeId]
-	if #queue < c.minPlayers then
+	-- Match bots: while they can fill it, one queued player is enough.
+	if #queue < (if botsReady() then 1 else c.minPlayers) then
 		if gather ~= nil then
 			gathers[modeId] = nil
 			notifyQueue(modeId, CODE.waitingPlayers, { mode = modeName(modeId) }, "info")
@@ -2287,8 +2381,8 @@ end
 
 -- Public: matches --------------------------------------------------------------------------------------------------------
 
--- Starts a match of `modeId` with these players (the queue's, or a Studio call). `map` is the one the caller acquired
--- (else one is acquired here). Returns (matchId, nil) or (nil, why).
+-- Starts a match of `modeId` with these players (the queue's, or a Studio call) and match bots (at least one real
+-- player). `map` is the one the caller acquired (else one is acquired here). Returns (matchId, nil) or (nil, why).
 function MatchService.startMatch(refs: { any }, modeId: string, map: any?, matchId: string?): (string?, string?)
 	local d = getDeps()
 	local c = cfg()
@@ -2300,22 +2394,23 @@ function MatchService.startMatch(refs: { any }, modeId: string, map: any?, match
 		return nil, "closing"
 	end
 	local list: { any } = {}
+	local bots: { any } = {} -- match bots: kept apart, after the players
 	local seen: { [number]: boolean } = {}
 	for _, ref in refs do
 		local userId = userIdOf(ref)
 		if
 			userId ~= nil
 			and not seen[userId]
-			and d.isPlayer(ref)
+			and (d.isPlayer(ref) or isBotRef(ref))
 			and not inAnyMatch(ref)
-			and #list < mode.maxPlayers
+			and #list + #bots < mode.maxPlayers
 		then
 			seen[userId] = true
-			table.insert(list, ref)
+			table.insert(if isBotRef(ref) then bots else list, ref)
 		end
 	end
-	if #list < c.minPlayers then
-		return nil, "notEnoughPlayers"
+	if #list + #bots < c.minPlayers or #list == 0 then
+		return nil, "notEnoughPlayers" -- (bots alone never play)
 	end
 	local id = matchId or newMatchId()
 	local useMap: MapRecord? = map or d.maps.acquire(modeId, id)
@@ -2323,12 +2418,16 @@ function MatchService.startMatch(refs: { any }, modeId: string, map: any?, match
 		return nil, "noMap"
 	end
 
-	-- TDM: shuffled, then Red, Blue, Red, ... (friends together: later).
+	-- TDM: shuffled, then Red, Blue, Red, ... (friends together: later). Match bots: then each to the smaller team.
 	local teams: { [any]: string } = {}
 	if mode.teams then
 		shuffle(list, d.rng)
-		for index, ref in list do
-			teams[ref] = c.teamNames[(index - 1) % 2 + 1]
+	end
+	local humans = #list
+	table.move(bots, 1, #bots, humans + 1, list)
+	if mode.teams then
+		for index, team in MatchBotRules.dealTeams(humans, #bots, c.teamNames) do
+			teams[list[index]] = team
 		end
 	end
 	local now = d.now()
@@ -2358,18 +2457,19 @@ function MatchService.startMatch(refs: { any }, modeId: string, map: any?, match
 		finalKo = nil,
 		standings = nil,
 		rewards = {}, -- Match HUD M2
+		bots = #bots,
 	}
 	local spawns = useMap.spawns
 	local built, why = try(function()
-		local entrants: { MatchSpawns.Entrant } = {}
+		local entrants: { MatchRules.Entrant } = {}
 		for _, ref in list do
 			local p = newParticipant(match, ref, teams[ref], now)
 			table.insert(match.list, p)
 			match.byUserId[p.userId] = p
-			table.insert(entrants, { userId = p.userId, team = p.team })
+			table.insert(entrants, { userId = p.userId, team = p.team, isBot = isBotRef(ref) })
 		end
 		match.state = MatchRules.new(id, modeId, entrants, now, c)
-		local first = MatchSpawns.firstSpots(spawns, entrants)
+		local first = MatchSpawns.firstSpots(spawns, entrants :: any) -- (MatchSpawns reads userId and team only)
 		for _, p in match.list do
 			p.spot = first[p.userId]
 		end
@@ -2400,7 +2500,15 @@ function MatchService.startMatch(refs: { any }, modeId: string, map: any?, match
 	log:info(`match {id} started: {modeId} on {useMap.code} with {#match.list} players`)
 	for _, p in match.list do
 		p.positioning = true -- set now: a return that starts before the deferred thread runs must wait for it
-		d.defer(positionParticipant, match, p)
+	end
+	-- Match bots first: their teleport never streams, so they stand on their spots before the last player arrives (that
+	-- arrival starts the Countdown, which ends the positioning).
+	for pass = 1, 2 do
+		for _, p in match.list do
+			if isBotRef(p.ref) == (pass == 1) then
+				d.defer(positionParticipant, match, p)
+			end
+		end
 	end
 	return id, nil
 end
@@ -2418,6 +2526,32 @@ function MatchService.getMatch(who: any): MatchInfo?
 		matchPhase = match.state.phase,
 		team = p.team,
 	}
+end
+
+-- Match bots: what the pilot of a bot (or any participant) may read of its match now, or nil outside a match.
+function MatchService.botView(who: any): BotView?
+	local match, p = participantOf(who)
+	if match == nil or p == nil then
+		return nil
+	end
+	local now = getDeps().now()
+	local pads: { Vector3 } = {}
+	for _, entry in match.pads do
+		if PowerUpRules.isReady(entry.pad, now) then
+			table.insert(pads, Vector3.new(entry.position.X, entry.top, entry.position.Z))
+		end
+	end
+	return {
+		map = match.map,
+		live = MatchRules.isLive(match.state),
+		stormSeconds = if match.mode.storm then MatchRules.activeSeconds(match.state, now) else nil,
+		pads = pads,
+	}
+end
+
+-- Match bots: MatchBotService's init hands its bots over (nil: no bots). Tests pass them in their deps instead.
+function MatchService.attachBots(bots: BotDeps?)
+	getDeps().bots = bots
 end
 
 -- Matches in progress (Result and the return included).

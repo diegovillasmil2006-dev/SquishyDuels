@@ -18,6 +18,8 @@
 -- Match HUD M2 (2026-10-16, owner Q3 / Q4): Rewards (it replaces rewardCoins = 0): the switch of the match pay and the
 -- win streak, read by Server/Services/MatchService; the amounts and rules are Config.Economy.DuelRewards'
 -- (Server/Logic/MatchRewards).
+-- Match bots (2026-10-17, owner): Bots = the Config/MatchBots module (Config.Match.Bots; every value and why; checked by
+-- Config/ValidateMatchBots), read by Server/Services/MatchBotService and Logic/MatchBotRules.
 --
 -- The rules in plain words:
 --   * One hit = knocked out (K.O.) in both modes. Back in after respawnSeconds with spawnProtectSeconds of safety.
@@ -178,6 +180,9 @@ local Match = {
 			teamLife = { teamsOnly = true } :: PowerUp, -- +1 team life; at 0 lives a knocked-out teammate comes back
 		},
 	},
+
+	-- Match bots (2026-10-17): Config/MatchBots (every value and why; a child module, so Config/init does not grow).
+	Bots = require(script.Parent.MatchBots),
 }
 
 return Match

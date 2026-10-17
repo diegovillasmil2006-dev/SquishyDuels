@@ -1,7 +1,8 @@
 --!strict
--- BotService (server only). The 1v1 PRACTICE BOT (owner 2026-10-16; the Free for All / Team Deathmatch match bots are a
--- later, separate job). Numbers: Config.Duel.Bots (Config/Bots, [P], checked by Config/ValidateBots at init: any
--- problem keeps the bots off); decisions: Logic/BotRules.
+-- BotService (server only). The 1v1 PRACTICE BOT (owner 2026-10-16; the Free for All / Team Deathmatch match bots are
+-- MatchBotService's, 2026-10-17: they are bots of this module too, see "the match bots' kit" below). Numbers:
+-- Config.Duel.Bots (Config/Bots, [P], checked by Config/ValidateBots at init: any problem keeps the bots off);
+-- decisions: Logic/BotRules.
 -- * Filling: every checkSeconds, when exactly one player is Searching in the 1v1 queue, an arena slot is free and no
 --   shutdown or restart is pending, that player's lone-wait timer runs (BotRules.watch: a random fillDelay, 8-10 s).
 --   When it is due a bot is built and QueueService.startWithBot starts the duel; startWithBot refuses unless the
@@ -563,6 +564,33 @@ local function check()
 		filling = false
 	end)
 end
+
+-- Public: the match bots' kit (MatchBotService, 2026-10-17) ------------------------------------------------------------
+-- A match bot is a bot of this module (its name, random squishy, look and clips; in this module's list, so no id
+-- repeats and Closing removes it) that MatchService plays instead of DuelService; no pilot of this module runs for it
+-- (opponent stays nil). MatchBotService drives it with the same actions as the practice bot.
+
+-- A bot around `rig` (a fresh plain character: buildRigAsync's, or a clone of one), held anchored out of sight until
+-- its first teleport. nil when the rig could not be set up (nothing is left behind).
+function BotService.newBot(rig: Model): Bot?
+	local folder = getFolder()
+	local bot = makeBot(rig, folder)
+	table.insert(bots, bot)
+	local ok, err = pcall(setupRig :: any, bot, rig, folder)
+	if not ok then
+		destroyBot(bot)
+		log:error("setting up a match bot's character failed:", err)
+		return nil
+	end
+	return bot
+end
+
+BotService.buildRigAsync = buildRigAsync -- yields; nil when the avatar service fails
+BotService.destroyBot = destroyBot
+BotService.face = face -- (root, point)
+BotService.throwAt = throwAtPlayer -- (bot, root, targetRoot): the practice bot's aim (Config.Duel.Bots)
+BotService.dodge = dodge -- (bot, root, threat): a sideways dash away from the line of fire
+BotService.castAt = castAt -- (bot, root, targetRoot): the ultimate
 
 -- Lifecycle ------------------------------------------------------------------------------------------------------------
 

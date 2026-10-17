@@ -70,6 +70,7 @@ local SERVICE_ORDER = {
 	"BotService", -- 2026-10-16: the 1v1 practice bot
 	"MatchMapService", -- FFA/TDM v1 (2026-10-15): Diego's maps in Workspace.DuelMaps (read once at init)
 	"MatchService", -- FFA/TDM v1: the in-server Free for All / Team Deathmatch (reads the duel services above)
+	"MatchBotService", -- 2026-10-17: the FFA / TDM match bots (after MatchService: its init hands them over)
 	"BoxService",
 	"ShopService",
 	"QuestService",

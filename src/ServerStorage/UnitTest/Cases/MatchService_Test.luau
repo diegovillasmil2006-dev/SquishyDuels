@@ -2331,6 +2331,183 @@ return function(t: Context)
 		end
 	)
 
+	-- Match bots (2026-10-17) ------------------------------------------------------------------------------------------
+
+	local Catalog = t.requireShared("Catalog")
+
+	-- A fake deps.bots (MatchBotService): take() hands out FakePlayer-shaped bot refs (kind "bot", isBot, their own
+	-- squishy, no Parent: never a Player) with a root and a Humanoid out of sight; every take and release is recorded.
+	local function withBots(w: World): any
+		local fake: any = { ready = true, taken = {}, released = {} }
+		local nextId = -200001
+		local list = Catalog.list()
+		local squishy = list[#list].id
+		MatchService.attachBots({
+			ready = function(): boolean
+				return fake.ready
+			end,
+			take = function(_modeId: string, count: number): { any }
+				local out = {}
+				for _ = 1, count do
+					local bot: any = FakePlayer.new(nextId, `Bot{-nextId}`)
+					bot.Parent = nil
+					bot.kind = "bot"
+					bot.isBot = true
+					bot.userId = nextId
+					bot.squishyId = squishy
+					w.roots[nextId] = {
+						Position = Vector3.new(0, 1000, 0),
+						CFrame = CFrame.new(0, 1000, 0),
+						Size = Vector3.new(2, 2, 1),
+					}
+					w.humanoids[nextId] = {
+						WalkSpeed = 16,
+						JumpHeight = 7.2,
+						JumpPower = 50,
+						UseJumpPower = false,
+						AutoRotate = false,
+						RigType = Enum.HumanoidRigType.R15,
+						HipHeight = 2,
+					}
+					nextId -= 1
+					table.insert(out, bot)
+					table.insert(fake.taken, bot)
+				end
+				return out
+			end,
+			release = function(bot: any)
+				table.insert(fake.released, bot)
+			end,
+		})
+		return fake
+	end
+
+	t.test(
+		"match bots: a player alone gets a match filled to maxPlayers; no view or toast ever goes to a bot",
+		function()
+			local w = setup(1)
+			local bots = withBots(w)
+			live(w, "ffa") -- alone in the server: it starts at once; the bots stand on their spots before the player
+			expect.equal(#w.port.fighters, w.cfg.Modes.ffa.maxPlayers)
+			expect.equal(#bots.taken, w.cfg.Modes.ffa.maxPlayers - 1)
+			expect.deepEqual(bots.released, {})
+			for _, bot in bots.taken do
+				local fighter = fighterOf(w, bot.userId)
+				expect.equal(fighter.squishyId, bot.squishyId)
+				expect.truthy(inMap(w.roots[bot.userId].Position))
+				expect.equal(w.humanoids[bot.userId].WalkSpeed, Config.Duel.Rules.Movement.WalkSpeed)
+				expect.equal(bot:GetAttribute("SD_MatchMode"), "ffa")
+				expect.equal((MatchService.getMatch(bot) :: any).matchId, w.port.matchId)
+			end
+			for _, entry in w.sent do
+				expect.truthy(entry.player.UserId > 0)
+			end
+			for _, n in w.notices do
+				expect.truthy(n.player.UserId > 0)
+			end
+			local view = lastView(w, w.players[1])
+			expect.equal(#view.players, w.cfg.Modes.ffa.maxPlayers)
+			expect.equal(view.phase, "Active")
+			close()
+		end
+	)
+
+	t.test("match bots: TDM is 6 vs 6, the players dealt Red, Blue, Red first", function()
+		local w = setup(3)
+		local bots = withBots(w)
+		live(w, "tdm")
+		local sides: { [string]: number } = { A = 0, B = 0 }
+		for _, fighter in w.port.fighters do
+			sides[fighter.side] += 1
+		end
+		expect.equal(sides.A, 6)
+		expect.equal(sides.B, 6)
+		expect.equal(#bots.taken, 9)
+		local red = 0
+		for _, player in w.players do
+			red += if player:GetAttribute("SD_Team") == w.cfg.teamNames[1] then 1 else 0
+		end
+		expect.equal(red, 2)
+		close()
+	end)
+
+	t.test(
+		"match bots: not ready = minPlayers as before; ready: one player starts the gather, then bots fill",
+		function()
+			local w = setup(2)
+			local bots = withBots(w)
+			bots.ready = false
+			MatchService.join(w.players[1], "ffa")
+			MatchService.tick(T0 + 30)
+			expect.equal(w.port, nil)
+			expect.deepEqual(bots.taken, {})
+			bots.ready = true
+			-- The clock moves with the ticks: a match started at an old clock time would be past its waitSeconds at once
+			-- (its player, not yet teleported, dropped in the same tick).
+			w.clock.set(T0 + 31)
+			MatchService.tick(T0 + 31) -- the gather starts (the other player may still join)
+			expect.equal(w.port, nil)
+			w.clock.set(T0 + 31 + w.cfg.gatherSeconds)
+			MatchService.tick(T0 + 31 + w.cfg.gatherSeconds)
+			expect.truthy(w.port ~= nil)
+			expect.equal(#w.port.fighters, w.cfg.Modes.ffa.maxPlayers)
+			expect.equal(MatchService.queued(w.players[1]), nil)
+			close()
+		end
+	)
+
+	t.test("match bots: once the last real player leaves the match is void (empty) and goes back", function()
+		local w = setup(1)
+		withBots(w)
+		local ended: any = nil
+		local connection = MatchService.MatchEnded:connect(function(summary: any)
+			ended = summary
+		end)
+		local a = live(w, "ffa")
+		local matchId = w.port.matchId
+		MatchService.leave(w.players[1])
+		expect.equal(ended, nil) -- the bots alone are still "present" in MatchRules
+		MatchService.tick(a + 1)
+		connection:disconnect()
+		expect.truthy(ended ~= nil)
+		expect.equal(ended.outcome, "void")
+		expect.equal(ended.reason, "empty")
+		w.flush() -- the return
+		expect.deepEqual(w.unregistered, { matchId })
+		expect.equal(MatchService.matchCount(), 0)
+		close()
+	end)
+
+	t.test("match bots: with match pay on, a bot match pays its real players, never a bot", function()
+		local cfg = baseConfig()
+		cfg.Modes.ffa.koTarget = 1
+		cfg.Rewards.enabled = true
+		local w = setup(1, cfg, true)
+		local bots = withBots(w)
+		local a = live(w, "ffa")
+		throwsFor(w, { 1 }, 3)
+		throwsFor(w, { bots.taken[2].userId }, 3)
+		hit(w, bots.taken[1].userId, 1, a + PAYS_ALL)
+		expect.equal(#w.grants, 1)
+		expect.equal(w.grants[1].userId, 1)
+		expect.deepEqual(w.grants[1].pay, payOf("win", DUEL_PAY.win, true))
+		expect.truthy(lastView(w, w.players[1]).outcome.mine ~= nil)
+		expect.equal(w.players[1]:GetAttribute("SD_WinStreak"), 1)
+		close()
+	end)
+
+	t.test("match bots: the bots of a start that failed go back (release); the player stays queued", function()
+		local w = setup(1)
+		local bots = withBots(w)
+		w.flags.failRegister = true
+		MatchService.join(w.players[1], "ffa")
+		expect.equal(#bots.taken, w.cfg.Modes.ffa.maxPlayers - 1)
+		expect.equal(#bots.released, #bots.taken)
+		expect.equal(MatchService.matchCount(), 0)
+		expect.equal(MatchService.queued(w.players[1]), "ffa")
+		close()
+	end)
+
 	-- Runs last: every code the cases above saw (and every other one MatchService sends) has its Strings text.
 	t.test("every toast MatchService sends has a match.* text with its placeholders", function()
 		local Strings = t.requireShared("Strings")

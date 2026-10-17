@@ -46,6 +46,7 @@
 --   leave {userId}                      disconnect or left the match
 --   oob {userId}                        that standing player fell off / left the map (a K.O., cause "outOfBounds")
 --   shutdown, error                     void the match
+--   empty                               void the match: no real player is left in it, only bots (2026-10-17)
 -- Effects ({ kind = ..., ... }):
 --   phase {phase, startedAt, endsAt}    `endsAt = math.huge` means no timer (Closed)
 --   ko {victim, by?, cause, at}         cause "hit", "storm" or "outOfBounds"
@@ -609,7 +610,7 @@ end
 
 local function handle(s: MatchState, event: Event, now: number, fx: Effects)
 	local kind = event.kind
-	if kind == "shutdown" or kind == "error" then
+	if kind == "shutdown" or kind == "error" or kind == "empty" then
 		endMatch(s, now, fx, { kind = "void", reason = kind })
 		return
 	end
