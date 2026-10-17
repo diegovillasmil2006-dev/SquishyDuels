@@ -9,7 +9,9 @@
 -- needs >= 3 own throws, duel_win / duel_win_with count every win, §6.8), stops at the goal and reports one line per
 -- changed quest; every accepted squeeze moves starter_squeeze (starter_jelly and the squeeze event's tier went with
 -- the giant pads, build plan Phase 6; a slow-training tick, a level-up or a load move nothing); claimed
--- tasks never move; the rollover auto-claims done-but-unclaimed quests of an old day.
+-- tasks never move; the rollover auto-claims done-but-unclaimed quests of an old day. Weekly quests (2026-10-17):
+-- generateWeekly lists every QuestDefs.weekly() quest in order (ids "w<week>_<slot>", the same list every week), and
+-- apply moves them with the daily kinds' rules.
 -- Determinism uses Fakes/FakeRng seeded factories (the same on every runner); one case also checks Random.new.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
@@ -441,5 +443,46 @@ return function(t: Context)
 		expect.deepEqual(same, { autoClaim = {}, regenerate = false })
 		local newPlayer = QuestLogic.rollover({ day = -1, swapsUsed = 0, active = {} }, DAY)
 		expect.deepEqual(newPlayer, { autoClaim = {}, regenerate = true })
+	end)
+
+	-- weekly quests (2026-10-17) -----------------------------------------------------------------------------------
+
+	t.test("generateWeekly: every weekly quest in order, ids w<week>_<slot>, goal and reward, no squishy", function()
+		local defs = QuestDefs.weekly()
+		local list = QuestLogic.generateWeekly(2856)
+		expect.equal(#list, #defs)
+		expect.equal(#list, 4)
+		for slot, def in defs do
+			expect.deepEqual(list[slot], {
+				id = string.format("w2856_%d", slot),
+				def = def.id,
+				progress = 0,
+				goal = def.variants[1].goal,
+				reward = def.variants[1].reward,
+				done = false,
+				claimed = false,
+			})
+		end
+		expect.deepEqual(QuestLogic.generateWeekly(2857)[1].def, list[1].def) -- the same list every week
+		expect.equal(QuestLogic.generateWeekly(2857)[1].id, "w2857_1")
+	end)
+
+	t.test("apply moves weekly quests with the daily kinds' rules and stops at the goal", function()
+		local list = QuestLogic.generateWeekly(7) -- squeeze, duel win, duel finish, practice
+		list[1].goal = 2
+		for _ = 1, 3 do
+			QuestLogic.apply(list, squeeze("toast"))
+		end
+		expect.equal(list[1].progress, 2)
+		expect.truthy(list[1].done)
+		local lines = QuestLogic.apply(list, duel("win", "toast", MIN_THROWS - 1))
+		expect.deepEqual(lines, { { questId = "w7_2", progress = 1, goal = list[2].goal, done = false } })
+		QuestLogic.apply(list, duel("loss", "toast", MIN_THROWS))
+		expect.equal(list[2].progress, 1)
+		expect.equal(list[3].progress, 1)
+		QuestLogic.apply(list, { kind = "practiceHit" })
+		QuestLogic.apply(list, duel("void", "toast", 9))
+		expect.equal(list[4].progress, 1)
+		expect.equal(list[3].progress, 1)
 	end)
 end

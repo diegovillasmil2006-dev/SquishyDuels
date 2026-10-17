@@ -7,6 +7,7 @@
 -- Constants
 
 local SECONDS_PER_DAY = 86400
+local SECONDS_PER_WEEK = 7 * SECONDS_PER_DAY
 local SECONDS_PER_HOUR = 3600
 local SECONDS_PER_MINUTE = 60
 
@@ -24,6 +25,17 @@ end
 -- Seconds from t until the next 00:00 UTC, in (0, 86400].
 function TimeUtil.secondsUntilNextUtcDay(t: number): number
 	return (TimeUtil.utcDay(t) + 1) * SECONDS_PER_DAY - t
+end
+
+-- Week index for Unix time t (weekly quests, 2026-10-17): a week starts `offsetSeconds` after a multiple of 7 days
+-- (Config.Economy.WeeklyQuests.weekOffsetSeconds = 4 days: Monday 00:00 UTC, 1970-01-01 was a Thursday).
+function TimeUtil.utcWeek(t: number, offsetSeconds: number): number
+	return math.floor((t - offsetSeconds) / SECONDS_PER_WEEK)
+end
+
+-- Seconds from t until the next week starts (see utcWeek), in (0, 604800].
+function TimeUtil.secondsUntilNextUtcWeek(t: number, offsetSeconds: number): number
+	return (TimeUtil.utcWeek(t, offsetSeconds) + 1) * SECONDS_PER_WEEK + offsetSeconds - t
 end
 
 -- Whole hours, minutes and seconds in a duration (fractions dropped). Negative or non-finite -> 0, 0, 0.

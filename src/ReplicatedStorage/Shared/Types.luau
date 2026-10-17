@@ -18,6 +18,7 @@
 -- Auto-clicker check (2026-10-16): AutoClickMemory, the profile's `autoClick` (the last auto-clicker strike), and the
 -- squeeze.autoClick reason of SqueezeResultPayload.
 -- Bubble Pop bounce (2026-10-16): UltimateBounce / UltimateEventPayload.bounce (the bubble's leg after its bounce).
+-- Weekly quests (2026-10-17): WeeklyState, ProfileV1.weekly and QuestsView.weekly.
 
 -- == Catalog (§4.1) ==
 
@@ -92,6 +93,9 @@ export type SqueezeLimitState = { value: number, at: number } -- §6.3 (a rate l
 export type GripTimerState = SqueezeLimitState
 export type GripState = { total: number, rested: GripTimerState }
 export type QuestsState = { day: number, swapsUsed: number, active: { QuestEntry } }
+-- Weekly quests (2026-10-17): `week` = the week index (TimeUtil.utcWeek; -1 = none yet), `active` = its quests (ids
+-- "w<week>_<slot>", no squishy).
+export type WeeklyState = { week: number, active: { QuestEntry } }
 export type StarterState = { progress: { [string]: number }, claimed: { [string]: boolean } }
 export type DailyState = { lastClaimDay: number, streakDay: number, totalClaims: number }
 export type Settings = { music: number, sfx: number, cameraShake: boolean, showTips: boolean } -- music/sfx ints 0–100
@@ -154,6 +158,7 @@ export type ProfileV1 = {
 	samePair: SamePairRecord, -- added within schemaVersion 2 (reconcile fills it; no migration)
 	capsules: CapsulesState, -- added within schemaVersion 2 (reconcile fills it; no old saves to fix, spec 2026-10-12 §14)
 	autoClick: AutoClickMemory, -- added within schemaVersion 2 the same way (2026-10-16); never sent to the client
+	weekly: WeeklyState, -- weekly quests, added within schemaVersion 2 the same way (2026-10-17)
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
@@ -206,8 +211,15 @@ export type PracticeStats = { throws: number, hits: number, accuracy: number } -
 -- has worked yet (no API access, an outage), so there is no board to show.
 export type TopWinsLine = { name: string, wins: number }
 export type TopWinsView = { loaded: boolean, top: { TopWinsLine }, place: number?, wins: number, unavailable: boolean? }
--- reading: `quests` (daily + starter) = the profile's daily quest state plus the starter task state.
-export type QuestsView = { day: number, swapsUsed: number, active: { QuestEntry }, starter: StarterState }
+-- reading: `quests` (daily + starter) = the profile's daily quest state plus the starter task state; `weekly` (2026-10-17)
+-- = the profile's weekly quests (nil before the first week's are made).
+export type QuestsView = {
+	day: number,
+	swapsUsed: number,
+	active: { QuestEntry },
+	starter: StarterState,
+	weekly: WeeklyState?,
+}
 
 -- Every state field, all present: the reply to RequestSnapshot and the content of a full StateDelta.
 -- `grip` (§17.10) is the profile's GripState as stored; the client derives the level, rank and Double Grip minutes

@@ -20,7 +20,10 @@
 -- ban longer, batch B 2026-10-17), and its os.time; AutoClickService reads it so a rejoin within
 -- Config.Net.AutoClick.memorySeconds keeps a warning or a kick, and a ban is never forgotten) joined schema 2 the
 -- same way; sanitize: step a whole number in [0, AutoClickRules.MAX_STEP], at a whole number in [0, now + 300], and
--- a non-finite one 0 (forgotten: a broken record never punishes anyone).
+-- a non-finite one 0 (forgotten: a broken record never punishes anyone). Weekly quests (2026-10-17):
+-- `weekly = {week = -1, active = {}}` (the week index and its quests, QuestService) joined schema 2 the same way;
+-- sanitize: week a whole number in [-1, 2^53] (else -1: the next check makes this week's), the entries like the
+-- daily quests' (claims fail closed; a quest whose definition is gone dropped when opts.questExists is given).
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -295,6 +298,29 @@ local function fixQuestEntry(q: any, path: string, problems: { string })
 	end
 end
 
+-- `container.active` (the daily quests, or the weekly ones): not a table -> {}; an entry without a string id and def,
+-- or (with questExists) whose definition is gone, is dropped; the others are fixed by fixQuestEntry.
+local function fixQuestList(container: any, path: string, questExists: ((string) -> boolean)?, problems: { string })
+	local active = ensureTable(container, "active", function()
+		return {}
+	end, path .. ".active", problems)
+	local kept = {}
+	for index, q in ipairs(active) do
+		local entryPath = `{path}.active[{index}]`
+		if type(q) ~= "table" or type(q.id) ~= "string" or type(q.def) ~= "string" then
+			note(problems, entryPath, if type(q) == "table" then q.id else q, "removed")
+		elseif questExists ~= nil and not questExists(q.def) then
+			note(problems, entryPath, q.def, "template gone")
+		else
+			fixQuestEntry(q, entryPath, problems)
+			table.insert(kept, q)
+		end
+	end
+	if #kept ~= #active then
+		container.active = kept
+	end
+end
+
 -- True for a key DuelRewards.samePairKey makes: a whole-number userId written exactly that way ("301", "-1").
 local function isSamePairKey(key: unknown): boolean
 	if type(key) ~= "string" then
@@ -445,6 +471,7 @@ function ProfileSchema.defaults(now: number): Profile
 		-- Spec 2026-10-12 §7: one capsule free, Kitty Bread at Lv 1.
 		capsules = { slots = 1, list = { { level = 1, squishyId = starter } } },
 		autoClick = { step = 0, at = 0 }, -- auto-clicker check (2026-10-16): no strike
+		weekly = { week = -1, active = {} }, -- weekly quests (2026-10-17): none until the first check
 	}
 	return profile
 end
@@ -542,24 +569,14 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 	end, "quests", problems)
 	fixInt(quests, "day", -1, MAX_COUNTER, -1, "quests.day", problems)
 	fixInt(quests, "swapsUsed", 0, MAX_COUNTER, 0, "quests.swapsUsed", problems)
-	local active = ensureTable(quests, "active", function()
-		return {}
-	end, "quests.active", problems)
-	local keptQuests = {}
-	for index, q in ipairs(active) do
-		local path = `quests.active[{index}]`
-		if type(q) ~= "table" or type(q.id) ~= "string" or type(q.def) ~= "string" then
-			note(problems, path, if type(q) == "table" then q.id else q, "removed")
-		elseif questExists ~= nil and not questExists(q.def) then
-			note(problems, path, q.def, "template gone")
-		else
-			fixQuestEntry(q, path, problems)
-			table.insert(keptQuests, q)
-		end
-	end
-	if #keptQuests ~= #active then
-		quests.active = keptQuests
-	end
+	fixQuestList(quests, "quests", questExists, problems)
+
+	-- Weekly quests (2026-10-17, see the header).
+	local weekly = ensureTable(d, "weekly", function()
+		return TableUtil.deepCopy(fresh.weekly)
+	end, "weekly", problems)
+	fixInt(weekly, "week", -1, MAX_COUNTER, -1, "weekly.week", problems)
+	fixQuestList(weekly, "weekly", questExists, problems)
 
 	local starterTasks = ensureTable(d, "starter", function()
 		return TableUtil.deepCopy(fresh.starter)

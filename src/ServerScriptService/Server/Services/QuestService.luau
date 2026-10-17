@@ -41,8 +41,17 @@
 --   through QuestLogic.swap (seeded with the swap number): quest.swapUsed once used, net.invalid for anything else
 --   (no such quest, done, a starter task); a swap is saved "soon" (Reading: DESIGN names no save; the seed makes a
 --   lost swap repeat identically, so this only keeps the list stable). No paid swaps, skips or rerolls, ever.
+-- * Weekly quests (owner 2026-10-17; Config.Economy.WeeklyQuests, QuestDefs.weekly()): checked with the day's quests
+--   (every rollover: on load, every rolloverCheckSeconds, before any event, claim or swap): when profile.weekly.week is
+--   not this week (TimeUtil.utcWeek of os.time, weeks start on Monday 00:00 UTC), the done-but-unclaimed quests of the
+--   old week are granted once like the day's (quest.autoCollected), the unfinished ones expire, then
+--   QuestLogic.generateWeekly (the same 4 every week). A stored week after this one is kept. The same events move them
+--   (in the same write as the daily quests; their lines join DuelResult.questProgress and quest.complete names them);
+--   QuestClaim pays them with "quest" at the claim's squeeze value; they never swap (net.invalid: the design's weekly
+--   rows have no Swap). Off (no new weeks, no progress; done quests stay claimable) while WeeklyQuests.enabled is false
+--   or Config/ValidateWeeklyQuests found a problem at init (logged).
 -- Studio only (RunService:IsStudio() and Config.Debug.debugHooks): debugState(p), debugSetProgress(p, questId,
--- progress), debugRollover(p, day?).
+-- progress) (a daily or weekly quest or a starter task), debugRollover(p, day?).
 -- Collaborators are injectable (useDeps) for unit tests; init() wires the signals and remotes and never yields;
 -- destroy() unwires them (tests, leak checks).
 
@@ -59,9 +68,11 @@ local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local QuestDefs = require(Shared.QuestDefs)
+local Strings = require(Shared.Strings)
 local TableUtil = require(Shared.Util.TableUtil)
 local TimeUtil = require(Shared.Util.TimeUtil)
 local Types = require(Shared.Types)
+local ValidateWeeklyQuests = require(Shared.Config.ValidateWeeklyQuests)
 local QuestLogic = require(script.Parent.Parent.Logic.QuestLogic)
 local Services = script.Parent
 local CombatService = require(Services.CombatService)
@@ -89,10 +100,11 @@ export type Deps = {
 	debugAllowed: () -> boolean,
 	-- The seeded generator QuestLogic uses (nil = Random.new(seed)); tests pass FakeRng.new so every runner repeats.
 	newRng: QuestLogic.NewRng?,
+	weeklyOn: () -> boolean, -- the weekly quests' switch (WeeklyQuests.enabled and a valid config)
 }
 
 -- What one rollover did (ensureQuests; debugRollover returns it).
--- `claimedIds` = the quests of the old day it granted automatically.
+-- `claimedIds` = the quests of the old day (and the old week) it granted automatically; `generated` = the day's.
 export type RolloverSummary = {
 	generated: boolean,
 	autoClaimed: number,
@@ -123,6 +135,7 @@ local NOTICE_AUTO = "quest.autoCollected"
 local FINISHED: { [string]: boolean } = { win = true, loss = true, draw = true }
 -- Reading (DESIGN gives no number): the hits held per match are bounded; a duel ends long before this.
 local MAX_HELD_HITS = 100
+local WEEKLY = Config.Economy.WeeklyQuests
 
 -- Module table
 
@@ -134,6 +147,7 @@ local log = Log.new("Quest")
 local heldHits: { [any]: HeldHits } = {}
 local cleanup: Cleanup.Cleanup? = nil
 local loopThread: thread? = nil
+local weeklyBroken = false -- Config/ValidateWeeklyQuests found a problem (init)
 
 local function defaultDeps(): Deps
 	return {
@@ -159,6 +173,9 @@ local function defaultDeps(): Deps
 		end,
 		debugAllowed = function(): boolean
 			return RunService:IsStudio() and Config.Debug.debugHooks == true
+		end,
+		weeklyOn = function(): boolean
+			return WEEKLY.enabled == true and not weeklyBroken
 		end,
 	}
 end
@@ -187,6 +204,15 @@ local function questsOf(profile: any): Types.QuestsState?
 		return nil
 	end
 	return quests :: Types.QuestsState
+end
+
+-- profile.weekly when it has the stored shape, else nil (replaced by the next week check).
+local function weeklyOf(profile: any): Types.WeeklyState?
+	local weekly = if type(profile) == "table" then profile.weekly else nil
+	if type(weekly) ~= "table" or type(weekly.week) ~= "number" or type(weekly.active) ~= "table" then
+		return nil
+	end
+	return weekly :: Types.WeeklyState
 end
 
 -- profile.starter with both maps, created inside a mutate when missing (only call it on the live profile in mutate).
@@ -235,6 +261,16 @@ local function findEntry(list: { QuestEntry }, id: string): QuestEntry?
 	return nil
 end
 
+-- A daily quest of the profile, else a weekly one, by its id (nil when neither list has it).
+local function findQuest(profile: any, id: string): QuestEntry?
+	local quests, weekly = questsOf(profile), weeklyOf(profile)
+	local entry = if quests then findEntry(quests.active, id) else nil
+	if entry == nil and weekly ~= nil then
+		entry = findEntry(weekly.active, id)
+	end
+	return entry
+end
+
 -- The owned squishy ids of a profile (QuestLogic filters and sorts them).
 local function ownedOf(profile: any): { string }
 	local list: { string } = {}
@@ -257,12 +293,11 @@ end
 -- Marks a daily entry claimed (in the live profile) and pays its reward once. The claim is written first, then the
 -- Coins (nothing yields in between): a quest can never pay twice. The reward is counted in squeezes and paid at the
 -- squeeze value of that moment (EconomyService.rewardCoins, spec 2026-10-12 §9). Returns the Coins added, or nil when
--- the entry was already claimed or the session takes no changes.
+-- the entry was already claimed or the session takes no changes. Weekly quests (2026-10-17) are claimed the same way.
 local function claimDaily(player: any, questId: string): number?
 	local reward = 0
 	local ok, marked = deps.data.mutate(player, function(profile: any): boolean
-		local quests = questsOf(profile)
-		local entry = if quests then findEntry(quests.active, questId) else nil
+		local entry = findQuest(profile, questId)
 		if entry == nil or entry.claimed == true then
 			return false
 		end
@@ -315,7 +350,48 @@ local function claimStarter(player: any, id: string): number?
 	return added
 end
 
--- The day's quests (see the header). Returns what happened; nothing for a profile that is not READY.
+-- Grants the done-but-unclaimed quests `ids` of an old day or week once each (quest.autoCollected), into `summary`.
+local function autoCollect(player: any, ids: { string }, summary: RolloverSummary)
+	for _, id in ids do
+		local added = claimDaily(player, id)
+		if added ~= nil then
+			summary.autoClaimed += 1
+			table.insert(summary.claimedIds, id)
+			summary.coins += added
+			local args: Types.NotifyArgs = { coins = added }
+			deps.notify(player, NOTICE_AUTO, args, "success")
+		end
+	end
+end
+
+-- The week's quests (see the header). Returns true when it wrote this week's.
+local function rolloverWeek(player: any, profile: any, summary: RolloverSummary): boolean
+	if not deps.weeklyOn() then
+		return false
+	end
+	local week = TimeUtil.utcWeek(deps.unixNow(), WEEKLY.weekOffsetSeconds)
+	local weekly = weeklyOf(profile)
+	if weekly ~= nil and weekly.week >= week then
+		return false -- this week's quests (or a week from a clock that ran ahead: kept)
+	end
+	if weekly ~= nil then
+		local ids: { string } = {}
+		for _, entry in weekly.active do
+			if type(entry) == "table" and type(entry.id) == "string" and entry.done == true and not entry.claimed then
+				table.insert(ids, entry.id)
+			end
+		end
+		autoCollect(player, ids, summary)
+	end
+	local fresh = QuestLogic.generateWeekly(week)
+	local ok = deps.data.mutate(player, function(live: any): boolean
+		live.weekly = { week = week, active = fresh }
+		return true
+	end)
+	return ok
+end
+
+-- The day's quests (see the header), and the week's. Returns what happened; nothing for a profile that is not READY.
 local function rollover(player: any, day: number): RolloverSummary
 	local summary: RolloverSummary = { generated = false, autoClaimed = 0, coins = 0, day = day, claimedIds = {} }
 	if not isReady(player) then
@@ -325,8 +401,12 @@ local function rollover(player: any, day: number): RolloverSummary
 	if type(profile) ~= "table" then
 		return summary
 	end
+	local weekWritten = rolloverWeek(player, profile, summary)
 	local quests = questsOf(profile)
 	if quests ~= nil and quests.day >= day then
+		if weekWritten then
+			deps.markDirty(player, FIELD)
+		end
 		return summary -- today's quests (or a day from a clock that ran ahead: kept)
 	end
 	-- 1. Done-but-unclaimed quests of the old day are granted once.
@@ -336,16 +416,7 @@ local function rollover(player: any, day: number): RolloverSummary
 		for _, entry in roll.autoClaim do
 			table.insert(ids, entry.id)
 		end
-		for _, id in ids do
-			local added = claimDaily(player, id)
-			if added ~= nil then
-				summary.autoClaimed += 1
-				table.insert(summary.claimedIds, id)
-				summary.coins += added
-				local args: Types.NotifyArgs = { coins = added }
-				deps.notify(player, NOTICE_AUTO, args, "success")
-			end
-		end
+		autoCollect(player, ids, summary)
 	end
 	-- 2. Today's quests.
 	local fresh = QuestLogic.generate({
@@ -359,14 +430,14 @@ local function rollover(player: any, day: number): RolloverSummary
 		return true
 	end)
 	summary.generated = ok
-	if ok then
+	if ok or weekWritten then
 		deps.markDirty(player, FIELD)
 	end
 	return summary
 end
 
--- Applies server-confirmed events to the daily quests and the starter tasks in one write. Returns one line per quest
--- or task the events moved (the last state of each), and toasts the ones that became done.
+-- Applies server-confirmed events to the daily (and weekly) quests and the starter tasks in one write. Returns one line
+-- per quest or task the events moved (the last state of each), and toasts the ones that became done.
 local function applyEvents(player: any, events: { QuestEvent }): { QuestLine }
 	if #events == 0 or not isReady(player) then
 		return {}
@@ -383,10 +454,18 @@ local function applyEvents(player: any, events: { QuestEvent }): { QuestLine }
 	end
 	local ok = deps.data.mutate(player, function(profile: any): boolean
 		local quests = questsOf(profile)
+		local weekly = if deps.weeklyOn() then weeklyOf(profile) else nil
+		local lists: { { QuestEntry } } = {}
+		if quests ~= nil then
+			table.insert(lists, quests.active)
+		end
+		if weekly ~= nil then
+			table.insert(lists, weekly.active)
+		end
 		local starter = liveStarter(profile)
 		for _, event in events do
-			if quests ~= nil then
-				for _, line in QuestLogic.apply(quests.active, event) do
+			for _, active in lists do
+				for _, line in QuestLogic.apply(active, event) do
 					record(line)
 					if line.done then
 						table.insert(completed, line.questId) -- apply skips done quests: this one just finished
@@ -520,8 +599,7 @@ function QuestService.claim(player: any, questId: unknown): any
 		end
 		added = claimStarter(player, questId)
 	else
-		local quests = questsOf(profile)
-		local entry = if quests then findEntry(quests.active, questId) else nil
+		local entry = findQuest(profile, questId)
 		if entry == nil then
 			return NetService.err(CODE_INVALID)
 		elseif entry.claimed == true then
@@ -584,10 +662,10 @@ end
 
 -- Public: Studio debug -------------------------------------------------------------------------------------------------
 
--- The player's quests, starter tasks and held hits (copies).
+-- The player's quests, weekly quests, starter tasks and held hits (copies).
 function QuestService.debugState(player: any): { [string]: any }
 	local profile = deps.data.getProfile(player)
-	local quests = questsOf(profile)
+	local quests, weekly = questsOf(profile), weeklyOf(profile)
 	local held = heldHits[player]
 	return {
 		status = deps.data.status(player),
@@ -595,13 +673,16 @@ function QuestService.debugState(player: any): { [string]: any }
 		day = if quests then quests.day else nil,
 		swapsUsed = if quests then quests.swapsUsed else nil,
 		active = if quests then TableUtil.deepCopy(quests.active) else {},
+		week = if weekly then weekly.week else nil,
+		weekly = if weekly then TableUtil.deepCopy(weekly.active) else {},
+		weeklyOn = deps.weeklyOn(),
 		starter = QuestLogic.starterView(readStarter(profile)),
 		heldHits = if held then #held.squishyIds else 0,
 	}
 end
 
--- Studio only: sets the progress of a daily quest or a starter task (clamped to 0..goal; done follows), e.g. to test a
--- claim or the rollover auto-claim. Never pays and never toasts.
+-- Studio only: sets the progress of a daily or weekly quest or a starter task (clamped to 0..goal; done follows), e.g.
+-- to test a claim or the rollover auto-claim. Never pays and never toasts.
 function QuestService.debugSetProgress(player: any, questId: unknown, progress: unknown): (boolean, string?)
 	if not deps.debugAllowed() then
 		return false, "Studio only"
@@ -616,8 +697,7 @@ function QuestService.debugSetProgress(player: any, questId: unknown, progress: 
 			starter.progress[questId] = math.clamp(whole(progress), 0, def.variants[1].goal)
 			return true
 		end
-		local quests = questsOf(profile)
-		local entry = if quests then findEntry(quests.active, questId) else nil
+		local entry = findQuest(profile, questId)
 		if entry == nil then
 			return false
 		end
@@ -678,6 +758,12 @@ end
 function QuestService.init()
 	local c = Cleanup.new()
 	cleanup = c
+	-- Weekly quests: a bad Config/WeeklyQuests or weekly QuestDefs keeps them off (logged); the daily quests go on.
+	local problems = ValidateWeeklyQuests(Config, QuestDefs, Strings)
+	weeklyBroken = #problems > 0
+	for _, problem in problems do
+		log:error("weekly quests off:", problem)
+	end
 	-- The data port's signals cannot be disconnected one by one, so destroy() switches this handler off instead.
 	local active = true
 	c:add(function()

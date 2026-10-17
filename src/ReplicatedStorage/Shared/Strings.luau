@@ -840,6 +840,7 @@ local Strings = {
 		panelTitle = "Quests", -- foam fix batch: title case like every other screen's header tab
 		section = {
 			daily = "Daily",
+			weekly = "Weekly", -- the weekly quests' tab (H:959)
 			starter = "Starter",
 		},
 		inProgress = "In progress",

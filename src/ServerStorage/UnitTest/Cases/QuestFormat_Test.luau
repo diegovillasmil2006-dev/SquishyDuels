@@ -24,6 +24,9 @@
 --   * UI FINAL R8 (the design's Quests window): "x / y" (H:956), the tabs with their ready counts (Starter while a
 --     task is unclaimed, Top Wins last), the bar's gold once ready or claimed, GO's route by category, the squeeze
 --     toast's key by input, and the Top Wins rows.
+--   * Weekly quests (2026-10-17): weekly cards (kind weekly, no Swap, rewards at the squeeze value, unknown ones left
+--     out), their ready count, "Resets in 3d 7h" to Monday 00:00 UTC (the day's clock in the last day), the Weekly tab
+--     right after Daily while the week has quests, and the namer.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -414,5 +417,85 @@ return function(t: Context)
 		)
 		expect.equal(QuestFormat.goToast("Touch"), Strings.quest.goSqueezeTouch)
 		expect.equal(Strings.quest.goSqueeze, "Squeeze your squishy! Press {key}")
+	end)
+
+	-- Weekly quests (2026-10-17; Diego's Weekly tab, H:959, H:1027) -------------------------------------------------
+
+	local W = (D - 4) // 7 -- D is a Friday; weeks start on Monday 00:00 UTC (4 days after the epoch)
+
+	local function withWeekly(state: any, list: { any }): any
+		state.weekly = { week = W, active = list }
+		return state
+	end
+
+	local function weeklyEntry(slot: number, def: string, goal: number, progress: number, extra: any?): any
+		local e = entry(slot, def, goal, progress, extra)
+		e.id = string.format("w%d_%d", W, slot)
+		return e
+	end
+
+	t.test("weekly cards: the daily row's data with kind weekly, never a Swap; rewards at the squeeze value", function()
+		local state = withWeekly(quests({}), {
+			weeklyEntry(1, "weekly_squeeze", 1000, 250),
+			weeklyEntry(2, "weekly_duel_win", 10, 10),
+			weeklyEntry(3, "weekly_practice", 100, 100, { claimed = true }),
+			weeklyEntry(4, "gone_quest", 5, 0), -- an unknown quest is left out
+		})
+		local board = QuestFormat.board(state, ctx)
+		expect.equal(#board.weekly, 3)
+		local first = board.weekly[1]
+		expect.equal(first.kind, "weekly")
+		expect.equal(first.id, string.format("w%d_1", W))
+		expect.equal(first.title, QuestDefs.text("weekly_squeeze", 1000))
+		expect.equal(first.progressText, "250 / 1000")
+		expect.equal(first.reward, CapsuleMath.rewardCoins(150, VALUE))
+		expect.equal(first.state, "inProgress")
+		expect.falsy(first.canSwap)
+		expect.equal(first.equipSquishy, nil)
+		expect.equal(board.weekly[2].state, "claim")
+		expect.equal(board.weekly[3].state, "claimed")
+		expect.equal(QuestFormat.goRoute(board.weekly[2]), "duel")
+		expect.equal(QuestFormat.iconFor(first).image, "img.icon.squeeze")
+		expect.equal(QuestFormat.weeklyClaimable(state), 1)
+		expect.equal(QuestFormat.weeklyClaimable(quests({})), 0)
+		expect.equal(QuestFormat.weeklyClaimable(nil), 0)
+		expect.equal(#QuestFormat.board(quests({}), ctx).weekly, 0) -- no weekly state: no cards
+	end)
+
+	t.test(
+		"weekly reset pill (H:1027): 'Resets in 3d 7h' to Monday 00:00 UTC, the day clock in the last day",
+		function()
+			expect.equal(QuestFormat.weekClock(3 * 86400 + 7 * 3600 + 59), "3d 7h")
+			expect.equal(QuestFormat.weekClock(86400), "1d 0h")
+			expect.equal(QuestFormat.weekClock(86399), QuestFormat.clock(86399)) -- "23h 59m"
+			expect.equal(QuestFormat.weekClock(-1), "0:00")
+			expect.equal(QuestFormat.weekClock(0 / 0), "0:00")
+			expect.equal(QuestFormat.weeklyResetText(NOW), "Resets in 2d 18h") -- Friday 05:07 UTC
+			local monday = (W + 1) * 7 + 4 -- the next Monday's day index
+			expect.equal(QuestFormat.weeklyResetText(monday * 86400 - 1), "Resets in 0:01")
+			expect.equal(QuestFormat.weeklyResetText(monday * 86400), "Resets in 7d 0h")
+			expect.equal(QuestFormat.board(nil, ctx).weeklyReset, QuestFormat.weeklyResetText(NOW))
+		end
+	)
+
+	t.test("tabs: Weekly right after Daily (H:959) while the week has quests, with its ready count", function()
+		local state = withWeekly(quests({ entry(1, "squeeze_any", 100, 100) }), {
+			weeklyEntry(1, "weekly_squeeze", 1000, 1000),
+			weeklyEntry(2, "weekly_duel_win", 10, 0),
+		})
+		local tabs = QuestFormat.tabs(QuestFormat.board(state, ctx))
+		expect.equal(tabs[1].id, "daily")
+		expect.equal(tabs[2].id, "weekly")
+		expect.equal(tabs[2].label, Strings.quest.section.weekly)
+		expect.equal(tabs[2].count, 1)
+		expect.equal(tabs[#tabs].id, "topWins")
+		expect.equal(Strings.quest.section.weekly, "Weekly")
+	end)
+
+	t.test("namer: weekly quests from the state", function()
+		local state = withWeekly(quests({}), { weeklyEntry(3, "weekly_duel_finish", 15, 0) })
+		local name = QuestFormat.namer(state)
+		expect.equal(name(string.format("w%d_3", W)), QuestDefs.text("weekly_duel_finish", 15))
+		expect.equal(name(string.format("w%d_9", W)), nil)
 	end)
 end

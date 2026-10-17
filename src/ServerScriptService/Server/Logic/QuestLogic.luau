@@ -16,8 +16,11 @@
 --       quest keeps the id (slot). ctx = {userId, day, swapNumber, owned, equipped}; swapNumber = quests.swapsUsed + 1.
 --       Reasons: "net.invalid" (no such quest, not a daily quest, already done or claimed, nothing to swap to),
 --       "quest.swapUsed" (swapNumber above Economy.Quests.freeSwapsPerDay). Returns a new list (the input is unchanged).
---   QuestLogic.apply(entries, event) -> { QuestProgressLine }: advances the daily quests the event counts for (in place,
---       capped at the goal; done = progress >= goal) and returns one line per quest it changed.
+--   QuestLogic.generateWeekly(week) -> { QuestEntry }: the weekly quests (2026-10-17): one per QuestDefs.weekly() quest
+--       in table order with its one variant, ids "w<week>_<slot>", no squishy, progress 0, done/claimed false. The same
+--       list every week (Diego's Weekly tab draws a fixed list, lib:78-83), so it needs no seed.
+--   QuestLogic.apply(entries, event) -> { QuestProgressLine }: advances the daily (or weekly) quests the event counts
+--       for (in place, capped at the goal; done = progress >= goal) and returns one line per quest it changed.
 --   QuestLogic.applyStarter(starter, event) -> { starterId }: the same for profile.starter (progress map, in place);
 --       claimed tasks never move.
 --   QuestLogic.starterView(starter) -> { StarterTaskView } {id, progress, goal, reward, done, claimed} in table order
@@ -220,6 +223,24 @@ function QuestLogic.generate(ctx: GenerateContext, newRng: NewRng?): { QuestEntr
 	return entries
 end
 
+function QuestLogic.generateWeekly(week: number): { QuestEntry }
+	local entries: { QuestEntry } = {}
+	for slot, def in QuestDefs.weekly() do
+		local variant = def.variants[1]
+		table.insert(entries, {
+			id = string.format("w%d_%d", week, slot),
+			def = def.id,
+			squishy = nil,
+			progress = 0,
+			goal = variant.goal,
+			reward = variant.reward,
+			done = false,
+			claimed = false,
+		})
+	end
+	return entries
+end
+
 function QuestLogic.swap(
 	entries: { QuestEntry },
 	id: string,
@@ -277,7 +298,7 @@ function QuestLogic.apply(entries: { QuestEntry }, event: QuestEvent): { QuestPr
 	local lines: { QuestProgressLine } = {}
 	for _, entry in entries do
 		local def = QuestDefs.get(entry.def)
-		if def ~= nil and def.kind == "daily" and not entry.done and not entry.claimed then
+		if def ~= nil and def.kind ~= "starter" and not entry.done and not entry.claimed then
 			if counts(def, entry.squishy, event) then
 				local progress = math.min(entry.goal, whole(entry.progress) + 1)
 				local done = progress >= entry.goal

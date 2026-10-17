@@ -4,7 +4,8 @@
 -- rules; the 3 starter tasks (squeeze 20/100, practice 5/50, duel 1/150; starter_jelly and minTier went with the giant
 -- pads, build plan Phase 6); every textPair
 -- resolves to a Strings {one, many} pair and text() fills {n} and {squishy} with the right plural; the lists are frozen
--- and get() rejects unknown ids. Tables are compared by value.
+-- and get() rejects unknown ids; the 4 weekly quests (2026-10-17) with their goals, rewards and texts, out of list().
+-- Tables are compared by value.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -139,5 +140,24 @@ return function(t: Context)
 		local daily = QuestDefs.daily()
 		table.remove(daily)
 		expect.equal(#QuestDefs.daily(), #DAILY)
+	end)
+
+	t.test("weekly (2026-10-17): the 4 weekly quests, goals and rewards, texts; frozen, found by get()", function()
+		local rows: { { any } } = {}
+		for _, def in QuestDefs.weekly() do
+			table.insert(rows, { def.id, def.kind, def.counts, def.variants[1].goal, def.variants[1].reward })
+			expect.equal(QuestDefs.get(def.id), def)
+			expect.truthy(table.isfrozen(def))
+			expect.truthy(table.isfrozen(def.variants[1]))
+		end
+		local expected: { { any } } = {
+			{ "weekly_squeeze", "weekly", "squeeze", 1000, 1500 },
+			{ "weekly_duel_win", "weekly", "duelWin", 10, 2000 },
+			{ "weekly_duel_finish", "weekly", "duelFinish", 15, 1500 },
+			{ "weekly_practice", "weekly", "practiceHit", 100, 500 },
+		}
+		expect.deepEqual(rows, expected)
+		expect.equal(QuestDefs.text("weekly_duel_win", 10), "Win 10 duels")
+		expect.equal(QuestDefs.text("weekly_squeeze", 1000), "Squeeze squishies 1000 times")
 	end)
 end

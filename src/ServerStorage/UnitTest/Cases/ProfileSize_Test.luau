@@ -2,7 +2,8 @@
 -- ProfileSize_Test: the §3.5 size budget, measured with HttpService:JSONEncode (the encoder Roblox uses for DataStore
 -- values) on a MAXIMAL profile: every log at its cap (50 boxLog, 20 shopLog, 100 receipts, 30 duelLog), a full
 -- same-pair record (Config.Data.caps.samePair opponents x samePairFullRewards times, §6.7), every catalog
--- squishy owned (14 since the 2026-10-09 overhaul), 3 quests, every starter task and onboarding step, the v2 Grip block,
+-- squishy owned (14 since the 2026-10-09 overhaul), 3 quests, 4 weekly quests (2026-10-17), every starter task and
+-- onboarding step, the v2 Grip block,
 -- 4 capsules at the top level (spec 2026-10-12), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
@@ -63,6 +64,19 @@ return function(t: Context)
 				progress = BIG_COUNTER,
 				goal = BIG_COUNTER,
 				reward = 450,
+				done = true,
+				claimed = false,
+			})
+		end
+		-- Weekly quests (2026-10-17): every weekly quest of a week.
+		p.weekly = { week = BIG_COUNTER, active = {} }
+		for i = 1, 4 do
+			table.insert(p.weekly.active, {
+				id = `w9007199254740992_{i}`, -- the week at 2^53
+				def = "weekly_duel_finish_xxxxx", -- 24 characters (weekly ids are <= 24)
+				progress = BIG_COUNTER,
+				goal = BIG_COUNTER,
+				reward = 2000,
 				done = true,
 				claimed = false,
 			})

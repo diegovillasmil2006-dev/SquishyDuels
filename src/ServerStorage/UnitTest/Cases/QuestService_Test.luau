@@ -18,7 +18,12 @@
 --     squeeze value of the moment it is granted (Phase 3, spec 2026-10-12 §9), the rollover's auto-claims included;
 --   * QuestSwap: one free swap of an unfinished daily quest (QuestLogic.swap with swap number 1), then quest.swapUsed;
 --     a done quest or a starter task is net.invalid;
---   * a profile load or an OFFLINE profile never moves progress or pays.
+--   * a profile load or an OFFLINE profile never moves progress or pays;
+--   * weekly quests (2026-10-17; the older cases run with them off): this week's 4 from QuestLogic.generateWeekly
+--     (ids w<week>_<slot>, weeks from Monday 00:00 UTC), made once in the same write mark as the day's; a new week
+--     auto-collects the done-but-unclaimed ones once ("quest", quest.autoCollected) and lets the others expire; a
+--     stored week after this one is kept; the same events move them (their lines join the duel result, quest.complete
+--     names them); QuestClaim pays reward x the squeeze value with "quest" once; they never swap; off = none.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -30,6 +35,10 @@ type Context = {
 
 local DAY = 20000
 local NOON = DAY * 86400 + 12 * 3600
+-- Weekly quests: DAY is a Friday (weeks start on Monday 00:00 UTC, 4 days after the epoch); its week and the next
+-- Monday, 3 days later.
+local WEEK = (DAY - 4) // 7
+local NEXT_MONDAY = (WEEK + 1) * 7 + 4
 local VALUE = 1_385 -- the squeeze value of the test profile: Toast (×1) in a Lv 30 capsule (CP 1,385)
 
 return function(t: Context)
@@ -45,6 +54,7 @@ return function(t: Context)
 		clock: any,
 		player: any,
 		status: string,
+		weeklyOn: boolean,
 		profile: any,
 		dirty: { string },
 		saves: { string },
@@ -71,6 +81,7 @@ return function(t: Context)
 			clock = FakeClock.new(NOON),
 			player = { UserId = 777 },
 			status = "ready",
+			weeklyOn = false, -- the weekly cases switch them on
 			profile = newProfile(),
 			dirty = {},
 			saves = {},
@@ -129,6 +140,9 @@ return function(t: Context)
 				return true
 			end,
 			newRng = FakeRng.new, -- seeded: the same stream for the same seed on every runner
+			weeklyOn = function(): boolean
+				return w.weeklyOn
+			end,
 		})
 		return w
 	end
@@ -538,6 +552,133 @@ return function(t: Context)
 		expect.equal(state.day, DAY)
 		expect.equal(#state.starter, 3) -- starter_jelly went with the giant pads (Phase 6)
 		expect.falsy(QuestService.debugRollover(w.player, DAY)) -- not a day before today
+		finish()
+	end)
+
+	-- Weekly quests (2026-10-17) -------------------------------------------------------------------------------------
+
+	local function withWeekly(w: World, week: number): { any }
+		w.weeklyOn = true
+		w.profile.weekly = { week = week, active = QuestLogic.generateWeekly(week) }
+		return w.profile.weekly.active
+	end
+
+	t.test("weekly: this week's quests are made once, with the day's (one write mark)", function()
+		local w = fresh()
+		w.weeklyOn = true
+		expect.truthy(QuestService.ensureQuests(w.player))
+		expect.deepEqual(w.profile.weekly, { week = WEEK, active = QuestLogic.generateWeekly(WEEK) })
+		expect.equal(#w.profile.weekly.active, 4)
+		expect.equal(w.profile.weekly.active[1].id, string.format("w%d_1", WEEK))
+		expect.deepEqual(w.dirty, { "quests" })
+		QuestService.ensureQuests(w.player) -- the same week and day: nothing
+		expect.equal(#w.dirty, 1)
+		expect.equal(#w.grants, 0)
+		finish()
+	end)
+
+	t.test("weekly: the week turns on Monday 00:00 UTC; done ones pay once, unfinished ones expire", function()
+		local w = fresh()
+		withQuests(w, {})
+		local list = withWeekly(w, WEEK)
+		list[1].progress, list[1].done = list[1].goal, true -- done, not claimed
+		list[2].progress = list[2].goal - 1 -- unfinished
+		w.clock.advance(NEXT_MONDAY * 86400 - 1 - NOON) -- Sunday 23:59:59: still this week
+		QuestService.ensureQuests(w.player)
+		expect.equal(w.profile.weekly.week, WEEK)
+		expect.equal(#w.grants, 0)
+		w.clock.advance(1) -- Monday 00:00:00 UTC
+		QuestService.ensureQuests(w.player)
+		expect.equal(w.profile.weekly.week, WEEK + 1)
+		expect.deepEqual(w.profile.weekly.active, QuestLogic.generateWeekly(WEEK + 1))
+		expect.deepEqual(w.grants, { { amount = list[1].reward * VALUE, reason = "quest" } })
+		expect.equal(count(codes(w), "quest.autoCollected"), 1)
+		QuestService.ensureQuests(w.player) -- the same week again: nothing more
+		expect.equal(#w.grants, 1)
+		finish()
+	end)
+
+	t.test("weekly: a stored week after this one (another server's clock) is kept", function()
+		local w = fresh()
+		withQuests(w, {})
+		local ahead = withWeekly(w, WEEK + 1)
+		QuestService.ensureQuests(w.player)
+		expect.equal(w.profile.weekly.week, WEEK + 1)
+		expect.equal(w.profile.weekly.active, ahead)
+		finish()
+	end)
+
+	t.test("weekly: the same events move them; duel lines and quest.complete include them", function()
+		local w = fresh()
+		withQuests(w, { entry(1, "squeeze_any", 100, 150) })
+		local weekly = withWeekly(w, WEEK) -- squeeze, duel win, duel finish, practice
+		QuestService.onSqueezed(w.player, "toast")
+		QuestService.onTargetHit(w.player, "T1", 1, true)
+		expect.equal(weekly[1].progress, 1)
+		expect.equal(weekly[4].progress, 1)
+		local lines = QuestService.onDuelResult(w.player, result("win", "toast", 5), info("m1", "win"))
+		expect.equal(weekly[2].progress, 1)
+		expect.equal(weekly[3].progress, 1)
+		local moved: { [string]: boolean } = {}
+		for _, line in lines do
+			moved[line.questId] = true
+		end
+		expect.truthy(moved[weekly[2].id])
+		expect.truthy(moved[weekly[3].id])
+		-- Cancelled matches never count for them either.
+		QuestService.onDuelResult(w.player, result("cancelled", "toast", 9), info("m2", "cancelled"))
+		expect.equal(weekly[2].progress, 1)
+		-- The win that finishes one toasts quest.complete with its id.
+		weekly[2].progress = weekly[2].goal - 1
+		QuestService.onDuelResult(w.player, result("win", "toast", 5), info("m3", "win"))
+		expect.truthy(weekly[2].done)
+		local named = false
+		for _, n in w.notices do
+			if n.code == "quest.complete" and n.args.questId == weekly[2].id then
+				named = true
+			end
+		end
+		expect.truthy(named)
+		expect.equal(#w.grants, 0) -- progress never pays by itself
+		finish()
+	end)
+
+	t.test("weekly: QuestClaim pays the squeezes x the squeeze value with 'quest', once; no swap", function()
+		local w = fresh()
+		withQuests(w, {})
+		local q = withWeekly(w, WEEK)[4]
+		expect.equal(QuestService.claim(w.player, q.id).reason, "quest.notReady")
+		expect.equal(QuestService.swap(w.player, q.id).reason, "net.invalid")
+		q.progress, q.done = q.goal, true
+		local reply = QuestService.claim(w.player, q.id)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(w.grants, { { amount = q.reward * VALUE, reason = "quest" } })
+		expect.truthy(q.claimed)
+		expect.deepEqual(w.saves, { "soon" })
+		expect.equal(QuestService.claim(w.player, q.id).reason, "quest.alreadyClaimed")
+		expect.equal(#w.grants, 1)
+		finish()
+	end)
+
+	t.test("weekly: a claim just after the week turned is collected once, then alreadyClaimed", function()
+		local w = fresh()
+		withQuests(w, {})
+		local q = withWeekly(w, WEEK)[1]
+		q.progress, q.done = q.goal, true
+		w.clock.advance(NEXT_MONDAY * 86400 - NOON)
+		expect.equal(QuestService.claim(w.player, q.id).reason, "quest.alreadyClaimed")
+		expect.deepEqual(w.grants, { { amount = q.reward * VALUE, reason = "quest" } })
+		expect.equal(w.profile.weekly.week, WEEK + 1)
+		finish()
+	end)
+
+	t.test("weekly: off makes none and moves none", function()
+		local w = fresh() -- weeklyOn = false
+		QuestService.ensureQuests(w.player)
+		expect.equal(w.profile.weekly, nil)
+		w.profile.weekly = { week = WEEK, active = QuestLogic.generateWeekly(WEEK) }
+		QuestService.onSqueezed(w.player, "toast")
+		expect.equal(w.profile.weekly.active[1].progress, 0)
 		finish()
 	end)
 end

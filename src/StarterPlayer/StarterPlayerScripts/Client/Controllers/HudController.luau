@@ -615,7 +615,11 @@ local function refreshBadges()
 	setBadge("squishies", #StateController.newOwnedIds())
 	local ready = StateController.isProfileReady()
 	local quests = StateController.get("quests")
-	setBadge("quests", if ready then HudFormat.questBadge(quests) + QuestFormat.starterClaimable(quests) else 0)
+	-- Weekly quests (2026-10-17): the design's badge counts them too (H:917-919).
+	local claimable = HudFormat.questBadge(quests)
+		+ QuestFormat.starterClaimable(quests)
+		+ QuestFormat.weeklyClaimable(quests)
+	setBadge("quests", if ready then claimable else 0)
 	local today = TimeUtil.utcDay(Workspace:GetServerTimeNow())
 	setBadge("daily", if ready then HudFormat.dailyBadge(StateController.get("daily"), today) else 0)
 end

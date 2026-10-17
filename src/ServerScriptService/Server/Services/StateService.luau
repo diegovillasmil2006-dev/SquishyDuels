@@ -275,7 +275,13 @@ local function rawField(field: string, profile: any, values: { [string]: any }, 
 		return nil
 	elseif field == "quests" then
 		local quests = listOf(profile.quests) :: any
-		return { day = quests.day, swapsUsed = quests.swapsUsed, active = quests.active, starter = profile.starter }
+		return {
+			day = quests.day,
+			swapsUsed = quests.swapsUsed,
+			active = quests.active,
+			starter = profile.starter,
+			weekly = profile.weekly, -- weekly quests (2026-10-17)
+		}
 	elseif field == "unseenReveals" then
 		local list = {}
 		for _, entry in listOf(profile.boxLog) do

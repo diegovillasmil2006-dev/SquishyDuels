@@ -28,6 +28,12 @@
 --                         px): the content's, capped so the whole panel (body + chrome: header, footer, paddings)
 --                         stays within maxShare of the screen height; never under minH (unit-tested at 667×375,
 --                         1280×720, 1920×1080 and the largest text)
+-- Weekly quests (owner 2026-10-17; Diego's Weekly tab, H:959, H:1027):
+--   weeklyCards(quests, ctx)   one card per quest of quests.weekly (kind "weekly", never a Swap or an Equip shortcut)
+--   weeklyResetText(now)  "Resets in {clock}" until the next week (Monday 00:00 UTC) with weekClock
+--   weekClock(seconds)    H:1027's "3d 7h" ("{d}d {h}h") a day or more before the reset, else clock(seconds)
+--   weeklyClaimable(quests)    weekly quests done and not claimed (HudController adds them to the Quests badge, as
+--                         the design's badge counts the weekly quests too, H:917-919)
 --   topWins(view)         Batch 3 (review #10): "Top Wins This Week" from the topWins state (Types.TopWinsView): the
 --                         ranked lines "1. Ana · 12 wins", a note ("Checking the board…" before the first read, "The
 --                         board is taking a break…" while no read works, the empty week's "No wins yet this week. Be
@@ -61,11 +67,11 @@ local TimeUtil = require(Shared.Util.TimeUtil)
 
 -- Types
 
-export type CardKind = "daily" | "starter"
+export type CardKind = "daily" | "weekly" | "starter"
 export type CardState = "inProgress" | "claim" | "claimed"
 
 export type Card = {
-	id: string, -- the questId: "q<day>_<slot>" or "starter_<name>"
+	id: string, -- the questId: "q<day>_<slot>", "w<week>_<slot>" (weekly) or "starter_<name>"
 	kind: CardKind,
 	title: string,
 	progress: number, -- clamped to 0..goal
@@ -100,6 +106,8 @@ export type Board = {
 	swapsLeft: number,
 	reset: string, -- UI FINAL R8: "Resets in {clock}" (H:359)
 	empty: string?, -- the empty sentence when the day has no quest
+	weekly: { Card }, -- weekly quests (2026-10-17): the Weekly tab's rows
+	weeklyReset: string, -- "Resets in 3d 7h" (H:1027)
 }
 
 -- Batch 3: what the Quests screen's "Top Wins This Week" section shows. UI FINAL R8: `rows` are the ranked entries.
@@ -107,7 +115,7 @@ export type WinsRow = { rank: number, name: string, wins: number }
 export type TopWins = { lines: { string }, rows: { WinsRow }, note: string?, you: string? }
 
 -- UI FINAL R8 (H:358): a tab of the Quests window and its ready count.
-export type TabId = "daily" | "starter" | "topWins"
+export type TabId = "daily" | "weekly" | "starter" | "topWins"
 export type Tab = { id: TabId, label: string, count: number }
 
 -- UI FINAL R8 (UD2): GO's route.
@@ -117,7 +125,10 @@ export type Route = "squeeze" | "duel" | "practice"
 
 local QUESTS = Config.Economy.Quests
 local DAILY_KIND: CardKind = "daily"
+local WEEKLY_KIND: CardKind = "weekly"
 local STARTER_KIND: CardKind = "starter"
+local WEEK_OFFSET = Config.Economy.WeeklyQuests.weekOffsetSeconds -- weeks start on Monday 00:00 UTC
+local SECONDS_PER_DAY = 86400
 -- UI FINAL R4 (plan R4): the picture of each QuestDefs category (the pack 1 pictures: squeeze.svg, the duel emblem,
 -- match.svg for practice; lib:73-83 draws a picture per quest, plan FD7: by category).
 local CATEGORY_IMAGES: { [string]: string } = {
@@ -205,6 +216,12 @@ local function untilNextDay(now: number): number
 	return if finite(now) then TimeUtil.secondsUntilNextUtcDay(now) else 0
 end
 
+local function weeklyActive(quests: unknown): { any }
+	local weekly = if type(quests) == "table" then (quests :: any).weekly else nil
+	local active = if type(weekly) == "table" then weekly.active else nil
+	return if type(active) == "table" then active else {}
+end
+
 -- Public
 
 function QuestFormat.swapsLeft(quests: unknown): number
@@ -222,6 +239,21 @@ end
 -- UI FINAL R8 (H:359): "Resets in {clock}" until the next 00:00 UTC.
 function QuestFormat.resetText(now: number): string
 	return Strings.format(Strings.quest.footer, { clock = QuestFormat.clock(untilNextDay(now)) })
+end
+
+-- Weekly quests (H:1027 "Resets in 3d 7h"): "{d}d {h}h" a day or more before the reset, else clock(seconds).
+function QuestFormat.weekClock(seconds: number): string
+	local s = if finite(seconds) then math.max(0, math.floor(seconds)) else 0
+	if s < SECONDS_PER_DAY then
+		return QuestFormat.clock(s)
+	end
+	return string.format("%dd %dh", s // SECONDS_PER_DAY, (s % SECONDS_PER_DAY) // 3600)
+end
+
+-- Weekly quests: "Resets in {clock}" until the next week starts (Monday 00:00 UTC).
+function QuestFormat.weeklyResetText(now: number): string
+	local left = if finite(now) then TimeUtil.secondsUntilNextUtcWeek(now, WEEK_OFFSET) else 0
+	return Strings.format(Strings.quest.footer, { clock = QuestFormat.weekClock(left) })
 end
 
 -- "No quests right now. Check back in {time}." ({time} = the countdown to the next 00:00 UTC).
@@ -263,6 +295,30 @@ function QuestFormat.dailyCard(entry: unknown, ctx: Context, swapsLeft: number):
 		result.equipSquishy = id
 	end
 	return result
+end
+
+-- Weekly quests: one card per quest of quests.weekly (a daily card of kind "weekly": no Swap, no named squishy).
+function QuestFormat.weeklyCards(quests: unknown, ctx: Context): { Card }
+	local cards: { Card } = {}
+	for _, entry in weeklyActive(quests) do
+		local made = QuestFormat.dailyCard(entry, ctx, 0)
+		if made then
+			made.kind = WEEKLY_KIND
+			table.insert(cards, made)
+		end
+	end
+	return cards
+end
+
+-- Weekly quests done and not claimed (an unknown quest is left out, as on the board).
+function QuestFormat.weeklyClaimable(quests: unknown): number
+	local n = 0
+	for _, entry in weeklyActive(quests) do
+		if type(entry) == "table" and entry.done == true and entry.claimed ~= true and QuestDefs.get(entry.def) then
+			n += 1
+		end
+	end
+	return n
 end
 
 -- One card per QuestDefs starter task, from profile.starter {progress, claimed}; rewards at `capsules`' squeeze value.
@@ -343,6 +399,8 @@ function QuestFormat.board(quests: unknown, ctx: Context): Board
 		swapsLeft = swaps,
 		reset = QuestFormat.resetText(ctx.now),
 		empty = if #daily == 0 then QuestFormat.emptyText(ctx.now) else nil,
+		weekly = QuestFormat.weeklyCards(quests, ctx),
+		weeklyReset = QuestFormat.weeklyResetText(ctx.now),
 	}
 end
 
@@ -358,6 +416,9 @@ function QuestFormat.tabs(b: Board): { Tab }
 		return n
 	end
 	local list: { Tab } = { { id = "daily", label = Strings.quest.section.daily, count = ready(b.daily) } }
+	if #b.weekly > 0 then -- weekly quests (H:959: Daily, Weekly); none while the server has made none
+		table.insert(list, { id = "weekly", label = Strings.quest.section.weekly, count = ready(b.weekly) })
+	end
 	if b.starterVisible then
 		table.insert(list, { id = "starter", label = Strings.quest.section.starter, count = ready(b.starter) })
 	end
@@ -406,18 +467,21 @@ function QuestFormat.bodyHeight(
 	return math.max(minHeight, math.min(content, room))
 end
 
--- For DuelFormat.result: the line of a daily quest (from the quests state) or a starter task, else nil.
+-- For DuelFormat.result: the line of a daily or weekly quest (from the quests state) or a starter task, else nil.
 function QuestFormat.namer(quests: unknown): (questId: string) -> string?
 	local active = if type(quests) == "table" and type((quests :: any).active) == "table"
 		then (quests :: any).active
 		else {}
+	local weekly = weeklyActive(quests)
 	return function(questId: string): string?
 		if type(questId) ~= "string" then
 			return nil
 		end
-		for _, entry in active do
-			if type(entry) == "table" and entry.id == questId then
-				return QuestFormat.titleOf(entry)
+		for _, list in { active, weekly } do
+			for _, entry in list do
+				if type(entry) == "table" and entry.id == questId then
+					return QuestFormat.titleOf(entry)
+				end
 			end
 		end
 		local def = QuestDefs.get(questId)

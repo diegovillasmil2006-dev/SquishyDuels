@@ -32,8 +32,8 @@
 -- UI FINAL R8 (the design's Quests window, plan R8; Config.UI.Quests): the body (padding 18 26 24, gap 14, H:356-357):
 -- the tab row (H:358, UD7: Daily / Starter / Top Wins, QuestFormat.tabs; mint when selected, the purple card
 -- otherwise; the tab hover, the tab sound; the count badge of quests ready to claim with its sdBadge loop; L1 / R1 step
--- through them) and the reset pill pushed right (H:359, the Daily tab only: the starter tasks and the board do not
--- reset at midnight), then the rows (H:361-373, 12 apart, scrolling with the design bar): the purple row (border
+-- through them) and the reset pill pushed right (H:359, the Daily and Weekly tabs only: the starter tasks and the board
+-- do not reset), then the rows (H:361-373, 12 apart, scrolling with the design bar): the purple row (border
 -- #FFE36B when ready; the row hover x +4), the icon tile (QuestFormat.iconFor), the title (at most 2 lines) with
 -- "x / y" pushed right, the quest bar (blue, gold once ready or claimed, the shine), the reward pill (the coin and the
 -- amount), Swap (cyan) / Equip (green) as the design's chip (PR26), and CLAIM (green, pulsing 1.1 s) / GO (cyan) / the
@@ -44,6 +44,11 @@
 -- pop sound, the window closes, then after 240 ms QuestFormat.goRoute: squeeze -> the squeeze waypoint and the toast
 -- (QuestFormat.goToast), duel -> QueueController.joinAsync(), practice -> the practice waypoint. Phones: the reward and
 -- the chips go under the bar (the row grows by Config.UI.Quests.row.compactExtra).
+-- Weekly quests (owner 2026-10-17; Diego's Weekly tab, H:959): the Weekly tab right after Daily (while the server has
+-- made the week's quests), its rows the Daily rows' look (no Swap: the design's have none) and the reset pill with the
+-- time to the next week ("Resets in 3d 7h", H:1027). The tab row (layoutTabRow) places the shown tabs left to right and
+-- the reset pill at the right of their line; when they do not fit (four tabs on a phone, large text) the tabs wrap onto
+-- a second line (Layout.wrapRow) and the pill goes to the last line's end or a line of its own, the rows below.
 -- Public: open(), debugState().
 
 -- Services
@@ -188,6 +193,8 @@ local log = Log.new("Quests")
 local cleanup: Cleanup.Cleanup? = nil
 local root: Frame? = nil
 local list: ScrollingFrame? = nil
+local tabRow: Frame? = nil -- weekly quests: the tab row (layoutTabRow)
+local bodySize = Vector2.zero -- the body's width and height (base px) from the last fitBody
 local rows: { RowView } = {}
 local tabs: { [string]: TabView } = {}
 local resetPill: WellPill.WellPill? = nil
@@ -435,17 +442,63 @@ local function rowAt(index: number): RowView
 	return rows[index] or newRow(index)
 end
 
+-- Weekly quests: the tab row (see the header). The shown tabs in their order, wrapped to the body's width; the reset
+-- pill at the right of the last line when it fits there, else on a line of its own; then the rows below the last line.
+local function layoutTabRow()
+	local scroll, row = list, tabRow
+	if scroll == nil or row == nil or not (bodySize.X > 0) then
+		return
+	end
+	local shown: { TabView } = {}
+	for _, view in tabs do
+		if view.root.Visible then
+			table.insert(shown, view)
+		end
+	end
+	table.sort(shown, function(a: TabView, b: TabView): boolean
+		return a.root.LayoutOrder < b.root.LayoutOrder
+	end)
+	local items: { Layout.WrapItem } = {}
+	for _, view in shown do
+		table.insert(items, { w = view.root.Size.X.Offset, h = view.root.Size.Y.Offset })
+	end
+	local width = bodySize.X
+	local gap = BODY.tabGap
+	local wrap = Layout.wrapRow(items, width, gap)
+	local last: Layout.Rect = { x = 0, y = 0, w = 0, h = 0 }
+	for index, view in shown do
+		local rect = wrap.rects[index]
+		view.root.Position = UDim2.fromOffset(rect.x, rect.y)
+		last = rect
+	end
+	local lineHeight = math.max(TAB.face + TAB.lip, TOUCH.minTarget)
+	local lastLineY = last.y
+	local pill = resetPill
+	if pill and pill.root.Visible then
+		local pillWidth = pill.root.Size.X.Offset
+		if #shown > 0 and last.x + last.w + gap + pillWidth > width then
+			lastLineY = wrap.height + gap -- a line of its own under the tabs
+		end
+		pill.root.Position = UDim2.new(1, 0, 0, lastLineY + TAB.face / 2)
+	end
+	row.Size = UDim2.new(1, 0, 0, lastLineY + lineHeight)
+	local top = lastLineY + TAB.face + BODY.gap -- H:356: the (last) tab line's face and the gap
+	scroll.Position = UDim2.fromOffset(0, top)
+	scroll.Size = UDim2.fromOffset(width + LIST_RIGHT_ROOM, math.max(TOUCH.minTarget, bodySize.Y - top))
+end
+
 local function refreshTimes(board: QuestFormat.Board)
 	local pill = resetPill
 	if pill then
-		pill:setText(board.reset)
-		pill.root.Visible = selectedTab == "daily"
+		pill:setText(if selectedTab == "weekly" then board.weeklyReset else board.reset)
+		pill.root.Visible = selectedTab == "daily" or selectedTab == "weekly"
 	end
 	local box, label = noteBox, note
 	if selectedTab == "daily" and box and label then
 		box.Visible = board.empty ~= nil
 		label:setText(board.empty or "")
 	end
+	layoutTabRow() -- the pill's width follows its text
 end
 
 local function refresh()
@@ -455,7 +508,7 @@ local function refresh()
 	local board = currentBoard()
 	lastBoard = board
 	local lock = if StateController.isProfileReady() then nil else Strings.reasonText(REASON_NOT_READY)
-	-- The tabs (H:358): a tab that goes (Starter, all claimed) hands the view back to Daily.
+	-- The tabs (H:358): a tab that goes (Starter, all claimed; Weekly, none made) hands the view back to Daily.
 	local shown: { [string]: QuestFormat.Tab } = {}
 	for index, tab in QuestFormat.tabs(board) do
 		shown[tab.id] = tab
@@ -486,7 +539,10 @@ local function refresh()
 		end
 		noteText = model.note
 	else
-		local cards: { QuestFormat.Card } = if selectedTab == "starter" then board.starter else board.daily
+		local cards: { QuestFormat.Card } = if selectedTab == "starter"
+			then board.starter
+			elseif selectedTab == "weekly" then board.weekly
+			else board.daily
 		for _, card in cards do
 			used += 1
 			applyCard(rowAt(used), card, lock)
@@ -1081,21 +1137,17 @@ local function build(parent: Instance): GuiObject
 		Size = UDim2.new(1, 0, 0, math.max(TAB.face + TAB.lip, TOUCH.minTarget)),
 		Parent = content,
 	})
+	-- Weekly quests: the tabs are placed by layoutTabRow (they wrap when they do not fit).
 	local tabList: Frame = Create("Frame", {
 		Name = "Tabs",
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 		Parent = row,
 	})
-	Theme.list(
-		Enum.FillDirection.Horizontal,
-		BODY.tabGap,
-		tabList,
-		Enum.HorizontalAlignment.Left,
-		Enum.VerticalAlignment.Center
-	)
+	tabRow = row
 	table.clear(tabs)
 	newTab(tabList, "daily", Strings.quest.section.daily)
+	newTab(tabList, "weekly", Strings.quest.section.weekly)
 	newTab(tabList, "starter", Strings.quest.section.starter)
 	newTab(tabList, "topWins", Strings.board.title)
 	local reset = WellPill.new({ name = "Reset", look = QUESTS.reset, icon = "img.icon.clock", parent = row })
@@ -1156,9 +1208,8 @@ local function build(parent: Instance): GuiObject
 		end
 		local width = fitted.width - 2 * (WINDOW_BORDER + BODY.padX)
 		local height = fitted.height - chrome.top - (WINDOW_BORDER + BODY.padBottom)
-		local top = TAB.face + BODY.gap -- H:356: the tab row (46) and the gap
-		scroll.Position = UDim2.fromOffset(0, top)
-		scroll.Size = UDim2.fromOffset(width + LIST_RIGHT_ROOM, math.max(TOUCH.minTarget, height - top))
+		bodySize = Vector2.new(width, height)
+		layoutTabRow() -- the tab row, then the list under it (H:356)
 		local compact = fitted.class == "compact"
 		if compact ~= compactRows then
 			compactRows = compact
@@ -1214,6 +1265,7 @@ function QuestController.debugState(): { [string]: any }
 		built = root ~= nil,
 		tab = selectedTab,
 		daily = summary(board.daily),
+		weekly = summary(board.weekly),
 		starter = if board.starterVisible then summary(board.starter) else {},
 		swapsLeft = board.swapsLeft,
 		pending = busy,
@@ -1294,6 +1346,7 @@ function QuestController.init()
 		table.clear(rows)
 		table.clear(tabs)
 		root, list, resetPill, note, noteBox, closeButton = nil, nil, nil, nil, nil, nil
+		tabRow, bodySize = nil, Vector2.zero
 		lastBoard = nil
 		selectedTab = "daily"
 		compactRows = false

@@ -23,7 +23,10 @@
 --   * auto-clicker check (2026-10-16): autoClick (the last strike) joined schema 2 the same way: defaults {step = 0,
 --     at = 0}, an older v2 profile gets it from reconcile (no problem), a saved strike is kept, and sanitize keeps step
 --     a whole number in [0, AutoClickRules.MAX_STEP] (5 with the live ban ladder, batch B 2026-10-17) and at a whole
---     number in [0, now + 300] (non-finite -> 0, wrong type -> the default).
+--     number in [0, now + 300] (non-finite -> 0, wrong type -> the default);
+--   * weekly quests (2026-10-17): weekly joined schema 2 the same way: defaults {week = -1, active = {}}, an older v2
+--     profile gets it from reconcile (no problem), a saved week survives a load and the JSON round trip, and sanitize
+--     fixes the week (a whole number >= -1) and the entries like the daily quests' (claims fail closed).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -141,6 +144,7 @@ return function(t: Context)
 		expected.capsules = { slots = 1, list = { { level = 1, squishyId = "kitty_bread" } } } -- the same
 		expected.stats.winStreak = 0 -- Match HUD M2: the same
 		expected.autoClick = { step = 0, at = 0 } -- auto-clicker check (2026-10-16): the same
+		expected.weekly = { week = -1, active = {} } -- weekly quests (2026-10-17): the same
 		return expected
 	end
 
@@ -681,5 +685,71 @@ return function(t: Context)
 		local longest, none = fixedStrike({ step = MAX_STEP, at = NOW - 1 }) -- a later, longer ban is kept
 		expect.deepEqual(longest, { step = MAX_STEP, at = NOW - 1 })
 		expect.deepEqual(none, {})
+	end)
+
+	-- Weekly quests (2026-10-17) --------------------------------------------------------------------------------------
+
+	local function weeklyEntry(slot: number, def: string): any
+		return {
+			id = `w2856_{slot}`,
+			def = def,
+			progress = 3,
+			goal = 10,
+			reward = 2000,
+			done = false,
+			claimed = false,
+		}
+	end
+
+	t.test("weekly joins schema 2 without a new version: an older v2 profile gets none, a saved week stays", function()
+		expect.equal(ProfileSchema.CURRENT, 2)
+		expect.deepEqual(ProfileSchema.defaults(NOW).weekly, { week = -1, active = {} })
+		local older = load(FIXTURE_V1).profile :: any
+		older.weekly = nil -- a v2 profile saved before the field existed
+		local result = load(older)
+		expect.equal(result.fromVersion, 2)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.weekly, { week = -1, active = {} })
+		local kept = load(FIXTURE_V1).profile :: any
+		kept.weekly = { week = 2856, active = { weeklyEntry(1, "weekly_squeeze"), weeklyEntry(2, "weekly_duel_win") } }
+		local saved = TableUtil.deepCopy(kept.weekly)
+		local again = load(kept, {
+			questExists = function(_defId: string): boolean
+				return true
+			end,
+		})
+		expect.deepEqual(again.problems, {})
+		expect.deepEqual(again.profile.weekly, saved)
+		-- It survives the JSON a DataStore keeps unchanged.
+		local HttpService = game:GetService("HttpService")
+		local decoded = HttpService:JSONDecode(HttpService:JSONEncode(again.profile))
+		expect.deepEqual(load(decoded).profile.weekly, saved)
+	end)
+
+	t.test("sanitize weekly: week a whole number >= -1, entries like the daily quests', claims fail closed", function()
+		local function fixedWeekly(value: any, exists: ((string) -> boolean)?): (any, { string })
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.weekly = value
+			local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW, questExists = exists })
+			return (fixed :: any).weekly, problems
+		end
+		local broken, problems = fixedWeekly("garbage")
+		expect.deepEqual(broken, { week = -1, active = {} })
+		expect.truthy(#problems > 0)
+		local fractional = fixedWeekly({ week = 12.5, active = {} })
+		expect.equal(fractional.week, 12)
+		local tooLow = fixedWeekly({ week = -9, active = {} })
+		expect.equal(tooLow.week, -1)
+		local noList = fixedWeekly({ week = 3, active = "x" })
+		expect.deepEqual(noList.active, {})
+		local entry = weeklyEntry(1, "weekly_squeeze")
+		entry.claimed = "yes" -- not a boolean: counts as claimed (never pay twice)
+		entry.progress = -4
+		local fixed = fixedWeekly({ week = 3, active = { entry, 7, weeklyEntry(2, "gone_quest") } }, function(defId)
+			return defId ~= "gone_quest"
+		end)
+		expect.equal(#fixed.active, 1)
+		expect.equal(fixed.active[1].claimed, true)
+		expect.equal(fixed.active[1].progress, 0)
 	end)
 end

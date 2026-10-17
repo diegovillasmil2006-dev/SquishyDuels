@@ -98,6 +98,10 @@ local Economy = {
 		practiceTargetRepeatSeconds = 2, -- practice_hits: each target counts at most once per 2 s
 	},
 
+	-- Weekly quests (owner 2026-10-17): Config/WeeklyQuests (the switch and the week's start; checked by
+	-- Config/ValidateWeeklyQuests). The quests are QuestDefs.weekly().
+	WeeklyQuests = require(script.Parent.WeeklyQuests),
+
 	-- Duplicate box results (§6.5). "exclude_owned" is the documented alternative and is not built.
 	DuplicatePolicy = "refund" :: "refund" | "exclude_owned",
 	-- Spec 2026-10-12 §8: a double gives back `percent` % of the box price, rounded down (Snack 37,500, Sweet
