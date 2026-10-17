@@ -181,7 +181,12 @@ function Toggle.new(spec: Spec): Toggle
 		Theme.textOnWindow(label) -- H:196: #8A2468 on the pink body
 		label.LineHeight = BESIDE_LINE_HEIGHT
 		label.TextXAlignment = Enum.TextXAlignment.Right
-		label.Size = UDim2.new(1, -(look.width + besideGap), 0, 0)
+		-- Measured height, not AutomaticSize: under the window's UIScale the automatic box stayed one line tall and hid
+		-- the second line ("Show" | "locked").
+		local _, breaks = string.gsub(spec.text, "\n", "")
+		local height = (breaks + 1) * Theme.lineHeight(BESIDE_KIND) * BESIDE_LINE_HEIGHT
+		label.AutomaticSize = Enum.AutomaticSize.None
+		label.Size = UDim2.new(1, -(look.width + besideGap), 0, math.ceil(height))
 	end
 	local stateLabel = Theme.label({
 		Name = "State",

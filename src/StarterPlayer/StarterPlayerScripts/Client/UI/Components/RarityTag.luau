@@ -295,7 +295,13 @@ function RarityTag.new(spec: Spec): RarityTag
 			-- UI FINAL R5: the design pill (its colour, its measured height) and the card's plain round dots.
 			local color = pillColor(rarity, variant)
 			chip.BackgroundColor3 = color
-			chip.Size = UDim2.fromOffset(0, RarityTag.measurePill(rarity, variant).pillHeight)
+			-- Measured size, not AutomaticSize: under the window's UIScale the automatic width came out too small and cut
+			-- the word ("COM" for COMMON).
+			local m = RarityTag.measurePill(rarity, variant)
+			chip.AutomaticSize = Enum.AutomaticSize.None
+			chip.Size = UDim2.fromOffset(m.pillWidth, m.pillHeight)
+			label.AutomaticSize = Enum.AutomaticSize.None
+			label.Size = UDim2.fromScale(1, 1)
 			if variant == "card" then
 				for i = 1, style.pips do
 					local dot: Frame = Create("Frame", {
