@@ -232,6 +232,13 @@ function PenScreen.new(spec: Spec): PenScreen
 	-- Pens3 phase 9: the food row over the action row (and the hold bar).
 	local foodRow = newLabel("Pen_FoodRow", TEXT_KIND, body)
 	foodRow.AnchorPoint = Vector2.new(0, 1)
+	-- Why the disabled actions can't run, wrapped over the action row: on the buttons it widened the row past the
+	-- window (play look 2026-10-17, "Nothing to sell. Sell All keeps ...").
+	local reasonRow = newLabel("Pen_ReasonRow", TEXT_KIND, body)
+	reasonRow.AnchorPoint = Vector2.new(0, 1)
+	reasonRow.TextWrapped = true
+	reasonRow.TextTruncate = Enum.TextTruncate.None
+	reasonRow.Visible = false
 
 	local cards: { [string]: Card } = {}
 	local buttons: { Button.Button } = {}
@@ -253,6 +260,10 @@ function PenScreen.new(spec: Spec): PenScreen
 		root.Position = UDim2.new(0.5, 0, 0.5, fit.shift)
 		local top = STICKER.statePill.height + S.gap + (if hint.Visible then hint.Size.Y.Offset + S.gap else 0)
 		local bottom = actionRow.Size.Y.Offset + S.gap + (if holdShown then S.holdBarPx + S.gap else 0)
+		if reasonRow.Visible then
+			reasonRow.Position = UDim2.new(0, 0, 1, -bottom)
+			bottom += reasonRow.Size.Y.Offset + S.gap
+		end
 		foodRow.Position = UDim2.new(0, 0, 1, -bottom) -- pens3 phase 9
 		bottom += foodRow.Size.Y.Offset + S.gap
 		scroll.Position = UDim2.fromOffset(0, top)
@@ -554,17 +565,23 @@ function PenScreen.new(spec: Spec): PenScreen
 		if holdShown ~= wasShown then
 			holdBar:set(0)
 		end
+		local reasons: { string } = {}
 		for index, action in view.actions do
 			local button = buttons[index]
 			button:setText(action.text)
 			if busy then
 				button:setState("loading")
 			elseif action.reason ~= nil then
-				button:setState("disabled", action.reason)
+				button:setState("disabled")
+				if not table.find(reasons, action.reason) then
+					table.insert(reasons, action.reason)
+				end
 			else
 				button:setState("normal")
 			end
 		end
+		wrapped(reasonRow, table.concat(reasons, " "), TEXT_KIND, k, width)
+		reasonRow.Visible = #reasons > 0
 		if focused ~= nil and focused.Parent == nil then
 			GuiService.SelectedObject = self:primary() -- the focused card was rebuilt (it moved)
 		end
