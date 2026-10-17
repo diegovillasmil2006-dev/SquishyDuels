@@ -24,6 +24,9 @@
 -- Foam UI restyle (spec 2026-10-09; look only): the neutral frame is the InkUI foam outline (Theme.Stroke.ink) and a
 -- rarity keeps its colour at Theme.Stroke.thick (the cards' "rarity rim"); the corners are the tile radius; the
 -- contact shadow is InkUI.
+-- UI FINAL R5 (plan work/ui/PLAN.md R5): a container with the attribute SD_OwnBackdrop = true draws its own backdrop
+-- (UI/StageLook: the design's Inspect stage): attached there the stage leaves out its background, its white ellipse
+-- and its outline (the model, the contact shadow and the layers stay); attached anywhere else it draws them as before.
 -- Framing (§10.5): r = size.Magnitude/2 × squeezeWidening; hFov = 2·atan(tan(vFov/2)·aspect) from the frame's
 -- AbsoluteSize; fitDist = r / sin(min(vFov, hFov)/2) × fitPadding; dist = fitDist × zoom, never closer than
 -- r + minClearance; recomputed on AbsoluteSize changes. Squishy overhaul (spec 2026-10-09 §3.2): a model framed with
@@ -259,7 +262,7 @@ local function build(): Stage
 		Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = frame })
 		return frame
 	end
-	ellipse("Ellipse", ELLIPSE_SCALE, Color3.new(1, 1, 1), BACKGROUND.ellipseTransparency, 1)
+	local whiteEllipse = ellipse("Ellipse", ELLIPSE_SCALE, Color3.new(1, 1, 1), BACKGROUND.ellipseTransparency, 1)
 	local glow = ellipse("Glow", GLOW_SCALE, Theme.Colors.cream, 1, 2)
 	glow.Visible = false
 
@@ -424,6 +427,11 @@ local function build(): Stage
 			log:warn("attach failed:", err)
 			return false
 		end
+		-- UI FINAL R5: a container with its own backdrop (SD_OwnBackdrop) keeps it; elsewhere the stage's own look.
+		local own = container:GetAttribute("SD_OwnBackdrop") == true
+		root.BackgroundTransparency = if own then 1 else 0
+		whiteEllipse.Visible = not own
+		stroke.Enabled = not own
 		root.Visible = true
 		attached = true
 		stopFollowing()

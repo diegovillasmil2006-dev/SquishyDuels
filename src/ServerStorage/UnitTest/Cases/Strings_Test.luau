@@ -217,7 +217,7 @@ local PART5_WORDING: { [string]: string } = {
 	["settings.noMusic"] = "No music yet",
 	["settings.noSfx"] = "No sound effects yet",
 	["settings.firstPerson"] = "First-person duels", -- first-person spec 2026-10-10 §3.8
-	["inventory.showNotOwned"] = "Show not owned",
+	["inventory.showLockedLines"] = "Show\nlocked", -- UI FINAL R5 (H:196: the design's two lines)
 	["inventory.new"] = "NEW",
 	["common.equipped"] = "Equipped",
 	["common.notOwned"] = "Not owned",
@@ -271,11 +271,15 @@ local PART5_WORDING: { [string]: string } = {
 -- Part 5 texts with no DESIGN wording (readings) that the Part 5 screens read.
 local PART5_KEYS = {
 	"inventory.title",
-	"inventory.filterCount",
 	"inventory.filterAll",
 	"inventory.collected",
 	"inventory.empty",
 	"inventory.goToBoxes",
+	-- UI FINAL R5 (the design's Squishies window, H:186-188, H:846, H:1013)
+	"inventory.collectedLabel",
+	"inventory.collectedCount",
+	"inventory.ultimateChip",
+	"inventory.equippedToast",
 	"inspect.equippedToast",
 	"inspect.equipFailed",
 	"settings.title",

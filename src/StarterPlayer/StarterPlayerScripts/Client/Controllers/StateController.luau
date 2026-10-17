@@ -1720,6 +1720,20 @@ function StateController.markOwnedSeen(squishyId: string)
 	end
 end
 
+-- UI FINAL R5 (pure; H:681, H:689): the tracker with every new squishy seen (the baseline kept); the input is never
+-- modified.
+function StateController.seenAll(tracker: OwnedTracker): OwnedTracker
+	return { baseline = tracker.baseline, fresh = {} }
+end
+
+-- UI FINAL R5 (H:681, H:689): every NEW tag and the HUD badge clear when the Squishies window closes.
+function StateController.markAllOwnedSeen()
+	if next(ownedTracker.fresh) ~= nil then
+		ownedTracker = StateController.seenAll(ownedTracker)
+		StateController.NewOwnedChanged:fire(0)
+	end
+end
+
 -- Public: reveal holds (see the header) ------------------------------------------------------------------------------
 
 -- Shows the held result of `requestId` (its refund in the Coins, its new squishy in owned and as NEW). Returns true

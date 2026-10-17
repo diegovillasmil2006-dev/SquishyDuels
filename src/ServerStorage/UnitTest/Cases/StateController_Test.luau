@@ -400,6 +400,24 @@ return function(t: Context)
 		expect.equal(track(t5, "nope", false), t5)
 	end)
 
+	-- UI FINAL R5 (G5.9, H:681, H:689): closing the Squishies window sees every new squishy at once.
+	t.test("new squishies: seenAll clears every new id and keeps the baseline; the input is never modified", function()
+		local tracker = StateController.trackNewOwned(
+			StateController.trackNewOwned({ baseline = nil, fresh = {} }, { kitty_bread = {} }, true),
+			{ kitty_bread = {}, dragon = {}, donut = {} },
+			false
+		)
+		expect.deepEqual(tracker.fresh, { dragon = true, donut = true })
+		local seen = StateController.seenAll(tracker)
+		expect.deepEqual(seen.fresh, {})
+		expect.equal(seen.baseline, tracker.baseline)
+		expect.deepEqual(tracker.fresh, { dragon = true, donut = true })
+		-- A later id is new again after it.
+		local later =
+			StateController.trackNewOwned(seen, { kitty_bread = {}, dragon = {}, donut = {}, toast = {} }, false)
+		expect.deepEqual(later.fresh, { toast = true })
+	end)
+
 	-- Reveal holds (Part 7 review fix, §9.11 "no fake-outs"): the StateDelta carrying a box result arrives before its
 	-- reveal plays, so the shown Coins and owned leave the held results out until BoxController releases them.
 

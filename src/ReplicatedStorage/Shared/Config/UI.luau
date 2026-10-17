@@ -584,6 +584,125 @@ local UI = {
 		gridWidthMin = 0.55, -- grid takes 55-60% of the width
 		gridWidthMax = 0.6,
 		lazyIconsAbove = 24, -- StaticIcon cells are created lazily above this many items
+		-- UI FINAL R5 (the design's Squishies window, plan work/ui/PLAN.md R5; `H:n` = "Squishy Duels HUD.dc.html"
+		-- line n; base px, border-box like the design's CSS). Read by UI/InventoryFormat and InventoryController.
+		-- The body (H:191-192): its padding inside the window's border, the 600 px grid column, the column gap, the left
+		-- column's gap; detailMin [P]: the detail column's least width when a small window narrows the grid.
+		body = { padTop = 18, padSide = 22, padBottom = 22, gridWidth = 600, gap = 22, columnGap = 12, detailMin = 240 },
+		-- The header pill (H:185-188): 46 high, padding 0 14, gap 10, border 4, the ink at .55; the 110 px bar.
+		pill = { height = 46, padX = 14, gap = 10, border = 4, alpha = 0.55, barWidth = 110 },
+		-- The rarity tabs (H:193-194, H:928-929): 42 face + 4 lip, padding 0 13, gap 6, border 4, radius 14, the on /
+		-- off inset highlight (tabOn 3 at .5, tabOff 2 at .12), the count at opacity .85; the row's gap 8 and the
+		-- "Show locked" group's gap 8 (H:195).
+		tab = {
+			face = 42,
+			lip = 4,
+			padX = 13,
+			gap = 6,
+			border = 4,
+			radius = 14,
+			onHighlightPx = 3,
+			onHighlightAlpha = 0.5,
+			offHighlightPx = 2,
+			offHighlightAlpha = 0.12,
+			countAlpha = 0.85,
+			rowGap = 8,
+			toggleGap = 8,
+		},
+		-- The card grid (H:200-202): 4 columns, gap 12, the scroller's padding 8 / 8 / 10 / 4 (top, right, bottom, left)
+		-- and its matching negative margin; minCard [P]: the narrowest card before a column drops (a small window).
+		grid = { columns = 4, gap = 12, padTop = 8, padRight = 8, padBottom = 10, padLeft = 4, minCard = 120 },
+		-- A card (H:203, H:935): 178 face + 5 lip, border 4 (white when selected), radius 20, padding 10 6 8, gap 4,
+		-- the inset highlight 2 at .1 (none when selected), the selected ring 4 px (radius 24) and glow 26 px.
+		card = {
+			face = 178,
+			lip = 5,
+			border = 4,
+			radius = 20,
+			padTop = 10,
+			padSide = 6,
+			padBottom = 8,
+			gap = 4,
+			highlightPx = 2,
+			highlightAlpha = 0.1,
+			ringPx = 4,
+			ringRadius = 24,
+			glowPx = 26,
+		},
+		-- The plate (H:204, H:936): 96 circle, border 3, radial at 50% 38%, inset 0 4px 0 white .45 and 0 -6px 0
+		-- black .12; the thumbnail 104 with its drop-shadow 0 4px at .25 (H:205), the lock 40 (H:206).
+		plate = {
+			px = 96,
+			border = 3,
+			centreY = 0.38,
+			topPx = 4,
+			topAlpha = 0.45,
+			bottomPx = 6,
+			bottomAlpha = 0.12,
+			thumbPx = 104,
+			shadowPx = 4,
+			shadowAlpha = 0.25,
+			lockPx = 40,
+		},
+		-- The card footer (H:209): gap 6; the pips as dots [PR25] the size of the 10 px glyph (dotPx [P]: a reading of
+		-- the glyph, not measured in Studio yet) with its 1 px letter-spacing.
+		footer = { gap = 6, dotPx = 7, dotGap = 1 },
+		-- The hanging tags (H:210-211): "Equipped" at (-8, -10), 26 high, padding 3 10 0, border 3, lip 3, turned -6;
+		-- "NEW" at (right -8, -10), 28 high, padding 0 10, border 3, lip 3, sdBadge over 2 s.
+		ribbon = { x = -8, y = -10, height = 26, padTop = 3, padX = 10, border = 3, lip = 3, rot = -6 },
+		newTag = { x = -8, y = -10, height = 28, padX = 10, border = 3, lip = 3, badgeS = 2 },
+		-- The detail (H:217-248): the column gap 12, the name row's gap 10, the chip row's gap 8, the chips' 20 px icons.
+		detail = { gap = 12, nameGap = 10, chipGap = 8, iconPx = 20 },
+		-- The stage (H:218-224, H:1012-1014): 186 face + 5 lip, border 4, radius 22, inset 0 5px 0 white .35; minFace
+		-- [P]: the least face when the column is short (phones; the list then scrolls). Rays (raysDetail) 640 px at
+		-- (50%, 60%), white .26 x the opacity (1 from Epic on, index fromIndex; .45 below), one turn in 16 s; the floor
+		-- 150 x 24 at bottom 16, ink .25; the stars sdTwinkle 2.2 s; the squishy 190 floating 3.2 s, drop-shadow 0 8px
+		-- at .3; the pick pop (H:937): 480 ms, the rise curve on the whole run (keyframes linear).
+		stage = {
+			face = 186,
+			lip = 5,
+			border = 4,
+			radius = 22,
+			shinePx = 5,
+			shineAlpha = 0.35,
+			centreY = 0.62,
+			midAt = 0.62,
+			minFace = 120,
+			raysPx = 640,
+			raysAlpha = 0.26,
+			raysCentreY = 0.6,
+			raysSpinS = 16,
+			raysHigh = 1,
+			raysLow = 0.45,
+			raysFromIndex = 3,
+			floorWidth = 150,
+			floorHeight = 24,
+			floorBottom = 16,
+			floorAlpha = 0.25,
+			twinkleS = 2.2,
+			-- x from the left (or right) and y from the top (or bottom) edge, base px (H:220-222)
+			stars = {
+				{ px = 26, left = 28, top = 22, delayS = 0 },
+				{ px = 20, right = 34, top = 40, delayS = 0.8 },
+				{ px = 16, right = 70, bottom = 26, delayS = 1.4 },
+			} :: { { [string]: number } },
+			squishyPx = 190,
+			floatS = 3.2,
+			shadowPx = 8,
+			shadowAlpha = 0.3,
+			pickMs = 480,
+			pickCurve = "rise",
+			pickFrames = {
+				{ at = 0, scale = 0.3, rot = -14, alpha = 0 },
+				{ at = 0.6, scale = 1.16, rot = 5, alpha = 1 },
+				{ at = 1, scale = 1, rot = 0, alpha = 1 },
+			} :: { MotionPose },
+		},
+		-- The stats well (H:236-243): rows 72 | 1fr | 92 with gap 10, 7 apart, padding 12 16 inside its 4 px border,
+		-- radius 18.
+		stats = { label = 72, value = 92, gap = 10, rowGap = 7, padY = 12, padX = 16, border = 4, radius = 18 },
+		-- The one button (H:245-247): a 60 px face (+ its 5 px lip), the check 30 and the boxes picture 44.
+		button = { face = 60, checkPx = 30, iconPx = 44 },
 	},
 
 	-- Boxes screen (§11.6). Reading (DESIGN names the timeout state but gives no number): a BoxOpen with no reply after
@@ -821,7 +940,27 @@ local UI = {
 			searchTime = { kind = "Small", stroke = 3, color = "StickerCoinText" },
 			trackerTitle = { kind = "Button", stroke = 3, soft = { px = 2, alpha = 0.5 } },
 			trackerProgress = { kind = "Button", stroke = 4 },
+			-- UI FINAL R5 (the Squishies window): the header pill's count (H:188: 20 px #FFE36B, stroke 4); the tab and
+			-- card name (H:194, H:208: 15 px -> 16 (PR2) white, text-shadow 0 2px 0 rgba(30,20,40,.5); PR3 outline); the
+			-- rarity and EQUIPPED pills (H:209, H:228-229: 11-12 px -> 16, text-shadow 0 1px 0 at .5); the Equipped
+			-- ribbon (H:210: 12 px -> 16, 0 1px 0 at .6); NEW (H:211: 15 px -> 16, stroke 3).
+			collectedCount = { kind = "Button", stroke = 4, color = "StickerCoinText" },
+			tabLabel = { kind = "Small", stroke = 3, soft = { px = 2, alpha = 0.5 } },
+			cardName = { kind = "Small", stroke = 3, soft = { px = 2, alpha = 0.5 } },
+			rarityPill = { kind = "Small", stroke = 3, soft = { px = 1, alpha = 0.5 } },
+			cardRibbon = { kind = "Small", stroke = 3, soft = { px = 1, alpha = 0.6 } },
+			cardNew = { kind = "Small", stroke = 3 },
 		} :: { [string]: StickerTextRole },
+		-- UI FINAL R5 (UI/Components/RarityTag variants, PR2: a 16 px label grows a pill only by the measured extra): the
+		-- card pill (H:209: 22 border-box, padding 2 9 0, border 3, the rarity's card colour, pips beside it) and the
+		-- detail pill (H:228: 26, padding 3 11 0, the rarity's own colour, no pips). R7 adds the odds and reveal pills.
+		pills = {
+			card = { height = 22, padTop = 2, padX = 9, border = 3 },
+			detail = { height = 26, padTop = 3, padX = 11, border = 3 },
+		} :: { [string]: StickerVariant },
+		-- UI FINAL R5 (PR23, UI/Components/StatePill: the loading, data-error and filter-empty states of every window):
+		-- the design's timer pill (H:391): 40 high, padding 0 16 0 4, gap 6, border 3, full radius, the icon 30.
+		statePill = { height = 40, padLeft = 4, padRight = 16, gap = 6, border = 3, iconPx = 30 } :: StickerVariant,
 		-- Q5 (the user, 2026-10-14): big button labels in capitals (a display transform; Strings stay as they are).
 		buttonCaps = true,
 		-- UI/Components/ProgressBar variants: the track's border, its alpha (the Grip track is white at .7), an inner

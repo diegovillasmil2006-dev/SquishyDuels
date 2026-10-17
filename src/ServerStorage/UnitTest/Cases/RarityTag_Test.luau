@@ -14,6 +14,9 @@
 --   * UI FINAL R1 (H:209, H:271, H:933): the pill is at least 22 px tall with a 3 px ink border, in the design's rarity
 --     colour (Common #6F7D8B), the label white, outlined, in capitals; the pips in the same colour, still with their
 --     2 px outline, so the gaps count a 2 px and a 3 px outline (the room inside the tag the larger one).
+--   * UI FINAL R5: the "card" and "detail" variants: the 3 px border, the design's 22 / 26 grown only by the 16 px label,
+--     the card colour (Common #6F7D8B) with plain dots beside it (setPipsShown drops them), the detail colour (Common
+--     #8C9AA8) with none; measurePill matches the built pill.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -131,6 +134,54 @@ return function(t: Context)
 			tag:destroy()
 		end
 	end)
+
+	-- UI FINAL R5 ([P5] [P6], H:209, H:228, H:933): the design pills.
+	t.test(
+		"variants: the border inside, the design's height (grown only by the text), the card and detail colours",
+		function()
+			local Config = t.requireShared("Config")
+			local RarityStyle = t.requireShared("Art/RarityStyle")
+			local pills = Config.UI.Sticker.pills
+			local footer = Config.UI.Inventory.footer
+			for _, rarity in { "Common", "Uncommon", "Epic", "Exclusive" } do
+				for _, variant in { "card", "detail" } do
+					local spec = pills[variant]
+					local m = RarityTag.measurePill(rarity, variant)
+					local line = math.ceil(Theme.lineHeight(Config.UI.Sticker.text.rarityPill.kind))
+					expect.equal(m.pillHeight, math.max(spec.height, line + spec.padTop + 2 * spec.border))
+					expect.truthy(m.pillWidth > 2 * (spec.padX + spec.border))
+					local pips = RarityStyle.get(rarity).pips
+					expect.equal(
+						m.pipsWidth,
+						if variant == "card" then pips * footer.dotPx + (pips - 1) * footer.dotGap else 0
+					)
+					local tag = RarityTag.new({ name = "Rarity", rarity = rarity, variant = variant })
+					local chip = tag.root:FindFirstChild("Chip") :: Frame
+					local stroke = chip:FindFirstChildOfClass("UIStroke") :: UIStroke
+					expect.equal(stroke.Thickness, spec.border)
+					expect.equal(chip.Size.Y.Offset, m.pillHeight)
+					local expected = if variant == "detail"
+						then RarityStyle.get(rarity).ui.base
+						else RarityTag.color(rarity)
+					expect.equal(chip.BackgroundColor3, expected)
+					local dots = tag.root:FindFirstChild("Pips") :: Frame
+					expect.equal(dots.Visible, variant == "card")
+					if variant == "card" then
+						local dot = dots:FindFirstChild("Pip1") :: Frame
+						expect.equal(dot:FindFirstChildOfClass("UIStroke"), nil) -- plain dots, no ink outline [P6]
+						expect.equal(dot.BackgroundColor3, expected)
+						tag:setPipsShown(false)
+						expect.falsy(dots.Visible)
+					end
+					tag:destroy()
+				end
+			end
+			-- The design's Common: #6F7D8B on a card (H:933), #8C9AA8 on the detail (H:228); an unknown rarity measures 0.
+			expect.equal(RarityTag.color("Common"), Color3.fromHex("#6F7D8B"))
+			expect.equal(RarityStyle.get("Common").ui.base, Color3.fromHex("#8C9AA8"))
+			expect.deepEqual(RarityTag.measurePill("Mythic", "card"), { pillWidth = 0, pillHeight = 0, pipsWidth = 0 })
+		end
+	)
 
 	t.test("tallest: the tallest side-by-side tag over every rarity (the room a detail keeps for it)", function()
 		local Rarity = t.requireShared("Rarity")

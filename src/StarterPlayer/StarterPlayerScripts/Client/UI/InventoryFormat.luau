@@ -4,50 +4,49 @@
 --   entries(defs, owned, equipped, isNew)  one entry per Catalog squishy, sorted: equipped first, then rarity
 --                                          descending, then name (§11.6)
 --   FILTERS / nextFilter(f, dir)           All, Common, Uncommon, Epic, Exclusive; L1 / R1 cycle them (§11.4)
---   visible(entries, filter, showNotOwned) the cards a filter shows ("Show not owned" off hides unowned ones)
---   chipCounts(entries, showNotOwned)      the count on each filter chip (what that chip would show)
+--   visible(entries, filter, showNotOwned) the cards a filter shows ("Show locked" off hides unowned ones)
 --   collected(entries)                     owned, total ("Collected {n}/8")
 --   columns(gridWidth, cardWidth, pad)     floor(gridWidth / (cardWidth + pad)), at least 1 (§11.6)
 --   keepSelection(selected, visible)       the selection, kept when still visible, else the first visible card
 --   equipState(entry, ctx)                 the Equip button: equip / equipped / notOwned / locked / loading
 --   statBars(def)                          the five throw stats as bars normalized to the §5.8 bands
 --   emptyText(filter)                      "No {rarity} squishies yet." for a filter with no card
---   ownershipKey(entry)                    common.equipped / common.owned / common.notOwned
---   filterName(filter) / chipText(f, n)    a chip's name ("All" / the rarity name) and "Epic (2)"
--- Part 8 layout (DESIGN §11.2, §11.6; the two Squishies items of Part 6's Studio run), all base px:
---   PANEL / panelLayout(screenPx, top?)    the panel, its header and filter row (touch-sized), the body and the grid
---                                          and detail columns for a ScreenGui of screenPx actual px
---   detailLayout(w, h, buttonHeight, gap, buttonWidths)   the detail column with Equip / Inspect / View in Shop
---                                          pinned under the scrolling info (they wrap in a narrow column), so they
---                                          are never below the fold
+--   filterName(filter)                     a tab's name ("All" / the rarity name)
+-- Part 8 layout (DESIGN §11.2, §11.6), all base px; the Shop, the box reveal and the layout audit still use:
 --   cardSize(base, metrics)                a card's size at the player's text size: never smaller than the base, wide
 --                                          enough for the rarity tag and the longest word, the rarity tag stacked
 --                                          when pips + chip do not fit side by side, the name on 1 or 2 lines
---   cardTags(cardWidth, inset, gap, left?, right?)   the corner badges ("Not owned" / "Equipped" / "NEW" top-left,
---                                          the rarity badge "Ultimate" top-right) on one row, or the right one on a
---                                          second row when both do not fit, so they never overlap
--- Foam UI restyle (spec 2026-10-09): panelLayout(screenPx, topPadding?) takes the panel's real top padding, which
--- Theme.headerTab raises so the title tab's lower half has room (default PANEL.padding, the old panel); the content
--- box loses the difference. CardBase.bands is the foam card's bevel and drop at its bottom (kept free of content).
--- Foam fix batch (2026-10-09; phones cut the panels off, an empty strip beside the grid, "Ultimate" on the Dragon):
---   hangingChrome(tabHeight, closeHeight, padding?)   Close hangs on the panel's top-right corner level with the header
---                                          tab (as on Quests, Daily and Settings), so the Close-only header row is gone:
---                                          the panel's top padding (room for the lower halves of the tab and Close), what
---                                          hangs above the panel and how far the panel moves down so both stay centred;
---                                          the Squishies, Shop, Boxes and Inspect panels share it
---   panelLayout(screenPx, topPadding?, cardWidth?)   the filter row starts the content (no header row); with the card
---                                          width the grid takes only the columns that fit in gridShare of the width
---                                          (gridFit) and the detail column gets the rest (it was an empty strip)
+--   cardTags(cardWidth, inset, gap, left?, right?)   two corner badges on one row, or the right one on a second row
+--   hangingChrome(tabHeight, closeHeight, padding?)   what hangs on a panel's top edge: the panel's top padding, what
+--                                          hangs above it and how far it moves down so both stay centred
 --   gridFit(maxWidth, cardWidth, pad, chrome)   the columns that fit and the grid's width for exactly those columns
---   previewPx(scrollHeight, reserve, wellPad, minPx, maxPx)   the detail preview's size: it shrinks so the name under
---                                          it stays in view above the pinned buttons (phones)
---   cardBadges(cardWidth, inset, gap, left?, right?, leftCompact?)   the corner badges on ONE row (a second row sat on
---                                          the portrait): the left one in its compact form (the lock pip of "Not owned",
---                                          DESIGN §11.6) when that lets both fit, else the right one ("Ultimate") is
---                                          left out, so the left one (the card's state) always shows
--- Foam fix round 2 (2026-10-09): previewPx returns 0 (the well hides) when not even its minimum fits above what the
--- reserve keeps (the name and now the rarity tag, which a phone cut in half); detailLayout keeps PANEL.buttonGap between
--- the detail buttons (the list still ends PANEL.gap above them).
+--   previewPx(scrollHeight, reserve, wellPad, minPx, maxPx)   a preview that shrinks so the name under it stays in
+--                                          view; 0 (hidden) when not even its minimum fits above the reserve
+-- UI FINAL R5 (the design's Squishies window, plan work/ui/PLAN.md R5; `H:n` = "Squishy Duels HUD.dc.html" line n;
+-- every number in Config.UI.Inventory):
+--   PANEL / panelLayout(screenPx, top?)    the window (Layout.windowFit, H:181) and its body (H:191: padding 18 22 22
+--                                          inside the 5 px border, the 600 px grid column, gap 22, the detail the
+--                                          rest; a small window narrows the grid so the detail keeps body.detailMin):
+--                                          the tab row (touch-sized), the grid under it, its columns and card width
+--                                          ((600 - 12 - 3 x 12) / 4 = 138 at the design's size: the 12 px scroll bar
+--                                          is always kept, so the cards never change width while filtering)
+--   detailLayout(columnHeight, buttonHeight, restHeight)   the detail column (H:217-248): the one button pinned at
+--                                          its bottom, the list above it and the stage's face: the design's 186,
+--                                          shrunk so the rest of the list (`restHeight`, measured: the name row, the
+--                                          chips, the stats and the gaps) fits without scrolling, never under
+--                                          minFace (the list then scrolls: phones)
+--   tabCounts(entries)                     each tab's count: the catalogue total of its rarity, All every squishy
+--                                          (H:927), whatever "Show locked" says
+--   tabRowFits(widths, gap, room)          whether the tabs fit one row (else the row scrolls sideways, G5.3)
+--   cardFrame(cardWidth, nameWidth, lineHeight, footerHeight)   a card's face height (178, grown only by the
+--                                          measured extra, e.g. a 2-line name: PR2), its name lines and inner width
+--   footerFits(inner, pipsWidth, pillWidth)   whether the pips fit beside the rarity pill ([PR25]: else they drop)
+--   showNewTag(isNew, equipped)            NEW only on a new squishy that is not equipped (H:933)
+--   riseSlots(before, after)               the grid slots that rise in after a change (G5.10: only the new ones; the
+--                                          slots already shown are reused without an animation)
+--   raysAlpha(rarity) / stageSquishyPx(face)   the stage rays' alpha (.26 x 1 from Epic on, x .45 below: H:1014) and
+--                                          the floating squishy's size for a stage face (190 on the design's 186)
+--   throwText(id)                          a squishy's throw style (inventory.throwStyle.<id>, lib:20-33)
 
 -- Services
 
@@ -95,21 +94,24 @@ export type StatBar = {
 	fraction: number, -- 0..1 inside the §5.8 band
 }
 
--- The Squishies panel in base px (panelLayout).
+-- The Squishies window in base px (panelLayout). UI FINAL R5: the content box is the design's body inside the border
+-- (H:191); the left column holds the tab row and, bodyTop under its top, the grid; the detail column is the content's
+-- full height.
 export type PanelLayout = {
 	scale: number,
 	class: string, -- "compact" | "regular"
 	panelWidth: number,
 	panelHeight: number,
-	topPadding: number, -- the panel's top padding (raised by its header tab and the hanging Close)
+	topPadding: number, -- the window's top padding (its border, its band and the body's top padding)
 	contentWidth: number,
 	contentHeight: number,
-	closeHeight: number, -- the Close button hanging on the top-right corner (fix batch: no header row)
-	rowHeight: number, -- the filter row: chips and "Show not owned"
-	bodyTop: number,
-	bodyHeight: number,
-	gridWidth: number,
-	columns: number, -- the grid's columns (gridFit); 0 when panelLayout was given no card width
+	closeHeight: number, -- the close X's touch size
+	rowHeight: number, -- the tab row: the tabs and "Show locked" (touch-sized)
+	bodyTop: number, -- the grid's top in the left column (under the tab row and the column gap)
+	bodyHeight: number, -- the grid's height
+	gridWidth: number, -- the left column (600 at the design's size)
+	columns: number, -- the grid's columns (H:202: 4; fewer only when a card would be under grid.minCard)
+	cardWidth: number, -- a card's width (fluid like the design's 1fr; the 12 px scroll bar kept)
 	detailWidth: number,
 	detailHeight: number,
 	-- UI FINAL R3: the window's chrome scale, its centre's offset below the middle and what hangs above it
@@ -129,17 +131,17 @@ export type Chrome = {
 -- The grid's columns and width (gridFit), base px.
 export type GridFit = { columns: number, width: number }
 
--- The corner badges (cardBadges): `compact` = the left badge in its compact form; `rightShown` = the right one shows.
-export type CardBadges = { compact: boolean, rightShown: boolean }
-
--- The detail column (detailLayout): the info list scrolls above, the buttons are pinned under it.
+-- UI FINAL R5: the detail column (detailLayout): the list (the stage first) above the one pinned button.
 export type DetailLayout = {
-	rows: number,
-	scrollHeight: number,
+	listHeight: number,
+	stageFace: number, -- the stage's face (its lip hangs under it)
 	buttonsTop: number,
-	buttonsHeight: number,
-	buttons: { Layout.Rect }, -- one per width given, relative to the button area
+	scrolls: boolean, -- the list is taller than its window (the stage is at its minimum)
 }
+
+-- UI FINAL R5: a card's face (cardFrame): its height, its name's lines and the content's width inside the border and
+-- padding.
+export type CardFrame = { face: number, nameLines: number, inner: number }
 
 -- A card's fixed parts (cardSize), base px at the default text size.
 export type CardBase = {
@@ -209,6 +211,9 @@ local PANEL = {
 -- in the engine's float maths under a fractional UI scale (0.85 on phones), and UIGridLayout then wraps the last column
 -- onto a new row, leaving the empty strip the fit removed.
 local GRID_FIT_SLACK = 1
+-- UI FINAL R5: the window's border (H:182) and scroll bar (H:22), the design's body and card numbers.
+local WINDOW_BORDER = Config.UI.Sticker.border.heavy
+local SCROLLBAR_PX = Config.UI.Sticker.window.scrollbarPx
 
 -- Module table
 
@@ -303,12 +308,38 @@ function InventoryFormat.visible(list: { Entry }, filter: Filter, showNotOwned: 
 	return result
 end
 
-function InventoryFormat.chipCounts(list: { Entry }, showNotOwned: boolean): { [string]: number }
+-- UI FINAL R5 (H:927): each tab's count is the catalogue total of its rarity (All: every squishy), not what "Show
+-- locked" shows.
+function InventoryFormat.tabCounts(list: { Entry }): { [string]: number }
 	local result: { [string]: number } = {}
 	for _, filter in FILTERS do
-		result[filter] = #InventoryFormat.visible(list, filter, showNotOwned)
+		result[filter] = #InventoryFormat.visible(list, filter, true)
 	end
 	return result
+end
+
+-- UI FINAL R5 (G5.3): whether tabs of `widths` with `gap` between them fit `room` (else the row scrolls sideways).
+function InventoryFormat.tabRowFits(widths: { number }, gap: number, room: number): boolean
+	local total = 0
+	for index, width in widths do
+		total += positive(width) + (if index > 1 then positive(gap) else 0)
+	end
+	return total <= positive(room)
+end
+
+-- UI FINAL R5 (H:933): NEW shows on a new squishy only while it is not the equipped one.
+function InventoryFormat.showNewTag(isNew: boolean, equipped: boolean): boolean
+	return isNew and not equipped
+end
+
+-- UI FINAL R5 (G5.10, support.js:611-633): after a filter change the grid's first `before` slots are reused with no
+-- animation; only the slots past them rise in (their index). On open `before` is 0: every slot rises.
+function InventoryFormat.riseSlots(before: number, after: number): { number }
+	local slots: { number } = {}
+	for index = math.floor(positive(before)) + 1, math.floor(positive(after)) do
+		table.insert(slots, index)
+	end
+	return slots
 end
 
 function InventoryFormat.collected(list: { Entry }): (number, number)
@@ -383,16 +414,7 @@ function InventoryFormat.emptyText(filter: Filter): string
 	return text
 end
 
-function InventoryFormat.ownershipKey(entry: Entry): string
-	if entry.equipped then
-		return "common.equipped"
-	elseif entry.owned then
-		return "common.owned"
-	end
-	return "common.notOwned"
-end
-
--- The text of a filter chip's name.
+-- The text of a tab's name (UI FINAL R5: title case, H:929).
 function InventoryFormat.filterName(filter: Filter): string
 	if filter == "All" then
 		return Strings.inventory.filterAll
@@ -400,9 +422,52 @@ function InventoryFormat.filterName(filter: Filter): string
 	return rarityName(filter)
 end
 
--- A filter chip with its count: "Epic (2)" (inventory.filterCount).
-function InventoryFormat.chipText(filter: Filter, n: number): string
-	return Strings.format(Strings.inventory.filterCount, { label = InventoryFormat.filterName(filter), n = n })
+-- UI FINAL R5 (lib:20-33): a squishy's throw style for its chip; "" for an id with none.
+function InventoryFormat.throwText(id: string): string
+	return Strings.resolve("inventory.throwStyle." .. id) or ""
+end
+
+-- UI FINAL R5 (H:1014: selRays = 1 from Epic on, .45 below): the stage rays' alpha, the design's .26 white times it.
+function InventoryFormat.raysAlpha(rarity: string): number
+	local stage = INVENTORY.stage
+	local index = Rarity.index(rarity) or 1
+	return stage.raysAlpha * (if index >= stage.raysFromIndex then stage.raysHigh else stage.raysLow)
+end
+
+-- UI FINAL R5 (H:224): the floating squishy for a stage `face` px tall: the design's 190 on its 186, in proportion.
+function InventoryFormat.stageSquishyPx(face: number): number
+	local stage = INVENTORY.stage
+	return math.max(0, math.round(positive(face) * stage.squishyPx / stage.face))
+end
+
+-- UI FINAL R5 (H:203-209): a card `cardWidth` wide: the content's width inside the border and padding, the name's
+-- lines (2 when the widest name, `nameWidth`, does not fit), and the face's height: the design's 178, grown only when
+-- the plate, the name's lines (`lineHeight` each), the footer (`footerHeight`: the rarity pill) and the gaps need more
+-- (PR2: the 16 px floor makes some boxes taller).
+function InventoryFormat.cardFrame(
+	cardWidth: number,
+	nameWidth: number,
+	lineHeight: number,
+	footerHeight: number
+): CardFrame
+	local card = INVENTORY.card
+	local inner = math.max(0, positive(cardWidth) - 2 * (card.border + card.padSide))
+	local lines = if positive(nameWidth) > inner then 2 else 1
+	local content = 2 * card.border
+		+ card.padTop
+		+ card.padBottom
+		+ INVENTORY.plate.px
+		+ card.gap
+		+ lines * positive(lineHeight)
+		+ card.gap
+		+ positive(footerHeight)
+	return { face = math.max(card.face, math.ceil(content)), nameLines = lines, inner = inner }
+end
+
+-- UI FINAL R5 ([PR25], H:209): the pips (`pipsWidth`, 0 for none) fit beside the rarity pill in a footer `inner` wide.
+function InventoryFormat.footerFits(inner: number, pipsWidth: number, pillWidth: number): boolean
+	local pips = positive(pipsWidth)
+	return pips + (if pips > 0 then INVENTORY.footer.gap else 0) + positive(pillWidth) <= positive(inner)
 end
 
 -- Part 8 layout -------------------------------------------------------------------------------------------------------
@@ -451,44 +516,43 @@ function InventoryFormat.gridFit(maxWidth: number, cardWidth: number, pad: numbe
 	return { columns = columns, width = math.min(width, limit) }
 end
 
--- The Squishies panel for a ScreenGui of `screenPx` actual px. Close hangs on the panel's top-right corner (fix batch:
--- the Close-only header row is gone), so the content starts with the filter row; Close and the row are touch-sized
--- (never below Config.UI.Touch.minTargetFloor actual px). The body under the row holds the grid and the detail column:
--- with `cardWidth` the grid takes only the columns that fit in gridShare of the content width (gridFit) and the detail
--- column the rest after the column gap; without it the plain gridShare split. `topPadding` is the panel's real top
--- padding (hangingChrome's top, InventoryFormat.topPadding); the bottom keeps PANEL.padding. UI FINAL R3: the panel is
--- the Squishies window (H:181: 1060 x 650, shrunk to fit, Layout.windowFit; its lip under the face), its top padding
--- the band's (Theme.fitWindow), with the window's chromeScale, shift and above.
-function InventoryFormat.panelLayout(screenPx: Vector2, topPadding: number?, cardWidth: number?): PanelLayout
+-- The Squishies window for a ScreenGui of `screenPx` actual px (UI FINAL R3: H:181's 1060 x 650, shrunk to fit,
+-- Layout.windowFit; its lip under the face). UI FINAL R5 (H:191-202): the content box is the body inside the window's
+-- border and the body's padding (`topPadding` = the window's real top padding: the border, the band and the body's
+-- top padding, Theme.fitWindow; missing or too small: PANEL.padding); the left column is the design's 600 px (narrowed
+-- on a small window so the detail column keeps body.detailMin, never under one card) with the tab row (touch-sized)
+-- and, a column gap lower, the grid: its columns (grid.columns, fewer only when a card would be under grid.minCard)
+-- and its card width ((the column - the 12 px scroll bar - the gaps) / columns); the detail column takes the rest of
+-- the width after the body gap, and the content's whole height.
+function InventoryFormat.panelLayout(screenPx: Vector2, topPadding: number?): PanelLayout
 	local p = Layout.modalPanel(screenPx, PANEL.margin, PANEL.heightShare, PANEL.padding, "squishies")
+	local body, grid = INVENTORY.body, INVENTORY.grid
 	local top = InventoryFormat.topPadding(topPadding)
-	local contentHeight = math.max(0, p.contentHeight - (top - PANEL.padding))
-	local closeHeight = Layout.touchBase(TOUCH.closeButton, p.scale)
+	local contentWidth = math.max(0, p.panelWidth - 2 * (WINDOW_BORDER + body.padSide))
+	local contentHeight = math.max(0, p.panelHeight - top - (WINDOW_BORDER + body.padBottom))
 	local rowHeight = Layout.touchBase(TOUCH.minTarget, p.scale)
-	local bodyTop = rowHeight + PANEL.gap
-	local bodyHeight = math.max(0, contentHeight - bodyTop)
-	local gridWidth = p.contentWidth * PANEL.gridShare
-	local columns = 0
-	if positive(cardWidth) > 0 then
-		local fit = InventoryFormat.gridFit(gridWidth, cardWidth :: number, PANEL.cellPad, PANEL.gridChrome)
-		gridWidth, columns = fit.width, fit.columns
-	end
+	local bodyTop = rowHeight + body.columnGap
+	local smallest = grid.minCard + SCROLLBAR_PX
+	local gridWidth = math.max(smallest, math.min(body.gridWidth, contentWidth - body.gap - body.detailMin))
+	local inner = gridWidth - SCROLLBAR_PX
+	local columns = math.clamp(math.floor((inner + grid.gap) / (grid.minCard + grid.gap)), 1, grid.columns)
 	return {
 		scale = p.scale,
 		class = p.class,
 		panelWidth = p.panelWidth,
 		panelHeight = p.panelHeight,
 		topPadding = top,
-		contentWidth = p.contentWidth,
+		contentWidth = contentWidth,
 		contentHeight = contentHeight,
-		closeHeight = closeHeight,
+		closeHeight = Layout.touchBase(TOUCH.closeButton, p.scale),
 		rowHeight = rowHeight,
 		bodyTop = bodyTop,
-		bodyHeight = bodyHeight,
+		bodyHeight = math.max(0, contentHeight - bodyTop),
 		gridWidth = gridWidth,
 		columns = columns,
-		detailWidth = math.max(0, p.contentWidth - gridWidth - PANEL.columnGap),
-		detailHeight = bodyHeight,
+		cardWidth = math.floor((inner - (columns - 1) * grid.gap) / columns),
+		detailWidth = math.max(0, contentWidth - gridWidth - body.gap),
+		detailHeight = contentHeight,
 		chromeScale = p.chromeScale or 1,
 		shift = p.shift or 0,
 		above = p.above or 0,
@@ -514,26 +578,21 @@ function InventoryFormat.previewPx(
 	return math.min(room, maxPx)
 end
 
--- The detail column of `detailWidth` × `detailHeight`: the buttons (one width per visible button, Button.widthFor,
--- `buttonHeight` tall) wrap into rows pinned at the bottom; the info list scrolls in what is left above them.
-function InventoryFormat.detailLayout(
-	detailWidth: number,
-	detailHeight: number,
-	buttonHeight: number,
-	gap: number,
-	buttonWidths: { number }
-): DetailLayout
-	local items: { Layout.WrapItem } = {}
-	for _, width in buttonWidths do
-		table.insert(items, { w = width, h = buttonHeight })
-	end
-	local pinned = Layout.pinnedButtons(detailWidth, detailHeight, gap, items, PANEL.buttonGap)
+-- UI FINAL R5 (H:217-248): the detail column `columnHeight` tall: its one button (`buttonHeight`: face + lip) pinned at
+-- the bottom, the list in the rest above it (a detail gap between), and the stage's face: the design's 186, shrunk so
+-- the stage, its lip and the rest of the list (`restHeight`) fit the list without scrolling, never under minFace (the
+-- list then scrolls).
+function InventoryFormat.detailLayout(columnHeight: number, buttonHeight: number, restHeight: number): DetailLayout
+	local stage = INVENTORY.stage
+	local button = positive(buttonHeight)
+	local listHeight = math.max(0, positive(columnHeight) - button - INVENTORY.detail.gap)
+	local rest = positive(restHeight)
+	local face = math.clamp(math.floor(listHeight - stage.lip - rest), stage.minFace, stage.face)
 	return {
-		rows = pinned.rows,
-		scrollHeight = pinned.scrollHeight,
-		buttonsTop = pinned.buttonsTop,
-		buttonsHeight = pinned.buttonsHeight,
-		buttons = pinned.buttons,
+		listHeight = listHeight,
+		stageFace = face,
+		buttonsTop = math.max(0, positive(columnHeight) - button),
+		scrolls = face + stage.lip + rest > listHeight,
 	}
 end
 
@@ -573,8 +632,8 @@ end
 
 -- The corner badges of a card `cardWidth` wide: `left` at (inset, inset); `right` right-aligned at `inset` from the
 -- right edge, on the same row when both fit with `gap` between them, else on a second row under the left one. A
--- missing badge keeps the other at the top. Fix batch: the Squishies screen now uses cardBadges (the second row sat on
--- the portrait); this stays for the Studio layout audit's test (LayoutAudit_Test).
+-- missing badge keeps the other at the top. The Squishies cards no longer have corner badges (UI FINAL R5); this stays
+-- for the Studio layout audit's test (LayoutAudit_Test).
 function InventoryFormat.cardTags(
 	cardWidth: number,
 	inset: number,
@@ -590,33 +649,6 @@ function InventoryFormat.cardTags(
 		return { twoRows = false, leftY = inset, rightY = inset }
 	end
 	return { twoRows = true, leftY = inset, rightY = inset + left.h + gap }
-end
-
--- The corner badges of a card `cardWidth` wide on one row at `inset` from the top (fix batch): `left` at the top-left
--- and `right` at the top-right with `gap` between them when both fit; else the left one's compact form (`leftCompact`,
--- e.g. the lock pip of "Not owned") when that lets both fit; else the right one is left out, so the left one (the card's
--- state: Equipped / NEW / Not owned) always shows. A missing badge leaves the other one alone.
-function InventoryFormat.cardBadges(
-	cardWidth: number,
-	inset: number,
-	gap: number,
-	left: TagBox?,
-	right: TagBox?,
-	leftCompact: TagBox?
-): CardBadges
-	if left == nil or right == nil then
-		return { compact = false, rightShown = right ~= nil }
-	end
-	local function fits(leftWidth: number): boolean
-		return inset + leftWidth + gap + right.w + inset <= cardWidth
-	end
-	if fits(left.w) then
-		return { compact = false, rightShown = true }
-	end
-	if leftCompact and fits(leftCompact.w) then
-		return { compact = true, rightShown = true }
-	end
-	return { compact = false, rightShown = false }
 end
 
 return InventoryFormat

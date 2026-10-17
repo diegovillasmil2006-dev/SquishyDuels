@@ -235,6 +235,14 @@ export type DecorateOptions = {
 	sound: boolean?, -- false: no click / hover sound (default true)
 	clickSound: boolean?, -- UI FINAL R2: false: no click sound, the hover sound stays
 	fx: Fx?, -- UI FINAL R2: the design hover kind (default "btn")
+	-- UI FINAL R5 (the Squishies cards and tabs, H:634-644): an unlaid-out holder the whole pose is drawn on (its lift,
+	-- tilt and non-uniform press squash, anchored at its centre and filling the button: Button.new's SD_Visual
+	-- rule), `content` inside it keeps its size through a squash, `onFilter(mix)` paints the hover brightness
+	-- (Button.hoverColor) and `pivotPx` is how far above the holder's centre the pose turns (half a lip).
+	visual: GuiObject?,
+	content: GuiObject?,
+	onFilter: ((mix: number) -> ())?,
+	pivotPx: number?,
 }
 
 export type Decorated = {
@@ -828,15 +836,19 @@ end
 -- Gives a plain GuiButton (e.g. the coin pill) the Button feel on its own UIScale "Scale": the hover scale of its
 -- design kind (options.fx, default "btn"), the press squash as one uniform scale (Button.decoratedScale; it may sit in
 -- a layout: no lift, tilt or non-uniform squash), pulse(), and ui.click / ui.hover unless options.sound == false
--- (options.clickSound == false: the hover only). The returned handle's destroy() removes it all.
+-- (options.clickSound == false: the hover only). The returned handle's destroy() removes it all. UI FINAL R5: with
+-- options.visual the full pose (lift, tilt, squash, the hover filter through options.onFilter) is drawn on that holder
+-- instead (see DecorateOptions); the button itself never moves.
 function Button.decorate(guiButton: GuiButton, options: DecorateOptions?): Decorated
 	local cleanup = Cleanup.new()
 	local soundOn = not (options and options.sound == false)
 	local clickOn = soundOn and not (options and options.clickSound == false)
 	local fx: Fx = if options and options.fx then options.fx else "btn"
-	local feel = newFeel(guiButton, guiButton.Size, nil, fx, cleanup, function(): boolean
+	local visual: GuiObject? = if options then options.visual else nil
+	local target: GuiObject = visual or guiButton
+	local feel = newFeel(target, target.Size, if options then options.content else nil, fx, cleanup, function(): boolean
 		return true
-	end, nil, true, 0, nil)
+	end, if options then options.onFilter else nil, visual == nil, if options then options.pivotPx or 0 else 0, nil)
 	cleanup:add(feel.scale)
 	cleanup:add(guiButton.MouseEnter:Connect(function()
 		if not lastInputIsMouse() then

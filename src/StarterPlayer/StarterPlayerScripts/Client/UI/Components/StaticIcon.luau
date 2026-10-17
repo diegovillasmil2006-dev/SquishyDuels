@@ -4,7 +4,7 @@
 -- lighting values, Config.Inspect), §8.3 (models come from Models/SquishyCache, model slots included).
 --   local icon = StaticIcon.new({ name = "Preview", squishyId = "toast", sizePx = 88, parent = card })
 --   icon:setSquishy("dragon")   -- rebuilds only when the id changes
---   icon:setOwned(false)        -- greyed (Lavender tint): "Not owned" always comes with a text and a lock elsewhere
+--   icon:setOwned(false)        -- the design's black .42 silhouette (UI FINAL R5, H:922; a lock shows with it)
 -- The model is a SquishyCache "Viewport" clone at scale 1 (anchored, no welds), never animated and never in
 -- Workspace. The camera looks at the model's bounding-box centre from the squishy's Catalog `inspect` yaw / pitch (the
 -- face looks along the pivot's LookVector, §8.3), at fitDistance(r) with r = half the box diagonal. Lighting is the
@@ -25,7 +25,6 @@ local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
-local Palette = require(Shared.Art.Palette)
 
 local UI = script.Parent.Parent
 local Client = UI.Parent
@@ -56,7 +55,9 @@ local INSPECT = Config.Inspect
 local FRAMING = INSPECT.Framing
 local LIGHTING = INSPECT.Lighting
 local DEFAULT_SIZE_PX = 88
-local UNOWNED_TINT = Palette.Lavender
+-- UI FINAL R5 (H:922): not owned = the design's silhouette, brightness(0) opacity(.42): black at transparency .58.
+local UNOWNED_TINT = Color3.new(0, 0, 0)
+local UNOWNED_TRANSPARENCY = 0.58
 local OWNED_TINT = Color3.new(1, 1, 1)
 
 -- Module table
@@ -83,6 +84,14 @@ function StaticIcon.fitDistance(r: number, vFovDeg: number): number
 	local half = math.rad(vFovDeg) / 2
 	local distance = radius / math.sin(half) * FRAMING.fitPadding
 	return math.max(distance, radius + FRAMING.minClearance)
+end
+
+-- UI FINAL R5 (H:922): the tint and transparency of an owned icon (as it is) and of one not owned (the silhouette).
+function StaticIcon.ownedLook(owned: boolean): (Color3, number)
+	if owned then
+		return OWNED_TINT, 0
+	end
+	return UNOWNED_TINT, UNOWNED_TRANSPARENCY
 end
 
 -- Public -------------------------------------------------------------------------------------------------------------
@@ -172,9 +181,12 @@ function StaticIcon.new(spec: Spec): StaticIcon
 		end
 	end
 	function self.setOwned(_: StaticIcon, owned: boolean)
-		root.ImageColor3 = if owned then OWNED_TINT else UNOWNED_TINT
+		local tint, transparency = StaticIcon.ownedLook(owned)
+		root.ImageColor3 = tint
+		root.ImageTransparency = transparency
 		if image then
-			image.ImageColor3 = root.ImageColor3
+			image.ImageColor3 = tint
+			image.ImageTransparency = transparency
 		end
 	end
 	function self.squishyId(_: StaticIcon): string

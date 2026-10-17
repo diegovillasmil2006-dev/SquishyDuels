@@ -66,6 +66,11 @@
 -- gone) and Close, with its key, sits at the band's right end (its `extra`); Theme.fitWindow lays the band out at the
 -- chrome scale and the panel sits as the design's windows do (Layout.windowShift). The caption under the stage takes
 -- the window's text colour on the pink body (H:196).
+-- UI FINAL R5 (plan work/ui/PLAN.md R5: "the same stage look at full size"): the stage column is the design's detail
+-- stage (UI/StageLook in Inspect_StageFrame: the lip, the rarity's radial, the rays, the stars, the inset highlight and
+-- the 4 px border); Inspect_Stage (stageHolder, Active) is its slot inside the border, so the attached ViewportStage
+-- draws over this look without a background of its own (SD_OwnBackdrop) and its contact shadow is the floor. The
+-- knead's rows and help keep their own look.
 -- Stable names: Inspect, Inspect_Stage, Inspect_CloseButton, Inspect_SqueezeButton, Inspect_ResetViewButton,
 -- Inspect_EquipButton, Inspect_ViewInShopButton.
 -- Knead (spec phase2-squeeze §1.19, §3.6-§3.7): panel:setKnead(view?) shows, while Inspect kneads, Thumb crunch
@@ -102,6 +107,7 @@ local LockIcon = require(UI.Components.LockIcon)
 local ProgressBar = require(UI.Components.ProgressBar)
 local RarityTag = require(UI.Components.RarityTag)
 local ScrollHint = require(UI.Components.ScrollHint)
+local StageLook = require(UI.StageLook)
 local Theme = require(UI.Theme)
 
 -- Types
@@ -198,6 +204,7 @@ local SHOP_LINES = 1
 -- Fix batch: the header row is as tall as its badges: the Chip line (LINE_HEIGHT of the Chip size), BADGE_PAD_PX (the
 -- chip's padding and the rarity tag's outline room above and below), never below Chip.HEIGHT_PX.
 local BADGE_PAD_PX = 8
+local STAGE_LIP = UI_CONFIG.Inventory.stage.lip -- UI FINAL R5: the stage's lip under its face (H:218)
 local WINDOW_KIND = "inspect" -- UI FINAL R3: its Config.UI.Sticker.window kind (a reading)
 
 -- Module table
@@ -405,12 +412,17 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 	cleanup:add(UserInputService:GetPropertyChangedSignal("PreferredInput"):Connect(applyCloseKey))
 
 	-- Stage column: the holder, the caption, [Squeeze] [Reset View] ---------------------------------------------------
-	local stageHolder: Frame = Create("Frame", {
-		Name = "Inspect_Stage",
+	-- UI FINAL R5: the design's stage look; its slot is the holder the stage attaches to.
+	local stageFrame: Frame = Create("Frame", {
+		Name = "Inspect_StageFrame",
 		BackgroundTransparency = 1,
-		Active = true,
 		Parent = root,
 	})
+	local stageLook = StageLook.new(stageFrame, { floor = false })
+	cleanup:add(stageLook)
+	local stageHolder: Frame = stageLook.slot
+	stageHolder.Name = "Inspect_Stage"
+	stageHolder.Active = true
 	local caption = Theme.label({
 		Name = "Caption",
 		TextXAlignment = Enum.TextXAlignment.Center,
@@ -716,7 +728,8 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 		)
 		root.Position = UDim2.new(0.5, 0, 0.5, shift)
 		place(header, l.header)
-		place(stageHolder, l.stage)
+		place(stageFrame, l.stage)
+		stageLook:setFace(l.stage.h - STAGE_LIP)
 		place(caption, l.caption)
 		place(stageButtons, l.stageButtons)
 		place(infoField, l.info)
@@ -761,6 +774,7 @@ function InspectPanel.new(parent: Instance, callbacks: Callbacks): Panel
 
 	function self.show(_: Panel, view: InspectFormat.View)
 		nameLabel.Text = view.name
+		stageLook:setRarity(view.rarity)
 		for rarity, tag in rarityTags do
 			tag.root.Visible = rarity == view.rarity
 		end

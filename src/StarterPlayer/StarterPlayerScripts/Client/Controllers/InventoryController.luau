@@ -88,9 +88,39 @@
 -- "SQUISHIES", the Collected chip at its right end as the design's header pill, H:185; the sticker, H:251) and the 76
 -- px close X in the band (Theme.attachClose, H:252); Theme.fitWindow lays the chrome out at the window's chrome scale.
 -- The texts on the pink body (the empty state, the loading line) take the window's text colour (H:196).
+-- UI FINAL R5 (Diego's Squishies window, plan work/ui/PLAN.md R5 with its Decided list; numbers in
+-- Config.UI.Inventory, layout maths in UI/InventoryFormat): the window's inside is the design's (H:185-248):
+-- * The header pill at the band's right end (H:185-188): "Collected", the yellow 110 px bar (600 ms, the bars curve)
+--   and "{n} / {total}" in the coin yellow, on the ink at .55.
+-- * The body (H:191): the 600 px left column (the tab row, then the grid) and the detail column; padding 18 22 22.
+-- * The rarity tabs (H:193-194, H:927-929): title case "All", "Common", ... with each rarity's catalogue count (no
+--   brackets); on: the All pink or the rarity's light -> base, off: the purple; hover "tab" (y -2, 1.05), the tab click
+--   (ui.click at the tab pitch). Five tabs and "Show locked" need more than the 600 px at 16 px text (PR2): the tabs
+--   scroll sideways (InventoryFormat.tabRowFits, G5.3). "Show locked" (H:195-197): the two-line label left of the small
+--   switch, no On / Off, hover "tab", the switch's rising / falling click.
+-- * The cards (H:203-212; UI/CardFace): one purple face for every rarity, the plate (the rarity's radial, H:204) with
+--   the squishy (UI/Components/SquishyImage: the silhouette and the 40 px lock when not owned), the name, the footer
+--   (the rarity pill, RarityTag "card", and its dots when they fit, [PR25]), the hanging "Equipped" ribbon and NEW
+--   (only when new and not equipped); selected: the white border, the ring and the glow in the rarity's colour.
+--   Hover "card" (y -5, 1.035, the brightness filter) and the press squash on an inner holder (Button.decorate), the
+--   card click (ui.click at the card pitch). They rise in (sdRise .42 s, i x 28 ms, no cap: Config.UI.motion.cardIn)
+--   on open; after a filter change only the newly shown slots rise (G5.10). NEW and the HUD badge clear when the
+--   window closes (StateController.markAllOwnedSeen, G5.9), not on a pick.
+-- * The detail (H:217-248): the stage (UI/StageLook: the radial, rays, floor, stars; the squishy 190 floating, its pick
+--   pop on every pick, H:937; tap it = Inspect, focusable, G5.15), the name row (the name, RarityTag "detail", the mint
+--   EQUIPPED pill), the chips (power "x{n} power" [FD4], the throw style, "Ultimate: {name}"), the stats well (blue /
+--   purple bars, Config.Combat bands) and ONE button: EQUIP (green), EQUIPPED (the disabled lilac with the check) or
+--   FIND IN BOXES (cyan, the boxes picture; "View in Shop" with the shop picture for a restricted account, [PR22]).
+--   The stage shrinks so the rest fits above the button (InventoryFormat.detailLayout); on phones the list scrolls.
+-- * Equip: the design's burst (Config.UI.Fx.events.equip) and the 1.2 squash at the stage's squishy (G5.16), and the
+--   toast "Equipped {name}!" (inventory.equippedToast, G5.17).
+-- * States ([PR23], UI/Components/StatePill): loading = the pill with the spinner, filter-empty = the pill with its
+--   text over the grid; the data error stays the line at the top of the detail.
+-- * Kill banners (Diego, 2026-10-16): the squishy's kill set line is kept but hidden (the design has no place for it;
+--   NOTES question).
 -- Stable names: Squishies_CloseButton, Squishies_Filter<Name>Button, Squishies_ShowNotOwnedToggle,
--- Squishies_Card_<id>, Squishies_EquipButton, Squishies_InspectButton, Squishies_ViewInShopButton,
--- Squishies_GoToBoxesButton.
+-- Squishies_Card_<id>, Squishies_EquipButton, Squishies_EquippedButton, Squishies_InspectButton (the stage),
+-- Squishies_GoToBoxesButton (FIND IN BOXES; View in Shop when restricted).
 
 -- Services
 
@@ -104,31 +134,35 @@ local CapsuleMath = require(Shared.CapsuleMath)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
-local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
-local Rarity = require(Shared.Rarity)
+local Palette = require(Shared.Art.Palette)
 local RarityStyle = require(Shared.Art.RarityStyle)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local BoxFormat = require(Client.UI.BoxFormat)
 local Button = require(Client.UI.Components.Button)
 local CardFace = require(Client.UI.CardFace)
 local Chip = require(Client.UI.Components.Chip)
+local CoinIcon = require(Client.UI.Components.CoinIcon)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
+local IconGlyph = require(Client.UI.Components.IconGlyph)
 local InventoryFormat = require(Client.UI.InventoryFormat)
 local KeyText = require(Client.UI.KeyText)
 local Layout = require(Client.UI.Layout)
-local LockIcon = require(Client.UI.Components.LockIcon)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local RarityTag = require(Client.UI.Components.RarityTag)
 local Scheduler = require(Client.Anim.Scheduler)
 local ScrollHint = require(Client.UI.Components.ScrollHint)
-local StaticIcon = require(Client.UI.Components.StaticIcon)
+local SquishyImage = require(Client.UI.Components.SquishyImage)
+local StageLook = require(Client.UI.StageLook)
+local StatePill = require(Client.UI.Components.StatePill)
 local Theme = require(Client.UI.Theme)
 local Toggle = require(Client.UI.Components.Toggle)
 local Tweens = require(Client.Anim.Tweens)
 local UiFx = require(Client.UI.UiFx)
+local UiIdle = require(Client.Anim.UiIdle)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
@@ -146,71 +180,36 @@ local BOXES_SCREEN = "boxes"
 local MODAL_GUI = "SD_Modal"
 local ACTION = "Squishies"
 local KIOSK_TAG = "SD_CollectionKiosk"
-local EQUIPPED_TOAST = "inspect.equippedToast"
-local INVENTORY = Config.UI.Inventory
+local EQUIPPED_TOAST = "inventory.equippedToast" -- UI FINAL R5: "Equipped {name}!" (H:846)
 local TOUCH = Config.UI.Touch
 local ABILITIES = Config.Abilities
-local PANEL = InventoryFormat.PANEL -- margin, height share (0.88: never more of the screen), padding, gaps, grid share
--- Foam restyle reading: the names are in the Button display kind, which needs about this much more room than §11.6's
--- 112 px card had for the Body font (InventoryFormat.cardSize still adds a second name line when the widest name needs
--- it; Studio check).
-local CARD_NAME_ROOM = 12
-local CARD_WIDTH = INVENTORY.cardWidth + CARD_NAME_ROOM
-local CARD_HEIGHT = 180 -- reading: §11.6 gives the card width only (UI overhaul: 168 -> 180 for the larger art)
-local CARD_ICON_PX = 96 -- UI overhaul: 84 -> 96, the art dominates the card
-local CARD_PAD_X = 6 -- Part 8: the card's text keeps off its frame (foam restyle: off the thicker rim too)
-local CARD_PAD_Y = 6
-local CARD_GAP = 2
-local CARD_PIP_PX = 8
-local CARD_NAME_KIND: Theme.TextKind = "Button" -- foam restyle: larger type, the display font
-local CARD_RADIUS = Theme.Radius.button
-local CARD_BANDS = Theme.Foam.panel.bevel + Theme.Foam.panel.drop -- the foam card's bevel and drop (kept free)
-local CELL_PAD = PANEL.cellPad
-local DETAIL_ICON_PX = 132
-local DETAIL_ICON_COMPACT_PX = 88 -- reading (Part 8): on phones more of the info shows above the pinned buttons
-local DETAIL_ICON_MIN_PX = 48 -- fix batch: the smallest the preview gets so the name stays in view (previewPx)
-local WELL_PAD_PX = 8 -- the inset well around the detail preview
-local EMPTY_TOP_PX = 40 -- the filter-empty state: this far under the body's top ...
-local EMPTY_SIDE_PX = 20 -- ... and this far inside the grid's sides
-local LOCK_PIP_PX = 22 -- the compact "Not owned" badge: a round Lilac pip with the lock (DESIGN §11.6 "lock pip")
-local STATS_PAD_PX = 10 -- the stats inset field's padding
-local GRID_SHARE = PANEL.gridShare
-local SCROLLBAR_PX = 6
--- The corner badges (Part 8: InventoryFormat.cardTags; foam restyle: Chips). Badge = the Chip's padding, lock, gap,
--- text; the rarity badge = padding, text. MEASURE_MARGIN_PX is added to each measured width; TAG_GAP leaves room for
--- both chips' outlines, so the two never touch.
-local TAG_INSET = 4
-local TAG_GAP = 6
-local BADGE_PAD_X = 10 -- reading: Chip's side padding
-local BADGE_LOCK_PX = 12
-local BADGE_LIST_GAP = 4 -- reading: Chip's gap between the lock and the text
-local BADGE_HEIGHT_PX = 22
-local MEASURE_MARGIN_PX = 2
-local CHIP_ROW_OUTSET = 4 -- the chips' scrolling row reaches this far past the filter row (their outlines show)
-local TOGGLE_MIN_WIDTH_PX = 240 -- "Show not owned" at the default text size, as before
-local TOGGLE_MAX_SHARE = 0.45 -- reading: the chips keep at least the rest of the filter row
-local CARD_BASE: InventoryFormat.CardBase = {
-	width = CARD_WIDTH,
-	height = CARD_HEIGHT,
-	iconPx = CARD_ICON_PX,
-	padX = CARD_PAD_X,
-	padY = CARD_PAD_Y,
-	gap = CARD_GAP,
-	bands = CARD_BANDS,
-}
-local STAT_BAR_PX = 10
-local CONFIRM_SECONDS = 5 -- reading: how long "Equipped" shows before the StateDelta must have arrived
-local SHIMMER_FULL_TURN = 360
-local GENERIC = "error.generic"
+local STICKER = Config.UI.Sticker
+local UI_PITCH = Config.Audio.uiPitch
+local INVENTORY = Config.UI.Inventory
+local BODY = INVENTORY.body
+local GRID = INVENTORY.grid
+local CARD = INVENTORY.card
+local PLATE = INVENTORY.plate
+local TAB = INVENTORY.tab
+local PILL = INVENTORY.pill
+local STAGE = INVENTORY.stage
+local STATS = INVENTORY.stats
+local DETAIL = INVENTORY.detail
+local CARD_IN = Config.UI.motion.cardIn -- H:31, H:203: sdRise
+local PRESS = Config.UI.motion.buttonPress
+local EQUIP_FX = Config.UI.Fx.events.equip -- H:845
+local EQUIP_SQUASH = 1.2 -- H:845: FX.squash(.., 1.2)
 local WINDOW_KIND = "squishies" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:180-254)
--- UI overhaul: the card faces are UI/CardFace's (owned: the rarity's colours; not owned: the dark disabled face; the
--- selected card: a white frame).
-local STAT_TIME: { [string]: boolean } = { reload = true, windup = true } -- shorter is faster (Lavender bars)
-local PREVIEW_BOB_PX = 3 -- the detail preview's idle bob (base px) ...
-local PREVIEW_BOB_SECONDS = 2.6 -- ... one cycle (well under 1 Hz)
-local PREVIEW_WOBBLE_DEG = 2 -- ... and its gentle sway
-local PREVIEW_GLOW_SHARE = 0.92 -- the glow disc behind the preview, as a share of its size
-local PREVIEW_GLOW_TRANSPARENCY = 0.7
+local WINDOW_BORDER = STICKER.border.heavy
+local BUTTON_HEIGHT = INVENTORY.button.face + STICKER.lip.button -- H:245: the 60 px face and its 5 px lip
+local CONFIRM_SECONDS = 5 -- reading: how long "Equipped" shows before the StateDelta must have arrived
+local GENERIC = "error.generic"
+local STAT_TIME: { [string]: boolean } = { reload = true, windup = true } -- the purple bars (lib:39)
+local TEXT_KIND: Theme.TextKind = "Small" -- PR2: the design's 11-15 px texts are 16
+local NAME_LINE_HEIGHT = 1.1 -- H:208
+local MEASURE_MARGIN_PX = 2
+local TAB_ROW_OUTSET = 4 -- the tab scroller reaches this far past the row, so a lifted tab is never cut
+local WHITE = Color3.new(1, 1, 1)
 
 -- Module table
 
@@ -220,55 +219,61 @@ local InventoryController = {}
 
 type Card = {
 	id: string,
+	rarity: string,
 	root: TextButton,
-	face: CardFace.CardFace, -- UI overhaul: the collectible card's face, rim and art glow
-	icon: StaticIcon.StaticIcon,
-	stroke: UIStroke, -- the rarity rim (the foam outline in the rarity colour)
-	gradient: UIGradient?,
-	shimmer: boolean,
-	badge: Chip.Chip, -- top-left: Equipped / NEW / Not owned (with the lock)
-	badgeBox: InventoryFormat.TagBox?, -- its drawn box while it last showed (kept while the lock pip replaces it)
+	rise: Frame, -- the inner holder the rise plays on (in SD_Visual, which the hover poses)
+	face: CardFace.CardFace,
+	image: SquishyImage.SquishyImage,
 	lock: Frame,
-	lockPip: Frame, -- top-left instead of the "Not owned" chip when it and "Ultimate" do not fit one row
-	rarity: RarityTag.RarityTag,
-	ultimate: Chip.Chip?, -- the rarity badge (style.card.badgeKey, "Ultimate"), top-right
-	tagText: string?, -- the top-left badge's text as painted last (layoutTags), nil = hidden
-	tagLocked: boolean, -- ... with the lock
+	lockReady: boolean, -- the lock picture has an id
+	tag: RarityTag.RarityTag,
+	ribbon: Frame,
+	newTag: Frame,
+}
+
+type Tab = {
+	root: TextButton,
+	foam: Theme.Foam,
+	label: TextLabel,
+	count: TextLabel,
+	on: boolean?, -- as painted last
 }
 
 type Detail = {
-	icon: StaticIcon.StaticIcon,
-	well: Frame, -- the inset well around the preview
-	glow: Frame, -- UI overhaul: the rarity glow behind the preview
+	error: TextLabel,
+	list: ScrollingFrame,
+	listLayout: UIListLayout,
+	rail: Frame,
+	stage: TextButton,
+	look: StageLook.StageLook,
+	pick: Frame, -- the pick pop's holder
+	fit: UIScale, -- the squishy's size for the stage's face
+	image: SquishyImage.SquishyImage,
 	name: TextLabel,
 	rarity: RarityTag.RarityTag,
-	ownership: Chip.Chip,
-	lock: Frame,
-	coins: TextLabel,
+	equippedPill: Frame,
+	power: Chip.Chip,
+	throw: Chip.Chip,
+	ultimate: Chip.Chip,
 	stats: { [string]: { value: TextLabel, bar: ProgressBar.ProgressBar } },
-	trail: TextLabel,
-	ultimate: TextLabel,
 	elimination: TextLabel,
-	price: TextLabel,
-	error: TextLabel,
-	scroll: ScrollingFrame, -- "Detail": the info list
-	rail: Frame, -- fix round 2: its scroll bar on touch (ScrollHint), over the list's right edge
-	buttons: Frame, -- "DetailButtons": pinned under the list (Part 8)
+	buttons: Frame,
 	equip: Button.Button,
-	equipText: string, -- what Equip shows now (its width is measured for the layout)
-	equipReason: string?,
-	inspect: Button.Button,
-	viewInShop: Button.Button,
+	equipped: Button.Button,
+	find: Button.Button,
 }
 
--- The frames the panel layout sizes (Part 8: InventoryFormat.panelLayout; foam restyle: the header tab; fix batch: no
--- header row, Close and the Collected chip hang on the top corners).
 type Frames = {
-	filterRow: Frame,
-	filters: ScrollingFrame,
-	tab: Frame,
-	padding: UIPadding, -- the panel's (its top follows the tab and Close)
+	left: Frame,
+	tabRow: Frame,
+	tabs: ScrollingFrame,
+	toggle: Toggle.Toggle,
+	detailColumn: Frame,
+	padding: UIPadding,
 }
+
+-- A running track (playTrack): its effect, its poser and its fade group.
+type Track = { handle: Scheduler.Handle, poser: Tweens.Poser, fade: Tweens.FadeGroup }
 
 local log = Log.new("Inventory")
 local cleanup: Cleanup.Cleanup? = nil
@@ -276,25 +281,26 @@ local openCleanup: Cleanup.Cleanup? = nil
 local panel: Frame? = nil
 local frames: Frames? = nil
 local closeButton: Button.Button? = nil
-local collectedChip: Chip.Chip? = nil
-local chips: { [string]: Button.Button } = {}
-local chipActive: { [string]: boolean } = {} -- each chip's painted state (Strawberry = its filter is on)
-local showNotOwnedToggle: Toggle.Toggle? = nil
+local collectedPill: Frame? = nil
+local collectedBar: ProgressBar.ProgressBar? = nil
+local collectedCount: TextLabel? = nil
+local tabs: { [string]: Tab } = {}
 local grid: ScrollingFrame? = nil
 local gridLayout: UIGridLayout? = nil
-local emptyState: Frame? = nil
-local emptyLabel: TextLabel? = nil
-local goToBoxes: Button.Button? = nil
-local loadingLabel: TextLabel? = nil
+local emptyPill: StatePill.StatePill? = nil
+local loadingPill: StatePill.StatePill? = nil
 local body: Frame? = nil
 local cards: { [string]: Card } = {}
 local detail: Detail? = nil
 local panelLayout: InventoryFormat.PanelLayout? = nil
 local lastDetail: InventoryFormat.DetailLayout? = nil -- the detail column as laid out last (debugState)
-local cardSize: InventoryFormat.CardSize = { width = CARD_WIDTH, height = CARD_HEIGHT, nameLines = 1, stacked = true }
+local cardFrame: InventoryFormat.CardFrame = { face = CARD.face, nameLines = 1, inner = 0 }
+local tracks: { [GuiObject]: Track } = {}
 local filter: InventoryFormat.Filter = "All"
 local showNotOwned = true
 local selected: string? = nil
+local shownCount = 0 -- the grid's slots shown last (InventoryFormat.riseSlots)
+local riseFrom: number? = nil -- set: the next refresh rises the slots past this many
 local pendingEquip: string? = nil
 local confirmedEquip: string? = nil
 local confirmTimer: thread? = nil
@@ -322,175 +328,168 @@ local function hasError(): boolean
 	return status ~= nil and (status.status == "offline" or status.status == "readonly")
 end
 
-local function setText(label: TextLabel?, text: string)
-	if label then
-		label.Text = text
+local function nameOf(id: string): string
+	local def = Catalog.get(id)
+	return if def then Strings.resolve(def.nameKey) or id else id
+end
+
+-- Motion (UI FINAL R5) ---------------------------------------------------------------------------------------------
+
+-- Stops `holder`'s track and puts it at rest (its pose and every transparency it faded).
+local function stopTrack(holder: GuiObject)
+	local track = tracks[holder]
+	if track then
+		tracks[holder] = nil
+		track.handle:disconnect()
+		track.poser:rest()
+		track.fade:restore()
 	end
 end
 
--- Layout (Part 8) -----------------------------------------------------------------------------------------------------
+-- Plays a design @keyframes track on `holder` (its poses through Tweens.poser, its alpha over the whole holder and what
+-- is in it through Tweens.fadeGroup), after `delayMs`, each segment eased `curve` or the whole run `wholeRun`; nothing
+-- under ReducedMotion. A new track on the holder first puts the last one at rest.
+local function playTrack(
+	holder: GuiObject,
+	frames: { any }, -- Config's MotionPose tracks (Anim/Tweens.Pose)
+	ms: number,
+	delayMs: number,
+	curve: string?,
+	wholeRun: string?
+)
+	stopTrack(holder)
+	if Tweens.reducedMotion() or ms <= 0 then
+		return
+	end
+	local poser = Tweens.poser(holder)
+	local fade = Tweens.fadeGroup(holder)
+	local function apply(u: number)
+		local pose = Tweens.poseAt(frames :: { Tweens.Pose }, u, curve, wholeRun)
+		fade:setAlpha(pose.alpha or 1)
+		pose.alpha = nil
+		poser:set(pose)
+	end
+	apply(0)
+	local elapsed = 0
+	local handle = Scheduler.add(function(dt: number): boolean
+		elapsed += dt
+		local u = (elapsed * 1000 - delayMs) / ms
+		if u < 0 then
+			return true -- the first frame holds through the delay (CSS fill: both)
+		end
+		if u >= 1 then
+			stopTrack(holder)
+			return false
+		end
+		apply(u)
+		return true
+	end, "render")
+	tracks[holder] = { handle = handle, poser = poser, fade = fade }
+end
 
--- The detail column: Equip / Inspect / View in Shop pinned under the info list, wrapped from their measured widths
--- (InventoryFormat.detailLayout); the list scrolls in what is left; the preview is smaller on phones and shrinks so the
--- name under it stays in view (fix batch: InventoryFormat.previewPx).
+-- The press squash of `amount` (PR4: Config.UI.motion.buttonPress's frames) on the stage's squishy (G5.16).
+local function squashImage(image: SquishyImage.SquishyImage, amount: number, c: Cleanup.Cleanup)
+	if Tweens.reducedMotion() then
+		return
+	end
+	local elapsed = 0
+	local duration = PRESS.ms / 1000
+	c:add(Scheduler.add(function(dt: number): boolean
+		elapsed += dt
+		local u = math.min(elapsed / duration, 1)
+		local sx, sy = Button.squashAt(u, amount)
+		image:squash(if u >= 1 then 1 else sx, if u >= 1 then 1 else sy)
+		return u < 1
+	end, "render"))
+end
+
+-- Layout ---------------------------------------------------------------------------------------------------------------
+
+-- The detail column (InventoryFormat.detailLayout): the stage shrinks so the rest of the list (measured from the
+-- list's content less the stage) fits above the pinned button; the list scrolls when even the smallest stage does not
+-- leave room (phones).
 local function layoutDetail()
-	local d, l = detail, panelLayout
-	if d == nil or l == nil then
+	local d, l, f = detail, panelLayout, frames
+	if d == nil or l == nil or f == nil then
 		return
 	end
-	local shown: { Button.Button } = {}
-	local widths: { number } = {}
-	local function add(button: Button.Button, text: string, reason: string?)
-		if button.root.Visible then
-			table.insert(shown, button)
-			table.insert(widths, Button.widthFor(text, reason))
-		end
-	end
-	add(d.equip, d.equipText, d.equipReason)
-	add(d.inspect, Strings.common.inspect)
-	add(d.viewInShop, Strings.inspect.viewInShop)
-	local buttonHeight = Layout.touchBase(Button.frameHeight("primary"), l.scale) -- UI FINAL R2 (P1): face + lip
-	local placed = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, buttonHeight, PANEL.gap, widths)
+	local current = (lastDetail and lastDetail.stageFace or STAGE.face) + STAGE.lip
+	local listBase = if lastDetail then lastDetail.listHeight else 0
+	local drawn = d.list.AbsoluteSize.Y
+	local k = if listBase > 0 and drawn > 0 then drawn / listBase else 0
+	local rest = if k > 0 then math.max(0, d.listLayout.AbsoluteContentSize.Y / k - current) else 0
+	local placed = InventoryFormat.detailLayout(l.detailHeight, BUTTON_HEIGHT, rest)
+	local before = lastDetail
 	lastDetail = placed
-	d.scroll.Size = UDim2.fromOffset(l.detailWidth, placed.scrollHeight)
-	d.buttons.Position = UDim2.new(1, 0, 0, placed.buttonsTop)
-	d.buttons.Size = UDim2.fromOffset(l.detailWidth, placed.buttonsHeight)
-	for index, button in shown do
-		local r = placed.buttons[index]
-		if r then
-			button.root.Position = UDim2.fromOffset(r.x + r.w / 2, r.y)
-			button.root.Size = UDim2.fromOffset(0, buttonHeight)
-		end
+	d.list.Size = UDim2.new(1, 0, 0, placed.listHeight)
+	d.rail.Size = UDim2.fromOffset(Theme.SCROLLBAR_PX, placed.listHeight)
+	d.buttons.Position = UDim2.fromOffset(0, placed.buttonsTop)
+	for _, button in { d.equip, d.equipped, d.find } do
+		button:setWidth(l.detailWidth)
+		button.root.Size = UDim2.fromOffset(l.detailWidth, BUTTON_HEIGHT)
 	end
-	d.rail.Size = UDim2.fromOffset(SCROLLBAR_PX, placed.scrollHeight)
-	-- Under the well: the list's gap, the name (Title), a gap and (fix round 2) the rarity tag stay in view; with no
-	-- room for the smallest preview the well hides (previewPx 0) rather than cut the tag.
-	local reserve = 2 * Theme.Padding.small + Theme.lineHeight("Title") + RarityTag.tallest()
-	local iconPx = InventoryFormat.previewPx(
-		placed.scrollHeight,
-		reserve,
-		WELL_PAD_PX,
-		DETAIL_ICON_MIN_PX,
-		if l.class == "compact" then DETAIL_ICON_COMPACT_PX else DETAIL_ICON_PX
-	)
-	d.well.Visible = iconPx > 0
-	if iconPx > 0 then
-		d.icon.root.Size = UDim2.fromOffset(iconPx, iconPx)
-		d.well.Size = UDim2.new(1, 0, 0, iconPx + 2 * WELL_PAD_PX)
-		local glowPx = math.floor(iconPx * PREVIEW_GLOW_SHARE)
-		d.glow.Size = UDim2.fromOffset(glowPx, glowPx)
+	if before == nil or before.stageFace ~= placed.stageFace then
+		d.stage.Size = UDim2.new(1, 0, 0, placed.stageFace + STAGE.lip)
+		d.look:setFace(placed.stageFace)
+		d.fit.Scale = InventoryFormat.stageSquishyPx(placed.stageFace) / STAGE.squishyPx
 	end
 end
 
--- A badge's drawn size in the card's base px (its AbsoluteSize over the card's drawn scale), or nil before it is drawn.
-local function drawnBox(card: Card, object: GuiObject): InventoryFormat.TagBox?
-	local k = card.root.AbsoluteSize.X / math.max(cardSize.width, 1)
-	local size = object.AbsoluteSize
-	if k <= 0 or size.X <= 0 or size.Y <= 0 then
-		return nil
-	end
-	return { w = size.X / k, h = size.Y / k }
-end
-
--- The larger of a measured and a drawn box (the drawn one also covers what the measure cannot know).
-local function largerBox(measured: InventoryFormat.TagBox, drawn: InventoryFormat.TagBox?): InventoryFormat.TagBox
-	if drawn == nil then
-		return measured
-	end
-	return { w = math.max(measured.w, drawn.w + MEASURE_MARGIN_PX), h = math.max(measured.h, drawn.h) }
-end
-
--- The corner badges of one card on one row (fix batch: InventoryFormat.cardBadges; Part 8's second row sat on the
--- portrait): when the left badge (`badgeText`, with the lock when `locked`) and the rarity badge ("Ultimate") do not
--- fit side by side, "Not owned" shows as its lock pip; when even that does not fit, the rarity badge is left out. Each
--- badge counts as the larger of its measured size (Theme.textBounds) and its drawn size (AbsoluteSize, once drawn;
--- layoutTags runs again when a badge's drawn size changes), so a font that draws wider than measured never brings
--- back the overlap.
-local function layoutTags(card: Card, badgeText: string?, locked: boolean)
-	card.tagText, card.tagLocked = badgeText, locked
-	card.lockPip.Visible = false
-	local ultimate = card.ultimate
-	if ultimate == nil then
-		return
-	end
-	local left: InventoryFormat.TagBox? = nil
-	if badgeText then
-		-- Review fix: the chip's drawn box is remembered while it shows, so a relayout while the lock pip stands in for it
-		-- (the chip hidden) still counts a font that draws wider than measured and never brings back the overlap.
-		if card.badge.root.Visible then
-			card.badgeBox = drawnBox(card, card.badge.root) or card.badgeBox
-		end
-		local bounds = Theme.textBounds(badgeText, "Chip")
-		local lockWidth = if locked then BADGE_LOCK_PX + BADGE_LIST_GAP else 0
-		left = largerBox({
-			w = math.ceil(bounds.X) + lockWidth + 2 * BADGE_PAD_X + MEASURE_MARGIN_PX,
-			h = math.max(math.ceil(bounds.Y), BADGE_HEIGHT_PX),
-		}, card.badgeBox)
-	end
-	local bounds = Theme.textBounds(ultimate.label.Text, "Chip")
-	local right = largerBox({
-		w = math.ceil(bounds.X) + 2 * BADGE_PAD_X + MEASURE_MARGIN_PX,
-		h = math.max(math.ceil(bounds.Y), BADGE_HEIGHT_PX),
-	}, drawnBox(card, ultimate.root))
-	local compact: InventoryFormat.TagBox? = if badgeText and locked
-		then { w = LOCK_PIP_PX + MEASURE_MARGIN_PX, h = LOCK_PIP_PX }
-		else nil
-	local badges = InventoryFormat.cardBadges(cardSize.width, TAG_INSET, TAG_GAP, left, right, compact)
-	card.badge.root.Visible = badgeText ~= nil and not badges.compact
-	card.lockPip.Visible = badges.compact
-	ultimate.root.Visible = badges.rightShown
-	ultimate.root.Position = UDim2.new(1, -TAG_INSET, 0, TAG_INSET)
-end
-
--- The card size for the player's text size (InventoryFormat.cardSize): names, words and every rarity tag measured.
-local function measureCards(): InventoryFormat.CardSize
-	local nameWidth, wordWidth = 0, 0
-	for _, def in Catalog.list() do
-		local name = Strings.resolve(def.nameKey) or def.id
-		nameWidth = math.max(nameWidth, Theme.textWidth(name, CARD_NAME_KIND))
-		for word in string.gmatch(name, "%S+") do
-			wordWidth = math.max(wordWidth, Theme.textWidth(word, CARD_NAME_KIND))
-		end
-	end
-	local metrics: InventoryFormat.CardMetrics = {
-		nameWidth = nameWidth + MEASURE_MARGIN_PX,
-		wordWidth = wordWidth + MEASURE_MARGIN_PX,
-		lineHeight = Theme.lineHeight(CARD_NAME_KIND),
-		tagInlineWidth = 0,
-		tagInlineHeight = 0,
-		tagStackedWidth = 0,
-		tagStackedHeight = 0,
-	}
-	for _, rarity in Rarity.ORDER do
-		local m = RarityTag.measure(rarity, CARD_PIP_PX)
-		metrics.tagInlineWidth = math.max(metrics.tagInlineWidth, m.inlineWidth + MEASURE_MARGIN_PX)
-		metrics.tagInlineHeight = math.max(metrics.tagInlineHeight, m.inlineHeight)
-		metrics.tagStackedWidth = math.max(metrics.tagStackedWidth, m.stackedWidth + MEASURE_MARGIN_PX)
-		metrics.tagStackedHeight = math.max(metrics.tagStackedHeight, m.stackedHeight)
-	end
-	return InventoryFormat.cardSize(CARD_BASE, metrics)
-end
-
--- The grid's columns: the ones panelLayout fitted (InventoryFormat.gridFit; the grid is exactly that wide).
-local function updateColumns()
-	local layout, l = gridLayout, panelLayout
-	if layout == nil or l == nil then
-		return
-	end
-	layout.FillDirectionMaxCells = math.max(1, l.columns)
-end
-
--- The cells follow the card size; the rarity tags stack when the card needs it. (The grid's width follows in
--- applyLayout: the columns depend on the card width.)
+-- The cards for the card width panelLayout gave (InventoryFormat.cardFrame): the face's height (a 2-line name grows
+-- every card alike), the grid's cells, and each card's pips beside its pill when they fit ([PR25]).
 local function applyCardSize()
-	cardSize = measureCards()
+	local l = panelLayout
+	if l == nil then
+		return
+	end
+	local nameWidth, footer = 0, 0
+	for _, def in Catalog.list() do
+		nameWidth = math.max(nameWidth, Theme.textWidth(nameOf(def.id), TEXT_KIND) + MEASURE_MARGIN_PX)
+		footer = math.max(footer, RarityTag.measurePill(def.rarity, "card").pillHeight)
+	end
+	local lineHeight = math.ceil(Theme.lineHeight(TEXT_KIND) * NAME_LINE_HEIGHT)
+	cardFrame = InventoryFormat.cardFrame(l.cardWidth, nameWidth, lineHeight, footer)
 	local layout = gridLayout
 	if layout then
-		layout.CellSize = UDim2.fromOffset(cardSize.width, cardSize.height)
+		layout.CellSize = UDim2.fromOffset(l.cardWidth, cardFrame.face + CARD.lip)
+		layout.CellPadding = UDim2.fromOffset(GRID.gap, Layout.lipGap(GRID.gap, CARD.lip))
+		layout.FillDirectionMaxCells = math.max(1, l.columns)
 	end
 	for _, card in cards do
-		card.rarity:setStacked(cardSize.stacked)
+		card.tag:setRarity(card.rarity) -- the pill's height at the player's text size
+		local m = RarityTag.measurePill(card.rarity, "card")
+		card.tag:setPipsShown(InventoryFormat.footerFits(cardFrame.inner, m.pipsWidth, m.pillWidth + MEASURE_MARGIN_PX))
 	end
+end
+
+-- A tab's width at the player's text size: its border and padding, the name, the gap and the count.
+local function tabWidth(name: string, count: string): number
+	local label = Theme.textWidth(InventoryFormat.filterName(name), TEXT_KIND)
+	local number = Theme.textWidth(count, TEXT_KIND)
+	return math.ceil(label + number) + TAB.gap + 2 * (TAB.border + TAB.padX) + MEASURE_MARGIN_PX
+end
+
+-- The tab row: each tab as wide as it needs; the row scrolls sideways only when the tabs do not fit beside "Show
+-- locked" (G5.3).
+local function layoutTabs()
+	local l, f = panelLayout, frames
+	if l == nil or f == nil then
+		return
+	end
+	local widths: { number } = {}
+	for _, name in InventoryFormat.FILTERS do
+		local tab = tabs[name]
+		if tab then
+			local width = tabWidth(name, tab.count.Text)
+			tab.root.Size = UDim2.fromOffset(width, l.rowHeight)
+			table.insert(widths, width)
+		end
+	end
+	local toggleWidth = Toggle.widthFor(Strings.inventory.showLockedLines, "small", true)
+	f.toggle.root.Size = UDim2.fromOffset(toggleWidth, l.rowHeight)
+	local room = l.gridWidth - toggleWidth - TAB.rowGap
+	f.tabs.Size = UDim2.new(0, room + 2 * TAB_ROW_OUTSET, 1, 2 * TAB_ROW_OUTSET)
+	f.tabs.ScrollingEnabled = not InventoryFormat.tabRowFits(widths, TAB.rowGap, room)
 end
 
 -- UI FINAL R3: the window's band, sticker and X at the window's chrome scale (Theme.fitWindow; Layout.windowFit), and
@@ -501,7 +500,7 @@ local function fitChrome(root: Frame, fit: Layout.WindowFit): number
 	return chrome.top
 end
 
--- Every size of the panel from the ScreenGui's size (InventoryFormat.panelLayout), then the detail column.
+-- Every size of the window from the ScreenGui's size (InventoryFormat.panelLayout), then the tabs, cards and detail.
 local function applyLayout()
 	local root, f = panel, frames
 	if root == nil or f == nil then
@@ -509,42 +508,34 @@ local function applyLayout()
 	end
 	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
 	local top = fitChrome(root, Layout.windowFit(screen, WINDOW_KIND))
-	local l = InventoryFormat.panelLayout(screen, top, cardSize.width)
+	local l = InventoryFormat.panelLayout(screen, top)
 	panelLayout = l
-	root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight + Config.UI.Sticker.lip.window) -- the face and its lip
-	f.filterRow.Position = UDim2.fromOffset(0, 0)
-	f.filterRow.Size = UDim2.new(1, 0, 0, l.rowHeight)
-	for _, chip in chips do
-		chip.root.Size = UDim2.fromOffset(0, l.rowHeight)
-	end
-	local toggleWidth = TOGGLE_MIN_WIDTH_PX
-	local toggle = showNotOwnedToggle
-	if toggle then
-		local widest = math.max(TOGGLE_MIN_WIDTH_PX, math.floor(l.contentWidth * TOGGLE_MAX_SHARE))
-		toggleWidth = math.clamp(Toggle.widthFor(Strings.inventory.showNotOwned), TOGGLE_MIN_WIDTH_PX, widest)
-		toggle.root.Size = UDim2.fromOffset(toggleWidth, l.rowHeight)
-	end
-	f.filters.Size = UDim2.new(1, -(toggleWidth + PANEL.columnGap), 1, 2 * CHIP_ROW_OUTSET)
-	local b = body
-	if b then
-		b.Position = UDim2.fromOffset(0, l.bodyTop)
-		b.Size = UDim2.new(1, 0, 1, -l.bodyTop)
-	end
-	-- The grid is as wide as its columns (the detail column takes the rest); the empty state is centred over it.
+	root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight + STICKER.lip.window) -- the face and its lip
+	f.left.Size = UDim2.fromOffset(l.gridWidth, l.contentHeight)
+	f.tabRow.Size = UDim2.new(1, 0, 0, l.rowHeight)
+	f.detailColumn.Position = UDim2.fromOffset(l.gridWidth + BODY.gap, 0)
+	f.detailColumn.Size = UDim2.fromOffset(l.detailWidth, l.contentHeight)
 	local g = grid
 	if g then
-		g.Size = UDim2.new(0, l.gridWidth, 1, 0)
+		-- H:200: the scroller's padding and the matching negative margin, so the hanging tags are not cut.
+		g.Position = UDim2.fromOffset(-GRID.padLeft, l.bodyTop - GRID.padTop)
+		g.Size = UDim2.fromOffset(l.gridWidth + GRID.padLeft + GRID.padRight, l.bodyHeight + GRID.padTop)
 	end
-	local empty = emptyState
+	local empty = emptyPill
 	if empty then
-		empty.Position = UDim2.fromOffset(l.gridWidth / 2, EMPTY_TOP_PX)
-		empty.Size = UDim2.fromOffset(math.max(0, l.gridWidth - 2 * EMPTY_SIDE_PX), 0)
+		empty.root.Position = UDim2.fromOffset(l.gridWidth / 2, l.bodyTop + l.bodyHeight / 2)
 	end
+	layoutTabs()
+	applyCardSize()
 	layoutDetail()
-	updateColumns()
 end
 
 -- Detail panel ------------------------------------------------------------------------------------------------------
+
+-- FIND IN BOXES, or (PR22) View in Shop for an account that may not buy random items (BoxFormat.standScreen).
+local function findScreen(): string
+	return BoxFormat.standScreen(StateController.get("policy"))
+end
 
 local function refreshDetail(list: { InventoryFormat.Entry })
 	local d = detail
@@ -557,113 +548,102 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 		return
 	end
 	local def = entry.def
-	d.icon:setSquishy(entry.id)
-	d.icon:setOwned(entry.owned)
+	d.image:setCatalogId(entry.id)
+	d.image:setOwned(entry.owned)
+	d.look:setRarity(entry.rarity)
 	d.name.Text = entry.name
 	d.rarity:setRarity(entry.rarity)
-	local rarityStyle = RarityStyle.get(entry.rarity)
-	d.glow.BackgroundColor3 = if rarityStyle then rarityStyle.ui.glow else Theme.Colors.ink2
-	d.glow.BackgroundTransparency = if entry.owned then PREVIEW_GLOW_TRANSPARENCY else 0.9
-	d.ownership:setText(KeyText.get(InventoryFormat.ownershipKey(entry)))
-	d.ownership:setAccent(if entry.equipped then "mint" elseif entry.owned then "frosting" else "lilac")
-	d.ownership.root.Visible = true
-	d.lock.Visible = not entry.owned
+	d.equippedPill.Visible = entry.equipped
 	-- Phase 5 (progression spec 2026-10-12 §6): what the squishy multiplies in a capsule ("x16 power").
-	d.coins.Text = Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(entry.id) })
+	d.power:setText(Strings.format(Strings.capsule.power, { n = CapsuleMath.squishyPower(entry.id) }))
+	local throw = InventoryFormat.throwText(entry.id)
+	d.throw.root.Visible = throw ~= ""
+	d.throw:setText(throw)
 	for _, bar in InventoryFormat.statBars(def) do
 		local view = d.stats[bar.stat]
 		if view then
 			view.value.Text =
 				Strings.format(Strings.inspect.statValue, { value = bar.value, unit = KeyText.get(bar.unitKey) })
-			view.bar:set(bar.fraction, false)
+			view.bar:set(bar.fraction, true) -- H:240: 600 ms on the bars curve
 		end
 	end
-	local trail = RarityStyle.trail(def.visuals.trail)
-	d.trail.Text = if trail
-		then Strings.format(Strings.trail.label, { name = KeyText.get(trail.nameKey) })
-		else Strings.trail.none
 	local ability = if def.ultimateId then ABILITIES[def.ultimateId] else nil
-	d.ultimate.Visible = ability ~= nil
+	d.ultimate.root.Visible = ability ~= nil
 	if ability then
-		d.ultimate.Text = Strings.format(Strings.inspect.ultimate, {
-			name = KeyText.get(ability.nameKey),
-			description = KeyText.get(ability.descriptionKey, { seconds = ability.telegraphSeconds }),
-		})
+		d.ultimate:setText(Strings.format(Strings.inventory.ultimateChip, { name = KeyText.get(ability.nameKey) }))
 	end
 	-- Kill banners (2026-10-16): the squishy's own kill set name (Strings elimination.<id>), Standard otherwise.
 	local eliminationName = Strings.resolve("elimination." .. def.eliminationEffectId) or Strings.elimination.standard
 	d.elimination.Text = Strings.format(Strings.inspect.elimination, { name = eliminationName })
-	local price = def.shopPrice
-	d.price.Visible = not entry.owned and price ~= nil
-	if price then
-		d.price.Text = Strings.format(Strings.inspect.shopPrice, { price = Format.coins(price) })
-	end
-	d.viewInShop.root.Visible = not entry.owned and price ~= nil and UIController.isRegistered(SHOP_SCREEN)
-	d.inspect.root.Visible = UIController.isRegistered(INSPECT_SCREEN)
+	-- G5.15: the stage is the Inspect button once that screen exists.
+	local canInspect = UIController.isRegistered(INSPECT_SCREEN)
+	d.stage.Active = canInspect
+	d.stage.Selectable = canInspect
 
 	local state = InventoryFormat.equipState(entry, {
 		locked = StateController.isLobbyLocked(),
 		pending = pendingEquip,
 		confirmed = confirmedEquip,
 	})
-	local equip = d.equip
-	local reason: string? = nil
-	if state == "equip" then
-		d.equipText = Strings.common.equip
-		equip:setText(d.equipText)
-		equip:setState("normal")
-	elseif state == "equipped" then
-		d.equipText = Strings.common.equipped
-		equip:setText(d.equipText)
-		equip:setState("disabled")
-	elseif state == "notOwned" then
-		d.equipText = Strings.common.notOwned
-		equip:setText(d.equipText)
-		equip:setState("disabled")
+	d.find.root.Visible = state == "notOwned"
+	d.equipped.root.Visible = state == "equipped"
+	d.equip.root.Visible = state ~= "notOwned" and state ~= "equipped"
+	if state == "notOwned" then
+		local shop = findScreen() == SHOP_SCREEN
+		d.find:setText(if shop then Strings.inspect.viewInShop else Strings.inventory.goToBoxes)
+		d.find:setIcon(if shop then "shop" else "boxes")
+	elseif state == "equip" then
+		d.equip:setState("normal")
 	elseif state == "locked" then
-		d.equipText = Strings.common.equip
-		reason = Strings.common.lockedInDuel
-		equip:setText(d.equipText)
-		equip:setState("disabled", reason)
-	else
-		equip:setState("loading") -- keeps its text and its place
+		d.equip:setState("disabled", Strings.common.lockedInDuel)
+	elseif state == "loading" then
+		d.equip:setState("loading") -- keeps its text and its place
 	end
-	d.equipReason = reason
-	layoutDetail()
 end
 
 -- Grid ----------------------------------------------------------------------------------------------------------------
 
--- Fix batch: the Collected chip hangs above the panel's edge, so it shows only while Squishies is the top screen (a
--- screen opened over it, like Inspect, covers the panel but not what hangs above it) and once the profile is loaded.
+-- Fix batch: the Collected pill shows only while Squishies is the top screen and once the profile is loaded.
 local function refreshCollected()
-	local collected = collectedChip
+	local collected = collectedPill
 	if collected then
 		local top = UIController.topModal()
-		collected.root.Visible = StateController.isLoaded() and (top == nil or top == SCREEN)
+		collected.Visible = StateController.isLoaded() and (top == nil or top == SCREEN)
 	end
 end
 
 local function paintCard(card: Card, entry: InventoryFormat.Entry, isSelected: boolean)
 	card.face:paint({ owned = entry.owned, selected = isSelected })
-	card.icon:setOwned(entry.owned)
-	-- The top-left chip: Equipped (Mint), NEW (Strawberry) or Not owned (Lilac, with the lock).
-	local badgeText: string? = nil
-	local accent: Theme.AccentName = "lilac"
-	if entry.equipped then
-		badgeText = Strings.common.equipped
-		accent = "mint"
-	elseif entry.isNew then
-		badgeText = Strings.inventory.new
-		accent = "strawberry"
-	elseif not entry.owned then
-		badgeText = Strings.common.notOwned
+	card.image:setOwned(entry.owned)
+	card.lock.Visible = card.lockReady and not entry.owned
+	card.ribbon.Visible = entry.equipped
+	card.newTag.Visible = InventoryFormat.showNewTag(entry.isNew, entry.equipped)
+end
+
+-- A tab's look: on (the All pink, or the rarity's light -> base, the 3 px highlight at .5, white text) or off (the
+-- purple, 2 px at .12, the soft lilac text) (H:928-929).
+local function paintTab(name: string, tab: Tab, on: boolean)
+	if tab.on == on then
+		return -- repainted only when it changes
 	end
-	card.badge.root.Visible = badgeText ~= nil
-	card.badge:setText(badgeText or "")
-	card.badge:setAccent(accent)
-	card.lock.Visible = not entry.owned
-	layoutTags(card, badgeText, not entry.owned)
+	tab.on = on
+	local top, bottom = Palette.StickerCardTop, Palette.StickerCardBottom
+	if on then
+		local style = RarityStyle.get(name)
+		top = if name == "All" then Palette.StickerTabAllTop elseif style then style.ui.light or style.color else top
+		bottom = if name == "All"
+			then Palette.StickerHeaderPinkEnd
+			elseif style then style.ui.base or style.color
+			else bottom
+	end
+	local highlightPx = if on then TAB.onHighlightPx else TAB.offHighlightPx
+	local alpha = if on then TAB.onHighlightAlpha else TAB.offHighlightAlpha
+	local bands = Layout.stickerBands(TAB.border, highlightPx, 0, TAB.lip)
+	tab.foam:setBands(bands.top, bands.bevel, bands.drop)
+	tab.foam:paint({ face = top, faceEnd = bottom, top = top:Lerp(WHITE, alpha), drop = Theme.Colors.inkUI })
+	local color = if on then Palette.White else Palette.StickerTabOff
+	tab.label.TextColor3 = color
+	tab.count.TextColor3 = color
 end
 
 local function refreshGrid(list: { InventoryFormat.Entry })
@@ -673,40 +653,52 @@ local function refreshGrid(list: { InventoryFormat.Entry })
 	for index, entry in shownList do
 		visibleIds[entry.id] = index
 	end
+	local bySlot: { [number]: Card } = {}
 	for _, entry in list do
 		local card = cards[entry.id]
 		if card then
 			local index = visibleIds[entry.id]
 			card.root.Visible = index ~= nil
 			card.root.LayoutOrder = index or 0
+			if index then
+				bySlot[index] = card
+			end
 			paintCard(card, entry, entry.id == selected)
 		end
 	end
-	local counts = InventoryFormat.chipCounts(list, showNotOwned)
-	for name, chip in chips do
-		chip:setText(InventoryFormat.chipText(name, counts[name] or 0))
-		-- Repainted only when it changes (a repaint restarts the Button's press motion).
-		local active = name == filter
-		if chipActive[name] ~= active then
-			chipActive[name] = active
-			chip:setAccent(if active then "strawberry" else "plum")
+	-- G5.10: on open every slot rises; after a filter change only the slots past the ones shown before.
+	local from = riseFrom
+	riseFrom = nil
+	if from then
+		for _, slot in InventoryFormat.riseSlots(from, #shownList) do
+			local card = bySlot[slot]
+			if card then
+				playTrack(card.rise, CARD_IN.frames, CARD_IN.ms, (slot - 1) * CARD_IN.staggerMs, CARD_IN.curve)
+			end
 		end
 	end
+	shownCount = #shownList
+	local counts = InventoryFormat.tabCounts(list)
+	for name, tab in tabs do
+		tab.count.Text = tostring(counts[name] or 0)
+		paintTab(name, tab, name == filter)
+	end
 	local owned, total = InventoryFormat.collected(list)
-	local collected = collectedChip
-	if collected then
-		collected:setText(Strings.format(Strings.inventory.collected, { n = owned, total = total }))
+	local count = collectedCount
+	if count then
+		count.Text = Strings.format(Strings.inventory.collectedCount, { n = owned, total = total })
+	end
+	local bar = collectedBar
+	if bar then
+		bar:set(if total > 0 then owned / total else 0, true) -- H:187: 600 ms on the bars curve
 	end
 	refreshCollected()
-	local empty = #shownList == 0
-	if emptyState then
-		emptyState.Visible = empty
-	end
+	local empty = emptyPill
 	if empty then
-		setText(emptyLabel, InventoryFormat.emptyText(filter))
-	end
-	if goToBoxes then
-		goToBoxes.root.Visible = empty and UIController.isRegistered(BOXES_SCREEN)
+		empty.root.Visible = #shownList == 0
+		if #shownList == 0 then
+			empty:setText(InventoryFormat.emptyText(filter))
+		end
 	end
 end
 
@@ -715,8 +707,8 @@ local function refresh()
 		return
 	end
 	local loaded = StateController.isLoaded()
-	if loadingLabel then
-		loadingLabel.Visible = not loaded
+	if loadingPill then
+		loadingPill.root.Visible = not loaded
 	end
 	if body then
 		body.Visible = loaded
@@ -724,48 +716,35 @@ local function refresh()
 	if not loaded then
 		return
 	end
-	if showNotOwnedToggle then
-		showNotOwnedToggle:setValue(showNotOwned)
+	local f = frames
+	if f then
+		f.toggle:setValue(showNotOwned)
 	end
 	local list = currentEntries()
 	refreshGrid(list)
 	refreshDetail(list)
+	layoutTabs() -- the counts may have changed a tab's width
 end
 
 local function selectCard(id: string)
+	local changed = selected ~= id
 	selected = id
-	StateController.markOwnedSeen(id)
-	SoundController.play("ui.click")
+	SoundController.play("ui.click", { pitch = UI_PITCH.card }) -- the design's card sound (H:318)
 	refresh()
-end
-
--- UI overhaul: the visible cards' contents in grid order (the entrance cascade).
-local function cardContents(): { GuiObject }
-	local shown: { Card } = {}
-	for _, card in cards do
-		if card.root.Visible then
-			table.insert(shown, card)
-		end
+	local d = detail
+	if d and changed then
+		-- H:937: the stage's squishy pops in on every pick.
+		playTrack(d.pick, STAGE.pickFrames, STAGE.pickMs, 0, nil, STAGE.pickCurve)
 	end
-	table.sort(shown, function(a: Card, b: Card): boolean
-		return a.root.LayoutOrder < b.root.LayoutOrder
-	end)
-	local list: { GuiObject } = {}
-	for _, card in shown do
-		local content = card.root:FindFirstChild("Content")
-		if content and content:IsA("GuiObject") then
-			table.insert(list, content)
-		end
-	end
-	return list
 end
 
 local function setFilter(newFilter: InventoryFormat.Filter)
+	if newFilter ~= filter then
+		SoundController.play("ui.click", { pitch = UI_PITCH.tab }) -- the design's tab sound (H:929)
+	end
 	filter = newFilter
+	riseFrom = shownCount -- G5.10: only the newly shown slots rise
 	refresh()
-	-- UI overhaul: a filter change settles the grid's contents (no stagger, never the whole panel).
-	local settle = Config.UI.motion.tabSettle
-	UiFx.cascade(SCREEN, cardContents(), { from = settle.scaleFrom, ms = settle.ms, staggerMs = 0 })
 end
 
 local function equipSelected()
@@ -787,14 +766,12 @@ local function equipSelected()
 			confirmedEquip = nil
 			refresh()
 		end)
-		NotifyController.show(EQUIPPED_TOAST, nil, "success")
-		-- UI overhaul: a brief ring and sparkles in the rarity's glow on the preview, once the server said yes.
-		local d = detail
-		local def = Catalog.get(id)
-		local style = if def then RarityStyle.get(def.rarity) else nil
-		if d and d.well.Visible then
-			UiFx.burst(d.well, "small", if style then style.ui.glow else nil)
-			UiFx.punch(d.icon.root, 1.12)
+		NotifyController.show(EQUIPPED_TOAST, { name = nameOf(id) }, "success")
+		-- G5.16 (H:845): the design's burst and the 1.2 squash at the stage's squishy, once the server said yes.
+		local d, c = detail, openCleanup
+		if d and c then
+			UiFx.sparks(d.image.root, EQUIP_FX.sparks :: any)
+			squashImage(d.image, PRESS.amount * EQUIP_SQUASH, c)
 		end
 	else
 		local reason = result.reason
@@ -809,7 +786,73 @@ local function equipSelected()
 	refresh()
 end
 
+-- FIND IN BOXES: the Boxes window replaces this one (H:1016); a restricted account goes to the squishy in the Shop.
+local function findSelected()
+	local id = selected
+	if id == nil then
+		return
+	end
+	if findScreen() == SHOP_SCREEN then
+		UIController.close(SCREEN, "viewInShop")
+		UIController.open(SHOP_SCREEN, { squishyId = id })
+	else
+		UIController.close(SCREEN, "goToBoxes")
+		UIController.open(BOXES_SCREEN)
+	end
+end
+
 -- Builders -----------------------------------------------------------------------------------------------------------
+
+-- A hanging card tag (H:210-211): a pill of `spec`'s height (grown by the measured extra of its 16 px text), its 3 px
+-- border inside and its ink lip, in `colors`, with its text in `role`.
+local function hangingTag(
+	parent: Instance,
+	name: string,
+	text: string,
+	spec: { [string]: number },
+	colors: Theme.FoamColors,
+	role: string
+): Frame
+	local height = math.max(spec.height, math.ceil(Theme.lineHeight(TEXT_KIND)) + (spec.padTop or 0) + 2 * spec.border)
+	local tag: Frame = Create("Frame", {
+		Name = name,
+		BorderSizePixel = 0,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, height + spec.lip),
+		Visible = false,
+		Active = false,
+		ZIndex = 3,
+		Parent = parent,
+	})
+	local bands = Layout.stickerBands(spec.border, 0, 0, spec.lip)
+	Theme.foam(tag, {
+		radius = Theme.Radius.pill,
+		stroke = spec.border,
+		inner = true,
+		top = bands.top,
+		drop = bands.drop,
+		colors = colors,
+	})
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, spec.padX + spec.border),
+		PaddingRight = UDim.new(0, spec.padX + spec.border),
+		PaddingTop = UDim.new(0, (spec.padTop or 0) + spec.border),
+		PaddingBottom = UDim.new(0, spec.border + spec.lip),
+		Parent = tag,
+	})
+	local label = Theme.label({
+		Name = "Text",
+		Text = text,
+		Size = UDim2.fromScale(0, 1),
+		AutomaticSize = Enum.AutomaticSize.X,
+		TextWrapped = false,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		ZIndex = 3,
+		Parent = tag,
+	}, TEXT_KIND)
+	Theme.stickerText(label, role)
+	return tag
+end
 
 local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	local def = Catalog.get(id)
@@ -821,164 +864,176 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 		Name = "Squishies_Card_" .. id,
 		Text = "",
 		AutoButtonColor = false,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 	})
 	c:add(root)
-	-- UI overhaul: a collectible card (UI/CardFace: the rarity's face, the PlumInk outline, the rarity flourish on the
-	-- rim, the glow behind the art); paintCard paints its state.
-	local face = CardFace.new(root, def.rarity, {
-		radius = CARD_RADIUS,
-		artCenterY = CARD_PAD_Y + CARD_ICON_PX / 2,
-		artPx = CARD_ICON_PX,
-	})
+	Focus.decorate(root, CARD.radius)
+	local function holder(name: string, parentFrame: Instance): Frame
+		return Create("Frame", {
+			Name = name,
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			Active = false,
+			Parent = parentFrame,
+		})
+	end
+	-- SD_Visual takes the hover and press (Button.decorate), SD_Rise the entrance; the hit box never moves.
+	local visual = holder("SD_Visual", root)
+	local rise = holder("SD_Rise", visual)
+	local face = CardFace.new(rise, def.rarity)
 	c:add(face)
-	Focus.decorate(root, CARD_RADIUS)
-	local stroke = face.rim
-	local gradient: UIGradient? = face.gradient
-	local shimmer = style ~= nil and style.card.gradient ~= nil and style.card.gradient.shimmerDegPerSecond ~= nil
-
-	-- Content (laid out top to bottom) and an overlay for the corner badges (not laid out). UI overhaul: anchored at its
-	-- centre, so the entrance cascade (UiFx.cascade) pops it from the middle.
 	local content: Frame = Create("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(1, 1),
+		Size = UDim2.new(1, 0, 1, -CARD.lip),
 		Active = false,
-		Parent = root,
+		ZIndex = 1,
+		Parent = rise,
 	})
-	Theme.list(
-		Enum.FillDirection.Vertical,
-		CARD_GAP,
-		content,
-		Enum.HorizontalAlignment.Center,
-		Enum.VerticalAlignment.Top
-	)
 	Create("UIPadding", {
-		PaddingTop = UDim.new(0, CARD_PAD_Y),
-		PaddingBottom = UDim.new(0, CARD_PAD_Y + CARD_BANDS), -- the foam bands stay free (InventoryFormat.cardSize)
-		PaddingLeft = UDim.new(0, CARD_PAD_X),
-		PaddingRight = UDim.new(0, CARD_PAD_X),
+		PaddingTop = UDim.new(0, CARD.border + CARD.padTop),
+		PaddingBottom = UDim.new(0, CARD.border + CARD.padBottom),
+		PaddingLeft = UDim.new(0, CARD.border + CARD.padSide),
+		PaddingRight = UDim.new(0, CARD.border + CARD.padSide),
 		Parent = content,
 	})
-	local icon = StaticIcon.new({
-		name = "Preview",
-		squishyId = id,
-		sizePx = CARD_ICON_PX,
-		layoutOrder = 1,
-		parent = content,
-	})
-	c:add(icon)
-	Theme.label({
-		Name = "Name",
-		Text = Strings.resolve(def.nameKey) or id,
-		LayoutOrder = 2,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Parent = content,
-	}, CARD_NAME_KIND)
-	local rarityTag = RarityTag.new({
-		name = "Rarity",
-		rarity = def.rarity,
-		pipSizePx = CARD_PIP_PX,
-		stacked = cardSize.stacked,
-		layoutOrder = 3,
-		parent = content,
-	})
-	c:add(rarityTag)
-
-	local overlay: Frame = Create("Frame", {
-		Name = "Overlay",
+	local column: Frame = Create("Frame", {
+		Name = "Column",
 		BackgroundTransparency = 1,
 		Size = UDim2.fromScale(1, 1),
 		Active = false,
-		ZIndex = 2,
-		Parent = root,
+		Parent = content,
 	})
-	-- The corner badges are Chips (paintCard picks the text and the accent; the lock sits before the text).
-	local badge = Chip.new({ name = "Badge", text = "", heightPx = BADGE_HEIGHT_PX, parent = overlay })
-	c:add(badge)
-	badge.root.Position = UDim2.fromOffset(TAG_INSET, TAG_INSET)
-	badge.root.Visible = false
-	badge.root.ZIndex = 2
-	local lock = LockIcon.new({ name = "Lock", sizePx = BADGE_LOCK_PX, layoutOrder = 0, parent = badge.root })
-	c:add(lock)
-	-- Fix batch: the compact "Not owned" badge, a round Lilac pip with the lock (layoutTags shows it instead of the chip
-	-- when the chip and "Ultimate" do not fit one row; the greyed card and the detail still say "Not owned").
-	local lockPip: Frame = Create("Frame", {
-		Name = "LockPip",
+	Theme.list(
+		Enum.FillDirection.Vertical,
+		CARD.gap,
+		column,
+		Enum.HorizontalAlignment.Center,
+		Enum.VerticalAlignment.Top
+	)
+	-- The plate (H:204, H:936): the rarity's radial, its insets, the squishy over it (H:205) and the lock (H:206).
+	local plate: Frame = Create("Frame", {
+		Name = "Plate",
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(TAG_INSET, TAG_INSET),
-		Size = UDim2.fromOffset(LOCK_PIP_PX, LOCK_PIP_PX),
-		Visible = false,
-		ZIndex = 2,
-		Parent = overlay,
+		Size = UDim2.fromOffset(PLATE.px, PLATE.px),
+		LayoutOrder = 1,
+		Parent = column,
 	})
-	Theme.foam(lockPip, { radius = Theme.Radius.pill, stroke = Theme.Stroke.bar, colors = Theme.accentColors("lilac") })
-	local pipLock = LockIcon.new({ name = "Lock", sizePx = BADGE_LOCK_PX, parent = lockPip })
-	pipLock.root.AnchorPoint = Vector2.new(0.5, 0.5)
-	pipLock.root.Position = UDim2.fromScale(0.5, 0.5)
-	c:add(pipLock)
-	local ultimate: Chip.Chip? = nil
-	if style and style.card.badgeKey then
-		local rarityBadge = Chip.new({
-			name = "UltimateBadge",
-			text = KeyText.get(style.card.badgeKey),
-			heightPx = BADGE_HEIGHT_PX,
-			parent = overlay,
-		})
-		c:add(rarityBadge)
-		rarityBadge:setColor(style.color, style.labelTextColor)
-		rarityBadge.root.AnchorPoint = Vector2.new(1, 0)
-		rarityBadge.root.Position = UDim2.new(1, -TAG_INSET, 0, TAG_INSET)
-		rarityBadge.root.ZIndex = 2
-		ultimate = rarityBadge
+	Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = plate })
+	local ui = if style then style.ui else nil
+	Theme.radial(plate, "img.fx.radial.plate" .. def.rarity, {
+		inner = if ui then ui.light or ui.faceTop else Theme.Colors.panelAlt,
+		outer = if ui then ui.base or ui.faceBottom else Theme.Colors.panel,
+		centre = Vector2.new(0.5, PLATE.centreY),
+	})
+	StageLook.shade(
+		plate,
+		UDim.new(0.5, 0),
+		PLATE.border,
+		PLATE.px,
+		PLATE.topPx,
+		PLATE.topAlpha,
+		PLATE.bottomPx,
+		PLATE.bottomAlpha
+	)
+	local rim = Theme.stroke(Theme.Colors.inkUI, PLATE.border, plate)
+	pcall(function()
+		(rim :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
+	end)
+	local imageOptions: SquishyImage.Options = {
+		name = "Preview",
+		size = PLATE.thumbPx,
+		shadow = { px = PLATE.shadowPx, alpha = PLATE.shadowAlpha },
+		parent = plate,
+	}
+	local image = SquishyImage.new(id, imageOptions)
+	image.root.AnchorPoint = Vector2.new(0.5, 0.5)
+	image.root.Position = UDim2.fromScale(0.5, 0.5)
+	image.root.ZIndex = 2
+	c:add(image)
+	local lock = IconGlyph.image("img.icon.lock", { name = "Lock", sizePx = PLATE.lockPx, parent = plate })
+	local lockReady = lock.Visible
+	lock.AnchorPoint = Vector2.new(0.5, 0.5)
+	lock.Position = UDim2.fromScale(0.5, 0.5)
+	lock.ZIndex = 3
+	for _, child in lock:GetChildren() do
+		if child:IsA("GuiObject") then
+			child.ZIndex = 3
+		end
 	end
-
+	local name = Theme.label({
+		Name = "Name",
+		Text = nameOf(id),
+		LayoutOrder = 2,
+		LineHeight = NAME_LINE_HEIGHT,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = column,
+	}, TEXT_KIND)
+	Theme.stickerText(name, "cardName")
+	-- The footer (H:209: margin-top auto): the rarity pill and its dots at the content's bottom.
+	local tag = RarityTag.new({ name = "Rarity", rarity = def.rarity, variant = "card", parent = content })
+	tag.root.AnchorPoint = Vector2.new(0.5, 1)
+	tag.root.Position = UDim2.fromScale(0.5, 1)
+	c:add(tag)
+	local ribbon = hangingTag(
+		rise,
+		"Equipped",
+		Strings.common.equipped,
+		INVENTORY.ribbon,
+		Theme.accentColors("mint"),
+		"cardRibbon"
+	)
+	ribbon.Position = UDim2.fromOffset(INVENTORY.ribbon.x, INVENTORY.ribbon.y)
+	ribbon.Rotation = INVENTORY.ribbon.rot
+	local newTag = hangingTag(rise, "New", Strings.inventory.new, INVENTORY.newTag, {
+		face = Palette.StickerRedTop,
+		faceEnd = Palette.StickerRedEnd,
+		drop = Theme.Colors.inkUI,
+	}, "cardNew")
+	newTag.AnchorPoint = Vector2.new(1, 0)
+	newTag.Position = UDim2.new(1, -INVENTORY.newTag.x, 0, INVENTORY.newTag.y)
+	UiIdle.add(newTag, "badge", { periodS = INVENTORY.newTag.badgeS }) -- H:211: sdBadge 2 s
+	-- G5.5 (H:634-644): the card hover and press on SD_Visual, the brightness on the face; the click is the card's.
+	local feel: Button.DecorateOptions = {
+		fx = "card",
+		visual = visual,
+		clickSound = false,
+		pivotPx = CARD.lip / 2,
+		onFilter = function(mix: number)
+			face:setHover(mix)
+		end,
+	}
+	c:add(Button.decorate(root, feel))
 	c:add(root.Activated:Connect(function()
 		selectCard(id)
 	end))
 	root.Parent = parent
-	local card: Card = {
+	cards[id] = {
 		id = id,
+		rarity = def.rarity,
 		root = root,
+		rise = rise,
 		face = face,
-		icon = icon,
-		stroke = stroke,
-		gradient = gradient,
-		shimmer = shimmer,
-		badge = badge,
-		badgeBox = nil,
-		lock = lock.root,
-		lockPip = lockPip,
-		rarity = rarityTag,
-		ultimate = ultimate,
-		tagText = nil,
-		tagLocked = false,
+		image = image,
+		lock = lock,
+		lockReady = lockReady,
+		tag = tag,
+		ribbon = ribbon,
+		newTag = newTag,
 	}
-	cards[id] = card
-	if ultimate then
-		-- Part 8: the badges are laid out again from their drawn sizes (layoutTags) when those change.
-		local function relayout()
-			layoutTags(card, card.tagText, card.tagLocked)
-		end
-		c:add(badge.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(relayout))
-		c:add(ultimate.root:GetPropertyChangedSignal("AbsoluteSize"):Connect(relayout))
-	end
 end
 
--- The filter chips in a sideways-scrolling row (sized by applyLayout); returns that row. Each chip is a foam Button
--- (its press feel, click / hover sounds and focus ring): Strawberry while its filter is on, else Frosting (refreshGrid).
-local function buildChips(c: Cleanup.Cleanup, parent: Instance): ScrollingFrame
-	local chipHeight = Layout.touchBase(TOUCH.minTarget, UIController.scale())
-	-- The scrolling row reaches CHIP_ROW_OUTSET past the filter row above and below (into the gaps), and keeps as much
-	-- room at its ends, so the chips' foam outlines are never cut by its clipping.
+-- The rarity tabs in a sideways-scrolling row (H:193-194; sized by layoutTabs); returns that row.
+local function buildTabs(c: Cleanup.Cleanup, parent: Instance, rowHeight: number): ScrollingFrame
 	local row: ScrollingFrame = Create("ScrollingFrame", {
-		Name = "Filters",
+		Name = "Tabs",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, -CHIP_ROW_OUTSET),
-		Size = UDim2.new(1, -(TOGGLE_MIN_WIDTH_PX + PANEL.columnGap), 1, 2 * CHIP_ROW_OUTSET),
+		Position = UDim2.fromOffset(-TAB_ROW_OUTSET, -TAB_ROW_OUTSET),
+		Size = UDim2.new(1, 0, 1, 2 * TAB_ROW_OUTSET),
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.X,
 		ScrollingDirection = Enum.ScrollingDirection.X,
@@ -986,275 +1041,435 @@ local function buildChips(c: Cleanup.Cleanup, parent: Instance): ScrollingFrame
 		Parent = parent,
 	})
 	Create("UIPadding", {
-		PaddingLeft = UDim.new(0, CHIP_ROW_OUTSET),
-		PaddingRight = UDim.new(0, CHIP_ROW_OUTSET),
+		PaddingLeft = UDim.new(0, TAB_ROW_OUTSET),
+		PaddingRight = UDim.new(0, TAB_ROW_OUTSET),
 		Parent = row,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, Theme.Padding.small, row, Enum.HorizontalAlignment.Left)
+	Theme.list(Enum.FillDirection.Horizontal, TAB.rowGap, row, Enum.HorizontalAlignment.Left)
 	for index, name in InventoryFormat.FILTERS do
-		local chip = Button.new({
-			name = "Squishies_Filter" .. name .. "Button",
-			text = InventoryFormat.chipText(name, 0),
-			height = chipHeight, -- §11.2 touch size (was 44 base = 37 px at scale 0.85)
-			layoutOrder = index,
-			parent = row,
-			onActivated = function()
-				setFilter(name)
-			end,
+		local root: TextButton = Create("TextButton", {
+			Name = "Squishies_Filter" .. name .. "Button",
+			Text = "",
+			AutoButtonColor = false,
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(0, rowHeight),
+			LayoutOrder = index,
+			Parent = row,
 		})
-		c:add(chip)
-		chips[name] = chip
+		Focus.decorate(root, TAB.radius)
+		-- The face + lip, centred in the touch-sized hit box (PR1).
+		local visual: Frame = Create("Frame", {
+			Name = "SD_Visual",
+			BorderSizePixel = 0,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(1, 0, 0, TAB.face + TAB.lip),
+			Active = false,
+			Parent = root,
+		})
+		local bands = Layout.stickerBands(TAB.border, TAB.offHighlightPx, 0, TAB.lip)
+		local foam = Theme.foam(visual, {
+			radius = TAB.radius,
+			stroke = TAB.border,
+			inner = true,
+			top = bands.top,
+			drop = bands.drop,
+			colors = { face = Palette.StickerCardTop, faceEnd = Palette.StickerCardBottom },
+		})
+		Create("UIPadding", {
+			PaddingLeft = UDim.new(0, TAB.border + TAB.padX),
+			PaddingRight = UDim.new(0, TAB.border + TAB.padX),
+			PaddingBottom = UDim.new(0, TAB.lip),
+			Parent = visual,
+		})
+		Theme.list(Enum.FillDirection.Horizontal, TAB.gap, visual)
+		local function text(textName: string, order: number): TextLabel
+			local label = Theme.label({
+				Name = textName,
+				Size = UDim2.fromOffset(0, 0),
+				AutomaticSize = Enum.AutomaticSize.XY,
+				TextWrapped = false,
+				LayoutOrder = order,
+				Parent = visual,
+			}, TEXT_KIND)
+			Theme.stickerText(label, "tabLabel")
+			return label
+		end
+		local label = text("Label", 1)
+		label.Text = InventoryFormat.filterName(name)
+		local count = text("Count", 2)
+		count.TextTransparency = 1 - TAB.countAlpha -- H:194: opacity .85
+		local feel: Button.DecorateOptions = { fx = "tab", visual = visual, clickSound = false, pivotPx = TAB.lip / 2 }
+		c:add(Button.decorate(root, feel))
+		c:add(root.Activated:Connect(function()
+			setFilter(name)
+		end))
+		tabs[name] = { root = root, foam = foam, label = label, count = count, on = nil }
 	end
 	return row
 end
 
-local function detailLabel(parent: Instance, name: string, order: number, kind: Theme.TextKind?): TextLabel
-	return Theme.label({
-		Name = name,
-		LayoutOrder = order,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = parent,
-	}, kind or "Body")
+-- A detail chip (H:232-234; UI/Components/Chip: 30 high, border 3, radius 10, padding 12) with an optional 20 px
+-- picture before its text.
+local function detailChip(c: Cleanup.Cleanup, parent: Instance, name: string, order: number): Chip.Chip
+	local chip = Chip.new({ name = name, text = "", layoutOrder = order, parent = parent })
+	c:add(chip)
+	return chip
 end
 
 local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
-	-- The info list (its height comes from layoutDetail: what is left above the pinned buttons).
-	local scroll: ScrollingFrame = Create("ScrollingFrame", {
+	-- The list above the one pinned button (its height from layoutDetail).
+	local list: ScrollingFrame = Create("ScrollingFrame", {
 		Name = "Detail",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.fromScale(1, 0),
-		Size = UDim2.new(1 - GRID_SHARE, -PANEL.columnGap, 1, 0),
+		Size = UDim2.fromScale(1, 0),
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
+		VerticalScrollBarInset = Enum.ScrollBarInset.ScrollBar,
+		Selectable = false,
 		Parent = parent,
 	})
-	-- The left padding keeps the chips' outlines inside the list's clipping.
-	Create("UIPadding", {
-		PaddingLeft = UDim.new(0, 3),
-		PaddingRight = UDim.new(0, SCROLLBAR_PX + 4),
-		Parent = scroll,
-	})
-	-- Fix round 2: on touch the list's scroll bar stays on screen while it is longer than its window (layoutDetail sizes
-	-- the rail with the list).
-	local scrollHint = ScrollHint.new({ scroll = scroll, parent = parent })
+	Theme.scrollbar(list) -- G5.18 (H:22)
+	local scrollHint = ScrollHint.new({ scroll = list, parent = parent })
 	scrollHint.root.AnchorPoint = Vector2.new(1, 0)
 	scrollHint.root.Position = UDim2.fromScale(1, 0)
 	c:add(scrollHint)
-	Theme.list(
+	local listLayout = Theme.list(
 		Enum.FillDirection.Vertical,
-		Theme.Padding.small,
-		scroll,
+		DETAIL.gap,
+		list,
 		Enum.HorizontalAlignment.Left,
 		Enum.VerticalAlignment.Top
 	)
-	local errorLabel = detailLabel(scroll, "Error", 1, "Small")
-	errorLabel.Text = Strings.data.loadFailed
+	local errorLabel = Theme.label({
+		Name = "Error",
+		Text = Strings.data.loadFailed,
+		LayoutOrder = 1,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Visible = false,
+		Parent = list,
+	}, "Small")
 	Theme.textOnWindow(errorLabel) -- UI FINAL R3: on the pink body (H:196; Danger is 1.8:1 on it)
-	errorLabel.Visible = false
-	-- The preview in an inset well (its size follows the layout class, layoutDetail).
-	local well = Theme.inset({
-		Name = "PreviewWell",
-		Size = UDim2.new(1, 0, 0, DETAIL_ICON_PX + 2 * WELL_PAD_PX),
+
+	-- The stage (H:218-224): tap it = Inspect (G5.15; no look of its own beyond the focus ring).
+	local stage: TextButton = Create("TextButton", {
+		Name = "Squishies_InspectButton",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, STAGE.face + STAGE.lip),
 		LayoutOrder = 2,
-		Parent = scroll,
-	}, Theme.Radius.tile, WELL_PAD_PX)
-	-- UI overhaul: a soft glow in the rarity's colour behind the preview (refreshDetail colours it).
-	local glowPx = math.floor(DETAIL_ICON_PX * PREVIEW_GLOW_SHARE)
-	local glow: Frame = Create("Frame", {
-		Name = "Glow",
-		BackgroundColor3 = Theme.Colors.ink2,
-		BackgroundTransparency = PREVIEW_GLOW_TRANSPARENCY,
-		BorderSizePixel = 0,
+		Parent = list,
+	})
+	Focus.decorate(stage, STAGE.radius)
+	local look = StageLook.new(stage, { floor = true })
+	c:add(look)
+	local px = STAGE.squishyPx
+	local pick: Frame = Create("Frame", {
+		Name = "Pick",
+		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(glowPx, glowPx),
+		Size = UDim2.fromOffset(px, px),
 		Active = false,
-		ZIndex = 0,
-		Parent = well,
+		Parent = look.slot,
 	})
-	Theme.corner(glowPx, glow)
-	local icon = StaticIcon.new({
+	local float: Frame = Create("Frame", {
+		Name = "Float",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		Active = false,
+		Parent = pick,
+	})
+	UiIdle.add(float, "float", { periodS = STAGE.floatS }) -- H:223: sdFloat 3.2 s
+	-- The squishy at the stage's size (a UIScale: the 3D fallback's ViewportFrame keeps its px size).
+	local fit: Frame = Create("Frame", {
+		Name = "Fit",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		Active = false,
+		Parent = float,
+	})
+	local fitScale: UIScale = Create("UIScale", { Name = "SD_Fit", Parent = fit })
+	local imageOptions: SquishyImage.Options = {
 		name = "Preview",
-		squishyId = Catalog.starterId(),
-		sizePx = DETAIL_ICON_PX,
-		parent = well,
-	})
-	icon.root.AnchorPoint = Vector2.new(0.5, 0.5)
-	icon.root.Position = UDim2.fromScale(0.5, 0.5)
-	c:add(icon)
-	local name = detailLabel(scroll, "Name", 3, "Title")
-	local rarity = RarityTag.new({ name = "Rarity", rarity = "Common", layoutOrder = 4, parent = scroll })
-	c:add(rarity)
-	-- Equipped (Mint) / Owned (Frosting) / Not owned (Lilac, with the lock): refreshDetail.
-	local ownership = Chip.new({ name = "Ownership", text = "", layoutOrder = 5, parent = scroll })
-	ownership.root.Visible = false -- shown with its text (refreshDetail)
-	c:add(ownership)
-	local lock = LockIcon.new({ name = "Lock", sizePx = BADGE_LOCK_PX, layoutOrder = 0, parent = ownership.root })
-	c:add(lock)
-	local coins = detailLabel(scroll, "Coins", 6, "H2")
+		size = px,
+		shadow = { px = STAGE.shadowPx, alpha = STAGE.shadowAlpha },
+		parent = fit,
+	}
+	local image = SquishyImage.new(Catalog.starterId(), imageOptions)
+	image.root.AnchorPoint = Vector2.new(0.5, 0.5)
+	image.root.Position = UDim2.fromScale(0.5, 0.5)
+	c:add(image)
+	c:add(stage.Activated:Connect(function()
+		local id = selected
+		if id and UIController.isRegistered(INSPECT_SCREEN) then
+			UIController.open(INSPECT_SCREEN, { squishyId = id, owned = StateController.owns(id), source = SCREEN })
+		end
+	end))
 
-	-- The five stats as foam progress bars in an inset field (fewer words: no sub-lines here; Inspect has them).
-	local statsField = Theme.inset({
+	-- The name row (H:226-230): the name, the rarity pill and EQUIPPED (wrapping).
+	local nameRow: Frame = Create("Frame", {
+		Name = "NameRow",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 3,
+		Parent = list,
+	})
+	local nameList = Theme.list(Enum.FillDirection.Horizontal, DETAIL.nameGap, nameRow, Enum.HorizontalAlignment.Left)
+	nameList.Wraps = true
+	local name = Theme.label({
+		Name = "Name",
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		TextWrapped = false,
+		LayoutOrder = 1,
+		Parent = nameRow,
+	}, "Name")
+	Theme.stickerText(name, "detailName")
+	local rarity = RarityTag.new({
+		name = "Rarity",
+		rarity = "Common",
+		variant = "detail",
+		layoutOrder = 2,
+		parent = nameRow,
+	})
+	c:add(rarity)
+	local pillSpec = STICKER.pills.detail
+	local pillHeight =
+		math.max(pillSpec.height, math.ceil(Theme.lineHeight(TEXT_KIND)) + pillSpec.padTop + 2 * pillSpec.border)
+	local equippedPill = hangingTag(nameRow, "EquippedPill", string.upper(Strings.common.equipped), {
+		height = pillHeight,
+		padTop = pillSpec.padTop,
+		padX = pillSpec.padX,
+		border = pillSpec.border,
+		lip = 0,
+	}, Theme.accentColors("mint"), "rarityPill")
+	equippedPill.LayoutOrder = 3
+	equippedPill.ZIndex = 1
+
+	-- The chips (H:231-234): power, the throw style, the Ultimate.
+	local chipRow: Frame = Create("Frame", {
+		Name = "Chips",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = 4,
+		Parent = list,
+	})
+	local chipList = Theme.list(Enum.FillDirection.Horizontal, DETAIL.chipGap, chipRow, Enum.HorizontalAlignment.Left)
+	chipList.Wraps = true
+	local power = detailChip(c, chipRow, "Power", 1)
+	c:add(CoinIcon.new({ name = "Coin", sizePx = DETAIL.iconPx, layoutOrder = 1, parent = power.root }))
+	local throw = detailChip(c, chipRow, "Throw", 2)
+	throw:setColor(Palette.StickerThrowChip, Palette.StickerTextChip) -- H:233
+	local ultimate = detailChip(c, chipRow, "Ultimate", 3)
+	ultimate:setAccent("ult")
+	Theme.textOnLight(ultimate.label, Palette.StickerUltText) -- H:234
+	IconGlyph.image("img.icon.bolt", { name = "Bolt", sizePx = DETAIL.iconPx, layoutOrder = 1, parent = ultimate.root })
+
+	-- The stats well (H:236-243): rows 72 | 1fr | 92, the blue and purple bars (lib:37-41).
+	local well = Theme.inset({
 		Name = "Stats",
 		Size = UDim2.fromScale(1, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 7,
-		Parent = scroll,
-	}, Theme.Radius.button, STATS_PAD_PX)
+		LayoutOrder = 5,
+		Parent = list,
+	}, STATS.radius, STATS.border + STATS.padY)
+	local wellPad = well:FindFirstChildOfClass("UIPadding")
+	if wellPad then
+		wellPad.PaddingLeft = UDim.new(0, STATS.border + STATS.padX)
+		wellPad.PaddingRight = UDim.new(0, STATS.border + STATS.padX)
+	end
 	Theme.list(
 		Enum.FillDirection.Vertical,
-		Theme.Padding.small,
-		statsField,
+		STATS.rowGap,
+		well,
 		Enum.HorizontalAlignment.Left,
 		Enum.VerticalAlignment.Top
 	)
+	local rowHeight = math.max(STICKER.bars.stat.height, math.ceil(Theme.lineHeight(TEXT_KIND)))
 	local stats: { [string]: { value: TextLabel, bar: ProgressBar.ProgressBar } } = {}
 	for index, bar in InventoryFormat.statBars(Catalog.list()[1]) do
 		local row: Frame = Create("Frame", {
 			Name = "Stat_" .. bar.stat,
 			BackgroundTransparency = 1,
-			Size = UDim2.fromScale(1, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.new(1, 0, 0, rowHeight),
 			LayoutOrder = index,
-			Parent = statsField,
-		})
-		Theme.list(Enum.FillDirection.Vertical, 3, row, Enum.HorizontalAlignment.Left)
-		local header: Frame = Create("Frame", {
-			Name = "Header",
-			BackgroundTransparency = 1,
-			Size = UDim2.fromScale(1, 0),
-			AutomaticSize = Enum.AutomaticSize.Y,
-			LayoutOrder = 1,
-			Parent = row,
+			Parent = well,
 		})
 		Theme.label({
 			Name = "Label",
 			Text = KeyText.get(bar.labelKey),
-			Size = UDim2.fromScale(0.5, 0),
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromScale(0, 0.5),
+			Size = UDim2.fromOffset(STATS.label, 0),
+			TextWrapped = false,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Parent = header,
-		}, "Body", Enum.FontWeight.Bold)
+			Parent = row,
+		}, TEXT_KIND, nil, Theme.Colors.textFaint) -- H:239: #F3EDFF
 		local value = Theme.label({
 			Name = "Value",
-			AnchorPoint = Vector2.new(1, 0),
-			Position = UDim2.fromScale(1, 0),
-			Size = UDim2.fromScale(0.5, 0),
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.fromScale(1, 0.5),
+			Size = UDim2.fromOffset(STATS.value, 0),
+			TextWrapped = false,
 			TextXAlignment = Enum.TextXAlignment.Right,
-			Parent = header,
-		}, "Body")
+			Parent = row,
+		}, TEXT_KIND)
 		local statBar = ProgressBar.new({
 			name = "Bar",
-			accent = if STAT_TIME[bar.stat] then "lilac" else "sky",
-			heightPx = STAT_BAR_PX,
-			layoutOrder = 2,
+			variant = "stat",
+			accent = if STAT_TIME[bar.stat] then "lilac" else "blueBar",
 			parent = row,
 		})
+		statBar.root.AnchorPoint = Vector2.new(0, 0.5)
+		statBar.root.Position = UDim2.new(0, STATS.label + STATS.gap, 0.5, 0)
+		statBar.root.Size = UDim2.new(1, -(STATS.label + STATS.value + 2 * STATS.gap), 0, STICKER.bars.stat.height)
 		c:add(statBar)
 		stats[bar.stat] = { value = value, bar = statBar }
 	end
-	-- UI overhaul: the time stats are "shorter is faster" (the bars show the value, not "better").
-	Theme.label({
-		Name = "StatsHint",
-		Text = Strings.inspect.statsHint,
-		LayoutOrder = 99,
+	-- Kept for Diego's kill-set line (refreshDetail); the design's detail has no line for it (NOTES question).
+	local elimination = Theme.label({
+		Name = "Elimination",
+		LayoutOrder = 6,
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = statsField,
-	}, "Small", nil, Theme.Colors.ink2)
-	local trail = detailLabel(scroll, "Trail", 20, "Small")
-	local ultimate = detailLabel(scroll, "Ultimate", 21, "Small")
-	local elimination = detailLabel(scroll, "Elimination", 22, "Small")
-	for _, secondary in { trail, ultimate, elimination } do
-		Theme.textOnWindow(secondary) -- UI FINAL R3: on the pink body (H:196; ink2 is 1.4:1 on it)
-	end
-	local price = detailLabel(scroll, "Price", 23, "Body")
-	price.FontFace = Theme.font("Body", Enum.FontWeight.Bold)
+		Visible = false,
+		Parent = list,
+	}, "Small")
+	Theme.textOnWindow(elimination)
 
-	-- Part 8: the buttons are pinned under the list (a sibling of it, not inside it), so they never scroll below the
-	-- fold; layoutDetail places them (no UIListLayout: InventoryFormat.detailLayout decides the rows).
+	-- The one button (H:245-247), pinned under the list (layoutDetail places it).
 	local buttons: Frame = Create("Frame", {
 		Name = "DetailButtons",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.fromScale(1, 1),
-		Size = UDim2.new(1 - GRID_SHARE, -PANEL.columnGap, 0, 0),
+		Size = UDim2.new(1, 0, 0, BUTTON_HEIGHT),
 		Parent = parent,
 	})
 	local equip = Button.new({
 		name = "Squishies_EquipButton",
 		text = Strings.common.equip,
 		kind = "primary",
-		height = TOUCH.primaryButton,
-		layoutOrder = 1,
+		height = INVENTORY.button.face,
+		textKind = "Large", -- H:245: 28 px, stroke 6
 		parent = buttons,
 		onActivated = equipSelected,
 	})
 	c:add(equip)
-	local inspect = Button.new({
-		name = "Squishies_InspectButton",
-		text = Strings.common.inspect,
-		height = TOUCH.primaryButton,
-		layoutOrder = 2,
+	local equipped = Button.new({
+		name = "Squishies_EquippedButton",
+		text = Strings.common.equipped,
+		kind = "primary",
+		height = INVENTORY.button.face,
+		textKind = "HudNumber", -- H:246: 26 px, stroke 6
+		icon = "check",
+		iconSize = INVENTORY.button.checkPx,
 		parent = buttons,
-		sound = false, -- opens a screen: ui.open plays instead (§18.5.2 B3)
-		onActivated = function()
-			local id = selected
-			if id then
-				UIController.open(INSPECT_SCREEN, { squishyId = id, owned = StateController.owns(id), source = SCREEN })
-			end
-		end,
+		onActivated = function() end,
 	})
-	inspect.root.Visible = false
-	c:add(inspect)
-	local viewInShop = Button.new({
-		name = "Squishies_ViewInShopButton",
-		text = Strings.inspect.viewInShop,
-		height = TOUCH.primaryButton,
-		layoutOrder = 3,
+	equipped:setState("disabled") -- H:246: the lilac EQUIPPED, a press says no
+	equipped.root.Visible = false
+	c:add(equipped)
+	local find = Button.new({
+		name = "Squishies_GoToBoxesButton",
+		text = Strings.inventory.goToBoxes,
+		kind = "secondary",
+		height = INVENTORY.button.face,
+		textKind = "HudNumber", -- H:247: 26 px, stroke 6
+		icon = "boxes",
+		iconSize = INVENTORY.button.iconPx,
 		parent = buttons,
 		sound = false, -- opens a screen: ui.open plays instead
-		onActivated = function()
-			local id = selected
-			if id then
-				UIController.close(SCREEN, "viewInShop")
-				UIController.open(SHOP_SCREEN, { squishyId = id })
-			end
-		end,
+		onActivated = findSelected,
 	})
-	viewInShop.root.Visible = false
-	c:add(viewInShop)
-	for _, button in { equip, inspect, viewInShop } do
-		button.root.AnchorPoint = Vector2.new(0.5, 0) -- centred in its measured slot (layoutDetail)
-	end
+	find.root.Visible = false
+	c:add(find)
+	c:add(listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(layoutDetail))
+	c:add(list:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutDetail))
 
 	detail = {
-		icon = icon,
-		well = well,
-		glow = glow,
+		error = errorLabel,
+		list = list,
+		listLayout = listLayout,
+		rail = scrollHint.root,
+		stage = stage,
+		look = look,
+		pick = pick,
+		fit = fitScale,
+		image = image,
 		name = name,
 		rarity = rarity,
-		ownership = ownership,
-		lock = lock.root,
-		coins = coins,
-		stats = stats,
-		trail = trail,
+		equippedPill = equippedPill,
+		power = power,
+		throw = throw,
 		ultimate = ultimate,
+		stats = stats,
 		elimination = elimination,
-		price = price,
-		error = errorLabel,
-		scroll = scroll,
-		rail = scrollHint.root,
 		buttons = buttons,
 		equip = equip,
-		equipText = Strings.common.equip,
-		equipReason = nil,
-		inspect = inspect,
-		viewInShop = viewInShop,
+		equipped = equipped,
+		find = find,
 	}
+end
+
+-- The header pill (H:185-188): "Collected", the bar and the count, the band's extra.
+local function buildCollected(c: Cleanup.Cleanup, parent: Instance): Frame
+	local pill: Frame = Create("Frame", {
+		Name = "Collected",
+		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundTransparency = 1 - PILL.alpha,
+		BorderSizePixel = 0,
+		AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.fromOffset(0, PILL.height),
+		Visible = false, -- shown with its count once the profile is loaded (refreshCollected)
+		Parent = parent,
+	})
+	Theme.corner(PILL.height, pill)
+	local stroke = Theme.stroke(Theme.Colors.inkUI, PILL.border, pill)
+	pcall(function()
+		(stroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
+	end)
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, PILL.border + PILL.padX),
+		PaddingRight = UDim.new(0, PILL.border + PILL.padX),
+		Parent = pill,
+	})
+	Theme.list(Enum.FillDirection.Horizontal, PILL.gap, pill)
+	Theme.label({
+		Name = "Label",
+		Text = Strings.inventory.collectedLabel,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		TextWrapped = false,
+		LayoutOrder = 1,
+		Parent = pill,
+	}, TEXT_KIND, nil, Palette.StickerCollected) -- H:186: #FFE3EF
+	local bar = ProgressBar.new({
+		name = "Bar",
+		variant = "collected",
+		widthPx = PILL.barWidth,
+		layoutOrder = 2,
+		parent = pill,
+	})
+	c:add(bar)
+	local count = Theme.label({
+		Name = "Count",
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		TextWrapped = false,
+		LayoutOrder = 3,
+		Parent = pill,
+	}, "Button")
+	Theme.stickerText(count, "collectedCount") -- H:188
+	collectedBar, collectedCount = bar, count
+	return pill
 end
 
 local function build(parent: Instance): GuiObject
@@ -1264,19 +1479,21 @@ local function build(parent: Instance): GuiObject
 		Name = "Squishies",
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.new(0, Config.UI.modalMaxWidth, PANEL.heightShare, 0),
+		Size = UDim2.fromOffset(STICKER.window.kinds.squishies.width, STICKER.window.kinds.squishies.height),
 		Parent = parent,
-	}, WINDOW_KIND, PANEL.padding)
+	}, WINDOW_KIND, BODY.padTop)
 	c:add(root)
+	-- H:191: the body's padding inside the window's border (fitWindow sets the top: the band, then padTop).
+	local padding = root:FindFirstChildOfClass("UIPadding") :: UIPadding
+	padding.PaddingLeft = UDim.new(0, WINDOW_BORDER + BODY.padSide)
+	padding.PaddingRight = UDim.new(0, WINDOW_BORDER + BODY.padSide)
+	padding.PaddingBottom = UDim.new(0, WINDOW_BORDER + BODY.padBottom + STICKER.lip.window)
 	local rowHeight = Layout.touchBase(TOUCH.minTarget, UIController.scale())
 
-	-- UI FINAL R3: the band (H:183-189): the title, and the collected count at its right end (the design's header pill,
-	-- H:185; fitChrome lays them out).
-	local collected = Chip.new({ name = "Collected", text = "", parent = root })
-	collected.root.Visible = false -- shown with its count once the profile is loaded (refreshGrid)
-	c:add(collected)
-	collectedChip = collected
-	local tab = Theme.headerTab(root, Strings.inventory.title, { extra = collected.root :: GuiObject })
+	-- UI FINAL R3: the band (H:183-189): the title, and the header pill at its right end (H:185).
+	local collected = buildCollected(c, root)
+	collectedPill = collected
+	Theme.headerTab(root, Strings.inventory.title, { extra = collected :: GuiObject })
 	-- The 76 px X in the band at the window's top-right corner (H:252).
 	local close = Button.new({
 		name = "Squishies_CloseButton",
@@ -1293,128 +1510,108 @@ local function build(parent: Instance): GuiObject
 	c:add(close)
 	closeButton = close
 
-	-- Filters: chips + "Show not owned" (the first row of the content).
-	local filters: Frame = Create("Frame", {
-		Name = "FilterRow",
+	local content: Frame = Create("Frame", {
+		Name = "Body",
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, rowHeight),
+		Size = UDim2.fromScale(1, 1),
 		Parent = root,
 	})
-	local chipRow = buildChips(c, filters)
+	body = content
+	-- The left column (H:192): the tab row, then the grid.
+	local left: Frame = Create("Frame", {
+		Name = "Left",
+		BackgroundTransparency = 1,
+		Parent = content,
+	})
+	local tabRow: Frame = Create("Frame", {
+		Name = "TabRow",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 0, rowHeight),
+		Parent = left,
+	})
+	local tabScroller = buildTabs(c, tabRow, rowHeight)
+	local lockedText = Strings.inventory.showLockedLines
 	local toggle = Toggle.new({
 		name = "Squishies_ShowNotOwnedToggle",
-		text = Strings.inventory.showNotOwned,
+		text = lockedText,
 		value = showNotOwned,
-		widthPx = TOGGLE_MIN_WIDTH_PX, -- applyLayout widens it when the player's text needs it
-		parent = filters,
+		stateText = false,
+		labelBeside = "left",
+		gapPx = TAB.toggleGap,
+		widthPx = Toggle.widthFor(lockedText, "small", true),
+		parent = tabRow,
 		onChanged = function(on: boolean)
+			-- H:1011: the switch's rising / falling click.
+			SoundController.play("ui.click", { pitch = if on then UI_PITCH.toggleOn else UI_PITCH.toggleOff })
 			showNotOwned = on
+			riseFrom = shownCount -- a re-filter: only the newly shown slots rise
 			refresh()
 		end,
 	})
 	toggle.root.AnchorPoint = Vector2.new(1, 0)
 	toggle.root.Position = UDim2.fromScale(1, 0)
+	local toggleFeel: Button.DecorateOptions = { fx = "tab", visual = toggle.visual, clickSound = false }
+	c:add(Button.decorate(toggle.root, toggleFeel))
 	c:add(toggle)
-	showNotOwnedToggle = toggle
-	frames = {
-		filterRow = filters,
-		filters = chipRow,
-		tab = tab,
-		padding = root:FindFirstChildOfClass("UIPadding") :: UIPadding,
-	}
 
-	-- Body: grid + detail (applyLayout sizes both columns).
-	local top = rowHeight + PANEL.gap
-	local content: Frame = Create("Frame", {
-		Name = "Body",
-		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, top),
-		Size = UDim2.new(1, 0, 1, -top),
-		Parent = root,
-	})
-	body = content
 	local gridFrame: ScrollingFrame = Create("ScrollingFrame", {
 		Name = "Grid",
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
-		Size = UDim2.fromScale(GRID_SHARE, 1),
 		CanvasSize = UDim2.fromScale(0, 0),
 		AutomaticCanvasSize = Enum.AutomaticSize.Y,
 		ScrollingDirection = Enum.ScrollingDirection.Y,
-		ScrollBarThickness = SCROLLBAR_PX,
-		ScrollBarImageColor3 = Theme.Colors.inkUI,
+		VerticalScrollBarInset = Enum.ScrollBarInset.Always, -- the cards keep one width (InventoryFormat.panelLayout)
 		Selectable = false,
-		Parent = content,
+		Parent = left,
 	})
-	-- Room on every side for the cards' rarity rims (the grid clips its children). The side room is
-	-- InventoryFormat.PANEL.gridChrome (4 + the scrollbar + 4), which gridFit counts.
+	Theme.scrollbar(gridFrame) -- G5.18 (H:22)
 	Create("UIPadding", {
-		PaddingTop = UDim.new(0, 4),
-		PaddingBottom = UDim.new(0, 4),
-		PaddingLeft = UDim.new(0, 4),
-		PaddingRight = UDim.new(0, SCROLLBAR_PX + 4),
+		PaddingTop = UDim.new(0, GRID.padTop),
+		PaddingRight = UDim.new(0, GRID.padRight),
+		PaddingBottom = UDim.new(0, GRID.padBottom),
+		PaddingLeft = UDim.new(0, GRID.padLeft),
 		Parent = gridFrame,
 	})
-	cardSize = measureCards()
 	gridLayout = Create("UIGridLayout", {
-		CellSize = UDim2.fromOffset(cardSize.width, cardSize.height),
-		CellPadding = UDim2.fromOffset(CELL_PAD, CELL_PAD),
+		CellSize = UDim2.fromOffset(CARD.face, CARD.face + CARD.lip),
+		CellPadding = UDim2.fromOffset(GRID.gap, Layout.lipGap(GRID.gap, CARD.lip)),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		FillDirection = Enum.FillDirection.Horizontal,
+		FillDirectionMaxCells = GRID.columns,
 		Parent = gridFrame,
 	})
 	grid = gridFrame
 	for _, def in Catalog.list() do
 		buildCard(c, gridFrame, def.id)
 	end
+	local empty = StatePill.new({ name = "Empty", text = "", parent = left })
+	empty.root.AnchorPoint = Vector2.new(0.5, 0.5)
+	empty.root.Visible = false
+	c:add(empty)
+	emptyPill = empty
 
-	local empty: Frame = Create("Frame", {
-		Name = "Empty",
+	local detailColumn: Frame = Create("Frame", {
+		Name = "DetailColumn",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(GRID_SHARE / 2, 0, 0, EMPTY_TOP_PX), -- applyLayout centres it over the grid
-		Size = UDim2.new(GRID_SHARE, -2 * EMPTY_SIDE_PX, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Visible = false,
 		Parent = content,
 	})
-	Theme.list(Enum.FillDirection.Vertical, Theme.Padding.medium, empty)
-	emptyLabel = Theme.label({
-		Name = "Text",
-		LayoutOrder = 1,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Parent = empty,
-	}, "Body")
-	Theme.textOnWindow(emptyLabel :: TextLabel) -- UI FINAL R3: on the pink body (H:196)
-	local boxes = Button.new({
-		name = "Squishies_GoToBoxesButton",
-		text = Strings.inventory.goToBoxes,
-		kind = "primary",
-		height = TOUCH.primaryButton,
-		layoutOrder = 2,
-		parent = empty,
-		sound = false, -- opens a screen: ui.open plays instead
-		onActivated = function()
-			UIController.close(SCREEN, "goToBoxes")
-			UIController.open(BOXES_SCREEN)
-		end,
-	})
-	c:add(boxes)
-	goToBoxes = boxes
-	emptyState = empty
+	buildDetail(c, detailColumn)
+	frames = {
+		left = left,
+		tabRow = tabRow,
+		tabs = tabScroller,
+		toggle = toggle,
+		detailColumn = detailColumn,
+		padding = padding,
+	}
 
-	buildDetail(c, content)
-
-	loadingLabel = Theme.label({
-		Name = "Loading",
-		Text = Strings.common.loading,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.6),
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Visible = false,
-		Parent = root,
-	}, "H2")
-	Theme.textOnWindow(loadingLabel :: TextLabel)
+	local loading = StatePill.new({ name = "Loading", text = Strings.common.loading, spinner = true, parent = root })
+	loading.root.AnchorPoint = Vector2.new(0.5, 0.5)
+	loading.root.Position = UDim2.fromScale(0.5, 0.5)
+	loading.root.Visible = false
+	c:add(loading)
+	loadingPill = loading
 
 	panel = root
 	-- Part 8: every size follows the ScreenGui, the layout class and the player's text size.
@@ -1425,69 +1622,13 @@ local function build(parent: Instance): GuiObject
 	end)
 	if okSignal then
 		c:add(textSizeChanged:Connect(function()
-			applyCardSize()
 			applyLayout()
-			refresh() -- the corner badges are measured again
+			refresh()
 		end))
 	end
 	applyLayout()
 	refresh()
 	return root
-end
-
--- UI overhaul: the detail preview's idle life while the screen is open: a gentle bob and sway of the one StaticIcon
--- (never every card), still under ReducedMotion.
-local function startPreviewBob(c: Cleanup.Cleanup)
-	local d = detail
-	if d == nil then
-		return
-	end
-	local root = d.icon.root
-	local elapsed = 0
-	c:add(Scheduler.add(function(dt: number): boolean
-		if Tweens.reducedMotion() then
-			root.Position = UDim2.fromScale(0.5, 0.5)
-			root.Rotation = 0
-			return true
-		end
-		elapsed = (elapsed + dt) % PREVIEW_BOB_SECONDS
-		local phase = 2 * math.pi * elapsed / PREVIEW_BOB_SECONDS
-		root.Position = UDim2.new(0.5, 0, 0.5, math.sin(phase) * PREVIEW_BOB_PX)
-		root.Rotation = math.sin(phase * 0.5) * PREVIEW_WOBBLE_DEG
-		return true
-	end, "render"))
-	c:add(function()
-		root.Position = UDim2.fromScale(0.5, 0.5)
-		root.Rotation = 0
-	end)
-end
-
--- Shimmer of Exclusive card frames (§4.3: 45°/s; static under ReducedMotion), only while the screen is open.
-local function startShimmer(c: Cleanup.Cleanup)
-	local speeds: { [Card]: number } = {}
-	for _, card in cards do
-		local def = Catalog.get(card.id)
-		local style = if def then RarityStyle.get(def.rarity) else nil
-		local speed = if style and style.card.gradient then style.card.gradient.shimmerDegPerSecond else nil
-		if card.shimmer and card.gradient and speed then
-			speeds[card] = speed
-		end
-	end
-	if next(speeds) == nil then
-		return
-	end
-	c:add(Scheduler.add(function(dt: number): boolean
-		if Tweens.reducedMotion() then
-			return true
-		end
-		for card, speed in speeds do
-			local gradient = card.gradient
-			if gradient and card.root.Visible then
-				gradient.Rotation = (gradient.Rotation + speed * dt) % SHIMMER_FULL_TURN
-			end
-		end
-		return true
-	end, "render"))
 end
 
 -- Gamepad: keeps the selected card inside the grid's visible part (§11.4 "scroll to the selected cell"; the engine
@@ -1514,6 +1655,13 @@ local function followSelection(c: Cleanup.Cleanup)
 	end))
 end
 
+-- Every card's rise at rest (the window closed mid-entrance).
+local function stopRises()
+	for holder in tracks do
+		stopTrack(holder)
+	end
+end
+
 -- Public -------------------------------------------------------------------------------------------------------------
 
 -- Opens the screen, optionally on one squishy (e.g. an onboarding hint). Returns UIController.open's result.
@@ -1530,7 +1678,7 @@ function InventoryController.debugState(): { [string]: any }
 		end
 	end
 	table.sort(visible)
-	local placed = lastDetail
+	local l, placed = panelLayout, lastDetail
 	return {
 		built = panel ~= nil,
 		filter = filter,
@@ -1538,18 +1686,11 @@ function InventoryController.debugState(): { [string]: any }
 		selected = selected,
 		visible = visible,
 		pending = pendingEquip,
-		-- Part 8: the card size and the pinned detail buttons (base px); fix batch: the fitted grid
-		card = { width = cardSize.width, height = cardSize.height, stacked = cardSize.stacked },
-		grid = if panelLayout
-			then { columns = panelLayout.columns, width = panelLayout.gridWidth, detailWidth = panelLayout.detailWidth }
-			else nil,
-		detailButtons = if placed
-			then {
-				rows = placed.rows,
-				scrollHeight = placed.scrollHeight,
-				buttonsTop = placed.buttonsTop,
-				buttonsHeight = placed.buttonsHeight,
-			}
+		-- UI FINAL R5: the card frame, the fitted grid and the detail column (base px)
+		card = { width = if l then l.cardWidth else 0, face = cardFrame.face, nameLines = cardFrame.nameLines },
+		grid = if l then { columns = l.columns, width = l.gridWidth, detailWidth = l.detailWidth } else nil,
+		detail = if placed
+			then { listHeight = placed.listHeight, stageFace = placed.stageFace, scrolls = placed.scrolls }
 			else nil,
 	}
 end
@@ -1577,27 +1718,27 @@ function InventoryController.init()
 				openCleanup:clean()
 			end
 			openCleanup = oc
-			startShimmer(oc)
-			startPreviewBob(oc)
 			followSelection(oc)
+			riseFrom = 0 -- UI FINAL R5: every card rises in (sdRise, i x 28 ms, H:934)
 			refresh()
-			UiFx.cascade(SCREEN, cardContents()) -- UI overhaul: the cards pop in one after another (capped)
 		end,
 		onClose = function()
 			if openCleanup then
 				openCleanup:clean()
 				openCleanup = nil
 			end
+			stopRises()
+			StateController.markAllOwnedSeen() -- G5.9 (H:681, H:689): NEW and the HUD badge clear on close
 		end,
 		primary = function(): GuiObject?
-			-- The selected card; else the active filter chip (an empty filter); else Close (Part 8: never nothing).
+			-- The selected card; else the active tab (an empty filter); else Close (Part 8: never nothing).
 			local card = if selected then cards[selected] else nil
 			if card and card.root.Visible then
 				return card.root
 			end
-			local chip = chips[filter]
-			if chip then
-				return chip.root
+			local tab = tabs[filter]
+			if tab then
+				return tab.root
 			end
 			return if closeButton then closeButton.root else nil
 		end,
@@ -1617,7 +1758,7 @@ function InventoryController.init()
 	c:add(WorldBinder.registerStand(KIOSK_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { "owned", "equipped", "dataStatus" } do
+	for _, field in { "owned", "equipped", "dataStatus", "policy" } do
 		c:add(StateController.changed(field):connect(function()
 			if field == "equipped" then
 				confirmedEquip = nil
@@ -1628,7 +1769,7 @@ function InventoryController.init()
 	c:add(StateController.Loaded:connect(refresh))
 	c:add(StateController.NewOwnedChanged:connect(refresh))
 	c:add(StateController.LobbyLockChanged:connect(refresh))
-	-- Fix batch: the hanging Collected chip hides while another screen is over Squishies (after the stack changes).
+	-- Fix batch: the Collected pill hides while another screen is over Squishies (after the stack changes).
 	c:add(UIController.ScreenOpened:connect(function()
 		task.defer(refreshCollected)
 	end))
@@ -1644,13 +1785,14 @@ function InventoryController.init()
 			task.cancel(confirmTimer)
 			confirmTimer = nil
 		end
+		stopRises()
 		table.clear(cards)
-		table.clear(chips)
-		table.clear(chipActive)
-		panel, collectedChip, showNotOwnedToggle, grid, gridLayout = nil, nil, nil, nil, nil
-		emptyState, emptyLabel, goToBoxes, loadingLabel, body, detail = nil, nil, nil, nil, nil, nil
+		table.clear(tabs)
+		panel, collectedPill, collectedBar, collectedCount, grid, gridLayout = nil, nil, nil, nil, nil, nil
+		emptyPill, loadingPill, body, detail = nil, nil, nil, nil
 		frames, closeButton, panelLayout, lastDetail = nil, nil, nil, nil
-		pendingEquip, confirmedEquip = nil, nil
+		pendingEquip, confirmedEquip, riseFrom = nil, nil, nil
+		shownCount = 0
 	end)
 	log:debug("ready")
 end

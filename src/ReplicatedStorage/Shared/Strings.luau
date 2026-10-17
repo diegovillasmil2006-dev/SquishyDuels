@@ -698,20 +698,42 @@ local Strings = {
 		},
 	},
 
-	-- Squishies screen (§11.6). {rarity} = a rarity name. Badges and buttons use common.equipped / common.notOwned /
-	-- common.equip / common.inspect; Equip results use inspect.equippedToast / inspect.equipFailed; loading uses
-	-- common.loading and a data error data.loadFailed.
+	-- Squishies screen (§11.6). {rarity} = a rarity name. Badges and buttons use common.equipped / common.equip; Equip
+	-- results use inventory.equippedToast / inspect.equipFailed; loading uses common.loading and a data error
+	-- data.loadFailed.
 	inventory = {
 		-- Reading: the screen title (the HUD button says the same).
 		title = "Squishies",
-		-- Reading: a filter chip with its count (§11.6 "Filter chips with counts"), e.g. "Epic (2)".
-		filterCount = "{label} ({n})",
 		filterAll = "All",
-		showNotOwned = "Show not owned",
 		collected = "Collected {n}/{total}",
 		empty = "No {rarity} squishies yet.",
-		goToBoxes = "Go to Boxes",
 		new = "NEW",
+		-- UI FINAL R5 (the design's Squishies window; `H:n` = "Squishy Duels HUD.dc.html" line n): the switch's two
+		-- lines (H:196), the header pill (H:186-188), the locked squishy's button (H:247), the Ultimate chip (H:1013),
+		-- the equip toast with the squishy's name (H:846), and each squishy's throw style by Catalog id (hud-lib.js
+		-- lines 20-33, the design's toys matched by name).
+		showLockedLines = "Show\nlocked",
+		collectedLabel = "Collected",
+		collectedCount = "{n} / {total}",
+		goToBoxes = "Find in Boxes",
+		ultimateChip = "Ultimate: {name}",
+		equippedToast = "Equipped {name}!",
+		throwStyle = {
+			kitty_bread = "Overhand fastball",
+			dragon = "Two-hand chest shove",
+			bird = "Two-hand launch, glides",
+			cloud_bunny = "Floaty lob",
+			cupcake_axolotl = "Wobble lob",
+			donut = "Sidearm wheel spin",
+			butter = "Skipping-stone slide",
+			chocolate = "Sidearm frisbee",
+			mochi_fox = "Slingshot stretch",
+			strawberry_frog = "Bounce pass",
+			banana = "Football spiral",
+			boba_bear = "Underhand lob",
+			toast = "Sidearm card-flick",
+			pancake_pup = "Frisbee flick",
+		},
 	},
 
 	-- Inline two-step spend confirmation (§11.5).

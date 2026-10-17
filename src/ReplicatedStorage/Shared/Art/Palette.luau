@@ -468,6 +468,8 @@ local Palette = {
 	StickerScrimPink = Color3.fromHex("#FF96D2"), -- H:178: the scrim's lighter centre (at .28)
 	StickerStickerShadow = Color3.fromHex("#140A1E"), -- H:251: the window sticker's drop shadow (at .35)
 	StickerShadowWindow = Color3.fromHex("#0F0819"), -- H:182: the window's soft shadow (at .5)
+	-- UI FINAL R5 (the Squishies window): the All tab's top stop when on (H:928, with StickerHeaderPinkEnd).
+	StickerTabAllTop = Color3.fromHex("#FF9CC4"),
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

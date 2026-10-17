@@ -5,7 +5,8 @@
 --   * the camera direction is in front of the face (-Z) at yaw 0 / pitch 0, turned by the Catalog inspect yaw about
 --     +Y and raised by its pitch; it is always a unit vector;
 --   * the fit distance frames a sphere of radius r in the vertical FOV with Config.Inspect fitPadding, never closer
---     than r + minClearance; a bad radius counts as 1.
+--     than r + minClearance; a bad radius counts as 1;
+--   * UI FINAL R5: a squishy not owned is the black silhouette at .42 (ownedLook).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -49,5 +50,15 @@ return function(t: Context)
 		expect.near(StaticIcon.fitDistance(-4, FRAMING.vFovDeg), StaticIcon.fitDistance(1, FRAMING.vFovDeg), 1e-9)
 		-- A wide view never brings the camera inside the clearance.
 		expect.truthy(StaticIcon.fitDistance(1, 179) >= 1 + FRAMING.minClearance)
+	end)
+
+	-- UI FINAL R5 (H:922): not owned = the design's silhouette, brightness(0) opacity(.42).
+	t.test("ownedLook: as it is when owned, the black .42 silhouette when not", function()
+		local tint, transparency = StaticIcon.ownedLook(true)
+		expect.equal(tint, Color3.new(1, 1, 1))
+		expect.equal(transparency, 0)
+		tint, transparency = StaticIcon.ownedLook(false)
+		expect.equal(tint, Color3.new(0, 0, 0))
+		expect.near(transparency, 0.58, 1e-9)
 	end)
 end

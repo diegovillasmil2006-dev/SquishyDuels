@@ -38,11 +38,19 @@
 --   * previewPx: the preview shrinks so the name stays in view, between its min and max;
 --   * cardBadges: one row always (never on the portrait): the compact left badge when it lets both fit, else the right
 --     one is left out; "Not owned" + "Ultimate" on the Squishies card fit with the lock pip.
--- Foam fix round 2 (2026-10-09; the rarity tag cut in half on a phone, the detail buttons nearly touching):
---   * previewPx hides the preview (0) when not even its minimum fits above the reserve; on the 844×390 phone the
---     reserve (name and rarity tag) fits under a smaller preview;
---   * detailLayout keeps PANEL.buttonGap (Theme.Padding.medium) between the buttons and their rows, from the column's
---     left edge, and the list still ends PANEL.gap above them.
+-- Foam fix round 2 (2026-10-09): previewPx hides the preview (0) when not even its minimum fits above the reserve.
+-- UI FINAL R5 (Diego's Squishies window, plan work/ui/PLAN.md R5; `H:n` = "Squishy Duels HUD.dc.html" line n; the
+-- older panelLayout / detailLayout / chip / corner-badge cases above were replaced):
+--   * panelLayout: the body inside the border and its padding 18 22 22 (H:191); the 600 px grid column and the detail
+--     the rest after the 22 px gap; 4 columns of (600 - 12 - 36) / 4 = 138 at the design's size; a narrow window keeps
+--     the detail column's least width and drops columns before a card gets under grid.minCard; the tab row and Close
+--     touch-sized; every part inside the content box;
+--   * detailLayout: the one button pinned at the column's bottom, the list above it, the stage's face the design's 186
+--     when the rest fits, shrunk to fit, never under minFace (the list then scrolls), including a 2-line chip row;
+--   * tabCounts are the catalogue totals (H:927), whatever "Show locked" says; tabRowFits; showNewTag only for a new
+--     squishy that is not equipped; riseSlots only the newly shown slots (G5.10);
+--   * cardFrame: 178 at the design's numbers, taller only by the measured extra (a 2-line name); footerFits ([PR25]);
+--   * raysAlpha (.26 from Epic on, x .45 below), stageSquishyPx (190 on 186), throwText for every squishy.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -124,10 +132,11 @@ return function(t: Context)
 		expect.deepEqual(ids(InventoryFormat.visible(list, "Uncommon", false)), { "butter" })
 		expect.equal(#InventoryFormat.visible(list, "Exclusive", false), 0)
 
-		local shown = InventoryFormat.chipCounts(list, true)
-		expect.deepEqual(shown, { All = 14, Common = 5, Uncommon = 4, Epic = 4, Exclusive = 1 })
-		local ownedOnly = InventoryFormat.chipCounts(list, false)
-		expect.deepEqual(ownedOnly, { All = 2, Common = 1, Uncommon = 1, Epic = 0, Exclusive = 0 })
+		-- UI FINAL R5 (H:927): the tab counts are the catalogue totals, owned or not.
+		expect.deepEqual(
+			InventoryFormat.tabCounts(list),
+			{ All = 14, Common = 5, Uncommon = 4, Epic = 4, Exclusive = 1 }
+		)
 		local n, total = InventoryFormat.collected(list)
 		expect.equal(n, 2)
 		expect.equal(total, 14)
@@ -136,10 +145,6 @@ return function(t: Context)
 	t.test("chips and empty state: texts from Strings", function()
 		expect.equal(InventoryFormat.filterName("All"), Strings.inventory.filterAll)
 		expect.equal(InventoryFormat.filterName("Epic"), Strings.rarity.epic.name)
-		expect.equal(
-			InventoryFormat.chipText("Epic", 2),
-			Strings.format(Strings.inventory.filterCount, { label = Strings.rarity.epic.name, n = 2 })
-		)
 		expect.equal(
 			InventoryFormat.emptyText("Epic"),
 			Strings.format(Strings.inventory.empty, { rarity = Strings.rarity.epic.name })
@@ -179,17 +184,12 @@ return function(t: Context)
 		expect.equal(InventoryFormat.equipState(byId.toast, { locked = false, confirmed = "toast" }), "equipped")
 		expect.equal(InventoryFormat.equipState(byId.toast, { locked = true }), "locked")
 		expect.equal(InventoryFormat.equipState(byId.dragon, { locked = true }), "notOwned")
-		expect.equal(InventoryFormat.ownershipKey(byId.kitty_bread), "common.equipped")
-		expect.equal(InventoryFormat.ownershipKey(byId.toast), "common.owned")
-		expect.equal(InventoryFormat.ownershipKey(byId.dragon), "common.notOwned")
 	end)
 
 	-- Part 8 layout ---------------------------------------------------------------------------------------------------
 
 	local Theme = t.requireClient("UI/Theme")
 	local TOUCH = Config.UI.Touch
-	-- UI FINAL R2 (P1): a primary Button's frame, its 56 px face and the 5 px lip under it (Button.frameHeight).
-	local BUTTON_FRAME = TOUCH.primaryButton + Config.UI.Sticker.lip.button
 	local EPS = 1e-6
 	local SCREENS = {
 		{ label = "667x375", size = Vector2.new(667, 375) },
@@ -199,96 +199,64 @@ return function(t: Context)
 	}
 	local TEXT_SCALES = { 1, Config.UI.PreferredTextScale.Largest }
 	local EM = 0.6 -- per character: wider than Builder Sans Bold really is (a pessimistic estimate)
-	local BUTTON_PADDING = 2 * 18 + 4 -- Button's side padding and its measure margin
-
-	local function buttonWidth(text: string, textScale: number): number
-		return #text * Config.UI.TextSize.Button * textScale * EM + BUTTON_PADDING
-	end
-
-	-- Every button state the detail panel can show: Equip alone, Equip + Inspect, Not owned + Inspect + View in Shop.
-	local function buttonSets(textScale: number): { { number } }
-		local equip = buttonWidth(Strings.common.equip, textScale)
-		local equipped = buttonWidth(Strings.common.equipped, textScale)
-		local notOwned = buttonWidth(Strings.common.notOwned, textScale)
-		local inspect = buttonWidth(Strings.common.inspect, textScale)
-		local viewInShop = buttonWidth(Strings.inspect.viewInShop, textScale)
-		return { { equip }, { equipped, inspect }, { equip, inspect }, { notOwned, inspect, viewInShop } }
-	end
-
 	local function overlap(a: any, b: any): boolean
 		return a.x < b.x + b.w - EPS and b.x < a.x + a.w - EPS and a.y < b.y + b.h - EPS and b.y < a.y + a.h - EPS
 	end
 
+	-- UI FINAL R5: the window's body (H:191) and the detail column (H:217-248).
+	local BODY = Config.UI.Inventory.body
+	local GRID = Config.UI.Inventory.grid
+	local STAGE = Config.UI.Inventory.stage
+	local BORDER = Config.UI.Sticker.border.heavy
+	local SCROLLBAR = Config.UI.Sticker.window.scrollbarPx
+	-- The one detail button: its 60 px face and its 5 px lip (H:245).
+	local BUTTON_FRAME = Config.UI.Inventory.button.face + Config.UI.Sticker.lip.button
+
 	for _, screen in SCREENS do
-		t.test(`panelLayout {screen.label}: fits the screen, touch-sized Close and filter row`, function()
+		t.test(`panelLayout {screen.label}: the body inside the window, the grid and the detail columns`, function()
 			local l = InventoryFormat.panelLayout(screen.size)
-			expect.truthy(l.panelWidth <= Config.UI.modalMaxWidth)
 			expect.truthy(l.panelWidth * l.scale <= screen.size.X + EPS)
 			expect.truthy(l.panelHeight * l.scale <= screen.size.Y + EPS)
 			expect.truthy(l.closeHeight >= TOUCH.closeButton)
 			expect.truthy(l.rowHeight >= TOUCH.minTarget)
 			expect.truthy(l.rowHeight * l.scale >= TOUCH.minTargetFloor - EPS)
-			expect.truthy(l.closeHeight * l.scale >= TOUCH.minTargetFloor - EPS)
-			-- Fix batch: Close hangs on the corner, so the filter row starts the content.
-			expect.near(l.bodyTop, l.rowHeight + InventoryFormat.PANEL.gap)
+			expect.near(l.contentWidth, l.panelWidth - 2 * (BORDER + BODY.padSide))
+			expect.near(l.contentHeight, l.panelHeight - l.topPadding - (BORDER + BODY.padBottom))
+			expect.near(l.bodyTop, l.rowHeight + BODY.columnGap)
 			expect.near(l.bodyTop + l.bodyHeight, l.contentHeight)
 			expect.truthy(l.bodyHeight > 0)
-			expect.truthy(l.gridWidth + InventoryFormat.PANEL.columnGap + l.detailWidth <= l.contentWidth + EPS)
-			expect.truthy(l.detailWidth > 0)
-			expect.equal(l.detailHeight, l.bodyHeight)
-			expect.equal(l.columns, 0) -- no card width given: the plain gridShare split
+			expect.near(l.gridWidth + BODY.gap + l.detailWidth, l.contentWidth)
+			expect.truthy(l.gridWidth <= BODY.gridWidth + EPS)
+			expect.equal(l.detailHeight, l.contentHeight)
+			expect.truthy(l.columns >= 1 and l.columns <= GRID.columns)
+			-- The cards fill the grid inside its scroll bar, never under the least card width.
+			local inner = l.gridWidth - SCROLLBAR
+			expect.truthy(l.columns * l.cardWidth + (l.columns - 1) * GRID.gap <= inner + EPS)
+			expect.truthy(l.cardWidth >= GRID.minCard or l.columns == 1)
 			expect.equal(l.class, if screen.label == "667x375" then "compact" else "regular")
 		end)
-
-		for _, textScale in TEXT_SCALES do
-			t.test(
-				`detailLayout {screen.label} text x{textScale}: buttons pinned, wrapped, never overlapping`,
-				function()
-					local l = InventoryFormat.panelLayout(screen.size)
-					local buttonHeight = BUTTON_FRAME
-					local gap = InventoryFormat.PANEL.gap
-					local between = InventoryFormat.PANEL.buttonGap -- fix round 2: the buttons' own gap
-					for _, widths in buttonSets(textScale) do
-						local d = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, buttonHeight, gap, widths)
-						expect.equal(#d.buttons, #widths)
-						expect.truthy(d.rows >= 1 and d.rows <= #widths)
-						-- Pinned at the bottom of the column, under the list, inside the panel.
-						expect.near(d.buttonsTop + d.buttonsHeight, l.detailHeight)
-						expect.truthy(d.scrollHeight + gap <= d.buttonsTop + EPS)
-						expect.truthy(l.bodyTop + d.buttonsTop + d.buttonsHeight <= l.contentHeight + EPS)
-						expect.truthy(d.scrollHeight > 0)
-						expect.near(d.buttonsHeight, d.rows * buttonHeight + (d.rows - 1) * between)
-						local total = 0
-						for i, r in d.buttons do
-							expect.near(r.w, widths[i])
-							expect.truthy(r.x >= -EPS and r.x + r.w <= l.detailWidth + EPS)
-							expect.truthy(r.y >= -EPS and r.y + r.h <= d.buttonsHeight + EPS)
-							for j = i + 1, #d.buttons do
-								expect.falsy(overlap(r, d.buttons[j]))
-							end
-							total += r.w
-						end
-						-- One row exactly when they all fit side by side.
-						local oneRow = total + between * (#widths - 1) <= l.detailWidth + EPS
-						expect.equal(d.rows == 1, oneRow)
-					end
-				end
-			)
-		end
 	end
 
-	t.test("detailLayout: Studio's 893x673 with three buttons keeps them on screen (the Part 6 fold)", function()
-		local l = InventoryFormat.panelLayout(Vector2.new(893, 673))
-		local widths = buttonSets(1)[4]
-		local d = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, BUTTON_FRAME, 6, widths)
-		-- Actual px from the panel's top edge: the buttons end inside the panel's content box.
-		local bottom = (l.bodyTop + d.buttonsTop + d.buttonsHeight) * l.scale
-		expect.truthy(bottom <= l.contentHeight * l.scale + EPS)
-		-- No buttons: the list takes the whole column.
-		local none = InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, BUTTON_FRAME, 6, {})
-		expect.equal(none.rows, 0)
-		expect.equal(none.scrollHeight, l.detailHeight)
-		expect.equal(none.buttonsHeight, 0)
+	t.test("panelLayout (H:191, H:202): the design's 600 px grid of 4 cards of 138 and the 384 px detail", function()
+		local top = BORDER + Config.UI.Sticker.window.band.height + BODY.padTop
+		local l = InventoryFormat.panelLayout(Vector2.new(1280, 662), top)
+		expect.equal(l.panelWidth, 1060)
+		expect.equal(l.contentWidth, 1006)
+		expect.equal(l.contentHeight, 650 - top - (BORDER + BODY.padBottom))
+		expect.equal(l.gridWidth, 600)
+		expect.equal(l.detailWidth, 384)
+		expect.equal(l.columns, 4)
+		expect.equal(l.cardWidth, 138)
+	end)
+
+	t.test("panelLayout: a narrow window keeps the detail's least width and drops columns, not card width", function()
+		for width = 300, 1400, 37 do
+			local l = InventoryFormat.panelLayout(Vector2.new(width, 700))
+			if l.contentWidth - BODY.gap - BODY.detailMin >= GRID.minCard + SCROLLBAR then
+				expect.truthy(l.detailWidth >= BODY.detailMin - EPS)
+			end
+			expect.truthy(l.cardWidth >= GRID.minCard or l.columns == 1)
+		end
 	end)
 
 	t.test("PANEL: the gaps and padding are Theme's tokens", function()
@@ -371,11 +339,12 @@ return function(t: Context)
 
 	-- Foam UI restyle (2026-10-09) ------------------------------------------------------------------------------------
 
-	-- The header tab's room at the top of the panel (an H2 tab: about 29 base px at the default text, 35 at Largest).
-	local TAB_TOPS = { 29, 35 }
+	-- The top padding: an H2 tab (about 29 base px at the default text, 35 at Largest; the old panels) and the
+	-- design band at full size (UI FINAL R5: the border, the 98 px band and the body's 18).
+	local TAB_TOPS = { 29, 35, 121 }
 
 	for _, screen in SCREENS do
-		t.test(`panelLayout {screen.label} with a header tab: the content box shrinks, the rest still fits`, function()
+		t.test(`panelLayout {screen.label} with the band: the content box shrinks, the button stays pinned`, function()
 			local plain = InventoryFormat.panelLayout(screen.size)
 			expect.equal(plain.topPadding, InventoryFormat.PANEL.padding)
 			for _, top in TAB_TOPS do
@@ -385,22 +354,12 @@ return function(t: Context)
 				expect.equal(l.panelHeight, plain.panelHeight)
 				expect.near(l.bodyTop + l.bodyHeight, l.contentHeight)
 				expect.truthy(l.bodyHeight > 0)
-				expect.equal(l.detailHeight, l.bodyHeight)
-				-- The panel and the tab's outer half (top - its 6 px gap) fit the screen together.
-				expect.truthy((l.panelHeight + (top - 6)) * l.scale <= screen.size.Y + EPS)
-				-- The detail buttons still pin inside the shorter column.
-				for _, textScale in TEXT_SCALES do
-					for _, widths in buttonSets(textScale) do
-						local d = InventoryFormat.detailLayout(
-							l.detailWidth,
-							l.detailHeight,
-							BUTTON_FRAME,
-							InventoryFormat.PANEL.gap,
-							widths
-						)
-						expect.truthy(l.bodyTop + d.buttonsTop + d.buttonsHeight <= l.contentHeight + EPS)
-						expect.truthy(d.scrollHeight > 0)
-					end
+				expect.equal(l.detailHeight, l.contentHeight)
+				-- UI FINAL R5: the one button stays pinned inside the column whatever the rest of the list needs.
+				for _, rest in { 0, 200, 600 } do
+					local d = InventoryFormat.detailLayout(l.detailHeight, BUTTON_FRAME, rest)
+					expect.truthy(d.buttonsTop + BUTTON_FRAME <= l.detailHeight + EPS)
+					expect.truthy(d.listHeight + Config.UI.Inventory.detail.gap <= d.buttonsTop + EPS)
 				end
 			end
 		end)
@@ -498,9 +457,7 @@ return function(t: Context)
 	-- Foam fix batch (2026-10-09) -------------------------------------------------------------------------------------
 
 	local PANEL = InventoryFormat.PANEL
-	-- The Squishies card at the default text (§11.6's 112 + the 12 px display-font room) and an H2 header tab (about
-	-- 45 base px: its line, padding and foam bands).
-	local CARD_WIDTH = Config.UI.Inventory.cardWidth + 12
+	-- An H2 header tab (about 45 base px: its line, padding and foam bands).
 	local TAB_HEIGHT = 45
 	-- SD_Modal on an 844×390 phone: its safe area, as measured in the foam shots (the 0.88 panel was 274 px tall).
 	local PHONE = Vector2.new(844, 311)
@@ -558,64 +515,21 @@ return function(t: Context)
 		end
 	end)
 
-	for _, screen in { { label = "844x390 phone", size = PHONE }, table.unpack(SCREENS) } :: { any } do
-		t.test(
-			`panelLayout {screen.label} with the card width: the grid fits its columns, the detail takes the rest`,
-			function()
-				local chrome = InventoryFormat.hangingChrome(TAB_HEIGHT, TOUCH.closeButton)
-				local plain = InventoryFormat.panelLayout(screen.size, chrome.top)
-				for _, cardWidth in { CARD_WIDTH, 150, 181 } do
-					local l = InventoryFormat.panelLayout(screen.size, chrome.top, cardWidth)
-					expect.truthy(l.columns >= 1)
-					expect.truthy(l.gridWidth <= plain.gridWidth + EPS)
-					expect.near(
-						l.gridWidth,
-						math.min(
-							plain.gridWidth,
-							PANEL.gridChrome
-								+ InventoryFormat.GRID_FIT_SLACK
-								+ l.columns * cardWidth
-								+ (l.columns - 1) * PANEL.cellPad
-						)
-					)
-					expect.truthy(plain.gridWidth - l.gridWidth < cardWidth + PANEL.cellPad)
-					expect.near(l.gridWidth + PANEL.columnGap + l.detailWidth, l.contentWidth)
-					expect.truthy(l.detailWidth >= plain.detailWidth - EPS)
-					-- The rest of the layout does not depend on the cards.
-					expect.equal(l.bodyTop, plain.bodyTop)
-					expect.equal(l.bodyHeight, plain.bodyHeight)
-				end
-			end
-		)
-	end
-
-	-- UI FINAL R3: the Squishies window (H:181) shrunk to the phone with its band on top (Theme.fitWindow: the border,
-	-- the design's 98 px band at the chrome scale, then the body's padding) and its lip under the face: the buttons
-	-- still fit one row and the name and the rarity tag stay whole above them; the preview, which had about 50 px more
-	-- room under the old tab, now hides there (previewPx's 0, fix round 2) until R5 lays the window out anew.
-	t.test(
-		"844x390 phone in the window frame: the three detail buttons fit one row, the name and the tag stay whole",
-		function()
-			local window = Config.UI.Sticker.window
-			local fit = InventoryFormat.panelLayout(PHONE, nil, CARD_WIDTH)
-			expect.truthy(fit.chromeScale > 0 and fit.chromeScale < 1)
-			local top = Config.UI.Sticker.border.heavy + math.ceil(window.band.height * fit.chromeScale) + PANEL.padding
-			local l = InventoryFormat.panelLayout(PHONE, top, CARD_WIDTH)
-			expect.equal(l.class, "compact")
-			expect.equal(l.columns, 3)
-			local d =
-				InventoryFormat.detailLayout(l.detailWidth, l.detailHeight, BUTTON_FRAME, PANEL.gap, buttonSets(1)[4])
-			expect.equal(d.rows, 1)
-			-- Fix round 2: the reserve under the well is the list gap, the name line, the gap and the rarity tag (the tag
-			-- was cut in half above the buttons).
-			local tag = Config.UI.TextSize.Chip * 1.3 + 2 * 2 + 2 * 2 -- the chip's line and padding, its outline room
-			local reserve = 2 * Theme.Padding.small + Config.UI.TextSize.Title * 1.3 + tag
-			local icon = InventoryFormat.previewPx(d.scrollHeight, reserve, 8, 48, 88)
-			-- Hidden here until R5 (NOTES question 1 to the user): a "no" or R5's new inside flips this on purpose.
-			expect.equal(icon, 0)
-			expect.truthy(2 * 8 + icon + reserve <= d.scrollHeight + EPS) -- the tag whole under the name
-		end
-	)
+	-- UI FINAL R5: the 844x390 phone (the window at its chrome scale, the band on top): the detail's stage shrinks to
+	-- its minimum and the list scrolls above the one pinned button; the grid keeps its columns.
+	t.test("844x390 phone: the one button pinned, the stage at its minimum, the list scrolls", function()
+		local fit = InventoryFormat.panelLayout(PHONE)
+		expect.truthy(fit.chromeScale > 0 and fit.chromeScale < 1)
+		local top = BORDER + math.ceil(Config.UI.Sticker.window.band.height * fit.chromeScale) + BODY.padTop
+		local l = InventoryFormat.panelLayout(PHONE, top)
+		expect.equal(l.class, "compact")
+		expect.truthy(l.columns >= 2)
+		-- The rest of the list under the stage: the name row, the chips, the stats and the gaps (about 300 at 16 px).
+		local d = InventoryFormat.detailLayout(l.detailHeight, BUTTON_FRAME, 300)
+		expect.equal(d.stageFace, STAGE.minFace)
+		expect.truthy(d.scrolls)
+		expect.near(d.buttonsTop, l.detailHeight - BUTTON_FRAME)
+	end)
 
 	t.test("previewPx: the preview shrinks so the name stays in view; below its min it hides (0)", function()
 		expect.equal(InventoryFormat.previewPx(300, 45, 8, 48, 88), 88)
@@ -635,66 +549,84 @@ return function(t: Context)
 		end
 	end)
 
-	-- Foam fix round 2 (2026-10-09) ------------------------------------------------------------------------------------
+	-- UI FINAL R5 -----------------------------------------------------------------------------------------------------
 
-	t.test(
-		"detailLayout: the buttons sit PANEL.buttonGap apart (6 read as one), the list ends PANEL.gap above",
-		function()
-			local Theme = t.requireClient("UI/Theme")
-			expect.equal(PANEL.buttonGap, Theme.Padding.medium)
-			expect.truthy(PANEL.buttonGap >= 2 * Theme.Stroke.ink + 4) -- both outlines and some air
-			local d = InventoryFormat.detailLayout(500, 300, 56, PANEL.gap, { 100, 120, 140 })
-			expect.equal(d.rows, 1)
-			expect.equal(d.buttons[1].x, 0) -- the row starts at the column's left edge
-			expect.equal(d.buttons[2].x, 100 + PANEL.buttonGap)
-			expect.equal(d.buttons[3].x, 100 + 120 + 2 * PANEL.buttonGap)
-			expect.equal(d.scrollHeight, 300 - 56 - PANEL.gap)
-		end
-	)
+	t.test("detailLayout (H:217-248): the stage is the design's 186 when the rest fits, else it shrinks", function()
+		local column, gap = 502, Config.UI.Inventory.detail.gap
+		local list = column - BUTTON_FRAME - gap
+		-- The design at its size: the rest (name 34, chips 30, stats 130 and three gaps of 12) leaves the full stage.
+		local roomy = InventoryFormat.detailLayout(column, BUTTON_FRAME, 34 + 30 + 130 + 3 * gap)
+		expect.equal(roomy.stageFace, STAGE.face)
+		expect.equal(roomy.listHeight, list)
+		expect.equal(roomy.buttonsTop, column - BUTTON_FRAME)
+		expect.falsy(roomy.scrolls)
+		-- At 16 px text the rest is taller: the stage shrinks so nothing scrolls.
+		local rest = 45 + 30 + 160 + 3 * gap
+		local tight = InventoryFormat.detailLayout(column, BUTTON_FRAME, rest)
+		expect.equal(tight.stageFace, list - STAGE.lip - rest)
+		expect.truthy(tight.stageFace < STAGE.face and tight.stageFace >= STAGE.minFace)
+		expect.falsy(tight.scrolls)
+		-- A 2-line chip row and more: the stage stops at its minimum and the list scrolls.
+		local tall = InventoryFormat.detailLayout(column, BUTTON_FRAME, 45 + 68 + 200 + 3 * gap)
+		expect.equal(tall.stageFace, STAGE.minFace)
+		expect.truthy(tall.scrolls)
+		-- Bad numbers count as 0.
+		local bad = InventoryFormat.detailLayout(0 / 0, -5, 0 / 0)
+		expect.equal(bad.listHeight, 0)
+		expect.equal(bad.stageFace, STAGE.minFace)
+	end)
 
-	t.test("cardBadges: one row always; the lock pip when it lets both fit, else no 'Ultimate'", function()
-		local inset, gap = 4, 6
-		local notOwned = { w = 108, h = 22 } -- the lock, "Not owned" and the chip padding (measured in the shots)
-		local ultimate = { w = 80, h = 22 }
-		local pip = { w = 24, h = 22 }
-		-- The Dragon's Squishies card when not owned: the lock pip and "Ultimate" share the top row.
-		expect.deepEqual(
-			InventoryFormat.cardBadges(CARD_WIDTH, inset, gap, notOwned, ultimate, pip),
-			{ compact = true, rightShown = true }
-		)
-		-- Owned and Equipped / NEW (no compact form): the card's state stays, "Ultimate" is left out.
-		expect.deepEqual(
-			InventoryFormat.cardBadges(CARD_WIDTH, inset, gap, { w = 90, h = 22 }, ultimate, nil),
-			{ compact = false, rightShown = false }
-		)
-		-- Both fit: unchanged; a missing badge leaves the other alone.
-		expect.deepEqual(
-			InventoryFormat.cardBadges(260, inset, gap, notOwned, ultimate, pip),
-			{ compact = false, rightShown = true }
-		)
-		expect.deepEqual(
-			InventoryFormat.cardBadges(CARD_WIDTH, inset, gap, nil, ultimate, nil),
-			{ compact = false, rightShown = true }
-		)
-		expect.deepEqual(
-			InventoryFormat.cardBadges(CARD_WIDTH, inset, gap, notOwned, nil, pip),
-			{ compact = false, rightShown = false }
-		)
-		-- Every card width and text size: whatever shows fits one row (nothing ever drops onto the portrait).
-		for _, textScale in TEXT_SCALES do
-			local chip = Config.UI.TextSize.Chip * textScale
-			local right = { w = #Strings.rarity.ultimateBadge * chip * EM + 22, h = chip * 1.25 }
-			for _, leftText in { Strings.common.notOwned, Strings.common.equipped, Strings.inventory.new } do
-				local left = { w = #leftText * chip * EM + 12 + 4 + 22, h = chip * 1.25 }
-				for width = 80, 260, 4 do
-					local b = InventoryFormat.cardBadges(width, inset, gap, left, right, pip)
-					if b.rightShown then
-						local leftWidth = if b.compact then pip.w else left.w
-						expect.truthy(inset + leftWidth + gap + right.w + inset <= width + EPS)
-					end
-				end
-			end
+	t.test("tabCounts / tabRowFits / showNewTag / riseSlots (H:927, G5.3, H:933, G5.10)", function()
+		local list = InventoryFormat.entries(Catalog.list(), owned({ "kitty_bread" }), "kitty_bread", never)
+		local counts = InventoryFormat.tabCounts(list)
+		expect.equal(counts.All, #Catalog.list())
+		local sum = 0
+		for _, rarity in { "Common", "Uncommon", "Epic", "Exclusive" } do
+			sum += counts[rarity]
 		end
+		expect.equal(sum, counts.All)
+		expect.truthy(InventoryFormat.tabRowFits({ 100, 100 }, 8, 208))
+		expect.falsy(InventoryFormat.tabRowFits({ 100, 100 }, 8, 207))
+		expect.truthy(InventoryFormat.tabRowFits({}, 8, 0))
+		expect.falsy(InventoryFormat.tabRowFits({ 10 }, 8, 0 / 0))
+		expect.truthy(InventoryFormat.showNewTag(true, false))
+		expect.falsy(InventoryFormat.showNewTag(true, true))
+		expect.falsy(InventoryFormat.showNewTag(false, false))
+		expect.deepEqual(InventoryFormat.riseSlots(0, 3), { 1, 2, 3 })
+		expect.deepEqual(InventoryFormat.riseSlots(4, 6), { 5, 6 })
+		expect.deepEqual(InventoryFormat.riseSlots(6, 4), {})
+		expect.deepEqual(InventoryFormat.riseSlots(0 / 0, 2), { 1, 2 })
+	end)
+
+	t.test("cardFrame (H:203-209): 178 at the design's numbers; a 2-line name grows it by one line", function()
+		local CARD = Config.UI.Inventory.card
+		local inner = 138 - 2 * (CARD.border + CARD.padSide)
+		-- A 20 px line and the 28 px pill (16 px text: the design's 22 grown by the measured extra) fill 178 exactly.
+		expect.deepEqual(InventoryFormat.cardFrame(138, 100, 20, 28), { face = 178, nameLines = 1, inner = inner })
+		local two = InventoryFormat.cardFrame(138, inner + 1, 20, 28)
+		expect.equal(two.nameLines, 2)
+		expect.equal(two.face, 178 + 20)
+		-- The design's own 15 px line (x 1.1) and 22 px pill leave room: still 178.
+		expect.equal(InventoryFormat.cardFrame(138, 100, 16.5, 22).face, 178)
+		-- [PR25]: the dots drop when they and the pill do not fit the footer.
+		expect.truthy(InventoryFormat.footerFits(inner, 0, inner))
+		expect.falsy(InventoryFormat.footerFits(inner, 1, inner))
+		expect.truthy(InventoryFormat.footerFits(inner, 20, inner - 20 - Config.UI.Inventory.footer.gap))
+	end)
+
+	t.test("the stage (H:219, H:224, H:1014) and the throw styles (lib:20-33)", function()
+		expect.near(InventoryFormat.raysAlpha("Epic"), 0.26, EPS)
+		expect.near(InventoryFormat.raysAlpha("Exclusive"), 0.26, EPS)
+		expect.near(InventoryFormat.raysAlpha("Common"), 0.26 * 0.45, EPS)
+		expect.near(InventoryFormat.raysAlpha("Uncommon"), 0.26 * 0.45, EPS)
+		expect.equal(InventoryFormat.stageSquishyPx(186), 190)
+		expect.equal(InventoryFormat.stageSquishyPx(120), math.round(120 * 190 / 186))
+		expect.equal(InventoryFormat.stageSquishyPx(0 / 0), 0)
+		for _, def in Catalog.list() do
+			expect.truthy(InventoryFormat.throwText(def.id) ~= "")
+		end
+		expect.equal(InventoryFormat.throwText("nope"), "")
+		expect.equal(InventoryFormat.throwText("kitty_bread"), "Overhand fastball")
 	end)
 
 	t.test("stats: five bars inside the §5.8 bands, every key with a text", function()

@@ -18,6 +18,11 @@
 -- UI FINAL R2 (G1.1, P7; H:197, H:437): a flip slides the knob over the variant's knobMs (300 / 350) on the design's
 -- cubic-bezier(.3,1.8,.5,1) and eases the track's colour over trackMs (200 / 250, `ease`): Config.UI.Sticker.toggles,
 -- one Scheduler render effect while it moves (Toggle.motionAt, pure); setValue and ReducedMotion snap.
+-- UI FINAL R5 (H:195-197, the Squishies "Show locked" group): spec.stateText = false drops the On / Off text;
+-- spec.labelBeside = "left" puts the label right-aligned just left of the switch (spec.gapPx apart, default 8: H:195),
+-- in Small (16 px, PR2) with line height 1.1, wrapping on its "\n", in the window's text colour (H:196), and draws the
+-- label and switch inside an unlaid-out holder (toggle.visual: a caller's Button.decorate poses it, the hit box stays).
+-- Toggle.widthFor(text, variant, beside?) measures that group (its widest line).
 
 -- Services
 
@@ -52,6 +57,9 @@ export type Spec = {
 	variant: Variant?, -- default "small"
 	layoutOrder: number?,
 	parent: Instance?,
+	stateText: boolean?, -- UI FINAL R5: false = no On / Off text (default shown)
+	labelBeside: "left"?, -- UI FINAL R5: the label right-aligned just left of the switch (see the header)
+	gapPx: number?, -- UI FINAL R5: the label's gap to the switch beside it (default BESIDE_GAP)
 }
 
 -- UI FINAL R1: the design's two switches (Config.UI.Sticker.toggles).
@@ -59,6 +67,7 @@ export type Variant = "small" | "large"
 
 export type Toggle = {
 	root: TextButton,
+	visual: GuiObject, -- UI FINAL R5: what draws the toggle (the label beside it: an inner holder; else the root)
 	setValue: (self: Toggle, value: boolean) -> (),
 	getValue: (self: Toggle) -> boolean,
 	setText: (self: Toggle, text: string) -> (),
@@ -81,6 +90,9 @@ local ON_END = Palette.StickerGreen2End
 local OFF_FILL = Palette.StickerSwitchOff -- H:980
 local WHITE = Color3.new(1, 1, 1)
 local BLACK = Color3.new(0, 0, 0)
+local BESIDE_GAP = 8 -- H:195: the label to the switch
+local BESIDE_LINE_HEIGHT = 1.1 -- H:196
+local BESIDE_KIND: Theme.TextKind = "Small" -- H:196: 13 px -> 16 (PR2)
 
 -- Everything beside the label (base px): the switch, the state text and their gaps.
 local function chromePx(variant: string): number
@@ -108,7 +120,16 @@ end
 
 -- The width (base px) a toggle (default variant "small") needs for `text` on one line at the player's text size, with
 -- its state text and switch.
-function Toggle.widthFor(text: string, variant: Variant?): number
+function Toggle.widthFor(text: string, variant: Variant?, beside: boolean?): number
+	if beside then
+		-- UI FINAL R5: the label beside the switch: its widest line, the gap and the switch.
+		local widest = 0
+		for line in string.gmatch(text, "[^\n]+") do
+			widest = math.max(widest, Theme.textWidth(line, BESIDE_KIND))
+		end
+		local look = TOGGLES[variant or DEFAULT_VARIANT] or TOGGLES[DEFAULT_VARIANT]
+		return math.ceil(widest) + BESIDE_GAP + look.width + MEASURE_MARGIN_PX
+	end
 	return math.ceil(Theme.textWidth(text, "Body")) + chromePx(variant or DEFAULT_VARIANT) + MEASURE_MARGIN_PX
 end
 
@@ -130,6 +151,21 @@ function Toggle.new(spec: Spec): Toggle
 	})
 	cleanup:add(root)
 	Focus.decorate(root)
+	-- UI FINAL R5: beside the switch, the label and the switch sit in an unlaid-out holder a caller may pose.
+	local beside = spec.labelBeside == "left"
+	local holder: GuiObject = root
+	if beside then
+		holder = Create("Frame", {
+			Name = "SD_Visual",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			Active = false,
+			Parent = root,
+		})
+	end
+	local besideGap = spec.gapPx or BESIDE_GAP
 
 	local label = Theme.label({
 		Name = "Label",
@@ -138,15 +174,23 @@ function Toggle.new(spec: Spec): Toggle
 		Position = UDim2.fromScale(0, 0.5),
 		Size = UDim2.new(1, -chrome, 0, 0),
 		TextXAlignment = Enum.TextXAlignment.Left,
-		Parent = root,
+		Parent = holder,
 	}, "Body")
+	if beside then
+		Theme.text(label, BESIDE_KIND)
+		Theme.textOnWindow(label) -- H:196: #8A2468 on the pink body
+		label.LineHeight = BESIDE_LINE_HEIGHT
+		label.TextXAlignment = Enum.TextXAlignment.Right
+		label.Size = UDim2.new(1, -(look.width + besideGap), 0, 0)
+	end
 	local stateLabel = Theme.label({
 		Name = "State",
 		AnchorPoint = Vector2.new(1, 0.5),
 		Position = UDim2.new(1, -(look.width + Theme.Padding.small), 0.5, 0),
 		Size = UDim2.fromOffset(STATE_WIDTH, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
-		Parent = root,
+		Visible = spec.stateText ~= false,
+		Parent = holder,
 	}, "Small", Enum.FontWeight.Bold)
 	local switch: Frame = Create("Frame", {
 		Name = "Switch",
@@ -155,7 +199,7 @@ function Toggle.new(spec: Spec): Toggle
 		Position = UDim2.fromScale(1, 0.5),
 		Size = UDim2.fromOffset(look.width, look.height),
 		Active = false,
-		Parent = root,
+		Parent = holder,
 	})
 	-- The track: a "tint" surface (BackgroundColor3 is its top colour) with the border inside and the inner shade.
 	local track = Theme.foam(switch, {
@@ -277,6 +321,7 @@ function Toggle.new(spec: Spec): Toggle
 
 	local self = {} :: Toggle
 	self.root = root
+	self.visual = holder
 	function self.setValue(_: Toggle, newValue: boolean)
 		value = newValue == true
 		paint()

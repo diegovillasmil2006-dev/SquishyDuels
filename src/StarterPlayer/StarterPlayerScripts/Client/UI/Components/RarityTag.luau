@@ -24,6 +24,15 @@
 -- ui.pillText, else ui.base) with the label white, outlined, in capitals (the Strings labels already are); the pips in
 -- the same colour. Reading: Common is the card footer's darker #6F7D8B (H:933) on every tag, where the design's detail
 -- and odds pills use #8C9AA8 (H:228, H:271): white reads 4.2:1 on it against 2.9:1.
+-- UI FINAL R5 ([P5] [P6]; plan work/ui/PLAN.md R5): spec.variant "card" (H:209) or "detail" (H:228) is the design's
+-- pill (Config.UI.Sticker.pills): its 3 px border drawn INSIDE its box, the design's border-box height (22 / 26),
+-- grown only by the measured extra of the 16 px label (PR2), padding top and sides, the label in the rarityPill role
+-- (capitals, white, the soft drop); "card" fills the card colour (RarityTag.color: Common #6F7D8B, H:933) with plain
+-- round pips beside it (no ink outline, no Exclusive diamonds: dots of Config.UI.Inventory.footer, 6 px apart),
+-- "detail" the rarity's own colour (Common #8C9AA8, H:228) and no pips. tag:setPipsShown(on) drops the pips when
+-- the footer cannot hold them ([PR25]); RarityTag.measurePill(rarity, variant) measures a variant (pillWidth,
+-- pillHeight, pipsWidth). Without a variant the tag is as before (the Shop, the box reveal and Inspect until their
+-- steps).
 
 -- Services
 
@@ -52,12 +61,17 @@ export type Spec = {
 	stacked: boolean?, -- pips above the chip (default: beside it)
 	layoutOrder: number?,
 	parent: Instance?,
+	variant: Variant?, -- UI FINAL R5: the design's pill (see the header)
 }
+
+-- UI FINAL R5: the design's pills (Config.UI.Sticker.pills).
+export type Variant = "card" | "detail"
 
 export type RarityTag = {
 	root: Frame,
 	setRarity: (self: RarityTag, rarity: string) -> (),
 	setStacked: (self: RarityTag, stacked: boolean) -> (),
+	setPipsShown: (self: RarityTag, shown: boolean) -> (), -- UI FINAL R5
 	destroy: (self: RarityTag) -> (),
 }
 
@@ -70,6 +84,9 @@ export type Measure = {
 	stackedWidth: number, -- the wider of the pips and the chip
 	stackedHeight: number, -- pips, gap, chip
 }
+
+-- UI FINAL R5: a variant pill's size (border-box) and its pips' row (0 for a variant without pips), base px.
+export type PillMeasure = { pillWidth: number, pillHeight: number, pipsWidth: number }
 
 -- Constants
 
@@ -86,12 +103,46 @@ local PIP_OUTLINE = Theme.Stroke.bar
 local OUTLINE_ROOM = math.max(CHIP_OUTLINE, PIP_OUTLINE) -- kept free inside the tag's box on every side
 local INLINE_GAP = Theme.Padding.small + PIP_OUTLINE + CHIP_OUTLINE -- between the pips and the chip (6 px of air)
 local STACKED_GAP = 2 + PIP_OUTLINE + CHIP_OUTLINE -- between the pips and the chip, stacked (2 px of air)
+-- UI FINAL R5: the design's pills, the card footer's dots and its gap (H:209), the pill label's role.
+local PILLS = Config.UI.Sticker.pills
+local FOOTER = Config.UI.Inventory.footer
+local PILL_ROLE = "rarityPill"
 
 -- Module table
 
 local RarityTag = {}
 
 -- Public
+
+-- UI FINAL R5: a variant's fill (card: the card colour, RarityTag.color; detail: the rarity's own, ui.base).
+local function pillColor(rarity: string, variant: Variant): Color3
+	local style = RarityStyle.get(rarity)
+	if variant == "detail" and style then
+		return style.ui.base or style.color
+	end
+	return RarityTag.color(rarity)
+end
+
+-- UI FINAL R5: the size of `rarity`'s pill in `variant` (border-box: the label at the player's text size, the side
+-- padding and the border on both sides; the design's height, or the label's line with its top padding and both
+-- borders when that is taller, PR2) and its pips' row (the card's dots; 0 for the detail). An unknown rarity or variant
+-- measures 0.
+function RarityTag.measurePill(rarity: string, variant: Variant): PillMeasure
+	local spec = PILLS[variant]
+	local style = RarityStyle.get(rarity)
+	local info = Rarity.get(rarity)
+	if spec == nil or style == nil or info == nil then
+		return { pillWidth = 0, pillHeight = 0, pipsWidth = 0 }
+	end
+	local kind: Theme.TextKind = Config.UI.Sticker.text[PILL_ROLE].kind :: any
+	local bounds = Theme.textBounds(string.upper(Strings.resolve(info.labelKey) or ""), kind)
+	local pips = if variant == "card" then style.pips else 0
+	return {
+		pillWidth = math.ceil(bounds.X) + 2 * (spec.padX + spec.border),
+		pillHeight = math.max(spec.height, math.ceil(bounds.Y) + spec.padTop + 2 * spec.border),
+		pipsWidth = if pips > 0 then pips * FOOTER.dotPx + (pips - 1) * FOOTER.dotGap else 0,
+	}
+end
 
 -- The sizes (base px, the player's text size) of a tag for `rarity`, both ways round. An unknown rarity measures 0.
 function RarityTag.measure(rarity: string, pipSizePx: number?, textKind: Theme.TextKind?): Measure
@@ -158,9 +209,21 @@ function RarityTag.new(spec: Spec): RarityTag
 		LayoutOrder = spec.layoutOrder or 0,
 	})
 	cleanup:add(root)
-	Theme.padding(OUTLINE_ROOM, root) -- the outlines stay inside the tag's box (measure counts it)
-	local list = Theme.list(Enum.FillDirection.Horizontal, INLINE_GAP, root, Enum.HorizontalAlignment.Left)
+	local variant: Variant? = if spec.variant and PILLS[spec.variant] then spec.variant else nil
+	local pill = if variant then PILLS[variant] else nil
+	if pill == nil then
+		Theme.padding(OUTLINE_ROOM, root) -- the outlines stay inside the tag's box (measure counts it)
+	end
+	local list = Theme.list(
+		Enum.FillDirection.Horizontal,
+		if pill then FOOTER.gap else INLINE_GAP,
+		root,
+		Enum.HorizontalAlignment.Left
+	)
 	local function applyStacked(stacked: boolean)
+		if pill then
+			return -- UI FINAL R5: a design pill keeps its pips beside it (they drop instead, setPipsShown)
+		end
 		list.FillDirection = if stacked then Enum.FillDirection.Vertical else Enum.FillDirection.Horizontal
 		list.HorizontalAlignment = if stacked then Enum.HorizontalAlignment.Center else Enum.HorizontalAlignment.Left
 		list.Padding = UDim.new(0, if stacked then STACKED_GAP else INLINE_GAP)
@@ -171,27 +234,32 @@ function RarityTag.new(spec: Spec): RarityTag
 		Name = "Pips",
 		BackgroundTransparency = 1,
 		AutomaticSize = Enum.AutomaticSize.X,
-		Size = UDim2.fromOffset(0, pipSize),
+		Size = UDim2.fromOffset(0, if pill then FOOTER.dotPx else pipSize),
 		LayoutOrder = 1,
 		Parent = root,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, PIP_GAP_PX, pips)
+	Theme.list(Enum.FillDirection.Horizontal, if pill then FOOTER.dotGap else PIP_GAP_PX, pips)
 
 	local chip: Frame = Create("Frame", {
 		Name = "Chip",
 		BorderSizePixel = 0,
-		AutomaticSize = Enum.AutomaticSize.XY,
-		Size = UDim2.fromOffset(0, CHIP_MIN_HEIGHT),
+		AutomaticSize = if pill then Enum.AutomaticSize.X else Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, if pill then pill.height else CHIP_MIN_HEIGHT),
 		LayoutOrder = 2,
 		Parent = root,
 	})
 	Theme.corner(Theme.Radius.pill, chip)
-	Theme.stroke(Theme.Colors.inkUI, CHIP_OUTLINE, chip)
+	local chipStroke = Theme.stroke(Theme.Colors.inkUI, if pill then pill.border else CHIP_OUTLINE, chip)
+	if pill then
+		pcall(function() -- UI FINAL R5 [P5]: the design's border-box border, drawn inside the pill
+			(chipStroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
+		end)
+	end
 	Create("UIPadding", {
-		PaddingLeft = UDim.new(0, CHIP_PADDING_X),
-		PaddingRight = UDim.new(0, CHIP_PADDING_X),
-		PaddingTop = UDim.new(0, CHIP_PADDING_Y),
-		PaddingBottom = UDim.new(0, CHIP_PADDING_Y),
+		PaddingLeft = UDim.new(0, if pill then pill.padX + pill.border else CHIP_PADDING_X),
+		PaddingRight = UDim.new(0, if pill then pill.padX + pill.border else CHIP_PADDING_X),
+		PaddingTop = UDim.new(0, if pill then pill.padTop + pill.border else CHIP_PADDING_Y),
+		PaddingBottom = UDim.new(0, if pill then pill.border else CHIP_PADDING_Y),
 		Parent = chip,
 	})
 	local label = Theme.label({
@@ -201,6 +269,13 @@ function RarityTag.new(spec: Spec): RarityTag
 		TextWrapped = false,
 		Parent = chip,
 	}, spec.textKind or "Chip", Enum.FontWeight.Bold)
+	if pill then
+		Theme.stickerText(label, PILL_ROLE)
+		label.Size = UDim2.fromScale(0, 1)
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.TextYAlignment = Enum.TextYAlignment.Center
+		pips.Visible = variant == "card" -- the detail pill has none (H:228)
+	end
 
 	local function build(rarity: string)
 		for _, child in pips:GetChildren() do
@@ -215,9 +290,29 @@ function RarityTag.new(spec: Spec): RarityTag
 			return
 		end
 		chip.Visible = true
+		label.Text = string.upper(Strings.resolve(info.labelKey) or "")
+		if variant then
+			-- UI FINAL R5: the design pill (its colour, its measured height) and the card's plain round dots.
+			local color = pillColor(rarity, variant)
+			chip.BackgroundColor3 = color
+			chip.Size = UDim2.fromOffset(0, RarityTag.measurePill(rarity, variant).pillHeight)
+			if variant == "card" then
+				for i = 1, style.pips do
+					local dot: Frame = Create("Frame", {
+						Name = "Pip" .. i,
+						BackgroundColor3 = color,
+						BorderSizePixel = 0,
+						Size = UDim2.fromOffset(FOOTER.dotPx, FOOTER.dotPx),
+						LayoutOrder = i,
+						Parent = pips,
+					})
+					Theme.corner(FOOTER.dotPx, dot)
+				end
+			end
+			return
+		end
 		local color = RarityTag.color(rarity)
 		chip.BackgroundColor3 = color
-		label.Text = string.upper(Strings.resolve(info.labelKey) or "")
 		Theme.textOnColor(label, nil, color)
 		for i = 1, style.pips do
 			local holder: Frame = Create("Frame", {
@@ -258,6 +353,9 @@ function RarityTag.new(spec: Spec): RarityTag
 	end
 	function self.setStacked(_: RarityTag, stacked: boolean)
 		applyStacked(stacked == true)
+	end
+	function self.setPipsShown(_: RarityTag, shown: boolean)
+		pips.Visible = shown
 	end
 	function self.destroy(_: RarityTag)
 		cleanup:clean()
