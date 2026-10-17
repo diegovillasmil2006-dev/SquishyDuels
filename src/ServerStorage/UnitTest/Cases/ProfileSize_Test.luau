@@ -8,7 +8,9 @@
 -- placedMax = 71 items, each Rainbow Galaxy at the top level with an id near 2^53; phase 4: its awayRate a large
 -- fractional Coins a second; phase 5: a full gift queue of giftQueueMax of the longest kind ids, both fixed box
 -- orders at 2^53, the Frog gift given; phase 6: every item's slot (the 12 spots, the rest in the Toy Box) and its
--- lock, false being the longer word), and long worst-case values
+-- lock, false being the longer word; phases 7-8: a full buy-back list of buyBackMax sales, each a Rainbow Galaxy at the
+-- top level with the longest kind id, an id near 2^53, maxCoins paid and a GUID request, and a bag of 2^53 of every
+-- coating), and long worst-case values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -171,6 +173,25 @@ return function(t: Context)
 			p.boxOrder[id] = BIG_COUNTER
 		end
 		p.gifts.frog = true
+		-- Pens3 phases 7-8: every sale a whole Sell All can leave to buy back, and the fullest bag.
+		p.buyBack = {}
+		for i = 1, pen.buyBackMax do
+			table.insert(p.buyBack, {
+				item = {
+					id = BIG_COUNTER - 200 + i,
+					kind = longest,
+					form = #pen.formMult - 1,
+					level = pen.maxLevel,
+					coat = #pen.coatMult - 1,
+					slot = 0,
+					locked = false,
+				},
+				price = Config.Economy.maxCoins,
+				at = NOW,
+				req = guid(900 + i),
+			})
+		end
+		p.bag = table.create(#pen.coatMult - 1, BIG_COUNTER)
 		return p
 	end
 
@@ -209,6 +230,9 @@ return function(t: Context)
 		expect.equal(#decoded.giftQueue, Config.Economy.Pen.giftQueueMax) -- pens3 phase 5: the full queue
 		expect.deepEqual(decoded.boxOrder, p.boxOrder)
 		expect.deepEqual(decoded.gifts, { frog = true })
+		expect.deepEqual(decoded.buyBack, p.buyBack) -- pens3 phase 7: buyBackMax sales, exact
+		expect.equal(#decoded.buyBack, Config.Economy.Pen.buyBackMax)
+		expect.deepEqual(decoded.bag, p.bag) -- pens3 phase 8
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

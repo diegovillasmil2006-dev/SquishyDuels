@@ -571,6 +571,16 @@ local Palette = {
 	PenSignText = Color3.fromHex("#1E1428"), -- K:92 the material Ink (the face's text)
 	PenLabelText = Color3.fromHex("#FFFFFF"), -- K:4266-4270 the "+N/s" coin label: white text
 	PenLabelStroke = Color3.fromHex("#1E1428"), -- its stroke
+	-- Pens3 phase 8 (K:3882-3920): the fusion forms' colours on a walking squishy (Config.UI.Pen.forms): Golden, and
+	-- Rainbow's 7 height bands, bottom to top.
+	PenFormGolden = Color3.fromHex("#FFC93C"),
+	PenFormRainbow1 = Color3.fromHex("#FF6FA3"),
+	PenFormRainbow2 = Color3.fromHex("#FF9C5B"),
+	PenFormRainbow3 = Color3.fromHex("#FFD84A"),
+	PenFormRainbow4 = Color3.fromHex("#8DF27A"),
+	PenFormRainbow5 = Color3.fromHex("#5FE0E8"),
+	PenFormRainbow6 = Color3.fromHex("#7FA8FF"),
+	PenFormRainbow7 = Color3.fromHex("#B98CFF"),
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

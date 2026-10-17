@@ -42,7 +42,12 @@
 --     Bread sits in slot 1; an item with no slot (an older save) gets one once, from the best-N order the pen used
 --     before (rate, then the lower id: the same squishies keep paying), the rest the Toy Box; a slot past the open
 --     spots, a repeated slot or a broken one goes to the Toy Box (slot 0), never dropped; every fix logged; a missing
---     lock is false (like reconcile, not logged), a broken one false (logged).
+--     lock is false (like reconcile, not logged), a broken one false (logged);
+--   * pens3 phases 7-8: buyBack {} and bag {0 x 7} joined the same way (an older profile gets them from reconcile, no
+--     problem; saved values survive JSON); sanitize fails closed and logs: a buy-back entry that is not a sold squishy
+--     (a Catalog kind, form / level / coat in range, a whole id), whole Coins, a finite time no later than now + 300
+--     and a string requestId is dropped (it can't be bought back; its Coins were paid); more than buyBackMax keeps the
+--     newest; the bag becomes one whole count >= 0 per coating (broken -> 0, missing -> 0, extra keys dropped).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -185,6 +190,8 @@ return function(t: Context)
 		expected.giftQueue = {} -- pens3 phase 5: the same
 		expected.boxOrder = { snack = 0, sweet = 0 }
 		expected.gifts = { frog = false }
+		expected.buyBack = {} -- pens3 phases 7-8: the same
+		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
 		expected.pen = { spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) }, awayRate = 0 }
 		for _, kind in { "banana", "toast" } do
@@ -250,6 +257,10 @@ return function(t: Context)
 		expect.deepEqual(d.giftQueue, {})
 		expect.deepEqual(d.boxOrder, { snack = 0, sweet = 0 })
 		expect.deepEqual(d.gifts, { frog = false })
+		-- Pens3 phases 7-8: nothing to buy back, an empty bag (one count per coating, Wax .. Galaxy).
+		expect.deepEqual(d.buyBack, {})
+		expect.deepEqual(d.bag, { 0, 0, 0, 0, 0, 0, 0 })
+		expect.equal(#d.bag, #Config.Economy.Pen.coatMult - 1)
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -1114,5 +1125,98 @@ return function(t: Context)
 		profile.gifts = { frog = false }
 		local _, clean = ProfileSchema.sanitize(profile, { now = NOW })
 		expect.equal(notesAbout(clean, "gifts"), 0)
+	end)
+
+	-- Pens3 phases 7-8 (selling, the buy-back, fusion): buyBack and bag ----------------------------------------------
+
+	-- A buy-back entry: a sold Toast `age` seconds ago for 1,000 Coins.
+	local function sold(id: number, age: number?): any
+		return {
+			item = penItem(id, "toast"),
+			price = 1_000,
+			at = NOW - (age or 0),
+			req = "0123abcd-4567-89ab-cdef-0123456789ab",
+		}
+	end
+
+	t.test("buyBack and bag join schema 2 without a new version: an older profile gets them, no problem", function()
+		expect.equal(ProfileSchema.CURRENT, 2)
+		local older = load(FIXTURE_V1).profile :: any
+		older.buyBack, older.bag = nil, nil -- a v2 profile saved before phase 7
+		local result = load(older)
+		expect.equal(result.fromVersion, 2)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.buyBack, {})
+		expect.deepEqual(result.profile.bag, { 0, 0, 0, 0, 0, 0, 0 })
+		local HttpService = game:GetService("HttpService")
+		local kept = load(FIXTURE_V1).profile :: any
+		kept.buyBack = { sold(40, 30), sold(41) }
+		kept.bag = { 2, 0, 0, 1, 0, 0, 5 }
+		local again = load(HttpService:JSONDecode(HttpService:JSONEncode(kept)))
+		expect.deepEqual(again.problems, {})
+		expect.deepEqual(again.profile.buyBack, { sold(40, 30), sold(41) })
+		expect.deepEqual(again.profile.bag, { 2, 0, 0, 1, 0, 0, 5 })
+	end)
+
+	t.test("sanitize buyBack: broken entries dropped (fail closed), logged; the newest buyBackMax kept", function()
+		local function fixedList(value: any): ({ any }, { string })
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.buyBack = value
+			local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return fixed.buyBack, problems
+		end
+		local good = sold(10)
+		local badKind = sold(11)
+		badKind.item.kind = "unicorn"
+		local badForm = sold(12)
+		badForm.item.form = 3
+		local badId = sold(13)
+		badId.item.id = 1.5
+		local badPrice = sold(14)
+		badPrice.price = -1
+		local badAt = sold(15)
+		badAt.at = NOW + 301 -- later than now + 300: it would wait past its 10 minutes
+		local badReq = sold(16)
+		badReq.req = 5
+		local nan = sold(17)
+		nan.price = 0 / 0
+		local list, problems = fixedList({ good, badKind, badForm, badId, badPrice, badAt, badReq, nan, "x" :: any })
+		expect.deepEqual(list, { sold(10) })
+		expect.equal(notesAbout(problems, "buyBack"), 9) -- each drop, and the new length
+		local garbage, garbageProblems = fixedList("garbage")
+		expect.deepEqual(garbage, {})
+		expect.equal(notesAbout(garbageProblems, "buyBack"), 1)
+		local long = {}
+		for id = 1, Config.Economy.Pen.buyBackMax + 2 do
+			table.insert(long, sold(id))
+		end
+		local trimmed, longProblems = fixedList(long)
+		expect.equal(#trimmed, Config.Economy.Pen.buyBackMax)
+		expect.equal(trimmed[1].item.id, 3) -- the oldest fall off first
+		expect.equal(notesAbout(longProblems, "buyBack"), 1)
+		local fine, fineProblems = fixedList({ sold(20, 900), sold(21) }) -- an expired one is not broken: kept
+		expect.equal(#fine, 2)
+		expect.equal(notesAbout(fineProblems, "buyBack"), 0)
+	end)
+
+	t.test("sanitize bag: one whole count >= 0 per coating; broken -> 0, missing -> 0, extra keys dropped", function()
+		local function fixedBag(value: any): ({ number }, { string })
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.bag = value
+			local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return fixed.bag, problems
+		end
+		local raw: any = { 2.7, -1, 0 / 0, "3" :: any, 4, 0, 1, 9 }
+		raw.x = 2 -- a key outside the list (only a bug or a hand edit makes one)
+		local bag, problems = fixedBag(raw)
+		expect.deepEqual(bag, { 2, 0, 0, 0, 4, 0, 1 })
+		expect.equal(notesAbout(problems, "bag"), 6) -- four counts, the eighth entry and x
+		local short, shortProblems = fixedBag({ 1, 2 })
+		expect.deepEqual(short, { 1, 2, 0, 0, 0, 0, 0 })
+		expect.equal(notesAbout(shortProblems, "bag"), 5)
+		local garbage = fixedBag("garbage")
+		expect.deepEqual(garbage, { 0, 0, 0, 0, 0, 0, 0 })
+		local _, clean = fixedBag({ 0, 1, 0, 0, 0, 0, 3 })
+		expect.equal(notesAbout(clean, "bag"), 0)
 	end)
 end

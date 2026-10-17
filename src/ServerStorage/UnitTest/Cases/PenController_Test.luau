@@ -31,7 +31,10 @@
 --     never walks in before its reveal; the reveal's close syncs it); every other base syncs at once;
 --   * pens3 phase 6: tapHit(tap, points, minPx): the walker a tap lands on: the nearest whose middle is within its
 --     drawn radius or minPx (whichever is bigger), none when the tap is past every reach; start() registers the "pen"
---     screen and destroy() takes it away (engine only, with the lifecycle case).
+--     screen and destroy() takes it away (engine only, with the lifecycle case);
+--   * pens3 phase 8: isFace(name): a part named with a face word (eye, mouth, shine, tongue, nostril, ... any case)
+--     keeps its look; formColor(color, form, share): Golden = 0.7 of the way to #FFC93C, Rainbow = 0.75 of the way to
+--     the band of the part's height (7 bands, bottom #FF6FA3 .. top #B98CFF), plain = nil (K:3882-3920).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -282,4 +285,31 @@ return function(t: Context)
 		expect.equal(overlays(), before)
 		StateController.setOverride("awayGift", nil)
 	end)
+
+	t.test(
+		"pens3 phase 8: isFace keeps the face; formColor blends Golden 0.7 and Rainbow 0.75 by height band",
+		function()
+			for _, name in
+				{ "EyeL", "MouthL", "ShineR", "Tongue", "NostrilL", "SquishMouth", "Pupil", "BrowL", "Blush" }
+			do
+				expect.truthy(PenController.isFace(name))
+			end
+			for _, name in { "Body", "Head", "EarL", "Tail1", "Wrapper" } do
+				expect.falsy(PenController.isFace(name))
+			end
+			local white = Color3.new(1, 1, 1)
+			local function same(a: Color3?, b: Color3): boolean
+				return a ~= nil
+					and math.abs(a.R - b.R) < 1e-6
+					and math.abs(a.G - b.G) < 1e-6
+					and math.abs(a.B - b.B) < 1e-6
+			end
+			expect.equal(PenController.formColor(white, 0, 0.5), nil)
+			expect.truthy(same(PenController.formColor(white, 1, 0.5), white:Lerp(Color3.fromHex("#FFC93C"), 0.7)))
+			expect.truthy(same(PenController.formColor(white, 2, 0), white:Lerp(Color3.fromHex("#FF6FA3"), 0.75)))
+			expect.truthy(same(PenController.formColor(white, 2, 0.5), white:Lerp(Color3.fromHex("#8DF27A"), 0.75)))
+			expect.truthy(same(PenController.formColor(white, 2, 1), white:Lerp(Color3.fromHex("#B98CFF"), 0.75)))
+			expect.truthy(same(PenController.formColor(white, 2, -1), white:Lerp(Color3.fromHex("#FF6FA3"), 0.75)))
+		end
+	)
 end

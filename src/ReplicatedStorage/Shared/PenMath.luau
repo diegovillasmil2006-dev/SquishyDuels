@@ -63,6 +63,30 @@
 --                                   is not a pen (fail closed: nothing is granted into a broken pen). 0 = the Toy Box
 --                                   is full.
 --                                   shortcut: the shelf spots (placedMax, phase 11) do not count yet; add them then.
+-- Pens3 phase 7 (selling, D1:217-225; the 10-minute buy-back):
+--   PenMath.sellPrice(item)      -> number: sellPrice[rarity] × sellFormMult[form + 1] Coins (level and coat add
+--                                   nothing: food and coatings are not refunded); 0 for anything not an item's look
+--   PenMath.sellDecision(pen, ids) -> (Sale?, code?): the pure SellItems / SellAll checks, each over every id before
+--                                   the next: a broken pen, or ids not a list of 1..sellMaxIds distinct whole numbers
+--                                   -> "net.invalid"; an id not in the pen -> "inventory.notOwned"; Kitty Bread (the
+--                                   starter) -> "pen.sellStarter"; a locked one -> "pen.locked"; no copy of a kind
+--                                   would stay (every form counts, so the equipped kind always keeps one) ->
+--                                   "pen.lastCopy". Else Sale {items, coins} (coins at most maxCoins).
+--   PenMath.sellAllIds(pen)      -> {number}: what Sell All sells, in list order: the Toy Box squishies (never a placed
+--                                   one: they earn) at Lv 1, plain, unlocked, not Kitty Bread; of a kind nothing else
+--                                   keeps, the best one (better) stays. At most sellMaxIds.
+--   PenMath.liveBuyBack(list, now) -> {BuyBackEntry}: the entries that can still be bought back (now - at <
+--                                   buyBackSeconds, an item and whole Coins), oldest first, the newest buyBackMax
+--   PenMath.buyBackDecision(list, pen, id, now) -> (BuyBack?, code?): id not whole -> "net.invalid"; no live entry
+--                                   of that sold item id -> "pen.buyBackGone"; no room (PenMath.room 0) ->
+--                                   "inventory.full". Else BuyBack {index (in `list`), entry}.
+-- Pens3 phase 8 (fusion, D1:227-232, V2:232):
+--   PenMath.fuseDecision(pen, ids) -> (Fusion?, code?): ids not 3 distinct whole numbers, or a broken pen ->
+--                                   "net.invalid"; one not in the pen -> "inventory.notOwned"; one locked ->
+--                                   "pen.locked"; not one kind and one form -> "pen.fuseMismatch"; Rainbow (the last
+--                                   form) -> "pen.fuseTop". Else Fusion {keeper (the highest level; a tie: a placed
+--                                   one, then the lower id: the result is it, in its slot), others, form + 1, level,
+--                                   coats (each input's coating, for the bag)}. No luck, free.
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -78,6 +102,11 @@ export type Buy = { spot: number, price: number }
 export type Look = { kind: string, form: number, level: number, coat: number }
 export type Rect = { minX: number, maxX: number, minZ: number, maxZ: number }
 export type Move = { id: number, from: number, to: number, swapId: number? } -- pens3 phase 6: one PenPlace
+export type Sale = { items: { Types.PenItem }, coins: number } -- pens3 phase 7: one SellItems / SellAll
+export type BuyBack = { index: number, entry: Types.BuyBackEntry } -- the entry of one BuyBack (its list index)
+-- Pens3 phase 8: one Fuse: the keeper becomes the result (form, level), the others go, the coatings go to the bag.
+export type Fusion =
+	{ keeper: Types.PenItem, others: { Types.PenItem }, form: number, level: number, coats: { number } }
 
 -- Constants
 
@@ -90,6 +119,13 @@ local CODE_PRICE = "pen.priceChanged"
 local CODE_NOT_OWNED = "inventory.notOwned" -- pens3 phase 6
 local CODE_CLOSED = "pen.spotClosed"
 local CODE_FULL = "inventory.full"
+local CODE_STARTER = "pen.sellStarter" -- pens3 phase 7
+local CODE_LOCKED = "pen.locked"
+local CODE_LAST = "pen.lastCopy"
+local CODE_GONE = "pen.buyBackGone"
+local CODE_MISMATCH = "pen.fuseMismatch" -- pens3 phase 8
+local CODE_TOP = "pen.fuseTop"
+local FUSE_COUNT = 3 -- D1:227: 3 of the same make the next form
 
 -- Module table
 
@@ -312,6 +348,218 @@ function PenMath.buyDecision(pen: any, expectedPrice: any): (Buy?, string?)
 		return nil, CODE_PRICE
 	end
 	return { spot = spot, price = price }, nil
+end
+
+-- Public: selling, the buy-back and fusion (pens3 phases 7-8)
+
+-- True for a list of `min`..`max` distinct whole numbers (the ids of a sale or a fusion).
+local function idList(ids: any, min: number, max: number): boolean
+	if type(ids) ~= "table" then
+		return false
+	end
+	local count = 0
+	for _ in ids do
+		count += 1
+	end
+	if count ~= #ids or count < min or count > max then
+		return false
+	end
+	local seen: { [number]: boolean } = {}
+	for _, id in ids do
+		if not isWhole(id) or seen[id] then
+			return false
+		end
+		seen[id] = true
+	end
+	return true
+end
+
+-- The pen's items with these ids, in their order, or (nil, inventory.notOwned).
+local function itemsOf(pen: any, ids: { number }): ({ Types.PenItem }?, string?)
+	local list: { Types.PenItem } = {}
+	for _, id in ids do
+		local found = PenMath.find(pen, id)
+		if found == nil then
+			return nil, CODE_NOT_OWNED
+		end
+		table.insert(list, found)
+	end
+	return list, nil
+end
+
+local function isEntry(entry: any): boolean
+	return type(entry) == "table" and isItem(entry.item) and Validate.coins(entry.price) ~= nil and isFinite(entry.at)
+end
+
+-- A better fusion keeper: the higher level, then a placed one, then the lower id.
+local function keeps(a: Types.PenItem, b: Types.PenItem, spots: number): boolean
+	if a.level ~= b.level then
+		return a.level > b.level
+	end
+	local placedA, placedB = inRange(a.slot, 1, spots), inRange(b.slot, 1, spots)
+	if placedA ~= placedB then
+		return placedA
+	end
+	return a.id < b.id
+end
+
+function PenMath.sellPrice(item: any): number
+	if not isLook(item) then
+		return 0
+	end
+	local def = Catalog.get(item.kind) :: Types.SquishyDef
+	return math.min((PEN.sellPrice[def.rarity] or 0) * PEN.sellFormMult[item.form + 1], MAX_COINS)
+end
+
+function PenMath.sellDecision(pen: any, ids: any): (Sale?, string?)
+	if spotsOf(pen) == nil or type(pen.items) ~= "table" or not idList(ids, 1, PEN.sellMaxIds) then
+		return nil, CODE_INVALID
+	end
+	local items, missing = itemsOf(pen, ids)
+	if items == nil then
+		return nil, missing
+	end
+	local starter = Catalog.starterId()
+	for _, it in items do
+		if it.kind == starter then
+			return nil, CODE_STARTER
+		end
+	end
+	for _, it in items do
+		if it.locked == true then
+			return nil, CODE_LOCKED
+		end
+	end
+	local selling: { [number]: boolean } = {}
+	for _, it in items do
+		selling[it.id] = true
+	end
+	local left: { [string]: number } = {} -- the copies of each kind that stay (every form counts, D1:221)
+	for _, it in pen.items do
+		if isItem(it) and not selling[it.id] then
+			left[it.kind] = (left[it.kind] or 0) + 1
+		end
+	end
+	local coins = 0
+	for _, it in items do
+		if (left[it.kind] or 0) == 0 then
+			return nil, CODE_LAST
+		end
+		coins += PenMath.sellPrice(it)
+	end
+	return { items = items, coins = math.min(coins, MAX_COINS) }, nil
+end
+
+function PenMath.sellAllIds(pen: any): { number }
+	local starter = Catalog.starterId()
+	local candidates: { Types.PenItem } = {}
+	for _, it in PenMath.toyBox(pen) do
+		if it.level == 1 and it.form == 0 and it.locked ~= true and it.kind ~= starter then
+			table.insert(candidates, it)
+		end
+	end
+	local ids: { number } = {}
+	if #candidates == 0 then
+		return ids
+	end
+	local selling: { [any]: boolean } = {}
+	for _, it in candidates do
+		selling[it] = true
+	end
+	local stays: { [string]: boolean } = {}
+	for _, it in pen.items do
+		if isItem(it) and not selling[it] then
+			stays[it.kind] = true
+		end
+	end
+	local keep: { [string]: Types.PenItem } = {} -- the best candidate of a kind nothing else keeps
+	for _, it in candidates do
+		local best = keep[it.kind]
+		if not stays[it.kind] and (best == nil or PenMath.better(it, best)) then
+			keep[it.kind] = it
+		end
+	end
+	for _, it in candidates do
+		if keep[it.kind] ~= it and #ids < PEN.sellMaxIds then
+			table.insert(ids, it.id) -- shortcut: an over-full Toy Box (only a sanitize gets there) takes two Sell Alls
+		end
+	end
+	return ids
+end
+
+function PenMath.liveBuyBack(list: any, now: number): { Types.BuyBackEntry }
+	local live: { Types.BuyBackEntry } = {}
+	if type(list) ~= "table" then
+		return live
+	end
+	for _, entry in ipairs(list) do
+		if isEntry(entry) and now - entry.at < PEN.buyBackSeconds then
+			table.insert(live, entry)
+		end
+	end
+	while #live > PEN.buyBackMax do
+		table.remove(live, 1)
+	end
+	return live
+end
+
+function PenMath.buyBackDecision(list: any, pen: any, id: any, now: number): (BuyBack?, string?)
+	if not isWhole(id) then
+		return nil, CODE_INVALID
+	end
+	if type(list) == "table" then
+		for index, entry in ipairs(list) do
+			if isEntry(entry) and entry.item.id == id and now - entry.at < PEN.buyBackSeconds then
+				if PenMath.room(pen) <= 0 then
+					return nil, CODE_FULL
+				end
+				return { index = index, entry = entry }, nil
+			end
+		end
+	end
+	return nil, CODE_GONE
+end
+
+function PenMath.fuseDecision(pen: any, ids: any): (Fusion?, string?)
+	local spots = spotsOf(pen)
+	if spots == nil or type(pen.items) ~= "table" or not idList(ids, FUSE_COUNT, FUSE_COUNT) then
+		return nil, CODE_INVALID
+	end
+	local items, missing = itemsOf(pen, ids)
+	if items == nil then
+		return nil, missing
+	end
+	for _, it in items do
+		if it.locked == true then
+			return nil, CODE_LOCKED
+		end
+	end
+	local first = items[1]
+	for _, it in items do
+		if it.kind ~= first.kind or it.form ~= first.form then
+			return nil, CODE_MISMATCH
+		end
+	end
+	if first.form >= #PEN.formMult - 1 then
+		return nil, CODE_TOP -- Rainbow is the top
+	end
+	local keeper = first
+	for _, it in items do
+		if keeps(it, keeper, spots :: number) then
+			keeper = it
+		end
+	end
+	local others: { Types.PenItem } = {}
+	local coats: { number } = {}
+	for _, it in items do
+		if it ~= keeper then
+			table.insert(others, it)
+		end
+		if it.coat > 0 then
+			table.insert(coats, it.coat)
+		end
+	end
+	return { keeper = keeper, others = others, form = first.form + 1, level = keeper.level, coats = coats }, nil
 end
 
 -- Public: the tick

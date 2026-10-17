@@ -10,6 +10,7 @@
 -- FFA/TDM v1 (2026-10-15): MatchJoin(mode) and MatchLeave (the client's chat commands), MatchState (the server's
 -- per-player Free for All / Team Deathmatch view, Types.MatchStateView).
 -- Pens3 phase 6: PenPlace(itemId, slot) and PenLock(itemId, locked) (PenService; the pen screen).
+-- Pens3 phases 7-8: SellItems(ids, requestId), SellAll(requestId), BuyBack(itemId) and Fuse(a, b, c) (PenService).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -39,6 +40,7 @@ export type ArgType =
 	| "stepId"
 	| "reasonCode" -- dotted code from §2.10 (text under Strings.reason)
 	| "messageCode" -- a §2.10 reason code or any other Strings key; Strings.reasonText resolves both
+	| "itemIds" -- pens3 phase 7: a list of 1..Config.Economy.Pen.sellMaxIds pen item ids (whole numbers)
 export type ArgSpec = {
 	name: string,
 	type: ArgType,
@@ -178,6 +180,14 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- savePending}.
 	PenPlace = c2s("RemoteFunction", { arg("itemId", "integer"), arg("slot", "integer") }),
 	PenLock = c2s("RemoteFunction", { arg("itemId", "integer"), arg("locked", "boolean") }),
+	-- Pens3 phases 7-8 (PenService, the pen screen): sell the caller's own squishies (pen item ids; a requestId makes a
+	-- retry replay, never sell twice; data Types.SellResult), Sell All (the Toy Box's plain Lv 1 unlocked ones, one of
+	-- each kind kept), buy one back within the buy-back time (its sold item id; data Types.PenResult, charged = true),
+	-- and fuse 3 of the same (data Types.FuseResult). No remote takes a base, plot or player id.
+	SellItems = c2s("RemoteFunction", { arg("ids", "itemIds"), arg("requestId", "requestId") }),
+	SellAll = c2s("RemoteFunction", { arg("requestId", "requestId") }),
+	BuyBack = c2s("RemoteFunction", { arg("itemId", "integer") }),
+	Fuse = c2s("RemoteFunction", { arg("a", "integer"), arg("b", "integer"), arg("c", "integer") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

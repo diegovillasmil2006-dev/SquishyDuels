@@ -52,7 +52,14 @@
 -- items with no slot (an older save, or an item the owned rule added) get one, once, in the order the pen used before
 -- (PenMath.better: the higher rate, then the lower id), the free spots first, then the Toy Box, each logged (so an old
 -- save's best `spots` squishies keep paying); a missing lock is false (not logged, like reconcile), a lock that is not
--- a boolean false (logged).
+-- a boolean false (logged). Pens3 phases 7-8 (selling, the buy-back, fusion) joined the same way: `buyBack = {}`
+-- (the sales that can still be bought back, oldest first: Types.BuyBackEntry {item, price, at, req}) and `bag = {0 x
+-- #coatMult - 1}` (the coatings that came off fused or sold squishies, one count per coating, index = the coat).
+-- fixSales fails closed: an entry that is not a sold squishy (a Catalog kind, form / level / coat in range, a whole
+-- id), whole Coins in [0, maxCoins], a finite `at` no later than now + 300 and a string req is dropped and logged
+-- (its Coins were paid; it is no longer owned, so nothing anyone owns is lost); more than Pen.buyBackMax keeps the
+-- newest (logged); an expired entry is kept (PenMath.liveBuyBack leaves it out, the next sale prunes it). The bag: not
+-- a table -> zeros; each count a whole number in [0, 2^53] (non-finite or missing -> 0), any other key dropped; logged.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -576,6 +583,68 @@ local function fixGifts(d: any, catalog: CatalogLike, fresh: any, problems: { st
 	fixFlagMap(gifts, true, "gifts", problems)
 end
 
+-- Pens3 phases 7-8 (see the header): the buy-back list and the bag. Fixed in place, every fix noted.
+local function isSale(entry: any, catalog: CatalogLike, now: number): boolean
+	local item = if type(entry) == "table" then entry.item else nil
+	local function whole(v: unknown, lo: number, hi: number): boolean
+		return isFinite(v) and math.floor(v :: number) == v and (v :: number) >= lo and (v :: number) <= hi
+	end
+	return type(item) == "table"
+		and catalog.isValidId(item.kind)
+		and whole(item.form, 0, #PEN.formMult - 1)
+		and whole(item.level, 1, PEN.maxLevel)
+		and whole(item.coat, 0, #PEN.coatMult - 1)
+		and whole(item.id, 1, MAX_COUNTER)
+		and whole(entry.price, 0, Config.Economy.maxCoins)
+		and isFinite(entry.at)
+		and entry.at <= now + FUTURE_SLACK_SECONDS
+		and type(entry.req) == "string"
+end
+
+local function fixSales(d: any, catalog: CatalogLike, now: number, problems: { string })
+	local list = ensureTable(d, "buyBack", function()
+		return {}
+	end, "buyBack", problems)
+	local kept: { any } = {}
+	local count = 0
+	for _ in list do
+		count += 1
+	end
+	for index, entry in ipairs(list) do
+		if isSale(entry, catalog, now) then
+			table.insert(kept, entry)
+		else
+			local item = if type(entry) == "table" and type(entry.item) == "table" then entry.item.kind else entry
+			note(problems, `buyBack[{index}]`, item, "removed")
+		end
+	end
+	local trimmed = #kept > PEN.buyBackMax
+	if #kept ~= count then
+		note(problems, "buyBack", count, #kept)
+	end
+	if trimmed then
+		note(problems, "buyBack (over buyBackMax, newest kept)", #kept, PEN.buyBackMax)
+		kept = table.move(kept, #kept - PEN.buyBackMax + 1, #kept, 1, {})
+	end
+	if trimmed or #kept ~= count then
+		d.buyBack = kept
+	end
+
+	local size = #PEN.coatMult - 1
+	local bag = ensureTable(d, "bag", function()
+		return table.create(size, 0)
+	end, "bag", problems)
+	for key, value in table.clone(bag) :: { [any]: any } do
+		if not (type(key) == "number" and key >= 1 and key <= size and math.floor(key) == key) then
+			bag[key] = nil
+			note(problems, `bag[{show(key)}]`, value, "removed")
+		end
+	end
+	for index = 1, size do
+		fixInt(bag, index :: any, 0, MAX_COUNTER, 0, `bag[{index}]`, problems)
+	end
+end
+
 local function versionOf(d: any): number
 	local v = tonumber(d.schemaVersion)
 	if v == nil or v ~= v or v < 1 then
@@ -636,6 +705,8 @@ function ProfileSchema.defaults(now: number): Profile
 		giftQueue = {},
 		boxOrder = {},
 		gifts = { frog = false },
+		buyBack = {}, -- pens3 phase 7: nothing to buy back
+		bag = table.create(#PEN.coatMult - 1, 0), -- pens3 phase 8: no coating in the bag
 	}
 	for _, id in PAID_BOX_IDS do
 		profile.boxOrder[id] = 0
@@ -821,6 +892,7 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 	-- The pen (pens3 phase 1, see the header).
 	fixPen(d, catalog, now, problems)
 	fixGifts(d, catalog, fresh, problems) -- pens3 phase 5
+	fixSales(d, catalog, now, problems) -- pens3 phases 7-8
 
 	-- Auto-clicker check (2026-10-16): the last strike (see the header).
 	local autoClick = ensureTable(d, "autoClick", function()

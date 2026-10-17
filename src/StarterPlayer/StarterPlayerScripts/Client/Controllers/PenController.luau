@@ -58,12 +58,28 @@
 --   walker's middle (or its drawn size when bigger; tapHit, pure) within tapStuds of the camera (the walkers are out
 --   of every query, so this is a screen-space test, not a ray), so that press never squeezes; on its release the
 --   screen opens when it was a tap (Config.Inspect.Input tapMaxPixels and tapMaxMs), else it was a camera drag.
+-- * Pens3 phases 7-8 (selling, the 10-minute buy-back, fusion; stand-ins in the same screen): PenFormat.view also gets
+--   StateController's buyBack and coins, the server's time (Workspace:GetServerTimeNow), the selected sold card and
+--   the confirm step open. SELL / SELL ALL / BUY BACK / FUSE open the confirm; its confirm sends SellItems(ids, a new
+--   requestId GUID), SellAll(a new GUID), BuyBack(the sold id) or Fuse(the 3 ids), one at a time like PenPlace;
+--   CANCEL (or a tap on a card) closes it. A hold action (selling Golden, Rainbow, Lv 10+ or Epic+) confirms only after
+--   its press is held Config.UI.Pen.screen.holdSeconds: the screen reports the press and the release, the one
+--   Scheduler effect (step) times it and fills the screen's hold bar. A sale plays ui.coin and floats "+N" from the
+--   count line (UiFx.float), a buy-back ui.purchase, a fusion ui.levelTone with UiFx.burst (large for Golden, huge for
+--   Rainbow) and the toast "You made a {name}!", and selects the result. The same effect redraws the screen once a
+--   minute while it is open (the sold cards' minutes: plain numbers, no ticking countdown).
+-- * Pens3 phase 8, the walking looks (K:3882-3920; Config.UI.Pen.forms): a Golden or Rainbow walker's parts, except
+--   the face's (isFace), take formColor (Golden: blend 0.7 toward PenFormGolden; Rainbow: blend 0.75 toward the
+--   PenFormRainbow band of the part's middle in the model's height) and the form's material, reflectance and
+--   transparency when it is built (a hidden part stays hidden). Nothing else: no extra meshes, no sparkle yet.
 -- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
--- syncWaits, tapHit), init(), start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
+-- syncWaits, tapHit, isFace, formColor), init(), start(), destroy() (tests and leak checks; the bootstrap never calls
+-- it), debugState().
 
 -- Services
 
 local CollectionService = game:GetService("CollectionService")
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ProximityPromptService = game:GetService("ProximityPromptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -96,6 +112,7 @@ local CongratsOverlay = require(Client.UI.CongratsOverlay)
 local PenFormat = require(Client.UI.PenFormat)
 local PenScreen = require(Client.UI.PenScreen)
 local Theme = require(Client.UI.Theme)
+local UiFx = require(Client.UI.UiFx)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
@@ -190,6 +207,24 @@ local MODAL_GUI = "SD_Modal"
 local REMOTE_PLACE = "PenPlace"
 local REMOTE_LOCK = "PenLock"
 local TAP = Config.Inspect.Input -- a tap: under tapMaxPixels and tapMaxMs (the old capsule card's rule)
+-- Pens3 phases 7-8.
+local REMOTE_SELL = "SellItems"
+local REMOTE_SELL_ALL = "SellAll"
+local REMOTE_BUY_BACK = "BuyBack"
+local REMOTE_FUSE = "Fuse"
+local FIELD_BUY_BACK = "buyBack"
+local SOUND_SELL = "ui.coin"
+local SOUND_FUSE = "ui.levelTone"
+local FORMS = P.forms
+local RAINBOW = {
+	Palette.PenFormRainbow1,
+	Palette.PenFormRainbow2,
+	Palette.PenFormRainbow3,
+	Palette.PenFormRainbow4,
+	Palette.PenFormRainbow5,
+	Palette.PenFormRainbow6,
+	Palette.PenFormRainbow7,
+}
 
 -- Module table
 
@@ -212,7 +247,11 @@ local awayBack: (() -> ())? = nil -- its back handler (UIController.pushBack)
 local screen: PenScreen.PenScreen? = nil
 local selectedId: number? = nil
 local picking = false -- MOVE / SWAP: the next pen spot tapped takes the selected squishy
-local busy = false -- a PenPlace / PenLock is running
+local busy = false -- a PenPlace / PenLock (pens3 phases 7-8: or a sell, buy-back or fuse) is running
+local soldId: number? = nil -- pens3 phase 7: the selected sold card
+local confirm: PenFormat.ConfirmKind? = nil -- the confirm step open
+local holdAt: number? = nil -- os.clock() of a hold action's press
+local soldMinute = -1 -- the server minute the screen was last drawn in (the sold cards' minutes)
 local pendingTap: { input: InputObject, from: Vector3, at: number, index: number, look: PenMath.Look }? = nil
 
 local function rnd(): number
@@ -266,6 +305,20 @@ local function build(look: PenMath.Look): Walker?
 		model:ScaleTo(model:GetScale() * studs / longest)
 	end
 	local box, size = model:GetBoundingBox()
+	-- Pens3 phase 8: a Golden or Rainbow look (see the header).
+	local form = if look.form == 1 then FORMS.golden elseif look.form == 2 then FORMS.rainbow else nil
+	if form then
+		local bottom = box.Position.Y - size.Y / 2
+		for _, part in model:GetDescendants() do
+			if part:IsA("BasePart") and part.Transparency < 1 and not PenController.isFace(part.Name) then
+				local share = if size.Y > 0 then (part.Position.Y - bottom) / size.Y else 0
+				part.Color = PenController.formColor(part.Color, look.form, share) or part.Color
+				part.Material = (Enum.Material :: any)[form.material]
+				part.Reflectance = form.reflectance
+				part.Transparency = form.transparency
+			end
+		end
+	end
 	local bottom = model:GetPivot():PointToObjectSpace(box.Position).Y - size.Y / 2
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "SD_PenRate"
@@ -559,9 +612,13 @@ local function stepPop()
 	p.face.Size = Vector3.new(p.size.X * scale, p.size.Y * scale, p.size.Z)
 end
 
+-- Pens3 phases 7-8: the pen screen's part of the effect (set with the screen's code below).
+local stepScreen: () -> ()
+
 -- One frame of every pen near the camera and of the sign pop (see the header).
 local function step(dt: number, _now: number): boolean
 	stepPop()
+	stepScreen() -- pens3 phases 7-8
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
 		return true
@@ -670,7 +727,13 @@ end
 -- Pens3 phase 6: the pen screen (see the header) ---------------------------------------------------------------------
 
 local function currentView(): PenFormat.View
-	return PenFormat.view(StateController.get("pen"), selectedId, picking)
+	return PenFormat.view(StateController.get("pen"), selectedId, picking, {
+		buyBack = StateController.get(FIELD_BUY_BACK),
+		now = Workspace:GetServerTimeNow(),
+		coins = StateController.get("coins"),
+		soldId = soldId,
+		confirm = confirm,
+	})
 end
 
 local function render()
@@ -680,28 +743,116 @@ local function render()
 		if view.selected == nil then
 			selectedId, picking = nil, false -- the squishy is gone
 		end
+		if view.soldSelected == nil then
+			soldId = nil -- bought back, or its time is over
+		end
+		confirm = view.confirm -- a confirm that cannot open any more is closed
 		s:render(view, busy)
 	end
 end
 
--- One PenPlace / PenLock at a time; the server decides, the state delta redraws the screen.
-local function send(remote: string, ...: any)
+-- One PenPlace / PenLock (pens3 phases 7-8: or SellItems / SellAll / BuyBack / Fuse) at a time; the server decides,
+-- the state delta redraws the screen. Returns the result (nil when another one runs or the controller went away).
+local function send(remote: string, ...: any): any
 	if busy then
-		return
+		return nil
 	end
 	busy = true
+	holdAt = nil
 	render()
 	local result = NetController.invokeAsync(remote, ...)
 	busy = false
 	if cleanup == nil then
-		return -- destroyed meanwhile
+		return nil -- destroyed meanwhile
 	end
-	if result.ok then
-		picking = false
-	else
+	picking, confirm = false, nil
+	if not result.ok then
 		NotifyController.showResult(result)
 	end
 	render()
+	return result
+end
+
+-- Pens3 phases 7-8: the feel of an accepted sale, buy-back or fusion (see the header).
+local function celebrate(kind: PenFormat.ConfirmKind, data: any)
+	local s = screen
+	local at = if s then s.statusRoot else nil
+	if kind == "fuse" then
+		local item = PenMath.find(data.pen, data.id)
+		SoundController.play(SOUND_FUSE)
+		if item and at then
+			local rainbow = item.form >= 2
+			local tier: UiFx.Tier = if rainbow then "huge" else "large"
+			UiFx.burst(at, tier, if rainbow then RAINBOW[1] else Palette.PenFormGolden)
+		end
+		if item then
+			NotifyController.show("pen.screen.fused", { name = PenFormat.formName(item) }, "success")
+			selectedId = item.id -- the result stays selected
+		end
+	elseif kind == "buyBack" then
+		SoundController.play(SOUND_PURCHASE)
+	else
+		SoundController.play(SOUND_SELL)
+		if at and type(data.coins) == "number" and data.coins > 0 then
+			UiFx.float(at, "+" .. Format.coins(data.coins))
+		end
+	end
+	render()
+end
+
+local function sendFor(kind: PenFormat.ConfirmKind, remote: string, ...: any)
+	local result = send(remote, ...)
+	if result and result.ok and type(result.data) == "table" then
+		celebrate(kind, result.data)
+	end
+end
+
+-- The confirm step's confirm: what the view says to send.
+local function confirmNow()
+	local view = currentView()
+	local kind = view.confirm
+	if kind == "sell" and view.sellIds then
+		task.spawn(sendFor, kind, REMOTE_SELL, view.sellIds, HttpService:GenerateGUID(false))
+	elseif kind == "sellAll" then
+		task.spawn(sendFor, kind, REMOTE_SELL_ALL, HttpService:GenerateGUID(false))
+	elseif kind == "buyBack" and view.soldSelected then
+		task.spawn(sendFor, kind, REMOTE_BUY_BACK, view.soldSelected.id)
+	elseif kind == "fuse" and view.fuseIds then
+		local ids = view.fuseIds
+		task.spawn(sendFor, kind, REMOTE_FUSE, ids[1], ids[2], ids[3])
+	end
+end
+
+-- A hold action's press (true) or release (false); the step times it.
+local function onHold(_id: string, down: boolean)
+	holdAt = if down and not busy then os.clock() else nil
+	local s = screen
+	if s and not down then
+		s:setHold(nil)
+	end
+end
+
+-- The screen's part of the one effect: the hold, and a redraw once a minute (the sold cards' minutes).
+function stepScreen()
+	local s = screen
+	if s == nil then
+		return
+	end
+	local started = holdAt
+	if started ~= nil then
+		local fraction = PenFormat.holdFraction(started, os.clock())
+		s:setHold(fraction)
+		if fraction >= 1 then
+			holdAt = nil
+			s:setHold(nil)
+			confirmNow()
+		end
+	end
+	local minute = math.floor(Workspace:GetServerTimeNow() / 60)
+	if minute ~= soldMinute then
+		soldMinute = minute
+		render()
+	end
 end
 
 local function onCard(slot: number?, itemId: number?)
@@ -709,14 +860,34 @@ local function onCard(slot: number?, itemId: number?)
 	if what == "place" then
 		task.spawn(send, REMOTE_PLACE, a, b)
 	elseif what == "select" then
-		selectedId, picking = a, false
+		selectedId, picking, soldId, confirm = a, false, nil, nil
 		render()
 	end
 end
 
+-- Pens3 phase 7: a sold card.
+local function onSold(itemId: number)
+	selectedId, picking, soldId, confirm = nil, false, itemId, nil
+	render()
+end
+
 local function onAction(id: string)
+	-- Pens3 phases 7-8: the confirm steps.
+	if id == "sell" or id == "sellAll" or id == "buyBack" or id == "fuse" then
+		confirm = id :: any
+		render()
+		return
+	elseif id == "confirm" then
+		confirmNow()
+		return
+	end
 	local view = currentView()
 	local item = view.selected
+	if id == "cancel" then
+		picking, confirm = false, nil
+		render()
+		return
+	end
 	if item == nil then
 		return
 	end
@@ -729,9 +900,6 @@ local function onAction(id: string)
 		render()
 	elseif id == "lock" or id == "unlock" then
 		task.spawn(send, REMOTE_LOCK, item.id, id == "lock")
-	elseif id == "cancel" then
-		picking = false
-		render()
 	end
 end
 
@@ -742,7 +910,9 @@ local function buildScreen(parent: Instance): GuiObject
 		parent = parent,
 		scale = UIController.scale,
 		onCard = onCard,
+		onSold = onSold,
 		onAction = onAction,
+		onHold = onHold,
 		onClose = function()
 			UIController.close(SCREEN, "button")
 		end,
@@ -865,6 +1035,30 @@ function PenController.tapHit(tap: Vector2, points: { TapPoint }, minPx: number)
 	return best
 end
 
+-- Pens3 phase 8: true for a part of the face (Config.UI.Pen.forms.faceWords in its lower-case name): it keeps its look.
+function PenController.isFace(name: string): boolean
+	local lower = string.lower(name)
+	for _, word in FORMS.faceWords do
+		if string.find(lower, word, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+-- Pens3 phase 8: a part's colour on a Golden (form 1) or Rainbow (form 2) squishy, `share` (0 bottom .. 1 top) up the
+-- model; nil for a plain one (K:3882-3920).
+function PenController.formColor(color: Color3, form: number, share: number): Color3?
+	if form == 1 then
+		return color:Lerp(Palette.PenFormGolden, FORMS.golden.blend)
+	elseif form == 2 then
+		local bands = FORMS.rainbow.bands
+		local band = math.clamp(math.floor(share * bands), 0, bands - 1) + 1
+		return color:Lerp(RAINBOW[band], FORMS.rainbow.blend)
+	end
+	return nil
+end
+
 -- "+{coins}/s": the whole Coins a second of a look.
 function PenController.labelText(look: any): string
 	return Strings.format(Strings.pen.rate, { coins = Format.coins(math.floor(PenMath.itemRate(look))) })
@@ -984,6 +1178,7 @@ function PenController.start()
 		made:Destroy()
 		folder = nil
 		screen, selectedId, picking, busy, pendingTap = nil, nil, false, false, nil -- pens3 phase 6
+		soldId, confirm, holdAt, soldMinute = nil, nil, nil, -1 -- pens3 phases 7-8
 	end)
 	for _, model in CollectionService:GetTagged(TAG_BASE) do
 		watch(model)
@@ -1009,7 +1204,7 @@ function PenController.start()
 				then wanted.itemId
 				elseif type(wanted.kind) == "string" then PenFormat.pickFor(pen, wanted.kind)
 				else nil
-			picking = false
+			picking, soldId, confirm, holdAt = false, nil, nil, nil
 			render()
 		end,
 		primary = function(): GuiObject?
@@ -1018,6 +1213,8 @@ function PenController.start()
 		end,
 	}))
 	c:add(StateController.changed("pen"):connect(render))
+	c:add(StateController.changed(FIELD_BUY_BACK):connect(render)) -- pens3 phase 7: the sold cards
+	c:add(StateController.changed("coins"):connect(render)) -- BUY BACK's missing Coins and the balance after
 	ControlsController.setPointerClaim(claim)
 	c:add(function()
 		ControlsController.setPointerClaim(nil)

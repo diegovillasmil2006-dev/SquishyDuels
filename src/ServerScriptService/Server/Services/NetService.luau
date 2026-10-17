@@ -192,6 +192,7 @@ local CHECKS: { [string]: Check } = {
 	revealRequestId = fromNarrow(Validate.ackRevealId),
 	questId = fromNarrow(Validate.questId),
 	stepId = checkStepId,
+	itemIds = fromNarrow(Validate.itemIds), -- pens3 phase 7: SellItems' ids
 }
 
 -- Private: guard -------------------------------------------------------------------------------------------------------

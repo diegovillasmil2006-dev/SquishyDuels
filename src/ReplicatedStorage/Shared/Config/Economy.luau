@@ -15,6 +15,7 @@
 -- Pens3 phase 5: DuplicatePolicy "copy" (a squishy you own again is one more copy in your pen, never Coins);
 -- DuplicateRefund and AllowOpenWhenComplete are gone. The "refund" reason stays: it gives back a spend whose squishy
 -- could not be granted.
+-- Pens3 phase 7: the "sell" Coin reason (a sale from the pen, and the spend that buys it back, PenService).
 
 local Economy = {
 	startingCoins = 0,
@@ -39,6 +40,7 @@ local Economy = {
 		"box",
 		"shop",
 		"away", -- pens3 phase 4: the pen's Coins for the time away (EconomyService.grantAway)
+		"sell", -- pens3 phase 7: a sale's Coins, and a buy-back's spend (PenService)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
 	},

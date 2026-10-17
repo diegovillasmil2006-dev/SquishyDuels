@@ -26,7 +26,23 @@
 --     header) and the reply {pen, charged = false, savePending}; PenLock(itemId, locked) the same checks, the lock in
 --     one mutate, the pen field sent (no redraw: nothing on the plot shows a lock) and the awaited "now" save; every
 --     refusal has charged = false and writes nothing; 2 a second (burst 3), one at a time; a bought spot takes the best
---     unlocked Toy Box squishy in the buy's own step (a placed squishy never moves).
+--     unlocked Toy Box squishy in the buy's own step (a placed squishy never moves);
+--   * pens3 phases 7-8 (selling, the 10-minute buy-back, fusion): SellItems(ids, requestId) and SellAll(requestId) sell
+--     only the caller's own squishies: bad input net.invalid, then data.notReady, then a replay (a requestId already in
+--     buyBack answers what that sale paid and changes nothing), then the decision (inventory.notOwned,
+--     pen.sellStarter, pen.locked, pen.lastCopy; Sell All with nothing to sell pen.nothingToSell), then
+--     pen.changePaused, then inventory.lockedInDuel; a sale is one mutate (the squishies out, one bare buy-back entry
+--     each {item, price, at, req}, a coating to the bag, the oldest past buyBackMax and the expired ones dropped),
+--     then ONE grantCoins(p, the exact total, "sell") (a sale clamped at maxCoins records what it really paid), the
+--     base and pen shown, the buy-back field sent, an awaited save, the reply {pen, coins, charged = false,
+--     savePending}; Sell All sells the Toy Box's plain Lv 1 unlocked squishies, keeping one of a kind;
+--     BuyBack(itemId) within buyBackSeconds: net.invalid, data.notReady, pen.buyBackGone (never twice, expired),
+--     inventory.full, then pen.paused / inventory.lockedInDuel / economy.notEnoughCoins before ONE trySpend of exactly
+--     the price paid ("sell"); the squishy comes back bare with a fresh id in the first free spot, else the Toy Box;
+--     Fuse(a, b, c): net.invalid, data.notReady, inventory.notOwned, pen.locked, pen.fuseMismatch, pen.fuseTop,
+--     pen.changePaused, inventory.lockedInDuel; the highest-level input becomes the next form in its own slot (its
+--     level), the other two go, every coating goes to the bag, no Coins move, an awaited save, the reply {pen, id,
+--     charged = false, savePending}; every refusal has charged = false and writes nothing.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -72,6 +88,8 @@ return function(t: Context)
 		frogAsks: { { player: any, key: string, kind: string } }, -- grantGift calls
 		soonSaves: { any }, -- pens3 phase 6: requestSave(p, "soon") calls
 		sent: { any }, -- pens3 phase 6: sendPen calls (the pen field alone)
+		now: number, -- pens3 phase 7: os.time (the buy-back's `at`)
+		backSent: { any }, -- sendBuyBack calls
 	}
 
 	local function newProfile(): any
@@ -83,6 +101,8 @@ return function(t: Context)
 				nextId = 2,
 				items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false } },
 			},
+			buyBack = {}, -- pens3 phase 7
+			bag = { 0, 0, 0, 0, 0, 0, 0 }, -- pens3 phase 8
 		}
 	end
 
@@ -113,6 +133,8 @@ return function(t: Context)
 			frogAsks = {},
 			soonSaves = {},
 			sent = {},
+			now = 1_800_000_000,
+			backSent = {},
 		}
 		PenService.reset()
 		PenService.useDeps({
@@ -201,6 +223,12 @@ return function(t: Context)
 			end,
 			sendPen = function(player: any)
 				table.insert(w.sent, player)
+			end,
+			now = function(): number
+				return w.now
+			end,
+			sendBuyBack = function(player: any)
+				table.insert(w.backSent, player)
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -654,4 +682,398 @@ return function(t: Context)
 		expect.deepEqual(slotsOf(a), { 1, 2, 3, 0, 4, 0 })
 		finish()
 	end)
+
+	-- Selling, the buy-back and fusion (pens3 phases 7-8) ------------------------------------------------------------
+
+	local REQ = "0123abcd-4567-89ab-cdef-0123456789ab"
+	local REQ2 = "0123abcd-4567-89ab-cdef-0123456789ac"
+
+	-- A's pen for the sell cases: Kitty Bread (1) in spot 1, Toast (2) in spot 2, Toasts (3, 4) and Butter (5) in the
+	-- Toy Box; spot 3 empty.
+	local function sellWorld(): (World, any)
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.owned.toast = { at = 2, src = "shop" }
+		a.owned.butter = { at = 3, src = "box" }
+		a.pen = {
+			spots = 3,
+			nextId = 6,
+			items = {
+				penItem(1, "kitty_bread", 1),
+				penItem(2, "toast", 2),
+				penItem(3, "toast", 0),
+				penItem(4, "toast", 0),
+				penItem(5, "butter", 0),
+			},
+		}
+		return w, a
+	end
+
+	local function idsOf(profile: any): { number }
+		local list = {}
+		for _, item in profile.pen.items do
+			table.insert(list, item.id)
+		end
+		return list
+	end
+
+	t.test(
+		"SellItems, SellAll, BuyBack and Fuse take only ids and a requestId: no base, plot or player; 2 a second",
+		function()
+			expect.deepEqual(
+				Remotes.SPEC.SellItems.args,
+				{ { name = "ids", type = "itemIds" }, { name = "requestId", type = "requestId" } }
+			)
+			expect.deepEqual(Remotes.SPEC.SellAll.args, { { name = "requestId", type = "requestId" } })
+			expect.deepEqual(Remotes.SPEC.BuyBack.args, { { name = "itemId", type = "integer" } })
+			expect.deepEqual(Remotes.SPEC.Fuse.args, {
+				{ name = "a", type = "integer" },
+				{ name = "b", type = "integer" },
+				{ name = "c", type = "integer" },
+			})
+			for _, name in { "SellItems", "SellAll", "BuyBack", "Fuse" } do
+				expect.equal(Remotes.SPEC[name].kind, "RemoteFunction")
+				expect.equal(Remotes.SPEC[name].dir, "c2s")
+				expect.deepEqual(Config.Net.Remotes[name], { rate = 2, burst = 3, oneInFlight = true })
+			end
+			local clock = FakeClock.new(100)
+			local guard = NetService.newGuard({ clock = clock.now })
+			local player = { UserId = 9 }
+			local twenty = {}
+			for id = 1, 20 do
+				twenty[id] = id
+			end
+			expect.equal(guard:check(player, "SellItems", 2, twenty, REQ), "ok") -- more ids than the generic table cap
+			expect.equal(guard:check(player, "SellItems", 2, { 1.5 }, REQ), "invalid")
+			expect.equal(guard:check(player, "SellAll", 1, "not-a-guid"), "invalid")
+			clock.advance(2)
+			expect.equal(guard:check(player, "Fuse", 3, 4, 5, 6), "ok")
+			expect.equal(guard:check(player, "Fuse", 4, 4, 5, 6, 7), "badArgCount")
+			expect.equal(guard:check(player, "BuyBack", 1, 4), "ok")
+		end
+	)
+
+	t.test("a sale: the squishy out, one exact 'sell' grant, a bare buy-back entry, shown, an awaited save", function()
+		local w, a = sellWorld()
+		local bBefore = TableUtil.deepCopy(w.profiles[w.b])
+		local reply = PenService.sellItems(w.a, { 3 }, REQ)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(idsOf(a), { 1, 2, 4, 5 })
+		expect.deepEqual(w.grants, { { player = w.a, amount = 1_000, reason = "sell" } })
+		expect.equal(a.coins, 1_000)
+		expect.deepEqual(a.buyBack, { { item = penItem(3, "toast", 0), price = 1_000, at = w.now, req = REQ } })
+		expect.deepEqual(
+			reply.data,
+			{ pen = TableUtil.deepCopy(a.pen), coins = 1_000, charged = false, savePending = false }
+		)
+		expect.equal(w.writes, 1)
+		expect.deepEqual(w.shown, { w.a })
+		expect.deepEqual(w.backSent, { w.a })
+		expect.equal(w.nowSaves, 1)
+		expect.deepEqual(w.spends, {})
+		expect.deepEqual(w.profiles[w.b], bBefore) -- only the caller's own pen
+		finish()
+	end)
+
+	t.test(
+		"a retried sale (same requestId) replays what it paid and changes nothing; the ids are gone after",
+		function()
+			local w, a = sellWorld()
+			expect.equal(PenService.sellItems(w.a, { 3, 4 }, REQ).data.coins, 2_000)
+			local writes, saves = w.writes, w.nowSaves
+			local again = PenService.sellItems(w.a, { 3, 4 }, REQ)
+			expect.equal(again.ok, true)
+			expect.equal(again.data.coins, 2_000) -- what it paid then, never twice
+			expect.equal(#w.grants, 1)
+			expect.equal(a.coins, 2_000)
+			expect.equal(w.writes, writes)
+			expect.equal(w.nowSaves, saves)
+			expectRefused(PenService.sellItems(w.a, { 3 }, REQ2), "inventory.notOwned") -- a new request: it is sold
+			finish()
+		end
+	)
+
+	t.test(
+		"sale refusals, in order: invalid, not ready, not owned, Kitty Bread, locked, last copy, paused, duel",
+		function()
+			local w, a = sellWorld()
+			for _, case in
+				{ { { 3 }, "nope" }, { { 1.5 }, REQ }, { {}, REQ }, { "3", REQ }, { { 3, 3 }, REQ } } :: { { any } }
+			do
+				expectRefused(PenService.sellItems(w.a, case[1], case[2]), "net.invalid")
+			end
+			w.status[w.a] = "offline"
+			expectRefused(PenService.sellItems(w.a, { 3 }, REQ), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.sellItems(w.a, { 99 }, REQ), "inventory.notOwned")
+			expectRefused(PenService.sellItems(w.b, { 3 }, REQ), "inventory.notOwned") -- never another player's squishy
+			expectRefused(PenService.sellItems(w.a, { 1 }, REQ), "pen.sellStarter")
+			a.pen.items[3].locked = true
+			expectRefused(PenService.sellItems(w.a, { 3 }, REQ), "pen.locked")
+			a.pen.items[3].locked = false
+			expectRefused(PenService.sellItems(w.a, { 5 }, REQ), "pen.lastCopy") -- the only Butter
+			expectRefused(PenService.sellItems(w.a, { 2, 3, 4 }, REQ), "pen.lastCopy") -- every Toast
+			w.savePending = true
+			expectRefused(PenService.sellItems(w.a, { 3 }, REQ), "pen.changePaused")
+			w.savePending = false
+			w.restart = true
+			expectRefused(PenService.sellAll(w.a, REQ), "pen.changePaused")
+			w.restart = false
+			w.phase[w.a] = "Active"
+			expectRefused(PenService.sellItems(w.a, { 3 }, REQ), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			expect.equal(w.writes, 0)
+			expect.deepEqual(w.grants, {})
+			expect.equal(w.nowSaves, 0)
+			expect.deepEqual(w.shown, {})
+			expect.deepEqual(a.buyBack, {})
+			finish()
+		end
+	)
+
+	t.test("sale coins: Golden x3, Rainbow x9, by rarity; a coating goes to the bag and the entry is bare", function()
+		local w, a = sellWorld()
+		a.pen.items[3].form = 1 -- a Golden Toast
+		a.pen.items[4].form = 2 -- a Rainbow Toast
+		a.pen.items[4].coat = 7 -- Galaxy
+		a.pen.items[4].level = 12 -- food is not refunded
+		expect.equal(PenService.sellItems(w.a, { 3, 4 }, REQ).data.coins, 3_000 + 9_000)
+		expect.deepEqual(w.grants, { { player = w.a, amount = 12_000, reason = "sell" } }) -- one grant, the exact total
+		expect.deepEqual(a.bag, { 0, 0, 0, 0, 0, 0, 1 })
+		expect.equal(a.buyBack[2].item.coat, 0)
+		expect.equal(a.buyBack[2].item.level, 12)
+		expect.equal(a.buyBack[2].price, 9_000)
+		finish()
+	end)
+
+	t.test(
+		"Sell All: the Toy Box's plain Lv 1 unlocked squishies, one of a kind kept; one grant; nothing -> refused",
+		function()
+			local w, a = sellWorld()
+			table.insert(a.pen.items, penItem(6, "butter", 0)) -- a second Butter: one of the two stays
+			local levelled = penItem(7, "banana", 0)
+			levelled.level = 3 -- skipped
+			table.insert(a.pen.items, levelled)
+			a.owned.banana = { at = 4, src = "box" }
+			local reply = PenService.sellAll(w.a, REQ)
+			expect.equal(reply.ok, true)
+			-- Kitty Bread, the placed Toast, the best Butter, the levelled Banana.
+			expect.deepEqual(idsOf(a), { 1, 2, 5, 7 })
+			expect.equal(reply.data.coins, 1_000 + 1_000 + 150_000)
+			expect.deepEqual(w.grants, { { player = w.a, amount = 152_000, reason = "sell" } })
+			expect.equal(#a.buyBack, 3)
+			for _, entry in a.buyBack do
+				expect.equal(entry.req, REQ)
+			end
+			expect.equal(PenService.sellAll(w.a, REQ).data.coins, 152_000) -- a retry replays
+			expectRefused(PenService.sellAll(w.a, REQ2), "pen.nothingToSell")
+			expect.equal(#w.grants, 1)
+			finish()
+		end
+	)
+
+	t.test("buy-back: exactly what the sale paid, once; it comes back bare with a fresh id in a free spot", function()
+		local w, a = sellWorld()
+		PenService.sellItems(w.a, { 2 }, REQ) -- the placed Toast: spot 2 is free now
+		a.coins = 5_000
+		w.now += Config.Economy.Pen.buyBackSeconds - 1 -- still within the 10 minutes
+		local saves, shown = w.nowSaves, #w.shown
+		local reply = PenService.buyBack(w.a, 2)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(w.spends, { { player = w.a, amount = 1_000, reason = "sell" } })
+		expect.equal(a.coins, 4_000)
+		expect.deepEqual(a.buyBack, {})
+		local back = a.pen.items[#a.pen.items]
+		expect.deepEqual(back, penItem(6, "toast", 2)) -- a fresh id, the first free spot, unlocked
+		expect.equal(a.pen.nextId, 7)
+		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = true, savePending = false })
+		expect.equal(w.nowSaves, saves + 1)
+		expect.equal(#w.shown, shown + 1)
+		expect.equal(w.backSent[#w.backSent], w.a)
+		expectRefused(PenService.buyBack(w.a, 2), "pen.buyBackGone") -- never twice
+		expect.equal(#w.spends, 1)
+		finish()
+	end)
+
+	t.test(
+		"buy-back refusals: invalid, not ready, expired, a full Toy Box, paused, in a duel, not enough Coins",
+		function()
+			local w, a = sellWorld()
+			PenService.sellItems(w.a, { 3 }, REQ)
+			a.coins = 0
+			expectRefused(PenService.buyBack(w.a, 1.5), "net.invalid")
+			w.status[w.a] = "offline"
+			expectRefused(PenService.buyBack(w.a, 3), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.buyBack(w.b, 3), "pen.buyBackGone") -- only the caller's own sales
+			expectRefused(PenService.buyBack(w.a, 3), "economy.notEnoughCoins")
+			a.coins = 1_000
+			w.savePending = true
+			expectRefused(PenService.buyBack(w.a, 3), "pen.paused")
+			w.savePending = false
+			w.phase[w.a] = "Preparing"
+			expectRefused(PenService.buyBack(w.a, 3), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			local items = a.pen.items
+			for id = 10, 9 + PEN.toyBoxMax do
+				table.insert(a.pen.items, penItem(id, "toast", 0))
+			end
+			expectRefused(PenService.buyBack(w.a, 3), "inventory.full")
+			a.pen.items = table.move(items, 1, 4, 1, {})
+			w.now += PEN.buyBackSeconds -- the 10 minutes are over
+			expectRefused(PenService.buyBack(w.a, 3), "pen.buyBackGone")
+			expect.deepEqual(w.spends, {})
+			expect.equal(a.coins, 1_000)
+			finish()
+		end
+	)
+
+	t.test("the buy-back list: the oldest falls off past buyBackMax, expired sales go with the next one", function()
+		local w, a = sellWorld()
+		a.buyBack = {}
+		for i = 1, PEN.buyBackMax do
+			table.insert(a.buyBack, { item = penItem(100 + i, "toast", 0), price = 1_000, at = w.now, req = "old" })
+		end
+		PenService.sellItems(w.a, { 3 }, REQ)
+		expect.equal(#a.buyBack, PEN.buyBackMax)
+		expect.equal(a.buyBack[1].item.id, 102) -- the oldest one fell off
+		expect.equal(a.buyBack[PEN.buyBackMax].item.id, 3)
+		w.now += PEN.buyBackSeconds
+		PenService.sellItems(w.a, { 4 }, REQ2)
+		expect.equal(#a.buyBack, 1) -- the expired ones are gone
+		expect.equal(a.buyBack[1].item.id, 4)
+		finish()
+	end)
+
+	t.test("a sale clamped at maxCoins: the buy-back entry holds what the sale really paid", function()
+		local w, a = sellWorld()
+		PenService.useDeps({
+			statusOf = function(): string
+				return "ready"
+			end,
+			profileOf = function(player: any): any
+				return w.profiles[player]
+			end,
+			mutate = function(player: any, fn: (profile: any) -> any): (boolean, any)
+				return true, fn(w.profiles[player])
+			end,
+			grantCoins = function(_player: any, amount: number, _reason: string): number
+				return amount - 400 -- 400 short of the total: the wallet is full
+			end,
+			saveNow = function(): boolean
+				return true
+			end,
+			now = function(): number
+				return w.now
+			end,
+			showPen = function() end,
+			sendBuyBack = function() end,
+			savePending = function(): boolean
+				return false
+			end,
+			isClosing = function(): boolean
+				return false
+			end,
+			isRestartPending = function(): boolean
+				return false
+			end,
+			duelPhaseOf = function(): string
+				return ""
+			end,
+		})
+		local reply = PenService.sellItems(w.a, { 3, 4 }, REQ)
+		expect.equal(reply.data.coins, 1_600)
+		expect.equal(a.buyBack[1].price + a.buyBack[2].price, 1_600)
+		expect.deepEqual({ a.buyBack[1].price, a.buyBack[2].price }, { 1_000, 600 })
+		finish()
+	end)
+
+	-- Fusion (pens3 phase 8) --------------------------------------------------------------------------------------
+
+	-- A's pen for the fuse cases: Kitty Bread (1) in spot 1; Toasts 2 (Lv 2, Jelly, Toy Box), 3 (Lv 7, spot 2) and 4
+	-- (Lv 1, Wax, Toy Box); a Golden Butter (5) in the Toy Box.
+	local function fuseWorld(): (World, any)
+		local w, a = sellWorld()
+		local function lv(item: any, level: number, coat: number?, form: number?): any
+			item.level, item.coat, item.form = level, coat or 0, form or 0
+			return item
+		end
+		a.pen.items = {
+			penItem(1, "kitty_bread", 1),
+			lv(penItem(2, "toast", 0), 2, 3),
+			lv(penItem(3, "toast", 2), 7),
+			lv(penItem(4, "toast", 0), 1, 1),
+			lv(penItem(5, "butter", 0), 1, 0, 1),
+		}
+		return w, a
+	end
+
+	t.test(
+		"fuse: the highest-level input becomes a Golden one in its spot at its level, coatings to the bag, free",
+		function()
+			local w, a = fuseWorld()
+			local bBefore = TableUtil.deepCopy(w.profiles[w.b])
+			local reply = PenService.fuse(w.a, 2, 3, 4)
+			expect.equal(reply.ok, true)
+			expect.deepEqual(idsOf(a), { 1, 3, 5 })
+			local golden = a.pen.items[2]
+			expect.equal(golden.form, 1)
+			expect.equal(golden.level, 7)
+			expect.equal(golden.coat, 0) -- it comes out bare
+			expect.equal(golden.slot, 2) -- the highest-level input's spot
+			expect.deepEqual(a.bag, { 1, 0, 1, 0, 0, 0, 0 }) -- the Wax and the Jelly
+			expect.deepEqual(
+				reply.data,
+				{ pen = TableUtil.deepCopy(a.pen), id = 3, charged = false, savePending = false }
+			)
+			expect.deepEqual(w.grants, {})
+			expect.deepEqual(w.spends, {})
+			expect.equal(w.writes, 1)
+			expect.deepEqual(w.shown, { w.a })
+			expect.equal(w.nowSaves, 1)
+			expect.deepEqual(w.profiles[w.b], bBefore)
+			-- Three Goldens make a Rainbow; Rainbow is the top.
+			a.pen.items =
+				{ penItem(1, "kitty_bread", 1), penItem(6, "toast", 0), penItem(7, "toast", 0), penItem(8, "toast", 3) }
+			for i = 2, 4 do
+				a.pen.items[i].form = 1
+			end
+			expect.equal(PenService.fuse(w.a, 6, 7, 8).data.id, 8) -- a level tie: the placed one
+			expect.equal(a.pen.items[2].form, 2)
+			finish()
+		end
+	)
+
+	t.test(
+		"fuse refusals: invalid, not ready, not owned, locked, mismatch, Rainbow, paused, duel: nothing written",
+		function()
+			local w, a = fuseWorld()
+			for _, case in { { 2, 3, 3 }, { 2, 3, 1.5 }, { 2, 3, "4" } } :: { { any } } do
+				expectRefused(PenService.fuse(w.a, case[1], case[2], case[3]), "net.invalid")
+			end
+			w.status[w.a] = "offline"
+			expectRefused(PenService.fuse(w.a, 2, 3, 4), "data.notReady")
+			w.status[w.a] = "ready"
+			expectRefused(PenService.fuse(w.a, 2, 3, 99), "inventory.notOwned")
+			expectRefused(PenService.fuse(w.b, 2, 3, 4), "inventory.notOwned") -- never another player's squishies
+			a.pen.items[2].locked = true
+			expectRefused(PenService.fuse(w.a, 2, 3, 4), "pen.locked")
+			a.pen.items[2].locked = false
+			expectRefused(PenService.fuse(w.a, 2, 3, 5), "pen.fuseMismatch")
+			w.closing = true
+			expectRefused(PenService.fuse(w.a, 2, 3, 4), "pen.changePaused")
+			w.closing = false
+			w.phase[w.a] = "Active"
+			expectRefused(PenService.fuse(w.a, 2, 3, 4), "inventory.lockedInDuel")
+			w.phase[w.a] = ""
+			for i = 2, 4 do
+				a.pen.items[i].form = 2
+			end
+			expectRefused(PenService.fuse(w.a, 2, 3, 4), "pen.fuseTop")
+			expect.equal(w.writes, 0)
+			expect.equal(w.nowSaves, 0)
+			expect.deepEqual(a.bag, { 0, 0, 0, 0, 0, 0, 0 })
+			finish()
+		end
+	)
 end

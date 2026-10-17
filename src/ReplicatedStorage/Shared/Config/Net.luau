@@ -69,6 +69,12 @@ local Net = {
 		-- Pens3 phase 6: the pen screen's place / put away / swap and lock: 2 a second (a burst of 3), one at a time.
 		PenPlace = { rate = 2, burst = 3, oneInFlight = true },
 		PenLock = { rate = 2, burst = 3, oneInFlight = true },
+		-- Pens3 phases 7-8: the pen screen's sell, Sell All, buy-back and fuse: PenPlace's 2 a second (a burst of 3),
+		-- one at a time.
+		SellItems = { rate = 2, burst = 3, oneInFlight = true },
+		SellAll = { rate = 2, burst = 3, oneInFlight = true },
+		BuyBack = { rate = 2, burst = 3, oneInFlight = true },
+		Fuse = { rate = 2, burst = 3, oneInFlight = true },
 		PromptCoinBundle = { rate = 0.5, burst = 1 },
 		PromptGamePass = { rate = 0.5, burst = 1 },
 		-- Burst 2: the UI re-enables the button after exactly 30 s, so with network jitter an honest second press can

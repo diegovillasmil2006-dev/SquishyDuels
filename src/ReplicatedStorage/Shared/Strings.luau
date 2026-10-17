@@ -34,6 +34,9 @@
 -- restricted Boxes card opens now) are gone.
 -- Pens3 phase 6 ([P] texts): pen.screen.* (the stand-in pen screen: place, put away, swap, lock) and its refusals
 -- reason.pen.spotClosed / changePaused (PenPlace, PenLock).
+-- Pens3 phases 7-8 ([P] texts): the pen screen's sell, Sell All, buy-back and fusion texts (pen.screen.*) and their
+-- refusals reason.pen.sellStarter / locked / lastCopy / nothingToSell / buyBackGone / fuseMismatch / fuseTop; the
+-- buy-back time is a plain number of minutes (no countdown, no pressure); selectHint names selling and fusing.
 
 export type FormatArgs = { [string]: any }
 
@@ -159,6 +162,15 @@ local Strings = {
 			-- Pens3 phase 6 (PenPlace / PenLock; PenMath.placeDecision, PenService).
 			spotClosed = "That pen spot isn't open yet.",
 			changePaused = "Your pen can't change for a moment. Try again soon.",
+			-- Pens3 phases 7-8 (SellItems / SellAll / BuyBack / Fuse; PenMath.sellDecision, buyBackDecision,
+			-- fuseDecision, PenService).
+			sellStarter = "Kitty Bread stays with you. It can't be sold.",
+			locked = "That squishy is locked. Unlock it first.",
+			lastCopy = "Keep at least one of each squishy. Your last one can't be sold.",
+			nothingToSell = "Nothing to sell. Sell All keeps your pen, levelled, Golden, Rainbow and locked squishies, and one of each.",
+			buyBackGone = "That squishy can't be bought back any more.",
+			fuseMismatch = "Fuse 3 of the same squishy, all in the same form.",
+			fuseTop = "Rainbow is the top form. It can't be fused again.",
 		},
 	},
 
@@ -1111,7 +1123,7 @@ local Strings = {
 			toyHeading = "Toy Box",
 			empty = "Empty",
 			toyEmpty = "Your Toy Box is empty.",
-			selectHint = "Tap a squishy to move or lock it.",
+			selectHint = "Tap a squishy to move, lock, sell or fuse it.",
 			pickHint = "Tap a pen spot for {name}.",
 			level = "Lv {level}",
 			place = "PLACE",
@@ -1121,6 +1133,31 @@ local Strings = {
 			lock = "LOCK",
 			unlock = "UNLOCK",
 			open = "MY PEN", -- the Squishies window's button
+			-- Pens3 phases 7-8: selling, the buy-back and fusion. {name} a squishy's name (formName for a Golden or
+			-- Rainbow one: {form} = forms[form]), {coins} Coins, {n} how many, {minutes} Pen.buyBackSeconds in minutes
+			-- (rounded up), {result} the fused squishy's name, {level} its level, {rate} its "+N/s".
+			sell = "SELL",
+			holdSell = "HOLD TO SELL", -- Golden, Rainbow, Lv 10+ and Epic+ (Pen.sellHold)
+			sellAll = "SELL ALL",
+			buyBack = "BUY BACK",
+			fuse = "FUSE",
+			forms = { "Golden", "Rainbow" },
+			formName = "{form} {name}",
+			formLevel = "{form} · Lv {level}",
+			confirmSell = "Sell {name} for {coins} Coins?",
+			confirmSellAll = {
+				one = "Sell {n} squishy for {coins} Coins?",
+				many = "Sell {n} squishies for {coins} Coins?",
+			},
+			sellNote = "You can buy it back for {minutes} minutes.",
+			sellAllNote = "Your pen, levelled, Golden, Rainbow and locked squishies stay, and one of each. You can buy them back for {minutes} minutes.",
+			confirmBuyBack = "Buy back {name} for {coins} Coins?",
+			soldHeading = "Sold (you can buy them back)",
+			soldTime = "{minutes} min",
+			confirmFuse = "Fuse 3 {name} into 1 {result}?",
+			fuseNote = "It keeps the highest level, Lv {level}, and earns {rate}. Fusing is free and always works.",
+			coatNote = "Their coatings go to your bag.",
+			fused = "You made a {name}!",
 		},
 	},
 

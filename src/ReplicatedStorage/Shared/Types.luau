@@ -23,7 +23,8 @@
 -- PenBuySpot call. Phase 4 (coins while away): PenState.awayRate and AwayGift, the `awayGift` state field. Phase 5
 -- (copies): ProfileV1.giftQueue / boxOrder / gifts, the `boxOrder` state field; BoxResult has no refund any more (an
 -- old boxLog entry keeps its `refund`, unread). Phase 6 (the pen screen): PenItem.slot / locked and the PenPlace /
--- PenLock calls.
+-- PenLock calls. Phases 7-8 (selling, the buy-back, fusion): BuyBackEntry, ProfileV1.buyBack / bag, the `buyBack`
+-- state field, SellResult / FuseResult and the SellItems / SellAll / BuyBack / Fuse calls.
 
 -- == Catalog (§4.1) ==
 
@@ -152,6 +153,10 @@ export type PenItem = {
 export type PenState = { spots: number, nextId: number, items: { PenItem }, awayRate: number }
 -- Phase 4: the Coins the pen paid for the time away on this session's load, and the seconds counted (session only).
 export type AwayGift = { coins: number, seconds: number }
+-- Phase 7: one sale that can be bought back for Config.Economy.Pen.buyBackSeconds: `item` the squishy as it was sold
+-- (bare: its coating went to the bag), `price` the Coins the sale paid (what the buy-back charges, once), `at` its
+-- os.time, `req` the sale's requestId (a retried SellItems / SellAll replays, it never sells twice).
+export type BuyBackEntry = { item: PenItem, price: number, at: number, req: string }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema).
@@ -186,6 +191,11 @@ export type ProfileV1 = {
 	giftQueue: { string },
 	boxOrder: { [string]: number },
 	gifts: { [string]: boolean },
+	-- Pens3 phases 7-8, added within schemaVersion 2 the same way: the sales that can be bought back (at most
+	-- Config.Economy.Pen.buyBackMax, oldest first) and the coatings in the bag (one count per coating, Wax .. Galaxy:
+	-- index = PenItem.coat).
+	buyBack: { BuyBackEntry },
+	bag: { number },
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
@@ -273,6 +283,7 @@ export type Snapshot = {
 	-- Pens3 phase 5: the profile's fixed-order opens per paid box (Boxes.fixedItem(boxId, n) is the next squishy a
 	-- restricted account gets; the box card shows it before the open).
 	boxOrder: { [string]: number },
+	buyBack: { BuyBackEntry }, -- pens3 phase 7: the profile's buy-back list as stored (the pen screen's sold cards)
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -296,6 +307,7 @@ export type StateDeltaFields = {
 	pen: PenState?,
 	awayGift: AwayGift?,
 	boxOrder: { [string]: number }?,
+	buyBack: { BuyBackEntry }?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -319,6 +331,7 @@ export type StateField =
 	| "pen"
 	| "awayGift"
 	| "boxOrder"
+	| "buyBack"
 
 export type SnapshotLoading = { status: "loading" }
 
@@ -522,6 +535,11 @@ export type DailyClaimResult = {
 -- PenBuySpot data (pens3 phase 1): `pen` = the caller's own pen after the buy; `charged` true (every refusal is a
 -- ResultErr with charged = false); `savePending` = the awaited "now" save failed.
 export type PenResult = { pen: PenState, charged: boolean, savePending: boolean }
+-- Pens3 phase 7: SellItems / SellAll data: `coins` the Coins the sale paid (a replay: what it paid then), charged =
+-- false (nothing is taken). BuyBack answers a PenResult with charged = true. Phase 8: Fuse data: `id` the result's
+-- item id (the keeper's), charged = false (fusion is free).
+export type SellResult = { pen: PenState, coins: number, charged: boolean, savePending: boolean }
+export type FuseResult = { pen: PenState, id: number, charged: boolean, savePending: boolean }
 
 -- QueueJoin data: the player's place in the queue (1 = next). A join from an OFFLINE/READONLY profile still
 -- succeeds and the server also sends Notify("duel.noRewardsOffline", nil, "warn") (§2.8).
@@ -551,6 +569,12 @@ export type PenBuySpotCall = (expectedPrice: number) -> Result<PenResult>
 -- Pens3 phase 6: one of the caller's own squishies to a slot (0 = put away; an occupied spot swaps), and its lock.
 export type PenPlaceCall = (itemId: number, slot: number) -> Result<PenResult>
 export type PenLockCall = (itemId: number, locked: boolean) -> Result<PenResult>
+-- Pens3 phases 7-8: sell the caller's own squishies (ids from its pen, at most Pen.sellMaxIds), Sell All, buy one back
+-- within Pen.buyBackSeconds (its sold item id), fuse 3 of the same.
+export type SellItemsCall = (ids: { number }, requestId: string) -> Result<SellResult>
+export type SellAllCall = (requestId: string) -> Result<SellResult>
+export type BuyBackCall = (itemId: number) -> Result<PenResult>
+export type FuseCall = (a: number, b: number, c: number) -> Result<FuseResult>
 export type PromptCoinBundleCall = (bundleKey: string) -> ()
 export type PromptGamePassCall = (passKey: string) -> ()
 export type PolicyRetryCall = () -> ()

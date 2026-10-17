@@ -14,9 +14,15 @@
 --   * awayRate (phase 4: the share of the saved pen rate paid for time away) is a number in [0, 1];
 --   * phase 5: giftQueueMax a whole number >= 0; welcomePrice a table of rarity -> whole Coins >= 1, each rarity with
 --     at least one squishy sold in the shop and the price never above any of their shopPrices (so a Welcome price
---     also stays under every Pricing.ceiling); frogGift {kind = a Catalog squishy, seconds = a number >= 0}.
+--     also stays under every Pricing.ceiling); frogGift {kind = a Catalog squishy, seconds = a number >= 0};
+--   * phase 7: sellPrice has exactly the Rarity.ORDER rarities, each whole Coins >= 1, below the lowest price that
+--     rarity is sold for (its shopPrices and its Welcome price: buying to sell always loses) and, times the biggest
+--     sellFormMult, within maxCoins; sellFormMult one whole number >= 1 per form (#formMult), never falling;
+--     sellMaxIds a whole number >= 1; sellHold {form in [0, #formMult - 1], level in [1, maxLevel], rarity a
+--     Rarity}; buyBackSeconds a number > 0; buyBackMax a whole number >= 1.
 
 local Catalog = require(script.Parent.Parent.Catalog)
+local Rarity = require(script.Parent.Parent.Rarity)
 
 local P = "Config.Economy.Pen"
 local POSITIVE = { "coinsPerPower", "levelGain", "minSqueezeValue", "tickSeconds", "maxTickSeconds" }
@@ -150,5 +156,71 @@ return function(config: any): { string }
 			`{P}.frogGift.seconds must be a number >= 0 (got {show(frog.seconds)})`
 		)
 	end
+
+	-- Pens3 phase 7: selling and the buy-back.
+	local forms = if type(c.formMult) == "table" then #c.formMult else 0
+	local mults = c.sellFormMult
+	local topMult = 0
+	if type(mults) ~= "table" or #mults ~= forms then
+		table.insert(problems, `{P}.sellFormMult must be a list with one entry per form ({forms})`)
+	else
+		local previous = 1
+		for index, mult in ipairs(mults) do
+			expect(
+				isWhole(mult) and mult >= previous,
+				`{P}.sellFormMult[{index}] must be a whole number >= 1, never below the one before (got {show(mult)})`
+			)
+			previous = if isNumber(mult) then mult else previous
+			topMult = math.max(topMult, if isNumber(mult) then mult else 0)
+		end
+	end
+	local sells = c.sellPrice
+	if type(sells) ~= "table" then
+		table.insert(problems, `{P}.sellPrice must be a table of rarity -> Coins`)
+	else
+		for rarity in sells do
+			expect(Rarity.isValid(rarity), `{P}.sellPrice.{tostring(rarity)} is not a rarity`)
+		end
+		for _, rarity in Rarity.ORDER do
+			local price = sells[rarity]
+			local lowest = if type(welcome) == "table" and isNumber(welcome[rarity]) then welcome[rarity] else math.huge
+			for _, def in Catalog.byRarity(rarity) do
+				if def.shopPrice ~= nil then
+					lowest = math.min(lowest, def.shopPrice)
+				end
+			end
+			expect(
+				isWhole(price) and price >= 1 and price < lowest and price * topMult <= maxCoins,
+				`{P}.sellPrice.{rarity} must be whole Coins >= 1, below the lowest price it is sold for and within `
+					.. `maxCoins times the biggest sellFormMult (got {show(price)})`
+			)
+		end
+	end
+	expect(
+		isWhole(c.sellMaxIds) and c.sellMaxIds >= 1,
+		`{P}.sellMaxIds must be a whole number >= 1 (got {show(c.sellMaxIds)})`
+	)
+	local hold = c.sellHold
+	if type(hold) ~= "table" then
+		table.insert(problems, `{P}.sellHold must be a table with a form, a level and a rarity`)
+	else
+		expect(
+			isWhole(hold.form) and hold.form >= 0 and hold.form <= forms - 1,
+			`{P}.sellHold.form must be a form (got {show(hold.form)})`
+		)
+		expect(
+			isWhole(hold.level) and hold.level >= 1 and isNumber(c.maxLevel) and hold.level <= c.maxLevel,
+			`{P}.sellHold.level must be a level in [1, maxLevel] (got {show(hold.level)})`
+		)
+		expect(Rarity.isValid(hold.rarity), `{P}.sellHold.rarity must be a rarity (got {show(hold.rarity)})`)
+	end
+	expect(
+		isNumber(c.buyBackSeconds) and c.buyBackSeconds > 0,
+		`{P}.buyBackSeconds must be a number > 0 (got {show(c.buyBackSeconds)})`
+	)
+	expect(
+		isWhole(c.buyBackMax) and c.buyBackMax >= 1,
+		`{P}.buyBackMax must be a whole number >= 1 (got {show(c.buyBackMax)})`
+	)
 	return problems
 end

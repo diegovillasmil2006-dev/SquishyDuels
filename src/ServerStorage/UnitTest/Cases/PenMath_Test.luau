@@ -15,6 +15,14 @@
 -- items; bestToyBox is the best unlocked one (rate, then id); placeDecision checks a move (net.invalid, then
 -- inventory.notOwned, then pen.spotClosed, then inventory.full for a put away into a full Toy Box): an occupied spot
 -- swaps (the other squishy takes the mover's old place), the same place is a move that changes nothing.
+-- Phase 7 (selling): sellPrice = the rarity's price (1K / 150K / 90M / 225B) x 1 / 3 / 9 by form, nothing for food or
+-- coatings; sellDecision checks every id (net.invalid, inventory.notOwned, pen.sellStarter, pen.locked, pen.lastCopy:
+-- every form counts) and sums the Coins; sellAllIds sells only the Toy Box's plain Lv 1 unlocked squishies, never Kitty
+-- Bread, keeping the best one of a kind nothing else keeps; liveBuyBack keeps the entries younger than buyBackSeconds,
+-- the newest buyBackMax; buyBackDecision finds a live entry (net.invalid, pen.buyBackGone, inventory.full). Phase 8
+-- (fusion): fuseDecision takes 3 of one kind and form (net.invalid, inventory.notOwned, pen.locked, pen.fuseMismatch,
+-- pen.fuseTop for Rainbow); the keeper is the highest level (a tie: a placed one, then the lower id), the result its
+-- next form at its level, and every input's coating is listed for the bag.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -385,4 +393,235 @@ return function(t: Context)
 		)
 		expect.equal((PenMath.placeDecision(box, items[2].id, 2) :: any).to, 2) -- an empty spot: one fewer in the box
 	end)
+
+	-- Pens3 phase 7 (selling + the 10-minute buy-back) -------------------------------------------------------------
+
+	t.test(
+		"sellPrice: Common 1K, Uncommon 150K, Epic 90M, Dragon 225B; Golden x3, Rainbow x9; level and coat free",
+		function()
+			expect.equal(PenMath.sellPrice(item("toast")), 1_000)
+			expect.equal(PenMath.sellPrice(item("butter")), 150_000)
+			expect.equal(PenMath.sellPrice(item("mochi_fox")), 150_000) -- Uncommon until the Rare tier (phase 22)
+			expect.equal(PenMath.sellPrice(item("bird")), 90_000_000)
+			expect.equal(PenMath.sellPrice(item("dragon")), 225_000_000_000)
+			expect.equal(PenMath.sellPrice(item("toast", 1)), 3_000)
+			expect.equal(PenMath.sellPrice(item("toast", 2)), 9_000)
+			expect.equal(PenMath.sellPrice(item("dragon", 2)), 2_025_000_000_000)
+			expect.equal(PenMath.sellPrice(item("toast", 0, 9, 3)), 1_000) -- food and coatings are not refunded
+			expect.equal(PenMath.sellPrice(item("unicorn")), 0)
+			expect.equal(PenMath.sellPrice(item("toast", 3)), 0)
+			expect.equal(PenMath.sellPrice(nil), 0)
+		end
+	)
+
+	-- A's pen for the sell cases: Kitty Bread in spot 1, two Toasts (spot 2, Toy Box), one Butter (Toy Box).
+	local function sellPen(): (any, { any })
+		local list = {
+			at(1, item("kitty_bread")),
+			at(2, item("toast")),
+			at(0, item("toast")),
+			at(0, item("butter")),
+		}
+		return pen(3, list), list
+	end
+
+	t.test("sellDecision: the items and their Coins; one of two copies sells, a whole list is checked first", function()
+		local box, list = sellPen()
+		local sale = PenMath.sellDecision(box, { list[3].id }) :: any
+		expect.deepEqual(sale.items, { list[3] })
+		expect.equal(sale.coins, 1_000)
+		list[2].form = 1 -- a Golden Toast still counts as a Toast copy (every form counts)
+		local two = PenMath.sellDecision(box, { list[3].id }) :: any
+		expect.equal(two.coins, 1_000)
+		local both = PenMath.sellDecision(
+			pen(3, {
+				at(1, item("kitty_bread")),
+				at(0, item("toast")),
+				at(0, item("toast")),
+				at(0, item("toast", 1)),
+			}),
+			{ nextId - 2, nextId - 1 }
+		) :: any
+		expect.equal(both.coins, 2_000)
+	end)
+
+	t.test("sellDecision refusals, in order: invalid, not owned, Kitty Bread, locked, the last copy", function()
+		local box, list = sellPen()
+		local function refusal(state: any, ids: any): string?
+			local sale, code = PenMath.sellDecision(state, ids)
+			expect.equal(sale, nil)
+			return code
+		end
+		for _, bad in { {}, { 1.5 }, { list[3].id, list[3].id }, "1", { [2] = list[3].id }, nil } :: { any } do
+			expect.equal(refusal(box, bad), "net.invalid")
+		end
+		local tooMany = {}
+		for id = 1, PEN.sellMaxIds + 1 do
+			table.insert(tooMany, id)
+		end
+		expect.equal(refusal(box, tooMany), "net.invalid")
+		expect.equal(refusal(pen(2, list), { list[3].id }), "net.invalid") -- a broken pen
+		expect.equal(refusal(box, { list[3].id, 9999 }), "inventory.notOwned")
+		expect.equal(refusal(box, { list[1].id }), "pen.sellStarter") -- Kitty Bread is never sold
+		list[3].locked = true
+		expect.equal(refusal(box, { list[3].id }), "pen.locked")
+		list[3].locked = false
+		expect.equal(refusal(box, { list[4].id }), "pen.lastCopy") -- the only Butter
+		expect.equal(refusal(box, { list[2].id, list[3].id }), "pen.lastCopy") -- both Toasts
+		expect.equal(refusal(box, { list[3].id, list[1].id }), "pen.sellStarter") -- one bad id refuses all
+	end)
+
+	t.test(
+		"sellAllIds: Toy Box squishies only; skips levelled, fused, locked and Kitty Bread; keeps one of a kind",
+		function()
+			local kitty = at(0, item("kitty_bread"))
+			local placedToast = at(1, item("toast"))
+			local toastA = at(0, item("toast"))
+			local toastB = at(0, item("toast"))
+			local levelled = at(0, item("banana", 0, 2))
+			local banana = at(0, item("banana"))
+			local golden = at(0, item("butter", 1))
+			local butter = at(0, item("butter"))
+			local lockedBird = at(0, item("bird"), true)
+			local birdA = at(0, item("bird"))
+			local donutA = at(0, item("donut"))
+			local donutB = at(0, item("donut"))
+			local box = pen(3, {
+				kitty,
+				placedToast,
+				toastA,
+				toastB,
+				levelled,
+				banana,
+				golden,
+				butter,
+				lockedBird,
+				birdA,
+				donutA,
+				donutB,
+			})
+			-- Toasts: a placed one stays, so both Toy Box ones go. Banana / Butter / Bird: a skipped copy stays, so the
+			-- plain one goes. Donuts: no other copy stays, so the best one (the lower id at the same rate) is kept.
+			expect.deepEqual(
+				PenMath.sellAllIds(box),
+				{ toastA.id, toastB.id, banana.id, butter.id, birdA.id, donutB.id }
+			)
+			expect.deepEqual(PenMath.sellAllIds(pen(3, { at(1, item("kitty_bread")) })), {})
+			expect.deepEqual(PenMath.sellAllIds(nil), {})
+			local sale = PenMath.sellDecision(box, PenMath.sellAllIds(box)) :: any
+			expect.equal(sale.coins, 3 * 1_000 + 150_000 + 2 * 90_000_000)
+		end
+	)
+
+	t.test("liveBuyBack: entries younger than buyBackSeconds, newest buyBackMax, broken ones left out", function()
+		local now = 10_000
+		local function entry(id: number, age: number, price: number?): any
+			return {
+				item = at(0, { id = id, kind = "toast", form = 0, level = 1, coat = 0 }),
+				price = price or 1_000,
+				at = now - age,
+			}
+		end
+		local fresh = entry(1, 0)
+		local old = entry(2, PEN.buyBackSeconds)
+		local mid = entry(3, PEN.buyBackSeconds - 1)
+		local broken = { item = { id = 4, kind = "unicorn" }, price = 5, at = now }
+		expect.deepEqual(PenMath.liveBuyBack({ old, mid, broken, fresh, 7 } :: any, now), { mid, fresh })
+		expect.deepEqual(PenMath.liveBuyBack({ entry(5, 0, -1), entry(6, 0, 1.5) }, now), {})
+		local many = {}
+		for id = 1, PEN.buyBackMax + 3 do
+			table.insert(many, entry(id, 0))
+		end
+		local kept = PenMath.liveBuyBack(many, now)
+		expect.equal(#kept, PEN.buyBackMax)
+		expect.equal(kept[1], many[4]) -- the oldest fall off first
+		expect.deepEqual(PenMath.liveBuyBack(nil, now), {})
+	end)
+
+	t.test(
+		"buyBackDecision: the entry within 10 minutes; gone, expired, a full Toy Box and bad input refused",
+		function()
+			local now = 10_000
+			local sold =
+				{ item = at(0, { id = 7, kind = "toast", form = 0, level = 1, coat = 0 }), price = 1_000, at = now - 5 }
+			local list = { sold }
+			local box = pen(3, { at(1, item("kitty_bread")), at(0, item("toast")) })
+			local back = PenMath.buyBackDecision(list, box, 7, now) :: any
+			expect.equal(back.entry, sold)
+			expect.equal(back.index, 1)
+			local function refusal(entries: any, state: any, id: any, time: number): string?
+				local found, code = PenMath.buyBackDecision(entries, state, id, time)
+				expect.equal(found, nil)
+				return code
+			end
+			expect.equal(refusal(list, box, 1.5, now), "net.invalid")
+			expect.equal(refusal(list, box, 8, now), "pen.buyBackGone")
+			expect.equal(refusal(list, box, 7, sold.at + PEN.buyBackSeconds), "pen.buyBackGone") -- 10 minutes are over
+			expect.equal(refusal(nil, box, 7, now), "pen.buyBackGone")
+			local full = { at(1, item("kitty_bread")) }
+			for _ = 1, 2 + PEN.toyBoxMax do
+				table.insert(full, at(0, item("toast")))
+			end
+			expect.equal(refusal(list, pen(3, full), 7, now), "inventory.full")
+		end
+	)
+
+	-- Pens3 phase 8 (fusion) -------------------------------------------------------------------------------------
+
+	t.test("fuseDecision: 3 of one kind and form make the next form at the highest level, in its slot", function()
+		local a = at(0, item("toast", 0, 2, 3)) -- Lv 2, Jelly
+		local b = at(2, item("toast", 0, 7)) -- the highest level: its slot (2) is the result's
+		local c = at(0, item("toast", 0, 1, 1)) -- Wax
+		local box = pen(3, { at(1, item("kitty_bread")), a, b, c })
+		local fusion = PenMath.fuseDecision(box, { a.id, b.id, c.id }) :: any
+		expect.equal(fusion.keeper, b)
+		expect.deepEqual(fusion.others, { a, c })
+		expect.equal(fusion.form, 1)
+		expect.equal(fusion.level, 7)
+		expect.deepEqual(fusion.coats, { 3, 1 }) -- every input's coating goes to the bag
+		-- Golden -> Rainbow; a level tie keeps the placed one, then the lower id.
+		local g1 = at(0, item("butter", 1, 4))
+		local g2 = at(0, item("butter", 1, 4))
+		local g3 = at(3, item("butter", 1, 4))
+		local rainbow = PenMath.fuseDecision(pen(3, { g1, g2, g3 }), { g1.id, g2.id, g3.id }) :: any
+		expect.equal(rainbow.keeper, g3)
+		expect.equal(rainbow.form, 2)
+		g3.slot = 0
+		expect.equal((PenMath.fuseDecision(pen(3, { g1, g2, g3 }), { g3.id, g2.id, g1.id }) :: any).keeper, g1)
+	end)
+
+	t.test(
+		"fuseDecision refusals: invalid, not owned, locked, not the same kind and form, Rainbow is the top",
+		function()
+			local a = at(0, item("toast"))
+			local b = at(0, item("toast"))
+			local c = at(1, item("toast"))
+			local box = pen(3, { a, b, c })
+			local function refusal(state: any, ids: any): string?
+				local fusion, code = PenMath.fuseDecision(state, ids)
+				expect.equal(fusion, nil)
+				return code
+			end
+			for _, bad in
+				{ { a.id, b.id }, { a.id, b.id, b.id }, { a.id, b.id, 1.5 }, { a.id, b.id, c.id, 99 }, nil } :: { any }
+			do
+				expect.equal(refusal(box, bad), "net.invalid")
+			end
+			expect.equal(refusal(pen(2, { a, b, c }), { a.id, b.id, c.id }), "net.invalid")
+			expect.equal(refusal(box, { a.id, b.id, 9999 }), "inventory.notOwned")
+			b.locked = true
+			expect.equal(refusal(box, { a.id, b.id, c.id }), "pen.locked")
+			b.locked = false
+			c.form = 1
+			expect.equal(refusal(box, { a.id, b.id, c.id }), "pen.fuseMismatch")
+			c.form = 0
+			c.kind = "banana"
+			expect.equal(refusal(box, { a.id, b.id, c.id }), "pen.fuseMismatch")
+			c.kind = "toast"
+			for _, it in { a, b, c } do
+				it.form = #PEN.formMult - 1
+			end
+			expect.equal(refusal(box, { a.id, b.id, c.id }), "pen.fuseTop")
+		end
+	)
 end

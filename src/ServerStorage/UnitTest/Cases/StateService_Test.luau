@@ -12,7 +12,7 @@
 --     fields (policy "checking", monetization with no
 --     offers, practice zeros until PracticeService sets it, Batch 3's topWins not loaded until ShowOffService sets it,
 --     pens3 phase 4's awayGift {coins = 0, seconds = 0} until PenService sets it; pens3 phase 5's boxOrder as
---     stored, while giftQueue and gifts never go out),
+--     stored, while giftQueue and gifts never go out; pens3 phase 7's buyBack as stored, while the bag never goes out),
 --     dataStatus {status, persisted, savePending, banner};
 --   * Loaded sends one full StateDelta; later changes go out as one partial StateDelta per batch with v + 1, only for
 --     fields whose value changed; nothing partial before the first full state; the sweep catches unmarked changes;
@@ -105,6 +105,16 @@ return function(t: Context)
 			boxOrder = { snack = 3, sweet = 0 },
 			giftQueue = { "toast" },
 			gifts = { frog = true },
+			-- Pens3 phases 7-8: the buy-back list goes out (the pen screen's sold cards); the bag never does.
+			buyBack = {
+				{
+					item = { id = 9, kind = "toast", form = 0, level = 1, coat = 0, slot = 0, locked = false },
+					price = 1_000,
+					at = 5,
+					req = "r",
+				},
+			},
+			bag = { 0, 0, 0, 0, 0, 0, 1 },
 		}
 	end
 
@@ -231,6 +241,7 @@ return function(t: Context)
 		expect.deepEqual(keysOf(snap), {
 			"awayGift",
 			"boxOrder",
+			"buyBack",
 			"coins",
 			"daily",
 			"dataStatus",
@@ -278,6 +289,8 @@ return function(t: Context)
 		expect.deepEqual(snap.boxOrder, { snack = 3, sweet = 0 })
 		expect.equal(snap.giftQueue, nil)
 		expect.equal(snap.gifts, nil)
+		expect.equal(snap.buyBack[1].price, 1_000) -- pens3 phase 7: as stored
+		expect.equal(snap.bag, nil) -- pens3 phase 8: the bag stays on the server
 		expect.deepEqual(
 			snap.dataStatus,
 			{ status = "ready", persisted = false, savePending = false, banner = "data.studioMemory" }
@@ -561,7 +574,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list is DESIGN's StateDelta list plus grip, topWins, pen, awayGift and boxOrder", function()
+	t.test("the field list: DESIGN's StateDelta list + grip, topWins, pen, awayGift, boxOrder, buyBack", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -582,6 +595,7 @@ return function(t: Context)
 			"pen",
 			"awayGift", -- pens3 phase 4: the coins-while-away gift, a session field
 			"boxOrder", -- pens3 phase 5: the fixed-order counts (profile.boxOrder)
+			"buyBack", -- pens3 phase 7: the sales that can be bought back (profile.buyBack)
 		})
 	end)
 

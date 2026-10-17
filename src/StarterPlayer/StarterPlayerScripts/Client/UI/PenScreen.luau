@@ -14,8 +14,16 @@
 --   reused, so a move rebuilds only the cards that changed.
 -- * Gamepad: every card is a selectable button; primary() is the selected card, else the first card, else the X; a
 --   render that removes the focused card moves the focus to primary().
---   local s = PenScreen.new({ parent = gui, scale = UIController.scale, onCard = ..., onAction = ..., onClose = ... })
---   s:fit(screenPx);   s:render(view, busy);   s:primary();   s:destroy()
+-- * Pens3 phases 7-8 (sell, buy-back, fuse; stand-ins from the same parts, PLACEHOLDERS in work/pens3/p78/NOTES.md):
+--   a third heading and grid, "Sold (you can buy them back)", with a card per live buy-back entry (its name, its price
+--   in Coins and its minutes, plain text: no countdown; a tap calls onSold); the fuse inputs of a fuse confirm wear
+--   the selected ring (view.marked); an action with `hold` reports its press and release (onHold, the controller
+--   times it) instead of activating, and setHold(fraction?) shows the hold on Diego's progress bar
+--   (Components/ProgressBar, holdBarPx tall) over the action row (nil hides it). statusRoot is the count line, where
+--   the controller's celebrations start.
+--   local s = PenScreen.new({ parent = gui, scale = UIController.scale, onCard = ..., onSold = ..., onAction = ...,
+--       onHold = ..., onClose = ... })
+--   s:fit(screenPx);   s:render(view, busy);   s:setHold(fraction?);   s:primary();   s:destroy()
 
 -- Services
 
@@ -28,6 +36,7 @@ local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
+local Format = require(Shared.Util.Format)
 local Strings = require(Shared.Strings)
 
 local UI = script.Parent
@@ -37,6 +46,7 @@ local Create = require(UI.Create)
 local Layout = require(UI.Layout)
 local LockIcon = require(UI.Components.LockIcon)
 local PenFormat = require(UI.PenFormat)
+local ProgressBar = require(UI.Components.ProgressBar)
 local SquishyImage = require(UI.Components.SquishyImage)
 local StatePill = require(UI.Components.StatePill)
 local Theme = require(UI.Theme)
@@ -47,7 +57,9 @@ export type Spec = {
 	parent: Instance,
 	scale: () -> number, -- the ScreenGui's UIScale (UIController.scale)
 	onCard: (slot: number?, itemId: number?) -> (),
+	onSold: (itemId: number) -> (), -- pens3 phase 7: a sold card (its sold item id)
 	onAction: (id: string) -> (),
+	onHold: (id: string, down: boolean) -> (), -- pens3 phase 7: a hold action's press (true) and release (false)
 	onClose: () -> (),
 }
 
@@ -55,6 +67,8 @@ export type PenScreen = {
 	root: Frame,
 	fit: (self: PenScreen, screenPx: Vector2) -> (),
 	render: (self: PenScreen, view: PenFormat.View, busy: boolean) -> (),
+	setHold: (self: PenScreen, fraction: number?) -> (),
+	statusRoot: GuiObject,
 	primary: (self: PenScreen) -> GuiObject?,
 	destroy: (self: PenScreen) -> (),
 }
@@ -76,6 +90,11 @@ local TEXT_KIND: Theme.TextKind = "Small"
 local HEADING_KIND: Theme.TextKind = "Button"
 local MARGIN_PX = 2
 local SCREEN_TEXT = Strings.pen.screen
+local HOLD_INPUTS: { [Enum.UserInputType]: boolean } = {
+	[Enum.UserInputType.MouseButton1] = true,
+	[Enum.UserInputType.Touch] = true,
+}
+local HOLD_KEYS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.ButtonA] = true, [Enum.KeyCode.Return] = true }
 
 -- Module table
 
@@ -184,6 +203,8 @@ function PenScreen.new(spec: Spec): PenScreen
 	local penGrid = grid("Pen_Spots", 2, scroll)
 	local toyHeading = newLabel("Pen_ToyHeading", HEADING_KIND, scroll, 3)
 	local toyGrid = grid("Pen_ToyBox", 4, scroll)
+	local soldHeading = newLabel("Pen_SoldHeading", HEADING_KIND, scroll, 5) -- pens3 phase 7
+	local soldGrid = grid("Pen_Sold", 6, scroll)
 	local actionRow: Frame = Create("Frame", {
 		Name = "Pen_Actions",
 		BackgroundTransparency = 1,
@@ -193,6 +214,12 @@ function PenScreen.new(spec: Spec): PenScreen
 		Parent = body,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, S.gap, actionRow, Enum.HorizontalAlignment.Center)
+	-- Pens3 phase 7: the hold's bar over the action row (hidden unless a hold action shows).
+	local holdBar = ProgressBar.new({ name = "Pen_Hold", heightPx = S.holdBarPx, parent = body })
+	cleanup:add(holdBar)
+	holdBar.root.AnchorPoint = Vector2.new(0, 1)
+	holdBar.root.Visible = false
+	local holdShown = false
 
 	local cards: { [string]: Card } = {}
 	local buttons: { Button.Button } = {}
@@ -213,8 +240,10 @@ function PenScreen.new(spec: Spec): PenScreen
 		Theme.fitWindow(root, fit.k)
 		root.Position = UDim2.new(0.5, 0, 0.5, fit.shift)
 		local top = STICKER.statePill.height + S.gap + (if hint.Visible then hint.Size.Y.Offset + S.gap else 0)
+		local bottom = actionRow.Size.Y.Offset + S.gap + (if holdShown then S.holdBarPx + S.gap else 0)
 		scroll.Position = UDim2.fromOffset(0, top)
-		scroll.Size = UDim2.new(1, 0, 1, -(top + actionRow.Size.Y.Offset + S.gap))
+		scroll.Size = UDim2.new(1, 0, 1, -(top + bottom))
+		holdBar.root.Position = UDim2.new(0, 0, 1, -(actionRow.Size.Y.Offset + S.gap))
 	end
 
 	local function scale(): number
@@ -226,7 +255,7 @@ function PenScreen.new(spec: Spec): PenScreen
 		return S.cardSize.X - 2 * S.cardPad
 	end
 
-	local function newCard(key: string, item: any?, slot: number?): Card
+	local function newCard(key: string, item: any?, slot: number?, sold: boolean?): Card
 		local c = Cleanup.new()
 		local button: TextButton = Create("TextButton", {
 			Name = "Pen_Card_" .. key,
@@ -275,24 +304,40 @@ function PenScreen.new(spec: Spec): PenScreen
 		end
 		c:add(Button.decorate(button, { fx = "card" }))
 		c:add(button.Activated:Connect(function()
-			spec.onCard(slot, if item then item.id else nil)
+			if sold and item then
+				spec.onSold(item.id) -- pens3 phase 7: a sold card
+			else
+				spec.onCard(slot, if item then item.id else nil)
+			end
 		end))
 		return { root = button, face = face, lock = lock, lines = lines, cleanup = c }
 	end
 
-	-- One card by key: reused when it exists, else made; painted and placed.
-	local function show(key: string, item: any?, slot: number?, order: number, parent: Frame, selected: boolean)
+	-- One card by key: reused when it exists, else made; painted and placed. A sold card (pens3 phase 7) shows its
+	-- price and minutes instead of its rate and level.
+	local function show(
+		key: string,
+		item: any?,
+		slot: number?,
+		order: number,
+		parent: Frame,
+		selected: boolean,
+		sold: PenFormat.SoldCard?
+	)
 		local card = cards[key]
 		if card == nil then
-			card = newCard(key, item, slot)
+			card = newCard(key, item, slot, sold ~= nil)
 			cards[key] = card
 		end
 		local k, width = scale(), cardWidth()
 		if item then
 			local text = PenFormat.cardText(item)
+			local price = if sold
+				then Strings.format(Strings.common.coinsAmount, { coins = Format.coins(sold.price) })
+				else nil
 			line(card.lines[1], text.name, TEXT_KIND, k, width)
-			line(card.lines[2], text.rate, TEXT_KIND, k, width)
-			line(card.lines[3], text.level, TEXT_KIND, k, width)
+			line(card.lines[2], price or text.rate, TEXT_KIND, k, width)
+			line(card.lines[3], if sold then sold.time else text.level, TEXT_KIND, k, width)
 			if card.lock then
 				card.lock.Visible = item.locked == true
 			end
@@ -310,6 +355,7 @@ function PenScreen.new(spec: Spec): PenScreen
 
 	local self = {} :: PenScreen
 	self.root = root
+	self.statusRoot = status.root
 
 	function self.fit(_: PenScreen, px: Vector2)
 		screenPx = px
@@ -325,18 +371,27 @@ function PenScreen.new(spec: Spec): PenScreen
 		hint.Visible = view.hint ~= nil
 		line(penHeading, SCREEN_TEXT.penHeading, HEADING_KIND, k, width)
 		line(toyHeading, SCREEN_TEXT.toyHeading, HEADING_KIND, k, width)
+		line(soldHeading, view.soldHeading or "", HEADING_KIND, k, width)
+		soldHeading.Visible = view.soldHeading ~= nil
+		soldGrid.Visible = view.soldHeading ~= nil
 		selectedKey, firstKey = nil, nil
 		local wanted: { [string]: boolean } = {}
 		for _, spot in view.spots do
 			local item = spot.item
 			local key = `spot{spot.slot}_{if item then `{item.id}_{item.kind}` else "empty"}`
 			wanted[key] = true
-			show(key, item, spot.slot, spot.slot, penGrid, item ~= nil and item == view.selected)
+			local ringed = item ~= nil and (item == view.selected or view.marked[item.id] == true)
+			show(key, item, spot.slot, spot.slot, penGrid, ringed)
 		end
 		for index, item in view.toys do
 			local key = `toy{item.id}_{item.kind}`
 			wanted[key] = true
-			show(key, item, nil, index, toyGrid, item == view.selected)
+			show(key, item, nil, index, toyGrid, item == view.selected or view.marked[item.id] == true)
+		end
+		for index, card in view.sold do
+			local key = `sold{card.id}_{card.item.kind}`
+			wanted[key] = true
+			show(key, card.item, nil, index, soldGrid, card == view.soldSelected, card)
 		end
 		for key, card in cards do
 			if not wanted[key] then
@@ -349,7 +404,7 @@ function PenScreen.new(spec: Spec): PenScreen
 		for _, action in view.actions do
 			table.insert(idList, action.id)
 		end
-		local ids = table.concat(idList, ",")
+		local ids = table.concat(idList, ",") .. (if view.actions[1] and view.actions[1].hold then "+hold" else "")
 		if ids ~= buttonIds then
 			for _, old in buttons do
 				old:destroy()
@@ -358,21 +413,56 @@ function PenScreen.new(spec: Spec): PenScreen
 			buttonIds = ids
 			for index, action in view.actions do
 				local id = action.id
-				table.insert(
-					buttons,
-					Button.new({
-						name = "Pen_" .. id .. "Button",
-						text = action.text,
-						kind = action.kind,
-						height = S.buttonHeight,
-						layoutOrder = index,
-						parent = actionRow,
-						onActivated = function()
+				local hold = action.hold == true
+				local made = Button.new({
+					name = "Pen_" .. id .. "Button",
+					text = action.text,
+					kind = action.kind,
+					height = S.buttonHeight,
+					layoutOrder = index,
+					parent = actionRow,
+					onActivated = function()
+						if not hold then
 							spec.onAction(id)
-						end,
-					})
-				)
+						end
+					end,
+				})
+				table.insert(buttons, made)
+				if hold then
+					-- Pens3 phase 7: a hold reports its press and release; the controller times it.
+					local root = made.root
+					local mouseHeld = false -- a mouse that leaves the button lets go (a touch ends with InputEnded)
+					local function held(input: InputObject): boolean
+						return HOLD_INPUTS[input.UserInputType] == true or HOLD_KEYS[input.KeyCode] == true
+					end
+					root.InputBegan:Connect(function(input: InputObject)
+						if held(input) then
+							mouseHeld = input.UserInputType == Enum.UserInputType.MouseButton1
+							spec.onHold(id, true)
+						end
+					end)
+					root.InputEnded:Connect(function(input: InputObject)
+						if held(input) then
+							mouseHeld = false
+							spec.onHold(id, false)
+						end
+					end)
+					root.MouseLeave:Connect(function()
+						if mouseHeld then
+							mouseHeld = false
+							spec.onHold(id, false)
+						end
+					end)
+				end
 			end
+		end
+		local wasShown = holdShown
+		holdShown = view.actions[1] ~= nil and view.actions[1].hold == true
+		if not holdShown then
+			holdBar.root.Visible = false
+		end
+		if holdShown ~= wasShown then
+			holdBar:set(0)
 		end
 		for index, action in view.actions do
 			local button = buttons[index]
@@ -389,6 +479,12 @@ function PenScreen.new(spec: Spec): PenScreen
 			GuiService.SelectedObject = self:primary() -- the focused card was rebuilt (it moved)
 		end
 		layout() -- the hint line may have come or gone
+	end
+
+	-- Pens3 phase 7: the hold's progress (0..1) on the bar; nil hides it.
+	function self.setHold(_: PenScreen, fraction: number?)
+		holdBar.root.Visible = holdShown and fraction ~= nil
+		holdBar:set(fraction or 0)
 	end
 
 	function self.primary(_: PenScreen): GuiObject?

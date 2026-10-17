@@ -243,4 +243,30 @@ function Validate.settings(value: unknown): SettingsPatch?
 	return patch
 end
 
+-- Pens3 phase 7 (SellItems): a list of 1..Config.Economy.Pen.sellMaxIds whole numbers (pen item ids, each a finite
+-- integer), keys exactly 1..n; anything else (a gap, a string key, a fraction) rejects it. Duplicates and ownership
+-- are the handler's (PenMath.sellDecision).
+function Validate.itemIds(value: unknown): { number }?
+	if type(value) ~= "table" then
+		return nil
+	end
+	local list = value :: { [unknown]: unknown }
+	local count = 0
+	for _ in list do
+		count += 1
+		if count > Config.Economy.Pen.sellMaxIds then
+			return nil
+		end
+	end
+	if count == 0 or count ~= #(list :: { any }) then
+		return nil
+	end
+	for index = 1, count do
+		if Validate.integer(list[index]) == nil then
+			return nil
+		end
+	end
+	return value :: { number }
+end
+
 return Validate

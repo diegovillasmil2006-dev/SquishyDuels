@@ -3,7 +3,9 @@
 -- (ServerStorage.UnitTest). Pure: broken copies of Config.Economy.Pen.
 -- Contract (Config/ValidatePen header): the shipped Config is valid and holds the plan's numbers; a missing section is
 -- one problem; each broken value is reported by name (phase 4: awayRate, a share in [0, 1]; phase 5: giftQueueMax, the
--- Welcome prices (whole Coins, a rarity with sold squishies, never above their shop price) and the Frog gift).
+-- Welcome prices (whole Coins, a rarity with sold squishies, never above their shop price) and the Frog gift; phase 7:
+-- the sell prices (every rarity, whole Coins, below what it can be bought for, times sellFormMult within maxCoins),
+-- sellFormMult, sellMaxIds, sellHold and the buy-back's seconds and size).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -27,6 +29,15 @@ return function(t: Context)
 
 	local function prices(changes: { [number]: any }): any
 		local list = table.clone(Config.Economy.Pen.spotPrices)
+		for key, value in changes do
+			list[key] = value
+		end
+		return list
+	end
+
+	-- Pens3 phase 7: Config's sell prices with some changed.
+	local function sells(changes: { [string]: any }): any
+		local list = table.clone(Config.Economy.Pen.sellPrice)
 		for key, value in changes do
 			list[key] = value
 		end
@@ -73,6 +84,17 @@ return function(t: Context)
 		expect.equal(pen.giftQueueMax, 50)
 		expect.deepEqual(pen.welcomePrice, { Common = 3_000 })
 		expect.deepEqual(pen.frogGift, { kind = "strawberry_frog", seconds = 180 })
+		-- Pens3 phase 7: V3:164's sell prices (Rare comes with phase 22), Golden x3 / Rainbow x9, D1:222's hold rule,
+		-- the 10-minute buy-back of at most toyBoxMax + placedMax sales.
+		expect.deepEqual(
+			pen.sellPrice,
+			{ Common = 1_000, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 }
+		)
+		expect.deepEqual(pen.sellFormMult, { 1, 3, 9 })
+		expect.equal(pen.sellMaxIds, 50)
+		expect.deepEqual(pen.sellHold, { form = 1, level = 10, rarity = "Epic" })
+		expect.equal(pen.buyBackSeconds, 600)
+		expect.equal(pen.buyBackMax, pen.toyBoxMax + pen.placedMax)
 	end)
 
 	t.test("a missing section is one problem", function()
@@ -122,6 +144,30 @@ return function(t: Context)
 			{ changes = { frogGift = "frog" }, field = "frogGift" },
 			{ changes = { frogGift = { kind = "unicorn", seconds = 180 } }, field = "frogGift.kind" },
 			{ changes = { frogGift = { kind = "strawberry_frog", seconds = -1 } }, field = "frogGift.seconds" },
+			-- Pens3 phase 7.
+			{ changes = { sellPrice = 1_000 }, field = "sellPrice" },
+			{
+				changes = { sellPrice = { Common = 1_000, Uncommon = 150_000, Epic = 90_000_000 } },
+				field = "sellPrice.Exclusive",
+			},
+			{ changes = { sellPrice = sells({ Common = 2.5 }) }, field = "sellPrice.Common" },
+			{ changes = { sellPrice = sells({ Common = -1 }) }, field = "sellPrice.Common" },
+			{ changes = { sellPrice = sells({ Common = 3_000 }) }, field = "sellPrice.Common" }, -- = the Welcome price
+			{ changes = { sellPrice = sells({ Epic = 1_800_000_000 }) }, field = "sellPrice.Epic" }, -- = the shop price
+			{ changes = { sellPrice = sells({ Exclusive = 1e15 }) }, field = "sellPrice.Exclusive" }, -- x9 > maxCoins
+			{ changes = { sellPrice = sells({ Rare = 300_000 }) }, field = "sellPrice.Rare" }, -- not a rarity yet
+			{ changes = { sellFormMult = { 1, 3 } }, field = "sellFormMult" }, -- one per form
+			{ changes = { sellFormMult = { 1, 0.5, 9 } }, field = "sellFormMult[2]" },
+			{ changes = { sellFormMult = { 1, 9, 3 } }, field = "sellFormMult[3]" },
+			{ changes = { sellMaxIds = 0 }, field = "sellMaxIds" },
+			{ changes = { sellMaxIds = 2.5 }, field = "sellMaxIds" },
+			{ changes = { sellHold = true }, field = "sellHold" },
+			{ changes = { sellHold = { form = 3, level = 10, rarity = "Epic" } }, field = "sellHold.form" },
+			{ changes = { sellHold = { form = 1, level = 0, rarity = "Epic" } }, field = "sellHold.level" },
+			{ changes = { sellHold = { form = 1, level = 10, rarity = "Rare" } }, field = "sellHold.rarity" },
+			{ changes = { buyBackSeconds = 0 }, field = "buyBackSeconds" },
+			{ changes = { buyBackMax = 0 }, field = "buyBackMax" },
+			{ changes = { buyBackMax = 70.5 }, field = "buyBackMax" },
 		}
 		for _, case in cases do
 			local problems = validate(broken(case.changes))

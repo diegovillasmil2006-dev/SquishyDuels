@@ -36,6 +36,9 @@
 -- Pens3 phase 5: reason.inventory.full (Toy Box full), shop.welcomePrice, box.nextItem (the fixed order's next item),
 -- the firstBox step names the Welcome price; the box footer promises a copy (never Coins) and the restricted note says
 -- boxes open in a fixed order; none of them presses a kid.
+-- Pens3 phases 7-8: every SellItems / SellAll / BuyBack / Fuse refusal code has a text under reason.pen.*; the pen
+-- screen's sell, buy-back and fusion texts exist with their placeholders, say what is true (what Sell All keeps, a free
+-- fusion with no luck) and never press a kid (the buy-back time is a plain number, no "hurry").
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -891,6 +894,62 @@ return function(t: Context)
 		end
 		for _, text in { screen.title, screen.selectHint, screen.pickHint, screen.toyEmpty } do
 			expect.falsy(string.find(string.lower(text), "now", 1, true))
+		end
+	end)
+
+	-- Pens3 phases 7-8: the codes PenMath.sellDecision / buyBackDecision / fuseDecision and PenService send (the others
+	-- are shared: net.invalid, data.notReady, inventory.notOwned, inventory.full, inventory.lockedInDuel,
+	-- pen.changePaused, pen.paused, economy.notEnoughCoins).
+	t.test("pens3 phases 7-8: sell, buy-back and fusion codes and texts, true and calm", function()
+		for _, name in
+			{ "sellStarter", "locked", "lastCopy", "nothingToSell", "buyBackGone", "fuseMismatch", "fuseTop" }
+		do
+			local text = Strings.resolve("reason.pen." .. name)
+			expect.truthy(type(text) == "string" and text ~= "")
+			expect.equal(Strings.reasonText("pen." .. name), text)
+		end
+		local screen = Strings.pen.screen
+		expect.equal(
+			Strings.format(screen.confirmSell, { name = "Toast", coins = "1,000" }),
+			"Sell Toast for 1,000 Coins?"
+		)
+		local all = screen.confirmSellAll
+		expect.equal(
+			Strings.format(Strings.plural(1, all.one, all.many), { n = 1, coins = "1K" }),
+			"Sell 1 squishy for 1K Coins?"
+		)
+		expect.equal(
+			Strings.format(Strings.plural(4, all.one, all.many), { n = 4, coins = "4K" }),
+			"Sell 4 squishies for 4K Coins?"
+		)
+		expect.equal(Strings.format(screen.sellNote, { minutes = 10 }), "You can buy it back for 10 minutes.")
+		expect.truthy(string.find(Strings.format(screen.sellAllNote, { minutes = 10 }), "locked", 1, true))
+		expect.equal(
+			Strings.format(screen.confirmBuyBack, { name = "Toast", coins = "1,000" }),
+			"Buy back Toast for 1,000 Coins?"
+		)
+		expect.equal(
+			Strings.format(screen.confirmFuse, { name = "Toast", result = "Golden Toast" }),
+			"Fuse 3 Toast into 1 Golden Toast?"
+		)
+		local fuseNote = Strings.format(screen.fuseNote, { level = 7, rate = "+60/s" })
+		expect.truthy(string.find(fuseNote, "Lv 7", 1, true))
+		expect.truthy(string.find(string.lower(fuseNote), "free", 1, true)) -- no luck, free (D1:227)
+		expect.equal(Strings.format(screen.formName, { form = screen.forms[1], name = "Toast" }), "Golden Toast")
+		expect.equal(screen.forms[2], "Rainbow")
+		expect.equal(Strings.format(screen.formLevel, { form = "Golden", level = 3 }), "Golden · Lv 3")
+		expect.equal(Strings.format(screen.soldTime, { minutes = 7 }), "7 min")
+		expect.equal(Strings.format(screen.fused, { name = "Golden Toast" }), "You made a Golden Toast!")
+		for _, key in { "sell", "sellAll", "holdSell", "buyBack", "fuse", "coatNote", "soldHeading", "selectHint" } do
+			expect.truthy(type(screen[key]) == "string" and screen[key] ~= "")
+		end
+		-- Calm: the buy-back time is information, never pressure.
+		for _, text in
+			{ screen.soldHeading, screen.sellNote, screen.sellAllNote, screen.soldTime, screen.confirmBuyBack }
+		do
+			for _, word in { "hurry", "now", "quick", "last chance", "expire", "only" } do
+				expect.falsy(string.find(string.lower(text), word, 1, true))
+			end
 		end
 	end)
 

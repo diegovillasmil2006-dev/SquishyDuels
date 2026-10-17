@@ -1280,6 +1280,21 @@ local UI = {
 			bodyPad = 18,
 			cardLift = 6,
 			buttonHeight = 56,
+			-- Pens3 phase 7 [P]: selling Golden, Rainbow, Lv 10+ or Epic+ (Config.Economy.Pen.sellHold) is a hold of
+			-- holdSeconds on its button, shown on a bar holdBarPx tall over the action row.
+			holdSeconds = 1,
+			holdBarPx = 14,
+		},
+		-- Pens3 phase 8 (K:3882-3920, the v6 kit's looks; P3D:330-341): a Golden or Rainbow walking squishy keeps its
+		-- parts: every part whose name holds none of faceWords (P3D:330's face, lower case) blends `blend` of the way
+		-- to its form's colour (Art/Palette PenFormGolden; Rainbow: the PenFormRainbow1..7 band of the part's middle
+		-- in the model's height, bottom to top) and takes the material, reflectance and transparency (a hidden part
+		-- stays hidden). Only colour, material, reflectance and transparency: no extra meshes (K:3883). The shared
+		-- LookSparkle (E18) is not drawn yet (PLACEHOLDERS).
+		forms = {
+			faceWords = { "eye", "mouth", "blush", "shine", "tooth", "tongue", "nose", "nostril", "pupil", "brow" },
+			golden = { blend = 0.7, material = "SmoothPlastic", reflectance = 0.25, transparency = 0 },
+			rainbow = { blend = 0.75, material = "SmoothPlastic", reflectance = 0.15, transparency = 0, bands = 7 },
 		},
 	},
 

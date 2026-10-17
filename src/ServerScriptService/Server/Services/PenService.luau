@@ -50,6 +50,33 @@
 --   - A bought spot takes the best unlocked Toy Box squishy (PenMath.bestToyBox) in the buy's own mutate, as a new
 --     capsule took the best spare squishy (CapsuleService); a placed squishy never moves on its own.
 --   Every refusal carries charged = false and writes nothing.
+-- * Pens3 phase 7 (selling, D1:217-225, V3:164; the 10-minute buy-back), every remote the PenPlace shape (RF;
+--   Config.Net: 2 a second, burst 3, one in flight; no remote takes a base, plot or player id):
+--   - SellItems(ids, requestId) / SellAll(requestId): (1) the ids (Validate.itemIds) or the requestId bad ->
+--     net.invalid; (2) data.notReady; (3) a buyBack entry with this requestId: the sale was made (a retry) -> ok with
+--     what it paid, nothing changes (never sells twice); (4) the ids (SellAll: PenMath.sellAllIds, none ->
+--     pen.nothingToSell) through PenMath.sellDecision -> net.invalid / inventory.notOwned / pen.sellStarter /
+--     pen.locked / pen.lastCopy; (5) pen.changePaused; (6) inventory.lockedInDuel. Then ONE mutate: the squishies leave
+--     the pen, each becomes a buyBack entry {item (bare: its coating goes to profile.bag, V2:382; slot 0, unlocked),
+--     price (its sellPrice), at (os.time), req}, and the list keeps only live entries (PenMath.liveBuyBack: the expired
+--     go, the oldest past buyBackMax fall off). Then ONE grantCoins(p, the total, "sell"); if maxCoins clamped it, the
+--     entries of this sale shrink (newest first) to what was really paid, so a buy-back never charges more than the
+--     sale paid. Then the base and the pen (showPen), the buyBack field (sendBuyBack), a log line, the awaited "now"
+--     save and the reply ok({pen, coins, charged = false, savePending}). Reading: Sell All sells from the Toy Box only
+--     (the pen's walking squishies earn; a player sells one of them by picking it).
+--   - BuyBack(itemId): (1) not whole -> net.invalid; (2) data.notReady; (3) PenMath.buyBackDecision ->
+--     pen.buyBackGone (no live entry of that sold id: bought back already, expired, never sold) / inventory.full; (4)
+--     a pending failed save, closing or a restart -> pen.paused; (5) inventory.lockedInDuel; (6) trySpend(p, the
+--     entry's price, "sell") (economy.notEnoughCoins; a price of 0 spends nothing). Then ONE mutate: the entry leaves
+--     buyBack and its squishy comes back bare with a fresh id (pen.nextId) in the first free spot, else the Toy Box,
+--     unlocked; showPen, sendBuyBack, the awaited save, ok({pen, charged = price > 0, savePending}). The entry goes in
+--     the same step as the spend, so a retry finds nothing: never charged twice.
+-- * Pens3 phase 8 (fusion, D1:227-232, V2:232): Fuse(a, b, c): (1) not 3 whole numbers -> net.invalid; (2)
+--   data.notReady; (3) PenMath.fuseDecision -> net.invalid / inventory.notOwned / pen.locked / pen.fuseMismatch /
+--   pen.fuseTop; (4) pen.changePaused; (5) inventory.lockedInDuel. Then ONE mutate: the keeper (the highest level)
+--   takes the next form at its level with no coating, in its own slot; the other two leave; every input's coating goes
+--   to profile.bag; no luck, no Coins. showPen (the look changes), the awaited save, ok({pen, id, charged = false,
+--   savePending}).
 -- Every profile write goes through DataService.mutate (the data port). Dependencies are injectable (useDeps) so unit
 -- tests run with fake profiles and players (plain tables); init() never yields; playerAdded / playerRemoving never
 -- yield.
@@ -99,6 +126,8 @@ export type Deps = {
 	grantGift: (player: any, key: string, kind: string) -> boolean, -- pens3 phase 5: EconomyService.grantGift
 	requestSave: (player: any, reason: string) -> (), -- pens3 phase 6: DataService.requestSave (never yields)
 	sendPen: (player: any) -> (), -- pens3 phase 6: StateService.markDirty(p, "pen") alone (a lock: nothing to redraw)
+	now: () -> number, -- pens3 phase 7: os.time (a buy-back entry's `at`)
+	sendBuyBack: (player: any) -> (), -- StateService.markDirty(p, "buyBack")
 }
 
 -- What the remote answers: NetService.ok(Types.PenResult) or NetService.err(reason, false).
@@ -131,6 +160,14 @@ local CODE_IN_DUEL = "inventory.lockedInDuel"
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
 local CODE_CHANGE_PAUSED = "pen.changePaused" -- pens3 phase 6
 local CODE_NOT_OWNED = "inventory.notOwned"
+local CODE_NOTHING = "pen.nothingToSell" -- pens3 phase 7
+local REASON_SELL = "sell"
+local REASON_REFUND = "refund"
+local REMOTE_SELL = "SellItems"
+local REMOTE_SELL_ALL = "SellAll"
+local REMOTE_BUY_BACK = "BuyBack"
+local REMOTE_FUSE = "Fuse" -- pens3 phase 8
+local FIELD_BUY_BACK = "buyBack"
 
 -- Module table
 
@@ -211,6 +248,10 @@ local function defaultDeps(): Deps
 		sendPen = function(player: any)
 			StateService.markDirty(player, FIELD_PEN)
 		end,
+		now = os.time,
+		sendBuyBack = function(player: any)
+			StateService.markDirty(player, FIELD_BUY_BACK)
+		end,
 	}
 end
 
@@ -246,17 +287,21 @@ local function pay(player: any, session: Session, dt: number)
 	end
 end
 
--- (4)-(6) of a buy: paused, in a duel, then the spend. Returns a refusal code, or nil once the Coins are taken.
-local function spend(player: any, price: number): string?
+-- (4)-(6) of a buy: paused, in a duel, then the spend. Returns a refusal code, or nil once the Coins are taken. Pens3
+-- phase 7: a buy-back spends with its own reason and no spot cooldown; a price of 0 spends nothing.
+local function spend(player: any, price: number, reason: string, cooldown: boolean): string?
 	local session = sessions[player]
-	local cooling = session ~= nil and deps.clock() - session.boughtAt < PEN.buyCooldownSeconds
+	local cooling = cooldown and session ~= nil and deps.clock() - session.boughtAt < PEN.buyCooldownSeconds
 	if cooling or deps.savePending(player) or deps.isClosing() or deps.isRestartPending() then
 		return CODE_PAUSED
 	end
 	if deps.duelPhaseOf(player) ~= "" then
 		return CODE_IN_DUEL
 	end
-	local spent, why = deps.trySpend(player, price, COIN_REASON)
+	if price <= 0 then
+		return nil
+	end
+	local spent, why = deps.trySpend(player, price, reason)
 	if spent then
 		return nil
 	end
@@ -313,7 +358,7 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 		return NetService.err(refused or CODE_INVALID, false)
 	end
 	local spot, price = decision.spot, decision.price
-	local spendRefused = spend(player, price)
+	local spendRefused = spend(player, price, COIN_REASON, true)
 	if spendRefused ~= nil then
 		return NetService.err(spendRefused, false)
 	end
@@ -422,6 +467,228 @@ function PenService.lock(player: any, itemId: any, locked: any): Reply
 	return NetService.ok(data)
 end
 
+-- Public: selling, the buy-back and fusion (pens3 phases 7-8; see the header for the order of the checks) ------------
+
+-- The Coins a sale with this requestId paid (it was made: a retry), or nil.
+local function replayOf(profile: any, request: string): number?
+	local list = if type(profile) == "table" then profile.buyBack else nil
+	local paid: number? = nil
+	if type(list) == "table" then
+		for _, entry in list do
+			if type(entry) == "table" and entry.req == request then
+				paid = (paid or 0) + (tonumber(entry.price) or 0)
+			end
+		end
+	end
+	return paid
+end
+
+-- A sale of `ids` (nil = Sell All).
+local function sell(player: any, ids: any, requestId: any): Reply
+	local request = Validate.requestId(requestId)
+	if request == nil or (ids ~= nil and Validate.itemIds(ids) == nil) then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local replay = replayOf(deps.profileOf(player), request)
+	if replay ~= nil then
+		local again: Types.SellResult = {
+			pen = TableUtil.deepCopy(pen),
+			coins = replay,
+			charged = false,
+			savePending = deps.savePending(player),
+		}
+		return NetService.ok(again)
+	end
+	local list = ids or PenMath.sellAllIds(pen)
+	if #list == 0 then
+		return NetService.err(CODE_NOTHING, false)
+	end
+	local sale, refused = PenMath.sellDecision(pen, list)
+	if sale == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local paused = changeRefused(player)
+	if paused ~= nil then
+		return NetService.err(paused, false)
+	end
+	local now = deps.now()
+	local written = deps.mutate(player, function(profile: any): boolean
+		local sold: { [number]: boolean } = {}
+		for _, item in sale.items do
+			sold[item.id] = true
+		end
+		local kept: { Types.PenItem } = {}
+		for _, item in profile.pen.items do
+			if not sold[item.id] then
+				table.insert(kept, item)
+			end
+		end
+		profile.pen.items = kept
+		local entries = PenMath.liveBuyBack(profile.buyBack, now)
+		for _, item in sale.items do
+			local bare = TableUtil.deepCopy(item)
+			if bare.coat > 0 then
+				profile.bag[bare.coat] += 1 -- V2:382: the coating goes to the bag, the squishy is sold bare
+				bare.coat = 0
+			end
+			bare.slot, bare.locked = 0, false
+			table.insert(entries, { item = bare, price = PenMath.sellPrice(item), at = now, req = request })
+		end
+		while #entries > PEN.buyBackMax do
+			table.remove(entries, 1) -- the oldest falls off first
+		end
+		profile.buyBack = entries
+		return true
+	end)
+	if not written then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local paid = deps.grantCoins(player, sale.coins, REASON_SELL)
+	if paid < sale.coins then
+		-- maxCoins clamped the grant: this sale's entries hold what it really paid (the newest give way first).
+		deps.mutate(player, function(profile: any): boolean
+			local short = sale.coins - paid
+			for index = #profile.buyBack, 1, -1 do
+				local entry = profile.buyBack[index]
+				if entry.req == request and short > 0 then
+					local cut = math.min(short, entry.price)
+					entry.price -= cut
+					short -= cut
+				end
+			end
+			return true
+		end)
+	end
+	log:info(`user {userIdOf(player)} sold {#sale.items} squishies for {paid} Coins`)
+	deps.showPen(player)
+	deps.sendBuyBack(player)
+	local data: Types.SellResult = {
+		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
+		coins = paid,
+		charged = false,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
+function PenService.sellItems(player: any, ids: any, requestId: any): Reply
+	if ids == nil then
+		return NetService.err(CODE_INVALID, false) -- nil means Sell All inside sell(), never from a client
+	end
+	return sell(player, ids, requestId)
+end
+
+function PenService.sellAll(player: any, requestId: any): Reply
+	return sell(player, nil, requestId)
+end
+
+function PenService.buyBack(player: any, itemId: any): Reply
+	if Validate.integer(itemId) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local found, refused = PenMath.buyBackDecision(deps.profileOf(player).buyBack, pen, itemId, deps.now())
+	if found == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local price = found.entry.price
+	local spendRefused = spend(player, price, REASON_SELL, false)
+	if spendRefused ~= nil then
+		return NetService.err(spendRefused, false)
+	end
+	local ran, back = deps.mutate(player, function(profile: any): boolean
+		if profile.buyBack[found.index] ~= found.entry then
+			return false
+		end
+		table.remove(profile.buyBack, found.index)
+		local item = TableUtil.deepCopy(found.entry.item)
+		item.id = profile.pen.nextId
+		profile.pen.nextId += 1
+		item.slot = PenMath.freeSlot(profile.pen)
+		item.locked = false
+		table.insert(profile.pen.items, item)
+		return true
+	end)
+	if not (ran and back) then
+		-- Cannot happen without a yield after the spend; never keep Coins for nothing: the spend is given back.
+		log:error(`user {userIdOf(player)}: buy-back of item {itemId} was paid ({price} Coins) but not written`)
+		if price > 0 then
+			deps.grantCoins(player, price, REASON_REFUND)
+		end
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} bought back pen item {itemId} for {price} Coins`)
+	deps.showPen(player)
+	deps.sendBuyBack(player)
+	local data: Types.PenResult = {
+		pen = TableUtil.deepCopy(deps.profileOf(player).pen),
+		charged = price > 0,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
+function PenService.fuse(player: any, a: any, b: any, c: any): Reply
+	if Validate.integer(a) == nil or Validate.integer(b) == nil or Validate.integer(c) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local fusion, refused = PenMath.fuseDecision(pen, { a, b, c })
+	if fusion == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local paused = changeRefused(player)
+	if paused ~= nil then
+		return NetService.err(paused, false)
+	end
+	local keeperId = fusion.keeper.id
+	local written = deps.mutate(player, function(profile: any): boolean
+		local gone: { [number]: boolean } = {}
+		for _, item in fusion.others do
+			gone[item.id] = true
+		end
+		local kept: { Types.PenItem } = {}
+		for _, item in profile.pen.items do
+			if item.id == keeperId then
+				item.form, item.level, item.coat = fusion.form, fusion.level, 0 -- it comes out bare, in its slot
+			end
+			if not gone[item.id] then
+				table.insert(kept, item)
+			end
+		end
+		profile.pen.items = kept
+		for _, coat in fusion.coats do
+			profile.bag[coat] += 1
+		end
+		return true
+	end)
+	if not written then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} fused pen items {a}, {b}, {c} into form {fusion.form} (item {keeperId})`)
+	deps.showPen(player)
+	local data: Types.FuseResult = {
+		pen = TableUtil.deepCopy(deps.profileOf(player).pen),
+		id = keeperId,
+		charged = false,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
 -- Public: coins while away (see the header) ---------------------------------------------------------------------------
 
 -- DataService.Loaded: the Coins for the time away, and the gift for the client when they paid.
@@ -467,6 +734,18 @@ function PenService.init()
 	end)
 	NetService.onInvoke(REMOTE_LOCK, function(player: Player, itemId: any, locked: any): any
 		return PenService.lock(player, itemId, locked)
+	end)
+	NetService.onInvoke(REMOTE_SELL, function(player: Player, ids: any, requestId: any): any
+		return PenService.sellItems(player, ids, requestId)
+	end)
+	NetService.onInvoke(REMOTE_SELL_ALL, function(player: Player, requestId: any): any
+		return PenService.sellAll(player, requestId)
+	end)
+	NetService.onInvoke(REMOTE_BUY_BACK, function(player: Player, itemId: any): any
+		return PenService.buyBack(player, itemId)
+	end)
+	NetService.onInvoke(REMOTE_FUSE, function(player: Player, a: any, b: any, c: any): any
+		return PenService.fuse(player, a, b, c)
 	end)
 	-- A new squishy (a box, the shop, a Studio grant): its pen item came in the same grant step; show it.
 	EconomyService.SquishyGranted:connect(function(player: Player)

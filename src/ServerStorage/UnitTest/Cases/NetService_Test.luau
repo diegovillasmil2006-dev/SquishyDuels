@@ -5,7 +5,8 @@
 -- Contract (DESIGN §2.7, §2.8, §12 #1-#2):
 --   * every Remotes.ArgType a client -> server remote uses narrows only valid values: finite numbers (x == x,
 --     |x| < 1e6), serverTime (|x| < 1e10), whole integers, finite Vector3s, ids by their §2.7 patterns and lengths,
---     tables up to the key cap; NaN, inf, 1 KB strings, wrong types and unknown types fail;
+--     tables up to the key cap; NaN, inf, 1 KB strings, wrong types and unknown types fail; pens3 phase 7: itemIds is
+--     a list of 1..Config.Economy.Pen.sellMaxIds whole numbers (SellItems; more than the generic table cap);
 --   * validateArgs checks the argument count (too many = badArgCount) and every argument of a real remote;
 --   * ShopBuy's expectedPrice is a whole Coin amount up to Config.Economy.maxCoins (Dragon costs 1.1T, spec 2026-10-12
 --     §6), never NaN, inf, negative, fractional or above the cap;
@@ -185,6 +186,26 @@ return function(t: Context)
 		expect.falsy(valid("noSuchType", 1))
 	end)
 
+	t.test("pens3 phase 7: itemIds is a list of 1..sellMaxIds whole numbers, nothing else", function()
+		local max = Config.Economy.Pen.sellMaxIds
+		local full = {}
+		for id = 1, max do
+			full[id] = id
+		end
+		expect.truthy(valid("itemIds", { 7 }))
+		expect.truthy(valid("itemIds", full)) -- above the generic table cap (16 keys)
+		table.insert(full, max + 1)
+		expect.falsy(valid("itemIds", full))
+		expect.falsy(valid("itemIds", {}))
+		expect.falsy(valid("itemIds", { 1.5 }))
+		expect.falsy(valid("itemIds", { 1, 0 / 0 }))
+		expect.falsy(valid("itemIds", { 1, "2" :: any }))
+		expect.falsy(valid("itemIds", { [1] = 1, [3] = 3 }))
+		expect.falsy(valid("itemIds", { a = 1 }))
+		expect.falsy(valid("itemIds", { 1e7 }))
+		expect.falsy(valid("itemIds", 5))
+	end)
+
 	t.test("every client -> server arg type in Remotes.SPEC has a check", function()
 		local sample: { [string]: any } = {
 			integer = 1,
@@ -202,6 +223,7 @@ return function(t: Context)
 			requestId = GUID,
 			revealRequestId = GUID,
 			questId = "q1_1",
+			itemIds = { 4, 5 }, -- pens3 phase 7
 		}
 		for _, step in Config.Onboarding.Steps do
 			if step.recordedBy == "client" then

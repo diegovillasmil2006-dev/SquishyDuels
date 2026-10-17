@@ -4,7 +4,7 @@
 -- level, owner decision): the spot prices are final_hagb_grip110.json "penPrice" (out5_grip110.txt "SPOTS"), the
 -- multipliers ECONOMY_V4's (out5_grip110.txt "COATINGS"). [P] where marked. A child module, so Config/init does not
 -- grow (it is near Roblox's 200,000-character Source limit): exposed through Config/Economy and checked by
--- Config/ValidatePen when PenService starts. Math: Shared/PenMath.
+-- Config/ValidatePen when PenService starts. Math: Shared/PenMath. Pens3 phases 7-8: selling, the buy-back (below).
 
 local Pen = {
 	startSpots = 3, -- open from the start
@@ -51,6 +51,21 @@ local Pen = {
 	-- The free gift of the first play (SIM:226): this squishy once per account (profile.gifts.frog), this many seconds
 	-- into a session.
 	frogGift = { kind = "strawberry_frog", seconds = 180 },
+
+	-- Pens3 phase 7 (selling, D1:217-225, V3:164): a squishy sells for sellPrice[its rarity] × sellFormMult[form + 1]
+	-- Coins (Golden ×3, Rainbow ×9: they are 3 and 9 copies; food and coatings are not refunded). V3's Rare 300K comes
+	-- with the Rare tier (phase 22). ValidatePen keeps each price below what that rarity can be bought for.
+	sellPrice = { Common = 1_000, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 } :: {
+		[string]: number,
+	},
+	sellFormMult = { 1, 3, 9 },
+	sellMaxIds = 50, -- one SellItems call sells at most this many squishies
+	-- Hold-to-confirm (D1:222): selling a squishy of this form or above, this level or above, or this rarity or above.
+	sellHold = { form = 1, level = 10, rarity = "Epic" },
+	-- The buy-back: a sale can be bought back for this long, for exactly what it paid, once; at most buyBackMax wait
+	-- (toyBoxMax + placedMax, so a whole Sell All can be undone), the oldest falling off first.
+	buyBackSeconds = 600,
+	buyBackMax = 71,
 }
 
 return Pen
