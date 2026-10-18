@@ -647,6 +647,18 @@ local Palette = {
 	HighwayBoardHeading = Color3.fromHex("#7B4DFF"), -- P3D:285 LAST THROW / SERVER BEST
 	HighwayBoardDivider = Color3.fromHex("#F0E2D4"), -- P3D:290
 	HighwayMarkerUnit = Color3.fromHex("#5A4F66"), -- P3D:275 "studs"
+	-- Pens3 phase 12b (the biome scenery, L:488-1599; SDTools HighwayBuilder's KIT gives each K material its Roblox
+	-- material): the scenery's K materials not above, the scenery tints of L and the volcano's light.
+	HighwayWafer = Color3.fromHex("#E0A062"), -- K:25
+	HighwayStrawPink = Color3.fromHex("#FF6FA3"), -- K:348
+	HighwayBerrySauce = Color3.fromHex("#E0315F"), -- K:386 (Reflectance 0.1)
+	HighwayLavaGlow = Color3.fromHex("#FF6A3D"), -- K:398 (Neon)
+	HighwayStarGold = Color3.fromHex("#FFD84A"), -- K:419 (Neon)
+	HighwayCloud = Color3.fromHex("#FFFFFF"), -- K:426
+	HighwayGoldCloud = Color3.fromHex("#FFE9A8"), -- K:444
+	HighwayAqua = Color3.fromHex("#5FE0E8"), -- K:43 Aqua's colour: a gumdrop tree's tint (L:494, K:535-540)
+	HighwayCoatJelly = Color3.fromHex("#8DF27A"), -- K:214 CoatJelly's colour: a popsicle's tint (L:763 ...)
+	HighwayLightVolcano = Color3.fromHex("#FF8A4D"), -- L:4 L3_volcano
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

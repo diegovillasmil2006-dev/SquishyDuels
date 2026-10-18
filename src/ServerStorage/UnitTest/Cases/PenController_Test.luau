@@ -44,6 +44,14 @@
 --     floor (the root `lift` over it), facing the gate like the shelf; its coin label on the board above the cubby
 --     (CHK:57: labelOver over the floor, labelZ in front), the TOP spot's labelY over its root; nil for any other slot;
 --     start() builds no shelf squishy in Edit mode (no SD_Shelf on any base there, even with the 10 tagged bases).
+--   * owner 2026-10-17 (shadows by the graphics level; Config.UI.Pen.shadows = {offAtOrBelow = 3, automatic = true}):
+--     shadowsOn(setting, config): off at levels 1..offAtOrBelow, on above; Automatic (or no readable setting) as
+--     config.automatic says; setShadows(model, on): off = no BasePart of a pen model casts a shadow, on = back exactly
+--     as SquishyCache built it (the Root and the faces stay without one), any number of times, another model untouched;
+--     applyShadows(pens, pool, on): every walker, shelf, TOP and pooled model gets setShadows, a model in none of them
+--     keeps its own; refreshShadows(setting): the controller's state follows the level (debugState().shadows) and only
+--     a change goes to applyShadows; start() watches the level (when it can be read) and destroy() lets go (engine
+--     only). Edit mode has no live pen, so build()'s line and the real settings signal are checked in a Play test.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -426,4 +434,129 @@ return function(t: Context)
 			end
 		end
 	)
+
+	-- Owner 2026-10-17: the pen, shelf and TOP squishies cast shadows only on higher graphics.
+	local Q = Enum.SavedQualitySetting
+
+	-- Every BasePart's CastShadow, in GetDescendants order (two clones of one template list them alike).
+	local function shadowFlags(model: Model): { boolean }
+		local list = {}
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") then
+				table.insert(list, (d :: BasePart).CastShadow)
+			end
+		end
+		return list
+	end
+
+	t.test("shadows: Config.UI.Pen.shadows is off at level 3 and below, on for Automatic", function()
+		expect.deepEqual(P.shadows, { offAtOrBelow = 3, automatic = true })
+	end)
+
+	t.test(
+		"shadowsOn: off at or below offAtOrBelow, on above it; Automatic or no setting as `automatic` says",
+		function()
+			local config = P.shadows
+			expect.equal(PenController.shadowsOn(Q.Automatic, config), true)
+			expect.equal(PenController.shadowsOn(Q.QualityLevel1, config), false)
+			expect.equal(PenController.shadowsOn(Q.QualityLevel3, config), false)
+			expect.equal(PenController.shadowsOn(Q.QualityLevel4, config), true)
+			expect.equal(PenController.shadowsOn(Q.QualityLevel10, config), true)
+			expect.equal(PenController.shadowsOn(nil, config), true) -- the setting cannot be read: like Automatic
+			-- One switch: the same table decides the cut and Automatic.
+			local other = { offAtOrBelow = 0, automatic = false }
+			expect.equal(PenController.shadowsOn(Q.Automatic, other), false)
+			expect.equal(PenController.shadowsOn(nil, other), false)
+			expect.equal(PenController.shadowsOn(Q.QualityLevel1, other), true)
+		end
+	)
+
+	t.test("setShadows: off = no part of a pen model casts one; on = back as built; other models untouched", function()
+		local SquishyCache = t.requireClient("Models/SquishyCache")
+		local model = SquishyCache.clone("kitty_bread", "World")
+		local other = SquishyCache.clone("kitty_bread", "World")
+		local built = shadowFlags(model)
+		expect.truthy(table.find(built, true) ~= nil) -- the body casts one
+		expect.truthy(table.find(built, false) ~= nil) -- the Root (and the faces) do not
+		PenController.setShadows(model, false)
+		PenController.setShadows(model, false) -- twice is fine
+		for _, on in shadowFlags(model) do
+			expect.equal(on, false)
+		end
+		expect.deepEqual(shadowFlags(other), built)
+		PenController.setShadows(model, true)
+		expect.deepEqual(shadowFlags(model), built) -- the Root and the faces stay without one
+		PenController.setShadows(model, true)
+		expect.deepEqual(shadowFlags(model), built)
+		model:Destroy()
+		other:Destroy()
+	end)
+
+	t.test("applyShadows: every walker, shelf, TOP and pooled model follows; other models are untouched", function()
+		local SquishyCache = t.requireClient("Models/SquishyCache")
+		local walker = SquishyCache.clone("kitty_bread", "World")
+		local shelf = SquishyCache.clone("kitty_bread", "World")
+		local top = SquishyCache.clone("kitty_bread", "World")
+		local pooled = SquishyCache.clone("kitty_bread", "World")
+		local other = SquishyCache.clone("kitty_bread", "World")
+		local built = shadowFlags(other)
+		local shelfSlots = { [13] = { model = shelf }, [21] = { model = top } } -- a shelf cubby and the TOP spot
+		local pens = { [1] = { walkers = { { model = walker } }, shelf = shelfSlots } }
+		local pool = { kitty_bread = { { model = pooled } } }
+		local followers = { walker, shelf, top, pooled }
+		PenController.applyShadows(pens, pool, false)
+		for _, model in followers do
+			for _, on in shadowFlags(model) do
+				expect.equal(on, false)
+			end
+		end
+		expect.deepEqual(shadowFlags(other), built)
+		PenController.applyShadows(pens, pool, true)
+		for _, model in followers do
+			expect.deepEqual(shadowFlags(model), built)
+		end
+		expect.deepEqual(shadowFlags(other), built)
+		for _, model in { walker, shelf, top, pooled, other } do
+			model:Destroy()
+		end
+	end)
+
+	t.test("refreshShadows: the level's answer goes to the pens (applyShadows) only when it changes", function()
+		PenController.refreshShadows(Q.QualityLevel10) -- a known start: on
+		local real = PenController.applyShadows
+		local sent = {}
+		PenController.applyShadows = function(_pens: any, _pool: any, on: boolean)
+			table.insert(sent, on)
+		end
+		local ok, err = pcall(function()
+			for _, step in
+				{
+					{ level = Q.QualityLevel1, on = false },
+					{ level = Q.QualityLevel2, on = false },
+					{ level = Q.QualityLevel8, on = true },
+					{ level = Q.QualityLevel3, on = false },
+					{ level = Q.Automatic, on = true },
+					{ level = Q.QualityLevel4, on = true },
+				}
+			do
+				PenController.refreshShadows(step.level)
+				expect.equal(PenController.debugState().shadows, step.on)
+			end
+		end)
+		PenController.applyShadows = real
+		if not ok then
+			error(err, 0)
+		end
+		expect.deepEqual(sent, { false, true, false, true })
+	end)
+
+	t.test("start() watches the graphics level and destroy() lets go (engine only)", function()
+		local readable = pcall(function()
+			return UserSettings():GetService("UserGameSettings").SavedQualityLevel
+		end)
+		PenController.start()
+		expect.equal(PenController.debugState().watchingQuality, readable)
+		PenController.destroy()
+		expect.equal(PenController.debugState().watchingQuality, false)
+	end)
 end

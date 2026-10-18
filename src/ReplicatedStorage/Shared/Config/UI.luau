@@ -1320,6 +1320,10 @@ local UI = {
 			golden = { blend = 0.7, material = "SmoothPlastic", reflectance = 0.25, transparency = 0 },
 			rainbow = { blend = 0.75, material = "SmoothPlastic", reflectance = 0.15, transparency = 0, bands = 7 },
 		},
+		-- Owner 2026-10-17 [P]: the pen, shelf and TOP squishies cast shadows only on higher graphics (PenController
+		-- shadowsOn): none when the player's Roblox graphics level (1-10) is offAtOrBelow or lower, shadows above it;
+		-- on Automatic `automatic` decides (true: the engine already scales its own shadows with the level it picks).
+		shadows = { offAtOrBelow = 3, automatic = true },
 	},
 
 	-- UI FINAL (R1, the look kit; plan work/ui/PLAN.md §2): the sticker look of the design "Squishy Duels UI FINAL"

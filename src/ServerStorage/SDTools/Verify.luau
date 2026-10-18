@@ -51,7 +51,7 @@
 -- SD_LaunchBoard part whose live lines are built empty (CHK:74: phase 13 writes them); the gate_mascot slot; 84
 -- distance markers (every 100 studs to 8,400) and one dh_golden_gates; every part anchored and untouched, none
 -- colliding outside the Deck (the lane is for squishies), none under 2 studs casting a shadow; SurfaceGuis hidden
--- beyond 150 studs (K:7873); at most 2 lights (L:2, :5), no shadows; no scripts; every SD_TextKey in Strings.
+-- beyond 150 studs (K:7873); at most 3 lights (L:2, :4, :5), no shadows; no scripts; every SD_TextKey in Strings.
 --
 -- WorldLayout shapes accepted (any of these works):
 --   tiers  WorldLayout.stationTier(stationId) -> number; or a station table in Stations / SqueezeStations / stations /
@@ -306,7 +306,7 @@ local HIGHWAY_SPOTS = 10 -- K:887 "One of 10 throw spots"
 local HIGHWAY_SPOT_EMPTIES = { "launcher_mount", "player_stand" } -- LK:107
 local HIGHWAY_BOARD_SLOTS = { "LastWho", "LastDistance", "BestWho", "BestDistance" } -- P3D:286-289
 local HIGHWAY_MARKERS = 84 -- L:476 ...: d 100 .. 8,400
-local HIGHWAY_MAX_LIGHTS = 2 -- L:2 the deck, L:5 the Golden Gates (the volcano's comes with the scenery)
+local HIGHWAY_MAX_LIGHTS = 3 -- L:2 the deck, L:4 the volcano (pens3 phase 12b's scenery), L:5 the Golden Gates
 local HIGHWAY_GUI_MAX_DISTANCE = 150 -- K:7873
 local TAG_LAUNCH_SPOT = "SD_LaunchSpot"
 local TAG_LAUNCH_BOARD = "SD_LaunchBoard"

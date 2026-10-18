@@ -100,9 +100,15 @@
 --     PenBuyShelf with the price it shows (shelfCall), one at a time with the signs' buys and PenPlace (the spinner
 --     meanwhile); an accepted buy plays ui.purchase, a refusal shows its reason. A disabled one (short of Coins,
 --     MAX) sends nothing.
+-- * Shadows (owner 2026-10-17; Config.UI.Pen.shadows): the walkers', shelf's and TOP spot's models cast shadows only on
+--   higher graphics. Roblox documents no shadow cut of its own at low quality, so shadowsOn reads the player's level
+--   (UserGameSettings.SavedQualityLevel): none at or below offAtOrBelow, shadows above it, Automatic as `automatic`
+--   says. setShadows writes it to a model when it is built; refreshShadows writes it to every pen, shelf and pooled
+--   model when the level changes (its property signal, no polling). "On" is SquishyCache's build: the parts built
+--   without a shadow (the Root, the faces) never get one. Held, duel and match squishies are not touched.
 -- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
--- syncWaits, tapHit, isFace, formColor, shelfPlace, shelfCall), init(), start(), destroy() (tests and leak checks; the
--- bootstrap never calls it), debugState().
+-- syncWaits, tapHit, isFace, formColor, shelfPlace, shelfCall, shadowsOn), setShadows, applyShadows, refreshShadows,
+-- init(), start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
 
 -- Services
 
@@ -211,7 +217,11 @@ export type DebugState = {
 	shownPens: number,
 	ownPlot: number?,
 	shelved: number, -- pens3 phase 11: the shelves' squishies
+	shadows: boolean, -- owner 2026-10-17: the pen models cast shadows now
+	watchingQuality: boolean, -- the graphics level's signal is connected
 }
+
+export type ShadowConfig = { offAtOrBelow: number, automatic: boolean } -- Config.UI.Pen.shadows
 
 -- Constants
 
@@ -282,6 +292,7 @@ local RAINBOW = {
 	Palette.PenFormRainbow6,
 	Palette.PenFormRainbow7,
 }
+local ATTR_SHADOW = "SD_PenShadow" -- owner 2026-10-17: a part setShadows turned off (it was built with a shadow)
 
 -- Module table
 
@@ -312,6 +323,8 @@ local soldMinute = -1 -- the server minute the screen was last drawn in (the sol
 local foodId: string? = nil -- pens3 phase 9: the selected BUY FOOD card
 local pendingReq: PenFormat.Pending? = nil -- the request a BuyFood / Feed press reuses until the server answers
 local pendingTap: { input: InputObject, from: Vector3, at: number, index: number, look: PenMath.Look }? = nil
+local shadows = true -- owner 2026-10-17: the pen models cast shadows (refreshShadows)
+local qualityWatch: RBXScriptConnection? = nil -- the graphics level's signal (start)
 
 local function rnd(): number
 	return random:NextNumber()
@@ -357,6 +370,7 @@ local function build(look: PenMath.Look): Walker?
 		model:Destroy()
 		return nil
 	end
+	PenController.setShadows(model, shadows) -- owner 2026-10-17: by the graphics level
 	local studs = PenController.studsOf(look.kind)
 	local extents = model:GetExtentsSize()
 	local longest = math.max(extents.X, extents.Y, extents.Z)
@@ -1391,6 +1405,61 @@ function PenController.shelfCall(view: PenFormat.View): (string?, number?)
 	return nil, nil
 end
 
+-- Owner 2026-10-17: true when the pen models cast shadows at the graphics level `setting` (nil: it cannot be read,
+-- like Automatic): none at QualityLevel1..offAtOrBelow, shadows above it, Automatic as config.automatic says.
+function PenController.shadowsOn(setting: Enum.SavedQualitySetting?, config: ShadowConfig): boolean
+	if setting == nil or setting == Enum.SavedQualitySetting.Automatic then
+		return config.automatic
+	end
+	return setting.Value > config.offAtOrBelow
+end
+
+-- Owner 2026-10-17: a pen model's shadows on (the parts SquishyCache built with one get it back) or off (no part casts
+-- one; each part switched off carries ATTR_SHADOW until it is switched on again).
+function PenController.setShadows(model: Model, on: boolean)
+	for _, part in model:GetDescendants() do
+		if not part:IsA("BasePart") then
+			continue
+		end
+		if on and part:GetAttribute(ATTR_SHADOW) == true then
+			part.CastShadow = true
+			part:SetAttribute(ATTR_SHADOW, nil)
+		elseif not on and part.CastShadow then
+			part.CastShadow = false
+			part:SetAttribute(ATTR_SHADOW, true)
+		end
+	end
+end
+
+-- Owner 2026-10-17: setShadows on every walker, shelf and TOP model of `pensT` and every pooled model of `poolT` (the
+-- controller's pens and pool; tables passed in so a test can hand it its own).
+function PenController.applyShadows(pensT: { [number]: Pen }, poolT: { [string]: { Walker } }, on: boolean)
+	for _, pen in pensT do
+		for _, w in pen.walkers do
+			PenController.setShadows(w.model, on)
+		end
+		for _, w in pen.shelf do
+			PenController.setShadows(w.model, on)
+		end
+	end
+	for _, list in poolT do
+		for _, w in list do
+			PenController.setShadows(w.model, on)
+		end
+	end
+end
+
+-- Owner 2026-10-17: the shadows at the graphics level `setting` (shadowsOn), written to every pen, shelf and pooled
+-- model when the answer changes; start() calls it with the player's level and again on every change.
+function PenController.refreshShadows(setting: Enum.SavedQualitySetting?)
+	local on = PenController.shadowsOn(setting, P.shadows)
+	if on == shadows then
+		return
+	end
+	shadows = on
+	PenController.applyShadows(pens, pool, on)
+end
+
 -- Public: lifecycle --------------------------------------------------------------------------------------------------
 
 function PenController.debugState(): DebugState
@@ -1417,6 +1486,8 @@ function PenController.debugState(): DebugState
 		shownPens = shown,
 		ownPlot = ownPlot(),
 		shelved = shelved,
+		shadows = shadows,
+		watchingQuality = qualityWatch ~= nil and qualityWatch.Connected,
 	}
 end
 
@@ -1463,6 +1534,20 @@ function PenController.start()
 		soldId, confirm, holdAt, soldMinute = nil, nil, nil, -1 -- pens3 phases 7-8
 		foodId, pendingReq = nil, nil -- pens3 phase 9
 	end)
+	-- Owner 2026-10-17: the shadows follow the player's graphics level (pcall: an offline test has no UserSettings;
+	-- unreadable counts as Automatic).
+	local readOk, quality, level = pcall(function()
+		local settings = UserSettings():GetService("UserGameSettings")
+		return settings, settings.SavedQualityLevel
+	end)
+	if readOk then
+		local conn = quality:GetPropertyChangedSignal("SavedQualityLevel"):Connect(function()
+			PenController.refreshShadows(quality.SavedQualityLevel)
+		end)
+		qualityWatch = conn
+		c:add(conn)
+	end
+	PenController.refreshShadows(if readOk then level else nil)
 	for _, model in CollectionService:GetTagged(TAG_BASE) do
 		watch(model)
 	end

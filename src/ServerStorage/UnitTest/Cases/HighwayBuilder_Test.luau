@@ -5,7 +5,7 @@
 -- It runs as Main's pipeline runs it (build(ctx) with a scratch Cleanup and the Shared folder under test, an
 -- UNPARENTED tree that is destroyed afterwards) and pins, restated from the design and Config instead of read from the
 -- builder:
---   * the root SD_Highway (marked "highway", version 1) pivoted on WorldLayout.Highway.origin: a Persistent Deck and
+--   * the root SD_Highway (marked "highway", version 2) pivoted on WorldLayout.Highway.origin: a Persistent Deck and
 --     the 7 biome Models (L:1 zones Biome_1_CM..Biome_7_DH), every placed piece its own Model (SD_Piece = its v6
 --     piece);
 --   * distances exact (phase 13's landing math is in studs from the start line): 170 lane pieces of 50 studs end to end
@@ -19,6 +19,7 @@
 --     Kitty Bread mascot slot on the gate (LK:173-175);
 --   * every piece placed from the origin; nothing but the deck collides; pieces per biome within v6's 600 and the part
 --     counts pinned; two builds give the same tree; Verify passes on the build and catches a broken one.
+-- The biome scenery (pens3 phase 12b) has its own contract: HighwayScenery_Test.
 
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -37,9 +38,12 @@ local ARCH_SCALES = { 1, 1.1, 1.2, 1.3, 1.45, 1.6 } -- biomes 2..7 (L:533, :616,
 local MARKERS = 84 -- L:476 ...: d 100 .. 8,400
 local LANE_PIECES = 170 -- 8,500 / 50
 -- The pieces and parts of each biome: lane pieces 8 parts (a top, 2 edges, 5 dashes; Rainbow Road: 7 bands and 2 glow
--- strips, 9), rails 4 (a tube, 3 posts), markers 3, arches 9, ground slabs 1, the Golden Gates 52.
-local PIECES = { 23, 41, 57, 81, 121, 141, 177 }
-local PARTS = { 105, 189, 261, 369, 549, 749, 936 }
+-- strips, 9), rails 4 (a tube, 3 posts), markers 3, arches 9, ground slabs 1, the Golden Gates 52; the scenery (phase
+-- 12b, L:488-1599): gumdrop trees 6, lollipop lamps 6, candy hills 5 (10 pieces, 58 parts), bread houses 7, croissant
+-- hills 7 (16, 112), cup islands 6 (10, 60), popsicles 7, sundae peaks 10 (29, 230), basalt rocks 3, the volcano 26
+-- (39, 140), cloud banks 6, planets 17 (38, 261), gold clouds 5, marble pillars 4 (134, 578).
+local PIECES = { 33, 57, 67, 110, 160, 179, 311 }
+local PARTS = { 163, 301, 321, 599, 689, 1010, 1514 }
 local MAX_PIECES = 600 -- spec.txt:157
 local TOLERANCE = 2e-3 -- CFrames are single precision; 8,500 studs out that is a few thousandths
 
@@ -170,13 +174,13 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the root is SD_Highway, unparented, marked highway v1, pivoted on the origin; a Persistent deck, 7 biomes",
+		"the root is SD_Highway, unparented, marked highway v2, pivoted on the origin; a Persistent deck, 7 biomes",
 		function()
 			expect.equal(root.Name, "SD_Highway")
 			expect.equal(root.Parent, nil)
 			expect.equal(root:GetAttribute("SD_GeneratorId"), "highway")
 			expect.equal(root:GetAttribute("SD_GeneratorVersion"), HighwayBuilder.VERSION)
-			expect.equal(HighwayBuilder.VERSION, 1)
+			expect.equal(HighwayBuilder.VERSION, 2) -- 2: phase 12b's scenery
 			expect.truthy(root:HasTag("SD_Generated"))
 			expect.truthy(near((root.WorldPivot.Position - origin.Position).Magnitude, 0))
 			expect.equal(deck.ModelStreamingMode, Enum.ModelStreamingMode.Persistent) -- K:7881-7883 Plaza, LaunchGate
@@ -401,11 +405,38 @@ return function(t: Context)
 	end)
 
 	t.test("every part is placed from the origin: all of them lie in the lane-local corridor", function()
+		-- The deck and the lane lie within x ±201, y -3..70; the biome scenery (phase 12b, L:488-1599) reaches farther
+		-- out: rr_planet_03's ring to x -346 (L:1221), rr_planet_02's to y 137 (L:1220), rr_cloud_bank_23 down to
+		-- y -27 (L:1206).
+		local SCENERY = {
+			gumdrop_tree = true,
+			lollipop_lamp = true,
+			candy_hill = true,
+			bt_bread_house = true,
+			bt_croissant_hill = true,
+			bl_cup_island = true,
+			fd_popsicle = true,
+			fd_sundae_peak = true,
+			lv_basalt_rock = true,
+			lv_volcano = true,
+			rr_cloud_bank = true,
+			rr_planet = true,
+			dh_gold_cloud = true,
+			dh_marble_pillar = true,
+		}
 		local outside: { string } = {}
 		for _, part in root:GetDescendants() do
 			if part:IsA("BasePart") then
+				local node: Instance = part -- its piece: the child of the deck or of a biome
+				while node.Parent and node.Parent.Parent ~= root do
+					node = node.Parent
+				end
+				local wide, low, high = 201, -3, 70
+				if node.Parent ~= deck and SCENERY[node:GetAttribute("SD_Piece")] then
+					wide, low, high = 350, -30, 140
+				end
 				local p = origin:PointToObjectSpace(part.CFrame.Position)
-				if math.abs(p.X) > 201 or p.Y < -3 or p.Y > 70 or p.Z > 61 or p.Z < -(gatesAt + 30) then
+				if math.abs(p.X) > wide or p.Y < low or p.Y > high or p.Z > 61 or p.Z < -(gatesAt + 30) then
 					table.insert(outside, part:GetFullName())
 				end
 			end
@@ -495,6 +526,11 @@ return function(t: Context)
 		caught(function(copy)
 			(copy:FindFirstChild("Biome_4_FD") :: Instance):Destroy()
 		end, "Biome_4_FD")
+		caught(function(copy) -- a 4th light (L:2, :4, :5 are the 3)
+			local light = Instance.new("PointLight")
+			light.Shadows = false
+			light.Parent = (copy:FindFirstChild("Biome_1_CM") :: Model):FindFirstChildWhichIsA("BasePart", true)
+		end, "lights")
 	end)
 
 	t.test("the build report counts the parts of the deck and of every biome against the 600-piece cap", function()

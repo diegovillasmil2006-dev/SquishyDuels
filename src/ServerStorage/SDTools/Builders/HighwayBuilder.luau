@@ -1,7 +1,9 @@
 --!strict
 -- HighwayBuilder: builds the highway Workspace.SD_Highway (pens3 phase 12, 2026-10-17; work/pens3/PLAN.md "PHASE 12"):
 -- the lobby design v6's launch deck, lane, distance markers, biome arches, ground and Golden Gates as parts, the world
--- phase 13's throws land on. Server only, Edit mode only (ServerStorage.SDTools); called by Main's pipeline (target
+-- phase 13's throws land on; since phase 12b (2026-10-18, the owner: "the biomes have to be themed too, like, not just
+-- plain terrain and color changes") each biome's scenery too. Server only, Edit mode only (ServerStorage.SDTools);
+-- called by Main's pipeline (target
 -- "highway"), never at runtime. Contract (Generated.BuildContext / BuildResult): build(ctx) returns { ok, root,
 -- warnings, error } with the new tree UNPARENTED and marked GeneratorId "highway"; it never parents anything into the
 -- place. Relative requires, or modules of the injected ctx.Shared clone (never an absolute require).
@@ -13,16 +15,23 @@
 -- Data: the placement, the spots and the biome looks are Shared World/WorldLayout.Highway (the lane-local frame,
 -- WorldLayout.highwayCFrame: d studs from the start line is z = -d); the biome starts and the Golden Gates are
 -- Config.Economy.Highway (checked by Config/ValidateHighway first); colours Art/Palette (Highway*), text Strings
--- (highway.*). The pieces' own shapes are here, each number with its design line; "reading" marks what v6 leaves open.
+-- (highway.*); where the scenery stands, the rows of the sibling HighwayScenery (v6's L:488-1599 entries 1:1). The
+-- pieces' own shapes are here, each number with its design line; "reading" marks what v6 leaves open.
 --
 -- Port (v6 is meshes, one per material per piece, K:4; this is parts): box(w, h, d, x, y0, z) a Block whose bottom is
 -- y0; cyl an upright Cylinder; cylX / cylZ a Cylinder along X / Z; sph a Ball; torY(R, t) around a solid core a collar
 -- (a Cylinder 2(R + t) wide and 2t tall, Kit/Props' rule); a torus arc Props.rods; a rounded-rectangle slab two crossed
 -- Blocks and 4 corner Cylinders; the deck's trim ring 4 bars and 3 Blocks a corner; arrowShape (LK:39) a Block and 2
--- Wedges; the wings' flat shape (HK:9) 5 triangles of 2 Wedges; a lathe stacked Cylinders.
+-- Wedges; the wings' flat shape (HK:9) 5 triangles of 2 Wedges; a lathe stacked Cylinders (lathe(): one between each
+-- two given heights, the profile's radius at its middle); a scaled sphere and cloud() (HK:7) ellipsoids (a Sphere
+-- SpecialMesh, Kit/Props.ellipsoid); a dodecahedron a Ball of its radius.
 -- Readings: RainbowLane's 256 x 8 strip texture (K:413) is drawn as its 7 bands (HK:14: 9/64 of the lane each, the last
 -- 10/64), so nothing needs uploading; the bands stop 0.1 short of the edges, under the glow strips (one face per
 -- plane, Flicker_Test); the lathe tapers of the Golden Gates' pillars are left out (HK:90); 8 rods per torus arc.
+-- Scenery readings (phase 12b, each at its builder): a lathe's cap shell (the hill's icing, the sundae's sauce) is the
+-- top tiers in the cap's material; the gumdrop canopy is phase 10's (BaseService TREE: a Cylinder under an ellipsoid);
+-- the lamp's swirl tori are Props.lollipop's stepped discs; the croissant's fat torus arc a row of Balls; the volcano's
+-- crater rim a ring of Blocks; the cup's pearls (inside the opaque cup, invisible in v6 too) are left out.
 --
 -- Tree:
 --   SD_Highway (Model, WorldPivot = WorldLayout.Highway.origin, marked SD_Generated / highway / VERSION)
@@ -32,25 +41,28 @@
 --       board SD_LaunchBoard with its 4 empty live lines, the gate_mascot slot), candy_fence_01..04
 --     Biome_1_CM .. Biome_7_DH (Models, Biome = n, WorldPivot at the biome's start; K:7887 one zone per biome)
 --       lane_tile_NN / rr_rainbow_lane_NN, lane_rail_NN, distance_marker_NN (Distance), biome_ground_NN,
---       biome_arch_NN (Scale), dh_golden_gates_01 (+ the L:5 light): each an Atomic Model (K:7887)
---   Every placed piece is a Model with SD_Piece = its v6 piece, named and numbered as v6 names it (L:20-1597).
+--       biome_arch_NN (Scale), the scenery (HighwayScenery's rows, named by their v6 ids: lv_volcano_01 with the L:4
+--       light), dh_golden_gates_01 (+ the L:5 light): each an Atomic Model (K:7887)
+--   Every placed piece is a Model with SD_Piece = its v6 piece, named and numbered as v6 names it (L:20-1599).
 -- Rules: every part anchored and untouched; only the deck's v6 "walk" pieces (the platform, the spots, the watch steps)
---   collide: nobody stands anywhere else, so v6's "walk" lane and ground and its "block" gate, fences, rails and arches
---   are decor until a phase needs them (the lane is a squishy-only surface, K:1700); parts under 2 studs cast no shadow
---   (the lobby's rule); every SurfaceGui at PixelsPerStud 25, hidden beyond 150 studs (K:7873); static lines tagged
---   SD_Sign with SD_TextKey (WorldBinder re-applies them), live lines neither.
--- Not built here (later phases): the scenery (L:476-1597's biome kits), boosters, traps and reward bubbles, the
---   platform launchers, the effects (fx_twinkle, fx_smoke), the animations (SpotSquish, BoardPop, MascotIdle).
+--   collide: nobody stands anywhere else, so v6's "walk" lane and ground and its "block" gate, fences, rails, arches
+--   and scenery are decor until a phase needs them (the lane is a squishy-only surface, K:1700); parts under 2 studs
+--   cast no shadow (the lobby's rule); every SurfaceGui at PixelsPerStud 25, hidden beyond 150 studs (K:7873); static
+--   lines tagged SD_Sign with SD_TextKey (WorldBinder re-applies them), live lines neither.
+-- Not built here (later phases): boosters, traps and reward bubbles (phases 15 and 17), the platform launchers, the
+--   effects (fx_twinkle, the volcano's fx_smoke), the animations (SpotSquish, BoardPop, MascotIdle).
 
 local Generated = require(script.Parent.Parent.Generated)
 local Prims = require(script.Parent.Parent.Kit.Prims)
 local Props = require(script.Parent.Parent.Kit.Props)
+local HighwayScenery = require(script.Parent.HighwayScenery)
 
 -- Types
 
 type BuildContext = Generated.BuildContext
 type BuildResult = Generated.BuildResult
 type Flags = Prims.Flags
+type Row = HighwayScenery.Row
 
 type Deps = {
 	Strings: any,
@@ -87,7 +99,7 @@ type Line = {
 -- Constants
 
 local GENERATOR_ID = "highway"
-local VERSION = 1
+local VERSION = 2 -- 1: phase 12, the deck and the lane; 2: phase 12b, the biome scenery
 local ROOT_NAME = "SD_Highway"
 local DECK_NAME = "Deck"
 
@@ -117,10 +129,35 @@ local MATERIALS: { [string]: Enum.Material } = {
 }
 local REFLECTANCE: { [string]: number } = { HighwayGold = 0.2, HighwayAngelWhite = 0.1 }
 
--- L:2 L1_launch on launch_platform/light_anchor (LK:163 (0, 7, 0)); L:5 L4_heaven on dh_golden_gates/light_anchor
--- (HK:96 (0, 45, -4)). No shadows (L:2, :5).
+-- The scenery's v6 K materials by name (K:7-444 "hex" / "roblox"): its Palette token, Roblox material and shine. A
+-- part's `token` may name one of these instead of a Palette token (look()).
+local KIT: { [string]: { token: string, material: Enum.Material?, reflectance: number? } } = {
+	Frosting = { token = "HighwayFrosting" }, -- K:7
+	CandyGrass = { token = "HighwayCandyGrass" }, -- K:13
+	Wafer = { token = "HighwayWafer" }, -- K:25
+	PinkIcing = { token = "HighwayPinkIcing" }, -- K:31
+	Lilac = { token = "HighwayLilac" }, -- K:55
+	Berry = { token = "HighwayBerry" }, -- K:61
+	Gold = { token = "HighwayGold", reflectance = 0.2 }, -- K:73 "SmoothPlastic, Reflectance 0.2"
+	Glow = { token = "HighwayGlow", material = Enum.Material.Neon }, -- K:80 "Neon (no Light)"
+	Crust = { token = "HighwayCrust" }, -- K:336
+	StrawPink = { token = "HighwayStrawPink" }, -- K:348
+	MilkTea = { token = "HighwayMilkTea" }, -- K:361
+	Snow = { token = "HighwaySnow", material = Enum.Material.Snow }, -- K:374 "Snow"
+	BerrySauce = { token = "HighwayBerrySauce", reflectance = 0.1 }, -- K:386 "SmoothPlastic, Reflectance 0.1"
+	Basalt = { token = "HighwayBasalt", material = Enum.Material.Basalt }, -- K:392 "Basalt"
+	LavaGlow = { token = "HighwayLavaGlow", material = Enum.Material.Neon }, -- K:398 "Neon"
+	StarGold = { token = "HighwayStarGold", material = Enum.Material.Neon }, -- K:419 "Neon"
+	Cloud = { token = "HighwayCloud" }, -- K:426
+	Marble = { token = "HighwayMarble", material = Enum.Material.Marble }, -- K:432 "Marble"
+	GoldCloud = { token = "HighwayGoldCloud" }, -- K:444
+}
+
+-- L:2 L1_launch on launch_platform/light_anchor (LK:163 (0, 7, 0)); L:4 L3_volcano on lv_volcano/light_anchor (HK:71
+-- (0, 66, 0)); L:5 L4_heaven on dh_golden_gates/light_anchor (HK:96 (0, 45, -4)). No shadows (L:2, :4, :5).
 local LIGHTS = {
 	launch = { name = "L1_launch", token = "HighwayLightLaunch", brightness = 1.2, range = 22 },
+	volcano = { name = "L3_volcano", token = "HighwayLightVolcano", brightness = 2, range = 60 },
 	heaven = { name = "L4_heaven", token = "HighwayLightHeaven", brightness = 1.5, range = 50 },
 }
 
@@ -186,7 +223,8 @@ local function loadDeps(shared: Instance): (Deps?, string?)
 end
 
 -- Why the data cannot be built (nil when it can): Config's problems, a biome count that differs from WorldLayout's
--- looks, a biome edge off the 50-stud lane pieces or the 100-stud markers, a Strings key or Palette token missing.
+-- looks or HighwayScenery's, a biome edge off the 50-stud lane pieces or the 100-stud markers, a Strings key or Palette
+-- token missing.
 local function dataProblem(deps: Deps): string?
 	local problems = deps.ValidateHighway(deps.Config)
 	if #problems > 0 then
@@ -195,6 +233,9 @@ local function dataProblem(deps: Deps): string?
 	local H, C = deps.WorldLayout.Highway, deps.Config.Economy.Highway
 	if #H.biomes ~= #C.starts then
 		return string.format("WorldLayout.Highway has %d biome looks for %d biomes", #H.biomes, #C.starts)
+	end
+	if #HighwayScenery.biomes ~= #C.starts then
+		return string.format("HighwayScenery has the scenery of %d biomes for %d", #HighwayScenery.biomes, #C.starts)
 	end
 	for index, start in C.starts do
 		if start % H.tileLength ~= 0 or start % H.markerEvery ~= 0 then
@@ -224,6 +265,15 @@ local function color(state: State, token: string): Color3
 	return value
 end
 
+-- A Palette token's or a KIT material's colour, Roblox material (nil: SmoothPlastic) and shine.
+local function look(state: State, token: string): (Color3, Enum.Material?, number)
+	local kit = KIT[token]
+	if kit then
+		return color(state, kit.token), kit.material, kit.reflectance or 0
+	end
+	return color(state, token), MATERIALS[token], REFLECTANCE[token] or 0
+end
+
 -- Private: parts in a piece's frame (LK:20-38 helpers) -------------------------------------------------------------
 
 local function part(
@@ -236,17 +286,18 @@ local function part(
 	flags: Flags?,
 	shape: Enum.PartType?
 ): Part
+	local paint, material, shine = look(state, token)
 	local made = Prims.part({
 		name = name,
 		size = size,
 		cframe = cframe,
-		color = color(state, token),
-		material = MATERIALS[token],
+		color = paint,
+		material = material,
 		shape = shape,
 		flags = flags or "decor",
 		parent = parent,
 	})
-	made.Reflectance = REFLECTANCE[token] or 0
+	made.Reflectance = shine
 	return made
 end
 
@@ -347,6 +398,31 @@ local function sph(state: State, parent: Instance, name: string, token: string, 
 	return part(state, parent, name, token, Vector3.one * 2 * r, f * CFrame.new(at), nil, Enum.PartType.Ball)
 end
 
+-- A scaled sphere: an ellipsoid of `size` centred on `at` in the frame `f` (Kit/Props.ellipsoid, a Sphere SpecialMesh).
+local function ellipsoid(
+	state: State,
+	parent: Instance,
+	name: string,
+	token: string,
+	f: CFrame,
+	size: Vector3,
+	at: Vector3
+): Part
+	local paint, material, shine = look(state, token)
+	local made = Props.ellipsoid(parent, name, size, f * CFrame.new(at), paint)
+	made.Material = material or made.Material
+	made.Reflectance = shine
+	return made
+end
+
+-- cloud(spec) (HK:7): each [r, x, y, z, sy = 0.7] a sphere of radius r squashed to sy tall, an ellipsoid.
+local function cloud(state: State, parent: Instance, name: string, token: string, f: CFrame, spec: { { number } })
+	for _, s in spec do
+		local r, sy = s[1], s[5] or 0.7
+		ellipsoid(state, parent, name, token, f, Vector3.new(2 * r, 2 * r * sy, 2 * r), Vector3.new(s[2], s[3], s[4]))
+	end
+end
+
 -- torY(R, t, x, y, z) (LK:24) around a solid core: a collar, a Cylinder 2(R + t) wide and 2t tall centred on (x, y, z).
 local function collar(
 	state: State,
@@ -362,6 +438,33 @@ local function collar(
 ): Part
 	local size = Vector3.new(2 * t, 2 * (R + t), 2 * (R + t))
 	return part(state, parent, name, token, size, f * CFrame.new(x, y, z) * UPRIGHT, nil, Enum.PartType.Cylinder)
+end
+
+-- lathe(points) (LK:25), the design's {r, y} profile, as stacked upright Cylinders: one between each two of `heights`
+-- (rising), its radius the profile's at the tier's middle (on the profile's rising edges; flat and falling ones are
+-- its top, bottom and crater).
+local function lathe(
+	state: State,
+	parent: Instance,
+	name: string,
+	token: string,
+	f: CFrame,
+	profile: { { number } },
+	heights: { number }
+)
+	for index = 1, #heights - 1 do
+		local y0, y1 = heights[index], heights[index + 1]
+		local y = (y0 + y1) / 2
+		local radius: number? = nil
+		for k = 1, #profile - 1 do
+			local a, b = profile[k], profile[k + 1]
+			if radius == nil and b[2] > a[2] and y >= a[2] and y <= b[2] then
+				radius = a[1] + (b[1] - a[1]) * (y - a[2]) / (b[2] - a[2])
+			end
+		end
+		assert(radius, string.format("[SD][HighwayBuilder] %s: the lathe has no edge at y %s", name, tostring(y)))
+		cyl(state, parent, name, token, f, radius, y1 - y0, 0, y0, 0)
+	end
 end
 
 -- slab(rrect(w, d, r), h, y0) (LK:26-33) centred on (0, z) of `f`: two crossed Blocks and a Cylinder in each corner.
@@ -569,10 +672,11 @@ end
 
 -- Private: pieces ------------------------------------------------------------------------------------------------
 
--- A new placed piece: a Model named as v6 numbers it (`<piece>_NN`, in build order), SD_Piece = `piece`.
-local function newPiece(state: State, piece: string, atomic: boolean): Model
+-- A new placed piece: a Model named as v6 numbers it (`<piece>_NN`, in build order, or v6's own `id`), SD_Piece =
+-- `piece`.
+local function newPiece(state: State, piece: string, atomic: boolean, id: string?): Model
 	state.counts[piece] = (state.counts[piece] or 0) + 1
-	local model = Prims.model(string.format("%s_%02d", piece, state.counts[piece]), nil, atomic)
+	local model = Prims.model(id or string.format("%s_%02d", piece, state.counts[piece]), nil, atomic)
 	model:SetAttribute(state.A.Piece, piece)
 	return model
 end
@@ -1019,7 +1123,219 @@ local function buildGoldenGates(state: State, zone: Instance, d: number)
 	place(model, f, zone)
 end
 
--- The biomes in Config's order: each its own Model (K:7887) holding its lane, rails, markers, ground and arch.
+-- Private: the biome scenery (pens3 phase 12b; where each piece stands: HighwayScenery) -------------------------------
+-- Each builder makes a v6 piece's parts in its frame `f` (bottom centre, front -Z), named as K names them, in K's
+-- materials (KIT) or the row's tint.
+
+-- gumdrop_tree (LK:235-239, K:1253; Candy Meadow reuses the lobby's, HK:30): the trunk, its 3 striped tori as collars,
+-- the canopy in the row's GumdropTint read as phase 10 reads it (BaseService TREE): a Cylinder r 3 from 4.6 to 6 under
+-- an ellipsoid 6 x 4.2 x 6 from 4.6 to 8.8 (the lathe's r 2.7 at 7.3 and 2 at 8.2; the ellipsoid has 2.9 and 2.1).
+local function gumdropTree(state: State, model: Model, f: CFrame, row: Row)
+	local tint = row.tint or "HighwayPinkIcing" -- K:123 GumdropTint's own colour
+	cyl(state, model, "trunk", "Frosting", f, 0.6, 5, 0, 0, 0)
+	for _, y in { 1.2, 2.4, 3.6 } do
+		collar(state, model, "trunk_stripes", "PinkIcing", f, 0.64, 0.14, 0, y, 0)
+	end
+	cyl(state, model, "canopy", tint, f, 3, 1.4, 0, 4.6, 0)
+	ellipsoid(state, model, "canopy", tint, f, Vector3.new(6, 4.2, 6), Vector3.new(0, 6.7, 0))
+end
+
+-- lollipop_lamp (LK:240-244, K:1283): the pole, the Neon candy disc facing the front and its swirl, 2 tori on the
+-- candy's front (R 1, tube 0.18; R 0.45, tube 0.15) read as Props.lollipop reads swirl rings: discs stepped LAYER out
+-- of the candy's face, each ring pink out to R + tube with the candy's Glow again inside R - tube.
+local LAMP_SWIRL = {
+	{ name = "lamp_swirl", token = "PinkIcing", r = 1.18 },
+	{ name = "lamp_candy", token = "Glow", r = 0.82 },
+	{ name = "lamp_swirl", token = "PinkIcing", r = 0.6 },
+	{ name = "lamp_candy", token = "Glow", r = 0.3 },
+}
+local function lollipopLamp(state: State, model: Model, f: CFrame, _row: Row)
+	cyl(state, model, "lamp_pole", "Frosting", f, 0.35, 8.2, 0, 0, 0)
+	cylZ(state, model, "lamp_candy", "Glow", f, 1.6, 0.6, 0, 9.2, 0)
+	for index, disc in LAMP_SWIRL do
+		local z = -0.3 - (index - 0.5) * Prims.LAYER -- the candy's front face is z -0.3
+		cylZ(state, model, disc.name, disc.token, f, disc.r, Prims.LAYER, 0, 9.2, z)
+	end
+end
+
+-- candy_hill (LK:245-248, K:1313): the hill lathe in its 5 tiers, the 2 above its icing's lower edge (LK:247: y 11.73,
+-- read at the tier line 11.5) in the icing's Frosting: the icing shell, 0.3 over the top, is read as the hill's top.
+local HILL = { { 0, 0 }, { 20, 0 }, { 18, 3 }, { 15, 7.5 }, { 10.5, 11.5 }, { 6, 14 }, { 0, 15 } } -- LK:246
+local function candyHill(state: State, model: Model, f: CFrame, _row: Row)
+	lathe(state, model, "hill_body", "CandyGrass", f, HILL, { 0, 3, 7.5, 11.5 })
+	lathe(state, model, "hill_icing", "Frosting", f, HILL, { 11.5, 14, 15 })
+end
+
+-- bt_bread_house (HK:43-46, K:2044): the 16 x 8 x 12 loaf house, its half-round roof (HK:44: a half Cylinder r 6 along
+-- X on the walls; here the whole Cylinder, its lower half inside the walls) and its chimney; the door, 2 windows and
+-- the eave band in Frosting.
+local function breadHouse(state: State, model: Model, f: CFrame, _row: Row)
+	box(state, model, "house_crust", "Crust", f, Vector3.new(16, 8, 12), 0, 0, 0)
+	cylX(state, model, "house_crust", "Crust", f, 6, 16, 0, 8, 0)
+	box(state, model, "house_crust", "Crust", f, Vector3.new(1.6, 4, 1.6), 4.5, 11, 2)
+	box(state, model, "house_trim", "Frosting", f, Vector3.new(3, 5, 0.3), 0, 0, -6.1)
+	for _, x in { -5, 5 } do
+		box(state, model, "house_trim", "Frosting", f, Vector3.new(2.6, 2.6, 0.3), x, 3.5, -6.1)
+	end
+	box(state, model, "house_trim", "Frosting", f, Vector3.new(16.4, 0.6, 12.4), 0, 7.7, 0)
+end
+
+-- bt_croissant_hill (HK:47, K:2070): TorusGeometry(14, 6.5, arc 2.6) laid flat, turned 90° + 1.3 rad, its middle 2.5
+-- up (half sunk in the ground), read as 7 Balls of the tube's 13 studs along its arc, the end ones half a tube radius
+-- in from the cut ends so the horns reach about where v6's do (34.0 x 27.3 across, K: 34.6 x 26).
+local CROISSANT_BALLS = 7
+local function croissantHill(state: State, model: Model, f: CFrame, _row: Row)
+	local c = f * CFrame.new(0, 2.5, 0) * CFrame.Angles(0, math.pi / 2 + 1.3, 0) * CFrame.Angles(-math.pi / 2, 0, 0)
+	local inset = 0.5 * 6.5 / 14
+	for k = 0, CROISSANT_BALLS - 1 do
+		local a = inset + (2.6 - 2 * inset) * k / (CROISSANT_BALLS - 1)
+		sph(state, model, "croissant", "Wafer", c, 6.5, Vector3.new(14 * math.cos(a), 14 * math.sin(a), 0))
+	end
+end
+
+-- bl_cup_island (HK:52-57, K:2176): the milk-tea cup (lathe r 7 to 9 over 24) in 4 tiers, its dome lid (a half sphere
+-- r 9.3 squashed to 0.45: the whole ellipsoid, its lower half inside the cup's top) and the straw leaning 0.3 rad. Its
+-- 5 pearls (HK:56: r 1.4 at y 1.4, at most 6.1 from the axis) lie inside the opaque cup (r 7): unseen in v6 too, not
+-- built.
+local CUP = { { 0, 0 }, { 7, 0 }, { 9, 24 }, { 0, 24 } } -- HK:53
+local function cupIsland(state: State, model: Model, f: CFrame, _row: Row)
+	lathe(state, model, "cup", "MilkTea", f, CUP, { 0, 6, 12, 18, 24 })
+	ellipsoid(state, model, "cup_lid", "Frosting", f, Vector3.new(18.6, 2 * 9.3 * 0.45, 18.6), Vector3.new(0, 24, 0))
+	local straw = f * CFrame.new(2.2, 30, 0) * CFrame.Angles(0, 0, 0.3) * UPRIGHT
+	part(state, model, "cup_straw", "StrawPink", Vector3.new(18, 1.8, 1.8), straw, nil, Enum.PartType.Cylinder)
+end
+
+-- fd_popsicle (HK:63, K:2328): the ice pop, ext(rrect(4, 8, 1.8), 1.5) standing from y 3 to 11, as the rounded slab
+-- turned upright (rrectSlab in a frame whose Y is the pop's thickness), in the row's PopsicleTint; its stick.
+local function popsicle(state: State, model: Model, f: CFrame, row: Row)
+	local upright = f * CFrame.new(0, 7, 0) * CFrame.Angles(math.pi / 2, 0, 0)
+	rrectSlab(state, model, "popsicle", row.tint or "HighwayPinkIcing", upright, 4, 8, 1.8, 1.5, -0.75, 0) -- K:297
+	box(state, model, "popsicle_stick", "Wafer", f, Vector3.new(0.7, 3.4, 0.35), 0, 0, 0)
+end
+
+-- fd_sundae_peak (HK:62, K:2298): the Snow peak lathe in 9 tiers of at most 6 studs, the 4 above the berry sauce's
+-- lower edge (HK:62: y 28.5) in BerrySauce (the sauce shell, 0.25 over the top, read as the peak's top), the cherry on
+-- top.
+local PEAK = { { 0, 0 }, { 30, 0 }, { 24, 10 }, { 16, 22 }, { 9, 32 }, { 3, 38 }, { 0, 39 } } -- HK:62
+local function sundaePeak(state: State, model: Model, f: CFrame, _row: Row)
+	lathe(state, model, "peak", "Snow", f, PEAK, { 0, 5, 10, 16, 22, 28.5 })
+	lathe(state, model, "peak_sauce", "BerrySauce", f, PEAK, { 28.5, 32, 35, 38, 39 })
+	sph(state, model, "peak_cherry", "Berry", f, 2.4, Vector3.new(0, 41, 0))
+end
+
+-- lv_basalt_rock (HK:73, K:2475): 3 dodecahedra of Basalt, each a Ball of its radius.
+local function basaltRock(state: State, model: Model, f: CFrame, _row: Row)
+	sph(state, model, "rocks", "Basalt", f, 3, Vector3.new(0, 2.4, 0))
+	sph(state, model, "rocks", "Basalt", f, 2, Vector3.new(3.2, 1.5, 1))
+	sph(state, model, "rocks", "Basalt", f, 1.5, Vector3.new(-2.8, 1.1, -1.2))
+end
+
+-- lv_volcano (HK:68-72, K:2446): the 66-tall Basalt lathe, its slope in 12 tiers of 5 to 6 studs up to the crater
+-- floor (y 61), its crater rim (HK:69: out r 16 at 62 to r 12 at 66, in to r 10 at 63) a ring of 8 Blocks from 61 to
+-- 66 (r 11 to 14.5); the LavaGlow lake (HK:70 cyl(10.2, 0.4) at 61) only where v6 shows it: HK:69's crater floor is a
+-- funnel (y 61 + 0.2 r) over the lake's top (61.4) beyond r 2, so here it is that r 2 middle on the flat floor at 61;
+-- the 5 lava streams down the slope (2.4 x 0.5 x 50 boxes tilted 0.967 rad, 1.26 rad apart) and the biome's light on
+-- its light_anchor (L:4). fx_smoke comes with the effects.
+local VOLCANO = { { 0, 0 }, { 60, 0 }, { 45, 20 }, { 28, 45 }, { 16, 62 }, { 12, 66 }, { 10, 63 }, { 0, 61 } } -- HK:69
+local function volcano(state: State, model: Model, f: CFrame, _row: Row)
+	lathe(state, model, "volcano", "Basalt", f, VOLCANO, { 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 61 })
+	-- The rim's Blocks are as long as the outer octagon's sides (r 14.5): arcBlocks' centre-line length would leave a
+	-- V notch between each two on a ring this thick.
+	local rimLength = 2 * 14.5 * math.tan(math.pi / ARC_SEGMENTS)
+	for index = 0, ARC_SEGMENTS - 1 do
+		local a = (index + 0.5) * 2 * math.pi / ARC_SEGMENTS
+		local at = f * CFrame.new(12.75 * math.cos(a), 63.5, 12.75 * math.sin(a)) * CFrame.Angles(0, -a, 0)
+		part(state, model, "volcano", "Basalt", Vector3.new(3.5, 5, rimLength), at)
+	end
+	local lake = cyl(state, model, "volcano_lava", "LavaGlow", f, 2, 0.4, 0, 61, 0)
+	for index = 0, 4 do
+		local a = index * 1.26 + 0.4
+		local stream = f
+			* CFrame.new(math.sin(a) * 31, 41, math.cos(a) * 31)
+			* CFrame.Angles(0, a, 0)
+			* CFrame.Angles(0.967, 0, 0)
+		part(state, model, "volcano_lava", "LavaGlow", Vector3.new(2.4, 0.5, 50), stream)
+	end
+	light(state, lake, f * CFrame.new(0, 66, 0), LIGHTS.volcano)
+end
+
+-- rr_cloud_bank (HK:79, K:2608): 6 Cloud spheres squashed to 0.7 (cloud()).
+local CLOUD_BANK =
+	{ { 10, 0, 6, 0 }, { 8, 9, 4, 2 }, { 7, -9, 3.5, 1 }, { 6, 3, 9, -3 }, { 6, -4, 8, 4 }, { 5, 14, 2.5, -3 } }
+local function cloudBank(state: State, model: Model, f: CFrame, _row: Row)
+	cloud(state, model, "cloud_bank", "Cloud", f, CLOUD_BANK)
+end
+
+-- rr_planet (HK:80, K:2630): the Lilac planet (r 18, 18 up) and its StarGold ring (TorusGeometry(28, 1.4) flattened to
+-- 0.12 across: a flat band 2.8 wide and 0.336 thick) tilted 0.35 rad past flat, read as a ring of 16 Blocks.
+local PLANET_RING_BLOCKS = 16
+local function planet(state: State, model: Model, f: CFrame, _row: Row)
+	sph(state, model, "planet", "Lilac", f, 18, Vector3.new(0, 18, 0))
+	local ring, thick = f * CFrame.new(0, 18, 0) * CFrame.Angles(0.35, 0, 0), 2 * 1.4 * 0.12
+	arcBlocks(state, model, "planet_ring", "StarGold", ring, 28, 2.8, thick, 0, 2 * math.pi, PLANET_RING_BLOCKS)
+end
+
+-- dh_marble_pillar (HK:98, K:2797): the Marble lathe read as the Golden Gates' pillars are (its 2 short tapers left
+-- out: the foot r 2.2 to 1, the shaft r 1.45 to 13.5, the top r 2 to 14.4) and its gold torus (r 1.5, tube 0.22 at
+-- 13.2) a collar.
+local PILLAR = { { 0, 0 }, { 2.2, 0 }, { 2.2, 1 }, { 1.5, 1.5 }, { 1.4, 13 }, { 2, 13.5 }, { 2, 14.4 }, { 0, 14.4 } }
+local function marblePillar(state: State, model: Model, f: CFrame, _row: Row)
+	lathe(state, model, "pillar", "Marble", f, PILLAR, { 0, 1, 13.5, 14.4 })
+	collar(state, model, "pillar_gold", "Gold", f, 1.5, 0.22, 0, 13.2, 0)
+end
+
+-- dh_gold_cloud (HK:99, K:2823): 5 GoldCloud spheres squashed to 0.45 / 0.5 (cloud()).
+local GOLD_CLOUD = {
+	{ 12, 0, 4, 0, 0.45 },
+	{ 9, 12, 3, 3, 0.45 },
+	{ 9, -12, 3, -2, 0.45 },
+	{ 7, 4, 6, -8, 0.5 },
+	{ 7, -5, 5.5, 8, 0.5 },
+}
+local function goldCloud(state: State, model: Model, f: CFrame, _row: Row)
+	cloud(state, model, "gold_cloud", "GoldCloud", f, GOLD_CLOUD)
+end
+
+-- v6 kind -> its builder.
+local SCENERY: { [string]: (State, Model, CFrame, Row) -> () } = {
+	gumdrop_tree = gumdropTree,
+	lollipop_lamp = lollipopLamp,
+	candy_hill = candyHill,
+	bt_bread_house = breadHouse,
+	bt_croissant_hill = croissantHill,
+	bl_cup_island = cupIsland,
+	fd_popsicle = popsicle,
+	fd_sundae_peak = sundaePeak,
+	lv_basalt_rock = basaltRock,
+	lv_volcano = volcano,
+	rr_cloud_bank = cloudBank,
+	rr_planet = planet,
+	dh_marble_pillar = marblePillar,
+	dh_gold_cloud = goldCloud,
+}
+
+-- The biome's scenery (HighwayScenery's rows): each row's piece an Atomic Model named by its v6 id, on its v6 point in
+-- the lane-local frame (L:1: z + 62) turned by its yaw; the clouds under v6's gates (d 8,350, L:1597-1599) follow
+-- ours (Config gatesAt, PR3:36).
+local function buildScenery(state: State, zone: Instance, index: number)
+	local S = HighwayScenery
+	local shift = state.deps.Config.Economy.Highway.gatesAt - S.v6GatesAt
+	for _, row in S.biomes[index] do
+		local kind = string.match(row.id, "^(.+)_%d+$")
+		local build = if kind then SCENERY[kind] else nil
+		assert(kind and build, "[SD][HighwayBuilder] HighwayScenery: no builder for " .. row.id)
+		local z = row.at.Z + S.v6Zero
+		if S.gateSupports[row.id] then
+			z -= shift
+		end
+		local f = state.origin * CFrame.new(row.at.X, row.at.Y, z) * CFrame.Angles(0, math.rad(row.rot), 0)
+		local model = newPiece(state, kind, true, row.id)
+		build(state, model, f, row)
+		place(model, f, zone)
+	end
+end
+
+-- The biomes in Config's order: each its own Model (K:7887) holding its lane, rails, markers, ground, arch and scenery.
 local function buildBiomes(state: State, root: Instance)
 	local H, C = state.H, state.deps.Config.Economy.Highway
 	for index, look in H.biomes do
@@ -1041,6 +1357,7 @@ local function buildBiomes(state: State, root: Instance)
 		if look.arch then
 			buildArch(state, zone, look, start)
 		end
+		buildScenery(state, zone, index)
 		if index == #H.biomes then
 			buildGoldenGates(state, zone, C.gatesAt)
 		end
