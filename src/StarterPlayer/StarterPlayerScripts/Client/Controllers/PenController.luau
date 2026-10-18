@@ -10,13 +10,17 @@
 --   missing ones from the pool, or clones them: SquishyCache "World" (a model slot replaces the blueprint), scaled so
 --   its longest side is Config.UI.Pen.rarityStuds of its rarity (K:4052-4081), its bottom on the plot floor, under
 --   Workspace.SD_PenClient (SquishyCache builds every part CanCollide / CanQuery / CanTouch false).
--- * Walk (P3D:829-833; Config.UI.Pen): a new walker stands somewhere in its walk area (PenMath.wanderRect of the pen's
---   spots and its studs), waits 0..firstWaitMax s, then walks speedMin..speedMax studs/s to a random spot of the area,
---   facing the way it walks; within arriveStuds it waits waitMin..waitMax s and picks the next spot. While it walks it
+-- * Walk (P3D:829-833; Config.UI.Pen): a new walker stands somewhere in its walk area (PenMath.walkArea of its studs;
+--   wb, owner 2026-10-17: the whole base's fenced floor, round its blocks: the front row with the arch, the spawn, the
+--   signs and the gate, the shelf row, the trees), waits 0..firstWaitMax s, then walks speedMin..speedMax studs/s to a
+--   random spot of the area it reaches in a straight line past every block (PenMath.clearPath; with none in
+--   SPOT_TRIES tries it stands waitMin s and looks again), facing the way it walks; within arriveStuds it waits
+--   waitMin..waitMax s and picks the next spot. While it walks it
 --   hops (A17 PenWanderHop, K:5890-5954: hopHeight × its size over hopSeconds, Sine Out up, Sine In down); none under
 --   ReducedMotion (it glides). Placeholder: A17's squash track is skipped (the squishies are built of parts).
 -- * Distance (K:5897; one Scheduler render effect for the whole controller, no per-walker loop or connection): a base
---   whose pen centre is within animateStuds of the camera and on the screen (AmbientMath.sphereOnScreen) steps its
+--   whose pen centre (wb: the middle of its fenced floor) is within animateStuds of the camera and on the screen
+--   (AmbientMath.sphereOnScreen) steps its
 --   walkers; any other base's stand still. A base past cullStuds has its models unparented (kept), parented again
 --   when the camera comes back.
 -- * Coin label (K:4266-4270): one BillboardGui per walker (built with it, pooled with it), labelSize studs, its bottom
@@ -92,9 +96,13 @@
 --   - The SHELF SPOTS sign: the own one is painted (trim, icon, line) like the PEN SPACE sign, from its SD_Price; its
 --     ShelfPrompt sends PenBuyShelf(that price) (one buy at a time with the pen's), A13's pop on its face after a buy;
 --     every other base's ShelfPrompt is off here, like their PenPrompts.
+--   - Wb (owner 2026-10-17): the MY PEN window's shelf BUY button (PenFormat's buyShelf action; the sign stays) sends
+--     PenBuyShelf with the price it shows (shelfCall), one at a time with the signs' buys and PenPlace (the spinner
+--     meanwhile); an accepted buy plays ui.purchase, a refusal shows its reason. A disabled one (short of Coins,
+--     MAX) sends nothing.
 -- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
--- syncWaits, tapHit, isFace, formColor, shelfPlace), init(), start(), destroy() (tests and leak checks; the bootstrap
--- never calls it), debugState().
+-- syncWaits, tapHit, isFace, formColor, shelfPlace, shelfCall), init(), start(), destroy() (tests and leak checks; the
+-- bootstrap never calls it), debugState().
 
 -- Services
 
@@ -152,7 +160,7 @@ export type Walk = {
 	tz: number?,
 	wait: number, -- seconds left to stand still
 	speed: number, -- studs a second
-	rect: PenMath.Rect,
+	rect: PenMath.Area, -- wb: the floor its centre stays on and the blocks it walks round
 }
 
 type Walker = Walk & {
@@ -231,6 +239,9 @@ local MAX_SPOTS = Config.Economy.Pen.maxSpots
 local SIGN_POP = Timeline.new(P.signPop)
 local CENTRE_UP = 1.5 -- reading: the pen's bounding sphere sits this high, its radius the half diagonal + SPHERE_PAD
 local SPHERE_PAD = 3
+-- Wb: random spots a walker tries for its start or its next target before it settles (shortcut: rejection sampling;
+-- the base's 4 blocks leave most of the floor free, raise it if walkers stand still too often).
+local SPOT_TRIES = 8
 local SCREEN = "pen" -- pens3 phase 6: the stand-in pen screen
 local MODAL_GUI = "SD_Modal"
 local REMOTE_PLACE = "PenPlace"
@@ -526,24 +537,19 @@ local function sync(pen: Pen)
 			local list = pool[key]
 			w = if list and #list > 0 then table.remove(list) else build(look)
 		end
-		local rect = if w then PenMath.wanderRect(spots :: number, w.studs) else nil
-		if w and rect then
-			w.rect = rect
+		if w then
+			local area = PenMath.walkArea(w.studs) -- wb: the whole base
+			w.rect = area
 			if fresh then
-				local walk = PenController.newWalk(rect, rnd)
+				local walk = PenController.newWalk(area, rnd)
 				w.x, w.z, w.yaw, w.tx, w.tz = walk.x, walk.z, walk.yaw, nil, nil
 				w.wait, w.speed, w.hop, w.lastLift = walk.wait, walk.speed, rnd(), 0
-			else
-				w.x = math.clamp(w.x, rect.minX, rect.maxX)
-				w.z = math.clamp(w.z, rect.minZ, rect.maxZ)
 			end
 			setLabel(w, look)
 			w.look, w.index = look, index
 			table.insert(kept, w)
 			place(pen, w, 0)
 			w.model.Parent = if pen.shown then folder else nil
-		elseif w then
-			release(w)
 		end
 	end
 	for _, list in free do
@@ -552,10 +558,6 @@ local function sync(pen: Pen)
 		end
 	end
 	pen.walkers = kept
-	if step then
-		pen.centre = (pen.frame * CFrame.new(0, CENTRE_UP, LAYOUT.frontZ - step.d / 2)).Position
-		pen.radius = math.sqrt((step.w / 2) ^ 2 + (step.d / 2) ^ 2) + SPHERE_PAD
-	end
 	syncShelf(pen) -- pens3 phase 11
 end
 
@@ -650,6 +652,7 @@ local function watch(model: Instance)
 		return
 	end
 	local pc = Cleanup.new()
+	local walk = LAYOUT.walk -- wb: the pen is the whole base's fenced floor
 	local pen: Pen = {
 		plot = plot :: number,
 		model = model,
@@ -657,8 +660,8 @@ local function watch(model: Instance)
 		walkers = {},
 		shown = false,
 		queued = false,
-		centre = frame.Position,
-		radius = 0,
+		centre = (frame * CFrame.new((walk.minX + walk.maxX) / 2, CENTRE_UP, (walk.minZ + walk.maxZ) / 2)).Position,
+		radius = math.sqrt((walk.maxX - walk.minX) ^ 2 + (walk.maxZ - walk.minZ) ^ 2) / 2 + SPHERE_PAD,
 		cleanup = pc,
 		shelf = {}, -- pens3 phase 11
 		shelfCentre = frame.Position,
@@ -1065,7 +1068,28 @@ local function onFood(id: string)
 	render()
 end
 
+-- Wb: the window's shelf BUY button: PenBuyShelf at the price it shows (the sign's call), one at a time with the
+-- signs' buys (pending) and the window's sends (busy).
+local function sendShelf(remote: string, price: number)
+	if pending then
+		return
+	end
+	pending = true
+	local result = send(remote, price)
+	pending = false
+	if result and result.ok then
+		SoundController.play(SOUND_PURCHASE)
+	end
+end
+
 local function onAction(id: string)
+	if id == "buyShelf" then
+		local remote, price = PenController.shelfCall(currentView())
+		if remote and price then
+			task.spawn(sendShelf, remote, price)
+		end
+		return
+	end
 	-- Pens3 phases 7-8: the confirm steps.
 	if id == "sell" or id == "sellAll" or id == "buyBack" or id == "fuse" then
 		confirm = id :: any
@@ -1300,15 +1324,31 @@ function PenController.shelfPlace(frame: CFrame, slot: number, lift: number, lab
 	return rest, at * Vector3.new(cubby.X, cubby.Y + SHELF.labelOver, SHELF.labelZ) - rest.Position
 end
 
--- A fresh walker somewhere in `rect`: random spot and facing, its first wait 0..firstWaitMax s, its speed (P3D:398).
-function PenController.newWalk(rect: PenMath.Rect, random01: () -> number): Walk
+-- Wb: a random walkable spot of `area` (SPOT_TRIES tries), reached from (fromX, fromZ) in a straight line past every
+-- block when given; nil when no try finds one.
+local function spotIn(area: PenMath.Area, random01: () -> number, fromX: number?, fromZ: number?): (number?, number?)
+	for _ = 1, SPOT_TRIES do
+		local x = area.minX + random01() * (area.maxX - area.minX)
+		local z = area.minZ + random01() * (area.maxZ - area.minZ)
+		local reached = fromX == nil or fromZ == nil or PenMath.clearPath(area, fromX, fromZ, x, z)
+		if PenMath.walkable(area, x, z) and reached then
+			return x, z
+		end
+	end
+	return nil, nil
+end
+
+-- A fresh walker on a walkable spot of `area` (its middle when no try finds one; on the base it is walkable): random
+-- spot and facing, its first wait 0..firstWaitMax s, its speed (P3D:398).
+function PenController.newWalk(area: PenMath.Area, random01: () -> number): Walk
+	local x, z = spotIn(area, random01)
 	return {
-		x = rect.minX + random01() * (rect.maxX - rect.minX),
-		z = rect.minZ + random01() * (rect.maxZ - rect.minZ),
+		x = x or (area.minX + area.maxX) / 2,
+		z = z or (area.minZ + area.maxZ) / 2,
 		yaw = random01() * 2 * math.pi,
 		wait = random01() * P.firstWaitMax,
 		speed = P.speedMin + random01() * (P.speedMax - P.speedMin),
-		rect = rect,
+		rect = area,
 	}
 end
 
@@ -1318,10 +1358,13 @@ function PenController.stepWalker(walk: Walk, dt: number, random01: () -> number
 		walk.wait -= dt
 		return false
 	end
-	local rect = walk.rect
 	if walk.tx == nil or walk.tz == nil then
-		walk.tx = rect.minX + random01() * (rect.maxX - rect.minX)
-		walk.tz = rect.minZ + random01() * (rect.maxZ - rect.minZ)
+		local tx, tz = spotIn(walk.rect, random01, walk.x, walk.z) -- wb: never through a block
+		if tx == nil then
+			walk.wait = P.waitMin -- no clear spot this time: stand a moment, then look again
+			return false
+		end
+		walk.tx, walk.tz = tx, tz
 	end
 	local dx, dz = (walk.tx :: number) - walk.x, (walk.tz :: number) - walk.z
 	local distance = math.sqrt(dx * dx + dz * dz)
@@ -1335,6 +1378,17 @@ function PenController.stepWalker(walk: Walk, dt: number, random01: () -> number
 	walk.z += dz / distance * move
 	walk.yaw = math.atan2(-dx, -dz)
 	return true
+end
+
+-- Wb: what the MY PEN window's shelf BUY button sends (PenFormat's buyShelf action): PenBuyShelf and the price it
+-- shows, the SHELF SPOTS sign's call; nil when the button is disabled (short of Coins, MAX) or not in the view.
+function PenController.shelfCall(view: PenFormat.View): (string?, number?)
+	for _, action in view.actions do
+		if action.id == "buyShelf" and action.reason == nil and action.price ~= nil then
+			return REMOTE_BUY_SHELF, action.price
+		end
+	end
+	return nil, nil
 end
 
 -- Public: lifecycle --------------------------------------------------------------------------------------------------

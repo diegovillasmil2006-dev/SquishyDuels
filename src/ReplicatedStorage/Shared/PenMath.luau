@@ -65,9 +65,14 @@
 --   PenMath.encode(items)        -> string: "kind.form.level.coat" per item joined by ";" (the base's SD_Pen attribute;
 --                                   entries that are not items are left out)
 --   PenMath.decode(text)         -> {{kind, form, level, coat}}: the reverse; malformed entries are skipped
---   PenMath.wanderRect(spots, studs) -> {minX, maxX, minZ, maxZ}?: where the centre of a squishy `studs` long may walk,
---                                   in plot-local studs: inside the steps[spots] fence (WorldLayout.Bases.pen), half its
---                                   size plus edgeMargin in from every side; nil for a spot count with no step
+--   PenMath.walkArea(studs)      -> Area {minX, maxX, minZ, maxZ, blocks}: where the centre of a squishy `studs`
+--                                   long may walk, in plot-local studs (wb, owner 2026-10-17: the pen is the whole
+--                                   base): WorldLayout.Bases.pen.walk (the plot's fenced floor), half its size plus
+--                                   edgeMargin in from every side, and Bases.pen.blocks, each grown by as much
+--   PenMath.walkable(area, x, z) -> boolean: the point is on the area's floor (its edges too) and inside no block
+--                                   (a block's edge is walkable); an area without blocks has none
+--   PenMath.clearPath(area, x0, z0, x1, z1) -> boolean: the straight line between two points crosses no block's
+--                                   inside (running along an edge is fine): a walker on it never steps into one
 --   PenMath.room(pen)            -> number: how many more squishies fit (pens3 phase 5, D1:254-258): the open spots
 --                                   (phase 11: the shelf's and the TOP spot too) plus the Toy Box's toyBoxMax, less
 --                                   every item, never below 0; 0 for anything that is not a pen (fail closed: nothing
@@ -125,15 +130,8 @@
 --                                   always the weakest one that can eat (the lowest level, then the fewest Coins a
 --                                   second at Lv 1, then the lower id), until no placed squishy below `cap` has the
 --                                   pieces of its next step. steps 0 = nothing to feed.
--- Pens3 phase 10 (the pen look, lobby design v6; WorldLayout.Bases.pen):
---   PenMath.segmentFrames(spots) -> {CFrame}: the plot-local frame of every fence segment of steps[spots] (BaseService
---                                   draws one at each; moved here from it), in build order: the front pieces from the
---                                   gate gap out (left, then right), the two sides from the front back (turned so their
---                                   X runs along the plot's Z), then the back from -X, only where K's back wall is a
---                                   fence (phase 11: from 9 spots it is the shelf, K:4143-4167); {} for a spot count
---                                   with no step
---   PenMath.newSegments(from, to) -> {CFrame}: the frames of segmentFrames(to) that segmentFrames(from) has not, in
---                                   build order: what a pen growing from `from` to `to` spots pops in (A14 FenceGrow)
+-- Pens3 phase 10 (the pen look, lobby design v6; WorldLayout.Bases.pen; wb: no pen fence any more, so no fence
+-- segments):
 --   PenMath.decorOf(spots)       -> {bulbs, lamps, bow, trees}: the tier decor of steps[spots] (K:4170-4189
 --                                   "adds", K:700 notes): tier 2 the gate bulbs + 2 lollipop lamps, tier 3 also the
 --                                   gate bow + 2 gumdrop trees; none at tier 1 or for a spot count with no step
@@ -168,6 +166,8 @@ local WorldLayout = require(script.Parent.World.WorldLayout)
 export type Buy = { spot: number, price: number }
 export type Look = { kind: string, form: number, level: number, coat: number }
 export type Rect = { minX: number, maxX: number, minZ: number, maxZ: number }
+-- Wb: a walk area (walkArea): the floor a squishy's centre stays on and the rects it never steps into.
+export type Area = { minX: number, maxX: number, minZ: number, maxZ: number, blocks: { Rect }? }
 export type Move = { id: number, from: number, to: number, swapId: number? } -- pens3 phase 6: one PenPlace
 export type Sale = { items: { Types.PenItem }, coins: number } -- pens3 phase 7: one SellItems / SellAll
 export type BuyBack = { index: number, entry: Types.BuyBackEntry } -- the entry of one BuyBack (its list index)
@@ -208,7 +208,6 @@ local CODE_FOOD_FULL = "food.full"
 local CODE_NOT_ENOUGH = "food.notEnough"
 local CODE_MAX_LEVEL = "pen.maxLevel"
 local BIOMES_REACHED = 1 -- shortcut: phase 13 (the highway) reads profile.highway.biome instead
-local ALONG_Z = CFrame.Angles(0, math.pi / 2, 0) -- pens3 phase 10: a side segment, its X along the plot's Z
 local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11: the shelf's first slot (13)
 local TOP_SLOT = PEN.placedMax -- the TOP spot (21)
 local CODE_SHELF_MAX = "pen.shelfMax"
@@ -218,11 +217,6 @@ local CODE_SHELF_MAX = "pen.shelfMax"
 local PenMath = {}
 
 -- Private
-
--- Pens3 phase 10: a segment frame's spot on the plot (centistuds; + 0 makes -0 a 0).
-local function spotKey(frame: CFrame): string
-	return `{math.round(frame.Position.X * 100) + 0},{math.round(frame.Position.Z * 100) + 0}`
-end
 
 local function isWhole(n: unknown): boolean
 	return type(n) == "number" and n == n and n ~= math.huge and n ~= -math.huge and math.floor(n) == n
@@ -940,58 +934,56 @@ function PenMath.decodeShelf(text: any): { [number]: Look }
 	return list
 end
 
-function PenMath.wanderRect(spots: number, studs: number): Rect?
-	local step = LAYOUT.steps[spots]
-	if step == nil then
-		return nil
-	end
+local NO_BLOCKS: { Rect } = {} -- wb: an area without blocks (a test's)
+
+-- Wb: `rect` `by` studs bigger on every side (smaller for a negative `by`).
+local function grown(rect: Rect, by: number): Rect
+	return { minX = rect.minX - by, maxX = rect.maxX + by, minZ = rect.minZ - by, maxZ = rect.maxZ + by }
+end
+
+function PenMath.walkArea(studs: number): Area
 	local inset = studs / 2 + LAYOUT.edgeMargin
-	return {
-		minX = -step.w / 2 + inset,
-		maxX = step.w / 2 - inset,
-		minZ = LAYOUT.frontZ - step.d + inset,
-		maxZ = LAYOUT.frontZ - inset,
-	}
+	local floor = grown(LAYOUT.walk, -inset)
+	local blocks: { Rect } = {}
+	for _, block in LAYOUT.blocks do
+		table.insert(blocks, grown(block, inset))
+	end
+	return { minX = floor.minX, maxX = floor.maxX, minZ = floor.minZ, maxZ = floor.maxZ, blocks = blocks }
 end
 
-function PenMath.segmentFrames(spots: number): { CFrame }
-	local frames: { CFrame } = {}
-	local step = LAYOUT.steps[spots]
-	if step == nil then
-		return frames
+function PenMath.walkable(area: Area, x: number, z: number): boolean
+	if not (x >= area.minX and x <= area.maxX and z >= area.minZ and z <= area.maxZ) then
+		return false
 	end
-	local seg, half = LAYOUT.segment, step.w / 2
-	local gate = LAYOUT.gateWidth / 2
-	for i = 0, (half - gate) / seg - 1 do
-		local x = gate + seg / 2 + i * seg
-		table.insert(frames, CFrame.new(-x, 0, LAYOUT.frontZ))
-		table.insert(frames, CFrame.new(x, 0, LAYOUT.frontZ))
-	end
-	for i = 0, step.d / seg - 1 do
-		local z = LAYOUT.frontZ - seg / 2 - i * seg
-		table.insert(frames, CFrame.new(-half, 0, z) * ALONG_Z)
-		table.insert(frames, CFrame.new(half, 0, z) * ALONG_Z)
-	end
-	if step.backWall == "fence" then -- pens3 phase 11: from 9 spots the back wall is the shelf (K:4143-4167)
-		for i = 0, step.w / seg - 1 do
-			table.insert(frames, CFrame.new(-half + seg / 2 + i * seg, 0, LAYOUT.frontZ - step.d))
+	for _, block in area.blocks or NO_BLOCKS do
+		if x > block.minX and x < block.maxX and z > block.minZ and z < block.maxZ then
+			return false
 		end
 	end
-	return frames
+	return true
 end
 
-function PenMath.newSegments(from: number, to: number): { CFrame }
-	local old: { [string]: boolean } = {}
-	for _, frame in PenMath.segmentFrames(from) do
-		old[spotKey(frame)] = true
-	end
-	local new: { CFrame } = {}
-	for _, frame in PenMath.segmentFrames(to) do
-		if not old[spotKey(frame)] then
-			table.insert(new, frame)
+function PenMath.clearPath(area: Area, x0: number, z0: number, x1: number, z1: number): boolean
+	local dx, dz = x1 - x0, z1 - z0
+	for _, block in area.blocks or NO_BLOCKS do
+		-- The share of the line inside the block's open box on each axis (slabs): an overlap is a crossing.
+		local from, to = 0, 1
+		for _, slab in { { x0, dx, block.minX, block.maxX }, { z0, dz, block.minZ, block.maxZ } } do
+			local start, step, lo, hi = slab[1], slab[2], slab[3], slab[4]
+			if step == 0 then
+				if start <= lo or start >= hi then
+					from, to = 1, 0 -- beside the block on this axis all the way
+				end
+			else
+				local a, b = (lo - start) / step, (hi - start) / step
+				from, to = math.max(from, math.min(a, b)), math.min(to, math.max(a, b))
+			end
+		end
+		if from < to then
+			return false
 		end
 	end
-	return new
+	return true
 end
 
 function PenMath.decorOf(spots: number): Decor

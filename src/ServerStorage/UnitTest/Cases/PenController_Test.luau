@@ -17,10 +17,14 @@
 --     text as wide as its aspect asks, never past the label's width;
 --   * stepWalker(walk, dt, random) (P3D:829-833): a wait counts down first; then a target inside the walk area; it
 --     walks at its speed (never past the target), faces the way it walks (LookVector) and, within arriveStuds, waits
---     waitMin..waitMax s; a walker stays inside PenMath.wanderRect for any number of steps (a decode / wanderRect
---     bounds check with the plan's pen);
---   * newWalk(rect, random): a fresh walker somewhere in its area, its first wait 0..firstWaitMax s, its speed
---     speedMin..speedMax studs/s;
+--     waitMin..waitMax s; wb (the pen is the whole base): a target is a walkable spot it reaches in a straight line
+--     past every block (PenMath.clearPath), else it tries another; with none in its tries it waits waitMin s and looks
+--     again; a walker stays on PenMath.walkArea's floor and out of its blocks for any number of steps (the whole base,
+--     every rarity);
+--   * newWalk(area, random): a fresh walker on a walkable spot of its area (the area's middle when its tries find
+--     none), its first wait 0..firstWaitMax s, its speed speedMin..speedMax studs/s;
+--   * wb: shelfCall(view): what the MY PEN window's shelf BUY button sends: PenBuyShelf with the price it shows (the
+--     SHELF SPOTS sign's call); nothing when the button is disabled (short of Coins, MAX) or not there;
 --   * init / start / destroy run cleanly in Edit mode and leave nothing behind (no Workspace.SD_PenClient, no Scheduler
 --     effect). Engine only: the offline runner has no engine signals;
 --   * pens3 phase 4: awayText(gift): the away pop-up's prize line ("{coins} Coins") and its body with the time away in
@@ -177,30 +181,104 @@ return function(t: Context)
 		end
 	)
 
-	t.test("a walker stays inside its walk area for any number of steps (decode / wanderRect bounds)", function()
-		-- The plan's pen: Kitty Bread and the Dragon at 3 spots, read back from the base attribute.
-		local looks = PenMath.decode("dragon.0.1.0;kitty_bread.0.1.0")
-		expect.equal(#looks, 2)
+	t.test("a walker stays on the whole base's floor and out of its blocks for any number of steps (wb)", function()
+		-- One of each rarity, read back from the base attribute.
+		local looks = PenMath.decode("dragon.0.1.0;kitty_bread.0.1.0;butter.0.1.0;bird.0.1.0")
+		expect.equal(#looks, 4)
 		local rng = Random.new(7)
 		local function random(): number
 			return rng:NextNumber()
 		end
 		for _, look in looks do
 			local studs = PenController.studsOf(look.kind)
-			local rect: any = PenMath.wanderRect(3, studs)
-			expect.truthy(rect ~= nil and rect.minX < rect.maxX and rect.minZ < rect.maxZ)
-			local walk = PenController.newWalk(rect, random)
+			local area = PenMath.walkArea(studs)
+			expect.truthy(area.minX < area.maxX and area.minZ < area.maxZ)
+			local walk = PenController.newWalk(area, random)
 			expect.truthy(walk.wait >= 0 and walk.wait <= P.firstWaitMax)
 			expect.truthy(walk.speed >= P.speedMin and walk.speed <= P.speedMax)
-			for _ = 1, 2000 do
+			local minZ, maxZ = math.huge, -math.huge
+			for _ = 1, 4000 do
 				PenController.stepWalker(walk, 1 / 20, random)
-				local outside = walk.x < rect.minX - 1e-9 or walk.x > rect.maxX + 1e-9
-				if outside or walk.z < rect.minZ - 1e-9 or walk.z > rect.maxZ + 1e-9 then
-					error(`{look.kind} left its area at ({walk.x}, {walk.z})`)
+				if not PenMath.walkable(area, walk.x, walk.z) then
+					error(`{look.kind} stepped off its floor or into a block at ({walk.x}, {walk.z})`)
 				end
+				minZ, maxZ = math.min(minZ, walk.z), math.max(maxZ, walk.z)
 			end
+			expect.truthy(maxZ - minZ > 10) -- it roams the base, not one corner
 		end
 	end)
+
+	t.test("stepWalker round the blocks: a target past one is not taken; with none it waits and looks again", function()
+		-- A floor 10 × 10 with a wall down its middle (x 4..6, the whole depth).
+		local area: any = {
+			minX = 0,
+			maxX = 10,
+			minZ = 0,
+			maxZ = 10,
+			blocks = { { minX = 4, maxX = 6, minZ = -1, maxZ = 11 } },
+		}
+		local walk: any = { x = 1, z = 1, yaw = 0, wait = 0, speed = 2, rect = area }
+		-- (9, 9) is across the wall: refused; (2, 8) is on this side: taken.
+		expect.equal(PenController.stepWalker(walk, 0.1, randoms({ 0.9, 0.9, 0.2, 0.8 })), true)
+		expect.near(walk.tx, 2, 1e-9)
+		expect.near(walk.tz, 8, 1e-9)
+		-- Every try across the wall: it stands waitMin s with no target, then looks again.
+		local stuck: any = { x = 1, z = 1, yaw = 0, wait = 0, speed = 2, rect = area }
+		local function across(): number
+			return 0.9
+		end
+		expect.equal(PenController.stepWalker(stuck, 0.1, across), false)
+		expect.equal(stuck.tx, nil)
+		expect.near(stuck.wait, P.waitMin, 1e-9)
+		expect.near(stuck.x, 1, 1e-9)
+	end)
+
+	t.test("newWalk starts on a walkable spot: a spot in a block is tried again (wb)", function()
+		local area: any = {
+			minX = 0,
+			maxX = 10,
+			minZ = 0,
+			maxZ = 10,
+			blocks = { { minX = 4, maxX = 6, minZ = 4, maxZ = 6 } },
+		}
+		local walk = PenController.newWalk(area, randoms({ 0.5, 0.5, 0.1, 0.2 })) -- (5, 5) is in the block
+		expect.near(walk.x, 1, 1e-9)
+		expect.near(walk.z, 2, 1e-9)
+		-- No walkable spot in its tries: the area's middle (on the real base, always walkable: PenMath_Test).
+		local open: any =
+			{ minX = 0, maxX = 10, minZ = 0, maxZ = 4, blocks = { { minX = -1, maxX = 11, minZ = -1, maxZ = 5 } } }
+		local fallback = PenController.newWalk(open, randoms(table.create(16, 0.1))) -- every try lands at (1, 0.4)
+		expect.near(fallback.x, 5, 1e-9)
+		expect.near(fallback.z, 2, 1e-9)
+	end)
+
+	t.test(
+		"shelfCall: the window's shelf BUY button sends PenBuyShelf with the price it shows; nothing disabled",
+		function()
+			local remote, price = PenController.shelfCall({
+				actions = {
+					{ id = "sellAll", text = "SELL ALL", kind = "secondary" },
+					{ id = "buyShelf", text = "BUY ROW 31M", kind = "secondary", price = 31_000_000 },
+				},
+			} :: any)
+			expect.equal(remote, "PenBuyShelf")
+			expect.equal(price, 31_000_000)
+			-- Disabled (short of Coins, or MAX with no price) or not there: nothing to send.
+			local short = {
+				{
+					id = "buyShelf",
+					text = "BUY ROW 31M",
+					kind = "secondary",
+					reason = "Need 1 more Coin",
+					price = 31_000_000,
+				},
+			}
+			expect.equal(PenController.shelfCall({ actions = short } :: any), nil)
+			local max = { { id = "buyShelf", text = "SHELF MAX", kind = "secondary", reason = "All open" } }
+			expect.equal(PenController.shelfCall({ actions = max } :: any), nil)
+			expect.equal(PenController.shelfCall({ actions = {} } :: any), nil)
+		end
+	)
 
 	t.test("init / start / destroy run cleanly in Edit mode and leave nothing behind", function()
 		local Workspace = game:GetService("Workspace")

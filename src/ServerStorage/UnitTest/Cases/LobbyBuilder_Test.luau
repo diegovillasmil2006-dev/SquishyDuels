@@ -1,5 +1,5 @@
 --!strict
--- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 7: Squish
+-- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 8: Squish
 -- Island, lobby bases spec 2026-10-11 §2-§4, §7-§8, build plan Phase 4, without the giant pads since Phase 6, with the
 -- look upgrade's lamps, halos, finishes and Blender mesh sets since 2026-10-14, with the Claude Design hub's stations,
 -- sd/lobby.js, phase 3 spec D1-D14, in its hub sectors). Server only (ServerStorage.UnitTest).
@@ -15,7 +15,9 @@
 --   * the 10 plots (§4): Base_01..10 tagged SD_Base with Plot, at their plot frames, built open (grey, "Open plot" on
 --     the live Owner label), every tinted part marked SD_BaseTint, no capsule pads or statue plinth (pens3 phase 1:
 --     BaseService draws the pen at runtime), one SpawnLocation each (SD_BaseSpawn, flush with the plot floor, at
---     WorldLayout.Bases.spawn: facing the pen), the gate's 16-stud gap open;
+--     WorldLayout.Bases.spawn: facing the pen), the gate's 16-stud gap open; wb (version 8): what stands on each
+--     plot's floor (the spawn, the arch's pillars, the mailbox, the flower box, the bench and the planter) inside its
+--     WorldLayout.Bases.props footprint, so the bench and the planter (moved out to x ±17) stay out of the shelf;
 --   * the part budget per zone (§7) with every plot at its worst (pens3 phase 3: + a full pen, Bases.pen.maxParts);
 --   * no giant pad, Jelly gate, pod sign, lock decor, Grip gym or Royal pod any more (build plan Phase 6);
 --   * Neon only on the state rings lit in the design's default states (D7) and the design's lit refill fills
@@ -247,13 +249,13 @@ return function(t: Context)
 		return model
 	end
 
-	t.test("the root is SD_Lobby, unparented, not Atomic, version 7 (pens3 phase 1: no pads or plinth)", function()
+	t.test("the root is SD_Lobby, unparented, not Atomic, version 8 (wb: the bench and planter moved)", function()
 		local root = lobby()
 		expect.equal(root.Name, "SD_Lobby")
 		expect.equal(root.Parent, nil)
 		expect.equal((root :: Model).ModelStreamingMode, Enum.ModelStreamingMode.Default)
-		expect.equal(LobbyBuilder.VERSION, 7)
-		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 7)
+		expect.equal(LobbyBuilder.VERSION, 8)
+		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 8)
 	end)
 
 	t.test("exact tag counts", function()
@@ -878,6 +880,69 @@ return function(t: Context)
 		end
 	end)
 
+	-- Wb: what stands on each plot's floor, inside the footprints the pen's walk blocks and BaseService_Test use.
+	t.test("wb: each plot's floor props stand inside their WorldLayout.Bases.props footprints", function()
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		local props = WorldLayout.Bases.props
+		for index = 1, 10 do
+			local model = station("Bases"):FindFirstChild(string.format("Base_%02d", index)) :: Instance
+			local frame = WorldLayout.plotFrame(index) :: CFrame
+			local matched: { [number]: boolean } = {}
+			for _, child in model:GetChildren() do
+				local mine = false
+				for _, prop in props do
+					mine = mine or prop.name == child.Name
+				end
+				if mine then
+					-- The child's box on the plot's floor (every BasePart's 8 corners, plot studs).
+					local minX, maxX, minZ, maxZ = math.huge, -math.huge, math.huge, -math.huge
+					local parts: { BasePart } = {}
+					if child:IsA("BasePart") then
+						table.insert(parts, child)
+					end
+					for _, d in child:GetDescendants() do
+						if d:IsA("BasePart") then
+							table.insert(parts, d)
+						end
+					end
+					for _, part in parts do
+						local half = part.Size / 2
+						for _, sx in { -1, 1 } do
+							for _, sz in { -1, 1 } do
+								for _, sy in { -1, 1 } do
+									local corner = Vector3.new(sx * half.X, sy * half.Y, sz * half.Z)
+									local p = frame:PointToObjectSpace(part.CFrame * corner)
+									minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
+									minZ, maxZ = math.min(minZ, p.Z), math.max(maxZ, p.Z)
+								end
+							end
+						end
+					end
+					local fits = false
+					for k, prop in props do
+						if
+							prop.name == child.Name
+							and minX >= prop.minX - TOLERANCE
+							and maxX <= prop.maxX + TOLERANCE
+							and minZ >= prop.minZ - TOLERANCE
+							and maxZ <= prop.maxZ + TOLERANCE
+						then
+							fits, matched[k] = true, true
+						end
+					end
+					if not fits then
+						error(`plot {index}'s {child.Name} stands outside its WorldLayout footprint`)
+					end
+				end
+			end
+			for k, prop in props do
+				if not matched[k] then
+					error(`plot {index} has no {prop.name} where WorldLayout puts one`)
+				end
+			end
+		end
+	end)
+
 	t.test("the 10 paths stay clear: no collidable part stands where people walk (§2: 8 wide)", function()
 		-- Points along each path, 3.5 either side of its line and on it, 1.5 and 4 studs above the walking surface
 		-- (the square at Y 0 to r 70, the garden path at Y -0.8 beyond), from the stage edge to the gate.
@@ -969,9 +1034,9 @@ return function(t: Context)
 		expect.equal(budgets.gardenParts, 1000)
 		expect.equal(budgets.islandParts, 5200)
 		-- A plot at its worst: a full pen (pens3 phase 3; phase 10: with its gate and tier III decor; phase 11: the
-		-- shelf with its start row, 6 cubby locks and its sign; BaseService_Test pins its count).
+		-- shelf with its start row, 6 cubby locks and its sign; wb: no pen fence; BaseService_Test pins its count).
 		local worst = WorldLayout.Bases.pen.maxParts
-		expect.equal(worst, 196)
+		expect.equal(worst, 84)
 		local function count(instance: Instance): number
 			local n = 0
 			for _, d in instance:GetDescendants() do

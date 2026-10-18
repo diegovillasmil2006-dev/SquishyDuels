@@ -56,8 +56,11 @@
 --     (pen.screen.shelfHeading: the squishies on it / its open spots) and `top` (the TOP spot's card once bought) with
 --     topHeading; the count line counts the pen's own spots (PenMath.inPen). A shelf or TOP squishy is placed like a
 --     pen one (its actions, a picking target: tap passes its slot); a Toy Box one PLACEs while any open spot is free
---     (PenMath.freeSlot: the pen, then the shelf, then the TOP spot). The shelf is bought at the SHELF SPOTS sign only
---     (no buy button here: the PEN SPACE sign's way, PLAN phase 11).
+--     (PenMath.freeSlot: the pen, then the shelf, then the TOP spot). Wb (owner 2026-10-17): nothing selected also
+--     offers the shelf's BUY button after SELL ALL and FEED ALL (the SHELF SPOTS sign stays): BUY ROW <price> for the
+--     next row, then BUY TOP <price> (pen.screen.buyRow / buyTop), its Action carrying that price (PenController
+--     sends PenBuyShelf with it, the sign's call); refused with the missing Coins when short, and SHELF MAX
+--     (pen.screen.shelfMax) refused with reason.pen.shelfMax once all is open; none for a pen without a shelf.
 --   walkerItem maps a walker to the pen's own spots (PenMath.inPen: BaseService's SD_Pen order).
 
 -- Services
@@ -94,12 +97,14 @@ export type ActionId =
 	| "feedAll"
 	| "buyFew"
 	| "buyMany"
+	| "buyShelf" -- wb
 export type Action = {
 	id: ActionId,
 	text: string,
 	kind: "primary" | "secondary" | "cancel",
 	reason: string?,
 	hold: boolean?, -- pens3 phase 7: the press must be held (Config.UI.Pen.screen.holdSeconds)
+	price: number?, -- wb: the Coins the buy shows and sends as its expectedPrice (buyShelf)
 }
 export type Spot = { slot: number, item: Types.PenItem? }
 export type ConfirmKind = "sell" | "sellAll" | "buyBack" | "fuse"
@@ -341,6 +346,24 @@ local function buyActions(card: FoodCard, coins: number): { Action }
 	return actions
 end
 
+-- Wb: the shelf's BUY button (see the header), or nil for a pen without a shelf.
+local function shelfAction(pen: any, coins: number): Action?
+	local buy, refused = PenMath.shelfDecision(pen, PenMath.shelfPrice(pen) or 0)
+	if buy then
+		local text = if buy.top then SCREEN.buyTop else SCREEN.buyRow
+		return {
+			id = "buyShelf",
+			text = Strings.format(text, { coins = Format.coins(buy.price) }),
+			kind = "secondary",
+			reason = if coins < buy.price then needCoins(buy.price - coins) else nil,
+			price = buy.price,
+		}
+	elseif refused == "pen.shelfMax" then
+		return { id = "buyShelf", text = SCREEN.shelfMax, kind = "secondary", reason = Strings.reasonText(refused) }
+	end
+	return nil
+end
+
 function PenFormat.requestFor(pending: Pending?, key: string, newId: () -> string): (string, Pending)
 	if pending and pending.key == key then
 		return pending.id, pending
@@ -544,6 +567,10 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 					else nil,
 			},
 		}
+		local shelf = shelfAction(pen, coins) -- wb
+		if shelf then
+			table.insert(view.actions, shelf)
+		end
 	end
 	if more.confirm ~= nil and not pickingNow then
 		confirmView(view, pen, more, coins)

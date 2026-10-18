@@ -1211,6 +1211,10 @@ local Strings = {
 			-- Pens3 phase 11: the shelf's open spots ({placed} / {open}) and the TOP spot, each its own section.
 			shelfHeading = "On your shelf {placed}/{open}",
 			topHeading = "TOP spot",
+			-- Wb (owner 2026-10-17): the window's shelf BUY button, the SHELF SPOTS sign's buy ({coins} = its price).
+			buyRow = "BUY ROW {coins}",
+			buyTop = "BUY TOP {coins}",
+			shelfMax = "SHELF MAX",
 		},
 	},
 

@@ -45,7 +45,8 @@
 -- Pens3 phase 10: the gate's texts (P3D:250, :277): BASE n under the owner's name, the heart and 1 visitor / N
 -- visitors on the visitor board.
 -- Pens3 phase 11: PenBuyShelf's own refusal code (reason.pen.shelfMax); the SHELF SPOTS sign's title (P3D:255) and
--- prompt; the pen screen's shelf and TOP headings with their placeholders; none of them presses a kid.
+-- prompt; the pen screen's shelf and TOP headings with their placeholders; none of them presses a kid. Wb: the MY PEN
+-- window's shelf BUY button labels (BUY ROW / BUY TOP with the price, SHELF MAX), short and calm.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -994,7 +995,20 @@ return function(t: Context)
 		local screen = Strings.pen.screen
 		expect.equal(Strings.format(screen.shelfHeading, { placed = 1, open = 2 }), "On your shelf 1/2")
 		expect.equal(screen.topHeading, "TOP spot")
-		for _, line in { Strings.pen.shelfSign.title, Strings.pen.shelfPrompt.object, screen.shelfHeading } do
+		-- Wb: the window's shelf BUY button (short labels: why it is off goes on the screen's reason row).
+		expect.equal(Strings.format(screen.buyRow, { coins = "31M" }), "BUY ROW 31M")
+		expect.equal(Strings.format(screen.buyTop, { coins = "140T" }), "BUY TOP 140T")
+		expect.equal(screen.shelfMax, "SHELF MAX")
+		for _, line in
+			{
+				Strings.pen.shelfSign.title,
+				Strings.pen.shelfPrompt.object,
+				screen.shelfHeading,
+				screen.buyRow,
+				screen.buyTop,
+				screen.shelfMax,
+			}
+		do
 			expect.falsy(string.find(string.lower(line), "now", 1, true))
 			expect.falsy(string.find(line, "!", 1, true))
 		end

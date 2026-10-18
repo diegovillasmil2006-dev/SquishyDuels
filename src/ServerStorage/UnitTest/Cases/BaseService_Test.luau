@@ -11,32 +11,33 @@
 --   * the owner view (Phase 4, spec §4, §8): a plot with an owner shows their display name on its name sign and its
 --     colour (Bases.colors) on every SD_BaseTint part; an open plot shows "Open plot" and the grey;
 --   * pens3 phase 1 (the pen replaced the capsules and the statue): the owner's pen from their ready profile, in a
---     "Pen" Folder (lobby design v6): the fence of WorldLayout.Bases.pen.steps[spots] (kit.json's segment count, + the
---     back fence at 9-12 spots until the shelf; posts and rails in the tier's colours; every visual part out of
---     collisions, queries, touches and shadows), 5 invisible colliders (the front split by the 8-stud gate gap), the
---     PEN SPACE sign at Bases.pen.signs.pen (SD_PenSign = plot, SD_Price = the next spot's price, its hold prompt;
---     MAX with the prompt off at 12 spots) and the base Model's SD_PenSpots / SD_Pen / SD_PenRate / SD_PenTier for the
---     clients' walking squishies; refresh(player) redraws (no duplicates); an open plot, a profile that is not ready or
---     a missing plot model draws no pen and nothing fails;
+--     "Pen" Folder (lobby design v6; wb, owner 2026-10-17: the pen is the whole base, so no pen fence, rails or
+--     colliders at any spot count: the plot's own fence holds it), the PEN SPACE sign at Bases.pen.signs.pen
+--     (SD_PenSign = plot, SD_Price = the next spot's price, its hold prompt; MAX with the prompt off at 12 spots) and
+--     the base Model's SD_PenSpots / SD_Pen / SD_PenRate / SD_PenTier for the clients' walking squishies;
+--     refresh(player) redraws (no duplicates); an open plot, a profile that is not ready or a missing plot model draws
+--     no pen and nothing fails;
 --   * pens3 phase 3: no pen draws more parts than WorldLayout.Bases.pen.maxParts (the lobby budget's worst plot),
 --     and the full 12-spot pen draws exactly that many.
---   * pens3 phase 10 (the pen look, lobby design v6): each fence segment keeps LK's 3 pickets, the rails run the
---     outline in 10 straight runs (one part per run; the parts budget), no fence post stands under the gate's posts;
---     the gate (LK:87-96) in the gate gap: posts in the tier's post colour, the sign frame in the plot's colour, the
---     owner sign (display name, "BASE n", the headshot asked once per user and cached), the number badge n and the
---     visitor board ("0 visitors" until phase 18); the tier decor of PenMath.decorOf (tier 2: 7 gate bulbs + 2
---     lollipop lamps; tier 3: + the bow + 2 gumdrop trees) where L puts it; the base Model's SD_PenOwner (the owner's
---     UserId); the full pen plus the plot's 80 static parts stays within Budgets.baseParts.
---   * pens3 phase 11 (the shelf rows + the TOP spot, lobby design v6): from 9 spots the back wall is the shelf (no back
---     fence segments, back rails or back collider); every base draws its "Shelf" at Bases.pen.shelf (LK:182-189: the
---     back in the plot's colour, the Frosting frame of 11 boards, the bow, one invisible 27.4 × 15.6 × 6 collider: K's
---     "block"), a glass "Lock" (K:98 Glass, the img.icon.lock picture, CHK:57) over every cubby that is not open, the
---     TOP spot's pedestal (placeholder) with a lock picture until it is bought; the SHELF SPOTS sign at
+--   * pens3 phase 10 (the pen look, lobby design v6): the gate (LK:87-96) at Bases.pen.gate (wb: the front-right
+--     corner): posts in the tier's post colour, the sign frame in the plot's colour, the owner sign (display name,
+--     "BASE n", the headshot asked once per user and cached), the number badge n and the visitor board ("0 visitors"
+--     until phase 18); the tier decor of PenMath.decorOf (tier 2: 7 gate bulbs + 2 lollipop lamps; tier 3: + the bow +
+--     2 gumdrop trees) where L puts it; the base Model's SD_PenOwner (the owner's UserId); the full pen plus the plot's
+--     80 static parts stays within Budgets.baseParts.
+--   * pens3 phase 11 (the shelf rows + the TOP spot, lobby design v6): every base draws its "Shelf" at Bases.pen.shelf
+--     (LK:182-189: the back in the plot's colour, the Frosting frame of 11 boards, the bow, one invisible 27.4 × 15.6 ×
+--     6 collider: K's "block"), a glass "Lock" (K:98 Glass, the img.icon.lock picture, CHK:57) over every cubby that is
+--     not open, the TOP spot's pedestal (placeholder) with a lock picture until it is bought; the SHELF SPOTS sign at
 --     Bases.pen.signs.shelf (SD_ShelfSign = plot, SD_Price = the next row's or the TOP spot's price, ShelfPrompt; MAX
 --     with the prompt off once all is open); the base Model's SD_Pen holds the pen's walkers only, SD_Shelf
 --     (PenMath.encodeShelf) the shelf's and the TOP spot's, SD_ShelfRows / SD_ShelfTop the open rows and the TOP spot,
 --     SD_PenRate every placed squishy's Coins a second; no state (any spots x rows x TOP) draws more than
 --     Bases.pen.maxParts, the worst draws exactly that many, and it fits Budgets.baseParts with the plot's 80.
+--   * wb: every part BaseService draws (signs, gate, tier decor, shelf) stands on the plot's fenced floor
+--     (Bases.pen.walk), clear of what LobbyBuilder stands there (Bases.props: the spawn, the arch's pillars, the
+--     mailbox, the flower box, the bench, the planter) and inside a walk block (no squishy walks through it); parts
+--     per state: 48 at tier I with the start row, 59 at tier II, 84 at tier III (the worst), 78 with everything bought.
 --   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
 --     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
 
@@ -210,10 +211,10 @@ return function(t: Context)
 	local PenMath = t.requireShared("PenMath")
 	local PEN = WorldLayout.Bases.pen
 	local PRICES = Config.Economy.Pen.spotPrices
-	local TIERS = {
-		{ post = Palette.PenFenceWaferPost, rail = Palette.PenFenceWaferRail },
-		{ post = Palette.PenFenceMintPost, rail = Palette.PenFenceMintRail },
-		{ post = Palette.PenFenceRoyalPost, rail = Palette.PenFenceRoyalRail },
+	local TIERS = { -- the gate posts' tier colours (wb: no pen fence)
+		{ post = Palette.PenFenceWaferPost },
+		{ post = Palette.PenFenceMintPost },
+		{ post = Palette.PenFenceRoyalPost },
 	}
 
 	-- A plot model like the generated one: tinted parts (two "full", one "light") and a name sign's Owner label.
@@ -287,22 +288,6 @@ return function(t: Context)
 		return n
 	end
 
-	-- The plot-local frame of every fence segment (its Model's WorldPivot) and its parts.
-	local function segments(model: Model, plot: number): { { at: CFrame, model: Model } }
-		local frame = WorldLayout.plotFrame(plot) :: CFrame
-		local fence = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Fence") :: Instance
-		local list = {}
-		for _, child in fence:GetChildren() do
-			expect.truthy(child:IsA("Model") and child.Name == "Segment")
-			table.insert(list, { at = frame:ToObjectSpace((child :: Model).WorldPivot), model = child :: Model })
-		end
-		return list
-	end
-
-	local function near(a: number, b: number): boolean
-		return math.abs(a - b) < 1e-3
-	end
-
 	t.test(
 		'an owned plot shows its owner\'s name and colour; an open plot "Open plot" and the grey (§4, §8)',
 		function()
@@ -354,98 +339,24 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	t.test(
-		"the fence: kit.json's segments on the pen's outline (from 9 spots the shelf is the back), the tier's colours",
-		function()
-			for spots = 3, 12 do
-				local w = fresh()
-				local model = plotModel(w, 1)
-				local a = newPlayer(w, "A")
-				w.pens[a] = pen(spots)
-				BaseService.playerAdded(a)
-				local step = PEN.steps[spots]
-				local list = segments(model, 1)
-				expect.equal(#list, step.fence) -- pens3 phase 11: K's count, no back fence where the shelf is the wall
-				local backZ = PEN.frontZ - step.d
-				local front, sides, backs = 0, 0, 0
-				for _, segment in list do
-					local p = segment.at.Position
-					expect.near(p.Y, 0, 1e-3)
-					if near(p.Z, PEN.frontZ) then
-						front += 1
-						expect.truthy(math.abs(p.X) >= PEN.gateWidth / 2 + PEN.segment / 2 - 1e-3) -- the gate gap stays open
-						expect.truthy(math.abs(p.X) <= step.w / 2 - PEN.segment / 2 + 1e-3)
-					elseif near(math.abs(p.X), step.w / 2) then
-						sides += 1
-						expect.truthy(
-							p.Z <= PEN.frontZ - PEN.segment / 2 + 1e-3 and p.Z >= backZ + PEN.segment / 2 - 1e-3
-						)
-						expect.near(math.abs(segment.at.RightVector.Z), 1, 1e-3) -- turned along the side
-					else
-						expect.truthy(near(p.Z, backZ))
-						backs += 1
-					end
-					-- Every visual part: rails and pickets in the tier's rail colour, posts and balls in its post colour.
-					for _, part in segment.model:GetDescendants() do
-						if part:IsA("BasePart") then
-							expect.falsy(part.CanCollide or part.CanQuery or part.CanTouch or part.CastShadow)
-							expect.truthy(part.Anchored)
-							local want = if part.Name == "Post" or part.Name == "PostTop"
-								then TIERS[step.tier].post
-								else TIERS[step.tier].rail
-							expect.equal(part.Color, want)
-						end
-					end
-				end
-				expect.equal(front, (step.w - PEN.gateWidth) / PEN.segment)
-				expect.equal(sides, 2 * step.d / PEN.segment)
-				expect.equal(backs, if step.backWall == "shelf" then 0 else step.w / PEN.segment)
-				finish(w)
-			end
-		end
-	)
-
-	t.test(
-		"each segment keeps LK's 3 pickets; one post and ball per corner, never two, none under the gate's posts",
-		function()
+	-- Wb (owner 2026-10-17: the pen is the whole base): the plot's own fence holds it; BaseService draws none.
+	t.test("wb: no pen fence at any spot count: no Fence, Rails or Collider in the Pen folder", function()
+		for spots = 3, 12 do
 			local w = fresh()
 			local model = plotModel(w, 1)
 			local a = newPlayer(w, "A")
-			w.pens[a] = pen(3)
+			w.pens[a] = pen(spots)
 			BaseService.playerAdded(a)
-			local frame = WorldLayout.plotFrame(1) :: CFrame
-			local posts: { [string]: number } = {}
-			local tops = 0
-			for _, segment in segments(model, 1) do
-				expect.equal(count(segment.model, "Rail"), 0) -- pens3 phase 10: the rails run the outline (Rails)
-				expect.equal(count(segment.model, "Picket"), 3)
-				for _, part in segment.model:GetChildren() do
-					if part.Name == "Post" then
-						local p = frame:PointToObjectSpace((part :: BasePart).CFrame.Position)
-						local key = string.format("%.2f,%.2f", p.X, p.Z)
-						posts[key] = (posts[key] or 0) + 1
-						expect.near(p.Y, 1.6, 1e-3) -- 3.2 tall from the floor (LK:83)
-					elseif part.Name == "PostTop" then
-						tops += 1
-					end
+			local folder = model:FindFirstChild("Pen")
+			expect.truthy(folder ~= nil)
+			for _, d in (folder :: Instance):GetDescendants() do
+				if d.Name == "Fence" or d.Name == "Rails" or d.Name == "Collider" or d.Name == "Segment" then
+					error(`{spots} spots: a pen fence piece {d:GetFullName()}`)
 				end
 			end
-			local n = 0
-			for key, seen in posts do
-				n += 1
-				if seen ~= 1 then
-					error(`two posts at {key}`)
-				end
-			end
-			-- 16 x 12: (16 + 12) × 2 / 4 = 14 post spots round the outline, but the one in the middle of the gate gap
-			-- and (pens3 phase 10) the 2 at its ends, where the gate's posts stand.
-			expect.equal(n, 11)
-			expect.equal(tops, n)
-			expect.equal(posts["-4.00,19.00"], nil)
-			expect.equal(posts["4.00,19.00"], nil)
 			finish(w)
 		end
-	)
+	end)
 
 	-- Pens3 phase 10: the pen look (lobby design v6) ------------------------------------------------------------
 
@@ -467,37 +378,6 @@ return function(t: Context)
 	local function vectorNear(a: Vector3, b: Vector3): boolean
 		return (a - b).Magnitude < 1e-3
 	end
-
-	t.test(
-		"the rails run the outline: 10 straight runs (8 with the shelf for a back), as long as the segments' were",
-		function()
-			for _, spots in { 3, 5, 9, 12 } do
-				local w = fresh()
-				local model = plotModel(w, 1)
-				local a = newPlayer(w, "A")
-				w.pens[a] = pen(spots)
-				BaseService.playerAdded(a)
-				local step = PEN.steps[spots]
-				local rails = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Rails") :: Instance
-				local frame = WorldLayout.plotFrame(1) :: CFrame
-				local length = 0
-				expect.equal(#rails:GetChildren(), if step.backWall == "shelf" then 8 else 10) -- pens3 phase 11
-				for _, part in rails:GetChildren() do
-					local rail = part :: Part
-					expect.equal(rail.Name, "Rail")
-					expect.equal(rail.Shape, Enum.PartType.Cylinder)
-					expect.near(rail.Size.Y, 0.44, 1e-3) -- LK:85 r 0.22
-					local y = localOf(frame, rail).Y
-					expect.truthy(near(y, 1.2) or near(y, 2.4))
-					expect.equal(rail.Color, TIERS[step.tier].rail)
-					expect.falsy(rail.CanCollide or rail.CanQuery or rail.CanTouch or rail.CastShadow)
-					length += rail.Size.X
-				end
-				expect.near(length, 2 * PEN.segment * #segments(model, 1), 1e-3) -- 2 rails of 4 studs a segment
-				finish(w)
-			end
-		end
-	)
 
 	t.test(
 		"the gate (LK:87-96): posts, the frame in the plot's colour, the owner sign, the badge, 0 visitors",
@@ -587,6 +467,24 @@ return function(t: Context)
 			finish(w)
 		end
 	)
+
+	t.test("wb: the gate posts and their balls take the tier's post colour: Wafer, Mint, Royal (L:187)", function()
+		for _, spots in { 3, 6, 10 } do
+			local w = fresh()
+			local model = plotModel(w, 1)
+			local a = newPlayer(w, "A")
+			w.pens[a] = pen(spots)
+			BaseService.playerAdded(a)
+			local gate = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Instance
+			local parts = named(gate, "GatePost")
+			table.move(named(gate, "GatePostTop"), 1, 2, 3, parts)
+			expect.equal(#parts, 4)
+			for _, part in parts do
+				expect.equal(part.Color, TIERS[PEN.steps[spots].tier].post)
+			end
+			finish(w)
+		end
+	end)
 
 	t.test("visitorText: the hearts board's line (P3D:277), 1 visitor or N visitors", function()
 		expect.equal(BaseService.visitorText(0), "0 visitors")
@@ -758,41 +656,6 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	t.test("5 invisible colliders hold the pen's outline (4 + the shelf's from 9 spots), the gate gap open", function()
-		for _, spots in { 3, 9 } do
-			local w = fresh()
-			local model = plotModel(w, 1)
-			local a = newPlayer(w, "A")
-			w.pens[a] = pen(spots)
-			BaseService.playerAdded(a)
-			local folder = model:FindFirstChild("Pen") :: Instance
-			local frame = WorldLayout.plotFrame(1) :: CFrame
-			local step = PEN.steps[spots]
-			local colliders = {}
-			for _, child in folder:GetChildren() do
-				if child.Name == "Collider" then
-					table.insert(colliders, child :: BasePart)
-				end
-			end
-			expect.equal(#colliders, if step.backWall == "shelf" then 4 else 5) -- pens3 phase 11: the shelf blocks
-			local frontLength = 0
-			for _, part in colliders do
-				expect.equal(part.Transparency, 1)
-				expect.truthy(part.CanCollide and part.Anchored)
-				expect.falsy(part.CanTouch or part.CanQuery or part.CastShadow)
-				expect.near(part.Size.Y, 3.2, 1e-3)
-				local p = frame:PointToObjectSpace(part.CFrame.Position)
-				expect.near(p.Y, 1.6, 1e-3)
-				if near(p.Z, PEN.frontZ) then
-					frontLength += part.Size.X
-					expect.truthy(math.abs(p.X) - part.Size.X / 2 >= PEN.gateWidth / 2 - 1e-3) -- never in the gate gap
-				end
-			end
-			expect.near(frontLength, step.w - PEN.gateWidth, 1e-3)
-			finish(w)
-		end
-	end)
-
 	-- Pens3 phase 3: LobbyBuilder's part budget counts every plot with this many runtime parts.
 	t.test("no pen state draws more parts than Bases.pen.maxParts; the worst draws exactly that many", function()
 		-- Pens3 phase 10: with the plot's 80 static parts (WorldLayout Budgets' note) a full pen fits baseParts.
@@ -820,6 +683,99 @@ return function(t: Context)
 			end
 		end
 		expect.equal(worst, PEN.maxParts)
+	end)
+
+	-- Wb: the parts per state (NOTES.md's table), the plot's fenced floor, LobbyBuilder's props and the walk blocks.
+	local function drawn(spots: number, rows: number, top: boolean): (World, Model)
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		w.pens[a] = pen(spots, nil, rows, top)
+		BaseService.playerAdded(a)
+		return w, model
+	end
+
+	local function partsIn(instance: Instance): { BasePart }
+		local list = {}
+		for _, d in instance:GetDescendants() do
+			if d:IsA("BasePart") then
+				table.insert(list, d)
+			end
+		end
+		return list
+	end
+
+	t.test("wb: parts per state: 48 at tier I, 59 at tier II, 84 at tier III (the worst), 78 all bought", function()
+		for _, case in
+			{
+				{ spots = 3, rows = 1, top = false, parts = 48 },
+				{ spots = 6, rows = 1, top = false, parts = 59 },
+				{ spots = 12, rows = 1, top = false, parts = 84 },
+				{ spots = 12, rows = 4, top = true, parts = 78 },
+			}
+		do
+			local w, model = drawn(case.spots, case.rows, case.top)
+			expect.equal(#partsIn(model:FindFirstChild("Pen") :: Instance), case.parts)
+			finish(w)
+		end
+	end)
+
+	t.test("wb: every drawn part stands on the fenced floor, clear of LobbyBuilder's props, in a walk block", function()
+		local frame = WorldLayout.plotFrame(1) :: CFrame
+		local walk = PEN.walk
+		local function overlaps(a: any, b: any): boolean
+			return a.minX < b.maxX - 1e-3
+				and b.minX < a.maxX - 1e-3
+				and a.minZ < b.maxZ - 1e-3
+				and b.minZ < a.maxZ - 1e-3
+		end
+		for _, spots in { 3, 12 } do -- tier I, and tier III with every decor piece
+			local w, model = drawn(spots, 1, false)
+			for _, part in partsIn(model:FindFirstChild("Pen") :: Instance) do
+				-- The part's box on the plot's floor (its 8 corners in plot studs).
+				local box = { minX = math.huge, maxX = -math.huge, minZ = math.huge, maxZ = -math.huge }
+				local half = part.Size / 2
+				for _, sx in { -1, 1 } do
+					for _, sy in { -1, 1 } do
+						for _, sz in { -1, 1 } do
+							local p = frame:PointToObjectSpace(
+								part.CFrame * Vector3.new(sx * half.X, sy * half.Y, sz * half.Z)
+							)
+							box.minX, box.maxX = math.min(box.minX, p.X), math.max(box.maxX, p.X)
+							box.minZ, box.maxZ = math.min(box.minZ, p.Z), math.max(box.maxZ, p.Z)
+						end
+					end
+				end
+				local name = part:GetFullName()
+				local onFloor = box.minX >= walk.minX - 1e-3
+					and box.maxX <= walk.maxX + 1e-3
+					and box.minZ >= walk.minZ - 1e-3
+					and box.maxZ <= walk.maxZ + 1e-3
+				if not onFloor then
+					error(`{spots} spots: {name} is off the fenced floor`)
+				end
+				for _, prop in WorldLayout.Bases.props do
+					if overlaps(box, prop) then
+						error(`{spots} spots: {name} stands in the {prop.name}`)
+					end
+				end
+				local blocked = false
+				for _, block in PEN.blocks do
+					if
+						box.minX >= block.minX - 1e-3
+						and box.maxX <= block.maxX + 1e-3
+						and box.minZ >= block.minZ - 1e-3
+						and box.maxZ <= block.maxZ + 1e-3
+					then
+						blocked = true
+					end
+				end
+				if not blocked then
+					error(`{spots} spots: {name} is in no walk block (a squishy could walk through it)`)
+				end
+			end
+			finish(w)
+		end
 	end)
 
 	-- Pens3 phase 11: the shelf, its locks, the TOP spot and the SHELF SPOTS sign ------------------------------------

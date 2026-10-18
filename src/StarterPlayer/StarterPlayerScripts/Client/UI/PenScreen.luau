@@ -28,7 +28,9 @@
 -- * Pens3 phase 11 (the shelf rows + the TOP spot; stand-ins from the same parts, PLACEHOLDERS in
 --   work/pens3/p11/NOTES.md): an "On your shelf" heading and grid under the pen's spots (a card per open shelf spot)
 --   and a "TOP spot" heading and grid with its one card once it is bought; their cards are the pen spots' (a tap
---   passes the slot: picking moves there). No buy button: the shelf is bought at the SHELF SPOTS sign.
+--   passes the slot: picking moves there). Wb (owner 2026-10-17): the shelf's BUY button is one more action in the row
+--   (PenFormat's buyShelf, with nothing selected; the SHELF SPOTS sign stays), its reason on the reason row like
+--   every disabled action's.
 --   local s = PenScreen.new({ parent = gui, scale = UIController.scale, onCard = ..., onSold = ..., onAction = ...,
 --       onHold = ..., onFood = ..., onClose = ... })
 --   s:fit(screenPx);   s:render(view, busy);   s:setHold(fraction?);   s:primary();   s:destroy()

@@ -18,13 +18,11 @@
 --   open grey (Bases.openColors) otherwise.
 -- * Pens3 phase 1 (the pen replaced the capsules and the statue): a "Pen" Folder, replaced on every render, holds the
 --   owner's pen (drawPen; lobby design v6, `LK:n` = lobby-kit.js line n, `K:n` = kit.json line n), built in the plot's
---   frame from WorldLayout.Bases.pen and its steps[spots]:
---   - Fence: one Model "Segment" per 4-stud piece of LK:82-85 pen_fence (2 Rails, 3 Pickets and, once per spot on the
---     outline, a Post with its PostTop ball): K's segment count (the front split by the gateWidth gap; pens3 phase 11:
---     from 9 spots K's back wall is the shelf, so no back fence there); posts and rails in the tier's colours (Palette
---     PenFence*, K:4170-4189); every visual part out of collisions, queries, touches and shadows. Five invisible
---     Colliders (3.2 tall, 0.5 thick) hold the outline: both front pieces beside the gate, the sides, the back (four
---     from 9 spots: the shelf's collider is the back).
+--   frame from WorldLayout.Bases.pen and its steps[spots] (the tier):
+--   - Wb (owner 2026-10-17, "whole base, like Ride a Pet"): the pen is the whole base, inside the plot's own white
+--     fence (LobbyBuilder), so no pen fence, rails or colliders are drawn; a bought spot adds a squishy, never fence.
+--     Every piece below stands on the plot's fenced floor (Bases.pen.walk), clear of what LobbyBuilder stands there
+--     (Bases.props) and inside a walk block (Bases.pen.blocks: no squishy walks through it).
 --   - Sign: the Model "Sign" (LK:96-101 pen_upgrade_sign: Post, the state Trim, the price Face with its SurfaceGui
 --     Title / Row (Icon, Price) / Line) at Bases.pen.signs.pen, attributes SD_PenSign = plot and SD_Price = the next
 --     spot's price (none at maxSpots); the Face's ProximityPrompt (PenPrompt) is a hold of Config.Economy.Pen
@@ -34,30 +32,26 @@
 --   - The base Model's attributes for every client's walking squishies (PenController): SD_PenSpots, SD_Pen
 --     (PenMath.encode of the placed items), SD_PenRate (PenMath.rate) and SD_PenTier; none on an open plot.
 -- * Pens3 phase 10 (the pen look, lobby design v6; `L:n` = layout.json line n, `P3D:n` = "Squishy Lobby 3D.html"):
---   - Fence: the rails run the outline as 10 straight Rails (2 heights × the 2 front pieces, the 2 sides and the back,
---     in the "Rails" Folder): LK's 4-stud rail cylinders end to end, one part per run, so the full pen with its gate
---     and decor fits the plot's part budget. Each Segment keeps its posts and 3 pickets (PenMath.segmentFrames, in its
---     build order); no fence post or ball stands where the gate's posts do.
---   - Gate: the Model "Gate" (LK:87-96 pen_gate, K:700) at Bases.pen.gate in the gate gap: 2 GatePosts (they block,
---     K: "block") with their balls in the tier's post colour (L:187 GatePost tints), the SignFrame in the plot's colour
---     (BaseTint), the OwnerSign (P3D:245-251: the headshot in a PenOwnerDisc<n> disc, the display name, "BASE n"), the
---     NumberBadge disc reading the base number (P3D:268) and the VisitorBoard (a heart and "0 visitors" until phase
---     18, P3D:277); its GUIs as K:7872-7873 says (PixelsPerStud 25, hidden beyond 150 studs), on P3D's planes 0.1
---     stud inside each face. The headshot (K:4271): deps.headshotOf(userId) (Players:GetUserThumbnailAsync on its own
---     thread, pcall), asked once per user and cached for the server's life, painted on that owner's gate when it comes
---     (after a failure it is asked again on the next draw).
---   - Tier decor (PenMath.decorOf; K:4170-4189 at L:187-193): tier 2 adds the gate's 7 Neon bulbs and the 2 "Lamp"s
---     (LK:240-244) at Bases.pen.lamps; tier 3 also the gate's "Bow" Model (LK:58 bowGeo(0.9) at y 13.5, its pivot
---     A12's) and the 2 "Tree"s (LK:235-239) at Bases.pen.trees. A shape Roblox parts cannot make is a stand-in at
+--   - Gate: the Model "Gate" (LK:87-96 pen_gate, K:700) at Bases.pen.gate (wb: in the front-right corner, beside the
+--     Donut Arch, so the path sees both name signs): 2 GatePosts (they block, K: "block") with their balls in the
+--     tier's post colour (L:187 GatePost tints), the SignFrame in the plot's colour (BaseTint), the OwnerSign
+--     (P3D:245-251: the headshot in a PenOwnerDisc<n> disc, the display name, "BASE n"), the NumberBadge disc reading
+--     the base number (P3D:268) and the VisitorBoard (a heart and "0 visitors" until phase 18, P3D:277); its GUIs as
+--     K:7872-7873 says (PixelsPerStud 25, hidden beyond 150 studs), on P3D's planes 0.1 stud inside each face. The
+--     headshot (K:4271): deps.headshotOf(userId) (Players:GetUserThumbnailAsync on its own thread, pcall), asked once
+--     per user and cached for the server's life, painted on that owner's gate when it comes (after a failure it is
+--     asked again on the next draw).
+--   - Tier decor (PenMath.decorOf; K:4170-4189; wb: round the whole base): tier 2 adds the gate's 7 Neon bulbs and the
+--     2 "Lamp"s (LK:240-244) at Bases.pen.lamps; tier 3 also the gate's "Bow" Model (LK:58 bowGeo(0.9) at y 13.5, its
+--     pivot A12's) and the 2 "Tree"s (LK:235-239) at Bases.pen.trees. A shape Roblox parts cannot make is a stand-in at
 --     the design's sizes (placeholders): a bow loop (a torus) is a ring of 6 rods, a trunk stripe (a torus round the
---     trunk) a disc, the canopy (a lathe) a cylinder under an ellipsoid, the lamp's swirl (2 tori on the candy's
---     front) 2 rings drawn on the candy's SurfaceGui. The lamp pole and the trunk block (K: "block"); the rest is
---     decor.
---   - The base Model's SD_PenOwner: the owner's UserId (none for a player without one), for the clients' gate and fence
---     motion (Controllers/PenLookController).
+--     trunk) a disc, the canopy (a lathe) a cylinder under an ellipsoid, the lamp's swirl (2 tori on the candy's front)
+--     2 rings drawn on the candy's SurfaceGui. The lamp pole and the trunk block (K: "block"); the rest is decor.
+--   - The base Model's SD_PenOwner: the owner's UserId (none for a player without one), for the clients' gate motion
+--     (Controllers/PenLookController).
 -- * Pens3 phase 11 (the shelf rows + the TOP spot; `CHK:n` = check/CHECK.md line n):
 --   - Shelf: the Model "Shelf" at Bases.pen.shelf.at on every drawn pen (LK:182-189 base_shelf, K:798-842; at the
---     plot's back, so from 9 spots it is the pen's back wall): the ShelfBack (27.4 × 15.6 × 0.6) in the plot's colour
+--     plot's back): the ShelfBack (27.4 × 15.6 × 0.6) in the plot's colour
 --     (BaseTint), the 11 ShelfFrame boards in Frosting, the "ShelfBow" Model (bowGeo(1.1) at (0, 15.6, -0.5), the
 --     gate bow's stand-in rings) and one invisible ShelfCollider over the whole 27.4 × 15.6 × 6 (K "collision":
 --     "block": nobody climbs into a cubby; every visible part is decor). Over every cubby that is not open
@@ -132,26 +126,13 @@ local PEN = WorldLayout.Bases.pen
 local PEN_FOLDER = "Pen"
 local PEN_ATTRS =
 	{ "SD_PenSpots", "SD_Pen", "SD_PenRate", "SD_PenTier", "SD_PenOwner", "SD_Shelf", "SD_ShelfRows", "SD_ShelfTop" }
-local TIER_COLORS = { -- K:4170-4189
-	{ post = "PenFenceWaferPost", rail = "PenFenceWaferRail" },
-	{ post = "PenFenceMintPost", rail = "PenFenceMintRail" },
-	{ post = "PenFenceRoyalPost", rail = "PenFenceRoyalRail" },
+local TIER_COLORS = { -- K:4170-4189: the gate posts' colour per tier (L:187 GatePost tints)
+	{ post = "PenFenceWaferPost" },
+	{ post = "PenFenceMintPost" },
+	{ post = "PenFenceRoyalPost" },
 }
 local UPRIGHT = CFrame.Angles(0, 0, math.pi / 2) -- a Roblox cylinder runs along X: this stands it up
-local ALONG_Z = CFrame.Angles(0, math.pi / 2, 0) -- a side segment: its X along the plot's Z
--- LK:83-84 pen_fence, in segment studs (4 along its X): posts r 0.35 h 3.2 at x ±2 with r 0.45 balls at y 3.3; rails
--- r 0.22 along it at y 1.2 and 2.4; pickets 0.5 × 2.6 × 0.25 at x -1, 0, 1 from y 0.3.
-local POST_SIZE = Vector3.new(3.2, 0.7, 0.7)
-local POST_X = 2
-local BALL_SIZE = Vector3.new(0.9, 0.9, 0.9)
-local BALL_Y = 3.3
-local RAIL_SIZE = Vector3.new(4, 0.44, 0.44)
-local RAIL_Y = { 1.2, 2.4 }
-local PICKET_SIZE = Vector3.new(0.5, 2.6, 0.25)
-local PICKET_Y = 0.3 + 2.6 / 2
-local PICKET_X = { -1, 0, 1 }
-local COLLIDER_HEIGHT = 3.2 -- the plan: as tall as the posts, 0.5 thick
-local COLLIDER_THICK = 0.5
+local ALONG_Z = CFrame.Angles(0, math.pi / 2, 0) -- a quarter turn about Y: a piece's X along the plot's Z
 -- LK:97-99 pen_upgrade_sign, in sign studs (its front -Z = the Face's side): the post r 0.25 h 3.2 at z 0.15, the state
 -- trim 3.8 × 2.8 × 0.3 from y 3 at z 0.15, the price face 3.4 × 2.4 × 0.3 centred at y 4.4, z -0.05.
 local SIGN_POST_SIZE = Vector3.new(3.2, 0.5, 0.5)
@@ -404,112 +385,6 @@ local function block(part: Part): Part
 	part.CanCollide = true
 	part.CanQuery = false
 	return part
-end
-
--- A plot-local spot's key (centistuds; + 0 makes -0 a 0).
-local function spotKey(p: Vector3): string
-	return `{math.round(p.X * 100) + 0},{math.round(p.Z * 100) + 0}`
-end
-
--- The fence (see the header): LK's segment parts at PenMath.segmentFrames, one post (and its ball) per spot on the
--- outline, none where the gate's posts stand (pens3 phase 10: the rails are drawRails').
-local function drawFence(folder: Instance, frame: CFrame, step: WorldLayout.PenStep, spots: number)
-	local colors = TIER_COLORS[step.tier] or TIER_COLORS[1]
-	local post, rail = Palette[colors.post], Palette[colors.rail]
-	local fence = Instance.new("Folder")
-	fence.Name = "Fence"
-	local posts: { [string]: boolean } = {}
-	for _, x in { -GATE.postX, GATE.postX } do
-		posts[spotKey(Vector3.new(x, 0, PEN.frontZ))] = true
-	end
-	for _, spot in PenMath.segmentFrames(spots) do
-		local at = frame * spot
-		local segment = Instance.new("Model")
-		segment.Name = "Segment"
-		for _, x in { -POST_X, POST_X } do
-			local key = spotKey(spot * Vector3.new(x, 0, 0))
-			if not posts[key] then
-				posts[key] = true
-				local base = at * CFrame.new(x, 0, 0)
-				piece(
-					"Post",
-					Enum.PartType.Cylinder,
-					POST_SIZE,
-					base * CFrame.new(0, POST_SIZE.X / 2, 0) * UPRIGHT,
-					post,
-					segment
-				)
-				piece("PostTop", Enum.PartType.Ball, BALL_SIZE, base * CFrame.new(0, BALL_Y, 0), post, segment)
-			end
-		end
-		for _, x in PICKET_X do
-			piece("Picket", Enum.PartType.Block, PICKET_SIZE, at * CFrame.new(x, PICKET_Y, 0), rail, segment)
-		end
-		segment.WorldPivot = at
-		segment.Parent = fence
-	end
-	fence.Parent = folder
-end
-
--- Pens3 phase 10: the rails (see the header): at each of LK's heights one Rail along each straight run of the outline.
-local function drawRails(folder: Instance, frame: CFrame, step: WorldLayout.PenStep)
-	local rail = Palette[(TIER_COLORS[step.tier] or TIER_COLORS[1]).rail]
-	local rails = Instance.new("Folder")
-	rails.Name = "Rails"
-	local half, gate = step.w / 2, PEN.gateWidth / 2
-	local front = half - gate
-	local function run(length: number, cframe: CFrame)
-		piece(
-			"Rail",
-			Enum.PartType.Cylinder,
-			Vector3.new(length, RAIL_SIZE.Y, RAIL_SIZE.Z),
-			frame * cframe,
-			rail,
-			rails
-		)
-	end
-	for _, y in RAIL_Y do
-		for _, side in { -1, 1 } do
-			run(front, CFrame.new(side * (gate + front / 2), y, PEN.frontZ))
-			run(step.d, CFrame.new(side * half, y, PEN.frontZ - step.d / 2) * ALONG_Z)
-		end
-		if step.backWall == "fence" then -- pens3 phase 11: from 9 spots the shelf is the back
-			run(step.w, CFrame.new(0, y, PEN.frontZ - step.d))
-		end
-	end
-	rails.Parent = folder
-end
-
--- The invisible walls on the outline (see the header).
-local function drawColliders(folder: Instance, frame: CFrame, step: WorldLayout.PenStep)
-	local function collider(size: Vector3, cframe: CFrame)
-		local part = Instance.new("Part")
-		part.Name = "Collider"
-		part.Size = size
-		part.CFrame = frame * cframe
-		part.Transparency = 1
-		part.Anchored = true
-		part.CanCollide = true
-		part.CanQuery = false
-		part.CanTouch = false
-		part.CastShadow = false
-		part.Parent = folder
-	end
-	local half, gate, y = step.w / 2, PEN.gateWidth / 2, COLLIDER_HEIGHT / 2
-	local front = half - gate
-	for _, side in { -1, 1 } do
-		collider(
-			Vector3.new(front, COLLIDER_HEIGHT, COLLIDER_THICK),
-			CFrame.new(side * (gate + front / 2), y, PEN.frontZ)
-		)
-		collider(
-			Vector3.new(COLLIDER_THICK, COLLIDER_HEIGHT, step.d),
-			CFrame.new(side * half, y, PEN.frontZ - step.d / 2)
-		)
-	end
-	if step.backWall == "fence" then -- pens3 phase 11: from 9 spots the shelf's collider is the back
-		collider(Vector3.new(step.w, COLLIDER_HEIGHT, COLLIDER_THICK), CFrame.new(0, y, PEN.frontZ - step.d))
-	end
 end
 
 -- The one-line width (px) of a sign text at `px` (TextService; a roomy estimate when it cannot answer).
@@ -1030,9 +905,6 @@ local function drawPen(model: Instance, plot: number, pen: any, owner: any, name
 	local folder = Instance.new("Folder")
 	folder.Name = PEN_FOLDER
 	local decor = PenMath.decorOf(pen.spots)
-	drawFence(folder, frame, step, pen.spots)
-	drawRails(folder, frame, step)
-	drawColliders(folder, frame, step)
 	drawSign(folder, frame, plot, PenMath.spotPrice(pen.spots + 1), SIGNS.pen)
 	drawGate(folder, frame * PEN.gate, plot, step, decor, owner, name)
 	drawDecor(folder, frame, decor)

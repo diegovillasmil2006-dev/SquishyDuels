@@ -6,7 +6,7 @@
 -- (nil or a broken pen: 10), and an own squeeze's Grip is its floor; spot prices are the J table (4 = 1,500 ..
 -- 12 = 5.6T), nil for any other spot; a buy is the next spot at its exact price; the tick pays whole Coins and carries
 -- the rest, at most maxTickSeconds of time at once; rewardCoins = floor(squeezes × value) clamped to maxCoins; the
--- base attribute text round-trips; the walk area keeps a squishy inside the fence. Phase 4: awayCoins = floor(5% ×
+-- base attribute text round-trips. Phase 4: awayCoins = floor(5% ×
 -- the saved rate × the seconds away), the seconds clamped to [0, now - createdAt], no limit, clamped to maxCoins.
 -- Phase 5: room = spots + toyBoxMax - the items (never below 0; 0 for a broken pen): 0 means the Toy Box is full.
 -- Phase 6 (the pen screen): an item's `slot` says where it is (0 = the Toy Box, 1..spots the pen): the pen places the
@@ -22,17 +22,21 @@
 -- the newest buyBackMax; buyBackDecision finds a live entry (net.invalid, pen.buyBackGone, inventory.full). Phase 8
 -- (fusion): fuseDecision takes 3 of one kind and form (net.invalid, inventory.notOwned, pen.locked, pen.fuseMismatch,
 -- pen.fuseTop for Rainbow); the keeper is the highest level (a tie: a placed one, then the lower id), the result its
--- next form at its level, and every input's coating is listed for the bag. Phase 10 (the pen look): segmentFrames is
--- K's fence at a spot count in build order (front from the gate out, the sides, the back), newSegments what a growing
--- pen gains, decorOf the tier's decor (K:4170-4189: tier 2 bulbs + lamps, tier 3 also the bow + trees).
+-- next form at its level, and every input's coating is listed for the bag. Phase 10 (the pen look): decorOf the
+-- tier's decor (K:4170-4189: tier 2 bulbs + lamps, tier 3 also the bow + trees).
 -- Phase 11 (the shelf rows + the TOP spot, V3:144-151, J's prices): the open spots are the pen's 1..spots, the shelf's
 -- 13.. (2 a row, shelfRows rows; a missing or broken shelfRows opens no shelf spot: fail closed) and the TOP
 -- spot 21 once bought; placed lists them all in slot order (they all earn: rate, squeeze value, Feed All, a fusion
 -- keeper), inPen / onShelf split them; freeSlot fills the pen, then the shelf, then the TOP spot; room counts every
 -- open spot; placeDecision moves into, out of and between them (a closed shelf spot or an unbought TOP spot is
 -- pen.spotClosed); shelfPrice / shelfDecision sell row 2, 3, 4 at 31M / 250B / 11T, then the TOP spot at 140T, then
--- pen.shelfMax (a wrong price pen.priceChanged, bad input or a broken pen net.invalid); from 9 spots the back wall is
--- the shelf (no back fence segments); encodeShelf / decodeShelf carry each shelf squishy's slot and look.
+-- pen.shelfMax (a wrong price pen.priceChanged, bad input or a broken pen net.invalid); encodeShelf / decodeShelf
+-- carry each shelf squishy's slot and look.
+-- Wb (owner 2026-10-17: the pen is the whole base): walkArea(studs) is the plot's fenced floor (Bases.pen.walk) and its
+-- blocks, half the squishy and edgeMargin in from the floor's edges and out round every block; walkable says a point
+-- is on that floor and in no block; clearPath that the straight line between two such points crosses no block's
+-- inside (touching its edge is fine). A squishy standing on any walkable point touches no prop LobbyBuilder stands
+-- on the plot (Bases.props), never stands on the spawn, and the floor it has is bigger than the old biggest pen.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -283,88 +287,93 @@ return function(t: Context)
 		})
 	end)
 
-	t.test("wanderRect: inside the step's fence, half the squishy and the edge margin in", function()
-		local rect = PenMath.wanderRect(3, 2) :: any
-		-- 16 × 12 at spots 3, front z 19: x ±(8 - 1 - 0.8), z from 19 - 12 + 1.8 to 19 - 1.8.
-		expect.near(rect.minX, -6.2, 1e-9)
-		expect.near(rect.maxX, 6.2, 1e-9)
-		expect.near(rect.minZ, 8.8, 1e-9)
-		expect.near(rect.maxZ, 17.2, 1e-9)
-		local big = PenMath.wanderRect(12, 5) :: any -- 24 × 32
-		expect.near(big.minX, -8.7, 1e-9)
-		expect.near(big.maxZ, 15.7, 1e-9)
-		expect.near(big.minZ, 19 - 32 + 3.3, 1e-9)
-		expect.equal(PenMath.wanderRect(2, 2), nil)
-		expect.equal(PenMath.wanderRect(13, 2), nil)
+	-- Wb (owner 2026-10-17): the whole base is the pen; the squishies walk its floor round the blocks.
+	local WorldLayout = t.requireShared("World/WorldLayout")
+	local LAYOUT = WorldLayout.Bases.pen
+
+	t.test("walkArea: the plot's fenced floor and its blocks, half the squishy and the edge margin in", function()
+		local area = PenMath.walkArea(2) -- a Common: 1 + 0.8 in from every edge, out round every block
+		local walk = LAYOUT.walk
+		expect.near(area.minX, walk.minX + 1.8, 1e-9)
+		expect.near(area.maxX, walk.maxX - 1.8, 1e-9)
+		expect.near(area.minZ, walk.minZ + 1.8, 1e-9)
+		expect.near(area.maxZ, walk.maxZ - 1.8, 1e-9)
+		expect.equal(#area.blocks, #LAYOUT.blocks)
+		for index, block in LAYOUT.blocks do
+			local grown = area.blocks[index]
+			expect.near(grown.minX, block.minX - 1.8, 1e-9)
+			expect.near(grown.maxX, block.maxX + 1.8, 1e-9)
+			expect.near(grown.minZ, block.minZ - 1.8, 1e-9)
+			expect.near(grown.maxZ, block.maxZ + 1.8, 1e-9)
+		end
+		local dragon = PenMath.walkArea(5) -- an Exclusive: 2.5 + 0.8
+		expect.near(dragon.maxX, walk.maxX - 3.3, 1e-9)
+		expect.near(dragon.blocks[1].minZ, LAYOUT.blocks[1].minZ - 3.3, 1e-9)
+		-- The area's middle is always walkable (a new walker's fallback spot, PenController.newWalk).
+		for _, studs in { 2, 2.8, 3.8, 5 } do
+			local a = PenMath.walkArea(studs)
+			expect.truthy(PenMath.walkable(a, (a.minX + a.maxX) / 2, (a.minZ + a.maxZ) / 2))
+		end
 	end)
 
-	-- Pens3 phase 10 (the pen look): the fence's segments and the tier decor.
-	local function spots(frames: { CFrame }): { string }
-		local list = {}
-		for _, frame in frames do
-			table.insert(list, string.format("%g,%g", frame.Position.X, frame.Position.Z))
-		end
-		return list
-	end
+	t.test("walkable / clearPath: on the floor and in no block; a straight line that crosses no block", function()
+		local area: any = {
+			minX = 0,
+			maxX = 10,
+			minZ = 0,
+			maxZ = 10,
+			blocks = { { minX = 4, maxX = 6, minZ = 4, maxZ = 6 } },
+		}
+		expect.truthy(PenMath.walkable(area, 1, 1))
+		expect.truthy(PenMath.walkable(area, 0, 10)) -- the floor's edge is on it
+		expect.falsy(PenMath.walkable(area, 5, 5)) -- in the block
+		expect.truthy(PenMath.walkable(area, 4, 5)) -- on its edge
+		expect.falsy(PenMath.walkable(area, -0.1, 5)) -- off the floor
+		expect.falsy(PenMath.walkable(area, 5, 10.1))
+		expect.truthy(PenMath.clearPath(area, 1, 1, 9, 1)) -- below the block
+		expect.falsy(PenMath.clearPath(area, 1, 5, 9, 5)) -- through it
+		expect.falsy(PenMath.clearPath(area, 1, 1, 9, 9)) -- across its corner, diagonally
+		expect.truthy(PenMath.clearPath(area, 1, 4, 9, 4)) -- along its edge
+		expect.truthy(PenMath.clearPath(area, 6, 1, 6, 9))
+		expect.truthy(PenMath.clearPath(area, 2, 2, 2, 2)) -- standing still
+		-- No blocks (a walk area of a test): every line on the floor is clear.
+		local open: any = { minX = 0, maxX = 10, minZ = 0, maxZ = 10 }
+		expect.truthy(PenMath.walkable(open, 5, 5))
+		expect.truthy(PenMath.clearPath(open, 0, 0, 10, 10))
+	end)
 
-	t.test(
-		"segmentFrames: K's segments in build order (front from the gate out, sides, the back); none off-step",
-		function()
-			-- 16 × 12 at 3 spots, front z 19, gate gap x -4..4: one front pair, 3 per side, 4 at the back (z 7).
-			expect.deepEqual(spots(PenMath.segmentFrames(3)), {
-				"-6,19",
-				"6,19",
-				"-8,17",
-				"8,17",
-				"-8,13",
-				"8,13",
-				"-8,9",
-				"8,9",
-				"-6,7",
-				"-2,7",
-				"2,7",
-				"6,7",
-			})
-			local side = PenMath.segmentFrames(3)[3]
-			expect.near(math.abs(side.RightVector.Z), 1, 1e-6) -- a side segment runs along the plot's Z
-			expect.near(math.abs(PenMath.segmentFrames(3)[1].RightVector.X), 1, 1e-6)
-			local WorldLayout = t.requireShared("World/WorldLayout")
-			for count = 3, 12 do
-				-- Pens3 phase 11: K's fence count; from 9 spots the back wall is the shelf (no back segments).
-				local step = WorldLayout.Bases.pen.steps[count]
-				expect.equal(#PenMath.segmentFrames(count), step.fence)
-				local backZ = string.format("%g", WorldLayout.Bases.pen.frontZ - step.d)
-				local back = 0
-				for _, key in spots(PenMath.segmentFrames(count)) do
-					if string.match(key, ",(.+)$") == backZ then
-						back += 1
+	t.test("the whole base: a squishy anywhere it may stand touches no prop, never the spawn, and has room", function()
+		local props = WorldLayout.Bases.props
+		local function overlaps(a: any, b: any): boolean
+			return a.minX < b.maxX and b.minX < a.maxX and a.minZ < b.maxZ and b.minZ < a.maxZ
+		end
+		local walk = LAYOUT.walk
+		for _, studs in { 2, 2.8, 3.8, 5 } do
+			local area = PenMath.walkArea(studs)
+			local free = 0
+			for x = -22, 22, 0.25 do
+				for z = -26, 26, 0.25 do
+					if PenMath.walkable(area, x, z) then
+						free += 0.25 * 0.25
+						local h = studs / 2
+						local body = { minX = x - h, maxX = x + h, minZ = z - h, maxZ = z + h }
+						local out = body.minX < walk.minX or body.maxX > walk.maxX
+						if out or body.minZ < walk.minZ or body.maxZ > walk.maxZ then
+							error(`a {studs}-stud squishy at ({x}, {z}) pokes out of the fenced floor`)
+						end
+						for _, prop in props do
+							if overlaps(body, prop) then
+								error(`a {studs}-stud squishy at ({x}, {z}) stands in the {prop.name}`)
+							end
+						end
 					end
 				end
-				expect.equal(back, if step.backWall == "shelf" then 0 else step.w / 4)
 			end
-			expect.deepEqual(PenMath.segmentFrames(2), {})
-			expect.deepEqual(PenMath.segmentFrames(13), {})
+			-- The old biggest pen was 24 × 32 less the same margins: the whole base gives more room.
+			local m = studs + 2 * LAYOUT.edgeMargin
+			expect.truthy(free > (24 - m) * (32 - m))
 		end
-	)
-
-	t.test(
-		"newSegments: the segments a pen gains when it grows, in build order; none when only the tier moves",
-		function()
-			-- 3 -> 4 spots (16 × 12 -> 16 × 16): one more piece down each side and the whole back, 4 deeper.
-			expect.deepEqual(spots(PenMath.newSegments(3, 4)), { "-8,5", "8,5", "-6,3", "-2,3", "2,3", "6,3" })
-			-- 4 -> 5 (16 × 16 -> 24 × 16): a front pair further out, both sides 4 wider out, the back's two new
-			-- ends (its middle 4 pieces stand where they stood).
-			expect.equal(#PenMath.newSegments(4, 5), 2 + 8 + 2)
-			-- Pens3 phase 11, 8 -> 9 (24 × 28 -> 24 × 32): one more piece down each side; the back fence goes (the
-			-- shelf is the back wall now).
-			expect.deepEqual(spots(PenMath.newSegments(8, 9)), { "-12,-11", "12,-11" })
-			-- 9 -> 10: the same 24 × 32 fence, only the tier changes.
-			expect.deepEqual(PenMath.newSegments(9, 10), {})
-			expect.deepEqual(PenMath.newSegments(6, 6), {})
-			-- Two spots at once (a grant): everything new at 7 spots that 5 did not have.
-			expect.equal(#PenMath.newSegments(5, 7), 4 + 6)
-		end
-	)
+	end)
 
 	t.test(
 		"decorOf: K's tier adds: tier 1 plain, tier 2 the gate bulbs and 2 lamps, tier 3 also the bow and 2 trees",

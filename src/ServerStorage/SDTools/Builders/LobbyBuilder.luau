@@ -128,9 +128,9 @@ type PropPart = { kind: "block" | "cyl" | "ball" | "egg", name: string, size: Ve
 -- Constants
 
 local GENERATOR_ID = "lobby"
-local VERSION = 7 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates; 5: look upgrade;
+local VERSION = 8 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates; 5: look upgrade;
 -- 6: the Blender mesh library, round 1 (falls back to parts); 7: pens3 phase 1, no capsule pads or statue plinth, the
--- plot spawn faces the pen
+-- plot spawn faces the pen; 8: wb, the bench and the planter out of the shelf's sides (x ±15.5 -> ±17)
 local ROOT_NAME = "SD_Lobby"
 
 local SHAPE_LIBRARY_NAME = "SD_ShapeLibrary"
@@ -2299,11 +2299,13 @@ local function buildBase(state: State, index: number, folder: Instance)
 	spawn.BottomSurface = Enum.SurfaceType.Smooth
 	spawn.Parent = model
 	Prims.tag(spawn, L.Tags.BaseSpawn, { [L.Attributes.Plot] = index })
-	-- Props (spec §4): the mailbox and the flower box by the gate, the bench and the planter by the back wall.
+	-- Props (spec §4): the mailbox and the flower box by the gate, the bench and the planter by the back wall (wb:
+	-- at x ±17, clear of the pen's shelf, BaseService's, 27.4 wide at z -16; WorldLayout.Bases.props has their
+	-- footprints).
 	prop(state, model, "KittyLoafMailbox", F * CFrame.new(17, 0, 21) * CFrame.Angles(0, math.pi, 0), MAILBOX)
 	prop(state, model, "ChocolateFlowerBox", F * CFrame.new(-17, 0, 21), FLOWER_BOX)
-	prop(state, model, "ToastBench", F * CFrame.new(15.5, 0, -19), TOAST_BENCH)
-	prop(state, model, "BirdieNestPlanter", F * CFrame.new(-15.5, 0, -19), PLANTER)
+	prop(state, model, "ToastBench", F * CFrame.new(17, 0, -19), TOAST_BENCH)
+	prop(state, model, "BirdieNestPlanter", F * CFrame.new(-17, 0, -19), PLANTER)
 end
 
 local function buildBases(state: State)

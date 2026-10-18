@@ -182,8 +182,8 @@ export type Path = {
 
 -- A base's two colours (Palette tokens): `full` for the rim, the fence caps and the gate, `light` for the plinth.
 export type BaseColors = { full: string, light: string }
--- Pens3 phase 1: the pen at one spot count (Bases.pen.steps).
-export type PenStep = { w: number, d: number, tier: number, fence: number, backWall: "fence" | "shelf" }
+-- Pens3 phase 1: the pen at one spot count (Bases.pen.steps; wb: only its tier, the pen is the whole base).
+export type PenStep = { tier: number }
 
 -- Constants
 
@@ -807,6 +807,8 @@ for index = 1, BASE_COUNT do
 	baseModels[index] = string.format("Base_%02d", index)
 end
 
+-- Wb: a plot-local floor rectangle (x and z studs): the squishies' floor, a walk block, a prop's footprint.
+export type FloorRect = { name: string?, minX: number, maxX: number, minZ: number, maxZ: number }
 local Bases = {
 	center = Vector3.zero,
 	gateRadius = BASE_GATE_RADIUS,
@@ -823,38 +825,62 @@ local Bases = {
 	-- gate (z +26) and the pen's front (z +19), at local z +22.5, facing -Z, toward the pen. (Before: z -4 facing the
 	-- gate, where the statue blocked the camera; the statue went with the capsules.)
 	spawn = CFrame.new(0, 0, 22.5),
-	-- Pens3 phase 1: the pen (lobby design v6 kit.json base.pen, K:4084-4189), turned 180° from v6's base frame into
-	-- this plot frame (+Z = the gate side): its front fence at z frontZ with the gateWidth gap centred on x 0, built of
-	-- `segment`-stud fence pieces, growing toward -Z. steps[spots] = the pen at that many open spots: w (along x) × d
-	-- (along z) studs, the fence tier (1 Wafer, 2 Mint, 3 Royal), K's fence segment count and its back wall ("shelf"
-	-- from 9 spots: the shelf stands there, pens3 phase 11). edgeMargin = how far a walking squishy keeps from the
-	-- fence (PenMath.wanderRect). signs.pen = the PEN SPACE sign (L:166-194 pen_upgrade_sign_01), facing +Z; pens3
+	-- Wb: what LobbyBuilder stands on each plot's floor (plot-local footprints, read from its build and rounded out to
+	-- 0.05; LobbyBuilder_Test checks the build against them): the spawn pad, the Donut Arch's 2 pillars (0.4 of each
+	-- past the plinth's front), the Kitty Loaf mailbox and the Chocolate flower box by the gate, the Toast bench and
+	-- the Birdie nest planter by the back wall (wb, owner 2026-10-17: moved out from x ±15.5 to ±17, so neither pokes
+	-- 0.7 stud into the shelf's sides any more).
+	props = {
+		{ name = "Spawn", minX = -2, maxX = 2, minZ = 20.5, maxZ = 24.5 },
+		{ name = "GatePillar", minX = -10, maxX = -8, minZ = 24.4, maxZ = 26.4 },
+		{ name = "GatePillar", minX = 8, maxX = 10, minZ = 24.4, maxZ = 26.4 },
+		{ name = "KittyLoafMailbox", minX = 15.7, maxX = 18.2, minZ = 20.2, maxZ = 21.8 },
+		{ name = "ChocolateFlowerBox", minX = -19.5, maxX = -14.5, minZ = 20.05, maxZ = 21.95 },
+		{ name = "ToastBench", minX = 14.3, maxX = 19.7, minZ = -20, maxZ = -18.05 },
+		{ name = "BirdieNestPlanter", minX = -19.45, maxX = -14.55, minZ = -20.75, maxZ = -17.25 },
+	} :: { FloorRect },
+	-- Pens3 phase 1, wb (owner 2026-10-17, "whole base, like Ride a Pet, each time they upgrade they can put more
+	-- squishies"): the pen is the whole base from the start, inside the plot's own white fence, and buying PEN SPACE
+	-- adds squishies, never fence (no pen fence, rails or colliders any more). steps[spots].tier = the lobby design v6
+	-- tier at that many open spots (kit.json K:4084-4169: 1 Wafer, 2 Mint, 3 Royal; its w, d, fence count and back wall
+	-- were the growing pen's). `walk` = the squishies' floor: the plinth's inside the plot's fence posts (their inner
+	-- faces fenceInset + 0.4 in from its sides and front: x ±21, z 25) and its back wall (1.6 deep: z -24.4). `blocks`
+	-- = where no squishy walks (PenMath.walkArea grows each by half the squishy and edgeMargin; to the plot's edges):
+	-- the front row from z 18 (the Donut Arch's pillars and opening, the spawn, both walk-up signs, the gate, the
+	-- lamps, the mailbox and the flower box), the shelf row from the shelf's glass locks (z -12.8: L:247 puts them
+	-- 0.125 in front of its front, z -13) back (the shelf, the bench and the planter beside it, and the floor behind
+	-- it) and the 2 gumdrop trees' canopies (r 3, LK:238). edgeMargin = how far a walking squishy keeps from the
+	-- floor's edges and the blocks. signs.pen = the PEN SPACE sign (L:166-194 pen_upgrade_sign_01), facing +Z; pens3
 	-- phase 11: signs.shelf = the SHELF SPOTS sign (L:189 pen_upgrade_sign_02 turned: (-10.03, 20.37); K:4240 "PEN
 	-- SPACE (left) and SHELF SPOTS (right)", the plan's (-10, 0, 20.4)).
 	pen = {
-		frontZ = 19,
-		gateWidth = 8,
-		segment = 4,
 		edgeMargin = 0.8,
 		steps = {
-			[3] = { w = 16, d = 12, tier = 1, fence = 12, backWall = "fence" },
-			[4] = { w = 16, d = 16, tier = 1, fence = 14, backWall = "fence" },
-			[5] = { w = 24, d = 16, tier = 1, fence = 18, backWall = "fence" },
-			[6] = { w = 24, d = 20, tier = 2, fence = 20, backWall = "fence" },
-			[7] = { w = 24, d = 24, tier = 2, fence = 22, backWall = "fence" },
-			[8] = { w = 24, d = 28, tier = 2, fence = 24, backWall = "fence" },
-			[9] = { w = 24, d = 32, tier = 2, fence = 20, backWall = "shelf" },
-			[10] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
-			[11] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
-			[12] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+			[3] = { tier = 1 },
+			[4] = { tier = 1 },
+			[5] = { tier = 1 },
+			[6] = { tier = 2 },
+			[7] = { tier = 2 },
+			[8] = { tier = 2 },
+			[9] = { tier = 2 },
+			[10] = { tier = 3 },
+			[11] = { tier = 3 },
+			[12] = { tier = 3 },
 		} :: { [number]: PenStep },
+		walk = { minX = -21, maxX = 21, minZ = -24.4, maxZ = 25 } :: FloorRect,
+		blocks = {
+			{ name = "front", minX = -22, maxX = 22, minZ = 18, maxZ = 26 },
+			{ name = "shelfRow", minX = -22, maxX = 22, minZ = -26, maxZ = -12.75 },
+			{ name = "tree", minX = 15, maxX = 22, minZ = -3, maxZ = 3 },
+			{ name = "tree", minX = -22, maxX = -15, minZ = -3, maxZ = 3 },
+		} :: { FloorRect },
 		signs = {
 			pen = CFrame.new(10, 0, 20.3) * CFrame.Angles(0, math.pi, 0),
 			shelf = CFrame.new(-10, 0, 20.4) * CFrame.Angles(0, math.pi, 0),
 		},
 		-- Pens3 phase 11 (K:798-842 base_shelf, LK:182-189; L:194 / :225 / :246: every base's shelf at v6 local
-		-- (0, 16), turned like the gate, its front toward +Z): the shelf's frame `at` (6 deep: its front is the back of
-		-- a 9+ spot pen); `cubbies` = LK:188's slot_1..8 (x ±3.3 / ±9.9, y 1 and 8.3, z -0.5, in shelf studs) in K's
+		-- (0, 16), turned like the gate, its front toward +Z): the shelf's frame `at` (6 deep; wb: in the shelf row
+		-- block); `cubbies` = LK:188's slot_1..8 (x ±3.3 / ±9.9, y 1 and 8.3, z -0.5, in shelf studs) in K's
 		-- order (K:4194-4203: v6 slots 2, 3, 1, 4, 6, 7, 5, 8), so cubby k is pen slot 12 + k and each shelf row is the
 		-- next two (placeholder: v6 opens them one by one, PLAN phase 11); `top` = where the TOP spot's squishy
 		-- stands (placeholder: a pedestal on the shelf's top behind the bow, BaseService); `labelOver` = the coin
@@ -876,28 +902,29 @@ local Bases = {
 			labelOver = 6.9,
 			labelZ = -3.2,
 		},
-		-- Pens3 phase 10 (L:187-193, turned like the sign: every front toward +Z): the gate (pen_gate_01) in the gate
-		-- gap; the 2 lollipop lamps at the front corners (tier 2 on) and the 2 gumdrop trees by the side fences (tier
-		-- 3), each tree's canopy a Palette token (L's GumdropTint tints: the Royal post's gold at +X, its rail pink at
-		-- -X).
-		-- L's rotated bases give the trees' x as 13.55 ± 0.04 (its 0.125-stud world grid).
-		gate = CFrame.new(0, 0, 19) * CFrame.Angles(0, math.pi, 0),
+		-- Pens3 phase 10 (every front toward +Z, like the sign): the gate (LK:87-96 pen_gate); the 2 lollipop lamps
+		-- (tier 2 on) and the 2 gumdrop trees (tier 3), each tree's canopy a Palette token (L:192-193 GumdropTint: the
+		-- Royal post's gold at +X, its rail pink at -X). Wb (owner 2026-10-17: keep both name signs, the pen is the
+		-- whole base; readings, NOTES.md): the gate stands in the front-right corner, between the Donut Arch and the
+		-- plot's fence, just inside the front fence, where the path sees its owner sign beside the arch, never behind
+		-- the arch's name sign (that hid a quarter of it, and most of its badge, at the old (0, 0, 19)); K:4181's lamps
+		-- "at the front corners" stand at the walk floor's front corners, behind the front row; K:4187's trees "by the
+		-- side fences" by the plot's side fences, half way down (their canopies, r 3, inside the fence).
+		gate = CFrame.new(16.2, 0, 24) * CFrame.Angles(0, math.pi, 0),
 		lamps = {
-			CFrame.new(12.75, 0, 20.25) * CFrame.Angles(0, math.pi, 0),
-			CFrame.new(-12.75, 0, 20.25) * CFrame.Angles(0, math.pi, 0),
+			CFrame.new(19.25, 0, 18.5) * CFrame.Angles(0, math.pi, 0),
+			CFrame.new(-19.25, 0, 18.5) * CFrame.Angles(0, math.pi, 0),
 		},
 		trees = {
-			{ at = CFrame.new(13.55, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalPost" },
-			{ at = CFrame.new(-13.55, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalRail" },
+			{ at = CFrame.new(18, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalPost" },
+			{ at = CFrame.new(-18, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalRail" },
 		},
-		-- The most parts BaseService draws for one pen (pens3 phase 3; phase 10: 12 spots = 26 fence segments of 3
-		-- pickets, 25 posts with their balls (the gate's posts stand on the other 2), the 10 rail runs, 5 colliders,
-		-- the sign's 3 parts, the gate's 8 with its 7 bulbs and the 13-part bow, 2 lamps of 2 and 2 trees of 6 = 190);
-		-- the lobby budget adds it to every plot. Pens3 phase 11: the worst state is 10-12 spots with the start shelf
-		-- row (the shelf's back wall frees the 6 back segments' 18 pickets, 5 posts + 5 balls, 2 rails and the back
-		-- collider: 159), + the shelf's 1 back, 11 boards, 13-part bow and collider, the TOP spot's 2-part pedestal, 6
-		-- cubby locks and the SHELF SPOTS sign's 3 = 196 (everything bought: 190).
-		maxParts = 196,
+		-- The most parts BaseService draws for one pen (pens3 phase 3); the lobby budget adds it to every plot. Wb: no
+		-- pen fence, so the worst state is 10-12 spots with the start shelf row: the PEN SPACE and SHELF SPOTS signs'
+		-- 3 + 3, the gate's 8 with its 7 bulbs and the 13-part bow, 2 lamps of 2, 2 trees of 6, the shelf's 1 back, 11
+		-- boards, 13-part bow and collider, the TOP spot's 2-part pedestal and 6 cubby locks = 84 (everything bought:
+		-- 78; before wb, with the fence, 196).
+		maxParts = 84,
 	},
 	-- Spec §8: plot i's colour (full: rim, fence caps, gate; light: the plinth floor); an open plot is grey (§4).
 	colors = baseColors,

@@ -27,16 +27,20 @@
 --   * bases (§2, §4, §8): 10 plots 36° apart around the hub centre, gates at radius 96 and backs at 148, facing the
 --     hub, 44 × 52, the spawn inside (pens3 phase 3: no capsule pads, spots or statue), no two plots sharing ground, a
 --     colour per plot and the open grey; inPlot is the footprint only, never an unknown plot;
---   * pens3 phase 1: Bases.pen is lobby design v6's base.pen (K:4084-4189) turned into the plot frame: front z 19, an
---     8-stud gate gap, 4-stud segments, the steps 3..12 exactly as K has them, every step inside the plot; the PEN
---     SPACE sign at (10, 0, 20.3) facing the gate side; the spawn at local z 22.5 between the gate and the pen,
---     facing the pen;
---   * pens3 phase 10: the gate in the gate gap at (0, 0, 19), the lamps at (±12.75, 0, 20.25), the trees at (±13.55,
---     0, 0) (L:187-193), all facing the gate side, inside every plot; the +X tree gold, the -X one pink;
+--   * pens3 phase 1 (wb, owner 2026-10-17: the pen is the whole base): Bases.pen.steps holds K's tier per spot count
+--     (K:4084-4169: 3-5 Wafer, 6-9 Mint, 10-12 Royal); no pen fence any more (no front z, gate gap or segment); the
+--     squishies' floor `walk` is the plot's floor inside its own fence and back wall (x ±21, z -24.4..25), the spawn
+--     on it; the PEN SPACE sign at (10, 0, 20.3) facing the gate side; the spawn at local z 22.5, facing the pen;
+--   * wb: the gate at the front-right corner (16.2, 0, 24), its posts inside the fence and clear of the Donut Arch,
+--     the lamps at the walk floor's front corners (±19.25, 0, 18.5), the trees by the side fences (±18, 0, 0), all
+--     facing the gate side, inside every plot; the +X tree gold, the -X one pink (K:4170-4189 "adds");
+--   * wb: Bases.props (the spawn, the arch's pillars, the mailbox, the flower box, the bench and the planter, as
+--     LobbyBuilder builds them) stand on the plot, none in the shelf (the bench and the planter moved out to x ±17),
+--     and every one is inside a walk block (`blocks`: the front row, the shelf row, the 2 trees);
 --   * pens3 phase 11: the SHELF SPOTS sign at (-10, 0, 20.4) facing the gate side (L:189, K:4240: right of the gate);
---     the shelf (L:194 base_shelf_01, at v6 local z 16 on every base) at (0, 0, -16) facing the gate side, its front
---     (6 deep, LK:184) the back of a 9+ spot pen; its 8 cubbies (LK:188 slot_1..8) in K's order (K:4194-4203: 2, 3,
---     1, 4, 6, 7, 5, 8, two to a row) and the TOP spot over its top, all inside every plot;
+--     the shelf (L:194 base_shelf_01, at v6 local z 16 on every base) at (0, 0, -16) facing the gate side, its front (6
+--     deep, LK:184, and its locks) the shelf row block's front; its 8 cubbies (LK:188 slot_1..8) in K's order
+--     (K:4194-4203: 2, 3, 1, 4, 6, 7, 5, 8, two to a row) and the TOP spot over its top, all inside every plot;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -1304,34 +1308,34 @@ return function(t: Context)
 		end
 	end)
 
-	-- Pens3 phase 1: the pen (lobby design v6 kit.json base.pen, K:4084-4189), in the plot frame.
-	t.test("pens3 phase 1: Bases.pen is v6's pen turned into the plot frame; every step fits the plot", function()
+	-- Pens3 phase 1 (wb, owner 2026-10-17): the pen is the whole base; K's steps only give the tier now.
+	t.test("wb: the pen is the whole base: K's tiers by spot count, the plot's fenced floor, no pen fence", function()
 		local pen = WorldLayout.Bases.pen
-		expect.equal(pen.frontZ, 19) -- K frontZ -19, turned 180°
-		expect.equal(pen.gateWidth, 8)
-		expect.equal(pen.segment, 4)
+		expect.equal(pen.frontZ, nil) -- no pen fence: no front, gate gap or segment
+		expect.equal(pen.gateWidth, nil)
+		expect.equal(pen.segment, nil)
 		expect.equal(pen.edgeMargin, 0.8)
-		expect.deepEqual(pen.steps, {
-			[3] = { w = 16, d = 12, tier = 1, fence = 12, backWall = "fence" },
-			[4] = { w = 16, d = 16, tier = 1, fence = 14, backWall = "fence" },
-			[5] = { w = 24, d = 16, tier = 1, fence = 18, backWall = "fence" },
-			[6] = { w = 24, d = 20, tier = 2, fence = 20, backWall = "fence" },
-			[7] = { w = 24, d = 24, tier = 2, fence = 22, backWall = "fence" },
-			[8] = { w = 24, d = 28, tier = 2, fence = 24, backWall = "fence" },
-			[9] = { w = 24, d = 32, tier = 2, fence = 20, backWall = "shelf" },
-			[10] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
-			[11] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
-			[12] = { w = 24, d = 32, tier = 3, fence = 20, backWall = "shelf" },
+		expect.deepEqual(pen.steps, { -- K:4084-4169 steps[cap].tier
+			[3] = { tier = 1 },
+			[4] = { tier = 1 },
+			[5] = { tier = 1 },
+			[6] = { tier = 2 },
+			[7] = { tier = 2 },
+			[8] = { tier = 2 },
+			[9] = { tier = 2 },
+			[10] = { tier = 3 },
+			[11] = { tier = 3 },
+			[12] = { tier = 3 },
 		})
+		-- The floor inside the plot's own fence (posts 0.8 wide, fenceInset in from the 44 × 52 plinth's sides and
+		-- front) and its back wall (1.6 deep): LobbyBuilder's numbers.
 		local bases = WorldLayout.Bases
-		for spots = 3, 12 do
-			local step = pen.steps[spots]
-			-- K's fence count: the perimeter in segments, less the gate gap; from 9 spots the back is the shelf.
-			local back = if step.backWall == "shelf" then step.w else 0
-			expect.equal((2 * step.w + 2 * step.d - pen.gateWidth - back) / pen.segment, step.fence)
-			expect.truthy(step.w / 2 <= bases.width / 2 and pen.frontZ - step.d >= -bases.depth / 2)
-		end
-		expect.truthy(pen.frontZ < bases.spawn.Position.Z and bases.spawn.Position.Z < bases.depth / 2)
+		expect.deepEqual(pen.walk, { minX = -21, maxX = 21, minZ = -24.4, maxZ = 25 })
+		expect.near(pen.walk.maxX, bases.width / 2 - bases.fenceInset - 0.4, 1e-9)
+		expect.near(pen.walk.maxZ, bases.depth / 2 - bases.fenceInset - 0.4, 1e-9)
+		expect.near(pen.walk.minZ, -bases.depth / 2 + 1.6, 1e-9)
+		local spawn = bases.spawn.Position
+		expect.truthy(math.abs(spawn.X) < pen.walk.maxX and spawn.Z > pen.walk.minZ and spawn.Z < pen.walk.maxZ)
 		local sign = pen.signs.pen
 		expect.truthy(vectorNear(sign.Position, Vector3.new(10, 0, 20.3)))
 		expect.truthy(vectorNear(sign.LookVector, Vector3.new(0, 0, 1), 1e-6)) -- its face toward the gate side
@@ -1340,35 +1344,43 @@ return function(t: Context)
 		end
 	end)
 
-	-- Pens3 phase 10: the gate and the tier decor (lobby design v6 layout.json, L:187-193, turned like the pen).
-	t.test("pens3 phase 10: the gate in the gate gap, 2 lamps at the front corners, 2 trees by the sides", function()
-		local pen = WorldLayout.Bases.pen
-		local toward = Vector3.new(0, 0, 1) -- every piece's front faces the gate side, like the sign
-		expect.truthy(vectorNear(pen.gate.Position, Vector3.new(0, 0, pen.frontZ)))
-		expect.truthy(vectorNear(pen.gate.LookVector, toward, 1e-6))
-		expect.equal(#pen.lamps, 2)
-		expect.equal(#pen.trees, 2)
-		local wide = pen.steps[12]
-		for index, side in { 1, -1 } do
-			local lamp = pen.lamps[index]
-			expect.truthy(vectorNear(lamp.Position, Vector3.new(side * 12.75, 0, 20.25)))
-			expect.truthy(vectorNear(lamp.LookVector, toward, 1e-6))
-			expect.truthy(lamp.Position.Z > pen.frontZ and math.abs(lamp.Position.X) > wide.w / 2) -- outside the pen
-			local tree = pen.trees[index]
-			expect.truthy(vectorNear(tree.at.Position, Vector3.new(side * 13.55, 0, 0)))
-			expect.truthy(vectorNear(tree.at.LookVector, toward, 1e-6))
-			expect.truthy(math.abs(tree.at.Position.X) > wide.w / 2) -- beside the side fence
-		end
-		-- L:192-193: the +X tree in the Royal post's gold, the -X one in its pink rail colour.
-		expect.equal(pen.trees[1].color, "PenFenceRoyalPost")
-		expect.equal(pen.trees[2].color, "PenFenceRoyalRail")
-		for index = 1, 10 do
-			local frame = WorldLayout.plotFrame(index) :: CFrame
-			for _, at in { pen.gate, pen.lamps[1], pen.lamps[2], pen.trees[1].at, pen.trees[2].at } do
-				expect.truthy(WorldLayout.inPlot(index, frame * at.Position))
+	-- Wb: the gate and the tier decor round the whole base (K:4170-4189 "adds"; owner 2026-10-17: both name signs).
+	t.test(
+		"wb: the gate at the front-right corner, 2 lamps at the floor's front corners, 2 trees by the sides",
+		function()
+			local pen = WorldLayout.Bases.pen
+			local toward = Vector3.new(0, 0, 1) -- every piece's front faces the gate side, like the sign
+			-- Beside the Donut Arch, never behind its name sign (9 wide at x ±4.5): its posts (x ±4 from its middle,
+			-- r 0.6, their balls r 0.8) inside the plot's fence and clear of the arch's pillars (x ±8..10).
+			expect.truthy(vectorNear(pen.gate.Position, Vector3.new(16.2, 0, 24)))
+			expect.truthy(vectorNear(pen.gate.LookVector, toward, 1e-6))
+			expect.truthy(
+				pen.gate.Position.X + 4.8 <= pen.walk.maxX + 1e-4 and pen.gate.Position.Z + 0.8 <= pen.walk.maxZ
+			)
+			expect.truthy(pen.gate.Position.X - 4.6 > 10)
+			expect.equal(#pen.lamps, 2)
+			expect.equal(#pen.trees, 2)
+			for index, side in { 1, -1 } do
+				local lamp = pen.lamps[index]
+				expect.truthy(vectorNear(lamp.Position, Vector3.new(side * 19.25, 0, 18.5)))
+				expect.truthy(vectorNear(lamp.LookVector, toward, 1e-6))
+				expect.truthy(math.abs(lamp.Position.X) + 1.6 <= pen.walk.maxX) -- its candy (r 1.6) inside the fence
+				local tree = pen.trees[index]
+				expect.truthy(vectorNear(tree.at.Position, Vector3.new(side * 18, 0, 0)))
+				expect.truthy(vectorNear(tree.at.LookVector, toward, 1e-6))
+				expect.truthy(math.abs(tree.at.Position.X) + 3 <= pen.walk.maxX) -- its canopy (r 3) by the side fence
+			end
+			-- L:192-193: the +X tree in the Royal post's gold, the -X one in its pink rail colour.
+			expect.equal(pen.trees[1].color, "PenFenceRoyalPost")
+			expect.equal(pen.trees[2].color, "PenFenceRoyalRail")
+			for index = 1, 10 do
+				local frame = WorldLayout.plotFrame(index) :: CFrame
+				for _, at in { pen.gate, pen.lamps[1], pen.lamps[2], pen.trees[1].at, pen.trees[2].at } do
+					expect.truthy(WorldLayout.inPlot(index, frame * at.Position))
+				end
 			end
 		end
-	end)
+	)
 
 	-- Pens3 phase 11: the shelf, its cubbies, the TOP spot and the SHELF SPOTS sign (lobby design v6, turned).
 	t.test("pens3 phase 11: the SHELF SPOTS sign, the shelf at the plot's back, its cubbies in K's order", function()
@@ -1380,12 +1392,16 @@ return function(t: Context)
 		local shelf = pen.shelf
 		expect.truthy(vectorNear(shelf.at.Position, Vector3.new(0, 0, -16)))
 		expect.truthy(vectorNear(shelf.at.LookVector, toward, 1e-6))
-		-- Its front face (3 studs in front of its middle) is the back of every pen whose back wall is the shelf.
-		local front = shelf.at * Vector3.new(0, 0, -3)
-		for spots = 9, 12 do
-			expect.near(front.Z, pen.frontZ - pen.steps[spots].d, 1e-6)
+		-- Wb: its front (3 studs in front of its middle) with the glass locks before it (L:247: 0.125 out, 0.15 thick)
+		-- is the front of the shelf row's walk block (rounded out to 0.05).
+		local front = shelf.at * Vector3.new(0, 0, -3.25)
+		local row = nil
+		for _, block in pen.blocks do
+			if block.name == "shelfRow" then
+				row = block
+			end
 		end
-		expect.truthy(front.Z < pen.frontZ - pen.steps[8].d) -- before 9 spots it stands behind the pen
+		expect.near(front.Z, (row :: any).maxZ, 1e-6)
 		-- LK:188's slots in K's order, two to a row: the middle pair below, the outer pair below, then the same above.
 		local want = {
 			Vector3.new(-3.3, 1, -0.5),
@@ -1606,6 +1622,76 @@ return function(t: Context)
 					)
 				)
 			end
+		end
+	end)
+	-- Wb: what LobbyBuilder stands on each plot's floor, and the walk blocks that keep the squishies off it.
+	t.test("wb: the plot's props stand on its floor, none in the shelf, each inside a walk block", function()
+		local bases = WorldLayout.Bases
+		local pen = bases.pen
+		local names = {}
+		for _, prop in bases.props do
+			table.insert(names, prop.name)
+		end
+		table.sort(names)
+		expect.deepEqual(names, {
+			"BirdieNestPlanter",
+			"ChocolateFlowerBox",
+			"GatePillar",
+			"GatePillar",
+			"KittyLoafMailbox",
+			"Spawn",
+			"ToastBench",
+		})
+		local function overlaps(a: any, b: any): boolean
+			return a.minX < b.maxX and b.minX < a.maxX and a.minZ < b.maxZ and b.minZ < a.maxZ
+		end
+		-- The shelf's footprint (27.4 × 6 at z -16, LK:184).
+		local shelf = { minX = -13.7, maxX = 13.7, minZ = -19, maxZ = -13 }
+		local walk = pen.walk
+		for _, prop in bases.props do
+			expect.truthy(math.abs(prop.minX) <= bases.width / 2 and math.abs(prop.maxX) <= bases.width / 2)
+			expect.truthy(prop.minZ >= -bases.depth / 2 and prop.maxZ <= bases.depth / 2 + 0.4) -- a pillar: 0.4 out
+			if overlaps(prop, shelf) then
+				error(`{prop.name} pokes into the shelf`)
+			end
+			-- The part on the squishies' floor lies inside one walk block.
+			local onFloor = {
+				minX = math.max(prop.minX, walk.minX),
+				maxX = math.min(prop.maxX, walk.maxX),
+				minZ = math.max(prop.minZ, walk.minZ),
+				maxZ = math.min(prop.maxZ, walk.maxZ),
+			}
+			local inside = false
+			for _, block in pen.blocks do
+				if
+					onFloor.minX >= block.minX
+					and onFloor.maxX <= block.maxX
+					and onFloor.minZ >= block.minZ
+					and onFloor.maxZ <= block.maxZ
+				then
+					inside = true
+				end
+			end
+			if not inside then
+				error(`{prop.name} is in no walk block`)
+			end
+		end
+		-- The front row, the shelf row and the 2 trees' canopies (r 3 round each tree).
+		expect.equal(#pen.blocks, 4)
+		for _, tree in pen.trees do
+			local at = tree.at.Position
+			local found = false
+			for _, block in pen.blocks do
+				if
+					block.minX <= at.X - 3
+					and block.maxX >= at.X + 3
+					and block.minZ <= at.Z - 3
+					and block.maxZ >= at.Z + 3
+				then
+					found = true
+				end
+			end
+			expect.truthy(found)
 		end
 	end)
 end
