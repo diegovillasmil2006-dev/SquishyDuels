@@ -44,6 +44,15 @@
 --     root holds a station-tagged instance (on itself or a descendant). Decor kept in its own Model is never exempt;
 --   * SD_Boundary walls and SD_KeepClear volumes.
 --
+-- The highway (pens3 phase 12, target "highway"; the lobby design v6, `L:n` = layout.json, `K:n` = kit.json, `LK:n` =
+-- lobby-kit.js, restated): the root SD_Highway holds a Persistent "Deck" (K:7881-7883) and the 7 biome Models of L:1's
+-- zones (Biome = n), each placed piece an Atomic Model with SD_Piece, at most 600 a biome (spec.txt:157); 10
+-- SD_LaunchSpot spots with Slot 1..10, each with the Attachments launcher_mount and player_stand (LK:107); one
+-- SD_LaunchBoard part whose live lines are built empty (CHK:74: phase 13 writes them); the gate_mascot slot; 84
+-- distance markers (every 100 studs to 8,400) and one dh_golden_gates; every part anchored and untouched, none
+-- colliding outside the Deck (the lane is for squishies), none under 2 studs casting a shadow; SurfaceGuis hidden
+-- beyond 150 studs (K:7873); at most 2 lights (L:2, :5), no shadows; no scripts; every SD_TextKey in Strings.
+--
 -- WorldLayout shapes accepted (any of these works):
 --   tiers  WorldLayout.stationTier(stationId) -> number; or a station table in Stations / SqueezeStations / stations /
 --          squeezeStations: a map stationId -> entry, or an array of entries with id / stationId / StationId; the
@@ -286,6 +295,24 @@ local LOBBY_FLOOR_Y = 0
 local LOBBY_FOOTPRINT_HALF = Vector3.new(70, 0, 70) -- lobby bases spec §2: Squish Square (Ø140), the floor at Y 0
 local ARENA_AUDIO_ZONE_ID = "arena"
 local ARENA_AUDIO_PRIORITY = 3
+
+-- highway (pens3 phase 12; see the header)
+local HIGHWAY_ROOT_NAME = "SD_Highway"
+local HIGHWAY_DECK = "Deck"
+local HIGHWAY_BIOMES =
+	{ "Biome_1_CM", "Biome_2_BT", "Biome_3_BL", "Biome_4_FD", "Biome_5_LV", "Biome_6_RR", "Biome_7_DH" }
+local HIGHWAY_MAX_PIECES = 600 -- spec.txt:157 "≤ 600 placed" a biome
+local HIGHWAY_SPOTS = 10 -- K:887 "One of 10 throw spots"
+local HIGHWAY_SPOT_EMPTIES = { "launcher_mount", "player_stand" } -- LK:107
+local HIGHWAY_BOARD_SLOTS = { "LastWho", "LastDistance", "BestWho", "BestDistance" } -- P3D:286-289
+local HIGHWAY_MARKERS = 84 -- L:476 ...: d 100 .. 8,400
+local HIGHWAY_MAX_LIGHTS = 2 -- L:2 the deck, L:5 the Golden Gates (the volcano's comes with the scenery)
+local HIGHWAY_GUI_MAX_DISTANCE = 150 -- K:7873
+local TAG_LAUNCH_SPOT = "SD_LaunchSpot"
+local TAG_LAUNCH_BOARD = "SD_LaunchBoard"
+local ATTR_PIECE = "SD_Piece"
+local ATTR_BIOME = "Biome"
+local ATTR_SLOT = "Slot"
 
 -- WorldLayout field names accepted (see the header).
 local STATION_TABLES = { "Stations", "SqueezeStations", "stations", "squeezeStations" }
@@ -1250,6 +1277,165 @@ local function verifyLobby(report: Report, root: Instance, deps: Deps?)
 	checkRenderRules(report, all)
 end
 
+-- Private: highway (pens3 phase 12; see the header) ----------------------------------------------------------------
+
+local function verifyHighway(report: Report, root: Instance, deps: Deps?)
+	local strings = if deps then deps.Strings else nil
+	if strings == nil then
+		local loaded, err = loadShared(if deps then deps.Shared else nil, { "Strings" })
+		strings = loaded
+		if err then
+			note(report, "Strings", err)
+		end
+	end
+	if root.Name ~= HIGHWAY_ROOT_NAME or not root:IsA("Model") then
+		note(
+			report,
+			"root",
+			string.format("the highway root is %s %s, expected Model %s", root.ClassName, root.Name, HIGHWAY_ROOT_NAME)
+		)
+	end
+	local deck = root:FindFirstChild(HIGHWAY_DECK)
+	if deck == nil or not deck:IsA("Model") or deck.ModelStreamingMode ~= Enum.ModelStreamingMode.Persistent then
+		note(report, "deck", string.format("%s.%s must be a Persistent Model (K:7881-7883)", root.Name, HIGHWAY_DECK))
+	end
+
+	-- The biome zones and their pieces.
+	local markers, gates = 0, 0
+	for index, name in HIGHWAY_BIOMES do
+		local zone = root:FindFirstChild(name)
+		if zone == nil or not zone:IsA("Model") or zone:GetAttribute(ATTR_BIOME) ~= index then
+			note(
+				report,
+				"biomes",
+				string.format("%s is missing (a Model with %s = %d, L:1 zones)", name, ATTR_BIOME, index)
+			)
+			continue
+		end
+		local count = 0
+		for _, piece in zone:GetChildren() do
+			local kind = piece:GetAttribute(ATTR_PIECE)
+			if kind == nil then
+				continue
+			end
+			count += 1
+			if not piece:IsA("Model") or (piece :: Model).ModelStreamingMode ~= Enum.ModelStreamingMode.Atomic then
+				note(report, "atomic", string.format("%s must be an Atomic Model (K:7887)", describe(piece)))
+			end
+			markers += if kind == "distance_marker" then 1 else 0
+			gates += if kind == "dh_golden_gates" then 1 else 0
+		end
+		if count > HIGHWAY_MAX_PIECES then
+			note(
+				report,
+				"pieces",
+				string.format("%s has %d pieces, cap %d (spec.txt:157)", name, count, HIGHWAY_MAX_PIECES)
+			)
+		end
+	end
+	if markers ~= HIGHWAY_MARKERS then
+		note(report, "markers", string.format("%d distance markers, expected %d", markers, HIGHWAY_MARKERS))
+	end
+	if gates ~= 1 then
+		note(report, "gates", string.format("%d Golden Gates, expected 1", gates))
+	end
+
+	-- The deck: the spots, the board, the mascot slot.
+	local all = everything(root)
+	local slots: { [number]: boolean } = {}
+	local spots = tagged(all, TAG_LAUNCH_SPOT)
+	for _, spot in spots do
+		local slot = spot:GetAttribute(ATTR_SLOT)
+		if type(slot) ~= "number" or slot < 1 or slot > HIGHWAY_SPOTS or slots[slot] then
+			note(
+				report,
+				"launch spot",
+				string.format("launch spot %s has Slot %s (missing or repeated)", describe(spot), tostring(slot))
+			)
+		else
+			slots[slot] = true
+		end
+		for _, empty in HIGHWAY_SPOT_EMPTIES do
+			local attachment = spot:FindFirstChild(empty, true)
+			if attachment == nil or not attachment:IsA("Attachment") then
+				note(
+					report,
+					"launch spot",
+					string.format("launch spot %s has no %s Attachment (LK:107)", describe(spot), empty)
+				)
+			end
+		end
+	end
+	if #spots ~= HIGHWAY_SPOTS then
+		note(
+			report,
+			"launch spot",
+			string.format("%d launch spots (%s), expected %d", #spots, TAG_LAUNCH_SPOT, HIGHWAY_SPOTS)
+		)
+	end
+	local boards = tagged(all, TAG_LAUNCH_BOARD)
+	if #boards ~= 1 then
+		note(report, "board", string.format("%d launch boards (%s), expected 1", #boards, TAG_LAUNCH_BOARD))
+	end
+	for _, board in boards do
+		for _, name in HIGHWAY_BOARD_SLOTS do
+			local label = board:FindFirstChild(name, true)
+			if
+				label == nil
+				or not label:IsA("TextLabel")
+				or label.Text ~= ""
+				or label:GetAttribute(ATTR_TEXT_KEY) ~= nil
+			then
+				note(
+					report,
+					"board",
+					string.format("the launch board's %s must be an empty live TextLabel (CHK:74)", name)
+				)
+			end
+		end
+	end
+	local mascot = if deck then deck:FindFirstChild("gate_mascot", true) else nil
+	if mascot == nil or not mascot:IsA("Model") then
+		note(report, "mascot", "the launch gate has no gate_mascot Model (its slot, K:985)")
+	end
+
+	-- Every part and the budgets.
+	local lights = 0
+	for _, instance in all do
+		if instance:IsA("BasePart") then
+			local part = instance :: BasePart
+			expectFlag(report, describe(part), "Anchored", part.Anchored, true)
+			if part.CanCollide and not (deck ~= nil and part:IsDescendantOf(deck)) then
+				note(
+					report,
+					"collides",
+					string.format("%s collides outside the Deck (the lane is for squishies)", describe(part))
+				)
+			end
+		elseif instance:IsA("SurfaceGui") then
+			expectFlag(
+				report,
+				describe(instance),
+				"MaxDistance",
+				(instance :: SurfaceGui).MaxDistance,
+				HIGHWAY_GUI_MAX_DISTANCE
+			)
+		elseif instance:IsA("Light") then
+			lights += 1
+			expectFlag(report, describe(instance), "Shadows", (instance :: Light).Shadows, false)
+		elseif instance:IsA("LuaSourceContainer") then
+			note(report, "scripts", string.format("generated trees hold no scripts: %s", describe(instance)))
+		end
+	end
+	if lights > HIGHWAY_MAX_LIGHTS then
+		note(report, "budget", string.format("the highway has %d lights, budget %d", lights, HIGHWAY_MAX_LIGHTS))
+	end
+	checkRenderRules(report, all)
+	if strings ~= nil then
+		checkTextKeys(report, all, strings)
+	end
+end
+
 -- Private: arena (§5.3, §7.8)
 
 local function checkArenaTree(report: Report, root: Instance, all: { Instance }, contract: ArenaContract)
@@ -1817,6 +2003,7 @@ end
 local CHECKS: { [string]: (report: Report, root: Instance, deps: Deps?) -> () } = {
 	shapes = verifyShapes,
 	lobby = verifyLobby,
+	highway = verifyHighway, -- pens3 phase 12
 }
 for target, contract in ARENA_CONTRACTS do
 	CHECKS[target] = arenaVerifier(contract)

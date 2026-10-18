@@ -40,6 +40,8 @@
 -- Pens3 phase 9 ([P] texts): food.<id>.name (the 7 foods, V2:216-224's names), their refusals reason.food.notYet /
 -- full / notEnough and reason.pen.maxLevel / nothingToFeed, and the pen screen's food texts (pen.screen.feed*, food*,
 -- buyFood, levelsUp, the sell confirm's foodNote); selectHint names feeding. Calm: no "now", no countdown.
+-- Pens3 phase 12: highway.* (the world's texts: the biome names on the launch gate and the arches, the launch board's
+-- static lines, the distance markers' lines).
 
 export type FormatArgs = { [string]: any }
 
@@ -1227,6 +1229,31 @@ local Strings = {
 		lavaTruffle = { name = "Lava Truffle" },
 		prismTart = { name = "Prism Tart" },
 		haloPuff = { name = "Halo Puff" },
+	},
+
+	-- Pens3 phase 12: the highway (SDTools HighwayBuilder; WorldLayout.Highway names the keys). The lobby design v6's
+	-- words: the biome names as its launch gate banner and arches show them (layout.json:33, :533, :616, :723, :895,
+	-- :1130, :1397), the launch board's static lines ("Squishy Lobby 3D.html":285-286; LAST THROW and SERVER BEST are
+	-- filled in phase 13) and the distance markers (P3D:275: {distance} = the grouped number, then "studs").
+	highway = {
+		biome = {
+			candyMeadow = "CANDY MEADOW",
+			bakeryTown = "BAKERY TOWN",
+			bobaLagoon = "BOBA LAGOON",
+			frozenDessertPeaks = "FROZEN DESSERT PEAKS",
+			lavaVolcano = "LAVA VOLCANO",
+			rainbowRoad = "RAINBOW ROAD",
+			divineHeaven = "DIVINE HEAVEN",
+		},
+		board = {
+			title = "LAUNCH BOARD",
+			lastThrow = "LAST THROW",
+			serverBest = "SERVER BEST",
+		},
+		marker = {
+			distance = "{distance}",
+			unit = "studs",
+		},
 	},
 
 	-- Coins while away (pens3 phase 4): the pop-up's line under the Coins (PenController; a stand-in on the shop's

@@ -1,5 +1,6 @@
 --!strict
--- Flicker_Test: no two visible faces of different colours lie in one plane in the lobby or any arena (user bug report
+-- Flicker_Test: no two visible faces of different colours lie in one plane in the lobby, the highway (pens3 phase 12)
+-- or any arena (user bug report
 -- 2026-10-11: "all the platforms flicker"; a rim flush with its dais, markings 0.005 apart). Server only
 -- (ServerStorage.UnitTest). Each builder runs as Main runs it, on an UNPARENTED tree that is destroyed afterwards.
 -- The check: every flat face (block faces, cylinder caps) that faces up or sideways, of a part that shows
@@ -216,6 +217,11 @@ return function(t: Context)
 
 	t.test("Candy Court has no two faces of different colours in one plane", function()
 		expectNoFlicker(builders:FindFirstChild("ArenaBuilder"))
+	end)
+
+	-- Pens3 phase 12: the highway (SDTools HighwayBuilder).
+	t.test("the highway has no two faces of different colours in one plane", function()
+		expectNoFlicker(builders:FindFirstChild("HighwayBuilder"))
 	end)
 
 	t.test("the five design arenas have no two faces of different colours in one plane", function()

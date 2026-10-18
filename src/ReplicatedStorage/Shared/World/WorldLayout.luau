@@ -184,6 +184,22 @@ export type Path = {
 export type BaseColors = { full: string, light: string }
 -- Pens3 phase 1: the pen at one spot count (Bases.pen.steps; wb: only its tier, the pen is the whole base).
 export type PenStep = { tier: number }
+-- Pens3 phase 12: one biome's look on the highway (Highway.biomes; Palette tokens). `rainbow`: rr_rainbow_lane instead
+-- of a tinted lane_tile; `sky`: no ground, the markers and the arch Highway.skyLift up; `arch` nil: the launch gate's
+-- banner names the biome.
+export type HighwayBiome = {
+	model: string,
+	nameKey: string,
+	nameColor: string,
+	laneTop: string?,
+	laneEdge: string?,
+	rainbow: boolean?,
+	rail: string,
+	marker: string,
+	ground: string?,
+	sky: boolean?,
+	arch: { main: string, trim: string, scale: number }?,
+}
 
 -- Constants
 
@@ -1533,6 +1549,138 @@ local Arena = {
 	maxParts = 400,
 }
 
+-- Private: the highway (pens3 phase 12) ----------------------------------------------------------------------------
+
+-- The lobby design v6 (approved by the owner as the lobby source; work/pens3/PLAN.md "PHASE 12"): `L:n` = layout.json
+-- line n, `LK:n` / `HK:n` = lobby-kit.js / highway-kit.js line n, `K:n` = kit.json line n. The game reads the origin,
+-- the deck's spots and the biome looks here; the edit-time generator SDTools HighwayBuilder builds every piece from
+-- them (the pieces' own shapes live in the builder, each number with its design line). The biome starts and the
+-- Golden Gates are gameplay numbers: Config.Economy.Highway.
+-- Lane-local frame: origin * (x, y, z): x to the right looking down the lane, y up from the lane's foot, z = -d (d =
+-- studs from the start line, the launch gate, down the lane; highwayCFrame). v6 measures d from its gate at z -62
+-- (L:1 "z = -62 - d"), so a v6 point (x, y, z) is the lane-local point (x, y, z + 62); its yaws (L "rot") are kept.
+local Highway = {
+	-- Reading (PLAN phase 12: the new lobby moves the whole highway by changing this one value): the start line north
+	-- of the island, past the sea's edge (±222, Lobby.baseSlab) and clear of the arena slots (X 320/520,
+	-- Config.Duel.Arena), facing north (-Z) down the lane. The deck behind it reaches z -242 (the watch steps), the
+	-- ground (±200) z -4,300 and the Golden Gates z -8,800.
+	origin = CFrame.new(0, 0, -300),
+	laneWidth = 30, -- K:1693 lane_tile: a 26-stud top between two 2-stud edges (HK:20)
+	tileLength = 50, -- K:1693 lane_tile, K:1719 lane_rail: 50-stud pieces end to end (L:458 ff)
+	markerEvery = 100, -- K:1748 "Distance sign every 100 studs" (L:476-477: d 100, 200, ...)
+	markerX = 19, -- L:476 (x 19, turned 180°: its face looks back up the lane)
+	maxPiecesPerBiome = 600, -- the v6 spec's limit per biome ("≤ 600 placed", spec.txt:157)
+	skyLift = 1, -- L:1110, :1130, :1372, :1397, :1597: the sky biomes' markers, arches and the Golden Gates stand 1 up
+	deck = {
+		platform = Vector3.new(0, 0.5, 35.5), -- L:20 launch_platform (0, 0.5, -26.5)
+		-- L:21-30 launch_spot_01..10 on the deck top (2.5): two rows of 5, 5.625 apart (z -31.5 and -24)
+		spots = {
+			Vector3.new(-11.25, 2.5, 30.5),
+			Vector3.new(-5.625, 2.5, 30.5),
+			Vector3.new(0, 2.5, 30.5),
+			Vector3.new(5.625, 2.5, 30.5),
+			Vector3.new(11.25, 2.5, 30.5),
+			Vector3.new(-11.25, 2.5, 38),
+			Vector3.new(-5.625, 2.5, 38),
+			Vector3.new(0, 2.5, 38),
+			Vector3.new(5.625, 2.5, 38),
+			Vector3.new(11.25, 2.5, 38),
+		},
+		spotSize = Vector3.new(5.6, 0.43, 7.5), -- K:880 launch_spot
+		launcherMount = Vector3.new(0, 0.4, -2), -- LK:107, spot-local: where the player's platform launcher appears
+		playerStand = Vector3.new(0, 0.4, 3.2), -- LK:107, spot-local: where the thrower stands
+		watchSteps = {
+			{ position = Vector3.new(21, 0.5, 50), yaw = math.rad(38.9) }, -- L:31 watch_steps_01 (21, 0.5, -12)
+			{ position = Vector3.new(-21, 0.5, 50), yaw = math.rad(-38.9) }, -- L:32
+		},
+		gate = Vector3.zero, -- L:33 launch_gate (0, 0, -62), turned 180°: its banner and board look at the deck
+		fences = { -10.5, -3.5, 3.5, 10.5 }, -- L:34-37 candy_fence x (z -62, not turned): between the gate's legs
+	},
+	-- The launch board's live lines (LK:172 board_screen, P3D:281-292), built empty: phase 13 fills them, SERVER BEST
+	-- from the server, LAST THROW by each client for its own throw (CHK:74).
+	boardSlots = { "LastWho", "LastDistance", "BestWho", "BestDistance" },
+	-- K:3136-3529 (the biome table) and the v6 tints (L:458-1397), in Config.Economy.Highway.starts' order.
+	biomes = {
+		{ -- 1 Candy Meadow (L:458-480)
+			model = "Biome_1_CM",
+			nameKey = "highway.biome.candyMeadow",
+			nameColor = "HighwayPinkIcing",
+			laneTop = "HighwayCandyLane",
+			laneEdge = "HighwayPinkIcing",
+			rail = "HighwayFrosting",
+			marker = "HighwayPinkIcing",
+			ground = "HighwayCandyGrass",
+		},
+		{ -- 2 Bakery Town (L:498-538)
+			model = "Biome_2_BT",
+			nameKey = "highway.biome.bakeryTown",
+			nameColor = "HighwayBiome2",
+			laneTop = "HighwayBiscuit",
+			laneEdge = "HighwayCrust",
+			rail = "HighwayFrosting",
+			marker = "HighwayBiome2",
+			ground = "HighwayBakeryGround",
+			arch = { main = "HighwayBiome2", trim = "HighwayFrosting", scale = 1 }, -- L:533
+		},
+		{ -- 3 Boba Lagoon (L:567-623)
+			model = "Biome_3_BL",
+			nameKey = "highway.biome.bobaLagoon",
+			nameColor = "HighwayBiome3",
+			laneTop = "HighwayMilkTea",
+			laneEdge = "HighwayBiome3",
+			rail = "HighwayFrosting",
+			marker = "HighwayBiome3",
+			ground = "HighwayWater",
+			arch = { main = "HighwayBiome3", trim = "HighwayMilkTea", scale = 1.1 }, -- L:616
+		},
+		{ -- 4 Frozen Dessert Peaks (L:653-733)
+			model = "Biome_4_FD",
+			nameKey = "highway.biome.frozenDessertPeaks",
+			nameColor = "HighwayBiome4",
+			laneTop = "HighwayFrostLane",
+			laneEdge = "HighwayBiome4",
+			rail = "HighwayWhite",
+			marker = "HighwayBiome4",
+			ground = "HighwaySnow",
+			arch = { main = "HighwayBiome4", trim = "HighwayWhite", scale = 1.2 }, -- L:723
+		},
+		{ -- 5 Lava Volcano (L:790-910)
+			model = "Biome_5_LV",
+			nameKey = "highway.biome.lavaVolcano",
+			nameColor = "HighwayBiome5",
+			laneTop = "HighwayLavaLane",
+			laneEdge = "HighwayBiome5",
+			rail = "HighwayLavaRail",
+			marker = "HighwayBiome5",
+			ground = "HighwayBasalt",
+			arch = { main = "HighwayBiome5", trim = "HighwayBasalt", scale = 1.3 }, -- L:895
+		},
+		{ -- 6 Rainbow Road (L:990-1130): the rainbow lane in the sky, no ground (K:3432)
+			model = "Biome_6_RR",
+			nameKey = "highway.biome.rainbowRoad",
+			nameColor = "HighwayLilac",
+			rainbow = true,
+			rail = "HighwayWhite",
+			marker = "HighwayLilac",
+			sky = true,
+			arch = { main = "HighwayLilac", trim = "HighwayLemon", scale = 1.45 }, -- L:1130
+		},
+		{ -- 7 Divine Heaven (L:1222-1597): to the Golden Gates, no ground (K:3492)
+			model = "Biome_7_DH",
+			nameKey = "highway.biome.divineHeaven",
+			nameColor = "HighwayBiome7",
+			laneTop = "HighwaySignFace",
+			laneEdge = "HighwayBiome7",
+			rail = "HighwayBiome7",
+			marker = "HighwayBiome7",
+			sky = true,
+			arch = { main = "HighwaySignFace", trim = "HighwayBiome7", scale = 1.6 }, -- L:1397
+		},
+	} :: { HighwayBiome },
+	-- The texts the highway shows besides the biome names (the launch board's static lines, the markers' unit).
+	textKeys = { "highway.board.title", "highway.board.lastThrow", "highway.board.serverBest", "highway.marker.unit" },
+}
+
 -- Module table -----------------------------------------------------------------------------------------------------
 
 local WorldLayout = {
@@ -1636,6 +1784,9 @@ local WorldLayout = {
 		-- FIX 1 (2026-10-14): the lobby's halo emitters (LobbyBuilder); AmbientController lowers their Rate under
 		-- ReducedMotion.
 		Sparkle = "SD_Sparkle",
+		-- Pens3 phase 12 (HighwayBuilder): the deck's 10 launch spots (attribute Slot 1..10) and the launch board.
+		LaunchSpot = "SD_LaunchSpot",
+		LaunchBoard = "SD_LaunchBoard",
 	},
 	Attributes = {
 		StationId = "StationId",
@@ -1657,8 +1808,13 @@ local WorldLayout = {
 		Plot = "Plot", -- Tags.Base and Tags.BaseSpawn: the plot index 1..10
 		-- "full" | "light": a base part BaseService colours with its plot's colour (Bases.colors) or an open plot's grey.
 		BaseTint = "SD_BaseTint",
+		-- Pens3 phase 12 (HighwayBuilder): a biome Model's index 1..7 and a placed piece Model's v6 piece name.
+		Biome = "Biome",
+		Piece = "SD_Piece",
 	},
 	Arena = Arena,
+	-- Pens3 phase 12: the highway (origin, deck, biome looks; highwayCFrame).
+	Highway = Highway,
 }
 
 -- Private: lookups ---------------------------------------------------------------------------------------------------
@@ -1832,6 +1988,12 @@ function WorldLayout.inPlot(index: number, position: Vector3): boolean
 	return math.abs(p.X) <= Bases.width / 2 and math.abs(p.Z) <= Bases.depth / 2
 end
 
+-- Pens3 phase 12: the world CFrame of the highway's lane-local point (x, y, -d): `d` studs from the start line down
+-- the lane (Highway.origin's LookVector), `x` to its right, `y` up from the lane's foot; the lane's own turn.
+function WorldLayout.highwayCFrame(x: number, y: number, d: number): CFrame
+	return Highway.origin * CFrame.new(x, y, -d)
+end
+
 -- Every Strings key the generated world shows (sign lines, prompts, nameplates), sorted and without duplicates.
 function WorldLayout.textKeys(): { string }
 	local seen: { [string]: boolean } = {}
@@ -1866,6 +2028,12 @@ function WorldLayout.textKeys(): { string }
 	end
 	add(Collection.ownedKey)
 	add(Collection.notOwnedKey)
+	for _, biome in Highway.biomes do
+		add(biome.nameKey)
+	end
+	for _, key in Highway.textKeys do
+		add(key)
+	end
 	table.sort(keys)
 	return keys
 end

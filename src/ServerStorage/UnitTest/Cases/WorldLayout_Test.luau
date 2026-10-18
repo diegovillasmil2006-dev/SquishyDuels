@@ -41,6 +41,11 @@
 --     the shelf (L:194 base_shelf_01, at v6 local z 16 on every base) at (0, 0, -16) facing the gate side, its front (6
 --     deep, LK:184, and its locks) the shelf row block's front; its 8 cubbies (LK:188 slot_1..8) in K's order
 --     (K:4194-4203: 2, 3, 1, 4, 6, 7, 5, 8, two to a row) and the TOP spot over its top, all inside every plot;
+--   * pens3 phase 12: the highway (lobby design v6: L = layout.json, LK = lobby-kit.js, K = kit.json) is placed from
+--     one origin, outside the island's sea and clear of the arena slots, distance d = d studs down its LookVector;
+--     its launch deck is v6's (L:20-37, v6 z + 62: v6 measures d from its gate at z -62, L:1), the 10 spots with their
+--     launcher mount and player stand (LK:107); 7 biome looks in Config's order with v6's tints (L:458-1597, K:3136),
+--     every colour a Palette token, the sky biomes without ground, the arches from biome 2 at v6's scales;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -1624,6 +1629,129 @@ return function(t: Context)
 			end
 		end
 	end)
+	-- Pens3 phase 12: the highway ----------------------------------------------------------------------------------
+
+	t.test(
+		"pens3 phase 12: the highway lies outside the island and the arena slots; d studs is down its LookVector",
+		function()
+			local H = WorldLayout.Highway
+			local origin: CFrame = H.origin
+			expect.near(origin.LookVector.Y, 0, FLOAT_TOLERANCE) -- a level lane
+			local gates = Config.Economy.Highway.gatesAt
+			local far = WorldLayout.highwayCFrame(0, 0, gates)
+			expect.truthy(vectorNear(far.Position, origin.Position + origin.LookVector * gates, 1e-2))
+			expect.truthy(vectorNear(far.LookVector, origin.LookVector))
+			local marker = WorldLayout.highwayCFrame(19, 1, 100)
+			expect.truthy(vectorNear(marker.Position, (origin * CFrame.new(19, 1, -100)).Position, 1e-3))
+			-- The footprint: the ground 400 wide (HK:28) from the watch steps 60 behind the start line to the Golden
+			-- Gates' pillars (radius 3.6, HK:90) past gatesAt; its world bounds (conservative for a turned origin).
+			local low, high = Vector3.one * math.huge, -Vector3.one * math.huge
+			for _, x in { -200, 200 } do
+				for _, d in { -60, gates + 4 } do
+					local p = WorldLayout.highwayCFrame(x, 0, d).Position
+					low, high = low:Min(p), high:Max(p)
+				end
+			end
+			low -= Vector3.new(0, 10, 0)
+			high += Vector3.new(0, 70, 0)
+			local slab = WorldLayout.Lobby.baseSlab
+			local half = slab.size / 2 + Vector3.new(0, 100, 0)
+			expect.falsy(WorldLayout.boundsOverlap(low, high, slab.position - half, slab.position + half))
+			local apron = WorldLayout.Arena.apron.size / 2 + Vector3.new(0, 100, 0)
+			for _, slot in Config.Duel.Arena.SlotOrigins do
+				expect.falsy(WorldLayout.boundsOverlap(low, high, slot - apron, slot + apron))
+			end
+		end
+	)
+
+	t.test("pens3 phase 12: the launch deck is v6's (L:20-37): 10 spots in two rows on the 30 x 15 deck", function()
+		local deck = WorldLayout.Highway.deck
+		expect.truthy(vectorNear(deck.platform, Vector3.new(0, 0.5, 35.5))) -- L:20 (0, 0.5, -26.5)
+		local xs = { -11.25, -5.625, 0, 5.625, 11.25 }
+		expect.equal(#deck.spots, 10)
+		for index, spot in deck.spots do
+			local row = if index <= 5 then 30.5 else 38 -- L:21-30 (z -31.5 and -24)
+			expect.truthy(vectorNear(spot, Vector3.new(xs[(index - 1) % 5 + 1], 2.5, row)))
+			-- On the deck top (y 0.5 + its 2-stud slab, LK:159), inside its 30 x 15 centred 1.25 toward the gate.
+			expect.near(spot.Y, deck.platform.Y + 2, FLOAT_TOLERANCE)
+			expect.truthy(math.abs(spot.X) + 5.6 / 2 <= 15)
+			expect.truthy(math.abs(spot.Z - (deck.platform.Z - 1.25)) + 7.5 / 2 <= 7.5 + FLOAT_TOLERANCE)
+		end
+		expect.truthy(vectorNear(deck.launcherMount, Vector3.new(0, 0.4, -2))) -- LK:107
+		expect.truthy(vectorNear(deck.playerStand, Vector3.new(0, 0.4, 3.2)))
+		expect.deepEqual(deck.fences, { -10.5, -3.5, 3.5, 10.5 }) -- L:34-37
+		expect.equal(#deck.watchSteps, 2) -- L:31-32
+		expect.truthy(vectorNear(deck.watchSteps[1].position, Vector3.new(21, 0.5, 50)))
+		expect.near(deck.watchSteps[1].yaw, math.rad(38.9), FLOAT_TOLERANCE)
+		expect.truthy(vectorNear(deck.watchSteps[2].position, Vector3.new(-21, 0.5, 50)))
+		expect.near(deck.watchSteps[2].yaw, math.rad(-38.9), FLOAT_TOLERANCE)
+		local H = WorldLayout.Highway
+		expect.equal(H.laneWidth, 30) -- K:1693
+		expect.equal(H.tileLength, 50)
+		expect.equal(H.markerEvery, 100) -- K:1748, L:476
+		expect.equal(H.markerX, 19) -- L:476
+		expect.equal(H.maxPiecesPerBiome, 600) -- spec.txt:157
+	end)
+
+	t.test("pens3 phase 12: 7 biome looks in Config's order with v6's tints, sky biomes without ground", function()
+		local Palette = t.requireShared("Art/Palette")
+		local biomes = WorldLayout.Highway.biomes
+		expect.equal(#biomes, #Config.Economy.Highway.starts)
+		local models =
+			{ "Biome_1_CM", "Biome_2_BT", "Biome_3_BL", "Biome_4_FD", "Biome_5_LV", "Biome_6_RR", "Biome_7_DH" }
+		-- L:533, :616, :723, :895, :1130, :1397 (0: the launch gate's banner, L:33)
+		local scales = { 0, 1, 1.1, 1.2, 1.3, 1.45, 1.6 }
+		local hex =
+			{ -- the lane top, the lane edge, the rails, the markers, the ground (L:458-1397; RR's top is rainbow)
+				{ "FFE3EF", "FF8FBF", "FFF6EC", "FF8FBF", "9EE89B" },
+				{ "F2C487", "C9803F", "FFF6EC", "E8A55A", "F3D9A4" },
+				{ "EED6B8", "3FCFC0", "FFF6EC", "3FCFC0", "7FD8D0" },
+				{ "D9F3FF", "8FD8FF", "FFFFFF", "8FD8FF", "F4FBFF" },
+				{ "4A3B4F", "FF6A3D", "2E2230", "FF6A3D", "3A2C3A" },
+				{ "", "", "FFFFFF", "B98CFF", "" },
+				{ "FFFDF6", "FFD45C", "FFD45C", "FFD45C", "" },
+			}
+		local function hexOf(token: string?): string
+			if token == nil then
+				return ""
+			end
+			local color = Palette[token]
+			expect.equal(typeof(color), "Color3")
+			return string.upper(color:ToHex())
+		end
+		local keys: { [string]: boolean } = {}
+		for _, key in WorldLayout.textKeys() do
+			keys[key] = true
+		end
+		for index, biome in biomes do
+			expect.equal(biome.model, models[index])
+			expect.truthy(keys[biome.nameKey])
+			hexOf(biome.nameColor)
+			local row = hex[index]
+			expect.deepEqual({
+				hexOf(biome.laneTop),
+				hexOf(biome.laneEdge),
+				hexOf(biome.rail),
+				hexOf(biome.marker),
+				hexOf(biome.ground),
+			}, row)
+			expect.equal(biome.rainbow == true, index == 6) -- rr_rainbow_lane (L:990)
+			expect.equal(biome.sky == true, index >= 6) -- K:3432, :3492 sky: no ground; markers and arches 1 up
+			if index == 1 then
+				expect.equal(biome.arch, nil) -- its arch is the launch gate's banner (L:33)
+			else
+				expect.near(biome.arch.scale, scales[index], FLOAT_TOLERANCE)
+				hexOf(biome.arch.main)
+				hexOf(biome.arch.trim)
+			end
+		end
+		for _, key in
+			{ "highway.board.title", "highway.board.lastThrow", "highway.board.serverBest", "highway.marker.unit" }
+		do
+			expect.truthy(keys[key])
+		end
+	end)
+
 	-- Wb: what LobbyBuilder stands on each plot's floor, and the walk blocks that keep the squishies off it.
 	t.test("wb: the plot's props stand on its floor, none in the shelf, each inside a walk block", function()
 		local bases = WorldLayout.Bases

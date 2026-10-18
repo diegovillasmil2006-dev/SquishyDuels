@@ -1119,4 +1119,26 @@ return function(t: Context)
 			end
 		end
 	end)
+	-- Pens3 phase 12: the highway's world texts: the biome names on the launch gate's banner and the arches (the v6
+	-- labels, layout.json:33, :533, :616, :723, :895, :1130, :1397), the launch board's static lines (P3D:284-285) and
+	-- the distance markers' lines (P3D:275: the distance, then "studs").
+	t.test("pens3 phase 12: the highway's biome names, launch board and distance marker texts (v6 labels)", function()
+		local names: { [string]: string } = {
+			candyMeadow = "CANDY MEADOW",
+			bakeryTown = "BAKERY TOWN",
+			bobaLagoon = "BOBA LAGOON",
+			frozenDessertPeaks = "FROZEN DESSERT PEAKS",
+			lavaVolcano = "LAVA VOLCANO",
+			rainbowRoad = "RAINBOW ROAD",
+			divineHeaven = "DIVINE HEAVEN",
+		}
+		for id, text in names do
+			expect.equal(Strings.resolve("highway.biome." .. id), text)
+		end
+		expect.equal(Strings.resolve("highway.board.title"), "LAUNCH BOARD")
+		expect.equal(Strings.resolve("highway.board.lastThrow"), "LAST THROW")
+		expect.equal(Strings.resolve("highway.board.serverBest"), "SERVER BEST")
+		expect.equal(Strings.format(Strings.highway.marker.distance, { distance = "1,500" }), "1,500")
+		expect.equal(Strings.resolve("highway.marker.unit"), "studs")
+	end)
 end

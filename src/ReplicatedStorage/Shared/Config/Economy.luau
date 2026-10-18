@@ -118,6 +118,9 @@ local Economy = {
 	Pen = require(script.Parent.Pen),
 	-- Food and levels (pens3 phase 9): Config/Food (the foods, their bands and pieces; checked by Config/ValidateFood).
 	Food = require(script.Parent.Food),
+	-- The highway (pens3 phase 12): Config/Highway (the biome starts and the Golden Gates, in studs from the launch
+	-- gate; checked by Config/ValidateHighway).
+	Highway = require(script.Parent.Highway),
 
 	-- Duplicate results (§6.5). Pens3 phase 5: "copy" (every box result, shop buy or gift adds a pen item, so a squishy
 	-- you own again is a copy; the Toy Box cap, Config/Pen toyBoxMax, is the limit). Was "refund".

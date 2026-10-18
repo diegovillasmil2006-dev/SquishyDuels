@@ -13,6 +13,7 @@
 -- Targets (one per call):
 --   "shapes"  Builders/ShapesBuilder -> ReplicatedStorage.SD_ShapeLibrary (Part 2)
 --   "lobby"   Builders/LobbyBuilder  -> Workspace.SD_Lobby (Part 3; Squish Island since build plan Phase 4)
+--   "highway" Builders/HighwayBuilder -> Workspace.SD_Highway (pens3 phase 12: the launch deck and the 7 biomes' lane)
 --   "arena"   Builders/ArenaBuilder  -> ServerStorage.SD_Templates.Arena_CandyCourt (Part 3). SD_Templates is a plain
 --             holder Folder, not generated content: it is created when missing and never removed or replaced.
 --   "arena_sweetshop_stadium", "arena_pinewood_camp", "arena_pillow_fort_park", "arena_bubble_reef_court",
@@ -115,6 +116,14 @@ local TARGETS: { [string]: Target } = {
 	lobby = {
 		load = function(): any
 			return require(script.Parent.Builders.LobbyBuilder)
+		end,
+		parent = function(_report: Report): (Instance?, string?)
+			return Workspace, nil
+		end,
+	},
+	highway = {
+		load = function(): any
+			return require(script.Parent.Builders.HighwayBuilder)
 		end,
 		parent = function(_report: Report): (Instance?, string?)
 			return Workspace, nil

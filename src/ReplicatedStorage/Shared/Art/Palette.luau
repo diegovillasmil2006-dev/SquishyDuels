@@ -602,6 +602,51 @@ local Palette = {
 	-- frame PenDecorFrosting (K:7), its bow PenDecorIcing (K:31).
 	PenShelfGlass = Color3.fromHex("#DFF4FF"), -- K:98 the material Glass: a closed cubby's lock glass
 	PenShelfGold = Color3.fromHex("#FFC23C"), -- K:73 the material Gold: the TOP spot's pedestal top (placeholder)
+	-- Pens3 phase 12 (the highway; World only, SDTools HighwayBuilder; WorldLayout.Highway.biomes picks the biome
+	-- tints). The v6 kit's materials (`K:n` = kit.json line n) and the per-biome tints of layout.json (`L:n`).
+	HighwayFrosting = Color3.fromHex("#FFF6EC"), -- K:7
+	HighwayCandyGrass = Color3.fromHex("#9EE89B"), -- K:13
+	HighwayBiscuit = Color3.fromHex("#F2C487"), -- K:19
+	HighwayPinkIcing = Color3.fromHex("#FF8FBF"), -- K:31 (and Biome1, K:159)
+	HighwayMintIcing = Color3.fromHex("#8EEAD0"), -- K:37
+	HighwayLemon = Color3.fromHex("#FFD84A"), -- K:49
+	HighwayLilac = Color3.fromHex("#B98CFF"), -- K:55 (and Biome6, K:189)
+	HighwayBerry = Color3.fromHex("#FF5C8A"), -- K:61: the launch board's title (P3D:284)
+	HighwayGold = Color3.fromHex("#FFC23C"), -- K:73 (Reflectance 0.2)
+	HighwayGlow = Color3.fromHex("#FFF0A0"), -- K:80 (Neon)
+	HighwaySignFace = Color3.fromHex("#FFFDF6"), -- K:86
+	HighwayInk = Color3.fromHex("#1E1428"), -- K:92: sign text and its outline
+	HighwayWhite = Color3.fromHex("#FFFFFF"), -- the white tints (L:654, :991) and the last throw's number (P3D:288)
+	HighwayAngelWhite = Color3.fromHex("#FFFFFF"), -- K:438 AngelWhite (Reflectance 0.1): the Golden Gates' wings
+	HighwayCrust = Color3.fromHex("#C9803F"), -- K:336 Crust: Bakery Town's lane edge (L:498)
+	HighwayMilkTea = Color3.fromHex("#EED6B8"), -- K:361 MilkTea: Boba Lagoon's lane top and arch trim (L:567, :616)
+	HighwayWater = Color3.fromHex("#7FD8D0"), -- K:354 Water's colour: Boba Lagoon's ground (L:617)
+	HighwaySnow = Color3.fromHex("#F4FBFF"), -- K:374 Snow's colour: Frozen Dessert Peaks' ground (L:724)
+	HighwayBasalt = Color3.fromHex("#3A2C3A"), -- K:392 Basalt's colour: Lava Volcano's ground and arch trim (L:895-896)
+	HighwayMarble = Color3.fromHex("#FBF7F2"), -- K:432 Marble (the material Marble): the Golden Gates' pillars (HK:91)
+	HighwayBiome2 = Color3.fromHex("#E8A55A"), -- K:165-195 Biome2..7: the biome colours (names, markers, arches, edges)
+	HighwayBiome3 = Color3.fromHex("#3FCFC0"),
+	HighwayBiome4 = Color3.fromHex("#8FD8FF"),
+	HighwayBiome5 = Color3.fromHex("#FF6A3D"),
+	HighwayBiome7 = Color3.fromHex("#FFD45C"),
+	HighwayCandyLane = Color3.fromHex("#FFE3EF"), -- L:458 Candy Meadow's lane top (K:248 LaneTop)
+	HighwayBakeryGround = Color3.fromHex("#F3D9A4"), -- L:534
+	HighwayFrostLane = Color3.fromHex("#D9F3FF"), -- L:653
+	HighwayLavaLane = Color3.fromHex("#4A3B4F"), -- L:790
+	HighwayLavaRail = Color3.fromHex("#2E2230"), -- L:791
+	-- HK:14 (K:413 RainbowLane): the 7 bands of the rainbow strip, left to right across the lane.
+	HighwayRainbow1 = Color3.fromHex("#FF6FA3"),
+	HighwayRainbow2 = Color3.fromHex("#FF9C5B"),
+	HighwayRainbow3 = Color3.fromHex("#FFD84A"),
+	HighwayRainbow4 = Color3.fromHex("#8DF27A"),
+	HighwayRainbow5 = Color3.fromHex("#5FE0E8"),
+	HighwayRainbow6 = Color3.fromHex("#7FA8FF"),
+	HighwayRainbow7 = Color3.fromHex("#B98CFF"),
+	HighwayLightLaunch = Color3.fromHex("#FFE3A3"), -- L:2 L1_launch
+	HighwayLightHeaven = Color3.fromHex("#FFE9A8"), -- L:5 L4_heaven
+	HighwayBoardHeading = Color3.fromHex("#7B4DFF"), -- P3D:285 LAST THROW / SERVER BEST
+	HighwayBoardDivider = Color3.fromHex("#F0E2D4"), -- P3D:290
+	HighwayMarkerUnit = Color3.fromHex("#5A4F66"), -- P3D:275 "studs"
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

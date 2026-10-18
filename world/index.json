@@ -6,6 +6,12 @@
 		"container": "Workspace"
 	},
 	{
+		"file": "Workspace/SD_Highway.rbxm",
+		"class": "Model",
+		"name": "SD_Highway",
+		"container": "Workspace"
+	},
+	{
 		"file": "Workspace/SD_Lobby.rbxm",
 		"class": "Model",
 		"name": "SD_Lobby",
