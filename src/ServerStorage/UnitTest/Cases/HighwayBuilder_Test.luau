@@ -5,7 +5,7 @@
 -- It runs as Main's pipeline runs it (build(ctx) with a scratch Cleanup and the Shared folder under test, an
 -- UNPARENTED tree that is destroyed afterwards) and pins, restated from the design and Config instead of read from the
 -- builder:
---   * the root SD_Highway (marked "highway", version 2) pivoted on WorldLayout.Highway.origin: a Persistent Deck and
+--   * the root SD_Highway (marked "highway", version 3) pivoted on WorldLayout.Highway.origin: a Persistent Deck and
 --     the 7 biome Models (L:1 zones Biome_1_CM..Biome_7_DH), every placed piece its own Model (SD_Piece = its v6
 --     piece);
 --   * distances exact (phase 13's landing math is in studs from the start line): 170 lane pieces of 50 studs end to end
@@ -14,9 +14,11 @@
 --     (L:476) showing its grouped distance and "studs" (P3D:275); an arch at each biome start from Bakery Town at
 --     v6's scale (L:533 ...), the launch gate's banner naming Candy Meadow (L:33); ground slabs (HK:28) under the 5
 --     ground biomes;
---   * the deck (L:20-37): 10 SD_LaunchSpot spots (Slot 1..10) at WorldLayout's spots with launcher_mount and
---     player_stand (LK:107); the launch board (SD_LaunchBoard) with its static lines and 4 empty live slots; the
---     Kitty Bread mascot slot on the gate (LK:173-175);
+--   * the deck (L:20, :31-37): pens3 phase 13 (owner 2026-10-18: "a general area where they walk up and everybody can
+--     throw"): no launch spots (v6's L:21-30 and the SD_LaunchSpot tag are gone), only the platform, the 2 watch steps,
+--     the gate and its 4 fences; the launch board (SD_LaunchBoard) with its static lines (LAUNCH BOARD, LAST THROWS,
+--     SERVER BEST) and its 8 empty live slots (3 last-throw rows, newest on top, a name beside its distance in the
+--     LAST column; the server best in its own); the Kitty Bread mascot slot on the gate (LK:173-175);
 --   * every piece placed from the origin; nothing but the deck collides; pieces per biome within v6's 600 and the part
 --     counts pinned; two builds give the same tree; Verify passes on the build and catches a broken one.
 -- The biome scenery (pens3 phase 12b) has its own contract: HighwayScenery_Test.
@@ -174,13 +176,13 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the root is SD_Highway, unparented, marked highway v2, pivoted on the origin; a Persistent deck, 7 biomes",
+		"the root is SD_Highway, unparented, marked highway v3, pivoted on the origin; a Persistent deck, 7 biomes",
 		function()
 			expect.equal(root.Name, "SD_Highway")
 			expect.equal(root.Parent, nil)
 			expect.equal(root:GetAttribute("SD_GeneratorId"), "highway")
 			expect.equal(root:GetAttribute("SD_GeneratorVersion"), HighwayBuilder.VERSION)
-			expect.equal(HighwayBuilder.VERSION, 2) -- 2: phase 12b's scenery
+			expect.equal(HighwayBuilder.VERSION, 3) -- 2: phase 12b's scenery; 3: phase 13's open deck and board rows
 			expect.truthy(root:HasTag("SD_Generated"))
 			expect.truthy(near((root.WorldPivot.Position - origin.Position).Magnitude, 0))
 			expect.equal(deck.ModelStreamingMode, Enum.ModelStreamingMode.Persistent) -- K:7881-7883 Plaza, LaunchGate
@@ -309,38 +311,33 @@ return function(t: Context)
 		expect.equal(covered, starts[6])
 	end)
 
-	t.test("10 launch spots (SD_LaunchSpot, Slot 1..10) with launcher_mount and player_stand (LK:107)", function()
-		local slots: { [number]: Model } = {}
-		for _, model in deck:GetDescendants() do
-			if model:HasTag("SD_LaunchSpot") then
-				local slot = model:GetAttribute("Slot") :: number
-				expect.equal(slots[slot], nil)
-				slots[slot] = model :: Model
+	t.test(
+		"pens3 phase 13: no launch spots; the deck is v6's platform, 2 watch steps, the gate and 4 fences",
+		function()
+			local kinds: { [string]: number } = {}
+			for _, piece in pieces(deck) do
+				local kind = piece:GetAttribute("SD_Piece") :: string
+				kinds[kind] = (kinds[kind] or 0) + 1
 			end
+			expect.deepEqual(kinds, { launch_platform = 1, watch_steps = 2, launch_gate = 1, candy_fence = 4 })
+			for _, instance in root:GetDescendants() do
+				if
+					instance:HasTag("SD_LaunchSpot")
+					or instance.Name == "launcher_mount"
+					or instance.Name == "player_stand"
+				then
+					error(`a launch spot is left: {instance:GetFullName()}`)
+				end
+			end
+			-- The throw area (WorldLayout.Highway.throwArea) is the platform's top: its floor is the deck top's.
+			local top = (deck:FindFirstChild("launch_platform_01") :: Model):FindFirstChild("deck_top") :: BasePart
+			local area = H.throwArea
+			local floor = origin:PointToObjectSpace(top.CFrame.Position).Y + top.Size.Y / 2
+			expect.truthy(near(floor, area.position.Y - area.size.Y / 2))
 		end
-		for slot = 1, 10 do
-			local found: Model? = slots[slot]
-			expect.truthy(found ~= nil)
-			local spot = found :: Model
-			local at = H.deck.spots[slot]
-			expect.truthy((spot.WorldPivot.Position - (origin * CFrame.new(at)).Position).Magnitude < TOLERANCE)
-			local mountFound = spot:FindFirstChild("launcher_mount", true)
-			local standFound = spot:FindFirstChild("player_stand", true)
-			expect.truthy(mountFound ~= nil and mountFound:IsA("Attachment"))
-			expect.truthy(standFound ~= nil and standFound:IsA("Attachment"))
-			local mount, stand = mountFound :: Attachment, standFound :: Attachment
-			local wantMount = origin * CFrame.new(at + H.deck.launcherMount)
-			local wantStand = origin * CFrame.new(at + H.deck.playerStand)
-			-- Its WorldCFrame (offline runs have no Attachment.WorldCFrame): the host part's CFrame times its CFrame.
-			local mountAt = (mount.Parent :: BasePart).CFrame * mount.CFrame
-			local standAt = (stand.Parent :: BasePart).CFrame * stand.CFrame
-			expect.truthy((mountAt.Position - wantMount.Position).Magnitude < TOLERANCE)
-			expect.truthy((standAt.Position - wantStand.Position).Magnitude < TOLERANCE)
-			expect.truthy(mountAt.LookVector:Dot(origin.LookVector) > 0.99) -- facing down the lane
-		end
-	end)
+	)
 
-	t.test("the launch board: LAUNCH BOARD, LAST THROW, SERVER BEST and 4 empty live slots (P3D:281-292)", function()
+	t.test("the launch board: LAUNCH BOARD, LAST THROWS, SERVER BEST and 8 empty live slots (P3D:281-292)", function()
 		local boards: { BasePart } = {}
 		for _, part in deck:GetDescendants() do
 			if part:HasTag("SD_LaunchBoard") then
@@ -355,13 +352,26 @@ return function(t: Context)
 			end
 		end
 		expect.equal(byName.Title.Text, "LAUNCH BOARD")
-		expect.equal(byName.LastHeading.Text, "LAST THROW")
+		expect.equal(byName.LastHeading.Text, "LAST THROWS")
 		expect.equal(byName.BestHeading.Text, "SERVER BEST")
 		for _, name in H.boardSlots do
 			expect.equal(byName[name].Text, "")
 			expect.equal(byName[name]:GetAttribute("SD_TextKey"), nil) -- live: never re-applied by WorldBinder
 			expect.falsy(byName[name]:HasTag("SD_Sign"))
 		end
+		-- Pens3 phase 13: 3 rows in the LAST column (left of the divider), newest on top, each a name beside its
+		-- distance on one line; the server best keeps v6's two lines in its own column (P3D:287-289).
+		for row = 1, H.boardRows do
+			local who, distance = byName[`Last{row}Who`], byName[`Last{row}Distance`]
+			expect.truthy(who.Position.Y.Scale == distance.Position.Y.Scale)
+			expect.truthy(who.Position.X.Scale < distance.Position.X.Scale)
+			expect.truthy(distance.Position.X.Scale + distance.Size.X.Scale / 2 < 0.5)
+			if row > 1 then
+				expect.truthy(who.Position.Y.Scale > byName[`Last{row - 1}Who`].Position.Y.Scale)
+			end
+		end
+		expect.truthy(byName.BestWho.Position.X.Scale > 0.5)
+		expect.equal(byName.LastWho, nil) -- phase 12's single LAST line is gone
 		-- The board faces the deck (the gate is turned 180°, L:33).
 		expect.truthy(boards[1].CFrame.LookVector:Dot(origin.LookVector) < -0.99)
 	end)
@@ -498,9 +508,12 @@ return function(t: Context)
 			end
 		end
 		caught(function(copy)
-			local spot = (copy:FindFirstChild("Deck") :: Model):FindFirstChild("launch_spot_03") :: Instance
-			spot:Destroy()
-		end, "launch spot")
+			for _, label in copy:GetDescendants() do
+				if label:IsA("TextLabel") and label.Name == "Last2Who" then
+					label:Destroy()
+				end
+			end
+		end, "Last2Who")
 		caught(function(copy)
 			local lane = (copy:FindFirstChild("Biome_2_BT") :: Model):FindFirstChild("lane_tile_07") :: Model
 			(lane:FindFirstChildWhichIsA("BasePart") :: BasePart).CanCollide = true

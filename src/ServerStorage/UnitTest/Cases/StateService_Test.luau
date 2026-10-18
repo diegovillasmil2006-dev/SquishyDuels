@@ -578,7 +578,7 @@ return function(t: Context)
 		expect.equal(StateService.normalizeStatus(nil), "loading")
 	end)
 
-	t.test("the field list: DESIGN's list + grip, topWins, pen, awayGift, boxOrder, buyBack, food", function()
+	t.test("the field list: DESIGN's list + grip, topWins, pen, awayGift, boxOrder, buyBack, food, highway", function()
 		expect.deepEqual(StateService.fields(), {
 			"coins",
 			"owned",
@@ -601,6 +601,7 @@ return function(t: Context)
 			"boxOrder", -- pens3 phase 5: the fixed-order counts (profile.boxOrder)
 			"buyBack", -- pens3 phase 7: the sales that can be bought back (profile.buyBack)
 			"food", -- pens3 phase 9: the food pieces owned (profile.food)
+			"highway", -- pens3 phase 13: the farthest throw and the biome reached (profile.highway)
 		})
 	end)
 
@@ -615,6 +616,17 @@ return function(t: Context)
 		expect.deepEqual(w.sent[2].fields, {
 			pen = { spots = 4, nextId = 2, items = { { id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0 } } },
 		})
+	end)
+
+	-- Pens3 phase 13: a throw's best and biome reach the owner's client in the next delta.
+	t.test("pens3 phase 13: a changed highway goes out in the next partial StateDelta", function()
+		local w = setup()
+		local player, profile = loadedPlayer(w)
+		profile.highway = { best = 321, biome = 2 }
+		StateService.markDirty(player, "highway")
+		runDeferred(w)
+		expect.equal(#w.sent, 2)
+		expect.deepEqual(w.sent[2].fields, { highway = { best = 321, biome = 2 } })
 	end)
 
 	-- The DataService reading -----------------------------------------------------------------------------------------

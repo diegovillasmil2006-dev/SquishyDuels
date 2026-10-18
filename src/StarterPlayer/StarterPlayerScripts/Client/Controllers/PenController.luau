@@ -77,7 +77,8 @@
 --   PenFormRainbow band of the part's middle in the model's height) and the form's material, reflectance and
 --   transparency when it is built (a hidden part stays hidden). Nothing else: no extra meshes, no sparkle yet.
 -- * Pens3 phase 9 (food and levels; stand-ins in the same screen): PenFormat.view also gets StateController's food
---   and the selected BUY FOOD card (foodId; a tap on one, onFood, selects it). FEED sends Feed(the squishy, a
+--   and the selected BUY FOOD card (foodId; a tap on one, onFood, selects it), and since pens3 phase 13 its highway
+--   field (the level cap: 10 a biome reached; the screen redraws when it changes). FEED sends Feed(the squishy, a
 --   requestId), FEED ALL FeedAll(), BUY few / many BuyFood(the food, the count, its price × count, a requestId), one at
 --   a time like PenPlace. A requestId is kept (PenFormat.requestFor) until the server answers, so a press after an
 --   answer that never came is the same request (the server replays it, never twice); the Feed key holds the level, so
@@ -267,6 +268,7 @@ local REMOTE_BUY_FOOD = "BuyFood" -- pens3 phase 9
 local REMOTE_FEED = "Feed"
 local REMOTE_FEED_ALL = "FeedAll"
 local FIELD_FOOD = "food"
+local FIELD_HIGHWAY = "highway" -- pens3 phase 13
 local FOOD_BUY = P.screen.foodBuy
 local SOUND_SELL = "ui.coin"
 local SOUND_FUSE = "ui.levelTone"
@@ -895,6 +897,7 @@ local function currentView(): PenFormat.View
 		confirm = confirm,
 		food = StateController.get(FIELD_FOOD), -- pens3 phase 9
 		foodId = foodId,
+		highway = StateController.get(FIELD_HIGHWAY), -- pens3 phase 13: the level cap
 	})
 end
 
@@ -1586,6 +1589,7 @@ function PenController.start()
 	c:add(StateController.changed(FIELD_BUY_BACK):connect(render)) -- pens3 phase 7: the sold cards
 	c:add(StateController.changed("coins"):connect(render)) -- BUY BACK's missing Coins and the balance after
 	c:add(StateController.changed(FIELD_FOOD):connect(render)) -- pens3 phase 9: the food row, FEED and BUY FOOD
+	c:add(StateController.changed(FIELD_HIGHWAY):connect(render)) -- pens3 phase 13: a new biome raises the level cap
 	ControlsController.setPointerClaim(claim)
 	c:add(function()
 		ControlsController.setPointerClaim(nil)

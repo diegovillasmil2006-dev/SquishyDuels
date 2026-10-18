@@ -8,6 +8,7 @@
 -- Names (IconGlyph.NAMES): squishies, boxes, shop, quests, daily, settings, duel (alias swords), change, clock,
 -- upgrade, inspect; UI overhaul (2026-10-11): close (the windows' chunky X, alias x) and check (a claimed or owned
 -- state).
+-- Access2 (2026-10-18): highway (the HUD's HIGHWAY stand-in button under Settings).
 -- Tones: "light" = a white glyph with an InkUI outline and InkUI details (on an accent face, like the design's outlined
 -- icons); "dark" = an InkUI glyph with Frosting details and no outline (on Frosting); "disabled" = DisabledText with
 -- DisabledFace details.
@@ -104,6 +105,7 @@ local SLOTS: { [string]: string } = {
 	inspect = "img.icon.inspect",
 	close = "img.icon.close",
 	check = "img.icon.check",
+	highway = "img.nav.highway", -- access2
 }
 local ALIASES: { [string]: string } = { swords = "duel", x = "close" }
 
@@ -226,6 +228,13 @@ local GLYPHS: { [string]: { Part } } = {
 		part(0.3, 0.6, 0.38, 0.22, 45, 0.5),
 		part(0.6, 0.49, 0.64, 0.22, -50, 0.5),
 	},
+	-- Access2 (2026-10-18): the HIGHWAY stand-in tile, PLACEHOLDER: the lobby design v6's launch-spot arrow (LK:39
+	-- arrowShape: a 1.8-wide shaft under a 3.2-wide head, 3.5 tall, the throw's way) pointing up, read as this file's
+	-- other arrows are (change, upgrade): a bar under a square turned 45°.
+	highway = {
+		part(0.5, 0.7, 0.44, 0.46, 0, 0.12),
+		part(0.5, 0.43, 0.56, 0.56, 45, 0.12),
+	},
 }
 
 local NAMES: { string } = {
@@ -242,6 +251,7 @@ local NAMES: { string } = {
 	"inspect",
 	"close",
 	"check",
+	"highway", -- access2
 }
 
 -- Module table

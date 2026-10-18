@@ -27,6 +27,8 @@
 -- state field, SellResult / FuseResult and the SellItems / SellAll / BuyBack / Fuse calls.
 -- Phase 9 (food and levels): FoodCounts, ProfileV1.food, the `food` state field, FoodResult and the BuyFood / Feed /
 -- FeedAll calls. Phase 11 (the shelf rows + the TOP spot): PenState.shelfRows / top and the PenBuyShelf call.
+-- Phase 13 (the throw): HighwayState, ProfileV1.highway, the `highway` state field, HighwayResult and the
+-- HighwayThrow call.
 
 -- == Catalog (§4.1) ==
 
@@ -170,6 +172,9 @@ export type AwayGift = { coins: number, seconds: number }
 export type BuyBackEntry = { item: PenItem, price: number, at: number, req: string }
 -- Phase 9: the food pieces a player owns, by Config.Economy.Food food id (whole numbers in [0, Food.maxPieces]).
 export type FoodCounts = { [string]: number }
+-- Phase 13: the farthest landing (whole studs from the start line, 0..gatesAt) and the biome reached (1..#starts,
+-- #starts + 1 = the Golden Gates; it only rises).
+export type HighwayState = { best: number, biome: number }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema).
@@ -210,6 +215,7 @@ export type ProfileV1 = {
 	buyBack: { BuyBackEntry },
 	bag: { number },
 	food: FoodCounts, -- pens3 phase 9, added within schemaVersion 2 the same way: the food pieces owned
+	highway: HighwayState, -- pens3 phase 13, added within schemaVersion 2 the same way: the farthest throw, the biome
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
@@ -299,6 +305,7 @@ export type Snapshot = {
 	boxOrder: { [string]: number },
 	buyBack: { BuyBackEntry }, -- pens3 phase 7: the profile's buy-back list as stored (the pen screen's sold cards)
 	food: FoodCounts, -- pens3 phase 9: the profile's food as stored (the pen screen's food row and FEED buttons)
+	highway: HighwayState, -- pens3 phase 13: the profile's highway as stored (the level cap, the throw HUD)
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -324,6 +331,7 @@ export type StateDeltaFields = {
 	boxOrder: { [string]: number }?,
 	buyBack: { BuyBackEntry }?,
 	food: FoodCounts?,
+	highway: HighwayState?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -349,6 +357,7 @@ export type StateField =
 	| "boxOrder"
 	| "buyBack"
 	| "food"
+	| "highway"
 
 export type SnapshotLoading = { status: "loading" }
 
@@ -560,6 +569,28 @@ export type FuseResult = { pen: PenState, id: number, charged: boolean, savePend
 -- Pens3 phase 9: BuyFood / Feed / FeedAll data: the caller's pen and food after the call, `levels` the levels
 -- gained (BuyFood 0), charged (BuyFood true, also on a replay as first answered; Feed / FeedAll false).
 export type FoodResult = { pen: PenState, food: FoodCounts, levels: number, charged: boolean, savePending: boolean }
+-- Pens3 phase 13: HighwayThrow data (HighwayService): where the throw lands (`studs`, whole studs from the start line;
+-- `biome` 1..7 its biome), the throw `power`, `flight` the seconds it is in flight (release + air + roll) and
+-- `landsAt` the server time (workspace:GetServerTimeNow) it lands; what the landing paid (`coins`, `grip`); the
+-- player's `best` after it and `newBest`; `reached` the biome (1..8) this throw reached first (nil if none); `gifts`
+-- the biome gifts given (squishy ids); `food` the Food Bag it filled (nil if none); charged = false (nothing is
+-- spent); savePending = an earlier save failed.
+export type HighwayResult = {
+	studs: number,
+	biome: number,
+	power: number,
+	flight: number,
+	landsAt: number,
+	coins: number,
+	grip: number,
+	best: number,
+	newBest: boolean,
+	reached: number?,
+	gifts: { string },
+	food: { id: string, count: number }?,
+	charged: boolean,
+	savePending: boolean,
+}
 
 -- QueueJoin data: the player's place in the queue (1 = next). A join from an OFFLINE/READONLY profile still
 -- succeeds and the server also sends Notify("duel.noRewardsOffline", nil, "warn") (§2.8).
@@ -606,6 +637,9 @@ export type BuyFoodCall = (
 ) -> Result<FoodResult>
 export type FeedCall = (itemId: number, requestId: string) -> Result<FoodResult>
 export type FeedAllCall = () -> Result<FoodResult>
+-- Pens3 phase 13: one throw (or a press during the own flight, refused with highway.inFlight); clientTime =
+-- workspace:GetServerTimeNow() at the press, checked and never trusted.
+export type HighwayThrowCall = (clientTime: number) -> Result<HighwayResult>
 export type PromptCoinBundleCall = (bundleKey: string) -> ()
 export type PromptGamePassCall = (passKey: string) -> ()
 export type PolicyRetryCall = () -> ()

@@ -1,5 +1,5 @@
 --!strict
--- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 8: Squish
+-- LobbyBuilder_Test: the contract of the lobby generator ServerStorage.SDTools.Builders.LobbyBuilder (version 9: Squish
 -- Island, lobby bases spec 2026-10-11 §2-§4, §7-§8, build plan Phase 4, without the giant pads since Phase 6, with the
 -- look upgrade's lamps, halos, finishes and Blender mesh sets since 2026-10-14, with the Claude Design hub's stations,
 -- sd/lobby.js, phase 3 spec D1-D14, in its hub sectors). Server only (ServerStorage.UnitTest).
@@ -36,7 +36,13 @@
 --     7 materials at most; FIX 3, each Blender mesh set (gates, tower pillars, lollipops, cupcake trees, clouds) is
 --     whole MeshParts when ServerStorage.SD_MeshLibrary has it and is marked approved (SD_MeshesApproved, after
 --     Roblox's check), else today's parts with one warning; an imported library holds every set unturned, and
---     WorldLook.MESHES still fits the builder numbers the meshes were made from.
+--     WorldLook.MESHES still fits the builder numbers the meshes were made from;
+--   * access2 (version 9; owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick button): the bridge
+--     (Island/Bridge, WorldLayout.Lobby.bridge; a PLACEHOLDER, v6 has none) is one walkway from the sea inside the
+--     north wall to the front of the deck's back step (as HighwayBuilder builds it: flush, no gap), with the plots'
+--     white fence along both sides (posts every 8 studs end to end, 2 rails, caps); LobbyBuilder.bridge builds the same
+--     Model alone (the live lobby's world script); the north wall is two pieces whose gap leaves the bridge's walk
+--     clear. These cases (but the last) need no Studio.
 -- The lobby is built once, in memory, from the Shared folder under test; nothing is parented into the place.
 
 local ServerStorage = game:GetService("ServerStorage")
@@ -64,7 +70,7 @@ local TAG_COUNTS: { [string]: number } = {
 	SD_QuestBoard = 1,
 	SD_DailyStand = 1,
 	SD_ReturnPoint = 2,
-	SD_Boundary = 4,
+	SD_Boundary = 5, -- access2: the north wall in two, round the bridge
 	SD_AudioZone = 3,
 	SD_Ambient = 7, -- §18.5.1 A8 / D12: 4 lollipops, both gift boxes, the statue
 	SD_Base = 10, -- lobby bases spec §4: one Model per plot
@@ -249,13 +255,13 @@ return function(t: Context)
 		return model
 	end
 
-	t.test("the root is SD_Lobby, unparented, not Atomic, version 8 (wb: the bench and planter moved)", function()
+	t.test("the root is SD_Lobby, unparented, not Atomic, version 9 (access2: the bridge to the highway)", function()
 		local root = lobby()
 		expect.equal(root.Name, "SD_Lobby")
 		expect.equal(root.Parent, nil)
 		expect.equal((root :: Model).ModelStreamingMode, Enum.ModelStreamingMode.Default)
-		expect.equal(LobbyBuilder.VERSION, 8)
-		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 8)
+		expect.equal(LobbyBuilder.VERSION, 9)
+		expect.equal(root:GetAttribute("SD_GeneratorVersion"), 9)
 	end)
 
 	t.test("exact tag counts", function()
@@ -1429,6 +1435,196 @@ return function(t: Context)
 		local lollipops = WorldLayout.Props.lollipops
 		expect.near(size("Lollipop", "Lollipop_White").Y, lollipops.height + lollipops.radius, TOLERANCE)
 	end)
+
+	-- Access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick button): the bridge
+	-- (WorldLayout.Lobby.bridge; a PLACEHOLDER, v6 has none) in the garden paths' colour with the plots' white fence as
+	-- rails. LobbyBuilder.bridge builds it alone, with no Studio needed (so these read CFrames, never Position).
+	local BRIDGE_POST = Vector3.new(0.8, 3, 0.8) -- the plots' fence posts (spec §4, LobbyBuilder FENCE_POST)
+	local BRIDGE_RAIL_Y = { 1.2, 2.4 } -- and its 2 rails' heights
+	local BRIDGE_POSTS_EVERY = 8 -- spec §4: a post every 8 studs
+	local function bridgeAlone(): Model
+		local model, err = LobbyBuilder.bridge(shared :: Instance)
+		if model == nil then
+			error("LobbyBuilder.bridge failed: " .. tostring(err))
+		end
+		return model
+	end
+	-- The walkway's top centre line, from its island end to its deck end (world points).
+	local function walkLine(deck: BasePart): (Vector3, Vector3)
+		local h, l = deck.Size.Y / 2, deck.Size.Z / 2
+		return deck.CFrame * Vector3.new(0, h, l), deck.CFrame * Vector3.new(0, h, -l)
+	end
+	-- Each `name` part of the bridge on one side of its centre line (side -1: west, 1: east).
+	local function onSide(bridge: Instance, name: string, x: number, side: number): { BasePart }
+		local list = {}
+		for _, part in named(bridge, name) do
+			if (part.CFrame.Position.X - x) * side > 0 then
+				table.insert(list, part)
+			end
+		end
+		return list
+	end
+
+	t.test("access2: the bridge is one walkway from the sea inside the north wall to the deck's back step", function()
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		local Palette = t.requireShared("Art/Palette")
+		local spec = WorldLayout.Lobby.bridge
+		local bridge = bridgeAlone()
+		expect.equal(bridge.Name, "Bridge")
+		expect.equal(bridge.Parent, nil)
+		local decks = named(bridge, "bridge_deck")
+		expect.equal(#decks, 1) -- one piece: nothing to fall between
+		local deck = decks[1]
+		expect.truthy(deck.Anchored and deck.CanCollide and deck.CanQuery)
+		expect.equal(deck.CanTouch, false)
+		expect.equal(deck.Color, Palette[WorldLayout.Island.pathColor]) -- the garden paths' colour
+		-- The paths' 8 studs to walk between the rails; the deck carries the posts too (Prims.LAYER, 0.03, past their
+		-- outer faces: no face in one plane with theirs, Flicker_Test), and fits the wall's gap.
+		expect.near(deck.Size.X, spec.width + 2 * BRIDGE_POST.X + 2 * 0.03, TOLERANCE)
+		expect.truthy(deck.Size.X / 2 <= spec.gapHalf)
+		local from, to = walkLine(deck)
+		expect.near((from - Vector3.new(spec.x, spec.fromTop, spec.fromZ)).Magnitude, 0, TOLERANCE)
+		expect.near((to - Vector3.new(spec.x, spec.toTop, spec.toZ)).Magnitude, 0, TOLERANCE)
+		-- On the sea's own top at the island end (so the walk onto it is level), inside the wall.
+		local slab = WorldLayout.Lobby.baseSlab
+		expect.near(from.Y, slab.position.Y + slab.size.Y / 2, TOLERANCE)
+		-- At the deck end flush with the top front edge of the platform's back step as HighwayBuilder builds it
+		-- (box(20, 1, 1.5, 0, 0, 7), LK:158-164), the whole walkway on the step's 20 studs: no gap, no lip.
+		local builders = toolsClone:FindFirstChild("Builders") :: Instance
+		local HighwayBuilder = dynamicRequire(builders:FindFirstChild("HighwayBuilder") :: ModuleScript)
+		local cleanup = Cleanup.new()
+		local highway = HighwayBuilder.build({ scratch = cleanup, Shared = shared })
+		cleanup:clean()
+		if not highway.ok then
+			error("HighwayBuilder.build failed: " .. tostring(highway.error))
+		end
+		local steps = {}
+		for _, part in named(highway.root:FindFirstChild("launch_platform_01", true) :: Instance, "deck_trim") do
+			if (part.Size - Vector3.new(20, 1, 1.5)).Magnitude < TOLERANCE then
+				table.insert(steps, part)
+			end
+		end
+		expect.equal(#steps, 1)
+		local step = steps[1]
+		local edge = step.CFrame * Vector3.new(0, step.Size.Y / 2, step.Size.Z / 2) -- its top front edge, island side
+		expect.near(to.Z, edge.Z, TOLERANCE)
+		expect.near(to.Y, edge.Y, TOLERANCE)
+		expect.truthy(math.abs(to.X - edge.X) + deck.Size.X / 2 <= step.Size.X / 2 + TOLERANCE)
+		highway.root:Destroy()
+		bridge:Destroy()
+	end)
+
+	t.test("access2: rails on both sides: the plots' white posts every 8 studs end to end, 2 rails a side", function()
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		local Palette = t.requireShared("Art/Palette")
+		local spec = WorldLayout.Lobby.bridge
+		local bridge = bridgeAlone()
+		local deck = named(bridge, "bridge_deck")[1]
+		local from, to = walkLine(deck)
+		local length = (to - from).Magnitude
+		local along = (to - from).Unit
+		local postX = spec.width / 2 + BRIDGE_POST.X / 2 -- the posts' inner faces bound the 8-stud walk
+		for _, side in { -1, 1 } do
+			local stations: { number } = {}
+			for _, post in onSide(bridge, "bridge_post", spec.x, side) do
+				local p = post.CFrame.Position
+				expect.near(math.abs(p.X - spec.x), postX, TOLERANCE)
+				expect.near((post.Size - BRIDGE_POST).Magnitude, 0, TOLERANCE)
+				expect.equal(post.Color, Palette.LobbyTrimWhite)
+				expect.truthy(post.CanCollide)
+				-- Its foot on the walkway's top: s studs along it.
+				local s = (Vector3.new(spec.x, p.Y - BRIDGE_POST.Y / 2, p.Z) - from):Dot(along)
+				local foot = from + along * s
+				expect.near(p.Y - BRIDGE_POST.Y / 2, foot.Y, 0.05)
+				expect.near(p.Z, foot.Z, 0.05)
+				table.insert(stations, s)
+			end
+			table.sort(stations)
+			expect.truthy(#stations >= 2)
+			expect.near(stations[1], 0, 0.05)
+			expect.near(stations[#stations], length, 0.05)
+			for index = 2, #stations do
+				expect.truthy(stations[index] - stations[index - 1] <= BRIDGE_POSTS_EVERY + TOLERANCE)
+			end
+			local rails = onSide(bridge, "bridge_rail", spec.x, side)
+			expect.equal(#rails, 2)
+			local heights: { number } = {}
+			for _, rail in rails do
+				local mid = rail.CFrame.Position
+				expect.near(math.abs(mid.X - spec.x), postX, TOLERANCE)
+				expect.near(rail.Size.Z, length, 0.05) -- end to end
+				expect.near(rail.CFrame.LookVector:Dot(along), 1, TOLERANCE)
+				expect.truthy(rail.CanCollide)
+				expect.equal(rail.Color, Palette.LobbyTrimWhite)
+				local under = from + along * (Vector3.new(spec.x, mid.Y, mid.Z) - from):Dot(along)
+				local height = (Vector3.new(spec.x, mid.Y, mid.Z) - under):Dot(deck.CFrame.UpVector)
+				table.insert(heights, math.floor(height * 100 + 0.5) / 100)
+			end
+			table.sort(heights)
+			expect.deepEqual(heights, BRIDGE_RAIL_Y)
+		end
+		-- A cap on every post in the open plot's colour, decor (the plots' fence).
+		local caps = named(bridge, "bridge_cap")
+		expect.equal(#caps, #named(bridge, "bridge_post"))
+		for _, cap in caps do
+			expect.equal(cap.CanCollide, false)
+			expect.equal(cap.Color, Palette[WorldLayout.Bases.openColors.full])
+		end
+		-- Everything anchored and never touched; 33 parts (1 walkway, 7 posts and caps and 2 rails a side).
+		local parts = 0
+		for _, d in bridge:GetDescendants() do
+			if d:IsA("BasePart") then
+				parts += 1
+				expect.truthy(d.Anchored)
+				expect.equal(d.CanTouch, false)
+			end
+		end
+		expect.equal(parts, 33)
+		bridge:Destroy()
+	end)
+
+	t.test(
+		"access2 (Studio): Island/Bridge is LobbyBuilder.bridge's; the north wall's gap keeps its walk clear",
+		function()
+			local WorldLayout = t.requireShared("World/WorldLayout")
+			local built = station("Island"):FindFirstChild("Bridge")
+			expect.truthy(built ~= nil and built:IsA("Model"))
+			local alone = bridgeAlone()
+			local function shape(model: Instance): { string }
+				local list = {}
+				for _, part in model:GetDescendants() do
+					if part:IsA("BasePart") then
+						local p, size = part.CFrame.Position, part.Size
+						local line = string.format("%s %.2f %.2f %.2f", part.Name, p.X, p.Y, p.Z)
+						line ..= string.format(" %.2f %.2f %.2f %s", size.X, size.Y, size.Z, part.Material.Name)
+						table.insert(list, line)
+					end
+				end
+				table.sort(list)
+				return list
+			end
+			expect.deepEqual(shape(built :: Instance), shape(alone))
+			alone:Destroy()
+			local names = {}
+			for _, wall in tagged(lobby(), "SD_Boundary") do
+				table.insert(names, wall.Name)
+			end
+			table.sort(names)
+			expect.deepEqual(names, { "EastWall", "NorthWallEast", "NorthWallWest", "SouthWall", "WestWall" })
+			-- Nothing collidable but the bridge itself stands in its walk (the 8 studs between the rails, 5.5 up).
+			local Verify = dynamicRequire(toolsClone:FindFirstChild("Verify") :: ModuleScript)
+			local deck = named(built :: Instance, "bridge_deck")[1]
+			local walk = deck.CFrame * CFrame.new(0, deck.Size.Y / 2 + 3, 0)
+			local walkSize = Vector3.new(WorldLayout.Lobby.bridge.width, 5.5, deck.Size.Z)
+			for _, part in lobby():GetDescendants() do
+				if part:IsA("BasePart") and part.CanCollide and not part:IsDescendantOf(built :: Instance) then
+					if Verify.boxesOverlap(part.CFrame, part.Size, walk, walkSize) then
+						error(`{part:GetFullName()} stands in the bridge's walk`)
+					end
+				end
+			end
+		end
+	)
 
 	t.test("two builds are identical (deterministic generator)", function()
 		local root = lobby()

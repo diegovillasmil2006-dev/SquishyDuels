@@ -2,7 +2,11 @@
 -- HighwayBuilder: builds the highway Workspace.SD_Highway (pens3 phase 12, 2026-10-17; work/pens3/PLAN.md "PHASE 12"):
 -- the lobby design v6's launch deck, lane, distance markers, biome arches, ground and Golden Gates as parts, the world
 -- phase 13's throws land on; since phase 12b (2026-10-18, the owner: "the biomes have to be themed too, like, not just
--- plain terrain and color changes") each biome's scenery too. Server only, Edit mode only (ServerStorage.SDTools);
+-- plain terrain and color changes") each biome's scenery too; since phase 13 (2026-10-18, the owner: "it should be a
+-- general area where they walk up and everybody can throw") the deck has no launch spots, its top is one open throw
+-- area (WorldLayout.Highway.throwArea), and the launch board has 3 last-throw rows and the server best (owner
+-- 2026-10-15: "The launch gate board shows the last throws and the server best"; the server writes them, pens3
+-- phase 13 HighwayService). Server only, Edit mode only (ServerStorage.SDTools);
 -- called by Main's pipeline (target
 -- "highway"), never at runtime. Contract (Generated.BuildContext / BuildResult): build(ctx) returns { ok, root,
 -- warnings, error } with the new tree UNPARENTED and marked GeneratorId "highway"; it never parents anything into the
@@ -12,7 +16,8 @@
 -- lobby-kit.js (the deck pieces, and the geometry helpers box / cyl / cylX / cylZ / torY / rrect / slab, LK:20-38),
 -- `L:n` = layout.json (where each piece stands), `K:n` = kit.json (sizes, materials, zones), `P3D:n` = "Squishy Lobby
 -- 3D.html" (what the SurfaceGuis show), `CHK:n` = check/CHECK.md, PR3:36 (the Golden Gates at 8,500).
--- Data: the placement, the spots and the biome looks are Shared World/WorldLayout.Highway (the lane-local frame,
+-- Data: the placement, the throw area, the board's rows and the biome looks are Shared World/WorldLayout.Highway (the
+-- lane-local frame,
 -- WorldLayout.highwayCFrame: d studs from the start line is z = -d); the biome starts and the Golden Gates are
 -- Config.Economy.Highway (checked by Config/ValidateHighway first); colours Art/Palette (Highway*), text Strings
 -- (highway.*); where the scenery stands, the rows of the sibling HighwayScenery (v6's L:488-1599 entries 1:1). The
@@ -36,21 +41,21 @@
 -- Tree:
 --   SD_Highway (Model, WorldPivot = WorldLayout.Highway.origin, marked SD_Generated / highway / VERSION)
 --     Deck (Model, Persistent: K:7881-7883 Plaza and LaunchGate are persistent zones)
---       launch_platform_01 (+ the L:2 light), launch_spot_01..10 (tag SD_LaunchSpot, Slot n; Attachments
---       launcher_mount and player_stand), watch_steps_01..02, launch_gate_01 (the CANDY MEADOW banner, the launch
---       board SD_LaunchBoard with its 4 empty live lines, the gate_mascot slot), candy_fence_01..04
+--       launch_platform_01 (+ the L:2 light), watch_steps_01..02, launch_gate_01 (the CANDY MEADOW banner, the launch
+--       board SD_LaunchBoard with its 8 empty live lines, the gate_mascot slot), candy_fence_01..04
 --     Biome_1_CM .. Biome_7_DH (Models, Biome = n, WorldPivot at the biome's start; K:7887 one zone per biome)
 --       lane_tile_NN / rr_rainbow_lane_NN, lane_rail_NN, distance_marker_NN (Distance), biome_ground_NN,
 --       biome_arch_NN (Scale), the scenery (HighwayScenery's rows, named by their v6 ids: lv_volcano_01 with the L:4
 --       light), dh_golden_gates_01 (+ the L:5 light): each an Atomic Model (K:7887)
 --   Every placed piece is a Model with SD_Piece = its v6 piece, named and numbered as v6 names it (L:20-1599).
--- Rules: every part anchored and untouched; only the deck's v6 "walk" pieces (the platform, the spots, the watch steps)
+-- Rules: every part anchored and untouched; only the deck's v6 "walk" pieces (the platform, the watch steps)
 --   collide: nobody stands anywhere else, so v6's "walk" lane and ground and its "block" gate, fences, rails, arches
 --   and scenery are decor until a phase needs them (the lane is a squishy-only surface, K:1700); parts under 2 studs
 --   cast no shadow (the lobby's rule); every SurfaceGui at PixelsPerStud 25, hidden beyond 150 studs (K:7873); static
 --   lines tagged SD_Sign with SD_TextKey (WorldBinder re-applies them), live lines neither.
 -- Not built here (later phases): boosters, traps and reward bubbles (phases 15 and 17), the platform launchers, the
---   effects (fx_twinkle, the volcano's fx_smoke), the animations (SpotSquish, BoardPop, MascotIdle).
+--   effects (fx_twinkle, the volcano's fx_smoke), the animations (BoardPop, MascotIdle; SpotSquish went with the
+--   spots).
 
 local Generated = require(script.Parent.Parent.Generated)
 local Prims = require(script.Parent.Parent.Kit.Prims)
@@ -99,7 +104,7 @@ type Line = {
 -- Constants
 
 local GENERATOR_ID = "highway"
-local VERSION = 2 -- 1: phase 12, the deck and the lane; 2: phase 12b, the biome scenery
+local VERSION = 3 -- 1: phase 12, the deck and the lane; 2: phase 12b, the biome scenery; 3: phase 13, no spots, rows
 local ROOT_NAME = "SD_Highway"
 local DECK_NAME = "Deck"
 
@@ -117,6 +122,12 @@ local DESIGN_PPU = 40 -- P3D:221 canvasPlane: the design's px are 40 a stud
 local STROKE_SHARE = 0.11 -- P3D:239: lineWidth 0.22 x size, centred on the outline, so half of it shows
 local LINE_BOX = 1.25 -- a line's box, in letter heights (Kit/Signs)
 local FONT = Enum.Font.FredokaOne -- P3D:237-238 "700 Fredoka" (Kit/Signs' heading font)
+
+-- Pens3 phase 13: the board's LAST rows (reading: under v6's LAST THROW heading at y 0.33, one row each 0.17 of the
+-- canvas, letters 30 design px so a row's box stays inside its step; buildBoard).
+local ROW_TOP = 0.5
+local ROW_STEP = 0.17
+local ROW_PX = 30
 
 local MASCOT_BLUEPRINT = "kitty_bread" -- K:985, :1000: "Diego's existing Kitty Bread model" (Art/SquishyBlueprints)
 local MASCOT_WIDTH = 11 -- LK:175: scaled to 11 studs wide
@@ -734,41 +745,6 @@ local function buildPlatform(state: State, deck: Instance)
 	place(model, f, deck)
 end
 
--- launch_spot (LK:103-108, L:21-30): one of the 10 throw spots.
-local function buildSpot(state: State, deck: Instance, slot: number)
-	local H = state.H
-	local f = state.origin * CFrame.new(H.deck.spots[slot])
-	local model = newPiece(state, "launch_spot", false)
-	rrectSlab(state, model, "spot_base", "HighwayFrosting", f, 5.6, 7.5, 1, 0.25, 0, 0, "solid")
-	local top = rrectSlab(state, model, "spot_top", "HighwayLemon", f, 4.8, 6.7, 0.9, 0.15, 0.25, 0, "solid")
-	-- spot_arrow: slab(arrowShape(0.6), 0.03, 0.15) on the top (y 0.4), moved 1.9 back; the shape's +y points down the
-	-- lane. Shaft x ±0.54, z 1.72..2.86; head from the shaft's front (z 1.72, x ±0.96) to its tip (z 0.76).
-	local y = 0.415
-	block(state, model, "spot_arrow", "HighwayGlow", f, Vector3.new(1.08, 0.03, 1.14), 0, y, 2.29)
-	for _, s in { -1, 1 } do
-		local cf = CFrame.fromMatrix(
-			(f * CFrame.new(s * 0.48, y, 1.24)).Position,
-			f:VectorToWorldSpace(Vector3.new(0, -s, 0)),
-			f:VectorToWorldSpace(Vector3.new(s, 0, 0))
-		)
-		local head =
-			Prims.wedge("spot_arrow", Vector3.new(0.03, 0.96, 0.96), cf, color(state, "HighwayGlow"), "decor", model)
-		head.Material = Enum.Material.Neon
-	end
-	local empties: { { name: string, at: Vector3 } } = {
-		{ name = "launcher_mount", at = H.deck.launcherMount },
-		{ name = "player_stand", at = H.deck.playerStand },
-	}
-	for _, empty in empties do
-		local attachment = Instance.new("Attachment")
-		attachment.Name = empty.name
-		attachment.CFrame = top.CFrame:ToObjectSpace(f * CFrame.new(empty.at))
-		attachment.Parent = top
-	end
-	Prims.tag(model, state.deps.WorldLayout.Tags.LaunchSpot, { [state.A.Slot] = slot })
-	place(model, f, deck)
-end
-
 -- watch_steps (LK:177-181, L:31-32): step seats facing the launches.
 local function buildWatchSteps(state: State, deck: Instance, spec: any)
 	local f = state.origin * CFrame.new(spec.position) * CFrame.Angles(0, spec.yaw, 0)
@@ -779,8 +755,10 @@ local function buildWatchSteps(state: State, deck: Instance, spec: any)
 	place(model, f, deck)
 end
 
--- The launch board's SurfaceGui (P3D:281-292): its static lines and the 4 empty live ones
--- (WorldLayout.Highway.boardSlots).
+-- The launch board's SurfaceGui (P3D:281-292): its static lines and the empty live ones (WorldLayout.Highway.
+-- boardSlots). Pens3 phase 13: the LAST column holds boardRows rows (Last1 on top, the newest), each the thrower's name
+-- beside its distance on one line (a reading of v6's one LAST THROW: its ink name, its white distance with the ink
+-- stroke, at row size); the SERVER BEST column keeps v6's two lines.
 local function buildBoard(state: State, board: BasePart)
 	local S = state.deps.Strings
 	local canvas = canvasOn(board, Enum.NormalId.Front, Vector2.new(22, 7), Vector2.new(21, 6.4))
@@ -817,9 +795,7 @@ local function buildBoard(state: State, board: BasePart)
 			px = 24,
 			color = heading,
 		},
-		{ name = "LastWho", text = "", x = 0.27, y = 0.55, width = 0.46, px = 34, color = ink },
 		{ name = "BestWho", text = "", x = 0.75, y = 0.55, width = 0.46, px = 34, color = ink },
-		{ name = "LastDistance", text = "", x = 0.27, y = 0.8, width = 0.46, px = 52, color = white, stroke = ink },
 		{
 			name = "BestDistance",
 			text = "",
@@ -831,6 +807,23 @@ local function buildBoard(state: State, board: BasePart)
 			stroke = ink,
 		},
 	}
+	for row = 1, state.H.boardRows do
+		local y = ROW_TOP + (row - 1) * ROW_STEP
+		table.insert(
+			lines,
+			{ name = `Last{row}Who`, text = "", x = 0.15, y = y, width = 0.26, px = ROW_PX, color = ink }
+		)
+		table.insert(lines, {
+			name = `Last{row}Distance`,
+			text = "",
+			x = 0.39,
+			y = y,
+			width = 0.2,
+			px = ROW_PX,
+			color = white,
+			stroke = ink,
+		})
+	end
 	for _, spec in lines do
 		line(canvas, 6.4, spec)
 	end
@@ -947,9 +940,6 @@ local function buildDeck(state: State, root: Instance)
 	local deck = Prims.model(DECK_NAME, nil, false)
 	deck.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
 	buildPlatform(state, deck)
-	for slot = 1, #state.H.deck.spots do
-		buildSpot(state, deck, slot)
-	end
 	for _, spec in state.H.deck.watchSteps do
 		buildWatchSteps(state, deck, spec)
 	end

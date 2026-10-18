@@ -57,6 +57,11 @@
 --     boolean -> false), each fix logged; a squishy in a shelf slot that is not open (a row not bought, the TOP spot
 --     not bought) goes to the Toy Box, never dropped, logged; an item with no slot fills the pen, then the shelf, then
 --     the TOP spot.
+--   * pens3 phase 13 (the throw): highway {best = 0, biome = 1} joined the same way (reconcile gives an older profile
+--     the defaults, no problem; a saved value survives JSON); sanitize: not a table -> the defaults; best whole studs
+--     in [0, gatesAt] (cut, clamped; broken -> 0); biome a whole number in [1, #starts + 1] (8 = the Golden Gates;
+--     cut, clamped; broken -> what the best reaches), and never under what the best reaches (it only rises, so the
+--     biome gifts are never given twice); every fix logged.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -212,6 +217,7 @@ return function(t: Context)
 		expected.buyBack = {} -- pens3 phases 7-8: the same
 		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
 		expected.food = NO_FOOD -- pens3 phase 9: the same
+		expected.highway = { best = 0, biome = 1 } -- pens3 phase 13: the same
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
 		expected.pen = {
 			spots = 3,
@@ -293,6 +299,7 @@ return function(t: Context)
 		expect.deepEqual(d.bag, { 0, 0, 0, 0, 0, 0, 0 })
 		expect.equal(#d.bag, #Config.Economy.Pen.coatMult - 1)
 		expect.deepEqual(d.food, NO_FOOD) -- pens3 phase 9: no food
+		expect.deepEqual(d.highway, { best = 0, biome = 1 }) -- pens3 phase 13: no throw yet, Candy Meadow
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -1461,5 +1468,55 @@ return function(t: Context)
 			},
 		}, owned)
 		expect.equal(filled.items[6].slot, 21) -- the last open spot: the TOP spot
+	end)
+	-- Pens3 phase 13 (the throw): highway ---------------------------------------------------------------------------
+
+	t.test(
+		"highway joins schema 2 without a new version: an older profile gets {best = 0, biome = 1}, no problem",
+		function()
+			local older = load(FIXTURE_V1).profile :: any
+			older.highway = nil -- a v2 profile saved before phase 13
+			local result = load(older)
+			expect.equal(result.fromVersion, 2)
+			expect.deepEqual(result.problems, {})
+			expect.deepEqual(result.profile.highway, { best = 0, biome = 1 })
+			local HttpService = game:GetService("HttpService")
+			local kept = load(FIXTURE_V1).profile :: any
+			kept.highway = { best = 1234, biome = 3 }
+			local again = load(HttpService:JSONDecode(HttpService:JSONEncode(kept)))
+			expect.deepEqual(again.problems, {})
+			expect.deepEqual(again.profile.highway, { best = 1234, biome = 3 })
+			kept.highway = { best = 8500, biome = 8 } -- the Golden Gates
+			expect.deepEqual(load(kept).problems, {})
+		end
+	)
+
+	t.test("sanitize highway: whole studs and biomes in range, never under what the best reaches; logged", function()
+		local function fixed(value: any): (any, number)
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.highway = value
+			local result, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return result.highway, notesAbout(problems, "highway")
+		end
+		local h, n = fixed("garbage")
+		expect.deepEqual(h, { best = 0, biome = 1 })
+		expect.equal(n, 1)
+		h, n = fixed({ best = 1234.7, biome = 3 })
+		expect.deepEqual(h, { best = 1234, biome = 3 }) -- cut: never farther than thrown
+		expect.equal(n, 1)
+		h = fixed({ best = 99_999, biome = 99 })
+		expect.deepEqual(h, { best = 8500, biome = 8 }) -- clamped to the Golden Gates
+		h = fixed({ best = -5, biome = 0 })
+		expect.deepEqual(h, { best = 0, biome = 1 })
+		h = fixed({ best = 0 / 0, biome = "x" })
+		expect.deepEqual(h, { best = 0, biome = 1 })
+		h = fixed({ best = 900, biome = 0 / 0 }) -- a broken biome: what the best reaches (Boba Lagoon)
+		expect.deepEqual(h, { best = 900, biome = 3 })
+		h, n = fixed({ best = 2600, biome = 2 }) -- under what the best reaches: raised (Lava Volcano)
+		expect.deepEqual(h, { best = 2600, biome = 5 })
+		expect.equal(n, 1)
+		h, n = fixed({ best = 100, biome = 6 }) -- above the best: kept (it only rises; gifts are never given again)
+		expect.deepEqual(h, { best = 100, biome = 6 })
+		expect.equal(n, 0)
 	end)
 end

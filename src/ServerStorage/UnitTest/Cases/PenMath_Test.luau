@@ -785,10 +785,16 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"levelCap: 10 a biome, biome 1 (Lv 10) until phase 13; foodsOnSale: the bands that start below it",
+		"levelCap: 10 a biome reached (profile.highway.biome, pens3 phase 13); foodsOnSale: the bands below it",
 		function()
-			expect.equal(PenMath.levelCap(), 10)
-			expect.deepEqual(foodIds(PenMath.foodsOnSale(PenMath.levelCap())), { "candy_drop" })
+			expect.equal(PenMath.levelCap({ best = 0, biome = 1 }), 10)
+			expect.equal(PenMath.levelCap({ best = 900, biome = 3 }), 30)
+			expect.equal(PenMath.levelCap({ best = 8500, biome = 8 }), PEN.maxLevel) -- the Golden Gates: 80, at most 70
+			local brokens = { false, "x", { biome = 0 }, { biome = 2.5 }, { biome = 0 / 0 }, { best = 900 } } :: { any }
+			for _, broken in brokens do
+				expect.equal(PenMath.levelCap(broken), 10) -- fails closed: biome 1
+			end
+			expect.deepEqual(foodIds(PenMath.foodsOnSale(PenMath.levelCap(nil))), { "candy_drop" })
 			expect.deepEqual(foodIds(PenMath.foodsOnSale(20)), { "candy_drop", "butter_bun" })
 			expect.equal(#PenMath.foodsOnSale(PEN.maxLevel), #FOOD.foods)
 			expect.equal((PenMath.food("halo_puff") :: any).price, 30_000_000_000)

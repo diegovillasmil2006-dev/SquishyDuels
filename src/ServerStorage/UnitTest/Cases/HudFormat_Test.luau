@@ -70,7 +70,7 @@ return function(t: Context)
 			expect.truthy(string.match(item.button, "^Hud_%u%a+Button$"))
 			expect.truthy(type(item.accent) == "string" and type(item.icon) == "string")
 		end
-		expect.deepEqual(ids, { "squishies", "boxes", "shop", "quests", "daily", "duel", "settings" })
+		expect.deepEqual(ids, { "squishies", "boxes", "shop", "quests", "daily", "duel", "settings", "highway" })
 		local tiles = {}
 		for _, item in HudFormat.navAt("tile") do
 			table.insert(tiles, item.id)
@@ -79,6 +79,7 @@ return function(t: Context)
 		expect.equal(HudFormat.navAt("cta")[1].button, "Hud_DuelButton")
 		expect.equal(HudFormat.navAt("cta")[1].screen, "queue")
 		expect.equal(HudFormat.navAt("settings")[1].button, "Hud_SettingsButton")
+		expect.equal(HudFormat.navAt("right")[1].button, "Hud_HighwayButton") -- access2: under Settings
 		-- UI FINAL R2: the Settings sticker hovers as the design's "icon" (H:157), the tiles as their kind's "nav".
 		expect.equal(HudFormat.navAt("settings")[1].fx, "icon")
 		for _, item in HudFormat.navAt("tile") do
@@ -527,6 +528,63 @@ return function(t: Context)
 			end
 		end
 	end)
+
+	-- Access2 (owner 2026-10-18 "Both": a quick button to the highway's launch deck; the phone buttons are Diego's
+	-- decision, 2026-10-18: keep his one row). A stand-in until Diego draws and places one (his UI FINAL has no highway
+	-- item): right under the Settings gear in its look (place "right"), never in the tile plans, so his tile column,
+	-- his phone row of 4 and the DUEL area keep their room; not shown on phones (HudController.layoutRight).
+	t.test(
+		"access2: the HIGHWAY stand-in sits under Settings, outside the tile plans (Diego's row keeps its 4)",
+		function()
+			local item = HudFormat.navAt("right")[1]
+			expect.equal(#HudFormat.navAt("right"), 1)
+			expect.equal(item.id, "highway")
+			expect.equal(item.screen, "highway") -- HighwayController's non-modal screen: it sends GoHighway
+			expect.equal(item.button, "Hud_HighwayButton")
+			expect.equal(item.icon, "highway")
+			expect.equal(item.fx, "icon") -- Settings' hover (H:157)
+			expect.equal(item.badge, nil)
+			expect.equal(item.params, nil)
+			expect.equal(table.find(HudFormat.PHONE_RIGHT, "highway"), nil)
+			for _, tile in HudFormat.navAt("tile") do
+				expect.truthy(tile.id ~= "highway")
+			end
+			-- Shown only while its screen is registered (HudController.layoutRight), like every NAV item.
+			local shown = HudFormat.visibleNav(function(screen: string): boolean
+				return screen == "highway"
+			end)
+			expect.equal(#shown, 1)
+			expect.equal(shown[1].id, "highway")
+			-- Diego's layouts unchanged: 4 phone tiles in a row, 5 PC stickers in a column with the regular Grip card.
+			for _, screen in PHONES do
+				for _, ts in TEXT_SCALES do
+					local plan = HudFormat.leftColumnPlan(screen, "compact", ts)
+					expect.equal(plan.columns, 4)
+					expect.equal(plan.rows, 1)
+				end
+			end
+			for _, screen in PCS do
+				local plan = HudFormat.leftColumnPlan(screen, classOf(screen), 1)
+				if screen.Y >= 720 then
+					expect.equal(plan.grip, "regular")
+					expect.equal(plan.rows, 5)
+				end
+			end
+			-- Gamepad, focusLinks only: given HudController's PC right column (settings, highway, tracker: its order is
+			-- read in Studio, NOTES), HIGHWAY is a step under Settings and over the quest tracker. Phones show no
+			-- stand-in (their buttons are Diego's call), so their right column is unchanged.
+			local pc = HudFormat.focusLinks({
+				left = { "coins", "grip" },
+				tiles = { "tile:squishies", "tile:boxes", "tile:shop", "tile:quests", "tile:daily" },
+				tileColumns = 1,
+				right = { "settings", "highway", "tracker" },
+				cta = "cta",
+			})
+			expect.equal(pc.highway.up, "settings")
+			expect.equal(pc.highway.down, "tracker")
+			expect.equal(pc.tracker.up, "highway")
+		end
+	)
 
 	t.test("left side (Phone HUD B, minimal pass 2026-10-17): the bare Grip row, the tiles in one icon row", function()
 		for _, screen in PHONES do

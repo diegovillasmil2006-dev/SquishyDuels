@@ -21,6 +21,10 @@
 --     phase 1), never doubled and without a Double Grip point, each squeeze one event (never clamped when the whole
 --     pay is above maxGripPerEvent), with the level toasts; nothing unready, frozen, or for a squeezes count outside
 --     1..the largest duel pay (MatchRewards.maxSqueezes()).
+--   * pens3 phase 13 (the throw): a landing's Grip (addFromHighway) is built like a match pay: squeezes × an own
+--     squeeze's Grip (one squeeze clamped to maxGripPerEvent, then multiplied: a top landing is never one clipped
+--     event), never doubled, no Double Grip point; nothing unready, frozen, or for a squeezes count outside 1..
+--     Config.Economy.Highway.pay.grip.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -324,6 +328,41 @@ return function(t: Context)
 			finish()
 		end
 	)
+
+	-- Pens3 phase 13: the Grip of a throw's landing.
+	t.test("pens3 phase 13: a landing trains squeezes × an own squeeze's Grip; never clamped as one event", function()
+		local world = fresh()
+		world.profile.grip.rested = { value = 5, at = UNIX_START }
+		table.insert(world.profile.pen.items, penItem(2, "bird"))
+		local before = TableUtil.deepCopy(world.profile)
+		local landing = Config.Economy.Highway.pay.grip -- 60 squeezes
+		expect.equal(GripService.addFromHighway(world.player, landing), landing * 170) -- Kitty Bread 10 + Bird 160
+		expect.equal(world.profile.grip.total, landing * 170)
+		expect.deepEqual(world.profile.grip.rested, before.grip.rested) -- no Double Grip point
+		expect.truthy(table.find(world.dirty, "grip") ~= nil)
+		-- The top base (pens3 phase 11: the pen, every shelf row and the TOP spot, 21 Rainbow Galaxy Dragons at Lv 70):
+		-- one squeeze is under the cap, the whole landing above it, and all of it is paid.
+		local items = {}
+		for id = 1, Config.Economy.Pen.placedMax do
+			table.insert(items, penItem(id, "dragon", 2, 70, 7))
+		end
+		world.profile.pen = { spots = 12, nextId = 22, items = items, shelfRows = 4, top = true }
+		local top = PenMath.squeezeGrip(world.profile.pen)
+		expect.truthy(landing * top > Config.Grip.maxGripPerEvent)
+		local total = world.profile.grip.total
+		expect.equal(GripService.addFromHighway(world.player, landing), landing * top)
+		expect.equal(world.profile.grip.total, total + landing * top)
+		-- Nothing for a squeezes count outside 1..pay.grip, unready or frozen.
+		for _, bad in { 0, -1, 2.5, 0 / 0, math.huge, landing + 1 } do
+			expect.equal(GripService.addFromHighway(world.player, bad), 0)
+		end
+		world.status = "offline"
+		expect.equal(GripService.addFromHighway(world.player, 1), 0)
+		world.status = "ready"
+		world.frozen = true
+		expect.equal(GripService.addFromHighway(world.player, 1), 0)
+		finish()
+	end)
 
 	t.test("nothing is trained while the profile is not ready", function()
 		local world = fresh()

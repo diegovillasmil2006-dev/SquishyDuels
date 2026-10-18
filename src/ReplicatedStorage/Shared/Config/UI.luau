@@ -1326,6 +1326,39 @@ local UI = {
 		shadows = { offAtOrBelow = 3, automatic = true },
 	},
 
+	-- Pens3 phase 13 (HighwayThrowController: the throw's motion on this client; the lobby design v6, P3D = "Squishy
+	-- Lobby 3D.html", K = kit.json). The flight's own numbers are Config.Economy.Highway.flight (the server times it
+	-- too).
+	Highway = {
+		-- P3D:849: the follow camera eases toward `side` right, `up` above and `back` behind the squishy (lane-local),
+		-- looking `lookAhead` down the lane past it and `lookUp` above, at posRate / lookRate a second (1 - e^(-dt x
+		-- rate)); P3D:850: it lets go holdSeconds after the landing. Off under ReducedMotion (the flight plays, the
+		-- camera stays with the player).
+		follow = {
+			side = 6,
+			up = 8,
+			back = 28,
+			lookAhead = 8,
+			lookUp = 0.5,
+			posRate = 3.5,
+			lookRate = 5,
+			holdSeconds = 2.5,
+		},
+		-- P3D:587, :593: the squishy tumbles spinAir radians a second in the air, spinRoll x (1 - v) + spinRollMin
+		-- rolling (v = the roll's share done); it does not tumble under ReducedMotion.
+		spinAir = 7,
+		spinRoll = 8,
+		spinRollMin = 0.5,
+		-- K:4462-4477 E5 FlightTrail: 1.2 wide, 0.4 s, from the release until it stops (K: "tier colour" and white;
+		-- the launchers' tier colours come with phase 14: white until then, a PLACEHOLDER).
+		trail = { width = 1.2, lifetime = 0.4 },
+		-- [P] A press during the own flight is sent for the auto-clicker check unless a reply is this late (s).
+		lateReplySeconds = 1,
+		-- [P] The distance pill (a stand-in from Diego's WellPill in the daily timer's look, Config.UI.Daily.timer;
+		-- Diego draws the highway HUD): this many px under the top of SD_Hud, centred, only while a throw flies.
+		pillTopPx = 96,
+	},
+
 	-- UI FINAL (R1, the look kit; plan work/ui/PLAN.md §2): the sticker look of the design "Squishy Duels UI FINAL"
 	-- (2026-10-14), read through UI/Theme (Theme.Sticker). Base px (1 design px = 1 base px). `H:n` = "Squishy Duels
 	-- HUD.dc.html" line n. Colours are Art/Palette Sticker*; a role's `color` names a Palette token.

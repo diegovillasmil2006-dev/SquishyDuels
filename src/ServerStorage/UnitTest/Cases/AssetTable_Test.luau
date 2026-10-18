@@ -319,6 +319,7 @@ return function(t: Context)
 				"img.nav.daily",
 				"img.nav.duel",
 				"img.nav.settings",
+				"img.nav.highway", -- access2: the HIGHWAY stand-in (id nil)
 				"img.icon.change",
 				"img.icon.clock",
 				"img.icon.upgrade",
@@ -376,6 +377,7 @@ return function(t: Context)
 				"img.nav.daily.white",
 				"img.nav.duel.white",
 				"img.nav.settings.white",
+				"img.nav.highway.white",
 				"img.coin.white",
 				"img.fx.radial.coinGlow",
 				"img.fx.radial.scrimWindow",

@@ -42,6 +42,12 @@
 -- buyFood, levelsUp, the sell confirm's foodNote); selectHint names feeding. Calm: no "now", no countdown.
 -- Pens3 phase 12: highway.* (the world's texts: the biome names on the launch gate and the arches, the launch board's
 -- static lines, the distance markers' lines).
+-- Access2 (2026-10-18, [P] texts): hud.nav.highway (the HUD's HIGHWAY stand-in tile) and reason.highway.* (GoHighway's
+-- refusals; never a "busy" one: a full deck sends the trip onto the bridge's walk beside it).
+-- Pens3 phase 13 ([P] texts): the throw's refusals reason.highway.* (HighwayThrow), the board's LAST THROWS heading
+-- (it lists the last throws of everyone in the server now) and its empty line, highway.studs (a distance), and the
+-- stand-in throw texts (the landing, a new best, a new biome, the biome gifts, the Food Bag). Calm: no "now", no
+-- countdown; the auto-clicker warning names no number.
 
 export type FormatArgs = { [string]: any }
 
@@ -188,6 +194,23 @@ local Strings = {
 			full = "You have as much of that food as you can carry.",
 			notEnough = "Not enough food for that. Buy some in your pen.",
 		},
+		-- The highway: access2 (GoHighway, HighwayAccessService: the trip to the launch deck) and pens3 phase 13
+		-- (HighwayThrow, HighwayService). paused is shared by both (the server closing, a restart pending, or for the
+		-- throw a failed save still pending). inFlight answers a press while the own squishy flies (the client sends
+		-- those for the auto-clicker check and shows nothing); autoClick is the calm warning of the first auto-clicker
+		-- catch, tooFast the throws refused during its pause.
+		highway = {
+			noCharacter = "Wait until your character has loaded, then try again.",
+			closed = "The highway isn't open in this server yet.",
+			paused = "The highway is paused for a moment. Try again soon.",
+			inDuel = "You can go to the highway after the match.",
+			inQueue = "Leave the queue first, then go to the highway.",
+			notInArea = "Walk onto the launch deck to throw.",
+			inFlight = "Your squishy is still flying!",
+			tooFast = "Throwing is paused for a little while.",
+			autoClick = "Robot-steady throws don't count! Turn off any auto-clicker, or you'll be removed from the "
+				.. "game.",
+		},
 	},
 
 	-- Small texts reused by many screens.
@@ -256,6 +279,7 @@ local Strings = {
 			shop = "Shop",
 			quests = "Quests",
 			daily = "Daily",
+			highway = "Highway", -- access2: the HIGHWAY stand-in tile
 			duel = "Duel",
 			settings = "Settings",
 		},
@@ -1247,13 +1271,23 @@ local Strings = {
 		},
 		board = {
 			title = "LAUNCH BOARD",
-			lastThrow = "LAST THROW",
+			lastThrow = "LAST THROWS", -- pens3 phase 13: the last throws of everyone in the server (v6: LAST THROW)
 			serverBest = "SERVER BEST",
+			empty = "Walk up and throw!", -- pens3 phase 13: no throw yet (v6's "Step on a spot to throw!", P3D:286)
 		},
 		marker = {
 			distance = "{distance}",
 			unit = "studs",
 		},
+		-- Pens3 phase 13 (the server's board lines and the client's stand-in HUD; {distance} = Format.distance,
+		-- {coins} / {grip} = Format.coins, {biome} = a biome name, {name} = a squishy's name, {food} = a food's name).
+		studs = "{distance} studs",
+		flying = "{biome}: {distance} studs", -- the flying squishy's pill (a stand-in for the biome banner)
+		landed = "{distance} studs! +{coins} Coins, +{grip} Grip",
+		newBest = "New best: {distance} studs!",
+		reached = "You reached {biome}!",
+		gift = { one = "{name} joined your pen!", many = "{count} {name} squishies joined your pen!" },
+		foodBag = "Food Bag: +{count} {food}",
 	},
 
 	-- Coins while away (pens3 phase 4): the pop-up's line under the Coins (PenController; a stand-in on the shop's

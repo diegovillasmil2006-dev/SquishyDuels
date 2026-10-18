@@ -17,6 +17,7 @@
 -- could not be granted.
 -- Pens3 phase 7: the "sell" Coin reason (a sale from the pen, and the spend that buys it back, PenService).
 -- Pens3 phase 9: Food (Config/Food) and the "food" Coin reason (food bought in the pen screen, PenService).
+-- Pens3 phase 13: the "highway" Coin reason (a throw's landing, HighwayService).
 
 local Economy = {
 	startingCoins = 0,
@@ -43,6 +44,7 @@ local Economy = {
 		"away", -- pens3 phase 4: the pen's Coins for the time away (EconomyService.grantAway)
 		"food", -- pens3 phase 9: food bought for the pen (PenService.buyFood)
 		"sell", -- pens3 phase 7: a sale's Coins, and a buy-back's spend (PenService)
+		"highway", -- pens3 phase 13: a throw's landing (HighwayService)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
 	},

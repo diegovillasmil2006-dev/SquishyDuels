@@ -80,7 +80,7 @@
 -- Every profile write goes through DataService.mutate (the data port).--   savePending}).
 -- * Pens3 phase 9 (food and levels, V2:214-224; Config.Economy.Food, checked by Config/ValidateFood in init), every
 --   remote the PenPlace shape (RF; Config.Net: 2 a second, burst 3, one in flight; no remote takes a base, plot or
---   player id); the level cap is PenMath.levelCap() (10 until phase 13's biomes):
+--   player id); the level cap is PenMath.levelCap(profile.highway) (pens3 phase 13: 10 a biome the highway reached):
 --   - BuyFood(foodId, count, expectedPrice, requestId): (1) foodId not a string, count not whole, expectedPrice not
 --     whole Coins or the requestId not a GUID -> net.invalid; (2) data.notReady; (3) this session's last bought
 --     requestId: it was bought (a retry whose answer never arrived) -> ok, charged = true as first answered, nothing
@@ -822,7 +822,8 @@ function PenService.buyFood(player: any, foodId: any, count: any, expectedPrice:
 		return NetService.ok(foodResult(player, 0, true, deps.savePending(player))) -- a retry: it was bought
 	end
 	local food = deps.profileOf(player).food
-	local buy, refused = PenMath.buyFoodDecision(food, foodId, count, expectedPrice, PenMath.levelCap())
+	local cap = PenMath.levelCap(deps.profileOf(player).highway) -- pens3 phase 13
+	local buy, refused = PenMath.buyFoodDecision(food, foodId, count, expectedPrice, cap)
 	if buy == nil then
 		return NetService.err(refused or CODE_INVALID, false)
 	end
@@ -864,7 +865,8 @@ function PenService.feed(player: any, itemId: any, requestId: any): Reply
 	if session ~= nil and session.feedReq == request then
 		return NetService.ok(foodResult(player, 0, false, deps.savePending(player))) -- a retry: it was fed
 	end
-	local step, refused = PenMath.feedDecision(pen, deps.profileOf(player).food, itemId, PenMath.levelCap())
+	local saved = deps.profileOf(player)
+	local step, refused = PenMath.feedDecision(pen, saved.food, itemId, PenMath.levelCap(saved.highway))
 	if step == nil then
 		return NetService.err(refused or CODE_INVALID, false)
 	end
@@ -899,7 +901,8 @@ function PenService.feedAll(player: any): Reply
 	if pen == nil then
 		return NetService.err(CODE_NOT_READY, false)
 	end
-	local plan = PenMath.feedAllPlan(pen, deps.profileOf(player).food, PenMath.levelCap())
+	local saved = deps.profileOf(player)
+	local plan = PenMath.feedAllPlan(pen, saved.food, PenMath.levelCap(saved.highway))
 	if plan.steps == 0 then
 		return NetService.err(CODE_NOTHING_TO_FEED, false)
 	end

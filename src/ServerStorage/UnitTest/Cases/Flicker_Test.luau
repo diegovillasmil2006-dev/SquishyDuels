@@ -224,6 +224,18 @@ return function(t: Context)
 		expectNoFlicker(builders:FindFirstChild("HighwayBuilder"))
 	end)
 
+	-- Access2: the lobby's bridge to the highway alone (LobbyBuilder.bridge needs no Studio, so this runs offline too).
+	t.test("access2: the bridge has no two faces of different colours in one plane", function()
+		local module = builders:FindFirstChild("LobbyBuilder") :: ModuleScript
+		local bridge, err = dynamicRequire(module).bridge(t.Shared)
+		if bridge == nil then
+			error("LobbyBuilder.bridge failed: " .. tostring(err))
+		end
+		local lines = flickerPairs(bridge)
+		bridge:Destroy()
+		expect.deepEqual(lines, {})
+	end)
+
 	t.test("the five design arenas have no two faces of different colours in one plane", function()
 		for _, name in { "SweetshopStadium", "PinewoodCamp", "PillowFortPark", "BubbleReefCourt", "ArcadeToyworks" } do
 			expectNoFlicker(if arenas then arenas:FindFirstChild(name) else nil)

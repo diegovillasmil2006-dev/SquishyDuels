@@ -103,9 +103,10 @@
 --                                   coats (each input's coating, for the bag)}. No luck, free.
 -- Pens3 phase 9 (food and levels, V2:214-224; Config.Economy.Food): `food` = a profile's food counts {[foodId] =
 -- pieces}; anything that is not a whole count >= 0 counts as none (fail closed).
---   PenMath.levelCap()           -> number: the highest level a squishy can reach now, Food.levelsPerBiome × the biomes
---                                   reached, at most Pen.maxLevel.
---                                   shortcut: biome 1 (Lv 10) until phase 13 adds profile.highway.biome; read it here.
+--   PenMath.levelCap(highway)    -> number: the highest level a squishy can reach now, Food.levelsPerBiome × the biomes
+--                                   reached, at most Pen.maxLevel. Pens3 phase 13: `highway` = a profile's highway
+--                                   {best, biome} (biome 1..8, 8 = the Golden Gates); anything else counts as biome 1
+--                                   (fail closed).
 --   PenMath.food(id)             -> FoodDef?: the Config food with that id
 --   PenMath.foodCount(food, id)  -> number: the pieces of that food owned (0 for anything broken)
 --   PenMath.foodsOnSale(cap)     -> {FoodDef}: the foods whose band starts below `cap`, in band order (a biome's food
@@ -207,7 +208,6 @@ local CODE_NOT_YET = "food.notYet"
 local CODE_FOOD_FULL = "food.full"
 local CODE_NOT_ENOUGH = "food.notEnough"
 local CODE_MAX_LEVEL = "pen.maxLevel"
-local BIOMES_REACHED = 1 -- shortcut: phase 13 (the highway) reads profile.highway.biome instead
 local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11: the shelf's first slot (13)
 local TOP_SLOT = PEN.placedMax -- the TOP spot (21)
 local CODE_SHELF_MAX = "pen.shelfMax"
@@ -735,8 +735,10 @@ end
 
 -- Public: food and levels (pens3 phase 9) -----------------------------------------------------------------------------
 
-function PenMath.levelCap(): number
-	return math.min(PEN.maxLevel, FOOD.levelsPerBiome * BIOMES_REACHED)
+function PenMath.levelCap(highway: any): number
+	local biome = if type(highway) == "table" then highway.biome else nil
+	local reached = if isWhole(biome) and biome >= 1 then biome else 1
+	return math.min(PEN.maxLevel, FOOD.levelsPerBiome * reached)
 end
 
 function PenMath.food(id: any): FoodDef?

@@ -4,6 +4,11 @@
 -- two-decimal M below 1B, then 3 significant digits with B, T and Qa ("1.23B", "12.3B", "123B", "45.6T", "2.85Qa")
 -- and the whole Qa, grouped, from 1,000Qa; decimals are cut, never rounded up; negatives keep their sign and a
 -- non-finite value reads "0".
+-- Pens3 phase 13 (the throw): power(x), a float (G110's style: "4.7", "12", "1.4K", "25K", "330M", "1.6Oc", "24No"):
+-- under 10 one decimal (a whole number without it), under 1,000 whole, then K M B T Qa Qi Sx Sp Oc No Dc Ud with one
+-- decimal under 10 of the unit and whole above, the whole Ud grouped past 1,000Ud; cut, never rounded up (a float a
+-- hair under its unit's whole number still shows it); 0 or below and non-finite read "0". distance(studs): whole studs,
+-- cut and grouped ("8,500"); below 0 and non-finite read "0".
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -69,6 +74,50 @@ return function(t: Context)
 	t.test("the Coin cap reads 9.00Qa; from 1,000Qa the whole Qa is grouped", function()
 		expect.equal(Format.coins(Config.Economy.maxCoins), "9.00Qa")
 		expectTexts({ { 1e18, "1,000Qa" }, { 1.234e18, "1,234Qa" } })
+	end)
+
+	-- Pens3 phase 13 -----------------------------------------------------------------------------------------------
+
+	t.test("power: G110's style, cut, from 2 up to Ud", function()
+		local cases: { { any } } = {
+			{ 2, "2" },
+			{ 2 * 1.1 ^ 9, "4.7" }, -- Grip Lv 10
+			{ 9.99, "9.9" },
+			{ 2 * 1.1 ^ 19, "12" }, -- Lv 20
+			{ 999.9, "999" },
+			{ 1000, "1.0K" },
+			{ 1384.6, "1.3K" },
+			{ 2 * 1.1 ^ 99, "25K" }, -- Lv 100
+			{ 14_000, "14K" },
+			{ 330e6, "330M" },
+			{ 16e12, "16T" },
+			{ 1.2e18, "1.2Qi" },
+			{ 62e21, "62Sx" },
+			{ 1.6e27, "1.6Oc" },
+			{ 2.4e31, "24No" },
+			{ 5e33, "5.0Dc" },
+			{ 7.5e36, "7.5Ud" },
+			{ 1.234e39, "1,234Ud" },
+			{ 0, "0" },
+			{ -3, "0" },
+			{ 0 / 0, "0" },
+			{ math.huge, "0" },
+		}
+		for _, case in cases do
+			local got = Format.power(case[1])
+			if got ~= case[2] then
+				error(string.format("Format.power(%s) = %q, want %q", tostring(case[1]), got, case[2]))
+			end
+		end
+	end)
+
+	t.test("distance: whole studs, cut and grouped", function()
+		expect.equal(Format.distance(8500), "8,500")
+		expect.equal(Format.distance(21.8), "21")
+		expect.equal(Format.distance(0), "0")
+		expect.equal(Format.distance(123_456), "123,456")
+		expect.equal(Format.distance(-5), "0")
+		expect.equal(Format.distance(0 / 0), "0")
 	end)
 
 	t.test("fractions drop, negatives keep their sign, non-finite values read 0", function()

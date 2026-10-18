@@ -943,6 +943,8 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.nav.daily", "image", IMAGE_NOTE),
 	otherSlot("img.nav.duel", "image", IMAGE_NOTE),
 	otherSlot("img.nav.settings", "image", IMAGE_NOTE),
+	-- Access2 (2026-10-18): the HUD's HIGHWAY button, a stand-in (IconGlyph draws v6's launch-spot arrow while nil).
+	otherSlot("img.nav.highway", "image", IMAGE_NOTE),
 	-- Foam UI (spec 2026-10-09): `img.icon.*` = the other UI/Components/IconGlyph icons (`img.nav.*` covers the rest).
 	otherSlot("img.icon.change", "image", IMAGE_NOTE),
 	otherSlot("img.icon.clock", "image", IMAGE_NOTE),
@@ -1010,6 +1012,7 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.nav.daily.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.duel.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.settings.white", "image", IMAGE_NOTE),
+	otherSlot("img.nav.highway.white", "image", IMAGE_NOTE), -- access2
 	otherSlot("img.coin.white", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.coinGlow", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.scrimWindow", "image", IMAGE_NOTE),

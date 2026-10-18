@@ -43,9 +43,14 @@
 --     (K:4194-4203: 2, 3, 1, 4, 6, 7, 5, 8, two to a row) and the TOP spot over its top, all inside every plot;
 --   * pens3 phase 12: the highway (lobby design v6: L = layout.json, LK = lobby-kit.js, K = kit.json) is placed from
 --     one origin, outside the island's sea and clear of the arena slots, distance d = d studs down its LookVector;
---     its launch deck is v6's (L:20-37, v6 z + 62: v6 measures d from its gate at z -62, L:1), the 10 spots with their
---     launcher mount and player stand (LK:107); 7 biome looks in Config's order with v6's tints (L:458-1597, K:3136),
+--     its launch deck is v6's (L:20, :31-37, v6 z + 62: v6 measures d from its gate at z -62, L:1); pens3 phase 13
+--     (owner 2026-10-18): no launch spots, the deck top is one open throw area (the 30 x 15 platform top, 12 high),
+--     and the launch board has 3 last-throw rows and the server best; 7 biome looks in Config's order with v6's tints
+--     (L:458-1597, K:3136),
 --     every colour a Palette token, the sky biomes without ground, the arches from biome 2 at v6's scales;
+--   * access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick button): the north wall is
+--     two pieces round a gap at x 0 as wide as the bridge with its rails; the bridge (a PLACEHOLDER: v6 has none)
+--     runs 8 wide from the sea inside the wall to the front of the deck's back step (LK:158-164), a gentle ramp;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -337,7 +342,7 @@ return function(t: Context)
 			expect.truthy(seaTop < island.shallow.top)
 			expect.truthy(sea.size.X / 2 >= island.shallow.radius and sea.size.Z / 2 >= island.shallow.radius)
 			expect.truthy(sea.size.X / 2 < 225) -- the arena slots' aprons (X >= 225) never lie on it (ArenaService_Test)
-			expect.equal(#lobby.Boundaries, 4)
+			expect.equal(#lobby.Boundaries, 5) -- access2: the north wall in two, round the bridge's gap
 			for _, wall in lobby.Boundaries do
 				local low, high = wall.position - wall.size / 2, wall.position + wall.size / 2
 				-- Out past the shallow water (and so past every plot, r 150 at its back corners), on the sea.
@@ -1057,8 +1062,8 @@ return function(t: Context)
 			expect.equal((WorldLayout.Tags :: any)[name], nil)
 		end
 		expect.equal((WorldLayout.Attributes :: any).PadKey, nil)
-		expect.equal(#WorldLayout.Lobby.Boundaries, 4)
-		expect.equal(counts.SD_Boundary, 4)
+		expect.equal(#WorldLayout.Lobby.Boundaries, 5)
+		expect.equal(counts.SD_Boundary, 5)
 		expect.equal(counts.SD_AudioZone, 3)
 		expect.equal(counts.SD_AudioZone, #WorldLayout.AudioZones)
 		expect.equal(counts.SD_Ambient, #WorldLayout.Props.lollipops.positions + 3)
@@ -1664,28 +1669,42 @@ return function(t: Context)
 		end
 	)
 
-	t.test("pens3 phase 12: the launch deck is v6's (L:20-37): 10 spots in two rows on the 30 x 15 deck", function()
-		local deck = WorldLayout.Highway.deck
+	t.test("pens3 phase 13: the launch deck is v6's (L:20, :31-37) with one open throw area, no spots", function()
+		local H = WorldLayout.Highway
+		local deck = H.deck
 		expect.truthy(vectorNear(deck.platform, Vector3.new(0, 0.5, 35.5))) -- L:20 (0, 0.5, -26.5)
-		local xs = { -11.25, -5.625, 0, 5.625, 11.25 }
-		expect.equal(#deck.spots, 10)
-		for index, spot in deck.spots do
-			local row = if index <= 5 then 30.5 else 38 -- L:21-30 (z -31.5 and -24)
-			expect.truthy(vectorNear(spot, Vector3.new(xs[(index - 1) % 5 + 1], 2.5, row)))
-			-- On the deck top (y 0.5 + its 2-stud slab, LK:159), inside its 30 x 15 centred 1.25 toward the gate.
-			expect.near(spot.Y, deck.platform.Y + 2, FLOAT_TOLERANCE)
-			expect.truthy(math.abs(spot.X) + 5.6 / 2 <= 15)
-			expect.truthy(math.abs(spot.Z - (deck.platform.Z - 1.25)) + 7.5 / 2 <= 7.5 + FLOAT_TOLERANCE)
-		end
-		expect.truthy(vectorNear(deck.launcherMount, Vector3.new(0, 0.4, -2))) -- LK:107
-		expect.truthy(vectorNear(deck.playerStand, Vector3.new(0, 0.4, 3.2)))
+		-- Owner 2026-10-18 ("a general area where they walk up and everybody can throw"): v6's L:21-30 spots are gone.
+		expect.equal(deck.spots, nil)
+		expect.equal(deck.spotSize, nil)
+		expect.equal(deck.launcherMount, nil)
+		expect.equal(deck.playerStand, nil)
+		expect.equal(WorldLayout.Tags.LaunchSpot, nil)
+		-- The throw area: the deck top (y 0.5 + its 2-stud slab, LK:159; 30 x 15 centred 1.25 toward the gate), 12
+		-- high.
+		local area = H.throwArea
+		expect.truthy(vectorNear(area.size, Vector3.new(30, 12, 15)))
+		expect.near(area.position.Y - area.size.Y / 2, deck.platform.Y + 2, FLOAT_TOLERANCE)
+		expect.near(area.position.Z, deck.platform.Z - 1.25, FLOAT_TOLERANCE)
+		expect.near(area.position.X, 0, FLOAT_TOLERANCE)
+		expect.truthy(area.position.Z - area.size.Z / 2 > 0) -- all of it behind the start line
+		-- The board: 3 last-throw rows, newest first, and the server best.
+		expect.equal(H.boardRows, 3)
+		expect.deepEqual(H.boardSlots, {
+			"Last1Who",
+			"Last1Distance",
+			"Last2Who",
+			"Last2Distance",
+			"Last3Who",
+			"Last3Distance",
+			"BestWho",
+			"BestDistance",
+		})
 		expect.deepEqual(deck.fences, { -10.5, -3.5, 3.5, 10.5 }) -- L:34-37
 		expect.equal(#deck.watchSteps, 2) -- L:31-32
 		expect.truthy(vectorNear(deck.watchSteps[1].position, Vector3.new(21, 0.5, 50)))
 		expect.near(deck.watchSteps[1].yaw, math.rad(38.9), FLOAT_TOLERANCE)
 		expect.truthy(vectorNear(deck.watchSteps[2].position, Vector3.new(-21, 0.5, 50)))
 		expect.near(deck.watchSteps[2].yaw, math.rad(-38.9), FLOAT_TOLERANCE)
-		local H = WorldLayout.Highway
 		expect.equal(H.laneWidth, 30) -- K:1693
 		expect.equal(H.tileLength, 50)
 		expect.equal(H.markerEvery, 100) -- K:1748, L:476
@@ -1822,4 +1841,52 @@ return function(t: Context)
 			expect.truthy(found)
 		end
 	end)
+
+	-- Access2 (owner 2026-10-18 "Both"): the walk to the highway's launch deck. PLACEHOLDER: v6 has no bridge (its deck
+	-- joins the plaza, L:20-37), so the numbers are readings, except where the bridge meets the deck: the front face of
+	-- the platform's back step, box(20, 1, 1.5, 0, 0, 7) on the platform (LK:158-164: top 1 up, front 7.75 back).
+	t.test(
+		"access2: the north wall opens round the bridge; the bridge runs from the sea to the deck's back step",
+		function()
+			local lobby = WorldLayout.Lobby
+			local bridge = lobby.bridge
+			local walls: { [string]: any } = {}
+			for _, wall in lobby.Boundaries do
+				walls[wall.name] = wall
+			end
+			expect.equal(walls.NorthWall, nil)
+			local west, east = walls.NorthWallWest, walls.NorthWallEast
+			expect.truthy(west ~= nil and east ~= nil)
+			local wLow, wHigh = west.position - west.size / 2, west.position + west.size / 2
+			local eLow, eHigh = east.position - east.size / 2, east.position + east.size / 2
+			-- Together the old wall (x -218..218, z -222..-218, y -4..60), but the gap.
+			expect.near(wLow.X, -218, FLOAT_TOLERANCE)
+			expect.near(eHigh.X, 218, FLOAT_TOLERANCE)
+			for _, box in { { wLow, wHigh }, { eLow, eHigh } } do
+				expect.near(box[1].Z, -222, FLOAT_TOLERANCE)
+				expect.near(box[2].Z, -218, FLOAT_TOLERANCE)
+				expect.near(box[1].Y, -4, FLOAT_TOLERANCE)
+				expect.near(box[2].Y, 60, FLOAT_TOLERANCE)
+			end
+			-- The gap: on the bridge's line, at least as wide as the bridge with its rails (the plots' 0.8 fence posts
+			-- either side of the 8-stud walk, LobbyBuilder).
+			expect.equal(bridge.width, 8) -- spec §2: the paths' width
+			expect.near((wHigh.X + eLow.X) / 2, bridge.x, FLOAT_TOLERANCE)
+			expect.truthy(eLow.X - wHigh.X >= bridge.width + 2 * 0.8)
+			expect.near(bridge.gapHalf, eLow.X - bridge.x, FLOAT_TOLERANCE)
+			-- From the sea's top inside the wall (past the shallow water), through the gap, to the deck's back step.
+			local seaTop = lobby.baseSlab.position.Y + lobby.baseSlab.size.Y / 2
+			expect.near(bridge.fromTop, seaTop, FLOAT_TOLERANCE)
+			expect.truthy(bridge.fromZ > wHigh.Z and bridge.fromZ < -WorldLayout.Island.shallow.radius)
+			local H = WorldLayout.Highway
+			local step = H.origin * (H.deck.platform + Vector3.new(0, 1, 7.75))
+			expect.near(bridge.toZ, step.Z, FLOAT_TOLERANCE)
+			expect.near(bridge.toTop, step.Y, FLOAT_TOLERANCE)
+			expect.near(bridge.x, step.X, FLOAT_TOLERANCE)
+			expect.truthy(bridge.toZ < wLow.Z) -- past the wall
+			-- A gentle ramp: a few degrees (Roblox walks up to 89°; kids should not notice it).
+			local slope = math.deg(math.atan2(bridge.toTop - bridge.fromTop, bridge.fromZ - bridge.toZ))
+			expect.truthy(slope > 0 and slope < 10)
+		end
+	)
 end

@@ -72,6 +72,12 @@
 -- spots, the open shelf rows' spots 13.., the TOP spot 21 when bought): a squishy in a slot that is not open any more
 -- goes to the Toy Box (never dropped), logged; the items with no slot fill PenMath.openSlots in order (the pen, then
 -- the shelf, then the TOP spot), then the Toy Box.
+-- Pens3 phase 13 (the throw) joined the same way: `highway = {best = 0, biome = 1}` (the farthest landing in whole
+-- studs, and the biome reached: 1..#starts, #starts + 1 = the Golden Gates; HighwayService raises both, the biome
+-- only ever rises and its first rise gives the biome gifts). fixHighway fails closed: not a table -> the defaults;
+-- best a whole number in [0, gatesAt] (cut, clamped; non-finite or not a number -> 0); biome a whole number in [1,
+-- #starts + 1] (cut, clamped; non-finite or not a number -> HighwayMath.reached(best)), and never under what the
+-- best reaches (raised: a saved best has reached its biome, so its gifts were given); every fix logged.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -116,6 +122,7 @@ local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local HighwayMath = require(Shared.HighwayMath) -- pens3 phase 13
 local PenMath = require(Shared.PenMath)
 local TableUtil = require(Shared.Util.TableUtil)
 local Types = require(Shared.Types)
@@ -690,6 +697,21 @@ local function fixFood(d: any, problems: { string })
 	end
 end
 
+-- Pens3 phase 13 (see the header): the farthest throw and the biome it reached. Fixed in place, every fix noted.
+local function fixHighway(d: any, problems: { string })
+	local highway = ensureTable(d, "highway", function()
+		return { best = 0, biome = 1 }
+	end, "highway", problems)
+	local h = Config.Economy.Highway
+	fixInt(highway, "best", 0, h.gatesAt, 0, "highway.best", problems)
+	local floor = HighwayMath.reached(highway.best)
+	fixInt(highway, "biome", 1, #h.starts + 1, floor, "highway.biome", problems)
+	if highway.biome < floor then
+		note(problems, "highway.biome", highway.biome, floor)
+		highway.biome = floor
+	end
+end
+
 local function versionOf(d: any): number
 	local v = tonumber(d.schemaVersion)
 	if v == nil or v ~= v or v < 1 then
@@ -755,6 +777,7 @@ function ProfileSchema.defaults(now: number): Profile
 		buyBack = {}, -- pens3 phase 7: nothing to buy back
 		bag = table.create(#PEN.coatMult - 1, 0), -- pens3 phase 8: no coating in the bag
 		food = noFood(), -- pens3 phase 9: no food
+		highway = { best = 0, biome = 1 }, -- pens3 phase 13: no throw yet, Candy Meadow
 	}
 	for _, id in PAID_BOX_IDS do
 		profile.boxOrder[id] = 0
@@ -942,6 +965,7 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 	fixGifts(d, catalog, fresh, problems) -- pens3 phase 5
 	fixSales(d, catalog, now, problems) -- pens3 phases 7-8
 	fixFood(d, problems) -- pens3 phase 9
+	fixHighway(d, problems) -- pens3 phase 13
 
 	-- Auto-clicker check (2026-10-16): the last strike (see the header).
 	local autoClick = ensureTable(d, "autoClick", function()

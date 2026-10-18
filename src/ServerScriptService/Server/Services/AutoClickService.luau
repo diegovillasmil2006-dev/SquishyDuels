@@ -31,6 +31,17 @@
 --   Kicks and bans run after the reply (deps.later); every engine call is in pcall and every outcome is logged. In
 --   Studio (RunService:IsStudio) nobody is kicked or banned: the log says what would have happened (the warning and
 --   the penalty still apply, so the check can be watched).
+-- * Pens3 phase 13 (owner 2026-10-16: "punishes step by step", "bans players with very high clicks per second"):
+--   checkThrow(player, now) -> a reason code or nil, the same for every HighwayThrow (HighwayService calls it first,
+--   before the in-flight check, so the presses made during a flight count too; the client sends every THROW press in
+--   the throw area). The same session, ladder, saved strike, enforce and penalty as squeezes (one person, one ladder:
+--   a squeeze catch's pause refuses throws and a throw catch's refuses squeezes, and the next catch of either is the
+--   next step); during the penalty a throw is refused with highway.tooFast; a catch is refused with highway.autoClick
+--   (the client's calm warning). Its own two rules, on its own window (Config.Economy.Highway.autoClick, checked by
+--   Config/ValidateHighway): rule B with that window (AutoClickRules.observe: blocks of mean gaps steady to the
+--   sub-millisecond over windowIntervals presses, none as fast as the client's cap) and the flood rule
+--   (AutoClickRules.flood: more than floodPresses inside one second, a rate our client never sends). A catch starts
+--   every window again (squeezes' and throws').
 -- * On only when Config.Net.AutoClick.enabled and Config/ValidateAutoClick finds no problem (init): a bad config never
 --   punishes anyone (logged as errors; in Studio Config.Debug.failOnInvalidConfig stops the boot, like Config.validate).
 -- Dependencies are injectable (useDeps) for unit tests; players are only table keys handed back to the dependencies.
@@ -70,10 +81,13 @@ export type Deps = {
 	inGame: (player: any) -> boolean, -- still in Players
 	later: (fn: () -> ()) -> (), -- task.defer: kicks and bans go after the reply
 	rules: () -> AutoClickRules.Rules, -- Config.Net.AutoClick
+	throwRules: () -> any, -- pens3 phase 13: Config.Economy.Highway.autoClick (the THROW presses' window)
 }
 
 type Session = {
 	state: AutoClickRules.State,
+	throwState: AutoClickRules.State, -- pens3 phase 13: rule B on the THROW presses
+	throwTimes: { number }, -- pens3 phase 13: the last second's THROW arrivals (the flood rule)
 	step: number, -- this visit's last strike (0 = none)
 	penaltyUntil: number, -- os.clock: squeezes pay nothing before it
 }
@@ -82,6 +96,8 @@ type Session = {
 
 local REASON_AUTO_CLICK = "squeeze.autoClick"
 local REASON_TOO_FAST = "squeeze.tooFast"
+local REASON_THROW_AUTO_CLICK = "highway.autoClick" -- pens3 phase 13
+local REASON_THROW_PAUSED = "highway.tooFast"
 local TEXT_KICK = "autoClick.kick"
 local TEXT_KICK_NO_BAN = "autoClick.kickNoBan"
 local TEXT_BAN = "autoClick.ban"
@@ -146,6 +162,9 @@ local function defaultDeps(): Deps
 		rules = function(): AutoClickRules.Rules
 			return (Config :: any).Net.AutoClick
 		end,
+		throwRules = function(): any
+			return (Config :: any).Economy.Highway.autoClick
+		end,
 	}
 end
 
@@ -169,6 +188,9 @@ end
 
 -- The numbers of a catch, for the logs and the ban's PrivateReason.
 local function describe(verdict: AutoClickRules.Verdict): string
+	if verdict.rule == "flood" then -- pens3 phase 13: the THROW presses
+		return string.format("throw flood: %d presses inside one second (limit %d)", verdict.value, verdict.limit)
+	end
 	return string.format(
 		"machine-regular: block spread %.2f ms (limit %.2f ms) over %d gaps, mean gap %.1f ms, %.1f s",
 		verdict.value * 1000,
@@ -242,7 +264,13 @@ end
 local function sessionOf(player: any, c: AutoClickRules.Rules): Session
 	local session = sessions[player]
 	if session == nil then
-		session = { state = AutoClickRules.newState(c), step = 0, penaltyUntil = -math.huge }
+		session = {
+			state = AutoClickRules.newState(c),
+			throwState = AutoClickRules.newState(c),
+			throwTimes = {},
+			step = 0,
+			penaltyUntil = -math.huge,
+		}
 		sessions[player] = session
 	end
 	return session
@@ -253,17 +281,21 @@ local function memoryOf(player: any): any
 	return if type(profile) == "table" then profile.autoClick else nil
 end
 
--- One catch. Returns the reason the request is refused with (nil under enforce "log": it goes on).
+-- One catch. Returns the reason the request is refused with (`refusal`: the squeeze's or the throw's; nil under
+-- enforce "log": it goes on).
 local function strike(
 	player: any,
 	session: Session,
 	verdict: AutoClickRules.Verdict,
 	now: number,
-	c: AutoClickRules.Rules
+	c: AutoClickRules.Rules,
+	refusal: string
 ): string?
 	local unixNow = deps.unixNow()
 	local full = AutoClickRules.nextStep(session.step, memoryOf(player), unixNow, c)
 	AutoClickRules.reset(session.state, c)
+	AutoClickRules.reset(session.throwState, c) -- pens3 phase 13: every window needs new proof
+	table.clear(session.throwTimes)
 	if c.enforce == "log" then
 		-- Review fix (2026-10-16): watch only. The visit keeps the step, so the log shows how far it would go.
 		session.step = full
@@ -297,7 +329,18 @@ local function strike(
 			banNow(player, step, detail, c)
 		end)
 	end
-	return REASON_AUTO_CLICK
+	return refusal
+end
+
+-- Pens3 phase 13: the THROW window, rule B's numbers from Config.Economy.Highway.autoClick (see the header).
+local function throwWindow(c: AutoClickRules.Rules, t: any): AutoClickRules.Rules
+	local window = table.clone(c :: any)
+	for _, key in { "windowIntervals", "blockIntervals", "maxMeanGapSeconds", "maxBlockSpreadSeconds" } do
+		window[key] = t[key]
+	end
+	window.burstGapSeconds = t.burstGapSeconds
+	window.maxPerSecond = t.maxPerSecond
+	return window
 end
 
 -- Public: API ----------------------------------------------------------------------------------------------------------
@@ -316,7 +359,27 @@ function AutoClickService.check(player: any, now: number): string?
 	if verdict == nil then
 		return nil
 	end
-	return strike(player, session, verdict, now, c)
+	return strike(player, session, verdict, now, c, REASON_AUTO_CLICK)
+end
+
+-- Pens3 phase 13: one HighwayThrow arrived at `now` (os.clock). nil = it may go on, else the reason it is refused with
+-- (see the header).
+function AutoClickService.checkThrow(player: any, now: number): string?
+	local c = deps.rules()
+	if offReason ~= nil or not c.enabled then
+		return nil
+	end
+	local session = sessionOf(player, c)
+	if now < session.penaltyUntil then
+		return REASON_THROW_PAUSED
+	end
+	local t = deps.throwRules()
+	local verdict = AutoClickRules.flood(session.throwTimes, now, t.floodPresses)
+		or AutoClickRules.observe(session.throwState, now, throwWindow(c, t))
+	if verdict == nil then
+		return nil
+	end
+	return strike(player, session, verdict, now, c, REASON_THROW_AUTO_CLICK)
 end
 
 -- Public: tests ----------------------------------------------------------------------------------------------------------

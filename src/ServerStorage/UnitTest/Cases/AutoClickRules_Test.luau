@@ -17,6 +17,10 @@
 --     (batch B, owner 2026-10-17; anything malformed -> 0), nextStep is one past the higher of this visit's step and
 --     the remembered one (at most the ladder's last step, MAX_STEP 5), actionFor names the steps warn / kick / ban (3
 --     and up); banSeconds: 1 day for the 1st ban, then 7 days, then 30 days, then 30 days again.
+--   * pens3 phase 13 (the THROW presses): rule B works on the throw window (Config.Economy.Highway.autoClick, a slow
+--     unattended macro at one press a second is caught, a person throwing once per landing never is); the flood rule
+--     ("flood"): more than `limit` arrivals inside one second is a catch (then the count starts again), `limit` or
+--     fewer never.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -296,6 +300,67 @@ return function(t: Context)
 			-- Without longer bans the 1st ban repeats.
 			local flat = rules({ laterBanSeconds = {} })
 			expect.equal(AutoClickRules.nextStep(0, banned(3), NOW, flat), 3)
+		end
+	)
+
+	-- Pens3 phase 13 (the THROW presses) ------------------------------------------------------------------------------
+
+	-- Config.Net.AutoClick with the throw window (Config/Highway's autoClick), as AutoClickService.checkThrow judges.
+	local function throwRules(): any
+		return rules(Config.Economy.Highway.autoClick)
+	end
+
+	t.test("pens3 phase 13: rule B on the throw window catches a macro at one press a second", function()
+		local cfg = throwRules()
+		local state = AutoClickRules.newState(cfg)
+		local verdict = nil
+		local at = T0
+		for i = 1, cfg.windowIntervals + 1 do
+			verdict = AutoClickRules.observe(state, at, cfg)
+			if i <= cfg.windowIntervals then
+				expect.equal(verdict, nil)
+			end
+			at += 1
+		end
+		expect.truthy(verdict ~= nil)
+		expect.equal((verdict :: any).rule, "regular")
+	end)
+
+	t.test("pens3 phase 13: a person throwing once per landing (a 2-4 s reaction pattern) is never caught", function()
+		local cfg = throwRules()
+		local state = AutoClickRules.newState(cfg)
+		local at = T0
+		local reactions = { 0.42, 0.61, 0.35, 0.9, 0.48, 0.55, 0.39, 1.2, 0.5, 0.66, 0.44 }
+		for i = 1, 3000 do
+			expect.equal(AutoClickRules.observe(state, at, cfg), nil)
+			at += 2.11 + reactions[(i - 1) % #reactions + 1] + 0.01 * math.sin(i)
+		end
+	end)
+
+	t.test(
+		"pens3 phase 13: flood: more than the limit inside one second is a catch; the limit or fewer never",
+		function()
+			local times: { number } = {}
+			local limit = Config.Economy.Highway.autoClick.floodPresses
+			for i = 1, limit do
+				expect.equal(AutoClickRules.flood(times, T0 + i * 0.03, limit), nil) -- the limit within a second
+			end
+			local verdict = AutoClickRules.flood(times, T0 + (limit + 1) * 0.03, limit)
+			expect.truthy(verdict ~= nil)
+			expect.equal((verdict :: any).rule, "flood")
+			expect.equal((verdict :: any).value, limit + 1)
+			expect.equal((verdict :: any).limit, limit)
+			expect.deepEqual(times, {}) -- the count starts again
+			-- The client's own most (twice its cap in a second) is never one.
+			local honest: { number } = {}
+			for i = 1, 2 * Config.Economy.Highway.autoClick.clientPressesPerSecond do
+				expect.equal(AutoClickRules.flood(honest, T0 + i * 0.045, limit), nil)
+			end
+			-- Arrivals older than a second drop out.
+			local spread: { number } = {}
+			for i = 1, 200 do
+				expect.equal(AutoClickRules.flood(spread, T0 + i * 0.05, limit), nil) -- 20 a second, for 10 s
+			end
 		end
 	)
 

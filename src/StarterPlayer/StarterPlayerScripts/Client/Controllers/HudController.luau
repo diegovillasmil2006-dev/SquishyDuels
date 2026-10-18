@@ -78,6 +78,11 @@
 --   picker under it (UI/PhoneHud; the gamepad's Down from DUEL goes to the chip while the picker is closed); the toasts
 --   at the right (UIController's phone column). The phone pieces live in UI/PhoneHud (this file keeps under Luau's 200
 --   top-level locals: it is required where it is used).
+-- * Access2 (2026-10-18): the HIGHWAY stand-in (HudFormat.NAV place "right") sits right under Settings in one column
+--   with it (Hud_SettingsColumn in Hud_Right; Diego's tile column keeps its 5 and the quest tracker follows under
+--   both), in Settings' sticker look and size, while its screen is registered (layoutRight); it opens the non-modal
+--   "highway" screen (HighwayController sends GoHighway) and is in the right column's gamepad links under Settings.
+--   Not on phones (the compact class): their buttons are Diego's call (owner 2026-10-18), so they stay as in the game.
 -- Public: leftColumn(), LEFT_ORDER, setFocusEntry(object?), setFocusTarget(key, object?), element(name), coinsAnchor(),
 -- isShown(), VisibilityChanged, LayoutChanged, layoutRects(), flyCoins(from, amount, count?), denyCoins(),
 -- setGainSource(label?), debugCoinFlight(amount), columnPlan(), ColumnPlanChanged, setColumnItem(key, present),
@@ -248,6 +253,8 @@ local rightColumn: Frame? = nil
 -- The Settings sticker's fixed-size holder in Hud_Right (its hover never moves the list).
 local settingsSlot: Frame? = nil
 local settingsButton: Button.Button? = nil
+local highwayButton: Button.Button? = nil -- access2: the HIGHWAY stand-in under Settings, in its own slot
+local highwaySlot: Frame? = nil
 local tracker: Tracker? = nil
 local trackedId: string? = nil
 local ctaWrap: Frame? = nil -- Hud_CtaWrap: the DUEL area
@@ -885,6 +892,25 @@ local function layoutRight(compact: boolean)
 		-- The slot keeps the tile's unscaled size, so its hover / press scale never moves the tracker under it.
 		setIfChanged(slot, "Size", UDim2.fromOffset(width, height))
 		setIfChanged(slot, "Visible", settings.root.Visible)
+		-- Access2: the HIGHWAY stand-in under it in the same look, as wide as its own label needs, while its screen is
+		-- registered. Not on phones: their buttons are Diego's call (owner 2026-10-18), so they stay as in the game.
+		local highway, highwayHolder, highwayItem = highwayButton, highwaySlot, HudFormat.navAt("right")[1]
+		if highway and highwayHolder and highwayItem then
+			local on = not compact and UIController.isRegistered(highwayItem.screen)
+			if on then
+				applyStickerLook(highway, iconPx, pull, "settingsLabel", false)
+				local highwayWidth = math.max(width, Button.widthFor(Strings.hud.nav.highway, nil, kind, "tile"))
+				setIfChanged(highway.root, "Size", UDim2.fromOffset(highwayWidth, height))
+				setIfChanged(highwayHolder, "Size", UDim2.fromOffset(highwayWidth, height))
+			end
+			setIfChanged(highway.root, "Visible", on)
+			setIfChanged(highwayHolder, "Visible", on)
+		end
+		local stack = slot.Parent
+		local stackList = if stack then stack:FindFirstChildOfClass("UIListLayout") else nil
+		if stackList then
+			setIfChanged(stackList, "Padding", UDim.new(0, if compact then GAP_PX else COLUMN.rightGap))
+		end
 	end
 	if compact then
 		refreshTracker() -- hides it on the compact layout
@@ -1139,6 +1165,7 @@ local function applyFocusLinks()
 		add(right, "tile:" .. id, if tile and tile.root.Parent == rightColumn then tile.root else nil)
 	end
 	add(right, "settings", if settingsButton then settingsButton.root else nil)
+	add(right, "highway", if highwayButton then highwayButton.root else nil) -- access2: under Settings
 	add(right, "tracker", if tracker then tracker.root else nil)
 	-- UI FINAL R4: the mode picker's tabs (testers, while idle).
 	local modes: { string } = {}
@@ -1548,6 +1575,49 @@ local function buildTracker(c: Cleanup.Cleanup, parent: Instance)
 	end)
 end
 
+-- Access2: the HIGHWAY stand-in (HudFormat.NAV place "right"), Settings' sticker in its own fixed-size slot under it
+-- (layoutRight sizes both, so a hover never moves the tracker).
+local function buildHighway(c: Cleanup.Cleanup, parent: Instance)
+	local item = HudFormat.navAt("right")[1]
+	if item == nil then
+		return
+	end
+	local holder: Frame = Create("Frame", {
+		Name = "Hud_HighwaySlot",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(COLUMN.settingsWidth, COLUMN.settingsHeight),
+		Visible = false,
+		LayoutOrder = 2,
+		Parent = parent,
+	})
+	local look = HUD.settings
+	local button = Button.new({
+		name = item.button,
+		text = Strings.resolve(item.textKey) or item.id,
+		kind = "tile",
+		fx = item.fx :: any,
+		accent = item.accent :: any,
+		icon = item.icon,
+		iconSize = COLUMN.settingsIconPx,
+		textKind = "D19",
+		textRole = "settingsLabel",
+		labelPull = COLUMN.settingsLabelPull,
+		iconShadow = { px = look.shadowPx, alpha = look.shadowAlpha },
+		width = COLUMN.settingsWidth,
+		height = COLUMN.settingsHeight,
+		parent = holder,
+		onActivated = function()
+			UIController.open(item.screen, item.params)
+		end,
+	})
+	button.root.AnchorPoint = Vector2.new(0.5, 0.5)
+	button.root.Position = UDim2.fromScale(0.5, 0.5)
+	button.root.Visible = false
+	c:add(button)
+	relayoutOnText(c, button)
+	highwayButton, highwaySlot = button, holder
+end
+
 local function buildRight(c: Cleanup.Cleanup, gui: ScreenGui)
 	local right: Frame = Create("Frame", {
 		Name = "Hud_Right",
@@ -1605,6 +1675,25 @@ local function buildRight(c: Cleanup.Cleanup, gui: ScreenGui)
 	relayoutOnText(c, settings)
 	settingsButton = settings
 	settingsSlot = slot
+	-- Access2: Settings and the HIGHWAY stand-in in one column (Hud_SettingsColumn takes the slot's place in Hud_Right;
+	-- on phones, a row, it holds the gear alone: the stand-in is not shown there).
+	local stack: Frame = Create("Frame", {
+		Name = "Hud_SettingsColumn",
+		BackgroundTransparency = 1,
+		AutomaticSize = Enum.AutomaticSize.XY,
+		Size = UDim2.fromOffset(0, 0),
+		LayoutOrder = slot.LayoutOrder,
+		Parent = right,
+	})
+	Theme.list(
+		Enum.FillDirection.Vertical,
+		COLUMN.rightGap,
+		stack,
+		Enum.HorizontalAlignment.Right,
+		Enum.VerticalAlignment.Top
+	)
+	slot.Parent = stack
+	buildHighway(c, stack)
 	buildTracker(c, right)
 	rightColumn = right
 end
@@ -2486,6 +2575,9 @@ function HudController.debugState(): { [string]: any }
 	if settingsButton and settingsButton.root.Visible then
 		table.insert(visibleNav, "settings")
 	end
+	if highwayButton and highwayButton.root.Visible then -- access2: the HIGHWAY stand-in
+		table.insert(visibleNav, "highway")
+	end
 	if ctaWrap and ctaWrap.Visible then
 		table.insert(visibleNav, "duel")
 	end
@@ -2672,6 +2764,7 @@ function HudController.init()
 		leftColumn, coinsHolder, coins = nil, nil, nil
 		navRow, navGrid, rightColumn, settingsButton, tracker, trackedId = nil, nil, nil, nil, nil, nil
 		settingsSlot = nil
+		highwayButton, highwaySlot = nil, nil
 		UIController.holdToast("data", nil)
 		ctaWrap, ctaScale, idleBox, duelButton, picker, search, found = nil, nil, nil, nil, nil, nil, nil
 		idleHolder, lastCtaRect = nil, nil

@@ -47,6 +47,10 @@
 -- Pens3 phase 11: PenBuyShelf's own refusal code (reason.pen.shelfMax); the SHELF SPOTS sign's title (P3D:255) and
 -- prompt; the pen screen's shelf and TOP headings with their placeholders; none of them presses a kid. Wb: the MY PEN
 -- window's shelf BUY button labels (BUY ROW / BUY TOP with the price, SHELF MAX), short and calm.
+-- Pens3 phase 13 (the throw): every HighwayThrow refusal code has a text under reason.highway; the board's LAST THROWS
+-- heading (it lists the last throws of everyone now) and its empty line; the throw texts (a distance, the landing, a
+-- new best, a new biome, the gifts, the Food Bag) exist with their placeholders; none presses a kid or names a
+-- number the Config holds.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -1136,9 +1140,43 @@ return function(t: Context)
 			expect.equal(Strings.resolve("highway.biome." .. id), text)
 		end
 		expect.equal(Strings.resolve("highway.board.title"), "LAUNCH BOARD")
-		expect.equal(Strings.resolve("highway.board.lastThrow"), "LAST THROW")
+		expect.equal(Strings.resolve("highway.board.lastThrow"), "LAST THROWS") -- pens3 phase 13: several now
 		expect.equal(Strings.resolve("highway.board.serverBest"), "SERVER BEST")
 		expect.equal(Strings.format(Strings.highway.marker.distance, { distance = "1,500" }), "1,500")
 		expect.equal(Strings.resolve("highway.marker.unit"), "studs")
+	end)
+	-- Pens3 phase 13: the throw's texts.
+	t.test("pens3 phase 13: the throw's refusal codes and texts, with their placeholders, calm", function()
+		for _, code in { "notInArea", "inFlight", "paused", "tooFast", "autoClick" } do
+			local text = Strings.resolve("reason.highway." .. code)
+			expect.truthy(type(text) == "string" and text ~= "")
+			expect.equal(Strings.reasonText("highway." .. code), text)
+		end
+		local h = Strings.highway
+		expect.equal(h.board.empty, "Walk up and throw!")
+		expect.equal(Strings.format(h.studs, { distance = "8,500" }), "8,500 studs")
+		expect.equal(Strings.format(h.flying, { biome = "BOBA LAGOON", distance = "900" }), "BOBA LAGOON: 900 studs")
+		expect.equal(
+			Strings.format(h.landed, { distance = "21", coins = "700", grip = "600" }),
+			"21 studs! +700 Coins, +600 Grip"
+		)
+		expect.equal(Strings.format(h.newBest, { distance = "328" }), "New best: 328 studs!")
+		expect.equal(Strings.format(h.reached, { biome = "BAKERY TOWN" }), "You reached BAKERY TOWN!")
+		expect.equal(
+			Strings.format(Strings.plural(1, h.gift.one, h.gift.many), { name = "Bird", count = 1 }),
+			"Bird joined your pen!"
+		)
+		expect.equal(
+			Strings.format(Strings.plural(3, h.gift.one, h.gift.many), { name = "Boba Bear", count = 3 }),
+			"3 Boba Bear squishies joined your pen!"
+		)
+		expect.equal(Strings.format(h.foodBag, { count = 2, food = "Candy Drop" }), "Food Bag: +2 Candy Drop")
+		-- Calm: no hurry, no countdown, and the auto-clicker warning names no number.
+		for _, text in { h.board.empty, h.landed, h.reached, h.foodBag, Strings.reason.highway.paused } do
+			for _, word in { "hurry", "now", "quick", "last chance", "only" } do
+				expect.falsy(string.find(string.lower(text), word, 1, true))
+			end
+		end
+		expect.falsy(string.find(Strings.reason.highway.autoClick, "%d"))
 	end)
 end

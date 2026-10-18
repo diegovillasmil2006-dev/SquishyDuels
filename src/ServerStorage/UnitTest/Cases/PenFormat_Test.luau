@@ -547,6 +547,20 @@ return function(t: Context)
 		end
 	)
 
+	-- Pens3 phase 13: the level cap is 10 a biome the highway reached (Extra.highway = the profile's highway field).
+	t.test("pens3 phase 13: the foods on sale and FEED follow the biome the highway reached", function()
+		local pen = samplePen()
+		local bakery = { best = 320, biome = 2 }
+		local view = PenFormat.view(pen, nil, false, { food = {}, coins = 1_000, highway = bakery })
+		expect.deepEqual(ids(view.foods), { "candy_drop", "butter_bun" } :: { any })
+		expect.deepEqual(ids(PenFormat.view(pen, nil, false, { food = {} }).foods), { "candy_drop" } :: { any })
+		pen.items[1].level = 10
+		local feed = PenFormat.view(pen, 1, false, { food = { butter_bun = 9 }, highway = bakery })
+		expect.equal(feed.actions[#feed.actions].reason, nil) -- Lv 10 -> 11 in Bakery Town
+		local top = PenFormat.view(pen, 1, false, { food = { butter_bun = 9 } })
+		expect.equal(top.hint, Strings.format(screen.feedTop, { level = 10 })) -- Candy Meadow's top
+	end)
+
 	t.test("view: the sell confirm of a levelled squishy says the food inside is not refunded", function()
 		local pen = shopPen()
 		pen.items[3].level = 4 -- 1 + 1 + 2 Candy Drop

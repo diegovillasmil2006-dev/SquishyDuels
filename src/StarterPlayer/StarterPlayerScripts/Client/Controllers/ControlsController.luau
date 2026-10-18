@@ -96,6 +96,12 @@
 --   its End. Phase 5 (lobby bases spec 2026-10-11 §9): a press that would squeeze is first offered to the pointer claim
 --   (setPointerClaim, one owner: CapsuleController); when it takes it (a tap on a capsule opens its card), nothing is
 --   pressed.
+-- Pens3 phase 13 (the throw on the launch deck's open area): the world context Highway, set by HighwayThrowController
+--   while the local character stands in the throw area (WorldLayout.Highway.throwArea). HighwayThrow = MouseButton1,
+--   ButtonR2 and the touch Throw button there (Medium, ignoreOverGui, as PracticeThrow); a world click there throws,
+--   never squeezes (worldPointerPresses' `practice` fact is the Practice or the Highway context). The touch buttons
+--   show on touch in it too, only Throw (touchContextAllows: Catch in a duel only, Ultimate and Dash in a duel or the
+--   practice range).
 --
 -- A handler returns true when it handled the input (Sink); anything else passes it on. Virtual presses (touch
 -- buttons, Studio AutoDriver) call the handler with input = nil.
@@ -122,7 +128,7 @@ local Theme = require(Client.UI.Theme)
 
 -- Types
 
-export type Context = "Lobby" | "Duel" | "Practice" | "Modal" | "Inspect"
+export type Context = "Lobby" | "Duel" | "Practice" | "Highway" | "Modal" | "Inspect"
 export type Handler = (inputState: Enum.UserInputState, input: InputObject?) -> boolean?
 export type TouchButton = "Throw" | "Ultimate" | "Dash" | "Catch"
 -- A screen rectangle in pixels (top-left corner and size).
@@ -134,7 +140,7 @@ export type PointerFacts = {
 	kind: Enum.UserInputType,
 	processed: boolean, -- UserInputService's gameProcessedEvent: a button, Roblox's own UI or a sinking action took it
 	onGui: boolean, -- pointerOnGui() under it (a toast or the coach card's body is no button)
-	practice: boolean, -- the Practice context is on (a click throws there)
+	practice: boolean, -- the Practice or (pens3 phase 13) the Highway context is on (a click throws there)
 	thumbZone: boolean, -- a touch in the thumbstick zone (inThumbZone)
 	onJump: boolean, -- a touch on the jump button
 	touchDown: boolean, -- a touch while an earlier world touch is still down (only the first one counts)
@@ -174,7 +180,7 @@ type TouchWidget = {
 local CAS_PREFIX = "SD_"
 local PLAYER_MODULE_WAIT_SECONDS = Config.UI.Controls.playerModuleWaitSeconds
 local OVERLAY: { [Context]: boolean } = { Modal = true, Inspect = true }
-local ALL_CONTEXTS: { Context } = { "Lobby", "Duel", "Practice", "Modal", "Inspect" }
+local ALL_CONTEXTS: { Context } = { "Lobby", "Duel", "Practice", "Highway", "Modal", "Inspect" }
 local TRIGGER_THRESHOLD = Config.Combat.Aim.triggerThreshold
 local TRIGGERS: { [Enum.KeyCode]: boolean } = { [Enum.KeyCode.ButtonR2] = true, [Enum.KeyCode.ButtonL2] = true }
 local TOUCH = Config.UI.Touch
@@ -214,8 +220,10 @@ local CATCH_DIRECTIONS: { Vector2 } =
 -- far out (checked over 21 screens from 568×320 to 3840×2160).
 local CATCH_STRETCHES: { number } = { 1, 1.35, 1.7 }
 local NO_STRETCH: { number } = { 1 }
--- Feature 1: a touch button that shows only in one context (Catch: nothing throws at you in practice).
-local TOUCH_CONTEXTS: { [string]: Context } = { Catch = "Duel" }
+-- Feature 1: a touch button that shows only in some contexts (Catch: nothing throws at you in practice). Pens3 phase
+-- 13: the Highway context shows only Throw (touchContextAllows).
+local TOUCH_CONTEXTS: { [string]: { Context } } =
+	{ Catch = { "Duel" }, Ultimate = { "Duel", "Practice" }, Dash = { "Duel", "Practice" } }
 local GAP_MARGIN_PX = 0.01 -- keeps the two round buttons at least TOUCH.gap apart after single-precision rounding
 local TOUCH_SHADE_TRANSPARENCY = 0.45 -- the cooling-down part of a round button
 local TOUCH_TEXT_SIZE = Config.UI.TextSize.Button
@@ -253,6 +261,13 @@ local ACTIONS: { [string]: ActionDef } = {
 		touch = "Throw",
 	},
 	PracticeUltimate = { context = "Practice", inputs = { Enum.KeyCode.Q, Enum.KeyCode.ButtonL2 }, touch = "Ultimate" },
+	-- Pens3 phase 13: the throw on the launch deck's open area (HighwayThrowController).
+	HighwayThrow = {
+		context = "Highway",
+		inputs = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2 },
+		ignoreOverGui = true,
+		touch = "Throw",
+	},
 	-- Spec phase 5 (user decision 2026-10-11): the dash (DashController).
 	Dash = { context = "Duel", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
 	PracticeDash = { context = "Practice", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
@@ -560,7 +575,7 @@ local function shouldShowTouch(): boolean
 		return false
 	end
 	local duel = active.Duel == true
-	local practice = active.Practice == true and blockCount == 0
+	local practice = (active.Practice == true or active.Highway == true) and blockCount == 0
 	return duel or practice
 end
 
@@ -617,8 +632,9 @@ local function refreshTouchVisibility()
 	end
 	gui.Enabled = show
 	for name, widget in touchWidgets do
-		local only = TOUCH_CONTEXTS[name] -- feature 1: Catch shows in the Duel context only
-		widget.button.Visible = show and touchAvailable[name] == true and (only == nil or active[only] == true)
+		widget.button.Visible = show
+			and touchAvailable[name] == true
+			and ControlsController.touchContextAllows(name, active :: any)
 	end
 	if show then
 		layoutTouch()
@@ -805,7 +821,7 @@ local function onPointerBegan(input: InputObject, processed: boolean)
 		kind = kind,
 		processed = processed,
 		onGui = not processed and ControlsController.pointerOnGui(guiObjectsAt(input) or {}),
-		practice = active.Practice == true,
+		practice = active.Practice == true or active.Highway == true, -- pens3 phase 13: a click throws on the deck
 		thumbZone = zone,
 		onJump = jump,
 		touchDown = touch and worldTouch ~= nil,
@@ -991,6 +1007,21 @@ function ControlsController.worldPointerPresses(f: PointerFacts): boolean
 		return false
 	end
 	return not (f.processed or f.onGui or f.practice or f.thumbZone or f.onJump or f.touchDown)
+end
+
+-- Feature 1 / pens3 phase 13: whether the touch button `button` may show while `contexts` ({[Context] = true}) are on:
+-- Catch in a duel only, Ultimate and Dash in a duel or the practice range, Throw in any (the Highway context too).
+function ControlsController.touchContextAllows(button: string, contexts: { [string]: boolean }): boolean
+	local only = TOUCH_CONTEXTS[button]
+	if only == nil then
+		return true
+	end
+	for _, context in only do
+		if contexts[context] == true then
+			return true
+		end
+	end
+	return false
 end
 
 -- Whether `point` (px in `screen`, the touch buttons' safe-inset space) is in the thumbstick zone touchLayout keeps

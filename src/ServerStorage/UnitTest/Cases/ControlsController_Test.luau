@@ -42,6 +42,10 @@
 --   is E and ButtonL1 in the Duel context (the right mouse button comes through UserInputService, as the world clicks);
 --   no other duel action takes them; the touch Catch button (catchButton × UIScale, at least minTargetFloor) sits on
 --   screen, out of the thumbstick zone and `gap` from Throw, Ultimate, Dash and the jump button.
+-- Pens3 phase 13 (the throw on the launch deck's open area): a Highway context (HighwayThrowController turns it on
+--   while the local character stands in the throw area); HighwayThrow = the left mouse button, ButtonR2 and the touch
+--   Throw button there (Medium, like PracticeThrow; a press over a button is ignored); the touch buttons show on touch
+--   in it, only Throw (Catch in a duel only, Ultimate and Dash in a duel or the practice range).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -875,5 +879,41 @@ return function(t: Context)
 		expect.near(throw.x + throw.w + touch.gap, jump.x, 1e-9)
 		expect.near(throw.y + throw.h, jump.y + jump.h, 1e-9) -- bottoms aligned
 		expect.near(throw.w, touch.throwButton, 1e-9)
+	end)
+	-- Pens3 phase 13 ------------------------------------------------------------------------------------------------
+
+	t.test("pens3 phase 13: HighwayThrow = left mouse, ButtonR2 and the touch Throw in the Highway context", function()
+		local inputs = Controls.inputsOf("HighwayThrow") :: { EnumItem }
+		expect.truthy(table.find(inputs, Enum.UserInputType.MouseButton1) ~= nil)
+		expect.truthy(table.find(inputs, Enum.KeyCode.ButtonR2) ~= nil)
+		expect.equal(Controls.contextOf("HighwayThrow"), "Highway")
+		expect.equal(Controls.priorityOfAction("HighwayThrow"), Enum.ContextActionPriority.Medium.Value)
+	end)
+
+	t.test(
+		"pens3 phase 13: the Highway context switches on and off (engine only: it refreshes the touch gui)",
+		function()
+			Controls.setContext("Highway", true)
+			expect.truthy(Controls.isContextActive("Highway"))
+			expect.truthy(table.find(Controls.activeContexts(), "Highway") ~= nil)
+			Controls.setContext("Highway", false)
+			expect.falsy(Controls.isContextActive("Highway"))
+		end
+	)
+
+	t.test("pens3 phase 13: the Highway context shows only the touch Throw button", function()
+		local highway = { Lobby = true, Highway = true }
+		expect.truthy(Controls.touchContextAllows("Throw", highway))
+		for _, button in { "Ultimate", "Dash", "Catch" } do
+			expect.falsy(Controls.touchContextAllows(button, highway))
+		end
+		local duel = { Duel = true }
+		for _, button in { "Throw", "Ultimate", "Dash", "Catch" } do
+			expect.truthy(Controls.touchContextAllows(button, duel))
+		end
+		local practice = { Lobby = true, Practice = true }
+		expect.truthy(Controls.touchContextAllows("Dash", practice))
+		expect.truthy(Controls.touchContextAllows("Ultimate", practice))
+		expect.falsy(Controls.touchContextAllows("Catch", practice)) -- nothing throws at you in practice
 	end)
 end

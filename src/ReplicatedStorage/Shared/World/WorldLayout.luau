@@ -231,6 +231,9 @@ local SECTOR_DEGREES = 360 / BASE_COUNT -- 36: the plots, and their paths, 36° 
 local BASE_GATE_RADIUS = 96 -- spec §2
 local BASE_BACK_RADIUS = 148 -- spec §2
 local BASE_DEPTH = BASE_BACK_RADIUS - BASE_GATE_RADIUS -- 52
+-- Access2 (owner 2026-10-18 "Both"): the north wall's gap, either side of the bridge's line: its 8-stud walk, the
+-- plots' 0.8 fence posts and their 1.1 caps (LobbyBuilder), with a hair to spare.
+local BRIDGE_GAP_HALF = PATH_WIDTH / 2 + 1
 
 -- Private: builders of plain data ---------------------------------------------------------------------------------
 
@@ -386,9 +389,26 @@ local Lobby = {
 	Boundaries = {
 		span("WestWall", -222, -218, -4, 60, -222, 222),
 		span("EastWall", 218, 222, -4, 60, -222, 222),
-		span("NorthWall", -218, 218, -4, 60, -222, -218),
+		-- Access2: the north wall in two, open round the bridge (bridge.gapHalf either side of its line).
+		span("NorthWallWest", -218, -BRIDGE_GAP_HALF, -4, 60, -222, -218),
+		span("NorthWallEast", BRIDGE_GAP_HALF, 218, -4, 60, -222, -218),
 		span("SouthWall", -218, 218, -4, 60, 218, 222),
 	} :: { Volume },
+	-- Access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick HIGHWAY button): the bridge
+	-- LobbyBuilder builds as Island/Bridge. PLACEHOLDER (v6 has no bridge: its deck joins the plaza, L:20-37): the
+	-- garden paths' look (Island.pathColor, `width` = PATH_WIDTH to walk) with the plots' white fence as rails. One
+	-- straight ramp along x 0 from the sea's top, 4 studs inside the north wall, through the wall's gap to the top
+	-- front edge of the deck's back step (HighwayBuilder launch_platform: box(20, 1, 1.5, 0, 0, 7) on
+	-- Highway.deck.platform, LK:158-164: Highway.origin z -300 + 35.5 + 7.75; y 0.5 + 1), so nobody steps up from it.
+	bridge = {
+		x = 0,
+		fromZ = -214,
+		fromTop = -1.6, -- the sea's top (baseSlab)
+		toZ = -256.75,
+		toTop = 1.5,
+		width = PATH_WIDTH,
+		gapHalf = BRIDGE_GAP_HALF,
+	},
 }
 
 -- Spec §2: 10 paths, 8 wide, from the stage edge across the square and the garden to each plot's gate.
@@ -1553,7 +1573,7 @@ local Arena = {
 
 -- The lobby design v6 (approved by the owner as the lobby source; work/pens3/PLAN.md "PHASE 12"): `L:n` = layout.json
 -- line n, `LK:n` / `HK:n` = lobby-kit.js / highway-kit.js line n, `K:n` = kit.json line n. The game reads the origin,
--- the deck's spots and the biome looks here; the edit-time generator SDTools HighwayBuilder builds every piece from
+-- the throw area and the biome looks here; the edit-time generator SDTools HighwayBuilder builds every piece from
 -- them (the pieces' own shapes live in the builder, each number with its design line). The biome starts and the
 -- Golden Gates are gameplay numbers: Config.Economy.Highway.
 -- Lane-local frame: origin * (x, y, z): x to the right looking down the lane, y up from the lane's foot, z = -d (d =
@@ -1573,22 +1593,8 @@ local Highway = {
 	skyLift = 1, -- L:1110, :1130, :1372, :1397, :1597: the sky biomes' markers, arches and the Golden Gates stand 1 up
 	deck = {
 		platform = Vector3.new(0, 0.5, 35.5), -- L:20 launch_platform (0, 0.5, -26.5)
-		-- L:21-30 launch_spot_01..10 on the deck top (2.5): two rows of 5, 5.625 apart (z -31.5 and -24)
-		spots = {
-			Vector3.new(-11.25, 2.5, 30.5),
-			Vector3.new(-5.625, 2.5, 30.5),
-			Vector3.new(0, 2.5, 30.5),
-			Vector3.new(5.625, 2.5, 30.5),
-			Vector3.new(11.25, 2.5, 30.5),
-			Vector3.new(-11.25, 2.5, 38),
-			Vector3.new(-5.625, 2.5, 38),
-			Vector3.new(0, 2.5, 38),
-			Vector3.new(5.625, 2.5, 38),
-			Vector3.new(11.25, 2.5, 38),
-		},
-		spotSize = Vector3.new(5.6, 0.43, 7.5), -- K:880 launch_spot
-		launcherMount = Vector3.new(0, 0.4, -2), -- LK:107, spot-local: where the player's platform launcher appears
-		playerStand = Vector3.new(0, 0.4, 3.2), -- LK:107, spot-local: where the thrower stands
+		-- Pens3 phase 13 (owner 2026-10-18: "it should be a general area where they walk up and everybody can throw"):
+		-- no launch spots any more (v6's L:21-30); the deck top is one open throw area (throwArea below).
 		watchSteps = {
 			{ position = Vector3.new(21, 0.5, 50), yaw = math.rad(38.9) }, -- L:31 watch_steps_01 (21, 0.5, -12)
 			{ position = Vector3.new(-21, 0.5, 50), yaw = math.rad(-38.9) }, -- L:32
@@ -1596,9 +1602,28 @@ local Highway = {
 		gate = Vector3.zero, -- L:33 launch_gate (0, 0, -62), turned 180°: its banner and board look at the deck
 		fences = { -10.5, -3.5, 3.5, 10.5 }, -- L:34-37 candy_fence x (z -62, not turned): between the gate's legs
 	},
-	-- The launch board's live lines (LK:172 board_screen, P3D:281-292), built empty: phase 13 fills them, SERVER BEST
-	-- from the server, LAST THROW by each client for its own throw (CHK:74).
-	boardSlots = { "LastWho", "LastDistance", "BestWho", "BestDistance" },
+	-- Pens3 phase 13: the one open throw area (owner 2026-10-15 "One big launch area where everyone throws at the same
+	-- time, with no waiting or queue"; 2026-10-18 "a general area where they walk up and everybody can throw"): the
+	-- deck top as a box, lane-local: L:20's 30 x 15 platform top (y 0.5 + its 2-stud slab, LK:159, centred 1.25 toward
+	-- the gate, as HighwayBuilder lays it), 12 studs high [P] (a standing or jumping character's root stays inside).
+	-- Anyone whose root is in it may throw (the server checks it, Config.Economy.Highway.areaMarginStuds bigger).
+	throwArea = { position = Vector3.new(0, 8.5, 34.25), size = Vector3.new(30, 12, 15) },
+	-- The launch board's live lines (LK:172 board_screen, P3D:281-292), built empty; the server writes them (pens3
+	-- phase 13, owner 2026-10-15 "The launch gate board shows the last throws and the server best"): the last
+	-- boardRows throws of anyone in the server, newest first (LastNWho / LastNDistance, N = 1 the newest), and the
+	-- server best (BestWho / BestDistance). [P] 3 rows: what the board's LAST column has room for at the design's
+	-- letter size.
+	boardRows = 3,
+	boardSlots = {
+		"Last1Who",
+		"Last1Distance",
+		"Last2Who",
+		"Last2Distance",
+		"Last3Who",
+		"Last3Distance",
+		"BestWho",
+		"BestDistance",
+	},
 	-- K:3136-3529 (the biome table) and the v6 tints (L:458-1397), in Config.Economy.Highway.starts' order.
 	biomes = {
 		{ -- 1 Candy Meadow (L:458-480)
@@ -1747,7 +1772,7 @@ local WorldLayout = {
 		SD_QuestBoard = 1,
 		SD_DailyStand = 1,
 		SD_ReturnPoint = 2,
-		SD_Boundary = #Lobby.Boundaries, -- 4 invisible walls
+		SD_Boundary = #Lobby.Boundaries, -- 5 invisible walls (access2: the north one in two, round the bridge)
 		SD_AudioZone = #AudioZones, -- lobby, squeeze, practice
 		-- Lobby background motion (§18.5.1 A8): the 4 lollipops, both gift boxes and the statue.
 		SD_Ambient = #Props.lollipops.positions + 3,
@@ -1784,8 +1809,7 @@ local WorldLayout = {
 		-- FIX 1 (2026-10-14): the lobby's halo emitters (LobbyBuilder); AmbientController lowers their Rate under
 		-- ReducedMotion.
 		Sparkle = "SD_Sparkle",
-		-- Pens3 phase 12 (HighwayBuilder): the deck's 10 launch spots (attribute Slot 1..10) and the launch board.
-		LaunchSpot = "SD_LaunchSpot",
+		-- Pens3 phase 12 (HighwayBuilder): the launch board (phase 13: no launch spots any more, owner 2026-10-18).
 		LaunchBoard = "SD_LaunchBoard",
 	},
 	Attributes = {

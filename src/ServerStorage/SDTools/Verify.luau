@@ -46,9 +46,9 @@
 --
 -- The highway (pens3 phase 12, target "highway"; the lobby design v6, `L:n` = layout.json, `K:n` = kit.json, `LK:n` =
 -- lobby-kit.js, restated): the root SD_Highway holds a Persistent "Deck" (K:7881-7883) and the 7 biome Models of L:1's
--- zones (Biome = n), each placed piece an Atomic Model with SD_Piece, at most 600 a biome (spec.txt:157); 10
--- SD_LaunchSpot spots with Slot 1..10, each with the Attachments launcher_mount and player_stand (LK:107); one
--- SD_LaunchBoard part whose live lines are built empty (CHK:74: phase 13 writes them); the gate_mascot slot; 84
+-- zones (Biome = n), each placed piece an Atomic Model with SD_Piece, at most 600 a biome (spec.txt:157); no launch
+-- spots (pens3 phase 13, owner 2026-10-18: one open throw area); one SD_LaunchBoard part whose 8 live lines (3
+-- last-throw rows and the server best) are built empty (the server writes them in play); the gate_mascot slot; 84
 -- distance markers (every 100 studs to 8,400) and one dh_golden_gates; every part anchored and untouched, none
 -- colliding outside the Deck (the lane is for squishies), none under 2 studs casting a shadow; SurfaceGuis hidden
 -- beyond 150 studs (K:7873); at most 3 lights (L:2, :4, :5), no shadows; no scripts; every SD_TextKey in Strings.
@@ -180,7 +180,7 @@ local LOBBY_TAG_COUNTS: { TagCount } = {
 	{ tag = "SD_QuestBoard", count = 1 },
 	{ tag = "SD_DailyStand", count = 1 },
 	{ tag = TAG_RETURN_POINT, count = 2 },
-	{ tag = TAG_BOUNDARY, count = 4 },
+	{ tag = TAG_BOUNDARY, count = 5 }, -- access2: the north wall is two pieces round the bridge
 	{ tag = TAG_AUDIO_ZONE, count = #AUDIO_ZONE_IDS },
 	{ tag = TAG_AMBIENT, count = AMBIENT_DECOR },
 	{ tag = TAG_BASE, count = LOBBY_BASES },
@@ -302,17 +302,23 @@ local HIGHWAY_DECK = "Deck"
 local HIGHWAY_BIOMES =
 	{ "Biome_1_CM", "Biome_2_BT", "Biome_3_BL", "Biome_4_FD", "Biome_5_LV", "Biome_6_RR", "Biome_7_DH" }
 local HIGHWAY_MAX_PIECES = 600 -- spec.txt:157 "≤ 600 placed" a biome
-local HIGHWAY_SPOTS = 10 -- K:887 "One of 10 throw spots"
-local HIGHWAY_SPOT_EMPTIES = { "launcher_mount", "player_stand" } -- LK:107
-local HIGHWAY_BOARD_SLOTS = { "LastWho", "LastDistance", "BestWho", "BestDistance" } -- P3D:286-289
+-- Pens3 phase 13 (WorldLayout.Highway.boardSlots, restated): 3 last-throw rows and the server best (P3D:286-289).
+local HIGHWAY_BOARD_SLOTS = {
+	"Last1Who",
+	"Last1Distance",
+	"Last2Who",
+	"Last2Distance",
+	"Last3Who",
+	"Last3Distance",
+	"BestWho",
+	"BestDistance",
+}
 local HIGHWAY_MARKERS = 84 -- L:476 ...: d 100 .. 8,400
 local HIGHWAY_MAX_LIGHTS = 3 -- L:2 the deck, L:4 the volcano (pens3 phase 12b's scenery), L:5 the Golden Gates
 local HIGHWAY_GUI_MAX_DISTANCE = 150 -- K:7873
-local TAG_LAUNCH_SPOT = "SD_LaunchSpot"
 local TAG_LAUNCH_BOARD = "SD_LaunchBoard"
 local ATTR_PIECE = "SD_Piece"
 local ATTR_BIOME = "Biome"
-local ATTR_SLOT = "Slot"
 
 -- WorldLayout field names accepted (see the header).
 local STATION_TABLES = { "Stations", "SqueezeStations", "stations", "squeezeStations" }
@@ -1340,39 +1346,8 @@ local function verifyHighway(report: Report, root: Instance, deps: Deps?)
 		note(report, "gates", string.format("%d Golden Gates, expected 1", gates))
 	end
 
-	-- The deck: the spots, the board, the mascot slot.
+	-- The deck: the board, the mascot slot.
 	local all = everything(root)
-	local slots: { [number]: boolean } = {}
-	local spots = tagged(all, TAG_LAUNCH_SPOT)
-	for _, spot in spots do
-		local slot = spot:GetAttribute(ATTR_SLOT)
-		if type(slot) ~= "number" or slot < 1 or slot > HIGHWAY_SPOTS or slots[slot] then
-			note(
-				report,
-				"launch spot",
-				string.format("launch spot %s has Slot %s (missing or repeated)", describe(spot), tostring(slot))
-			)
-		else
-			slots[slot] = true
-		end
-		for _, empty in HIGHWAY_SPOT_EMPTIES do
-			local attachment = spot:FindFirstChild(empty, true)
-			if attachment == nil or not attachment:IsA("Attachment") then
-				note(
-					report,
-					"launch spot",
-					string.format("launch spot %s has no %s Attachment (LK:107)", describe(spot), empty)
-				)
-			end
-		end
-	end
-	if #spots ~= HIGHWAY_SPOTS then
-		note(
-			report,
-			"launch spot",
-			string.format("%d launch spots (%s), expected %d", #spots, TAG_LAUNCH_SPOT, HIGHWAY_SPOTS)
-		)
-	end
 	local boards = tagged(all, TAG_LAUNCH_BOARD)
 	if #boards ~= 1 then
 		note(report, "board", string.format("%d launch boards (%s), expected 1", #boards, TAG_LAUNCH_BOARD))

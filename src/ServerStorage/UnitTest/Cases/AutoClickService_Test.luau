@@ -27,6 +27,13 @@
 --     catch after it (even a year later) is a longer ban: 7 days, then 30 days, then 30 days again, each with
 --     Strings autoClick.banLonger (naming the days) and the step in the PrivateReason; never in Studio; bans off: the
 --     kick with kickNoBan.
+--   * pens3 phase 13 (owner 2026-10-16: "step by step", "bans players with very high clicks per second"): the THROW
+--     presses (checkThrow) go through the same ladder: people mashing, a kid held at the client's cap and a person
+--     throwing once per landing are let through; a steady macro at one press a second or at 10 a second (rule B on the
+--     throw window) and a flood (more than floodPresses a second) are caught: highway.autoClick once, then
+--     highway.tooFast for the penalty, saved as the next step; one ladder and one pause for squeezes and throws (a
+--     squeeze catch's pause refuses throws, the next catch of either is the kick); the ban's PrivateReason names the
+--     throw rule.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -439,6 +446,98 @@ return function(t: Context)
 		machine(off, 45)
 		expect.equal(#off.bans, 0)
 		expect.deepEqual(off.kicks, { Strings.autoClick.kickNoBan })
+		finish()
+	end)
+
+	-- Pens3 phase 13: the THROW presses ---------------------------------------------------------------------------
+
+	local THROW = Config.Economy.Highway.autoClick
+
+	-- `count` throw presses `gap` seconds apart (each a list of gaps used in turn); the answers ("ok" for nil).
+	local function throwPress(world: World, count: number, gaps: { number }): { string }
+		local answers = table.create(count)
+		for i = 1, count do
+			answers[i] = AutoClickService.checkThrow(world.player, world.clock.now()) or "ok"
+			advance(world, gaps[(i - 1) % #gaps + 1])
+		end
+		return answers
+	end
+
+	t.test(
+		"pens3 phase 13: throw presses: people mashing, the client's cap and one per landing are let through",
+		function()
+			local world = fresh()
+			local mash = { 0.12, 0.095, 0.155, 0.11, 0.13, 0.1, 0.145, 0.125, 0.105, 0.14, 0.115 }
+			local mashed = throwPress(world, 3000, mash) -- about 6 minutes at 8 a second
+			expect.equal(countOf(mashed, "ok"), #mashed)
+			-- A faster kid, held at the client's cap.
+			local held = throwPress(world, 3000, { 1 / THROW.clientPressesPerSecond })
+			expect.equal(countOf(held, "ok"), #held)
+			local landings = throwPress(world, 600, { 2.6, 3.1, 2.4, 3.7, 2.9, 2.5, 4.2, 2.7 }) -- 30 minutes of throws
+			expect.equal(countOf(landings, "ok"), #landings)
+			expect.deepEqual(world.profile.autoClick, { step = 0, at = 0 })
+			expect.equal(#world.kicks + #world.bans + #world.saves, 0)
+			finish()
+		end
+	)
+
+	t.test("pens3 phase 13: a steady throw macro (1 a second) is caught: one warning, a pause, step 1", function()
+		local world = fresh()
+		local answers = throwPress(world, THROW.windowIntervals + 20, { 1 })
+		local first = table.find(answers, "highway.autoClick") :: number
+		expect.equal(first, THROW.windowIntervals + 1) -- its first full window
+		expect.equal(countOf(answers, "highway.autoClick"), 1)
+		for i = first + 1, #answers do
+			expect.equal(answers[i], "highway.tooFast") -- 19 s of the 30 s pause
+		end
+		expect.equal(world.profile.autoClick.step, 1)
+		expect.deepEqual(world.saves, { "soon" })
+		expect.equal(#world.kicks + #world.bans, 0)
+		finish()
+	end)
+
+	-- Verification fix: the usual auto-clicker default (100 ms) is slower than the client's cap, so rule B judges it.
+	t.test(
+		"pens3 phase 13: a steady throw clicker at 10 a second (the usual auto-clicker default) is caught",
+		function()
+			local world = fresh()
+			local answers = throwPress(world, THROW.windowIntervals + 5, { 0.1 })
+			expect.equal(table.find(answers, "highway.autoClick"), THROW.windowIntervals + 1) -- its first full window
+			expect.equal(world.profile.autoClick.step, 1)
+			finish()
+		end
+	)
+
+	t.test("pens3 phase 13: a flood (more than floodPresses in a second) is caught at once", function()
+		local world = fresh({ profile = { autoClick = { step = 2, at = UNIX_START - 60 } } }) -- kicked a minute ago
+		local answers = throwPress(world, THROW.floodPresses + 5, { 0.01 })
+		expect.equal(answers[THROW.floodPresses + 1], "highway.autoClick")
+		expect.equal(countOf(answers, "ok"), THROW.floodPresses)
+		expect.equal(#world.bans, 1) -- the 3rd step: the 1-day ban
+		expect.truthy(string.find(world.bans[1].PrivateReason, "flood", 1, true) ~= nil)
+		expect.equal(world.profile.autoClick.step, 3)
+		finish()
+	end)
+
+	t.test("pens3 phase 13: one ladder and one pause for squeezes and throws", function()
+		local world = fresh()
+		machine(world, 45) -- a squeeze catch: step 1 and its pause
+		expect.equal(world.profile.autoClick.step, 1)
+		expect.equal(AutoClickService.checkThrow(world.player, world.clock.now()), "highway.tooFast")
+		advance(world, AUTO.penaltySeconds)
+		throwPress(world, THROW.windowIntervals + 1, { 1 }) -- then a throw macro: the 2nd step, a kick
+		expect.equal(world.profile.autoClick.step, 2)
+		expect.deepEqual(world.kicks, { Strings.format(Strings.autoClick.kick, { hours = HOURS }) })
+		expect.equal(AutoClickService.check(world.player, world.clock.now()), "squeeze.tooFast") -- the throw's pause
+		finish()
+	end)
+
+	t.test("pens3 phase 13: enabled = false lets every throw press through", function()
+		local rules = rulesAt()
+		rules.enabled = false
+		local world = fresh({ rules = rules })
+		local answers = throwPress(world, THROW.floodPresses * 2, { 0.01 })
+		expect.equal(countOf(answers, "ok"), #answers)
 		finish()
 	end)
 

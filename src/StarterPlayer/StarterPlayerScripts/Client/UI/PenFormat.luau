@@ -37,7 +37,8 @@
 --     nil when it is locked, Rainbow, or there are not 3.
 --   holdFraction(startedAt, now) -> 0..1 over Config.UI.Pen.screen.holdSeconds.
 --   formName(item) -> string: "Golden Toast" / "Rainbow Toast" (pen.screen.formName), a plain one its name.
--- Pens3 phase 9 (food and levels; the server decides, BuyFood / Feed / FeedAll; the level cap PenMath.levelCap):
+-- Pens3 phase 9 (food and levels; the server decides, BuyFood / Feed / FeedAll; the level cap PenMath.levelCap of
+-- Extra.highway, the profile's highway field since pens3 phase 13: 10 a biome the highway reached):
 --   view(...) Extra also takes food (StateController's food counts) and foodId (a selected BUY FOOD card):
 --     - a squishy's actions end with FEED (reason: the top level, reason.pen.maxLevel, or the food it is short of,
 --       pen.screen.needFood) and its hint is its next step (feedHint "Lv N -> N+1: P <food>"; feedTop at the cap);
@@ -120,6 +121,7 @@ export type Extra = {
 	confirm: ConfirmKind?,
 	food: any?, -- pens3 phase 9
 	foodId: string?,
+	highway: any?, -- pens3 phase 13: the profile's highway field (the level cap)
 }
 export type View = {
 	spots: { Spot },
@@ -282,8 +284,7 @@ local function foodName(def: PenMath.FoodDef): string
 end
 
 -- A squishy's FEED action and its hint.
-local function feedFor(pen: any, food: any, item: Types.PenItem): (Action, string)
-	local cap = PenMath.levelCap()
+local function feedFor(pen: any, food: any, item: Types.PenItem, cap: number): (Action, string)
 	local _, refused = PenMath.feedDecision(pen, food, item.id, cap)
 	local def, pieces = PenMath.feedCost(item.level)
 	local reason: string? = if refused then Strings.reasonText(refused) else nil
@@ -311,9 +312,9 @@ local function foodLine(food: any): string
 	return if #parts > 0 then Strings.format(SCREEN.foodLine, { list = table.concat(parts, ", ") }) else SCREEN.foodNone
 end
 
-local function foodCards(food: any): { FoodCard }
+local function foodCards(food: any, cap: number): { FoodCard }
 	local cards: { FoodCard } = {}
-	for _, def in PenMath.foodsOnSale(PenMath.levelCap()) do
+	for _, def in PenMath.foodsOnSale(cap) do
 		local count = PenMath.foodCount(food, def.id)
 		table.insert(cards, {
 			id = def.id,
@@ -453,6 +454,7 @@ end
 
 function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: Extra?): View
 	local more: Extra = extra or {}
+	local cap = PenMath.levelCap(more.highway) -- pens3 phase 13
 	local placed = PenMath.placed(pen)
 	local toys = PenMath.toyBox(pen)
 	table.sort(toys, PenMath.better)
@@ -500,7 +502,7 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 		actions = {},
 		sold = soldCards(more.buyBack, more.now or 0),
 		marked = {},
-		foods = foodCards(more.food), -- pens3 phase 9
+		foods = foodCards(more.food, cap), -- pens3 phase 9
 		foodLine = foodLine(more.food),
 		shelf = shelf, -- pens3 phase 11
 		shelfHeading = if #shelf > 0
@@ -533,7 +535,7 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 			if PenFormat.fuseSet(pen, selected.id) then
 				table.insert(view.actions, { id = "fuse", text = SCREEN.fuse, kind = "secondary" })
 			end
-			local feed, hint = feedFor(pen, more.food, selected) -- pens3 phase 9
+			local feed, hint = feedFor(pen, more.food, selected, cap) -- pens3 phase 9
 			table.insert(view.actions, feed)
 			view.hint = hint
 		end
@@ -562,7 +564,7 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 				id = "feedAll",
 				text = SCREEN.feedAll,
 				kind = "secondary",
-				reason = if PenMath.feedAllPlan(pen, more.food, PenMath.levelCap()).steps == 0
+				reason = if PenMath.feedAllPlan(pen, more.food, cap).steps == 0
 					then Strings.reasonText("pen.nothingToFeed")
 					else nil,
 			},

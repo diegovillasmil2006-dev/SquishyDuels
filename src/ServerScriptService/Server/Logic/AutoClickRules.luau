@@ -14,6 +14,10 @@
 --                 (blockIntervals gaps each) have a standard deviation <= maxBlockSpreadSeconds. A full window always
 --                 starts the next one at its last request (tumbling windows: one verdict per window).
 --   reset(state, cfg?)  forgets everything (after a catch: the next catch needs new proof).
+--   flood(times, now, limit) -> Verdict?  pens3 phase 13 (the THROW presses, AutoClickService.checkThrow): records one
+--     arrival in `times` (changed in place: only the last second's are kept); "flood" when more than `limit` arrived
+--     inside one second (a rate our client never sends: only a changed client or a script), then the count starts
+--     again. Rule B on the throw presses is observe() with Config.Economy.Highway.autoClick's window numbers.
 --   memoryStep(memory, unixNow, cfg?) -> the step the profile remembers (profile.autoClick = {step, at}) while its
 --     `at` is younger than memorySeconds, else 0; a ban (step >= BAN_STEP) is never forgotten (owner 2026-10-17);
 --     anything malformed -> 0 (never punish on a broken record).
@@ -58,12 +62,12 @@ export type State = {
 	window: { number }, -- arrival times of the window being filled (at most windowIntervals + 1)
 }
 
-export type Rule = "regular"
+export type Rule = "regular" | "flood"
 export type Action = "warn" | "kick" | "ban"
 
 export type Verdict = {
 	rule: Rule,
-	value: number, -- the block spread (seconds)
+	value: number, -- the block spread (seconds); "flood": the arrivals inside the second
 	limit: number, -- the Config value it was compared with
 	count: number, -- gaps judged
 	seconds: number, -- how long they took
@@ -166,6 +170,26 @@ function AutoClickRules.observe(state: State, now: number, cfg: Rules?): Verdict
 	table.clear(window)
 	table.insert(window, now)
 	return verdict
+end
+
+function AutoClickRules.flood(times: { number }, now: number, limit: number): Verdict?
+	local kept = 0
+	for _, at in times do
+		if now - at < 1 then
+			kept += 1
+			times[kept] = at
+		end
+	end
+	for index = #times, kept + 1, -1 do
+		times[index] = nil
+	end
+	table.insert(times, now)
+	if #times <= limit then
+		return nil
+	end
+	local count = #times
+	table.clear(times)
+	return { rule = "flood", value = count, limit = limit, count = count, seconds = 1, meanGap = 1 / count }
 end
 
 function AutoClickRules.memoryStep(memory: unknown, unixNow: number, cfg: Rules?): number

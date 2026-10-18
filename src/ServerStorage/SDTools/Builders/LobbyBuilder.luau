@@ -33,8 +33,9 @@
 --
 -- Tree (station models with a prompt are Atomic and < 64 studs, so a prompt and its SurfaceGui stream together, §7.7):
 --   SD_Lobby (Model, ModelStreamingMode Default, marked SD_Generated / lobby / VERSION)
---     Island      the sea, the shallow water, the beach, the grass and its edge (spec §2, §8)
---     Boundaries  4 invisible walls at the sea's edge (SD_Boundary)
+--     Island      the sea, the shallow water, the beach, the grass and its edge (spec §2, §8); access2: Bridge, the
+--                 walk to the highway's launch deck (WorldLayout.Lobby.bridge; LobbyBuilder.bridge builds it alone)
+--     Boundaries  5 invisible walls at the sea's edge (SD_Boundary; access2: the north one in two, round the bridge)
 --     Hub         Squish Square: its floor, curb and paths (the sign owner of the painted "SQUISH SQUARE")
 --     Spawn       the medallion on the stage centre, its rim, the logo plate, the hub SpawnLocation (SD_LobbySpawn),
 --                 SpawnLamp under the tower deck
@@ -128,9 +129,10 @@ type PropPart = { kind: "block" | "cyl" | "ball" | "egg", name: string, size: Ve
 -- Constants
 
 local GENERATOR_ID = "lobby"
-local VERSION = 8 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates; 5: look upgrade;
+local VERSION = 9 -- 3: Phase 4, Squish Island; 4: Phase 6, no Grip pods, giant pads or Jelly gates; 5: look upgrade;
 -- 6: the Blender mesh library, round 1 (falls back to parts); 7: pens3 phase 1, no capsule pads or statue plinth, the
--- plot spawn faces the pen; 8: wb, the bench and the planter out of the shelf's sides (x ±15.5 -> ±17)
+-- plot spawn faces the pen; 8: wb, the bench and the planter out of the shelf's sides (x ±15.5 -> ±17); 9: access2,
+-- the bridge to the highway's launch deck and the north wall's gap for it
 local ROOT_NAME = "SD_Lobby"
 
 local SHAPE_LIBRARY_NAME = "SD_ShapeLibrary"
@@ -207,6 +209,10 @@ local BACK_WALL = Vector3.new(44, 9, 1.6) -- spec §4
 local GATE_PILLAR = Vector3.new(2, 7, 2) -- reading: dough pillars 2 wide, 7 tall
 local DONUT_TUBE = 1.3 -- reading: the arch is half a donut, its tube this thick
 local SPAWN_PAD = Vector3.new(4, 0.2, 4)
+-- Access2: the bridge to the highway (buildBridge). Readings: a 1-stud walkway; the plots' fence above, a post every
+-- 8 studs (spec §4) spread evenly from end to end.
+local BRIDGE_THICKNESS = 1
+local BRIDGE_POST_EVERY = 8
 
 -- `require` with a runtime-chosen ModuleScript (the injected Shared clone); the analyzer cannot resolve it.
 local dynamicRequire = require :: (ModuleScript) -> any
@@ -701,6 +707,68 @@ local function slab(
 	return cyl(state, parent, name, radius, height, CFrame.new(centre.X, bottom + height / 2, centre.Z), token, flags)
 end
 
+-- Access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick button): the bridge
+-- (WorldLayout.Lobby.bridge), a PLACEHOLDER (v6 has no bridge: its deck joins the plaza, L:20-37) from the lobby's own
+-- pieces: one walkway in the garden paths' colour from the sea's top inside the north wall, through the wall's gap,
+-- to the top front edge of the deck's back step, with the plots' white fence along both sides following the ramp
+-- (posts spread evenly at most BRIDGE_POST_EVERY apart, the first and last at the ends, caps in the open plot's
+-- colour, 2 rails). Built from numbers only (never Part.Position), so LobbyBuilder.bridge runs anywhere.
+local function buildBridge(state: State, parent: Instance?): Model
+	local spec = state.L.Lobby.bridge
+	local model = Prims.model("Bridge", parent, false)
+	local from = Vector3.new(spec.x, spec.fromTop, spec.fromZ)
+	local to = Vector3.new(spec.x, spec.toTop, spec.toZ)
+	local length = (to - from).Magnitude
+	local along = (to - from).Unit
+	local right = Vector3.new(1, 0, 0)
+	-- The walk's top centre line: local -Z toward the deck, local +Y square to the ramp.
+	local top = CFrame.fromMatrix((from + to) / 2, right, right:Cross(along))
+	local postX = spec.width / 2 + FENCE_POST.X / 2 -- the posts' inner faces bound the walk
+	Prims.part({
+		name = "bridge_deck",
+		-- Prims.LAYER past the posts' outer faces: flush, the tilted side and the upright posts would flicker.
+		size = Vector3.new(spec.width + 2 * FENCE_POST.X + 2 * Prims.LAYER, BRIDGE_THICKNESS, length),
+		cframe = top * CFrame.new(0, -BRIDGE_THICKNESS / 2, 0),
+		color = color(state, state.L.Island.pathColor),
+		flags = "solid",
+		parent = model,
+	})
+	local white, capColor = color(state, "LobbyTrimWhite"), color(state, state.L.Bases.openColors.full)
+	local gaps = math.ceil(length / BRIDGE_POST_EVERY - 1e-6)
+	for _, side in { -1, 1 } do
+		for k = 0, gaps do
+			local foot = from + along * (length * k / gaps) + right * (side * postX)
+			Prims.part({
+				name = "bridge_post",
+				size = FENCE_POST,
+				cframe = CFrame.new(foot + Vector3.new(0, FENCE_POST.Y / 2, 0)),
+				color = white,
+				flags = "solid",
+				parent = model,
+			})
+			Prims.part({
+				name = "bridge_cap",
+				size = FENCE_CAP,
+				cframe = CFrame.new(foot + Vector3.new(0, FENCE_POST.Y + FENCE_CAP.Y / 2, 0)),
+				color = capColor,
+				flags = "decor",
+				parent = model,
+			})
+		end
+		for _, y in FENCE_RAIL_Y do
+			Prims.part({
+				name = "bridge_rail",
+				size = Vector3.new(FENCE_RAIL, FENCE_RAIL, length),
+				cframe = top * CFrame.new(side * postX, y, 0),
+				color = white,
+				flags = "solid",
+				parent = model,
+			})
+		end
+	end
+	return model
+end
+
 -- The sea, the shallow water, the beach and the grass (spec §2, §8): the sea is WorldLayout.Lobby.baseSlab; the round
 -- layers stand on it, each top Prims.LAYER or more above the one under it. Then the boundaries at the sea's edge.
 local function buildIsland(state: State)
@@ -724,6 +792,7 @@ local function buildIsland(state: State)
 		"solid"
 	)
 	slab(state, model, "grass", I.grass.radius, bottom, I.grass.top, Vector3.zero, I.grass.color, "solid")
+	buildBridge(state, model) -- access2
 	local walls = Prims.folder("Boundaries", state.root)
 	for _, wall in L.Lobby.Boundaries do
 		local part = Prims.part({
@@ -2843,6 +2912,27 @@ function LobbyBuilder.build(ctx: BuildContext): BuildResult
 	Generated.mark(root, GENERATOR_ID, VERSION)
 	handedOver = true
 	return { ok = true, root = root, warnings = warnings, error = nil }
+end
+
+-- Access2: the bridge to the highway's launch deck (Island/Bridge) built alone and unparented from an injected Shared
+-- clone, with the finishes and render rules build() gives it: the live lobby's world script (world_access2.luau) puts
+-- it into SD_Lobby.Island in place, and the tests read it without Studio. Returns (model, nil) or (nil, why).
+function LobbyBuilder.bridge(shared: Instance): (Model?, string?)
+	local deps, depsError = loadDeps(shared)
+	if deps == nil then
+		return nil, depsError or "could not load Shared modules"
+	end
+	local ok, result = pcall(function(): Model
+		local state = { deps = deps, L = deps.WorldLayout, warnings = {} } :: any
+		local model = buildBridge(state, nil)
+		WorldLook.finish(model, deps.Palette)
+		applyRenderRules(model)
+		return model
+	end)
+	if not ok then
+		return nil, tostring(result)
+	end
+	return result, nil
 end
 
 return LobbyBuilder

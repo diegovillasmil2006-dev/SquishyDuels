@@ -13,6 +13,8 @@
 -- Pens3 phases 7-8: SellItems(ids, requestId), SellAll(requestId), BuyBack(itemId) and Fuse(a, b, c) (PenService).
 -- Pens3 phase 9: BuyFood(foodId, count, expectedPrice, requestId), Feed(itemId, requestId) and FeedAll() (PenService).
 -- Pens3 phase 11: PenBuyShelf(expectedPrice) (PenService; the SHELF SPOTS sign).
+-- Access2 (2026-10-18): GoHighway() (HighwayAccessService; the HUD's HIGHWAY button).
+-- Pens3 phase 13: HighwayThrow(clientTime) (HighwayService; the THROW on the launch deck's open throw area).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -205,6 +207,16 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	}),
 	Feed = c2s("RemoteFunction", { arg("itemId", "integer"), arg("requestId", "requestId") }),
 	FeedAll = c2s("RemoteFunction", {}),
+	-- Access2 (HighwayAccessService): moves the caller's own character onto a free point of the highway's launch deck
+	-- (the bridge's walk beside it when the deck is full; no argument: no remote names a place, a player or a spot).
+	-- data: {charged = false, savePending}.
+	GoHighway = c2s("RemoteFunction", {}),
+	-- Pens3 phase 13 (HighwayService): one throw from the launch deck's open throw area (no spot, no queue: anyone in
+	-- it, everyone at once). The server decides everything (where the caller stands, the power, the landing, the
+	-- pay); clientTime = workspace:GetServerTimeNow() at the press, checked and never trusted. The client also sends
+	-- the presses made while its squishy flies (refused with highway.inFlight), so the auto-clicker check sees the
+	-- real rhythm. data: Types.HighwayResult.
+	HighwayThrow = c2s("RemoteFunction", { arg("clientTime", "serverTime") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

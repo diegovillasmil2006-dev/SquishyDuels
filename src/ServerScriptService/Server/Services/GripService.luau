@@ -15,6 +15,10 @@
 --     doubled, no Double Grip point used. Each squeeze is one event under maxGripPerEvent, so a legit pay is never
 --     clamped at any level; a squeezes count outside 1..MatchRewards.maxSqueezes() gives nothing. The same anomaly
 --     counter, toasts and level changes as a squeeze.
+--   * addFromHighway(p, squeezes) - pens3 phase 13: the Grip of a throw's landing (HighwayService), built like
+--     addFromMatch: one own squeeze's Grip (PenMath.squeezeGrip) clamped to maxGripPerEvent, then × squeezes, so a top
+--     landing is never one clipped event; never doubled, no Double Grip point; a squeezes count outside 1..
+--     Config.Economy.Highway.pay.grip gives nothing. The same anomaly counter, toasts and level changes.
 -- Build plan Phase 6 removed slow training (the per-player tick on a pad, its bank grip.afk and Config.Grip.Afk) and
 -- the trainers (upgradeTrainer, the TrainerUpgrade RF and grip.trainer): an old save's grip.afk and grip.trainer are
 -- unknown fields nothing reads, and a grip field without them is valid. Pens3 phase 2 removed addFromCapsule (with
@@ -525,6 +529,35 @@ function GripService.addFromMatch(player: any, squeezes: number): number
 	end
 	local _, perSqueeze = MatchRewards.squeezeWorth(deps.profileOf(player))
 	local amount = clampEvent(session, perSqueeze, "match") * squeezes
+	local written = writeGrip(player, function(live: GripState): Written
+		local before = addToTotal(session, live, amount)
+		return { gain = live.total - before, before = before, after = live.total, doubled = false }
+	end)
+	if written == nil then
+		return 0 -- the session stopped taking changes
+	end
+	deps.markDirty(player, FIELD)
+	afterGain(session, written.before, written.after, written.gain)
+	return written.gain
+end
+
+-- Pens3 phase 13: the Grip of a throw's landing, `squeezes` × the Grip of one squeeze (see the header). Returns what
+-- the total really gained (0 unless ready, or for a squeezes count outside 1..Config.Economy.Highway.pay.grip).
+function GripService.addFromHighway(player: any, squeezes: number): number
+	local session = ensureSession(player)
+	local grip = readyGrip(player)
+	if grip == nil or not Config.Grip.enabled then
+		return 0
+	end
+	local most = Config.Economy.Highway.pay.grip
+	if type(squeezes) ~= "number" or squeezes ~= math.floor(squeezes) or squeezes < 1 or squeezes > most then
+		log:warn(`addFromHighway: invalid squeezes {tostring(squeezes)} for user {userIdOf(player)}; no Grip`)
+		return 0
+	end
+	if session.level == nil then
+		setLevel(session, GripMath.levelFor(grip.total), true) -- the Loaded baseline was missed: set it silently
+	end
+	local amount = clampEvent(session, PenMath.squeezeGrip(deps.profileOf(player).pen), "highway") * squeezes
 	local written = writeGrip(player, function(live: GripState): Written
 		local before = addToTotal(session, live, amount)
 		return { gain = live.total - before, before = before, after = live.total, doubled = false }

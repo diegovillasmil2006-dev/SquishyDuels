@@ -1290,6 +1290,27 @@ return function(t: Context)
 		end
 	)
 
+	-- Pens3 phase 13: the level cap is 10 a biome the highway reached (profile.highway.biome).
+	t.test("pens3 phase 13: Feed, Feed All and BuyFood follow the biome the highway reached", function()
+		local w, a = foodWorld()
+		a.pen.items[2].level = 10 -- the Butter at Candy Meadow's top
+		a.food.butter_bun = 5
+		a.highway = { best = 0, biome = 1 }
+		expectRefused(PenService.feed(w.a, 2, REQ), "pen.maxLevel")
+		expectRefused(PenService.buyFood(w.a, "butter_bun", 1, 6_400, REQ2), "food.notYet")
+		a.highway = { best = 320, biome = 2 } -- Bakery Town: Lv 20, Butter Bun on sale
+		expect.equal(PenService.feed(w.a, 2, REQ).ok, true)
+		expect.deepEqual(levelsOf(a), { 1, 11, 1 })
+		expect.equal(PenService.buyFood(w.a, "butter_bun", 1, 6_400, REQ2).ok, true)
+		expect.equal(a.food.butter_bun, 5) -- 5 - 1 fed + 1 bought
+		a.food.candy_drop = 50
+		expect.equal(PenService.feedAll(w.a).ok, true)
+		for _, level in levelsOf(a) do
+			expect.truthy(level <= 20)
+		end
+		finish()
+	end)
+
 	t.test(
 		"feed all: the pen's squishies only, the weakest first, until the food runs out; a retry finds nothing",
 		function()

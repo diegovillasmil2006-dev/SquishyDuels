@@ -7,6 +7,12 @@
 -- value (999,999 -> "999.9K", not "1.00M"; 999,999,999 -> "999.99M", not "1.00B"). Integer math only.
 -- The K/M/B/T/Qa suffixes and the comma are number notation fixed by DESIGN §2.2 and the spec, not translatable text.
 -- clock(s): elapsed time "m:ss" (minutes are not capped). For remaining time use TimeUtil.formatCountdown.
+-- Pens3 phase 13 (the throw): power(x), a float that grows far past the Coin cap (work/econ4/out5_grip110.txt's
+-- style: "4.7", "12", "1.4K", "25K", "330M", "1.6Oc", "24No"): under 10 one decimal (none on a whole number), under
+-- 1,000 whole, then the units of POWER_UNITS (K .. Ud) with one decimal under 10 of the unit and whole above, the whole
+-- Ud grouped past 1,000Ud; cut like coins (a float a hair under a whole number of its unit, 2.4e31 / 1e30 =
+-- 23.999..., still shows the whole number: CUT_SLACK). distance(studs): whole studs, cut and grouped ("8,500"); the
+-- word "studs" is Strings' (highway.studs).
 
 -- Constants
 
@@ -22,6 +28,22 @@ local BIG_UNITS: { { unit: number, suffix: string } } = {
 	{ unit = 1e15, suffix = "Qa" },
 }
 local GROUP_SEPARATOR = ","
+-- Pens3 phase 13: the power units, smallest first (G110; the short scale's names, as Coins' B / T / Qa).
+local POWER_UNITS: { { unit: number, suffix: string } } = {
+	{ unit = 1e3, suffix = "K" },
+	{ unit = 1e6, suffix = "M" },
+	{ unit = 1e9, suffix = "B" },
+	{ unit = 1e12, suffix = "T" },
+	{ unit = 1e15, suffix = "Qa" },
+	{ unit = 1e18, suffix = "Qi" },
+	{ unit = 1e21, suffix = "Sx" },
+	{ unit = 1e24, suffix = "Sp" },
+	{ unit = 1e27, suffix = "Oc" },
+	{ unit = 1e30, suffix = "No" },
+	{ unit = 1e33, suffix = "Dc" },
+	{ unit = 1e36, suffix = "Ud" },
+}
+local CUT_SLACK = 1e-9 -- relative: a float this close under a cut step counts as on it (never a whole unit more)
 local SECONDS_PER_MINUTE = 60
 
 -- Module table
@@ -88,6 +110,38 @@ function Format.coins(n: number): string
 		return string.format("%s%d.%02d%s", sign, hundredths // 100, hundredths % 100, MILLIONS_SUFFIX)
 	end
 	return sign .. bigText(whole)
+end
+
+-- Pens3 phase 13: a power (see the header). 0 or below and non-finite -> "0".
+function Format.power(x: number): string
+	if not isFinite(x) or x <= 0 then
+		return "0"
+	end
+	local value, suffix = x, ""
+	for _, big in POWER_UNITS do
+		if x * (1 + CUT_SLACK) >= big.unit then
+			value, suffix = x / big.unit, big.suffix
+		end
+	end
+	value *= 1 + CUT_SLACK
+	if value >= 1000 then
+		return groupDigits(math.floor(value)) .. suffix -- past the last unit (Ud)
+	elseif value >= 10 then
+		return string.format("%d%s", math.floor(value), suffix)
+	end
+	local tenths = math.floor(value * 10)
+	if suffix == "" and tenths % 10 == 0 then
+		return string.format("%d", tenths // 10)
+	end
+	return string.format("%d.%d%s", tenths // 10, tenths % 10, suffix)
+end
+
+-- Pens3 phase 13: whole studs, cut and grouped ("8,500"). Below 0 and non-finite -> "0".
+function Format.distance(studs: number): string
+	if not isFinite(studs) or studs <= 0 then
+		return "0"
+	end
+	return groupDigits(math.floor(studs))
 end
 
 -- Elapsed seconds as "m:ss" ("0:23", "12:05", "75:00"). Fractions are dropped; negative or non-finite -> "0:00".

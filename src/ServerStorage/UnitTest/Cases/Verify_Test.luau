@@ -294,6 +294,7 @@ local function lobbyTree(Generated: any): Model
 			{ x = -66, z = 0, size = Vector3.new(4, 60, 132) },
 			{ x = 0, z = 58, size = Vector3.new(132, 60, 4) },
 			{ x = 0, z = -58, size = Vector3.new(132, 60, 4) },
+			{ x = 0, z = -62, size = Vector3.new(4, 60, 4) }, -- access2: the lobby's north wall is two pieces now
 		}
 	do
 		newPart(root, "Boundary", spec.size, CFrame.new(spec.x, 30, spec.z), WALL):AddTag("SD_Boundary")

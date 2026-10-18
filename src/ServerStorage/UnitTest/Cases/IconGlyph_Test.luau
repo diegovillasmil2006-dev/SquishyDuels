@@ -33,6 +33,8 @@ local SPEC_ICONS = {
 	-- UI overhaul (2026-10-11).
 	"close",
 	"check",
+	-- Access2 (2026-10-18): the HUD's HIGHWAY stand-in (v6's launch-spot arrow, LK:39).
+	"highway",
 }
 
 local function countNamed(root: Instance, name: string): number

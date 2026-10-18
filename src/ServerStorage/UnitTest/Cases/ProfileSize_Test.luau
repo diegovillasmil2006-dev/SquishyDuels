@@ -11,7 +11,8 @@
 -- lock, false being the longer word; phase 11: every shelf row and the TOP spot bought and filled (placedMax placed);
 -- phases 7-8: a full buy-back list of buyBackMax sales, each a Rainbow Galaxy at the
 -- top level with the longest kind id, an id near 2^53, maxCoins paid and a GUID request, and a bag of 2^53 of every
--- coating; phase 9: every food at Food.maxPieces), and long worst-case values
+-- coating; phase 9: every food at Food.maxPieces; phase 13: the highway at the Golden Gates), and long worst-case
+-- values
 -- (36-character GUIDs, 10-digit user and product ids, counters at 2^53, fractional timers). Pass: below
 -- Config.Data.profileSizeLimitBytes (100 KB). The measured size is printed for docs/PROGRESS.md. Also checks that the
 -- maximal profile is a valid profile (sanitize changes nothing) and that the lock metadata stays under 120 characters
@@ -198,6 +199,8 @@ return function(t: Context)
 		for _, food in Config.Economy.Food.foods do
 			p.food[food.id] = Config.Economy.Food.maxPieces
 		end
+		-- Pens3 phase 13: the farthest throw and the last biome (the Golden Gates).
+		p.highway = { best = Config.Economy.Highway.gatesAt, biome = #Config.Economy.Highway.starts + 1 }
 		return p
 	end
 
@@ -240,6 +243,7 @@ return function(t: Context)
 		expect.equal(#decoded.buyBack, Config.Economy.Pen.buyBackMax)
 		expect.deepEqual(decoded.bag, p.bag) -- pens3 phase 8
 		expect.deepEqual(decoded.food, p.food) -- pens3 phase 9: string keys, whole counts
+		expect.deepEqual(decoded.highway, { best = 8500, biome = 8 }) -- pens3 phase 13
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

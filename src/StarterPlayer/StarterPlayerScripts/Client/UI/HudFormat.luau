@@ -6,6 +6,8 @@
 --                              tile column), Duel (the CTA at the top middle), Settings (the top-right gear tile),
 --                              each with the screen it opens, its stable button name (Hud_<Id>Button, §2.11), its
 --                              place, accent and icon (UI/Components/IconGlyph)
+--                              Access2 (2026-10-18): then Highway, a stand-in sticker under Settings (place "right";
+--                              not on phones)
 --   PHONE_RIGHT                Phone HUD B (the owner's pick, 2026-10-17): the tiles that sit in the top-right group
 --                              beside Settings on phones (the compact class; UI/PhoneHud moves them): Daily
 --   visibleNav(isRegistered)   the items whose screen exists (a button never opens nothing, §7.6 / acceptance 5)
@@ -165,7 +167,8 @@ local ShopFormat = require(script.Parent.ShopFormat)
 -- Types
 
 -- Where a NAV item lives on the foam HUD.
-export type NavPlace = "tile" | "cta" | "settings"
+-- Access2: "right" = in Hud_Right right under Settings (the HIGHWAY stand-in), never in the tile plans.
+export type NavPlace = "tile" | "cta" | "settings" | "right"
 
 export type NavItem = {
 	id: string,
@@ -386,6 +389,24 @@ local NAV: { NavItem } = {
 		accent = "plum", -- UI overhaul (Candy UI): the neutral plum tile
 		icon = "settings",
 		fx = "icon", -- UI FINAL R2: the Settings sticker's data-fx="icon" (H:157): 1.12, no tilt, no wiggle
+	},
+	-- Access2 (owner 2026-10-18 "Both": a quick button to the highway's launch deck, besides the bridge). A STAND-IN
+	-- until Diego draws and places one (his UI FINAL has no highway item; the phone buttons are his call, the owner
+	-- 2026-10-18): Settings' sticker look (the tile kind, its "icon" hover) right under the Settings gear, the drawn
+	-- IconGlyph "highway" (v6's launch-spot arrow, LK:39) while img.nav.highway is nil, the "yellow" accent (reading:
+	-- v6's Lemon launch spot). Under Settings, not in the tile column / row: there it would change Diego's layouts (a
+	-- 6th column sticker turns the Grip card compact at 1280 x 720; a 5th phone tile breaks his one row of 4; beside
+	-- Daily it narrows the DUEL area). Its screen is HighwayController's non-modal one, which sends GoHighway. Not on
+	-- phones (HudController.layoutRight): they stay as in the game until Diego places it.
+	{
+		id = "highway",
+		screen = "highway",
+		textKey = "hud.nav.highway",
+		button = "Hud_HighwayButton",
+		place = "right",
+		accent = "yellow",
+		icon = "highway",
+		fx = "icon",
 	},
 }
 

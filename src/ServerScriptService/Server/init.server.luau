@@ -43,6 +43,8 @@ type Module = {
 -- every squeeze (it reads profiles through StateService's data port).
 -- Practice bot (2026-10-16): BotService right after FriendDuelService (it fills a lone player's 1v1 duel through
 -- QueueService and plays through CombatService, DashService, AbilityService and DuelService).
+-- Pens3 phase 13: HighwayService (the throw for distance) right after AutoClickService, whose throw check it asks
+-- first; it pays through EconomyService and GripService (validates Config/Highway at init).
 local SERVICE_ORDER = {
 	"MonetizationService",
 	"NetService",
@@ -58,6 +60,7 @@ local SERVICE_ORDER = {
 	"GripService",
 	"PenService", -- pens3 phase 1: the pen pays every second and sells its spots (validates Config/Pen at init)
 	"AutoClickService", -- 2026-10-16: the auto-clicker check SqueezeService asks first (validates its config at init)
+	"HighwayService", -- pens3 phase 13: the throw from the launch deck (validates Config/Highway at init)
 	"SqueezeService",
 	"PracticeService",
 	"ArenaService",
@@ -73,6 +76,7 @@ local SERVICE_ORDER = {
 	"MatchMapService", -- FFA/TDM v1 (2026-10-15): Diego's maps in Workspace.DuelMaps (read once at init)
 	"MatchService", -- FFA/TDM v1: the in-server Free for All / Team Deathmatch (reads the duel services above)
 	"MatchBotService", -- 2026-10-17: the FFA / TDM match bots (after MatchService: its init hands them over)
+	"HighwayAccessService", -- access2 (2026-10-18): GoHighway, the HUD's HIGHWAY button (reads the queues above)
 	"BoxService",
 	"ShopService",
 	"QuestService",

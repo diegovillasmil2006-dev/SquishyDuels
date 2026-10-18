@@ -61,6 +61,11 @@ type Module = {
 -- server handler since PenService replaced CapsuleService; its module stays until pens3 phase 3).
 -- Pens3 phase 10: PenLookController (the gate's and the fence's motion, the own sign's glint) right after
 -- PenController, whose signState it reads.
+-- Access2 (2026-10-18): HighwayController (the HUD's HIGHWAY stand-in's screen: it sends GoHighway) after
+-- QueueController; of the controllers it requires only NetController and UIController.
+-- Pens3 phase 13: HighwayThrowController (the throw on the launch deck's open area: the THROW input, the hand, the
+-- flight, the follow camera and the stand-in HUD) right after PenLookController; of the controllers it requires the
+-- infrastructure, character and UI layers above it only.
 local CONTROLLER_ORDER = {
 	"NetController",
 	"StateController",
@@ -96,7 +101,9 @@ local CONTROLLER_ORDER = {
 	"DailyController",
 	"PenController",
 	"PenLookController",
+	"HighwayThrowController", -- pens3 phase 13: the throw for distance
 	"QueueController",
+	"HighwayController",
 	"DuelController",
 	"MatchController",
 	"MatchHudController",

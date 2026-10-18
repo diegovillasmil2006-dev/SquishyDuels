@@ -9,6 +9,7 @@
 -- Auto-clicker check (2026-10-16): AutoClick = the Config/AutoClick module (Config.Net.AutoClick; a child module, so
 -- Config/init does not grow; Config/ValidateAutoClick checks it). The client now sends fresh squeeze presses over the
 -- paid cap too (at most AutoClick.clientPressesPerSecond = 18 a second, none while replies are late).
+-- Pens3 phase 13: HighwayThrow (the throw; HighwayService).
 
 export type RemoteRate = {
 	rate: number, -- tokens refilled per second
@@ -81,6 +82,15 @@ local Net = {
 		BuyFood = { rate = 2, burst = 3, oneInFlight = true },
 		Feed = { rate = 2, burst = 3, oneInFlight = true },
 		FeedAll = { rate = 2, burst = 3, oneInFlight = true },
+		-- Access2: the HUD's HIGHWAY button: a trip every 2 s (2 quick taps pass), one at a time.
+		GoHighway = { rate = 0.5, burst = 2, oneInFlight = true },
+		-- Pens3 phase 13: the throw. Not PenBuySpot's one-a-second, one-in-flight entry: the client sends every THROW
+		-- press made in the throw area (at most Config.Economy.Highway.autoClick.clientPressesPerSecond, 12 a second,
+		-- none while a reply is late), the presses during the own flight too, so the auto-clicker check sees the real
+		-- rhythm; one throw in flight per player is HighwayService's own check (a press during a flight answers
+		-- highway.inFlight at once, nothing written). Above the client's cap, so an honest client is never limited;
+		-- with the squeeze presses' 18 it stays within Global's 30 (Config/ValidateHighway checks both).
+		HighwayThrow = { rate = 14, burst = 30 },
 		PromptCoinBundle = { rate = 0.5, burst = 1 },
 		PromptGamePass = { rate = 0.5, burst = 1 },
 		-- Burst 2: the UI re-enables the button after exactly 30 s, so with network jitter an honest second press can
