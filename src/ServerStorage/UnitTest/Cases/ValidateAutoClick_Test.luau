@@ -13,6 +13,9 @@
 -- banSeconds -1 (permanent), under an hour or not whole hours; a missing warning, kick, kickNoBan or ban text, and a
 -- kick or ban text without {hours}. A missing AutoClick table is one problem. Batch B (2026-10-17): laterBanSeconds
 -- not a list, not whole days, -1, or not longer than the ban before; a banLonger text missing or without {days}.
+-- P13v3 (owner 2026-10-18): speed not a table, speed.perSecond not a whole number >= 1, speed.seconds under 2 (one
+-- burst would count) or not whole; a missing speed warning text (reason.squeeze.superFast, reason.highway.superFast).
+-- Verification fix: no speed.maxPerRequest (the requests report seconds in a row, not presses).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -198,6 +201,38 @@ return function(t: Context)
 		expect.truthy(string.find(noDays[1], "autoClick.banLonger", 1, true) ~= nil)
 		expect.equal(#withTexts({ ["autoClick.banLonger"] = "" }), 2) -- empty, and so no {days}
 		expect.deepEqual(validate(input(), nil), {}) -- no Strings: the text checks are skipped
+	end)
+
+	t.test("p13v3: the speed rule: a whole limit, at least 2 seconds in a row", function()
+		local function speed(perSecond: any, seconds: any): (c: any) -> ()
+			return function(c: any)
+				c.Net.AutoClick.speed = { perSecond = perSecond, seconds = seconds }
+			end
+		end
+		for _, bad in { 20.5, 0, "20" } :: { any } do
+			oneProblem("speed.perSecond", speed(bad, 3))
+		end
+		for _, bad in { 1, 2.5, 0 / 0 } :: { any } do
+			oneProblem("speed.seconds", speed(20, bad))
+		end
+		oneProblem("speed", function(c: any)
+			c.Net.AutoClick.speed = "fast"
+		end)
+		local config = input()
+		config.Net.AutoClick.speed = { perSecond = 30, seconds = 2 }
+		expect.deepEqual(validate(config, Strings), {})
+	end)
+
+	t.test("p13v3: the speed rule's warnings exist", function()
+		for _, key in { "reason.squeeze.superFast", "reason.highway.superFast" } do
+			local problems = validate(input(), {
+				resolve = function(asked: string): string?
+					return if asked == key then "" else Strings.resolve(asked)
+				end,
+			})
+			expect.equal(#problems, 1)
+			expect.truthy(string.find(problems[1], key, 1, true) ~= nil)
+		end
 	end)
 
 	t.test("a missing AutoClick table is one problem", function()

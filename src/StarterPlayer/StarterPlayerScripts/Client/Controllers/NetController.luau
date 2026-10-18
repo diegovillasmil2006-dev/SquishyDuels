@@ -418,9 +418,9 @@ function NetController.equipSquishyAsync(squishyId: string): Result
 	return NetController.invokeAsync("EquipSquishy", squishyId)
 end
 
--- No argument (spec 2026-10-11 §5): the server finds the pad under the player itself.
-function NetController.squeezeRequest(): boolean
-	return NetController.fire("SqueezeRequest")
+-- Only the speed report (p13v3, Shared/PressSpeed; spec 2026-10-11 §5: the server finds the pad).
+function NetController.squeezeRequest(fastSeconds: number): boolean
+	return NetController.fire("SqueezeRequest", fastSeconds)
 end
 
 -- Public: incoming

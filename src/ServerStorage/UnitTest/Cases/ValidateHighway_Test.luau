@@ -7,8 +7,10 @@
 -- value is reported by name.
 -- Pens3 phase 13 (the throw; PLAN "PHASE 13" with the owner's corrections, work/pens3/p13v2/NOTES.md): the shipped
 -- walls are J's band (work/econ4/final_hagb_grip110.json: 1 / 14K / 330M / 16T / 1.2Qi / 62Sx / 1.6Oc, the Golden
--- Gates at 2.4e31), the power 2 x 1.1^(Grip Lv - 1) (G110:42, x1.1 fixed by the owner), the pay 70 x 1.15^(b - 1)
--- squeezes of Coins and 60 of Grip (SIM:59), the Food Bag 50 squeezes every 150 s (SIM:59), the gifts 3 Boba Bears
+-- Gates at 2.4e31), the power 2 x 1.1^(Grip Lv - 1) (G110:42, x1.1 fixed by the owner), the pay (p13v3, owner
+-- 2026-10-18: Coins by distance) 0.5 squeezes of Coins a stud and 60 of Grip a landing (SIM:59), with one stud
+-- farther always paying at least one Coin more (perStud x Pen.minSqueezeValue >= 1, checked when the copy has the Pen
+-- section), the Food Bag 50 squeezes every 150 s (SIM:59), the gifts 3 Boba Bears
 -- at Boba Lagoon, a Bird at Lava Volcano and 3 Cloud Bunnies at Divine Heaven (SIM:205), the flight P3D's
 -- (P3D:554, :575, :590; the Release marker K:5295, 0.42 s); a gift kind the catalog does not know, and every broken new
 -- value, are reported by name.
@@ -90,7 +92,7 @@ return function(t: Context)
 		expect.deepEqual(h.walls, { 1, 14_000, 330_000_000, 16e12, 1.2e18, 6.2e22, 1.6e27 })
 		expect.equal(h.gatesPower, 2.4e31)
 		expect.deepEqual(h.power, { base = 2, perGripLevel = 1.1 })
-		expect.deepEqual(h.pay, { coins = 70, biomeGain = 1.15, grip = 60 })
+		expect.deepEqual(h.pay, { perStud = 0.5, grip = 60 }) -- p13v3: Coins by distance (owner 2026-10-18)
 		expect.deepEqual(h.foodBag, { seconds = 150, squeezes = 50 })
 		expect.deepEqual(h.gifts, {
 			{ biome = 3, kind = "boba_bear", count = 3 },
@@ -120,9 +122,9 @@ return function(t: Context)
 			{ changes = { gatesPower = 1e20 }, field = "gatesPower" }, -- under the last wall
 			{ changes = { power = { base = 0, perGripLevel = 1.1 } }, field = "power.base" },
 			{ changes = { power = { base = 2, perGripLevel = 0.9 } }, field = "power.perGripLevel" },
-			{ changes = { pay = { coins = -1, biomeGain = 1.15, grip = 60 } }, field = "pay.coins" },
-			{ changes = { pay = { coins = 70, biomeGain = 0.5, grip = 60 } }, field = "pay.biomeGain" },
-			{ changes = { pay = { coins = 70, biomeGain = 1.15, grip = 6.5 } }, field = "pay.grip" },
+			{ changes = { pay = { perStud = -1, grip = 60 } }, field = "pay.perStud" },
+			{ changes = { pay = { perStud = 0 / 0, grip = 60 } }, field = "pay.perStud" },
+			{ changes = { pay = { perStud = 0.5, grip = 6.5 } }, field = "pay.grip" },
 			{ changes = { foodBag = { seconds = 0, squeezes = 50 } }, field = "foodBag.seconds" },
 			{ changes = { foodBag = { seconds = 150, squeezes = 0 / 0 } }, field = "foodBag.squeezes" },
 			{ changes = { gifts = { { biome = 9, kind = "bird", count = 1 } } }, field = "gifts[1].biome" },
@@ -196,5 +198,18 @@ return function(t: Context)
 			}),
 			"gifts[1].kind"
 		))
+	end)
+
+	t.test("p13v3: one stud farther pays at least one Coin more (perStud x Pen.minSqueezeValue >= 1)", function()
+		local function withPen(perStud: number, least: number): any
+			local copy = broken({ pay = { perStud = perStud, grip = 60 } })
+			copy.Economy.Pen = { minSqueezeValue = least }
+			return copy
+		end
+		expect.deepEqual(validate(withPen(0.5, 10)), {})
+		expect.deepEqual(validate(withPen(0.1, 10)), {})
+		expect.truthy(mentions(validate(withPen(0.05, 10)), "pay.perStud"))
+		expect.truthy(mentions(validate(withPen(0.5, 1)), "pay.perStud"))
+		expect.deepEqual(validate(broken({ pay = { perStud = 0.05, grip = 60 } })), {}) -- no Pen section: not checked
 	end)
 end

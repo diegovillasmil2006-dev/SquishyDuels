@@ -21,7 +21,10 @@
 --   * laterBanSeconds (batch B, owner 2026-10-17: the longer bans after the 1st) a list of whole numbers of days, each
 --     longer than the one before (the first longer than banSeconds), never -1;
 --   * the texts exist: reason.squeeze.autoClick (the warning), autoClick.kick and autoClick.ban (both name {hours}),
---     autoClick.kickNoBan (the kick when no ban can follow; review fix 2026-10-16), autoClick.banLonger (names {days}).
+--     autoClick.kickNoBan (the kick when no ban can follow; review fix 2026-10-16), autoClick.banLonger (names {days}),
+--     reason.squeeze.superFast and reason.highway.superFast (p13v3: the speed rule's warnings);
+--   * p13v3 (owner 2026-10-18: "Yes, above 20 a second"): speed a table; speed.perSecond a whole number >= 1;
+--     speed.seconds a whole number >= 2 (one quick burst never counts).
 
 local MIN_BLOCKS = 10
 local MAX_SPREAD = 0.01 -- seconds: anything above would call people machines
@@ -35,6 +38,8 @@ local TEXTS: { { key: string, names: string? } } = {
 	{ key = "autoClick.kickNoBan" },
 	{ key = "autoClick.ban", names = "{hours}" },
 	{ key = "autoClick.banLonger", names = "{days}" },
+	{ key = "reason.squeeze.superFast" }, -- p13v3
+	{ key = "reason.highway.superFast" },
 }
 
 local function isNumber(v: unknown): boolean
@@ -169,6 +174,19 @@ return function(config: any, strings: any?): { string }
 		laterOk,
 		`{P}.laterBanSeconds must be a list of whole days, each longer than the ban before (got {show(later)})`
 	)
+
+	-- P13v3: the speed rule.
+	local speed = c.speed
+	if type(speed) ~= "table" then
+		table.insert(problems, `{P}.speed must be a table (got {show(speed)})`)
+	else
+		local limit = speed.perSecond
+		expect(isWhole(limit) and limit >= 1, `{P}.speed.perSecond must be a whole number >= 1 (got {show(limit)})`)
+		expect(
+			isWhole(speed.seconds) and speed.seconds >= 2,
+			`{P}.speed.seconds must be a whole number >= 2, so one quick burst never counts (got {show(speed.seconds)})`
+		)
+	end
 
 	if strings ~= nil and type(strings.resolve) == "function" then
 		for _, entry in TEXTS do

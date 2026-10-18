@@ -1,7 +1,7 @@
 --!strict
 -- SqueezeService (server only). DESIGN §6.3, §17.3.1 (step 8a), §17.6 ("One source for the pad tier"),
 -- §17.9 #1-#3, §17.10 (SqueezeResult, server-time nextAt), §12 #4-#7 and #16, §2.8, §2.9 (SD_SqueezeAt).
--- SqueezeRequest() (no argument, spec 2026-10-11 §5: squeeze anywhere in the lobby) gathers the server's own facts
+-- SqueezeRequest(fastSeconds) (spec 2026-10-11 §5: squeeze anywhere in the lobby; the report: below) gathers the facts
 -- and lets the pure Logic/SqueezeRules.decide run the §6.3 order (flood guard; profile ready; a living character; not
 -- in a match; the tier; the paid-squeeze cap; the earnings limit, off as shipped). The client sends nothing: the
 -- pad comes from the server-side root position (SqueezeRules.padUnder, the "standing on it" test; a pad
@@ -13,7 +13,9 @@
 -- Auto-clicker check (2026-10-16): before anything else every request goes to AutoClickService.check(p, os.clock) (the
 -- server's own arrival time; floods included). A reason back (squeeze.autoClick on a catch, squeeze.tooFast during its
 -- penalty) is the reply at once, like any rejection: no Coins, no Grip, no stats, no token used. The
--- strikes, kicks and bans are AutoClickService's.
+-- strikes, kicks and bans are AutoClickService's. P13v3 (owner 2026-10-18: "Yes, above 20 a second"): the request's one
+-- argument, fastSeconds (the client's speed report, Shared/PressSpeed; a Net-checked integer), goes to that check only
+-- (its speed rule); nothing else reads it.
 --   * dropped (flood guard) -> nothing, no reply; a flood is logged once ([SD][abuse]) when SqueezeRules says so;
 --   * rejected -> SqueezeResult{ok = false, coins = 0, total, limit, reason, nextAt, grip = 0, gripTotal, doubled =
 --     false}; no token used before step 7 and nothing earned (squeeze.noCharacter, squeeze.inDuel, data.notReady);
@@ -99,7 +101,7 @@ export type Deps = {
 	markDirty: (player: any, field: string) -> (),
 	setSqueezeAt: (player: any, at: number) -> (),
 	reply: (player: any, result: SqueezeResult) -> (),
-	autoClick: (player: any, now: number) -> string?, -- AutoClickService.check: nil, or the reason to refuse with
+	autoClick: (player: any, now: number, fastSeconds: number?) -> string?, -- AutoClickService.check: nil, or why
 }
 
 -- One problem the stale-lobby check found.
@@ -365,9 +367,9 @@ end
 -- Public: API ----------------------------------------------------------------------------------------------------------
 
 -- Handles one SqueezeRequest (the NetService handler calls this after the §2.7 checks). Replies through deps.reply and
--- returns the reply, or nil when the flood guard dropped the request. The request carries nothing: the pad is found
--- from the server's own root position.
-function SqueezeService.request(player: any): SqueezeResult?
+-- returns the reply, or nil when the flood guard dropped the request. The request carries only `fastSeconds` (p13v3:
+-- the speed report for the auto-clicker check; nil = none): the pad is found from the server's own root position.
+function SqueezeService.request(player: any, fastSeconds: number?): SqueezeResult?
 	local now = deps.clock()
 	local osNow = deps.unixNow()
 	local serverNow = deps.serverNow()
@@ -396,7 +398,7 @@ function SqueezeService.request(player: any): SqueezeResult?
 	end
 
 	-- Auto-clicker check (2026-10-16): first, on the arrival time; a refusal uses no token of the paid cap.
-	local autoClickReason = deps.autoClick(player, now)
+	local autoClickReason = deps.autoClick(player, now, fastSeconds)
 	if autoClickReason ~= nil then
 		return reject(autoClickReason, serverNow + SqueezeRules.secondsUntilNext(session.state.bucket, now))
 	end
@@ -548,8 +550,8 @@ end
 -- Lifecycle -----------------------------------------------------------------------------------------------------------
 
 function SqueezeService.init()
-	NetService.on(REMOTE_REQUEST, function(player: Player)
-		SqueezeService.request(player)
+	NetService.on(REMOTE_REQUEST, function(player: Player, fastSeconds: number)
+		SqueezeService.request(player, fastSeconds)
 	end)
 	-- WorldService.init ran first (layer order): the lobby index is ready.
 	local tagged: { string } = {}

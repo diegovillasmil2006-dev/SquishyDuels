@@ -42,6 +42,12 @@
 --   sub-millisecond over windowIntervals presses, none as fast as the client's cap) and the flood rule
 --   (AutoClickRules.flood: more than floodPresses inside one second, a rate our client never sends). A catch starts
 --   every window again (squeezes' and throws').
+-- * P13v3 (owner 2026-10-18: "Yes, above 20 a second", squeezes and throws): check(player, now, fastSeconds?) and
+--   checkThrow(player, now, fastSeconds?) also take the request's report for the speed rule (AutoClickRules.speed,
+--   Config.Net.AutoClick.speed: the seconds in a row the client counted with more than 20 presses each, on its own
+--   clock, every press sent or not, Shared/PressSpeed; nil = none), squeezes and throws apart (each client counts its
+--   own). Its catch is a strike on the same ladder, refused with squeeze.superFast or highway.superFast (the clients'
+--   calm warnings); a catch of any rule starts every count again (the next speed catch needs 3 more seconds).
 -- * On only when Config.Net.AutoClick.enabled and Config/ValidateAutoClick finds no problem (init): a bad config never
 --   punishes anyone (logged as errors; in Studio Config.Debug.failOnInvalidConfig stops the boot, like Config.validate).
 -- Dependencies are injectable (useDeps) for unit tests; players are only table keys handed back to the dependencies.
@@ -88,6 +94,8 @@ type Session = {
 	state: AutoClickRules.State,
 	throwState: AutoClickRules.State, -- pens3 phase 13: rule B on the THROW presses
 	throwTimes: { number }, -- pens3 phase 13: the last second's THROW arrivals (the flood rule)
+	squeezeSpeed: AutoClickRules.SpeedState, -- p13v3: the speed rule on the squeeze presses
+	throwSpeed: AutoClickRules.SpeedState, -- p13v3: the speed rule on the THROW presses
 	step: number, -- this visit's last strike (0 = none)
 	penaltyUntil: number, -- os.clock: squeezes pay nothing before it
 }
@@ -98,6 +106,8 @@ local REASON_AUTO_CLICK = "squeeze.autoClick"
 local REASON_TOO_FAST = "squeeze.tooFast"
 local REASON_THROW_AUTO_CLICK = "highway.autoClick" -- pens3 phase 13
 local REASON_THROW_PAUSED = "highway.tooFast"
+local REASON_SUPER_FAST = "squeeze.superFast" -- p13v3: the speed rule's catch
+local REASON_THROW_SUPER_FAST = "highway.superFast"
 local TEXT_KICK = "autoClick.kick"
 local TEXT_KICK_NO_BAN = "autoClick.kickNoBan"
 local TEXT_BAN = "autoClick.ban"
@@ -191,6 +201,9 @@ local function describe(verdict: AutoClickRules.Verdict): string
 	if verdict.rule == "flood" then -- pens3 phase 13: the THROW presses
 		return string.format("throw flood: %d presses inside one second (limit %d)", verdict.value, verdict.limit)
 	end
+	if verdict.rule == "speed" then -- p13v3
+		return string.format("too fast: over %d presses a second for %d seconds in a row", verdict.limit, verdict.value)
+	end
 	return string.format(
 		"machine-regular: block spread %.2f ms (limit %.2f ms) over %d gaps, mean gap %.1f ms, %.1f s",
 		verdict.value * 1000,
@@ -268,6 +281,8 @@ local function sessionOf(player: any, c: AutoClickRules.Rules): Session
 			state = AutoClickRules.newState(c),
 			throwState = AutoClickRules.newState(c),
 			throwTimes = {},
+			squeezeSpeed = AutoClickRules.newSpeedState(),
+			throwSpeed = AutoClickRules.newSpeedState(),
 			step = 0,
 			penaltyUntil = -math.huge,
 		}
@@ -296,6 +311,8 @@ local function strike(
 	AutoClickRules.reset(session.state, c)
 	AutoClickRules.reset(session.throwState, c) -- pens3 phase 13: every window needs new proof
 	table.clear(session.throwTimes)
+	AutoClickRules.resetSpeed(session.squeezeSpeed) -- p13v3
+	AutoClickRules.resetSpeed(session.throwSpeed)
 	if c.enforce == "log" then
 		-- Review fix (2026-10-16): watch only. The visit keeps the step, so the log shows how far it would go.
 		session.step = full
@@ -345,8 +362,9 @@ end
 
 -- Public: API ----------------------------------------------------------------------------------------------------------
 
--- One SqueezeRequest arrived at `now` (os.clock). Returns nil when it may go on, else the reason it is refused with.
-function AutoClickService.check(player: any, now: number): string?
+-- One SqueezeRequest arrived at `now` (os.clock), reporting `fastSeconds` (p13v3; nil = none). Returns nil when it may
+-- go on, else the reason it is refused with.
+function AutoClickService.check(player: any, now: number, fastSeconds: number?): string?
 	local c = deps.rules()
 	if offReason ~= nil or not c.enabled then
 		return nil
@@ -356,15 +374,23 @@ function AutoClickService.check(player: any, now: number): string?
 		return REASON_TOO_FAST
 	end
 	local verdict = AutoClickRules.observe(session.state, now, c)
+		or AutoClickRules.speed(session.squeezeSpeed, fastSeconds, c)
 	if verdict == nil then
 		return nil
 	end
-	return strike(player, session, verdict, now, c, REASON_AUTO_CLICK)
+	return strike(
+		player,
+		session,
+		verdict,
+		now,
+		c,
+		if verdict.rule == "speed" then REASON_SUPER_FAST else REASON_AUTO_CLICK
+	)
 end
 
--- Pens3 phase 13: one HighwayThrow arrived at `now` (os.clock). nil = it may go on, else the reason it is refused with
--- (see the header).
-function AutoClickService.checkThrow(player: any, now: number): string?
+-- Pens3 phase 13: one HighwayThrow arrived at `now` (os.clock), reporting `fastSeconds` (p13v3; nil = none). nil = it
+-- may go on, else the reason it is refused with (see the header).
+function AutoClickService.checkThrow(player: any, now: number, fastSeconds: number?): string?
 	local c = deps.rules()
 	if offReason ~= nil or not c.enabled then
 		return nil
@@ -376,10 +402,12 @@ function AutoClickService.checkThrow(player: any, now: number): string?
 	local t = deps.throwRules()
 	local verdict = AutoClickRules.flood(session.throwTimes, now, t.floodPresses)
 		or AutoClickRules.observe(session.throwState, now, throwWindow(c, t))
+		or AutoClickRules.speed(session.throwSpeed, fastSeconds, c)
 	if verdict == nil then
 		return nil
 	end
-	return strike(player, session, verdict, now, c, REASON_THROW_AUTO_CLICK)
+	local refusal = if verdict.rule == "speed" then REASON_THROW_SUPER_FAST else REASON_THROW_AUTO_CLICK
+	return strike(player, session, verdict, now, c, refusal)
 end
 
 -- Public: tests ----------------------------------------------------------------------------------------------------------

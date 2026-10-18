@@ -15,6 +15,10 @@
 -- Pens3 phase 11: PenBuyShelf(expectedPrice) (PenService; the SHELF SPOTS sign).
 -- Access2 (2026-10-18): GoHighway() (HighwayAccessService; the HUD's HIGHWAY button).
 -- Pens3 phase 13: HighwayThrow(clientTime) (HighwayService; the THROW on the launch deck's open throw area).
+-- P13v3 (owner 2026-10-18: "Yes, above 20 a second"): SqueezeRequest(fastSeconds) and HighwayThrow(clientTime,
+-- fastSeconds): fastSeconds = the client's speed report (Shared/PressSpeed: the whole seconds in a row, on its own
+-- clock, with more than Config.Net.AutoClick.speed.perSecond real presses each, sent or not), an integer for
+-- AutoClickService's speed rule only.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -163,9 +167,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	ChargeStart = c2s("RemoteEvent", { arg("clientTime", "serverTime") }),
 	-- Feature 1: the catch press; the server opens the catch window at the validated press time (Logic/CatchRules).
 	CatchRequest = c2s("RemoteEvent", { arg("clientTime", "serverTime") }),
-	-- §6.3 (Logic/SqueezeRules). No argument (spec 2026-10-11 §5, squeeze anywhere): the server finds the pad under the
+	-- §6.3 (Logic/SqueezeRules). No pad id (spec 2026-10-11 §5, squeeze anywhere): the server finds the pad under the
 	-- player's own root position; the tier always comes from the server's WorldLayout, never from the client.
-	SqueezeRequest = c2s("RemoteEvent", {}), -- reply: SqueezeResult
+	SqueezeRequest = c2s("RemoteEvent", { arg("fastSeconds", "integer") }), -- reply: SqueezeResult; p13v3: the report
 	BoxOpen = c2s("RemoteFunction", { arg("boxId", "boxId"), arg("requestId", "requestId") }), -- data: BoxResult
 	AckReveal = c2s("RemoteEvent", { arg("requestId", "revealRequestId") }),
 	ShopBuy = c2s("RemoteFunction", {
@@ -216,7 +220,7 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- pay); clientTime = workspace:GetServerTimeNow() at the press, checked and never trusted. The client also sends
 	-- the presses made while its squishy flies (refused with highway.inFlight), so the auto-clicker check sees the
 	-- real rhythm. data: Types.HighwayResult.
-	HighwayThrow = c2s("RemoteFunction", { arg("clientTime", "serverTime") }),
+	HighwayThrow = c2s("RemoteFunction", { arg("clientTime", "serverTime"), arg("fastSeconds", "integer") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

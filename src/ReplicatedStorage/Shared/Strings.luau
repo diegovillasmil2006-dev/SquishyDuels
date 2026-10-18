@@ -48,6 +48,8 @@
 -- (it lists the last throws of everyone in the server now) and its empty line, highway.studs (a distance), and the
 -- stand-in throw texts (the landing, a new best, a new biome, the biome gifts, the Food Bag). Calm: no "now", no
 -- countdown; the auto-clicker warning names no number.
+-- P13v3 (owner 2026-10-18: "Yes, above 20 a second", [P] texts): reason.squeeze.superFast and reason.highway.superFast,
+-- the speed rule's calm warnings (AutoClickService; no number, no "now").
 
 export type FormatArgs = { [string]: any }
 
@@ -143,6 +145,9 @@ local Strings = {
 			-- Auto-clicker check (2026-10-16): the short warning of the first catch (once; the client shows it as a
 			-- toast and stops a hold). The next catch is a kick (autoClick.kick).
 			autoClick = "Robot-fast squeezes don't count! Turn off any auto-clicker, or you'll be removed from the game.",
+			-- P13v3: the speed rule's warning (more than 20 presses a second for 3 s), shown once like autoClick.
+			superFast = "Super-fast squeezes don't count! Turn off any auto-clicker, or you'll be removed from the "
+				.. "game.",
 		},
 		box = {
 			checking = "Checking box availability…",
@@ -210,6 +215,8 @@ local Strings = {
 			tooFast = "Throwing is paused for a little while.",
 			autoClick = "Robot-steady throws don't count! Turn off any auto-clicker, or you'll be removed from the "
 				.. "game.",
+			-- P13v3: the speed rule's warning on the THROW presses, shown like autoClick.
+			superFast = "Super-fast throws don't count! Turn off any auto-clicker, or you'll be removed from the game.",
 		},
 	},
 

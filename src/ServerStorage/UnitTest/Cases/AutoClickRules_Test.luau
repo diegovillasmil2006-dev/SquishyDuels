@@ -21,6 +21,14 @@
 --     unattended macro at one press a second is caught, a person throwing once per landing never is); the flood rule
 --     ("flood"): more than `limit` arrivals inside one second is a catch (then the count starts again), `limit` or
 --     fewer never.
+--   * p13v3 (owner 2026-10-18: "Yes, above 20 a second"), the speed rule ("speed", Config.Net.AutoClick.speed): a
+--     request's report (the seconds in a row the client counted with more than 20 presses each, Shared/PressSpeed) of
+--     3 or more is a catch, then the next catch needs 3 more (one per 3 new seconds, never one per request); a lower
+--     report (that run ended) starts again; a broken one is none; resetSpeed (a catch of any rule) needs 3 more too.
+--     End to end through either client (verification fix: counted on the client's own clock, a 2.5 s network stall
+--     every 20 s changes nothing): auto-clickers at 25-1000 a second are caught within 5 s (10 s with the stalls),
+--     people mashing up to 18 a second (one finger, F + E, F + E + a click), exactly 20 and a steady 19.5 a second
+--     never are. (Rule B's cases above still hold: the rhythm alone never strikes.)
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -36,6 +44,7 @@ return function(t: Context)
 	local expect = t.expect
 	local AutoClickRules = t.requireServer("Logic/AutoClickRules")
 	local Config = t.requireShared("Config")
+	local PressSpeed = t.requireShared("PressSpeed") -- p13v3: the clients' count
 
 	local function rules(overrides: { [string]: any }?): any
 		local copy = table.clone(Config.Net.AutoClick)
@@ -377,4 +386,176 @@ return function(t: Context)
 		expect.equal(AutoClickRules.banSeconds(4, rules({ laterBanSeconds = "garbage" })), 86400)
 		expect.equal(AutoClickRules.banSeconds(5), 2592000) -- the live config
 	end)
+
+	-- P13v3 (owner 2026-10-18: "Yes, above 20 a second", squeezes and throws): the speed rule -------------------------
+	-- Verification fix: the clients count every press on their own clock (Shared/PressSpeed, PressSpeed_Test) and each
+	-- request reports the seconds in a row over the line; the server catches a report of speed.seconds or more.
+
+	t.test("p13v3: the live speed rule is the owner's: more than 20 presses a second, 3 seconds in a row", function()
+		expect.deepEqual(Config.Net.AutoClick.speed, { perSecond = 20, seconds = 3 })
+	end)
+
+	-- The verdicts of one state fed `reports` in order: the verdict's value, or "-" for none.
+	local function verdicts(cfg: any, reports: { any }): { string }
+		local state = AutoClickRules.newSpeedState()
+		local out = {}
+		for _, n in reports do
+			local verdict = AutoClickRules.speed(state, n, cfg)
+			table.insert(out, if verdict then tostring(verdict.value) else "-")
+		end
+		return out
+	end
+
+	t.test(
+		"p13v3: speed: a report of `seconds` in a row or more is a catch; the next one needs `seconds` more",
+		function()
+			local cfg = rules()
+			local verdict = AutoClickRules.speed(AutoClickRules.newSpeedState(), 3, cfg)
+			expect.equal(verdict.rule, "speed")
+			expect.equal(verdict.value, 3)
+			expect.equal(verdict.limit, 20)
+			expect.equal(verdict.seconds, 3)
+			-- One a send, several sends a second: one catch per 3 new seconds over the line, never one per send.
+			local got = verdicts(cfg, { 0, 1, 2, 2, 3, 3, 3, 4, 5, 5, 6, 7, 9 })
+			expect.deepEqual(got, { "-", "-", "-", "-", "3", "-", "-", "-", "-", "-", "6", "-", "9" })
+		end
+	)
+
+	t.test("p13v3: speed: a lower report (that run ended) starts again; a broken one counts as none", function()
+		local got = verdicts(rules(), { 3, 4, 1, 2, 3, 0, 0 / 0, "5", -4, math.huge, 2, 3 } :: { any })
+		expect.deepEqual(got, { "3", "-", "-", "-", "3", "-", "-", "-", "-", "-", "-", "3" })
+	end)
+
+	t.test("p13v3: speed: resetSpeed (a catch of any rule) makes the next speed catch need `seconds` more", function()
+		local cfg = rules()
+		local state = AutoClickRules.newSpeedState()
+		expect.equal(AutoClickRules.speed(state, 2, cfg), nil)
+		AutoClickRules.resetSpeed(state)
+		expect.equal(AutoClickRules.speed(state, 3, cfg), nil)
+		expect.equal(AutoClickRules.speed(state, 4, cfg), nil)
+		expect.truthy(AutoClickRules.speed(state, 5, cfg) ~= nil)
+	end)
+
+	-- Both clients, end to end: every press goes into PressSpeed on the client's own clock; a press is sent while fewer
+	-- than `capacity` sends fall inside the last second and no reply is over `late` s late (the squeeze client also
+	-- sends `trickle` inside any 0.9 s: its paid cap), reporting the peak. The network takes 0.1 s each way; anything
+	-- inside a stall arrives at its end, in order. Returns the sends in the order the server gets them.
+	local function reported(
+		presses: { number },
+		capacity: number,
+		late: number,
+		trickle: number,
+		stalls: { { number } }
+	): { any }
+		local function arrive(at: number): number
+			for _, s in stalls do
+				if at >= s[1] and at < s[2] then
+					return s[2]
+				end
+			end
+			return at
+		end
+		local client = PressSpeed.new()
+		local sends: { any } = {}
+		for _, at in presses do
+			PressSpeed.press(client, at)
+			local inSecond, inPaid, waiting = 0, 0, false
+			for i = #sends, 1, -1 do
+				local s = sends[i]
+				if at - s.sentAt > 10 then
+					break
+				end
+				if s.sentAt > at - 1 then
+					inSecond += 1
+					if s.sentAt > at - 0.9 then
+						inPaid += 1
+					end
+				end
+				waiting = waiting or (s.replyAt > at and at - s.sentAt > late)
+			end
+			if inPaid < trickle or (inSecond < capacity and not waiting) then
+				local arrival = arrive(at + 0.1)
+				table.insert(
+					sends,
+					{ sentAt = at, arrival = arrival, replyAt = arrive(arrival + 0.1), report = client.peak }
+				)
+				PressSpeed.sent(client)
+			end
+		end
+		return sends
+	end
+
+	-- The seconds from the first press to the arrival of the report the server catches, or nil.
+	local function caughtAfter(sends: { any }, cfg: any): number?
+		local state = AutoClickRules.newSpeedState()
+		for _, s in sends do
+			if AutoClickRules.speed(state, s.report, cfg) ~= nil then
+				return s.arrival - sends[1].sentAt
+			end
+		end
+		return nil
+	end
+
+	local GATES: { { any } } = { { 18, 0.95, 2, "squeeze" }, { 12, 1, 0, "throw" } } -- capacity, late, trickle, name
+
+	-- A 2.5 s stall every 20 s for 10 minutes (bad wifi).
+	local function stalling(): { { number } }
+		local stalls = {}
+		for k = 0, 29 do
+			table.insert(stalls, { T0 + 7.3 + 20 * k, T0 + 9.8 + 20 * k })
+		end
+		return stalls
+	end
+
+	t.test("p13v3: auto-clickers at 25 to 1000 a second through either client are caught, stalls or not", function()
+		local cfg = rules()
+		expect.equal(GATES[1][1], cfg.clientPressesPerSecond)
+		expect.equal(GATES[2][1], Config.Economy.Highway.autoClick.clientPressesPerSecond)
+		for _, gate in GATES do
+			for _, perSecond in { 25, 30, 50, 100, 1000 } do
+				local presses = steady(perSecond * 30, 1 / perSecond, onFrame)
+				local after = caughtAfter(reported(presses, gate[1], gate[2], gate[3], {}), cfg)
+				if after == nil or after > 5 then
+					error(`{perSecond}/s through the {gate[4]} client was caught after {tostring(after)} s`)
+				end
+				local stalled = caughtAfter(reported(presses, gate[1], gate[2], gate[3], stalling()), cfg)
+				if stalled == nil or stalled > 10 then
+					error(`{perSecond}/s through the {gate[4]} client, stalling: caught after {tostring(stalled)} s`)
+				end
+			end
+		end
+	end)
+
+	t.test(
+		"p13v3: people mashing up to 18 a second through either client are never caught, with 2.5 s stalls too",
+		function()
+			local cfg = rules()
+			-- (Counted by the server's arrival second, 4 of the first 4 cases' 40 runs were caught: verification fix.)
+			local cases = {
+				{ sources = 1, perSecond = 16, cv = 0.25 },
+				{ sources = 1, perSecond = 17, cv = 0.25 },
+				{ sources = 1, perSecond = 18, cv = 0.25 },
+				{ sources = 3, perSecond = 6, cv = 0.3 }, -- F + E + a click
+				{ sources = 1, perSecond = 17.5, cv = 0.08 },
+				{ sources = 2, perSecond = 9, cv = 0.12 }, -- F + E
+			}
+			for _, gate in GATES do
+				for i, case in cases do
+					for seed = 1, 5 do
+						local presses = mashing(case.sources, case.perSecond, case.cv, 600, 7000 + 100 * i + seed)
+						local after = caughtAfter(reported(presses, gate[1], gate[2], gate[3], stalling()), cfg)
+						if after ~= nil then
+							local who = `{case.sources} x {case.perSecond}/s (cv {case.cv}, seed {seed})`
+							error(`{who}, {gate[4]}: caught after {after} s`)
+						end
+					end
+				end
+				-- Exactly 20 and a steady 19.5 a second (a machine just under the line) for 10 minutes: never.
+				for _, perSecond in { 20, 19.5 } do
+					local presses = steady(math.floor(perSecond * 600), 1 / perSecond)
+					expect.equal(caughtAfter(reported(presses, gate[1], gate[2], gate[3], stalling()), cfg), nil)
+				end
+			end
+		end
+	)
 end

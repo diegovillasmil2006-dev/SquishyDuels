@@ -34,6 +34,12 @@
 --     highway.tooFast for the penalty, saved as the next step; one ladder and one pause for squeezes and throws (a
 --     squeeze catch's pause refuses throws, the next catch of either is the kick); the ban's PrivateReason names the
 --     throw rule.
+--   * p13v3 (owner 2026-10-18: "Yes, above 20 a second"): check / checkThrow take the request's report (the seconds in
+--     a row the client counted with more than 20 presses each, Shared/PressSpeed); more than 20 a second for 3 s in a
+--     row is caught on the same ladder (squeeze.superFast / highway.superFast once, then the pause; a ban's
+--     PrivateReason names the presses a second); exactly 20 a second, a kid's 2 s burst at 25 a second, squeezes and
+--     throws at about 16 a second each at once, a request without a report, and the check switched off are let
+--     through; a catch of either kind starts the other's count again (its next catch needs 3 more seconds).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -548,6 +554,125 @@ return function(t: Context)
 		machine(world, 45)
 		expect.deepEqual(world.kicks, { Strings.autoClick.kickNoBan })
 		expect.equal(string.find(Strings.autoClick.kickNoBan, "hours", 1, true), nil)
+		finish()
+	end)
+
+	-- P13v3 (owner 2026-10-18: "Yes, above 20 a second"): the speed rule on the clients' reports ---------------------
+
+	local PressSpeed = t.requireShared("PressSpeed")
+
+	-- `seconds` of a client pressing `perSecond` times a second (evenly, on the test's clock) and sending every
+	-- (perSecond // sends)-th press with its PressSpeed report (kind "squeeze": check, "throw": checkThrow); the
+	-- answers ("ok" for nil).
+	local function counted(world: World, kind: string, seconds: number, sends: number, perSecond: number): { string }
+		local client = PressSpeed.new()
+		local every = perSecond // sends
+		local answers = {}
+		for i = 1, math.floor(seconds * perSecond) do
+			local now = world.clock.now()
+			PressSpeed.press(client, now)
+			if i % every == 0 then
+				local answer = if kind == "squeeze"
+					then AutoClickService.check(world.player, now, client.peak)
+					else AutoClickService.checkThrow(world.player, now, client.peak)
+				PressSpeed.sent(client)
+				table.insert(answers, answer or "ok")
+			end
+			advance(world, 1 / perSecond)
+		end
+		return answers
+	end
+
+	t.test("p13v3: squeezes above 20 a second for 3 s: squeeze.superFast once, the pause, step 1", function()
+		local world = fresh()
+		-- A 36-a-second auto-clicker through the client's 18 sends a second.
+		local answers = counted(world, "squeeze", 10, AUTO.clientPressesPerSecond, 36)
+		local first = table.find(answers, "squeeze.superFast") :: number
+		expect.truthy(first ~= nil)
+		expect.truthy(first <= 4 * AUTO.clientPressesPerSecond) -- inside the first 4 s (the clock starts mid-second)
+		expect.equal(countOf(answers, "squeeze.superFast"), 1)
+		expect.equal(countOf(answers, "ok"), first - 1)
+		for i = first + 1, #answers do
+			expect.equal(answers[i], "squeeze.tooFast") -- the rest of the 10 s is inside the 30 s pause
+		end
+		expect.equal(world.profile.autoClick.step, 1)
+		expect.deepEqual(world.saves, { "soon" })
+		expect.equal(#world.kicks + #world.bans, 0)
+		finish()
+	end)
+
+	t.test("p13v3: throw presses above 20 a second for 3 s: highway.superFast; the ban names the speed", function()
+		local world = fresh({ profile = { autoClick = { step = 2, at = UNIX_START - 60 } } }) -- kicked a minute ago
+		local answers = counted(world, "throw", 10, THROW.clientPressesPerSecond, 36)
+		local first = table.find(answers, "highway.superFast") :: number
+		expect.truthy(first ~= nil and first <= 4 * THROW.clientPressesPerSecond)
+		expect.equal(answers[first + 1], "highway.tooFast")
+		expect.equal(world.profile.autoClick.step, 3)
+		expect.equal(#world.bans, 1) -- the 3rd step: the 1-day ban
+		expect.truthy(string.find(world.bans[1].PrivateReason, "presses a second", 1, true) ~= nil)
+		finish()
+	end)
+
+	t.test("p13v3: at most 20 a second, a 2 s burst, or squeezes and throws at once are let through", function()
+		local world = fresh()
+		local exact = counted(world, "squeeze", 120, 20, 20) -- exactly 20 a second for 2 minutes
+		expect.equal(countOf(exact, "ok"), #exact)
+		advance(world, 5)
+		local burst = counted(world, "throw", 2, 25, 25) -- a kid's 25 a second (F + E + a click), for 2 s
+		expect.equal(countOf(burst, "ok"), #burst)
+		advance(world, 5)
+		-- A kid mashing F (squeezes) and clicking on the deck (throws), about 16 a second each for 2 minutes: 32 a
+		-- second in all, but each client counts its own presses.
+		local squeezes, throws = PressSpeed.new(), PressSpeed.new()
+		local pattern = { 0.12, 0.095, 0.155, 0.11, 0.13, 0.1, 0.145, 0.125, 0.105, 0.14, 0.115 }
+		for i = 1, 1000 do
+			local now = world.clock.now()
+			PressSpeed.press(squeezes, now)
+			PressSpeed.press(squeezes, now + 0.05)
+			PressSpeed.press(throws, now + 0.01)
+			PressSpeed.press(throws, now + 0.06)
+			expect.equal(AutoClickService.check(world.player, now, squeezes.peak), nil)
+			expect.equal(AutoClickService.checkThrow(world.player, now + 0.01, throws.peak), nil)
+			advance(world, pattern[(i - 1) % #pattern + 1] + 0.003 * math.sin(i))
+		end
+		advance(world, 5)
+		-- A request without a report (an older caller) or a broken one counts as none.
+		for _, broken in { 0 / 0, "9", -5 } :: { any } do
+			expect.equal(AutoClickService.check(world.player, world.clock.now(), broken), nil)
+		end
+		expect.deepEqual(world.profile.autoClick, { step = 0, at = 0 })
+		expect.equal(#world.kicks + #world.bans + #world.saves, 0)
+		finish()
+	end)
+
+	t.test("p13v3: a catch of either kind starts the other's speed count again (3 more seconds in a row)", function()
+		for _, first in { "squeeze", "throw" } do
+			local world = fresh()
+			local function report(kind: string, n: number): string?
+				local now = world.clock.now()
+				return if kind == "squeeze"
+					then AutoClickService.check(world.player, now, n)
+					else AutoClickService.checkThrow(world.player, now, n)
+			end
+			local other = if first == "squeeze" then "throw" else "squeeze"
+			local refusal = if other == "squeeze" then "squeeze.superFast" else "highway.superFast"
+			expect.equal(report(other, 2), nil) -- 2 seconds over the line so far
+			expect.truthy(report(first, 3) ~= nil) -- a catch of the other kind: the warning and the pause
+			advance(world, AUTO.penaltySeconds + 1)
+			expect.equal(report(other, 3), nil) -- not 3 new seconds yet
+			expect.equal(report(other, 4), nil)
+			expect.equal(report(other, 5), refusal) -- the next step: the kick
+			expect.equal(#world.kicks, 1)
+			finish()
+		end
+	end)
+
+	t.test("p13v3: the speed rule is off with the check (enabled = false)", function()
+		local rules = rulesAt()
+		rules.enabled = false
+		local world = fresh({ rules = rules })
+		local answers = counted(world, "squeeze", 10, AUTO.clientPressesPerSecond, 36)
+		expect.equal(countOf(answers, "ok"), #answers)
 		finish()
 	end)
 end

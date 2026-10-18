@@ -9,6 +9,8 @@
 --   * seq numbers count up by one per remote, independently for ThrowRequest and UltimateRequest;
 --   * before connecting nothing is sent: fire() returns false and invokeAsync() returns `error.connect` at once;
 --     a call of the wrong kind or with bad arguments is refused locally (`net.invalid`).
+--   * p13v3 (owner 2026-10-18: "Yes, above 20 a second"): SqueezeRequest(fastSeconds) and HighwayThrow(clientTime,
+--     fastSeconds) carry the client's speed report (Shared/PressSpeed): a whole number, never missing.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -70,6 +72,18 @@ return function(t: Context)
 				error(`{name} accepted one argument too many`)
 			end
 		end
+	end)
+
+	t.test("p13v3: SqueezeRequest and HighwayThrow carry the speed report: a whole number, never missing", function()
+		expect.equal(check("SqueezeRequest", 3), nil)
+		expect.equal(check("SqueezeRequest", 0), nil)
+		expect.truthy(check("SqueezeRequest"))
+		expect.truthy(check("SqueezeRequest", 2.5))
+		expect.truthy(check("SqueezeRequest", "squeeze_09"))
+		expect.equal(check("HighwayThrow", NOW, 1), nil)
+		expect.truthy(check("HighwayThrow", NOW))
+		expect.truthy(check("HighwayThrow", NOW, 0 / 0))
+		expect.equal(NetController.squeezeRequest(3), false) -- not connected: nothing sent
 	end)
 
 	t.test("RemoteFunction replies are normalized to the §2.7 Result shape", function()

@@ -10,8 +10,10 @@
 --   * gatesAt is a whole number above the last start (the last biome is not empty).
 -- Pens3 phase 13 (the throw; Config/Highway's header):
 --   * walls a list of one finite power a biome, walls[1] > 0, strictly rising; gatesPower finite and above the last;
---   * power.base > 0 and power.perGripLevel >= 1 (finite); pay.coins > 0, pay.biomeGain >= 1, pay.grip a whole
---     number >= 1 (GripService.addFromHighway takes whole squeezes); foodBag.seconds and foodBag.squeezes > 0;
+--   * power.base > 0 and power.perGripLevel >= 1 (finite); pay.perStud > 0 (p13v3: Coins by distance) and, with
+--     config.Economy.Pen, pay.perStud x Pen.minSqueezeValue >= 1 (one stud farther always pays at least one Coin
+--     more), pay.grip a whole number >= 1 (GripService.addFromHighway takes whole squeezes); foodBag.seconds and
+--     foodBag.squeezes > 0;
 --   * gifts a list of {biome a whole number in 1..#starts, kind a non-empty string (a Catalog id when a catalog is
 --     given), count a whole number >= 1};
 --   * every flight number finite and > 0, carryMax >= carryMin; inFlightGraceSeconds in [0, releaseSeconds);
@@ -133,11 +135,15 @@ return function(config: any, catalog: any?): { string }
 		isNumber(power.perGripLevel) and power.perGripLevel >= 1,
 		`{H}.power.perGripLevel must be at least 1 (got {show(power.perGripLevel)})`
 	)
-	expect(isNumber(pay.coins) and pay.coins > 0, `{H}.pay.coins must be above 0 (got {show(pay.coins)})`)
-	expect(
-		isNumber(pay.biomeGain) and pay.biomeGain >= 1,
-		`{H}.pay.biomeGain must be at least 1 (got {show(pay.biomeGain)})`
-	)
+	expect(isNumber(pay.perStud) and pay.perStud > 0, `{H}.pay.perStud must be above 0 (got {show(pay.perStud)})`)
+	local pen = if type(economy.Pen) == "table" then economy.Pen else nil
+	if pen ~= nil and isNumber(pay.perStud) and pay.perStud > 0 then
+		expect(
+			isNumber(pen.minSqueezeValue) and pay.perStud * pen.minSqueezeValue >= 1,
+			`{H}.pay.perStud x Config.Economy.Pen.minSqueezeValue must be at least 1, so one stud farther always pays `
+				.. `more (got {show(pay.perStud)} x {show(pen.minSqueezeValue)})`
+		)
+	end
 	expect(isWhole(pay.grip) and pay.grip >= 1, `{H}.pay.grip must be a whole number >= 1 (got {show(pay.grip)})`)
 	expect(isNumber(bag.seconds) and bag.seconds > 0, `{H}.foodBag.seconds must be above 0 (got {show(bag.seconds)})`)
 	expect(

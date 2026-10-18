@@ -7,6 +7,8 @@
 -- Review fixes (2026-10-16, job autoclick): no "too fast" rule any more (speed alone never strikes: a kid mashing
 -- F + E + a click, or a worn mouse, sends 17-25 presses a second, and anything over the paid cap pays nothing anyway);
 -- the machine-regular rule skips the client ceiling's own rhythm (maxPerSecond); `enforce` sets how far a catch goes.
+-- P13v3 (owner 2026-10-18: "Yes, above 20 a second"): a speed rule again, on every real press the clients count on
+-- their own clock (speed, at the end): more than 20 a second for 3 seconds in a row.
 
 local AutoClick = {
 	enabled = true, -- false = no check and no strikes at all (the off switch if something looks wrong live)
@@ -61,6 +63,17 @@ local AutoClick = {
 	-- true: the ban does not spread to accounts Roblox thinks belong to the same person (brothers and sisters often
 	-- share one tablet).
 	banExcludeAltAccounts = true,
+
+	-- P13v3, the speed rule (owner 2026-10-18: "Yes, above 20 a second", squeezes and throws; AutoClickRules.speed):
+	-- the clients count EVERY real press (also the ones they do not send) per whole second of their own clock
+	-- (Shared/PressSpeed), and each SqueezeRequest / HighwayThrow reports how many seconds in a row had more than
+	-- perSecond presses each. The server catches a report of `seconds` or more, squeezes and throws apart, on the same
+	-- steps as rule B. perSecond is the owner's (strictly more than 20); [P] seconds 3: one quick burst by a kid never
+	-- counts. Counted on the client's clock, a network stall or a late reply never makes presses look faster
+	-- (verification fix: by the server's arrival second, a person at 16-18 a second was caught after a lag spike).
+	-- Auto-clicker apps click through the real client, so they report truthfully; a changed client could report less,
+	-- which only dodges this rule (rule B, the throw flood rule and the Net limits stay).
+	speed = { perSecond = 20, seconds = 3 },
 }
 
 return AutoClick

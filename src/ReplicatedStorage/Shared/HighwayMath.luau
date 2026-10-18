@@ -17,8 +17,9 @@
 --                                        last one); a broken distance is biome 1
 --   HighwayMath.reached(studs)        -> 1..#starts + 1: what a landing reaches (#starts + 1 = the Golden Gates), the
 --                                        saved profile.highway.biome
---   HighwayMath.landingCoins(sv, b)   -> number: PenMath.rewardCoins(pay.coins x pay.biomeGain^(b - 1), sv) (SIM:239);
---                                        a biome that is not 1..#starts pays biome 1's
+--   HighwayMath.landingCoins(sv, studs) -> number: PenMath.rewardCoins(pay.perStud x studs, sv) (p13v3, owner
+--                                        2026-10-18: Coins by distance, like Hit a Golf Ball): farther always pays
+--                                        more; studs held in [0, gatesAt], a broken distance pays 0
 --   HighwayMath.flight(studs)         -> Flight {from, carry, air, peak, roll, total, landing}: the design's throw
 --                                        (P3D:554, :575), from the throw area's middle (from = its distance, behind
 --                                        the start line): carry = carryShare x the landing in [carryMin, carryMax],
@@ -143,9 +144,9 @@ function HighwayMath.reached(studs: any): number
 	return HighwayMath.biomeAt(studs)
 end
 
-function HighwayMath.landingCoins(sv: number, biome: any): number
-	local b = if isFinite(biome) and biome >= 1 and biome <= biomes() then math.floor(biome) else 1
-	return PenMath.rewardCoins(H.pay.coins * H.pay.biomeGain ^ (b - 1), sv)
+function HighwayMath.landingCoins(sv: number, studs: any): number
+	local d = if isFinite(studs) then math.clamp(studs, 0, H.gatesAt) else 0
+	return PenMath.rewardCoins(H.pay.perStud * d, sv)
 end
 
 function HighwayMath.flight(studs: number): Flight

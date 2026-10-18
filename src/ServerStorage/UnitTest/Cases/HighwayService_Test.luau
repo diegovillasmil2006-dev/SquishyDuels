@@ -4,8 +4,10 @@
 -- plain-table players and profiles, a fake clock and server clock, recorded grants, Grip, gifts, saves and board
 -- writes. Server only (ServerStorage.UnitTest).
 -- Contract:
---   * HighwayThrow(clientTime "serverTime") (RF); its Config.Net entry {rate = 14, burst = 30} (the THROW presses: the
---     client sends them all, so the auto-clicker check sees the rhythm; one throw in flight is the service's own);
+--   * HighwayThrow(clientTime "serverTime", fastSeconds "integer") (RF; p13v3: the client's speed report, handed to
+--     the auto-clicker check's speed rule); its Config.Net entry {rate = 14, burst = 30} (the
+--     THROW presses: the client sends them all, so the auto-clicker check sees the rhythm; one throw in flight is the
+--     service's own);
 --   * the refusal order (PenBuySpot's shape): (1) clientTime not a finite number -> net.invalid; (2) the auto-clicker
 --     check (AutoClickService.checkThrow), which sees every arrival, even during a flight -> its reason; (3) no READY
 --     profile -> data.notReady; (4) the decision: a throw in flight -> highway.inFlight; the server-side root not in
@@ -13,7 +15,8 @@
 --     closing or a restart -> highway.paused; (6) SD_DuelPhase set -> inventory.lockedInDuel. Every refusal carries
 --     charged = false and writes nothing;
 --   * a throw: power = HighwayMath.power(Grip Lv), the landing and its flight from HighwayMath; it pays in full every
---     time (owner 2026-10-16: no limits; no time share, no daily cap): landingCoins(SV, b) Coins ("highway") and
+--     time (owner 2026-10-16: no limits; no time share, no daily cap): landingCoins(SV, studs) Coins ("highway"; p13v3,
+--     owner 2026-10-18: by distance, farther pays more) and
 --     GripService.addFromHighway(pay.grip); best and biome rise (only up), with a "soon" save and the highway field
 --     sent; the next throw waits for the landing (one in flight, less the grace);
 --   * the biome gifts once each, in the throw that first reaches the biome (a throw past two biomes gives both);
@@ -60,6 +63,7 @@ return function(t: Context)
 		restart: boolean,
 		cheat: string?, -- what checkThrow answers
 		checks: number,
+		reports: { any }, -- p13v3: the speed report each checkThrow was handed
 		grants: { { player: any, amount: number, reason: string } },
 		grip: { { player: any, squeezes: number } },
 		squishies: { { player: any, kind: string } },
@@ -108,6 +112,7 @@ return function(t: Context)
 			restart = false,
 			cheat = nil,
 			checks = 0,
+			reports = {},
 			grants = {},
 			grip = {},
 			squishies = {},
@@ -168,8 +173,9 @@ return function(t: Context)
 				table.insert(w.squishies, { player = player, kind = kind })
 				return true
 			end,
-			checkThrow = function(_player: any, _now: number): string?
+			checkThrow = function(_player: any, _now: number, fastSeconds: number?): string?
 				w.checks += 1
+				table.insert(w.reports, fastSeconds or "none")
 				return w.cheat
 			end,
 			requestSave = function(player: any, reason: string)
@@ -213,16 +219,22 @@ return function(t: Context)
 		w.serverNow += seconds
 	end
 
-	t.test("HighwayThrow takes one serverTime; its Net entry holds the client's THROW presses", function()
-		local spec = Remotes.SPEC.HighwayThrow
-		expect.equal(spec.kind, "RemoteFunction")
-		expect.equal(spec.dir, "c2s")
-		expect.deepEqual(spec.args, { { name = "clientTime", type = "serverTime" } })
-		expect.deepEqual(Config.Net.Remotes.HighwayThrow, { rate = 14, burst = 30 })
-		expect.truthy(table.find(Config.Economy.CoinReasons, "highway") ~= nil)
-	end)
+	t.test(
+		"HighwayThrow takes a serverTime and a speed report; its Net entry holds the client's THROW presses",
+		function()
+			local spec = Remotes.SPEC.HighwayThrow
+			expect.equal(spec.kind, "RemoteFunction")
+			expect.equal(spec.dir, "c2s")
+			expect.deepEqual(
+				spec.args,
+				{ { name = "clientTime", type = "serverTime" }, { name = "fastSeconds", type = "integer" } }
+			)
+			expect.deepEqual(Config.Net.Remotes.HighwayThrow, { rate = 14, burst = 30 })
+			expect.truthy(table.find(Config.Economy.CoinReasons, "highway") ~= nil)
+		end
+	)
 
-	t.test("a throw at Grip Lv 1: 21 studs, 70 SV Coins and 60 squeezes of Grip, best saved, the reply", function()
+	t.test("a throw at Grip Lv 1: 21 studs pay 0.5 SV a stud, 60 squeezes of Grip, best saved, the reply", function()
 		local w = fresh()
 		local reply = HighwayService.throw(w.a, SERVER_START)
 		expect.equal(reply.ok, true)
@@ -233,7 +245,7 @@ return function(t: Context)
 			power = 2,
 			flight = plan.total,
 			landsAt = SERVER_START + plan.total,
-			coins = 700, -- 70 x the least squeeze value (10)
+			coins = 105, -- 0.5 x 21 studs x the least squeeze value (10)
 			grip = 600, -- the fake: 60 squeezes x 10
 			best = 21,
 			newBest = true,
@@ -243,7 +255,7 @@ return function(t: Context)
 			charged = false,
 			savePending = false,
 		})
-		expect.deepEqual(w.grants, { { player = w.a, amount = 700, reason = "highway" } })
+		expect.deepEqual(w.grants, { { player = w.a, amount = 105, reason = "highway" } })
 		expect.deepEqual(w.grip, { { player = w.a, squeezes = 60 } })
 		expect.deepEqual(w.profiles[w.a].highway, { best = 21, biome = 1 })
 		expect.deepEqual(w.soonSaves, { w.a })
@@ -251,6 +263,33 @@ return function(t: Context)
 		expect.equal(w.checks, 1)
 		finish()
 	end)
+
+	t.test(
+		"p13v3: the speed report every arrival carries reaches the auto-clicker check, a refused one's too",
+		function()
+			local w = fresh()
+			expect.equal(HighwayService.throw(w.a, SERVER_START, 4).ok, true)
+			expectRefused(HighwayService.throw(w.a, SERVER_START, 2), "highway.inFlight")
+			expectRefused(HighwayService.throw(w.a, 0 / 0, 9), "net.invalid") -- a broken request never reaches it
+			w.cheat = "highway.superFast"
+			expectRefused(HighwayService.throw(w.a, SERVER_START, 30), "highway.superFast") -- the speed rule's catch
+			expect.deepEqual(w.reports, { 4, 2, 30 })
+			-- The handler init registers hands it on too (captured from NetService.onInvoke).
+			local NetService: any = t.requireServer("Services/NetService")
+			local real = NetService.onInvoke
+			local handlers: { [string]: any } = {}
+			NetService.onInvoke = function(name: string, handler: any): () -> ()
+				handlers[name] = handler
+				return function() end
+			end
+			local ok, why = pcall(HighwayService.init)
+			NetService.onInvoke = real
+			expect.truthy(ok, why)
+			handlers.HighwayThrow(w.a, SERVER_START, 7)
+			expect.deepEqual(w.reports, { 4, 2, 30, 7 })
+			finish()
+		end
+	)
 
 	t.test("one throw in flight: a press before the landing is highway.inFlight (nothing written)", function()
 		local w = fresh()
@@ -321,7 +360,7 @@ return function(t: Context)
 		end
 	)
 
-	t.test("every landing pays in full: 100 throws back to back each pay 70 SV (no time share, no cap)", function()
+	t.test("every landing pays in full: 100 throws back to back each pay 21 studs (no time share, no cap)", function()
 		local w = fresh()
 		for _ = 1, 100 do
 			expect.equal(HighwayService.throw(w.a, SERVER_START).ok, true)
@@ -329,13 +368,13 @@ return function(t: Context)
 		end
 		expect.equal(#w.grants, 100)
 		for _, grant in w.grants do
-			expect.equal(grant.amount, 700)
+			expect.equal(grant.amount, 105)
 		end
-		expect.equal(w.profiles[w.a].coins, 70_000)
+		expect.equal(w.profiles[w.a].coins, 10_500)
 		finish()
 	end)
 
-	t.test("Grip Lv 100: 328 studs in Bakery Town, 70 x 1.15 SV, reaching biome 2 (no gift there)", function()
+	t.test("Grip Lv 100: 328 studs in Bakery Town pay 0.5 SV a stud, reaching biome 2 (no gift there)", function()
 		local w = fresh()
 		w.levels[w.a] = 100
 		w.profiles[w.a].pen.items[1].level = 11 -- 10 x 1.15^10 = 40.5 Coins a second: SV 40.5
@@ -343,7 +382,7 @@ return function(t: Context)
 		local reply = HighwayService.throw(w.a, SERVER_START)
 		expect.equal(reply.data.studs, 328)
 		expect.equal(reply.data.biome, 2)
-		expect.equal(reply.data.coins, math.floor(70 * 1.15 * sv))
+		expect.equal(reply.data.coins, math.floor(0.5 * 328 * sv))
 		expect.equal(reply.data.reached, 2)
 		expect.deepEqual(reply.data.gifts, {})
 		expect.deepEqual(w.profiles[w.a].highway, { best = 328, biome = 2 })
@@ -353,6 +392,7 @@ return function(t: Context)
 		w.levels[w.a] = 1
 		local short = HighwayService.throw(w.a, SERVER_START)
 		expect.equal(short.data.newBest, false)
+		expect.equal(short.data.coins, math.floor(0.5 * 21 * sv)) -- the same pen: the shorter throw pays less
 		expect.equal(short.data.best, 328)
 		expect.deepEqual(w.profiles[w.a].highway, { best = 328, biome = 2 })
 		finish()

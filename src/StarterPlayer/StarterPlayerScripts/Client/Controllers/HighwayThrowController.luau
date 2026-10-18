@@ -17,6 +17,10 @@
 --   Config.Economy.Highway.autoClick.clientPressesPerSecond in any rolling second. Verification fixes: its answer
 --   highway.autoClick (a catch) shows that warning; an ok answer (it reached the server as the flight ended, so the
 --   server threw it and paid) becomes the throw shown, the old one landing first; other answers stay silent.
+--   P13v3 (owner 2026-10-18: "Yes, above 20 a second"): every real THROW press counts (a Begin while the action is
+--   live), sent or not, on this client's clock (Shared/PressSpeed); each send reports the seconds in a row over the
+--   line (HighwayThrow's `fastSeconds`) for the server's speed rule; its catch, highway.superFast, shows that warning
+--   like highway.autoClick (on a press during a flight too).
 -- * The flight (P3D:575-597 through HighwayMath.at, on the server's clock: released at landsAt - flight +
 --   releaseSeconds): a World clone of the equipped squishy (SquishyCache) from the throwing hand over the arc to the
 --   carry and rolling to the server's landing, tumbling (Config.UI.Highway spin; none under ReducedMotion), with K's
@@ -32,7 +36,7 @@
 -- One Scheduler effect (render) steps the area, the hand, the flight, the camera and the pill. Public: the pure parts
 -- (mayForward, followGoal, landingToasts, pillText), init(), start(scheduler?), destroy() (tests and leak checks; the
 -- bootstrap never calls it), debugState(), useDeps() (Edit-mode tests: isClient, bindAction, invoke, showResult,
--- toast).
+-- toast, clock).
 
 -- Services
 
@@ -49,6 +53,7 @@ local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local HighwayMath = require(Shared.HighwayMath)
 local PenMath = require(Shared.PenMath)
+local PressSpeed = require(Shared.PressSpeed)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
@@ -112,7 +117,8 @@ local CLIENT_FX = "SD_ClientFx"
 local RELEASE = H.flight.releaseSeconds
 local STAND_STILL = 0.1 -- Humanoid.MoveDirection below this: standing (ThrowMotion's legs)
 local SILENT: { [string]: boolean } = { ["highway.inFlight"] = true, ["net.rateLimited"] = true }
-local AUTO_CLICK = "highway.autoClick" -- the auto-clicker check's catch (AutoClickService.checkThrow)
+-- The auto-clicker check's catches (AutoClickService.checkThrow): rule B / the flood rule, and p13v3's speed rule.
+local WARNINGS: { [string]: boolean } = { ["highway.autoClick"] = true, ["highway.superFast"] = true }
 
 -- Module table
 
@@ -129,6 +135,7 @@ local REAL_DEPS = {
 	invoke = NetController.invokeAsync,
 	showResult = NotifyController.showResult,
 	toast = UIController.toast,
+	clock = os.clock, -- p13v3: the presses' time (the rolling second)
 }
 local deps: typeof(REAL_DEPS) = REAL_DEPS
 
@@ -140,6 +147,7 @@ local current: Throw? = nil
 local sent: { number } = {} -- os.clock of the presses sent during the own flights (the rolling second)
 local pending: { [number]: number } = {} -- id -> os.clock of a sent press still unanswered
 local nextPending = 0
+local speed = PressSpeed.new() -- p13v3: every real THROW press on this client's clock (each send reports it)
 local pill: WellPill.WellPill? = nil
 
 local function rootPart(): BasePart?
@@ -361,6 +369,13 @@ local function step(dt: number, now: number): boolean
 	return true
 end
 
+-- P13v3: what a send reports (Shared/PressSpeed); the next send reports from the current run on.
+local function takeReport(): number
+	local report = speed.peak
+	PressSpeed.sent(speed)
+	return report
+end
+
 -- A new throw pressed at `now` (os.clock): the equipped squishy, the hand's style and legs.
 local function newThrow(now: number): Throw
 	local equipped = StateController.get("equipped")
@@ -393,8 +408,9 @@ local function forward(now: number)
 	nextPending += 1
 	local id = nextPending
 	pending[id] = now
+	local report = takeReport()
 	task.spawn(function()
-		local result = deps.invoke(REMOTE, Workspace:GetServerTimeNow())
+		local result = deps.invoke(REMOTE, Workspace:GetServerTimeNow(), report)
 		pending[id] = nil
 		if cleanup == nil then
 			return -- destroyed meanwhile
@@ -412,8 +428,8 @@ local function forward(now: number)
 			local throw = newThrow(now)
 			throw.data = result.data
 			current = throw
-		elseif result.reason == AUTO_CLICK then
-			deps.showResult(result) -- the 1st catch's calm warning (each catch answers it once)
+		elseif WARNINGS[result.reason or ""] then
+			deps.showResult(result) -- a catch's calm warning (each catch answers it once)
 		end
 	end)
 end
@@ -428,8 +444,9 @@ local function begin(now: number)
 	local throw = newThrow(now)
 	current = throw
 	table.insert(sent, now)
+	local report = takeReport()
 	task.spawn(function()
-		local result = deps.invoke(REMOTE, Workspace:GetServerTimeNow())
+		local result = deps.invoke(REMOTE, Workspace:GetServerTimeNow(), report)
 		if current ~= throw then
 			return -- destroyed or replaced meanwhile
 		end
@@ -448,7 +465,8 @@ local function onPress(state: Enum.UserInputState): boolean?
 	if state ~= Enum.UserInputState.Begin then
 		return nil
 	end
-	local now = os.clock()
+	local now = deps.clock()
+	PressSpeed.press(speed, now)
 	local throw = current
 	if throw ~= nil and not throw.landed then
 		forward(now)
@@ -560,8 +578,8 @@ function HighwayThrowController.debugState(): DebugState
 	}
 end
 
--- Test seam (Edit mode): replaces some of the client-only surfaces (isClient, bindAction, invoke, showResult, toast;
--- nil = the real ones again).
+-- Test seam (Edit mode): replaces some of the client-only surfaces (isClient, bindAction, invoke, showResult, toast,
+-- clock; nil = the real ones again).
 function HighwayThrowController.useDeps(overrides: { [string]: any }?)
 	if overrides == nil then
 		deps = REAL_DEPS
@@ -609,6 +627,7 @@ function HighwayThrowController.start(scheduler: Scheduler.Scheduler?)
 		end
 		table.clear(sent)
 		table.clear(pending)
+		speed = PressSpeed.new()
 		setPill(nil)
 	end)
 	if not deps.isClient() then

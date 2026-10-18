@@ -4,8 +4,8 @@
 -- (ServerStorage.UnitTest). Edit mode: init() is never called, so no remote is touched.
 -- Contract (DESIGN §6.3, §17.3.1 steps 6a / 8a, §17.6, §17.10, §17.12 Part 5 "SqueezeService with fakes"; squeeze
 -- anywhere, spec 2026-10-11 §5):
---   * SqueezeRequest takes no argument: the server finds the pad under its own root position (SqueezeRules.padUnder)
---     and ignores anything the client sends;
+--   * SqueezeRequest takes only the client's speed report (p13v3, for the auto-clicker check's speed rule): the
+--     server finds the pad under its own root position (SqueezeRules.padUnder) and ignores anything else;
 --   * an accepted squeeze on a mat pays the squeeze value (pens3 phase 1: the pen's PenMath.squeezeValue, whole,
 --     whatever squishy is held or pad stood on; a capsule counts for nothing), trains its floor in Grip, counts
 --     stats.squeezes, sets SD_SqueezeAt (server time), fires Squeezed and replies ok; an argument the client sends is
@@ -33,7 +33,10 @@
 --     time; a reason back is the reply (squeeze.autoClick / squeeze.tooFast) with no Coins, no Grip, no stats and no
 --     token of the paid cap used; wired to the real AutoClickService (enforce = "full"), a steady
 --     10/s macro is caught (one squeeze.autoClick, then a silent penalty) and a minute's hold never is (review fix
---     2026-10-16: 19/s is the client ceiling's rhythm, never judged). The other cases switch it off.
+--     2026-10-16: 19/s is the client ceiling's rhythm, never judged). The other cases switch it off. P13v3 (owner
+--     2026-10-18: "Yes, above 20 a second"): the speed report a request carries reaches the check; wired, an
+--     auto-clicker at 36 a second through the client's 18 sends a second (Shared/PressSpeed's report on each) is
+--     caught once (squeeze.superFast).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -112,7 +115,7 @@ return function(t: Context)
 	end
 
 	-- `autoClick` = SqueezeService's AutoClickService.check dependency (auto-clicker check 2026-10-16); nil = off.
-	local function fresh(autoClick: ((player: any, now: number) -> string?)?): World
+	local function fresh(autoClick: ((player: any, now: number, fastSeconds: number?) -> string?)?): World
 		local world: World = {
 			clock = FakeClock.new(500),
 			unix = FakeClock.new(UNIX_START),
@@ -829,6 +832,60 @@ return function(t: Context)
 			expect.near(world.profile.autoClick.at, world.unix.now() - (#replies - index) / perSecond, 1e-3)
 			expect.equal(seen.kicks, 0) -- step 1 only warns
 			expect.equal(seen.bans, 0)
+			unwire()
+		end
+	)
+
+	t.test("p13v3: the speed report a SqueezeRequest carries reaches AutoClickService (the speed rule)", function()
+		local handed: { any } = {}
+		local world = fresh(function(_player: any, _now: number, fastSeconds: number?): string?
+			table.insert(handed, fastSeconds or "none")
+			return nil
+		end)
+		SqueezeService.request(world.player, 3)
+		SqueezeService.request(world.player, 0)
+		expect.deepEqual(handed, { 3, 0 })
+		-- The handler init registers hands it on too (captured from NetService.on, init stopped right there).
+		local NetService: any = t.requireServer("Services/NetService")
+		local real = NetService.on
+		local handlers: { [string]: any } = {}
+		NetService.on = function(name: string, handler: any)
+			handlers[name] = handler
+			error("captured")
+		end
+		local ok, why = pcall(SqueezeService.init)
+		NetService.on = real
+		expect.falsy(ok)
+		expect.truthy(string.find(tostring(why), "captured", 1, true) ~= nil)
+		handlers.SqueezeRequest(world.player, 5)
+		expect.deepEqual(handed, { 3, 0, 5 })
+		finish()
+	end)
+
+	t.test(
+		"p13v3 wired: 36 presses a second through the client's 18 sends is caught once (squeeze.superFast)",
+		function()
+			local world = wiredWorld()
+			local PressSpeed = t.requireShared("PressSpeed")
+			local sends = Config.Net.AutoClick.clientPressesPerSecond
+			local client = PressSpeed.new()
+			local warnings, first, sent = 0, nil, 0
+			for i = 1, 10 * 2 * sends do -- 36 presses a second, every 2nd one sent with its report
+				PressSpeed.press(client, world.clock.now())
+				if i % 2 == 0 then
+					local result = SqueezeService.request(world.player, client.peak)
+					PressSpeed.sent(client)
+					sent += 1
+					if result ~= nil and result.reason == "squeeze.superFast" then
+						warnings += 1
+						first = first or sent
+					end
+				end
+				wait(world, 1 / (2 * sends))
+			end
+			expect.equal(warnings, 1)
+			expect.truthy(first ~= nil and first <= 4 * sends) -- inside the first 4 s
+			expect.equal(world.profile.autoClick.step, 1)
 			unwire()
 		end
 	)

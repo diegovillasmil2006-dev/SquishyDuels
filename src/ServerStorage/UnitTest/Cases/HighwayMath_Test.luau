@@ -9,7 +9,8 @@
 --     power 1 or less, the Golden Gates (8,500) from 2.4e31; G110's typical throws: Lv 1 (power 2) 21.8, Lv 100 (25K)
 --     328.9;
 --   * biomeAt(studs) 1..7 (SIM:90: the Golden Gates are in Divine Heaven), reached(studs) 1..8 (8 = the Golden Gates);
---   * landingCoins(sv, b) = floor(70 x 1.15^(b - 1) x sv) (SIM:239), never above maxCoins;
+--   * landingCoins(sv, studs) = floor(0.5 x studs x sv) (p13v3, owner 2026-10-18: Coins by distance, like Hit a Golf
+--     Ball), never above maxCoins: one stud farther always pays more, a broken distance nothing;
 --   * flight(studs): P3D's throw from the throw area's middle (P3D:554, :575): the release (0.42 s), the carry
 --     (0.32 x the landing in [70, 1,100], never past it), the air 1.1 + 2.4 sqrt(carry from the release / 900) s,
 --     the roll 1.6 + 15 (rest / 8,000)^0.75 s (none when nothing is left to roll);
@@ -82,12 +83,27 @@ return function(t: Context)
 		expect.equal(HighwayMath.reached(-3), 1)
 	end)
 
-	t.test("landingCoins: floor(70 x 1.15^(b - 1) x the squeeze value), at most maxCoins (SIM:239)", function()
-		expect.equal(HighwayMath.landingCoins(10, 1), 700)
-		expect.equal(HighwayMath.landingCoins(10, 2), 805)
-		expect.equal(HighwayMath.landingCoins(1000, 7), math.floor(70 * 1.15 ^ 6 * 1000))
-		expect.equal(HighwayMath.landingCoins(1e18, 7), Config.Economy.maxCoins)
-		expect.equal(HighwayMath.landingCoins(10, 0 / 0), 700) -- a broken biome pays biome 1
+	-- P13v3 (owner 2026-10-18: "it should give coins on base of how many meters far they go like hit a golf ball").
+	t.test("landingCoins: floor(0.5 x the studs x the squeeze value), farther always more, at most maxCoins", function()
+		expect.equal(H.pay.perStud, 0.5)
+		expect.equal(HighwayMath.landingCoins(10, 21), 105) -- Grip Lv 1's throw at the least squeeze value
+		expect.equal(HighwayMath.landingCoins(10, 328), 1640) -- Grip Lv 100's
+		expect.equal(HighwayMath.landingCoins(40.5, 8500), math.floor(0.5 * 8500 * 40.5)) -- the Golden Gates
+		expect.equal(HighwayMath.landingCoins(1e18, 8500), Config.Economy.maxCoins)
+		expect.equal(HighwayMath.landingCoins(10, 0), 0)
+		for _, bad in { 0 / 0, -5, math.huge, "21" } :: { any } do
+			expect.equal(HighwayMath.landingCoins(10, bad), 0) -- a broken distance pays nothing
+		end
+		expect.equal(HighwayMath.landingCoins(10, 9000), HighwayMath.landingCoins(10, H.gatesAt)) -- held at the gates
+		-- Strictly farther = more, at the least squeeze value (perStud x minSqueezeValue >= 1, ValidateHighway).
+		local last = -1
+		for studs = 0, H.gatesAt do
+			local coins = HighwayMath.landingCoins(Config.Economy.Pen.minSqueezeValue, studs)
+			if coins <= last then
+				error(`{studs} studs pay {coins}, not more than {studs - 1} studs' {last}`)
+			end
+			last = coins
+		end
 	end)
 
 	t.test("flight: P3D's carry, air and roll from the throw area's middle (P3D:554, :575)", function()

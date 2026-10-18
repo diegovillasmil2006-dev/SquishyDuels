@@ -16,10 +16,14 @@
 --   nothing written: the client's presses during a flight end here); no living character root in the throw area ->
 --   highway.notInArea; (5) a pending failed save, the server closing or a restart pending -> highway.paused; (6)
 --   SD_DuelPhase ~= "" -> inventory.lockedInDuel. Every refusal carries charged = false and writes nothing.
+--   P13v3 (owner 2026-10-18: "Yes, above 20 a second"): HighwayThrow(clientTime, fastSeconds): fastSeconds (the
+--   client's speed report, Shared/PressSpeed; a Net-checked integer) goes to checkThrow only (its speed rule; a catch
+--   answers highway.superFast); nothing else reads it.
 -- * A throw: power = HighwayMath.power(GripService.levelOf) (phase 14 multiplies the gear in), the landing
 --   HighwayMath.landing(power) and its biome b, the flight HighwayMath.flight(studs).total (the player's next throw
 --   waits for it, less inFlightGraceSeconds). It pays in full (owner 2026-10-16: "No daily limits on squeezes or
---   throwing"; no time share, no cap): HighwayMath.landingCoins(SV, b) Coins with the "highway" reason and
+--   throwing"; no time share, no cap): HighwayMath.landingCoins(SV, studs) Coins with the "highway" reason (p13v3,
+--   owner 2026-10-18: by distance, farther pays more) and
 --   GripService.addFromHighway(pay.grip). Then ONE mutate when something saved changes: highway.best and
 --   highway.biome rise (only up: HighwayMath.reached, 8 = the Golden Gates), and a Food Bag's food (below). The
 --   biome gifts of every biome this throw reaches first, once each (the saved biome only rises, so they are never
@@ -86,7 +90,7 @@ export type Deps = {
 	grantCoins: (player: any, amount: number, reason: string) -> number, -- the Coins really added
 	addGrip: (player: any, squeezes: number) -> number, -- GripService.addFromHighway
 	grantSquishy: (player: any, kind: string) -> boolean, -- EconomyService.grantSquishy(p, kind, "grant", true)
-	checkThrow: (player: any, now: number) -> string?, -- AutoClickService.checkThrow
+	checkThrow: (player: any, now: number, fastSeconds: number?) -> string?, -- AutoClickService.checkThrow
 	requestSave: (player: any, reason: string) -> (),
 	markDirty: (player: any, field: string) -> (), -- StateService.markDirty
 	nameOf: (player: any) -> string, -- the board's name: the player's DisplayName
@@ -210,8 +214,8 @@ local function defaultDeps(): Deps
 			local grant = EconomyService.grantSquishy(player, kind, GIFT_SOURCE, true)
 			return grant.refused == nil
 		end,
-		checkThrow = function(player: any, now: number): string?
-			return AutoClickService.checkThrow(player, now)
+		checkThrow = function(player: any, now: number, fastSeconds: number?): string?
+			return AutoClickService.checkThrow(player, now, fastSeconds)
 		end,
 		requestSave = function(player: any, reason: string)
 			StateService.dataPort().requestSave(player, reason)
@@ -324,12 +328,12 @@ end
 
 -- Public: the remote (see the header for the order of the checks) ----------------------------------------------------
 
-function HighwayService.throw(player: any, clientTime: any): Reply
+function HighwayService.throw(player: any, clientTime: any, fastSeconds: number?): Reply
 	if not isFinite(clientTime) then
 		return NetService.err(CODE_INVALID, false)
 	end
 	local now = deps.clock()
-	local cheat = deps.checkThrow(player, now)
+	local cheat = deps.checkThrow(player, now, fastSeconds)
 	if cheat ~= nil then
 		return NetService.err(cheat, false)
 	end
@@ -347,7 +351,7 @@ function HighwayService.throw(player: any, clientTime: any): Reply
 
 	local profile = deps.profileOf(player)
 	local sv = PenMath.squeezeValue(profile.pen)
-	local coins = deps.grantCoins(player, HighwayMath.landingCoins(sv, biome), COIN_REASON)
+	local coins = deps.grantCoins(player, HighwayMath.landingCoins(sv, studs), COIN_REASON)
 	local grip = deps.addGrip(player, H.pay.grip)
 
 	local before = savedHighway(profile)
@@ -451,8 +455,8 @@ function HighwayService.init()
 	if #problems > 0 then
 		error(`[SD][Highway] Config.Economy.Highway is invalid: {table.concat(problems, "; ")}`)
 	end
-	NetService.onInvoke(REMOTE, function(player: Player, clientTime: any): any
-		return HighwayService.throw(player, clientTime)
+	NetService.onInvoke(REMOTE, function(player: Player, clientTime: any, fastSeconds: number): any
+		return HighwayService.throw(player, clientTime, fastSeconds)
 	end)
 end
 

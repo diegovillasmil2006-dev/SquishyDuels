@@ -1179,4 +1179,17 @@ return function(t: Context)
 		end
 		expect.falsy(string.find(Strings.reason.highway.autoClick, "%d"))
 	end)
+
+	-- P13v3 (owner 2026-10-18: "Yes, above 20 a second"): the speed rule's warnings (AutoClickService).
+	t.test("p13v3: the speed rule's warnings for squeezes and throws exist, calm and with no number", function()
+		for _, code in { "squeeze.superFast", "highway.superFast" } do
+			local text = Strings.resolve("reason." .. code)
+			expect.truthy(type(text) == "string" and text ~= "")
+			expect.equal(Strings.reasonText(code), text)
+			expect.falsy(string.find(text :: string, "%d"))
+			for _, word in { "hurry", "now", "quick", "last chance", "only", "second" } do
+				expect.falsy(string.find(string.lower(text :: string), word, 1, true))
+			end
+		end
+	end)
 end

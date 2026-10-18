@@ -34,6 +34,10 @@
 --   remote's flood limits); past that it only squishes on screen. A hold repeat over the cap is still not sent.
 --   Review fix (2026-10-16): none at all while the check is off (pressCap: Config.Net.AutoClick.enabled false, or a
 --   config Config/ValidateAutoClick refuses, as the server's check does).
+--   P13v3 (owner 2026-10-18: "Yes, above 20 a second"): every fresh press counts, sent or not, on this client's clock
+--   (Shared/PressSpeed), and each SqueezeRequest reports the seconds in a row over the line (its `fastSeconds`; a
+--   failed send keeps it for the next) for the server's speed rule; its catch, squeeze.superFast, is shown once like
+--   any rejection but tooFast. useDeps (Edit-mode tests): the presses' clock and the send.
 --   While held, the repeat goes at a relaxed rhythm of one full squeeze animation: max(nextAt +
 --   Hold.leadSeconds, lastSend + Hold.repeatSeconds) (SqueezeResult.nextAt is SERVER time,
 --   Workspace:GetServerTimeNow()); with no SqueezeResult within repeatSeconds + Hold.replyGraceSeconds (a flood-guard
@@ -137,6 +141,7 @@ local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local PenMath = require(Shared.PenMath)
+local PressSpeed = require(Shared.PressSpeed)
 local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
 local ValidateAutoClick = require(Shared.Config.ValidateAutoClick)
@@ -352,6 +357,10 @@ local sendState: SendState = { lastSendAt = nil, replied = true, nextAt = 0 }
 local recentSends: { number } = {} -- os.clock() of the last CAP sends (underCap)
 local pressSends: { number } = {} -- os.clock() of the last PRESS_CAP sends (pressSendable)
 local waitingSince: number? = nil -- os.clock() of the first send since the last reply (nil: none waits)
+local pressSpeed = PressSpeed.new() -- p13v3: every fresh press on this client's clock (each send reports it)
+-- P13v3 test seam (useDeps): the presses' clock and the send.
+local REAL_DEPS = { clock = os.clock, squeezeRequest = NetController.squeezeRequest }
+local deps: typeof(REAL_DEPS) = REAL_DEPS
 local sends = 0
 local lastStopReason: StopReason? = nil
 local lastResult: Result? = nil
@@ -864,9 +873,10 @@ local function trySend(fresh: boolean): boolean
 		end
 		return false
 	end
-	if not NetController.squeezeRequest() then
+	if not deps.squeezeRequest(pressSpeed.peak) then
 		return false
 	end
+	PressSpeed.sent(pressSpeed)
 	table.insert(recentSends, clock)
 	while #recentSends > CAP do
 		table.remove(recentSends, 1)
@@ -912,6 +922,7 @@ end
 -- paid cap, anywhere.
 local function freshPress(press: PressInput): boolean
 	local now = os.clock()
+	PressSpeed.press(pressSpeed, deps.clock()) -- p13v3: every real press counts, sent or not
 	hold = {
 		source = press.source,
 		keyCode = press.keyCode,
@@ -1591,6 +1602,7 @@ function SqueezeController.debugState(): { [string]: any }
 		heldFor = if h then os.clock() - h.startedAt else nil,
 		lastStopReason = lastStopReason,
 		sends = sends,
+		fastSeconds = pressSpeed.peak, -- p13v3: what the next SqueezeRequest reports
 		recentSends = #recentSends, -- sends kept for the paid-squeeze cap (at most bucketCapacity)
 		lastSendAt = sendState.lastSendAt,
 		replied = sendState.replied,
@@ -1603,6 +1615,20 @@ function SqueezeController.debugState(): { [string]: any }
 		labelText = if floatLabel then floatLabel.text.Text else nil,
 		popups = #coinPopups, -- "+N" pool slots built (at most POPUP_POOL; leak check)
 	}
+end
+
+-- P13v3 test seam (Edit mode): replaces the presses' clock and the send (clock, squeezeRequest; nil = the real ones).
+function SqueezeController.useDeps(overrides: { [string]: any }?)
+	if overrides == nil then
+		deps = REAL_DEPS
+		return
+	end
+	local merged: { [string]: any } = table.clone(REAL_DEPS :: any)
+	for key, value in overrides do
+		assert(merged[key] ~= nil, `[SD][Squeeze] unknown dependency {key}`)
+		merged[key] = value
+	end
+	deps = merged :: any
 end
 
 -- Lifecycle
@@ -1665,6 +1691,7 @@ function SqueezeController.init()
 		table.clear(recentSends)
 		table.clear(pressSends)
 		waitingSince = nil
+		pressSpeed = PressSpeed.new()
 	end)
 end
 

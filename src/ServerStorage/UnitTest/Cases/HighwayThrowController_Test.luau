@@ -21,6 +21,11 @@
 --     that warning (the 1st catch's calm notice), other refusals stay silent, and an ok answer (it reached the server
 --     as the flight ended: a real throw) becomes the throw shown, the old one landing first; every send, a throw's
 --     first press too, counts toward clientPressesPerSecond in a rolling second.
+--   * p13v3 (owner 2026-10-18: "Yes, above 20 a second"): every real THROW press counts on the client's clock
+--     (Shared/PressSpeed), the ones during a flight and the ones the cap holds back too; each send reports the seconds
+--     in a row over 20 presses (25 a second for 3 s during a flight: 2 while the 3rd second is still under the line,
+--     3 on the next send); a press the server answers highway.superFast (the speed rule's catch) shows that warning,
+--     during a flight too.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -161,7 +166,8 @@ return function(t: Context)
 	local Workspace = game:GetService("Workspace")
 
 	local function driven(replies: { any }, otherwise: any?): any
-		local w: any = { action = nil, handler = nil, unbound = 0, sent = 0, shown = {}, toasts = {} }
+		local w: any =
+			{ action = nil, handler = nil, unbound = 0, sent = 0, shown = {}, toasts = {}, reports = {}, now = 10 }
 		HighwayThrowController.destroy() -- a case that failed midway left it running
 		HighwayThrowController.useDeps({
 			isClient = function(): boolean
@@ -173,8 +179,9 @@ return function(t: Context)
 					w.unbound += 1
 				end
 			end,
-			invoke = function(_remote: string, _clientTime: number): any
+			invoke = function(_remote: string, _clientTime: number, fastSeconds: number?): any
 				w.sent += 1
+				table.insert(w.reports, fastSeconds or "none")
 				return table.remove(replies, 1) or otherwise or { ok = false, reason = "highway.inFlight" }
 			end,
 			showResult = function(result: any): boolean
@@ -183,6 +190,9 @@ return function(t: Context)
 			end,
 			toast = function(text: string)
 				table.insert(w.toasts, text)
+			end,
+			clock = function(): number
+				return w.now
 			end,
 		})
 		w.scheduler = Scheduler.new(false)
@@ -251,6 +261,41 @@ return function(t: Context)
 			stop()
 		end
 	)
+
+	t.test("p13v3: every press counts on the client's clock, the ones during a flight and past the cap too", function()
+		local cap = Config.Economy.Highway.autoClick.clientPressesPerSecond
+		local w = driven({ thrown(50) }) -- one throw; every press during its flight is answered highway.inFlight
+		for second = 0, 2 do -- 25 presses a second for 3 s: only `cap` of them a second are sent
+			for i = 1, 25 do
+				w.now = 100 + second + i / 26
+				w.handler(Enum.UserInputState.Begin)
+			end
+		end
+		expect.truthy(#w.reports <= 3 * cap)
+		expect.equal(w.reports[1], 0) -- the throw's own press
+		for i = 2, #w.reports do
+			-- The 3rd second goes over the line at its 21st press, after its `cap` sends: 2 so far.
+			expect.truthy(w.reports[i] == 0 or w.reports[i] == 1 or w.reports[i] == 2)
+		end
+		expect.equal(w.reports[#w.reports], 2)
+		w.now = 103.2 -- the rolling second is over: the next press reports the 3rd second too
+		w.handler(Enum.UserInputState.Begin)
+		expect.equal(w.reports[#w.reports], 3)
+		expect.equal(w.handler(Enum.UserInputState.End), nil) -- a release is no press
+		stop()
+	end)
+
+	t.test("p13v3: a press the server answers highway.superFast shows that warning, during a flight too", function()
+		local w = driven({ thrown(50), { ok = false, reason = "highway.superFast" } })
+		w.handler(Enum.UserInputState.Begin) -- the throw
+		w.handler(Enum.UserInputState.Begin) -- during its flight: the speed rule's catch
+		expect.deepEqual(w.shown, { "highway.superFast" })
+		stop()
+		local first = driven({ { ok = false, reason = "highway.superFast" } })
+		first.handler(Enum.UserInputState.Begin) -- a throw's own press
+		expect.deepEqual(first.shown, { "highway.superFast" })
+		stop()
+	end)
 
 	t.test("at most clientPressesPerSecond presses are sent in a rolling second, a throw's first press too", function()
 		local cap = Config.Economy.Highway.autoClick.clientPressesPerSecond

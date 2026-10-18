@@ -608,7 +608,7 @@ export type DuelForfeitCall = () -> ()
 export type ReportIdleCall = () -> ()
 export type ThrowRequestCall = (seq: number, aimDir: Vector3, originHint: Vector3, clientTime: number) -> ()
 export type UltimateRequestCall = (seq: number, aimDir: Vector3, clientTime: number) -> ()
-export type SqueezeRequestCall = () -> () -- spec 2026-10-11 §5: the server finds the pad itself
+export type SqueezeRequestCall = (fastSeconds: number) -> () -- spec 2026-10-11 §5: the server finds the pad itself
 export type BoxOpenCall = (boxId: string, requestId: string) -> Result<BoxResult>
 export type AckRevealCall = (requestId: string) -> ()
 export type ShopBuyCall = (squishyId: string, expectedPrice: number, requestId: string) -> Result<ShopResult>
@@ -639,7 +639,7 @@ export type FeedCall = (itemId: number, requestId: string) -> Result<FoodResult>
 export type FeedAllCall = () -> Result<FoodResult>
 -- Pens3 phase 13: one throw (or a press during the own flight, refused with highway.inFlight); clientTime =
 -- workspace:GetServerTimeNow() at the press, checked and never trusted.
-export type HighwayThrowCall = (clientTime: number) -> Result<HighwayResult>
+export type HighwayThrowCall = (clientTime: number, fastSeconds: number) -> Result<HighwayResult> -- p13v3
 export type PromptCoinBundleCall = (bundleKey: string) -> ()
 export type PromptGamePassCall = (passKey: string) -> ()
 export type PolicyRetryCall = () -> ()

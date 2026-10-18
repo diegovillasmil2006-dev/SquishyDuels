@@ -6,6 +6,9 @@
 -- Review fix (2026-10-16, job autoclick): the "too fast" rule (rule A) is gone. Speed alone is no proof: a kid
 -- mashing F + E + a click sends 17-25 presses a second, and past the client's ceiling (clientPressesPerSecond) every
 -- stream has the ceiling's own rhythm, so a window as fast as maxPerSecond is never judged either.
+-- P13v3 (owner 2026-10-18: "Yes, above 20 a second"): a speed rule again (speed below), on the real presses the
+-- clients count on their own clock (Shared/PressSpeed) and report, not on the arrival rhythm; only seconds in a row
+-- above the owner's line count.
 --   newState(cfg?) -> State
 --   observe(state, now, cfg?) -> Verdict?  records one request (changes `state` in place); a Verdict when the rule
 --     catches the stream:
@@ -14,6 +17,13 @@
 --                 (blockIntervals gaps each) have a standard deviation <= maxBlockSpreadSeconds. A full window always
 --                 starts the next one at its last request (tumbling windows: one verdict per window).
 --   reset(state, cfg?)  forgets everything (after a catch: the next catch needs new proof).
+--   newSpeedState() -> SpeedState; speed(state, fastSeconds, cfg?) -> Verdict?  p13v3 (owner 2026-10-18: "Yes, above
+--     20 a second", squeezes and throws; Config.Net.AutoClick.speed): one request's report, the whole seconds in a row
+--     the client counted with more than speed.perSecond presses each (Shared/PressSpeed; anything not a number, or
+--     below 0, is 0); "speed" at speed.seconds or more, then the next catch needs speed.seconds more (a lower report:
+--     that run ended, the next one needs speed.seconds again). Verification fix: the server's arrival second made a
+--     person at 16-18 a second look faster after a lag spike; the client's own clock never does.
+--   resetSpeed(state)  every count starts again (a catch of any rule): the next speed catch needs speed.seconds more.
 --   flood(times, now, limit) -> Verdict?  pens3 phase 13 (the THROW presses, AutoClickService.checkThrow): records one
 --     arrival in `times` (changed in place: only the last second's are kept); "flood" when more than `limit` arrived
 --     inside one second (a rate our client never sends: only a changed client or a script), then the count starts
@@ -56,18 +66,25 @@ export type Rules = {
 	banSeconds: number,
 	laterBanSeconds: { number },
 	banExcludeAltAccounts: boolean,
+	speed: { perSecond: number, seconds: number }, -- p13v3
 }
 
 export type State = {
 	window: { number }, -- arrival times of the window being filled (at most windowIntervals + 1)
 }
 
-export type Rule = "regular" | "flood"
+-- P13v3: the speed rule's reports (one a player and a kind of press: squeezes, throws).
+export type SpeedState = {
+	last: number, -- the latest report (seconds in a row over the line, the client's count)
+	used: number, -- the report the last catch used (the next catch needs speed.seconds more)
+}
+
+export type Rule = "regular" | "flood" | "speed"
 export type Action = "warn" | "kick" | "ban"
 
 export type Verdict = {
 	rule: Rule,
-	value: number, -- the block spread (seconds); "flood": the arrivals inside the second
+	value: number, -- the block spread (seconds); "flood": the arrivals inside the second; "speed": the seconds in a row
 	limit: number, -- the Config value it was compared with
 	count: number, -- gaps judged
 	seconds: number, -- how long they took
@@ -190,6 +207,28 @@ function AutoClickRules.flood(times: { number }, now: number, limit: number): Ve
 	local count = #times
 	table.clear(times)
 	return { rule = "flood", value = count, limit = limit, count = count, seconds = 1, meanGap = 1 / count }
+end
+
+function AutoClickRules.newSpeedState(): SpeedState
+	return { last = 0, used = 0 }
+end
+
+function AutoClickRules.resetSpeed(state: SpeedState)
+	state.used = state.last
+end
+
+function AutoClickRules.speed(state: SpeedState, fastSeconds: unknown, cfg: Rules?): Verdict?
+	local s = rules(cfg).speed
+	local n = if isFinite(fastSeconds) then math.max(math.floor(fastSeconds :: number), 0) else 0
+	if n < state.last then
+		state.used = 0 -- that run ended: a new one needs speed.seconds again
+	end
+	state.last = n
+	if n < state.used + s.seconds then
+		return nil
+	end
+	state.used = n
+	return { rule = "speed", value = n, limit = s.perSecond, count = n, seconds = n, meanGap = 0 }
 end
 
 function AutoClickRules.memoryStep(memory: unknown, unixNow: number, cfg: Rules?): number

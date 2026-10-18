@@ -11,8 +11,9 @@
 --   * ShopBuy's expectedPrice is a whole Coin amount up to Config.Economy.maxCoins (Dragon costs 1.1T, spec 2026-10-12
 --     §6), never NaN, inf, negative, fractional or above the cap;
 --   * OnboardingStep takes the client-recorded steps plus the Skip tutorial id (Part 7); TrainerUpgrade is gone with
---     the trainers (build plan Phase 6: unknownRemote, no rate entry); SqueezeRequest takes no
---     argument (spec 2026-10-11 §5: the server finds the pad itself), so a station id or anything else is badArgCount;
+--     the trainers (build plan Phase 6: unknownRemote, no rate entry); SqueezeRequest takes one integer, the client's
+--     speed report (p13v3: seconds in a row over 20 presses; spec 2026-10-11 §5: the server still finds the pad
+--     itself), so a station id or anything else in its place is invalid and a second argument badArgCount;
 --   * the guard runs mute -> per-remote bucket -> global cap (30/s, burst 80) -> arg count -> types -> seq replay;
 --     a rate-limit hit, a wrong count or an invalid argument is a violation; more than 20 violations in 60 s mute the
 --     key for 30 s; muted calls are dropped without counting; a stale seq is dropped but is no violation;
@@ -113,17 +114,19 @@ return function(t: Context)
 		expect.falsy(valid("questId", "q1"))
 	end)
 
-	t.test("SqueezeRequest takes no argument: a station id (any argument) is badArgCount", function()
-		expect.equal(#Remotes.SPEC.SqueezeRequest.args, 0)
-		local ok, args = NetService.validateArgs("SqueezeRequest")
+	t.test("SqueezeRequest takes one integer, the client's speed report (p13v3): a station id is invalid", function()
+		expect.deepEqual(Remotes.SPEC.SqueezeRequest.args, { { name = "fastSeconds", type = "integer" } })
+		local ok, args = NetService.validateArgs("SqueezeRequest", 3)
 		expect.truthy(ok)
-		expect.equal(#args, 0)
-		local extras: { any } = { "squeeze_09", "squeeze_99", KB_STRING, Vector3.zero, NAN }
-		for _, extra in extras do
-			local okExtra, why = NetService.validateArgs("SqueezeRequest", extra)
-			expect.falsy(okExtra)
-			expect.equal(why, "badArgCount")
+		expect.deepEqual(args, { 3 })
+		local bad: { any } = { "squeeze_09", "squeeze_99", KB_STRING, Vector3.zero, NAN, INF, 2.5 }
+		for _, value in bad do
+			local okBad, why = NetService.validateArgs("SqueezeRequest", value)
+			expect.falsy(okBad)
+			expect.equal(why, "invalid")
 		end
+		expect.equal(select(2, NetService.validateArgs("SqueezeRequest")), "invalid") -- the report is not optional
+		expect.equal(select(2, NetService.validateArgs("SqueezeRequest", 1, "squeeze_09")), "badArgCount")
 	end)
 
 	t.test("stepId accepts only the client-recorded onboarding steps", function()
@@ -382,7 +385,7 @@ return function(t: Context)
 		local rate = Config.Net.Remotes.SqueezeRequest.rate
 		expect.equal(rate, 20)
 		for i = 1, 60 * rate do
-			local verdict = guard:check(key, "SqueezeRequest", 0)
+			local verdict = guard:check(key, "SqueezeRequest", 1, 1)
 			if verdict ~= "ok" then
 				error(`request {i} at {rate}/s: {verdict}`)
 			end
@@ -393,13 +396,13 @@ return function(t: Context)
 		expect.equal(#mutes, 0)
 		-- A burst of the paid cap at once (a jittery network can bunch presses) is fine too.
 		for _ = 1, Config.Squeeze.bucketCapacity do
-			expect.equal(guard:check(key, "SqueezeRequest", 0), "ok")
+			expect.equal(guard:check(key, "SqueezeRequest", 1, 1), "ok")
 		end
 		-- A 30/s macro: once the burst (60) is used up (6 s at 10 over the rate a second), 10 rate-limit hits a
 		-- second, muted a little over 2 s later.
 		local macro = { name = "macro" }
 		for _ = 1, 30 * 12 do
-			guard:check(macro, "SqueezeRequest", 0)
+			guard:check(macro, "SqueezeRequest", 1, 1)
 			clock.advance(1 / 30)
 		end
 		expect.truthy(guard:isMuted(macro))
@@ -415,7 +418,7 @@ return function(t: Context)
 		expect.truthy(Config.Net.Remotes.SqueezeRequest.burst >= backlog)
 		expect.truthy(Config.Net.Global.burst >= backlog)
 		for i = 1, backlog do
-			local verdict = guard:check(key, "SqueezeRequest", 0)
+			local verdict = guard:check(key, "SqueezeRequest", 1, 1)
 			if verdict ~= "ok" then
 				error(`queued request {i}: {verdict}`)
 			end
@@ -423,7 +426,7 @@ return function(t: Context)
 		-- The clicking goes on at 12 a second for a minute: still nothing.
 		for i = 1, 60 * 12 do
 			clock.advance(1 / 12)
-			local verdict = guard:check(key, "SqueezeRequest", 0)
+			local verdict = guard:check(key, "SqueezeRequest", 1, 1)
 			if verdict ~= "ok" then
 				error(`request {i} after the backlog: {verdict}`)
 			end
@@ -434,7 +437,7 @@ return function(t: Context)
 		-- A longer stall (6.5 s, 78 at once) costs some violations but stays under the mute.
 		local longer = { name = "laggier clicker" }
 		for _ = 1, 78 do
-			guard:check(longer, "SqueezeRequest", 0)
+			guard:check(longer, "SqueezeRequest", 1, 1)
 		end
 		expect.truthy(guard:violationsOf(longer) <= Config.Net.Abuse.violations)
 		expect.falsy(guard:isMuted(longer))

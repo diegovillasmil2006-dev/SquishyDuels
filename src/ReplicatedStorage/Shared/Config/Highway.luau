@@ -29,11 +29,14 @@ local Highway = {
 	-- Throw power = base x perGripLevel^(Grip Lv - 1) (G110:42; the owner fixed x1.1 a level, 2026-10-17). Phase 14
 	-- multiplies the gear in.
 	power = { base = 2, perGripLevel = 1.1 },
-	-- What every landing pays, in squeezes of the squeeze value (SIM:59 landCoins / landStep / landGrip, SIM:239,
-	-- :241): coins x biomeGain^(b - 1) Coins and grip of Grip, b = the landing's biome (1..7; the Golden Gates are in
-	-- Divine Heaven). Owner 2026-10-16 ("No daily limits on squeezes or throwing"): every landing pays in full, and the
-	-- only pacing is one throw in flight per player (the plan's min(30, seconds) / 30 share is dropped).
-	pay = { coins = 70, biomeGain = 1.15, grip = 60 },
+	-- What every landing pays, in squeezes of the squeeze value: perStud x the landing's studs of Coins (p13v3, owner
+	-- 2026-10-18: "it should give coins on base of how many meters far they go like hit a golf ball"; it replaces
+	-- SIM:59's flat 70 x 1.15^(b - 1)) and grip of Grip (SIM:59 landGrip, SIM:241). Owner 2026-10-16 ("No daily limits
+	-- on squeezes or throwing"): every landing pays in full, and the only pacing is one throw in flight per player.
+	-- [P] perStud 0.5: each throw pays more the farther it flies; a second of throwing earns about 2x squeezing at Grip
+	-- Lv 1 (21 studs, a 2.1 s flight), 14x at Lv 100, 96x at the Golden Gates (it dips from 6.7x to 4.1x at Lv 18,
+	-- where the 1.6 s roll starts; work/pens3/p13v3/NOTES.md, econ/paytable.js).
+	pay = { perStud = 0.5, grip = 60 },
 	-- The Food Bag (SIM:59 foodEvery / foodSV, :239; V3:185): every `seconds` of flight time of paid throws,
 	-- `squeezes` x the squeeze value of food (pieces of the weakest placed squishy's band food).
 	foodBag = { seconds = 150, squeezes = 50 },

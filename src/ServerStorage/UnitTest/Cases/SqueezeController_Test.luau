@@ -28,6 +28,10 @@
 --     PenMath.squeezeValue) and the Grip (PenMath.squeezeGrip) of the pen state; a new player's 10 / 10 without one;
 --   * hudOffsetOf (spec 2026-10-11 §3.8): the overlay toy's viewport point as an SD_Hud offset, for the lines that
 --     float next to the first-person toy.
+--   * p13v3 (owner 2026-10-18: "Yes, above 20 a second"): every fresh press counts on the client's clock
+--     (Shared/PressSpeed; debugState().fastSeconds), sent or not; each SqueezeRequest reports the seconds in a row
+--     over 20 presses; a failed send keeps the report (the run is still reported after it ended), a sent one starts
+--     the next from the current run (driven through useDeps: the presses' clock and the send).
 -- Lobby HUD (spec 2026-10-11 lobby-hud-tap-squeeze §2; the squeeze panel and its button are gone):
 --   * pressOf: a left click is a mouse press, a touch a touch press with its InputObject and where it began; keys and
 --     gamepads as before; touchHeld: a world touch holds its squeeze until it lifts or is cancelled, or moves 8 px
@@ -998,4 +1002,50 @@ return function(t: Context)
 		expect.falsy(SqueezeController.buttonReleases(true, finger, thumb, Enum.UserInputType.Touch))
 		expect.truthy(SqueezeController.buttonReleases(true, finger, finger, Enum.UserInputType.Touch))
 	end)
+
+	-- P13v3 (owner 2026-10-18: "Yes, above 20 a second"): the speed rule counts every real press (AutoClickService).
+	t.test(
+		"p13v3: every press counts on the client's clock; a failed send keeps the report, a sent one restarts",
+		function()
+			local now = 100
+			local accept = false
+			local reports: { number } = {}
+			SqueezeController.useDeps({
+				clock = function(): number
+					return now
+				end,
+				squeezeRequest = function(fastSeconds: number): boolean
+					table.insert(reports, fastSeconds)
+					return accept
+				end,
+			})
+			local ok, why = pcall(function()
+				for second = 0, 2 do -- 25 presses a second for 3 s, every send failing (not connected)
+					for i = 1, 25 do
+						now = 100 + second + i / 26
+						SqueezeController.debugPress()
+					end
+				end
+				expect.equal(#reports, 75) -- a failed send never fills the paid cap: every press tried
+				expect.equal(reports[45], 1) -- the 2nd second's 20th press: one second over the line
+				expect.equal(reports[71], 3) -- the 3rd second's 21st press
+				expect.equal(SqueezeController.debugState().fastSeconds, 3)
+				now = 103.5 -- the 3rd second ended over the line: the run goes on
+				SqueezeController.debugPress()
+				now = 104.5 -- a slower second (1 press) ended it, but nothing was sent since: still reported
+				SqueezeController.debugPress()
+				accept = true
+				now = 105.5
+				expect.equal((SqueezeController.debugPress()), true) -- sent, reporting 3
+				now = 106.5
+				expect.equal((SqueezeController.debugPress()), true) -- the next one starts from the run now: 0
+				expect.deepEqual({ table.unpack(reports, 76) }, { 3, 3, 3, 0 })
+				expect.equal(SqueezeController.debugState().fastSeconds, 0)
+			end)
+			SqueezeController.useDeps(nil)
+			if not ok then
+				error(why, 0)
+			end
+		end
+	)
 end
