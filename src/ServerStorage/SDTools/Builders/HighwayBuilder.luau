@@ -6,7 +6,9 @@
 -- general area where they walk up and everybody can throw") the deck has no launch spots, its top is one open throw
 -- area (WorldLayout.Highway.throwArea), and the launch board has 3 last-throw rows and the server best (owner
 -- 2026-10-15: "The launch gate board shows the last throws and the server best"; the server writes them, pens3
--- phase 13 HighwayService). Server only, Edit mode only (ServerStorage.SDTools);
+-- phase 13 HighwayService); since p13v4 (owner 2026-10-19: copy the TikTok duck throw, its "BUBBLE RINGS" and
+-- BULLSEYE targets; work/pens3/p13v4/SPEC.md 3.5) each biome's 3 flight rings and 2 BULLSEYE pads
+-- (WorldLayout.Highway.rings / pads), and every biome Persistent. Server only, Edit mode only (ServerStorage.SDTools);
 -- called by Main's pipeline (target
 -- "highway"), never at runtime. Contract (Generated.BuildContext / BuildResult): build(ctx) returns { ok, root,
 -- warnings, error } with the new tree UNPARENTED and marked GeneratorId "highway"; it never parents anything into the
@@ -46,11 +48,14 @@
 --     Biome_1_CM .. Biome_7_DH (Models, Biome = n, WorldPivot at the biome's start; K:7887 one zone per biome)
 --       lane_tile_NN / rr_rainbow_lane_NN, lane_rail_NN, distance_marker_NN (Distance), biome_ground_NN,
 --       biome_arch_NN (Scale), the scenery (HighwayScenery's rows, named by their v6 ids: lv_volcano_01 with the L:4
---       light), dh_golden_gates_01 (+ the L:5 light): each an Atomic Model (K:7887)
+--       light), dh_golden_gates_01 (+ the L:5 light), p13v4 flight_ring_NN (Distance; 01..21) and flight_pad_NN
+--       (Distance; 01..14): each an Atomic Model (K:7887). P13v4 [P]: every biome Model Persistent (the chase camera
+--       flies up to 8,500 studs from the character; streamed-out biomes would show an empty sky).
 --   Every placed piece is a Model with SD_Piece = its v6 piece, named and numbered as v6 names it (L:20-1599).
 -- Rules: every part anchored and untouched; only the deck's v6 "walk" pieces (the platform, the watch steps)
 --   collide: nobody stands anywhere else, so v6's "walk" lane and ground and its "block" gate, fences, rails, arches
---   and scenery are decor until a phase needs them (the lane is a squishy-only surface, K:1700); parts under 2 studs
+--   and scenery are decor until a phase needs them (the lane is a squishy-only surface, K:1700; the rings and pads are
+--   decor too: the server decides every ring hit and BULLSEYE, Shared/HighwayMath); parts under 2 studs
 --   cast no shadow (the lobby's rule); every SurfaceGui at PixelsPerStud 25, hidden beyond 150 studs (K:7873); static
 --   lines tagged SD_Sign with SD_TextKey (WorldBinder re-applies them), live lines neither.
 -- Not built here (later phases): boosters, traps and reward bubbles (phases 15 and 17), the platform launchers, the
@@ -104,7 +109,8 @@ type Line = {
 -- Constants
 
 local GENERATOR_ID = "highway"
-local VERSION = 3 -- 1: phase 12, the deck and the lane; 2: phase 12b, the biome scenery; 3: phase 13, no spots, rows
+local VERSION = 4 -- 1: phase 12, the deck and the lane; 2: phase 12b, the biome scenery; 3: phase 13, no spots, rows
+-- 4: p13v4, the rings and BULLSEYE pads; biomes Persistent
 local ROOT_NAME = "SD_Highway"
 local DECK_NAME = "Deck"
 
@@ -128,6 +134,19 @@ local FONT = Enum.Font.FredokaOne -- P3D:237-238 "700 Fredoka" (Kit/Signs' headi
 local ROW_TOP = 0.5
 local ROW_STEP = 0.17
 local ROW_PX = 30
+
+-- P13v4 [P] the looks (Claude Design has not drawn them): a ring is WorldLayout.Highway.ringSegments glowing rods
+-- (HighwayGlow, Neon); a pad is 3 flat discs on the lane's top, white-pink-white (radius padRadius, then 10 and 5;
+-- thicker toward the middle so each shows over the one below). A ring per biome RINGS_PER_BIOME, pads PADS_PER_BIOME.
+local LANE_TOP = 1 -- HighwayBuilder's lane tiles: y 0..1
+local RING_TOKEN = "HighwayGlow"
+local PAD_DISCS = {
+	{ radius = 15, thickness = 0.2, token = "HighwayFrosting" },
+	{ radius = 10, thickness = 0.3, token = "HighwayStrawPink" },
+	{ radius = 5, thickness = 0.4, token = "HighwayFrosting" },
+}
+local RINGS_PER_BIOME = 3
+local PADS_PER_BIOME = 2
 
 local MASCOT_BLUEPRINT = "kitty_bread" -- K:985, :1000: "Diego's existing Kitty Bread model" (Art/SquishyBlueprints)
 local MASCOT_WIDTH = 11 -- LK:175: scaled to 11 studs wide
@@ -235,7 +254,8 @@ end
 
 -- Why the data cannot be built (nil when it can): Config's problems, a biome count that differs from WorldLayout's
 -- looks or HighwayScenery's, a biome edge off the 50-stud lane pieces or the 100-stud markers, a Strings key or Palette
--- token missing.
+-- token missing; p13v4: the rings (RINGS_PER_BIOME a biome, each inside its biome, in passing order, clear of the
+-- lane's top) and the pads (PADS_PER_BIOME a biome, each with its radius inside its biome), their tokens.
 local function dataProblem(deps: Deps): string?
 	local problems = deps.ValidateHighway(deps.Config)
 	if #problems > 0 then
@@ -263,6 +283,42 @@ local function dataProblem(deps: Deps): string?
 	for _, key in keys do
 		if deps.Strings.resolve(key) == nil then
 			return "Strings has no text for " .. key
+		end
+	end
+	-- P13v4: the rings and the pads.
+	local function inside(biome: any, low: number, high: number): boolean
+		local start = if type(biome) == "number" then C.starts[biome] else nil
+		return start ~= nil and low >= start and high < (C.starts[biome + 1] or C.gatesAt)
+	end
+	local rings, pads, last = {}, {}, -math.huge
+	for index, ring in H.rings do
+		if not inside(ring.biome, ring.d, ring.d) or ring.d <= last then
+			return string.format("ring %d (d %s) is not inside its biome in passing order", index, tostring(ring.d))
+		end
+		if ring.y - H.ringRadius - H.ringTube <= LANE_TOP then
+			return string.format("ring %d (d %d) does not clear the lane's top", index, ring.d)
+		end
+		last = ring.d
+		rings[ring.biome] = (rings[ring.biome] or 0) + 1
+	end
+	for index, pad in H.pads do
+		if not inside(pad.biome, pad.d - H.padRadius, pad.d + H.padRadius) then
+			return string.format("pad %d (d %s) is not inside its biome", index, tostring(pad.d))
+		end
+		pads[pad.biome] = (pads[pad.biome] or 0) + 1
+	end
+	for index in C.starts do
+		if rings[index] ~= RINGS_PER_BIOME or pads[index] ~= PADS_PER_BIOME then
+			return string.format("biome %d needs %d rings and %d pads", index, RINGS_PER_BIOME, PADS_PER_BIOME)
+		end
+	end
+	local tokens = { RING_TOKEN }
+	for _, disc in PAD_DISCS do
+		table.insert(tokens, disc.token)
+	end
+	for _, token in tokens do
+		if typeof(deps.Palette[token]) ~= "Color3" then
+			return "Art/Palette has no colour token " .. token
 		end
 	end
 	return nil
@@ -1325,6 +1381,30 @@ local function buildScenery(state: State, zone: Instance, index: number)
 	end
 end
 
+-- P13v4: a flight ring (WorldLayout.Highway.rings): its rods around the lane's axis at (0, y) d studs down the lane.
+local function buildRing(state: State, zone: Instance, ring: any)
+	local H = state.H
+	local f = state.origin * CFrame.new(0, ring.y, -ring.d)
+	local model = newPiece(state, "flight_ring", true)
+	local glow = color(state, RING_TOKEN)
+	for _, rod in Props.rods(model, "ring_rod", H.ringRadius, H.ringTube, f, glow, H.ringSegments) do
+		rod.Material = MATERIALS[RING_TOKEN]
+	end
+	model:SetAttribute(state.A.Distance, ring.d)
+	place(model, f, zone)
+end
+
+-- P13v4: a BULLSEYE pad (WorldLayout.Highway.pads): PAD_DISCS flat on the lane's top, d studs down the lane.
+local function buildPad(state: State, zone: Instance, pad: any)
+	local f = state.origin * CFrame.new(0, 0, -pad.d)
+	local model = newPiece(state, "flight_pad", true)
+	for _, disc in PAD_DISCS do
+		cyl(state, model, "pad_disc", disc.token, f, disc.radius, disc.thickness, 0, LANE_TOP, 0)
+	end
+	model:SetAttribute(state.A.Distance, pad.d)
+	place(model, f, zone)
+end
+
 -- The biomes in Config's order: each its own Model (K:7887) holding its lane, rails, markers, ground, arch and scenery.
 local function buildBiomes(state: State, root: Instance)
 	local H, C = state.H, state.deps.Config.Economy.Highway
@@ -1332,6 +1412,7 @@ local function buildBiomes(state: State, root: Instance)
 		local start = C.starts[index]
 		local stop = C.starts[index + 1] or C.gatesAt
 		local zone = Prims.model(look.model, nil, false)
+		zone.ModelStreamingMode = Enum.ModelStreamingMode.Persistent -- p13v4 [P]: the chase camera (see the header)
 		zone:SetAttribute(state.A.Biome, index)
 		for d0 = start, stop - H.tileLength, H.tileLength do
 			buildLane(state, zone, look, d0)
@@ -1350,6 +1431,16 @@ local function buildBiomes(state: State, root: Instance)
 		buildScenery(state, zone, index)
 		if index == #H.biomes then
 			buildGoldenGates(state, zone, C.gatesAt)
+		end
+		for _, ring in H.rings do
+			if ring.biome == index then
+				buildRing(state, zone, ring)
+			end
+		end
+		for _, pad in H.pads do
+			if pad.biome == index then
+				buildPad(state, zone, pad)
+			end
 		end
 		place(zone, state.origin * CFrame.new(0, 0, -start), root)
 	end

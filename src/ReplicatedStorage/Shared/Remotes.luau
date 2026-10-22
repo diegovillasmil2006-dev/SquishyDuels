@@ -19,6 +19,9 @@
 -- fastSeconds): fastSeconds = the client's speed report (Shared/PressSpeed: the whole seconds in a row, on its own
 -- clock, with more than Config.Net.AutoClick.speed.perSecond real presses each, sent or not), an integer for
 -- AutoClickService's speed rule only.
+-- P13v4 (owner 2026-10-19: the TikTok throw): HighwayThrow answers the flight plan (Types.HighwayPlan) and a press
+-- during the own flight asks for its boost; HighwayLanded(landing) (s2c, the owner) carries what the landing paid
+-- (Types.HighwayLanding).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -218,8 +221,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- Pens3 phase 13 (HighwayService): one throw from the launch deck's open throw area (no spot, no queue: anyone in
 	-- it, everyone at once). The server decides everything (where the caller stands, the power, the landing, the
 	-- pay); clientTime = workspace:GetServerTimeNow() at the press, checked and never trusted. The client also sends
-	-- the presses made while its squishy flies (refused with highway.inFlight), so the auto-clicker check sees the
-	-- real rhythm. data: Types.HighwayResult.
+	-- the presses made while its squishy flies, so the auto-clicker check sees the real rhythm; p13v4: such a press
+	-- asks for the throw's boost (ok, or highway.noFuel / highway.inFlight). data: Types.HighwayPlan (a press with no
+	-- open flight throws; during the own flight, boosted = true).
 	HighwayThrow = c2s("RemoteFunction", { arg("clientTime", "serverTime"), arg("fastSeconds", "integer") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
@@ -276,6 +280,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- its own view (on every phase change, K.O., respawn, team-lives change and outcome, and its own storm bar). The
 	-- result rides in its `outcome`: there is no MatchResult remote in v1.
 	MatchState = s2c("participants", { arg("state", "table") }),
+	-- P13v4 (HighwayService's settle at the landing): Types.HighwayLanding, what the thrower's landing paid (Coins with
+	-- the rings' share, Grip, best, gifts, the Food Bag, the rings, BULLSEYE), to the thrower only.
+	HighwayLanded = s2c("owner", { arg("landing", "table") }),
 } :: { [string]: RemoteSpec })
 
 Remotes.SPEC = SPEC

@@ -1329,34 +1329,108 @@ local UI = {
 	-- Pens3 phase 13 (HighwayThrowController: the throw's motion on this client; the lobby design v6, P3D = "Squishy
 	-- Lobby 3D.html", K = kit.json). The flight's own numbers are Config.Economy.Highway.flight (the server times it
 	-- too).
+	-- P13v4 (owner 2026-10-19: copy the TikTok duck throw; work/pens3/p13v4/SPEC.md 4): third person on the deck, a
+	-- close throw shot, a rigid chase camera high behind the squishy, a landing shot, everything else hidden during the
+	-- launch, the throw screen (HighwayHud, ScreenGui SD_Highway) and its pops and sounds. Every new number, layout,
+	-- kind, colour and sound is [P] (the video's look in Diego's sticker kit; Diego has no highway HUD yet). Colours
+	-- are Art/Palette token names, text kinds Config.UI.TextSize names, sounds AssetTable keys. `follow` and
+	-- `pillTopPx` are gone (the chase camera and the throw screen replace them).
 	Highway = {
-		-- P3D:849: the follow camera eases toward `side` right, `up` above and `back` behind the squishy (lane-local),
-		-- looking `lookAhead` down the lane past it and `lookUp` above, at posRate / lookRate a second (1 - e^(-dt x
-		-- rate)); P3D:850: it lets go holdSeconds after the landing. Off under ReducedMotion (the flight plays, the
-		-- camera stays with the player).
-		follow = {
-			side = 6,
-			up = 8,
-			back = 28,
-			lookAhead = 8,
-			lookUp = 0.5,
-			posRate = 3.5,
-			lookRate = 5,
-			holdSeconds = 2.5,
-		},
+		-- [P] SD_Highway (UIController.screenGui): over the HUD (10) and the kill banner's layer order, under modals.
+		gui = { displayOrder = 13, insets = Enum.ScreenInsets.CoreUISafeInsets } :: ScreenGuiSpec,
+		-- The ScreenGuis a launch does not hide (ScreenHold): its own screen, the fade, and the viewmodel's (it hides
+		-- itself: FirstPersonController.setAway).
+		keepGuis = { "SD_Highway", "SD_Fade", "SD_Viewmodel", "SD_ViewmodelPad" },
+		-- [P] On the deck: the camera at least zoomStuds out (third person), back to the player's own zoom after
+		-- restoreFrames render steps; the held squishy heldScale x bigger.
+		deck = { zoomStuds = 14, restoreFrames = 2, heldScale = 1.8 },
+		flyScale = 3, -- [P] the flying squishy, x its size (the trail too)
+		-- [P] The close throw shot (lane-local, from the thrower's root r): the eye side right, up above and front
+		-- toward the lane; it looks at r lookUp above; it holds holdAfterRelease s after the release.
+		throwShot = { side = 7, up = 2.5, front = 7, lookUp = 1.5, holdAfterRelease = 0.35 },
+		-- [P] The chase (from the squishy p): the eye up above and back behind, looking lookAhead down the lane and
+		-- lookUp above; rigid (no lag), only its first blendSeconds blend from the throw shot.
+		chase = { up = 16, back = 30, lookAhead = 40, lookUp = 0, blendSeconds = 0.4 },
+		-- [P] The landing shot: the eye side right, up above and back behind the landed squishy, eased from the chase
+		-- at posRate (1 - e^(-dt x rate)); back to the player holdSeconds after the landing.
+		landingShot = { side = 8, up = 6, back = 14, posRate = 4, holdSeconds = 1.6 },
 		-- P3D:587, :593: the squishy tumbles spinAir radians a second in the air, spinRoll x (1 - v) + spinRollMin
 		-- rolling (v = the roll's share done); it does not tumble under ReducedMotion.
 		spinAir = 7,
 		spinRoll = 8,
 		spinRollMin = 0.5,
 		-- K:4462-4477 E5 FlightTrail: 1.2 wide, 0.4 s, from the release until it stops (K: "tier colour" and white;
-		-- the launchers' tier colours come with phase 14: white until then, a PLACEHOLDER).
+		-- the launchers' tier colours come with phase 14: white until then, a PLACEHOLDER). Drawn x flyScale.
 		trail = { width = 1.2, lifetime = 0.4 },
 		-- [P] A press during the own flight is sent for the auto-clicker check unless a reply is this late (s).
 		lateReplySeconds = 1,
-		-- [P] The distance pill (a stand-in from Diego's WellPill in the daily timer's look, Config.UI.Daily.timer;
-		-- Diego draws the highway HUD): this many px under the top of SD_Hud, centred, only while a throw flies.
-		pillTopPx = 96,
+		boostBlendSeconds = 0.15, -- [P] a boost's new plan blends in over this long
+		landingWaitSeconds = 1, -- [P] the landing pops wait this long for HighwayLanded (later: toasts only)
+		debris = { count = 24, lifetime = 0.8, speed = 28, size = 1.2 }, -- [P] the landing's burst (FxPool)
+		-- [P] The throw screen (HighwayHud): the distance at the top centre, the zone line and the rings line under it
+		-- (gapPx apart), the boost button at the bottom centre, the PERFECT bar on the deck. Kinds: TextSize names (the
+		-- *Compact ones on a compact layout).
+		hud = {
+			topPx = 16,
+			gapPx = 4,
+			distanceKind = "Countdown",
+			distanceKindCompact = "Reveal",
+			zoneKind = "Name",
+			zoneKindCompact = "Big",
+			ringsKind = "Big",
+			ringsKindCompact = "Body",
+			boost = { bottomPx = 24, minWidthPx = 300, minHeightPx = 96 },
+			bar = {
+				bottomPx = 132,
+				widthPx = 420,
+				maxWidthShare = 0.6,
+				heightPx = 28,
+				markerPx = 10,
+				labelKind = "Chip",
+			},
+			colors = {
+				text = "White",
+				rings = "CandyCyan",
+				barTrack = "StickerTrough",
+				barZone = "CandyLime",
+				barMarker = "White",
+			},
+		},
+		-- [P] The pops: centred at (0.5, centreY), 1-3 lines (big / small kinds), scaled in from fromScale over inMs
+		-- (Back Out), held holdMs, faded over outMs; a new pop replaces the old (ReducedMotion: fade only).
+		pop = {
+			centreY = 0.36,
+			bigKind = "Congrats",
+			bigKindCompact = "Reveal",
+			smallKind = "Window",
+			smallKindCompact = "Duel",
+			inMs = 220,
+			holdMs = 900,
+			outMs = 250,
+			fromScale = 0.4,
+			lineGapPx = 6,
+			colors = {
+				perfect = "CandyGold",
+				boost = "CandyCyan",
+				lastOne = "CandyCoral",
+				bullseye = "CandyRed",
+				rings = "CandyCyan",
+				landed = "White",
+				newBest = "CandyGold",
+			},
+		},
+		-- [P] The sounds (AssetTable keys, all existing).
+		sounds = {
+			perfect = "ui.levelTone",
+			throw = "sfx.throw",
+			boost = "sfx.dashWhoosh",
+			lastOne = "ui.pop",
+			ring = "sfx.inspect.ring",
+			zone = "ui.pop",
+			landed = "sfx.impactBoing",
+			bullseye = "ui.gripUnlock",
+			newBest = "ui.coin",
+		},
 	},
 
 	-- UI FINAL (R1, the look kit; plan work/ui/PLAN.md §2): the sticker look of the design "Squishy Duels UI FINAL"

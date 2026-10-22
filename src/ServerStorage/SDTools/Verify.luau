@@ -52,6 +52,9 @@
 -- distance markers (every 100 studs to 8,400) and one dh_golden_gates; every part anchored and untouched, none
 -- colliding outside the Deck (the lane is for squishies), none under 2 studs casting a shadow; SurfaceGuis hidden
 -- beyond 150 studs (K:7873); at most 3 lights (L:2, :4, :5), no shadows; no scripts; every SD_TextKey in Strings.
+-- P13v4 (owner 2026-10-19: the TikTok throw's rings and BULLSEYE targets): every biome Model Persistent (the chase
+-- camera flies down the whole lane); exactly 21 flight_ring and 14 flight_pad pieces, each in the biome Model and at
+-- the Distance WorldLayout.Highway.rings / pads give it (when World/WorldLayout loads from deps).
 --
 -- WorldLayout shapes accepted (any of these works):
 --   tiers  WorldLayout.stationTier(stationId) -> number; or a station table in Stations / SqueezeStations / stations /
@@ -316,6 +319,12 @@ local HIGHWAY_BOARD_SLOTS = {
 local HIGHWAY_MARKERS = 84 -- L:476 ...: d 100 .. 8,400
 local HIGHWAY_MAX_LIGHTS = 3 -- L:2 the deck, L:4 the volcano (pens3 phase 12b's scenery), L:5 the Golden Gates
 local HIGHWAY_GUI_MAX_DISTANCE = 150 -- K:7873
+-- P13v4 (WorldLayout.Highway.rings / pads, restated): 3 rings and 2 pads in each of the 7 biomes.
+local HIGHWAY_FLIGHT_PIECES: { [string]: { count: number, layout: string } } = {
+	flight_ring = { count = 21, layout = "rings" },
+	flight_pad = { count = 14, layout = "pads" },
+}
+local ATTR_DISTANCE = "Distance"
 local TAG_LAUNCH_BOARD = "SD_LaunchBoard"
 local ATTR_PIECE = "SD_Piece"
 local ATTR_BIOME = "Biome"
@@ -1305,6 +1314,27 @@ local function verifyHighway(report: Report, root: Instance, deps: Deps?)
 	if deck == nil or not deck:IsA("Model") or deck.ModelStreamingMode ~= Enum.ModelStreamingMode.Persistent then
 		note(report, "deck", string.format("%s.%s must be a Persistent Model (K:7881-7883)", root.Name, HIGHWAY_DECK))
 	end
+	local layout = if deps then deps.WorldLayout else nil
+	if layout == nil then
+		local loaded, err = loadShared(if deps then deps.Shared else nil, { "World", "WorldLayout" })
+		layout = loaded
+		if err then
+			note(report, "WorldLayout", err)
+		end
+	end
+	-- P13v4: the rings and pads WorldLayout places ("kind biome d" -> how many), and the ones found.
+	local wanted: { [string]: number } = {}
+	local found: { [string]: number } = {}
+	local flights: { [string]: number } = {}
+	local highwayLayout = if type(layout) == "table" then layout.Highway else nil
+	if type(highwayLayout) == "table" then
+		for kind, spec in HIGHWAY_FLIGHT_PIECES do
+			for _, row in highwayLayout[spec.layout] or {} do
+				local key = string.format("%s %s %s", kind, tostring(row.biome), tostring(row.d))
+				wanted[key] = (wanted[key] or 0) + 1
+			end
+		end
+	end
 
 	-- The biome zones and their pieces.
 	local markers, gates = 0, 0
@@ -1318,6 +1348,9 @@ local function verifyHighway(report: Report, root: Instance, deps: Deps?)
 			)
 			continue
 		end
+		if (zone :: Model).ModelStreamingMode ~= Enum.ModelStreamingMode.Persistent then
+			note(report, "streaming", string.format("%s must be Persistent (p13v4: the chase camera)", name))
+		end
 		local count = 0
 		for _, piece in zone:GetChildren() do
 			local kind = piece:GetAttribute(ATTR_PIECE)
@@ -1325,6 +1358,11 @@ local function verifyHighway(report: Report, root: Instance, deps: Deps?)
 				continue
 			end
 			count += 1
+			if type(kind) == "string" and HIGHWAY_FLIGHT_PIECES[kind] then
+				flights[kind] = (flights[kind] or 0) + 1
+				local key = string.format("%s %d %s", kind, index, tostring(piece:GetAttribute(ATTR_DISTANCE)))
+				found[key] = (found[key] or 0) + 1
+			end
 			if not piece:IsA("Model") or (piece :: Model).ModelStreamingMode ~= Enum.ModelStreamingMode.Atomic then
 				note(report, "atomic", string.format("%s must be an Atomic Model (K:7887)", describe(piece)))
 			end
@@ -1344,6 +1382,27 @@ local function verifyHighway(report: Report, root: Instance, deps: Deps?)
 	end
 	if gates ~= 1 then
 		note(report, "gates", string.format("%d Golden Gates, expected 1", gates))
+	end
+	for kind, spec in HIGHWAY_FLIGHT_PIECES do
+		if (flights[kind] or 0) ~= spec.count then
+			note(report, "flight", string.format("%d %s pieces, expected %d", flights[kind] or 0, kind, spec.count))
+		end
+	end
+	if next(wanted) ~= nil then
+		for key, n in found do
+			if wanted[key] ~= n then
+				note(
+					report,
+					"flight",
+					string.format("%s (kind, biome, Distance) is not where WorldLayout.Highway puts one", key)
+				)
+			end
+		end
+		for key in wanted do
+			if found[key] == nil then
+				note(report, "flight", string.format("%s (kind, biome, Distance) is missing", key))
+			end
+		end
 	end
 
 	-- The deck: the board, the mascot slot.

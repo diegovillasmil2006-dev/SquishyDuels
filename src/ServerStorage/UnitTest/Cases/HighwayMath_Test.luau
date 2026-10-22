@@ -1,22 +1,22 @@
 --!strict
 -- HighwayMath_Test: unit tests for ReplicatedStorage.Shared.HighwayMath (pens3 phase 13: the throw for distance;
--- work/pens3/PLAN.md "PHASE 13" with the owner's corrections, work/pens3/p13v2/NOTES.md). Server only
--- (ServerStorage.UnitTest). Pure.
+-- work/pens3/PLAN.md "PHASE 13" with the owner's corrections, work/pens3/p13v2/NOTES.md; p13v4: the TikTok throw,
+-- work/pens3/p13v4/SPEC.md with its spec/curve.js). Server only (ServerStorage.UnitTest). Pure.
 -- Contract (Config.Economy.Highway, restated from the sources: G110 = work/econ4/out5_grip110.txt, J =
 -- final_hagb_grip110.json, SIM = sim5.js, P3D = the lobby design v6's "Squishy Lobby 3D.html"):
---   * power(Grip Lv) = 2 x 1.1^(Lv - 1) (G110:42: Lv 1 2, Lv 10 4.7, Lv 100 25K); a broken level counts as Lv 1;
+--   * power(Grip Lv) = 900 x 1.1^(Lv - 1) (p13v4 [P]: base 900, Lv 1 lands 213 studs); a broken level counts as Lv 1;
 --   * landing(power): J's walls, s_n + len_n x ln(P / P_n) / ln(P_n+1 / P_n) (V4:76; SIM:89), whole studs (cut), 0 at
---     power 1 or less, the Golden Gates (8,500) from 2.4e31; G110's typical throws: Lv 1 (power 2) 21.8, Lv 100 (25K)
---     328.9;
+--     power 1 or less, the Golden Gates (8,500) from 2.4e31; curve.js: power 900 -> 213, 14,400 -> 301;
 --   * biomeAt(studs) 1..7 (SIM:90: the Golden Gates are in Divine Heaven), reached(studs) 1..8 (8 = the Golden Gates);
---   * landingCoins(sv, studs) = floor(0.5 x studs x sv) (p13v3, owner 2026-10-18: Coins by distance, like Hit a Golf
---     Ball), never above maxCoins: one stud farther always pays more, a broken distance nothing;
---   * flight(studs): P3D's throw from the throw area's middle (P3D:554, :575): the release (0.42 s), the carry
---     (0.32 x the landing in [70, 1,100], never past it), the air 1.1 + 2.4 sqrt(carry from the release / 900) s,
---     the roll 1.6 + 15 (rest / 8,000)^0.75 s (none when nothing is left to roll);
---   * at(plan, t, x0, y0): the squishy's lane-local (x, y, d) t seconds after the release: from the release point to
---     the carry over the air time (an arc), then rolling to the landing (P3D:590's ease), on the lane (y 2) at the
---     carry and the landing; x stays the release's x (inside the rails);
+--   * landingCoins(sv, studs, rings?) = floor(0.5 x studs x (1 + 0.1 x rings) x sv) (p13v3 by distance; p13v4 +10 % a
+--     ring hit), never above maxCoins: one stud farther always pays more, a broken distance nothing;
+--   * p13v4 the PERFECT bar: barAt(t) a 0 -> 1 -> 0 triangle every 1.6 s of server time, isPerfect within 0.1 of the
+--     middle;
+--   * p13v4 the flight plan: arc (carry 0.9 x the landing in [70, 8,500], never past it, raised to minCarry; air 1.1
+--     + 2.4 sqrt(reach / 900); peak 0.175 x the reach, at most 60), rollSeconds (0.5 + 2 (rest / 8,000)^0.75), newPlan
+--     from a lane-local root (the release 1.5 above it), planAt (the release point before the release, the arcs, the
+--     roll, on the lane (y 2) at the carry and the landing, x easing to the centre over 60 studs), boost (x4 power,
+--     only from 0.2 s after the release to 0.15 s before the air ends, continuous, faster), ringsHit, bullseye;
 --   * inArea(lane-local point, margin): inside WorldLayout.Highway.throwArea (the deck top, L:20 30 x 15), grown by
 --     the margin; inThrowArea(world point, margin) the same from a world position;
 --   * foodBag(pen, sv): the band food of the weakest placed squishy (the lowest level: its band decides the food),
@@ -35,21 +35,25 @@ return function(t: Context)
 	local Config = t.requireShared("Config")
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local H = Config.Economy.Highway
+	-- A standing character's root in the middle of the throw area, lane-local (curve.js: y 5.5, d -34.25).
+	local ROOT = Vector3.new(0, 5.5, WorldLayout.Highway.throwArea.position.Z)
+	local RELEASE = 1_000
 
-	t.test("power: 2 x 1.1^(Grip Lv - 1) (G110:42); a broken level is Lv 1", function()
-		expect.equal(HighwayMath.power(1), 2)
-		expect.near(HighwayMath.power(10), 4.7159, 1e-3)
-		expect.near(HighwayMath.power(100), 25_055.66, 0.01) -- G110: "Lv100 25K"
+	t.test("power: 900 x 1.1^(Grip Lv - 1) (p13v4); a broken level is Lv 1", function()
+		expect.equal(HighwayMath.power(1), 900)
+		expect.near(HighwayMath.power(10), 900 * 1.1 ^ 9, 1e-6)
+		expect.near(HighwayMath.power(100), 450 * 25_055.66, 5) -- 450 x G110's "Lv100 25K"
 		for _, bad in { 0, -5, 0 / 0, math.huge, "7" } :: { any } do
-			expect.equal(HighwayMath.power(bad), 2)
+			expect.equal(HighwayMath.power(bad), 900)
 		end
 		expect.equal(HighwayMath.power(3.7), HighwayMath.power(3)) -- whole levels only
 	end)
 
 	t.test("landing: J's walls, whole studs (cut), 0 at power 1, the Golden Gates from 2.4e31", function()
 		expect.equal(HighwayMath.landing(2), 21) -- 300 x ln 2 / ln 14,000 = 21.8 (G110 T0 G1: 22)
-		-- 300 + 500 x ln(25,056 / 14,000) / ln(330M / 14,000) = 328.9
-		expect.equal(HighwayMath.landing(HighwayMath.power(100)), 328)
+		expect.equal(HighwayMath.landing(900), 213) -- p13v4: Grip Lv 1 (curve.js)
+		expect.equal(HighwayMath.landing(14_400), 301) -- Lv 1 PERFECT + boost: just into Bakery Town
+		expect.equal(HighwayMath.landing(HighwayMath.power(100)), 632) -- curve.js table 1
 		expect.equal(HighwayMath.landing(1), 0)
 		expect.equal(HighwayMath.landing(0.5), 0)
 		for index, wall in H.walls do
@@ -86,8 +90,8 @@ return function(t: Context)
 	-- P13v3 (owner 2026-10-18: "it should give coins on base of how many meters far they go like hit a golf ball").
 	t.test("landingCoins: floor(0.5 x the studs x the squeeze value), farther always more, at most maxCoins", function()
 		expect.equal(H.pay.perStud, 0.5)
-		expect.equal(HighwayMath.landingCoins(10, 21), 105) -- Grip Lv 1's throw at the least squeeze value
-		expect.equal(HighwayMath.landingCoins(10, 328), 1640) -- Grip Lv 100's
+		expect.equal(HighwayMath.landingCoins(10, 21), 105) -- the least squeeze value
+		expect.equal(HighwayMath.landingCoins(10, 328), 1640)
 		expect.equal(HighwayMath.landingCoins(40.5, 8500), math.floor(0.5 * 8500 * 40.5)) -- the Golden Gates
 		expect.equal(HighwayMath.landingCoins(1e18, 8500), Config.Economy.maxCoins)
 		expect.equal(HighwayMath.landingCoins(10, 0), 0)
@@ -106,59 +110,191 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("flight: P3D's carry, air and roll from the throw area's middle (P3D:554, :575)", function()
-		local d0 = -WorldLayout.Highway.throwArea.position.Z -- the release's distance: behind the start line
-		local short = HighwayMath.flight(21)
-		expect.equal(short.carry, 21) -- 0.32 x 21 is under 70, and never past the landing
-		expect.equal(short.from, d0)
-		expect.near(short.air, 1.1 + 2.4 * math.sqrt((21 - d0) / 900), 1e-9)
-		expect.near(short.peak, 0.175 * (21 - d0), 1e-9)
-		expect.equal(short.roll, 0)
-		expect.near(short.total, 0.42 + short.air, 1e-9)
-		local mid = HighwayMath.flight(1000)
-		expect.equal(mid.carry, 320)
-		expect.near(mid.roll, 1.6 + 15 * (680 / 8000) ^ 0.75, 1e-9)
-		local far = HighwayMath.flight(8500)
-		expect.equal(far.carry, 1100)
-		expect.near(
-			far.total,
-			0.42 + (1.1 + 2.4 * math.sqrt((1100 - d0) / 900)) + (1.6 + 15 * (7400 / 8000) ^ 0.75),
-			1e-9
-		)
-		expect.truthy(far.total < 21) -- the longest throw is about 20 s
-		local zero = HighwayMath.flight(0)
-		expect.equal(zero.carry, 0)
-		expect.truthy(zero.total > 0.42)
+	-- P13v4 -----------------------------------------------------------------------------------------------------------
+
+	t.test(
+		"p13v4 landingCoins: each ring hit adds 10 % (SPEC: (10, 213, 2) = 1,278); broken ring counts are 0",
+		function()
+			expect.equal(HighwayMath.landingCoins(10, 213, 2), 1278) -- floor(0.5 x 213 x 1.2 x 10)
+			expect.equal(HighwayMath.landingCoins(10, 213, 0), 1065)
+			expect.equal(HighwayMath.landingCoins(10, 213), 1065)
+			expect.equal(HighwayMath.landingCoins(10, 213, 3), math.floor(0.5 * 213 * 1.3 * 10))
+			expect.equal(HighwayMath.landingCoins(10, 213, 2.9), 1278) -- whole rings
+			for _, bad in { -2, 0 / 0, math.huge, "2" } :: { any } do
+				expect.equal(HighwayMath.landingCoins(10, 213, bad), 1065)
+			end
+			expect.equal(HighwayMath.landingCoins(10, 0 / 0, 3), 0)
+		end
+	)
+
+	t.test(
+		"p13v4 barAt: a 0 -> 1 -> 0 triangle every 1.6 s of server time; isPerfect within 0.1 of the middle",
+		function()
+			expect.near(HighwayMath.barAt(0), 0, 1e-9)
+			expect.near(HighwayMath.barAt(0.4), 0.5, 1e-9)
+			expect.near(HighwayMath.barAt(0.8), 1, 1e-9)
+			expect.near(HighwayMath.barAt(1.2), 0.5, 1e-9)
+			expect.near(HighwayMath.barAt(1.6), 0, 1e-9)
+			expect.near(HighwayMath.barAt(-0.4), 0.5, 1e-9)
+			expect.near(HighwayMath.barAt(1_800_000_000.4), 0.5, 1e-5) -- a real server clock
+			for _, bad in { 0 / 0, math.huge, "1" } :: { any } do
+				expect.equal(HighwayMath.barAt(bad), 0)
+				expect.falsy(HighwayMath.isPerfect(bad))
+			end
+			expect.truthy(HighwayMath.isPerfect(0.4))
+			expect.truthy(HighwayMath.isPerfect(1.2))
+			expect.truthy(HighwayMath.isPerfect(0.4 + 0.079)) -- bar 0.599 (1.25 a second)
+			expect.truthy(HighwayMath.isPerfect(0.4 - 0.079))
+			expect.falsy(HighwayMath.isPerfect(0.4 + 0.081)) -- bar 0.601
+			expect.falsy(HighwayMath.isPerfect(0.4 - 0.081))
+			expect.falsy(HighwayMath.isPerfect(0))
+			expect.falsy(HighwayMath.isPerfect(0.8))
+			-- 1 time in 5.
+			local hits = 0
+			for i = 0, 15_999 do
+				hits += if HighwayMath.isPerfect(i * 0.0001) then 1 else 0
+			end
+			expect.near(hits / 16_000, 0.2, 0.001)
+		end
+	)
+
+	t.test("p13v4 arc: carry 0.9 x the landing in [70, 8,500], never past it; air; peak at most 60", function()
+		local a = HighwayMath.arc(-34.25, 7, 213, RELEASE)
+		expect.equal(a.startAt, RELEASE)
+		expect.equal(a.from, -34.25)
+		expect.equal(a.y0, 7)
+		expect.near(a.carry, 0.9 * 213, 1e-9)
+		expect.near(a.air, 1.1 + 2.4 * math.sqrt((0.9 * 213 + 34.25) / 900), 1e-9)
+		expect.near(a.peak, 0.175 * (0.9 * 213 + 34.25), 1e-9)
+		expect.near(a.air, 2.30, 0.01) -- curve.js table 1, Lv 1
+		local far = HighwayMath.arc(-34.25, 7, 8500, RELEASE)
+		expect.equal(far.carry, 7650)
+		expect.equal(far.peak, 60)
+		expect.equal(HighwayMath.arc(-34.25, 7, 50, RELEASE).carry, 50) -- carryMin 70, but never past the landing
+		expect.equal(HighwayMath.arc(-34.25, 7, 75, RELEASE).carry, 70)
+		expect.equal(HighwayMath.arc(100, 20, 120, RELEASE, 130).carry, 120) -- raised to minCarry, never past studs
+		expect.equal(HighwayMath.arc(100, 20, 400, RELEASE, 380).carry, 380)
+		expect.equal(HighwayMath.arc(100, 20, 400, RELEASE, 200).carry, 360) -- minCarry under the carry: unchanged
+		expect.equal(HighwayMath.rollSeconds(100, 100), 0)
+		expect.near(HighwayMath.rollSeconds(7650, 8500), 0.5 + 2 * (850 / 8000) ^ 0.75, 1e-9)
 	end)
 
-	t.test("at: an arc from the release to the carry, then a roll to the landing; on the lane at both", function()
-		local plan = HighwayMath.flight(1000)
-		local x0, y0 = 4, 6
-		local start = HighwayMath.at(plan, 0, x0, y0)
-		expect.near(start.X, x0, 1e-9)
-		expect.near(start.Y, y0, 1e-9)
-		expect.near(start.Z, plan.from, 1e-9)
-		local top = HighwayMath.at(plan, plan.air / 2, x0, y0)
-		expect.truthy(top.Y > y0 + plan.peak * 0.9) -- the arc's top
-		local carry = HighwayMath.at(plan, plan.air, x0, y0)
-		expect.near(carry.Z, plan.carry, 1e-6)
-		expect.near(carry.Y, 2, 1e-6) -- the lane's top (1) + 1
-		local landed = HighwayMath.at(plan, plan.air + plan.roll, x0, y0)
-		expect.near(landed.Z, 1000, 1e-6)
-		expect.near(landed.Y, 2, 1e-6)
-		expect.near(HighwayMath.at(plan, 1e9, x0, y0).Z, 1000, 1e-6) -- stays there
-		-- Always forward, and the x stays inside the rails (±14).
-		local last = -math.huge
-		for step = 0, 100 do
-			local p = HighwayMath.at(plan, (plan.air + plan.roll) * step / 100, x0, y0)
-			expect.truthy(p.Z >= last - 1e-9)
-			last = p.Z
+	t.test(
+		"p13v4 newPlan: from a lane-local root, released 1.5 above it; landsAt = the release + air + roll",
+		function()
+			local plan = HighwayMath.newPlan(900, ROOT, RELEASE)
+			expect.equal(plan.x0, 0)
+			expect.equal(plan.studs, 213)
+			expect.equal(#plan.arcs, 1)
+			local a = plan.arcs[1]
+			expect.near(a.from, -34.25, 1e-9)
+			expect.near(a.y0, 7, 1e-9)
+			expect.equal(a.startAt, RELEASE)
+			expect.near(plan.roll, HighwayMath.rollSeconds(a.carry, 213), 1e-12)
+			expect.near(plan.landsAt, RELEASE + a.air + plan.roll, 1e-9)
+			expect.near(HighwayMath.airEnd(plan), RELEASE + a.air, 1e-9)
+			expect.near(0.42 + a.air + plan.roll, 3.25, 0.01) -- curve.js table 1, Lv 1: a 3.25 s flight
+			local side = HighwayMath.newPlan(900, ROOT + Vector3.new(8, 0, 0), RELEASE)
+			expect.equal(side.x0, 8)
 		end
-		expect.near(HighwayMath.at(plan, 1, 30, y0).X, 12, 1e-9)
-		expect.near(HighwayMath.at(plan, 1, -30, y0).X, -12, 1e-9)
-		-- A short throw has no roll: it lands at the carry.
-		local short = HighwayMath.flight(21)
-		expect.near(HighwayMath.at(short, short.air, 0, y0).Z, 21, 1e-6)
+	)
+
+	t.test(
+		"p13v4 planAt: the release point, the arc, on the lane at the carry and the stop; x to the centre",
+		function()
+			local plan = HighwayMath.newPlan(HighwayMath.power(100), ROOT + Vector3.new(8, 0, 0), RELEASE)
+			local a = plan.arcs[1]
+			local before, flying = HighwayMath.planAt(plan, RELEASE - 0.3)
+			expect.falsy(flying)
+			expect.truthy((before - Vector3.new(8, 7, -34.25)).Magnitude < 1e-3)
+			local start, startFlying = HighwayMath.planAt(plan, RELEASE)
+			expect.truthy(startFlying)
+			expect.truthy((start - before).Magnitude < 1e-3)
+			local top = HighwayMath.planAt(plan, RELEASE + a.air / 2)
+			expect.truthy(top.Y > 7 + a.peak * 0.9) -- the arc's top
+			expect.near(top.Z, (a.from + a.carry) / 2, 1e-3)
+			expect.near(top.X, 0, 1e-9) -- past from + 60: on the lane's centre
+			local carry, carryFlying = HighwayMath.planAt(plan, HighwayMath.airEnd(plan))
+			expect.falsy(carryFlying) -- rolling
+			expect.near(carry.Z, a.carry, 1e-3)
+			expect.near(carry.Y, 2, 1e-3) -- the lane's top (1) + 1
+			local stop = HighwayMath.planAt(plan, plan.landsAt)
+			expect.near(stop.Z, plan.studs, 1e-3)
+			expect.near(stop.Y, 2, 1e-3)
+			expect.near(HighwayMath.planAt(plan, 1e12).Z, plan.studs, 1e-3) -- stays there
+			-- x eases from the release's x to 0 over the first 60 studs.
+			local mid = HighwayMath.planAt(plan, RELEASE + a.air * (30 / (a.carry - a.from)))
+			expect.near(mid.Z, -34.25 + 30, 1e-3)
+			expect.near(mid.X, 8 * 0.5, 1e-3)
+			-- Always forward; held inside the rails.
+			local last = -math.huge
+			for step = 0, 200 do
+				local p = HighwayMath.planAt(plan, RELEASE + (plan.landsAt - RELEASE) * step / 200)
+				expect.truthy(p.Z >= last - 1e-3)
+				last = p.Z
+			end
+			local wide = HighwayMath.newPlan(900, ROOT + Vector3.new(30, 0, 0), RELEASE)
+			expect.near(HighwayMath.planAt(wide, RELEASE).X, 12, 1e-3)
+			expect.near(HighwayMath.planAt(plan, 0 / 0).Z, -34.25, 1e-3) -- a broken time: the release point
+		end
+	)
+
+	t.test("p13v4 boost: x4 power from where it is, only inside its window, continuous and faster", function()
+		local perfect = HighwayMath.newPlan(900 * 4, ROOT, RELEASE) -- Lv 1 PERFECT
+		expect.equal(perfect.studs, 257) -- curve.js
+		local airEnd = HighwayMath.airEnd(perfect)
+		expect.equal(HighwayMath.boost(perfect, 3600, RELEASE + 0.19), nil) -- a double tap at the throw
+		expect.equal(HighwayMath.boost(perfect, 3600, RELEASE - 0.3), nil) -- before the release
+		expect.equal(HighwayMath.boost(perfect, 3600, airEnd - 0.14), nil) -- too close to the carry
+		expect.equal(HighwayMath.boost(perfect, 3600, airEnd + 0.5), nil) -- rolling
+		expect.equal(HighwayMath.boost(perfect, 3600, 0 / 0), nil)
+		expect.truthy(HighwayMath.boost(perfect, 3600, RELEASE + 0.2) ~= nil)
+		local at = RELEASE + 1
+		local boosted = HighwayMath.boost(perfect, 3600, at)
+		assert(boosted ~= nil, "a boost 1 s after the release goes")
+		expect.equal(boosted.studs, 301) -- curve.js: Bakery Town on the first throw
+		expect.equal(#boosted.arcs, 2)
+		expect.equal(boosted.arcs[1], perfect.arcs[1])
+		local b = boosted.arcs[2]
+		expect.equal(b.startAt, at)
+		local here = HighwayMath.planAt(perfect, at)
+		local there = HighwayMath.planAt(boosted, at)
+		expect.truthy((here - there).Magnitude < 1e-6) -- continuous
+		expect.near(b.from, here.Z, 1e-9)
+		expect.near(b.y0, here.Y, 1e-9)
+		local a = perfect.arcs[1]
+		expect.truthy((b.carry - b.from) / b.air > (a.carry - a.from) / a.air) -- faster
+		expect.near((b.carry - b.from) / b.air, 1.25 * (a.carry - a.from) / a.air, 1e-9)
+		expect.near(boosted.landsAt, at + b.air + boosted.roll, 1e-9)
+		expect.near(boosted.landsAt - RELEASE + 0.42, 3.36, 0.01) -- curve.js: a 3.36 s flight
+		expect.truthy(perfect.arcs[2] == nil) -- the old plan untouched
+		-- Never shorter than the plan it boosts; at least 30 studs ahead.
+		local late = HighwayMath.boost(perfect, 3600, airEnd - 0.2)
+		assert(late ~= nil, "a late boost goes")
+		expect.truthy(late.studs >= perfect.studs)
+		expect.truthy(late.arcs[2].carry >= late.arcs[2].from + 30 - 1e-9 or late.arcs[2].carry == late.studs)
+		expect.truthy(late.arcs[2].air >= 0.5)
+	end)
+
+	t.test("p13v4 ringsHit: Lv 1 plain none, PERFECT ring 1, PERFECT + a boost at +1 s rings 1-3", function()
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		local perfect = HighwayMath.newPlan(3600, ROOT, RELEASE)
+		expect.deepEqual(HighwayMath.ringsHit(plain), {})
+		expect.deepEqual(HighwayMath.ringsHit(perfect), { 1 })
+		local boosted = HighwayMath.boost(perfect, 3600, RELEASE + 1)
+		expect.deepEqual(HighwayMath.ringsHit(boosted), { 1, 2, 3 })
+		-- Rolling never hits: a plan whose air ends before the first ring.
+		local short = HighwayMath.newPlan(2, ROOT, RELEASE) -- 21 studs
+		expect.deepEqual(HighwayMath.ringsHit(short), {})
+	end)
+
+	t.test("p13v4 bullseye: a stop within 15 studs of a pad (135, 255, ...)", function()
+		expect.truthy(HighwayMath.bullseye(135))
+		expect.truthy(HighwayMath.bullseye(120))
+		expect.truthy(HighwayMath.bullseye(8140))
+		expect.falsy(HighwayMath.bullseye(151))
+		expect.falsy(HighwayMath.bullseye(213))
+		expect.falsy(HighwayMath.bullseye(0 / 0))
 	end)
 
 	t.test("inArea: the deck top's 30 x 15 (L:20), grown by the margin; inThrowArea from a world point", function()

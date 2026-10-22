@@ -26,6 +26,10 @@
 --     camera, zoom, cursor or shoulder offset and leaves mode() and Changed alone; practice hands over to the lobby with
 --     no gap when the player was already in the head; no lobby look while the exit pushes the camera back out to a
 --     third-person distance; LookChanged fires once per change.
+--   * p13v4 (owner 2026-10-19: "the hands are still there and looks so bad"): `away` (the highway's own camera:
+--     the launch deck's third person, the throw, the chase, the landing) makes the look nil whatever else holds,
+--     LookChanged once; clearing it brings the lobby look back; it writes no camera, zoom, cursor or shoulder
+--     offset and leaves mode() and Changed alone.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -637,5 +641,25 @@ return function(t: Context)
 		expect.equal(Machine.look(r.m), "lobby")
 		expect.deepEqual(r.looks, { "lobby", "none", "duel", "none", "lobby" })
 		expect.deepEqual(r.changes, { "duel", "none" })
+	end)
+
+	t.test("p13v4: away hides the look at once, writes nothing, and clearing it brings the lobby look back", function()
+		local r = rig()
+		Machine.setFlag(r.m, "headHidden", true)
+		expect.equal(Machine.look(r.m), "lobby")
+		table.clear(r.writes)
+		Machine.setFlag(r.m, "away", true)
+		expect.equal(Machine.look(r.m), nil)
+		expect.equal(r.m.look, nil)
+		r.step(3)
+		expect.equal(r.m.mode, nil)
+		Machine.setFlag(r.m, "away", false)
+		expect.equal(Machine.look(r.m), "lobby")
+		r.step(3)
+		expect.deepEqual(r.looks, { "lobby", "none", "lobby" })
+		expect.deepEqual(r.changes, {})
+		expect.deepEqual(r.writes, {})
+		expect.deepEqual(r.shoulder, {})
+		expect.equal(type(FirstPersonController.setAway), "function")
 	end)
 end

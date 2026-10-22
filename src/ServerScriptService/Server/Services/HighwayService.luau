@@ -3,47 +3,58 @@
 -- corrections, work/pens3/p13v2/NOTES.md): the throw for distance from the launch deck. The server decides everything;
 -- Shared/HighwayMath has the math, Config.Economy.Highway every number (checked by Config/ValidateHighway in init: any
 -- problem stops with an error, like PenService's).
+-- P13v4 (owner 2026-10-19: copy the TikTok duck throw; work/pens3/p13v4/SPEC.md 2, 3, 5): the reply is the flight plan
+-- (Types.HighwayPlan) and the pay moves to the landing (the boost and the rings are only known then); the PERFECT bar,
+-- one boost a throw, the rings' share of the Coins, the BULLSEYE pads, and the new HighwayLanded remote.
 -- * One open throw area (owner 2026-10-18: "it should be a general area where they walk up and everybody can throw";
 --   2026-10-15: "One big launch area where everyone throws at the same time, with no waiting or queue"): anyone whose
 --   server-side character root is inside WorldLayout.Highway.throwArea (areaMarginStuds bigger) may throw, everyone at
 --   once; no spots, no queue. The only pacing is one throw in flight per player.
--- * HighwayThrow(clientTime) (RF; Config.Net 14 a second, burst 30: the client sends every THROW press in the area, the
---   presses during its own flight too, so the auto-clicker check sees the real rhythm; one in flight is this service's
---   own check), refusals in PenBuySpot's order: (1) clientTime not a finite number -> net.invalid (it is never trusted:
---   no timing reads it); (2) AutoClickService.checkThrow first for every arrival (its reason: highway.autoClick, the
---   calm warning of a catch, or highway.tooFast during its pause; owner 2026-10-16 "punishes step by step"); (3) no
---   READY profile -> data.notReady; (4) the decision: a throw still in flight -> highway.inFlight (answered at once,
---   nothing written: the client's presses during a flight end here); no living character root in the throw area ->
---   highway.notInArea; (5) a pending failed save, the server closing or a restart pending -> highway.paused; (6)
---   SD_DuelPhase ~= "" -> inventory.lockedInDuel. Every refusal carries charged = false and writes nothing.
---   P13v3 (owner 2026-10-18: "Yes, above 20 a second"): HighwayThrow(clientTime, fastSeconds): fastSeconds (the
---   client's speed report, Shared/PressSpeed; a Net-checked integer) goes to checkThrow only (its speed rule; a catch
---   answers highway.superFast); nothing else reads it.
--- * A throw: power = HighwayMath.power(GripService.levelOf) (phase 14 multiplies the gear in), the landing
---   HighwayMath.landing(power) and its biome b, the flight HighwayMath.flight(studs).total (the player's next throw
---   waits for it, less inFlightGraceSeconds). It pays in full (owner 2026-10-16: "No daily limits on squeezes or
---   throwing"; no time share, no cap): HighwayMath.landingCoins(SV, studs) Coins with the "highway" reason (p13v3,
---   owner 2026-10-18: by distance, farther pays more) and
---   GripService.addFromHighway(pay.grip). Then ONE mutate when something saved changes: highway.best and
---   highway.biome rise (only up: HighwayMath.reached, 8 = the Golden Gates), and a Food Bag's food (below). The
---   biome gifts of every biome this throw reaches first, once each (the saved biome only rises, so they are never
---   given twice), through EconomyService.grantSquishy(p, kind, "grant", true): a full Toy Box queues them (pens3 phase
---   5). The `highway` (and `food`) fields sent, a "soon" save (reading: a landing only grants, nothing is spent, so
---   no awaited "now" save: one per throw would wait on the DataStore's 6 s rule for one key every few seconds and hold
---   the throw back; PenPlace / Feed's reading), and the reply ok(Types.HighwayResult, charged = false).
--- * The Food Bag (V3:185, SIM:239): the flight time of paid throws adds up in the session; every foodBag.seconds of it
---   the throw that crosses the line also gives HighwayMath.foodBag(pen, SV) (the weakest placed squishy's band food,
---   at least 1 piece, at most Food.maxPieces held; the reply names the pieces that fit). Time not thrown never counts
---   (an idle player on the deck earns none); a bag that finds no food (nothing placed, or past the last band) or no
---   room (the stock full) is skipped.
+-- * HighwayThrow(clientTime, fastSeconds) (RF; Config.Net 14 a second, burst 30: the client sends every THROW press in
+--   the area, the presses during its own flight too, so the auto-clicker check sees the real rhythm), in this order:
+--   (1) clientTime not a finite number -> net.invalid (it is never trusted: no timing reads it); (2)
+--   AutoClickService.checkThrow first for every arrival (its reason: highway.autoClick, the calm warning of a catch,
+--   highway.tooFast during its pause, highway.superFast for the speed rule: fastSeconds, the client's speed report
+--   (Shared/PressSpeed; a Net-checked integer), goes to checkThrow only); (3) no READY profile -> data.notReady; (4)
+--   the player's open flight: an arrival within inFlightGraceSeconds of its landing settles it (below) and goes on as
+--   a new press; any earlier one asks for the boost: no fuel left -> highway.noFuel, HighwayMath.boost refusing (too
+--   soon after the release, too close to the carry, rolling) -> highway.inFlight, else ok(the plan after the boost,
+--   boosted = true); (5) no living character root in the throw area -> highway.notInArea; (6) a pending failed save,
+--   the server closing or a restart pending -> highway.paused; (7) SD_DuelPhase ~= "" -> inventory.lockedInDuel.
+--   Every refusal carries charged = false and writes nothing.
+-- * A throw (at the arrival's server time t): PERFECT when HighwayMath.isPerfect(t - one way), one way = half the
+--   player's ping (Player:GetNetworkPing is the round trip; 0 when it fails, at most timing.maxOneWaySeconds): the
+--   client's own clock is never read. power = HighwayMath.power(GripService.levelOf) (x timing.perfectPower when
+--   PERFECT; phase 14 multiplies the gear in), the plan HighwayMath.newPlan(power, the root lane-local, t +
+--   releaseSeconds) with boost.fuel boosts; the settle is scheduled at its landsAt (deps.after = task.delay). The
+--   reply: ok(the plan); nothing is paid yet.
+-- * A boost (a press during the own flight): HighwayMath.boost(plan, power, t), power x boost.power, one fuel less;
+--   the settle moves to the new landsAt (an older schedule finds it stale and does nothing). Nothing is written.
+-- * The settle (at the landing, or at once when the player leaves; a profile that is not READY then pays nothing,
+--   logged): it pays in full (owner 2026-10-16: "No daily limits on squeezes or throwing"; no time share, no cap):
+--   HighwayMath.landingCoins(SV, studs, rings) Coins with the "highway" reason (p13v3: by distance; p13v4: + a share a
+--   ring flown through, HighwayMath.ringsHit) and GripService.addFromHighway(pay.grip). Then ONE mutate when
+--   something saved changes: highway.best and highway.biome rise (only up: HighwayMath.reached, 8 = the Golden
+--   Gates), and a Food Bag's food (below). The biome gifts of every biome this throw reaches first, once each (the
+--   saved biome only rises, so they are never given twice), through EconomyService.grantSquishy(p, kind, "grant",
+--   true): a full Toy Box queues them (pens3 phase 5). The `highway` (and `food`) fields sent, a "soon" save (reading:
+--   a landing only grants, nothing is spent, so no awaited "now" save: one per throw would wait on the DataStore's 6 s
+--   rule for one key every few seconds; PenPlace / Feed's reading), the board, and HighwayLanded(Types.HighwayLanding)
+--   to the thrower (not when the player is leaving).
+-- * The Food Bag (V3:185, SIM:239): the flight time of paid throws (press to landing) adds up in the session; every
+--   foodBag.seconds of it the landing that crosses the line also gives HighwayMath.foodBag(pen, SV) (the weakest placed
+--   squishy's band food, at least 1 piece, at most Food.maxPieces held; the landing names the pieces that fit). Time
+--   not thrown never counts (an idle player on the deck earns none); a bag that finds no food (nothing placed, or past
+--   the last band) or no room (the stock full) is skipped.
 -- * The launch board (owner 2026-10-15: "The launch gate board shows the last throws and the server best"): the last
---   WorldLayout.Highway.boardRows throws of anyone in the server, newest first (the thrower's display name and the
+--   WorldLayout.Highway.boardRows landings of anyone in the server, newest first (the thrower's display name and the
 --   distance), and the server best (this server's farthest landing), written by the server on the board's live lines
 --   (deps.writeBoard: every SD_LaunchBoard's TextLabels by name; they replicate to everyone) after each landing;
 --   start() writes the empty board (Strings highway.board.empty on the first row). The server's own memory: a new
 --   server starts empty.
--- Dependencies are injectable (useDeps) so unit tests run with fake profiles and players (plain tables); init() never
--- yields; playerAdded / playerRemoving never yield.
+-- Dependencies are injectable (useDeps) so unit tests run with fake profiles, players and timers (plain tables);
+-- init() never yields; playerAdded / playerRemoving never yield (playerRemoving settles an open flight first: services
+-- leave in reverse order, so DataService still holds the profile).
 
 -- Services
 
@@ -83,10 +94,13 @@ export type Deps = {
 	isClosing: () -> boolean,
 	isRestartPending: () -> boolean,
 	duelPhaseOf: (player: any) -> string, -- SD_DuelPhase ("" outside a match)
-	clock: () -> number, -- os.clock: the flights
-	serverNow: () -> number, -- Workspace:GetServerTimeNow(): the reply's landsAt
+	clock: () -> number, -- os.clock: the auto-clicker check's clock
+	serverNow: () -> number, -- Workspace:GetServerTimeNow(): every flight time (the plans are on it)
 	rootOf: (player: any) -> Vector3?, -- the living character's HumanoidRootPart position (server side)
 	gripLevel: (player: any) -> number, -- GripService.levelOf
+	pingOf: (player: any) -> number, -- p13v4: Player:GetNetworkPing (seconds, the round trip; 0 when it fails)
+	after: (seconds: number, fn: () -> ()) -> (), -- p13v4: task.delay (the settle at the landing)
+	fireLanded: (player: any, landing: Types.HighwayLanding) -> (), -- p13v4: NetService.fire("HighwayLanded", ...)
 	grantCoins: (player: any, amount: number, reason: string) -> number, -- the Coins really added
 	addGrip: (player: any, squeezes: number) -> number, -- GripService.addFromHighway
 	grantSquishy: (player: any, kind: string) -> boolean, -- EconomyService.grantSquishy(p, kind, "grant", true)
@@ -97,12 +111,18 @@ export type Deps = {
 	writeBoard: (lines: { [string]: string }) -> (), -- the launch board's live lines, by name
 }
 
--- What the remote answers: NetService.ok(Types.HighwayResult) or NetService.err(reason, false).
-export type Reply = { ok: boolean, data: Types.HighwayResult?, reason: string?, charged: boolean? }
+-- What the remote answers: NetService.ok(Types.HighwayPlan) or NetService.err(reason, false).
+export type Reply = { ok: boolean, data: Types.HighwayPlan?, reason: string?, charged: boolean? }
+
+-- The open flight: the plan last sent (never changed: a boost makes a new one), the power so far (PERFECT and boosts
+-- in), the press's server time and the number of its current settle schedule.
+type Flight = { plan: Types.HighwayPlan, power: number, pressedAt: number, schedule: number }
 
 type Session = {
-	flyingUntil: number, -- deps.clock() from when the next throw may go
+	flight: Flight?,
 	thrownSeconds: number, -- flight time of paid throws not yet in a Food Bag
+	throws: number, -- the last throw's id
+	schedules: number, -- the last settle schedule's number
 }
 
 type Row = { name: string, studs: number }
@@ -113,6 +133,7 @@ local H = Config.Economy.Highway
 local FOOD = Config.Economy.Food
 local LAYOUT = WorldLayout.Highway
 local REMOTE = "HighwayThrow"
+local LANDED_REMOTE = "HighwayLanded"
 local COIN_REASON = "highway"
 local SAVE_SOON = "soon"
 local FIELD_HIGHWAY = "highway"
@@ -123,6 +144,7 @@ local GIFT_SOURCE = "grant"
 local CODE_INVALID = "net.invalid"
 local CODE_NOT_READY = "data.notReady"
 local CODE_IN_FLIGHT = "highway.inFlight"
+local CODE_NO_FUEL = "highway.noFuel"
 local CODE_NOT_IN_AREA = "highway.notInArea"
 local CODE_PAUSED = "highway.paused"
 local CODE_IN_DUEL = "inventory.lockedInDuel"
@@ -203,6 +225,18 @@ local function defaultDeps(): Deps
 		gripLevel = function(player: any): number
 			return GripService.levelOf(player)
 		end,
+		pingOf = function(player: any): number
+			local ok, ping = pcall(function(): any
+				return (player :: Player):GetNetworkPing()
+			end)
+			return if ok and isFinite(ping) then ping else 0
+		end,
+		after = function(seconds: number, fn: () -> ())
+			task.delay(seconds, fn)
+		end,
+		fireLanded = function(player: any, landing: Types.HighwayLanding)
+			NetService.fire(LANDED_REMOTE, player, landing)
+		end,
 		grantCoins = function(player: any, amount: number, reason: string): number
 			local added = EconomyService.grantCoins(player, amount, reason)
 			return added
@@ -246,7 +280,7 @@ local deps: Deps = defaultDeps()
 local function sessionOf(player: any): Session
 	local session = sessions[player]
 	if session == nil then
-		session = { flyingUntil = -math.huge, thrownSeconds = 0 }
+		session = { flight = nil, thrownSeconds = 0, throws = 0, schedules = 0 }
 		sessions[player] = session
 	end
 	return session
@@ -283,26 +317,19 @@ local function onBoard(name: string, studs: number)
 	deps.writeBoard(boardLines())
 end
 
--- (3)-(6): the refusal code, or nil when the throw may go (see the header).
-local function refused(player: any, session: Session, now: number): string?
-	local profile = deps.profileOf(player)
-	if deps.statusOf(player) ~= STATUS_READY or type(profile) ~= "table" then
-		return CODE_NOT_READY
-	end
-	if now < session.flyingUntil then
-		return CODE_IN_FLIGHT
-	end
+-- (5)-(7): the refusal code, or nil and the root's world position when a new throw may go (see the header).
+local function refused(player: any): (string?, Vector3?)
 	local root = deps.rootOf(player)
 	if root == nil or not HighwayMath.inThrowArea(root, H.areaMarginStuds) then
-		return CODE_NOT_IN_AREA
+		return CODE_NOT_IN_AREA, nil
 	end
 	if deps.savePending(player) or deps.isClosing() or deps.isRestartPending() then
-		return CODE_PAUSED
+		return CODE_PAUSED, nil
 	end
 	if deps.duelPhaseOf(player) ~= "" then
-		return CODE_IN_DUEL
+		return CODE_IN_DUEL, nil
 	end
-	return nil
+	return nil, root
 end
 
 -- The saved highway as stored (a broken one reads as none: sanitize repairs it on load).
@@ -326,37 +353,28 @@ local function giftsBetween(from: number, to: number): { string }
 	return list
 end
 
--- Public: the remote (see the header for the order of the checks) ----------------------------------------------------
-
-function HighwayService.throw(player: any, clientTime: any, fastSeconds: number?): Reply
-	if not isFinite(clientTime) then
-		return NetService.err(CODE_INVALID, false)
+-- The landing of the open flight (see the header): pays, saves, writes the board, and fires HighwayLanded when `fire`.
+local function settle(player: any, session: Session, fire: boolean)
+	local flight = session.flight
+	if flight == nil then
+		return
 	end
-	local now = deps.clock()
-	local cheat = deps.checkThrow(player, now, fastSeconds)
-	if cheat ~= nil then
-		return NetService.err(cheat, false)
-	end
-	local session = sessionOf(player)
-	local refusal = refused(player, session, now)
-	if refusal ~= nil then
-		return NetService.err(refusal, false)
-	end
-
-	local power = HighwayMath.power(deps.gripLevel(player))
-	local studs = HighwayMath.landing(power)
-	local biome = HighwayMath.biomeAt(studs)
-	local flight = HighwayMath.flight(studs).total
-	session.flyingUntil = now + flight - H.inFlightGraceSeconds
-
+	session.flight = nil
+	local plan = flight.plan
+	local studs = plan.studs
 	local profile = deps.profileOf(player)
+	if deps.statusOf(player) ~= STATUS_READY or type(profile) ~= "table" then
+		log:warn(`user {userIdOf(player)}: a {studs}-stud landing found no ready profile; nothing paid`)
+		return
+	end
+	local rings = HighwayMath.ringsHit(plan)
 	local sv = PenMath.squeezeValue(profile.pen)
-	local coins = deps.grantCoins(player, HighwayMath.landingCoins(sv, studs), COIN_REASON)
+	local coins = deps.grantCoins(player, HighwayMath.landingCoins(sv, studs, #rings), COIN_REASON)
 	local grip = deps.addGrip(player, H.pay.grip)
 
 	local before = savedHighway(profile)
 	local reached = HighwayMath.reached(studs)
-	session.thrownSeconds += flight
+	session.thrownSeconds += plan.landsAt - flight.pressedAt
 	local bag: { id: string, count: number }? = nil
 	if session.thrownSeconds >= H.foodBag.seconds then
 		session.thrownSeconds -= H.foodBag.seconds
@@ -383,11 +401,11 @@ function HighwayService.throw(player: any, clientTime: any, fastSeconds: number?
 			return true
 		end)
 		if bag ~= nil then
-			-- Verification fix: the reply names the pieces really added; none (a full stock) = no bag.
+			-- Verification fix: the landing names the pieces really added; none (a full stock) = no bag.
 			bag = if added > 0 then { id = bag.id, count = added } else nil
 		end
 		if not written then
-			-- Cannot happen without a yield after the checks (the session was ready a moment ago); logged loudly.
+			-- Cannot happen without a yield after the check above (the session was ready a moment ago); logged loudly.
 			log:error(
 				`user {userIdOf(player)}: a {studs}-stud landing paid but its best / biome / food was not written`
 			)
@@ -409,23 +427,124 @@ function HighwayService.throw(player: any, clientTime: any, fastSeconds: number?
 	end
 	onBoard(deps.nameOf(player), studs)
 	deps.requestSave(player, SAVE_SOON)
-	local data: Types.HighwayResult = {
-		studs = studs,
-		biome = biome,
-		power = power,
-		flight = flight,
-		landsAt = deps.serverNow() + flight,
-		coins = coins,
-		grip = grip,
-		best = math.max(before.best, studs),
-		newBest = newBest,
-		reached = if firstBiome then reached else nil,
-		gifts = gifts,
-		food = bag,
+	if fire then
+		deps.fireLanded(player, {
+			id = plan.id,
+			studs = studs,
+			biome = plan.biome,
+			coins = coins,
+			grip = grip,
+			best = math.max(before.best, studs),
+			newBest = newBest,
+			reached = if firstBiome then reached else nil,
+			gifts = gifts,
+			food = bag,
+			rings = rings,
+			bullseye = HighwayMath.bullseye(studs),
+			perfect = plan.perfect,
+			boosts = #plan.arcs - 1,
+		})
+	end
+end
+
+-- Schedules the settle at the flight's landing; an older schedule (before a boost, or of a flight already settled, or
+-- of a session that ended) does nothing.
+local function schedule(player: any, session: Session, flight: Flight, now: number)
+	session.schedules += 1
+	local mine = session.schedules
+	flight.schedule = mine
+	deps.after(math.max(flight.plan.landsAt - now, 0), function()
+		if sessions[player] == session and session.flight == flight and flight.schedule == mine then
+			settle(player, session, true)
+		end
+	end)
+end
+
+-- (4) A press during the own flight: the boost (see the header).
+local function boost(player: any, session: Session, flight: Flight, now: number): Reply
+	local plan = flight.plan
+	if plan.fuel <= 0 then
+		return NetService.err(CODE_NO_FUEL, false)
+	end
+	local core = HighwayMath.boost(plan, flight.power, now)
+	if core == nil then
+		return NetService.err(CODE_IN_FLIGHT, false)
+	end
+	local boosted: Types.HighwayPlan = {
+		id = plan.id,
+		perfect = plan.perfect,
+		x0 = core.x0,
+		arcs = core.arcs,
+		roll = core.roll,
+		studs = core.studs,
+		biome = HighwayMath.biomeAt(core.studs),
+		landsAt = core.landsAt,
+		fuel = plan.fuel - 1,
+		boosted = true,
 		charged = false,
 		savePending = deps.savePending(player),
 	}
-	return NetService.ok(data)
+	flight.plan = boosted
+	flight.power *= H.boost.power
+	schedule(player, session, flight, now)
+	return NetService.ok(boosted)
+end
+
+-- A new throw from the root's world position (see the header).
+local function launch(player: any, session: Session, root: Vector3, now: number): Reply
+	local ping = deps.pingOf(player)
+	local oneWay = if isFinite(ping) then math.clamp(ping / 2, 0, H.timing.maxOneWaySeconds) else 0
+	local perfect = HighwayMath.isPerfect(now - oneWay)
+	local power = HighwayMath.power(deps.gripLevel(player)) * (if perfect then H.timing.perfectPower else 1)
+	local core = HighwayMath.newPlan(power, LAYOUT.origin:PointToObjectSpace(root), now + H.flight.releaseSeconds)
+	session.throws += 1
+	local plan: Types.HighwayPlan = {
+		id = session.throws,
+		perfect = perfect,
+		x0 = core.x0,
+		arcs = core.arcs,
+		roll = core.roll,
+		studs = core.studs,
+		biome = HighwayMath.biomeAt(core.studs),
+		landsAt = core.landsAt,
+		fuel = H.boost.fuel,
+		boosted = false,
+		charged = false,
+		savePending = deps.savePending(player),
+	}
+	local flight: Flight = { plan = plan, power = power, pressedAt = now, schedule = 0 }
+	session.flight = flight
+	schedule(player, session, flight, now)
+	return NetService.ok(plan)
+end
+
+-- Public: the remote (see the header for the order of the checks) ----------------------------------------------------
+
+function HighwayService.throw(player: any, clientTime: any, fastSeconds: number?): Reply
+	if not isFinite(clientTime) then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local cheat = deps.checkThrow(player, deps.clock(), fastSeconds)
+	if cheat ~= nil then
+		return NetService.err(cheat, false)
+	end
+	local session = sessionOf(player)
+	if deps.statusOf(player) ~= STATUS_READY or type(deps.profileOf(player)) ~= "table" then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local now = deps.serverNow()
+	local flight = session.flight
+	if flight ~= nil then
+		if now < flight.plan.landsAt - H.inFlightGraceSeconds then
+			return boost(player, session, flight, now)
+		end
+		settle(player, session, true)
+	end
+	local refusal, root = refused(player)
+	if refusal ~= nil or root == nil then
+		return NetService.err(refusal or CODE_NOT_IN_AREA, false)
+	end
+	return launch(player, session, root, now)
 end
 
 -- Public: tests -----------------------------------------------------------------------------------------------------
@@ -441,7 +560,7 @@ function HighwayService.useDeps(overrides: { [string]: any }?)
 	deps = fresh
 end
 
--- Forgets every session and the board (tests; not called by the bootstrap).
+-- Forgets every session and the board (tests; not called by the bootstrap). Pending settles find no session.
 function HighwayService.reset()
 	table.clear(sessions)
 	table.clear(recent)
@@ -468,7 +587,12 @@ function HighwayService.playerAdded(player: Player)
 	sessionOf(player)
 end
 
+-- An open flight lands at once (paid, no HighwayLanded: the player is leaving), then the session goes.
 function HighwayService.playerRemoving(player: Player)
+	local session = sessions[player]
+	if session ~= nil then
+		settle(player, session, false)
+	end
 	sessions[player] = nil
 end
 

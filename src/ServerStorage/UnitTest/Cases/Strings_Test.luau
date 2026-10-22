@@ -1155,7 +1155,7 @@ return function(t: Context)
 		local h = Strings.highway
 		expect.equal(h.board.empty, "Walk up and throw!")
 		expect.equal(Strings.format(h.studs, { distance = "8,500" }), "8,500 studs")
-		expect.equal(Strings.format(h.flying, { biome = "BOBA LAGOON", distance = "900" }), "BOBA LAGOON: 900 studs")
+		expect.equal(h.flying, nil) -- p13v4: the pill went with the throw screen
 		expect.equal(
 			Strings.format(h.landed, { distance = "21", coins = "700", grip = "600" }),
 			"21 studs! +700 Coins, +600 Grip"
@@ -1178,6 +1178,46 @@ return function(t: Context)
 			end
 		end
 		expect.falsy(string.find(Strings.reason.highway.autoClick, "%d"))
+	end)
+
+	-- P13v4 (owner 2026-10-19: the TikTok throw screen; work/pens3/p13v4/SPEC.md 5.6, [P] words).
+	t.test("p13v4: the throw screen's and pops' texts, the noFuel refusal, calm", function()
+		local s = Strings.highway.screen
+		expect.equal(Strings.format(s.zone, { n = 2, biome = "BAKERY TOWN" }), "Zone 2 • BAKERY TOWN")
+		expect.equal(Strings.format(s.rings, { hit = 1, total = 3 }), "RINGS 1/3")
+		expect.equal(s.perfectZone, "PERFECT")
+		expect.deepEqual(
+			s.boost,
+			{ touch = "Tap to boost!", mouse = "Click to boost!", gamepad = "Press R2 to boost!" }
+		)
+		expect.equal(Strings.format(s.fuel, { fuel = 1 }), "SQUISH! x1")
+		expect.equal(s.noFuel, "NO FUEL")
+		local p = Strings.highway.pop
+		expect.deepEqual(p, {
+			perfect = "PERFECT!",
+			boost = "SQUISH!",
+			lastOne = "LAST ONE!",
+			bullseye = "BULLSEYE!",
+			rings = "{hit}/{total} RINGS",
+			landed = "{distance} studs!",
+			newBest = "NEW BEST!",
+		})
+		expect.equal(Strings.format(p.rings, { hit = 2, total = 3 }), "2/3 RINGS")
+		expect.equal(Strings.format(p.landed, { distance = "1,117" }), "1,117 studs!")
+		expect.equal(Strings.resolve("reason.highway.noFuel"), "No boost left on this throw.")
+		expect.equal(Strings.reasonText("highway.noFuel"), "No boost left on this throw.")
+		local texts = { s.zone, s.rings, s.perfectZone, s.fuel, s.noFuel, Strings.reason.highway.noFuel }
+		for _, text in s.boost do
+			table.insert(texts, text)
+		end
+		for _, text in p do
+			table.insert(texts, text)
+		end
+		for _, text in texts do
+			for _, word in { "hurry", "now", "quick", "last chance", "only", "second" } do
+				expect.falsy(string.find(string.lower(text), word, 1, true))
+			end
+		end
 	end)
 
 	-- P13v3 (owner 2026-10-18: "Yes, above 20 a second"): the speed rule's warnings (AutoClickService).

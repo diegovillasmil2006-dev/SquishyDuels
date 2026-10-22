@@ -26,6 +26,10 @@
 --     Net.Remotes.HighwayThrow's rate above clientPressesPerSecond and its burst at least that (an honest client is
 --     never limited), and the squeeze presses' cap (Net.AutoClick.clientPressesPerSecond) plus this one at most
 --     Net.Global.rate (squeezing and throwing at once never trips the global cap).
+-- P13v4 (the TikTok throw; Config/Highway's header): flight.peakMax and flight.centreStuds > 0 (with the other flight
+--   numbers), flight.releaseUp >= 0; timing.periodSeconds > 0, 0 < perfectHalfWidth < 0.5, perfectPower >= 1,
+--   maxOneWaySeconds >= 0; boost.fuel a whole number >= 0, boost.power >= 1, afterReleaseSeconds,
+--   beforeCarrySeconds and minAheadStuds >= 0, speedUp and minAirSeconds > 0; pay.ringShare >= 0. Every number finite.
 
 local H = "Config.Economy.Highway"
 local MIN_BLOCKS = 10 -- = Config/ValidateAutoClick's: the spread of fewer block means is too noisy to trust
@@ -39,6 +43,7 @@ local FLIGHT_KEYS = {
 	"airPerRoot",
 	"airRoot",
 	"peakShare",
+	"peakMax",
 	"groundSeconds",
 	"groundScale",
 	"groundRef",
@@ -47,6 +52,7 @@ local FLIGHT_KEYS = {
 	"hopEvery",
 	"hopBase",
 	"hopScale",
+	"centreStuds",
 }
 
 local function isNumber(v: unknown): boolean
@@ -189,6 +195,37 @@ return function(config: any, catalog: any?): { string }
 		isNumber(c.areaMarginStuds) and c.areaMarginStuds >= 0,
 		`{H}.areaMarginStuds must be at least 0 (got {show(c.areaMarginStuds)})`
 	)
+
+	-- P13v4: the release's lift, the PERFECT bar, the boost, the rings' pay.
+	local function atLeast(name: string, key: string, value: unknown, low: number)
+		expect(
+			isNumber(value) and (value :: number) >= low,
+			`{H}.{name}.{key} must be at least {low} (got {show(value)})`
+		)
+	end
+	local function above(name: string, key: string, value: unknown, low: number)
+		expect(isNumber(value) and (value :: number) > low, `{H}.{name}.{key} must be above {low} (got {show(value)})`)
+	end
+	atLeast("flight", "releaseUp", flight.releaseUp, 0)
+	local timing, boost = section("timing"), section("boost")
+	above("timing", "periodSeconds", timing.periodSeconds, 0)
+	expect(
+		isNumber(timing.perfectHalfWidth) and timing.perfectHalfWidth > 0 and timing.perfectHalfWidth < 0.5,
+		`{H}.timing.perfectHalfWidth must be in (0, 0.5) (got {show(timing.perfectHalfWidth)})`
+	)
+	atLeast("timing", "perfectPower", timing.perfectPower, 1)
+	atLeast("timing", "maxOneWaySeconds", timing.maxOneWaySeconds, 0)
+	expect(
+		isWhole(boost.fuel) and boost.fuel >= 0,
+		`{H}.boost.fuel must be a whole number >= 0 (got {show(boost.fuel)})`
+	)
+	atLeast("boost", "power", boost.power, 1)
+	atLeast("boost", "afterReleaseSeconds", boost.afterReleaseSeconds, 0)
+	atLeast("boost", "beforeCarrySeconds", boost.beforeCarrySeconds, 0)
+	atLeast("boost", "minAheadStuds", boost.minAheadStuds, 0)
+	above("boost", "speedUp", boost.speedUp, 0)
+	above("boost", "minAirSeconds", boost.minAirSeconds, 0)
+	atLeast("pay", "ringShare", pay.ringShare, 0)
 
 	local a = section("autoClick")
 	local cap = a.clientPressesPerSecond

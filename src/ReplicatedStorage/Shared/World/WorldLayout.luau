@@ -1704,6 +1704,60 @@ local Highway = {
 	} :: { HighwayBiome },
 	-- The texts the highway shows besides the biome names (the launch board's static lines, the markers' unit).
 	textKeys = { "highway.board.title", "highway.board.lastThrow", "highway.board.serverBest", "highway.marker.unit" },
+	-- P13v4 (owner 2026-10-19: the TikTok throw, "BUBBLE RINGS 0/3" and the BULLSEYE targets; work/pens3/p13v4/SPEC.md
+	-- 3.3, the numbers from its spec/curve.js): 3 rings a biome, in passing order, each `d` studs down the lane, its
+	-- centre `y` above the lane's foot, centred on the lane (x 0), its axis along the lane. [P] The placement rule: C =
+	-- the plain arc (HighwayMath.arc) from the throw area's middle (d -34.25, y 7: a standing root 5.5 + releaseUp) of
+	-- a throw landing at the biome's end e; c = min(e, C's carry); ring k at round(s + (c - s) x 0.3 / 0.6 / 0.9) (s
+	-- the biome's start), its centre C's height there (to 0.1), at least 12 (so it clears the lane). A squishy flying
+	-- within ringRadius of a centre goes through it (HighwayMath.ringsHit). HighwayBuilder builds each as a glowing
+	-- ring of ringSegments rods, ringTube thick. [P] radius, tube, rods.
+	ringRadius = 10,
+	ringTube = 0.6,
+	ringSegments = 12,
+	rings = {
+		{ d = 81, y = 55.2, biome = 1 },
+		{ d = 162, y = 52.5, biome = 1 },
+		{ d = 243, y = 19.7, biome = 1 },
+		{ d = 426, y = 61, biome = 2 },
+		{ d = 552, y = 44.7, biome = 2 },
+		{ d = 678, y = 14.9, biome = 2 },
+		{ d = 965, y = 51.6, biome = 3 },
+		{ d = 1130, y = 34.9, biome = 3 },
+		{ d = 1295, y = 12, biome = 3 },
+		{ d = 1725, y = 45.6, biome = 4 },
+		{ d = 1950, y = 30, biome = 4 },
+		{ d = 2175, y = 12, biome = 4 },
+		{ d = 2830, y = 43.1, biome = 5 },
+		{ d = 3160, y = 28.1, biome = 5 },
+		{ d = 3490, y = 12, biome = 5 },
+		{ d = 4420, y = 38.4, biome = 6 },
+		{ d = 4840, y = 24.7, biome = 6 },
+		{ d = 5260, y = 12, biome = 6 },
+		{ d = 6495, y = 33.4, biome = 7 },
+		{ d = 6990, y = 21.3, biome = 7 },
+		{ d = 7485, y = 12, biome = 7 },
+	} :: { { d: number, y: number, biome: number } },
+	-- [P] 2 BULLSEYE pads a biome (the video lands on targets; where they lie is a reading): at 0.45 and 0.85 of each
+	-- biome, round(s + (e - s) x share), flat on the lane; a landing within padRadius of one is a BULLSEYE
+	-- (HighwayMath.bullseye; a pop only, no reward).
+	padRadius = 15,
+	pads = {
+		{ d = 135, biome = 1 },
+		{ d = 255, biome = 1 },
+		{ d = 525, biome = 2 },
+		{ d = 725, biome = 2 },
+		{ d = 1115, biome = 3 },
+		{ d = 1395, biome = 3 },
+		{ d = 1950, biome = 4 },
+		{ d = 2350, biome = 4 },
+		{ d = 3175, biome = 5 },
+		{ d = 3775, biome = 5 },
+		{ d = 4900, biome = 6 },
+		{ d = 5700, biome = 6 },
+		{ d = 7125, biome = 7 },
+		{ d = 8125, biome = 7 },
+	} :: { { d: number, biome: number } },
 }
 
 -- Module table -----------------------------------------------------------------------------------------------------

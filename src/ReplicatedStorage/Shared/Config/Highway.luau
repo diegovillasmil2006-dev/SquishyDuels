@@ -11,6 +11,10 @@
 -- the throw for distance. Shared/HighwayMath does the math, HighwayService the server's part. Sources: J =
 -- work/econ4/final_hagb_grip110.json, G110 = work/econ4/out5_grip110.txt, SIM = work/econ4/sim5.js, V3 =
 -- work/econ3/ECONOMY_V3.md, P3D = the lobby design v6's "Squishy Lobby 3D.html", K = its kit.json. [P] = provisional.
+-- P13v4 (owner 2026-10-19: copy the TikTok duck throw on all 4 points; work/pens3/p13v4/SPEC.md, numbers from its
+-- spec/curve.js): longer throws (power.base 900, a flight that is almost all air: carryShare 0.9 up to the gates,
+-- arcs at most peakMax high, a short roll), the PERFECT timing bar (timing), one boost a throw (boost) and the rings'
+-- pay (pay.ringShare). Every new number is [P].
 
 local Highway = {
 	-- Where biome n starts (Candy Meadow, Bakery Town, Boba Lagoon, Frozen Dessert Peaks, Lava Volcano, Rainbow Road,
@@ -27,16 +31,20 @@ local Highway = {
 	walls = { 1, 14_000, 330_000_000, 16e12, 1.2e18, 6.2e22, 1.6e27 },
 	gatesPower = 2.4e31,
 	-- Throw power = base x perGripLevel^(Grip Lv - 1) (G110:42; the owner fixed x1.1 a level, 2026-10-17). Phase 14
-	-- multiplies the gear in.
-	power = { base = 2, perGripLevel = 1.1 },
+	-- multiplies the gear in. P13v4 [P] base 2 -> 900: the smallest base where Grip Lv 1 lands "a few hundred" studs
+	-- (213) and a PERFECT throw with its boost just enters Bakery Town (301), like the video's first throws passing a
+	-- zone; every biome keeps its power wall, so the biomes are still reached by exponentially more power.
+	power = { base = 900, perGripLevel = 1.1 },
 	-- What every landing pays, in squeezes of the squeeze value: perStud x the landing's studs of Coins (p13v3, owner
 	-- 2026-10-18: "it should give coins on base of how many meters far they go like hit a golf ball"; it replaces
 	-- SIM:59's flat 70 x 1.15^(b - 1)) and grip of Grip (SIM:59 landGrip, SIM:241). Owner 2026-10-16 ("No daily limits
 	-- on squeezes or throwing"): every landing pays in full, and the only pacing is one throw in flight per player.
 	-- [P] perStud 0.5: each throw pays more the farther it flies; a second of throwing earns about 2x squeezing at Grip
 	-- Lv 1 (21 studs, a 2.1 s flight), 14x at Lv 100, 96x at the Golden Gates (it dips from 6.7x to 4.1x at Lv 18,
-	-- where the 1.6 s roll starts; work/pens3/p13v3/NOTES.md, econ/paytable.js).
-	pay = { perStud = 0.5, grip = 60 },
+	-- where the 1.6 s roll starts; work/pens3/p13v3/NOTES.md, econ/paytable.js). P13v4 (the longer throws; the owner
+	-- accepted that they pay more): Lv 1 throws 213 studs, about 15x squeezing (10x with a 1.5 s pause between throws),
+	-- 35x at Lv 100 (SPEC table 1). [P] ringShare: each ring the squishy flies through adds 10 % to that throw's Coins.
+	pay = { perStud = 0.5, grip = 60, ringShare = 0.1 },
 	-- The Food Bag (SIM:59 foodEvery / foodSV, :239; V3:185): every `seconds` of flight time of paid throws,
 	-- `squeezes` x the squeeze value of food (pieces of the weakest placed squishy's band food).
 	foodBag = { seconds = 150, squeezes = 50 },
@@ -53,23 +61,51 @@ local Highway = {
 	-- x the carry (P3D:575); then the roll: groundSeconds + groundScale x (the rest / groundRef)^groundPower seconds
 	-- (P3D:575), eased 1 - (1 - v)^rollPower (P3D:590), hopping every hopEvery studs hopBase + hopScale x (1 - d / D)
 	-- high (P3D:555). The server keeps a throw in flight for release + air + roll.
+	-- P13v4 [P] (the video flies almost all the way, and the boost and the rings need air time; v6's 32 % carry left
+	-- little): carryShare 0.32 -> 0.9, carryMax 1,100 -> 8,500, the arc at most peakMax high (the chase camera stays
+	-- near the lane), groundSeconds 1.6 -> 0.5 and groundScale 15 -> 2 (a short roll). The release starts releaseUp
+	-- above the thrower's root (the hand), and the squishy drifts from the release's x to the lane's centre over the
+	-- first centreStuds studs (the rings are centred). HighwayMath.arc / newPlan / planAt.
 	flight = {
 		releaseSeconds = 0.42,
-		carryShare = 0.32,
+		carryShare = 0.9,
 		carryMin = 70,
-		carryMax = 1_100,
+		carryMax = 8_500,
 		airSeconds = 1.1,
 		airPerRoot = 2.4,
 		airRoot = 900,
 		peakShare = 0.175,
-		groundSeconds = 1.6,
-		groundScale = 15,
+		peakMax = 60,
+		groundSeconds = 0.5,
+		groundScale = 2,
 		groundRef = 8_000,
 		groundPower = 0.75,
 		rollPower = 1.8,
 		hopEvery = 75,
 		hopBase = 0.8,
 		hopScale = 3.5,
+		releaseUp = 1.5,
+		centreStuds = 60,
+	},
+	-- P13v4 [P] The PERFECT timing bar (HighwayMath.barAt / isPerfect): a triangle wave 0 -> 1 -> 0 every periodSeconds
+	-- of the shared server clock; a press whose arrival, less half the player's ping (at most maxOneWaySeconds), finds
+	-- the bar within perfectHalfWidth of the middle is PERFECT (the green middle 20 %: 160 ms a pass, a random press 1
+	-- time in 5) and throws with perfectPower x the power (about +20 % distance early, +6 % late). Anything else is a
+	-- normal throw: no penalty.
+	timing = { periodSeconds = 1.6, perfectHalfWidth = 0.1, perfectPower = 4, maxOneWaySeconds = 0.25 },
+	-- P13v4 [P] The boost (the video: "QUACK! x1", then "NO FUEL"): `fuel` boosts a throw. A THROW press during the own
+	-- flight asks for one; it is refused before afterReleaseSeconds after the release (a double tap at the throw never
+	-- wastes it) and after beforeCarrySeconds before the air ends. It multiplies the power by `power` (the size of a
+	-- PERFECT), flies on from where the squishy is, at least minAheadStuds farther, speedUp x faster than the arc it
+	-- leaves and never under minAirSeconds (HighwayMath.boost).
+	boost = {
+		fuel = 1,
+		power = 4,
+		afterReleaseSeconds = 0.2,
+		beforeCarrySeconds = 0.15,
+		minAheadStuds = 30,
+		speedUp = 1.25,
+		minAirSeconds = 0.5,
 	},
 	-- [P] The next throw may start this much before the server's landing (the client times its landing on the server
 	-- clock it reads, a few ms off).
@@ -79,7 +115,7 @@ local Highway = {
 	areaMarginStuds = 1,
 	-- [P] The auto-clicker check on the THROW presses (owner 2026-10-16: "punishes step by step", "bans players with
 	-- very high clicks per second"; AutoClickService.checkThrow). The client sends every THROW press while it stands in
-	-- the throw area (a press during a flight is refused with highway.inFlight), at most clientPressesPerSecond in any
+	-- the throw area (a press during a flight asks for its boost, p13v4), at most clientPressesPerSecond in any
 	-- rolling second and none while a reply is a second late, so the server sees the real press rhythm (with the
 	-- squeeze presses' cap, Config.Net.AutoClick.clientPressesPerSecond, under Config.Net.Global.rate: a kid mashing
 	-- both is never limited). Rule B (Logic/AutoClickRules: blocks of blockIntervals gaps, the spread of their mean

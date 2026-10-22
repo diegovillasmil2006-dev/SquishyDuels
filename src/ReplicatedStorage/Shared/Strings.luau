@@ -50,6 +50,10 @@
 -- countdown; the auto-clicker warning names no number.
 -- P13v3 (owner 2026-10-18: "Yes, above 20 a second", [P] texts): reason.squeeze.superFast and reason.highway.superFast,
 -- the speed rule's calm warnings (AutoClickService; no number, no "now").
+-- P13v4 (owner 2026-10-19: the TikTok throw screen, [P] words): highway.screen.* (the flight HUD: zone, rings, the
+-- PERFECT bar's label, the boost button by input, its fuel line), highway.pop.* (PERFECT!, SQUISH! for the video's
+-- QUACK!, LAST ONE!, BULLSEYE!, the rings, the landing, NEW BEST!) and reason.highway.noFuel; highway.flying (the
+-- pill) is gone. Calm: no "now", no countdown.
 
 export type FormatArgs = { [string]: any }
 
@@ -217,6 +221,9 @@ local Strings = {
 				.. "game.",
 			-- P13v3: the speed rule's warning on the THROW presses, shown like autoClick.
 			superFast = "Super-fast throws don't count! Turn off any auto-clicker, or you'll be removed from the game.",
+			-- P13v4: a boost press with no boost left on this throw (the client shows nothing: its button says
+			-- NO FUEL).
+			noFuel = "No boost left on this throw.",
 		},
 	},
 
@@ -1289,12 +1296,32 @@ local Strings = {
 		-- Pens3 phase 13 (the server's board lines and the client's stand-in HUD; {distance} = Format.distance,
 		-- {coins} / {grip} = Format.coins, {biome} = a biome name, {name} = a squishy's name, {food} = a food's name).
 		studs = "{distance} studs",
-		flying = "{biome}: {distance} studs", -- the flying squishy's pill (a stand-in for the biome banner)
 		landed = "{distance} studs! +{coins} Coins, +{grip} Grip",
 		newBest = "New best: {distance} studs!",
 		reached = "You reached {biome}!",
 		gift = { one = "{name} joined your pen!", many = "{count} {name} squishies joined your pen!" },
 		foodBag = "Food Bag: +{count} {food}",
+		-- P13v4 [P] the throw screen (HighwayHud, the video's flight HUD; {n} = the zone's number 1..7, {biome} = its
+		-- name, {hit} / {total} = rings, {fuel} = boosts left): the zone line, the rings line, the PERFECT bar's label,
+		-- the boost button's action by input and its fuel line ("SQUISH!" for the video's "QUACK!").
+		screen = {
+			zone = "Zone {n} • {biome}",
+			rings = "RINGS {hit}/{total}",
+			perfectZone = "PERFECT",
+			boost = { touch = "Tap to boost!", mouse = "Click to boost!", gamepad = "Press R2 to boost!" },
+			fuel = "SQUISH! x{fuel}",
+			noFuel = "NO FUEL",
+		},
+		-- P13v4 [P] the big pops ({distance} = Format.distance).
+		pop = {
+			perfect = "PERFECT!",
+			boost = "SQUISH!",
+			lastOne = "LAST ONE!",
+			bullseye = "BULLSEYE!",
+			rings = "{hit}/{total} RINGS",
+			landed = "{distance} studs!",
+			newBest = "NEW BEST!",
+		},
 	},
 
 	-- Coins while away (pens3 phase 4): the pop-up's line under the Coins (PenController; a stand-in on the shop's

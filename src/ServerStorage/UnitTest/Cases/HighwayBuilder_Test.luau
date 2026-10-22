@@ -5,9 +5,12 @@
 -- It runs as Main's pipeline runs it (build(ctx) with a scratch Cleanup and the Shared folder under test, an
 -- UNPARENTED tree that is destroyed afterwards) and pins, restated from the design and Config instead of read from the
 -- builder:
---   * the root SD_Highway (marked "highway", version 3) pivoted on WorldLayout.Highway.origin: a Persistent Deck and
---     the 7 biome Models (L:1 zones Biome_1_CM..Biome_7_DH), every placed piece its own Model (SD_Piece = its v6
---     piece);
+--   * the root SD_Highway (marked "highway", version 4) pivoted on WorldLayout.Highway.origin: a Persistent Deck and
+--     the 7 biome Models (L:1 zones Biome_1_CM..Biome_7_DH; p13v4: Persistent too, so the chase camera never meets an
+--     empty sky), every placed piece its own Model (SD_Piece = its v6 piece);
+--   * p13v4 (owner 2026-10-19: the TikTok throw's rings and targets): 3 flight_ring pieces a biome where
+--     WorldLayout.Highway.rings puts them (12 rods of radius 10 around the lane's axis), 2 flight_pad pieces a biome on
+--     the lane top where WorldLayout.Highway.pads puts them (3 discs, radius 15 / 10 / 5);
 --   * distances exact (phase 13's landing math is in studs from the start line): 170 lane pieces of 50 studs end to end
 --     from 0 to the Golden Gates at 8,500 (PR3:36), each in the biome Config.Economy.Highway's starts put it in, with a
 --     rail on each edge (L:459-460: x ±14, 1.04 up); a distance marker every 100 studs from 100 to 8,400 at x 19
@@ -43,9 +46,11 @@ local LANE_PIECES = 170 -- 8,500 / 50
 -- strips, 9), rails 4 (a tube, 3 posts), markers 3, arches 9, ground slabs 1, the Golden Gates 52; the scenery (phase
 -- 12b, L:488-1599): gumdrop trees 6, lollipop lamps 6, candy hills 5 (10 pieces, 58 parts), bread houses 7, croissant
 -- hills 7 (16, 112), cup islands 6 (10, 60), popsicles 7, sundae peaks 10 (29, 230), basalt rocks 3, the volcano 26
--- (39, 140), cloud banks 6, planets 17 (38, 261), gold clouds 5, marble pillars 4 (134, 578).
-local PIECES = { 33, 57, 67, 110, 160, 179, 311 }
-local PARTS = { 163, 301, 321, 599, 689, 1010, 1514 }
+-- (39, 140), cloud banks 6, planets 17 (38, 261), gold clouds 5, marble pillars 4 (134, 578); p13v4: 3 rings of 12
+-- rods and 2 pads of 3 discs a biome (+5 pieces, +42 parts).
+local PIECES = { 38, 62, 72, 115, 165, 184, 316 }
+local PARTS = { 205, 343, 363, 641, 731, 1052, 1556 }
+local RINGS_PER_BIOME, PADS_PER_BIOME, ROD_COUNT = 3, 2, 12
 local MAX_PIECES = 600 -- spec.txt:157
 local TOLERANCE = 2e-3 -- CFrames are single precision; 8,500 studs out that is a few thousandths
 
@@ -176,13 +181,13 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the root is SD_Highway, unparented, marked highway v3, pivoted on the origin; a Persistent deck, 7 biomes",
+		"the root is SD_Highway, unparented, marked highway v4, pivoted on the origin; a Persistent deck, 7 biomes",
 		function()
 			expect.equal(root.Name, "SD_Highway")
 			expect.equal(root.Parent, nil)
 			expect.equal(root:GetAttribute("SD_GeneratorId"), "highway")
 			expect.equal(root:GetAttribute("SD_GeneratorVersion"), HighwayBuilder.VERSION)
-			expect.equal(HighwayBuilder.VERSION, 3) -- 2: phase 12b's scenery; 3: phase 13's open deck and board rows
+			expect.equal(HighwayBuilder.VERSION, 4) -- 3: phase 13's open deck and board rows; 4: p13v4's rings and pads
 			expect.truthy(root:HasTag("SD_Generated"))
 			expect.truthy(near((root.WorldPivot.Position - origin.Position).Magnitude, 0))
 			expect.equal(deck.ModelStreamingMode, Enum.ModelStreamingMode.Persistent) -- K:7881-7883 Plaza, LaunchGate
@@ -191,7 +196,8 @@ return function(t: Context)
 				expect.truthy(found ~= nil and found:IsA("Model"))
 				local biome = found :: Model
 				expect.equal(biome:GetAttribute("Biome"), index)
-				expect.equal(biome.ModelStreamingMode, Enum.ModelStreamingMode.Default)
+				-- P13v4 [P]: the chase camera flies up to 8,500 studs from the character: every biome always loaded.
+				expect.equal(biome.ModelStreamingMode, Enum.ModelStreamingMode.Persistent)
 				for _, piece in pieces(biome) do -- K:7887: each placed piece an Atomic model streamed by distance
 					expect.equal(piece.ModelStreamingMode, Enum.ModelStreamingMode.Atomic)
 				end
@@ -414,6 +420,67 @@ return function(t: Context)
 		expect.equal(mascot:GetAttribute("SD_BlueprintId"), "kitty_bread")
 	end)
 
+	-- P13v4 (owner 2026-10-19: the TikTok throw's rings and BULLSEYE targets; WorldLayout.Highway.rings / pads).
+	t.test("p13v4: 3 glowing rings around the lane's axis and 2 target pads a biome, where WorldLayout says", function()
+		local Palette = t.requireShared("Art/Palette")
+		local ringIndex, padIndex = 0, 0
+		for index, name in BIOME_MODELS do
+			local biome = root:FindFirstChild(name) :: Model
+			local rings = pieces(biome, "flight_ring")
+			local pads = pieces(biome, "flight_pad")
+			expect.equal(#rings, RINGS_PER_BIOME)
+			expect.equal(#pads, PADS_PER_BIOME)
+			for _, ring in rings do
+				ringIndex += 1
+				local spec = H.rings[ringIndex]
+				expect.equal(spec.biome, index)
+				expect.equal(ring.Name, string.format("flight_ring_%02d", ringIndex))
+				expect.equal(ring:GetAttribute("Distance"), spec.d)
+				expect.equal(ring.ModelStreamingMode, Enum.ModelStreamingMode.Atomic)
+				local at = laneOf(ring)
+				expect.truthy(near(at.X, 0) and near(at.Y, spec.y) and near(at.Z, spec.d))
+				local rods = 0
+				for _, part in ring:GetDescendants() do
+					if part:IsA("BasePart") then
+						rods += 1
+						local p = origin:PointToObjectSpace(part.CFrame.Position)
+						-- On the ring's circle, in the plane across the lane (its axis along the lane).
+						expect.near(math.sqrt(p.X ^ 2 + (p.Y - spec.y) ^ 2), H.ringRadius, 0.05)
+						expect.near(-p.Z, spec.d, 0.01)
+						expect.near(math.abs(part.CFrame.XVector:Dot(origin.LookVector)), 0, 1e-3) -- tangent to it
+						expect.equal(part.Material, Enum.Material.Neon)
+						expect.equal(part.Color, Palette.HighwayGlow)
+						expect.falsy(part.CanCollide)
+					end
+				end
+				expect.equal(rods, ROD_COUNT)
+			end
+			for _, pad in pads do
+				padIndex += 1
+				local spec = H.pads[padIndex]
+				expect.equal(spec.biome, index)
+				expect.equal(pad.Name, string.format("flight_pad_%02d", padIndex))
+				expect.equal(pad:GetAttribute("Distance"), spec.d)
+				expect.equal(pad.ModelStreamingMode, Enum.ModelStreamingMode.Atomic)
+				local radii: { number } = {}
+				for _, part in pad:GetDescendants() do
+					if part:IsA("BasePart") then
+						local p = origin:PointToObjectSpace(part.CFrame.Position)
+						expect.truthy(near(p.X, 0) and near(-p.Z, spec.d))
+						expect.equal((part :: Part).Shape, Enum.PartType.Cylinder)
+						expect.near(p.Y - part.Size.X / 2, 1, 1e-3) -- flat on the lane's top
+						expect.falsy(part.CanCollide)
+						table.insert(radii, part.Size.Y / 2)
+					end
+				end
+				table.sort(radii)
+				expect.deepEqual(radii, { 5, 10, 15 })
+			end
+		end
+		expect.equal(ringIndex, #H.rings)
+		expect.equal(padIndex, #H.pads)
+	end)
+
 	t.test("every part is placed from the origin: all of them lie in the lane-local corridor", function()
 		-- The deck and the lane lie within x ±201, y -3..70; the biome scenery (phase 12b, L:488-1599) reaches farther
 		-- out: rr_planet_03's ring to x -346 (L:1221), rr_planet_02's to y 137 (L:1220), rr_cloud_bank_23 down to
@@ -433,6 +500,7 @@ return function(t: Context)
 			rr_planet = true,
 			dh_gold_cloud = true,
 			dh_marble_pillar = true,
+			flight_ring = true, -- p13v4: the highest ring's top is 71.6 up (d 426)
 		}
 		local outside: { string } = {}
 		for _, part in root:GetDescendants() do
@@ -539,6 +607,20 @@ return function(t: Context)
 		caught(function(copy)
 			(copy:FindFirstChild("Biome_4_FD") :: Instance):Destroy()
 		end, "Biome_4_FD")
+		-- P13v4: a missing ring, a ring moved off its place, a missing pad, a biome that streams out.
+		caught(function(copy)
+			((copy:FindFirstChild("Biome_2_BT") :: Model):FindFirstChild("flight_ring_05") :: Instance):Destroy()
+		end, "flight_ring")
+		caught(function(copy)
+			local ring = (copy:FindFirstChild("Biome_1_CM") :: Model):FindFirstChild("flight_ring_02") :: Model
+			ring:SetAttribute("Distance", 170)
+		end, "flight_ring")
+		caught(function(copy)
+			((copy:FindFirstChild("Biome_7_DH") :: Model):FindFirstChild("flight_pad_14") :: Instance):Destroy()
+		end, "flight_pad")
+		caught(function(copy)
+			(copy:FindFirstChild("Biome_5_LV") :: Model).ModelStreamingMode = Enum.ModelStreamingMode.Default
+		end, "Persistent")
 		caught(function(copy) -- a 4th light (L:2, :4, :5 are the 3)
 			local light = Instance.new("PointLight")
 			light.Shadows = false

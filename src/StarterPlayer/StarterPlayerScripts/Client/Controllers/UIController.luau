@@ -110,6 +110,9 @@
 -- * PR19: holdToast(key, text?, kind?) is a held toast (the data banner): first in the column, it plays sdToast's
 --   entrance and rests while held (no exit); holdToast(key, nil) lets it leave with the exit frames. heldToast(key)
 --   is its text. R7's tap action (ToastOptions.action) is kept.
+-- P13v4 (the highway throw; the creator's note "hold toasts until it lands"): holdToasts(true) makes toast() queue
+-- its toasts (notify() too) instead of showing them; holdToasts(false) plays the queue in order through toast().
+-- Held toasts (holdToast) and banners are not queued.
 
 -- Services
 
@@ -331,6 +334,7 @@ local loadingCover: Frame? = nil
 local toastHolder: Frame? = nil
 local toasts: { Toast } = {}
 local heldToasts: { [string]: Toast } = {} -- UI FINAL R9: holdToast's (PR19)
+local toastQueue: { { text: string, kind: ToastKind?, opts: ToastOptions? } }? = nil -- p13v4: holdToasts
 local toastSerial = 0 -- LayoutOrder: newer toasts below older ones
 -- toastsBelow(key, object): the toast column starts under these while they show and hang into it.
 local toastBelow: { [string]: GuiObject? } = {}
@@ -1323,6 +1327,10 @@ function UIController.toast(text: string, kind: ToastKind?, opts: ToastOptions?)
 	if type(text) ~= "string" or text == "" then
 		return
 	end
+	if toastQueue then -- p13v4: held (holdToasts)
+		table.insert(toastQueue, { text = text, kind = kind, opts = opts })
+		return
+	end
 	local sound = toastSound(kind, opts)
 	for _, existing in toasts do
 		if existing.text == text and not existing.closing then
@@ -1373,6 +1381,22 @@ end
 function UIController.heldToast(key: string): string?
 	local toast = heldToasts[key]
 	return if toast and not toast.closing then toast.text else nil
+end
+
+-- P13v4: while on, toast() queues; off plays the queue in order through toast() (see the header).
+function UIController.holdToasts(on: boolean)
+	if on then
+		toastQueue = toastQueue or {}
+		return
+	end
+	local queue = toastQueue
+	toastQueue = nil
+	if queue == nil then
+		return
+	end
+	for _, entry in queue do
+		UIController.toast(entry.text, entry.kind, entry.opts)
+	end
 end
 
 -- UI FINAL R4: the toast column's top while the lobby HUD shows (HudController: Config.UI.Sticker.hud.toastTop, the

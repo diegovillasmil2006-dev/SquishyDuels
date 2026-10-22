@@ -27,8 +27,10 @@
 -- state field, SellResult / FuseResult and the SellItems / SellAll / BuyBack / Fuse calls.
 -- Phase 9 (food and levels): FoodCounts, ProfileV1.food, the `food` state field, FoodResult and the BuyFood / Feed /
 -- FeedAll calls. Phase 11 (the shelf rows + the TOP spot): PenState.shelfRows / top and the PenBuyShelf call.
--- Phase 13 (the throw): HighwayState, ProfileV1.highway, the `highway` state field, HighwayResult and the
--- HighwayThrow call.
+-- Phase 13 (the throw): HighwayState, ProfileV1.highway, the `highway` state field and the HighwayThrow call.
+-- P13v4 (the TikTok throw): HighwayArc and HighwayPlan (HighwayThrow's data: the flight plan, boosts included) and
+-- HighwayLanding (the new HighwayLanded remote: what the landing paid); HighwayResult is gone (the pay moved to the
+-- landing).
 
 -- == Catalog (§4.1) ==
 
@@ -569,27 +571,51 @@ export type FuseResult = { pen: PenState, id: number, charged: boolean, savePend
 -- Pens3 phase 9: BuyFood / Feed / FeedAll data: the caller's pen and food after the call, `levels` the levels
 -- gained (BuyFood 0), charged (BuyFood true, also on a replay as first answered; Feed / FeedAll false).
 export type FoodResult = { pen: PenState, food: FoodCounts, levels: number, charged: boolean, savePending: boolean }
--- Pens3 phase 13: HighwayThrow data (HighwayService): where the throw lands (`studs`, whole studs from the start line;
--- `biome` 1..7 its biome), the throw `power`, `flight` the seconds it is in flight (release + air + roll) and
--- `landsAt` the server time (workspace:GetServerTimeNow) it lands; what the landing paid (`coins`, `grip`); the
--- player's `best` after it and `newBest`; `reached` the biome (1..8) this throw reached first (nil if none); `gifts`
--- the biome gifts given (squishy ids); `food` the Food Bag it filled (nil if none); charged = false (nothing is
--- spent); savePending = an earlier save failed.
-export type HighwayResult = {
+-- P13v4 (HighwayService, Shared/HighwayMath; work/pens3/p13v4/SPEC.md 3.1, 5.2): one air arc of a throw. Server times
+-- (workspace:GetServerTimeNow), distances in studs from the start line, heights lane-local (WorldLayout.highwayCFrame).
+export type HighwayArc = {
+	startAt: number, -- server time it starts (the release, or a boost)
+	from: number, -- studs from the start line where it starts (negative on the deck)
+	y0: number, -- lane-local height where it starts
+	carry: number, -- studs where it meets the lane
+	air: number, -- seconds from startAt to the carry
+	peak: number, -- studs the arc rises over the straight line (at most flight.peakMax)
+}
+-- HighwayThrow's data: a new throw (boosted = false) or the same throw after a boost (boosted = true). The client draws
+-- HighwayMath.planAt(plan, serverNow); the pay comes at the landing (HighwayLanded).
+export type HighwayPlan = {
+	id: number, -- this throw's number in the player's server session (HighwayLanded names it)
+	perfect: boolean,
+	x0: number, -- lane-local x of the release
+	arcs: { HighwayArc }, -- 1 + the boosts so far, in order
+	roll: number, -- seconds rolling after the last arc's carry
+	studs: number, -- where it stops (whole studs, 0..gatesAt)
+	biome: number, -- HighwayMath.biomeAt(studs)
+	landsAt: number, -- server time it stops
+	fuel: number, -- boosts left
+	boosted: boolean,
+	charged: boolean, -- false
+	savePending: boolean,
+}
+-- HighwayLanded's payload (the server's settle at the landing): what the landing paid (`coins` with the rings' share,
+-- `grip`); the player's `best` after it and `newBest`; `reached` the biome (1..8) this throw reached first (nil if
+-- none); `gifts` the biome gifts given (squishy ids); `food` the Food Bag it filled (nil if none); `rings` the
+-- WorldLayout.Highway.rings indices it flew through; `bullseye` it stopped on a pad; `boosts` the boosts it used.
+export type HighwayLanding = {
+	id: number,
 	studs: number,
 	biome: number,
-	power: number,
-	flight: number,
-	landsAt: number,
 	coins: number,
 	grip: number,
 	best: number,
 	newBest: boolean,
-	reached: number?,
+	reached: number?, -- the biome first reached by this throw (8 = the Golden Gates), else nil
 	gifts: { string },
 	food: { id: string, count: number }?,
-	charged: boolean,
-	savePending: boolean,
+	rings: { number }, -- WorldLayout.Highway.rings indices hit, ascending
+	bullseye: boolean,
+	perfect: boolean,
+	boosts: number,
 }
 
 -- QueueJoin data: the player's place in the queue (1 = next). A join from an OFFLINE/READONLY profile still
@@ -637,9 +663,9 @@ export type BuyFoodCall = (
 ) -> Result<FoodResult>
 export type FeedCall = (itemId: number, requestId: string) -> Result<FoodResult>
 export type FeedAllCall = () -> Result<FoodResult>
--- Pens3 phase 13: one throw (or a press during the own flight, refused with highway.inFlight); clientTime =
+-- Pens3 phase 13: one throw (p13v4: a press during the own flight asks for its boost); clientTime =
 -- workspace:GetServerTimeNow() at the press, checked and never trusted.
-export type HighwayThrowCall = (clientTime: number, fastSeconds: number) -> Result<HighwayResult> -- p13v3
+export type HighwayThrowCall = (clientTime: number, fastSeconds: number) -> Result<HighwayPlan> -- p13v3, p13v4
 export type PromptCoinBundleCall = (bundleKey: string) -> ()
 export type PromptGamePassCall = (passKey: string) -> ()
 export type PolicyRetryCall = () -> ()

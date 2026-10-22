@@ -48,6 +48,8 @@
 --     and the launch board has 3 last-throw rows and the server best; 7 biome looks in Config's order with v6's tints
 --     (L:458-1597, K:3136),
 --     every colour a Palette token, the sky biomes without ground, the arches from biome 2 at v6's scales;
+--   * p13v4 (owner 2026-10-19: the TikTok throw): 3 flight rings and 2 BULLSEYE pads a biome, as SPEC 3.3's placement
+--     rule gives them (re-derived here from Config), inside their biomes, in passing order, clear of the lane's top;
 --   * access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick button): the north wall is
 --     two pieces round a gap at x 0 as wide as the bridge with its rails; the bridge (a PLACEHOLDER: v6 has none)
 --     runs 8 wide from the sea inside the wall to the front of the deck's back step (LK:158-164), a gentle ramp;
@@ -1710,6 +1712,94 @@ return function(t: Context)
 		expect.equal(H.markerEvery, 100) -- K:1748, L:476
 		expect.equal(H.markerX, 19) -- L:476
 		expect.equal(H.maxPiecesPerBiome, 600) -- spec.txt:157
+	end)
+
+	-- P13v4 (owner 2026-10-19: the TikTok throw's rings and targets; work/pens3/p13v4/SPEC.md 3.3).
+	t.test("p13v4: 3 rings and 2 BULLSEYE pads a biome, by the placement rule, inside it, clear of the lane", function()
+		local H = WorldLayout.Highway
+		local C = Config.Economy.Highway
+		local F = C.flight
+		expect.equal(H.ringRadius, 10)
+		expect.equal(H.ringTube, 0.6)
+		expect.equal(H.ringSegments, 12)
+		expect.equal(H.padRadius, 15)
+		local function row(d: number, y: number, biome: number): any
+			return { d = d, y = y, biome = biome }
+		end
+		expect.deepEqual(H.rings, {
+			row(81, 55.2, 1),
+			row(162, 52.5, 1),
+			row(243, 19.7, 1),
+			row(426, 61, 2),
+			row(552, 44.7, 2),
+			row(678, 14.9, 2),
+			row(965, 51.6, 3),
+			row(1130, 34.9, 3),
+			row(1295, 12, 3),
+			row(1725, 45.6, 4),
+			row(1950, 30, 4),
+			row(2175, 12, 4),
+			row(2830, 43.1, 5),
+			row(3160, 28.1, 5),
+			row(3490, 12, 5),
+			row(4420, 38.4, 6),
+			row(4840, 24.7, 6),
+			row(5260, 12, 6),
+			row(6495, 33.4, 7),
+			row(6990, 21.3, 7),
+			row(7485, 12, 7),
+		})
+		local pads = {}
+		for _, pad in H.pads do
+			table.insert(pads, { pad.d, pad.biome })
+		end
+		expect.deepEqual(pads, {
+			{ 135, 1 },
+			{ 255, 1 },
+			{ 525, 2 },
+			{ 725, 2 },
+			{ 1115, 3 },
+			{ 1395, 3 },
+			{ 1950, 4 },
+			{ 2350, 4 },
+			{ 3175, 5 },
+			{ 3775, 5 },
+			{ 4900, 6 },
+			{ 5700, 6 },
+			{ 7125, 7 },
+			{ 8125, 7 },
+		})
+		-- The rule, re-derived: C = the plain arc from the throw area's middle (d -34.25, y 5.5 + releaseUp = 7) of a
+		-- throw landing at the biome's end e; c = min(e, C's carry); ring k at round(s + (c - s) x 0.3 / 0.6 / 0.9),
+		-- its centre C's height there (0.1), at least 12. Pads at 0.45 and 0.85 of each biome.
+		local from, y0, clear = -H.throwArea.position.Z, 5.5 + F.releaseUp, 2
+		for index, start in C.starts do
+			local stop = C.starts[index + 1] or C.gatesAt
+			local carry = math.min(math.clamp(F.carryShare * stop, F.carryMin, F.carryMax), stop)
+			local peak = math.min(F.peakShare * (carry - from), F.peakMax)
+			local c = math.min(stop, carry)
+			for k, share in { 0.3, 0.6, 0.9 } do
+				local ring = H.rings[3 * (index - 1) + k]
+				local d = math.round(start + (c - start) * share)
+				local u = (d - from) / (carry - from)
+				local y = y0 + (clear - y0) * u + 4 * peak * u * (1 - u)
+				expect.equal(ring.d, d)
+				expect.near(ring.y, math.max(math.round(y * 10) / 10, 12), 1e-9)
+				expect.equal(ring.biome, index)
+				expect.truthy(ring.d >= start and ring.d < stop)
+				expect.truthy(ring.y - H.ringRadius - H.ringTube > 1) -- clears the lane's top (y 1)
+			end
+			for k, share in { 0.45, 0.85 } do
+				local pad = H.pads[2 * (index - 1) + k]
+				expect.equal(pad.d, math.round(start + (stop - start) * share))
+				expect.equal(pad.biome, index)
+				expect.truthy(pad.d - H.padRadius >= start and pad.d + H.padRadius <= stop) -- the whole pad inside
+			end
+		end
+		for index = 2, #H.rings do
+			expect.truthy(H.rings[index].d > H.rings[index - 1].d) -- in passing order
+		end
+		expect.truthy(table.isfrozen(H.rings) and table.isfrozen(H.rings[1]) and table.isfrozen(H.pads[1]))
 	end)
 
 	t.test("pens3 phase 12: 7 biome looks in Config's order with v6's tints, sky biomes without ground", function()

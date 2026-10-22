@@ -14,6 +14,10 @@
 -- at Boba Lagoon, a Bird at Lava Volcano and 3 Cloud Bunnies at Divine Heaven (SIM:205), the flight P3D's
 -- (P3D:554, :575, :590; the Release marker K:5295, 0.42 s); a gift kind the catalog does not know, and every broken new
 -- value, are reported by name.
+-- P13v4 (owner 2026-10-19: the TikTok throw; work/pens3/p13v4/SPEC.md 5.3, all [P]): power.base 900, the flight almost
+-- all air (carryShare 0.9 up to 8,500, peakMax 60, a short roll, releaseUp 1.5, centreStuds 60), the PERFECT bar
+-- (timing), the boost (boost) and pay.ringShare 0.1; each broken new value is reported by name, 0 allowed where it
+-- means none.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -91,8 +95,9 @@ return function(t: Context)
 		local h = Config.Economy.Highway
 		expect.deepEqual(h.walls, { 1, 14_000, 330_000_000, 16e12, 1.2e18, 6.2e22, 1.6e27 })
 		expect.equal(h.gatesPower, 2.4e31)
-		expect.deepEqual(h.power, { base = 2, perGripLevel = 1.1 })
-		expect.deepEqual(h.pay, { perStud = 0.5, grip = 60 }) -- p13v3: Coins by distance (owner 2026-10-18)
+		expect.deepEqual(h.power, { base = 900, perGripLevel = 1.1 }) -- p13v4 [P]: Lv 1 lands 213 studs
+		-- p13v3: Coins by distance (owner 2026-10-18); p13v4 [P]: +10 % a ring hit
+		expect.deepEqual(h.pay, { perStud = 0.5, grip = 60, ringShare = 0.1 })
 		expect.deepEqual(h.foodBag, { seconds = 150, squeezes = 50 })
 		expect.deepEqual(h.gifts, {
 			{ biome = 3, kind = "boba_bear", count = 3 },
@@ -101,10 +106,26 @@ return function(t: Context)
 		})
 		local f = h.flight
 		expect.equal(f.releaseSeconds, 0.42)
-		expect.deepEqual({ f.carryShare, f.carryMin, f.carryMax }, { 0.32, 70, 1100 })
+		-- p13v4 [P]: the video flies almost all the way (carry 0.9, to the gates, arcs at most 60 high, a short roll)
+		expect.deepEqual({ f.carryShare, f.carryMin, f.carryMax, f.peakMax }, { 0.9, 70, 8500, 60 })
 		expect.deepEqual({ f.airSeconds, f.airPerRoot, f.airRoot, f.peakShare }, { 1.1, 2.4, 900, 0.175 })
-		expect.deepEqual({ f.groundSeconds, f.groundScale, f.groundRef, f.groundPower }, { 1.6, 15, 8000, 0.75 })
+		expect.deepEqual({ f.groundSeconds, f.groundScale, f.groundRef, f.groundPower }, { 0.5, 2, 8000, 0.75 })
 		expect.deepEqual({ f.rollPower, f.hopEvery, f.hopBase, f.hopScale }, { 1.8, 75, 0.8, 3.5 })
+		expect.deepEqual({ f.releaseUp, f.centreStuds }, { 1.5, 60 })
+		-- p13v4 [P]: the PERFECT bar and the boost.
+		expect.deepEqual(
+			h.timing,
+			{ periodSeconds = 1.6, perfectHalfWidth = 0.1, perfectPower = 4, maxOneWaySeconds = 0.25 }
+		)
+		expect.deepEqual(h.boost, {
+			fuel = 1,
+			power = 4,
+			afterReleaseSeconds = 0.2,
+			beforeCarrySeconds = 0.15,
+			minAheadStuds = 30,
+			speedUp = 1.25,
+			minAirSeconds = 0.5,
+		})
 		-- [P] The throw presses' own cap and ceiling (Config/Highway's autoClick).
 		expect.equal(h.autoClick.clientPressesPerSecond, 12)
 		expect.equal(h.autoClick.maxPerSecond, 11) -- 10 a second (the usual auto-clicker default) is slower: judged
@@ -202,7 +223,7 @@ return function(t: Context)
 
 	t.test("p13v3: one stud farther pays at least one Coin more (perStud x Pen.minSqueezeValue >= 1)", function()
 		local function withPen(perStud: number, least: number): any
-			local copy = broken({ pay = { perStud = perStud, grip = 60 } })
+			local copy = broken({ pay = { perStud = perStud, grip = 60, ringShare = 0.1 } })
 			copy.Economy.Pen = { minSqueezeValue = least }
 			return copy
 		end
@@ -210,6 +231,65 @@ return function(t: Context)
 		expect.deepEqual(validate(withPen(0.1, 10)), {})
 		expect.truthy(mentions(validate(withPen(0.05, 10)), "pay.perStud"))
 		expect.truthy(mentions(validate(withPen(0.5, 1)), "pay.perStud"))
-		expect.deepEqual(validate(broken({ pay = { perStud = 0.05, grip = 60 } })), {}) -- no Pen section: not checked
+		-- no Pen section: not checked
+		expect.deepEqual(validate(broken({ pay = { perStud = 0.05, grip = 60, ringShare = 0.1 } })), {})
+	end)
+
+	-- P13v4 (owner 2026-10-19: the TikTok throw): the flight's new keys, the PERFECT bar, the boost, the ring pay.
+	t.test("p13v4: each broken flight, timing, boost and ring-pay value is reported by name", function()
+		local function brokenIn(section: string, key: string, value: any): any
+			local copy = table.clone(Config.Economy.Highway[section])
+			copy[key] = value
+			return broken({ [section] = copy })
+		end
+		local cases: { { section: string, key: string, value: any } } = {
+			{ section = "flight", key = "peakMax", value = 0 },
+			{ section = "flight", key = "releaseUp", value = -1 },
+			{ section = "flight", key = "releaseUp", value = 0 / 0 },
+			{ section = "flight", key = "centreStuds", value = 0 },
+			{ section = "timing", key = "periodSeconds", value = 0 },
+			{ section = "timing", key = "perfectHalfWidth", value = 0 },
+			{ section = "timing", key = "perfectHalfWidth", value = 0.5 },
+			{ section = "timing", key = "perfectPower", value = 0.5 },
+			{ section = "timing", key = "maxOneWaySeconds", value = -0.1 },
+			{ section = "boost", key = "fuel", value = 1.5 },
+			{ section = "boost", key = "fuel", value = -1 },
+			{ section = "boost", key = "power", value = 0.9 },
+			{ section = "boost", key = "afterReleaseSeconds", value = -1 },
+			{ section = "boost", key = "beforeCarrySeconds", value = math.huge },
+			{ section = "boost", key = "minAheadStuds", value = -1 },
+			{ section = "boost", key = "speedUp", value = 0 },
+			{ section = "boost", key = "minAirSeconds", value = 0 },
+			{ section = "pay", key = "ringShare", value = -0.1 },
+			{ section = "pay", key = "ringShare", value = "0.1" },
+		}
+		for _, case in cases do
+			local problems = validate(brokenIn(case.section, case.key, case.value))
+			local field = `{case.section}.{case.key}`
+			if not mentions(problems, field) then
+				error(
+					`expected a problem naming {field} for {tostring(case.value)}, got: {table.concat(problems, "; ")}`
+				)
+			end
+		end
+		-- 0 is allowed where it means "none": no lift at the release, no fuel, no wait or margin, no ring pay.
+		for _, case in
+			{
+				{ section = "flight", key = "releaseUp" },
+				{ section = "timing", key = "maxOneWaySeconds" },
+				{ section = "boost", key = "fuel" },
+				{ section = "boost", key = "afterReleaseSeconds" },
+				{ section = "boost", key = "beforeCarrySeconds" },
+				{ section = "boost", key = "minAheadStuds" },
+				{ section = "pay", key = "ringShare" },
+			}
+		do
+			expect.deepEqual(validate(brokenIn(case.section, case.key, 0)), {})
+		end
+		-- A missing section is named too.
+		expect.truthy(mentions(validate(broken({ timing = false })), "timing"))
+		local noBoost = broken({})
+		noBoost.Economy.Highway.boost = nil
+		expect.truthy(mentions(validate(noBoost), "boost"))
 	end)
 end

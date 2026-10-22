@@ -33,6 +33,10 @@
 --   character is alive, not in a match, no duel phase, not in the throw box and not blocked, and the exit is not
 --   pushing the camera back out to a third-person distance (its restore frames); nil otherwise. The lobby look writes
 --   nothing (camera, zoom, cursor, shoulder offset) and does not depend on the switch.
+-- P13v4 (owner 2026-10-19: "the hands are still there and looks so bad"): setAway(on) says the camera is the
+--   highway's own (HighwayThrowController: the launch deck's third person, the throw, the chase, the landing);
+--   while it is on the look is nil whatever else holds, so the hands overlay (ViewmodelController) hides at once and
+--   comes back when it clears. It writes nothing either.
 -- The camera machine is pure on the stand-ins its Env gives (FirstPersonController.Machine), so it is unit-tested in
 --   Edit mode; the module drives one machine on the real player, camera and services, stepped by a Scheduler render
 --   effect only while first person is on or a zoom restore waits.
@@ -52,6 +56,7 @@
 --                                                  look ahead (CameraController.faceForward(countdownPitchDeg));
 --                                                  otherwise today's CameraController.faceBehindCharacter
 --   FirstPersonController.setDialogOpen(open)      DuelController's forfeit dialog opened or closed (the mouse icon)
+--   FirstPersonController.setAway(on)              p13v4: the highway's own camera is on (the look is nil meanwhile)
 -- Require direction (§7): this module requires only CameraController, ThrowController, StateController,
 -- ControlsController and PracticeController (plus shared modules); none of them requires it back.
 
@@ -83,7 +88,7 @@ export type Mode = "duel" | "practice"
 export type Look = Mode | "lobby" -- spec 2026-10-11 §3.8
 
 -- The machine's facts that are simply on or off.
-export type Flag = "enabled" | "inMatch" | "alive" | "blocked" | "dialogOpen" | "headHidden"
+export type Flag = "enabled" | "inMatch" | "alive" | "blocked" | "dialogOpen" | "headHidden" | "away"
 
 -- What the machine reads and writes. Real: the local player, the current camera, UserInputService, GuiService and the
 -- controllers; tests: stand-in tables.
@@ -124,6 +129,7 @@ export type Machine = {
 	blocked: boolean,
 	dialogOpen: boolean,
 	headHidden: boolean,
+	away: boolean, -- p13v4: setAway
 	-- state
 	mode: Mode?,
 	look: Look?,
@@ -192,6 +198,7 @@ function Machine.new(env: Env): Machine
 		blocked = false,
 		dialogOpen = false,
 		headHidden = false,
+		away = false,
 		mode = nil,
 		look = nil,
 		resultAt = -math.huge,
@@ -228,6 +235,9 @@ end
 
 -- Pure: the look (header): the mode, else "lobby" for the player's own zoom into the head, else nil.
 function Machine.look(m: Machine): Look?
+	if m.away then
+		return nil -- p13v4: the highway's own camera
+	end
 	if m.mode ~= nil then
 		return m.mode
 	end
@@ -477,6 +487,10 @@ end
 
 function FirstPersonController.setDialogOpen(open: boolean)
 	Machine.setFlag(machine, "dialogOpen", open == true)
+end
+
+function FirstPersonController.setAway(on: boolean)
+	Machine.setFlag(machine, "away", on == true)
 end
 
 -- Lifecycle -----------------------------------------------------------------------------------------------------------

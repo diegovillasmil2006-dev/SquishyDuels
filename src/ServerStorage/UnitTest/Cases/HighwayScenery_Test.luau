@@ -303,6 +303,8 @@ return function(t: Context)
 			biome_ground = true,
 			biome_arch = true,
 			dh_golden_gates = true,
+			flight_ring = true, -- p13v4: the rings and the pads are not scenery
+			flight_pad = true,
 		}
 		for index, name in BIOME_MODELS do
 			local counts: { [string]: number } = {}
