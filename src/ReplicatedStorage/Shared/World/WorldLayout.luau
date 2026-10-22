@@ -199,6 +199,9 @@ export type HighwayBiome = {
 	ground: string?,
 	sky: boolean?,
 	arch: { main: string, trim: string, scale: number }?,
+	-- Owner 2026-10-22 (Steal an Egg's highway): studded walls either side of a wide road; `floor` is a sky biome's road.
+	wall: { main: string, top: string },
+	floor: string?,
 }
 
 -- Constants
@@ -1591,6 +1594,9 @@ local Highway = {
 	markerX = 19, -- L:476 (x 19, turned 180°: its face looks back up the lane)
 	maxPiecesPerBiome = 600, -- the v6 spec's limit per biome ("≤ 600 placed", spec.txt:157)
 	skyLift = 1, -- L:1110, :1130, :1372, :1397, :1597: the sky biomes' markers, arches and the Golden Gates stand 1 up
+	-- Owner 2026-10-22 (Steal an Egg's highway, "wide road between studded walls"): [P] the road's half width, its two
+	-- walls' thickness and their height (from the ground's top).
+	road = { halfWidth = 60, wallThick = 6, wallHeight = 24 },
 	deck = {
 		platform = Vector3.new(0, 0.5, 35.5), -- L:20 launch_platform (0, 0.5, -26.5)
 		-- Pens3 phase 13 (owner 2026-10-18: "it should be a general area where they walk up and everybody can throw"):
@@ -1635,6 +1641,7 @@ local Highway = {
 			rail = "HighwayFrosting",
 			marker = "HighwayPinkIcing",
 			ground = "HighwayCandyGrass",
+			wall = { main = "HighwayWafer", top = "HighwayCandyGrass" },
 		},
 		{ -- 2 Bakery Town (L:498-538)
 			model = "Biome_2_BT",
@@ -1646,6 +1653,7 @@ local Highway = {
 			marker = "HighwayBiome2",
 			ground = "HighwayBakeryGround",
 			arch = { main = "HighwayBiome2", trim = "HighwayFrosting", scale = 1 }, -- L:533
+			wall = { main = "HighwayCrust", top = "HighwayFrosting" },
 		},
 		{ -- 3 Boba Lagoon (L:567-623)
 			model = "Biome_3_BL",
@@ -1657,6 +1665,7 @@ local Highway = {
 			marker = "HighwayBiome3",
 			ground = "HighwayWater",
 			arch = { main = "HighwayBiome3", trim = "HighwayMilkTea", scale = 1.1 }, -- L:616
+			wall = { main = "HighwayBiome3", top = "HighwayMilkTea" },
 		},
 		{ -- 4 Frozen Dessert Peaks (L:653-733)
 			model = "Biome_4_FD",
@@ -1668,6 +1677,7 @@ local Highway = {
 			marker = "HighwayBiome4",
 			ground = "HighwaySnow",
 			arch = { main = "HighwayBiome4", trim = "HighwayWhite", scale = 1.2 }, -- L:723
+			wall = { main = "HighwayBiome4", top = "HighwayWhite" },
 		},
 		{ -- 5 Lava Volcano (L:790-910)
 			model = "Biome_5_LV",
@@ -1679,6 +1689,7 @@ local Highway = {
 			marker = "HighwayBiome5",
 			ground = "HighwayBasalt",
 			arch = { main = "HighwayBiome5", trim = "HighwayBasalt", scale = 1.3 }, -- L:895
+			wall = { main = "HighwayBasalt", top = "LavaGlow" },
 		},
 		{ -- 6 Rainbow Road (L:990-1130): the rainbow lane in the sky, no ground (K:3432)
 			model = "Biome_6_RR",
@@ -1689,6 +1700,8 @@ local Highway = {
 			marker = "HighwayLilac",
 			sky = true,
 			arch = { main = "HighwayLilac", trim = "HighwayLemon", scale = 1.45 }, -- L:1130
+			wall = { main = "HighwayLilac", top = "HighwayLemon" },
+			floor = "HighwayCloud",
 		},
 		{ -- 7 Divine Heaven (L:1222-1597): to the Golden Gates, no ground (K:3492)
 			model = "Biome_7_DH",
@@ -1700,6 +1713,8 @@ local Highway = {
 			marker = "HighwayBiome7",
 			sky = true,
 			arch = { main = "HighwaySignFace", trim = "HighwayBiome7", scale = 1.6 }, -- L:1397
+			wall = { main = "HighwaySignFace", top = "HighwayBiome7" },
+			floor = "HighwayCloud",
 		},
 	} :: { HighwayBiome },
 	-- The texts the highway shows besides the biome names (the launch board's static lines, the markers' unit).

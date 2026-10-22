@@ -158,6 +158,9 @@ local MATERIALS: { [string]: Enum.Material } = {
 	HighwayMarble = Enum.Material.Marble,
 }
 local REFLECTANCE: { [string]: number } = { HighwayGold = 0.2, HighwayAngelWhite = 0.1 }
+-- Owner 2026-10-22 ("blocky ish, kind of like lego textures", Steal an Egg): every plain part is Plastic, its blocks
+-- studded on top; the road's walls show inlets on their sides (buildWalls).
+local LEGO = Enum.Material.Plastic
 
 -- The scenery's v6 K materials by name (K:7-444 "hex" / "roblox"): its Palette token, Roblox material and shine. A
 -- part's `token` may name one of these instead of a Palette token (look()).
@@ -359,12 +362,15 @@ local function part(
 		size = size,
 		cframe = cframe,
 		color = paint,
-		material = material,
+		material = material or LEGO,
 		shape = shape,
 		flags = flags or "decor",
 		parent = parent,
 	})
 	made.Reflectance = shine
+	if material == nil and made.Shape == Enum.PartType.Block then
+		made.TopSurface = Enum.SurfaceType.Studs -- owner 2026-10-22: the Lego look of Steal an Egg
+	end
 	return made
 end
 
@@ -1112,11 +1118,31 @@ local function buildArch(state: State, zone: Instance, look: any, d: number)
 	place(model, f, zone)
 end
 
--- biome_ground (HK:28, L:478 ...): a 400 x 100 slab whose top is 0.1 under the lane's foot, from `d0`.
+-- biome_ground (HK:28, L:478 ...): a 400 x 100 slab whose top is 0.1 under the lane's foot, from `d0`; a sky biome's
+-- floor (owner 2026-10-22) is as wide as the road between its walls.
 local function buildGround(state: State, zone: Instance, look: any, d0: number)
 	local f = state.origin * CFrame.new(0, -2.1, -(d0 + 50))
 	local model = newPiece(state, "biome_ground", true)
-	box(state, model, "ground", look.ground, f, Vector3.new(400, 2, 100), 0, 0, 0)
+	local road = state.H.road
+	local width = if look.ground then 400 else 2 * (road.halfWidth + road.wallThick)
+	box(state, model, "ground", look.ground or look.floor, f, Vector3.new(width, 2, 100), 0, 0, 0)
+	place(model, f, zone)
+end
+
+-- road_walls (owner 2026-10-22: "wide road between studded walls, like the references"): the 100 studs from `d0` of
+-- the two walls either side of the road, inlets on their sides and a studded cap of the biome's top colour.
+local function buildWalls(state: State, zone: Instance, look: any, d0: number)
+	local road = state.H.road
+	local f = state.origin * CFrame.new(0, -0.1, -(d0 + 50))
+	local model = newPiece(state, "road_walls", true)
+	local x = road.halfWidth + road.wallThick / 2
+	for _, side in { -1, 1 } do
+		local wall = box(state, model, "wall", look.wall.main, f, Vector3.new(road.wallThick, road.wallHeight, 100), side * x, 0, 0)
+		for _, face in { "Left", "Right", "Front", "Back" } do
+			(wall :: any)[face .. "Surface"] = Enum.SurfaceType.Inlet
+		end
+		box(state, model, "wall_top", look.wall.top, f, Vector3.new(road.wallThick + 1, 1, 100), side * x, road.wallHeight, 0)
+	end
 	place(model, f, zone)
 end
 
@@ -1420,10 +1446,11 @@ local function buildBiomes(state: State, root: Instance)
 		for d = math.max(start, H.markerEvery), stop - 1, H.markerEvery do
 			buildMarker(state, zone, look, d)
 		end
-		if look.ground then
-			for d0 = start, stop - 100, 100 do
+		for d0 = start, stop - 100, 100 do
+			if look.ground or look.floor then
 				buildGround(state, zone, look, d0)
 			end
+			buildWalls(state, zone, look, d0)
 		end
 		if look.arch then
 			buildArch(state, zone, look, start)
