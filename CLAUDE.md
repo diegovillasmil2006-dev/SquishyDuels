@@ -4,11 +4,16 @@ Roblox game, place ID `98945316226507`. Team Create place with two co-owners who
 at the same time: VillasmilGaming (GitHub diegovillasmil2006-dev) and jayyyyy2806 (GitHub jjayx2806).
 
 ## How we work
-- **Studio is the source of truth.** Edit the game directly in Studio with the Roblox Studio MCP tools. No Rojo.
-- **This repo is the snapshot history** of the place, shared on GitHub. Never edit `src/` or `world/` by hand:
-  every snapshot overwrites them with what is in Studio.
-- The other co-owner may be editing the same place right now. Always `script_read` a script right before you edit it
-  (never rely on an older read), and stay inside the area the user asked for.
+- **Code lives in files, synced into Studio with Rojo** (both owners agreed 2026-10-21). `default.project.json` links
+  only the 5 code folders below to Studio; maps, models, lighting and game settings stay in Studio and are still edited
+  there (Studio MCP tools), saved by snapshots into `world/`.
+- **Change scripts only in the files under `src/`**, never inside Studio: the next Rojo sync overwrites any script
+  edited in Studio. Never edit `world/` by hand (snapshots overwrite it).
+- **Before connecting Rojo, always:** `git pull --rebase` (get the other owner's latest), then `rojo serve` from the
+  repo root and press Connect in Studio's Rojo plugin. **Only one person connects Rojo at a time.**
+- **Before a snapshot, Rojo must be connected and synced** (Studio = files): the snapshot rewrites `src/` from
+  Studio, so file edits that never reached Studio would be lost.
+- The other co-owner may be in the same place right now (Team Create). Stay inside the area the user asked for.
 
 ## Snapshots (after every prompt that changed Studio)
 A Stop hook (`tools/snapshot/guard.cjs`) will not let you finish a turn that changed Studio until a snapshot is saved.

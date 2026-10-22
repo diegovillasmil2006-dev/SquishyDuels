@@ -1,0 +1,27 @@
+{
+  "name": "Squishy Duels",
+  "servePlaceIds": [98945316226507],
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "$ignoreUnknownInstances": true,
+      "Shared": { "$path": "src/ReplicatedStorage/Shared" }
+    },
+    "ServerScriptService": {
+      "$ignoreUnknownInstances": true,
+      "Server": { "$path": "src/ServerScriptService/Server" }
+    },
+    "ServerStorage": {
+      "$ignoreUnknownInstances": true,
+      "UnitTest": { "$path": "src/ServerStorage/UnitTest" },
+      "SDTools": { "$path": "src/ServerStorage/SDTools" }
+    },
+    "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
+      "StarterPlayerScripts": {
+        "$ignoreUnknownInstances": true,
+        "Client": { "$path": "src/StarterPlayer/StarterPlayerScripts/Client" }
+      }
+    }
+  }
+}
