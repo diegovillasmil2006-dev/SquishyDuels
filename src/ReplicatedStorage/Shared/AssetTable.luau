@@ -1062,6 +1062,17 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.food.lava_truffle", "image", IMAGE_NOTE),
 	otherSlot("img.food.prism_tart", "image", IMAGE_NOTE),
 	otherSlot("img.food.halo_puff", "image", IMAGE_NOTE),
+	-- The shop = Diego's design (2026-10-22): his pass and coin pack pictures and the Robux mark (his upgraded_v1
+	-- PNGs and hud-icons/robux.svg; nil until the owner uploads them, the shop hides a picture without an id).
+	otherSlot("img.pass.coins2", "image", IMAGE_NOTE),
+	otherSlot("img.pass.grip2", "image", IMAGE_NOTE),
+	otherSlot("img.pass.lucky", "image", IMAGE_NOTE),
+	otherSlot("img.pass.fast", "image", IMAGE_NOTE),
+	otherSlot("img.pack.1000", "image", IMAGE_NOTE),
+	otherSlot("img.pack.3300", "image", IMAGE_NOTE),
+	otherSlot("img.pack.9600", "image", IMAGE_NOTE),
+	otherSlot("img.pack.32500", "image", IMAGE_NOTE),
+	otherSlot("img.icon.robux", "image", IMAGE_NOTE),
 
 	-- Kill banners and kill effects (2026-10-16): VFX Studio library textures for the SD_KillVfx emitters
 	-- (SDTools.Builders.KillVfxBuilder) and the kill banner (UI/KillBanner). Sheets keep the library's grid.

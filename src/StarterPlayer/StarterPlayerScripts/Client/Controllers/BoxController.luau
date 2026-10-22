@@ -170,6 +170,7 @@ type Run = {
 local SCREEN = "boxes"
 local REVEAL_SCREEN = "boxReveal"
 local SHOP_SCREEN = "shop"
+local SQUISHIES_SCREEN = "squishies" -- owner 2026-10-22: buying squishies with Coins happens there
 local INSPECT_SCREEN = "inspect"
 local MODAL_GUI = "SD_Modal"
 local STAND_TAG = "SD_BoxStand"
@@ -1694,9 +1695,9 @@ function BoxController.init()
 		local boxId = standBoxId(stand)
 		if
 			BoxFormat.standScreen(StateController.get("policy")) == SHOP_SCREEN
-			and UIController.isRegistered(SHOP_SCREEN)
+			and UIController.isRegistered(SQUISHIES_SCREEN)
 		then
-			UIController.open(SHOP_SCREEN, { tab = "squishies", boxId = boxId })
+			UIController.open(SQUISHIES_SCREEN) -- owner 2026-10-22: the coin BUY moved there from the shop
 		else
 			UIController.open(SCREEN, { boxId = boxId })
 		end

@@ -207,7 +207,8 @@ return function(t: Context)
 		expect.deepEqual(InspectPanel.buttonRows(400, 400, { 120, 140 }, { 150 }), { stage = 1, info = 1 })
 		expect.deepEqual(InspectPanel.buttonRows(200, 250, { 120, 140 }, { 150, 160 }), { stage = 2, info = 2 })
 		expect.deepEqual(InspectPanel.buttonRows(200, 250, {}, {}), { stage = 1, info = 1 })
-		-- A phone at the Largest text size: "Not owned" + "View in Shop" do not fit the info column.
+		-- A phone at the Largest text size: "Not owned" + "Buy" fit side by side (owner 2026-10-22: was "View in
+		-- Shop", two rows).
 		local largest = Config.UI.PreferredTextScale.Largest
 		local phone = InspectPanel.layoutFor(Vector2.new(667, 375), "compact", largest)
 		local rows = InspectPanel.buttonRows(phone.stage.w, phone.info.w, {
@@ -217,7 +218,7 @@ return function(t: Context)
 			buttonWidth(Strings.common.notOwned, largest),
 			buttonWidth(Strings.inspect.viewInShop, largest),
 		})
-		expect.equal(rows.info, 2)
+		expect.equal(rows.info, 1)
 	end)
 
 	for _, screen in ALL_SCREENS do

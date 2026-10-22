@@ -165,6 +165,9 @@ export type PanelLayout = {
 	above: number,
 }
 
+-- The shop = Diego's design (2026-10-22): the window at the design's size, shrunk evenly (windowFit).
+export type WindowFit = { k: number, width: number, height: number, shift: number }
+
 -- UI FINAL R6: the featured card's parts (featuredLayout), base px from the card's top.
 export type FeaturedLayout = { artArea: number, artPx: number, textTop: number, textHeight: number }
 
@@ -519,6 +522,16 @@ function ShopFormat.coinsView(
 		return { unavailable = true, text = Strings.shop.coinsUnavailable, rows = {} }
 	end
 	return { unavailable = false, text = nil, rows = rows }
+end
+
+-- The shop = Diego's design (2026-10-22): the window at the design's 1060 x 650 (Config.UI.Sticker.window.kinds.shop),
+-- shrunk evenly by `k` to fit a ScreenGui of `screenPx` actual px (Layout.windowFit's k: the canvas less the
+-- margin, the sticker and the X hanging off it); `shift` = the design's centre offset (height / 2 + marginTop, H:312)
+-- times k.
+function ShopFormat.windowFit(screenPx: Vector2): WindowFit
+	local design = Config.UI.Sticker.window.kinds.shop
+	local k = Layout.windowFit(screenPx, "shop").k
+	return { k = k, width = design.width, height = design.height, shift = (design.height / 2 + design.marginTop) * k }
 end
 
 -- UI FINAL R6 layout (the Shop window, H:289-342) ------------------------------------------------------------------

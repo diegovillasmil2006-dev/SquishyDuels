@@ -27,10 +27,11 @@
 -- * States: loading (no Snapshot yet), filter-empty ("No {rarity} squishies yet." + Go to Boxes once a "boxes" screen
 --   exists), data error (offline / read-only: data.loadFailed above the details).
 -- * Sounds (§18.5.2 B3 / B5, §18.6): the filter chips get the Button press feel and its click / hover (Button.decorate);
---   the cards keep their own ui.click (they are not Buttons); Close, Inspect, View in Shop and Go to Boxes are silent
+--   the cards keep their own ui.click (they are not Buttons); Close, Inspect and Go to Boxes are silent
 --   Buttons (ui.back / ui.open play); the equip-failure toast carries ui.error (one sound per action).
 -- Part 8 (the two Squishies items of Part 6's Studio run, and the §11.2 audit; layout maths in UI/InventoryFormat):
--- * The detail column is the info list (ScrollingFrame "Detail") with Equip / Inspect / View in Shop pinned under it
+-- * The detail column is the info list (ScrollingFrame "Detail") with Equip / Inspect / Go to Boxes and the coin BUY
+--   pinned under it
 --   ("DetailButtons", a sibling, like InspectPanel's InfoButtons), so they are on screen at every size (at Studio's
 --   893×673 they sat below the fold). The buttons wrap into rows in the narrow column: InventoryFormat.detailLayout
 --   places them from their measured widths (Button.widthFor) and gives the list what is left above them.
@@ -110,7 +111,7 @@
 --   pop on every pick, H:937; tap it = Inspect, focusable, G5.15), the name row (the name, RarityTag "detail", the mint
 --   EQUIPPED pill), the chips (power "x{n} power" [FD4], the throw style, "Ultimate: {name}"), the stats well (blue /
 --   purple bars, Config.Combat bands) and ONE button: EQUIP (green), EQUIPPED (the disabled lilac with the check) or
---   FIND IN BOXES (cyan, the boxes picture; "View in Shop" with the shop picture for a restricted account, [PR22]).
+--   FIND IN BOXES (cyan, the boxes picture; owner 2026-10-22: always the Boxes, the coin BUY sits under it).
 --   The stage shrinks so the rest fits above the button (InventoryFormat.detailLayout); on phones the list scrolls.
 -- * Equip: the design's burst (Config.UI.Fx.events.equip) and the 1.2 squash at the stage's squishy (G5.16), and the
 --   toast "Equipped {name}!" (inventory.equippedToast, G5.17).
@@ -123,11 +124,18 @@
 --   the squishy's best copy ({kind}).
 -- Stable names: Squishies_CloseButton, Squishies_Filter<Name>Button, Squishies_ShowNotOwnedToggle,
 -- Squishies_Card_<id>, Squishies_EquipButton, Squishies_EquippedButton, Squishies_InspectButton (the stage),
--- Squishies_GoToBoxesButton (FIND IN BOXES; View in Shop when restricted).
+-- Squishies_GoToBoxesButton (FIND IN BOXES), Squishies_BuyButton (the coin BUY).
+-- * The coin BUY (owner 2026-10-22: the shop is Diego's exact layout, squishies for Coins moved here, "Under the
+--   squishy's info"): a green BUY (the coin and the price, Pricing.shopPrice: the Welcome price first, owned ones
+--   again as copies) under EQUIP / FIND IN BOXES for every squishy that is sold; the old shop's two-step confirm
+--   (UI/Components/ConfirmDialog), ShopBuy with a request id reused only for a retry (ShopFormat.requestIdFor /
+--   buyOutcome), the purchase burst and the congrats overlay. Off (P11) while the Coins are short; disabled with the
+--   reason (ShopFormat.spendBlock) while locked, loading, a save is pending or the Toy Box is full.
 
 -- Services
 
 local GuiService = game:GetService("GuiService")
+local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Requires
@@ -138,15 +146,17 @@ local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
+local Pricing = require(Shared.Pricing)
 local RarityStyle = require(Shared.Art.RarityStyle)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
-local BoxFormat = require(Client.UI.BoxFormat)
 local Button = require(Client.UI.Components.Button)
 local CardFace = require(Client.UI.CardFace)
 local Chip = require(Client.UI.Components.Chip)
 local CoinIcon = require(Client.UI.Components.CoinIcon)
+local ConfirmDialog = require(Client.UI.Components.ConfirmDialog)
+local CongratsOverlay = require(Client.UI.CongratsOverlay)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
@@ -157,6 +167,7 @@ local ProgressBar = require(Client.UI.Components.ProgressBar)
 local RarityTag = require(Client.UI.Components.RarityTag)
 local Scheduler = require(Client.Anim.Scheduler)
 local ScrollHint = require(Client.UI.Components.ScrollHint)
+local ShopFormat = require(Client.UI.ShopFormat)
 local SquishyImage = require(Client.UI.Components.SquishyImage)
 local StageLook = require(Client.UI.StageLook)
 local StatePill = require(Client.UI.Components.StatePill)
@@ -177,7 +188,6 @@ local WorldBinder = require(script.Parent.WorldBinder)
 
 local SCREEN = "squishies"
 local INSPECT_SCREEN = "inspect"
-local SHOP_SCREEN = "shop"
 local PEN_SCREEN = "pen" -- pens3 phase 6 (PenController)
 local BOXES_SCREEN = "boxes"
 local MODAL_GUI = "SD_Modal"
@@ -205,6 +215,12 @@ local EQUIP_SQUASH = 1.2 -- H:845: FX.squash(.., 1.2)
 local WINDOW_KIND = "squishies" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:180-254)
 local WINDOW_BORDER = STICKER.border.heavy
 local BUTTON_HEIGHT = INVENTORY.button.face + STICKER.lip.button -- H:245: the 60 px face and its 5 px lip
+local REMOTE_BUY = "ShopBuy" -- the coin BUY (owner 2026-10-22)
+local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result
+local SOUND_BACK = "ui.back" -- H:886: the confirm dialog's CANCEL
+local CONFIRM = Config.UI.confirm
+local PURCHASE = Config.UI.Fx.events.purchase -- H:867-871
+local BUY_SPEC = Config.UI.Shop.featured.buy -- the BUY's coin and gap (the design's featured BUY, H:310)
 local CONFIRM_SECONDS = 5 -- reading: how long "Equipped" shows before the StateDelta must have arrived
 local GENERIC = "error.generic"
 local STAT_TIME: { [string]: boolean } = { reload = true, windup = true } -- the purple bars (lib:39)
@@ -264,6 +280,9 @@ type Detail = {
 	equip: Button.Button,
 	equipped: Button.Button,
 	find: Button.Button,
+	buy: Button.Button, -- the coin BUY (owner 2026-10-22)
+	buyLabel: TextLabel?,
+	buyCoin: Frame?,
 	pen: Button.Button, -- pens3 phase 6: MY PEN
 }
 
@@ -308,6 +327,15 @@ local riseFrom: number? = nil -- set: the next refresh rises the slots past this
 local pendingEquip: string? = nil
 local confirmedEquip: string? = nil
 local confirmTimer: thread? = nil
+-- The coin BUY (owner 2026-10-22).
+local buying: string? = nil -- the squishy a ShopBuy is running for
+local pendingRequest: ShopFormat.Pending? = nil
+local buyView: ShopFormat.FeaturedView? = nil -- what the BUY shows (refreshDetail)
+local buyShown = false -- the BUY is under the button row (layoutDetail)
+local confirmDialog: ConfirmDialog.ConfirmDialog? = nil
+local popConfirmBack: (() -> ())? = nil
+local congrats: CongratsOverlay.CongratsOverlay? = nil
+local popCongratsBack: (() -> ())? = nil
 
 local function currentEntries(): { InventoryFormat.Entry }
 	return InventoryFormat.entries(
@@ -422,16 +450,19 @@ local function layoutDetail()
 	local drawn = d.list.AbsoluteSize.Y
 	local k = if listBase > 0 and drawn > 0 then drawn / listBase else 0
 	local rest = if k > 0 then math.max(0, d.listLayout.AbsoluteContentSize.Y / k - current) else 0
-	local placed = InventoryFormat.detailLayout(l.detailHeight, BUTTON_HEIGHT, rest)
+	local buttonsHeight = if buyShown then 2 * BUTTON_HEIGHT + DETAIL.gap else BUTTON_HEIGHT -- the coin BUY under
+	local placed = InventoryFormat.detailLayout(l.detailHeight, buttonsHeight, rest)
 	local before = lastDetail
 	lastDetail = placed
 	d.list.Size = UDim2.new(1, 0, 0, placed.listHeight)
 	d.rail.Size = UDim2.fromOffset(Theme.SCROLLBAR_PX, placed.listHeight)
 	d.buttons.Position = UDim2.fromOffset(0, placed.buttonsTop)
-	for _, button in { d.equip, d.equipped, d.find } do
+	for _, button in { d.equip, d.equipped, d.find, d.buy } do
 		button:setWidth(l.detailWidth)
 		button.root.Size = UDim2.fromOffset(l.detailWidth, BUTTON_HEIGHT)
 	end
+	d.buttons.Size = UDim2.new(1, 0, 0, buttonsHeight)
+	d.buy.root.Position = UDim2.fromOffset(0, BUTTON_HEIGHT + DETAIL.gap)
 	if before == nil or before.stageFace ~= placed.stageFace then
 		d.stage.Size = UDim2.new(1, 0, 0, placed.stageFace + STAGE.lip)
 		d.look:setFace(placed.stageFace)
@@ -536,11 +567,6 @@ end
 
 -- Detail panel ------------------------------------------------------------------------------------------------------
 
--- FIND IN BOXES, or (PR22) View in Shop for an account that may not buy random items (BoxFormat.standScreen).
-local function findScreen(): string
-	return BoxFormat.standScreen(StateController.get("policy"))
-end
-
 local function refreshDetail(list: { InventoryFormat.Entry })
 	local d = detail
 	if d == nil then
@@ -594,15 +620,55 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 	d.equipped.root.Visible = state == "equipped"
 	d.equip.root.Visible = state ~= "notOwned" and state ~= "equipped"
 	if state == "notOwned" then
-		local shop = findScreen() == SHOP_SCREEN
-		d.find:setText(if shop then Strings.inspect.viewInShop else Strings.inventory.goToBoxes)
-		d.find:setIcon(if shop then "shop" else "boxes")
+		d.find:setText(Strings.inventory.goToBoxes)
+		d.find:setIcon("boxes")
 	elseif state == "equip" then
 		d.equip:setState("normal")
 	elseif state == "locked" then
 		d.equip:setState("disabled", Strings.common.lockedInDuel)
 	elseif state == "loading" then
 		d.equip:setState("loading") -- keeps its text and its place
+	end
+	-- The coin BUY (owner 2026-10-22): the old shop's BUY for this squishy, under the button row.
+	local price = Pricing.shopPrice(entry.id, entry.owned)
+	local coins = StateController.coins() or 0
+	local block =
+		ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked(), StateController.get("pen"))
+	if block == nil and buying ~= nil and buying ~= entry.id then
+		block = Strings.common.loading -- another buy is still running (one in flight)
+	end
+	local view = ShopFormat.featuredView({
+		id = entry.id,
+		def = def,
+		name = entry.name,
+		rarity = entry.rarity,
+		price = price,
+		owned = entry.owned,
+		state = "buy",
+		missing = if price then math.max(0, price - coins) else 0,
+	}, block, buying)
+	buyView = view
+	local shown = view.mode ~= "owned" and view.mode ~= "notSold"
+	d.buy.root.Visible = shown
+	if shown then
+		d.buy:setText(view.priceText or Strings.shop.buy)
+		if view.mode == "loading" then
+			d.buy:setState("loading")
+		elseif view.mode == "blocked" then
+			d.buy:setState("disabled", view.reason)
+		else
+			d.buy:setState("normal")
+		end
+		d.buy:setOff(view.mode == "short")
+		local label = d.buyLabel
+		if label then
+			-- P11: an "off" BUY's price in StickerPriceShort (H:946); white otherwise.
+			label.TextColor3 = if view.mode == "short" then Palette.StickerPriceShort else WHITE
+		end
+	end
+	if shown ~= buyShown then
+		buyShown = shown
+		layoutDetail()
 	end
 end
 
@@ -792,19 +858,155 @@ local function equipSelected()
 	refresh()
 end
 
--- FIND IN BOXES: the Boxes window replaces this one (H:1016); a restricted account goes to the squishy in the Shop.
+-- FIND IN BOXES: the Boxes window replaces this one (H:1016).
 local function findSelected()
 	local id = selected
 	if id == nil then
 		return
 	end
-	if findScreen() == SHOP_SCREEN then
-		UIController.close(SCREEN, "viewInShop")
-		UIController.open(SHOP_SCREEN, { squishyId = id })
-	else
-		UIController.close(SCREEN, "goToBoxes")
-		UIController.open(BOXES_SCREEN)
+	UIController.close(SCREEN, "goToBoxes")
+	UIController.open(BOXES_SCREEN)
+end
+
+-- The coin BUY (owner 2026-10-22; moved from the old shop: H:867-871, PR13) ------------------------------------
+
+local function promptLayer(): ScreenGui
+	return UIController.screenGui(CONFIRM.layerName, CONFIRM.layer)
+end
+
+local function closeConfirm()
+	local pop = popConfirmBack
+	popConfirmBack = nil
+	if pop then
+		pop()
 	end
+	local dialog = confirmDialog
+	confirmDialog = nil
+	if dialog then
+		dialog:close()
+	end
+end
+
+local function closeCongrats()
+	local pop = popCongratsBack
+	popCongratsBack = nil
+	if pop then
+		pop()
+	end
+	congrats = nil
+end
+
+-- H:867-871: the purchase burst and ring at the dialog's BUY (`at`), then the congrats overlay with its rain and jolt.
+local function celebrate(id: string, name: string, at: GuiObject?)
+	if at then
+		UiFx.sparks(at, { n = PURCHASE.sparks.n, spread = PURCHASE.sparks.spread })
+		for _, ring in PURCHASE.rings do
+			UiFx.ring(at, UiFx.colors({ ring.color })[1], ring.size)
+		end
+	end
+	closeConfirm()
+	local old = congrats
+	if old then
+		old:destroy()
+		closeCongrats()
+	end
+	local def = Catalog.get(id)
+	local overlay = CongratsOverlay.show({
+		layer = promptLayer(),
+		catalogId = id,
+		title = name,
+		description = if def then ShopFormat.featuredLine(def.rarity, Catalog.getPower(id)) else "",
+		scale = UIController.scale(),
+		trackScale = UIController.trackScale,
+		sound = function(key: string)
+			SoundController.play(key)
+		end,
+		onClose = closeCongrats,
+	})
+	congrats = overlay
+	popCongratsBack = UIController.pushBack(function()
+		overlay:close(true) -- UIController.back plays ui.back for it
+	end)
+	task.delay(PURCHASE.rainDelayMs / 1000, function()
+		overlay:rain(PURCHASE.rain)
+	end)
+	local column = overlay.root:FindFirstChild("Column")
+	if column and column:IsA("GuiObject") then
+		UiFx.jolt(column, PURCHASE.jolt)
+	end
+end
+
+-- The confirm dialog's BUY (PR13 step two): one ShopBuy for `id` at its `price`.
+local function buySquishy(id: string, price: number)
+	if buying ~= nil then
+		return
+	end
+	local requestId, pending = ShopFormat.requestIdFor(pendingRequest, id, price, function(): string
+		return HttpService:GenerateGUID(false)
+	end)
+	pendingRequest = pending
+	buying = id
+	refresh()
+	local result = NetController.invokeAsync(REMOTE_BUY, id, price, requestId)
+	buying = nil
+	local outcome = ShopFormat.buyOutcome(result)
+	if not outcome.retry then
+		pendingRequest = nil
+	end
+	local dialog = confirmDialog
+	local at: GuiObject? = if dialog then dialog.buy.root else nil
+	if outcome.kind == "success" then
+		-- One sound per action (§18.5.2 B5): ui.purchase (§18.6), then the congrats overlay.
+		SoundController.play(SOUND_PURCHASE)
+		celebrate(id, nameOf(id), at)
+		if outcome.savePending then
+			UIController.toast(Strings.reasonText("box.saving"), "info", { sound = false })
+		end
+	else
+		closeConfirm()
+		UIController.toast(outcome.text or Strings.error.generic, "warn", { sound = "ui.error" })
+	end
+	refresh()
+end
+
+-- The BUY (PR13 step one): the confirm dialog for the selected squishy at its shop price.
+local function openBuy()
+	local id, view = selected, buyView
+	if id == nil or view == nil or view.mode ~= "buy" or buying ~= nil or confirmDialog ~= nil then
+		return -- "off" or disabled: the Button played ui.error and the shake (P11)
+	end
+	local price = Pricing.shopPrice(id, StateController.owns(id))
+	if price == nil then
+		return
+	end
+	local squishyId: string, cost: number = id, price
+	local dialog = ConfirmDialog.open({
+		layer = promptLayer(),
+		title = nameOf(squishyId),
+		description = ConfirmDialog.balanceText(StateController.coins() or 0, cost),
+		price = cost,
+		catalogId = squishyId,
+		scale = UIController.scale(),
+		trackScale = UIController.trackScale,
+		onBuy = function()
+			buySquishy(squishyId, cost)
+		end,
+		onCancel = function(reason: string)
+			confirmDialog = nil
+			local pop = popConfirmBack
+			popConfirmBack = nil
+			if pop then
+				pop()
+			end
+			if reason ~= "back" then
+				SoundController.play(SOUND_BACK)
+			end
+		end,
+	})
+	confirmDialog = dialog
+	popConfirmBack = UIController.pushBack(function()
+		dialog:cancel("back")
+	end)
 end
 
 -- Builders -----------------------------------------------------------------------------------------------------------
@@ -1411,6 +1613,32 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 	})
 	find.root.Visible = false
 	c:add(find)
+	-- The coin BUY (owner 2026-10-22): green, the coin and the price (the design's featured BUY, H:310), under the row.
+	local buy = Button.new({
+		name = "Squishies_BuyButton",
+		text = Strings.shop.buy,
+		kind = "primary",
+		height = INVENTORY.button.face,
+		textRole = BUY_SPEC.textRole,
+		keycap = "", -- reserves the row: the coin, then the price
+		clickSound = false, -- the dialog opens without a sound (RL8)
+		parent = buttons,
+		onActivated = openBuy,
+	})
+	buy.root.Visible = false
+	c:add(buy)
+	local buyLine = buy.visual:FindFirstChild("Line", true)
+	local buyCoin: Frame? = nil
+	if buyLine then
+		local row = buyLine:FindFirstChildOfClass("UIListLayout")
+		if row then
+			row.Padding = UDim.new(0, BUY_SPEC.gap)
+		end
+		local coin = CoinIcon.new({ name = "Coin", sizePx = BUY_SPEC.coinPx, layoutOrder = 2, parent = buyLine })
+		c:add(coin)
+		buyCoin = coin.root
+	end
+	local buyLabel = buy.visual:FindFirstChild("Label", true)
 	c:add(listLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(layoutDetail))
 	c:add(list:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutDetail))
 
@@ -1436,6 +1664,9 @@ local function buildDetail(c: Cleanup.Cleanup, parent: Instance)
 		equip = equip,
 		equipped = equipped,
 		find = find,
+		buy = buy,
+		buyLabel = if buyLabel and buyLabel:IsA("TextLabel") then buyLabel else nil,
+		buyCoin = buyCoin,
 		pen = penButton,
 	}
 end
@@ -1750,6 +1981,9 @@ function InventoryController.init()
 			end
 			stopRises()
 			StateController.markAllOwnedSeen() -- G5.9 (H:681, H:689): NEW and the HUD badge clear on close
+			if buying == nil then
+				closeConfirm() -- never left open over another screen (a busy one closes with its answer)
+			end
 		end,
 		primary = function(): GuiObject?
 			-- The selected card; else the active tab (an empty filter); else Close (Part 8: never nothing).
@@ -1779,7 +2013,7 @@ function InventoryController.init()
 	c:add(WorldBinder.registerStand(KIOSK_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { "owned", "equipped", "dataStatus", "policy" } do
+	for _, field in { "owned", "equipped", "dataStatus", "policy", "coins", "pen" } do
 		c:add(StateController.changed(field):connect(function()
 			if field == "equipped" then
 				confirmedEquip = nil
@@ -1814,6 +2048,13 @@ function InventoryController.init()
 		frames, closeButton, panelLayout, lastDetail = nil, nil, nil, nil
 		pendingEquip, confirmedEquip, riseFrom = nil, nil, nil
 		shownCount = 0
+		closeConfirm()
+		local overlay = congrats
+		if overlay then
+			overlay:destroy()
+		end
+		closeCongrats()
+		buying, pendingRequest, buyView, buyShown = nil, nil, nil, false
 	end)
 	log:debug("ready")
 end

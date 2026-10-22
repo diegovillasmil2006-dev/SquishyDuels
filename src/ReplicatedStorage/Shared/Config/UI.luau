@@ -901,6 +901,8 @@ local UI = {
 			columns = 2, -- H:339
 			height = 104, -- H:341
 			border = 4, -- H:341
+			radius = 20, -- H:341
+			inset = { px = 3, alpha = 0.1 }, -- H:341: inset 0 3px 0 rgba(255,255,255,.1)
 			padTop = 10, -- H:341: padding 10 12 10 10
 			padRight = 12,
 			padBottom = 10,
@@ -926,6 +928,23 @@ local UI = {
 			},
 			checkPx = 44, -- H:348: the owned check, sdStamp (Config.UI.Daily.stamp)
 			rise = { ms = 450, delayMs = 80, staggerMs = 60 }, -- H:341, H:1240: sdRise .45s, .08 + i x .06 s
+		},
+		-- The shop = Diego's design exactly (owner 2026-10-22): his 4 passes (hud-lib.js:50-55; shown, not sold: no
+		-- pass product yet, §6.11), their pictures (AssetTable img.pass.*) and tile stops (Palette ShopPass*).
+		passes = {
+			{ key = "coins2", image = "img.pass.coins2", top = "ShopPassCoinsTop", bottom = "ShopPassCoinsEnd" },
+			{ key = "grip2", image = "img.pass.grip2", top = "ShopPassGripTop", bottom = "ShopPassGripEnd" },
+			{ key = "lucky", image = "img.pass.lucky", top = "ShopPassLuckyTop", bottom = "ShopPassLuckyEnd" },
+			{ key = "fast", image = "img.pass.fast", top = "ShopPassFastTop", bottom = "ShopPassFastEnd" },
+		} :: { { [string]: any } },
+		-- H:321 (LIMITED: 30 high, padding 0 12), H:356-357 (+n% / BEST: 28 high, padding 0 10, -8 / -12 off the
+		-- corner, turned 8°): border 3, round, white text stroke 3; sdBadge 2.4 s on LIMITED.
+		badge = {
+			border = 3,
+			textRole = "tabBadge",
+			badgeS = 2.4,
+			limited = { height = 30, padX = 12 },
+			pack = { height = 28, padX = 10, offsetX = 8, offsetY = 12, rot = 8 },
 		},
 		-- UI FINAL R6 (the Shop window, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line n), base px:
 		-- the body (H:294: 330 | 1fr, gap 20, padding 20 24 24), the featured card (H:295-312: the selected squishy),
@@ -956,6 +975,15 @@ local UI = {
 			-- (the old detail preview's DETAIL_ICON_MIN_PX reading), else it hides
 			art = { px = 230, minPx = 48, floatS = 3, shadow = { px = 10, alpha = 0.35 } },
 			text = { padX = 16, padBottom = 16, gap = 6 }, -- H:307
+			-- H:320-334, H:1343-1344: the Dragon Bundle (the Dragon + 2,500 Coins; no product yet, §6.11). endsAt: a
+			-- real offer's end (server time) shows the "Ends in" pill; nil = no timer (never a fake countdown). row:
+			-- the badge row's padding 14, the timer pill's width and its rgba(30,20,40,.55) fill.
+			bundle = {
+				squishyId = "dragon",
+				coins = 2500,
+				endsAt = nil :: number?,
+				row = { pad = 14, timerWidth = 150, timerAlpha = 0.55 },
+			},
 			nameRole = "featuredName", -- H:308
 			lineRole = "featuredLine", -- H:309
 			lineCoinPx = 22, -- H:309
@@ -996,6 +1024,16 @@ local UI = {
 			priceInset = { px = 2, alpha = 0.55 },
 			priceLip = 3,
 			priceRole = "packPrice",
+			priceGap = 5, -- H:362
+			robuxPx = 22, -- H:362
+			riseDelayMs = 300, -- H:1242: .3 + i x .06 s
+			-- hud-lib.js:56-61: Diego's 4 packs (key = the CoinBundles entry they sell, Config.Monetization).
+			list = {
+				{ key = "coins_handful", amount = 1000, image = "img.pack.1000" },
+				{ key = "coins_jar", amount = 3300, bonus = "+10%", image = "img.pack.3300" },
+				{ key = "coins_tin", amount = 9600, bonus = "+20%", image = "img.pack.9600" },
+				{ key = "coins_barrel", amount = 32500, bonus = "+30%", best = true, image = "img.pack.32500" },
+			} :: { { [string]: any } },
 		},
 		-- H:536-549 (G6.8, G6.9): the radial's alphas (H:537), the rays (H:538), the letters' sdSlam (H:45) per letter
 		-- .05 + .035 i s, the icon's sdReveal (H:38) with its glow disc and float, the texts' and AWESOME!'s sdUp (H:44),

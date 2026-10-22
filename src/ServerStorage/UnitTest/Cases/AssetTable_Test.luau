@@ -425,6 +425,16 @@ return function(t: Context)
 				"img.food.lava_truffle",
 				"img.food.prism_tart",
 				"img.food.halo_puff",
+				-- The shop = Diego's design: his pass and pack pictures and the Robux mark (nil until uploaded).
+				"img.pass.coins2",
+				"img.pass.grip2",
+				"img.pass.lucky",
+				"img.pass.fast",
+				"img.pack.1000",
+				"img.pack.3300",
+				"img.pack.9600",
+				"img.pack.32500",
+				"img.icon.robux",
 			})
 		)
 	end)

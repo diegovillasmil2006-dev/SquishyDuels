@@ -218,7 +218,7 @@ type Session = {
 
 local SCREEN = "inspect"
 local REVEAL_SCREEN = "boxReveal"
-local SHOP_SCREEN = "shop"
+local SHOP_SCREEN = "squishies" -- owner 2026-10-22: squishies are bought with Coins on the Squishies screen now
 local SHOP_TAB = "squishies"
 local SOURCE_REVEAL = "boxReveal"
 local SOURCE_HUD = "hud"

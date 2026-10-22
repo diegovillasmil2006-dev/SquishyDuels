@@ -780,7 +780,7 @@ local Strings = {
 		howToGet = "How to get",
 		boxChance = "{box}: {percent}%",
 		shopPrice = "Shop: {price} Coins",
-		viewInShop = "View in Shop",
+		viewInShop = "Buy", -- owner 2026-10-22: opens the Squishies screen on the squishy (its coin BUY)
 		resetView = "Reset View",
 		closeHint = "Close: Backspace / B",
 		equippedToast = "Equipped!",
@@ -967,6 +967,24 @@ local Strings = {
 		-- Pens3 phase 5 (D1:202): the first of each Common you don't own yet ({coins} = Format.coins of the Welcome
 		-- price); it never runs out.
 		welcomePrice = "Welcome price: first one {coins}",
+		-- The shop = Diego's design exactly (owner 2026-10-22; `H:n` = his HUD file, lib = his hud-lib.js):
+		-- GAME PASSES (H:338), the Dragon Bundle card (H:321, H:331-332: LIMITED, the name, "Exclusive Dragon +" before
+		-- the coin and the amount; endsIn only for a real offer, {time} = Format.clock), BEST (H:357), his 4 passes
+		-- (lib:51-54), and `soon`: the price of anything with no Robux product yet (the owner creates them).
+		sectionPasses = "GAME PASSES",
+		limited = "LIMITED",
+		endsIn = "Ends in {time}",
+		bundleName = "DRAGON BUNDLE",
+		bundleLine = "Exclusive Dragon +",
+		best = "BEST",
+		soon = "Soon",
+		comingSoon = "Coming soon!", -- a tap on a price that has no Robux product yet
+		passes = {
+			coins2 = { name = "2x Coins", desc = "Double coins from every squeeze." },
+			grip2 = { name = "2x Grip", desc = "Double Grip from every squeeze." },
+			lucky = { name = "Lucky Boxes", desc = "Epic and Exclusive odds ×1.5." },
+			fast = { name = "Fast Open", desc = "Skip the shake, reveal instantly." },
+		},
 	},
 
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).

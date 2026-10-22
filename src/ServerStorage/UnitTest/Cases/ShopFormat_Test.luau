@@ -588,4 +588,18 @@ return function(t: Context)
 			end
 		end
 	end)
+
+	-- The shop = Diego's design (2026-10-22): the window keeps the design's size and shrinks evenly to the screen.
+	t.test("windowFit: the design's 1060 x 650, whole on a big screen, evenly smaller on a phone", function()
+		local design = Config.UI.Sticker.window.kinds.shop
+		local big = ShopFormat.windowFit(Vector2.new(2560, 1440))
+		expect.equal(big.width, design.width)
+		expect.equal(big.height, design.height)
+		expect.equal(big.k, 1)
+		expect.equal(big.shift, design.height / 2 + design.marginTop)
+		local phone = ShopFormat.windowFit(Vector2.new(844, 390))
+		expect.equal(phone.width, design.width) -- never re-laid out: the same window, scaled
+		expect.truthy(phone.k > 0 and phone.k < 1)
+		expect.equal(phone.shift, (design.height / 2 + design.marginTop) * phone.k)
+	end)
 end

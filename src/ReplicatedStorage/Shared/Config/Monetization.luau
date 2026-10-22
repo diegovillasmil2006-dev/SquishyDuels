@@ -26,11 +26,13 @@ export type GamePass = {
 	benefit: string?, -- one of CosmeticBenefits (G7); a pass without one is never offered
 }
 
+-- The shop = Diego's design (owner 2026-10-22): his 4 packs' amounts (hud-lib.js:57-60: 1,000 / 3,300 / 9,600 /
+-- 32,500); no productId yet (the owner creates the products).
 local COIN_BUNDLES: { CoinBundle } = {
 	{ key = "coins_handful", nameKey = "bundle.handful", productId = nil, coins = 1000, onSale = true },
-	{ key = "coins_jar", nameKey = "bundle.jar", productId = nil, coins = 2750, onSale = true },
-	{ key = "coins_tin", nameKey = "bundle.tin", productId = nil, coins = 6500, onSale = true },
-	{ key = "coins_barrel", nameKey = "bundle.barrel", productId = nil, coins = 18000, onSale = true },
+	{ key = "coins_jar", nameKey = "bundle.jar", productId = nil, coins = 3300, onSale = true },
+	{ key = "coins_tin", nameKey = "bundle.tin", productId = nil, coins = 9600, onSale = true },
+	{ key = "coins_barrel", nameKey = "bundle.barrel", productId = nil, coins = 32500, onSale = true },
 }
 
 -- ProcessReceipt looks bundles up by product id (§3.10): any configured id, even one that failed boot validation.
