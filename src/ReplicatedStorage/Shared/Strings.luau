@@ -1332,6 +1332,9 @@ local Strings = {
 			boost = { touch = "Tap to boost!", mouse = "Click to boost!", gamepad = "Press R2 to boost!" },
 			fuel = "SQUISH! x{fuel}",
 			noFuel = "NO FUEL",
+			-- Owner 2026-10-22 (Break and Steal an Egg's zone banner): the line under a new zone's name; {power} = the
+			-- throw power the zone starts at (Config.Economy.Highway.walls).
+			recommended = "Recommended: {power} Throw Power",
 		},
 		-- P13v4 [P] the big pops ({distance} = Format.distance).
 		pop = {

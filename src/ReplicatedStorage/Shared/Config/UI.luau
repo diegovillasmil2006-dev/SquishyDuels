@@ -1490,6 +1490,9 @@ local UI = {
 				rings = "CandyCyan",
 				landed = "White",
 				newBest = "CandyGold",
+				-- Owner 2026-10-22: the zone banner's "Recommended" line, green when the player's Grip power reaches it.
+				zoneReady = "CandyLime",
+				zoneTooWeak = "CandyRed",
 			},
 		},
 		-- [P] The sounds (AssetTable keys, all existing).

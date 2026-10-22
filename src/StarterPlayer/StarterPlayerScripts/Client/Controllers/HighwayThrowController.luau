@@ -83,6 +83,7 @@ local CameraController = require(script.Parent.CameraController)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
+local GripController = require(script.Parent.GripController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
@@ -238,6 +239,9 @@ local REAL_DEPS = {
 			)
 	end,
 	reducedMotion = Tweens.reducedMotion,
+	gripLevel = function(): number
+		return GripController.level() or 1
+	end,
 	fpActive = FirstPersonController.isActive,
 	player = function(): any?
 		return Players.LocalPlayer
@@ -645,6 +649,7 @@ local function drawFlight(throw: Throw, d: number, boost: boolean)
 		if throw.biome ~= nil then
 			h:punch("zone")
 			play(U.sounds.zone)
+			pop(HighwayThrowController.zoneBanner(biome, deps.gripLevel()))
 		end
 		throw.biome = biome
 	end
@@ -968,6 +973,25 @@ function HighwayThrowController.shotGoal(kind: Shot, p: Vector3): (Vector3, Vect
 	end
 	return WorldLayout.highwayCFrame(eye.X, eye.Y, eye.Z).Position,
 		WorldLayout.highwayCFrame(look.X, look.Y, look.Z).Position
+end
+
+-- Owner 2026-10-22 (Break and Steal an Egg): the banner as the squishy enters `biome`, its name and the throw power the
+-- zone starts at, green when a Grip `level` throw reaches it, red when not.
+function HighwayThrowController.zoneBanner(biome: number, level: number): { HighwayHud.Line }
+	local def = WorldLayout.Highway.biomes[biome]
+	local wall = H.walls[biome]
+	if def == nil or wall == nil then
+		return {}
+	end
+	local ready = HighwayMath.power(level) >= wall
+	return {
+		{ text = Strings.resolve(def.nameKey) or "", big = true, color = def.nameColor },
+		{
+			text = Strings.format(Strings.highway.screen.recommended, { power = Format.power(wall) }),
+			big = false,
+			color = if ready then U.pop.colors.zoneReady else U.pop.colors.zoneTooWeak,
+		},
+	}
 end
 
 -- The landing's toasts (see the header).
