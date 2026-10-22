@@ -891,11 +891,11 @@ return function(t: Context)
 		expect.equal(grip.maxGrip, 9_000_000_000_000_000)
 		expect.equal(grip.maxLevel, 100)
 		expect.equal(#grip.LevelTotals, 100)
-		-- The appendix's milestones (spec §10): Lv10 76K, Lv20 1.1M, Lv50 1.1B, Lv100 380T.
-		expect.equal(grip.LevelTotals[10], 76_000)
-		expect.equal(grip.LevelTotals[20], 1_100_000)
-		expect.equal(grip.LevelTotals[50], 1_100_000_000)
-		expect.equal(grip.LevelTotals[100], 380_000_000_000_000)
+		-- 1.5x the appendix's milestones (spec §10; owner 2026-10-22): Lv10 114K, Lv20 1.65M, Lv50 1.65B, Lv100 570T.
+		expect.equal(grip.LevelTotals[10], 114_000)
+		expect.equal(grip.LevelTotals[20], 1_650_000)
+		expect.equal(grip.LevelTotals[50], 1_650_000_000)
+		expect.equal(grip.LevelTotals[100], 570_000_000_000_000)
 		local ranks = {}
 		for _, rank in grip.Ranks do
 			table.insert(ranks, `{rank.level} {rank.key}`)

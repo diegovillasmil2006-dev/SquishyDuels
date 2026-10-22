@@ -250,12 +250,12 @@ return function(t: Context)
 	end)
 
 	t.test("the bar fills with the numbers it shows: have / need (user decision 2026-10-09)", function()
-		-- Lv 2 spans 1,000 .. 1,700 (spec 2026-10-12 totals): 1,350 reads "1,350 / 1,700" and fills 79% (not the 50%
-		-- share of the level).
-		local model = GripController.cardModel(view(1350), NOW)
+		-- Lv 2 spans 1,500 .. 2,550 (1.5x the spec 2026-10-12 totals): 2,025 reads "2,025 / 2,550" and fills 79% (not
+		-- the 50% share of the level).
+		local model = GripController.cardModel(view(2025), NOW)
 		expect.equal(model.level, 2)
-		expect.near(model.fraction, 1350 / 1700, 1e-9)
-		expect.equal(model.barText, s("grip.hudBar", { have = "1,350", need = "1,700" }))
+		expect.near(model.fraction, 2025 / 2550, 1e-9)
+		expect.equal(model.barText, s("grip.hudBar", { have = "2,025", need = "2,550" }))
 		-- The design's example: 42,000 / 66,000 is about two thirds full, whatever level that is.
 		local example = GripController.cardModel(view(42000), NOW)
 		local need = GripMath.progress(42000).need

@@ -582,20 +582,20 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("Grip Lv 100: 632 studs in Bakery Town pay 0.5 SV a stud with the rings, reaching biome 2", function()
+	t.test("Grip Lv 100: 403 studs in Bakery Town pay 0.5 SV a stud with the rings, reaching biome 2", function()
 		local w = fresh()
 		w.levels[w.a] = 100
 		w.profiles[w.a].pen.items[1].level = 11 -- 10 x 1.15^10 = 40.5 Coins a second: SV 40.5
 		local sv = PenMath.squeezeValue(w.profiles[w.a].pen)
 		local plan = throwAndLand(w, w.a)
-		expect.equal(plan.studs, 632)
+		expect.equal(plan.studs, 403)
 		expect.equal(plan.biome, 2)
 		local landing = lastLanding(w)
 		expect.deepEqual(landing.rings, HighwayMath.ringsHit(plan))
-		expect.equal(landing.coins, math.floor(0.5 * 632 * (1 + 0.1 * #landing.rings) * sv))
+		expect.equal(landing.coins, math.floor(0.5 * 403 * (1 + 0.1 * #landing.rings) * sv))
 		expect.equal(landing.reached, 2)
 		expect.deepEqual(landing.gifts, {})
-		expect.deepEqual(w.profiles[w.a].highway, { best = 632, biome = 2 })
+		expect.deepEqual(w.profiles[w.a].highway, { best = 403, biome = 2 })
 		expect.equal(PenMath.levelCap(w.profiles[w.a].highway), 20) -- Bakery Town's food is on sale
 		-- A shorter throw later keeps the best and the biome (they only rise).
 		w.levels[w.a] = 1
@@ -604,13 +604,13 @@ return function(t: Context)
 		expect.equal(short.newBest, false)
 		expect.equal(short.coins, HighwayMath.landingCoins(sv, 213, #short.rings)) -- the shorter throw pays less
 		expect.truthy(short.coins < landing.coins)
-		expect.equal(short.best, 632)
+		expect.equal(short.best, 403)
 		expect.equal(short.reached, nil)
-		expect.deepEqual(w.profiles[w.a].highway, { best = 632, biome = 2 })
+		expect.deepEqual(w.profiles[w.a].highway, { best = 403, biome = 2 })
 		finish()
 	end)
 
-	-- The Grip level that throws `studs` far or more (power() is 900 x 1.1^(Lv - 1); any whole level).
+	-- The Grip level that throws `studs` far or more (power() is 900 x 1.05^(Lv - 1); any whole level).
 	local function levelFor(studs: number): number
 		local level = 1
 		while HighwayMath.landing(HighwayMath.power(level)) < studs do
@@ -739,7 +739,7 @@ return function(t: Context)
 		expect.equal(#w.boards, count) -- written at the landing, not the press
 		land(w, kai)
 		w.levels[w.b] = 100
-		throwAndLand(w, w.b) -- Mia 632
+		throwAndLand(w, w.b) -- Mia 403
 		throwAndLand(w, w.a) -- Kai 213
 		throwAndLand(w, w.a) -- Kai 213
 		local board = w.boards[#w.boards]
@@ -749,9 +749,9 @@ return function(t: Context)
 			Last2Who = "Kai",
 			Last2Distance = studs(213),
 			Last3Who = "Mia",
-			Last3Distance = studs(632),
+			Last3Distance = studs(403),
 			BestWho = "Mia",
-			BestDistance = studs(632),
+			BestDistance = studs(403),
 		})
 		-- A refused press writes nothing.
 		count = #w.boards

@@ -95,7 +95,7 @@ return function(t: Context)
 		local h = Config.Economy.Highway
 		expect.deepEqual(h.walls, { 1, 14_000, 330_000_000, 16e12, 1.2e18, 6.2e22, 1.6e27 })
 		expect.equal(h.gatesPower, 2.4e31)
-		expect.deepEqual(h.power, { base = 900, perGripLevel = 1.1 }) -- p13v4 [P]: Lv 1 lands 213 studs
+		expect.deepEqual(h.power, { base = 900, perGripLevel = 1.05 }) -- p13v4 [P]: Lv 1 lands 213 studs; x1.05 owner 2026-10-22
 		-- p13v3: Coins by distance (owner 2026-10-18); p13v4 [P]: +10 % a ring hit
 		expect.deepEqual(h.pay, { perStud = 0.5, grip = 60, ringShare = 0.1 })
 		expect.deepEqual(h.foodBag, { seconds = 150, squeezes = 50 })

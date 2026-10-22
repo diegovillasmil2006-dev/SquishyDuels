@@ -4,7 +4,7 @@
 -- work/pens3/p13v4/SPEC.md with its spec/curve.js). Server only (ServerStorage.UnitTest). Pure.
 -- Contract (Config.Economy.Highway, restated from the sources: G110 = work/econ4/out5_grip110.txt, J =
 -- final_hagb_grip110.json, SIM = sim5.js, P3D = the lobby design v6's "Squishy Lobby 3D.html"):
---   * power(Grip Lv) = 900 x 1.1^(Lv - 1) (p13v4 [P]: base 900, Lv 1 lands 213 studs); a broken level counts as Lv 1;
+--   * power(Grip Lv) = 900 x 1.05^(Lv - 1) (owner 2026-10-22; p13v4 [P]: base 900, Lv 1 lands 213 studs); a broken level counts as Lv 1;
 --   * landing(power): J's walls, s_n + len_n x ln(P / P_n) / ln(P_n+1 / P_n) (V4:76; SIM:89), whole studs (cut), 0 at
 --     power 1 or less, the Golden Gates (8,500) from 2.4e31; curve.js: power 900 -> 213, 14,400 -> 301;
 --   * biomeAt(studs) 1..7 (SIM:90: the Golden Gates are in Divine Heaven), reached(studs) 1..8 (8 = the Golden Gates);
@@ -39,10 +39,10 @@ return function(t: Context)
 	local ROOT = Vector3.new(0, 5.5, WorldLayout.Highway.throwArea.position.Z)
 	local RELEASE = 1_000
 
-	t.test("power: 900 x 1.1^(Grip Lv - 1) (p13v4); a broken level is Lv 1", function()
+	t.test("power: 900 x 1.05^(Grip Lv - 1) (owner 2026-10-22); a broken level is Lv 1", function()
 		expect.equal(HighwayMath.power(1), 900)
-		expect.near(HighwayMath.power(10), 900 * 1.1 ^ 9, 1e-6)
-		expect.near(HighwayMath.power(100), 450 * 25_055.66, 5) -- 450 x G110's "Lv100 25K"
+		expect.near(HighwayMath.power(10), 900 * 1.05 ^ 9, 1e-6)
+		expect.near(HighwayMath.power(100), 900 * 1.05 ^ 99, 1e-6)
 		for _, bad in { 0, -5, 0 / 0, math.huge, "7" } :: { any } do
 			expect.equal(HighwayMath.power(bad), 900)
 		end
@@ -53,7 +53,7 @@ return function(t: Context)
 		expect.equal(HighwayMath.landing(2), 21) -- 300 x ln 2 / ln 14,000 = 21.8 (G110 T0 G1: 22)
 		expect.equal(HighwayMath.landing(900), 213) -- p13v4: Grip Lv 1 (curve.js)
 		expect.equal(HighwayMath.landing(14_400), 301) -- Lv 1 PERFECT + boost: just into Bakery Town
-		expect.equal(HighwayMath.landing(HighwayMath.power(100)), 632) -- curve.js table 1
+		expect.equal(HighwayMath.landing(HighwayMath.power(100)), 403) -- x1.05 a level (632 at x1.1, curve.js table 1)
 		expect.equal(HighwayMath.landing(1), 0)
 		expect.equal(HighwayMath.landing(0.5), 0)
 		for index, wall in H.walls do

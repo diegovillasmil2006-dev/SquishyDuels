@@ -98,16 +98,16 @@ return function(t: Context)
 	end)
 
 	t.test("progress inside a level gives the level start, the next total and the bar parts", function()
-		local p = GripMath.progress(1500) -- Lv 2 spans 1,000 .. 1,700 (spec 2026-10-12 totals)
+		local p = GripMath.progress(2000) -- Lv 2 spans 1,500 .. 2,550 (1.5x the spec 2026-10-12 totals)
 		expect.deepEqual(p, {
 			level = 2,
-			total = 1500,
-			levelStart = 1000,
-			nextTotal = 1700,
+			total = 2000,
+			levelStart = 1500,
+			nextTotal = 2550,
 			into = 500,
-			span = 700,
-			have = 1500,
-			need = 1700,
+			span = 1050,
+			have = 2000,
+			need = 2550,
 			isMax = false,
 		})
 	end)

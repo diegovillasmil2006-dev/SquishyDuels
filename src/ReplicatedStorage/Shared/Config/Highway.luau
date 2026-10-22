@@ -34,7 +34,8 @@ local Highway = {
 	-- multiplies the gear in. P13v4 [P] base 2 -> 900: the smallest base where Grip Lv 1 lands "a few hundred" studs
 	-- (213) and a PERFECT throw with its boost just enters Bakery Town (301), like the video's first throws passing a
 	-- zone; every biome keeps its power wall, so the biomes are still reached by exponentially more power.
-	power = { base = 900, perGripLevel = 1.1 },
+	-- Owner 2026-10-22: Grip grows slower, x1.1 -> x1.05 a level (Lv 100 lands 403 studs, was 632).
+	power = { base = 900, perGripLevel = 1.05 },
 	-- What every landing pays, in squeezes of the squeeze value: perStud x the landing's studs of Coins (p13v3, owner
 	-- 2026-10-18: "it should give coins on base of how many meters far they go like hit a golf ball"; it replaces
 	-- SIM:59's flat 70 x 1.15^(b - 1)) and grip of Grip (SIM:59 landGrip, SIM:241). Owner 2026-10-16 ("No daily limits
