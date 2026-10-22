@@ -11,8 +11,10 @@ at the same time: VillasmilGaming (GitHub diegovillasmil2006-dev) and jayyyyy280
   edited in Studio. Never edit `world/` by hand (snapshots overwrite it).
 - **Before connecting Rojo, always:** `git pull --rebase` (get the other owner's latest), then `rojo serve` from the
   repo root and press Connect in Studio's Rojo plugin. **Only one person connects Rojo at a time.**
-- **Before a snapshot, Rojo must be connected and synced** (Studio = files): the snapshot rewrites `src/` from
-  Studio, so file edits that never reached Studio would be lost.
+- **Snapshots and Rojo never run at the same time.** First let Rojo sync (Studio = files: the snapshot rewrites
+  `src/` from Studio, so file edits that never reached Studio would be lost), then **stop `rojo serve`**, take the
+  snapshot, and start `rojo serve` again after. The snapshot deletes and rewrites `src/` (and pulls from GitHub);
+  a running Rojo crashes on that (seen 2026-10-22) or could push those half-written files into Studio.
 - The other co-owner may be in the same place right now (Team Create). Stay inside the area the user asked for.
 
 ## Snapshots (after every prompt that changed Studio)
