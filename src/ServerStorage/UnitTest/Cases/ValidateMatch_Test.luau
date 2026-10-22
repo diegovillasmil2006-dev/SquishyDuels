@@ -190,8 +190,8 @@ return function(t: Context)
 		end
 	)
 
-	t.test("match HUD M2: Rewards is a table with a boolean enabled, off in the live Config (until M9)", function()
-		expectT.equal(Config.Match.Rewards.enabled, false)
+	t.test("match HUD M2: Rewards is a table with a boolean enabled, on in the live Config (owner)", function()
+		expectT.equal(Config.Match.Rewards.enabled, true)
 		expectT.equal(Config.Match.rewardCoins, nil) -- replaced by Rewards
 		expectT.truthy(containsText(
 			problemsOf(function(match: any)

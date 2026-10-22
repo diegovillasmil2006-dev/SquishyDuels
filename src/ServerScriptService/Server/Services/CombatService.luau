@@ -70,8 +70,10 @@
 --   in reach, then the next one on the following steps; the throw's place checks (ThrowRules 5 and 10) and the
 --   movement guard use Bounds (no neutral or opponent half); the guard's inside-cover probe counts a MeshPart only
 --   with Box collision fidelity (its bounding box is then its shape; a Hull / PreciseConvexDecomposition / Default
---   one is skipped); no catch (CatchRequest is catch.context, no window is ever tested). Duel ports (no `ffa`) keep
---   every line of the 1v1 path.
+--   one is skipped). qb1 (owner 2026-10-18 "Yes, catching works"): the catch works as in a duel (the same press,
+--   window, burst and hands), and a throw tests the open window of every enemy of the thrower (never a teammate);
+--   the earliest entry wins, and the burst is the catcher's hit on the thrower through the port (its K.O., kill feed
+--   and score credit the catcher). Duel ports (no `ffa`) keep every line of the 1v1 path.
 --   Review fixes (2026-10-15): canDamage also refuses a victim whose isAlive() is false (a dead character still
 --   standing in the map is no K.O., SPEC D3/D5); the maps have levels, so a lane or the roller tests victims against
 --   the floor it was cast from (LaneSpec / UltSpec floorY): a player on a level above it (feet higher than a double
@@ -434,8 +436,6 @@ local REMOTE_CHARGE = "ChargeStart"
 local REMOTE_CATCH = "CatchRequest"
 local REMOTE_CATCH_EVENT = "CatchEvent"
 local REASON_INVALID = "net.invalid"
--- FFA/TDM v1 (2026-10-15, SPEC D8): a catch press from a fighter of an ffa port is refused with this reason.
-local REASON_CATCH_CONTEXT = "catch.context"
 -- FFA/TDM v1 (review fix): on an open map a lane (§5.9) still hits a player jumping on its floor, even at the top of a
 -- double jump; feet higher than this above its floor are on another level (a deck over its path) and are not on it.
 -- (The double jump is read safely: a Studio session's cached Config may not have it yet.)
@@ -827,20 +827,24 @@ local function sweep(proj: Projectile, s: ProjectileMath.SubStep): Candidate?
 
 	-- 1b. Feature 1: the opponent's open catch window, before the hit test (design: html:614-615). Only a normal duel
 	-- throw is caught (never an ultimate, a lane or a practice throw); a tie with a capsule entry is the catch.
+	-- qb1: in an ffa port every enemy's open window (never a teammate's); the earliest entry wins.
 	local port = proj.port
-	if port and port.ffa then
-		-- FFA/TDM v1 (SPEC D8): no catch in a match (requestCatch refuses the press), so there is no window to test.
-	elseif port and proj.kind == "throw" then
-		local catcher = opponentOf(port, proj.owner :: Fighter)
-		local catcherRoot = if catcher then catcher.getRoot() else nil
-		if catcher and catcherRoot and catcher.isAlive() and LIVE_PHASES[port.phase()] then
-			local fMin, fMax = CatchRules.windowShare(
-				catcher.catchOpensAt,
-				catcher.catchClosesAt,
-				proj.releaseAt + s.a,
-				proj.releaseAt + s.b
-			)
-			if fMin ~= nil and fMax ~= nil then
+	if port and proj.kind == "throw" and LIVE_PHASES[port.phase()] then
+		local thrower = proj.owner :: Fighter
+		local duelCatcher = if port.ffa then nil else opponentOf(port, thrower)
+		for _, catcher in port.fighters do
+			local mayCatch = if port.ffa then isEnemy(port, thrower, catcher) else catcher == duelCatcher
+			local fMin, fMax = nil, nil
+			if mayCatch then
+				fMin, fMax = CatchRules.windowShare(
+					catcher.catchOpensAt,
+					catcher.catchClosesAt,
+					proj.releaseAt + s.a,
+					proj.releaseAt + s.b
+				)
+			end
+			local catcherRoot = if fMin ~= nil and fMax ~= nil then catcher.getRoot() else nil
+			if catcherRoot and fMin and fMax and catcher.isAlive() then
 				local centre = CatchRules.centre(catcherRoot.Position)
 				local fraction = CatchRules.catchFraction(s.p0, s.p1, centre, CATCH.radiusStuds, fMin, fMax)
 				if fraction and fraction < bestFraction then
@@ -1332,7 +1336,8 @@ local function applyBurst(candidate: Candidate)
 		return
 	end
 	local port = crush.port
-	local outcome = candidate.outcome
+	-- qb1: a shield power-up (an ffa port) that took the burst is no hit: no life, no Hit, as for a blocked throw.
+	local outcome = if candidate.outcome and candidate.outcome.blocked ~= true then candidate.outcome else nil
 	counters.bursts += 1
 	countersDirty = true
 	local payload: Types.CatchEventPayload = {
@@ -1881,16 +1886,11 @@ end
 
 -- Feature 1: one catch press (CatchRequest) by `who` (a Player, or a registered fighter / its userId), checked by
 -- Logic/CatchRules against the server's state; accepted, it opens the window and drops a charge (design: html:344).
--- FFA/TDM v1: a fighter of an ffa port is refused (catch.context) before anything else. Returns (accepted, reason?).
+-- qb1 (owner 2026-10-18): a fighter of an ffa port catches like a duelist. Returns (accepted, reason?).
 function CombatService.requestCatch(who: any, clientTime: unknown): (boolean, string?)
 	local now = serverNow()
 	local fighter, player = resolve(who)
 	local port = if fighter then portOf[fighter] else nil
-	if port and port.ffa then
-		-- FFA/TDM v1 (SPEC D8): no catch in matches yet (the client's gate refuses too); nothing opens, nothing changes.
-		bump(counters.rejected, REASON_CATCH_CONTEXT)
-		return false, REASON_CATCH_CONTEXT
-	end
 	if port then
 		local sync = port.sync
 		if sync then

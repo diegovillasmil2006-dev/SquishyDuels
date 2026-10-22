@@ -689,7 +689,7 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("a bought spot takes the best unlocked Toy Box squishy in the buy's step; placed ones never move", function()
+	t.test("a bought spot takes the best unlocked Toy Box squishy in the buy's step, then all sort", function()
 		local w = fresh()
 		local a = w.profiles[w.a]
 		a.coins = 2_000
@@ -704,7 +704,8 @@ return function(t: Context)
 		local writes = w.writes
 		expect.equal(PenService.buy(w.a, 1_500).ok, true)
 		expect.equal(w.writes, writes + 1) -- the spot and its squishy in one step
-		expect.deepEqual(slotsOf(a), { 1, 2, 3, 0, 4, 0 })
+		-- The Bird comes out of the Toy Box, then (qb1) the placed ones sort best first: Bird, Butter, Kitty, Toast.
+		expect.deepEqual(slotsOf(a), { 3, 4, 2, 0, 1, 0 })
 		finish()
 	end)
 
@@ -1045,7 +1046,7 @@ return function(t: Context)
 			expect.equal(golden.form, 1)
 			expect.equal(golden.level, 7)
 			expect.equal(golden.coat, 0) -- it comes out bare
-			expect.equal(golden.slot, 2) -- the highest-level input's spot
+			expect.equal(golden.slot, 1) -- qb1: now the best placed squishy, it sorts to the first spot
 			expect.deepEqual(a.bag, { 1, 0, 1, 0, 0, 0, 0 }) -- the Wax and the Jelly
 			expect.deepEqual(
 				reply.data,
@@ -1241,6 +1242,7 @@ return function(t: Context)
 		local reply = PenService.feed(w.a, 2, REQ) -- the Butter, Lv 3 -> 4: 2 Candy Drop
 		expect.equal(reply.ok, true)
 		expect.deepEqual(levelsOf(a), { 1, 4, 1 })
+		expect.deepEqual(slotsOf(a), { 2, 1, 0 }) -- qb1: a feed re-sorts: the Butter, the best, takes the first spot
 		expect.equal(a.food.candy_drop, 3)
 		expect.deepEqual(reply.data, foodReply(a, 1, false))
 		expect.equal(w.writes, 1)
@@ -1393,8 +1395,13 @@ return function(t: Context)
 		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = true, savePending = false })
 		expect.equal(a.pen.shelfRows, 2)
 		expect.equal(a.pen.top, false)
-		expect.equal(bird.slot, 15) -- the best unlocked Toy Box squishy takes the first new spot
+		-- The new spots take the best unlocked Toy Box squishies (Bird, Toast), then (qb1) the shelf holds the best:
+		-- Bird 13, Butter 14, then the 10-a-second ones by id (Kitty Bread 15, the Toast 16), the rest in the pen.
+		expect.equal(bird.slot, 13)
+		expect.equal(butter.slot, 14)
+		expect.equal(a.pen.items[1].slot, 15)
 		expect.equal(toast.slot, 16)
+		expect.equal(banana.slot, 1)
 		expect.equal(dragon.slot, 0) -- locked: auto-place never moves it
 		expect.equal(a.coins, 9_000_000)
 		expect.deepEqual(w.spends, { { player = w.a, amount = 31_000_000, reason = "pen" } })

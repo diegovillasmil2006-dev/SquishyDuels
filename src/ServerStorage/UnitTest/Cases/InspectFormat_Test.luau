@@ -237,7 +237,7 @@ return function(t: Context)
 			for _, line in bird.howToGet do
 				table.insert(texts, line.text)
 			end
-			expect.deepEqual(texts, { "Sweet Box: 24.99%", "Treat Box: 3.50%", "Shop: 1.80B Coins" })
+			expect.deepEqual(texts, { "Sweet Box: 24.99%", "Royal Box: 3.50%", "Shop: 1.80B Coins" })
 			-- A Common not owned yet shows its Welcome price (D1:202), the price its first one costs.
 			local toast = InspectFormat.view("toast", UNOWNED)
 			assert(toast ~= nil, "no view")

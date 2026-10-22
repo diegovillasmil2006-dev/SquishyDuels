@@ -5,8 +5,9 @@
 -- loop); poseAt(kind, t, studs) loops over the length and gives the lift (posY × studs / 2, P3D:401's k) and the turn
 -- (rotY as K has it, rotX and rotZ the other way round: the Roblox squishy faces -Z, the design's toy +Z, so a nod or a
 -- roll reads the same); keys are eased the way they say (K's "Sine InOut" etc., P3D:485 EASE; "-" linear) and a track
--- that ends early holds its last value; the scale tracks are kept but not shown (no deform slot for shelf squishies:
--- a scale-only loop stands still); an unknown kind stands still.
+-- that ends early holds its last value; the scale tracks are kept but not shown (no deform slot for shelf squishies);
+-- qb1: the scale-only loops (Kitty Bread, Butter) play a posY / rot stand-in, so every shelf squishy moves; an
+-- unknown kind stands still.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -87,12 +88,24 @@ return function(t: Context)
 		expect.near(ShowOffTracks.poseAt("banana", 2, 2), 0, 1e-6)
 	end)
 
-	t.test("poseAt: the scale tracks are not shown (a scale-only loop stands still); an unknown kind too", function()
-		for _, time in { 0, 0.7, 1.1, 2 } do
-			local lift, turn = ShowOffTracks.poseAt("kitty_bread", time, 2)
-			expect.equal(lift, 0)
-			expect.equal(turn, CFrame.identity)
+	t.test("poseAt: every shelf squishy moves during its loop (qb1); an unknown kind stands still", function()
+		for _, id in ShowOffTracks.ids() do
+			local moved = false
+			for step = 0, 40 do
+				local lift, turn = ShowOffTracks.poseAt(id, ShowOffTracks.get(id).length * step / 40, 2)
+				local look = (turn.LookVector - Vector3.new(0, 0, -1)).Magnitude
+				local tilt = look + (turn.UpVector - Vector3.yAxis).Magnitude
+				if math.abs(lift) > 0.05 or tilt > 0.05 then
+					moved = true
+				end
+			end
+			expect.truthy(moved)
 		end
+		-- Kitty Bread's stand-in: up 0.35 × studs / 2 at 0.7 s (K:6984's peak), back down by 1.4 s.
+		expect.near(ShowOffTracks.poseAt("kitty_bread", 0.7, 2), 0.35, 1e-6)
+		expect.near(ShowOffTracks.poseAt("kitty_bread", 2, 2), 0, 1e-6)
+		-- get() still returns the design's loop, verbatim.
+		expect.equal(ShowOffTracks.get("butter").tracks[1].prop, "scale")
 		local lift, turn = ShowOffTracks.poseAt("unicorn", 1, 2)
 		expect.equal(lift, 0)
 		expect.equal(turn, CFrame.identity)

@@ -154,7 +154,7 @@ local TEXTS: { [string]: string } = {
 	["box.oddsTitle"] = "Box Odds",
 	-- Pens3 phase 5: restricted accounts open the Coin boxes in a fixed order (was "aren't available").
 	["box.restrictedNote"] = "Coin boxes open in a fixed order on your account, so you see the next squishy first, "
-		.. "and day 7 of Daily Rewards gives a free Treat Box.",
+		.. "and day 7 of Daily Rewards gives a free Royal Box.",
 	["box.unknownNote"] = "Couldn't check box availability. Try again.",
 	["daily.ready"] = "Ready to claim!",
 	["daily.wait"] = "Next reward in {time}",

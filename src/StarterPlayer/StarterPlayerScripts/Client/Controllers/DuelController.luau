@@ -166,7 +166,8 @@
 -- * "CAUGHT!" and "SQUISHED!" (design: html:352, 563): banners under the duel bar in the caught toy's colour for
 --   bigWordSeconds, for both duelists, at CatchController.Caught / Burst (none over the "Dragon Rush incoming!" banner;
 --   no "SQUISHED!" when the burst takes the thrower's last life: VfxController's "K.O.!" says it). The catcher's hit
---   marker and ui.hitConfirm at the burst (design: html:365), while the match is live.
+--   marker and ui.hitConfirm at the burst (design: html:365), while the match is live. qb1 (owner 2026-10-18, catching
+--   in FFA/TDM): in a match "CAUGHT!" shows to the catcher and the thrower only (the K.O. is the match HUD's).
 -- FFA/TDM v1 (2026-10-15; the 12-player Free for All / Team Deathmatch, SPEC D13): this module still follows only the
 -- duel view; MatchController draws the "match look" with this HUD's pieces (the reticle, "Hit!", the key dock without
 -- the catch meter, the 3-2-1 countdown), handed over by one attachDuelHud call in init (no new top-level local: about
@@ -2883,7 +2884,10 @@ function DuelController.init()
 	-- Feature 1 (2026-10-11): the catch's big words and the catcher's hit marker (header; an inline require).
 	local CatchController = require(script.Parent.CatchController)
 	local function bigWord(text: string, event: CatchController.Event)
-		if StateController.duel() == nil or (incomingBanner ~= nil and incomingBanner:isShown()) then
+		local me = Players.LocalPlayer
+		local mine = me ~= nil and (event.catcherId == me.UserId or event.throwerId == me.UserId)
+		local shows = StateController.duel() ~= nil or (mine and StateController.match() ~= nil) -- qb1
+		if not shows or (incomingBanner ~= nil and incomingBanner:isShown()) then
 			return
 		end
 		local def = require(Shared.Catalog).get(event.squishyId)

@@ -542,7 +542,7 @@ return function(t: Context)
 		expect.equal(Strings.resolve("daily.today"), "Today")
 		expect.equal(
 			Strings.format(Strings.box.boardHeader, { box = Strings.box.snack.name, cost = "400" }),
-			"Snack Box: 400 Coins"
+			"Soft Box: 400 Coins"
 		)
 		expect.equal(
 			Strings.format(Strings.box.boardLine, { name = "Toast", rarity = "Common", percent = "32.00" }),
@@ -851,6 +851,7 @@ return function(t: Context)
 		expect.equal(Strings.queue.inviteFriends, "Invite friends")
 		expect.equal(Strings.social.statWins, "Wins")
 		expect.equal(Strings.social.statLevel, "Grip Lv")
+		expect.equal(Strings.social.statIncome, "Coins/s")
 		local board = Strings.board
 		expect.equal(board.title, "Top Wins This Week")
 		expect.equal(Strings.format(board.line.many, { rank = 1, name = "Ana", wins = "12" }), "1. Ana · 12 wins")

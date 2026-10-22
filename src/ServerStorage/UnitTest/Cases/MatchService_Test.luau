@@ -1248,7 +1248,7 @@ return function(t: Context)
 		expect.equal(view.outcome.winnerTeam, cfg.teamNames[1])
 		local winners = w.notices[#w.notices]
 		expect.equal(winners.code, "match.teamWins")
-		expect.equal(winners.args.team, "Red")
+		expect.equal(winners.args.team, "Strawberry") -- owner 2026-10-16: STRAWBERRY vs BLUEBERRY
 		MatchService.tick(a + 1 + cfg.respawnSeconds)
 		expect.equal(w.humanoids[blueId].WalkSpeed, 0) -- out: no respawn
 		close()
@@ -2082,6 +2082,14 @@ return function(t: Context)
 			expect.deepEqual(lastView(w, w.players[1]).outcome.mine, first)
 			expect.deepEqual(lastView(w, w.players[2]).outcome.mine, second)
 			expect.equal(lastView(w, w.players[3]).outcome.mine, nil) -- not paid
+			-- qb1: the pay toast (a stand-in until M9's results bar), only to the paid players, short numbers.
+			local toasts = {}
+			for _, n in w.notices do
+				if n.code == "match.paid" then
+					table.insert(toasts, { n.player, n.args.coins, n.args.grip })
+				end
+			end
+			expect.deepEqual(toasts, { { w.players[1], "6,000", "6,000" }, { w.players[2], "1,800", "1,800" } })
 			expect.equal(w.players[1]:GetAttribute("SD_WinStreak"), 3)
 			expect.equal(w.players[2]:GetAttribute("SD_WinStreak"), 0)
 			expect.equal(w.players[3]:GetAttribute("SD_WinStreak"), 0)
@@ -2531,6 +2539,7 @@ return function(t: Context)
 			"match.cancelled",
 			"match.void",
 			"match.voidError",
+			"match.paid",
 			"match.refused.closing",
 			"match.refused.alreadyQueued",
 			"match.refused.inMatch",

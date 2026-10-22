@@ -2448,7 +2448,7 @@ return function(t: Context)
 			{ sticker.bars.grip.height, sticker.bars.grip.fillMs, sticker.bars.grip.minFillPx },
 			{ 14, 550, 10 }
 		) -- H:84-85
-		expect.deepEqual({ sticker.bars.quest.height, sticker.bars.quest.fillMs }, { 20, 600 }) -- H:367
+		expect.deepEqual({ sticker.bars.quest.height, sticker.bars.quest.fillMs }, { 14, 600 }) -- H:367; owner: 14
 		expect.deepEqual({ sticker.bars.odds.height, sticker.bars.odds.fillMs }, { 12, 0 }) -- H:271: no transition
 		-- PR2: the design's 23 and 19 px kept exact (H:101, H:159).
 		expect.equal(sticker.text.navLabel.kind, "D23")

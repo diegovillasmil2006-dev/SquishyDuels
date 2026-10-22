@@ -23,6 +23,9 @@
 -- * The "Catch!" prompt (incoming, design: html:672-674): the opponent's own throws are followed from ThrowStarted
 --   (ProjectileMath, the server's path) until their ThrowImpact, their CatchEvent or ProjectileMaxLifetime; incoming()
 --   is true while one is within Config.UI.Reticle.catchPromptStuds of the local catcher's centre and moving toward it.
+-- * qb1 (owner 2026-10-18 "Yes, catching works"): a Free for All / Team Deathmatch match is live for the gate too
+--   (liveIn: the duel's or the match's phase), and the prompt follows every enemy's throw there
+--   (followsThrower: StateController.isEnemy; never a teammate's). Leaving the match clears the crush like a duel.
 -- * HUD hooks: state() (ready, the cooldown's progress, the window, the crush) for the duel dock and the touch Catch
 --   button (drawn here: ControlsController.setTouchState), localCatch() for the first-person overlay.
 -- Require direction: NetController, StateController, ControlsController, SoundController, UIController and
@@ -168,6 +171,19 @@ function CatchController.progress(now: number, pressedAt: number, backAt: number
 	return math.clamp((now - pressedAt) / CATCH.cooldownSeconds, 0, 1)
 end
 
+-- qb1: whether the catch is live: a duel view or (FFA/TDM) a match view in Active or SuddenDeath.
+function CatchController.liveIn(duel: any?, match: any?): boolean
+	return (duel ~= nil and LIVE_PHASES[duel.phase] == true) or (match ~= nil and LIVE_PHASES[match.phase] == true)
+end
+
+-- qb1: whether the prompt follows a throw by `throwerId`: the duel's opponent, else an enemy of the match.
+function CatchController.followsThrower(duel: any?, match: any?, throwerId: number): boolean
+	if duel ~= nil then
+		return throwerId == duel.opponent.userId
+	end
+	return StateController.isEnemy(match, throwerId)
+end
+
 -- The crush's ease e at t seconds after the catch (design: html:538).
 function CatchController.crushEase(t: number): number
 	return math.clamp((t - FP_CRUSH.easeFrom) / FP_CRUSH.easeOver, 0, 1)
@@ -260,9 +276,9 @@ local function windupBusy(): boolean
 end
 
 local function factsNow(now: number): GateFacts
-	local view = StateController.duel()
+	local live = CatchController.liveIn(StateController.duel(), StateController.match())
 	return {
-		inDuel = ControlsController.isContextActive("Duel") and view ~= nil and LIVE_PHASES[view.phase] == true,
+		inDuel = ControlsController.isContextActive("Duel") and live,
 		alive = aliveRoot() ~= nil,
 		now = now,
 		lastPressAt = lastPressAt,
@@ -416,8 +432,12 @@ end
 
 local function onThrowStarted(raw: unknown)
 	local payload = ThrowController.parseThrowStarted(raw)
-	local view = StateController.duel()
-	if payload == nil or view == nil or payload.kind ~= "throw" or payload.throwerId ~= view.opponent.userId then
+	local duel, match = StateController.duel(), StateController.match()
+	if
+		payload == nil
+		or payload.kind ~= "throw"
+		or not CatchController.followsThrower(duel, match, payload.throwerId)
+	then
 		return
 	end
 	incomings[payload.projId] = {
@@ -599,6 +619,11 @@ function CatchController.init()
 	c:add(NetController.onThrowStarted(onThrowStarted :: any))
 	c:add(NetController.onThrowImpact(onThrowImpact :: any))
 	c:add(StateController.DuelChanged:connect(function(view: any)
+		if view == nil then
+			clearMatch()
+		end
+	end))
+	c:add(StateController.MatchChanged:connect(function(view: any) -- qb1: a match's catch ends with it
 		if view == nil then
 			clearMatch()
 		end

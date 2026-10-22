@@ -63,7 +63,7 @@ local ERROR_TEXT = {
 	connect = "Couldn't connect to the game server. Please rejoin.",
 }
 local BOX_RESTRICTED_TEXT =
-	"Coin boxes open in a fixed order on your account, so you see the next squishy first, and day 7 of Daily Rewards gives a free Treat Box."
+	"Coin boxes open in a fixed order on your account, so you see the next squishy first, and day 7 of Daily Rewards gives a free Royal Box."
 local BOX_UNKNOWN_TEXT = "Couldn't check box availability. Try again."
 
 local MAX_LOGGED_CODE_LENGTH = 64
@@ -512,8 +512,8 @@ local Strings = {
 		},
 		-- Keyed by Config.Match.teamNames, lowercased.
 		team = {
-			red = "Red",
-			blue = "Blue",
+			strawberry = "Strawberry", -- owner 2026-10-16: STRAWBERRY vs BLUEBERRY
+			blueberry = "Blueberry",
 		},
 		joined = "You joined the {mode} queue: {count}/{max} players.",
 		left = "You left the {mode} queue.",
@@ -534,6 +534,8 @@ local Strings = {
 		cancelled = "Not enough players arrived, so the match was cancelled.",
 		void = "The server is shutting down. This match won't count.",
 		voidError = "Something went wrong, so this match won't count.",
+		-- qb1 (owner 2026-10-16): the match pay toast ({coins} / {grip} = Format.coins), until M9's results bar.
+		paid = "+{coins} Coins, +{grip} Grip",
 		-- MatchJoin refusals (the first that applies).
 		refused = {
 			closing = "The server is restarting soon, so matches are paused.",
@@ -561,8 +563,8 @@ local Strings = {
 		-- phase, {pct} = your storm bar (0-100), {seconds} = seconds until you are back in. Power-ups v1.1 (2026-10-16):
 		-- powerUp = one live power-up, {name} = its powerUpName.<kind> text below, {seconds} = whole seconds left.
 		readout = {
-			ffa = "K.O. {mine}/{target} · 1st {leaderName} {leaderKos} · {time}",
-			tdm = "RED {redLives} · BLUE {blueLives} · {time}",
+			ffa = "SQUISHES {mine}/{target} · 1st {leaderName} {leaderKos} · {time}", -- owner 2026-10-16
+			tdm = "STRAWBERRY {redLives} · BLUEBERRY {blueLives} · {time}",
 			storm = "STORM {pct}%",
 			overtime = "OVERTIME",
 			backIn = "Back in {seconds}",
@@ -891,9 +893,9 @@ local Strings = {
 
 	-- Boxes: names (Boxes `nameKey`), signs, odds disclosure, open flow and reveal (§6.4, §6.10, §7.7, §9.11).
 	box = {
-		snack = { name = "Snack Box" },
+		snack = { name = "Soft Box" }, -- owner 2026-10-15 "Keep all": Soft / Sweet / Royal (ids kept)
 		sweet = { name = "Sweet Box" },
-		treat = { name = "Treat Box" },
+		treat = { name = "Royal Box" },
 		-- Readings (Part 7; DESIGN implies these texts but never words them): the Boxes screen title; the Treat Box
 		-- row's note in place of Open (day = Config.Economy.Daily.freeBoxDay, worded like box.restrictedNote; Strings_Test
 		-- checks they agree); the in-world odds board's heading ({box} = a box name, {cost} = Format.coins of its cost)
@@ -1020,6 +1022,7 @@ local Strings = {
 	social = {
 		statWins = "Wins",
 		statLevel = "Grip Lv",
+		statIncome = "Coins/s", -- qb1 (owner 2026-10-15): the pen's Coins a second
 	},
 
 	-- Batch 3 (review #10): "Top Wins This Week" in the Quests screen (ShowOffService's weekly board, UI/QuestFormat).
@@ -1049,7 +1052,7 @@ local Strings = {
 		-- Review quick win 2026-10-14: a missed day pauses the streak (never back to Day 1); the Daily panel and the join
 		-- toast greet a returning player with the day that is waiting ({n} = that day).
 		welcomeBack = "Welcome back! Day {n} is waiting.",
-		treatBox = "Treat Box", -- foam fix round 2: "Free Treat Box" wrapped onto a third line on the 84 px day card
+		treatBox = "Royal Box", -- foam fix round 2: "Free Treat Box" wrapped onto a third line on the 84 px day card
 		-- Reading (Part 7; §11.6 "today highlighted" gives no text): the label on today's day card.
 		today = "Today",
 		-- UI FINAL R8 (the design's Daily window): the timer pill while a reward waits (H:1029; `ready` stays the world

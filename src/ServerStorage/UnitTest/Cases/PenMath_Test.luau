@@ -1018,6 +1018,48 @@ return function(t: Context)
 		end
 	)
 
+	t.test("arrange (qb1): the best to the TOP spot, the shelf, then the pen; locks and the Toy Box stay", function()
+		local kitty = at(1, item("kitty_bread")) -- 10/s
+		local butter = at(2, item("butter")) -- 40/s
+		local bird = at(3, item("bird")) -- 160/s
+		local dragon = at(13, item("dragon")) -- 640/s
+		local toast = at(0, item("toast")) -- the Toy Box: never moved
+		local box = shelfPen(3, 1, false, { kitty, butter, bird, dragon, toast })
+		expect.equal(PenMath.arrange(box), 3)
+		expect.deepEqual(
+			{ dragon.slot, bird.slot, butter.slot, kitty.slot, toast.slot },
+			{ 13, 14, 1, 2, 0 } -- the start shelf row holds the best two, the pen the rest (free spots last)
+		)
+		expect.equal(PenMath.arrange(box), 0) -- already sorted: nothing moves
+		-- The TOP spot opens: the best goes up there, the next ones follow.
+		box.top = true
+		expect.equal(PenMath.arrange(box), 4)
+		expect.deepEqual({ dragon.slot, bird.slot, butter.slot, kitty.slot }, { 21, 13, 14, 1 })
+		-- A locked one keeps its spot; the others sort around it.
+		kitty.slot, kitty.locked = 21, true
+		dragon.slot = 2
+		expect.equal(PenMath.arrange(box), 3)
+		expect.deepEqual({ kitty.slot, dragon.slot, bird.slot, butter.slot }, { 21, 13, 14, 1 })
+		-- Selling the TOP squishy leaves no hole up there: the next best climbs, the pen gives one up.
+		kitty.locked = false
+		box.items = { kitty, butter, bird, toast }
+		dragon.slot = 0
+		PenMath.arrange(box)
+		expect.deepEqual({ bird.slot, butter.slot, kitty.slot }, { 21, 13, 14 })
+		-- Only slots change: every item once, every open spot held by at most one.
+		local seen = {}
+		for _, it in box.items do
+			if it.slot ~= 0 then
+				expect.equal(seen[it.slot], nil)
+				seen[it.slot] = true
+			end
+		end
+		expect.equal(#box.items, 4)
+		-- A broken pen moves nothing.
+		expect.equal(PenMath.arrange(nil), 0)
+		expect.equal(PenMath.arrange(pen(2, { at(1, item("dragon")) })), 0)
+	end)
+
 	t.test("shelfPrice / shelfDecision: row 2, 3, 4 (31M, 250B, 11T), then the TOP spot (140T), then max", function()
 		local box = shelfPen(3, 1, false, {}) -- row 1 is open from the start
 		expect.equal(PenMath.shelfPrice(box), 31_000_000)

@@ -1111,7 +1111,7 @@ return function(t: Context)
 		expect.equal(bars.collected.height, 16)
 		expect.equal(bars.stat.height, 14)
 		expect.equal(bars.odds.height, 12)
-		expect.equal(bars.quest.height, 20)
+		expect.equal(bars.quest.height, 14) -- owner 2026-10-16 "Keep thinner"
 		expect.equal(bars.grip.fillMs, 550)
 		expect.equal(bars.quest.fillMs, 600)
 		expect.equal(STICKER.barFillCurve, "bars")

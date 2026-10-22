@@ -245,15 +245,15 @@ return function(t: Context)
 		end
 	)
 
-	-- An 844 x 390 phone at the .85 UI scale floor, with touch: the zone and four buttons (px, ControlsController's
-	-- touchLayout shape; Catch is left out: no catch in a match).
+	-- An 844 x 390 phone at the .85 UI scale floor, with touch: the zone and five buttons (px, ControlsController's
+	-- touchLayout at that size; qb1: Catch too, catching works in a match).
 	local PHONE_PX = Vector2.new(844, 390)
 	local LAYOUT = {
 		throw = { x = 645, y = 282, w = 88, h = 88 },
 		ultimate = { x = 551, y = 188, w = 68, h = 68 },
 		dash = { x = 561, y = 300, w = 68, h = 68 },
 		jump = { x = 744, y = 290, w = 90, h = 90 },
-		catch = { x = 0, y = 0, w = 10, h = 10 },
+		catch = { x = 697, y = 208, w = 68, h = 68 },
 	}
 	local CARD_CFG = {
 		left = 22,
@@ -277,9 +277,10 @@ return function(t: Context)
 			or b.y + b.h + gap <= a.y + EPS
 	end
 
-	t.test("touchAreas: the thumbstick zone and Throw / Ultimate / Dash / jump in base px (no Catch)", function()
+	t.test("touchAreas: the thumbstick zone and Throw / Ultimate / Dash / jump / Catch in base px", function()
 		local areas = Format.touchAreas(PHONE_PX, 0.85, LAYOUT, Config.UI.Touch)
-		expect.equal(#areas, 5)
+		expect.equal(#areas, 6)
+		expect.near(areas[6].x, 697 / 0.85, 1e-3) -- qb1: the Catch button
 		local zone = areas[1]
 		expect.equal(zone.kind, "zone")
 		expect.near(zone.x, 0, EPS)

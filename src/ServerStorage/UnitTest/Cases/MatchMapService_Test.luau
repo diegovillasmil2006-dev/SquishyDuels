@@ -137,7 +137,7 @@ return function(t: Context)
 		expect.equal(#record.overlapParams.FilterDescendantsInstances, 4) -- Parts: the box queries see them all
 		local red = 0
 		for _, p in record.pads do
-			if p.team == "Red" then
+			if p.team == CFG.teamNames[1] then -- a _Spawn_Red_ pad is the first team's
 				red += 1
 			end
 		end

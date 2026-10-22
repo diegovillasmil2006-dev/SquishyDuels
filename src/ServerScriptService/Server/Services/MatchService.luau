@@ -141,6 +141,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
 local Signal = require(Shared.Util.Signal)
 local StormMath = require(Shared.StormMath)
@@ -407,6 +408,7 @@ local CODE = table.freeze({
 	practice = "match.refused.practice",
 	noMaps = "match.refused.noMaps",
 	powerUp = "match.powerUp.", -- power-ups v1.1: + the Config.Match.PowerUps kind (the pickup toast)
+	paid = "match.paid", -- qb1 (owner 2026-10-16): the pay toast, a stand-in until M9's results bar
 })
 
 -- Module table
@@ -1556,6 +1558,12 @@ local function onEnded(match: Match, outcome: any)
 				notify(p.ref, CODE.voidError, nil, "warn") -- a void after a failure: the server is not shutting down
 			else
 				notify(p.ref, CODE.void, nil, "warn")
+			end
+			-- qb1 (owner 2026-10-16 "Same as a duel, no limit"): what the end paid, until M9's results bar shows it.
+			local paid = match.rewards[p.userId]
+			if paid and (paid.coins > 0 or paid.grip > 0) then
+				local args: Types.NotifyArgs = { coins = Format.coins(paid.coins), grip = Format.coins(paid.grip) }
+				notify(p.ref, CODE.paid, args, "success")
 			end
 		end
 	end

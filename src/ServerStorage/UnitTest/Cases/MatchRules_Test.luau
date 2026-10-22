@@ -33,7 +33,8 @@ return function(t: Context)
 	local Config = t.requireShared("Config")
 	local expect = t.expect
 
-	local M = Config.Match
+	local M = deepCopy(Config.Match)
+	M.teamNames = { "Red", "Blue" } -- the cases' own team names (qb1: the live ones are Strawberry / Blueberry)
 
 	-- A copy of Config.Match with mode fields and top-level fields replaced.
 	local function matchWith(modeId: string?, modeOverrides: { [string]: any }?, overrides: { [string]: any }?): any

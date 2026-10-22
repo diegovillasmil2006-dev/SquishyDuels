@@ -71,7 +71,8 @@ local Match = {
 			storm = true,
 		} :: Mode,
 	},
-	teamNames = { "Red", "Blue" }, -- Diego's queue bar: slots 1-6 red, 7-12 blue
+	-- Diego's queue bar: slots 1-6 red, 7-12 blue. Owner 2026-10-16: the teams are STRAWBERRY vs BLUEBERRY.
+	teamNames = { "Strawberry", "Blueberry" },
 
 	waitSeconds = 20, -- [P] the longest wait for every player to arrive before the countdown
 	countdownSeconds = 3, -- [P] the in-arena 3-2-1 (Diego designs it)
@@ -89,7 +90,9 @@ local Match = {
 	-- win (a team win or FFA 1st, paid or not) is +1 win streak; a loss, a draw or leaving a live match resets it
 	-- (cancelled / void and 1v1 duels never touch it). Still no quests, weekly wins or badges.
 	Rewards = {
-		enabled = false, -- [P] off until M9 shows the pay on screen (the results bar), with the owner's yes
+		-- owner 2026-10-16 "Same as a duel, no limit" (bot matches too): on; a toast shows the pay until M9's
+		-- results bar
+		enabled = true,
 	},
 	-- jayyyyy 2026-10-15: falling off or leaving the map "counts as a knockout" (TDM: costs a team life; FFA: you wait
 	-- respawnSeconds like any K.O.). false would only put the player back at a spawn.

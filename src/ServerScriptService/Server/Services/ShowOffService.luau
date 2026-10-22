@@ -4,7 +4,9 @@
 -- * Player list: a server-made Folder "leaderstats" on each player with two IntValues, in this order: Wins
 --   (Strings.social.statWins) and Grip Lv (statLevel). Wins is re-read from the profile's stats.duelsWon (never + 1:
 --   a result that wrote no stats never shows) on load and after every duel; Grip Lv is GripService's level, on load
---   and on LevelChanged.
+--   and on LevelChanged. qb1 (owner 2026-10-15 "yes for everything"): a third column Coins/s (statIncome, a
+--   StringValue so the number is short: Format.coins of PenMath.rate(profile.pen), the pen's Coins a second), set on
+--   load and refreshed every INCOME_REFRESH_SECONDS (refreshIncome), so a pen change shows within a second.
 -- * "Top Wins This Week" (Q3 B: a section of the Quests screen, UI/QuestFormat.topWins): an OrderedDataStore
 --   (Config.Social.Board) written by this server only, scope "w" .. weekIndex(os.time()) (weeks start on Monday 00:00
 --   UTC), + 1 (IncrementAsync, in its own thread) for each fully paid win (eligible, x1, Coins paid) of a real player
@@ -42,7 +44,9 @@ local UserService = game:GetService("UserService")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
+local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
+local PenMath = require(Shared.PenMath)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 
@@ -88,7 +92,7 @@ export type Deps = {
 	log: Logger,
 }
 
-type Stats = { folder: Folder, wins: IntValue, level: IntValue }
+type Stats = { folder: Folder, wins: IntValue, level: IntValue, income: StringValue }
 type BadgeState = { done: { [string]: boolean }, tries: { [string]: number }, queued: { [string]: boolean } }
 type Award = { player: any, key: string, id: number }
 type Board = { week: number, entries: { Entry }, top: { Types.TopWinsLine } }
@@ -101,6 +105,7 @@ local SECONDS_PER_WEEK = 7 * 86400
 local FOLDER_NAME = "leaderstats" -- the name Roblox's player list reads
 local FLAG_BUDDIES = "duelBuddies"
 local FINISHED: { [string]: boolean } = { win = true, draw = true }
+local INCOME_REFRESH_SECONDS = 1 -- qb1: the Coins/s column follows the pen within a second
 
 -- Module table
 
@@ -300,6 +305,9 @@ local function refreshStats(player: any)
 		s.wins.Value = won
 	end
 	s.level.Value = deps.levelOf(player)
+	if type(profile) == "table" then
+		s.income.Value = Format.coins(PenMath.rate(profile.pen)) -- qb1: a broken or missing pen earns 0
+	end
 end
 
 -- The player's own line next to the last board read (nothing before the first one).
@@ -427,6 +435,16 @@ function ShowOffService.handleMatchEnded(summary: any)
 	end
 end
 
+-- qb1: the Coins/s column of every player with a ready profile (the pen's rate now).
+function ShowOffService.refreshIncome()
+	for player, s in stats do
+		local profile = deps.profileOf(player)
+		if type(profile) == "table" then
+			s.income.Value = Format.coins(PenMath.rate(profile.pen))
+		end
+	end
+end
+
 -- One board read: the week's top entries; then every player's view. A failure keeps the last board.
 function ShowOffService.refreshBoard()
 	local week = ShowOffService.weekIndex(deps.now())
@@ -530,6 +548,18 @@ end
 function ShowOffService.start()
 	task.spawn(function()
 		while true do
+			local ok, err = pcall(function(): any
+				ShowOffService.refreshIncome()
+				return nil
+			end)
+			if not ok then
+				deps.log:warn("Coins/s refresh failed:", err)
+			end
+			task.wait(INCOME_REFRESH_SECONDS)
+		end
+	end)
+	task.spawn(function()
+		while true do
 			local ok, err = pcall(function()
 				ShowOffService.sweepBadges()
 				ShowOffService.processBadges()
@@ -564,7 +594,11 @@ function ShowOffService.playerAdded(player: Player)
 	local level = Instance.new("IntValue")
 	level.Name = Strings.social.statLevel
 	level.Parent = folder
-	stats[player] = { folder = folder, wins = wins, level = level }
+	local income = Instance.new("StringValue")
+	income.Name = Strings.social.statIncome
+	income.Value = Format.coins(0)
+	income.Parent = folder
+	stats[player] = { folder = folder, wins = wins, level = level, income = income }
 	badgeState[player] = { done = {}, tries = {}, queued = {} }
 	flags[player] = {}
 	refreshStats(player)

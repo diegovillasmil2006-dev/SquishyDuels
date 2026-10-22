@@ -1653,7 +1653,7 @@ local UI = {
 			},
 			stat = { height = 14, border = 3, fillHighlightPx = 3, fillHighlightAlpha = 0.45, fillMs = 600 }, -- H:240
 			quest = { -- H:367
-				height = 20,
+				height = 14, -- owner 2026-10-16 "Keep thinner" (the design's 20 -> 14)
 				border = 3,
 				troughShadePx = 3,
 				troughShadeAlpha = 0.35,

@@ -59,6 +59,32 @@ return function(t: Context)
 		expect.equal(Catch.gate(facts({ inDuel = false, rooted = true })), "catch.context")
 	end)
 
+	t.test("qb1: a match is live for the catch like a duel; the prompt follows enemies, never teammates", function()
+		expect.equal(Catch.liveIn(nil, nil), false)
+		expect.equal(Catch.liveIn({ phase = "Active" }, nil), true)
+		expect.equal(Catch.liveIn(nil, { phase = "SuddenDeath" }), true)
+		expect.equal(Catch.liveIn(nil, { phase = "Countdown" }), false)
+		expect.equal(Catch.liveIn(nil, { phase = "Result" }), false)
+		expect.equal(Catch.followsThrower({ opponent = { userId = 7 } }, nil, 7), true)
+		expect.equal(Catch.followsThrower({ opponent = { userId = 7 } }, nil, 8), false)
+		local function tdm(mode: string): any
+			return {
+				mode = mode,
+				you = { userId = 1, team = "Strawberry" },
+				players = {
+					{ userId = 1, team = "Strawberry" },
+					{ userId = 2, team = "Strawberry" },
+					{ userId = 3, team = "Blueberry" },
+				},
+			}
+		end
+		expect.equal(Catch.followsThrower(nil, tdm("tdm"), 3), true) -- an enemy
+		expect.equal(Catch.followsThrower(nil, tdm("tdm"), 2), false) -- a teammate
+		expect.equal(Catch.followsThrower(nil, tdm("ffa"), 2), true) -- FFA: everyone else
+		expect.equal(Catch.followsThrower(nil, tdm("ffa"), 1), false) -- never your own throw
+		expect.equal(Catch.followsThrower(nil, nil, 3), false)
+	end)
+
 	t.test("progress: 1 before any press, the cooldown after one, 0 while crushing", function()
 		expect.equal(Catch.progress(NOW, -math.huge, -math.huge), 1)
 		expect.near(Catch.progress(NOW, NOW - CATCH.cooldownSeconds / 2, -math.huge), 0.5, 1e-6)

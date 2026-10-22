@@ -402,16 +402,18 @@ return function(t: Context)
 				EconomyService.grantSquishy(player, "dragon", "box"),
 				{ added = true, copy = false, queued = false }
 			)
-			expect.deepEqual(profile.pen.items[3], penItem(3, "dragon", 0, 1, 0, 3))
+			-- qb1 (owner 2026-10-18): the best goes first (PenMath.arrange in the same step): the Dragon takes spot 1.
+			expect.deepEqual(profile.pen.items[3], penItem(3, "dragon", 0, 1, 0, 1))
+			expect.deepEqual({ profile.pen.items[1].slot, profile.pen.items[2].slot }, { 2, 3 })
 			expect.equal(profile.pen.nextId, 4)
-			-- Pens3 phase 6: the 3 spots are full, so the next one waits in the Toy Box (a placed squishy never moves).
+			-- Pens3 phase 6: the 3 spots are full, so the next one waits in the Toy Box (never sorted out of it).
 			EconomyService.grantSquishy(player, "bird", "box")
 			expect.deepEqual(profile.pen.items[4], penItem(4, "bird"))
-			expect.equal(profile.pen.items[1].slot, 1)
-			-- A spot put away earlier is the first free one again.
+			expect.equal(profile.pen.items[1].slot, 2)
+			-- A spot put away earlier is free again (the Toast in spot 3): the new Banana sorts in after Kitty Bread.
 			profile.pen.items[2].slot = 0
 			EconomyService.grantSquishy(player, "banana", "box")
-			expect.deepEqual(profile.pen.items[5], penItem(5, "banana", 0, 1, 0, 2))
+			expect.deepEqual(profile.pen.items[5], penItem(5, "banana", 0, 1, 0, 3))
 		end
 	)
 
@@ -1126,7 +1128,8 @@ return function(t: Context)
 		local profile = second.getProfile(player)
 		expect.equal(profile.coins, 25 + 200 * value - 20)
 		expect.deepEqual(profile.owned.toast, { at = NOW, src = "shop" })
-		expect.deepEqual(profile.pen.items[2], penItem(2, "toast", 0, 1, 0, 2)) -- saved too (phase 6: spot 2)
+		-- saved too (qb1: the start shelf row takes the best first: Kitty Bread 13, the Toast 14)
+		expect.deepEqual(profile.pen.items[2], penItem(2, "toast", 0, 1, 0, 14))
 		expect.equal(#profile.duelLog, 1)
 		expect.equal(profile.duelLog[1].matchId, MATCH_ID)
 		expect.deepEqual(profile.samePair, { ["77"] = { NOW } }) -- the same-pair record survives too (§6.7)

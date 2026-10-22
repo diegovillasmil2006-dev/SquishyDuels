@@ -153,6 +153,13 @@
 --   PenMath.encodeShelf(items)   -> string: "slot=kind.form.level.coat" per shelf or TOP item joined by ";" (the base's
 --                                   SD_Shelf attribute; entries that are not items are left out)
 --   PenMath.decodeShelf(text)    -> {[slot]: Look}: the reverse, shelf and TOP slots only; malformed entries skipped
+-- qb1 (owner 2026-10-18 "Game puts your best there"; you can still move them):
+--   PenMath.arrange(pen)         -> number: re-sorts the placed, unlocked squishies in place, best first (better: the
+--                                   most Coins a second) into the open spots they and the free spots make, in show-off
+--                                   order: the TOP spot, the shelf (13, 14, ...), then the pen (1, 2, ...). A locked
+--                                   squishy keeps its spot (a lock is how a player keeps one where they put it); the
+--                                   Toy Box is never touched. Only `slot` changes: no item added, removed or doubled.
+--                                   Returns how many moved (0 for a broken pen).
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
@@ -380,6 +387,37 @@ function PenMath.freeSlot(pen: any): number
 		end
 	end
 	return 0
+end
+
+function PenMath.arrange(pen: any): number
+	local held: { [number]: boolean } = {}
+	local movers: { Types.PenItem } = {}
+	for _, item in PenMath.placed(pen) do
+		if item.locked == true then
+			held[item.slot] = true
+		else
+			table.insert(movers, item)
+		end
+	end
+	local order: { number } = {} -- the TOP spot, the shelf, then the pen
+	local open = PenMath.openSlots(pen) -- the pen, the shelf, then the TOP spot
+	for _, show in { TOP_SLOT, SHELF_FIRST, 1 } do
+		for _, slot in open do
+			local band = if slot == TOP_SLOT then TOP_SLOT elseif slot >= SHELF_FIRST then SHELF_FIRST else 1
+			if band == show and not held[slot] then
+				table.insert(order, slot)
+			end
+		end
+	end
+	table.sort(movers, PenMath.better)
+	local moved = 0
+	for index, item in movers do
+		if item.slot ~= order[index] then
+			item.slot = order[index]
+			moved += 1
+		end
+	end
+	return moved
 end
 
 function PenMath.find(pen: any, id: any): Types.PenItem?

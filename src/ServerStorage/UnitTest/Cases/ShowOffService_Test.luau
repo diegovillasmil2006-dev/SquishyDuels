@@ -5,7 +5,8 @@
 -- service's own memory store with failures injected, badges are recorders, spawn runs at once).
 -- Contract (Config.Social.Board / Badges):
 --   * leaderstats: Wins then Grip Lv (Strings names), from the profile's stats.duelsWon (re-read, never + 1) and the
---     Grip level, on load, on a level change and after a duel; the folder goes with the player;
+--     Grip level, on load, on a level change and after a duel; the folder goes with the player; qb1: then Coins/s,
+--     the pen's rate in short Coins text, on load and on every refreshIncome;
 --   * the board counts only a fully paid win (eligible, x1, Coins paid) of a real player over a real player: never
 --     the test dummy, a bot (no Player) or userId <= 0 on a live server (Studio's local test players count there);
 --   * weeks start Monday 00:00 UTC; Studio uses memory unless studioMode is "datastore" (then the _STUDIO name);
@@ -220,9 +221,10 @@ return function(t: Context)
 			local folder = ShowOffService.leaderstatsOf(p)
 			expect.equal(folder.Name, "leaderstats")
 			local children = folder:GetChildren()
-			expect.equal(#children, 2)
+			expect.equal(#children, 3)
 			expect.equal(children[1].Name, Strings.social.statWins)
 			expect.equal(children[2].Name, Strings.social.statLevel)
+			expect.equal(children[3].Name, "Coins/s")
 			expect.equal(children[1].Name, "Wins")
 			expect.equal(children[2].Name, "Grip Lv")
 			local wins = folder:FindFirstChild("Wins") :: IntValue
@@ -246,6 +248,34 @@ return function(t: Context)
 			finish(w)
 		end
 	)
+
+	t.test("qb1: Coins/s = the pen's Coins a second, short, on load and on every refresh; 0 without a pen", function()
+		local w = setup()
+		local p = join(w, 5)
+		local income = ShowOffService.leaderstatsOf(p):FindFirstChild("Coins/s") :: StringValue
+		expect.equal(income.ClassName, "StringValue")
+		expect.equal(income.Value, "0")
+		local pen = {
+			spots = 3,
+			nextId = 3,
+			shelfRows = 1,
+			items = {
+				{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false },
+				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 0, locked = false }, -- Toy Box: no pay
+			},
+		}
+		w.profiles[p] = profile(0)
+		w.profiles[p].pen = pen
+		ShowOffService.profileLoaded(p)
+		expect.equal(income.Value, "10") -- Kitty Bread earns 10 a second
+		pen.items[2].slot = 2
+		ShowOffService.refreshIncome()
+		expect.equal(income.Value, "50") -- + Butter's 40
+		pen.items[1].level = 70 -- 10 × 1.15^69 + 40 ≈ 154K a second: the short form
+		ShowOffService.refreshIncome()
+		expect.truthy(string.match(income.Value, "^%d+%.%dK$") ~= nil)
+		finish(w)
+	end)
 
 	t.test("the board counts only a fully paid win of a real player over a real player", function()
 		local a, b = FakePlayer.new(5), FakePlayer.new(6)

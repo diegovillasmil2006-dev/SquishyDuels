@@ -15,8 +15,10 @@
 --       (CFrame.Angles(rx, ry, rz)). The design's toy faces +Z, a Roblox squishy model -Z (SquishyCache), so rotX and
 --       rotZ change sign (rotY does not): a nod or a roll reads the same (the Dragon still lifts its head).
 --       shortcut: the scale / scaleY tracks are not shown (a part-built squishy squashes only through a SquishDeformer
---       slot, and Config.Vfx.Budgets.deformingRigs is full); Kitty Bread's and Butter's scale-only loops stand still
---       until the shelf gets deform slots.
+--       slot, and Config.Vfx.Budgets.deformingRigs is full); give the shelf deform slots to show them.
+--       qb1 (owner 2026-10-15: every shelf squishy has its own show-off animation): Kitty Bread's and Butter's loops
+--       are scale-only, so they play a posY / rot stand-in of the same idea and timing (STAND_INS) instead of standing
+--       still; get() still returns the design's loop.
 --       An unknown kind: (0, CFrame.identity).
 
 -- Requires
@@ -250,6 +252,20 @@ local LOOPS: { [string]: Loop } = {
 	},
 }
 
+-- qb1: the posY / rot stand-ins of the scale-only loops (same length and key times as K, the same eases).
+local STAND_INS: { [string]: { Track } } = {
+	-- Loaf Stretch: rises a little and tips its nose up as it stretches, then settles (K:6984's 0.7 / 1.4 s).
+	kitty_bread = {
+		{ prop = "posY", keys = { { 0, 0, "-" }, { 0.7, 0.35, "Sine InOut" }, { 1.4, 0, "Sine InOut" } } },
+		{ prop = "rotX", keys = { { 0, 0, "-" }, { 0.7, -8, "Sine InOut" }, { 1.4, 0, "Sine InOut" } } },
+	},
+	-- Melt & Reset: slumps to one side as it melts, then springs back with a little hop (K:7142's 0.8 / 1.3 s).
+	butter = {
+		{ prop = "rotZ", keys = { { 0, 0, "-" }, { 0.8, 12, "Sine Out" }, { 1.3, 0, "Back Out" } } },
+		{ prop = "posY", keys = { { 0, 0, "-" }, { 1.3, 0, "-" }, { 1.5, 0.3, "Quad Out" }, { 1.75, 0, "Quad In" } } },
+	},
+}
+
 -- Module table
 
 local ShowOffTracks = {}
@@ -261,7 +277,7 @@ type Played = { prop: string, timeline: Timeline.Timeline<number> }
 local played: { [string]: { Played } } = {}
 for kind, loop in LOOPS do
 	local list: { Played } = {}
-	for _, track in loop.tracks do
+	for _, track in STAND_INS[kind] or loop.tracks do
 		if track.prop == "posY" or track.prop == "rotX" or track.prop == "rotY" or track.prop == "rotZ" then
 			local keys = {}
 			for _, key in track.keys do

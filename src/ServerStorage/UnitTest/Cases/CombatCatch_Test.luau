@@ -18,7 +18,8 @@
 --   * the press: cooldownSeconds (1.3) after a missed catch, busy while crushing (until handsBackSeconds after a catch:
 --     its own wait, unchanged), only in a live duel; it drops a charge record; no throw while the hands are open or
 --     crushing (throw.busy);
---   * FFA/TDM v1 (2026-10-15, SPEC D8): a fighter of an ffa port is refused (catch.context) and no window is tested.
+--   * qb1 (owner 2026-10-18): in a match (an ffa port) an enemy catches like a duelist and the burst is its hit on the
+--     thrower; a teammate's window (TDM) never catches.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -547,27 +548,95 @@ return function(t: Context)
 		expect.equal(started[#started].power, 0) -- the press dropped the charge
 	end)
 
-	-- FFA/TDM v1 (2026-10-15, SPEC D8): no catch in a match yet ------------------------------------------------------
+	-- qb1 (owner 2026-10-18 "Yes, catching works"): catching in Free for All and Team Deathmatch -------------------
 
-	t.test("FFA/TDM v1: a catch press in an ffa port is catch.context and no window is ever tested", function()
-		setup()
-		local _, b, state = duel()
+	-- The duel's two fighters on an ffa port (A and B on different sides, so each is the other's enemy).
+	local function match(teams: boolean): (any, any, PortState, any)
+		local a, b, state = duel()
 		local port = CombatService.portOf(b)
 		port.ffa = true
-		port.teams = true -- TDM: A and B are on different teams, so each is the other's enemy
-		local ok, reason = CombatService.requestCatch(2, clock.now())
-		expect.falsy(ok)
-		expect.equal(reason, "catch.context")
-		expect.equal(b.catchOpensAt, -math.huge)
-		local counters = CombatService.counters()
-		expect.equal(counters.rejected["catch.context"], 1)
-		expect.equal(counters.catchWindows, 0)
-		-- Even a window left open by hand is never tested: A's throw hits B.
-		b.catchOpensAt, b.catchClosesAt = clock.now(), clock.now() + 5
-		expect.truthy((throwAt(1, 1, B_ROOT)))
-		runFor(1.5)
-		expect.equal(#catchEvents("caught"), 0)
-		expect.equal(#impacts("player"), 1)
-		expect.equal(#state.hits, 1)
+		port.teams = teams
+		return a, b, state, port
+	end
+
+	t.test("qb1: in a match an enemy catches like a duelist; the burst is the catcher's hit on the thrower", function()
+		for _, teams in { false, true } do
+			setup()
+			local a, b, state = match(teams)
+			expect.truthy((throwAt(1, 1, B_ROOT)))
+			local payload = payloads("ThrowStarted")[1]
+			local entry = entryOf(payload, centreOf(B_ROOT)) :: number
+			runUntil(payload.releaseAt + entry - 0.1)
+			expect.truthy((CombatService.requestCatch(2, clock.now()))) -- the same press as in a duel
+			runFor(0.3)
+			local caught = catchEvents("caught")
+			expect.equal(#caught, 1)
+			expect.equal(caught[1].catcherId, 2)
+			expect.equal(caught[1].throwerId, 1)
+			expect.equal(#impacts(nil), 0)
+			expect.near(b.handsBackAt, caught[1].at + CATCH.handsBackSeconds, 1e-9)
+			runUntil(caught[1].burstAt + 0.05)
+			expect.equal(#catchEvents("burst"), 1)
+			expect.equal(#state.hits, 1)
+			expect.equal(state.hits[1].victim, a)
+			expect.equal(state.hits[1].attacker, b) -- the K.O. is the catcher's
+			expect.equal(state.hits[1].kind, "catch")
+			expect.equal(b.hits, 1)
+		end
 	end)
+
+	t.test(
+		"qb1: TDM: a teammate's open window never catches (the throw hits the enemy); FFA: anyone else's does",
+		function()
+			for _, teams in { true, false } do
+				setup()
+				local a, _, state, port = match(teams)
+				-- C stands where B stands, its window open by hand: on A's side, so A's teammate in TDM.
+				local c = fighter(3, "A", root(B_ROOT))
+				table.insert(port.fighters, c)
+				c.catchOpensAt, c.catchClosesAt = clock.now(), clock.now() + 5
+				expect.truthy((throwAt(1, 1, B_ROOT)))
+				runFor(1.5)
+				if teams then
+					expect.equal(#catchEvents("caught"), 0)
+					expect.equal(#impacts("player"), 1)
+					expect.equal(state.hits[1].attacker, a)
+				else
+					local caught = catchEvents("caught")
+					expect.equal(#caught, 1)
+					expect.equal(caught[1].catcherId, 3)
+					expect.equal(#impacts("player"), 0)
+				end
+			end
+		end
+	)
+
+	t.test(
+		"qb1: a shield that takes a match burst: no life, no Hit, no hit counted (as for a blocked throw)",
+		function()
+			setup()
+			local _, b, _, port = match(true)
+			port.applyHits = function(hits: { any }): { [number]: any }
+				local outcomes = {}
+				for index in hits do
+					outcomes[index] = { lives = 40, invulnUntil = clock.now(), eliminated = false, blocked = true }
+				end
+				return outcomes
+			end
+			local hitInfos = {}
+			CombatService.Hit:connect(function(info: any)
+				table.insert(hitInfos, info)
+			end)
+			expect.truthy((throwAt(1, 1, B_ROOT)))
+			local payload = payloads("ThrowStarted")[1]
+			runUntil(payload.releaseAt + (entryOf(payload, centreOf(B_ROOT)) :: number) - 0.1)
+			expect.truthy((CombatService.requestCatch(2, clock.now())))
+			runFor(0.3 + CATCH.crushSeconds)
+			local bursts = catchEvents("burst")
+			expect.equal(#bursts, 1)
+			expect.equal(bursts[1].livesLeft, nil)
+			expect.equal(#hitInfos, 0)
+			expect.equal(b.hits, 0)
+		end
+	)
 end

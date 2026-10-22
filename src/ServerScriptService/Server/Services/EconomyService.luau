@@ -300,6 +300,7 @@ local function addSquishyTo(profile: any, id: string, source: string, mayWait: b
 	local slot = PenMath.freeSlot(pen) -- pens3 phase 6: the first free spot, else the Toy Box (0)
 	table.insert(pen.items, { id = pen.nextId, kind = id, form = 0, level = 1, coat = 0, slot = slot, locked = false })
 	pen.nextId += 1
+	PenMath.arrange(pen) -- qb1 (owner 2026-10-18): the best squishies go to the TOP spot and the shelf
 	return { added = true, copy = copy, queued = false, refused = nil }
 end
 

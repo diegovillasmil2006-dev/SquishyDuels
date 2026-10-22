@@ -9,7 +9,7 @@
 --   .commandOf) fire MatchJoin(mode "ffa" | "tdm") and MatchLeave. The server answers with match.* Notify toasts
 --   (shown by NotifyController), the match view and the SD_* attributes (the Duel input context, the freeze, the locks).
 -- * Match look (D13): while a match view exists, DuelController's HUD (through the hooks of attachDuelHud, called once
---   from DuelController.init) shows only the reticle with its "Hit!", the bottom key dock without the catch meter, and
+--   from DuelController.init) shows only the reticle with its "Hit!", the bottom key dock (qb1: catch meter too), and
 --   the 3-2-1 countdown at Countdown; its 1v1 pieces (top bar, Forfeit button, edge arrow, the opponent's Rush chip,
 --   "In the lane!") stay hidden. Review fix (2026-10-15): the top bar hides through DuelController's hideBar (reason
 --   "match", undone when the match ends), and a 1v1 result card still open from a duel just before is closed. The
@@ -36,8 +36,8 @@
 --   circle; the wall is a ring of WALL_SEGMENTS thin segments instead (drawn from both sides), with the same props.
 -- * Reset (D5): StarterGui:SetCore("ResetButtonCallback", false) while a match view exists (retried until CoreGui
 --   accepts it), true after; the server re-places a character that dies anyway.
--- * Catch (D8): no catch in a match; the touch Catch button hides (ControlsController.setTouchAvailable) and the dock's
---   catch meter stays hidden while a match view exists.
+-- * Catch: qb1 (owner 2026-10-18 "Yes, catching works"): catching works in a match as in a duel (CatchController's
+--   gate and prompt); the dock's catch meter and the touch Catch button show as in a duel (D8's hiding is gone).
 -- * Power-up pads (power-ups v1.1, 2026-10-16, SPEC P4; no new art): when a pad's readyAt (the view's pads, server
 --   time) rises above the one last played and still lies ahead, Diego's MapAnimations_<mapCode>.Collect(padModel,
 --   readyAt - now) plays its pop and refill timer (MatchFormat.padCollectSeconds; padModel = the map's descendant with
@@ -58,7 +58,7 @@
 --   K.O., "Squishy Duels Match HUD.dc.html" M:570); nothing for a cancelled or void match, nothing once the look ended
 --   (its cleanup cancels the wait). The duel music itself is SoundController's (Config.Audio.battleMusic).
 -- API: attachDuelHud(hooks) -> detach (DuelController only); counts() (Studio debug); init(), start(), destroy().
--- Require direction (§7): StateController, NetController, ControlsController, SoundController, ThrowController and
+-- Require direction (§7): StateController, NetController, SoundController, ThrowController and
 -- UIController (plus UI helpers and shared modules); DuelController requires this module in its init, never the other
 -- way round.
 
@@ -84,7 +84,6 @@ local DuelFormat = require(Client.UI.DuelFormat)
 local MatchFormat = require(Client.UI.MatchFormat)
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
-local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
@@ -573,7 +572,6 @@ local function showHud()
 	h.chip.root.Visible = false
 	h.laneCue.Visible = false
 	h.lane = nil
-	h.catchMeter.frame.Visible = false
 	hk.reset(h)
 	hk.hideCountdown(h)
 	hk.setCountdown(nil)
@@ -588,7 +586,6 @@ local function hideHud()
 	hk.setCountdown(nil)
 	h.reticle.root.Visible = false
 	h.hints.Visible = false
-	h.catchMeter.frame.Visible = true
 	hk.hideBar(h, "match", false)
 	if StateController.duel() == nil then
 		h.gui.Enabled = false
@@ -625,7 +622,6 @@ local function stepLook(state: Look): boolean
 			else
 				h.hints.Visible = false
 			end
-			h.catchMeter.frame.Visible = false -- D8: no catch in a match (the dock shows its meter every frame)
 			hk.reticle(h, view, aim, now)
 			return nil
 		end)
@@ -702,10 +698,6 @@ local function beginLook(view: StateController.MatchView)
 	setReset(false)
 	lc:add(function()
 		setReset(true)
-	end)
-	ControlsController.setTouchAvailable("Catch", false)
-	lc:add(function()
-		ControlsController.setTouchAvailable("Catch", true)
 	end)
 	showHud()
 	lc:add(hideHud)

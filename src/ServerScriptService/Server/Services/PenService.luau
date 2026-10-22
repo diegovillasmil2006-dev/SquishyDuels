@@ -48,7 +48,7 @@
 --     awaited "now" save (a lock guards against selling from phase 7, so it is written before the reply) and the
 --     reply ok({pen, charged = false, savePending}). A lock never stops the player moving the squishy.
 --   - A bought spot takes the best unlocked Toy Box squishy (PenMath.bestToyBox) in the buy's own mutate, as a new
---     capsule took the best spare squishy (CapsuleService); a placed squishy never moves on its own.
+--     capsule took the best spare squishy (CapsuleService); a placed squishy moves on its own only in the qb1 re-sort.
 --   Every refusal carries charged = false and writes nothing.
 -- * Pens3 phase 7 (selling, D1:217-225, V3:164; the 10-minute buy-back), every remote the PenPlace shape (RF;
 --   Config.Net: 2 a second, burst 3, one in flight; no remote takes a base, plot or player id):
@@ -113,6 +113,10 @@
 --   dropped in, the base redrawn and the pen sent (showPen), a log line, the awaited "now" save and ok({pen, charged =
 --   true, savePending}). Every refusal carries charged = false and writes nothing. The shelf's and the TOP spot's
 --   squishies are paid by the tick with the pen's (PenMath.rate counts every placed squishy).
+-- * qb1 (owner 2026-10-18 "Game puts your best there"): every buy (spot, shelf, buy-back), sale, fusion and feed
+--   re-sorts the placed squishies in its own mutate (PenMath.arrange: the best to the TOP spot, then the shelf, then
+--   the pen; a locked one stays; the Toy Box untouched), as does every new squishy (EconomyService). A move by hand
+--   (PenPlace) stays until the next of those; a lock keeps it for good.
 -- Every profile write goes through DataService.mutate (the data port). Dependencies are injectable (useDeps) so unit
 -- tests run with fake profiles and players (plain tables); init() never yields; playerAdded / playerRemoving never
 -- yield.
@@ -418,6 +422,7 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 		if best ~= nil then
 			best.slot = PenMath.freeSlot(profile.pen)
 		end
+		PenMath.arrange(profile.pen) -- qb1: the best squishies go to the TOP spot and the shelf
 		return true
 	end)
 	if not written then
@@ -472,6 +477,7 @@ function PenService.buyShelf(player: any, expectedPrice: any): Reply
 				best.slot = slot
 			end
 		end
+		PenMath.arrange(profile.pen) -- qb1: the best squishies go to the TOP spot and the shelf
 		return true
 	end)
 	if not written then
@@ -633,6 +639,7 @@ local function sell(player: any, ids: any, requestId: any): Reply
 			end
 		end
 		profile.pen.items = kept
+		PenMath.arrange(profile.pen) -- qb1: the best squishies go to the TOP spot and the shelf
 		local entries = PenMath.liveBuyBack(profile.buyBack, now)
 		for _, item in sale.items do
 			local bare = TableUtil.deepCopy(item)
@@ -720,6 +727,7 @@ function PenService.buyBack(player: any, itemId: any): Reply
 		item.slot = PenMath.freeSlot(profile.pen)
 		item.locked = false
 		table.insert(profile.pen.items, item)
+		PenMath.arrange(profile.pen) -- qb1: the best squishies go to the TOP spot and the shelf
 		return true
 	end)
 	if not (ran and back) then
@@ -774,6 +782,7 @@ function PenService.fuse(player: any, a: any, b: any, c: any): Reply
 			end
 		end
 		profile.pen.items = kept
+		PenMath.arrange(profile.pen) -- qb1: the best squishies go to the TOP spot and the shelf
 		for _, coat in fusion.coats do
 			profile.bag[coat] += 1
 		end
@@ -881,6 +890,7 @@ function PenService.feed(player: any, itemId: any, requestId: any): Reply
 		end
 		live.level += 1
 		profile.food[step.food.id] -= step.pieces
+		PenMath.arrange(profile.pen) -- qb1: the best squishies go to the TOP spot and the shelf
 		return true
 	end)
 	if not written then
@@ -917,6 +927,7 @@ function PenService.feedAll(player: any): Reply
 		for id, pieces in plan.used do
 			profile.food[id] -= pieces
 		end
+		PenMath.arrange(profile.pen) -- qb1: the best squishies go to the TOP spot and the shelf
 		return true
 	end)
 	if not written then

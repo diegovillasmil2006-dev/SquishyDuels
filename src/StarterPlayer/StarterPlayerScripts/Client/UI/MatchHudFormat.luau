@@ -172,7 +172,7 @@ local FFA_LOOKS: { PlayerLook } = {
 -- Reading: someone with no team or slot (never in a real view) gets the purple card's colours.
 local NEUTRAL_LOOK: PlayerLook =
 	{ text = Palette.StickerTextSoft, top = Palette.StickerCardTop, faceEnd = Palette.StickerCardBottom }
-local TOUCH_BUTTONS = { "throw", "ultimate", "dash", "jump" } -- not Catch: no catch in a match (D8)
+local TOUCH_BUTTONS = { "throw", "ultimate", "dash", "jump", "catch" } -- qb1: Catch too (catching works in a match)
 local ELLIPSIS = "…"
 
 -- Module table
