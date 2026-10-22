@@ -1084,7 +1084,7 @@ return function(t: Context)
 		expect.equal(Config.Onboarding.skipStepId, "skip")
 		expect.equal(Config.UI.Boxes.stillCheckingSeconds, 10)
 		expect.equal(Config.UI.Boxes.revealHoldMaxSeconds, 30)
-		expect.equal(Config.UI.Shop.cardWidth, 146) -- UI FINAL R6: 4 columns in the 652 px column
+		expect.equal(Config.UI.Shop.rows.columns, 2) -- shop fix: the design's GAME PASSES grid (H:339)
 		expect.equal(Config.Grip.allowCoinBundles, false)
 	end)
 
@@ -1451,15 +1451,15 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("UI reports a non-positive box timeout or shop card width", function()
+	t.test("UI reports a non-positive box timeout or no shop row columns", function()
 		local problems = validateBrokenCopy(t.Shared, "UI", function(ui)
 			ui.Boxes.stillCheckingSeconds = 0
 			ui.Boxes.revealHoldMaxSeconds = 0
-			ui.Shop.cardWidth = -1
+			ui.Shop.rows.columns = 0
 		end)
 		expect.truthy(containsText(problems, "Config.UI.Boxes.stillCheckingSeconds"))
 		expect.truthy(containsText(problems, "Config.UI.Boxes.revealHoldMaxSeconds"))
-		expect.truthy(containsText(problems, "Config.UI.Shop.cardWidth"))
+		expect.truthy(containsText(problems, "Config.UI.Shop.rows.columns"))
 	end)
 
 	-- Part 6 (Inspect) -----------------------------------------------------------------------------------------------

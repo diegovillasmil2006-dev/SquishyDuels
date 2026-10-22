@@ -1304,7 +1304,7 @@ local function checkUI(problems: Problems)
 	-- Boxes and Shop screens (§11.6, Part 7).
 	expectPositive(problems, `{p}.Boxes.stillCheckingSeconds`, UI.Boxes.stillCheckingSeconds)
 	expectPositive(problems, `{p}.Boxes.revealHoldMaxSeconds`, UI.Boxes.revealHoldMaxSeconds)
-	expectPositive(problems, `{p}.Shop.cardWidth`, UI.Shop.cardWidth)
+	expectCount(problems, `{p}.Shop.rows.columns`, UI.Shop.rows.columns, 1)
 
 	-- Grip HUD card (§17.7): one compact row with a thinner bar; the left column stays above the thumbstick zone.
 	local grip = UI.Grip

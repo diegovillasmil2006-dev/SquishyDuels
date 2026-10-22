@@ -888,10 +888,45 @@ local UI = {
 		},
 	},
 
-	-- Shop screen (§11.6). Reading (DESIGN gives no number): the Squishies tab card width in base px, like
-	-- Inventory.cardWidth (columns = floor(gridWidth / (cardWidth + pad))).
+	-- Shop screen (§11.6).
 	Shop = {
-		cardWidth = 146, -- [P] UI FINAL R6: 4 columns at gap 12 fill the design's 652 px right column (H:294, H:330)
+		-- Shop fix (2026-10-22, the owner: "the shop doesnt look like diego's"): the squishies are drawn as the
+		-- design's GAME PASSES cards (H:341-349): the purple card (UI/CardFace) 104 high (taller only when the text
+		-- needs it), padding 10 12 10 10, gap 12; the icon tile 76 (border 4, radius 18, inset 4 .5, the rarity's light
+		-- -> base, lib:13-16) with the squishy 84 bobbing 2.6 s; the name (22 px, stroke 5) over the line (13 px -> 16,
+		-- PR2, #F3EDFF); the green price chip 38 (padding 0 10 0 6, border 3, radius 12, inset 2 .55, lip 3, gap 5, the
+		-- coin 22, 17 px -> 18) or the owned check 44 (sdStamp). Two columns (H:339: repeat(2, 1fr), gap 12) while the
+		-- longest name word still fits beside the tile and the chip, else one. sdRise .45 s from .08 s, i x .06 s.
+		rows = {
+			columns = 2, -- H:339
+			height = 104, -- H:341
+			border = 4, -- H:341
+			padTop = 10, -- H:341: padding 10 12 10 10
+			padRight = 12,
+			padBottom = 10,
+			padLeft = 10,
+			gap = 12, -- H:341
+			textGap = 4, -- H:343
+			nameRole = "tab", -- H:344: 22 px white, stroke 5
+			descRole = "confirmDesc", -- H:345: 13 px 600 #F3EDFF (16, PR2)
+			tile = { px = 76, border = 4, radius = 18, inset = { px = 4, alpha = 0.5 } }, -- H:342
+			art = { px = 84, bobS = 2.6, shadow = { px = 3, alpha = 0.3 } }, -- H:342: 84, margin -8, sdBob 2.6 s
+			-- H:347: 38 high, padding 0 10 0 6, border 3, radius 12, #A6F796 -> #38C150, inset 2 .55, lip 3, gap 5
+			chip = {
+				height = 38,
+				padLeft = 6,
+				padRight = 10,
+				border = 3,
+				radius = 12,
+				lip = 3,
+				inset = { px = 2, alpha = 0.55 },
+				gap = 5,
+				coinPx = 22,
+				textRole = "packPrice", -- 17 px -> 18 (R6's pack price role), stroke 4
+			},
+			checkPx = 44, -- H:348: the owned check, sdStamp (Config.UI.Daily.stamp)
+			rise = { ms = 450, delayMs = 80, staggerMs = 60 }, -- H:341, H:1240: sdRise .45s, .08 + i x .06 s
+		},
 		-- UI FINAL R6 (the Shop window, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line n), base px:
 		-- the body (H:294: 330 | 1fr, gap 20, padding 20 24 24), the featured card (H:295-312: the selected squishy),
 		-- the right column's section heads (H:314-315, H:329) and card gap (H:330), the coin pack cards (H:330-340,

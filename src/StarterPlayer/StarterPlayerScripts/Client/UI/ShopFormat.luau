@@ -13,7 +13,6 @@
 --                                           timer, it never runs out), and an owned squishy is bought again as a copy
 --   boxItemIds(boxId)                       the set of squishy ids in a box (Boxes.get(boxId).items), nil if unknown
 --   keepSelection(selected, entries)        the selection while it is still listed, else the first entry
---   priceText(price) / cardStatusText(e)    "1,200 Coins"; the card's status line for each state
 --   spendBlock(dataStatus, locked, pen?)    the reason text that disables Buy (duel lock, data not ready, save pending,
 --                                           pens3 phase 5: the Toy Box full)
 --   buyOutcome(result)                      what one ShopBuy Result means for the screen (success / failed)
@@ -21,19 +20,24 @@
 --                                           that never reached the server reuses it (§3.4 idempotency)
 --   bundlesAllowed(gripCfg) / robuxText(p) / coinsView(offered, bundles, prices, allowed)  the Coins tab
 -- Foam UI restyle (spec 2026-10-09: fewer words):
---   priceNumber(price) / cardLine(entry)    the price as a bare number ("1,200") beside the coin icon, and a card's
---                                           status line with whether the coin shows: the price for a buyable card,
---                                           the missing Coins (with the coin) or cardStatusText's words otherwise
+--   priceNumber(price)                      the price as a bare number ("1,200") beside the coin icon
+-- Shop fix (2026-10-22: the squishies as the design's GAME PASSES cards, H:339-349; Config.UI.Shop.rows):
+--   chipWidth(textWidth) / rowMinWidth(wordWidth, chipWidth) / rowTextWidth(cellWidth, chipWidth) /
+--   rowHeight(nameHeight, descHeight)       a card's price chip, its narrowest width (the longest name word beside
+--                                           the tile and the chip), its text column and its height (104, taller only
+--                                           when the name and the line need it)
 -- UI FINAL R6 (the Shop window = Diego's design, plan work/ui/PLAN.md R6; `H:n` = "Squishy Duels HUD.dc.html" line
 -- n; Config.UI.Shop), all base px:
 --   PANEL / panelLayout(screen, filtered, top?, cardWidth?, detailOpen?, tabs?)   the Shop window (H:289, R3) and
 --                                           its body (H:294: 330 | 1fr, gap 20, padding 20 / 24 / 24 inside the 5 px
 --                                           border): the featured card on the left, the right column (the box filter
 --                                           row, then the scrolling list of sections) with the card grid's columns
---                                           (InventoryFormat.gridFit). Desktops have no tab chips (L1 / R1 jump
---                                           between the sections, nextTab); a phone (the compact class) shows one of
---                                           the two at a time (the plan's separate detail state: `detailOpen`), with
---                                           the tab chips over the list while there are sections to switch
+--                                           (InventoryFormat.gridFit, at most rows.columns) and their cellWidth
+--                                           (the shop fix: the columns fill the list, H:339 1fr). Desktops have no
+--                                           tab chips (L1 / R1 jump between the sections, nextTab); a phone (the
+--                                           compact class) shows one of the two at a time (the plan's separate
+--                                           detail state: `detailOpen`), with the tab chips over the list while there
+--                                           are sections to switch
 --   sections(coinsShown) / nextTab(tab, dir, sections?)   the sections drawn (COINS only while a bundle is offered,
 --                                           G6.6) and the L1 / R1 jump between them
 --   featuredLayout(height, nameHeight, lineHeight)   the featured card (H:295-312): the art area over the text block
@@ -154,6 +158,7 @@ export type PanelLayout = {
 	listHeight: number,
 	gridWidth: number, -- the card grid inside the list: as wide as its columns (InventoryFormat.gridFit)
 	columns: number, -- 0 when panelLayout was given no card width
+	cellWidth: number, -- shop fix: a card's width (the columns fill the list less its chrome); 0 without columns
 	-- UI FINAL R3: the Shop window's chrome scale, centre offset and what hangs above it (Layout.windowFit).
 	chromeScale: number,
 	shift: number,
@@ -178,6 +183,7 @@ local UNKNOWN_RANK = math.huge
 local TOUCH = Config.UI.Touch
 local SHOP = Config.UI.Shop
 local BODY = SHOP.body
+local ROWS = SHOP.rows
 local WINDOW_BORDER = Config.UI.Sticker.border.heavy -- H:290: the window's 5 px border, drawn inside its box
 -- The window (base px). Readings: the Squishies screen's margin and height share (unused by a fitted window, kept for
 -- Layout.modalPanel). UI FINAL R6: padding = the body's top padding (H:294: 20; the band sits above it, R3), gap = the
@@ -357,20 +363,6 @@ function ShopFormat.keepSelection(selected: string?, list: { Entry }): string?
 	return if first then first.id else nil
 end
 
--- "1,200 Coins", or nil for a squishy that is not sold.
-function ShopFormat.priceText(price: number?): string?
-	if price == nil then
-		return nil
-	end
-	return Strings.format(Strings.common.coinsAmount, { coins = Format.coins(price) })
-end
-
--- "Need {missing} more Coins" (common.needCoins, singular for 1).
-function ShopFormat.needText(missing: number): string
-	local pair = Strings.common.needCoins
-	return Strings.format(Strings.plural(missing, pair.one, pair.many), { missing = Format.coins(missing) })
-end
-
 -- The price as a bare number ("1,200", Format.coins), shown beside the coin icon; nil for a squishy that is not sold.
 function ShopFormat.priceNumber(price: number?): string?
 	if price == nil then
@@ -379,29 +371,36 @@ function ShopFormat.priceNumber(price: number?): string?
 	return Format.coins(wholeCoins(price))
 end
 
--- A card's status line and whether the coin icon shows beside it (foam restyle, fewer words): a buyable card shows
--- its price as a bare number with the coin, need Coins its missing amount with the coin, every other state
--- cardStatusText's words without it.
-function ShopFormat.cardLine(entry: Entry): (string, boolean)
-	if entry.state == "buy" then
-		return ShopFormat.priceNumber(entry.price) or "", true
-	end
-	return ShopFormat.cardStatusText(entry), entry.state == "needCoins"
+-- Shop fix: the squishy cards as the design's GAME PASSES cards (H:341-349; Config.UI.Shop.rows), base px ----------
+
+-- The price chip's width around a price `textWidth` wide (H:347: padding 0 10 0 6, border 3, the coin 22, gap 5).
+function ShopFormat.chipWidth(textWidth: number): number
+	local chip = ROWS.chip
+	return 2 * chip.border + chip.padLeft + chip.padRight + chip.coinPx + chip.gap + math.max(0, textWidth)
 end
 
--- The card's status line: Owned, the price, the missing Coins, Loading… while buying, or the not-for-sale text.
-function ShopFormat.cardStatusText(entry: Entry): string
-	local state = entry.state
-	if state == "owned" then
-		return Strings.common.owned
-	elseif state == "notSold" then
-		return Strings.reasonText("shop.notForSale")
-	elseif state == "purchasing" then
-		return Strings.common.loading
-	elseif state == "needCoins" then
-		return ShopFormat.needText(entry.missing)
-	end
-	return ShopFormat.priceText(entry.price) or ""
+-- What a card's row takes besides its text column and chip: the border, the padding, the tile and the two gaps.
+local function rowFixed(): number
+	return 2 * ROWS.border + ROWS.padLeft + ROWS.padRight + ROWS.tile.px + 2 * ROWS.gap
+end
+
+-- The narrowest card that keeps `wordWidth` (the longest name word, never split) beside the tile and a chip
+-- `chipWidth` wide: the grid's columns come from it (panelLayout).
+function ShopFormat.rowMinWidth(wordWidth: number, chipWidth: number): number
+	return rowFixed() + math.max(0, chipWidth) + math.max(0, wordWidth)
+end
+
+-- The text column of a card `cellWidth` wide beside a chip `chipWidth` wide (H:343: flex 1).
+function ShopFormat.rowTextWidth(cellWidth: number, chipWidth: number): number
+	return math.max(1, cellWidth - rowFixed() - math.max(0, chipWidth))
+end
+
+-- A card's face height (H:341: 104, the lip under it): taller only when the name and the line (H:343: gap 4) need
+-- more than the tile's padded height.
+function ShopFormat.rowHeight(nameHeight: number, descHeight: number): number
+	local text = math.max(0, nameHeight) + ROWS.textGap + math.max(0, descHeight)
+	local inner = math.max(ROWS.tile.px, text)
+	return math.max(ROWS.height, math.ceil(2 * ROWS.border + ROWS.padTop + ROWS.padBottom + inner))
 end
 
 -- The reason text that disables Buy, or nil when buying is allowed (the server checks everything again).
@@ -529,7 +528,8 @@ end
 -- room, Theme.fitWindow; default PANEL.padding) the body takes `inset` more on the sides and at the bottom (the
 -- design's 24 inside the 5 px border, over the window's 20), then the featured card (330, the body's height and its
 -- lip) and, `columnGap` to its right, the right column: the box filter row while `filtered`, then the list. With
--- `cardWidth` the card grid takes the columns that fit in the list (InventoryFormat.gridFit). On a phone (the compact
+-- `cardWidth` (shop fix: a card's narrowest width, rowMinWidth) the card grid takes the columns that fit in the list
+-- (InventoryFormat.gridFit), at most rows.columns, each `cellWidth` wide (they fill the list). On a phone (the compact
 -- class) the body shows one of the two: the list, or with `detailOpen` the featured card across the whole body (the
 -- plan's separate detail state); the tab chips sit over the list while `tabs` (more than one section) is true.
 function ShopFormat.panelLayout(
@@ -562,10 +562,12 @@ function ShopFormat.panelLayout(
 	local listWidth = math.max(0, bodyWidth - listLeft)
 	local listTop = if filtered then chipHeight + PANEL.gap else 0
 	local gridWidth = listWidth
-	local columns = 0
+	local columns, cellWidth = 0, 0
 	if cardWidth ~= nil and cardWidth == cardWidth and cardWidth > 0 and cardWidth < math.huge then
 		local fit = InventoryFormat.gridFit(listWidth, cardWidth, PANEL.cellPad, PANEL.gridChrome)
-		gridWidth, columns = fit.width, fit.columns
+		gridWidth, columns = fit.width, math.min(fit.columns, ROWS.columns)
+		local inner = listWidth - PANEL.gridChrome - (columns - 1) * PANEL.cellPad
+		cellWidth = math.max(0, math.floor(inner / columns))
 	end
 	return {
 		scale = p.scale,
@@ -592,6 +594,7 @@ function ShopFormat.panelLayout(
 		listHeight = math.max(0, bodyHeight - listTop),
 		gridWidth = gridWidth,
 		columns = columns,
+		cellWidth = cellWidth,
 		chromeScale = p.chromeScale or 1,
 		shift = p.shift or 0,
 		above = p.above or 0,

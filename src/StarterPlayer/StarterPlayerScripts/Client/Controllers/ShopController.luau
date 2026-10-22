@@ -33,8 +33,13 @@
 --   the box.saving note; refusals (pens3 phase 5: inventory.full too) show Strings.reasonText (common.noCoinsSpent
 --   only when charged == false). Coins are never shown or granted locally: the HUD counts down on the StateDelta.
 -- * The right column (H:314): the box filter row ([All] [<box name>]) while a box filter is on, then the list:
---   "SQUISHIES" (the sectionHead role, H:315) over the cards (Shop_Card_<id>: preview, name, rarity, the coin and the
---   price / Owned / need Coins / Loading… / not for sale; sorted by rarity, price, name) and, only while a coin bundle
+--   "SQUISHIES" (the sectionHead role, H:315) over the cards (Shop_Card_<id>, sorted by rarity, price, name; the
+--   shop fix 2026-10-22: drawn as the design's GAME PASSES cards, H:339-349, Config.UI.Shop.rows: the purple card
+--   (UI/CardFace, with its selected look from the Squishies window, H:935: a tap shows the squishy in the featured
+--   card), the rarity-coloured tile with the squishy bobbing, the name over "{Rarity} · x{n} power", the green chip
+--   with the coin and the price (#FFB3BE while the Coins are short, P11) or the stamped check (the free starter);
+--   two columns while the longest name word fits beside the tile and the chip, else one; sdRise on open) and, only
+--   while a coin bundle
 --   is offered (G6.6; never in v1: every productId is nil), "COINS" over the pack cards (H:330-340: cream, the coin
 --   92 bobbing, the amount, the green price bar with the Robux price: "…" / "Unavailable" / "{price} Robux";
 --   Shop_Bundle_<key>Button fires PromptCoinBundle(key); PromptProductPurchaseFinished only stops the spinner). The
@@ -44,10 +49,9 @@
 --   a Back chip in the band (Shop_BackButton); its tab chips show over the list while COINS is drawn.
 -- * The gamepad focus on open: the selected card (the list), BUY (the phone's featured card), else Close.
 -- Readings (DESIGN is silent):
--- * The card frames use the rarity colour and stroke width (Art/RarityStyle; UI/CardFace); R5 redraws the cards.
 -- * A Robux prompt spinner also stops after PROMPT_TIMEOUT_SECONDS (a prompt the server refused never finishes).
--- * The cards are as tall as the status lines they show now (InventoryFormat.cardSize; the name and the rarity tag
---   fit at the player's text size; the status line wraps under the coin).
+-- * The cards are 104 high unless the name and the line need more at the player's text size (measured at the drawn
+--   scale, Theme.textBoundsAt; ShopFormat.rowHeight); every card is as tall as the tallest.
 -- Stable names: Shop_CloseButton, Shop_BackButton, Shop_TabSquishiesButton, Shop_TabCoinsButton,
 -- Shop_FilterAllButton, Shop_FilterBoxButton, Shop_Card_<id>, Shop_BuyButton, Shop_InspectButton,
 -- Shop_Bundle_<key>Button; the dialog's Confirm_BuyButton / Confirm_CancelButton; the overlay's Shop_AwesomeButton.
@@ -70,7 +74,6 @@ local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local RarityStyle = require(Shared.Art.RarityStyle)
-local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
@@ -82,13 +85,11 @@ local CongratsOverlay = require(Client.UI.CongratsOverlay)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
-local InventoryFormat = require(Client.UI.InventoryFormat)
 local KeyText = require(Client.UI.KeyText)
 local Layout = require(Client.UI.Layout)
-local RarityTag = require(Client.UI.Components.RarityTag)
+local MotionTrack = require(Client.UI.MotionTrack)
 local ShopFormat = require(Client.UI.ShopFormat)
 local SquishyImage = require(Client.UI.Components.SquishyImage)
-local StaticIcon = require(Client.UI.Components.StaticIcon)
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
@@ -102,15 +103,18 @@ local WorldBinder = require(script.Parent.WorldBinder)
 
 -- Types
 
+-- Shop fix: a squishy card drawn as the design's GAME PASSES card (H:341-349; layoutCards sizes its parts).
 type Card = {
 	id: string,
 	root: TextButton,
-	face: CardFace.CardFace, -- UI overhaul: the collectible card's face, rim and art glow
-	icon: StaticIcon.StaticIcon,
-	coin: Frame,
-	status: TextLabel,
-	statusLimit: UISizeConstraint, -- the status line wraps under the coin (Part 8: sized with the card)
-	rarity: RarityTag.RarityTag,
+	rise: Frame, -- the sdRise holder (MotionTrack)
+	face: CardFace.CardFace, -- the purple face and lip (H:341 = H:203), its selected look (H:935)
+	text: Frame, -- the name over the line (H:343)
+	name: TextLabel,
+	desc: TextLabel,
+	chip: Frame, -- the green price chip (H:347)
+	price: TextLabel,
+	check: Frame, -- the owned check (H:348)
 }
 
 -- A tab or filter chip: a foam Button (setAccent: Strawberry when on).
@@ -167,29 +171,25 @@ local PACKS = SHOP.packs
 local CONFIRM = Config.UI.confirm
 local PURCHASE = Config.UI.Fx.events.purchase -- H:867-871
 local TOUCH = Config.UI.Touch
-local CARD_WIDTH = SHOP.cardWidth
-local CARD_HEIGHT = 192 -- reading: §11.6 gives the card width only (UI overhaul: 184 -> 192, larger art)
-local CARD_ICON_PX = 100 -- UI overhaul: 92 -> 100
-local CARD_PAD = 6
-local CARD_GAP = 2
-local CARD_PIP_PX = 8
-local CARD_NAME_KIND: Theme.TextKind = "Button" -- foam restyle: larger type, the display font
-local CARD_STATUS_KIND: Theme.TextKind = "Chip" -- the price / status line in the display font
-local CARD_RADIUS = Theme.Radius.button
-local CARD_BANDS = Theme.Foam.panel.bevel + Theme.Foam.panel.drop -- the foam card's bevel and drop (kept free)
+local ROWS = SHOP.rows -- shop fix: the cards (H:341-349)
+local CARD_LIP = Config.UI.Inventory.card.lip -- UI/CardFace's lip under the face (H:341: 0 5px 0)
+local CARD_RADIUS = Config.UI.Inventory.card.radius -- H:341: 20
+local CARD_IN = Config.UI.motion.cardIn -- H:31 sdRise
+local STAMP = Config.UI.Daily.stamp -- H:41 sdStamp (H:348: the owned check)
+local function roleKind(role: string): Theme.TextKind
+	return (Theme.Sticker.text :: any)[role].kind
+end
+local NAME_KIND: Theme.TextKind = roleKind(ROWS.nameRole)
+local DESC_KIND: Theme.TextKind = roleKind(ROWS.descRole)
+local PRICE_KIND: Theme.TextKind = roleKind(ROWS.chip.textRole)
 local PANEL = ShopFormat.PANEL -- the body's padding and gaps, the card grid's gap and the list's chrome
 local CELL_PAD = PANEL.cellPad
 local LIST_PAD = 4 -- the list's padding round the cards' rims (PANEL.gridChrome counts it with the scroll bar)
-local COIN_PX = 18
-local STATUS_GAP = 4 -- between the coin and the status text on a card
 local MEASURE_MARGIN_PX = 2 -- Part 8: added to measured texts so laid-out parts never touch
 local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives this
 local WINDOW_KIND = "shop" -- UI FINAL R3: its Config.UI.Sticker.window kind (H:288-349)
 local BUTTON_LIP = Config.UI.Sticker.lip.button -- H:310: 0 5px 0 #1E1428
 local WHITE = Color3.new(1, 1, 1)
--- UI overhaul: the card faces are UI/CardFace's; the status line's colours (a price in Gold, "Owned" in Mint).
-local STATUS_PRICE_COLOR = Theme.Colors.gold
-local STATUS_OWNED_COLOR = Theme.Accents.mint.face
 
 -- Module table
 
@@ -208,10 +208,7 @@ local panelLayout: ShopFormat.PanelLayout? = nil
 local lastDetail: ShopFormat.FeaturedLayout? = nil -- the featured card as laid out last (debugState)
 local lastView: ShopFormat.FeaturedView? = nil -- what its button shows (refreshDetail)
 local shownView: string? = nil -- the button state painted last (a repaint restarts its motion)
-local cardSize: InventoryFormat.CardSize = { width = CARD_WIDTH, height = CARD_HEIGHT, nameLines = 1, stacked = false }
--- Fix batch: the status lines the cards show now (refreshGrid); the cards are as tall as these need. Nil = every line a
--- card can show (before the first refresh).
-local cardLines: { string }? = nil
+local cardCell = Vector2.zero -- the cards' cell (base px: the face and its lip), as layoutCards set it last
 local loadingLabel: TextLabel? = nil
 local tabChips: { [string]: Chip } = {}
 local filterRow: Frame? = nil
@@ -371,23 +368,25 @@ end
 
 -- Grid ----------------------------------------------------------------------------------------------------------------
 
--- Fix batch: fits the cards' height to the status lines `list` shows (defined with the layout below).
-local fitCardLines: (list: { ShopFormat.Entry }) -> ()
+-- Shop fix: sizes the cards' parts for `list` (defined with the layout below).
+local layoutCards: (list: { ShopFormat.Entry }) -> ()
 
+-- H:347-348: the price chip (the price white, #FFB3BE while the Coins are short, P11) or the owned check.
 local function paintCard(card: Card, entry: ShopFormat.Entry, isSelected: boolean)
 	card.face:paint({ owned = true, selected = isSelected })
-	local text, coin = ShopFormat.cardLine(entry)
-	card.status.Text = text
-	card.coin.Visible = coin
-	card.status.TextColor3 = if entry.owned
-		then STATUS_OWNED_COLOR
-		elseif coin then STATUS_PRICE_COLOR
-		else Theme.Colors.text
+	local price = ShopFormat.priceNumber(entry.price)
+	card.chip.Visible = price ~= nil
+	card.price.Text = price or ""
+	card.price.TextColor3 = if entry.state == "needCoins" then Palette.StickerPriceShort else WHITE
+	local owned = price == nil and entry.owned
+	if owned and not card.check.Visible then
+		MotionTrack.play(card.check, STAMP.frames :: any, STAMP.ms, 0, STAMP.curve)
+	end
+	card.check.Visible = owned
 end
 
 local function refreshGrid(list: { ShopFormat.Entry })
 	selected = ShopFormat.keepSelection(selected, list)
-	fitCardLines(list)
 	local order: { [string]: number } = {}
 	for index, entry in list do
 		order[entry.id] = index
@@ -401,6 +400,7 @@ local function refreshGrid(list: { ShopFormat.Entry })
 			paintCard(card, entry, id == selected)
 		end
 	end
+	layoutCards(list)
 	local row = filterRow
 	if row then
 		row.Visible = boxFilter ~= nil
@@ -719,104 +719,73 @@ end
 
 -- Layout: the window and the cards (Part 8) ---------------------------------------------------------------------------
 
--- Every text a card's status line can show (the price, need Coins, Owned, Loading, not for sale).
-local function statusTexts(): { string }
-	local texts = { Strings.common.owned, Strings.common.loading, Strings.reasonText("shop.notForSale") }
-	for _, def in Catalog.list() do
-		local price = def.shopPrice
-		if price then
-			table.insert(texts, ShopFormat.priceNumber(price) or "")
-			table.insert(texts, ShopFormat.needText(price))
+-- Shop fix: a card's chip width for `price` (its measured text, H:347) or the owned check's (H:348).
+local function chipWidthFor(price: string?, scale: number): number
+	if price == nil then
+		return ROWS.checkPx
+	end
+	return ShopFormat.chipWidth(Theme.textBoundsAt(price, PRICE_KIND, nil, scale).X + MEASURE_MARGIN_PX)
+end
+
+-- The narrowest card (ShopFormat.rowMinWidth): the longest word of a name or line, never split, beside the tile and
+-- the widest chip the cards show now.
+local function cardMinWidth(list: { ShopFormat.Entry }, scale: number): number
+	local wordWidth, chipWidth = 0, ROWS.checkPx
+	local function words(text: string, kind: Theme.TextKind)
+		for word in string.gmatch(text, "%S+") do
+			wordWidth = math.max(wordWidth, Theme.textBoundsAt(word, kind, nil, scale).X + MEASURE_MARGIN_PX)
 		end
 	end
-	return texts
-end
-
--- The card size for the player's text size (InventoryFormat.cardSize with the status line under the rarity tag), and
--- the width the status text wraps in. Fix batch: the status line is as tall as the lines the cards show now need
--- (cardLines), else as tall as the tallest a card can show.
-local function measureCards(): (InventoryFormat.CardSize, number)
-	local nameWidth, wordWidth = 0, 0
-	for _, def in Catalog.list() do
-		local name = Strings.resolve(def.nameKey) or def.id
-		nameWidth = math.max(nameWidth, Theme.textWidth(name, CARD_NAME_KIND))
-		for word in string.gmatch(name, "%S+") do
-			wordWidth = math.max(wordWidth, Theme.textWidth(word, CARD_NAME_KIND))
-		end
-	end
-	local metrics: InventoryFormat.CardMetrics = {
-		nameWidth = nameWidth + MEASURE_MARGIN_PX,
-		wordWidth = wordWidth + MEASURE_MARGIN_PX,
-		lineHeight = Theme.lineHeight(CARD_NAME_KIND),
-		tagInlineWidth = 0,
-		tagInlineHeight = 0,
-		tagStackedWidth = 0,
-		tagStackedHeight = 0,
-	}
-	for _, rarity in Rarity.ORDER do
-		local m = RarityTag.measure(rarity, CARD_PIP_PX)
-		metrics.tagInlineWidth = math.max(metrics.tagInlineWidth, m.inlineWidth + MEASURE_MARGIN_PX)
-		metrics.tagInlineHeight = math.max(metrics.tagInlineHeight, m.inlineHeight)
-		metrics.tagStackedWidth = math.max(metrics.tagStackedWidth, m.stackedWidth + MEASURE_MARGIN_PX)
-		metrics.tagStackedHeight = math.max(metrics.tagStackedHeight, m.stackedHeight)
-	end
-	local base: InventoryFormat.CardBase = {
-		width = CARD_WIDTH,
-		height = CARD_HEIGHT,
-		iconPx = CARD_ICON_PX,
-		padX = CARD_PAD,
-		padY = CARD_PAD,
-		gap = CARD_GAP,
-		bands = CARD_BANDS,
-	}
-	-- The status line wraps beside the coin inside the card's width, so the width comes first.
-	local first = InventoryFormat.cardSize(base, metrics)
-	local statusWidth = math.max(1, first.width - 2 * CARD_PAD - COIN_PX - STATUS_GAP)
-	local statusHeight = COIN_PX
-	for _, text in cardLines or statusTexts() do
-		statusHeight = math.max(statusHeight, Theme.textBounds(text, CARD_STATUS_KIND, nil, statusWidth).Y)
-	end
-	base.extraHeight = statusHeight
-	return InventoryFormat.cardSize(base, metrics), statusWidth
-end
-
--- The cells follow the card size; the rarity tags stack and the status lines wrap when the card needs it. (The grid's
--- columns follow in applyLayout: they depend on the card width.)
-local function applyCardSize()
-	local size, statusWidth = measureCards()
-	cardSize = size
-	local layout = gridLayout
-	if layout then
-		layout.CellSize = UDim2.fromOffset(size.width, size.height)
-	end
-	for _, card in cards do
-		card.rarity:setStacked(size.stacked)
-		card.statusLimit.MaxSize = Vector2.new(statusWidth, math.huge)
-	end
-end
-
-fitCardLines = function(list: { ShopFormat.Entry })
-	local lines: { string } = {}
 	for _, entry in list do
-		local text = ShopFormat.cardLine(entry)
-		table.insert(lines, text)
+		words(entry.name, NAME_KIND)
+		words(ShopFormat.featuredLine(entry.rarity, Catalog.getPower(entry.id)), DESC_KIND)
+		chipWidth = math.max(chipWidth, chipWidthFor(ShopFormat.priceNumber(entry.price), scale))
 	end
-	local last = cardLines
-	if last and #last == #lines then
-		local same = true
-		for index, text in lines do
-			if last[index] ~= text then
-				same = false
-				break
+	return ShopFormat.rowMinWidth(wordWidth, chipWidth)
+end
+
+-- Shop fix (H:341-349): each listed card's text column beside its own chip (H:343 flex 1), the name and the line
+-- measured at the drawn scale (Theme.textBoundsAt), then one cell for every card: the list's column width
+-- (panelLayout.cellWidth) and the tallest card (ShopFormat.rowHeight) with its lip.
+layoutCards = function(list: { ShopFormat.Entry })
+	local l, layout = panelLayout, gridLayout
+	if l == nil or layout == nil or l.cellWidth <= 0 then
+		return
+	end
+	local scale = UIController.scale()
+	local height = ROWS.height
+	for _, entry in list do
+		local card = cards[entry.id]
+		if card then
+			local chipWidth = chipWidthFor(ShopFormat.priceNumber(entry.price), scale)
+			local textWidth = ShopFormat.rowTextWidth(l.cellWidth, chipWidth)
+			local nameHeight = Theme.textBoundsAt(card.name.Text, NAME_KIND, textWidth, scale).Y
+			local descHeight = Theme.textBoundsAt(card.desc.Text, DESC_KIND, textWidth, scale).Y
+			card.name.Size = UDim2.new(1, 0, 0, nameHeight)
+			card.desc.Size = UDim2.new(1, 0, 0, descHeight)
+			card.text.Size = UDim2.fromOffset(textWidth, nameHeight + ROWS.textGap + descHeight)
+			card.chip.Size = UDim2.fromOffset(chipWidth, ROWS.chip.height + ROWS.chip.lip)
+			height = math.max(height, ShopFormat.rowHeight(nameHeight, descHeight))
+		end
+	end
+	cardCell = Vector2.new(l.cellWidth, height + CARD_LIP)
+	layout.CellSize = UDim2.fromOffset(cardCell.X, cardCell.Y)
+end
+
+-- H:341, H:1240: the listed cards rise in on open (sdRise .45 s from .08 s, i x .06 s) and the owned check stamps.
+local function riseCards()
+	local index = 0
+	for _, entry in currentEntries() do
+		local card = cards[entry.id]
+		if card and card.root.Visible then
+			local delayMs = ROWS.rise.delayMs + index * ROWS.rise.staggerMs
+			MotionTrack.play(card.rise, CARD_IN.frames :: any, ROWS.rise.ms, delayMs, CARD_IN.curve)
+			if card.check.Visible then
+				MotionTrack.play(card.check, STAMP.frames :: any, STAMP.ms, delayMs, STAMP.curve)
 			end
-		end
-		if same then
-			return
+			index += 1
 		end
 	end
-	cardLines = lines
-	-- Only the height can change (the width comes from the names and the rarity tags), so the columns stay.
-	applyCardSize()
 end
 
 -- UI FINAL R3: the window's band, sticker and X at the window's chrome scale (Theme.fitWindow; Layout.windowFit), and
@@ -852,7 +821,9 @@ applyLayout = function()
 	local filtered = row ~= nil and row.Visible
 	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
 	local top = fitChrome(root, Layout.windowFit(screen, WINDOW_KIND))
-	local l = ShopFormat.panelLayout(screen, filtered, top, cardSize.width, detailOpen, #sections() > 1)
+	local list = currentEntries()
+	local minWidth = cardMinWidth(list, UIController.scale())
+	local l = ShopFormat.panelLayout(screen, filtered, top, minWidth, detailOpen, #sections() > 1)
 	panelLayout = l
 	root.Size = UDim2.fromOffset(l.panelWidth, l.panelHeight + Config.UI.Sticker.lip.window) -- the face and its lip
 	f.tabs.Visible = l.tabsShown
@@ -897,6 +868,7 @@ applyLayout = function()
 	end
 	layoutDetail()
 	updateColumns()
+	layoutCards(list)
 end
 
 -- Buying ----------------------------------------------------------------------------------------------------------------
@@ -1066,6 +1038,9 @@ local function chipButton(
 	return chip
 end
 
+-- Shop fix: a squishy as the design's GAME PASSES card (H:341-349): the purple face (UI/CardFace) on the rise holder,
+-- the tile with the squishy (H:342), the name over the line (H:343-345), the price chip (H:347) or the check (H:348).
+-- layoutCards sizes the text column and the chip; paintCard fills them.
 local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	local def = Catalog.get(id)
 	if def == nil then
@@ -1075,79 +1050,171 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 		Name = "Shop_Card_" .. id,
 		Text = "",
 		AutoButtonColor = false,
+		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 	})
 	c:add(root)
-	-- UI overhaul: a collectible card (UI/CardFace); paintCard paints its selection.
-	local face = CardFace.new(root, def.rarity, {
-		radius = CARD_RADIUS,
-		artCenterY = CARD_PAD + CARD_ICON_PX / 2,
-		artPx = CARD_ICON_PX,
-	})
-	c:add(face)
 	Focus.decorate(root, CARD_RADIUS)
+	local function holder(name: string, parentFrame: Instance): Frame
+		return Create("Frame", {
+			Name = name,
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			Active = false,
+			Parent = parentFrame,
+		})
+	end
+	-- SD_Visual takes the hover and press (Button.decorate, H:634 data-fx card), SD_Rise the entrance (H:341).
+	local visual = holder("SD_Visual", root)
+	local rise = holder("SD_Rise", visual)
+	local face = CardFace.new(rise, def.rarity)
+	c:add(face)
 	local content: Frame = Create("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
+		Size = UDim2.new(1, 0, 1, -CARD_LIP),
 		Active = false,
-		Parent = root,
+		ZIndex = 1,
+		Parent = rise,
 	})
-	Theme.list(
-		Enum.FillDirection.Vertical,
-		CARD_GAP,
-		content,
-		Enum.HorizontalAlignment.Center,
-		Enum.VerticalAlignment.Top
-	)
-	Create("UIPadding", {
-		PaddingTop = UDim.new(0, CARD_PAD),
-		PaddingBottom = UDim.new(0, CARD_PAD + CARD_BANDS), -- the foam bands stay free (InventoryFormat.cardSize)
-		PaddingLeft = UDim.new(0, CARD_PAD),
-		PaddingRight = UDim.new(0, CARD_PAD),
+	local left = ROWS.border + ROWS.padLeft
+	-- H:342: the tile (76, border 4, radius 18, the rarity's light -> base, inset 4 .5) and the squishy 84 bobbing.
+	local style = RarityStyle.get(def.rarity)
+	local tile: Frame = Create("Frame", {
+		Name = "Tile",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, left, 0.5, 0),
+		Size = UDim2.fromOffset(ROWS.tile.px, ROWS.tile.px),
 		Parent = content,
 	})
-	local icon =
-		StaticIcon.new({ name = "Preview", squishyId = id, sizePx = CARD_ICON_PX, layoutOrder = 1, parent = content })
-	c:add(icon)
-	Theme.label({
+	sticker(tile, {
+		top = if style then style.ui.light or style.ui.faceTop else Palette.StickerCardTop,
+		bottom = if style then style.ui.base or style.ui.faceBottom else Palette.StickerCardBottom,
+	}, ROWS.tile.border, ROWS.tile.radius, 0, ROWS.tile.inset)
+	local bob: Frame = Create("Frame", {
+		Name = "SD_Bob",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(ROWS.art.px, ROWS.art.px),
+		ZIndex = 2,
+		Parent = tile,
+	})
+	local artOptions: SquishyImage.Options = {
+		name = "Preview",
+		size = ROWS.art.px,
+		shadow = { px = ROWS.art.shadow.px, alpha = ROWS.art.shadow.alpha },
+		parent = bob,
+	}
+	local art = SquishyImage.new(id, artOptions)
+	c:add(art)
+	local bobbing = UiIdle.add(bob, "bob", { periodS = ROWS.art.bobS })
+	if bobbing then
+		c:add(function()
+			bobbing:remove()
+		end)
+	end
+	-- H:343-345: the name (22 px, stroke 5) over the line (#F3EDFF), gap 4.
+	local text: Frame = Create("Frame", {
+		Name = "Text",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, left + ROWS.tile.px + ROWS.gap, 0.5, 0),
+		Parent = content,
+	})
+	Theme.list(Enum.FillDirection.Vertical, ROWS.textGap, text, Enum.HorizontalAlignment.Left)
+	local name = Theme.label({
 		Name = "Name",
 		Text = Strings.resolve(def.nameKey) or id,
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+		Parent = text,
+	}, NAME_KIND)
+	Theme.stickerText(name, ROWS.nameRole)
+	local desc = Theme.label({
+		Name = "Line",
+		Text = ShopFormat.featuredLine(def.rarity, Catalog.getPower(id)),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
 		LayoutOrder = 2,
-		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = text,
+	}, DESC_KIND)
+	Theme.stickerText(desc, ROWS.descRole)
+	-- H:347: the green chip (border 3, radius 12, inset 2 .55, lip 3): the coin 22 and the price, gap 5.
+	local right = ROWS.border + ROWS.padRight
+	local chipSpec = ROWS.chip
+	local chip: Frame = Create("Frame", {
+		Name = "Price",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -right, 0.5, 0),
+		Size = UDim2.fromOffset(0, chipSpec.height + chipSpec.lip),
 		Parent = content,
-	}, CARD_NAME_KIND)
-	local rarityTag = RarityTag.new({
-		name = "Rarity",
-		rarity = def.rarity,
-		pipSizePx = CARD_PIP_PX,
-		stacked = cardSize.stacked,
-		layoutOrder = 3,
-		parent = content,
 	})
-	c:add(rarityTag)
-	local statusRow: Frame = Create("Frame", {
-		Name = "Status",
+	sticker(
+		chip,
+		{ top = Palette.StickerGreenTop, bottom = Palette.StickerGreen2End },
+		chipSpec.border,
+		chipSpec.radius,
+		chipSpec.lip,
+		chipSpec.inset
+	)
+	local chipRow: Frame = Create("Frame", {
+		Name = "Row",
 		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 4,
+		Size = UDim2.new(1, 0, 1, -chipSpec.lip),
+		ZIndex = 2,
+		Parent = chip,
+	})
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, chipSpec.border + chipSpec.padLeft),
+		PaddingRight = UDim.new(0, chipSpec.border + chipSpec.padRight),
+		Parent = chipRow,
+	})
+	Theme.list(
+		Enum.FillDirection.Horizontal,
+		chipSpec.gap,
+		chipRow,
+		Enum.HorizontalAlignment.Left,
+		Enum.VerticalAlignment.Center
+	)
+	c:add(CoinIcon.new({ name = "Coin", sizePx = chipSpec.coinPx, layoutOrder = 1, parent = chipRow }))
+	local price = Theme.label({
+		Name = "Text",
+		Size = UDim2.new(1, -(chipSpec.coinPx + chipSpec.gap), 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 2,
+		Parent = chipRow,
+	}, PRICE_KIND)
+	Theme.stickerText(price, chipSpec.textRole)
+	price.TextWrapped = false -- the chip is measured to the price (layoutCards)
+	-- H:348: the owned check 44, stamped (sdStamp, drawn at its rest -10°).
+	local check: Frame = Create("Frame", {
+		Name = "Check",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -right, 0.5, 0),
+		Size = UDim2.fromOffset(ROWS.checkPx, ROWS.checkPx),
+		Rotation = STAMP.restRot,
+		Visible = false,
 		Parent = content,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, STATUS_GAP, statusRow, Enum.HorizontalAlignment.Center)
-	local coin = CoinIcon.new({ name = "Coin", sizePx = COIN_PX, layoutOrder = 1, parent = statusRow })
-	c:add(coin)
-	local status = Theme.label({
-		Name = "Text",
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		LayoutOrder = 2,
-		Parent = statusRow,
-	}, CARD_STATUS_KIND)
-	local statusLimit: UISizeConstraint = Create("UISizeConstraint", {
-		MaxSize = Vector2.new(CARD_WIDTH - 2 * CARD_PAD - COIN_PX - STATUS_GAP, math.huge),
-		Parent = status,
-	})
+	c:add(IconGlyph.new({ name = "Icon", icon = "check", sizePx = ROWS.checkPx, parent = check }))
+	local feel: Button.DecorateOptions = {
+		fx = "card",
+		visual = visual,
+		clickSound = false, -- selectCard plays ui.click
+		pivotPx = CARD_LIP / 2,
+		onFilter = function(mix: number)
+			face:setHover(mix)
+		end,
+	}
+	c:add(Button.decorate(root, feel))
 	c:add(root.Activated:Connect(function()
 		selectCard(id)
 	end))
@@ -1155,12 +1222,14 @@ local function buildCard(c: Cleanup.Cleanup, parent: Instance, id: string)
 	cards[id] = {
 		id = id,
 		root = root,
+		rise = rise,
 		face = face,
-		icon = icon,
-		coin = coin.root,
-		status = status,
-		statusLimit = statusLimit,
-		rarity = rarityTag,
+		text = text,
+		name = name,
+		desc = desc,
+		chip = chip,
+		price = price,
+		check = check,
 	}
 end
 
@@ -1553,20 +1622,16 @@ local function build(parent: Instance): GuiObject
 		LayoutOrder = 2,
 		Parent = list,
 	})
-	local statusWidth: number
-	cardSize, statusWidth = measureCards()
 	gridLayout = Create("UIGridLayout", {
-		CellSize = UDim2.fromOffset(cardSize.width, cardSize.height),
-		CellPadding = UDim2.fromOffset(CELL_PAD, CELL_PAD),
+		CellSize = UDim2.fromOffset(cardCell.X, cardCell.Y), -- layoutCards sizes it
+		-- H:339: gap 12 between the faces; the lip inside each cell takes its share of the rows' gap (Layout.lipGap)
+		CellPadding = UDim2.fromOffset(CELL_PAD, Layout.lipGap(CELL_PAD, CARD_LIP)),
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		FillDirection = Enum.FillDirection.Horizontal,
 		Parent = cardsFrame,
 	})
 	for _, def in Catalog.list() do
 		buildCard(c, cardsFrame, def.id)
-	end
-	for _, card in cards do
-		card.statusLimit.MaxSize = Vector2.new(statusWidth, math.huge)
 	end
 	local coinsHead = sectionHead(list, "CoinsHead", Strings.shop.sectionCoins, 3)
 	coinsHead.Visible = false
@@ -1618,7 +1683,6 @@ local function build(parent: Instance): GuiObject
 	end)
 	if okSignal then
 		c:add(textSizeChanged:Connect(function()
-			applyCardSize()
 			applyLayout()
 		end))
 	end
@@ -1713,7 +1777,7 @@ function ShopController.debugState(): { [string]: any }
 		congratsOpen = congrats ~= nil,
 		promptingKey = promptingKey,
 		-- Part 8: the card size; UI FINAL R6: the body and the featured card (base px)
-		card = { width = cardSize.width, height = cardSize.height, stacked = cardSize.stacked },
+		card = { width = cardCell.X, height = cardCell.Y }, -- shop fix: the cards' cell (the face and its lip)
 		body = if panelLayout
 			then {
 				columns = panelLayout.columns,
@@ -1757,6 +1821,7 @@ function ShopController.init()
 			-- The coin pill ({tab = "coins"}) opens at COINS while it is drawn, else at the top (R4 G4.16).
 			tab = if table.find(sections(), p.tab) then p.tab else ShopFormat.TAB_SQUISHIES
 			refresh()
+			riseCards()
 			task.defer(scrollTo, tab)
 		end,
 		onClose = function()
@@ -1836,7 +1901,7 @@ function ShopController.init()
 		table.clear(prices)
 		panel, loadingLabel, filterRow, filterAll, filterBox = nil, nil, nil, nil, nil
 		frames, closeButton, backButton, panelLayout, lastDetail, lastView = nil, nil, nil, nil, nil, nil
-		gridLayout, packLayout, detail, cardLines, shownView = nil, nil, nil, nil, nil
+		gridLayout, packLayout, detail, shownView, cardCell = nil, nil, nil, nil, Vector2.zero
 		tab, boxFilter, selected, buying, pendingRequest = ShopFormat.TAB_SQUISHIES, nil, nil, nil, nil
 		detailOpen, coinsShown = false, false
 	end)

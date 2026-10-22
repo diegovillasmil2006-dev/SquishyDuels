@@ -13,10 +13,11 @@
 --     a call that never reached the server keeps its request id;
 --   * the Coins tab: only shop.coinsUnavailable while no bundle is offered (always in v1, and while Grip forbids
 --     bundles); offered bundles show their amount and "…" / "Unavailable" / "{price} Robux".
---   * Foam UI restyle (2026-10-09): priceNumber is the bare price ("7,500") and cardLine the card's line with the
---     coin for a buyable card (the bare price) and need Coins, words without it otherwise.
+--   * Foam UI restyle (2026-10-09): priceNumber is the bare price ("7,500") beside the coin.
+--   * Shop fix (2026-10-22): the cards are the design's GAME PASSES cards (H:339-349): 2 columns, 104 high unless the
+--     text needs more, the chip and the text column share the card (chipWidth, rowMinWidth, rowTextWidth, rowHeight).
 --   * UI FINAL R6 (the Shop window, H:289-342): panelLayout is the design's body (330 | 652, 498 high on a desktop,
---     4 columns of cards) and fits every screen with touch-sized chips; a phone shows the list or the featured card
+--     2 columns of cards) and fits every screen with touch-sized chips; a phone shows the list or the featured card
 --     (the separate detail state) and the tab chips only over the list; featuredLayout keeps the name, line and BUY
 --     and gives the art 230 or what is left (hidden under minPx); featuredLine / featuredView; COINS only with a
 --     bundle, and L1 / R1 jump between the drawn sections.
@@ -88,26 +89,6 @@ return function(t: Context)
 		expect.deepEqual(card(25000, false, 1300, false), { state = "needCoins", missing = 23700 })
 		expect.deepEqual(card(1200, false, 1200, false), { state = "buy", missing = 0 })
 		expect.deepEqual(card(1200, false, 0 / 0, false), { state = "needCoins", missing = 1200 })
-	end)
-
-	t.test("cardStatusText: Owned, the price, the missing Coins, Loading… and not for sale", function()
-		local function entry(state: string, price: number?, missing: number): any
-			return { state = state, price = price, missing = missing }
-		end
-		expect.equal(ShopFormat.cardStatusText(entry("owned", 1200, 0)), Strings.common.owned)
-		expect.equal(ShopFormat.cardStatusText(entry("buy", 25000, 0)), coinsText("25,000"))
-		expect.equal(ShopFormat.cardStatusText(entry("buy", 25000, 0)), "25,000 Coins")
-		expect.equal(
-			ShopFormat.cardStatusText(entry("needCoins", 25000, 23700)),
-			Strings.format(Strings.common.needCoins.many, { missing = "23,700" })
-		)
-		expect.equal(
-			ShopFormat.cardStatusText(entry("needCoins", 1200, 1)),
-			Strings.format(Strings.common.needCoins.one, { missing = "1" })
-		)
-		expect.equal(ShopFormat.cardStatusText(entry("purchasing", 1200, 0)), Strings.common.loading)
-		expect.equal(ShopFormat.cardStatusText(entry("notSold", nil, 0)), Strings.reason.shop.notForSale)
-		expect.equal(ShopFormat.priceText(nil), nil)
 	end)
 
 	t.test("entries: every Catalog squishy, sorted by rarity, then price, then name", function()
@@ -353,7 +334,7 @@ return function(t: Context)
 	local TOUCH = Config.UI.Touch
 	local SHOP = Config.UI.Shop
 	local EPS = 1e-6
-	local CARD_WIDTH = SHOP.cardWidth
+	local CARD_WIDTH = 300 -- shop fix: a card's narrowest width (rowMinWidth), two in the design's 652 px column
 	-- SD_Modal's safe areas (actual px): desktops under Roblox's top bar, a laptop, phones landscape and portrait.
 	local SCREENS = {
 		{ label = "1280x662", size = Vector2.new(1280, 662) },
@@ -375,7 +356,7 @@ return function(t: Context)
 		expect.deepEqual(SHOP.body, { featuredWidth = 330, gap = 20, padTop = 20, padSide = 24, padBottom = 24 })
 	end)
 
-	t.test("panelLayout on a desktop: the design's body (H:294), 330 | 652, 498 high, 4 columns of cards", function()
+	t.test("panelLayout on a desktop: the design's body (H:294), 330 | 652, 498 high, 2 columns of cards", function()
 		local l = ShopFormat.panelLayout(Vector2.new(1280, 662), false, DESIGN_TOP, CARD_WIDTH)
 		expect.equal(l.class, "regular")
 		expect.equal(l.panelWidth, 1060)
@@ -391,7 +372,12 @@ return function(t: Context)
 		expect.equal(l.featuredHeight, l.bodyHeight + SHOP.featured.lip)
 		expect.equal(l.listLeft, 350)
 		expect.equal(l.listWidth, 652)
-		expect.equal(l.columns, 4)
+		expect.equal(l.columns, 2) -- H:339: repeat(2, 1fr)
+		expect.equal(l.cellWidth, (652 - ShopFormat.PANEL.gridChrome - 12) // 2) -- 1fr less the scroll bar
+		expect.equal(ShopFormat.panelLayout(Vector2.new(1280, 662), false, DESIGN_TOP, 100).columns, 2) -- at most 2
+		local one = ShopFormat.panelLayout(Vector2.new(1280, 662), false, DESIGN_TOP, 400)
+		expect.equal(one.columns, 1) -- a long name word: one column across the list
+		expect.equal(one.cellWidth, 652 - ShopFormat.PANEL.gridChrome)
 		expect.truthy(l.gridWidth <= l.listWidth + EPS)
 		expect.equal(l.listTop, 0)
 		expect.equal(l.listHeight, l.bodyHeight)
@@ -435,7 +421,12 @@ return function(t: Context)
 							ShopFormat.PANEL.cellPad,
 							ShopFormat.PANEL.gridChrome
 						)
-						expect.equal(l.columns, fit.columns)
+						expect.equal(l.columns, math.min(fit.columns, SHOP.rows.columns))
+						expect.equal(
+							l.cellWidth,
+							(l.listWidth - ShopFormat.PANEL.gridChrome - (l.columns - 1) * ShopFormat.PANEL.cellPad)
+								// l.columns
+						)
 						expect.near(l.gridWidth, fit.width)
 						expect.equal(l.listTop, if filtered then l.chipHeight + ShopFormat.PANEL.gap else 0)
 					end
@@ -540,25 +531,47 @@ return function(t: Context)
 
 	-- Foam UI restyle (2026-10-09) ------------------------------------------------------------------------------------
 
-	t.test("priceNumber / cardLine: the coin and a bare price; every other state in words", function()
-		local function entry(state: string, price: number?, missing: number): any
-			return { state = state, price = price, missing = missing }
-		end
+	t.test("priceNumber: a bare price beside the coin", function()
 		expect.equal(ShopFormat.priceNumber(25000), "25,000")
 		expect.equal(ShopFormat.priceNumber(1200.9), "1,200")
 		expect.equal(ShopFormat.priceNumber(nil), nil)
-		local function line(e: any): { text: string, coin: boolean }
-			local text, coin = ShopFormat.cardLine(e)
-			return { text = text, coin = coin }
-		end
-		expect.deepEqual(line(entry("buy", 7500, 0)), { text = "7,500", coin = true })
-		expect.deepEqual(line(entry("needCoins", 25000, 23700)), {
-			text = Strings.format(Strings.common.needCoins.many, { missing = "23,700" }),
-			coin = true,
-		})
-		expect.deepEqual(line(entry("owned", 1200, 0)), { text = Strings.common.owned, coin = false })
-		expect.deepEqual(line(entry("purchasing", 1200, 0)), { text = Strings.common.loading, coin = false })
-		expect.deepEqual(line(entry("notSold", nil, 0)), { text = Strings.reason.shop.notForSale, coin = false })
+	end)
+
+	-- Shop fix (2026-10-22): the squishy cards as the design's GAME PASSES cards (H:341-349) ---------------------
+
+	t.test("rows: the design's card numbers (H:339-348)", function()
+		local rows = Config.UI.Shop.rows
+		expect.equal(rows.columns, 2)
+		expect.equal(rows.height, 104)
+		expect.deepEqual(
+			{ rows.border, rows.padTop, rows.padRight, rows.padBottom, rows.padLeft, rows.gap, rows.textGap },
+			{ 4, 10, 12, 10, 10, 12, 4 }
+		)
+		expect.equal(rows.tile.px, 76)
+		expect.equal(rows.art.px, 84)
+		local chip = rows.chip
+		expect.deepEqual({ chip.height, chip.padLeft, chip.padRight, chip.coinPx }, { 38, 6, 10, 22 })
+		expect.equal(rows.checkPx, 44)
+	end)
+
+	t.test("chipWidth / rowMinWidth / rowTextWidth: the tile, the text column and the chip share the card", function()
+		-- H:347: border 3 + padding 6 + the coin 22 + gap 5 + the price + padding 10 + border 3.
+		expect.equal(ShopFormat.chipWidth(50), 3 + 6 + 22 + 5 + 50 + 10 + 3)
+		expect.equal(ShopFormat.chipWidth(-4), ShopFormat.chipWidth(0))
+		-- H:341: border 4 + padding 10, the tile 76, gap 12, the text, gap 12, the chip, padding 12 + border 4.
+		local fixed = 4 + 10 + 76 + 12 + 12 + 12 + 4
+		expect.equal(ShopFormat.rowMinWidth(80, 100), fixed + 100 + 80)
+		expect.equal(ShopFormat.rowTextWidth(fixed + 100 + 80, 100), 80)
+		expect.equal(ShopFormat.rowTextWidth(310, 99), 310 - fixed - 99)
+		expect.equal(ShopFormat.rowTextWidth(10, 99), 1) -- never under 1
+	end)
+
+	t.test("rowHeight: 104 (H:341) unless the name and the line need more", function()
+		expect.equal(ShopFormat.rowHeight(26, 40), 104)
+		expect.equal(ShopFormat.rowHeight(0, 0), 104)
+		-- Two name lines (2 x 27) + gap 4 + two lines (2 x 20) = 98 inside the border and padding (8 + 20).
+		expect.equal(ShopFormat.rowHeight(54, 40), 8 + 20 + 54 + 4 + 40)
+		expect.equal(ShopFormat.rowHeight(54.2, 40), 8 + 20 + 99) -- rounded up
 	end)
 
 	-- UI FINAL R3 (plan R3): the panel is the Shop window, the design's 1060 x 650 face on a desktop (H:289), its top
