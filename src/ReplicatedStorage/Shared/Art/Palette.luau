@@ -668,6 +668,30 @@ local Palette = {
 	HighwayAqua = Color3.fromHex("#5FE0E8"), -- K:43 Aqua's colour: a gumdrop tree's tint (L:494, K:535-540)
 	HighwayCoatJelly = Color3.fromHex("#8DF27A"), -- K:214 CoatJelly's colour: a popsicle's tint (L:763 ...)
 	HighwayLightVolcano = Color3.fromHex("#FF8A4D"), -- L:4 L3_volcano
+	-- Highway v2 (owner 2026-10-23, Claude Design's "Highway Zones Spec v2"; SDTools HighwayKit takes its base colours
+	-- from the tokens above and these): the kit's ink, the lava zone's smoke, the rainbow zone's outside clouds, and each
+	-- zone's Atmosphere.Color (kit z.atmo.color; Decay is Biome4 / Basalt / Lilac / Biome7, HighwayZoneMood).
+	HighwayKitInk = Color3.fromHex("#2A2230"),
+	HighwaySmokeDark = Color3.fromHex("#5A4A55"),
+	HighwaySmokeLight = Color3.fromHex("#7A6A70"),
+	HighwayCloudLilac = Color3.fromHex("#E9DDFF"),
+	HighwayAtmo1 = Color3.fromHex("#E9F6FF"),
+	HighwayAtmo2 = Color3.fromHex("#F6EBDD"),
+	HighwayAtmo3 = Color3.fromHex("#D8F4F1"),
+	HighwayAtmo4 = Color3.fromHex("#EAF6FF"),
+	HighwayAtmo5 = Color3.fromHex("#9A4A44"),
+	HighwayAtmo6 = Color3.fromHex("#B9A2F0"),
+	HighwayAtmo7 = Color3.fromHex("#FFF1D2"),
+	-- The zones' light where Design's renders leave daylight (Config.UI.Highway.mood; matched in Studio 2026-10-23):
+	-- Lava Volcano's dusk, Rainbow Road's night, Divine Heaven's warm ground light (kit z.light.ground / z.light.sun).
+	HighwayMood5Ambient = Color3.fromHex("#5B2C3A"),
+	HighwayMood5Outdoor = Color3.fromHex("#C46A4E"),
+	HighwayMood5Sun = Color3.fromHex("#FFD2B8"),
+	HighwayMood6Ambient = Color3.fromHex("#4B3A86"),
+	HighwayMood6Outdoor = Color3.fromHex("#7B5FC0"),
+	HighwayMood6Sun = Color3.fromHex("#F1EBFF"),
+	HighwayMood7Outdoor = Color3.fromHex("#E8D2A0"),
+	HighwayMood7Sun = Color3.fromHex("#FFF3DD"),
 
 	-- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; Art/KillStyle): the custom sets' own
 	-- colours, from each squishy's look (Catalog accents). The Candy Pop set uses Cream, Lemon and Strawberry.

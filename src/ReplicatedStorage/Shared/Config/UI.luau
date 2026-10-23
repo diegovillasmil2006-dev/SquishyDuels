@@ -95,6 +95,7 @@ local UI = {
 		Prize = 52, -- H:545 the congrats item title
 		Reveal = 64, -- H:490 the reveal name
 		Congrats = 82, -- H:539 the CONGRATULATIONS letters
+		Zone = 60, -- Claude Design's highway zone banner: the zone name (desktop)
 		-- UI FINAL R2 (PR2, decided 2026-10-15): the design's 17, 19 and 23 kept exact (each >= 16, so checkUI's
 		-- 13 / Scale.min floor allows them; R1 rounded them to 18 / 20 / 22).
 		D17 = 17, -- H:131, H:151, H:324, H:495
@@ -1490,9 +1491,123 @@ local UI = {
 				rings = "CandyCyan",
 				landed = "White",
 				newBest = "CandyGold",
-				-- Owner 2026-10-22: the zone banner's "Recommended" line, green when the player's Grip power reaches it.
-				zoneReady = "CandyLime",
-				zoneTooWeak = "CandyRed",
+			},
+		},
+		-- Claude Design's zone banner (highway v2; "Highway Zones Spec" banner section, unchanged in v2; HighwayHud
+		-- zoneBanner): top centre under the flight lines (topGapPx), on a soft ink scrim (scrimCentre / scrimEdge
+		-- transparency, fading to clear at the ends): the difficulty face (facePx circle of Frames, an ink ring ringShare
+		-- thick, a tag in the difficulty colour under it), then the zone name (nameKind, the zone's colour, ink stroke
+		-- nameStrokePx, a drop nameDropPx) over "Recommended:" (white), the value (ready / weak colour) and a badgePx
+		-- tick or "!". Desktop px (the *Compact ones on a phone). Motion: drops in dropPx over inMs (Back Out), holds
+		-- holdMs, fades up risePx over outMs; a new banner replaces the old at once; too weak, the value pulses once to
+		-- pulseScale over pulseMs. ReducedMotion: fades only. faces: Design's FACE table, by difficulty (= zone).
+		banner = {
+			topGapPx = 8,
+			nameKind = "Zone",
+			nameKindCompact = "Title",
+			lineKind = "Title",
+			lineKindCompact = "Small",
+			tagKind = "Chip",
+			facePx = 92,
+			facePxCompact = 48,
+			badgePx = 30,
+			badgePxCompact = 18,
+			ringShare = 0.07,
+			gapPx = 21,
+			lineGapPx = 6,
+			valueGapPx = 10,
+			padTopPx = 17,
+			padRightPx = 50,
+			padBottomPx = 21,
+			padLeftPx = 31,
+			nameStrokePx = 4,
+			nameDropPx = 7,
+			scrimCentre = 0.4,
+			scrimEdge = 0.58,
+			inMs = 250,
+			holdMs = 2500,
+			outMs = 300,
+			dropPx = 40,
+			risePx = 24,
+			pulseScale = 1.08,
+			pulseMs = 300,
+			colors = {
+				ink = "HighwayKitInk",
+				label = "White",
+				ready = "HighwayCandyGrass",
+				weak = "HighwayBiome5",
+				highlight = "White",
+				tagLight = "White",
+			},
+			-- Design's DIFF (Easy .. Brutal), one per zone; its labels are Strings highway.screen.difficulty.
+			difficulty = {
+				"HighwayCandyGrass",
+				"HighwayLemon",
+				"HighwayBiome2",
+				"HighwayBiome5",
+				"HighwayPinkIcing",
+				"HighwayLilac",
+				"HighwayBasalt",
+			},
+			faces = {
+				{ mouth = "smile", mW = 46, mH = 24, mT = 54, brow = 0 },
+				{ mouth = "smile", mW = 34, mH = 14, mT = 58, brow = 0 },
+				{ mouth = "flat", mW = 32, mH = 8, mT = 62, brow = -1 },
+				{ mouth = "frown", mW = 32, mH = 12, mT = 62, brow = 16 },
+				{ mouth = "frown", mW = 40, mH = 16, mT = 60, brow = 26 },
+				{ mouth = "open", mW = 44, mH = 20, mT = 57, brow = 30, teeth = true },
+				{ mouth = "open", mW = 50, mH = 18, mT = 58, brow = 36, teeth = true, dark = true },
+			},
+		},
+		-- Claude Design's zone moods (highway v2, Spec v2 "Lights, haze and bloom": Atmosphere.Color / Decay and
+		-- Lighting.Bloom Intensity (min(1, bloom x 1.6)) per zone, Threshold 0.9, tweened over tweenSeconds on entry;
+		-- [P] Lava Volcano, Rainbow Road and Divine Heaven also take the renders' dusk, night and warm light, matched in
+		-- Studio 2026-10-23): applied while the own squishy flies through the zone (Client/Anim/HighwayMood), the lobby's
+		-- values back when the throw ends. Colours are Palette tokens; a missing field keeps the lobby's value.
+		mood = {
+			tweenSeconds = 1,
+			bloomThreshold = 0.9,
+			zones = {
+				{ atmo = "HighwayAtmo1", decay = "HighwayBiome4", bloom = 0.45 },
+				{ atmo = "HighwayAtmo2", decay = "HighwayBiome4", bloom = 0.45 },
+				{ atmo = "HighwayAtmo3", decay = "HighwayBiome4", bloom = 0.54 },
+				{ atmo = "HighwayAtmo4", decay = "HighwayBiome4", bloom = 0.64 },
+				{
+					atmo = "HighwayAtmo5",
+					decay = "HighwayBasalt",
+					bloom = 0.48,
+					clockTime = 17.6,
+					ambient = "HighwayMood5Ambient",
+					outdoor = "HighwayMood5Outdoor",
+					sun = "HighwayMood5Sun",
+					brightness = 2.2,
+					exposure = 0.2,
+					density = 0.32,
+					haze = 2.5,
+					glare = 0.5,
+				},
+				{
+					atmo = "HighwayAtmo6",
+					decay = "HighwayLilac",
+					bloom = 0.48,
+					clockTime = 0.5,
+					ambient = "HighwayMood6Ambient",
+					outdoor = "HighwayMood6Outdoor",
+					sun = "HighwayMood6Sun",
+					brightness = 1.9,
+					exposure = 0.1,
+					density = 0.3,
+					haze = 1,
+					glare = 0,
+				},
+				{
+					atmo = "HighwayAtmo7",
+					decay = "HighwayBiome7",
+					bloom = 0.64,
+					outdoor = "HighwayMood7Outdoor",
+					sun = "HighwayMood7Sun",
+					exposure = 0,
+				},
 			},
 		},
 		-- [P] The sounds (AssetTable keys, all existing).

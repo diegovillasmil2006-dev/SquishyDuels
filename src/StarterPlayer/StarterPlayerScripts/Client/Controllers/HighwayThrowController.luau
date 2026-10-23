@@ -71,6 +71,7 @@ local WorldLayout = require(Shared.World.WorldLayout)
 
 local Client = script.Parent.Parent
 local FxPool = require(Client.Anim.FxPool)
+local HighwayMood = require(Client.Anim.HighwayMood)
 local Scheduler = require(Client.Anim.Scheduler)
 local ThrowMotion = require(Client.Anim.ThrowMotion)
 local ThrowTracks = require(Client.Anim.ThrowTracks)
@@ -242,6 +243,7 @@ local REAL_DEPS = {
 	gripLevel = function(): number
 		return GripController.level() or 1
 	end,
+	mood = HighwayMood, -- Claude Design's zone moods (a no-op outside a running client)
 	fpActive = FirstPersonController.isActive,
 	player = function(): any?
 		return Players.LocalPlayer
@@ -499,6 +501,7 @@ local function finish(throw: Throw, chained: boolean?)
 		throw.hold = nil
 		hold:release()
 	end
+	deps.mood.reset() -- the lobby's light back (HighwayMood)
 	if not chained then
 		deps.holdToasts(false)
 		muteLobby(false)
@@ -649,8 +652,9 @@ local function drawFlight(throw: Throw, d: number, boost: boolean)
 		if throw.biome ~= nil then
 			h:punch("zone")
 			play(U.sounds.zone)
-			pop(HighwayThrowController.zoneBanner(biome, deps.gripLevel()))
+			h:zoneBanner(HighwayThrowController.zoneBanner(biome, deps.gripLevel()))
 		end
+		deps.mood.enter(biome) -- Claude Design's zone mood (HighwayMood), the first zone's too
 		throw.biome = biome
 	end
 	local hit = 0
@@ -975,22 +979,24 @@ function HighwayThrowController.shotGoal(kind: Shot, p: Vector3): (Vector3, Vect
 		WorldLayout.highwayCFrame(look.X, look.Y, look.Z).Position
 end
 
--- Owner 2026-10-22 (Break and Steal an Egg): the banner as the squishy enters `biome`, its name and the throw power the
--- zone starts at, green when a Grip `level` throw reaches it, red when not.
-function HighwayThrowController.zoneBanner(biome: number, level: number): { HighwayHud.Line }
+-- Owner 2026-10-22 (Break and Steal an Egg; Claude Design's banner, HighwayHud zoneBanner): the banner as the squishy
+-- enters `biome`: its name in its colour, "Recommended:" and the throw power the zone starts at, ready when a Grip
+-- `level` throw reaches it, and the zone's difficulty (Design: zone n is difficulty n) with its tag; nil for no zone.
+function HighwayThrowController.zoneBanner(biome: number, level: number): HighwayHud.Banner?
 	local def = WorldLayout.Highway.biomes[biome]
 	local wall = H.walls[biome]
 	if def == nil or wall == nil then
-		return {}
+		return nil
 	end
-	local ready = HighwayMath.power(level) >= wall
+	local s = Strings.highway.screen
 	return {
-		{ text = Strings.resolve(def.nameKey) or "", big = true, color = def.nameColor },
-		{
-			text = Strings.format(Strings.highway.screen.recommended, { power = Format.power(wall) }),
-			big = false,
-			color = if ready then U.pop.colors.zoneReady else U.pop.colors.zoneTooWeak,
-		},
+		name = Strings.resolve(def.nameKey) or "",
+		nameColor = def.nameColor,
+		label = s.recommended,
+		value = Strings.format(s.recommendedValue, { power = Format.power(wall) }),
+		ready = HighwayMath.power(level) >= wall,
+		difficulty = biome,
+		tag = s.difficulty[biome] or "",
 	}
 end
 

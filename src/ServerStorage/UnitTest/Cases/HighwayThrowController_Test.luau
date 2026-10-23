@@ -14,6 +14,8 @@
 --     only the last second's sends);
 --   * landingToasts(landing): the landing (distance, Coins, Grip), then a new best, a new biome (its name; none for the
 --     Golden Gates), the gifts (one line a kind, with its count) and the Food Bag, each only when it happened;
+--   * zoneBanner(biome, level) (Claude Design's zone banner): the zone's name in its colour, "Recommended:" and its
+--     power wall, ready from the first Grip level whose throw reaches the wall, its difficulty and tag; nil for no zone;
 --   * init / start / destroy run cleanly in Edit mode and leave nothing behind (no Scheduler effect, the Highway
 --     context off; with no LocalPlayer start binds no action and adds no effect: it only works for a client);
 --   * the deck (owner 2026-10-19: no first-person hands while the camera is not the player's own first person): in the
@@ -147,6 +149,28 @@ return function(t: Context)
 		local gates = table.clone(base) :: any
 		gates.reached = 8 -- the Golden Gates: no biome name
 		expect.equal(#HighwayThrowController.landingToasts(gates), 1)
+	end)
+
+	t.test("zoneBanner: the zone's name, its Recommended power, ready from the first Grip level that reaches it", function()
+		local HighwayMath = t.requireShared("HighwayMath")
+		local wall = Config.Economy.Highway.walls[3]
+		local def = WorldLayout.Highway.biomes[3]
+		local s = Strings.highway.screen
+		local level = 1
+		while HighwayMath.power(level) < wall and level < 1000 do
+			level += 1
+		end
+		expect.truthy(level > 1 and level < 1000)
+		local banner = HighwayThrowController.zoneBanner(3, level) :: any
+		expect.equal(banner.name, Strings.resolve(def.nameKey))
+		expect.equal(banner.nameColor, def.nameColor)
+		expect.equal(banner.label, s.recommended)
+		expect.equal(banner.value, Strings.format(s.recommendedValue, { power = Format.power(wall) }))
+		expect.equal(banner.difficulty, 3)
+		expect.equal(banner.tag, s.difficulty[3])
+		expect.truthy(banner.ready)
+		expect.falsy((HighwayThrowController.zoneBanner(3, level - 1) :: any).ready)
+		expect.equal(HighwayThrowController.zoneBanner(99, 1), nil)
 	end)
 
 	t.test("init / start / destroy run cleanly in Edit mode and leave nothing behind", function()
@@ -321,6 +345,7 @@ return function(t: Context)
 					table.insert(w.pops, texts)
 				end
 				function hud.punch() end
+				function hud.zoneBanner() end -- Claude Design's zone banner (HighwayThrowController.zoneBanner's own test)
 				function hud.destroy()
 					w.hudDestroyed = true
 				end

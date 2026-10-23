@@ -1117,6 +1117,17 @@ local SLOTS: { AssetSlot } = {
 	killEmblem("img.kill.emblem.bubble_burst.white", 125496553543566, "kill_emblem_bubble_burst_white.png", "Bubble Burst: Cupcake Axolotl, low-fidelity: white silhouette"),
 	killEmblem("img.kill.emblem.dragon_blaze", 107936827492507, "kill_emblem_dragon_blaze.png", "Dragon's Blaze: Dragon, low-fidelity"),
 	killEmblem("img.kill.emblem.dragon_blaze.white", 112730103205754, "kill_emblem_dragon_blaze_white.png", "Dragon's Blaze: Dragon, low-fidelity: white silhouette"),
+	-- Highway v2 (jayyyyy 2026-10-23, Claude Design's "Highway Zones Spec v2": "Floors get two-tone squares from one
+	-- checker Texture (10-stud cells, black at Transparency 0.92)"; owner: "checkered pattern but with lego texture").
+	{
+		key = "img.highway.floorChecker",
+		kind = "image",
+		id = 107377064534044,
+		source = "jayyyyy upload (Studio MCP upload_image): 'sd_floor_checker.png', a 256 px 2x2 checker",
+		license = "Own upload; a generated checker (black cells, the others clear), no third-party art",
+		verifiedAt = "2026-10-23",
+		notes = "Highway v2 floors: a Texture on the floor's top, 20 studs a tile (10-stud cells), Transparency 0.92",
+	},
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

@@ -435,6 +435,8 @@ return function(t: Context)
 				"img.pack.9600",
 				"img.pack.32500",
 				"img.icon.robux",
+				-- Highway v2 (2026-10-23): Claude Design's floor checker.
+				"img.highway.floorChecker",
 			})
 		)
 	end)

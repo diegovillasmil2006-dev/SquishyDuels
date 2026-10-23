@@ -14,9 +14,9 @@
 --   * distances exact (phase 13's landing math is in studs from the start line): 170 lane pieces of 50 studs end to end
 --     from 0 to the Golden Gates at 8,500 (PR3:36), each in the biome Config.Economy.Highway's starts put it in, with a
 --     rail on each edge (L:459-460: x ±14, 1.04 up); a distance marker every 100 studs from 100 to 8,400 at x 19
---     (L:476) showing its grouped distance and "studs" (P3D:275); an arch at each biome start from Bakery Town at
---     v6's scale (L:533 ...), the launch gate's banner naming Candy Meadow (L:33); ground slabs (HK:28) under the 5
---     ground biomes;
+--     (L:476) showing its grouped distance and "studs" (P3D:275); Claude Design's name arch at each zone start from
+--     Bakery Town (highway v2, 2026-10-23), the launch gate's banner naming Candy Meadow (L:33); each zone's own floor
+--     end to end under it (Design's width; the checker floors Lego studs and the checker);
 --   * the deck (L:20, :31-37): pens3 phase 13 (owner 2026-10-18: "a general area where they walk up and everybody can
 --     throw"): no launch spots (v6's L:21-30 and the SD_LaunchSpot tag are gone), only the platform, the 2 watch steps,
 --     the gate and its 4 fences; the launch board (SD_LaunchBoard) with its static lines (LAUNCH BOARD, LAST THROWS,
@@ -24,7 +24,8 @@
 --     LAST column; the server best in its own); the Kitty Bread mascot slot on the gate (LK:173-175);
 --   * every piece placed from the origin; nothing but the deck collides; pieces per biome within v6's 600 and the part
 --     counts pinned; two builds give the same tree; Verify passes on the build and catches a broken one.
--- The biome scenery (pens3 phase 12b) has its own contract: HighwayScenery_Test.
+-- Claude Design's zones (highway v2: HighwayZones + HighwayKit) are checked here by their floors, bounds and counts,
+-- and at build time (HighwayBuilder: the kit's zones match Config, nothing in the flight tube).
 
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -39,18 +40,25 @@ type Context = {
 -- Restated from the design.
 local BIOME_MODELS =
 	{ "Biome_1_CM", "Biome_2_BT", "Biome_3_BL", "Biome_4_FD", "Biome_5_LV", "Biome_6_RR", "Biome_7_DH" }
-local ARCH_SCALES = { 1, 1.1, 1.2, 1.3, 1.45, 1.6 } -- biomes 2..7 (L:533, :616, :723, :895, :1130, :1397)
 local MARKERS = 84 -- L:476 ...: d 100 .. 8,400
 local LANE_PIECES = 170 -- 8,500 / 50
--- The pieces and parts of each biome: lane pieces 8 parts (a top, 2 edges, 5 dashes; Rainbow Road: 7 bands and 2 glow
--- strips, 9), rails 4 (a tube, 3 posts), markers 3, arches 9, ground slabs 1, the Golden Gates 52; the scenery (phase
--- 12b, L:488-1599): gumdrop trees 6, lollipop lamps 6, candy hills 5 (10 pieces, 58 parts), bread houses 7, croissant
--- hills 7 (16, 112), cup islands 6 (10, 60), popsicles 7, sundae peaks 10 (29, 230), basalt rocks 3, the volcano 26
--- (39, 140), cloud banks 6, planets 17 (38, 261), gold clouds 5, marble pillars 4 (134, 578); p13v4: 3 rings of 12
--- rods and 2 pads of 3 discs a biome (+5 pieces, +42 parts).
--- Owner 2026-10-22: + the road's walls (and the sky biomes' floor) every 100 studs and each zone's extra pieces.
-local PIECES = { 41, 72, 93, 155, 240, 304, 515 }
-local PARTS = { 217, 398, 475, 931, 1031, 1724, 2467 }
+local FLOOR_TOP = -0.1 -- Design's road surface (HighwayZones' Y0): 0.1 under the lane's foot
+-- Claude Design's zone floors (highway v2, HighwayKit): name, width, checker (Lego studs + the checker, owner
+-- 2026-10-23); all 2 thick.
+local FLOORS = {
+	{ "Meadow floor", 140, true },
+	{ "Shortbread floor", 136, true },
+	{ "Lagoon water", 136, false },
+	{ "Snow floor", 140, true },
+	{ "Basalt floor", 136, false },
+	{ "Lilac floor", 140, true },
+	{ "Marble floor", 140, true },
+}
+-- The pieces and parts of each biome (v7, the 2026-10-23 build): the lane, its rails and markers, the arch, 3 rings
+-- and 2 pads as before; Design's floor, walls, outside, particles and every prop every 100 studs (one Part per
+-- material: its blocks unioned).
+local PIECES = { 89, 118, 155, 236, 328, 441, 487 }
+local PARTS = { 239, 382, 469, 774, 1015, 1248, 1569 }
 local RINGS_PER_BIOME, PADS_PER_BIOME, ROD_COUNT = 3, 2, 12
 local MAX_PIECES = 600 -- spec.txt:157
 local TOLERANCE = 2e-3 -- CFrames are single precision; 8,500 studs out that is a few thousandths
@@ -182,13 +190,13 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the root is SD_Highway, unparented, marked highway v6, pivoted on the origin; a Persistent deck, 7 biomes",
+		"the root is SD_Highway, unparented, marked highway v7, pivoted on the origin; a Persistent deck, 7 biomes",
 		function()
 			expect.equal(root.Name, "SD_Highway")
 			expect.equal(root.Parent, nil)
 			expect.equal(root:GetAttribute("SD_GeneratorId"), "highway")
 			expect.equal(root:GetAttribute("SD_GeneratorVersion"), HighwayBuilder.VERSION)
-			expect.equal(HighwayBuilder.VERSION, 6) -- 4: p13v4's rings and pads; 5: the Lego walls; 6: zones grow
+			expect.equal(HighwayBuilder.VERSION, 7) -- 4: p13v4's rings and pads; 5-6: the stand-in; 7: Design's v2
 			expect.truthy(root:HasTag("SD_Generated"))
 			expect.truthy(near((root.WorldPivot.Position - origin.Position).Magnitude, 0))
 			expect.equal(deck.ModelStreamingMode, Enum.ModelStreamingMode.Persistent) -- K:7881-7883 Plaza, LaunchGate
@@ -274,16 +282,15 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"arches at the biome starts from Bakery Town at v6's scales; the gate names Candy Meadow; gates at 8,500",
+		"Design's name arches at the zone starts from Bakery Town; the gate names Candy Meadow; gates at 8,500",
 		function()
+			expect.equal(#pieces(root:FindFirstChild(BIOME_MODELS[1]) :: Model, "biome_arch"), 0)
 			for index = 2, #BIOME_MODELS do
 				local arches = pieces(root:FindFirstChild(BIOME_MODELS[index]) :: Model, "biome_arch")
 				expect.equal(#arches, 1)
 				local arch = arches[1]
 				local p = laneOf(arch)
-				expect.truthy(near(p.X, 0) and near(p.Z, starts[index]))
-				expect.truthy(near(p.Y, if index >= 6 then 1 else 0)) -- L:533 .. :1130 (the sky biomes 1 up)
-				expect.truthy(near(arch:GetAttribute("Scale") :: number, ARCH_SCALES[index - 1], 1e-6))
+				expect.truthy(near(p.X, 0) and near(p.Y, FLOOR_TOP) and near(p.Z, starts[index])) -- on the zone floor
 				local label = arch:FindFirstChildWhichIsA("TextLabel", true) :: TextLabel
 				expect.equal(label.Text, Strings.resolve(H.biomes[index].nameKey))
 				expect.equal(label:GetAttribute("SD_TextKey"), H.biomes[index].nameKey)
@@ -292,32 +299,34 @@ return function(t: Context)
 			local banner = gate:FindFirstChild("biome_banner") :: BasePart
 			local bannerText = banner:FindFirstChildWhichIsA("TextLabel", true) :: TextLabel
 			expect.equal(bannerText.Text, "CANDY MEADOW") -- L:33 label
-			local gates = pieces(root:FindFirstChild("Biome_7_DH") :: Model, "dh_golden_gates")
+			local gates = pieces(root:FindFirstChild("Biome_7_DH") :: Model, "golden_gates")
 			expect.equal(#gates, 1)
 			local p = laneOf(gates[1])
-			expect.truthy(near(p.X, 0) and near(p.Y, 1) and near(p.Z, gatesAt)) -- L:1597 (y 1), PR3:36 (8,500)
+			expect.truthy(near(p.X, 0) and near(p.Y, FLOOR_TOP) and near(p.Z, gatesAt)) -- Design: d 2,500 in, PR3:36
 		end
 	)
 
-	t.test("ground slabs 400 x 100 under the 5 ground biomes (HK:28), the road's width under the sky ones (2026-10-22)", function()
+	t.test("each zone's floor end to end under it, Design's width, its top at Y0; the checker floors Lego", function()
 		local covered = 0
-		local skyWidth = 2 * (H.road.halfWidth + H.road.wallThick)
 		for index, name in BIOME_MODELS do
-			local slabs = pieces(root:FindFirstChild(name) :: Model, "biome_ground")
-			local length = (starts[index + 1] or gatesAt) - starts[index]
-			expect.equal(#slabs, length / 100)
-			for _, slab in slabs do
-				local part = slab:FindFirstChildWhichIsA("BasePart") :: BasePart
-				local width = if index >= 6 then skyWidth else 400
-				expect.truthy((part.Size - Vector3.new(width, 2, 100)).Magnitude < TOLERANCE)
-				local p = laneOf(slab)
-				expect.truthy(near(p.Y, -2.1)) -- L:478: its top 0.1 under the lane's foot
-				expect.equal(biomeAt(p.Z - 50), index)
-				expect.equal(biomeAt(p.Z + 49.9), index)
-				covered += 100
+			local spec = FLOORS[index]
+			local floors = pieces(root:FindFirstChild(name) :: Model, "zone_floor")
+			expect.equal(#floors, 1)
+			local run = 0
+			for _, part in floors[1]:GetChildren() do
+				if part:IsA("BasePart") and part.Name == spec[1] then
+					expect.truthy(near(part.Size.X, spec[2]) and near(part.Size.Y, 2))
+					local p = origin:PointToObjectSpace(part.Position)
+					expect.truthy(near(p.X, 0) and near(p.Y + 1, FLOOR_TOP))
+					expect.equal(part.TopSurface == Enum.SurfaceType.Studs, spec[3])
+					expect.equal(part:FindFirstChild("Checker") ~= nil, spec[3])
+					run += part.Size.Z
+				end
 			end
+			expect.truthy(near(run, (starts[index + 1] or gatesAt) - starts[index]))
+			covered += run
 		end
-		expect.equal(covered, gatesAt)
+		expect.truthy(near(covered, gatesAt))
 	end)
 
 	t.test(
@@ -485,26 +494,15 @@ return function(t: Context)
 	end)
 
 	t.test("every part is placed from the origin: all of them lie in the lane-local corridor", function()
-		-- The deck and the lane lie within x ±201, y -3..70; the biome scenery (phase 12b, L:488-1599) reaches farther
-		-- out: rr_planet_03's ring to x -346 (L:1221), rr_planet_02's to y 137 (L:1220), rr_cloud_bank_23 down to
-		-- y -27 (L:1206).
-		local SCENERY = {
-			gumdrop_tree = true,
-			lollipop_lamp = true,
-			candy_hill = true,
-			bt_bread_house = true,
-			bt_croissant_hill = true,
-			bl_cup_island = true,
-			fd_popsicle = true,
-			fd_sundae_peak = true,
-			lv_basalt_rock = true,
-			lv_volcano = true,
-			rr_cloud_bank = true,
-			rr_planet = true,
-			dh_gold_cloud = true,
-			dh_marble_pillar = true,
-			flight_ring = true, -- p13v4: the highest ring's top is 71.6 up (d 426)
-			road_walls = true, -- 2026-10-22: Divine Heaven's towers reach 86 up
+		-- The deck and the lane's own pieces lie within x ±201, y -3..70; the rest reaches farther: Claude Design's zones
+		-- (highway v2) to their outside's 900 studs across (kit-build.js:161) and from the cloud sea (y -36) to Frozen
+		-- Dessert Peaks' summits (217 up), the arches over the walls, the highest ring's top 71.6 up (d 426).
+		local LANE = {
+			lane_tile = true,
+			rr_rainbow_lane = true,
+			lane_rail = true,
+			distance_marker = true,
+			flight_pad = true,
 		}
 		local outside: { string } = {}
 		for _, part in root:GetDescendants() do
@@ -514,8 +512,8 @@ return function(t: Context)
 					node = node.Parent
 				end
 				local wide, low, high = 201, -3, 70
-				if node.Parent ~= deck and SCENERY[node:GetAttribute("SD_Piece")] then
-					wide, low, high = 350, -30, 140
+				if node.Parent ~= deck and not LANE[node:GetAttribute("SD_Piece")] then
+					wide, low, high = 910, -40, 230
 				end
 				local p = origin:PointToObjectSpace(part.CFrame.Position)
 				if math.abs(p.X) > wide or p.Y < low or p.Y > high or p.Z > 61 or p.Z < -(gatesAt + 30) then

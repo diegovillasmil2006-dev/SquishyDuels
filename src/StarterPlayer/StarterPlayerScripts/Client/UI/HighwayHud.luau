@@ -44,6 +44,17 @@ local Tweens = require(Client.Anim.Tweens)
 -- Types
 
 export type Line = { text: string, big: boolean, color: string } -- color: a Palette token name
+-- Claude Design's zone banner (zoneBanner): the zone's name in its colour (a Palette token), "Recommended:" and the
+-- value, ready (green tick) or too weak (red "!"), and the difficulty 1..7 (face, tag colour) with its tag text.
+export type Banner = {
+	name: string,
+	nameColor: string,
+	label: string,
+	value: string,
+	ready: boolean,
+	difficulty: number,
+	tag: string,
+}
 export type View = {
 	studs: number,
 	biome: number,
@@ -63,6 +74,7 @@ export type Hud = {
 	setBar: (self: Hud, shown: boolean, value: number?) -> (),
 	setFlight: (self: Hud, view: View?) -> (),
 	pop: (self: Hud, lines: { Line }) -> (),
+	zoneBanner: (self: Hud, banner: Banner?) -> (),
 	punch: (self: Hud, line: "rings" | "zone") -> (),
 	destroy: (self: Hud) -> (),
 }
@@ -428,7 +440,264 @@ function HighwayHud.new(spec: Spec): Hud
 		end)
 	end
 
+	-- Claude Design's zone banner (Config.UI.Highway.banner; see its notes there).
+	local BN = U.banner
+	local bannerFrame: Frame? = nil
+	local bannerRun: Scheduler.Handle? = nil
+
+	local function clearBanner()
+		local handle = bannerRun
+		bannerRun = nil
+		if handle then
+			handle:disconnect()
+		end
+		local frame = bannerFrame
+		bannerFrame = nil
+		if frame then
+			frame:Destroy()
+		end
+	end
+
+	local function round(object: GuiObject, scale: number)
+		Create("UICorner", { CornerRadius = UDim.new(scale, 0), Parent = object })
+	end
+
+	local function shape(parent: Instance, name: string, x: number, y: number, w: number, h: number, tone: Color3): Frame
+		return Create("Frame", {
+			Name = name,
+			BackgroundColor3 = tone,
+			BorderSizePixel = 0,
+			Position = UDim2.fromScale(x, y),
+			Size = UDim2.fromScale(w, h),
+			Parent = parent,
+		})
+	end
+
+	-- Design's difficulty face (faceVM): an ink ring, the disc in the difficulty colour with a highlight, the eyes,
+	-- the brows (none, a raised left one, or both angled), the mouth (smile / frown halves, a flat pill, an open
+	-- rounded box with teeth), Frames only.
+	local function face(parent: Instance, px: number, level: number): Frame
+		local look = BN.faces[level] or BN.faces[1]
+		local ring = shape(parent, "Face", 0, 0, 0, 0, color(BN.colors.ink))
+		ring.Size = UDim2.fromOffset(px, px)
+		round(ring, 0.5)
+		local inner = 1 - 2 * BN.ringShare
+		local disc = shape(ring, "Disc", BN.ringShare, BN.ringShare, inner, inner, color(BN.difficulty[level] or BN.difficulty[1]))
+		disc.ClipsDescendants = true
+		round(disc, 0.5)
+		local shine = shape(disc, "Shine", 0.14, 0.09, 0.34, 0.2, color(BN.colors.highlight))
+		shine.BackgroundTransparency = 0.55
+		shine.Rotation = -24
+		round(shine, 0.5)
+		local feature = color(if look.dark then BN.colors.weak else BN.colors.ink)
+		local angry = look.brow >= 20
+		for _, x in { 0.24, 0.61 } do
+			round(shape(disc, "Eye", x, if angry then 0.38 else 0.33, 0.15, if angry then 0.13 else 0.16, feature), 0.5)
+		end
+		if look.brow ~= 0 then
+			local left = shape(disc, "Brow", 0.18, if look.brow == -1 then 0.17 else 0.24, 0.26, 0.07, feature)
+			left.Rotation = if look.brow == -1 then -12 else look.brow
+			round(left, 0.5)
+		end
+		if look.brow > 0 then
+			local right = shape(disc, "Brow", 0.56, 0.24, 0.26, 0.07, feature)
+			right.Rotation = -look.brow
+			round(right, 0.5)
+		end
+		local mouth = shape(disc, "Mouth", (50 - look.mW / 2) / 100, look.mT / 100, look.mW / 100, look.mH / 100, feature)
+		if look.mouth == "smile" or look.mouth == "frown" then
+			-- Half an ellipse: the mouth box clips a whole one, its lower (smile) or upper (frown) half showing.
+			mouth.BackgroundTransparency = 1
+			mouth.ClipsDescendants = true
+			round(shape(mouth, "Curve", 0, if look.mouth == "smile" then -1 else 0, 1, 2, feature), 0.5)
+		else
+			mouth.ClipsDescendants = true
+			round(mouth, if look.mouth == "flat" then 0.5 else 0.3)
+		end
+		if look.teeth then
+			shape(mouth, "Teeth", 0.12, 0, 0.76, 0.34, color(BN.colors.highlight))
+		end
+		return ring
+	end
+
+	-- A one-line label measured for the gui's UIScale (no AutomaticSize under it).
+	local function fixed(parent: Instance, name: string, text: string, textKind: Theme.TextKind, tone: Color3): (TextLabel, Vector2)
+		local bounds = Theme.textBoundsAt(text, textKind, nil, scaleOf())
+		local label = Theme.label({
+			Name = name,
+			Text = text,
+			AutomaticSize = Enum.AutomaticSize.None,
+			Size = UDim2.fromOffset(bounds.X + MEASURE_MARGIN_PX, bounds.Y),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			Parent = parent,
+		}, textKind, nil, tone)
+		label.TextWrapped = false
+		return label, Vector2.new(bounds.X + MEASURE_MARGIN_PX, bounds.Y)
+	end
+
+	function hud.zoneBanner(_: Hud, banner: Banner?)
+		clearBanner()
+		if banner == nil then
+			return
+		end
+		local compact = compactOf()
+		local k = if compact then BN.facePxCompact / BN.facePx else 1
+		local facePx = if compact then BN.facePxCompact else BN.facePx
+		local badgePx = if compact then BN.badgePxCompact else BN.badgePx
+		local nameKind = (if compact then BN.nameKindCompact else BN.nameKind) :: Theme.TextKind
+		local lineKind = (if compact then BN.lineKindCompact else BN.lineKind) :: Theme.TextKind
+		local ink = color(BN.colors.ink)
+		local valueTone = color(if banner.ready then BN.colors.ready else BN.colors.weak)
+
+		local frame: Frame = Create("Frame", {
+			Name = "ZoneBanner",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 0),
+			Parent = root,
+		})
+		local scrim: Frame = Create("Frame", {
+			Name = "Scrim",
+			BackgroundColor3 = ink,
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Parent = frame,
+		})
+		Create("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.19, BN.scrimEdge),
+				NumberSequenceKeypoint.new(0.5, BN.scrimCentre),
+				NumberSequenceKeypoint.new(0.81, BN.scrimEdge),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+			Parent = scrim,
+		})
+		round(scrim, 0.5)
+
+		-- The face and its tag.
+		local faceHolder: Frame = Create("Frame", { Name = "FaceHolder", BackgroundTransparency = 1, Parent = frame })
+		face(faceHolder, facePx, banner.difficulty)
+		local tagLabel, tagSize = fixed(faceHolder, "Tag", banner.tag, BN.tagKind :: Theme.TextKind, if banner.difficulty == #BN.difficulty then color(BN.colors.tagLight) else ink)
+		Theme.noOutline(tagLabel)
+		local pill: Frame = Create("Frame", {
+			Name = "TagPill",
+			AnchorPoint = Vector2.new(0.5, 0),
+			BackgroundColor3 = color(BN.difficulty[banner.difficulty] or BN.difficulty[1]),
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(tagSize.X + 12 * k, tagSize.Y + 2),
+			Position = UDim2.new(0.5, 0, 0, facePx - math.floor(tagSize.Y * 0.5)),
+			ZIndex = 2,
+			Parent = faceHolder,
+		})
+		round(pill, 0.5)
+		Theme.stroke(ink, math.max(1, 2.5 * k), pill)
+		tagLabel.Parent = pill
+		tagLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+		tagLabel.Position = UDim2.fromScale(0.5, 0.5)
+		tagLabel.ZIndex = 3
+		local faceH = facePx + math.ceil(tagSize.Y * 0.5) + 2
+
+		-- The name (its colour, an ink stroke and drop) over the line.
+		local column: Frame = Create("Frame", { Name = "Column", BackgroundTransparency = 1, Parent = frame })
+		local drop, nameSize = fixed(column, "NameDrop", banner.name, nameKind, ink)
+		local name = fixed(column, "Name", banner.name, nameKind, color(banner.nameColor))
+		for _, label in { drop, name } do
+			Theme.noOutline(label)
+			Create("UIStroke", {
+				Color = ink,
+				Thickness = BN.nameStrokePx * k,
+				ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual,
+				Parent = label,
+			})
+		end
+		drop.Position = UDim2.fromOffset(0, BN.nameDropPx * k)
+		name.ZIndex = 2
+		local lineY = nameSize.Y + BN.lineGapPx * k
+		local label, labelSize = fixed(column, "Label", banner.label, lineKind, color(BN.colors.label))
+		local value, valueSize = fixed(column, "Value", banner.value, lineKind, valueTone)
+		local pulse: UIScale = Create("UIScale", { Parent = value })
+		local gap = BN.valueGapPx * k
+		local lineH = math.max(labelSize.Y, badgePx)
+		label.Position = UDim2.fromOffset(0, lineY + (lineH - labelSize.Y) / 2)
+		value.Position = UDim2.fromOffset(labelSize.X + gap, lineY + (lineH - valueSize.Y) / 2)
+		local badge: Frame = Create("Frame", {
+			Name = "Badge",
+			BackgroundColor3 = valueTone,
+			BorderSizePixel = 0,
+			Size = UDim2.fromOffset(badgePx, badgePx),
+			Position = UDim2.fromOffset(labelSize.X + gap + valueSize.X + gap, lineY + (lineH - badgePx) / 2),
+			Parent = column,
+		})
+		round(badge, 0.5)
+		Theme.stroke(ink, math.max(1, 2.5 * k), badge)
+		if banner.ready then
+			-- Design's tick: a box's right and bottom edges turned 40 degrees.
+			local tick = shape(badge, "Tick", 0.33, 0.14, 0.3, 0.52, ink)
+			tick.BackgroundTransparency = 1
+			tick.Rotation = 40
+			local edge = math.max(2, math.floor(badgePx * 0.13))
+			local right = shape(tick, "Edge", 1, 0, 0, 1, ink)
+			right.AnchorPoint = Vector2.new(1, 0)
+			right.Size = UDim2.new(0, edge, 1, 0)
+			local bottom = shape(tick, "Edge", 0, 1, 1, 0, ink)
+			bottom.AnchorPoint = Vector2.new(0, 1)
+			bottom.Size = UDim2.new(1, 0, 0, edge)
+		else
+			local bang = fixed(badge, "Bang", "!", BN.tagKind :: Theme.TextKind, ink)
+			Theme.noOutline(bang)
+			bang.AnchorPoint = Vector2.new(0.5, 0.5)
+			bang.Position = UDim2.fromScale(0.5, 0.5)
+		end
+		local columnW = math.max(nameSize.X, labelSize.X + gap + valueSize.X + gap + badgePx)
+		local columnH = lineY + lineH
+		column.Size = UDim2.fromOffset(columnW, columnH)
+
+		-- The row inside the padding, both halves centred on its height.
+		local padL, padR, padT, padB = BN.padLeftPx * k, BN.padRightPx * k, BN.padTopPx * k, BN.padBottomPx * k
+		local rowH = math.max(faceH, columnH)
+		faceHolder.Size = UDim2.fromOffset(facePx, faceH)
+		faceHolder.Position = UDim2.fromOffset(padL, padT + (rowH - faceH) / 2)
+		column.Position = UDim2.fromOffset(padL + facePx + BN.gapPx * k, padT + (rowH - columnH) / 2)
+		frame.Size = UDim2.fromOffset(padL + facePx + BN.gapPx * k + columnW + padR, padT + rowH + padB)
+		local top = (if flight.Visible then linesBottom else HUD.topPx) + BN.topGapPx
+		frame.Position = UDim2.new(0.5, 0, 0, top)
+		bannerFrame = frame
+
+		local fade = Tweens.fadeGroup(frame)
+		local reduced = reducedOf()
+		local inS, holdS, outS = BN.inMs / 1000, BN.holdMs / 1000, BN.outMs / 1000
+		local pulseS = BN.pulseMs / 1000
+		local total = inS + holdS + outS
+		bannerRun = run(total, function(u: number)
+			local t = u * total
+			local alpha = math.min(t / math.max(inS, 1e-3), 1, (total - t) / math.max(outS, 1e-3))
+			fade:setAlpha(alpha)
+			if reduced then
+				return
+			end
+			local y = 0
+			if t < inS then
+				y = -BN.dropPx * k * (1 - backOut(t / math.max(inS, 1e-3)))
+			elseif t > inS + holdS then
+				y = -BN.risePx * k * ((t - inS - holdS) / math.max(outS, 1e-3))
+			end
+			frame.Position = UDim2.new(0.5, 0, 0, top + y)
+			if not banner.ready and t >= inS and t <= inS + pulseS then
+				pulse.Scale = 1 + (BN.pulseScale - 1) * math.sin(math.pi * (t - inS) / pulseS)
+			else
+				pulse.Scale = 1
+			end
+		end, function()
+			if bannerFrame == frame then
+				bannerRun = nil
+				bannerFrame = nil
+				frame:Destroy()
+			end
+		end)
+	end
+
 	function hud.destroy(_: Hud)
+		clearBanner()
 		clearPop()
 		for _, handle in punchRuns do
 			handle:disconnect()

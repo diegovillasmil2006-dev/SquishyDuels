@@ -49,7 +49,7 @@
 -- zones (Biome = n), each placed piece an Atomic Model with SD_Piece, at most 600 a biome (spec.txt:157); no launch
 -- spots (pens3 phase 13, owner 2026-10-18: one open throw area); one SD_LaunchBoard part whose 8 live lines (3
 -- last-throw rows and the server best) are built empty (the server writes them in play); the gate_mascot slot; 84
--- distance markers (every 100 studs to 8,400) and one dh_golden_gates; every part anchored and untouched, none
+-- distance markers (every 100 studs to 8,400) and one golden_gates; every part anchored and untouched, none
 -- colliding outside the Deck (the lane is for squishies), none under 2 studs casting a shadow; SurfaceGuis hidden
 -- beyond 150 studs (K:7873); at most 3 lights (L:2, :4, :5), no shadows; no scripts; every SD_TextKey in Strings.
 -- P13v4 (owner 2026-10-19: the TikTok throw's rings and BULLSEYE targets): every biome Model Persistent (the chase
@@ -317,7 +317,7 @@ local HIGHWAY_BOARD_SLOTS = {
 	"BestDistance",
 }
 local HIGHWAY_MARKERS = 84 -- L:476 ...: d 100 .. 8,400
-local HIGHWAY_MAX_LIGHTS = 3 -- L:2 the deck, L:4 the volcano (pens3 phase 12b's scenery), L:5 the Golden Gates
+local HIGHWAY_MAX_LIGHTS = 3 -- L:2 the deck; highway v2 (Claude Design): Lava Volcano's name arch, the Golden Gates
 local HIGHWAY_GUI_MAX_DISTANCE = 150 -- K:7873
 -- P13v4 (WorldLayout.Highway.rings / pads, restated): 3 rings and 2 pads in each of the 7 biomes.
 local HIGHWAY_FLIGHT_PIECES: { [string]: { count: number, layout: string } } = {
@@ -1367,7 +1367,7 @@ local function verifyHighway(report: Report, root: Instance, deps: Deps?)
 				note(report, "atomic", string.format("%s must be an Atomic Model (K:7887)", describe(piece)))
 			end
 			markers += if kind == "distance_marker" then 1 else 0
-			gates += if kind == "dh_golden_gates" then 1 else 0
+			gates += if kind == "golden_gates" then 1 else 0 -- highway v2: Claude Design's set piece (HighwayKit)
 		end
 		if count > HIGHWAY_MAX_PIECES then
 			note(

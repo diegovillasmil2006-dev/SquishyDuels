@@ -8,6 +8,9 @@
 -- child: ellipsoids and wedges are not their box); two faces fight when they face the same way, lie less than
 -- MIN_GAP apart and overlap (separating axes in their plane), with a different colour or material. Faces facing down
 -- rest on something and are left out. SDTools Kit/Prims.LAYER (0.03) is the gap the builders keep.
+-- A union (PartOperation) is its bounding box (ExtentsCFrame: a GeometryService union's CFrame is its first part's),
+-- and is not checked against its own asset's other parts (same parent): that box covers them by design (highway v2,
+-- 2026-10-23: a cupcake's frosting over its wrapper, a wall's ledge inside its tiers' box).
 
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -87,7 +90,7 @@ local function facesOf(root: Instance): { Face }
 		if inToyOrMesh(d, root) then
 			continue
 		end
-		local cf, s = d.CFrame, d.Size
+		local cf, s = (if d:IsA("PartOperation") then d.ExtentsCFrame else d.CFrame), d.Size
 		local x, y, z = cf.RightVector, cf.UpVector, -cf.LookVector
 		local shape = if d:IsA("Part") then d.Shape else Enum.PartType.Block
 		if shape == Enum.PartType.Ball then
@@ -135,6 +138,11 @@ local function overlaps(a: Face, b: Face): boolean
 	return true
 end
 
+-- A union beside its own asset's other parts (see the header).
+local function ownUnion(a: Face, b: Face): boolean
+	return a.part.Parent == b.part.Parent and (a.part:IsA("PartOperation") or b.part:IsA("PartOperation"))
+end
+
 -- The fighting pairs as "partA | partB" lines (paths under the root).
 local function flickerPairs(root: Instance): { string }
 	local buckets: { [string]: { Face } } = {}
@@ -157,7 +165,7 @@ local function flickerPairs(root: Instance): { string }
 			local j = i + 1
 			while j <= #list and list[j].d - a.d < MIN_GAP do
 				local b = list[j]
-				if a.part ~= b.part and a.key ~= b.key and overlaps(a, b) then
+				if a.part ~= b.part and a.key ~= b.key and not ownUnion(a, b) and overlaps(a, b) then
 					table.insert(lines, a.part:GetFullName() .. " | " .. b.part:GetFullName())
 				end
 				j += 1
