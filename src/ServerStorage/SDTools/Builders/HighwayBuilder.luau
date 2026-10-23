@@ -109,7 +109,7 @@ type Line = {
 -- Constants
 
 local GENERATOR_ID = "highway"
-local VERSION = 4 -- 1: phase 12, the deck and the lane; 2: phase 12b, the biome scenery; 3: phase 13, no spots, rows
+local VERSION = 6 -- 5: the Lego look, a wide road between studded walls; 6: each zone bigger (owner 2026-10-22); 1: phase 12, the deck and the lane; 2: phase 12b, the biome scenery; 3: phase 13, no spots, rows
 -- 4: p13v4, the rings and BULLSEYE pads; biomes Persistent
 local ROOT_NAME = "SD_Highway"
 local DECK_NAME = "Deck"
@@ -483,7 +483,7 @@ local function ellipsoid(
 ): Part
 	local paint, material, shine = look(state, token)
 	local made = Props.ellipsoid(parent, name, size, f * CFrame.new(at), paint)
-	made.Material = material or made.Material
+	made.Material = material or LEGO
 	made.Reflectance = shine
 	return made
 end
@@ -1129,19 +1129,57 @@ local function buildGround(state: State, zone: Instance, look: any, d0: number)
 	place(model, f, zone)
 end
 
+-- The walls' particles (WorldLayout HighwayBiome.fx): rising (or, rise < 0, falling) from a wall cap's top.
+local function wallFx(state: State, host: BasePart, fx: any)
+	local emitter = Instance.new("ParticleEmitter")
+	emitter.Name = "wall_fx"
+	emitter.Texture = state.deps.Config.Vfx.Textures[fx.texture]
+	emitter.Color = ColorSequence.new(color(state, fx.color))
+	emitter.Rate = fx.rate
+	emitter.Lifetime = NumberRange.new(3, 5)
+	emitter.Speed = NumberRange.new(1, 3)
+	emitter.Acceleration = Vector3.new(0, fx.rise, 0)
+	emitter.SpreadAngle = Vector2.new(30, 30)
+	emitter.Size = NumberSequence.new(1.2, 0)
+	emitter.LightEmission = 0.6
+	emitter.EmissionDirection = Enum.NormalId.Top
+	emitter.Parent = host
+end
+
 -- road_walls (owner 2026-10-22: "wide road between studded walls, like the references"): the 100 studs from `d0` of
--- the two walls either side of the road, inlets on their sides and a studded cap of the biome's top colour.
+-- the two walls either side of the road, inlets on their sides and a studded cap of the biome's top colour. Each zone
+-- bigger than the last (owner: "each biome gets bigger"): its wall.height, a glowing cap (glowTop), a tower on each
+-- wall (towers), an arch over the road every road.archEvery studs (arches) and the caps' particles (fx).
 local function buildWalls(state: State, zone: Instance, look: any, d0: number)
-	local road = state.H.road
+	local road, w = state.H.road, look.wall
 	local f = state.origin * CFrame.new(0, -0.1, -(d0 + 50))
 	local model = newPiece(state, "road_walls", true)
 	local x = road.halfWidth + road.wallThick / 2
-	for _, side in { -1, 1 } do
-		local wall = box(state, model, "wall", look.wall.main, f, Vector3.new(road.wallThick, road.wallHeight, 100), side * x, 0, 0)
+	local function inlets(p: BasePart)
 		for _, face in { "Left", "Right", "Front", "Back" } do
-			(wall :: any)[face .. "Surface"] = Enum.SurfaceType.Inlet
+			(p :: any)[face .. "Surface"] = Enum.SurfaceType.Inlet
 		end
-		box(state, model, "wall_top", look.wall.top, f, Vector3.new(road.wallThick + 1, 1, 100), side * x, road.wallHeight, 0)
+	end
+	for _, side in { -1, 1 } do
+		inlets(box(state, model, "wall", w.main, f, Vector3.new(road.wallThick, w.height, 100), side * x, 0, 0))
+		local top = box(state, model, "wall_top", w.top, f, Vector3.new(road.wallThick + 1, 1, 100), side * x, w.height, 0)
+		if w.glowTop then
+			top.Material = Enum.Material.Neon
+		end
+		if look.fx then
+			wallFx(state, top, look.fx)
+		end
+		if w.towers then
+			local size = road.wallThick + 6
+			inlets(box(state, model, "tower", w.main, f, Vector3.new(size, w.height + 12, size), side * x, 0, 0))
+			box(state, model, "tower_top", w.top, f, Vector3.new(size + 2, 2, size + 2), side * x, w.height + 12, 0)
+		end
+	end
+	if w.arches and d0 % road.archEvery == 0 then
+		-- Its ends inside the walls and its cap 0.1 over theirs: no two faces in one plane (Flicker_Test).
+		local span = 2 * road.halfWidth + road.wallThick
+		inlets(box(state, model, "arch", w.main, f, Vector3.new(span, 6, 8), 0, w.height - 6.2, 0))
+		box(state, model, "arch_top", w.top, f, Vector3.new(span, 1.3, 9), 0, w.height - 0.2, 0)
 	end
 	place(model, f, zone)
 end
@@ -1407,6 +1445,46 @@ local function buildScenery(state: State, zone: Instance, index: number)
 	end
 end
 
+-- Owner 2026-10-22 ("each biome gets bigger"): `fill.per100` more pieces of the biome's own kinds in the 100 studs from
+-- `d0`, beside the lane (clear of the markers at x 19) and inside the walls, at least FILL_GAP from every piece in
+-- `taken` (lane-local points; it grows); `rng` keeps every build the same.
+local FILL_GAP = 14
+local function buildFill(state: State, zone: Instance, look: any, d0: number, rng: Random, taken: { Vector3 })
+	local fill = look.fill
+	if fill == nil then
+		return
+	end
+	local edge = state.H.road.halfWidth - 10
+	for _ = 1, fill.per100 do
+		local kind = fill.kinds[rng:NextInteger(1, #fill.kinds)]
+		local at: Vector3? = nil
+		for _ = 1, 8 do
+			local side = if rng:NextNumber() < 0.5 then -1 else 1
+			local try = Vector3.new(side * rng:NextNumber(26, edge), 0, -(d0 + rng:NextNumber(5, 95)))
+			local clear = true
+			for _, other in taken do
+				clear = clear and (other - try).Magnitude >= FILL_GAP
+			end
+			if clear then
+				at = try
+				break
+			end
+		end
+		if at == nil then
+			continue -- no room left in these 100 studs
+		end
+		table.insert(taken, at)
+		local tint = if fill.tints then fill.tints[rng:NextInteger(1, #fill.tints)] else nil
+		local row: Row = { id = kind, at = at, rot = rng:NextNumber(-180, 180), tint = tint }
+		local f = state.origin * CFrame.new(at) * CFrame.Angles(0, math.rad(row.rot), 0)
+		local more = kind .. "_more" -- its own numbering: v6's rows already use <kind>_NN
+		state.counts[more] = (state.counts[more] or 0) + 1
+		local model = newPiece(state, kind, true, string.format("%s_%02d", more, state.counts[more]))
+		SCENERY[kind](state, model, f, row)
+		place(model, f, zone)
+	end
+end
+
 -- P13v4: a flight ring (WorldLayout.Highway.rings): its rods around the lane's axis at (0, y) d studs down the lane.
 local function buildRing(state: State, zone: Instance, ring: any)
 	local H = state.H
@@ -1446,11 +1524,16 @@ local function buildBiomes(state: State, root: Instance)
 		for d = math.max(start, H.markerEvery), stop - 1, H.markerEvery do
 			buildMarker(state, zone, look, d)
 		end
+		local rng, taken = Random.new(index), {}
+		for _, row in HighwayScenery.biomes[index] do
+			table.insert(taken, Vector3.new(row.at.X, 0, row.at.Z + HighwayScenery.v6Zero))
+		end
 		for d0 = start, stop - 100, 100 do
 			if look.ground or look.floor then
 				buildGround(state, zone, look, d0)
 			end
 			buildWalls(state, zone, look, d0)
+			buildFill(state, zone, look, d0, rng, taken)
 		end
 		if look.arch then
 			buildArch(state, zone, look, start)

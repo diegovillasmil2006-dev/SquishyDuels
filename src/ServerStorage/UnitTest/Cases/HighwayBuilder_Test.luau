@@ -48,8 +48,9 @@ local LANE_PIECES = 170 -- 8,500 / 50
 -- hills 7 (16, 112), cup islands 6 (10, 60), popsicles 7, sundae peaks 10 (29, 230), basalt rocks 3, the volcano 26
 -- (39, 140), cloud banks 6, planets 17 (38, 261), gold clouds 5, marble pillars 4 (134, 578); p13v4: 3 rings of 12
 -- rods and 2 pads of 3 discs a biome (+5 pieces, +42 parts).
-local PIECES = { 38, 62, 72, 115, 165, 184, 316 }
-local PARTS = { 205, 343, 363, 641, 731, 1052, 1556 }
+-- Owner 2026-10-22: + the road's walls (and the sky biomes' floor) every 100 studs and each zone's extra pieces.
+local PIECES = { 41, 72, 93, 155, 240, 304, 515 }
+local PARTS = { 217, 398, 475, 931, 1031, 1724, 2467 }
 local RINGS_PER_BIOME, PADS_PER_BIOME, ROD_COUNT = 3, 2, 12
 local MAX_PIECES = 600 -- spec.txt:157
 local TOLERANCE = 2e-3 -- CFrames are single precision; 8,500 studs out that is a few thousandths
@@ -181,13 +182,13 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the root is SD_Highway, unparented, marked highway v4, pivoted on the origin; a Persistent deck, 7 biomes",
+		"the root is SD_Highway, unparented, marked highway v6, pivoted on the origin; a Persistent deck, 7 biomes",
 		function()
 			expect.equal(root.Name, "SD_Highway")
 			expect.equal(root.Parent, nil)
 			expect.equal(root:GetAttribute("SD_GeneratorId"), "highway")
 			expect.equal(root:GetAttribute("SD_GeneratorVersion"), HighwayBuilder.VERSION)
-			expect.equal(HighwayBuilder.VERSION, 4) -- 3: phase 13's open deck and board rows; 4: p13v4's rings and pads
+			expect.equal(HighwayBuilder.VERSION, 6) -- 4: p13v4's rings and pads; 5: the Lego walls; 6: zones grow
 			expect.truthy(root:HasTag("SD_Generated"))
 			expect.truthy(near((root.WorldPivot.Position - origin.Position).Magnitude, 0))
 			expect.equal(deck.ModelStreamingMode, Enum.ModelStreamingMode.Persistent) -- K:7881-7883 Plaza, LaunchGate
@@ -298,15 +299,17 @@ return function(t: Context)
 		end
 	)
 
-	t.test("ground slabs 400 x 100 under the 5 ground biomes only, from the start line to 4,000 (HK:28)", function()
+	t.test("ground slabs 400 x 100 under the 5 ground biomes (HK:28), the road's width under the sky ones (2026-10-22)", function()
 		local covered = 0
+		local skyWidth = 2 * (H.road.halfWidth + H.road.wallThick)
 		for index, name in BIOME_MODELS do
 			local slabs = pieces(root:FindFirstChild(name) :: Model, "biome_ground")
 			local length = (starts[index + 1] or gatesAt) - starts[index]
-			expect.equal(#slabs, if index >= 6 then 0 else length / 100)
+			expect.equal(#slabs, length / 100)
 			for _, slab in slabs do
 				local part = slab:FindFirstChildWhichIsA("BasePart") :: BasePart
-				expect.truthy((part.Size - Vector3.new(400, 2, 100)).Magnitude < TOLERANCE)
+				local width = if index >= 6 then skyWidth else 400
+				expect.truthy((part.Size - Vector3.new(width, 2, 100)).Magnitude < TOLERANCE)
 				local p = laneOf(slab)
 				expect.truthy(near(p.Y, -2.1)) -- L:478: its top 0.1 under the lane's foot
 				expect.equal(biomeAt(p.Z - 50), index)
@@ -314,7 +317,7 @@ return function(t: Context)
 				covered += 100
 			end
 		end
-		expect.equal(covered, starts[6])
+		expect.equal(covered, gatesAt)
 	end)
 
 	t.test(
@@ -501,6 +504,7 @@ return function(t: Context)
 			dh_gold_cloud = true,
 			dh_marble_pillar = true,
 			flight_ring = true, -- p13v4: the highest ring's top is 71.6 up (d 426)
+			road_walls = true, -- 2026-10-22: Divine Heaven's towers reach 86 up
 		}
 		local outside: { string } = {}
 		for _, part in root:GetDescendants() do

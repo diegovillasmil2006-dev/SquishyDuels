@@ -92,27 +92,28 @@ local SPOTS = {
 	{ id = "dh_gold_cloud_38", biome = 7, at = Vector3.new(72.75, -11.453, -8372), rot = -97.9 }, -- L:1594
 }
 
--- The K materials of the scenery: colour, Roblox material and shine (K:7-444 "hex" / "roblox").
+-- The K materials of the scenery: colour, Roblox material and shine (K:7-444 "hex" / "roblox"); K's SmoothPlastic is
+-- Plastic since the Lego look (owner 2026-10-22).
 local MATERIALS: { [string]: { hex: string, material: Enum.Material, reflectance: number? } } = {
-	Frosting = { hex = "#FFF6EC", material = Enum.Material.SmoothPlastic }, -- K:7
-	CandyGrass = { hex = "#9EE89B", material = Enum.Material.SmoothPlastic }, -- K:13
-	Wafer = { hex = "#E0A062", material = Enum.Material.SmoothPlastic }, -- K:25
-	PinkIcing = { hex = "#FF8FBF", material = Enum.Material.SmoothPlastic }, -- K:31
-	Lilac = { hex = "#B98CFF", material = Enum.Material.SmoothPlastic }, -- K:55
-	Berry = { hex = "#FF5C8A", material = Enum.Material.SmoothPlastic }, -- K:61
-	Gold = { hex = "#FFC23C", material = Enum.Material.SmoothPlastic, reflectance = 0.2 }, -- K:73
+	Frosting = { hex = "#FFF6EC", material = Enum.Material.Plastic }, -- K:7
+	CandyGrass = { hex = "#9EE89B", material = Enum.Material.Plastic }, -- K:13
+	Wafer = { hex = "#E0A062", material = Enum.Material.Plastic }, -- K:25
+	PinkIcing = { hex = "#FF8FBF", material = Enum.Material.Plastic }, -- K:31
+	Lilac = { hex = "#B98CFF", material = Enum.Material.Plastic }, -- K:55
+	Berry = { hex = "#FF5C8A", material = Enum.Material.Plastic }, -- K:61
+	Gold = { hex = "#FFC23C", material = Enum.Material.Plastic, reflectance = 0.2 }, -- K:73
 	Glow = { hex = "#FFF0A0", material = Enum.Material.Neon }, -- K:80
-	Crust = { hex = "#C9803F", material = Enum.Material.SmoothPlastic }, -- K:336
-	StrawPink = { hex = "#FF6FA3", material = Enum.Material.SmoothPlastic }, -- K:348
-	MilkTea = { hex = "#EED6B8", material = Enum.Material.SmoothPlastic }, -- K:361
+	Crust = { hex = "#C9803F", material = Enum.Material.Plastic }, -- K:336
+	StrawPink = { hex = "#FF6FA3", material = Enum.Material.Plastic }, -- K:348
+	MilkTea = { hex = "#EED6B8", material = Enum.Material.Plastic }, -- K:361
 	Snow = { hex = "#F4FBFF", material = Enum.Material.Snow }, -- K:374
-	BerrySauce = { hex = "#E0315F", material = Enum.Material.SmoothPlastic, reflectance = 0.1 }, -- K:386
+	BerrySauce = { hex = "#E0315F", material = Enum.Material.Plastic, reflectance = 0.1 }, -- K:386
 	Basalt = { hex = "#3A2C3A", material = Enum.Material.Basalt }, -- K:392
 	LavaGlow = { hex = "#FF6A3D", material = Enum.Material.Neon }, -- K:398
 	StarGold = { hex = "#FFD84A", material = Enum.Material.Neon }, -- K:419
-	Cloud = { hex = "#FFFFFF", material = Enum.Material.SmoothPlastic }, -- K:426
+	Cloud = { hex = "#FFFFFF", material = Enum.Material.Plastic }, -- K:426
 	Marble = { hex = "#FBF7F2", material = Enum.Material.Marble }, -- K:432
-	GoldCloud = { hex = "#FFE9A8", material = Enum.Material.SmoothPlastic }, -- K:444
+	GoldCloud = { hex = "#FFE9A8", material = Enum.Material.Plastic }, -- K:444
 	-- GumdropTint (K:123) and PopsicleTint (K:297) are SmoothPlastic in the row's own L tint.
 }
 
@@ -305,12 +306,13 @@ return function(t: Context)
 			dh_golden_gates = true,
 			flight_ring = true, -- p13v4: the rings and the pads are not scenery
 			flight_pad = true,
+			road_walls = true, -- owner 2026-10-22: the walls, and the zones' extra pieces (<kind>_more_NN), are not v6's
 		}
 		for index, name in BIOME_MODELS do
 			local counts: { [string]: number } = {}
 			for _, child in (root:FindFirstChild(name) :: Model):GetChildren() do
 				local kind = child:GetAttribute("SD_Piece")
-				if type(kind) == "string" and not lane[kind] then
+				if type(kind) == "string" and not lane[kind] and not child.Name:find("_more_", 1, true) then
 					counts[kind] = (counts[kind] or 0) + 1
 				end
 			end
@@ -398,7 +400,7 @@ return function(t: Context)
 						if
 							not ok2
 							or (tint and not same(part.Color, tint))
-							or part.Material ~= Enum.Material.SmoothPlastic
+							or part.Material ~= Enum.Material.Plastic
 						then
 							table.insert(problems, row.id .. "." .. part.Name .. " is not its row's tint")
 						end
