@@ -492,7 +492,7 @@ local GiftBoxCounter = {
 	oddsFrame = BOX_ODDS,
 	mysteryBox = groupCF("box", 0, 1.4, -3.2), -- the "GiftBox" model's pivot: mystery_box (design: lobby.js:210)
 	mysteryScale = 0.8, -- reading: the design's box at 0.8 (8 × 6.4 × 8)
-	approach = approachOf("box", 10), -- the dais edge
+	approach = Vector3.new(21.1707, 0, 21.1708), -- Neon Sugar lobby: the stand marker in front of Diego's mystery box
 	-- Restricted/unknown clients relabel it locally to "Shop Squishies". Reading: 0.6 in front of the pedestal.
 	prompt = prompt("prompt.seeBoxes", at("box", 0, 3, 9.3), "prompt.shopDirect"),
 }
@@ -510,7 +510,7 @@ local ShopCounter = {
 		color = "LobbyWafer",
 	} :: Box,
 	turntable = groupCF("shop", 7.8, 0, 8.2), -- preview_turntable (design: lobby.js:255; reading: on the square)
-	approach = approachOf("shop", 6), -- the stall floor's front
+	approach = Vector3.new(0, 0, 31.03), -- Neon Sugar lobby: the stand marker in front of Diego's SHOP counter
 	prompt = prompt("prompt.openShop", at("shop", 0, 3.4, 4.3)), -- reading: in front of the SHOP plate (lobby.js:250)
 }
 
@@ -527,20 +527,35 @@ for k = 0, 6 do
 	)
 end
 local KIOSK = groupCF("collection", 9, 0, 6, -0.6) -- inventory_kiosk (design: lobby.js:274; reading: on the square)
-local PEDESTAL_DIAMETER = 2.8 -- design: lobby.js:280 (C(1.3, 1.4, 0.7))
-local PEDESTAL_HEIGHT = 0.7 -- design: lobby.js:280
+-- Neon Sugar lobby (owner 2026-10-23, "Small squishies on slots"): the 14 squishies stand on the first 14 slot tiles of
+-- Diego's IndexShelf (his lobby_manifest, Hub.IndexShelf "Slots"), top row first, left to right as seen from the hub;
+-- each faces its shelf unit's front. The SD_CollectionPedestal markers sit on the same tiles (top centre, front).
+local PEDESTAL_DIAMETER = 1.8 -- Diego's slot tile, 1.8 x 0.25 x 1.6
+local PEDESTAL_HEIGHT = 0.25
+local SLOT_TOPS: { { Vector3 } } = {
+	{ Vector3.new(-19.7731, 7.65, 34.2597), Vector3.new(0.3944, 0, -0.9189) },
+	{ Vector3.new(-22.1623, 7.65, 33.2343), Vector3.new(0.3944, 0, -0.9189) },
+	{ Vector3.new(-24.5516, 7.65, 32.2089), Vector3.new(0.3944, 0, -0.9189) },
+	{ Vector3.new(-26.4458, 7.65, 30.1227), Vector3.new(0.7071, 0, -0.7071) },
+	{ Vector3.new(-28.2843, 7.65, 28.2843), Vector3.new(0.7071, 0, -0.7071) },
+	{ Vector3.new(-30.1227, 7.65, 26.4458), Vector3.new(0.7071, 0, -0.7071) },
+	{ Vector3.new(-32.2089, 7.65, 24.5516), Vector3.new(0.9189, 0, -0.3944) },
+	{ Vector3.new(-33.2343, 7.65, 22.1623), Vector3.new(0.9189, 0, -0.3944) },
+	{ Vector3.new(-34.2597, 7.65, 19.7731), Vector3.new(0.9189, 0, -0.3944) },
+	{ Vector3.new(-19.7731, 4.65, 34.2597), Vector3.new(0.3944, 0, -0.9189) },
+	{ Vector3.new(-22.1623, 4.65, 33.2343), Vector3.new(0.3944, 0, -0.9189) },
+	{ Vector3.new(-24.5516, 4.65, 32.2089), Vector3.new(0.3944, 0, -0.9189) },
+	{ Vector3.new(-26.4458, 4.65, 30.1227), Vector3.new(0.7071, 0, -0.7071) },
+	{ Vector3.new(-28.2843, 4.65, 28.2843), Vector3.new(0.7071, 0, -0.7071) },
+}
 local pedestals: { Pedestal } = {}
-for slot = 1, 14 do -- design: lobby.js:278 (all 14 CATALOG toys)
-	local i = slot - 1
-	local bay = bays[i // 2 + 1]
-	local y = (if i % 2 == 1 then 9.6 else 4) + 0.3 -- design: lobby.js:279
-	local position = bay * Vector3.new(0, y + 0.35, 0.3) -- design: lobby.js:280
-	local look = bay.LookVector
+for slot, entry in SLOT_TOPS do
+	local position = entry[1] - Vector3.new(0, PEDESTAL_HEIGHT / 2, 0)
 	table.insert(pedestals, {
 		slot = slot,
 		position = position,
 		size = Vector3.new(PEDESTAL_DIAMETER, PEDESTAL_HEIGHT, PEDESTAL_DIAMETER),
-		facing = Vector3.new(-look.X, 0, -look.Z), -- the bay's front: its local +Z faces the arc centre
+		facing = entry[2].Unit,
 		prompt = {
 			actionKey = "prompt.inspect",
 			position = position + Vector3.new(0, PEDESTAL_HEIGHT / 2, 0),
@@ -567,7 +582,8 @@ local Collection = {
 	-- Client-built per player: owned = full colour, unowned = Lavender silhouette. Reading: the design's toys are 2.6
 	-- tall (lobby.js:281); 1.75 stands a Kitty-Bread-sized blueprint (about 1.5 at scale 1) at that height, one scale for
 	-- every squishy so their sizes stay comparable.
-	squishyScale = 1.75,
+	-- Neon Sugar lobby: Diego's slots are 2.6 apart with about 2.4 clear above each tile, so the toys are smaller.
+	squishyScale = 1.2,
 	buildStuds = 60, -- models built/animated only within this distance
 	ownedKey = "collection.owned",
 	notOwnedKey = "collection.notOwned",
@@ -579,7 +595,7 @@ local Collection = {
 		color = "LobbyViolet",
 	} :: Box,
 	kioskFrame = KIOSK,
-	approach = approachOf("collection", 3), -- the shelf floor's front
+	approach = Vector3.new(-26.5165, 0, 26.5165), -- Neon Sugar lobby: the kiosk marker, 3.5 in front of IndexShelf
 	prompt = prompt("prompt.openCollection", KIOSK * Vector3.new(0, 3, 1.9)), -- reading: 0.7 in front of the kiosk
 }
 
@@ -595,7 +611,7 @@ local QuestBoard = {
 		facing = frontOf("quests"),
 		color = "LobbyCork",
 	} :: Box,
-	approach = approachOf("quests", 5.5), -- the floor's front
+	approach = Vector3.new(0, 0, -37.04), -- Neon Sugar lobby: the stand marker in front of Diego's quest board
 	prompt = prompt("prompt.viewQuests", at("quests", 0, 4.5, 0.2)), -- reading: in front of the cork, under the cards
 }
 
@@ -605,26 +621,33 @@ local DailyStand = {
 	tag = "SD_DailyStand",
 	pedestal = { position = at("daily", 0, 0.6, 0), diameter = 15.2, height = 1.2, color = "LobbyLilac" } :: Disc, -- design: lobby.js:314 (C(7.2, 7.6, 1.2))
 	gift = groupCF("daily", 0, 1.2, 0), -- the "GiftBox" model's pivot: daily_gift (design: lobby.js:315)
-	approach = approachOf("daily", 7.6), -- the dais edge
+	approach = Vector3.new(17.918, 0, -17.9181), -- Neon Sugar lobby: the stand marker in front of Diego's daily sign
 	prompt = prompt("prompt.dailyReward", at("daily", 0, 2.5, 8.2)), -- reading: 0.6 in front of the dais
 }
 
 -- Squeeze zone (lobby.js:126, 335-352): the design's ring of 6 foam mats (radius 14) around the giant Kitty Bread, on a
 -- Ø40 floor (reading; the design's 46) that reaches from the square into the garden, so its top stays 0.6.
-local MAT_RING_RADIUS = 14 -- design: lobby.js:343
 local MAT_DIAMETER = 7.6 -- design: lobby.js:341 (superF 3.8)
 local MAT_THICKNESS = 1.5 -- design: lobby.js:341 (superF 0.75 up and down)
-local MAT_CENTER_Y = 1.3 -- design: lobby.js:343-344 (mat group at Y 0.6, foam_mat at its 0.7)
-local MAT_TOP = MAT_CENTER_Y + MAT_THICKNESS / 2 -- 2.05
+-- Neon Sugar lobby (2026-10-23): the 6 squeeze stations are the seats around Diego's BunCat (his lobby_manifest,
+-- Hub.BunCat "SeatTops", 3.4 square): a station's top is the seat top, its position 0.75 under it as the old mats'.
+local MAT_TOP = 2.5
+local SEAT_HALF = 1.7
+local SEAT_TOPS = {
+	Vector3.new(-38, 2.5, -9.6),
+	Vector3.new(-46.3138, 2.5, -4.8),
+	Vector3.new(-29.6862, 2.5, -4.8),
+	Vector3.new(-46.3138, 2.5, 4.8),
+	Vector3.new(-29.6862, 2.5, 4.8),
+	Vector3.new(-38, 2.5, 9.6),
+}
 local mats: { { id: string, position: Vector3, frame: CFrame } } = {}
-for k = 0, 5 do
-	local a = (k / 6) * 2 * math.pi + math.pi / 6 -- design: lobby.js:343
-	local frame =
-		groupCF("squeeze", math.cos(a) * MAT_RING_RADIUS, 0.6, math.sin(a) * MAT_RING_RADIUS, -a + math.pi / 2)
+for k, seatTop in SEAT_TOPS do
+	local position = seatTop - Vector3.new(0, 0.75, 0)
 	table.insert(mats, {
-		id = string.format("squeeze_%02d", k + 1),
-		position = frame * Vector3.new(0, 0.7, 0),
-		frame = frame,
+		id = string.format("squeeze_%02d", k),
+		position = position,
+		frame = CFrame.new(position),
 	})
 end
 
@@ -656,24 +679,23 @@ local SqueezeZone = {
 -- Throwers stand at local +Z (west) and throw toward local -Z = world +X. Reading (spec §3 + the moving target the game
 -- keeps, §5.11): 3 static dummies 12 / 28 / 34 studs past the firing line and the moving one at 20. The lane's east
 -- end (X 91) keeps the pillow wall 2 studs clear of plots 3 and 4, whose gates flank it (72° and 108°).
-local FIRING_LINE_X = 52 -- reading: the lane runs from X 46 to 91 (the backstop's back), 39 past the line
-local TARGET_DISTANCES = { 12, 20, 28, 34 }
+-- Neon Sugar lobby (2026-10-23): Diego's TargetRange (his lobby_manifest, Hub.TargetRange): a runway X 25..49, Z -5..5,
+-- top 0.9, thrown along +X from its west end (the firing line, X 25) at his 4 targets standing still (owner: "Keep
+-- Diego's") at X 31 / 36 / 41 / 46, into his cushion wall at X 49..51.
+local FIRING_LINE_X = 25
+local TARGET_DISTANCES = { 6, 11, 16, 21 }
 local THROW_DIRECTION = EAST
-local MOVING_DISTANCE = 20
-local MOVING_RAIL_LENGTH = 12 -- ±6 along Z
-local MOVING_PERIOD = 9.42 -- seconds (peak ≈ 4 studs/s)
-local THROW_SPOT = Vector3.new(48, 0, 0) -- reading: inside the throw box, on the lane
+local THROW_SPOT = Vector3.new(21, 0, 0) -- inside the throw box, 4 behind the firing line
 local RANGE_BOARD = Vector3.new(45, 0, 8.5) -- reading: by the throw box's back corner
 local targets: { Target } = {}
 for _, distance in TARGET_DISTANCES do
-	local moving = distance == MOVING_DISTANCE
 	table.insert(targets, {
 		id = string.format("target_%02d", #targets + 1),
 		distance = distance,
 		position = Vector3.new(FIRING_LINE_X, 0, 0) + THROW_DIRECTION * distance,
-		moving = moving,
-		railLength = if moving then MOVING_RAIL_LENGTH else 0,
-		period = if moving then MOVING_PERIOD else 0,
+		moving = false,
+		railLength = 0,
+		period = 0,
 		nameKey = "practice.targetName",
 	})
 end
@@ -684,7 +706,7 @@ local PracticeRange = {
 	targetTag = "SD_PracticeTarget",
 	-- range_floor (design: lobby.js:402); reading: X 46..91, Z -10..10, from the garden (Y -0.9) up to the top 0.6.
 	laneFloor = { position = Vector3.new(68.5, -0.15, 0), size = Vector3.new(45, 1.5, 20), color = "LobbyCourtMint" } :: Box,
-	laneFloorTopY = 0.6,
+	laneFloorTopY = 0.9, -- Diego's runway top
 	-- range_firing_line_paint B(32, 0.08, 1.2) (design: lobby.js:403; reading: across the 20-wide lane).
 	firingLine = {
 		position = Vector3.new(FIRING_LINE_X, 0.64, 0),
@@ -693,7 +715,7 @@ local PracticeRange = {
 	} :: Box,
 	firingLineX = FIRING_LINE_X,
 	-- Reading (D3): the throw box runs 8 deep behind the firing line across the lane, so the approach lies inside it.
-	throwBox = span("ThrowBox", 44, 52, 0, 12, -10, 10), -- SD_PracticeZone, invisible
+	throwBox = span("ThrowBox", 17, 25, 0, 12, -6, 6), -- SD_PracticeZone, invisible (Neon Sugar: before the runway)
 	throwDirection = THROW_DIRECTION,
 	distances = TARGET_DISTANCES,
 	targets = targets, -- anchored; the target hitbox is the player capsule (§5.11)
@@ -704,14 +726,15 @@ local PracticeRange = {
 	-- The "Backstop" part (jelly ripple, splats): inside the design's pillow wall (lobby.js:412-413, pillows X
 	-- 88.5..91.5, Y 0..9.2), its front 0.5 behind the pillow fronts so the pillows stand out of it, from the lane top
 	-- up; the design's size (the jelly ripple's grid is tuned to it).
+	-- Neon Sugar lobby: Diego's cushion wall (X 49..51, Y 0.9..5.7, Z -4.8..4.8).
 	backstop = {
-		position = Vector3.new(90.25, 4.9, 0),
-		size = Vector3.new(2.5, 8.6, 35.2),
+		position = Vector3.new(50, 3.3, 0),
+		size = Vector3.new(2, 4.8, 9.6),
 		color = "LobbyCushionCream",
 	} :: Box,
-	-- Reading: practice projectiles expire outside this box (the throw box's west edge to past the backstop, 20 either
-	-- side of the lane, the arena zones' height Y -15..40).
-	bounds = span("Bounds", 44, 93, -15, 40, -20, 20),
+	-- Practice projectiles expire outside this box (the throw box's west edge to past the cushion wall, the ropes
+	-- either side, the arena zones' height Y -15..40).
+	bounds = span("Bounds", 17, 54, -15, 40, -12, 12),
 	-- range_board (design: lobby.js:415): reading, its front (local +Z, the plates' side) toward the throw spot.
 	boardFrame = CFrame.lookAt(RANGE_BOARD, 2 * RANGE_BOARD - THROW_SPOT),
 	approach = THROW_SPOT,
@@ -727,7 +750,7 @@ for _, mat in mats do
 		model = SqueezeZone.model,
 		position = mat.position,
 		top = MAT_TOP,
-		halfSize = MAT_DIAMETER / 2,
+		halfSize = SEAT_HALF,
 	})
 end
 
@@ -1317,9 +1340,10 @@ local function audioZone(
 end
 
 local AudioZones: { AudioZone } = {
-	audioZone("lobby", Vector3.new(0, 18, 0), Vector3.new(360, 40, 360), 1, "music.lobby", 1.0, "amb.lobby"),
-	audioZone("squeeze", at("squeeze", 0, 15, 0), Vector3.new(40, 30, 40), 2, "music.lobby", 0.8, "amb.lobby"),
-	audioZone("practice", Vector3.new(68.5, 15, 0), Vector3.new(49, 30, 40), 2, "music.lobby", 0.6, "amb.lobby"),
+	-- Neon Sugar lobby (2026-10-23): Diego's island to its shallow water (radius 206), his BunCat, his TargetRange.
+	audioZone("lobby", Vector3.new(0, 18, 0), Vector3.new(420, 40, 420), 1, "music.lobby", 1.0, "amb.lobby"),
+	audioZone("squeeze", Vector3.new(-38, 15, 0), Vector3.new(32, 30, 32), 2, "music.lobby", 0.8, "amb.lobby"),
+	audioZone("practice", Vector3.new(36, 15, 0), Vector3.new(40, 30, 26), 2, "music.lobby", 0.6, "amb.lobby"),
 }
 
 -- Activities and their walk points (routes, waypoints): the stands' approaches; the squeeze zone counts each mat.

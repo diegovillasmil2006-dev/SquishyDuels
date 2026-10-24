@@ -92,15 +92,15 @@ return function(t: Context)
 	end)
 
 	t.test("an impact without targetId finds the nearest target where it was at that server time", function()
-		local defs = PracticeTargets.list()
+		-- Diego's targets stand still (owner 2026-10-23); a rail target from attributes still slides.
+		local defs = table.clone(PracticeTargets.list())
 		expect.truthy(#defs > 0)
-		local moving
-		for _, def in defs do
-			if def.moving then
-				moving = def
-			end
-		end
+		local moving = PracticeTargets.fromAttributes(
+			{ TargetId = "target_rail", Distance = 20, Moving = true, RailLength = 12, Period = 9.42 },
+			Vector3.new(45, 0.9, 30)
+		)
 		expect.truthy(moving ~= nil)
+		table.insert(defs, moving)
 		local serverTime = 1.8e9 + moving.period / 4 -- a quarter period: near the end of its rail
 		local at = PracticeTargets.positionAt(moving, serverTime)
 		local found = PracticeController.nearestTarget(defs, at + Vector3.new(0.3, 2, 0.2), serverTime)

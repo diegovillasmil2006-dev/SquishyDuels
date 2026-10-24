@@ -18,7 +18,6 @@ type Context = {
 
 return function(t: Context)
 	local AutoDriver = t.requireClient("Studio/AutoDriver")
-	local Config = t.requireShared("Config")
 	local PracticeTargets = t.requireShared("Practice/PracticeTargets")
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local expect = t.expect
@@ -80,18 +79,17 @@ return function(t: Context)
 		local topY = box.position.Y + box.size.Y / 2
 		local minZ = box.position.Z - box.size.Z / 2
 		local maxZ = box.position.Z + box.size.Z / 2
-		local hitbox = Config.Combat.Hitbox
-		local targetTop = PracticeTargets.FLOOR_Y + PracticeTargets.ROOT_HEIGHT + hitbox.topOffset + hitbox.radius
-
+		-- Neon Sugar lobby: Diego's cushion wall (4.8 tall) is lower than a target's capsule, so a shot at it no longer
+		-- clears every target; it still lands on the wall's face.
 		local middle = AutoDriver.backstopPoint(nil)
 		expect.near(middle.X, faceX, 1e-5) -- the face toward the throw box (throws go toward +X)
 		expect.truthy(faceX < box.position.X)
 		expect.near(middle.Z, box.position.Z, 1e-5)
 		expect.truthy(middle.Y < topY) -- on the face, under its top edge
-		expect.truthy(middle.Y > targetTop + Config.Combat.Bands.radius.max) -- a ball there clears every target
+		expect.truthy(middle.Y > PracticeTargets.FLOOR_Y) -- above the runway
 
-		local inLane = AutoDriver.backstopPoint(Vector3.new(75, 3, 5)) -- on Squish Island's lane (Z -10..10)
-		expect.near(inLane.Z, 5, 1e-5)
+		local inLane = AutoDriver.backstopPoint(Vector3.new(30, 3, 0.5)) -- on the runway, inside the wall's reach
+		expect.near(inLane.Z, 0.5, 1e-5)
 		expect.near(inLane.X, faceX, 1e-5)
 		local farSouth = AutoDriver.backstopPoint(Vector3.new(75, 3, 200))
 		local farNorth = AutoDriver.backstopPoint(Vector3.new(75, 3, -100))

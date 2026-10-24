@@ -12,7 +12,8 @@
 -- Never throws: refusals, build failures and Verify problems come back as a report with ok = false.
 -- Targets (one per call):
 --   "shapes"  Builders/ShapesBuilder -> ReplicatedStorage.SD_ShapeLibrary (Part 2)
---   "lobby"   Builders/LobbyBuilder  -> Workspace.SD_Lobby (Part 3; Squish Island since build plan Phase 4)
+--   (no "lobby" target since 2026-10-23: Diego's Neon Sugar lobby, Workspace.SquishyDuelsLobby, is made in Blender and
+--   marked "lobby" by hand; a generated lobby would replace it)
 --   "highway" Builders/HighwayBuilder -> Workspace.SD_Highway (pens3 phase 12: the launch deck and the 7 biomes' lane)
 --   "arena"   Builders/ArenaBuilder  -> ServerStorage.SD_Templates.Arena_CandyCourt (Part 3). SD_Templates is a plain
 --             holder Folder, not generated content: it is created when missing and never removed or replaced.
@@ -111,14 +112,6 @@ local TARGETS: { [string]: Target } = {
 		end,
 		parent = function(_report: Report): (Instance?, string?)
 			return ReplicatedStorage, nil
-		end,
-	},
-	lobby = {
-		load = function(): any
-			return require(script.Parent.Builders.LobbyBuilder)
-		end,
-		parent = function(_report: Report): (Instance?, string?)
-			return Workspace, nil
 		end,
 	},
 	highway = {

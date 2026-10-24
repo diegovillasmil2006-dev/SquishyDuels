@@ -55,9 +55,9 @@ return function(t: Context)
 		end
 		local spawn = WorldBinder.pickZone(candidates, Vector3.new(0, 3, 0)) -- the hub spawn's medallion
 		expect.equal(spawn and spawn.zoneId, "lobby")
-		local mat = WorldBinder.pickZone(candidates, Vector3.new(-64, 3, 0)) -- foam mat 2
+		local mat = WorldBinder.pickZone(candidates, Vector3.new(-29.7, 3, 4.8)) -- a BunCat seat (Neon Sugar lobby)
 		expect.equal(mat and mat.zoneId, "squeeze")
-		local range = WorldBinder.pickZone(candidates, Vector3.new(75, 3, 0)) -- the practice lane
+		local range = WorldBinder.pickZone(candidates, Vector3.new(37, 3, 0)) -- Diego's runway
 		expect.equal(range and range.zoneId, "practice")
 		local plot = WorldBinder.pickZone(candidates, Vector3.new(0, 3, -122)) -- plot 1, north of the hub
 		expect.equal(plot and plot.zoneId, "lobby")
@@ -87,7 +87,7 @@ return function(t: Context)
 		expect.equal(WorldBinder.zoneFor(candidates, nil, nil), nil)
 		-- With a character outside every zone (a match map far east): nil.
 		expect.equal(WorldBinder.zoneFor(candidates, Vector3.new(6000, 3, 0), lobby), nil)
-		local mat = WorldBinder.zoneFor(candidates, Vector3.new(-64, 3, 0), lobby)
+		local mat = WorldBinder.zoneFor(candidates, Vector3.new(-29.7, 3, 4.8), lobby) -- a BunCat seat
 		expect.equal(mat and mat.zoneId, "squeeze")
 	end)
 

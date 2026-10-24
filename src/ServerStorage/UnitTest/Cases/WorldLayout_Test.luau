@@ -63,8 +63,6 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
-type Bounds = { name: string, low: Vector3, high: Vector3 }
-
 -- Constants (restated from the design so a drifting layout is caught)
 
 local TIERS: { [string]: number } = {
@@ -212,112 +210,12 @@ local function frontOf(id: string, extraYaw: number?): Vector3
 	return frameOf(id):VectorToWorldSpace(CFrame.Angles(0, extraYaw or 0, 0):VectorToWorldSpace(Vector3.new(0, 0, 1)))
 end
 
-local function discBounds(name: string, disc: any): Bounds
-	local r, h = disc.diameter / 2, disc.height / 2
-	return {
-		name = name,
-		low = disc.position - Vector3.new(r, h, r),
-		high = disc.position + Vector3.new(r, h, r),
-	}
-end
-
--- The 4 corners on the floor plane and the Y range of a (possibly yawed) keep-clear volume.
-local function footprintOf(volume: any): ({ Vector2 }, number, number)
-	local cf = CFrame.new(volume.position) * CFrame.Angles(0, volume.yaw or 0, 0)
-	local h = volume.size / 2
-	local corners: { Vector2 } = {}
-	for _, sx in { -1, 1 } do
-		for _, sz in { -1, 1 } do
-			local p = cf * Vector3.new(sx * h.X, 0, sz * h.Z)
-			table.insert(corners, Vector2.new(p.X, p.Z))
-		end
-	end
-	return corners, volume.position.Y - h.Y, volume.position.Y + h.Y
-end
-
--- Separating axes on the floor plane (yawed volumes) plus the Y ranges: true when two volumes share volume.
-local function volumesOverlap(a: any, b: any): boolean
-	local ca, aLow, aHigh = footprintOf(a)
-	local cb, bLow, bHigh = footprintOf(b)
-	if aHigh <= bLow + 1e-6 or bHigh <= aLow + 1e-6 then
-		return false
-	end
-	local function axesOf(corners: { Vector2 }): { Vector2 }
-		return { (corners[2] - corners[1]).Unit, (corners[3] - corners[1]).Unit }
-	end
-	for _, axes in { axesOf(ca), axesOf(cb) } do
-		for _, axis in axes do
-			local minA, maxA, minB, maxB = math.huge, -math.huge, math.huge, -math.huge
-			for _, p in ca do
-				local d = p:Dot(axis)
-				minA, maxA = math.min(minA, d), math.max(maxA, d)
-			end
-			for _, p in cb do
-				local d = p:Dot(axis)
-				minB, maxB = math.min(minB, d), math.max(maxB, d)
-			end
-			if maxA <= minB + 1e-6 or maxB <= minA + 1e-6 then
-				return false
-			end
-		end
-	end
-	return true
-end
-
--- An upright disc body (centre, radius, Y range) against a (possibly yawed) volume: true when they share volume.
-local function discOverlaps(body: any, volume: any): boolean
-	local bodyLow, bodyHigh = body.position.Y - body.size.Y / 2, body.position.Y + body.size.Y / 2
-	local h = volume.size / 2
-	if bodyHigh <= volume.position.Y - h.Y + 1e-6 or volume.position.Y + h.Y <= bodyLow + 1e-6 then
-		return false
-	end
-	local frame = CFrame.new(volume.position) * CFrame.Angles(0, volume.yaw or 0, 0)
-	local p = frame:PointToObjectSpace(Vector3.new(body.position.X, volume.position.Y, body.position.Z))
-	local dx = p.X - math.clamp(p.X, -h.X, h.X)
-	local dz = p.Z - math.clamp(p.Z, -h.Z, h.Z)
-	return dx * dx + dz * dz < (body.radius - 0.01) ^ 2 -- touching never counts (Verify's OVERLAP_EPSILON)
-end
-
 return function(t: Context)
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local Config = t.requireShared("Config")
 	local Strings = t.requireShared("Strings")
 	local Catalog = t.requireShared("Catalog")
 	local expect = t.expect
-
-	-- A station body as an oriented volume (a yawed or facing Box keeps its own axes; a Disc is its square).
-	local function boxBody(name: string, box: any): any
-		local cf = WorldLayout.boxCFrame(box)
-		local look = cf.LookVector
-		return { name = name, position = box.position, size = box.size, yaw = math.atan2(-look.X, -look.Z) }
-	end
-	local function discBody(name: string, disc: any): any
-		local bounds = discBounds(name, disc)
-		return { name = name, position = disc.position, size = bounds.high - bounds.low, radius = disc.diameter / 2 }
-	end
-
-	-- The collidable station bodies WorldLayout places (the stands, floors and pads the builder makes solid).
-	local function stationBodies(): { any }
-		local L = WorldLayout
-		local bodies: { any } = {
-			discBody("DuelGate.stage", L.DuelGate.stage),
-			discBody("DuelGate.podium", L.DuelGate.podium),
-			discBody("GiftBoxCounter.dais", L.GiftBoxCounter.dais),
-			discBody("GiftBoxCounter.stand", L.GiftBoxCounter.stand),
-			boxBody("GiftBoxCounter.oddsBoard", L.GiftBoxCounter.oddsBoard),
-			boxBody("ShopCounter.floor", L.ShopCounter.floor),
-			boxBody("ShopCounter.counter", L.ShopCounter.counter),
-			boxBody("Collection.kiosk", L.Collection.kiosk),
-			boxBody("QuestBoard.floor", L.QuestBoard.floor),
-			boxBody("QuestBoard.board", L.QuestBoard.board),
-			discBody("DailyStand.pedestal", L.DailyStand.pedestal),
-			discBody("SqueezeZone.floor", L.SqueezeZone.floor),
-			discBody("SqueezeZone.plinth", L.SqueezeZone.plinth),
-			boxBody("PracticeRange.laneFloor", L.PracticeRange.laneFloor),
-			boxBody("PracticeRange.backstop", L.PracticeRange.backstop),
-		}
-		return bodies
-	end
 
 	-- The island and its frames (lobby bases spec §2-§3) ------------------------------------------------------------
 
@@ -438,28 +336,26 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the six foam mats sit on the design ring at radius 14 (lobby.js:342-344), Ø7.6, top 2.05", function()
-		-- The design ring around the squeeze frame (270°, r 78; its front faces east, toward the hub), mats 1-6.
+	t.test("the six squeeze stations are the seats around Diego's BunCat: 3.4 square, top 2.5 (Neon Sugar)", function()
+		-- Diego's BunCat at 270° r 38 (his lobby_manifest): 6 seats 9.6 from the bun, 30° + 60° k around it.
 		local expected = {
-			Vector3.new(-71, 0, -12.12),
-			Vector3.new(-64, 0, 0),
-			Vector3.new(-71, 0, 12.12),
-			Vector3.new(-85, 0, 12.12),
-			Vector3.new(-92, 0, 0),
-			Vector3.new(-85, 0, -12.12),
+			Vector3.new(-38, 0, -9.6),
+			Vector3.new(-46.3138, 0, -4.8),
+			Vector3.new(-29.6862, 0, -4.8),
+			Vector3.new(-46.3138, 0, 4.8),
+			Vector3.new(-29.6862, 0, 4.8),
+			Vector3.new(-38, 0, 9.6),
 		}
 		expect.equal(#WorldLayout.SqueezeZone.mats, 6)
-		expect.equal(WorldLayout.SqueezeZone.matDiameter, 7.6) -- lobby.js:341 (superF 3.8)
-		-- Zone floor top 0.6 + mat centre 0.7 + half height 0.75 (lobby.js:338, 343-344).
-		expect.near(WorldLayout.SqueezeZone.matHeight, 2.05, 1e-9)
+		expect.near(WorldLayout.SqueezeZone.matHeight, 2.5, 1e-9) -- the seat tops: plaza 0.6 + 0.4 + 1.2 + 0.3
 		for index, mat in WorldLayout.SqueezeZone.mats do
 			expect.equal(mat.id, string.format("squeeze_%02d", index))
 			if not flatNear(mat.position, expected[index], POSITION_TOLERANCE) then
-				error(`{mat.id} is at {show(mat.position)}, the design says {show(expected[index])}`)
+				error(`{mat.id} is at {show(mat.position)}, Diego's seat is at {show(expected[index])}`)
 			end
-			expect.near(mat.position.Y, 1.3, FLOAT_TOLERANCE) -- the mat centre: 0.6 + 0.7
+			expect.near(mat.position.Y, 1.75, FLOAT_TOLERANCE) -- 0.75 under the seat top, as the old mats' centre
 			local station = WorldLayout.station(mat.id)
-			expect.near(station.halfSize, 3.8, 1e-9)
+			expect.near(station.halfSize, 1.7, 1e-9)
 			expect.equal(station.top, WorldLayout.SqueezeZone.matHeight)
 			expect.equal(station.position, mat.position)
 		end
@@ -467,75 +363,8 @@ return function(t: Context)
 
 	-- Keep-clear volumes (§7.7 props rules 1 and 5) ------------------------------------------------------------------
 
-	t.test("station keep-clear volumes never overlap each other (yawed volumes included)", function()
-		local volumes = {}
-		for _, volume in WorldLayout.KeepClear do
-			if volume.kind == "station" then
-				table.insert(volumes, volume)
-			end
-		end
-		expect.truthy(#volumes >= 14) -- 7 stands/zones + 6 squeeze stations + the spawn
-		local overlaps = {}
-		for i = 1, #volumes do
-			for j = i + 1, #volumes do
-				if volumesOverlap(volumes[i], volumes[j]) then
-					table.insert(overlaps, volumes[i].name .. " / " .. volumes[j].name)
-				end
-			end
-		end
-		if #overlaps > 0 then
-			error("overlapping keep-clear volumes: " .. table.concat(overlaps, ", "))
-		end
-	end)
-
-	t.test("every squeeze station, stand approach and path has a keep-clear volume", function()
-		local byName: { [string]: any } = {}
-		for _, volume in WorldLayout.KeepClear do
-			expect.falsy(byName[volume.name])
-			byName[volume.name] = volume
-			local top = volume.position.Y + volume.size.Y / 2
-			expect.truthy(near(top, 24))
-		end
-		for _, station in WorldLayout.Stations do
-			local volume = byName[station.id]
-			expect.truthy(volume ~= nil)
-			-- Pads and mats: the volume starts above the standing surface (the station body stays outside).
-			expect.truthy(volume.position.Y - volume.size.Y / 2 > station.top)
-			expect.truthy(WorldLayout.contains(volume, Vector3.new(station.position.X, 12, station.position.Z)))
-		end
-		for _, stand in
-			{
-				WorldLayout.QuestBoard,
-				WorldLayout.DailyStand,
-				WorldLayout.DuelGate,
-				WorldLayout.GiftBoxCounter,
-				WorldLayout.ShopCounter,
-				WorldLayout.Collection,
-				WorldLayout.PracticeRange,
-			} :: { any }
-		do
-			local approach = stand.approach + Vector3.new(0, 3, 0)
-			local inside = false
-			for _, volume in WorldLayout.KeepClear do
-				if volume.kind == "station" and WorldLayout.contains(volume, approach) then
-					inside = true
-				end
-			end
-			if not inside then
-				error(`{stand.model}: approach {show(stand.approach)} is in no station keep-clear volume`)
-			end
-		end
-		-- Each path is an aisle along its own direction (yawed).
-		for _, path in WorldLayout.Paths do
-			local aisle = byName["path_" .. path.id]
-			expect.truthy(aisle ~= nil)
-			expect.equal(aisle.kind, "aisle")
-			local middle = (path.from + path.to) / 2 + Vector3.new(0, 3, 0)
-			expect.truthy(WorldLayout.contains(aisle, middle))
-			expect.near(aisle.size.Z, path.width, 1e-6) -- spec §2: the path itself, 8 wide (no curb on the island)
-			expect.near(aisle.size.X, (path.to - path.from).Magnitude, 1e-4) -- from the stage edge to the gate
-		end
-	end)
+	-- Neon Sugar lobby (2026-10-23): the station keep-clear volumes and path aisles were the retired LobbyBuilder's
+	-- prop rules for the old island; Diego's lobby is placed as built, so their overlap and coverage tests went.
 
 	t.test("every prompt has a 5-stud keep-clear radius (§7.7 props rule 1)", function()
 		local points: { { name: string, point: Vector3 } } = {}
@@ -579,25 +408,7 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("no station body reaches into a station or aisle keep-clear volume", function()
-		local hits = {}
-		for _, body in stationBodies() do
-			if body.position.Y + body.size.Y / 2 <= 0.5 then
-				continue -- floor coverings
-			end
-			for _, volume in WorldLayout.KeepClear do
-				if volume.kind == "prompt" then
-					continue -- a prompt volume holds its own station; Verify exempts station bodies
-				end
-				if if body.radius then discOverlaps(body, volume) else volumesOverlap(body, volume) then
-					table.insert(hits, body.name .. " in " .. volume.name)
-				end
-			end
-		end
-		if #hits > 0 then
-			error("station bodies inside keep-clear volumes: " .. table.concat(hits, ", "))
-		end
-	end)
+	-- (Neon Sugar lobby: the station-body keep-clear test went with the retired LobbyBuilder's keep-clear rules.)
 
 	-- Routes (D1: the design's worst real route) ----------------------------------------------------------------------
 
@@ -609,7 +420,7 @@ return function(t: Context)
 		expect.equal((WorldLayout.Routes :: any).podMaxSeconds, nil) -- the pod exception went with the pods (Phase 6)
 	end)
 
-	t.test("routes between activities stay under 10 s; the worst is practice <-> squeeze", function()
+	t.test("routes between activities stay under 10 s; the worst is quests <-> collection", function()
 		local activities = WorldLayout.Activities
 		expect.equal(#activities, 8)
 		local worst = 0
@@ -636,9 +447,9 @@ return function(t: Context)
 		if #tooLong > 0 then
 			error("routes over the limit: " .. table.concat(tooLong, ", "))
 		end
-		-- Squish Island: the worst is practice <-> squeeze, across the hub (112 studs, 7 s).
-		expect.near(worst, 112.0 / 16, 0.01)
-		expect.truthy(worstPair == "practice/squeeze" or worstPair == "squeeze/practice")
+		-- Neon Sugar lobby: the worst is the quest board <-> the index shelf, across Diego's plaza (68.87 studs, 4.3 s).
+		expect.near(worst, 68.87 / 16, 0.01)
+		expect.truthy(worstPair == "quests/collection" or worstPair == "collection/quests")
 	end)
 
 	t.test("hub spawn routes are no longer than the island's distances", function()
@@ -662,7 +473,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"every activity has a waypoint; approaches stand 3 in front of each stand, off the paths; squeeze: nearest mat",
+		"every activity has a waypoint; approaches are the stand markers; squeeze: the nearest seat",
 		function()
 			for _, activity in WorldLayout.Activities do
 				expect.truthy(WorldLayout.waypoint(activity.name) ~= nil)
@@ -677,33 +488,26 @@ return function(t: Context)
 			local waypoint = WorldLayout.waypoint("squeeze")
 			expect.truthy(flatNear(waypoint, nearest :: Vector3, 1e-6))
 			expect.equal(WorldLayout.waypoint("nowhere"), nil)
-			local approaches: { [string]: any } = {
-				duel = WorldLayout.DuelGate,
-				box = WorldLayout.GiftBoxCounter,
-				shop = WorldLayout.ShopCounter,
-				collection = WorldLayout.Collection,
-				quests = WorldLayout.QuestBoard,
-				daily = WorldLayout.DailyStand,
+			-- Neon Sugar lobby: a stand's approach is its stand marker's floor point, in front of Diego's piece (the duel
+			-- gate's is still the old stage's until it moves to the Monument).
+			local markers: { [string]: { any } } = {
+				box = { WorldLayout.GiftBoxCounter, Vector3.new(21.1707, 0, 21.1708) },
+				shop = { WorldLayout.ShopCounter, Vector3.new(0, 0, 31.03) },
+				collection = { WorldLayout.Collection, Vector3.new(-26.5165, 0, 26.5165) },
+				quests = { WorldLayout.QuestBoard, Vector3.new(0, 0, -37.04) },
+				daily = { WorldLayout.DailyStand, Vector3.new(17.918, 0, -17.9181) },
 			}
-			for id, stand in approaches do
-				local want = design(id, {}, 0, 0, APPROACH_FRONTS[id] + APPROACH_STEP)
-				if not flatNear(stand.approach, want, POSITION_TOLERANCE) then
-					error(`{id}: approach {show(stand.approach)}, expected {show(want)}`)
+			for id, entry in markers do
+				if not flatNear(entry[1].approach, entry[2], 1e-6) then
+					error(`{id}: approach {show(entry[1].approach)}, expected {show(entry[2])}`)
 				end
 			end
-			-- The practice approach is the throw spot, inside the throw box on the lane.
-			expect.truthy(flatNear(WorldLayout.PracticeRange.approach, Vector3.new(48, 0, 0), 1e-6))
-			-- Nobody waits on a path: no approach lies in a path aisle.
-			approaches.practice = WorldLayout.PracticeRange
-			for id, stand in approaches do
-				for _, volume in WorldLayout.KeepClear do
-					if
-						volume.kind == "aisle" and WorldLayout.contains(volume, stand.approach + Vector3.new(0, 3, 0))
-					then
-						error(`{id}: approach {show(stand.approach)} lies on {volume.name}`)
-					end
-				end
+			local duel = design("duel", {}, 0, 0, APPROACH_FRONTS.duel + APPROACH_STEP)
+			if not flatNear(WorldLayout.DuelGate.approach, duel, POSITION_TOLERANCE) then
+				error(`duel: approach {show(WorldLayout.DuelGate.approach)}, expected {show(duel)}`)
 			end
+			-- The practice approach is the throw spot, inside the throw box before Diego's runway.
+			expect.truthy(flatNear(WorldLayout.PracticeRange.approach, Vector3.new(21, 0, 0), 1e-6))
 			expect.truthy(flatNear(WorldLayout.waypoint("spawn"), Vector3.zero, 1e-6))
 		end
 	)
@@ -774,54 +578,9 @@ return function(t: Context)
 		expect.truthy(#WorldLayout.Signs >= 40) -- the design's plates (about 45 with the game's live boards)
 	end)
 
-	t.test("the design plates sit where the island puts them, facing their station fronts", function()
-		local byId: { [string]: any } = {}
-		for _, sign in WorldLayout.Signs do
-			byId[sign.id] = sign
-		end
-		local UP = Vector3.new(0, 1, 0)
-		-- The practice board stands by the throw box's back corner (45, 0, 8.5), its plates toward the throw spot.
-		local board, spot = Vector3.new(45, 0, 8.5), Vector3.new(48, 0, 0)
-		local towardSpot = (spot - board).Unit
-		local expected: { [string]: { point: Vector3, facing: Vector3 } } = {
-			-- lobby.js:184 "DUELS"; reading: on the tower deck's south face (§2: the deck at 36).
-			gateBadge = { point = design("duel", {}, 0, 36.75, 15.56), facing = frontOf("duel") },
-			-- lobby.js:196 the team plates; reading: lying on the stage beside each team's queue pads.
-			teamMint = { point = Vector3.new(-16.5, 0.85, 0), facing = UP },
-			teamStrawberry = { point = Vector3.new(16.5, 0.85, 0), facing = UP },
-			shopPlate = { point = design("shop", {}, 0, 3.1, 3.62), facing = frontOf("shop") }, -- lobby.js:250
-			questsTitle = { point = design("quests", {}, 0, 17.4, -1.06), facing = frontOf("quests") }, -- lobby.js:295
-			questsDaily = { point = design("quests", {}, -6, 13.6, -1.0), facing = frontOf("quests") }, -- lobby.js:298
-			kittyBreadPlate = { point = design("squeeze", {}, 0, 1.6, 6.75), facing = frontOf("squeeze") }, -- lobby.js:340
-			practiceBoard = { point = board + Vector3.new(0, 7.6, 0) + towardSpot * 0.45, facing = towardSpot }, -- lobby.js:418
-			-- §2 "SQUISH SQUARE" on the ground; reading: on the north and south paths at r 31, read from the stage.
-			squishSquareNorth = { point = Vector3.new(0, 0.08, -31), facing = UP },
-			squishSquareSouth = { point = Vector3.new(0, 0.08, 31), facing = UP },
-		}
-		for id, want in expected do
-			local sign = byId[id]
-			if sign == nil then
-				error(`no sign {id}`)
-			end
-			if not vectorNear(sign.position, want.point, POSITION_TOLERANCE) then
-				error(`{id} is at {show(sign.position)}, the island puts it at {show(want.point)}`)
-			end
-			if not vectorNear(sign.facing, want.facing, 1e-3) then
-				error(`{id} faces {show(sign.facing)}, expected {show(want.facing)}`)
-			end
-		end
-		-- The daily calendar's 7 day numbers and the squeeze zone's 6 mat numbers.
-		local days, mats = 0, 0
-		for _, sign in WorldLayout.Signs do
-			if string.sub(sign.id, 1, 8) == "dailyDay" then
-				days += 1
-			elseif string.sub(sign.id, 1, 9) == "matNumber" then
-				mats += 1
-			end
-		end
-		expect.equal(days, 7)
-		expect.equal(mats, 6)
-	end)
+	-- (Neon Sugar lobby: the old island's plate placement test went with the retired LobbyBuilder; Diego's plates
+	-- are his Label_* parts.)
+
 
 	t.test("the daily sign's live Status line is built empty and written only by its owner", function()
 		local status: any = nil
@@ -900,96 +659,73 @@ return function(t: Context)
 	-- Practice range, collection, return points, audio zones -----------------------------------------------------
 
 	t.test(
-		"practice range: one lane east (Z 0), 4 targets 12/20/28/34 past the firing line at X 52, throws +X (§3, D3)",
+		"practice range: Diego's runway east (Z 0), 4 still targets 6/11/16/21 past the firing line at X 25, throws +X",
 		function()
 			local range = WorldLayout.PracticeRange
 			local targets = range.targets
-			expect.equal(#targets, 4) -- spec §3: 3 dummies, plus the moving target the game keeps (§5.11)
-			expect.equal(range.firingLineX, 52) -- reading: the lane's west end, so the targets fit before the backstop
+			expect.equal(#targets, 4) -- Diego's 4 targets (owner 2026-10-23: they stand still)
+			expect.equal(range.firingLineX, 25) -- the runway's west end
 			expect.truthy(vectorNear(range.throwDirection, Vector3.new(1, 0, 0)))
 			local ids: { [string]: boolean } = {}
-			local moving = 0
 			for index, target in targets do
 				expect.equal(target.id, string.format("target_%02d", index))
 				expect.falsy(ids[target.id])
 				ids[target.id] = true
 				expect.equal(target.position.Z, 0)
-				expect.equal(target.distance, ({ 12, 20, 28, 34 })[index])
-				expect.equal(target.position.X, range.firingLineX + target.distance)
+				expect.equal(target.distance, ({ 6, 11, 16, 21 })[index])
+				expect.equal(target.position.X, range.firingLineX + target.distance) -- Diego's posts at X 31/36/41/46
 				expect.equal(target.nameKey, "practice.targetName")
-				if target.moving then
-					moving += 1
-					expect.equal(target.distance, 20)
-					expect.equal(target.railLength, 12)
-					expect.equal(target.period, 9.42)
-				else
-					expect.equal(target.railLength, 0)
-					expect.equal(target.period, 0)
-				end
+				expect.falsy(target.moving)
+				expect.equal(target.railLength, 0)
+				expect.equal(target.period, 0)
 			end
-			expect.equal(moving, 1)
-			-- The throw box: X 44..52 behind the firing line, across the lane (Z -10..10), Y 0..12 (D3 reading).
+			-- The throw box: X 17..25 before the runway, Z -6..6, Y 0..12; the approach (throw spot) inside it.
 			local low, high =
 				range.throwBox.position - range.throwBox.size / 2, range.throwBox.position + range.throwBox.size / 2
-			expect.truthy(vectorNear(low, Vector3.new(44, 0, -10)))
-			expect.truthy(vectorNear(high, Vector3.new(52, 12, 10)))
+			expect.truthy(vectorNear(low, Vector3.new(17, 0, -6)))
+			expect.truthy(vectorNear(high, Vector3.new(25, 12, 6)))
 			expect.truthy(WorldLayout.contains(range.throwBox, range.approach + Vector3.new(0, 3, 0)))
-			-- The lane floor X 46..91, Z -10..10, from the garden (Y -0.9) to its top 0.6; §3's "44-st lane".
-			local floorLow, floorHigh = WorldLayout.boxBounds(range.laneFloor)
-			expect.truthy(vectorNear(floorLow, Vector3.new(46, -0.9, -10), 1e-3))
-			expect.truthy(vectorNear(floorHigh, Vector3.new(91, 0.6, 10), 1e-3))
-			expect.truthy(floorHigh.X - floorLow.X >= 44)
-			expect.equal(range.laneFloorTopY, 0.6)
-			-- The backstop at the lane's east end, the design's size (the jelly ripple's grid is tuned to it): X 89..91.5,
-			-- Y 0.6..9.2, Z -17.6..17.6, past the farthest target; its pillow wall stays clear of plots 3 and 4.
+			expect.equal(range.laneFloorTopY, 0.9) -- Diego's runway top
+			-- The backstop is Diego's cushion wall at the runway's east end: X 49..51, Y 0.9..5.7, Z -4.8..4.8.
 			local backLow, backHigh = WorldLayout.boxBounds(range.backstop)
-			expect.truthy(vectorNear(backLow, Vector3.new(89, 0.6, -17.6), 1e-3))
-			expect.truthy(vectorNear(backHigh, Vector3.new(91.5, 9.2, 17.6), 1e-3))
-			expect.truthy(backLow.X > range.firingLineX + 34)
-			for _, plot in { 3, 4 } do -- the wall's ends (Z ±21) stay 1.5 studs or more off those plots
-				for _, z in { -21, 21 } do
-					local corner = Vector3.new(backHigh.X + 0.1, 0, z)
-					local frame = WorldLayout.plotFrame(plot) :: CFrame
-					local p = frame:PointToObjectSpace(corner)
-					local outside =
-						math.max(math.abs(p.X) - WorldLayout.Bases.width / 2, p.Z - WorldLayout.Bases.depth / 2)
-					expect.truthy(outside >= 1.5)
-				end
-			end
+			expect.truthy(vectorNear(backLow, Vector3.new(49, 0.9, -4.8), 1e-3))
+			expect.truthy(vectorNear(backHigh, Vector3.new(51, 5.7, 4.8), 1e-3))
+			expect.truthy(backLow.X > range.firingLineX + 21) -- past the farthest target
 			-- Every target root and the throw box lie inside the projectile bounds.
 			for _, target in targets do
-				for _, dz in { -target.railLength / 2, 0, target.railLength / 2 } do
-					local root = target.position + Vector3.new(0, range.laneFloorTopY + 3, dz)
-					expect.truthy(WorldLayout.contains(range.bounds, root))
-				end
+				local root = target.position + Vector3.new(0, range.laneFloorTopY + 3, 0)
+				expect.truthy(WorldLayout.contains(range.bounds, root))
 			end
 			expect.truthy(WorldLayout.contains(range.bounds, range.throwBox.position))
 		end
 	)
 
 	t.test(
-		"collection: 14 pedestals in catalog order on the 7 bays of the design arc (lobby.js:269-281), facing them (D4)",
+		"collection: 14 pedestals in catalog order on the first 14 slots of Diego's IndexShelf, facing their unit's front",
 		function()
 			local pedestals = WorldLayout.Collection.pedestals
 			expect.equal(#pedestals, 14)
 			expect.equal(#Catalog.list(), 14)
+			-- Diego's IndexShelf (315°, r 41): 3 units, slot tiles 1.8 x 0.25 x 1.6 with tops at 7.65 (top row) and
+			-- 4.65; read from the hub, top row first, left to right (owner 2026-10-23: "Small squishies on slots").
+			local middle = Vector3.new(0.7071, 0, -0.7071) -- the middle unit's front, toward the hub
 			for index, pedestal in pedestals do
 				expect.equal(pedestal.slot, index)
-				local i = index - 1
-				local bay = i // 2
-				local a = math.rad(-60 + 20 * bay) -- lobby.js:269
-				local y = (if i % 2 == 1 then 9.6 else 4) + 0.3 -- lobby.js:279
-				local group = { 12 * math.sin(a), 0.8, 2 - 12 * math.cos(a), -a } -- reading: the design arc at r 12 around z 2
-				local want = design("collection", { group }, 0, y + 0.35, 0.3) -- lobby.js:280
-				if not vectorNear(pedestal.position, want, POSITION_TOLERANCE) then
-					error(`pedestal {index} is at {show(pedestal.position)}, the island puts it at {show(want)}`)
-				end
-				expect.truthy(vectorNear(pedestal.facing, frontOf("collection", -a), 1e-4))
-				expect.truthy(vectorNear(pedestal.size, Vector3.new(2.8, 0.7, 2.8), 1e-6)) -- C(1.3, 1.4, 0.7)
+				expect.near(pedestal.position.Y + pedestal.size.Y / 2, if index <= 9 then 7.65 else 4.65, 1e-4)
+				expect.truthy(vectorNear(pedestal.size, Vector3.new(1.8, 0.25, 1.8), 1e-6))
+				expect.near(pedestal.facing.Magnitude, 1, 1e-6)
+				expect.near(pedestal.facing.Y, 0, 1e-9)
+				expect.truthy(pedestal.facing:Dot(middle) > 0.9) -- every unit faces the hub, the side ones turned in
+				local toShelf = Vector3.new(pedestal.position.X, 0, pedestal.position.Z)
+				expect.truthy(math.abs(toShelf.Magnitude - 41) < 9) -- on the shelf, around 41 from the hub
 				expect.equal(pedestal.prompt.actionKey, "prompt.inspect")
 				expect.equal(pedestal.prompt.maxDistance, 12)
 				expect.equal(pedestal.prompt.requiresLineOfSight, false)
-				expect.truthy(vectorNear(pedestal.prompt.position, pedestal.position + Vector3.new(0, 0.35, 0), 1e-5))
+			end
+			-- Left to right along the top row, as the hub sees it.
+			local right = Vector3.new(-0.7071, 0, -0.7071)
+			for index = 2, 9 do
+				expect.truthy(pedestals[index].position:Dot(right) > pedestals[index - 1].position:Dot(right))
 			end
 			expect.equal(WorldLayout.Collection.buildStuds, 60)
 			expect.truthy(WorldLayout.Collection.squishyScale > 0)
@@ -1022,19 +758,22 @@ return function(t: Context)
 			for _, zone in WorldLayout.AudioZones do
 				byId[zone.zoneId] = zone
 			end
-			-- The lobby zone covers the whole island with its plots (r 150 at their back corners), from the garden up.
+			-- Neon Sugar lobby: the lobby zone covers Diego's island to its shallow water (r 206), from the garden up.
 			expect.truthy(vectorNear(byId.lobby.position, Vector3.new(0, 18, 0)))
-			expect.truthy(vectorNear(byId.lobby.size, Vector3.new(360, 40, 360)))
-			-- The squeeze zone is the Ø40 squeeze floor's square; the practice zone the lane with its throw box.
-			expect.truthy(vectorNear(byId.squeeze.position, Vector3.new(-78, 15, 0), 1e-4))
-			expect.truthy(vectorNear(byId.squeeze.size, Vector3.new(40, 30, 40)))
-			expect.truthy(vectorNear(byId.practice.position, Vector3.new(68.5, 15, 0)))
-			expect.truthy(vectorNear(byId.practice.size, Vector3.new(49, 30, 40)))
+			expect.truthy(vectorNear(byId.lobby.size, Vector3.new(420, 40, 420)))
+			-- The squeeze zone is around Diego's BunCat and its seats; the practice zone his runway with the throw box.
+			expect.truthy(vectorNear(byId.squeeze.position, Vector3.new(-38, 15, 0), 1e-4))
+			expect.truthy(vectorNear(byId.squeeze.size, Vector3.new(32, 30, 32)))
+			expect.truthy(vectorNear(byId.practice.position, Vector3.new(36, 15, 0)))
+			expect.truthy(vectorNear(byId.practice.size, Vector3.new(40, 30, 26)))
 			expect.equal(byId.lobby.priority, 1)
 			expect.equal(byId.squeeze.musicMul, 0.8)
 			expect.equal(byId.practice.musicMul, 0.6)
-			expect.equal(WorldLayout.audioZoneAt(Vector3.new(-64, 3, 0)).zoneId, "squeeze") -- mat 2
-			expect.equal(WorldLayout.audioZoneAt(Vector3.new(75, 3, 0)).zoneId, "practice") -- the lane
+			for _, mat in WorldLayout.SqueezeZone.mats do
+				expect.equal(WorldLayout.audioZoneAt(mat.position + Vector3.new(0, 3, 0)).zoneId, "squeeze")
+			end
+			expect.equal(WorldLayout.audioZoneAt(Vector3.new(37, 3, 0)).zoneId, "practice") -- the runway
+			expect.equal(WorldLayout.audioZoneAt(WorldLayout.PracticeRange.throwBox.position).zoneId, "practice")
 			expect.equal(WorldLayout.audioZoneAt(Vector3.new(0, 3, 0)).zoneId, "lobby")
 			for index = 1, 10 do -- every plot hears the lobby
 				local back = (WorldLayout.plotFrame(index) :: CFrame) * Vector3.new(21, 2, -25)

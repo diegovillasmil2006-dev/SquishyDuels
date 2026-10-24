@@ -219,10 +219,6 @@ return function(t: Context)
 	local builders = tools:FindFirstChild("Builders") :: Instance
 	local arenas = builders:FindFirstChild("Arenas")
 
-	t.test("the lobby has no two faces of different colours in one plane", function()
-		expectNoFlicker(builders:FindFirstChild("LobbyBuilder"))
-	end)
-
 	t.test("Candy Court has no two faces of different colours in one plane", function()
 		expectNoFlicker(builders:FindFirstChild("ArenaBuilder"))
 	end)
@@ -230,18 +226,6 @@ return function(t: Context)
 	-- Pens3 phase 12: the highway (SDTools HighwayBuilder).
 	t.test("the highway has no two faces of different colours in one plane", function()
 		expectNoFlicker(builders:FindFirstChild("HighwayBuilder"))
-	end)
-
-	-- Access2: the lobby's bridge to the highway alone (LobbyBuilder.bridge needs no Studio, so this runs offline too).
-	t.test("access2: the bridge has no two faces of different colours in one plane", function()
-		local module = builders:FindFirstChild("LobbyBuilder") :: ModuleScript
-		local bridge, err = dynamicRequire(module).bridge(t.Shared)
-		if bridge == nil then
-			error("LobbyBuilder.bridge failed: " .. tostring(err))
-		end
-		local lines = flickerPairs(bridge)
-		bridge:Destroy()
-		expect.deepEqual(lines, {})
 	end)
 
 	t.test("the five design arenas have no two faces of different colours in one plane", function()

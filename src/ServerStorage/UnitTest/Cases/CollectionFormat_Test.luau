@@ -63,7 +63,7 @@ return function(t: Context)
 		expect.equal(CollectionFormat.squishyForSlot(3, { defs[1], defs[2] }), nil)
 	end)
 
-	t.test("facingOf: each pedestal faces its bay's front (WorldLayout); -X without a pedestal", function()
+	t.test("facingOf: each pedestal faces its shelf unit's front (WorldLayout); -X without a pedestal", function()
 		for slot, pedestal in LAYOUT.pedestals do
 			near3(CollectionFormat.facingOf(slot), pedestal.facing)
 			expect.near(CollectionFormat.facingOf(slot).Magnitude, 1, 1e-5)
@@ -71,8 +71,10 @@ return function(t: Context)
 		for _, bad in { 0, 15, 0 / 0 } do
 			near3(CollectionFormat.facingOf(bad), Vector3.new(-1, 0, 0))
 		end
-		-- The curved shelf (lobby.js:269): the end bays face across the arc toward each other, not all the same way.
-		expect.truthy(CollectionFormat.facingOf(1):Dot(CollectionFormat.facingOf(14)) < 0.6)
+		-- Diego's IndexShelf (Neon Sugar lobby): its side units turn 0.38 rad in toward the middle one (slots 1-3 left,
+		-- 4-6 middle, 7-9 right on the top row), so not every squishy faces the same way.
+		expect.truthy(CollectionFormat.facingOf(1):Dot(CollectionFormat.facingOf(4)) < 0.95)
+		expect.truthy(CollectionFormat.facingOf(7):Dot(CollectionFormat.facingOf(4)) < 0.95)
 	end)
 
 	t.test("shouldBuild: build within 60 studs, keep until more than 60 + 5", function()

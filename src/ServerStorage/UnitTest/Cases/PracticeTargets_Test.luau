@@ -1,12 +1,12 @@
 --!strict
 -- PracticeTargets_Test: unit tests for ReplicatedStorage.Shared.Practice.PracticeTargets. Server only
 -- (ServerStorage.UnitTest).
--- Contract (DESIGN §5.11, §7.6): the targets of WorldLayout.PracticeRange, one moving (20 studs from the firing line)
--- along Z by railLength/2 · sin(2π·t/period) with a peak of ≈ 4 studs/s; positionAt is a pure function of server time
+-- Contract (DESIGN §5.11, §7.6): the targets of WorldLayout.PracticeRange; a moving target (attributes Moving,
+-- RailLength, Period) slides along Z by railLength/2 · sin(2π·t/period); positionAt is a pure function of server time
 -- (same on server and client); the hitbox is the player capsule (floor+0 .. floor+6.1); the throw box and the 75° cone
--- around the range forward are the practice context of ThrowRules; the bounds come from WorldLayout. Phase 4 (Squish
--- Island, lobby bases spec §3: "44-st lane", "3 dummies"): 4 targets on one lane along Z 0, the 3 dummies 12 / 28 / 34
--- studs and the moving target 20 studs past the firing line at X 52; throws still go toward +X (D3).
+-- around the range forward are the practice context of ThrowRules; the bounds come from WorldLayout. Neon Sugar lobby
+-- (owner 2026-10-23, "Keep Diego's"): Diego's 4 targets stand still 6 / 11 / 16 / 21 studs past the firing line at
+-- X 25 on one lane along Z 0, throws toward +X; the sliding math is tested on a rail target built from attributes.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -26,13 +26,11 @@ return function(t: Context)
 	local expect = t.expect
 	local range = WorldLayout.PracticeRange
 
+	-- The old island's rail target (20 studs, rail 12, period 9.42 s) on the lane: Diego's targets all stand still.
+	local RAIL_ATTRIBUTES = { TargetId = "target_rail", Distance = 20, Moving = true, RailLength = 12, Period = 9.42 }
+	local RAIL_BASE = Vector3.new(45, 0.9, 0)
 	local function movingTarget(): any
-		for _, target in PracticeTargets.list() do
-			if target.moving then
-				return target
-			end
-		end
-		error("no moving target")
+		return assert(PracticeTargets.fromAttributes(RAIL_ATTRIBUTES, RAIL_BASE), "no rail target")
 	end
 
 	-- Definitions --------------------------------------------------------------------------------------------------
@@ -40,7 +38,7 @@ return function(t: Context)
 	t.test("the 4 targets match WorldLayout.PracticeRange", function()
 		local list = PracticeTargets.list()
 		expect.equal(#list, #range.targets)
-		expect.equal(#list, 4) -- spec §3: 3 dummies, plus the moving target the game keeps (§5.11)
+		expect.equal(#list, 4) -- Diego's 4 targets
 		for index, def in list do
 			local source = range.targets[index]
 			expect.equal(def.id, source.id)
@@ -56,18 +54,14 @@ return function(t: Context)
 		expect.equal(PracticeTargets.get("target_99"), nil)
 	end)
 
-	t.test("exactly one target moves: on the lane, 20 studs, rail 12, period 9.42 s", function()
-		local moving = 0
-		for _, def in PracticeTargets.list() do
-			if def.moving then
-				moving += 1
-				expect.equal(def.distance, 20)
-				expect.equal(def.position.Z, 0) -- the island's one lane runs along Z 0
-				expect.equal(def.railLength, 12)
-				expect.equal(def.period, 9.42)
-			end
+	t.test("Diego's targets all stand still on the lane: 6 / 11 / 16 / 21 studs past the firing line", function()
+		for index, def in PracticeTargets.list() do
+			expect.falsy(def.moving)
+			expect.equal(def.railLength, 0)
+			expect.equal(def.period, 0)
+			expect.equal(def.position.Z, 0) -- the one lane runs along Z 0
+			expect.equal(def.distance, ({ 6, 11, 16, 21 })[index])
 		end
-		expect.equal(moving, 1)
 	end)
 
 	-- Motion -------------------------------------------------------------------------------------------------------
@@ -147,7 +141,7 @@ return function(t: Context)
 	-- Attributes ---------------------------------------------------------------------------------------------------
 
 	t.test("fromAttributes reads a tagged target and rejects bad attributes", function()
-		local base = Vector3.new(72, 0.6, 0) -- the moving target's floor point: X 52 + 20, on the lane floor
+		local base = RAIL_BASE -- the rail target's floor point, on the lane floor
 		local attrs = { TargetId = "target_05", Distance = 20, Moving = true, RailLength = 12, Period = 9.42 }
 		local def = PracticeTargets.fromAttributes(attrs, base)
 		expect.truthy(def ~= nil)
@@ -171,9 +165,9 @@ return function(t: Context)
 
 	t.test("inThrowBox is the SD_PracticeZone box", function()
 		expect.truthy(PracticeTargets.inThrowBox(range.approach + Vector3.new(0, 3, 0)))
-		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(51, 3, 9))) -- a corner spot behind the firing line
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(60, 3, 0))) -- on the lane, past the firing line
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(48, 3, 15))) -- beside the lane (the garden)
+		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(24, 3, 5))) -- a corner spot behind the firing line
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(30, 3, 0))) -- on the runway, past the firing line
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(21, 3, 9))) -- beside the throw box (the plaza)
 		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(0, 3, 0))) -- the spawn
 	end)
 

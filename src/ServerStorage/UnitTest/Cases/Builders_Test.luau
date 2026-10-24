@@ -8,7 +8,7 @@
 -- collision groups, dividers wall to wall, floor out to the walls, point-symmetric cover (pieces named after
 -- WorldLayout.Arena.cover), the wall stripes (WorldLayout.Arena.wallStripes, §18.3.4), the Runtime folder and the
 -- part budget.
--- LobbyBuilder is written by another Part 3 helper; until it exists its smoke case fails with "not found".
+-- LobbyBuilder was retired on 2026-10-23 (owner: the Neon Sugar lobby replaced the generated one), with its case.
 
 local ServerStorage = game:GetService("ServerStorage")
 
@@ -285,16 +285,6 @@ return function(t: Context)
 		root:Destroy()
 		expect.equal(runtimeChildren, 0)
 		expect.truthy(parts > 0 and parts <= 400)
-	end)
-
-	t.test("LobbyBuilder builds an unparented, marked lobby that passes Verify", function()
-		local built = build("LobbyBuilder", "lobby")
-		local ok, err = pcall(expectVerified, "lobby", built.root)
-		local warnings = table.concat(built.warnings, " | ")
-		built.root:Destroy()
-		if not ok then
-			error(tostring(err) .. (if warnings ~= "" then " (build warnings: " .. warnings .. ")" else ""))
-		end
 	end)
 
 	tools:Destroy()
