@@ -392,19 +392,20 @@ local Lobby = {
 		span("NorthWallEast", BRIDGE_GAP_HALF, 218, -4, 60, -222, -218),
 		span("SouthWall", -218, 218, -4, 60, 218, 222),
 	} :: { Volume },
-	-- Access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick HIGHWAY button): the bridge
-	-- LobbyBuilder builds as Island/Bridge. PLACEHOLDER (v6 has no bridge: its deck joins the plaza, L:20-37): the
-	-- garden paths' look (Island.pathColor, `width` = PATH_WIDTH to walk) with the plots' white fence as rails. One
-	-- straight ramp along x 0 from the sea's top, 4 studs inside the north wall, through the wall's gap to the top
-	-- front edge of the deck's back step (HighwayBuilder launch_platform: box(20, 1, 1.5, 0, 0, 7) on
-	-- Highway.deck.platform, LK:158-164: Highway.origin z -300 + 35.5 + 7.75; y 0.5 + 1), so nobody steps up from it.
+	-- Access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick HIGHWAY button): the bridge.
+	-- Neon Sugar part 6 (owner 2026-10-24 "yes, build part 6 like that"): built in Studio as
+	-- SquishyDuelsLobby.AddedByIntegration.HighwayWalk.Bridge in Diego's colours (his path tiles, magenta posts with cyan
+	-- tips and a purple rail inside its 9 studs, lavender legs). One straight ramp along x 0 from the north edge of the
+	-- new path behind Pen 7 (z -164, his pen paths' top 0.5), through the north wall's gap to the top front edge of the
+	-- deck's back step (HighwayBuilder launch_platform: box(20, 1, 1.5, 0, 0, 7) on Highway.deck.platform, LK:158-164:
+	-- Highway.origin z -300 + 35.5 + 7.75; y 0.5 + 1), so nobody steps up from it.
 	bridge = {
 		x = 0,
-		fromZ = -214,
-		fromTop = -1.6, -- the sea's top (baseSlab)
+		fromZ = -164,
+		fromTop = 0.5,
 		toZ = -256.75,
 		toTop = 1.5,
-		width = PATH_WIDTH,
+		width = 9, -- its rails stand inside it
 		gapHalf = BRIDGE_GAP_HALF,
 	},
 }

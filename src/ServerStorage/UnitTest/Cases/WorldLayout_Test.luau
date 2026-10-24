@@ -43,8 +43,9 @@
 --   * p13v4 (owner 2026-10-19: the TikTok throw): 3 flight rings and 2 BULLSEYE pads a biome, as SPEC 3.3's placement
 --     rule gives them (re-derived here from Config), inside their biomes, in passing order, clear of the lane's top;
 --   * access2 (owner 2026-10-18 "Both": walk to the highway's launch deck, and a quick button): the north wall is
---     two pieces round a gap at x 0 as wide as the bridge with its rails; the bridge (a PLACEHOLDER: v6 has none)
---     runs 8 wide from the sea inside the wall to the front of the deck's back step (LK:158-164), a gentle ramp;
+--     two pieces round a gap at x 0 as wide as the bridge with its rails; the bridge (Neon Sugar part 6: Diego's
+--     colours, its rails inside its 9 studs) runs from the new path behind Pen 7 (top 0.5) to the front of the deck's
+--     back step (LK:158-164), a gentle ramp;
 --   * the arena (§5.3, §7.8) is unchanged.
 -- Pure data: runs in Edit mode on the Shared clone.
 
@@ -1447,7 +1448,7 @@ return function(t: Context)
 	-- joins the plaza, L:20-37), so the numbers are readings, except where the bridge meets the deck: the front face of
 	-- the platform's back step, box(20, 1, 1.5, 0, 0, 7) on the platform (LK:158-164: top 1 up, front 7.75 back).
 	t.test(
-		"access2: the north wall opens round the bridge; the bridge runs from the sea to the deck's back step",
+		"access2: the north wall opens round the bridge; it runs from the path behind Pen 7 to the deck's back step",
 		function()
 			local lobby = WorldLayout.Lobby
 			local bridge = lobby.bridge
@@ -1469,16 +1470,16 @@ return function(t: Context)
 				expect.near(box[1].Y, -4, FLOAT_TOLERANCE)
 				expect.near(box[2].Y, 60, FLOAT_TOLERANCE)
 			end
-			-- The gap: on the bridge's line, at least as wide as the bridge with its rails (the plots' 0.8 fence posts
-			-- either side of the 8-stud walk, LobbyBuilder).
-			expect.equal(bridge.width, 8) -- spec §2: the paths' width
+			-- The gap: on the bridge's line, at least as wide as the bridge (Neon Sugar part 6: its rails stand inside its
+			-- 9 studs).
+			expect.equal(bridge.width, 9)
 			expect.near((wHigh.X + eLow.X) / 2, bridge.x, FLOAT_TOLERANCE)
-			expect.truthy(eLow.X - wHigh.X >= bridge.width + 2 * 0.8)
+			expect.truthy(eLow.X - wHigh.X >= bridge.width)
 			expect.near(bridge.gapHalf, eLow.X - bridge.x, FLOAT_TOLERANCE)
-			-- From the sea's top inside the wall (past the shallow water), through the gap, to the deck's back step.
-			local seaTop = lobby.baseSlab.position.Y + lobby.baseSlab.size.Y / 2
-			expect.near(bridge.fromTop, seaTop, FLOAT_TOLERANCE)
-			expect.truthy(bridge.fromZ > wHigh.Z and bridge.fromZ < -WorldLayout.Island.shallow.radius)
+			-- From the path behind Pen 7 (its top: Diego's pen paths' 0.5), through the gap, to the deck's back step.
+			expect.near(bridge.fromTop, 0.5, FLOAT_TOLERANCE)
+			local penBack = ((WorldLayout.plotFrame(7) :: CFrame) * Vector3.new(0, 0, -WorldLayout.Bases.depth / 2)).Z
+			expect.truthy(bridge.fromZ > wHigh.Z and bridge.fromZ < penBack)
 			local H = WorldLayout.Highway
 			local step = H.origin * (H.deck.platform + Vector3.new(0, 1, 7.75))
 			expect.near(bridge.toZ, step.Z, FLOAT_TOLERANCE)
