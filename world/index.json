@@ -12,12 +12,6 @@
 		"container": "Workspace"
 	},
 	{
-		"file": "Workspace/SD_Lobby.rbxm",
-		"class": "Model",
-		"name": "SD_Lobby",
-		"container": "Workspace"
-	},
-	{
 		"file": "Workspace/SquishyDuelsLobby.rbxm",
 		"class": "Model",
 		"name": "SquishyDuelsLobby",
@@ -63,6 +57,12 @@
 		"file": "ServerStorage/Eclipse Animator Saves.rbxm",
 		"class": "Folder",
 		"name": "Eclipse Animator Saves",
+		"container": "ServerStorage"
+	},
+	{
+		"file": "ServerStorage/LobbyBackup_20261023.rbxm",
+		"class": "Folder",
+		"name": "LobbyBackup_20261023",
 		"container": "ServerStorage"
 	},
 	{
