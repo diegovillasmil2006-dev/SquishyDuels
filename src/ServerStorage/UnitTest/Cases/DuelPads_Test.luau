@@ -2,7 +2,8 @@
 -- DuelPads_Test: ServerScriptService.Server.Logic.DuelPads, the rules of the duel pads under the Duel tower (Batch 3,
 -- review #6). Server only (ServerStorage.UnitTest). Pure: no instances; time, positions and who stands where come in.
 -- Contract (Config.Social.Pads, WorldLayout.QueuePads):
---   * the 10 queue pads form 5 lanes, each a mint pad (west) and the strawberry pad straight across the ring (east);
+--   * the 10 queue pads form 5 lanes, each a mint pad and the strawberry pad straight across from it (Neon Sugar
+--     lobby, 2026-10-24: a mint row and a strawberry row on Diego's Monument base);
 --   * padAt: a root within radiusStuds of a pad's centre (horizontally) and 0..heightStuds above its top stands on it;
 --   * a player alone lights their pad ("on") and gets the waiting toast; both pads of a lane go "ready" (gold, one
 --     "ready" effect naming both players) and start once, holdSeconds later; stepping off before that resets the lane
@@ -48,14 +49,10 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the pads: 10 on the ring, 5 lanes of a mint pad (west) and the strawberry pad straight across (east)",
+		"the pads: 10 on the Monument base, 5 lanes of a mint pad and the strawberry pad straight across from it",
 		function()
 			expect.equal(#PADS, 10)
 			expect.equal(#LANES, 5)
-			local centre = Vector3.zero
-			for _, pad in PADS do
-				centre += pad.position / #PADS
-			end
 			local seen: { [number]: boolean } = {}
 			for lane, pair in LANES do
 				local mint, berry = PADS[pair.mint], PADS[pair.strawberry]
@@ -63,11 +60,13 @@ return function(t: Context)
 				expect.equal(berry.team, "strawberry")
 				expect.equal(mint.lane, lane)
 				expect.equal(berry.lane, lane)
-				expect.truthy(mint.position.X < 0 and berry.position.X > 0)
-				-- Straight across the medallion: the ring's centre halfway between them, a diameter (20 studs) apart.
-				expect.near(((mint.position + berry.position) / 2 - centre).Magnitude, 0, 1e-3) -- Vector3 is 32-bit
-				expect.near((mint.position - berry.position).Magnitude, 20, 1e-3)
-				expect.near(mint.position.Y, WorldLayout.DuelGate.stageTop + 0.5, 1e-6) -- the pad's top
+				-- The mint row 5.2 south of the Monument's centre, the strawberry row 10: one lane = one column.
+				expect.near(mint.position.X, -9.6 + (lane - 1) * 4.8, 1e-4)
+				expect.near(berry.position.X, mint.position.X, 1e-6)
+				expect.near(mint.position.Z, 5.2, 1e-6)
+				expect.near(berry.position.Z, 10, 1e-6)
+				expect.near(mint.position.Y, 2.3 + 0.5, 1e-6) -- the pad's top on Diego's Monument base (top 2.3)
+				expect.near(berry.position.Y, mint.position.Y, 1e-6)
 				seen[pair.mint], seen[pair.strawberry] = true, true
 			end
 			for index = 1, 10 do

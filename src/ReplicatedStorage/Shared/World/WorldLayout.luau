@@ -468,7 +468,7 @@ local DuelGate = {
 	podium = { position = at("duel", 0, 1.2, 15), diameter = 5, height = 0.8, color = "LobbyCushionCream" } :: Disc,
 	-- NOT IN DESIGN (D11): the live queue board (SD_QueueBoard) under the crossbar between the south pillars.
 	statusBoard = { position = at("duel", 0, 13.2, 12), size = Vector3.new(12, 3.4, 0.2), facing = SOUTH } :: Box,
-	approach = at("duel", 0, 0, 20.5), -- reading: in front of the podium, on the stage's south edge
+	approach = Vector3.new(0, 0, 21.5), -- Neon Sugar lobby: 5.5 in front of the podium on the plaza (X 0, Z 16)
 	-- "Join 1v1 Queue" / "Leave Queue" (toggle). Reading: 0.5 in front of the podium.
 	prompt = prompt("prompt.joinQueue", at("duel", 0, 2.6, 18), "prompt.leaveQueue"),
 }
@@ -756,29 +756,34 @@ end
 
 -- Private: other lobby data ----------------------------------------------------------------------------------------
 
--- Batch 3 (review #6, the duel pads; Services/FriendDuelService): the 10 queue pads as the game reads them. The ring
--- LobbyBuilder builds (design: lobby.js:190-195; 10 studs out on the sector centres 18° + 36° k, LobbyBuilder's
--- QUEUE_PAD_RING), each with its top centre (the pad is 0.5 tall on the stage), its team (mint on the west half,
--- strawberry on the east, as built) and its lane: a pad and the one straight across the medallion (k and k + 5, 20
--- studs apart, always one strawberry and one mint). LobbyBuilder_Test checks that every built queue_pad_ring sits on
--- one of them.
-local QUEUE_PAD_RING = 10
+-- Batch 3 (review #6, the duel pads; Services/FriendDuelService): the 10 queue pads as the game reads them, each with
+-- its top centre, its team and its lane (a mint pad and the strawberry pad across from it). Neon Sugar lobby (owner
+-- 2026-10-24, "On the Monument stage"): 2 rows of 5 on Diego's Monument base (top 2.3), in front of its pillars: the
+-- mint row 5.2 south of the centre, the strawberry row 10, lanes 1..5 left to right from the plaza (X -9.6 .. 9.6, 4.8
+-- apart). The pads (0.5 tall, Ø3.6 squares) and their queue_pad_ring parts are in the lobby's DuelGate model.
+local MONUMENT_BASE_TOP = 2.3
 local QUEUE_PAD_HEIGHT = 0.5
 local QueuePads: { QueuePad } = {}
-for k = 0, 9 do
-	local angle = math.rad(18 + 36 * k)
-	local x, z = QUEUE_PAD_RING * math.sin(angle), -QUEUE_PAD_RING * math.cos(angle)
-	table.insert(QueuePads, {
-		position = at("duel", x, DuelGate.stageTop + QUEUE_PAD_HEIGHT, z),
-		team = if x < 0 then "mint" else "strawberry",
-		lane = k % 5 + 1,
-	})
+for _, team in { "mint", "strawberry" } do
+	for lane = 1, 5 do
+		table.insert(QueuePads, {
+			position = Vector3.new(
+				-9.6 + (lane - 1) * 4.8,
+				MONUMENT_BASE_TOP + QUEUE_PAD_HEIGHT,
+				if team == "mint" then 5.2 else 10
+			),
+			team = team,
+			lane = lane,
+		})
+	end
 end
 
--- Reading: on the stage's south side, beside the podium, facing south (players come back from a duel here).
+-- On the plaza (top 0.6) beside the duel podium in front of the Monument, facing south (players come back from a
+-- duel here).
+local PLAZA_TOP = 0.6
 local ReturnPoints: { ReturnPoint } = {
-	{ slot = 1, position = at("duel", -6, DuelGate.stageTop, 19), facing = SOUTH }, -- reading: Slot 1 = west
-	{ slot = 2, position = at("duel", 6, DuelGate.stageTop, 19), facing = SOUTH },
+	{ slot = 1, position = Vector3.new(-6, PLAZA_TOP, 19), facing = SOUTH }, -- Slot 1 = west
+	{ slot = 2, position = Vector3.new(6, PLAZA_TOP, 19), facing = SOUTH },
 }
 
 local LOLLIPOP_RADIUS = 86 -- reading: in the garden, between two plots' paths

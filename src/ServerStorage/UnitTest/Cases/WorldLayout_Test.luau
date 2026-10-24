@@ -96,32 +96,21 @@ local FRAMES: { [string]: { r: number, deg: number, yaw: number? } } = {
 	fountain = { r = 48, deg = 342 }, -- §3: the Butter Fountain (a prop)
 }
 
--- Where each stand is used (its approach): APPROACH_STEP in front of the stand's front edge (station-local z).
-local APPROACH_FRONTS: { [string]: number } = {
-	duel = 17.5, -- the podium's front (Ø5 at z 15)
-	box = 10, -- the dais edge (Ø20)
-	shop = 6, -- the stall floor's front
-	collection = 3, -- the shelf floor's front
-	quests = 5.5, -- the floor's front
-	daily = 7.6, -- the dais edge (Ø15.2)
-}
-local APPROACH_STEP = 3 -- reading (not in spec)
-
 local POSITION_TOLERANCE = 0.01 -- studs; the design numbers are restated with two decimals
 local FLOAT_TOLERANCE = 1e-4 -- Vector3 components are single precision
 
--- Hub spawn routes (from the medallion centre to each stand's approach; squeeze to the mat
--- nearest the spawn), in studs: the island's distances when Phase 4 was built (a station moved farther out fails).
+-- Hub spawn routes (from the spawn at the Monument's centre to each stand's approach; squeeze to the seat nearest the
+-- spawn), in studs: Diego's Neon Sugar lobby's distances (2026-10-24; a station moved farther out fails).
 local SPAWN = Vector3.zero
 local SPAWN_ROUTES: { [string]: number } = {
-	quests = 44.5,
-	daily = 39.4,
-	squeeze = 64.0,
-	collection = 50.0,
-	shop = 47.0,
-	duel = 20.5,
-	practice = 48.0,
-	giftBox = 39.0,
+	quests = 37.0,
+	daily = 25.3,
+	squeeze = 30.1,
+	collection = 37.5,
+	shop = 31.0,
+	duel = 21.5,
+	practice = 21.0,
+	giftBox = 29.9,
 }
 local ROUTE_TOLERANCE = 0.1
 
@@ -488,23 +477,20 @@ return function(t: Context)
 			local waypoint = WorldLayout.waypoint("squeeze")
 			expect.truthy(flatNear(waypoint, nearest :: Vector3, 1e-6))
 			expect.equal(WorldLayout.waypoint("nowhere"), nil)
-			-- Neon Sugar lobby: a stand's approach is its stand marker's floor point, in front of Diego's piece (the duel
-			-- gate's is still the old stage's until it moves to the Monument).
+			-- Neon Sugar lobby: a stand's approach is its stand marker's floor point, in front of Diego's piece; the duel
+			-- gate's is 5.5 in front of the podium at the Monument (2026-10-24).
 			local markers: { [string]: { any } } = {
 				box = { WorldLayout.GiftBoxCounter, Vector3.new(21.1707, 0, 21.1708) },
 				shop = { WorldLayout.ShopCounter, Vector3.new(0, 0, 31.03) },
 				collection = { WorldLayout.Collection, Vector3.new(-26.5165, 0, 26.5165) },
 				quests = { WorldLayout.QuestBoard, Vector3.new(0, 0, -37.04) },
 				daily = { WorldLayout.DailyStand, Vector3.new(17.918, 0, -17.9181) },
+				duel = { WorldLayout.DuelGate, Vector3.new(0, 0, 21.5) },
 			}
 			for id, entry in markers do
 				if not flatNear(entry[1].approach, entry[2], 1e-6) then
 					error(`{id}: approach {show(entry[1].approach)}, expected {show(entry[2])}`)
 				end
-			end
-			local duel = design("duel", {}, 0, 0, APPROACH_FRONTS.duel + APPROACH_STEP)
-			if not flatNear(WorldLayout.DuelGate.approach, duel, POSITION_TOLERANCE) then
-				error(`duel: approach {show(WorldLayout.DuelGate.approach)}, expected {show(duel)}`)
 			end
 			-- The practice approach is the throw spot, inside the throw box before Diego's runway.
 			expect.truthy(flatNear(WorldLayout.PracticeRange.approach, Vector3.new(21, 0, 0), 1e-6))
@@ -733,7 +719,7 @@ return function(t: Context)
 	)
 
 	t.test(
-		"return points: slots 1 and 2 at (∓6, 0.8, 19) on the stage's south side, facing south (reading)",
+		"return points: slots 1 and 2 at (∓6, 0.6, 19) on the plaza beside the duel podium, facing south",
 		function()
 			local points = WorldLayout.ReturnPoints
 			expect.equal(#points, 2)
@@ -741,12 +727,10 @@ return function(t: Context)
 				expect.equal(point.slot, index)
 				expect.equal(point.position.X, if index == 1 then -6 else 6) -- Slot 1 west
 				expect.equal(point.position.Z, 19)
-				expect.near(point.position.Y, 0.8, FLOAT_TOLERANCE) -- the stage top
+				expect.near(point.position.Y, 0.6, FLOAT_TOLERANCE) -- Diego's plaza top
 				expect.truthy(vectorNear(point.facing, Vector3.new(0, 0, 1)))
-				-- On the stage, beside the podium, off the south path's aisle (it starts at the stage edge).
-				expect.truthy(
-					Vector3.new(point.position.X, 0, point.position.Z).Magnitude < WorldLayout.Lobby.stageRadius
-				)
+				-- In front of the Monument (its base reaches Z 12.5), clear of the podium (X -2.7..2.7).
+				expect.truthy(point.position.Z > 12.5 and math.abs(point.position.X) > 2.7 + 1)
 			end
 		end
 	)
