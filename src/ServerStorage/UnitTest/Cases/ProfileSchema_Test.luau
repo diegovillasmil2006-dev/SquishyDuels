@@ -5,18 +5,20 @@
 -- Contract:
 --   * a v1 fixture becomes v2: 10 Grip per old squeeze from the FROZEN constant, rested and afk start full and are
 --     stamped with lastSeenAt, missing fields filled with defaults, everything else deep-equal, start version 1;
---   * v2 is a no-op (no second head start);
+--   * Neon Sugar part 5 (2026-10-24): a v2 save becomes v3: pen.shelfRows (rows of 2) -> 2 x rows open cubbies, a
+--     squishy in slot 21 (v2's TOP spot) -> 24 (v3's), nothing else; a v1 fixture runs both steps (start version 1);
+--   * v3 is a no-op (no second head start);
 --   * bad Grip values (total, rested) are sanitized; slow training and the trainers are gone (build plan Phase 6): a
 --     new save has no grip.afk or grip.trainer, and an old save's (or the frozen migration's) are kept as they are,
 --     unknown fields nothing reads;
---   * v3 (newer than CURRENT) is not migrated: READONLY view;
+--   * v4 (newer than CURRENT) is not migrated: READONLY view;
 --   * the §3.3 sanitize rules (coins, starter ownership, equipped, logs, settings, quests);
 --   * samePair (§6.7) joined schema 2 without a new version: defaults {}, an older v2 profile gets it from reconcile,
 --     and sanitize fails closed (bad keys / values dropped, non-finite times dropped, far-future times -> now,
 --     sorted, both caps);
 --   * capsules left schema 2 the same way (pens3 phase 2): not in defaults, never added by reconcile or fixed by
 --     sanitize, and an old save's are kept unchanged (through JSON too), an unknown field nothing reads;
---   * Match HUD M2 (2026-10-16): stats.winStreak joined schema 2 the same way (CURRENT stays 2): defaults 0, an older
+--   * Match HUD M2 (2026-10-16): stats.winStreak joined schema 2 the same way (no version of its own): defaults 0, an older
 --     v2 profile gets 0 from reconcile (no sanitize problem), a saved streak is kept, and sanitize fixes a negative,
 --     fractional, non-finite or wrong-type one like every counter;
 --   * auto-clicker check (2026-10-16): autoClick (the last strike) joined schema 2 the same way: defaults {step = 0,
@@ -51,9 +53,9 @@
 --   * pens3 phase 9: food {[foodId] = 0 for every Config food} joined the same way (reconcile gives an older profile
 --     none of each, and a food the Config gains later 0); sanitize: each count a whole number in [0, maxPieces]
 --     (floored, clamped; broken or missing -> 0), a key that is not a Config food dropped; every fix logged.
---   * pens3 phase 11 (the shelf rows + the TOP spot): pen.shelfRows (default 1) and pen.top (default false) joined
---     the same way (reconcile gives an older pen the start row; a missing value is the default, not logged); sanitize
---     clamps shelfRows to a whole number in [1, 4] (non-finite or not a number -> 1) and fails closed on top (not a
+--   * pens3 phase 11 (the shelf rows + the TOP spot): pen.shelfRows (default 2: Neon Sugar part 5, one cubby a row)
+--     and pen.top (default false) joined the same way (reconcile gives an older pen the start rows; a missing value is
+--     the default, not logged); sanitize clamps shelfRows to a whole number in [2, 11] (non-finite or not a number -> 2) and fails closed on top (not a
 --     boolean -> false), each fix logged; a squishy in a shelf slot that is not open (a row not bought, the TOP spot
 --     not bought) goes to the Toy Box, never dropped, logged; an item with no slot fills the pen, then the shelf, then
 --     the TOP spot.
@@ -199,7 +201,7 @@ return function(t: Context)
 
 	local function expectedV2(fixture: any): any
 		local expected = TableUtil.deepCopy(fixture)
-		expected.schemaVersion = 2
+		expected.schemaVersion = 3 -- Neon Sugar part 5: a v1 runs both steps (no pen yet: v2 -> v3 changes nothing else)
 		local seen = fixture.lastSeenAt
 		expected.grip = {
 			total = fixture.stats.squeezes * 10,
@@ -224,7 +226,7 @@ return function(t: Context)
 			nextId = 2,
 			items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
 			awayRate = 0,
-			shelfRows = 1, -- pens3 phase 11: the same (reconcile)
+			shelfRows = 2, -- pens3 phase 11: the same (reconcile; the 2 start cubbies)
 			top = false,
 		}
 		for _, kind in { "banana", "toast" } do
@@ -248,8 +250,8 @@ return function(t: Context)
 		return count
 	end
 
-	t.test("CURRENT is 2 and the v1 -> v2 constants are frozen at 10 / 1200 / 120 / 1e9", function()
-		expect.equal(ProfileSchema.CURRENT, 2)
+	t.test("CURRENT is 3 and the v1 -> v2 constants are frozen at 10 / 1200 / 120 / 1e9", function()
+		expect.equal(ProfileSchema.CURRENT, 3)
 		expect.deepEqual(
 			ProfileSchema.V1_TO_V2,
 			{ headStartPerSqueeze = 10, restedStart = 1200, afkStart = 120, maxGrip = 1_000_000_000 }
@@ -258,7 +260,7 @@ return function(t: Context)
 
 	t.test("defaults(now) follow §3.2 + the v2 Grip block", function()
 		local d = ProfileSchema.defaults(NOW)
-		expect.equal(d.schemaVersion, 2)
+		expect.equal(d.schemaVersion, 3)
 		expect.equal(d.createdAt, NOW)
 		expect.equal(d.lastSeenAt, NOW)
 		expect.equal(d.saveSeq, 0)
@@ -287,7 +289,7 @@ return function(t: Context)
 			nextId = 2,
 			items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
 			awayRate = 0,
-			shelfRows = 1, -- pens3 phase 11: the shelf's start row, no TOP spot
+			shelfRows = 2, -- pens3 phase 11: the shelf's 2 start cubbies, no TOP spot
 			top = false,
 		})
 		-- Pens3 phase 5: no gift waiting, no fixed-order box opened, the Frog gift still to come.
@@ -325,10 +327,50 @@ return function(t: Context)
 		local migrated, from, err = ProfileSchema.migrate(FIXTURE_V1)
 		expect.equal(err, nil)
 		expect.equal(from, 1)
-		expect.equal(migrated.schemaVersion, 2)
+		expect.equal(migrated.schemaVersion, 3)
 		expect.truthy(migrated ~= FIXTURE_V1)
 		expect.equal(FIXTURE_V1.schemaVersion, 1)
 		expect.equal((FIXTURE_V1 :: any).grip, nil)
+	end)
+
+	-- Neon Sugar part 5: a real v2 save (rows of 2 and the TOP spot at 21) moves to v3's one-cubby rows and slot 24.
+	t.test("a v2 save becomes v3: shelf rows of 2 -> their cubbies, the TOP squishy 21 -> 24, nothing else", function()
+		local v2 = load(FIXTURE_V1).profile :: any
+		v2.schemaVersion = 2
+		v2.owned.bird = { at = 1, src = "shop" }
+		v2.owned.dragon = { at = 1, src = "shop" }
+		v2.pen.spots, v2.pen.nextId, v2.pen.shelfRows, v2.pen.top = 3, 9, 2, true -- v2: rows 1-2 = slots 13-16
+		v2.pen.items = {
+			penItem(1, "kitty_bread", 0, 1, 0, 1),
+			penItem(4, "toast", 0, 1, 0, 13),
+			penItem(6, "bird", 0, 1, 0, 16), -- v2 row 2's second spot: v3's cubby 4
+			penItem(7, "dragon", 2, 30, 4, 21), -- v2's TOP spot
+			penItem(8, "banana"), -- the Toy Box
+		}
+		local before = TableUtil.deepCopy(v2)
+		local result = load(v2)
+		expect.equal(result.status, "ok")
+		expect.equal(result.fromVersion, 2)
+		expect.equal(result.migrated, true)
+		expect.deepEqual(result.problems, {})
+		local want = TableUtil.deepCopy(before)
+		want.schemaVersion = 3
+		want.pen.shelfRows = 4 -- the same 4 cubbies stay open
+		want.pen.items[4].slot = 24 -- the TOP squishy keeps the TOP spot
+		expect.deepEqual(result.profile, want)
+		expect.deepEqual(v2, before) -- the stored value is never changed
+		-- Every v2 shelf: rows 1..4 -> 2..8 cubbies; a broken or missing value is left for reconcile / sanitize.
+		for _, case in { { 1, 2 }, { 2, 4 }, { 3, 6 }, { 4, 8 } } do
+			local one = TableUtil.deepCopy(before)
+			one.pen.shelfRows = case[1]
+			expect.equal((ProfileSchema.migrate(one)).pen.shelfRows, case[2])
+		end
+		local broken = TableUtil.deepCopy(before)
+		broken.pen.shelfRows = 0 / 0
+		expect.equal(load(broken).profile.pen.shelfRows, 2) -- sanitize: the start
+		local noPen = TableUtil.deepCopy(before)
+		noPen.pen = nil
+		expect.equal((ProfileSchema.migrate(noPen)).schemaVersion, 3)
 	end)
 
 	t.test("an older v1 shape gets the missing fields from defaults", function()
@@ -339,7 +381,7 @@ return function(t: Context)
 		old.schemaVersion = nil -- a missing version counts as 1 (reading)
 		local result = load(old)
 		expect.equal(result.fromVersion, 1)
-		expect.equal(result.profile.schemaVersion, 2)
+		expect.equal(result.profile.schemaVersion, 3)
 		expect.deepEqual(result.profile.settings, { music = 40, sfx = 70, cameraShake = true, showTips = true })
 		expect.deepEqual(result.profile.onboarding, { v = 1, done = {}, skipped = false })
 		expect.equal(result.profile.stats.boxesOpened, 0)
@@ -375,11 +417,11 @@ return function(t: Context)
 		expect.deepEqual(migrated.grip.rested, { value = 1200, at = 0 })
 	end)
 
-	t.test("v2 is a no-op: loading a migrated profile again changes nothing", function()
+	t.test("v3 is a no-op: loading a migrated profile again changes nothing", function()
 		local first = load(FIXTURE_V1).profile
 		local again = load(first)
 		expect.equal(again.status, "ok")
-		expect.equal(again.fromVersion, 2)
+		expect.equal(again.fromVersion, 3)
 		expect.equal(again.migrated, false)
 		expect.deepEqual(again.problems, {})
 		expect.deepEqual(again.profile, first)
@@ -433,24 +475,24 @@ return function(t: Context)
 		expect.deepEqual(problems, {})
 	end)
 
-	t.test("v3 is newer than CURRENT: not migrated, READONLY view", function()
+	t.test("v4 is newer than CURRENT: not migrated, READONLY view", function()
 		local v3 = TableUtil.deepCopy(FIXTURE_V1) :: any
-		v3.schemaVersion = 3
+		v3.schemaVersion = 4
 		v3.grip = { total = 5, trainer = 2, rested = { value = 1, at = NOW }, afk = { value = 2, at = NOW } }
 		v3.futureField = { x = 1 }
 		expect.equal(ProfileSchema.isNewer(v3), true)
 		expect.equal(ProfileSchema.isNewer(FIXTURE_V1), false)
 		local migrated, version, err = ProfileSchema.migrate(v3)
 		expect.equal(migrated, nil)
-		expect.equal(version, 3)
+		expect.equal(version, 4)
 		expect.equal(err, "newer")
 		local result = load(v3)
 		expect.equal(result.status, "newer")
 		expect.equal(result.migrated, false)
-		expect.equal(result.profile.schemaVersion, 3) -- shown as stored, never rewritten
+		expect.equal(result.profile.schemaVersion, 4) -- shown as stored, never rewritten
 		expect.deepEqual(result.profile.futureField, { x = 1 })
 		expect.equal(result.profile.coins, 12_345)
-		expect.equal(v3.schemaVersion, 3)
+		expect.equal(v3.schemaVersion, 4)
 	end)
 
 	t.test("a stored value that is not a table is corrupt", function()
@@ -464,7 +506,7 @@ return function(t: Context)
 		-- nil is a key that was never written: defaults
 		local fresh = load(nil)
 		expect.equal(fresh.status, "ok")
-		expect.equal(fresh.fromVersion, 2)
+		expect.equal(fresh.fromVersion, 3)
 		expect.deepEqual(fresh.profile, ProfileSchema.defaults(NOW))
 	end)
 
@@ -564,7 +606,7 @@ return function(t: Context)
 		older.samePair = nil -- a v2 profile saved before the field existed
 		local result = load(older)
 		expect.equal(result.status, "ok")
-		expect.equal(result.fromVersion, 2)
+		expect.equal(result.fromVersion, 3)
 		expect.equal(result.migrated, false)
 		expect.deepEqual(result.problems, {})
 		expect.deepEqual(result.profile.samePair, {})
@@ -645,13 +687,13 @@ return function(t: Context)
 	-- The win streak (Match HUD M2, 2026-10-16) --------------------------------------------------------------------------
 
 	t.test("winStreak joins schema 2 without a new version: defaults 0, an older v2 profile gets 0", function()
-		expect.equal(ProfileSchema.CURRENT, 2)
+		expect.equal(ProfileSchema.CURRENT, 3) -- this field joined with no version of its own
 		expect.equal(ProfileSchema.defaults(NOW).stats.winStreak, 0)
 		local older = load(FIXTURE_V1).profile :: any
 		older.stats.winStreak = nil -- a v2 profile saved before the stat existed
 		local result = load(older)
 		expect.equal(result.status, "ok")
-		expect.equal(result.fromVersion, 2)
+		expect.equal(result.fromVersion, 3)
 		expect.equal(result.migrated, false)
 		expect.deepEqual(result.problems, {})
 		expect.equal(result.profile.stats.winStreak, 0)
@@ -694,12 +736,12 @@ return function(t: Context)
 	t.test(
 		"autoClick joins schema 2 without a new version: an older v2 profile gets no strike, a saved one stays",
 		function()
-			expect.equal(ProfileSchema.CURRENT, 2)
+			expect.equal(ProfileSchema.CURRENT, 3) -- this field joined with no version of its own
 			local older = load(FIXTURE_V1).profile :: any
 			older.autoClick = nil -- a v2 profile saved before the field existed
 			local result = load(older)
 			expect.equal(result.status, "ok")
-			expect.equal(result.fromVersion, 2)
+			expect.equal(result.fromVersion, 3)
 			expect.equal(result.migrated, false)
 			expect.deepEqual(result.problems, {})
 			expect.deepEqual(result.profile.autoClick, { step = 0, at = 0 })
@@ -759,12 +801,12 @@ return function(t: Context)
 	end
 
 	t.test("weekly joins schema 2 without a new version: an older v2 profile gets none, a saved week stays", function()
-		expect.equal(ProfileSchema.CURRENT, 2)
+		expect.equal(ProfileSchema.CURRENT, 3) -- this field joined with no version of its own
 		expect.deepEqual(ProfileSchema.defaults(NOW).weekly, { week = -1, active = {} })
 		local older = load(FIXTURE_V1).profile :: any
 		older.weekly = nil -- a v2 profile saved before the field existed
 		local result = load(older)
-		expect.equal(result.fromVersion, 2)
+		expect.equal(result.fromVersion, 3)
 		expect.deepEqual(result.problems, {})
 		expect.deepEqual(result.profile.weekly, { week = -1, active = {} })
 		local kept = load(FIXTURE_V1).profile :: any
@@ -824,12 +866,12 @@ return function(t: Context)
 	end
 
 	t.test("pen joins schema 2 without a new version: an older profile gets one plain item per owned kind", function()
-		expect.equal(ProfileSchema.CURRENT, 2)
+		expect.equal(ProfileSchema.CURRENT, 3) -- this field joined with no version of its own
 		local older = load(FIXTURE_V1).profile :: any
 		older.pen = nil -- a v2 profile saved before the field existed
 		older.owned.dragon = { at = 5, src = "box" }
 		local result = load(older)
-		expect.equal(result.fromVersion, 2)
+		expect.equal(result.fromVersion, 3)
 		expect.equal(result.migrated, false)
 		expect.deepEqual(result.profile.pen, {
 			spots = 3,
@@ -841,7 +883,7 @@ return function(t: Context)
 				penItem(4, "toast", 0, 1, 0, 13), -- pens3 phase 11: the pen is full, the shelf's start row is not
 			},
 			awayRate = 0, -- pens3 phase 4: from reconcile
-			shelfRows = 1, -- pens3 phase 11: from reconcile
+			shelfRows = 2, -- pens3 phase 11: from reconcile
 			top = false,
 		})
 		expect.equal(penProblems(result.problems), 6) -- every added item is logged, and its slot
@@ -893,7 +935,7 @@ return function(t: Context)
 		expect.deepEqual(pen, {
 			spots = 3,
 			nextId = 11,
-			shelfRows = 1, -- pens3 phase 11: missing -> the start row (not logged)
+			shelfRows = 2, -- pens3 phase 11: missing -> the start rows (not logged)
 			top = false,
 			items = {
 				penItem(7, "kitty_bread", 0, 1, 0, 1),
@@ -926,7 +968,7 @@ return function(t: Context)
 		expect.deepEqual(pen, {
 			spots = 4,
 			nextId = 5,
-			shelfRows = 1, -- pens3 phase 11
+			shelfRows = 2, -- pens3 phase 11
 			top = false,
 			items = {
 				penItem(1, "kitty_bread", 0, 1, 0, 2),
@@ -963,10 +1005,10 @@ return function(t: Context)
 				penItem(4, "toast", 1, 12, 3, 12, true), -- phase 6: a slot and a lock survive
 				penItem(8, "banana"),
 				penItem(6, "bird", 0, 1, 0, 16), -- pens3 phase 11: a shelf slot and the TOP spot survive
-				penItem(7, "dragon", 0, 1, 0, 21),
+				penItem(7, "dragon", 0, 1, 0, 24),
 			},
 			awayRate = 1_234_567.25, -- pens3 phase 4: a rate with a fraction (a levelled pen)
-			shelfRows = 2,
+			shelfRows = 4,
 			top = true,
 		}
 		profile.owned.bird = { at = 1, src = "shop" }
@@ -1093,11 +1135,11 @@ return function(t: Context)
 	t.test(
 		"giftQueue, boxOrder and gifts join schema 2 without a new version: an older profile gets them, no problem",
 		function()
-			expect.equal(ProfileSchema.CURRENT, 2)
+			expect.equal(ProfileSchema.CURRENT, 3) -- this field joined with no version of its own
 			local older = load(FIXTURE_V1).profile :: any
 			older.giftQueue, older.boxOrder, older.gifts = nil, nil, nil -- a v2 profile saved before phase 5
 			local result = load(older)
-			expect.equal(result.fromVersion, 2)
+			expect.equal(result.fromVersion, 3)
 			expect.equal(result.migrated, false)
 			expect.deepEqual(result.problems, {})
 			expect.deepEqual(result.profile.giftQueue, {})
@@ -1192,11 +1234,11 @@ return function(t: Context)
 	end
 
 	t.test("buyBack and bag join schema 2 without a new version: an older profile gets them, no problem", function()
-		expect.equal(ProfileSchema.CURRENT, 2)
+		expect.equal(ProfileSchema.CURRENT, 3) -- this field joined with no version of its own
 		local older = load(FIXTURE_V1).profile :: any
 		older.buyBack, older.bag = nil, nil -- a v2 profile saved before phase 7
 		local result = load(older)
-		expect.equal(result.fromVersion, 2)
+		expect.equal(result.fromVersion, 3)
 		expect.deepEqual(result.problems, {})
 		expect.deepEqual(result.profile.buyBack, {})
 		expect.deepEqual(result.profile.bag, { 0, 0, 0, 0, 0, 0, 0 })
@@ -1275,11 +1317,11 @@ return function(t: Context)
 	-- Pens3 phase 9 (food and levels): food -------------------------------------------------------------------------
 
 	t.test("food joins schema 2 without a new version: an older profile gets none of each, no problem", function()
-		expect.equal(ProfileSchema.CURRENT, 2)
+		expect.equal(ProfileSchema.CURRENT, 3) -- this field joined with no version of its own
 		local older = load(FIXTURE_V1).profile :: any
 		older.food = nil -- a v2 profile saved before phase 9
 		local result = load(older)
-		expect.equal(result.fromVersion, 2)
+		expect.equal(result.fromVersion, 3)
 		expect.deepEqual(result.problems, {})
 		expect.deepEqual(result.profile.food, NO_FOOD)
 		local HttpService = game:GetService("HttpService")
@@ -1339,31 +1381,31 @@ return function(t: Context)
 	)
 	-- Pens3 phase 11: the shelf rows and the TOP spot.
 	t.test(
-		"pen.shelfRows and pen.top join schema 2: defaults 1 / false; reconcile fills an older pen, no problem",
+		"pen.shelfRows and pen.top join schema 2: defaults 2 / false; reconcile fills an older pen, no problem",
 		function()
 			local fresh = ProfileSchema.defaults(NOW) :: any
-			expect.equal(fresh.pen.shelfRows, 1)
+			expect.equal(fresh.pen.shelfRows, 2)
 			expect.equal(fresh.pen.top, false)
 			local older = load(FIXTURE_V1).profile :: any
 			older.pen.shelfRows, older.pen.top = nil, nil -- a pen saved before phase 11
 			local result = load(older)
-			expect.equal(result.profile.pen.shelfRows, 1)
+			expect.equal(result.profile.pen.shelfRows, 2)
 			expect.equal(result.profile.pen.top, false)
 			expect.deepEqual(result.problems, {})
 			-- sanitize alone (no reconcile first): a missing value is the default, not logged.
 			local only = { kitty_bread = { at = 1, src = "starter" } }
 			local pen, _, problems =
 				fixedPen({ spots = 3, nextId = 2, items = { penItem(1, "kitty_bread", 0, 1, 0, 1) } }, only)
-			expect.equal(pen.shelfRows, 1)
+			expect.equal(pen.shelfRows, 2)
 			expect.equal(pen.top, false)
 			expect.equal(penProblems(problems), 0)
 		end
 	)
 
-	t.test("sanitize pen.shelfRows / top: clamped to [1, 4], top fails closed to false; every fix logged", function()
+	t.test("sanitize pen.shelfRows / top: clamped to [2, 11], top fails closed to false; every fix logged", function()
 		local only = { kitty_bread = { at = 1, src = "starter" } }
 		for _, case in
-			{ { 1, 1 }, { 4, 4 }, { 0, 1 }, { 7, 4 }, { 2.5, 2 }, { 0 / 0, 1 }, { "3", 1 }, { -2, 1 } } :: { { any } }
+			{ { 2, 2 }, { 11, 11 }, { 1, 2 }, { 14, 11 }, { 5.5, 5 }, { 0 / 0, 2 }, { "3", 2 }, { -2, 2 } } :: { { any } }
 		do
 			local pen, _, problems = fixedPen({
 				spots = 3,
@@ -1380,7 +1422,7 @@ return function(t: Context)
 				spots = 3,
 				nextId = 2,
 				items = { penItem(1, "kitty_bread", 0, 1, 0, 1) },
-				shelfRows = 1,
+				shelfRows = 2,
 				top = case[1],
 			}, only)
 			expect.equal(pen.top, case[2])
@@ -1399,14 +1441,14 @@ return function(t: Context)
 		local pen, _, problems = fixedPen({
 			spots = 3,
 			nextId = 7,
-			shelfRows = 1,
+			shelfRows = 2,
 			top = false,
 			items = {
 				penItem(1, "kitty_bread", 0, 1, 0, 1),
-				penItem(2, "toast", 0, 1, 0, 13), -- row 1: open, kept
-				penItem(3, "banana", 0, 1, 0, 15), -- row 2: not bought -> the Toy Box
-				penItem(4, "bird", 0, 1, 0, 21), -- the TOP spot: not bought -> the Toy Box
-				penItem(5, "dragon", 0, 1, 0, 22), -- past the TOP spot -> the Toy Box
+				penItem(2, "toast", 0, 1, 0, 13), -- cubby 1: open, kept
+				penItem(3, "banana", 0, 1, 0, 15), -- cubby 3: not bought -> the Toy Box
+				penItem(4, "bird", 0, 1, 0, 24), -- the TOP spot: not bought -> the Toy Box
+				penItem(5, "dragon", 0, 1, 0, 25), -- past the TOP spot -> the Toy Box
 				penItem(6, "toast", 0, 1, 0, 13), -- 13 again -> the Toy Box
 			},
 		}, owned)
@@ -1423,21 +1465,21 @@ return function(t: Context)
 		local bought = fixedPen({
 			spots = 3,
 			nextId = 4,
-			shelfRows = 2,
+			shelfRows = 3,
 			top = true,
 			items = {
 				penItem(1, "kitty_bread", 0, 1, 0, 1),
 				penItem(2, "banana", 0, 1, 0, 15),
-				penItem(3, "bird", 0, 1, 0, 21),
+				penItem(3, "bird", 0, 1, 0, 24),
 			},
 		}, owned)
 		expect.equal(bought.items[2].slot, 15)
-		expect.equal(bought.items[3].slot, 21)
+		expect.equal(bought.items[3].slot, 24)
 		-- No slot (an older save): the pen first, then the shelf's open spots, then the TOP spot, the best first.
 		local filled = fixedPen({
 			spots = 3,
 			nextId = 6,
-			shelfRows = 1,
+			shelfRows = 2,
 			top = true,
 			items = {
 				oldItem(1, "kitty_bread"),
@@ -1456,7 +1498,7 @@ return function(t: Context)
 		filled = fixedPen({
 			spots = 3,
 			nextId = 7,
-			shelfRows = 1,
+			shelfRows = 2,
 			top = true,
 			items = {
 				oldItem(1, "kitty_bread"),
@@ -1467,7 +1509,7 @@ return function(t: Context)
 				oldItem(6, "toast"),
 			},
 		}, owned)
-		expect.equal(filled.items[6].slot, 21) -- the last open spot: the TOP spot
+		expect.equal(filled.items[6].slot, 24) -- the last open spot: the TOP spot
 	end)
 	-- Pens3 phase 13 (the throw): highway ---------------------------------------------------------------------------
 
@@ -1477,7 +1519,7 @@ return function(t: Context)
 			local older = load(FIXTURE_V1).profile :: any
 			older.highway = nil -- a v2 profile saved before phase 13
 			local result = load(older)
-			expect.equal(result.fromVersion, 2)
+			expect.equal(result.fromVersion, 3)
 			expect.deepEqual(result.problems, {})
 			expect.deepEqual(result.profile.highway, { best = 0, biome = 1 })
 			local HttpService = game:GetService("HttpService")

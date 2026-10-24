@@ -32,7 +32,7 @@ local Pen = {
 	minSqueezeValue = 10, -- an own squeeze, and every reward counted in squeezes, is worth at least this
 	maxLevel = 70, -- 10 levels for each of the 7 biomes
 	toyBoxMax = 50, -- unplaced squishies (D1:254-258: at the cap paid opens and shop buys stop, free ones wait)
-	placedMax = 21, -- 12 pen spots + 8 shelf spots + the TOP spot (phase 11)
+	placedMax = 24, -- 12 pen spots + 11 shelf spots + the TOP spot (Neon Sugar part 5: Diego's 12-cubby shelf)
 
 	tickSeconds = 1, -- the pen pays every second
 	maxTickSeconds = 10, -- [P] a server hitch pays at most this much time at once
@@ -66,23 +66,32 @@ local Pen = {
 	-- The buy-back: a sale can be bought back for this long, for exactly what it paid, once; at most buyBackMax wait
 	-- (toyBoxMax + placedMax, so a whole Sell All can be undone), the oldest falling off first.
 	buyBackSeconds = 600,
-	buyBackMax = 71,
+	buyBackMax = 74,
 
-	-- Pens3 phase 11 (the show-off shelf, V3:144-151; prices final_hagb_grip110.json "shelfRowPrice" / "topPrice",
-	-- the plan's 31M / 250B / 11T / 140T exactly): rows of shelfRowSpots spots, shelfStartRows open from the start,
+	-- Pens3 phase 11 (the show-off shelf, V3:144-151): rows of shelfRowSpots spots, shelfStartRows open from the start,
 	-- the next one bought at shelfRowPrices[row] up to shelfMaxRows, then the one TOP spot at topPrice (the last buy).
 	-- They earn like the pen's squishies. Slots (PenMath): the pen 1..maxSpots, the shelf maxSpots + 1 .. (row r:
 	-- maxSpots + shelfRowSpots × (r - 1) + 1 ..), the TOP spot placedMax (ValidatePen keeps placedMax = maxSpots +
 	-- shelfMaxRows × shelfRowSpots + 1).
-	shelfStartRows = 1,
-	shelfMaxRows = 4,
-	shelfRowSpots = 2,
+	-- Neon Sugar part 5 (owner 2026-10-24, "yes"): Diego's 12-cubby shelf, bought one cubby at a time (a "row" is one
+	-- cubby now): 2 open from the start, cubbies 3..11, then the TOP spot as cubby 12; each about x5 the last (the econ4
+	-- model, with INCOME C and the re-priced gear: Divine Heaven at hour 24.6 as before, the TOP spot about hour 67;
+	-- ProfileSchema's v2 -> v3 step moves old saves over: rows of 2 -> 2 cubbies each, the TOP squishy 21 -> 24).
+	shelfStartRows = 2,
+	shelfMaxRows = 11,
+	shelfRowSpots = 1,
 	shelfRowPrices = {
-		[2] = 31_000_000,
-		[3] = 250_000_000_000,
-		[4] = 11_000_000_000_000,
+		[3] = 300_000_000,
+		[4] = 1_600_000_000,
+		[5] = 8_400_000_000,
+		[6] = 45_000_000_000,
+		[7] = 240_000_000_000,
+		[8] = 1_300_000_000_000,
+		[9] = 6_700_000_000_000,
+		[10] = 36_000_000_000_000,
+		[11] = 190_000_000_000_000,
 	} :: { [number]: number },
-	topPrice = 140_000_000_000_000,
+	topPrice = 1_000_000_000_000_000,
 }
 
 return Pen

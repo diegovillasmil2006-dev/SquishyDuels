@@ -916,9 +916,9 @@ local Bases = {
 			shelf = CFrame.new(23.2, 3.45, 30.86) * CFrame.Angles(0, math.pi, 0),
 		},
 		-- His shelf at the plot's back: `at` = its frame on the cubbies' pads (z -21.1), turned like the gate (its front
-		-- toward the arch); `cubbies` above. Cubby k is pen slot maxSpots + k: the 4 shelf rows two by two in 1..8, the
-		-- TOP spot in 9 (10..12 stay locked until the shelf grows, part 5). `labelOver` = a coin label's centre over its
-		-- pad's top (on the board between the rows, 8.4..9.4 up) and `labelZ` its depth (0.2 in front of the shelf's
+		-- toward the arch); `cubbies` above. Cubby k is pen slot maxSpots + k (Neon Sugar part 5: one cubby a buy):
+		-- the shelf spots in 1..11, the TOP spot in 12. `labelOver` = a coin label's centre over its pad's top (on the
+		-- board between the rows, 8.4..9.4 up) and `labelZ` its depth (0.2 in front of the shelf's
 		-- front, z -18.4).
 		shelf = {
 			at = CFrame.new(0, 0, -21.1) * CFrame.Angles(0, math.pi, 0),

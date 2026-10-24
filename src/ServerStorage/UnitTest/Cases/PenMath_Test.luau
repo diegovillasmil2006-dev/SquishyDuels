@@ -23,12 +23,12 @@
 -- (fusion): fuseDecision takes 3 of one kind and form (net.invalid, inventory.notOwned, pen.locked, pen.fuseMismatch,
 -- pen.fuseTop for Rainbow); the keeper is the highest level (a tie: a placed one, then the lower id), the result its
 -- next form at its level, and every input's coating is listed for the bag.
--- Phase 11 (the shelf rows + the TOP spot, V3:144-151, J's prices): the open spots are the pen's 1..spots, the shelf's
--- 13.. (2 a row, shelfRows rows; a missing or broken shelfRows opens no shelf spot: fail closed) and the TOP
--- spot 21 once bought; placed lists them all in slot order (they all earn: rate, squeeze value, Feed All, a fusion
+-- Phase 11 (the shelf rows + the TOP spot, V3:144-151; Neon Sugar part 5: one cubby a row): the open spots are the
+-- pen's 1..spots, the shelf's 13.. (one a row, shelfRows rows, 2 from the start; a missing or broken shelfRows opens no
+-- shelf spot: fail closed) and the TOP spot 24 once bought; placed lists them all in slot order (they all earn: rate, squeeze value, Feed All, a fusion
 -- keeper), inPen / onShelf split them; freeSlot fills the pen, then the shelf, then the TOP spot; room counts every
 -- open spot; placeDecision moves into, out of and between them (a closed shelf spot or an unbought TOP spot is
--- pen.spotClosed); shelfPrice / shelfDecision sell row 2, 3, 4 at 31M / 250B / 11T, then the TOP spot at 140T, then
+-- pen.spotClosed); shelfPrice / shelfDecision sell cubby 3 .. 11 at 300M .. 190T, then the TOP spot at 1Qa, then
 -- pen.shelfMax (a wrong price pen.priceChanged, bad input or a broken pen net.invalid); encodeShelf / decodeShelf
 -- carry each shelf squishy's slot and look.
 -- Wb (owner 2026-10-17: the pen is the whole base): walkArea(studs) is the pen's floor (Bases.pen.walk: Diego's
@@ -864,49 +864,49 @@ return function(t: Context)
 			expect.deepEqual(plan.used, { butter_bun = 2 })
 		end
 	)
-	-- Pens3 phase 11 (the shelf rows + the TOP spot) ------------------------------------------------------------------
+	-- Pens3 phase 11 (the shelf rows + the TOP spot; Neon Sugar part 5: one cubby a row, 2 open at the start) ----------
 
-	t.test("isOpen / openSlots: the pen's spots, 2 shelf spots a row from 13, the TOP spot 21 once bought", function()
-		expect.deepEqual(PenMath.openSlots(shelfPen(3, 1, false, {})), { 1, 2, 3, 13, 14 }) -- the start row
+	t.test("isOpen / openSlots: the pen's spots, one shelf spot a row from 13, the TOP spot 24 once bought", function()
+		expect.deepEqual(PenMath.openSlots(shelfPen(3, 2, false, {})), { 1, 2, 3, 13, 14 }) -- the start rows
 		expect.deepEqual(PenMath.openSlots(pen(3, {})), { 1, 2, 3 }) -- no shelfRows (not sanitized): no shelf spot
-		expect.deepEqual(PenMath.openSlots(shelfPen(4, 2, false, {})), { 1, 2, 3, 4, 13, 14, 15, 16 })
-		local full = PenMath.openSlots(shelfPen(12, 4, true, {}))
-		expect.equal(#full, 21)
+		expect.deepEqual(PenMath.openSlots(shelfPen(4, 4, false, {})), { 1, 2, 3, 4, 13, 14, 15, 16 })
+		local full = PenMath.openSlots(shelfPen(12, 11, true, {}))
+		expect.equal(#full, 24)
 		expect.equal(full[13], 13)
-		expect.equal(full[20], 20)
-		expect.equal(full[21], 21)
-		local box = shelfPen(3, 1, false, {})
+		expect.equal(full[23], 23)
+		expect.equal(full[24], 24)
+		local box = shelfPen(3, 2, false, {})
 		expect.equal(PenMath.isOpen(box, 3), true)
 		expect.equal(PenMath.isOpen(box, 4), false) -- a pen spot not bought
 		expect.equal(PenMath.isOpen(box, 14), true)
-		expect.equal(PenMath.isOpen(box, 15), false) -- row 2 not bought
-		expect.equal(PenMath.isOpen(box, 21), false) -- the TOP spot not bought
-		expect.equal(PenMath.isOpen(shelfPen(3, 1, true, {}), 21), true)
-		for _, bad in { 0, 22, 12.5, -1, 0 / 0, "13" } :: { any } do
-			expect.equal(PenMath.isOpen(shelfPen(12, 4, true, {}), bad), false)
+		expect.equal(PenMath.isOpen(box, 15), false) -- cubby 3 not bought
+		expect.equal(PenMath.isOpen(box, 24), false) -- the TOP spot not bought
+		expect.equal(PenMath.isOpen(shelfPen(3, 2, true, {}), 24), true)
+		for _, bad in { 0, 25, 12.5, -1, 0 / 0, "13" } :: { any } do
+			expect.equal(PenMath.isOpen(shelfPen(12, 11, true, {}), bad), false)
 		end
 		-- Fail closed: a broken shelfRows opens no shelf spot (nor the TOP spot), a broken pen nothing.
-		for _, rows in { 0, 5, 1.5, "2", 0 / 0, false } :: { any } do
+		for _, rows in { 0, 1, 12, 1.5, "2", 0 / 0, false } :: { any } do
 			expect.deepEqual(PenMath.openSlots(shelfPen(3, rows, true, {})), { 1, 2, 3 })
 		end
-		expect.deepEqual(PenMath.openSlots(shelfPen(3, 1, "yes", {})), { 1, 2, 3, 13, 14 }) -- top must be true
+		expect.deepEqual(PenMath.openSlots(shelfPen(3, 2, "yes", {})), { 1, 2, 3, 13, 14 }) -- top must be true
 		expect.deepEqual(PenMath.openSlots(pen(2, {})), {})
 		expect.deepEqual(PenMath.openSlots(nil), {})
 	end)
 
 	t.test("placed: the pen, then the shelf, then the TOP spot, in slot order; inPen / onShelf split them", function()
 		local kitty = at(1, item("kitty_bread"))
-		local dragon = at(21, item("dragon")) -- the TOP spot
+		local dragon = at(24, item("dragon")) -- the TOP spot
 		local bird = at(14, item("bird"))
 		local toast = at(13, item("toast"))
-		local banana = at(15, item("banana")) -- row 2: closed until bought
-		local box = shelfPen(3, 1, true, { dragon, bird, kitty, toast, banana })
+		local banana = at(15, item("banana")) -- cubby 3: closed until bought
+		local box = shelfPen(3, 2, true, { dragon, bird, kitty, toast, banana })
 		expect.deepEqual(PenMath.placed(box), { kitty, toast, bird, dragon })
 		expect.deepEqual(PenMath.inPen(box), { kitty })
 		expect.deepEqual(PenMath.onShelf(box), { toast, bird, dragon })
 		box.top = false
 		expect.deepEqual(PenMath.placed(box), { kitty, toast, bird }) -- the TOP spot is not bought
-		box.shelfRows = 2
+		box.shelfRows = 3
 		expect.deepEqual(PenMath.onShelf(box), { toast, bird, banana })
 		expect.deepEqual(PenMath.inPen(nil), {})
 		expect.deepEqual(PenMath.onShelf(pen(2, { toast })), {})
@@ -914,9 +914,9 @@ return function(t: Context)
 
 	t.test("rate, squeezeValue and Feed All count the shelf and the TOP spot like the pen", function()
 		local kitty = at(1, item("kitty_bread"))
-		local dragon = at(21, item("dragon")) -- 640/s on the TOP spot
+		local dragon = at(24, item("dragon")) -- 640/s on the TOP spot
 		local butter = at(13, item("butter")) -- 40/s on the shelf
-		local box = shelfPen(3, 1, true, { kitty, dragon, butter })
+		local box = shelfPen(3, 2, true, { kitty, dragon, butter })
 		expect.equal(PenMath.rate(box), 10 + 640 + 40)
 		expect.equal(PenMath.squeezeValue(box), 690)
 		box.top = false
@@ -928,21 +928,21 @@ return function(t: Context)
 
 	t.test("freeSlot fills the pen, then the shelf, then the TOP spot; room counts every open spot", function()
 		local items = { at(1, item("kitty_bread")), at(2, item("toast")), at(3, item("toast")) }
-		local box = shelfPen(3, 1, false, items)
+		local box = shelfPen(3, 2, false, items)
 		expect.equal(PenMath.freeSlot(box), 13)
 		table.insert(items, at(13, item("toast")))
 		expect.equal(PenMath.freeSlot(box), 14)
 		table.insert(items, at(14, item("toast")))
 		expect.equal(PenMath.freeSlot(box), 0)
 		box.top = true
-		expect.equal(PenMath.freeSlot(box), 21)
+		expect.equal(PenMath.freeSlot(box), 24)
 		items[2].slot = 0
 		expect.equal(PenMath.freeSlot(box), 2) -- a free pen spot first
 		-- room: 3 pen + 2 shelf + 1 TOP + toyBoxMax, less the 5 items.
 		expect.equal(PenMath.room(box), 3 + 2 + 1 + PEN.toyBoxMax - 5)
-		box.shelfRows, box.top = 4, false
-		expect.equal(PenMath.room(box), 3 + 8 + PEN.toyBoxMax - 5)
-		expect.equal(PenMath.room(shelfPen(12, 4, true, {})), PEN.placedMax + PEN.toyBoxMax)
+		box.shelfRows, box.top = 11, false
+		expect.equal(PenMath.room(box), 3 + 11 + PEN.toyBoxMax - 5)
+		expect.equal(PenMath.room(shelfPen(12, 11, true, {})), PEN.placedMax + PEN.toyBoxMax)
 	end)
 
 	t.test(
@@ -951,7 +951,7 @@ return function(t: Context)
 			local kitty = at(1, item("kitty_bread"))
 			local toast = at(13, item("toast"))
 			local banana = at(0, item("banana"))
-			local box = shelfPen(3, 1, false, { kitty, toast, banana })
+			local box = shelfPen(3, 2, false, { kitty, toast, banana })
 			expect.deepEqual(PenMath.placeDecision(box, banana.id, 14), { id = banana.id, from = 0, to = 14 })
 			expect.deepEqual(
 				PenMath.placeDecision(box, kitty.id, 13),
@@ -959,12 +959,12 @@ return function(t: Context)
 			)
 			expect.deepEqual(PenMath.placeDecision(box, toast.id, 0), { id = toast.id, from = 13, to = 0 })
 			expect.deepEqual(PenMath.placeDecision(box, toast.id, 2), { id = toast.id, from = 13, to = 2 })
-			local _, closed = PenMath.placeDecision(box, banana.id, 15) -- row 2 not bought
+			local _, closed = PenMath.placeDecision(box, banana.id, 15) -- cubby 3 not bought
 			expect.equal(closed, "pen.spotClosed")
-			local _, noTop = PenMath.placeDecision(box, banana.id, 21) -- the TOP spot not bought
+			local _, noTop = PenMath.placeDecision(box, banana.id, 24) -- the TOP spot not bought
 			expect.equal(noTop, "pen.spotClosed")
 			box.top = true
-			expect.deepEqual(PenMath.placeDecision(box, banana.id, 21), { id = banana.id, from = 0, to = 21 })
+			expect.deepEqual(PenMath.placeDecision(box, banana.id, 24), { id = banana.id, from = 0, to = 24 })
 			-- A squishy left in a slot that is not open counts as the Toy Box's (from 0), like a closed pen spot.
 			local stray = at(17, item("toast"))
 			table.insert(box.items, stray)
@@ -973,7 +973,7 @@ return function(t: Context)
 			local g1 = at(0, item("butter", 1, 4))
 			local g2 = at(14, item("butter", 1, 4))
 			local g3 = at(0, item("butter", 1, 4))
-			local fused = PenMath.fuseDecision(shelfPen(3, 1, false, { g1, g2, g3 }), { g1.id, g2.id, g3.id }) :: any
+			local fused = PenMath.fuseDecision(shelfPen(3, 2, false, { g1, g2, g3 }), { g1.id, g2.id, g3.id }) :: any
 			expect.equal(fused.keeper, g2)
 		end
 	)
@@ -984,28 +984,28 @@ return function(t: Context)
 		local bird = at(3, item("bird")) -- 160/s
 		local dragon = at(13, item("dragon")) -- 640/s
 		local toast = at(0, item("toast")) -- the Toy Box: never moved
-		local box = shelfPen(3, 1, false, { kitty, butter, bird, dragon, toast })
+		local box = shelfPen(3, 2, false, { kitty, butter, bird, dragon, toast })
 		expect.equal(PenMath.arrange(box), 3)
 		expect.deepEqual(
 			{ dragon.slot, bird.slot, butter.slot, kitty.slot, toast.slot },
-			{ 13, 14, 1, 2, 0 } -- the start shelf row holds the best two, the pen the rest (free spots last)
+			{ 13, 14, 1, 2, 0 } -- the 2 start cubbies hold the best two, the pen the rest (free spots last)
 		)
 		expect.equal(PenMath.arrange(box), 0) -- already sorted: nothing moves
 		-- The TOP spot opens: the best goes up there, the next ones follow.
 		box.top = true
 		expect.equal(PenMath.arrange(box), 4)
-		expect.deepEqual({ dragon.slot, bird.slot, butter.slot, kitty.slot }, { 21, 13, 14, 1 })
+		expect.deepEqual({ dragon.slot, bird.slot, butter.slot, kitty.slot }, { 24, 13, 14, 1 })
 		-- A locked one keeps its spot; the others sort around it.
-		kitty.slot, kitty.locked = 21, true
+		kitty.slot, kitty.locked = 24, true
 		dragon.slot = 2
 		expect.equal(PenMath.arrange(box), 3)
-		expect.deepEqual({ kitty.slot, dragon.slot, bird.slot, butter.slot }, { 21, 13, 14, 1 })
+		expect.deepEqual({ kitty.slot, dragon.slot, bird.slot, butter.slot }, { 24, 13, 14, 1 })
 		-- Selling the TOP squishy leaves no hole up there: the next best climbs, the pen gives one up.
 		kitty.locked = false
 		box.items = { kitty, butter, bird, toast }
 		dragon.slot = 0
 		PenMath.arrange(box)
-		expect.deepEqual({ bird.slot, butter.slot, kitty.slot }, { 21, 13, 14 })
+		expect.deepEqual({ bird.slot, butter.slot, kitty.slot }, { 24, 13, 14 })
 		-- Only slots change: every item once, every open spot held by at most one.
 		local seen = {}
 		for _, it in box.items do
@@ -1020,28 +1020,34 @@ return function(t: Context)
 		expect.equal(PenMath.arrange(pen(2, { at(1, item("dragon")) })), 0)
 	end)
 
-	t.test("shelfPrice / shelfDecision: row 2, 3, 4 (31M, 250B, 11T), then the TOP spot (140T), then max", function()
-		local box = shelfPen(3, 1, false, {}) -- row 1 is open from the start
-		expect.equal(PenMath.shelfPrice(box), 31_000_000)
+	t.test("shelfPrice / shelfDecision: cubby 3 .. 11 one at a time (300M .. 190T), the TOP spot (1Qa), max", function()
+		-- Neon Sugar part 5 (owner 2026-10-24): each about x5 the last.
+		local prices = {
+			[3] = 300_000_000,
+			[4] = 1_600_000_000,
+			[5] = 8_400_000_000,
+			[6] = 45_000_000_000,
+			[7] = 240_000_000_000,
+			[8] = 1_300_000_000_000,
+			[9] = 6_700_000_000_000,
+			[10] = 36_000_000_000_000,
+			[11] = 190_000_000_000_000,
+		}
+		expect.deepEqual(PEN.shelfRowPrices, prices)
+		expect.equal(PEN.topPrice, 1_000_000_000_000_000)
+		local box = shelfPen(3, 2, false, {}) -- cubbies 1-2 are open from the start
+		for row = 3, 11 do
+			expect.equal(PenMath.shelfPrice(box), prices[row])
+			expect.deepEqual(
+				PenMath.shelfDecision(box, prices[row]),
+				{ row = row, top = false, price = prices[row], slots = { 12 + row } }
+			)
+			box.shelfRows = row
+		end
+		expect.equal(PenMath.shelfPrice(box), 1_000_000_000_000_000)
 		expect.deepEqual(
-			PenMath.shelfDecision(box, 31_000_000),
-			{ row = 2, top = false, price = 31_000_000, slots = { 15, 16 } }
-		)
-		box.shelfRows = 2
-		expect.deepEqual(
-			PenMath.shelfDecision(box, 250_000_000_000),
-			{ row = 3, top = false, price = 250_000_000_000, slots = { 17, 18 } }
-		)
-		box.shelfRows = 3
-		expect.deepEqual(
-			PenMath.shelfDecision(box, 11_000_000_000_000),
-			{ row = 4, top = false, price = 11_000_000_000_000, slots = { 19, 20 } }
-		)
-		box.shelfRows = 4
-		expect.equal(PenMath.shelfPrice(box), 140_000_000_000_000)
-		expect.deepEqual(
-			PenMath.shelfDecision(box, 140_000_000_000_000),
-			{ top = true, price = 140_000_000_000_000, slots = { 21 } }
+			PenMath.shelfDecision(box, 1_000_000_000_000_000),
+			{ top = true, price = 1_000_000_000_000_000, slots = { 24 } }
 		)
 		box.top = true
 		expect.equal(PenMath.shelfPrice(box), nil)
@@ -1050,33 +1056,33 @@ return function(t: Context)
 			expect.equal(buy, nil)
 			return code
 		end
-		expect.equal(refusal(box, 140_000_000_000_000), "pen.shelfMax")
+		expect.equal(refusal(box, 1_000_000_000_000_000), "pen.shelfMax")
 		-- The price is compared, never taken: an old price (a retry after the buy) is refused.
-		expect.equal(refusal(shelfPen(3, 2, false, {}), 31_000_000), "pen.priceChanged")
-		expect.equal(refusal(shelfPen(3, 4, false, {}), 11_000_000_000_000), "pen.priceChanged")
-		-- Rows first: a pen with the TOP spot but row 3 still sells row 4.
-		expect.equal((PenMath.shelfDecision(shelfPen(3, 3, true, {}), 11_000_000_000_000) :: any).row, 4)
-		for _, bad in { -1, 1.5, 0 / 0, "31000000", Config.Economy.maxCoins + 1 } :: { any } do
-			expect.equal(refusal(shelfPen(3, 1, false, {}), bad), "net.invalid")
+		expect.equal(refusal(shelfPen(3, 3, false, {}), 300_000_000), "pen.priceChanged")
+		expect.equal(refusal(shelfPen(3, 11, false, {}), 190_000_000_000_000), "pen.priceChanged")
+		-- Cubbies first: a pen with the TOP spot but 10 cubbies still sells cubby 11.
+		expect.equal((PenMath.shelfDecision(shelfPen(3, 10, true, {}), 190_000_000_000_000) :: any).row, 11)
+		for _, bad in { -1, 1.5, 0 / 0, "300000000", Config.Economy.maxCoins + 1 } :: { any } do
+			expect.equal(refusal(shelfPen(3, 2, false, {}), bad), "net.invalid")
 		end
-		expect.equal(refusal(nil, 31_000_000), "net.invalid")
-		expect.equal(refusal(pen(2, {}), 31_000_000), "net.invalid") -- a broken pen
-		expect.equal(refusal(shelfPen(3, 9, false, {}), 31_000_000), "net.invalid") -- broken rows
-		expect.equal(refusal(pen(3, {}), 31_000_000), "net.invalid") -- no shelfRows (not sanitized)
-		expect.equal(PenMath.shelfPrice(shelfPen(3, 9, false, {})), nil)
+		expect.equal(refusal(nil, 300_000_000), "net.invalid")
+		expect.equal(refusal(pen(2, {}), 300_000_000), "net.invalid") -- a broken pen
+		expect.equal(refusal(shelfPen(3, 12, false, {}), 300_000_000), "net.invalid") -- broken rows
+		expect.equal(refusal(pen(3, {}), 300_000_000), "net.invalid") -- no shelfRows (not sanitized)
+		expect.equal(PenMath.shelfPrice(shelfPen(3, 12, false, {})), nil)
 	end)
 
 	t.test("encodeShelf / decodeShelf: slot=kind.form.level.coat joined by ';'; junk entries skipped", function()
-		local list = { at(13, item("toast", 1, 4, 2)), at(21, item("dragon", 2, 70, 7)) }
+		local list = { at(13, item("toast", 1, 4, 2)), at(24, item("dragon", 2, 70, 7)) }
 		local text = PenMath.encodeShelf(list)
-		expect.equal(text, "13=toast.1.4.2;21=dragon.2.70.7")
+		expect.equal(text, "13=toast.1.4.2;24=dragon.2.70.7")
 		local back = PenMath.decodeShelf(text)
 		expect.deepEqual(back[13], { kind = "toast", form = 1, level = 4, coat = 2 })
-		expect.deepEqual(back[21], { kind = "dragon", form = 2, level = 70, coat = 7 })
+		expect.deepEqual(back[24], { kind = "dragon", form = 2, level = 70, coat = 7 })
 		expect.deepEqual(PenMath.decodeShelf(""), {})
 		expect.deepEqual(PenMath.decodeShelf(nil), {})
 		local junk =
-			PenMath.decodeShelf("13=toast.0.1.0;x=toast.0.1.0;5=toast.0.1.0;22=toast.0.1.0;14=unicorn.0.1.0;15")
+			PenMath.decodeShelf("13=toast.0.1.0;x=toast.0.1.0;5=toast.0.1.0;25=toast.0.1.0;14=unicorn.0.1.0;15")
 		expect.deepEqual(junk, { [13] = { kind = "toast", form = 0, level = 1, coat = 0 } }) -- shelf slots only
 	end)
 end

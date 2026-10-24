@@ -922,12 +922,13 @@ return function(t: Context)
 	-- Pens3 phase 2: G5 covers 4 × the top squeeze value (Double Grip × 2, the Squeaky Ring × 2): 21 placed Rainbow
 	-- Galaxy Exclusives at Lv 70, 39,797,105,083.3 Grip.
 	t.test("G5 reports a per-event cap one Grip below 4 × the top squeeze value", function()
-		local event = math.ceil(21 * 10 * 64 * 4 * 12 * 1.15 ^ 69 * 4)
-		expect.equal(event, 39_797_105_084)
+		-- Neon Sugar part 5: placedMax 24 (12 pen + 11 shelf + the TOP spot).
+		local event = math.ceil(24 * 10 * 64 * 4 * 12 * 1.15 ^ 69 * 4)
+		expect.equal(event, 45_482_405_810)
 		local low = validateBrokenCopy(t.Shared, "Grip", function(grip)
 			grip.maxGripPerEvent = event - 1
 		end)
-		expect.truthy(containsAll(low, { "G5:", "maxGripPerEvent", "4 × the top squeeze value", "3.98e+10" }))
+		expect.truthy(containsAll(low, { "G5:", "maxGripPerEvent", "4 × the top squeeze value", "4.548e+10" }))
 		local exact = validateBrokenCopy(t.Shared, "Grip", function(grip)
 			grip.maxGripPerEvent = event
 		end)

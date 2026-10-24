@@ -3,8 +3,10 @@
 -- (DESIGN §3.2, §3.3, §17.9 #6, §17.10). No yields, no instances, no services: time comes in as `now` (unix seconds,
 -- os.time), and nothing here reads or writes a DataStore.
 --
--- Versions: 1 = ProfileV1 as first shipped (§3.2); 2 = + `grip = {total, trainer, rested, afk}` (§17.10). The type
--- keeps the name ProfileV1 (Types). CURRENT = 2.
+-- Versions: 1 = ProfileV1 as first shipped (§3.2); 2 = + `grip = {total, trainer, rested, afk}` (§17.10); 3 = Neon
+-- Sugar part 5 (2026-10-24): the shelf is Diego's 12 cubbies bought one at a time, so `pen.shelfRows` counts open
+-- cubbies (v2: rows of 2) and the TOP spot moved from slot 21 to 24. The type keeps the name ProfileV1 (Types).
+-- CURRENT = 3.
 -- Reading: a field whose default needs nothing from the stored data is added WITHOUT a new version: reconcile fills it
 -- (§3.3 step 2), and a server without it keeps it as an unknown field, so no rolling-deploy READONLY (§17.10). A
 -- version (and a frozen MIGRATIONS step) is only for a transform of stored data, like v1 -> v2's head start. That is
@@ -69,7 +71,7 @@
 -- value is the default (not logged, like reconcile); shelfRows a whole number in [Pen.shelfStartRows,
 -- Pen.shelfMaxRows] (floored, clamped; non-finite or not a number -> the start), top a boolean (else false: fails
 -- closed, never a TOP spot nobody bought), each fix logged. The slot rule above then reads PenMath.isOpen (the pen's
--- spots, the open shelf rows' spots 13.., the TOP spot 21 when bought): a squishy in a slot that is not open any more
+-- spots, the open shelf rows' spots 13.., the TOP spot placedMax (24) when bought): a squishy in a slot that is not open any more
 -- goes to the Toy Box (never dropped), logged; the items with no slot fill PenMath.openSlots in order (the pen, then
 -- the shelf, then the TOP spot), then the Toy Box.
 -- Pens3 phase 13 (the throw) joined the same way: `highway = {best = 0, biome = 1}` (the farthest landing in whole
@@ -84,7 +86,9 @@
 --                      (the session becomes READONLY), or (nil, 0, "corrupt") when the stored value is not a table.
 --                      Applies MIGRATIONS[n] until CURRENT. MIGRATIONS[1] (v1 -> v2) is frozen: it never reads Config,
 --                      so later re-tunes can't change what it produces (10 Grip per old squeeze, Double Grip and the
---                      slow-training bank start full, stamped at lastSeenAt).
+--                      slow-training bank start full, stamped at lastSeenAt). MIGRATIONS[2] (v2 -> v3) is frozen the
+--                      same way: a finite pen.shelfRows (v2 rows of 2) becomes 2 x rows open cubbies (sanitize clamps
+--                      it), and every pen item in slot 21 (v2's TOP spot) moves to 24 (v3's); nothing else changes.
 --   2. reconcile(d, now) -> fills missing fields from defaults(now), deep; unknown fields are kept.
 --   3. sanitize(d, opts) -> (d, problems): fixes values in place and lists every fix (DataService logs them):
 --        coins integer clamped to [0, Economy.maxCoins] (non-finite -> 0); the starter always owned; owned ids missing
@@ -160,7 +164,7 @@ export type LoadResult = {
 
 -- Constants
 
-local CURRENT = 2
+local CURRENT = 3
 local FUTURE_SLACK_SECONDS = Config.Data.timestampSkewSeconds -- §17.9 #6: a timer stamped after now + 300 -> now
 local PEN = Config.Economy.Pen
 local FOOD = Config.Economy.Food -- pens3 phase 9
@@ -212,6 +216,30 @@ MIGRATIONS[1] = function(d: any): any -- v1 -> v2 (§17.10)
 		afk = { value = AFK_START, at = seen },
 	}
 	d.schemaVersion = 2
+	return d
+end
+
+-- Frozen for v2 -> v3 (Neon Sugar part 5). Never read Config here.
+local V2_SHELF_ROW_SPOTS = 2 -- v2's shelf rows held 2 cubbies each
+local V2_TOP_SLOT = 21 -- v2's TOP spot: 12 pen spots + 8 shelf spots + 1
+local V3_TOP_SLOT = 24 -- v3's TOP spot: 12 pen spots + 11 shelf spots + 1
+
+MIGRATIONS[2] = function(d: any): any -- v2 -> v3 (Diego's 12-cubby shelf, one cubby a buy)
+	local pen = d.pen
+	if type(pen) == "table" then
+		local rows = pen.shelfRows
+		if type(rows) == "number" and rows == rows and math.abs(rows) ~= math.huge then
+			pen.shelfRows = rows * V2_SHELF_ROW_SPOTS -- the open cubbies; a missing or broken one is reconcile's / sanitize's
+		end
+		if type(pen.items) == "table" then
+			for _, item in pen.items do
+				if type(item) == "table" and item.slot == V2_TOP_SLOT then
+					item.slot = V3_TOP_SLOT
+				end
+			end
+		end
+	end
+	d.schemaVersion = 3
 	return d
 end
 

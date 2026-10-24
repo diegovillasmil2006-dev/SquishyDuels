@@ -40,7 +40,7 @@
 --     keeps its look; formColor(color, form, share): Golden = 0.7 of the way to #FFC93C, Rainbow = 0.75 of the way to
 --     the band of the part's height (7 bands, bottom #FF6FA3 .. top #B98CFF), plain = nil (K:3882-3920);
 --   * pens3 phase 11: shelfPlace(frame, slot, lift): a shelf squishy stands in its cubby (WorldLayout
---     Bases.pen.shelf.cubbies, Diego's 12, slot 13 + k - 1; Neon Sugar part 4: the TOP spot 21 is cubby 9), its bottom
+--     Bases.pen.shelf.cubbies, Diego's 12, slot 13 + k - 1; Neon Sugar part 5: the TOP spot 24 is cubby 12), its bottom
 --     on the cubby's floor (the root `lift` over it), facing the arch like the shelf; its coin label on the board above
 --     the cubby (CHK:57: labelOver over the floor, labelZ in front); nil for any other slot;
 --     start() builds no shelf squishy in Edit mode (no SD_Shelf on any base there, even with the 10 tagged bases).
@@ -420,11 +420,13 @@ return function(t: Context)
 			near((rest :: CFrame).LookVector, at.LookVector) -- toward the arch, like the shelf
 			local over = SHELF.labelOver
 			near((rest :: CFrame).Position + (label :: Vector3), at * Vector3.new(11.25, 2.7 + over, SHELF.labelZ))
-			-- Slot 20: the 8th cubby (the right of the middle row); the TOP spot (21): the 9th (the top row's left).
+			-- Slot 20: the 8th cubby (the right of the middle row); 21: the 9th (the top row's left); the TOP spot (24): the
+			-- 12th (the top row's right).
 			near((PenController.shelfPlace(frame, 20, 0) :: CFrame).Position, frame * Vector3.new(11.25, 9.7, -21.1))
-			local top, topLabel = PenController.shelfPlace(frame, 21, 1.5)
-			near((top :: CFrame).Position, frame * Vector3.new(-11.25, 16.7 + 1.5, -21.1))
-			near((top :: CFrame).Position + (topLabel :: Vector3), at * Vector3.new(11.25, 16.7 + over, SHELF.labelZ))
+			near((PenController.shelfPlace(frame, 21, 0) :: CFrame).Position, frame * Vector3.new(-11.25, 16.7, -21.1))
+			local top, topLabel = PenController.shelfPlace(frame, 24, 1.5)
+			near((top :: CFrame).Position, frame * Vector3.new(11.25, 16.7 + 1.5, -21.1))
+			near((top :: CFrame).Position + (topLabel :: Vector3), at * Vector3.new(-11.25, 16.7 + over, SHELF.labelZ))
 			for _, slot in { 0, 1, 12, 25 } do
 				expect.equal(PenController.shelfPlace(frame, slot, 0), nil)
 			end

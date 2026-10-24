@@ -58,8 +58,8 @@
 --     topHeading; the count line counts the pen's own spots (PenMath.inPen). A shelf or TOP squishy is placed like a
 --     pen one (its actions, a picking target: tap passes its slot); a Toy Box one PLACEs while any open spot is free
 --     (PenMath.freeSlot: the pen, then the shelf, then the TOP spot). Wb (owner 2026-10-17): nothing selected also
---     offers the shelf's BUY button after SELL ALL and FEED ALL (the SHELF SPOTS sign stays): BUY ROW <price> for the
---     next row, then BUY TOP <price> (pen.screen.buyRow / buyTop), its Action carrying that price (PenController
+--     offers the shelf's BUY button after SELL ALL and FEED ALL (the SHELF SPOTS sign stays): BUY <price> for the
+--     next cubby (Neon Sugar part 5), then BUY TOP <price> (pen.screen.buySpot / buyTop), its Action carrying that price (PenController
 --     sends PenBuyShelf with it, the sign's call); refused with the missing Coins when short, and SHELF MAX
 --     (pen.screen.shelfMax) refused with reason.pen.shelfMax once all is open; none for a pen without a shelf.
 --   walkerItem maps a walker to the pen's own spots (PenMath.inPen: BaseService's SD_Pen order).
@@ -351,7 +351,7 @@ end
 local function shelfAction(pen: any, coins: number): Action?
 	local buy, refused = PenMath.shelfDecision(pen, PenMath.shelfPrice(pen) or 0)
 	if buy then
-		local text = if buy.top then SCREEN.buyTop else SCREEN.buyRow
+		local text = if buy.top then SCREEN.buyTop else SCREEN.buySpot
 		return {
 			id = "buyShelf",
 			text = Strings.format(text, { coins = Format.coins(buy.price) }),

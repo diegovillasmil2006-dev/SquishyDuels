@@ -32,7 +32,7 @@
 --     -17.2..24.4), no blocks, no lamps or trees;
 --   * the board's 2 buy spots past its right edge at each row's height, the photo gate outside the fence at the
 --     front-left, all facing the path; his shelf at z -21.1 with 12 cubbies, 4 a row from the bottom left, the TOP
---     spot in cubby 9;
+--     spot in cubby 12;
 --   * pens3 phase 12: the highway (lobby design v6: L = layout.json, LK = lobby-kit.js, K = kit.json) is placed from
 --     one origin, outside the island's sea and clear of the arena slots, distance d = d studs down its LookVector;
 --     its launch deck is v6's (L:20, :31-37, v6 z + 62: v6 measures d from its gate at z -62, L:1); pens3 phase 13
@@ -1068,10 +1068,10 @@ return function(t: Context)
 		end
 		-- ShelfSlot_01 at plot (-11.25, 2.7, -21.1): the left of the bottom row seen from the pen floor.
 		expect.truthy(vectorNear(shelf.at * shelf.cubbies[1], Vector3.new(-11.25, 2.7, -21.1), 1e-4))
-		-- The 4 shelf rows two by two, then the TOP spot: cubby 9.
+		-- Neon Sugar part 5: one cubby a buy, cubbies 1..11 the shelf, the TOP spot cubby 12: every cubby is a slot.
 		local P = Config.Economy.Pen
-		expect.equal(P.placedMax - P.maxSpots, 9)
-		expect.equal(P.shelfMaxRows * P.shelfRowSpots + 1, 9)
+		expect.equal(P.placedMax - P.maxSpots, 12)
+		expect.equal(P.shelfMaxRows * P.shelfRowSpots + 1, #shelf.cubbies)
 		expect.near(shelf.labelOver, 6.2, 1e-9)
 		expect.near(shelf.labelZ, -2.9, 1e-9)
 	end)

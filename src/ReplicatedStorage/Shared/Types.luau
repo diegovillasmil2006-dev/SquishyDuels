@@ -142,7 +142,8 @@ export type AutoClickMemory = { step: number, at: number }
 -- Pens3 phase 1: one squishy of the pen (Shared/PenMath): `id` a whole number unique in the pen (from PenState.nextId),
 -- `kind` a Catalog squishy id, `form` 0 plain / 1 Golden / 2 Rainbow, `level` 1..Config.Economy.Pen.maxLevel, `coat`
 -- 0 none .. 7 (Config.Economy.Pen.coatMult). Phase 1 makes only form 0, level 1, coat 0, one per owned kind. Phase 6:
--- `slot` 0 = the Toy Box, 1..spots the pen (phase 11: 13..20 the shelf, 2 a row, and 21 the TOP spot; unique except 0),
+-- `slot` 0 = the Toy Box, 1..spots the pen (phase 11: the shelf from 13, and the TOP spot; Neon Sugar part 5: 13..23 and
+-- 24, one cubby a row; unique except 0),
 -- `locked` = never sold, fused or moved by auto-place (the player can still move it).
 export type PenItem = {
 	id: number,
@@ -156,7 +157,8 @@ export type PenItem = {
 -- The player's pen: `spots` open (Pen.startSpots .. Pen.maxSpots; the items in slots 1..spots walk in it and pay),
 -- `nextId` the id of the next new item, `items` every pen squishy the player has, `awayRate` (phase 4) its Coins a
 -- second at the last save (DataService stamps it; the next load pays the time away from it). Phase 11: `shelfRows`
--- the open shelf rows (Pen.shelfStartRows .. Pen.shelfMaxRows; their squishies stand in the shelf and pay too), `top`
+-- the open shelf rows (Pen.shelfStartRows .. Pen.shelfMaxRows; since schema 3 a row is one cubby; their squishies
+-- stand in the shelf and pay too), `top`
 -- true once the TOP spot is bought.
 export type PenState = {
 	spots: number,
@@ -179,9 +181,9 @@ export type FoodCounts = { [string]: number }
 export type HighwayState = { best: number, biome: number }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
--- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema).
+-- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema); schemaVersion 3 made the shelf one cubby a row.
 export type ProfileV1 = {
-	schemaVersion: number, -- 2 (ProfileSchema.CURRENT)
+	schemaVersion: number, -- 3 (ProfileSchema.CURRENT)
 	createdAt: number, -- unix seconds (os.time)
 	lastSeenAt: number,
 	saveSeq: number, -- monotonic, +1 per write snapshot

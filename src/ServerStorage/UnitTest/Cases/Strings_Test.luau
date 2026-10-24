@@ -1001,15 +1001,15 @@ return function(t: Context)
 		expect.equal(Strings.format(screen.shelfHeading, { placed = 1, open = 2 }), "On your shelf 1/2")
 		expect.equal(screen.topHeading, "TOP spot")
 		-- Wb: the window's shelf BUY button (short labels: why it is off goes on the screen's reason row).
-		expect.equal(Strings.format(screen.buyRow, { coins = "31M" }), "BUY ROW 31M")
-		expect.equal(Strings.format(screen.buyTop, { coins = "140T" }), "BUY TOP 140T")
+		expect.equal(Strings.format(screen.buySpot, { coins = "300.00M" }), "BUY 300.00M")
+		expect.equal(Strings.format(screen.buyTop, { coins = "1.00Qa" }), "BUY TOP 1.00Qa")
 		expect.equal(screen.shelfMax, "SHELF MAX")
 		for _, line in
 			{
 				Strings.pen.shelfSign.title,
 				Strings.pen.shelfPrompt.object,
 				screen.shelfHeading,
-				screen.buyRow,
+				screen.buySpot,
 				screen.buyTop,
 				screen.shelfMax,
 			}

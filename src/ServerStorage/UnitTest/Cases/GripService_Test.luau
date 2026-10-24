@@ -340,13 +340,14 @@ return function(t: Context)
 		expect.equal(world.profile.grip.total, landing * 170)
 		expect.deepEqual(world.profile.grip.rested, before.grip.rested) -- no Double Grip point
 		expect.truthy(table.find(world.dirty, "grip") ~= nil)
-		-- The top base (pens3 phase 11: the pen, every shelf row and the TOP spot, 21 Rainbow Galaxy Dragons at Lv 70):
+		-- The top base (pens3 phase 11: the pen, every shelf cubby and the TOP spot, 24 Rainbow Galaxy Dragons at Lv 70):
 		-- one squeeze is under the cap, the whole landing above it, and all of it is paid.
 		local items = {}
 		for id = 1, Config.Economy.Pen.placedMax do
 			table.insert(items, penItem(id, "dragon", 2, 70, 7))
 		end
-		world.profile.pen = { spots = 12, nextId = 22, items = items, shelfRows = 4, top = true }
+		local P = Config.Economy.Pen
+		world.profile.pen = { spots = 12, nextId = P.placedMax + 1, items = items, shelfRows = P.shelfMaxRows, top = true }
 		local top = PenMath.squeezeGrip(world.profile.pen)
 		expect.truthy(landing * top > Config.Grip.maxGripPerEvent)
 		local total = world.profile.grip.total

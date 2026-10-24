@@ -22,13 +22,13 @@
 --     arch, off the squishies' floor, and fits Budgets.baseParts with the plot's 80;
 --   * the board (Diego's PenBoard, the "Board" SurfaceGui adorned to the pen's SignFace): boardRows gives row 1 PEN
 --     SPACE (open spots of maxSpots, the next spot's price) and row 2 SHELF SPOTS (the open shelf spots with the TOP
---     spot, of 9); each BUY with its price, MAX when nothing is left; PenBoard.setState paints a viewer's own state
+--     spot, of 12: Neon Sugar part 5, one cubby a buy); each BUY with its price, MAX when nothing is left; PenBoard.setState paints a viewer's own state
 --     (grey "Need N more", BUY, MAX) without touching the price;
 --   * the buy spots: "Sign" (SD_PenSign, PenPrompt on E / ButtonX) and "ShelfSign" (SD_ShelfSign, ShelfPrompt on F /
 --     ButtonY) at Bases.pen.signs, each an invisible Face with SD_Price = the next buy's price and a hold prompt; no
 --     price and the prompt off at MAX;
 --   * Diego's 12 cubbies: an open shelf slot's cubby hides its Lock (no collision) on a PenShelfBackOn back, a closed
---     one shows it on PenShelfBackOff; cubby k = slot maxSpots + k, the TOP spot cubby 9, 10-12 closed until part 5;
+--     one shows it on PenShelfBackOff; cubby k = slot maxSpots + k, the TOP spot cubby 12;
 --     an open plot has every cubby closed; SD_Pen holds the pen's walkers, SD_Shelf the shelf's and the TOP spot's;
 --   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
 --     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
@@ -254,7 +254,7 @@ return function(t: Context)
 	end
 
 	-- A ready profile's pen (Types.PenState) with `spots` open spots and the given kinds (ids 1, 2, ...); pens3 phase
-	-- 11: `rows` shelf rows (default the start row, as every sanitized save has) and the TOP spot `top`.
+	-- 11: `rows` shelf rows (default the 2 start cubbies, as every sanitized save has) and the TOP spot `top`.
 	local function pen(spots: number, kinds: { string }?, rows: number?, top: boolean?): any
 		local items = {}
 		for index, kind in (kinds or { "kitty_bread" }) :: { string } do
@@ -269,7 +269,7 @@ return function(t: Context)
 				locked = false,
 			}
 		end
-		return { spots = spots, nextId = #items + 1, items = items, shelfRows = rows or 1, top = top == true }
+		return { spots = spots, nextId = #items + 1, items = items, shelfRows = rows or 2, top = top == true }
 	end
 
 	local function ownerText(model: Model): string
@@ -525,7 +525,7 @@ return function(t: Context)
 		expect.truthy(PEN.maxParts + 80 <= WorldLayout.Budgets.baseParts)
 		local frame = WorldLayout.plotFrame(1) :: CFrame
 		for spots = 3, 12 do
-			for rows = 1, Config.Economy.Pen.shelfMaxRows do
+			for rows = Config.Economy.Pen.shelfStartRows, Config.Economy.Pen.shelfMaxRows do
 				for _, top in { false, true } do
 					local w, model = drawn(spots, rows, top)
 					local parts = partsIn(model:FindFirstChild("Pen") :: Instance)
@@ -557,7 +557,7 @@ return function(t: Context)
 		return (found :: TextLabel).Text
 	end
 
-	t.test("boardRows: PEN SPACE (spots of 12, the next spot's price), SHELF SPOTS (of 9 with the TOP spot)", function()
+	t.test("boardRows: PEN SPACE (spots of 12, the next spot's price), SHELF SPOTS (of 12 with the TOP spot)", function()
 		local penRow, shelfRow = BaseService.boardRows(pen(3))
 		expect.deepEqual(penRow, {
 			title = "PEN SPACE",
@@ -574,24 +574,24 @@ return function(t: Context)
 			title = "SHELF SPOTS",
 			icon = "shelf",
 			from = "2",
-			to = "4 spots",
+			to = "3 spots",
 			filled = 2,
-			total = 9,
-			progress = "2/9",
-			price = Format.coins(31_000_000),
+			total = 12,
+			progress = "2/12",
+			price = Format.coins(300_000_000),
 			state = "buy",
 		})
-		-- Every shelf row bought: the TOP spot is next (one spot); everything bought: MAX, the count after the arrow.
-		local _, beforeTop = BaseService.boardRows(pen(12, nil, 4, false))
-		expect.equal(beforeTop.from, "8")
-		expect.equal(beforeTop.to, "9 spots")
-		local fullPen, fullShelf = BaseService.boardRows(pen(12, nil, 4, true))
+		-- Every cubby bought: the TOP spot is next (cubby 12); everything bought: MAX, the count after the arrow.
+		local _, beforeTop = BaseService.boardRows(pen(12, nil, 11, false))
+		expect.equal(beforeTop.from, "11")
+		expect.equal(beforeTop.to, "12 spots")
+		local fullPen, fullShelf = BaseService.boardRows(pen(12, nil, 11, true))
 		expect.equal(fullPen.state, "max")
 		expect.equal(fullPen.price, "")
 		expect.equal(fullPen.to, "12 spots")
 		expect.equal(fullPen.progress, "12/12")
 		expect.equal(fullShelf.state, "max")
-		expect.equal(fullShelf.progress, "9/9")
+		expect.equal(fullShelf.progress, "12/12")
 	end)
 
 	t.test("the board: Diego's 2 rows on the pen's SignFace for everyone, BUY with a price or MAX", function()
@@ -623,9 +623,9 @@ return function(t: Context)
 			end
 		end
 		expect.equal(lit, 3)
-		expect.equal(#(row2:FindFirstChild("Progress") :: Frame):GetChildren(), 9)
+		expect.equal(#(row2:FindFirstChild("Progress") :: Frame):GetChildren(), 12)
 		-- Both rows bought out: MAX, gold, no coin, no caption, every segment lit.
-		w.pens[a] = pen(12, nil, 4, true)
+		w.pens[a] = pen(12, nil, 11, true)
 		BaseService.refresh(a)
 		row1 = PenBoard.row(boardOf(model), 1) :: Frame
 		expect.equal(text(row1, "Button", "Content", "Price"), Strings.pen.sign.max)
@@ -674,7 +674,7 @@ return function(t: Context)
 					model = "ShelfSign",
 					at = PEN.signs.shelf,
 					attr = "SD_ShelfSign",
-					price = 31_000_000,
+					price = 300_000_000,
 					prompt = "ShelfPrompt",
 				},
 			}
@@ -712,7 +712,7 @@ return function(t: Context)
 		BaseService.refresh(a)
 		folder = model:FindFirstChild("Pen") :: Instance
 		expect.equal((folder:FindFirstChild("Sign") :: Model):GetAttribute("SD_Price"), PRICES[7])
-		w.pens[a] = pen(12, nil, 4, true)
+		w.pens[a] = pen(12, nil, 11, true)
 		BaseService.refresh(a)
 		folder = model:FindFirstChild("Pen") :: Instance
 		for _, name in { "Sign", "ShelfSign" } do
@@ -723,7 +723,7 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	t.test("Diego's cubbies: open ones hide the lock on a blue back, closed ones show it on pink; 10-12 closed", function()
+	t.test("Diego's cubbies: open ones hide the lock on a blue back, closed ones show it on pink; TOP = 12", function()
 		local function state(model: Model): { string }
 			local list = {}
 			for k = 1, 12 do
@@ -743,16 +743,19 @@ return function(t: Context)
 		local w = fresh()
 		local model = plotModel(w, 1)
 		local a = newPlayer(w, "A")
-		w.pens[a] = pen(3, nil, 1, false) -- the start row: cubbies 1-2
+		w.pens[a] = pen(3, nil, 2, false) -- the start: cubbies 1-2
 		BaseService.playerAdded(a)
 		local want = table.create(12, "closed")
 		want[1], want[2] = "open", "open"
 		expect.deepEqual(state(model), want)
-		w.pens[a] = pen(3, nil, 4, true) -- every row and the TOP spot (cubby 9)
+		w.pens[a] = pen(3, nil, 10, true) -- 10 cubbies and the TOP spot (cubby 12): cubby 11 still closed
 		BaseService.refresh(a)
 		want = table.create(12, "open")
-		want[10], want[11], want[12] = "closed", "closed", "closed" -- until the shelf grows (part 5)
+		want[11] = "closed"
 		expect.deepEqual(state(model), want)
+		w.pens[a] = pen(3, nil, 11, true) -- everything
+		BaseService.refresh(a)
+		expect.deepEqual(state(model), table.create(12, "open"))
 		BaseService.playerRemoving(a) -- an open plot: every cubby closed
 		expect.deepEqual(state(model), table.create(12, "closed"))
 		finish(w)
@@ -762,13 +765,13 @@ return function(t: Context)
 		local w = fresh()
 		local model = plotModel(w, 1)
 		local a = newPlayer(w, "A")
-		local p = pen(3, { "kitty_bread", "butter", "toast", "bird", "dragon" }, 1, true)
-		p.items[3].slot, p.items[4].slot, p.items[5].slot = 13, 0, 21
+		local p = pen(3, { "kitty_bread", "butter", "toast", "bird", "dragon" }, 2, true)
+		p.items[3].slot, p.items[4].slot, p.items[5].slot = 13, 0, 24
 		w.pens[a] = p
 		BaseService.playerAdded(a)
 		expect.equal(model:GetAttribute("SD_Pen"), "kitty_bread.0.1.0;butter.0.1.0")
-		expect.equal(model:GetAttribute("SD_Shelf"), "13=toast.0.1.0;21=dragon.0.1.0")
-		expect.equal(model:GetAttribute("SD_ShelfRows"), 1)
+		expect.equal(model:GetAttribute("SD_Shelf"), "13=toast.0.1.0;24=dragon.0.1.0")
+		expect.equal(model:GetAttribute("SD_ShelfRows"), 2)
 		expect.equal(model:GetAttribute("SD_ShelfTop"), true)
 		expect.equal(model:GetAttribute("SD_PenRate"), 10 + 40 + 10 + 640)
 		BaseService.playerRemoving(a)

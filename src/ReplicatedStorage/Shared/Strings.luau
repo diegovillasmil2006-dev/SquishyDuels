@@ -1280,7 +1280,7 @@ local Strings = {
 			shelfHeading = "On your shelf {placed}/{open}",
 			topHeading = "TOP spot",
 			-- Wb (owner 2026-10-17): the window's shelf BUY button, the SHELF SPOTS sign's buy ({coins} = its price).
-			buyRow = "BUY ROW {coins}",
+			buySpot = "BUY {coins}", -- Neon Sugar part 5: one cubby a buy (short: "BUY 300.00M" fits the button)
 			buyTop = "BUY TOP {coins}",
 			shelfMax = "SHELF MAX",
 		},

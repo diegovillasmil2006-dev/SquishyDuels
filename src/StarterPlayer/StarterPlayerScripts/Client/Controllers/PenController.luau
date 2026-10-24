@@ -89,8 +89,8 @@
 -- * Pens3 phase 11 (the shelf rows + the TOP spot; lobby design v6, `CHK:n` = check/CHECK.md line n):
 --   - The shelf's squishies: the base Model's SD_Shelf (BaseService: PenMath.encodeShelf, slot=look) says what stands
 --     on its shelf. They come from the same pool and cache as the walkers (same model, label, form looks), stand in
---     their cubby (shelfPlace: WorldLayout Bases.pen.shelf.cubbies, Diego's ShelfSlots; Neon Sugar part 4: the TOP
---     spot is cubby 9), facing the arch, never walking; their coin label sits on the board above the cubby (CHK:57:
+--     their cubby (shelfPlace: WorldLayout Bases.pen.shelf.cubbies, Diego's ShelfSlots; Neon Sugar part 5: the TOP
+--     spot is cubby 12), facing the arch, never walking; their coin label sits on the board above the cubby (CHK:57:
 --     never under the cubby's top). They show and hide with the pen (cullStuds); within animateStuds of the
 --     camera, while the shelf's sphere is on the screen, each plays its kind's show-off loop (Anim/ShowOffTracks,
 --     K:6982: the lift and the turn, from a random point in the loop, P3D:403), back at rest once it stops (beyond
@@ -1325,7 +1325,7 @@ end
 -- Pens3 phase 11: where a shelf squishy stands on the plot of `frame`: its root's CFrame at rest (the model's bottom
 -- on its cubby's floor, `lift` = the root's height over it; facing the arch like the shelf) and its coin label's
 -- offset from the root (world studs: on the board above the cubby, CHK:57); nil for a slot that is not the shelf's
--- (Neon Sugar part 4: the TOP spot is the shelf's cubby 9).
+-- (Neon Sugar part 5: the TOP spot is the shelf's cubby 12).
 function PenController.shelfPlace(frame: CFrame, slot: number, lift: number): (CFrame?, Vector3?)
 	local at = frame * SHELF.at
 	if slot < SHELF_FIRST or slot >= SHELF_FIRST + #SHELF.cubbies then

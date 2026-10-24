@@ -13,7 +13,8 @@
 -- Pen.shelfMaxRows; ProfileSchema gives every saved pen one; missing or any other value opens no shelf spot nor the
 -- TOP spot: fail closed) and `top` (true once the TOP spot is bought). The open spots: the pen's 1..spots, the
 -- shelf's maxSpots + 1 .. (shelfRowSpots a row: row r is maxSpots + shelfRowSpots × (r - 1) + 1 .. maxSpots +
--- shelfRowSpots × r, so 13-14, 15-16, 17-18, 19-20) and the TOP spot placedMax (21) when `top` is true. A shelf or
+-- shelfRowSpots × r; Neon Sugar part 5: a row is one cubby, so 13 .. 23) and the TOP spot placedMax (24) when `top`
+-- is true. A shelf or
 -- TOP squishy is placed like a pen one: it earns (rate, the squeeze value, the away rate DataService stamps), Feed All
 -- feeds it, it keeps a fusion's tie; it stands still in its cubby (BaseService draws the shelf; the client shows it),
 -- so only the pen's own spots walk (inPen).
@@ -209,7 +210,7 @@ local CODE_FOOD_FULL = "food.full"
 local CODE_NOT_ENOUGH = "food.notEnough"
 local CODE_MAX_LEVEL = "pen.maxLevel"
 local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11: the shelf's first slot (13)
-local TOP_SLOT = PEN.placedMax -- the TOP spot (21)
+local TOP_SLOT = PEN.placedMax -- the TOP spot (24)
 local CODE_SHELF_MAX = "pen.shelfMax"
 
 -- Module table

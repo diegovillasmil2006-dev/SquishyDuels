@@ -1350,9 +1350,9 @@ return function(t: Context)
 			finish()
 		end
 	)
-	-- The shelf rows and the TOP spot (pens3 phase 11) ---------------------------------------------------------------
+	-- The shelf rows and the TOP spot (pens3 phase 11; Neon Sugar part 5: one cubby a row, 2 from the start) ---------
 
-	-- A's pen with the shelf's start row (a sanitized save always has shelfRows and top).
+	-- A's pen with the shelf's start rows (a sanitized save always has shelfRows and top).
 	local function withShelf(w: World, rows: number, top: boolean): any
 		local a = w.profiles[w.a]
 		a.pen.shelfRows, a.pen.top = rows, top
@@ -1370,15 +1370,15 @@ return function(t: Context)
 			local clock = FakeClock.new(100)
 			local guard = NetService.newGuard({ clock = clock.now })
 			local player = { UserId = 9 }
-			expect.equal(guard:check(player, "PenBuyShelf", 1, 140_000_000_000_000), "ok")
-			expect.equal(guard:check(player, "PenBuyShelf", 1, 31_000_000), "rateLimited")
+			expect.equal(guard:check(player, "PenBuyShelf", 1, 1_000_000_000_000_000), "ok")
+			expect.equal(guard:check(player, "PenBuyShelf", 1, 300_000_000), "rateLimited")
 		end
 	)
 
-	t.test("a shelf buy: row 2 for 31M, its 2 spots take the best Toy Box squishies, an awaited save", function()
+	t.test("a shelf buy: cubby 3 for 300M, it takes the best Toy Box squishy, an awaited save", function()
 		local w = fresh()
-		local a = withShelf(w, 1, false)
-		a.coins = 40_000_000
+		local a = withShelf(w, 2, false)
+		a.coins = 400_000_000
 		local toast = { id = 2, kind = "toast", form = 0, level = 1, coat = 0, slot = 0, locked = false }
 		local bird = { id = 3, kind = "bird", form = 0, level = 1, coat = 0, slot = 0, locked = false }
 		local dragon = { id = 4, kind = "dragon", form = 0, level = 1, coat = 0, slot = 0, locked = true } -- locked
@@ -1390,38 +1390,45 @@ return function(t: Context)
 		a.pen.items[1].slot, a.pen.spots = 1, 3
 		table.insert(a.pen.items, { id = 7, kind = "toast", form = 0, level = 1, coat = 0, slot = 2, locked = false })
 		table.insert(a.pen.items, { id = 8, kind = "toast", form = 0, level = 1, coat = 0, slot = 3, locked = false })
-		local reply = PenService.buyShelf(w.a, 31_000_000)
+		local reply = PenService.buyShelf(w.a, 300_000_000)
 		expect.equal(reply.ok, true)
 		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = true, savePending = false })
-		expect.equal(a.pen.shelfRows, 2)
+		expect.equal(a.pen.shelfRows, 3)
 		expect.equal(a.pen.top, false)
-		-- The new spots take the best unlocked Toy Box squishies (Bird, Toast), then (qb1) the shelf holds the best:
-		-- Bird 13, Butter 14, then the 10-a-second ones by id (Kitty Bread 15, the Toast 16), the rest in the pen.
+		-- The new spot takes the best unlocked Toy Box squishy (Bird), then (qb1) the shelf holds the best: Bird 13,
+		-- Butter 14, then the 10-a-second ones by id (Kitty Bread 15), the rest in the pen.
 		expect.equal(bird.slot, 13)
 		expect.equal(butter.slot, 14)
 		expect.equal(a.pen.items[1].slot, 15)
-		expect.equal(toast.slot, 16)
 		expect.equal(banana.slot, 1)
+		expect.equal(toast.slot, 0) -- one new spot: the next Toast waits in the Toy Box
 		expect.equal(dragon.slot, 0) -- locked: auto-place never moves it
-		expect.equal(a.coins, 9_000_000)
-		expect.deepEqual(w.spends, { { player = w.a, amount = 31_000_000, reason = "pen" } })
+		expect.equal(a.coins, 100_000_000)
+		expect.deepEqual(w.spends, { { player = w.a, amount = 300_000_000, reason = "pen" } })
 		expect.equal(w.nowSaves, 1)
 		expect.deepEqual(w.shown, { w.a })
-		expect.deepEqual(w.drops, { w.a }) -- the new spots make room for a waiting gift
+		expect.deepEqual(w.drops, { w.a }) -- the new spot makes room for a waiting gift
 		finish()
 	end)
 
-	t.test("rows 2, 3, 4, then the TOP spot, then max; a retry of an old price is never charged twice", function()
+	t.test("cubbies 3 .. 11, then the TOP spot, then max; a retry of an old price is never charged twice", function()
 		local w = fresh()
-		local a = withShelf(w, 1, false)
-		a.coins = 10 ^ 15
-		local order = { 31_000_000, 250_000_000_000, 11_000_000_000_000, 140_000_000_000_000 }
+		local a = withShelf(w, 2, false)
+		a.coins = 2 * 10 ^ 15
+		local order = {}
+		for row = 3, PEN.shelfMaxRows do
+			table.insert(order, PEN.shelfRowPrices[row])
+		end
+		table.insert(order, PEN.topPrice)
+		expect.equal(#order, 10)
+		local spent = 0
 		for index, price in order do
 			local reply = PenService.buyShelf(w.a, price)
 			expect.equal(reply.ok, true)
+			spent += price
 			w.clock += PEN.buyCooldownSeconds
 			if index < #order then
-				expect.equal(a.pen.shelfRows, index + 1)
+				expect.equal(a.pen.shelfRows, index + 2)
 				expect.equal(a.pen.top, false)
 			end
 			-- The retry: a wrong price now (after the TOP spot: nothing left to buy).
@@ -1431,11 +1438,11 @@ return function(t: Context)
 			)
 			w.clock += PEN.buyCooldownSeconds
 		end
-		expect.equal(a.pen.shelfRows, 4)
+		expect.equal(a.pen.shelfRows, 11)
 		expect.equal(a.pen.top, true)
-		expectRefused(PenService.buyShelf(w.a, 140_000_000_000_000), "pen.shelfMax")
-		expect.equal(#w.spends, 4)
-		expect.equal(a.coins, 10 ^ 15 - 31_000_000 - 250_000_000_000 - 11_000_000_000_000 - 140_000_000_000_000)
+		expectRefused(PenService.buyShelf(w.a, 1_000_000_000_000_000), "pen.shelfMax")
+		expect.equal(#w.spends, 10)
+		expect.equal(a.coins, 2 * 10 ^ 15 - spent)
 		finish()
 	end)
 
@@ -1443,37 +1450,37 @@ return function(t: Context)
 		"shelf refusals: bad input, not ready, a wrong price, paused, cooling, in a duel, short of Coins: none charged",
 		function()
 			local w = fresh()
-			local a = withShelf(w, 1, false)
-			a.coins = 31_000_000
+			local a = withShelf(w, 2, false)
+			a.coins = 300_000_000
 			local writes = w.writes
-			for _, bad in { -1, 1.5, 0 / 0, "31000000", true } :: { any } do
+			for _, bad in { -1, 1.5, 0 / 0, "300000000", true } :: { any } do
 				expectRefused(PenService.buyShelf(w.a, bad), "net.invalid")
 			end
 			w.status[w.a] = "offline"
-			expectRefused(PenService.buyShelf(w.a, 31_000_000), "data.notReady")
+			expectRefused(PenService.buyShelf(w.a, 300_000_000), "data.notReady")
 			w.status[w.a] = "ready"
-			expectRefused(PenService.buyShelf(w.a, 30_999_999), "pen.priceChanged")
+			expectRefused(PenService.buyShelf(w.a, 299_999_999), "pen.priceChanged")
 			for _, flag in { "savePending", "closing", "restart" } do
 				(w :: any)[flag] = true
-				expectRefused(PenService.buyShelf(w.a, 31_000_000), "pen.paused");
+				expectRefused(PenService.buyShelf(w.a, 300_000_000), "pen.paused");
 				(w :: any)[flag] = false
 			end
 			w.phase[w.a] = "Active"
-			expectRefused(PenService.buyShelf(w.a, 31_000_000), "inventory.lockedInDuel")
+			expectRefused(PenService.buyShelf(w.a, 300_000_000), "inventory.lockedInDuel")
 			w.phase[w.a] = ""
 			w.spendFails = "savePending"
-			expectRefused(PenService.buyShelf(w.a, 31_000_000), "pen.paused")
+			expectRefused(PenService.buyShelf(w.a, 300_000_000), "pen.paused")
 			w.spendFails = nil
-			a.coins = 30_999_999
-			expectRefused(PenService.buyShelf(w.a, 31_000_000), "economy.notEnoughCoins")
+			a.coins = 299_999_999
+			expectRefused(PenService.buyShelf(w.a, 300_000_000), "economy.notEnoughCoins")
 			-- A pen spot bought a moment ago cools the shelf sign too (one buy a second).
 			a.coins = 10 ^ 13
 			expect.equal(PenService.buy(w.a, 1_500).ok, true)
-			expectRefused(PenService.buyShelf(w.a, 31_000_000), "pen.paused")
+			expectRefused(PenService.buyShelf(w.a, 300_000_000), "pen.paused")
 			-- A pen without shelfRows (never after sanitize) is not a shelf: net.invalid.
 			a.pen.shelfRows = nil
 			w.clock += PEN.buyCooldownSeconds
-			expectRefused(PenService.buyShelf(w.a, 31_000_000), "net.invalid")
+			expectRefused(PenService.buyShelf(w.a, 300_000_000), "net.invalid")
 			expect.equal(#w.spends, 1) -- only the pen spot
 			expect.equal(w.writes, writes + 1)
 			finish()
@@ -1482,9 +1489,9 @@ return function(t: Context)
 
 	t.test("the tick pays the shelf's and the TOP spot's squishies like the pen's", function()
 		local w = fresh()
-		local a = withShelf(w, 1, true)
+		local a = withShelf(w, 2, true)
 		table.insert(a.pen.items, { id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 13, locked = false })
-		table.insert(a.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 21, locked = false })
+		table.insert(a.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 24, locked = false })
 		PenService.step(1)
 		expect.deepEqual(grantsOf(w, w.a), { { player = w.a, amount = 10 + 40 + 640, reason = "pen" } })
 		finish()

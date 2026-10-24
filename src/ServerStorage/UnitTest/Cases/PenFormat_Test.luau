@@ -26,13 +26,13 @@
 --     cards are the foods on sale (biome 1: Candy Drop) with their price and count, and a card offers BUY 1 / BUY 10
 --     (refused with the missing Coins or a full stack); the sell confirm of a levelled squishy says its food is not
 --     refunded; requestFor reuses a request id only for a retry of the same action.
---   * pens3 phase 11 (the shelf rows + the TOP spot): the shelf's open spots (13.., slot order) and the TOP spot (21,
+--   * pens3 phase 11 (the shelf rows + the TOP spot): the shelf's open spots (13.., slot order) and the TOP spot (24,
 --     once bought) are their own sections (shelf, top) with their headings ("On your shelf placed/open", "TOP spot");
 --     the count line counts the pen's own spots; a shelf squishy is placed (PUT AWAY, MOVE, ...), a Toy Box one PLACEs
 --     while any open spot is free (the shelf's too), and picking taps a shelf or TOP card to move there; walkerItem
 --     maps a walker to the pen's own spots only; a pen with no shelfRows (never after sanitize) shows no shelf.
 --   * wb (owner 2026-10-17): nothing selected also offers the shelf's BUY button (after SELL ALL and FEED ALL; the
---     SHELF SPOTS sign stays): "BUY ROW <price>" for the next row, then "BUY TOP <price>", carrying that price
+--     SHELF SPOTS sign stays): "BUY <price>" for the next cubby (Neon Sugar part 5), then "BUY TOP <price>", carrying that price
 --     (PenController sends PenBuyShelf with it); short of Coins it is refused with the missing Coins, once all is
 --     open it reads SHELF MAX, refused with the server's pen.shelfMax text (the screen shows reasons on its reason
 --     row, never inside a button: every label stays short); no button for a pen without a shelf or with a squishy
@@ -595,7 +595,7 @@ return function(t: Context)
 			local pen = {
 				spots = 3,
 				nextId = 5,
-				shelfRows = 1,
+				shelfRows = 2,
 				top = false,
 				items = { item(1, "kitty_bread", 1), item(2, "toast", 13), item(3, "butter", 0), item(4, "bird", 2) },
 			}
@@ -606,13 +606,13 @@ return function(t: Context)
 			expect.equal(view.shelfHeading, "On your shelf 1/2")
 			expect.equal(view.topHeading, nil)
 			expect.equal(view.status, "Pen 2/3 · Toy Box 1/50") -- the pen's own spots
-			-- The TOP spot bought: its own card and heading; rows 2-4 add their spots.
-			pen.top, pen.shelfRows = true, 4
+			-- The TOP spot bought: its own card and heading; every cubby bought adds its spot (11 in all).
+			pen.top, pen.shelfRows = true, 11
 			view = PenFormat.view(pen, nil, false)
-			expect.equal(#view.shelf, 8)
-			expect.deepEqual(view.top, { slot = 21 })
+			expect.equal(#view.shelf, 11)
+			expect.deepEqual(view.top, { slot = 24 })
 			expect.equal(view.topHeading, screen.topHeading)
-			expect.equal(view.shelfHeading, "On your shelf 1/8")
+			expect.equal(view.shelfHeading, "On your shelf 1/11")
 			-- No shelfRows (an unsanitized pen): no shelf at all.
 			local old = { spots = 3, nextId = 2, items = { item(1, "kitty_bread", 1) } }
 			local plain = PenFormat.view(old, nil, false)
@@ -627,7 +627,7 @@ return function(t: Context)
 			local pen = {
 				spots = 3,
 				nextId = 7,
-				shelfRows = 1,
+				shelfRows = 2,
 				top = true,
 				items = {
 					item(1, "kitty_bread", 1),
@@ -645,11 +645,11 @@ return function(t: Context)
 			-- Picking: a shelf card and the TOP card take the squishy.
 			local picking = PenFormat.view(pen, 5, true)
 			expect.deepEqual({ PenFormat.tap(picking, 14, nil) }, { "place", 5, 14 } :: { any })
-			expect.deepEqual({ PenFormat.tap(picking, 21, nil) }, { "place", 5, 21 } :: { any })
+			expect.deepEqual({ PenFormat.tap(picking, 24, nil) }, { "place", 5, 24 } :: { any })
 			-- Every open spot full: SWAP.
 			table.insert(pen.items, item(6, "toast", 14))
 			pen.items[5].slot = 0
-			table.insert(pen.items, item(7, "toast", 21))
+			table.insert(pen.items, item(7, "toast", 24))
 			expect.deepEqual(actionIds(PenFormat.view(pen, 5, false)), { "swap", "lock", "sell", "feed" })
 		end
 	)
@@ -658,7 +658,7 @@ return function(t: Context)
 		local pen = {
 			spots = 3,
 			nextId = 4,
-			shelfRows = 1,
+			shelfRows = 2,
 			top = false,
 			items = { item(1, "toast", 13), item(2, "toast", 1), item(3, "banana", 2) },
 		}
@@ -669,7 +669,7 @@ return function(t: Context)
 	-- Wb (owner 2026-10-17): the shelf's BUY button in the MY PEN window ------------------------------------------
 
 	t.test(
-		"wb: the shelf BUY button: the next row's price, then the TOP spot's; MAX; short of Coins; no shelf",
+		"wb: the shelf BUY button: the next cubby's price, then the TOP spot's; MAX; short of Coins; no shelf",
 		function()
 			local Format = t.requireShared("Util/Format")
 			local function shelfPen(rows: number, top: boolean): any
@@ -683,30 +683,30 @@ return function(t: Context)
 				end
 				return nil
 			end
-			-- Row 2 next, the Coins there: BUY ROW 31M, live, after SELL ALL and FEED ALL.
-			local view = PenFormat.view(shelfPen(1, false), nil, false, { coins = 31_000_000 })
+			-- Cubby 3 next, the Coins there: BUY 300M, live, after SELL ALL and FEED ALL.
+			local view = PenFormat.view(shelfPen(2, false), nil, false, { coins = 300_000_000 })
 			expect.deepEqual(actionIds(view), { "sellAll", "feedAll", "buyShelf" })
 			local row = buy(view)
-			expect.equal(row.text, Strings.format(screen.buyRow, { coins = Format.coins(31_000_000) }))
-			expect.equal(row.price, 31_000_000)
+			expect.equal(row.text, Strings.format(screen.buySpot, { coins = Format.coins(300_000_000) }))
+			expect.equal(row.price, 300_000_000)
 			expect.equal(row.reason, nil)
 			expect.equal(row.kind, "secondary")
 			-- Short of Coins: refused with the missing Coins (the reason row, not the button), the price still shown.
-			local short = buy(PenFormat.view(shelfPen(1, false), nil, false, { coins = 1_000_000 }))
+			local short = buy(PenFormat.view(shelfPen(2, false), nil, false, { coins = 1_000_000 }))
 			local need = Strings.common.needCoins
-			expect.equal(short.reason, Strings.format(need.many, { missing = Format.coins(30_000_000) }))
-			expect.equal(short.price, 31_000_000)
+			expect.equal(short.reason, Strings.format(need.many, { missing = Format.coins(299_000_000) }))
+			expect.equal(short.price, 300_000_000)
 			expect.equal(short.text, row.text)
-			-- Rows 3 and 4: their prices (J: 250B, 11T).
-			expect.equal(buy(PenFormat.view(shelfPen(2, false), nil, false)).price, 250_000_000_000)
-			expect.equal(buy(PenFormat.view(shelfPen(3, false), nil, false)).price, 11_000_000_000_000)
-			-- Every row open: the TOP spot next (140T).
-			local top = buy(PenFormat.view(shelfPen(4, false), nil, false, { coins = 140_000_000_000_000 }))
-			expect.equal(top.text, Strings.format(screen.buyTop, { coins = Format.coins(140_000_000_000_000) }))
-			expect.equal(top.price, 140_000_000_000_000)
+			-- Cubbies 4 and 11: their prices (1.6B, 190T).
+			expect.equal(buy(PenFormat.view(shelfPen(3, false), nil, false)).price, 1_600_000_000)
+			expect.equal(buy(PenFormat.view(shelfPen(10, false), nil, false)).price, 190_000_000_000_000)
+			-- Every cubby open: the TOP spot next (1Qa).
+			local top = buy(PenFormat.view(shelfPen(11, false), nil, false, { coins = 1_000_000_000_000_000 }))
+			expect.equal(top.text, Strings.format(screen.buyTop, { coins = Format.coins(1_000_000_000_000_000) }))
+			expect.equal(top.price, 1_000_000_000_000_000)
 			expect.equal(top.reason, nil)
 			-- All open: SHELF MAX, refused with the server's own text, no price to send.
-			local max = buy(PenFormat.view(shelfPen(4, true), nil, false, { coins = 10 ^ 15 }))
+			local max = buy(PenFormat.view(shelfPen(11, true), nil, false, { coins = 2 * 10 ^ 15 }))
 			expect.equal(max.text, screen.shelfMax)
 			expect.equal(max.reason, Strings.reasonText("pen.shelfMax"))
 			expect.equal(max.price, nil)
@@ -719,7 +719,7 @@ return function(t: Context)
 				buy(PenFormat.view({ spots = 3, nextId = 2, items = { item(1, "kitty_bread", 1) } }, nil, false)),
 				nil
 			)
-			expect.equal(buy(PenFormat.view(shelfPen(1, false), 1, false, { coins = 31_000_000 })), nil)
+			expect.equal(buy(PenFormat.view(shelfPen(2, false), 1, false, { coins = 300_000_000 })), nil)
 		end
 	)
 end

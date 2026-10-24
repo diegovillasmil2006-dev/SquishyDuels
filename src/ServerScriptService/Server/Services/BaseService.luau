@@ -35,9 +35,9 @@
 --     (Players:GetUserThumbnailAsync on its own thread, pcall), asked once per user and cached for the server's life,
 --     painted on that owner's gate when it comes (after a failure it is asked again on the next draw).
 --   - Shelf (pens3 phase 11): Diego's 12 cubbies (the pen's ShelfSlots) show which pen slots are open: cubby k is slot
---     maxSpots + k (Bases.pen.shelf: the 4 shelf rows, then the TOP spot in cubby 9; 10..12 always locked until part
---     5). An open cubby hides its Lock and turns its ShelfBack PenShelfBackOn, a closed one shows them PenShelfBackOff
---     (his SquishyLobby.setSlotUnlocked); an open plot has every cubby closed.
+--     maxSpots + k (Bases.pen.shelf; Neon Sugar part 5: the shelf spots in cubbies 1..11, the TOP spot in 12). An
+--     open cubby hides its Lock and turns its ShelfBack PenShelfBackOn, a closed one shows them PenShelfBackOff (his
+--     SquishyLobby.setSlotUnlocked); an open plot has every cubby closed.
 --   - The base Model's attributes for every client's squishies (PenController): SD_PenSpots, SD_Pen (the walkers:
 --     PenMath.encode of PenMath.inPen), SD_Shelf (the shelf's and the TOP spot's: PenMath.encodeShelf of
 --     PenMath.onShelf; the clients stand them in their cubbies), SD_ShelfRows, SD_ShelfTop, SD_PenRate (every placed
