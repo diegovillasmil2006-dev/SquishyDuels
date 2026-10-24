@@ -1171,7 +1171,7 @@ local Strings = {
 	-- The island's bases (lobby bases spec 2026-10-11 §4, §9; build plan Phase 4): the gate's name sign (BaseService
 	-- writes the owner's display name, or openPlot).
 	base = {
-		openPlot = "Open plot",
+		openPlot = "OPEN PLOT", -- Neon Sugar part 4: Diego's arch nameplate text
 	},
 
 	-- The pen (pens3 phase 1): the PEN SPACE sign on the fence (its title, the owner's own state line under the price),
@@ -1195,6 +1195,13 @@ local Strings = {
 		shelfPrompt = {
 			action = "Buy",
 			object = "Shelf spots",
+		},
+		-- Neon Sugar part 4: Diego's pen board (World/PenBoard): the next count after the arrow ({n}), the progress
+		-- ({n} of {total}) and the button's caption.
+		board = {
+			spots = "{n} spots",
+			progress = "{n}/{total}",
+			buy = "BUY",
 		},
 		rate = "+{coins}/s",
 		-- Pens3 phase 10: the base gate (lobby design v6, P3D:250 and :277): the line under the owner's name on the

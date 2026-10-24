@@ -23,8 +23,8 @@
 -- * Station frames (StationFrames, stationFrame(id)): a station at (x, 0, z) turned by `yaw` (CFrame.Angles(0, yaw,
 --   0)); its local +Z, its front, faces the hub centre unless a yaw is given (the practice range). A station-local
 --   point (lx, ly, lz) is stationFrame(id) * Vector3.new(lx, ly, lz); nested groups multiply the same way.
--- * Bases (§2, §4): plot i's frame (plotFrame(i)) turns like a station frame, local +Z toward the hub: the gate at
---   local z +26, the back at -26.
+-- * Bases (Neon Sugar part 4): plot i's frame (plotFrame(i)) is Diego's Pen_i at its floor's top, turned like a station
+--   frame, local +Z toward the hub: the arch at local z +25.6, the shelf at -21.1.
 -- * Arena: relative to the template's `Origin` part (floor centre, floor top Y = 0); long axis = Z; Side A = Z < 0
 --   ("Strawberry side"), Side B = Z > 0 ("Mint side"). The slot origins live in Config.Duel.Arena.SlotOrigins.
 -- * Box: `position` = centre; `size` = W × H × D in the part's own frame; `facing` = the unit direction its Front
@@ -180,8 +180,6 @@ export type Path = {
 	width: number,
 }
 
--- A base's two colours (Palette tokens): `full` for the rim, the fence caps and the gate, `light` for the plinth.
-export type BaseColors = { full: string, light: string }
 -- Pens3 phase 1: the pen at one spot count (Bases.pen.steps; wb: only its tier, the pen is the whole base).
 export type PenStep = { tier: number }
 -- Pens3 phase 12: one biome's look on the highway (Highway.biomes; Palette tokens). `rainbow`: rr_rainbow_lane instead
@@ -855,68 +853,42 @@ end
 local PLATE_BOXED: PlateStyle = { background = "LobbyPlate", border = "LobbyInk", round = 0.24, color = "LobbyInk" }
 local PLATE_TEXT: PlateStyle = { color = "LobbyInk" }
 
--- Private: Squish Island bases (lobby bases spec 2026-10-11 §2, §4; Phase 3 data, built in Phase 4) ------------------
+-- Private: the bases (Neon Sugar lobby part 4, 2026-10-24) ----------------------------------------------------------
 
--- Plot i at compass angle (i - 1) × 36° (plot 1 north of the hub, -Z; plot 6 south), 44 wide and 52 deep, from its gate
--- at radius 96 to its back at radius 148, centred on the island centre. A plot frame is a station frame (newFrame):
--- its local +Z faces the hub, so the gate is at local z +26 and the back at -26.
-local BASE_TOKENS = { "Red", "Orange", "Yellow", "Lime", "Teal", "Sky", "Blue", "Navy", "Purple", "Pink" } -- §8 B1-B10
+-- The game's plots are Diego's 12 pens (Workspace.SquishyDuelsLobby.Pens.Pen_01..12, tag SD_Base, attribute Plot):
+-- Pen_01 at (0, 0, 126), each next one 30° on toward +X (his README). Plot i's frame is Pen_i's pivot at its floor's
+-- top (y 1.6), turned like a station frame: its local +Z toward the hub, the arch at z +25.6. Every plot-local number
+-- below is read from his pens in Studio (all 12 alike).
+local PEN_COUNT = 12
+local PEN_RADIUS = 126
+local PEN_FLOOR_TOP = 1.6
 local baseFrames: { CFrame } = {}
-local baseColors: { BaseColors } = {}
 local baseModels: { string } = {}
-for index = 1, BASE_COUNT do
-	local frame = polarFrame((BASE_GATE_RADIUS + BASE_BACK_RADIUS) / 2, (index - 1) * SECTOR_DEGREES)
-	baseFrames[index] = CFrame.new(frame.position) * CFrame.Angles(0, frame.yaw, 0)
-	baseColors[index] = { full = "Base" .. BASE_TOKENS[index], light = "Base" .. BASE_TOKENS[index] .. "Light" }
-	baseModels[index] = string.format("Base_%02d", index)
+for index = 1, PEN_COUNT do
+	local yaw = math.rad((index - 1) * 360 / PEN_COUNT)
+	local at = Vector3.new(math.sin(yaw) * PEN_RADIUS, PEN_FLOOR_TOP, math.cos(yaw) * PEN_RADIUS)
+	baseFrames[index] = CFrame.new(at) * CFrame.Angles(0, yaw + math.pi, 0)
+	baseModels[index] = string.format("Pen_%02d", index)
 end
 
--- Wb: a plot-local floor rectangle (x and z studs): the squishies' floor, a walk block, a prop's footprint.
+-- His shelf's cubbies (ShelfSlots.ShelfSlot_01..12): 4 a row, left to right as seen from the pen floor, bottom row
+-- first, 7.5 apart and rows 7 apart; cubby k's display pad top in the shelf's frame (Bases.pen.shelf.at).
+local SHELF_COLUMNS = 4
+local shelfCubbies: { Vector3 } = {}
+for k = 1, 12 do
+	local column, row = (k - 1) % SHELF_COLUMNS, (k - 1) // SHELF_COLUMNS
+	shelfCubbies[k] = Vector3.new(11.25 - 7.5 * column, 2.7 + 7 * row, 0)
+end
+
+-- Wb: a plot-local floor rectangle (x and z studs): the squishies' floor, a walk block.
 export type FloorRect = { name: string?, minX: number, maxX: number, minZ: number, maxZ: number }
 local Bases = {
-	center = Vector3.zero,
-	gateRadius = BASE_GATE_RADIUS,
-	backRadius = BASE_BACK_RADIUS,
-	width = 44,
-	depth = BASE_DEPTH,
-	gate = Vector3.new(0, 0, BASE_DEPTH / 2), -- the Donut Arch gate
-	gateWidth = 16, -- spec §4
-	-- The gate's name sign (§4): a board hanging under the arch's top, its front read from the path (reading: 9 × 2).
-	nameSign = { position = Vector3.new(0, 11.6, BASE_DEPTH / 2 - 0.6), size = Vector3.new(9, 2, 0.3) } :: Box,
-	-- Reading: the gate's posts and fence run along the plinth's edges 0.6 inside them.
-	fenceInset = 0.6,
-	-- Pens3 phase 1 [P reading]: v6 has no base spawn, so the first view is your own pen: the spawn stands between the
-	-- gate (z +26) and the pen's front (z +19), at local z +22.5, facing -Z, toward the pen. (Before: z -4 facing the
-	-- gate, where the statue blocked the camera; the statue went with the capsules.)
-	spawn = CFrame.new(0, 0, 22.5),
-	-- Wb: what LobbyBuilder stands on each plot's floor (plot-local footprints, read from its build and rounded out to
-	-- 0.05; LobbyBuilder_Test checks the build against them): the spawn pad, the Donut Arch's 2 pillars (0.4 of each
-	-- past the plinth's front), the Kitty Loaf mailbox and the Chocolate flower box by the gate, the Toast bench and
-	-- the Birdie nest planter by the back wall (wb, owner 2026-10-17: moved out from x ±15.5 to ±17, so neither pokes
-	-- 0.7 stud into the shelf's sides any more).
-	props = {
-		{ name = "Spawn", minX = -2, maxX = 2, minZ = 20.5, maxZ = 24.5 },
-		{ name = "GatePillar", minX = -10, maxX = -8, minZ = 24.4, maxZ = 26.4 },
-		{ name = "GatePillar", minX = 8, maxX = 10, minZ = 24.4, maxZ = 26.4 },
-		{ name = "KittyLoafMailbox", minX = 15.7, maxX = 18.2, minZ = 20.2, maxZ = 21.8 },
-		{ name = "ChocolateFlowerBox", minX = -19.5, maxX = -14.5, minZ = 20.05, maxZ = 21.95 },
-		{ name = "ToastBench", minX = 14.3, maxX = 19.7, minZ = -20, maxZ = -18.05 },
-		{ name = "BirdieNestPlanter", minX = -19.45, maxX = -14.55, minZ = -20.75, maxZ = -17.25 },
-	} :: { FloorRect },
+	width = 42, -- his pen's Base slab, 42 × 54 round its pivot
+	depth = 54,
 	-- Pens3 phase 1, wb (owner 2026-10-17, "whole base, like Ride a Pet, each time they upgrade they can put more
-	-- squishies"): the pen is the whole base from the start, inside the plot's own white fence, and buying PEN SPACE
-	-- adds squishies, never fence (no pen fence, rails or colliders any more). steps[spots].tier = the lobby design v6
-	-- tier at that many open spots (kit.json K:4084-4169: 1 Wafer, 2 Mint, 3 Royal; its w, d, fence count and back wall
-	-- were the growing pen's). `walk` = the squishies' floor: the plinth's inside the plot's fence posts (their inner
-	-- faces fenceInset + 0.4 in from its sides and front: x ±21, z 25) and its back wall (1.6 deep: z -24.4). `blocks`
-	-- = where no squishy walks (PenMath.walkArea grows each by half the squishy and edgeMargin; to the plot's edges):
-	-- the front row from z 18 (the Donut Arch's pillars and opening, the spawn, both walk-up signs, the gate, the
-	-- lamps, the mailbox and the flower box), the shelf row from the shelf's glass locks (z -12.8: L:247 puts them
-	-- 0.125 in front of its front, z -13) back (the shelf, the bench and the planter beside it, and the floor behind
-	-- it) and the 2 gumdrop trees' canopies (r 3, LK:238). edgeMargin = how far a walking squishy keeps from the
-	-- floor's edges and the blocks. signs.pen = the PEN SPACE sign (L:166-194 pen_upgrade_sign_01), facing +Z; pens3
-	-- phase 11: signs.shelf = the SHELF SPOTS sign (L:189 pen_upgrade_sign_02 turned: (-10.03, 20.37); K:4240 "PEN
-	-- SPACE (left) and SHELF SPOTS (right)", the plan's (-10, 0, 20.4)).
+	-- squishies"): the pen is the whole base from the start and buying PEN SPACE adds squishies, never fence.
+	-- steps[spots].tier = the lobby design v6 tier at that many open spots (kit.json K:4084-4169: 1 Wafer, 2 Mint, 3
+	-- Royal): the gate posts' colour. edgeMargin = how far a walking squishy keeps from the floor's edges.
 	pen = {
 		edgeMargin = 0.8,
 		steps = {
@@ -931,69 +903,36 @@ local Bases = {
 			[11] = { tier = 3 },
 			[12] = { tier = 3 },
 		} :: { [number]: PenStep },
-		walk = { minX = -21, maxX = 21, minZ = -24.4, maxZ = 25 } :: FloorRect,
-		blocks = {
-			{ name = "front", minX = -22, maxX = 22, minZ = 18, maxZ = 26 },
-			{ name = "shelfRow", minX = -22, maxX = 22, minZ = -26, maxZ = -12.75 },
-			{ name = "tree", minX = 15, maxX = 22, minZ = -3, maxZ = 3 },
-			{ name = "tree", minX = -22, maxX = -15, minZ = -3, maxZ = 3 },
-		} :: { FloorRect },
+		-- The squishies' floor: his Markers.WalkArea (37.6 × 41.6 at z 3.6, between his fence, shelf and arch); nothing
+		-- stands inside it, so no blocks.
+		walk = { minX = -18.8, maxX = 18.8, minZ = -17.2, maxZ = 24.4 } :: FloorRect,
+		blocks = {} :: { FloorRect },
+		-- Each board row's buy spot (BaseService's invisible Face: the row's prompt and glint), just past the right edge
+		-- of his board (SignFace, 12.8 × 8 centred at (16, 4.9, 30.86), its front toward the path) at the height of the
+		-- row's BUY button (his canvas, 80 px a stud: row 1's centre 1.6 studs under the top, row 2's 5.45), facing the
+		-- path. Owner 2026-10-24: row 1 PEN SPACE, row 2 SHELF SPOTS.
 		signs = {
-			pen = CFrame.new(10, 0, 20.3) * CFrame.Angles(0, math.pi, 0),
-			shelf = CFrame.new(-10, 0, 20.4) * CFrame.Angles(0, math.pi, 0),
+			pen = CFrame.new(23.2, 7.3, 30.86) * CFrame.Angles(0, math.pi, 0),
+			shelf = CFrame.new(23.2, 3.45, 30.86) * CFrame.Angles(0, math.pi, 0),
 		},
-		-- Pens3 phase 11 (K:798-842 base_shelf, LK:182-189; L:194 / :225 / :246: every base's shelf at v6 local
-		-- (0, 16), turned like the gate, its front toward +Z): the shelf's frame `at` (6 deep; wb: in the shelf row
-		-- block); `cubbies` = LK:188's slot_1..8 (x ±3.3 / ±9.9, y 1 and 8.3, z -0.5, in shelf studs) in K's
-		-- order (K:4194-4203: v6 slots 2, 3, 1, 4, 6, 7, 5, 8), so cubby k is pen slot 12 + k and each shelf row is the
-		-- next two (placeholder: v6 opens them one by one, PLAN phase 11); `top` = where the TOP spot's squishy
-		-- stands (placeholder: a pedestal on the shelf's top behind the bow, BaseService); `labelOver` = the coin
-		-- label's centre over a cubby's floor (CHK:57: on the board above the cubby, 6.5 + half its 0.8) and `labelZ`
-		-- its depth (0.2 in front of the shelf's front, reading).
+		-- His shelf at the plot's back: `at` = its frame on the cubbies' pads (z -21.1), turned like the gate (its front
+		-- toward the arch); `cubbies` above. Cubby k is pen slot maxSpots + k: the 4 shelf rows two by two in 1..8, the
+		-- TOP spot in 9 (10..12 stay locked until the shelf grows, part 5). `labelOver` = a coin label's centre over its
+		-- pad's top (on the board between the rows, 8.4..9.4 up) and `labelZ` its depth (0.2 in front of the shelf's
+		-- front, z -18.4).
 		shelf = {
-			at = CFrame.new(0, 0, -16) * CFrame.Angles(0, math.pi, 0),
-			cubbies = {
-				Vector3.new(-3.3, 1, -0.5),
-				Vector3.new(3.3, 1, -0.5),
-				Vector3.new(-9.9, 1, -0.5),
-				Vector3.new(9.9, 1, -0.5),
-				Vector3.new(-3.3, 8.3, -0.5),
-				Vector3.new(3.3, 8.3, -0.5),
-				Vector3.new(-9.9, 8.3, -0.5),
-				Vector3.new(9.9, 8.3, -0.5),
-			},
-			top = Vector3.new(0, 18.9, 1.6),
-			labelOver = 6.9,
-			labelZ = -3.2,
+			at = CFrame.new(0, 0, -21.1) * CFrame.Angles(0, math.pi, 0),
+			cubbies = shelfCubbies,
+			labelOver = 6.2,
+			labelZ = -2.9,
 		},
-		-- Pens3 phase 10 (every front toward +Z, like the sign): the gate (LK:87-96 pen_gate); the 2 lollipop lamps
-		-- (tier 2 on) and the 2 gumdrop trees (tier 3), each tree's canopy a Palette token (L:192-193 GumdropTint: the
-		-- Royal post's gold at +X, its rail pink at -X). Wb (owner 2026-10-17: keep both name signs, the pen is the
-		-- whole base; readings, NOTES.md): the gate stands in the front-right corner, between the Donut Arch and the
-		-- plot's fence, just inside the front fence, where the path sees its owner sign beside the arch, never behind
-		-- the arch's name sign (that hid a quarter of it, and most of its badge, at the old (0, 0, 19)); K:4181's lamps
-		-- "at the front corners" stand at the walk floor's front corners, behind the front row; K:4187's trees "by the
-		-- side fences" by the plot's side fences, half way down (their canopies, r 3, inside the fence).
-		gate = CFrame.new(16.2, 0, 24) * CFrame.Angles(0, math.pi, 0),
-		lamps = {
-			CFrame.new(19.25, 0, 18.5) * CFrame.Angles(0, math.pi, 0),
-			CFrame.new(-19.25, 0, 18.5) * CFrame.Angles(0, math.pi, 0),
-		},
-		trees = {
-			{ at = CFrame.new(18, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalPost" },
-			{ at = CFrame.new(-18, 0, 0) * CFrame.Angles(0, math.pi, 0), color = "PenFenceRoyalRail" },
-		},
-		-- The most parts BaseService draws for one pen (pens3 phase 3); the lobby budget adds it to every plot. Wb: no
-		-- pen fence, so the worst state is 10-12 spots with the start shelf row: the PEN SPACE and SHELF SPOTS signs'
-		-- 3 + 3, the gate's 8 with its 7 bulbs and the 13-part bow, 2 lamps of 2, 2 trees of 6, the shelf's 1 back, 11
-		-- boards, 13-part bow and collider, the TOP spot's 2-part pedestal and 6 cubby locks = 84 (everything bought:
-		-- 78; before wb, with the fence, 196).
-		maxParts = 84,
+		-- The gate with the owner's photo (owner 2026-10-24, "Keep the photo gate sign"): outside the fence at the
+		-- pen's front-left, across the arch from his board, on the grass (1.6 under the floor), facing the path.
+		gate = CFrame.new(-16, -PEN_FLOOR_TOP, 30.86) * CFrame.Angles(0, math.pi, 0),
+		-- The most parts BaseService draws for one pen: the gate's 8 and the 2 buy spots.
+		maxParts = 10,
 	},
-	-- Spec §8: plot i's colour (full: rim, fence caps, gate; light: the plinth floor); an open plot is grey (§4).
-	colors = baseColors,
-	openColors = { full = "BaseOpen", light = "BaseOpenLight" } :: BaseColors,
-	models = baseModels, -- plot i's Model under SD_Lobby.Bases (tag SD_Base, attribute Plot)
+	models = baseModels, -- plot i's Model (tag SD_Base, attribute Plot)
 	frames = baseFrames, -- plot i's frame (plotFrame(i))
 }
 
@@ -1241,24 +1180,6 @@ for index, mat in mats do
 			{ bake = { n = index } }
 		)
 	)
-end
-
--- The bases' name signs (spec §4): one live line, the owner's display name (BaseService) or base.openPlot as built.
-for index = 1, BASE_COUNT do
-	local frame = Bases.frames[index]
-	local cf = frame * CFrame.new(Bases.nameSign.position) * CFrame.Angles(0, math.pi, 0) -- its Front reads toward the hub
-	table.insert(Signs, {
-		id = "baseSign" .. index,
-		owner = Bases.models[index],
-		part = "nameSign",
-		position = cf.Position,
-		size = Bases.nameSign.size,
-		facing = cf.LookVector,
-		face = "Front",
-		cframe = cf,
-		plate = PLATE_BOXED,
-		lines = { liveLine("Owner", "base.openPlot", 1.1) },
-	})
 end
 
 -- Keep-clear volumes (§7.7 props rules 1 and 5; §17.6): the generator reports collidable parts inside them. Station
@@ -1859,8 +1780,8 @@ local WorldLayout = {
 		SD_AudioZone = #AudioZones, -- lobby, squeeze, practice
 		-- Lobby background motion (§18.5.1 A8): the 4 lollipops, both gift boxes and the statue.
 		SD_Ambient = #Props.lollipops.positions + 3,
-		SD_Base = BASE_COUNT, -- one Model per plot (spec §4)
-		SD_BaseSpawn = BASE_COUNT, -- one SpawnLocation per plot
+		SD_Base = PEN_COUNT, -- one Model per plot: Diego's pens
+		SD_BaseSpawn = PEN_COUNT, -- one SpawnLocation per plot, in front of its arch
 	},
 	-- Tag and attribute names (§2.9, §17.10).
 	Tags = {
@@ -1912,8 +1833,8 @@ local WorldLayout = {
 		AmbienceKey = "AmbienceKey",
 		MusicMul = "MusicMul",
 		AmbientKind = "SD_AmbientKind", -- reading (see Tags.Ambient): "spin" | "spinBob" | "breathe" (§18.5.1 A8)
-		Plot = "Plot", -- Tags.Base and Tags.BaseSpawn: the plot index 1..10
-		-- "full" | "light": a base part BaseService colours with its plot's colour (Bases.colors) or an open plot's grey.
+		Plot = "Plot", -- Tags.Base and Tags.BaseSpawn: the plot index 1..12
+		-- "full" | "light": an old-lobby base part (Verify). Diego's pens have none: no plot colours (owner 2026-10-24).
 		BaseTint = "SD_BaseTint",
 		-- Pens3 phase 12 (HighwayBuilder): a biome Model's index 1..7 and a placed piece Model's v6 piece name.
 		Biome = "Biome",
@@ -2078,7 +1999,7 @@ function WorldLayout.waypoint(name: string): Vector3?
 	return Waypoints[name]
 end
 
--- The frame of plot `index` (1..10, Bases): a plot point (x, y, z) is plotFrame(index) * Vector3.new(x, y, z); nil for
+-- The frame of plot `index` (1..12, Bases): a plot point (x, y, z) is plotFrame(index) * Vector3.new(x, y, z); nil for
 -- anything else.
 function WorldLayout.plotFrame(index: number): CFrame?
 	return Bases.frames[index]

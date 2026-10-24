@@ -29,15 +29,16 @@
 --   its height and measured with Theme.textBounds (no AutomaticSize). It does not hop (the design's sprite rides the
 --   walker, not its body). MaxDistance labelMaxStuds, labelMaxStudsLow when MeshQuality.forCamera() is "Low". Its text
 --   changes only on a sync.
--- * Own sign (K:4239-4265: trim colour + icon + text, never colour alone): on the local player's plot (Player
---   attribute SD_Plot) the Sign's Trim takes signState's colour, its Icon its picture and its Line its text (Walk up to
---   buy / Need N more / none at MAX), on every Coins or pen change and whenever a part of it streams in. Everyone else
---   sees BaseService's face (the title and the price, MAX at 12 spots).
+-- * Own board rows (Neon Sugar part 4; Diego's pen board, World/PenBoard, BaseService's "Board" in the "Pen" Folder):
+--   on the local player's plot (Player attribute SD_Plot) the PEN SPACE row (the Sign's SD_Price) and the SHELF SPOTS
+--   row (the ShelfSign's) show signState's state: a green BUY button, a grey one with "Need N more", or gold MAX
+--   (PenBoard.setState), on every Coins or pen change and whenever a piece of the board streams in. Everyone else
+--   sees BaseService's rows (BUY, MAX).
 -- * Buying: every other base's PenPrompt is turned off on this client (the server buys only the caller's own spot
 --   anyway); the own one stays as the server made it (off at MAX). ProximityPromptService.PromptTriggered on the own
---   prompt sends PenBuySpot(the Sign's SD_Price) once at a time; an accepted buy plays ui.purchase and the price face's
---   pop (A13 UpgradeBuyPunch, Config.UI.Pen.signPop; none under ReducedMotion; HudController squashes the coin pill on
---   the spend), a refusal shows its reason (NotifyController.showResult).
+--   prompt sends PenBuySpot(the Sign's SD_Price) once at a time; an accepted buy plays ui.purchase and the row's
+--   button pop (A13 UpgradeBuyPunch, Config.UI.Pen.signPop, a UIScale on the button; none under ReducedMotion;
+--   HudController squashes the coin pill on the spend), a refusal shows its reason (NotifyController.showResult).
 -- * Coins while away (pens3 phase 4): the state field awayGift {coins, seconds} (PenService, once per load) shows a
 --   stand-in pop-up, Diego's congrats overlay (UI/CongratsOverlay, the shop's, in its SD_Prompt layer): "You got" the
 --   Coins (common.coinsAmount), the line away.body with the time away in words, the best pen squishy in the disc, the
@@ -88,15 +89,15 @@
 -- * Pens3 phase 11 (the shelf rows + the TOP spot; lobby design v6, `CHK:n` = check/CHECK.md line n):
 --   - The shelf's squishies: the base Model's SD_Shelf (BaseService: PenMath.encodeShelf, slot=look) says what stands
 --     on its shelf. They come from the same pool and cache as the walkers (same model, label, form looks), stand in
---     their cubby (shelfPlace: WorldLayout Bases.pen.shelf.cubbies in K's order, the TOP spot on the pedestal), facing
---     the gate, never walking; their coin label sits on the board above the cubby (CHK:57: never under the cubby's
---     top), the TOP spot's over its squishy. They show and hide with the pen (cullStuds); within animateStuds of the
+--     their cubby (shelfPlace: WorldLayout Bases.pen.shelf.cubbies, Diego's ShelfSlots; Neon Sugar part 4: the TOP
+--     spot is cubby 9), facing the arch, never walking; their coin label sits on the board above the cubby (CHK:57:
+--     never under the cubby's top). They show and hide with the pen (cullStuds); within animateStuds of the
 --     camera, while the shelf's sphere is on the screen, each plays its kind's show-off loop (Anim/ShowOffTracks,
 --     K:6982: the lift and the turn, from a random point in the loop, P3D:403), back at rest once it stops (beyond
 --     animateStuds, off screen: K:7833's "idle pose beyond"); none under ReducedMotion (they stand still, MEM:66).
---   - The SHELF SPOTS sign: the own one is painted (trim, icon, line) like the PEN SPACE sign, from its SD_Price; its
---     ShelfPrompt sends PenBuyShelf(that price) (one buy at a time with the pen's), A13's pop on its face after a buy;
---     every other base's ShelfPrompt is off here, like their PenPrompts.
+--   - The SHELF SPOTS row: the own one is painted like the PEN SPACE row, from the ShelfSign's SD_Price; its
+--     ShelfPrompt sends PenBuyShelf(that price) (one buy at a time with the pen's), A13's pop on its button after a
+--     buy; every other base's ShelfPrompt is off here, like their PenPrompts.
 --   - Wb (owner 2026-10-17): the MY PEN window's shelf BUY button (PenFormat's buyShelf action; the sign stays) sends
 --     PenBuyShelf with the price it shows (shelfCall), one at a time with the signs' buys and PenPlace (the spinner
 --     meanwhile); an accepted buy plays ui.purchase, a refusal shows its reason. A disabled one (short of Coins,
@@ -131,6 +132,7 @@ local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
+local PenBoard = require(Shared.World.PenBoard)
 local PenMath = require(Shared.PenMath)
 local Strings = require(Shared.Strings)
 local TimeUtil = require(Shared.Util.TimeUtil)
@@ -276,14 +278,17 @@ local SOUND_FUSE = "ui.levelTone"
 local ATTR_SHELF = "SD_Shelf"
 local SHELF = LAYOUT.shelf
 local SHELF_FIRST = Config.Economy.Pen.maxSpots + 1
-local TOP_SLOT = Config.Economy.Pen.placedMax
 local SHELF_SIGN = "ShelfSign"
 local SHELF_PROMPT = "ShelfPrompt"
 local REMOTE_BUY_SHELF = "PenBuyShelf"
--- Reading: the shelf's bounding sphere: its middle (half of the 18.9 to the TOP spot) and radius (its 27.4 × 24 × 6
--- with a Dragon on the TOP spot, halved and rounded up).
-local SHELF_UP = 9.5
-local SHELF_RADIUS = 19
+-- Reading: Diego's shelf's bounding sphere: its middle (half of its 23.4 over the pads' frame) and radius (its 30 ×
+-- 23.4 × 6, halved, rounded up).
+local SHELF_UP = 12
+local SHELF_RADIUS = 20
+-- Neon Sugar part 4: Diego's pen board (BaseService's SurfaceGui in the "Pen" Folder) and each buy spot's row on it.
+local BOARD_NAME = "Board"
+local BOARD_ROWS = { Sign = 1, ShelfSign = 2 }
+local BOARD_STATES = { canBuy = "buy", tooExpensive = "need", max = "max" } -- signState's state -> PenBoard's
 local FORMS = P.forms
 local RAINBOW = {
 	Palette.PenFormRainbow1,
@@ -310,7 +315,7 @@ local pool: { [string]: { Walker } } = {}
 local effect: Scheduler.Handle? = nil
 local random = Random.new()
 local pending = false -- a PenBuySpot is running
-local pop: { face: BasePart, size: Vector3, at: number }? = nil
+local pop: { scale: UIScale, at: number }? = nil
 local awayOverlay: CongratsOverlay.CongratsOverlay? = nil -- pens3 phase 4: the open away pop-up
 local awayBack: (() -> ())? = nil -- its back handler (UIController.pushBack)
 -- Pens3 phase 6: the pen screen.
@@ -511,8 +516,7 @@ local function syncShelf(pen: Pen)
 			local list = pool[lookKey(look)]
 			w = if list and #list > 0 then table.remove(list) else build(look)
 		end
-		local rest, labelAt =
-			PenController.shelfPlace(pen.frame, slot, if w then w.lift else 0, if w then w.labelY else 0)
+		local rest, labelAt = PenController.shelfPlace(pen.frame, slot, if w then w.lift else 0)
 		if w and rest and labelAt then
 			if pen.shelf[slot] ~= w then
 				local loop = ShowOffTracks.get(look.kind)
@@ -604,28 +608,24 @@ local function signOf(pen: Pen?, name: string?): Instance?
 	return if found then found:FindFirstChild(name or SIGN_NAME) else nil
 end
 
--- The own sign's trim, icon and line (see the header); nothing while it has not streamed in.
+-- Neon Sugar part 4: the board row a buy spot (`name`) buys, once it has streamed in.
+local function rowOf(pen: Pen?, name: string): Frame?
+	local found = if pen then pen.model:FindFirstChild(PEN_FOLDER) else nil
+	local board = if found then found:FindFirstChild(BOARD_NAME) else nil
+	return if board then PenBoard.row(board, BOARD_ROWS[name]) else nil
+end
+
+-- The own board row's button and caption (see the header); nothing while it has not streamed in.
 local function paintSign(name: string)
 	local plot = ownPlot()
-	local sign = signOf(if plot then pens[plot] else nil, name)
-	if sign == nil then
+	local pen = if plot then pens[plot] else nil
+	local sign, row = signOf(pen, name), rowOf(pen, name)
+	if sign == nil or row == nil then
 		return
 	end
 	local price = sign:GetAttribute(ATTR_PRICE)
 	local state = PenController.signState(if type(price) == "number" then price else nil, StateController.coins())
-	local trim = sign:FindFirstChild("Trim")
-	if trim and trim:IsA("BasePart") and trim.Color ~= Palette[state.trim] then
-		trim.Color = Palette[state.trim]
-	end
-	local icon = sign:FindFirstChild("Icon", true)
-	local image = AssetTable.image(state.icon) or ""
-	if icon and icon:IsA("ImageLabel") and icon.Image ~= image then
-		icon.Image = image
-	end
-	local line = sign:FindFirstChild("Line", true)
-	if line and line:IsA("TextLabel") and line.Text ~= state.line then
-		line.Text = state.line
-	end
+	PenBoard.setState(row, BOARD_STATES[state.state], state.line)
 end
 
 -- Both own signs (pens3 phase 11: PEN SPACE and SHELF SPOTS).
@@ -719,17 +719,18 @@ local function unwatch(model: Instance)
 	end
 end
 
--- The price face's pop after an own buy (A13; the one effect steps it) on the sign `name`.
+-- The board row's button pop after an own buy (A13; the one effect steps it) for the buy spot `name`: a UIScale on
+-- the button (made here, on this client only).
 local function startPop(name: string)
 	local plot = ownPlot()
-	local sign = signOf(if plot then pens[plot] else nil, name)
-	local face = if sign then sign:FindFirstChild("Face") else nil
-	if Tweens.reducedMotion() or face == nil or not face:IsA("BasePart") then
+	local row = rowOf(if plot then pens[plot] else nil, name)
+	local button = if row then row:FindFirstChild("Button") else nil
+	if Tweens.reducedMotion() or button == nil then
 		return
 	end
-	local running = pop
-	local size = if running and running.face == face then running.size else face.Size
-	pop = { face = face, size = size, at = os.clock() }
+	local scale = button:FindFirstChildOfClass("UIScale") or Instance.new("UIScale")
+	scale.Parent = button
+	pop = { scale = scale, at = os.clock() }
 end
 
 local function stepPop()
@@ -738,15 +739,12 @@ local function stepPop()
 		return
 	end
 	local ms = (os.clock() - p.at) * 1000
-	if not p.face:IsDescendantOf(Workspace) or SIGN_POP:isDone(ms) then
-		if p.face:IsDescendantOf(Workspace) then
-			p.face.Size = p.size
-		end
+	if not p.scale:IsDescendantOf(Workspace) or SIGN_POP:isDone(ms) then
+		p.scale.Scale = 1
 		pop = nil
 		return
 	end
-	local scale = SIGN_POP:eval(ms)
-	p.face.Size = Vector3.new(p.size.X * scale, p.size.Y * scale, p.size.Z)
+	p.scale.Scale = SIGN_POP:eval(ms)
 end
 
 -- Pens3 phases 7-8: the pen screen's part of the effect (set with the screen's code below).
@@ -1325,14 +1323,11 @@ function PenController.labelLayout(aspect: number): LabelLayout
 end
 
 -- Pens3 phase 11: where a shelf squishy stands on the plot of `frame`: its root's CFrame at rest (the model's bottom
--- on its cubby's floor, `lift` = the root's height over it; facing the gate like the shelf) and its coin label's
--- offset from the root (world studs; a cubby's: on the board above it, CHK:57; the TOP spot's labelY over the root,
--- like a walker's); nil for a slot that is not the shelf's or the TOP spot's.
-function PenController.shelfPlace(frame: CFrame, slot: number, lift: number, labelY: number): (CFrame?, Vector3?)
+-- on its cubby's floor, `lift` = the root's height over it; facing the arch like the shelf) and its coin label's
+-- offset from the root (world studs: on the board above the cubby, CHK:57); nil for a slot that is not the shelf's
+-- (Neon Sugar part 4: the TOP spot is the shelf's cubby 9).
+function PenController.shelfPlace(frame: CFrame, slot: number, lift: number): (CFrame?, Vector3?)
 	local at = frame * SHELF.at
-	if slot == TOP_SLOT then
-		return at * CFrame.new(SHELF.top + Vector3.new(0, lift, 0)), Vector3.new(0, labelY, 0)
-	end
 	if slot < SHELF_FIRST or slot >= SHELF_FIRST + #SHELF.cubbies then
 		return nil, nil
 	end

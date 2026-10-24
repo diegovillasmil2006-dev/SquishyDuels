@@ -2,42 +2,34 @@
 -- BaseService_Test: unit tests for ServerScriptService.Server.Services.BaseService with injected fakes (a recorded
 -- task.delay that the test runs by hand, a fake plot spawn); players are Folder instances (they carry the SD_Plot
 -- attribute) or plain tables. Server only (ServerStorage.UnitTest). Edit mode: no Player, no world.
--- Contract (lobby bases spec 2026-10-11 §2, §4, §6; build plan Phase 3):
---   * 10 plots (WorldLayout.Bases); a joining player gets the lowest free plot, shown in the SD_Plot attribute; a plot
+-- Contract (lobby bases spec 2026-10-11 §2, §4, §6; Neon Sugar lobby part 4, 2026-10-24: the plots are Diego's pens):
+--   * 12 plots (WorldLayout.Bases); a joining player gets the lowest free plot, shown in the SD_Plot attribute; a plot
 --     freed on leave is handed out again; rejoining gives the lowest free plot (the pen lives in the profile);
 --   * with no plot free the player waits in the hub: the service tries again every 0.5 s for 5 s (10 tries) and gives
 --     the plot that frees meanwhile; after 5 s it stops; a waiting player who leaves stops the retries;
---   * the plot's spawn is asked for the plot handed out and used only once the world has one (Phase 4);
---   * the owner view (Phase 4, spec §4, §8): a plot with an owner shows their display name on its name sign and its
---     colour (Bases.colors) on every SD_BaseTint part; an open plot shows "Open plot" and the grey;
---   * pens3 phase 1 (the pen replaced the capsules and the statue): the owner's pen from their ready profile, in a
---     "Pen" Folder (lobby design v6; wb, owner 2026-10-17: the pen is the whole base, so no pen fence, rails or
---     colliders at any spot count: the plot's own fence holds it), the PEN SPACE sign at Bases.pen.signs.pen
---     (SD_PenSign = plot, SD_Price = the next spot's price, its hold prompt; MAX with the prompt off at 12 spots) and
---     the base Model's SD_PenSpots / SD_Pen / SD_PenRate / SD_PenTier for the clients' walking squishies;
---     refresh(player) redraws (no duplicates); an open plot, a profile that is not ready or a missing plot model draws
---     no pen and nothing fails;
---   * pens3 phase 3: no pen draws more parts than WorldLayout.Bases.pen.maxParts (the lobby budget's worst plot),
---     and the full 12-spot pen draws exactly that many.
---   * pens3 phase 10 (the pen look, lobby design v6): the gate (LK:87-96) at Bases.pen.gate (wb: the front-right
---     corner): posts in the tier's post colour, the sign frame in the plot's colour, the owner sign (display name,
---     "BASE n", the headshot asked once per user and cached), the number badge n and the visitor board ("0 visitors"
---     until phase 18); the tier decor of PenMath.decorOf (tier 2: 7 gate bulbs + 2 lollipop lamps; tier 3: + the bow +
---     2 gumdrop trees) where L puts it; the base Model's SD_PenOwner (the owner's UserId); the full pen plus the plot's
---     80 static parts stays within Budgets.baseParts.
---   * pens3 phase 11 (the shelf rows + the TOP spot, lobby design v6): every base draws its "Shelf" at Bases.pen.shelf
---     (LK:182-189: the back in the plot's colour, the Frosting frame of 11 boards, the bow, one invisible 27.4 × 15.6 ×
---     6 collider: K's "block"), a glass "Lock" (K:98 Glass, the img.icon.lock picture, CHK:57) over every cubby that is
---     not open, the TOP spot's pedestal (placeholder) with a lock picture until it is bought; the SHELF SPOTS sign at
---     Bases.pen.signs.shelf (SD_ShelfSign = plot, SD_Price = the next row's or the TOP spot's price, ShelfPrompt; MAX
---     with the prompt off once all is open); the base Model's SD_Pen holds the pen's walkers only, SD_Shelf
---     (PenMath.encodeShelf) the shelf's and the TOP spot's, SD_ShelfRows / SD_ShelfTop the open rows and the TOP spot,
---     SD_PenRate every placed squishy's Coins a second; no state (any spots x rows x TOP) draws more than
---     Bases.pen.maxParts, the worst draws exactly that many, and it fits Budgets.baseParts with the plot's 80.
---   * wb: every part BaseService draws (signs, gate, tier decor, shelf) stands on the plot's fenced floor
---     (Bases.pen.walk), clear of what LobbyBuilder stands there (Bases.props: the spawn, the arch's pillars, the
---     mailbox, the flower box, the bench, the planter) and inside a walk block (no squishy walks through it); parts
---     per state: 48 at tier I with the start row, 59 at tier II, 84 at tier III (the worst), 78 with everything bought.
+--   * the plot's spawn is asked for the plot handed out and used only once the world has one;
+--   * the owner view: an owned pen's arch nameplate (Diego's Label_OpenPlot "Text") shows the owner's display name, an
+--     open plot "OPEN PLOT"; no plot colours (owner 2026-10-24);
+--   * the pen (pens3; wb: the pen is the whole base): the owner's pen from their ready profile, in a "Pen" Folder: the
+--     base Model's SD_PenSpots / SD_Pen / SD_PenRate / SD_PenTier / SD_PenOwner for the clients; refresh(player)
+--     redraws (no duplicates); an open plot, a profile that is not ready or a missing plot model draws no pen and
+--     nothing fails;
+--   * the gate (LK:87-96) at Bases.pen.gate: posts in the tier's post colour, the sign frame in Diego's board frame
+--     colour, the owner sign (display name, "BASE n", the headshot asked once per user and cached), the number badge n
+--     and the visitor board ("0 visitors" until phase 18); no bulbs, bow, lamps, trees or shelf model at any tier
+--     (owner 2026-10-24);
+--   * every pen state draws exactly Bases.pen.maxParts parts (the gate's 8 and the 2 buy spots), all in front of the
+--     arch, off the squishies' floor, and fits Budgets.baseParts with the plot's 80;
+--   * the board (Diego's PenBoard, the "Board" SurfaceGui adorned to the pen's SignFace): boardRows gives row 1 PEN
+--     SPACE (open spots of maxSpots, the next spot's price) and row 2 SHELF SPOTS (the open shelf spots with the TOP
+--     spot, of 9); each BUY with its price, MAX when nothing is left; PenBoard.setState paints a viewer's own state
+--     (grey "Need N more", BUY, MAX) without touching the price;
+--   * the buy spots: "Sign" (SD_PenSign, PenPrompt on E / ButtonX) and "ShelfSign" (SD_ShelfSign, ShelfPrompt on F /
+--     ButtonY) at Bases.pen.signs, each an invisible Face with SD_Price = the next buy's price and a hold prompt; no
+--     price and the prompt off at MAX;
+--   * Diego's 12 cubbies: an open shelf slot's cubby hides its Lock (no collision) on a PenShelfBackOn back, a closed
+--     one shows it on PenShelfBackOff; cubby k = slot maxSpots + k, the TOP spot cubby 9, 10-12 closed until part 5;
+--     an open plot has every cubby closed; SD_Pen holds the pen's walkers, SD_Shelf the shelf's and the TOP spot's;
 --   * Batch 3 (friends): a player who joined from a friend's invite (or followed them) gets the free plot nearest to
 --     the friend's on the ring (a tie: the lower number); with the friend gone or every plot taken, as before.
 
@@ -122,7 +114,7 @@ return function(t: Context)
 	-- Fills every plot; returns the players in plot order.
 	local function fill(w: World): { any }
 		local players = {}
-		for index = 1, 10 do
+		for index = 1, #WorldLayout.Bases.frames do
 			local player = newPlayer(w, "P" .. index)
 			BaseService.playerAdded(player)
 			players[index] = player
@@ -130,9 +122,9 @@ return function(t: Context)
 		return players
 	end
 
-	t.test("10 plots, the lowest free one per joining player, in the SD_Plot attribute; leaving frees it", function()
+	t.test("12 plots (Diego's pens), the lowest free one per joining player, in the SD_Plot attribute; leaving frees it", function()
 		local w = fresh()
-		expect.equal(#WorldLayout.Bases.frames, 10)
+		expect.equal(#WorldLayout.Bases.frames, 12)
 		local a, b, c = newPlayer(w, "A"), newPlayer(w, "B"), newPlayer(w, "C")
 		for _, player in { a, b, c } do
 			BaseService.playerAdded(player)
@@ -173,14 +165,14 @@ return function(t: Context)
 			BaseService.playerAdded(near)
 			expect.equal(BaseService.plotOf(near), 4)
 			local wrap = newPlayer(w, "Wrap")
-			w.friends[wrap] = players[1] -- on plot 1: plot 10 is taken, 9 is two away round the ring, 2 is one away
+			w.friends[wrap] = players[1] -- on plot 1: plot 12 is taken, 3 is two away, 2 is one away
 			BaseService.playerAdded(wrap)
 			expect.equal(BaseService.plotOf(wrap), 2)
-			BaseService.playerRemoving(players[10])
+			BaseService.playerRemoving(players[12])
 			local ring = newPlayer(w, "Ring")
-			w.friends[ring] = players[1] -- plot 10 (one away round the ring) beats plot 3 (two away)
+			w.friends[ring] = players[1] -- plot 12 (one away round the ring) beats plot 3 (two away)
 			BaseService.playerAdded(ring)
-			expect.equal(BaseService.plotOf(ring), 10)
+			expect.equal(BaseService.plotOf(ring), 12)
 			local lone = newPlayer(w, "Lone")
 			w.friends[lone] = newPlayer(w, "Gone") -- a friend without a plot (not in this server): the lowest free one
 			BaseService.playerAdded(lone)
@@ -202,13 +194,14 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	-- The owner view (Phase 4) -----------------------------------------------------------------------------------
+	-- The owner view (Neon Sugar part 4: Diego's pens) --------------------------------------------------------------
 
 	local Palette = t.requireShared("Art/Palette")
 	local Strings = t.requireShared("Strings")
 	local Format = t.requireShared("Util/Format")
 	local Config = t.requireShared("Config")
 	local PenMath = t.requireShared("PenMath")
+	local PenBoard = t.requireShared("World/PenBoard")
 	local PEN = WorldLayout.Bases.pen
 	local PRICES = Config.Economy.Pen.spotPrices
 	local TIERS = { -- the gate posts' tier colours (wb: no pen fence)
@@ -217,24 +210,44 @@ return function(t: Context)
 		{ post = Palette.PenFenceRoyalPost },
 	}
 
-	-- A plot model like the generated one: tinted parts (two "full", one "light") and a name sign's Owner label.
+	-- A pen Model like Diego's: the arch nameplate (Label_OpenPlot > LabelGui > Background > Text, "OPEN PLOT"), the
+	-- board's SignFace and the 12 ShelfSlots (each a Lock Model of 2 parts and a ShelfBack), all as he delivers them.
 	local function plotModel(w: World, plot: number): Model
 		local model = Instance.new("Model")
-		model.Name = string.format("Base_%02d", plot)
-		for _, which in { "full", "full", "light" } do
-			local part = Instance.new("Part")
-			part:SetAttribute("SD_BaseTint", which)
-			part.Parent = model
-		end
-		local sign = Instance.new("Part")
-		sign.Name = "NameSign"
+		model.Name = string.format("Pen_%02d", plot)
+		local plate = Instance.new("Part")
+		plate.Name = "Label_OpenPlot"
 		local gui = Instance.new("SurfaceGui")
-		gui.Parent = sign
-		local owner = Instance.new("TextLabel")
-		owner.Name = "Owner"
-		owner.Text = "Open plot"
-		owner.Parent = gui
-		sign.Parent = model
+		gui.Name = "LabelGui"
+		local background = Instance.new("Frame")
+		background.Name = "Background"
+		local text = Instance.new("TextLabel")
+		text.Name = "Text"
+		text.Text = "OPEN PLOT"
+		text.Parent = background
+		background.Parent = gui
+		gui.Parent = plate
+		plate.Parent = model
+		local face = Instance.new("Part")
+		face.Name = "SignFace"
+		face.Parent = model
+		local slots = Instance.new("Folder")
+		slots.Name = "ShelfSlots"
+		for k = 1, 12 do
+			local slot = Instance.new("Model")
+			slot.Name = string.format("ShelfSlot_%02d", k)
+			local lock = Instance.new("Model")
+			lock.Name = "Lock"
+			for _ = 1, 2 do
+				Instance.new("Part").Parent = lock
+			end
+			lock.Parent = slot
+			local back = Instance.new("Part")
+			back.Name = "ShelfBack"
+			back.Parent = slot
+			slot.Parent = slots
+		end
+		slots.Parent = model
 		w.models[plot] = model
 		table.insert(w.made, model)
 		return model
@@ -259,23 +272,8 @@ return function(t: Context)
 		return { spots = spots, nextId = #items + 1, items = items, shelfRows = rows or 1, top = top == true }
 	end
 
-	local function tints(model: Model): { [string]: Color3 }
-		local found: { [string]: Color3 } = {}
-		for _, part in model:GetChildren() do
-			local which = part:GetAttribute("SD_BaseTint")
-			if part:IsA("BasePart") and type(which) == "string" then
-				local previous = found[which] :: Color3?
-				if previous ~= nil and previous ~= part.Color then
-					error(`two {which} parts differ`)
-				end
-				found[which] = part.Color
-			end
-		end
-		return found
-	end
-
 	local function ownerText(model: Model): string
-		return (model:FindFirstChild("Owner", true) :: TextLabel).Text
+		return ((model:FindFirstChild("Label_OpenPlot") :: Instance):FindFirstChild("Text", true) :: TextLabel).Text
 	end
 
 	local function count(parent: Instance, name: string): number
@@ -288,30 +286,21 @@ return function(t: Context)
 		return n
 	end
 
-	t.test(
-		'an owned plot shows its owner\'s name and colour; an open plot "Open plot" and the grey (§4, §8)',
-		function()
-			local w = fresh()
-			local model = plotModel(w, 1)
-			local a = newPlayer(w, "A")
-			BaseService.playerAdded(a)
-			expect.equal(ownerText(model), "Name of A")
-			local colors = WorldLayout.Bases.colors[1]
-			expect.equal(tints(model).full, Palette[colors.full])
-			expect.equal(tints(model).light, Palette[colors.light])
-			BaseService.playerRemoving(a)
-			expect.equal(ownerText(model), Strings.resolve("base.openPlot"))
-			expect.equal(tints(model).full, Palette.BaseOpen)
-			expect.equal(tints(model).light, Palette.BaseOpenLight)
-			-- The second plot gets its own colour.
-			local model2 = plotModel(w, 2)
-			BaseService.playerAdded(newPlayer(w, "B"))
-			BaseService.playerAdded(newPlayer(w, "C"))
-			expect.equal(ownerText(model2), "Name of C")
-			expect.equal(tints(model2).full, Palette[WorldLayout.Bases.colors[2].full])
-			finish(w)
-		end
-	)
+	t.test("an owned pen's arch nameplate shows its owner's name; an open plot OPEN PLOT (no plot colours)", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		BaseService.playerAdded(a)
+		expect.equal(ownerText(model), "Name of A")
+		BaseService.playerRemoving(a)
+		expect.equal(ownerText(model), "OPEN PLOT")
+		expect.equal(Strings.resolve("base.openPlot"), "OPEN PLOT")
+		local model2 = plotModel(w, 2)
+		BaseService.playerAdded(newPlayer(w, "B"))
+		BaseService.playerAdded(newPlayer(w, "C"))
+		expect.equal(ownerText(model2), "Name of C")
+		finish(w)
+	end)
 
 	-- Pens3 phase 1: the pen ---------------------------------------------------------------------------------------
 
@@ -339,26 +328,7 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	-- Wb (owner 2026-10-17: the pen is the whole base): the plot's own fence holds it; BaseService draws none.
-	t.test("wb: no pen fence at any spot count: no Fence, Rails or Collider in the Pen folder", function()
-		for spots = 3, 12 do
-			local w = fresh()
-			local model = plotModel(w, 1)
-			local a = newPlayer(w, "A")
-			w.pens[a] = pen(spots)
-			BaseService.playerAdded(a)
-			local folder = model:FindFirstChild("Pen")
-			expect.truthy(folder ~= nil)
-			for _, d in (folder :: Instance):GetDescendants() do
-				if d.Name == "Fence" or d.Name == "Rails" or d.Name == "Collider" or d.Name == "Segment" then
-					error(`{spots} spots: a pen fence piece {d:GetFullName()}`)
-				end
-			end
-			finish(w)
-		end
-	end)
-
-	-- Pens3 phase 10: the pen look (lobby design v6) ------------------------------------------------------------
+	-- Pens3 phase 10: the gate with the owner's photo (owner 2026-10-24: kept, no bulbs or bow) ------------------------
 
 	-- `part`'s centre in `at`'s frame.
 	local function localOf(at: CFrame, part: Instance): Vector3
@@ -379,94 +349,96 @@ return function(t: Context)
 		return (a - b).Magnitude < 1e-3
 	end
 
-	t.test(
-		"the gate (LK:87-96): posts, the frame in the plot's colour, the owner sign, the badge, 0 visitors",
-		function()
-			local w = fresh()
-			local model2 = plotModel(w, 2)
-			local model = plotModel(w, 1)
-			local a = { UserId = 77 } -- a plain-table player with a UserId (Folder players have none)
-			w.pens[a] = pen(3)
-			BaseService.playerAdded(a :: any)
-			local gate = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Model
-			expect.truthy((gate :: Model?) ~= nil and gate:IsA("Model"))
-			local at = (WorldLayout.plotFrame(1) :: CFrame) * PEN.gate
-			expect.near((gate.WorldPivot.Position - at.Position).Magnitude, 0, 1e-3)
-			expect.near((gate.WorldPivot.LookVector - at.LookVector).Magnitude, 0, 1e-3)
-			expect.equal(model:GetAttribute("SD_PenOwner"), 77)
-			-- The posts: r 0.6, 12 tall at x ±4, balls r 0.8 at y 12.3, in the tier's post colour; they block (K:
-			-- "block").
-			local posts = named(gate, "GatePost")
-			expect.equal(#posts, 2)
-			for _, post in posts do
-				expect.near(post.Size.X, 12, 1e-3)
-				expect.near(post.Size.Y, 1.2, 1e-3)
-				local p = localOf(at, post)
-				expect.near(math.abs(p.X), 4, 1e-3)
-				expect.near(p.Y, 6, 1e-3)
-				expect.equal(post.Color, TIERS[1].post)
-				expect.truthy(post.CanCollide)
-			end
-			local balls = named(gate, "GatePostTop")
-			expect.equal(#balls, 2)
-			expect.near(balls[1].Size.X, 1.6, 1e-3)
-			expect.near(localOf(at, balls[1]).Y, 12.3, 1e-3)
-			-- The sign frame (8.4 × 3.6 × 0.3 from y 8.4, z 0.3) in the plot's colour.
-			local frameBox = named(gate, "SignFrame")[1]
-			expect.truthy(vectorNear(frameBox.Size, Vector3.new(8.4, 3.6, 0.3)))
-			expect.truthy(vectorNear(localOf(at, frameBox), Vector3.new(0, 10.2, 0.3)))
-			expect.equal(frameBox.Color, Palette[WorldLayout.Bases.colors[1].full])
-			-- The owner sign (7.4 × 3 × 0.4 at y 10.2): the display name, BASE 1 and the headshot, on its front.
-			local sign = named(gate, "OwnerSign")[1]
-			expect.truthy(vectorNear(sign.Size, Vector3.new(7.4, 3, 0.4)))
-			expect.truthy(vectorNear(localOf(at, sign), Vector3.new(0, 10.2, 0)))
-			expect.equal(sign.Color, Palette.PenSignFace)
-			local gui = sign:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
-			expect.equal(gui.Face, Enum.NormalId.Front)
-			expect.equal((gui:FindFirstChild("OwnerName", true) :: TextLabel).Text, "Name of table")
-			expect.equal((gui:FindFirstChild("BaseLine", true) :: TextLabel).Text, "BASE 1")
-			expect.truthy((gui:FindFirstChild("Headshot", true) :: ImageLabel):IsA("ImageLabel"))
-			-- The number badge (a Lemon disc r 1.1 facing the front at y 12.6) reads the base number.
-			local badge = named(gate, "NumberBadge")[1] :: Part
-			expect.equal(badge.Shape, Enum.PartType.Cylinder)
-			expect.truthy(vectorNear(badge.Size, Vector3.new(0.4, 2.2, 2.2)))
-			expect.truthy(vectorNear(localOf(at, badge), Vector3.new(0, 12.6, -0.1)))
-			expect.equal(badge.Color, Palette.PenGateBadge)
-			local badgeGui = badge:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
-			-- Its Right face (the cylinder's +X end) looks the way the gate's front does.
-			expect.truthy(vectorNear(badge.CFrame.RightVector, at.LookVector))
-			expect.equal(badgeGui.Face, Enum.NormalId.Right)
-			expect.equal((badgeGui:FindFirstChild("Number", true) :: TextLabel).Text, "1")
-			-- The visitor board (2.6 × 1.2 × 0.25 at (-2.3, 7.55, -0.05)): a heart and 0 visitors until phase 18.
-			local board = named(gate, "VisitorBoard")[1]
-			expect.truthy(vectorNear(board.Size, Vector3.new(2.6, 1.2, 0.25)))
-			expect.truthy(vectorNear(localOf(at, board), Vector3.new(-2.3, 7.55, -0.05)))
-			expect.equal(board.Color, Palette.PenGateBoard)
-			expect.equal((board:FindFirstChild("Heart", true) :: TextLabel).Text, Strings.pen.gate.heart)
-			expect.equal((board:FindFirstChild("Count", true) :: TextLabel).Text, "0 visitors")
-			-- Every part but the posts stays out of collisions; none is queried, touched or casts a shadow.
-			for _, d in gate:GetDescendants() do
-				if d:IsA("BasePart") then
-					expect.truthy(d.Anchored)
-					expect.falsy(d.CanQuery or d.CanTouch or d.CastShadow)
-					expect.equal(d.CanCollide, d.Name == "GatePost")
-				end
-			end
-			-- The plot's name sign still shows the owner (no gate label is called "Owner").
-			expect.equal(ownerText(model), "Name of table")
-			-- The second plot reads 2.
-			local b = newPlayer(w, "B")
-			w.pens[b] = pen(3)
-			BaseService.playerAdded(b)
-			local gate2 = (model2:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Model
-			expect.equal((gate2:FindFirstChild("Number", true) :: TextLabel).Text, "2")
-			expect.equal((gate2:FindFirstChild("BaseLine", true) :: TextLabel).Text, "BASE 2")
-			expect.equal(model2:GetAttribute("SD_PenOwner"), nil) -- a Folder player has no UserId
-			BaseService.playerRemoving(a :: any)
-			expect.equal(model:GetAttribute("SD_PenOwner"), nil)
-			finish(w)
+	t.test("the gate (LK:87-96): posts, the frame, the owner sign, the badge, 0 visitors; no bulbs or bow", function()
+		local w = fresh()
+		local model2 = plotModel(w, 2)
+		local model = plotModel(w, 1)
+		local a = { UserId = 77 } -- a plain-table player with a UserId (Folder players have none)
+		w.pens[a] = pen(12) -- tier III: still no bulbs or bow
+		BaseService.playerAdded(a :: any)
+		local gate = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Model
+		expect.truthy((gate :: Model?) ~= nil and gate:IsA("Model"))
+		local at = (WorldLayout.plotFrame(1) :: CFrame) * PEN.gate
+		expect.near((gate.WorldPivot.Position - at.Position).Magnitude, 0, 1e-3)
+		expect.near((gate.WorldPivot.LookVector - at.LookVector).Magnitude, 0, 1e-3)
+		expect.equal(model:GetAttribute("SD_PenOwner"), 77)
+		-- The posts: r 0.6, 12 tall at x ±4, balls r 0.8 at y 12.3, in the tier's post colour; they block (K:
+		-- "block").
+		local posts = named(gate, "GatePost")
+		expect.equal(#posts, 2)
+		for _, post in posts do
+			expect.near(post.Size.X, 12, 1e-3)
+			expect.near(post.Size.Y, 1.2, 1e-3)
+			local p = localOf(at, post)
+			expect.near(math.abs(p.X), 4, 1e-3)
+			expect.near(p.Y, 6, 1e-3)
+			expect.equal(post.Color, TIERS[3].post)
+			expect.truthy(post.CanCollide)
 		end
-	)
+		local balls = named(gate, "GatePostTop")
+		expect.equal(#balls, 2)
+		expect.near(balls[1].Size.X, 1.6, 1e-3)
+		expect.near(localOf(at, balls[1]).Y, 12.3, 1e-3)
+		-- The sign frame (8.4 × 3.6 × 0.3 from y 8.4, z 0.3) in Diego's board frame colour (no plot colours).
+		local frameBox = named(gate, "SignFrame")[1]
+		expect.truthy(vectorNear(frameBox.Size, Vector3.new(8.4, 3.6, 0.3)))
+		expect.truthy(vectorNear(localOf(at, frameBox), Vector3.new(0, 10.2, 0.3)))
+		expect.equal(frameBox.Color, Palette.PenBoardFrame)
+		-- The owner sign (7.4 × 3 × 0.4 at y 10.2): the display name, BASE 1 and the headshot, on its front.
+		local sign = named(gate, "OwnerSign")[1]
+		expect.truthy(vectorNear(sign.Size, Vector3.new(7.4, 3, 0.4)))
+		expect.truthy(vectorNear(localOf(at, sign), Vector3.new(0, 10.2, 0)))
+		expect.equal(sign.Color, Palette.PenSignFace)
+		local gui = sign:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+		expect.equal(gui.Face, Enum.NormalId.Front)
+		expect.equal((gui:FindFirstChild("OwnerName", true) :: TextLabel).Text, "Name of table")
+		expect.equal((gui:FindFirstChild("BaseLine", true) :: TextLabel).Text, "BASE 1")
+		expect.truthy((gui:FindFirstChild("Headshot", true) :: ImageLabel):IsA("ImageLabel"))
+		-- The number badge (a Lemon disc r 1.1 facing the front at y 12.6) reads the base number.
+		local badge = named(gate, "NumberBadge")[1] :: Part
+		expect.equal(badge.Shape, Enum.PartType.Cylinder)
+		expect.truthy(vectorNear(badge.Size, Vector3.new(0.4, 2.2, 2.2)))
+		expect.truthy(vectorNear(localOf(at, badge), Vector3.new(0, 12.6, -0.1)))
+		expect.equal(badge.Color, Palette.PenGateBadge)
+		local badgeGui = badge:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
+		-- Its Right face (the cylinder's +X end) looks the way the gate's front does.
+		expect.truthy(vectorNear(badge.CFrame.RightVector, at.LookVector))
+		expect.equal(badgeGui.Face, Enum.NormalId.Right)
+		expect.equal((badgeGui:FindFirstChild("Number", true) :: TextLabel).Text, "1")
+		-- The visitor board (2.6 × 1.2 × 0.25 at (-2.3, 7.55, -0.05)): a heart and 0 visitors until phase 18.
+		local board = named(gate, "VisitorBoard")[1]
+		expect.truthy(vectorNear(board.Size, Vector3.new(2.6, 1.2, 0.25)))
+		expect.truthy(vectorNear(localOf(at, board), Vector3.new(-2.3, 7.55, -0.05)))
+		expect.equal(board.Color, Palette.PenGateBoard)
+		expect.equal((board:FindFirstChild("Heart", true) :: TextLabel).Text, Strings.pen.gate.heart)
+		expect.equal((board:FindFirstChild("Count", true) :: TextLabel).Text, "0 visitors")
+		-- Owner 2026-10-24: no tier extras at any tier (bulbs, bow, lamps, trees).
+		expect.equal(#named(gate, "GateBulb"), 0)
+		expect.equal(gate:FindFirstChild("Bow"), nil)
+		local folder = model:FindFirstChild("Pen") :: Instance
+		expect.equal(count(folder, "Lamp") + count(folder, "Tree") + count(folder, "Shelf"), 0)
+		-- Every part but the posts stays out of collisions; none is queried, touched or casts a shadow.
+		for _, d in gate:GetDescendants() do
+			if d:IsA("BasePart") then
+				expect.truthy(d.Anchored)
+				expect.falsy(d.CanQuery or d.CanTouch or d.CastShadow)
+				expect.equal(d.CanCollide, d.Name == "GatePost")
+			end
+		end
+		-- The arch nameplate still shows the owner.
+		expect.equal(ownerText(model), "Name of table")
+		-- The second plot reads 2.
+		local b = newPlayer(w, "B")
+		w.pens[b] = pen(3)
+		BaseService.playerAdded(b)
+		local gate2 = (model2:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Model
+		expect.equal((gate2:FindFirstChild("Number", true) :: TextLabel).Text, "2")
+		expect.equal((gate2:FindFirstChild("BaseLine", true) :: TextLabel).Text, "BASE 2")
+		expect.equal(model2:GetAttribute("SD_PenOwner"), nil) -- a Folder player has no UserId
+		BaseService.playerRemoving(a :: any)
+		expect.equal(model:GetAttribute("SD_PenOwner"), nil)
+		finish(w)
+	end)
 
 	t.test("wb: the gate posts and their balls take the tier's post colour: Wafer, Mint, Royal (L:187)", function()
 		for _, spots in { 3, 6, 10 } do
@@ -490,133 +462,6 @@ return function(t: Context)
 		expect.equal(BaseService.visitorText(0), "0 visitors")
 		expect.equal(BaseService.visitorText(1), "1 visitor")
 		expect.equal(BaseService.visitorText(3), "3 visitors")
-	end)
-
-	t.test(
-		"tier decor (K:4170-4189 at L:187-193): none at tier 1, bulbs + 2 lamps at 2, + bow + 2 trees at 3",
-		function()
-			for spots = 3, 12 do
-				local w = fresh()
-				local model = plotModel(w, 1)
-				local a = newPlayer(w, "A")
-				w.pens[a] = pen(spots)
-				BaseService.playerAdded(a)
-				local folder = model:FindFirstChild("Pen") :: Instance
-				local tier = PEN.steps[spots].tier
-				local gate = folder:FindFirstChild("Gate") :: Model
-				local at = (WorldLayout.plotFrame(1) :: CFrame) * PEN.gate
-				local bulbs = named(gate, "GateBulb")
-				expect.equal(#bulbs, if tier >= 2 then 7 else 0)
-				for _, bulb in bulbs do
-					local p = localOf(at, bulb)
-					expect.near(p.Y, 12.15, 1e-3)
-					expect.near(p.Z, 0.1, 1e-3)
-					expect.truthy(math.abs(p.X) <= 3.6 + 1e-3)
-					expect.near(bulb.Size.X, 0.5, 1e-3)
-					expect.equal(bulb.Material, Enum.Material.Neon)
-					expect.equal(bulb.Color, Palette.PenGateGlow)
-				end
-				local bow = gate:FindFirstChild("Bow") :: Model?
-				expect.equal(bow ~= nil, tier >= 3)
-				if bow then
-					expect.truthy(vectorNear(at:PointToObjectSpace(bow.WorldPivot.Position), Vector3.new(0, 13.5, 0)))
-					expect.equal(#named(bow, "BowLoop"), 12)
-					expect.equal(#named(bow, "BowKnot"), 1)
-					for _, d in bow:GetDescendants() do
-						if d:IsA("BasePart") then
-							expect.equal(d.Color, Palette.PenDecorIcing)
-						end
-					end
-				end
-				local lamps, trees = {}, {}
-				for _, child in folder:GetChildren() do
-					if child.Name == "Lamp" then
-						table.insert(lamps, child :: Model)
-					elseif child.Name == "Tree" then
-						table.insert(trees, child :: Model)
-					end
-				end
-				expect.equal(#lamps, if tier >= 2 then 2 else 0)
-				expect.equal(#trees, if tier >= 3 then 2 else 0)
-				local frame = WorldLayout.plotFrame(1) :: CFrame
-				for index, lamp in lamps do
-					local want = frame * PEN.lamps[index]
-					expect.near((lamp.WorldPivot.Position - want.Position).Magnitude, 0, 1e-3)
-					local pole = named(lamp, "LampPole")[1]
-					expect.near(pole.Size.X, 8.2, 1e-3)
-					expect.near(localOf(want, pole).Y, 4.1, 1e-3)
-					expect.equal(pole.Color, Palette.PenDecorFrosting)
-					expect.truthy(pole.CanCollide)
-					local candy = named(lamp, "LampCandy")[1]
-					expect.truthy(vectorNear(localOf(want, candy), Vector3.new(0, 9.2, 0)))
-					expect.equal(candy.Material, Enum.Material.Neon)
-					expect.equal(candy.Color, Palette.PenGateGlow)
-					local swirl = candy:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
-					local rings = 0
-					for _, d in swirl:GetDescendants() do
-						if d:IsA("UIStroke") then
-							rings += 1
-							expect.equal(d.Color, Palette.PenDecorIcing)
-						end
-					end
-					expect.equal(rings, 2) -- the swirl's 2 rings are drawn on the candy's front, not built
-				end
-				for index, tree in trees do
-					local want = frame * PEN.trees[index].at
-					expect.near((tree.WorldPivot.Position - want.Position).Magnitude, 0, 1e-3)
-					local trunk = named(tree, "Trunk")[1]
-					expect.near(trunk.Size.X, 5, 1e-3)
-					expect.equal(trunk.Color, Palette.PenDecorFrosting)
-					expect.truthy(trunk.CanCollide)
-					expect.equal(#named(tree, "TrunkStripe"), 3)
-					local top = named(tree, "CanopyTop")[1]
-					expect.truthy(vectorNear(top.Size, Vector3.new(6, 4.2, 6)))
-					expect.near(localOf(want, top).Y, 6.7, 1e-3)
-					expect.equal(
-						(top:FindFirstChildOfClass("SpecialMesh") :: SpecialMesh).MeshType,
-						Enum.MeshType.Sphere
-					)
-					expect.equal(top.Color, Palette[PEN.trees[index].color])
-					expect.equal(named(tree, "CanopyBase")[1].Color, Palette[PEN.trees[index].color])
-				end
-				for _, d in folder:GetDescendants() do
-					local parent = d.Parent
-					if d:IsA("BasePart") and parent and (parent.Name == "Lamp" or parent.Name == "Tree") then
-						expect.falsy(d.CanQuery or d.CanTouch or d.CastShadow)
-						expect.equal(d.CanCollide, d.Name == "LampPole" or d.Name == "Trunk")
-					end
-				end
-				finish(w)
-			end
-		end
-	)
-
-	t.test("the decor follows the owner's tier on a redraw; an empty base shows none", function()
-		local w = fresh()
-		local model = plotModel(w, 1)
-		local a = newPlayer(w, "A")
-		local function decor(): { [string]: number }
-			local found = { Lamp = 0, Tree = 0, Bow = 0 }
-			local folder = model:FindFirstChild("Pen")
-			if folder then
-				for _, d in folder:GetDescendants() do
-					if found[d.Name] ~= nil and d:IsA("Model") then
-						found[d.Name] += 1
-					end
-				end
-			end
-			return found
-		end
-		w.pens[a] = pen(9)
-		BaseService.playerAdded(a)
-		expect.deepEqual(decor(), { Lamp = 2, Tree = 0, Bow = 0 })
-		w.pens[a] = pen(10) -- a spot bought: tier III
-		BaseService.refresh(a)
-		expect.deepEqual(decor(), { Lamp = 2, Tree = 2, Bow = 1 })
-		BaseService.playerRemoving(a) -- the base is empty: no pen, no gate, no decor
-		expect.equal(model:FindFirstChild("Pen"), nil)
-		expect.deepEqual(decor(), { Lamp = 0, Tree = 0, Bow = 0 })
-		finish(w)
 	end)
 
 	t.test("the headshot: asked once per user, cached, painted when it comes; asked again after a failure", function()
@@ -656,36 +501,7 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	-- Pens3 phase 3: LobbyBuilder's part budget counts every plot with this many runtime parts.
-	t.test("no pen state draws more parts than Bases.pen.maxParts; the worst draws exactly that many", function()
-		-- Pens3 phase 10: with the plot's 80 static parts (WorldLayout Budgets' note) a full pen fits baseParts.
-		expect.truthy(PEN.maxParts + 80 <= WorldLayout.Budgets.baseParts)
-		-- Pens3 phase 11: every spot count x every shelf row count x the TOP spot (the shelf and its locks count).
-		local worst = 0
-		for spots = 3, 12 do
-			for rows = 1, Config.Economy.Pen.shelfMaxRows do
-				for _, top in { false, true } do
-					local w = fresh()
-					local model = plotModel(w, 1)
-					local a = newPlayer(w, "A")
-					w.pens[a] = pen(spots, nil, rows, top)
-					BaseService.playerAdded(a)
-					local parts = 0
-					for _, d in (model:FindFirstChild("Pen") :: Instance):GetDescendants() do
-						if d:IsA("BasePart") then
-							parts += 1
-						end
-					end
-					expect.truthy(parts <= PEN.maxParts)
-					worst = math.max(worst, parts)
-					finish(w)
-				end
-			end
-		end
-		expect.equal(worst, PEN.maxParts)
-	end)
-
-	-- Wb: the parts per state (NOTES.md's table), the plot's fenced floor, LobbyBuilder's props and the walk blocks.
+	-- The parts a pen draws: the lobby budget counts every plot with Bases.pen.maxParts.
 	local function drawn(spots: number, rows: number, top: boolean): (World, Model)
 		local w = fresh()
 		local model = plotModel(w, 1)
@@ -705,212 +521,240 @@ return function(t: Context)
 		return list
 	end
 
-	t.test("wb: parts per state: 48 at tier I, 59 at tier II, 84 at tier III (the worst), 78 all bought", function()
-		for _, case in
-			{
-				{ spots = 3, rows = 1, top = false, parts = 48 },
-				{ spots = 6, rows = 1, top = false, parts = 59 },
-				{ spots = 12, rows = 1, top = false, parts = 84 },
-				{ spots = 12, rows = 4, top = true, parts = 78 },
-			}
-		do
-			local w, model = drawn(case.spots, case.rows, case.top)
-			expect.equal(#partsIn(model:FindFirstChild("Pen") :: Instance), case.parts)
-			finish(w)
-		end
-	end)
-
-	t.test("wb: every drawn part stands on the fenced floor, clear of LobbyBuilder's props, in a walk block", function()
+	t.test("every pen state draws Bases.pen.maxParts parts (the gate's 8, 2 buy spots), none on the floor", function()
+		expect.truthy(PEN.maxParts + 80 <= WorldLayout.Budgets.baseParts)
 		local frame = WorldLayout.plotFrame(1) :: CFrame
-		local walk = PEN.walk
-		local function overlaps(a: any, b: any): boolean
-			return a.minX < b.maxX - 1e-3
-				and b.minX < a.maxX - 1e-3
-				and a.minZ < b.maxZ - 1e-3
-				and b.minZ < a.maxZ - 1e-3
-		end
-		for _, spots in { 3, 12 } do -- tier I, and tier III with every decor piece
-			local w, model = drawn(spots, 1, false)
-			for _, part in partsIn(model:FindFirstChild("Pen") :: Instance) do
-				-- The part's box on the plot's floor (its 8 corners in plot studs).
-				local box = { minX = math.huge, maxX = -math.huge, minZ = math.huge, maxZ = -math.huge }
-				local half = part.Size / 2
-				for _, sx in { -1, 1 } do
-					for _, sy in { -1, 1 } do
-						for _, sz in { -1, 1 } do
-							local p = frame:PointToObjectSpace(
-								part.CFrame * Vector3.new(sx * half.X, sy * half.Y, sz * half.Z)
-							)
-							box.minX, box.maxX = math.min(box.minX, p.X), math.max(box.maxX, p.X)
-							box.minZ, box.maxZ = math.min(box.minZ, p.Z), math.max(box.maxZ, p.Z)
+		for spots = 3, 12 do
+			for rows = 1, Config.Economy.Pen.shelfMaxRows do
+				for _, top in { false, true } do
+					local w, model = drawn(spots, rows, top)
+					local parts = partsIn(model:FindFirstChild("Pen") :: Instance)
+					expect.equal(#parts, PEN.maxParts)
+					-- Everything stands in front of the arch, off the squishies' floor (no squishy walks through it).
+					for _, part in parts do
+						local p = frame:PointToObjectSpace(part.Position)
+						if p.Z - part.Size.Magnitude / 2 <= PEN.walk.maxZ then
+							error(`{spots} spots: {part:GetFullName()} reaches the pen's floor`)
 						end
 					end
-				end
-				local name = part:GetFullName()
-				local onFloor = box.minX >= walk.minX - 1e-3
-					and box.maxX <= walk.maxX + 1e-3
-					and box.minZ >= walk.minZ - 1e-3
-					and box.maxZ <= walk.maxZ + 1e-3
-				if not onFloor then
-					error(`{spots} spots: {name} is off the fenced floor`)
-				end
-				for _, prop in WorldLayout.Bases.props do
-					if overlaps(box, prop) then
-						error(`{spots} spots: {name} stands in the {prop.name}`)
-					end
-				end
-				local blocked = false
-				for _, block in PEN.blocks do
-					if
-						box.minX >= block.minX - 1e-3
-						and box.maxX <= block.maxX + 1e-3
-						and box.minZ >= block.minZ - 1e-3
-						and box.maxZ <= block.maxZ + 1e-3
-					then
-						blocked = true
-					end
-				end
-				if not blocked then
-					error(`{spots} spots: {name} is in no walk block (a squishy could walk through it)`)
+					finish(w)
 				end
 			end
-			finish(w)
 		end
 	end)
 
-	-- Pens3 phase 11: the shelf, its locks, the TOP spot and the SHELF SPOTS sign ------------------------------------
+	-- Neon Sugar part 4: Diego's board, its buy spots and his shelf cubbies ---------------------------------------
 
-	local AssetTable = t.requireShared("AssetTable")
-
-	local function shelfOf(model: Model): Model
-		return (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Shelf") :: Model
+	local function boardOf(model: Model): SurfaceGui
+		return (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Board") :: SurfaceGui
 	end
 
-	t.test(
-		"the shelf (LK:182-189): the back in the plot's colour, the frame, the bow, one collider, at its spot",
-		function()
-			local w = fresh()
-			local model = plotModel(w, 1)
-			local a = newPlayer(w, "A")
-			w.pens[a] = pen(3)
-			BaseService.playerAdded(a)
-			local shelf = shelfOf(model)
-			expect.truthy((shelf :: Model?) ~= nil and shelf:IsA("Model"))
-			local frame = WorldLayout.plotFrame(1) :: CFrame
-			local at = frame * PEN.shelf.at
-			expect.truthy(vectorNear(shelf.WorldPivot.Position, at.Position))
-			expect.truthy(vectorNear(shelf.WorldPivot.LookVector, at.LookVector))
-			local back = shelf:FindFirstChild("ShelfBack") :: BasePart
-			expect.equal(back.Color, Palette[WorldLayout.Bases.colors[1].full])
-			expect.truthy(vectorNear(back.Size, Vector3.new(27.4, 15.6, 0.6)))
-			expect.truthy(vectorNear(localOf(at, back), Vector3.new(0, 7.8, 2.7)))
-			local boards = named(shelf, "ShelfFrame")
-			expect.equal(#boards, 11) -- 2 sides, the bottom, the middle, the top, 6 dividers (LK:184-185)
-			for _, board in boards do
-				expect.equal(board.Color, Palette.PenDecorFrosting)
-			end
-			local bow = shelf:FindFirstChild("ShelfBow") :: Model
-			expect.truthy(vectorNear(at:PointToObjectSpace(bow.WorldPivot.Position), Vector3.new(0, 15.6, -0.5)))
-			local colliders = named(shelf, "ShelfCollider")
-			expect.equal(#colliders, 1)
-			local collider = colliders[1]
-			expect.truthy(vectorNear(collider.Size, Vector3.new(27.4, 15.6, 6)))
-			expect.truthy(collider.CanCollide and collider.Transparency == 1)
-			-- Every visible part is decor (the collider holds players off, K: "block").
-			for _, part in shelf:GetDescendants() do
-				if part:IsA("BasePart") and part ~= collider then
-					expect.falsy(part.CanCollide or part.CanQuery or part.CanTouch or part.CastShadow)
-					expect.truthy(part.Anchored)
-				end
-			end
-			finish(w)
+	local function text(card: Instance, ...: string): string
+		local found: Instance = card
+		for _, name in { ... } do
+			found = found:FindFirstChild(name) :: Instance
 		end
-	)
+		return (found :: TextLabel).Text
+	end
 
-	t.test(
-		"a glass lock with the lock picture over every closed cubby; the TOP spot's lock until it is bought",
-		function()
-			local function locks(model: Model): { [number]: BasePart }
-				local found = {}
-				for _, part in named(shelfOf(model), "Lock") do
-					found[part:GetAttribute("SD_ShelfSlot") :: number] = part
-				end
-				return found
+	t.test("boardRows: PEN SPACE (spots of 12, the next spot's price), SHELF SPOTS (of 9 with the TOP spot)", function()
+		local penRow, shelfRow = BaseService.boardRows(pen(3))
+		expect.deepEqual(penRow, {
+			title = "PEN SPACE",
+			icon = "shelf",
+			from = "3",
+			to = "4 spots",
+			filled = 3,
+			total = 12,
+			progress = "3/12",
+			price = Format.coins(PRICES[4]),
+			state = "buy",
+		})
+		expect.deepEqual(shelfRow, {
+			title = "SHELF SPOTS",
+			icon = "shelf",
+			from = "2",
+			to = "4 spots",
+			filled = 2,
+			total = 9,
+			progress = "2/9",
+			price = Format.coins(31_000_000),
+			state = "buy",
+		})
+		-- Every shelf row bought: the TOP spot is next (one spot); everything bought: MAX, the count after the arrow.
+		local _, beforeTop = BaseService.boardRows(pen(12, nil, 4, false))
+		expect.equal(beforeTop.from, "8")
+		expect.equal(beforeTop.to, "9 spots")
+		local fullPen, fullShelf = BaseService.boardRows(pen(12, nil, 4, true))
+		expect.equal(fullPen.state, "max")
+		expect.equal(fullPen.price, "")
+		expect.equal(fullPen.to, "12 spots")
+		expect.equal(fullPen.progress, "12/12")
+		expect.equal(fullShelf.state, "max")
+		expect.equal(fullShelf.progress, "9/9")
+	end)
+
+	t.test("the board: Diego's 2 rows on the pen's SignFace for everyone, BUY with a price or MAX", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		w.pens[a] = pen(3)
+		BaseService.playerAdded(a)
+		local board = boardOf(model)
+		expect.truthy((board :: SurfaceGui?) ~= nil and board:IsA("SurfaceGui"))
+		expect.equal(board.Adornee, model:FindFirstChild("SignFace"))
+		expect.equal(board.Face, Enum.NormalId.Front)
+		expect.equal(board.CanvasSize, Vector2.new(1024, 640))
+		local row1, row2 = PenBoard.row(board, 1) :: Frame, PenBoard.row(board, 2) :: Frame
+		expect.equal(text(row1, "Title"), "PEN SPACE")
+		expect.equal(text(row2, "Title"), "SHELF SPOTS")
+		expect.equal(text(row1, "Detail", "From"), "3")
+		expect.equal(text(row1, "Detail", "To"), "4 spots")
+		expect.equal(text(row1, "ProgressText"), "3/12")
+		expect.equal(text(row1, "Button", "Content", "Price"), Format.coins(PRICES[4]))
+		expect.equal(text(row1, "Caption"), "BUY")
+		expect.equal((row1:FindFirstChild("Button") :: Frame).BackgroundColor3, Palette.PenBoardGo)
+		local segments = (row1:FindFirstChild("Progress") :: Frame):GetChildren()
+		expect.equal(#segments, 12)
+		local lit = 0
+		for _, segment in segments do
+			if (segment :: Frame).BackgroundColor3 == Palette.PenBoardFill then
+				lit += 1
 			end
-			local w = fresh()
-			local model = plotModel(w, 1)
-			local a = newPlayer(w, "A")
-			w.pens[a] = pen(3, nil, 1, false)
-			BaseService.playerAdded(a)
-			local frame = WorldLayout.plotFrame(1) :: CFrame
-			local at = frame * PEN.shelf.at
-			local closed = locks(model)
-			local slots = {}
-			for slot in closed do
-				table.insert(slots, slot)
-			end
-			table.sort(slots)
-			expect.deepEqual(slots, { 15, 16, 17, 18, 19, 20 }) -- row 1 (13, 14) is open
-			local lock = closed[15]
-			local cubby = PEN.shelf.cubbies[3]
-			expect.truthy(vectorNear(lock.Size, Vector3.new(5.8, 6.3, 0.15))) -- LK:191
-			expect.truthy(vectorNear(localOf(at, lock), Vector3.new(cubby.X, cubby.Y + 0.1 + 3.15, -3.125))) -- L:247
-			expect.equal(lock.Material, Enum.Material.Glass)
-			expect.equal(lock.Color, Palette.PenShelfGlass)
-			expect.near(lock.Transparency, 0.5, 1e-6)
-			local picture = lock:FindFirstChildWhichIsA("ImageLabel", true) :: ImageLabel
-			expect.equal(picture.Image, AssetTable.image("img.icon.lock"))
-			expect.equal((lock:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui).Face, Enum.NormalId.Front)
-			local top = shelfOf(model):FindFirstChild("Top") :: Model
-			expect.truthy((top :: Model?) ~= nil)
-			expect.truthy(top:FindFirstChild("TopLock", true) ~= nil) -- the TOP spot: closed
-			-- Row 3 bought: 2 locks left; the TOP spot bought: no lock picture on it.
-			w.pens[a] = pen(3, nil, 3, true)
-			BaseService.refresh(a)
-			slots = {}
-			for slot in locks(model) do
-				table.insert(slots, slot)
-			end
-			table.sort(slots)
-			expect.deepEqual(slots, { 19, 20 })
-			expect.equal((shelfOf(model):FindFirstChild("Top") :: Model):FindFirstChild("TopLock", true), nil)
-			finish(w)
 		end
-	)
+		expect.equal(lit, 3)
+		expect.equal(#(row2:FindFirstChild("Progress") :: Frame):GetChildren(), 9)
+		-- Both rows bought out: MAX, gold, no coin, no caption, every segment lit.
+		w.pens[a] = pen(12, nil, 4, true)
+		BaseService.refresh(a)
+		row1 = PenBoard.row(boardOf(model), 1) :: Frame
+		expect.equal(text(row1, "Button", "Content", "Price"), Strings.pen.sign.max)
+		expect.equal(text(row1, "Caption"), "")
+		expect.equal((row1:FindFirstChild("Button") :: Frame).BackgroundColor3, Palette.PenBoardMax)
+		expect.falsy((row1:FindFirstChild("CoinHolder", true) :: Frame).Visible)
+		expect.falsy((row1:FindFirstChild("From", true) :: TextLabel).Visible)
+		-- An open plot: no board (the blank SignFace).
+		BaseService.playerRemoving(a)
+		expect.equal(model:FindFirstChild("Pen"), nil)
+		finish(w)
+	end)
 
-	t.test("the SHELF SPOTS sign: the next row's price, then the TOP spot's; MAX with the prompt off", function()
+	t.test("PenBoard.setState: the owner's own row: grey with Need N more, back to BUY, gold MAX", function()
+		local w = fresh()
+		local folder = Instance.new("Folder")
+		table.insert(w.made, folder)
+		local row = PenBoard.row(PenBoard.build(folder), 1) :: Frame
+		local penRow = BaseService.boardRows(pen(3))
+		PenBoard.setRow(row, penRow)
+		PenBoard.setState(row, "need", "Need 1.2K more")
+		expect.equal((row:FindFirstChild("Button") :: Frame).BackgroundColor3, Palette.PenBoardNo)
+		expect.equal(text(row, "Caption"), "Need 1.2K more")
+		expect.equal((row:FindFirstChild("Caption") :: TextLabel).TextColor3, Palette.PenBoardNeed)
+		expect.equal(text(row, "Button", "Content", "Price"), Format.coins(PRICES[4])) -- the price stays
+		PenBoard.setState(row, "buy")
+		expect.equal((row:FindFirstChild("Button") :: Frame).BackgroundColor3, Palette.PenBoardGo)
+		expect.equal(text(row, "Caption"), "BUY")
+		PenBoard.setState(row, "max")
+		expect.equal(text(row, "Button", "Content", "Price"), "MAX")
+		finish(w)
+	end)
+
+	t.test("the buy spots: PEN SPACE on E and SHELF SPOTS on F by their rows, the price, off at MAX", function()
 		local w = fresh()
 		local model = plotModel(w, 1)
 		local a = newPlayer(w, "A")
 		w.pens[a] = pen(3)
 		BaseService.playerAdded(a)
 		local folder = model:FindFirstChild("Pen") :: Instance
-		local sign = folder:FindFirstChild("ShelfSign") :: Model
-		expect.truthy((sign :: Model?) ~= nil and sign:IsA("Model"))
-		expect.equal(sign:GetAttribute("SD_ShelfSign"), 1)
-		expect.equal(sign:GetAttribute("SD_Price"), 31_000_000)
 		local frame = WorldLayout.plotFrame(1) :: CFrame
-		local want = frame * PEN.signs.shelf
-		expect.truthy(vectorNear(sign.WorldPivot.Position, want.Position))
-		expect.truthy(vectorNear(sign.WorldPivot.LookVector, want.LookVector))
-		expect.equal((sign:FindFirstChild("Title", true) :: TextLabel).Text, Strings.pen.shelfSign.title)
-		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Format.coins(31_000_000))
-		local prompt = sign:FindFirstChildWhichIsA("ProximityPrompt", true) :: ProximityPrompt
-		expect.equal(prompt.Name, "ShelfPrompt")
-		expect.truthy(prompt.Enabled)
-		expect.equal(prompt.ObjectText, Strings.pen.shelfPrompt.object)
-		expect.equal(prompt.HoldDuration, Config.Economy.Pen.signHoldSeconds)
-		-- The PEN SPACE sign is still its own (the left one).
-		expect.equal((folder:FindFirstChild("Sign") :: Model):GetAttribute("SD_PenSign"), 1)
-		-- Everything open: MAX, no price, the prompt off (the trillions of rows 3-4 and the TOP spot: Studio, see the
-		-- PEN SPACE sign's 32-bit note).
-		w.pens[a] = pen(3, nil, 4, true)
+		for _, case in
+			{
+				{ model = "Sign", at = PEN.signs.pen, attr = "SD_PenSign", price = PRICES[4], prompt = "PenPrompt" },
+				{
+					model = "ShelfSign",
+					at = PEN.signs.shelf,
+					attr = "SD_ShelfSign",
+					price = 31_000_000,
+					prompt = "ShelfPrompt",
+				},
+			}
+		do
+			local sign = folder:FindFirstChild(case.model) :: Model
+			expect.truthy((sign :: Model?) ~= nil and sign:IsA("Model"))
+			expect.equal(sign:GetAttribute(case.attr), 1)
+			expect.equal(sign:GetAttribute("SD_Price"), case.price)
+			local want = frame * case.at
+			expect.truthy(vectorNear(sign.WorldPivot.Position, want.Position))
+			local face = sign:FindFirstChild("Face") :: BasePart
+			expect.equal(face.Transparency, 1)
+			expect.falsy(face.CanCollide or face.CanTouch or face.CastShadow)
+			local prompt = face:FindFirstChildOfClass("ProximityPrompt") :: ProximityPrompt
+			expect.equal(prompt.Name, case.prompt)
+			expect.truthy(prompt.Enabled)
+			expect.equal(prompt.ActionText, Strings.pen.prompt.action)
+			expect.equal(prompt.HoldDuration, Config.Economy.Pen.signHoldSeconds)
+			expect.equal(prompt.MaxActivationDistance, 10)
+			expect.equal(prompt.RequiresLineOfSight, false)
+			expect.equal(prompt.UIOffset, Vector2.new(80, 0)) -- it starts right of the board, never over a price
+		end
+		local penPrompt = folder:FindFirstChild("PenPrompt", true) :: ProximityPrompt
+		local shelfPrompt = folder:FindFirstChild("ShelfPrompt", true) :: ProximityPrompt
+		expect.equal(penPrompt.ObjectText, Strings.pen.prompt.object)
+		expect.equal(shelfPrompt.ObjectText, Strings.pen.shelfPrompt.object)
+		-- One board, two keys (owner 2026-10-24).
+		expect.equal(penPrompt.KeyboardKeyCode, Enum.KeyCode.E)
+		expect.equal(penPrompt.GamepadKeyCode, Enum.KeyCode.ButtonX)
+		expect.equal(shelfPrompt.KeyboardKeyCode, Enum.KeyCode.F)
+		expect.equal(shelfPrompt.GamepadKeyCode, Enum.KeyCode.ButtonY)
+		-- 6 spots: the 7th spot's price (reading: the offline runner keeps a number attribute in 32 bits, so the
+		-- trillions of spots 11-12 are checked in Studio); everything bought: no price, both prompts off.
+		w.pens[a] = pen(6)
 		BaseService.refresh(a)
-		sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("ShelfSign") :: Model
-		expect.equal(sign:GetAttribute("SD_Price"), nil)
-		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Strings.pen.sign.max)
-		expect.equal((sign:FindFirstChild("Trim") :: BasePart).Color, Palette.PenSignMax)
-		expect.falsy((sign:FindFirstChildWhichIsA("ProximityPrompt", true) :: ProximityPrompt).Enabled)
+		folder = model:FindFirstChild("Pen") :: Instance
+		expect.equal((folder:FindFirstChild("Sign") :: Model):GetAttribute("SD_Price"), PRICES[7])
+		w.pens[a] = pen(12, nil, 4, true)
+		BaseService.refresh(a)
+		folder = model:FindFirstChild("Pen") :: Instance
+		for _, name in { "Sign", "ShelfSign" } do
+			local sign = folder:FindFirstChild(name) :: Model
+			expect.equal(sign:GetAttribute("SD_Price"), nil)
+			expect.falsy((sign:FindFirstChildWhichIsA("ProximityPrompt", true) :: ProximityPrompt).Enabled)
+		end
+		finish(w)
+	end)
+
+	t.test("Diego's cubbies: open ones hide the lock on a blue back, closed ones show it on pink; 10-12 closed", function()
+		local function state(model: Model): { string }
+			local list = {}
+			for k = 1, 12 do
+				local slots = model:FindFirstChild("ShelfSlots") :: Instance
+				local slot = slots:FindFirstChild(string.format("ShelfSlot_%02d", k))
+				local lock = (slot :: Instance):FindFirstChild("Lock") :: Instance
+				local back = (slot :: Instance):FindFirstChild("ShelfBack") :: BasePart
+				for _, part in lock:GetChildren() do
+					local open = (part :: BasePart).Transparency == 1
+					expect.equal((part :: BasePart).CanCollide, not open)
+					expect.equal(back.Color, if open then Palette.PenShelfBackOn else Palette.PenShelfBackOff)
+				end
+				list[k] = if (lock:GetChildren()[1] :: BasePart).Transparency == 1 then "open" else "closed"
+			end
+			return list
+		end
+		local w = fresh()
+		local model = plotModel(w, 1)
+		local a = newPlayer(w, "A")
+		w.pens[a] = pen(3, nil, 1, false) -- the start row: cubbies 1-2
+		BaseService.playerAdded(a)
+		local want = table.create(12, "closed")
+		want[1], want[2] = "open", "open"
+		expect.deepEqual(state(model), want)
+		w.pens[a] = pen(3, nil, 4, true) -- every row and the TOP spot (cubby 9)
+		BaseService.refresh(a)
+		want = table.create(12, "open")
+		want[10], want[11], want[12] = "closed", "closed", "closed" -- until the shelf grows (part 5)
+		expect.deepEqual(state(model), want)
+		BaseService.playerRemoving(a) -- an open plot: every cubby closed
+		expect.deepEqual(state(model), table.create(12, "closed"))
 		finish(w)
 	end)
 
@@ -934,56 +778,6 @@ return function(t: Context)
 		finish(w)
 	end)
 
-	t.test("the PEN SPACE sign: the next spot's price and its hold prompt; MAX with the prompt off at 12", function()
-		local w = fresh()
-		local model = plotModel(w, 1)
-		local a = newPlayer(w, "A")
-		w.pens[a] = pen(3)
-		BaseService.playerAdded(a)
-		local sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Sign") :: Model
-		expect.truthy((sign :: Model?) ~= nil and sign:IsA("Model"))
-		expect.equal(sign:GetAttribute("SD_PenSign"), 1)
-		expect.equal(sign:GetAttribute("SD_Price"), 1_500)
-		local frame = WorldLayout.plotFrame(1) :: CFrame
-		local want = frame * PEN.signs.pen
-		expect.near((sign.WorldPivot.Position - want.Position).Magnitude, 0, 1e-3)
-		expect.near((sign.WorldPivot.LookVector - want.LookVector).Magnitude, 0, 1e-3)
-		local face = sign:FindFirstChild("Face") :: BasePart
-		local gui = face:FindFirstChildOfClass("SurfaceGui") :: SurfaceGui
-		expect.equal(gui.Face, Enum.NormalId.Front)
-		expect.equal((gui:FindFirstChild("Title", true) :: TextLabel).Text, Strings.pen.sign.title)
-		expect.equal((gui:FindFirstChild("Price", true) :: TextLabel).Text, Format.coins(1_500))
-		expect.equal((gui:FindFirstChild("Line", true) :: TextLabel).Text, "") -- the owner's client writes it
-		expect.equal((sign:FindFirstChild("Trim") :: BasePart).Color, Palette.PenSignCanBuy)
-		local prompt = face:FindFirstChildOfClass("ProximityPrompt") :: ProximityPrompt
-		expect.truthy(prompt.Enabled)
-		expect.equal(prompt.ActionText, Strings.pen.prompt.action)
-		expect.equal(prompt.ObjectText, Strings.pen.prompt.object)
-		expect.equal(prompt.HoldDuration, Config.Economy.Pen.signHoldSeconds)
-		expect.equal(prompt.MaxActivationDistance, 10)
-		expect.equal(prompt.RequiresLineOfSight, false)
-		for _, part in sign:GetDescendants() do
-			if part:IsA("BasePart") then
-				expect.falsy(part.CanTouch or part.CastShadow)
-			end
-		end
-		-- 6 spots: the 7th spot's price (reading: the offline runner keeps a number attribute in 32 bits, so the
-		-- trillions of spots 11-12 are checked in Studio); 12: MAX, no price, the prompt off, the gold trim.
-		w.pens[a] = pen(6)
-		BaseService.refresh(a)
-		sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Sign") :: Model
-		expect.equal(sign:GetAttribute("SD_Price"), PRICES[7])
-		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Format.coins(PRICES[7]))
-		w.pens[a] = pen(12)
-		BaseService.refresh(a)
-		sign = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Sign") :: Model
-		expect.equal(sign:GetAttribute("SD_Price"), nil)
-		expect.equal((sign:FindFirstChild("Price", true) :: TextLabel).Text, Strings.pen.sign.max)
-		expect.equal((sign:FindFirstChild("Trim") :: BasePart).Color, Palette.PenSignMax)
-		expect.falsy((sign:FindFirstChildWhichIsA("ProximityPrompt", true) :: ProximityPrompt).Enabled)
-		finish(w)
-	end)
-
 	t.test(
 		"refresh redraws one pen; the profile can come later; nothing without a model or for an open plot",
 		function()
@@ -995,7 +789,7 @@ return function(t: Context)
 			local model = plotModel(w, 1)
 			local b = newPlayer(w, "B")
 			local model2 = plotModel(w, 2)
-			BaseService.playerAdded(b) -- the profile is still loading: name and colour only
+			BaseService.playerAdded(b) -- the profile is still loading: the name only
 			expect.equal(ownerText(model2), "Name of B")
 			expect.equal(model2:FindFirstChild("Pen"), nil)
 			w.pens[b] = pen(4)
@@ -1019,7 +813,7 @@ return function(t: Context)
 		end
 	)
 
-	t.test("a full server: the 11th waits in the hub, retries every 0.5 s and gets the plot that frees", function()
+	t.test("a full server: the 13th waits in the hub, retries every 0.5 s and gets the plot that frees", function()
 		local w = fresh()
 		local players = fill(w)
 		local late = newPlayer(w, "Late")

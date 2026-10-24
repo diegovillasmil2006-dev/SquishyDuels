@@ -611,6 +611,31 @@ local Palette = {
 	-- frame PenDecorFrosting (K:7), its bow PenDecorIcing (K:31).
 	PenShelfGlass = Color3.fromHex("#DFF4FF"), -- K:98 the material Glass: a closed cubby's lock glass
 	PenShelfGold = Color3.fromHex("#FFC23C"), -- K:73 the material Gold: the TOP spot's pedestal top (placeholder)
+	-- Neon Sugar lobby part 4 (2026-10-24; World only): Diego's pen board (World/PenBoard, his Theme.Sign.Colors,
+	-- exact) and his shelf cubbies' back panels (BaseService, his Theme.Slot: open / locked).
+	PenBoardFrame = Color3.fromHex("#3A2D7A"), -- also the gate's sign frame (BaseService)
+	PenBoardBg = Color3.fromHex("#1D1636"),
+	PenBoardCard = Color3.fromHex("#2A2150"),
+	PenBoardInk = Color3.fromHex("#FFFFFF"),
+	PenBoardSub = Color3.fromHex("#B9ADF0"),
+	PenBoardTile = Color3.fromHex("#8B5CFF"),
+	PenBoardTileDark = Color3.fromHex("#5A2FC0"),
+	PenBoardGlyph = Color3.fromHex("#FFFFFF"),
+	PenBoardGo = Color3.fromHex("#2FE04B"),
+	PenBoardGoDark = Color3.fromHex("#16862A"),
+	PenBoardNo = Color3.fromHex("#5D5385"),
+	PenBoardNoDark = Color3.fromHex("#3A3260"),
+	PenBoardTrack = Color3.fromHex("#3A3066"),
+	PenBoardFill = Color3.fromHex("#2FE04B"),
+	PenBoardNeed = Color3.fromHex("#FF5CC8"),
+	PenBoardArrow = Color3.fromHex("#3FD8FF"),
+	PenBoardMax = Color3.fromHex("#FFC21A"),
+	PenBoardMaxDark = Color3.fromHex("#D98A00"),
+	PenBoardCoin = Color3.fromHex("#FFD23F"),
+	PenBoardCoinRim = Color3.fromHex("#D98A00"),
+	PenBoardCoinShine = Color3.fromHex("#FFF1A8"),
+	PenShelfBackOn = Color3.fromHex("#2B7FA8"),
+	PenShelfBackOff = Color3.fromHex("#7A1F6E"),
 	-- Pens3 phase 12 (the highway; World only, SDTools HighwayBuilder; WorldLayout.Highway.biomes picks the biome
 	-- tints). The v6 kit's materials (`K:n` = kit.json line n) and the per-biome tints of layout.json (`L:n`).
 	HighwayFrosting = Color3.fromHex("#FFF6EC"), -- K:7

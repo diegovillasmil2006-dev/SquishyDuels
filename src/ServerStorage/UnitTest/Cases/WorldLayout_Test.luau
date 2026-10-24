@@ -16,31 +16,23 @@
 --   * keep-clear volumes (yawed with their paths) never overlap between stations and hold no station body; the path
 --     aisles are the paths themselves (8 wide);
 --   * routes within the design's worst real route (D1: 10 s; was §7.5's 5 s), hub spawn routes no longer
---     than the island's distances; a plot's spawn 116 studs and its gate 74 from the stage (§2);
+--     than the island's distances;
 --   * every sign, prompt and plate key resolves in Strings; the design plate words (D10), the island's "SQUISH
 --     SQUARE" (§2) and the game's live lines; the plates sit where the island puts them; within the 64-SurfaceGui
---     budget (D6); every plot's name sign hangs under its gate, reading "Open plot" as built (§4);
+--     budget (D6);
 --   * the practice range: one lane east (Z 0), 4 targets, throws toward +X (§3, D3); 14 collection pedestals facing
 --     their bays (D4); return points on the stage, audio zones over the island, the lollipops in the garden,
---     TagCounts (10 SD_Base, 10 SD_BaseSpawn since Phase 4);
+--     TagCounts (12 SD_Base, 12 SD_BaseSpawn: Diego's pens);
 --   * first person: no prompt and no squeeze station reaches into the practice throw box;
---   * bases (§2, §4, §8): 10 plots 36° apart around the hub centre, gates at radius 96 and backs at 148, facing the
---     hub, 44 × 52, the spawn inside (pens3 phase 3: no capsule pads, spots or statue), no two plots sharing ground, a
---     colour per plot and the open grey; inPlot is the footprint only, never an unknown plot;
+--   * bases (Neon Sugar part 4, 2026-10-24): the plots are Diego's 12 pens 30° apart at radius 126 (Pen_01 at +Z), the
+--     floor's top at y 1.6, facing the hub, his 42 × 54 slab, no two sharing ground, none of the old lobby's plot data;
+--     inPlot is the footprint only, never an unknown plot;
 --   * pens3 phase 1 (wb, owner 2026-10-17: the pen is the whole base): Bases.pen.steps holds K's tier per spot count
---     (K:4084-4169: 3-5 Wafer, 6-9 Mint, 10-12 Royal); no pen fence any more (no front z, gate gap or segment); the
---     squishies' floor `walk` is the plot's floor inside its own fence and back wall (x ±21, z -24.4..25), the spawn
---     on it; the PEN SPACE sign at (10, 0, 20.3) facing the gate side; the spawn at local z 22.5, facing the pen;
---   * wb: the gate at the front-right corner (16.2, 0, 24), its posts inside the fence and clear of the Donut Arch,
---     the lamps at the walk floor's front corners (±19.25, 0, 18.5), the trees by the side fences (±18, 0, 0), all
---     facing the gate side, inside every plot; the +X tree gold, the -X one pink (K:4170-4189 "adds");
---   * wb: Bases.props (the spawn, the arch's pillars, the mailbox, the flower box, the bench and the planter, as
---     LobbyBuilder builds them) stand on the plot, none in the shelf (the bench and the planter moved out to x ±17),
---     and every one is inside a walk block (`blocks`: the front row, the shelf row, the 2 trees);
---   * pens3 phase 11: the SHELF SPOTS sign at (-10, 0, 20.4) facing the gate side (L:189, K:4240: right of the gate);
---     the shelf (L:194 base_shelf_01, at v6 local z 16 on every base) at (0, 0, -16) facing the gate side, its front (6
---     deep, LK:184, and its locks) the shelf row block's front; its 8 cubbies (LK:188 slot_1..8) in K's order
---     (K:4194-4203: 2, 3, 1, 4, 6, 7, 5, 8, two to a row) and the TOP spot over its top, all inside every plot;
+--     (K:4084-4169: 3-5 Wafer, 6-9 Mint, 10-12 Royal); the squishies' floor `walk` is his WalkArea (x ±18.8, z
+--     -17.2..24.4), no blocks, no lamps or trees;
+--   * the board's 2 buy spots past its right edge at each row's height, the photo gate outside the fence at the
+--     front-left, all facing the path; his shelf at z -21.1 with 12 cubbies, 4 a row from the bottom left, the TOP
+--     spot in cubby 9;
 --   * pens3 phase 12: the highway (lobby design v6: L = layout.json, LK = lobby-kit.js, K = kit.json) is placed from
 --     one origin, outside the island's sea and clear of the arena slots, distance d = d studs down its LookVector;
 --     its launch deck is v6's (L:20, :31-37, v6 z + 62: v6 measures d from its gate at z -62, L:1); pens3 phase 13
@@ -156,7 +148,6 @@ local TEXTS: { [string]: string } = {
 	["prompt.inspect"] = "Inspect",
 	["collection.owned"] = "Owned",
 	["collection.notOwned"] = "Not owned yet",
-	["base.openPlot"] = "Open plot", -- lobby bases spec §4: an open plot's name sign
 }
 
 -- Helpers
@@ -282,8 +273,6 @@ return function(t: Context)
 				error(`path {path.id} runs {show(path.from)} -> {show(path.to)}`)
 			end
 			expect.equal(path.width, 8)
-			-- The path ends at its plot's gate.
-			expect.truthy(flatNear(path.to, (WorldLayout.plotFrame(index) :: CFrame) * WorldLayout.Bases.gate, 1e-3))
 		end
 		expect.equal(WorldLayout.Promenade, nil) -- the design's promenade rings are gone: the stage is the centre
 	end)
@@ -561,7 +550,9 @@ return function(t: Context)
 		end
 		expect.equal(WorldLayout.Budgets.lobbySurfaceGuis, 64)
 		expect.truthy(#WorldLayout.Signs <= WorldLayout.Budgets.lobbySurfaceGuis)
-		expect.truthy(#WorldLayout.Signs >= 40) -- the design's plates (about 45 with the game's live boards)
+		-- The design's plates and the game's live boards (Neon Sugar part 4: the old plots' 10 name signs went, Diego's
+		-- arch nameplates are his Label_OpenPlot parts).
+		expect.truthy(#WorldLayout.Signs >= 30)
 	end)
 
 	-- (Neon Sugar lobby: the old island's plate placement test went with the retired LobbyBuilder; Diego's plates
@@ -759,8 +750,8 @@ return function(t: Context)
 			expect.equal(WorldLayout.audioZoneAt(Vector3.new(37, 3, 0)).zoneId, "practice") -- the runway
 			expect.equal(WorldLayout.audioZoneAt(WorldLayout.PracticeRange.throwBox.position).zoneId, "practice")
 			expect.equal(WorldLayout.audioZoneAt(Vector3.new(0, 3, 0)).zoneId, "lobby")
-			for index = 1, 10 do -- every plot hears the lobby
-				local back = (WorldLayout.plotFrame(index) :: CFrame) * Vector3.new(21, 2, -25)
+			for index = 1, #WorldLayout.Bases.frames do -- every pen hears the lobby, to its back corners
+				local back = (WorldLayout.plotFrame(index) :: CFrame) * Vector3.new(21, 2, -27)
 				expect.equal(WorldLayout.audioZoneAt(back).zoneId, "lobby")
 			end
 			expect.equal(WorldLayout.audioZoneAt(Vector3.new(400, 3, 0)), nil)
@@ -794,8 +785,8 @@ return function(t: Context)
 		expect.equal(counts.SD_Ambient, #WorldLayout.Props.lollipops.positions + 3)
 		expect.equal(counts.SD_Ambient, 7)
 		expect.equal(counts.SD_PracticeTarget, 4)
-		expect.equal(counts.SD_Base, 10) -- Phase 4: one Model per plot (spec §4)
-		expect.equal(counts.SD_BaseSpawn, 10) -- and its SpawnLocation
+		expect.equal(counts.SD_Base, 12) -- Neon Sugar part 4: Diego's 12 pens
+		expect.equal(counts.SD_BaseSpawn, 12) -- and a SpawnLocation in front of each one's arch
 		expect.equal(WorldLayout.Tags.Base, "SD_Base")
 		expect.equal(WorldLayout.Tags.Ambient, "SD_Ambient")
 		expect.equal(WorldLayout.Attributes.AmbientKind, "SD_AmbientKind")
@@ -967,88 +958,60 @@ return function(t: Context)
 		expect.near(WorldLayout.Stations[1].top, WorldLayout.SqueezeZone.matHeight, 1e-9)
 	end)
 
-	-- Bases (lobby bases spec 2026-10-11 §2, §4; Phase 3 data) --------------------------------------------------------
+	-- Bases (Neon Sugar lobby part 4, 2026-10-24: Diego's 12 pens) ------------------------------------------------------
 
-	t.test("10 plots 36° apart around the hub centre: gates at r 96, backs at r 148, facing the hub", function()
+	t.test("12 plots are Diego's pens: 30° apart at radius 126, the floor's top at y 1.6, facing the hub", function()
 		local bases = WorldLayout.Bases
-		expect.truthy(vectorNear(bases.center, Vector3.zero)) -- the hub centre (the spawn medallion)
-		expect.equal(bases.width, 44)
-		expect.equal(bases.depth, 52)
-		expect.equal(#bases.frames, 10)
-		for index = 1, 10 do
+		expect.equal(#bases.frames, 12)
+		expect.equal(bases.width, 42) -- his pen's Base slab
+		expect.equal(bases.depth, 54)
+		for index = 1, 12 do
 			local frame = WorldLayout.plotFrame(index) :: CFrame
-			local angle = math.rad((index - 1) * 36) -- compass angle, clockwise from north (-Z)
-			local outward = Vector3.new(math.sin(angle), 0, -math.cos(angle))
-			-- CFrames are float32: turned points match to 1e-3, like the other turned design points.
-			expect.truthy(flatNear(frame * bases.gate, outward * 96, 1e-3))
-			expect.truthy(flatNear(frame * Vector3.new(0, 0, -bases.depth / 2), outward * 148, 1e-3))
+			local angle = math.rad((index - 1) * 30) -- Pen_01 at +Z, each next one 30° on toward +X (his README)
+			local outward = Vector3.new(math.sin(angle), 0, math.cos(angle))
+			expect.truthy(vectorNear(frame.Position, outward * 126 + Vector3.new(0, 1.6, 0), 1e-3))
 			expect.truthy(vectorNear(frame:VectorToWorldSpace(Vector3.new(0, 0, 1)), -outward, 1e-6)) -- local +Z: hub
-			expect.near(frame.Position.Y, 0, 1e-9)
+			expect.equal(bases.models[index], string.format("Pen_%02d", index))
 		end
-		expect.truthy(flatNear((WorldLayout.plotFrame(1) :: CFrame).Position, Vector3.new(0, 0, -122), 1e-6)) -- north
-		expect.truthy(flatNear((WorldLayout.plotFrame(6) :: CFrame).Position, Vector3.new(0, 0, 122), 1e-6)) -- south
+		expect.truthy(vectorNear((WorldLayout.plotFrame(1) :: CFrame).Position, Vector3.new(0, 1.6, 126), 1e-6))
 		expect.equal(WorldLayout.plotFrame(0), nil)
-		expect.equal(WorldLayout.plotFrame(11), nil)
+		expect.equal(WorldLayout.plotFrame(13), nil)
+		-- The old lobby's plot data went with it (no colours, name signs, props or spawn data: Studio has the spawns).
+		for _, gone in { "colors", "openColors", "nameSign", "props", "spawn", "gateRadius", "fenceInset" } do
+			expect.equal((bases :: any)[gone], nil)
+		end
+		expect.equal(Strings.resolve("base.openPlot"), "OPEN PLOT") -- his arch nameplate's text
 	end)
 
-	t.test("a plot holds its spawn facing the pen (no capsule pads, spots or statue); plots share no ground", function()
-		local bases = WorldLayout.Bases
-		for _, gone in { "capsulePads", "capsulePadSize", "capsulePadTop", "capsuleSpots", "statue", "statueHeight" } do
-			expect.equal((bases :: any)[gone], nil) -- pens3 phase 3
-		end
-		-- Pens3 phase 1: between the gate (z 26) and the pen's front (z 19), facing the pen.
-		expect.truthy(vectorNear(bases.spawn.Position, Vector3.new(0, 0, 22.5)))
-		expect.truthy(vectorNear(bases.spawn.LookVector, Vector3.new(0, 0, -1), 1e-6))
-		for index = 1, 10 do
-			local frame = WorldLayout.plotFrame(index) :: CFrame
-			expect.truthy(WorldLayout.inPlot(index, (frame * bases.spawn).Position))
-			-- No corner of a plot lies on its neighbours' ground.
-			for _, corner in { { -22, -26 }, { 22, -26 }, { -22, 26 }, { 22, 26 } } do
-				local point = frame * Vector3.new(corner[1], 0, corner[2])
-				for _, other in { index % 10 + 1, (index + 8) % 10 + 1 } do
-					expect.falsy(WorldLayout.inPlot(other, point))
-				end
-			end
-		end
-	end)
-
-	t.test("inPlot: the plot's footprint at any height; nothing for the hub or an unknown plot", function()
+	t.test("inPlot: the pen slab's footprint at any height; nothing for the hub or an unknown plot", function()
 		local frame = WorldLayout.plotFrame(3) :: CFrame
 		expect.truthy(WorldLayout.inPlot(3, frame * Vector3.new(0, 3, 0)))
 		expect.truthy(WorldLayout.inPlot(3, frame * Vector3.new(0, 40, 0))) -- height is ignored
 		-- Just inside a corner: float32 turns an exact edge point a hair either way.
-		expect.truthy(WorldLayout.inPlot(3, frame * Vector3.new(21.99, 3, 25.99)))
-		expect.falsy(WorldLayout.inPlot(3, frame * Vector3.new(0, 3, 26.5))) -- just out through the gate
-		expect.falsy(WorldLayout.inPlot(3, frame * Vector3.new(22.5, 3, 0))) -- just past the side fence line
-		for index = 1, 10 do
+		expect.truthy(WorldLayout.inPlot(3, frame * Vector3.new(20.99, 3, 26.99)))
+		expect.falsy(WorldLayout.inPlot(3, frame * Vector3.new(0, 3, 27.5))) -- just out past the arch
+		expect.falsy(WorldLayout.inPlot(3, frame * Vector3.new(21.5, 3, 0))) -- just past the side
+		for index = 1, 12 do
 			expect.falsy(WorldLayout.inPlot(index, Vector3.new(0, 3, 0))) -- the hub centre is no plot
+			-- No corner of a pen lies on its neighbours' ground.
+			local own = WorldLayout.plotFrame(index) :: CFrame
+			for _, corner in { { -21, -27 }, { 21, -27 }, { -21, 27 }, { 21, 27 } } do
+				local point = own * Vector3.new(corner[1], 0, corner[2])
+				for _, other in { index % 12 + 1, (index + 10) % 12 + 1 } do
+					expect.falsy(WorldLayout.inPlot(other, point))
+				end
+			end
 		end
-		expect.falsy(WorldLayout.inPlot(11, frame * Vector3.new(0, 3, 0)))
+		expect.falsy(WorldLayout.inPlot(13, frame * Vector3.new(0, 3, 0)))
 		expect.falsy(WorldLayout.inPlot(0, Vector3.zero))
 		expect.equal(WorldLayout.Tags.BaseSpawn, "SD_BaseSpawn")
 		expect.equal(WorldLayout.Attributes.Plot, "Plot")
-		expect.equal(WorldLayout.TagCounts.SD_BaseSpawn, 10) -- Phase 4 builds the island: one per plot
-	end)
-
-	t.test("a plot's spawn stands 77.5 studs from the stage edge and its gate 74 (spec §2), facing its pen", function()
-		local bases = WorldLayout.Bases
-		local stage = WorldLayout.Lobby.stageRadius
-		for index = 1, 10 do
-			local frame = WorldLayout.plotFrame(index) :: CFrame
-			local spawn = frame * bases.spawn
-			expect.near(Vector3.new(spawn.Position.X, 0, spawn.Position.Z).Magnitude - stage, 77.5, 1e-3)
-			local gate = frame * bases.gate
-			expect.near(Vector3.new(gate.X, 0, gate.Z).Magnitude - stage, 74, 1e-3)
-			expect.truthy(vectorNear(spawn.LookVector, frame.LookVector, 1e-4)) -- away from the hub, to the pen
-		end
+		expect.equal(WorldLayout.TagCounts.SD_BaseSpawn, 12) -- one in front of each pen's arch (Studio)
 	end)
 
 	-- Pens3 phase 1 (wb, owner 2026-10-17): the pen is the whole base; K's steps only give the tier now.
-	t.test("wb: the pen is the whole base: K's tiers by spot count, the plot's fenced floor, no pen fence", function()
+	t.test("the pen: K's tiers by spot count, Diego's WalkArea for the squishies, nothing blocking it", function()
 		local pen = WorldLayout.Bases.pen
-		expect.equal(pen.frontZ, nil) -- no pen fence: no front, gate gap or segment
-		expect.equal(pen.gateWidth, nil)
-		expect.equal(pen.segment, nil)
 		expect.equal(pen.edgeMargin, 0.8)
 		expect.deepEqual(pen.steps, { -- K:4084-4169 steps[cap].tier
 			[3] = { tier = 1 },
@@ -1062,159 +1025,55 @@ return function(t: Context)
 			[11] = { tier = 3 },
 			[12] = { tier = 3 },
 		})
-		-- The floor inside the plot's own fence (posts 0.8 wide, fenceInset in from the 44 × 52 plinth's sides and
-		-- front) and its back wall (1.6 deep): LobbyBuilder's numbers.
-		local bases = WorldLayout.Bases
-		expect.deepEqual(pen.walk, { minX = -21, maxX = 21, minZ = -24.4, maxZ = 25 })
-		expect.near(pen.walk.maxX, bases.width / 2 - bases.fenceInset - 0.4, 1e-9)
-		expect.near(pen.walk.maxZ, bases.depth / 2 - bases.fenceInset - 0.4, 1e-9)
-		expect.near(pen.walk.minZ, -bases.depth / 2 + 1.6, 1e-9)
-		local spawn = bases.spawn.Position
-		expect.truthy(math.abs(spawn.X) < pen.walk.maxX and spawn.Z > pen.walk.minZ and spawn.Z < pen.walk.maxZ)
-		local sign = pen.signs.pen
-		expect.truthy(vectorNear(sign.Position, Vector3.new(10, 0, 20.3)))
-		expect.truthy(vectorNear(sign.LookVector, Vector3.new(0, 0, 1), 1e-6)) -- its face toward the gate side
-		for index = 1, 10 do
-			expect.truthy(WorldLayout.inPlot(index, (WorldLayout.plotFrame(index) :: CFrame) * sign.Position))
+		-- His Markers.WalkArea: 37.6 × 41.6 centred at plot z 3.6.
+		expect.deepEqual(pen.walk, { minX = -18.8, maxX = 18.8, minZ = -17.2, maxZ = 24.4 })
+		expect.deepEqual(pen.blocks, {})
+		for _, gone in { "lamps", "trees", "frontZ", "gateWidth", "segment" } do
+			expect.equal((pen :: any)[gone], nil) -- owner 2026-10-24: no tier lamps or trees
 		end
-	end)
-
-	-- Wb: the gate and the tier decor round the whole base (K:4170-4189 "adds"; owner 2026-10-17: both name signs).
-	t.test(
-		"wb: the gate at the front-right corner, 2 lamps at the floor's front corners, 2 trees by the sides",
-		function()
-			local pen = WorldLayout.Bases.pen
-			local toward = Vector3.new(0, 0, 1) -- every piece's front faces the gate side, like the sign
-			-- Beside the Donut Arch, never behind its name sign (9 wide at x ±4.5): its posts (x ±4 from its middle,
-			-- r 0.6, their balls r 0.8) inside the plot's fence and clear of the arch's pillars (x ±8..10).
-			expect.truthy(vectorNear(pen.gate.Position, Vector3.new(16.2, 0, 24)))
-			expect.truthy(vectorNear(pen.gate.LookVector, toward, 1e-6))
-			expect.truthy(
-				pen.gate.Position.X + 4.8 <= pen.walk.maxX + 1e-4 and pen.gate.Position.Z + 0.8 <= pen.walk.maxZ
-			)
-			expect.truthy(pen.gate.Position.X - 4.6 > 10)
-			expect.equal(#pen.lamps, 2)
-			expect.equal(#pen.trees, 2)
-			for index, side in { 1, -1 } do
-				local lamp = pen.lamps[index]
-				expect.truthy(vectorNear(lamp.Position, Vector3.new(side * 19.25, 0, 18.5)))
-				expect.truthy(vectorNear(lamp.LookVector, toward, 1e-6))
-				expect.truthy(math.abs(lamp.Position.X) + 1.6 <= pen.walk.maxX) -- its candy (r 1.6) inside the fence
-				local tree = pen.trees[index]
-				expect.truthy(vectorNear(tree.at.Position, Vector3.new(side * 18, 0, 0)))
-				expect.truthy(vectorNear(tree.at.LookVector, toward, 1e-6))
-				expect.truthy(math.abs(tree.at.Position.X) + 3 <= pen.walk.maxX) -- its canopy (r 3) by the side fence
-			end
-			-- L:192-193: the +X tree in the Royal post's gold, the -X one in its pink rail colour.
-			expect.equal(pen.trees[1].color, "PenFenceRoyalPost")
-			expect.equal(pen.trees[2].color, "PenFenceRoyalRail")
-			for index = 1, 10 do
-				local frame = WorldLayout.plotFrame(index) :: CFrame
-				for _, at in { pen.gate, pen.lamps[1], pen.lamps[2], pen.trees[1].at, pen.trees[2].at } do
-					expect.truthy(WorldLayout.inPlot(index, frame * at.Position))
-				end
-			end
-		end
-	)
-
-	-- Pens3 phase 11: the shelf, its cubbies, the TOP spot and the SHELF SPOTS sign (lobby design v6, turned).
-	t.test("pens3 phase 11: the SHELF SPOTS sign, the shelf at the plot's back, its cubbies in K's order", function()
-		local pen = WorldLayout.Bases.pen
-		local toward = Vector3.new(0, 0, 1)
-		local sign = pen.signs.shelf
-		expect.truthy(vectorNear(sign.Position, Vector3.new(-10, 0, 20.4)))
-		expect.truthy(vectorNear(sign.LookVector, toward, 1e-6))
-		local shelf = pen.shelf
-		expect.truthy(vectorNear(shelf.at.Position, Vector3.new(0, 0, -16)))
-		expect.truthy(vectorNear(shelf.at.LookVector, toward, 1e-6))
-		-- Wb: its front (3 studs in front of its middle) with the glass locks before it (L:247: 0.125 out, 0.15 thick)
-		-- is the front of the shelf row's walk block (rounded out to 0.05).
-		local front = shelf.at * Vector3.new(0, 0, -3.25)
-		local row = nil
-		for _, block in pen.blocks do
-			if block.name == "shelfRow" then
-				row = block
-			end
-		end
-		expect.near(front.Z, (row :: any).maxZ, 1e-6)
-		-- LK:188's slots in K's order, two to a row: the middle pair below, the outer pair below, then the same above.
-		local want = {
-			Vector3.new(-3.3, 1, -0.5),
-			Vector3.new(3.3, 1, -0.5),
-			Vector3.new(-9.9, 1, -0.5),
-			Vector3.new(9.9, 1, -0.5),
-			Vector3.new(-3.3, 8.3, -0.5),
-			Vector3.new(3.3, 8.3, -0.5),
-			Vector3.new(-9.9, 8.3, -0.5),
-			Vector3.new(9.9, 8.3, -0.5),
-		}
-		expect.equal(#shelf.cubbies, 8)
-		expect.equal(#shelf.cubbies, Config.Economy.Pen.shelfMaxRows * Config.Economy.Pen.shelfRowSpots)
-		for index, at in want do
-			expect.truthy(vectorNear(shelf.cubbies[index], at))
-		end
-		expect.truthy(shelf.top.Y > 15.6) -- over the shelf's top (LK:186: 15.6 tall)
-		for index = 1, 10 do
+		for index = 1, 12 do
 			local frame = WorldLayout.plotFrame(index) :: CFrame
-			expect.truthy(WorldLayout.inPlot(index, frame * sign.Position))
-			for _, x in { -13.7, 13.7 } do -- the shelf's corners (27.4 wide)
-				for _, z in { -3, 3 } do
-					expect.truthy(WorldLayout.inPlot(index, frame * (shelf.at * Vector3.new(x, 0, z))))
+			for _, x in { pen.walk.minX, pen.walk.maxX } do
+				for _, z in { pen.walk.minZ, pen.walk.maxZ } do
+					expect.truthy(WorldLayout.inPlot(index, frame * Vector3.new(x, 0, z)))
 				end
 			end
 		end
 	end)
 
-	t.test(
-		"every plot's name sign hangs under its gate arch, reads toward the hub, built as base.openPlot (§4)",
-		function()
-			local bases = WorldLayout.Bases
-			local byId: { [string]: any } = {}
-			for _, sign in WorldLayout.Signs do
-				byId[sign.id] = sign
-			end
-			for index = 1, 10 do
-				local sign = byId["baseSign" .. index]
-				expect.truthy(sign ~= nil)
-				expect.equal(sign.owner, bases.models[index])
-				expect.equal(sign.part, "nameSign")
-				local frame = WorldLayout.plotFrame(index) :: CFrame
-				expect.truthy(vectorNear(sign.position, frame * bases.nameSign.position, 1e-3))
-				expect.truthy(vectorNear(sign.facing, -frame.LookVector, 1e-4))
-				expect.equal(#sign.lines, 1)
-				local line = sign.lines[1]
-				expect.equal(line.name, "Owner") -- BaseService writes the owner's display name here
-				expect.truthy(line.live)
-				expect.equal(line.bakeKey, "base.openPlot")
-			end
-			-- Between the gate's pillars (16 apart) and at the gate line.
-			expect.truthy(math.abs(bases.nameSign.position.X) + bases.nameSign.size.X / 2 <= bases.gateWidth / 2)
-			expect.truthy(math.abs(bases.nameSign.position.Z - bases.gate.Z) <= 1)
-			expect.equal(bases.gateWidth, 16) -- §4
-			expect.equal(Strings.resolve("base.openPlot"), "Open plot")
+	t.test("the board's 2 buy spots, the photo gate across the arch and Diego's 12 shelf cubbies", function()
+		local pen = WorldLayout.Bases.pen
+		local toward = Vector3.new(0, 0, 1) -- every piece faces the path (the hub side)
+		-- Just past the right edge of his board (12.8 wide at x 16), at each row's BUY button: row 1 PEN SPACE above,
+		-- row 2 SHELF SPOTS below.
+		expect.truthy(vectorNear(pen.signs.pen.Position, Vector3.new(23.2, 7.3, 30.86)))
+		expect.truthy(vectorNear(pen.signs.shelf.Position, Vector3.new(23.2, 3.45, 30.86)))
+		for _, at in { pen.signs.pen, pen.signs.shelf } do
+			expect.truthy(vectorNear(at.LookVector, toward, 1e-6))
+			expect.truthy(at.Position.X > 16 + 12.8 / 2) -- past the board, so the prompt never covers a price
 		end
-	)
-
-	t.test("each plot has its own Palette colour and light shade (spec §8); an open plot is grey (§4)", function()
-		local Palette = t.requireShared("Art/Palette")
-		local bases = WorldLayout.Bases
-		expect.equal(#bases.colors, 10)
-		local seen: { [string]: boolean } = {}
-		for index, colors in bases.colors do
-			for _, which in { "full", "light" } do
-				expect.equal(typeof(Palette[colors[which]]), "Color3")
-			end
-			local hex = (Palette[colors.full] :: Color3):ToHex()
-			expect.falsy(seen[hex])
-			seen[hex] = true
-			expect.equal(bases.models[index], string.format("Base_%02d", index))
+		-- The gate: front-left, outside the fence (the slab ends at z 27), on the grass (1.6 under the floor).
+		expect.truthy(vectorNear(pen.gate.Position, Vector3.new(-16, -1.6, 30.86)))
+		expect.truthy(vectorNear(pen.gate.LookVector, toward, 1e-6))
+		expect.truthy(pen.gate.Position.Z - 0.6 > WorldLayout.Bases.depth / 2) -- its posts (r 0.6) clear of the slab
+		expect.equal(pen.maxParts, 10)
+		-- His shelf: 4 cubbies a row, left to right from the pen floor, bottom row first, 7.5 and 7 apart.
+		local shelf = pen.shelf
+		expect.truthy(vectorNear(shelf.at.Position, Vector3.new(0, 0, -21.1)))
+		expect.truthy(vectorNear(shelf.at.LookVector, toward, 1e-6))
+		expect.equal(#shelf.cubbies, 12)
+		for k, cubby in shelf.cubbies do
+			local column, row = (k - 1) % 4, (k - 1) // 4
+			expect.truthy(vectorNear(cubby, Vector3.new(11.25 - 7.5 * column, 2.7 + 7 * row, 0)))
 		end
-		expect.equal(bases.colors[1].full, "BaseRed") -- §8: B1 red .. B10 pink
-		expect.equal(bases.colors[10].full, "BasePink")
-		expect.deepEqual(bases.openColors, { full = "BaseOpen", light = "BaseOpenLight" })
-		expect.equal(typeof(Palette.BaseOpen), "Color3")
-		expect.equal(typeof(Palette.BaseOpenLight), "Color3")
-		expect.equal(WorldLayout.Attributes.BaseTint, "SD_BaseTint")
+		-- ShelfSlot_01 at plot (-11.25, 2.7, -21.1): the left of the bottom row seen from the pen floor.
+		expect.truthy(vectorNear(shelf.at * shelf.cubbies[1], Vector3.new(-11.25, 2.7, -21.1), 1e-4))
+		-- The 4 shelf rows two by two, then the TOP spot: cubby 9.
+		local P = Config.Economy.Pen
+		expect.equal(P.placedMax - P.maxSpots, 9)
+		expect.equal(P.shelfMaxRows * P.shelfRowSpots + 1, 9)
+		expect.near(shelf.labelOver, 6.2, 1e-9)
+		expect.near(shelf.labelZ, -2.9, 1e-9)
 	end)
 
 	-- Arena (§5.3, §7.8) --------------------------------------------------------------------------------------------
@@ -1581,77 +1440,6 @@ return function(t: Context)
 			{ "highway.board.title", "highway.board.lastThrow", "highway.board.serverBest", "highway.marker.unit" }
 		do
 			expect.truthy(keys[key])
-		end
-	end)
-
-	-- Wb: what LobbyBuilder stands on each plot's floor, and the walk blocks that keep the squishies off it.
-	t.test("wb: the plot's props stand on its floor, none in the shelf, each inside a walk block", function()
-		local bases = WorldLayout.Bases
-		local pen = bases.pen
-		local names = {}
-		for _, prop in bases.props do
-			table.insert(names, prop.name)
-		end
-		table.sort(names)
-		expect.deepEqual(names, {
-			"BirdieNestPlanter",
-			"ChocolateFlowerBox",
-			"GatePillar",
-			"GatePillar",
-			"KittyLoafMailbox",
-			"Spawn",
-			"ToastBench",
-		})
-		local function overlaps(a: any, b: any): boolean
-			return a.minX < b.maxX and b.minX < a.maxX and a.minZ < b.maxZ and b.minZ < a.maxZ
-		end
-		-- The shelf's footprint (27.4 × 6 at z -16, LK:184).
-		local shelf = { minX = -13.7, maxX = 13.7, minZ = -19, maxZ = -13 }
-		local walk = pen.walk
-		for _, prop in bases.props do
-			expect.truthy(math.abs(prop.minX) <= bases.width / 2 and math.abs(prop.maxX) <= bases.width / 2)
-			expect.truthy(prop.minZ >= -bases.depth / 2 and prop.maxZ <= bases.depth / 2 + 0.4) -- a pillar: 0.4 out
-			if overlaps(prop, shelf) then
-				error(`{prop.name} pokes into the shelf`)
-			end
-			-- The part on the squishies' floor lies inside one walk block.
-			local onFloor = {
-				minX = math.max(prop.minX, walk.minX),
-				maxX = math.min(prop.maxX, walk.maxX),
-				minZ = math.max(prop.minZ, walk.minZ),
-				maxZ = math.min(prop.maxZ, walk.maxZ),
-			}
-			local inside = false
-			for _, block in pen.blocks do
-				if
-					onFloor.minX >= block.minX
-					and onFloor.maxX <= block.maxX
-					and onFloor.minZ >= block.minZ
-					and onFloor.maxZ <= block.maxZ
-				then
-					inside = true
-				end
-			end
-			if not inside then
-				error(`{prop.name} is in no walk block`)
-			end
-		end
-		-- The front row, the shelf row and the 2 trees' canopies (r 3 round each tree).
-		expect.equal(#pen.blocks, 4)
-		for _, tree in pen.trees do
-			local at = tree.at.Position
-			local found = false
-			for _, block in pen.blocks do
-				if
-					block.minX <= at.X - 3
-					and block.maxX >= at.X + 3
-					and block.minZ <= at.Z - 3
-					and block.maxZ >= at.Z + 3
-				then
-					found = true
-				end
-			end
-			expect.truthy(found)
 		end
 	end)
 

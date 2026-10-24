@@ -78,14 +78,14 @@ return function(t: Context)
 		expect.deepEqual(PenLookController.changes({ owner = 7, tier = 1 }, { owner = 7, tier = 1 }), none)
 	end)
 
-	t.test("inside: a point on the base's fenced floor (wb: the pen is the whole base)", function()
+	t.test("inside: a point on the pen's floor (Neon Sugar part 4: Diego's WalkArea)", function()
 		expect.truthy(PenLookController.inside(Vector3.new(0, 2, 15)))
-		expect.truthy(PenLookController.inside(Vector3.new(0, 2, 22.5))) -- on the spawn: in the base
-		expect.truthy(PenLookController.inside(Vector3.new(20.5, 2, -24))) -- a back corner
-		expect.falsy(PenLookController.inside(Vector3.new(0, 2, 25.5))) -- in the Donut Arch
-		expect.falsy(PenLookController.inside(Vector3.new(0, 2, 30))) -- on the path
-		expect.falsy(PenLookController.inside(Vector3.new(21.5, 2, 0))) -- past the side fence
-		expect.falsy(PenLookController.inside(Vector3.new(0, 2, -25))) -- in the back wall
+		expect.truthy(PenLookController.inside(Vector3.new(0, 2, 24))) -- just inside the arch
+		expect.truthy(PenLookController.inside(Vector3.new(18.5, 2, -17))) -- a back corner
+		expect.falsy(PenLookController.inside(Vector3.new(0, 2, 25.6))) -- in the arch
+		expect.falsy(PenLookController.inside(Vector3.new(0, 2, 33))) -- on the path, at the spawn
+		expect.falsy(PenLookController.inside(Vector3.new(19.5, 2, 0))) -- past the side fence
+		expect.falsy(PenLookController.inside(Vector3.new(0, 2, -18))) -- by the shelf
 	end)
 
 	t.test("glint: too expensive -> can buy at one price, once per price; never at MAX or from can buy", function()

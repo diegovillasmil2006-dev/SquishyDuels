@@ -22,8 +22,7 @@
 -- the newest buyBackMax; buyBackDecision finds a live entry (net.invalid, pen.buyBackGone, inventory.full). Phase 8
 -- (fusion): fuseDecision takes 3 of one kind and form (net.invalid, inventory.notOwned, pen.locked, pen.fuseMismatch,
 -- pen.fuseTop for Rainbow); the keeper is the highest level (a tie: a placed one, then the lower id), the result its
--- next form at its level, and every input's coating is listed for the bag. Phase 10 (the pen look): decorOf the
--- tier's decor (K:4170-4189: tier 2 bulbs + lamps, tier 3 also the bow + trees).
+-- next form at its level, and every input's coating is listed for the bag.
 -- Phase 11 (the shelf rows + the TOP spot, V3:144-151, J's prices): the open spots are the pen's 1..spots, the shelf's
 -- 13.. (2 a row, shelfRows rows; a missing or broken shelfRows opens no shelf spot: fail closed) and the TOP
 -- spot 21 once bought; placed lists them all in slot order (they all earn: rate, squeeze value, Feed All, a fusion
@@ -32,11 +31,11 @@
 -- pen.spotClosed); shelfPrice / shelfDecision sell row 2, 3, 4 at 31M / 250B / 11T, then the TOP spot at 140T, then
 -- pen.shelfMax (a wrong price pen.priceChanged, bad input or a broken pen net.invalid); encodeShelf / decodeShelf
 -- carry each shelf squishy's slot and look.
--- Wb (owner 2026-10-17: the pen is the whole base): walkArea(studs) is the plot's fenced floor (Bases.pen.walk) and its
--- blocks, half the squishy and edgeMargin in from the floor's edges and out round every block; walkable says a point
--- is on that floor and in no block; clearPath that the straight line between two such points crosses no block's
--- inside (touching its edge is fine). A squishy standing on any walkable point touches no prop LobbyBuilder stands
--- on the plot (Bases.props), never stands on the spawn, and the floor it has is bigger than the old biggest pen.
+-- Wb (owner 2026-10-17: the pen is the whole base): walkArea(studs) is the pen's floor (Bases.pen.walk: Diego's
+-- WalkArea since Neon Sugar part 4, no blocks in it), half the squishy and edgeMargin in from the floor's edges and out
+-- round every block; walkable says a point is on that floor and in no block; clearPath that the straight line between
+-- two such points crosses no block's inside (touching its edge is fine). A squishy standing on any walkable point stays
+-- on the floor, and the floor it has is bigger than the old biggest pen.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -291,24 +290,16 @@ return function(t: Context)
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local LAYOUT = WorldLayout.Bases.pen
 
-	t.test("walkArea: the plot's fenced floor and its blocks, half the squishy and the edge margin in", function()
-		local area = PenMath.walkArea(2) -- a Common: 1 + 0.8 in from every edge, out round every block
+	t.test("walkArea: the pen's floor (Diego's WalkArea), half the squishy and the edge margin in; no blocks", function()
+		local area = PenMath.walkArea(2) -- a Common: 1 + 0.8 in from every edge
 		local walk = LAYOUT.walk
 		expect.near(area.minX, walk.minX + 1.8, 1e-9)
 		expect.near(area.maxX, walk.maxX - 1.8, 1e-9)
 		expect.near(area.minZ, walk.minZ + 1.8, 1e-9)
 		expect.near(area.maxZ, walk.maxZ - 1.8, 1e-9)
-		expect.equal(#area.blocks, #LAYOUT.blocks)
-		for index, block in LAYOUT.blocks do
-			local grown = area.blocks[index]
-			expect.near(grown.minX, block.minX - 1.8, 1e-9)
-			expect.near(grown.maxX, block.maxX + 1.8, 1e-9)
-			expect.near(grown.minZ, block.minZ - 1.8, 1e-9)
-			expect.near(grown.maxZ, block.maxZ + 1.8, 1e-9)
-		end
+		expect.equal(#area.blocks, 0) -- nothing stands inside his walk area
 		local dragon = PenMath.walkArea(5) -- an Exclusive: 2.5 + 0.8
 		expect.near(dragon.maxX, walk.maxX - 3.3, 1e-9)
-		expect.near(dragon.blocks[1].minZ, LAYOUT.blocks[1].minZ - 3.3, 1e-9)
 		-- The area's middle is always walkable (a new walker's fallback spot, PenController.newWalk).
 		for _, studs in { 2, 2.8, 3.8, 5 } do
 			local a = PenMath.walkArea(studs)
@@ -342,59 +333,28 @@ return function(t: Context)
 		expect.truthy(PenMath.clearPath(open, 0, 0, 10, 10))
 	end)
 
-	t.test("the whole base: a squishy anywhere it may stand touches no prop, never the spawn, and has room", function()
-		local props = WorldLayout.Bases.props
-		local function overlaps(a: any, b: any): boolean
-			return a.minX < b.maxX and b.minX < a.maxX and a.minZ < b.maxZ and b.minZ < a.maxZ
-		end
+	t.test("the whole pen: a squishy anywhere it may stand stays on the floor and has room", function()
 		local walk = LAYOUT.walk
 		for _, studs in { 2, 2.8, 3.8, 5 } do
 			local area = PenMath.walkArea(studs)
 			local free = 0
-			for x = -22, 22, 0.25 do
-				for z = -26, 26, 0.25 do
+			for x = -21, 21, 0.25 do
+				for z = -27, 27, 0.25 do
 					if PenMath.walkable(area, x, z) then
 						free += 0.25 * 0.25
 						local h = studs / 2
-						local body = { minX = x - h, maxX = x + h, minZ = z - h, maxZ = z + h }
-						local out = body.minX < walk.minX or body.maxX > walk.maxX
-						if out or body.minZ < walk.minZ or body.maxZ > walk.maxZ then
-							error(`a {studs}-stud squishy at ({x}, {z}) pokes out of the fenced floor`)
-						end
-						for _, prop in props do
-							if overlaps(body, prop) then
-								error(`a {studs}-stud squishy at ({x}, {z}) stands in the {prop.name}`)
-							end
+						local out = x - h < walk.minX or x + h > walk.maxX
+						if out or z - h < walk.minZ or z + h > walk.maxZ then
+							error(`a {studs}-stud squishy at ({x}, {z}) pokes out of the pen's floor`)
 						end
 					end
 				end
 			end
-			-- The old biggest pen was 24 × 32 less the same margins: the whole base gives more room.
+			-- The old biggest pen was 24 × 32 less the same margins: Diego's pen gives more room.
 			local m = studs + 2 * LAYOUT.edgeMargin
 			expect.truthy(free > (24 - m) * (32 - m))
 		end
 	end)
-
-	t.test(
-		"decorOf: K's tier adds: tier 1 plain, tier 2 the gate bulbs and 2 lamps, tier 3 also the bow and 2 trees",
-		function()
-			local none = { bulbs = false, lamps = false, bow = false, trees = false }
-			local mint = { bulbs = true, lamps = true, bow = false, trees = false }
-			local royal = { bulbs = true, lamps = true, bow = true, trees = true }
-			for count = 3, 5 do
-				expect.deepEqual(PenMath.decorOf(count), none)
-			end
-			for count = 6, 9 do
-				expect.deepEqual(PenMath.decorOf(count), mint)
-			end
-			for count = 10, 12 do
-				expect.deepEqual(PenMath.decorOf(count), royal)
-			end
-			expect.deepEqual(PenMath.decorOf(2), none)
-			expect.deepEqual(PenMath.decorOf(13), none)
-			expect.deepEqual(PenMath.decorOf(nil :: any), none)
-		end
-	)
 
 	-- Pens3 phase 5: the Toy Box (D1:254-258).
 	t.test("room: the pen's spots plus the Toy Box's toyBoxMax, less every item; 0 for anything not a pen", function()

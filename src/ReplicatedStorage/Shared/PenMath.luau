@@ -131,11 +131,6 @@
 --                                   always the weakest one that can eat (the lowest level, then the fewest Coins a
 --                                   second at Lv 1, then the lower id), until no placed squishy below `cap` has the
 --                                   pieces of its next step. steps 0 = nothing to feed.
--- Pens3 phase 10 (the pen look, lobby design v6; WorldLayout.Bases.pen; wb: no pen fence any more, so no fence
--- segments):
---   PenMath.decorOf(spots)       -> {bulbs, lamps, bow, trees}: the tier decor of steps[spots] (K:4170-4189
---                                   "adds", K:700 notes): tier 2 the gate bulbs + 2 lollipop lamps, tier 3 also the
---                                   gate bow + 2 gumdrop trees; none at tier 1 or for a spot count with no step
 -- Pens3 phase 11 (the shelf rows + the TOP spot; Config.Economy.Pen shelf*, topPrice):
 --   PenMath.isOpen(pen, slot)    -> boolean: the slot is an open spot (see the header); false for a broken pen
 --   PenMath.openSlots(pen)       -> {number}: every open spot in slot order (the pen, the shelf, the TOP spot)
@@ -187,8 +182,6 @@ export type FoodDef = { id: string, nameKey: string, price: number, from: number
 export type FoodBuy = { food: FoodDef, count: number, price: number }
 export type FeedStep = { item: Types.PenItem, food: FoodDef, pieces: number }
 export type FeedPlan = { levels: { [number]: number }, used: { [string]: number }, steps: number }
--- Pens3 phase 10: the tier decor a pen shows (decorOf).
-export type Decor = { bulbs: boolean, lamps: boolean, bow: boolean, trees: boolean }
 -- Pens3 phase 11: one PenBuyShelf (shelfDecision): the next row (nil for the TOP spot), the price, the spots it opens.
 export type ShelfBuy = { row: number?, top: boolean, price: number, slots: { number } }
 
@@ -1024,12 +1017,6 @@ function PenMath.clearPath(area: Area, x0: number, z0: number, x1: number, z1: n
 		end
 	end
 	return true
-end
-
-function PenMath.decorOf(spots: number): Decor
-	local step = LAYOUT.steps[spots]
-	local tier = if step then step.tier else 0
-	return { bulbs = tier >= 2, lamps = tier >= 2, bow = tier >= 3, trees = tier >= 3 }
 end
 
 return table.freeze(PenMath)
