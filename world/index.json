@@ -18,6 +18,12 @@
 		"container": "Workspace"
 	},
 	{
+		"file": "Workspace/SquishyDuelsLobby.rbxm",
+		"class": "Model",
+		"name": "SquishyDuelsLobby",
+		"container": "Workspace"
+	},
+	{
 		"file": "ReplicatedStorage/DuelMapScripts.rbxm",
 		"class": "Folder",
 		"name": "DuelMapScripts",
@@ -106,5 +112,11 @@
 		"class": "SunRaysEffect",
 		"name": "SunRays",
 		"container": "Lighting"
+	},
+	{
+		"file": "MaterialService/SquishyStud.rbxm",
+		"class": "MaterialVariant",
+		"name": "SquishyStud",
+		"container": "MaterialService"
 	}
 ]
