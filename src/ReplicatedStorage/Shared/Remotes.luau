@@ -280,6 +280,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- its own view (on every phase change, K.O., respawn, team-lives change and outcome, and its own storm bar). The
 	-- result rides in its `outcome`: there is no MatchResult remote in v1.
 	MatchState = s2c("participants", { arg("state", "table") }),
+	-- Round 1 of the match flow (2026-10-25, Diego's LOBBY HUD L:218-229 waiting bar): Types.MatchQueueView, to each
+	-- queued player on every change of its mode's queue; {} when the ticket is gone.
+	MatchQueue = s2c("owner", { arg("queue", "table") }),
 	-- P13v4 (HighwayService's settle at the landing): Types.HighwayLanding, what the thrower's landing paid (Coins with
 	-- the rings' share, Grip, best, gifts, the Food Bag, the rings, BULLSEYE), to the thrower only.
 	HighwayLanded = s2c("owner", { arg("landing", "table") }),

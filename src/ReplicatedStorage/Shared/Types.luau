@@ -500,6 +500,18 @@ export type MatchRewardView = { coins: number, grip: number, streakBefore: numbe
 -- The map: its floor height, the Bounds box the combat code reads, and its centre (the storm's centre).
 export type MatchArenaView = { floorY: number, bounds: ArenaZone, centre: Vector3 }
 
+-- The MatchQueue payload (round 1 of the match flow, 2026-10-25): the player's Free for All / Team Deathmatch queue
+-- ticket as the waiting bar draws it. `mode` nil (an empty table) = no ticket any more. count = the players queued
+-- (at most max); joinedAt = when this player joined (server time); full = the match starts now with count players
+-- (bots included): the bar fills up, and {} follows at once (the ticket is gone).
+export type MatchQueueView = {
+	mode: MatchMode?,
+	count: number?,
+	max: number?,
+	joinedAt: number?,
+	full: boolean?,
+}
+
 -- The MatchState payload (one per player): sent on the first view, every phase change, K.O., respawn, team-lives
 -- change and outcome, plus the own view when `you.stormBar` moved (at most Config.Match.Storm.sampleHz a second).
 -- A last view with phase "Returning", then the cleared attributes (SD_MatchId "") end it on the client.

@@ -114,6 +114,7 @@ local Focus = require(Client.UI.Focus)
 local HudFormat = require(Client.UI.HudFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
+local MatchHudFormat = require(Client.UI.MatchHudFormat)
 local ModeSelect = require(Client.UI.ModeSelect)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local QuestFormat = require(Client.UI.QuestFormat)
@@ -171,9 +172,23 @@ type SearchBar = {
 	dots: Frame,
 	time: TextLabel,
 	line2: Frame,
-	fills: { Frame }, -- the two slots' fills: you, the opponent
+	-- Round 1 of the match flow (LOBBY HUD L:222-228): up to 12 slots (the 1v1: the first two), their fills, the "VS"
+	-- between the halves, the mode chip, the match ticket's own cancel X (the 1v1's is QueueController's), the mode
+	-- and slot count the bar is painted for (paintBar), the fills shown (fillTo's pops) and the start's fill-up
+	-- (cascade token, running).
+	slots: { Frame },
+	fills: { Frame },
+	vs: TextLabel,
+	chip: Frame,
+	chipLabel: TextLabel,
+	matchCancel: Button.Button,
 	players: TextLabel,
 	cancelSlot: Frame,
+	mode: string?,
+	max: number,
+	shownOn: { boolean },
+	cascade: number,
+	cascading: boolean,
 }
 type FoundBar = { root: Frame, pop: Frame, sub: TextLabel }
 
@@ -204,6 +219,15 @@ local COACH_NAME = "Hud_OnboardingCard" -- OnboardingController's coach card (a 
 local SEARCHING = "Searching"
 local MATCH_JOIN = "MatchJoin" -- Remotes: MatchJoin(mode: string), FFA/TDM v1's in-server queue
 local MATCH_JOINED = "match.joined" -- MatchService's Notify when it took the join (a refusal is match.refused.*)
+local MATCH_LEAVE = "MatchLeave" -- Remotes: MatchLeave(), the waiting bar's X for a match ticket (round 1)
+-- Round 1 of the match flow: the waiting bar's slots, as many as the largest match (Config.Match.Modes' maxPlayers).
+local SLOT_MAX = (function(): number
+	local most = 2
+	for _, mode in Config.Match.Modes do
+		most = math.max(most, mode.maxPlayers)
+	end
+	return most
+end)()
 -- The duel HUD's top bar (DuelController's stable names): MATCH FOUND keeps under it once it shows.
 local DUEL_GUI, DUEL_TOP_BAR = "SD_DuelHud", "TopBar"
 -- H:653-654: the keys 1-5 open these windows (ControlsController NavN / ModalNavN).
@@ -913,44 +937,191 @@ local function layoutRight(compact: boolean)
 	end
 end
 
--- The DUEL area's state from the queue (HudFormat.ctaModel): the button, or the search bar with its
--- time, its second line and your slot; entering the search plays the join's sounds and sparks (H:758-763). Searching
--- -> Matched keeps the search bar (G4.3: the opponent's slot fills there, matchFound, whichever of QueueChanged and
--- DuelChanged comes first) until the queue leaves Matched.
+-- A queue slot's 18 px fill (H:141: radius 5, the 3 px highlight at .55) in the player colours `look` (LOBBY HUD
+-- L:759-760: a team's three stops, a Free for All colour's two), hidden until it fills; a new paint replaces the old
+-- fill (round 1 of the match flow: the slot colours change with the mode).
+local function slotFill(slot: Frame, look: MatchHudFormat.PlayerLook): Frame
+	local spec = HUD.slots
+	local old = slot:FindFirstChild("Fill")
+	if old then
+		old:Destroy()
+	end
+	local colors: Theme.StickerColors = {
+		face = look.top,
+		mid = look.mid,
+		midAt = if look.mid then spec.midAt else nil,
+		faceEnd = look.faceEnd,
+		top = look.top:Lerp(Palette.White, spec.highlightAlpha),
+	}
+	local fill: Frame = Create("Frame", {
+		Name = "Fill",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(spec.fill, spec.fill),
+		Visible = false,
+		Parent = slot,
+	})
+	Theme.foam(fill, {
+		radius = spec.fillRadius,
+		stroke = 0,
+		top = spec.highlightPx,
+		fixedHeight = spec.fill,
+		colors = colors :: any, -- a StickerColors as a FoamColors (Theme.surfaceColors does the same)
+	})
+	return fill
+end
+
+-- Round 1 of the match flow (LOBBY HUD L:222-224; MODES L:763-765, MF_BG L:759-760): the bar painted for `mode` with
+-- `max` slots: the chip's words and gradient (DUEL the DUEL button's pink, TEAM red -> blue at 100deg, FREE FOR ALL
+-- yellow), the slots in the players' colours (DUEL and TEAM the two halves' teams with "VS" between them, Free for All
+-- its six colours by slot), every fill hidden (fillTo pops them in).
+local function paintBar(bar: SearchBar, mode: string, max: number)
+	local layout = HudFormat.waitSlots(mode, 0, max)
+	for i, slot in bar.slots do
+		local spot = layout.slots[i]
+		slot.Visible = spot ~= nil
+		local look = if spot and spot.team
+			then MatchHudFormat.playerLook("tdm", Config.Match.teamNames[spot.team], nil)
+			else MatchHudFormat.playerLook("ffa", nil, if spot then spot.ffa else nil)
+		bar.fills[i] = slotFill(slot, look)
+		bar.shownOn[i] = false
+	end
+	bar.vs.Visible = layout.vsAfter ~= nil
+	bar.vs.LayoutOrder = 2 * (layout.vsAfter or 0) + 1
+	local text = Strings.hud.waitChips[mode] or ""
+	bar.chipLabel.Text = text
+	local picker, key = HUD.picker, ColorSequenceKeypoint.new
+	local keys = { key(0, Palette.StickerYellowTop), key(1, Palette.StickerGoldMid) } -- L:765
+	local rotation = picker.ffaRotation -- 180deg: top to bottom
+	if mode == "tdm" then -- L:764
+		local at = picker.tdmStops
+		keys = {
+			key(at[1], Palette.StickerTdmRedTop),
+			key(at[2], Palette.StickerTdmRed),
+			key(at[3], Palette.StickerTdmBlue),
+			key(at[4], Palette.StickerTdmBlueEnd),
+		}
+		local width = Theme.textWidth(text, "Chip") + 2 * HUD.search.chipPadX
+		local tabs = require(Client.UI.Components.SegmentedTabs) -- inline, as PhoneHud: this chunk is near 200 locals
+		rotation = tabs.gradientRotation(picker.tdmRotation, width, HUD.search.chipHeight)
+	elseif mode ~= "ffa" then -- L:763
+		local pink = Theme.accent("pink")
+		keys = { key(0, pink.top), key(pink.midAt :: number, pink.face), key(1, pink.shade) }
+	end
+	local old = bar.chip:FindFirstChildOfClass("UIGradient")
+	if old then
+		old:Destroy()
+	end
+	Create("UIGradient", { Color = ColorSequence.new(keys), Rotation = rotation, Parent = bar.chip })
+	bar.mode, bar.max = mode, max
+end
+
+-- Round 1 of the match flow (LOBBY HUD L:224, L:1012-1013): the painted bar's first `count` fills show, each new one
+-- popping in (sdSlot), with the slot sound for the new count (snd.slot(nf)) unless `quiet`.
+local function fillTo(bar: SearchBar, count: number, quiet: boolean)
+	local grew = false
+	for i, spot in HudFormat.waitSlots(bar.mode, count, bar.max).slots do
+		local fill = bar.fills[i]
+		if fill and spot.on ~= bar.shownOn[i] then
+			bar.shownOn[i] = spot.on
+			fill.Visible = spot.on
+			if spot.on then
+				grew = true
+				Scheduler.add(
+					Tweens.keyframes(fill, MOTION.slotPop.frames :: any, {
+						ms = MOTION.slotPop.ms,
+						curve = MOTION.slotPop.curve,
+					}),
+					"render"
+				)
+			end
+		end
+	end
+	if grew and not quiet then
+		SoundController.play(CLICK_SOUND, { pitch = SoundController.slotPitch(count) })
+	end
+end
+
+-- The DUEL area's state from the queues (HudFormat.ctaModel): the button, or the search bar with its time, mode chip,
+-- slots and players line (round 1 of the match flow: the 1v1 queue, or a Free for All / Team Deathmatch ticket with
+-- its own X); entering the search plays the join's sounds and sparks (H:758-763). Searching -> Matched keeps the
+-- search bar (G4.3: the opponent's slot fills there, matchFound, whichever of QueueChanged and DuelChanged comes
+-- first) until the queue leaves Matched. [P] A match ticket's start (its full view): the bar stays up while the HUD
+-- hides (holdCta), the empty slots fill one by one fullStepMs apart up to the match's count (the bots took them),
+-- then after fullHoldMs it goes with the HUD (the design starts the match 380 ms after the last slot, L:1015).
 local function refreshCta()
 	local wrap, idle, bar = ctaWrap, idleBox, search
 	if wrap == nil or idle == nil or bar == nil then
 		return
 	end
 	local queue = StateController.queue()
-	local model = HudFormat.ctaModel(queue :: any, Workspace:GetServerTimeNow())
-	local queued = model.queued or (ctaQueued and queue.state == "Matched")
+	local model = HudFormat.ctaModel(queue :: any, Workspace:GetServerTimeNow(), StateController.matchQueue())
+	local queued = model.queued or bar.cascading or (ctaQueued and queue.state == "Matched")
+	local entered = false
 	if queued ~= ctaQueued then
 		ctaQueued = queued
 		idle.Visible = not queued
 		bar.root.Visible = queued
-		bar.fills[2].Visible = false -- the opponent's slot fills on Matched (matchFound)
+		bar.mode = nil -- painted afresh for the next search (every fill hidden)
 		if queued then
-			bar.fills[1].Visible = true
+			entered = true
 			popIn(bar.pop, MOTION.ctaPop.searchMs, MOTION.ctaPop.searchCurve) -- H:136
 			-- H:760-762: slot(0) (whoosh: none, plan RL8) and the burst of 14 at the bar.
 			SoundController.play(CLICK_SOUND, { pitch = SoundController.slotPitch(0) })
 			local sparks = FX.events.duelJoin.sparks
 			UiFx.sparks(bar.root, { n = sparks.n, spread = sparks.spread, colors = UiFx.colors(sparks.colors) })
-			Scheduler.add(
-				Tweens.keyframes(bar.fills[1], MOTION.slotPop.frames :: any, {
-					ms = MOTION.slotPop.ms,
-					curve = MOTION.slotPop.curve,
-				}),
-				"render"
-			)
 		end
 		queueLayout()
 	end
-	if model.queued then
-		setIfChanged(bar.time, "Text", model.time)
-		setIfChanged(bar.players, "Text", model.subtext)
+	local mode, max = model.mode, model.max
+	setIfChanged(bar.matchCancel.root, "Visible", mode ~= nil and mode ~= "1v1" and not model.full)
+	if not model.queued or mode == nil or max == nil or bar.cascading then
+		return
 	end
+	if mode ~= bar.mode or max ~= bar.max then
+		paintBar(bar, mode, max)
+	end
+	setIfChanged(bar.time, "Text", model.time)
+	local count = model.count or 0
+	if not model.full then
+		setIfChanged(bar.players, "Text", model.subtext)
+		fillTo(bar, count, entered)
+		return
+	end
+	bar.cascade += 1
+	local token = bar.cascade
+	bar.cascading = true
+	holdCta = true
+	wrap.Visible = true
+	queueLayout()
+	task.spawn(function()
+		local spec = HUD.search
+		local n = 0
+		for _, on in bar.shownOn do
+			n += if on then 1 else 0
+		end
+		while n < count do
+			task.wait(spec.fullStepMs / 1000)
+			if search ~= bar or token ~= bar.cascade then
+				return
+			end
+			n += 1
+			fillTo(bar, n, false)
+			setIfChanged(bar.players, "Text", Strings.format(Strings.hud.waitPlayers, { count = n, max = max }))
+		end
+		task.wait(spec.fullHoldMs / 1000)
+		if search ~= bar or token ~= bar.cascade then
+			return
+		end
+		bar.cascading = false
+		holdCta = false
+		local w = ctaWrap
+		if w and not shown then
+			w.Visible = false
+		end
+		refreshCta()
+	end)
 end
 
 -- The DUEL press (H:758-762): with the picker, Diego's mode select (UI/ModeSelect; LOBBY HUD L:985); PLAY on a card
@@ -1148,8 +1319,10 @@ local function applyFocusLinks()
 		end
 		return nil
 	end
-	-- UI FINAL R4: while searching the DUEL area's selectable is the search bar's cancel X (QueueController's "queue").
-	local ctaObject = if ctaQueued then focusTargets.queue elseif duelButton then duelButton.root else nil
+	-- UI FINAL R4: while searching the DUEL area's selectable is the search bar's cancel X (QueueController's "queue";
+	-- round 1 of the match flow: a match ticket's own Hud_MatchCancel).
+	local matchX = if search and search.matchCancel.root.Visible then search.matchCancel.root else nil
+	local ctaObject = if ctaQueued then matchX or focusTargets.queue elseif duelButton then duelButton.root else nil
 	local links = HudFormat.focusLinks({
 		left = left,
 		tiles = tileKeys,
@@ -1664,9 +1837,8 @@ local function buildRight(c: Cleanup.Cleanup, gui: ScreenGui)
 	rightColumn = right
 end
 
--- One queue slot (H:141): the 24 px trough with its 3 px ink border, radius 8, and its 18 px fill (radius 5, the
--- 3 px highlight at .55) in `top` -> `bottom`, hidden until it fills.
-local function buildSlot(parent: Instance, order: number, top: Color3, bottom: Color3): Frame
+-- One queue slot (H:141): the 24 px trough with its 3 px ink border, radius 8, and its fill (slotFill).
+local function buildSlot(parent: Instance, order: number, look: MatchHudFormat.PlayerLook): (Frame, Frame)
 	local spec = HUD.slots
 	local slot: Frame = Create("Frame", {
 		Name = "Slot" .. order,
@@ -1681,30 +1853,16 @@ local function buildSlot(parent: Instance, order: number, top: Color3, bottom: C
 	pcall(function()
 		(stroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
 	end)
-	local fill: Frame = Create("Frame", {
-		Name = "Fill",
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromOffset(spec.fill, spec.fill),
-		Visible = false,
-		Parent = slot,
-	})
-	Theme.foam(fill, {
-		radius = spec.fillRadius,
-		stroke = 0,
-		top = spec.highlightPx,
-		fixedHeight = spec.fill,
-		colors = { face = top, faceEnd = bottom, top = top:Lerp(Palette.White, spec.highlightAlpha) },
-	})
-	return fill
+	return slot, slotFill(slot, look)
 end
 
 -- The search bar (H:135-146) in the DUEL area: the purple pill (border 5 inside, radius 28, the 4 px highlight at .12,
 -- the 7 px lip), padding 0 14 0 104 inside the border, the 108 px emblem pulsing at (-6, -10) of its padding edge;
--- "Finding match" (24 px, stroke 5), the three pink dots (sdDot, .2 s apart) and the time pushed right (16 px #FFE36B);
--- under them the two slots (you mint, the opponent pink, H:983) and the queue line (16 px #EDE4FF, PR2, 6 px further);
--- the cancel X's slot at its right end (QueueController parents its Queue_CancelButton there).
+-- "Finding match" (24 px, stroke 5), the three pink dots (sdDot, .2 s apart), then pushed right the mode chip (round 1
+-- of the match flow, LOBBY HUD L:222) and the time (16 px #FFE36B); under them the slots (12 built, as many shown as
+-- the queue's max; paintBar colours them) with "VS" between the halves and the players line (16 px #EDE4FF, PR2, 6 px
+-- further); the cancel X's slot at its right end (QueueController parents its Queue_CancelButton there for the 1v1
+-- queue; Hud_MatchCancel, MatchLeave, shows there for a Free for All / Team Deathmatch ticket).
 local function buildSearch(c: Cleanup.Cleanup, parent: Instance): SearchBar
 	local spec = HUD.search
 	local border = STICKER.border.heavy
@@ -1835,13 +1993,42 @@ local function buildSearch(c: Cleanup.Cleanup, parent: Instance): SearchBar
 		Parent = line1,
 	})
 	Create("UIFlexItem", { FlexMode = Enum.UIFlexMode.Fill, Parent = spacer })
+	-- L:222: the mode chip (its gradient and text: paintBar).
+	local chip: Frame = Create("Frame", {
+		Name = "ModeChip",
+		BackgroundColor3 = Palette.White,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(0, spec.chipHeight),
+		AutomaticSize = Enum.AutomaticSize.X,
+		LayoutOrder = 4,
+		Parent = line1,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = chip })
+	local chipStroke = Theme.stroke(Theme.Colors.inkUI, spec.chipBorder, chip)
+	pcall(function()
+		(chipStroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
+	end)
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, spec.chipPadX),
+		PaddingRight = UDim.new(0, spec.chipPadX),
+		Parent = chip,
+	})
+	local chipLabel = Theme.label({
+		Name = "Label",
+		Text = "",
+		Size = UDim2.fromScale(0, 1),
+		AutomaticSize = Enum.AutomaticSize.X,
+		TextWrapped = false,
+		Parent = chip,
+	}, "Chip")
+	chipLabel.TextWrapped = false
 	local time = Theme.label({
 		Name = "Time",
 		Text = "",
 		Size = UDim2.fromOffset(0, 0),
 		AutomaticSize = Enum.AutomaticSize.XY,
 		TextWrapped = false,
-		LayoutOrder = 4,
+		LayoutOrder = 5,
 		Parent = line1,
 	}, "Small")
 	Theme.stickerText(time, "searchTime") -- H:139
@@ -1855,17 +2042,35 @@ local function buildSearch(c: Cleanup.Cleanup, parent: Instance): SearchBar
 		Parent = column,
 	})
 	Theme.list(Enum.FillDirection.Horizontal, spec.line2Gap, line2, Enum.HorizontalAlignment.Left)
-	local fills = {
-		buildSlot(line2, 1, Palette.StickerSlotMintTop, Palette.StickerGripEnd), -- you (H:983)
-		buildSlot(line2, 2, Palette.StickerSlotPinkTop, Palette.StickerSlotPinkEnd), -- the opponent (H:983)
-	}
+	-- L:224: the slots at LayoutOrder 2 i, "VS" at 2 half + 1 (paintBar moves it); the colours are paintBar's.
+	local slots: { Frame } = {}
+	local fills: { Frame } = {}
+	local neutral = MatchHudFormat.playerLook(nil, nil, nil)
+	for i = 1, SLOT_MAX do
+		slots[i], fills[i] = buildSlot(line2, 2 * i, neutral)
+	end
+	local vs = Theme.label({
+		Name = "Vs",
+		Text = Strings.hud.waitVs,
+		Size = UDim2.fromOffset(0, 0),
+		AutomaticSize = Enum.AutomaticSize.XY,
+		TextWrapped = false,
+		Visible = false,
+		Parent = line2,
+	}, "Chip")
+	vs.TextWrapped = false
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, spec.vsMargin - spec.line2Gap),
+		PaddingRight = UDim.new(0, spec.vsMargin - spec.line2Gap),
+		Parent = vs,
+	})
 	local players = Theme.label({
 		Name = "Players",
 		Text = "",
 		Size = UDim2.fromOffset(0, 0),
 		AutomaticSize = Enum.AutomaticSize.XY,
 		TextWrapped = false,
-		LayoutOrder = 3,
+		LayoutOrder = 2 * SLOT_MAX + 2,
 		Parent = line2,
 	}, "Small", nil, Theme.Colors.ink2)
 	Create("UIPadding", { PaddingLeft = UDim.new(0, spec.playersPad), Parent = players }) -- H:142 margin-left 6
@@ -1876,6 +2081,29 @@ local function buildSearch(c: Cleanup.Cleanup, parent: Instance): SearchBar
 		LayoutOrder = 2,
 		Parent = face,
 	})
+	-- Round 1 of the match flow: the Free for All / Team Deathmatch ticket's X (QueueController's 1v1 X, same look).
+	local cancelX = STICKER.hud.cancelX
+	local matchCancel = Button.new({
+		name = "Hud_MatchCancel",
+		text = Strings.common.cancel,
+		kind = "close",
+		accent = "cancelX",
+		height = cancelX.face,
+		radius = cancelX.radius,
+		border = cancelX.border,
+		lip = cancelX.lip,
+		highlight = { px = cancelX.highlightPx, a = cancelX.highlightAlpha },
+		bevel = { px = 0, a = 0 },
+		iconSize = cancelX.iconPx,
+		fx = "x",
+		parent = cancelSlot,
+		onActivated = function()
+			SoundController.play("ui.back")
+			NetController.fire(MATCH_LEAVE)
+		end,
+	})
+	matchCancel.root.Visible = false
+	c:add(matchCancel)
 	c:add(function()
 		for _, loop in loops do
 			loop:remove()
@@ -1887,7 +2115,17 @@ local function buildSearch(c: Cleanup.Cleanup, parent: Instance): SearchBar
 		dots = dots,
 		time = time,
 		line2 = line2,
+		slots = slots,
 		fills = fills,
+		vs = vs,
+		chip = chip,
+		chipLabel = chipLabel,
+		matchCancel = matchCancel,
+		mode = nil,
+		max = 0,
+		shownOn = {},
+		cascade = 0,
+		cascading = false,
 		players = players,
 		cancelSlot = cancelSlot,
 	}
@@ -2569,6 +2807,11 @@ function HudController.init()
 	c:add(StateController.QueueChanged:connect(function()
 		refreshCta()
 	end))
+	-- Round 1 of the match flow: a Free for All / Team Deathmatch ticket's waiting bar.
+	c:add(StateController.MatchQueueChanged:connect(function()
+		refreshCta()
+		applyFocusLinks() -- its X shows or goes
+	end))
 	c:add(StateController.LobbyLockChanged:connect(function(isLocked: boolean)
 		setShown(not isLocked)
 	end))
@@ -2709,11 +2952,11 @@ function HudController.start()
 			refreshTracker()
 		end
 	end))
-	-- The search bar's clock (the queue pill's own clock, whole seconds).
+	-- The search bar's clock (the queue's own clock, whole seconds): the 1v1 queue, or a match ticket (round 1).
 	c:add(task.spawn(function()
 		while true do
 			task.wait(QUEUE_TICK_SECONDS)
-			if StateController.queue().state == SEARCHING then
+			if StateController.queue().state == SEARCHING or StateController.matchQueue().mode ~= nil then
 				local okTick, errTick = pcall(function(): any
 					refreshCta()
 					return nil

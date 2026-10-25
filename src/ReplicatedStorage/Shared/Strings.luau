@@ -303,6 +303,11 @@ local Strings = {
 		duelCta = "DUEL",
 		duelJoin = "Join the queue",
 		duelPick = "Pick a mode", -- LOBBY HUD L:168: the DUEL button opens the mode select
+		-- Round 1 of the match flow (2026-10-25, LOBBY HUD L:222-225, L:1427-1428): the waiting bar's mode chip, the
+		-- "VS" between the halves and the players line.
+		waitChips = { ["1v1"] = "DUEL 1v1", tdm = "TEAM 6v6", ffa = "FREE FOR ALL" },
+		waitVs = "VS",
+		waitPlayers = "{count} / {max} players",
 		-- Diego's mode select (2026-10-24, LOBBY HUD L:173-215, L:1358-1363; UI/ModeSelect): the three cards (keyed
 		-- by Config.UI.ModeSelect.cards), the line under them and the close X's name.
 		modeSelect = {

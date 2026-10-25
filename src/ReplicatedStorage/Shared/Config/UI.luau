@@ -2390,15 +2390,25 @@ local UI = {
 				-- frame, the second line hidden (it would be under the 16 px text floor).
 				compactScale = 56 / 99, -- the minimal phone HUD (2026-10-17): 56 px tall (64 before)
 			},
-			search = { -- H:135-146
-				width = 560,
+			search = { -- H:135-146; round 1 of the match flow (2026-10-25): LOBBY HUD L:219-226
+				width = 660, -- L:219 (room for the 12 slots)
 				face = 96,
 				padLeft = 104,
 				padRight = 14,
 				gap = 16,
 				columnGap = 8,
 				line1Gap = 10,
-				line2Gap = 5, -- H:140
+				line2Gap = 4, -- L:223
+				-- L:222: the mode chip (24 tall, padding 0 9, border 3, the mode's gradient, white text stroke 3) pushed right
+				-- with the time; L:224: "VS" between the two halves (margin 0 3) in DUEL and TEAM.
+				chipHeight = 24,
+				chipPadX = 9,
+				chipBorder = 3,
+				vsMargin = 3,
+				-- [P] the start (a full queue, the bots taking the empty places): the empty slots fill one by one, this
+				-- far apart, then the bar holds this long before the match takes over.
+				fullStepMs = 70,
+				fullHoldMs = 350,
 				emblemPx = 108, -- H:137
 				emblemX = -6,
 				emblemY = -10,
@@ -2418,6 +2428,7 @@ local UI = {
 				fillRadius = 5,
 				highlightPx = 3,
 				highlightAlpha = 0.55,
+				midAt = 0.58, -- LOBBY HUD L:759: the team fills' middle stop (#FF6B81 / #5DB4FF at 58%)
 			},
 			found = { -- H:148-152
 				width = 420,

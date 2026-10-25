@@ -631,6 +631,48 @@ return function(t: Context)
 		close()
 	end)
 
+	t.test("waiting bar: MatchQueue tells every ticket the count; a leave clears it; the start is full", function()
+		local w = setup(4)
+		local p = w.players
+		local function queueViews(player: any): { any }
+			local views = {}
+			for _, entry in w.sent do
+				if entry.name == "MatchQueue" and entry.player == player then
+					table.insert(views, entry.payload)
+				end
+			end
+			return views
+		end
+		local function queueView(player: any, back: number?): any
+			local views = queueViews(player)
+			return views[#views - (back or 0)]
+		end
+		local max = w.cfg.Modes.ffa.maxPlayers
+		MatchService.join(p[1], "ffa")
+		local first = queueView(p[1])
+		expect.deepEqual(first, { mode = "ffa", count = 1, max = max, joinedAt = first.joinedAt })
+		w.clock.set(T0 + 1)
+		MatchService.join(p[2], "ffa")
+		expect.equal(queueView(p[1]).count, 2) -- the first ticket hears of the second
+		expect.equal(queueView(p[1]).joinedAt, first.joinedAt) -- and keeps its own time
+		expect.equal(queueView(p[2]).count, 2)
+		MatchService.join(p[3], "ffa")
+		expect.truthy(MatchService.leave(p[3]))
+		expect.deepEqual(queueView(p[3]), {}) -- the leaver's bar clears
+		expect.equal(queueView(p[1]).count, 2)
+		-- The gather (from the second join, at T0 + 1) ends: the match starts with the two: a full view, then {} (the
+		-- ticket is gone, so the bar never comes back after the match).
+		MatchService.tick(T0 + 1 + w.cfg.gatherSeconds)
+		expect.truthy(w.port ~= nil)
+		expect.equal(queueView(p[1], 1).full, true)
+		expect.equal(queueView(p[1], 1).count, 2)
+		expect.deepEqual(queueView(p[1]), {})
+		expect.equal(queueView(p[2], 1).full, true)
+		expect.deepEqual(queueView(p[2]), {})
+		expect.equal(#queueViews(p[4]), 0) -- never queued: never told
+		close()
+	end)
+
 	t.test("a ticket of a player who joined the duel queue is dropped; /leave drops one with a toast", function()
 		local w = setup(4)
 		MatchService.join(w.players[1], "ffa")

@@ -352,6 +352,7 @@ local RULES = Config.Duel.Rules
 local MOVEMENT = RULES.Movement
 local POSITIONING = Config.Duel.Positioning
 local REMOTE_STATE = "MatchState"
+local REMOTE_QUEUE = "MatchQueue"
 local REMOTE_JOIN = "MatchJoin"
 local REMOTE_LEAVE = "MatchLeave"
 local ATTR_MATCH_ID = "SD_MatchId"
@@ -2138,8 +2139,32 @@ local function notifyQueue(modeId: string, code: string, args: Types.NotifyArgs?
 	end
 end
 
--- Removes the player's ticket (with `code` when given). True when there was one.
-local function dropTicket(ref: any, code: string?): boolean
+-- Round 1 of the match flow (2026-10-25, Diego's waiting bar): a player's MatchQueue view ({} = no ticket).
+local function sendQueue(ref: any, view: Types.MatchQueueView)
+	local d = getDeps()
+	if not d.isPlayer(ref) then
+		return
+	end
+	local ok, err = try(d.fire, REMOTE_QUEUE, ref, view)
+	if not ok then
+		log:warn(`MatchQueue to user {userIdOf(ref)} failed:`, err)
+	end
+end
+
+-- Every ticket of `modeId` gets the queue as it is now (the count is at most the mode's maxPlayers).
+local function syncQueue(modeId: string)
+	local max = cfg().Modes[modeId].maxPlayers
+	local queue = queueOf(modeId)
+	local count = math.min(#queue, max)
+	for _, ticket in queue do
+		sendQueue(ticket.player, { mode = modeId :: any, count = count, max = max, joinedAt = ticket.joinedAt })
+	end
+end
+
+-- Removes the player's ticket (with `code` when given). True when there was one. The player's waiting bar clears and
+-- the rest of the queue gets the new count, unless `entered` (the ticket became a match: startFromQueue sent its
+-- full view and {} and syncs the rest once).
+local function dropTicket(ref: any, code: string?, entered: boolean?): boolean
 	local modeId, index = ticketOf(ref)
 	if modeId == nil or index == nil then
 		return false
@@ -2147,6 +2172,10 @@ local function dropTicket(ref: any, code: string?): boolean
 	table.remove(queueOf(modeId), index)
 	if code ~= nil then
 		notify(ref, code, { mode = modeName(modeId) }, "info")
+	end
+	if not entered then
+		sendQueue(ref, {})
+		syncQueue(modeId)
 	end
 	return true
 end
@@ -2157,6 +2186,7 @@ local function clearQueues(code: string?)
 			if code ~= nil then
 				notify(ticket.player, code, { mode = modeName(modeId) }, "warn")
 			end
+			sendQueue(ticket.player, {})
 		end
 		queues[modeId] = {}
 		gathers[modeId] = nil
@@ -2186,11 +2216,17 @@ end
 local function pruneQueue(modeId: string)
 	local d = getDeps()
 	local queue = queueOf(modeId)
+	local pruned = false
 	for index = #queue, 1, -1 do
 		local ref = queue[index].player
 		if not d.isPlayer(ref) or inAnyMatch(ref) or d.queueState(ref) ~= "Idle" then
 			table.remove(queue, index)
+			sendQueue(ref, {}) -- sendQueue skips a player who left the game
+			pruned = true
 		end
+	end
+	if pruned then
+		syncQueue(modeId)
 	end
 end
 
@@ -2258,10 +2294,25 @@ local function startFromQueue(modeId: string, now: number, gather: Gather)
 	end
 	for _, ref in refs do
 		if inAnyMatch(ref) then
-			dropTicket(ref, nil) -- in the match now (a ticket startMatch skipped stays queued)
+			-- In the match now (a ticket startMatch skipped stays queued): the bar fills up (the full view), then the
+			-- ticket is gone ({}, so the bar never comes back after the match).
+			local _, index = ticketOf(ref)
+			local ticket = if index then queue[index] else nil
+			if ticket then
+				sendQueue(ref, {
+					mode = modeId :: any,
+					count = #refs,
+					max = mode.maxPlayers,
+					joinedAt = ticket.joinedAt,
+					full = true,
+				})
+				sendQueue(ref, {})
+			end
+			dropTicket(ref, nil, true)
 		end
 	end
 	gathers[modeId] = nil
+	syncQueue(modeId) -- whoever did not fit keeps waiting
 end
 
 local function tickQueue(modeId: string, now: number)
@@ -2331,6 +2382,7 @@ function MatchService.join(player: any, mode: unknown): (boolean, string?)
 	local queue = queueOf(modeId)
 	table.insert(queue, { player = player, userId = userIdOf(player) :: number, joinedAt = now })
 	notify(player, CODE.joined, { mode = modeName(modeId), count = #queue, max = modeCfg.maxPlayers }, "info")
+	syncQueue(modeId)
 	local hadGather = gathers[modeId] ~= nil
 	tickQueue(modeId, now) -- may start the gather (toasting the whole queue) or the match itself
 	local gather = gathers[modeId]

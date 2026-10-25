@@ -366,37 +366,76 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the DUEL area: DUEL / Join the queue; Searching: Finding match, its clock and the queue line", function()
+	t.test("the DUEL area: DUEL / Join the queue; a queue: Finding match, its clock, mode and players line", function()
 		expect.deepEqual(
 			HudFormat.ctaModel(nil, 100),
 			{ queued = false, title = Strings.hud.duelCta, subtext = Strings.hud.duelJoin, time = "" }
 		)
 		expect.equal(HudFormat.ctaModel({ state = "Idle" }, 100).queued, false)
 		expect.equal(HudFormat.ctaModel({ state = "Matched", joinedAt = 10 }, 100).queued, false)
-		-- UI FINAL R4 (H:139, H:142): the search bar's "Finding match", its m:ss and the position line (plan FD1).
+		expect.equal(HudFormat.ctaModel({ state = "Idle" }, 100, {}).queued, false) -- an empty ticket is none
+		-- UI FINAL R4 (H:139): "Finding match" and its m:ss; round 1 of the match flow (LOBBY HUD L:225): the 1v1 queue
+		-- is you of 2.
 		local queue = { state = "Searching", joinedAt = 1000, position = 2, searching = 3, arenasFree = 6 }
 		local queued = HudFormat.ctaModel(queue, 1023.6)
 		expect.deepEqual(queued, {
 			queued = true,
 			title = Strings.hud.findingMatch,
-			subtext = Strings.format(Strings.queue.position, { n = 2 }),
+			subtext = Strings.format(Strings.hud.waitPlayers, { count = 1, max = 2 }),
 			time = "0:23",
+			mode = "1v1",
+			count = 1,
+			max = 2,
+			full = false,
 		})
 		-- The same clock as the queue pill's title.
 		local QueueFormat = t.requireClient("UI/QueueFormat")
 		local pill = QueueFormat.pill(queue, 1023.6, nil, nil)
 		expect.truthy(string.find(pill.title, queued.time, 1, true) ~= nil)
-		-- No arena free for the head pair: the arena line (QueueFormat.searchLine, never the hint).
-		local waiting = HudFormat.ctaModel(
-			{ state = "Searching", joinedAt = 1000, position = 1, searching = 2, arenasFree = 0 },
-			1001
-		)
-		expect.equal(waiting.subtext, Strings.queue.waitingArena)
-		-- Before joinedAt and the counts arrive: no clock, no line.
+		-- A Free for All / Team Deathmatch ticket: its own count, max and clock; full at the start.
+		local ticket = HudFormat.ctaModel(nil, 1065, { mode = "tdm", count = 5, max = 12, joinedAt = 1000 })
+		expect.equal(ticket.mode, "tdm")
+		expect.equal(ticket.subtext, Strings.format(Strings.hud.waitPlayers, { count = 5, max = 12 }))
+		expect.equal(ticket.time, "1:05")
+		expect.equal(ticket.full, false)
+		local start = HudFormat.ctaModel(nil, 1, { mode = "ffa", count = 12, max = 12, joinedAt = 0, full = true })
+		expect.equal(start.full, true)
+		-- Before joinedAt arrives: no clock.
 		local bare = HudFormat.ctaModel({ state = "Searching" }, 50)
 		expect.equal(bare.title, Strings.hud.findingMatch)
 		expect.equal(bare.time, "")
-		expect.equal(bare.subtext, "")
+	end)
+
+	t.test("waitSlots (LOBBY HUD L:1366-1369): the halves fill in turn; VS between them but in FFA", function()
+		local function on(w: any): { number }
+			local out = {}
+			for i, slot in w.slots do
+				if slot.on then
+					table.insert(out, i)
+				end
+			end
+			return out
+		end
+		local duel = HudFormat.waitSlots("1v1", 1, 2)
+		expect.deepEqual(on(duel), { 1 })
+		expect.equal(duel.vsAfter, 1)
+		expect.equal(duel.slots[1].team, 1)
+		expect.equal(duel.slots[2].team, 2)
+		expect.deepEqual(on(HudFormat.waitSlots("1v1", 2, 2)), { 1, 2 })
+		-- 12 slots: 1, 7, 2, 8, 3 ... (the design's order: j odd -> half + j // 2).
+		local team = HudFormat.waitSlots("tdm", 5, 12)
+		expect.equal(#team.slots, 12)
+		expect.deepEqual(on(team), { 1, 2, 3, 7, 8 })
+		expect.equal(team.vsAfter, 6)
+		expect.equal(team.slots[6].team, 1)
+		expect.equal(team.slots[7].team, 2)
+		local ffa = HudFormat.waitSlots("ffa", 2, 12)
+		expect.deepEqual(on(ffa), { 1, 7 })
+		expect.equal(ffa.vsAfter, nil)
+		expect.equal(ffa.slots[7].ffa, 7)
+		expect.equal(ffa.slots[7].team, nil)
+		expect.deepEqual(on(HudFormat.waitSlots("ffa", 99, 12)), { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12 })
+		expect.equal(#HudFormat.waitSlots("ffa", 0, 0 / 0).slots, 0) -- a bad max: no slots
 	end)
 
 	t.test("the mode picker (UI FINAL R4, N:144-162): Config.Match testers, or everyone with the [P] switch", function()

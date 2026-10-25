@@ -51,6 +51,9 @@
 --   SD_DuelPhase (back in the lobby, §2.9): at once after Result/Returning/Cancelled/Void, otherwise once the view is
 --   older than STALE_CLEAR_SECONDS (an attribute change racing a brand-new match's first DuelState never clears it).
 --   A queue left on "Matched" when the duel ends becomes Idle locally.
+-- * Match queue (round 1 of the match flow, 2026-10-25): the MatchQueue remote, the player's Free for All / Team
+--   Deathmatch ticket for the waiting bar (normalizeMatchQueue: {} unless well-formed): matchQueue() /
+--   MatchQueueChanged(view).
 -- * Match (FFA/TDM v1, 2026-10-15; the 12-player Free for All / Team Deathmatch in this lobby server, SPEC C4/C5): the
 --   MatchState remote (one view per player: phase with DuelPhase names, the real MatchRules phase in matchPhase, you,
 --   players, team lives, K.O. target, arena bounds, storm, outcome) and UltimateCharge: match() / MatchChanged(new,
@@ -354,6 +357,8 @@ StateController.DuelResultReceived = Signal.new() :: Signal.Signal<Types.DuelRes
 StateController.LobbyLockChanged = Signal.new() :: Signal.Signal<boolean>
 -- FFA/TDM v1: the match view (new, old).
 StateController.MatchChanged = Signal.new() :: Signal.Signal<MatchView?, MatchView?>
+-- Round 1 of the match flow (2026-10-25): the Free for All / Team Deathmatch queue ticket (MatchQueue; {} = none).
+StateController.MatchQueueChanged = Signal.new() :: Signal.Signal<Types.MatchQueueView>
 -- Match HUD M1: the new HUD moments of the current match (sorted by seq) and its view (after MatchChanged).
 StateController.MatchMoments = Signal.new() :: Signal.Signal<{ MatchMoment }, MatchView>
 
@@ -385,6 +390,7 @@ local counts: QueueCounts = emptyCounts()
 local queueView: QueueView = idleQueue(counts)
 local duelView: DuelView? = nil
 local matchView: MatchView? = nil -- FFA/TDM v1
+local matchQueueView: Types.MatchQueueView = {} -- round 1 of the match flow
 local matchRoster: MatchRoster? = nil -- Match HUD M1: the roster cache of the current match
 local matchResult: MatchView? = nil -- Match HUD M1: the first view with an outcome (the Result freeze)
 local momentTracker: MomentTracker = { matchId = nil, lastSeq = 0 } -- Match HUD M1
@@ -1842,6 +1848,34 @@ function StateController.match(): MatchView?
 	return matchView
 end
 
+-- Round 1 of the match flow: the local player's Free for All / Team Deathmatch queue ticket ({} = none).
+function StateController.matchQueue(): Types.MatchQueueView
+	return matchQueueView
+end
+
+-- Round 1 of the match flow (pure): a MatchQueue payload as the waiting bar may read it, or {} when it is not one
+-- (an unknown mode, counts outside 0..max, a time that is no number).
+function StateController.normalizeMatchQueue(raw: unknown): Types.MatchQueueView
+	if type(raw) ~= "table" then
+		return {}
+	end
+	local view = raw :: any
+	local mode, count, max, joinedAt = view.mode, view.count, view.max, view.joinedAt
+	local function whole(n: unknown, top: number): boolean
+		return type(n) == "number" and n == math.floor(n) and n >= 0 and n <= top
+	end
+	if
+		type(mode) ~= "string"
+		or not MATCH_MODES[mode]
+		or not whole(max, 64)
+		or not whole(count, max)
+		or not (type(joinedAt) == "number" and joinedAt == joinedAt and math.abs(joinedAt) < math.huge)
+	then
+		return {}
+	end
+	return { mode = mode :: any, count = count, max = max, joinedAt = joinedAt, full = view.full == true }
+end
+
 -- Match HUD M1: every player seen in the current match (see the header); nil outside a match.
 function StateController.matchRoster(): MatchRoster?
 	return matchRoster
@@ -1939,6 +1973,16 @@ function StateController.init()
 		c:add(matchConnection)
 	else
 		log:warn("no MatchState remote; the match view stays off:", matchConnection)
+	end
+	-- Round 1 of the match flow: the waiting bar's queue ticket (connected in a pcall, as MatchState).
+	local okQueue, queueConnection = pcall(NetController.on, "MatchQueue", function(raw: any)
+		matchQueueView = StateController.normalizeMatchQueue(raw)
+		StateController.MatchQueueChanged:fire(matchQueueView)
+	end)
+	if okQueue then
+		c:add(queueConnection)
+	else
+		log:warn("no MatchQueue remote; the waiting bar shows the 1v1 queue only:", queueConnection)
 	end
 
 	local pendingClear: thread? = nil

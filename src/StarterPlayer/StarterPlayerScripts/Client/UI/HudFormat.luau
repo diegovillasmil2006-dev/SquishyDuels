@@ -34,9 +34,16 @@
 --                              openCoins opens the whole shop (H:987) and the Coins tab would only say "not available"
 --   trackedQuest(board)        the quest tracker's quest (spec "Top right"): the unclaimed quest closest to done, the
 --                              Starter tasks first, then the day's quests (UI/QuestFormat.board); nil when there is none
---   ctaModel(queue, now)       the DUEL area (UI FINAL R4): "DUEL" / "Join the queue" while idle (H:130-131); while the
---                              1v1 queue is Searching the search bar's "Finding match", its "m:ss" since joining
---                              (H:139) and its second line (the queue's position or arena line, plan FD1)
+--   ctaModel(queue, now, matchQueue?)
+--                              the DUEL area (UI FINAL R4): "DUEL" / "Join the queue" while idle (H:130-131); while a
+--                              queue waits (the 1v1 queue Searching, or a Free for All / Team Deathmatch ticket,
+--                              StateController.matchQueue) the search bar's "Finding match", its "m:ss" since joining
+--                              (H:139), its mode ("1v1", "tdm", "ffa"), players count / max and the second line
+--                              "{count} / {max} players" (round 1 of the match flow, LOBBY HUD L:225)
+--   waitSlots(mode, count, max) round 1 of the match flow (LOBBY HUD L:224, L:1366-1369): the bar's max slots, each on
+--                              when it is among the first `count` filled in the design's order (the two halves
+--                              alternately: 1, half+1, 2, half+2, ...), its team (1 / 2: DUEL and TEAM) or Free for All
+--                              colour index (1..6), and vsAfter = the half where "VS" goes (nil for Free for All)
 --   pickerShown(userId, match) UI FINAL R4: whether the DUEL button shows the TDM / FFA picker (Config.Match testers,
 --   or
 --                              everyone with pickerForEveryone)
@@ -162,7 +169,6 @@ local Types = require(Shared.Types)
 local Layout = require(script.Parent.Layout)
 local OnboardingFormat = require(script.Parent.OnboardingFormat)
 local QuestFormat = require(script.Parent.QuestFormat)
-local QueueFormat = require(script.Parent.QueueFormat)
 local ShopFormat = require(script.Parent.ShopFormat)
 
 -- Types
@@ -198,7 +204,21 @@ export type CoinAction = {
 
 -- The DUEL area's texts (ctaModel; UI FINAL R4): idle, the DUEL button's two lines; queued (the 1v1 queue
 -- Searching), the search bar's title, its time ("" before joinedAt is known) and its second line.
-export type CtaModel = { queued: boolean, title: string, subtext: string, time: string }
+export type CtaModel = {
+	queued: boolean,
+	title: string,
+	subtext: string,
+	time: string,
+	-- Round 1 of the match flow: the waiting queue's mode ("1v1", "tdm", "ffa"), its count and max (nil while idle) and
+	-- whether the match starts now with count players (the bots took the empty places).
+	mode: string?,
+	count: number?,
+	max: number?,
+	full: boolean?,
+}
+-- Round 1 of the match flow: one slot of the waiting bar (waitSlots).
+export type WaitSlot = { on: boolean, team: number?, ffa: number? }
+export type WaitSlots = { slots: { WaitSlot }, vsAfter: number? }
 -- The fields of StateController.QueueView the CTA reads.
 export type QueueLike = {
 	state: Types.QueueState,
@@ -719,21 +739,57 @@ local function isNumber(n: unknown): boolean
 	return type(n) == "number" and n == n and n > -math.huge and n < math.huge
 end
 
--- The DUEL area (UI FINAL R4; see the header): idle "DUEL" / "Join the queue" (H:130-131); while the 1v1 queue is
--- Searching the search bar's "Finding match", its time "m:ss" from joinedAt (the queue pill's own clock; "" before
--- joinedAt is known; H:139) and its second line (QueueFormat.searchLine: the arena or position line, else "").
-function HudFormat.ctaModel(queue: QueueLike?, now: number): CtaModel
-	if queue == nil or queue.state ~= SEARCHING then
+-- The DUEL area (UI FINAL R4; see the header): idle "DUEL" / "Join the queue" (H:130-131); while a queue waits the
+-- search bar's "Finding match", its time "m:ss" from joinedAt (the queue's own clock; "" before joinedAt is known;
+-- H:139), its mode, count and max, and "{count} / {max} players" (round 1 of the match flow, LOBBY HUD L:225: the 1v1
+-- queue is you of 2 while Searching; a match ticket says its own count). A match ticket wins over the 1v1 queue (the
+-- server never keeps both).
+function HudFormat.ctaModel(queue: QueueLike?, now: number, matchQueue: Types.MatchQueueView?): CtaModel
+	local mode, count, max, joinedAt, full = nil, nil, nil, nil, false
+	if matchQueue and matchQueue.mode and isNumber(matchQueue.count) and isNumber(matchQueue.max) then
+		mode, count, max, joinedAt, full =
+			matchQueue.mode, matchQueue.count, matchQueue.max, matchQueue.joinedAt, matchQueue.full == true
+	elseif queue and queue.state == SEARCHING then
+		mode, count, max, joinedAt = "1v1", 1, 2, queue.joinedAt
+	else
 		return { queued = false, title = Strings.hud.duelCta, subtext = Strings.hud.duelJoin, time = "" }
 	end
-	local joinedAt = queue.joinedAt
 	local time = ""
 	if joinedAt ~= nil and isNumber(joinedAt) and isNumber(now) then
 		time = Format.clock(math.max(0, now - joinedAt))
 	end
-	local counted = type(queue.arenasFree) == "number" and type(queue.searching) == "number"
-	local line = if counted then QueueFormat.searchLine(queue :: any) else nil
-	return { queued = true, title = Strings.hud.findingMatch, subtext = line or "", time = time }
+	return {
+		queued = true,
+		title = Strings.hud.findingMatch,
+		subtext = Strings.format(Strings.hud.waitPlayers, { count = count, max = max }),
+		time = time,
+		mode = mode,
+		count = count,
+		max = max,
+		full = full,
+	}
+end
+
+-- Round 1 of the match flow (see the header; LOBBY HUD L:1366-1369): the bar's slots for `count` of `max` players.
+function HudFormat.waitSlots(mode: string?, count: number, max: number): WaitSlots
+	local total = if isNumber(max) then math.max(0, math.floor(max)) else 0
+	local half = total // 2
+	local filled = if isNumber(count) then math.clamp(math.floor(count), 0, total) else 0
+	local turn: { number } = {} -- slot -> its place in the fill order (0-based)
+	for j = 0, total - 1 do
+		local slot = if j % 2 == 1 then half + j // 2 else j // 2
+		turn[slot + 1] = j
+	end
+	local teams = mode ~= "ffa"
+	local slots: { WaitSlot } = {}
+	for i = 1, total do
+		slots[i] = {
+			on = (turn[i] or total) < filled,
+			team = if teams then (if i <= half then 1 else 2) else nil,
+			ffa = if teams then nil else i,
+		}
+	end
+	return { slots = slots, vsAfter = if teams and half > 0 then half else nil }
 end
 
 -- UI FINAL R4: whether the DUEL button shows the mode picker for `userId` (Config.Match.pickerTesters, or everyone

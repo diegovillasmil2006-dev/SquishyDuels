@@ -2572,7 +2572,7 @@ return function(t: Context)
 		expect.deepEqual({ hud.settings.width, hud.settings.height, hud.settings.iconPx }, { 92, 90, 70 }) -- H:157-158
 		expect.deepEqual({ hud.cta.top, hud.cta.designTop, hud.cta.width }, { 30, 18, 350 }) -- PR10, H:123, H:126
 		expect.deepEqual({ hud.cta.padLeft, hud.cta.padRight, hud.cta.emblemPx }, { 128, 24, 132 }) -- H:126-128
-		expect.deepEqual({ hud.search.width, hud.search.face, hud.search.tickMs }, { 560, 96, 700 }) -- H:136, H:763
+		expect.deepEqual({ hud.search.width, hud.search.face, hud.search.tickMs }, { 660, 96, 700 }) -- L:219, H:136, H:763
 		expect.deepEqual({ hud.found.width, hud.found.face, hud.found.swapDelayMs }, { 420, 96, 350 }) -- H:149, H:772
 		expect.deepEqual(
 			{ hud.cancelX.face, hud.cancelX.lip, hud.cancelX.radius, hud.cancelX.iconPx },
