@@ -81,6 +81,7 @@ export type CatchState = {
 	progress: number, -- 0 (just pressed / crushing) .. 1 (ready)
 	open: boolean, -- the hands are open (the window)
 	crushing: boolean, -- the hands hold a caught toy (until they are back)
+	left: number, -- Duel HUD part 2: seconds of the cooldown left (0 when it has run out)
 }
 
 -- One catch every client follows, from its "caught" event to its burst.
@@ -556,6 +557,7 @@ function CatchController.state(): CatchState
 		progress = CatchController.progress(now, lastPressAt, handsBackAt),
 		open = now < windowUntil,
 		crushing = now < handsBackAt,
+		left = math.max(0, lastPressAt + CATCH.cooldownSeconds - now),
 	}
 end
 

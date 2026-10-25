@@ -124,6 +124,7 @@ local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local AbilityBarFormat = require(Client.UI.AbilityBarFormat)
 local Layout = require(Client.UI.Layout)
 local Theme = require(Client.UI.Theme)
 
@@ -223,8 +224,9 @@ local CATCH_STRETCHES: { number } = { 1, 1.35, 1.7 }
 local NO_STRETCH: { number } = { 1 }
 -- Feature 1: a touch button that shows only in some contexts (Catch: nothing throws at you in practice). Pens3 phase
 -- 13: the Highway context shows only Throw (touchContextAllows).
-local TOUCH_CONTEXTS: { [string]: { Context } } =
-	{ Catch = { "Duel" }, Ultimate = { "Duel", "Practice" }, Dash = { "Duel", "Practice" } }
+-- Duel HUD part 2 (2026-10-24): in duels and matches AbilityBarController's arc draws Catch, Ultimate and Dash, so these
+-- three show only in the practice range now (Catch: never).
+local TOUCH_CONTEXTS: { [string]: { Context } } = { Catch = {}, Ultimate = { "Practice" }, Dash = { "Practice" } }
 local GAP_MARGIN_PX = 0.01 -- keeps the two round buttons at least TOUCH.gap apart after single-precision rounding
 local TOUCH_SHADE_TRANSPARENCY = 0.45 -- the cooling-down part of a round button
 local TOUCH_TEXT_SIZE = Config.UI.TextSize.Button
@@ -624,7 +626,8 @@ local function layoutTouch()
 		return
 	end
 	local scale = ControlsController.touchScale(size)
-	local layout = ControlsController.touchLayout(size, scale, jumpRect(gui))
+	local arcLeft = if active.Duel then AbilityBarFormat.phoneArcLeft(size) else nil
+	local layout = ControlsController.touchLayout(size, scale, jumpRect(gui), arcLeft)
 	local rects: { [string]: Rect } =
 		{ Throw = layout.throw, Ultimate = layout.ultimate, Dash = layout.dash, Catch = layout.catch }
 	for name, widget in touchWidgets do
@@ -925,7 +928,9 @@ end
 -- Dash (dashButton × uiScale) beside Throw (DASH_DIRECTIONS), apart from the others; feature 1: Catch (catchButton ×
 -- uiScale) the same way (CATCH_DIRECTIONS), apart from Dash too. `jump` in the result is the jump button's box used (the
 -- given one, else Roblox's default spot), so HUD layouts keep clear of it.
-function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: Rect?): TouchLayout
+-- Duel HUD part 2 (2026-10-24): `arcLeft` (px), the ability bar's arc's left edge in a duel or match: Throw keeps `gap`
+-- left of it (the arc wraps the jump button where Throw stood).
+function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: Rect?, arcLeft: number?): TouchLayout
 	local gap = TOUCH.gap
 	local throwSize = math.max(TOUCH.throwButton * uiScale, TOUCH.throwButtonMin)
 	local ultSize = math.max(TOUCH.ultButton * uiScale, TOUCH.minTargetFloor)
@@ -941,6 +946,9 @@ function ControlsController.touchLayout(screen: Vector2, uiScale: number, jump: 
 	end
 	local jb = jumpBox :: Rect
 	local throwX = jb.x - gap - throwSize
+	if arcLeft then
+		throwX = math.min(throwX, arcLeft - gap - throwSize)
+	end
 	local throwY = jb.y + jb.h - throwSize
 	throwX = math.clamp(throwX, 0, math.max(screen.X - throwSize, 0))
 	throwY = math.clamp(throwY, 0, math.max(screen.Y - throwSize, 0))

@@ -425,7 +425,6 @@ local MOTION = UI_CONFIG.motion
 local BUBBLE = DUEL_ANIM.countdownBubble
 local RESULT = DUEL_ANIM.result
 local COUNTDOWN_POSITION = UDim2.fromScale(0.5, 0.4)
-local DRAIN_EPSILON = 1e-4 -- a charge drop smaller than this is not a drain
 local SOUND_GO = "duel.go"
 local SOUND_HIT_CONFIRM = "ui.hitConfirm"
 local SOUND_POP = "sfx.pop"
@@ -2103,76 +2102,10 @@ end
 
 -- Per-frame HUD ------------------------------------------------------------------------------------------------------
 
--- The fill a draining meter shows (§18.4.7): a drop (the charge was spent) drains from what is shown over
--- DragonRush.meterDrainMs; a rise, or no change, shows at once. Reading: the drain also runs under ReducedMotion (it
--- is a slow bar change, not a scale pop).
-local function meterFill(meter: Meter, target: number, clock: number): number
-	local shown = meter.value or target
-	if target < shown - DRAIN_EPSILON then
-		if meter.drainTo ~= target then
-			meter.drainFrom, meter.drainTo, meter.drainStart = shown, target, clock
-		end
-		local value, done = DuelFormat.meterDrain(meter.drainFrom, target, clock - meter.drainStart)
-		if done then
-			meter.drainTo = nil
-		end
-		return value
-	end
-	meter.drainTo = nil
-	return target
-end
-
-local function setMeter(meter: Meter, visible: boolean, fraction: number, clock: number)
-	meter.frame.Visible = visible
-	local target = math.clamp(fraction, 0, 1)
-	local shown = if meter.drains then meterFill(meter, target, clock) else target
-	meter.value = shown
-	-- Written only when it changes (this runs every frame); at once, never eased (the drain is the meter's own motion).
-	if visible and math.abs(meter.bar:get() - shown) > DRAIN_EPSILON then
-		meter.bar:set(shown, false)
-	end
-end
-
--- The keycap of the meter's key for the active input (DuelFormat.hintKeys; nil hides it), written only on a change.
-local function setKey(meter: Meter, key: string?)
-	if meter.key ~= key then
-		meter.key = key
-		meter.keycap:setText(key)
-	end
-end
-
 local function resetMeter(meter: Meter)
 	meter.value = nil
 	meter.drainTo = nil
 	meter.readySince = nil
-end
-
--- READY (§18.5.2 B8): pops readyPop.from -> 1 when it appears, then the 0.9 s pulse (static under ReducedMotion)
--- starts from 1, so the two join without a jump.
-local function setReady(meter: Meter, full: boolean, clock: number)
-	local ready, readyScale = meter.ready, meter.readyScale
-	if ready == nil or readyScale == nil then
-		return
-	end
-	ready.root.Visible = full
-	if not full then
-		meter.readySince = nil
-		readyScale.Scale = 1
-		return
-	end
-	local since = meter.readySince or clock
-	meter.readySince = since
-	local reduced = Tweens.reducedMotion()
-	local scale, _, popDone = DuelFormat.readyPop(clock - since, reduced)
-	if not popDone then
-		readyScale.Scale = scale
-	elseif reduced then
-		readyScale.Scale = 1
-	else
-		local period = MOTION.ultReadyPulseSeconds
-		local phase = ((clock - since - MOTION.readyPop.ms / 1000) % period) / period
-		readyScale.Scale = 1 + LAYOUT.READY_PULSE_SCALE * math.sin(phase * 2 * math.pi)
-	end
 end
 
 -- The own ultimate's charge as a meter fraction (0 for a loadout without one).
@@ -2195,32 +2128,10 @@ local function updateUltReady(view: StateController.DuelView)
 	ultFull = full
 end
 
-local function updateHints(h: Hud, view: StateController.DuelView, aim: ThrowController.AimState)
-	local ultimateId = DuelFormat.ultimateOf(view.you.squishyId)
-	-- Final polish (2026-10-11): the squeeze key only in first person (DuelSqueeze squeezes the overlay's toy).
-	local firstPerson = require(script.Parent.FirstPersonController).mode() == "duel"
-	local throwKey, ultimateKey, dashKey, squeezeKey, catchKey =
-		DuelFormat.hintKeys(ControlsController.preferredInput().Name, ultimateId ~= nil, firstPerson)
-	local phaseShows = DuelFormat.isLive(view.phase) or view.phase == "Countdown"
-	if throwKey == nil or not phaseShows then
-		h.hints.Visible = false
-		return
-	end
-	local clock = os.clock()
-	h.hints.Visible = true
-	setKey(h.throwMeter, throwKey)
-	setKey(h.catchMeter, catchKey)
-	setKey(h.ultMeter, ultimateKey)
-	setKey(h.dashMeter, dashKey)
-	setKey(h.squeezeMeter, squeezeKey)
-	h.dashMeter.frame.Visible = dashKey ~= nil
-	h.squeezeMeter.frame.Visible = squeezeKey ~= nil
-	setMeter(h.throwMeter, true, if aim.state == "hidden" then 1 else aim.progress, clock)
-	-- Feature 1: the catch's cooldown (empty while the hands crush a caught toy).
-	setMeter(h.catchMeter, true, require(script.Parent.CatchController).state().progress, clock)
-	local fraction, has = ultFraction(view)
-	setMeter(h.ultMeter, has, fraction, clock)
-	setReady(h.ultMeter, has and fraction >= 1, clock)
+local function updateHints(h: Hud, _view: StateController.DuelView, _aim: ThrowController.AimState)
+	-- Duel HUD part 2 (2026-10-24): AbilityBarController's Catch / Ultimate / Dash bar replaces this dock in duels and
+	-- matches. shortcut: the dock is still built, only hidden; delete it with its meters once the bar has settled.
+	h.hints.Visible = false
 end
 
 -- Foam fix 2: whether `point` (viewport px, GetMouseLocation space) is on a HUD button or an open dialog

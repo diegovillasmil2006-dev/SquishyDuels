@@ -107,6 +107,7 @@ local CONTROLLER_ORDER = {
 	"DuelController",
 	"MatchController",
 	"MatchHudController",
+	"AbilityBarController", -- Duel HUD part 2 (2026-10-24): the Catch / Ultimate / Dash bar of duels, TDM and FFA
 	"UltReadyTagController",
 	"SettingsController",
 	"OnboardingController",

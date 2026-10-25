@@ -426,6 +426,7 @@ local Strings = {
 		-- opponent's throw comes at you (design: html:88 "Catch!" with its keys).
 		caught = "CAUGHT!",
 		squished = "SQUISHED!",
+		abilityCatchTag = "CATCH!", -- Duel HUD part 2 (D:395): over the Catch button while the hands are open
 		catchPrompt = "Catch!",
 		catchPromptKey = "Catch! {key}",
 		-- Final polish (2026-10-11): under the duel bar while an enemy lane ultimate's telegraph runs and your body is in

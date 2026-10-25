@@ -898,6 +898,16 @@ function DashController.isDashing(): boolean
 	return own ~= nil and own.mover ~= nil
 end
 
+-- Duel HUD part 2 (the ability bar): seconds of the dash's cooldown left, 0 when ready or while the match's dash boost
+-- lets it go (the touch button's rule, updateTouch); and the whole cooldown.
+function DashController.cooldownLeft(): (number, number)
+	local now = serverNow()
+	if currentContext() == "match" and dashBoostFree(StateController.match(), now) then
+		return 0, DASH.cooldownSeconds
+	end
+	return math.max(0, lastDashAt + DASH.cooldownSeconds - now), DASH.cooldownSeconds
+end
+
 -- Studio / debug counters.
 function DashController.counts(): { [string]: any }
 	local live = 0

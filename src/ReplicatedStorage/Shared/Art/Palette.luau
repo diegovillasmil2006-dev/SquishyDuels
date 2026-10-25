@@ -732,6 +732,11 @@ local Palette = {
 	KillDragonTeal = Color3.fromHex("#3FB8AF"), -- the Dragon's accent: the Dragon's Blaze ring and wings
 	KillDragonNight = Color3.fromHex("#2B2440"), -- the Dragon's Blaze disc
 	KillDragonFire = Color3.fromHex("#FF9A3C"), -- the Dragon's Blaze glow
+	-- Duel HUD part 2 (2026-10-24; D = "Squishy Duels Duel HUD.dc.html"): the ability bar. Ink, Frosting, Lemon and
+	-- White are the palette's own (#1E1428, #FFF6EA, #FFD86B, #FFFFFF).
+	AbilityUltGlow = Color3.fromHex("#FFD24A"), -- D:394 the ready ultimate's glow rgba(255,210,74)
+	AbilitySweep = Color3.fromHex("#120C1B"), -- D:399 the cooldown sweep rgba(18,12,27)
+	AbilityIconCooling = Color3.fromHex("#969696"), -- D:400 grayscale(.8) brightness(.85) as an ImageColor3 (superprompt §4)
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

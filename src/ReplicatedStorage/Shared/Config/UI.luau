@@ -613,6 +613,69 @@ local UI = {
 		maxDistanceStuds = 140,
 	},
 
+	-- Duel HUD part 2 (owner 2026-10-24, "yes, start part 2"; `D:n` = "Squishy Duels Duel HUD.dc.html" line n): the
+	-- Catch / Ultimate / Dash ability bar in duels, TDM and FFA (Controllers/AbilityBarController, UI/AbilityBarFormat).
+	-- Design px on the design's canvas (desk 1440x810, phone 844x390), one UIScale = min(width / W, height / H).
+	AbilityBar = {
+		desk = {
+			canvas = Vector2.new(1440, 810),
+			bottomPx = 34, -- D:116 the row's bottom
+			gapPx = 18, -- D:116
+			sizes = { catch = 84, ult = 104, dash = 84 }, -- D:392
+			borderPx = 4, -- D:122
+			dropPx = 6, -- D:393 0 6px 0
+			catchRingPx = 4, -- D:394 0 0 0 4px #FFF6EA
+			numberPx = { catch = 38, ult = 46, dash = 38 }, -- D:401
+			numberStrokePx = 7, -- D:132
+			keyPx = 26, -- D:397
+			keyStrokePx = 6, -- D:139
+			keyOverlapPx = 16, -- D:139 margin-top -16
+			tag = { heightPx = 26, borderPx = 3, textPx = 13, padPx = 10, gapPx = 12, tracking = 0.05 }, -- D:120
+			raysPx = 190, -- D:124
+			glowPx = { ult = 176, catch = 168 }, -- the img.duel.glow.* pictures' sizes (the button + blur + spread)
+		},
+		phone = {
+			canvas = Vector2.new(844, 390),
+			-- D:240 positions from the bottom-right corner (right, bottom, size)
+			places = {
+				catch = { right = 150, bottom = 40, size = 62 },
+				ult = { right = 120, bottom = 122, size = 72 },
+				dash = { right = 28, bottom = 150, size = 62 },
+			},
+			borderPx = 3, -- D:197
+			dropPx = 4, -- D:393
+			catchRingPx = 4,
+			numberPx = { catch = 24, ult = 28, dash = 24 }, -- D:401
+			numberStrokePx = 5, -- D:207
+			tag = { heightPx = 20, borderPx = 2, textPx = 10, padPx = 8, gapPx = 8, tracking = 0.05 }, -- D:214
+			raysPx = 130, -- D:199
+			glowPx = { ult = 144, catch = 146 },
+		},
+		phoneBelowWidth = 1000, -- superprompt §2: the phone layout under this width or on touch
+		iconInset = { catch = 0.16, ult = 0.15, dash = 0.16 }, -- D:392 of the button's size
+		sweepTransparency = 0.32, -- D:399 rgba(18,12,27,.68)
+		raysTransparency = 0.4, -- D:124 rgba(255,226,120,.6)
+		raysTurnSeconds = 7, -- D:124 sdSpin 7s
+		ultGlowTransparency = 0.2, -- D:394 rgba(255,210,74,.8)
+		catchGlowTransparency = 0.05, -- D:394 rgba(255,216,107,.95)
+		catchWindowSeconds = 0.6, -- D:231 WIN (= Config.Combat.Catch.windowSeconds)
+		-- D:346-360 the motions (each Web Animations `easing` runs over the whole animation)
+		pressMs = 260, -- D:346 squash
+		denyMs = 320, -- D:349 shake
+		denyPx = 7,
+		denyDeg = 3,
+		readyMs = { catch = 380, ult = 520, dash = 380 }, -- D:354
+		readyPeak = { catch = 1.2, ult = 1.28, dash = 1.2 },
+		flashMs = { catch = 340, ult = 520, dash = 340 }, -- D:355
+		flashFrom = 0.05, -- D:355 opacity .95
+		ringPx = { catch = 130, ult = 190, dash = 130 }, -- D:357 FX.ring
+		ultGoldRingPx = 240, -- D:357 the gold ring 0.1 s later
+		ultGoldRingDelay = 0.1,
+		ultSparks = { n = 22, spread = 200, size = 11, up = 40 }, -- D:357 FX.burst
+		tagMs = 300, -- D:25 dhTag .3s
+		displayOrder = 12, -- with SD_Touch, above SD_DuelHud (11)
+	},
+
 	-- Feature 1 (2026-10-11): the charge on the reticle, the catch prompt under it and the catch's big words
 	-- (DuelController, PracticeController, UI/DuelFormat; design: the combat-effects page "Squishy Combat FP v2.html",
 	-- html:28, 88, 301, 670-674).

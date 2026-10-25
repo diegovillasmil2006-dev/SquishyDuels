@@ -908,13 +908,27 @@ return function(t: Context)
 		for _, button in { "Ultimate", "Dash", "Catch" } do
 			expect.falsy(Controls.touchContextAllows(button, highway))
 		end
+		-- Duel HUD part 2 (2026-10-24): in a duel or match the ability bar's arc draws Catch, Ultimate and Dash.
 		local duel = { Duel = true }
-		for _, button in { "Throw", "Ultimate", "Dash", "Catch" } do
-			expect.truthy(Controls.touchContextAllows(button, duel))
+		expect.truthy(Controls.touchContextAllows("Throw", duel))
+		for _, button in { "Ultimate", "Dash", "Catch" } do
+			expect.falsy(Controls.touchContextAllows(button, duel))
 		end
 		local practice = { Lobby = true, Practice = true }
 		expect.truthy(Controls.touchContextAllows("Dash", practice))
 		expect.truthy(Controls.touchContextAllows("Ultimate", practice))
 		expect.falsy(Controls.touchContextAllows("Catch", practice)) -- nothing throws at you in practice
+	end)
+
+	t.test("Duel HUD part 2: with the ability bar's arc, the touch Throw keeps a gap left of it", function()
+		local Format = t.requireClient("UI/AbilityBarFormat")
+		local screen = Vector2.new(844, 390)
+		local arcLeft = Format.phoneArcLeft(screen)
+		local layout = Controls.touchLayout(screen, 1, nil, arcLeft)
+		expect.truthy(layout.throw.x + layout.throw.w + Config.UI.Touch.gap <= arcLeft + 1e-6)
+		expect.truthy(layout.throw.x >= 0)
+		-- without the arc (the practice range) Throw stays beside the jump button as before
+		local plain = Controls.touchLayout(screen, 1, nil)
+		expect.truthy(plain.throw.x > layout.throw.x)
 	end)
 end
