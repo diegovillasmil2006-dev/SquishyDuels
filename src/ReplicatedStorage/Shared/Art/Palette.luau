@@ -737,6 +737,10 @@ local Palette = {
 	AbilityUltGlow = Color3.fromHex("#FFD24A"), -- D:394 the ready ultimate's glow rgba(255,210,74)
 	AbilitySweep = Color3.fromHex("#120C1B"), -- D:399 the cooldown sweep rgba(18,12,27)
 	AbilityIconCooling = Color3.fromHex("#969696"), -- D:400 grayscale(.8) brightness(.85) as an ImageColor3 (superprompt §4)
+	-- Duel HUD part 3: the duel top bar.
+	DuelTimerLow = Color3.fromHex("#FF8496"), -- D:416 the timer at 10 s or less
+	DuelSquished = Color3.fromHex("#FF4D6A"), -- D:70 the SQUISHED tag, D:157 the phone's slash
+	DuelHeadGrey = Color3.fromHex("#969696"), -- superprompt §3: the squished player's headshot, as an ImageColor3
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

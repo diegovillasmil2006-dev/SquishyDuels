@@ -427,6 +427,11 @@ local Strings = {
 		caught = "CAUGHT!",
 		squished = "SQUISHED!",
 		abilityCatchTag = "CATCH!", -- Duel HUD part 2 (D:395): over the Catch button while the hands are open
+		-- Duel HUD part 3 (D:57, 95, 166, 70; owner 2026-10-24: a duel is won at {n} = the lives, 3)
+		topFirstTo = "First to {n}!",
+		topFirstToPhone = "FIRST TO {n}",
+		topMode = "Duel 1v1",
+		topSquished = "SQUISHED",
 		catchPrompt = "Catch!",
 		catchPromptKey = "Catch! {key}",
 		-- Final polish (2026-10-11): under the duel bar while an enemy lane ultimate's telegraph runs and your body is in

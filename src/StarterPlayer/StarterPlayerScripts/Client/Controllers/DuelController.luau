@@ -213,7 +213,9 @@ local Button = require(Client.UI.Components.Button)
 local Chip = require(Client.UI.Components.Chip)
 local Confetti2D = require(Client.UI.Confetti2D)
 local Create = require(Client.UI.Create)
+local AbilityBarFormat = require(Client.UI.AbilityBarFormat)
 local DuelFormat = require(Client.UI.DuelFormat)
+local DuelTopBar = require(Client.UI.DuelTopBar)
 local Focus = require(Client.UI.Focus)
 local Keycap = require(Client.UI.Components.Keycap)
 local LaneCue = require(Client.UI.LaneCue)
@@ -300,6 +302,7 @@ type Hud = {
 	you: Side,
 	opponent: Side,
 	opponentColumn: Frame, -- the opponent's card and its "Dragon Rush ready" chip, as wide as the cards (foam fix 3)
+	design: DuelTopBar.DuelTopBar, -- Duel HUD part 3: the design's top bar, drawn in TopBar in place of the cards
 	chip: Chip.Chip,
 	chipScale: UIScale,
 	forfeit: Button.Button,
@@ -1179,6 +1182,16 @@ local function buildHud(c: Cleanup.Cleanup): Hud
 	chip.root.Visible = false
 	chip.root.Parent = opponentColumn
 	local chipScale: UIScale = Create("UIScale", { Name = "Pop", Parent = chip.root })
+	-- Duel HUD part 3 (2026-10-24): the design's top bar (UI/DuelTopBar) takes the cards' and the timer's place in TopBar,
+	-- so everything placed under the bar follows its new height. shortcut: the old cards are still built and updated,
+	-- only hidden; delete them once the new bar has settled.
+	you.card.Visible = false
+	timerPanel.Visible = false
+	opponentColumn.Visible = false
+	local design = DuelTopBar.new(top, 0)
+	c:add(function()
+		design:destroy()
+	end)
 
 	local forfeit = Button.new({
 		name = "Duel_ForfeitButton",
@@ -1316,6 +1329,7 @@ local function buildHud(c: Cleanup.Cleanup): Hud
 		chipScale = chipScale,
 		forfeit = forfeit,
 		hints = hints,
+		design = design,
 		throwMeter = throwMeter,
 		catchMeter = catchMeter,
 		ultMeter = ultMeter,
@@ -2455,8 +2469,34 @@ local function updateFrame()
 	end
 	local now = serverNow()
 	local timer = DuelFormat.timerText(view.phase, view.phaseEndsAt, now, view.rules)
-	h.timerPanel.Visible = timer ~= nil
 	h.timer.Text = timer or ""
+	do -- Duel HUD part 3: the design's bar in the duel HUD's px (its canvas scale over the HUD's UI scale)
+		local screen = h.gui.AbsoluteSize
+		local form = AbilityBarFormat.form(screen.X, ControlsController.preferredInput() == Enum.PreferredInput.Touch)
+		local lives = if view.rules and type(view.rules.Lives) == "number" then view.rules.Lives else RULES.Lives
+		local youScore, foeScore = DuelTopBar.scores(view.you.lives, view.opponent.lives, lives)
+		h.design:update({
+			form = form,
+			scale = AbilityBarFormat.canvasScale(form, screen) / math.max(UIController.scale(), 1e-3),
+			you = {
+				userId = view.you.userId,
+				name = DuelFormat.nameText(view.you),
+				squishyId = view.you.squishyId,
+				score = youScore,
+				squished = DuelTopBar.squished(view.you.invulnUntil, now),
+			},
+			foe = {
+				userId = view.opponent.userId,
+				name = DuelFormat.nameText(view.opponent),
+				squishyId = view.opponent.squishyId,
+				score = foeScore,
+				squished = DuelTopBar.squished(view.opponent.invulnUntil, now),
+			},
+			timer = timer or "",
+			timerLow = DuelTopBar.timerLow(view.phase, view.phaseEndsAt, now),
+			target = lives,
+		})
+	end
 	layoutTopBar(h)
 	updateCountdown(h, now)
 	updateUltReady(view)

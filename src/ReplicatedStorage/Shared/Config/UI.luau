@@ -676,6 +676,64 @@ local UI = {
 		displayOrder = 12, -- with SD_Touch, above SD_DuelHud (11)
 	},
 
+	-- Duel HUD part 3 (owner 2026-10-24, "yes, start part 3"; `D:n` = "Squishy Duels Duel HUD.dc.html" line n): the duel
+	-- 1v1 top bar (UI/DuelTopBar, drawn in DuelController's TopBar). Design px on the canvas of AbilityBar.desk/phone.
+	DuelTopBar = {
+		desk = {
+			size = Vector2.new(936, 186), -- D:56 the row: 190 + 156 + 196 + 156 + 190 and 4 gaps of 12; the column's height
+			gapPx = 12,
+			labelPx = Vector2.new(190, 58), -- D:57 "First to N!" / "Duel 1v1"
+			labelTextPx = 28,
+			labelStrokePx = 6,
+			labelPadPx = 6,
+			plate = Vector2.new(156, 58), -- D:59 the score plate's box
+			plateImage = Vector2.new(186, 63), -- img.duel.plate.score*Desk (its skew and drop around the box)
+			timer = Vector2.new(196, 58), -- D:75
+			timerImage = Vector2.new(226, 63),
+			numberPx = 40, -- D:60, D:76
+			numberStrokePx = 7,
+			columnGapPx = 10, -- D:58
+			avatarPx = 88, -- D:62
+			avatarBorderPx = 4,
+			goldRingPx = 4, -- D:63 0 0 0 4px #FFD86B (yours)
+			inkRingPx = 8, -- D:63 0 0 0 8px #1E1428 (yours)
+			youDropPx = 9, -- D:63
+			foeDropPx = 5, -- D:83
+			badgePx = 38, -- D:66
+			badgeBorderPx = 3,
+			badgeDropPx = 3,
+			badgeOffset = Vector2.new(8, 6), -- D:66 right / left -8, bottom -6
+			nameTopPx = 2, -- D:73 margin-top 2
+			namePx = 18,
+			nameStrokePx = 5,
+			tag = { heightPx = 24, borderPx = 3, textPx = 13, padPx = 10, rotation = -8 }, -- D:70 SQUISHED
+		},
+		phone = {
+			size = Vector2.new(348, 52), -- D:152 44 + 68 + 92 + 68 + 44 and 4 gaps of 8; the timer column's height
+			gapPx = 8,
+			plate = Vector2.new(68, 38), -- D:159
+			plateImage = Vector2.new(94, 41),
+			timer = Vector2.new(92, 38), -- D:163
+			timerImage = Vector2.new(118, 41),
+			scorePx = 26, -- D:160
+			scoreStrokePx = 5,
+			timerPx = 24, -- D:164
+			timerStrokePx = 5,
+			firstToPx = 11, -- D:166
+			firstToStrokePx = 3,
+			firstToGapPx = 3,
+			avatarPx = 44, -- D:154
+			avatarBorderPx = 3,
+			goldRingPx = 3, -- D:154 0 0 0 3px gold, 0 0 0 5px ink
+			inkRingPx = 5,
+			slash = { size = Vector2.new(30, 6), strokePx = 2, rotation = -10 }, -- D:157
+		},
+		lowSeconds = 10, -- D:416 the timer turns pink at 10 s or less
+		bumpMs = 420, -- D:360 the score plate's bump
+		bumpPeak = 1.22,
+		tagMs = 300, -- D:70 dhTag
+	},
+
 	-- Feature 1 (2026-10-11): the charge on the reticle, the catch prompt under it and the catch's big words
 	-- (DuelController, PracticeController, UI/DuelFormat; design: the combat-effects page "Squishy Combat FP v2.html",
 	-- html:28, 88, 301, 670-674).
