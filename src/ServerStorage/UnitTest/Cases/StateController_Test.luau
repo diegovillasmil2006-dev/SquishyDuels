@@ -218,6 +218,26 @@ return function(t: Context)
 		expect.equal(StateController.reduceDuel(nil, stateEvent("nope")), nil)
 	end)
 
+	t.test("match flow: MatchQueue and MatchFound payloads are read only when well-formed", function()
+		local queue = StateController.normalizeMatchQueue({ mode = "tdm", count = 5, max = 12, joinedAt = 10 })
+		expect.deepEqual(queue, { mode = "tdm", count = 5, max = 12, joinedAt = 10, full = false })
+		expect.deepEqual(StateController.normalizeMatchQueue({ mode = "tdm", count = 13, max = 12, joinedAt = 10 }), {})
+		expect.deepEqual(StateController.normalizeMatchQueue({ mode = "1v1", count = 1, max = 2, joinedAt = 1 }), {})
+		local player = { userId = 7, name = "A", squishy = "toast", level = 3, team = 2 }
+		local found = StateController.normalizeMatchFound({ mode = "tdm", players = { player } })
+		expect.deepEqual(found, { mode = "tdm", players = { player } })
+		expect.equal(StateController.normalizeMatchFound({ mode = "1v1", players = { player } }).mode, "1v1")
+		expect.equal(StateController.normalizeMatchFound({ mode = "duo", players = { player } }), nil)
+		expect.equal(StateController.normalizeMatchFound({ mode = "ffa", players = {} }), nil)
+		for _, bad in { { level = 1.5 }, { level = -1 }, { team = 3 }, { userId = 0 / 0 }, { squishy = 5 } } do
+			local copy = table.clone(player)
+			for key, value in bad do
+				(copy :: any)[key] = value
+			end
+			expect.equal(StateController.normalizeMatchFound({ mode = "tdm", players = { copy } }), nil)
+		end
+	end)
+
 	t.test("duel: ThrowImpact sets the victim's lives and invulnerability; other impacts change nothing", function()
 		local view = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Active")))
 		local hit = StateController.reduceDuel(view, {

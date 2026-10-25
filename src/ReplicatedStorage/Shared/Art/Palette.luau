@@ -433,7 +433,6 @@ local Palette = {
 	StickerPinkMid = Color3.fromHex("#FF5D97"), -- H:126 (55%)
 	StickerPinkEnd = Color3.fromHex("#EE3B7B"), -- H:126
 	StickerDuelBevel = Color3.fromHex("#961446"), -- H:126: the DUEL button's bottom bevel tint (at .3)
-	StickerFoundBevel = Color3.fromHex("#A05000"), -- H:149: MATCH FOUND's bottom bevel tint (at .25)
 	-- Bars.
 	StickerBlueBarTop = Color3.fromHex("#8BEBFF"), -- lib:37: the blue stat bars and quest bars
 	StickerBlueBarEnd = Color3.fromHex("#25AEE6"), -- lib:37
@@ -766,6 +765,11 @@ local Palette = {
 	ModeShardMint = Color3.fromHex("#6FE8BC"),
 	ModeDim = Color3.fromHex("#181046"),
 	ModeShadow = Color3.fromHex("#140A50"),
+	-- MATCH FOUND (round 2 of the match flow, LOBBY HUD L:741, L:1038): the screen's white flash and the impact's second
+	-- and third rings (the first is StickerCoinText).
+	MatchFoundFlash = Color3.fromHex("#FFF6D6"),
+	MatchFoundRingPink = Color3.fromHex("#FF8FBF"),
+	MatchFoundRingCyan = Color3.fromHex("#7DE8F2"),
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

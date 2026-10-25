@@ -43,6 +43,9 @@
 -- Practice bot (2026-10-16): startWithBot(player, bot) starts the duel of the ONE Searching player against BotService's
 -- bot (never queued, no record), only while nobody else is Searching, so a real player who queues first always gets
 -- the spot; the player is Matched as after a pairing.
+-- MATCH FOUND (round 2 of the match flow, 2026-10-25): a paired or practice-bot duel starts with
+-- Config.Duel.Rules.FoundHoldSeconds (DuelService.startMatch's holdSeconds: the lobby's show plays before the teleport);
+-- startDirect and forceMatch start without it.
 -- All collaborators are reached through `deps` (useDeps in tests; init() builds the real ones), so the queue rules are
 -- unit-tested without Players, remotes or DuelService.
 
@@ -92,7 +95,7 @@ export type ArenaDeps = {
 }
 
 export type DuelDeps = {
-	startMatch: (a: any, b: any, slot: any) -> (any, any),
+	startMatch: (a: any, b: any, slot: any, holdSeconds: number?) -> (any, any),
 	inMatch: (player: any) -> boolean,
 }
 
@@ -452,8 +455,9 @@ local function markMatched(player: any, opponent: any, match: any, now: number)
 	sendStatus(record, true)
 end
 
--- Acquires a slot, hands it off and asks DuelService to start. Returns (true, match) or (false, why).
-local function startMatchWith(a: any, b: any): (boolean, any)
+-- Acquires a slot, hands it off and asks DuelService to start. Returns (true, match) or (false, why). `found`: a duel
+-- the queue made (paired, or the practice bot): the lobby's MATCH FOUND show plays first (round 2 of the match flow).
+local function startMatchWith(a: any, b: any, found: boolean?): (boolean, any)
 	local d = getDeps()
 	local duel = d.duel
 	if duel == nil then
@@ -464,7 +468,8 @@ local function startMatchWith(a: any, b: any): (boolean, any)
 		return false, "noArena"
 	end
 	d.arena.handoff(slot)
-	local ok, match, why = pcall(duel.startMatch, a, b, slot)
+	local hold = if found then Config.Duel.Rules.FoundHoldSeconds else nil
+	local ok, match, why = pcall(duel.startMatch, a, b, slot, hold)
 	d.arena.handoff(nil)
 	if not ok then
 		logger():error("DuelService startMatch failed:", match)
@@ -501,7 +506,7 @@ local function pairOnce(): number
 		local a: Ticket, b: Ticket = pair.a :: any, pair.b :: any
 		-- Both must still be waiting (an earlier start in this loop may have yielded).
 		if positionOf(a) ~= nil and positionOf(b) ~= nil then
-			local ok, match = startMatchWith(a.player, b.player)
+			local ok, match = startMatchWith(a.player, b.player, true)
 			if ok then
 				markMatched(a.player, b.player, match, now)
 				markMatched(b.player, a.player, match, now)
@@ -615,8 +620,8 @@ local function duelDeps(DuelService: any): DuelDeps?
 		return nil
 	end
 	return {
-		startMatch = function(a: any, b: any, slot: any): (any, any)
-			return DuelService.startMatch(a, b, slot)
+		startMatch = function(a: any, b: any, slot: any, holdSeconds: number?): (any, any)
+			return DuelService.startMatch(a, b, slot, holdSeconds)
 		end,
 		inMatch = function(player: any): boolean
 			if type(DuelService.getMatch) == "function" then
@@ -1024,7 +1029,7 @@ function QueueService.startWithBot(player: any, bot: any): (boolean, any)
 	if closed or not accepting or d.closing() or d.restartPending() then
 		return false, CODE_UNAVAILABLE
 	end
-	local ok, match = startMatchWith(player, bot)
+	local ok, match = startMatchWith(player, bot, true)
 	if not ok then
 		return false, match
 	end

@@ -133,14 +133,11 @@
 --                              (default COLUMN.edge) down, centred and moved into the free span the left and right
 --                              groups leave (freeSpan); fits = false when that span is narrower than it (then the
 --                              screen's centre). UI FINAL R4: ctaWidth is the DUEL button's design width (350, H:126;
---                              times the compact scale on phones); the search and found bars take barWidth
---   barWidth(design, span)     the search / found bar's width: its design width, narrower only to the span (and the
+--                              times the compact scale on phones); the search bar takes barWidth
+--   barWidth(design, span)     the search bar's width: its design width, narrower only to the span (and the
 --                              canvas) it has; barParts(width) drops the dots and the second line under dropBelow
 --   ctaScales(compact)         the DUEL area's draw scales: phones draw only the idle DUEL button at ctaCompactScale;
 --                              the search bar (its texts, its cancel X) and the mode picker stay at 1 (PR1, PR2)
---   foundSpot(rect, canvas, compact, barBottom?)
---                              MATCH FOUND's top middle (G4.2): the DUEL area's last rect (else the canvas centre at
---                              origins().ctaTop), pushed a row gap under the duel HUD's top bar once that shows
 --   focusLinks(groups)
 --                              the gamepad links of the HUD (§11.4, §17.7): the left column top to bottom through the
 --                              tiles (DPadUp's Grip card, Down walks the tiles), the right column (Settings, the
@@ -523,8 +520,7 @@ local COLUMN = table.freeze({
 	ctaCompactHeight = 56, -- minimal phone HUD (2026-10-17): 64 before
 	ctaTop = HUD.cta.top, -- PR10
 	searchWidth = HUD.search.width, -- H:136
-	foundWidth = HUD.found.width, -- H:149
-	barHeight = HUD.search.face + STICKER.lip.search, -- H:136, H:149: the bars' 96 px face + the 7 px lip
+	barHeight = HUD.search.face + STICKER.lip.search, -- H:136: the bar's 96 px face + the 7 px lip
 	pickerGap = Layout.lipGap(HUD.picker.gap, STICKER.lip.cta), -- N:145: 14 under the 92 px face = 7 past its lip
 	coachWidth = 512, -- the coach card (the design's 640)
 	coachMinWidth = 320,
@@ -1161,7 +1157,7 @@ function HudFormat.origins(compact: boolean, corner: Corner?): Origins
 	}
 end
 
--- UI FINAL R4 (plan R4 "compact widths"): the search / found bar's width: its design width, at most the free span it
+-- UI FINAL R4 (plan R4 "compact widths"): the search bar's width: its design width, at most the free span it
 -- has (the span the HUD groups leave at its band, or the canvas less its edges); never below 0.
 function HudFormat.barWidth(design: number, span: number): number
 	if not (isNumber(design) and isNumber(span)) then
@@ -1182,18 +1178,6 @@ end
 -- cancel X) and the testers' mode picker (52 px tabs) are never scaled.
 function HudFormat.ctaScales(compact: boolean): { idle: number, search: number, picker: number }
 	return { idle = if compact then COLUMN.ctaCompactScale else 1, search = 1, picker = 1 }
-end
-
--- UI FINAL R4 (G4.2): MATCH FOUND's top-middle point in SD_Overlay's base px (the same insets as SD_Hud): the DUEL
--- area's last rect, else the canvas centre at origins(compact).ctaTop; once the duel HUD's top bar shows (its bottom
--- `barBottom`), a row gap under it (the overlays fix of the old matched banner: on a phone it covered the lives row).
-function HudFormat.foundSpot(rect: Rect?, canvas: Vector2, compact: boolean, barBottom: number?): Vector2
-	local x = if rect then rect.x + rect.w / 2 else canvas.X / 2
-	local y = if rect then rect.y else HudFormat.origins(compact).ctaTop
-	if barBottom ~= nil and isNumber(barBottom) then
-		y = math.max(y, barBottom + COLUMN.rowGap)
-	end
-	return Vector2.new(x, y)
 end
 
 -- The onboarding coach card's height at `width` for one text (spec "Onboarding: a coach card"): one row, the text (Body;
@@ -1607,7 +1591,7 @@ end
 -- UI FINAL R4: the DUEL button's width (base px, Theme's text estimate at a PreferredTextSize multiplier): the
 -- design's 350 (H:126), or wider when its 128 px left padding (the emblem), "DUEL" or "Join the queue" and its 24 px
 -- right padding need it at a large text size; on phones the second line hides and the whole button is drawn at
--- COLUMN.ctaCompactScale. The search and found bars take barWidth instead.
+-- COLUMN.ctaCompactScale. The search bar takes barWidth instead.
 function HudFormat.ctaWidth(compact: boolean, textScale: number?): number
 	local ts = textScaleOf(textScale)
 	local hud = Strings.hud

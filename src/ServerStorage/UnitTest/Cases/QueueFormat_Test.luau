@@ -16,8 +16,7 @@
 --   * overlays fix (2026-10-09): the pill hugs its contents (clock, texts, Cancel; the hint row when wider), capped at
 --     today's widths; its width is measured with every digit as an 8 so the ticking clock never changes it; a pill
 --     narrower than 320 still gets its free spot at its own width;
---   * UI FINAL R4: searchLine (the DUEL search bar's second line: the arena or position line, never the hint);
---     matchedText is MATCH FOUND's second line, "Opponent: {name}", empty before the name is known.
+--   * UI FINAL R4: searchLine (the DUEL search bar's second line: the arena or position line, never the hint).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -354,15 +353,6 @@ return function(t: Context)
 			end
 		end
 	)
-
-	t.test("matched text (UI FINAL R4, H:151): 'Opponent: {name}' under MATCH FOUND, empty before the name", function()
-		expect.equal(
-			QueueFormat.matchedText("Builderman"),
-			Strings.format(Strings.hud.matchOpponent, { name = "Builderman" })
-		)
-		expect.equal(QueueFormat.matchedText(nil), "")
-		expect.equal(QueueFormat.matchedText(""), "")
-	end)
 
 	t.test(
 		"search line (UI FINAL R4, H:142): the arena or position line, never the hint; nil when not Searching",

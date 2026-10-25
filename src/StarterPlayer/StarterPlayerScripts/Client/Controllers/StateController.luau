@@ -53,7 +53,8 @@
 --   A queue left on "Matched" when the duel ends becomes Idle locally.
 -- * Match queue (round 1 of the match flow, 2026-10-25): the MatchQueue remote, the player's Free for All / Team
 --   Deathmatch ticket for the waiting bar (normalizeMatchQueue: {} unless well-formed): matchQueue() /
---   MatchQueueChanged(view).
+--   MatchQueueChanged(view). Round 2: the MatchFound remote (normalizeMatchFound: nil unless well-formed) fires
+--   MatchFoundReceived(view) for the lobby's MATCH FOUND show.
 -- * Match (FFA/TDM v1, 2026-10-15; the 12-player Free for All / Team Deathmatch in this lobby server, SPEC C4/C5): the
 --   MatchState remote (one view per player: phase with DuelPhase names, the real MatchRules phase in matchPhase, you,
 --   players, team lives, K.O. target, arena bounds, storm, outcome) and UltimateCharge: match() / MatchChanged(new,
@@ -359,6 +360,8 @@ StateController.LobbyLockChanged = Signal.new() :: Signal.Signal<boolean>
 StateController.MatchChanged = Signal.new() :: Signal.Signal<MatchView?, MatchView?>
 -- Round 1 of the match flow (2026-10-25): the Free for All / Team Deathmatch queue ticket (MatchQueue; {} = none).
 StateController.MatchQueueChanged = Signal.new() :: Signal.Signal<Types.MatchQueueView>
+-- Round 2 of the match flow (2026-10-25): who plays the match or duel the queue just started (MatchFound).
+StateController.MatchFoundReceived = Signal.new() :: Signal.Signal<Types.MatchFoundView>
 -- Match HUD M1: the new HUD moments of the current match (sorted by seq) and its view (after MatchChanged).
 StateController.MatchMoments = Signal.new() :: Signal.Signal<{ MatchMoment }, MatchView>
 
@@ -1876,6 +1879,43 @@ function StateController.normalizeMatchQueue(raw: unknown): Types.MatchQueueView
 	return { mode = mode :: any, count = count, max = max, joinedAt = joinedAt, full = view.full == true }
 end
 
+-- Round 2 of the match flow (pure): a MatchFound payload as the show may read it, or nil when it is not one (an
+-- unknown mode, no players or more than 64, a player without a whole userId, a name, a squishy id or a whole level
+-- of at least 0, a team other than 1 / 2).
+function StateController.normalizeMatchFound(raw: unknown): Types.MatchFoundView?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local view = raw :: any
+	local mode, list = view.mode, view.players
+	if (mode ~= "1v1" and not MATCH_MODES[mode]) or type(list) ~= "table" or #list < 1 or #list > 64 then
+		return nil
+	end
+	local function whole(n: unknown): boolean
+		return type(n) == "number" and n == math.floor(n) and math.abs(n) < 2 ^ 53
+	end
+	local players: { Types.MatchFoundPlayer } = {}
+	for i = 1, #list do
+		local p = list[i]
+		if type(p) ~= "table" then
+			return nil
+		end
+		local team = p.team
+		if
+			not whole(p.userId)
+			or type(p.name) ~= "string"
+			or type(p.squishy) ~= "string"
+			or not whole(p.level)
+			or p.level < 0
+			or (team ~= nil and team ~= 1 and team ~= 2)
+		then
+			return nil
+		end
+		players[i] = { userId = p.userId, name = p.name, squishy = p.squishy, level = p.level, team = team }
+	end
+	return { mode = mode, players = players }
+end
+
 -- Match HUD M1: every player seen in the current match (see the header); nil outside a match.
 function StateController.matchRoster(): MatchRoster?
 	return matchRoster
@@ -1983,6 +2023,18 @@ function StateController.init()
 		c:add(queueConnection)
 	else
 		log:warn("no MatchQueue remote; the waiting bar shows the 1v1 queue only:", queueConnection)
+	end
+	-- Round 2 of the match flow: who plays the match or duel the queue just started (the MATCH FOUND show).
+	local okFound, foundConnection = pcall(NetController.on, "MatchFound", function(raw: any)
+		local view = StateController.normalizeMatchFound(raw)
+		if view then
+			StateController.MatchFoundReceived:fire(view)
+		end
+	end)
+	if okFound then
+		c:add(foundConnection)
+	else
+		log:warn("no MatchFound remote; no MATCH FOUND show:", foundConnection)
 	end
 
 	local pendingClear: thread? = nil

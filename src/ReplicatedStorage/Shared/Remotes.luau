@@ -283,6 +283,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- Round 1 of the match flow (2026-10-25, Diego's LOBBY HUD L:218-229 waiting bar): Types.MatchQueueView, to each
 	-- queued player on every change of its mode's queue; {} when the ticket is gone.
 	MatchQueue = s2c("owner", { arg("queue", "table") }),
+	-- Round 2 of the match flow (2026-10-25, Diego's LOBBY HUD L:626-741 MATCH FOUND show): Types.MatchFoundView, to each
+	-- player of a duel or match the queue just started (the teleport waits for the show).
+	MatchFound = s2c("owner", { arg("found", "table") }),
 	-- P13v4 (HighwayService's settle at the landing): Types.HighwayLanding, what the thrower's landing paid (Coins with
 	-- the rings' share, Grip, best, gifts, the Food Bag, the rings, BULLSEYE), to the thrower only.
 	HighwayLanded = s2c("owner", { arg("landing", "table") }),

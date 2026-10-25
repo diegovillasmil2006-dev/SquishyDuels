@@ -219,18 +219,20 @@ local function duelHud(key: string, id: number, use: string): AssetSlot
 end
 
 -- An image slot holding a mode select picture (2026-10-24): Diego's own art, or rendered 1:1 from the design's CSS
--- ("Squishy Duels LOBBY HUD.dc.html", ALL HUDS zip), uploaded by Claude (Studio MCP upload_image) at the owner's yes.
-local function lobbyHud(key: string, id: number, use: string): AssetSlot
+-- ("Squishy Duels LOBBY HUD.dc.html", ALL HUDS zip), uploaded by Claude (Studio MCP upload_image) at the owner's yes;
+-- `date` the upload day when it is not the mode select's.
+local function lobbyHud(key: string, id: number, use: string, date: string?): AssetSlot
 	return {
 		key = key,
 		kind = "image",
 		id = id,
 		source = `jayyyyy upload (Studio MCP upload_image): '{(string.gsub(key, "%.", "_"))}.png'`,
 		license = "Own upload; the co-owner's own art and Claude Design Lobby HUD file",
-		verifiedAt = "2026-10-24",
+		verifiedAt = date or "2026-10-24",
 		notes = use,
 	}
 end
+local MF_DATE = "2026-10-25" -- the MATCH FOUND pictures
 
 -- An image slot holding a VFX Studio library texture: `name` is its Creator Store title, `by` its creator.
 local function vfxStudio(key: string, id: number, name: string, by: string, use: string): AssetSlot
@@ -936,8 +938,23 @@ local SLOTS: { AssetSlot } = {
 		"UI",
 		false,
 		nil,
-		"lib:176 whoosh(true): the card comes in (M:560); file 'match_whoosh.wav'"
+		"lib:176 whoosh(true): the card comes in (M:560); also MATCH FOUND's whoosh (L:1044, L:1051); file 'match_whoosh.wav'"
 	),
+	-- MATCH FOUND (round 2 of the match flow, 2026-10-25; LOBBY HUD L:1036-1047, hud-lib.js L:231-256): the design's
+	-- recipes rendered (make_mf_sounds.mjs, the Desktop folder "Squishy Duels sounds - MATCH FOUND") for the owner to
+	-- upload. While an id is nil a look-alike plays (Config.UI.MatchFound.sounds).
+	soundSlot("match.found.charge", "UI", false, nil, "L:1036 mfCharge(): the build-up; file 'match_found_charge.wav'"),
+	soundSlot("match.found.impact", "UI", false, nil, "L:1039 mfImpact(): the boom; file 'match_found_impact.wav'"),
+	soundSlot("match.found.letters", "UI", false, nil, "L:1042 mfLetters(11); file 'match_found_letters.wav'"),
+	soundSlot(
+		"match.found.lettersSolo",
+		"UI",
+		false,
+		nil,
+		"L:1047 mfLetters(12, .05, C5): FREE FOR ALL's second run; file 'match_found_letters_solo.wav'"
+	),
+	soundSlot("match.found.chime", "UI", false, nil, "L:1043 chime(): two bell notes; file 'match_found_chime.wav'"),
+	soundSlot("match.found.vs", "UI", false, nil, "L:1045 vsSlam(): VS slams in; file 'match_found_vs.wav'"),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1205,6 +1222,17 @@ local SLOTS: { AssetSlot } = {
 	lobbyHud("img.mode.cardShadow", 113197295836519, "white 30 px soft box, 9-slice (L:187's 0 18px 30px)"),
 	lobbyHud("img.mode.play", 105071940033271, "PLAY for a 600 px card, 2x, straight (L:199-202: sdPop ends on none)"),
 	lobbyHud("img.mode.playMask", 110206241037166, "white silhouette of the PLAY button's face (its shine, L:200)"),
+	-- MATCH FOUND (round 2 of the match flow, 2026-10-25; L:626-741): rendered from the design's CSS / SVG
+	-- (make_mf_pngs.mjs), uploaded by Claude at the owner's yes.
+	lobbyHud("img.mf.backdrop", 134121436169912, "the show's dim, 16:9 + 80 px each side, stretched (L:628)", MF_DATE),
+	lobbyHud("img.mf.glow", 122529926500615, "the warm glow behind the rays, 760 px at 512 (L:631)", MF_DATE),
+	lobbyHud("img.mf.rays", 123718134436771, "gold / pink rays fading out, 1560 px at 1024, turned (L:633)", MF_DATE),
+	lobbyHud("img.mf.orb", 99101938467216, "the charge orb, 180 px at 256 (L:635)", MF_DATE),
+	lobbyHud("img.mf.flash", 102114226008633, "the white flash, 420 px at 256 (L:636)", MF_DATE),
+	lobbyHud("img.mf.banner", 102778383870141, "the ribbon face 800 x 128 at (40, 20) of 880 x 220 (L:645-647)", MF_DATE),
+	lobbyHud("img.mf.tailL", 127261335234408, "the ribbon's left tail, 140 x 132 at 3x (L:642)", MF_DATE),
+	lobbyHud("img.mf.tailR", 133136118825485, "the ribbon's right tail, mirrored (L:643)", MF_DATE),
+	lobbyHud("img.mf.vs", 123159127346155, "the VS badge, 84 + its 6 px lip at (8, 8) of 100 x 106, 3x (L:724)", MF_DATE),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

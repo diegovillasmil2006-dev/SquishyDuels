@@ -322,7 +322,13 @@ local Strings = {
 		},
 		findingMatch = "Finding match",
 		matchFound = "MATCH FOUND!",
-		matchOpponent = "Opponent: {name}",
+		-- Round 2 of the match flow (2026-10-25, LOBBY HUD L:763-765 MODES name / chip, L:726): the MATCH FOUND show's
+		-- mode pill and the tag over your tile (its title is matchFound).
+		foundShow = {
+			names = { ["1v1"] = "DUEL 1v1", tdm = "TEAM DEATHMATCH", ffa = "FREE FOR ALL" },
+			chips = { ["1v1"] = "1v1", tdm = "6v6", ffa = "SOLO" },
+			you = "YOU",
+		},
 		-- UI FINAL R4: the DUEL mode picker for testers (Diego's newer file N:710-711; Config.Match.picker*); its short
 		-- names when there is no room for the full ones (the design's MODES.*.tab, N:711-712, its search bar's chip).
 		modes = {

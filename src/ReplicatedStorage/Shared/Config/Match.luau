@@ -85,6 +85,10 @@ local Match = {
 	-- FFA/TDM v1 (2026-10-15): the in-server queue (/ffa, /tdm). Once minPlayers are queued for a mode this many
 	-- seconds pass before the match starts (at once when the queue reaches maxPlayers or everyone in the server).
 	gatherSeconds = 10, -- [P]
+	-- Round 2 of the match flow (2026-10-25, owner: Diego's MATCH FOUND show for every mode): a match from the queue
+	-- starts at once (the players are in it: no other queue takes them) but its teleports wait this long, so the lobby's
+	-- show plays first: the waiting bar's fill-up (up to 12 x 70 ms + 350 ms) and the show (3 s, then 0.46 s out).
+	foundHoldSeconds = 4.8,
 	-- Match HUD M2 (2026-10-16, owner): a match pays like a 1v1 duel (Config.Economy.DuelRewards: the win / loss / draw
 	-- squeezes, at least minOwnThrows own throws and the min Active seconds), as Coins AND Grip, with no hourly cap. A
 	-- win (a team win or FFA 1st, paid or not) is +1 win streak; a loss, a draw or leaving a live match resets it

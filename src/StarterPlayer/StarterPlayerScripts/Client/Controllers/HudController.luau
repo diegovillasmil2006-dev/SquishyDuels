@@ -46,10 +46,10 @@
 --   QueueController's non-modal "queue" screen (QueueJoin; HudFormat.duelAction). While the 1v1 queue searches: the
 --   search bar (Hud_DuelSearch, H:135-146: "Finding match", the dots, m:ss, the two slots (you mint, the opponent
 --   pink), the queue line, the QueueController's cancel X in its right end), popping in (sdPop, G4.1) with the join
---   sounds and sparks (H:758-763) and a tick every 700 ms (H:763); on Matched (QueueController.matchFound; the bar
---   stays through Matched) the opponent's slot fills first, then 350 ms later MATCH FOUND (Hud_MatchFound in SD_Overlay
---   at the area's last place, under the duel HUD's top bar once that shows, H:148-152, G4.2, G4.3) pops in with its
---   sparks, ring, jolt and ui.toast and stays Config.UI.Queue.matchedBannerSeconds or until the arena countdown. Phones
+--   sounds and sparks (H:758-763) and a tick every 700 ms (H:763). Round 2 of the match flow (2026-10-25): on
+--   StateController.MatchFoundReceived (a duel or match the queue started; the bar stays through Matched) the 1v1's
+--   opponent slot fills first (its sound; a match's bar fills up itself, round 1), then foundDelayMs later Diego's
+--   MATCH FOUND show plays in its own layer (UI/MatchFoundShow, Config.UI.MatchFound) until the arena is on. Phones
 --   draw only the idle DUEL button at COLUMN.ctaCompactScale (the second line hidden); the search bar keeps its full
 --   size (PR1, PR2; HudFormat.ctaScales). The toasts start under the area (UIController.toastsBelow
 --   "cta"), then under the coach card or the queue pill right under it (NotifyFormat chains them), at the design's top
@@ -84,7 +84,7 @@
 -- Public: leftColumn(), LEFT_ORDER, setFocusEntry(object?), setFocusTarget(key, object?), element(name), coinsAnchor(),
 -- isShown(), VisibilityChanged, LayoutChanged, layoutRects(), flyCoins(from, amount, count?), denyCoins(),
 -- setGainSource(label?), debugCoinFlight(amount), columnPlan(), ColumnPlanChanged, setColumnItem(key, present),
--- setGripLevel(level?), gripLevelLabel(), cancelSlot(), matchFound(text) -> handle, textScale(), debugState().
+-- setGripLevel(level?), gripLevelLabel(), cancelSlot(), textScale(), debugState().
 
 -- Services
 
@@ -114,6 +114,7 @@ local Focus = require(Client.UI.Focus)
 local HudFormat = require(Client.UI.HudFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
+local MatchFoundShow = require(Client.UI.MatchFoundShow)
 local MatchHudFormat = require(Client.UI.MatchHudFormat)
 local ModeSelect = require(Client.UI.ModeSelect)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
@@ -144,12 +145,6 @@ export type Rects = {
 	cta: Rect?, -- the DUEL area (the button, or the search bar; the top middle)
 	coach: Rect?, -- Hud_OnboardingCard (OnboardingController)
 	reserved: { Rect }, -- narrow layouts: the thumbstick zone, the touch Throw / Ultimate buttons and the jump button
-}
--- What matchFound returns (UIController.BannerHandle's shape: QueueController keeps it as its matched banner).
-export type FoundHandle = {
-	setText: (self: FoundHandle, text: string) -> (),
-	dismiss: (self: FoundHandle) -> (),
-	isShown: (self: FoundHandle) -> boolean,
 }
 
 type BadgeTile = { button: Button.Button }
@@ -190,7 +185,6 @@ type SearchBar = {
 	cascade: number,
 	cascading: boolean,
 }
-type FoundBar = { root: Frame, pop: Frame, sub: TextLabel }
 
 -- Constants
 
@@ -213,7 +207,6 @@ local QUESTS_SCREEN = "quests"
 local COIN_SOUND = "ui.coin"
 local CLICK_SOUND = "ui.click"
 local HOVER_SOUND = "ui.hover"
-local TOAST_SOUND = "ui.toast"
 local FOCUS_ACTION = "FocusHud"
 local COACH_NAME = "Hud_OnboardingCard" -- OnboardingController's coach card (a stable name)
 local SEARCHING = "Searching"
@@ -228,8 +221,6 @@ local SLOT_MAX = (function(): number
 	end
 	return most
 end)()
--- The duel HUD's top bar (DuelController's stable names): MATCH FOUND keeps under it once it shows.
-local DUEL_GUI, DUEL_TOP_BAR = "SD_DuelHud", "TopBar"
 -- H:653-654: the keys 1-5 open these windows (ControlsController NavN / ModalNavN).
 local NAV_KEYS: { string } = { "squishies", "boxes", "shop", "quests", "daily" }
 -- H:92-96: the GRIP float's design top on the design's 810 px canvas (a shorter canvas keeps its share).
@@ -286,14 +277,15 @@ local duelButton: Button.Button? = nil
 local pickerOn = false -- this player's DUEL opens the mode select (HudFormat.pickerShown)
 local modeScreen: ModeSelect.ModeSelect? = nil -- the open mode select (UI/ModeSelect)
 local search: SearchBar? = nil
-local found: FoundBar? = nil
-local foundToken = 0 -- the matchFound call that owns the found bar
 local holdCta = false -- the DUEL area stays up for the opponent's slot (H:772) while the HUD hides
 local ctaQueued = false
 local ctaCompact = false
 local ctaRect: Rect? = nil
-local lastCtaRect: Rect? = nil -- the DUEL area's last rect while it showed (MATCH FOUND's place, foundSpot)
-local foundFollow: Cleanup.Cleanup? = nil -- MATCH FOUND follows the duel HUD's top bar while it shows
+-- Round 2 of the match flow: the MATCH FOUND show playing, the one waiting for the bar (its fill-up, or the 1v1's
+-- opponent slot while foundWaiting).
+local foundShow: MatchFoundShow.Show? = nil
+local foundPending: MatchFoundShow.View? = nil
+local foundWaiting = false
 local ctaFits: boolean? = nil -- HudFormat.ctaPlacement's answer (debugState)
 local searchWidth = HUD.search.width
 local gripFloat: Frame? = nil
@@ -991,29 +983,13 @@ local function paintBar(bar: SearchBar, mode: string, max: number)
 	bar.vs.LayoutOrder = 2 * (layout.vsAfter or 0) + 1
 	local text = Strings.hud.waitChips[mode] or ""
 	bar.chipLabel.Text = text
-	local picker, key = HUD.picker, ColorSequenceKeypoint.new
-	local keys = { key(0, Palette.StickerYellowTop), key(1, Palette.StickerGoldMid) } -- L:765
-	local rotation = picker.ffaRotation -- 180deg: top to bottom
-	if mode == "tdm" then -- L:764
-		local at = picker.tdmStops
-		keys = {
-			key(at[1], Palette.StickerTdmRedTop),
-			key(at[2], Palette.StickerTdmRed),
-			key(at[3], Palette.StickerTdmBlue),
-			key(at[4], Palette.StickerTdmBlueEnd),
-		}
-		local width = Theme.textWidth(text, "Chip") + 2 * HUD.search.chipPadX
-		local tabs = require(Client.UI.Components.SegmentedTabs) -- inline, as PhoneHud: this chunk is near 200 locals
-		rotation = tabs.gradientRotation(picker.tdmRotation, width, HUD.search.chipHeight)
-	elseif mode ~= "ffa" then -- L:763
-		local pink = Theme.accent("pink")
-		keys = { key(0, pink.top), key(pink.midAt :: number, pink.face), key(1, pink.shade) }
-	end
+	local width = Theme.textWidth(text, "Chip") + 2 * HUD.search.chipPadX
+	local colors, rotation = MatchFoundShow.chipGradient(mode, width, HUD.search.chipHeight)
 	local old = bar.chip:FindFirstChildOfClass("UIGradient")
 	if old then
 		old:Destroy()
 	end
-	Create("UIGradient", { Color = ColorSequence.new(keys), Rotation = rotation, Parent = bar.chip })
+	Create("UIGradient", { Color = colors, Rotation = rotation, Parent = bar.chip })
 	bar.mode, bar.max = mode, max
 end
 
@@ -1043,11 +1019,77 @@ local function fillTo(bar: SearchBar, count: number, quiet: boolean)
 	end
 end
 
+-- Round 2 of the match flow: the arena is on (the duel or match past Positioning; no duel or match at all counts too).
+local function arenaOn(): boolean
+	local duel, match = StateController.duel(), StateController.match()
+	local phase = if duel then duel.phase elseif match then match.phase else nil
+	return phase ~= "Preparing" and phase ~= "Positioning"
+end
+
+-- Round 2 of the match flow (LOBBY HUD L:1024-1051): the waiting MATCH FOUND show plays once the bar is done (a
+-- match's fill-up, the 1v1's opponent slot), over the mode select (closed) and any show still on.
+local function playFound()
+	local view, bar = foundPending, search
+	if view == nil or foundWaiting or (bar and bar.cascading) then
+		return
+	end
+	foundPending = nil
+	local screen = modeScreen
+	if screen then
+		screen:close(true)
+	end
+	local old = foundShow
+	if old then
+		old:close()
+	end
+	local spec = Config.UI.MatchFound
+	local player = Players.LocalPlayer
+	local show: MatchFoundShow.Show
+	show = MatchFoundShow.play({
+		layer = UIController.screenGui(spec.layerName, spec.layer),
+		view = view,
+		you = if player then player.UserId else 0,
+		fxScale = 1 / math.max(UIController.scale(), 1e-3),
+		play = function(key: string, fallback: string)
+			SoundController.play(if SoundController.hasSound(key) then key else fallback)
+		end,
+		ready = arenaOn,
+		onDone = function()
+			if foundShow == show then
+				foundShow = nil
+			end
+		end,
+	})
+	foundShow = show
+end
+
+-- Round 2 of the match flow (G4.2, G4.3; LOBBY HUD L:1012-1015): a 1v1 was found: the opponent's slot fills (its slot
+-- sound) and the DUEL area stays up foundDelayMs while the HUD hides, then the show (playFound).
+local function opponentFound()
+	local bar, wrap = search, ctaWrap
+	if bar == nil or wrap == nil or not ctaQueued then
+		return
+	end
+	holdCta = true
+	wrap.Visible = true
+	foundWaiting = true
+	fillTo(bar, 2, false)
+	task.delay(HUD.search.foundDelayMs / 1000, function()
+		foundWaiting = false
+		holdCta = false
+		local w = ctaWrap
+		if w and not shown then
+			w.Visible = false
+		end
+		playFound()
+	end)
+end
+
 -- The DUEL area's state from the queues (HudFormat.ctaModel): the button, or the search bar with its time, mode chip,
 -- slots and players line (round 1 of the match flow: the 1v1 queue, or a Free for All / Team Deathmatch ticket with
 -- its own X); entering the search plays the join's sounds and sparks (H:758-763). Searching -> Matched keeps the
--- search bar (G4.3: the opponent's slot fills there, matchFound, whichever of QueueChanged and DuelChanged comes
--- first) until the queue leaves Matched. [P] A match ticket's start (its full view): the bar stays up while the HUD
+-- search bar (G4.3: the opponent's slot fills there, opponentFound) until the queue leaves Matched. [P] A match
+-- ticket's start (its full view): the bar stays up while the HUD
 -- hides (holdCta), the empty slots fill one by one fullStepMs apart up to the match's count (the bots took them),
 -- then after fullHoldMs it goes with the HUD (the design starts the match 380 ms after the last slot, L:1015).
 local function refreshCta()
@@ -1121,6 +1163,7 @@ local function refreshCta()
 			w.Visible = false
 		end
 		refreshCta()
+		playFound() -- round 2: MATCH FOUND after the fill-up
 	end)
 end
 
@@ -1244,7 +1287,6 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 	ctaFits = place.fits
 	setIfChanged(wrap, "Position", UDim2.fromOffset(math.floor(place.x + size.X / 2), math.floor(place.y)))
 	ctaRect = { x = place.x, y = place.y, w = size.X, h = size.Y }
-	lastCtaRect = ctaRect
 end
 
 -- UI FINAL R4: whether the GRIP float shows (HudFormat.gripFloatShown: not on phones, not in first person).
@@ -1429,7 +1471,7 @@ local function setShown(on: boolean)
 	end
 	local wrap = ctaWrap
 	if wrap then
-		-- UI FINAL R4: held up while the opponent's slot fills (matchFound, H:772).
+		-- UI FINAL R4: held up while the opponent's slot fills (opponentFound) or the match's bar fills up.
 		wrap.Visible = (on or holdCta) and (UIController.isRegistered("queue") or pickerOn)
 	end
 	if on then
@@ -2131,107 +2173,6 @@ local function buildSearch(c: Cleanup.Cleanup, parent: Instance): SearchBar
 	}
 end
 
--- MATCH FOUND (H:148-152) in SD_Overlay (SD_Hud hides from Matched, G4.2): the gold pill (#FFF3A6 -> #FFC23A at 60%
--- -> #F59A12, the 4 px highlight at .65, the 8 px bevel towards the found tint, border 5, radius 28, the 7 px lip),
--- padding 0 24 0 120 inside the border, match.svg (112) pulsing at (4, -18) of its padding edge, "MATCH FOUND!" (36 px,
--- stroke 7, drop 4) over "Opponent: {name}" (17 px #5A3200, plan FD2).
-local function buildFound(c: Cleanup.Cleanup): FoundBar
-	local spec = HUD.found
-	local border = STICKER.border.heavy
-	local lip = STICKER.lip.search
-	local root: Frame = Create("Frame", {
-		Name = "Hud_MatchFound",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Size = UDim2.fromOffset(spec.width, COLUMN.barHeight),
-		Visible = false,
-		Parent = UIController.screenGui(OVERLAY_GUI),
-	})
-	c:add(root)
-	local pop: Frame = Create("Frame", {
-		Name = "SD_Pop",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(1, 1),
-		Parent = root,
-	})
-	local face: Frame = Create("Frame", {
-		Name = "Face",
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		Parent = pop,
-	})
-	local look = STICKER.surfaces.found
-	local bands = Layout.stickerBands(border, look.highlightPx, look.bevelPx or 0, lip)
-	local gold: Theme.Accent = {
-		face = Palette.StickerGoldMid,
-		shade = Palette.StickerGoldEnd,
-		light = false,
-		top = Palette.StickerCreamYellow,
-		mid = Palette.StickerGoldMid,
-		midAt = spec.midAt,
-	}
-	Theme.foam(face, {
-		radius = STICKER.radius.duel,
-		stroke = border,
-		inner = true,
-		top = bands.top,
-		bevel = bands.bevel,
-		drop = bands.drop,
-		colors = Theme.surfaceColors(gold, "found", true),
-	})
-	Create("UIPadding", {
-		PaddingLeft = UDim.new(0, border + spec.padLeft),
-		PaddingRight = UDim.new(0, border + spec.padRight),
-		PaddingTop = UDim.new(0, border),
-		PaddingBottom = UDim.new(0, bands.drop),
-		Parent = face,
-	})
-	Theme.list(Enum.FillDirection.Horizontal, spec.gap, face, Enum.HorizontalAlignment.Left)
-	local icon = IconGlyph.image("img.icon.match", { name = "Icon", sizePx = spec.iconPx, parent = pop })
-	local half = spec.iconPx / 2 -- centre-anchored for its sdPulse (see buildSearch)
-	icon.AnchorPoint = Vector2.new(0.5, 0.5)
-	icon.Position = UDim2.fromOffset(border + spec.iconX + half, border + spec.iconY + half)
-	icon.ZIndex = 2
-	local iconLoop = UiIdle.add(icon, "pulse", { periodS = spec.iconPulseS }) -- H:150
-	if iconLoop then
-		c:add(function()
-			iconLoop:remove()
-		end)
-	end
-	local texts: Frame = Create("Frame", {
-		Name = "Texts",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		Parent = face,
-	})
-	Theme.list(Enum.FillDirection.Vertical, spec.columnGap, texts, Enum.HorizontalAlignment.Left)
-	local title = Theme.label({
-		Name = "Title",
-		Text = Strings.hud.matchFound,
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		TextWrapped = false,
-		LayoutOrder = 1,
-		Parent = texts,
-	}, "Found")
-	Theme.stickerText(title, "found") -- H:151
-	title.TextWrapped = false
-	local sub = Theme.label({
-		Name = "Opponent",
-		Text = "",
-		Size = UDim2.fromOffset(0, 0),
-		AutomaticSize = Enum.AutomaticSize.XY,
-		TextWrapped = false,
-		LayoutOrder = 2,
-		Parent = texts,
-	}, "D17", nil, Palette.StickerFoundText) -- H:151: 17 px #5A3200 (dark: no outline)
-	sub.TextWrapped = false
-	return { root = root, pop = pop, sub = sub }
-end
-
 -- The DUEL area (see the header): the wrap at the top middle, the idle box (the DUEL button over its soft shadow,
 -- H:126 T2, in SD_IdleScale, whose UIScale SD_CtaScale draws only it at the phone scale) and the search bar (never
 -- scaled: PR1, PR2).
@@ -2326,7 +2267,6 @@ local function buildCta(c: Cleanup.Cleanup, gui: ScreenGui)
 		end)
 	end
 	search = buildSearch(c, wrap)
-	found = buildFound(c)
 	-- The title only: the second line never changes the button's width (it is fixed).
 	relayoutOnText(c, button)
 	duelButton = button
@@ -2483,131 +2423,6 @@ end
 function HudController.cancelSlot(): Frame?
 	local bar = search
 	return if bar then bar.cancelSlot else nil
-end
-
--- The duel HUD's top bar's bottom in SD_Overlay's base px while it shows (SD_DuelHud enabled, the bar visible), or nil.
-local function duelTopBarBottom(): number?
-	local duelGui = UIController.screenGui(DUEL_GUI)
-	local bar = duelGui:FindFirstChild(DUEL_TOP_BAR)
-	local overlay = UIController.screenGui(OVERLAY_GUI)
-	local scale = UIController.scale()
-	if not duelGui.Enabled or bar == nil or not bar:IsA("GuiObject") or not bar.Visible or scale <= 0 then
-		return nil
-	end
-	if bar.AbsoluteSize.Y <= 0 then
-		return nil
-	end
-	return (bar.AbsolutePosition.Y + bar.AbsoluteSize.Y - overlay.AbsolutePosition.Y) / scale
-end
-
-local function stopFoundFollow()
-	local follow = foundFollow
-	foundFollow = nil
-	if follow then
-		follow:clean()
-	end
-end
-
--- UI FINAL R4 (G4.2, G4.3; H:767-775): Matched: the opponent's slot fills (with the slot sound, i = 1), the DUEL area
--- stays up foundSwapDelayMs, then MATCH FOUND pops in at its last place in SD_Overlay (HudFormat.foundSpot: under the
--- duel HUD's top bar once that shows, followed while it moves) with the sparks, the ring, the jolt and ui.toast,
--- showing `text` ("Opponent: {name}"), for Config.UI.Queue.matchedBannerSeconds or until dismiss(). Replaces
--- QueueController's banner for this case; the handle has UIController.BannerHandle's shape.
-function HudController.matchFound(text: string): FoundHandle
-	foundToken += 1
-	local token = foundToken
-	local bar, wrap, view = search, ctaWrap, found
-	if bar and wrap and ctaQueued then
-		holdCta = true
-		wrap.Visible = true
-		local fill = bar.fills[2]
-		fill.Visible = true
-		Scheduler.add(
-			Tweens.keyframes(fill, MOTION.slotPop.frames :: any, {
-				ms = MOTION.slotPop.ms,
-				curve = MOTION.slotPop.curve,
-			}),
-			"render"
-		)
-		SoundController.play(CLICK_SOUND, { pitch = SoundController.slotPitch(1) }) -- H:768
-	end
-	local handle = {} :: FoundHandle
-	local live = true
-	local function hide()
-		live = false
-		local v = found
-		if v and token == foundToken then
-			v.root.Visible = false
-			stopFoundFollow()
-		end
-	end
-	task.delay(HUD.found.swapDelayMs / 1000, function()
-		if token ~= foundToken then
-			return
-		end
-		local rect = ctaRect or lastCtaRect -- read before the area hides (a hidden area has no rect)
-		holdCta = false
-		local w = ctaWrap
-		if w and not shown then
-			w.Visible = false
-		end
-		if view == nil or not live then
-			return
-		end
-		local canvas = HudController.layoutRects().canvas
-		local width = math.min(HUD.found.width, math.max(0, canvas.X - 2 * EDGE_PX))
-		view.root.Size = UDim2.fromOffset(width, COLUMN.barHeight)
-		local compact = UIController.layoutClass() == "compact"
-		local function place()
-			if token == foundToken and live then
-				local spot = HudFormat.foundSpot(rect, canvas, compact, duelTopBarBottom())
-				view.root.Position = UDim2.fromOffset(math.floor(spot.X), math.floor(spot.Y))
-			end
-		end
-		place()
-		-- Overlays fix (the old matched banner's): DuelController turns its top bar on during Preparing; follow it.
-		stopFoundFollow()
-		local follow = Cleanup.new()
-		foundFollow = follow
-		local duelGui = UIController.screenGui(DUEL_GUI)
-		follow:add(duelGui:GetPropertyChangedSignal("Enabled"):Connect(place))
-		local topBar = duelGui:FindFirstChild(DUEL_TOP_BAR)
-		if topBar and topBar:IsA("GuiObject") then
-			for _, property in { "AbsoluteSize", "AbsolutePosition", "Visible" } do
-				follow:add(topBar:GetPropertyChangedSignal(property):Connect(place))
-			end
-		end
-		view.sub.Text = text
-		view.root.Visible = true
-		popIn(view.pop, MOTION.ctaPop.foundMs, MOTION.ctaPop.foundCurve) -- H:149
-		local event = FX.events.matchFound -- H:773-775
-		local sparks = table.clone(event.sparks) :: any
-		sparks.colors = UiFx.colors(event.sparks.colors)
-		UiFx.sparks(view.root, sparks)
-		local ring = event.rings[1]
-		UiFx.ring(view.root, UiFx.colors({ ring.color })[1], ring.size)
-		UiFx.jolt(view.pop, event.jolt)
-		SoundController.play(TOAST_SOUND)
-		task.delay(Config.UI.Queue.matchedBannerSeconds, function()
-			if token == foundToken then
-				hide()
-			end
-		end)
-	end)
-	function handle.setText(_: FoundHandle, newText: string)
-		text = newText
-		local v = found
-		if v and token == foundToken then
-			v.sub.Text = newText
-		end
-	end
-	function handle.dismiss(_: FoundHandle)
-		hide()
-	end
-	function handle.isShown(_: FoundHandle): boolean
-		return live and token == foundToken
-	end
-	return handle
 end
 
 -- The left side's current plan (HudFormat.leftColumnPlan): the Grip card's layout and the tiles' arrangement.
@@ -2812,6 +2627,14 @@ function HudController.init()
 		refreshCta()
 		applyFocusLinks() -- its X shows or goes
 	end))
+	-- Round 2 of the match flow: MATCH FOUND (the 1v1's opponent slot first; a match's bar is filling up already).
+	c:add(StateController.MatchFoundReceived:connect(function(view: MatchFoundShow.View)
+		foundPending = view
+		if view.mode == "1v1" then
+			opponentFound()
+		end
+		playFound()
+	end))
 	c:add(StateController.LobbyLockChanged:connect(function(isLocked: boolean)
 		setShown(not isLocked)
 	end))
@@ -2894,7 +2717,11 @@ function HudController.init()
 		end
 		table.clear(popHandles)
 		cancelPendingGain()
-		stopFoundFollow()
+		local show = foundShow
+		if show then
+			show:close()
+		end
+		foundShow, foundPending, foundWaiting = nil, nil, false
 		CoinFlight.clear()
 		awaitingLanding = false
 		gainSource, coinIcon, lastFlashAt = nil, nil, nil
@@ -2912,8 +2739,8 @@ function HudController.init()
 		if screen then
 			screen:close(true)
 		end
-		ctaWrap, ctaScale, idleBox, duelButton, search, found = nil, nil, nil, nil, nil, nil
-		idleHolder, lastCtaRect = nil, nil
+		ctaWrap, ctaScale, idleBox, duelButton, search = nil, nil, nil, nil, nil
+		idleHolder = nil
 		ctaRect, ctaFits, ctaQueued, ctaCompact, holdCta = nil, nil, false, false, false
 		pickerOn, searchWidth = false, HUD.search.width
 		gripFloat, gripLevelLabel, gripLevel = nil, nil, nil

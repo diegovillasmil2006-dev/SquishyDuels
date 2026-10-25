@@ -17,8 +17,6 @@
 --   messageText(key)                  a queue message (fills {minutes} of queue.timedOut from Config)
 --   toastKey(old, new)                the message of a QueueStatus update that should pop a toast, if any (never the
 --                                     arena wait or the no-opponent hint: the pill shows those itself)
---   matchedText(name)                 UI FINAL R4 (H:151, plan FD2): MATCH FOUND's second line, "Opponent: {name}", or
---                                     "" before the name is known (the bar's title already says it)
 --   pillPlacement(input)              where the pill goes in SD_Hud's base px (Part 8; foam restyle, spec 2026-10-09:
 --                                     the Duel CTA shows the queued state; lobby HUD, spec 2026-10-11: the CTA sits at
 --                                     the top middle): right under the Duel CTA, centred on it, when that spot is free;
@@ -264,13 +262,6 @@ function QueueFormat.teleportStarts(
 		return false
 	end
 	return old == nil or old.matchId ~= new.matchId or old.phase ~= TELEPORT_PHASE
-end
-
-function QueueFormat.matchedText(name: string?): string
-	if name and name ~= "" then
-		return Strings.format(Strings.hud.matchOpponent, { name = name })
-	end
-	return ""
 end
 
 -- Where the pill goes (see the header). In order, the first free spot wins:

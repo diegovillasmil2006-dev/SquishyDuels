@@ -2372,9 +2372,8 @@ return function(t: Context)
 			flash.ringFrames,
 			{ { at = 0, x = 0, alpha = 0 }, { at = 0.3, x = 8, alpha = 0.7 }, { at = 1, x = 16, alpha = 0 } }
 		)
-		-- UI FINAL R4: the DUEL area's pops (H:25, H:136, H:149) and a queue slot's fill (H:36, H:141).
-		expect.deepEqual({ motion.ctaPop.searchMs, motion.ctaPop.foundMs }, { 450, 500 })
-		expect.deepEqual({ motion.ctaPop.searchCurve, motion.ctaPop.foundCurve }, { "search", "slot" })
+		-- UI FINAL R4: the DUEL area's pop (H:25, H:136) and a queue slot's fill (H:36, H:141).
+		expect.deepEqual({ motion.ctaPop.searchMs, motion.ctaPop.searchCurve }, { 450, "search" })
 		expect.deepEqual(motion.ctaPop.frames[1], { at = 0, scale = 0.55, y = 22, rot = -2, alpha = 0 })
 		expect.deepEqual(motion.slotPop, {
 			ms = 350,
@@ -2484,7 +2483,7 @@ return function(t: Context)
 		expect.deepEqual(fx.events.questClaim.sparks, { n = 22, spread = 180 })
 		expect.equal(fx.events.questClaim.coins, 10) -- H:746
 		expect.equal(fx.events.dailyClaim.coins, 10) -- H:856
-		expect.equal(fx.events.matchFound.jolt, 7)
+		expect.deepEqual({ fx.events.matchFound.jolt, fx.events.matchFound.vs.jolt }, { 14, 7 }) -- LOBBY HUD L:1041, L:1045
 		expect.deepEqual({ fx.events.levelUp.slamJolt, fx.events.levelUp.jolt }, { 5, 14 }) -- H:719-726
 		-- §9.15: 1 rays picture + the 2 rings + 21 pieces = 24 moving frames.
 		expect.equal(fx.events.boxBurst.maxPieces, 21)
@@ -2573,7 +2572,7 @@ return function(t: Context)
 		expect.deepEqual({ hud.cta.top, hud.cta.designTop, hud.cta.width }, { 30, 18, 350 }) -- PR10, H:123, H:126
 		expect.deepEqual({ hud.cta.padLeft, hud.cta.padRight, hud.cta.emblemPx }, { 128, 24, 132 }) -- H:126-128
 		expect.deepEqual({ hud.search.width, hud.search.face, hud.search.tickMs }, { 660, 96, 700 }) -- L:219, H:136, H:763
-		expect.deepEqual({ hud.found.width, hud.found.face, hud.found.swapDelayMs }, { 420, 96, 350 }) -- H:149, H:772
+		expect.equal(hud.search.foundDelayMs, 350) -- H:772, LOBBY HUD L:1015
 		expect.deepEqual(
 			{ hud.cancelX.face, hud.cancelX.lip, hud.cancelX.radius, hud.cancelX.iconPx },
 			{ 48, 4, 16, 28 }

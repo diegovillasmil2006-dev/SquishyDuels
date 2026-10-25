@@ -151,6 +151,7 @@ return function(t: Context)
 		cfg.resultSeconds = 8
 		cfg.minPlayers = 2
 		cfg.gatherSeconds = 10
+		cfg.foundHoldSeconds = 0 -- round 2: the MATCH FOUND wait only where a case sets it
 		cfg.Rewards = { enabled = false } -- Match HUD M2 (it replaced rewardCoins = 0): off unless a case turns it on
 		cfg.outOfBoundsIsKo = false
 		cfg.returnSpreadStuds = 4
@@ -670,6 +671,37 @@ return function(t: Context)
 		expect.equal(queueView(p[2], 1).full, true)
 		expect.deepEqual(queueView(p[2]), {})
 		expect.equal(#queueViews(p[4]), 0) -- never queued: never told
+		close()
+	end)
+
+	t.test("round 2 (MATCH FOUND): a queue match sends who plays and teleports after foundHoldSeconds", function()
+		local c = baseConfig()
+		c.foundHoldSeconds = 4.8
+		local w = setup(2, c)
+		local p = w.players
+		MatchService.join(p[1], "ffa")
+		MatchService.join(p[2], "ffa") -- everyone in the server is queued: it starts at once
+		expect.truthy(w.port ~= nil)
+		local found: any = nil
+		for _, entry in w.sent do
+			if entry.name == "MatchFound" and entry.player == p[2] then
+				found = entry.payload
+			end
+		end
+		expect.truthy(found ~= nil)
+		expect.equal(found.mode, "ffa")
+		expect.equal(#found.players, 2)
+		expect.equal(found.players[1].userId, p[1].UserId)
+		expect.equal(found.players[1].level, 1) -- the fakes have no gripLevel: made up from 1 to 1
+		expect.equal(found.players[1].team, nil)
+		w.flush()
+		expect.equal(#w.teleports, 0) -- the lobby's show plays first
+		MatchService.tick(T0 + 4.7)
+		w.flush()
+		expect.equal(#w.teleports, 0)
+		MatchService.tick(T0 + 4.8)
+		w.flush()
+		expect.equal(#w.teleports, 2)
 		close()
 	end)
 

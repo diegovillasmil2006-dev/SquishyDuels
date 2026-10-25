@@ -512,6 +512,13 @@ export type MatchQueueView = {
 	full: boolean?,
 }
 
+-- The MatchFound payload (round 2 of the match flow, 2026-10-25): who plays the match or duel the queue just started,
+-- for the lobby's MATCH FOUND show (Diego's LOBBY HUD L:722-735). team: 1 / 2 (Config.Match.teamNames) in Team
+-- Deathmatch, nil otherwise; level: the Grip level (a bot's is drawn by Server/Logic/MatchFoundRoster).
+export type MatchFoundMode = "1v1" | "tdm" | "ffa"
+export type MatchFoundPlayer = { userId: number, name: string, squishy: string, level: number, team: number? }
+export type MatchFoundView = { mode: MatchFoundMode, players: { MatchFoundPlayer } }
+
 -- The MatchState payload (one per player): sent on the first view, every phase change, K.O., respawn, team-lives
 -- change and outcome, plus the own view when `you.stormBar` moved (at most Config.Match.Storm.sampleHz a second).
 -- A last view with phase "Returning", then the cleared attributes (SD_MatchId "") end it on the client.

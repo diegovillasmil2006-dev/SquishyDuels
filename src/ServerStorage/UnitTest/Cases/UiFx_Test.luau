@@ -123,6 +123,40 @@ return function(t: Context)
 	end)
 
 	t.test(
+		"converge (MATCH FOUND's charge, hud-lib.js L:345-360): from a ring into the centre, gone at the end",
+		function()
+			local spec = FX.converge
+			local pieces = UiFx.convergePieces({ n = 8, reach = 100, size = 10 }, Random.new(5))
+			expect.equal(#pieces, 8)
+			for index, piece in pieces do
+				local reach = math.sqrt(piece.dx ^ 2 + piece.dy ^ 2)
+				expect.truthy(
+					reach >= 100 * spec.reachMin - 1e-6 and reach <= 100 * (spec.reachMin + spec.reachSpan) + 1e-6
+				)
+				expect.truthy(
+					piece.size >= 10 * spec.sizeMin - 1e-6 and piece.size <= 10 * (spec.sizeMin + spec.sizeSpan)
+				)
+				expect.truthy(piece.delayMs >= 0 and piece.delayMs <= spec.delayMs)
+				local angle = math.atan2(piece.dy, piece.dx) % (2 * math.pi)
+				local turn = (index - 1) / 8 * 2 * math.pi
+				expect.truthy((angle - turn) % (2 * math.pi) <= spec.angleJitter + 1e-6) -- the i-th at i / n of the turn
+			end
+			local piece = pieces[1]
+			local at0, scale0, _, clear0 = UiFx.convergeAt(piece, 0)
+			expect.near(at0.X, piece.dx, 1e-3)
+			expect.near(scale0, 0.4, 1e-6)
+			expect.near(clear0, 1, 1e-6)
+			local at1, scale1, rot1, clear1 = UiFx.convergeAt(piece, 1)
+			expect.near(at1.X, 0, 1e-6)
+			expect.near(at1.Y, 0, 1e-6)
+			expect.near(scale1, 0, 1e-6)
+			expect.near(rot1, 300, 1e-6)
+			expect.near(clear1, 1, 1e-6)
+			expect.equal(#UiFx.convergePieces(nil, Random.new(1)), spec.n)
+		end
+	)
+
+	t.test(
 		"rain counts (PR14): the design's on a regular screen, halved once on compact or with fewer effects",
 		function()
 			expect.equal(FX.rain.n, 60)

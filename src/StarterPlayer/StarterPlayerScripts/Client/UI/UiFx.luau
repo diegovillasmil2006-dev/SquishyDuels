@@ -33,6 +33,8 @@
 --            four-point star (lib:225: the img.fx.spark picture tinted, a 45° diamond while it has no id, T10), the
 --            rest circles with an ink ring, flung out, falling, shrinking and clearing
 --   UiFx.ring(at, color?, size?) -> boolean   a ring growing .2 -> 1.3 as it fades (lib:236)
+--   UiFx.converge(at, opts?) -> boolean   round 2 of the match flow (MATCH FOUND's charge, LOBBY HUD hud-lib.js
+--            L:345-360): stars from a ring flying in to `at`, spinning, and gone (pure: convergePieces, convergeAt)
 --   UiFx.rain(n?, colors?, parent?) -> boolean   outlined confetti falling across the whole layer (lib:243), or
 --            across `parent` (an overlay: the rain goes with it); PR14: halved on a compact screen or with fewer
 --            effects
@@ -112,6 +114,9 @@ export type Spark = {
 	spin: number,
 	ms: number,
 }
+-- Round 2 of the match flow: a converge's options (Config.UI.Fx.converge gives every default) and one piece.
+export type ConvergeOptions = { n: number?, reach: number?, size: number?, ms: number?, colors: { Color3 }? }
+export type ConvergePiece = { color: Color3, size: number, dx: number, dy: number, ms: number, delayMs: number }
 -- parent: draw in this frame instead of the layer (it keeps that frame's layer and visibility); `at` is then a
 -- point in its base px.
 export type FloatOptions = { dx: number?, rise: number?, ms: number?, parent: GuiObject? }
@@ -814,6 +819,37 @@ function UiFx.sparkAt(piece: Spark, u: number): (Vector2, number, number, number
 	return Vector2.new(x, y), spec.peakScale + (spec.endScale - spec.peakScale) * k, piece.spin * (0.5 + 0.5 * k), k
 end
 
+-- The pieces of a converge (round 2 of the match flow, MATCH FOUND's charge; hud-lib.js L:345-360), drawn from `rng`:
+-- colours in turn, the i-th at i / n of the turn (base px, ms).
+function UiFx.convergePieces(opts: ConvergeOptions?, rng: Random): { ConvergePiece }
+	local spec = FX.converge
+	local o: ConvergeOptions = opts or {}
+	local colors = if o.colors and #o.colors > 0 then o.colors else UiFx.colors(spec.colors)
+	local n = math.max(0, math.floor(o.n or spec.n))
+	local pieces: { ConvergePiece } = {}
+	for i = 1, n do
+		local angle = (i - 1) / n * 2 * math.pi + rng:NextNumber() * spec.angleJitter
+		local reach = (o.reach or spec.reach) * (spec.reachMin + rng:NextNumber() * spec.reachSpan)
+		table.insert(pieces, {
+			color = colors[(i - 1) % #colors + 1],
+			size = (o.size or spec.size) * (spec.sizeMin + rng:NextNumber() * spec.sizeSpan),
+			dx = math.cos(angle) * reach,
+			dy = math.sin(angle) * reach,
+			ms = (o.ms or spec.ms) + rng:NextNumber() * spec.jitterMs,
+			delayMs = rng:NextNumber() * spec.delayMs,
+		})
+	end
+	return pieces
+end
+
+-- A converge piece u (0..1) into its life (Config.UI.Fx.converge.frames, the whole run eased by its curve): its offset
+-- from the centre, scale, rotation and transparency.
+function UiFx.convergeAt(piece: ConvergePiece, u: number): (Vector2, number, number, number)
+	local pose = Tweens.poseAt(FX.converge.frames, math.clamp(u, 0, 1), nil, FX.converge.curve)
+	local offset = Vector2.new(piece.dx * (pose.x or 0), piece.dy * (pose.y or 0))
+	return offset, pose.scale or 1, pose.rot or 0, 1 - (pose.alpha or 1)
+end
+
 -- The rain's piece count (PR14): n (default Config.UI.Fx.rain.n), halved (rounded up) on a compact screen or with
 -- fewer effects.
 function UiFx.rainCount(n: number?, fewer: boolean, compact: boolean): number
@@ -977,6 +1013,50 @@ function UiFx.sparks(at: GuiObject | Vector2, opts: SparkOptions?): boolean
 			if stroke then
 				stroke.Transparency = clear
 			end
+			alive = alive or u < 1
+		end
+		return alive
+	end)
+	return true
+end
+
+function UiFx.converge(at: GuiObject | Vector2, opts: ConvergeOptions?): boolean
+	local gui = layer()
+	if gui == nil or Tweens.reducedMotion() then
+		return false
+	end
+	local centre = centreOf(at, gui)
+	if centre == nil then
+		return false
+	end
+	local pieces = UiFx.convergePieces(opts, designRng)
+	if #pieces == 0 then
+		return false
+	end
+	local holder = designHolder("SD_Converge", centre)
+	local frames: { GuiObject } = {}
+	local scales: { UIScale } = {}
+	local turned: { number } = {}
+	for index, piece in pieces do
+		local frame = star(piece.color, piece.size, holder)
+		turned[index] = frame.Rotation
+		frames[index] = frame
+		scales[index] = Create("UIScale", { Scale = 0, Parent = frame })
+	end
+	launch(gui, holder, function(elapsed: number): boolean
+		local alive = false
+		for index, piece in pieces do
+			local u = (elapsed * 1000 - piece.delayMs) / piece.ms
+			local offset, size, turn, clear = UiFx.convergeAt(piece, u)
+			local frame = frames[index]
+			frame.Position = UDim2.fromOffset(offset.X, offset.Y)
+			frame.Rotation = turned[index] + turn
+			if frame:IsA("ImageLabel") then
+				frame.ImageTransparency = clear
+			else
+				frame.BackgroundTransparency = clear
+			end
+			scales[index].Scale = size
 			alive = alive or u < 1
 		end
 		return alive

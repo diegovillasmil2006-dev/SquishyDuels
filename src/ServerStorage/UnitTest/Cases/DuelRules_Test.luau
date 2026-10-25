@@ -152,6 +152,18 @@ return function(t: Context)
 		expect.equal(phase.endsAt, T0 + 0.4 + RULES.PositioningTimeoutSeconds)
 	end)
 
+	t.test("round 2: a MATCH FOUND hold lengthens the Preparing timeout by its seconds", function()
+		local s = DuelRules.new(MATCH_ID, {
+			A = { userId = USER_A, rewardsEnabled = true },
+			B = { userId = USER_B, rewardsEnabled = true },
+		}, T0, Config.Duel, 4)
+		expect.equal(s.phaseEndsAt, T0 + RULES.PreparingTimeoutSeconds + 4)
+		s = run(s, { { { kind = "tick" }, T0 + RULES.PreparingTimeoutSeconds + 3.9 } })
+		expect.equal(s.phase, "Preparing")
+		s = run(s, { { { kind = "tick" }, T0 + RULES.PreparingTimeoutSeconds + 4 } })
+		expect.equal(s.phase, "Positioning")
+	end)
+
 	t.test("Preparing stream timeout: continue to Positioning after 3 s", function()
 		local s = run(newMatch(), { { { kind = "tick" }, T0 + 2.9 } })
 		expect.equal(s.phase, "Preparing")

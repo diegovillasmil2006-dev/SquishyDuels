@@ -12,8 +12,8 @@
 --   line + Cancel (52 px); after 20 s alone (or when QueueStatus says queue.noOpponent) the "No one else is in the queue
 --   right now." hint with Keep waiting / Practice (a waypoint to the range; the player stays queued, no teleport) /
 --   Cancel. Hidden while Idle and during a match.
--- * Matched: "Opponent found: {name}" for Config.UI.Queue.matchedBannerSeconds (UIController closes the modals); the
---   name comes from the first DuelState (a Studio test dummy is labelled as one, never shown as a player).
+-- * Matched: HudController's MATCH FOUND show (round 2 of the match flow, 2026-10-25: UI/MatchFoundShow on the server's
+--   MatchFound; the duel pads and Rematch show none).
 -- * Errors and messages: a failed QueueJoin shows its reason ("Couldn't join the queue. Try again." for unknown
 --   errors); QueueStatus.messageKey and `queue.*` / `duel.*` Notify codes become toasts (UIController de-duplicates a
 --   message reported twice).
@@ -53,8 +53,6 @@
 --   inside, radius 28, inset 4 at .12, the 7 px lip), the hint (Small, #EDE4FF, H:142) over Keep waiting / Practice
 --   (the cyan chips) and Invite friends (the green chip), the design's chip size (H:402) in 52 px hit boxes; the clock
 --   and the title are gone. Its buttons link left / right and up to Cancel.
--- * Matched [G4.2, G4.3]: HudController.matchFound (the opponent's slot fills, then MATCH FOUND in SD_Overlay at the
---   DUEL area's place) replaces the banner, with QueueFormat.matchedText ("Opponent: {name}" once the name is known).
 
 -- Services
 
@@ -111,8 +109,6 @@ local NOTIFY_AREAS = { "queue.", "duel." }
 local COACH_FRAME = "Hud_OnboardingCard" -- OnboardingController's coach card (the pill keeps clear of it)
 local FOCUS_KEY = "queue" -- HudController.setFocusTarget
 local HINT_FOCUS_KEY = "queueHint" -- UI FINAL R4: the pill's first hint button (HudController.setFocusTarget)
--- The duel phases MATCH FOUND stays in (from the countdown on, the countdown disc and the top bar take over).
-local MATCHED_PHASES: { [string]: boolean } = { Preparing = true, Positioning = true }
 
 -- Module table
 
@@ -136,8 +132,6 @@ local aloneSince: number? = nil
 local hintDismissedAt: number? = nil
 local joining = false
 local waypoint: Waypoint.Handle? = nil
-local matchedBanner: any = nil
-local matchedBannerFor: string? = nil
 -- The pill's texts as last measured (overlays fix): the key of their samples and text size, and the wider one's width.
 local measuredKey: string? = nil
 local measuredText = 0
@@ -350,36 +344,6 @@ local function refreshBoard()
 	end
 end
 
-local function showMatched()
-	local duel = StateController.duel()
-	local name: string? = nil
-	if duel then
-		name = if duel.opponent.isTestDummy then Strings.duel.testDummy else duel.opponent.displayName
-	end
-	local text = QueueFormat.matchedText(name)
-	local key = if duel then duel.matchId else "pending"
-	if matchedBanner and matchedBannerFor == key then
-		matchedBanner:setText(text)
-		return
-	end
-	if matchedBanner and matchedBannerFor == "pending" and matchedBanner:isShown() then
-		matchedBanner:setText(text)
-		matchedBannerFor = key
-		return
-	end
-	matchedBannerFor = key
-	-- UI FINAL R4 [G4.2, G4.3] (H:767-783): the DUEL area's MATCH FOUND (the banner's handle shape).
-	matchedBanner = HudController.matchFound(text)
-end
-
--- Overlays fix: the matched banner leaves once the countdown starts (the countdown disc sits under the top bar, which
--- already names the opponent).
-local function dismissMatchedAfter(view: StateController.DuelView)
-	if matchedBanner and not MATCHED_PHASES[view.phase] then
-		matchedBanner:dismiss()
-	end
-end
-
 -- The pill (UI FINAL R4 [PR19], H:136, H:142, H:402): the search bar's face (plum, its 5 px border inside, radius 28,
 -- inset 4 at .12, the 7 px lip) holding the no-opponent hint (Small, #EDE4FF) over Keep waiting / Practice / Invite
 -- friends, which wrap in a row under it.
@@ -541,9 +505,6 @@ local function onQueueChanged(new: StateController.QueueView, old: StateControll
 		if new.state ~= "Searching" then
 			clearWaypoint()
 		end
-		if new.state == "Matched" then
-			showMatched()
-		end
 		refreshPrompts()
 	end
 	local key = QueueFormat.toastKey(old, new)
@@ -620,12 +581,6 @@ function QueueController.init()
 		refreshPill()
 	end))
 	c:add(StateController.DuelChanged:connect(function(new: StateController.DuelView?, old: StateController.DuelView?)
-		if new and (old == nil or old.matchId ~= new.matchId) then
-			showMatched()
-		end
-		if new then
-			dismissMatchedAfter(new)
-		end
 		-- UI FINAL R9 (G9.4, H:779): the pink toast as the move to the arena starts (the whoosh has no sound, RL8; the
 		-- one toast of the Matched -> Returning window, never held).
 		if QueueFormat.teleportStarts(old :: any, new :: any) then

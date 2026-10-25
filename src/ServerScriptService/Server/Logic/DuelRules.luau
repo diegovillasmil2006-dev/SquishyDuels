@@ -18,7 +18,9 @@
 --
 -- Events ({ kind = ..., side = "A" | "B", ... }; anything unknown, or a bad side, is ignored):
 --   tick                         timers (phase ends, respawn and missing waits)
---   streamed {side}              Preparing: RequestStreamAroundAsync finished for that side (both -> Positioning)
+--   streamed {side}              Preparing: RequestStreamAroundAsync finished for that side (both -> Positioning; round
+--                                2 of the match flow: new(..., holdSeconds) adds the MATCH FOUND show's wait to the
+--                                Preparing timeout, and DuelService sends `streamed` only once that wait is over)
 --   positioned {side}            Positioning: that character is on its pad (both -> Countdown)
 --   hits {hits = {{victim, at}}} hits of one server step (CombatService already applied canDamage); `hit {victim, at}`
 --                                is the one-hit form. Applied in impact order; a hit inside invulnerability is ignored,
@@ -710,11 +712,13 @@ function DuelRules.participant(state: MatchState, side: SideName): Participant
 end
 
 -- A new match in Preparing. entrants = { A = Entrant, B = Entrant } (DuelService picks the sides at random).
+-- holdSeconds: the MATCH FOUND show's wait (round 2 of the match flow), on top of the Preparing timeout.
 function DuelRules.new(
 	matchId: string,
 	entrants: { A: Entrant?, B: Entrant? },
 	now: number,
-	duel: DuelConfig?
+	duel: DuelConfig?,
+	holdSeconds: number?
 ): MatchState
 	local c = config(duel)
 	local lives = c.Rules.Lives
@@ -723,7 +727,7 @@ function DuelRules.new(
 		duel = c,
 		phase = "Preparing",
 		phaseStartedAt = now,
-		phaseEndsAt = now + c.Rules.PreparingTimeoutSeconds,
+		phaseEndsAt = now + c.Rules.PreparingTimeoutSeconds + math.max(0, holdSeconds or 0),
 		activeStartedAt = nil,
 		participants = {
 			A = newParticipant("A", entrants.A, lives),

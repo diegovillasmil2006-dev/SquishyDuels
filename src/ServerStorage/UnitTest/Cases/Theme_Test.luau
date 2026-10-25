@@ -130,7 +130,6 @@ local STICKER_HEX: { [string]: string } = {
 	StickerPinkMid = "#FF5D97",
 	StickerPinkEnd = "#EE3B7B",
 	StickerDuelBevel = "#961446",
-	StickerFoundBevel = "#A05000",
 	StickerBlueBarTop = "#8BEBFF",
 	StickerBlueBarEnd = "#25AEE6",
 	StickerPurpleBarTop = "#C9A8FF",

@@ -178,6 +178,15 @@ local KILL_IMAGE_PREFIX = "img.kill."
 
 -- Match HUD M6 / M7 (2026-10-17): the match screens' sounds of the M3 pack, checked on their own below.
 local MATCH_SOUND_KEYS = { "match.splat", "match.knockedOut", "match.whoosh" }
+-- MATCH FOUND (2026-10-25, round 2 of the match flow): the show's own 6 sounds (its whoosh is match.whoosh).
+local FOUND_SOUND_KEYS = {
+	"match.found.charge",
+	"match.found.impact",
+	"match.found.letters",
+	"match.found.lettersSolo",
+	"match.found.chime",
+	"match.found.vs",
+}
 
 return function(t: Context)
 	local expect = t.expect
@@ -206,6 +215,7 @@ return function(t: Context)
 				and not table.find(R2_SOUND_KEYS, slot.key)
 				and string.sub(slot.key, 1, #KILL_SOUND_PREFIX) ~= KILL_SOUND_PREFIX -- kill banners: below
 				and not table.find(MATCH_SOUND_KEYS, slot.key) -- Match HUD M6 / M7: below
+				and not table.find(FOUND_SOUND_KEYS, slot.key) -- MATCH FOUND: below
 			then
 				table.insert(keys, slot.key)
 			end
@@ -223,6 +233,23 @@ return function(t: Context)
 				if slot.key == key then
 					found += 1
 					expect.equal(slot.spatial, false)
+				end
+			end
+			expect.equal(found, 1)
+		end
+	end)
+
+	-- MATCH FOUND (2026-10-25): the show's 6 sounds, once each, UI, 2D, each note naming its file (the owner uploads them;
+	-- a look-alike plays meanwhile, Config.UI.MatchFound.sounds).
+	t.test("MATCH FOUND's 6 sound keys: once each, UI, 2D, each naming its file", function()
+		for _, key in FOUND_SOUND_KEYS do
+			local found = 0
+			for _, slot in soundSlots() do
+				if slot.key == key then
+					found += 1
+					expect.equal(slot.group, "UI")
+					expect.equal(slot.spatial, false)
+					expect.truthy(string.find(slot.notes, ".wav'", 1, true) ~= nil)
 				end
 			end
 			expect.equal(found, 1)
@@ -483,6 +510,16 @@ return function(t: Context)
 				"img.mode.cardShadow",
 				"img.mode.play",
 				"img.mode.playMask",
+				-- MATCH FOUND (2026-10-25, round 2 of the match flow): the show's 9 pictures.
+				"img.mf.backdrop",
+				"img.mf.glow",
+				"img.mf.rays",
+				"img.mf.orb",
+				"img.mf.flash",
+				"img.mf.banner",
+				"img.mf.tailL",
+				"img.mf.tailR",
+				"img.mf.vs",
 			})
 		)
 	end)

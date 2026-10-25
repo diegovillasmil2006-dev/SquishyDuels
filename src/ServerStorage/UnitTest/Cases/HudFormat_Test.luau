@@ -44,7 +44,7 @@
 -- card's own band line (coachLine 110). Review fixes: a claim's flight only raises the number, whichever of its
 -- StateDelta and its reply comes first (flightShows); the GRIP float not on phones nor in first person
 -- (gripFloatShown); phones scale only the idle DUEL button, the search bar keeps its second line on every screen
--- (ctaScales, PR1, PR2); MATCH FOUND under the duel HUD's top bar (foundSpot); Down from the searching bar's cancel X
+-- (ctaScales, PR1, PR2); Down from the searching bar's cancel X
 -- to the queue pill's hint (focusLinks `hint`).
 -- 2026-10-16 (the coin pill's "+", owner yes "Add it", plan [UD5]): the pill's width counts the 12 px gap and the 36 px
 -- "+" (H:75, H:80; pillWidth); a tap opens the Shop's Coins tab (COIN_SHOP), its Robux packs still hidden.
@@ -1522,25 +1522,6 @@ return function(t: Context)
 		end
 	)
 
-	t.test(
-		"MATCH FOUND's spot (G4.2): the DUEL area's last place, under the duel HUD's top bar once it shows",
-		function()
-			local canvas = Vector2.new(1440, 810)
-			local rect = { x = 545, y = 30, w = 350, h = 103 }
-			expect.equal(HudFormat.foundSpot(rect, canvas, false, nil), Vector2.new(720, 30))
-			-- No rect (the area never showed): the canvas centre at the DUEL area's top (phones: their own top).
-			expect.equal(
-				HudFormat.foundSpot(nil, canvas, false, nil),
-				Vector2.new(720, HudFormat.origins(false).ctaTop)
-			)
-			expect.equal(HudFormat.foundSpot(nil, canvas, true, nil), Vector2.new(720, HudFormat.origins(true).ctaTop))
-			-- The duel HUD's top bar ends at 96: a row gap under it; a bar that ends above the spot changes nothing.
-			expect.equal(HudFormat.foundSpot(rect, canvas, false, 96), Vector2.new(720, 96 + COLUMN.rowGap))
-			expect.equal(HudFormat.foundSpot(rect, canvas, false, 10), Vector2.new(720, 30))
-			expect.equal(HudFormat.foundSpot(rect, canvas, false, 0 / 0), Vector2.new(720, 30))
-		end
-	)
-
 	t.test("the DUEL button's width (ctaWidth): the design's 350, wider only for its texts; phones scaled", function()
 		local Button = t.requireClient("UI/Components/Button")
 		expect.equal(COLUMN.ctaHeight, Button.frameHeight("cta")) -- UI FINAL R2 (P1): the 92 px face + the 7 px lip
@@ -1642,20 +1623,17 @@ return function(t: Context)
 		expect.equal(HudFormat.coinShop("garbage", live, true), nil)
 	end)
 
-	t.test(
-		"search / found bars: the design's width, narrower only to their room; under dropBelow lines drop",
-		function()
-			local search = Config.UI.Sticker.hud.search
-			expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 900), COLUMN.searchWidth)
-			expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 400), 400)
-			expect.equal(HudFormat.barWidth(COLUMN.foundWidth, -5), 0)
-			expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 0 / 0), COLUMN.searchWidth)
-			expect.deepEqual(HudFormat.barParts(COLUMN.searchWidth), { dots = true, line2 = true })
-			expect.deepEqual(HudFormat.barParts(search.dropBelow), { dots = true, line2 = true })
-			expect.deepEqual(HudFormat.barParts(search.dropBelow - 1), { dots = false, line2 = false })
-			expect.equal(COLUMN.barHeight, search.face + Config.UI.Sticker.lip.search) -- 96 + 7 (H:136)
-		end
-	)
+	t.test("the search bar: the design's width, narrower only to its room; under dropBelow lines drop", function()
+		local search = Config.UI.Sticker.hud.search
+		expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 900), COLUMN.searchWidth)
+		expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 400), 400)
+		expect.equal(HudFormat.barWidth(COLUMN.searchWidth, -5), 0)
+		expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 0 / 0), COLUMN.searchWidth)
+		expect.deepEqual(HudFormat.barParts(COLUMN.searchWidth), { dots = true, line2 = true })
+		expect.deepEqual(HudFormat.barParts(search.dropBelow), { dots = true, line2 = true })
+		expect.deepEqual(HudFormat.barParts(search.dropBelow - 1), { dots = false, line2 = false })
+		expect.equal(COLUMN.barHeight, search.face + Config.UI.Sticker.lip.search) -- 96 + 7 (H:136)
+	end)
 
 	t.test(
 		"gamepad links: Down walks the tile column; the Duel CTA sits between the left column and Settings",

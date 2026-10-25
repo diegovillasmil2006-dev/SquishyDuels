@@ -131,6 +131,13 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 
 		-- FFA/TDM v1 (2026-10-15): the in-server queue, the maps, the spawn spots, the storm's sampling and test wall.
 		expectPositive(problems, `{p}.gatherSeconds`, m.gatherSeconds)
+		-- Round 2 of the match flow (2026-10-25): the MATCH FOUND show's wait, inside the arrival wait.
+		expectNonNegative(problems, `{p}.foundHoldSeconds`, m.foundHoldSeconds)
+		expect(
+			problems,
+			isNumber(m.foundHoldSeconds) and isNumber(m.waitSeconds) and m.foundHoldSeconds < m.waitSeconds,
+			`{p}.foundHoldSeconds must be less than waitSeconds`
+		)
 		-- Match HUD M2 (2026-10-16): the match pay switch (it replaced rewardCoins).
 		local rewards = m.Rewards
 		expect(problems, type(rewards) == "table", `{p}.Rewards must be a table (got {show(rewards)})`)

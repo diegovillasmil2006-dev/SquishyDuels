@@ -11,6 +11,10 @@ local Duel = {
 		SuddenDeathSeconds = 30, -- only if lives are tied at time-up (0 = straight to draw)
 		SuddenDeathCooldownMultiplier = 0.8,
 		PreparingTimeoutSeconds = 3,
+		-- Round 2 of the match flow (2026-10-25, owner): a duel the queue paired (or the practice bot filled) stays in
+		-- Preparing this much longer, so the lobby's MATCH FOUND show plays before the teleport (the opponent's slot
+		-- .35 s, the show 3 s, then 0.46 s out). The duel pads, Rematch and Studio starts never wait.
+		FoundHoldSeconds = 4,
 		PositioningTimeoutSeconds = 5,
 		CountdownSeconds = 3, -- frozen, no throws
 		ResultSeconds = 4, -- result shown in the arena before return

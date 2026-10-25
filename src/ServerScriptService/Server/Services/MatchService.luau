@@ -14,6 +14,9 @@
 --   match starts with the queued players (first come, up to maxPlayers) on a random free map of the mode; with no free
 --   map the queue keeps waiting (one match.waitingMap toast). TDM: the players are shuffled (server Random), then
 --   dealt Red, Blue, Red, ... Toasts: joined (n/max), left, startingIn, waitingPlayers, the end (below).
+--   Round 1 of the match flow (2026-10-25): each ticket's waiting bar (MatchQueue). Round 2: a match from the queue
+--   sends its players MatchFound (Logic/MatchFoundRoster) and its teleports wait Config.Match.foundHoldSeconds
+--   (positionAt, tickMatch), so the lobby's MATCH FOUND show plays first.
 -- * A match: matchId "match:<GUID>"; each player's squishy is the equipped one (validated, else the starter); the
 --   fighter is CombatService's with isAlive = the character is alive AND MatchRules says the player is standing, side
 --   "A" in FFA, Red "A" / Blue "B" in TDM. The MatchPort (buildPort: ffa = true, teams in TDM, the map's Bounds only,
@@ -150,6 +153,7 @@ local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
 local Logic = script.Parent.Parent.Logic
 local MatchBotRules = require(Logic.MatchBotRules)
+local MatchFoundRoster = require(Logic.MatchFoundRoster)
 local MatchRewards = require(Logic.MatchRewards)
 local MatchRules = require(Logic.MatchRules)
 local MatchSpawns = require(Logic.MatchSpawns)
@@ -248,6 +252,7 @@ export type Deps = {
 	bots: BotDeps?, -- match bots (attachBots; nil: none)
 	heartbeat: boolean, -- tick matches every Heartbeat (false in tests: they call tick)
 	matchConfig: any?, -- a Config.Match-shaped table (tests pass their copy); nil = the live Config.Match
+	gripLevel: ((ref: any) -> number)?, -- round 2 of the match flow: GripService.levelOf (nil: MATCH FOUND makes them up)
 }
 
 type SavedMovement = { walkSpeed: number, jumpHeight: number, jumpPower: number, autoRotate: boolean }
@@ -310,6 +315,7 @@ type Match = {
 	standings: { Types.MatchStandingView }?, -- built once, with the outcome
 	rewards: { [number]: Types.MatchRewardView }, -- Match HUD M2: userId -> what the end paid them (outcome.mine)
 	bots: number, -- match bots: how many bots it started with
+	positionAt: number?, -- round 2 of the match flow: the teleports wait until then (the lobby's MATCH FOUND show)
 }
 
 type Ticket = { player: any, userId: number, joinedAt: number }
@@ -353,6 +359,7 @@ local MOVEMENT = RULES.Movement
 local POSITIONING = Config.Duel.Positioning
 local REMOTE_STATE = "MatchState"
 local REMOTE_QUEUE = "MatchQueue"
+local REMOTE_FOUND = "MatchFound"
 local REMOTE_JOIN = "MatchJoin"
 local REMOTE_LEAVE = "MatchLeave"
 local ATTR_MATCH_ID = "SD_MatchId"
@@ -1030,6 +1037,22 @@ local function positionParticipant(match: Match, p: Participant)
 	if p.moved and (not active(p) or match.closed) then
 		-- The teleport landed after the player left or was dropped (or after the return): back to the lobby.
 		d.spawn(returnOne, match, p, nil)
+	end
+end
+
+-- Every first teleport, deferred. Match bots first: their teleport never streams, so they stand on their spots before
+-- the last player arrives (that arrival starts the Countdown, which ends the positioning).
+local function positionAll(match: Match)
+	local d = getDeps()
+	for _, p in match.list do
+		p.positioning = true -- set now: a return that starts before the deferred thread runs must wait for it
+	end
+	for pass = 1, 2 do
+		for _, p in match.list do
+			if isBotRef(p.ref) == (pass == 1) then
+				d.defer(positionParticipant, match, p)
+			end
+		end
 	end
 end
 
@@ -2039,6 +2062,11 @@ local function tickMatch(match: Match, now: number)
 		stepMatch(match, { kind = "empty" }, now) -- match bots: nobody real is left to play with them
 		return
 	end
+	local positionAt = match.positionAt
+	if positionAt and now >= positionAt then
+		match.positionAt = nil -- round 2 of the match flow: the lobby's MATCH FOUND show is over
+		positionAll(match)
+	end
 	checkPresence(match)
 	sampleStorm(match, now)
 	if not match.closed then
@@ -2148,6 +2176,36 @@ local function sendQueue(ref: any, view: Types.MatchQueueView)
 	local ok, err = try(d.fire, REMOTE_QUEUE, ref, view)
 	if not ok then
 		log:warn(`MatchQueue to user {userIdOf(ref)} failed:`, err)
+	end
+end
+
+-- Round 2 of the match flow (2026-10-25): the lobby's MATCH FOUND show (MatchFound, Logic/MatchFoundRoster) for every
+-- player of a match the queue just started: each one's name, squishy, Grip level and team (1 / 2 in Team Deathmatch).
+local function sendFound(match: Match)
+	local d = getDeps()
+	local entries: { MatchFoundRoster.Entry } = {}
+	for _, p in match.list do
+		local level: number? = nil
+		if d.gripLevel and not isBotRef(p.ref) then
+			local ok, value = try(d.gripLevel, p.ref)
+			level = if ok and type(value) == "number" then value else nil
+		end
+		table.insert(entries, {
+			userId = p.userId,
+			name = p.displayName,
+			squishy = p.squishyId,
+			level = level,
+			team = if p.team then table.find(cfg().teamNames, p.team) else nil,
+		})
+	end
+	local view = MatchFoundRoster.build(match.modeId :: any, entries, d.rng)
+	for _, p in match.list do
+		if d.isPlayer(p.ref) then
+			local ok, err = try(d.fire, REMOTE_FOUND, p.ref, view)
+			if not ok then
+				log:warn(`MatchFound to user {p.userId} failed:`, err)
+			end
+		end
 	end
 end
 
@@ -2284,7 +2342,7 @@ local function startFromQueue(modeId: string, now: number, gather: Gather)
 	-- Match bots: the empty slots, up to maxPlayers (taken now, no yield; startMatch follows at once).
 	local bots = takeBots(modeId, mode.maxPlayers - #refs)
 	table.move(bots, 1, #bots, #refs + 1, refs)
-	local started, why = MatchService.startMatch(refs, modeId, map, matchId)
+	local started, why = MatchService.startMatch(refs, modeId, map, matchId, cfg().foundHoldSeconds)
 	releaseBots(bots)
 	if started == nil then
 		try(d.maps.release, map)
@@ -2313,6 +2371,10 @@ local function startFromQueue(modeId: string, now: number, gather: Gather)
 	end
 	gathers[modeId] = nil
 	syncQueue(modeId) -- whoever did not fit keeps waiting
+	local match = matches[started]
+	if match then
+		sendFound(match)
+	end
 end
 
 local function tickQueue(modeId: string, now: number)
@@ -2443,7 +2505,14 @@ end
 
 -- Starts a match of `modeId` with these players (the queue's, or a Studio call) and match bots (at least one real
 -- player). `map` is the one the caller acquired (else one is acquired here). Returns (matchId, nil) or (nil, why).
-function MatchService.startMatch(refs: { any }, modeId: string, map: any?, matchId: string?): (string?, string?)
+-- Round 2 of the match flow: with `holdSeconds` (the queue's: Config.Match.foundHoldSeconds) the teleports wait that long.
+function MatchService.startMatch(
+	refs: { any },
+	modeId: string,
+	map: any?,
+	matchId: string?,
+	holdSeconds: number?
+): (string?, string?)
 	local d = getDeps()
 	local c = cfg()
 	local mode = c.Modes[modeId]
@@ -2558,17 +2627,10 @@ function MatchService.startMatch(refs: { any }, modeId: string, map: any?, match
 	sendState(match)
 	ensureHeartbeat()
 	log:info(`match {id} started: {modeId} on {useMap.code} with {#match.list} players`)
-	for _, p in match.list do
-		p.positioning = true -- set now: a return that starts before the deferred thread runs must wait for it
-	end
-	-- Match bots first: their teleport never streams, so they stand on their spots before the last player arrives (that
-	-- arrival starts the Countdown, which ends the positioning).
-	for pass = 1, 2 do
-		for _, p in match.list do
-			if isBotRef(p.ref) == (pass == 1) then
-				d.defer(positionParticipant, match, p)
-			end
-		end
+	if holdSeconds and holdSeconds > 0 then
+		match.positionAt = now + holdSeconds -- round 2 of the match flow: tickMatch teleports after the lobby's show
+	else
+		positionAll(match)
 	end
 	return id, nil
 end
@@ -2800,6 +2862,7 @@ defaultDeps = function(): Deps
 		},
 		heartbeat = true,
 		matchConfig = nil,
+		gripLevel = GripService.levelOf, -- round 2 of the match flow: MATCH FOUND shows each player's Grip level
 	}
 end
 

@@ -724,6 +724,7 @@ local function checkDuel(problems: Problems)
 	}, expectPositive)
 	eachField(problems, p, rules, {
 		"SuddenDeathSeconds",
+		"FoundHoldSeconds",
 		"HitInvulnSeconds",
 		"OutOfBoundsInvulnSeconds",
 		"CooldownToleranceSeconds",
@@ -1284,7 +1285,6 @@ local function checkUI(problems: Problems)
 		`{p}.Settings.sliderStep must divide the Config.Data settings range`
 	)
 	expectPositive(problems, `{p}.Settings.saveDebounceSeconds`, UI.Settings.saveDebounceSeconds)
-	expectPositive(problems, `{p}.Queue.matchedBannerSeconds`, UI.Queue.matchedBannerSeconds)
 	expectPositive(problems, `{p}.Result.autoCloseAfterReturnSeconds`, UI.Result.autoCloseAfterReturnSeconds)
 	eachField(
 		problems,

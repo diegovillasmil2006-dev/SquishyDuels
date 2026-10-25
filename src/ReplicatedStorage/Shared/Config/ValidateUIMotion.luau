@@ -447,7 +447,6 @@ return function(h: Helpers, UI: any, Audio: any): Checks
 			{ "nav.bobS", hud.nav and hud.nav.bobS },
 			{ "cta.emblemBobS", hud.cta and hud.cta.emblemBobS },
 			{ "search.emblemPulseS", hud.search and hud.search.emblemPulseS },
-			{ "found.iconPulseS", hud.found and hud.found.iconPulseS },
 			{ "grip.boltPulseS", hud.grip and hud.grip.boltPulseS },
 			{ "gripFloat.periodS", hud.gripFloat and hud.gripFloat.periodS },
 		}

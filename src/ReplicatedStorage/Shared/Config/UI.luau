@@ -105,6 +105,10 @@ local UI = {
 		-- Mode select (LOBBY HUD L:189, L:196), in the card's ref px (1 cq = 5.88): the title 10 cq, the ghost 34 cq.
 		ModeTitle = 59,
 		ModeGhost = 200,
+		-- MATCH FOUND (round 2 of the match flow, LOBBY HUD L:651, L:658-659), in the show's stage px.
+		FoundTitle = 92,
+		FoundName = 26,
+		FoundChip = 18,
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -324,13 +328,11 @@ local UI = {
 			},
 		},
 		-- UI FINAL R4 (G4.1, H:25): the duel bar's entrance on each state change, the design's sdPop on its inner
-		-- holder: the search bar over searchMs on searchCurve (H:136), MATCH FOUND over foundMs on foundCurve (H:149),
-		-- each segment eased (a CSS animation). The bar does not clip, so its fade and tilt are drawn (plan §1.4 RL3).
+		-- holder: the search bar over searchMs on searchCurve (H:136), each segment eased (a CSS animation). The bar
+		-- does not clip, so its fade and tilt are drawn (plan §1.4 RL3).
 		ctaPop = {
 			searchMs = 450, -- H:136
-			foundMs = 500, -- H:149
 			searchCurve = "search", -- H:136
-			foundCurve = "slot", -- H:149
 			-- H:25: scale(.55) translateY(40px): the move is inside the scale, 40 x .55 = 22 px.
 			frames = {
 				{ at = 0, scale = 0.55, y = 22, rot = -2, alpha = 0 },
@@ -598,10 +600,6 @@ local UI = {
 	Settings = {
 		sliderStep = 5, -- DPad left/right
 		saveDebounceSeconds = 1.5, -- SetSettings client debounce
-	},
-
-	Queue = {
-		matchedBannerSeconds = 2, -- "Opponent found: {name}"
 	},
 
 	-- Final polish (2026-10-11): the "In the lane!" warning (DuelController, UI/LaneCue) sits this far (base px) under
@@ -1793,15 +1791,14 @@ local UI = {
 		-- The inset highlight along a surface's top (box-shadow: inset 0 Hpx 0 rgba(255,255,255,a)) and the bevel along
 		-- its bottom (inset 0 -Bpx 0 rgba(c,b); c is black unless UI/Theme names a tint for the surface). Theme paints
 		-- them as solid bands: the top stop lerped to white by highlightAlpha, the end stop lerped to c by bevelAlpha.
-		-- The tints: duel StickerDuelBevel, found StickerFoundBevel (Art/Palette). No squeeze surface: the squeeze
-		-- button stays removed (the user's Q2).
+		-- The tint: duel StickerDuelBevel (Art/Palette). No squeeze surface: the squeeze button stays removed (the
+		-- user's Q2).
 		surfaces = {
 			primary = { highlightPx = 3, highlightAlpha = 0.55, bevelPx = 6, bevelAlpha = 0.15 }, -- H:245, H:247
 			disabled = { highlightPx = 3, highlightAlpha = 0.2 }, -- H:246
 			cancel = { highlightPx = 3, highlightAlpha = 0.3 }, -- H:462
 			again = { highlightPx = 3, highlightAlpha = 0.6, bevelPx = 6, bevelAlpha = 0.15 }, -- H:498
 			duel = { highlightPx = 4, highlightAlpha = 0.6, bevelPx = 8, bevelAlpha = 0.3 }, -- H:126
-			found = { highlightPx = 4, highlightAlpha = 0.65, bevelPx = 8, bevelAlpha = 0.25 }, -- H:149
 			close = { highlightPx = 4, highlightAlpha = 0.5, bevelPx = 6, bevelAlpha = 0.18 }, -- H:252
 			badge = { highlightPx = 2, highlightAlpha = 0.5 }, -- H:102
 			badgeMark = { highlightPx = 2, highlightAlpha = 0.6 }, -- H:120: the daily "!" badge
@@ -1826,7 +1823,6 @@ local UI = {
 			navLabel = { kind = "D23", stroke = 7, drop = 3 }, -- H:101 (23 px, PR2)
 			settingsLabel = { kind = "D19", stroke = 6, drop = 3 }, -- H:159 (19 px, PR2)
 			coin = { kind = "Coin", stroke = 6, drop = 3, color = "StickerCoinText" }, -- H:79
-			found = { kind = "Found", stroke = 7, drop = 4 }, -- H:151
 			hero = { kind = "Hero", stroke = 8, drop = 4 }, -- H:95
 			revealBox = { kind = "Hero", stroke = 8, drop = 5 }, -- H:483
 			detailName = { kind = "Name", stroke = 7, drop = 4 }, -- H:227
@@ -1855,6 +1851,11 @@ local UI = {
 			-- "SELECT A GAME MODE" (L:213: 40 px at most, stroke 7, drop 4).
 			modeTitle = { kind = "ModeTitle", stroke = 12, drop = 6 },
 			modeHeader = { kind = "Hero", stroke = 7, drop = 4 },
+			-- MATCH FOUND (round 2 of the match flow, LOBBY HUD L:651 the letters, L:659 the mode chip, L:726 YOU: 14 px
+			-- -> Small).
+			foundLetter = { kind = "FoundTitle", stroke = 13, drop = 7 },
+			foundChip = { kind = "FoundChip", stroke = 4 },
+			foundYou = { kind = "Small", stroke = 3 },
 			prize = { kind = "Prize", stroke = 10, drop = 6, color = "StickerCoinText" }, -- H:545
 			button = { kind = "Big", stroke = 5 }, -- H:370, H:462
 			buttonLarge = { kind = "HudNumber", stroke = 6 }, -- H:246 (26 px)
@@ -2409,6 +2410,8 @@ local UI = {
 				-- far apart, then the bar holds this long before the match takes over.
 				fullStepMs = 70,
 				fullHoldMs = 350,
+				-- Round 2: a 1v1's opponent slot fills, then MATCH FOUND this much later (H:772, LOBBY HUD L:1015).
+				foundDelayMs = 350,
 				emblemPx = 108, -- H:137
 				emblemX = -6,
 				emblemY = -10,
@@ -2429,20 +2432,6 @@ local UI = {
 				highlightPx = 3,
 				highlightAlpha = 0.55,
 				midAt = 0.58, -- LOBBY HUD L:759: the team fills' middle stop (#FF6B81 / #5DB4FF at 58%)
-			},
-			found = { -- H:148-152
-				width = 420,
-				face = 96,
-				padLeft = 120,
-				padRight = 24,
-				gap = 14,
-				columnGap = 4,
-				midAt = 0.6, -- H:149: #FFC23A at 60%
-				iconPx = 112, -- H:150
-				iconX = 4,
-				iconY = -18,
-				iconPulseS = 0.6,
-				swapDelayMs = 350, -- H:772: the opponent's slot fills, then the found bar
 			},
 			cancelX = { -- H:145: 48 + lip 4, a 52 px touch box (PR1)
 				face = 48,
@@ -2711,6 +2700,31 @@ local UI = {
 		-- lib:236-242: a ring `size` wide with a borderPx border, scaleFrom -> scaleTo while it fades, over ms
 		-- (`curve`).
 		ring = { size = 160, borderPx = 6, scaleFrom = 0.2, scaleTo = 1.3, ms = 520, color = "White", curve = "ring" },
+		-- LOBBY HUD hud-lib.js L:345-360 (round 2 of the match flow, MATCH FOUND's charge): n four-point stars size x
+		-- (sizeMin .. + sizeSpan) on a ring, the i-th at i / n of the turn plus up to angleJitter radians, reach x
+		-- (reachMin .. + reachSpan) out, flying in to the centre over `frames` (x / y shares of the start offset; the whole
+		-- run eased by `curve`), each over ms + 0..jitterMs after 0..delayMs.
+		converge = {
+			n = 20,
+			size = 15,
+			sizeMin = 0.6,
+			sizeSpan = 0.8,
+			reach = 520,
+			reachMin = 0.7,
+			reachSpan = 0.5,
+			angleJitter = 0.3,
+			ms = 480,
+			jitterMs = 80,
+			delayMs = 60,
+			curve = "converge",
+			frames = {
+				{ at = 0, x = 1, y = 1, scale = 0.4, rot = 0, alpha = 0 },
+				{ at = 0.25, x = 0.75, y = 0.75, scale = 0.8, rot = 60, alpha = 1 },
+				{ at = 0.9, x = 0, y = 0, scale = 1.2, rot = 270, alpha = 1 },
+				{ at = 1, x = 0, y = 0, scale = 0, rot = 300, alpha = 0 },
+			} :: { MotionPose },
+			colors = { "StickerFxYellow", "StickerFxPink", "StickerFxCyan", "White", "StickerFxPurple" },
+		},
 		-- lib:243-254: n pieces across the screen, from startMinPx .. + startSpanPx above it, sizeMin .. + sizeSpan
 		-- wide (tallShare of them `tall` x as high, roundShare round, the rest radius 2) with an outlinePx ink ring;
 		-- swaying up to ±swayPx (and back -0.4 x of it at the end) and turning up to ±spinDeg while they fall fallShare
@@ -2782,15 +2796,48 @@ local UI = {
 					colors = { "StickerFxPink", "StickerFxCyan", "StickerFxYellow", "White" },
 				},
 			},
-			matchFound = { -- H:774-775
-				sparks = {
-					n = 30,
-					spread = 260,
-					ms = 1000,
-					colors = { "StickerFxYellow", "White", "StickerPinkSoft", "StickerFxCyan" },
+			-- Round 2 of the match flow (LOBBY HUD L:1037-1046; UI/MatchFoundShow): the charge's converge (n pieces from
+			-- reach px in, over ms), the impact (470 ms: the three rings, the burst, the rain, the jolt) and the teams' VS
+			-- slam (1570 ms, at the VS badge). Px are the show's stage px.
+			matchFound = {
+				converge = {
+					n = 26,
+					reach = 620,
+					ms = 460,
+					size = 15,
+					colors = { "StickerFxYellow", "StickerFxPink", "StickerFxCyan", "White", "StickerFxPurple" },
 				},
-				rings = { { color = "StickerCoinText", size = 360 } },
-				jolt = 7,
+				rings = {
+					{ color = "StickerCoinText", size = 440 },
+					{ color = "MatchFoundRingPink", size = 680, delayMs = 80 },
+					{ color = "MatchFoundRingCyan", size = 940, delayMs = 160 },
+				},
+				sparks = {
+					n = 48,
+					spread = 480,
+					size = 16,
+					ms = 1150,
+					up = 70,
+					colors = {
+						"StickerFxYellow",
+						"StickerFxPink",
+						"StickerFxCyan",
+						"White",
+						"StickerFxGreen",
+						"StickerFxPurple",
+					},
+				},
+				rain = 80,
+				jolt = 14,
+				vs = {
+					rings = { { color = "White", size = 240 } },
+					sparks = {
+						n = 20,
+						spread = 220,
+						colors = { "StickerTdmRed", "StickerTdmBlue", "StickerCoinText", "White" },
+					},
+					jolt = 7,
+				},
 			},
 			-- H:815-816: wobble j (0, 1, 2) adds perWobble's n, spread and jolt j times.
 			boxWobble = {
@@ -3317,6 +3364,229 @@ local UI = {
 		close = { right = 24, top = 22, face = 56, border = 4, radius = 16, lip = 5, iconPx = 30, highlightPx = 3 }, -- L:215
 	},
 
+	-- Round 2 of the match flow (2026-10-25, owner: Diego's MATCH FOUND show for every mode; UI/MatchFoundShow; `L:n` =
+	-- "Squishy Duels LOBBY HUD.dc.html" line n, ALL HUDS zip; the markup L:626-741, the timeline L:1024-1048). Px are the
+	-- design's stage px (1440 x 810, centred and scaled to fit the screen, L:629); `ms` / `delayMs` from the show's start;
+	-- colours are Art/Palette names. The effects (converge, rings, burst, rain, jolt) are Fx.events.matchFound.
+	MatchFound = {
+		layerName = "SD_MatchFound",
+		-- L:627 z 30: over the windows and the HUD layers, under SD_Overlay 30 (UiFx's effects draw over the show, as the
+		-- design's own FX layer does) and SD_Fade 40.
+		layer = { displayOrder = 29, insets = Enum.ScreenInsets.None } :: ScreenGuiSpec,
+		stage = { width = 1440, height = 810 },
+		backdrop = { pad = 80, fadeMs = 350 }, -- L:628: inset -80px, sdFade .35s ease-out
+		-- L:630-637 the rays group at (720, 330): the warm glow and the rays in (sdMfRaysIn, .46 s), the rays turning
+		-- (sdSpin 28 s), the charge orb (sdMfOrb .5 s) and the white flash (sdMfFlash .6s .47s).
+		centre = { x = 720, y = 330 },
+		glow = { px = 760, ms = 800, delayMs = 460, curve = "easeOut" },
+		rays = { px = 1560, ms = 900, delayMs = 460, curve = "coinFlip", spinS = 28 },
+		raysFrames = { -- sdMfRaysIn
+			{ at = 0, alpha = 0, scale = 0.15 },
+			{ at = 0.6, alpha = 1, scale = 1.06 },
+			{ at = 1, alpha = 1, scale = 1 },
+		} :: { MotionPose },
+		orb = {
+			px = 180,
+			ms = 500,
+			curve = "mfOrb",
+			frames = { -- sdMfOrb
+				{ at = 0, alpha = 0, scale = 0 },
+				{ at = 0.25, alpha = 1 },
+				{ at = 0.8, alpha = 1, scale = 1.15 },
+				{ at = 1, alpha = 0, scale = 0.2 },
+			} :: { MotionPose },
+		},
+		flash = {
+			px = 420,
+			ms = 600,
+			delayMs = 470,
+			curve = "easeOut",
+			frames = { -- sdMfFlash
+				{ at = 0, alpha = 0, scale = 0.2 },
+				{ at = 0.1, alpha = 1 },
+				{ at = 1, alpha = 0, scale = 3.4 },
+			} :: { MotionPose },
+		},
+		-- L:741 sdMfWhite .5s .47s ease-out: the whole screen in MatchFoundFlash (not under ReducedMotion).
+		white = {
+			ms = 500,
+			delayMs = 470,
+			curve = "easeOut",
+			color = "MatchFoundFlash",
+			frames = { { at = 0, alpha = 0 }, { at = 0.12, alpha = 0.7 }, { at = 1, alpha = 0 } } :: { MotionPose },
+		},
+		-- L:639-662 the found block (1440 x 560, turned about (720, 370)): the ribbon at (720, 370) with its tails, the
+		-- emblem, the mode pill and the twinkles.
+		block = { height = 560, originY = 370 },
+		ribbon = {
+			face = { x = 320, y = 306, width = 800, height = 128 }, -- L:645: left -400, top -64 of (720, 370)
+			picture = { width = 880, height = 220, faceX = 40, faceY = 20 }, -- img.mf.banner: the face at (40, 20)
+			ms = 500, -- L:645 sdMfUnfurl .5s .56s cubic-bezier(.3,1.3,.5,1)
+			delayMs = 560,
+			curve = "unfurl",
+			openAt = 0.7, -- its clip opens from the middle (inset 50%) to -60 px by 70%
+			openPad = 60,
+			frames = {
+				{ at = 0, alpha = 0, sy = 0.6 },
+				{ at = 0.2, alpha = 1 },
+				{ at = 0.7, sy = 1.08 },
+				{ at = 1, alpha = 1, sy = 1 },
+			} :: { MotionPose },
+			border = 6,
+			radius = 34,
+			shine = { width = 90, overhang = 20, periodS = 2.8, delayS = 1.4, alpha = 0.25, rotation = 20 }, -- L:648
+		},
+		-- L:642-643 the tails (140 x 132), sdMfTailL / R .42s .82s cubic-bezier(.2,1.4,.4,1).
+		tails = {
+			width = 140,
+			height = 132,
+			leftX = 230,
+			rightX = 1070,
+			y = 330,
+			ms = 420,
+			delayMs = 820,
+			curve = "search",
+		},
+		tailFrames = { { at = 0, alpha = 0, x = 90, sx = 0.3 }, { at = 1, alpha = 1, x = 0, sx = 1 } } :: { MotionPose },
+		-- L:651: the letters (92 px, stroke 13, the 7 px drop), the space 30 px wide; sdMfLet .52s from .64 s + .045 s
+		-- each (cubic-bezier(.2,1.5,.4,1)), then sdLvWave 1.8 s from 1.6 s + .09 s each.
+		letters = {
+			spacePx = 30,
+			padBottom = 8,
+			ms = 520,
+			delayMs = 640,
+			stepMs = 45,
+			curve = "stars",
+			frames = {
+				{ at = 0, alpha = 0, y = 70, scale = 0.2, rot = -24 },
+				{ at = 0.55, alpha = 1, y = -20, sx = 1.28, sy = 1.12, rot = 7 },
+				{ at = 0.78, y = 5, sx = 0.94, sy = 1.05, rot = -2 },
+				{ at = 1, alpha = 1, y = 0 },
+			} :: { MotionPose },
+			wave = { periodS = 1.8, delayS = 1.6, stepS = 0.09 }, -- motion.loops.lvWave's frames
+		},
+		-- L:655-657 the emblem (240 at (600, 70)): sdMfSlam .62s .44s cubic-bezier(.2,1,.4,1), then sdBob 2.6s from 1.3s;
+		-- its drop shadow 0 9px 0 at .4.
+		emblem = {
+			x = 600,
+			y = 70,
+			px = 240,
+			ms = 620,
+			delayMs = 440,
+			curve = "beat",
+			shadowY = 9,
+			shadowAlpha = 0.4,
+			bobS = 2.6,
+			bobDelayS = 1.3,
+			frames = {
+				{ at = 0, alpha = 0, scale = 3.4, rot = -28 },
+				{ at = 0.5, alpha = 1, sx = 0.78, sy = 0.9, rot = 4 },
+				{ at = 0.68, sx = 1.14, sy = 1.06, rot = -2 },
+				{ at = 0.84, sx = 0.96, sy = 1.02, rot = 1 },
+				{ at = 1, alpha = 1, scale = 1, rot = 0 },
+			} :: { MotionPose },
+		},
+		-- L:658-661 the mode pill at top 466 (sdUp .45s 1.1s): 54 tall, padding 0 24 0 8, gap 12, border 5, the 6 px lip,
+		-- the 3 px highlight at .12, on StickerPickerWell; its chip 34 tall, padding 0 12, border 3, the mode's gradient.
+		pill = {
+			y = 466,
+			height = 54,
+			padLeft = 8,
+			padRight = 24,
+			gap = 12,
+			border = 5,
+			lip = 6,
+			highlightPx = 3,
+			highlightAlpha = 0.12,
+			color = "StickerPickerWell",
+			chipHeight = 34,
+			chipPad = 12,
+			chipBorder = 3,
+			ms = 450,
+			delayMs = 1100,
+			curve = "search",
+			frames = { { at = 0, alpha = 0, y = 30 }, { at = 1, alpha = 1, y = 0 } } :: { MotionPose },
+		},
+		-- L:662 the twinkles { x, y, px, colour, delay s }, sdTwinkle 1.7 s.
+		twinkleS = 1.7,
+		twinkles = {
+			{ 262, 290, 36, "StickerCreamYellow", 1 },
+			{ 1146, 284, 42, "White", 1.3 },
+			{ 318, 446, 24, "StickerPinkSoft", 1.6 },
+			{ 1104, 452, 28, "StickerCreamYellow", 1.9 },
+			{ 520, 96, 26, "White", 1.2 },
+			{ 896, 82, 32, "StickerPinkSoft", 1.7 },
+		},
+		-- L:722-736 the players row at top 572, gap 12: each tile 66 (border 4, radius 18, the 5 px lip, the 4 px
+		-- highlight at .45, the 6 px bottom shade at .12) with its squishy (56) and Grip level (right -8, bottom -9: 24
+		-- tall, at least 30 wide, padding 0 6, border 3, radius 10); yours with YOU over it (top -36: 26 tall, padding 0
+		-- 9, border 3, radius 9, the 3 px lip, bobbing 1.6 s); the VS badge (84, margin 0 6) before the second team.
+		roster = {
+			y = 572,
+			gap = 12,
+			tile = 66,
+			border = 4,
+			radius = 18,
+			lip = 5,
+			highlightPx = 4,
+			highlightAlpha = 0.45,
+			shadePx = 6,
+			shadeAlpha = 0.12,
+			picPx = 56,
+			level = { right = -8, bottom = -9, height = 24, minWidth = 30, pad = 6, border = 3, radius = 10 },
+			you = { top = -36, height = 26, pad = 9, border = 3, radius = 9, lip = 3, bobS = 1.6 },
+			vs = { px = 84, margin = 6, ms = 550, delayMs = 1550, curve = "rise", rotation = -6 },
+			-- Team modes: each half slides in from its side (sdMfInL / R .56s cubic-bezier(.2,1.2,.4,1)), the tiles nearest
+			-- the middle first, .05 s apart from 1.2 s; Free for All: sdReveal .5s (cubic-bezier(.2,1.3,.4,1)) in order.
+			slideMs = 560,
+			slideCurve = "coinFlip",
+			revealMs = 500,
+			revealCurve = "rise",
+			startMs = 1200,
+			stepMs = 50,
+			slideFrames = {
+				{ at = 0, alpha = 0, x = -640, rot = -40 },
+				{ at = 0.7, alpha = 1, x = 16, rot = 8 },
+				{ at = 0.85, x = -5, rot = -3 },
+				{ at = 1, alpha = 1, x = 0, rot = 0 },
+			} :: { MotionPose },
+			revealFrames = {
+				{ at = 0, alpha = 0, scale = 0, rot = -30 },
+				{ at = 0.55, alpha = 1, scale = 1.25, rot = 8 },
+				{ at = 0.75, scale = 0.92, rot = -3 },
+				{ at = 1, alpha = 1, scale = 1, rot = 0 },
+			} :: { MotionPose },
+			vsFrames = {
+				{ at = 0, alpha = 0, scale = 4.5, rot = -35 },
+				{ at = 0.5, alpha = 1, scale = 0.75, rot = 10 },
+				{ at = 0.72, scale = 1.18, rot = -9 },
+				{ at = 1, alpha = 1, scale = 1, rot = -6 },
+			} :: { MotionPose },
+		},
+		-- L:1036-1048 the sounds (ms from the start; DUEL and TEAM whoosh and slam, FREE FOR ALL a second run of letters
+		-- and a chime) and each one's look-alike while its own id is missing.
+		sounds = {
+			charge = { key = "match.found.charge", fallback = "sfx.inspect.whoosh", atMs = 0 },
+			impact = { key = "match.found.impact", fallback = "sfx.impactSoft", atMs = 470 },
+			letters = { key = "match.found.letters", fallback = "ui.click", atMs = 640 },
+			chime = { key = "match.found.chime", fallback = "ui.coin", atMs = 1110 },
+			whoosh = { key = "match.whoosh", fallback = "sfx.inspect.whoosh", atMs = 1200 },
+			vs = { key = "match.found.vs", fallback = "sfx.impactSoft", atMs = 1570 },
+			lettersSolo = { key = "match.found.lettersSolo", fallback = "ui.click", atMs = 1200 },
+			chimeSolo = { key = "match.found.chime", fallback = "ui.coin", atMs = 1830 },
+		},
+		-- L:1048, L:1051: at 3 s the block flies up (translateY(-250px) scale(.4), fading, 460 ms cubic-bezier(.55,0,
+		-- .8,.35)) with a whoosh; the rest (dim, rays, players) stays until the arena (the match or duel past
+		-- Positioning), at most holdMaxS, then fades out over backdrop.fadeMs.
+		exit = {
+			atMs = 3000,
+			ms = 460,
+			curve = "mfFly",
+			frames = { { at = 0, alpha = 1, y = 0, scale = 1 }, { at = 1, alpha = 0, y = -250, scale = 0.4 } } :: { MotionPose },
+			holdMaxS = 6,
+		},
+	},
+
 	-- UI FINAL R2 (plan §0 easing rule, G2.3): every design timing function as cubic-bezier numbers { x1, y1, x2, y2 },
 	-- played exactly by Anim/Tweens.bezier (the CSS keywords at their standard numbers). `H:n` / `lib:n` cite each.
 	curves = {
@@ -3348,6 +3618,10 @@ local UI = {
 		-- Mode select (LOBBY HUD L:185 the pick, L:1359 sdArtClash).
 		modePick = { 0.22, 1.3, 0.36, 1 },
 		modeClash = { 0.3, 0.7, 0.4, 1 },
+		-- MATCH FOUND (LOBBY HUD L:635 sdMfOrb, L:1051 the found block's flight).
+		mfOrb = { 0.5, 0, 0.9, 0.4 },
+		mfFly = { 0.55, 0, 0.8, 0.35 },
+		converge = { 0.55, 0, 0.9, 0.5 }, -- hud-lib.js L:359 (UiFx.converge)
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The

@@ -55,6 +55,9 @@
 --   paths (no Player: no DuelResult, no reward, no save, no quest; its own displayName and squishyId) except that
 --   DuelState shows it as a player (isTestDummy false, its name). The human's reward is computed and paid as in any
 --   duel. A match needs at least one real Player.
+-- * MATCH FOUND (round 2 of the match flow, 2026-10-25): startMatch's holdSeconds (a queue duel) sends each real player
+--   MatchFound (Logic/MatchFoundRoster: both names, squishies and Grip levels) and holds the `streamed` events until
+--   then, so the lobby's show plays before the teleport.
 
 -- Services
 
@@ -79,11 +82,13 @@ local WorldLayout = require(Shared.World.WorldLayout)
 local Logic = script.Parent.Parent.Logic
 local DuelRewards = require(Logic.DuelRewards)
 local DuelRules = require(Logic.DuelRules)
+local MatchFoundRoster = require(Logic.MatchFoundRoster)
 local AbilityService = require(script.Parent.AbilityService)
 local ArenaService = require(script.Parent.ArenaService)
 local CharacterService = require(script.Parent.CharacterService)
 local CombatService = require(script.Parent.CombatService)
 local EconomyService = require(script.Parent.EconomyService)
+local GripService = require(script.Parent.GripService)
 local InventoryService = require(script.Parent.InventoryService)
 local NetService = require(script.Parent.NetService)
 local ShutdownService = require(script.Parent.ShutdownService)
@@ -143,6 +148,7 @@ type Match = {
 	closed: boolean,
 	endedFired: boolean,
 	createdAt: number,
+	holdUntil: number?, -- round 2 of the match flow: the MATCH FOUND show plays until then (no teleport before)
 }
 
 -- What getMatch / startMatch return (read-only).
@@ -513,6 +519,30 @@ local function participantView(match: Match, p: Participant): Types.DuelParticip
 	}
 end
 
+-- Round 2 of the match flow: the lobby's MATCH FOUND show (MatchFound) for each real player of a queue duel.
+local function sendFound(match: Match)
+	local entries: { MatchFoundRoster.Entry } = {}
+	for _, p in match.list do
+		local player = p.player
+		table.insert(entries, {
+			userId = p.userId,
+			name = p.displayName,
+			squishy = p.squishyId,
+			level = if player and not p.isTestDummy then GripService.levelOf(player) else nil,
+		})
+	end
+	local view = MatchFoundRoster.build("1v1", entries, rng)
+	for _, p in match.list do
+		local player = p.player
+		if player and not p.isTestDummy then
+			local ok, err = pcall(NetService.fire, "MatchFound", player, view)
+			if not ok then
+				log:warn(`MatchFound to user {p.userId} failed:`, err)
+			end
+		end
+	end
+end
+
 local function sendDuelState(match: Match)
 	local state = match.state
 	local endsAt = if state.phaseEndsAt == math.huge then 0 else state.phaseEndsAt -- 0 = no timer
@@ -743,6 +773,12 @@ local function streamParticipant(match: Match, p: Participant)
 		if not ok then
 			log:warn(`stream request for user {p.userId} failed; continuing:`, err)
 		end
+	end
+	-- Round 2 of the match flow: the lobby's MATCH FOUND show plays before the teleport (DuelRules' Preparing timeout
+	-- already includes the wait).
+	local holdUntil = match.holdUntil
+	if holdUntil and holdUntil > serverNow() then
+		task.wait(holdUntil - serverNow())
 	end
 	if not match.closed and match.state.phase == "Preparing" then
 		stepMatch(match, { kind = "streamed", side = p.side })
@@ -1170,7 +1206,10 @@ end
 -- caller acquired (QueueService); without one a slot is acquired here. Returns (view, nil) or (nil, why) with an
 -- internal reason (QueueService logs it and releases its slot).
 -- Practice bot (2026-10-16): one of them may be a bot (BotService), on any server; never two non-players.
-function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, string?)
+-- Round 2 of the match flow (2026-10-25): `holdSeconds` (QueueService: Config.Duel.Rules.FoundHoldSeconds for a duel it
+-- paired or the practice bot filled) keeps the match in Preparing that long and sends each real player MatchFound, so
+-- the lobby's MATCH FOUND show plays before the teleport; nil (the duel pads, Rematch, Studio) starts as before.
+function DuelService.startMatch(a: any, b: any, slot: Slot?, holdSeconds: number?): (MatchView?, string?)
 	if ShutdownService.isClosing() then
 		return nil, "closing"
 	end
@@ -1218,9 +1257,10 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, strin
 		}
 	end
 
+	local hold = if holdSeconds and holdSeconds > 0 then holdSeconds else nil
 	local match: Match = {
 		matchId = matchId,
-		state = DuelRules.new(matchId, { A = entrant(sides.A), B = entrant(sides.B) }, now),
+		state = DuelRules.new(matchId, { A = entrant(sides.A), B = entrant(sides.B) }, now, nil, hold),
 		slot = useSlot,
 		port = nil :: any,
 		sides = sides,
@@ -1233,6 +1273,7 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, strin
 		closed = false,
 		endedFired = false,
 		createdAt = now,
+		holdUntil = if hold then now + hold else nil,
 	}
 	match.port = buildPort(match, { sides.A.fighter, sides.B.fighter }, useSlot)
 	matches[matchId] = match
@@ -1256,6 +1297,9 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?): (MatchView?, strin
 		setAttribute(p, ATTR_PHASE, match.state.phase)
 	end
 	sendDuelState(match)
+	if hold then
+		sendFound(match)
+	end
 	ensureHeartbeat()
 	log:info(
 		string.format(

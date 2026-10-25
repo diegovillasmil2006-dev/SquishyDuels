@@ -130,6 +130,9 @@ export type TextKind =
 	| "Open" -- UI FINAL R7 (T12): OPEN, 27 px (H:277)
 	| "ModeTitle" -- the mode select's card title and ghost number (UI/ModeSelect, card ref px)
 	| "ModeGhost"
+	| "FoundTitle" -- the MATCH FOUND show's letters, mode name and chip (UI/MatchFoundShow, stage px)
+	| "FoundName"
+	| "FoundChip"
 
 export type AccentName =
 	"strawberry"
@@ -455,7 +458,6 @@ Theme.Accents = table.freeze(ACCENTS)
 -- The bevel tint of a design surface (box-shadow inset 0 -Bpx 0 rgba(c, b)); black when it has none.
 local SURFACE_TINTS: { [string]: Color3 } = {
 	duel = Palette.StickerDuelBevel, -- H:126
-	found = Palette.StickerFoundBevel, -- H:149
 }
 
 -- Shape tokens (base px, under the ScreenGui UIScale). Foam radii (spec: package px ÷ 1.25): chip 10, button 16,
