@@ -532,7 +532,9 @@ local Palette = {
 	StickerLevelScrimOut = Color3.fromHex("#2E1256"), -- H:508: rgba(46,18,86,.6) at 72%
 	StickerLevelGradTop = Color3.fromHex("#FFFBD0"), -- H:519: the number's 0% stop
 	StickerFlashGlow = Color3.fromHex("#FFEC8C"), -- H:514: rgba(255,236,140,.8) at 60%
-	StickerRibbonFace = Color3.fromHex("#FF5C9A"), -- H:526: the band
+	StickerRibbonFace = Color3.fromHex("#FF5C9A"), -- H:526: the band; LOBBY HUD L:599 LEVEL UP!'s 60% stop
+	LevelRibbonTop = Color3.fromHex("#FFB3D0"), -- LOBBY HUD L:599: the new level-up's LEVEL UP! band, top
+	LevelRibbonEnd = Color3.fromHex("#E83F80"), -- LOBBY HUD L:599: its bottom
 	StickerRibbonTail = Color3.fromHex("#C2306A"), -- H:526: the tails (the picture only)
 
 	-- Match HUD M6 / M7 (2026-10-17; M = "Squishy Duels Match HUD.dc.html"): the players' colours (M:389-395: TDM

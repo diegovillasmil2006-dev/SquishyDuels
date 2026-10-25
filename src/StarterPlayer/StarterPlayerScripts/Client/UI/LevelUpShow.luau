@@ -1,43 +1,24 @@
 --!strict
--- LevelUpShow (client only). UI FINAL R9 (plan work/ui/PLAN.md R9 "Level-up: the full show", G9.10-G9.25, UD8: the
--- user's Q3, the design's whole show; `H:n` = "Squishy Duels HUD.dc.html" line n; every number in
--- Config.UI.Sticker.levelUp, each with its H line): the design's Grip level-up banner (H:506-535, its keyframes
--- H:44-65, its timers H:715-731, its lists H:999-1002), 4.2 s over everything, never a tap target (H:507
--- pointer-events: none: every part Active false).
---   local show = LevelUpShow.play({ layer = gui, prev = 4, level = 5, unlock = "Firm Grip", squishyId = "toast",
---       uiScale = UIController.scale, safe = function() return overlay.AbsoluteSize end, onCue = fn, onDone = fn })
+-- LevelUpShow (client only). The new short level-up (2026-10-25, owner: "Yes, build the new short level-up like that.
+-- You can upload the 3 pictures."; `L:n` = Diego's "Squishy Duels LOBBY HUD.dc.html" line n: the markup L:586-611,
+-- lvPlay L:927-956; every number in Config.UI.Sticker.levelUp, the FX in Config.UI.Fx.events.levelUp). It replaced
+-- the long dark 4.2 s show (UI FINAL R9): a small GRIP badge at (50%, 34%) of the screen, no scrim, never a tap target.
+--   LevelUpShow.play({ layer = gui, prev = 4, level = 5, unlock = "Firm Grip", uiScale = UIController.scale,
+--     target = function() return gripRow end, onCue = fn, onDone = fn })
 --   LevelUpShow.stop();   LevelUpShow.isPlaying()
--- * The layer (G9.14): a full-screen ScreenGui (Config.UI.Sticker.levelUp.layer: ScreenInsets None, above the windows)
---   for the scrim, the rays and the bubbles; the content centred at (50%, 44%) of the screen (H:509, H:511) under a
---   UIScale = the UI scale x fitScale (G9.15, PR1: the design's fit, clamped: its 500 x 560 box inside the safe area
---   less 32), recomputed on resize. The rays, bubbles and the FX take the UI scale.
--- * The parts, each a design element on its own holder (its pose through Anim/Tweens.poser, its fade over everything
---   in it through Tweens.fadeGroup, times the exit's fade), driven by ONE Scheduler render effect: the scrim (the
---   radial img.fx.radial.levelScrim, else Theme.radial's fallback; sdFade .3 s); the rays (img.fx.raysLevelUp, none
---   while it has no id; sdLvRays); 16 bubbles (img.fx.radial.bubble, else a ring with its 12% white dot; sdLvBubble,
---   randomised once per session, H:1000); 10 suck dots (sdLvSuck, each along its angle); the ring (sdLvRing: the ink
---   circle 30, the white .25 circle 18, the yellow arc 18 sweeping clockwise from 12 o'clock over .45 s from .55 s,
---   drawn as two half rings each clipped to its half and shown through a UIGradient's hard step turned with the arc,
---   with 18 px dots for its round caps; the pink dashed ring only with img.fx.dashRing, none while it has no id); the
---   flash disc (img.fx.radial.flashDisc, else the fallback; sdLvFlash at 1 s, held small before it, PR17: its opacity
---   at most Config.Vfx.Flash.maxOverlayOpacity); 6 stars (sdLvTw, then sdLvPulse); the number (210 px = TextSize 100
---   x a 2.1 UIScale: the ink copy with its 10 px outline and 12 px drop, the face with the 6-stop gradient seen through
---   a sliding window, sdLvGrad; sdLvInflate then sdLvJelly, the text taking their uniform part); the equipped squishy
---   (UI/Components/SquishyImage 160 with its 6 px drop at .45; sdLvSq exact by its squash, then sdLvIdle; its
---   brightness as the white copy img.squishy.<id>.white at brightness - 1, or the 3D fallback's lights rising to
---   white; pictures cannot go above 1); the ribbon (img.fx.ribbon, else the band and gloss as frames, no tails;
---   sdLvUnfurl as a clip growing about its centre; "GRIP LEVEL UP!" letter by letter, sdLvLetIn then sdLvWave); the
---   pill "Grip {prev} → {level}" (sdUp at 1.5 s) and, for a real unlock (a rank, FD8), "Unlocked {item}" with the
---   gift (sdUp at 1.75 s).
--- * Cues (G9.12, H:719-728; Config.UI.Fx.events.levelUp): at slamMs the slam (onCue "slam") and the 5 px jolt; at
---   toneMs the rising tone (onCue "tone"); at atMs onCue "main", the rings white / #FFE36B / #9AF5D2 (420 / 620 / 820,
---   0 / 110 / 220 ms), the burst (48), the rain (80) and the 14 px jolt (UI/UiFx: the jolt only with Screen shake on).
--- * Exit (G9.22, H:65): sdLvWrap: whole until 88%, then the whole show fades and grows to 1.3 about the screen centre;
---   removed at lifeMs (onDone).
--- * ReducedMotion (G9.23, PR9, decided): the scrim, still rays, the stars, the number, the ribbon, the pill and the
---   unlock line at their final poses and the squishy at (0, -200) x .55, the whole fading in and out at most
---   reducedMotionMaxFadeMs; no dots, bubbles, flash disc, ring, burst, rain or jolt (the cues' sounds still play).
--- Pure (unit-tested): fitScale, cues, gradWindow, bubbles, letters, merge.
+-- * The badge (img.lv.badge) pops in squashing (420 ms); inside its round opening (a CanvasGroup, so the parts are cut
+--   to the circle) the stripes turn (img.lv.spin, 6 s a turn), the old level flies up and out, the new one bounces in
+--   gold, then a gloss crosses it; the GRIP chip sits on its top. Around it the ring grows and fades (img.lv.ring)
+--   and 8 rays shoot out from their foot. Under it LEVEL UP! unrolls and, for a real unlock (a rank), "Unlocked
+--   {item}" with the gift drops in.
+-- * Cues (onCue): "tone" at toneMs (the rising tone), "main" at atMs (the jingle; here the ring, the burst and a 3 px
+--   jolt of the badge, UiFx: the jolt only with Screen shake on), "arrive" when the badge reaches the Grip bar (the bar
+--   swells and pops: the caller's).
+-- * At holdMs (holdUnlockMs with an unlock line) the badge flies to spec.target() (its left + fly.toX, top + fly.toY;
+--   up fly.fallbackDy without one), lifting first and shrinking to .18 as it fades; the ribbon and the unlock line
+--   drop out; the show is gone endAfterMs later (onDone).
+-- * ReducedMotion (Anim/Tweens): nothing moves, the parts only fade; no ring, rays, burst or jolt (the cues still come).
+-- Pure (unit-tested): holdMs(unlock), cues(unlock), flightFrames(dx, dy), merge(pending, prev, level, unlock).
 
 -- Services
 
@@ -54,34 +35,28 @@ local Strings = require(Shared.Strings)
 local UI = script.Parent
 local Client = UI.Parent
 local Create = require(UI.Create)
-local IconGlyph = require(UI.Components.IconGlyph)
-local SquishyImage = require(UI.Components.SquishyImage)
+local Layout = require(UI.Layout)
+local SegmentedTabs = require(UI.Components.SegmentedTabs)
 local Theme = require(UI.Theme)
 local UiFx = require(UI.UiFx)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
-local UiIdle = require(Client.Anim.UiIdle)
 
 -- Types
 
-export type Cue = "slam" | "tone" | "main"
+export type Cue = "tone" | "main" | "arrive"
 
 export type Spec = {
 	layer: ScreenGui,
 	prev: number,
 	level: number,
-	unlock: string?, -- the item a real unlock names (FD8), else nil
-	squishyId: string?, -- the equipped squishy
+	unlock: string?, -- the item a real unlock names, else nil
 	uiScale: () -> number,
-	safe: () -> Vector2, -- the safe area's size (px)
+	target: (() -> GuiObject?)?, -- the Grip bar the badge flies into
 	onCue: ((cue: Cue) -> ())?,
 	onDone: (() -> ())?,
 }
 
--- One randomised bubble (H:1000): left in % of the width, size px, period and delay s.
-export type Bubble = { x: number, size: number, period: number, delay: number }
--- One ribbon letter (H:999): its character and its two delays (s).
-export type Letter = { char: string, delay: number, wave: number }
 -- A show waiting for its turn (merge).
 export type Pending = { prev: number, level: number, unlock: string? }
 
@@ -89,38 +64,18 @@ type Track = {
 	poser: Tweens.Poser?,
 	fade: Tweens.FadeGroup?,
 	frames: { Tweens.Pose },
-	delay: number,
-	duration: number, -- a one-shot's length, or a loop's period
-	curve: string?,
-	loop: boolean,
-	alternate: boolean,
-	uniform: boolean, -- sx / sy as their uniform part (a text)
-	alphaMul: number,
-	write: ((pose: Tweens.Pose, alpha: number, u: number) -> ())?, -- a part drawn its own way
+	delayMs: number,
+	ms: number,
+	curve: string, -- the whole run's easing (the design's animate() `easing` option)
 }
 
 -- Constants
 
 local LOOK = Config.UI.Sticker.levelUp
-local LOOPS = Config.UI.motion.loops
 local FX = Config.UI.Fx.events.levelUp
-local LIFE = LOOK.lifeMs / 1000
-local REDUCED_FADE = Config.UI.motion.reducedMotionMaxFadeMs / 1000
-local FLASH_CAP = Config.Vfx.Flash.maxOverlayOpacity -- PR17
-local WHITE = Color3.new(1, 1, 1)
+local WHITE = Palette.White
 local INK = Palette.StickerInk
-local SCRIM_KEY = "img.fx.radial.levelScrim"
-local RAYS_KEY = "img.fx.raysLevelUp"
-local BUBBLE_KEY = "img.fx.radial.bubble"
-local FLASH_KEY = "img.fx.radial.flashDisc"
-local RIBBON_KEY = "img.fx.ribbon"
-local DASH_KEY = "img.fx.dashRing"
-local STAR_KEY = "img.icon.star"
-local GIFT_KEY = "img.icon.gift"
-local PILL_KIND: Theme.TextKind = "Big" -- H:530: 24 px
-local LETTER_KIND: Theme.TextKind = "Ribbon" -- H:527: 38 px
-local UNLOCK_KIND: Theme.TextKind = "Large" -- H:531: 28 px
-local MEASURE_MARGIN_PX = 2
+local MEASURE_MARGIN_PX = 6 -- scaled text draws a little wider than TextService measures
 
 -- Module table
 
@@ -128,142 +83,96 @@ local LevelUpShow = {}
 
 -- Private
 
-local playing: { stop: () -> () }? = nil
-local cachedBubbles: { Bubble }? = nil -- H:1000: randomised once and kept
-
-local function finite(n: number): boolean
-	return n == n and n > -math.huge and n < math.huge
-end
+local playing: { root: Frame, stop: () -> () }? = nil
 
 local function color(name: string): Color3
 	local value = (Palette :: any)[name]
 	return if typeof(value) == "Color3" then value else WHITE
 end
 
--- A clear holder (no layout places it), centred on (x, y) of its parent's top-left, `w` x `h`.
-local function holder(name: string, parent: Instance, x: number, y: number, w: number, h: number, z: number?): Frame
-	return Create("Frame", {
+local function clear(name: string, props: { [string]: any }): Frame
+	local frame: Frame = Create("Frame", { Name = name, BackgroundTransparency = 1, Active = false })
+	for property, value in props do
+		if property ~= "Parent" then
+			(frame :: any)[property] = value
+		end
+	end
+	frame.Parent = props.Parent
+	return frame
+end
+
+local function picture(name: string, key: string, props: { [string]: any }): ImageLabel
+	local label: ImageLabel = Create("ImageLabel", {
 		Name = name,
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(x, y),
-		Size = UDim2.fromOffset(w, h),
+		Image = AssetTable.image(key) or "",
+		ScaleType = Enum.ScaleType.Stretch,
 		Active = false,
-		ZIndex = z or 1,
-		Parent = parent,
 	})
+	for property, value in props do
+		if property ~= "Parent" then
+			(label :: any)[property] = value
+		end
+	end
+	label.Parent = props.Parent
+	return label
 end
 
-local function circle(name: string, parent: Instance, px: number, fill: Color3?, z: number?): Frame
-	local frame = holder(name, parent, 0, 0, px, px, z)
-	frame.AnchorPoint = Vector2.new(0.5, 0.5)
-	frame.Position = UDim2.fromScale(0.5, 0.5)
-	if fill then
-		frame.BackgroundColor3 = fill
-		frame.BackgroundTransparency = 0
+local function oneLine(label: TextLabel)
+	label.TextWrapped = false
+	for _, text in label:GetDescendants() do
+		if text:IsA("TextLabel") then
+			text.TextWrapped = false
+		end
 	end
-	Theme.corner(px, frame)
-	return frame
 end
 
--- A ring drawn as a circle's outside stroke: radius `r` at the stroke's middle, `px` thick (an SVG stroke).
-local function ring(name: string, parent: Instance, r: number, px: number, strokeColor: Color3, alpha: number): Frame
-	local frame = circle(name, parent, 2 * r - px)
-	Theme.stroke(strokeColor, px, frame, 1 - alpha)
-	return frame
-end
-
--- The u (0..1) into a track at show time t (CSS fill both: the first frame through the delay; a loop's alternate
--- runs every other period backwards).
-local function trackU(track: Track, t: number, reduced: boolean): number
-	if reduced then
-		return if track.loop then 0 else 1
+-- The frames without their alpha (the motion; the fade is the whole holder's, Tweens.fadeGroup).
+local function motionOf(frames: { Tweens.Pose }): { Tweens.Pose }
+	local out: { Tweens.Pose } = {}
+	for _, frame in frames do
+		local copy = table.clone(frame)
+		copy.alpha = nil
+		table.insert(out, copy)
 	end
-	local local_t = t - track.delay
-	if local_t <= 0 or not (track.duration > 0) then
-		return 0
-	end
-	if not track.loop then
-		return math.clamp(local_t / track.duration, 0, 1)
-	end
-	local cycles = local_t / track.duration
-	local u = cycles % 1
-	if track.alternate and math.floor(cycles) % 2 == 1 then
-		u = 1 - u
-	end
-	return u
+	return out
 end
 
 -- Public: pure -------------------------------------------------------------------------------------------------------
 
--- G9.15 (PR1, H:624): the content's fit inside a safe area `safeW` x `safeH` px at UI scale `s`: at most 1, the
--- design's 500 x 560 box kept LOOK.fit.margin inside it. The content's UIScale is s x this.
-function LevelUpShow.fitScale(safeW: number, safeH: number, s: number): number
-	if not (finite(safeW) and finite(safeH) and finite(s)) or s <= 0 then
-		return 1
-	end
-	local fit = LOOK.fit
-	local k = math.min(1, (safeW - fit.margin) / (fit.width * s), (safeH - fit.margin) / (fit.height * s))
-	return math.max(k, 0.01)
+-- L:931: how long the badge stays before it flies to the Grip bar (longer with an unlock line).
+function LevelUpShow.holdMs(unlock: boolean): number
+	return if unlock then LOOK.holdUnlockMs else LOOK.holdMs
 end
 
--- G9.12 (H:719-728): the show's cues in time order (ms from its start).
-function LevelUpShow.cues(): { { ms: number, cue: Cue } }
+-- The cues in time order (ms from the start; see the header).
+function LevelUpShow.cues(unlock: boolean): { { ms: number, cue: Cue } }
 	return {
-		{ ms = FX.slamMs, cue = "slam" },
 		{ ms = FX.toneMs, cue = "tone" },
 		{ ms = FX.atMs, cue = "main" },
+		{ ms = LevelUpShow.holdMs(unlock) + LOOK.arrive.atMs, cue = "arrive" },
 	}
 end
 
--- G9.11 (H:519, sdLvGrad): the number's gradient window at p (0..1 of the slide): its offset and its share of the
--- 220% gradient.
-function LevelUpShow.gradWindow(p: number): (number, number)
-	local share = LOOK.number.gradShare
-	return (1 - share) * math.clamp(if finite(p) then p else 0, 0, 1), share
+-- L:948-949: the badge's flight by (dx, dy) base px: lifting a little first (liftShare of the way, liftUp higher,
+-- liftScale), then all the way, shrunk to endScale and faded.
+function LevelUpShow.flightFrames(dx: number, dy: number): { Tweens.Pose }
+	local fly = LOOK.fly
+	return {
+		{ at = 0, alpha = 1, x = 0, y = 0, scale = 1 },
+		{
+			at = fly.liftAt,
+			alpha = 1,
+			x = dx * fly.liftShare,
+			y = dy * fly.liftShare - fly.liftUp,
+			scale = fly.liftScale,
+		},
+		{ at = 1, alpha = 0, x = dx, y = dy, scale = fly.endScale },
+	}
 end
 
--- G9.19 (H:510, H:1000): the 16 bubbles, randomised by `rng` (Random) and, without one, once per session and kept.
-function LevelUpShow.bubbles(rng: Random?): { Bubble }
-	if rng == nil and cachedBubbles then
-		return cachedBubbles :: { Bubble }
-	end
-	local random = rng or Random.new()
-	local spec = LOOK.bubbles
-	local list: { Bubble } = {}
-	for i = 0, spec.n - 1 do
-		table.insert(list, {
-			x = spec.xFrom + spec.xStep * i + random:NextNumber() * spec.xJitter,
-			size = math.round(spec.sizeFrom + random:NextNumber() * spec.sizeJitter),
-			period = spec.periodFrom + random:NextNumber() * spec.periodJitter,
-			delay = spec.delayFrom + random:NextNumber() * spec.delayJitter,
-		})
-	end
-	if rng == nil then
-		cachedBubbles = list
-	end
-	return list
-end
-
--- G9.18 (H:999): the ribbon's letters with their sdLvLetIn and sdLvWave delays.
-function LevelUpShow.letters(text: string): { Letter }
-	local spec = LOOK.ribbon
-	local wave = LOOPS.lvWave
-	local list: { Letter } = {}
-	local i = 0
-	for _, code in utf8.codes(text) do
-		table.insert(list, {
-			char = utf8.char(code),
-			delay = spec.letterDelayS + spec.letterStepS * i,
-			wave = wave.delayS + wave.delayStepS * i,
-		})
-		i += 1
-	end
-	return list
-end
-
--- G9.13: a level-up that waits (from Matched to Returning, under a box reveal) merged with the next one: the lowest
--- level it started from, the newest level, the newest unlock (or the older one).
+-- A level-up that waits (from Matched to Returning, under a box reveal) merged with the next one: the lowest level it
+-- started from, the newest level, the newest unlock (or the older one).
 function LevelUpShow.merge(pending: Pending?, prev: number, level: number, unlock: string?): Pending
 	if pending == nil then
 		return { prev = prev, level = level, unlock = unlock }
@@ -292,604 +201,319 @@ end
 function LevelUpShow.play(spec: Spec)
 	LevelUpShow.stop()
 	local reduced = Tweens.reducedMotion()
-	local layer = spec.layer
-	local s = spec.uiScale()
+	local hasUnlock = spec.unlock ~= nil and spec.unlock ~= ""
+	local hold = LevelUpShow.holdMs(hasUnlock)
+	local life = hold + LOOK.endAfterMs
 	local tracks: { Track } = {}
-	local clocks: { (t: number) -> () } = {} -- parts on their own clock (the arc, the number's gradient)
-	local function track(t: Track): Track
-		table.insert(tracks, t)
-		return t
-	end
-	local function oneShot(
-		object: GuiObject?,
-		fadeOf: GuiObject?,
-		frames: { any },
-		delayS: number,
-		durationS: number,
-		curve: string?,
-		uniform: boolean?
-	): Track
-		return track({
-			poser = if object then Tweens.poser(object) else nil,
-			fade = if fadeOf then Tweens.fadeGroup(fadeOf) else nil,
+	local function track(holder: GuiObject, frames: { any }, ms: number, delayMs: number, curve: string): Track
+		local item: Track = {
+			poser = Tweens.poser(holder),
+			fade = Tweens.fadeGroup(holder),
 			frames = frames :: { Tweens.Pose },
-			delay = delayS,
-			duration = durationS,
+			delayMs = delayMs,
+			ms = ms,
 			curve = curve,
-			loop = false,
-			alternate = false,
-			uniform = uniform == true,
-			alphaMul = 1,
-		})
-	end
-	local function loop(
-		object: GuiObject,
-		frames: { any },
-		delayS: number,
-		periodS: number,
-		curve: string?,
-		alternate: boolean?,
-		uniform: boolean?
-	): Track
-		return track({
-			poser = Tweens.poser(object),
-			fade = nil,
-			frames = frames :: { Tweens.Pose },
-			delay = delayS,
-			duration = math.max(periodS, UiIdle.MIN_PERIOD),
-			curve = curve,
-			loop = true,
-			alternate = alternate == true,
-			uniform = uniform == true,
-			alphaMul = 1,
-		})
+		}
+		table.insert(tracks, item)
+		return item
 	end
 
-	-- The show's root: the whole screen, its exit scale about the centre (H:65).
-	local root: Frame = Create("Frame", {
-		Name = "LevelUpShow",
-		BackgroundTransparency = 1,
+	local root = clear("SD_LevelUpShow", { Size = UDim2.fromScale(1, 1), ZIndex = 1 })
+	local centre = clear("Centre", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(1, 1),
-		Active = false,
-	})
-	local exitScale: UIScale = Create("UIScale", { Name = "SD_Exit", Parent = root })
-
-	-- Scrim (G9.21, H:508): the radial, sdFade .3 s.
-	local scrim: Frame = Create("Frame", {
-		Name = "Scrim",
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		Active = false,
+		Position = UDim2.fromScale(LOOK.centreX, LOOK.centreY),
+		Size = UDim2.fromOffset(0, 0),
 		ZIndex = 1,
 		Parent = root,
 	})
-	local scrimLook = LOOK.scrim
-	Theme.radial(
-		scrim,
-		SCRIM_KEY,
+	local scale: UIScale = Create("UIScale", { Scale = spec.uiScale(), Parent = centre })
+
+	-- The ring (L:588) and the rays (L:589), behind the badge.
+	local ring = LOOK.ring
+	local ringHolder = clear("Ring", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(ring.px, ring.px),
+		ZIndex = 1,
+		Parent = centre,
+	})
+	local pad = (ring.picturePx - ring.px) / 2
+	picture("Image", "img.lv.ring", {
+		Position = UDim2.fromOffset(-pad, -pad),
+		Size = UDim2.fromOffset(ring.picturePx, ring.picturePx),
+		ZIndex = 1,
+		Parent = ringHolder,
+	})
+	local rays = LOOK.rays
+	local rayHolders: { Frame } = {}
+	for i = 0, rays.n - 1 do
+		local pivot = clear("Ray" .. i + 1, {
+			Size = UDim2.fromOffset(0, 0),
+			Rotation = rays.fromDeg + i * rays.stepDeg,
+			ZIndex = 1,
+			Parent = centre,
+		})
+		local length = if i % 2 == 1 then rays.short else rays.long
+		-- The bar from `top` down `length`, grown about its foot (transform-origin 50% 100%).
+		local bar: Frame = Create("Frame", {
+			Name = "Bar",
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.fromOffset(0, rays.top + length),
+			Size = UDim2.fromOffset(rays.width, length),
+			BackgroundColor3 = color(rays.colors[i % #rays.colors + 1]),
+			BorderSizePixel = 0,
+			ZIndex = 1,
+			Parent = pivot,
+		})
+		Theme.corner(rays.radius, bar)
+		Theme.stroke(INK, rays.border, bar)
+		table.insert(rayHolders, bar)
+	end
+
+	-- The badge (L:590-597): Fly (the flight) > Pop (its entrance) > the disc, the opening, the GRIP chip.
+	local b = LOOK.badge
+	local fly = clear("Fly", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Size = UDim2.fromOffset(b.px, b.px),
+		ZIndex = 2,
+		Parent = centre,
+	})
+	local pop = clear("Pop", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 2,
+		Parent = fly,
+	})
+	-- Sized in shares of the badge, so its squash (Pop's Size) squashes them too.
+	local p = b.picture
+	picture("Disc", "img.lv.badge", {
+		Position = UDim2.fromScale(-p.x / b.px, -p.y / b.px),
+		Size = UDim2.fromScale(p.width / b.px, p.height / b.px),
+		ZIndex = 2,
+		Parent = pop,
+	})
+	local opening: CanvasGroup = Create("CanvasGroup", {
+		Name = "Opening",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(b.opening / b.px, b.opening / b.px),
+		BackgroundTransparency = 1,
+		ZIndex = 3,
+		Parent = pop,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = opening })
+	local spin = picture("Spin", "img.lv.spin", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = 3,
+		Parent = opening,
+	})
+	local function number(name: string, text: string, tint: Color3?): Frame
+		local holder = clear(name, {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(1, 1),
+			ZIndex = 4,
+			Parent = opening,
+		})
+		local label = Theme.label({
+			Name = "Text",
+			Text = text,
+			Size = UDim2.fromScale(1, 1),
+			TextXAlignment = Enum.TextXAlignment.Center,
+			ZIndex = 4,
+			Parent = holder,
+		}, "LevelNumber")
+		Theme.stickerText(label, "levelNumber")
+		if tint then
+			label.TextColor3 = tint
+		end
+		oneLine(label)
+		return holder
+	end
+	local oldNumber = number("Old", tostring(spec.prev), nil)
+	local newNumber = number("New", tostring(spec.level), color(LOOK.new.color))
+	-- L:595 the gloss: a white band crossing the opening once (its gradient's offset), slanted like skewX(-18deg).
+	local g = LOOK.gloss
+	local gloss: Frame = Create("Frame", {
+		Name = "Gloss",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		ZIndex = 5,
+		Parent = opening,
+	})
+	local glossGradient: UIGradient = Create("UIGradient", {
+		Rotation = SegmentedTabs.gradientRotation(g.skew, b.opening, b.opening),
+		Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5 - g.share / 2, 1),
+			NumberSequenceKeypoint.new(0.5, g.transparency),
+			NumberSequenceKeypoint.new(0.5 + g.share / 2, 1),
+			NumberSequenceKeypoint.new(1, 1),
+		}),
+		Parent = gloss,
+	})
+	local glossFrom = g.from * g.share + g.share / 2 - 0.5 -- the band's centre as the gradient's offset
+	local glossTo = g.to * g.share + g.share / 2 - 0.5
+	glossGradient.Offset = Vector2.new(glossFrom, 0)
+	-- L:597 GRIP on the badge's top.
+	local ch = LOOK.chip
+	local chipText = Strings.grip.levelUpChip
+	local chipSize = Theme.textBounds(chipText, "Small")
+	local chip: Frame = Create("Frame", {
+		Name = "Chip",
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, ch.top),
+		Size = UDim2.fromOffset(chipSize.X + MEASURE_MARGIN_PX + 2 * (ch.pad + ch.border), ch.height),
+		BackgroundColor3 = INK,
+		BorderSizePixel = 0,
+		ZIndex = 6,
+		Parent = pop,
+	})
+	Create("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = chip })
+	local chipLabel = Theme.label({
+		Name = "Text",
+		Text = chipText,
+		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 7,
+		Parent = chip,
+	}, "Small", nil, color(ch.color))
+	oneLine(chipLabel)
+
+	-- LEVEL UP! (L:599-601).
+	local r = LOOK.ribbon
+	local ribbonBands = Layout.stickerBands(r.border, r.highlightPx, 0, r.lip)
+	local ribbon = clear("Ribbon", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(0, r.top + r.height / 2),
+		Size = UDim2.fromOffset(r.width, r.height),
+		ZIndex = 8,
+		Parent = centre,
+	})
+	local ribbonFace: Frame = Create("Frame", {
+		Name = "Face",
+		Size = UDim2.new(1, 0, 1, ribbonBands.drop - r.border),
+		BorderSizePixel = 0,
+		ZIndex = 8,
+		Parent = ribbon,
+	})
+	Theme.foam(
+		ribbonFace,
 		{
-			outer = Palette.StickerLevelScrimOut,
-			outerAlpha = scrimLook.outerAlpha,
-			inner = Palette.StickerLevelScrimIn,
-			innerAlpha = scrimLook.innerAlpha,
-			centre = Vector2.new(0.5, LOOK.centreY),
+			radius = r.radius,
+			stroke = r.border,
+			inner = true,
+			top = ribbonBands.top,
+			drop = ribbonBands.drop,
+			colors = {
+				face = Palette.LevelRibbonTop,
+				mid = Palette.StickerRibbonFace,
+				midAt = 0.6,
+				faceEnd = Palette.LevelRibbonEnd,
+				top = Palette.LevelRibbonTop:Lerp(WHITE, r.highlightAlpha),
+			},
 		} :: any
 	)
-	oneShot(nil, scrim, { { at = 0, alpha = 0 }, { at = 1, alpha = 1 } }, 0, scrimLook.fadeMs / 1000, scrimLook.curve)
+	local ribbonLabel = Theme.label({
+		Name = "Text",
+		Text = Strings.grip.levelUpRibbon,
+		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = 9,
+		Parent = ribbon,
+	}, "Big")
+	Theme.stickerText(ribbonLabel, "levelRibbon")
+	oneLine(ribbonLabel)
 
-	-- Rays (H:509, sdLvRays): only with their picture.
-	local raysContent = AssetTable.image(RAYS_KEY)
-	if raysContent then
-		local rays: ImageLabel = Create("ImageLabel", {
-			Name = "Rays",
-			BackgroundTransparency = 1,
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, LOOK.centreY),
-			Size = UDim2.fromOffset(LOOK.rays.px * s, LOOK.rays.px * s),
-			Image = raysContent,
-			Active = false,
-			ZIndex = 2,
-			Parent = root,
+	-- The unlock line (L:602-609), for a real unlock.
+	local unlockHolder: Frame? = nil
+	if hasUnlock then
+		local u = LOOK.unlock
+		local prefix = Strings.grip.unlockedPrefix
+		local item = spec.unlock :: string
+		local textSize = Theme.textBounds(prefix .. item, "Small")
+		local bands = Layout.stickerBands(u.border, 0, 0, u.lip)
+		local width = 2 * u.border + u.padLeft + u.gift + u.gap + textSize.X + MEASURE_MARGIN_PX + u.padRight
+		local holder = clear("Unlock", {
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.fromOffset(0, u.top),
+			Size = UDim2.fromOffset(width, u.height),
+			ZIndex = 8,
+			Parent = centre,
 		})
-		oneShot(rays, rays, LOOK.rays.frames, 0, LIFE, LOOK.rays.curve)
-	end
-
-	-- Bubbles (G9.19, H:510): rising from 90 px under the bottom, each its own loop.
-	if not reduced then
-		local spec = LOOK.bubbles
-		local height = layer.AbsoluteSize.Y
-		local bubbleContent = AssetTable.image(BUBBLE_KEY)
-		for i, bubble in LevelUpShow.bubbles() do
-			local px = bubble.size * s
-			local frame: Frame = Create("Frame", {
-				Name = "Bubble" .. i,
-				BackgroundTransparency = 1,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.new(bubble.x / 100, px / 2, 1, -spec.bottom * s - px / 2),
-				Size = UDim2.fromOffset(px, px),
-				Active = false,
-				ZIndex = 3,
-				Parent = root,
-			})
-			Theme.corner(px, frame)
-			Theme.stroke(WHITE, spec.border, frame, 1 - spec.borderAlpha)
-			if bubbleContent then
-				Create("ImageLabel", {
-					Name = "Fill",
-					BackgroundTransparency = 1,
-					Size = UDim2.fromScale(1, 1),
-					Image = bubbleContent,
-					Active = false,
-					ZIndex = 3,
-					Parent = frame,
-				})
-			else
-				local dot = circle("Dot", frame, px * 2 * spec.dotShare, WHITE, 3)
-				dot.Position = UDim2.fromScale(spec.dotX, spec.dotY)
-			end
-			local frames: { any } = {
-				{ at = 0, alpha = 0, x = 0, y = 0, scale = 0.6 },
-				{ at = 0.15, alpha = 0.9 },
-				{ at = 1, alpha = 0, x = 40 * s, y = -1.15 * height, scale = 1.15 },
-			}
-			local t = loop(frame, frames, bubble.delay, bubble.period, LOOPS.lvBubble.curve)
-			t.fade = Tweens.fadeGroup(frame)
-		end
-	end
-
-	-- The content: centred at (50%, 44%), the UI scale x the fit (G9.15).
-	local content: Frame = Create("Frame", {
-		Name = "Content",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, LOOK.centreY),
-		Size = UDim2.fromOffset(1, 1),
-		Active = false,
-		ZIndex = 4,
-		Parent = root,
-	})
-	local contentScale: UIScale = Create("UIScale", { Name = "SD_Fit", Parent = content })
-	local function fit()
-		local scale = spec.uiScale()
-		local safe = spec.safe()
-		contentScale.Scale = scale * LevelUpShow.fitScale(safe.X, safe.Y, scale)
-	end
-	fit()
-
-	-- Suck dots (G9.10, H:512): each along its angle, 250 -> 30.
-	if not reduced then
-		local suck = LOOK.suck
-		for i = 0, suck.n - 1 do
-			local arm = holder("Suck" .. i, content, 0, 0, 0, 0, 1)
-			arm.Rotation = i * suck.stepDeg
-			local dot = holder("Dot", arm, 0, 0, suck.px, suck.px, 1)
-			dot.BackgroundColor3 = color(suck.colors[(i % #suck.colors) + 1])
-			dot.BackgroundTransparency = 0
-			Theme.corner(suck.px, dot)
-			local stroke = Theme.stroke(INK, suck.border, dot)
-			pcall(function()
-				(stroke :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
-			end)
-			local delayS = suck.delayS + (i % suck.delayCycle) * suck.delayStepS
-			oneShot(dot, dot, suck.frames, delayS, suck.ms / 1000, suck.curve)
-		end
-	end
-
-	-- Ring (H:513, sdLvRing; the arc G9.17).
-	if not reduced then
-		local r = LOOK.ring
-		local box = holder("Ring", content, 0, 0, r.box, r.box, 2)
-		ring("Ink", box, r.r, r.inkPx, INK, 1)
-		ring("White", box, r.r, r.whitePx, WHITE, r.whiteAlpha)
-		local yellow = Palette.StickerCoinText
-		local reach = r.r + r.arcPx / 2
-		local halves: { UIGradient } = {}
-		for side = 1, 2 do
-			-- side 1: the right half (12 -> 6 o'clock), side 2: the left half (6 -> 12).
-			local clip: Frame = Create("Frame", {
-				Name = if side == 1 then "ArcRight" else "ArcLeft",
-				BackgroundTransparency = 1,
-				AnchorPoint = Vector2.new(if side == 1 then 0 else 1, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.fromOffset(reach + 1, 2 * reach + 2),
-				ClipsDescendants = true,
-				Active = false,
-				ZIndex = 2,
-				Parent = box,
-			})
-			local arc = circle("Arc", clip, 2 * r.r - r.arcPx, nil, 2)
-			arc.Position = UDim2.fromScale(if side == 1 then 0 else 1, 0.5)
-			local stroke = Theme.stroke(yellow, r.arcPx, arc)
-			halves[side] = Create("UIGradient", {
-				Transparency = NumberSequence.new({
-					NumberSequenceKeypoint.new(0, 0),
-					NumberSequenceKeypoint.new(0.5, 0),
-					NumberSequenceKeypoint.new(0.5001, 1),
-					NumberSequenceKeypoint.new(1, 1),
-				}),
-				Rotation = 180 * (side - 1),
-				Parent = stroke,
-			})
-		end
-		local startCap = circle("CapStart", box, r.arcPx, yellow, 3)
-		startCap.Position = UDim2.new(0.5, 0, 0.5, -r.r)
-		local headCap = circle("CapHead", box, r.arcPx, yellow, 3)
-		local dashContent = AssetTable.image(DASH_KEY)
-		local dash: ImageLabel? = if dashContent
-			then Create("ImageLabel", {
-				Name = "Dash",
-				BackgroundTransparency = 1,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.fromOffset(2 * r.r + r.dashPx, 2 * r.r + r.dashPx),
-				Image = dashContent,
-				Active = false,
-				ZIndex = 4,
-				Parent = box,
-			})
-			else nil
-		local arcCurve = Tweens.curve(r.arcCurve)
-		oneShot(box, box, r.frames, 0, LIFE, r.curve)
-		-- The arc's sweep (sdLvFill, H:53): from 12 o'clock clockwise, its own clock.
-		local arcStart, arcLength = r.arcDelayMs / 1000, r.arcMs / 1000
-		local function arcAt(t: number)
-			local p = arcCurve(math.clamp((t - arcStart) / arcLength, 0, 1))
-			local theta = 360 * p
-			halves[1].Rotation = math.min(theta, 180)
-			halves[2].Rotation = math.max(theta, 180)
-			startCap.Visible = p > 0
-			headCap.Visible = p > 0
-			local rad = math.rad(theta)
-			headCap.Position = UDim2.new(0.5, r.r * math.sin(rad), 0.5, -r.r * math.cos(rad))
-			if dash then
-				dash.Rotation = theta -- one full turn over the same .45 s (the dash offset moves a circumference)
-			end
-		end
-		arcAt(0)
-		table.insert(clocks, arcAt)
-	end
-
-	-- Flash disc (G9.25, H:514, sdLvFlash; PR17).
-	if not reduced then
-		local f = LOOK.flash
-		local disc = holder("Flash", content, 0, 0, f.px, f.px, 3)
-		Theme.corner(f.px, disc)
-		Theme.radial(
-			disc,
-			FLASH_KEY,
+		local face: Frame = Create("Frame", {
+			Name = "Face",
+			Size = UDim2.new(1, 0, 1, bands.drop - u.border),
+			BorderSizePixel = 0,
+			ZIndex = 8,
+			Parent = holder,
+		})
+		Theme.foam(
+			face,
 			{
-				outer = WHITE,
-				outerAlpha = 0,
-				inner = WHITE,
-				innerAlpha = 1,
-				mid = Palette.StickerFlashGlow,
-				midAt = f.midAt,
-				midAlpha = f.midAlpha,
+				radius = u.height / 2,
+				stroke = u.border,
+				inner = true,
+				drop = bands.drop,
+				colors = { face = color(u.color) },
 			} :: any
 		)
-		local flashTrack = oneShot(disc, disc, f.frames, f.delayMs / 1000, f.ms / 1000, f.curve)
-		flashTrack.alphaMul = FLASH_CAP
+		picture("Gift", "img.icon.gift", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(u.border + u.padLeft, u.height / 2),
+			Size = UDim2.fromOffset(u.gift, u.gift),
+			ScaleType = Enum.ScaleType.Fit,
+			ZIndex = 9,
+			Parent = holder,
+		})
+		local itemColor = color(u.itemColor)
+		local label = Theme.label({
+			Name = "Text",
+			Text = prefix
+				.. string.format('<font color="#%s">%s</font>', itemColor:ToHex(), (string.gsub(item, "[<>&]", ""))),
+			RichText = true,
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.fromOffset(u.border + u.padLeft + u.gift + u.gap, u.height / 2),
+			Size = UDim2.fromOffset(textSize.X + MEASURE_MARGIN_PX, textSize.Y),
+			TextXAlignment = Enum.TextXAlignment.Left,
+			ZIndex = 9,
+			Parent = holder,
+		}, "Small", nil, WHITE)
+		oneLine(label)
+		unlockHolder = holder
 	end
 
-	-- Stars (G9.10, H:515, H:1002): sdLvTw, then sdLvPulse inside.
-	do
-		local st = LOOK.stars
-		for i, offset in st.offsets do
-			local outer = holder("Star" .. i, content, offset.x, offset.y, offset.px, offset.px, 4)
-			local inner = holder("Pulse", outer, offset.px / 2, offset.px / 2, offset.px, offset.px, 4)
-			local image = IconGlyph.image(STAR_KEY, { name = "Image", sizePx = offset.px, parent = inner })
-			image.ZIndex = 4
-			local index = i - 1
-			oneShot(outer, outer, st.frames, st.delayS + st.stepS * index, st.ms / 1000, st.curve)
-			loop(
-				inner,
-				LOOPS.lvPulse.frames,
-				st.pulseDelayS + st.pulseStepS * index,
-				LOOPS.lvPulse.periodS,
-				LOOPS.lvPulse.curve
-			)
+	-- The entrances (L:932-939); every part shows its first frame from the start (fill: both).
+	track(pop, LOOK.badge.frames, b.ms, 0, b.curve)
+	if not reduced then
+		track(ringHolder, ring.frames, ring.ms, ring.delayMs, ring.curve)
+		for i, bar in rayHolders do
+			track(bar, rays.frames, rays.ms, rays.delayMs + ((i - 1) % 2) * rays.oddDelayMs, rays.curve)
 		end
+	else
+		ringHolder.Visible = false
+		for _, bar in rayHolders do
+			bar.Visible = false
+		end
+	end
+	track(oldNumber, LOOK.old.frames, LOOK.old.ms, LOOK.old.delayMs, LOOK.old.curve)
+	track(newNumber, LOOK.new.frames, LOOK.new.ms, LOOK.new.delayMs, LOOK.new.curve)
+	track(ribbon, r.frames, r.ms, r.delayMs, r.curve)
+	local unlockTrack: Track? = nil
+	if unlockHolder then
+		local u = LOOK.unlock
+		unlockTrack = track(unlockHolder, u.frames, u.ms, u.delayMs, u.curve)
 	end
 
-	-- The number (G9.11, H:516-519).
-	local gradient: UIGradient
-	do
-		local n = LOOK.number
-		local box = holder("Number", content, 0, 0, n.width, n.height, 5)
-		local jelly = holder("Jelly", box, n.width / 2, n.height / 2, n.width, n.height, 5)
-		local textBox = holder("Text", jelly, n.width / 2, n.height / 2, n.width / n.scale, n.height / n.scale, 5)
-		Create("UIScale", { Name = "SD_Size", Scale = n.scale, Parent = textBox })
-		local font = Theme.font("Hero")
-		local function numberLabel(name: string, textColor: Color3, dy: number, stroke: boolean, z: number): TextLabel
-			local label: TextLabel = Create("TextLabel", {
-				Name = name,
-				BackgroundTransparency = 1,
-				Position = UDim2.fromOffset(0, dy),
-				Size = UDim2.fromScale(1, 1),
-				FontFace = font,
-				TextSize = n.textSize,
-				Text = tostring(spec.level),
-				TextColor3 = textColor,
-				TextWrapped = false,
-				Active = false,
-				ZIndex = z,
-				Parent = textBox,
-			})
-			if stroke then
-				local outline = Theme.stroke(INK, n.inkStroke / n.scale, label)
-				outline.LineJoinMode = Enum.LineJoinMode.Round
-				-- Theme.stroke strokes the box (Border): the design outlines the digit, not its 2.1x frame.
-				outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-			end
-			return label
-		end
-		numberLabel("Drop", INK, n.drop / n.scale, true, 5)
-		numberLabel("Ink", INK, 0, true, 5)
-		local face = numberLabel("Face", WHITE, 0, false, 6)
-		gradient = Create("UIGradient", { Rotation = 90, Parent = face })
-		oneShot(box, box, n.frames, n.delayMs / 1000, n.ms / 1000, n.curve, true)
-		loop(jelly, LOOPS.lvJelly.frames, n.jellyDelayS, LOOPS.lvJelly.periodS, LOOPS.lvJelly.curve, false, true)
-	end
-	local gradStops: { UiIdle.Stop } = {}
-	for _, stop in LOOK.number.gradStops do
-		table.insert(gradStops, { pos = stop.pos, color = color(stop.color) })
-	end
-	local gradCurve = Tweens.curve(LOOK.number.gradCurve)
-	local function gradAt(t: number)
-		local period = LOOK.number.gradPeriodS
-		local cycles = if reduced then 0 else t / period
-		local u = cycles % 1
-		if math.floor(cycles) % 2 == 1 then
-			u = 1 - u
-		end
-		local offset, share = LevelUpShow.gradWindow(gradCurve(u))
-		gradient.Color = UiIdle.gradientWindow(gradStops, offset, share)
-	end
-	gradAt(0)
-	table.insert(clocks, gradAt)
-
-	-- The squishy (G9.20, H:522-523).
-	local squishyId = spec.squishyId
-	if squishyId then
-		local q = LOOK.squishy
-		local outer = holder("Squishy", content, 0, 0, q.px, q.px, 6)
-		local inner = holder("Idle", outer, q.px / 2, q.px / 2, q.px, q.px, 6)
-		local image =
-			SquishyImage.new(squishyId, { size = q.px, shadow = q.shadow, owned = true, parent = inner :: Instance })
-		image.root.AnchorPoint = Vector2.new(0.5, 0.5)
-		image.root.Position = UDim2.fromScale(0.5, 0.5)
-		local outerTrack = oneShot(outer, outer, q.frames, 0, LIFE, q.curve)
-		local idleTrack = loop(inner, LOOPS.lvIdle.frames, q.idleDelayS, LOOPS.lvIdle.periodS, LOOPS.lvIdle.curve, true)
-		-- The brightness (G4.6's mapping): the white copy, made after the fade group so the glow owns its alpha.
-		local whiteContent = AssetTable.image(SquishyImage.keyOf(squishyId) .. ".white")
-		local pictureHolder = image.root:FindFirstChild("Holder")
-		local white: ImageLabel? = if whiteContent and pictureHolder
-			then Create("ImageLabel", {
-				Name = "White",
-				BackgroundTransparency = 1,
-				Size = UDim2.fromScale(1, 1),
-				Image = whiteContent,
-				ImageTransparency = 1,
-				ScaleType = Enum.ScaleType.Fit,
-				Active = false,
-				ZIndex = 3,
-				Parent = pictureHolder,
-			})
-			else nil
-		local viewport = image.root:FindFirstChildWhichIsA("ViewportFrame", true)
-		local baseAmbient = if viewport then viewport.Ambient else WHITE
-		local baseLight = if viewport then viewport.LightColor else WHITE
-		local outerPoser = outerTrack.poser :: Tweens.Poser
-		local idlePoser = idleTrack.poser :: Tweens.Poser
-		outerTrack.poser, idleTrack.poser = nil, nil
-		local idlePose: Tweens.Pose = {}
-		idleTrack.write = function(pose: Tweens.Pose)
-			idlePose = pose
-			idlePoser:set({ y = pose.y })
-		end
-		outerTrack.write = function(pose: Tweens.Pose, alpha: number, u: number)
-			outerPoser:set({ y = pose.y, rot = pose.rot })
-			image:squash((pose.sx or 1) * (idlePose.sx or 1), (pose.sy or 1) * (idlePose.sy or 1))
-			local glow = Tweens.poseAt((q.glow :: any) :: { Tweens.Pose }, u, q.curve).alpha or 0
-			if white then
-				white.ImageTransparency = 1 - glow * alpha
-			end
-			if viewport then
-				-- A ViewportFrame is not in a fade group: its own image fades here.
-				viewport.ImageTransparency = 1 - alpha
-				viewport.Ambient = baseAmbient:Lerp(WHITE, glow)
-				viewport.LightColor = baseLight:Lerp(WHITE, glow)
-			end
-		end
-	end
-
-	-- The ribbon (G9.18, H:525-527).
-	do
-		local rb = LOOK.ribbon
-		local outer = holder("Ribbon", content, 0, rb.y + rb.height / 2, rb.width, rb.height, 7)
-		local clip = holder("Clip", outer, rb.width / 2, rb.height / 2, 0, rb.height, 7)
-		clip.ClipsDescendants = true
-		local band = rb.band
-		local bandCentreY = band.y + band.height / 2 - rb.height / 2
-		local ribbonContent = AssetTable.image(RIBBON_KEY)
-		if ribbonContent then
-			local picture: ImageLabel = Create("ImageLabel", {
-				Name = "Picture",
-				BackgroundTransparency = 1,
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.5, 0.5),
-				Size = UDim2.fromOffset(rb.width, rb.height),
-				Image = ribbonContent,
-				Active = false,
-				ZIndex = 7,
-				Parent = clip,
-			})
-			picture.ScaleType = Enum.ScaleType.Stretch
-			oneShot(nil, picture, {}, 0, LIFE, nil) -- the exit's fade
-		else
-			local face = holder("Band", clip, 0, 0, band.width, band.height, 7)
-			face.Position = UDim2.new(0.5, 0, 0.5, bandCentreY)
-			face.BackgroundColor3 = Palette.StickerRibbonFace
-			face.BackgroundTransparency = 0
-			Theme.corner(band.radius, face)
-			local outline = Theme.stroke(INK, band.stroke, face)
-			pcall(function()
-				(outline :: any).BorderStrokePosition = Enum.BorderStrokePosition.Center -- an SVG stroke
-			end)
-			local g = rb.gloss
-			local gloss: Frame = Create("Frame", {
-				Name = "Gloss",
-				BackgroundColor3 = WHITE,
-				BackgroundTransparency = 1 - g.alpha,
-				BorderSizePixel = 0,
-				Position = UDim2.fromOffset(g.x - band.x, g.y - band.y),
-				Size = UDim2.fromOffset(g.width, g.height),
-				Active = false,
-				ZIndex = 7,
-				Parent = face,
-			})
-			Theme.corner(g.radius, gloss)
-			oneShot(nil, face, {}, 0, LIFE, nil) -- the exit's fade
-		end
-		-- The letters in the band (left 32, right 32, top 8, 60 high), centred.
-		local letters = LevelUpShow.letters(Strings.grip.levelUpRibbon)
-		local widths: { number } = {}
-		local total = 0
-		for i, letter in letters do
-			-- Measured as drawn under the content's UIScale (a glyph is wider there than textWidth says).
-			widths[i] = math.ceil(Theme.textBoundsAt(letter.char, LETTER_KIND, nil, contentScale.Scale).X)
-			total += widths[i]
-		end
-		local lineHeight = math.ceil(Theme.lineHeight(LETTER_KIND))
-		local x = -total / 2
-		for i, letter in letters do
-			local w = widths[i]
-			local slot = holder("Letter" .. i, clip, 0, 0, w, lineHeight, 8)
-			slot.Position = UDim2.new(0.5, x + w / 2, 0.5, bandCentreY)
-			local wave = holder("Wave", slot, w / 2, lineHeight / 2, w, lineHeight, 8)
-			local label = Theme.label({
-				Name = "Char",
-				Text = letter.char,
-				AutomaticSize = Enum.AutomaticSize.None,
-				Size = UDim2.fromScale(1, 1),
-				TextWrapped = false,
-				ZIndex = 8,
-				Parent = wave,
-			}, LETTER_KIND)
-			Theme.stickerText(label, rb.letterRole)
-			-- Theme.text turns wrapping on; a lone glyph a pixel wider than its slot would then not draw at all.
-			for _, text in label:GetDescendants() do
-				if text:IsA("TextLabel") then
-					text.TextWrapped = false
-				end
-			end
-			label.TextWrapped = false
-			oneShot(slot, slot, rb.letter, letter.delay, rb.letterMs / 1000, rb.letterCurve)
-			loop(wave, LOOPS.lvWave.frames, letter.wave, LOOPS.lvWave.periodS, LOOPS.lvWave.curve)
-			x += w
-		end
-		-- No fade group of its own: its band and its letters fade by themselves (one writer per transparency).
-		local unfurl = oneShot(outer, nil, rb.unfurl, rb.unfurlDelayMs / 1000, rb.unfurlMs / 1000, rb.unfurlCurve)
-		local unfurlPoser = unfurl.poser :: Tweens.Poser
-		unfurl.poser = nil
-		local wide, tall = rb.width + 2 * rb.grow, rb.height + 2 * rb.grow
-		unfurl.write = function(pose: Tweens.Pose)
-			unfurlPoser:set({ scale = pose.scale })
-			clip.Size = UDim2.fromOffset(math.max(0, wide * (pose.sx or 1)), tall * (pose.sy or 1))
-		end
-	end
-
-	-- The pill and the unlock line (G9.24, H:529-531).
-	do
-		local pl = LOOK.pill
-		local texts: { { text: string, color: Color3 } } = {
-			{ text = Strings.format(Strings.grip.levelFrom, { from = spec.prev }), color = Palette.StickerTextGrey },
-			{ text = Strings.grip.levelArrow, color = Palette.StickerCoinText },
-			{ text = tostring(spec.level), color = Palette.StickerMintTop },
-		}
-		local lineHeight = math.ceil(Theme.lineHeight(PILL_KIND))
-		local widths: { number } = {}
-		local inner = 0
-		for i, entry in texts do
-			widths[i] = math.ceil(Theme.textWidth(entry.text, PILL_KIND)) + MEASURE_MARGIN_PX
-			inner += widths[i] + (if i > 1 then pl.gap else 0)
-		end
-		local pillW = inner + 2 * (pl.padX + pl.border)
-		local pillH = lineHeight + 2 * (pl.padY + pl.border)
-		local pill = holder("Pill", content, 0, pl.y + pillH / 2, pillW, pillH, 8)
-		pill.BackgroundColor3 = INK
-		pill.BackgroundTransparency = 0
-		Theme.corner(pillH, pill)
-		local border = Theme.stroke(WHITE, pl.border, pill)
-		pcall(function()
-			(border :: any).BorderStrokePosition = Enum.BorderStrokePosition.Inner
-		end)
-		local x = pl.border + pl.padX
-		for i, entry in texts do
-			local label = Theme.label({
-				Name = "Part" .. i,
-				Text = entry.text,
-				AutomaticSize = Enum.AutomaticSize.None,
-				AnchorPoint = Vector2.new(0, 0.5),
-				Position = UDim2.new(0, x, 0.5, 0),
-				Size = UDim2.fromOffset(widths[i], lineHeight),
-				TextWrapped = false,
-				ZIndex = 8,
-				Parent = pill,
-			}, PILL_KIND, nil, entry.color)
-			Theme.noOutline(label) -- H:530: no outline
-			x += widths[i] + pl.gap
-		end
-		oneShot(pill, pill, LOOK.up, pl.delayMs / 1000, pl.ms / 1000, pl.curve)
-		local unlock = spec.unlock
-		if unlock and unlock ~= "" then
-			local u = LOOK.unlock
-			local prefix = Strings.grip.unlockedPrefix
-			local unlockHeight = math.ceil(Theme.lineHeight(UNLOCK_KIND))
-			local prefixW = math.ceil(Theme.textWidth(prefix, UNLOCK_KIND)) + MEASURE_MARGIN_PX
-			local itemW = math.ceil(Theme.textWidth(unlock, UNLOCK_KIND)) + MEASURE_MARGIN_PX
-			local lineW = u.gift + u.gap + prefixW + itemW
-			local lineH = math.max(u.gift, unlockHeight)
-			local line = holder("Unlock", content, 0, pl.y + pillH + pl.columnGap + lineH / 2, lineW, lineH, 8)
-			local gift = IconGlyph.image(GIFT_KEY, { name = "Gift", sizePx = u.gift, parent = line })
-			gift.AnchorPoint = Vector2.new(0, 0.5)
-			gift.Position = UDim2.fromScale(0, 0.5)
-			local function part(name: string, text: string, px: number, w: number, tint: Color3?)
-				local label = Theme.label({
-					Name = name,
-					Text = text,
-					AutomaticSize = Enum.AutomaticSize.None,
-					AnchorPoint = Vector2.new(0, 0.5),
-					Position = UDim2.new(0, px, 0.5, 0),
-					Size = UDim2.fromOffset(w, unlockHeight),
-					TextWrapped = false,
-					ZIndex = 8,
-					Parent = line,
-				}, UNLOCK_KIND)
-				Theme.stickerText(label, u.role)
-				if tint then
-					label.TextColor3 = tint
-				end
-			end
-			part("Prefix", prefix, u.gift + u.gap, prefixW, nil)
-			part("Item", unlock, u.gift + u.gap + prefixW, itemW, Palette.StickerCoinText)
-			oneShot(line, line, LOOK.up, u.delayMs / 1000, u.ms / 1000, u.curve)
-		end
-	end
-
-	-- A 1 px marker at the centre: the FX's spot (UiFx reads a GuiObject's centre).
-	local centre = holder("Centre", content, 0, 0, 1, 1, 1)
-	root.Parent = layer
-
-	-- The driver: every track at show time t, times the exit's fade; the cues; removed at LIFE.
-	local exitFrames = (LOOK.exit.frames :: any) :: { Tweens.Pose }
+	-- The driver: every track at show time t, the cues, the stripes and the gloss; the flight at the hold.
 	local elapsed = 0
-	local cueList = LevelUpShow.cues()
+	local cueList = LevelUpShow.cues(hasUnlock)
 	local nextCue = 1
+	local flown = false
 	local handle: Scheduler.Handle? = nil
-	local resize = layer:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 	local done = false
 	local function finish()
 		if done then
@@ -899,9 +523,8 @@ function LevelUpShow.play(spec: Spec)
 		if handle then
 			handle:disconnect()
 		end
-		resize:Disconnect()
 		root:Destroy()
-		if playing and (playing :: any).root == root then
+		if playing and playing.root == root then
 			playing = nil
 		end
 		local onDone = spec.onDone
@@ -914,59 +537,70 @@ function LevelUpShow.play(spec: Spec)
 		if onCue then
 			task.spawn(onCue, name)
 		end
-		if reduced then
-			return
-		end
-		if name == "slam" then
-			UiFx.jolt(content, FX.slamJolt)
-		elseif name == "main" then
+		if name == "main" and not reduced then
 			for _, entry in FX.rings do
 				task.delay(entry.delayMs / 1000, function()
 					if not done then
-						UiFx.ring(centre, color(entry.color), entry.size)
+						UiFx.ring(fly, color(entry.color), entry.size)
 					end
 				end)
 			end
 			local sparks = table.clone(FX.sparks) :: any
 			sparks.colors = UiFx.colors(FX.sparks.colors)
-			UiFx.sparks(centre, sparks)
-			UiFx.rain(FX.rain)
-			UiFx.jolt(content, FX.jolt)
+			UiFx.sparks(fly, sparks)
+			UiFx.jolt(centre, FX.jolt)
+		end
+	end
+	-- L:946-951: to the Grip bar (its left + toX, top + toY, in base px from the badge's centre).
+	local function flyOut()
+		local f = LOOK.fly
+		local dx, dy = 0, f.fallbackDy
+		local target = spec.target and spec.target()
+		local s = scale.Scale
+		if target and target.AbsoluteSize.X > 0 and s > 0 then
+			local from = fly.AbsolutePosition + fly.AbsoluteSize / 2
+			local to = target.AbsolutePosition + Vector2.new(f.toX, f.toY) * s
+			dx, dy = (to.X - from.X) / s, (to.Y - from.Y) / s
+		end
+		track(fly, LevelUpShow.flightFrames(dx, dy), f.ms, elapsed * 1000, f.curve)
+		local drop = LOOK.drop
+		local dropFrames = drop.frames :: { any }
+		track(ribbon, dropFrames, drop.ms, elapsed * 1000, drop.curve)
+		if unlockHolder then
+			track(unlockHolder, dropFrames, drop.ms, elapsed * 1000, drop.curve)
+		end
+		-- The entrances of the same holders are done; their newer tracks take over.
+		for index = #tracks, 1, -1 do
+			local item = tracks[index]
+			if item == unlockTrack or (item.frames == r.frames) then
+				table.remove(tracks, index)
+			end
 		end
 	end
 	local function frameAt(t: number)
-		local wrap: number
-		if reduced then
-			wrap = math.clamp(math.min(t, LIFE - t) / REDUCED_FADE, 0, 1)
-			exitScale.Scale = 1
-		else
-			local exitPose = Tweens.poseAt(exitFrames, math.clamp(t / LIFE, 0, 1), LOOK.exit.curve)
-			wrap = exitPose.alpha or 1
-			exitScale.Scale = exitPose.scale or 1
-		end
+		local ms = t * 1000
 		for _, item in tracks do
-			local u = trackU(item, t, reduced)
-			local pose: Tweens.Pose = if #item.frames > 0 then Tweens.poseAt(item.frames, u, item.curve) else {}
-			local alpha = (pose.alpha or 1) * item.alphaMul * wrap
-			pose.alpha = nil
-			if item.uniform and (pose.sx ~= nil or pose.sy ~= nil) then
-				pose.scale = (pose.scale or 1) * math.sqrt(math.max(0, (pose.sx or 1) * (pose.sy or 1)))
-				pose.sx, pose.sy = nil, nil
-			end
+			local u = if ms < item.delayMs
+				then 0
+				elseif reduced or item.ms <= 0 then 1
+				else math.min((ms - item.delayMs) / item.ms, 1)
+			local pose = Tweens.poseAt(item.frames, u, "linear", item.curve)
 			local fade = item.fade
 			if fade then
-				fade:setAlpha(alpha)
+				fade:setAlpha(pose.alpha or 1)
 			end
-			local write = item.write
-			if write then
-				write(pose, alpha, u)
-			elseif item.poser then
-				(item.poser :: Tweens.Poser):set(pose)
+			local poser = item.poser
+			if poser and not reduced then
+				poser:set(motionOf({ pose })[1])
 			end
 		end
-		for _, clock in clocks do
-			clock(t)
+		if not reduced then
+			spin.Rotation = (t / LOOK.badge.spinS) * 360 % 360
+			local gu = math.clamp((ms - g.delayMs) / g.ms, 0, 1)
+			local eased = Tweens.curve(g.curve)(gu)
+			glossGradient.Offset = Vector2.new(glossFrom + (glossTo - glossFrom) * eased, 0)
 		end
+		scale.Scale = spec.uiScale()
 	end
 	frameAt(0)
 	handle = Scheduler.add(function(dt: number): boolean
@@ -979,15 +613,19 @@ function LevelUpShow.play(spec: Spec)
 			cue(cueList[nextCue].cue)
 			nextCue += 1
 		end
-		if elapsed >= LIFE then
+		if not flown and elapsed * 1000 >= hold then
+			flown = true
+			flyOut()
+		end
+		if elapsed * 1000 >= life then
 			finish()
 			return false
 		end
 		frameAt(elapsed)
 		return true
 	end, "render")
-	local show = { root = root, stop = finish }
-	playing = show
+	root.Parent = spec.layer
+	playing = { root = root, stop = finish }
 end
 
 return LevelUpShow

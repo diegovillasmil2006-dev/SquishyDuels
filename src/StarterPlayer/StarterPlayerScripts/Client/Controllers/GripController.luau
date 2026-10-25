@@ -101,15 +101,14 @@
 --   (Theme.scrollbar, H:22); the texts on the pink body (the intro, the duel note, the idle card's sentence) take the
 --   window's text colour (H:196).
 -- * UI FINAL R9 (plan work/ui/PLAN.md R9; `H:n` as above):
---   - The level-up show (G9.10-G9.13, UD8; UI/LevelUpShow): a level that rose after the silent baseline
---     (levelUpShow) plays the design's full show in its own layer (Config.UI.Sticker.levelUp.layer) with the equipped
---     squishy and, for a rank reached (GripMath.unlocks, FD8), its unlock line; the card's level pop stays. It waits
---     (LevelUpShow.merge) from Matched through Returning and while a box reveal is open, and plays when that ends; one
---     at a time; a level-up during the show plays it again with the new numbers (H:730). Its sounds (G9.12, RL8:
---     the nearest clips): the slam box.open; the tone ui.levelTone (pack 2); the main hit ui.gripUnlock, ui.purchase
---     and box.open. The server's grip.levelUp toast and its ui.gripUnlock are dropped while a show plays, waits or
---     just played (NotifyController.present); with no show it is still the toast. AFFECTED 2026-10-15: capsule tiers
---     are removed, so only a rank fills the unlock line (the new systems' unlocks later).
+--   - The level-up (2026-10-25: Diego's new short one, LOBBY HUD L:586-611, UI/LevelUpShow): a level that rose after
+--     the silent baseline (levelUpShow) shows the GRIP badge in its own layer (Config.UI.Sticker.levelUp.layer) with,
+--     for a rank reached (GripMath.unlocks, FD8), its unlock line; the badge flies into the card's row, which then
+--     swells (pulseRow) with ui.pop (the card's own level pop is skipped then). It waits (LevelUpShow.merge) from
+--     Matched through Returning and while a box reveal is open, and plays when that ends; one at a time; a level-up
+--     during it plays it again with the new numbers. Its sounds (LEVEL_UP_SOUNDS): the first key with an id, its own
+--     (grip.levelUp.tone / .jingle) else a look-alike. The server's grip.levelUp toast and its ui.gripUnlock are
+--     dropped while it plays, waits or just played (NotifyController.present); with none it is still the toast.
 --   - The idle card (the screens the design lacks): the confirm card's look (H:457-458, Config.UI.confirm): the
 --     purple card 480 wide (border 5, radius 30, the 10 px lip, inset 4 at .12, padding 64 28 26, gap 12), the
 --     130 px medallion at -70 (the radial img.fx.radial.medallion, its fallback while it has no id; the 6 px lip,
@@ -263,14 +262,16 @@ local MEDALLION_KEY = "img.fx.radial.medallion"
 local LEVEL_UP_LAYER = Config.UI.Sticker.levelUp.layer
 local LEVEL_UP_NOTICE = "grip.levelUp"
 local REVEAL_SCREEN = "boxReveal" -- BoxController's reveal: the show waits for it (G9.13)
-local OVERLAY_GUI = "SD_Overlay" -- its size is the safe area (CoreUISafeInsets)
 local SHOW_RECENT_SECONDS = 5 -- reading: a grip.levelUp notice this soon after a show is the show's own
 local SHOW_NOTICE_WAIT_SECONDS = 1 -- reading: a notice before its state waits this long for its show
-local LEVEL_UP_SOUNDS: { [string]: { string } } = { -- G9.12 (RL8: the nearest clips)
-	slam = { "box.open" }, -- H:719
-	tone = { "ui.levelTone" }, -- H:720 (pack 2)
-	main = { "ui.gripUnlock", "ui.purchase", "box.open" }, -- H:722
+-- The new short level-up's cues (LOBBY HUD L:940-953): each plays the first of its keys that has an id (its own sound,
+-- then a look-alike until the owner uploads it).
+local LEVEL_UP_SOUNDS: { [string]: { string } } = {
+	tone = { "grip.levelUp.tone", "ui.levelTone", "sfx.inspect.whoosh" }, -- L:940 the rising tone
+	main = { "grip.levelUp.jingle", "ui.gripUnlock", "ui.coin" }, -- L:943 snd.levelup()
+	arrive = { "ui.pop", "ui.click" }, -- L:950 the Grip bar's pop
 }
+local LEVEL_UP_ARRIVE = Config.UI.Sticker.levelUp.arrive
 local TIMER_REFRESH_SECONDS = 5 -- the minute texts change slowly (Double Grip refills 4 points a minute)
 -- §18.5.1 A9: the level label pops 1.25 -> 1 (Back Out, 300 ms). Reading: §18.8 gives no Config key for it.
 local LEVEL_POP = {
@@ -1224,10 +1225,35 @@ local function canShow(): boolean
 	return not suppressed() and not UIController.isOpen(REVEAL_SCREEN)
 end
 
+-- The new short level-up (LOBBY HUD L:950): the badge reached the row: it swells 1.12 (the row's squash scale; a running
+-- Grip-gain squash gives way), none under ReducedMotion or while the card is hidden.
+local function pulseRow()
+	local k = card
+	if k == nil or not k.root.Visible or Tweens.reducedMotion() then
+		return
+	end
+	local running = k.squashHandle
+	if running then
+		running:disconnect()
+	end
+	local scale = k.squash
+	local frames = (LEVEL_UP_ARRIVE.frames :: any) :: { Tweens.Pose }
+	local elapsed = 0
+	k.squashHandle = Scheduler.add(function(dt: number): boolean
+		elapsed += dt
+		local u = math.min(elapsed * 1000 / LEVEL_UP_ARRIVE.ms, 1)
+		scale.Scale = Tweens.poseAt(frames, u, "linear", LEVEL_UP_ARRIVE.curve).scale or 1
+		if u >= 1 then
+			k.squashHandle = nil
+			return false
+		end
+		return true
+	end, "render")
+end
+
 local function playShow(show: LevelUpShow.Pending)
 	shownShow = show
 	lastShowAt = os.clock()
-	local overlay = UIController.screenGui(OVERLAY_GUI)
 	local played: LevelUpShow.Pending = show
 	LevelUpShow.play({
 		layer = UIController.screenGui(LEVEL_UP_LAYER.name, {
@@ -1237,17 +1263,20 @@ local function playShow(show: LevelUpShow.Pending)
 		prev = show.prev,
 		level = show.level,
 		unlock = show.unlock,
-		squishyId = StateController.equipped(),
 		uiScale = UIController.scale,
-		safe = function(): Vector2
-			return overlay.AbsoluteSize
+		target = function(): GuiObject?
+			local k = card
+			return if k and k.root.Visible then k.root else nil
 		end,
 		onCue = function(cue: LevelUpShow.Cue)
-			local keys = LEVEL_UP_SOUNDS[cue]
-			if keys then
-				for _, key in keys do
+			for _, key in LEVEL_UP_SOUNDS[cue] or {} do
+				if SoundController.hasSound(key) then
 					SoundController.play(key)
+					break
 				end
+			end
+			if cue == "arrive" then
+				pulseRow()
 			end
 		end,
 		onDone = function()
@@ -1320,10 +1349,12 @@ local function onGrip(raw: any)
 	end
 	refreshCard()
 	refreshPanel()
-	if GripController.shouldPopLevel(change) and not suppressed() then
+	-- The new short level-up: its badge brings the level to the row (pulseRow on arrival), so no pop of its own then.
+	local show = GripController.levelUpShow(change, oldLevel, newLevel)
+	if GripController.shouldPopLevel(change) and not suppressed() and not show then
 		popLevel()
 	end
-	if GripController.levelUpShow(change, oldLevel, newLevel) then
+	if show then
 		queueShow(oldLevel :: number, newLevel)
 	end
 	if GripController.shouldSquash(change, if old then old.total else nil, newView.total) and not suppressed() then

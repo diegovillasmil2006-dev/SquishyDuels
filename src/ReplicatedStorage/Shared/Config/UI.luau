@@ -109,6 +109,7 @@ local UI = {
 		FoundTitle = 92,
 		FoundName = 26,
 		FoundChip = 18,
+		LevelNumber = 76, -- the new short level-up's badge number (LOBBY HUD L:593)
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -1923,14 +1924,15 @@ local UI = {
 			tabBadge = { kind = "Small", stroke = 3 },
 			-- UI FINAL R9: a Settings row's label (H:435: 20 px white; PR3's thinnest outline), its On / Off (H:436:
 			-- 14 px -> 16 #EDE4FF) and the volume's value (H:447: 20 px, stroke 4); the quest pop's tag (H:162: 13 px
-			-- -> 16 #E6FFF4, stroke 3) and title (H:162: 19 px, stroke 5); the level-up's unlock line (H:531: 28 px,
-			-- stroke 7, drop 4).
+			-- -> 16 #E6FFF4, stroke 3) and title (H:162: 19 px, stroke 5). The new short level-up (LOBBY HUD L:593-600):
+			-- the badge's number (76 px, stroke 9, drop 5) and LEVEL UP! (24 px, stroke 6).
 			settingsRow = { kind = "Button", stroke = 3 },
 			settingsState = { kind = "Small", stroke = 3, color = "StickerTextMuted" },
 			settingsValue = { kind = "Button", stroke = 4 },
 			qpopTag = { kind = "Small", stroke = 3, color = "StickerQuestPopText" },
 			qpopTitle = { kind = "D19", stroke = 5 },
-			levelUnlock = { kind = "Large", stroke = 7, drop = 4 },
+			levelNumber = { kind = "LevelNumber", stroke = 9, drop = 5 },
+			levelRibbon = { kind = "Big", stroke = 6 },
 			-- UI FINAL R5 (the Squishies window): the header pill's count (H:188: 20 px #FFE36B, stroke 4); the tab and
 			-- card name (H:194, H:208: 15 px -> 16 (PR2) white, text-shadow 0 2px 0 rgba(30,20,40,.5); PR3 outline); the
 			-- rarity and EQUIPPED pills (H:209, H:228-229: 11-12 px -> 16, text-shadow 0 1px 0 at .5); the Equipped
@@ -2088,222 +2090,161 @@ local UI = {
 			textGap = 3, -- H:162
 			chimeDelayMs = 150, -- H:739
 		},
-		-- UI FINAL R9 (G9.10-G9.25, UD8: the user's Q3, the design's whole show; UI/LevelUpShow): every number of the
-		-- level-up show (H:506-535, its keyframes H:44-65, the timers H:715-731, the lists H:999-1002), base px of the
-		-- design's 1440 x 810 canvas (the UI scale). `frames` are the @keyframes as poses (Anim/Tweens.poseAt), each
-		-- segment eased `curve` unless the design gives the whole animation one timing function.
+		-- The new short level-up (2026-10-25, owner: "Yes, build the new short level-up like that"; `L:n` = Diego's
+		-- "Squishy Duels LOBBY HUD.dc.html" line n: the markup L:586-611, lvPlay L:927-956; UI/LevelUpShow): the GRIP
+		-- badge at (centreX, centreY) of the screen (z 25, no scrim), base px x the UI scale, ms from the start unless
+		-- named. `frames` are the design's animate() keyframes as poses; `curve` eases the whole run (its `easing`
+		-- option).
 		levelUp = {
-			layer = { name = "SD_LevelUp", displayOrder = 24, insets = Enum.ScreenInsets.None }, -- H:506-507 (z 25)
-			lifeMs = 4200, -- H:730
-			centreY = 0.44, -- H:509, H:511
-			-- G9.15 (PR1, H:624): the content's box kept fitMargin inside the safe area at most (a UIScale <= 1)
-			fit = { width = 500, height = 560, margin = 32 },
-			scrim = { innerAlpha = 0.5, outerAlpha = 0.6, outerAt = 0.72, fadeMs = 300, curve = "ease" }, -- H:508
-			rays = { -- H:509, H:49: sdLvRays 4.2 s linear (the whole show)
-				px = 1600,
-				curve = "linear",
-				frames = {
-					{ at = 0, alpha = 0, scale = 0.3, rot = 0 },
-					{ at = 0.23, alpha = 0, scale = 0.3, rot = 0 },
-					{ at = 0.3, alpha = 1, scale = 1, rot = 15 },
-					{ at = 1, alpha = 1, scale = 1.05, rot = 110 },
-				} :: { MotionPose },
-			},
-			bubbles = { -- H:510, H:1000 (randomised once per session and kept); loops.lvBubble's frames
-				n = 16,
-				xFrom = 4, -- % of the width: 4 + 6 i + 0..4
-				xStep = 6,
-				xJitter = 4,
-				sizeFrom = 18, -- px: 18 + 0..38
-				sizeJitter = 38,
-				bottom = -90, -- H:510: bottom -90px
-				border = 2, -- H:510: 2px solid rgba(255,255,255,.8)
-				borderAlpha = 0.8,
-				periodFrom = 2.4, -- s: 2.4 + 0..1.6
-				periodJitter = 1.6,
-				delayFrom = 1.0, -- s: 1 + 0..1.8
-				delayJitter = 1.8,
-				dotShare = 0.12, -- H:510: radial-gradient(circle at 32% 30%, #fff 0 12%, ...): the fallback's dot
-				dotX = 0.32,
-				dotY = 0.3,
-			},
-			suck = { -- H:512, H:1001, H:54: sdLvSuck .45 s ease-in
-				n = 10,
-				stepDeg = 36,
-				px = 18,
-				border = 3,
-				delayS = 0.55, -- + (i mod 3) x delayStepS
-				delayStepS = 0.05,
-				delayCycle = 3,
-				ms = 450,
-				curve = "easeIn",
-				colors = { "StickerCoinText", "StickerMintTop", "StickerPinkSoft", "StickerFxPurple", "White" },
-				frames = {
-					{ at = 0, x = 250, scale = 1.4, alpha = 0 },
-					{ at = 0.3, alpha = 1 },
-					{ at = 1, x = 30, scale = 0.4, alpha = 0 },
-				} :: { MotionPose },
-			},
-			ring = { -- H:513, H:52-53: sdLvRing 4.2 s ease; the arc's sdLvFill .45 s cubic-bezier(.5,0,.9,.6) .55 s
-				box = 340,
-				r = 150,
-				inkPx = 30,
-				whitePx = 18,
-				whiteAlpha = 0.25,
-				arcPx = 18,
-				arcDelayMs = 550,
-				arcMs = 450,
-				arcCurve = "ringFill",
-				dashPx = 6, -- the pink dashed ring (img.fx.dashRing, pack 2; none while it has no id): stroke 6, 14 / 22
-				curve = "ease",
-				frames = {
-					{ at = 0, alpha = 0, scale = 0.6 },
-					{ at = 0.1, alpha = 0, scale = 0.6 },
-					{ at = 0.13, alpha = 1, scale = 1 },
-					{ at = 0.22, scale = 0.96 },
-					{ at = 0.235, alpha = 1, scale = 1.04 },
-					{ at = 0.28, alpha = 0, scale = 1.7 },
-					{ at = 1, alpha = 0, scale = 1.7 },
-				} :: { MotionPose },
-			},
-			flash = { -- H:514, H:55: sdLvFlash .55 s ease-out 1 s both (PR17: at most Config.Vfx.Flash's opacity)
-				px = 300,
-				delayMs = 1000,
-				ms = 550,
+			layer = { name = "SD_LevelUp", displayOrder = 24, insets = Enum.ScreenInsets.None }, -- L:587 (z 25)
+			centreX = 0.5,
+			centreY = 0.34,
+			holdMs = 1300, -- L:931: the badge flies to the Grip bar then (holdUnlockMs with an unlock line)
+			holdUnlockMs = 1900,
+			endAfterMs = 460, -- L:955: gone this long after the flight starts
+			-- L:590-591 the badge (132: img.lv.badge, the disc at (14, 14) of 160 x 170), popping in (420 ms ease-out).
+			badge = {
+				px = 132,
+				picture = { width = 160, height = 170, x = 14, y = 14 },
+				opening = 122, -- the circle inside its 5 px border: the stripes, the numbers and the gloss
+				spinS = 6, -- L:592: img.lv.spin turning (sdSpin 6 s linear)
+				ms = 420,
 				curve = "easeOut",
-				midAt = 0.6, -- the fallback's 60% stop (StickerFlashGlow at .8); #fff to 40%, clear at 72%
-				midAlpha = 0.8,
-				frames = { { at = 0, alpha = 1, scale = 0.2 }, { at = 1, alpha = 0, scale = 3 } } :: { MotionPose },
-			},
-			stars = { -- H:515, H:1002: sdLvTw .5 s cubic-bezier(.2,1.5,.4,1) 1.1 + .07 i s; sdLvPulse from 1.6 + .15 i s
-				offsets = {
-					{ x = -215, y = -70, px = 44 },
-					{ x = 175, y = -100, px = 38 },
-					{ x = -170, y = 60, px = 34 },
-					{ x = 190, y = 40, px = 46 },
-					{ x = -90, y = -170, px = 30 },
-					{ x = 110, y = -175, px = 34 },
-				},
-				ms = 500,
-				delayS = 1.1,
-				stepS = 0.07,
-				curve = "stars",
-				pulseDelayS = 1.6,
-				pulseStepS = 0.15,
 				frames = {
-					{ at = 0, alpha = 0, scale = 0, rot = -120 },
-					{ at = 1, alpha = 1, scale = 1, rot = 0 },
-				} :: { MotionPose },
-			},
-			number = { -- H:516-519, H:56-58
-				width = 400,
-				height = 224,
-				textSize = 100, -- Roblox's TextSize cap; times `scale` = the design's 210 px
-				scale = 2.1,
-				inkStroke = 10, -- on screen: -webkit-text-stroke 20px behind the fill
-				drop = 12, -- H:518: text-shadow 0 12px 0 #1E1428
-				delayMs = 1000, -- sdLvInflate .7 s cubic-bezier(.2,1.4,.4,1) 1 s
-				ms = 700,
-				curve = "search",
-				jellyDelayS = 1.8, -- sdLvJelly 1.6 s ease-in-out 1.8 s infinite (loops.lvJelly)
-				gradPeriodS = 2.4, -- sdLvGrad 2.4 s ease-in-out infinite alternate
-				gradCurve = "easeInOut",
-				gradShare = 1 / 2.2, -- background-size 220%
-				gradStops = { -- H:519
-					{ pos = 0, color = "StickerLevelGradTop" },
-					{ pos = 0.22, color = "StickerCoinText" },
-					{ pos = 0.44, color = "StickerPinkSoft" },
-					{ pos = 0.62, color = "StickerFxPurple" },
-					{ pos = 0.8, color = "StickerMintTop" },
-					{ pos = 1, color = "StickerCoinText" },
-				},
-				frames = {
-					{ at = 0, alpha = 0, sx = 0, sy = 0 },
-					{ at = 0.4, alpha = 1, sx = 1.4, sy = 0.78 },
-					{ at = 0.6, sx = 0.84, sy = 1.22 },
-					{ at = 0.8, sx = 1.08, sy = 0.95 },
+					{ at = 0, alpha = 0, sx = 0.2, sy = 0.2 },
+					{ at = 0.45, alpha = 1, sx = 1.22, sy = 0.86 },
+					{ at = 0.7, sx = 0.92, sy = 1.1 },
 					{ at = 1, alpha = 1, sx = 1, sy = 1 },
 				} :: { MotionPose },
 			},
-			squishy = { -- H:522-523, H:50-51: sdLvSq 4.2 s ease; sdLvIdle from 1.6 s (loops.lvIdle)
-				px = 160,
-				shadow = { px = 6, alpha = 0.45 }, -- H:523: drop-shadow(0 6px 0 rgba(30,20,40,.45))
-				curve = "ease",
-				idleDelayS = 1.6,
-				frames = {
-					{ at = 0, alpha = 0, y = -560, sx = 0.9, sy = 1.1, rot = 0 },
-					{ at = 0.04, alpha = 0, y = -560, sx = 0.9, sy = 1.1, rot = 0 },
-					{ at = 0.05, alpha = 1, y = -560, sx = 0.9, sy = 1.1, rot = 0 },
-					{ at = 0.11, y = 0, sx = 1.32, sy = 0.66, rot = 0 },
-					{ at = 0.135, y = -28, sx = 0.9, sy = 1.12, rot = 0 },
-					{ at = 0.155, y = 0, sx = 1.08, sy = 0.94, rot = 0 },
-					{ at = 0.17, y = 0, sx = 0.86, sy = 1.1, rot = -4 },
-					{ at = 0.19, y = 0, sx = 0.74, sy = 1.2, rot = 4 },
-					{ at = 0.21, y = 0, sx = 0.64, sy = 1.3, rot = -5 },
-					{ at = 0.23, y = 0, sx = 0.54, sy = 1.42, rot = 5 },
-					{ at = 0.24, y = 0, sx = 1.35, sy = 0.6, rot = 0 },
-					{ at = 0.29, y = -260, sx = 0.6, sy = 0.6, rot = -340 },
-					{ at = 0.33, y = -186, sx = 0.62, sy = 0.48, rot = -360 },
-					{ at = 0.36, alpha = 1, y = -200, sx = 0.55, sy = 0.55, rot = -360 },
-					{ at = 1, alpha = 1, y = -200, sx = 0.55, sy = 0.55, rot = -360 },
-				} :: { MotionPose },
-				-- its brightness 1 -> 1.6 (23%) -> 2 (24%) -> none (29%): a white copy at brightness - 1 (G4.6's mapping)
-				glow = {
-					{ at = 0, alpha = 0 },
-					{ at = 0.23, alpha = 0.6 },
-					{ at = 0.24, alpha = 1 },
-					{ at = 0.29, alpha = 0 },
-					{ at = 1, alpha = 0 },
-				} :: { MotionPose },
+			-- L:593-594 the numbers (76 px, stroke 9, drop 5): the old one out (translateY(-70%) of the opening, 220 ms
+			-- .3 s ease-in), the new one in (gold, 420 ms .42 s ease-out).
+			old = {
+				ms = 220,
+				delayMs = 300,
+				curve = "easeIn",
+				frames = { { at = 0, alpha = 1, y = 0 }, { at = 1, alpha = 0, y = -85, scale = 0.8 } } :: { MotionPose },
 			},
-			ribbon = { -- H:525-527, H:59-61
-				width = 460,
-				height = 84,
-				y = 100,
-				band = { x = 32, y = 8, width = 396, height = 60, radius = 10, stroke = 5 }, -- H:526
-				gloss = { x = 42, y = 15, width = 376, height = 10, radius = 5, alpha = 0.4 }, -- H:526
-				unfurlDelayMs = 1150, -- sdLvUnfurl .5 s cubic-bezier(.2,1.3,.4,1) 1.15 s
-				unfurlMs = 500,
-				unfurlCurve = "rise",
-				grow = 20, -- clip-path inset(-20px): the clip reaches 20 px past the ribbon on every side
-				unfurl = {
-					{ at = 0, sx = 0, sy = 84 / 124, scale = 0.8 },
-					{ at = 0.7, sx = 1, sy = 1, scale = 1.08 },
-					{ at = 1, sx = 1, sy = 1, scale = 1 },
-				} :: { MotionPose },
-				letterDelayS = 1.3, -- sdLvLetIn .45 s cubic-bezier(.2,1.5,.4,1) 1.3 + .035 i s (H:999)
-				letterStepS = 0.035,
-				letterMs = 450,
-				letterCurve = "stars",
-				letterRole = "ribbon", -- H:527: 38 px, stroke 7, drop 4
-				letter = {
-					{ at = 0, alpha = 0, y = 30, scale = 0.3 },
-					{ at = 0.6, alpha = 1, y = -10, scale = 1.25 },
+			new = {
+				ms = 420,
+				delayMs = 420,
+				curve = "easeOut",
+				color = "StickerCoinText",
+				frames = {
+					{ at = 0, alpha = 0, y = 98, scale = 0.6 },
+					{ at = 0.55, alpha = 1, y = -12, scale = 1.25 },
 					{ at = 1, alpha = 1, y = 0, scale = 1 },
 				} :: { MotionPose },
 			},
-			pill = { -- H:529-530: the column at (-150, 196), 300 wide, gap 10; the pill padding 8 20, gap 10, border 3
-				y = 196,
-				width = 300,
-				columnGap = 10,
-				padY = 8,
-				padX = 20,
-				gap = 10,
-				border = 3,
-				kind = "Big", -- 24 px, no outline
-				delayMs = 1500, -- sdUp .45 s cubic-bezier(.2,1.4,.4,1) 1.5 s
-				ms = 450,
-				curve = "search",
+			-- L:595 the gloss: a band 40% of the badge wide (white .8 in its middle, skewX(-18deg)) crossing it once
+			-- (translateX -150% -> 320% of its width, 500 ms .62 s ease-in-out).
+			gloss = {
+				share = 0.4,
+				transparency = 0.2,
+				skew = 18,
+				from = -1.5,
+				to = 3.2,
+				ms = 500,
+				delayMs = 620,
+				curve = "easeInOut",
 			},
-			unlock = { gift = 44, gap = 8, role = "levelUnlock", delayMs = 1750, ms = 500, curve = "search" }, -- H:531
-			up = { { at = 0, alpha = 0, y = 30 }, { at = 1, alpha = 1, y = 0 } } :: { MotionPose }, -- H:44: sdUp
-			exit = { -- H:65, H:507: sdLvWrap 4.2 s ease: whole until 88%, then out to 0 at 1.3 about the screen centre
-				curve = "ease",
+			-- L:597 the GRIP chip (top -14: 26 tall, padding 0 10, border 3, ink, the mint text; 13 px -> Small).
+			chip = { top = -14, height = 26, pad = 10, border = 3, color = "StickerMintTop" },
+			-- L:588 the ring (img.lv.ring: 140 at (5, 5) of 150), from .5 to 2.1 fading (520 ms .14 s).
+			ring = {
+				px = 140,
+				picturePx = 150,
+				ms = 520,
+				delayMs = 140,
+				curve = "lvRing",
+				frames = { { at = 0, alpha = 1, scale = 0.5 }, { at = 1, alpha = 0, scale = 2.1 } } :: { MotionPose },
+			},
+			-- L:589, L:1273 the 8 rays (10 wide, 34 / 22 long in turn, top -118, radius 6, a 2.5 px ink border; every 45
+			-- degrees from 22), growing out from their foot (480 ms from .15 s, the odd ones .04 s later, ease-out).
+			rays = {
+				n = 8,
+				fromDeg = 22,
+				stepDeg = 45,
+				width = 10,
+				long = 34,
+				short = 22,
+				top = -118,
+				radius = 6,
+				border = 2.5,
+				colors = { "StickerCoinText", "StickerMintTop", "StickerPinkSoft", "White" },
+				ms = 480,
+				delayMs = 150,
+				oddDelayMs = 40,
+				curve = "easeOut",
 				frames = {
-					{ at = 0, alpha = 1, scale = 1 },
-					{ at = 0.88, alpha = 1, scale = 1 },
-					{ at = 1, alpha = 0, scale = 1.3 },
+					{ at = 0, alpha = 0, y = 40, sy = 0.2 },
+					{ at = 0.4, alpha = 1, y = 0, sy = 1 },
+					{ at = 1, alpha = 0, y = -26, sy = 0.3 },
 				} :: { MotionPose },
+			},
+			-- L:599-601 LEVEL UP! (220 x 44 at top 74: border 4, radius 14, the pink band, the 3 px highlight at .55, the
+			-- 4 px lip; 24 px stroke 6), unrolling (380 ms .48 s cubic-bezier(.2,1.5,.4,1)).
+			ribbon = {
+				top = 74,
+				width = 220,
+				height = 44,
+				border = 4,
+				radius = 14,
+				lip = 4,
+				highlightPx = 3,
+				highlightAlpha = 0.55,
+				ms = 380,
+				delayMs = 480,
+				curve = "stars",
+				frames = {
+					{ at = 0, alpha = 0, sx = 0.1, rot = -6 },
+					{ at = 0.6, alpha = 1, sx = 1.12, rot = 2 },
+					{ at = 1, alpha = 1, sx = 1, rot = -2 },
+				} :: { MotionPose },
+			},
+			-- L:602-609 the unlock line (top 128: 36 tall, padding 0 14 0 6, border 3, StickerPickerWell, the 3 px lip,
+			-- the gift 28, 6 apart; 16 px white, the item gold), in at .76 s (340 ms cubic-bezier(.2,1.5,.4,1)).
+			unlock = {
+				top = 128,
+				height = 36,
+				padLeft = 6,
+				padRight = 14,
+				gap = 6,
+				border = 3,
+				lip = 3,
+				gift = 28,
+				color = "StickerPickerWell",
+				itemColor = "StickerCoinText",
+				ms = 340,
+				delayMs = 760,
+				curve = "stars",
+				frames = { { at = 0, alpha = 0, y = -12, scale = 0.7 }, { at = 1, alpha = 1, y = 0, scale = 1 } } :: { MotionPose },
+			},
+			-- L:946-951 at the hold: the badge flies to the Grip bar (its left + toX, top + toY; up `fallbackDy` with
+			-- none) over 420 ms cubic-bezier(.5,0,.75,.2), lifting first; the ribbon and the unlock line drop out (200 ms
+			-- ease-in); at arriveMs the Grip bar swells (1.12 at 35%, 360 ms ease-out) with its pop.
+			fly = {
+				toX = 100,
+				toY = 10,
+				fallbackDy = -60,
+				ms = 420,
+				curve = "lvFly",
+				liftAt = 0.25,
+				liftShare = 0.15,
+				liftUp = 20,
+				liftScale = 1.08,
+				endScale = 0.18,
+			},
+			drop = {
+				ms = 200,
+				curve = "easeIn",
+				frames = { { at = 0, alpha = 1, y = 0, scale = 1 }, { at = 1, alpha = 0, y = 10, scale = 0.85 } } :: { MotionPose },
+			},
+			arrive = {
+				atMs = 400,
+				ms = 360,
+				curve = "easeOut",
+				frames = { { at = 0, scale = 1 }, { at = 0.35, scale = 1.12 }, { at = 1, scale = 1 } } :: { MotionPose },
 			},
 		},
 		-- UI FINAL R4 (the lobby HUD, plan work/ui/PLAN.md R4; `N:n` = Diego's newer "Squishy Duels TDMFFA animations
@@ -2890,28 +2831,21 @@ local UI = {
 				rainDelayMs = 300,
 				jolt = 8,
 			},
-			-- H:719-726 (the full level-up, the user's Q3): a slam jolt at slamMs, then at atMs three rings, the burst,
-			-- the rain and the big jolt. UI FINAL R9 (G9.12): the rising tone (ui.levelTone) at toneMs (H:720).
+			-- The new short level-up (LOBBY HUD L:940-945): at toneMs the rising tone; at atMs the jingle, a #FFE36B ring
+			-- (220) and the burst (16) at the badge, and a 3 px jolt (only with Screen shake on).
 			levelUp = {
-				slamMs = 460,
-				slamJolt = 5,
-				toneMs = 560,
-				atMs = 1000,
-				rings = {
-					{ color = "White", size = 420, delayMs = 0 },
-					{ color = "StickerCoinText", size = 620, delayMs = 110 },
-					{ color = "StickerMintTop", size = 820, delayMs = 220 },
-				},
+				toneMs = 60,
+				atMs = 440,
+				rings = { { color = "StickerCoinText", size = 220, delayMs = 0 } },
 				sparks = {
-					n = 48,
-					spread = 420,
-					up = 80,
-					ms = 1300,
-					size = 16,
+					n = 16,
+					spread = 170,
+					up = 40,
+					ms = 800,
+					size = 11,
 					colors = { "StickerCoinText", "StickerMintTop", "White", "StickerPinkSoft", "StickerFxPurple" },
 				},
-				rain = 80,
-				jolt = 14,
+				jolt = 3,
 			},
 			squeeze = { -- H:703-705
 				sparks = {
@@ -3900,6 +3834,9 @@ local UI = {
 		mfToss = { 0.4, 0.1, 0.6, 0.9 },
 		mfTossUp = { 0.2, 0.6, 0.35, 1 },
 		mfTossDown = { 0.6, 0, 0.85, 0.45 },
+		-- The new short level-up (LOBBY HUD L:934 the ring, L:949 the badge's flight to the Grip bar).
+		lvRing = { 0.1, 0.7, 0.3, 1 },
+		lvFly = { 0.5, 0, 0.75, 0.2 },
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The

@@ -199,6 +199,9 @@ local FOUND_SOUND_KEYS = {
 	"match.vote.roulette",
 	"match.vote.fanfare",
 	"match.vote.burst",
+	-- The new short level-up (2026-10-25): its tone and jingle (its pop is ui.pop).
+	"grip.levelUp.tone",
+	"grip.levelUp.jingle",
 }
 
 return function(t: Context)
@@ -254,7 +257,7 @@ return function(t: Context)
 
 	-- MATCH FOUND (2026-10-25): the show's 6 sounds, once each, UI, 2D, each note naming its file (the owner uploads them;
 	-- a look-alike plays meanwhile, Config.UI.MatchFound.sounds).
-	t.test("MATCH FOUND's 6 and the map vote's 11 sound keys: once each, UI, 2D, each naming its file", function()
+	t.test("MATCH FOUND's, the map vote's and the level-up's sound keys: once each, UI, 2D, naming a file", function()
 		for _, key in FOUND_SOUND_KEYS do
 			local found = 0
 			for _, slot in soundSlots() do
@@ -437,9 +440,6 @@ return function(t: Context)
 				"img.fx.radial.revealTintEpic",
 				"img.fx.radial.revealTintExclusive",
 				"img.fx.radial.revealFlash",
-				"img.fx.radial.levelScrim",
-				"img.fx.radial.bubble",
-				"img.fx.radial.flashDisc",
 				"img.fx.radial.medallion",
 				"img.fx.shadowWindow",
 				"img.fx.shadowCta",
@@ -448,10 +448,7 @@ return function(t: Context)
 				"img.fx.raysCongrats",
 				"img.fx.beam",
 				"img.fx.blob",
-				"img.fx.raysLevelUp",
-				"img.fx.ribbon",
 				"img.fx.halfRing",
-				"img.fx.dashRing",
 				-- Match HUD M7 (2026-10-17): the M3 pack's card and vignette pictures.
 				"img.fx.raysCard",
 				"img.fx.dotsCard",
@@ -555,6 +552,10 @@ return function(t: Context)
 				"img.vote.tailPinkR",
 				"img.vote.glow",
 				"img.vote.ring",
+				-- The new short level-up (2026-10-25): the GRIP badge's disc, its stripes and its ring.
+				"img.lv.badge",
+				"img.lv.spin",
+				"img.lv.ring",
 			})
 		)
 	end)

@@ -974,6 +974,10 @@ local SLOTS: { AssetSlot } = {
 	soundSlot("match.vote.roulette", "UI", false, nil, "lib:269 roulette(0): a step; file 'vote_roulette.wav'"),
 	soundSlot("match.vote.fanfare", "UI", false, nil, "lib:225 fanfare(): the winner; file 'vote_fanfare.wav'"),
 	soundSlot("match.vote.burst", "UI", false, nil, "lib:165 burst(): the winner's burst; file 'vote_burst.wav'"),
+	-- The new short level-up (2026-10-25; LOBBY HUD L:940-943): its rising tone and its jingle, rendered to the Desktop
+	-- folder "Squishy Duels sounds - LEVEL UP" with ui.pop's file; look-alikes meanwhile (GripController).
+	soundSlot("grip.levelUp.tone", "UI", false, nil, "L:940 tone(420 -> 980): the badge pops in; file 'lvl_tone.wav'"),
+	soundSlot("grip.levelUp.jingle", "UI", false, nil, "lib:205 levelup(): the level-up jingle; file 'lvl_jingle.wav'"),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1096,9 +1100,6 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.fx.radial.revealTintEpic", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.revealTintExclusive", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.revealFlash", "image", IMAGE_NOTE),
-	otherSlot("img.fx.radial.levelScrim", "image", IMAGE_NOTE),
-	otherSlot("img.fx.radial.bubble", "image", IMAGE_NOTE),
-	otherSlot("img.fx.radial.flashDisc", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.medallion", "image", IMAGE_NOTE),
 	otherSlot("img.fx.shadowWindow", "image", IMAGE_NOTE),
 	otherSlot("img.fx.shadowCta", "image", IMAGE_NOTE),
@@ -1107,10 +1108,7 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.fx.raysCongrats", "image", IMAGE_NOTE),
 	otherSlot("img.fx.beam", "image", IMAGE_NOTE),
 	otherSlot("img.fx.blob", "image", IMAGE_NOTE),
-	otherSlot("img.fx.raysLevelUp", "image", IMAGE_NOTE),
-	otherSlot("img.fx.ribbon", "image", IMAGE_NOTE),
 	otherSlot("img.fx.halfRing", "image", IMAGE_NOTE),
-	otherSlot("img.fx.dashRing", "image", IMAGE_NOTE),
 	-- Match HUD M7 (2026-10-17; the M3 pack, "Squishy Duels match uploads", uploaded by the user): the "squished by"
 	-- card's banner rays and dots, its Grip icon and the knocked-out vignette. While an id is nil the card uses
 	-- img.fx.rays, img.fx.dots and img.icon.squeeze, and the vignette two edge gradients (UI/Match).
@@ -1275,6 +1273,11 @@ local SLOTS: { AssetSlot } = {
 	lobbyHud("img.vote.tailPinkR", 73296263558300, "the FREE FOR ALL head's right tail (L:668)", MF_DATE),
 	lobbyHud("img.vote.glow", 94363789673270, "white radius-40 box and its .6 glow, 9-slice 300 px (L:690)", MF_DATE),
 	lobbyHud("img.vote.ring", 130191315901583, "the timer's white ring, r 25, 7 wide, 76 px at 3x (L:683)", MF_DATE),
+	-- The new short level-up (2026-10-25, LOBBY HUD L:586-611; make_lv_pngs.mjs): the GRIP badge's disc (no stripes,
+	-- number or gloss), its turning stripes cut to the disc's opening, and its ring.
+	lobbyHud("img.lv.badge", 117403633702404, "the GRIP badge's disc 132 at (14, 14) of 160 x 170 (L:591)", MF_DATE),
+	lobbyHud("img.lv.spin", 111820189746263, "the badge's turning stripes in its 122 px opening (L:592)", MF_DATE),
+	lobbyHud("img.lv.ring", 129367397148809, "the level-up ring 140 at (5, 5) of 150 (L:588)", MF_DATE),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

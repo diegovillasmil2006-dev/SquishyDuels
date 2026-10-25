@@ -133,6 +133,7 @@ export type TextKind =
 	| "FoundTitle" -- the MATCH FOUND show's letters, mode name and chip (UI/MatchFoundShow, stage px)
 	| "FoundName"
 	| "FoundChip"
+	| "LevelNumber" -- the new short level-up's badge number (UI/LevelUpShow)
 
 export type AccentName =
 	"strawberry"

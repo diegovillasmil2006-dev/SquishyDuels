@@ -1495,10 +1495,9 @@ local Strings = {
 		-- Toasts (Notify codes, Types.GripNotifyCode). rankUp: {name} = the player's display name.
 		levelUp = "Grip Lv {level}!",
 		rankUp = "{name} reached {rank}!",
-		-- UI FINAL R9 (H:527, H:530-531, H:999): the level-up show's ribbon, pill and unlock line.
-		levelUpRibbon = "GRIP LEVEL UP!",
-		levelFrom = "Grip {from}",
-		levelArrow = "→",
+		-- The new short level-up (LOBBY HUD L:597-606): the badge's chip, its ribbon and its unlock line.
+		levelUpChip = "GRIP",
+		levelUpRibbon = "LEVEL UP!",
 		unlockedPrefix = "Unlocked ",
 		intro = "You trained your Grip! Squeeze more to level it up.",
 		welcome = "Double Grip is full: your first squeezes train x{mult} Grip!",

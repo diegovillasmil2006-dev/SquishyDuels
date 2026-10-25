@@ -2484,7 +2484,7 @@ return function(t: Context)
 		expect.equal(fx.events.questClaim.coins, 10) -- H:746
 		expect.equal(fx.events.dailyClaim.coins, 10) -- H:856
 		expect.deepEqual({ fx.events.matchFound.jolt, fx.events.matchFound.vs.jolt }, { 14, 7 }) -- LOBBY HUD L:1041, L:1045
-		expect.deepEqual({ fx.events.levelUp.slamJolt, fx.events.levelUp.jolt }, { 5, 14 }) -- H:719-726
+		expect.deepEqual({ fx.events.levelUp.atMs, fx.events.levelUp.jolt }, { 440, 3 }) -- LOBBY HUD L:940-945
 		-- §9.15: 1 rays picture + the 2 rings + 21 pieces = 24 moving frames.
 		expect.equal(fx.events.boxBurst.maxPieces, 21)
 		expect.equal(#fx.events.boxBurst.rings, 2)
