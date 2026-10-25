@@ -832,7 +832,7 @@ local function layoutTiles(canvas: Vector2, compact: boolean)
 			placeBadge(tiles[id], compact)
 		end
 	end
-	local origin = HudFormat.origins(compact)
+	local origin = HudFormat.origins(compact, UIController.coreCorner())
 	setIfChanged(left, "Position", UDim2.fromOffset(origin.left.X, origin.left.Y))
 	local innerGap, toTiles = HudFormat.leftGaps(compact, columnPlan.grip)
 	local list = left:FindFirstChildOfClass("UIListLayout")
@@ -868,7 +868,7 @@ local function layoutRight(compact: boolean)
 	if right == nil then
 		return
 	end
-	local origin = HudFormat.origins(compact)
+	local origin = HudFormat.origins(compact, UIController.coreCorner())
 	setIfChanged(right, "Position", UDim2.new(1, -origin.right.X, 0, origin.right.Y))
 	local list = right:FindFirstChildOfClass("UIListLayout")
 	if list then
@@ -1052,7 +1052,7 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 			table.insert(blockers, rect)
 		end
 	end
-	local origin = HudFormat.origins(compact)
+	local origin = HudFormat.origins(compact, UIController.coreCorner())
 	if ctaQueued then
 		local low, high = HudFormat.freeSpan(canvas, origin.ctaTop, COLUMN.barHeight, blockers)
 		searchWidth = HudFormat.barWidth(HUD.search.width, high - low)
@@ -1226,6 +1226,7 @@ local function refreshPlan()
 		touch = isTouch(),
 		tiles = #visibleTiles(),
 		screenHeight = screenHeight(),
+		corner = UIController.coreCorner(), -- 2026-10-24: under Roblox's top buttons
 	})
 	local changed = not HudFormat.samePlan(columnPlan, plan)
 	columnPlan = plan
@@ -2687,6 +2688,8 @@ function HudController.init()
 		require(Client.UI.PhoneHud).close()
 	end))
 	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(queueLayout))
+	-- 2026-10-24: the HUD starts at the screen's top; Roblox's top buttons (UIController.coreCorner) may move.
+	c:add(GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(queueLayout))
 	c:add(ControlsController.PreferredInputChanged:connect(queueLayout))
 	-- UI FINAL R4: the GRIP float hides in first person (gripFloatVisible).
 	c:add(FirstPersonController.Changed:connect(queueLayout))

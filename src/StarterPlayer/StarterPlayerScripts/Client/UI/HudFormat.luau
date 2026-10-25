@@ -94,7 +94,8 @@
 --                              Hud_Left when it reaches lower (H:98), the right column at (rightEdge, rightTop) (H:156)
 --                              and the DUEL area at ctaTop (PR10); phones (the compact class) keep COLUMN.edge
 --                              (origins)
---   origins(compact)           those spots: { left, nav, right (its top-right corner), ctaTop }
+--   origins(compact, corner?)  those spots: { left, nav, right (its top-right corner), ctaTop }; with Roblox's top
+--                              buttons (corner) the groups in their corners step under them (2026-10-24)
 --   badgeReachRect(tiles)      foam fix 2: the tile row's box plus a count badge's reach above and right of it (the box
 --                              the toast column keeps beside; UI FINAL R4: the badge sits inside the tile, H:102, so
 --                              the reach is its sdBadge pop's, H:32)
@@ -213,6 +214,9 @@ export type TrackerStatus = { text: string, ready: boolean }
 -- UI FINAL R4: where the HUD's groups start (origins; base px): Hud_Left's and the tiles' top-left corners, the right
 -- column's top-right corner (x from the right edge) and the DUEL area's top.
 export type Origins = { left: Vector2, nav: Vector2, right: Vector2, ctaTop: number }
+-- 2026-10-24: Roblox's buttons at the top of the screen (UIController.coreCorner, base px): the strip's height and the
+-- button boxes' widths at its left and right (0 = none).
+export type Corner = { height: number, left: number, right: number }
 
 -- Layout types (base px).
 export type FontKind = "body" | "title"
@@ -248,6 +252,7 @@ export type ColumnParts = {
 	tiles: number?,
 	texts: ColumnTexts?,
 	screenHeight: number?,
+	corner: Corner?, -- 2026-10-24: Roblox's top buttons (origins)
 }
 export type ColumnPlan = {
 	scale: number, -- the SD_Hud UIScale (Layout.uiScale)
@@ -1078,20 +1083,24 @@ end
 
 -- UI FINAL R4: where the HUD's groups start (see the header and Origins): the design's spots, phones COLUMN.edge (the
 -- DUEL area there: PR10's top at the compact scale, so the emblem stays inside the HUD too).
-function HudFormat.origins(compact: boolean): Origins
+-- 2026-10-24: the HUD starts at the screen's top (like the design); with a corner the left group, and the right one,
+-- step under Roblox's buttons when those sit in their corner.
+function HudFormat.origins(compact: boolean, corner: Corner?): Origins
+	local leftDown = if corner and corner.left > 0 then corner.height else 0
+	local rightDown = if corner and corner.right > 0 then corner.height else 0
 	if compact then
 		local edge = COLUMN.edge
 		return {
-			left = Vector2.new(edge, edge),
-			nav = Vector2.new(edge, edge),
-			right = Vector2.new(edge, edge),
+			left = Vector2.new(edge, edge + leftDown),
+			nav = Vector2.new(edge, edge + leftDown),
+			right = Vector2.new(edge, edge + rightDown),
 			ctaTop = math.ceil(COLUMN.ctaTop * COLUMN.ctaCompactScale - FIT_SLACK),
 		}
 	end
 	return {
-		left = Vector2.new(COLUMN.leftX, COLUMN.leftTop),
+		left = Vector2.new(COLUMN.leftX, COLUMN.leftTop + leftDown),
 		nav = Vector2.new(COLUMN.navX, COLUMN.navTop),
-		right = Vector2.new(COLUMN.rightEdge, COLUMN.rightTop),
+		right = Vector2.new(COLUMN.rightEdge, COLUMN.rightTop + rightDown),
 		ctaTop = COLUMN.ctaTop,
 	}
 end
@@ -1345,7 +1354,7 @@ function HudFormat.columnLayouts(
 	local pillWidth = HudFormat.pillWidth(ts, texts.coins)
 	local maxRow = canvas.X - 2 * COLUMN.edge
 	-- UI FINAL R4: the design's spots (origins; phones COLUMN.edge) and the tiles' gap.
-	local origin = HudFormat.origins(compact)
+	local origin = HudFormat.origins(compact, if parts then parts.corner else nil)
 	local tileGap = if compact then COLUMN.tileGapCompact else COLUMN.tileGap
 	local layouts: { ColumnPlan } = {}
 	for _, candidate in candidates(compact, gripPresent) do

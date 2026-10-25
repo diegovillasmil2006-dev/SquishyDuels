@@ -2384,7 +2384,16 @@ local function layoutTopBar(h: Hud)
 	if not (scale > 0) or size.X <= 0 or size.Y <= 0 then
 		return
 	end
+	-- 2026-10-24: the HUD starts at the screen's top (Config.UI.ScreenGuis); Forfeit steps under Roblox's top-left
+	-- buttons and the bar keeps clear of both (one box from the left edge).
+	local corner = UIController.coreCorner()
+	setIfChanged(h.forfeit.root, "Position", UDim2.fromOffset(LAYOUT.EDGE, LAYOUT.EDGE + (if corner.left > 0 then corner.height else 0)))
 	local avoid = if h.forfeit.root.Visible then rectIn(h.forfeit.root, h.gui, scale) else nil
+	if corner.left > 0 then
+		avoid = if avoid
+			then { x = 0, y = 0, w = math.max(avoid.x + avoid.w, corner.left), h = math.max(avoid.y + avoid.h, corner.height) }
+			else { x = 0, y = 0, w = corner.left, h = corner.height }
+	end
 	-- Overlays fix: two rows a side card on the compact layout. Foam fix 2: on both layouts both cards are as wide as
 	-- the wider one's content needs (cardNeed: the PC cards hold the opponent's whole name, a phone's are as wide as
 	-- the longer lives row), measured once the texts are laid out and only while the bar shows (a hidden bar's labels
@@ -2416,6 +2425,10 @@ local function layoutTopBar(h: Hud)
 	setIfChanged(h.opponentColumn, "Size", cardSize) -- foam fix 3: so the bar's box is the drawn cards, centred
 	local bar = h.top.AbsoluteSize / scale
 	local place = DuelFormat.topBarPlacement(size / scale, bar, avoid)
+	if place.row == "top" then -- Duel HUD part 3: the design's top (D:56, D:152) on its canvas scale
+		local form = AbilityBarFormat.form(size.X, ControlsController.preferredInput() == Enum.PreferredInput.Touch)
+		place.y = UI_CONFIG.DuelTopBar.topPx[form] * AbilityBarFormat.canvasScale(form, size) / scale
+	end
 	local position = UDim2.fromOffset(math.floor(place.x + 0.5), math.floor(place.y + 0.5))
 	if h.top.Position ~= position then
 		h.top.Position = position

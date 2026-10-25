@@ -723,7 +723,9 @@ local function step(_dt: number, _now: number): boolean
 	if form ~= builtForm or ultimateId ~= builtUlt then
 		build(form, ultimateId)
 	end
-	local k = AbilityBarFormat.canvasScale(form, size)
+	-- the design's canvas scale is the whole screen's (min(width / W, height / H)), not the safe area's
+	local camera = workspace.CurrentCamera
+	local k = AbilityBarFormat.canvasScale(form, if camera then camera.ViewportSize else size)
 	if scale.Scale ~= k then
 		scale.Scale = k
 		r.Size = UDim2.fromScale(1 / k, 1 / k)

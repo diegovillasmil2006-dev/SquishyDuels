@@ -1237,7 +1237,7 @@ function UIController.screenGui(name: string, fallback: ScreenGuiSpec?): ScreenG
 		DisplayOrder = spec.displayOrder,
 		ScreenInsets = spec.insets,
 	})
-	if spec.insets == SCALED_INSETS then
+	if spec.insets == SCALED_INSETS or spec.insets == Enum.ScreenInsets.DeviceSafeInsets then
 		local uiScale: UIScale = Create("UIScale", { Name = SCALE_NAME, Scale = currentScale, Parent = gui })
 		table.insert(scales, uiScale)
 	end
@@ -1263,6 +1263,21 @@ end
 
 function UIController.scale(): number
 	return currentScale
+end
+
+-- 2026-10-24 (the HUD layers start at the screen's top, Config.UI.ScreenGuis): Roblox's own buttons at the top of the
+-- screen, read from GuiService.TopbarInset (the free strip between them), in the HUD's base px: the strip's height and
+-- how wide the button boxes at its left and right are (0 = none there). HUD pieces in those corners step under them.
+function UIController.coreCorner(): { height: number, left: number, right: number }
+	local inset = GuiService.TopbarInset
+	local camera = workspace.CurrentCamera
+	local width = if camera then camera.ViewportSize.X else inset.Max.X
+	local scale = math.max(currentScale, 1e-3)
+	return {
+		height = math.max(0, inset.Max.Y) / scale,
+		left = math.max(0, inset.Min.X) / scale,
+		right = math.max(0, width - inset.Max.X) / scale,
+	}
 end
 
 function UIController.layoutClass(): Layout.LayoutClass

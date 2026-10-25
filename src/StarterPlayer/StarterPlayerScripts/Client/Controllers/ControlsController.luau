@@ -626,7 +626,10 @@ local function layoutTouch()
 		return
 	end
 	local scale = ControlsController.touchScale(size)
-	local arcLeft = if active.Duel then AbilityBarFormat.phoneArcLeft(size) else nil
+	local camera = workspace.CurrentCamera
+	local arcLeft = if active.Duel and camera
+		then AbilityBarFormat.phoneArcLeft(size, AbilityBarFormat.canvasScale("phone", camera.ViewportSize))
+		else nil
 	local layout = ControlsController.touchLayout(size, scale, jumpRect(gui), arcLeft)
 	local rects: { [string]: Rect } =
 		{ Throw = layout.throw, Ultimate = layout.ultimate, Dash = layout.dash, Catch = layout.catch }

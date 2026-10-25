@@ -117,9 +117,10 @@ function AbilityBarFormat.ultLeft(
 	return (chargeMax - estimate) / rate
 end
 
-function AbilityBarFormat.phoneRect(id: AbilityId, size: Vector2): Rect
+-- k: the canvas scale (default from size; callers pass the whole screen's, AbilityBarFormat.canvasScale("phone", viewport))
+function AbilityBarFormat.phoneRect(id: AbilityId, size: Vector2, scale: number?): Rect
 	local place = BAR.phone.places[id]
-	local k = AbilityBarFormat.canvasScale("phone", size)
+	local k = scale or AbilityBarFormat.canvasScale("phone", size)
 	local px = place.size * k
 	return {
 		x = size.X - (place.right + place.size) * k,
@@ -129,10 +130,10 @@ function AbilityBarFormat.phoneRect(id: AbilityId, size: Vector2): Rect
 	}
 end
 
-function AbilityBarFormat.phoneArcLeft(size: Vector2): number
+function AbilityBarFormat.phoneArcLeft(size: Vector2, scale: number?): number
 	local left = math.huge
 	for _, id in { "catch", "ult", "dash" } :: { AbilityId } do
-		left = math.min(left, AbilityBarFormat.phoneRect(id, size).x)
+		left = math.min(left, AbilityBarFormat.phoneRect(id, size, scale).x)
 	end
 	return left
 end

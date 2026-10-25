@@ -115,12 +115,16 @@ local UI = {
 
 	-- Created by client code with ResetOnSpawn = false and ZIndexBehavior = Sibling (§11.1).
 	ScreenGuis = {
-		SD_Hud = { displayOrder = 10, insets = Enum.ScreenInsets.CoreUISafeInsets },
-		SD_DuelHud = { displayOrder = 11, insets = Enum.ScreenInsets.CoreUISafeInsets },
-		SD_KillBanner = { displayOrder = 15, insets = Enum.ScreenInsets.CoreUISafeInsets }, -- under every modal
+		-- Owner 2026-10-24 ("if diego sent the hud file, you should do it as it looks"): the HUD layers start at the top
+		-- of the screen like Diego's designs (DeviceSafeInsets: only a notch is kept clear), not under Roblox's 58 px top
+		-- strip; the HUD pieces in a corner Roblox's buttons use step under them (UIController.coreCorner). The windows
+		-- (SD_Modal, centred) keep the strip clear.
+		SD_Hud = { displayOrder = 10, insets = Enum.ScreenInsets.DeviceSafeInsets },
+		SD_DuelHud = { displayOrder = 11, insets = Enum.ScreenInsets.DeviceSafeInsets },
+		SD_KillBanner = { displayOrder = 15, insets = Enum.ScreenInsets.DeviceSafeInsets }, -- under every modal
 		SD_Dimmer = { displayOrder = 19, insets = Enum.ScreenInsets.None },
 		SD_Modal = { displayOrder = 20, insets = Enum.ScreenInsets.CoreUISafeInsets },
-		SD_Overlay = { displayOrder = 30, insets = Enum.ScreenInsets.CoreUISafeInsets },
+		SD_Overlay = { displayOrder = 30, insets = Enum.ScreenInsets.DeviceSafeInsets },
 		SD_Fade = { displayOrder = 40, insets = Enum.ScreenInsets.None },
 	} :: { [string]: ScreenGuiSpec },
 
@@ -728,6 +732,7 @@ local UI = {
 			inkRingPx = 5,
 			slash = { size = Vector2.new(30, 6), strokePx = 2, rotation = -10 }, -- D:157
 		},
+		topPx = { desk = 14, phone = 8 }, -- D:56, D:152 the row's top from the screen's top
 		lowSeconds = 10, -- D:416 the timer turns pink at 10 s or less
 		bumpMs = 420, -- D:360 the score plate's bump
 		bumpPeak = 1.22,
@@ -2885,7 +2890,7 @@ local UI = {
 	-- builds a piece turns it on with the owner's yes [P]. compact.fitMin = the smallest nested UIScale of a piece bigger
 	-- than the safe area (v1 §1.3b) [P].
 	Match = {
-		gui = { displayOrder = 14, insets = Enum.ScreenInsets.CoreUISafeInsets } :: ScreenGuiSpec,
+		gui = { displayOrder = 14, insets = Enum.ScreenInsets.DeviceSafeInsets } :: ScreenGuiSpec, -- 2026-10-24: Diego's top
 		enabled = {
 			topBar = false, -- M5 (waits for Diego's big-match bar)
 			feed = true, -- M6 kill feed (2026-10-17: on, with look-alike pictures and sounds until the owner's upload)
