@@ -2172,7 +2172,12 @@ local function updateReticle(h: Hud, view: StateController.DuelView, aim: ThrowC
 		return
 	end
 	r.root.Visible = true
-	r.root.Position = UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
+	-- A centred aim (touch, gamepad, shift lock) throws through the middle of the screen; on phones with side safe
+	-- areas Camera.ViewportSize is narrower than this full-bleed overlay, so viewport / 2 drew the ring left of where
+	-- the throw went (user bug 2026-10-24). The overlay's own middle is the screen's.
+	r.root.Position = if aim.centered
+		then UDim2.fromScale(0.5, 0.5)
+		else UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
 	-- Feature 1: "Catch!" with its key in place of the state text while an opponent's throw comes at you and the
 	-- catch is ready (design: html:88, 673-674), pulsing (DuelFormat.catchPrompt).
 	local promptFade = 0

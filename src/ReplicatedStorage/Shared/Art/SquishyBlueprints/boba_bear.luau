@@ -62,13 +62,15 @@ local blueprint: Kit.Blueprint = {
 				color = TEA,
 				body = true,
 			},
+			-- A body part so Inspect's knead dents it with the cup (user bug 2026-10-24: as a rider it stayed a stiff band
+			-- that slid off the dented cup).
 			{
 				name = "Rim",
 				shape = "E",
 				size = size(0.388, 0.048, 0.388),
 				pos = at(0, 0.305, 0),
 				color = "FFF0DA",
-				contact = v(0, -1, 0),
+				body = true,
 			},
 			{
 				name = "Head",

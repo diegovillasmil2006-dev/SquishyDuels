@@ -1042,7 +1042,11 @@ local function stepReticle(now: number)
 	if not visible then
 		return
 	end
-	r.root.Position = UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
+	-- A centred aim throws through the screen's middle: the full-bleed overlay's middle, not viewport / 2 (narrower
+	-- than the overlay on phones with side safe areas; user bug 2026-10-24, as DuelController's reticle).
+	r.root.Position = if aim.centered
+		then UDim2.fromScale(0.5, 0.5)
+		else UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
 	r.dot.Visible = shown.icon ~= "cross"
 	r.cross.Visible = shown.icon == "cross"
 	-- Feature 1: while charging the fill grows to c in the toy's colour (the top c filled) and the ring pulses at full.
