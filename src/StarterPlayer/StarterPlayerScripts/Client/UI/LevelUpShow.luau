@@ -620,6 +620,8 @@ function LevelUpShow.play(spec: Spec)
 			if stroke then
 				local outline = Theme.stroke(INK, n.inkStroke / n.scale, label)
 				outline.LineJoinMode = Enum.LineJoinMode.Round
+				-- Theme.stroke strokes the box (Border): the design outlines the digit, not its 2.1x frame.
+				outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 			end
 			return label
 		end
@@ -756,7 +758,8 @@ function LevelUpShow.play(spec: Spec)
 		local widths: { number } = {}
 		local total = 0
 		for i, letter in letters do
-			widths[i] = math.ceil(Theme.textWidth(letter.char, LETTER_KIND))
+			-- Measured as drawn under the content's UIScale (a glyph is wider there than textWidth says).
+			widths[i] = math.ceil(Theme.textBoundsAt(letter.char, LETTER_KIND, nil, contentScale.Scale).X)
 			total += widths[i]
 		end
 		local lineHeight = math.ceil(Theme.lineHeight(LETTER_KIND))
@@ -776,6 +779,13 @@ function LevelUpShow.play(spec: Spec)
 				Parent = wave,
 			}, LETTER_KIND)
 			Theme.stickerText(label, rb.letterRole)
+			-- Theme.text turns wrapping on; a lone glyph a pixel wider than its slot would then not draw at all.
+			for _, text in label:GetDescendants() do
+				if text:IsA("TextLabel") then
+					text.TextWrapped = false
+				end
+			end
+			label.TextWrapped = false
 			oneShot(slot, slot, rb.letter, letter.delay, rb.letterMs / 1000, rb.letterCurve)
 			loop(wave, LOOPS.lvWave.frames, letter.wave, LOOPS.lvWave.periodS, LOOPS.lvWave.curve)
 			x += w
