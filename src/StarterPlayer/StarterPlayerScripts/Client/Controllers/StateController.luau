@@ -54,7 +54,9 @@
 -- * Match queue (round 1 of the match flow, 2026-10-25): the MatchQueue remote, the player's Free for All / Team
 --   Deathmatch ticket for the waiting bar (normalizeMatchQueue: {} unless well-formed): matchQueue() /
 --   MatchQueueChanged(view). Round 2: the MatchFound remote (normalizeMatchFound: nil unless well-formed) fires
---   MatchFoundReceived(view) for the lobby's MATCH FOUND show.
+--   MatchFoundReceived(view) for the lobby's MATCH FOUND show. Round 3: the MatchVoteState remote (normalizeMatchVote:
+--   {} unless well-formed), a Team / Free for All match's map vote: matchVote() / MatchVoteChanged(view); an open
+--   vote locks the lobby (lobbyLocked) until the match's own view takes over.
 -- * Match (FFA/TDM v1, 2026-10-15; the 12-player Free for All / Team Deathmatch in this lobby server, SPEC C4/C5): the
 --   MatchState remote (one view per player: phase with DuelPhase names, the real MatchRules phase in matchPhase, you,
 --   players, team lives, K.O. target, arena bounds, storm, outcome) and UltimateCharge: match() / MatchChanged(new,
@@ -362,6 +364,8 @@ StateController.MatchChanged = Signal.new() :: Signal.Signal<MatchView?, MatchVi
 StateController.MatchQueueChanged = Signal.new() :: Signal.Signal<Types.MatchQueueView>
 -- Round 2 of the match flow (2026-10-25): who plays the match or duel the queue just started (MatchFound).
 StateController.MatchFoundReceived = Signal.new() :: Signal.Signal<Types.MatchFoundView>
+-- Round 3 of the match flow (2026-10-25): the map vote of the match the queue just started ({} = none).
+StateController.MatchVoteChanged = Signal.new() :: Signal.Signal<Types.MatchVoteView>
 -- Match HUD M1: the new HUD moments of the current match (sorted by seq) and its view (after MatchChanged).
 StateController.MatchMoments = Signal.new() :: Signal.Signal<{ MatchMoment }, MatchView>
 
@@ -394,6 +398,7 @@ local queueView: QueueView = idleQueue(counts)
 local duelView: DuelView? = nil
 local matchView: MatchView? = nil -- FFA/TDM v1
 local matchQueueView: Types.MatchQueueView = {} -- round 1 of the match flow
+local matchVoteView: Types.MatchVoteView = {} -- round 3 of the match flow
 local matchRoster: MatchRoster? = nil -- Match HUD M1: the roster cache of the current match
 local matchResult: MatchView? = nil -- Match HUD M1: the first view with an outcome (the Result freeze)
 local momentTracker: MomentTracker = { matchId = nil, lastSeq = 0 } -- Match HUD M1
@@ -702,7 +707,7 @@ local function outcomeFrom(raw: unknown): MatchOutcome?
 end
 
 local function setLock()
-	local now = StateController.lobbyLocked(queueView, duelView, matchView)
+	local now = StateController.lobbyLocked(queueView, duelView, matchView, matchVoteView)
 	if now ~= locked then
 		locked = now
 		StateController.LobbyLockChanged:fire(now)
@@ -1597,9 +1602,14 @@ function StateController.isMatchId(id: unknown): boolean
 end
 
 -- True from Matched through Returning (§5.4: menus, equip, Inspect, boxes and shop are blocked). FFA/TDM v1: and for
--- the whole match view (`match`).
-function StateController.lobbyLocked(queue: QueueView, duel: DuelView?, match: MatchView?): boolean
-	return queue.state == "Matched" or duel ~= nil or match ~= nil
+-- the whole match view (`match`). Round 3 of the match flow: and through the match's map vote (`vote`).
+function StateController.lobbyLocked(
+	queue: QueueView,
+	duel: DuelView?,
+	match: MatchView?,
+	vote: Types.MatchVoteView?
+): boolean
+	return queue.state == "Matched" or duel ~= nil or match ~= nil or (vote ~= nil and vote.id ~= nil)
 end
 
 -- True for a DuelResult payload the HUD can show.
@@ -1856,6 +1866,11 @@ function StateController.matchQueue(): Types.MatchQueueView
 	return matchQueueView
 end
 
+-- Round 3 of the match flow: the map vote now ({} = none).
+function StateController.matchVote(): Types.MatchVoteView
+	return matchVoteView
+end
+
 -- Round 1 of the match flow (pure): a MatchQueue payload as the waiting bar may read it, or {} when it is not one
 -- (an unknown mode, counts outside 0..max, a time that is no number).
 function StateController.normalizeMatchQueue(raw: unknown): Types.MatchQueueView
@@ -1914,6 +1929,101 @@ function StateController.normalizeMatchFound(raw: unknown): Types.MatchFoundView
 		players[i] = { userId = p.userId, name = p.name, squishy = p.squishy, level = p.level, team = team }
 	end
 	return { mode = mode, players = players }
+end
+
+-- Round 3 of the match flow (pure): a MatchVoteState payload as the vote board may read it, or {} when it is not one (no
+-- id, an unknown mode, 1 to 8 map names, open / close times that are no numbers, a card's voters that are not whole
+-- userIds, a result whose winner, kind, roulette or times do not fit).
+function StateController.normalizeMatchVote(raw: unknown): Types.MatchVoteView
+	if type(raw) ~= "table" then
+		return {}
+	end
+	local view = raw :: any
+	local function finiteNumber(n: unknown): boolean
+		return type(n) == "number" and n == n and math.abs(n) < math.huge
+	end
+	local function whole(n: unknown): boolean
+		return finiteNumber(n) and n == math.floor(n :: number)
+	end
+	local maps, votes = view.maps, view.votes
+	if
+		type(view.id) ~= "string"
+		or not MATCH_MODES[view.mode]
+		or type(maps) ~= "table"
+		or #maps < 1
+		or #maps > 8
+		or type(votes) ~= "table"
+		or not finiteNumber(view.opensAt)
+		or not finiteNumber(view.closesAt)
+	then
+		return {}
+	end
+	local outMaps: { string } = {}
+	local outVotes: { { number } } = {}
+	for i = 1, #maps do
+		local list = votes[i]
+		if type(maps[i]) ~= "string" or type(list) ~= "table" or #list > 64 then
+			return {}
+		end
+		outMaps[i] = maps[i]
+		outVotes[i] = {}
+		for j = 1, #list do
+			if not whole(list[j]) then
+				return {}
+			end
+			outVotes[i][j] = list[j]
+		end
+	end
+	local result: Types.MatchVoteResultView? = nil
+	local r = view.result
+	if r ~= nil then
+		local kinds = { chosen = true, tie = true, random = true }
+		if
+			type(r) ~= "table"
+			or not whole(r.winner)
+			or r.winner < 1
+			or r.winner > #outMaps
+			or not kinds[r.kind]
+			or type(r.roulette) ~= "table"
+			or #r.roulette > 200
+			or not finiteNumber(r.at)
+			or not finiteNumber(r.revealAt)
+			or not finiteNumber(r.startsAt)
+		then
+			return {}
+		end
+		local roulette: { { choice: number, at: number } } = {}
+		for i = 1, #r.roulette do
+			local step = r.roulette[i]
+			if
+				type(step) ~= "table"
+				or not whole(step.choice)
+				or step.choice < 1
+				or step.choice > #outMaps
+				or not finiteNumber(step.at)
+			then
+				return {}
+			end
+			roulette[i] = { choice = step.choice, at = step.at }
+		end
+		result = {
+			winner = r.winner,
+			kind = r.kind,
+			roulette = roulette,
+			at = r.at,
+			revealAt = r.revealAt,
+			startsAt = r.startsAt,
+		}
+	end
+	return {
+		id = view.id,
+		mode = view.mode,
+		maps = outMaps,
+		opensAt = view.opensAt,
+		closesAt = view.closesAt,
+		votes = outVotes,
+		result = result,
+	}
 end
 
 -- Match HUD M1: every player seen in the current match (see the header); nil outside a match.
@@ -2035,6 +2145,17 @@ function StateController.init()
 		c:add(foundConnection)
 	else
 		log:warn("no MatchFound remote; no MATCH FOUND show:", foundConnection)
+	end
+	-- Round 3 of the match flow: the map vote (it locks the lobby while it is open).
+	local okVote, voteConnection = pcall(NetController.on, "MatchVoteState", function(raw: any)
+		matchVoteView = StateController.normalizeMatchVote(raw)
+		setLock()
+		StateController.MatchVoteChanged:fire(matchVoteView)
+	end)
+	if okVote then
+		c:add(voteConnection)
+	else
+		log:warn("no MatchVoteState remote; no map vote:", voteConnection)
 	end
 
 	local pendingClear: thread? = nil

@@ -285,6 +285,7 @@ local ctaRect: Rect? = nil
 -- opponent slot while foundWaiting).
 local foundShow: MatchFoundShow.Show? = nil
 local foundPending: MatchFoundShow.View? = nil
+local foundVote: any = nil -- round 3 of the match flow: the map vote (Types.MatchVoteView) before its show plays
 local foundWaiting = false
 local ctaFits: boolean? = nil -- HudFormat.ctaPlacement's answer (debugState)
 local searchWidth = HUD.search.width
@@ -1050,10 +1051,18 @@ local function playFound()
 		view = view,
 		you = if player then player.UserId else 0,
 		fxScale = 1 / math.max(UIController.scale(), 1e-3),
-		play = function(key: string, fallback: string)
-			SoundController.play(if SoundController.hasSound(key) then key else fallback)
+		play = function(key: string, fallback: string, pitch: number?)
+			SoundController.play(if SoundController.hasSound(key) then key else fallback, { pitch = pitch })
 		end,
 		ready = arenaOn,
+		-- Round 3 of the match flow: the map vote (Team / Free for All), its taps and the teleport toast.
+		vote = foundVote,
+		castVote = function(card: number)
+			NetController.fire("MatchVote", card)
+		end,
+		toast = function(text: string)
+			UIController.toast(text, "info")
+		end,
 		onDone = function()
 			if foundShow == show then
 				foundShow = nil
@@ -2635,6 +2644,14 @@ function HudController.init()
 		end
 		playFound()
 	end))
+	-- Round 3 of the match flow: the map vote goes to the show (or waits for it); {} ends it.
+	c:add(StateController.MatchVoteChanged:connect(function(view: any)
+		foundVote = if view.id ~= nil then view else nil
+		local show = foundShow
+		if show then
+			show:setVote(view)
+		end
+	end))
 	c:add(StateController.LobbyLockChanged:connect(function(isLocked: boolean)
 		setShown(not isLocked)
 	end))
@@ -2721,7 +2738,7 @@ function HudController.init()
 		if show then
 			show:close()
 		end
-		foundShow, foundPending, foundWaiting = nil, nil, false
+		foundShow, foundPending, foundWaiting, foundVote = nil, nil, false, nil
 		CoinFlight.clear()
 		awaitingLanding = false
 		gainSource, coinIcon, lastFlashAt = nil, nil, nil

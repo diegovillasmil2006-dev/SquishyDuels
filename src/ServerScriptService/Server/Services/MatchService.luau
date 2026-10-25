@@ -15,8 +15,18 @@
 --   map the queue keeps waiting (one match.waitingMap toast). TDM: the players are shuffled (server Random), then
 --   dealt Red, Blue, Red, ... Toasts: joined (n/max), left, startingIn, waitingPlayers, the end (below).
 --   Round 1 of the match flow (2026-10-25): each ticket's waiting bar (MatchQueue). Round 2: a match from the queue
---   sends its players MatchFound (Logic/MatchFoundRoster) and its teleports wait Config.Match.foundHoldSeconds
---   (positionAt, tickMatch), so the lobby's MATCH FOUND show plays first.
+--   sends its players MatchFound (Logic/MatchFoundRoster), the lobby's MATCH FOUND show.
+--   Round 3 (2026-10-25, owner: Diego's map vote for Team and Free for All, LOBBY HUD L:1024-1147; on while
+--   Config.Match.Vote.enabled): the queue's match is first a Pending: its players (SD_MatchId = its id: every lobby
+--   lock holds, no queue takes them; SD_DuelPhase stays "": no duel controls) and bots (held out of sight) are dealt
+--   their teams now, and it holds up to Vote.maxChoices free maps of the mode (acquired, so no other match takes them).
+--   MatchVoteState (Types.MatchVoteView) goes to its players at the start, on every vote and with the result. The vote
+--   opens introSeconds after MATCH FOUND and closes `seconds` later; MatchVote(card) is taken from a player of an open
+--   vote, a whole card number, at most once per minIntervalSeconds (MatchService.vote); bots vote at Logic/MatchVote's
+--   times; endDelaySeconds after the close the result (Logic/MatchVote: the most voted, else a roulette over the tied)
+--   is sent with its times, and at its startsAt the match starts on the winner (the other maps go back). A player who
+--   leaves (/leave, the game) takes their vote with them ({} to them); nobody real left, the server closing or a
+--   restart ahead cancels it (maps and bots back). A single free map is chosen at once.
 -- * A match: matchId "match:<GUID>"; each player's squishy is the equipped one (validated, else the starter); the
 --   fighter is CombatService's with isAlive = the character is alive AND MatchRules says the player is standing, side
 --   "A" in FFA, Red "A" / Blue "B" in TDM. The MatchPort (buildPort: ffa = true, teams in TDM, the map's Bounds only,
@@ -157,6 +167,7 @@ local MatchFoundRoster = require(Logic.MatchFoundRoster)
 local MatchRewards = require(Logic.MatchRewards)
 local MatchRules = require(Logic.MatchRules)
 local MatchSpawns = require(Logic.MatchSpawns)
+local MatchVote = require(Logic.MatchVote)
 local PowerUpRules = require(Logic.PowerUpRules)
 local Services = script.Parent
 local AbilityService = require(Services.AbilityService)
@@ -315,7 +326,22 @@ type Match = {
 	standings: { Types.MatchStandingView }?, -- built once, with the outcome
 	rewards: { [number]: Types.MatchRewardView }, -- Match HUD M2: userId -> what the end paid them (outcome.mine)
 	bots: number, -- match bots: how many bots it started with
-	positionAt: number?, -- round 2 of the match flow: the teleports wait until then (the lobby's MATCH FOUND show)
+}
+
+-- Round 3 of the match flow: a queue match waiting through the MATCH FOUND show and the map vote (see the header).
+type Pending = {
+	id: string, -- the matchId it starts with
+	modeId: string,
+	refs: { any }, -- the players, then the bots (startMatch's order)
+	teams: { [any]: string }, -- TDM: ref -> team
+	bots: { any },
+	maps: { MapRecord }, -- the cards, in Vote.mapOrder
+	votes: MatchVote.Order,
+	opensAt: number,
+	closesAt: number,
+	botAt: { number | false }, -- bots[i] votes then (server time); false = never, or done
+	lastVoteAt: { [number]: number },
+	result: Types.MatchVoteResultView?,
 }
 
 type Ticket = { player: any, userId: number, joinedAt: number }
@@ -360,6 +386,8 @@ local POSITIONING = Config.Duel.Positioning
 local REMOTE_STATE = "MatchState"
 local REMOTE_QUEUE = "MatchQueue"
 local REMOTE_FOUND = "MatchFound"
+local REMOTE_VOTE_STATE = "MatchVoteState"
+local REMOTE_VOTE = "MatchVote"
 local REMOTE_JOIN = "MatchJoin"
 local REMOTE_LEAVE = "MatchLeave"
 local ATTR_MATCH_ID = "SD_MatchId"
@@ -434,6 +462,10 @@ local matches: { [string]: Match } = {}
 local matchOfUser: { [number]: Match } = {}
 local queues: { [string]: { Ticket } } = {}
 local gathers: { [string]: Gather } = {}
+local pendings: { [string]: Pending } = {} -- round 3 of the match flow: id -> its map vote
+local pendingOfUser: { [number]: Pending } = {} -- its players and bots
+-- Round 3's helpers live in one table: this chunk is near Luau's 200-local limit. Filled in "Private: the map vote".
+local Pend = {}
 local returnPointUsedAt: { [number]: number } = {} -- ReturnPoints index -> clock() of its last use
 local heartbeat: RBXScriptConnection? = nil
 local defaultDeps: () -> Deps
@@ -526,7 +558,7 @@ end
 
 local function inAnyMatch(ref: any): boolean
 	local userId = userIdOf(ref)
-	if userId ~= nil and matchOfUser[userId] ~= nil then
+	if userId ~= nil and (matchOfUser[userId] ~= nil or pendingOfUser[userId] ~= nil) then
 		return true
 	end
 	local matchId, phase = attributeOf(ref, ATTR_MATCH_ID), attributeOf(ref, ATTR_PHASE)
@@ -1793,11 +1825,20 @@ local function buildPort(match: Match): MatchPort
 	return port
 end
 
+-- The squishy a player (or bot) plays: the equipped one when valid, else the starter.
+local function squishyOf(ref: any): string
+	local id = if isBotRef(ref) then ref.squishyId else getDeps().equipped(ref) -- match bots: their own random squishy
+	return if Catalog.isValidId(id) then id :: string else Catalog.starterId()
+end
+
+local function displayNameOf(ref: any, userId: number): string
+	return if type(ref.DisplayName) == "string" then ref.DisplayName else tostring(userId)
+end
+
 local function newParticipant(match: Match, ref: any, team: string?, now: number): Participant
 	local d = getDeps()
 	local userId = userIdOf(ref) :: number
-	local id = if isBotRef(ref) then ref.squishyId else d.equipped(ref) -- match bots: their own random squishy
-	local squishyId = if Catalog.isValidId(id) then id :: string else Catalog.starterId()
+	local squishyId = squishyOf(ref)
 	local side: Types.Side = "A"
 	if team ~= nil and team == cfg().teamNames[2] then
 		side = SIDES[2]
@@ -1821,7 +1862,7 @@ local function newParticipant(match: Match, ref: any, team: string?, now: number
 	p = {
 		ref = ref,
 		userId = userId,
-		displayName = if type(ref.DisplayName) == "string" then ref.DisplayName else tostring(userId),
+		displayName = displayNameOf(ref, userId),
 		squishyId = squishyId,
 		team = team,
 		side = side,
@@ -2062,11 +2103,6 @@ local function tickMatch(match: Match, now: number)
 		stepMatch(match, { kind = "empty" }, now) -- match bots: nobody real is left to play with them
 		return
 	end
-	local positionAt = match.positionAt
-	if positionAt and now >= positionAt then
-		match.positionAt = nil -- round 2 of the match flow: the lobby's MATCH FOUND show is over
-		positionAll(match)
-	end
 	checkPresence(match)
 	sampleStorm(match, now)
 	if not match.closed then
@@ -2099,7 +2135,9 @@ end
 local function ensureHeartbeat()
 	if heartbeat == nil and getDeps().heartbeat then
 		heartbeat = RunService.Heartbeat:Connect(function()
-			tickMatches(getDeps().now())
+			local now = getDeps().now()
+			Pend.tick(now) -- round 3 of the match flow: the map votes
+			tickMatches(now)
 		end)
 	end
 end
@@ -2180,30 +2218,33 @@ local function sendQueue(ref: any, view: Types.MatchQueueView)
 end
 
 -- Round 2 of the match flow (2026-10-25): the lobby's MATCH FOUND show (MatchFound, Logic/MatchFoundRoster) for every
--- player of a match the queue just started: each one's name, squishy, Grip level and team (1 / 2 in Team Deathmatch).
-local function sendFound(match: Match)
+-- player of a match (round 3: a map vote) the queue just started: each one's name, squishy, Grip level and team (1 / 2
+-- in Team Deathmatch). `refs`: the players, then the bots; `teams`: ref -> team.
+local function sendFound(modeId: string, refs: { any }, teams: { [any]: string })
 	local d = getDeps()
 	local entries: { MatchFoundRoster.Entry } = {}
-	for _, p in match.list do
+	for _, ref in refs do
+		local userId = userIdOf(ref) :: number
 		local level: number? = nil
-		if d.gripLevel and not isBotRef(p.ref) then
-			local ok, value = try(d.gripLevel, p.ref)
+		if d.gripLevel and not isBotRef(ref) then
+			local ok, value = try(d.gripLevel, ref)
 			level = if ok and type(value) == "number" then value else nil
 		end
+		local team = teams[ref]
 		table.insert(entries, {
-			userId = p.userId,
-			name = p.displayName,
-			squishy = p.squishyId,
+			userId = userId,
+			name = displayNameOf(ref, userId),
+			squishy = squishyOf(ref),
 			level = level,
-			team = if p.team then table.find(cfg().teamNames, p.team) else nil,
+			team = if team then table.find(cfg().teamNames, team) else nil,
 		})
 	end
-	local view = MatchFoundRoster.build(match.modeId :: any, entries, d.rng)
-	for _, p in match.list do
-		if d.isPlayer(p.ref) then
-			local ok, err = try(d.fire, REMOTE_FOUND, p.ref, view)
+	local view = MatchFoundRoster.build(modeId :: any, entries, d.rng)
+	for _, ref in refs do
+		if d.isPlayer(ref) then
+			local ok, err = try(d.fire, REMOTE_FOUND, ref, view)
 			if not ok then
-				log:warn(`MatchFound to user {p.userId} failed:`, err)
+				log:warn(`MatchFound to user {userIdOf(ref)} failed:`, err)
 			end
 		end
 	end
@@ -2331,21 +2372,37 @@ local function startFromQueue(modeId: string, now: number, gather: Gather)
 		table.insert(refs, queue[index].player)
 	end
 	local matchId = newMatchId()
-	local map = d.maps.acquire(modeId, matchId)
-	if map == nil then
+	-- Round 3 of the match flow: the map vote's cards, up to Vote.maxChoices free maps (one without the vote).
+	local vote = cfg().Vote
+	local maps: { MapRecord } = {}
+	for _ = 1, if vote.enabled then vote.maxChoices else 1 do
+		local map = d.maps.acquire(modeId, matchId)
+		if map == nil then
+			break
+		end
+		table.insert(maps, map)
+	end
+	if #maps == 0 then
 		if not gather.waitingMapSent then
 			gather.waitingMapSent = true
 			notifyQueue(modeId, CODE.waitingMap, { mode = modeName(modeId) }, "info")
 		end
 		return
 	end
-	-- Match bots: the empty slots, up to maxPlayers (taken now, no yield; startMatch follows at once).
+	-- Match bots: the empty slots, up to maxPlayers (taken now, no yield; startMatch / Pend.start follows at once).
 	local bots = takeBots(modeId, mode.maxPlayers - #refs)
 	table.move(bots, 1, #bots, #refs + 1, refs)
-	local started, why = MatchService.startMatch(refs, modeId, map, matchId, cfg().foundHoldSeconds)
-	releaseBots(bots)
+	local started, why
+	if vote.enabled then
+		started, why = Pend.start(modeId, matchId, refs, maps, now)
+	else
+		started, why = MatchService.startMatch(refs, modeId, maps[1], matchId)
+	end
+	releaseBots(bots) -- the ones it did not take
 	if started == nil then
-		try(d.maps.release, map)
+		for _, map in maps do
+			try(d.maps.release, map)
+		end
 		log:warn(`could not start {modeId} from the queue: {tostring(why)}`)
 		gather.endsAt = now + cfg().gatherSeconds -- try again after another gather, not every tick
 		return
@@ -2371,9 +2428,18 @@ local function startFromQueue(modeId: string, now: number, gather: Gather)
 	end
 	gathers[modeId] = nil
 	syncQueue(modeId) -- whoever did not fit keeps waiting
+	local pending = pendings[started]
 	local match = matches[started]
-	if match then
-		sendFound(match)
+	if pending then
+		sendFound(modeId, pending.refs, pending.teams)
+		Pend.send(pending) -- round 3: the vote's first view
+	elseif match then
+		local list, teams = {}, {}
+		for _, p in match.list do
+			table.insert(list, p.ref)
+			teams[p.ref] = p.team
+		end
+		sendFound(modeId, list, teams)
 	end
 end
 
@@ -2424,6 +2490,303 @@ local function shuffle(list: { any }, rng: Random)
 	end
 end
 
+-- Private: the map vote (round 3 of the match flow, see the header) -----------------------------------------------------
+
+-- Who of `refs` may play a new match of `mode`: real players and match bots, once each, in no match, up to maxPlayers
+-- (the bots kept apart, after the players).
+function Pend.entrants(refs: { any }, mode: any): ({ any }, { any })
+	local d = getDeps()
+	local list: { any } = {}
+	local bots: { any } = {}
+	local seen: { [number]: boolean } = {}
+	for _, ref in refs do
+		local userId = userIdOf(ref)
+		if
+			userId ~= nil
+			and not seen[userId]
+			and (d.isPlayer(ref) or isBotRef(ref))
+			and not inAnyMatch(ref)
+			and #list + #bots < mode.maxPlayers
+		then
+			seen[userId] = true
+			table.insert(if isBotRef(ref) then bots else list, ref)
+		end
+	end
+	return list, bots
+end
+
+-- TDM: the players shuffled, then Red, Blue, Red, ... (friends together: later), then each bot to the smaller team
+-- (MatchBotRules.dealTeams). Returns the players then the bots, and ref -> team (empty outside TDM).
+function Pend.deal(list: { any }, bots: { any }, mode: any): ({ any }, { [any]: string })
+	local teams: { [any]: string } = {}
+	if mode.teams then
+		shuffle(list, getDeps().rng)
+	end
+	local humans = #list
+	table.move(bots, 1, #bots, humans + 1, list)
+	if mode.teams then
+		for index, team in MatchBotRules.dealTeams(humans, #bots, cfg().teamNames) do
+			teams[list[index]] = team
+		end
+	end
+	return list, teams
+end
+
+-- The players still in `pending` (its bots get nothing).
+function Pend.humans(pending: Pending): { any }
+	local out: { any } = {}
+	for _, ref in pending.refs do
+		if not isBotRef(ref) and pendingOfUser[userIdOf(ref) :: number] == pending then
+			table.insert(out, ref)
+		end
+	end
+	return out
+end
+
+function Pend.sendTo(ref: any, view: Types.MatchVoteView)
+	local d = getDeps()
+	if not d.isPlayer(ref) then
+		return
+	end
+	local ok, err = try(d.fire, REMOTE_VOTE_STATE, ref, view)
+	if not ok then
+		log:warn(`MatchVoteState to user {userIdOf(ref)} failed:`, err)
+	end
+end
+
+-- Everyone still in `pending` gets its view.
+function Pend.send(pending: Pending)
+	local maps: { string } = {}
+	local votes: { { number } } = {}
+	for index, map in pending.maps do
+		maps[index] = map.name
+		votes[index] = table.clone(pending.votes[index])
+	end
+	local view: Types.MatchVoteView = {
+		id = pending.id,
+		mode = pending.modeId :: any,
+		maps = maps,
+		opensAt = pending.opensAt,
+		closesAt = pending.closesAt,
+		votes = votes,
+		result = pending.result,
+	}
+	for _, ref in Pend.humans(pending) do
+		Pend.sendTo(ref, view)
+	end
+end
+
+-- The queue's players and bots (`refs`, on `maps`, acquired under `id`) become a vote: the teams dealt, the cards in
+-- Vote.mapOrder, the bots' vote times drawn, the players held (SD_MatchId = id). Returns (id, nil) or (nil, why).
+function Pend.start(modeId: string, id: string, refs: { any }, maps: { MapRecord }, now: number): (string?, string?)
+	local d = getDeps()
+	local c = cfg()
+	local mode = c.Modes[modeId]
+	if d.closing() then
+		return nil, "closing"
+	end
+	local list, bots = Pend.entrants(refs, mode)
+	if #list + #bots < c.minPlayers or #list == 0 then
+		return nil, "notEnoughPlayers" -- (bots alone never play)
+	end
+	local players = #list
+	local ordered, teams = Pend.deal(list, bots, mode)
+	local vote = c.Vote
+	local order = vote.mapOrder
+	table.sort(maps, function(a: MapRecord, b: MapRecord): boolean
+		local ra, rb = table.find(order, a.name) or math.huge, table.find(order, b.name) or math.huge
+		if ra ~= rb then
+			return ra < rb
+		end
+		return a.name < b.name
+	end)
+	local opensAt = now + vote.introSeconds
+	local pending: Pending = {
+		id = id,
+		modeId = modeId,
+		refs = ordered,
+		teams = teams,
+		bots = bots,
+		maps = maps,
+		votes = {},
+		opensAt = opensAt,
+		closesAt = opensAt + vote.seconds,
+		botAt = {},
+		lastVoteAt = {},
+		result = nil,
+	}
+	for index in maps do
+		pending.votes[index] = {}
+	end
+	for index, at in MatchVote.botTimes(#bots, vote.seconds * 1000, d.rng, vote) do
+		pending.botAt[index] = if at == false then false else opensAt + at / 1000
+	end
+	if #maps < 2 then
+		Pend.decide(pending, opensAt) -- a single free map: chosen as the cards open
+	end
+	pendings[id] = pending
+	for index, ref in ordered do
+		pendingOfUser[userIdOf(ref) :: number] = pending
+		if index <= players then
+			setAttribute(ref, ATTR_MATCH_ID, id)
+		end
+	end
+	ensureHeartbeat()
+	log:info(`vote {id} started: {modeId} on {#maps} maps with {#ordered} players`)
+	return id, nil
+end
+
+-- The result now (Logic/MatchVote), its times on the server clock.
+function Pend.decide(pending: Pending, now: number)
+	local vote = cfg().Vote
+	local r = MatchVote.result(pending.votes, #pending.maps, getDeps().rng, vote)
+	local roulette: { { choice: number, at: number } } = {}
+	for _, step in r.roulette do
+		table.insert(roulette, { choice = step.choice, at = now + step.atMs / 1000 })
+	end
+	local revealAt = now + r.revealMs / 1000
+	pending.result = {
+		winner = r.winner,
+		kind = r.kind,
+		roulette = roulette,
+		at = now,
+		revealAt = revealAt,
+		startsAt = revealAt + vote.startAfterRevealSeconds,
+	}
+end
+
+-- Ends `pending` (its players and bots are in no vote any more, SD_MatchId ""). Returns its players.
+function Pend.forget(pending: Pending): { any }
+	local humans = Pend.humans(pending)
+	pendings[pending.id] = nil
+	for _, ref in pending.refs do
+		local userId = userIdOf(ref) :: number
+		if pendingOfUser[userId] == pending then
+			pendingOfUser[userId] = nil
+		end
+	end
+	for _, ref in humans do
+		setAttribute(ref, ATTR_MATCH_ID, "")
+	end
+	return humans
+end
+
+-- Called off: the maps and the bots go back; its players get {} (and the `code` toast).
+function Pend.cancel(pending: Pending, code: string?)
+	local d = getDeps()
+	for _, ref in Pend.forget(pending) do
+		Pend.sendTo(ref, {})
+		if code ~= nil then
+			notify(ref, code, nil, "warn")
+		end
+	end
+	for _, map in pending.maps do
+		try(d.maps.release, map)
+	end
+	releaseBots(pending.bots)
+end
+
+function Pend.cancelAll(code: string?)
+	for _, pending in table.clone(pendings) do
+		Pend.cancel(pending, code)
+	end
+end
+
+-- The result's startsAt: the match starts on the winner with the teams MATCH FOUND showed; the other maps and the bots
+-- it did not take go back. Its players get {} after the match's first view.
+function Pend.begin(pending: Pending)
+	local d = getDeps()
+	local result = pending.result :: Types.MatchVoteResultView
+	local humans = Pend.forget(pending)
+	local winner = pending.maps[result.winner]
+	for _, map in pending.maps do
+		if map ~= winner then
+			try(d.maps.release, map)
+		end
+	end
+	local started, why = MatchService.startMatch(pending.refs, pending.modeId, winner, pending.id, pending.teams)
+	releaseBots(pending.bots)
+	if started == nil then
+		try(d.maps.release, winner)
+		log:warn(`vote {pending.id}: could not start {pending.modeId}: {tostring(why)}`)
+	end
+	for _, ref in humans do
+		Pend.sendTo(ref, {})
+		if started == nil then
+			notify(ref, if why == "closing" then CODE.closing else CODE.voidError, nil, "warn")
+		end
+	end
+end
+
+-- `ref` is out of `pending` (/leave, `inGame`; or gone from the game): its vote goes with it and the others see that;
+-- nobody real left calls the vote off.
+function Pend.leave(pending: Pending, ref: any, inGame: boolean)
+	local userId = userIdOf(ref) :: number
+	pendingOfUser[userId] = nil
+	local at = table.find(pending.refs, ref)
+	if at then
+		table.remove(pending.refs, at)
+	end
+	pending.teams[ref] = nil
+	if pending.result == nil then
+		for _, list in pending.votes do
+			local index = table.find(list, userId)
+			if index then
+				table.remove(list, index)
+			end
+		end
+	end
+	if inGame then
+		setAttribute(ref, ATTR_MATCH_ID, "")
+		Pend.sendTo(ref, {})
+	end
+	if #Pend.humans(pending) == 0 then
+		Pend.cancel(pending)
+	elseif pending.result == nil then
+		Pend.send(pending)
+	end
+end
+
+-- One step of `pending` at `now`: the bots' due votes, the result endDelaySeconds after the close, the start.
+function Pend.tickOne(pending: Pending, now: number)
+	local d = getDeps()
+	local vote = cfg().Vote
+	local result = pending.result
+	if result then
+		if now >= result.startsAt then
+			Pend.begin(pending)
+		end
+		return
+	end
+	local changed = false
+	for index, at in pending.botAt do
+		if at ~= false and now >= at then
+			pending.botAt[index] = false
+			local choice = MatchVote.botPick(pending.votes, #pending.maps, d.rng, vote)
+			changed = MatchVote.cast(pending.votes, userIdOf(pending.bots[index]) :: number, choice) or changed
+		end
+	end
+	if now >= pending.closesAt + vote.endDelaySeconds then
+		Pend.decide(pending, now)
+		changed = true
+	end
+	if changed then
+		Pend.send(pending)
+	end
+end
+
+function Pend.tick(now: number)
+	for _, pending in table.clone(pendings) do
+		if pendings[pending.id] == pending then
+			local ok, err = try(Pend.tickOne, pending, now)
+			if not ok then
+				log:error(`vote {pending.id} tick failed; calling it off:`, err)
+				try(Pend.cancel, pending, CODE.voidError)
+			end
+		end
+	end
+end
+
 -- Public: queues ---------------------------------------------------------------------------------------------------------
 
 -- MatchJoin (D6): queues the player for `mode` ("ffa" | "tdm"). Returns (true, nil) or (false, the toast code).
@@ -2467,6 +2830,13 @@ function MatchService.leave(player: any): boolean
 		tickQueues(getDeps().now())
 		return true
 	end
+	local userId = userIdOf(player)
+	local pending = if userId then pendingOfUser[userId] else nil
+	if pending then
+		Pend.leave(pending, player, true) -- round 3 of the match flow: out of the map vote, back to the lobby's HUD
+		notify(player, CODE.youLeft, nil, "info")
+		return true
+	end
 	local match, p = participantOf(player)
 	if match and p then
 		if not match.returning then -- the return is already bringing them back
@@ -2491,6 +2861,35 @@ function MatchService.leave(player: any): boolean
 	return false
 end
 
+-- MatchVote (round 3 of the match flow): the player's vote for card `choice` of their match's map vote. Taken only from
+-- a player of a vote with no result yet, open (from Vote.earlySeconds before opensAt until closesAt), for a whole card
+-- number, at most once per Vote.minIntervalSeconds. True when the vote moved (everyone in it gets the new view).
+function MatchService.vote(player: any, choice: unknown): boolean
+	local d = getDeps()
+	local userId = userIdOf(player)
+	local pending = if userId then pendingOfUser[userId] else nil
+	if userId == nil or pending == nil or pending.result ~= nil or not d.isPlayer(player) then
+		return false
+	end
+	if type(choice) ~= "number" or choice % 1 ~= 0 or choice < 1 or choice > #pending.maps then
+		return false -- (NaN and ±inf fail `% 1 ~= 0`)
+	end
+	local vote = cfg().Vote
+	local now = d.now()
+	local last = pending.lastVoteAt[userId]
+	if now < pending.opensAt - vote.earlySeconds or now >= pending.closesAt then
+		return false
+	elseif last ~= nil and now - last < vote.minIntervalSeconds then
+		return false
+	end
+	pending.lastVoteAt[userId] = now
+	if not MatchVote.cast(pending.votes, userId, choice) then
+		return false
+	end
+	Pend.send(pending)
+	return true
+end
+
 -- The mode the player is queued for, or nil.
 function MatchService.queued(player: any): string?
 	local modeId = ticketOf(player)
@@ -2505,13 +2904,14 @@ end
 
 -- Starts a match of `modeId` with these players (the queue's, or a Studio call) and match bots (at least one real
 -- player). `map` is the one the caller acquired (else one is acquired here). Returns (matchId, nil) or (nil, why).
--- Round 2 of the match flow: with `holdSeconds` (the queue's: Config.Match.foundHoldSeconds) the teleports wait that long.
+-- Round 3 of the match flow: `teams` (ref -> team) are the ones a map vote dealt at its start (MATCH FOUND showed
+-- them; `refs` then hold the players, then the bots); without them the teams are dealt here.
 function MatchService.startMatch(
 	refs: { any },
 	modeId: string,
 	map: any?,
 	matchId: string?,
-	holdSeconds: number?
+	teams: { [any]: string }?
 ): (string?, string?)
 	local d = getDeps()
 	local c = cfg()
@@ -2522,22 +2922,7 @@ function MatchService.startMatch(
 	if d.closing() then
 		return nil, "closing"
 	end
-	local list: { any } = {}
-	local bots: { any } = {} -- match bots: kept apart, after the players
-	local seen: { [number]: boolean } = {}
-	for _, ref in refs do
-		local userId = userIdOf(ref)
-		if
-			userId ~= nil
-			and not seen[userId]
-			and (d.isPlayer(ref) or isBotRef(ref))
-			and not inAnyMatch(ref)
-			and #list + #bots < mode.maxPlayers
-		then
-			seen[userId] = true
-			table.insert(if isBotRef(ref) then bots else list, ref)
-		end
-	end
+	local list, bots = Pend.entrants(refs, mode) -- match bots: kept apart, after the players
 	if #list + #bots < c.minPlayers or #list == 0 then
 		return nil, "notEnoughPlayers" -- (bots alone never play)
 	end
@@ -2546,18 +2931,12 @@ function MatchService.startMatch(
 	if useMap == nil then
 		return nil, "noMap"
 	end
-
-	-- TDM: shuffled, then Red, Blue, Red, ... (friends together: later). Match bots: then each to the smaller team.
-	local teams: { [any]: string } = {}
-	if mode.teams then
-		shuffle(list, d.rng)
-	end
-	local humans = #list
-	table.move(bots, 1, #bots, humans + 1, list)
-	if mode.teams then
-		for index, team in MatchBotRules.dealTeams(humans, #bots, c.teamNames) do
-			teams[list[index]] = team
-		end
+	local teamOf: { [any]: string }
+	if teams then
+		teamOf = teams
+		table.move(bots, 1, #bots, #list + 1, list)
+	else
+		list, teamOf = Pend.deal(list, bots, mode)
 	end
 	local now = d.now()
 	local match: Match = {
@@ -2592,7 +2971,7 @@ function MatchService.startMatch(
 	local built, why = try(function()
 		local entrants: { MatchRules.Entrant } = {}
 		for _, ref in list do
-			local p = newParticipant(match, ref, teams[ref], now)
+			local p = newParticipant(match, ref, teamOf[ref], now)
 			table.insert(match.list, p)
 			match.byUserId[p.userId] = p
 			table.insert(entrants, { userId = p.userId, team = p.team, isBot = isBotRef(ref) })
@@ -2627,11 +3006,7 @@ function MatchService.startMatch(
 	sendState(match)
 	ensureHeartbeat()
 	log:info(`match {id} started: {modeId} on {useMap.code} with {#match.list} players`)
-	if holdSeconds and holdSeconds > 0 then
-		match.positionAt = now + holdSeconds -- round 2 of the match flow: tickMatch teleports after the lobby's show
-	else
-		positionAll(match)
-	end
+	positionAll(match)
 	return id, nil
 end
 
@@ -2692,6 +3067,7 @@ end
 
 -- Ends every match now: "shutdown" (BindToClose, a restart) voids them; any other reason voids them as an error.
 function MatchService.voidAll(reason: string?)
+	Pend.cancelAll(nil) -- round 3 of the match flow: the map votes too (no match yet)
 	local kind = if reason == "shutdown" then "shutdown" else "error"
 	for _, match in matchList() do
 		local ok, err = try(stepMatch, match, { kind = kind })
@@ -2711,6 +3087,7 @@ end
 -- that can't end before the restart (maxRemaining: its longest remaining time, overtime and Result included) is voided.
 function MatchService.onRestartScheduled()
 	clearQueues(CODE.closing)
+	Pend.cancelAll(CODE.closing) -- round 3 of the match flow: a map vote's match would start too late
 	local d = getDeps()
 	local now = d.now()
 	for _, match in matchList() do
@@ -2728,6 +3105,7 @@ end
 function MatchService.tick(now: number?)
 	local t = if now ~= nil then now else getDeps().now()
 	tickQueues(t)
+	Pend.tick(t) -- round 3 of the match flow: the map votes
 	tickMatches(t)
 end
 
@@ -2743,6 +3121,8 @@ function MatchService.useDeps(newDeps: Deps?)
 	matchOfUser = {}
 	queues = {}
 	gathers = {}
+	pendings = {}
+	pendingOfUser = {}
 	returnPointUsedAt = {}
 end
 
@@ -2876,6 +3256,9 @@ function MatchService.init()
 	NetService.on(REMOTE_LEAVE, function(player: Player)
 		MatchService.leave(player)
 	end)
+	NetService.on(REMOTE_VOTE, function(player: Player, choice: any)
+		MatchService.vote(player, choice)
+	end)
 	QueueService.Joined:connect(function(player: any)
 		MatchService.onDuelQueueJoined(player)
 	end)
@@ -2907,6 +3290,10 @@ end
 -- takes the change).
 function MatchService.playerRemoving(player: Player)
 	dropTicket(player, nil)
+	local pending = pendingOfUser[player.UserId]
+	if pending then
+		Pend.leave(pending, player, false) -- round 3 of the match flow: their vote goes with them
+	end
 	local match, p = participantOf(player)
 	if match and p then
 		local atStake = streakAtStake(match)
@@ -2936,6 +3323,7 @@ end
 
 -- Not called by the bootstrap; used by leak checks.
 function MatchService.destroy()
+	Pend.cancelAll(nil)
 	for _, match in matchList() do
 		safeClose(match)
 	end

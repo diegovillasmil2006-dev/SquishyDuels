@@ -140,6 +140,16 @@ return function(t: Context)
 		expect.equal(#root:GetDescendants() > 100, true)
 		local you = row:FindFirstChild("You", true)
 		expect.truthy(you ~= nil) -- your tile wears YOU
+		-- Round 3: the map vote's views come in (the swap itself runs on the Scheduler) and {} ends it.
+		show:setVote({
+			id = "match:x",
+			mode = "tdm",
+			maps = { "ToyBoxClash" },
+			opensAt = 1,
+			closesAt = 11,
+			votes = { {} },
+		})
+		show:setVote({})
 		show:close()
 		show:close()
 		expect.equal(root.Parent, nil)

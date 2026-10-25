@@ -105,6 +105,8 @@ local Net = {
 		-- bucket only stops floods.
 		MatchJoin = { rate = 1, burst = 3 },
 		MatchLeave = { rate = 1, burst = 3 },
+		-- Round 3 of the match flow (2026-10-25): a map vote's card taps (MatchService.vote keeps them 0.2 s apart).
+		MatchVote = { rate = 4, burst = 6 },
 	} :: { [string]: RemoteRate },
 
 	-- Per-player cap over all C->S remotes together (§2.7 step 2). Burst 80 (was 40): it holds SqueezeRequest's

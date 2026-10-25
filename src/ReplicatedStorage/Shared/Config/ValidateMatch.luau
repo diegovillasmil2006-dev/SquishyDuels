@@ -131,13 +131,42 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 
 		-- FFA/TDM v1 (2026-10-15): the in-server queue, the maps, the spawn spots, the storm's sampling and test wall.
 		expectPositive(problems, `{p}.gatherSeconds`, m.gatherSeconds)
-		-- Round 2 of the match flow (2026-10-25): the MATCH FOUND show's wait, inside the arrival wait.
-		expectNonNegative(problems, `{p}.foundHoldSeconds`, m.foundHoldSeconds)
-		expect(
-			problems,
-			isNumber(m.foundHoldSeconds) and isNumber(m.waitSeconds) and m.foundHoldSeconds < m.waitSeconds,
-			`{p}.foundHoldSeconds must be less than waitSeconds`
-		)
+		-- Round 3 of the match flow (2026-10-25): the map vote's timings and shares.
+		local vote = m.Vote
+		expect(problems, type(vote) == "table", `{p}.Vote must be a table (got {show(vote)})`)
+		if type(vote) == "table" then
+			expectBoolean(problems, `{p}.Vote.enabled`, vote.enabled)
+			expectCount(problems, `{p}.Vote.maxChoices`, vote.maxChoices, 1)
+			expect(problems, type(vote.mapOrder) == "table", `{p}.Vote.mapOrder must be a list of map names`)
+			if type(vote.mapOrder) == "table" then
+				for index, name in vote.mapOrder do
+					expectText(problems, `{p}.Vote.mapOrder[{index}]`, name)
+				end
+			end
+			for _, name in { "introSeconds", "seconds", "startAfterRevealSeconds", "rouletteStepMs" } do
+				expectPositive(problems, `{p}.Vote.{name}`, vote[name])
+			end
+			for _, name in
+				{
+					"earlySeconds",
+					"minIntervalSeconds",
+					"endDelaySeconds",
+					"chosenRevealMs",
+					"rouletteFirstMs",
+					"rouletteGrowMs",
+					"rouletteExtra",
+					"rouletteRevealMs",
+					"botFirstMs",
+					"botMinSpanMs",
+					"botSpanMarginMs",
+				}
+			do
+				expectNonNegative(problems, `{p}.Vote.{name}`, vote[name])
+			end
+			for _, name in { "botSkipShare", "botFollowShare" } do
+				expectBetween(problems, `{p}.Vote.{name}`, vote[name], 0, 1)
+			end
+		end
 		-- Match HUD M2 (2026-10-16): the match pay switch (it replaced rewardCoins).
 		local rewards = m.Rewards
 		expect(problems, type(rewards) == "table", `{p}.Rewards must be a table (got {show(rewards)})`)

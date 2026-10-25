@@ -328,6 +328,26 @@ local Strings = {
 			names = { ["1v1"] = "DUEL 1v1", tdm = "TEAM DEATHMATCH", ffa = "FREE FOR ALL" },
 			chips = { ["1v1"] = "1v1", tdm = "6v6", ffa = "SOLO" },
 			you = "YOU",
+			-- Round 3 of the match flow (LOBBY HUD L:1029, L:1116-1119, L:714-715, L:1145): the map vote's lines and the
+			-- teleport toast; each map's name by its Workspace.DuelMaps model (uploads/duel-maps.js).
+			vote = {
+				sub = "VOTE FOR A MAP",
+				chosen = "MAP CHOSEN!",
+				tie = "IT'S A TIE!",
+				random = "RANDOM PICK!",
+				mine = "YOUR VOTE",
+				go = "LET'S GO!",
+				teleport = "Teleporting to {map}…",
+				arena = "the arena",
+				maps = {
+					ToyBoxClash = "Toy Box Clash",
+					SprinkleFactory = "Sprinkle Factory",
+					BubbleBathBay = "Bubble Bath Bay",
+					JellyArcade = "Jelly Arcade",
+					SundaePlaza = "Sundae Plaza",
+					PillowFortPark = "Pillow Fort Park",
+				},
+			},
 		},
 		-- UI FINAL R4: the DUEL mode picker for testers (Diego's newer file N:710-711; Config.Match.picker*); its short
 		-- names when there is no room for the full ones (the design's MODES.*.tab, N:711-712, its search bar's chip).

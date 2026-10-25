@@ -955,6 +955,25 @@ local SLOTS: { AssetSlot } = {
 	),
 	soundSlot("match.found.chime", "UI", false, nil, "L:1043 chime(): two bell notes; file 'match_found_chime.wav'"),
 	soundSlot("match.found.vs", "UI", false, nil, "L:1045 vsSlam(): VS slams in; file 'match_found_vs.wav'"),
+	-- The map vote (round 3 of the match flow, 2026-10-25; LOBBY HUD L:1059-1146, hud-lib.js L:137-269): rendered the
+	-- same way (the Desktop folder "Squishy Duels sounds - MAP VOTE"); look-alikes meanwhile (Config.UI.MatchFound.vote).
+	soundSlot("match.vote.open", "UI", false, nil, "lib:139 open(): the vote opens; file 'vote_open.wav'"),
+	soundSlot("match.vote.card", "UI", false, nil, "lib:137 card(): a card comes in; file 'vote_card.wav'"),
+	soundSlot("match.vote.tick", "UI", false, nil, "lib:265 clockTick(): a second; file 'vote_tick.wav'"),
+	soundSlot(
+		"match.vote.tickUrgent",
+		"UI",
+		false,
+		nil,
+		"lib:266 clockTick(true): the last 3 seconds; file 'vote_tick_urgent.wav'"
+	),
+	soundSlot("match.vote.toss", "UI", false, nil, "lib:257 toss(): a vote flies; file 'vote_toss.wav'"),
+	soundSlot("match.vote.land", "UI", false, nil, "lib:258 voteLand(1): a vote lands; file 'vote_land.wav'"),
+	soundSlot("match.vote.landMine", "UI", false, nil, "lib:258 voteLand(1, true): yours; file 'vote_land_mine.wav'"),
+	soundSlot("match.vote.stamp", "UI", false, nil, "lib:204 stamp(): the vote ends; file 'vote_stamp.wav'"),
+	soundSlot("match.vote.roulette", "UI", false, nil, "lib:269 roulette(0): a step; file 'vote_roulette.wav'"),
+	soundSlot("match.vote.fanfare", "UI", false, nil, "lib:225 fanfare(): the winner; file 'vote_fanfare.wav'"),
+	soundSlot("match.vote.burst", "UI", false, nil, "lib:165 burst(): the winner's burst; file 'vote_burst.wav'"),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1233,6 +1252,29 @@ local SLOTS: { AssetSlot } = {
 	lobbyHud("img.mf.tailL", 127261335234408, "the ribbon's left tail, 140 x 132 at 3x (L:642)", MF_DATE),
 	lobbyHud("img.mf.tailR", 133136118825485, "the ribbon's right tail, mirrored (L:643)", MF_DATE),
 	lobbyHud("img.mf.vs", 123159127346155, "the VS badge, 84 + its 6 px lip at (8, 8) of 100 x 106, 3x (L:724)", MF_DATE),
+	-- The map vote (2026-10-25, round 3 of the match flow; L:665-720, uploads/duel-maps.js): per map its card (372 x
+	-- 292 at (40, 30) of 452 x 400, 2x; name and theme baked in) and its tilted board alone (the same canvas, floating
+	-- in the game); the heads, the tails, the picked card's glow (9-slice) and the timer ring (make_vote_pngs.mjs).
+	lobbyHud("img.vote.card.ToyBoxClash", 105932966405805, "Toy Box Clash's vote card (L:692-705)", MF_DATE),
+	lobbyHud("img.vote.card.SprinkleFactory", 77304576152147, "Sprinkle Factory's vote card", MF_DATE),
+	lobbyHud("img.vote.card.BubbleBathBay", 136447646065798, "Bubble Bath Bay's vote card", MF_DATE),
+	lobbyHud("img.vote.card.JellyArcade", 100815794796934, "Jelly Arcade's vote card", MF_DATE),
+	lobbyHud("img.vote.card.SundaePlaza", 123776143730029, "Sundae Plaza's vote card", MF_DATE),
+	lobbyHud("img.vote.card.PillowFortPark", 82365114163594, "Pillow Fort Park's vote card", MF_DATE),
+	lobbyHud("img.vote.board.ToyBoxClash", 78633610827998, "Toy Box Clash's tilted board (L:697-702)", MF_DATE),
+	lobbyHud("img.vote.board.SprinkleFactory", 71073055064282, "Sprinkle Factory's tilted board", MF_DATE),
+	lobbyHud("img.vote.board.BubbleBathBay", 79335487810788, "Bubble Bath Bay's tilted board", MF_DATE),
+	lobbyHud("img.vote.board.JellyArcade", 71049181512991, "Jelly Arcade's tilted board", MF_DATE),
+	lobbyHud("img.vote.board.SundaePlaza", 138565113660868, "Sundae Plaza's tilted board", MF_DATE),
+	lobbyHud("img.vote.board.PillowFortPark", 117998982297460, "Pillow Fort Park's tilted board", MF_DATE),
+	lobbyHud("img.vote.headTeam", 87176303448390, "the TEAM vote head 600 x 92 at (40, 20) of 680 x 170", MF_DATE),
+	lobbyHud("img.vote.headSolo", 126731794402890, "the FREE FOR ALL vote head, gold (L:669)", MF_DATE),
+	lobbyHud("img.vote.tailRed", 81764687848013, "the TEAM head's left tail, 110 x 104 at 3x (L:667)", MF_DATE),
+	lobbyHud("img.vote.tailBlue", 87772462751888, "the TEAM head's right tail, mirrored (L:668)", MF_DATE),
+	lobbyHud("img.vote.tailPinkL", 123841531224124, "the FREE FOR ALL head's left tail (L:667)", MF_DATE),
+	lobbyHud("img.vote.tailPinkR", 73296263558300, "the FREE FOR ALL head's right tail (L:668)", MF_DATE),
+	lobbyHud("img.vote.glow", 94363789673270, "white radius-40 box and its .6 glow, 9-slice 300 px (L:690)", MF_DATE),
+	lobbyHud("img.vote.ring", 130191315901583, "the timer's white ring, r 25, 7 wide, 76 px at 3x (L:683)", MF_DATE),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

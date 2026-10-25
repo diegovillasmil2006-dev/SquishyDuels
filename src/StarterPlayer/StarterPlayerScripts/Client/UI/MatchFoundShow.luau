@@ -16,6 +16,11 @@
 --   jolt), FREE FOR ALL each tile popping in (with a second run of letter notes and a chime); your tile wears YOU. At 3
 --   s the block flies up (whoosh); the dim, rays and row stay until spec.ready() says the arena is on (the match or duel
 --   past Positioning) or exit.holdMaxS, then fade out and the show ends (onDone).
+-- * Round 3 of the match flow (2026-10-25, the map vote for Team and Free for All, L:1056-1147): with a vote (spec.vote,
+--   or show:setVote later) the block's flight waits for the vote (Config.UI.MatchFound.vote.leadMs before it opens),
+--   then the rays move down and dim, the row moves down and UI/MatchVoteBoard runs the vote on the stage; 3.1 s after
+--   the reveal the whole show fades out growing a little (.42 s ease-in) and spec.toast says where the teleport goes.
+--   A vote that ends early ({}: called off, or you left) fades the show out at once.
 -- * The row (order): DUEL you on the left (red) against the opponent (blue); TEAM the Strawberry half on the left, the
 --   Blueberry half on the right (Config.Match.teamNames), as the waiting bar draws them; FREE FOR ALL you first.
 -- * A tile: the team's (or Free for All slot's) colours (MatchHudFormat.playerLook), the squishy (SquishyImage), the
@@ -46,6 +51,7 @@ local MatchHudFormat = require(script.Parent.MatchHudFormat)
 local SegmentedTabs = require(script.Parent.Components.SegmentedTabs)
 local SquishyImage = require(script.Parent.Components.SquishyImage)
 local Theme = require(script.Parent.Theme)
+local MatchVoteBoard = require(script.Parent.MatchVoteBoard)
 local UiFx = require(script.Parent.UiFx)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
@@ -59,15 +65,21 @@ export type Spec = {
 	layer: ScreenGui, -- Config.UI.MatchFound.layer
 	view: View,
 	you: number, -- the local player's userId
-	play: (key: string, fallback: string) -> (), -- a sound (its look-alike while its own id is missing)
+	play: (key: string, fallback: string, pitch: number?) -> (), -- a sound (its look-alike while its id is missing)
 	fxScale: number?, -- 1 / the effect layer's UI scale (UiFx sizes are its base px)
 	ready: (() -> boolean)?, -- the arena is on: the show may go (default: at once after the flight)
 	onDone: (() -> ())?,
+	-- Round 3 of the match flow: the map vote (Team / Free for All), the vote's tap, the server's clock and the toast.
+	vote: Types.MatchVoteView?,
+	castVote: ((card: number) -> ())?,
+	now: (() -> number)?, -- default Workspace:GetServerTimeNow
+	toast: ((text: string) -> ())?,
 }
 
 export type Show = {
 	root: Frame,
 	close: (self: Show) -> (),
+	setVote: (self: Show, view: Types.MatchVoteView) -> (), -- round 3: every MatchVoteState ({} = over)
 }
 
 -- One tile of the row (order): its player, colours, where it comes in from and when.
@@ -83,6 +95,7 @@ export type Order = { entries: { Entry }, vsAfter: number? }
 -- Constants
 
 local MF = Config.UI.MatchFound
+local VOTE = MF.vote
 local FX = Config.UI.Fx.events.matchFound
 local ROSTER = MF.roster
 local STAGE_W, STAGE_H = MF.stage.width, MF.stage.height
@@ -325,7 +338,7 @@ function MatchFoundShow.play(spec: Spec): Show
 		ZIndex = 2,
 		Parent = root,
 	})
-	Create("UIScale", { Scale = k, Parent = stage })
+	local stageScale: UIScale = Create("UIScale", { Scale = k, Parent = stage })
 	local white: Frame = Create("Frame", {
 		Name = "White",
 		BackgroundColor3 = color(MF.white.color),
@@ -608,6 +621,7 @@ function MatchFoundShow.play(spec: Spec): Show
 	end
 
 	-- The players row (L:722-736).
+	local voters: { [number]: MatchVoteBoard.Voter } = {} -- round 3: each tile, for the map vote's chips
 	local order = MatchFoundShow.order(view, spec.you)
 	local row = clear("Players", {
 		AnchorPoint = Vector2.new(0.5, 0),
@@ -662,6 +676,7 @@ function MatchFoundShow.play(spec: Spec): Show
 		if not Catalog.isValidId(catalogId) then
 			catalogId = Catalog.starterId() -- the server's squishy is always known; an old client's catalog may lag
 		end
+		voters[entry.player.userId] = { tile = holder, colors = colors, squishy = catalogId, team = entry.team }
 		local squishy = SquishyImage.new(catalogId, { size = ROSTER.picPx, parent = holder })
 		squishy.root.AnchorPoint = Vector2.new(0.5, 0.5)
 		squishy.root.Position = UDim2.fromOffset(ROSTER.tile / 2, ROSTER.tile / 2)
@@ -915,6 +930,20 @@ function MatchFoundShow.play(spec: Spec): Show
 		sound(sounds.chimeSolo)
 	end
 
+	-- Round 3 of the match flow: the map vote's state (see the header).
+	local serverNow = spec.now or function(): number
+		return Workspace:GetServerTimeNow()
+	end
+	local voteView: Types.MatchVoteView? = if spec.vote and spec.vote.id ~= nil then spec.vote else nil
+	local voteClosed = false
+	local board: MatchVoteBoard.Board? = nil
+	local exitDue, exited = false, false
+	local elapsed = 0
+	local fading: Tweens.FadeGroup? = nil
+	local fadingViewports: { ViewportFrame } = {}
+	local fadeStart = 0
+	local fadeVote = false
+
 	local handle = {} :: Show
 	handle.root = root
 	local function stop()
@@ -937,6 +966,10 @@ function MatchFoundShow.play(spec: Spec): Show
 		end
 		closed = true
 		stop()
+		local current = board
+		if current then
+			current:destroy()
+		end
 		root:Destroy()
 		local done = spec.onDone
 		if done then
@@ -947,25 +980,100 @@ function MatchFoundShow.play(spec: Spec): Show
 		finish()
 	end
 
-	-- The exit (L:1048-1051): the block flies up at exit.atMs; the rest waits for the arena, then fades out.
+	-- Round 3 of the match flow: the swap to the vote (L:1056-1065: the rays down and dim, the row down, the board).
+	local moves: { { set: (y: number) -> (), from: number, to: number, ms: number, t: number } } = {}
+	local raysFade: Tweens.FadeGroup? = nil
+	local raysAlpha = { from = 1, to = 1, t = math.huge }
+	local function moveY(set: (y: number) -> (), from: number, to: number, ms: number)
+		table.insert(moves, { set = set, from = from, to = to, ms = ms, t = 0 })
+	end
+	local function raysTo(alpha: number)
+		if raysFade == nil then
+			raysFade = Tweens.fadeGroup(raysGroup)
+		end
+		raysAlpha = { from = raysAlpha.to, to = alpha, t = 0 }
+	end
+	local function startVote(v: Types.MatchVoteView)
+		if board ~= nil then
+			return
+		end
+		raysTo(VOTE.raysAlpha)
+		moveY(function(y: number)
+			raysGroup.Position = UDim2.fromOffset(MF.centre.x, y)
+		end, MF.centre.y, VOTE.raysY, VOTE.raysMs)
+		moveY(function(y: number)
+			row.Position = UDim2.fromOffset(STAGE_W / 2, y)
+		end, ROSTER.y, VOTE.rosterY, VOTE.rosterMs)
+		board = MatchVoteBoard.new({
+			stage = stage,
+			mode = mode,
+			view = v,
+			you = spec.you,
+			voters = voters,
+			now = serverNow,
+			play = spec.play,
+			vote = function(card: number)
+				local cast = spec.castVote
+				if cast then
+					cast(card)
+				end
+			end,
+			reduced = reduced,
+			k = k,
+			fxK = fxK,
+			track = track,
+			add = add,
+			loop = loop,
+			onReveal = function()
+				raysTo(1)
+			end,
+		})
+	end
+	function handle.setVote(_: Show, newView: Types.MatchVoteView)
+		if closed then
+			return
+		end
+		if newView.id == nil then
+			voteClosed = true
+			return
+		end
+		voteView = newView
+		local current = board
+		if current then
+			current:setView(newView)
+		elseif exited and fading == nil then
+			startVote(newView)
+		end
+	end
+
+	-- The exit (L:1048-1051): the block flies up at exit.atMs (round 3: once the vote's swap is due); the rest waits
+	-- for the arena (round 3: for the vote's end, L:1141-1147), then fades out.
 	local exit = MF.exit
-	at(exit.atMs, function()
+	local function flyOut()
 		spec.play(sounds.whoosh.key, sounds.whoosh.fallback)
 		for _, l in twinkles do
 			l:remove()
 		end
 		table.clear(twinkles)
 		track(block, exit.frames, exit.ms, 0, exit.curve)
+	end
+	at(exit.atMs, function()
+		exitDue = true
 	end)
 	table.sort(events, function(a, b)
 		return a.at < b.at
 	end)
+	local function startFade(vote: boolean)
+		fading = Tweens.fadeGroup(root)
+		fadingViewports = viewportsIn(root)
+		fadeStart = elapsed
+		fadeVote = vote
+		if vote then
+			spec.play(VOTE.sounds.whoosh.key, VOTE.sounds.whoosh.fallback)
+		end
+	end
 	do
-		local elapsed = 0
 		local nextEvent = 1
-		local fading: Tweens.FadeGroup? = nil
-		local fadingViewports: { ViewportFrame } = {}
-		local fadeStart = 0
 		local leaveAt = (exit.atMs + exit.ms) / 1000
 		add(function(dt: number): boolean
 			if closed then
@@ -980,21 +1088,66 @@ function MatchFoundShow.play(spec: Spec): Show
 					log:warn("a step of the show failed:", err)
 				end
 			end
-			if fading == nil and elapsed >= leaveAt then
+			local v = voteView
+			if exitDue and not exited then
+				if v == nil or voteClosed or serverNow() >= (v.opensAt or 0) - VOTE.leadMs / 1000 then
+					exited = true
+					flyOut()
+					if v and not voteClosed then
+						local ok, err = pcall(startVote, v)
+						if not ok then
+							log:warn("the map vote could not start:", err)
+						end
+					end
+				end
+			end
+			for index = #moves, 1, -1 do
+				local m = moves[index]
+				m.t += dt
+				local u = if reduced then 1 else math.min(m.t * 1000 / m.ms, 1)
+				m.set(m.from + (m.to - m.from) * Tweens.curve(VOTE.moveCurve)(u))
+				if u >= 1 then
+					table.remove(moves, index)
+				end
+			end
+			local dimRays = raysFade
+			if dimRays and raysAlpha.t * 1000 <= VOTE.raysMs then
+				raysAlpha.t += dt
+				local u = if reduced then 1 else math.min(raysAlpha.t * 1000 / VOTE.raysMs, 1)
+				dimRays:setAlpha(raysAlpha.from + (raysAlpha.to - raysAlpha.from) * Tweens.curve("ease")(u))
+			end
+			local current = board
+			if fading == nil and current and not voteClosed then
+				local endsAt = current:endsAt()
+				if endsAt and serverNow() >= endsAt then
+					startFade(true)
+				end
+			elseif fading == nil and exited and (voteClosed or current == nil) and elapsed >= leaveAt then
 				local ready = spec.ready
-				local arrived = ready == nil or ready()
+				local arrived = voteClosed or ready == nil or ready()
 				if arrived or elapsed >= leaveAt + exit.holdMaxS then
-					fading = Tweens.fadeGroup(root)
-					fadingViewports = viewportsIn(root)
-					fadeStart = elapsed
+					startFade(false)
 				end
 			end
 			local group = fading
 			if group then
-				local u = math.min((elapsed - fadeStart) * 1000 / MF.backdrop.fadeMs, 1)
-				group:setAlpha(1 - u)
-				fadeViewports(fadingViewports, 1 - u)
+				local ms = if fadeVote then VOTE.reveal.fadeMs else MF.backdrop.fadeMs
+				local u = math.min((elapsed - fadeStart) * 1000 / ms, 1)
+				local gone = if fadeVote then Tweens.curve(VOTE.reveal.fadeCurve)(u) else u
+				group:setAlpha(1 - gone)
+				fadeViewports(fadingViewports, 1 - gone)
+				if fadeVote and not reduced then
+					stageScale.Scale = k * (1 + (VOTE.reveal.fadeScale - 1) * gone)
+				end
 				if u >= 1 then
+					local toast = spec.toast
+					if fadeVote and toast then
+						local name = if current then current:winnerName() else nil
+						local text = string.gsub(Strings.hud.foundShow.vote.teleport, "{map}", function(): string
+							return name or Strings.hud.foundShow.vote.arena
+						end)
+						toast(text)
+					end
 					task.defer(finish)
 					return false
 				end

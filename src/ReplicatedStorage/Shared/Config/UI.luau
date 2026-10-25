@@ -1856,6 +1856,14 @@ local UI = {
 			foundLetter = { kind = "FoundTitle", stroke = 13, drop = 7 },
 			foundChip = { kind = "FoundChip", stroke = 4 },
 			foundYou = { kind = "Small", stroke = 3 },
+			-- The map vote (round 3, LOBBY HUD L:671 the mode name, L:676 the sub line, L:686 the timer, L:713 the count,
+			-- L:714 YOUR VOTE, L:715 LET'S GO!).
+			voteHead = { kind = "WindowSmall", stroke = 10, drop = 5 },
+			voteSub = { kind = "Title", stroke = 7, drop = 4 },
+			voteTime = { kind = "Title", stroke = 7 },
+			voteCount = { kind = "Large", stroke = 6 },
+			voteMine = { kind = "D17", stroke = 4 },
+			voteGo = { kind = "Ribbon", stroke = 8 },
 			prize = { kind = "Prize", stroke = 10, drop = 6, color = "StickerCoinText" }, -- H:545
 			button = { kind = "Big", stroke = 5 }, -- H:370, H:462
 			buttonLarge = { kind = "HudNumber", stroke = 6 }, -- H:246 (26 px)
@@ -3585,6 +3593,268 @@ local UI = {
 			frames = { { at = 0, alpha = 1, y = 0, scale = 1 }, { at = 1, alpha = 0, y = -250, scale = 0.4 } } :: { MotionPose },
 			holdMaxS = 6,
 		},
+		-- Round 3 of the match flow (2026-10-25, owner: the map vote for Team and Free for All; UI/MatchVoteBoard): L:665-720
+		-- the markup, L:1056-1147 the timeline, lib:361-375 the chip toss. Stage px; ms from the swap (the block's flight)
+		-- unless named; the vote's own times are the server's (Types.MatchVoteView).
+		vote = {
+			leadMs = 640, -- L:1065: the swap starts this long before the vote opens (at the earliest at exit.atMs)
+			raysY = 390, -- L:630: the rays group moves down (.6 s) and fades to raysAlpha, back to 1 at the reveal
+			raysAlpha = 0.42,
+			raysMs = 600,
+			rosterY = 628, -- L:727: the players row moves down (.7 s)
+			rosterMs = 700,
+			moveCurve = "mfMove",
+			-- L:1059-1062, L:1078-1146 the sounds and each one's look-alike while its own id is missing. landSteps: the
+			-- n-th voter's landing note (semitones, lib:259); rouletteLow: every other roulette step's (lib:269).
+			sounds = {
+				open = { key = "match.vote.open", fallback = "ui.coin", atMs = 280 },
+				card = { key = "match.vote.card", fallback = "ui.click", atMs = 420, stepMs = 100 },
+				press = { key = "ui.click", fallback = "ui.click" },
+				tick = { key = "match.vote.tick", fallback = "ui.click" },
+				tickUrgent = { key = "match.vote.tickUrgent", fallback = "ui.click" },
+				toss = { key = "match.vote.toss", fallback = "sfx.inspect.whoosh" },
+				land = { key = "match.vote.land", fallback = "ui.coin" },
+				landMine = { key = "match.vote.landMine", fallback = "ui.coin" },
+				stamp = { key = "match.vote.stamp", fallback = "sfx.impactSoft" },
+				roulette = { key = "match.vote.roulette", fallback = "ui.click" },
+				fanfare = { key = "match.vote.fanfare", fallback = "ui.coin" },
+				burst = { key = "match.vote.burst", fallback = "sfx.impactSoft", atMs = 360 },
+				whoosh = { key = "match.whoosh", fallback = "sfx.inspect.whoosh" },
+			},
+			landSteps = { 0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24, 26 },
+			rouletteLow = -5,
+			-- L:666-672 the head at (720, 80): its tails, the pill (img.vote.head*: the 600 x 92 face at (40, 20) of 680 x
+			-- 170), the shine (70 px, sdShine 3.4s 1s) and the mode name (44 px) with its chip (32 tall, padding 0 10, ink,
+			-- 17 px), 14 apart; sdMfHeadIn .6s .12s cubic-bezier(.25,1.3,.45,1).
+			head = {
+				x = 720,
+				y = 80,
+				picture = { width = 680, height = 170, faceX = 40, faceY = 20 },
+				face = { width = 600, height = 92, border = 6, radius = 28 },
+				tails = { width = 110, height = 104, leftX = -372, rightX = 262, y = -32 },
+				gap = 14,
+				chipHeight = 32,
+				chipPad = 10,
+				shine = { width = 70, periodS = 3.4, delayS = 1, transparency = 0.4 }, -- white at .6 in its middle
+				ms = 600,
+				delayMs = 120,
+				curve = "mfHead",
+				frames = {
+					{ at = 0, alpha = 0, y = 240, scale = 1.7 },
+					{ at = 0.6, alpha = 1, y = -8, scale = 0.95 },
+					{ at = 0.8, y = 3, scale = 1.02 },
+					{ at = 1, alpha = 1, y = 0, scale = 1 },
+				} :: { MotionPose },
+			},
+			-- L:673-689 the line under it (top 134, 80 tall, 16 apart; sdUp .4s .35s ease) and the timer (76: its ink disc
+			-- 73 at (1.5, 6.5), the face r 34 with a 5 px ink ring, the track r 25 x 7 at .28 ink, the white progress
+			-- from 12 o'clock); each second's tick pops it 1.32 -> 1 (320 ms, cubic-bezier(.2,1.6,.4,1)); from urgentAt
+			-- seconds on it is red and pulses 1.16 every .5 s.
+			sub = {
+				y = 134,
+				height = 80,
+				gap = 16,
+				ms = 400,
+				delayMs = 350,
+				curve = "ease",
+				frames = { { at = 0, alpha = 0, y = 30 }, { at = 1, alpha = 1, y = 0 } } :: { MotionPose },
+			},
+			timer = {
+				px = 76,
+				shadow = { x = 1.5, y = 6.5, px = 73 },
+				facePx = 68, -- r 34
+				border = 5,
+				ringPx = 76, -- img.vote.ring (r 25, 7 wide) drawn over the whole 76
+				trackAlpha = 0.28,
+				color = "StickerGoldMid",
+				urgentColor = "MatchFeedYouDown",
+				urgentAt = 3,
+				tickMs = 320,
+				tickScale = 1.32,
+				tickCurve = "slot",
+				urgentPeriodS = 0.5,
+				urgentScale = 1.16,
+			},
+			-- L:690-705 the cards (372 x 292 at top 248, 30 apart; img.vote.card.*: the card at (40, 30) of 452 x 400, its
+			-- floating board img.vote.board.* on the same canvas), sdMfCardIn .62s from .3 s + .1 s each
+			-- (cubic-bezier(.2,1.3,.4,1)); the board floats 9 px (sdMfFloat 3.6 s, each 1.2 s ahead); 3 twinkles each
+			-- { x, y, px, delay s } (sdTwinkle 1.7 s).
+			cards = {
+				y = 248,
+				width = 372,
+				height = 292,
+				gap = 30,
+				picture = { width = 452, height = 400, cardX = 40, cardY = 30 },
+				ms = 620,
+				delayMs = 300,
+				stepMs = 100,
+				curve = "rise",
+				frames = {
+					{ at = 0, alpha = 0, y = 300, scale = 0.55, rot = -6 },
+					{ at = 0.6, alpha = 1, y = -16, scale = 1.04, rot = 1 },
+					{ at = 0.8, y = 5, scale = 0.99 },
+					{ at = 1, alpha = 1, y = 0, scale = 1 },
+				} :: { MotionPose },
+				floatS = 3.6,
+				floatStepS = 1.2,
+				floatPx = 9,
+				twinkleS = 1.7,
+				twinkles = { { 30, 26, 22, 0.2 }, { 318, 44, 18, 0.9 }, { 56, 150, 14, 1.4 } },
+				-- L:690 the glow (inset -12, radius 40, 0 0 44px 10px at .6; img.vote.glow: the 160 box at (70, 70) of
+				-- 300, 9-sliced at 110), gold, white on the roulette's card; it pulses 1.025 (sdMfGlow 1.1 s).
+				glow = {
+					inset = 12,
+					pad = 70,
+					slice = 110,
+					picturePx = 300,
+					color = "StickerCoinText",
+					rouletteColor = "White",
+					fadeMs = 250,
+					pulseS = 1.1,
+					pulseScale = 1.025,
+				},
+				-- L:694, L:1394-1398 the cards' transition (.6s cubic-bezier(.3,1.45,.45,1); the tint and alpha .45 s): your
+				-- pick lifted, the roulette's card raised and the others dimmed, the winner to the middle and the others
+				-- down, smaller, greyed (grayscale(.85) brightness(.7): a grey tint here) and faded.
+				moveMs = 600,
+				moveCurve = "mfCard",
+				tintMs = 450,
+				mine = { y = -10, scale = 1.03 },
+				roulette = { y = -12, scale = 1.05, others = 0.78 },
+				won = { stepX = 402, y = -8, scale = 1.14 },
+				lost = { y = 40, scale = 0.82, tint = 0.7, alpha = 0.45 },
+			},
+			-- L:707 the voters strip (left 14, top -26): 46 px chips 28 apart (margin-right -18), border 4, radius 15, the
+			-- team colour, the 3 px lip and 3 px highlight at .45, the squishy 40; each sticks in (sdMfStick .42s).
+			strip = {
+				left = 14,
+				top = -26,
+				px = 46,
+				step = 28,
+				border = 4,
+				radius = 15,
+				lip = 3,
+				highlightPx = 3,
+				highlightAlpha = 0.45,
+				picPx = 40,
+				ms = 420,
+				curve = "slot",
+				frames = {
+					{ at = 0, sx = 1.6, sy = 1.3, rot = -10 },
+					{ at = 0.45, sx = 0.78, sy = 1.18, rot = 5 },
+					{ at = 0.7, sx = 1.12, sy = 0.9, rot = -2 },
+					{ at = 1, sx = 1, sy = 1, rot = 0 },
+				} :: { MotionPose },
+			},
+			-- L:710 the count (right -16, top -20: 58, border 5, the 4 px lip, the 3 px highlight at .6, 28 px): gold for
+			-- the single leader, else lilac; it pops in (sdSlot .35s) and squashes 1.3 at each landing (lib:376).
+			count = {
+				right = -16,
+				top = -20,
+				px = 58,
+				border = 5,
+				lip = 4,
+				highlightPx = 3,
+				highlightAlpha = 0.6,
+				leaderTop = "StickerYellowTop",
+				leaderEnd = "StickerYellowEnd",
+				top0 = "MatchFfaPurpleTop",
+				end0 = "MatchFfaPurple",
+				squash = 1.3,
+				squashMs = 460,
+			},
+			-- sdSlot .35s cubic-bezier(.2,1.6,.4,1): the count, YOUR VOTE and the roster's voted check pop in.
+			popMs = 350,
+			popCurve = "slot",
+			popFrames = { { at = 0, scale = 0 }, { at = 0.65, scale = 1.35 }, { at = 1, scale = 1 } } :: { MotionPose },
+			-- L:714 YOUR VOTE (bottom -20: 38 tall, padding 0 16 0 10, border 4, the green button, the 4 px lip, the 3 px
+			-- highlight at .5, 17 px, the check 22, 6 apart).
+			mine = {
+				bottom = -20,
+				height = 38,
+				padLeft = 10,
+				padRight = 16,
+				gap = 6,
+				border = 4,
+				lip = 4,
+				highlightPx = 3,
+				highlightAlpha = 0.5,
+				iconPx = 22,
+			},
+			-- L:715 LET'S GO! (top 70: 66 tall, padding 0 26, border 5, radius 20, the pink button, the 6 px lip, the 4 px
+			-- highlight at .55, 38 px), stamped (sdStamp .5s .25s cubic-bezier(.2,1.3,.4,1)).
+			go = {
+				top = 70,
+				height = 66,
+				pad = 26,
+				border = 5,
+				radius = 20,
+				lip = 6,
+				highlightPx = 4,
+				highlightAlpha = 0.55,
+				ms = 500,
+				delayMs = 250,
+				curve = "rise",
+				frames = {
+					{ at = 0, alpha = 0, scale = 3, rot = -25 },
+					{ at = 0.6, alpha = 1, scale = 0.9, rot = -8 },
+					{ at = 1, alpha = 1, scale = 1, rot = -10 },
+				} :: { MotionPose },
+			},
+			-- L:735 the roster's voted check (28 at right -9, top -9, border 3, green, the check 16).
+			check = { px = 28, right = -9, top = -9, border = 3, iconPx = 16 },
+			-- lib:361-375 the toss: a 46 px chip from the voter's tile to its place in the strip (yours 10 px higher while
+			-- your pick moves), 560 ms (yours) / 700, arcing 110 / 150 above, spinning 360 (.7 -> 1.25 at 55% -> 1,
+			-- ease-out); yours trails sparks (7 puffs); the landing's burst (L:1101) and the count's squash.
+			toss = {
+				px = 46,
+				mineMs = 560,
+				otherMs = 700,
+				mineArc = 110,
+				otherArc = 150,
+				peakAt = 0.6,
+				spin = 360,
+				raise = 10,
+				frames = {
+					{ at = 0, scale = 0.7, rot = 0 },
+					{ at = 0.55, scale = 1.25, rot = 216 },
+					{ at = 1, scale = 1, rot = 360 },
+				} :: { MotionPose },
+				trail = { puffs = 7, n = 2, spread = 30, size = 8, ms = 420, colors = { "StickerCoinText", "White" } },
+				landMine = {
+					n = 16,
+					spread = 130,
+					size = 12,
+					up = 20,
+					colors = { "StickerCoinText", "White", "StickerFxGreen" },
+				},
+				landOther = { n = 9, spread = 80, size = 9, up = 20 },
+				teamColors = { "StickerTdmRed", "StickerTdmBlue" },
+				soloColor = "StickerFxYellow",
+			},
+			-- L:1129-1141 the reveal: the burst at (720, 390) 360 ms after it, the rings, the rain and the jolt; 3.1 s later
+			-- the show goes (opacity 0, scale 1.04, 420 ms ease-in) and the teleport toast shows.
+			reveal = {
+				x = 720,
+				y = 390,
+				sparks = {
+					n = 42,
+					spread = 440,
+					size = 15,
+					ms = 1100,
+					colors = { "StickerFxYellow", "StickerFxPink", "StickerFxCyan", "White", "StickerFxGreen" },
+				},
+				rings = { { color = "StickerCoinText", size = 560 }, { color = "White", size = 760, delayMs = 90 } },
+				rain = 70,
+				jolt = 8,
+				endAfterMs = 3100,
+				fadeMs = 420,
+				fadeScale = 1.04,
+				fadeCurve = "easeIn",
+			},
+			tapGapMs = 250, -- [P] taps closer than this are one (the server takes one vote per Config.Match.Vote.minIntervalSeconds)
+			pickHoldS = 1.5, -- [P] your tapped card stays yours this long while the server's view catches up
+		},
 	},
 
 	-- UI FINAL R2 (plan §0 easing rule, G2.3): every design timing function as cubic-bezier numbers { x1, y1, x2, y2 },
@@ -3622,6 +3892,14 @@ local UI = {
 		mfOrb = { 0.5, 0, 0.9, 0.4 },
 		mfFly = { 0.55, 0, 0.8, 0.35 },
 		converge = { 0.55, 0, 0.9, 0.5 }, -- hud-lib.js L:359 (UiFx.converge)
+		-- The map vote (round 3 of the match flow; LOBBY HUD L:666 sdMfHeadIn, L:694 the cards' transition, L:630 and
+		-- L:727 the rays' and the row's move, lib:369-370 the chip toss's x and its rise and fall).
+		mfHead = { 0.25, 1.3, 0.45, 1 },
+		mfCard = { 0.3, 1.45, 0.45, 1 },
+		mfMove = { 0.4, 0, 0.2, 1 },
+		mfToss = { 0.4, 0.1, 0.6, 0.9 },
+		mfTossUp = { 0.2, 0.6, 0.35, 1 },
+		mfTossDown = { 0.6, 0, 0.85, 0.45 },
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The

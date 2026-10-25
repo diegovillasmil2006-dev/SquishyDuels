@@ -85,10 +85,36 @@ local Match = {
 	-- FFA/TDM v1 (2026-10-15): the in-server queue (/ffa, /tdm). Once minPlayers are queued for a mode this many
 	-- seconds pass before the match starts (at once when the queue reaches maxPlayers or everyone in the server).
 	gatherSeconds = 10, -- [P]
-	-- Round 2 of the match flow (2026-10-25, owner: Diego's MATCH FOUND show for every mode): a match from the queue
-	-- starts at once (the players are in it: no other queue takes them) but its teleports wait this long, so the lobby's
-	-- show plays first: the waiting bar's fill-up (up to 12 x 70 ms + 350 ms) and the show (3 s, then 0.46 s out).
-	foundHoldSeconds = 4.8,
+	-- Round 3 of the match flow (2026-10-25, owner: Diego's map vote for Team and Free for All; LOBBY HUD L:1024-1147,
+	-- Server/Logic/MatchVote): a match from the queue first holds its players (SD_MatchId set: no other queue takes them)
+	-- and the free maps of its mode (up to maxChoices) through the MATCH FOUND show and the vote, then starts on the
+	-- winner. Seconds unless named ms; [P] = not the design's.
+	Vote = {
+		enabled = true, -- [P] false: a queue match starts at once (the tests' setting)
+		maxChoices = 3, -- L:1035: the mode's 3 maps
+		-- The cards' order (Workspace.DuelMaps model names; L:1035 toybox, sprinkle, bath / arcade, sundae, park); a map
+		-- not listed comes after, by name.
+		mapOrder = { "ToyBoxClash", "SprinkleFactory", "BubbleBathBay", "JellyArcade", "SundaePlaza", "PillowFortPark" },
+		-- found -> the vote opens: the waiting bar's fill-up (up to 12 x 70 ms + 350 ms), the show (3 s) and the swap to
+		-- the vote (.64 s, L:1048-1066).
+		introSeconds = 4.83,
+		seconds = 10, -- L:1033 voteSeconds
+		earlySeconds = 0.5, -- [P] a vote this early is taken (the cards are up, the timer not yet)
+		minIntervalSeconds = 0.2, -- [P] one player's votes at least this far apart
+		endDelaySeconds = 0.28, -- L:1083: the result this long after the timer's 0
+		chosenRevealMs = 420, -- L:1120
+		rouletteFirstMs = 320, -- L:1124-1126: the tie's roulette steps (80 + n² x 1.3 ms), then the winner
+		rouletteStepMs = 80,
+		rouletteGrowMs = 1.3,
+		rouletteExtra = 8,
+		rouletteRevealMs = 450,
+		startAfterRevealSeconds = 3.52, -- L:1141: 3.1 s, then the show fades (.42 s, L:1147)
+		botSkipShare = 0.08, -- L:1070: bots that never vote
+		botFollowShare = 0.45, -- L:1076: a bot votes for the leader this often
+		botFirstMs = 700, -- L:1070: bot votes from 700 ms into the vote, spread over the time left but the last 2.2 s
+		botMinSpanMs = 800,
+		botSpanMarginMs = 2200,
+	},
 	-- Match HUD M2 (2026-10-16, owner): a match pays like a 1v1 duel (Config.Economy.DuelRewards: the win / loss / draw
 	-- squeezes, at least minOwnThrows own throws and the min Active seconds), as Coins AND Grip, with no hourly cap. A
 	-- win (a team win or FFA 1st, paid or not) is +1 win streak; a loss, a draw or leaving a live match resets it

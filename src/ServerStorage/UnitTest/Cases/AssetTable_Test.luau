@@ -186,6 +186,19 @@ local FOUND_SOUND_KEYS = {
 	"match.found.lettersSolo",
 	"match.found.chime",
 	"match.found.vs",
+	-- The map vote (2026-10-25, round 3 of the match flow): its own 11 sounds (its press is ui.click, its whoosh
+	-- match.whoosh).
+	"match.vote.open",
+	"match.vote.card",
+	"match.vote.tick",
+	"match.vote.tickUrgent",
+	"match.vote.toss",
+	"match.vote.land",
+	"match.vote.landMine",
+	"match.vote.stamp",
+	"match.vote.roulette",
+	"match.vote.fanfare",
+	"match.vote.burst",
 }
 
 return function(t: Context)
@@ -241,7 +254,7 @@ return function(t: Context)
 
 	-- MATCH FOUND (2026-10-25): the show's 6 sounds, once each, UI, 2D, each note naming its file (the owner uploads them;
 	-- a look-alike plays meanwhile, Config.UI.MatchFound.sounds).
-	t.test("MATCH FOUND's 6 sound keys: once each, UI, 2D, each naming its file", function()
+	t.test("MATCH FOUND's 6 and the map vote's 11 sound keys: once each, UI, 2D, each naming its file", function()
 		for _, key in FOUND_SOUND_KEYS do
 			local found = 0
 			for _, slot in soundSlots() do
@@ -520,6 +533,28 @@ return function(t: Context)
 				"img.mf.tailL",
 				"img.mf.tailR",
 				"img.mf.vs",
+				-- The map vote (2026-10-25, round 3 of the match flow): each map's card and board, the heads, the tails,
+				-- the glow and the timer ring.
+				"img.vote.card.ToyBoxClash",
+				"img.vote.card.SprinkleFactory",
+				"img.vote.card.BubbleBathBay",
+				"img.vote.card.JellyArcade",
+				"img.vote.card.SundaePlaza",
+				"img.vote.card.PillowFortPark",
+				"img.vote.board.ToyBoxClash",
+				"img.vote.board.SprinkleFactory",
+				"img.vote.board.BubbleBathBay",
+				"img.vote.board.JellyArcade",
+				"img.vote.board.SundaePlaza",
+				"img.vote.board.PillowFortPark",
+				"img.vote.headTeam",
+				"img.vote.headSolo",
+				"img.vote.tailRed",
+				"img.vote.tailBlue",
+				"img.vote.tailPinkL",
+				"img.vote.tailPinkR",
+				"img.vote.glow",
+				"img.vote.ring",
 			})
 		)
 	end)

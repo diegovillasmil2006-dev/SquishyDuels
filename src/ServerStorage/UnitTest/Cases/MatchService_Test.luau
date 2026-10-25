@@ -53,6 +53,12 @@
 --     does not; cancelled / void pay and touch nothing. Review fixes (2026-10-16): a leave that the step it starts
 --     ends first (MatchRules took the end) is no leave: that player is paid as present and keeps the streak their
 --     result gives; a grant that comes back alreadyGranted pays no Grip and no mine and writes no SD_WinStreak.
+--   * round 3 of the match flow (2026-10-25, the map vote; off in baseConfig): a queue match holds its players
+--     (SD_MatchId, no duel phase, joins refused) and the mode's free maps (in Vote.mapOrder) with no match yet; votes
+--     count only while open, for whole card numbers, minIntervalSeconds apart, and move; the result comes
+--     endDelaySeconds after the close (the most voted; a tie's roulette ends on the winner) and the match starts on
+--     the winner at its startsAt (the other maps back, {} after the first view); a leaver's vote goes; bots vote once
+--     each; nobody real left or a restart calls it off (maps and bots back, {}, the closing toast).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -151,7 +157,7 @@ return function(t: Context)
 		cfg.resultSeconds = 8
 		cfg.minPlayers = 2
 		cfg.gatherSeconds = 10
-		cfg.foundHoldSeconds = 0 -- round 2: the MATCH FOUND wait only where a case sets it
+		cfg.Vote.enabled = false -- round 3: the map vote only where a case turns it on
 		cfg.Rewards = { enabled = false } -- Match HUD M2 (it replaced rewardCoins = 0): off unless a case turns it on
 		cfg.outOfBoundsIsKo = false
 		cfg.returnSpreadStuds = 4
@@ -674,10 +680,8 @@ return function(t: Context)
 		close()
 	end)
 
-	t.test("round 2 (MATCH FOUND): a queue match sends who plays and teleports after foundHoldSeconds", function()
-		local c = baseConfig()
-		c.foundHoldSeconds = 4.8
-		local w = setup(2, c)
+	t.test("round 2 (MATCH FOUND): a queue match sends who plays", function()
+		local w = setup(2)
 		local p = w.players
 		MatchService.join(p[1], "ffa")
 		MatchService.join(p[2], "ffa") -- everyone in the server is queued: it starts at once
@@ -694,14 +698,129 @@ return function(t: Context)
 		expect.equal(found.players[1].userId, p[1].UserId)
 		expect.equal(found.players[1].level, 1) -- the fakes have no gripLevel: made up from 1 to 1
 		expect.equal(found.players[1].team, nil)
-		w.flush()
-		expect.equal(#w.teleports, 0) -- the lobby's show plays first
-		MatchService.tick(T0 + 4.7)
-		w.flush()
-		expect.equal(#w.teleports, 0)
-		MatchService.tick(T0 + 4.8)
+		close()
+	end)
+
+	-- Round 3 (2026-10-25, the map vote): a world with the vote on and 3 FFA maps (2 of them listed in Vote.mapOrder).
+	local function voteWorld(count: number): (World, any)
+		local c = baseConfig()
+		c.Vote.enabled = true
+		local w = setup(count, c)
+		table.insert(w.maps, mapRecord(c, "ffa", "PillowFortPark"))
+		table.insert(w.maps, mapRecord(c, "ffa", "SundaePlaza"))
+		return w, c.Vote
+	end
+
+	local function voteViews(w: World, player: any): { any }
+		local out = {}
+		for _, entry in w.sent do
+			if entry.name == "MatchVoteState" and entry.player == player then
+				table.insert(out, entry.payload)
+			end
+		end
+		return out
+	end
+
+	local function lastVote(w: World, player: any): any
+		local views = voteViews(w, player)
+		return views[#views]
+	end
+
+	t.test("round 3 (map vote): the queue match waits on its maps, takes valid votes, starts on the winner", function()
+		local w, vote = voteWorld(2)
+		local p = w.players
+		MatchService.join(p[1], "ffa")
+		MatchService.join(p[2], "ffa")
+		expect.equal(w.port, nil) -- no match yet: the show and the vote first
+		local view = lastVote(w, p[2])
+		expect.deepEqual(view.maps, { "SundaePlaza", "PillowFortPark", "JAR" }) -- Vote.mapOrder, then by name
+		expect.equal(view.mode, "ffa")
+		expect.near(view.opensAt, T0 + vote.introSeconds, 1e-9)
+		expect.near(view.closesAt, view.opensAt + vote.seconds, 1e-9)
+		expect.deepEqual(view.votes, { {}, {}, {} })
+		expect.equal(view.result, nil)
+		for _, record in w.maps do
+			expect.equal(record.inUse, record.modeId == "ffa") -- every FFA map held by the vote
+		end
+		expect.equal(p[1]:GetAttribute("SD_MatchId"), view.id) -- the lobby locks hold
+		expect.equal(p[1]:GetAttribute("SD_DuelPhase"), nil) -- no duel controls in the lobby
+		expect.falsy(MatchService.join(p[1], "tdm"))
+		expect.equal(codesOf(w, p[1])[#codesOf(w, p[1])], "match.refused.inMatch")
+		-- Votes: only while open (from earlySeconds before), whole card numbers, minIntervalSeconds apart.
+		w.clock.set(view.opensAt - vote.earlySeconds - 0.01)
+		expect.falsy(MatchService.vote(p[1], 1))
+		w.clock.set(view.opensAt)
+		for _, bad in { 0, 4, 1.5, 0 / 0, math.huge, "1" } :: { any } do
+			expect.falsy(MatchService.vote(p[1], bad))
+		end
+		expect.truthy(MatchService.vote(p[1], 2))
+		expect.falsy(MatchService.vote(p[1], 3)) -- too soon after the last
+		w.clock.advance(vote.minIntervalSeconds + 0.01)
+		expect.truthy(MatchService.vote(p[1], 3)) -- moved
+		w.clock.advance(vote.minIntervalSeconds + 0.01)
+		expect.falsy(MatchService.vote(p[1], 3)) -- the same card: nothing moves
+		expect.truthy(MatchService.vote(p[2], 3))
+		expect.deepEqual(lastVote(w, p[1]).votes, { {}, {}, { 1, 2 } })
+		w.clock.set(view.closesAt)
+		expect.falsy(MatchService.vote(p[2], 1)) -- closed
+		MatchService.tick(view.closesAt + vote.endDelaySeconds - 0.01)
+		expect.equal(lastVote(w, p[1]).result, nil)
+		local resultAt = view.closesAt + vote.endDelaySeconds
+		MatchService.tick(resultAt)
+		local result = lastVote(w, p[2]).result
+		expect.equal(result.winner, 3)
+		expect.equal(result.kind, "chosen")
+		expect.near(result.at, resultAt, 1e-9)
+		expect.near(result.revealAt, resultAt + vote.chosenRevealMs / 1000, 1e-9)
+		expect.near(result.startsAt, result.revealAt + vote.startAfterRevealSeconds, 1e-9)
+		MatchService.tick(result.startsAt - 0.01)
+		expect.equal(w.port, nil)
+		MatchService.tick(result.startsAt)
+		expect.truthy(w.port ~= nil)
+		expect.equal(w.port.matchId, view.id)
+		expect.equal(w.maps[1].inUse, true) -- JAR: the winner
+		expect.falsy(w.maps[3].inUse) -- the others go back
+		expect.falsy(w.maps[4].inUse)
+		expect.equal(p[1]:GetAttribute("SD_MatchId"), view.id)
+		expect.deepEqual(lastVote(w, p[1]), {}) -- the vote is over, after the match's first view
+		local lastName = nil
+		for _, entry in w.sent do
+			if entry.player == p[1] then
+				lastName = entry.name
+			end
+		end
+		expect.equal(lastName, "MatchVoteState")
 		w.flush()
 		expect.equal(#w.teleports, 2)
+		close()
+	end)
+
+	t.test("round 3: a tie rolls over the tied cards; a leaver's vote goes with them", function()
+		local w, vote = voteWorld(3)
+		local p = w.players
+		for _, player in p do
+			MatchService.join(player, "ffa")
+		end
+		local view = lastVote(w, p[1])
+		w.clock.set(view.opensAt)
+		expect.truthy(MatchService.vote(p[3], 1))
+		expect.truthy(MatchService.vote(p[1], 1))
+		expect.truthy(MatchService.vote(p[2], 2))
+		expect.truthy(MatchService.leave(p[3]))
+		expect.deepEqual(lastVote(w, p[3]), {})
+		expect.equal(p[3]:GetAttribute("SD_MatchId"), "")
+		expect.equal(codesOf(w, p[3])[#codesOf(w, p[3])], "match.youLeft")
+		expect.deepEqual(lastVote(w, p[1]).votes, { { 1 }, { 2 }, {} })
+		local resultAt = view.closesAt + vote.endDelaySeconds
+		MatchService.tick(resultAt)
+		local result = lastVote(w, p[1]).result
+		expect.equal(result.kind, "tie")
+		expect.truthy(result.winner == 1 or result.winner == 2)
+		local last = result.roulette[#result.roulette]
+		expect.equal(last.choice, result.winner)
+		expect.near(result.revealAt, last.at + vote.rouletteRevealMs / 1000, 1e-9)
+		MatchService.tick(result.startsAt)
+		expect.equal(#w.port.fighters, 2) -- the leaver is not in the match
 		close()
 	end)
 
@@ -2463,6 +2582,44 @@ return function(t: Context)
 		})
 		return fake
 	end
+
+	t.test("round 3: bots vote once each; nobody real left, or a restart ahead, calls the vote off", function()
+		local w = voteWorld(2)
+		local bots = withBots(w)
+		local p = w.players
+		MatchService.join(p[1], "ffa")
+		MatchService.tick(T0 + w.cfg.gatherSeconds) -- one player is enough with bots
+		local view = lastVote(w, p[1])
+		expect.equal(#bots.taken, w.cfg.Modes.ffa.maxPlayers - 1)
+		expect.equal(#bots.released, 0) -- held for the match
+		MatchService.tick(view.closesAt)
+		local seen: { [number]: boolean } = {}
+		local cast = 0
+		for _, list in lastVote(w, p[1]).votes do
+			for _, userId in list do
+				expect.falsy(seen[userId])
+				seen[userId] = true
+				expect.truthy(userId < 0) -- bots only: the player did not vote
+				cast += 1
+			end
+		end
+		expect.truthy(cast > 0)
+		MatchService.playerRemoving(p[1])
+		expect.equal(#bots.released, #bots.taken) -- nobody real left: called off
+		for _, record in w.maps do
+			expect.falsy(record.inUse)
+		end
+		-- A restart ahead: called off with the closing toast.
+		MatchService.join(p[2], "ffa")
+		MatchService.tick(T0 + 2 * w.cfg.gatherSeconds + 20)
+		expect.truthy(lastVote(w, p[2]).id ~= nil)
+		MatchService.onRestartScheduled()
+		expect.deepEqual(lastVote(w, p[2]), {})
+		expect.equal(p[2]:GetAttribute("SD_MatchId"), "")
+		expect.equal(codesOf(w, p[2])[#codesOf(w, p[2])], "match.refused.closing")
+		expect.falsy(w.maps[1].inUse)
+		close()
+	end)
 
 	t.test(
 		"match bots: a player alone gets a match filled to maxPlayers; no view or toast ever goes to a bot",

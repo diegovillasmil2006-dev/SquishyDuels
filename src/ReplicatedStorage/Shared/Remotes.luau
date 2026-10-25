@@ -238,6 +238,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- Notify toast (match.*).
 	MatchJoin = c2s("RemoteEvent", { arg("mode", "string") }),
 	MatchLeave = c2s("RemoteEvent", {}),
+	-- Round 3 of the match flow (2026-10-25, Diego's LOBBY HUD L:1085-1105 map vote): the card the player tapped (1 to
+	-- the vote's map count); MatchService.vote takes it only while their match's vote is open.
+	MatchVote = c2s("RemoteEvent", { arg("map", "integer") }),
 
 	-- Server -> client
 	-- The only state channel (Types.StateDeltaFields, incl. `grip` from Part 5): one monotonic `v` per player.
@@ -286,6 +289,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- Round 2 of the match flow (2026-10-25, Diego's LOBBY HUD L:626-741 MATCH FOUND show): Types.MatchFoundView, to each
 	-- player of a duel or match the queue just started (the teleport waits for the show).
 	MatchFound = s2c("owner", { arg("found", "table") }),
+	-- Round 3 of the match flow (2026-10-25, LOBBY HUD L:1024-1147 map vote): Types.MatchVoteView, to each player of a
+	-- Team / Free for All match the queue just started, at the start, on every vote and with the result; {} when over.
+	MatchVoteState = s2c("owner", { arg("vote", "table") }),
 	-- P13v4 (HighwayService's settle at the landing): Types.HighwayLanding, what the thrower's landing paid (Coins with
 	-- the rings' share, Grip, best, gifts, the Food Bag, the rings, BULLSEYE), to the thrower only.
 	HighwayLanded = s2c("owner", { arg("landing", "table") }),

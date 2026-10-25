@@ -238,6 +238,73 @@ return function(t: Context)
 		end
 	end)
 
+	-- Round 3 of the match flow (2026-10-25): the map vote.
+	t.test(
+		"match flow: a MatchVoteState payload is read only when well-formed; an open vote locks the lobby",
+		function()
+			local function vote(): any
+				return {
+					id = "match:x",
+					mode = "tdm",
+					maps = { "ToyBoxClash", "BubbleBathBay" },
+					opensAt = 10,
+					closesAt = 20,
+					votes = { { 1, -200001 }, {} },
+					result = {
+						winner = 1,
+						kind = "tie",
+						roulette = { { choice = 2, at = 20.5 } },
+						at = 20.3,
+						revealAt = 21,
+						startsAt = 24,
+					},
+				}
+			end
+			expect.deepEqual(StateController.normalizeMatchVote(vote()), vote())
+			local open = vote()
+			open.result = nil
+			expect.deepEqual(StateController.normalizeMatchVote(open), open)
+			expect.deepEqual(StateController.normalizeMatchVote({}), {})
+			local bad: { (v: any) -> () } = {
+				function(v)
+					v.mode = "1v1"
+				end,
+				function(v)
+					v.maps = {}
+				end,
+				function(v)
+					v.votes = { { 1.5 }, {} }
+				end,
+				function(v)
+					v.votes = { {} }
+				end,
+				function(v)
+					v.opensAt = 0 / 0
+				end,
+				function(v)
+					v.result.winner = 3
+				end,
+				function(v)
+					v.result.kind = "coin"
+				end,
+				function(v)
+					v.result.roulette = { { choice = 0, at = 1 } }
+				end,
+				function(v)
+					v.result.startsAt = math.huge
+				end,
+			}
+			for _, spoil in bad do
+				local v = vote()
+				spoil(v)
+				expect.deepEqual(StateController.normalizeMatchVote(v), {})
+			end
+			local idle: any = { state = "Idle" }
+			expect.equal(StateController.lobbyLocked(idle, nil, nil, open), true)
+			expect.equal(StateController.lobbyLocked(idle, nil, nil, {}), false)
+		end
+	)
+
 	t.test("duel: ThrowImpact sets the victim's lives and invulnerability; other impacts change nothing", function()
 		local view = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Active")))
 		local hit = StateController.reduceDuel(view, {

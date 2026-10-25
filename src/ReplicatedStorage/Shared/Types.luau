@@ -519,6 +519,30 @@ export type MatchFoundMode = "1v1" | "tdm" | "ffa"
 export type MatchFoundPlayer = { userId: number, name: string, squishy: string, level: number, team: number? }
 export type MatchFoundView = { mode: MatchFoundMode, players: { MatchFoundPlayer } }
 
+-- The MatchVoteState payload (round 3 of the match flow, 2026-10-25): the map vote of a Team Deathmatch / Free for All
+-- match the queue just started (Diego's LOBBY HUD L:1024-1147). maps: the cards' maps (Workspace.DuelMaps model
+-- names), in order; votes[i]: the userIds on card i in landing order (bots' too); opensAt / closesAt: the timer's start
+-- and its 0 (server times). result, once decided: the winning card, how ("chosen" | "tie" | "random": nobody voted),
+-- the tie's roulette (each card lit and when), and when the result shows (at), the winner moves (revealAt) and the
+-- match starts (startsAt). An empty table: no vote any more.
+export type MatchVoteResultView = {
+	winner: number,
+	kind: "chosen" | "tie" | "random",
+	roulette: { { choice: number, at: number } },
+	at: number,
+	revealAt: number,
+	startsAt: number,
+}
+export type MatchVoteView = {
+	id: string?,
+	mode: MatchMode?,
+	maps: { string }?,
+	opensAt: number?,
+	closesAt: number?,
+	votes: { { number } }?,
+	result: MatchVoteResultView?,
+}
+
 -- The MatchState payload (one per player): sent on the first view, every phase change, K.O., respawn, team-lives
 -- change and outcome, plus the own view when `you.stormBar` moved (at most Config.Match.Storm.sampleHz a second).
 -- A last view with phase "Returning", then the cleared attributes (SD_MatchId "") end it on the client.
