@@ -741,6 +741,31 @@ local Palette = {
 	DuelTimerLow = Color3.fromHex("#FF8496"), -- D:416 the timer at 10 s or less
 	DuelSquished = Color3.fromHex("#FF4D6A"), -- D:70 the SQUISHED tag, D:157 the phone's slash
 	DuelHeadGrey = Color3.fromHex("#969696"), -- superprompt §3: the squished player's headshot, as an ImageColor3
+	-- Mode select (2026-10-24; L = "Squishy Duels LOBBY HUD.dc.html"): the cards' faces, glows and bottom fades
+	-- (L:1358-1363), the screen's base under its radial picture (L:174's outer stop), the shards (L:995), the unpicked
+	-- cards' dim (L:206) and the cards' soft shadow (L:187).
+	ModeDuelTop = Color3.fromHex("#FFA6CC"),
+	ModeDuelMid = Color3.fromHex("#FF5D97"),
+	ModeDuelEnd = Color3.fromHex("#D8296E"),
+	ModeDuelGlow = Color3.fromHex("#FF5D97"),
+	ModeDuelDeep = Color3.fromHex("#B01E5E"),
+	ModeTdmTop = Color3.fromHex("#FF8FA3"),
+	ModeTdmPink = Color3.fromHex("#E76FC4"),
+	ModeTdmPurple = Color3.fromHex("#7B7CFF"),
+	ModeTdmEnd = Color3.fromHex("#4FA6FF"),
+	ModeTdmGlow = Color3.fromHex("#B57CFF"),
+	ModeTdmDeep = Color3.fromHex("#3A3FC8"),
+	ModeFfaTop = Color3.fromHex("#FFF08A"),
+	ModeFfaMid = Color3.fromHex("#FFC23A"),
+	ModeFfaEnd = Color3.fromHex("#F58A16"),
+	ModeFfaGlow = Color3.fromHex("#FFC23A"),
+	ModeFfaDeep = Color3.fromHex("#D2620A"),
+	ModeBase = Color3.fromHex("#2629A8"),
+	ModeShardBlue = Color3.fromHex("#7FA6FF"),
+	ModeShardPink = Color3.fromHex("#FF8CC0"),
+	ModeShardMint = Color3.fromHex("#6FE8BC"),
+	ModeDim = Color3.fromHex("#181046"),
+	ModeShadow = Color3.fromHex("#140A50"),
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

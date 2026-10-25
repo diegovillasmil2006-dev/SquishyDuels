@@ -302,6 +302,19 @@ local Strings = {
 		-- in 3…" is the arena's own countdown here, plan FD2).
 		duelCta = "DUEL",
 		duelJoin = "Join the queue",
+		duelPick = "Pick a mode", -- LOBBY HUD L:168: the DUEL button opens the mode select
+		-- Diego's mode select (2026-10-24, LOBBY HUD L:173-215, L:1358-1363; UI/ModeSelect): the three cards (keyed
+		-- by Config.UI.ModeSelect.cards), the line under them and the close X's name.
+		modeSelect = {
+			title = "SELECT A GAME MODE",
+			close = "Close",
+			play = "Play",
+			cards = {
+				["1v1"] = { title = "DUEL", sub = "1 VS 1", ghost = "1v1" },
+				tdm = { title = "TEAM\nDEATHMATCH", sub = "6 VS 6", ghost = "6v6" },
+				ffa = { title = "FREE\nFOR ALL", sub = "12 PLAYERS", ghost = "12" },
+			},
+		},
 		findingMatch = "Finding match",
 		matchFound = "MATCH FOUND!",
 		matchOpponent = "Opponent: {name}",

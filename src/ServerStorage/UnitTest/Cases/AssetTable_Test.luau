@@ -465,6 +465,24 @@ return function(t: Context)
 				"img.duel.avatar.you",
 				"img.duel.avatar.foe",
 				"img.duel.star",
+				-- Mode select (2026-10-24): the 17 pictures of "Squishy Duels LOBBY HUD.dc.html"'s mode select.
+				"img.mode.art.duel",
+				"img.mode.art.tdm",
+				"img.mode.art.ffa",
+				"img.mode.artMask.duel",
+				"img.mode.artMask.tdm",
+				"img.mode.artMask.ffa",
+				"img.mode.bg",
+				"img.mode.vignette",
+				"img.mode.rays",
+				"img.mode.raysCard",
+				"img.mode.glow",
+				"img.mode.shard",
+				"img.mode.bubble",
+				"img.mode.cardGlow",
+				"img.mode.cardShadow",
+				"img.mode.play",
+				"img.mode.playMask",
 			})
 		)
 	end)

@@ -128,6 +128,8 @@ export type TextKind =
 	| "D19"
 	| "D23"
 	| "Open" -- UI FINAL R7 (T12): OPEN, 27 px (H:277)
+	| "ModeTitle" -- the mode select's card title and ghost number (UI/ModeSelect, card ref px)
+	| "ModeGhost"
 
 export type AccentName =
 	"strawberry"

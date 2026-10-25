@@ -102,6 +102,9 @@ local UI = {
 		D19 = 19, -- H:159, H:162, H:278, H:369, H:390, H:546
 		D23 = 23, -- H:101-119 the nav labels
 		Open = 27, -- UI FINAL R7 (T12): H:277 OPEN
+		-- Mode select (LOBBY HUD L:189, L:196), in the card's ref px (1 cq = 5.88): the title 10 cq, the ghost 34 cq.
+		ModeTitle = 59,
+		ModeGhost = 200,
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -1848,6 +1851,10 @@ local UI = {
 			awesome = { kind = "Title", stroke = 6 }, -- H:547
 			revealName = { kind = "Reveal", stroke = 10, drop = 6 }, -- H:490
 			congrats = { kind = "Congrats", stroke = 13, drop = 6 }, -- H:539
+			-- Mode select (LOBBY HUD): a card's title (L:196: 10 cq, stroke 2 cq, drop 1 cq in ref px) and the screen's
+			-- "SELECT A GAME MODE" (L:213: 40 px at most, stroke 7, drop 4).
+			modeTitle = { kind = "ModeTitle", stroke = 12, drop = 6 },
+			modeHeader = { kind = "Hero", stroke = 7, drop = 4 },
 			prize = { kind = "Prize", stroke = 10, drop = 6, color = "StickerCoinText" }, -- H:545
 			button = { kind = "Big", stroke = 5 }, -- H:370, H:462
 			buttonLarge = { kind = "HudNumber", stroke = 6 }, -- H:246 (26 px)
@@ -3095,6 +3102,210 @@ local UI = {
 		},
 	},
 
+	-- Mode select (2026-10-24; UI/ModeSelect; `L:n` = Diego's "Squishy Duels LOBBY HUD.dc.html" line n, ALL HUDS zip):
+	-- the full-screen picker the DUEL button opens. The design sizes it in viewport units, so px here are SCREEN px (its
+	-- layer has no UI scale); a card's innards use the card's own unit `cq` = 1% of its content height (L:187
+	-- container-type:size), drawn at refHeight and scaled. Shares are of the screen (vw / vh) or of the parent box.
+	ModeSelect = {
+		layerName = "SD_ModeSelect",
+		-- L:174 z 60, full screen: over every HUD layer and its effects (SD_Overlay 30: the coin bursts), under SD_Fade 40
+		layer = { displayOrder = 35, insets = Enum.ScreenInsets.None } :: ScreenGuiSpec,
+		fadeMs = 250, -- L:174 sdFade .25s ease
+		cards = { "1v1", "tdm", "ffa" }, -- L:1357-1363: DUEL, TDM, FFA (the ids HudFormat.duelAction reads)
+		startIndex = 2, -- L:985 msel 1: TDM, the middle card
+		rays = { share = 1.8, centreY = 0.44, alpha = 0.11, spinS = 90 }, -- L:175 180vmax, 5deg / 15deg
+		glow = { centreY = 0.45, reach = 0.42, ms = 450 }, -- L:176: circle at 50% 45%, clear at 42%, .45s ease
+		-- The seeded field (L:993-1002, Park-Miller seed 11, drawn in this order): shards { x %, y %, angle, length
+		-- vw, colour }, then the bubbles, sparks and drifting squishies; ranges are { from, span }.
+		field = {
+			seed = 11,
+			shards = {
+				{ -4, 6, 18, 30, "ModeShardBlue" },
+				{ -6, 40, -6, 22, "ModeShardPink" },
+				{ -3, 80, -24, 28, "ModeShardBlue" },
+				{ 14, 100, -62, 16, "ModeShardMint" },
+				{ 30, -3, 68, 14, "ModeShardBlue" },
+				{ 70, -4, 112, 16, "ModeShardPink" },
+				{ 104, 8, 162, 30, "ModeShardBlue" },
+				{ 106, 46, 184, 22, "ModeShardMint" },
+				{ 103, 84, 204, 28, "ModeShardBlue" },
+				{ 82, 102, 242, 16, "ModeShardPink" },
+			},
+			shard = { thick = 0.2, dur = { 3, 2 }, delay = 4, move = -0.05, stretch = 1.08 }, -- L:178, mpShard
+			bubble = { -- L:179: mpRise linear, mpWob 2.6s ease-in-out
+				count = 16,
+				x = { 0, 100 },
+				size = { 10, 38 },
+				dur = { 9, 9 },
+				delay = 18,
+				bottom = 60,
+				rise = 1.18,
+				fadeIn = 0.08,
+				fadeOut = 0.88,
+				rim = 2,
+				rimAlpha = 0.7,
+				wobbleS = 2.6,
+				wobblePx = 10,
+				squash = 0.06,
+			},
+			spark = {
+				count = 14,
+				x = { 4, 92 },
+				y = { 4, 88 },
+				size = { 10, 18 },
+				dur = { 1.8, 1.8 },
+				delay = 3,
+				spin = 90,
+			}, -- L:180
+			-- L:1001 { x %, y %, width vw }, L:1360 the pool's squishies 2..8 (the design's toy order, our catalog ids).
+			toys = {
+				places = {
+					{ 3, 14, 9 },
+					{ 88, 22, 8 },
+					{ 6, 62, 7 },
+					{ 90, 64, 9 },
+					{ 24, 4, 6 },
+					{ 70, 6, 6 },
+					{ 46, 84, 6 },
+				},
+				ids = { "cloud_bunny", "cupcake_axolotl", "donut", "kitty_bread", "butter", "chocolate", "mochi_fox" },
+				dur = { 5, 3 },
+				delay = 5,
+				alpha = 0.3,
+				drift = { 16, -26 },
+				tilt = 10,
+			},
+		},
+		card = {
+			heightShare = 0.66, -- L:184: height min(66vh, 600px), aspect-ratio .66
+			maxHeight = 600,
+			aspect = 0.66,
+			gapShare = 0.012, -- L:182: gap 1.2vw, padding-bottom 7vh
+			bottomShare = 0.07,
+			edgeMargin = 12, -- [P] a screen too narrow for the row shrinks the cards (the design lets them overflow)
+			border = 6, -- L:187
+			radius = 30,
+			lip = 10,
+			shadow = { y = 18, alpha = 0.3, pad = 50, slice = { 80, 80, 320, 320 } }, -- L:187 0 18px 30px rgba(20,10,80,.3)
+			ring = { inset = 6, radius = 36, width = 6, alpha = 0.35 }, -- L:186 0 0 0 6px rgba(255,255,255,.35)
+			glow = { pad = 110, slice = { 146, 146, 374, 374 } }, -- L:186 0 0 80px 14px (img.mode.cardGlow, 9-slice)
+			other = 0.82, -- L:1364: the unpicked cards' scale, .5s cubic-bezier(.22,1.3,.36,1) (L:185)
+			pickMs = 500,
+			borderMs = 250, -- L:187
+			ringMs = 400, -- L:186
+			dimMs = 350, -- L:206: rgba(24,16,70,.32)
+			dimAlpha = 0.32,
+			popMs = 500, -- L:184 sdPop .5s cubic-bezier(.2,1.4,.4,1), 70 ms apart (L:1364)
+			popStepMs = 70,
+			popFrames = { -- H:26 sdPop
+				{ at = 0, alpha = 0, scale = 0.55, y = 40, rot = -2 },
+				{ at = 0.6, alpha = 1, scale = 1.035, y = -4, rot = 0.4 },
+				{ at = 0.8, scale = 0.99 },
+				{ at = 1, alpha = 1, scale = 1 },
+			},
+		},
+		-- A card's innards in ref px (refHeight = the 600 px card's content box; cq = refHeight / 100).
+		inner = {
+			refHeight = 588,
+			rays = { share = 2.4, centreY = 0.36, alpha = 0.16, spinS = 28 }, -- L:188 (share of the content width)
+			ghostTop = 0.03, -- L:189 (role modeGhost, white at ghostAlpha)
+			ghostAlpha = 0.2,
+			art = { left = -0.07, top = 0.03, share = 1.14, shadowCq = 1.4, shadowAlpha = 0.3 }, -- L:190-191
+			-- L:192 sdArtShine: a band 60% of the art wide, 105deg, white .55 at its middle, from -110% to 190% of
+			-- itself after holding to 55% of the period (ease-in-out).
+			shine = { band = 0.6, edge = 0.2, from = -1.1, to = 1.9, hold = 0.55, alpha = 0.55, rotation = 15 },
+			fade = { share = 0.52, at = 0.78 }, -- L:194
+			column = { bottom = 0.06, gapCq = 2 }, -- L:195
+			titleLineHeight = 0.92, -- L:196 (role modeTitle)
+			titleFit = 0.94, -- [P] a title wider than this share of the content (large text sizes) shrinks
+			sub = { padYCq = 0.9, padXCq = 2.4 }, -- L:197 (kind Small, 2.8 cq)
+			-- L:199-202 PLAY, the picture img.mode.play drawn for cq 6 (a 600 px card): its box boxW x boxH at (pad, pad)
+			-- of a canvasW x canvasH picture (the 6 px lip inside); straight, as the design shows it (its sdPop, fill
+			-- both, ends on transform none, which drops the skewX); margin-top 1 cq; sdPop .45s cubic-bezier(.2,1.6,.4,1)
+			-- .1s; sdShine 2.4s: a band 25% wide (skewX -20deg) from -200% to 900% of itself after 55%.
+			play = {
+				drawnCq = 6,
+				boxW = 189,
+				boxH = 54,
+				pad = 8,
+				canvasW = 205,
+				canvasH = 76,
+				topCq = 1,
+				popMs = 450,
+				popDelayMs = 100,
+				shine = { band = 0.25, from = -2, to = 9, hold = 0.55, periodS = 2.4, alpha = 0.75, rotation = 20 },
+			},
+			looks = { -- L:1358-1363
+				["1v1"] = {
+					stops = { { 0, "ModeDuelTop" }, { 0.5, "ModeDuelMid" }, { 1, "ModeDuelEnd" } },
+					rotation = 90, -- 180deg
+					glow = "ModeDuelGlow",
+					deep = "ModeDuelDeep",
+					art = "img.mode.art.duel",
+					mask = "img.mode.artMask.duel",
+					shineS = 3.6,
+					loop = { -- sdArtClash 2.4s cubic-bezier(.3,.7,.4,1) (x, y: shares of the art box)
+						periodS = 2.4,
+						curve = "modeClash",
+						frames = {
+							{ at = 0, scale = 1, rot = 0 },
+							{ at = 0.12, scale = 1.045, rot = -0.6 },
+							{ at = 0.24, scale = 0.99, rot = 0.3 },
+							{ at = 0.36, scale = 1.01, rot = 0 },
+							{ at = 0.6, y = -0.012, scale = 1 },
+							{ at = 1, scale = 1, rot = 0 },
+						},
+					},
+				},
+				tdm = {
+					stops = {
+						{ 0, "ModeTdmTop" },
+						{ 0.38, "ModeTdmPink" },
+						{ 0.66, "ModeTdmPurple" },
+						{ 1, "ModeTdmEnd" },
+					},
+					rotation = 60, -- 150deg
+					glow = "ModeTdmGlow",
+					deep = "ModeTdmDeep",
+					art = "img.mode.art.tdm",
+					mask = "img.mode.artMask.tdm",
+					shineS = 4.2,
+					loop = { -- sdArtBob 3.2s ease-in-out
+						periodS = 3.2,
+						curve = "easeInOut",
+						frames = {
+							{ at = 0, y = 0, rot = -0.8, scale = 1 },
+							{ at = 0.5, y = -0.022, rot = 0.8, scale = 1.025 },
+							{ at = 1, y = 0, rot = -0.8, scale = 1 },
+						},
+					},
+				},
+				ffa = {
+					stops = { { 0, "ModeFfaTop" }, { 0.5, "ModeFfaMid" }, { 1, "ModeFfaEnd" } },
+					rotation = 90,
+					glow = "ModeFfaGlow",
+					deep = "ModeFfaDeep",
+					art = "img.mode.art.ffa",
+					mask = "img.mode.artMask.ffa",
+					shineS = 4.8,
+					loop = { -- sdArtFloat 6s ease-in-out
+						periodS = 6,
+						curve = "easeInOut",
+						frames = {
+							{ at = 0, x = 0, y = 0, rot = -2.5 },
+							{ at = 0.25, x = 0.012, y = -0.02, rot = 0 },
+							{ at = 0.5, x = 0, y = -0.03, rot = 2.5 },
+							{ at = 0.75, x = -0.012, y = -0.012, rot = 0 },
+							{ at = 1, x = 0, y = 0, rot = -2.5 },
+						},
+					},
+				},
+			},
+		},
+		title = { minPx = 22, maxPx = 40, share = 0.044, bottomShare = 0.045 }, -- L:213 clamp(22px, 4.4vh, 40px)
+		close = { right = 24, top = 22, face = 56, border = 4, radius = 16, lip = 5, iconPx = 30, highlightPx = 3 }, -- L:215
+	},
+
 	-- UI FINAL R2 (plan §0 easing rule, G2.3): every design timing function as cubic-bezier numbers { x1, y1, x2, y2 },
 	-- played exactly by Anim/Tweens.bezier (the CSS keywords at their standard numbers). `H:n` / `lib:n` cite each.
 	curves = {
@@ -3123,6 +3334,9 @@ local UI = {
 		-- M:558 (both whole-run), the podium ribbon M:331 and the replay banner M:298 (sdMfUnfurl; not `rise`).
 		beat = { 0.2, 1, 0.4, 1 },
 		unfurl = { 0.3, 1.3, 0.5, 1 },
+		-- Mode select (LOBBY HUD L:185 the pick, L:1359 sdArtClash).
+		modePick = { 0.22, 1.3, 0.36, 1 },
+		modeClash = { 0.3, 0.7, 0.4, 1 },
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The

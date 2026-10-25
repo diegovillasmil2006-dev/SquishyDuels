@@ -38,12 +38,11 @@
 --   player) nor in first person (practice: over the targets), HudFormat.gripFloatShown.
 -- * The DUEL area (Hud_CtaWrap, top middle at ctaTop, PR10): idle, the DUEL button (Hud_DuelButton, a "cta" Button,
 --   H:126- 133: 350 x 92, the emblem bobbing 2.4 s, "DUEL" / "Join the queue", its soft shadow H:126 T2, the moving
---   shine); for the testers (Config.Match.pickerTesters, HudFormat.pickerShown) Diego's TEAM DEATHMATCH / FREE FOR ALL
---   picker under it (Hud_DuelModes, UI/Components/SegmentedTabs, N:154-158; TDM first, N:735; the design's short names,
---   N:711-712, where the full ones leave no room), and DUEL sends MatchJoin(the mode) (the in-server queue; its toasts
---   show the progress until the 12-slot bar exists; the join's sound and sparks play on its match.joined); the owner's
---   3rd tab "DUEL 1v1" (2026-10-16: keep all of 1v1; [P] Diego's tab look in the DUEL button's pink, short name "1v1";
---   where even the short names leave no room, [P] each tab's chip word alone) and everyone else's DUEL open
+--   shine); with the mode picker (Config.Match.pickerTesters / pickerForEveryone, HudFormat.pickerShown) "DUEL" /
+--   "Pick a mode" opens Diego's full-screen mode select (2026-10-24, UI/ModeSelect, LOBBY HUD L:163-216; its own layer,
+--   Back closes it through UIController.pushBack, the focus comes back after): PLAY on TEAM DEATHMATCH / FREE FOR ALL
+--   sends MatchJoin(the mode) (the in-server queue; its toasts show the progress until the 12-slot bar exists; the
+--   join's sound and sparks play on its match.joined), PLAY on DUEL 1v1 and everyone else's DUEL open
 --   QueueController's non-modal "queue" screen (QueueJoin; HudFormat.duelAction). While the 1v1 queue searches: the
 --   search bar (Hud_DuelSearch, H:135-146: "Finding match", the dots, m:ss, the two slots (you mint, the opponent
 --   pink), the queue line, the QueueController's cancel X in its right end), popping in (sdPop, G4.1) with the join
@@ -51,8 +50,8 @@
 --   stays through Matched) the opponent's slot fills first, then 350 ms later MATCH FOUND (Hud_MatchFound in SD_Overlay
 --   at the area's last place, under the duel HUD's top bar once that shows, H:148-152, G4.2, G4.3) pops in with its
 --   sparks, ring, jolt and ui.toast and stays Config.UI.Queue.matchedBannerSeconds or until the arena countdown. Phones
---   draw only the idle DUEL button at COLUMN.ctaCompactScale (the second line hidden); the search bar and the picker
---   keep their full size (PR1, PR2; HudFormat.ctaScales). The toasts start under the area (UIController.toastsBelow
+--   draw only the idle DUEL button at COLUMN.ctaCompactScale (the second line hidden); the search bar keeps its full
+--   size (PR1, PR2; HudFormat.ctaScales). The toasts start under the area (UIController.toastsBelow
 --   "cta"), then under the coach card or the queue pill right under it (NotifyFormat chains them), at the design's top
 --   (N:197) only while this HUD shows (UIController.setToastTop).
 -- * Lobby audio zones: WorldBinder (a higher layer than SoundController) is connected to SoundController here (reading).
@@ -65,8 +64,8 @@
 --   and the queue pill (they place themselves from layoutRects(), under the DUEL area).
 -- * Gamepad (HudFormat.focusLinks): the left column top to bottom (the coin pill, the Grip row = the DPadUp entry, the
 --   tiles), the right column (Settings, the tracker) and the links between them: the DUEL button between the left
---   column and Settings (while searching, the search bar's cancel X), Down to the mode tabs, else (searching) the queue
---   pill's first hint button ("queueHint"), else the queue pill's or the coach card's button (both Up back to it), a
+--   column and Settings (while searching, the search bar's cancel X), Down to (searching) the queue pill's first hint
+--   button ("queueHint"), else the queue pill's or the coach card's button (both Up back to it), a
 --   tile -> the DUEL button. Only the links this module set are
 --   cleared again.
 -- * Phone HUD B (the owner's pick, 2026-10-17; plan work/phonehud/PROPOSAL.md; phones = the compact class only, every
@@ -74,9 +73,8 @@
 --   (the minimal phone HUD, 2026-10-17, VillasmilGaming: "more minimalistic and smaller": every phone sticker, the
 --   tiles, Daily and Settings, is icon only, 52 base px; the DUEL button 56)
 --   (HudFormat.leftColumnPlan); Daily beside Settings in Hud_Right (HudFormat.PHONE_RIGHT, UI/PhoneHud.placeTiles: a
---   tile counts in the grid only while it sits in Hud_Nav); under the DUEL button the mode chip, whose tap pops the
---   picker under it (UI/PhoneHud; the gamepad's Down from DUEL goes to the chip while the picker is closed); the toasts
---   at the right (UIController's phone column). The phone pieces live in UI/PhoneHud (this file keeps under Luau's 200
+--   tile counts in the grid only while it sits in Hud_Nav); the toasts at the right (UIController's phone column).
+--   The phone pieces live in UI/PhoneHud (this file keeps under Luau's 200
 --   top-level locals: it is required where it is used).
 -- * Access2 (2026-10-18): the HIGHWAY stand-in (HudFormat.NAV place "right") sits right under Settings in one column
 --   with it (Hud_SettingsColumn in Hud_Right; Diego's tile column keeps its 5 and the quest tracker follows under
@@ -116,10 +114,10 @@ local Focus = require(Client.UI.Focus)
 local HudFormat = require(Client.UI.HudFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
+local ModeSelect = require(Client.UI.ModeSelect)
 local ProgressBar = require(Client.UI.Components.ProgressBar)
 local QuestFormat = require(Client.UI.QuestFormat)
 local Scheduler = require(Client.Anim.Scheduler)
-local SegmentedTabs = require(Client.UI.Components.SegmentedTabs)
 local SquishyImage = require(Client.UI.Components.SquishyImage)
 local Theme = require(Client.UI.Theme)
 local Tweens = require(Client.Anim.Tweens)
@@ -142,7 +140,7 @@ export type Rects = {
 	left: Rect?, -- Hud_Left (the coin pill and the Grip row)
 	tiles: Rect?, -- Hud_Nav (the tiles)
 	right: Rect?, -- Hud_Right (Settings, the tracker, the data banner)
-	cta: Rect?, -- the DUEL area (the button and the mode picker, or the search bar; the top middle)
+	cta: Rect?, -- the DUEL area (the button, or the search bar; the top middle)
 	coach: Rect?, -- Hud_OnboardingCard (OnboardingController)
 	reserved: { Rect }, -- narrow layouts: the thumbstick zone, the touch Throw / Ultimate buttons and the jump button
 }
@@ -206,7 +204,6 @@ local COACH_NAME = "Hud_OnboardingCard" -- OnboardingController's coach card (a 
 local SEARCHING = "Searching"
 local MATCH_JOIN = "MatchJoin" -- Remotes: MatchJoin(mode: string), FFA/TDM v1's in-server queue
 local MATCH_JOINED = "match.joined" -- MatchService's Notify when it took the join (a refusal is match.refused.*)
-local DEFAULT_MODE = "tdm" -- N:735
 -- The duel HUD's top bar (DuelController's stable names): MATCH FOUND keeps under it once it shows.
 local DUEL_GUI, DUEL_TOP_BAR = "SD_DuelHud", "TopBar"
 -- H:653-654: the keys 1-5 open these windows (ControlsController NavN / ModalNavN).
@@ -262,9 +259,8 @@ local ctaScale: UIScale? = nil -- SD_CtaScale: the phone scale of the idle DUEL 
 local idleBox: Frame? = nil -- Hud_DuelIdle: the DUEL button and its soft shadow, sized to their drawn size
 local idleHolder: Frame? = nil -- SD_IdleScale in Hud_DuelIdle: the button at its base size under SD_CtaScale
 local duelButton: Button.Button? = nil
-local picker: SegmentedTabs.SegmentedTabs? = nil
-local pickerOn = false -- this player sees the mode picker (HudFormat.pickerShown)
-local mode = DEFAULT_MODE
+local pickerOn = false -- this player's DUEL opens the mode select (HudFormat.pickerShown)
+local modeScreen: ModeSelect.ModeSelect? = nil -- the open mode select (UI/ModeSelect)
 local search: SearchBar? = nil
 local found: FoundBar? = nil
 local foundToken = 0 -- the matchFound call that owns the found bar
@@ -917,7 +913,7 @@ local function layoutRight(compact: boolean)
 	end
 end
 
--- The DUEL area's state from the queue (HudFormat.ctaModel): the button (and the picker), or the search bar with its
+-- The DUEL area's state from the queue (HudFormat.ctaModel): the button, or the search bar with its
 -- time, its second line and your slot; entering the search plays the join's sounds and sparks (H:758-763). Searching
 -- -> Matched keeps the search bar (G4.3: the opponent's slot fills there, matchFound, whichever of QueueChanged and
 -- DuelChanged comes first) until the queue leaves Matched.
@@ -932,8 +928,6 @@ local function refreshCta()
 	if queued ~= ctaQueued then
 		ctaQueued = queued
 		idle.Visible = not queued
-		-- The picker (Phone HUD B: on phones the mode chip, the picker only while open).
-		require(Client.UI.PhoneHud).sync(pickerOn and not queued, ctaCompact)
 		bar.root.Visible = queued
 		bar.fills[2].Visible = false -- the opponent's slot fills on Matched (matchFound)
 		if queued then
@@ -959,15 +953,44 @@ local function refreshCta()
 	end
 end
 
--- The DUEL press (H:758-762): the testers' mode picks the in-server TDM / FFA queue (MatchJoin; its toasts show the
--- progress); the 1v1 tab (the owner, 2026-10-16) and everyone without the picker the 1v1 queue (the "queue" screen;
--- its search bar sounds and sparks on Searching). HudFormat.duelAction decides.
+-- The DUEL press (H:758-762): with the picker, Diego's mode select (UI/ModeSelect; LOBBY HUD L:985); PLAY on a card
+-- starts that mode as the tabs did (HudFormat.duelAction): TEAM DEATHMATCH / FREE FOR ALL the in-server queue
+-- (MatchJoin; its toasts show the progress), DUEL 1v1 the 1v1 queue (the "queue" screen; its search bar sounds and
+-- sparks on Searching). Without the picker DUEL opens the 1v1 queue at once.
 local function onDuel(item: HudFormat.NavItem)
-	if HudFormat.duelAction(pickerOn, mode) == "match" then
-		NetController.fire(MATCH_JOIN, mode)
+	if not pickerOn then
+		UIController.open(item.screen, item.params)
 		return
 	end
-	UIController.open(item.screen, item.params)
+	if modeScreen then
+		return
+	end
+	local focus = Focus.capture()
+	local popBack: (() -> ())? = nil
+	local screen: ModeSelect.ModeSelect
+	screen = ModeSelect.open({
+		layer = UIController.screenGui(Config.UI.ModeSelect.layerName, Config.UI.ModeSelect.layer),
+		onPlay = function(id: string)
+			if HudFormat.duelAction(true, id) == "match" then
+				NetController.fire(MATCH_JOIN, id)
+			else
+				UIController.open(item.screen, item.params)
+			end
+		end,
+		onClose = function()
+			if modeScreen == screen then
+				modeScreen = nil
+			end
+			if popBack then
+				popBack()
+			end
+			Focus.restore(focus)
+		end,
+	})
+	modeScreen = screen
+	popBack = UIController.pushBack(function()
+		screen:close(true) -- UIController.back plays ui.back
+	end)
 end
 
 -- The testers' join feel (H:760-762: slot(0) and the burst of 14 at the DUEL button), once the server took the join
@@ -982,34 +1005,19 @@ local function onMatchJoined()
 	UiFx.sparks(button.root, { n = sparks.n, spread = sparks.spread, colors = UiFx.colors(sparks.colors) })
 end
 
--- The DUEL area's size as drawn (base px): the search bar (never scaled), or the idle button at its phone scale `s`
--- with the picker (never scaled) `gap` under it (Layout.lipGap: the gap is the design's from the button's face, its
--- lip drawn at `s`), the picker with the design's names or its short ones (`short`; `chips`: the chip words alone).
-local function areaSize(buttonWidth: number, s: number, gap: number, short: boolean, chips: boolean?): Vector2
+-- The DUEL area's size as drawn (base px): the search bar (never scaled), or the idle button at its phone scale `s`.
+local function areaSize(buttonWidth: number, s: number): Vector2
 	if ctaQueued then
 		return Vector2.new(searchWidth, COLUMN.barHeight)
 	end
-	local size = Vector2.new(math.ceil(buttonWidth * s), math.ceil(COLUMN.ctaHeight * s))
-	-- Phone HUD B: the mode chip under the button (Vector2.zero while it hides), the picker under it only while open.
-	local chip = require(Client.UI.PhoneHud).chipSize()
-	if chip.Y > 0 then
-		size = Vector2.new(math.max(size.X, chip.X), size.Y + gap + chip.Y)
-	end
-	local tabs = picker
-	if tabs and pickerOn and tabs.root.Visible then
-		local extra = tabs:size(short, chips)
-		size = Vector2.new(math.max(size.X, extra.X), size.Y + gap + extra.Y)
-	end
-	return size
+	return Vector2.new(math.ceil(buttonWidth * s), math.ceil(COLUMN.ctaHeight * s))
 end
 
 -- Sizes the DUEL area and places it at the top middle (HudFormat.ctaPlacement), clear of Hud_Left, the tiles with
 -- their badges' reach and Hud_Right. Phones draw only the idle button at the compact scale (HudFormat.ctaScales: its
 -- holder SD_IdleScale under SD_CtaScale; Hud_DuelIdle takes the drawn size in the area's list); the search bar takes
 -- the room the groups leave at full size (HudFormat.barWidth), dropping its dots and second line when narrow
--- (barParts); the testers' picker switches to the design's short mode names (N:711-712 MODES.*.tab) when the area
--- with the full names has no room, and ([P] 2026-10-16, three tabs) to each tab's chip word alone when even those
--- leave none.
+-- (barParts).
 local function layoutCta(canvas: Vector2, compact: boolean)
 	local wrap, button, bar = ctaWrap, duelButton, search
 	if wrap == nil or button == nil or bar == nil then
@@ -1018,7 +1026,8 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 	end
 	if compact ~= ctaCompact then
 		ctaCompact = compact
-		button:setSubtext(if compact then nil else Strings.hud.duelJoin) -- phones: "DUEL" alone (PR2)
+		-- phones: "DUEL" alone (PR2); else "Pick a mode" with the mode select (LOBBY HUD L:168), "Join the queue"
+		button:setSubtext(if compact then nil elseif pickerOn then Strings.hud.duelPick else Strings.hud.duelJoin)
 	end
 	local s = HudFormat.ctaScales(compact).idle
 	local scale = ctaScale
@@ -1030,8 +1039,6 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 	if list then
 		setIfChanged(list, "Padding", UDim.new(0, gap))
 	end
-	-- Phone HUD B: the picker or the mode chip for this layout (a hidden DUEL area closes the picker).
-	require(Client.UI.PhoneHud).sync(pickerOn and not ctaQueued and wrap.Visible, compact)
 	if not wrap.Visible then
 		ctaRect = nil
 		return
@@ -1061,42 +1068,8 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 		setIfChanged(bar.dots, "Visible", parts.dots)
 		setIfChanged(bar.line2, "Visible", parts.line2)
 	end
-	local function placeFor(short: boolean, chips: boolean?): (Vector2, HudFormat.CtaPlace)
-		local size = areaSize(buttonWidth, s, gap, short, chips)
-		return size, HudFormat.ctaPlacement({ canvas = canvas, size = size, blockers = blockers, top = origin.ctaTop })
-	end
-	local size, place = placeFor(false)
-	-- Phone HUD B: on phones the popped picker never moves the DUEL button: the area keeps the centre the button and
-	-- the mode chip alone take, and the picker's names shrink to fit there first.
-	local chip = require(Client.UI.PhoneHud).chipSize()
-	local centre: number? = nil
-	if chip.Y > 0 then
-		local closed =
-			Vector2.new(math.max(math.ceil(buttonWidth * s), chip.X), math.ceil(COLUMN.ctaHeight * s) + gap + chip.Y)
-		local spot =
-			HudFormat.ctaPlacement({ canvas = canvas, size = closed, blockers = blockers, top = origin.ctaTop })
-		centre = spot.x + closed.X / 2
-	end
-	local function fits(): boolean
-		return place.fits and (centre == nil or math.abs(place.x + size.X / 2 - (centre :: number)) < 0.5)
-	end
-	local tabs = picker
-	if tabs and pickerOn and not ctaQueued then
-		-- The full names, else the design's short ones, else ([P], 2026-10-16: the three tabs with the owner's 1v1 tab
-		-- overflow the 667x375 phone at Larger / Largest text) each tab's chip word alone (HudFormat_Test).
-		local short, chips = not fits(), false
-		if short then
-			size, place = placeFor(true)
-			chips = not fits()
-			if chips then
-				size, place = placeFor(true, true)
-			end
-		end
-		tabs:setShort(short, chips)
-	end
-	if centre then
-		place = { x = centre - size.X / 2, y = place.y, fits = place.fits }
-	end
+	local size = areaSize(buttonWidth, s)
+	local place = HudFormat.ctaPlacement({ canvas = canvas, size = size, blockers = blockers, top = origin.ctaTop })
 	ctaFits = place.fits
 	setIfChanged(wrap, "Position", UDim2.fromOffset(math.floor(place.x + size.X / 2), math.floor(place.y)))
 	ctaRect = { x = place.x, y = place.y, w = size.X, h = size.Y }
@@ -1167,17 +1140,6 @@ local function applyFocusLinks()
 	add(right, "settings", if settingsButton then settingsButton.root else nil)
 	add(right, "highway", if highwayButton then highwayButton.root else nil) -- access2: under Settings
 	add(right, "tracker", if tracker then tracker.root else nil)
-	-- UI FINAL R4: the mode picker's tabs (testers, while idle).
-	local modes: { string } = {}
-	local tabs = picker
-	if tabs and pickerOn and not ctaQueued and tabs.root.Visible then
-		for _, id in tabs.order do
-			add(modes, "mode:" .. id, tabs.tabs[id])
-		end
-	end
-	if #modes == 0 then
-		add(modes, "mode:chip", require(Client.UI.PhoneHud).chipButton()) -- Phone HUD B: the closed picker's chip
-	end
 	-- One object each (the Duel CTA, the coach card's button, the queue pill's Cancel), or nil.
 	local function single(key: string, object: GuiObject?): string?
 		if object and usable(object) then
@@ -1196,7 +1158,6 @@ local function applyFocusLinks()
 		coach = single("coach", focusTargets.onboarding),
 		cta = single("cta", ctaObject),
 		queue = if ctaQueued then nil else single("queue", focusTargets.queue),
-		modes = modes,
 		-- UI FINAL R4: the queue pill's first hint button (QueueController's "queueHint") under the searching bar.
 		hint = if ctaQueued then single("hint", focusTargets.queueHint) else nil,
 	})
@@ -1284,6 +1245,10 @@ local function setShown(on: boolean)
 		return
 	end
 	shown = on
+	local screen = modeScreen
+	if screen and not on then
+		screen:close(true) -- the lobby HUD left (a duel, a match): the mode select goes with it
+	end
 	for _, frame in { leftColumn, navRow, rightColumn } do
 		if frame then
 			frame.Visible = on
@@ -2030,9 +1995,11 @@ local function buildFound(c: Cleanup.Cleanup): FoundBar
 end
 
 -- The DUEL area (see the header): the wrap at the top middle, the idle box (the DUEL button over its soft shadow,
--- H:126 T2, in SD_IdleScale, whose UIScale SD_CtaScale draws only it at the phone scale), the testers' mode picker
--- under it and the search bar (both never scaled: PR1, PR2).
+-- H:126 T2, in SD_IdleScale, whose UIScale SD_CtaScale draws only it at the phone scale) and the search bar (never
+-- scaled: PR1, PR2).
 local function buildCta(c: Cleanup.Cleanup, gui: ScreenGui)
+	local player = Players.LocalPlayer
+	pickerOn = HudFormat.pickerShown(if player then player.UserId else nil)
 	local wrap: Frame = Create("Frame", {
 		Name = "Hud_CtaWrap",
 		BackgroundTransparency = 1,
@@ -2089,7 +2056,7 @@ local function buildCta(c: Cleanup.Cleanup, gui: ScreenGui)
 		accent = item.accent :: any,
 		textKind = "Duel",
 		textRole = "duel", -- H:130
-		subtext = Strings.hud.duelJoin,
+		subtext = if pickerOn then Strings.hud.duelPick else Strings.hud.duelJoin, -- LOBBY HUD L:168
 		subtextRole = "duelSub", -- H:131 (PR3)
 		textGap = cta.textGap, -- H:129
 		-- H:126: padding 0 24 0 128 inside the 5 px border (the border is drawn inside the face here)
@@ -2119,79 +2086,6 @@ local function buildCta(c: Cleanup.Cleanup, gui: ScreenGui)
 		c:add(function()
 			bob:remove()
 		end)
-	end
-	-- The testers' mode picker (N:154-158).
-	local player = Players.LocalPlayer
-	pickerOn = HudFormat.pickerShown(if player then player.UserId else nil)
-	if pickerOn then
-		local spec = HUD.picker
-		local tdm = spec.tdmStops
-		-- The 1v1 tab's face: the DUEL button's own gradient stops (its accent: top, mid at midAt, shade; N:146).
-		local pink = Theme.Accents[item.accent] or Theme.Accents.strawberry
-		local pinkStops: { SegmentedTabs.Stop } = { { at = 0, color = pink.top }, { at = 1, color = pink.shade } }
-		if pink.mid and pink.midAt then
-			table.insert(pinkStops, 2, { at = pink.midAt, color = pink.mid })
-		end
-		local modeTabs: { SegmentedTabs.Tab } = {
-			{
-				id = "tdm",
-				label = Strings.hud.modes.tdm,
-				chip = Strings.hud.modes.tdmChip,
-				short = Strings.hud.modes.tdmShort,
-				rotation = spec.tdmRotation,
-				stops = {
-					{ at = tdm[1], color = Palette.StickerTdmRedTop },
-					{ at = tdm[2], color = Palette.StickerTdmRed },
-					{ at = tdm[3], color = Palette.StickerTdmBlue },
-					{ at = tdm[4], color = Palette.StickerTdmBlueEnd },
-				},
-			},
-			{
-				id = "ffa",
-				label = Strings.hud.modes.ffa,
-				chip = Strings.hud.modes.ffaChip,
-				short = Strings.hud.modes.ffaShort,
-				rotation = spec.ffaRotation,
-				stops = {
-					{ at = 0, color = Palette.StickerYellowTop },
-					{ at = 1, color = Palette.StickerGoldMid },
-				},
-			},
-			-- [P] The owner's 1v1 tab (2026-10-16; not in Diego's design, he may restyle it): his tab look with the
-			-- DUEL button's own pink (its accent's three stops, N:146 / H:126), straight down like the FFA tab (N:711).
-			{
-				id = "1v1", -- not a Config.Match mode: the DUEL press joins the 1v1 queue (HudFormat.duelAction)
-				label = Strings.hud.modes.duel,
-				chip = Strings.hud.modes.duelChip,
-				short = Strings.hud.modes.duelShort,
-				rotation = spec.ffaRotation,
-				stops = pinkStops,
-			},
-		}
-		local tabs = SegmentedTabs.new({
-			name = "Hud_DuelModes",
-			tabs = modeTabs,
-			selected = mode,
-			layoutOrder = 3, -- Phone HUD B: the mode chip (2) sits between the DUEL button and the picker
-			parent = wrap,
-			onSelect = function(id: string)
-				mode = id
-				SoundController.play(CLICK_SOUND, { pitch = UI_PITCH.tab }) -- N:1254: tab()
-				require(Client.UI.PhoneHud).setMode(id) -- Phone HUD B: the chip shows it, the picker closes
-			end,
-		})
-		c:add(tabs)
-		picker = tabs
-		-- Phone HUD B: the mode chip (on phones under the DUEL button; its tap pops the picker under it).
-		require(Client.UI.PhoneHud).buildChip(c, {
-			tabs = modeTabs,
-			selected = mode,
-			wrap = wrap,
-			layoutOrder = 2,
-			picker = tabs,
-			hud = gui,
-			onChange = queueLayout,
-		})
 	end
 	search = buildSearch(c, wrap)
 	found = buildFound(c)
@@ -2611,10 +2505,9 @@ function HudController.debugState(): { [string]: any }
 			fits = ctaFits,
 			rect = ctaRect,
 			picker = pickerOn,
-			mode = mode,
+			modeSelect = if modeScreen then modeScreen:picked() else nil, -- the open mode select's picked card
 			searchWidth = searchWidth,
 			idleScale = if ctaScale then ctaScale.Scale else nil, -- HudFormat.ctaScales: phones scale only the button
-			phone = require(Client.UI.PhoneHud).debugState(), -- Phone HUD B: the mode chip and its picker
 		},
 		gripLevel = gripLevel,
 		gripFloat = gripFloat ~= nil and gripFloat.Visible, -- HudFormat.gripFloatShown
@@ -2683,9 +2576,12 @@ function HudController.init()
 		refreshTracker()
 		queueLayout()
 	end))
-	-- Phone HUD B: a window opening closes the popped mode picker.
+	-- A window opening closes the mode select (it would draw over the window).
 	c:add(UIController.ScreenOpened:connect(function()
-		require(Client.UI.PhoneHud).close()
+		local screen = modeScreen
+		if screen then
+			screen:close(true)
+		end
 	end))
 	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(queueLayout))
 	-- 2026-10-24: the HUD starts at the screen's top; Roblox's top buttons (UIController.coreCorner) may move.
@@ -2769,10 +2665,14 @@ function HudController.init()
 		settingsSlot = nil
 		highwayButton, highwaySlot = nil, nil
 		UIController.holdToast("data", nil)
-		ctaWrap, ctaScale, idleBox, duelButton, picker, search, found = nil, nil, nil, nil, nil, nil, nil
+		local screen = modeScreen
+		if screen then
+			screen:close(true)
+		end
+		ctaWrap, ctaScale, idleBox, duelButton, search, found = nil, nil, nil, nil, nil, nil
 		idleHolder, lastCtaRect = nil, nil
 		ctaRect, ctaFits, ctaQueued, ctaCompact, holdCta = nil, nil, false, false, false
-		pickerOn, mode, searchWidth = false, DEFAULT_MODE, HUD.search.width
+		pickerOn, searchWidth = false, HUD.search.width
 		gripFloat, gripLevelLabel, gripLevel = nil, nil, nil
 		focusEntry, hudGui, layoutQueued = nil, nil, false
 		table.clear(focusTargets)

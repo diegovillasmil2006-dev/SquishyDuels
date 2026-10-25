@@ -218,6 +218,20 @@ local function duelHud(key: string, id: number, use: string): AssetSlot
 	}
 end
 
+-- An image slot holding a mode select picture (2026-10-24): Diego's own art, or rendered 1:1 from the design's CSS
+-- ("Squishy Duels LOBBY HUD.dc.html", ALL HUDS zip), uploaded by Claude (Studio MCP upload_image) at the owner's yes.
+local function lobbyHud(key: string, id: number, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `jayyyyy upload (Studio MCP upload_image): '{(string.gsub(key, "%.", "_"))}.png'`,
+		license = "Own upload; the co-owner's own art and Claude Design Lobby HUD file",
+		verifiedAt = "2026-10-24",
+		notes = use,
+	}
+end
+
 -- An image slot holding a VFX Studio library texture: `name` is its Creator Store title, `by` its creator.
 local function vfxStudio(key: string, id: number, name: string, by: string, use: string): AssetSlot
 	return {
@@ -1171,6 +1185,26 @@ local SLOTS: { AssetSlot } = {
 	duelHud("img.duel.avatar.you", 110981692928652, "your avatar's pink round background (H:63)"),
 	duelHud("img.duel.avatar.foe", 82597226666692, "the opponent's avatar's blue round background (H:83)"),
 	duelHud("img.duel.star", 81890160016003, "white four-point burst star (hud-lib.js:263)"),
+	-- Mode select (2026-10-24; `L:n` = "Squishy Duels LOBBY HUD.dc.html"): Diego's three card pictures (820 px) and
+	-- their white silhouettes (the shine and drop shadow, 512 px); the rest rendered from the design's CSS. White ones
+	-- are tinted with ImageColor3; the rays are white at full alpha (drawn at the design's alpha).
+	lobbyHud("img.mode.art.duel", 108078692613783, "DUEL card art, uploads/mode-art/duel.png (L:191)"),
+	lobbyHud("img.mode.art.tdm", 114226214254878, "TEAM DEATHMATCH card art, uploads/mode-art/tdm.png (L:191)"),
+	lobbyHud("img.mode.art.ffa", 82186446203976, "FREE FOR ALL card art, uploads/mode-art/ffa.png (L:191)"),
+	lobbyHud("img.mode.artMask.duel", 112770299190777, "white silhouette of the DUEL art (L:192 shine, L:191 shadow)"),
+	lobbyHud("img.mode.artMask.tdm", 87021747577311, "white silhouette of the TEAM DEATHMATCH art"),
+	lobbyHud("img.mode.artMask.ffa", 90889647675502, "white silhouette of the FREE FOR ALL art"),
+	lobbyHud("img.mode.bg", 100089253107070, "the screen's blue radial, 16:9, stretched (L:174)"),
+	lobbyHud("img.mode.vignette", 83911631698948, "the screen's edge shadow, 16:9, stretched (L:181)"),
+	lobbyHud("img.mode.rays", 135761921318044, "white 24-spoke rays, 5deg / 15deg (L:175; drawn at .11)"),
+	lobbyHud("img.mode.raysCard", 130271972513553, "white 15-spoke rays, 9deg / 24deg (L:188; drawn at .16)"),
+	lobbyHud("img.mode.glow", 111932673162016, "white radial glow, .667 to clear (L:176; tinted per card)"),
+	lobbyHud("img.mode.shard", 83627351837700, "white shard triangle, clear to white left to right, 5:1 (L:178)"),
+	lobbyHud("img.mode.bubble", 101388968715207, "a bubble's fill, its rim drawn apart (L:179)"),
+	lobbyHud("img.mode.cardGlow", 136229928658635, "white 0 0 80px 14px glow round a radius-36 box, 9-slice (L:186)"),
+	lobbyHud("img.mode.cardShadow", 113197295836519, "white 30 px soft box, 9-slice (L:187's 0 18px 30px)"),
+	lobbyHud("img.mode.play", 105071940033271, "PLAY for a 600 px card, 2x, straight (L:199-202: sdPop ends on none)"),
+	lobbyHud("img.mode.playMask", 110206241037166, "white silhouette of the PLAY button's face (its shine, L:200)"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL
