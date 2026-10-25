@@ -62,8 +62,9 @@ local Duel = {
 			fadeFromFrame = 9, -- design: avatar.js:160 (end - 3)
 			ribbonSeconds = 0.26, -- the ribbons and speed lines run while t < 0.26 s (design: fp.js:539-540)
 			-- user decision 2026-10-11 (NOT IN DESIGN: main.js:311 "unassigned (server)"): 2.0; movement overhaul
-			-- 2026-10-17: 1.3 (dash more often)
-			cooldownSeconds = 1.3,
+			-- 2026-10-17: 1.3 (dash more often); Duel HUD (owner 2026-10-24, "Use design's numbers"; Duel HUD.dc.html:231
+			-- CD dash 2): 2.0
+			cooldownSeconds = 2,
 			-- build choice 2026-10-11 (NOT IN DESIGN): the server checks the cooldown with this much jitter allowance,
 			-- like a throw's CooldownToleranceSeconds, so an honest client's dash is never refused at the edge.
 			cooldownToleranceSeconds = 0.15,

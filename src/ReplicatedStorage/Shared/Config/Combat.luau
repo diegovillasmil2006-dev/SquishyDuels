@@ -140,14 +140,11 @@ local Combat = {
 	-- caught: it ends without a hit, the catcher crushes it for crushSeconds, then it bursts and the thrower loses 1 life
 	-- (user decision 2026-10-11).
 	Catch = {
-		windowSeconds = 0.42, -- the hands stay open this long after the press (design: html:532)
-		-- From the press; a press also cancels a charge (design: html:344). Review quick win 2026-10-14 (NOT IN DESIGN:
-		-- html:344 has 0.75): after a missed catch the hands wait 1.3 s, so mashing Catch keeps them open about 32% of
-		-- the time (windowSeconds / cooldownSeconds = 0.42 / 1.3), not 56%. A real catch keeps its own wait: the hands
-		-- are back handsBackSeconds (1.5) after it, and the first press then always passes this cooldown, even
-		-- lag-compensated (Config.validate and CatchRules_Test: cooldownSeconds - cooldownToleranceSeconds <=
-		-- handsBackSeconds - Lag.maxCompensationSeconds).
-		cooldownSeconds = 1.3,
+		-- Duel HUD (owner 2026-10-24, "Use design's numbers"; design: Duel HUD.dc.html:231 WIN 0.6, CD catch 5): the
+		-- hands stay open 0.6 s after the press (was 0.42) and the next catch waits 5 s from the press (was 1.3), a real
+		-- catch included (the old rule that a real catch's first press always passes is gone with it).
+		windowSeconds = 0.6,
+		cooldownSeconds = 5,
 		radiusStuds = 2.7 / 0.28, -- design: html:614 (d < 2.7 m; 1 stud = 0.28 m, so about 9.64 studs)
 		-- build choice 2026-10-11 (NOT IN DESIGN: the design measures from its camera, html:613): the catch is measured
 		-- from the catcher's HumanoidRootPart + this (about the eyes of a default avatar, where first person looks from).

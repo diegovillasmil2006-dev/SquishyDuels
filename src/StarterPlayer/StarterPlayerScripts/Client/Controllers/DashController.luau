@@ -726,7 +726,9 @@ local function onDashInput(inputState: Enum.UserInputState, _input: InputObject?
 	if inputState ~= Enum.UserInputState.Begin then
 		return false
 	end
-	return tryDash()
+	-- Duel HUD (2026-10-24): a refused press is still the dash's (sunk), so Left Shift never flips Shift Lock mid-fight.
+	tryDash()
+	return true
 end
 
 local function onDashStarted(raw: unknown)

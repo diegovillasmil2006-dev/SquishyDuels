@@ -27,6 +27,12 @@
 -- the telegraph (wind-up); a hit costs 1 life like every hit; the caster is rooted during the wind-up, cancel and
 -- refund work, and the practice range behaves, exactly like Dragon Rush.
 
+-- Duel HUD (owner 2026-10-24, "Use design's numbers"; design: Duel HUD.dc.html:229, 318): each ultimate is a timer of
+-- its squishy's cooldown (Dragon 45, Birdie 35, Cloud Bunny 40, Cupcake Axolotl 36, Donut 38 s) that starts on 8 s at
+-- the match start. Built on the same meter: it fills by time only (chargeMax / cooldown a second, no charge from hits
+-- or lost lives), starts ULT_START_SECONDS short of full, empties at each use, and minIntervalSeconds = the cooldown.
+local ULT_START_SECONDS = 8
+
 export type AbilityKind = "lane" | "volley" | "roller" | "rain" | "bubble"
 
 export type Ability = {
@@ -88,11 +94,11 @@ local Abilities = {
 		readyKey = "ability.dragonRush.ready",
 		cancelKey = "ability.interrupted",
 		chargeMax = 100,
-		startCharge = 0, -- every match
-		chargePerSecond = 2.0, -- Active and SuddenDeath only
-		chargePerHitLanded = 20, -- Dragon's normal throws
-		chargePerLifeLost = 25, -- comeback help
-		minIntervalSeconds = 20,
+		startCharge = 100 - ULT_START_SECONDS * 100 / 45, -- every match
+		chargePerSecond = 100 / 45, -- Active and SuddenDeath only
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 45, -- design: Duel HUD.dc.html:229 (Dragon Burst, cd 45)
 		telegraphSeconds = 0.9, -- caster rooted; lane + dragon head visible to both
 		radius = 4.0, -- swept sphere radius = half the lane width
 		laneHeightAboveFloor = 4.5, -- sphere spans floor+0.5 .. floor+8.5
@@ -117,10 +123,10 @@ local Abilities = {
 		readyKey = "ability.flockVolley.ready",
 		cancelKey = "ability.interrupted",
 		chargeMax = 100, -- design: ults.js:3 (meter 100); user decision 2026-10-11: Dragon Rush's meter
-		startCharge = 0, -- user decision 2026-10-11: Dragon Rush's fill rules
-		chargePerSecond = 2.0,
-		chargePerHitLanded = 20,
-		chargePerLifeLost = 25,
+		startCharge = 100 - ULT_START_SECONDS * 100 / 35, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 35,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
 		minIntervalSeconds = 35, -- design: ults.js:3 (cooldown 35 s); user decision 2026-10-11: the minimum interval
 		telegraphSeconds = 0.35, -- design: ults.js:3 (charge 0.35 s); user decision 2026-10-11: the wind-up
 		-- build choice 2026-10-11 (NOT IN DESIGN; user decision: "the game's normal projectile hit radius"): Birdie's own
@@ -155,10 +161,10 @@ local Abilities = {
 		readyKey = "ability.sprinkleRoller.ready",
 		cancelKey = "ability.interrupted",
 		chargeMax = 100, -- design: ults.js:4 (meter 100); user decision 2026-10-11: Dragon Rush's meter
-		startCharge = 0, -- user decision 2026-10-11: Dragon Rush's fill rules
-		chargePerSecond = 2.0,
-		chargePerHitLanded = 20,
-		chargePerLifeLost = 25,
+		startCharge = 100 - ULT_START_SECONDS * 100 / 38, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 38,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
 		minIntervalSeconds = 38, -- design: ults.js:4 (cooldown 38 s); user decision 2026-10-11: the minimum interval
 		telegraphSeconds = 0.45, -- design: ults.js:4 (charge 0.45 s); user decision 2026-10-11: the wind-up
 		radius = 3, -- design: ults.js:4 (lane 6 st wide)
@@ -188,10 +194,10 @@ local Abilities = {
 		readyKey = "ability.rainCheck.ready",
 		cancelKey = "ability.interrupted",
 		chargeMax = 100, -- design: ults.js:5 (meter 100); user decision 2026-10-11: Dragon Rush's meter
-		startCharge = 0, -- user decision 2026-10-11: Dragon Rush's fill rules
-		chargePerSecond = 2.0,
-		chargePerHitLanded = 20,
-		chargePerLifeLost = 25,
+		startCharge = 100 - ULT_START_SECONDS * 100 / 40, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 40,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
 		minIntervalSeconds = 40, -- design: ults.js:5 (cooldown 40 s); user decision 2026-10-11: the minimum interval
 		telegraphSeconds = 0.6, -- design: ults.js:5 (charge 0.6 s); user decision 2026-10-11: the wind-up
 		radius = 7, -- design: ults.js:5, fp.js:348 (zone 7 st radius)
@@ -228,10 +234,10 @@ local Abilities = {
 		readyKey = "ability.bubblePop.ready",
 		cancelKey = "ability.interrupted",
 		chargeMax = 100, -- design: ults.js:6 (meter 100); user decision 2026-10-11: Dragon Rush's meter
-		startCharge = 0, -- user decision 2026-10-11: Dragon Rush's fill rules
-		chargePerSecond = 2.0,
-		chargePerHitLanded = 20,
-		chargePerLifeLost = 25,
+		startCharge = 100 - ULT_START_SECONDS * 100 / 36, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 36,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
 		minIntervalSeconds = 36, -- design: ults.js:6 (cooldown 36 s); user decision 2026-10-11: the minimum interval
 		telegraphSeconds = 0.5, -- design: ults.js:6 (charge 0.5 s); user decision 2026-10-11: the wind-up
 		-- build choice 2026-10-11 (NOT IN DESIGN, as Birdie's): the game's normal projectile hit radius, Cupcake Axolotl's

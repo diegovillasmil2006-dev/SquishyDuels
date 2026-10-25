@@ -402,23 +402,24 @@ local Strings = {
 		sideB = "Mint side",
 		-- Final polish (2026-10-11): the hints also name the dash (spec phase 5: C / ButtonB) and the first-person squeeze
 		-- (DuelSqueeze: F / ButtonX). Feature 1 (2026-10-11): and the catch (RMB or E / ButtonL1; design: html:96).
-		hintMouse = "Click Throw · RMB/E Catch · Q Ultimate · C Dash · F Squeeze",
+		-- Duel HUD (owner 2026-10-24, "Design keys"): Q catch, X ultimate, E dash (Duel HUD.dc.html:323).
+		hintMouse = "Click Throw · Q Catch · X Ultimate · E Dash · F Squeeze",
 		hintGamepad = "R2 Throw · L1 Catch · L2 Ultimate · B Dash · X Squeeze",
 		-- Reading: the key hints when the locked loadout has no ultimate (the Ultimate button is hidden, §11.6).
-		hintMouseNoUlt = "Click Throw · RMB/E Catch · C Dash · F Squeeze",
+		hintMouseNoUlt = "Click Throw · Q Catch · E Dash · F Squeeze",
 		hintGamepadNoUlt = "R2 Throw · L1 Catch · B Dash · X Squeeze",
 		-- Foam UI restyle (2026-10-09): the same key hints drawn as keycaps, one beside each meter's caption
 		-- (controls.throw / controls.catch / controls.ultimate / controls.dash / controls.squeeze) in the bottom dock.
 		key = {
 			throwMouse = "Click",
-			ultimateMouse = "Q",
+			ultimateMouse = "X",
 			throwGamepad = "R2",
 			ultimateGamepad = "L2",
-			dashMouse = "C",
+			dashMouse = "E",
 			dashGamepad = "B",
 			squeezeMouse = "F",
 			squeezeGamepad = "X",
-			catchMouse = "RMB/E", -- feature 1 (design: html:96 "RMB / E")
+			catchMouse = "Q", -- Duel HUD 2026-10-24 (was "RMB/E"; the right mouse button still catches)
 			catchGamepad = "L1", -- feature 1, build choice 2026-10-11 (NOT IN DESIGN: a mouse page)
 		},
 		-- Feature 1 (2026-10-11): the catch's big words (design: html:352, 563), and the prompt under the reticle while an
@@ -652,10 +653,12 @@ local Strings = {
 	ability = {
 		interrupted = "Interrupted!",
 		dragonRush = {
-			name = "Dragon Rush",
-			incoming = "Dragon Rush incoming!",
-			ready = "Dragon Rush ready",
-			description = "Shows a warning lane for {seconds} seconds, then a dragon head charges down it. If your opponent is touching the lane, they lose a life. Charges over time, when you land hits and when you lose a life.",
+			-- Duel HUD (owner 2026-10-24, "Use 'Dragon Burst'"; design: Duel HUD.dc.html:229): renamed from Dragon Rush; it
+			-- recharges on its own timer now (Config.Abilities header).
+			name = "Dragon Burst",
+			incoming = "Dragon Burst incoming!",
+			ready = "Dragon Burst ready",
+			description = "Shows a warning lane for {seconds} seconds, then a dragon head charges down it. If your opponent is touching the lane, they lose a life. Ready again 45 seconds after you use it.",
 		},
 		-- design: ults.js:3 ("Gaps between birdies open past ~30 st, so strafing between lanes beats it at range.")
 		flockVolley = {

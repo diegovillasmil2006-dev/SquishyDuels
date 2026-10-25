@@ -160,9 +160,9 @@ return function(t: Context)
 		expect.truthy(bound("Dash", (Enum.KeyCode :: any)["Button" .. key.dashGamepad]))
 		expect.truthy(bound("DuelSqueeze", (Enum.KeyCode :: any)[key.squeezeMouse]))
 		expect.truthy(bound("DuelSqueeze", (Enum.KeyCode :: any)["Button" .. key.squeezeGamepad]))
-		-- Feature 1: "RMB/E" (the right mouse button comes through UserInputService) and "L1".
-		expect.equal(key.catchMouse, "RMB/E")
-		expect.truthy(bound("Catch", Enum.KeyCode.E))
+		-- Feature 1: "Q" (Duel HUD 2026-10-24, was "RMB/E"; the right mouse button still comes through UserInputService) and "L1".
+		expect.equal(key.catchMouse, "Q")
+		expect.truthy(bound("Catch", Enum.KeyCode.Q))
 		expect.truthy(bound("Catch", (Enum.KeyCode :: any)["Button" .. key.catchGamepad]))
 	end)
 

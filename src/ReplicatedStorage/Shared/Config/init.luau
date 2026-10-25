@@ -2918,20 +2918,6 @@ local function checkChargeCatch(problems: Problems)
 			and catch.cooldownToleranceSeconds < catch.cooldownSeconds,
 		`{q}.cooldownToleranceSeconds must be in [0, cooldownSeconds)`
 	)
-	-- Review quick win 2026-10-14: a real catch keeps its timing (the first press once the hands are back always passes
-	-- the cooldown, even lag-compensated); only a missed catch waits the longer cooldown.
-	local maxLag = Combat.Lag.maxCompensationSeconds
-	expect(
-		problems,
-		isNumber(catch.cooldownSeconds)
-			and isNumber(catch.cooldownToleranceSeconds)
-			and isNumber(catch.handsBackSeconds)
-			and isNumber(maxLag)
-			and catch.cooldownSeconds - catch.cooldownToleranceSeconds
-				<= catch.handsBackSeconds - maxLag + FEEL_SLACK,
-		`{q}.cooldownSeconds - cooldownToleranceSeconds must be <= handsBackSeconds - `
-			.. `Config.Combat.Lag.maxCompensationSeconds, so a real catch keeps its timing`
-	)
 
 	local fp = "Config.FirstPerson"
 	local v2, fc, fk, fr = FirstPerson.v2, FirstPerson.charge, FirstPerson.catch, FirstPerson.crush

@@ -146,7 +146,7 @@ return function(t: Context)
 		expect.truthy(has("InspectEquipped", Enum.KeyCode.ButtonY))
 		expect.truthy(has("Throw", Enum.UserInputType.MouseButton1))
 		expect.truthy(has("Throw", Enum.KeyCode.ButtonR2))
-		expect.truthy(has("Ultimate", Enum.KeyCode.Q))
+		expect.truthy(has("Ultimate", Enum.KeyCode.X)) -- Duel HUD 2026-10-24 (was Q)
 		expect.truthy(has("Ultimate", Enum.KeyCode.ButtonL2))
 		expect.truthy(has("ModalBack", Enum.KeyCode.Backspace))
 		expect.truthy(has("ModalBack", Enum.KeyCode.ButtonB))
@@ -206,7 +206,7 @@ return function(t: Context)
 		end
 		expect.truthy(has("PracticeThrow", Enum.UserInputType.MouseButton1))
 		expect.truthy(has("PracticeThrow", Enum.KeyCode.ButtonR2))
-		expect.truthy(has("PracticeUltimate", Enum.KeyCode.Q))
+		expect.truthy(has("PracticeUltimate", Enum.KeyCode.X))
 		expect.truthy(has("PracticeUltimate", Enum.KeyCode.ButtonL2))
 		expect.equal(Controls.contextOf("Throw"), "Duel")
 		expect.equal(Controls.contextOf("Ultimate"), "Duel")
@@ -513,10 +513,8 @@ return function(t: Context)
 		function()
 			-- Feature 1: E is the duel's catch (design: html:96), so DuelSqueeze keeps F and ButtonX.
 			expect.deepEqual(Controls.inputsOf("DuelSqueeze"), { Enum.KeyCode.F, Enum.KeyCode.ButtonX })
-			expect.deepEqual(
-				Controls.inputsOf("PracticeSqueeze"),
-				{ Enum.KeyCode.F, Enum.KeyCode.E, Enum.KeyCode.ButtonX }
-			)
+			-- Duel HUD 2026-10-24: E is PracticeDash's now.
+			expect.deepEqual(Controls.inputsOf("PracticeSqueeze"), { Enum.KeyCode.F, Enum.KeyCode.ButtonX })
 			expect.deepEqual(Controls.inputsOf("DuelForfeit"), { Enum.KeyCode.Backspace }) -- keyboard only
 			expect.equal(Controls.contextOf("DuelSqueeze"), "Duel")
 			expect.equal(Controls.contextOf("DuelForfeit"), "Duel")
@@ -705,16 +703,18 @@ return function(t: Context)
 		expect.truthy(table.find(Controls.inputsOf("PracticeThrow") :: { EnumItem }, Enum.UserInputType.MouseButton1))
 	end)
 
-	-- Spec phase 5 (user decision 2026-10-11): the dash is C and ButtonB in the Duel and Practice contexts, and a third
-	-- round touch button in the Throw / Ultimate cluster.
-	t.test("the dash: C and ButtonB in the Duel and Practice contexts, and no other duel action takes them", function()
+	-- Spec phase 5 (user decision 2026-10-11): the dash, and a third round touch button in the Throw / Ultimate
+	-- cluster. Duel HUD (owner 2026-10-24): E and Left Shift (was C), one step above Medium (beats Shift Lock).
+	t.test("the dash: E, Left Shift and ButtonB in the Duel and Practice contexts, no other duel action takes them", function()
 		local function has(action: string, input: EnumItem): boolean
 			local inputs = Controls.inputsOf(action)
 			return inputs ~= nil and table.find(inputs, input) ~= nil
 		end
 		for _, action in { "Dash", "PracticeDash" } do
-			expect.truthy(has(action, Enum.KeyCode.C))
+			expect.truthy(has(action, Enum.KeyCode.E))
+			expect.truthy(has(action, Enum.KeyCode.LeftShift))
 			expect.truthy(has(action, Enum.KeyCode.ButtonB))
+			expect.equal(Controls.priorityOfAction(action), Enum.ContextActionPriority.Medium.Value + 1)
 		end
 		expect.equal(Controls.contextOf("Dash"), "Duel")
 		expect.equal(Controls.contextOf("PracticeDash"), "Practice")
@@ -730,19 +730,20 @@ return function(t: Context)
 				"Catch",
 			}
 		do
-			expect.falsy(has(action, Enum.KeyCode.C))
+			expect.falsy(has(action, Enum.KeyCode.E))
+			expect.falsy(has(action, Enum.KeyCode.LeftShift))
 			expect.falsy(has(action, Enum.KeyCode.ButtonB))
 		end
 	end)
 
-	-- Feature 1 (2026-10-11): the catch.
-	t.test("the catch: E and ButtonL1 in the Duel context, and no other duel action takes them", function()
-		expect.deepEqual(Controls.inputsOf("Catch"), { Enum.KeyCode.E, Enum.KeyCode.ButtonL1 })
+	-- Feature 1 (2026-10-11): the catch. Duel HUD (owner 2026-10-24): Q (was E).
+	t.test("the catch: Q and ButtonL1 in the Duel context, and no other duel action takes them", function()
+		expect.deepEqual(Controls.inputsOf("Catch"), { Enum.KeyCode.Q, Enum.KeyCode.ButtonL1 })
 		expect.equal(Controls.contextOf("Catch"), "Duel")
 		expect.equal(Controls.priorityOfAction("Catch"), Enum.ContextActionPriority.Medium.Value)
 		for _, action in { "Throw", "Ultimate", "Dash", "DuelSqueeze", "DuelForfeit" } do
 			local inputs = Controls.inputsOf(action) :: { EnumItem }
-			expect.equal(table.find(inputs, Enum.KeyCode.E), nil)
+			expect.equal(table.find(inputs, Enum.KeyCode.Q), nil)
 			expect.equal(table.find(inputs, Enum.KeyCode.ButtonL1), nil)
 		end
 	end)

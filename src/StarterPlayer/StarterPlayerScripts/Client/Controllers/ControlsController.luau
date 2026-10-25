@@ -14,12 +14,13 @@
 --   block, a context change or a focused TextBox came in between. pressAction() follows the same rule.
 --   Keyboard shortcuts are ignored while a TextBox is focused (chat).
 -- Duel and Practice (Part 4, §5.10, §11.7):
---   * Throw / PracticeThrow = MouseButton1, ButtonR2, the touch Throw button; Ultimate / PracticeUltimate = Q,
---     ButtonL2, the touch Ultimate button; Dash / PracticeDash = C, ButtonB, the touch Dash button (spec phase 5, user
---     decision 2026-10-11; ButtonB stays the Modal context's Back while a modal is open: ModalBack is High and sinks it).
---     Duel actions run in the Duel context, Practice actions in the Practice one.
+--   * Throw / PracticeThrow = MouseButton1, ButtonR2, the touch Throw button; Ultimate / PracticeUltimate = X (Q until
+--     the Duel HUD, owner 2026-10-24), ButtonL2, the touch Ultimate button; Dash / PracticeDash = E and Left Shift (C
+--     until 2026-10-24; Medium + 1 so Shift beats the Shift Lock switch), ButtonB, the touch Dash button (spec phase 5,
+--     user decision 2026-10-11; ButtonB stays the Modal context's Back while a modal is open: ModalBack is High and
+--     sinks it). Duel actions run in the Duel context, Practice actions in the Practice one.
 --   * Feature 1 (2026-10-11; design: the combat-effects page "Squishy Combat FP v2.html", html:88, 96, 393-398): Catch =
---     E, ButtonL1 (build choice, NOT IN DESIGN: no Duel action uses it), the touch Catch button and the right mouse
+--     Q (E until 2026-10-24), ButtonL1 (build choice, NOT IN DESIGN: no Duel action uses it), the touch Catch button and the right mouse
 --     button, in the Duel context only (nothing throws at you in practice). The right button comes from
 --     UserInputService.InputBegan, like the world click below, never from a ContextActionService binding: it never
 --     sinks, so the third-person camera keeps its right-button drag. E left DuelSqueeze (the design's squish key is F,
@@ -72,7 +73,7 @@
 --   hands them on to it. Knead (spec phase2-squeeze §3.6): InspectPalms (Q / ButtonL1, held) and InspectRewax (W /
 --   ButtonR1, aboveMoveSink); while Inspect kneads, InspectSqueeze (F / ButtonX) is the thumb crunch.
 -- First person (spec 2026-10-10 §3.1, §3.5): DuelSqueeze = F, ButtonX (E until feature 1) and DuelForfeit = Backspace (keyboard only) in
---   the Duel context; PracticeSqueeze = F, E, ButtonX in the Practice context, bound one step above the lobby actions
+--   the Duel context; PracticeSqueeze = F, ButtonX (E until 2026-10-24) in the Practice context, bound one step above the lobby actions
 --   (aboveLobby: Medium + 1, still under the High overlay actions), so in the practice throw box it sees F, E and
 --   ButtonX before the lobby Squeeze whatever the bind order (a handler that passes hands them on to it: the lobby
 --   Squeeze takes F, E and ButtonX since spec 2026-10-11 §3.8). Backspace reaches DuelForfeit only while no back
@@ -253,14 +254,15 @@ local ACTIONS: { [string]: ActionDef } = {
 		ignoreOverGui = true,
 		touch = "Throw",
 	},
-	Ultimate = { context = "Duel", inputs = { Enum.KeyCode.Q, Enum.KeyCode.ButtonL2 }, touch = "Ultimate" },
+	-- Duel HUD (owner 2026-10-24, "Design keys"; design: Duel HUD.dc.html:323): X is the ultimate (was Q).
+	Ultimate = { context = "Duel", inputs = { Enum.KeyCode.X, Enum.KeyCode.ButtonL2 }, touch = "Ultimate" },
 	PracticeThrow = {
 		context = "Practice",
 		inputs = { Enum.UserInputType.MouseButton1, Enum.KeyCode.ButtonR2 },
 		ignoreOverGui = true,
 		touch = "Throw",
 	},
-	PracticeUltimate = { context = "Practice", inputs = { Enum.KeyCode.Q, Enum.KeyCode.ButtonL2 }, touch = "Ultimate" },
+	PracticeUltimate = { context = "Practice", inputs = { Enum.KeyCode.X, Enum.KeyCode.ButtonL2 }, touch = "Ultimate" },
 	-- Pens3 phase 13: the throw on the launch deck's open area (HighwayThrowController).
 	HighwayThrow = {
 		context = "Highway",
@@ -269,17 +271,30 @@ local ACTIONS: { [string]: ActionDef } = {
 		touch = "Throw",
 	},
 	-- Spec phase 5 (user decision 2026-10-11): the dash (DashController).
-	Dash = { context = "Duel", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
-	PracticeDash = { context = "Practice", inputs = { Enum.KeyCode.C, Enum.KeyCode.ButtonB }, touch = "Dash" },
+	-- Duel HUD (owner 2026-10-24, "Design keys"; design: Duel HUD.dc.html:323): E and Left Shift dash (was C), bound
+	-- one step above Medium so Shift beats Roblox's Shift Lock switch while the dash is live (it passes otherwise).
+	Dash = {
+		context = "Duel",
+		inputs = { Enum.KeyCode.E, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonB },
+		touch = "Dash",
+		aboveLobby = true,
+	},
+	PracticeDash = {
+		context = "Practice",
+		inputs = { Enum.KeyCode.E, Enum.KeyCode.LeftShift, Enum.KeyCode.ButtonB },
+		touch = "Dash",
+		aboveLobby = true,
+	},
 	-- Feature 1 (2026-10-11): the catch (CatchController); the right mouse button comes from UserInputService (header).
-	Catch = { context = "Duel", inputs = { Enum.KeyCode.E, Enum.KeyCode.ButtonL1 }, touch = "Catch" },
+	-- Duel HUD (owner 2026-10-24): Q catches (was E); the right mouse button stays.
+	Catch = { context = "Duel", inputs = { Enum.KeyCode.Q, Enum.KeyCode.ButtonL1 }, touch = "Catch" },
 	-- First person (spec 2026-10-10 §3.1, §3.5): the hand's squeeze and the PC forfeit key (E is the catch since
 	-- feature 1).
 	DuelSqueeze = { context = "Duel", inputs = { Enum.KeyCode.F, Enum.KeyCode.ButtonX } },
 	DuelForfeit = { context = "Duel", inputs = { Enum.KeyCode.Backspace } },
 	PracticeSqueeze = {
 		context = "Practice",
-		inputs = { Enum.KeyCode.F, Enum.KeyCode.E, Enum.KeyCode.ButtonX },
+		inputs = { Enum.KeyCode.F, Enum.KeyCode.ButtonX }, -- E left it for PracticeDash (Duel HUD, 2026-10-24)
 		aboveLobby = true,
 	},
 	ModalBack = { context = "Modal", inputs = { Enum.KeyCode.Backspace, Enum.KeyCode.ButtonB } },

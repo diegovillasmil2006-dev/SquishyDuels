@@ -35,7 +35,7 @@ return function(t: Context)
 		expect.equal(DASH.visualFps, 30)
 		expect.equal(DASH.pushoffFrame, 2)
 		expect.equal(DASH.plantFrame, 7)
-		expect.equal(DASH.cooldownSeconds, 1.3)
+		expect.equal(DASH.cooldownSeconds, 2) -- Duel HUD 2026-10-24 (Duel HUD.dc.html:231 CD dash 2)
 	end)
 
 	t.test("the ease-out cubic: 0 at the start, 87.5% halfway, all of it at the end, never past it", function()

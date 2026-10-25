@@ -187,7 +187,7 @@ return function(t: Context)
 		expect.equal(dragon.coinsText, "x64 power")
 		local ultimate = dragon.ultimate
 		assert(ultimate ~= nil, "Dragon has no ultimate text")
-		expect.equal(string.sub(ultimate, 1, #"Ultimate: Dragon Rush. "), "Ultimate: Dragon Rush. ")
+		expect.equal(string.sub(ultimate, 1, #"Ultimate: Dragon Burst. "), "Ultimate: Dragon Burst. ")
 		expect.truthy(
 			string.find(ultimate, tostring(Config.Abilities.dragon_rush.telegraphSeconds) .. " seconds", 1, true)
 		)

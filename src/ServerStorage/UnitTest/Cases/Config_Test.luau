@@ -345,13 +345,6 @@ return function(t: Context)
 		expect.truthy(containsText(problems, "cycleSeconds (0.45) must equal Config.Grip.Hold.repeatSeconds (0.5)"))
 	end)
 
-	t.test("validate reports a catch cooldown that would delay a real catch (review quick win)", function()
-		local problems = validateBrokenCopy(t.Shared, "Combat", function(combat)
-			combat.Catch.cooldownSeconds = 1.6 -- 1.6 - 0.05 is past the hands-back 1.5 - 0.12 lag compensation
-		end)
-		expect.truthy(containsText(problems, "cooldownSeconds - cooldownToleranceSeconds must be <= handsBackSeconds"))
-	end)
-
 	-- validate() never errors: a missing field that later checks compare against is reported, not raised.
 	t.test("validate reports a missing maxCoins instead of throwing", function()
 		local problems = validateBrokenCopy(t.Shared, "Economy", function(economy)
@@ -452,16 +445,21 @@ return function(t: Context)
 			expect.equal(ability.kind, row[2])
 			expect.equal(ability.telegraphSeconds, row[3])
 			expect.equal(ability.minIntervalSeconds, row[4])
-			-- Dragon Rush's meter, fill rules and root / cancel / practice rules (user decisions 2026-10-11).
-			for _, field in { "chargeMax", "chargePerSecond", "chargePerHitLanded", "chargePerLifeLost" } do
+			-- Dragon Rush's meter and root / cancel / practice rules (user decisions 2026-10-11). Duel HUD (owner
+			-- 2026-10-24): each meter is its own timer, full minIntervalSeconds after a use and 8 s after the start.
+			for _, field in { "chargeMax", "chargePerHitLanded", "chargePerLifeLost" } do
 				expect.equal(ability[field], A.dragon_rush[field])
 			end
+			expect.near(ability.chargePerSecond, ability.chargeMax / row[4], 1e-9)
+			expect.near(ability.chargeMax - ability.startCharge, 8 * ability.chargePerSecond, 1e-9)
 			for _, field in { "recoverySeconds", "refundOnCancel", "practiceCooldownSeconds", "livesCost" } do
 				expect.equal(ability[field], A.dragon_rush[field])
 			end
 			expect.truthy(ability.cancelOnHitDuringTelegraph)
 		end
 		expect.equal(A.dragon_rush.kind, "lane")
+		expect.equal(A.dragon_rush.minIntervalSeconds, 45) -- Duel HUD 2026-10-24 (Dragon Burst, cd 45)
+		expect.near(A.dragon_rush.chargePerSecond, A.dragon_rush.chargeMax / 45, 1e-9)
 		expect.equal(A.flock_volley.count, 3)
 		expect.equal(A.flock_volley.fanDeg, 24)
 		expect.equal(A.flock_volley.speed, 75)

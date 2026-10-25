@@ -64,20 +64,15 @@ return function(t: Context)
 		end
 	end
 
-	t.test("the numbers: 0.42 s open, 1.3 s after a miss, 2.7 m (≈ 9.6 studs), 1.02 s crush", function()
-		expect.equal(CATCH.windowSeconds, 0.42) -- design: html:532
-		expect.equal(CATCH.cooldownSeconds, 1.3) -- review quick win 2026-10-14 (design: html:344 has 0.75)
+	t.test("the numbers: 0.6 s open, 5 s from a press, 2.7 m (≈ 9.6 studs), 1.02 s crush", function()
+		expect.equal(CATCH.windowSeconds, 0.6) -- Duel HUD 2026-10-24 (Duel HUD.dc.html:231 WIN 0.6)
+		expect.equal(CATCH.cooldownSeconds, 5) -- Duel HUD 2026-10-24 (Duel HUD.dc.html:231 CD catch 5)
 		expect.near(R, 2.7 / 0.28, 1e-9) -- design: html:614
 		expect.equal(CATCH.crushSeconds, 1.02) -- design: html:554
 		local entry = Config.Net.Remotes.CatchRequest
 		expect.truthy(entry.rate > 0 and entry.burst >= 1)
-		-- A real catch keeps its own wait: the client gate (unlagged) and the server gate (the press lag-compensated by
-		-- up to Lag.maxCompensationSeconds) both open by the time the hands are back.
-		expect.truthy(CATCH.cooldownSeconds <= CATCH.handsBackSeconds)
-		expect.truthy(
-			CATCH.cooldownSeconds - CATCH.cooldownToleranceSeconds
-				<= CATCH.handsBackSeconds - Config.Combat.Lag.maxCompensationSeconds
-		)
+		-- Duel HUD 2026-10-24: the design's cooldown outlasts the hands coming back, so a real catch waits it too.
+		expect.truthy(CATCH.cooldownSeconds > CATCH.handsBackSeconds)
 	end)
 
 	t.test("accepted: the window opens at the lag-compensated press for windowSeconds", function()

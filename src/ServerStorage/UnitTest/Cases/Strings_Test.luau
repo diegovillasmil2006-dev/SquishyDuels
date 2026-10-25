@@ -141,9 +141,9 @@ local DESIGN_WORDING: { [string]: string } = {
 	["combat.hit"] = "Hit!",
 	["combat.out"] = "OUT!",
 	["combat.ko"] = "K.O.!",
-	["ability.dragonRush.name"] = "Dragon Rush",
-	["ability.dragonRush.incoming"] = "Dragon Rush incoming!",
-	["ability.dragonRush.ready"] = "Dragon Rush ready",
+	["ability.dragonRush.name"] = "Dragon Burst", -- Duel HUD 2026-10-24 (was Dragon Rush)
+	["ability.dragonRush.incoming"] = "Dragon Burst incoming!",
+	["ability.dragonRush.ready"] = "Dragon Burst ready",
 	["ability.interrupted"] = "Interrupted!",
 	["practice.sign"] = "Practice range: targets don't pay Coins",
 	["practice.targetName"] = "Foam Dummy",
@@ -772,16 +772,16 @@ return function(t: Context)
 	-- squeeze (F / ButtonX) after DESIGN's throw and ultimate; the lane warning under the duel bar. Feature 1
 	-- (2026-10-11): and the catch after the throw (RMB or E / ButtonL1; design: html:96).
 	t.test("the duel key hints name the catch, the dash and the squeeze; the lane warning exists", function()
-		expect.equal(Strings.duel.hintMouse, "Click Throw · RMB/E Catch · Q Ultimate · C Dash · F Squeeze")
+		expect.equal(Strings.duel.hintMouse, "Click Throw · Q Catch · X Ultimate · E Dash · F Squeeze")
 		expect.equal(Strings.duel.hintGamepad, "R2 Throw · L1 Catch · L2 Ultimate · B Dash · X Squeeze")
-		expect.equal(Strings.duel.hintMouseNoUlt, "Click Throw · RMB/E Catch · C Dash · F Squeeze")
+		expect.equal(Strings.duel.hintMouseNoUlt, "Click Throw · Q Catch · E Dash · F Squeeze")
 		expect.equal(Strings.duel.hintGamepadNoUlt, "R2 Throw · L1 Catch · B Dash · X Squeeze")
 		local key = Strings.duel.key
-		expect.equal(key.dashMouse, "C")
+		expect.equal(key.dashMouse, "E") -- Duel HUD 2026-10-24 (was C)
 		expect.equal(key.dashGamepad, "B")
 		expect.equal(key.squeezeMouse, "F")
 		expect.equal(key.squeezeGamepad, "X")
-		expect.equal(key.catchMouse, "RMB/E")
+		expect.equal(key.catchMouse, "Q") -- Duel HUD 2026-10-24 (was RMB/E)
 		expect.equal(key.catchGamepad, "L1")
 		expect.equal(Strings.duel.inLane, "In the lane!")
 	end)
