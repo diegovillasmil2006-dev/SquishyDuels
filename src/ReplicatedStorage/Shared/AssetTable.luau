@@ -204,6 +204,20 @@ local function killEmblem(key: string, id: number, file: string, use: string): A
 	}
 end
 
+-- An image slot holding a Duel HUD picture (2026-10-24): rendered 1:1 from the design's own CSS / SVG ("Squishy Duels
+-- Duel HUD export", Duel HUD.dc.html), uploaded by Claude (Studio MCP upload_image) at the owner's "you do it".
+local function duelHud(key: string, id: number, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `jayyyyy upload (Studio MCP upload_image): '{(string.gsub(key, "%.", "_"))}.png'`,
+		license = "Own upload; rendered from the co-owner's own Claude Design Duel HUD file",
+		verifiedAt = "2026-10-24",
+		notes = use,
+	}
+end
+
 -- An image slot holding a VFX Studio library texture: `name` is its Creator Store title, `by` its creator.
 local function vfxStudio(key: string, id: number, name: string, by: string, use: string): AssetSlot
 	return {
@@ -1128,6 +1142,35 @@ local SLOTS: { AssetSlot } = {
 		verifiedAt = "2026-10-23",
 		notes = "Highway v2 floors: a Texture on the floor's top, 20 studs a tile (10-stud cells), Transparency 0.92",
 	},
+	-- Duel HUD (2026-10-24; design: "Squishy Duels Duel HUD.dc.html", `H:n` = its line). Button faces are the padding box
+	-- (the border, drop and glow are drawn in Roblox); white pictures are tinted with ImageColor3.
+	duelHud("img.duel.btn.catchDesk", 119361715087715, "catch button face, PC (76 px inside the 4 px border; H:235, 393)"),
+	duelHud("img.duel.btn.ultDesk", 137902134761087, "ultimate button face, PC (96 px; H:238, 393)"),
+	duelHud("img.duel.btn.dashDesk", 72468357028457, "dash button face, PC (76 px; H:236, 393)"),
+	duelHud("img.duel.btn.catchPhone", 82557174474109, "catch button face, phone (56 px inside the 3 px border; H:240)"),
+	duelHud("img.duel.btn.ultPhone", 136383862839877, "ultimate button face, phone (66 px; H:240)"),
+	duelHud("img.duel.btn.dashPhone", 119746244377476, "dash button face, phone (56 px; H:240)"),
+	duelHud("img.duel.glow.ultDesk", 122852090516701, "white ready glow of the 104 px ultimate, 176 px (H:394 26px 6px)"),
+	duelHud("img.duel.glow.ultPhone", 122005849274254, "white ready glow of the 72 px ultimate, 144 px (H:394)"),
+	duelHud("img.duel.glow.catchDesk", 74008640002246, "white catch-window glow of the 84 px catch, 168 px (H:394 28px 10px)"),
+	duelHud("img.duel.glow.catchPhone", 110424892979716, "white catch-window glow of the 62 px catch, 146 px (H:394)"),
+	duelHud("img.duel.rays", 88247743548552, "gold ray burst behind the ready ultimate, opaque (draw at 0.4 transparency; H:124)"),
+	duelHud("img.duel.icon.catch", 125978954052215, "catch icon (uploads/duel-icons/catch.svg)"),
+	duelHud("img.duel.icon.dash", 76179754735956, "dash icon (uploads/duel-icons/dash.svg)"),
+	duelHud("img.duel.icon.ult.Dragon", 135582063332833, "Dragon Burst icon (ult-Dragon.svg)"),
+	duelHud("img.duel.icon.ult.Birdie", 93444227738090, "Flock Volley icon (ult-Birdie.svg)"),
+	duelHud("img.duel.icon.ult.CloudBunny", 81369508789232, "Rain Check icon (ult-CloudBunny.svg)"),
+	duelHud("img.duel.icon.ult.CupcakeAxolotl", 102648540435171, "Bubble Pop icon (ult-CupcakeAxolotl.svg)"),
+	duelHud("img.duel.icon.ult.Donut", 85857389777429, "Sprinkle Roller icon (ult-Donut.svg)"),
+	duelHud("img.duel.plate.scoreYouDesk", 92462850611270, "your skewed pink score plate, PC, 186x63 with border and drop (H:59)"),
+	duelHud("img.duel.plate.scoreFoeDesk", 116754185046760, "the opponent's skewed blue score plate, PC, 186x63 (H:79)"),
+	duelHud("img.duel.plate.timerDesk", 108999165082162, "skewed timer plate, PC, 226x63 (H:75)"),
+	duelHud("img.duel.plate.scoreYouPhone", 129825893487441, "your score plate, phone, 94x41 (H:159)"),
+	duelHud("img.duel.plate.scoreFoePhone", 102348771342618, "the opponent's score plate, phone, 94x41 (H:168)"),
+	duelHud("img.duel.plate.timerPhone", 103504943988470, "timer plate, phone, 118x41 (H:163)"),
+	duelHud("img.duel.avatar.you", 110981692928652, "your avatar's pink round background (H:63)"),
+	duelHud("img.duel.avatar.foe", 82597226666692, "the opponent's avatar's blue round background (H:83)"),
+	duelHud("img.duel.star", 81890160016003, "white four-point burst star (hud-lib.js:263)"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL
