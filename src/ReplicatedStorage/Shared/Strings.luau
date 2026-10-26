@@ -196,6 +196,8 @@ local Strings = {
 			nothingToFeed = "Nothing to feed. Your pen squishies need more food, or they are at the top level.",
 			-- Pens3 phase 11 (PenBuyShelf; PenMath.shelfDecision, PenService).
 			shelfMax = "Your whole shelf and the TOP spot are open!",
+			-- INCOME step 1 (PenBuyIncome; PenMath.incomeDecision, PenService).
+			incomeMax = "This upgrade is at its top level!",
 		},
 		-- Pens3 phase 9 (BuyFood, Feed; PenMath.buyFoodDecision, feedDecision, PenService).
 		food = {

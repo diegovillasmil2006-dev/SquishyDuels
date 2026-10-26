@@ -19,6 +19,7 @@
 -- Pens3 phase 9: Food (Config/Food) and the "food" Coin reason (food bought in the pen screen, PenService).
 -- Pens3 phase 13: the "highway" Coin reason (a throw's landing, HighwayService).
 -- Gear step 2 (2026-10-26): Gear (Config/Gear) and the "gear" Coin reason (a gear step bought, HighwayService).
+-- INCOME step 1 (2026-10-26): Income (Config/Income); a level is bought with the "pen" reason (PenService).
 
 local Economy = {
 	startingCoins = 0,
@@ -127,6 +128,8 @@ local Economy = {
 	Highway = require(script.Parent.Highway),
 	-- The gear (gear step 2): Config/Gear (launchers, arm gear, armor, traps; checked by Config/ValidateGear).
 	Gear = require(script.Parent.Gear),
+	-- The INCOME upgrade (INCOME step 1): Config/Income (SQUISHY COINS + ALL EARNINGS; checked by Config/ValidateIncome).
+	Income = require(script.Parent.Income),
 
 	-- Duplicate results (§6.5). Pens3 phase 5: "copy" (every box result, shop buy or gift adds a pen item, so a squishy
 	-- you own again is a copy; the Toy Box cap, Config/Pen toyBoxMax, is the limit). Was "refund".

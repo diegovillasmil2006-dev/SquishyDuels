@@ -68,6 +68,8 @@ local Net = {
 		-- Pens3 phase 1: the pen's spot buy: 1 a second and one at a time.
 		PenBuySpot = { rate = 1, burst = 1, oneInFlight = true },
 		PenBuyShelf = { rate = 1, burst = 1, oneInFlight = true }, -- pens3 phase 11: the shelf's, the same
+		-- INCOME step 1: many small buys in a row: PenPlace's 2 a second (a burst of 3), one at a time.
+		PenBuyIncome = { rate = 2, burst = 3, oneInFlight = true },
 		-- Pens3 phase 6: the pen screen's place / put away / swap and lock: 2 a second (a burst of 3), one at a time.
 		PenPlace = { rate = 2, burst = 3, oneInFlight = true },
 		PenLock = { rate = 2, burst = 3, oneInFlight = true },

@@ -1085,4 +1085,128 @@ return function(t: Context)
 			PenMath.decodeShelf("13=toast.0.1.0;x=toast.0.1.0;5=toast.0.1.0;25=toast.0.1.0;14=unicorn.0.1.0;15")
 		expect.deepEqual(junk, { [13] = { kind = "toast", form = 0, level = 1, coat = 0 } }) -- shelf slots only
 	end)
+
+	-- INCOME step 1 (2026-10-26; Config.Economy.Income, the owner's curve C) ------------------------------------------
+
+	local INCOME_COINS = {
+		500_000,
+		1_600_000,
+		5_100_000,
+		16_000_000,
+		52_000_000,
+		170_000_000,
+		540_000_000,
+		1_700_000_000,
+		5_500_000_000,
+		18_000_000_000,
+		56_000_000_000,
+		180_000_000_000,
+		580_000_000_000,
+		1_800_000_000_000,
+		5_900_000_000_000,
+		19_000_000_000_000,
+		60_000_000_000_000,
+		190_000_000_000_000,
+		620_000_000_000_000,
+		2_000_000_000_000_000,
+	}
+	local INCOME_ALL = {
+		2_500_000,
+		7_500_000,
+		23_000_000,
+		68_000_000,
+		200_000_000,
+		610_000_000,
+		1_800_000_000,
+		5_500_000_000,
+		16_000_000_000,
+		49_000_000_000,
+		150_000_000_000,
+		440_000_000_000,
+		1_300_000_000_000,
+		4_000_000_000_000,
+		12_000_000_000_000,
+		36_000_000_000_000,
+		110_000_000_000_000,
+		320_000_000_000_000,
+		970_000_000_000_000,
+		2_900_000_000_000_000,
+	}
+
+	-- A pen with its squishies placed and the INCOME levels bought.
+	local function incomePen(coins: any, all: any, items: { any }): any
+		local p = placedPen(3, items)
+		p.income = { coins = coins, all = all }
+		return p
+	end
+
+	t.test("income: 20 levels a line at the owner's prices (curve C); nil outside", function()
+		for level, price in INCOME_COINS do
+			expect.equal(PenMath.incomePrice("coins", level), price)
+		end
+		for level, price in INCOME_ALL do
+			expect.equal(PenMath.incomePrice("all", level), price)
+		end
+		for _, bad in { 0, 21, 1.5, -1, 0 / 0, "1" } :: { any } do
+			expect.equal(PenMath.incomePrice("coins", bad), nil)
+		end
+		expect.equal(PenMath.incomePrice("gear", 1), nil)
+		local Validate = t.requireShared("Config/ValidateIncome")
+		expect.deepEqual(Validate(Config), {})
+		local economy = table.clone(Config.Economy)
+		economy.Income = {
+			coins = { boost = 1.07, prices = { 2, 1 } }, -- falls
+			all = { boost = 1, prices = { 1.5 } }, -- boosts nothing, not whole Coins
+		}
+		expect.truthy(#Validate({ Economy = economy }) >= 3)
+	end)
+
+	t.test("income: COINS x1.07 and ALL x1.05 a level on the pen's rate; only ALL on the squeeze value", function()
+		expect.near(PenMath.incomeMult(incomePen(1, 0, {}), "coins"), 1.07, 1e-12)
+		expect.near(PenMath.incomeMult(incomePen(20, 0, {}), "coins"), 1.07 ^ 20, 1e-9)
+		expect.near(PenMath.incomeMult(incomePen(0, 20, {}), "all"), 1.05 ^ 20, 1e-9)
+		-- None saved, broken or negative counts as none, past the last as the last, a fraction is cut.
+		expect.equal(PenMath.incomeMult(placedPen(3, {}), "coins"), 1)
+		expect.equal(PenMath.incomeMult(incomePen("x", -3, {}), "coins"), 1)
+		expect.equal(PenMath.incomeMult(incomePen(0, -3, {}), "all"), 1)
+		expect.near(PenMath.incomeMult(incomePen(99, 0, {}), "coins"), 1.07 ^ 20, 1e-9)
+		expect.near(PenMath.incomeMult(incomePen(2.9, 0, {}), "coins"), 1.07 ^ 2, 1e-12)
+		-- The rate: both lines (the pen, the shelf, the away rate DataService stamps).
+		local dragon = incomePen(2, 3, { item("dragon") })
+		expect.near(PenMath.rate(dragon), 640 * 1.07 ^ 2 * 1.05 ^ 3, 1e-6)
+		-- The squeeze value (squeezes, duels, matches, the highway, Grip): ALL only, on top of the floor of 10.
+		expect.near(PenMath.squeezeValue(dragon), 640 * 1.05 ^ 3, 1e-6)
+		expect.near(PenMath.squeezeValue(incomePen(5, 2, {})), 10 * 1.05 ^ 2, 1e-9)
+		expect.equal(PenMath.squeezeGrip(incomePen(0, 2, { item("dragon") })), math.floor(640 * 1.05 ^ 2))
+		-- None bought: as before.
+		expect.equal(PenMath.rate(incomePen(0, 0, { item("dragon") })), 640)
+		expect.equal(PenMath.squeezeValue(incomePen(0, 0, { item("dragon") })), 640)
+	end)
+
+	t.test("incomeDecision: the next level and its price, or net.invalid / pen.incomeMax / pen.priceChanged", function()
+		expect.deepEqual(
+			PenMath.incomeDecision(incomePen(0, 0, {}), "coins", 500_000),
+			{ line = "coins", level = 1, price = 500_000 }
+		)
+		expect.deepEqual(
+			PenMath.incomeDecision(incomePen(0, 4, {}), "all", 200_000_000),
+			{ line = "all", level = 5, price = 200_000_000 }
+		)
+		-- A pen with no income saved yet (sanitize gives every saved pen one) counts as none bought.
+		expect.deepEqual(
+			PenMath.incomeDecision(placedPen(3, {}), "all", 2_500_000),
+			{ line = "all", level = 1, price = 2_500_000 }
+		)
+		local function refused(p: any, line: any, price: any, code: string)
+			local decision, why = PenMath.incomeDecision(p, line, price)
+			expect.equal(decision, nil)
+			expect.equal(why, code)
+		end
+		refused(incomePen(0, 0, {}), "gear", 500_000, "net.invalid")
+		refused(incomePen(0, 0, {}), "coins", -1, "net.invalid")
+		refused(incomePen(0, 0, {}), "coins", 1.5, "net.invalid")
+		refused("garbage", "coins", 500_000, "net.invalid")
+		refused(incomePen(20, 0, {}), "coins", 1, "pen.incomeMax")
+		refused(incomePen(0, 0, {}), "coins", 499_999, "pen.priceChanged")
+	end)
 end

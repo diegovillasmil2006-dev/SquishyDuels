@@ -83,6 +83,9 @@
 -- Gear step 2 (2026-10-26) joined the same way: `gear = {held = 0, platform = 0, arm = 0, armor = 0}` (the steps bought
 -- of each GearMath line). fixGear fails closed: not a table -> none; each a whole number in [0, GearMath.maxStep]
 -- (cut: never more than was bought; clamped; non-finite or not a number -> 0); every fix logged.
+-- INCOME step 1 (2026-10-26) joined the same way: `pen.income = {coins = 0, all = 0}` (the levels bought of SQUISHY
+-- COINS and ALL EARNINGS; reconcile gives an older pen none). fixPen fails closed: not a table -> none; each a whole
+-- number in [0, the line's levels] (cut, clamped; non-finite or not a number -> 0); every fix logged.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -172,6 +175,7 @@ local CURRENT = 3
 local FUTURE_SLACK_SECONDS = Config.Data.timestampSkewSeconds -- §17.9 #6: a timer stamped after now + 300 -> now
 local PEN = Config.Economy.Pen
 local FOOD = Config.Economy.Food -- pens3 phase 9
+local INCOME = Config.Economy.Income -- INCOME step 1
 local MAX_COUNTER = 2 ^ 53
 local SECONDS_PER_DAY = 86400
 local DAILY_PATH = "daily."
@@ -470,6 +474,11 @@ local function fixSamePair(d: any, now: number, problems: { string })
 end
 
 -- The pen (pens3 phase 1, see the header): fixed in place, every fix noted. Runs after `owned` is fixed.
+-- INCOME step 1: no level of either line bought.
+local function noIncome(): Types.IncomeState
+	return { coins = 0, all = 0 }
+end
+
 local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { string })
 	local pen = ensureTable(d, "pen", function()
 		return { spots = PEN.startSpots, nextId = 1, items = {}, awayRate = 0 }
@@ -485,6 +494,14 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 		pen.top = false
 	end
 	fixBoolean(pen, "top", false, "pen.top", problems)
+	-- INCOME step 1 (see the header): the levels bought; a missing table stays missing here (reconcile fills it on a
+	-- load), a broken one is none (logged).
+	if pen.income ~= nil then
+		local income = ensureTable(pen, "income", noIncome, "pen.income", problems)
+		for line, def in INCOME do
+			fixInt(income, line, 0, #def.prices, 0, `pen.income.{line}`, problems)
+		end
+	end
 	local rate = pen.awayRate -- nil only before reconcile (it fills 0)
 	if rate ~= nil and not (isFinite(rate) and (rate :: number) >= 0) then
 		pen.awayRate = 0
@@ -813,6 +830,7 @@ function ProfileSchema.defaults(now: number): Profile
 			awayRate = 0, -- pens3 phase 4: the pen's rate at the last save (DataService stamps it)
 			shelfRows = PEN.shelfStartRows, -- pens3 phase 11: the shelf's start row open, the TOP spot not bought
 			top = false,
+			income = noIncome(), -- INCOME step 1: no level bought
 		},
 		-- Pens3 phase 5: no gift waiting for room, no fixed-order box opened, the Frog gift still to come.
 		giftQueue = {},

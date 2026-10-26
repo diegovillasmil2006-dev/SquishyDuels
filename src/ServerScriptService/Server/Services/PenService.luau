@@ -113,6 +113,15 @@
 --   dropped in, the base redrawn and the pen sent (showPen), a log line, the awaited "now" save and ok({pen, charged =
 --   true, savePending}). Every refusal carries charged = false and writes nothing. The shelf's and the TOP spot's
 --   squishies are paid by the tick with the pen's (PenMath.rate counts every placed squishy).
+-- * INCOME step 1 (2026-10-26; Config/Income): PenBuyIncome(line, expectedPrice) (RF; Config.Net: 2 a second, a burst
+--   of 3, one in flight), PenBuySpot's refusal order: (1) line not a string or expectedPrice not whole Coins ->
+--   net.invalid; (2) data.notReady; (3) PenMath.incomeDecision -> net.invalid (not a line) / pen.incomeMax /
+--   pen.priceChanged (compared, never charged); (4) pen.paused (a pending failed save, closing, a restart: no spot
+--   cooldown, the levels are many small buys); (5) inventory.lockedInDuel; (6) the "pen" spend
+--   (economy.notEnoughCoins). Then ONE mutate: pen.income[line] = the level; the base redrawn and the pen sent
+--   (showPen: its rate rises), a log line, the awaited "now" save and ok({pen, charged = true, savePending}). The
+--   boosts themselves live in PenMath.rate / squeezeValue, so every payer of the pen's rate or the squeeze value gets
+--   them. Every refusal carries charged = false and writes nothing.
 -- * qb1 (owner 2026-10-18 "Game puts your best there"): every buy (spot, shelf, buy-back), sale, fusion and feed
 --   re-sorts the placed squishies in its own mutate (PenMath.arrange: the best to the TOP spot, then the shelf, then
 --   the pen; a locked one stays; the Toy Box untouched), as does every new squishy (EconomyService). A move by hand
@@ -134,6 +143,7 @@ local PenMath = require(Shared.PenMath)
 local TableUtil = require(Shared.Util.TableUtil)
 local Types = require(Shared.Types)
 local ValidateFood = require(Shared.Config.ValidateFood) -- pens3 phase 9
+local ValidateIncome = require(Shared.Config.ValidateIncome) -- INCOME step 1
 local ValidatePen = require(Shared.Config.ValidatePen)
 local Validate = require(Shared.Util.Validate)
 
@@ -191,6 +201,7 @@ local FROG_KEY = "frog" -- profile.gifts.frog
 local COIN_REASON = "pen"
 local REMOTE_BUY = "PenBuySpot"
 local REMOTE_BUY_SHELF = "PenBuyShelf" -- pens3 phase 11
+local REMOTE_BUY_INCOME = "PenBuyIncome" -- INCOME step 1
 local REMOTE_PLACE = "PenPlace" -- pens3 phase 6
 local REMOTE_LOCK = "PenLock"
 local SAVE_SOON = "soon"
@@ -437,6 +448,45 @@ function PenService.buy(player: any, expectedPrice: any): Reply
 	log:info(`user {userIdOf(player)} bought pen spot {spot} for {price} Coins`)
 	deps.dropGifts(player) -- pens3 phase 5: the new spot makes room for a waiting gift
 	deps.showPen(player)
+	local data: Types.PenResult = {
+		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
+		charged = true,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
+-- INCOME step 1: the next level of one of the caller's own INCOME lines (see the header for the order of the checks).
+function PenService.buyIncome(player: any, line: any, expectedPrice: any): Reply
+	if type(line) ~= "string" or Validate.coins(expectedPrice) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local decision, refused = PenMath.incomeDecision(pen, line, expectedPrice)
+	if decision == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local spendRefused = spend(player, decision.price, COIN_REASON, false) -- many small buys: no spot cooldown
+	if spendRefused ~= nil then
+		return NetService.err(spendRefused, false)
+	end
+	local written = deps.mutate(player, function(profile: any): boolean
+		local income = if type(profile.pen.income) == "table" then profile.pen.income else { coins = 0, all = 0 }
+		income[decision.line] = math.max(PenMath.incomeLevel(profile.pen, decision.line), decision.level)
+		profile.pen.income = income
+		return true
+	end)
+	if not written then
+		-- Cannot happen without a yield after the spend (the session was ready a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: INCOME {line} {decision.level} was paid ({decision.price}) but not written`)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} bought INCOME {line} level {decision.level} for {decision.price} Coins`)
+	deps.showPen(player) -- the base's rate and the client's pen
 	local data: Types.PenResult = {
 		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
 		charged = true,
@@ -981,11 +1031,18 @@ function PenService.init()
 	if #foodProblems > 0 then
 		error(`[SD][Pen] Config.Economy.Food is invalid: {table.concat(foodProblems, "; ")}`)
 	end
+	local incomeProblems = ValidateIncome(Config) -- INCOME step 1
+	if #incomeProblems > 0 then
+		error(`[SD][Pen] Config.Economy.Income is invalid: {table.concat(incomeProblems, "; ")}`)
+	end
 	NetService.onInvoke(REMOTE_BUY, function(player: Player, expectedPrice: any): any
 		return PenService.buy(player, expectedPrice)
 	end)
 	NetService.onInvoke(REMOTE_BUY_SHELF, function(player: Player, expectedPrice: any): any
 		return PenService.buyShelf(player, expectedPrice)
+	end)
+	NetService.onInvoke(REMOTE_BUY_INCOME, function(player: Player, line: any, expectedPrice: any): any
+		return PenService.buyIncome(player, line, expectedPrice)
 	end)
 	NetService.onInvoke(REMOTE_PLACE, function(player: Player, itemId: any, slot: any): any
 		return PenService.place(player, itemId, slot)

@@ -232,6 +232,7 @@ return function(t: Context)
 			awayRate = 0,
 			shelfRows = 2, -- pens3 phase 11: the same (reconcile; the 2 start cubbies)
 			top = false,
+			income = { coins = 0, all = 0 }, -- INCOME step 1: the same
 		}
 		for _, kind in { "banana", "toast" } do
 			if fixture.owned[kind] ~= nil then
@@ -295,6 +296,7 @@ return function(t: Context)
 			awayRate = 0,
 			shelfRows = 2, -- pens3 phase 11: the shelf's 2 start cubbies, no TOP spot
 			top = false,
+			income = { coins = 0, all = 0 }, -- INCOME step 1: no level bought
 		})
 		-- Pens3 phase 5: no gift waiting, no fixed-order box opened, the Frog gift still to come.
 		expect.deepEqual(d.giftQueue, {})
@@ -890,6 +892,7 @@ return function(t: Context)
 			awayRate = 0, -- pens3 phase 4: from reconcile
 			shelfRows = 2, -- pens3 phase 11: from reconcile
 			top = false,
+			income = { coins = 0, all = 0 }, -- INCOME step 1: from reconcile
 		})
 		expect.equal(penProblems(result.problems), 6) -- every added item is logged, and its slot
 		-- The next load changes nothing.
@@ -1015,6 +1018,7 @@ return function(t: Context)
 			awayRate = 1_234_567.25, -- pens3 phase 4: a rate with a fraction (a levelled pen)
 			shelfRows = 4,
 			top = true,
+			income = { coins = 3, all = 20 }, -- INCOME step 1: the levels survive
 		}
 		profile.owned.bird = { at = 1, src = "shop" }
 		profile.owned.dragon = { at = 1, src = "shop" }
@@ -1596,6 +1600,41 @@ return function(t: Context)
 		expect.deepEqual(g, { held = 0, platform = 0, arm = 3, armor = 2 })
 		g, n = fixed({ held = 36, platform = 36, arm = 36, armor = 7 })
 		expect.deepEqual(g, { held = 36, platform = 36, arm = 36, armor = 7 })
+		expect.equal(n, 0)
+	end)
+
+	-- INCOME step 1 (2026-10-26): pen.income -----------------------------------------------------------------------
+
+	t.test("pen.income joins without a new version: an older pen gets none, no problem; a saved one is kept", function()
+		local older = load(FIXTURE_V1).profile :: any
+		older.pen.income = nil -- a pen saved before INCOME
+		local result = load(older)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.pen.income, { coins = 0, all = 0 })
+		local kept = load(FIXTURE_V1).profile :: any
+		kept.pen.income = { coins = 20, all = 7 }
+		local again = load(kept)
+		expect.deepEqual(again.problems, {})
+		expect.deepEqual(again.profile.pen.income, { coins = 20, all = 7 })
+	end)
+
+	t.test("sanitize pen.income: whole levels in [0, 20]; broken -> none; logged", function()
+		local function fixed(value: any): (any, number)
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.pen.income = value
+			local result, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return result.pen.income, notesAbout(problems, "pen.income")
+		end
+		local g, n = fixed("garbage")
+		expect.deepEqual(g, { coins = 0, all = 0 })
+		expect.equal(n, 1)
+		g, n = fixed({ coins = 4.7, all = 99 })
+		expect.deepEqual(g, { coins = 4, all = 20 }) -- cut: never more than was bought
+		expect.equal(n, 2)
+		g = fixed({ coins = -2, all = 0 / 0 })
+		expect.deepEqual(g, { coins = 0, all = 0 })
+		g, n = fixed({ coins = 20, all = 0 })
+		expect.deepEqual(g, { coins = 20, all = 0 })
 		expect.equal(n, 0)
 	end)
 end

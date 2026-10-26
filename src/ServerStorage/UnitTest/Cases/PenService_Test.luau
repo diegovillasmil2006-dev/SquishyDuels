@@ -1496,4 +1496,77 @@ return function(t: Context)
 		expect.deepEqual(grantsOf(w, w.a), { { player = w.a, amount = 10 + 40 + 640, reason = "pen" } })
 		finish()
 	end)
+
+	-- INCOME step 1 (2026-10-26): PenBuyIncome ------------------------------------------------------------------------
+
+	t.test("PenBuyIncome takes a line and a Coin price, one in flight; its max text exists", function()
+		local spec = Remotes.SPEC.PenBuyIncome
+		expect.equal(spec.kind, "RemoteFunction")
+		expect.equal(spec.dir, "c2s")
+		expect.deepEqual(spec.args, { { name = "line", type = "string" }, { name = "expectedPrice", type = "coins" } })
+		expect.equal(Config.Net.Remotes.PenBuyIncome.oneInFlight, true)
+		expect.truthy(type(t.requireShared("Strings").reason.pen.incomeMax) == "string")
+	end)
+
+	t.test("an INCOME buy: a 'pen' spend, the level up, shown, saved; no cooldown between levels", function()
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.coins = 10_000_000
+		local reply = PenService.buyIncome(w.a, "coins", 500_000)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(a.pen.income, { coins = 1, all = 0 })
+		expect.deepEqual(reply.data, { pen = TableUtil.deepCopy(a.pen), charged = true, savePending = false })
+		expect.deepEqual(w.spends, { { player = w.a, amount = 500_000, reason = "pen" } })
+		expect.equal(w.nowSaves, 1)
+		expect.deepEqual(w.shown, { w.a })
+		-- At once: the next level and an ALL EARNINGS level (many small buys: no spot cooldown).
+		expect.equal(PenService.buyIncome(w.a, "coins", 1_600_000).ok, true)
+		expect.equal(PenService.buyIncome(w.a, "all", 2_500_000).ok, true)
+		expect.deepEqual(a.pen.income, { coins = 2, all = 1 })
+		expect.equal(a.coins, 10_000_000 - 500_000 - 1_600_000 - 2_500_000)
+		-- The tick pays the boosted rate: Kitty Bread 10 x 1.07^2 x 1.05 = 12.02.
+		local before = #grantsOf(w, w.a)
+		PenService.step(1)
+		expect.equal(grantsOf(w, w.a)[before + 1].amount, 12)
+		-- Another player's income is never touched.
+		expect.equal(w.profiles[w.b].pen.income, nil)
+		w.saveOk = false
+		a.coins += 10_000_000
+		expect.equal(PenService.buyIncome(w.a, "all", 7_500_000).data.savePending, true)
+		finish()
+	end)
+
+	t.test("INCOME refusals: bad input, not ready, price, max, paused, duel, short: none charged", function()
+		local w = fresh()
+		local a = w.profiles[w.a]
+		a.coins = 500_000
+		local writes = w.writes
+		local bads: { any } =
+			{ { "gear", 500_000 }, { 7, 500_000 }, { "coins", -1 }, { "coins", 1.5 }, { "coins", "1" } }
+		for _, bad in bads do
+			expectRefused(PenService.buyIncome(w.a, bad[1], bad[2]), "net.invalid")
+		end
+		expectRefused(PenService.buyIncome(w.a, nil, 500_000), "net.invalid")
+		w.status[w.a] = "offline"
+		expectRefused(PenService.buyIncome(w.a, "coins", 500_000), "data.notReady")
+		w.status[w.a] = "ready"
+		expectRefused(PenService.buyIncome(w.a, "coins", 499_999), "pen.priceChanged")
+		a.pen.income = { coins = 20, all = 0 }
+		expectRefused(PenService.buyIncome(w.a, "coins", 1), "pen.incomeMax")
+		a.pen.income = { coins = 0, all = 0 }
+		for _, flag in { "savePending", "closing", "restart" } do
+			(w :: any)[flag] = true
+			expectRefused(PenService.buyIncome(w.a, "coins", 500_000), "pen.paused");
+			(w :: any)[flag] = false
+		end
+		w.phase[w.a] = "Active"
+		expectRefused(PenService.buyIncome(w.a, "coins", 500_000), "inventory.lockedInDuel")
+		w.phase[w.a] = ""
+		a.coins = 499_999
+		expectRefused(PenService.buyIncome(w.a, "coins", 500_000), "economy.notEnoughCoins")
+		expect.deepEqual(w.spends, {})
+		expect.equal(w.writes, writes)
+		expect.deepEqual(a.pen.income, { coins = 0, all = 0 })
+		finish()
+	end)
 end

@@ -43,10 +43,21 @@
 --                                   swapId?}: the item goes to `to`; the item already there (a pen spot, never the Toy
 --                                   Box) takes the mover's old slot `from` (an item in a slot that is not open counts
 --                                   as the Toy Box's: from 0). from == to changes nothing.
---   PenMath.rate(pen)            -> number: the placed items' Coins a second (the pen's pay)
---   PenMath.squeezeValue(pen)    -> number: SV = max(minSqueezeValue, rate(pen)); nil or a broken pen gives 10. What an
---                                   own squeeze and every reward counted in squeezes is worth (coatings in; toys and
---                                   Friend Boost, from later phases, never). A pure function of saved data.
+--   PenMath.rate(pen)            -> number: the placed items' Coins a second (the pen's pay) x incomeMult(pen, "coins")
+--                                   x incomeMult(pen, "all") (INCOME step 1)
+--   PenMath.squeezeValue(pen)    -> number: SV = max(minSqueezeValue, the placed items' Coins a second) x
+--                                   incomeMult(pen, "all") (INCOME step 1: ALL EARNINGS only); nil or a broken pen gives
+--                                   10. What an own squeeze and every reward counted in squeezes is worth (coatings in;
+--                                   toys and Friend Boost, from later phases, never). A pure function of saved data.
+-- INCOME step 1 (2026-10-26; Config.Economy.Income): `pen.income` = {coins, all}, the levels bought of SQUISHY COINS and
+-- ALL EARNINGS (ProfileSchema gives every saved pen one; missing or broken counts as none: fail closed).
+--   PenMath.incomeLevel(pen, line) -> number: the level bought, a whole number in [0, the line's levels] (cut, clamped)
+--   PenMath.incomeMult(pen, line) -> number: the line's boost ^ its level (1 for none or an unknown line)
+--   PenMath.incomePrice(line, level) -> number?: the Coins of that level (1..levels), else nil
+--   PenMath.incomeDecision(pen, line, expectedPrice) -> (IncomeBuy?, code?): the pure PenBuyIncome checks, PenBuySpot's
+--                                   order: not a line, expectedPrice not whole Coins or a broken pen -> "net.invalid";
+--                                   every level bought -> "pen.incomeMax"; expectedPrice ~= the next level's price ->
+--                                   "pen.priceChanged" (compared, never charged); else {line, level, price}.
 --   PenMath.squeezeGrip(pen)     -> number: floor(SV), the Grip of one own squeeze before Double Grip
 --   PenMath.rewardCoins(squeezes, value) -> number: floor(squeezes × value) clamped to [0, maxCoins] (a negative or
 --                                   non-finite input counts as 0). Copied unchanged from CapsuleMath (its copy goes
@@ -185,6 +196,8 @@ export type FeedStep = { item: Types.PenItem, food: FoodDef, pieces: number }
 export type FeedPlan = { levels: { [number]: number }, used: { [string]: number }, steps: number }
 -- Pens3 phase 11: one PenBuyShelf (shelfDecision): the next row (nil for the TOP spot), the price, the spots it opens.
 export type ShelfBuy = { row: number?, top: boolean, price: number, slots: { number } }
+-- INCOME step 1: one PenBuyIncome (incomeDecision): the line, the level it buys, its price.
+export type IncomeBuy = { line: string, level: number, price: number }
 
 -- Constants
 
@@ -212,6 +225,8 @@ local CODE_MAX_LEVEL = "pen.maxLevel"
 local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11: the shelf's first slot (13)
 local TOP_SLOT = PEN.placedMax -- the TOP spot (24)
 local CODE_SHELF_MAX = "pen.shelfMax"
+local INCOME = Config.Economy.Income -- INCOME step 1
+local CODE_INCOME_MAX = "pen.incomeMax"
 
 -- Module table
 
@@ -472,7 +487,8 @@ function PenMath.room(pen: any): number
 	return math.max(0, #PenMath.openSlots(pen) + PEN.toyBoxMax - #pen.items)
 end
 
-function PenMath.rate(pen: any): number
+-- The placed items' Coins a second before INCOME.
+local function placedRate(pen: any): number
 	local total = 0
 	for _, item in PenMath.placed(pen) do
 		total += PenMath.itemRate(item)
@@ -480,8 +496,53 @@ function PenMath.rate(pen: any): number
 	return total
 end
 
+function PenMath.rate(pen: any): number
+	return placedRate(pen) * PenMath.incomeMult(pen, "coins") * PenMath.incomeMult(pen, "all")
+end
+
 function PenMath.squeezeValue(pen: any): number
-	return math.max(PEN.minSqueezeValue, PenMath.rate(pen))
+	return math.max(PEN.minSqueezeValue, placedRate(pen)) * PenMath.incomeMult(pen, "all")
+end
+
+-- Public: INCOME (INCOME step 1) -------------------------------------------------------------------------------------
+
+function PenMath.incomeLevel(pen: any, line: string): number
+	local def = INCOME[line]
+	local income = if type(pen) == "table" then pen.income else nil
+	local value = if type(income) == "table" then income[line] else nil
+	if def == nil or not isFinite(value) then
+		return 0
+	end
+	return math.clamp(math.floor(value), 0, #def.prices)
+end
+
+function PenMath.incomeMult(pen: any, line: string): number
+	local def = INCOME[line]
+	return if def then def.boost ^ PenMath.incomeLevel(pen, line) else 1
+end
+
+function PenMath.incomePrice(line: any, level: any): number?
+	local def = if type(line) == "string" then INCOME[line] else nil
+	if def == nil or not inRange(level, 1, #def.prices) then
+		return nil
+	end
+	return def.prices[level]
+end
+
+function PenMath.incomeDecision(pen: any, line: any, expectedPrice: any): (IncomeBuy?, string?)
+	local def = if type(line) == "string" then INCOME[line] else nil
+	if def == nil or Validate.coins(expectedPrice) == nil or spotsOf(pen) == nil then
+		return nil, CODE_INVALID
+	end
+	local level = PenMath.incomeLevel(pen, line) + 1
+	local price = PenMath.incomePrice(line, level)
+	if price == nil then
+		return nil, CODE_INCOME_MAX
+	end
+	if expectedPrice ~= price then
+		return nil, CODE_PRICE
+	end
+	return { line = line, level = level, price = price }, nil
 end
 
 function PenMath.squeezeGrip(pen: any): number

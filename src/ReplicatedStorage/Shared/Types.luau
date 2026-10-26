@@ -167,7 +167,10 @@ export type PenState = {
 	awayRate: number,
 	shelfRows: number,
 	top: boolean,
+	income: IncomeState, -- INCOME step 1: the levels bought (Config/Income)
 }
+-- INCOME step 1: the levels bought of SQUISHY COINS and ALL EARNINGS (whole numbers in [0, the line's levels]).
+export type IncomeState = { coins: number, all: number }
 -- Phase 4: the Coins the pen paid for the time away on this session's load, and the seconds counted (session only).
 export type AwayGift = { coins: number, seconds: number }
 -- Phase 7: one sale that can be bought back for Config.Economy.Pen.buyBackSeconds: `item` the squishy as it was sold
@@ -705,6 +708,9 @@ export type DailyClaimCall = () -> Result<DailyClaimResult>
 export type PenBuySpotCall = (expectedPrice: number) -> Result<PenResult>
 -- Pens3 phase 11: buys the caller's own next shelf row, then the TOP spot; expectedPrice is compared, never charged.
 export type PenBuyShelfCall = (expectedPrice: number) -> Result<PenResult>
+-- INCOME step 1: buys the next level of one of the caller's own INCOME lines ("coins" | "all"); expectedPrice is
+-- compared, never charged.
+export type PenBuyIncomeCall = (line: string, expectedPrice: number) -> Result<PenResult>
 -- Gear step 2: buys the next step of one of the caller's gear lines (GearMath.LINES); expectedPrice is compared,
 -- never charged.
 export type GearBuyCall = (line: string, expectedPrice: number) -> Result<GearResult>
