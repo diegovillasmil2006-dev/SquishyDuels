@@ -80,6 +80,9 @@
 -- best a whole number in [0, gatesAt] (cut, clamped; non-finite or not a number -> 0); biome a whole number in [1,
 -- #starts + 1] (cut, clamped; non-finite or not a number -> HighwayMath.reached(best)), and never under what the
 -- best reaches (raised: a saved best has reached its biome, so its gifts were given); every fix logged.
+-- Gear step 2 (2026-10-26) joined the same way: `gear = {held = 0, platform = 0, arm = 0, armor = 0}` (the steps bought
+-- of each GearMath line). fixGear fails closed: not a table -> none; each a whole number in [0, GearMath.maxStep]
+-- (cut: never more than was bought; clamped; non-finite or not a number -> 0); every fix logged.
 --
 -- Load pipeline (§3.3), all on a deep copy; the result is written on the next save:
 --   1. migrate(d)   -> (copy, fromVersion) or (nil, version, "newer") when the stored schemaVersion is above CURRENT
@@ -126,6 +129,7 @@ local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local GearMath = require(Shared.GearMath) -- gear step 2
 local HighwayMath = require(Shared.HighwayMath) -- pens3 phase 13
 local PenMath = require(Shared.PenMath)
 local TableUtil = require(Shared.Util.TableUtil)
@@ -740,6 +744,18 @@ local function fixHighway(d: any, problems: { string })
 	end
 end
 
+-- Gear step 2 (see the header): none of each line.
+local function noGear(): Types.GearState
+	return { held = 0, platform = 0, arm = 0, armor = 0 }
+end
+
+local function fixGear(d: any, problems: { string })
+	local gear = ensureTable(d, "gear", noGear, "gear", problems)
+	for _, line in GearMath.LINES do
+		fixInt(gear, line, 0, GearMath.maxStep(line) :: number, 0, `gear.{line}`, problems)
+	end
+end
+
 local function versionOf(d: any): number
 	local v = tonumber(d.schemaVersion)
 	if v == nil or v ~= v or v < 1 then
@@ -806,6 +822,7 @@ function ProfileSchema.defaults(now: number): Profile
 		bag = table.create(#PEN.coatMult - 1, 0), -- pens3 phase 8: no coating in the bag
 		food = noFood(), -- pens3 phase 9: no food
 		highway = { best = 0, biome = 1 }, -- pens3 phase 13: no throw yet, Candy Meadow
+		gear = noGear(), -- gear step 2: no gear bought
 	}
 	for _, id in PAID_BOX_IDS do
 		profile.boxOrder[id] = 0
@@ -994,6 +1011,7 @@ function ProfileSchema.sanitize(d: any, opts: SanitizeOptions?): (Profile, { str
 	fixSales(d, catalog, now, problems) -- pens3 phases 7-8
 	fixFood(d, problems) -- pens3 phase 9
 	fixHighway(d, problems) -- pens3 phase 13
+	fixGear(d, problems) -- gear step 2
 
 	-- Auto-clicker check (2026-10-16): the last strike (see the header).
 	local autoClick = ensureTable(d, "autoClick", function()

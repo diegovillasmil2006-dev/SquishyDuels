@@ -64,6 +64,9 @@
 --     in [0, gatesAt] (cut, clamped; broken -> 0); biome a whole number in [1, #starts + 1] (8 = the Golden Gates;
 --     cut, clamped; broken -> what the best reaches), and never under what the best reaches (it only rises, so the
 --     biome gifts are never given twice); every fix logged.
+--   * gear step 2 (2026-10-26): gear {held = 0, platform = 0, arm = 0, armor = 0} joined the same way (reconcile gives
+--     an older profile none, no problem); sanitize: not a table -> none; each a whole step in [0, GearMath.maxStep]
+--     (cut, clamped; broken -> 0); every fix logged.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -220,6 +223,7 @@ return function(t: Context)
 		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
 		expected.food = NO_FOOD -- pens3 phase 9: the same
 		expected.highway = { best = 0, biome = 1 } -- pens3 phase 13: the same
+		expected.gear = { held = 0, platform = 0, arm = 0, armor = 0 } -- gear step 2: the same
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
 		expected.pen = {
 			spots = 3,
@@ -302,6 +306,7 @@ return function(t: Context)
 		expect.equal(#d.bag, #Config.Economy.Pen.coatMult - 1)
 		expect.deepEqual(d.food, NO_FOOD) -- pens3 phase 9: no food
 		expect.deepEqual(d.highway, { best = 0, biome = 1 }) -- pens3 phase 13: no throw yet, Candy Meadow
+		expect.deepEqual(d.gear, { held = 0, platform = 0, arm = 0, armor = 0 }) -- gear step 2: no gear bought
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -1559,6 +1564,38 @@ return function(t: Context)
 		expect.equal(n, 1)
 		h, n = fixed({ best = 100, biome = 6 }) -- above the best: kept (it only rises; gifts are never given again)
 		expect.deepEqual(h, { best = 100, biome = 6 })
+		expect.equal(n, 0)
+	end)
+
+	-- Gear step 2 (2026-10-26): gear ------------------------------------------------------------------------------
+
+	t.test("gear joins without a new version: an older profile gets none of each, no problem", function()
+		local none = { held = 0, platform = 0, arm = 0, armor = 0 }
+		expect.deepEqual(ProfileSchema.defaults(NOW).gear, none)
+		local older = load(FIXTURE_V1).profile :: any
+		older.gear = nil -- a profile saved before the gear
+		local result = load(older)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.gear, none)
+	end)
+
+	t.test("sanitize gear: whole steps in [0, the line's last]; broken -> none; logged", function()
+		local function fixed(value: any): (any, number)
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.gear = value
+			local result, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return result.gear, notesAbout(problems, "gear")
+		end
+		local g, n = fixed("garbage")
+		expect.deepEqual(g, { held = 0, platform = 0, arm = 0, armor = 0 })
+		expect.equal(n, 1)
+		g, n = fixed({ held = 4.7, platform = 99, arm = -2, armor = 9 })
+		expect.deepEqual(g, { held = 4, platform = 36, arm = 0, armor = 7 }) -- cut: never more than was bought
+		expect.equal(n, 4)
+		g = fixed({ held = 0 / 0, platform = "x", arm = 3, armor = 2 })
+		expect.deepEqual(g, { held = 0, platform = 0, arm = 3, armor = 2 })
+		g, n = fixed({ held = 36, platform = 36, arm = 36, armor = 7 })
+		expect.deepEqual(g, { held = 36, platform = 36, arm = 36, armor = 7 })
 		expect.equal(n, 0)
 	end)
 end

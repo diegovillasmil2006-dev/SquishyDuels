@@ -179,6 +179,8 @@ export type FoodCounts = { [string]: number }
 -- Phase 13: the farthest landing (whole studs from the start line, 0..gatesAt) and the biome reached (1..#starts,
 -- #starts + 1 = the Golden Gates; it only rises).
 export type HighwayState = { best: number, biome: number }
+-- Gear step 2: the steps bought of each gear line (GearMath.LINES; whole numbers in [0, GearMath.maxStep]).
+export type GearState = { held: number, platform: number, arm: number, armor: number }
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema); schemaVersion 3 made the shelf one cubby a row.
@@ -220,6 +222,7 @@ export type ProfileV1 = {
 	bag: { number },
 	food: FoodCounts, -- pens3 phase 9, added within schemaVersion 2 the same way: the food pieces owned
 	highway: HighwayState, -- pens3 phase 13, added within schemaVersion 2 the same way: the farthest throw, the biome
+	gear: GearState, -- gear step 2, added the same way (no new schema version): the gear steps bought
 }
 
 -- The same type under its version name, for code that wants to say which schema it means.
@@ -310,6 +313,7 @@ export type Snapshot = {
 	buyBack: { BuyBackEntry }, -- pens3 phase 7: the profile's buy-back list as stored (the pen screen's sold cards)
 	food: FoodCounts, -- pens3 phase 9: the profile's food as stored (the pen screen's food row and FEED buttons)
 	highway: HighwayState, -- pens3 phase 13: the profile's highway as stored (the level cap, the throw HUD)
+	gear: GearState, -- gear step 2: the profile's gear as stored (the zone banner's power, the gear shop)
 }
 
 -- A partial StateDelta: only the changed fields are present.
@@ -336,6 +340,7 @@ export type StateDeltaFields = {
 	buyBack: { BuyBackEntry }?,
 	food: FoodCounts?,
 	highway: HighwayState?,
+	gear: GearState?,
 }
 
 -- The StateDelta field names (Snapshot keys), for code that walks them.
@@ -362,6 +367,7 @@ export type StateField =
 	| "buyBack"
 	| "food"
 	| "highway"
+	| "gear"
 
 export type SnapshotLoading = { status: "loading" }
 
@@ -643,6 +649,7 @@ export type HighwayPlan = {
 	landsAt: number, -- server time it stops
 	fuel: number, -- boosts left
 	boosted: boolean,
+	trap: boolean, -- gear step 2: a trap took some of this throw's power (a boost keeps it)
 	charged: boolean, -- false
 	savePending: boolean,
 }
@@ -666,6 +673,10 @@ export type HighwayLanding = {
 	perfect: boolean,
 	boosts: number,
 }
+
+-- GearBuy data (gear step 2): the caller's gear after the buy; charged true (every refusal is a ResultErr with
+-- charged = false); savePending = the awaited "now" save failed.
+export type GearResult = { gear: GearState, charged: boolean, savePending: boolean }
 
 -- QueueJoin data: the player's place in the queue (1 = next). A join from an OFFLINE/READONLY profile still
 -- succeeds and the server also sends Notify("duel.noRewardsOffline", nil, "warn") (§2.8).
@@ -694,6 +705,9 @@ export type DailyClaimCall = () -> Result<DailyClaimResult>
 export type PenBuySpotCall = (expectedPrice: number) -> Result<PenResult>
 -- Pens3 phase 11: buys the caller's own next shelf row, then the TOP spot; expectedPrice is compared, never charged.
 export type PenBuyShelfCall = (expectedPrice: number) -> Result<PenResult>
+-- Gear step 2: buys the next step of one of the caller's gear lines (GearMath.LINES); expectedPrice is compared,
+-- never charged.
+export type GearBuyCall = (line: string, expectedPrice: number) -> Result<GearResult>
 -- Pens3 phase 6: one of the caller's own squishies to a slot (0 = put away; an occupied spot swaps), and its lock.
 export type PenPlaceCall = (itemId: number, slot: number) -> Result<PenResult>
 export type PenLockCall = (itemId: number, locked: boolean) -> Result<PenResult>

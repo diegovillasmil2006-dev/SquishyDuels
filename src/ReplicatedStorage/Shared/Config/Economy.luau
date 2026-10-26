@@ -18,6 +18,7 @@
 -- Pens3 phase 7: the "sell" Coin reason (a sale from the pen, and the spend that buys it back, PenService).
 -- Pens3 phase 9: Food (Config/Food) and the "food" Coin reason (food bought in the pen screen, PenService).
 -- Pens3 phase 13: the "highway" Coin reason (a throw's landing, HighwayService).
+-- Gear step 2 (2026-10-26): Gear (Config/Gear) and the "gear" Coin reason (a gear step bought, HighwayService).
 
 local Economy = {
 	startingCoins = 0,
@@ -45,6 +46,7 @@ local Economy = {
 		"food", -- pens3 phase 9: food bought for the pen (PenService.buyFood)
 		"sell", -- pens3 phase 7: a sale's Coins, and a buy-back's spend (PenService)
 		"highway", -- pens3 phase 13: a throw's landing (HighwayService)
+		"gear", -- gear step 2: a gear step bought (HighwayService.buyGear)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
 	},
@@ -123,6 +125,8 @@ local Economy = {
 	-- The highway (pens3 phase 12): Config/Highway (the biome starts and the Golden Gates, in studs from the launch
 	-- gate; checked by Config/ValidateHighway).
 	Highway = require(script.Parent.Highway),
+	-- The gear (gear step 2): Config/Gear (launchers, arm gear, armor, traps; checked by Config/ValidateGear).
+	Gear = require(script.Parent.Gear),
 
 	-- Duplicate results (§6.5). Pens3 phase 5: "copy" (every box result, shop buy or gift adds a pen item, so a squishy
 	-- you own again is a copy; the Toy Box cap, Config/Pen toyBoxMax, is the limit). Was "refund".

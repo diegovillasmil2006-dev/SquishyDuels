@@ -171,6 +171,10 @@ return function(t: Context)
 		expect.truthy(banner.ready)
 		expect.falsy((HighwayThrowController.zoneBanner(3, level - 1) :: any).ready)
 		expect.equal(HighwayThrowController.zoneBanner(99, 1), nil)
+		-- Gear step 2: the gear counts too (a whole held launcher line at Lv 1 is past zone 3's wall).
+		local gear = { held = 36, platform = 0, arm = 0, armor = 0 }
+		expect.truthy((HighwayThrowController.zoneBanner(3, 1, gear) :: any).ready)
+		expect.falsy((HighwayThrowController.zoneBanner(3, 1, nil) :: any).ready)
 	end)
 
 	t.test("init / start / destroy run cleanly in Edit mode and leave nothing behind", function()

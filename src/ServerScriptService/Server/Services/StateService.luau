@@ -43,6 +43,8 @@
 --   BUY FOOD cards; PenService marks it on every buy and feed).
 -- * highway = profile.highway {best, biome} as stored (pens3 phase 13: the pen screen's level cap and the throw HUD;
 --   HighwayService marks it on every landing that changes it).
+-- * gear = profile.gear {held, platform, arm, armor} as stored (gear step 2: the zone banner's power and the gear shop;
+--   HighwayService marks it on every gear buy).
 --
 -- dataPort() is the one reading of DataService for this layer (EconomyService, InventoryService and
 -- PreferencesService use it as their default, and so do services above them). portFrom(source) builds the same port
@@ -130,6 +132,7 @@ local FIELDS: { string } = {
 	"buyBack", -- pens3 phase 7: the profile's buy-back list as stored
 	"food", -- pens3 phase 9: the profile's food as stored
 	"highway", -- pens3 phase 13: the profile's highway as stored
+	"gear", -- gear step 2: the profile's gear as stored
 }
 local FIELD_SET: { [string]: boolean } = {}
 for _, field in FIELDS do

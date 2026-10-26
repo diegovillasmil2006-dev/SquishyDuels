@@ -23,6 +23,13 @@
 --     sent; the biome gifts once each, in the throw that first reaches the biome; the Food Bag every 150 s of flight
 --     time; the launch board (the last 3 throws of anyone, newest first, and the server best; start() writes the empty
 --     board); then HighwayLanded to the owner. playerRemoving settles an open flight without firing.
+--   * gear step 2 (2026-10-26): a throw's power is x GearMath.multiplier(profile.gear) (no gear = x1); a trap may hit
+--     it (GearMath.trapChance of the zone it would reach, deps.random), leaving GearMath.trapKeep(zone, armor) of the
+--     power (plan.trap = true when it took some); a boost keeps the trap. GearBuy(line, expectedPrice) (RF; Config.Net
+--     one in flight): (1) not a gear line or not whole Coins -> net.invalid; (2) data.notReady; (3)
+--     GearMath.buyDecision -> gear.max / gear.priceChanged; (4) a pending failed save, closing or a restart ->
+--     gear.paused; (5) inventory.lockedInDuel; (6) the "gear" spend -> economy.notEnoughCoins. Then gear[line] = the
+--     step (one mutate), the `gear` field sent, the awaited "now" save and ok({gear, charged = true, savePending}).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -77,6 +84,10 @@ return function(t: Context)
 		boards: { { [string]: string } },
 		timers: { Timer },
 		landed: { { player: any, landing: any } },
+		random: number, -- gear step 2: what deps.random answers (1 = never a trap)
+		spends: { { player: any, amount: number, reason: string } },
+		nowSaves: number,
+		saveOk: boolean,
 	}
 
 	local function noFood(): any
@@ -99,6 +110,7 @@ return function(t: Context)
 			},
 			food = noFood(),
 			highway = { best = 0, biome = 1 },
+			gear = { held = 0, platform = 0, arm = 0, armor = 0 },
 		}
 	end
 
@@ -129,6 +141,10 @@ return function(t: Context)
 			boards = {},
 			timers = {},
 			landed = {},
+			random = 1,
+			spends = {},
+			nowSaves = 0,
+			saveOk = true,
 		}
 		HighwayService.reset()
 		HighwayService.useDeps({
@@ -208,6 +224,22 @@ return function(t: Context)
 			end,
 			writeBoard = function(lines: { [string]: string })
 				table.insert(w.boards, table.clone(lines))
+			end,
+			random = function(): number
+				return w.random
+			end,
+			trySpend = function(player: any, amount: number, reason: string): (boolean, string?)
+				local profile = w.profiles[player]
+				if profile.coins < amount then
+					return false, "notEnoughCoins"
+				end
+				profile.coins -= amount
+				table.insert(w.spends, { player = player, amount = amount, reason = reason })
+				return true, nil
+			end,
+			saveNow = function(): boolean
+				w.nowSaves += 1
+				return w.saveOk
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -323,6 +355,7 @@ return function(t: Context)
 			landsAt = core.landsAt,
 			fuel = 1,
 			boosted = false,
+			trap = false,
 			charged = false,
 			savePending = false,
 		})
@@ -788,6 +821,132 @@ return function(t: Context)
 		expect.deepEqual(w.landed, {})
 		w.status[w.a] = "ready"
 		expect.equal(HighwayService.throw(w.a, w.serverNow).ok, true) -- the flight is over
+		finish()
+	end)
+
+	-- Gear step 2 (2026-10-26): gear, traps and armor ---------------------------------------------------------------
+
+	t.test("gear: a throw's power is x the gear (a whole tier x16); no gear saved counts as none", function()
+		local w = fresh()
+		w.profiles[w.a].gear = { held = 4, platform = 0, arm = 0, armor = 3 } -- armor adds no power
+		local plan = throwAndLand(w, w.a)
+		expect.equal(plan.studs, HighwayMath.landing(900 * 16))
+		expect.equal(plan.trap, false)
+		w.profiles[w.a].gear = { held = 4, platform = 4, arm = 1, armor = 0 }
+		expect.equal(throwAndLand(w, w.a).studs, HighwayMath.landing(900 * 16 * 16 * 2))
+		w.profiles[w.a].gear = nil -- a profile from before the gear
+		expect.equal(throwAndLand(w, w.a).studs, 213)
+		finish()
+	end)
+
+	t.test("traps: the zone's chance, the zone's cut; armor makes it smaller; a boost keeps it", function()
+		local w = fresh()
+		w.random = 0 -- every throw trapped
+		local plan = throwAndLand(w, w.a)
+		expect.equal(plan.trap, true)
+		expect.equal(plan.studs, HighwayMath.landing(900 / 4)) -- zone 1, no armor: a quarter left
+		w.profiles[w.a].gear.armor = 1
+		expect.equal(throwAndLand(w, w.a).studs, HighwayMath.landing(900 / 2))
+		w.profiles[w.a].gear.armor = 2 -- enough armor for zone 1: the trap takes nothing
+		local safe = throwAndLand(w, w.a)
+		expect.equal(safe.studs, 213)
+		expect.equal(safe.trap, false)
+		-- The chance is the zone's the throw would reach: x256 lands in zone 2 (11 %).
+		w.profiles[w.a].gear = { held = 8, platform = 0, arm = 0, armor = 0 }
+		local power = 900 * 256
+		expect.equal(HighwayMath.biomeAt(HighwayMath.landing(power)), 2)
+		w.random = 0.10
+		local hit = throwAndLand(w, w.a)
+		expect.equal(hit.trap, true)
+		expect.equal(hit.studs, HighwayMath.landing(power / 8)) -- zone 2, no armor: 2^-3
+		w.random = 0.12
+		expect.equal(throwAndLand(w, w.a).trap, false)
+		-- A boost keeps the trap: x4 of what the trap left.
+		w.profiles[w.a].gear = { held = 0, platform = 0, arm = 0, armor = 0 }
+		w.random = 0
+		local trapped = HighwayService.throw(w.a, w.serverNow).data
+		advance(w, H.flight.releaseSeconds + 0.5)
+		local boosted = HighwayService.throw(w.a, w.serverNow).data
+		expect.equal(boosted.boosted, true)
+		expect.equal(boosted.trap, true)
+		expect.equal(boosted.studs, math.max(HighwayMath.landing(900 / 4 * 4), trapped.studs))
+		finish()
+	end)
+
+	t.test("GearBuy takes a line and a Coin price, one in flight; the 'gear' Coin reason exists", function()
+		local spec = Remotes.SPEC.GearBuy
+		expect.equal(spec.kind, "RemoteFunction")
+		expect.equal(spec.dir, "c2s")
+		expect.deepEqual(spec.args, { { name = "line", type = "string" }, { name = "expectedPrice", type = "coins" } })
+		expect.equal(Config.Net.Remotes.GearBuy.oneInFlight, true)
+		expect.truthy(table.find(Config.Economy.CoinReasons, "gear") ~= nil)
+		for _, code in { "max", "priceChanged", "paused" } do
+			expect.truthy(type(Strings.reason.gear[code]) == "string")
+		end
+	end)
+
+	t.test("buyGear refuses in order, charging and writing nothing", function()
+		local w = fresh()
+		w.profiles[w.a].coins = 1e9
+		local function refusedWith(line: any, price: any, code: string)
+			expectRefused(HighwayService.buyGear(w.a, line, price), code)
+		end
+		refusedWith("sword", 18_000, "net.invalid")
+		refusedWith(nil, 18_000, "net.invalid")
+		refusedWith("held", -1, "net.invalid")
+		refusedWith("held", 1.5, "net.invalid")
+		refusedWith("held", "18000", "net.invalid")
+		w.status[w.a] = "loading"
+		refusedWith("held", 18_000, "data.notReady")
+		w.status[w.a] = "ready"
+		refusedWith("held", 17_000, "gear.priceChanged")
+		w.profiles[w.a].gear.armor = 7
+		refusedWith("armor", 35e12, "gear.max")
+		w.profiles[w.a].gear.armor = 0
+		w.savePending = true
+		refusedWith("held", 18_000, "gear.paused")
+		w.savePending, w.closing = false, true
+		refusedWith("held", 18_000, "gear.paused")
+		w.closing, w.restart = false, true
+		refusedWith("held", 18_000, "gear.paused")
+		w.restart = false
+		w.phase[w.a] = "Active"
+		refusedWith("held", 18_000, "inventory.lockedInDuel")
+		w.phase[w.a] = ""
+		w.profiles[w.a].coins = 17_999
+		refusedWith("held", 18_000, "economy.notEnoughCoins")
+		expect.deepEqual(w.spends, {})
+		expect.equal(w.writes, 0)
+		expect.equal(w.nowSaves, 0)
+		expect.deepEqual(w.profiles[w.a].gear, { held = 0, platform = 0, arm = 0, armor = 0 })
+		finish()
+	end)
+
+	t.test("buyGear: spends the step's Coins ('gear'), raises the line, sends gear, saves now", function()
+		local w = fresh()
+		w.profiles[w.a].coins = 100_000
+		local reply = HighwayService.buyGear(w.a, "held", 18_000)
+		expect.equal(reply.ok, true)
+		expect.deepEqual(reply.data, {
+			gear = { held = 1, platform = 0, arm = 0, armor = 0 },
+			charged = true,
+			savePending = false,
+		})
+		expect.deepEqual(w.spends, { { player = w.a, amount = 18_000, reason = "gear" } })
+		expect.equal(w.profiles[w.a].coins, 82_000)
+		expect.deepEqual(w.profiles[w.a].gear, { held = 1, platform = 0, arm = 0, armor = 0 })
+		expect.truthy(table.find(w.dirty, "gear") ~= nil)
+		expect.equal(w.nowSaves, 1)
+		expect.equal(HighwayService.buyGear(w.a, "arm", 9_000).ok, true) -- arm gear: half the launcher's step
+		expect.equal(HighwayService.buyGear(w.a, "armor", 9_000).ok, true)
+		w.saveOk = false
+		local unsaved = HighwayService.buyGear(w.a, "held", 40_000)
+		expect.equal(unsaved.ok, true)
+		expect.equal(unsaved.data.savePending, true) -- the awaited save failed: the client says so
+		expect.deepEqual(w.profiles[w.a].gear, { held = 2, platform = 0, arm = 1, armor = 1 })
+		expect.equal(w.profiles[w.a].coins, 100_000 - 18_000 - 9_000 - 9_000 - 40_000)
+		-- Another player's gear is never touched.
+		expect.deepEqual(w.profiles[w.b].gear, { held = 0, platform = 0, arm = 0, armor = 0 })
 		finish()
 	end)
 end

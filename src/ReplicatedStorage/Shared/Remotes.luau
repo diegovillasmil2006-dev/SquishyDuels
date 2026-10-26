@@ -225,6 +225,10 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- asks for the throw's boost (ok, or highway.noFuel / highway.inFlight). data: Types.HighwayPlan (a press with no
 	-- open flight throws; during the own flight, boosted = true).
 	HighwayThrow = c2s("RemoteFunction", { arg("clientTime", "serverTime"), arg("fastSeconds", "integer") }),
+	-- Gear step 2 (HighwayService): buys the next step of one of the caller's own gear lines (GearMath.LINES: held,
+	-- platform, arm, armor). expectedPrice is compared, never charged. data: Types.GearResult {gear, charged,
+	-- savePending}.
+	GearBuy = c2s("RemoteFunction", { arg("line", "string"), arg("expectedPrice", "coins") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

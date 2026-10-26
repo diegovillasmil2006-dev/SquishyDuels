@@ -602,6 +602,7 @@ return function(t: Context)
 			"buyBack", -- pens3 phase 7: the sales that can be bought back (profile.buyBack)
 			"food", -- pens3 phase 9: the food pieces owned (profile.food)
 			"highway", -- pens3 phase 13: the farthest throw and the biome reached (profile.highway)
+			"gear", -- gear step 2: the gear steps bought (profile.gear)
 		})
 	end)
 

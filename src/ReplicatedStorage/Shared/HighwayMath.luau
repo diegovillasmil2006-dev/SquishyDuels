@@ -9,9 +9,9 @@
 -- Flight type are gone.
 --
 -- API:
---   HighwayMath.power(level)          -> number: the throw power of a Grip level, base x perGripLevel^(level - 1)
+--   HighwayMath.power(level, gear?)   -> number: the throw power of a Grip level, base x perGripLevel^(level - 1)
 --                                        (p13v4: Lv 1 900); a level that is not a whole number >= 1 counts as Lv 1,
---                                        a fraction is cut
+--                                        a fraction is cut; gear step 2: x GearMath.multiplier(gear) (none = x1)
 --   HighwayMath.landing(power)        -> number: whole studs from the start line (cut), in [0, gatesAt]: biome n
 --                                        (walls[n] <= P < walls[n + 1], walls[8] = gatesPower) at starts[n] +
 --                                        length_n x ln(P / walls[n]) / ln(walls[n + 1] / walls[n]) (V4:76, SIM:89);
@@ -72,6 +72,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
+local GearMath = require(Shared.GearMath)
 local PenMath = require(Shared.PenMath)
 local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
@@ -134,9 +135,9 @@ end
 
 -- Public
 
-function HighwayMath.power(level: any): number
+function HighwayMath.power(level: any, gear: any?): number
 	local lv = if isFinite(level) and level >= 1 then math.floor(level) else 1
-	return H.power.base * H.power.perGripLevel ^ (lv - 1)
+	return H.power.base * H.power.perGripLevel ^ (lv - 1) * GearMath.multiplier(gear)
 end
 
 function HighwayMath.landing(power: any): number

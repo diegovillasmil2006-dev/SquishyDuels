@@ -25,7 +25,7 @@
 -- * A throw (at the arrival's server time t): PERFECT when HighwayMath.isPerfect(t - one way), one way = half the
 --   player's ping (Player:GetNetworkPing is the round trip; 0 when it fails, at most timing.maxOneWaySeconds): the
 --   client's own clock is never read. power = HighwayMath.power(GripService.levelOf) (x timing.perfectPower when
---   PERFECT; phase 14 multiplies the gear in), the plan HighwayMath.newPlan(power, the root lane-local, t +
+--   PERFECT; gear step 2: x the gear, then the trap, below), the plan HighwayMath.newPlan(power, the root lane-local, t +
 --   releaseSeconds) with boost.fuel boosts; the settle is scheduled at its landsAt (deps.after = task.delay). The
 --   reply: ok(the plan); nothing is paid yet.
 -- * A boost (a press during the own flight): HighwayMath.boost(plan, power, t), power x boost.power, one fuel less;
@@ -52,6 +52,18 @@
 --   (deps.writeBoard: every SD_LaunchBoard's TextLabels by name; they replicate to everyone) after each landing;
 --   start() writes the empty board (Strings highway.board.empty on the first row). The server's own memory: a new
 --   server starts empty.
+-- * Gear step 2 (2026-10-26; owner: "Build the gear next", "Traps + armor now", the prices of Config/Gear): a throw's
+--   power is also x GearMath.multiplier(profile.gear) (before PERFECT). Then a trap: with GearMath.trapChance of the
+--   zone that power would reach (deps.random), the throw keeps GearMath.trapKeep(zone, armor pieces) of its power;
+--   plan.trap = true when it took some (the client's TRAP! pop). The flight's power is the trapped one, so a boost
+--   keeps the trap.
+-- * GearBuy(line, expectedPrice) (RF; Config.Net 2 a second, one in flight; PenBuySpot's shape and refusal order): (1)
+--   line not a GearMath line or expectedPrice not whole Coins -> net.invalid; (2) no READY profile -> data.notReady;
+--   (3) GearMath.buyDecision -> gear.max / gear.priceChanged (compared, never charged); (4) a pending failed save,
+--   closing or a restart -> gear.paused; (5) SD_DuelPhase ~= "" -> inventory.lockedInDuel; (6)
+--   EconomyService.trySpend(p, price, "gear") (else economy.notEnoughCoins; "savePending" -> gear.paused). Then
+--   gear[line] = the step through one mutate, the `gear` field sent, a log line and the awaited "now" save before the
+--   reply ok({gear, charged = true, savePending}). Every refusal carries charged = false and writes nothing.
 -- Dependencies are injectable (useDeps) so unit tests run with fake profiles, players and timers (plain tables);
 -- init() never yields; playerAdded / playerRemoving never yield (playerRemoving settles an open flight first: services
 -- leave in reverse order, so DataService still holds the profile).
@@ -68,16 +80,20 @@ local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local GearMath = require(Shared.GearMath)
 local HighwayMath = require(Shared.HighwayMath)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
+local Validate = require(Shared.Util.Validate)
+local ValidateGear = require(Shared.Config.ValidateGear)
 local ValidateHighway = require(Shared.Config.ValidateHighway)
 local WorldLayout = require(Shared.World.WorldLayout)
 
 local Services = script.Parent
 local AutoClickService = require(Services.AutoClickService)
+local DataService = require(Services.DataService)
 local EconomyService = require(Services.EconomyService)
 local GripService = require(Services.GripService)
 local NetService = require(Services.NetService)
@@ -109,10 +125,15 @@ export type Deps = {
 	markDirty: (player: any, field: string) -> (), -- StateService.markDirty
 	nameOf: (player: any) -> string, -- the board's name: the player's DisplayName
 	writeBoard: (lines: { [string]: string }) -> (), -- the launch board's live lines, by name
+	random: () -> number, -- gear step 2: a number in [0, 1) (the trap roll)
+	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?), -- EconomyService.trySpend
+	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 }
 
 -- What the remote answers: NetService.ok(Types.HighwayPlan) or NetService.err(reason, false).
 export type Reply = { ok: boolean, data: Types.HighwayPlan?, reason: string?, charged: boolean? }
+-- Gear step 2: what GearBuy answers: NetService.ok(Types.GearResult) or NetService.err(reason, false).
+export type GearReply = { ok: boolean, data: Types.GearResult?, reason: string?, charged: boolean? }
 
 -- The open flight: the plan last sent (never changed: a boost makes a new one), the power so far (PERFECT and boosts
 -- in), the press's server time and the number of its current settle schedule.
@@ -148,6 +169,11 @@ local CODE_NO_FUEL = "highway.noFuel"
 local CODE_NOT_IN_AREA = "highway.notInArea"
 local CODE_PAUSED = "highway.paused"
 local CODE_IN_DUEL = "inventory.lockedInDuel"
+local GEAR_REMOTE = "GearBuy" -- gear step 2
+local GEAR_REASON = "gear"
+local FIELD_GEAR = "gear"
+local CODE_GEAR_PAUSED = "gear.paused"
+local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
 
 -- Module table
 
@@ -156,6 +182,7 @@ local HighwayService = {}
 -- Private
 
 local log = Log.new("Highway")
+local rng = Random.new()
 local sessions: { [any]: Session } = {}
 local recent: { Row } = {} -- the board's last throws, newest first
 local best: Row? = nil -- this server's farthest landing
@@ -271,6 +298,15 @@ local function defaultDeps(): Deps
 			if not ok then
 				log:warn("could not write the launch board:", err)
 			end
+		end,
+		random = function(): number
+			return rng:NextNumber()
+		end,
+		trySpend = function(player: any, amount: number, reason: string): (boolean, string?)
+			return EconomyService.trySpend(player, amount, reason)
+		end,
+		saveNow = function(player: any): boolean
+			return DataService.saveNowAsync(player)
 		end,
 	}
 end
@@ -481,6 +517,7 @@ local function boost(player: any, session: Session, flight: Flight, now: number)
 		landsAt = core.landsAt,
 		fuel = plan.fuel - 1,
 		boosted = true,
+		trap = plan.trap, -- gear step 2: the flight's power is the trapped one
 		charged = false,
 		savePending = deps.savePending(player),
 	}
@@ -495,7 +532,13 @@ local function launch(player: any, session: Session, root: Vector3, now: number)
 	local ping = deps.pingOf(player)
 	local oneWay = if isFinite(ping) then math.clamp(ping / 2, 0, H.timing.maxOneWaySeconds) else 0
 	local perfect = HighwayMath.isPerfect(now - oneWay)
-	local power = HighwayMath.power(deps.gripLevel(player)) * (if perfect then H.timing.perfectPower else 1)
+	local gear = deps.profileOf(player).gear
+	local power = HighwayMath.power(deps.gripLevel(player), gear) * (if perfect then H.timing.perfectPower else 1)
+	-- Gear step 2: a trap of the zone this throw would reach takes some of its power (each armor piece halves less).
+	local zone = HighwayMath.biomeAt(HighwayMath.landing(power))
+	local armor = if type(gear) == "table" and isFinite(gear.armor) then gear.armor else 0
+	local keep = if deps.random() < GearMath.trapChance(zone) then GearMath.trapKeep(zone, armor) else 1
+	power *= keep
 	local core = HighwayMath.newPlan(power, LAYOUT.origin:PointToObjectSpace(root), now + H.flight.releaseSeconds)
 	session.throws += 1
 	local plan: Types.HighwayPlan = {
@@ -509,6 +552,7 @@ local function launch(player: any, session: Session, root: Vector3, now: number)
 		landsAt = core.landsAt,
 		fuel = H.boost.fuel,
 		boosted = false,
+		trap = keep < 1,
 		charged = false,
 		savePending = deps.savePending(player),
 	}
@@ -547,6 +591,58 @@ function HighwayService.throw(player: any, clientTime: any, fastSeconds: number?
 	return launch(player, session, root, now)
 end
 
+-- Gear step 2: the next step of one of the caller's own gear lines (see the header for the order of the checks).
+function HighwayService.buyGear(player: any, line: any, expectedPrice: any): GearReply
+	if GearMath.maxStep(line) == nil or Validate.coins(expectedPrice) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local profile = deps.profileOf(player)
+	if deps.statusOf(player) ~= STATUS_READY or type(profile) ~= "table" then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local decision, refusedWhy = GearMath.buyDecision(profile.gear, line, expectedPrice)
+	if decision == nil then
+		return NetService.err(refusedWhy or CODE_INVALID, false)
+	end
+	if deps.savePending(player) or deps.isClosing() or deps.isRestartPending() then
+		return NetService.err(CODE_GEAR_PAUSED, false)
+	end
+	if deps.duelPhaseOf(player) ~= "" then
+		return NetService.err(CODE_IN_DUEL, false)
+	end
+	local spent, why = deps.trySpend(player, decision.price, GEAR_REASON)
+	if not spent then
+		return NetService.err(
+			if why == "notEnoughCoins"
+				then CODE_NOT_ENOUGH
+				elseif why == "savePending" then CODE_GEAR_PAUSED
+				elseif why == "notReady" then CODE_NOT_READY
+				else CODE_INVALID,
+			false
+		)
+	end
+	local written = deps.mutate(player, function(live: any): boolean
+		local gear = if type(live.gear) == "table" then live.gear else { held = 0, platform = 0, arm = 0, armor = 0 }
+		gear[line] = math.max(if isFinite(gear[line]) then gear[line] else 0, decision.step)
+		live.gear = gear
+		return true
+	end)
+	if not written then
+		-- Cannot happen without a yield after the spend (the session was ready a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: {line} step {decision.step} was paid ({decision.price}) but not written`)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} bought {line} step {decision.step} for {decision.price} Coins`)
+	deps.markDirty(player, FIELD_GEAR)
+	local data: Types.GearResult = {
+		gear = table.clone(deps.profileOf(player).gear), -- copied before the save yields
+		charged = true,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
 -- Public: tests -----------------------------------------------------------------------------------------------------
 
 -- Replaces dependencies (fields not given keep their defaults). nil restores every default.
@@ -574,8 +670,15 @@ function HighwayService.init()
 	if #problems > 0 then
 		error(`[SD][Highway] Config.Economy.Highway is invalid: {table.concat(problems, "; ")}`)
 	end
+	local gearProblems = ValidateGear(Config) -- gear step 2
+	if #gearProblems > 0 then
+		error(`[SD][Highway] Config.Economy.Gear is invalid: {table.concat(gearProblems, "; ")}`)
+	end
 	NetService.onInvoke(REMOTE, function(player: Player, clientTime: any, fastSeconds: number): any
 		return HighwayService.throw(player, clientTime, fastSeconds)
+	end)
+	NetService.onInvoke(GEAR_REMOTE, function(player: Player, line: any, expectedPrice: any): any
+		return HighwayService.buyGear(player, line, expectedPrice)
 	end)
 end
 

@@ -225,6 +225,12 @@ local Strings = {
 			-- NO FUEL).
 			noFuel = "No boost left on this throw.",
 		},
+		-- Gear step 2 (GearBuy; GearMath.buyDecision, HighwayService).
+		gear = {
+			max = "You have all of this gear!",
+			priceChanged = "The price changed. Please check it again.",
+			paused = "Buying is paused for a moment. Try again soon.",
+		},
 	},
 
 	-- Small texts reused by many screens.

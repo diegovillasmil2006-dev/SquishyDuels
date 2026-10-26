@@ -91,6 +91,8 @@ local Net = {
 		-- highway.inFlight at once, nothing written). Above the client's cap, so an honest client is never limited;
 		-- with the squeeze presses' 18 it stays within Global's 30 (Config/ValidateHighway checks both).
 		HighwayThrow = { rate = 14, burst = 30 },
+		-- Gear step 2: the gear shop's buy: PenPlace's 2 a second (a burst of 3), one at a time.
+		GearBuy = { rate = 2, burst = 3, oneInFlight = true },
 		PromptCoinBundle = { rate = 0.5, burst = 1 },
 		PromptGamePass = { rate = 0.5, burst = 1 },
 		-- Burst 2: the UI re-enables the button after exactly 30 s, so with network jitter an honest second press can

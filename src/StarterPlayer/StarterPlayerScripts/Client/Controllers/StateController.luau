@@ -337,6 +337,7 @@ local TABLE_FIELDS: { [string]: boolean } = {
 	boxOrder = true, -- pens3 phase 5: the fixed-order opens per paid box (BoxFormat shows the next squishy)
 	buyBack = true, -- pens3 phase 7: the sales that can be bought back (PenFormat's sold cards)
 	food = true, -- pens3 phase 9: the food pieces owned (PenFormat's food row and FEED buttons)
+	gear = true, -- gear step 2: the gear steps bought (the zone banner's power, the gear shop)
 }
 local MAX_COMPARE_DEPTH = 16
 -- Reveal holds (see the header): the fields shown without the held results, in fire order (sorted).
