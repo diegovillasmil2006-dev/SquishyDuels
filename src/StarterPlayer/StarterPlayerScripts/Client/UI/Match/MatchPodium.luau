@@ -8,37 +8,41 @@
 -- * Where: the match's map (Workspace.DuelMaps[view.mapName]; a preview: the first map of its mode): its pivot is the
 --   centre, its Y the floor (MatchMapService's rule), the scene `lift` over it. The scene faces the one of `yaws`
 --   turns from the map's own whose camera shots the map's geometry blocks least.
--- * On this screen only, while it shows: the camera is the scene's (deps.saveCamera / restoreCamera; its subject is
---   the scene's anchor, so Roblox's camera never fades the local character back in) and graded (a ColorCorrectionEffect
---   on the camera, E:205-206); the first-person hands are put away (deps.setAway); every match character (players, the SD_Bots rigs), the players' held squishies
---   (deps.setHeldHidden), the storm wall and the map's middle prop (its parts within hideRadius of the centre, under
---   hideTop, over the floor art: every one of Diego's maps has a prop there) are hidden through
---   LocalTransparencyModifier (their effects and labels off), written again each frame and put back at the end.
+-- * On this screen only, while it shows: the camera is the scene's (deps.saveCamera / restoreCamera; its subject is the
+--   scene's anchor, so Roblox's camera never fades the local character back in) and graded (a ColorCorrectionEffect on
+--   the camera, E:205-206); the first-person hands are put away (deps.setAway); every match character (players, the
+--   SD_Bots rigs), the players' held squishies (deps.setHeldHidden), the storm wall and the map's middle prop (its
+--   parts within hideRadius of the centre, under hideTop, over the floor art: every one of Diego's maps has a prop
+--   there) are hidden through LocalTransparencyModifier (their effects and labels off), written again each frame and
+--   put back at the end.
 -- * Who (lineup, pure; T:44-48 ranks()): Team: your team, the MVP first, then most squishes, then fewest times
 --   squished; on the cake when it won, else (a loss, a draw) in the "good game" line. Free for All: the standings' top
---   (owner: "Top 6") on the cake for everyone; the line on a draw. At most `max`.
--- * The cake (E:35-63): three sponge tiers, a frosting cap in the winners' light colour, cream dollops round each
---   top edge (the design's torus rim), drips and sprinkles (its seeded Park-Miller spread), outlined by a Highlight
---   (the design's toon outline). Phones draw phoneDetail of the dollops, drips and sprinkles.
+--   (owner: "Top 6") on the cake for everyone; the line on a draw. At most `max`. Only the players whose body this
+--   screen has stand (present, pure: one streamed out, a bot without a rig is left out and the rest close up; found in
+--   a real match: alone at the line's 6th place); the crown is only the MVP's.
+-- * The cake (E:35-63): three sponge tiers, a frosting cap in the winners' light colour, cream dollops round each top
+--   edge (the design's torus rim), drips and sprinkles (its seeded Park-Miller spread), outlined by a Highlight (the
+--   design's toon outline). Phones draw phoneDetail of the dollops, drips and sprinkles.
 -- * The players (E:197-225): a copy of each one's character (Archivable on for the Clone, then back; a preview copies
---   the local character for its pretend players), its scripts, Animator and labels gone, its root anchored at its
---   slot facing the camera, every other part massless and non-colliding; Anim/PodiumPoses' clips on its joints (Motor6Ds
---   or the newer avatars' AnimationConstraints, JointLayer's rule; written in the render step, the parts follow on the
---   next frame) (VICTORY_ORDER by rank on the cake, DEFEAT_ORDER in the line), the root offset scaled to the rig's height; each holds
---   its own squishy (SquishyCache "World", squashed by SquishDeformer) where the clip's prop track puts it (E:129-147).
---   Before its clip starts a player idles (E:214). Cake ranks are timed so each HIT lands at hits[rank] (E:18, 200);
---   the line starts at line.start + line.step per player.
--- * HITs (E:151-171): ranks 2-6 pop stars at the chest, dip the FOV (not under ReducedMotion) and send "poseHit"
---   { slot = rank - 2 }; "hearts" pops hearts; the MVP's HIT is the slam: a hit-stop of the poses, two rings, a
---   sprinkle burst, a light flash, the camera kick and "mvpSlam" { strong }, then the crown (E:226-240) drops on the
---   head ("crown" when it lands), wobbles and bobs with the clip's loop.
--- * The camera (E:241-266, camera(), pure): the cake: an orbit closing in, a push up to the top, the hero shot, the
---   FOV ticks and the slam's kick (strong: settings' camera shake on, no ReducedMotion, your win; else a soft FOV dip),
+--   the local character for its pretend players), its scripts, Animator and labels gone, its root anchored at its slot
+--   facing the camera, every other part massless and non-colliding; Anim/PodiumPoses' clips on its joints (Motor6Ds or
+--   the newer avatars' AnimationConstraints, JointLayer's rule; written in the render step, the parts follow on the
+--   next frame) (VICTORY_ORDER by rank on the cake, DEFEAT_ORDER in the line), the root offset scaled to the rig's
+--   height; each holds its own squishy (SquishyCache "World", squashed by SquishDeformer) where the clip's prop track
+--   puts it (E:129-147). Before its clip starts a player idles (E:214). Cake ranks are timed so each HIT lands at
+--   hits[rank] (E:18, 200); the line starts at line.start + line.step per player.
+-- * HITs (E:151-171): ranks 2-6 pop stars at the chest, dip the FOV (not under ReducedMotion) and send "poseHit" { slot
+--   = rank - 2 }; "hearts" pops hearts; the MVP's HIT is the slam: a hit-stop of the poses, two rings, a sprinkle
+--   burst, a light flash, the camera kick and "mvpSlam" { strong }, then the crown (E:226-240) drops on the head
+--   ("crown" when it lands), wobbles and bobs with the clip's loop.
+-- * The camera (E:241-266, camera(), pure): the cake: an orbit closing in, a push up to the top, the hero shot, the FOV
+--   ticks and the slam's kick (strong: settings' camera shake on, no ReducedMotion, your win; else a soft FOV dip),
 --   then a slow breathing sway; the line: a slow push-in with the same sway.
 -- * skip() (E:314-322) jumps to skipAt with every clip done (no more events) and the crown on.
--- * anchors() -> { { userId, at } }: the world point over each player's head where MatchEnd's name tag sits (E:323-331).
--- Pure (unit-tested): lineup(view, teamOf, mvp), slots(cake, n), starts(cake, n), camera(tp, cake, shots),
--- crownAt(u, f), bestYaw(blocked), cakeParts(detail): the cake's pieces as numbers.
+-- * anchors() -> { { userId, at } }: the world point over each player's head where MatchEnd's name tag sits
+--   (E:323-331).
+-- Pure (unit-tested): lineup(view, teamOf, mvp), present(ids, has), slots(cake, n), starts(cake, n),
+-- camera(tp, cake, shots), crownAt(u, f), bestYaw(blocked), cakeParts(detail): the cake's pieces as numbers.
 
 -- Services
 
@@ -97,7 +101,7 @@ export type Podium = {
 	destroy: (self: Podium) -> (),
 }
 
-type Joint = { motor: any, name: string } -- a Motor6D or an AnimationConstraint (both have .Transform; JointLayer's rule)
+type Joint = { motor: any, name: string } -- a Motor6D or an AnimationConstraint (both have .Transform: JointLayer's)
 
 type Rig = {
 	userId: number,
@@ -196,6 +200,17 @@ function MatchPodium.lineup(view: any, teamOf: (userId: number) -> string?, mvp:
 		return nil
 	end
 	return { cake = cake, ids = ids, mvp = if cake then mvp else nil }
+end
+
+-- The lineup's players that stand (header): those `has` says have a body here, in their order.
+function MatchPodium.present(ids: { number }, has: (userId: number) -> boolean): { number }
+	local out = {}
+	for _, userId in ids do
+		if has(userId) then
+			table.insert(out, userId)
+		end
+	end
+	return out
 end
 
 -- Each place { x, y, z, turn } (design studs, rad): the cake's ranks, or the line centred on the middle.
@@ -812,14 +827,22 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 		made.Parent = nil
 	end
 
-	-- The players.
-	local slots = MatchPodium.slots(cake, #lineup.ids)
-	local starts = MatchPodium.starts(cake, #lineup.ids)
-	local rigs: { Rig } = {}
-	for i, userId in lineup.ids do
+	-- The players: those with a body here, closed up.
+	local copies: { [number]: Model } = {}
+	local standing = MatchPodium.present(lineup.ids, function(userId: number): boolean
 		local source = sourceCharacter(spec, userId)
-		local model = if source then copyCharacter(source) else nil
-		if model then
+		local copy = if source then copyCharacter(source) else nil
+		if copy then
+			copies[userId] = copy
+		end
+		return copy ~= nil
+	end)
+	local slots = MatchPodium.slots(cake, #standing)
+	local starts = MatchPodium.starts(cake, #standing)
+	local rigs: { Rig } = {}
+	for i, userId in standing do
+		local model = copies[userId]
+		do
 			local slot = slots[i]
 			local base = frame * CFrame.new(slot[1], slot[2], slot[3]) * CFrame.Angles(0, slot[4] + math.pi, 0)
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -1067,7 +1090,7 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 	local function crownStep()
 		local crown = crownModel
 		local mvp = rigs[1]
-		if crown == nil or mvp == nil or mvp.rank ~= 1 or crownT < 0 or mvp.head == nil then
+		if crown == nil or mvp == nil or mvp.userId ~= lineup.mvp or crownT < 0 or mvp.head == nil then
 			if crown then
 				crown.Parent = nil
 			end
@@ -1154,7 +1177,12 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 		for _, rig in rigs do
 			local head = rig.head
 			if head then
-				local lift = if rig.rank == 1 and cake and crownT >= 0 then CFG.mvpPlateLift else CFG.plateLift
+				local lift = if rig.rank == 1
+						and rig.userId == lineup.mvp
+						and cake
+						and crownT >= 0
+					then CFG.mvpPlateLift
+					else CFG.plateLift
 				table.insert(out, {
 					userId = rig.userId,
 					at = (head.CFrame * CFrame.new(0, head.Size.Y / 2 + lift * rig.k, 0)).Position,

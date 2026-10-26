@@ -101,6 +101,22 @@ return function(t: Context)
 		expect.near(one[1][3], 3, EPS)
 	end)
 
+	-- Found in a real match (2026-10-26): 5 bots in the line had no body on the screen, so you stood alone at the 6th
+	-- place (13.5 studs right of the middle). Only the players shown take places, in their order.
+	t.test("only the players with a body on this screen take places, in order, with no gaps", function()
+		local shown = { [4] = true, [9] = true }
+		local kept = MatchPodium.present({ 7, 4, 8, 9 }, function(userId: number): boolean
+			return shown[userId] == true
+		end)
+		expect.deepEqual(kept, { 4, 9 })
+		local alone = MatchPodium.present({ 1, 2, 3, 4, 5, 42 }, function(userId: number): boolean
+			return userId == 42
+		end)
+		expect.deepEqual(alone, { 42 })
+		local line = MatchPodium.slots(false, #alone)
+		expect.near(line[1][1], 0, EPS)
+	end)
+
 	t.test("each HIT lands at its rank's time; the line starts in a ripple", function()
 		local starts = MatchPodium.starts(true, 6)
 		local hits = { 2.3, 0.6, 0.85, 1.1, 1.35, 1.6 }
