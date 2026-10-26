@@ -2140,14 +2140,15 @@ local function maxRemaining(match: Match, now: number): number
 	local state = match.state
 	local left = math.max(0, finiteOrZero(state.phaseEndsAt) - now)
 	local phase = state.phase
+	local result = c.resultSeconds + (c.killcamSeconds or 0) -- killcam step 1: the longest Result
 	if phase == "Waiting" then
-		return left + c.countdownSeconds + match.mode.matchSeconds + c.overtimeMaxSeconds + c.resultSeconds
+		return left + c.countdownSeconds + match.mode.matchSeconds + c.overtimeMaxSeconds + result
 	elseif phase == "Countdown" then
-		return left + match.mode.matchSeconds + c.overtimeMaxSeconds + c.resultSeconds
+		return left + match.mode.matchSeconds + c.overtimeMaxSeconds + result
 	elseif phase == "Active" then
-		return left + c.overtimeMaxSeconds + c.resultSeconds
+		return left + c.overtimeMaxSeconds + result
 	elseif phase == "Overtime" then
-		return left + c.resultSeconds
+		return left + result
 	end
 	return left
 end

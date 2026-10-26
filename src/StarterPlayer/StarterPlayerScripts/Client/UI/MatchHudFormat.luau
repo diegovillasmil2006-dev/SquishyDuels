@@ -133,6 +133,10 @@ export type Context = {
 	-- End screens round B1: the 3D podium (UI/Match/MatchPodium.new on the real camera and world, given a
 	-- MatchPodium.Spec without `shake`); nil in tests.
 	podium: ((spec: any) -> any)?,
+	-- Killcam step 1: whether the session's tape can replay this final squish, and the replay (UI/Match/Killcam.new,
+	-- given a Killcam.Spec without `shake`; nil when it cannot); both nil in tests (a Studio preview has no tape).
+	killcamReady: ((ko: any) -> boolean)?,
+	killcam: ((spec: any) -> any)?,
 }
 
 -- Match HUD M6 / M7: a rect in base px, top-left origin (the safe area).

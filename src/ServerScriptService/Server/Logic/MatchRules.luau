@@ -181,6 +181,22 @@ local function activeSecondsAt(s: MatchState, at: number): number
 	return math.max(0, at - s.activeStartedAt)
 end
 
+-- Killcam step 1 (2026-10-26; owner: "Add it on top"): a win decided by this step's last K.O. (MatchService's final K.O.:
+-- koTarget, wiped, overtime) plays the killcam before the end screen when a player made that K.O. (not the storm or a
+-- fall), so its Result is killcamSeconds longer.
+local function killcamSeconds(s: MatchState, outcome: { [string]: any }, fx: Effects): number
+	local reason = outcome.reason
+	if outcome.kind ~= "win" or not (reason == "koTarget" or reason == "wiped" or reason == "overtime") then
+		return 0
+	end
+	for i = #fx, 1, -1 do
+		if fx[i].kind == "ko" then
+			return if fx[i].by ~= nil then s.match.killcamSeconds or 0 else 0
+		end
+	end
+	return 0
+end
+
 local function endMatch(s: MatchState, at: number, fx: Effects, outcome: { [string]: any })
 	if s.ended then
 		return
@@ -195,7 +211,7 @@ local function endMatch(s: MatchState, at: number, fx: Effects, outcome: { [stri
 		setPhase(s, "Closed", at, math.huge, fx)
 		table.insert(fx, { kind = "closed" })
 	else
-		setPhase(s, "Result", at, s.match.resultSeconds, fx)
+		setPhase(s, "Result", at, s.match.resultSeconds + killcamSeconds(s, outcome, fx), fx)
 	end
 end
 

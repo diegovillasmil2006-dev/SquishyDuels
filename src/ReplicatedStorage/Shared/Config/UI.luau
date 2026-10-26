@@ -36,6 +36,7 @@ export type MotionPose = {
 local Podium = require(script.Parent.Podium)
 local MatchTopBar = require(script.Parent.MatchTopBar) -- the live top bar (a child module for the same reason)
 local MatchMedal = require(script.Parent.MatchMedal) -- the squish medals (same)
+local Killcam = require(script.Parent.Killcam) -- the killcam (same)
 
 local UI = {
 	-- UIScale = clamp(min(SD_Hud.AbsoluteSize.X / referenceWidth, AbsoluteSize.Y / referenceHeight), min, max),
@@ -3776,6 +3777,7 @@ local UI = {
 			-- End screens round B1 (Config/Podium): the 3D podium and its name tags
 			podium = Podium.podium,
 			plates = Podium.plates,
+			killcam = Killcam, -- killcam step 1 (Config/Killcam)
 		},
 	},
 

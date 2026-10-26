@@ -156,6 +156,7 @@ return function(t: Context)
 		cfg.respawnSeconds = 3
 		cfg.spawnProtectSeconds = 2
 		cfg.resultSeconds = 8
+		cfg.killcamSeconds = 9 -- killcam step 1: a player's winning K.O. holds Result this much longer
 		cfg.endScreen = false -- end screens round A: the cases read the end's toasts (one case turns it on)
 		cfg.minPlayers = 2
 		cfg.gatherSeconds = 10
@@ -1285,7 +1286,7 @@ return function(t: Context)
 		expect.equal(ended.reason, "koTarget")
 		connection:disconnect()
 
-		MatchService.tick(a + 1 + cfg.resultSeconds)
+		MatchService.tick(a + 1 + cfg.resultSeconds + cfg.killcamSeconds) -- a player's K.O. won it: the killcam first
 		expect.equal(lastView(w, w.players[1]).phase, "Returning")
 		expect.equal(w.players[1]:GetAttribute("SD_DuelPhase"), "Returning")
 		w.flush() -- the return
@@ -1322,7 +1323,7 @@ return function(t: Context)
 		MatchService.tick(a + 2)
 		expect.equal(#w.teleports, teleports)
 		expect.falsy(inMap(w.roots[2].Position))
-		MatchService.tick(a + 1 + cfg.resultSeconds)
+		MatchService.tick(a + 1 + cfg.resultSeconds + cfg.killcamSeconds) -- a player's K.O. won it: the killcam first
 		w.flush()
 		expect.equal(w.players[2]:GetAttribute("SD_MatchId"), "")
 		expect.equal(w.humanoids[2].WalkSpeed, 16)
@@ -1444,7 +1445,11 @@ return function(t: Context)
 		expect.equal(codes[#codes], "match.refused.closing")
 		-- The longest it may still take: what is left of Active, then overtime and Result.
 		local left = w.cfg.Modes.ffa.matchSeconds - 1
-		expect.near(w.asked :: number, left + w.cfg.overtimeMaxSeconds + w.cfg.resultSeconds, 1e-6)
+		expect.near(
+			w.asked :: number,
+			left + w.cfg.overtimeMaxSeconds + w.cfg.resultSeconds + w.cfg.killcamSeconds,
+			1e-6
+		)
 		expect.equal(w.port.phase(), "Active") -- it can finish
 		w.flags.canFinish = false
 		MatchService.onRestartScheduled()
@@ -1955,7 +1960,7 @@ return function(t: Context)
 				expect.deepEqual(view.outcome.finalKo, final)
 			end
 			-- Every later view repeats it (the last one, Returning), with no new events.
-			MatchService.tick(a + 2 + cfg.resultSeconds)
+			MatchService.tick(a + 2 + cfg.resultSeconds + cfg.killcamSeconds) -- the killcam first
 			local returning = lastView(w, w.players[1])
 			expect.equal(returning.phase, "Returning")
 			expect.deepEqual(returning.outcome.finalKo, final)
@@ -2255,7 +2260,7 @@ return function(t: Context)
 			expect.equal(w.players[2]:GetAttribute("SD_WinStreak"), 0)
 			expect.equal(w.players[3]:GetAttribute("SD_WinStreak"), 0)
 			-- Exactly once: the Returning view repeats mine and nothing is paid again.
-			MatchService.tick(a + PAYS_ALL + cfg.resultSeconds)
+			MatchService.tick(a + PAYS_ALL + cfg.resultSeconds + cfg.killcamSeconds) -- the killcam first
 			local returning = lastView(w, w.players[1])
 			expect.equal(returning.phase, "Returning")
 			expect.deepEqual(returning.outcome.mine, first)

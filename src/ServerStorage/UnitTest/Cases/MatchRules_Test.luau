@@ -239,6 +239,8 @@ return function(t: Context)
 		expect.equal(s.outcome.winnerUserId, 1)
 		expect.deepEqual(s.outcome.winners, { 1 })
 		expect.equal(s.phase, "Result")
+		-- killcam step 1: a player's K.O. won it, so the killcam plays first
+		expect.equal(s.phaseEndsAt, a + 2 + M.resultSeconds + M.killcamSeconds)
 		expect.equal(#kinds(fx, "ended"), 1)
 		s, fx = hit(s, 1, 2, a + 6) -- after the end: ignored
 		expect.equal(#kinds(fx, "ko"), 0)
@@ -397,6 +399,8 @@ return function(t: Context)
 		s = step(s, { kind = "storm", inStorm = { [2] = true } }, endAt + 1 + M.Storm.barFillSeconds)
 		expect.equal(s.outcome.reason, "overtime")
 		expect.equal(s.outcome.winnerTeam, "Blue")
+		-- killcam step 1: nobody made the K.O., so no killcam
+		expect.equal(s.phaseEndsAt, endAt + 1 + M.Storm.barFillSeconds + M.resultSeconds)
 	end)
 
 	-- Power-ups ------------------------------------------------------------------------------------------------------

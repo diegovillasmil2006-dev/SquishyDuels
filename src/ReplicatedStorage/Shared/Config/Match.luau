@@ -82,6 +82,9 @@ local Match = {
 	spawnProtectSeconds = 2,
 	overtimeMaxSeconds = 120, -- [P]
 	resultSeconds = 8, -- the end screen before players go back (owner 2026-10-26: "Keep 8 seconds")
+	-- Killcam step 1 (2026-10-26; owner: "Add it on top"): a win a player's hit decided plays the killcam first, so its
+	-- Result lasts this much longer (Diego's cap: the killcam is cut at 9 s, LOADING SCREEN Y MATCH HUD.dc.html S:740).
+	killcamSeconds = 9,
 	-- End screens round A (2026-10-26): the client's end screen (Config.UI.Match.enabled.finish) says who won and what
 	-- was paid, so a win or a draw sends no toasts.
 	endScreen = true,

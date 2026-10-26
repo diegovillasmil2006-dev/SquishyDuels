@@ -742,6 +742,12 @@ local function sourceCharacter(spec: Spec, userId: number): Model?
 	return fallback
 end
 
+-- Killcam step 1 (2026-10-26): UI/Match/Killcam copies the match players the same way.
+MatchPodium.copyCharacter = copyCharacter
+function MatchPodium.sourceCharacter(view: any, preview: boolean, userId: number): Model?
+	return sourceCharacter({ view = view, preview = preview } :: any, userId)
+end
+
 local function findMap(view: any, preview: boolean): Model?
 	local maps = Workspace:FindFirstChild(MAPS_FOLDER)
 	if maps == nil then

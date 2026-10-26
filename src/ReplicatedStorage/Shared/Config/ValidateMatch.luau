@@ -49,7 +49,9 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 	return function(problems: Problems)
 		local p = "Config.Match"
 		local m: any = Match
-		for _, name in { "waitSeconds", "countdownSeconds", "respawnSeconds", "overtimeMaxSeconds", "resultSeconds" } do
+		for _, name in
+			{ "waitSeconds", "countdownSeconds", "respawnSeconds", "overtimeMaxSeconds", "resultSeconds", "killcamSeconds" }
+		do
 			expectPositive(problems, `{p}.{name}`, m[name])
 		end
 		expectNonNegative(problems, `{p}.spawnProtectSeconds`, m.spawnProtectSeconds)

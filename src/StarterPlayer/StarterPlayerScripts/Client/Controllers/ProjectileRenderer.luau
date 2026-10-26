@@ -1860,6 +1860,24 @@ function ProjectileRenderer.counts(): { [string]: any }
 	}
 end
 
+-- Killcam step 1 (2026-10-26): the match projectiles drawn now (UI/Match/Killcam's tape records them).
+function ProjectileRenderer.flying(): { { id: number, squishyId: string, scale: number, at: CFrame, thrower: number } }
+	local out = {}
+	for _, p in live do
+		local model = p.model
+		if p.matchId and model and model.Parent and p.impact == nil and p.caught == nil then
+			table.insert(out, {
+				id = p.projId,
+				squishyId = p.payload.squishyId,
+				scale = p.flightScale,
+				at = model:GetPivot(),
+				thrower = p.payload.throwerId,
+			})
+		end
+	end
+	return out
+end
+
 -- Removes every projectile and empties the pool (leak checks).
 function ProjectileRenderer.clear()
 	for _, p in live do

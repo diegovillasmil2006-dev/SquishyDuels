@@ -31,8 +31,13 @@
 --   pictures."): the "!" also fires the confetti cannons (S:831: MatchPodium.cannons, where ctx.podium may show the
 --   scene) and the results thin the podium's party (S:855: podium:results()).
 -- Roblox draws text at one scale, so the design's scale(sx, sy) frames are their even part sqrt(sx * sy) (as the kill
--- feed's). Under ReducedMotion only the fades play; the jelly is a colour fade and the sunbursts do not turn. The
--- killcam is a later round.
+-- feed's). Under ReducedMotion only the fades play; the jelly is a colour fade and the sunbursts do not turn.
+-- * Killcam step 1 (2026-10-26; owner: "Yes, build step 1 of the killcam like that."; "Add it on top"): when the last
+--   squish was a player's and this screen's tape has it (ctx.killcamReady), the flash and the final hit play at once,
+--   then at killcam.at the replay (ctx.killcam: UI/Match/Killcam, S:739-747) takes the screen; this screen's own
+--   timeline (the title, the podium cue, the results) starts toTitle after it ends (S:785), its end, a cut at cap
+--   (S:740) or TAP TO SKIP from skipAfter into it (S:872: past the replay, not to the results). The pill shows from
+--   skipPill.delay into it (S:753). Without a killcam the timeline starts with the last squish, as before.
 -- Pure (unit-tested): ordinal(n), resultOf(view, who), mvp(view, teamOf), columns(view, who),
 -- gripBar(total, gained), streakLine(mine), plates(view, lineup, compact), placePlates(boxes, top, left, right).
 
@@ -181,6 +186,7 @@ local SOUND = {
 	crownDrop = "match.end.crownDrop",
 }
 local PODIUM = CFG.podium
+local KC = CFG.killcam
 local PLATES = CFG.plates
 -- S:990-991 bumps along the jelly's leading edge and its drips (y %, height, width share).
 local DRIPS = { { 10, 18, 1 }, { 26, 12, 0.7 }, { 44, 22, 1.2 }, { 61, 14, 0.8 }, { 77, 20, 1 }, { 90, 12, 0.6 } }
@@ -1681,6 +1687,12 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	local slamStrong = false
 	local plateMade: { PlateMade }? = nil
 	local platesAt = 0
+	local titleAt: number? = nil -- killcam step 1: os.clock where this screen's own timeline starts
+	local kcPlanned = false -- the replay is due at KC.at
+	local kcTried = false
+	local killcam: any = nil -- the replay while it plays
+	local kcAt = 0 -- os.clock it started
+	local kcPill = 0 -- its TAP TO SKIP pill (0..1), kept after it (S:753)
 
 	local function play(name: string, opts: { [string]: any }?)
 		ctx.play(name, opts)
@@ -1715,7 +1727,22 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		end
 	end
 
+	local function endKillcam(clock: number?)
+		local replay = killcam
+		killcam = nil
+		if replay then
+			local ok, err = pcall(replay.destroy, replay)
+			if not ok then
+				warn(`[SD][MatchEnd] the killcam did not close cleanly: {err}`)
+			end
+		end
+		if clock and titleAt == nil then
+			titleAt = clock + KC.toTitle
+		end
+	end
+
 	local function teardown()
+		endKillcam(nil)
 		endPodium()
 		plateMade = nil
 		closeBoard()
@@ -1758,8 +1785,14 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	end
 
 	local function skip()
-		local at = startAt
-		if at == nil or resultsAt ~= nil or os.clock() - at < CFG.skip.at then
+		if killcam then
+			if os.clock() - kcAt >= KC.skipAfter then
+				endKillcam(os.clock()) -- past the replay, the title still plays (S:872)
+			end
+			return
+		end
+		local at = titleAt
+		if startAt == nil or at == nil or resultsAt ~= nil or os.clock() - at < CFG.skip.at then
 			return
 		end
 		skippedAt = os.clock()
@@ -2043,8 +2076,19 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		end
 	end
 
-	-- The title's part of the timeline at t (seconds from the last squish); `settled` = skipped: everything at its end.
-	local function renderTitle(m: Made, r: Result, t: number, clock: number, reduced: boolean, settled: boolean)
+	-- The title's part of the timeline at t (seconds from its start: the last squish, or after the killcam); `settled` =
+	-- skipped: everything at its end. it = seconds from the last squish (the flash, the final hit); pillIn = the
+	-- killcam's TAP TO SKIP (0..1).
+	local function renderTitle(
+		m: Made,
+		r: Result,
+		t: number,
+		it: number,
+		pillIn: number,
+		clock: number,
+		reduced: boolean,
+		settled: boolean
+	)
 		local L = m.layout
 		local victory = r.kind == "victory"
 		local defeat = r.kind == "defeat"
@@ -2058,7 +2102,7 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			if reduced then
 				ms, peak, at = F.softMs, F.softPeak, F.softAt
 			end
-			local u = t / (ms / 1000)
+			local u = it / (ms / 1000)
 			if u >= 0 and u < 1 then
 				local e = Tweens.curve("easeOut")(u)
 				flashAlpha = if e < at then peak * e / at else peak * (1 - (e - at) / (1 - at))
@@ -2082,7 +2126,7 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			once("finalHit", function()
 				play(SOUND.finalHit)
 			end)
-			if t >= CFG.slowmoAt then
+			if it >= CFG.slowmoAt then
 				once("slowmo", function()
 					play(SOUND.slowmo)
 				end)
@@ -2309,10 +2353,10 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		end
 		-- TAP TO SKIP (from 1 s until the results).
 		local K = CFG.skip
-		local inSkip = math.clamp((t - K.at) / (K.ms / 1000), 0, 1)
+		local inSkip = math.max(pillIn, math.clamp((t - K.at) / (K.ms / 1000), 0, 1))
 		local outSkip = if resultsAt then math.clamp((clock - (resultsAt :: number)) / (K.outMs / 1000), 0, 1) else 0
 		pose(m.skip, inSkip * (1 - outSkip), {})
-		m.catcher.Visible = resultsAt == nil and t >= K.at
+		m.catcher.Visible = resultsAt == nil and (t >= K.at or pillIn > 0)
 	end
 
 	-- The results (S:851-870) from resultsAt.
@@ -2463,6 +2507,16 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 				return MatchKit.who(ctx, frozen, userId)
 			end)
 			startAt = clock
+			-- Killcam step 1: a player's final squish on this screen's tape plays the replay first (header).
+			local ko = frozen.outcome and frozen.outcome.finalKo
+			local ready = ctx.killcamReady
+			if ready and ko then
+				local ok, yes = pcall(ready, ko)
+				kcPlanned = ok and yes == true
+			end
+			if not kcPlanned then
+				titleAt = clock
+			end
 			local built = build(ctx, frozen, result :: Result, skip)
 			made = built
 			fit(built, ctx.canvas())
@@ -2492,11 +2546,51 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			return
 		end
 		local reduced = ctx.reduced()
-		local t = clock - (startAt :: number)
-		if resultsAt == nil then
+		local it = clock - (startAt :: number)
+		-- Killcam step 1: the replay from KC.at, stepped before anything reads the camera; its end starts the timeline.
+		if kcPlanned and not kcTried and it >= KC.at then
+			kcTried = true
+			local make = ctx.killcam
+			local ok: boolean, made: any = false, nil
+			if make then
+				ok, made = pcall(make, {
+					view = frozen,
+					ko = frozen.outcome.finalKo,
+					who = function(userId: number): any
+						return MatchKit.who(ctx, frozen, userId)
+					end,
+					preview = ctx.preview,
+					reduced = reduced,
+				})
+			end
+			if ok and made then
+				killcam = made
+				kcAt = clock
+			else
+				if not ok then
+					warn(`[SD][MatchEnd] the killcam did not start: {made}`)
+				end
+				titleAt = clock + KC.toTitle
+			end
+		end
+		local replay = killcam
+		if replay then
+			local ok, err = pcall(replay.step, replay, clock)
+			if not ok then
+				warn(`[SD][MatchEnd] the killcam stopped: {err}`)
+			end
+			if not ok or replay:done() or it >= KC.cap then
+				endKillcam(clock)
+			end
+		end
+		if killcam then
+			kcPill = math.clamp((clock - kcAt - KC.skipPill.delay) / (KC.skipPill.ms / 1000), 0, 1)
+		end
+		local t = if titleAt then clock - titleAt else -1e6 -- before the timeline: nothing of it shows yet
+		if resultsAt == nil and titleAt then
 			local due = if r.kind == "victory" then CFG.results.at else CFG.results.defeatAt
 			if t >= due then
-				resultsAt = (startAt :: number) + due
+				resultsAt = (titleAt :: number) + due
 			end
 		end
 		-- Round B1: the podium from its cue (or a skip), stepped before anything reads the camera.
@@ -2515,7 +2609,7 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 				pcall(pod.results, pod)
 			end
 		end
-		renderTitle(m, r, t, clock, reduced, skippedAt ~= nil)
+		renderTitle(m, r, t, it, kcPill, clock, reduced, skippedAt ~= nil)
 		renderResults(m, clock, reduced)
 		if resultsAt and podium and podiumLineup and plateMade == nil then
 			local made2: { PlateMade } = {}

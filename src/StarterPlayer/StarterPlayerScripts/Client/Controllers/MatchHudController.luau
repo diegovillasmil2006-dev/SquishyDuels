@@ -15,7 +15,10 @@
 -- camera (CameraController.save / restore), the held squishies (HeldSquishyController.setHidden / gripC0), the hands
 -- (FirstPersonController.setAway) and the settings' camera shake, which a UI module may not reach itself. The live top
 -- bar (2026-10-26): "topBar" (UI/Match/TopBar, before the feed, which starts under it; ctx.toastsBelow). The squish
--- medals (2026-10-26): "medal" (UI/Match/SquishMedal, after the feed): DOUBLE / TRIPLE SQUISH! only (owner). ctx
+-- medals (2026-10-26): "medal" (UI/Match/SquishMedal, after the feed): DOUBLE / TRIPLE SQUISH! only (owner). Killcam
+-- step 1 (2026-10-26): a real session keeps a UI/Match/Killcam tape, recorded each frame before the pieces draw;
+-- ctx.killcamReady / ctx.killcam give the finish piece the replay (with the camera, the held squishies, the hands and
+-- ProjectileRenderer's throws, which a UI module may not reach itself). ctx
 -- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
 -- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
 -- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
@@ -71,6 +74,7 @@ local Tweens = require(Client.Anim.Tweens)
 local Create = require(Client.UI.Create)
 local MatchHudFormat = require(Client.UI.MatchHudFormat)
 local DeathCard = require(Client.UI.Match.DeathCard)
+local Killcam = require(Client.UI.Match.Killcam)
 local KillFeed = require(Client.UI.Match.KillFeed)
 local MatchEnd = require(Client.UI.Match.MatchEnd)
 local MatchIntro = require(Client.UI.Match.MatchIntro)
@@ -85,6 +89,7 @@ local FirstPersonController = require(script.Parent.FirstPersonController)
 local GripController = require(script.Parent.GripController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
 local NetController = require(script.Parent.NetController)
+local ProjectileRenderer = require(script.Parent.ProjectileRenderer)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -100,6 +105,7 @@ type Session = {
 	live: { Live },
 	view: () -> any, -- the view the pieces draw now
 	effect: boolean, -- the per-frame effect runs
+	tape: Killcam.Tape?, -- killcam step 1: a real match's recording
 }
 
 -- Constants
@@ -124,6 +130,19 @@ local PODIUM_DEPS: MatchPodium.Deps = {
 	end,
 	gripC0 = HeldSquishyController.gripC0,
 	setAway = FirstPersonController.setAway,
+}
+local KILLCAM_HIDE = "killcam" -- HeldSquishyController.setHidden's reason
+local KILLCAM_DEPS: Killcam.Deps = {
+	saveCamera = CameraController.save,
+	restoreCamera = CameraController.restore,
+	setHeldHidden = function(player: Player, hidden: boolean)
+		HeldSquishyController.setHidden(player, KILLCAM_HIDE, hidden)
+	end,
+	setAway = FirstPersonController.setAway,
+	held = function(player: Player): Model?
+		return if HeldSquishyController.isHolding(player) then HeldSquishyController.getModel(player) else nil
+	end,
+	flying = ProjectileRenderer.flying,
 }
 
 -- `require` with a runtime-found ModuleScript; the analyzer cannot resolve the Studio folder's path statically.
@@ -187,6 +206,14 @@ local function step(session: Session): boolean
 		return true -- the session ends with MatchChanged(nil)
 	end
 	local now = Workspace:GetServerTimeNow()
+	local tape = session.tape
+	if tape then
+		local ok, err = pcall(tape.record, tape, view, now)
+		if not ok and not warned.tape then
+			warned.tape = true
+			log:warn("the killcam tape failed:", err)
+		end
+	end
 	for _, live in session.live do
 		call(live, "update", view, now)
 	end
@@ -216,6 +243,8 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 		return session -- nothing to draw: no ScreenGui, no frame, no effect
 	end
 	local sc = session.cleanup
+	local tape = if preview then nil else Killcam.tape(KILLCAM_DEPS)
+	session.tape = tape
 	local gui = UIController.screenGui(GUI_NAME, HUD.gui)
 	local root: Frame = Create("Frame", {
 		Name = ROOT_NAME,
@@ -287,6 +316,16 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 		podium = function(spec: any): any
 			spec.shake = StateController.settings().cameraShake ~= false
 			return MatchPodium.new(spec, PODIUM_DEPS)
+		end,
+		killcamReady = function(ko: any): boolean
+			return tape ~= nil and Killcam.window(tape.frames, ko) ~= nil
+		end,
+		killcam = function(spec: any): any
+			if tape == nil then
+				return nil
+			end
+			spec.shake = StateController.settings().cameraShake ~= false
+			return Killcam.new(spec, tape, KILLCAM_DEPS)
 		end,
 		position = function(): Vector3?
 			local character = Players.LocalPlayer.Character
