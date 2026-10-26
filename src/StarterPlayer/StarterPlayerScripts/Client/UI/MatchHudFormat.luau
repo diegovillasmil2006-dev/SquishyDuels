@@ -99,6 +99,10 @@ export type Context = {
 	shared: { [string]: any }, -- one table per session, for the pieces (the card's rect: `cardRect`)
 	-- Round 1 of the match screens: a looped sound the piece drives (SoundController.playLoop; nil: none).
 	loop: ((key: string) -> any)?,
+	-- End screens round A: "leave" (LOBBY: back now) or "again" (PLAY AGAIN: back and queued for `mode`); and the
+	-- local player's Grip total now (GripController; nil while unknown). Both nil in tests.
+	act: ((action: string, mode: string?) -> ())?,
+	gripTotal: (() -> number?)?,
 }
 
 -- Match HUD M6 / M7: a rect in base px, top-left origin (the safe area).

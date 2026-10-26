@@ -14,6 +14,7 @@
 --                                      greys the box and the picture (v1 §1.11, M:131) and `squash` squashes the
 --                                      picture inside a rounded CanvasGroup (v1 §1.6)
 --   chip(spec) -> (Frame, number)      a pill / tag: ink border inside, a top -> end gradient, a role's text; its width
+--   ink / line / spaced                the intro's and the end screens' text (round 1 of the match screens, below)
 -- Every frame is Active = false (SD_MatchHud draws over the touch buttons: no frame here may take their taps).
 
 -- Services
@@ -247,6 +248,98 @@ function MatchKit.head(spec: HeadSpec): Frame
 		box.Parent = spec.parent
 	end
 	return box
+end
+
+-- Round 1 of the match screens (2026-10-26; the intro and the end screens share them):
+--   ink(object, px) -> UIStroke                      the ink outline of a text the design strokes (round joins)
+--   line(name, str, kind, color?, stroke?, z) -> (TextLabel, Vector2)
+--                                      one line of a Config.UI.TextSize kind (sized from TextService: AutomaticSize is
+--                                      wrong under a UIScale), centred in its box; `stroke` = the design's
+--                                      -webkit-text-stroke (the outline is half of it; nil: the house's thinnest on
+--                                      light text, none on dark)
+--   spaced(name, str, kind, color?, stroke?, em, z) -> (Frame, Vector2)
+--                                      a letter-spaced line (CSS letter-spacing; Roblox has none): a label per
+--                                      character, `em` apart, in a holder as wide as the line (the design's
+--                                      padding-left balances the last letter's spacing, so the letters sit centred)
+function MatchKit.ink(object: GuiObject, px: number): UIStroke
+	return Create("UIStroke", {
+		Name = "Outline",
+		Color = Theme.Colors.inkUI,
+		Thickness = px,
+		LineJoinMode = Enum.LineJoinMode.Round,
+		Parent = object,
+	})
+end
+
+function MatchKit.line(
+	name: string,
+	str: string,
+	kind: string,
+	color: Color3?,
+	stroke: number?,
+	z: number
+): (TextLabel, Vector2)
+	local size = Vector2.new(
+		math.ceil(Theme.textWidth(str, kind :: any)) + MEASURE_MARGIN_PX + (stroke or 0),
+		math.ceil(Theme.lineHeight(kind :: any))
+	)
+	local label = Theme.label({
+		Name = name,
+		Text = str,
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = false,
+		Size = UDim2.fromOffset(size.X, size.Y),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		ZIndex = z,
+		Active = false,
+	}, kind :: any, nil, color)
+	if stroke then
+		local outline = label:FindFirstChild("SD_Outline")
+		if outline and outline:IsA("UIStroke") then
+			outline.Thickness = stroke / 2
+		else
+			Theme.noOutline(label)
+			MatchKit.ink(label, stroke / 2)
+		end
+	end
+	return label, size
+end
+
+function MatchKit.spaced(
+	name: string,
+	str: string,
+	kind: string,
+	color: Color3?,
+	stroke: number?,
+	em: number,
+	z: number
+): (Frame, Vector2)
+	local gap = em * Theme.textSize(kind)
+	local height = math.ceil(Theme.lineHeight(kind :: any))
+	local holder: Frame = Create("Frame", {
+		Name = name,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = z,
+		Active = false,
+	})
+	-- TextService measures a lone space as nothing: a space is the gap it opens between two letters.
+	local space = Theme.textWidth("x x", kind :: any) - Theme.textWidth("xx", kind :: any)
+	local x = 0
+	for _, code in utf8.codes(str) do
+		local char = utf8.char(code)
+		local width = if char == " " then space else Theme.textWidth(char, kind :: any)
+		if char ~= " " then
+			local label = MatchKit.line("Char", char, kind, color, stroke, z)
+			label.AnchorPoint = Vector2.new(0.5, 0)
+			label.Position = UDim2.fromOffset(math.round(x + width / 2), 0)
+			label.Parent = holder
+		end
+		x += width + gap
+	end
+	local size = Vector2.new(math.ceil(math.max(x - gap, 0)), height)
+	holder.Size = UDim2.fromOffset(size.X, size.Y)
+	return holder, size
 end
 
 function MatchKit.chip(spec: ChipSpec): (Frame, number)

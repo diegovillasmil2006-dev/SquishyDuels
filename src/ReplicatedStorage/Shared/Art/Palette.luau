@@ -787,6 +787,14 @@ local Palette = {
 	MatchBootInner = Color3.fromHex("#C9B6FF"),
 	MatchBootMid = Color3.fromHex("#6C47F5"),
 	MatchBootOuter = Color3.fromHex("#2A1D45"),
+	-- End screens round A (S:240-330): DEFEAT's letters, the lilac plate / chip / SCOREBOARD stops, the reward pills,
+	-- the scoreboard's muted titles and its backdrop.
+	MatchEndDefeatLetter = Color3.fromHex("#D9C6F5"),
+	MatchEndLilac = Color3.fromHex("#B79CFF"),
+	MatchEndLilacEnd = Color3.fromHex("#8E6BF0"),
+	MatchEndPill = Color3.fromHex("#5B36D9"),
+	MatchEndMuted = Color3.fromHex("#C4B4F0"),
+	MatchEndShade = Color3.fromHex("#120C1B"),
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

@@ -1270,6 +1270,112 @@ local SLOTS: { AssetSlot } = {
 		"I:671 slam(): each 3, 2, 1 of the countdown; file 'match_count_slam.wav'",
 		hudSound(92798903400334, 0.1145, "match_count_slam.wav")
 	),
+	-- End screens round A (2026-10-26; I = the same file, its end timeline I:727-912): the cues of uploads/sd-cues.js
+	-- rendered with its own engine and limiter (make_end_sounds.mjs); the volumes keep the design's live mix.
+	soundSlot(
+		"match.end.finalHit",
+		"UI",
+		false,
+		nil,
+		"I:739 finalHit: the match's last squish; file 'end_final_hit.wav'",
+		hudSound(83625671688680, 0.4656, "end_final_hit.wav")
+	),
+	soundSlot(
+		"match.end.slowmo",
+		"UI",
+		false,
+		nil,
+		"I:739 slowmoSwell: the swell after the last squish; file 'end_slowmo_swell.wav'",
+		hudSound(82959845165053, 0.3354, "end_slowmo_swell.wav")
+	),
+	soundSlot(
+		"match.end.letterPop",
+		"UI",
+		false,
+		nil,
+		"I:799 letterPop(i): each title letter lands (PlaybackSpeed 2^(step/12), steps 0 2 4 7 9 12 14 16); file 'end_letter_pop.wav'",
+		hudSound(138051166944231, 0.0764, "end_letter_pop.wav")
+	),
+	soundSlot(
+		"match.end.titleBoom",
+		"UI",
+		false,
+		nil,
+		"I:832 titleBoom: VICTORY!'s '!' lands; file 'end_title_boom.wav'",
+		hudSound(71534041020370, 0.5768, "end_title_boom.wav")
+	),
+	soundSlot(
+		"match.end.victory",
+		"UI",
+		false,
+		nil,
+		"I:832 victoryStinger: the victory jingle; file 'end_victory_stinger.wav'",
+		hudSound(126979177771917, 0.784, "end_victory_stinger.wav")
+	),
+	soundSlot(
+		"match.end.cheer",
+		"UI",
+		false,
+		nil,
+		"I:832 crowdCheer: the victory crowd bed, looped (bedOn .18); file 'end_crowd_cheer.wav'",
+		hudSound(103966607616658, 0.162, "end_crowd_cheer.wav")
+	),
+	soundSlot(
+		"match.end.defeat",
+		"UI",
+		false,
+		nil,
+		"I:803 defeatStinger: the defeat phrase; file 'end_defeat_stinger.wav'",
+		hudSound(110336222717796, 0.2523, "end_defeat_stinger.wav")
+	),
+	soundSlot(
+		"match.end.deflate",
+		"UI",
+		false,
+		nil,
+		"I:804 defeatDeflate: DEFEAT's letters deflate; file 'end_defeat_deflate.wav'",
+		hudSound(73436633812792, 0.1241, "end_defeat_deflate.wav")
+	),
+	soundSlot(
+		"match.end.aww",
+		"UI",
+		false,
+		nil,
+		"I:805 crowdAww: the crowd's aww after a defeat; file 'end_crowd_aww.wav'",
+		hudSound(118438887226844, 0.1662, "end_crowd_aww.wav")
+	),
+	soundSlot(
+		"match.end.jellyWipe",
+		"UI",
+		false,
+		nil,
+		"I:813 jellyWipe: the winner's jelly wave; file 'end_jelly_wipe.wav'",
+		hudSound(115283053132031, 0.0866, "end_jelly_wipe.wav")
+	),
+	soundSlot(
+		"match.end.coinTick",
+		"UI",
+		false,
+		nil,
+		"I:810, I:861 coinTick(i): each step of a count-up (PlaybackSpeed 2^((i mod 8)/24)); file 'end_coin_tick.wav'",
+		hudSound(78811898066207, 0.0152, "end_coin_tick.wav")
+	),
+	soundSlot(
+		"match.end.gripFill",
+		"UI",
+		false,
+		nil,
+		"I:862 gripFill: the results' Grip bar fills; file 'end_grip_fill.wav'",
+		hudSound(135844688386654, 0.0931, "end_grip_fill.wav")
+	),
+	soundSlot(
+		"match.end.streak",
+		"UI",
+		false,
+		nil,
+		"I:864 streakIgnite: the win-streak flame lights; file 'end_streak_ignite.wav'",
+		hudSound(115034688074927, 0.2023, "end_streak_ignite.wav")
+	),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1594,6 +1700,10 @@ local SLOTS: { AssetSlot } = {
 	matchHud("img.intro.pattern.cupcake_axolotl", 139455759640632, "Cupcake Axolotl's banner tile"),
 	matchHud("img.intro.glow", 105745669766105, "the intro's corner glow, white: tinted each team's colour (I:339)"),
 	matchHud("img.intro.countRays", 123614616985452, "the countdown's turning rays, 1100 px box (I:128)"),
+	-- End screens round A (2026-10-26): the design's sunburst (T:107-116) in white, tinted where it shows: 18 rays
+	-- (sunA, Lemon) and 14 rays (sunB, the winner's colour), behind VICTORY! (I:234-235).
+	matchHud("img.end.sun18", 82959886509692, "VICTORY!'s Lemon sunburst, 18 rays, white to tint (I:234)"),
+	matchHud("img.end.sun14", 128731459727824, "VICTORY!'s team sunburst, 14 rays, white to tint (I:235)"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

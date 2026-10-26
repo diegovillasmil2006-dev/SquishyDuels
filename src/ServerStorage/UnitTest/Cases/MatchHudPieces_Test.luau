@@ -32,6 +32,7 @@ return function(t: Context)
 	local DeathCard = t.requireClient("UI/Match/DeathCard")
 	local RespawnBar = t.requireClient("UI/Match/RespawnBar")
 	local MatchIntro = t.requireClient("UI/Match/MatchIntro")
+	local MatchEnd = t.requireClient("UI/Match/MatchEnd")
 	local Config = t.requireShared("Config")
 	local Strings = t.requireShared("Strings")
 	local Lighting = game:GetService("Lighting")
@@ -171,7 +172,7 @@ return function(t: Context)
 	end)
 
 	t.test("every piece plays every fixture state without an error and leaves nothing behind", function()
-		for _, module in { RespawnBar, DeathCard, KillFeed, MatchIntro } do
+		for _, module in { RespawnBar, DeathCard, KillFeed, MatchIntro, MatchEnd } do
 			for _, state in Fixtures.STATES do
 				for _, compact in { false, true } do
 					local r = run(module, state, compact)

@@ -456,7 +456,8 @@ export type MatchEventView = {
 }
 
 -- One line of the final standings (Match HUD M1): present players only, their stats frozen when the outcome is made.
-export type MatchStandingView = { userId: number, kos: number, knockedOut: number, bestStreak: number }
+-- End screens round A (2026-10-26): grip = the Grip the match paid them (the scoreboard's column; nil when not paid).
+export type MatchStandingView = { userId: number, kos: number, knockedOut: number, bestStreak: number, grip: number? }
 
 -- The receiving player's own state. Server times; respawnAt = while knocked out (nil when standing or out);
 -- protectUntil = the spawn protection's end (0 = none); stormBar 0..1 (TDM); out = TDM, no team life left.

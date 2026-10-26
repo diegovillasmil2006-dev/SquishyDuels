@@ -81,7 +81,10 @@ local Match = {
 	respawnSeconds = 3,
 	spawnProtectSeconds = 2,
 	overtimeMaxSeconds = 120, -- [P]
-	resultSeconds = 8, -- [P] the end screen before players go back
+	resultSeconds = 8, -- the end screen before players go back (owner 2026-10-26: "Keep 8 seconds")
+	-- End screens round A (2026-10-26): the client's end screen (Config.UI.Match.enabled.finish) says who won and what
+	-- was paid, so a win or a draw sends no toasts.
+	endScreen = true,
 	minPlayers = 2, -- fewer present at the countdown cancels the match
 
 	-- FFA/TDM v1 (2026-10-15): the in-server queue (/ffa, /tdm). Once minPlayers are queued for a mode this many

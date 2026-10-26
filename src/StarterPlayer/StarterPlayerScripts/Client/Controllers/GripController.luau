@@ -1549,6 +1549,12 @@ function GripController.level(): number?
 	return level
 end
 
+-- End screens round A: the Grip total now (the match results' Grip bar); nil before the first state.
+function GripController.total(): number?
+	local v = view
+	return if v then v.total else nil
+end
+
 -- Small table for Studio debug hooks.
 function GripController.debugState(): { [string]: any }
 	local v = view

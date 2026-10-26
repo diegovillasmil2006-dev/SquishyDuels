@@ -209,6 +209,20 @@ local FOUND_SOUND_KEYS = {
 	"match.intro.cardPop",
 	"match.intro.murmur",
 	"match.count.slam",
+	-- End screens round A (2026-10-26): its 13 renders.
+	"match.end.finalHit",
+	"match.end.slowmo",
+	"match.end.letterPop",
+	"match.end.titleBoom",
+	"match.end.victory",
+	"match.end.cheer",
+	"match.end.defeat",
+	"match.end.deflate",
+	"match.end.aww",
+	"match.end.jellyWipe",
+	"match.end.coinTick",
+	"match.end.gripFill",
+	"match.end.streak",
 	-- The fancier box reveal (2026-10-26): its 11 renders.
 	"box.ux.rattle1",
 	"box.ux.rattle2",
@@ -597,6 +611,9 @@ return function(t: Context)
 				"img.intro.pattern.cupcake_axolotl",
 				"img.intro.glow",
 				"img.intro.countRays",
+				-- End screens round A (2026-10-26): the two sunbursts.
+				"img.end.sun18",
+				"img.end.sun14",
 			})
 		)
 	end)

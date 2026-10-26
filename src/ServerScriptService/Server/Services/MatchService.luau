@@ -820,7 +820,14 @@ local function standingsView(match: Match): { Types.MatchStandingView }
 	for _, r in MatchRules.standings(match.state) do
 		local p = match.byUserId[r.userId]
 		if r.present and p ~= nil then
-			table.insert(list, { userId = r.userId, kos = r.kos, knockedOut = r.knockedOut, bestStreak = p.bestStreak })
+			local paid = match.rewards[r.userId]
+			table.insert(list, {
+				userId = r.userId,
+				kos = r.kos,
+				knockedOut = r.knockedOut,
+				bestStreak = p.bestStreak,
+				grip = if paid then paid.grip else nil, -- end screens round A: the scoreboard (after payParticipants)
+			})
 		end
 	end
 	return list
@@ -1571,11 +1578,15 @@ local function onEnded(match: Match, outcome: any)
 	match.endedFired = true
 	match.stateDirty = true
 	markFinalKo(match, outcome)
-	match.standings = standingsView(match)
 	payParticipants(match, outcome)
+	match.standings = standingsView(match)
+	-- End screens round A: with the end screen on, it says who won and what was paid (no toasts over it).
+	local endScreen = cfg().endScreen == true
 	local winner = if outcome.winnerUserId then match.byUserId[outcome.winnerUserId] else nil
 	for _, p in match.list do
-		if active(p) then
+		if active(p) and endScreen and (outcome.kind == "win" or outcome.kind == "draw") then
+			continue
+		elseif active(p) then
 			if outcome.kind == "win" and winner == p then
 				notify(p.ref, CODE.youWin, nil, "success")
 			elseif outcome.kind == "win" and winner then

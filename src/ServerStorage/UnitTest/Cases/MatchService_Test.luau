@@ -156,6 +156,7 @@ return function(t: Context)
 		cfg.respawnSeconds = 3
 		cfg.spawnProtectSeconds = 2
 		cfg.resultSeconds = 8
+		cfg.endScreen = false -- end screens round A: the cases read the end's toasts (one case turns it on)
 		cfg.minPlayers = 2
 		cfg.gatherSeconds = 10
 		cfg.Vote.enabled = false -- round 3: the map vote only where a case turns it on
@@ -2263,6 +2264,27 @@ return function(t: Context)
 			close()
 		end
 	)
+
+	t.test("end screens round A: the standings carry each paid player's Grip; no win or pay toasts", function()
+		local cfg = baseConfig()
+		cfg.Modes.ffa.koTarget = 1
+		cfg.Rewards.enabled = true
+		cfg.endScreen = true
+		local w = setup(3, cfg, true)
+		local a = live(w, "ffa")
+		throwsFor(w, { 1, 2 }, 3)
+		throwsFor(w, { 3 }, 2) -- too few own throws: not paid
+		hit(w, 2, 1, a + PAYS_ALL)
+		local grips = {}
+		for _, s in lastView(w, w.players[3]).outcome.standings do
+			grips[s.userId] = s.grip or "none"
+		end
+		expect.deepEqual(grips, { [1] = DUEL_PAY.win * 10, [2] = DUEL_PAY.loss * 10, [3] = "none" })
+		for _, n in w.notices do
+			expect.falsy(n.code == "match.paid" or n.code == "match.youWin" or n.code == "match.winner")
+		end
+		close()
+	end)
 
 	t.test(
 		"match HUD M2: TDM: the winning team +1, the losers 0 (a short loss is not paid); a draw resets all",

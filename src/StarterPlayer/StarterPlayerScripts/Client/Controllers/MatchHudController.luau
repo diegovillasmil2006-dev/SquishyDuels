@@ -7,7 +7,9 @@
 -- bar with the vignette ("respawn", drawn first: the vignette is behind everything), the "squished by" card ("card")
 -- and the kill feed ("feed"), in UI/Match; M6's SQUISHED! medal is not built (Diego's kill banner is that moment).
 -- Round 1 of the match screens (2026-10-26): the Loading arena cover, the intro and the 3-2-1 ("intro", drawn last;
--- ctx.loop gives it the crowd murmur's loop). ctx
+-- ctx.loop gives it the crowd murmur's loop). End screens round A (2026-10-26): VICTORY! / DEFEAT, the results bar,
+-- the buttons and the scoreboard ("finish", drawn last; ctx.act = LOBBY / PLAY AGAIN through MatchLeave / MatchJoin,
+-- ctx.gripTotal = GripController.total for its Grip bar). ctx
 -- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
 -- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
 -- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
@@ -45,6 +47,7 @@
 
 -- Services
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
@@ -63,9 +66,12 @@ local Create = require(Client.UI.Create)
 local MatchHudFormat = require(Client.UI.MatchHudFormat)
 local DeathCard = require(Client.UI.Match.DeathCard)
 local KillFeed = require(Client.UI.Match.KillFeed)
+local MatchEnd = require(Client.UI.Match.MatchEnd)
 local MatchIntro = require(Client.UI.Match.MatchIntro)
 local RespawnBar = require(Client.UI.Match.RespawnBar)
 local ControlsController = require(script.Parent.ControlsController)
+local GripController = require(script.Parent.GripController)
+local NetController = require(script.Parent.NetController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -90,6 +96,11 @@ local TOUCH = Config.UI.Touch
 local GUI_NAME = "SD_MatchHud"
 local ROOT_NAME = "Root"
 local FIXTURES = "MatchHudFixtures" -- Client/Studio, required only by a Studio preview
+local REMOTE_JOIN = "MatchJoin" -- end screens round A: PLAY AGAIN (MatchController's chat commands use the same)
+local REMOTE_LEAVE = "MatchLeave"
+local ATTR_MATCH_ID = "SD_MatchId" -- MatchService's marks of a player in a match
+local ATTR_PHASE = "SD_DuelPhase"
+local AGAIN_WAIT_SECONDS = 6 -- PLAY AGAIN joins at the latest this long after its leave
 local DEBUG_ONLY = "debugShow needs Studio with Config.Debug.debugHooks"
 
 -- `require` with a runtime-found ModuleScript; the analyzer cannot resolve the Studio folder's path statically.
@@ -105,6 +116,7 @@ local PIECES: { MatchHudFormat.PieceSpec } = {
 	{ name = "card", new = DeathCard.new }, -- M7
 	{ name = "feed", new = KillFeed.new }, -- M6
 	{ name = "intro", new = MatchIntro.new }, -- round 1 of the match screens: cover, intro, 3-2-1
+	{ name = "finish", new = MatchEnd.new }, -- end screens round A: VICTORY! / DEFEAT, results, scoreboard
 }
 MatchHudController.PIECES = PIECES
 
@@ -218,6 +230,31 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 			local ok, loop = pcall(SoundController.playLoop, key)
 			return if ok then loop else nil
 		end,
+		act = function(action: string, mode: string?)
+			if preview then
+				return -- a Studio preview has no match to leave
+			end
+			NetController.fire(REMOTE_LEAVE) -- Remotes: MatchLeave() (the Result phase: back to the lobby now)
+			if action == "again" and mode then
+				-- The server refuses a join while it still marks you in the match (its return clears that a moment
+				-- after the leave): wait for the marks to go, then join.
+				task.spawn(function()
+					local player = Players.LocalPlayer
+					local deadline = os.clock() + AGAIN_WAIT_SECONDS
+					while
+						os.clock() < deadline
+						and (
+							(player:GetAttribute(ATTR_MATCH_ID) or "") ~= ""
+							or (player:GetAttribute(ATTR_PHASE) or "") ~= ""
+						)
+					do
+						task.wait(0.1)
+					end
+					NetController.fire(REMOTE_JOIN, mode) -- Remotes: MatchJoin(mode: string): queued again
+				end)
+			end
+		end,
+		gripTotal = GripController.total,
 	}
 	for _, spec in specs do
 		local ok, piece = pcall(spec.new, ctx)

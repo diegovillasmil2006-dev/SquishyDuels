@@ -193,7 +193,13 @@ export type MatchMoment = {
 }
 
 -- Match HUD M1: one line of the final standings (Types.MatchStandingView).
-export type MatchStanding = { userId: number, kos: number, knockedOut: number, bestStreak: number }
+export type MatchStanding = {
+	userId: number,
+	kos: number,
+	knockedOut: number,
+	bestStreak: number,
+	grip: number?, -- end screens round A: the Grip the match paid them (nil: not paid, a bot, an older server)
+}
 
 -- Match HUD M1: a player of the roster cache; slot = the place in the first view's players list (later ones after).
 export type MatchRosterEntry = {
@@ -544,6 +550,7 @@ local function standingsFrom(raw: unknown): { MatchStanding }
 					kos = countOr(entry.kos, 0),
 					knockedOut = countOr(entry.knockedOut, 0),
 					bestStreak = countOr(entry.bestStreak, 0),
+					grip = if isCount(entry.grip) then math.floor(entry.grip) else nil,
 				})
 			end
 		end

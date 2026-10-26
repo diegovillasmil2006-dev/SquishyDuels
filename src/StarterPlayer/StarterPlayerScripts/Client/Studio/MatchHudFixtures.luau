@@ -200,6 +200,7 @@ local function standings(p: any): { Types.MatchStandingView }
 			kos = player.kos,
 			knockedOut = player.knockedOut,
 			bestStreak = player.bestStreak,
+			grip = 70 + 15 * player.kos, -- end screens round A: the scoreboard's +Grip (T:212's prototype numbers)
 		})
 	end
 	return out
