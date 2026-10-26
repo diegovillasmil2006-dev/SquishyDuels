@@ -778,6 +778,9 @@ return function(t: Context)
 	local function canvas(actual: Vector2): Vector2
 		return actual / Layout.uiScale(actual.Y)
 	end
+	-- A 667×375 phone at the regular floor (785 × 441 base; phones floor lower since 2026-10-26): the tight canvas the
+	-- crowded cases below were measured on.
+	local TIGHT_PHONE = SCREENS[1] / UI.Scale.min
 	-- Text width estimate (base px): about 0.55 em per character, generous for FredokaOne / Builder Sans.
 	local function textWidth(chars: number, kind: string, textScale: number): number
 		return chars * 0.55 * UI.TextSize[kind] * textScale
@@ -845,8 +848,8 @@ return function(t: Context)
 				end
 			end
 		end
-		-- 667×375 at Medium text: the centred bar would reach under the button, so it moves right just enough.
-		local phone = canvas(SCREENS[1])
+		-- The tight phone at Medium text: the centred bar would reach under the button, so it moves right just enough.
+		local phone = TIGHT_PHONE
 		local bar = barSize(1)
 		local avoid = forfeitRect(1)
 		local width = math.ceil(bar.X / 16) * 16
@@ -995,7 +998,7 @@ return function(t: Context)
 	end)
 
 	t.test("forfeit dialog (overlays fix): centred, or under the top bar; the bar hides when it cannot fit", function()
-		local phone = canvas(SCREENS[1]) -- about 441 base tall
+		local phone = TIGHT_PHONE -- about 441 base tall
 		local h, panel, overhang = phone.Y, 190, 20
 		-- No bar: centred as built.
 		local free, freeClears = DuelFormat.panelBelowBar(h, nil, panel, overhang, 0.5)
@@ -1024,7 +1027,7 @@ return function(t: Context)
 	t.test(
 		"result card (overlays fix): under the top bar when its lines fit there whole, else clearsBar false",
 		function()
-			local phone = canvas(SCREENS[1])
+			local phone = TIGHT_PHONE
 			local chrome, content = 84, 220
 			-- A compact bar ending at 90: the card starts 8 under it, nothing scrolls.
 			local under = DuelFormat.resultLayout(phone.Y, content, chrome, 90)

@@ -41,7 +41,7 @@ return function(t: Context)
 
 	t.test("UIScale follows the HUD height inside its clamp", function()
 		expect.near(Layout.uiScale(UI.Scale.referenceHeight), 1)
-		expect.near(Layout.uiScale(400), UI.Scale.min)
+		expect.near(Layout.uiScale(400), UI.Scale.compactMin) -- under the compact height: the phone floor
 		expect.near(Layout.uiScale(4000), UI.Scale.max)
 		expect.near(Layout.uiScale(0 / 0), UI.Scale.min)
 		expect.near(Layout.uiScale(-5), UI.Scale.min)
@@ -57,8 +57,11 @@ return function(t: Context)
 		expect.near(Layout.uiScale(768, 1366), 768 / 810, 1e-9) -- 0.948 (the height decides)
 		expect.near(Layout.uiScale(1080, 1920), UI.Scale.max, 1e-9) -- 1.333 capped at 1.25
 		expect.near(Layout.uiScale(768, 1024), UI.Scale.min, 1e-9) -- 0.711 (the width decides) floored at 0.85
-		expect.near(Layout.uiScale(390, 844), UI.Scale.min, 1e-9) -- a phone in landscape
-		expect.near(Layout.uiScale(844, 390), UI.Scale.min, 1e-9) -- in portrait: the design's 0.27, floored
+		-- 2026-10-26 (owner "Shrink everything"): phones (the compact class) floor at compactMin, under min.
+		expect.truthy(UI.Scale.compactMin < UI.Scale.min)
+		expect.near(Layout.uiScale(390, 844), UI.Scale.compactMin, 1e-9) -- a phone in landscape
+		expect.near(Layout.uiScale(844, 390), UI.Scale.compactMin, 1e-9) -- in portrait: the design's 0.27, floored
+		expect.near(Layout.uiScale(381, 750), UI.Scale.compactMin, 1e-9) -- Studio's iPhone 17 Pro in landscape
 		expect.near(Layout.uiScale(900, 1400), 1400 / 1440, 1e-9) -- 0.972: the width decides
 		-- A missing or bad width leaves the height alone to decide.
 		expect.near(Layout.uiScale(880, 0 / 0), 880 / 810, 1e-9)
@@ -539,9 +542,10 @@ return function(t: Context)
 				expect.equal(fit.shift, math.floor(fit.shift)) -- a whole offset
 			end
 		end
-		-- An 844 x 311 phone: the Squishies window keeps most of its width; its chrome is about half the design's.
+		-- An 844 x 311 phone: the Squishies window keeps most of its width; its chrome shrinks (about half the design's
+		-- at 0.85; less at the phone floor, 2026-10-26).
 		local phone = Layout.windowFit(SMALL[1], "squishies")
-		expect.truthy(phone.width > 800 and phone.k < 0.6)
+		expect.truthy(phone.width > 800 and phone.k < 1)
 		-- A bad screen falls back like modalPanel (1280 x 720).
 		expect.deepEqual(
 			Layout.windowFit(Vector2.new(0, 0 / 0), "squishies"),

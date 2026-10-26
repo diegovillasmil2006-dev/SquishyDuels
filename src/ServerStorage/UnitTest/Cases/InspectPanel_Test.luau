@@ -156,7 +156,7 @@ return function(t: Context)
 		expect.equal(big.panelWidth, Config.UI.modalMaxWidth)
 		expect.equal(hd.panelWidth, Config.UI.modalMaxWidth)
 		expect.equal(phone.panelWidth < Config.UI.modalMaxWidth, true)
-		expect.equal(phone.scale, Config.UI.Scale.min)
+		expect.equal(phone.scale, Config.UI.Scale.compactMin)
 		expect.equal(big.scale, Config.UI.Scale.max)
 	end)
 

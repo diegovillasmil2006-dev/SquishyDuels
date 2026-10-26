@@ -4,7 +4,7 @@
 -- of the HUD); PCs, consoles and tablets keep Diego's layout. HudController places them:
 -- * The tiles of HudFormat.PHONE_RIGHT (Daily) sit in Hud_Right before Settings, which turns into a row (the quest
 --   tracker hides on phones); on other layouts they go back to the tile grid at their NAV place.
---   PhoneHud.placeTiles(compact, tiles, labels, nav, right)
+--   PhoneHud.placeTiles(compact, tiles, labels, nav, right, scale)
 -- (2026-10-24: the mode chip under the DUEL button is gone; Diego's full-screen mode select, UI/ModeSelect, picks the
 -- mode on every device.)
 
@@ -13,6 +13,7 @@
 local UI = script.Parent
 local Button = require(UI.Components.Button)
 local HudFormat = require(UI.HudFormat)
+local Layout = require(UI.Layout)
 
 -- Constants
 
@@ -26,15 +27,16 @@ local PhoneHud = {}
 
 -- The PHONE_RIGHT tiles: on phones in Hud_Right before Settings, a phone tile (the minimal phone HUD, 2026-10-17: an
 -- icon-only square, HudController.layoutTiles hides the label); else back in the tile grid at their NAV place.
--- Hud_Right is a row on phones, else Diego's column.
+-- Hud_Right is a row on phones, else Diego's column. `scale`: the HUD's UIScale (the tile stays a touch target).
 function PhoneHud.placeTiles(
 	isCompact: boolean,
 	tiles: { [string]: Button.Button },
 	_labels: { [string]: string },
 	nav: Frame,
-	right: Frame
+	right: Frame,
+	scale: number
 )
-	local side = COLUMN.tileSizeCompact
+	local side = Layout.touchBase(COLUMN.tileSizeCompact, scale)
 	for index, item in HudFormat.NAV do
 		local tile = tiles[item.id]
 		if tile and table.find(HudFormat.PHONE_RIGHT, item.id) then

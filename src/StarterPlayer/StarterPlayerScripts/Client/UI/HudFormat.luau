@@ -1088,10 +1088,12 @@ end
 -- A tile's size (base px; UI FINAL R4: the faceless nav sticker, H:99-101): at least 118 x 104, as wide as the widest
 -- label needs (all tiles share it, so a column lines up), as tall as the picture less the label's pull plus the label
 -- line (the nav label's D23, H:101). Phones use the smaller tile (Chip labels, the scaled picture and pull).
-function HudFormat.tileSize(compact: boolean, textScale: number?, labels: { string }?): (number, number)
+-- `scale` (default Scale.min): the UIScale, so a phone tile stays a touch target (Layout.touchBase).
+function HudFormat.tileSize(compact: boolean, textScale: number?, labels: { string }?, scale: number?): (number, number)
 	if compact then
 		-- The minimal phone HUD (2026-10-17): icon-only square stickers (no label to fit).
-		return COLUMN.tileSizeCompact, COLUMN.tileSizeCompact
+		local side = Layout.touchBase(COLUMN.tileSizeCompact, scale or Config.UI.Scale.min)
+		return side, side
 	end
 	local ts = textScaleOf(textScale)
 	local width0 = if compact then COLUMN.tileSizeCompact else COLUMN.tileWidth
@@ -1389,7 +1391,7 @@ function HudFormat.columnLayouts(
 	local tileCount = if parts and parts.tiles ~= nil
 		then math.max(0, parts.tiles)
 		else math.max(0, #texts.tiles - (if compact then #PHONE_RIGHT else 0))
-	local tileWidth, tileHeight = HudFormat.tileSize(compact, ts, texts.tiles)
+	local tileWidth, tileHeight = HudFormat.tileSize(compact, ts, texts.tiles, scale)
 	local pill = HudFormat.pillHeight(ts, scale)
 	local pillWidth = HudFormat.pillWidth(ts, texts.coins)
 	local maxRow = canvas.X - 2 * COLUMN.edge

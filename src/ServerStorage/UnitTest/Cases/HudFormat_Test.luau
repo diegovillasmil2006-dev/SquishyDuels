@@ -640,9 +640,11 @@ return function(t: Context)
 				-- Daily sits beside Settings on phones (PHONE_RIGHT): the other four tiles make one row.
 				expect.deepEqual(HudFormat.PHONE_RIGHT, { "daily" })
 				expect.equal(plan.rows, 1)
-				-- Icon-only squares (the minimal phone HUD).
-				expect.equal(plan.tileWidth, COLUMN.tileSizeCompact)
-				expect.equal(plan.tileHeight, COLUMN.tileSizeCompact)
+				-- Icon-only squares (the minimal phone HUD), never under the touch floor at the phone scale (2026-10-26).
+				local side = Layout.touchBase(COLUMN.tileSizeCompact, plan.scale)
+				expect.truthy(side * plan.scale >= TOUCH.minTargetFloor - 1e-6)
+				expect.equal(plan.tileWidth, side)
+				expect.equal(plan.tileHeight, side)
 				expect.equal(plan.left, "stack")
 				-- The row without its goal line (GripController toasts the goal on phones).
 				local line = math.ceil(HudFormat.kindPx("Small", ts) * HudFormat.TEXT_METRICS.lineHeight - 1e-6)
@@ -1314,7 +1316,8 @@ return function(t: Context)
 	-- line drop there. Phone HUD B (2026-10-17): Daily beside Settings and the bare Grip row (its Double Grip chip
 	-- reserved) narrow that room further, so on this phone they drop at "99,999" coins too (flagged for the owner in
 	-- work/phonehudB/NOTES.md). Every other screen keeps them at the widest texts (the DUEL area case above).
-	t.test("the search bar at 667x375 (UD5, Phone HUD B): its dots and second line drop there", function()
+	-- 2026-10-26: phones floor at Scale.compactMin, so the 667x375 bar has room for its dots and second line again.
+	t.test("the search bar at 667x375 (UD5, Phone HUD B; the phone floor): its dots and second line fit", function()
 		local class = classOf(SMALL_PHONE)
 		local compact = class == "compact"
 		local origin = HudFormat.origins(compact)
@@ -1341,10 +1344,10 @@ return function(t: Context)
 		end
 		local worst = barFor(nil)
 		expect.truthy(worst > 0)
-		expect.deepEqual(HudFormat.barParts(worst), { dots = false, line2 = false })
+		expect.deepEqual(HudFormat.barParts(worst), { dots = true, line2 = true })
 		local texts = table.clone(HudFormat.worstCaseTexts())
 		texts.coins = Format.coins(99_999)
-		expect.deepEqual(HudFormat.barParts(barFor(texts)), { dots = false, line2 = false })
+		expect.deepEqual(HudFormat.barParts(barFor(texts)), { dots = true, line2 = true })
 		expect.truthy(barFor(texts) >= worst)
 	end)
 

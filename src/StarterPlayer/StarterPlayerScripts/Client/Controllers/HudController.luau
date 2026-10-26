@@ -825,8 +825,9 @@ local function layoutTiles(canvas: Vector2, compact: boolean)
 	local textKind: Theme.TextKind = if compact then "Chip" else "D23"
 	local iconPx = if compact then COLUMN.tileIconCompactPx else COLUMN.tileIconPx
 	local pull = if compact then COLUMN.tileLabelPullCompact else COLUMN.tileLabelPull
-	local width = if compact then COLUMN.tileSizeCompact else COLUMN.tileWidth
-	local height = COLUMN.tileSizeCompact
+	local phoneSide = Layout.touchBase(COLUMN.tileSizeCompact, UIController.scale())
+	local width = if compact then phoneSide else COLUMN.tileWidth
+	local height = phoneSide
 	if not compact then -- phones: icon-only squares (HudFormat.tileSize)
 		for _, id in ids do
 			width = math.max(width, Button.widthFor(tileLabels[id] or id, nil, textKind, "tile"))
@@ -893,12 +894,13 @@ local function layoutRight(compact: boolean)
 		local kind: Theme.TextKind = if compact then "Chip" else "D19"
 		local iconPx = if compact then COLUMN.settingsIconCompactPx else COLUMN.settingsIconPx
 		local pull = if compact then 0 else COLUMN.settingsLabelPull
-		-- The minimal phone HUD (2026-10-17): on phones an icon-only square.
+		-- The minimal phone HUD (2026-10-17): on phones an icon-only square (a touch target at any scale).
+		local phoneSide = Layout.touchBase(COLUMN.settingsSize, UIController.scale())
 		local width = if compact
-			then COLUMN.settingsSize
+			then phoneSide
 			else math.max(COLUMN.settingsWidth, Button.widthFor(label, nil, kind, "tile"))
 		local height = if compact
-			then COLUMN.settingsSize
+			then phoneSide
 			else math.max(COLUMN.settingsHeight, math.ceil(iconPx - pull + Theme.lineHeight(kind)))
 		applyStickerLook(settings, iconPx, pull, if compact then "small" else "settingsLabel", compact)
 		setIfChanged(settings.root, "Size", UDim2.fromOffset(width, height))
@@ -1431,7 +1433,7 @@ layoutAll = function()
 	local compact = UIController.layoutClass() == "compact"
 	-- Phone HUD B: Daily beside Settings on phones, before the plan counts the grid's tiles.
 	if navRow and rightColumn then
-		require(Client.UI.PhoneHud).placeTiles(compact, tiles, tileLabels, navRow, rightColumn)
+		require(Client.UI.PhoneHud).placeTiles(compact, tiles, tileLabels, navRow, rightColumn, scale)
 	end
 	refreshPlan()
 	layoutTiles(canvas, compact)

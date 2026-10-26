@@ -1200,6 +1200,11 @@ local function checkUI(problems: Problems)
 	expectPositive(problems, `{p}.Scale.referenceHeight`, scale.referenceHeight)
 	expectPositive(problems, `{p}.Scale.referenceWidth`, scale.referenceWidth)
 	expect(problems, scale.min > 0 and scale.min <= scale.max, `{p}.Scale must satisfy 0 < min <= max`)
+	expect(
+		problems,
+		isNumber(scale.compactMin) and scale.compactMin > 0 and scale.compactMin <= scale.min,
+		`{p}.Scale.compactMin must satisfy 0 < compactMin <= min`
+	)
 	eachField(
 		problems,
 		`{p}.Breakpoints`,
