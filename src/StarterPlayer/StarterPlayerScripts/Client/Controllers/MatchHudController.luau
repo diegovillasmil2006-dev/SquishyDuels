@@ -10,7 +10,10 @@
 -- ctx.loop gives it the crowd murmur's loop). End screens round A (2026-10-26): VICTORY! / DEFEAT, the results bar,
 -- the buttons and the scoreboard ("finish", drawn last; ctx.act = LOBBY / PLAY AGAIN through MatchLeave / MatchJoin,
 -- ctx.gripTotal = GripController.total for its Grip bar). Storm fix (2026-10-26): the IN THE STORM! health bar and
--- tint ("storm", UI/Match/StormBar, after the RESPAWNING bar; ctx.position = your character's root position). ctx
+-- tint ("storm", UI/Match/StormBar, after the RESPAWNING bar; ctx.position = your character's root position). End
+-- screens round B1 (2026-10-26): ctx.podium starts the finish piece's 3D podium (UI/Match/MatchPodium) with the
+-- camera (CameraController.save / restore), the held squishies (HeldSquishyController.setHidden / gripC0), the hands
+-- (FirstPersonController.setAway) and the settings' camera shake, which a UI module may not reach itself. ctx
 -- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
 -- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
 -- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
@@ -69,10 +72,14 @@ local DeathCard = require(Client.UI.Match.DeathCard)
 local KillFeed = require(Client.UI.Match.KillFeed)
 local MatchEnd = require(Client.UI.Match.MatchEnd)
 local MatchIntro = require(Client.UI.Match.MatchIntro)
+local MatchPodium = require(Client.UI.Match.MatchPodium)
 local RespawnBar = require(Client.UI.Match.RespawnBar)
 local StormBar = require(Client.UI.Match.StormBar)
+local CameraController = require(script.Parent.CameraController)
 local ControlsController = require(script.Parent.ControlsController)
+local FirstPersonController = require(script.Parent.FirstPersonController)
 local GripController = require(script.Parent.GripController)
+local HeldSquishyController = require(script.Parent.HeldSquishyController)
 local NetController = require(script.Parent.NetController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
@@ -104,6 +111,16 @@ local ATTR_MATCH_ID = "SD_MatchId" -- MatchService's marks of a player in a matc
 local ATTR_PHASE = "SD_DuelPhase"
 local AGAIN_WAIT_SECONDS = 6 -- PLAY AGAIN joins at the latest this long after its leave
 local DEBUG_ONLY = "debugShow needs Studio with Config.Debug.debugHooks"
+local PODIUM_HIDE = "podium" -- HeldSquishyController.setHidden's reason
+local PODIUM_DEPS: MatchPodium.Deps = {
+	saveCamera = CameraController.save,
+	restoreCamera = CameraController.restore,
+	setHeldHidden = function(player: Player, hidden: boolean)
+		HeldSquishyController.setHidden(player, PODIUM_HIDE, hidden)
+	end,
+	gripC0 = HeldSquishyController.gripC0,
+	setAway = FirstPersonController.setAway,
+}
 
 -- `require` with a runtime-found ModuleScript; the analyzer cannot resolve the Studio folder's path statically.
 local dynamicRequire = require :: (ModuleScript) -> any
@@ -258,6 +275,10 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 			end
 		end,
 		gripTotal = GripController.total,
+		podium = function(spec: any): any
+			spec.shake = StateController.settings().cameraShake ~= false
+			return MatchPodium.new(spec, PODIUM_DEPS)
+		end,
 		position = function(): Vector3?
 			local character = Players.LocalPlayer.Character
 			local root = if character then character:FindFirstChild("HumanoidRootPart") else nil

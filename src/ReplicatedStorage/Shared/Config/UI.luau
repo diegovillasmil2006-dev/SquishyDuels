@@ -32,6 +32,9 @@ export type MotionPose = {
 	alpha: number?,
 }
 
+-- End screens round B1: the podium and its name tags (a child module: this one is near the Source limit).
+local Podium = require(script.Parent.Podium)
+
 local UI = {
 	-- UIScale = clamp(min(SD_Hud.AbsoluteSize.X / referenceWidth, AbsoluteSize.Y / referenceHeight), min, max),
 	-- recomputed on size change. UI FINAL R2 (PR1, decided 2026-10-15): the design's fit min(w / 1440, h / 810)
@@ -3601,6 +3604,7 @@ local UI = {
 					skipText = "Small",
 					boardTitleText = "Large",
 					boardText = "Small",
+					plates = Podium.layouts.desktop, -- round B1: the name tags (Config/Podium)
 				},
 				phone = {
 					width = 750,
@@ -3695,6 +3699,7 @@ local UI = {
 					skipText = "Small",
 					boardTitleText = "Small",
 					boardText = "Small",
+					plates = Podium.layouts.phone,
 				},
 			},
 			-- The timeline (S:733-739, S:791-821, S:851-870).
@@ -3758,6 +3763,9 @@ local UI = {
 				pulse = { periodS = 1.6, scale = 1.045 },
 			},
 			board = { ms = 300, backdropAlpha = 0.55, rows = 6 },
+			-- End screens round B1 (Config/Podium): the 3D podium and its name tags
+			podium = Podium.podium,
+			plates = Podium.plates,
 		},
 	},
 

@@ -19,11 +19,19 @@
 --   scoreboard (S:305-330): both teams (Free for All: 1st-6th and 7th-12th) with each player's squishes, times squished,
 --   best streak and Grip earned (outcome standings), MVP = the winning team's most squishes (ties: fewer times
 --   squished, then the best streak; T:211); closed by its X, a tap outside, Escape or B.
+-- * End screens round B1 (2026-10-26; owner: "Yes, build step 1 of round B like that. You can make and upload the
+--   sounds."): at the podium cue (podium.at, S:824) or a skip, ctx.podium (MatchHudController: UI/Match/MatchPodium on
+--   the real camera and world) shows the cake or the "good game" line behind this screen (MatchPodium.lineup: Team your
+--   team, Free for All the top 6); its pose HITs ting (poseHit, higher for each ripple slot), the MVP's slam booms and
+--   flashes the screen (S:890) and the crown clinks (crownDrop). With the results its name tags pop in over the
+--   players' heads (S:269-280, 857-858): the name, the squishes (with SQ; phones: the number), the MVP's crown and MVP
+--   tag (gold) and YOU (a lemon border); phones tag only the MVP and you; each frame over the heads, a tag that meets
+--   another stacked above it, all under the pill (placePlates, S:893-910).
 -- Roblox draws text at one scale, so the design's scale(sx, sy) frames are their even part sqrt(sx * sy) (as the kill
--- feed's). Under ReducedMotion only the fades play; the jelly is a colour fade and the sunbursts do not turn. The 3D
--- podium, its plates and the killcam are later rounds.
+-- feed's). Under ReducedMotion only the fades play; the jelly is a colour fade and the sunbursts do not turn. The
+-- killcam is a later round.
 -- Pure (unit-tested): ordinal(n), resultOf(view, who), mvp(view, teamOf), columns(view, who),
--- gripBar(total, gained), streakLine(mine).
+-- gripBar(total, gained), streakLine(mine), plates(view, lineup, compact), placePlates(boxes, top, left, right).
 
 -- Services
 
@@ -49,6 +57,7 @@ local UiFx = require(UI.UiFx)
 local Tweens = require(UI.Parent.Anim.Tweens)
 local UiIdle = require(UI.Parent.Anim.UiIdle)
 local MatchKit = require(script.Parent.MatchKit)
+local MatchPodium = require(script.Parent.MatchPodium)
 
 -- Types
 
@@ -84,6 +93,14 @@ export type Column = {
 	rows: { Row },
 }
 
+-- One name tag (S:975).
+export type Plate = { userId: number, name: string, kos: number, mvp: boolean, you: boolean }
+
+-- A tag's box for placePlates (stage px): its centre x, its bottom y, its size.
+export type PlateBox = { x: number, y: number, w: number, h: number }
+
+type PlateMade = { userId: number, holder: Frame, posed: Posed, w: number, h: number }
+
 type Posed = { holder: GuiObject, poser: Tweens.Poser, fades: { Tweens.FadeGroup } }
 
 type Letter = { posed: Posed, bang: boolean }
@@ -112,6 +129,7 @@ type Made = {
 	rollLose: TextLabel?,
 	psub: Posed?,
 	sparkLayer: Frame,
+	plateLayer: Frame,
 	bar: Posed,
 	coinText: TextLabel,
 	gripText: TextLabel,
@@ -155,7 +173,12 @@ local SOUND = {
 	gripFill = "match.end.gripFill",
 	streak = "match.end.streak",
 	tab = "ui.click", -- S:930 snd.tab(): the scoreboard opens (the game's tab click)
+	poseHit = "match.end.poseHit",
+	mvpSlam = "match.end.mvpSlam",
+	crownDrop = "match.end.crownDrop",
 }
+local PODIUM = CFG.podium
+local PLATES = CFG.plates
 -- S:990-991 bumps along the jelly's leading edge and its drips (y %, height, width share).
 local DRIPS = { { 10, 18, 1 }, { 26, 12, 0.7 }, { 44, 22, 1.2 }, { 61, 14, 0.8 }, { 77, 20, 1 }, { 90, 12, 0.6 } }
 local BUMPS = 9
@@ -368,6 +391,73 @@ function MatchEnd.streakLine(mine: any): (string?, boolean)
 		return TEXT.streakReset, false
 	end
 	return Strings.format(TEXT.winStreak, { n = mine.streakAfter }), false
+end
+
+-- The name tags (S:975): the podium's players in its order (phones: only the MVP and you), each one's name and
+-- squishes; the MVP is the crowned one on the cake.
+function MatchEnd.plates(view: any, lineup: MatchPodium.Lineup, compact: boolean): { Plate }
+	local kos: { [number]: number } = {}
+	for _, s in (type(view.outcome) == "table" and view.outcome.standings) or {} do
+		kos[s.userId] = s.kos
+	end
+	local names: { [number]: string } = {}
+	for _, p in view.players or {} do
+		names[p.userId] = p.displayName
+	end
+	local you = type(view.you) == "table" and view.you.userId or nil
+	local out: { Plate } = {}
+	for _, userId in lineup.ids do
+		local mvp = lineup.cake and userId == lineup.mvp
+		local mine = userId == you
+		if not compact or mvp or mine then
+			table.insert(
+				out,
+				{ userId = userId, name = names[userId] or "", kos = kos[userId] or 0, mvp = mvp, you = mine }
+			)
+		end
+	end
+	return out
+end
+
+-- S:893-910: the tags' places (top-left, stage px) from their boxes. Lowest on the screen first; a tag that meets one
+-- placed before it moves up over it (one row), a third back under; none reaches above `top`; each x kept in
+-- left .. right.
+function MatchEnd.placePlates(boxes: { PlateBox }, top: number, left: number, right: number): { Vector2 }
+	local gap = PLATES.gap
+	local order: { number } = {}
+	for i in boxes do
+		table.insert(order, i)
+	end
+	table.sort(order, function(a: number, b: number): boolean
+		return boxes[a].y > boxes[b].y
+	end)
+	local ys: { [number]: number } = {}
+	local rows: { [number]: number } = {}
+	for n, i in order do
+		local A = boxes[i]
+		local y, row = A.y, 0
+		for m = 1, n - 1 do
+			local j = order[m]
+			local B = boxes[j]
+			local by = ys[j]
+			if math.abs(A.x - B.x) < (A.w + B.w) / 2 + gap and y > by - B.h - gap and y - A.h < by + 2 then
+				if rows[j] == 0 and row == 0 then
+					y, row = by - B.h - gap, 1
+				elseif row == 1 then
+					y, row = by + A.h + gap, 0
+				end
+			end
+		end
+		if y - A.h < top then
+			y = top + A.h
+		end
+		ys[i], rows[i] = y, row
+	end
+	local out: { Vector2 } = {}
+	for i, b in boxes do
+		out[i] = Vector2.new(math.clamp(b.x - b.w / 2, left, math.max(left, right - b.w)), ys[i] - b.h)
+	end
+	return out
 end
 
 -- Private: builders ---------------------------------------------------------------------------------------------------
@@ -860,6 +950,7 @@ local function build(ctx: MatchHudFormat.Context, view: any, result: Result, onS
 	end
 
 	local sparkLayer = frame("Sprinkles", { Size = UDim2.fromScale(1, 1), ZIndex = z0 + 6, Parent = main })
+	local plateLayer = frame("Plates", { Size = UDim2.fromScale(1, 1), ZIndex = z0 + 6, Parent = main })
 
 	-- The results bar (S:282-302).
 	local B = L.bar
@@ -1138,6 +1229,7 @@ local function build(ctx: MatchHudFormat.Context, view: any, result: Result, onS
 		rollLose = rollLose,
 		psub = psub,
 		sparkLayer = sparkLayer,
+		plateLayer = plateLayer,
 		bar = posed(barHolder),
 		coinText = coinText,
 		gripText = gripText,
@@ -1378,6 +1470,152 @@ local function board(ctx: MatchHudFormat.Context, view: any, L: any, onClose: ()
 	return { backdrop, holder, panelHolder }
 end
 
+-- One name tag (S:272-277), its inner holder posed for the pop (from its bottom middle): the pill with its ink lip (the
+-- MVP's gold, else the dark plate; yours with a lemon border), the MVP's crown, the name (cut with "…" past the tag's
+-- max width), the squishes chip, and the MVP tag over it (YOU over that: S:276-277 draws it last). Text is the
+-- `plates.text` kind scaled to the design's px.
+local function plateOf(p: Plate, L: any, parent: Frame, z: number): PlateMade
+	local P = L.plates
+	local kind = PLATES.text
+	local function words(name: string, str: string, px: number, color: Color3, em: number?): (GuiObject, Vector2)
+		local object: GuiObject, size: Vector2
+		if em then
+			object, size = MatchKit.spaced(name, str, kind, color, nil, em, z + 4)
+		else
+			object, size = MatchKit.line(name, str, kind, color, nil, z + 4)
+		end
+		Theme.noOutline(object)
+		for _, d in object:GetDescendants() do
+			if d:IsA("TextLabel") then
+				Theme.noOutline(d)
+			end
+		end
+		local k = px / Theme.textSize(kind)
+		Create("UIScale", { Scale = k, Parent = object })
+		return object, size * k
+	end
+	local fg = if p.mvp then INK else Palette.Frosting
+	local chipFg = if p.mvp then Palette.Lemon else Palette.StickerCoinText
+	local num, numSize = words("Num", tostring(p.kos), P.chip, chipFg)
+	local unit: GuiObject?, unitSize = nil, Vector2.zero
+	if P.unit then
+		unit, unitSize = words("Unit", TEXT.plateUnit, P.chipLabel, chipFg, 0.04)
+	end
+	local chipW = math.ceil(numSize.X + (if unit then P.unitGap + unitSize.X else 0)) + 2 * P.chipPad
+	local crownW = if p.mvp then P.crownW + P.gap else 0
+	local maxW = if p.mvp then P.mvpMaxW else P.maxW
+	local room = maxW - 2 * (P.border + P.pad) - crownW - P.gap - chipW
+	local k = P.name / Theme.textSize(kind)
+	local shown = p.name
+	if Theme.textWidth(shown, kind :: any) * k > room then
+		local chars = {}
+		for _, code in utf8.codes(p.name) do
+			table.insert(chars, utf8.char(code))
+		end
+		repeat
+			table.remove(chars)
+			shown = table.concat(chars) .. "…"
+		until #chars == 0 or Theme.textWidth(shown, kind :: any) * k <= room
+	end
+	local nameLabel, nameSize = words("Name", shown, P.name, fg)
+	local w = math.ceil(2 * (P.border + P.pad) + crownW + nameSize.X + P.gap + chipW)
+	local h = P.height
+	local holder =
+		frame("Plate", { Size = UDim2.fromOffset(w, h + P.lip), ZIndex = z, Visible = false, Parent = parent })
+	local inner = frame("Pop", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.fromScale(0.5, 1),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = z,
+		Parent = holder,
+	})
+	local tag, face = box("Tag", Vector2.new(w, h), P.radius, P.border, P.lip, z)
+	tag.Parent = inner
+	if p.mvp then
+		gradient(face, { key(0, Palette.MatchIntroTitle2), key(1, Palette.Lemon) })
+	else
+		face.BackgroundColor3 = Palette.MatchIntroCard
+	end
+	if p.you then
+		local stroke = face:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Color = Palette.Lemon
+		end
+	end
+	local x = P.border + P.pad
+	if p.mvp then
+		-- S:273: the crown icon: a band and three diamonds, each ink-bordered on cream
+		local icon = frame("Crown", {
+			AnchorPoint = Vector2.new(0, 0.5),
+			Position = UDim2.new(0, x, 0.5, 0),
+			Size = UDim2.fromOffset(P.crownW, P.crownH),
+			ZIndex = z + 3,
+			Parent = face,
+		})
+		local function piece(name: string, pos: UDim2, size: UDim2, rot: number)
+			local made = frame(name, {
+				BackgroundTransparency = 0,
+				BackgroundColor3 = Palette.MatchIntroTitle2,
+				AnchorPoint = Vector2.new(0.5, 1),
+				Position = pos,
+				Size = size,
+				Rotation = rot,
+				ZIndex = z + 3,
+				Parent = icon,
+			})
+			Theme.corner(3, made)
+			MatchKit.inner(Theme.stroke(INK, 2, made))
+		end
+		piece("Band", UDim2.fromScale(0.5, 1), UDim2.fromScale(1, 0.45), 0)
+		piece("Left", UDim2.fromScale(0.04 + 0.15, 0.7), UDim2.fromScale(0.3, 0.42), 45)
+		piece("Middle", UDim2.fromScale(0.35 + 0.15, 0.64), UDim2.fromScale(0.3, 0.44), 45)
+		piece("Right", UDim2.fromScale(1 - 0.04 - 0.15, 0.7), UDim2.fromScale(0.3, 0.42), 45)
+		x += P.crownW + P.gap
+	end
+	nameLabel.AnchorPoint = Vector2.new(0, 0.5)
+	nameLabel.Position = UDim2.new(0, x, 0.5, 0)
+	nameLabel.Parent = face
+	local chip = frame("Chip", {
+		BackgroundTransparency = if p.mvp then 0 else P.chipAlpha,
+		BackgroundColor3 = if p.mvp then INK else Palette.Frosting,
+		AnchorPoint = Vector2.new(1, 0.5),
+		Position = UDim2.new(1, -(P.border + P.pad), 0.5, 0),
+		Size = UDim2.fromOffset(chipW, P.chipH),
+		ZIndex = z + 3,
+		Parent = face,
+	})
+	Theme.corner(P.chipH / 2, chip)
+	num.AnchorPoint = Vector2.new(0, 0.5)
+	num.Position = UDim2.new(0, P.chipPad, 0.5, 0)
+	num.Parent = chip
+	if unit then
+		unit.AnchorPoint = Vector2.new(0, 0.5)
+		unit.Position = UDim2.new(0, P.chipPad + numSize.X + P.unitGap, 0.5, 0)
+		unit.Parent = chip
+	end
+	for _, spec in { { p.mvp, TEXT.mvp, INK, Palette.Lemon, 0.08 }, { p.you, TEXT.plateYou, Palette.Lemon, INK, 0.06 } } do
+		if spec[1] then
+			local label, size = words("Text", spec[2], P.tag, spec[4], spec[5])
+			local pill = frame(if spec[2] == TEXT.mvp then "MvpTag" else "YouTag", {
+				BackgroundTransparency = 0,
+				BackgroundColor3 = spec[3],
+				AnchorPoint = Vector2.new(0.5, 0),
+				Position = UDim2.new(0.5, 0, 0, -P.tagTop),
+				Size = UDim2.fromOffset(math.ceil(size.X) + 2 * P.tagPad, P.tagH),
+				ZIndex = z + 5,
+				Parent = inner,
+			})
+			Theme.corner(7, pill)
+			MatchKit.inner(Theme.stroke(INK, 2, pill))
+			label.AnchorPoint = Vector2.new(0.5, 0.5)
+			label.Position = UDim2.fromScale(0.5, 0.5)
+			label.ZIndex = z + 6
+			label.Parent = pill
+		end
+	end
+	return { userId = p.userId, holder = holder, posed = posed(inner), w = w, h = h }
+end
+
 -- Private: the letters' tracks -----------------------------------------------------------------------------------------
 
 type Key = { at: number, alpha: number, y: number, sx: number, sy: number, rot: number, ease: string? }
@@ -1432,9 +1670,27 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	local gripTo, gripFrom = 0, 0
 	local connections: { RBXScriptConnection } = {}
 	local finished = false
+	local podium: MatchPodium.Podium? = nil -- round B1: the 3D scene behind the screen
+	local podiumTried = false
+	local podiumLineup: MatchPodium.Lineup? = nil
+	local slamAt: number? = nil -- the MVP's slam (its screen flash)
+	local slamStrong = false
+	local plateMade: { PlateMade }? = nil
+	local platesAt = 0
 
 	local function play(name: string, opts: { [string]: any }?)
 		ctx.play(name, opts)
+	end
+
+	local function endPodium()
+		local pod = podium
+		podium = nil
+		if pod then
+			local ok, err = pcall(pod.destroy, pod)
+			if not ok then
+				warn(`[SD][MatchEnd] the podium did not close cleanly: {err}`)
+			end
+		end
 	end
 
 	local function once(name: string, fn: () -> ())
@@ -1456,6 +1712,8 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	end
 
 	local function teardown()
+		endPodium()
+		plateMade = nil
 		closeBoard()
 		for _, c in connections do
 			c:Disconnect()
@@ -1505,6 +1763,64 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		fast = true
 		if result and result.kind == "victory" then
 			startCheer(CFG.cheer.skipInMs)
+		end
+		local pod = podium
+		if pod then
+			pod:skip()
+		end
+	end
+
+	-- Round B1: the podium's moments (S:887-892).
+	local function onPodiumEvent(name: string, data: { [string]: any })
+		if name == "poseHit" then
+			local steps = PODIUM.poseSteps
+			local slot = math.max(0, data.slot or 0)
+			play(SOUND.poseHit, { pitch = 2 ^ (steps[slot % #steps + 1] / 12) })
+		elseif name == "mvpSlam" then
+			play(SOUND.mvpSlam)
+			slamAt = os.clock()
+			slamStrong = data.strong == true
+		elseif name == "crown" then
+			play(SOUND.crownDrop)
+		end
+	end
+
+	-- Round B1: the podium at its cue (or a skip): the lineup, then ctx.podium's scene (none in tests).
+	local function startPodium(r: Result, reduced: boolean)
+		local make = ctx.podium
+		local view = frozen
+		if make == nil or view == nil then
+			return
+		end
+		local function who(userId: number): any
+			return MatchKit.who(ctx, view, userId)
+		end
+		local function teamOf(userId: number): string?
+			return who(userId).team
+		end
+		local lineup = MatchPodium.lineup(view, teamOf, MatchEnd.mvp(view, teamOf))
+		if lineup == nil then
+			return
+		end
+		local ok, made = pcall(make, {
+			view = view,
+			lineup = lineup,
+			who = who,
+			kind = r.kind,
+			preview = ctx.preview,
+			compact = ctx.compact(),
+			reduced = reduced,
+			look = r.look.top,
+			onEvent = onPodiumEvent,
+		})
+		if not ok then
+			warn(`[SD][MatchEnd] the podium did not start: {made}`)
+		elseif made then
+			podium = made
+			podiumLineup = lineup
+			if skippedAt then
+				made:skip()
+			end
 		end
 	end
 
@@ -1565,6 +1881,62 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		local motion = table.clone(at)
 		motion.alpha = nil
 		pose(p, alpha, motion)
+	end
+
+	-- Round B1: the name tags over the heads (S:893-910), each frame from the podium's anchors; they pop in one after
+	-- another (S:858).
+	local function renderPlates(m: Made, clock: number, reduced: boolean)
+		local list, pod = plateMade, podium
+		if list == nil or pod == nil then
+			return
+		end
+		local at: { [number]: Vector3 } = {}
+		for _, a in pod:anchors() do
+			at[a.userId] = a.at
+		end
+		local camera = workspace.CurrentCamera
+		local stageFrame = m.stage
+		local origin, abs = stageFrame.AbsolutePosition, stageFrame.AbsoluteSize
+		if abs.X <= 0 or abs.Y <= 0 then
+			return
+		end
+		local width = stageFrame.Size.X.Offset
+		local sx, sy = width / abs.X, stageFrame.Size.Y.Offset / abs.Y
+		local boxes: { PlateBox } = {}
+		local shown: { PlateMade } = {}
+		for _, p in list do
+			local world = at[p.userId]
+			local visible = false
+			if world then
+				local point = camera:WorldToScreenPoint(world)
+				if point.Z > 0 then
+					table.insert(boxes, {
+						x = (point.X - origin.X) * sx,
+						y = (point.Y - origin.Y) * sy - PLATES.below,
+						w = p.w,
+						h = p.h,
+					})
+					table.insert(shown, p)
+					visible = true
+				end
+			end
+			p.holder.Visible = visible
+		end
+		local L = m.layout
+		-- S:899 keeps them under the pill; phones draw no pill (S:264), so there they keep under its top only (the
+		-- pill's height would push the MVP's tag down over its crown).
+		local top = L.psubTop + (if L.showPsub then L.psubH else 0) + PLATES.clear
+		local places = MatchEnd.placePlates(boxes, top, PLATES.edge, width - PLATES.edge)
+		for i, p in shown do
+			p.holder.Position = UDim2.fromOffset(math.round(places[i].X), math.round(places[i].Y))
+		end
+		for i, p in list do
+			local delay = if fast then 0 else (i - 1) * PLATES.stepMs / 1000
+			track(p.posed, {
+				{ at = 0, alpha = 0, y = PLATES.rise, scale = PLATES.from },
+				{ at = 1, alpha = 1, y = 0, scale = 1 },
+			}, clock - platesAt - delay, PLATES.popMs, "introSlam", nil, reduced)
+		end
 	end
 
 	local function sparksAt(m: Made, clock: number)
@@ -1671,6 +2043,19 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			if u >= 0 and u < 1 then
 				local e = Tweens.curve("easeOut")(u)
 				flashAlpha = if e < at then peak * e / at else peak * (1 - (e - at) / (1 - at))
+			end
+		end
+		-- Round B1: the MVP's slam flashes the screen too (S:890; its keyframes linear).
+		local slam = slamAt
+		if slam then
+			local Fs = PODIUM.flash
+			local ms, peak, at = Fs.softMs, Fs.softPeak, Fs.softAt
+			if slamStrong then
+				ms, peak, at = Fs.ms, Fs.peak, Fs.at
+			end
+			local u = (clock - slam) / (ms / 1000)
+			if u >= 0 and u < 1 then
+				flashAlpha = math.max(flashAlpha, if u < at then peak * u / at else peak * (1 - (u - at) / (1 - at)))
 			end
 		end
 		m.flash.BackgroundTransparency = 1 - flashAlpha
@@ -2095,8 +2480,30 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 				resultsAt = (startAt :: number) + due
 			end
 		end
+		-- Round B1: the podium from its cue (or a skip), stepped before anything reads the camera.
+		if not podiumTried and (t >= PODIUM.at or skippedAt ~= nil) then
+			podiumTried = true
+			startPodium(r, reduced)
+		end
+		local pod = podium
+		if pod then
+			local ok, err = pcall(pod.step, pod, clock)
+			if not ok then
+				warn(`[SD][MatchEnd] the podium stopped: {err}`)
+				endPodium()
+			end
+		end
 		renderTitle(m, r, t, clock, reduced, skippedAt ~= nil)
 		renderResults(m, clock, reduced)
+		if resultsAt and podium and podiumLineup and plateMade == nil then
+			local made2: { PlateMade } = {}
+			for _, p in MatchEnd.plates(frozen, podiumLineup :: MatchPodium.Lineup, ctx.compact()) do
+				table.insert(made2, plateOf(p, m.layout, m.plateLayer, CFG.z + 6))
+			end
+			plateMade = made2
+			platesAt = resultsAt :: number
+		end
+		renderPlates(m, clock, reduced)
 		sparksAt(m, clock)
 		local bed = cheer
 		if bed then

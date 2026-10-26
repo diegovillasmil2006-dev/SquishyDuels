@@ -1376,6 +1376,31 @@ local SLOTS: { AssetSlot } = {
 		"I:864 streakIgnite: the win-streak flame lights; file 'end_streak_ignite.wav'",
 		hudSound(115034688074927, 0.2023, "end_streak_ignite.wav")
 	),
+	-- End screens round B1 (2026-10-26): the podium's 3 cues (sd-cues.js, make_podium_sounds.mjs), I:887-892.
+	soundSlot(
+		"match.end.poseHit",
+		"UI",
+		false,
+		nil,
+		"I:888 poseHit(slot): a pose's HIT on the cake (PlaybackSpeed 2^(step/12), steps 0 4 7 12 16 by ripple slot); file 'podium_pose_hit.wav'",
+		hudSound(133736140344929, 0.129, "podium_pose_hit.wav")
+	),
+	soundSlot(
+		"match.end.mvpSlam",
+		"UI",
+		false,
+		nil,
+		"I:889 mvpSlam: the MVP's ground-pound on the cake; file 'podium_mvp_slam.wav'",
+		hudSound(132488512983753, 0.5577, "podium_mvp_slam.wav")
+	),
+	soundSlot(
+		"match.end.crownDrop",
+		"UI",
+		false,
+		nil,
+		"I:891 crownDrop: the MVP's crown lands; file 'podium_crown_drop.wav'",
+		hudSound(140512716739149, 0.2108, "podium_crown_drop.wav")
+	),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",

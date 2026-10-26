@@ -115,6 +115,9 @@ export type Context = {
 	-- local player's Grip total now (GripController; nil while unknown). Both nil in tests.
 	act: ((action: string, mode: string?) -> ())?,
 	gripTotal: (() -> number?)?,
+	-- End screens round B1: the 3D podium (UI/Match/MatchPodium.new on the real camera and world, given a
+	-- MatchPodium.Spec without `shake`); nil in tests.
+	podium: ((spec: any) -> any)?,
 }
 
 -- Match HUD M6 / M7: a rect in base px, top-left origin (the safe area).

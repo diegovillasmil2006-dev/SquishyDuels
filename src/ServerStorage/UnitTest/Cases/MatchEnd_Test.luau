@@ -6,7 +6,9 @@
 -- team's most squishes (ties: fewer times squished, then the best streak), Free for All's winner; the scoreboard lists
 -- the winning team first, its players by squishes, WIN / LOSS, Free for All 1st-6th then 7th-12th; the Grip bar fills
 -- from before the match to now inside the level (from 0 after a level-up); the streak line grows, resets or holds; the
--- piece builds the title's letters and the three buttons and leaves nothing behind.
+-- piece builds the title's letters and the three buttons and leaves nothing behind. Round B1: the name tags are the
+-- podium's players in its order (phones: the MVP and you), the MVP only on the cake; tags that meet stack, none above
+-- the pill, each kept on the screen.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -244,4 +246,42 @@ return function(t: Context)
 			end
 		end
 	)
+
+	t.test("round B1: the name tags: the podium's players, the MVP on the cake, phones only the MVP and you", function()
+		local view = {
+			you = { userId = YOU },
+			players = {
+				{ userId = YOU, displayName = "Me" },
+				{ userId = 7, displayName = "Ace" },
+				{ userId = 8, displayName = "Bo" },
+			},
+			outcome = { standings = { s(7, 9, 1), s(YOU, 4, 2), s(8, 2, 3) } },
+		}
+		local cake = { cake = true, ids = { 7, YOU, 8 }, mvp = 7 }
+		local all = MatchEnd.plates(view, cake, false)
+		expect.equal(#all, 3)
+		expect.deepEqual(all[1], { userId = 7, name = "Ace", kos = 9, mvp = true, you = false })
+		expect.deepEqual(all[2], { userId = YOU, name = "Me", kos = 4, mvp = false, you = true })
+		local phone = MatchEnd.plates(view, cake, true)
+		expect.equal(#phone, 2)
+		expect.equal(phone[1].userId, 7)
+		expect.equal(phone[2].userId, YOU)
+		local line = MatchEnd.plates(view, { cake = false, ids = { 7, 8 }, mvp = nil }, false)
+		expect.falsy(line[1].mvp)
+	end)
+
+	t.test("round B1: tags that meet stack above, none above the pill, each kept on the screen", function()
+		local places = MatchEnd.placePlates({
+			{ x = 500, y = 400, w = 100, h = 40 },
+			{ x = 520, y = 390, w = 100, h = 40 },
+			{ x = 900, y = 300, w = 100, h = 40 },
+		}, 100, 4, 1436)
+		expect.equal(places[1], Vector2.new(450, 360)) -- the lowest stays
+		expect.equal(places[2], Vector2.new(470, 400 - 40 - 4 - 40)) -- moved up over it
+		expect.equal(places[3], Vector2.new(850, 260)) -- alone
+		local high = MatchEnd.placePlates({ { x = 2, y = 50, w = 100, h = 40 } }, 100, 4, 1436)
+		expect.equal(high[1], Vector2.new(4, 100)) -- under the pill and inside the left edge
+		local right = MatchEnd.placePlates({ { x = 1430, y = 500, w = 100, h = 40 } }, 100, 4, 1436)
+		expect.equal(right[1].X, 1336)
+	end)
 end

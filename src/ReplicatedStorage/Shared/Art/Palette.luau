@@ -796,6 +796,10 @@ local Palette = {
 	MatchEndPill = Color3.fromHex("#5B36D9"),
 	MatchEndMuted = Color3.fromHex("#C4B4F0"),
 	MatchEndShade = Color3.fromHex("#120C1B"),
+	-- End screens round B1 (uploads/sd/tdm-end.js): the losers' line's grade tint (E:206 tint [0.88, 0.87, 1.0]) and
+	-- the MVP slam's light (E:167).
+	PodiumLineTint = Color3.new(0.88, 0.87, 1),
+	PodiumSlamLight = Color3.fromHex("#FFE8B0"),
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

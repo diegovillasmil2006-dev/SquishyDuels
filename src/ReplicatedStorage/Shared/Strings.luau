@@ -721,6 +721,9 @@ local Strings = {
 			ffaTop = "1ST – 6TH",
 			ffaRest = "7TH – 12TH",
 			cols = { name = "NAME", squishes = "SQ", squished = "SQD", best = "BEST", grip = "GRIP" },
+			-- Round B1: the podium's name tags (S:274-277)
+			plateUnit = "SQ",
+			plateYou = "YOU",
 		},
 		titles = {
 			kitty_bread = "Loaf of Doom",

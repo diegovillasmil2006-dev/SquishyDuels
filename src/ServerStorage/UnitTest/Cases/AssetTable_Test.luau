@@ -223,6 +223,10 @@ local FOUND_SOUND_KEYS = {
 	"match.end.coinTick",
 	"match.end.gripFill",
 	"match.end.streak",
+	-- End screens round B1 (2026-10-26): the podium's 3 renders.
+	"match.end.poseHit",
+	"match.end.mvpSlam",
+	"match.end.crownDrop",
 	-- The fancier box reveal (2026-10-26): its 11 renders.
 	"box.ux.rattle1",
 	"box.ux.rattle2",
