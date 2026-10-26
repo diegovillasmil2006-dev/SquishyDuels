@@ -23,6 +23,8 @@
 --     1024 x 768, a 844 x 390 phone with touch (the card above the thumbstick zone, the bar beside it, nothing on the
 --     zone) and without (compact), and a narrow screen (the bar above the card);
 --   * trackPose (reduced motion: only the fade), clipText (an ellipsis to fit).
+-- Storm fix (owner 2026-10-26): stormShows (alive, outside the safe circle of a TDM storm that is up, live; never
+-- without a position), dockClear (the desktop ability bar's height in base px, none on the phone layout).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -372,5 +374,52 @@ return function(t: Context)
 		expect.equal(Format.clipText("Bob", 60, measure), "Bob")
 		expect.equal(Format.clipText("SquishQueen", 60, measure), "Squis…")
 		expect.equal(Format.clipText("SquishQueen", 5, measure), "…")
+	end)
+
+	t.test("stormShows: only while you stand outside the safe circle of a TDM storm that is up", function()
+		local Storm = Config.Match.Storm
+		local NOW = 1000
+		local centre = Vector3.new(7000, 0, 0)
+		local function view(patch: { [string]: any }?): any
+			local v: any = {
+				phase = "Active",
+				matchPhase = "Active",
+				activeStartedAt = NOW - Storm.stormStartSeconds - 1,
+				storm = { startRadius = 100 },
+				arena = { centre = centre },
+				you = { alive = true, stormBar = 0.3 },
+			}
+			for k, value in patch or {} do
+				v[k] = value
+			end
+			return v
+		end
+		local outside = centre + Vector3.new(150, 3, 0)
+		local inside = centre + Vector3.new(10, 3, 0)
+		expect.equal(Format.stormShows(view(), NOW, outside, Storm), true)
+		expect.equal(Format.stormShows(view(), NOW, inside, Storm), false)
+		expect.equal(Format.stormShows(view(), NOW, nil, Storm), false) -- no character
+		local ffa = view()
+		ffa.storm = nil
+		expect.equal(Format.stormShows(ffa, NOW, outside, Storm), false) -- FFA: no storm
+		expect.equal(Format.stormShows(view({ activeStartedAt = NOW - 5 }), NOW, outside, Storm), false) -- not up yet
+		expect.equal(Format.stormShows(view({ phase = "Result" }), NOW, outside, Storm), false)
+		expect.equal(Format.stormShows(view({ you = { alive = false, stormBar = 0 } }), NOW, outside, Storm), false)
+	end)
+
+	t.test("dockClear: the desktop ability bar's height in base px; none on the phone layout", function()
+		local desk = Config.UI.AbilityBar.desk
+		local px = desk.bottomPx
+			+ math.max(desk.sizes.catch, desk.sizes.ult, desk.sizes.dash)
+			+ desk.dropPx
+			+ desk.tag.heightPx
+			+ desk.tag.gapPx
+		local screen = Vector2.new(1920, 1080)
+		local k = math.min(screen.X / desk.canvas.X, screen.Y / desk.canvas.Y)
+		expect.near(Format.dockClear(screen, 1, false), px * k, EPS)
+		expect.near(Format.dockClear(screen, 0.8, false), px * k / 0.8, EPS)
+		expect.equal(Format.dockClear(screen, 1, true), 0) -- touch: the phone layout
+		expect.equal(Format.dockClear(Vector2.new(900, 600), 1, false), 0) -- a narrow window: the phone layout
+		expect.equal(Format.dockClear(screen, 0, false), 0) -- a bad scale
 	end)
 end

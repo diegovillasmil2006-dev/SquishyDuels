@@ -186,14 +186,16 @@ local Match = {
 			{ shrinkAt = 120, shrinkSeconds = 20, radiusFraction = 0.3 }, -- [P]
 			{ shrinkAt = 150, shrinkSeconds = 20, radiusFraction = 0.1 }, -- [P] a small circle in the middle
 		},
-		barFillSeconds = 3,
+		barFillSeconds = 10, -- owner 2026-10-26: 10 s outside the safe circle = a K.O. (3 s felt instant)
 		barDrainSeconds = 9, -- [P] a full bar empties in 9 s back inside ("slowly")
 		sampleHz = 5, -- [P]
 		respawnInsetStuds = 6, -- [P]
+		-- Owner 2026-10-26 ("storm also doesnt show"): a bright purple glowing wall (Neon, MatchController), the purple
+		-- of the storm card (DeathCard), instead of the faint sky-blue force field.
 		wall = {
-			transparency = 0.6, -- [P]
+			transparency = 0.45, -- [P]
 			heightStuds = 120, -- [P]
-			color = "Sky", -- [P] an Art/Palette token (a "...Key" name would be read as a Strings key by Config.validate)
+			color = "StickerPurpleBarEnd", -- an Art/Palette token (a "...Key" name would be read as a Strings key)
 		},
 	},
 

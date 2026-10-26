@@ -29,7 +29,8 @@
 --   are never changed.
 -- * Storm wall (D11, TDM; a TEST PLACEHOLDER until Diego's storm design): the safe circle's edge around the map's centre
 --   (arena.centre), Config.Match.Storm.wall.heightStuds tall from the floor, in Palette[wall.color] (a token name) at
---   wall.transparency, Material ForceField, Anchored with CanCollide / CanQuery / CanTouch / CastShadow off, under
+--   wall.transparency, Material Neon (owner 2026-10-26: the ForceField one was too faint to see), Anchored with
+--   CanCollide / CanQuery / CanTouch / CastShadow off, under
 --   Workspace.SD_ClientFx; its radius every frame from StormMath.radiusAt with the server-synced Active time
 --   (MatchFormat.stormRadius), shown only while StormMath.shown (and the match is live). Reading (deviation from "one
 --   Cylinder Part"): a Part draws only its outside faces, so a cylinder would be invisible to everyone inside the safe
@@ -459,7 +460,7 @@ local function buildWall(state: Look, spec: any): Model
 		part.CanQuery = false
 		part.CanTouch = false
 		part.CastShadow = false
-		part.Material = Enum.Material.ForceField
+		part.Material = Enum.Material.Neon -- owner 2026-10-26: the force field was too faint to see
 		part.Color = colour
 		part.Transparency = spec.transparency
 		part.Size = Vector3.new(1, spec.heightStuds, WALL_THICKNESS)

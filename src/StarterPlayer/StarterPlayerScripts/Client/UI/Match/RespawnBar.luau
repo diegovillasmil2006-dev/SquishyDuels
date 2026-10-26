@@ -30,7 +30,6 @@ local Strings = require(Shared.Strings)
 local UI = script.Parent.Parent
 local Create = require(UI.Create)
 local MatchHudFormat = require(UI.MatchHudFormat)
-local Theme = require(UI.Theme)
 local Tweens = require(UI.Parent.Anim.Tweens)
 local MatchKit = require(script.Parent.MatchKit)
 
@@ -113,118 +112,21 @@ local function vignette(parent: GuiObject): Frame
 	return root
 end
 
-type Bar = {
-	root: Frame, -- placed; its UIScale "SD_Fit"
-	fit: UIScale,
-	pose: CanvasGroup,
-	number: TextLabel,
-	fill: Frame,
-	size: Vector2,
-}
-
--- The bar (M:196-199), hidden.
-local function bar(parent: GuiObject): Bar
-	local b = CFG.bar
-	local label, labelSize =
-		MatchKit.label({ name = "Label", text = Strings.matchHud.respawn.label, role = CFG.labelRole, z = Z })
-	local number, numberSize = MatchKit.label({ name = "Number", text = DIGITS_SAMPLE, role = CFG.numberRole, z = Z })
-	local rowHeight = math.max(labelSize.Y, numberSize.Y)
-	local size = Vector2.new(CFG.width, rowHeight + CFG.rowGap + b.height + b.lip)
-	local root: Frame = Create("Frame", {
-		Name = "MatchRespawn",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromOffset(size.X, size.Y),
-		ZIndex = Z,
-		Visible = false,
-		Active = false,
-		Parent = parent,
-	})
-	local fit: UIScale = Create("UIScale", { Name = "SD_Fit", Parent = root })
-	local pose: CanvasGroup = Create("CanvasGroup", {
-		Name = "Pose",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(1, 1),
-		ZIndex = Z,
-		Active = false,
-		Parent = root,
-	})
-	-- M:197: the two texts side by side on their baseline (reading: bottoms aligned), centred.
-	local rowWidth = labelSize.X + CFG.labelGap + numberSize.X
-	local row: Frame = Create("Frame", {
-		Name = "Row",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.fromScale(0.5, 0),
-		Size = UDim2.fromOffset(rowWidth, rowHeight),
-		ZIndex = Z,
-		Active = false,
-		Parent = pose,
-	})
-	label.AnchorPoint = Vector2.new(0, 1)
-	label.Position = UDim2.fromScale(0, 1)
-	label.Parent = row
-	number.AnchorPoint = Vector2.new(0, 1)
-	number.Position = UDim2.new(0, labelSize.X + CFG.labelGap, 1, 0)
-	number.Parent = row
-	-- M:198: the trough (ink at .6, a 4 px ink border, its 4 px lip) and the fill inside its border.
-	local top = rowHeight + CFG.rowGap
-	local lip: Frame = Create("Frame", {
-		Name = "Lip",
-		BackgroundColor3 = Theme.Colors.inkUI,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, top + b.lip),
-		Size = UDim2.fromOffset(size.X, b.height),
-		ZIndex = Z,
-		Active = false,
-		Parent = pose,
-	})
-	Theme.corner(b.height / 2, lip)
-	local trough: Frame = Create("Frame", {
-		Name = "Trough",
-		BackgroundColor3 = Theme.Colors.inkUI,
-		BackgroundTransparency = 1 - b.troughAlpha,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(0, top),
-		Size = UDim2.fromOffset(size.X, b.height),
-		ZIndex = Z,
-		Active = false,
-		Parent = pose,
-	})
-	Theme.corner(b.height / 2, trough)
-	MatchKit.inner(Theme.stroke(Theme.Colors.inkUI, b.border, trough))
-	local innerHeight = b.height - 2 * b.border
-	local fill: Frame = Create("Frame", {
-		Name = "Fill",
-		BackgroundColor3 = WHITE,
-		BorderSizePixel = 0,
-		Position = UDim2.fromOffset(b.border, b.border),
-		Size = UDim2.fromOffset(0, innerHeight),
-		ZIndex = Z,
-		Active = false,
-		Parent = trough,
-	})
-	Theme.foam(fill, {
-		radius = innerHeight / 2,
-		stroke = 0,
-		top = b.highlight,
-		fixedHeight = innerHeight,
-		colors = {
-			face = Palette.StickerGripTop,
-			faceEnd = Palette.StickerGripEnd,
-			top = Palette.StickerGripTop:Lerp(WHITE, b.highlightAlpha),
-		},
-	})
-	return { root = root, fit = fit, pose = pose, number = number, fill = fill, size = size }
-end
-
 -- Public
 
 function RespawnBar.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	local shade = vignette(ctx.root)
 	local shadeFade = Tweens.fadeGroup(shade)
-	local made = bar(ctx.root)
+	-- The bar (M:196-199), hidden.
+	local made = MatchKit.statusBar(ctx.root, CFG, {
+		name = "MatchRespawn",
+		label = Strings.matchHud.respawn.label,
+		numberSample = DIGITS_SAMPLE,
+		top = Palette.StickerGripTop,
+		faceEnd = Palette.StickerGripEnd,
+		z = Z,
+	})
+	local number = made.number :: TextLabel
 	local poser = Tweens.poser(made.pose)
 	local correction: ColorCorrectionEffect? = nil
 	local since: number? = nil -- os.clock() the bar came in (nil: hidden)
@@ -299,7 +201,7 @@ function RespawnBar.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		local enter = CFG.enter
 		poser:set(MatchHudFormat.trackPose(enter.frames, t, enter.ms, enter.curve, nil, reduced, FADE_MS))
 		local respawnAt = view.you.respawnAt :: number
-		made.number.Text = tostring(MatchHudFormat.respawnLeft(respawnAt, now))
+		number.Text = tostring(MatchHudFormat.respawnLeft(respawnAt, now))
 		local share = MatchHudFormat.respawnShare(respawnAt, now, MATCH.respawnSeconds)
 		made.fill.Size = UDim2.fromOffset(math.round(innerWidth * share), made.fill.Size.Y.Offset)
 		place()

@@ -69,6 +69,13 @@
 --                                      (Anim/Tweens.poseAt), the ReducedMotion way of Tweens.keyframes: only the
 --                                      fade moves, at most fadeMs
 --   clipText(text, maxWidth, measure) -> string   cut with "…" to fit (measure = Theme.textWidth in the game)
+-- Storm fix (owner 2026-10-26: "a bar of health that appears when you are in the storm"; UI/Match/StormBar):
+--   stormShows(view, now, position, storm) -> boolean   you are alive and your root (`position`, nil: no character)
+--                                      stands outside the safe circle of a storm that is up (MatchFormat.stormRadius:
+--                                      TDM, live, from stormStartSeconds; StormMath.inStorm around arena.centre)
+--   dockClear(screen, scale, touch) -> number   the desktop ability bar's height in base px (its bottom margin, the
+--                                      tallest button, its drop and the tag row, at the bar's own canvas scale); 0 on
+--                                      the phone layout (AbilityBarFormat.form: its buttons sit bottom-right)
 
 -- Requires
 
@@ -77,8 +84,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
+local StormMath = require(Shared.StormMath)
 local Strings = require(Shared.Strings)
 local Tweens = require(script.Parent.Parent.Anim.Tweens)
+local AbilityBarFormat = require(script.Parent.AbilityBarFormat)
+local MatchFormat = require(script.Parent.MatchFormat)
 
 -- Types
 
@@ -97,6 +107,8 @@ export type Context = {
 	touchAreas: () -> { Area }, -- touch input: the thumbstick zone and the touch buttons (base px); else none
 	toastsBeside: (key: string, object: GuiObject?) -> (), -- the toast column keeps clear of `object` (nil: drop it)
 	shared: { [string]: any }, -- one table per session, for the pieces (the card's rect: `cardRect`)
+	-- Storm fix: the local character's root position now (nil: no character; nil in most tests).
+	position: (() -> Vector3?)?,
 	-- Round 1 of the match screens: a looped sound the piece drives (SoundController.playLoop; nil: none).
 	loop: ((key: string) -> any)?,
 	-- End screens round A: "leave" (LOBBY: back now) or "again" (PLAY AGAIN: back and queued for `mode`); and the
@@ -372,6 +384,26 @@ function MatchHudFormat.respawnShows(view: any): boolean
 		and you.out ~= true
 		and type(you.respawnAt) == "number"
 		and LIVE_PHASES[view.matchPhase] == true
+end
+
+function MatchHudFormat.stormShows(view: any, now: number, position: Vector3?, storm: any): boolean
+	local you = if type(view) == "table" then view.you else nil
+	local centre = if type(view) == "table" and type(view.arena) == "table" then view.arena.centre else nil
+	if position == nil or type(you) ~= "table" or you.alive ~= true or typeof(centre) ~= "Vector3" then
+		return false
+	end
+	local radius = MatchFormat.stormRadius(view, now, storm)
+	return radius ~= nil and StormMath.inStorm(centre, radius, position)
+end
+
+function MatchHudFormat.dockClear(screen: Vector2, scale: number, touch: boolean): number
+	if AbilityBarFormat.form(screen.X, touch) ~= "desk" or not (finite(scale) and scale > 0) then
+		return 0
+	end
+	local desk = Config.UI.AbilityBar.desk
+	local tallest = math.max(desk.sizes.catch, desk.sizes.ult, desk.sizes.dash)
+	local px = desk.bottomPx + tallest + desk.dropPx + desk.tag.heightPx + desk.tag.gapPx
+	return px * AbilityBarFormat.canvasScale("desk", screen) / scale
 end
 
 function MatchHudFormat.respawnLeft(respawnAt: number, now: number): number

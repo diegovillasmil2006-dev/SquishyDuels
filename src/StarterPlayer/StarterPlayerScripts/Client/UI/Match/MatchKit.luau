@@ -15,6 +15,8 @@
 --                                      picture inside a rounded CanvasGroup (v1 §1.6)
 --   chip(spec) -> (Frame, number)      a pill / tag: ink border inside, a top -> end gradient, a role's text; its width
 --   ink / line / spaced                the intro's and the end screens' text (round 1 of the match screens, below)
+--   statusBar(parent, cfg, spec) -> StatusBar   the RESPAWNING bar (RespawnBar) and, in purple with no number, the
+--                                      storm fix's IN THE STORM! bar (StormBar)
 -- Every frame is Active = false (SD_MatchHud draws over the touch buttons: no frame here may take their taps).
 
 -- Services
@@ -79,6 +81,24 @@ export type ChipSpec = {
 	faceEnd: Color3,
 	z: number,
 	parent: Instance?,
+}
+
+export type StatusBarSpec = {
+	name: string,
+	label: string,
+	numberSample: string?, -- a number after the label, its widest text (it keeps one width); nil: no number
+	top: Color3, -- the fill's gradient
+	faceEnd: Color3,
+	z: number,
+}
+
+export type StatusBar = {
+	root: Frame, -- hidden; its UIScale "SD_Fit"
+	fit: UIScale,
+	pose: CanvasGroup,
+	number: TextLabel?,
+	fill: Frame,
+	size: Vector2,
 }
 
 -- Constants
@@ -366,6 +386,109 @@ function MatchKit.chip(spec: ChipSpec): (Frame, number)
 		chip.Parent = spec.parent
 	end
 	return chip, width
+end
+
+-- The RESPAWNING bar's build (M:196-199), hidden, under `parent`; `cfg` = Config.UI.Match.respawn (its sizes and
+-- text roles). The storm fix's IN THE STORM! bar is the same bar in purple, with no number.
+function MatchKit.statusBar(parent: GuiObject, cfg: any, spec: StatusBarSpec): StatusBar
+	local b = cfg.bar
+	local z = spec.z
+	local label, labelSize = MatchKit.label({ name = "Label", text = spec.label, role = cfg.labelRole, z = z })
+	local number: TextLabel?, numberSize = nil, Vector2.zero
+	if spec.numberSample then
+		number, numberSize = MatchKit.label({ name = "Number", text = spec.numberSample, role = cfg.numberRole, z = z })
+	end
+	local rowHeight = math.max(labelSize.Y, numberSize.Y)
+	local size = Vector2.new(cfg.width, rowHeight + cfg.rowGap + b.height + b.lip)
+	local root: Frame = Create("Frame", {
+		Name = spec.name,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(size.X, size.Y),
+		ZIndex = z,
+		Visible = false,
+		Active = false,
+		Parent = parent,
+	})
+	local fit: UIScale = Create("UIScale", { Name = "SD_Fit", Parent = root })
+	local pose: CanvasGroup = Create("CanvasGroup", {
+		Name = "Pose",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		ZIndex = z,
+		Active = false,
+		Parent = root,
+	})
+	-- M:197: the two texts side by side on their baseline (reading: bottoms aligned), centred.
+	local rowWidth = labelSize.X + (if number then cfg.labelGap + numberSize.X else 0)
+	local row: Frame = Create("Frame", {
+		Name = "Row",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.fromScale(0.5, 0),
+		Size = UDim2.fromOffset(rowWidth, rowHeight),
+		ZIndex = z,
+		Active = false,
+		Parent = pose,
+	})
+	label.AnchorPoint = Vector2.new(0, 1)
+	label.Position = UDim2.fromScale(0, 1)
+	label.Parent = row
+	if number then
+		number.AnchorPoint = Vector2.new(0, 1)
+		number.Position = UDim2.new(0, labelSize.X + cfg.labelGap, 1, 0)
+		number.Parent = row
+	end
+	-- M:198: the trough (ink at .6, a 4 px ink border, its 4 px lip) and the fill inside its border.
+	local top = rowHeight + cfg.rowGap
+	local lip: Frame = Create("Frame", {
+		Name = "Lip",
+		BackgroundColor3 = Theme.Colors.inkUI,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, top + b.lip),
+		Size = UDim2.fromOffset(size.X, b.height),
+		ZIndex = z,
+		Active = false,
+		Parent = pose,
+	})
+	Theme.corner(b.height / 2, lip)
+	local trough: Frame = Create("Frame", {
+		Name = "Trough",
+		BackgroundColor3 = Theme.Colors.inkUI,
+		BackgroundTransparency = 1 - b.troughAlpha,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(0, top),
+		Size = UDim2.fromOffset(size.X, b.height),
+		ZIndex = z,
+		Active = false,
+		Parent = pose,
+	})
+	Theme.corner(b.height / 2, trough)
+	MatchKit.inner(Theme.stroke(Theme.Colors.inkUI, b.border, trough))
+	local innerHeight = b.height - 2 * b.border
+	local fill: Frame = Create("Frame", {
+		Name = "Fill",
+		BackgroundColor3 = WHITE,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(b.border, b.border),
+		Size = UDim2.fromOffset(0, innerHeight),
+		ZIndex = z,
+		Active = false,
+		Parent = trough,
+	})
+	Theme.foam(fill, {
+		radius = innerHeight / 2,
+		stroke = 0,
+		top = b.highlight,
+		fixedHeight = innerHeight,
+		colors = {
+			face = spec.top,
+			faceEnd = spec.faceEnd,
+			top = spec.top:Lerp(WHITE, b.highlightAlpha),
+		},
+	})
+	return { root = root, fit = fit, pose = pose, number = number, fill = fill, size = size }
 end
 
 return MatchKit

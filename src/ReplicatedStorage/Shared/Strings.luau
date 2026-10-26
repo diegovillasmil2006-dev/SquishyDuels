@@ -669,6 +669,10 @@ local Strings = {
 		respawn = {
 			label = "RESPAWNING IN",
 		},
+		-- Storm fix (owner 2026-10-26): the health bar while you stand in the storm (UI/Match/StormBar) [P].
+		storm = {
+			label = "IN THE STORM!",
+		},
 		-- Round 1 of the match screens (LOADING SCREEN Y MATCH HUD S:437, S:986-994): the cover, the intro's lines
 		-- ({mode} = match.mode.*, upper case), a loading card, the load bar and the 3-2-1.
 		intro = {

@@ -9,7 +9,8 @@
 -- Round 1 of the match screens (2026-10-26): the Loading arena cover, the intro and the 3-2-1 ("intro", drawn last;
 -- ctx.loop gives it the crowd murmur's loop). End screens round A (2026-10-26): VICTORY! / DEFEAT, the results bar,
 -- the buttons and the scoreboard ("finish", drawn last; ctx.act = LOBBY / PLAY AGAIN through MatchLeave / MatchJoin,
--- ctx.gripTotal = GripController.total for its Grip bar). ctx
+-- ctx.gripTotal = GripController.total for its Grip bar). Storm fix (2026-10-26): the IN THE STORM! health bar and
+-- tint ("storm", UI/Match/StormBar, after the RESPAWNING bar; ctx.position = your character's root position). ctx
 -- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
 -- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
 -- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
@@ -69,6 +70,7 @@ local KillFeed = require(Client.UI.Match.KillFeed)
 local MatchEnd = require(Client.UI.Match.MatchEnd)
 local MatchIntro = require(Client.UI.Match.MatchIntro)
 local RespawnBar = require(Client.UI.Match.RespawnBar)
+local StormBar = require(Client.UI.Match.StormBar)
 local ControlsController = require(script.Parent.ControlsController)
 local GripController = require(script.Parent.GripController)
 local NetController = require(script.Parent.NetController)
@@ -113,6 +115,7 @@ local MatchHudController = {}
 -- The pieces, in draw order (a later one draws over an earlier one). Each later step adds its module's spec here.
 local PIECES: { MatchHudFormat.PieceSpec } = {
 	{ name = "respawn", new = RespawnBar.new }, -- M7
+	{ name = "storm", new = StormBar.new }, -- storm fix: IN THE STORM! health bar and tint
 	{ name = "card", new = DeathCard.new }, -- M7
 	{ name = "feed", new = KillFeed.new }, -- M6
 	{ name = "intro", new = MatchIntro.new }, -- round 1 of the match screens: cover, intro, 3-2-1
@@ -255,6 +258,11 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 			end
 		end,
 		gripTotal = GripController.total,
+		position = function(): Vector3?
+			local character = Players.LocalPlayer.Character
+			local root = if character then character:FindFirstChild("HumanoidRootPart") else nil
+			return if root and root:IsA("BasePart") then root.Position else nil
+		end,
 	}
 	for _, spec in specs do
 		local ok, piece = pcall(spec.new, ctx)

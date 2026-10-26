@@ -2993,6 +2993,7 @@ local UI = {
 			medal = false, -- M6 SQUISHED! medal: not built, Diego's kill banner (KillBannerController) is that moment
 			card = true, -- M7 "squished by" card
 			respawn = true, -- M7 RESPAWNING IN bar and vignette
+			storm = true, -- storm fix (owner 2026-10-26): IN THE STORM! health bar and purple tint (UI/Match/StormBar)
 			-- Round 1 of the match screens (2026-10-26): the Loading arena cover, the intro and the 3-2-1 SQUISH! (one
 			-- piece, UI/Match/MatchIntro; MatchController leaves the duel HUD's countdown off while it is on).
 			intro = true,
@@ -3177,6 +3178,14 @@ local UI = {
 				frames = { { at = 0, alpha = 0, y = 40, scale = 0.8 }, { at = 1, alpha = 1 } } :: { MotionPose },
 			},
 			scales = { 1, 0.9, 0.8, 0.7, 0.6 }, -- [P]
+		},
+		-- Storm fix (owner 2026-10-26: "a bar of health that appears when you are in the storm"; no storm in Diego's
+		-- designs): UI/Match/StormBar is the bar above in purple (sizes, motion and places: `respawn`), over the desktop
+		-- ability bar. The purple tint (Palette.MatchStormTint, a client ColorCorrectionEffect) fades in over tintMs;
+		-- the fill eases toward each server storm bar at easeRate per second (it comes sampleHz times a second) [P].
+		storm = {
+			tintMs = 400, -- [P] as the knocked-out vignette's fade
+			easeRate = 8, -- [P]
 		},
 		-- Match HUD M7: the knocked-out vignette (M:61: the radial picture over the whole screen, `margin` past the safe
 		-- area for the notch [P]) and backdrop-filter saturate(.4) brightness(.95) as a client ColorCorrectionEffect;

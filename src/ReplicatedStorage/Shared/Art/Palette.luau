@@ -564,6 +564,7 @@ local Palette = {
 	MatchCardHandle = Color3.fromHex("#E9E1FF"), -- M:180, M:184
 	MatchVignetteMid = Color3.fromHex("#8C286E"), -- M:61: rgba(140,40,110,.35) at 75%
 	MatchVignetteEdge = Color3.fromHex("#2E0E3A"), -- M:61: rgba(46,14,58,.72) at 100%
+	MatchStormTint = Color3.fromHex("#DCC8FF"), -- storm fix (owner 2026-10-26): the screen tint in the storm [P]
 
 	-- Pens3 phase 1: the base pen (lobby design v6, `K:n` = kit.json line n, approved by the owner). World only
 	-- (BaseService draws the fence and the sign; PenController the coin labels and the own sign's state).

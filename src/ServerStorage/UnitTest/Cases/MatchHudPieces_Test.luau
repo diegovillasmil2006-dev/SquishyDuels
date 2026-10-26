@@ -10,7 +10,10 @@
 --     pill, no info row), never for your own squish or the final K.O.; its rect goes to ctx.shared; it leaves at your
 --     respawn;
 --   * the bar: while you wait, its number = the whole seconds left; the vignette and the client ColorCorrectionEffect
---     come with it and go at your respawn (with ui.pop); nothing in Lighting is left behind.
+--     come with it and go at your respawn (with ui.pop); nothing in Lighting is left behind;
+--   * the storm bar (storm fix, owner 2026-10-26): while you stand in the TDM storm, IN THE STORM! with a fill = the
+--     health the storm leaves you and the purple tint in Lighting; none with no storm, knocked out or with no
+--     character; both go back inside the safe circle.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -23,6 +26,7 @@ local NOW = 1.8e9
 local YOU = 4242
 local CORRECTION_NAME = "SD_MatchKnockedOut"
 local BLUR_NAME = "SD_MatchIntroBlur" -- round 1 of the match screens: the intro's blur
+local STORM_TINT = "SD_MatchStorm" -- the storm fix: the storm's purple tint
 
 return function(t: Context)
 	local expect = t.expect
@@ -31,6 +35,7 @@ return function(t: Context)
 	local KillFeed = t.requireClient("UI/Match/KillFeed")
 	local DeathCard = t.requireClient("UI/Match/DeathCard")
 	local RespawnBar = t.requireClient("UI/Match/RespawnBar")
+	local StormBar = t.requireClient("UI/Match/StormBar")
 	local MatchIntro = t.requireClient("UI/Match/MatchIntro")
 	local MatchEnd = t.requireClient("UI/Match/MatchEnd")
 	local Config = t.requireShared("Config")
@@ -39,14 +44,14 @@ return function(t: Context)
 
 	local function clearLighting()
 		for _, child in Lighting:GetChildren() do
-			if child.Name == CORRECTION_NAME or child.Name == BLUR_NAME then
+			if child.Name == CORRECTION_NAME or child.Name == BLUR_NAME or child.Name == STORM_TINT then
 				child:Destroy()
 			end
 		end
 	end
 
 	-- Builds `module`'s piece for `state` and plays the state as the controller does; returns what the test needs.
-	local function run(module: any, state: string, compact: boolean?): any
+	local function run(module: any, state: string, compact: boolean?, position: (() -> Vector3?)?): any
 		local fixture = assert(Fixtures.build(state, NOW, { youId = YOU, youName = "Tester" }), state)
 		local root = Instance.new("Frame")
 		root.Size = UDim2.fromOffset(1440, 810)
@@ -80,6 +85,7 @@ return function(t: Context)
 			end,
 			toastsBeside = function(_key: string, _object: GuiObject?) end,
 			shared = {},
+			position = position,
 		}
 		local piece = module.new(ctx)
 		piece:update(fixture.view, NOW)
@@ -172,16 +178,20 @@ return function(t: Context)
 	end)
 
 	t.test("every piece plays every fixture state without an error and leaves nothing behind", function()
-		for _, module in { RespawnBar, DeathCard, KillFeed, MatchIntro, MatchEnd } do
+		local far = function(): Vector3?
+			return Vector3.new(1e5, 3, 0) -- outside every safe circle: the storm bar shows where it can
+		end
+		for _, module in { RespawnBar, StormBar, DeathCard, KillFeed, MatchIntro, MatchEnd } do
 			for _, state in Fixtures.STATES do
 				for _, compact in { false, true } do
-					local r = run(module, state, compact)
+					local r = run(module, state, compact, far)
 					expect.equal(finish(r), 0)
 				end
 			end
 		end
 		expect.equal(Lighting:FindFirstChild(CORRECTION_NAME), nil)
 		expect.equal(Lighting:FindFirstChild(BLUR_NAME), nil)
+		expect.equal(Lighting:FindFirstChild(STORM_TINT), nil)
 	end)
 
 	t.test("feed: your three in a row read FIRST BLOOD, DOUBLE!, TRIPLE!; no splat for your own", function()
@@ -304,5 +314,49 @@ return function(t: Context)
 		local shown = (r.root:FindFirstChild("MatchRespawn") :: Frame).Visible
 		finish(r)
 		expect.equal(shown, false)
+	end)
+
+	t.test(
+		"storm: the bar (fill = the health left) and the tint while you stand in the storm; gone back inside",
+		function()
+			local fixture = assert(Fixtures.build("tdm_storm", NOW, { youId = YOU, youName = "Tester" }))
+			local centre = fixture.view.arena.centre
+			local where = centre + Vector3.new(10000, 3, 0) -- far outside the safe circle
+			local r = run(StormBar, "tdm_storm", false, function(): Vector3?
+				return where
+			end)
+			local ok, err = pcall(function()
+				local bar = assert(r.root:FindFirstChild("MatchStorm")) :: Frame
+				expect.equal(bar.Visible, true)
+				local label = assert(bar:FindFirstChild("Label", true)) :: TextLabel
+				expect.equal(label.Text, Strings.matchHud.storm.label)
+				local fill = assert(bar:FindFirstChild("Fill", true)) :: Frame
+				local cfg = Config.UI.Match.respawn
+				local inner = cfg.width - 2 * cfg.bar.border
+				expect.equal(fill.Size.X.Offset, math.round(inner * (1 - r.fixture.view.you.stormBar)))
+				expect.truthy(Lighting:FindFirstChild(STORM_TINT) ~= nil)
+				where = centre + Vector3.new(0, 3, 0) -- back in the safe circle
+				r.piece:update(r.fixture.view, NOW)
+				expect.equal(bar.Visible, false)
+				expect.equal(Lighting:FindFirstChild(STORM_TINT), nil)
+			end)
+			finish(r)
+			expect.equal(Lighting:FindFirstChild(STORM_TINT), nil)
+			if not ok then
+				error(err, 0)
+			end
+		end
+	)
+
+	t.test("storm: hidden with no storm, while knocked out and with no character", function()
+		for _, state in { "ffa_live", "tdm_knockedOutStorm", "tdm_storm" } do
+			local far = if state == "tdm_storm" then nil else Vector3.new(1e5, 3, 0)
+			local r = run(StormBar, state, false, function(): Vector3?
+				return far
+			end)
+			local shown = (r.root:FindFirstChild("MatchStorm") :: Frame).Visible
+			finish(r)
+			expect.equal(shown, false)
+		end
 	end)
 end

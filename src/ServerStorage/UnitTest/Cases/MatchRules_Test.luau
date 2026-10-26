@@ -348,6 +348,7 @@ return function(t: Context)
 	-- Storm ------------------------------------------------------------------------------------------------------------
 
 	t.test("TDM storm: barFillSeconds in the storm is a storm K.O. the other team scores; inside it drains", function()
+		expect.equal(M.Storm.barFillSeconds, 10) -- owner 2026-10-26: the storm knocks you out slowly (was 3 s)
 		local s, a = live("tdm", TDM4)
 		local start = a + M.Storm.stormStartSeconds
 		local inStorm = { [3] = true }
@@ -355,9 +356,9 @@ return function(t: Context)
 		s = step(s, { kind = "storm", inStorm = inStorm }, start)
 		s = step(s, { kind = "storm", inStorm = inStorm }, start + 2)
 		expect.near(MatchRules.participant(s, 3).stormBar, 2 / M.Storm.barFillSeconds, 1e-6)
-		local drained = start + 2 + M.Storm.barDrainSeconds / 3
+		local drained = start + 2 + M.Storm.barDrainSeconds / M.Storm.barFillSeconds -- drains half of it
 		s = step(s, { kind = "storm", inStorm = {} }, drained)
-		expect.near(MatchRules.participant(s, 3).stormBar, 2 / M.Storm.barFillSeconds - 1 / 3, 1e-6)
+		expect.near(MatchRules.participant(s, 3).stormBar, 1 / M.Storm.barFillSeconds, 1e-6)
 		s = step(s, { kind = "storm", inStorm = {} }, drained + M.Storm.barDrainSeconds) -- empty again
 		expect.equal(MatchRules.participant(s, 3).stormBar, 0)
 		local again = drained + M.Storm.barDrainSeconds + 1
