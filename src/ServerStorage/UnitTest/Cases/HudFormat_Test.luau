@@ -1632,6 +1632,23 @@ return function(t: Context)
 		expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 400), 400)
 		expect.equal(HudFormat.barWidth(COLUMN.searchWidth, -5), 0)
 		expect.equal(HudFormat.barWidth(COLUMN.searchWidth, 0 / 0), COLUMN.searchWidth)
+		-- 2026-10-26: whole px, so a bar as wide as its room still fits once its size is a Vector2 (the Galaxy S22's
+		-- 552.54 px span: centred under Roblox's buttons before).
+		local low, high = 325, 877.5384615384615
+		local width = HudFormat.barWidth(COLUMN.searchWidth, high - low)
+		expect.equal(width, 552)
+		local canvas = Vector2.new(1041.5384615384614, 520)
+		local blockers = {
+			{ x = 0, y = 0, w = low - COLUMN.rowGap, h = 200 },
+			{ x = high + COLUMN.rowGap, y = 0, w = 100, h = 200 },
+		}
+		local place = HudFormat.ctaPlacement({
+			canvas = canvas,
+			size = Vector2.new(width, COLUMN.barHeight),
+			blockers = blockers,
+		})
+		expect.equal(place.fits, true)
+		expect.truthy(place.x >= low - 1e-6)
 		expect.deepEqual(HudFormat.barParts(COLUMN.searchWidth), { dots = true, line2 = true })
 		expect.deepEqual(HudFormat.barParts(search.dropBelow), { dots = true, line2 = true })
 		expect.deepEqual(HudFormat.barParts(search.dropBelow - 1), { dots = false, line2 = false })

@@ -67,6 +67,7 @@ local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
 local Create = require(Client.UI.Create)
 local HudFormat = require(Client.UI.HudFormat)
+local Layout = require(Client.UI.Layout)
 local OnboardingFormat = require(Client.UI.OnboardingFormat)
 local Scheduler = require(Client.Anim.Scheduler)
 local Theme = require(Client.UI.Theme)
@@ -506,6 +507,13 @@ layoutCard = function()
 	local showsGotIt = gotIt ~= nil and gotIt.root.Visible
 	local button = if showsGotIt then gotIt else skipButton
 	local scale = UIController.scale()
+	-- 2026-10-26 (owner: 44 px on phones): Got it's touch box keeps the touch floor at any scale (its chip face stays).
+	if gotIt then
+		local tall = UDim2.new(gotIt.root.Size.X, UDim.new(0, Layout.touchBase(TOUCH.minTarget, scale)))
+		if gotIt.root.Size ~= tall then
+			gotIt.root.Size = tall
+		end
+	end
 	local measured = if button and scale > 0 then button.root.AbsoluteSize.X / scale else 0
 	local textScale = HudController.textScale()
 	local buttonWidth = if measured > 0

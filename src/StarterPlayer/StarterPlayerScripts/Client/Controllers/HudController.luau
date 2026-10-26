@@ -1292,6 +1292,15 @@ local function layoutCta(canvas: Vector2, compact: boolean)
 		setIfChanged(bar.root, "Size", UDim2.fromOffset(searchWidth, COLUMN.barHeight))
 		setIfChanged(bar.dots, "Visible", parts.dots)
 		setIfChanged(bar.line2, "Visible", parts.line2)
+		-- 2026-10-26 (owner: 44 px on phones): the X in its slot keeps a touch target at any scale (Layout.touchBase;
+		-- the design's 52 base px at 0.85 and up).
+		local side = Layout.touchBase(Config.UI.Touch.minTarget, UIController.scale())
+		setIfChanged(bar.cancelSlot, "Size", UDim2.fromOffset(side, side))
+		for _, child in bar.cancelSlot:GetChildren() do
+			if child:IsA("GuiButton") then
+				setIfChanged(child, "Size", UDim2.fromOffset(side, side))
+			end
+		end
 	end
 	local size = areaSize(buttonWidth, s)
 	local place = HudFormat.ctaPlacement({ canvas = canvas, size = size, blockers = blockers, top = origin.ctaTop })
@@ -2127,6 +2136,24 @@ local function buildSearch(c: Cleanup.Cleanup, parent: Instance): SearchBar
 		Parent = line2,
 	}, "Small", nil, Theme.Colors.ink2)
 	Create("UIPadding", { PaddingLeft = UDim.new(0, spec.playersPad), Parent = players }) -- H:142 margin-left 6
+	-- 2026-10-26: on a narrow bar (small phones) the players line after the 12 slots ran under the X: it hides while
+	-- the second line has no room for it (the slots still show the count).
+	local line2List = line2:FindFirstChildOfClass("UIListLayout")
+	local function fitPlayers()
+		if line2List == nil then
+			return
+		end
+		local need = line2List.AbsoluteContentSize.X
+		if not players.Visible then
+			need += players.AbsoluteSize.X + line2List.Padding.Offset * UIController.scale()
+		end
+		setIfChanged(players, "Visible", need <= line2.AbsoluteSize.X + 1)
+	end
+	if line2List then
+		c:add(line2List:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fitPlayers))
+	end
+	c:add(line2:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitPlayers))
+	c:add(players:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitPlayers))
 	local cancelSlot: Frame = Create("Frame", {
 		Name = "CancelSlot",
 		BackgroundTransparency = 1,

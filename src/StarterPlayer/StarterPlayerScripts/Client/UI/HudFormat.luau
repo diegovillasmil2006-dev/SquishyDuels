@@ -1160,12 +1160,14 @@ function HudFormat.origins(compact: boolean, corner: Corner?): Origins
 end
 
 -- UI FINAL R4 (plan R4 "compact widths"): the search bar's width: its design width, at most the free span it
--- has (the span the HUD groups leave at its band, or the canvas less its edges); never below 0.
+-- has (the span the HUD groups leave at its band, or the canvas less its edges); never below 0. Whole px: a fractional
+-- span read back through a Vector2 (float32) came out a hair wider, so ctaPlacement found no fit and centred the bar
+-- under Roblox's buttons on a small phone (2026-10-26).
 function HudFormat.barWidth(design: number, span: number): number
 	if not (isNumber(design) and isNumber(span)) then
 		return math.max(0, if isNumber(design) then design else 0)
 	end
-	return math.max(0, math.min(design, span))
+	return math.max(0, math.floor(math.min(design, span)))
 end
 
 -- UI FINAL R4: whether a search bar `width` wide keeps its dots and its second line (plan R4: under
