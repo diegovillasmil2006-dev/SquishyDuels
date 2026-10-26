@@ -8,7 +8,8 @@
 -- Names (IconGlyph.NAMES): squishies, boxes, shop, quests, daily, settings, duel (alias swords), change, clock,
 -- upgrade, inspect; UI overhaul (2026-10-11): close (the windows' chunky X, alias x) and check (a claimed or owned
 -- state).
--- Access2 (2026-10-18): highway (the HUD's HIGHWAY stand-in button under Settings).
+-- Access2 (2026-10-18): highway (the HUD's HIGHWAY stand-in button under Settings). INCOME step 2 (2026-10-26): income
+-- (the HUD's INCOME sticker: the coin picture, img.coin, until Diego draws one).
 -- Tones: "light" = a white glyph with an InkUI outline and InkUI details (on an accent face, like the design's outlined
 -- icons); "dark" = an InkUI glyph with Frosting details and no outline (on Frosting); "disabled" = DisabledText with
 -- DisabledFace details.
@@ -106,6 +107,7 @@ local SLOTS: { [string]: string } = {
 	close = "img.icon.close",
 	check = "img.icon.check",
 	highway = "img.nav.highway", -- access2
+	income = "img.coin", -- INCOME step 2: the coin picture until Diego draws the INCOME sticker
 }
 local ALIASES: { [string]: string } = { swords = "duel", x = "close" }
 
@@ -235,6 +237,11 @@ local GLYPHS: { [string]: { Part } } = {
 		part(0.5, 0.7, 0.44, 0.46, 0, 0.12),
 		part(0.5, 0.43, 0.56, 0.56, 45, 0.12),
 	},
+	-- INCOME step 2 (2026-10-26): a coin with a rim (drawn only while img.coin has no id).
+	income = {
+		part(0.5, 0.5, 0.86, 0.86, 0, 0.5),
+		{ x = 0.5, y = 0.5, w = 0.56, h = 0.56, corner = 0.5, detail = true, ring = true },
+	},
 }
 
 local NAMES: { string } = {
@@ -252,6 +259,7 @@ local NAMES: { string } = {
 	"close",
 	"check",
 	"highway", -- access2
+	"income", -- INCOME step 2
 }
 
 -- Module table

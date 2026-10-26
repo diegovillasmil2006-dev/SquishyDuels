@@ -25,7 +25,8 @@
 --   when the camera comes back.
 -- * Coin label (K:4266-4270): one BillboardGui per walker (built with it, pooled with it), labelSize studs, its bottom
 --   labelLift over the model's top, the coin icon (AssetTable img.coin) and "+{coins}/s" (Strings pen.rate, the whole
---   Coins a second of PenMath.itemRate) in the display font, white with the PenLabelStroke outline, both labelInner of
+--   Coins a second of PenMath.itemRate x the base's SD_PenIncome boost: INCOME step 2) in the display font, white with
+--   the PenLabelStroke outline, both labelInner of
 --   its height and measured with Theme.textBounds (no AutomaticSize). It does not hop (the design's sprite rides the
 --   walker, not its body). MaxDistance labelMaxStuds, labelMaxStudsLow when MeshQuality.forCamera() is "Low". Its text
 --   changes only on a sync.
@@ -235,6 +236,7 @@ local ATTR_PLOT_MODEL = WorldLayout.Attributes.Plot
 local ATTR_PLOT = "SD_Plot" -- the local player's plot (BaseService)
 local ATTR_SPOTS = "SD_PenSpots"
 local ATTR_PEN = "SD_Pen"
+local ATTR_INCOME = "SD_PenIncome" -- INCOME step 2: the owner's boost on the coin labels
 local ATTR_PRICE = "SD_Price"
 local FOLDER_NAME = "SD_PenClient"
 local PEN_FOLDER = "Pen" -- BaseService's folder on a plot model
@@ -352,8 +354,8 @@ local function lookKey(look: PenMath.Look): string
 end
 
 -- The coin label's text and its measured layout (see the header).
-local function setLabel(w: Walker, look: PenMath.Look)
-	local text = PenController.labelText(look)
+local function setLabel(w: Walker, look: PenMath.Look, boost: any)
+	local text = PenController.labelText(look, boost)
 	w.gui.MaxDistance = maxDistance()
 	if w.text.Text == text then
 		return
@@ -523,7 +525,7 @@ local function syncShelf(pen: Pen)
 				w.phase = rnd() * (if loop then loop.length else 1) -- P3D:403: from a random point in its loop
 				pen.shelf[slot] = w
 			end
-			setLabel(w, look)
+			setLabel(w, look, pen.model:GetAttribute(ATTR_INCOME))
 			w.look = look
 			w.rest, w.labelAt = rest, labelAt
 			w.lastLift = math.huge -- the label is written at once
@@ -565,7 +567,7 @@ local function sync(pen: Pen)
 				w.x, w.z, w.yaw, w.tx, w.tz = walk.x, walk.z, walk.yaw, nil, nil
 				w.wait, w.speed, w.hop, w.lastLift = walk.wait, walk.speed, rnd(), 0
 			end
-			setLabel(w, look)
+			setLabel(w, look, pen.model:GetAttribute(ATTR_INCOME))
 			w.look, w.index = look, index
 			table.insert(kept, w)
 			place(pen, w, 0)
@@ -683,7 +685,7 @@ local function watch(model: Instance)
 		shelfCentre = frame.Position,
 	}
 	pens[pen.plot] = pen
-	for _, name in { ATTR_SPOTS, ATTR_PEN, ATTR_SHELF } do
+	for _, name in { ATTR_SPOTS, ATTR_PEN, ATTR_SHELF, ATTR_INCOME } do
 		pc:add(model:GetAttributeChangedSignal(name):Connect(function()
 			queueSync(pen)
 		end))
@@ -1305,9 +1307,10 @@ function PenController.formColor(color: Color3, form: number, share: number): Co
 	return nil
 end
 
--- "+{coins}/s": the whole Coins a second of a look.
-function PenController.labelText(look: any): string
-	return Strings.format(Strings.pen.rate, { coins = Format.coins(math.floor(PenMath.itemRate(look))) })
+-- "+{coins}/s": the whole Coins a second of a look, x the base's INCOME boost (`boost`: SD_PenIncome; 1 when not a number).
+function PenController.labelText(look: any, boost: any): string
+	local x = if type(boost) == "number" and boost > 0 and boost < math.huge then boost else 1
+	return Strings.format(Strings.pen.rate, { coins = Format.coins(math.floor(PenMath.itemRate(look) * x)) })
 end
 
 -- The coin label's insides for a text `aspect` (its width over its height): the icon and the text labelInner of the

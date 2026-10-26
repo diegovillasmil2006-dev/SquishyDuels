@@ -9,8 +9,11 @@ local GearShop = {
 	tabs = {
 		shop = { top = "StickerPinkTop", bottom = "StickerPinkEnd" },
 		gear = { top = "StickerGoldTop", bottom = "StickerGoldEnd" },
+		income = { top = "StickerMintTop", bottom = "StickerMintEnd" }, -- INCOME step 2
 		rotation = 90,
 	},
+	-- INCOME step 2: the INCOME cards' tile colours (Palette tokens; UI/IncomeFormat), SQUISHY COINS and ALL EARNINGS.
+	income = { colors = { coins = "Lemon", all = "UIMint" } },
 	-- A gear card: the pass card's look (Config.UI.Shop.rows) a little taller, its text stacked over its price chip
 	-- (the long gear names need the room: "Starbeam Trebuchet ★7"), the chip chipGap under the line.
 	card = { height = 140, chipGap = 6 },

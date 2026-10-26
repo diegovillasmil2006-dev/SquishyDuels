@@ -147,6 +147,10 @@ return function(t: Context)
 			PenController.labelText(big),
 			Strings.format(Strings.pen.rate, { coins = Format.coins(math.floor(PenMath.itemRate(big))) })
 		)
+		-- INCOME step 2: the base's SD_PenIncome boost (1 when missing): 640 x 1.07 x 1.05 = 719.04.
+		local dragon = { kind = "dragon", form = 0, level = 1, coat = 0 }
+		expect.equal(PenController.labelText(dragon, 1.07 * 1.05), "+719/s")
+		expect.equal(PenController.labelText(dragon, nil), "+640/s")
 	end)
 
 	t.test("labelLayout: icon and text labelInner of the label's height, never wider than the label", function()

@@ -26,8 +26,13 @@
 --   bought), then the gear's throw power. A tap buys (GearBuy with the shown price, one at a time: the chip reads …
 --   meanwhile); short of Coins the chip greys, the line says how many are missing and a tap shakes the coin pill
 --   (HudController.denyCoins); all bought = the lilac MAX chip. open({tab = "gear"}) opens on GEAR.
+-- * INCOME step 2 (2026-10-26; owner "An INCOME tab in the shop"; [P] a stand-in until Diego draws it): a third tab
+--   INCOME: INCOME over 2 gear cards (UI/IncomeFormat: SQUISHY COINS and ALL EARNINGS, the tile the level it buys, the
+--   line the boost now -> after); a tap sends PenBuyIncome the same way. open({tab = "income"}) opens on INCOME (the
+--   HUD's 6th sticker); an open without a tab shows SHOP.
 -- Stable names: Shop_CloseButton, Shop_BuyButton (the featured BUY), Shop_Pass_<key>, Shop_Pack_<key>,
--- Shop_Bundle_<key>Button (a pack's price bar), Shop_Tabs (Tab_shop / Tab_gear), Shop_Gear_<line>.
+-- Shop_Bundle_<key>Button (a pack's price bar), Shop_Tabs (Tab_shop / Tab_gear / Tab_income), Shop_Gear_<line>
+-- (Shop_Gear_coins / Shop_Gear_all on INCOME).
 
 -- Services
 
@@ -52,6 +57,7 @@ local CoinIcon = require(Client.UI.Components.CoinIcon)
 local Create = require(Client.UI.Create)
 local GearFormat = require(Client.UI.GearFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
+local IncomeFormat = require(Client.UI.IncomeFormat) -- INCOME step 2
 local Layout = require(Client.UI.Layout)
 local MotionTrack = require(Client.UI.MotionTrack)
 local SegmentedTabs = require(Client.UI.Components.SegmentedTabs)
@@ -75,6 +81,7 @@ type PackCard = { key: string, root: Frame, rise: Frame, buy: Button.Button, rea
 -- Gear step 3: a gear card; its tile is rebuilt when the shown tier changes, its stars when their count does.
 type GearCard = {
 	line: string,
+	remote: string, -- INCOME step 2: GearBuy, or PenBuyIncome on the INCOME tab
 	root: TextButton,
 	rise: Frame,
 	content: Frame,
@@ -125,7 +132,8 @@ local BUTTON_LIP = Config.UI.Sticker.lip.button
 local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives this
 local WHITE = Color3.new(1, 1, 1)
 local REMOTE_GEAR = "GearBuy" -- gear step 3
-local PAGE_SHOP, PAGE_GEAR = "shop", "gear"
+local REMOTE_INCOME = "PenBuyIncome" -- INCOME step 2
+local PAGE_SHOP, PAGE_GEAR, PAGE_INCOME = "shop", "gear", "income"
 local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result
 local GEAR_CARD = GearShop.card
 local GEAR_TILE = GearShop.tile
@@ -166,6 +174,9 @@ local gearCards: { GearCard } = {}
 local gearPower: TextLabel? = nil
 local page = PAGE_SHOP
 local gearBusy: string? = nil
+-- INCOME step 2: the INCOME page and its 2 cards (gearBusy holds their line while one is bought: no line is shared).
+local incomePage: Frame? = nil
+local incomeCards: { GearCard } = {}
 
 -- A design surface as a foam face (`top` -> `bottom`, the ink border inside the box, the inset highlight, the lip).
 local function sticker(
@@ -551,6 +562,15 @@ local function paintGear()
 	if power then
 		power.Text = Strings.format(Strings.gear.power, { x = GearFormat.powerText(gear) })
 	end
+	-- INCOME step 2: the INCOME cards from the pen's levels.
+	local incomeViews =
+		IncomeFormat.cards(StateController.get("pen"), if type(coins) == "number" then coins else nil, gearBusy)
+	for index, card in incomeCards do
+		local view = incomeViews[index]
+		if view then
+			paintGearCard(card, view)
+		end
+	end
 end
 
 -- A tap on a gear card (see the header): buy the shown step, or say why not.
@@ -571,11 +591,14 @@ local function buyGear(card: GearCard)
 	gearBusy = card.line
 	ShopController.refresh()
 	task.spawn(function()
-		local result = NetController.invokeAsync(REMOTE_GEAR, card.line, view.price)
+		local result = NetController.invokeAsync(card.remote, card.line, view.price)
 		gearBusy = nil
 		if result.ok then
 			SoundController.play(SOUND_PURCHASE)
-			UIController.toast(Strings.format(Strings.gear.bought, { name = view.name }), "success")
+			local bought = if card.remote == REMOTE_INCOME
+				then Strings.format(Strings.income.bought, { name = view.name, level = view.tier })
+				else Strings.format(Strings.gear.bought, { name = view.name })
+			UIController.toast(bought, "success")
 			MotionTrack.play(card.rise, CARD_IN.frames :: any, PASSES.rise.ms, 0, CARD_IN.curve)
 		else
 			UIController.toast(Strings.reasonText(result.reason), "warn")
@@ -585,7 +608,16 @@ local function buyGear(card: GearCard)
 end
 
 -- A gear card (the pass card's face, H:341, GEAR_CARD.height tall): the tile left, the text stack (name, line, chip).
-local function buildGearCard(c: Cleanup.Cleanup, parent: Instance, line: string, order: number, width: number)
+-- INCOME step 2: `remote` buys it, `list` keeps it (gearCards or incomeCards).
+local function buildGearCard(
+	c: Cleanup.Cleanup,
+	parent: Instance,
+	line: string,
+	order: number,
+	width: number,
+	remote: string,
+	list: { GearCard }
+)
 	local root: TextButton = Create("TextButton", {
 		Name = "Shop_Gear_" .. line,
 		Text = "",
@@ -645,6 +677,7 @@ local function buildGearCard(c: Cleanup.Cleanup, parent: Instance, line: string,
 	local maxChip, maxText = gearChip(c, text, "Max", Palette.StickerDisabledTop, Palette.StickerDisabledEnd, true)
 	local card: GearCard = {
 		line = line,
+		remote = remote,
 		root = root,
 		rise = rise,
 		content = content,
@@ -668,13 +701,25 @@ local function buildGearCard(c: Cleanup.Cleanup, parent: Instance, line: string,
 		buyGear(card)
 	end))
 	root.Parent = parent
-	table.insert(gearCards, card)
+	table.insert(list, card)
 end
 
--- The GEAR page, in the right column's place (H:337's column: the head, the 2 x 2 cards, the power line).
-local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, width: number, height: number): Frame
+-- A page of gear cards in the right column's place (H:337's column: the head, the cards 2 a row). INCOME step 2: the
+-- GEAR and INCOME pages.
+local function buildCardPage(
+	c: Cleanup.Cleanup,
+	body: Instance,
+	left: number,
+	width: number,
+	height: number,
+	id: string,
+	head: string,
+	lines: { string },
+	remote: string,
+	list: { GearCard }
+): Frame
 	local pageFrame: Frame = Create("Frame", {
-		Name = "GearPage",
+		Name = if id == PAGE_GEAR then "GearPage" else "IncomePage",
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(left, 0),
 		Size = UDim2.fromOffset(width, height),
@@ -682,9 +727,9 @@ local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, w
 		Parent = body,
 	})
 	Theme.list(Enum.FillDirection.Vertical, SHOP.sections.gap, pageFrame, Enum.HorizontalAlignment.Left)
-	sectionHead(pageFrame, "GearHead", Strings.gear.section, 1)
+	sectionHead(pageFrame, if id == PAGE_GEAR then "GearHead" else "IncomeHead", head, 1)
 	local cellW = math.floor((width - SHOP.sections.cellGap) / PASSES.columns)
-	local rows = math.ceil(4 / PASSES.columns)
+	local rows = math.ceil(#lines / PASSES.columns)
 	local gridH = rows * (GEAR_CARD.height + CARD_LIP) + (rows - 1) * Layout.lipGap(SHOP.sections.cellGap, CARD_LIP)
 	local grid: Frame = Create("Frame", {
 		Name = "Cards",
@@ -700,9 +745,17 @@ local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, w
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Parent = grid,
 	})
-	for index, line in { "held", "platform", "arm", "armor" } do
-		buildGearCard(c, grid, line, index, cellW)
+	for index, line in lines do
+		buildGearCard(c, grid, line, index, cellW, remote, list)
 	end
+	return pageFrame
+end
+
+-- The GEAR page: its 2 x 2 cards, then the power line.
+local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, width: number, height: number): Frame
+	local lines = { "held", "platform", "arm", "armor" }
+	local pageFrame =
+		buildCardPage(c, body, left, width, height, PAGE_GEAR, Strings.gear.section, lines, REMOTE_GEAR, gearCards)
 	local powerKind = roleKind(GearShop.powerRole)
 	local power = Theme.label({
 		Name = "Power",
@@ -719,21 +772,24 @@ local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, w
 	return pageFrame
 end
 
--- Shows a page and paints the picked tab (the cards rise in on GEAR, like the shop's on open).
+-- Shows a page and paints the picked tab (the cards rise in on GEAR and INCOME, like the shop's on open).
 local function setPage(id: string)
-	page = if id == PAGE_GEAR then PAGE_GEAR else PAGE_SHOP
+	page = if id == PAGE_GEAR or id == PAGE_INCOME then id else PAGE_SHOP
 	if shopPage then
 		shopPage.Visible = page == PAGE_SHOP
 	end
 	if gearPage then
 		gearPage.Visible = page == PAGE_GEAR
 	end
+	if incomePage then
+		incomePage.Visible = page == PAGE_INCOME
+	end
 	local picker = tabs
 	if picker and picker:selected() ~= page then
 		picker:select(page)
 	end
-	if page == PAGE_GEAR then
-		for index, card in gearCards do
+	if page ~= PAGE_SHOP then
+		for index, card in if page == PAGE_GEAR then gearCards else incomeCards do
 			MotionTrack.play(
 				card.rise,
 				CARD_IN.frames :: any,
@@ -745,7 +801,8 @@ local function setPage(id: string)
 	end
 end
 
--- The two tabs (Diego's picker well), names only (setShort: no chips), sized for the band's extra slot.
+-- The tabs (Diego's picker well; INCOME step 2: SHOP | GEAR | INCOME), names only (setShort: no chips), sized for the
+-- band's extra slot.
 local function buildTabs(c: Cleanup.Cleanup): SegmentedTabs.SegmentedTabs
 	local function stops(pair: { top: string, bottom: string }): { SegmentedTabs.Stop }
 		return {
@@ -771,6 +828,14 @@ local function buildTabs(c: Cleanup.Cleanup): SegmentedTabs.SegmentedTabs
 				chip = "",
 				short = Strings.gear.tabGear,
 				stops = stops(spec.gear),
+				rotation = spec.rotation,
+			},
+			{
+				id = PAGE_INCOME,
+				label = Strings.income.tab,
+				chip = "",
+				short = Strings.income.tab,
+				stops = stops(spec.income),
 				rotation = spec.rotation,
 			},
 		},
@@ -1505,6 +1570,18 @@ local function build(parent: Instance): GuiObject
 	end
 	shopPage = column -- gear step 3: the SHOP tab's page; GEAR's sits in the same place
 	gearPage = buildGearPage(c, body, columnLeft, columnW, bodyH)
+	incomePage = buildCardPage( -- INCOME step 2
+		c,
+		body,
+		columnLeft,
+		columnW,
+		bodyH,
+		PAGE_INCOME,
+		Strings.income.section,
+		{ "coins", "all" },
+		REMOTE_INCOME,
+		incomeCards
+	)
 	setPage(page)
 
 	panel = root
@@ -1539,8 +1616,8 @@ function ShopController.refresh()
 	end
 end
 
--- Opens the shop ({tab = "gear"} on the GEAR tab, gear step 3; other params are ignored). Returns UIController.open's
--- result.
+-- Opens the shop ({tab = "gear"} on the GEAR tab, gear step 3; {tab = "income"} on INCOME, INCOME step 2; else SHOP).
+-- Returns UIController.open's result.
 function ShopController.open(params: { [string]: any }?): boolean
 	return UIController.open(SCREEN, params)
 end
@@ -1568,10 +1645,12 @@ function ShopController.debugState(): { [string]: any }
 		page = page, -- gear step 3
 		gear = (function(): { any }
 			local list = {}
-			for _, card in gearCards do
-				local view = card.view
-				if view then
-					table.insert(list, { line = card.line, name = view.name, state = view.state })
+			for _, cards in { gearCards, incomeCards } do -- INCOME step 2: then coins, all
+				for _, card in cards do
+					local view = card.view
+					if view then
+						table.insert(list, { line = card.line, name = view.name, state = view.state })
+					end
 				end
 			end
 			return list
@@ -1597,9 +1676,8 @@ function ShopController.init()
 			applyLayout()
 			refresh()
 			riseCards()
-			if type(params) == "table" and params.tab == PAGE_GEAR then -- gear step 3
-				setPage(PAGE_GEAR)
-			end
+			-- gear step 3 / INCOME step 2: the tab asked for, else SHOP (the HUD's Shop and INCOME stickers).
+			setPage(if type(params) == "table" and type(params.tab) == "string" then params.tab else PAGE_SHOP)
 		end,
 		onClose = function()
 			if openCleanup then
@@ -1614,7 +1692,7 @@ function ShopController.init()
 	c:add(WorldBinder.registerStand(COUNTER_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { "owned", "dataStatus", "monetization", "gear", "coins" } do
+	for _, field in { "owned", "dataStatus", "monetization", "gear", "coins", "pen" } do
 		c:add(StateController.changed(field):connect(function()
 			ShopController.refresh()
 		end))
@@ -1652,6 +1730,8 @@ function ShopController.init()
 		panel, fitScale, closeButton, featured, lastFit = nil, nil, nil, nil, nil
 		table.clear(gearCards) -- gear step 3
 		tabs, shopPage, gearPage, gearPower, gearBusy, page = nil, nil, nil, nil, nil, PAGE_SHOP
+		table.clear(incomeCards) -- INCOME step 2
+		incomePage = nil
 	end)
 	log:debug("ready")
 end

@@ -1181,6 +1181,9 @@ return function(t: Context)
 		-- None bought: as before.
 		expect.equal(PenMath.rate(incomePen(0, 0, { item("dragon") })), 640)
 		expect.equal(PenMath.squeezeValue(incomePen(0, 0, { item("dragon") })), 640)
+		-- INCOME step 2: the rate's boost alone (the coin labels over each squishy and the pen cards use it).
+		expect.near(PenMath.rateBoost(dragon), 1.07 ^ 2 * 1.05 ^ 3, 1e-12)
+		expect.equal(PenMath.rateBoost(nil), 1)
 	end)
 
 	t.test("incomeDecision: the next level and its price, or net.invalid / pen.incomeMax / pen.priceChanged", function()

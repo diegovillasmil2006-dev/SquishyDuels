@@ -301,6 +301,7 @@ local Strings = {
 			shop = "Shop",
 			quests = "Quests",
 			daily = "Daily",
+			income = "Income", -- INCOME step 2: the 6th sticker
 			highway = "Highway", -- access2: the HIGHWAY stand-in tile
 			duel = "Duel",
 			settings = "Settings",
@@ -1181,6 +1182,18 @@ local Strings = {
 				"Angel Aegis",
 			},
 		},
+	},
+
+	-- INCOME step 2 (2026-10-26; [P] texts, a stand-in until Diego draws the INCOME tab): the shop's third tab, its head,
+	-- the two cards' names, their line ({now} -> {next}: the boost now and after the next level, IncomeFormat.multText),
+	-- the line once every level is bought and the toast of a buy ({name}, {level}).
+	income = {
+		tab = "INCOME",
+		section = "INCOME",
+		names = { coins = "Squishy Coins", all = "All Earnings" },
+		lines = { coins = "x{now} -> x{next} squishy coins", all = "x{now} -> x{next} on everything" },
+		maxLine = "Fully upgraded!",
+		bought = "{name} is now level {level}!",
 	},
 
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).

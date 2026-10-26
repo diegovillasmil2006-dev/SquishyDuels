@@ -221,8 +221,8 @@ local SLOT_MAX = (function(): number
 	end
 	return most
 end)()
--- H:653-654: the keys 1-5 open these windows (ControlsController NavN / ModalNavN).
-local NAV_KEYS: { string } = { "squishies", "boxes", "shop", "quests", "daily" }
+-- H:653-654: the keys 1-5 open these windows (ControlsController NavN / ModalNavN); INCOME step 2: 6 the INCOME sticker.
+local NAV_KEYS: { string } = { "squishies", "boxes", "shop", "quests", "daily", "income" }
 -- H:92-96: the GRIP float's design top on the design's 810 px canvas (a shorter canvas keeps its share).
 local DESIGN_CANVAS_HEIGHT = Config.UI.Scale.referenceHeight
 -- HudFormat.focusLinks directions -> the GuiObject property each one sets (applyFocusLinks).

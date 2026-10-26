@@ -255,6 +255,7 @@ function PenScreen.new(spec: Spec): PenScreen
 	local buttonIds = "" -- the action ids the buttons were built for
 	local selectedKey: string? = nil
 	local firstKey: string? = nil
+	local boost: number? = nil -- INCOME step 2: the shown view's income, for the cards' +N/s
 	local screenPx: Vector2? = nil -- the last fit()
 
 	-- The window for the screen size (UI FINAL R3: the design's size shrunk to fit, Layout.windowFit) and the body:
@@ -417,7 +418,7 @@ function PenScreen.new(spec: Spec): PenScreen
 		end
 		local k, width = scale(), cardWidth()
 		if item then
-			local text = PenFormat.cardText(item)
+			local text = PenFormat.cardText(item, boost)
 			local price = if sold
 				then Strings.format(Strings.common.coinsAmount, { coins = Format.coins(sold.price) })
 				else nil
@@ -451,6 +452,7 @@ function PenScreen.new(spec: Spec): PenScreen
 	function self.render(_: PenScreen, view: PenFormat.View, busy: boolean)
 		local focused = GuiService.SelectedObject
 		local k = scale()
+		boost = view.income
 		status:setText(view.status)
 		local width = math.max(0, root.Size.X.Offset - 2 * (STICKER.border.heavy + S.bodyPad))
 		wrapped(hint, view.hint or "", TEXT_KIND, k, width)

@@ -35,6 +35,8 @@ local SPEC_ICONS = {
 	"check",
 	-- Access2 (2026-10-18): the HUD's HIGHWAY stand-in (v6's launch-spot arrow, LK:39).
 	"highway",
+	-- INCOME step 2 (2026-10-26): the HUD's INCOME stand-in (the coin picture, img.coin; drawn: a coin).
+	"income",
 }
 
 local function countNamed(root: Instance, name: string): number

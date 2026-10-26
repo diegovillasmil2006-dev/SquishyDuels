@@ -70,12 +70,23 @@ return function(t: Context)
 			expect.truthy(string.match(item.button, "^Hud_%u%a+Button$"))
 			expect.truthy(type(item.accent) == "string" and type(item.icon) == "string")
 		end
-		expect.deepEqual(ids, { "squishies", "boxes", "shop", "quests", "daily", "duel", "settings", "highway" })
+		expect.deepEqual(
+			ids,
+			{ "squishies", "boxes", "shop", "quests", "daily", "income", "duel", "settings", "highway" }
+		)
 		local tiles = {}
 		for _, item in HudFormat.navAt("tile") do
 			table.insert(tiles, item.id)
 		end
-		expect.deepEqual(tiles, { "squishies", "boxes", "shop", "quests", "daily" })
+		expect.deepEqual(tiles, { "squishies", "boxes", "shop", "quests", "daily", "income" })
+		-- INCOME step 2 (owner 2026-10-26 "Keep the 6th sticker", "An INCOME tab in the shop"): the 6th sticker after
+		-- Daily opens the Shop on its INCOME tab; the coin picture until Diego draws one (IconGlyph "income").
+		local income = HudFormat.navAt("tile")[6]
+		expect.equal(income.screen, "shop")
+		expect.deepEqual(income.params, { tab = "income" })
+		expect.equal(income.button, "Hud_IncomeButton")
+		expect.equal(income.icon, "income")
+		expect.equal(income.badge, nil)
 		expect.equal(HudFormat.navAt("cta")[1].button, "Hud_DuelButton")
 		expect.equal(HudFormat.navAt("cta")[1].screen, "queue")
 		expect.equal(HudFormat.navAt("settings")[1].button, "Hud_SettingsButton")
@@ -90,10 +101,14 @@ return function(t: Context)
 		for _, item in HudFormat.navAt("tile") do
 			accents[item.id] = item.accent
 		end
-		expect.deepEqual(
-			accents,
-			{ squishies = "strawberry", boxes = "lilac", shop = "shop", quests = "quests", daily = "sky" }
-		)
+		expect.deepEqual(accents, {
+			squishies = "strawberry",
+			boxes = "lilac",
+			shop = "shop",
+			quests = "quests",
+			daily = "sky",
+			income = "gold",
+		})
 		local shown = HudFormat.visibleNav(function(screen: string): boolean
 			return screen == "squishies" or screen == "settings" or screen == "queue"
 		end)
@@ -559,11 +574,14 @@ return function(t: Context)
 			end
 			-- Spec "regular layout — match redesign-check.jpg": the regular Grip card and one tile column.
 			local default = HudFormat.leftColumnPlan(screen, classOf(screen), 1)
-			if screen.Y >= 720 then
+			if screen.Y > 720 then
 				expect.equal(default.grip, "regular")
 				expect.equal(default.tiles, "column")
 				expect.equal(default.columns, 1)
-				expect.equal(default.rows, 5)
+				expect.equal(default.rows, 6) -- INCOME step 2: the 6th sticker
+			elseif screen.Y == 720 then
+				-- INCOME step 2: at 1280 x 720 the 6th sticker turns the Grip card compact (the owner was told, 2026-10-26).
+				expect.equal(`{default.grip} {default.tiles} {default.columns} {default.rows}`, "compact column 1 6")
 			end
 		end
 	end)
@@ -573,7 +591,7 @@ return function(t: Context)
 	-- item): right under the Settings gear in its look (place "right"), never in the tile plans, so his tile column,
 	-- his phone row of 4 and the DUEL area keep their room; not shown on phones (HudController.layoutRight).
 	t.test(
-		"access2: the HIGHWAY stand-in sits under Settings, outside the tile plans (Diego's row keeps its 4)",
+		"access2: the HIGHWAY stand-in sits under Settings, outside the tile plans (Diego's phone row stays one row)",
 		function()
 			local item = HudFormat.navAt("right")[1]
 			expect.equal(#HudFormat.navAt("right"), 1)
@@ -594,19 +612,20 @@ return function(t: Context)
 			end)
 			expect.equal(#shown, 1)
 			expect.equal(shown[1].id, "highway")
-			-- Diego's layouts unchanged: 4 phone tiles in a row, 5 PC stickers in a column with the regular Grip card.
+			-- Diego's layouts keep their shape: the phone tiles in one row (INCOME step 2: 5), the PC stickers in a
+			-- column (6) with the regular Grip card.
 			for _, screen in PHONES do
 				for _, ts in TEXT_SCALES do
 					local plan = HudFormat.leftColumnPlan(screen, "compact", ts)
-					expect.equal(plan.columns, 4)
+					expect.equal(plan.columns, 5)
 					expect.equal(plan.rows, 1)
 				end
 			end
 			for _, screen in PCS do
 				local plan = HudFormat.leftColumnPlan(screen, classOf(screen), 1)
-				if screen.Y >= 720 then
+				if screen.Y > 720 then -- INCOME step 2: 1280 x 720 goes compact (the test above)
 					expect.equal(plan.grip, "regular")
-					expect.equal(plan.rows, 5)
+					expect.equal(plan.rows, 6)
 				end
 			end
 			-- Gamepad, focusLinks only: given HudController's PC right column (settings, highway, tracker: its order is
@@ -636,8 +655,8 @@ return function(t: Context)
 				expect.near(plan.limit, plan.canvas.Y * UI.Grip.leftColumnMaxFraction, 1e-3)
 				expect.near(plan.limit, plan.canvas.Y * (1 - TOUCH.thumbstickZoneHeight), 1e-3)
 				expect.equal(plan.tiles, "row")
-				expect.equal(plan.columns, 4)
-				-- Daily sits beside Settings on phones (PHONE_RIGHT): the other four tiles make one row.
+				expect.equal(plan.columns, 5)
+				-- Daily sits beside Settings on phones (PHONE_RIGHT): the other five tiles make one row (INCOME step 2).
 				expect.deepEqual(HudFormat.PHONE_RIGHT, { "daily" })
 				expect.equal(plan.rows, 1)
 				-- Icon-only squares (the minimal phone HUD), never under the touch floor at the phone scale (2026-10-26).
@@ -665,7 +684,7 @@ return function(t: Context)
 		expect.truthy(wide.fits)
 		-- The regular class keeps the goal line and every tile (Diego's layout).
 		local pc = HudFormat.leftColumnPlan(Vector2.new(1920, 1080), "regular", 1)
-		expect.equal(pc.rows, 5)
+		expect.equal(pc.rows, 6) -- INCOME step 2
 		expect.truthy(pc.gripHeight > HudFormat.leftColumnPlan(Vector2.new(844, 390), "compact", 1).gripHeight)
 	end)
 
@@ -828,7 +847,7 @@ return function(t: Context)
 				expect.equal(plan.grip, "regular")
 				expect.equal(plan.left, "stack")
 				expect.equal(plan.tiles, "row")
-				expect.equal(plan.columns, 4)
+				expect.equal(plan.columns, 5) -- INCOME step 2
 				expect.equal(plan.rows, 1)
 				local innerGap = HudFormat.leftGaps(true, "regular")
 				expect.near(plan.leftBottom, COLUMN.edge + plan.pillHeight + innerGap + plan.gripHeight, 1e-6)
@@ -1031,7 +1050,7 @@ return function(t: Context)
 		expect.truthy(string.find(texts.gripCompact, tostring(Config.Grip.maxLevel), 1, true) ~= nil)
 		expect.equal((texts :: any).gripBadge, nil) -- Phase 6: no Upgrade tab (the trainers are gone)
 		expect.truthy(#texts.coins >= #Strings.common.loading)
-		expect.equal(#texts.tiles, 5)
+		expect.equal(#texts.tiles, 6) -- INCOME step 2
 		expect.equal(texts.tiles[1], Strings.hud.nav.squishies)
 		-- UI FINAL R4 (H:89, FD3): the bare row's chip at a full Double Grip.
 		local GripMath = t.requireShared("GripMath")

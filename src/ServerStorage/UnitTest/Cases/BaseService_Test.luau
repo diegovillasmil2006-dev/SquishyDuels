@@ -320,8 +320,13 @@ return function(t: Context)
 		expect.equal(model:GetAttribute("SD_PenSpots"), 6)
 		expect.equal(model:GetAttribute("SD_PenTier"), 2) -- Mint from 6 spots
 		expect.equal(model:GetAttribute("SD_PenRate"), 210)
+		expect.equal(model:GetAttribute("SD_PenIncome"), 1)
+		-- INCOME step 2: the owner's SQUISHY COINS x ALL EARNINGS boost, for every client's coin labels.
+		w.pens[a].income = { coins = 2, all = 1 }
+		BaseService.refresh(a)
+		expect.near(model:GetAttribute("SD_PenIncome"), 1.07 ^ 2 * 1.05, 1e-9)
 		BaseService.playerRemoving(a)
-		for _, name in { "SD_PenSpots", "SD_Pen", "SD_PenRate", "SD_PenTier" } do
+		for _, name in { "SD_PenSpots", "SD_Pen", "SD_PenRate", "SD_PenTier", "SD_PenIncome" } do
 			expect.equal(model:GetAttribute(name), nil)
 		end
 		expect.equal(model:FindFirstChild("Pen"), nil)

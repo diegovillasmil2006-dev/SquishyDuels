@@ -2,8 +2,9 @@
 -- HudFormat (client only, pure). DESIGN §11.6 (lobby HUD), §11.3 (shared states), §3.13 (failure modes), §6.8 / §6.9
 -- (claimable quests and daily rewards for the badges); the foam UI restyle (spec docs/superpowers/specs/
 -- 2026-10-09-foam-ui-restyle-design.md, "Lobby HUD"). What HudController shows, as plain data:
---   NAV                        the HUD's screen buttons in DESIGN order: Squishies, Boxes, Shop, Quests, Daily (the left
---                              tile column), Duel (the CTA at the top middle), Settings (the top-right gear tile),
+--   NAV                        the HUD's screen buttons in DESIGN order: Squishies, Boxes, Shop, Quests, Daily, Income
+--                              (the left tile column; INCOME step 2, 2026-10-26: the 6th sticker opens the Shop on its
+--                              INCOME tab), Duel (the CTA at the top middle), Settings (the top-right gear tile),
 --                              each with the screen it opens, its stable button name (Hud_<Id>Button, §2.11), its
 --                              place, accent and icon (UI/Components/IconGlyph)
 --                              Access2 (2026-10-18): then Highway, a stand-in sticker under Settings (place "right";
@@ -391,6 +392,19 @@ local NAV: { NavItem } = {
 		place = "tile",
 		accent = "sky",
 		icon = "daily",
+	},
+	-- INCOME step 2 (owner 2026-10-26 "Keep the 6th sticker", "An INCOME tab in the shop"; the owner was told the Grip
+	-- card may go compact at 1280 x 720 and phones get a 5th tile). A stand-in until Diego draws one: the coin picture
+	-- (IconGlyph "income", img.coin), the gold (Coins) accent.
+	{
+		id = "income",
+		screen = "shop",
+		params = { tab = "income" },
+		textKey = "hud.nav.income",
+		button = "Hud_IncomeButton",
+		place = "tile",
+		accent = "gold",
+		icon = "income",
 	},
 	-- The Duel CTA sends QueueJoin through QueueController's non-modal "queue" screen (§11.6).
 	{

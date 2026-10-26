@@ -41,8 +41,8 @@
 --   - The base Model's attributes for every client's squishies (PenController): SD_PenSpots, SD_Pen (the walkers:
 --     PenMath.encode of PenMath.inPen), SD_Shelf (the shelf's and the TOP spot's: PenMath.encodeShelf of
 --     PenMath.onShelf; the clients stand them in their cubbies), SD_ShelfRows, SD_ShelfTop, SD_PenRate (every placed
---     squishy's, PenMath.rate), SD_PenTier and SD_PenOwner (the owner's UserId, for the gate motion,
---     Controllers/PenLookController); none on an open plot.
+--     squishy's, PenMath.rate), SD_PenIncome (INCOME step 2: PenMath.rateBoost, the coin labels' boost), SD_PenTier
+--     and SD_PenOwner (the owner's UserId, for the gate motion, Controllers/PenLookController); none on an open plot.
 --   A plot renders when it is handed out or freed, when its owner's profile loads (the data port's Loaded) and on
 --   refresh(player) after a pen change (PenService: a spot bought, a squishy granted). Until the profile is ready a plot
 --   shows its owner's name only; without the pen Model or with a broken pen nothing is drawn and nothing fails.
@@ -100,8 +100,17 @@ local SHELF_SLOTS = "ShelfSlots" -- ShelfSlot_01..12, each with a Lock Model and
 -- Pens3 phase 1: the pen (see the header).
 local PEN = WorldLayout.Bases.pen
 local PEN_FOLDER = "Pen"
-local PEN_ATTRS =
-	{ "SD_PenSpots", "SD_Pen", "SD_PenRate", "SD_PenTier", "SD_PenOwner", "SD_Shelf", "SD_ShelfRows", "SD_ShelfTop" }
+local PEN_ATTRS = {
+	"SD_PenSpots",
+	"SD_Pen",
+	"SD_PenRate",
+	"SD_PenIncome",
+	"SD_PenTier",
+	"SD_PenOwner",
+	"SD_Shelf",
+	"SD_ShelfRows",
+	"SD_ShelfTop",
+}
 local TIER_COLORS = { -- K:4170-4189: the gate posts' colour per tier (L:187 GatePost tints)
 	{ post = "PenFenceWaferPost" },
 	{ post = "PenFenceMintPost" },
@@ -556,6 +565,7 @@ local function drawPen(model: Instance, plot: number, pen: any, owner: any, name
 	model:SetAttribute("SD_ShelfRows", pen.shelfRows)
 	model:SetAttribute("SD_ShelfTop", pen.top == true)
 	model:SetAttribute("SD_PenRate", PenMath.rate(pen))
+	model:SetAttribute("SD_PenIncome", PenMath.rateBoost(pen))
 	model:SetAttribute("SD_PenTier", step.tier)
 	model:SetAttribute("SD_PenOwner", userIdOf(owner))
 	return true

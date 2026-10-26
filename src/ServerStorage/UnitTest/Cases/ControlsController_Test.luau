@@ -163,17 +163,23 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"UI FINAL R4 (H:653-654): keys 1-5 open the HUD's windows in the lobby, and switch them over a window",
+		"UI FINAL R4 (H:653-654): keys 1-6 open the HUD's windows in the lobby, and switch them over a window",
 		function()
-			local keys =
-				{ Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }
+			local keys = { -- INCOME step 2: 6 = the INCOME sticker
+				Enum.KeyCode.One,
+				Enum.KeyCode.Two,
+				Enum.KeyCode.Three,
+				Enum.KeyCode.Four,
+				Enum.KeyCode.Five,
+				Enum.KeyCode.Six,
+			}
 			for index, key in keys do
 				expect.equal(Controls.contextOf("Nav" .. index), "Lobby")
 				expect.deepEqual(Controls.inputsOf("Nav" .. index), { key })
 				expect.equal(Controls.contextOf("ModalNav" .. index), "Modal")
 				expect.deepEqual(Controls.inputsOf("ModalNav" .. index), { key })
 			end
-			expect.equal(Controls.contextOf("Nav6"), nil)
+			expect.equal(Controls.contextOf("Nav7"), nil)
 			-- No other action takes a number key (keyboard only: no gamepad button, no touch button).
 			local others =
 				{ "Squeeze", "Squishies", "InspectEquipped", "FocusHud", "ModalBack", "Throw", "Ultimate", "Catch" }

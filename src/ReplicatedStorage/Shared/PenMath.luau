@@ -53,6 +53,8 @@
 -- ALL EARNINGS (ProfileSchema gives every saved pen one; missing or broken counts as none: fail closed).
 --   PenMath.incomeLevel(pen, line) -> number: the level bought, a whole number in [0, the line's levels] (cut, clamped)
 --   PenMath.incomeMult(pen, line) -> number: the line's boost ^ its level (1 for none or an unknown line)
+--   PenMath.rateBoost(pen) -> number: incomeMult(pen, "coins") x incomeMult(pen, "all"), the rate's boost (INCOME step 2:
+--                                   BaseService's SD_PenIncome for the coin labels, the pen cards)
 --   PenMath.incomePrice(line, level) -> number?: the Coins of that level (1..levels), else nil
 --   PenMath.incomeDecision(pen, line, expectedPrice) -> (IncomeBuy?, code?): the pure PenBuyIncome checks, PenBuySpot's
 --                                   order: not a line, expectedPrice not whole Coins or a broken pen -> "net.invalid";
@@ -497,7 +499,7 @@ local function placedRate(pen: any): number
 end
 
 function PenMath.rate(pen: any): number
-	return placedRate(pen) * PenMath.incomeMult(pen, "coins") * PenMath.incomeMult(pen, "all")
+	return placedRate(pen) * PenMath.rateBoost(pen)
 end
 
 function PenMath.squeezeValue(pen: any): number
@@ -519,6 +521,10 @@ end
 function PenMath.incomeMult(pen: any, line: string): number
 	local def = INCOME[line]
 	return if def then def.boost ^ PenMath.incomeLevel(pen, line) else 1
+end
+
+function PenMath.rateBoost(pen: any): number
+	return PenMath.incomeMult(pen, "coins") * PenMath.incomeMult(pen, "all")
 end
 
 function PenMath.incomePrice(line: any, level: any): number?

@@ -16,7 +16,8 @@
 --   walkerItem(pen, index, look) -> id?: the pen squishy a tapped walker shows. PenController's walkers follow
 --     BaseService's SD_Pen (PenMath.encode of the placed items, in slot order), so placed[index] when its look matches,
 --     else the first placed squishy with that look (copies look the same), else nil.
---   cardText(item) -> {name, rate, level}: a card's name, "+N/s" (Strings pen.rate) and "Lv N" (pen.screen.level;
+--   cardText(item, boost?) -> {name, rate, level}: a card's name, "+N/s" (Strings pen.rate; x boost, INCOME step 2:
+--     view.income = PenMath.rateBoost) and "Lv N" (pen.screen.level;
 --     pens3 phase 8: "Golden · Lv N" / "Rainbow · Lv N", pen.screen.formLevel: the stand-in form tag).
 -- Pens3 phases 7-8 (selling, the 10-minute buy-back, fusion; the server decides, SellItems / SellAll / BuyBack / Fuse):
 --   view(pen, selectedId, picking, extra?) also takes Extra {buyBack (StateController's), now (the server's os.time),
@@ -149,6 +150,7 @@ export type View = {
 	shelfHeading: string?,
 	top: Spot?,
 	topHeading: string?,
+	income: number, -- INCOME step 2: PenMath.rateBoost(pen), for cardText
 }
 export type CardText = { name: string, rate: string, level: string }
 
@@ -205,13 +207,14 @@ end
 
 -- Public
 
-function PenFormat.cardText(item: Types.PenItem): CardText
+function PenFormat.cardText(item: Types.PenItem, boost: number?): CardText
 	local def = Catalog.get(item.kind)
 	local name = if def then Strings.resolve(def.nameKey) or item.kind else item.kind
 	local form = SCREEN.forms[item.form] -- pens3 phase 8: Golden / Rainbow
+	local rate = PenMath.itemRate(item) * (boost or 1)
 	return {
 		name = name,
-		rate = Strings.format(Strings.pen.rate, { coins = Format.coins(math.floor(PenMath.itemRate(item))) }),
+		rate = Strings.format(Strings.pen.rate, { coins = Format.coins(math.floor(rate)) }),
 		level = if form
 			then Strings.format(SCREEN.formLevel, { form = form, level = item.level })
 			else Strings.format(SCREEN.level, { level = item.level }),
@@ -438,7 +441,8 @@ local function confirmView(view: View, pen: any, extra: Extra, coins: number): b
 			SCREEN.confirmFuse,
 			{ name = PenFormat.cardText(result).name, result = PenFormat.formName(result) }
 		)
-		view.hint = Strings.format(SCREEN.fuseNote, { level = fusion.level, rate = PenFormat.cardText(result).rate })
+		local rate = PenFormat.cardText(result, view.income).rate
+		view.hint = Strings.format(SCREEN.fuseNote, { level = fusion.level, rate = rate })
 			.. (if #fusion.coats > 0 then " " .. SCREEN.coatNote else "")
 		text = SCREEN.fuse
 	else
@@ -510,6 +514,7 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 			else nil,
 		top = top,
 		topHeading = if top then SCREEN.topHeading else nil,
+		income = PenMath.rateBoost(pen), -- INCOME step 2
 	}
 	view.foodHeading = if #view.foods > 0 then SCREEN.foodHeading else nil
 	view.soldHeading = if #view.sold > 0 then SCREEN.soldHeading else nil

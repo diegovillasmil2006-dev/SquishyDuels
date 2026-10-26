@@ -328,9 +328,15 @@ local ACTIONS: { [string]: ActionDef } = {
 }
 -- UI FINAL R4 (H:653-654, plan R4 "Keys 1-5"): the keys 1-5 open the HUD's windows (Squishies, Boxes, Shop, Quests,
 -- Daily) in the lobby (NavN, Lobby) and switch between them while one is open (ModalNavN, Modal); keyboard only, never
--- in a duel or practice (HudController binds them). Nothing else uses One..Five.
-local NAV_KEYS: { Enum.KeyCode } =
-	{ Enum.KeyCode.One, Enum.KeyCode.Two, Enum.KeyCode.Three, Enum.KeyCode.Four, Enum.KeyCode.Five }
+-- in a duel or practice (HudController binds them). Nothing else uses One..Six. INCOME step 2: 6 = Income.
+local NAV_KEYS: { Enum.KeyCode } = {
+	Enum.KeyCode.One,
+	Enum.KeyCode.Two,
+	Enum.KeyCode.Three,
+	Enum.KeyCode.Four,
+	Enum.KeyCode.Five,
+	Enum.KeyCode.Six,
+}
 for index, key in NAV_KEYS do
 	ACTIONS["Nav" .. index] = { context = "Lobby", inputs = { key } }
 	ACTIONS["ModalNav" .. index] = { context = "Modal", inputs = { key } }
