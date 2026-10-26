@@ -27,6 +27,9 @@
 --   players' heads (S:269-280, 857-858): the name, the squishes (with SQ; phones: the number), the MVP's crown and MVP
 --   tag (gold) and YOU (a lemon border); phones tag only the MVP and you; each frame over the heads, a tag that meets
 --   another stacked above it, all under the pill (placePlates, S:893-910).
+-- * End screens round B2 (2026-10-26; owner: "Yes, build step 2 of round B like that. You can make and upload the
+--   pictures."): the "!" also fires the confetti cannons (S:831: MatchPodium.cannons, where ctx.podium may show the
+--   scene) and the results thin the podium's party (S:855: podium:results()).
 -- Roblox draws text at one scale, so the design's scale(sx, sy) frames are their even part sqrt(sx * sy) (as the kill
 -- feed's). Under ReducedMotion only the fades play; the jelly is a colour fade and the sunbursts do not turn. The
 -- killcam is a later round.
@@ -1673,6 +1676,7 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	local podium: MatchPodium.Podium? = nil -- round B1: the 3D scene behind the screen
 	local podiumTried = false
 	local podiumLineup: MatchPodium.Lineup? = nil
+	local podiumThin = false -- round B2: the results thinned the party
 	local slamAt: number? = nil -- the MVP's slam (its screen flash)
 	local slamStrong = false
 	local plateMade: { PlateMade }? = nil
@@ -1811,6 +1815,7 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			compact = ctx.compact(),
 			reduced = reduced,
 			look = r.look.top,
+			main = r.look.mid or r.look.faceEnd,
 			onEvent = onPodiumEvent,
 		})
 		if not ok then
@@ -2022,6 +2027,20 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			sprinkle(m, clock)
 		end
 		bangAt = clock
+		-- Round B2: the confetti cannons (S:831), wherever the podium may show (ctx.podium: none in tests).
+		local r = result
+		if ctx.podium and frozen and r then
+			local ok, err = pcall(MatchPodium.cannons, {
+				view = frozen,
+				preview = ctx.preview,
+				compact = ctx.compact(),
+				main = r.look.mid or r.look.faceEnd,
+				light = r.look.top,
+			})
+			if not ok then
+				warn(`[SD][MatchEnd] the confetti cannons did not fire: {err}`)
+			end
+		end
 	end
 
 	-- The title's part of the timeline at t (seconds from the last squish); `settled` = skipped: everything at its end.
@@ -2491,6 +2510,9 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			if not ok then
 				warn(`[SD][MatchEnd] the podium stopped: {err}`)
 				endPodium()
+			elseif resultsAt and not podiumThin then
+				podiumThin = true
+				pcall(pod.results, pod)
 			end
 		end
 		renderTitle(m, r, t, clock, reduced, skippedAt ~= nil)

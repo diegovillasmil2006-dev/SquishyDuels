@@ -618,6 +618,12 @@ return function(t: Context)
 				-- End screens round A (2026-10-26): the two sunbursts.
 				"img.end.sun18",
 				"img.end.sun14",
+				-- End screens round B2 (2026-10-26): the podium party's particles.
+				"img.podium.star",
+				"img.podium.heart",
+				"img.podium.chip",
+				"img.podium.petal",
+				"img.podium.sprinkle",
 			})
 		)
 	end)

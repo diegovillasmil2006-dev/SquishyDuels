@@ -800,6 +800,7 @@ local Palette = {
 	-- the MVP slam's light (E:167).
 	PodiumLineTint = Color3.new(0.88, 0.87, 1),
 	PodiumSlamLight = Color3.fromHex("#FFE8B0"),
+	PodiumSpot = Color3.fromHex("#FFF4C8"), -- round B2: the spotlights' warm beams (E:79)
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

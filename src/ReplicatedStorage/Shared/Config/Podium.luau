@@ -114,6 +114,117 @@ return {
 		mvpPlateLift = 1.2,
 		poseSteps = { 0, 4, 7, 12, 16 }, -- sd-cues poseHit(i): the ting's semitones by ripple slot
 		flash = { ms = 280, peak = 0.2, at = 0.25, softMs = 600, softPeak = 0.1, softAt = 0.5 }, -- S:890
+		-- End screens round B2 (2026-10-26; owner: "Yes, build step 2 of round B like that. You can make and upload the
+		-- pictures."): the party whenever the cake shows (E:93-128, 296-305). The design's speeds and pulls are its world
+		-- units over STUD 0.28 (kit.js:3); particle sizes are a piece's span (twice the design's size). Its counts
+		-- (BUDGET E:19-22) keep the live particles under its caps (desktop 900, phone 400) on their own.
+		party = {
+			budget = {
+				desktop = {
+					cannon = 45,
+					rain = 60,
+					rainThin = 18,
+					rocketGap = 0.7,
+					rocketGapThin = 2.2,
+					sparks = 26,
+					hearts = 8,
+					balloons = 5,
+				},
+				phone = {
+					cannon = 22,
+					rain = 26,
+					rainThin = 8,
+					rocketGap = 1.1,
+					rocketGapThin = 2.6,
+					sparks = 14,
+					hearts = 4,
+					balloons = 3,
+				},
+			},
+			-- E:93-105, at the "!" (S:831, victory only): 4 cannons { x, z } at height y aim at (-x, up, -z); each piece
+			-- within `spread` degrees (the design's jitter), its kind in turn (flake, petal, cube), its colour in turn (the
+			-- winners' main and light, lemon, white); a star puff at each mouth
+			cannons = {
+				at = { { -58, -70 }, { 58, -70 }, { -58, 70 }, { 58, 70 } },
+				y = 14,
+				up = 62,
+				spread = 17,
+				speed = { 21.4, 35.7 }, -- 6 + 4 world/s
+				size = { 0.6, 1 }, -- s(0.3 + 0.2)
+				life = { 3.2, 4.2 },
+				gravity = 7.9, -- 2.2 world/s²
+				drag = 1.6, -- the design's e^(-1.1·t) as Roblox's halving rate
+				spinDeg = 400, -- 7 rad/s
+				puff = { count = 6, speed = 14.3, size = 1.2, life = 0.4 },
+			},
+			-- E:77-83, 296, 312: 4 warm beams from these points (design studs), radius 5.2 over their 50 studs, each
+			-- sweeping its aim round the cake (x = sin(0.7t + 1.7i)·9, z = cos(0.5t + i)·5), alpha 0.12, 0.07 with the
+			-- results
+			spots = {
+				from = { { -34, 34, 18 }, { 34, 34, 18 }, { -24, 40, -30 }, { 24, 40, -30 } },
+				radius = 5.2,
+				length = 50,
+				alpha = 0.12,
+				thinAlpha = 0.07,
+				sweep = { x = 9, z = 5, xHz = 0.7, zHz = 0.5, xPhase = 1.7 },
+			},
+			-- E:106-121, 297: a rocket every budget rocketGap from `first`, from x within ±halfX, y, z = -(back + up to
+			-- backSpread) behind the cake; its speed (studs/s), pull and life; its ribbon (E:108); its burst of stars
+			-- (sparks) and hearts (E:116-117)
+			rockets = {
+				first = 0.3,
+				halfX = 55,
+				y = 12,
+				back = 78,
+				backSpread = 10,
+				side = 1.07, -- 0.6 world/s across, 0.4 deep
+				depth = 0.71,
+				rise = { 32.1, 37.5 }, -- 9 + 1.5 world/s
+				gravity = 14.3, -- 4 world/s²
+				life = { 0.85, 1.05 },
+				trail = { width = 0.55, life = 0.35, alpha = 0.75 },
+				stars = { speed = 19.6, size = 1.4, life = 1.3, gravity = 5.7, drag = 2 },
+				hearts = { speed = 14.3, size = 1.5, life = 1.4, gravity = 4.3, drag = 2 },
+			},
+			-- E:122-128, 300-301: a balloon at each of these podium times (up to the budget's): a winner's squishy
+			-- (in turn) scale times its size, lift over its string's foot, on a string `string` long; starting at x =
+			-- ±(x + (i·xStep) mod xMod) (left first), y, z = -(z + (i·zStep) mod zMod); rising speed + (i mod 3)·speedStep
+			-- studs/s with a sway (studs/s, rad/s) and a tilt (rad, rad/s), both from i·phase; gone above `top`
+			balloons = {
+				at = { 0.3, 0.7, 1.1, 1.6, 2.1 },
+				scale = 2.3,
+				lift = 5.4,
+				string = 5,
+				stringWidth = 0.1,
+				x = 13,
+				xStep = 3.7,
+				xMod = 8,
+				y = -4,
+				z = 3,
+				zStep = 2.3,
+				zMod = 6,
+				speed = 2.2,
+				speedStep = 0.35,
+				phase = 1.7,
+				sway = { 0.4, 1.3 },
+				tilt = { 0.12, 1.1 },
+				top = 70,
+			},
+			-- E:302-304: sprinkles a second (the budget's rain, rainThin with the results) over x ±area[1]/2, z from z0
+			-- over area[2], y from y over ySpread; falling speed, pull, drag, life, size and spin; colours in turn
+			rain = {
+				area = { 44, 26 },
+				z0 = -10,
+				y = 26,
+				ySpread = 4,
+				speed = { 4.3, 7.9 }, -- 1.2 + 1 world/s
+				gravity = 1.8, -- 0.5 world/s²
+				drag = 0.36, -- e^(-0.25·t)
+				life = 4.2,
+				size = 0.42, -- the capsule's length at size 0.2
+				spinDeg = 290, -- 5 rad/s
+			},
+		},
 	},
 	-- The name tags (S:893-910, 857-858): drawn in the `text` kind scaled to their px; `gap` between two that meet,
 	-- `clear` under the pill, `edge` inside the stage, their point `below` px under the head's; the pop: popMs each,

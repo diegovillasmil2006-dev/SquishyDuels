@@ -117,6 +117,53 @@ return function(t: Context)
 		expect.near(line[1][1], 0, EPS)
 	end)
 
+	-- Round B2: the party's numbers (node, from Diego's tdm-end.js formulas).
+	t.test("round B2: the cannons aim over the middle from each corner", function()
+		local a = MatchPodium.cannonAim(-58, -70) -- E:97: (-x, 62, -z)
+		expect.near(a.X, 0.5271, EPS)
+		expect.near(a.Y, 0.5635, EPS)
+		expect.near(a.Z, 0.6362, EPS)
+		local b = MatchPodium.cannonAim(58, 70)
+		expect.near(b.X, -0.5271, EPS)
+		expect.near(b.Z, -0.6362, EPS)
+	end)
+
+	t.test("round B2: the spotlights sweep their aims round the cake", function()
+		local s1 = MatchPodium.spotAim(1, 1) -- E:296: sin(0.7t + 1.7i)·9, cos(0.5t + i)·5
+		expect.near(s1.X, 5.798, EPS)
+		expect.near(s1.Y, 0, EPS)
+		expect.near(s1.Z, 4.3879, EPS)
+		local s2 = MatchPodium.spotAim(1, 2)
+		expect.near(s2.X, 6.0792, EPS)
+		expect.near(s2.Z, 0.3537, EPS)
+		local s4 = MatchPodium.spotAim(2.5, 4)
+		expect.near(s4.X, 4.8325, EPS)
+		expect.near(s4.Z, -2.2304, EPS)
+	end)
+
+	t.test("round B2: the balloons start left then right, staggered, each rising at its speed", function()
+		local want = {
+			{ -13, -3, 2.2 },
+			{ 16.7, -5.3, 2.55 },
+			{ -20.4, -7.6, 2.9 },
+			{ 16.1, -3.9, 2.2 },
+			{ -19.8, -6.2, 2.55 },
+		}
+		for i, w in want do
+			local p, speed = MatchPodium.balloonStart(i - 1)
+			expect.near(p.X, w[1], EPS)
+			expect.near(p.Y, -4, EPS)
+			expect.near(p.Z, w[2], EPS)
+			expect.near(speed, w[3], EPS)
+		end
+	end)
+
+	t.test("round B2: pieces dealt in turn into groups", function()
+		expect.deepEqual(MatchPodium.split(45, 12), { 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3 })
+		expect.deepEqual(MatchPodium.split(6, 2), { 3, 3 })
+		expect.deepEqual(MatchPodium.split(2, 4), { 1, 1, 0, 0 })
+	end)
+
 	t.test("each HIT lands at its rank's time; the line starts in a ripple", function()
 		local starts = MatchPodium.starts(true, 6)
 		local hits = { 2.3, 0.6, 0.85, 1.1, 1.35, 1.6 }

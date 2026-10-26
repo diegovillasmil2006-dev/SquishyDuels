@@ -41,8 +41,23 @@
 -- * skip() (E:314-322) jumps to skipAt with every clip done (no more events) and the crown on.
 -- * anchors() -> { { userId, at } }: the world point over each player's head where MatchEnd's name tag sits
 --   (E:323-331).
+-- * Round B2 (2026-10-26; owner: "Yes, build step 2 of round B like that. You can make and upload the pictures."):
+--   the party whenever the cake shows (party, Config's numbers; phones take the budget's phone counts). Its pieces
+--   are Roblox particles with the pictures of Diego's shapes (img.podium.*, white, tinted), spinning, shrinking away:
+--   - cannons(spec) (E:93-105): at the "!" (S:831; MatchEnd, a victory), before the scene: 4 cannons at the map's
+--     corners blast flakes, petals and cubes in turn in the winners' colours, lemon and white toward the middle,
+--     with a star puff at each mouth; their own folder goes once the last piece is gone;
+--   - spotlights (E:77-83, 296): 4 warm beams sweeping their aims round the cake (spotAim);
+--   - fireworks (E:106-121): a rocket with a lemon-to-white trail every rocketGap from behind the cake, bursting into
+--     stars and hearts;
+--   - balloons (E:122-128, 300-301): at the design's times, the standing players' squishies in turn, scaled up on a
+--     string, rising and swaying from either side (balloonStart);
+--   - sprinkle rain (E:302-304) over the cake.
+--   results() (E:312), and a skip, thin it: rainThin, rocketGapThin, the beams at thinAlpha. The design's bouncing
+--   crowd (E:284) is not built: Diego's arenas here have no crowd.
 -- Pure (unit-tested): lineup(view, teamOf, mvp), present(ids, has), slots(cake, n), starts(cake, n),
--- camera(tp, cake, shots), crownAt(u, f), bestYaw(blocked), cakeParts(detail): the cake's pieces as numbers.
+-- camera(tp, cake, shots), crownAt(u, f), bestYaw(blocked), cakeParts(detail): the cake's pieces as numbers;
+-- cannonAim(x, z), spotAim(tp, i), balloonStart(i), split(n, k).
 
 -- Services
 
@@ -89,14 +104,20 @@ export type Spec = {
 	reduced: boolean,
 	shake: boolean, -- settings' camera shake
 	look: Color3, -- the winners' light colour (the frosting)
+	main: Color3, -- round B2: the winners' main colour (the design's TEAM hex)
 	onEvent: (name: string, data: { [string]: any }) -> (),
 }
+
+-- Round B2: the cannons at the "!".
+export type CannonSpec = { view: any, preview: boolean, compact: boolean, main: Color3, light: Color3 }
 
 export type Shots = { ticks: { number }, kickAt: number?, strong: boolean }
 
 export type Podium = {
 	step: (self: Podium, now: number) -> (),
 	skip: (self: Podium) -> (),
+	results: (self: Podium) -> (), -- round B2: the results are up (E:312): the party thins
+
 	anchors: (self: Podium) -> { { userId: number, at: Vector3 } },
 	destroy: (self: Podium) -> (),
 }
@@ -125,6 +146,11 @@ type Rig = {
 
 type CakePiece = { kind: string, size: Vector3, at: CFrame, color: string }
 
+-- Round B2: a spotlight, a rocket, a balloon.
+type Spot = { from: Vector3, tip: Attachment, beam: Beam }
+type Rocket = { holder: BasePart, trail: Trail, p: Vector3, v: Vector3, t: number, life: number }
+type Balloon = { toy: Model, cord: BasePart, p: Vector3, t: number, ph: number, speed: number }
+
 -- Constants
 
 local CFG = Config.UI.Match.finish.podium
@@ -135,7 +161,13 @@ local BOTS_FOLDER = "SD_Bots" -- BotService: the match bots' rigs, named after t
 local CLIENT_FX = "SD_ClientFx"
 local STORM_WALL = "SD_StormWall" -- MatchController's
 local ATTR_MATCH_ID = "SD_MatchId"
-local SPARKLE_KEY = "img.kill.sparkle" -- the game's four-point sparkle: the design's stars and hearts
+local PARTY = CFG.party
+-- Round B2: the pictures of the design's particle shapes (fx.js:65-77), white to tint.
+local STAR_KEY = "img.podium.star"
+local HEART_KEY = "img.podium.heart"
+local CHIP_KEY = "img.podium.chip" -- the flakes and the cubes
+local PETAL_KEY = "img.podium.petal"
+local SPRINKLE_KEY = "img.podium.sprinkle" -- the capsules
 local FIRST_REAL_ID = 1 -- bots and the Studio fixtures' pretend players have ids below this
 local log = Log.new("MatchPodium")
 
@@ -416,6 +448,34 @@ function MatchPodium.cakeParts(detail: number): { CakePiece }
 	return out
 end
 
+-- Round B2 (pure). A cannon at (x, z) aims over the middle (E:97): (-x, up, -z), as a unit, in the scene's frame.
+function MatchPodium.cannonAim(x: number, z: number): Vector3
+	return Vector3.new(-x, PARTY.cannons.up, -z).Unit
+end
+
+-- Spotlight i's aim at podium time tp (E:296), on the floor of the scene's frame.
+function MatchPodium.spotAim(tp: number, i: number): Vector3
+	local S = PARTY.spots.sweep
+	return Vector3.new(math.sin(tp * S.xHz + (i - 1) * S.xPhase) * S.x, 0, math.cos(tp * S.zHz + (i - 1)) * S.z)
+end
+
+-- Balloon i's (0 first) string foot and rising speed (E:126-127): left first, then right, in turn.
+function MatchPodium.balloonStart(i: number): (Vector3, number)
+	local B = PARTY.balloons
+	local side = if i % 2 == 1 then 1 else -1
+	return Vector3.new(side * (B.x + (i * B.xStep) % B.xMod), B.y, -(B.z + (i * B.zStep) % B.zMod)),
+		B.speed + (i % 3) * B.speedStep
+end
+
+-- n pieces dealt in turn into k groups (the design's i % k colours and kinds): each group's count.
+function MatchPodium.split(n: number, k: number): { number }
+	local out = {}
+	for j = 1, k do
+		out[j] = n // k + (if j <= n % k then 1 else 0)
+	end
+	return out
+end
+
 -- Private: building -----------------------------------------------------------------------------------------------
 
 local function part(className: string, props: { [string]: any }): BasePart
@@ -540,6 +600,68 @@ local function placeCrown(pieces: { CrownPiece }, at: CFrame, k: number, sx: num
 			then p.size * k * (sx + sy) / 2
 			else Vector3.new(p.size.X * sx, p.size.Y * sy, p.size.Z * sx) * k
 	end
+end
+
+-- Round B2: the party's pieces. A spray part (invisible, anchored) its emitters sit on, one per picture and colour.
+local function sprayHolder(parent: Instance): BasePart
+	return part("Part", { Name = "Spray", Size = Vector3.one * 0.2, Transparency = 1, Parent = parent })
+end
+
+local function spread(v: any, lo: number, hi: number): NumberRange
+	return if type(v) == "table" then NumberRange.new(v[1], v[2]) else NumberRange.new(v * lo, v * hi)
+end
+
+-- A piece's span over its life: about S.size (a table: that range; a number: ±40%, E:104), shrinking away at the end.
+local function sizes(v: any): NumberSequence
+	local mid, env
+	if type(v) == "table" then
+		mid, env = (v[1] + v[2]) / 2, (v[2] - v[1]) / 2
+	else
+		mid, env = v, v * 0.4
+	end
+	return NumberSequence.new({
+		NumberSequenceKeypoint.new(0, mid, env),
+		NumberSequenceKeypoint.new(0.85, mid, env),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+end
+
+-- `count` pieces of picture `key` tinted `color` from `at`: along `aim` within S.spread degrees, or every way
+-- (E:99-117). S: speed (studs/s), size, life, gravity (studs/s² down), drag (Roblox's halving rate), spinDeg, glow.
+local function spray(holder: BasePart, at: Vector3, aim: Vector3?, count: number, key: string, color: Color3, S: any)
+	if count <= 0 then
+		return
+	end
+	local name = key .. "|" .. color:ToHex()
+	local found = holder:FindFirstChild(name)
+	local emitter: ParticleEmitter
+	if found and found:IsA("ParticleEmitter") then
+		emitter = found
+	else
+		emitter = Instance.new("ParticleEmitter")
+		emitter.Name = name
+		emitter.Enabled = false
+		emitter.Texture = AssetTable.image(key) or ""
+		emitter.Color = ColorSequence.new(color)
+		emitter.EmissionDirection = Enum.NormalId.Top
+		emitter.LightInfluence = 0
+		emitter.Rotation = NumberRange.new(0, 360)
+		emitter.Parent = holder
+	end
+	local up = if aim then aim.Unit else Vector3.yAxis
+	holder.CFrame = if math.abs(up.Y) > 0.999
+		then CFrame.new(at) * (if up.Y < 0 then CFrame.Angles(math.pi, 0, 0) else CFrame.identity)
+		else CFrame.lookAt(at, at + up) * CFrame.Angles(-math.pi / 2, 0, 0) -- its top (the emission side) along aim
+	local angle = if aim then S.spread or 0 else 180
+	emitter.SpreadAngle = Vector2.new(angle, angle)
+	emitter.Speed = spread(S.speed, 0.45, 1.2)
+	emitter.Lifetime = spread(S.life, 0.7, 1.3)
+	emitter.Size = sizes(S.size)
+	emitter.Acceleration = Vector3.new(0, -(S.gravity or 0), 0)
+	emitter.Drag = S.drag or 0
+	emitter.RotSpeed = NumberRange.new(-(S.spinDeg or 0), S.spinDeg or 0)
+	emitter.LightEmission = if S.glow then 0.5 else 0
+	emitter:Emit(count)
 end
 
 -- A copy of a character for the scene, or nil.
@@ -671,6 +793,42 @@ end
 
 -- Public ----------------------------------------------------------------------------------------------------------
 
+-- Round B2 (E:93-105): the confetti cannons at the "!" (header), round the map's centre in the map's own turn.
+function MatchPodium.cannons(spec: CannonSpec)
+	local map = findMap(spec.view, spec.preview)
+	if map == nil then
+		return
+	end
+	local C = PARTY.cannons
+	local budget = PARTY.budget[if spec.compact then "phone" else "desktop"]
+	local pivot = map:GetPivot()
+	local frame = CFrame.new(pivot.X, pivot.Y + CFG.lift, pivot.Z) * pivot.Rotation
+	local folder = Instance.new("Folder")
+	folder.Name = "SD_PodiumCannons"
+	folder.Parent = Workspace
+	local holder = sprayHolder(folder)
+	local kinds = { CHIP_KEY, PETAL_KEY, CHIP_KEY } -- E:100: flake, petal, cube
+	local colors = { spec.main, spec.light, Palette.Lemon, Color3.new(1, 1, 1) }
+	local piece =
+		{ speed = C.speed, size = C.size, life = C.life, gravity = C.gravity, drag = C.drag, spinDeg = C.spinDeg }
+	piece.spread = C.spread
+	local puff = { speed = C.puff.speed, size = C.puff.size, life = C.puff.life, glow = true }
+	for _, at in C.at do
+		local mouth = frame * Vector3.new(at[1], C.y, at[2])
+		local aim = frame:VectorToWorldSpace(MatchPodium.cannonAim(at[1], at[2]))
+		-- 12 = the kinds' 3 by the colours' 4: piece i is kind i % 3 and colour i % 4
+		for j, n in MatchPodium.split(budget.cannon, 12) do
+			spray(holder, mouth, aim, n, kinds[(j - 1) % 3 + 1], colors[(j - 1) % 4 + 1], piece)
+		end
+		for j, n in MatchPodium.split(C.puff.count, 2) do
+			spray(holder, mouth, nil, n, STAR_KEY, if j == 1 then Color3.new(1, 1, 1) else Palette.Lemon, puff)
+		end
+	end
+	task.delay(C.life[2] * 1.3 + 0.5, function()
+		folder:Destroy()
+	end)
+end
+
 function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 	local view = spec.view
 	local lineup = spec.lineup
@@ -686,7 +844,6 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 	local strong = spec.shake and not spec.reduced and spec.kind == "victory"
 	local detail = if spec.compact then CFG.cake.phoneDetail else 1
 	local fx = FxPool.default()
-	local sparkle = AssetTable.image(SPARKLE_KEY) or ""
 
 	-- What this screen hides (header), and what it was.
 	local hiddenParts: { [Instance]: number } = {}
@@ -910,11 +1067,213 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 	local mvpFrame = 0
 	local finished = false
 
-	local function burst(at: Vector3, count: number, colors: { Color3 }, B: any, up: number)
+	-- Round B2: the party (header), whenever the cake shows.
+	local budget = PARTY.budget[if spec.compact then "phone" else "desktop"]
+	local white = Color3.new(1, 1, 1)
+	local thin = false
+	local sprayer = sprayHolder(folder)
+	local spots: { Spot } = {}
+	local rockets: { Rocket } = {}
+	local rocketT = PARTY.rockets.first
+	local balloons: { Balloon } = {}
+	local balloonIndex = 0
+	local rain: { ParticleEmitter } = {}
+	local rng = Random.new()
+	local function between(r: { number }): number
+		return r[1] + rng:NextNumber() * (r[2] - r[1])
+	end
+	if cake then
+		local Sp = PARTY.spots
+		for _, from in Sp.from do
+			local origin = Instance.new("Attachment")
+			origin.Name = "SpotFrom"
+			origin.Parent = anchor
+			origin.WorldPosition = frame * v3(from)
+			local tip = Instance.new("Attachment")
+			tip.Name = "SpotTo"
+			tip.Parent = anchor
+			local beam = Instance.new("Beam")
+			beam.Name = "Spot"
+			beam.Attachment0 = origin
+			beam.Attachment1 = tip
+			beam.Width0 = 0.4
+			beam.Width1 = 2 * Sp.radius
+			beam.FaceCamera = true
+			beam.Segments = 1
+			beam.Color = ColorSequence.new(Palette.PodiumSpot)
+			beam.LightEmission = 1
+			beam.LightInfluence = 0
+			beam.Transparency = NumberSequence.new(1 - Sp.alpha)
+			beam.Parent = anchor
+			table.insert(spots, { from = origin.WorldPosition, tip = tip, beam = beam })
+		end
+		-- the rain: one emitter a colour over a box above the cake
+		local R = PARTY.rain
+		local cloud = part("Part", {
+			Name = "Rain",
+			Size = Vector3.new(R.area[1], R.ySpread, R.area[2]),
+			CFrame = frame * CFrame.new(0, R.y + R.ySpread / 2, R.z0 + R.area[2] / 2),
+			Transparency = 1,
+			Parent = folder,
+		})
+		local colors = { spec.main, spec.look, Palette.Lemon, white, Palette.StickerMintTop, Palette.MatchEndLilac }
+		for _, color in colors do
+			local e = Instance.new("ParticleEmitter")
+			e.Name = "Sprinkles"
+			e.Texture = AssetTable.image(SPRINKLE_KEY) or ""
+			e.Color = ColorSequence.new(color)
+			e.EmissionDirection = Enum.NormalId.Bottom
+			e.Shape = Enum.ParticleEmitterShape.Box
+			e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+			e.SpreadAngle = Vector2.new(5, 5)
+			e.Speed = NumberRange.new(R.speed[1], R.speed[2])
+			e.Acceleration = Vector3.new(0, -R.gravity, 0)
+			e.Drag = R.drag
+			e.Lifetime = NumberRange.new(R.life)
+			e.Size = sizes(R.size)
+			e.Rotation = NumberRange.new(0, 360)
+			e.RotSpeed = NumberRange.new(-R.spinDeg, R.spinDeg)
+			e.LightInfluence = 0
+			e.Rate = budget.rain / #colors
+			e.Parent = cloud
+			table.insert(rain, e)
+		end
+	end
+
+	local function rocket()
+		local R = PARTY.rockets
+		local p = Vector3.new((rng:NextNumber() - 0.5) * 2 * R.halfX, R.y, -(R.back + rng:NextNumber() * R.backSpread))
+		local v =
+			Vector3.new((rng:NextNumber() - 0.5) * 2 * R.side, between(R.rise), (rng:NextNumber() - 0.5) * 2 * R.depth)
+		local holder = part("Part", {
+			Name = "Rocket",
+			Size = Vector3.one * 0.2,
+			CFrame = frame * CFrame.new(p),
+			Transparency = 1,
+			Parent = folder,
+		})
+		local a0, a1 = Instance.new("Attachment"), Instance.new("Attachment")
+		a0.Position = Vector3.new(-R.trail.width / 2, 0, 0)
+		a1.Position = Vector3.new(R.trail.width / 2, 0, 0)
+		a0.Parent, a1.Parent = holder, holder
+		local trail = Instance.new("Trail") -- E:108: a lemon-to-white ribbon
+		trail.Attachment0, trail.Attachment1 = a0, a1
+		trail.Lifetime = R.trail.life
+		trail.Color = ColorSequence.new(Palette.Lemon, white)
+		trail.Transparency = NumberSequence.new(1 - R.trail.alpha, 1)
+		trail.FaceCamera = true
+		trail.LightEmission = 0.6
+		trail.LightInfluence = 0
+		trail.Parent = holder
+		table.insert(rockets, { holder = holder, trail = trail, p = p, v = v, t = 0, life = between(R.life) })
+	end
+
+	local function party(dt: number, dtf: number)
+		if not cake then
+			return
+		end
+		local Sp = PARTY.spots
+		for i, s in spots do
+			local dir = (frame * MatchPodium.spotAim(tp, i) - s.from).Unit
+			s.tip.WorldPosition = s.from + dir * Sp.length
+		end
+		-- fireworks
+		local R = PARTY.rockets
+		rocketT -= dt
+		if rocketT <= 0 then
+			rocket()
+			rocketT = if thin then budget.rocketGapThin else budget.rocketGap
+		end
+		for index = #rockets, 1, -1 do
+			local r = rockets[index]
+			r.t += dtf
+			r.v -= Vector3.new(0, R.gravity * dtf, 0)
+			r.p += r.v * dtf
+			r.holder.CFrame = frame * CFrame.new(r.p)
+			if r.t >= r.life then
+				local at = frame * r.p
+				local stars = { spec.main, spec.look, Palette.Lemon, white }
+				for j, n in MatchPodium.split(budget.sparks, #stars) do
+					spray(sprayer, at, nil, n, STAR_KEY, stars[j], {
+						speed = R.stars.speed,
+						size = R.stars.size,
+						life = R.stars.life,
+						gravity = R.stars.gravity,
+						drag = R.stars.drag,
+						glow = true,
+					})
+				end
+				local hearts = { spec.main, spec.look, Palette.StickerPinkSoft }
+				for j, n in MatchPodium.split(budget.hearts, #hearts) do
+					spray(sprayer, at, nil, n, HEART_KEY, hearts[j], R.hearts)
+				end
+				r.trail.Enabled = false
+				local holder = r.holder
+				task.delay(R.trail.life + 0.1, function()
+					holder:Destroy()
+				end)
+				table.remove(rockets, index)
+			end
+		end
+		-- balloons
+		local B = PARTY.balloons
+		while balloonIndex < math.min(budget.balloons, #B.at) and tp >= B.at[balloonIndex + 1] do
+			local i = balloonIndex
+			balloonIndex += 1
+			local rig = rigs[i % math.max(#rigs, 1) + 1]
+			local who = rig and spec.who(rig.userId)
+			if who and Catalog.get(who.squishyId) then
+				local ok, toy = pcall(SquishyCache.clone, who.squishyId, "World", B.scale)
+				if ok and toy then
+					toy.Name = "Balloon"
+					toy.Parent = folder
+					local cord = part("Part", {
+						Name = "BalloonString",
+						Shape = Enum.PartType.Cylinder,
+						Size = Vector3.new(B.string, B.stringWidth, B.stringWidth),
+						Color = Palette.Frosting,
+						Parent = folder,
+					})
+					local p, speed = MatchPodium.balloonStart(i)
+					table.insert(balloons, { toy = toy, cord = cord, p = p, t = 0, ph = i * B.phase, speed = speed })
+				end
+			end
+		end
+		for index = #balloons, 1, -1 do
+			local q = balloons[index]
+			q.t += dt
+			q.p += Vector3.new(math.sin(q.t * B.sway[2] + q.ph) * B.sway[1] * dt, q.speed * dt, 0)
+			local base = frame * CFrame.new(q.p) * CFrame.Angles(0, 0, math.sin(q.t * B.tilt[2] + q.ph) * B.tilt[1])
+			q.toy:PivotTo(base * CFrame.new(0, B.lift, 0) * CFrame.Angles(0, math.pi, 0)) -- facing the camera
+			q.cord.CFrame = base * CFrame.new(0, B.string / 2, 0) * CFrame.Angles(0, 0, math.pi / 2)
+			if q.p.Y > B.top then
+				q.toy:Destroy()
+				q.cord:Destroy()
+				table.remove(balloons, index)
+			end
+		end
+	end
+
+	local function thinParty()
+		if thin then
+			return
+		end
+		thin = true
+		for _, e in rain do
+			e.Rate = budget.rainThin / #rain
+		end
+		for _, s in spots do
+			s.beam.Transparency = NumberSequence.new(1 - PARTY.spots.thinAlpha)
+		end
+	end
+
+	-- The slam's and the HITs' bursts (E:156-166): the design's capsules, stars and hearts (round B2's pictures).
+	local function burst(at: Vector3, count: number, colors: { Color3 }, B: any, up: number, key: string)
+		local texture = AssetTable.image(key) or ""
 		local each = math.max(1, math.round(count / #colors))
 		for _, color in colors do
 			fx:emit(at, each, {
-				Texture = sparkle,
+				Texture = texture,
 				Color = ColorSequence.new(color),
 				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, B.size), NumberSequenceKeypoint.new(1, 0) }),
 				Lifetime = NumberRange.new(B.life * 0.8, B.life),
@@ -948,7 +1307,8 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 			if spec.compact then S.burst.phone else S.burst.desktop,
 			{ spec.look, Palette.Lemon, Color3.new(1, 1, 1), Palette.StickerMintTop, Palette.MatchEndLilac },
 			S.burst,
-			-S.burst.gravity
+			-S.burst.gravity,
+			SPRINKLE_KEY
 		)
 		local light = Instance.new("PointLight")
 		light.Color = Palette.PodiumSlamLight
@@ -986,7 +1346,8 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 					if spec.compact then St.phone else St.desktop,
 					{ Palette.Lemon, Color3.new(1, 1, 1), spec.look },
 					St,
-					St.rise
+					St.rise,
+					STAR_KEY
 				)
 			end
 			spec.onEvent("poseHit", { slot = rig.rank - 2 })
@@ -997,7 +1358,8 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 				if spec.compact then Ht.phone else Ht.desktop,
 				{ Palette.StickerPinkSoft, Palette.StickerFxPink, Color3.new(1, 1, 1) },
 				Ht,
-				-Ht.gravity
+				-Ht.gravity,
+				HEART_KEY
 			)
 		end
 	end
@@ -1140,7 +1502,8 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 		local dt = math.clamp(now - last, 0, 0.1)
 		last = now
 		tp += dt
-		if hitStop > 0 then
+		local held = hitStop > 0 -- E:292: the hit-stop holds the poses and the fireworks too
+		if held then
 			hitStop -= dt
 		else
 			ptime += dt
@@ -1150,8 +1513,13 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 		end
 		runPoses()
 		crownStep()
+		party(dt, if held then 0 else dt)
 		render()
 		hideAll()
+	end
+
+	function podium.results(_self: any)
+		thinParty()
 	end
 
 	function podium.skip(_self: any)
@@ -1159,6 +1527,7 @@ function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 			return
 		end
 		skipped = true
+		thinParty()
 		tp, ptime, hitStop = CFG.skipAt, CFG.skipAt, 0
 		table.clear(ticks)
 		kickAt = nil

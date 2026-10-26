@@ -1729,6 +1729,13 @@ local SLOTS: { AssetSlot } = {
 	-- (sunA, Lemon) and 14 rays (sunB, the winner's colour), behind VICTORY! (I:234-235).
 	matchHud("img.end.sun18", 82959886509692, "VICTORY!'s Lemon sunburst, 18 rays, white to tint (I:234)"),
 	matchHud("img.end.sun14", 128731459727824, "VICTORY!'s team sunburst, 14 rays, white to tint (I:235)"),
+	-- End screens round B2 (2026-10-26): the podium party's particles, drawn from Diego's own shapes (uploads/sd/fx.js:65-77;
+	-- make_podium_pngs.mjs), white to tint.
+	matchHud("img.podium.star", 122018972021036, "the fireworks' and the cannons' star sparks (fx.js:65 starShape)"),
+	matchHud("img.podium.heart", 97270756629756, "the fireworks' hearts (fx.js:66 heartShape)"),
+	matchHud("img.podium.chip", 88498562494511, "the cannons' confetti flakes and cubes (fx.js:67 chip)"),
+	matchHud("img.podium.petal", 118653976057228, "the cannons' petals (fx.js:76)"),
+	matchHud("img.podium.sprinkle", 120475034437070, "the sprinkle rain (fx.js:77 capsule)"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL
