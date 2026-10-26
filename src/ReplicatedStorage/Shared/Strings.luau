@@ -680,6 +680,13 @@ local Strings = {
 			goal = "FIRST TO {target}",
 			overtime = "OVERTIME",
 		},
+		-- The squish medals (2026-10-26, S:74-78; UI/Match/SquishMedal): the titles, the +1 pill, your streak.
+		medal = {
+			double = "DOUBLE SQUISH!",
+			triple = "TRIPLE SQUISH!",
+			plus = "+1",
+			streak = "{n} squish streak",
+		},
 		-- Round 1 of the match screens (LOADING SCREEN Y MATCH HUD S:437, S:986-994): the cover, the intro's lines
 		-- ({mode} = match.mode.*, upper case), a loading card, the load bar and the 3-2-1.
 		intro = {

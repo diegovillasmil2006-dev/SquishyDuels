@@ -27,6 +27,8 @@
 -- without a position), dockClear (the desktop ability bar's height in base px, none on the phone layout).
 -- The live top bar (2026-10-26): topBarLive (Countdown to Overtime), placeOf (ties share), ffaRival (the leader, the
 -- runner-up when you lead), topBarTime (the match clock in the 3-2-1, the time left, none in overtime).
+-- The squish medals (2026-10-26): medalOf (your 2nd squish in the window DOUBLE, 3rd+ TRIPLE; none for one alone,
+-- others' or the final K.O.).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -478,4 +480,21 @@ return function(t: Context)
 		view.matchPhase = "Overtime"
 		expect.equal(Format.topBarTime(view, NOW), nil)
 	end)
+
+	t.test(
+		"medalOf: your 2nd squish within the window is DOUBLE, the 3rd+ TRIPLE; one alone or others' none",
+		function()
+			local memory = Format.newFeedMemory()
+			local w = FEED.multiWindowS
+			expect.equal(Format.medalOf(line(memory, ko(1, YOU, A, 100))), nil) -- one squish: the kill banner only
+			expect.equal(Format.medalOf(line(memory, ko(2, YOU, B, 100 + w - 0.5))), "double")
+			expect.equal(Format.medalOf(line(memory, ko(3, YOU, C, 100 + 2 * w - 1))), "triple")
+			expect.equal(Format.medalOf(line(memory, ko(4, YOU, A, 100 + 2 * w - 0.5))), "triple") -- 4 in a row
+			expect.equal(Format.medalOf(line(memory, ko(5, YOU, B, 200))), nil) -- the window ran out
+			expect.equal(Format.medalOf(line(memory, ko(6, D, A, 200.5))), nil) -- someone else's
+			expect.equal(Format.medalOf(line(memory, ko(7, D, C, 201))), nil) -- their double is not yours
+			expect.equal(Format.medalOf(line(memory, ko(8, YOU, A, 201.5, { final = true }))), nil) -- the end screen
+			expect.equal(Format.medalOf(nil), nil)
+		end
+	)
 end

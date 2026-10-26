@@ -17,7 +17,9 @@
 --   * the live top bar (2026-10-26): TDM your team left (you in Slot1, nearest the score, with YOU), 6 heads a side,
 --     both scores, the clock and FIRST TO {target}; a squished head shows its seconds; Free for All the leader (the
 --     runner-up when you lead) vs you with places; nothing before the 3-2-1; OVERTIME; power-up pills; it tells the
---     feed where it ends (shared.topBarBottom) and the feed starts there.
+--     feed where it ends (shared.topBarBottom) and the feed starts there;
+--   * the squish medals (2026-10-26): DOUBLE / TRIPLE SQUISH! for your squishes in a row (with the stamp sound and the
+--     victim's name; a newer medal replaces the one showing), none for a squish alone (the kill banner's).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -41,6 +43,7 @@ return function(t: Context)
 	local RespawnBar = t.requireClient("UI/Match/RespawnBar")
 	local StormBar = t.requireClient("UI/Match/StormBar")
 	local TopBar = t.requireClient("UI/Match/TopBar")
+	local SquishMedal = t.requireClient("UI/Match/SquishMedal")
 	local MatchIntro = t.requireClient("UI/Match/MatchIntro")
 	local MatchEnd = t.requireClient("UI/Match/MatchEnd")
 	local Config = t.requireShared("Config")
@@ -186,7 +189,7 @@ return function(t: Context)
 		local far = function(): Vector3?
 			return Vector3.new(1e5, 3, 0) -- outside every safe circle: the storm bar shows where it can
 		end
-		for _, module in { RespawnBar, StormBar, TopBar, DeathCard, KillFeed, MatchIntro, MatchEnd } do
+		for _, module in { RespawnBar, StormBar, TopBar, DeathCard, KillFeed, SquishMedal, MatchIntro, MatchEnd } do
 			for _, state in Fixtures.STATES do
 				for _, compact in { false, true } do
 					local r = run(module, state, compact, far)
@@ -482,6 +485,38 @@ return function(t: Context)
 			expect.truthy(string.find(table.concat(texts, " "), Strings.match.readout.powerUpName.speed, 1, true))
 		end)
 	end)
+
+	-- The squish medals (2026-10-26) -----------------------------------------------------------------------------------
+
+	local function medals(root: Instance): { string }
+		local out = {}
+		for _, d in root:GetDescendants() do
+			if d.Name == "Title" and d:IsA("TextLabel") and d:FindFirstAncestor("SquishMedal") then
+				table.insert(out, d.Text)
+			end
+		end
+		return out
+	end
+
+	t.test(
+		"medal: your squishes in a row show DOUBLE then TRIPLE SQUISH! with the stamp; one alone shows none",
+		function()
+			local r = run(SquishMedal, "tdm_score")
+			guarded(r, function()
+				local words = Strings.matchHud.medal
+				local titles = medals(r.root)
+				-- The 1st of the three is FIRST BLOOD (the kill banner's); the TRIPLE replaced the DOUBLE.
+				expect.deepEqual(titles, { words.triple })
+				expect.equal(count(r.played, "match.vote.stamp"), 2)
+				local sub = assert(r.root:FindFirstChild("Name", true)) :: TextLabel
+				expect.truthy(sub.Text ~= "")
+			end)
+			local single = run(SquishMedal, "tdm_yourSquish")
+			local none = #medals(single.root)
+			finish(single)
+			expect.equal(none, 0)
+		end
+	)
 
 	t.test("feed: under the top bar while it shows", function()
 		local r = run(KillFeed, "tdm_firstBlood")

@@ -35,6 +35,7 @@ export type MotionPose = {
 -- End screens round B1: the podium and its name tags (a child module: this one is near the Source limit).
 local Podium = require(script.Parent.Podium)
 local MatchTopBar = require(script.Parent.MatchTopBar) -- the live top bar (a child module for the same reason)
+local MatchMedal = require(script.Parent.MatchMedal) -- the squish medals (same)
 
 local UI = {
 	-- UIScale = clamp(min(SD_Hud.AbsoluteSize.X / referenceWidth, AbsoluteSize.Y / referenceHeight), min, max),
@@ -118,6 +119,7 @@ local UI = {
 		LevelNumber = 76, -- the new short level-up's badge number (LOBBY HUD L:593)
 		-- Round 1 of the match screens: the intro's map title (S:386, 96 stage px; the 3-2-1 draws it scaled up).
 		IntroTitle = 96,
+		Medal = 42, -- the squish medals' title (S:76)
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -1993,6 +1995,7 @@ local UI = {
 			-- The live top bar (2026-10-26, S:153): a side's score (52 px, stroke 10, drop 5; phone 26 px, 5, 2).
 			matchTopScore = { kind = "Prize", stroke = 10, drop = 5 },
 			matchTopScorePhone = { kind = "HudNumber", stroke = 5, drop = 2 },
+			matchMedalTitle = { kind = "Medal", stroke = 9, drop = 5, color = "StickerCoinText" }, -- S:76
 			-- UI FINAL R4 (the lobby HUD): "Join the queue" (H:131: 17 px white, text-shadow 0 2px 0
 			-- rgba(120,10,50,.55); PR3 adds the 1.5 px ink outline), the "GRIP" tag over the level (H:94: 18 px
 			-- #9AF5D2, stroke 5), the Double Grip chip (H:89: 14 px -> 16, #FFE36B, stroke 4), the search bar's time
@@ -2997,7 +3000,7 @@ local UI = {
 		enabled = {
 			topBar = true, -- the live top bar (2026-10-26: Diego's page 3; UI/Match/TopBar; the test readout goes)
 			feed = true, -- M6 kill feed (2026-10-17: on, with look-alike pictures and sounds until the owner's upload)
-			medal = false, -- M6 SQUISHED! medal: not built, Diego's kill banner (KillBannerController) is that moment
+			medal = true, -- DOUBLE / TRIPLE SQUISH! (2026-10-26; one squish: the kill banner, owner)
 			card = true, -- M7 "squished by" card
 			respawn = true, -- M7 RESPAWNING IN bar and vignette
 			storm = true, -- storm fix (owner 2026-10-26): IN THE STORM! health bar and purple tint (UI/Match/StormBar)
@@ -3196,6 +3199,7 @@ local UI = {
 		},
 		-- The live top bar (2026-10-26): UI/Match/TopBar (Config/MatchTopBar).
 		topBar = MatchTopBar,
+		medal = MatchMedal, -- Config/MatchMedal
 		-- Match HUD M7: the knocked-out vignette (M:61: the radial picture over the whole screen, `margin` past the safe
 		-- area for the notch [P]) and backdrop-filter saturate(.4) brightness(.95) as a client ColorCorrectionEffect;
 		-- sdFade .4 s in, gone at once at the respawn. While img.fx.radial.matchVignette has no id: M:61's stops on two
@@ -4523,6 +4527,7 @@ local UI = {
 		endJelly = { 0.65, 0, 0.35, 1 },
 		endFill = { 0.3, 0.9, 0.4, 1 },
 		topFill = { 0.3, 1.5, 0.5, 1 }, -- the live top bar (S:154 the score bars' width)
+		medal = { 0.2, 1.3, 0.4, 1 }, -- the squish medals (S:70 smMedal)
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The

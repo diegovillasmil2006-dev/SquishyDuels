@@ -14,7 +14,8 @@
 -- screens round B1 (2026-10-26): ctx.podium starts the finish piece's 3D podium (UI/Match/MatchPodium) with the
 -- camera (CameraController.save / restore), the held squishies (HeldSquishyController.setHidden / gripC0), the hands
 -- (FirstPersonController.setAway) and the settings' camera shake, which a UI module may not reach itself. The live top
--- bar (2026-10-26): "topBar" (UI/Match/TopBar, before the feed, which starts under it; ctx.toastsBelow). ctx
+-- bar (2026-10-26): "topBar" (UI/Match/TopBar, before the feed, which starts under it; ctx.toastsBelow). The squish
+-- medals (2026-10-26): "medal" (UI/Match/SquishMedal, after the feed): DOUBLE / TRIPLE SQUISH! only (owner). ctx
 -- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
 -- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
 -- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
@@ -75,6 +76,7 @@ local MatchEnd = require(Client.UI.Match.MatchEnd)
 local MatchIntro = require(Client.UI.Match.MatchIntro)
 local MatchPodium = require(Client.UI.Match.MatchPodium)
 local RespawnBar = require(Client.UI.Match.RespawnBar)
+local SquishMedal = require(Client.UI.Match.SquishMedal)
 local StormBar = require(Client.UI.Match.StormBar)
 local TopBar = require(Client.UI.Match.TopBar)
 local CameraController = require(script.Parent.CameraController)
@@ -138,6 +140,7 @@ local PIECES: { MatchHudFormat.PieceSpec } = {
 	{ name = "topBar", new = TopBar.new }, -- the live top bar (before the feed: it tells the feed where it ends)
 	{ name = "card", new = DeathCard.new }, -- M7
 	{ name = "feed", new = KillFeed.new }, -- M6
+	{ name = "medal", new = SquishMedal.new }, -- DOUBLE / TRIPLE SQUISH! (2026-10-26)
 	{ name = "intro", new = MatchIntro.new }, -- round 1 of the match screens: cover, intro, 3-2-1
 	{ name = "finish", new = MatchEnd.new }, -- end screens round A: VICTORY! / DEFEAT, results, scoreboard
 }

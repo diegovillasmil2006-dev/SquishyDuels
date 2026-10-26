@@ -96,7 +96,7 @@ return function(t: Context)
 				table.insert(names, spec.name)
 				expect.truthy(type(Config.UI.Match.enabled[spec.name]) == "boolean")
 			end
-			expect.deepEqual(names, { "respawn", "storm", "topBar", "card", "feed", "intro", "finish" })
+			expect.deepEqual(names, { "respawn", "storm", "topBar", "card", "feed", "medal", "intro", "finish" })
 		end
 	)
 
@@ -112,8 +112,8 @@ return function(t: Context)
 			expect.truthy(type(on) == "boolean")
 			expect.truthy(type(name) == "string")
 		end
-		-- Match HUD M6 / M7: the medal (Diego's kill banner is that moment) and the killer camera are not built.
-		expect.equal(Config.UI.Match.enabled.medal, false)
+		-- The squish medals are on (2026-10-26, owner: DOUBLE / TRIPLE only); the killer camera is not built.
+		expect.equal(Config.UI.Match.enabled.medal, true)
 		expect.equal(Config.UI.Match.enabled.killerCam, false)
 		local calls = {}
 		withPieces({ fake("noSwitch", calls) }, function()

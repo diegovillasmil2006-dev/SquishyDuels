@@ -85,6 +85,9 @@
 --                                      MatchFormat.leader)
 --   topBarTime(view, now) -> string?    the clock: the mode's whole match in the 3-2-1, the time left live, nil in
 --                                      Overtime (the bar says OVERTIME)
+-- The squish medals (2026-10-26, owner: only for double and triple squishes; UI/Match/SquishMedal):
+--   medalOf(line) -> "double" | "triple" | nil   a feed line (feedLine) of your own squish tagged DOUBLE! / TRIPLE!
+--                                      (the final K.O., FIRST BLOOD and a squish alone: none)
 
 -- Requires
 
@@ -409,6 +412,13 @@ function MatchHudFormat.stormShows(view: any, now: number, position: Vector3?, s
 	end
 	local radius = MatchFormat.stormRadius(view, now, storm)
 	return radius ~= nil and StormMath.inStorm(centre, radius, position)
+end
+
+function MatchHudFormat.medalOf(line: FeedLine?): string?
+	if line == nil or line.mine ~= "by" then
+		return nil
+	end
+	return if line.tag == "double" or line.tag == "triple" then line.tag else nil
 end
 
 function MatchHudFormat.topBarLive(view: any): boolean

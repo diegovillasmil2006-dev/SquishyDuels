@@ -570,6 +570,11 @@ local Palette = {
 	MatchTopTimer = Color3.fromHex("#2A1D45"),
 	MatchTopDead = Color3.fromHex("#8F8AA0"),
 	MatchTopGoalTop = Color3.fromHex("#FFF3B8"),
+	-- The squish medals (2026-10-26, S:74, S:78): the +1 pill's and the streak pill's stops.
+	MatchMedalPlusTop = Color3.fromHex("#A6F796"),
+	MatchMedalPlusEnd = Color3.fromHex("#38C150"),
+	MatchMedalStreakTop = Color3.fromHex("#FFB25C"),
+	MatchMedalStreakEnd = Color3.fromHex("#FF4F6E"),
 
 	-- Pens3 phase 1: the base pen (lobby design v6, `K:n` = kit.json line n, approved by the owner). World only
 	-- (BaseService draws the fence and the sign; PenController the coin labels and the own sign's state).

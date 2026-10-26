@@ -1401,6 +1401,16 @@ local SLOTS: { AssetSlot } = {
 		"I:891 crownDrop: the MVP's crown lands; file 'podium_crown_drop.wav'",
 		hudSound(140512716739149, 0.2108, "podium_crown_drop.wav")
 	),
+	-- The squish medals (2026-10-26): the chime 90 ms after the stamp (S:707; hud-lib.js L:146 claim(),
+	-- make_medal_sounds.mjs); the stamp is match.vote.stamp (the same recipe).
+	soundSlot(
+		"match.medal.claim",
+		"UI",
+		false,
+		nil,
+		"lib:146 claim(): a DOUBLE / TRIPLE SQUISH! medal lands; file 'medal_claim.wav'",
+		hudSound(116526391968845, 0.1253, "medal_claim.wav")
+	),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1736,6 +1746,9 @@ local SLOTS: { AssetSlot } = {
 	matchHud("img.podium.chip", 88498562494511, "the cannons' confetti flakes and cubes (fx.js:67 chip)"),
 	matchHud("img.podium.petal", 118653976057228, "the cannons' petals (fx.js:76)"),
 	matchHud("img.podium.sprinkle", 120475034437070, "the sprinkle rain (fx.js:77 capsule)"),
+	-- The squish medals (2026-10-26): drawn from the page's CSS (S:72-73; make_medal_pngs.mjs).
+	matchHud("img.medal.face", 131392992364061, "the medal's gold face with its top highlight, a circle (S:73)"),
+	matchHud("img.medal.rays", 118728654062426, "the gold rays turning behind the medal, 216 px box (S:72)"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

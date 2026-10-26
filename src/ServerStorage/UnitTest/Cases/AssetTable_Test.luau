@@ -227,6 +227,8 @@ local FOUND_SOUND_KEYS = {
 	"match.end.poseHit",
 	"match.end.mvpSlam",
 	"match.end.crownDrop",
+	-- The squish medals (2026-10-26): the chime (hud-lib.js claim()).
+	"match.medal.claim",
 	-- The fancier box reveal (2026-10-26): its 11 renders.
 	"box.ux.rattle1",
 	"box.ux.rattle2",
@@ -624,6 +626,9 @@ return function(t: Context)
 				"img.podium.chip",
 				"img.podium.petal",
 				"img.podium.sprinkle",
+				-- The squish medals (2026-10-26): the gold face and its rays.
+				"img.medal.face",
+				"img.medal.rays",
 			})
 		)
 	end)
