@@ -2610,6 +2610,38 @@ return function(t: Context)
 		close()
 	end)
 
+	-- 2026-10-26: MatchBotService destroyed every bot getMatch did not know, so the bots lost their bodies at the vote.
+	t.test("round 3: bots are held (inVoteOrMatch) through the vote into its match, and let go when it is called off", function()
+		local w = voteWorld(2)
+		local bots = withBots(w)
+		local p = w.players
+		MatchService.join(p[1], "ffa")
+		MatchService.tick(T0 + w.cfg.gatherSeconds)
+		expect.truthy(#bots.taken > 0)
+		for _, bot in bots.taken do
+			expect.equal(MatchService.getMatch(bot), nil) -- no match yet: only the vote holds it
+			expect.truthy(MatchService.inVoteOrMatch(bot))
+		end
+		MatchService.playerRemoving(p[1]) -- nobody real left: called off
+		for _, bot in bots.taken do
+			expect.falsy(MatchService.inVoteOrMatch(bot))
+		end
+		local first = #bots.taken
+		MatchService.join(p[2], "ffa")
+		MatchService.tick(T0 + 2 * w.cfg.gatherSeconds + 20)
+		local view = lastVote(w, p[2])
+		MatchService.tick(view.closesAt + w.cfg.Vote.endDelaySeconds)
+		MatchService.tick(lastVote(w, p[2]).result.startsAt)
+		expect.truthy(w.port ~= nil)
+		expect.truthy(#bots.taken > first)
+		for index = first + 1, #bots.taken do
+			local bot = bots.taken[index]
+			expect.truthy(MatchService.inVoteOrMatch(bot))
+			expect.equal((MatchService.getMatch(bot) :: any).matchId, w.port.matchId)
+		end
+		close()
+	end)
+
 	t.test(
 		"match bots: a player alone gets a match filled to maxPlayers; no view or toast ever goes to a bot",
 		function()

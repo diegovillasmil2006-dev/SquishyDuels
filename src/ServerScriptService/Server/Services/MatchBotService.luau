@@ -417,8 +417,8 @@ local function loop()
 		task.wait(CFG.thinkSeconds)
 		local now = os.clock()
 		for _, pilot in table.clone(pilots) do
-			if MatchService.getMatch(pilot.bot) == nil then
-				forget(pilot.bot) -- its match is over (the end, a void, a shutdown): the rig goes with it
+			if not MatchService.inVoteOrMatch(pilot.bot) then
+				forget(pilot.bot) -- its vote or match is over (the end, a void, a shutdown): the rig goes with it
 			else
 				local ok, err = pcall(step :: any, pilot, now)
 				if not ok and not pilot.bot.warned then

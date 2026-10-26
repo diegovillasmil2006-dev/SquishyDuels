@@ -3020,6 +3020,12 @@ function MatchService.getMatch(who: any): MatchInfo?
 	}
 end
 
+-- Match bots: whether a bot (or anyone) waits in a map vote or plays in a match now (getMatch is nil during the vote).
+function MatchService.inVoteOrMatch(who: any): boolean
+	local userId = userIdOf(who)
+	return (userId ~= nil and pendingOfUser[userId] ~= nil) or participantOf(who) ~= nil
+end
+
 -- Match bots: what the pilot of a bot (or any participant) may read of its match now, or nil outside a match.
 function MatchService.botView(who: any): BotView?
 	local match, p = participantOf(who)
