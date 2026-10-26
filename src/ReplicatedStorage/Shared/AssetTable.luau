@@ -191,6 +191,18 @@ local function killSheet(id: number, file: string): ApprovedSound
 	}
 end
 
+-- soundSlot's `approved` argument for an ALL HUDS sound (2026-10-26): the design's recipe rendered and normalised to
+-- -1 dBFS (make_*_sounds.mjs), uploaded by Claude through Studio's Import Queue at the owner's yes; `volume` = the mix.
+local function hudSound(id: number, volume: number, file: string): ApprovedSound
+	return {
+		id = id,
+		volume = volume,
+		source = `DIJAY Studios group upload (Studio Import Queue): '{file}'`,
+		license = UPLOAD_LICENSE,
+		verifiedAt = "2026-10-26",
+	}
+end
+
 -- An image slot holding a kill banner emblem (`file` is the uploaded PNG).
 local function killEmblem(key: string, id: number, file: string, use: string): AssetSlot
 	return {
@@ -794,7 +806,8 @@ local SLOTS: { AssetSlot } = {
 		"UI",
 		false,
 		nil,
-		"the design's pop (hud-lib.js lib:136; NICE!, AWESOME!, GO); file 'sfx_ui_pop.ogg' (R0b render)"
+		"the design's pop (hud-lib.js lib:136; NICE!, AWESOME!, GO); file 'ui_pop.wav' (the LEVEL UP folder)",
+		hudSound(128975338284877, 0.0259, "ui_pop.wav")
 	),
 	soundSlot(
 		"ui.levelTone",
@@ -938,59 +951,259 @@ local SLOTS: { AssetSlot } = {
 		"UI",
 		false,
 		nil,
-		"lib:176 whoosh(true): the card comes in (M:560); also MATCH FOUND's whoosh (L:1044, L:1051); file 'match_whoosh.wav'"
+		"lib:176 whoosh(true): the card comes in (M:560); also MATCH FOUND's whoosh (L:1044, L:1051); file 'match_whoosh.wav'",
+		hudSound(78769265874011, 0.0221, "match_whoosh.wav")
 	),
 	-- MATCH FOUND (round 2 of the match flow, 2026-10-25; LOBBY HUD L:1036-1047, hud-lib.js L:231-256): the design's
-	-- recipes rendered (make_mf_sounds.mjs, the Desktop folder "Squishy Duels sounds - MATCH FOUND") for the owner to
-	-- upload. While an id is nil a look-alike plays (Config.UI.MatchFound.sounds).
-	soundSlot("match.found.charge", "UI", false, nil, "L:1036 mfCharge(): the build-up; file 'match_found_charge.wav'"),
-	soundSlot("match.found.impact", "UI", false, nil, "L:1039 mfImpact(): the boom; file 'match_found_impact.wav'"),
-	soundSlot("match.found.letters", "UI", false, nil, "L:1042 mfLetters(11); file 'match_found_letters.wav'"),
+	-- recipes rendered (make_mf_sounds.mjs, the Desktop folder "Squishy Duels sounds - MATCH FOUND"), uploaded
+	-- 2026-10-26. A look-alike plays when an id is missing (Config.UI.MatchFound.sounds).
+	soundSlot(
+		"match.found.charge",
+		"UI",
+		false,
+		nil,
+		"L:1036 mfCharge(): the build-up; file 'match_found_charge.wav'",
+		hudSound(103632341433354, 0.1474, "match_found_charge.wav")
+	),
+	soundSlot(
+		"match.found.impact",
+		"UI",
+		false,
+		nil,
+		"L:1039 mfImpact(): the boom; file 'match_found_impact.wav'",
+		hudSound(139504651485628, 0.3245, "match_found_impact.wav")
+	),
+	soundSlot(
+		"match.found.letters",
+		"UI",
+		false,
+		nil,
+		"L:1042 mfLetters(11); file 'match_found_letters.wav'",
+		hudSound(126981272307087, 0.0603, "match_found_letters.wav")
+	),
 	soundSlot(
 		"match.found.lettersSolo",
 		"UI",
 		false,
 		nil,
-		"L:1047 mfLetters(12, .05, C5): FREE FOR ALL's second run; file 'match_found_letters_solo.wav'"
+		"L:1047 mfLetters(12, .05, C5): FREE FOR ALL's second run; file 'match_found_letters_solo.wav'",
+		hudSound(86248501909417, 0.063, "match_found_letters_solo.wav")
 	),
-	soundSlot("match.found.chime", "UI", false, nil, "L:1043 chime(): two bell notes; file 'match_found_chime.wav'"),
-	soundSlot("match.found.vs", "UI", false, nil, "L:1045 vsSlam(): VS slams in; file 'match_found_vs.wav'"),
+	soundSlot(
+		"match.found.chime",
+		"UI",
+		false,
+		nil,
+		"L:1043 chime(): two bell notes; file 'match_found_chime.wav'",
+		hudSound(74873264138642, 0.052, "match_found_chime.wav")
+	),
+	soundSlot(
+		"match.found.vs",
+		"UI",
+		false,
+		nil,
+		"L:1045 vsSlam(): VS slams in; file 'match_found_vs.wav'",
+		hudSound(123135905650892, 0.1545, "match_found_vs.wav")
+	),
 	-- The map vote (round 3 of the match flow, 2026-10-25; LOBBY HUD L:1059-1146, hud-lib.js L:137-269): rendered the
-	-- same way (the Desktop folder "Squishy Duels sounds - MAP VOTE"); look-alikes meanwhile (Config.UI.MatchFound.vote).
-	soundSlot("match.vote.open", "UI", false, nil, "lib:139 open(): the vote opens; file 'vote_open.wav'"),
-	soundSlot("match.vote.card", "UI", false, nil, "lib:137 card(): a card comes in; file 'vote_card.wav'"),
-	soundSlot("match.vote.tick", "UI", false, nil, "lib:265 clockTick(): a second; file 'vote_tick.wav'"),
+	-- same way (the Desktop folder "Squishy Duels sounds - MAP VOTE"); look-alikes when missing (Config.UI.MatchFound.vote).
+	soundSlot(
+		"match.vote.open",
+		"UI",
+		false,
+		nil,
+		"lib:139 open(): the vote opens; file 'vote_open.wav'",
+		hudSound(76749336213832, 0.0892, "vote_open.wav")
+	),
+	soundSlot(
+		"match.vote.card",
+		"UI",
+		false,
+		nil,
+		"lib:137 card(): a card comes in; file 'vote_card.wav'",
+		hudSound(119684096035800, 0.0159, "vote_card.wav")
+	),
+	soundSlot(
+		"match.vote.tick",
+		"UI",
+		false,
+		nil,
+		"lib:265 clockTick(): a second; file 'vote_tick.wav'",
+		hudSound(131299015800589, 0.0079, "vote_tick.wav")
+	),
 	soundSlot(
 		"match.vote.tickUrgent",
 		"UI",
 		false,
 		nil,
-		"lib:266 clockTick(true): the last 3 seconds; file 'vote_tick_urgent.wav'"
+		"lib:266 clockTick(true): the last 3 seconds; file 'vote_tick_urgent.wav'",
+		hudSound(131198113749432, 0.0407, "vote_tick_urgent.wav")
 	),
-	soundSlot("match.vote.toss", "UI", false, nil, "lib:257 toss(): a vote flies; file 'vote_toss.wav'"),
-	soundSlot("match.vote.land", "UI", false, nil, "lib:258 voteLand(1): a vote lands; file 'vote_land.wav'"),
-	soundSlot("match.vote.landMine", "UI", false, nil, "lib:258 voteLand(1, true): yours; file 'vote_land_mine.wav'"),
-	soundSlot("match.vote.stamp", "UI", false, nil, "lib:204 stamp(): the vote ends; file 'vote_stamp.wav'"),
-	soundSlot("match.vote.roulette", "UI", false, nil, "lib:269 roulette(0): a step; file 'vote_roulette.wav'"),
-	soundSlot("match.vote.fanfare", "UI", false, nil, "lib:225 fanfare(): the winner; file 'vote_fanfare.wav'"),
-	soundSlot("match.vote.burst", "UI", false, nil, "lib:165 burst(): the winner's burst; file 'vote_burst.wav'"),
+	soundSlot(
+		"match.vote.toss",
+		"UI",
+		false,
+		nil,
+		"lib:257 toss(): a vote flies; file 'vote_toss.wav'",
+		hudSound(120445341756165, 0.0121, "vote_toss.wav")
+	),
+	soundSlot(
+		"match.vote.land",
+		"UI",
+		false,
+		nil,
+		"lib:258 voteLand(1): a vote lands; file 'vote_land.wav'",
+		hudSound(94450488911957, 0.0341, "vote_land.wav")
+	),
+	soundSlot(
+		"match.vote.landMine",
+		"UI",
+		false,
+		nil,
+		"lib:258 voteLand(1, true): yours; file 'vote_land_mine.wav'",
+		hudSound(86650840303092, 0.0732, "vote_land_mine.wav")
+	),
+	soundSlot(
+		"match.vote.stamp",
+		"UI",
+		false,
+		nil,
+		"lib:204 stamp(): the vote ends; file 'vote_stamp.wav'",
+		hudSound(104008531285413, 0.0597, "vote_stamp.wav")
+	),
+	soundSlot(
+		"match.vote.roulette",
+		"UI",
+		false,
+		nil,
+		"lib:269 roulette(0): a step; file 'vote_roulette.wav'",
+		hudSound(111283132275563, 0.0067, "vote_roulette.wav")
+	),
+	soundSlot(
+		"match.vote.fanfare",
+		"UI",
+		false,
+		nil,
+		"lib:225 fanfare(): the winner; file 'vote_fanfare.wav'",
+		hudSound(91422059510157, 0.3548, "vote_fanfare.wav")
+	),
+	soundSlot(
+		"match.vote.burst",
+		"UI",
+		false,
+		nil,
+		"lib:165 burst(): the winner's burst; file 'vote_burst.wav'",
+		hudSound(71500914562227, 0.2133, "vote_burst.wav")
+	),
 	-- The new short level-up (2026-10-25; LOBBY HUD L:940-943): its rising tone and its jingle, rendered to the Desktop
-	-- folder "Squishy Duels sounds - LEVEL UP" with ui.pop's file; look-alikes meanwhile (GripController).
-	soundSlot("grip.levelUp.tone", "UI", false, nil, "L:940 tone(420 -> 980): the badge pops in; file 'lvl_tone.wav'"),
-	soundSlot("grip.levelUp.jingle", "UI", false, nil, "lib:205 levelup(): the level-up jingle; file 'lvl_jingle.wav'"),
+	-- folder "Squishy Duels sounds - LEVEL UP" with ui.pop's file; look-alikes when missing (GripController).
+	soundSlot(
+		"grip.levelUp.tone",
+		"UI",
+		false,
+		nil,
+		"L:940 tone(420 -> 980): the badge pops in; file 'lvl_tone.wav'",
+		hudSound(95155342329090, 0.0095, "lvl_tone.wav")
+	),
+	soundSlot(
+		"grip.levelUp.jingle",
+		"UI",
+		false,
+		nil,
+		"lib:205 levelup(): the level-up jingle; file 'lvl_jingle.wav'",
+		hudSound(81917274519929, 0.3162, "lvl_jingle.wav")
+	),
 	-- The fancier box reveal (2026-10-26; LOBBY HUD L:1175-1195, hud-lib.js L:160-195): the folder "Squishy Duels
-	-- sounds - BOX REVEAL"; meanwhile each cue falls back to the older slot, then a look-alike (BoxFormat.soundCue).
-	soundSlot("box.ux.rattle1", "UI", false, nil, "lib:160 rattle(0): the first shake; file 'box_rattle_1.wav'"),
-	soundSlot("box.ux.rattle2", "UI", false, nil, "lib:160 rattle(1): the second shake; file 'box_rattle_2.wav'"),
-	soundSlot("box.ux.rattle3", "UI", false, nil, "lib:160 rattle(2): the third shake; file 'box_rattle_3.wav'"),
-	soundSlot("box.ux.rise", "UI", false, nil, "lib:178 unboxRise(): the last shake's rise; file 'box_rise.wav'"),
-	soundSlot("box.ux.unboxCommon", "UI", false, nil, "lib:179 unbox(0): a Common opens; file 'box_unbox_common.wav'"),
-	soundSlot("box.ux.unboxUncommon", "UI", false, nil, "lib:179 unbox(1): Uncommon; file 'box_unbox_uncommon.wav'"),
-	soundSlot("box.ux.unboxEpic", "UI", false, nil, "lib:179 unbox(2): Epic; file 'box_unbox_epic.wav'"),
-	soundSlot("box.ux.unboxExclusive", "UI", false, nil, "lib:179 unbox(3): Exclusive; file 'box_unbox_exclusive.wav'"),
-	soundSlot("box.ux.letterLow", "UI", false, nil, "lib:195 letter(0), pitched; file 'box_letter_low.wav'"),
-	soundSlot("box.ux.letterHigh", "UI", false, nil, "lib:195 letter(5), pitched above; file 'box_letter_high.wav'"),
-	soundSlot("box.ux.stamp", "UI", false, nil, "lib:194 uxStamp(): the rarity pill lands; file 'box_stamp.wav'"),
+	-- sounds - BOX REVEAL"; when an id is missing the cue falls back to the older slot, then a look-alike
+	-- (BoxFormat.soundCue).
+	soundSlot(
+		"box.ux.rattle1",
+		"UI",
+		false,
+		nil,
+		"lib:160 rattle(0): the first shake; file 'box_rattle_1.wav'",
+		hudSound(103280286918242, 0.0579, "box_rattle_1.wav")
+	),
+	soundSlot(
+		"box.ux.rattle2",
+		"UI",
+		false,
+		nil,
+		"lib:160 rattle(1): the second shake; file 'box_rattle_2.wav'",
+		hudSound(75336041705441, 0.0886, "box_rattle_2.wav")
+	),
+	soundSlot(
+		"box.ux.rattle3",
+		"UI",
+		false,
+		nil,
+		"lib:160 rattle(2): the third shake; file 'box_rattle_3.wav'",
+		hudSound(136802239471938, 0.1279, "box_rattle_3.wav")
+	),
+	soundSlot(
+		"box.ux.rise",
+		"UI",
+		false,
+		nil,
+		"lib:178 unboxRise(): the last shake's rise; file 'box_rise.wav'",
+		hudSound(112664395227856, 0.0575, "box_rise.wav")
+	),
+	soundSlot(
+		"box.ux.unboxCommon",
+		"UI",
+		false,
+		nil,
+		"lib:179 unbox(0): a Common opens; file 'box_unbox_common.wav'",
+		hudSound(112758009924455, 0.2321, "box_unbox_common.wav")
+	),
+	soundSlot(
+		"box.ux.unboxUncommon",
+		"UI",
+		false,
+		nil,
+		"lib:179 unbox(1): Uncommon; file 'box_unbox_uncommon.wav'",
+		hudSound(138094624049938, 0.2118, "box_unbox_uncommon.wav")
+	),
+	soundSlot(
+		"box.ux.unboxEpic",
+		"UI",
+		false,
+		nil,
+		"lib:179 unbox(2): Epic; file 'box_unbox_epic.wav'",
+		hudSound(74388449362206, 0.2578, "box_unbox_epic.wav")
+	),
+	soundSlot(
+		"box.ux.unboxExclusive",
+		"UI",
+		false,
+		nil,
+		"lib:179 unbox(3): Exclusive; file 'box_unbox_exclusive.wav'",
+		hudSound(95286001365130, 0.248, "box_unbox_exclusive.wav")
+	),
+	soundSlot(
+		"box.ux.letterLow",
+		"UI",
+		false,
+		nil,
+		"lib:195 letter(0), pitched; file 'box_letter_low.wav'",
+		hudSound(96068505227016, 0.0052, "box_letter_low.wav")
+	),
+	soundSlot(
+		"box.ux.letterHigh",
+		"UI",
+		false,
+		nil,
+		"lib:195 letter(5), pitched above; file 'box_letter_high.wav'",
+		hudSound(118079651064883, 0.005, "box_letter_high.wav")
+	),
+	soundSlot(
+		"box.ux.stamp",
+		"UI",
+		false,
+		nil,
+		"lib:194 uxStamp(): the rarity pill lands; file 'box_stamp.wav'",
+		hudSound(123131788014679, 0.0888, "box_stamp.wav")
+	),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",

@@ -267,9 +267,9 @@ return function(t: Context)
 		end
 	end)
 
-	-- MATCH FOUND (2026-10-25): the show's 6 sounds, once each, UI, 2D, each note naming its file (the owner uploads them;
-	-- a look-alike plays meanwhile, Config.UI.MatchFound.sounds).
-	t.test("Made sound keys (found, vote, level-up, box reveal): once each, UI, 2D, naming a file", function()
+	-- MATCH FOUND (2026-10-25): the show's 6 sounds, once each, UI, 2D, each note naming its file; all uploaded
+	-- 2026-10-26 (a look-alike still plays for a missing id, Config.UI.MatchFound.sounds).
+	t.test("Made sound keys (found, vote, level-up, box reveal): once each, UI, 2D, naming a file, uploaded", function()
 		for _, key in FOUND_SOUND_KEYS do
 			local found = 0
 			for _, slot in soundSlots() do
@@ -278,6 +278,7 @@ return function(t: Context)
 					expect.equal(slot.group, "UI")
 					expect.equal(slot.spatial, false)
 					expect.truthy(string.find(slot.notes, ".wav'", 1, true) ~= nil)
+					expectApproved(expect, key, slot)
 				end
 			end
 			expect.equal(found, 1)
