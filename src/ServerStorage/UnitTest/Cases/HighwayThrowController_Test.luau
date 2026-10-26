@@ -177,6 +177,15 @@ return function(t: Context)
 		expect.falsy((HighwayThrowController.zoneBanner(3, 1, nil) :: any).ready)
 	end)
 
+	t.test("gear step 3: the trail is the held launcher's zone colour, white without one", function()
+		local Palette = t.requireShared("Art/Palette")
+		local biomes = WorldLayout.Highway.biomes
+		expect.equal(HighwayThrowController.trailColor(nil), Color3.new(1, 1, 1))
+		expect.equal(HighwayThrowController.trailColor({ held = 0, platform = 4, arm = 4, armor = 1 }), Color3.new(1, 1, 1))
+		expect.equal(HighwayThrowController.trailColor({ held = 1 }), (Palette :: any)[biomes[1].nameColor])
+		expect.equal(HighwayThrowController.trailColor({ held = 36 }), (Palette :: any)[biomes[7].nameColor])
+	end)
+
 	t.test("init / start / destroy run cleanly in Edit mode and leave nothing behind", function()
 		local effects = Scheduler.count()
 		HighwayThrowController.init()

@@ -44,7 +44,9 @@
 --   SD_DuelPhase) and destroy().
 -- * ReducedMotion: no camera shots (the camera stays the player's third person) and no tumble; the rest as usual.
 -- * Launchers (held and platform) and gear are phase 14: nothing here changes for them but the trail's colour and the
---   launcher motion (the hook: `release`).
+--   launcher motion (the hook: `release`). Gear step 3 (2026-10-26): the trail fades from the held launcher's zone
+--   colour to white (trailColor; white without one), and a trapped plan (plan.trap) pops TRAP! at the release with
+--   the splat and a short camera jolt (Config/GearShop.trap).
 -- Public: the pure parts (mayForward, shotGoal, landingToasts), init(), start(scheduler?), destroy() (tests and leak
 -- checks; the bootstrap never calls it), debugState(), useDeps() (Edit-mode tests: see REAL_DEPS).
 
@@ -61,6 +63,7 @@ local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local GearShop = require(Shared.Config.GearShop) -- gear step 3
 local HighwayMath = require(Shared.HighwayMath)
 local Palette = require(Shared.Art.Palette)
 local PenMath = require(Shared.PenMath)
@@ -77,6 +80,7 @@ local ThrowMotion = require(Client.Anim.ThrowMotion)
 local ThrowTracks = require(Client.Anim.ThrowTracks)
 local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
+local GearFormat = require(Client.UI.GearFormat)
 local HighwayHud = require(Client.UI.HighwayHud)
 local NotifyFormat = require(Client.UI.NotifyFormat)
 local ScreenHold = require(Client.UI.ScreenHold)
@@ -133,6 +137,7 @@ type Throw = {
 	shotLook: Vector3?,
 	eye: Vector3?,
 	look: Vector3?,
+	joltAt: number?, -- gear step 3: clock of a trap's camera jolt
 }
 
 -- Constants
@@ -277,8 +282,9 @@ local REAL_DEPS = {
 			connection:disconnect()
 		end
 	end,
-	-- The flying squishy: a World clone of `kind`, flyScale bigger, with K's E5 trail (white, flyScale wide).
-	spawn = function(kind: string): (Model?, Trail?)
+	-- The flying squishy: a World clone of `kind`, flyScale bigger, with K's E5 trail (flyScale wide; gear step 3: from
+	-- `color` to white).
+	spawn = function(kind: string, color: Color3?): (Model?, Trail?)
 		local model = SquishyCache.clone(kind, "World")
 		if U.flyScale ~= 1 then
 			model:ScaleTo(model:GetScale() * U.flyScale)
@@ -293,7 +299,7 @@ local REAL_DEPS = {
 			FxPool.default():acquireTrail(body, half, -half, {
 				Lifetime = U.trail.lifetime,
 				WidthScale = NumberSequence.new(1, 0),
-				Color = ColorSequence.new(Color3.new(1, 1, 1)),
+				Color = ColorSequence.new(color or Color3.new(1, 1, 1), Color3.new(1, 1, 1)),
 			})
 	end,
 	-- The landing's debris burst (Config.UI.Highway.debris) at a world point in a colour.
@@ -548,12 +554,17 @@ end
 local function release(throw: Throw, now: number)
 	local plan = throw.plan :: Types.HighwayPlan
 	throw.releasedAt = now
-	throw.model, throw.trail = deps.spawn(throw.kind)
+	throw.model, throw.trail = deps.spawn(throw.kind, HighwayThrowController.trailColor(deps.gear()))
 	deps.heldHidden(true)
 	play(U.sounds.throw)
 	if plan.perfect then
 		pop({ { text = Strings.highway.pop.perfect, big = true, color = U.pop.colors.perfect } })
 		play(U.sounds.perfect)
+	end
+	if plan.trap then -- gear step 3
+		pop({ { text = Strings.highway.pop.trap, big = true, color = GearShop.trap.color } })
+		play(GearShop.trap.sound)
+		throw.joltAt = now
 	end
 end
 
@@ -641,7 +652,13 @@ local function drawCamera(throw: Throw, dt: number, now: number, p: Vector3?)
 		eye, look = shotEye:Lerp(goalEye, u), shotLook:Lerp(goalLook, u)
 	end
 	throw.eye, throw.look = eye, look
-	camera.CFrame = CFrame.lookAt(eye, look)
+	-- Gear step 3: a trap's jolt, a quick fading shake up and down on top of the shot (not kept in throw.eye).
+	local jolt = GearShop.trap
+	local since = if throw.joltAt then now - throw.joltAt else math.huge
+	local up = if since < jolt.joltSeconds
+		then jolt.joltStuds * (1 - since / jolt.joltSeconds) * math.sin(since * jolt.joltHz * 2 * math.pi)
+		else 0
+	camera.CFrame = CFrame.lookAt(eye + Vector3.new(0, up, 0), look + Vector3.new(0, up, 0))
 end
 
 -- The flight lines for a squishy at d (lane-local), `boost` while it may boost.
@@ -985,6 +1002,13 @@ end
 -- Owner 2026-10-22 (Break and Steal an Egg; Claude Design's banner, HighwayHud zoneBanner): the banner as the squishy
 -- enters `biome`: its name in its colour, "Recommended:" and the throw power the zone starts at, ready when a Grip
 -- `level` throw reaches it, and the zone's difficulty (Design: zone n is difficulty n) with its tag; nil for no zone.
+-- Gear step 3: the trail's colour, the held launcher's zone colour (GearFormat.trailTier), white without one.
+function HighwayThrowController.trailColor(gear: any?): Color3
+	local def = WorldLayout.Highway.biomes[GearFormat.trailTier(gear)]
+	local color = if def then (Palette :: any)[def.nameColor] else nil
+	return if typeof(color) == "Color3" then color else Color3.new(1, 1, 1)
+end
+
 function HighwayThrowController.zoneBanner(biome: number, level: number, gear: any?): HighwayHud.Banner?
 	local def = WorldLayout.Highway.biomes[biome]
 	local wall = H.walls[biome]

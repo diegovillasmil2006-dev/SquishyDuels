@@ -1124,6 +1124,63 @@ local Strings = {
 		},
 	},
 
+	-- The gear (gear step 3, 2026-10-26; [P] texts, a stand-in until Diego draws the GEAR tab): the shop's two tabs, the
+	-- GEAR page's head and power line ({x} = GearFormat.powerText, "x16"), a card's name with its star ({name}, {n}),
+	-- its line ({x} = a step's power, "2" or "1.4"), MAX, the Coins still missing in place of the line ({coins} =
+	-- Format.coins), the toast of a buy ({name}). Names: the launchers the owner's (2026-10-15), arm gear and armor the owner's pick of
+	-- Claude's (2026-10-26); one a tier, zone 1 to 7.
+	gear = {
+		tabShop = "SHOP",
+		tabGear = "GEAR",
+		section = "GEAR",
+		power = "Your gear: {x} throw power",
+		star = "{name} ★{n}",
+		powerLine = "x{x} throw power",
+		armorLine = "Traps take less",
+		max = "MAX",
+		maxLine = "You have it all!",
+		need = "Need {coins} more",
+		bought = "You got {name}!",
+		names = {
+			held = {
+				"Lolli Sling",
+				"Butter Bow",
+				"Boba Blaster",
+				"Frosty Flick",
+				"Magma Snap",
+				"Prism Popper",
+				"Halo Hurler",
+			},
+			platform = {
+				"Gumdrop Catapult",
+				"Toaster Tosser",
+				"Pearl Pitcher",
+				"Glacier Flinger",
+				"Volcano Vaulter",
+				"Starbeam Trebuchet",
+				"Angel Ascender",
+			},
+			arm = {
+				"Gummy Grip",
+				"Biscuit Bracer",
+				"Bubble Band",
+				"Frost Fist",
+				"Magma Mitt",
+				"Rainbow Wrap",
+				"Halo Gauntlet",
+			},
+			armor = {
+				"Gumdrop Guard",
+				"Crust Coat",
+				"Pearl Plate",
+				"Ice Shell",
+				"Volcano Vest",
+				"Prism Plate",
+				"Angel Aegis",
+			},
+		},
+	},
+
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).
 	bundle = {
 		handful = "Handful of Coins",
@@ -1492,6 +1549,7 @@ local Strings = {
 			rings = "{hit}/{total} RINGS",
 			landed = "{distance} studs!",
 			newBest = "NEW BEST!",
+			trap = "TRAP!", -- gear step 3: a trap took some of this throw's power
 		},
 	},
 

@@ -19,8 +19,15 @@
 --   Strings.shop.soon and its button is off. Never a price or product made up here.
 -- * Squishies for Coins moved out of the shop (owner 2026-10-22: "Keep it, outside the shop"): UI/SquishyBuy, used by
 --   the Squishies screen.
+-- * Gear step 3 (2026-10-26; owner "Yes, build step 3 like that"; [P] a stand-in until Diego draws it): two tabs SHOP |
+--   GEAR in the gold band (his picker well, UI/Components/SegmentedTabs; Config/GearShop). GEAR swaps the right column
+--   for the GEAR page: GEAR over 4 gear cards (his pass cards, a little taller, the text stacked over the chip:
+--   UI/GearFormat's next step of each line, the tile in the tier's zone colour with the tier number and the stars
+--   bought), then the gear's throw power. A tap buys (GearBuy with the shown price, one at a time: the chip reads …
+--   meanwhile); short of Coins the chip greys, the line says how many are missing and a tap shakes the coin pill
+--   (HudController.denyCoins); all bought = the lilac MAX chip. open({tab = "gear"}) opens on GEAR.
 -- Stable names: Shop_CloseButton, Shop_BuyButton (the featured BUY), Shop_Pass_<key>, Shop_Pack_<key>,
--- Shop_Bundle_<key>Button (a pack's price bar).
+-- Shop_Bundle_<key>Button (a pack's price bar), Shop_Tabs (Tab_shop / Tab_gear), Shop_Gear_<line>.
 
 -- Services
 
@@ -34,6 +41,7 @@ local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local GearShop = require(Shared.Config.GearShop) -- gear step 3
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local Strings = require(Shared.Strings)
@@ -42,16 +50,20 @@ local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
 local CoinIcon = require(Client.UI.Components.CoinIcon)
 local Create = require(Client.UI.Create)
+local GearFormat = require(Client.UI.GearFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local Layout = require(Client.UI.Layout)
 local MotionTrack = require(Client.UI.MotionTrack)
+local SegmentedTabs = require(Client.UI.Components.SegmentedTabs)
 local ShopFormat = require(Client.UI.ShopFormat)
 local SquishyImage = require(Client.UI.Components.SquishyImage)
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 local UiIdle = require(Client.Anim.UiIdle)
+local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
+local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
 local WorldBinder = require(script.Parent.WorldBinder)
@@ -60,6 +72,26 @@ local WorldBinder = require(script.Parent.WorldBinder)
 
 type PassCard = { key: string, root: TextButton, rise: Frame, chip: Frame, price: TextLabel }
 type PackCard = { key: string, root: Frame, rise: Frame, buy: Button.Button, ready: boolean }
+-- Gear step 3: a gear card; its tile is rebuilt when the shown tier changes, its stars when their count does.
+type GearCard = {
+	line: string,
+	root: TextButton,
+	rise: Frame,
+	content: Frame,
+	width: number,
+	tile: Frame?,
+	tier: number,
+	dots: { Frame },
+	steps: number,
+	text: Frame,
+	name: TextLabel,
+	desc: TextLabel,
+	buyChip: Frame,
+	buyText: TextLabel,
+	maxChip: Frame,
+	maxText: TextLabel,
+	view: GearFormat.Card?,
+}
 type Featured = {
 	root: Frame,
 	pulse: Frame,
@@ -92,6 +124,11 @@ local WINDOW_PAD = BODY.padTop -- the window's own padding (Theme.window); the b
 local BUTTON_LIP = Config.UI.Sticker.lip.button
 local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives this
 local WHITE = Color3.new(1, 1, 1)
+local REMOTE_GEAR = "GearBuy" -- gear step 3
+local PAGE_SHOP, PAGE_GEAR = "shop", "gear"
+local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result
+local GEAR_CARD = GearShop.card
+local GEAR_TILE = GearShop.tile
 
 -- A text role's kind (Theme.Sticker.text; any: the roles table is untyped).
 local function roleKind(role: string): any
@@ -121,6 +158,14 @@ local prices: { [string]: ShopFormat.PriceState } = {}
 local promptingKey: string? = nil
 local promptToken = 0
 local lastFit: ShopFormat.WindowFit? = nil
+-- Gear step 3: the tabs, the two pages, the gear cards, the power line, the page shown and the line being bought.
+local tabs: SegmentedTabs.SegmentedTabs? = nil
+local shopPage: Frame? = nil
+local gearPage: Frame? = nil
+local gearCards: { GearCard } = {}
+local gearPower: TextLabel? = nil
+local page = PAGE_SHOP
+local gearBusy: string? = nil
 
 -- A design surface as a foam face (`top` -> `bottom`, the ink border inside the box, the inset highlight, the lip).
 local function sticker(
@@ -303,6 +348,448 @@ local function promptBundle(key: string)
 	ShopController.refresh()
 end
 
+-- A section head (H:338, H:352: 22 px #FFE36B, stroke 5).
+local function sectionHead(parent: Instance, name: string, text: string, order: number): TextLabel
+	local head = Theme.label({
+		Name = name,
+		Text = text,
+		Size = UDim2.new(1, 0, 0, math.ceil(Theme.lineHeight(HEAD_KIND))),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = order,
+		Parent = parent,
+	}, HEAD_KIND)
+	Theme.stickerText(head, SHOP.sections.headRole)
+	return head
+end
+
+-- Gear step 3: the GEAR page --------------------------------------------------------------------------------------
+
+-- A gear card's chip (the pass chip's look, H:347): the coin (or the check) and its text; setChip sizes it to the text.
+local function gearChip(
+	c: Cleanup.Cleanup,
+	parent: Instance,
+	name: string,
+	top: Color3,
+	bottom: Color3,
+	check: boolean
+): (Frame, TextLabel)
+	local spec = PASSES.chip
+	local chip: Frame = Create("Frame", {
+		Name = name,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(0, spec.height + spec.lip),
+		Visible = false,
+		Parent = parent,
+	})
+	sticker(chip, { top = top, bottom = bottom }, spec.border, spec.radius, spec.lip, spec.inset)
+	local row: Frame = Create("Frame", {
+		Name = "FaceRow",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, -spec.lip),
+		ZIndex = 2,
+		Parent = chip,
+	})
+	Theme.list(
+		Enum.FillDirection.Horizontal,
+		spec.gap,
+		row,
+		Enum.HorizontalAlignment.Center,
+		Enum.VerticalAlignment.Center
+	)
+	if check then
+		c:add(IconGlyph.new({ name = "Check", icon = "check", sizePx = spec.coinPx, layoutOrder = 1, parent = row }))
+	else
+		c:add(CoinIcon.new({ name = "Coin", sizePx = spec.coinPx, layoutOrder = 1, parent = row }))
+	end
+	local text = Theme.label({
+		Name = "Text",
+		Text = "",
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = false,
+		LayoutOrder = 2,
+		Parent = row,
+	}, CHIP_KIND)
+	Theme.stickerText(text, spec.textRole)
+	return chip, text
+end
+
+local function setChip(chip: Frame, label: TextLabel, text: string)
+	local spec = PASSES.chip
+	label.Text = text
+	fitLabel(label, CHIP_KIND)
+	chip.Size = UDim2.fromOffset(
+		2 * spec.border + spec.padLeft + spec.coinPx + spec.gap + label.Size.X.Offset + spec.padRight,
+		spec.height + spec.lip
+	)
+end
+
+-- The tile in the tier's zone colour (H:342's look): the tier number over a dot a step of the tier (none for armor).
+local function gearTile(card: GearCard, view: GearFormat.Card)
+	local old = card.tile
+	if old then
+		old:Destroy()
+	end
+	table.clear(card.dots)
+	local spec = PASSES.tile
+	local found = (Palette :: any)[view.color]
+	local color: Color3 = if typeof(found) == "Color3" then found else WHITE
+	local tile: Frame = Create("Frame", {
+		Name = "Tile",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, PASSES.border + PASSES.padLeft, 0.5, 0),
+		Size = UDim2.fromOffset(spec.px, spec.px),
+		Parent = card.content,
+	})
+	sticker(
+		tile,
+		{ top = color, bottom = color:Lerp(Theme.Colors.inkUI, GEAR_TILE.endShade) },
+		spec.border,
+		spec.radius,
+		0,
+		spec.inset
+	)
+	local number = Theme.label({
+		Name = "Tier",
+		Text = tostring(view.tier),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, if view.steps > 0 then 0.42 else 0.5),
+		Size = UDim2.fromScale(1, 0.6),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextWrapped = false,
+		ZIndex = 2,
+		Parent = tile,
+	}, roleKind(GEAR_TILE.numberRole))
+	Theme.stickerText(number, GEAR_TILE.numberRole)
+	if view.steps > 0 then
+		local px = if view.steps > 4 then GEAR_TILE.pipPxSmall else GEAR_TILE.pipPx
+		local row: Frame = Create("Frame", {
+			Name = "Stars",
+			BackgroundTransparency = 1,
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.new(0.5, 0, 1, -GEAR_TILE.pipBottom),
+			Size = UDim2.fromOffset(view.steps * px + (view.steps - 1) * GEAR_TILE.pipGap, px),
+			ZIndex = 2,
+			Parent = tile,
+		})
+		Theme.list(
+			Enum.FillDirection.Horizontal,
+			GEAR_TILE.pipGap,
+			row,
+			Enum.HorizontalAlignment.Center,
+			Enum.VerticalAlignment.Center
+		)
+		for i = 1, view.steps do
+			local dot: Frame = Create("Frame", {
+				Name = "Star" .. i,
+				BackgroundColor3 = WHITE,
+				BorderSizePixel = 0,
+				Size = UDim2.fromOffset(px, px),
+				LayoutOrder = i,
+				Parent = row,
+			})
+			Theme.corner(px, dot)
+			Theme.stroke(Theme.Colors.inkUI, 1, dot)
+			table.insert(card.dots, dot)
+		end
+	end
+	card.tile, card.tier, card.steps = tile, view.tier, view.steps
+end
+
+-- One card from its view: the tile, the stars, the name over the line over the chip (BUY with the price, pink when
+-- short with the Coins missing on the line, … while buying; the lilac MAX once all is bought).
+local function paintGearCard(card: GearCard, view: GearFormat.Card)
+	card.view = view
+	if card.tile == nil or card.tier ~= view.tier or card.steps ~= view.steps then
+		gearTile(card, view)
+	end
+	for i, dot in card.dots do
+		dot.BackgroundTransparency = if i <= view.stars then 0 else 0.7
+	end
+	local max = view.state == "max"
+	local short = view.state == "needCoins"
+	card.maxChip.Visible = max
+	card.buyChip.Visible = not max
+	if max then
+		setChip(card.maxChip, card.maxText, Strings.gear.max)
+	else
+		local price = if view.state == "busy" then Strings.shop.robuxLoading else Format.coins(view.price :: number)
+		setChip(card.buyChip, card.buyText, price)
+		card.buyText.TextColor3 = if short then Palette.StickerPriceShort else WHITE
+	end
+	local chip = if max then card.maxChip else card.buyChip
+	local textLeft = PASSES.border + PASSES.padLeft + PASSES.tile.px + PASSES.gap
+	local textW = math.max(1, card.width - textLeft - PASSES.border - PASSES.padRight)
+	card.name.Text = view.name
+	fitLabel(card.name, PASS_NAME_KIND, textW)
+	card.desc.Text = if short
+		then Strings.format(Strings.gear.need, { coins = Format.coins(view.missing) })
+		else view.desc
+	fitLabel(card.desc, PASS_DESC_KIND, textW)
+	local y = 0
+	card.name.Position = UDim2.fromOffset(0, y)
+	y += card.name.Size.Y.Offset + PASSES.textGap
+	card.desc.Position = UDim2.fromOffset(0, y)
+	y += card.desc.Size.Y.Offset + GEAR_CARD.chipGap
+	chip.Position = UDim2.fromOffset(0, y)
+	card.text.Size = UDim2.fromOffset(textW, y + chip.Size.Y.Offset)
+end
+
+local function paintGear()
+	local gear = StateController.get("gear")
+	local coins = StateController.get("coins")
+	local views = GearFormat.cards(gear, if type(coins) == "number" then coins else nil, gearBusy)
+	for index, card in gearCards do
+		local view = views[index]
+		if view then
+			paintGearCard(card, view)
+		end
+	end
+	local power = gearPower
+	if power then
+		power.Text = Strings.format(Strings.gear.power, { x = GearFormat.powerText(gear) })
+	end
+end
+
+-- A tap on a gear card (see the header): buy the shown step, or say why not.
+local function buyGear(card: GearCard)
+	local view = card.view
+	if view == nil or view.state == "max" or gearBusy ~= nil then
+		return
+	end
+	if view.state == "needCoins" then
+		SoundController.play("ui.error")
+		HudController.denyCoins()
+		return
+	end
+	if StateController.isLobbyLocked() then
+		UIController.toast(Strings.common.lockedInDuel, "warn")
+		return
+	end
+	gearBusy = card.line
+	ShopController.refresh()
+	task.spawn(function()
+		local result = NetController.invokeAsync(REMOTE_GEAR, card.line, view.price)
+		gearBusy = nil
+		if result.ok then
+			SoundController.play(SOUND_PURCHASE)
+			UIController.toast(Strings.format(Strings.gear.bought, { name = view.name }), "success")
+			MotionTrack.play(card.rise, CARD_IN.frames :: any, PASSES.rise.ms, 0, CARD_IN.curve)
+		else
+			UIController.toast(Strings.reasonText(result.reason), "warn")
+		end
+		ShopController.refresh()
+	end)
+end
+
+-- A gear card (the pass card's face, H:341, GEAR_CARD.height tall): the tile left, the text stack (name, line, chip).
+local function buildGearCard(c: Cleanup.Cleanup, parent: Instance, line: string, order: number, width: number)
+	local root: TextButton = Create("TextButton", {
+		Name = "Shop_Gear_" .. line,
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		LayoutOrder = order,
+	})
+	c:add(root)
+	local visual = holder("SD_Visual", root)
+	local rise = holder("SD_Rise", visual)
+	local face: Frame = Create("Frame", {
+		Name = "Face",
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = rise,
+	})
+	sticker(
+		face,
+		{ top = Palette.StickerCardTop, bottom = Palette.StickerCardBottom },
+		PASSES.border,
+		PASSES.radius,
+		CARD_LIP,
+		PASSES.inset
+	)
+	local content: Frame = Create("Frame", {
+		Name = "Content",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, -CARD_LIP),
+		ZIndex = 2,
+		Parent = rise,
+	})
+	local text: Frame = Create("Frame", {
+		Name = "Text",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, PASSES.border + PASSES.padLeft + PASSES.tile.px + PASSES.gap, 0.5, 0),
+		Parent = content,
+	})
+	local name = Theme.label({
+		Name = "Name",
+		Text = "",
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = text,
+	}, PASS_NAME_KIND)
+	Theme.stickerText(name, PASSES.nameRole)
+	local desc = Theme.label({
+		Name = "Line",
+		Text = "",
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = text,
+	}, PASS_DESC_KIND)
+	Theme.stickerText(desc, PASSES.descRole)
+	local buyChip, buyText = gearChip(c, text, "Price", Palette.StickerGreenTop, Palette.StickerGreen2End, false)
+	local maxChip, maxText = gearChip(c, text, "Max", Palette.StickerDisabledTop, Palette.StickerDisabledEnd, true)
+	local card: GearCard = {
+		line = line,
+		root = root,
+		rise = rise,
+		content = content,
+		width = width,
+		tile = nil,
+		tier = 0,
+		dots = {},
+		steps = -1,
+		text = text,
+		name = name,
+		desc = desc,
+		buyChip = buyChip,
+		buyText = buyText,
+		maxChip = maxChip,
+		maxText = maxText,
+		view = nil,
+	}
+	local feel: Button.DecorateOptions = { fx = "card", visual = visual, pivotPx = CARD_LIP / 2 }
+	c:add(Button.decorate(root, feel))
+	c:add(root.Activated:Connect(function()
+		buyGear(card)
+	end))
+	root.Parent = parent
+	table.insert(gearCards, card)
+end
+
+-- The GEAR page, in the right column's place (H:337's column: the head, the 2 x 2 cards, the power line).
+local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, width: number, height: number): Frame
+	local pageFrame: Frame = Create("Frame", {
+		Name = "GearPage",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(left, 0),
+		Size = UDim2.fromOffset(width, height),
+		Visible = false,
+		Parent = body,
+	})
+	Theme.list(Enum.FillDirection.Vertical, SHOP.sections.gap, pageFrame, Enum.HorizontalAlignment.Left)
+	sectionHead(pageFrame, "GearHead", Strings.gear.section, 1)
+	local cellW = math.floor((width - SHOP.sections.cellGap) / PASSES.columns)
+	local rows = math.ceil(4 / PASSES.columns)
+	local gridH = rows * (GEAR_CARD.height + CARD_LIP) + (rows - 1) * Layout.lipGap(SHOP.sections.cellGap, CARD_LIP)
+	local grid: Frame = Create("Frame", {
+		Name = "Cards",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(width, gridH),
+		LayoutOrder = 2,
+		Parent = pageFrame,
+	})
+	Create("UIGridLayout", {
+		CellSize = UDim2.fromOffset(cellW, GEAR_CARD.height + CARD_LIP),
+		CellPadding = UDim2.fromOffset(SHOP.sections.cellGap, Layout.lipGap(SHOP.sections.cellGap, CARD_LIP)),
+		FillDirectionMaxCells = PASSES.columns,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Parent = grid,
+	})
+	for index, line in { "held", "platform", "arm", "armor" } do
+		buildGearCard(c, grid, line, index, cellW)
+	end
+	local powerKind = roleKind(GearShop.powerRole)
+	local power = Theme.label({
+		Name = "Power",
+		Text = "",
+		Size = UDim2.new(1, 0, 0, math.ceil(Theme.lineHeight(powerKind))),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextWrapped = false,
+		LayoutOrder = 3,
+		Parent = pageFrame,
+	}, powerKind)
+	Theme.stickerText(power, GearShop.powerRole)
+	gearPower = power
+	return pageFrame
+end
+
+-- Shows a page and paints the picked tab (the cards rise in on GEAR, like the shop's on open).
+local function setPage(id: string)
+	page = if id == PAGE_GEAR then PAGE_GEAR else PAGE_SHOP
+	if shopPage then
+		shopPage.Visible = page == PAGE_SHOP
+	end
+	if gearPage then
+		gearPage.Visible = page == PAGE_GEAR
+	end
+	local picker = tabs
+	if picker and picker:selected() ~= page then
+		picker:select(page)
+	end
+	if page == PAGE_GEAR then
+		for index, card in gearCards do
+			MotionTrack.play(
+				card.rise,
+				CARD_IN.frames :: any,
+				PASSES.rise.ms,
+				(index - 1) * PASSES.rise.staggerMs,
+				CARD_IN.curve
+			)
+		end
+	end
+end
+
+-- The two tabs (Diego's picker well), names only (setShort: no chips), sized for the band's extra slot.
+local function buildTabs(c: Cleanup.Cleanup): SegmentedTabs.SegmentedTabs
+	local function stops(pair: { top: string, bottom: string }): { SegmentedTabs.Stop }
+		return {
+			{ at = 0, color = (Palette :: any)[pair.top] },
+			{ at = 1, color = (Palette :: any)[pair.bottom] },
+		}
+	end
+	local spec = GearShop.tabs
+	local picker = SegmentedTabs.new({
+		name = "Shop_Tabs",
+		tabs = {
+			{
+				id = PAGE_SHOP,
+				label = Strings.gear.tabShop,
+				chip = "",
+				short = Strings.gear.tabShop,
+				stops = stops(spec.shop),
+				rotation = spec.rotation,
+			},
+			{
+				id = PAGE_GEAR,
+				label = Strings.gear.tabGear,
+				chip = "",
+				short = Strings.gear.tabGear,
+				stops = stops(spec.gear),
+				rotation = spec.rotation,
+			},
+		},
+		selected = page,
+		onSelect = function(id: string)
+			SoundController.play("ui.click") -- Diego's tab() (hud-lib.js:138) by its nearest clip
+			setPage(id)
+		end,
+	})
+	picker:setShort(true)
+	local size = picker:size(true)
+	picker.root.AutomaticSize = Enum.AutomaticSize.None
+	picker.root.Size = UDim2.fromOffset(size.X, size.Y)
+	c:add(function()
+		picker:destroy()
+	end)
+	return picker
+end
+
 -- Refresh -----------------------------------------------------------------------------------------------------------
 
 local function refresh()
@@ -349,6 +836,7 @@ local function refresh()
 			card.buy:setState("normal")
 		end
 	end
+	paintGear() -- gear step 3
 end
 
 -- Layout ------------------------------------------------------------------------------------------------------------
@@ -915,21 +1403,6 @@ local function buildPack(c: Cleanup.Cleanup, parent: Instance, pack: { [string]:
 	packCards[pack.key] = { key = pack.key, root = root, rise = rise, buy = buy, ready = false }
 end
 
--- A section head (H:338, H:352: 22 px #FFE36B, stroke 5).
-local function sectionHead(parent: Instance, name: string, text: string, order: number): TextLabel
-	local head = Theme.label({
-		Name = name,
-		Text = text,
-		Size = UDim2.new(1, 0, 0, math.ceil(Theme.lineHeight(HEAD_KIND))),
-		AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		LayoutOrder = order,
-		Parent = parent,
-	}, HEAD_KIND)
-	Theme.stickerText(head, SHOP.sections.headRole)
-	return head
-end
-
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
@@ -943,7 +1416,9 @@ local function build(parent: Instance): GuiObject
 	}, WINDOW_KIND, WINDOW_PAD)
 	c:add(root)
 	fitScale = Create("UIScale", { Name = "SD_Fit", Parent = root })
-	Theme.headerTab(root, Strings.shop.title)
+	local picker = buildTabs(c) -- gear step 3: SHOP | GEAR at the band's right end
+	tabs = picker
+	Theme.headerTab(root, Strings.shop.title, { extra = picker.root :: GuiObject })
 	local close = Button.new({
 		name = "Shop_CloseButton",
 		text = Strings.common.close,
@@ -1028,6 +1503,9 @@ local function build(parent: Instance): GuiObject
 	for index, pack in PACKS.list do
 		buildPack(c, packs, pack, index, packW)
 	end
+	shopPage = column -- gear step 3: the SHOP tab's page; GEAR's sits in the same place
+	gearPage = buildGearPage(c, body, columnLeft, columnW, bodyH)
+	setPage(page)
 
 	panel = root
 	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyLayout))
@@ -1061,7 +1539,8 @@ function ShopController.refresh()
 	end
 end
 
--- Opens the shop (params are accepted and ignored: the shop has one page). Returns UIController.open's result.
+-- Opens the shop ({tab = "gear"} on the GEAR tab, gear step 3; other params are ignored). Returns UIController.open's
+-- result.
 function ShopController.open(params: { [string]: any }?): boolean
 	return UIController.open(SCREEN, params)
 end
@@ -1086,6 +1565,17 @@ function ShopController.debugState(): { [string]: any }
 		packs = packs,
 		promptingKey = promptingKey,
 		featured = if featured then (if featured.owned.Visible then "owned" else "soon") else nil,
+		page = page, -- gear step 3
+		gear = (function(): { any }
+			local list = {}
+			for _, card in gearCards do
+				local view = card.view
+				if view then
+					table.insert(list, { line = card.line, name = view.name, state = view.state })
+				end
+			end
+			return list
+		end)(),
 		fit = if fit then { k = fit.k, width = fit.width, height = fit.height } else nil,
 	}
 end
@@ -1097,7 +1587,7 @@ function ShopController.init()
 	cleanup = c
 	c:add(UIController.registerScreen(SCREEN, {
 		build = build,
-		onOpen = function(_params: any?)
+		onOpen = function(params: any?)
 			local oc = Cleanup.new()
 			if openCleanup then
 				openCleanup:clean()
@@ -1107,6 +1597,9 @@ function ShopController.init()
 			applyLayout()
 			refresh()
 			riseCards()
+			if type(params) == "table" and params.tab == PAGE_GEAR then -- gear step 3
+				setPage(PAGE_GEAR)
+			end
 		end,
 		onClose = function()
 			if openCleanup then
@@ -1121,7 +1614,7 @@ function ShopController.init()
 	c:add(WorldBinder.registerStand(COUNTER_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { "owned", "dataStatus", "monetization" } do
+	for _, field in { "owned", "dataStatus", "monetization", "gear", "coins" } do
 		c:add(StateController.changed(field):connect(function()
 			ShopController.refresh()
 		end))
@@ -1157,6 +1650,8 @@ function ShopController.init()
 		table.clear(packCards)
 		table.clear(prices)
 		panel, fitScale, closeButton, featured, lastFit = nil, nil, nil, nil, nil
+		table.clear(gearCards) -- gear step 3
+		tabs, shopPage, gearPage, gearPower, gearBusy, page = nil, nil, nil, nil, nil, PAGE_SHOP
 	end)
 	log:debug("ready")
 end

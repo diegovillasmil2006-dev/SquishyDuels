@@ -8,6 +8,8 @@
 --   GearMath.maxStep(line)               -> number?: the last step of a line (a power line: the tiers' steps added up,
 --                                           36; armor: one a tier, 7); nil for anything that is not a line
 --   GearMath.tierOf(step)                -> 0..7: the tier a power-line step is in (0 for none)
+--   GearMath.steps(gear, line)           -> number: the steps bought on a line of a saved gear table (gear step 3: the
+--                                           shop's cards); broken -> 0, cut, at most the line's last
 --   GearMath.price(line, step)           -> number?: the Coins of that step (launchers: launcherPrices; arm gear:
 --                                           x armGearShare; armor: armorPrices); nil outside 1..maxStep or a broken
 --                                           step
@@ -57,6 +59,8 @@ function GearMath.maxStep(line: any): number?
 	end
 	return if IS_POWER_LINE[line] then #G.launcherPrices else nil
 end
+
+GearMath.steps = stepsOf
 
 function GearMath.tierOf(step: number): number
 	local before = 0
