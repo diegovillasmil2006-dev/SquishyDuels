@@ -20,7 +20,8 @@
 -- First person (spec 2026-10-10 §3.4): mirrorRule (the hidden own model is not written while the overlay mirrors it;
 -- it blinks while mirrored); finishOut makes the frame's final out (rig × idle × pop-in × overlays), and the mirror
 -- gets that scale with it, so the overlay divides it back out (spec 2026-10-11 §3.4); react fires Reacted (player,
--- kind, strength) even with no held model; setMirror takes a function or nil, isMirrored tells whether one is set.
+-- kind, strength) even with no held model; setMirror takes a function or nil, isMirrored tells whether one is set;
+-- mirrorFx goes to setMirror's fx only while a mirror with one is set (owner 2026-10-26).
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -433,5 +434,31 @@ return function(t: Context)
 		expect.throws(function()
 			HeldSquishyController.setMirror(42 :: any)
 		end, "mirror")
+	end)
+
+	t.test("mirrorFx hands the own effects to the mirror's fx only while mirrored (owner 2026-10-26)", function()
+		local cyan = Color3.new(0, 1, 1)
+		local seen: { any } = {}
+		local function fx(kind: string, count: number, colour: Color3)
+			table.insert(seen, { kind, count, colour })
+		end
+		local function mirror(_out: any, _scale: Vector3) end
+		expect.falsy(HeldSquishyController.mirrorFx("puffs", 6, cyan)) -- no mirror: world particles
+		HeldSquishyController.setMirror(mirror) -- a mirror without fx
+		expect.falsy(HeldSquishyController.mirrorFx("puffs", 6, cyan))
+		HeldSquishyController.setMirror(mirror, fx)
+		expect.truthy(HeldSquishyController.mirrorFx("sparkles", 4, cyan))
+		expect.deepEqual(seen, { { "sparkles", 4, cyan } } :: { any })
+		HeldSquishyController.setMirror(mirror, function()
+			error("boom")
+		end)
+		expect.truthy(HeldSquishyController.mirrorFx("steam", 2, cyan)) -- logged, still taken
+		HeldSquishyController.setMirror(nil, fx) -- clearing the mirror clears its fx
+		expect.falsy(HeldSquishyController.mirrorFx("puffs", 6, cyan))
+		expect.equal(#seen, 1)
+		expect.throws(function()
+			HeldSquishyController.setMirror(mirror, 42 :: any)
+		end, "mirror fx")
+		HeldSquishyController.setMirror(nil)
 	end)
 end

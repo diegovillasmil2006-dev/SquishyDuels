@@ -14,7 +14,9 @@
 -- merges that squeeze's pop (and, at most once per release pop, its puffs) into the press; another player's squeeze
 -- waits for the pop end ("busy"). The twist, the springy recovery, the release kick, the squish face and Dragon's
 -- section flare are the rig's (spec Q38: the old fast extras, the 8.3 Hz twist, the Epic jiggle and the 14 Hz horn /
--- wing flutter, are gone).
+-- wing flutter, are gone). First person (owner 2026-10-26): an own squeeze's puffs, steam and release sparkles go to the
+-- overlay's toy (HeldSquishyController.mirrorFx) while it mirrors the rig; world particles at the hidden own model
+-- floated in the air.
 
 -- Services
 
@@ -117,9 +119,16 @@ local function isOwn(state: Active): boolean
 	return not state.other and state.player == Players.LocalPlayer
 end
 
+-- An own effect drawn by the first-person overlay on the toy you see: true when it took it.
+local function toMirror(state: Active, kind: string, count: number, colour: Color3): boolean
+	return isOwn(state) and HeldSquishyController.mirrorFx(kind, count, colour)
+end
+
 local function emitPuffs(state: Active, now: number)
 	if state.particles > 0 and state.model.Parent ~= nil then
-		FxPool.default():emit(state.model:GetPivot().Position, state.particles, particleProps(state.particleColor))
+		if not toMirror(state, "puffs", state.particles, state.particleColor) then
+			FxPool.default():emit(state.model:GetPivot().Position, state.particles, particleProps(state.particleColor))
+		end
 		if isOwn(state) then
 			lastOwnPuffsAt = now
 		end
@@ -128,7 +137,7 @@ end
 
 local function emitSteam(state: Active)
 	local fx = state.steam
-	if fx == nil or fx.steamPuffs <= 0 or state.other then
+	if fx == nil or fx.steamPuffs <= 0 or state.other or toMirror(state, "steam", fx.steamPuffs, Palette.White) then
 		return
 	end
 	local nostrils: { BasePart } = {}
@@ -172,7 +181,7 @@ local function emitPop(state: Active, sparkles: number, bigPop: boolean)
 		return
 	end
 	local at = state.model:GetPivot().Position
-	if sparkles > 0 then
+	if sparkles > 0 and not toMirror(state, "sparkles", sparkles, state.particleColor) then
 		local p = RELEASE_POP
 		FxPool.default():emit(at, sparkles, {
 			Texture = Config.Vfx.Textures.sparkles,
@@ -213,7 +222,9 @@ local function mergeInterrupted(state: Active, now: number)
 	)
 	if fx.puffs > 0 then
 		state.emitted = true
-		FxPool.default():emit(state.model:GetPivot().Position, fx.puffs, particleProps(state.particleColor))
+		if not toMirror(state, "puffs", fx.puffs, state.particleColor) then
+			FxPool.default():emit(state.model:GetPivot().Position, fx.puffs, particleProps(state.particleColor))
+		end
 		lastOwnPuffsAt = now
 	end
 	emitPop(state, fx.sparkles, fx.bigPop)

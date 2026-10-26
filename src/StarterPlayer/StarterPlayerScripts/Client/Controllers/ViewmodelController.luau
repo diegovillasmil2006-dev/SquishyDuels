@@ -62,8 +62,11 @@
 -- the hand (idle: no windup, Rush, pop-in or throw); otherwise it passes. PracticeSqueeze (Practice, above the lobby
 -- actions) forwards every press while the overlay shows to the lobby Squeeze (ControlsController.pressAction), the paid
 -- lobby squeeze (spec 2026-10-11 §5); hidden, it passes. Each sinks End / Cancel only for a Begin it took; a hide ends
--- what it took. Lobby squeezes come in through the mirror only. Touch: SD_ViewmodelPad (Config.FirstPerson.padGui, safe
--- insets) holds one invisible, non-selectable button over the toy's screen box (ViewmodelMath.touchPadRect), which
+-- what it took. Lobby squeezes come in through the mirror only; their puffs, release sparkles and Dragon steam and the
+-- equip pop's puffs through setMirror's fx (owner 2026-10-26: at the hidden own model they floated in the air), drawn
+-- as specks on the toy (mirrorFx; NOT IN DESIGN: the design's squeeze has none). Touch: SD_ViewmodelPad
+-- (Config.FirstPerson.padGui, safe insets) holds one invisible, non-selectable button over the toy's screen box
+-- (ViewmodelMath.touchPadRect), which
 -- presses padAction() with that finger until it lifts (lobby HUD spec 2026-10-11 §2: the finger's InputObject goes with
 -- the press, so the lobby squeeze keeps squeezing while it holds). Sounds: in duels only (elsewhere SqueezeFeel plays
 -- them), sfx.squish on the rig's squish event and sfx.squeezeRelease on its pop end, 2D, at the toy's squeeze pitch × a
@@ -405,6 +408,29 @@ local INSPECT_POSE = "inspect"
 local INSPECT_BUTTON_NAME = "Viewmodel_InspectButton"
 local SPECK_NAME = "InspectSpeck"
 local REDUCED_SPECKS = Config.Vfx.reducedParticleMultiplier
+-- The own squeeze's and equip pop's effects (HeldSquishyController.mirrorFx, owner 2026-10-26). NOT IN DESIGN (its
+-- first-person squeeze has no specks): the world effect's count and colour as the design's own toy specks, "puffs" and
+-- "steam" as pc (fp.js:171), "sparkles" as the sparkle burst (fp.js:189).
+local MIRROR_PUFFS = table.freeze({
+	kind = "burst",
+	count = 0,
+	shape = "puff",
+	speed = 0.35,
+	size = 0.006,
+	life = 0.6,
+	gravity = -0.6,
+	drag = 3,
+}) :: any
+local MIRROR_SPARKLES = table.freeze({
+	kind = "burst",
+	count = 0,
+	shape = "spark",
+	speed = 0.3,
+	size = 0.006,
+	life = 0.6,
+	gravity = 0,
+}) :: any
+local NOSTRIL_PREFIX = "Nostril" -- the Dragon's steam comes out of these parts (as SqueezeFeel's)
 -- Phone speed fix (2026-10-16): the low tier's step cap (Config.FirstPerson.lowTier.stepHz; 0 = off, every frame).
 local LOW_STEP_S = ViewmodelMath.stepInterval(FP.lowTier.stepHz)
 local MIN_PART = 0.001 -- studs: Roblox's smallest part size (a speck's first and last frames are smaller)
@@ -766,6 +792,34 @@ end
 
 local function spawnSpecks(v: View, spec: Specks.Spec, toy: Toy, reduced: boolean)
 	spawnSpecksAt(v, spec, v.toyPos, toy.colours, reduced, nil)
+end
+
+-- An own effect the held model hands over while mirrored (HeldSquishyController.mirrorFx): specks in `colour` on the
+-- toy you see (the hidden own model's world particles floated in the air); the steam from the copy's Nostril* parts.
+local function mirrorFx(v: View, kind: string, count: number, colour: Color3)
+	local toy = v.toy
+	if toy == nil or count <= 0 then
+		return
+	end
+	local spec = table.clone(if kind == "sparkles" then MIRROR_SPARKLES else MIRROR_PUFFS)
+	local reduced = deps.Motion.reducedMotion()
+	if kind == "steam" then
+		local nostrils: { BasePart } = {}
+		for _, d in toy.model:GetDescendants() do
+			if d:IsA("BasePart") and string.sub(d.Name, 1, #NOSTRIL_PREFIX) == NOSTRIL_PREFIX then
+				table.insert(nostrils, d)
+			end
+		end
+		if #nostrils > 0 then
+			for i, nostril in nostrils do -- the puffs shared out as SqueezeFeel's round-robin
+				spec.count = count // #nostrils + (if i <= count % #nostrils then 1 else 0)
+				spawnSpecksAt(v, spec, nostril.Position / U, { colour }, reduced, nil)
+			end
+			return
+		end
+	end
+	spec.count = count
+	spawnSpecksAt(v, spec, v.toyPos, { colour }, reduced, nil)
 end
 
 -- The specks fly and shrink (fx.js:131-139); a speck past its life goes.
@@ -2152,6 +2206,8 @@ local function show(player: Player)
 	end, "render"))
 	deps.Held.setMirror(function(out: SquishRig.Out?, scale: Vector3)
 		onMirror(v, out, scale)
+	end, function(kind: string, count: number, colour: Color3)
+		mirrorFx(v, kind, count, colour)
 	end)
 	if v.toy and deps.Held.isHolding(player) then
 		equip(v) -- design: fp.js:667

@@ -57,8 +57,11 @@
 -- has no idle scale, equip pop or throw pop-in of ours), and writes the overlay copy; while a mirror is set and Roblox
 -- hides the hand (first person, LocalTransparencyModifier >= 0.99) the hidden own model is not written, it blinks while
 -- mirrored (mirrorRule) and gets no movement jiggle. The hidden branch rests the mirror once (fn(nil, Vector3.one)).
--- isMirrored() tells whether a mirror is set. Reacted(player, kind, strength) fires on every react() (its one caller is
--- VfxController's afterHold).
+-- isMirrored() tells whether a mirror is set. setMirror's fx (owner 2026-10-26: the zoomed-in squeeze sparkles floated
+-- in the air at the hidden hand): while mirrored, mirrorFx() hands the own effects (the equip pop's puffs here, the
+-- squeeze's puffs, release sparkles and steam from SqueezeFeel) to the overlay, which draws them on the toy you see,
+-- instead of world particles at the hidden own model. Reacted(player, kind, strength) fires on every react() (its one
+-- caller is VfxController's afterHold).
 -- Cleanup: one Cleanup per player (connections) and one per held model (model, deformer, the hand's and character's
 -- Destroying); CharacterRemoving or the character's Destroying destroys the held model, PlayerRemoving everything.
 -- (DESIGN §9.4 puts the held model in the joint layer's Cleanup; here the two have separate owners, with the same
@@ -110,6 +113,9 @@ export type Overlay = {
 -- The first-person mirror: the own model's final out and the scale put on top of the rig's S (the idle × the equip pop
 -- × the overlays, finishOut) each frame; nil out = rest.
 export type Mirror = (out: SquishRig.Out?, scale: Vector3) -> ()
+
+-- The first-person mirror's effects (mirrorFx): kind "puffs", "sparkles" or "steam", how many and their colour.
+export type MirrorFx = (kind: string, count: number, colour: Color3) -> ()
 
 type Held = {
 	model: Model,
@@ -195,6 +201,7 @@ local log = Log.new("Held")
 local entries: { [Player]: Entry } = {}
 local cleanup: Cleanup.Cleanup? = nil
 local mirror: Mirror? = nil -- the local player's first-person mirror (setMirror)
+local mirrorFx: MirrorFx? = nil -- its effects (setMirror's fx)
 local rng = Random.new()
 local rangeTimer = math.huge -- first frame runs a range pass
 local rankedHeroes = 0 -- HeroRigs.count() at the last range pass
@@ -270,8 +277,13 @@ local function destroyHeld(entry: Entry)
 end
 
 -- The equip pop's puffs at the hand (§18.5.1 A7): the squeeze puff look (Config.Anim.squeeze.particles) in the
--- squishy's accent, White for a Common (reading: the squeeze puffs' colour rule).
-local function equipPuffs(def: Types.SquishyDef, at: Vector3)
+-- squishy's accent, White for a Common (reading: the squeeze puffs' colour rule). The local player's in first person go
+-- to the overlay's toy (mirrorFx): the own model is hidden there.
+local function equipPuffs(def: Types.SquishyDef, at: Vector3, isLocal: boolean)
+	local colour = if def.rarity == "Common" then Palette.White else Color3.fromHex(def.visuals.accent)
+	if isLocal and HeldSquishyController.mirrorFx("puffs", HELD.equipPopPuffs, colour) then
+		return
+	end
 	local p = SQUEEZE_PARTICLES
 	FxPool.default():emit(at, HELD.equipPopPuffs, {
 		Texture = Config.Vfx.Textures.smoke,
@@ -279,7 +291,7 @@ local function equipPuffs(def: Types.SquishyDef, at: Vector3)
 		Size = NumberSequence.new(p.sizeFrom, p.sizeTo),
 		Speed = NumberRange.new(p.speedMin, p.speedMax),
 		SpreadAngle = Vector2.new(p.spreadDeg, p.spreadDeg),
-		Color = ColorSequence.new(if def.rarity == "Common" then Palette.White else Color3.fromHex(def.visuals.accent)),
+		Color = ColorSequence.new(colour),
 	})
 end
 
@@ -355,7 +367,7 @@ local function buildHeld(
 		end
 		local at = (hand.CFrame * weld.C0 * baseC1:Inverse()).Position
 		local ok, err = pcall(function(): any
-			equipPuffs(def, at)
+			equipPuffs(def, at, isLocal)
 			return nil
 		end)
 		if not ok then
@@ -947,10 +959,27 @@ end
 
 -- Sets (or with nil clears) the local player's first-person mirror (spec 2026-10-10 §3.4): made once by
 -- ViewmodelController when its overlay shows, called every frame with the own model's final out and the scale on top
--- of the rig's (finishOut), and with (nil, Vector3.one) once when the model hides.
-function HeldSquishyController.setMirror(fn: Mirror?)
+-- of the rig's (finishOut), and with (nil, Vector3.one) once when the model hides. `fx` draws the own effects on the
+-- overlay's toy (mirrorFx); clearing the mirror clears it.
+function HeldSquishyController.setMirror(fn: Mirror?, fx: MirrorFx?)
 	assert(fn == nil or type(fn) == "function", "[SD][Held] the mirror must be a function or nil")
+	assert(fx == nil or type(fx) == "function", "[SD][Held] the mirror fx must be a function or nil")
 	mirror = fn
+	mirrorFx = if fn then fx else nil
+end
+
+-- Hands an own effect to the first-person overlay while it mirrors the rig: the own model is hidden then, so world
+-- particles at it would float in the air. True when the overlay took it (an error in it is logged, still true).
+function HeldSquishyController.mirrorFx(kind: string, count: number, colour: Color3): boolean
+	local fx = mirrorFx
+	if mirror == nil or fx == nil then
+		return false
+	end
+	local ok, err = pcall(fx :: any, kind, count, colour)
+	if not ok then
+		log:error("first-person mirror fx failed:", err)
+	end
+	return true
 end
 
 -- True while a first-person mirror is set (the local player's overlay shows their rig): ThrowController then leaves

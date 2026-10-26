@@ -48,7 +48,9 @@
 --   * phone speed fix (2026-10-16): on the low tier (a compact screen) the overlay steps every 2nd 60 Hz frame with
 --     the time it skipped (the showcase's specks all come, on time); the world FOV still moves on every frame of a
 --     squeeze focus, as on the high tier; the high tier steps every frame; a throw's release makes half the specks
---     there (batch B, owner 2026-10-17).
+--     there (batch B, owner 2026-10-17);
+--   * owner 2026-10-26: the own squeeze's puffs and sparkles (setMirror's fx) are specks on the toy in their colour (the
+--     sparkles Neon), the Dragon's steam at the copy's Nostril parts; ReducedMotion: half.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -89,6 +91,7 @@ return function(t: Context)
 		squishyId: string,
 		rig: any,
 		mirror: any,
+		mirrorFx: any, -- setMirror's fx (owner 2026-10-26)
 		windup: { any },
 		ult: { any },
 		charge: { any }, -- feature 1: what ThrowController.localCharge returns (c, t, full)
@@ -137,6 +140,7 @@ return function(t: Context)
 			squishyId = squishyId,
 			rig = newRig(squishyId),
 			mirror = nil,
+			mirrorFx = nil,
 			windup = { nil, nil, nil, nil, false },
 			ult = { nil, nil, nil },
 			charge = { nil, nil, false },
@@ -183,8 +187,9 @@ return function(t: Context)
 				isHolding = function(player: any): boolean
 					return player == w.player and w.model ~= nil and w.holding
 				end,
-				setMirror = function(fn: any)
+				setMirror = function(fn: any, fx: any)
 					w.mirror = fn
+					w.mirrorFx = fx
 				end,
 				HeldChanged = w.heldChanged,
 			},
@@ -1378,6 +1383,62 @@ return function(t: Context)
 		expect.equal(countOf(r.sounds, "sfx.inspect.flap"), 1)
 		expect.equal(state.specks, 2) -- × Config.Vfx.reducedParticleMultiplier
 		expect.equal(state.squash, 1) -- no kick
+		teardown()
+	end)
+
+	-- Owner 2026-10-26: zoomed in, the squeeze's sparkles floated in the air at the hidden own model.
+	t.test("the own squeeze's effects (setMirror's fx) are specks on the toy; the Dragon's steam from its nostrils", function()
+		local cyan = Color3.new(0, 1, 1)
+		local function specksIn(w: World): { BasePart }
+			local list = {}
+			for _, d in w.guis.SD_Viewmodel:GetDescendants() do
+				if d.Name == "InspectSpeck" and d:IsA("BasePart") then
+					table.insert(list, d)
+				end
+			end
+			return list
+		end
+		local w = setup("dragon")
+		enter(w, "lobby")
+		frames(w, 60)
+		expect.truthy(w.mirrorFx ~= nil)
+		w.mirrorFx("puffs", 6, cyan)
+		w.mirrorFx("sparkles", 4, cyan)
+		expect.equal(Viewmodel.debugState().specks, 10)
+		local neon = 0
+		for _, part in specksIn(w) do
+			expect.equal(part.Color, cyan)
+			if part.Material == Enum.Material.Neon then
+				neon += 1
+			end
+		end
+		expect.equal(neon, 4) -- the sparkles glow (the design's spark)
+		frames(w, 40)
+		expect.equal(Viewmodel.debugState().specks, 0) -- life 0.6 s
+		local nostrils: { Vector3 } = {}
+		for _, d in w.guis.SD_Viewmodel:GetDescendants() do
+			if d:IsA("BasePart") and string.sub(d.Name, 1, 7) == "Nostril" then
+				table.insert(nostrils, d.Position)
+			end
+		end
+		expect.truthy(#nostrils > 0)
+		w.mirrorFx("steam", 3, Color3.new(1, 1, 1))
+		local steam = specksIn(w)
+		expect.equal(#steam, 3)
+		for _, part in steam do
+			local nearest = math.huge
+			for _, at in nostrils do
+				nearest = math.min(nearest, (part.Position - at).Magnitude)
+			end
+			expect.truthy(nearest < 1e-3)
+		end
+		teardown()
+		local r = setup("dragon")
+		r.reduced = true
+		enter(r, "lobby")
+		frames(r, 60)
+		r.mirrorFx("puffs", 6, cyan)
+		expect.equal(Viewmodel.debugState().specks, 3) -- × Config.Vfx.reducedParticleMultiplier
 		teardown()
 	end)
 
