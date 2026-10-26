@@ -1001,7 +1001,92 @@ local UI = {
 			nice = { width = 180, face = 62, role = "buttonLarge" }, -- H:499: green, 26 px stroke 6
 			-- From the burst (H:489-499): NEW! +.3 s (sdReveal .6 s), the name +.35, the rarity pill +.45 (sdUp .45 s
 			-- search), the duplicate line +.5 (sdUp .4 s ease), the buttons +.6 (sdUp .45 s search), the drag hint +1 s.
-			delays = { newMs = 300, nameMs = 350, rarityMs = 450, dupeMs = 500, buttonsMs = 600, dragMs = 1000 },
+			-- The fancier reveal (2026-10-26, LOBBY HUD L:569-571): NEW! at +.95 s, the rarity pill stamped at +.62 s.
+			delays = { newMs = 950, nameMs = 350, rarityMs = 620, dupeMs = 500, buttonsMs = 600, dragMs = 1000 },
+			-- The fancier reveal (2026-10-26, owner: "Yes, build the fancier box reveal like that"; `L:n` = Diego's
+			-- "Squishy Duels LOBBY HUD.dc.html" line n, `lib:n` = its hud-lib.js line n). From the burst, behind the
+			-- squishy: the rarity rays (img.box.rays: the 1300 px box tinted the rarity's light at .35, a turn the other
+			-- way every 18 s, L:552), the halo (620 px, L:553: img.box.haloGlow tinted the light under the white
+			-- img.box.haloCore; uxHalo 2.4 s ease-in-out .92 at .75 <-> 1.08 at 1, fading in .5 s) and 18 rising stars
+			-- (img.duel.star, L:554, L:1454: left 3 + 5.4 i + 0..3 %, 10..26 px, from 30 px under the bottom up 900 px
+			-- over 3..6 s, turning 220 degrees and growing .6 -> 1.1, in by 15% and out from 85%, started 0..5 s into
+			-- the rise, white / gold / white; drawn once a session and kept). Px are design px x the UI scale.
+			ux = {
+				centreY = 0.46,
+				rays = { px = 1300, alpha = 0.35, spinS = 18 },
+				halo = { px = 620, fadeMs = 500, periodS = 2.4, low = 0.92, high = 1.08, lowAlpha = 0.75 },
+				motes = {
+					n = 18,
+					xFrom = 3,
+					xStep = 5.4,
+					xJitter = 3,
+					sizeFrom = 10,
+					sizeJitter = 16,
+					periodFrom = 3,
+					periodJitter = 3,
+					startJitter = 5,
+					bottom = 30,
+					rise = 900,
+					turn = 220,
+					fromScale = 0.6,
+					toScale = 1.1,
+					fadeIn = 0.15,
+					fadeOut = 0.85,
+					colors = { "White", "StickerCoinText", "White" },
+				},
+				frames = 21, -- the rays, the halo's 2 pictures and the 18 stars (in Config.Vfx.Effects.boxRevealUiFrames)
+				ring = { delayMs = 260, size = 900 }, -- L:1196: the rarity colour's ring
+				-- L:570, L:1453: the name letter by letter (uxLetIn .5 s cubic-bezier(.2,1.6,.4,1) from .3 s, .045 s
+				-- apart), each then waving (uxWave 1.6 s ease-in-out, 5 px, from 1.2 s, .08 s apart); a note each
+				-- (lib:195: the k-th letter's step of `notes`, a space has none).
+				letters = {
+					startMs = 300,
+					stepMs = 45,
+					ms = 500,
+					curve = "slot",
+					frames = {
+						{ at = 0, alpha = 0, y = -60, scale = 0.3, rot = -20 },
+						{ at = 0.6, alpha = 1, y = 6, sx = 1.25, sy = 0.85, rot = 4 },
+						{ at = 0.8, y = -3, sx = 0.95, sy = 1.06 },
+						{ at = 1, alpha = 1, y = 0, scale = 1, rot = 0 },
+					} :: { MotionPose },
+					wave = { periodS = 1.6, delayS = 1.2, stepS = 0.08, px = 5 },
+					notes = { 0, 2, 4, 7, 9, 12, 14, 16, 19 },
+				},
+				-- L:571 the rarity pill stamped in (uxStamp .45 s cubic-bezier(.2,1.3,.4,1) at .62 s) with its sound and
+				-- a 4 px jolt at .68 s (L:1195), then a shine across it (30% wide, white .85, sdShine 2.2 s from 1.1 s).
+				stamp = {
+					ms = 450,
+					curve = "rise",
+					frames = {
+						{ at = 0, alpha = 0, scale = 2.6, rot = -8 },
+						{ at = 0.55, alpha = 1, scale = 0.88, rot = 2 },
+						{ at = 0.75, scale = 1.06, rot = -1 },
+						{ at = 1, alpha = 1, scale = 1, rot = 0 },
+					} :: { MotionPose },
+					soundMs = 680,
+					jolt = 4,
+				},
+				shine = { share = 0.3, transparency = 0.15, periodS = 2.2, delayS = 1.1 },
+				newPulse = { periodS = 1.2, delayS = 1.6 }, -- L:569: sdPulse 1.2 s from 1.6 s
+				-- lib:160-195: the reveal's own sounds (the owner's uploads; each cue falls back to the older slot, then
+				-- a look-alike that plays): a rattle per tap, the rise from the third tap, the unbox of each rarity at
+				-- the burst, the letters (the low file to an octave up, the high file above it) and the stamp.
+				sounds = {
+					rattle = { "box.ux.rattle1", "box.ux.rattle2", "box.ux.rattle3" },
+					rise = "box.ux.rise",
+					riseFromTap = 2, -- L:1175: j >= 2
+					unboxPrefix = "box.ux.unbox", -- + the rarity
+					letterLow = "box.ux.letterLow",
+					letterHigh = "box.ux.letterHigh",
+					stamp = "box.ux.stamp",
+					tapFallbacks = { "box.shake", "ui.click" },
+					riseFallbacks = { "sfx.inspect.whoosh" },
+					unboxFallbacks = { "box.open", "ui.coin" }, -- after reveal.<rarity>
+					letterFallbacks = { "ui.click" },
+					stampFallbacks = { "sfx.impactSoft" },
+				},
+			},
 			upMs = 450,
 			upCurve = "search",
 			dupeUpMs = 400,

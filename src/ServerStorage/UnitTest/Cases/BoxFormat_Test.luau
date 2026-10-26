@@ -483,26 +483,49 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"sounds per moment: the low stamp, box.shake per tap, box.open, reveal.<rarity> 120 ms later, ui.pop",
+		"sounds per moment (the fancier reveal): a rattle per tap, the rise, the unbox of the rarity, letters, stamp",
 		function()
 			local land = BoxFormat.soundCue("land")
 			expect.equal(land.key, "ui.click")
 			expect.equal(land.pitch, REVEAL.landPitch)
-			expect.equal(BoxFormat.soundCue("tap").key, "box.shake")
-			local burst = BoxFormat.soundCue("burst")
-			expect.equal(burst.key, "box.open")
-			expect.equal(burst.variance, 0)
-			for rarity, key in BoxFormat.REVEAL_SOUNDS do
-				local cue = BoxFormat.soundCue("reveal", rarity)
-				expect.equal(cue.key, key)
-				expect.equal(cue.delayMs, REVEAL.revealDelayMs)
-				expect.equal(cue.variance, 0)
+			for j = 0, 2 do
+				local tap = BoxFormat.soundCue("tap", nil, j)
+				expect.equal(tap.key, "box.ux.rattle" .. j + 1)
+				expect.deepEqual(tap.fallbacks, { "box.shake", "ui.click" }) -- the older slot, then a look-alike
 			end
-			expect.equal(BoxFormat.soundCue("reveal", "Nope").key, "reveal.common")
+			expect.equal(BoxFormat.soundCue("tap", nil, 9).key, "box.ux.rattle3")
+			expect.equal(BoxFormat.soundCue("rise").key, "box.ux.rise")
+			for rarity, key in BoxFormat.REVEAL_SOUNDS do
+				for _, event in { "burst", "reveal" } :: { any } do
+					local cue = BoxFormat.soundCue(event, rarity)
+					expect.equal(cue.key, "box.ux.unbox" .. rarity)
+					expect.equal((cue.fallbacks :: { string })[1], key) -- then reveal.<rarity>
+					expect.equal(cue.delayMs, nil) -- one sound at the burst now (L:1183)
+					expect.equal(cue.variance, 0)
+				end
+			end
+			expect.equal(BoxFormat.soundCue("burst", "Nope").key, "box.ux.unboxCommon")
+			-- lib:195: notes 0, 2, 4, 7, 9, 12 on the low file, 14, 16, 19 on the high one an octave up.
+			expect.equal(BoxFormat.soundCue("letter", nil, 0).key, "box.ux.letterLow")
+			expect.near(BoxFormat.soundCue("letter", nil, 5).pitch :: number, 2, 1e-9)
+			local high = BoxFormat.soundCue("letter", nil, 8)
+			expect.equal(high.key, "box.ux.letterHigh")
+			expect.near(high.pitch :: number, 2 ^ (7 / 12), 1e-9)
+			expect.equal(BoxFormat.soundCue("letter", nil, 9).key, "box.ux.letterLow") -- the notes go round
+			expect.equal(BoxFormat.soundCue("stamp").key, "box.ux.stamp")
 			expect.equal(BoxFormat.soundCue("close").key, "ui.pop")
 			expect.equal(BoxFormat.revealSoundKey("Nope"), "reveal.common")
 		end
 	)
+
+	t.test("the fancier reveal's letter notes: one per letter from 300 ms, 45 ms a character, spaces silent", function()
+		expect.deepEqual(BoxFormat.letterNotes("Ab C"), {
+			{ atMs = 300, index = 0 },
+			{ atMs = 345, index = 1 },
+			{ atMs = 435, index = 2 },
+		})
+		expect.deepEqual(BoxFormat.letterNotes(""), {})
+	end)
 
 	t.test("PR16: the flash peaks at most at the flash cap, not before minPeakMs, and is gone by 700 ms", function()
 		local Tweens = t.requireClient("Anim/Tweens")
@@ -542,9 +565,10 @@ return function(t: Context)
 			expect.equal(BoxFormat.budgetTake(ledger, 0.6, 5, 1, total), 0)
 			expect.equal(BoxFormat.budgetFree(ledger, 1.3, total), 16) -- the first entry ran out
 			expect.equal(BoxFormat.budgetFree(ledger, 2, total), total)
-			-- rays (1) + rings (2) + at most 21 pieces = 24
+			-- rays (1) + rings (2) + at most 21 pieces = 24; the fancier reveal (2026-10-26): + its rarity ring (1) and
+			-- its 21 always-moving frames (set aside)
 			local burst = Config.UI.Fx.events.boxBurst
-			expect.equal(1 + 2 + burst.maxPieces, total)
+			expect.equal(1 + 2 + burst.maxPieces + 1 + Config.UI.Boxes.reveal.ux.frames, total)
 			expect.equal(BoxFormat.burstPieces("Exclusive", total), burst.maxPieces)
 			expect.equal(BoxFormat.burstPieces("Common", 5), 5)
 			expect.equal(BoxFormat.burstPieces("Common", 0), 0)

@@ -500,7 +500,9 @@ local Vfx = {
 		dragonRushParticles = 60,
 		dragonRushSeconds = 1.5,
 		boxRevealViewports = 1,
-		boxRevealUiFrames = 24,
+		-- 24, + the fancier reveal's 21 always-moving frames (2026-10-26, owner: its 18 stars, the rarity rays, the
+		-- halo; Config.UI.Boxes.reveal.ux.frames, set aside) and its rarity ring (1), so the bursts keep their 24.
+		boxRevealUiFrames = 46,
 		-- the statue + 13 lobby halos (2026-10-14); about 60 live particles island-wide, on top of liveParticlesTotal
 		-- (FxPool's own bursts only)
 		ambientEmitters = 14,

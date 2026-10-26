@@ -202,6 +202,18 @@ local FOUND_SOUND_KEYS = {
 	-- The new short level-up (2026-10-25): its tone and jingle (its pop is ui.pop).
 	"grip.levelUp.tone",
 	"grip.levelUp.jingle",
+	-- The fancier box reveal (2026-10-26): its 11 renders.
+	"box.ux.rattle1",
+	"box.ux.rattle2",
+	"box.ux.rattle3",
+	"box.ux.rise",
+	"box.ux.unboxCommon",
+	"box.ux.unboxUncommon",
+	"box.ux.unboxEpic",
+	"box.ux.unboxExclusive",
+	"box.ux.letterLow",
+	"box.ux.letterHigh",
+	"box.ux.stamp",
 }
 
 return function(t: Context)
@@ -257,7 +269,7 @@ return function(t: Context)
 
 	-- MATCH FOUND (2026-10-25): the show's 6 sounds, once each, UI, 2D, each note naming its file (the owner uploads them;
 	-- a look-alike plays meanwhile, Config.UI.MatchFound.sounds).
-	t.test("MATCH FOUND's, the map vote's and the level-up's sound keys: once each, UI, 2D, naming a file", function()
+	t.test("Made sound keys (found, vote, level-up, box reveal): once each, UI, 2D, naming a file", function()
 		for _, key in FOUND_SOUND_KEYS do
 			local found = 0
 			for _, slot in soundSlots() do
@@ -556,6 +568,10 @@ return function(t: Context)
 				"img.lv.badge",
 				"img.lv.spin",
 				"img.lv.ring",
+				-- The fancier box reveal (2026-10-26): the rarity rays and the halo's two layers.
+				"img.box.rays",
+				"img.box.haloGlow",
+				"img.box.haloCore",
 			})
 		)
 	end)

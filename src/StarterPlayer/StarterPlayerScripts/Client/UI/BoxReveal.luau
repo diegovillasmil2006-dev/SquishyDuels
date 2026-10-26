@@ -34,6 +34,12 @@
 -- §9.15 (PR18): 1 viewport and at most Config.Vfx.Effects.boxRevealUiFrames animated UI frames: the rays picture, the
 -- rings, the UiFx sparks and this module's own sparkles share one ledger (BoxFormat.budgetTake); the 3D sparkles of the
 -- design are budgeted 2D pieces; no ParticleEmitter renders in a ViewportFrame (stated).
+-- The fancier reveal (2026-10-26, owner: "Yes, build the fancier box reveal like that"; LOBBY HUD L:552-571,
+-- L:1175-1196; Config.UI.Boxes.reveal.ux): from the burst, behind the squishy, the rarity rays turning the other way,
+-- the pulsing halo and 18 rising stars (BoxReveal.motes / moteAt; their 21 frames set aside in cap()); the name letter
+-- by letter (a note each, BoxFormat.letterNotes), each then waving (one label when it would not fit); the rarity pill
+-- stamped in at .62 s (its sound and a 4 px jolt at .68 s) with a shine across it; NEW! at .95 s, then pulsing; the
+-- rarity ring at .26 s; the burst's one sound its unbox; a tap's own rattle and, from the third, the rise.
 -- ReducedMotion (§18.1): no drop, bob, roll, hop, squash, spin or orbit; the taps still advance (with their sounds), the
 -- burst hides the box and the squishy fades in at rest; UiFx draws no sparks, rings, rain or jolts.
 -- Readings: the texts' slots are measured (no AutomaticSize on labels: wrong under a UIScale); the saving note sits
@@ -128,6 +134,9 @@ type Sparkle = {
 	frame: ImageLabel,
 }
 type Coin = { part: BasePart, vel: Vector3, spin: Vector3, life: number }
+-- The fancier reveal (L:1454): one rising star: its left (% of the width), size (design px), seconds a rise, seconds
+-- already into it at the start, colour (a Palette name).
+export type Mote = { x: number, px: number, period: number, start: number, color: string }
 type ScalePart = {
 	part: BasePart,
 	rel: CFrame,
@@ -157,6 +166,11 @@ local BEAM_KEY = "img.fx.beam"
 local BLOB_KEY = "img.fx.blob"
 local GLOW_KEY = "img.fx.glow"
 local SPARK_KEY = "img.fx.spark"
+local UX = R.ux -- the fancier reveal (2026-10-26, LOBBY HUD L:552-571)
+local UX_RAYS_KEY = "img.box.rays"
+local UX_GLOW_KEY = "img.box.haloGlow"
+local UX_CORE_KEY = "img.box.haloCore"
+local STAR_KEY = "img.duel.star"
 local SPARKLE_SIZE = 0.26 -- stage:192: PointsMaterial size (units, attenuated)
 local DRAG = 1.4 -- stage:208: the sparkles' air drag per second
 local LIGHT_SPREAD = 3 -- reading: the inner light's glow is this many units wide at full strength
@@ -168,6 +182,41 @@ local SPARKS_LIFE_S = (Config.UI.Fx.sparks.ms + Config.UI.Fx.sparks.jitterMs) / 
 -- Module table
 
 local BoxReveal = {}
+
+local cachedMotes: { Mote }? = nil -- L:1454: drawn once a session and kept
+
+-- The fancier reveal (L:1454): the rising stars, drawn once (`rng` only for tests; then kept).
+function BoxReveal.motes(rng: Random?): { Mote }
+	local kept = cachedMotes
+	if kept and rng == nil then
+		return kept
+	end
+	local r = rng or Random.new()
+	local m = UX.motes
+	local list: { Mote } = {}
+	for i = 0, m.n - 1 do
+		table.insert(list, {
+			x = m.xFrom + i * m.xStep + r:NextNumber() * m.xJitter,
+			px = math.round(m.sizeFrom + r:NextNumber() * m.sizeJitter),
+			period = m.periodFrom + r:NextNumber() * m.periodJitter,
+			start = r:NextNumber() * m.startJitter,
+			color = m.colors[i % #m.colors + 1],
+		})
+	end
+	if rng == nil then
+		cachedMotes = list
+	end
+	return list
+end
+
+-- The fancier reveal (L:554 uxMote): a star `p` (0..1) into its rise: its lift (design px up), turn (degrees), scale
+-- and alpha (in by fadeIn, out from fadeOut).
+function BoxReveal.moteAt(p: number): (number, number, number, number)
+	local m = UX.motes
+	local u = math.clamp(p, 0, 1)
+	local alpha = if u < m.fadeIn then u / m.fadeIn elseif u > m.fadeOut then (1 - u) / (1 - m.fadeOut) else 1
+	return m.rise * u, m.turn * u, m.fromScale + (m.toScale - m.fromScale) * u, alpha
+end
 
 -- Private --------------------------------------------------------------------------------------------------------
 
@@ -265,13 +314,22 @@ local function pill(
 		LayoutOrder = order,
 		Parent = parent,
 	})
-	local pose: Frame = Create("Frame", {
+	local outer: Frame = Create("Frame", {
 		Name = "Pose",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromScale(1, 1),
 		Parent = slot,
+	})
+	-- The fancier reveal: an inner holder for a loop on top of Pose's entrance (NEW!'s pulse).
+	local pose: Frame = Create("Frame", {
+		Name = "Inner",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromScale(1, 1),
+		Parent = outer,
 	})
 	local lip: Frame = Create("Frame", {
 		Name = "Lip",
@@ -657,9 +715,10 @@ function BoxReveal.start(spec: Spec): Run
 	local burstAt: number? = nil
 	local seed = 0
 
-	-- §9.15: the frames left for the ledger once this module's live sparkles and the rays are counted.
+	-- §9.15: the frames left for the ledger once this module's live sparkles and the rays are counted (the fancier
+	-- reveal's always-moving frames, UX.frames, are set aside from the start).
 	local function cap(): number
-		return FRAME_BUDGET - #sparkles - (if raysOn then 1 else 0)
+		return FRAME_BUDGET - UX.frames - #sparkles - (if raysOn then 1 else 0)
 	end
 	local function free(): number
 		return BoxFormat.budgetFree(ledger, clock, cap())
@@ -977,11 +1036,157 @@ function BoxReveal.start(spec: Spec): Run
 				Palette.StickerRedEnd
 			)
 			rise(newSlot:FindFirstChild("Pose") :: GuiObject, REVEAL_FRAMES, R.newMs, delays.newMs, R.newCurve)
+			-- The fancier reveal (L:569): then it pulses.
+			local pulse = UiIdle.add(
+				newSlot:FindFirstChild("Inner", true) :: GuiObject,
+				"pulse",
+				{ periodS = UX.newPulse.periodS, delayS = UX.newPulse.delayS }
+			)
+			if pulse then
+				c:add(function()
+					pulse:remove()
+				end)
+			end
 		end
-		local _nameSlot, nameLabel = roleLabel(resultBlock, "Name", 2, name, R.nameRole, wrap)
-		rise(nameLabel, UP_FRAMES, R.upMs, delays.nameMs, R.upCurve)
+		-- The fancier reveal (L:570): the name letter by letter, each then waving (one label when it would not fit).
+		local nameKind = (Theme.Sticker.text[R.nameRole] :: any).kind
+		local letters = UX.letters
+		local cells: { { char: string, width: number } } = {}
+		local total, height = 0, 0
+		for _, code in utf8.codes(name) do
+			local char = utf8.char(code)
+			local bounds = Theme.textBoundsAt(if char == " " then "a" else char, nameKind, nil, uiScale.Scale)
+			local width = math.ceil(if char == " " then bounds.X * 0.5 else bounds.X) + 2
+			table.insert(cells, { char = char, width = width })
+			total += width
+			height = math.max(height, math.ceil(bounds.Y) + 2)
+		end
+		if total <= wrap then
+			local nameRow: Frame = Create("Frame", {
+				Name = "Name",
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(total, height),
+				LayoutOrder = 2,
+				Parent = resultBlock,
+			})
+			Theme.list(Enum.FillDirection.Horizontal, 0, nameRow, Enum.HorizontalAlignment.Center)
+			for index, cell in cells do
+				local slot: Frame = Create("Frame", {
+					Name = "Letter" .. index,
+					BackgroundTransparency = 1,
+					Size = UDim2.fromOffset(cell.width, height),
+					LayoutOrder = index,
+					Parent = nameRow,
+				})
+				if cell.char ~= " " then
+					local waveHolder: Frame = Create("Frame", {
+						Name = "Wave",
+						BackgroundTransparency = 1,
+						Size = UDim2.fromScale(1, 1),
+						Parent = slot,
+					})
+					local label = Theme.label({
+						Name = "Text",
+						Text = cell.char,
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.fromScale(0.5, 0.5),
+						Size = UDim2.fromScale(1, 1),
+						AutomaticSize = Enum.AutomaticSize.None,
+						TextWrapped = false,
+						TextXAlignment = Enum.TextXAlignment.Center,
+						TextYAlignment = Enum.TextYAlignment.Center,
+						Parent = waveHolder,
+					}, nameKind)
+					Theme.stickerText(label, R.nameRole)
+					rise(
+						label,
+						letters.frames,
+						letters.ms,
+						letters.startMs + (index - 1) * letters.stepMs,
+						letters.curve
+					)
+					local w = letters.wave
+					local handle = UiIdle.addFrames(waveHolder, {
+						{ at = 0, y = 0 },
+						{ at = 0.5, y = -w.px },
+						{ at = 1, y = 0 },
+					}, { periodS = w.periodS, delayS = w.delayS + (index - 1) * w.stepS, curve = "easeInOut" })
+					if handle then
+						c:add(function()
+							handle:remove()
+						end)
+					end
+				end
+			end
+		else
+			local _nameSlot, nameLabel = roleLabel(resultBlock, "Name", 2, name, R.nameRole, wrap)
+			rise(nameLabel, UP_FRAMES, R.upMs, delays.nameMs, R.upCurve)
+		end
+		-- The fancier reveal (L:571): the rarity pill stamped in, then a shine crossing it every UX.shine.periodS.
 		local raritySlot = pill(resultBlock, "Rarity", 3, rarityText, R.rarityPill, base, base)
-		rise(raritySlot:FindFirstChild("Pose") :: GuiObject, UP_FRAMES, R.upMs, delays.rarityMs, R.upCurve)
+		local stamp = UX.stamp
+		rise(raritySlot:FindFirstChild("Pose") :: GuiObject, stamp.frames, stamp.ms, delays.rarityMs, stamp.curve)
+		local rarityFace = raritySlot:FindFirstChild("Face", true) :: Frame
+		local shine = UX.shine
+		local border = R.rarityPill.border -- the band crosses inside the border (overflow: hidden)
+		local shineFrame: Frame = Create("Frame", {
+			Name = "Shine",
+			BackgroundColor3 = WHITE,
+			BorderSizePixel = 0,
+			Position = UDim2.fromOffset(border, border),
+			Size = UDim2.new(1, -2 * border, 1, -2 * border),
+			ZIndex = 4,
+			Parent = rarityFace,
+		})
+		Theme.corner(rarityFace.Size.Y.Offset, shineFrame)
+		local shineGradient: UIGradient = Create("UIGradient", {
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(0.5 - shine.share / 2, 1),
+				NumberSequenceKeypoint.new(0.5, shine.transparency),
+				NumberSequenceKeypoint.new(0.5 + shine.share / 2, 1),
+				NumberSequenceKeypoint.new(1, 1),
+			}),
+			Offset = Vector2.new(-1, 0),
+			Parent = shineFrame,
+		})
+		if not reduced then
+			-- sdShine: held off the pill through holdShare of each run, then across it (translateX -200% -> 900% of the
+			-- band: its centre from -0.5 + band x (-1.5) to -0.5 + band x 9.5 as the gradient's offset).
+			local idle = Config.UI.motion.idle.shine
+			local ease = Tweens.curve(idle.curve)
+			local from, to = -0.5 - shine.share * 1.5, -0.5 + shine.share * 9.5
+			local t = -(delays.rarityMs / 1000 + shine.delayS)
+			track(function(dt: number): boolean
+				if done then
+					return false
+				end
+				t += dt
+				if t < 0 then
+					return true
+				end
+				local u = (t / shine.periodS) % 1
+				local p = if u <= idle.holdShare then 0 else ease((u - idle.holdShare) / (1 - idle.holdShare))
+				shineGradient.Offset = Vector2.new(from + (to - from) * p, 0)
+				return true
+			end)
+		end
+		if not instant then
+			-- L:1194-1195: a note per letter, the stamp's sound and its 4 px jolt.
+			for _, note in BoxFormat.letterNotes(name) do
+				task.delay(note.atMs / 1000, function()
+					if not (done or closing) then
+						spec.sound(BoxFormat.soundCue("letter", nil, note.index))
+					end
+				end)
+			end
+			task.delay(stamp.soundMs / 1000, function()
+				if not (done or closing) then
+					spec.sound(BoxFormat.soundCue("stamp"))
+					UiFx.jolt(root, stamp.jolt)
+				end
+			end)
+		end
 		if reveal.isDuplicate then
 			local text = BoxFormat.resultText(true)
 			local _dupeSlot, dupeLabel = roleLabel(resultBlock, "Duplicate", 4, text, R.dupeRole, wrap, uiScale.Scale)
@@ -1005,6 +1210,99 @@ function BoxReveal.start(spec: Spec): Run
 		else
 			task.delay(delays.buttonsMs / 1000, reachResult)
 		end
+	end
+
+	-- The fancier reveal (L:552-554): behind the squishy, the rarity rays turning the other way, the pulsing halo and
+	-- the rising stars (UX.frames always-moving frames, set aside in cap()); under ReducedMotion all at rest and no stars.
+	local uxStarted = false
+	local function startUx(lightTone: Color3)
+		if uxStarted then
+			return
+		end
+		uxStarted = true
+		local s = spec.scale
+		local z = raysHolder.ZIndex
+		local function centred(name: string, key: string, px: number, tone: Color3): ImageLabel
+			return Create("ImageLabel", {
+				Name = name,
+				BackgroundTransparency = 1,
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.5, UX.centreY),
+				Size = UDim2.fromOffset(math.round(px * s), math.round(px * s)),
+				Image = AssetTable.image(key) or "",
+				ImageColor3 = tone,
+				ImageTransparency = 1,
+				Active = false,
+				ZIndex = z,
+				Parent = raysHolder,
+			})
+		end
+		local rays = centred("RarityRays", UX_RAYS_KEY, UX.rays.px, lightTone)
+		rays.ImageTransparency = 1 - UX.rays.alpha
+		local glowHalo = centred("HaloGlow", UX_GLOW_KEY, UX.halo.px, lightTone)
+		local coreHalo = centred("HaloCore", UX_CORE_KEY, UX.halo.px, WHITE)
+		local haloScales = { Create("UIScale", { Parent = glowHalo }), Create("UIScale", { Parent = coreHalo }) }
+		local stars: { { mote: Mote, frame: ImageLabel } } = {}
+		local starImage = AssetTable.image(STAR_KEY)
+		if starImage and not reduced then
+			for _, mote in BoxReveal.motes() do
+				local px = math.round(mote.px * s)
+				table.insert(stars, {
+					mote = mote,
+					frame = Create("ImageLabel", {
+						Name = "Mote",
+						BackgroundTransparency = 1,
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Size = UDim2.fromOffset(px, px),
+						Image = starImage,
+						ImageColor3 = color(mote.color),
+						ImageTransparency = 1,
+						Active = false,
+						ZIndex = z,
+						Parent = raysHolder,
+					}),
+				})
+			end
+		end
+		local halo = UX.halo
+		local swing = Tweens.curve("easeInOut")
+		local t = 0
+		track(function(dt: number): boolean
+			if done then
+				return false
+			end
+			t += dt
+			local fadeIn = if reduced then 1 else math.clamp(t * 1000 / halo.fadeMs, 0, 1)
+			local w = 1
+			if not reduced then
+				rays.Rotation = -(t / UX.rays.spinS * 360) % 360
+				local u = (t % halo.periodS) / halo.periodS
+				w = swing(if u < 0.5 then u * 2 else (1 - u) * 2)
+			end
+			local size = if reduced then 1 else halo.low + (halo.high - halo.low) * w
+			local alpha = (halo.lowAlpha + (1 - halo.lowAlpha) * w) * fadeIn
+			for _, uiScale2 in haloScales do
+				uiScale2.Scale = size
+			end
+			glowHalo.ImageTransparency = 1 - alpha
+			coreHalo.ImageTransparency = 1 - alpha
+			for _, star in stars do
+				local mote = star.mote
+				local lift, turn, starScale, starAlpha =
+					BoxReveal.moteAt(((t + mote.start) % mote.period) / mote.period)
+				local px = mote.px * starScale * s
+				star.frame.Position = UDim2.new(
+					mote.x / 100,
+					math.round(mote.px * s / 2),
+					1,
+					math.round((UX.motes.bottom - mote.px / 2 - lift) * s)
+				)
+				star.frame.Size = UDim2.fromOffset(math.round(px), math.round(px))
+				star.frame.Rotation = turn
+				star.frame.ImageTransparency = 1 - starAlpha
+			end
+			return true
+		end)
 	end
 
 	-- The burst's 2D side (H:822-830): the rings, the flash, the tint, the rays, then the reveal sound, the pieces and
@@ -1039,6 +1337,7 @@ function BoxReveal.start(spec: Spec): Run
 		then
 			raysOn = true
 		end
+		startUx(lightTone)
 		if instant then
 			return
 		end
@@ -1061,12 +1360,20 @@ function BoxReveal.start(spec: Spec): Run
 				UiFx.ring(ringAt, tone, ring.size)
 			end
 		end
-		local cue = BoxFormat.soundCue("reveal", rarity)
-		task.delay((cue.delayMs or 0) / 1000, function()
+		-- The fancier reveal (L:1196): the ring in the rarity's colour.
+		task.delay(UX.ring.delayMs / 1000, function()
 			if done or closing then
 				return
 			end
-			spec.sound(cue)
+			if BoxFormat.budgetTake(ledger, clock, 1, RINGS_LIFE_S, cap()) > 0 then
+				UiFx.ring(ringAt, base, UX.ring.size)
+			end
+		end)
+		-- The fancier reveal: the burst's one sound is its unbox (above); the pieces still come revealDelayMs later.
+		task.delay(A.revealDelayMs / 1000, function()
+			if done or closing then
+				return
+			end
 			local n = BoxFormat.burstPieces(rarity, free())
 			local life = (FX.boxBurst.sparks.ms + Config.UI.Fx.sparks.jitterMs) / 1000
 			local granted = BoxFormat.budgetTake(ledger, clock, n, life, cap())
@@ -1252,7 +1559,10 @@ function BoxReveal.start(spec: Spec): Run
 			elseif event.kind == "tap" then
 				local j = event.tap or 0
 				local taps = state.taps
-				spec.sound(BoxFormat.soundCue("tap"))
+				spec.sound(BoxFormat.soundCue("tap", nil, j))
+				if j >= UX.sounds.riseFromTap then
+					spec.sound(BoxFormat.soundCue("rise")) -- the fancier reveal (L:1175)
+				end
 				if not reduced then
 					sqv -= A.squash.tap + taps * A.squash.tapPerTap
 					hopv += A.hop.kick + taps * A.hop.kickPerTap

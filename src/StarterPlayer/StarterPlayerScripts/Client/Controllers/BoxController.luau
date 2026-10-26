@@ -688,7 +688,17 @@ local function startRun(entry: QueueEntry): boolean
 			scale = UIController.scale(),
 			trackScale = UIController.trackScale,
 			sound = function(cue: BoxFormat.SoundCue)
-				SoundController.play(cue.key, { pitch = cue.pitch, variance = cue.variance })
+				-- The fancier reveal: the first of the cue's key and its fallbacks that has an id plays.
+				local key = cue.key
+				if not SoundController.hasSound(key) then
+					for _, fallback in cue.fallbacks or {} do
+						if SoundController.hasSound(fallback) then
+							key = fallback
+							break
+						end
+					end
+				end
+				SoundController.play(key, { pitch = cue.pitch, variance = cue.variance })
 			end,
 			onResult = function()
 				if current == run then

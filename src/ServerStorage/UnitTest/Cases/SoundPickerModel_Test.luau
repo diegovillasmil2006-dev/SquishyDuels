@@ -74,6 +74,7 @@ return function(t: Context)
 				local render = slot.key == "ui.pop" or slot.key == "ui.levelTone" or string.sub(slot.key, 1, 9) == "sfx.kill."
 				render = render or string.sub(slot.key, 1, 6) == "match." -- Match HUD M6/M7 (2026-10-17): the M3 pack's renders
 				render = render or string.sub(slot.key, 1, 13) == "grip.levelUp." -- the new short level-up's renders
+				render = render or string.sub(slot.key, 1, 7) == "box.ux." -- the fancier box reveal's renders
 				if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." and not render then
 					soundKeys[slot.key] = true
 					count += 1

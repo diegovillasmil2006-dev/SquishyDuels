@@ -95,8 +95,9 @@ export type RevealState = {
 	held: boolean, -- the last tap came before the BoxOpen reply: the burst waits for it
 }
 export type RevealEvent = { kind: "land" | "tap" | "burst" | "ready", tap: number? } -- tap: 0, 1, 2 (H:812's j)
-export type SoundEvent = "land" | "tap" | "burst" | "reveal" | "close"
-export type SoundCue = { key: string, pitch: number?, variance: number?, delayMs: number? }
+export type SoundEvent = "land" | "tap" | "rise" | "burst" | "reveal" | "letter" | "stamp" | "close"
+-- fallbacks: the keys tried in order when `key` has no id yet (the fancier reveal's own sounds wait for the owner).
+export type SoundCue = { key: string, pitch: number?, variance: number?, delayMs: number?, fallbacks: { string }? }
 export type Orbit = { theta: number, phi: number, radius: number, dTheta: number, dPhi: number, auto: boolean }
 export type OrbitInput = {
 	dragX: number?, -- px moved this frame
@@ -735,19 +736,54 @@ function BoxFormat.flashAlpha(ms: number, ease: (number) -> number): number
 	return peak * math.max(0, 1 - (p - at) / (1 - at))
 end
 
--- §18.6 / RL8: each reveal moment's sound: the landing's low stamp, a tap's rattle (box.shake), the burst's pop
--- (box.open), reveal.<rarity> revealDelayMs later (H:827-828), the close's pop (H:835).
-function BoxFormat.soundCue(event: SoundEvent, rarity: string?): SoundCue
+-- §18.6 / RL8: each reveal moment's sound: the landing's low stamp and the close's pop (H:835). The fancier reveal
+-- (2026-10-26, Config.UI.Boxes.reveal.ux.sounds, lib:160-195): tap `index` (0, 1, 2) its own rattle (then box.shake),
+-- the rise from the third tap, the burst's unbox of the rarity (then reveal.<rarity>, box.open: one sound now, as the
+-- design; "reveal" is the same, for a skip), the `index`-th letter's note (the low file to an octave up, the high file
+-- above it, pitched to the note) and the rarity pill's stamp; each ends on a look-alike that plays.
+function BoxFormat.soundCue(event: SoundEvent, rarity: string?, index: number?): SoundCue
+	local ux = BOXES_UI.reveal.ux.sounds
 	if event == "land" then
 		return { key = SOUND_LAND, pitch = REVEAL.landPitch }
 	elseif event == "tap" then
-		return { key = SOUND_SHAKE }
-	elseif event == "burst" then
-		return { key = SOUND_OPEN, variance = 0 }
-	elseif event == "reveal" then
-		return { key = BoxFormat.revealSoundKey(rarity or ""), variance = 0, delayMs = REVEAL.revealDelayMs }
+		local i = math.clamp(math.floor(index or 0) + 1, 1, #ux.rattle)
+		return { key = ux.rattle[i], fallbacks = ux.tapFallbacks }
+	elseif event == "rise" then
+		return { key = ux.rise, fallbacks = ux.riseFallbacks }
+	elseif event == "burst" or event == "reveal" then
+		local known = if REVEAL_SOUNDS[rarity or ""] then rarity :: string else "Common"
+		local fallbacks = { BoxFormat.revealSoundKey(known) }
+		table.move(ux.unboxFallbacks, 1, #ux.unboxFallbacks, 2, fallbacks)
+		return { key = ux.unboxPrefix .. known, variance = 0, fallbacks = fallbacks }
+	elseif event == "letter" then
+		local notes = BOXES_UI.reveal.ux.letters.notes
+		local semis = notes[math.floor(index or 0) % #notes + 1]
+		local high = semis > 12
+		return {
+			key = if high then ux.letterHigh else ux.letterLow,
+			pitch = 2 ^ ((if high then semis - 12 else semis) / 12),
+			variance = 0,
+			fallbacks = ux.letterFallbacks,
+		}
+	elseif event == "stamp" then
+		return { key = ux.stamp, fallbacks = ux.stampFallbacks }
 	end
 	return { key = SOUND_CLOSE }
+end
+
+-- The fancier reveal (L:1194): the name's letter notes, { atMs from the burst, the letter's index (0 first) } for each
+-- character that is not a space (a space keeps its slot in time).
+function BoxFormat.letterNotes(name: string): { { atMs: number, index: number } }
+	local letters = BOXES_UI.reveal.ux.letters
+	local out: { { atMs: number, index: number } } = {}
+	local i = 0
+	for _, code in utf8.codes(name) do
+		if utf8.char(code) ~= " " then
+			table.insert(out, { atMs = letters.startMs + i * letters.stepMs, index = #out })
+		end
+		i += 1
+	end
+	return out
 end
 
 -- §9.15 / PR18: the animated UI frames still free at `now` (seconds) out of `total`, given the ledger of what is alive.

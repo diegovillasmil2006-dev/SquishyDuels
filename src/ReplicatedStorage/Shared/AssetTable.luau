@@ -978,6 +978,19 @@ local SLOTS: { AssetSlot } = {
 	-- folder "Squishy Duels sounds - LEVEL UP" with ui.pop's file; look-alikes meanwhile (GripController).
 	soundSlot("grip.levelUp.tone", "UI", false, nil, "L:940 tone(420 -> 980): the badge pops in; file 'lvl_tone.wav'"),
 	soundSlot("grip.levelUp.jingle", "UI", false, nil, "lib:205 levelup(): the level-up jingle; file 'lvl_jingle.wav'"),
+	-- The fancier box reveal (2026-10-26; LOBBY HUD L:1175-1195, hud-lib.js L:160-195): the folder "Squishy Duels
+	-- sounds - BOX REVEAL"; meanwhile each cue falls back to the older slot, then a look-alike (BoxFormat.soundCue).
+	soundSlot("box.ux.rattle1", "UI", false, nil, "lib:160 rattle(0): the first shake; file 'box_rattle_1.wav'"),
+	soundSlot("box.ux.rattle2", "UI", false, nil, "lib:160 rattle(1): the second shake; file 'box_rattle_2.wav'"),
+	soundSlot("box.ux.rattle3", "UI", false, nil, "lib:160 rattle(2): the third shake; file 'box_rattle_3.wav'"),
+	soundSlot("box.ux.rise", "UI", false, nil, "lib:178 unboxRise(): the last shake's rise; file 'box_rise.wav'"),
+	soundSlot("box.ux.unboxCommon", "UI", false, nil, "lib:179 unbox(0): a Common opens; file 'box_unbox_common.wav'"),
+	soundSlot("box.ux.unboxUncommon", "UI", false, nil, "lib:179 unbox(1): Uncommon; file 'box_unbox_uncommon.wav'"),
+	soundSlot("box.ux.unboxEpic", "UI", false, nil, "lib:179 unbox(2): Epic; file 'box_unbox_epic.wav'"),
+	soundSlot("box.ux.unboxExclusive", "UI", false, nil, "lib:179 unbox(3): Exclusive; file 'box_unbox_exclusive.wav'"),
+	soundSlot("box.ux.letterLow", "UI", false, nil, "lib:195 letter(0), pitched; file 'box_letter_low.wav'"),
+	soundSlot("box.ux.letterHigh", "UI", false, nil, "lib:195 letter(5), pitched above; file 'box_letter_high.wav'"),
+	soundSlot("box.ux.stamp", "UI", false, nil, "lib:194 uxStamp(): the rarity pill lands; file 'box_stamp.wav'"),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1278,6 +1291,10 @@ local SLOTS: { AssetSlot } = {
 	lobbyHud("img.lv.badge", 117403633702404, "the GRIP badge's disc 132 at (14, 14) of 160 x 170 (L:591)", MF_DATE),
 	lobbyHud("img.lv.spin", 111820189746263, "the badge's turning stripes in its 122 px opening (L:592)", MF_DATE),
 	lobbyHud("img.lv.ring", 129367397148809, "the level-up ring 140 at (5, 5) of 150 (L:588)", MF_DATE),
+	-- The fancier box reveal (2026-10-26, LOBBY HUD L:552-553; make_box_pngs.mjs): white, tinted the rarity in game.
+	lobbyHud("img.box.rays", 97939225456618, "the rarity rays, 1300 px box at 650 (L:552)", "2026-10-26"),
+	lobbyHud("img.box.haloGlow", 70882384440612, "the halo's glow: 1 to 30%, out by 68% (L:553)", "2026-10-26"),
+	lobbyHud("img.box.haloCore", 126367826402096, "the halo's white core: 1 at 0, out by 30% (L:553)", "2026-10-26"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL
