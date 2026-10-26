@@ -9,7 +9,8 @@
 --     shows the rest positions, sleeps and steps nothing;
 --   * profile: the live dent exp(-s - q2)·(1 - beta·s) and its derived rim peaks (foam/plush 6.2% of d at 1.56·r, mochi
 --     13.5% at 1.41·r, jelly 14.9% at 1.40·r), cut off past 7; a held finger settles to dF·profile·lump along the
---     press, its rim raised, nothing sideways;
+--     press, its rim raised, nothing sideways; a finger dent shows in the first frame and is half deep within 150 ms
+--     (owner 2026-10-26: faster than the design's);
 --   * memory: slowRise = 1 - smoothstep(age / rise): 50% at rise / 2; a released dent creeps back on it, gone at rise;
 --   * stamping: a stroke is stamped ceil(len / (0.28·rF)) times; a jump past 3.5·rF has no stroke; the smear moves
 --     memory sideways by (move)·smear·es only where es = exp(-0.7·s - q) >= 0.03;
@@ -204,6 +205,33 @@ return function(t: Context)
 		end
 		expect.truthy(checked > 30)
 		expect.truthy(rim > 4)
+	end)
+
+	-- Owner 2026-10-26 ("the dents trail behind my mouse, they show up late"): a finger dent starts in the first frame
+	-- and reaches half its depth within 150 ms (the design's 35 ms wait, 90 ms ease-in and softer depth spring: 233 ms).
+	t.test("a finger dent shows in the first frame and reaches half its depth within 150 ms (foam)", function()
+		local body, shell = newBody("foam", "High")
+		local contact = frontVertex(shell, 0, 0.15)
+		local u = -normal(shell, contact)
+		press(body, shell, contact)
+		local depths = {}
+		for f = 1, 120 do
+			body:step(FRAME)
+			depths[f] = body:displacement(contact):Dot(u)
+		end
+		local peak = 0
+		for _, d in depths do
+			peak = math.max(peak, d)
+		end
+		expect.truthy(depths[1] > 0)
+		local half = 0
+		for f, d in depths do
+			if d >= 0.5 * peak then
+				half = f
+				break
+			end
+		end
+		expect.truthy(half > 0 and half * FRAME <= 0.15)
 	end)
 
 	t.test("memory: slowRise = 1 - smoothstep(age / rise); a released dent creeps back (squish.js:562-566)", function()

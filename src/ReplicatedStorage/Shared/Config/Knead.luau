@@ -115,14 +115,17 @@ local Knead = {
 	-- A brush's depth (design: squish.js:529-534): target dMax·amt·sm((t - delay) / rise)·(settle + (1 - settle)·sm((t -
 	-- delay) / creepSeconds)); the depth follows it on `spring`, substepsPerSecond; a released brush retires below
 	-- retireDepth·dMax when slower than retireSpeed·dMax a second.
+	-- Owner 2026-10-26 ("the dents trail behind my mouse, they show up late"): the finger's wait, rise and the depth
+	-- spring are faster than the design's (0.035 s, 0.09 s, { 650, 50 }): a finger dent is half deep in about 0.13 s
+	-- (was 0.23 s).
 	depth = {
-		delayFinger = 0.035, -- finger and thumb (design: squish.js:531)
+		delayFinger = 0, -- finger and thumb (owner 2026-10-26; design: 0.035, squish.js:531)
 		delayPalm = 0.03, -- design: squish.js:531
-		riseFinger = 0.09, -- finger and thumb (design: squish.js:531)
+		riseFinger = 0.03, -- finger and thumb (owner 2026-10-26; design: 0.09, squish.js:531)
 		risePalm = 0.16, -- design: squish.js:531
 		settle = 0.86, -- design: squish.js:531
 		creepSeconds = 1.2, -- design: squish.js:531
-		spring = { 650, 50 }, -- 0.8 Hz, ζ 0.98 (design: squish.js:533)
+		spring = { 2600, 100 }, -- 1.6 Hz, ζ 0.98 (owner 2026-10-26; design: { 650, 50 } 0.8 Hz, squish.js:533)
 		substepsPerSecond = 240, -- design: squish.js:532
 		retireDepth = 0.01, -- design: squish.js:534
 		retireSpeed = 0.3, -- design: squish.js:534
@@ -146,6 +149,11 @@ local Knead = {
 	-- The volume bulge (design: squish.js:555, 595, 611): infl follows gamma·vol / area at rate `rate`; a vertex is pushed
 	-- out by infl·(1 - min(1, |x| / (dentShare·dF))).
 	bulge = { rate = 30, dentShare = 0.25 },
+	-- Owner 2026-10-26 ("wings dont squish, check every model"; proposal: the design has no counterpart): a pressed rider
+	-- that is not a face or look part (a wing, tail, ear, gill, leaf, toe, straw...) and the rest of its hinged section
+	-- squash by `depth` along the press (volume kept, KneadMath.pressScale), on the toy feel's per-vertex spring (k, c),
+	-- stepped at most maxStep seconds a frame.
+	rider = { depth = 0.3, maxStep = 1 / 30 },
 	-- The stretch (design: squish.js:356-357, 369-370, 378-383, 544-545, 586): it slips past slip·maxPull; the field
 	-- radius is rP·(1 + radiusGrowth·L / maxPull); the body tug moves the rest by tug·(1 - w); necking neck·neckGain·
 	-- min(1, L / rp)·w·(1 - w); a pull longer than plasticMin·maxPull keeps `plastic` of itself where w >=

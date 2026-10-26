@@ -5,7 +5,9 @@
 --   * with offsets set, the next apply writes Offset = base + R⁻¹(p ∘ S - p) + R⁻¹(o ∘ S), even with S at rest and the
 --     looks at rest (a model with offsets never rests);
 --   * a part without an offset keeps the plain formula; setOffsets(nil) brings the base Offset back on the next apply;
---   * the table is read on every write (the owner updates it in place).
+--   * the table is read on every write (the owner updates it in place);
+--   * setPartScales (owner 2026-10-26): a part's mesh Scale × its multiplier on the next apply (the model never rests
+--     while set); nil brings the base Scale back.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -65,6 +67,25 @@ return function(t: Context)
 		local expected = eye.CFrame:VectorToObjectSpace(p * S - p)
 			+ eye.CFrame:VectorToObjectSpace(Vector3.new(0.05, 0, -0.1) * S)
 		near(eyeMesh.Offset, expected)
+		deformer:destroy()
+		m:Destroy()
+	end)
+
+	-- Owner 2026-10-26 ("wings dont squish, check every model"): the knead squashes a pressed rider through its mesh Scale.
+	t.test("setPartScales: a part's mesh Scale is multiplied on the next apply; nil brings the base back", function()
+		local m, eye, eyeMesh, _, curlMesh = model()
+		local deformer = SquishDeformer.attach(m, {})
+		local out = SquishRig.newOut()
+		local squash = Vector3.new(1.25, 0.64, 1.25)
+		deformer:setPartScales({ [eye] = squash })
+		deformer:apply(out)
+		near(eyeMesh.Scale, squash)
+		near(curlMesh.Scale, Vector3.one)
+		expect.falsy(deformer:isResting())
+		deformer:setPartScales(nil)
+		deformer:apply(out)
+		near(eyeMesh.Scale, Vector3.one)
+		expect.truthy(deformer:isResting())
 		deformer:destroy()
 		m:Destroy()
 	end)

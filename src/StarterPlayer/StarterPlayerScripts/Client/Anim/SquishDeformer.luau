@@ -72,6 +72,8 @@
 --     covers every channel. The rest-and-sleep rule above holds with the looks at 1 and every angle at 0.
 --   * setOffsets(offsets?) (spec phase2-squeeze §3.2, Inspect's knead): pivot-space offsets per mesh part, added as
 --     Offset += R⁻¹(o ∘ S), so face and detail parts ride the soft shell; while set, the model never rests.
+--   * setPartScales(scales?) (owner 2026-10-26, Inspect's knead): a multiplier per mesh part on its mesh Scale (its own
+--     axes), so a pressed wing, tail or ear squashes; while set, the model never rests.
 -- No connections, instances or threads: the owner puts the deformer (it has destroy()) in its Cleanup.
 
 -- Services
@@ -176,6 +178,7 @@ type DeformerData = {
 	_sectionsOn: boolean,
 	_freeSections: boolean, -- some section part has no weld (Viewport: written against the current pivot)
 	_offsets: { [BasePart]: Vector3 }?, -- the knead's ride offsets (setOffsets), pivot space before S; nil = none
+	_partScales: { [BasePart]: Vector3 }?, -- the knead's pressed riders (setPartScales), × mesh Scale; nil = none
 }
 
 -- Constants
@@ -525,7 +528,8 @@ local function writeSectionPart(self: Deformer, data: PartData, S: Vector3, pivo
 	local R = Q * data.R
 	local kv = Vector3.new((R.XVector * S).Magnitude, (R.YVector * S).Magnitude, (R.ZVector * S).Magnitude)
 	kv = Vector3.one + (kv - Vector3.one) * (1 - data.rigidity)
-	putScale(data, data.baseScale * kv * lookMul(self, data.look), false)
+	local pressed = if self._partScales then self._partScales[data.part] else nil
+	putScale(data, data.baseScale * kv * lookMul(self, data.look) * (pressed or Vector3.one), false)
 	putOffset(data, data.baseOffset, true)
 	local placed = CFrame.new(p * S) * R
 	if data.weld then
@@ -564,6 +568,7 @@ local function writeMeshes(self: Deformer, S: Vector3)
 	local pivot: CFrame? = nil -- the current pivot, read once and only for a part placed against it
 	local sectionsOn = self._sectionsOn
 	local rides = self._offsets
+	local pressedScales = self._partScales
 	local d = S - Vector3.one
 	local dx, dy, dz = d.X, d.Y, d.Z
 	for _, data in self._parts do
@@ -588,7 +593,9 @@ local function writeMeshes(self: Deformer, S: Vector3)
 		local mesh = data.mesh
 		if mesh then
 			local look = data.look
-			putScale(data, if look then data.baseScale * kv * lookMul(self, look) else data.baseScale * kv, false)
+			local scale = if look then data.baseScale * kv * lookMul(self, look) else data.baseScale * kv
+			local pressed = if pressedScales then pressedScales[data.part] else nil
+			putScale(data, if pressed then scale * pressed else scale, false)
 			-- R⁻¹(p ∘ S - p) from the per-axis steps (parts never move)
 			local offset = data.baseOffset + data.ox * dx + data.oy * dy + data.oz * dz
 			local ride = if rides then rides[data.part] else nil
@@ -671,7 +678,7 @@ local function write(self: Deformer)
 	-- Mesh scale, look multipliers and sections.
 	local S = self._scale
 	updateLooks(self)
-	if nearOne(S) and looksAtRest(self) and self._offsets == nil then
+	if nearOne(S) and looksAtRest(self) and self._offsets == nil and self._partScales == nil then
 		if not self._meshAtBase then
 			writeBaseMeshes(self)
 			self._meshAtBase = true
@@ -758,6 +765,18 @@ function DeformerClass.setOffsets(self: Deformer, offsets: { [BasePart]: Vector3
 		self._meshAtBase = false -- the rest path writes the base values again
 	end
 	self._offsets = offsets
+end
+
+-- Owner 2026-10-26 (Inspect's knead: a pressed wing, tail, ear... squashes): per mesh part, a multiplier on its mesh
+-- Scale (its own axes); nil turns them off (the base values come back with the next write). Read, not copied.
+function DeformerClass.setPartScales(self: Deformer, scales: { [BasePart]: Vector3 }?)
+	if self._destroyed then
+		return
+	end
+	if scales == nil and self._partScales ~= nil then
+		self._meshAtBase = false -- the rest path writes the base values again
+	end
+	self._partScales = scales
 end
 
 function DeformerClass.getFace(self: Deformer): Face
@@ -927,6 +946,7 @@ function SquishDeformer.attach(model: Model, options: Options?): Deformer
 		_sectionsOn = false,
 		_freeSections = freeSections,
 		_offsets = nil,
+		_partScales = nil,
 	}
 	local deformer = setmetatable(data, DeformerClass)
 	registry[model] = deformer

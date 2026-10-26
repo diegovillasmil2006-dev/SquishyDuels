@@ -6,6 +6,8 @@
 --     their colour; an RB part without a mesh gets its rest size back (its Size over the deformer's kv, SD_Rigidity
 --     counted); every other visual part rides (never the Root), anchored at its contact point (SD_Contact in its unit
 --     space) or else its centre; the face box covers the SD_Face parts (none: no box); no such body part: no shell;
+--     owner 2026-10-26: a plain still E / B / RB part (no SD_Face, SD_AttachedTo, SD_Section or SD_Look) joins the shell
+--     too; a rider's group is its section, else its name, and it squashes (squish) unless it is a face or look part;
 --   * nearestVertices: each point gets the closest deforming shell vertex (never a bounds anchor);
 --   * rides: a rider's offset is its anchor vertex's shown minus rest position, written into the same table;
 --   * restRay: a stage ray in the shell's rest space (the pivot and the deformer's scale undone, a ray stays a ray);
@@ -95,11 +97,11 @@ return function(t: Context)
 		local model = Builder.build("butter", "Viewport", 1)
 		local reading = Knead.readModel(model, Vector3.one)
 		local pivot = model:GetPivot()
-		expect.equal(#reading.body, 3) -- Body, Wrapper and Label (butter.luau)
+		-- Body, Wrapper and Label (butter.luau) and, owner 2026-10-26, its plain Curl and Melt
+		expect.equal(#reading.body, 5)
 		local inShell: { [BasePart]: boolean } = {}
 		for _, body in reading.body do
 			inShell[body.part] = true
-			expect.equal(body.part:GetAttribute("SD_Body"), true)
 			expect.truthy(body.shape == "E" or body.shape == "B" or body.shape == "RB")
 			near(body.cframe.Position, pivot:PointToObjectSpace(body.part.CFrame.Position))
 			near(body.size, body.part.Size)
@@ -176,6 +178,51 @@ return function(t: Context)
 		local bare = handModel()
 		expect.equal(#Knead.readModel(bare, Vector3.one).body, 0)
 		bare:Destroy()
+	end)
+
+	-- Owner 2026-10-26 ("wings dont squish, check every model"): every plain still part joins the shell; the riders that
+	-- are not face or look parts squash when pressed, a hinged section's parts together.
+	t.test("readModel: plain still E / B parts join the shell; riders are grouped and marked squishable", function()
+		local model, pivot = handModel()
+		local size = Vector3.new(0.4, 0.4, 0.4)
+		addPart(model, "Body", { SD_Body = true, SD_Shape = "E" }, pivot, Vector3.new(2, 2, 2), true)
+		local foot = addPart(model, "Foot", { SD_Shape = "E" }, pivot * CFrame.new(0, -1, 0), size, true)
+		local stem = addPart(model, "Stem", { SD_Shape = "B" }, pivot * CFrame.new(0, 1, 0), size, true)
+		local eye =
+			addPart(model, "Eye", { SD_Shape = "E", SD_Face = true }, pivot * CFrame.new(0.3, 0.3, -1), size, true)
+		local shine = addPart(
+			model,
+			"Shine",
+			{ SD_Shape = "E", SD_AttachedTo = "Eye", SD_Look = "shine" },
+			pivot * CFrame.new(0.3, 0.3, -1.1),
+			size,
+			true
+		)
+		local straw = addPart(model, "Straw", { SD_Shape = "B", SD_AttachedTo = "Body" }, pivot, size, true)
+		local fold = addPart(model, "Fold", { SD_Shape = "W" }, pivot * CFrame.new(1, 0, 0), size, true)
+		local wing =
+			addPart(model, "Wing", { SD_Shape = "W", SD_Section = "wingL" }, pivot * CFrame.new(-1, 0, 0), size, true)
+		local tip = addPart(
+			model,
+			"WingTip",
+			{ SD_Shape = "E", SD_Section = "wingL", SD_AttachedTo = "Wing" },
+			pivot * CFrame.new(-1.3, 0, 0),
+			size,
+			true
+		)
+		local reading = Knead.readModel(model, Vector3.one)
+		expect.equal(#reading.body, 3)
+		expect.truthy(bodyOf(reading, foot) ~= nil and bodyOf(reading, stem) ~= nil)
+		for part, want in { [eye] = false, [shine] = false, [straw] = true, [fold] = true, [wing] = true, [tip] = true } do
+			local rider = riderOf(reading, part)
+			expect.truthy(rider ~= nil)
+			expect.equal(rider.squish, want)
+		end
+		expect.equal(riderOf(reading, wing).group, "wingL")
+		expect.equal(riderOf(reading, tip).group, "wingL")
+		expect.equal(riderOf(reading, straw).group, "Straw")
+		expect.equal(riderOf(reading, fold).group, "Fold")
+		model:Destroy()
 	end)
 
 	t.test(

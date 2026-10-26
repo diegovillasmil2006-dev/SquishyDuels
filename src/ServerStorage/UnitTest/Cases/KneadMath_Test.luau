@@ -8,7 +8,10 @@
 --   * approach: 1 - e^(-rate·dt); tilt: toward the target at that share, the yaw the short way round;
 --   * moveAction: a pressed finger kneads while it is on the toy, stretches off it, and keeps stretching once pulling
 --     (fp.js:636); ringState: hidden / over / press / pull (html:59-62);
---   * barycentric: the weights of a point in a triangle (they sum to 1 and rebuild the point).
+--   * barycentric: the weights of a point in a triangle (they sum to 1 and rebuild the point);
+--   * pressAxis / pressScale (owner 2026-10-26): a pressed rider's mesh Scale multiplier: the axis the press runs most
+--     along (a tie: the first), squashed by amount, the other two bulged so the volume stays; rayPart: where a ray first
+--     meets a part's ellipsoid (E) or box (other shapes).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -116,5 +119,39 @@ return function(t: Context)
 		expect.near(wc2, 0.3, 1e-9)
 		local d1, d2, d3 = KneadMath.barycentric(p, a, a, a)
 		expect.deepEqual({ d1, d2, d3 }, { 1, 0, 0 })
+	end)
+
+	-- Owner 2026-10-26 ("wings dont squish, check every model"): a pressed rider (wing, tail, ear, gill, leaf...) squashes.
+	t.test("pressAxis / pressScale: its strongest axis squashed, the others bulged; none at 0", function()
+		local function nearV(a: Vector3, b: Vector3)
+			expect.near((a - b).Magnitude, 0, 1e-6) -- a Vector3 holds 32-bit floats
+		end
+		expect.equal(KneadMath.pressAxis(Vector3.new(1, 0, 0)), 1)
+		expect.equal(KneadMath.pressAxis(Vector3.new(0, 0, -2)), 3) -- any length, either way
+		-- A slanted press (in Studio the dragon's wing took (-0.68, -0.37, 0.63)) still picks one axis.
+		expect.equal(KneadMath.pressAxis(Vector3.new(-0.68, -0.37, 0.63)), 1)
+		expect.equal(KneadMath.pressAxis(Vector3.new(1, 1, 0)), 1) -- a tie: the first
+		local w = 1 / math.sqrt(0.7)
+		nearV(KneadMath.pressScale(1, 0.3), Vector3.new(0.7, w, w))
+		nearV(KneadMath.pressScale(3, 0.3), Vector3.new(w, w, 0.7))
+		nearV(KneadMath.pressScale(2, 0), Vector3.one)
+		local s = KneadMath.pressScale(2, -0.2) -- a rebound stretches along the press
+		expect.truthy(s.Y > 1 and s.X < 1)
+		expect.near(s.X * s.Y * s.Z, 1, 1e-6)
+	end)
+
+	t.test("rayPart: where a ray first meets a part's ellipsoid (E) or box (other shapes), as a share", function()
+		local at = CFrame.new(0, 0, -5) * CFrame.Angles(0, math.rad(90), 0)
+		local size = Vector3.new(2, 2, 2)
+		local front, back = Vector3.new(0, 0, 5), Vector3.new(0, 0, -10)
+		-- Straight at its centre from 10 studs: the near surface 9 studs on, 0.9 of the 10-stud ray.
+		expect.near(KneadMath.rayPart(at, size, "E", front, back) :: number, 0.9, 1e-9)
+		-- Past a corner: misses the ellipsoid, hits the box.
+		local origin = Vector3.new(0.9, 0.9, 5)
+		expect.equal(KneadMath.rayPart(at, size, "E", origin, back), nil)
+		expect.near(KneadMath.rayPart(at, size, "W", origin, back) :: number, 0.9, 1e-9)
+		-- A ray that stops short or points away meets nothing.
+		expect.equal(KneadMath.rayPart(at, size, "B", front, Vector3.new(0, 0, -2)), nil)
+		expect.equal(KneadMath.rayPart(at, size, "B", front, Vector3.new(0, 0, 10)), nil)
 	end)
 end

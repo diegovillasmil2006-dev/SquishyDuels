@@ -21,6 +21,13 @@
 --     (html:59-62, fp.js:615-645)
 --   KneadMath.barycentric(p, a, b, c) -> (wa, wb, wc)   p's weights in triangle abc (projected onto its plane; a
 --     degenerate triangle gives the first corner)
+--   Owner 2026-10-26 ("wings dont squish, check every model"): a pressed rider's squash.
+--   KneadMath.pressAxis(direction) -> 1 | 2 | 3   the part's axis (X, Y, Z) a press along `direction` (its own space, any
+--     length) runs most along; a tie takes the first
+--   KneadMath.pressScale(axis, amount) -> Vector3   the mesh Scale multiplier of a part pressed along that axis: squashed
+--     to 1 - amount on it, the other two bulged so the volume stays
+--   KneadMath.rayPart(cframe, size, shape, origin, direction) -> number?   where the ray origin + t·direction (t in
+--     0..1) first meets the part: its ellipsoid for shape "E", else its box (W wedges and TRI halves too); nil if not
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -112,6 +119,65 @@ function KneadMath.barycentric(p: Vector3, a: Vector3, b: Vector3, c: Vector3): 
 	local wb = (d11 * d20 - d01 * d21) / denominator
 	local wc = (d00 * d21 - d01 * d20) / denominator
 	return 1 - wb - wc, wb, wc
+end
+
+-- One axis, not a mix: a mesh Scale only scales along the part's own axes, and spreading the squash over them by the
+-- press's shares cancels out on a slanted press (Studio: the dragon's wing moved 7%).
+function KneadMath.pressAxis(direction: Vector3): number
+	local x, y, z = math.abs(direction.X), math.abs(direction.Y), math.abs(direction.Z)
+	if x >= y and x >= z then
+		return 1
+	end
+	return if y >= z then 2 else 3
+end
+
+-- c = 1 - amount on that axis, w = 1 / √c on the other two (the product stays 1); a negative amount (a spring's
+-- rebound) stretches along the press.
+function KneadMath.pressScale(axis: number, amount: number): Vector3
+	if amount == 0 then
+		return Vector3.one
+	end
+	local c = 1 - amount
+	local w = 1 / math.sqrt(c)
+	return Vector3.new(if axis == 1 then c else w, if axis == 2 then c else w, if axis == 3 then c else w)
+end
+
+-- In the part's unit space (half size 1): the unit sphere for E, else the unit box (slab test). Nil past the ray's end.
+function KneadMath.rayPart(cframe: CFrame, size: Vector3, shape: string, origin: Vector3, direction: Vector3): number?
+	local half = size / 2
+	local o = cframe:PointToObjectSpace(origin) / half
+	local d = cframe:VectorToObjectSpace(direction) / half
+	local t: number
+	if shape == "E" then
+		local a, b, c = d:Dot(d), o:Dot(d), o:Dot(o) - 1
+		local disc = b * b - a * c
+		if a < MIN_DENOMINATOR or disc < 0 then
+			return nil
+		end
+		local root = math.sqrt(disc)
+		t = (-b - root) / a
+		if t < 0 then
+			t = (-b + root) / a -- the ray starts inside
+		end
+	else
+		local near, far = -math.huge, math.huge
+		for _, pair in { { o.X, d.X }, { o.Y, d.Y }, { o.Z, d.Z } } do
+			local oi, di = pair[1], pair[2]
+			if math.abs(di) < MIN_DENOMINATOR then
+				if math.abs(oi) > 1 then
+					return nil
+				end
+			else
+				local t1, t2 = (-1 - oi) / di, (1 - oi) / di
+				near, far = math.max(near, math.min(t1, t2)), math.min(far, math.max(t1, t2))
+			end
+		end
+		if near > far then
+			return nil
+		end
+		t = if near >= 0 then near else far
+	end
+	return if t >= 0 and t <= 1 then t else nil
 end
 
 return KneadMath

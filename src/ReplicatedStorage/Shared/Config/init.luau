@@ -2194,6 +2194,9 @@ local function checkKnead(problems: Problems)
 	expectPositive(problems, `{p}.depth.spring[1] (k)`, k)
 	expectNonNegative(problems, `{p}.depth.spring[2] (c)`, c)
 	expectCalmSpring(problems, `{p}.depth.spring`, k, c)
+	local rider = if type(knead.rider) == "table" then knead.rider else {}
+	expectBetween(problems, `{p}.rider.depth`, rider.depth, 0, 0.8)
+	expectBetween(problems, `{p}.rider.maxStep`, rider.maxStep, 0, 0.05)
 	local memory = knead.memory
 	eachField(
 		problems,

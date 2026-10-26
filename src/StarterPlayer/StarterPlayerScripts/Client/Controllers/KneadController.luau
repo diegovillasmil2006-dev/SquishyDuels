@@ -45,6 +45,12 @@
 -- * Riders: each other part follows the shell vertex nearest its contact point (SD_Contact) or its centre, rigidly (the
 --   design deforms face meshes per vertex, squish.js:142-143; spec §3.2). Section parts keep their base Offset while
 --   they turn, and RB / solid riders do not ride (the deformer's mesh path only).
+-- * Owner 2026-10-26 ("wings dont squish, check every model"): a plain still E / B / RB part (no SD_Face, SD_AttachedTo,
+--   SD_Section or SD_Look: feet, horns, puffs, syrup, foil, stems...) joins the shell too; a press on a rider that is
+--   not a face or look part (a wing, tail, ear, gill, leaf, toe, straw...; KneadMath.rayPart on its shown mesh, when
+--   nearer than the shell) squashes it and the rest of its hinged section along the view (Config.Knead.rider,
+--   KneadMath.pressScale through SquishDeformer:setPartScales) on the feel's per-vertex spring, and it springs back on
+--   release. A rider press holds (no knead, no stretch) until the pointer lifts.
 -- * Kicks: the soft kicks go to the rig's jiggle on its squeeze axis (KneadMath.kickPeak; the design jiggles on the kick
 --   axis); the Squisher kicks are left out (no rig equivalent, spec §3.3 decision).
 -- * The view: the orbit camera stands in for the toy's rotation. Knead home = yaw 0, pitch homePitch (R / ButtonY reset
@@ -104,7 +110,9 @@ export type BodyPart = {
 	color: Color3,
 }
 
-export type Rider = { part: BasePart, point: Vector3 } -- point: its anchor, pivot space
+-- point: its anchor, pivot space; group: its hinged section, else its name (owner 2026-10-26: a press squashes the
+-- group); squish: a press squashes it (not a face or look part)
+export type Rider = { part: BasePart, point: Vector3, group: string, squish: boolean }
 
 export type Reading = {
 	body: { BodyPart },
@@ -128,7 +136,7 @@ export type Args = {
 
 type State = "building" | "ready" | "live" | "off"
 
-type Hit = { point: Vector3, normal: Vector3 }
+type Hit = { point: Vector3, normal: Vector3, t: number } -- t: where on the ray (a share of it)
 
 -- What the build makes (owned by the handle's Cleanup once ready). The network and the coat only with the wax on.
 type Kit = {
@@ -181,6 +189,11 @@ type HandleData = {
 	_crunching: boolean,
 	_palms: boolean,
 	_settleLeft: number,
+	-- owner 2026-10-26: the pressed rider group (the press is its own, not the shell's) and each group's squash spring
+	_riderPress: { group: string }?,
+	-- per group: the squash, its speed, the press direction (world) and each part's squashed axis (KneadMath.pressAxis)
+	_squash: { [string]: { amount: number, speed: number, direction: Vector3, axes: { [BasePart]: number } } },
+	_partScales: { [BasePart]: Vector3 },
 	-- presentation
 	_jolt: number,
 	_jolted: boolean,
@@ -223,6 +236,10 @@ local ATTR_RIGIDITY = "SD_Rigidity"
 local ATTR_CONTACT = "SD_Contact"
 local ATTR_FACE = "SD_Face"
 local ATTR_SCALE = "SD_Scale"
+local ATTR_LOOK = "SD_Look" -- owner 2026-10-26: what joins the shell, what squashes
+local ATTR_ATTACHED = "SD_AttachedTo"
+local RIDER = KNEAD.rider
+local SQUASH_REST = 1e-4 -- a released group's squash (and its speed ×10) below this is done
 
 -- Module tables
 
@@ -281,11 +298,15 @@ function KneadController.readModel(model: Model, scale: Vector3): Reading
 		local part = descendant :: BasePart
 		local cframe = pivot:ToObjectSpace(part.CFrame)
 		local shape = part:GetAttribute(ATTR_SHAPE)
+		local section = part:GetAttribute(ATTR_SECTION)
+		local face, look = part:GetAttribute(ATTR_FACE) == true, part:GetAttribute(ATTR_LOOK)
+		-- Owner 2026-10-26: a plain still part (no face, attach, section or look) joins the shell like a body part.
+		local plain = not face and look == nil and part:GetAttribute(ATTR_ATTACHED) == nil
 		if
-			part:GetAttribute(ATTR_BODY) == true
+			(part:GetAttribute(ATTR_BODY) == true or plain)
 			and type(shape) == "string"
 			and SHELL_SHAPES[shape]
-			and part:GetAttribute(ATTR_SECTION) == nil
+			and section == nil
 		then
 			local size = part.Size
 			if shape == "RB" and part:FindFirstChildWhichIsA("DataModelMesh") == nil then
@@ -298,9 +319,14 @@ function KneadController.readModel(model: Model, scale: Vector3): Reading
 			local point = if typeof(contact) == "Vector3"
 				then cframe:PointToWorldSpace(contact * part.Size / 2)
 				else cframe.Position
-			table.insert(riders, { part = part, point = point })
+			table.insert(riders, {
+				part = part,
+				point = point,
+				group = if type(section) == "string" then section else part.Name,
+				squish = not face and look == nil,
+			})
 		end
-		if part:GetAttribute(ATTR_FACE) == true then
+		if face then
 			local half = part.Size / 2
 			local min = lo or { math.huge, math.huge, math.huge }
 			local max = hi or { -math.huge, -math.huge, -math.huge }
@@ -598,7 +624,36 @@ local function hitAt(kit: Kit, origin: Vector3, direction: Vector3): Hit?
 	if restPoint == nil or restNormal == nil then
 		return nil
 	end
-	return { point = restPoint, normal = restNormal }
+	local t = (point + center - origin):Dot(direction) / direction:Dot(direction)
+	return { point = restPoint, normal = restNormal, t = t }
+end
+
+-- Owner 2026-10-26 ("wings dont squish"): the squashable rider first met by a rest-space ray, and where (t, the same
+-- share of the ray as hitAt's), from its shown mesh (its Size × mesh Scale, at its mesh Offset).
+local function riderAt(
+	self: Handle,
+	pivot: CFrame,
+	scale: Vector3,
+	origin: Vector3,
+	direction: Vector3
+): (Rider?, number?)
+	local worldOrigin = pivot:PointToWorldSpace(origin * scale)
+	local worldDirection = pivot:VectorToWorldSpace(direction * scale)
+	local best: Rider?, bestT: number? = nil, nil
+	for _, rider in self._reading.riders do
+		local part = rider.part
+		if rider.squish and part.Transparency < 1 then
+			local mesh = part:FindFirstChildWhichIsA("DataModelMesh")
+			local size = if mesh then part.Size * mesh.Scale else part.Size
+			local at = if mesh then part.CFrame * CFrame.new(mesh.Offset) else part.CFrame
+			local shape = if part:GetAttribute(ATTR_SHAPE) == "E" then "E" else "B"
+			local t = KneadMath.rayPart(at, size, shape, worldOrigin, worldDirection)
+			if t ~= nil and (bestT == nil or t < bestT) then
+				best, bestT = rider, t
+			end
+		end
+	end
+	return best, bestT
 end
 
 local function scaleOf(self: Handle): Vector3
@@ -647,6 +702,7 @@ local function goLive(self: Handle)
 		local current = args.deformer()
 		if current then
 			current:setOffsets(nil)
+			current:setPartScales(nil) -- owner 2026-10-26: no squashed rider left behind
 			if self._jolted then
 				current:setTwistBase(twistBase)
 			end
@@ -732,7 +788,9 @@ local function updateRing(self: Handle, kit: Kit, live: Live, pivot: CFrame, sca
 			if self._hoverDirty then
 				self._hoverDirty = false
 				local origin, direction = rayAt(self, kit, hover, pivot, scale, true)
-				self._over = origin ~= nil and direction ~= nil and hitAt(kit, origin, direction) ~= nil
+				self._over = origin ~= nil
+					and direction ~= nil
+					and (hitAt(kit, origin, direction) ~= nil or riderAt(self, pivot, scale, origin, direction) ~= nil)
 			end
 			state = KneadMath.ringState(false, false, self._over)
 			at = hover
@@ -760,7 +818,9 @@ local function frame(self: Handle, dt: number)
 
 	-- The press, once a frame like the orbit's drag (fp.js:636): knead while on the toy, stretch off it.
 	local moveTo = self._moveTo
-	if moveTo ~= nil and self._pressing then
+	if moveTo ~= nil and self._pressing and self._riderPress ~= nil then
+		self._moveTo = nil -- owner 2026-10-26: a rider press holds where it is
+	elseif moveTo ~= nil and self._pressing then
 		self._moveTo = nil
 		local origin, direction = rayAt(self, kit, moveTo, pivot, scale, false)
 		if origin ~= nil and direction ~= nil then
@@ -770,6 +830,39 @@ local function frame(self: Handle, dt: number)
 			else
 				body:pullTo(origin, direction)
 			end
+		end
+	end
+
+	-- Owner 2026-10-26 ("wings dont squish"): the pressed rider group squashes, the others spring back, on the feel's
+	-- per-vertex spring; their parts' mesh Scale multipliers go to the deformer.
+	local press = self._riderPress
+	if next(self._squash) ~= nil then
+		local feel = KNEAD.feels[self._feel] or KNEAD.feels[KNEAD.defaultFeel]
+		local h = math.min(dt, RIDER.maxStep) -- a long frame never blows the spring up
+		for group, squash in self._squash do
+			local target = if press and press.group == group then RIDER.depth else 0
+			squash.speed += (feel.k * (target - squash.amount) - feel.c * squash.speed) * h
+			squash.amount = math.clamp(squash.amount + squash.speed * h, -RIDER.depth, RIDER.depth * 2)
+			if target == 0 and math.abs(squash.amount) < SQUASH_REST and math.abs(squash.speed) < SQUASH_REST * 10 then
+				self._squash[group] = nil
+			end
+		end
+		local scales = self._partScales
+		table.clear(scales)
+		for _, rider in self._reading.riders do
+			local squash = if rider.squish then self._squash[rider.group] else nil
+			if squash then
+				-- Its axis is picked once a press, so a flapping part never flips axes mid-squash.
+				local axis = squash.axes[rider.part]
+				if axis == nil then
+					axis = KneadMath.pressAxis(rider.part.CFrame:VectorToObjectSpace(squash.direction))
+					squash.axes[rider.part] = axis
+				end
+				scales[rider.part] = KneadMath.pressScale(axis, squash.amount)
+			end
+		end
+		if deformer then
+			deformer:setPartScales(if next(scales) ~= nil then scales else nil)
 		end
 	end
 
@@ -918,19 +1011,37 @@ function HandleClass.pointerDown(self: Handle, position: Vector2, touch: boolean
 	if self._state ~= "live" or kit == nil or self._pressing then
 		return false
 	end
-	local ok, hit = pcall(function(): Hit?
-		local origin, direction = rayAt(self, kit, position, self._args.model:GetPivot(), scaleOf(self), true)
+	local ok, hit, rider = pcall(function(): (Hit?, Rider?)
+		local pivot, scale = self._args.model:GetPivot(), scaleOf(self)
+		local origin, direction = rayAt(self, kit, position, pivot, scale, true)
 		if origin == nil or direction == nil then
-			return nil
+			return nil, nil
 		end
-		return hitAt(kit, origin, direction)
+		local shellHit = hitAt(kit, origin, direction)
+		-- Owner 2026-10-26: a squashable rider in front of the shell (or off it) takes the press.
+		local pressed, t = riderAt(self, pivot, scale, origin, direction)
+		if pressed ~= nil and t ~= nil and (shellHit == nil or t < shellHit.t) then
+			return nil, pressed
+		end
+		return shellHit, nil
 	end)
-	if not ok or hit == nil then
+	if not ok or (hit == nil and rider == nil) then
 		return false
 	end
 	self._pressing, self._touch = true, touch
 	self._pointerAt, self._moveTo = position, nil
-	kit.body:fingerDown(hit.point, hit.normal)
+	if rider then
+		local direction = self._args.stage.camera.CFrame.LookVector -- the finger pushes into the screen
+		self._riderPress = { group = rider.group }
+		local squash = self._squash[rider.group]
+		if squash then
+			squash.direction, squash.axes = direction, {}
+		else
+			self._squash[rider.group] = { amount = 0, speed = 0, direction = direction, axes = {} }
+		end
+	elseif hit then
+		kit.body:fingerDown(hit.point, hit.normal)
+	end
 	return true
 end
 
@@ -948,7 +1059,9 @@ function HandleClass.pointerUp(self: Handle)
 	self._pressing = false
 	self._moveTo = nil
 	local kit = self._kit
-	if kit then
+	if self._riderPress then
+		self._riderPress = nil -- owner 2026-10-26: the squashed group springs back (frame)
+	elseif kit then
 		kit.body:fingerUp()
 	end
 	-- The mouse stays where it lifted: the ring shows "over" again if it is still on the toy (fp.js:621).
@@ -971,6 +1084,7 @@ function HandleClass.crunch(self: Handle, on: boolean)
 	self._crunching = on
 	if on then
 		self._pressing, self._moveTo = false, nil -- SoftBody lifts the finger silently
+		self._riderPress = nil
 		if self._palms then
 			self._palms = false
 			body:palms(false)
@@ -1062,6 +1176,7 @@ function HandleClass.debugState(self: Handle): { [string]: any }
 		crunching = self._crunching,
 		palms = self._palms,
 		pressing = self._pressing,
+		riderPress = if self._riderPress then self._riderPress.group else nil, -- owner 2026-10-26: a pressed rider group
 		pulling = if kit then kit.body.pulling else false,
 		faceSquish = self._faceSquish,
 		networkFinished = if network then network.finished else false,
@@ -1128,6 +1243,9 @@ function KneadController.start(args: Args): Handle?
 		_crunching = false,
 		_palms = false,
 		_settleLeft = 0,
+		_riderPress = nil,
+		_squash = {},
+		_partScales = {},
 		_jolt = 0,
 		_jolted = false,
 		_faceSquish = false,
