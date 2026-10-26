@@ -269,8 +269,16 @@ function MatchFormat.readout(view: any, now: number, texts: Texts?, teamNames: {
 		add(parts, t.waiting)
 	elseif view.mode == "tdm" then
 		local names = teamNames or Config.Match.teamNames
-		local lives = view.teamLives or {}
-		add(parts, fill(t.tdm, { redLives = lives[names[1]] or 0, blueLives = lives[names[2]] or 0, time = time }))
+		local score = view.teamScore or {}
+		add(
+			parts,
+			fill(t.tdm, {
+				redScore = score[names[1]] or 0,
+				blueScore = score[names[2]] or 0,
+				target = view.koTarget or 0,
+				time = time,
+			})
+		)
 	else
 		local mine = ownEntry(view)
 		local leader = MatchFormat.leader(view)

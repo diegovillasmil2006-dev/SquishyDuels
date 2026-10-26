@@ -30,16 +30,16 @@
 --     nearer player takes a shared pad and nobody takes two in one sample; speed / super jump change the movement while
 --     they live (not while rooted) and give it back when they end; the port's cooldownMultiplier(fighter),
 --     throwSpeedMultiplier, dashCooldownFree and movement answer for the buffed fighter only; ult charge reaches
---     AbilityService; a shield makes one hit a blocked outcome; a TDM team life adds a life or brings back the
---     teammate out longest; every kind has its toast and every timed one its readout name.
+--     AbilityService; a shield makes one hit a blocked outcome; every kind has its toast and every timed one its
+--     readout name.
 --     Review fixes (2026-10-16): the rapid throw's multiplier gives the shortest cooldown (CooldownClamp.Min, never
 --     below); a pad stays ready when the projectile sweep K.O.s its taker in that step, or the time-up ends the match
 --     there; a speed boost that ends in Result gives the plain movement back.
---   * match HUD M1 (2026-10-16): each K.O. is one HUD event {seq, kind "ko", at, victim, by, cause, final, streak,
---     livesLeft} in the next view sent to everyone (seq 1, 2, ...; never twice); a storm or out-of-bounds K.O. has no
+--   * match HUD M1 (2026-10-16): each K.O. is one HUD event {seq, kind "ko", at, victim, by, cause, final, streak} in
+--     the next view sent to everyone (seq 1, 2, ...; never twice); a storm or out-of-bounds K.O. has no
 --     `by`; a view sent to one player (the storm bar) has no events; players carry respawnAt, out, protectUntil, streak
---     and bestStreak (a K.O. resets the victim's streak); livesLeft = the TDM team lives after it (0 when out); the
---     K.O. that wins by koTarget (an ultimate's too), wipes a team or wins overtime is final and is outcome.finalKo in
+--     and bestStreak (a K.O. resets the victim's streak); a TDM K.O. scores for the other team (teamScore, 2026-10-26);
+--     the K.O. that wins by koTarget (an ultimate's too) or wins overtime is final and is outcome.finalKo in
 --     the same view (and every later one); a time-up or a wipe by a leave has none; a flush nested in stepMatch is a
 --     batch of its own (only the deciding K.O. is final); outcome.standings = MatchRules order without a leaver, the
 --     same list in every later view.
@@ -151,6 +151,7 @@ return function(t: Context)
 	local function baseConfig(): any
 		local cfg = deepCopy(Config.Match)
 		cfg.waitSeconds = 20
+		cfg.introMinSeconds = 0 -- 2026-10-26: the cases count down at the last arrival (MatchRules_Test has the minimum)
 		cfg.countdownSeconds = 3
 		cfg.respawnSeconds = 3
 		cfg.spawnProtectSeconds = 2
@@ -904,7 +905,7 @@ return function(t: Context)
 			expect.equal(view.matchPhase, "Waiting")
 			expect.equal(#view.players, 2)
 			expect.equal(view.koTarget, w.cfg.Modes.ffa.koTarget)
-			expect.equal(view.teamLives, nil)
+			expect.equal(view.teamScore, nil)
 			expect.equal(view.storm, nil)
 			expect.equal(view.you.userId, player.UserId)
 			expect.equal(view.you.protectUntil, 0)
@@ -934,6 +935,31 @@ return function(t: Context)
 			MatchService.tick(T0 + w.cfg.gatherSeconds)
 			expect.truthy(w.port ~= nil)
 			expect.equal(w.players[1]:GetAttribute("SD_MatchId"), w.port.matchId)
+			close()
+		end
+	)
+
+	t.test(
+		"round 1 of the match screens: each arrival goes out; everyone in, the countdown starts at introMinSeconds",
+		function()
+			local cfg = baseConfig()
+			cfg.introMinSeconds = 1.7
+			local w = setup(2, cfg)
+			MatchService.join(w.players[1], "ffa")
+			MatchService.join(w.players[2], "ffa")
+			local startedAt = w.clock.now()
+			w.flush() -- both teleports land: arrived, but the intro has its shortest run first
+			expect.equal(w.port.phase(), "Positioning") -- Waiting on the wire
+			local view = lastView(w, w.players[1])
+			expect.equal(view.matchPhase, "Waiting")
+			for _, p in view.players do
+				expect.equal(p.arrived, true)
+			end
+			MatchService.tick(startedAt + 1.69)
+			expect.equal(w.port.phase(), "Positioning")
+			MatchService.tick(startedAt + 1.7) -- long before waitSeconds
+			expect.equal(w.port.phase(), "Countdown")
+			expect.equal(lastView(w, w.players[2]).matchPhase, "Countdown")
 			close()
 		end
 	)
@@ -1048,9 +1074,10 @@ return function(t: Context)
 		expect.falsy(w.port.canBeHit(fighterOf(w, red[2]), a + 1, fighterOf(w, red[1])))
 		expect.equal(hit(w, red[2], red[1], a + 1), nil)
 		local outcome = hit(w, blue[1], red[1], a + 1)
-		expect.equal(outcome.lives, w.cfg.Modes.tdm.teamLives - 1)
+		expect.equal(outcome.lives, 0)
 		local view = lastView(w, w.players[1])
-		expect.equal(view.teamLives[w.cfg.teamNames[2]], w.cfg.Modes.tdm.teamLives - 1)
+		expect.deepEqual(view.teamScore, { [w.cfg.teamNames[1]] = 1, [w.cfg.teamNames[2]] = 0 })
+		expect.equal(view.koTarget, w.cfg.Modes.tdm.koTarget)
 		expect.equal(view.storm.startRadius, w.maps[2].startRadius)
 		close()
 	end)
@@ -1201,11 +1228,11 @@ return function(t: Context)
 		expect.truthy(bars[2] > bars[1] or bars[1] > 0)
 		local view = lastView(w, w.players[blueId])
 		expect.falsy(view.you.alive)
-		expect.equal(view.teamLives[cfg.teamNames[2]], cfg.Modes.tdm.teamLives - 1)
+		expect.equal(view.teamScore[cfg.teamNames[1]], 1) -- the storm K.O. scores for the other team
 		close()
 	end)
 
-	t.test("TDM storm: a dead character (Reset, a fall) is never sampled: no storm K.O., no team life (D5)", function()
+	t.test("TDM storm: a dead character (Reset, a fall) is never sampled: no storm K.O., no point (D5)", function()
 		local cfg = baseConfig()
 		cfg.Storm.stormStartSeconds = 10
 		cfg.Storm.steps = { { shrinkAt = 10, shrinkSeconds = 10, radiusFraction = 0.1 } }
@@ -1223,7 +1250,7 @@ return function(t: Context)
 			now += 0.2
 		end
 		local view = lastView(w, w.players[3 - blueId])
-		expect.equal(view.teamLives[cfg.teamNames[2]], cfg.Modes.tdm.teamLives)
+		expect.deepEqual(view.teamScore, { [cfg.teamNames[1]] = 0, [cfg.teamNames[2]] = 0 })
 		for _, row in view.players do
 			expect.truthy(row.alive)
 			expect.equal(row.knockedOut, 0)
@@ -1425,25 +1452,22 @@ return function(t: Context)
 		close()
 	end)
 
-	t.test("TDM at 0 team lives: the K.O.'d player is out (stays frozen), a wiped team loses", function()
+	t.test("TDM first to koTarget (2026-10-26): the deciding K.O. wins it for the team, with the team toast", function()
 		local cfg = baseConfig()
-		cfg.Modes.tdm.teamLives = 0
+		cfg.Modes.tdm.koTarget = 1
 		local w = setup(2, cfg)
 		local a = live(w, "tdm")
 		local blueId = if w.players[1]:GetAttribute("SD_Team") == cfg.teamNames[2] then 1 else 2
 		local redId = 3 - blueId
 		local outcome = hit(w, blueId, redId, a + 1)
 		expect.deepEqual(outcome, { lives = 0, invulnUntil = a + 1, eliminated = true })
-		expect.truthy(table.find(codesOf(w, w.players[blueId]), "match.outNoLives") ~= nil)
 		local view = lastView(w, w.players[blueId])
-		expect.truthy(view.you.out)
-		expect.equal(view.you.respawnAt, nil)
+		expect.falsy(view.you.out)
+		expect.equal(view.outcome.reason, "koTarget")
 		expect.equal(view.outcome.winnerTeam, cfg.teamNames[1])
 		local winners = w.notices[#w.notices]
 		expect.equal(winners.code, "match.teamWins")
 		expect.equal(winners.args.team, "Strawberry") -- owner 2026-10-16: STRAWBERRY vs BLUEBERRY
-		MatchService.tick(a + 1 + cfg.respawnSeconds)
-		expect.equal(w.humanoids[blueId].WalkSpeed, 0) -- out: no respawn
 		close()
 	end)
 
@@ -1731,41 +1755,6 @@ return function(t: Context)
 		end
 	)
 
-	t.test("TDM team life: +1 life for the picker's team; at 0 lives the teammate out longest comes back", function()
-		local cfg = onlyKind("teamLife")
-		local w = setup(2, cfg)
-		withPad(w, 2)
-		local a = live(w, "tdm")
-		local team = w.players[1]:GetAttribute("SD_Team")
-		onPad(w, 1)
-		MatchService.tick(a + 0.01)
-		expect.truthy(hasCode(w, w.players[1], "match.powerUp.teamLife"))
-		expect.equal(lastView(w, w.players[2]).teamLives[team], cfg.Modes.tdm.teamLives + 1)
-		close()
-
-		local c2 = onlyKind("teamLife")
-		c2.Modes.tdm.teamLives = 0
-		local v = setup(4, c2)
-		withPad(v, 2)
-		local b = live(v, "tdm")
-		local red, blue = {}, {}
-		for _, player in v.players do
-			table.insert(if player:GetAttribute("SD_Team") == c2.teamNames[1] then red else blue, player.UserId)
-		end
-		hit(v, red[1], blue[1], b + 1) -- no team life: out
-		expect.truthy(lastView(v, v.players[red[1]]).you.out)
-		onPad(v, red[2])
-		MatchService.tick(b + 1.5)
-		local back = lastView(v, v.players[red[1]])
-		expect.truthy(back.you.alive)
-		expect.falsy(back.you.out)
-		expect.equal(back.teamLives[c2.teamNames[1]], 0) -- the new life was spent on the revive
-		expect.truthy(fighterOf(v, red[1]).isAlive())
-		expect.equal(v.humanoids[red[1]].WalkSpeed, Config.Duel.Rules.Movement.WalkSpeed)
-		expect.truthy(inMap(v.roots[red[1]].Position))
-		close()
-	end)
-
 	t.test("every power-up kind has its pickup toast; every timed one its readout name", function()
 		local Strings = t.requireShared("Strings")
 		for _, kind in Config.Match.PowerUps.order do
@@ -1888,15 +1877,14 @@ return function(t: Context)
 	)
 
 	t.test(
-		"match HUD M1: TDM K.O.s carry livesLeft (the team lives after it, 0 when out); out shows in players",
+		"match HUD M1: a TDM K.O. scores for the other team (2026-10-26: teamScore), two in one batch too",
 		function()
 			local w = setup(2)
 			local a = live(w, "tdm")
 			local red, blue = teamsOf(w)
 			hit(w, blue[1], red[1], a + 1)
 			local view = lastView(w, w.players[red[1]])
-			local lives = view.teamLives[w.cfg.teamNames[2]]
-			expect.equal(lives, w.cfg.Modes.tdm.teamLives - 1)
+			expect.deepEqual(view.teamScore, { [w.cfg.teamNames[1]] = 1, [w.cfg.teamNames[2]] = 0 })
 			expect.deepEqual(view.events, {
 				{
 					seq = 1,
@@ -1907,12 +1895,11 @@ return function(t: Context)
 					cause = "hit",
 					final = false,
 					streak = 1,
-					livesLeft = lives,
 				},
 			})
 			close()
 
-			-- Two K.O.s of one team in one batch: each has the lives right after it.
+			-- Two K.O.s of one team in one batch: two points.
 			local u = setup(4)
 			local t0 = live(u, "tdm")
 			local redU, blueU = teamsOf(u)
@@ -1928,24 +1915,10 @@ return function(t: Context)
 			end
 			u.port.applyHits({ request(blueU[1], t0 + 1), request(blueU[2], t0 + 1.1) }, t0 + 1.1)
 			u.port.flush()
-			local both = lastView(u, u.players[redU[1]]).events
-			expect.equal(#both, 2)
-			expect.equal(both[1].livesLeft, u.cfg.Modes.tdm.teamLives - 1)
-			expect.equal(both[2].livesLeft, u.cfg.Modes.tdm.teamLives - 2)
-			expect.equal(both[2].streak, 2)
-			close()
-
-			local c = baseConfig()
-			c.Modes.tdm.teamLives = 0
-			local v = setup(4, c)
-			local b = live(v, "tdm")
-			local red2, blue2 = teamsOf(v)
-			hit(v, blue2[1], red2[1], b + 1)
-			local after = lastView(v, v.players[red2[1]])
-			expect.equal(after.outcome, nil) -- the other Blue player still stands
-			expect.equal(after.events[1].livesLeft, 0)
-			expect.equal(rowOf(after, blue2[1]).out, true)
-			expect.equal(rowOf(after, blue2[1]).respawnAt, nil)
+			local after = lastView(u, u.players[redU[1]])
+			expect.equal(#after.events, 2)
+			expect.equal(after.teamScore[u.cfg.teamNames[1]], 2)
+			expect.equal(after.events[2].streak, 2)
 			close()
 		end
 	)
@@ -1991,16 +1964,16 @@ return function(t: Context)
 	)
 
 	t.test(
-		"match HUD M1: TDM: the K.O. that wipes a team, or wins overtime, is final and is outcome.finalKo",
+		"match HUD M1: TDM: the K.O. that reaches koTarget, or wins overtime, is final and is outcome.finalKo",
 		function()
 			local c = baseConfig()
-			c.Modes.tdm.teamLives = 0
+			c.Modes.tdm.koTarget = 1
 			local w = setup(2, c)
 			local a = live(w, "tdm")
 			local red, blue = teamsOf(w)
 			hit(w, blue[1], red[1], a + 1)
 			local view = lastView(w, w.players[blue[1]])
-			expect.equal(view.outcome.reason, "wiped")
+			expect.equal(view.outcome.reason, "koTarget")
 			local final = {
 				seq = 1,
 				kind = "ko",
@@ -2010,13 +1983,12 @@ return function(t: Context)
 				cause = "hit",
 				final = true,
 				streak = 1,
-				livesLeft = 0,
 			}
 			expect.deepEqual(view.events, { final })
 			expect.deepEqual(view.outcome.finalKo, final)
 			close()
 
-			-- Equal lives at time-up: Overtime, and the next K.O. decides it.
+			-- Equal scores at time-up: Overtime, and the next K.O. decides it.
 			local c2 = baseConfig()
 			c2.Modes.tdm.storm = false
 			local v = setup(2, c2)
@@ -2035,7 +2007,6 @@ return function(t: Context)
 			expect.equal(finalKo.by, blue2[1])
 			expect.equal(finalKo.cause, "hit")
 			expect.equal(finalKo.final, true)
-			expect.equal(finalKo.livesLeft, c2.Modes.tdm.teamLives - 1)
 			expect.deepEqual(ot.events, { finalKo })
 			close()
 		end
@@ -2051,20 +2022,19 @@ return function(t: Context)
 		expect.equal(view.outcome.finalKo, nil)
 		close()
 
-		local c = baseConfig()
-		c.Modes.tdm.teamLives = 0
-		local v = setup(4, c)
+		local v = setup(2)
 		local b = live(v, "tdm")
 		local red, blue = teamsOf(v)
-		-- The leave's projectile sweep brings a K.O. in (a batch of its own), then the leave wipes Blue.
+		-- The leave's projectile sweep brings a K.O. in (a batch of its own), then the leave wipes Blue (2026-10-26:
+		-- a K.O. never wipes a team any more; nobody left in it does).
 		v.onSync = function(now: number)
 			hit(v, blue[1], red[1], now)
 		end
 		v.clock.set(b + 1)
-		MatchService.leave(v.players[blue[2]])
+		MatchService.leave(v.players[blue[1]])
 		local last = lastView(v, v.players[red[1]])
 		expect.equal(last.outcome.reason, "wiped")
-		expect.equal(last.outcome.winnerTeam, c.teamNames[1])
+		expect.equal(last.outcome.winnerTeam, v.cfg.teamNames[1])
 		expect.equal(last.outcome.finalKo, nil)
 		local events = eventsOf(v, v.players[red[1]])
 		expect.equal(#events, 1)
@@ -2077,17 +2047,17 @@ return function(t: Context)
 		"match HUD M1: a flush nested in stepMatch is a batch of its own: only the deciding K.O. is final",
 		function()
 			local c = baseConfig()
-			c.Modes.tdm.teamLives = 0
+			c.Modes.tdm.koTarget = 2
 			c.outOfBoundsIsKo = true
 			local w = setup(4, c)
 			local a = live(w, "tdm")
 			local red, blue = teamsOf(w)
-			-- The oob step's sweep (CombatService.syncTo) K.O.s blue[1] first: Blue still has blue[2] standing.
+			-- The oob step's sweep (CombatService.syncTo) K.O.s blue[1] first: Red's first point.
 			w.onSync = function(now: number)
 				hit(w, blue[1], red[1], now)
 			end
 			w.clock.set(a + 1)
-			w.roots[blue[2]].Position = Vector3.new(CENTRE.X, -40, 0) -- then blue[2] falls off: Blue is wiped
+			w.roots[blue[2]].Position = Vector3.new(CENTRE.X, -40, 0) -- then blue[2] falls off: Red's second point
 			w.port.outOfBounds(fighterOf(w, blue[2]))
 			local views = viewsOf(w, w.players[red[1]])
 			local nested, last = views[#views - 1], views[#views]
@@ -2101,7 +2071,6 @@ return function(t: Context)
 					cause = "hit",
 					final = false,
 					streak = 1,
-					livesLeft = 0,
 				},
 			})
 			expect.equal(nested.outcome, nil)
@@ -2113,10 +2082,9 @@ return function(t: Context)
 				victim = blue[2],
 				cause = "outOfBounds",
 				final = true,
-				livesLeft = 0,
 			}
 			expect.deepEqual(last.events, { final })
-			expect.equal(last.outcome.reason, "wiped")
+			expect.equal(last.outcome.reason, "koTarget")
 			expect.deepEqual(last.outcome.finalKo, final)
 			close()
 		end
@@ -2161,7 +2129,6 @@ return function(t: Context)
 		expect.equal(events[1].victim, blue[1])
 		expect.equal(events[1].by, nil)
 		expect.equal(events[1].streak, nil)
-		expect.equal(events[1].livesLeft, cfg.Modes.tdm.teamLives - 1)
 		close()
 	end)
 
@@ -2301,7 +2268,7 @@ return function(t: Context)
 		"match HUD M2: TDM: the winning team +1, the losers 0 (a short loss is not paid); a draw resets all",
 		function()
 			local c = baseConfig()
-			c.Modes.tdm.teamLives = 0
+			c.Modes.tdm.koTarget = 1 -- the first K.O. wins it
 			c.Rewards.enabled = true
 			local w = setup(2, c, true)
 			local a = live(w, "tdm")
@@ -2309,7 +2276,7 @@ return function(t: Context)
 			w.streaks[red[1]] = 1
 			w.streaks[blue[1]] = 5
 			throwsFor(w, { red[1], blue[1] }, 3)
-			hit(w, blue[1], red[1], a + PAYS_WIN_ONLY) -- Blue wiped: long enough to pay the win, not the loss
+			hit(w, blue[1], red[1], a + PAYS_WIN_ONLY) -- Red's 1st: long enough to pay the win, not the loss
 			expect.equal(lastView(w, w.players[red[1]]).outcome.winnerTeam, c.teamNames[1])
 			expect.deepEqual(w.grants, {
 				{ userId = red[1], matchId = w.port.matchId, pay = payOf("win", DUEL_PAY.win, true) },
@@ -2762,7 +2729,6 @@ return function(t: Context)
 			"match.notArrived",
 			"match.outOfBounds",
 			"match.outOfBoundsKo",
-			"match.outNoLives",
 			"match.youWin",
 			"match.winner",
 			"match.teamWins",

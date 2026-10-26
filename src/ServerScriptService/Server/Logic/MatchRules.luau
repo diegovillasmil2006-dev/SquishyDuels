@@ -5,7 +5,8 @@
 -- performs the returned effects (placing and protecting players, power-up effects, HUD state, rewards). `step` never
 -- modifies the state it is given, so an old state is a safe snapshot. It is the 12-player sibling of DuelRules (1v1).
 --
--- Phases: Waiting (players arrive; every entrant in or waitSeconds) -> Countdown (countdownSeconds) -> Active
+-- Phases: Waiting (players arrive; every entrant in, but not before introMinSeconds, or waitSeconds) -> Countdown
+-- (countdownSeconds) -> Active
 -- (matchSeconds) (-> Overtime) -> Result (resultSeconds) -> Closed. A match with fewer than minPlayers present at the
 -- countdown (or, in TDM, a team with nobody present) is cancelled. Every end goes through Result, except Void
 -- (shutdown or error), which closes at once. `ended` is set exactly once, together with `outcome`.
@@ -15,23 +16,22 @@
 --     spawn protection, and never between teammates (TDM) or on oneself. A live shield power-up blocks the hit and is
 --     used up. A K.O. clears the victim's power-ups and storm bar and gives the attacker +1 K.O.
 --   * FFA: the victim respawns respawnSeconds later. The first to koTarget K.O.s wins at once.
---   * TDM: a K.O. costs the victim's team 1 life and the victim respawns respawnSeconds later; at 0 lives the victim is
---     "out" instead (no respawn). A team with nobody standing and nobody waiting to respawn is wiped: the other team
---     wins (both wiped by the same event: a draw).
+--   * TDM (owner 2026-10-26, Diego's match page): the victim respawns respawnSeconds later and the other team scores 1
+--     (any cause: a storm or out-of-bounds K.O. scores for the other team too); the first team to koTarget wins at
+--     once. A team with nobody left in it (everyone left) is wiped: the other team wins (both: a draw).
 --   * Respawn: standing again with spawnProtectSeconds of protection (hits ignored) and an empty storm bar.
---   * Time-up: FFA: the single leader (most K.O.s among present players) wins; TDM: the team with more lives left
+--   * Time-up: FFA: the single leader (most K.O.s among present players) wins; TDM: the team with the higher score
 --     wins. A tie goes to Overtime: in FFA the first moment one player alone leads wins; in TDM the team that scores the
---     next K.O. wins (a storm K.O. counts for the other team). Overtime ends after overtimeMaxSeconds as a draw.
+--     next K.O. wins. Overtime ends after overtimeMaxSeconds as a draw.
 --   * Leaving: the player is gone for the rest of the match (no respawn). FFA with one player left: that player wins;
 --     with none: void. TDM: a team with nobody left in it is wiped.
 --   * Out of bounds (jayyyyy 2026-10-15: falling off or leaving the map "counts as a knockout"): the service sends `oob`
---     when Config.Match.outOfBoundsIsKo is on; it is a K.O. with no attacker, like a storm K.O. (TDM: costs a team life,
---     in Overtime it counts for the other team; FFA: nobody scores).
+--     when Config.Match.outOfBoundsIsKo is on; it is a K.O. with no attacker, like a storm K.O. (TDM: the other team
+--     scores; FFA: nobody scores).
 --   * Storm (TDM only, Config.Match.Storm, StormMath): the service samples who stands in the storm; each standing,
 --     present player's bar moves by the time since their last sample; a full bar is a storm K.O. (no attacker).
 --   * Power-ups (the pickup event; PowerUpRules picks the kind and owns the pads): timed kinds become a buff until
---     now + seconds; ultCharge is an effect for the ability service; teamLife (TDM) adds 1 team life and, when a
---     teammate is out, spends it at once to bring back the one out longest (standing, with spawn protection).
+--     now + seconds; ultCharge is an effect for the ability service.
 --   * Readings (not given by the user): power-ups end on a K.O.; spawn protection only stops hits (the storm bar still
 --     fills, so the service must respawn players inside the safe circle once the storm is up); the attacker of a K.O.
 --     need not be standing (a throw in flight still counts); time-up counts only present players.
@@ -51,10 +51,9 @@
 --   phase {phase, startedAt, endsAt}    `endsAt = math.huge` means no timer (Closed)
 --   ko {victim, by?, cause, at}         cause "hit", "storm" or "outOfBounds"
 --   respawn {userId, at, protectUntil}  place the player at a spawn and protect them
---   out {userId, at}                    TDM: no team life left for them
---   teamLives {team, lives}
+--   teamScore {team, score}             TDM: that team's score after a K.O.
 --   shieldBlocked {userId, by, at}
---   pickup {userId, power, at}; buff {userId, power, untilAt}; ultCharge {userId, fraction}; revived {userId, by, at}
+--   pickup {userId, power, at}; buff {userId, power, untilAt}; ultCharge {userId, fraction}
 --   ended {outcome}; closed
 --
 -- API:
@@ -94,8 +93,7 @@ export type Participant = {
 	present: boolean, -- arrived and not left
 	alive: boolean, -- standing in the map
 	respawnAt: number?, -- knocked out, coming back at this time
-	out: boolean, -- TDM: knocked out with no team life left
-	outSince: number?,
+	out: boolean, -- never set since TDM lost its team lives (2026-10-26); kept for the views' `out`
 	protectUntil: number,
 	kos: number,
 	knockedOut: number,
@@ -127,7 +125,7 @@ export type MatchState = {
 	activeStartedAt: number?,
 	order: { number },
 	participants: { [number]: Participant },
-	teamLives: { [string]: number },
+	teamScore: { [string]: number }, -- TDM: each team's K.O.s scored
 	ended: boolean,
 	outcome: Outcome?,
 	closed: boolean,
@@ -157,7 +155,7 @@ local function copyState(state: MatchState): MatchState
 		participants[userId] = pc
 	end
 	copy.participants = participants
-	copy.teamLives = table.clone(state.teamLives)
+	copy.teamScore = table.clone(state.teamScore)
 	return copy
 end
 
@@ -243,7 +241,7 @@ local function leaders(s: MatchState): { Participant }
 	return out
 end
 
--- A team is wiped when none of its members is standing or waiting to respawn (out and gone players count as down).
+-- A team is wiped when none of its members is standing or waiting to respawn (gone players count as down).
 local function wiped(s: MatchState, team: string): boolean
 	for _, p in teamMembers(s, team) do
 		if p.present and (p.alive or p.respawnAt ~= nil) then
@@ -269,7 +267,6 @@ local function respawn(s: MatchState, p: Participant, at: number, fx: Effects)
 	p.alive = true
 	p.respawnAt = nil
 	p.out = false
-	p.outSince = nil
 	p.protectUntil = at + s.match.spawnProtectSeconds
 	p.stormBar = 0
 	p.stormAt = nil
@@ -323,23 +320,16 @@ local function knockOut(s: MatchState, victim: Participant, by: Participant?, ca
 		{ kind = "ko", victim = victim.userId, by = if by then by.userId else nil, cause = cause, at = at }
 	)
 	if s.mode.teams then
-		local team = victim.team :: string
-		if s.teamLives[team] > 0 then
-			s.teamLives[team] -= 1
-			victim.respawnAt = at + s.match.respawnSeconds
-			table.insert(fx, { kind = "teamLives", team = team, lives = s.teamLives[team] })
-		else
-			victim.out = true
-			victim.outSince = at
-			table.insert(fx, { kind = "out", userId = victim.userId, at = at })
-		end
+		-- 2026-10-26: the other team scores (a storm or out-of-bounds K.O. too); the victim always respawns.
+		local scorer = if by then by.team :: string else otherTeam(s, victim.team :: string)
+		s.teamScore[scorer] += 1
+		victim.respawnAt = at + s.match.respawnSeconds
+		table.insert(fx, { kind = "teamScore", team = scorer, score = s.teamScore[scorer] })
 		if s.phase == "Overtime" then
-			-- The next K.O. decides it: the scoring team wins (a storm K.O. counts for the other team).
-			local scorer = if by then by.team :: string else otherTeam(s, team)
-			teamWins(s, scorer, "overtime", at, fx)
-			return
+			teamWins(s, scorer, "overtime", at, fx) -- the next K.O. decides it
+		elseif s.teamScore[scorer] >= s.mode.koTarget then
+			teamWins(s, scorer, "koTarget", at, fx)
 		end
-		checkWipe(s, at, fx)
 	else
 		victim.respawnAt = at + s.match.respawnSeconds
 		if by and by.kos >= s.mode.koTarget then
@@ -387,7 +377,7 @@ end
 local function timeUp(s: MatchState, at: number, fx: Effects)
 	if s.mode.teams then
 		local names = s.match.teamNames
-		local a, b = s.teamLives[names[1]], s.teamLives[names[2]]
+		local a, b = s.teamScore[names[1]], s.teamScore[names[2]]
 		if a ~= b then
 			teamWins(s, if a > b then names[1] else names[2], "timeUp", at, fx)
 			return
@@ -436,7 +426,7 @@ local function advance(s: MatchState, now: number, fx: Effects)
 			for _, p in eachParticipant(s) do
 				all = all and (p.arrived or p.left)
 			end
-			if all then
+			if all and now >= s.phaseStartedAt + s.match.introMinSeconds then -- the intro's cards play first
 				startCountdown(s, math.min(now, s.phaseEndsAt), fx)
 			elseif now >= s.phaseEndsAt then
 				startCountdown(s, s.phaseEndsAt, fx)
@@ -564,21 +554,6 @@ local function handlePickup(s: MatchState, event: Event, now: number, fx: Effect
 		table.insert(fx, { kind = "buff", userId = p.userId, power = power, untilAt = p.buffs[power] })
 	elseif kind.ultFraction then
 		table.insert(fx, { kind = "ultCharge", userId = p.userId, fraction = kind.ultFraction })
-	elseif power == "teamLife" then
-		local team = p.team :: string
-		s.teamLives[team] += 1
-		local back: Participant? = nil
-		for _, mate in teamMembers(s, team) do
-			if mate.present and mate.out and (back == nil or (mate.outSince :: number) < (back.outSince :: number)) then
-				back = mate
-			end
-		end
-		if back then
-			s.teamLives[team] -= 1
-			table.insert(fx, { kind = "revived", userId = back.userId, by = p.userId, at = now })
-			respawn(s, back, now, fx)
-		end
-		table.insert(fx, { kind = "teamLives", team = team, lives = s.teamLives[team] })
 	end
 end
 
@@ -592,7 +567,6 @@ local function handleLeave(s: MatchState, event: Event, now: number, fx: Effects
 	p.alive = false
 	p.respawnAt = nil
 	p.out = false
-	p.outSince = nil
 	if s.phase == "Waiting" then
 		return -- advance() stops waiting for them
 	end
@@ -669,7 +643,6 @@ function MatchRules.new(matchId: string, modeId: string, entrants: { Entrant }, 
 			alive = false,
 			respawnAt = nil,
 			out = false,
-			outSince = nil,
 			protectUntil = -math.huge,
 			kos = 0,
 			knockedOut = 0,
@@ -679,10 +652,10 @@ function MatchRules.new(matchId: string, modeId: string, entrants: { Entrant }, 
 		}
 		table.insert(order, userId)
 	end
-	local teamLives: { [string]: number } = {}
+	local teamScore: { [string]: number } = {}
 	if mode.teams then
 		for _, team in cfg.teamNames do
-			teamLives[team] = mode.teamLives
+			teamScore[team] = 0
 		end
 	end
 	return {
@@ -696,7 +669,7 @@ function MatchRules.new(matchId: string, modeId: string, entrants: { Entrant }, 
 		activeStartedAt = nil,
 		order = order,
 		participants = participants,
-		teamLives = teamLives,
+		teamScore = teamScore,
 		ended = false,
 		outcome = nil,
 		closed = false,

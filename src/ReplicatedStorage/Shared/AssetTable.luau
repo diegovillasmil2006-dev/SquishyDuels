@@ -246,6 +246,21 @@ local function lobbyHud(key: string, id: number, use: string, date: string?): As
 end
 local MF_DATE = "2026-10-25" -- the MATCH FOUND pictures
 
+-- An image slot holding a match screens picture (round 1, 2026-10-26): rendered 1:1 from the design's own canvas code
+-- ("Squishy Duels LOADING SCREEN Y MATCH HUD.dc.html" with uploads/tdm-hud.js; make_intro_pngs.mjs), uploaded by Claude
+-- (Studio MCP upload_image) at the owner's yes.
+local function matchHud(key: string, id: number, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `jayyyyy upload (Studio MCP upload_image): '{(string.gsub(key, "%.", "_"))}.png'`,
+		license = "Own upload; rendered from the co-owner's own Claude Design Match HUD file",
+		verifiedAt = "2026-10-26",
+		notes = use,
+	}
+end
+
 -- An image slot holding a VFX Studio library texture: `name` is its Creator Store title, `by` its creator.
 local function vfxStudio(key: string, id: number, name: string, by: string, use: string): AssetSlot
 	return {
@@ -1204,6 +1219,57 @@ local SLOTS: { AssetSlot } = {
 		"lib:194 uxStamp(): the rarity pill lands; file 'box_stamp.wav'",
 		hudSound(123131788014679, 0.0888, "box_stamp.wav")
 	),
+	-- Round 1 of the match screens (2026-10-26; "Squishy Duels LOADING SCREEN Y MATCH HUD.dc.html" = I): the intro's cues
+	-- (uploads/sd-cues.js, rendered with its own engine and limiter: make_intro_sounds.mjs) and the countdown's slam
+	-- (hud-lib.js L:224: make_count_sounds.mjs); the volumes keep the design's live mix.
+	soundSlot(
+		"match.intro.slam",
+		"UI",
+		false,
+		nil,
+		"I:615 introSlam: the arena's name slams in; file 'intro_slam.wav'",
+		hudSound(101800394727869, 0.471, "intro_slam.wav")
+	),
+	soundSlot(
+		"match.intro.whoosh",
+		"UI",
+		false,
+		nil,
+		"I:625 introWhoosh(i): each card in, a semitone up per card (PlaybackSpeed 2^(i/12)); file 'intro_whoosh.wav'",
+		hudSound(71417864555367, 0.0516, "intro_whoosh.wav")
+	),
+	soundSlot(
+		"match.intro.vs",
+		"UI",
+		false,
+		nil,
+		"I:636 vsThunk: the VS diamond spins in; file 'intro_vs_thunk.wav'",
+		hudSound(102987379451278, 0.1561, "intro_vs_thunk.wav")
+	),
+	soundSlot(
+		"match.intro.cardPop",
+		"UI",
+		false,
+		nil,
+		"I:607 cardLoadPop: a loading player's head pops in; file 'intro_card_pop.wav'",
+		hudSound(136873024254880, 0.053, "intro_card_pop.wav")
+	),
+	soundSlot(
+		"match.intro.murmur",
+		"UI",
+		false,
+		nil,
+		"I:600 crowdMurmur: the intro's crowd bed, looped (bedOn .16); file 'intro_crowd_murmur.wav'",
+		hudSound(71985046459994, 0.144, "intro_crowd_murmur.wav")
+	),
+	soundSlot(
+		"match.count.slam",
+		"UI",
+		false,
+		nil,
+		"I:671 slam(): each 3, 2, 1 of the countdown; file 'match_count_slam.wav'",
+		hudSound(92798903400334, 0.1145, "match_count_slam.wav")
+	),
 	soundSlot(
 		"amb.lobby",
 		"Ambient",
@@ -1340,7 +1406,8 @@ local SLOTS: { AssetSlot } = {
 	-- img.fx.rays, img.fx.dots and img.icon.squeeze, and the vignette two edge gradients (UI/Match).
 	otherSlot("img.fx.raysCard", "image", IMAGE_NOTE),
 	otherSlot("img.fx.dotsCard", "image", IMAGE_NOTE),
-	otherSlot("img.icon.grip", "image", IMAGE_NOTE),
+	-- 2026-10-26: Diego's hud-icons/grip.svg (the intro's cards, the "squished by" card), rendered 128 px.
+	matchHud("img.icon.grip", 108128227773534, "the Grip icon (uploads/hud-icons/grip.svg)"),
 	otherSlot("img.fx.radial.matchVignette", "image", IMAGE_NOTE),
 	-- Pens3 phase 9: the food pictures (the pen screen's BUY FOOD cards show one when its id is set).
 	otherSlot("img.food.candy_drop", "image", IMAGE_NOTE),
@@ -1508,6 +1575,25 @@ local SLOTS: { AssetSlot } = {
 	lobbyHud("img.box.rays", 97939225456618, "the rarity rays, 1300 px box at 650 (L:552)", "2026-10-26"),
 	lobbyHud("img.box.haloGlow", 70882384440612, "the halo's glow: 1 to 30%, out by 68% (L:553)", "2026-10-26"),
 	lobbyHud("img.box.haloCore", 126367826402096, "the halo's white core: 1 at 0, out by 30% (L:553)", "2026-10-26"),
+	-- Round 1 of the match screens (2026-10-26; I = LOADING SCREEN Y MATCH HUD, tdm-hud.js): each squishy's banner
+	-- pattern (a 96 px seamless tile: ScaleType.Tile), the corner glow (white, tinted the team's colour) and the
+	-- countdown's rays (I:128, #FFE36B at .35 under its radial mask).
+	matchHud("img.intro.pattern.kitty_bread", 99097063849841, "Kitty Bread's banner tile (pattern KittyBread)"),
+	matchHud("img.intro.pattern.donut", 76870003723485, "Donut's banner tile"),
+	matchHud("img.intro.pattern.bird", 81906262005133, "Birdie's banner tile"),
+	matchHud("img.intro.pattern.boba_bear", 140238540193675, "Boba Bear's banner tile"),
+	matchHud("img.intro.pattern.toast", 131667612487944, "Toast's banner tile"),
+	matchHud("img.intro.pattern.banana", 101568429537220, "Banana's banner tile"),
+	matchHud("img.intro.pattern.butter", 97152386305307, "Butter's banner tile"),
+	matchHud("img.intro.pattern.chocolate", 106177106653076, "Chocolate's banner tile"),
+	matchHud("img.intro.pattern.dragon", 85224609711803, "Dragon's banner tile"),
+	matchHud("img.intro.pattern.mochi_fox", 101941035351833, "Mochi Fox's banner tile"),
+	matchHud("img.intro.pattern.strawberry_frog", 95412273400691, "Strawberry Frog's banner tile"),
+	matchHud("img.intro.pattern.pancake_pup", 138032144170663, "Pancake Pup's banner tile"),
+	matchHud("img.intro.pattern.cloud_bunny", 129321758878418, "Cloud Bunny's banner tile"),
+	matchHud("img.intro.pattern.cupcake_axolotl", 139455759640632, "Cupcake Axolotl's banner tile"),
+	matchHud("img.intro.glow", 105745669766105, "the intro's corner glow, white: tinted each team's colour (I:339)"),
+	matchHud("img.intro.countRays", 123614616985452, "the countdown's turning rays, 1100 px box (I:128)"),
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

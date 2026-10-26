@@ -5,7 +5,9 @@
 -- and respawn bar, M8 boot cover / intro / countdown, M9 end splash and results, M10 podium, M13 replay; M5's top bar
 -- waits for Diego) with its Config.UI.Match.enabled switch. Match HUD M6 / M7 (2026-10-17): PIECES = the RESPAWNING
 -- bar with the vignette ("respawn", drawn first: the vignette is behind everything), the "squished by" card ("card")
--- and the kill feed ("feed"), in UI/Match; M6's SQUISHED! medal is not built (Diego's kill banner is that moment). ctx
+-- and the kill feed ("feed"), in UI/Match; M6's SQUISHED! medal is not built (Diego's kill banner is that moment).
+-- Round 1 of the match screens (2026-10-26): the Loading arena cover, the intro and the 3-2-1 ("intro", drawn last;
+-- ctx.loop gives it the crowd murmur's loop). ctx
 -- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
 -- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
 -- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
@@ -61,6 +63,7 @@ local Create = require(Client.UI.Create)
 local MatchHudFormat = require(Client.UI.MatchHudFormat)
 local DeathCard = require(Client.UI.Match.DeathCard)
 local KillFeed = require(Client.UI.Match.KillFeed)
+local MatchIntro = require(Client.UI.Match.MatchIntro)
 local RespawnBar = require(Client.UI.Match.RespawnBar)
 local ControlsController = require(script.Parent.ControlsController)
 local SoundController = require(script.Parent.SoundController)
@@ -101,6 +104,7 @@ local PIECES: { MatchHudFormat.PieceSpec } = {
 	{ name = "respawn", new = RespawnBar.new }, -- M7
 	{ name = "card", new = DeathCard.new }, -- M7
 	{ name = "feed", new = KillFeed.new }, -- M6
+	{ name = "intro", new = MatchIntro.new }, -- round 1 of the match screens: cover, intro, 3-2-1
 }
 MatchHudController.PIECES = PIECES
 
@@ -210,6 +214,10 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 			UIController.toastsBeside(key, object)
 		end,
 		shared = {},
+		loop = function(key: string): any
+			local ok, loop = pcall(SoundController.playLoop, key)
+			return if ok then loop else nil
+		end,
 	}
 	for _, spec in specs do
 		local ok, piece = pcall(spec.new, ctx)

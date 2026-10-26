@@ -97,6 +97,8 @@ export type Context = {
 	touchAreas: () -> { Area }, -- touch input: the thumbstick zone and the touch buttons (base px); else none
 	toastsBeside: (key: string, object: GuiObject?) -> (), -- the toast column keeps clear of `object` (nil: drop it)
 	shared: { [string]: any }, -- one table per session, for the pieces (the card's rect: `cardRect`)
+	-- Round 1 of the match screens: a looped sound the piece drives (SoundController.playLoop; nil: none).
+	loop: ((key: string) -> any)?,
 }
 
 -- Match HUD M6 / M7: a rect in base px, top-left origin (the safe area).

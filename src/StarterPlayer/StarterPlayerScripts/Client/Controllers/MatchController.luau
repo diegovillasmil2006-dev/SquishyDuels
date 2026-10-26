@@ -10,7 +10,7 @@
 --   (shown by NotifyController), the match view and the SD_* attributes (the Duel input context, the freeze, the locks).
 -- * Match look (D13): while a match view exists, DuelController's HUD (through the hooks of attachDuelHud, called once
 --   from DuelController.init) shows only the reticle with its "Hit!", the bottom key dock (qb1: catch meter too), and
---   the 3-2-1 countdown at Countdown; its 1v1 pieces (top bar, Forfeit button, edge arrow, the opponent's Rush chip,
+--   the 3-2-1 countdown at Countdown (not with Config.UI.Match.enabled.intro: the intro piece's own); its 1v1 pieces (top bar, Forfeit button, edge arrow, the opponent's Rush chip,
 --   "In the lane!") stay hidden. Review fix (2026-10-15): the top bar hides through DuelController's hideBar (reason
 --   "match", undone when the match ends), and a 1v1 result card still open from a duel just before is closed. The
 --   storm wall, the readout and the map animations each run in their own pcall, so a failure there never stops the
@@ -734,7 +734,8 @@ local function onMatchChanged(view: StateController.MatchView?, old: StateContro
 		return
 	end
 	local hk = hooks
-	if view.phase == "Countdown" and hk then
+	-- Round 1 of the match screens: MatchHudController's intro piece draws the match's own 3-2-1 instead.
+	if view.phase == "Countdown" and hk and not Config.UI.Match.enabled.intro then
 		hk.setCountdown(view.phaseEndsAt)
 	end
 	-- The map animations start from stepLook (review fix: retried while the map has not streamed in yet).

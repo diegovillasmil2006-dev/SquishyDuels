@@ -202,6 +202,13 @@ local FOUND_SOUND_KEYS = {
 	-- The new short level-up (2026-10-25): its tone and jingle (its pop is ui.pop).
 	"grip.levelUp.tone",
 	"grip.levelUp.jingle",
+	-- Round 1 of the match screens (2026-10-26): the intro's 5 cues and the countdown's slam.
+	"match.intro.slam",
+	"match.intro.whoosh",
+	"match.intro.vs",
+	"match.intro.cardPop",
+	"match.intro.murmur",
+	"match.count.slam",
 	-- The fancier box reveal (2026-10-26): its 11 renders.
 	"box.ux.rattle1",
 	"box.ux.rattle2",
@@ -573,6 +580,23 @@ return function(t: Context)
 				"img.box.rays",
 				"img.box.haloGlow",
 				"img.box.haloCore",
+				-- Round 1 of the match screens (2026-10-26): the squishies' banner tiles, the glow and the count's rays.
+				"img.intro.pattern.kitty_bread",
+				"img.intro.pattern.donut",
+				"img.intro.pattern.bird",
+				"img.intro.pattern.boba_bear",
+				"img.intro.pattern.toast",
+				"img.intro.pattern.banana",
+				"img.intro.pattern.butter",
+				"img.intro.pattern.chocolate",
+				"img.intro.pattern.dragon",
+				"img.intro.pattern.mochi_fox",
+				"img.intro.pattern.strawberry_frog",
+				"img.intro.pattern.pancake_pup",
+				"img.intro.pattern.cloud_bunny",
+				"img.intro.pattern.cupcake_axolotl",
+				"img.intro.glow",
+				"img.intro.countRays",
 			})
 		)
 	end)

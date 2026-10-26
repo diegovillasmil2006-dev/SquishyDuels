@@ -772,6 +772,21 @@ local Palette = {
 	MatchFoundFlash = Color3.fromHex("#FFF6D6"),
 	MatchFoundRingPink = Color3.fromHex("#FF8FBF"),
 	MatchFoundRingCyan = Color3.fromHex("#7DE8F2"),
+	-- Round 1 of the match screens (LOADING SCREEN Y MATCH HUD S:338-440, uploads/tdm-hud.js T:7-8): the intro's dim,
+	-- cards, squishy names and map title stops, the VS diamond's last stop and letters (the teams' score colours) and
+	-- the Loading arena cover's radial.
+	MatchIntroDim = Color3.fromHex("#3F3756"),
+	MatchIntroCard = Color3.fromHex("#2A1D45"),
+	MatchIntroToyName = Color3.fromHex("#CFC3EA"),
+	MatchIntroTitle2 = Color3.fromHex("#FFF3B8"),
+	MatchIntroTitle3 = Color3.fromHex("#FFC6DC"),
+	MatchIntroTitleEnd = Color3.fromHex("#E4D4FF"),
+	MatchIntroVsEnd = Color3.fromHex("#F2E6D6"),
+	MatchTeamRedScore = Color3.fromHex("#FF8496"),
+	MatchTeamBlueScore = Color3.fromHex("#7CC4FF"),
+	MatchBootInner = Color3.fromHex("#C9B6FF"),
+	MatchBootMid = Color3.fromHex("#6C47F5"),
+	MatchBootOuter = Color3.fromHex("#2A1D45"),
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

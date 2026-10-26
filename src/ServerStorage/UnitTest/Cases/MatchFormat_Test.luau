@@ -5,10 +5,11 @@
 --   * the chat commands: "/ffa" and "/tdm" join that mode, "/leave" leaves; the first word only, any case; nothing
 --     else is a command;
 --   * the readout (Strings match.readout.*): FFA "K.O. {mine}/{target} · 1st {leaderName} {leaderKos} · {time}" (the
---     leader: most K.O.s, then fewest times knocked out, then the players' order), TDM "RED {redLives} · BLUE
---     {blueLives} · {time}" ({time} "0:00" without a timer), "Get ready…" while players arrive (Positioning); then
---     "STORM {pct}%" while the own storm bar is above 0 (any bar shows at least 1%), "OVERTIME" in overtime, "Back in
---     {seconds}" while knocked out ("OUT" in TDM with no team life left); a piece without a text is left out;
+--     leader: most K.O.s, then fewest times knocked out, then the players' order), TDM "RED {redScore} · BLUE
+--     {blueScore} · TO {target} · {time}" (2026-10-26: the team scores; {time} "0:00" without a timer), "Get ready…"
+--     while players arrive (Positioning); then "STORM {pct}%" while the own storm bar is above 0 (any bar shows at
+--     least 1%), "OVERTIME" in overtime, "Back in {seconds}" while knocked out ("OUT" when out); a piece without a
+--     text is left out;
 --   * the storm wall's radius: none in FFA, outside the live phase or before stormStartSeconds; StormMath's radius from
 --     the Active start otherwise;
 --   * power-ups v1.1 (2026-10-16, SPEC P4): the own live power-ups in the kinds' order with whole seconds left (at
@@ -38,7 +39,7 @@ return function(t: Context)
 	-- As Shared/Strings match.readout (FFA/TDM v1).
 	local TEXTS = {
 		ffa = "K.O. {mine}/{target} · 1st {leaderName} {leaderKos} · {time}",
-		tdm = "RED {redLives} · BLUE {blueLives} · {time}",
+		tdm = "RED {redScore} · BLUE {blueScore} · TO {target} · {time}",
 		waiting = "Get ready…",
 		storm = "STORM {pct}%",
 		overtime = "OVERTIME",
@@ -138,25 +139,24 @@ return function(t: Context)
 		expect.equal(MatchFormat.readout(view({ phase = "Positioning" }), 1000, TEXTS, TEAMS), "Get ready…")
 	end)
 
-	t.test("the TDM readout: both teams' lives, the storm bar, overtime and the respawn wait", function()
+	t.test("the TDM readout: both teams' scores, the storm bar, overtime and the respawn wait", function()
 		local tdm = view({
 			mode = "tdm",
-			koTarget = nil,
-			teamLives = { Red = 38, Blue = 40 },
+			koTarget = 30,
+			teamScore = { Red = 17, Blue = 14 },
 			matchPhase = "Overtime",
 		})
 		tdm.you.stormBar = 0.004
-		expect.equal(MatchFormat.readout(tdm, 1000, TEXTS, TEAMS), "RED 38 · BLUE 40 · 2:05 · STORM 1% · OVERTIME")
+		local line = "RED 17 · BLUE 14 · TO 30 · 2:05"
+		expect.equal(MatchFormat.readout(tdm, 1000, TEXTS, TEAMS), line .. " · STORM 1% · OVERTIME")
 		tdm.you.stormBar = 0
 		tdm.you.alive = false
 		tdm.you.respawnAt = 1002.2
-		expect.equal(MatchFormat.readout(tdm, 1000, TEXTS, TEAMS), "RED 38 · BLUE 40 · 2:05 · OVERTIME · Back in 3")
-		tdm.you.out = true
-		expect.equal(MatchFormat.readout(tdm, 1000, TEXTS, TEAMS), "RED 38 · BLUE 40 · 2:05 · OVERTIME · OUT")
-		-- No lives table yet: 0 and 0.
+		expect.equal(MatchFormat.readout(tdm, 1000, TEXTS, TEAMS), line .. " · OVERTIME · Back in 3")
+		-- No score table yet: 0 and 0 (the view's own target, 25).
 		expect.equal(
 			MatchFormat.readout(view({ mode = "tdm", phaseEndsAt = 0 }), 1000, TEXTS, TEAMS),
-			"RED 0 · BLUE 0 · 0:00"
+			"RED 0 · BLUE 0 · TO 25 · 0:00"
 		)
 	end)
 
@@ -202,7 +202,7 @@ return function(t: Context)
 	-- Power-ups v1.1 (2026-10-16) ---------------------------------------------------------------------------------
 
 	-- As Config.Match.PowerUps.order (passed in).
-	local ORDER = { "shield", "speed", "throwBoost", "ultCharge", "dashBoost", "rapidThrow", "superJump", "teamLife" }
+	local ORDER = { "shield", "speed", "throwBoost", "ultCharge", "dashBoost", "rapidThrow", "superJump" }
 
 	t.test("power-ups: the live ones in order with seconds left, listed in the readout after overtime", function()
 		local texts: any = table.clone(TEXTS)

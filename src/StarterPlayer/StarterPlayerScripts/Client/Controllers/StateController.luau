@@ -174,6 +174,9 @@ export type MatchPlayer = {
 	protectUntil: number, -- server time their spawn protection ends (0 = none)
 	streak: number, -- K.O.s since they were last knocked out
 	bestStreak: number, -- the longest streak of this match
+	-- Round 1 of the match screens (2026-10-26; an older server: true / 1):
+	arrived: boolean, -- in the map (the intro's card shows them in)
+	level: number, -- their Grip level as the MATCH FOUND show gave it
 }
 
 -- Match HUD M1: one HUD event of a match (Types.MatchEventView, parsed). kind "ko" now (victim always set); seq counts
@@ -187,7 +190,6 @@ export type MatchMoment = {
 	cause: string?, -- "hit" | "storm" | "outOfBounds"
 	final: boolean, -- this K.O. ended the match
 	streak: number?, -- the attacker's streak after it
-	livesLeft: number?, -- TDM: the victim's team lives after it
 }
 
 -- Match HUD M1: one line of the final standings (Types.MatchStandingView).
@@ -261,7 +263,7 @@ export type MatchView = {
 	activeStartedAt: number?, -- server time the Active phase began (the storm and the timer)
 	you: MatchYou,
 	players: { MatchPlayer },
-	teamLives: { [string]: number }?,
+	teamScore: { [string]: number }?,
 	koTarget: number?,
 	arena: MatchArena,
 	storm: { startRadius: number }?,
@@ -494,6 +496,9 @@ local function matchPlayerFrom(raw: unknown): MatchPlayer?
 		protectUntil = if finite(t.protectUntil) then t.protectUntil else 0,
 		streak = countOr(t.streak, 0),
 		bestStreak = countOr(t.bestStreak, 0),
+		-- Round 1 of the match screens (an older server: in, level 1):
+		arrived = t.arrived ~= false,
+		level = math.max(1, countOr(t.level, 1)),
 	}
 end
 
@@ -525,7 +530,6 @@ local function momentFrom(raw: unknown): MatchMoment?
 		cause = if type(t.cause) == "string" then t.cause else nil,
 		final = t.final == true,
 		streak = if isCount(t.streak) then math.floor(t.streak) else nil,
-		livesLeft = if isCount(t.livesLeft) then math.floor(t.livesLeft) else nil,
 	}
 end
 
@@ -648,17 +652,17 @@ local function matchArenaFrom(raw: unknown): MatchArena?
 	}
 end
 
-local function teamLivesFrom(raw: unknown): { [string]: number }?
+local function teamScoreFrom(raw: unknown): { [string]: number }?
 	if type(raw) ~= "table" then
 		return nil
 	end
-	local lives: { [string]: number } = {}
+	local score: { [string]: number } = {}
 	for team, value in raw :: any do
 		if type(team) == "string" and finite(value) then
-			lives[team] = math.max(0, math.floor(value))
+			score[team] = math.max(0, math.floor(value))
 		end
 	end
-	return lives
+	return score
 end
 
 -- Match HUD M2: what a match paid you, nil unless all four numbers are whole counts >= 0 (fractions floored).
@@ -1365,7 +1369,7 @@ function StateController.reduceMatch(view: MatchView?, event: MatchEvent): Match
 			activeStartedAt = keep("activeStartedAt", if finite(s.activeStartedAt) then s.activeStartedAt else nil),
 			you = you,
 			players = players,
-			teamLives = keep("teamLives", teamLivesFrom(s.teamLives)),
+			teamScore = keep("teamScore", teamScoreFrom(s.teamScore)),
 			koTarget = keep("koTarget", if finite(s.koTarget) then s.koTarget else nil),
 			arena = keep("arena", matchArenaFrom(s.arena)) or { floorY = 0, bounds = nil, centre = nil },
 			storm = keep("storm", storm),

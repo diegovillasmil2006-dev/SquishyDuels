@@ -10,7 +10,7 @@
 --   * the moments the screens need: FIRST BLOOD (one K.O., seq 1), your squish, you knocked out with 2 s (knockedOut)
 --     or 0.7 s (respawnBar) to your respawn, your three in a row (streak 1, 2, 3), a fall with no attacker (feedBusy);
 --   * the endings: endWin / endLose carry the final squish (by you / on you, cause "hit", final) and the pay with your
---     win streak (up / reset); TDM endings are wipes (the losing team has no life, everyone on it out); draw and
+--     win streak (up / reset); TDM endings reach koTarget (Diego's 30-24, 2026-10-26); draw and
 --     cancelled have no final squish; every ending is the Result freeze;
 --   * the phases: waiting = Positioning (Waiting), countdown = Countdown, overtime = Active (Overtime), storm = TDM with
 --     the storm up and your bar at 0.6.
@@ -107,14 +107,14 @@ return function(t: Context)
 		expect.equal(#busy, 3)
 		expect.equal(busy[3].cause, "outOfBounds")
 		expect.equal(busy[3].by, nil)
-		-- TDM: K.O.s cost the victim's team a life (livesLeft), never a teammate's squish.
+		-- TDM: never a teammate's squish; every K.O. scores for the other team (2026-10-26).
 		local view = build("tdm_feedBusy").view
 		for _, moment in busy do
 			if moment.by then
 				expect.truthy(player(view, moment.by).team ~= player(view, moment.victim).team)
 			end
-			expect.truthy(moment.livesLeft ~= nil)
 		end
+		expect.equal(view.teamScore[RED] + view.teamScore[BLUE], #busy)
 	end)
 
 	t.test("knocked out: you are down with 2 s (knockedOut) or 0.7 s (respawnBar) to your respawn", function()
@@ -154,18 +154,13 @@ return function(t: Context)
 		expect.equal(build("tdm_cancelled").view.outcome.mine, nil)
 	end)
 
-	t.test("TDM endings are wipes: the losing team has no life and everyone on it is out", function()
+	t.test("TDM endings reach koTarget: the winners' final squish is their 30th (Diego's 30-24)", function()
+		local target = MATCH.Modes.tdm.koTarget
 		local win = build("tdm_endWin").view
-		expect.equal(win.teamLives[BLUE], 0)
-		expect.equal(win.outcome.reason, "wiped")
-		for _, p in win.players do
-			if p.team == BLUE then
-				expect.equal(p.out, true)
-			end
-		end
+		expect.deepEqual(win.teamScore, { [RED] = target, [BLUE] = 24 })
+		expect.equal(win.outcome.reason, "koTarget")
 		local lose = build("tdm_endLose").view
-		expect.equal(lose.teamLives[RED], 0)
-		expect.equal(lose.you.out, true)
+		expect.deepEqual(lose.teamScore, { [RED] = 24, [BLUE] = target })
 		expect.equal(lose.outcome.winnerTeam, BLUE)
 	end)
 

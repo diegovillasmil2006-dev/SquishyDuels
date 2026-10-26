@@ -1,7 +1,8 @@
 --!strict
 -- PowerUpRules: the power-up pads of Free for All / Team Deathmatch (Config.Match.PowerUps; jayyyyy 2026-10-15:
--- "random between shield, speed boost, throw boost like it throws harder, ult charge, dash boost", plus rapid throw,
--- super jump and the TDM-only team life). Server only, pure (no instances, no yields; randomness comes in as a number).
+-- "random between shield, speed boost, throw boost like it throws harder, ult charge, dash boost", plus rapid throw
+-- and super jump; a kind marked teamsOnly is offered in TDM only). Server only, pure (no instances, no yields;
+-- randomness comes in as a number).
 -- What a power-up does once taken is MatchRules' job (the pickup event); this module only answers which kinds a mode
 -- offers, which one a roll picks (equal chance) and whether a pad is ready.
 --

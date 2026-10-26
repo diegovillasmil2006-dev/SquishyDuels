@@ -4,10 +4,10 @@
 -- clone tests and the snapshot restore set Source), like Config/ValidateUIMotion. Pure: require(script)(h, Match, Duel,
 -- loadPalette) returns check(problems), which adds human-readable problems through Config/init's own check helpers
 -- `h`; loadPalette() returns Art/Palette or nil (the wall colour check is skipped without it).
--- The rules: positive timings, two different team names,
--- each mode's win numbers, the storm's steps in time order (from stormStartSeconds, never overlapping, radius
+-- The rules: positive timings (introMinSeconds in [0, waitSeconds), 2026-10-26), two different team names,
+-- each mode's koTarget, the storm's steps in time order (from stormStartSeconds, never overlapping, radius
 -- fractions falling inside (0, 1)) and done before a storm mode's time-up, and every power-up in the order with one
--- known effect (seconds > 0, ultFraction in (0, 1], or the teams-only team life). FFA/TDM v1 (2026-10-15): a positive
+-- known effect (seconds > 0 or ultFraction in (0, 1]). FFA/TDM v1 (2026-10-15): a positive
 -- gatherSeconds and readoutHz, a boolean outOfBoundsIsKo, a footprint (X, Z > 0) and a spot
 -- count for every mode, Bounds that reach down to the kill line, a positive ground probe length, the spawn distances,
 -- the storm's sampleHz and inset, and its test wall (transparency in [0, 1], a height, an Art/Palette colour token).
@@ -53,6 +53,11 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 			expectPositive(problems, `{p}.{name}`, m[name])
 		end
 		expectNonNegative(problems, `{p}.spawnProtectSeconds`, m.spawnProtectSeconds)
+		expect(
+			problems,
+			isNumber(m.introMinSeconds) and m.introMinSeconds >= 0 and m.introMinSeconds < m.waitSeconds,
+			`{p}.introMinSeconds must be in [0, waitSeconds)`
+		)
 		expectCount(problems, `{p}.minPlayers`, m.minPlayers, 2)
 		local teams = m.teamNames
 		expect(
@@ -69,11 +74,7 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 			expectBoolean(problems, `{q}.storm`, mode.storm)
 			expectCount(problems, `{q}.maxPlayers`, mode.maxPlayers, m.minPlayers)
 			expectPositive(problems, `{q}.matchSeconds`, mode.matchSeconds)
-			if mode.teams then
-				expectCount(problems, `{q}.teamLives`, mode.teamLives, 0)
-			else
-				expectCount(problems, `{q}.koTarget`, mode.koTarget, 1)
-			end
+			expectCount(problems, `{q}.koTarget`, mode.koTarget, 1)
 			local last = steps[#steps]
 			expect(
 				problems,
@@ -122,7 +123,7 @@ return function(h: Helpers, Match: any, Duel: any, loadPalette: () -> any): (pro
 					`{q}.ultFraction must be in (0, 1]`
 				)
 			else
-				expect(problems, kind == "teamLife" and row.teamsOnly == true, `{q} has no effect`)
+				add(problems, `{q} has no effect`)
 			end
 		end
 		for _, kind in sortedKeys(pu.kinds) do

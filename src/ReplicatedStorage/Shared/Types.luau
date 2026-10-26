@@ -436,6 +436,10 @@ export type MatchParticipantView = {
 	protectUntil: number,
 	streak: number,
 	bestStreak: number,
+	-- Round 1 of the match screens (2026-10-26): arrived = in the map (MatchRules; bots from the start), for the intro's
+	-- cards; level = the Grip level the MATCH FOUND show gave them (1 when unknown).
+	arrived: boolean,
+	level: number,
 }
 
 -- One HUD event of a match (Match HUD M1, 2026-10-16): seq counts from 1 per match. kind "ko" now; later "revived",
@@ -449,7 +453,6 @@ export type MatchEventView = {
 	cause: string?, -- ko: "hit" | "storm" | "outOfBounds" (MatchRules ko effect; an ultimate's hit is "hit")
 	final: boolean?, -- ko: this K.O. ended the match (outcome win by koTarget, wiped or overtime)
 	streak: number?, -- ko: the attacker's streak after it (K.O.s since they were last knocked out); nil without one
-	livesLeft: number?, -- ko, TDM: the victim's team lives after it (0 when the victim is out); nil in FFA
 }
 
 -- One line of the final standings (Match HUD M1): present players only, their stats frozen when the outcome is made.
@@ -543,7 +546,7 @@ export type MatchVoteView = {
 	result: MatchVoteResultView?,
 }
 
--- The MatchState payload (one per player): sent on the first view, every phase change, K.O., respawn, team-lives
+-- The MatchState payload (one per player): sent on the first view, every phase change, K.O., respawn, team-score
 -- change and outcome, plus the own view when `you.stormBar` moved (at most Config.Match.Storm.sampleHz a second).
 -- A last view with phase "Returning", then the cleared attributes (SD_MatchId "") end it on the client.
 -- Power-ups v1.1 (2026-10-16): also on every pickup (everyone: a pad's readyAt rose), a shield used up, and to the
@@ -561,8 +564,8 @@ export type MatchStateView = {
 	activeStartedAt: number?, -- server time Active began (the storm and the match timer)
 	you: MatchYouView,
 	players: { MatchParticipantView },
-	teamLives: { [string]: number }?, -- TDM
-	koTarget: number?, -- FFA
+	teamScore: { [string]: number }?, -- TDM: each team's K.O.s scored (2026-10-26)
+	koTarget: number?, -- the mode's win target (TDM: the team score)
 	arena: MatchArenaView,
 	storm: { startRadius: number }?, -- TDM only (StormMath.startRadius of the map's footprint)
 	outcome: MatchOutcomeView?,

@@ -1,6 +1,7 @@
 --!strict
 -- PowerUpRules_Test: unit tests for ServerScriptService.Server.Logic.PowerUpRules (Config.Match.PowerUps).
--- Contract: FFA offers every kind but the TDM-only team life, TDM offers all of them, in Config's order; a roll in
+-- Contract: FFA offers every kind but a teamsOnly one, TDM offers all of them, in Config's order (2026-10-26: no
+-- teamsOnly kind is live since the team life went); a roll in
 -- [0, 1) picks each kind with an equal share; a pad is ready at first, refills padRefillSeconds after a pickup, can't be
 -- taken while refilling, and the given pad is never modified.
 
@@ -19,16 +20,18 @@ return function(t: Context)
 	local MATCH = Config.Match -- the fresh copy under test (the place's Config can be a cached older copy)
 	local P = MATCH.PowerUps
 
-	t.test("kindsFor: FFA has no team life; TDM has every kind; both in Config's order", function()
-		local ffa = PowerUpRules.kindsFor("ffa", MATCH)
-		local tdm = PowerUpRules.kindsFor("tdm", MATCH)
-		expect.equal(#tdm, #P.order)
-		expect.equal(#ffa, #P.order - 1)
-		expect.falsy(table.find(ffa, "teamLife"))
-		expect.truthy(table.find(tdm, "teamLife"))
-		for index, kind in ffa do
-			expect.equal(kind, P.order[index])
-		end
+	t.test("kindsFor: FFA skips teamsOnly kinds; TDM has every kind; both in Config's order", function()
+		expect.deepEqual(PowerUpRules.kindsFor("ffa", MATCH), P.order)
+		expect.deepEqual(PowerUpRules.kindsFor("tdm", MATCH), P.order)
+		-- A teamsOnly kind (none is live): TDM only.
+		local teamsOnly = table.clone(MATCH)
+		teamsOnly.PowerUps = table.clone(P)
+		teamsOnly.PowerUps.kinds = table.clone(P.kinds)
+		teamsOnly.PowerUps.kinds.teamOnlyTest = { seconds = 1, teamsOnly = true }
+		teamsOnly.PowerUps.order = table.clone(P.order)
+		table.insert(teamsOnly.PowerUps.order, "teamOnlyTest")
+		expect.deepEqual(PowerUpRules.kindsFor("ffa", teamsOnly), P.order)
+		expect.equal(#PowerUpRules.kindsFor("tdm", teamsOnly), #P.order + 1)
 		expect.throws(function()
 			PowerUpRules.kindsFor("nope", MATCH)
 		end, "unknown mode")
@@ -69,6 +72,6 @@ return function(t: Context)
 		end
 		expect.equal(P.kinds.dashBoost.seconds, 5)
 		expect.equal(P.kinds.shield.seconds, 6)
-		expect.truthy(P.kinds.teamLife.teamsOnly)
+		expect.equal(P.kinds.teamLife, nil) -- 2026-10-26: went with the team lives
 	end)
 end

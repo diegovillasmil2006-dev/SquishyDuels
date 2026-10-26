@@ -639,8 +639,8 @@ return function(t: Context)
 					ultReady = false,
 				},
 			},
-			teamLives = o.teamLives,
-			koTarget = if o.mode == "tdm" then nil else 25,
+			teamScore = o.teamScore,
+			koTarget = if o.mode == "tdm" then 30 else 25,
 			arena = {
 				floorY = 0,
 				bounds = { cframe = CFrame.new(7500, 42.5, 0), size = Vector3.new(200, 115, 200) },
@@ -784,11 +784,12 @@ return function(t: Context)
 				youTeam = "Red",
 				twoTeam = "Blue",
 				threeTeam = "Red",
-				teamLives = { Red = 40, Blue = 39 },
+				teamScore = { Red = 17, Blue = 14.9 },
 			}))
 		)
 		expect.equal(tdm.you.team, "Red")
-		expect.equal(tdm.teamLives.Blue, 39)
+		expect.deepEqual(tdm.teamScore, { Red = 17, Blue = 14 }) -- whole points
+		expect.equal(tdm.koTarget, 30)
 		expect.equal(StateController.isEnemy(tdm, 2), true)
 		expect.equal(StateController.isEnemy(tdm, 3), false) -- a teammate
 		expect.deepEqual(StateController.enemyIds(tdm), { 2 })
@@ -908,7 +909,7 @@ return function(t: Context)
 			reason = "koTarget",
 			winnerUserId = 2,
 			winners = { 2 },
-			finalKo = ko(9, 3, 2, { final = true, streak = 5, livesLeft = "x" }),
+			finalKo = ko(9, 3, 2, { final = true, streak = 5 }),
 			standings = {
 				{ userId = 2, kos = 25, knockedOut = 0, bestStreak = 7 },
 				{ userId = 1, kos = 2, knockedOut = 1 },
@@ -975,7 +976,7 @@ return function(t: Context)
 	t.test("match HUD M1: newMatchMoments keeps the well-formed events above lastSeq, sorted, each once", function()
 		local raw = {
 			ko(4, 2, 1, { streak = 2 }),
-			ko(2, 3, nil, { cause = "storm", livesLeft = 39 }),
+			ko(2, 3, nil, { cause = "storm" }),
 			ko(3, 1, 2, { final = true }),
 			ko(1, 2, 1), -- already handed out
 			ko(3, 9, 9), -- a repeated seq: once
@@ -988,10 +989,7 @@ return function(t: Context)
 		local moments, last = StateController.newMatchMoments(1, raw)
 		expect.equal(last, 4)
 		expect.equal(#moments, 3)
-		expect.deepEqual(
-			moments[1],
-			{ seq = 2, kind = "ko", at = 502, victim = 3, cause = "storm", final = false, livesLeft = 39 }
-		)
+		expect.deepEqual(moments[1], { seq = 2, kind = "ko", at = 502, victim = 3, cause = "storm", final = false })
 		expect.equal(moments[2].seq, 3)
 		expect.equal(moments[2].final, true)
 		expect.equal(moments[3].seq, 4)

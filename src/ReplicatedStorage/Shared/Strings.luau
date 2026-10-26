@@ -577,7 +577,6 @@ local Strings = {
 		notArrived = "You couldn't reach the map in time, so you're back in the lobby.",
 		outOfBounds = "Out of bounds: back to a spawn.",
 		outOfBoundsKo = "You fell off the map: squished!", -- Match HUD M7: the owner's word (plan §2)
-		outNoLives = "Your team is out of lives, so you're out. Cheer on your team!",
 		youWin = "You win the match!",
 		winner = "{name} wins the match!",
 		teamWins = "{team} team wins!",
@@ -606,16 +605,15 @@ local Strings = {
 			dashBoost = "DASH BOOST!",
 			rapidThrow = "RAPID THROW!",
 			superJump = "SUPER JUMP!",
-			teamLife = "+1 TEAM LIFE!",
 		},
 		-- The client's test readout (one Components/Chip at the top, until Diego's arena HUD): the mode's piece, then the
 		-- extra pieces that apply, joined with `separator`. {mine} / {target} = your K.O.s / the mode's koTarget,
-		-- {leaderName} / {leaderKos} = the leader, {redLives} / {blueLives} = the team lives, {time} = m:ss left in the
+		-- {leaderName} / {leaderKos} = the leader, {redScore} / {blueScore} = the team scores, {time} = m:ss left in the
 		-- phase, {pct} = your storm bar (0-100), {seconds} = seconds until you are back in. Power-ups v1.1 (2026-10-16):
 		-- powerUp = one live power-up, {name} = its powerUpName.<kind> text below, {seconds} = whole seconds left.
 		readout = {
 			ffa = "SQUISHES {mine}/{target} · 1st {leaderName} {leaderKos} · {time}", -- owner 2026-10-16
-			tdm = "STRAWBERRY {redLives} · BLUEBERRY {blueLives} · {time}",
+			tdm = "STRAWBERRY {redScore} · BLUEBERRY {blueScore} · FIRST TO {target} · {time}", -- 2026-10-26
 			storm = "STORM {pct}%",
 			overtime = "OVERTIME",
 			backIn = "Back in {seconds}",
@@ -670,6 +668,21 @@ local Strings = {
 		},
 		respawn = {
 			label = "RESPAWNING IN",
+		},
+		-- Round 1 of the match screens (LOADING SCREEN Y MATCH HUD S:437, S:986-994): the cover, the intro's lines
+		-- ({mode} = match.mode.*, upper case), a loading card, the load bar and the 3-2-1.
+		intro = {
+			loading = "Loading arena",
+			mode = "{mode} · {size}",
+			size = { tdm = "{n}v{n}", ffa = "{n}" },
+			goal = "FIRST TO {target} SQUISHES · {clock}",
+			cardLoading = "Loading…",
+			you = "YOU",
+			vs = "VS",
+			players = "LOADING PLAYERS {n}/{max}",
+			getReady = "GET READY",
+			go = "SQUISH!",
+			goLine = "GO GO GO",
 		},
 		titles = {
 			kitty_bread = "Loaf of Doom",

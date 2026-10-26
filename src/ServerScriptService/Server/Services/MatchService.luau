@@ -41,11 +41,10 @@
 --   (never "SuddenDeath": that would change the client's throw cooldown; Active gives Config.Duel.Rules.Movement and
 --   nextThrowAt = the Active start), Result -> "Result", Closed -> "Returning".
 -- * Hits (one batch per server step, CombatService) go through MatchRules: one hit = K.O., spawn protection, no team
---   hits; each K.O. is an applied hit {lives = TDM team lives / FFA 0, eliminated = true}. A K.O.'d character stays
+--   hits; each K.O. is an applied hit {lives = 0, eliminated = true}. A K.O.'d character stays
 --   where it fell, frozen (WalkSpeed / JumpHeight 0, AutoRotate off) and unhittable (D3); at `respawn` it is pivoted
 --   to a MatchSpawns respawn spot (TDM: a free spot on its team's pads; FFA: the pad farthest from enemies; inside the
---   storm's safe circle once the storm is up) and gets the match movement back. No LoadCharacter. A TDM player "out"
---   of team lives stays frozen (match.outNoLives) until the return.
+--   storm's safe circle once the storm is up) and gets the match movement back. No LoadCharacter.
 -- * Out of bounds (D4, the movement guard): a re-pivot to the player's spot (silent before Active), else to a respawn
 --   spot; with Config.Match.outOfBoundsIsKo (jayyyyy 2026-10-15: falling off "counts as a knockout") it is then a
 --   MatchRules `oob` K.O. with the match.outOfBoundsKo toast (TDM: costs a team life); off, just the
@@ -90,8 +89,8 @@
 --   root's end) and never on a frozen body; the port answers CombatService and DashService for the buffed fighter
 --   (cooldownMultiplier(fighter) = the rapid throw's, throwSpeedMultiplier = the throw boost's, dashCooldownFree = the
 --   dash boost, movement = the buffed walk speed and jump height); ultCharge goes to AbilityService.addChargeFraction;
---   a shield-blocked hit is an applied outcome with `blocked` (CombatService ends the throw at the shield, no K.O.);
---   teamLife (TDM) and its revive are MatchRules' (the revived player respawns like any respawn). The views carry
+--   a shield-blocked hit is an applied outcome with `blocked` (CombatService ends the throw at the shield, no K.O.).
+--   The views carry
 --   you.buffs (the live timed power-ups) and pads ({name, readyAt}), re-sent on every pickup, used-up shield and, to
 --   that player, when a timed power-up ends. The pads are idle before Active and after the end.
 --   Review fixes (2026-10-16): the rapid throw's "no wait" is the shortest cooldown
@@ -101,11 +100,11 @@
 -- * Match HUD M1 (2026-10-16, the data of Diego's Match HUD: the kill feed and the final K.O. M:497-516, 567-572, the
 --   respawn seconds M:73, 88, 113, 641, the streaks M:149, 349, 527, the standings M:610-614, 688): every MatchRules
 --   `ko` becomes a HUD event {seq (1, 2, ... per match), kind "ko", at, victim, by (nil for a storm / out-of-bounds
---   K.O.), cause, final, streak (the attacker's after it), livesLeft (TDM: the victim's team lives after it, 0 when
---   out)}; the attacker's streak +1 (bestStreak = its best), the victim's streak 0. The events go out in the next view
+--   K.O.), cause, final, streak (the attacker's after it)}; the attacker's streak +1 (bestStreak = its best), the
+--   victim's streak 0. The events go out in the next view
 --   sent to everyone (`events`, then forgotten); a view sent to one player (the storm bar, a power-up's end) has none.
 --   Effects are performed in batches (one MatchRules step: stepMatch's loop, or the port's flush); each batch has its
---   own number (stepId), and perform gets the batch and the effect's index (the K.O.'s team lives). A win by koTarget,
+--   own number (stepId). A win by koTarget,
 --   wiped or overtime marks the last K.O. of its own batch `final` and keeps it as outcome.finalKo (a wipe by a leave,
 --   a time-up or a draw has none). The players list carries respawnAt, out, protectUntil, streak and bestStreak; the
 --   outcome carries the standings (MatchRules.standings order, present players only: a leaver is never on the
@@ -429,7 +428,6 @@ local CODE = table.freeze({
 	notArrived = "match.notArrived",
 	outOfBounds = "match.outOfBounds",
 	outOfBoundsKo = "match.outOfBoundsKo",
-	outNoLives = "match.outNoLives",
 	youWin = "match.youWin",
 	winner = "match.winner",
 	teamWins = "match.teamWins",
@@ -465,7 +463,9 @@ local gathers: { [string]: Gather } = {}
 local pendings: { [string]: Pending } = {} -- round 3 of the match flow: id -> its map vote
 local pendingOfUser: { [number]: Pending } = {} -- its players and bots
 -- Round 3's helpers live in one table: this chunk is near Luau's 200-local limit. Filled in "Private: the map vote".
-local Pend = {}
+-- Round 1 of the match screens (2026-10-26): Pend.levels = userId -> the Grip level the MATCH FOUND show gave them (a
+-- bot's is drawn there), for the intro's cards (shortcut: one entry per userId, overwritten by the next show).
+local Pend = { levels = {} :: { [number]: number } }
 local returnPointUsedAt: { [number]: number } = {} -- ReturnPoints index -> clock() of its last use
 local heartbeat: RBXScriptConnection? = nil
 local defaultDeps: () -> Deps
@@ -803,6 +803,8 @@ local function playersView(match: Match): { Types.MatchParticipantView }
 				protectUntil = finiteOrZero(r.protectUntil), -- 0 = none
 				streak = p.streak,
 				bestStreak = p.bestStreak,
+				arrived = r.arrived, -- round 1 of the match screens: the intro's card shows them in
+				level = Pend.levels[p.userId] or 1, -- the MATCH FOUND show's Grip level
 			})
 		end
 	end
@@ -878,8 +880,8 @@ local function viewFor(
 			buffs = buffsView(match, r), -- power-ups v1.1
 		},
 		players = players,
-		teamLives = if match.mode.teams then table.clone(state.teamLives) else nil,
-		koTarget = if match.mode.teams then nil else match.mode.koTarget,
+		teamScore = if match.mode.teams then table.clone(state.teamScore) else nil,
+		koTarget = match.mode.koTarget,
 		arena = { floorY = map.floorY, bounds = map.bounds, centre = map.centre },
 		storm = if match.mode.storm then { startRadius = map.startRadius } else nil,
 		outcome = if outcome
@@ -1090,7 +1092,7 @@ end
 
 -- Private: lifecycle -----------------------------------------------------------------------------------------------------
 
-local perform: (match: Match, effect: Effect, effects: { Effect }, index: number) -> ()
+local perform: (match: Match, effect: Effect) -> ()
 
 -- One MatchRules event: the new state is stored first, then its effects run (none of them yields). The projectiles
 -- are swept up to the same time first (CombatService.syncTo), as in DuelService.stepMatch. Match HUD M1: the effects
@@ -1110,8 +1112,11 @@ stepMatch = function(match: Match, event: Event, now: number?)
 	match.now = math.max(match.now, t) -- power-ups v1.1: the time the views' live buffs are read at
 	syncFighters(match)
 	match.stepId += 1
-	for index, effect in effects do
-		perform(match, effect, effects, index)
+	for _, effect in effects do
+		perform(match, effect)
+	end
+	if event.kind == "arrived" then
+		match.stateDirty = true -- round 1 of the match screens: the intro's cards show who is in
 	end
 	if match.stateDirty and not match.closed then
 		match.stateDirty = false
@@ -1333,14 +1338,6 @@ local function onRespawn(match: Match, effect: Effect)
 	matchMovement(match, p)
 end
 
-local function onOut(match: Match, effect: Effect)
-	match.stateDirty = true
-	local p = match.byUserId[effect.userId]
-	if p and active(p) then
-		notify(p.ref, CODE.outNoLives, nil, "warn")
-	end
-end
-
 -- Power-ups v1.1: a pad was taken (MatchRules accepted the pickup): the picker's toast; everyone's view (the pad).
 local function onPickup(match: Match, effect: Effect)
 	match.stateDirty = true
@@ -1431,29 +1428,10 @@ local function summaryOf(match: Match, outcome: any): MatchSummary
 	}
 end
 
--- The TDM team lives right after the K.O. at effects[index] (the next teamLives / out of the victim's team). Match
--- HUD M1: moved above perform, which reads it too (the K.O. event's livesLeft).
-local function livesAfter(match: Match, effects: { Effect }, index: number, victim: Participant?): number
-	if not match.mode.teams or victim == nil or victim.team == nil then
-		return 0
-	end
-	for i = index + 1, #effects do
-		local e = effects[i]
-		if e.kind == "teamLives" and e.team == victim.team then
-			return e.lives
-		elseif e.kind == "out" and e.userId == victim.userId then
-			return 0
-		elseif e.kind == "ko" then
-			break
-		end
-	end
-	return match.state.teamLives[victim.team] or 0
-end
-
 -- Match HUD M1: the MatchRules `ko` at effects[index] of the batch being performed becomes a HUD event (the kill feed,
 -- M:516: killer, victim, final, score): the attacker's streak +1 (bestStreak its best, M:149, 349, 527), the victim's
 -- streak 0 whatever the cause.
-local function recordKo(match: Match, effect: Effect, effects: { Effect }, index: number)
+local function recordKo(match: Match, effect: Effect)
 	local victim = match.byUserId[effect.victim]
 	local by = if effect.by ~= nil then match.byUserId[effect.by] else nil
 	if victim then
@@ -1476,7 +1454,6 @@ local function recordKo(match: Match, effect: Effect, effects: { Effect }, index
 			cause = effect.cause,
 			final = false,
 			streak = streak,
-			livesLeft = if match.mode.teams then livesAfter(match, effects, index, victim) else nil,
 		},
 		step = match.stepId,
 	})
@@ -1641,8 +1618,7 @@ local function onEnded(match: Match, outcome: any)
 	MatchService.MatchEnded:fire(summary)
 end
 
--- Match HUD M1: `effects` = the batch being performed and `index` = this effect's place in it (the K.O.'s team lives).
-perform = function(match: Match, effect: Effect, effects: { Effect }, index: number)
+perform = function(match: Match, effect: Effect)
 	local kind = effect.kind
 	if kind == "phase" then
 		onPhase(match, effect.phase, effect.startedAt or getDeps().now())
@@ -1651,12 +1627,10 @@ perform = function(match: Match, effect: Effect, effects: { Effect }, index: num
 			onEnded(match, effect.outcome)
 		end
 	elseif kind == "ko" then
-		recordKo(match, effect, effects, index)
+		recordKo(match, effect)
 		onKo(match, effect)
 	elseif kind == "respawn" then
 		onRespawn(match, effect)
-	elseif kind == "out" then
-		onOut(match, effect)
 	elseif kind == "closed" then
 		startReturn(match)
 	elseif kind == "pickup" then
@@ -1666,8 +1640,7 @@ perform = function(match: Match, effect: Effect, effects: { Effect }, index: num
 	elseif kind == "ultCharge" then
 		onUltCharge(match, effect)
 	else
-		-- teamLives, and power-ups v1.1's revived (its respawn effect places the player) and shieldBlocked (the shield is
-		-- used up): the views carry them.
+		-- teamScore, and power-ups v1.1's shieldBlocked (the shield is used up): the views carry them.
 		match.stateDirty = true
 	end
 end
@@ -1765,12 +1738,12 @@ local function buildPort(match: Match): MatchPort
 				end
 				return nil
 			end
-			for i, effect in effects do
+			for _, effect in effects do
 				if effect.kind == "ko" and effect.by ~= nil then
 					local index = claim(effect.victim, effect.by, effect.at)
 					if index then
 						outcomes[index] = {
-							lives = livesAfter(match, effects, i, match.byUserId[effect.victim]),
+							lives = 0,
 							invulnUntil = effect.at,
 							eliminated = true,
 						}
@@ -1780,10 +1753,8 @@ local function buildPort(match: Match): MatchPort
 					-- the shield (no K.O.) instead of letting it fly on into the unshielded player a step later.
 					local index = claim(effect.userId, effect.by, effect.at)
 					if index then
-						local victim = match.byUserId[effect.userId]
-						local team = if victim then victim.team else nil
 						outcomes[index] = {
-							lives = if match.mode.teams and team then match.state.teamLives[team] or 0 else 0,
+							lives = 0,
 							invulnUntil = effect.at,
 							eliminated = false,
 							blocked = true,
@@ -1798,8 +1769,8 @@ local function buildPort(match: Match): MatchPort
 			local effects = match.pending
 			match.pending = {}
 			match.stepId += 1 -- Match HUD M1: a batch of its own
-			for index, effect in effects do
-				perform(match, effect, effects, index)
+			for _, effect in effects do
+				perform(match, effect)
 			end
 			if match.stateDirty and not match.closed then
 				match.stateDirty = false
@@ -2075,6 +2046,16 @@ end
 -- else; arrivals, hits, the storm and leaves are events of their own).
 local function nextDueAt(state: MatchState): number
 	local due = state.phaseEndsAt
+	if state.phase == "Waiting" then
+		-- Round 1 of the match screens: everyone in, the countdown waits only for the intro's shortest run.
+		local all = true
+		for _, r in state.participants do
+			all = all and (r.arrived or r.left)
+		end
+		if all then
+			due = math.min(due, state.phaseStartedAt + state.match.introMinSeconds)
+		end
+	end
 	for _, r in state.participants do
 		local at = r.respawnAt
 		if r.present and at ~= nil and at < due then
@@ -2240,6 +2221,9 @@ local function sendFound(modeId: string, refs: { any }, teams: { [any]: string }
 		})
 	end
 	local view = MatchFoundRoster.build(modeId :: any, entries, d.rng)
+	for _, player in view.players do
+		Pend.levels[player.userId] = player.level -- the intro's cards show the same levels
+	end
 	for _, ref in refs do
 		if d.isPlayer(ref) then
 			local ok, err = try(d.fire, REMOTE_FOUND, ref, view)
@@ -3147,7 +3131,7 @@ function MatchService.debugState(): { [string]: any }
 			modeId = match.modeId,
 			map = match.map.code,
 			phase = match.state.phase,
-			teamLives = table.clone(match.state.teamLives),
+			teamScore = table.clone(match.state.teamScore),
 			players = players,
 		})
 	end

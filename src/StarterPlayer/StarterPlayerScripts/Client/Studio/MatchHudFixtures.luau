@@ -154,16 +154,9 @@ local function ko(b: Builder, victimId: number, byId: number?, ago: number, caus
 	victim.streak = 0
 	victim.alive = false
 	victim.respawnAt = at + MATCH.respawnSeconds
-	local livesLeft = nil
-	if p.teamLives then
-		local lives = p.teamLives[victim.team]
-		if lives > 0 then
-			p.teamLives[victim.team] = lives - 1
-		else
-			victim.out = true
-			victim.respawnAt = nil
-		end
-		livesLeft = p.teamLives[victim.team]
+	if p.teamScore then -- 2026-10-26: the other team scores
+		local scorer = if by then by.team else (if victim.team == RED then BLUE else RED)
+		p.teamScore[scorer] += 1
 	end
 	b.seq += 1
 	table.insert(p.events, {
@@ -175,7 +168,6 @@ local function ko(b: Builder, victimId: number, byId: number?, ago: number, caus
 		cause = cause or "hit",
 		final = final == true,
 		streak = if by then by.streak else nil,
-		livesLeft = livesLeft,
 	})
 end
 
@@ -244,6 +236,8 @@ local function base(mode: string, now: number, opts: Options?): Builder
 			protectUntil = 0,
 			streak = 0,
 			bestStreak = 0,
+			arrived = true, -- round 1 of the match screens: "waiting" holds some back
+			level = 1 + ((index * 17) % 60), -- pretend Grip levels, spread like Diego's roster
 		})
 	end
 	local modeRules = MATCH.Modes[mode]
@@ -269,8 +263,8 @@ local function base(mode: string, now: number, opts: Options?): Builder
 			buffs = {},
 		},
 		players = players,
-		teamLives = if isTdm then { [RED] = modeRules.teamLives, [BLUE] = modeRules.teamLives } else nil,
-		koTarget = if isTdm then nil else modeRules.koTarget,
+		teamScore = if isTdm then { [RED] = 0, [BLUE] = 0 } else nil,
+		koTarget = modeRules.koTarget,
 		arena = {
 			floorY = 0,
 			bounds = { cframe = CFrame.new(centre), size = map.footprint + Vector3.new(0, 100, 0) },
@@ -360,17 +354,13 @@ local function finish(b: Builder, kind: string, reason: string, winners: { numbe
 	}
 end
 
--- TDM endings: `loser`'s team has no life left and only `victim` still stands; `killer` squishes them (the final K.O.,
--- the outcome reason "wiped").
-local function wipe(b: Builder, loser: string, victim: number, killer: number)
+-- TDM endings (2026-10-26, first to koTarget): `winner` stands one short of it (the other team at 24: Diego's 30-24);
+-- `killer` squishes `victim` for the last point (the final K.O., the outcome reason "koTarget").
+local function lastPoint(b: Builder, winner: string, victim: number, killer: number)
 	local p = b.p
 	spread(p, 9)
-	p.teamLives[RED], p.teamLives[BLUE] = 9, 7
-	p.teamLives[loser] = 0
-	for _, id in teamIds(b, loser) do
-		local player = entry(p, id)
-		player.out, player.alive = id ~= victim, id == victim
-	end
+	p.teamScore[winner] = (MATCH.Modes.tdm.koTarget :: number) - 1
+	p.teamScore[if winner == RED then BLUE else RED] = 24
 	ko(b, victim, killer, 0.5, "hit", true)
 	syncYou(b)
 end
@@ -385,6 +375,10 @@ local STEPS: { [string]: (b: Builder) -> () } = {
 		b.p.matchPhase = "Waiting"
 		b.p.phaseEndsAt = b.now + MATCH.waitSeconds
 		b.p.activeStartedAt = nil
+		-- Round 1 of the match screens: the intro's cards, every third player still loading (you are in).
+		for index, player in b.p.players do
+			player.arrived = index % 3 ~= 0
+		end
 	end,
 	countdown3 = function(b)
 		b.p.phase = "Countdown"
@@ -432,8 +426,8 @@ local STEPS: { [string]: (b: Builder) -> () } = {
 		p.activeStartedAt = b.now - SCORE_FOR
 		p.phaseEndsAt = b.now + MATCH.Modes[p.mode].matchSeconds - SCORE_FOR
 		spread(p, if p.mode == "ffa" then 18 else 6)
-		if p.teamLives then
-			p.teamLives[RED], p.teamLives[BLUE] = 31, 29
+		if p.teamScore then
+			p.teamScore[RED], p.teamScore[BLUE] = 17, 14 -- Diego's review score (uploads/tdm-hud.js)
 		end
 		local victims = enemies(b)
 		for i, ago in { 2.6, 1.4, 0.6 } do -- three in a row: DOUBLE!, TRIPLE! (M:521-526)
@@ -453,8 +447,8 @@ local STEPS: { [string]: (b: Builder) -> () } = {
 		p.activeStartedAt = b.now - seconds - 10
 		p.phaseEndsAt = b.now + MATCH.overtimeMaxSeconds - 10
 		spread(p, 12)
-		if p.teamLives then
-			p.teamLives[RED], p.teamLives[BLUE] = 4, 4
+		if p.teamScore then
+			p.teamScore[RED], p.teamScore[BLUE] = 22, 22
 		else
 			p.players[2].kos = p.players[1].kos -- a tie at the top
 		end
@@ -482,8 +476,8 @@ local STEPS: { [string]: (b: Builder) -> () } = {
 	endWin = function(b)
 		local victim = enemies(b)[1]
 		if b.p.mode == "tdm" then
-			wipe(b, BLUE, victim, b.ids[1])
-			finish(b, "win", "wiped", teamIds(b, RED), WIN_PAY)
+			lastPoint(b, RED, victim, b.ids[1])
+			finish(b, "win", "koTarget", teamIds(b, RED), WIN_PAY)
 		else
 			spread(b.p, 23)
 			b.you.kos = (MATCH.Modes.ffa.koTarget :: number) - 1
@@ -494,8 +488,8 @@ local STEPS: { [string]: (b: Builder) -> () } = {
 	endLose = function(b)
 		local killer = foe(b, b.ids[1])
 		if b.p.mode == "tdm" then
-			wipe(b, RED, b.ids[1], killer)
-			finish(b, "win", "wiped", teamIds(b, BLUE), LOSE_PAY)
+			lastPoint(b, BLUE, b.ids[1], killer)
+			finish(b, "win", "koTarget", teamIds(b, BLUE), LOSE_PAY)
 		else
 			spread(b.p, 23)
 			entry(b.p, killer).kos = (MATCH.Modes.ffa.koTarget :: number) - 1
@@ -507,8 +501,8 @@ local STEPS: { [string]: (b: Builder) -> () } = {
 	draw = function(b)
 		local p = b.p
 		spread(p, 12)
-		if p.teamLives then
-			p.teamLives[RED], p.teamLives[BLUE] = 4, 4
+		if p.teamScore then
+			p.teamScore[RED], p.teamScore[BLUE] = 22, 22
 		else
 			p.players[2].kos = p.players[1].kos
 		end

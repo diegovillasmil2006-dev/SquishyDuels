@@ -22,6 +22,7 @@ type Context = {
 local NOW = 1.8e9
 local YOU = 4242
 local CORRECTION_NAME = "SD_MatchKnockedOut"
+local BLUR_NAME = "SD_MatchIntroBlur" -- round 1 of the match screens: the intro's blur
 
 return function(t: Context)
 	local expect = t.expect
@@ -30,13 +31,14 @@ return function(t: Context)
 	local KillFeed = t.requireClient("UI/Match/KillFeed")
 	local DeathCard = t.requireClient("UI/Match/DeathCard")
 	local RespawnBar = t.requireClient("UI/Match/RespawnBar")
+	local MatchIntro = t.requireClient("UI/Match/MatchIntro")
 	local Config = t.requireShared("Config")
 	local Strings = t.requireShared("Strings")
 	local Lighting = game:GetService("Lighting")
 
 	local function clearLighting()
 		for _, child in Lighting:GetChildren() do
-			if child.Name == CORRECTION_NAME then
+			if child.Name == CORRECTION_NAME or child.Name == BLUR_NAME then
 				child:Destroy()
 			end
 		end
@@ -169,13 +171,16 @@ return function(t: Context)
 	end)
 
 	t.test("every piece plays every fixture state without an error and leaves nothing behind", function()
-		for _, module in { RespawnBar, DeathCard, KillFeed } do
+		for _, module in { RespawnBar, DeathCard, KillFeed, MatchIntro } do
 			for _, state in Fixtures.STATES do
-				local r = run(module, state)
-				expect.equal(finish(r), 0)
+				for _, compact in { false, true } do
+					local r = run(module, state, compact)
+					expect.equal(finish(r), 0)
+				end
 			end
 		end
 		expect.equal(Lighting:FindFirstChild(CORRECTION_NAME), nil)
+		expect.equal(Lighting:FindFirstChild(BLUR_NAME), nil)
 	end)
 
 	t.test("feed: your three in a row read FIRST BLOOD, DOUBLE!, TRIPLE!; no splat for your own", function()

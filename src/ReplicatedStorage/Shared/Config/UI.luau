@@ -112,6 +112,8 @@ local UI = {
 		FoundName = 26,
 		FoundChip = 18,
 		LevelNumber = 76, -- the new short level-up's badge number (LOBBY HUD L:593)
+		-- Round 1 of the match screens: the intro's map title (S:386, 96 stage px; the 3-2-1 draws it scaled up).
+		IntroTitle = 96,
 	} :: { [string]: number },
 	minTextSize = 13,
 
@@ -2991,10 +2993,10 @@ local UI = {
 			medal = false, -- M6 SQUISHED! medal: not built, Diego's kill banner (KillBannerController) is that moment
 			card = true, -- M7 "squished by" card
 			respawn = true, -- M7 RESPAWNING IN bar and vignette
-			boot = false, -- M8 Loading arena cover
-			intro = false, -- M8 intro card
+			-- Round 1 of the match screens (2026-10-26): the Loading arena cover, the intro and the 3-2-1 SQUISH! (one
+			-- piece, UI/Match/MatchIntro; MatchController leaves the duel HUD's countdown off while it is on).
+			intro = true,
 			introOrbit = false, -- M8 the map fly-over behind it (owner Q6: yes)
-			countdown = false, -- M8 3-2-1 SQUISH!
 			killerCam = false, -- M7 the camera on your killer while you wait (owner Q6: yes; not built yet, M7 notes)
 			finish = false, -- M9 VICTORY / DEFEAT splash
 			results = false, -- M9 results bar, LOBBY / PLAY AGAIN
@@ -3186,6 +3188,306 @@ local UI = {
 			brightness = -0.05,
 			margin = 64,
 			fallback = { clearShare = 0.4, midAlpha = 0.35, edgeAlpha = 0.72 },
+		},
+		-- Round 1 of the match screens (2026-10-26; `S:n` = Diego's "Squishy Duels LOADING SCREEN Y MATCH HUD.dc.html"
+		-- line n, `T:n` = its uploads/tdm-hud.js, ALL HUDS zip page 3): UI/Match/MatchIntro. Stage px: the desktop stage
+		-- is T:57 LAYOUT.desktop, the phone one T:64 LAYOUT.phone inside its safe area (844 x 390 less 47 | 47 | 21:
+		-- side 47 -> 0, the bar 26 -> 5 from the bottom); the stage is scaled to fit the safe area (the smaller share)
+		-- and stretched along the other side, which the outer columns and the bar keep to. The dim, the cover and the
+		-- wipes reach `margin` past the safe area. PR2: the design's 12-15 px text reads 16 (the phone's grip and YOU
+		-- chips grow to hold it). Times in seconds from the intro's start (`at`), the exit's start or the beat.
+		intro = {
+			z = 6, -- over the other pieces (the respawn bar is 4)
+			margin = 80,
+			dimAlpha = 0.55, -- S:338 #3F3756 at .55
+			glow = { size = 0.8, left = -0.3, top = 0.45 }, -- S:486: W .8 square, left -W .3, top H - W .45
+			layouts = {
+				desktop = {
+					width = 1440,
+					height = 900,
+					side = 44,
+					colW = 392,
+					colTop = 168,
+					cardH = 96,
+					cardGap = 8,
+					hdrTop = 104,
+					hdrFont = 22, -- the design's px (its box; the text kind may be bigger, PR2)
+					hdrGap = 7,
+					hdrStroke = 4,
+					hdrSpacing = 0.34,
+					titleTop = 126,
+					titleStroke = 14,
+					titleShadow = 7,
+					titleLine = 0.95,
+					centreGap = 12,
+					modeGap = 8,
+					modeSpacing = 0.32,
+					logoBox = 64,
+					logo = 46,
+					logoImage = 40,
+					vs = 126,
+					vsBox = 179, -- S:488: round(vs x 1.42)
+					vsBorder = 5,
+					vsRadius = 24,
+					vsShadow = 6,
+					vsStroke = 10,
+					vsPadBottom = 4,
+					barW = 520,
+					barBottom = 40,
+					barH = 16,
+					titleText = "IntroTitle",
+					modeText = "Body",
+					hdrText = "H2",
+					nameText = "Small",
+					toyText = "Small",
+					gripText = "D17",
+					youText = "Small",
+					loadingText = "Small",
+					vsText = "Zone",
+					barText = "Small",
+					card = { -- S:345-366
+						border = 4,
+						radius = 16,
+						lip = 5,
+						strip = 8,
+						head = 86,
+						padX = 14,
+						toy = 74,
+						toyDown = 6,
+						footer = 26,
+						footerPadX = 12,
+						tile = 72,
+						chip = {
+							height = 32,
+							border = 3,
+							radius = 11,
+							padLeft = 4,
+							padRight = 10,
+							gap = 3,
+							icon = 24,
+							lip = 3,
+						},
+						gripStroke = 4,
+						you = { x = 16, y = 6, height = 18, padX = 6, border = 2, radius = 6 },
+						shine = { width = 56, alpha = 0.75, slant = 18, from = -120, to = 420, delayMs = 280, ms = 650 },
+					},
+				},
+				phone = {
+					width = 750,
+					height = 369,
+					side = 0,
+					colW = 245,
+					colTop = 82,
+					cardH = 44,
+					cardGap = 4,
+					hdrTop = 60,
+					hdrFont = 13,
+					hdrGap = 3,
+					hdrStroke = 3,
+					hdrSpacing = 0.24,
+					titleTop = 70,
+					titleStroke = 7,
+					titleShadow = 4,
+					titleLine = 0.95,
+					centreGap = 4,
+					modeGap = 4,
+					modeSpacing = 0.1,
+					logoBox = 34,
+					logo = 26,
+					logoImage = 22,
+					vs = 60,
+					vsBox = 85,
+					vsBorder = 3,
+					vsRadius = 12,
+					vsShadow = 3,
+					vsStroke = 5,
+					vsPadBottom = 2,
+					barW = 200,
+					barBottom = 5,
+					barH = 10,
+					titleText = "Hero",
+					modeText = "Small",
+					hdrText = "Small",
+					nameText = "Small",
+					toyText = "Small",
+					gripText = "Small",
+					youText = "Small",
+					loadingText = "Small",
+					vsText = "HudNumber",
+					barText = "Small",
+					card = { -- S:368-381
+						border = 3,
+						radius = 11,
+						lip = 3,
+						strip = 4,
+						head = 34,
+						headMargin = 5,
+						headBorder = 2,
+						headRadius = 9,
+						tile = 44,
+						tileAlpha = 0.22,
+						toy = 32,
+						toyMargin = 5,
+						nameGap = 2,
+						chip = { height = 18, border = 1.5, radius = 5, padLeft = 2, padRight = 5, gap = 2, icon = 14 },
+						you = { height = 18, padX = 4, border = 1.5, radius = 4, gap = 4 },
+					},
+				},
+			},
+			-- S:422-423 the head line: 14 high, the line 2 at 5 (4 in from each end), the dots 8 at 2, the chevron 10 at 1.
+			header = {
+				box = 14,
+				line = 2,
+				lineY = 5,
+				lineInset = 4,
+				dot = 8,
+				dotY = 2,
+				chevron = 10,
+				chevronY = 1,
+				chevronBorder = 2,
+			},
+			barGap = 6, -- S:416
+			barSpacing = 0.2,
+			barBorder = 3,
+			barFillMs = 350, -- S:418 transition width .35s ease
+			loadingShimmer = { periodS = 1.1, share = 0.6 }, -- S:351 tdShim
+			-- The timeline (S:595-658, T:132-143).
+			bg = { at = 0, ms = 300, curve = "easeOut" },
+			title = {
+				at = 0.15,
+				ms = 250,
+				curve = "introSlam",
+				frames = { { at = 0, alpha = 0, scale = 1.25 }, { at = 1, alpha = 1, scale = 1 } } :: { MotionPose },
+			},
+			mode = {
+				at = 0.35,
+				ms = 300,
+				curve = "easeOut",
+				frames = { { at = 0, alpha = 0, y = 12 }, { at = 1, alpha = 1, y = 0 } } :: { MotionPose },
+			},
+			headers = { at = 0.45, textMs = 250, lineMs = 350, lineCurve = "ring", dotsDelayMs = 250, dotsMs = 200 },
+			bar = { at = 0.45, ms = 300 },
+			cards = {
+				at = 0.55,
+				rowS = 0.07,
+				rightS = 0.035,
+				ms = 380,
+				wholeRun = "introCard",
+				travel = 1.2,
+				overshoot = 6,
+			},
+			logo = {
+				at = 0.95,
+				ms = 260,
+				curve = "introSlam",
+				frames = { { at = 0, alpha = 0, scale = 0.6 }, { at = 1, alpha = 1, scale = 1 } } :: { MotionPose },
+			},
+			-- S:631: rotate 0 -> 54 -> 42 -> 45 (here from the diamond's own 45).
+			vs = {
+				at = 1.1,
+				ms = 450,
+				wholeRun = "ring",
+				frames = {
+					{ at = 0, alpha = 0, rot = -45, scale = 0.6 },
+					{ at = 0.7, alpha = 1, rot = 9, scale = 1.08 },
+					{ at = 0.86, rot = -3, scale = 0.98 },
+					{ at = 1, alpha = 1, rot = 0, scale = 1 },
+				} :: { MotionPose },
+				textDelayMs = 120,
+				textMs = 300,
+				textCurve = "introSlam",
+				textFrames = { { at = 0, alpha = 0, scale = 0.7 }, { at = 1, alpha = 1, scale = 1 } } :: { MotionPose },
+			},
+			head = { -- S:606: the headshot pops in when its player arrives
+				ms = 360,
+				curve = "linear",
+				frames = { { at = 0, scale = 0 }, { at = 0.6, scale = 1.12 }, { at = 1, scale = 1 } } :: { MotionPose },
+			},
+			exit = { -- S:639-658
+				cardsMs = 360,
+				cardStepMs = 18,
+				curve = "close",
+				fallMs = 350,
+				fallPx = 40,
+				wipeShare = 0.51,
+				wipeInAt = 0.15,
+				wipeInMs = 250,
+				wipeOutAt = 0.45,
+				wipeOutMs = 300,
+				wipeCurve = "introWipe",
+				hideAt = 0.4,
+				endAt = 0.8,
+			},
+			blur = { size = 24, outMs = 450 }, -- T:134, T:141
+			murmur = { inMs = 800, outMs = 600 }, -- S:600, S:651
+			-- The Loading arena cover (S:434-440).
+			boot = {
+				emblem = 120,
+				gap = 14,
+				bootText = "HudNumber",
+				stroke = 6,
+				shadow = 4,
+				fadeMs = 300,
+				bob = { -- S:25 sdBob
+					periodS = 1.6,
+					curve = "easeInOut",
+					frames = {
+						{ at = 0, y = 0, rot = 0 },
+						{ at = 0.5, y = -6, rot = -2 },
+						{ at = 1, y = 0, rot = 0 },
+					} :: { MotionPose },
+				},
+				dots = { -- S:32 sdDot
+					px = 10,
+					gap = 6,
+					periodS = 1,
+					stepS = 0.2,
+					curve = "easeInOut",
+					frames = {
+						{ at = 0, alpha = 0.35, scale = 0.8 },
+						{ at = 0.5, alpha = 1, scale = 1.15 },
+						{ at = 1, alpha = 0.35, scale = 0.8 },
+					} :: { MotionPose },
+				},
+			},
+			-- The 3-2-1 (S:126-133, S:660-671): beats beatS apart, the last at the countdown's end (GO at Active).
+			count = {
+				numberText = "IntroTitle",
+				px = 230,
+				goPx = 150,
+				stroke = 22,
+				shadow = 12,
+				labelText = "HudNumber",
+				labelStroke = 6,
+				labelSpacing = 0.08,
+				labelGap = 4,
+				label = {
+					ms = 400,
+					curve = "ease",
+					frames = { { at = 0, alpha = 0, y = 30 }, { at = 1, alpha = 1, y = 0 } } :: { MotionPose },
+				},
+				rays = 1100,
+				raysSpinS = 18,
+				beatS = 0.8,
+				beatMs = 780,
+				wholeRun = "beat",
+				frames = { -- S:663 (scale(.82,.9) and scale(1.12,1.04) as their even part)
+					{ at = 0, alpha = 0, scale = 3.4, rot = -16 },
+					{ at = 0.45, alpha = 1, scale = 0.859, rot = 4 },
+					{ at = 0.68, scale = 1.079, rot = -2 },
+					{ at = 0.85, alpha = 1, scale = 1, rot = 0 },
+					{ at = 1, alpha = 0, scale = 0.92, rot = 0 },
+				} :: { MotionPose },
+				goHoldMs = 680, -- S:619: the count goes 0.68 s after SQUISH!
+				ring = 300, -- S:667 white
+				goRings = {
+					{ color = "StickerCoinText", size = 420, delayMs = 0 },
+					{ color = "MatchFoundRingPink", size = 640, delayMs = 90 },
+					{ color = "MatchFoundRingCyan", size = 860, delayMs = 180 },
+				},
+				goSparks = { n = 40, spread = 460, size = 15, ms = 1100, up = 60 },
+				goJolt = 12,
+			},
 		},
 	},
 
@@ -3924,6 +4226,10 @@ local UI = {
 		-- The new short level-up (LOBBY HUD L:934 the ring, L:949 the badge's flight to the Grip bar).
 		lvRing = { 0.1, 0.7, 0.3, 1 },
 		lvFly = { 0.5, 0, 0.75, 0.2 },
+		-- Round 1 of the match screens (LOADING SCREEN Y MATCH HUD S:615 the title slam, S:625 the cards, S:649 the wipes).
+		introSlam = { 0.34, 1.56, 0.64, 1 },
+		introCard = { 0.2, 0.9, 0.3, 1 },
+		introWipe = { 0.6, 0, 0.4, 1 },
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The

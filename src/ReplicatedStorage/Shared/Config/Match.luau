@@ -24,12 +24,12 @@
 -- The rules in plain words:
 --   * One hit = knocked out (K.O.) in both modes. Back in after respawnSeconds with spawnProtectSeconds of safety.
 --   * FFA: unlimited respawns; the first to koTarget K.O.s wins; at time-up the most K.O.s wins. No storm.
---   * TDM: each team shares teamLives; every K.O. costs that team one life to respawn. At 0 lives nobody on that team
---     respawns: whoever still stands must carry. The last team with a player standing wins; at time-up the team with
---     more lives left wins. The storm (Storm below) closes in from stormStartSeconds.
+--   * TDM (owner 2026-10-26: Diego's match page, "diego 30 in 3 mins, but still have to have the storm"): unlimited
+--     respawns; every K.O. scores one for the other team (a storm or out-of-bounds K.O. too); the first team to
+--     koTarget wins; at time-up the higher score wins. The storm (Storm below) closes in from stormStartSeconds.
 --   * A tie at time-up goes to overtime: the next K.O. decides it (TDM: the team that scores it wins; FFA: the first
 --     time one player alone leads). After overtimeMaxSeconds without a winner it is a draw [P] (a safety net).
---   * Power-up pads give one random power-up (PowerUps.kinds, equal chance; teamLife only in TDM); a pad refills
+--   * Power-up pads give one random power-up (PowerUps.kinds, equal chance); a pad refills
 --     PowerUps.padRefillSeconds after a pickup. A standing player takes a ready pad by standing on it (within
 --     pickupRadiusStuds of its centre, pickupHeightStuds of standing height on it).
 
@@ -37,8 +37,7 @@ export type Mode = {
 	teams: boolean, -- TDM: Red vs Blue; FFA: everyone for themselves
 	maxPlayers: number,
 	matchSeconds: number, -- Active phase length before time-up
-	koTarget: number?, -- FFA: K.O.s that win at once
-	teamLives: number?, -- TDM: shared lives per team
+	koTarget: number, -- K.O.s that win at once (TDM: the team's score)
 	storm: boolean,
 }
 
@@ -66,8 +65,8 @@ local Match = {
 		tdm = {
 			teams = true,
 			maxPlayers = 12,
-			matchSeconds = 600, -- 10 minutes
-			teamLives = 40,
+			matchSeconds = 180, -- 3 minutes (Diego's MATCH.clock, uploads/tdm-hud.js)
+			koTarget = 30, -- FIRST TO 30 (Diego's MATCH.target)
 			storm = true,
 		} :: Mode,
 	},
@@ -75,7 +74,10 @@ local Match = {
 	teamNames = { "Strawberry", "Blueberry" },
 
 	waitSeconds = 20, -- [P] the longest wait for every player to arrive before the countdown
-	countdownSeconds = 3, -- [P] the in-arena 3-2-1 (Diego designs it)
+	-- Round 1 of the match screens (2026-10-26): the intro's cards play at least this long before the countdown, even
+	-- when everyone is in at once (Diego's introExit waits until 1.7 s, LOADING SCREEN Y MATCH HUD.dc.html L:630).
+	introMinSeconds = 1.7,
+	countdownSeconds = 3, -- [P] the in-arena 3-2-1 (Diego's: beats 0.8 s apart, GO at Active)
 	respawnSeconds = 3,
 	spawnProtectSeconds = 2,
 	overtimeMaxSeconds = 120, -- [P]
@@ -124,7 +126,7 @@ local Match = {
 		-- results bar
 		enabled = true,
 	},
-	-- jayyyyy 2026-10-15: falling off or leaving the map "counts as a knockout" (TDM: costs a team life; FFA: you wait
+	-- jayyyyy 2026-10-15: falling off or leaving the map "counts as a knockout" (TDM: the other team scores; FFA: you wait
 	-- respawnSeconds like any K.O.). false would only put the player back at a spawn.
 	outOfBoundsIsKo = true,
 	readoutHz = 4, -- [P] the client's test readout chip refreshes this many times a second
@@ -168,17 +170,18 @@ local Match = {
 	-- player's storm bar fills (barFillSeconds of time outside in total = K.O.) and inside it slowly drains.
 	-- It starts as the circle around the whole map (StormMath.startRadius) and is shown from stormStartSeconds. Each
 	-- step shrinks it to radiusFraction of that start radius over shrinkSeconds, beginning at shrinkAt (seconds of
-	-- Active); warnSeconds before each shrink the HUD warns. With these numbers it reaches its smallest circle at 9:20.
+	-- Active); warnSeconds before each shrink the HUD warns. With these numbers it reaches its smallest circle at 2:50
+	-- (2026-10-26: TDM is 3 minutes; still from half time, steps 30 s apart).
 	-- FFA/TDM v1: the server samples every standing player sampleHz times a second; a respawn that would land in the
 	-- storm moves onto the safe circle, respawnInsetStuds inside its edge. `wall` is the client's test placeholder
 	-- (one see-through cylinder, until Diego's storm design): its transparency, height and Art/Palette colour token.
 	Storm = {
-		stormStartSeconds = 300, -- 5:00, half of TDM's 10 minutes
-		warnSeconds = 30, -- [P] "Storm is coming in 0:30"
+		stormStartSeconds = 90, -- 1:30, half of TDM's 3 minutes
+		warnSeconds = 15, -- [P] "Storm is coming in 0:15"
 		steps = {
-			{ shrinkAt = 300, shrinkSeconds = 60, radiusFraction = 0.6 }, -- [P]
-			{ shrinkAt = 400, shrinkSeconds = 60, radiusFraction = 0.3 }, -- [P]
-			{ shrinkAt = 500, shrinkSeconds = 60, radiusFraction = 0.1 }, -- [P] a small circle in the middle
+			{ shrinkAt = 90, shrinkSeconds = 20, radiusFraction = 0.6 }, -- [P]
+			{ shrinkAt = 120, shrinkSeconds = 20, radiusFraction = 0.3 }, -- [P]
+			{ shrinkAt = 150, shrinkSeconds = 20, radiusFraction = 0.1 }, -- [P] a small circle in the middle
 		},
 		barFillSeconds = 3,
 		barDrainSeconds = 9, -- [P] a full bar empties in 9 s back inside ("slowly")
@@ -198,7 +201,8 @@ local Match = {
 		pickupRadiusStuds = 4, -- [P]
 		pickupHeightStuds = 6, -- [P]
 		-- Pick order (also the random roll's order). Boosts last 6 s; dash boost 5 s (user).
-		order = { "shield", "speed", "throwBoost", "ultCharge", "dashBoost", "rapidThrow", "superJump", "teamLife" },
+		-- 2026-10-26: teamLife went with the team lives (TDM scores K.O.s now).
+		order = { "shield", "speed", "throwBoost", "ultCharge", "dashBoost", "rapidThrow", "superJump" },
 		kinds = {
 			shield = { seconds = 6 } :: PowerUp, -- blocks the next hit while it lasts
 			speed = { seconds = 6, walkMultiplier = 1.6 } :: PowerUp, -- run faster (user: x1.6)
@@ -210,7 +214,6 @@ local Match = {
 			-- no wait between throws: the shortest cooldown, Config.Duel.Rules.CooldownClamp.Min (0.6 s; MatchService)
 			rapidThrow = { seconds = 6, cooldownMultiplier = 0 } :: PowerUp,
 			superJump = { seconds = 6, jumpMultiplier = 2 } :: PowerUp, -- jump 2x as high (user)
-			teamLife = { teamsOnly = true } :: PowerUp, -- +1 team life; at 0 lives a knocked-out teammate comes back
 		},
 	},
 

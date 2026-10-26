@@ -2,10 +2,11 @@
 -- MatchRules_Test: unit tests for ServerScriptService.Server.Logic.MatchRules (Free for All / Team Deathmatch, jayyyyy's
 -- rules 2026-10-15). Contract: Waiting (every entrant arrived, else waitSeconds) -> Countdown -> Active -> (Overtime)
 -- -> Result -> Closed; one hit = K.O.; respawn after respawnSeconds with spawnProtectSeconds of protection; FFA first to
--- koTarget, time-up single leader, tie -> overtime until one player alone leads; TDM shared team lives, out at 0, a
--- wiped team loses, time-up more lives, tie -> the next K.O.'s team wins (a storm K.O. counts for the other team);
--- the storm bar (TDM only); shield, timed buffs, ult charge and the TDM team life (revives the teammate out longest);
--- leaving; void; `step` never modifies the state it is given. Time comes only from the test.
+-- koTarget, time-up single leader, tie -> overtime until one player alone leads; TDM (2026-10-26): every K.O. scores
+-- for the other team, first to koTarget, time-up higher score, tie -> the next K.O.'s team wins (a storm K.O. counts
+-- for the other team), a team whose players all leave loses; Waiting lasts at least introMinSeconds; the storm bar
+-- (TDM only); shield, timed buffs and ult charge; leaving; void; `step` never modifies the state it is given. Time
+-- comes only from the test.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -35,6 +36,7 @@ return function(t: Context)
 
 	local M = deepCopy(Config.Match)
 	M.teamNames = { "Red", "Blue" } -- the cases' own team names (qb1: the live ones are Strawberry / Blueberry)
+	M.introMinSeconds = 0 -- the cases count down at the last arrival; the intro's minimum has its own case
 
 	-- A copy of Config.Match with mode fields and top-level fields replaced.
 	local function matchWith(modeId: string?, modeOverrides: { [string]: any }?, overrides: { [string]: any }?): any
@@ -105,6 +107,22 @@ return function(t: Context)
 		expect.equal(s.phase, "Active")
 		expect.equal(s.phaseEndsAt, T0 + 3 + M.countdownSeconds + M.Modes.ffa.matchSeconds)
 		expect.truthy(MatchRules.isLive(s))
+	end)
+
+	-- Round 1 of the match screens (2026-10-26): the intro's cards play at least introMinSeconds.
+	t.test("Waiting lasts at least introMinSeconds, even when everyone is in at once", function()
+		local cfg = matchWith(nil, nil, { introMinSeconds = 1.7 })
+		local s = MatchRules.new(MATCH_ID, "ffa", FFA3, T0, cfg)
+		for _, e in FFA3 do
+			s = step(s, { kind = "arrived", userId = e.userId }, T0)
+		end
+		expect.equal(s.phase, "Waiting")
+		s = step(s, { kind = "tick" }, T0 + 1.6)
+		expect.equal(s.phase, "Waiting")
+		local fx
+		s, fx = step(s, { kind = "tick" }, T0 + 1.7)
+		expect.equal(s.phase, "Countdown")
+		expect.equal(kinds(fx, "phase")[1].startedAt, T0 + 1.7)
 	end)
 
 	t.test("the wait times out: players who never arrived are left out; under minPlayers cancels", function()
@@ -285,29 +303,25 @@ return function(t: Context)
 		expect.equal(#kinds(fx, "ko"), 0)
 	end)
 
-	t.test("TDM: every K.O. costs a team life; at 0 the victim is out; a wiped team loses", function()
-		local cfg = matchWith("tdm", { teamLives = 1 })
+	t.test("TDM: every K.O. scores one for the other team (the victim respawns); first to koTarget wins", function()
+		local cfg = matchWith("tdm", { koTarget = 2 })
 		local s, a = live("tdm", TDM4, cfg)
 		local fx
 		s, fx = hit(s, 3, 1, a + 1)
-		expect.equal(s.teamLives.Blue, 0)
-		expect.equal(kinds(fx, "teamLives")[1].lives, 0)
+		expect.deepEqual(s.teamScore, { Red = 1, Blue = 0 })
+		expect.deepEqual(kinds(fx, "teamScore"), { { kind = "teamScore", team = "Red", score = 1 } })
 		expect.equal(MatchRules.participant(s, 3).respawnAt, a + 1 + M.respawnSeconds)
+		expect.falsy(MatchRules.participant(s, 3).out)
+		expect.falsy(s.ended)
 		s, fx = hit(s, 4, 2, a + 2)
-		expect.equal(#kinds(fx, "out"), 1)
-		expect.truthy(MatchRules.participant(s, 4).out)
-		expect.equal(MatchRules.participant(s, 4).respawnAt, nil)
-		expect.falsy(s.ended) -- 3 is still coming back: Blue must carry
-		local back = a + 1 + M.respawnSeconds + M.spawnProtectSeconds
-		s, fx = hit(s, 3, 1, back + 0.5)
 		expect.equal(s.outcome.kind, "win")
-		expect.equal(s.outcome.reason, "wiped")
+		expect.equal(s.outcome.reason, "koTarget")
 		expect.equal(s.outcome.winnerTeam, "Red")
 		table.sort(s.outcome.winners)
 		expect.deepEqual(s.outcome.winners, { 1, 2 })
 	end)
 
-	t.test("TDM time-up: more lives wins; a tie goes to overtime where the next K.O.'s team wins", function()
+	t.test("TDM time-up: the higher score wins; a tie goes to overtime where the next K.O.'s team wins", function()
 		local s, a = live("tdm", TDM4)
 		s = hit(s, 3, 1, a + 1)
 		s = step(s, { kind = "tick" }, a + M.Modes.tdm.matchSeconds)
@@ -323,37 +337,6 @@ return function(t: Context)
 		expect.equal(tie.outcome.winnerTeam, "Blue")
 	end)
 
-	t.test("TDM team life: +1 life; at 0 lives it brings back the teammate out longest, at once", function()
-		local cfg = matchWith("tdm", { teamLives = 0 })
-		local entrants = {
-			{ userId = 1, team = "Red" },
-			{ userId = 2, team = "Red" },
-			{ userId = 5, team = "Red" },
-			{ userId = 3, team = "Blue" },
-		}
-		local s, a = live("tdm", entrants, cfg)
-		s = hit(s, 2, 3, a + 1) -- out first
-		s = hit(s, 5, 3, a + 2) -- out second
-		local fx
-		s, fx = step(s, { kind = "pickup", userId = 1, power = "teamLife" }, a + 3)
-		local revived = kinds(fx, "revived")[1]
-		expect.equal(revived.userId, 2)
-		expect.equal(revived.by, 1)
-		expect.equal(kinds(fx, "respawn")[1].protectUntil, a + 3 + M.spawnProtectSeconds)
-		expect.truthy(MatchRules.participant(s, 2).alive)
-		expect.truthy(MatchRules.participant(s, 5).out)
-		expect.equal(s.teamLives.Red, 0)
-
-		local plenty, b = live("tdm", TDM4)
-		plenty, fx = step(plenty, { kind = "pickup", userId = 1, power = "teamLife" }, b + 1)
-		expect.equal(plenty.teamLives.Red, M.Modes.tdm.teamLives + 1)
-		expect.equal(#kinds(fx, "revived"), 0)
-
-		local ffa, c = live("ffa", FFA3)
-		ffa, fx = step(ffa, { kind = "pickup", userId = 1, power = "teamLife" }, c + 1)
-		expect.equal(#fx, 0)
-	end)
-
 	t.test("TDM: a team whose players all leave is wiped", function()
 		local s, a = live("tdm", TDM4)
 		s = step(s, { kind = "leave", userId = 3 }, a + 1)
@@ -364,7 +347,7 @@ return function(t: Context)
 
 	-- Storm ------------------------------------------------------------------------------------------------------------
 
-	t.test("TDM storm: barFillSeconds in the storm is a storm K.O. that costs a life; back inside it drains", function()
+	t.test("TDM storm: barFillSeconds in the storm is a storm K.O. the other team scores; inside it drains", function()
 		local s, a = live("tdm", TDM4)
 		local start = a + M.Storm.stormStartSeconds
 		local inStorm = { [3] = true }
@@ -385,7 +368,7 @@ return function(t: Context)
 		expect.equal(ko.victim, 3)
 		expect.equal(ko.cause, "storm")
 		expect.equal(ko.by, nil)
-		expect.equal(s.teamLives.Blue, M.Modes.tdm.teamLives - 1)
+		expect.deepEqual(s.teamScore, { Red = 1, Blue = 0 })
 		expect.equal(MatchRules.participant(s, 1).stormBar, 0)
 	end)
 
@@ -489,7 +472,7 @@ return function(t: Context)
 	-- Out of bounds (jayyyyy 2026-10-15: falling off the map "counts as a knockout") ---------------------------------
 
 	t.test(
-		"oob: a K.O. with no attacker that respawns; TDM costs a team life; ignored when down or not live",
+		"oob: a K.O. with no attacker that respawns; in TDM the other team scores; ignored when down or not live",
 		function()
 			local s, a = live("ffa", FFA3)
 			local fx
@@ -507,7 +490,7 @@ return function(t: Context)
 
 			local tdm, b = live("tdm", TDM4)
 			tdm = step(tdm, { kind = "oob", userId = 3 }, b + 1)
-			expect.equal(tdm.teamLives.Blue, M.Modes.tdm.teamLives - 1)
+			expect.deepEqual(tdm.teamScore, { Red = 1, Blue = 0 })
 
 			local early = MatchRules.new(MATCH_ID, "ffa", FFA3, T0, M)
 			for _, e in FFA3 do
