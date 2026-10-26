@@ -25,6 +25,8 @@
 --   * trackPose (reduced motion: only the fade), clipText (an ellipsis to fit).
 -- Storm fix (owner 2026-10-26): stormShows (alive, outside the safe circle of a TDM storm that is up, live; never
 -- without a position), dockClear (the desktop ability bar's height in base px, none on the phone layout).
+-- The live top bar (2026-10-26): topBarLive (Countdown to Overtime), placeOf (ties share), ffaRival (the leader, the
+-- runner-up when you lead), topBarTime (the match clock in the 3-2-1, the time left, none in overtime).
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -421,5 +423,59 @@ return function(t: Context)
 		expect.equal(Format.dockClear(screen, 1, true), 0) -- touch: the phone layout
 		expect.equal(Format.dockClear(Vector2.new(900, 600), 1, false), 0) -- a narrow window: the phone layout
 		expect.equal(Format.dockClear(screen, 0, false), 0) -- a bad scale
+	end)
+
+	-- The live top bar (2026-10-26) -------------------------------------------------------------------------------------
+
+	local function ffaView(kos: { number }, knockedOut: { number }?): any
+		local players = {}
+		for index, n in kos do
+			table.insert(players, {
+				userId = index,
+				kos = n,
+				knockedOut = if knockedOut then knockedOut[index] else 0,
+			})
+		end
+		return { mode = "ffa", players = players, you = { userId = 1 } }
+	end
+
+	t.test("topBarLive: the bar shows from the 3-2-1 through overtime", function()
+		for phase, shows in { Waiting = false, Countdown = true, Active = true, Overtime = true, Result = false } do
+			expect.equal(Format.topBarLive({ matchPhase = phase }), shows)
+		end
+		expect.equal(Format.topBarLive(nil), false)
+	end)
+
+	t.test("placeOf: one more than the players with more squishes (ties share a place)", function()
+		local view = ffaView({ 5, 9, 9, 2 })
+		expect.equal(Format.placeOf(view, 2), 1)
+		expect.equal(Format.placeOf(view, 3), 1)
+		expect.equal(Format.placeOf(view, 1), 3)
+		expect.equal(Format.placeOf(view, 4), 4)
+		expect.equal(Format.placeOf(view, 99), #view.players) -- not in the match: last
+	end)
+
+	t.test(
+		"ffaRival: the leader, or the best other player when you lead (fewer times squished breaks a tie)",
+		function()
+			expect.equal(Format.ffaRival(ffaView({ 5, 9, 7 })).userId, 2) -- you are 3rd: the leader
+			expect.equal(Format.ffaRival(ffaView({ 12, 9, 7 })).userId, 2) -- you lead: the runner-up
+			expect.equal(Format.ffaRival(ffaView({ 12, 9, 9 }, { 0, 4, 1 })).userId, 3) -- a tie: fewer times squished
+			expect.equal(Format.ffaRival(ffaView({ 3 })), nil) -- alone
+		end
+	)
+
+	t.test("topBarTime: the whole match clock in the 3-2-1, the time left live, none in overtime", function()
+		local seconds = Config.Match.Modes.tdm.matchSeconds
+		local NOW = 500
+		local view = { mode = "tdm", matchPhase = "Countdown", phaseEndsAt = NOW + 3 }
+		expect.equal(Format.topBarTime(view, NOW), string.format("%d:%02d", seconds // 60, seconds % 60))
+		view.matchPhase = "Active"
+		view.phaseEndsAt = NOW + 102 -- Diego's review clock (T:5)
+		expect.equal(Format.topBarTime(view, NOW), "1:42")
+		view.phaseEndsAt = NOW - 4
+		expect.equal(Format.topBarTime(view, NOW), "0:00")
+		view.matchPhase = "Overtime"
+		expect.equal(Format.topBarTime(view, NOW), nil)
 	end)
 end

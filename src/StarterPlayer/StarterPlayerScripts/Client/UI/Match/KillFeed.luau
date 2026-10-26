@@ -15,7 +15,8 @@
 -- banner plays their sound and burst (KillBannerController), so nothing more here; M's SQUISHED! medal is that same
 -- moment and is not built (plan M6 medal: skipped, Diego's banner).
 -- While it lives: the Roblox player list is off (v1 §1.4: on PC it opens over the feed), its earlier state back at the
--- end; the toast column keeps beside the feed (UIController.toastsBeside "matchFeed").
+-- end; the toast column keeps beside the feed (UIController.toastsBeside "matchFeed"). The live top bar (2026-10-26):
+-- while it shows, the feed starts under it (ctx.shared.topBarBottom, LOADING SCREEN Y MATCH HUD S:990).
 
 -- Services
 
@@ -310,6 +311,9 @@ function KillFeed.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 
 	function piece.update(_self: any, view: any, _now: number)
 		list.Visible = SHOWN_PHASES[view.matchPhase] == true
+		-- The live top bar (2026-10-26, S:990): under it while it shows (it updates first and says where it ends).
+		local below = ctx.shared.topBarBottom
+		list.Position = UDim2.new(1, -CFG.right, 0, if type(below) == "number" then math.round(below) else CFG.top)
 		local clock = os.clock()
 		local reduced = ctx.reduced()
 		local removed = false

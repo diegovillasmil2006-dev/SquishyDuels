@@ -12,7 +12,8 @@
 --   head(spec) -> Frame                a player's head in an ink-bordered box (M:123, M:131, M:177): the avatar head
 --                                      (rbxthumb, v1 §1.8) for a real player, else their squishy's picture; `dead`
 --                                      greys the box and the picture (v1 §1.11, M:131) and `squash` squashes the
---                                      picture inside a rounded CanvasGroup (v1 §1.6)
+--                                      picture inside a rounded CanvasGroup (v1 §1.6); the live top bar adds `pad`,
+--                                      `inner`, `ink` and `dim` (S:146)
 --   chip(spec) -> (Frame, number)      a pill / tag: ink border inside, a top -> end gradient, a role's text; its width
 --   ink / line / spaced                the intro's and the end screens' text (round 1 of the match screens, below)
 --   statusBar(parent, cfg, spec) -> StatusBar   the RESPAWNING bar (RespawnBar) and, in purple with no number, the
@@ -67,6 +68,12 @@ export type HeadSpec = {
 	dead: { gray: number, brightness: number, inkAlpha: number }?,
 	squash: { sx: number, sy: number, y: number }?, -- the picture squashed and moved down (base px at `size`)
 	parent: Instance?,
+	-- The live top bar (S:146): the picture `pad` px inside the border on an `inner` colour, the border in `ink` (yours
+	-- #FFD86B), the picture dimmed to `dim` (a knocked-out head: Roblox has no greyscale).
+	pad: number?,
+	inner: Color3?,
+	ink: Color3?,
+	dim: number?,
 }
 
 export type ChipSpec = {
@@ -208,12 +215,14 @@ function MatchKit.head(spec: HeadSpec): Frame
 	})
 	Theme.corner(spec.radius, box)
 	MatchKit.gradient(box, if dead then deadLook(who.look, dead.gray, dead.brightness) else who.look)
-	local innerSize = spec.size - 2 * spec.border
+	local inset = spec.border + (spec.pad or 0)
+	local innerSize = spec.size - 2 * inset
 	-- The picture's holder: a rounded CanvasGroup (ClipsDescendants ignores UICorner, v1 §1.6) so a squashed or
 	-- greyed picture stays inside the box.
 	local clip: CanvasGroup = Create("CanvasGroup", {
 		Name = "Picture",
-		BackgroundTransparency = 1,
+		BackgroundColor3 = spec.inner or WHITE,
+		BackgroundTransparency = if spec.inner then 0 else 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromScale(0.5, 0.5),
 		Size = UDim2.fromOffset(innerSize, innerSize),
@@ -221,7 +230,7 @@ function MatchKit.head(spec: HeadSpec): Frame
 		Active = false,
 		Parent = box,
 	})
-	Theme.corner(math.max(spec.radius - spec.border, 0), clip)
+	Theme.corner(math.max(spec.radius - inset, 0), clip)
 	local squash = spec.squash
 	local share = innerSize / spec.size
 	local sx, sy = if squash then squash.sx else 1, if squash then squash.sy else 1
@@ -261,8 +270,10 @@ function MatchKit.head(spec: HeadSpec): Frame
 			Active = false,
 			Parent = clip,
 		})
+	elseif spec.dim then
+		clip.GroupColor3 = Color3.new(spec.dim, spec.dim, spec.dim)
 	end
-	local stroke = Theme.stroke(Theme.Colors.inkUI, spec.border, box)
+	local stroke = Theme.stroke(spec.ink or Theme.Colors.inkUI, spec.border, box)
 	MatchKit.inner(stroke)
 	if spec.parent then
 		box.Parent = spec.parent

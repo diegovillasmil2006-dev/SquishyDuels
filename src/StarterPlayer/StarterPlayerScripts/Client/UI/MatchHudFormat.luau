@@ -76,6 +76,15 @@
 --   dockClear(screen, scale, touch) -> number   the desktop ability bar's height in base px (its bottom margin, the
 --                                      tallest button, its drop and the tag row, at the bar's own canvas scale); 0 on
 --                                      the phone layout (AbilityBarFormat.form: its buttons sit bottom-right)
+-- The live top bar (2026-10-26, owner: "Yes, build the live top bar like that (Free for All: the leader vs you)";
+-- UI/Match/TopBar):
+--   topBarLive(view) -> boolean         it shows from the 3-2-1 (it drops in with the count) through Overtime
+--   placeOf(view, userId) -> number     1 + the players with more K.O.s (ties share a place); last when not found
+--   ffaRival(view) -> player?           Free for All's left side: the best player but you (the leader, or the
+--                                      runner-up when you lead; fewer times knocked out breaks a tie, as
+--                                      MatchFormat.leader)
+--   topBarTime(view, now) -> string?    the clock: the mode's whole match in the 3-2-1, the time left live, nil in
+--                                      Overtime (the bar says OVERTIME)
 
 -- Requires
 
@@ -86,6 +95,7 @@ local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
 local StormMath = require(Shared.StormMath)
 local Strings = require(Shared.Strings)
+local TimeUtil = require(Shared.Util.TimeUtil)
 local Tweens = require(script.Parent.Parent.Anim.Tweens)
 local AbilityBarFormat = require(script.Parent.AbilityBarFormat)
 local MatchFormat = require(script.Parent.MatchFormat)
@@ -109,6 +119,8 @@ export type Context = {
 	shared: { [string]: any }, -- one table per session, for the pieces (the card's rect: `cardRect`)
 	-- Storm fix: the local character's root position now (nil: no character; nil in most tests).
 	position: (() -> Vector3?)?,
+	-- The live top bar: the toast column starts under `object` (UIController.toastsBelow; nil: drop it).
+	toastsBelow: ((key: string, object: GuiObject?) -> ())?,
 	-- Round 1 of the match screens: a looped sound the piece drives (SoundController.playLoop; nil: none).
 	loop: ((key: string) -> any)?,
 	-- End screens round A: "leave" (LOBBY: back now) or "again" (PLAY AGAIN: back and queued for `mode`); and the
@@ -397,6 +409,57 @@ function MatchHudFormat.stormShows(view: any, now: number, position: Vector3?, s
 	end
 	local radius = MatchFormat.stormRadius(view, now, storm)
 	return radius ~= nil and StormMath.inStorm(centre, radius, position)
+end
+
+function MatchHudFormat.topBarLive(view: any): boolean
+	return type(view) == "table" and (view.matchPhase == "Countdown" or LIVE_PHASES[view.matchPhase] == true)
+end
+
+function MatchHudFormat.placeOf(view: any, userId: number): number
+	local mine: any = nil
+	for _, player in view.players do
+		if player.userId == userId then
+			mine = player
+		end
+	end
+	if mine == nil then
+		return #view.players
+	end
+	local place = 1
+	for _, player in view.players do
+		if player.kos > mine.kos then
+			place += 1
+		end
+	end
+	return place
+end
+
+function MatchHudFormat.ffaRival(view: any): any
+	local best: any = nil
+	for _, player in view.players do
+		if
+			player.userId ~= view.you.userId
+			and (
+				best == nil
+				or player.kos > best.kos
+				or (player.kos == best.kos and player.knockedOut < best.knockedOut)
+			)
+		then
+			best = player
+		end
+	end
+	return best
+end
+
+function MatchHudFormat.topBarTime(view: any, now: number): string?
+	if view.matchPhase == "Overtime" then
+		return nil
+	end
+	if view.matchPhase == "Countdown" then
+		local mode = Config.Match.Modes[view.mode]
+		return TimeUtil.formatCountdown(if mode then mode.matchSeconds else 0)
+	end
+	return MatchFormat.timeLeft(view, now) or TimeUtil.formatCountdown(0)
 end
 
 function MatchHudFormat.dockClear(screen: Vector2, scale: number, touch: boolean): number

@@ -565,6 +565,11 @@ local Palette = {
 	MatchVignetteMid = Color3.fromHex("#8C286E"), -- M:61: rgba(140,40,110,.35) at 75%
 	MatchVignetteEdge = Color3.fromHex("#2E0E3A"), -- M:61: rgba(46,14,58,.72) at 100%
 	MatchStormTint = Color3.fromHex("#DCC8FF"), -- storm fix (owner 2026-10-26): the screen tint in the storm [P]
+	-- The live top bar (2026-10-26, LOADING SCREEN Y MATCH HUD S:146-158): the timer pill, a knocked-out head's frame and
+	-- the goal pill's top stop (its end: Lemon).
+	MatchTopTimer = Color3.fromHex("#2A1D45"),
+	MatchTopDead = Color3.fromHex("#8F8AA0"),
+	MatchTopGoalTop = Color3.fromHex("#FFF3B8"),
 
 	-- Pens3 phase 1: the base pen (lobby design v6, `K:n` = kit.json line n, approved by the owner). World only
 	-- (BaseService draws the fence and the sign; PenController the coin labels and the own sign's state).

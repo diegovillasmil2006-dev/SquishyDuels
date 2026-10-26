@@ -34,6 +34,7 @@ export type MotionPose = {
 
 -- End screens round B1: the podium and its name tags (a child module: this one is near the Source limit).
 local Podium = require(script.Parent.Podium)
+local MatchTopBar = require(script.Parent.MatchTopBar) -- the live top bar (a child module for the same reason)
 
 local UI = {
 	-- UIScale = clamp(min(SD_Hud.AbsoluteSize.X / referenceWidth, AbsoluteSize.Y / referenceHeight), min, max),
@@ -1989,6 +1990,9 @@ local UI = {
 			matchCardCaption = { kind = "Small", stroke = 3, color = "MatchCardHandle" },
 			matchRespawnLabel = { kind = "Button", stroke = 5 },
 			matchRespawnNumber = { kind = "Hero", stroke = 8, drop = 4, color = "StickerCoinText" },
+			-- The live top bar (2026-10-26, S:153): a side's score (52 px, stroke 10, drop 5; phone 26 px, 5, 2).
+			matchTopScore = { kind = "Prize", stroke = 10, drop = 5 },
+			matchTopScorePhone = { kind = "HudNumber", stroke = 5, drop = 2 },
 			-- UI FINAL R4 (the lobby HUD): "Join the queue" (H:131: 17 px white, text-shadow 0 2px 0
 			-- rgba(120,10,50,.55); PR3 adds the 1.5 px ink outline), the "GRIP" tag over the level (H:94: 18 px
 			-- #9AF5D2, stroke 5), the Double Grip chip (H:89: 14 px -> 16, #FFE36B, stroke 4), the search bar's time
@@ -2991,7 +2995,7 @@ local UI = {
 	Match = {
 		gui = { displayOrder = 14, insets = Enum.ScreenInsets.DeviceSafeInsets } :: ScreenGuiSpec, -- 2026-10-24: Diego's top
 		enabled = {
-			topBar = false, -- M5 (waits for Diego's big-match bar)
+			topBar = true, -- the live top bar (2026-10-26: Diego's page 3; UI/Match/TopBar; the test readout goes)
 			feed = true, -- M6 kill feed (2026-10-17: on, with look-alike pictures and sounds until the owner's upload)
 			medal = false, -- M6 SQUISHED! medal: not built, Diego's kill banner (KillBannerController) is that moment
 			card = true, -- M7 "squished by" card
@@ -3190,6 +3194,8 @@ local UI = {
 			tintMs = 400, -- [P] as the knocked-out vignette's fade
 			easeRate = 8, -- [P]
 		},
+		-- The live top bar (2026-10-26): UI/Match/TopBar (Config/MatchTopBar).
+		topBar = MatchTopBar,
 		-- Match HUD M7: the knocked-out vignette (M:61: the radial picture over the whole screen, `margin` past the safe
 		-- area for the notch [P]) and backdrop-filter saturate(.4) brightness(.95) as a client ColorCorrectionEffect;
 		-- sdFade .4 s in, gone at once at the respawn. While img.fx.radial.matchVignette has no id: M:61's stops on two
@@ -4516,6 +4522,7 @@ local UI = {
 		endBanner = { 0.3, 1.25, 0.5, 1 },
 		endJelly = { 0.65, 0, 0.35, 1 },
 		endFill = { 0.3, 0.9, 0.4, 1 },
+		topFill = { 0.3, 1.5, 0.5, 1 }, -- the live top bar (S:154 the score bars' width)
 	} :: { [string]: { number } },
 
 	-- Kill banners (2026-10-16, v2 2026-10-17, VillasmilGaming: Valorant-style; UI/KillBanner, UI/KillBannerFormat). The

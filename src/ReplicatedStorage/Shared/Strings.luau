@@ -673,6 +673,13 @@ local Strings = {
 		storm = {
 			label = "IN THE STORM!",
 		},
+		-- The live top bar (2026-10-26, LOADING SCREEN Y MATCH HUD S:148, S:158; UI/Match/TopBar): your tag, the goal
+		-- pill ({target} = the mode's K.O. target) and the timer in overtime [P].
+		top = {
+			you = "YOU",
+			goal = "FIRST TO {target}",
+			overtime = "OVERTIME",
+		},
 		-- Round 1 of the match screens (LOADING SCREEN Y MATCH HUD S:437, S:986-994): the cover, the intro's lines
 		-- ({mode} = match.mode.*, upper case), a loading card, the load bar and the 3-2-1.
 		intro = {

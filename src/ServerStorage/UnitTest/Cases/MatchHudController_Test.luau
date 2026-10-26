@@ -88,14 +88,17 @@ return function(t: Context)
 		return n
 	end
 
-	t.test("the pieces are respawn, storm, card, feed, intro, finish in draw order, each with its switch", function()
-		local names = {}
-		for _, spec in Hud.PIECES do
-			table.insert(names, spec.name)
-			expect.truthy(type(Config.UI.Match.enabled[spec.name]) == "boolean")
+	t.test(
+		"the pieces are respawn, storm, topBar, card, feed, intro, finish in draw order, each with its switch",
+		function()
+			local names = {}
+			for _, spec in Hud.PIECES do
+				table.insert(names, spec.name)
+				expect.truthy(type(Config.UI.Match.enabled[spec.name]) == "boolean")
+			end
+			expect.deepEqual(names, { "respawn", "storm", "topBar", "card", "feed", "intro", "finish" })
 		end
-		expect.deepEqual(names, { "respawn", "storm", "card", "feed", "intro", "finish" })
-	end)
+	)
 
 	t.test("init / start / destroy run cleanly in Edit mode (no LocalPlayer, no match)", function()
 		Hud.init()

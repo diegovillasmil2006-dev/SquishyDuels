@@ -13,7 +13,8 @@
 -- tint ("storm", UI/Match/StormBar, after the RESPAWNING bar; ctx.position = your character's root position). End
 -- screens round B1 (2026-10-26): ctx.podium starts the finish piece's 3D podium (UI/Match/MatchPodium) with the
 -- camera (CameraController.save / restore), the held squishies (HeldSquishyController.setHidden / gripC0), the hands
--- (FirstPersonController.setAway) and the settings' camera shake, which a UI module may not reach itself. ctx
+-- (FirstPersonController.setAway) and the settings' camera shake, which a UI module may not reach itself. The live top
+-- bar (2026-10-26): "topBar" (UI/Match/TopBar, before the feed, which starts under it; ctx.toastsBelow). ctx
 -- also gives the pieces play (SoundController.play, else a fallback key while the design's sound has no id),
 -- touchAreas (with touch input: the thumbstick zone and ControlsController.touchLayout's buttons, base px; the card and
 -- the bar keep off them), toastsBeside (UIController's) and `shared` (one table per session).
@@ -75,6 +76,7 @@ local MatchIntro = require(Client.UI.Match.MatchIntro)
 local MatchPodium = require(Client.UI.Match.MatchPodium)
 local RespawnBar = require(Client.UI.Match.RespawnBar)
 local StormBar = require(Client.UI.Match.StormBar)
+local TopBar = require(Client.UI.Match.TopBar)
 local CameraController = require(script.Parent.CameraController)
 local ControlsController = require(script.Parent.ControlsController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
@@ -133,6 +135,7 @@ local MatchHudController = {}
 local PIECES: { MatchHudFormat.PieceSpec } = {
 	{ name = "respawn", new = RespawnBar.new }, -- M7
 	{ name = "storm", new = StormBar.new }, -- storm fix: IN THE STORM! health bar and tint
+	{ name = "topBar", new = TopBar.new }, -- the live top bar (before the feed: it tells the feed where it ends)
 	{ name = "card", new = DeathCard.new }, -- M7
 	{ name = "feed", new = KillFeed.new }, -- M6
 	{ name = "intro", new = MatchIntro.new }, -- round 1 of the match screens: cover, intro, 3-2-1
@@ -244,6 +247,9 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 		end,
 		toastsBeside = function(key: string, object: GuiObject?)
 			UIController.toastsBeside(key, object)
+		end,
+		toastsBelow = function(key: string, object: GuiObject?)
+			UIController.toastsBelow(key, object)
 		end,
 		shared = {},
 		loop = function(key: string): any

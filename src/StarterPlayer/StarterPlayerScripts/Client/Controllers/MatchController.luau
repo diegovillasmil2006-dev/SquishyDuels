@@ -19,7 +19,8 @@
 -- * Readout (D13, a TEST READOUT until Diego's arena HUD): one Components/Chip at the top centre of SD_DuelHud, its text
 --   MatchFormat.readout (K.O.s and the leader, or the team lives; the timer; the storm bar; overtime; the respawn wait),
 --   refreshed Config.Match.readoutHz times a second (every frame when that is missing); toasts start under it while it
---   shows (UIController.toastsBelow "match").
+--   shows (UIController.toastsBelow "match"). Not made while Config.UI.Match.enabled.topBar is on (2026-10-26: the
+--   live top bar, UI/Match/TopBar, shows all of it: the scores, the clock, OVERTIME and the power-ups).
 -- * Lighting and map animations (D10): Diego's ReplicatedStorage.DuelMapScripts.MapLighting.Apply(mapCode) when the
 --   local player's match view appears and MapLighting.Reset() when it ends; MapAnimations_<mapCode>.Start(map) (the
 --   Workspace.DuelMaps child whose MapCode attribute is the view's mapCode) once the phase reaches Countdown (reading:
@@ -702,7 +703,8 @@ local function beginLook(view: StateController.MatchView)
 	end)
 	showHud()
 	lc:add(hideHud)
-	local chip = ensureReadout()
+	-- The live top bar (2026-10-26) replaces the test readout while Config.UI.Match.enabled.topBar is on.
+	local chip = if Config.UI.Match.enabled.topBar then nil else ensureReadout()
 	if chip then
 		chip.root.Visible = true
 		chip:setText("")

@@ -13,7 +13,11 @@
 --     come with it and go at your respawn (with ui.pop); nothing in Lighting is left behind;
 --   * the storm bar (storm fix, owner 2026-10-26): while you stand in the TDM storm, IN THE STORM! with a fill = the
 --     health the storm leaves you and the purple tint in Lighting; none with no storm, knocked out or with no
---     character; both go back inside the safe circle.
+--     character; both go back inside the safe circle;
+--   * the live top bar (2026-10-26): TDM your team left (you in Slot1, nearest the score, with YOU), 6 heads a side,
+--     both scores, the clock and FIRST TO {target}; a squished head shows its seconds; Free for All the leader (the
+--     runner-up when you lead) vs you with places; nothing before the 3-2-1; OVERTIME; power-up pills; it tells the
+--     feed where it ends (shared.topBarBottom) and the feed starts there.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -36,6 +40,7 @@ return function(t: Context)
 	local DeathCard = t.requireClient("UI/Match/DeathCard")
 	local RespawnBar = t.requireClient("UI/Match/RespawnBar")
 	local StormBar = t.requireClient("UI/Match/StormBar")
+	local TopBar = t.requireClient("UI/Match/TopBar")
 	local MatchIntro = t.requireClient("UI/Match/MatchIntro")
 	local MatchEnd = t.requireClient("UI/Match/MatchEnd")
 	local Config = t.requireShared("Config")
@@ -181,7 +186,7 @@ return function(t: Context)
 		local far = function(): Vector3?
 			return Vector3.new(1e5, 3, 0) -- outside every safe circle: the storm bar shows where it can
 		end
-		for _, module in { RespawnBar, StormBar, DeathCard, KillFeed, MatchIntro, MatchEnd } do
+		for _, module in { RespawnBar, StormBar, TopBar, DeathCard, KillFeed, MatchIntro, MatchEnd } do
 			for _, state in Fixtures.STATES do
 				for _, compact in { false, true } do
 					local r = run(module, state, compact, far)
@@ -347,6 +352,150 @@ return function(t: Context)
 			end
 		end
 	)
+
+	-- The live top bar (2026-10-26) -------------------------------------------------------------------------------------
+
+	local function topText(root: Instance, holder: string, name: string): string?
+		local bar = root:FindFirstChild("MatchTopBar", true) or root -- a slot: look inside it
+		local box = bar:FindFirstChild(holder, true)
+		local label = box and box:FindFirstChild(name, true)
+		return if label and label:IsA("TextLabel") then label.Text else nil
+	end
+
+	local function slots(root: Instance, side: string): { Instance }
+		local heads = assert(root:FindFirstChild(side, true), side)
+		local out = {}
+		for index = 1, 6 do
+			local slot = heads:FindFirstChild("Slot" .. index)
+			if slot then
+				table.insert(out, slot)
+			end
+		end
+		return out
+	end
+
+	local function guarded(r: any, fn: () -> ())
+		local ok, err = pcall(fn)
+		finish(r)
+		if not ok then
+			error(err, 0)
+		end
+	end
+
+	t.test(
+		"top: TDM: your team left with you nearest the score, 6 heads a side, the scores, the clock, FIRST TO 30",
+		function()
+			local r = run(TopBar, "tdm_score")
+			guarded(r, function()
+				local view = r.fixture.view
+				local bar = assert(r.root:FindFirstChild("MatchTopBar")) :: Frame
+				expect.equal(bar.Visible, true)
+				local left, right = slots(r.root, "HeadsLeft"), slots(r.root, "HeadsRight")
+				expect.equal(#left, 6)
+				expect.equal(#right, 6)
+				expect.equal(left[1]:GetAttribute("UserId"), view.you.userId) -- Slot1 is nearest the score
+				expect.equal(topText(left[1], "Tag", "Text"), Strings.matchHud.top.you)
+				local mine, theirs = view.you.team, nil
+				for team in view.teamScore do
+					if team ~= mine then
+						theirs = team
+					end
+				end
+				expect.equal(topText(r.root, "ScoreLeft", "Score"), tostring(view.teamScore[mine]))
+				expect.equal(topText(r.root, "ScoreRight", "Score"), tostring(view.teamScore[theirs]))
+				expect.equal(topText(r.root, "Timer", "Time"), Format.topBarTime(view, NOW))
+				expect.equal(
+					topText(r.root, "Goal", "Text"),
+					Strings.format(Strings.matchHud.top.goal, { target = view.koTarget })
+				)
+				expect.truthy(type(r.ctx.shared.topBarBottom) == "number" and r.ctx.shared.topBarBottom > 0)
+			end)
+		end
+	)
+
+	t.test("top: a squished player's head shows the seconds until they are back", function()
+		local r = run(TopBar, "tdm_knockedOut")
+		guarded(r, function()
+			local mine = slots(r.root, "HeadsLeft")[1]
+			local you = r.fixture.view.you
+			expect.equal(topText(mine, "Respawn", "Seconds"), tostring(Format.respawnLeft(you.respawnAt, NOW)))
+			local back = alive(r.fixture.view)
+			back.players = table.clone(back.players)
+			for index, player in back.players do
+				if player.userId == you.userId then
+					local up = table.clone(player)
+					up.alive = true
+					up.respawnAt = nil
+					back.players[index] = up
+				end
+			end
+			r.piece:update(back, NOW)
+			expect.equal(mine:FindFirstChild("Respawn", true), nil)
+		end)
+	end)
+
+	t.test("top: Free for All: the leader (the runner-up when you lead) vs you, each with their place", function()
+		local r = run(TopBar, "ffa_score")
+		guarded(r, function()
+			local view = r.fixture.view
+			local rival = assert(Format.ffaRival(view))
+			local left, right = slots(r.root, "HeadsLeft"), slots(r.root, "HeadsRight")
+			expect.equal(#left, 1)
+			expect.equal(#right, 1)
+			expect.equal(left[1]:GetAttribute("UserId"), rival.userId)
+			expect.equal(right[1]:GetAttribute("UserId"), view.you.userId)
+			expect.equal(topText(r.root, "ScoreLeft", "Score"), tostring(rival.kos))
+			local mine = 0
+			for _, player in view.players do
+				if player.userId == view.you.userId then
+					mine = player.kos
+				end
+			end
+			expect.equal(topText(r.root, "ScoreRight", "Score"), tostring(mine))
+			expect.equal(topText(left[1], "Tag", "Text"), MatchEnd.ordinal(Format.placeOf(view, rival.userId)))
+			expect.equal(topText(right[1], "Tag", "Text"), MatchEnd.ordinal(Format.placeOf(view, view.you.userId)))
+		end)
+	end)
+
+	t.test("top: not before the 3-2-1; OVERTIME in overtime; your power-ups as pills under it", function()
+		local waiting = run(TopBar, "tdm_waiting")
+		local bar = waiting.root:FindFirstChild("MatchTopBar")
+		local shown = bar ~= nil and (bar :: Frame).Visible
+		local bottom = waiting.ctx.shared.topBarBottom
+		finish(waiting)
+		expect.equal(shown, false)
+		expect.equal(bottom, nil) -- the feed keeps its own top
+		local over = run(TopBar, "tdm_overtime")
+		guarded(over, function()
+			expect.equal(topText(over.root, "Timer", "Time"), Strings.matchHud.top.overtime)
+		end)
+		local boosted = run(TopBar, "tdm_powerUps")
+		guarded(boosted, function()
+			local pills = assert(boosted.root:FindFirstChild("Boosts", true))
+			local texts = {}
+			for _, d in pills:GetDescendants() do
+				if d:IsA("TextLabel") then
+					table.insert(texts, d.Text)
+				end
+			end
+			expect.truthy(#texts > 0)
+			expect.truthy(string.find(table.concat(texts, " "), Strings.match.readout.powerUpName.speed, 1, true))
+		end)
+	end)
+
+	t.test("feed: under the top bar while it shows", function()
+		local r = run(KillFeed, "tdm_firstBlood")
+		guarded(r, function()
+			local list = assert(r.root:FindFirstChild("MatchFeed")) :: Frame
+			local top = list.Position.Y.Offset
+			r.ctx.shared.topBarBottom = top + 100
+			r.piece:update(r.fixture.view, NOW)
+			expect.equal(list.Position.Y.Offset, top + 100)
+			r.ctx.shared.topBarBottom = nil
+			r.piece:update(r.fixture.view, NOW)
+			expect.equal(list.Position.Y.Offset, top)
+		end)
+	end)
 
 	t.test("storm: hidden with no storm, while knocked out and with no character", function()
 		for _, state in { "ffa_live", "tdm_knockedOutStorm", "tdm_storm" } do
