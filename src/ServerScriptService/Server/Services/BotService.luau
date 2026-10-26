@@ -323,11 +323,17 @@ end
 
 -- Private: the pilot ---------------------------------------------------------------------------------------------------
 
--- Turns the root to face `target` on the flat, keeping its position.
+-- Turns the root to face `target` on the flat, keeping its position and its walk: writing a humanoid root's CFrame
+-- cancels its Humanoid:MoveTo (2026-10-26: the bots never walked, they jumped in place), so the walk is given again.
 local function face(root: BasePart, target: Vector3)
 	local look = Vector3.new(target.X, root.Position.Y, target.Z)
 	if (look - root.Position).Magnitude > 1e-3 then
 		root.CFrame = CFrame.lookAt(root.Position, look)
+		local rig = root.Parent
+		local humanoid = if rig then rig:FindFirstChildOfClass("Humanoid") else nil
+		if humanoid then
+			humanoid:MoveTo(humanoid.WalkToPoint)
+		end
 	end
 end
 
