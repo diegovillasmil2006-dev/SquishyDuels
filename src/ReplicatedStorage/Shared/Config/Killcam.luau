@@ -35,7 +35,7 @@ return {
 	},
 	-- The killer's arm (K:434-448, 491-498): its point in the camera's space, turned yaw; the fist, the far end of the
 	-- sleeve and the toy in the arm's space. Our arm is the killer's own avatar arm (Anim/OwnArm, owner 2026-10-11:
-	-- every first-person arm is the player's own), as wide as Diego's fist at studsPerDu.
+	-- every first-person arm is the player's own), its lower arm as wide as Diego's sleeve (sleeve; studsPerDu without one).
 	arm = {
 		at = Vector3.new(1.15, -1.2, -2.3),
 		yaw = 0.22,
@@ -43,7 +43,8 @@ return {
 		shoulder = Vector3.new(0, 0, 2.7),
 		toy = Vector3.new(0, 0.7, -0.9),
 		toyScale = 0.55,
-		studsPerDu = 9, -- [P] the avatar hand (handWidthDu 0.1) as wide as Diego's 0.9-stud fist
+		sleeve = 0.95, -- K:438: the sleeve's width (studs)
+		studsPerDu = 9, -- [P] the fallback: the avatar hand (handWidthDu 0.1) as wide as Diego's 0.9-stud fist
 		walkSpeed = 1, -- K:492: faster than this (studs a second) bobs as a walk
 		bob = { walk = 11, still = 3, x = 0.08, y = 0.1, stillAmp = 0.25 },
 		throw = { rate = 2.4, push = 1.4, lift = 0.5, turn = 0.25 }, -- K:494-497
@@ -55,5 +56,89 @@ return {
 		ring = { to = 3.8 * 1.7 * 2, s = 0.34 }, -- diameters (Diego's radius x 2)
 		floorRing = { to = 6.5 * 1.7 * 2, s = 0.5, up = 0.15 },
 		light = { brightness = 7 * 1.7, range = 18, s = 0.28 },
+	},
+	-- Killcam step 2 (2026-10-26; owner: "Yes, build step 2 of the killcam like that. You can make and upload the splat
+	-- sound."): the screen pieces over the replay (UI/Match/KillcamScreen; S:195-229 markup, S:744-784 motion), in the
+	-- end screen's stage px (Config.UI.Match.finish's layouts, its fit). ms unless named S.
+	screen = {
+		flashIn = { peak = 0.9, ms = 260 }, -- S:747
+		bars = { inMs = 380, outMs = 300 }, -- S:748-749, 779-780
+		vignette = { ms = 400, clearShare = 0.52, edgeAlpha = 0.45 }, -- S:750, S:196 (radial: two edge gradients here)
+		pill = { delayMs = 150, ms = 300, rise = 8, gap = 8, padX = 12, border = 2, blinkS = 1 }, -- S:199-203, 751
+		slow = { ms = 150 }, -- S:204-206
+		letters = { delayMs = 300, stepMs = 45, ms = 420, drop = 60, sx = 0.9, sy = 1.2, landSx = 1.25, landSy = 0.7 }, -- S:752
+		card = { delayMs = 650, ms = 420, slide = 40, from = 0.85, over = 4, peak = 1.04 }, -- S:753
+		stamp = { stepMs = 40, ms = 300, from = 2.4, fromRot = -12, mid = 0.86, holdMs = 2600, rot = -7 }, -- S:763-765
+		stampPad = { desktop = 260, phone = 110 }, -- S:762
+		stampUp = { desktop = 70, phone = 30 },
+		flashHit = { delayMs = 90, ms = 650, peak = 0.9, at = 0.12 }, -- S:767
+		burst = { n = 46, spread = 520, size = 16, ms = 1200, up = 70 }, -- S:771
+		rings = { sizes = { 340, 400, 460 }, stepMs = 100 }, -- S:772: white, the killer's team colour, #FFD86B
+		jolt = 16, -- S:774: the screen shakes this many px (camera shake on, no ReducedMotion)
+		slamAtS = 0.14, -- S:769: the slam after the boom and the splat
+		outMs = 220, -- S:781-782: the pill, card, vignette and stamp fade; the letters rise outRise px
+		outRise = 30,
+		flashOut = { ms = 360, peak = 0.85, at = 0.4 }, -- S:783
+		goneS = 0.36, -- S:784
+		layouts = { -- S:503-505
+			desktop = {
+				bar = 76,
+				cardL = 28,
+				pillL = 136,
+				right = 28,
+				pillT = 21,
+				pillH = 34,
+				pillPx = 13,
+				dot = 10,
+				title = 64,
+				titleStroke = 12,
+				titleT = 96,
+				letterGap = 3,
+				cardB = 96,
+				cardGap = 14,
+				cardPad = 9,
+				cardPadR = 18,
+				cardBorder = 4,
+				cardRadius = 20,
+				head = 58,
+				headRadius = 14,
+				textGap = 6,
+				name = 24,
+				nameStroke = 5,
+				sub = 15,
+				toy = 36,
+				stampPx = 96,
+				stampStroke = 14,
+			},
+			phone = {
+				bar = 52,
+				cardL = 12,
+				pillL = 124,
+				right = 12,
+				pillT = 15,
+				pillH = 22,
+				pillPx = 10,
+				dot = 7,
+				title = 30,
+				titleStroke = 6,
+				titleT = 58,
+				letterGap = 1,
+				cardB = 60,
+				cardGap = 8,
+				cardPad = 5,
+				cardPadR = 10,
+				cardBorder = 2,
+				cardRadius = 14,
+				head = 34,
+				headRadius = 10,
+				textGap = 3,
+				name = 15,
+				nameStroke = 3,
+				sub = 11,
+				toy = 24,
+				stampPx = 40,
+				stampStroke = 7,
+			},
+		},
 	},
 }

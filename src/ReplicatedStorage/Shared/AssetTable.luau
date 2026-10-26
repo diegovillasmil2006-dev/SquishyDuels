@@ -952,7 +952,9 @@ local SLOTS: { AssetSlot } = {
 		"SFX",
 		false,
 		nil,
-		"M:515 splat(1): a K.O. in the feed, you squished; file 'match_splat.wav'"
+		"M:515 splat(1): a K.O. in the feed, you squished; file 'match_splat.wav' (killcam step 2, 2026-10-26: rendered from "
+			.. "S:682 and uploaded by Claude; the killcam's squish plays it too)",
+		hudSound(88453541901991, 0.0809, "match_splat.wav")
 	),
 	soundSlot(
 		"match.knockedOut",

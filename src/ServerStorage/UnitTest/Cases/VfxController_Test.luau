@@ -28,7 +28,9 @@
 --     everyone else's as before;
 --   * the Dragon Rush head (Anim/NearFade.rushHead, resolved once per head): the local caster's own head fades in
 --     over its first 3-8 studs in first person only (duel and practice: the same lane numbers); any first-person
---     viewer's head fades within 4.5 studs of the camera; third person keeps the end fade alone.
+--     viewer's head fades within 4.5 studs of the camera; third person keeps the end fade alone;
+--   * owner 2026-10-26: zoomed in, the own elimination burst goes to the hands overlay (mirrorBurst) with the world
+--     burst's kinds, counts and colours.
 -- FFA/TDM v1 (2026-10-15, SPEC D3): an eliminated match player's held squishy comes back once the match view showed
 -- them knocked out and alive again, never before the elimination effect hid it; outside the view the old rule only.
 
@@ -311,6 +313,33 @@ return function(t: Context)
 		local final, gone = VfxController.confettiTransparency(confetti.lifetime)
 		expect.near(final, 1, 1e-9)
 		expect.truthy(gone)
+	end)
+
+	t.test("zoomed in, the own elimination burst goes to the hands overlay with the world's counts (owner 2026-10-26)", function()
+		local elim = Config.Anim.elimination
+		expect.equal(#VfxController.mirrorBurst(false, false), 0) -- a custom kill set: nothing of ours
+		local puffs = VfxController.mirrorBurst(true, false)
+		local total = 0
+		for i = 1, #puffs - 1 do
+			expect.equal(puffs[i].kind, "puffs")
+			total += puffs[i].count
+		end
+		expect.equal(total, math.floor(elim.confettiParticles / (#puffs - 1)) * (#puffs - 1)) -- as confetti()
+		expect.equal(puffs[#puffs].kind, "sparkles")
+		expect.equal(puffs[#puffs].count, elim.sparkles)
+		local pieces = VfxController.mirrorBurst(false, true)
+		local launched: { [string]: number } = {}
+		for _, piece in VfxController.confettiLaunch(Random.new(1), false) do
+			launched[piece.color:ToHex()] = (launched[piece.color:ToHex()] or 0) + 1
+		end
+		total = 0
+		for _, e in pieces do
+			expect.equal(e.kind, "confetti")
+			expect.equal(e.count, launched[e.colour:ToHex()] or 0) -- confettiLaunch's colours in turn
+			total += e.count
+		end
+		expect.equal(total, Config.Vfx.Confetti.parts)
+		expect.equal(#VfxController.mirrorBurst(true, true), #puffs + #pieces)
 	end)
 
 	t.test("Dragon audio: the roar for the caster and the other duelist, the duck only for the targeted one", function()

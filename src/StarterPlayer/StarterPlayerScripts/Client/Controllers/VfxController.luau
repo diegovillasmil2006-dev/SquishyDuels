@@ -77,7 +77,10 @@
 --   the hidden body); the local first-person victim's impact puffs and ring at a quarter (impactScale, majorBurst);
 --   every Dragon Rush head fades for a first-person viewer within 4.5 studs of the camera, and the local caster's own
 --   one is clear until 3 studs travelled and solid at 8 (NearFade.rushHead), as a max with the end fade, through the
---   head's kept part list (Rush.fadeHead, made once at the head's build).
+--   head's kept part list (Rush.fadeHead, made once at the head's build). Owner 2026-10-26 (zoomed in, effects at the
+--   hidden own squishy floated in the air): while the hands overlay mirrors it, the local player's own elimination
+--   burst and pop ring go to the overlay's toy (mirrorBurst, HeldSquishyController.mirrorFx) and the local caster's
+--   Rush ember sparks stay off (embersShown; the overlay shows the Rush's own glow).
 -- Arena lighting (§7.4 client zone presets, §7.8 Lighting "client Arena preset"): once the duel view reaches
 --   Positioning (the player is moved to the arena) Lighting.SD_Grade Contrast / Saturation and the Atmosphere Density
 --   tween to Config.Vfx.ZonePresets.Arena over tweenSeconds; when the view ends (back in the lobby) they tween back to
@@ -224,6 +227,9 @@ export type ConfettiPiece = {
 	spinDeg: number, -- °/s (0 under ReducedMotion)
 	color: Color3,
 }
+
+-- One first-person overlay effect (mirrorBurst; HeldSquishyController.mirrorFx's arguments).
+export type MirrorEffect = { kind: string, count: number, colour: Color3 }
 
 -- A Studio juice piece another controller adds (SplatController's "splat").
 export type JuiceHook = (opts: { [string]: any }?) -> (boolean, string?)
@@ -507,6 +513,28 @@ function VfxController.confettiLaunch(rng: Random, isReduced: boolean?): { Confe
 	return pieces
 end
 
+-- Zoomed in (owner 2026-10-26: at the hidden own squishy it floated in the air): the local player's own elimination
+-- burst as the first-person overlay's effects (HeldSquishyController.mirrorFx kinds), in place of confetti()'s puffs
+-- and sparkles (`puffs`: no kill-set effect) and confettiParts()' pieces (`pieces`: the standard set), same counts and
+-- colours; the overlay halves them under ReducedMotion.
+function VfxController.mirrorBurst(puffs: boolean, pieces: boolean): { MirrorEffect }
+	local list: { MirrorEffect } = {}
+	if puffs then
+		local each = math.floor(ELIM.confettiParticles / #CONFETTI_COLORS)
+		for _, colour in CONFETTI_COLORS do
+			table.insert(list, { kind = "puffs", count = each, colour = colour })
+		end
+		table.insert(list, { kind = "sparkles", count = ELIM.sparkles, colour = Palette.Lemon })
+	end
+	if pieces then
+		for i, colour in CONFETTI_PART_COLORS do -- confettiLaunch's colours in turn
+			local count = math.floor((CONFETTI.parts - i) / #CONFETTI_PART_COLORS) + 1
+			table.insert(list, { kind = "confetti", count = count, colour = colour })
+		end
+	end
+	return list
+end
+
 -- One confetti step of dt seconds: drag e^(-dragPerSecond · dt), then gravity, then the move. Returns the new position
 -- and velocity.
 function VfxController.confettiStep(position: Vector3, velocity: Vector3, dt: number): (Vector3, Vector3)
@@ -774,6 +802,24 @@ local function ring(
 			shape:stop()
 		end,
 	})
+end
+
+-- Zoomed in (owner 2026-10-26): the local player's own squishy is hidden behind the first-person hands overlay, so
+-- effects at it float in the air. True when the overlay took `effects` (HeldSquishyController.mirrorFx).
+local function toMirror(player: Player, effects: { MirrorEffect }): boolean
+	local took = false
+	if player == Players.LocalPlayer then
+		for _, e in effects do
+			took = HeldSquishyController.mirrorFx(e.kind, e.count, e.colour) or took
+		end
+	end
+	return took
+end
+
+-- The Rush's ember sparks at the caster's hand: never at the local caster's own hidden squishy while zoomed in (the
+-- hands overlay shows the Rush's own glow there).
+local function embersShown(caster: Player?): boolean
+	return caster ~= nil and not (caster == Players.LocalPlayer and HeldSquishyController.isMirrored())
 end
 
 local function playSound(key: string, options: SoundController.PlayOptions?)
@@ -1219,12 +1265,15 @@ local function playStandard(player: Player, attackerId: number?, effectId: strin
 					if at then
 						-- Kill banners (2026-10-16): the kill set's kill effect (played at the K.O.) took the foam
 						-- puff's place; the standard set keeps the tumbling confetti parts. Without the library, the
-						-- old puff.
-						if not hasKillFx then
-							confetti(at)
-						end
-						if style.id == KillStyle.STANDARD then
-							confettiParts(at)
+						-- old puff. Zoomed in, the own burst goes on the squishy you see (toMirror).
+						local puffs, pieces = not hasKillFx, style.id == KillStyle.STANDARD
+						if not toMirror(player, VfxController.mirrorBurst(puffs, pieces)) then
+							if puffs then
+								confetti(at)
+							end
+							if pieces then
+								confettiParts(at)
+							end
 						end
 					end
 					lastAt = at
@@ -1235,7 +1284,8 @@ local function playStandard(player: Player, attackerId: number?, effectId: strin
 				-- The pop ring where the squishy vanishes (§18.4.6).
 				local held = HeldSquishyController.getModel(player)
 				local popAt = if held then held:GetPivot().Position else lastAt
-				if popAt then
+				local mirrored = toMirror(player, { { kind = "ring", count = 1, colour = Palette.White } })
+				if popAt and not mirrored then
 					ring(popAt, Vector3.yAxis, CONFETTI.popRingStuds, CONFETTI.popRingSeconds, Palette.White)
 				end
 				finished = true
@@ -1588,6 +1638,10 @@ local function stepRush(rush: Rush, now: number): boolean
 			if attachment and attachment:IsA("Attachment") then
 				attachment.WorldPosition = held:GetPivot().Position
 			end
+			local shown = embersShown(caster)
+			if sparks.Enabled ~= shown then
+				sparks.Enabled = shown -- zoomed in or out mid-telegraph
+			end
 		end
 		if now >= rush.telegraphEndsAt and rush.head == nil then
 			-- No release message yet: keep the full lane up until it comes (or the cancel).
@@ -1705,7 +1759,7 @@ local function onUltimateEvent(raw: unknown)
 			Size = NumberSequence.new(0.3, 0),
 			Color = ColorSequence.new(HORN_HOT),
 		})
-		sparks.Enabled = caster ~= nil
+		sparks.Enabled = embersShown(caster)
 		local now = serverNow()
 		rushes[event.casterId] = {
 			casterId = event.casterId,

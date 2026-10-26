@@ -38,6 +38,9 @@
 --   timeline (the title, the podium cue, the results) starts toTitle after it ends (S:785), its end, a cut at cap
 --   (S:740) or TAP TO SKIP from skipAfter into it (S:872: past the replay, not to the results). The pill shows from
 --   skipPill.delay into it (S:753). Without a killcam the timeline starts with the last squish, as before.
+-- * Killcam step 2 (2026-10-26; owner: "Yes, build step 2 of the killcam like that. You can make and upload the splat
+--   sound."): the replay's screen pieces (UI/Match/KillcamScreen: bars, pills, FINAL KILL, the killer's card, the
+--   SQUISHED! stamp, flashes, sounds) play while it does, take its moments (Killcam's onEvent) and go out with it.
 -- Pure (unit-tested): ordinal(n), resultOf(view, who), mvp(view, teamOf), columns(view, who),
 -- gripBar(total, gained), streakLine(mine), plates(view, lineup, compact), placePlates(boxes, top, left, right).
 
@@ -64,6 +67,7 @@ local Theme = require(UI.Theme)
 local UiFx = require(UI.UiFx)
 local Tweens = require(UI.Parent.Anim.Tweens)
 local UiIdle = require(UI.Parent.Anim.UiIdle)
+local KillcamScreen = require(script.Parent.KillcamScreen)
 local MatchKit = require(script.Parent.MatchKit)
 local MatchPodium = require(script.Parent.MatchPodium)
 
@@ -1693,6 +1697,7 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	local killcam: any = nil -- the replay while it plays
 	local kcAt = 0 -- os.clock it started
 	local kcPill = 0 -- its TAP TO SKIP pill (0..1), kept after it (S:753)
+	local kcScreen: KillcamScreen.Screen? = nil -- killcam step 2: its screen pieces, until they have gone out
 
 	local function play(name: string, opts: { [string]: any }?)
 		ctx.play(name, opts)
@@ -1738,6 +1743,15 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		end
 		if clock and titleAt == nil then
 			titleAt = clock + KC.toTitle
+		end
+		local pieces = kcScreen
+		if pieces then
+			if clock then
+				pieces:finish(clock) -- they go out (S:776-784)
+			else
+				kcScreen = nil
+				pieces:destroy()
+			end
 		end
 	end
 
@@ -2561,11 +2575,35 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 					end,
 					preview = ctx.preview,
 					reduced = reduced,
+					onEvent = function(name: string, data: { [string]: any })
+						local pieces = kcScreen
+						if pieces == nil then
+							return
+						elseif name == "slow" then
+							pieces:slow(data.on == true)
+						elseif name == "throw" then
+							pieces:throw()
+						elseif name == "impact" and typeof(data.at) == "Vector3" then
+							pieces:impact(data.at)
+						end
+					end,
 				})
 			end
 			if ok and made then
 				killcam = made
 				kcAt = clock
+				local ko = frozen.outcome.finalKo
+				local okS, pieces = pcall(KillcamScreen.new, ctx, {
+					killer = MatchKit.who(ctx, frozen, ko.by),
+					victim = MatchKit.who(ctx, frozen, ko.victim),
+					reduced = reduced,
+					compact = ctx.compact(),
+				})
+				if okS then
+					kcScreen = pieces
+				else
+					warn(`[SD][MatchEnd] the killcam's screen did not start: {pieces}`)
+				end
 			else
 				if not ok then
 					warn(`[SD][MatchEnd] the killcam did not start: {made}`)
@@ -2581,6 +2619,17 @@ function MatchEnd.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 			end
 			if not ok or replay:done() or it >= KC.cap then
 				endKillcam(clock)
+			end
+		end
+		local pieces = kcScreen
+		if pieces then
+			local okS, errS = pcall(pieces.update, pieces, clock)
+			if not okS or pieces:done() then
+				if not okS then
+					warn(`[SD][MatchEnd] the killcam's screen stopped: {errS}`)
+				end
+				kcScreen = nil
+				pieces:destroy()
 			end
 		end
 		if killcam then

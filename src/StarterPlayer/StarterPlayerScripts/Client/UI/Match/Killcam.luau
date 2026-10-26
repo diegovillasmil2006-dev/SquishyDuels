@@ -29,6 +29,9 @@
 --   victim's colour, a warm light, the jolt, and our own kill effect (Anim/KillVfx: the killer's kill set) at the
 --   victim.
 -- * skip() ends it (K:527, S:872); done() is true from the window's end; destroy() puts everything back.
+-- * Killcam step 2 (2026-10-26): spec.onEvent tells the screen pieces (UI/Match/KillcamScreen) its moments: "slow"
+--   { on } when it slows or speeds up again (K:524: frozen, or under x0.9), "throw" at each of the killer's throws
+--   (K:471), "impact" { at } at the squish: the victim's root + victimUp (K:522).
 -- Pure (unit-tested): smooth(x), speed(d), lookWeight(t, t0, throwAt), fov(d, punch), length(), bracket(frames, t),
 -- window(frames, ko), armPoints(bob, amp, push, lift).
 
@@ -88,6 +91,7 @@ export type Spec = {
 	preview: boolean,
 	reduced: boolean,
 	shake: boolean, -- settings' camera shake
+	onEvent: ((name: string, data: { [string]: any }) -> ())?, -- killcam step 2 (header)
 }
 
 export type Replay = {
@@ -501,7 +505,15 @@ function Killcam.new(spec: Spec, tape: Tape, deps: Deps): Replay?
 
 	-- The killer's arm and its squishy.
 	local killerSource = MatchPodium.sourceCharacter(view, spec.preview, killerId)
-	local arms = if killerSource then (OwnArm.make(killerSource, folder, ARM.studsPerDu)) else nil
+	-- Its scale: the lower arm as wide as Diego's sleeve (OwnArm draws the hand handWidthDu wide; a rig with small hands
+	-- would get a huge arm at the hand's scale, found in a real match with the bots).
+	local u = ARM.studsPerDu
+	local rightHand = killerSource and killerSource:FindFirstChild("RightHand")
+	local rightLower = killerSource and killerSource:FindFirstChild("RightLowerArm")
+	if rightHand and rightLower and rightHand:IsA("BasePart") and rightLower:IsA("BasePart") and rightLower.Size.X > 0 then
+		u = ARM.sleeve * rightHand.Size.X / (Config.FirstPerson.ownArms.handWidthDu * rightLower.Size.X)
+	end
+	local arms = if killerSource then (OwnArm.make(killerSource, folder, u)) else nil
 	if arms then
 		for _, part in arms.left.parts do
 			part:Destroy()
@@ -550,6 +562,13 @@ function Killcam.new(spec: Spec, tape: Tape, deps: Deps): Replay?
 	local lastRoot: Vector3? = nil
 	local lastNow: number? = nil
 	local ended, finished = false, false
+	local slowed = false
+	local function emit(name: string, data: { [string]: any })
+		local fn = spec.onEvent
+		if fn then
+			fn(name, data)
+		end
+	end
 
 	local function apply(at: number): (Frame, Frame, number)
 		local ia, ib, u = Killcam.bracket(frames, at)
@@ -662,7 +681,7 @@ function Killcam.new(spec: Spec, tape: Tape, deps: Deps): Replay?
 			Killcam.armPoints(bob, if walking then 1 else ARM.bob.stillAmp, push, lift)
 		local eyeFrame = camera.CFrame
 		if arms then
-			OwnArm.partFrames(arms.right, hand / ARM.studsPerDu, shoulder / ARM.studsPerDu, 0, ARM.studsPerDu, armFrames)
+			OwnArm.partFrames(arms.right, hand / u, shoulder / u, 0, u, armFrames)
 			for name, part in arms.right.parts do
 				local f = armFrames[name]
 				if f then
@@ -734,6 +753,7 @@ function Killcam.new(spec: Spec, tape: Tape, deps: Deps): Replay?
 		if spec.shake and not spec.reduced then
 			kickAmp = math.max(kickAmp, CAM.kick)
 		end
+		emit("impact", { at = V.root.Position + Vector3.new(0, CAM.victimUp, 0) })
 		local style = KillStyle.get(KillStyle.resolve(if killerDef then killerDef.eliminationEffectId else nil))
 		if style and KillVfx.has(style.killVfx) then
 			KillVfx.kill(style.killVfx, V.root.Position)
@@ -751,10 +771,12 @@ function Killcam.new(spec: Spec, tape: Tape, deps: Deps): Replay?
 		lastNow = now
 		local prev = t
 		local impact = false
+		local sp = 0
 		if frozen > 0 then
 			frozen -= rdt
 		else
-			t = math.min(win.t1, t + rdt * Killcam.speed(t - win.hit))
+			sp = Killcam.speed(t - win.hit)
+			t = math.min(win.t1, t + rdt * sp)
 			if not hitDone and t >= win.hit then
 				t = win.hit
 				hitDone = true
@@ -766,7 +788,13 @@ function Killcam.new(spec: Spec, tape: Tape, deps: Deps): Replay?
 		for _, at in win.throws do
 			if at > prev and at <= t then
 				swing = 1e-3 -- K:471: the killer's throw punches the arm
+				emit("throw", {})
 			end
+		end
+		local slow = frozen > 0 or (not snap and sp < 0.9)
+		if slow ~= slowed then
+			slowed = slow
+			emit("slow", { on = slow })
 		end
 		punch = math.max(0, punch - rdt * CAM.punchFade)
 		local a, b, u = apply(t)

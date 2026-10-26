@@ -320,6 +320,7 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 		killcamReady = function(ko: any): boolean
 			return tape ~= nil and Killcam.window(tape.frames, ko) ~= nil
 		end,
+		coreCorner = UIController.coreCorner,
 		killcam = function(spec: any): any
 			if tape == nil then
 				return nil

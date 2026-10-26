@@ -50,7 +50,8 @@
 --     squeeze focus, as on the high tier; the high tier steps every frame; a throw's release makes half the specks
 --     there (batch B, owner 2026-10-17);
 --   * owner 2026-10-26: the own squeeze's puffs and sparkles (setMirror's fx) are specks on the toy in their colour (the
---     sparkles Neon), the Dragon's steam at the copy's Nostril parts; ReducedMotion: half.
+--     sparkles Neon), the Dragon's steam at the copy's Nostril parts, the own elimination burst's confetti cubes and its
+--     ring on the toy; ReducedMotion: half.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -1413,8 +1414,8 @@ return function(t: Context)
 			end
 		end
 		expect.equal(neon, 4) -- the sparkles glow (the design's spark)
-		frames(w, 40)
-		expect.equal(Viewmodel.debugState().specks, 0) -- life 0.6 s
+		frames(w, 50)
+		expect.equal(Viewmodel.debugState().specks, 0) -- life 0.6 s × at most 1.3 (Specks' burst)
 		local nostrils: { Vector3 } = {}
 		for _, d in w.guis.SD_Viewmodel:GetDescendants() do
 			if d:IsA("BasePart") and string.sub(d.Name, 1, 7) == "Nostril" then
@@ -1432,6 +1433,16 @@ return function(t: Context)
 			end
 			expect.truthy(nearest < 1e-3)
 		end
+		frames(w, 50)
+		-- The own elimination burst (VfxController.mirrorBurst): confetti pieces (cubes) and the pop ring on the toy.
+		expect.equal(Viewmodel.debugState().fxRings, 0)
+		w.mirrorFx("confetti", 4, cyan)
+		w.mirrorFx("ring", 1, Color3.new(1, 1, 1))
+		expect.equal(Viewmodel.debugState().specks, 4)
+		for _, part in specksIn(w) do
+			expect.equal(part.Shape, Enum.PartType.Block)
+		end
+		expect.equal(Viewmodel.debugState().fxRings, 1)
 		teardown()
 		local r = setup("dragon")
 		r.reduced = true

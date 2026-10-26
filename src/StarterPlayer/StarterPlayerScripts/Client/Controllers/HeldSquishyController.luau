@@ -114,7 +114,8 @@ export type Overlay = {
 -- × the overlays, finishOut) each frame; nil out = rest.
 export type Mirror = (out: SquishRig.Out?, scale: Vector3) -> ()
 
--- The first-person mirror's effects (mirrorFx): kind "puffs", "sparkles" or "steam", how many and their colour.
+-- The first-person mirror's effects (mirrorFx): kind "puffs", "sparkles", "steam", "confetti" or "ring", how many and
+-- their colour.
 export type MirrorFx = (kind: string, count: number, colour: Color3) -> ()
 
 type Held = {

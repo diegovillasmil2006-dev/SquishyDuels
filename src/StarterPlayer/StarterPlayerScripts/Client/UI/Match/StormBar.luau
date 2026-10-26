@@ -7,7 +7,8 @@
 -- purple tint (Palette.MatchStormTint as a ColorCorrectionEffect in Lighting, client only, this piece's own) faded in
 -- over tintMs. Both go at once when you step back into the safe circle or are knocked out (the RESPAWNING bar then).
 -- Place: centred at the bottom, over the desktop ability bar (MatchHudFormat.dockClear), never on a touch area
--- (MatchHudFormat.barPlace with all of them: you are alive, so the touch buttons work).
+-- (MatchHudFormat.barPlace with all of them: you are alive, so the touch buttons work). Killcam step 2 (2026-10-26):
+-- only while the match is live (Diego's end clears the HUD, S:729).
 
 -- Services
 
@@ -33,6 +34,7 @@ local BAR = Config.UI.Match.respawn -- the same bar: sizes, motion and places
 local STORM = Config.Match.Storm
 local FADE_MS = Config.UI.motion.reducedMotionMaxFadeMs
 local Z = 4 -- as the RESPAWNING bar (they never show together)
+local LIVE: { [string]: boolean } = { Active = true, Overtime = true }
 local TINT_NAME = "SD_MatchStorm"
 local WHITE = Color3.new(1, 1, 1)
 
@@ -88,7 +90,7 @@ function StormBar.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 
 	function piece.update(_self: any, view: any, now: number)
 		local position = if ctx.position then ctx.position() else nil
-		if not MatchHudFormat.stormShows(view, now, position, STORM) then
+		if not LIVE[view.matchPhase] or not MatchHudFormat.stormShows(view, now, position, STORM) then
 			if since ~= nil then
 				hide()
 			end

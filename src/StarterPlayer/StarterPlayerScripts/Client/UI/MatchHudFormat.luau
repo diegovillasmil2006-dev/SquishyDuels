@@ -137,6 +137,8 @@ export type Context = {
 	-- given a Killcam.Spec without `shake`; nil when it cannot); both nil in tests (a Studio preview has no tape).
 	killcamReady: ((ko: any) -> boolean)?,
 	killcam: ((spec: any) -> any)?,
+	-- Killcam step 2: Roblox's own buttons at the top (UIController.coreCorner, base px); nil in tests.
+	coreCorner: (() -> { height: number, left: number, right: number })?,
 }
 
 -- Match HUD M6 / M7: a rect in base px, top-left origin (the safe area).

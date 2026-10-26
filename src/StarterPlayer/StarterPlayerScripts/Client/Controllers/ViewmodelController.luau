@@ -62,9 +62,10 @@
 -- the hand (idle: no windup, Rush, pop-in or throw); otherwise it passes. PracticeSqueeze (Practice, above the lobby
 -- actions) forwards every press while the overlay shows to the lobby Squeeze (ControlsController.pressAction), the paid
 -- lobby squeeze (spec 2026-10-11 §5); hidden, it passes. Each sinks End / Cancel only for a Begin it took; a hide ends
--- what it took. Lobby squeezes come in through the mirror only; their puffs, release sparkles and Dragon steam and the
--- equip pop's puffs through setMirror's fx (owner 2026-10-26: at the hidden own model they floated in the air), drawn
--- as specks on the toy (mirrorFx; NOT IN DESIGN: the design's squeeze has none). Touch: SD_ViewmodelPad
+-- what it took. Lobby squeezes come in through the mirror only; their puffs, release sparkles and Dragon steam, the
+-- equip pop's puffs and the own elimination burst through setMirror's fx (owner 2026-10-26: at the hidden own model
+-- they floated in the air), drawn as specks and a ring on the toy (mirrorFx; NOT IN DESIGN: the design's squeeze has
+-- none). Touch: SD_ViewmodelPad
 -- (Config.FirstPerson.padGui, safe insets) holds one invisible, non-selectable button over the toy's screen box
 -- (ViewmodelMath.touchPadRect), which
 -- presses padAction() with that finger until it lifts (lobby HUD spec 2026-10-11 §2: the finger's InputObject goes with
@@ -794,34 +795,6 @@ local function spawnSpecks(v: View, spec: Specks.Spec, toy: Toy, reduced: boolea
 	spawnSpecksAt(v, spec, v.toyPos, toy.colours, reduced, nil)
 end
 
--- An own effect the held model hands over while mirrored (HeldSquishyController.mirrorFx): specks in `colour` on the
--- toy you see (the hidden own model's world particles floated in the air); the steam from the copy's Nostril* parts.
-local function mirrorFx(v: View, kind: string, count: number, colour: Color3)
-	local toy = v.toy
-	if toy == nil or count <= 0 then
-		return
-	end
-	local spec = table.clone(if kind == "sparkles" then MIRROR_SPARKLES else MIRROR_PUFFS)
-	local reduced = deps.Motion.reducedMotion()
-	if kind == "steam" then
-		local nostrils: { BasePart } = {}
-		for _, d in toy.model:GetDescendants() do
-			if d:IsA("BasePart") and string.sub(d.Name, 1, #NOSTRIL_PREFIX) == NOSTRIL_PREFIX then
-				table.insert(nostrils, d)
-			end
-		end
-		if #nostrils > 0 then
-			for i, nostril in nostrils do -- the puffs shared out as SqueezeFeel's round-robin
-				spec.count = count // #nostrils + (if i <= count % #nostrils then 1 else 0)
-				spawnSpecksAt(v, spec, nostril.Position / U, { colour }, reduced, nil)
-			end
-			return
-		end
-	end
-	spec.count = count
-	spawnSpecksAt(v, spec, v.toyPos, { colour }, reduced, nil)
-end
-
 -- The specks fly and shrink (fx.js:131-139); a speck past its life goes.
 local function stepSpecks(v: View, dt: number)
 	local list = v.specks
@@ -1153,6 +1126,49 @@ end
 -- A design size (its metres) round a toy of `radius` du (in its toy radii, ChargePoses.size).
 local function around(metres: number, radius: number): number
 	return ChargePoses.size(metres) * radius
+end
+
+-- An own effect the held model hands over while mirrored (HeldSquishyController.mirrorFx): specks in `colour` on the
+-- toy you see (the hidden own model's world particles floated in the air); the steam from the copy's Nostril* parts.
+-- The own elimination burst (VfxController, owner 2026-10-26): "confetti" as the crush burst's pieces and "ring" as its
+-- first ring (design: html:557, 559), round the toy.
+local function mirrorFx(v: View, kind: string, count: number, colour: Color3)
+	local toy = v.toy
+	if toy == nil or count <= 0 then
+		return
+	end
+	local radius = FP.toyLongestDu / 2
+	if kind == "ring" then
+		local r = CRUSH.rings[1]
+		v.fx:ring(v.toyPos, colour, around(r[1], radius), around(r[2], radius), r[3])
+		return
+	end
+	local spec = table.clone(if kind == "sparkles" then MIRROR_SPARKLES else MIRROR_PUFFS)
+	local reduced = deps.Motion.reducedMotion()
+	if kind == "confetti" then
+		spec.shape = "cube"
+		spec.speed = around(CRUSH.burstSpeed, radius)
+		spec.size = around(CRUSH.burstSize, radius)
+		spec.life = CRUSH.burstLife
+		spec.gravity = 0
+		spec.drag = CRUSH.burstDrag
+	elseif kind == "steam" then
+		local nostrils: { BasePart } = {}
+		for _, d in toy.model:GetDescendants() do
+			if d:IsA("BasePart") and string.sub(d.Name, 1, #NOSTRIL_PREFIX) == NOSTRIL_PREFIX then
+				table.insert(nostrils, d)
+			end
+		end
+		if #nostrils > 0 then
+			for i, nostril in nostrils do -- the puffs shared out as SqueezeFeel's round-robin
+				spec.count = count // #nostrils + (if i <= count % #nostrils then 1 else 0)
+				spawnSpecksAt(v, spec, nostril.Position / U, { colour }, reduced, nil)
+			end
+			return
+		end
+	end
+	spec.count = count
+	spawnSpecksAt(v, spec, v.toyPos, { colour }, reduced, nil)
 end
 
 -- The charge's effects at the toy (design: html:508-514): glow, white shell, orbit, gathering sparks, the white ring

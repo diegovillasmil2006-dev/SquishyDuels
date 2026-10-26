@@ -8,8 +8,9 @@
 -- Names in the player's colour (TDM team, FFA slot; yours #FFE36B and "You", M:651); the border #FFE36B with its .3
 -- glow when you squished them, #FF5A6E when they squished you, ink otherwise (M:656). In: smFeedIn 0.5 s; out at 4.6 s
 -- (smFeedOut 0.4 s); gone at 5.0 s (M:531-532); at most Config.UI.Match.feed.maxRows (compact screens
--- compactMaxRows: phones keep the feed clear of the touch buttons), the oldest leaving early. Shown in Active,
--- Overtime and Result (M:653). Each row is a CanvasGroup (its fade); each piece of it a MatchKit builder.
+-- compactMaxRows: phones keep the feed clear of the touch buttons), the oldest leaving early. Shown in Active and
+-- Overtime (killcam step 2, 2026-10-26: Diego's page 3 shows it only live, S:990; M:653 also had Result). Each row
+-- is a CanvasGroup (its fade); each piece of it a MatchKit builder.
 -- Sounds: every row ui.click at Config.Audio.uiPitch.card (M:533); another player's K.O. (not by you, not of you)
 -- match.splat at matchHud.splatOthers (M:537), sfx.impactSoft while that has no id. Your own K.O.s: Diego's kill
 -- banner plays their sound and burst (KillBannerController), so nothing more here; M's SQUISHED! medal is that same
@@ -58,7 +59,7 @@ type Row = {
 local CFG = Config.UI.Match.feed
 local AUDIO = Config.Audio
 local FADE_MS = Config.UI.motion.reducedMotionMaxFadeMs
-local SHOWN_PHASES: { [string]: boolean } = { Active = true, Overtime = true, Result = true }
+local SHOWN_PHASES: { [string]: boolean } = { Active = true, Overtime = true }
 local Z = 2
 local TOAST_KEY = "matchFeed"
 local SOUND_ROW = "ui.click"

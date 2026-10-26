@@ -14,7 +14,8 @@
 -- Sounds (S:707): the stamp (match.vote.stamp: the same lib:204 recipe) and 90 ms later the chime (match.medal.claim,
 -- ui.coin while it has no id); the page's splat is left to the kill banner's own kill sound. 160 ms in: Diego's burst
 -- and gold ring (UiFx.sparks / ring, S:708). A newer medal replaces the one showing (S:67 stacks them on one spot, where
--- the older one's words poke out around the new one). Reduced motion: it only fades.
+-- the older one's words poke out around the new one). Reduced motion: it only fades. Killcam step 2 (2026-10-26):
+-- medals show only while the match is live (Diego's end clears them, S:729): none for the final squish, gone at the end.
 
 -- Services
 
@@ -64,6 +65,7 @@ local HEAD_URL = "rbxthumb://type=AvatarHeadShot&id=%d&w=150&h=150" -- MatchKit.
 local SOUND_STAMP = "match.vote.stamp"
 local SOUND_CLAIM = "match.medal.claim"
 local SOUND_CLAIM_FALLBACK = "ui.coin"
+local LIVE: { [string]: boolean } = { Active = true, Overtime = true }
 local WHITE = Color3.new(1, 1, 1)
 local INK = Theme.Colors.inkUI
 
@@ -307,13 +309,14 @@ function SquishMedal.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 
 	local piece = {}
 
-	function piece.update(_self: any, _view: any, _now: number)
+	function piece.update(_self: any, view: any, _now: number)
 		local clock = os.clock()
+		local live = LIVE[view.matchPhase] == true
 		local reduced = ctx.reduced()
 		for index = #medals, 1, -1 do
 			local medal = medals[index]
 			local t = clock - medal.born
-			if t >= CFG.goneAt then
+			if t >= CFG.goneAt or not live then
 				medal.root:Destroy()
 				table.remove(medals, index)
 				continue
@@ -340,7 +343,7 @@ function SquishMedal.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 	function piece.onMoment(_self: any, moment: any, view: any)
 		local line = MatchHudFormat.feedLine(memory, moment, view.you.userId, FEED.multiWindowS, FEED.streakMin)
 		local kind = MatchHudFormat.medalOf(line)
-		if kind == nil or line == nil then
+		if kind == nil or line == nil or not LIVE[view.matchPhase] then
 			return
 		end
 		-- A newer medal replaces the one showing (S:67 stacks them on one spot, where the older words show around it).

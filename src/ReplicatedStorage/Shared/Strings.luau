@@ -687,6 +687,16 @@ local Strings = {
 			plus = "+1",
 			streak = "{n} squish streak",
 		},
+		-- Killcam step 2 (LOADING SCREEN Y MATCH HUD S:201-226, S:982-984): its pills, title, card and stamp.
+		killcam = {
+			pill = "KILLCAM",
+			yourView = "YOUR VIEW",
+			view = "{name}'S VIEW",
+			slow = "SLOW-MO",
+			title = "FINAL KILL",
+			squished = "squished",
+			stamp = "SQUISHED!",
+		},
 		-- Round 1 of the match screens (LOADING SCREEN Y MATCH HUD S:437, S:986-994): the cover, the intro's lines
 		-- ({mode} = match.mode.*, upper case), a loading card, the load bar and the 3-2-1.
 		intro = {
