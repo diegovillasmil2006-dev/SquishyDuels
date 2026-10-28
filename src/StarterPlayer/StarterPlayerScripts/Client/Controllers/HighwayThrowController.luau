@@ -47,6 +47,11 @@
 --   launcher motion (the hook: `release`). Gear step 3 (2026-10-26): the trail fades from the held launcher's zone
 --   colour to white (trailColor; white without one), and a trapped plan (plan.trap) pops TRAP! at the release with
 --   the splat and a short camera jolt (Config/GearShop.trap).
+-- * Physics upgrade part 4 (2026-10-28, Config.HighwayFx; owner: "Yes, build part 4", added on top): HighwayFxController
+--   plays the design's wind-up (at the press), launch (at the release), zone themes (at each new zone), bounces, roll
+--   and fireworks finish (at the drawn landing). The drawn flight runs on its clock (held back by a slow motion, then
+--   catching up), while the boost button keeps the server's clock; the design's hero shot replaces the landing shot
+--   and its shakes and FOV kicks ride on every shot.
 -- Public: the pure parts (mayForward, shotGoal, landingToasts), init(), start(scheduler?), destroy() (tests and leak
 -- checks; the bootstrap never calls it), debugState(), useDeps() (Edit-mode tests: see REAL_DEPS).
 
@@ -90,6 +95,7 @@ local ControlsController = require(script.Parent.ControlsController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
 local GripController = require(script.Parent.GripController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
+local HighwayFxController = require(script.Parent.HighwayFxController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
@@ -138,6 +144,8 @@ type Throw = {
 	eye: Vector3?,
 	look: Vector3?,
 	joltAt: number?, -- gear step 3: clock of a trap's camera jolt
+	fx: HighwayFxController.State?, -- physics upgrade part 4: the design's effects for this throw
+	fov0: number?, -- part 4: the camera's FOV when the throw shot took it
 }
 
 -- Constants
@@ -490,6 +498,8 @@ local function finish(throw: Throw, chained: boolean?)
 	if current == throw then
 		current = nil
 	end
+	HighwayFxController.finish(throw.fx) -- part 4: its effects end, its squash deformer goes before the model
+	throw.fx = nil
 	local trail = throw.trail
 	if trail then
 		FxPool.default():release(trail)
@@ -539,11 +549,13 @@ local function launch(throw: Throw, root: Vector3?)
 	if h then
 		h:setBar(false)
 	end
+	throw.fx = HighwayFxController.windup() -- part 4: the design's wind-up
 	local camera = deps.camera()
 	if root == nil or camera == nil or deps.reducedMotion() then
 		return
 	end
 	throw.camera = CameraController.save()
+	throw.fov0 = camera.FieldOfView
 	camera.CameraType = Enum.CameraType.Scriptable
 	local eye, look = HighwayThrowController.shotGoal("throw", laneOf(root))
 	throw.shotEye, throw.shotLook, throw.eye, throw.look = eye, look, eye, look
@@ -556,6 +568,7 @@ local function release(throw: Throw, now: number)
 	throw.releasedAt = now
 	throw.model, throw.trail = deps.spawn(throw.kind, HighwayThrowController.trailColor(deps.gear()))
 	deps.heldHidden(true)
+	HighwayFxController.launch(throw.fx, throw.model, plan, throw.kind) -- part 4: the launch blast
 	play(U.sounds.throw)
 	if plan.perfect then
 		pop({ { text = Strings.highway.pop.perfect, big = true, color = U.pop.colors.perfect } })
@@ -618,6 +631,7 @@ local function land(throw: Throw, now: number, p: Vector3)
 	local biome = WorldLayout.Highway.biomes[plan.biome]
 	local tone = if biome and biome.laneTop then (Palette :: any)[biome.laneTop] else nil
 	deps.burst(WorldLayout.highwayCFrame(p.X, p.Y, p.Z).Position, tone or Palette.White)
+	HighwayFxController.land(throw.fx, plan.studs) -- part 4: the fireworks finish and the hero shot
 	play(U.sounds.landed)
 	if throw.landing ~= nil then
 		landingPops(throw)
@@ -641,7 +655,13 @@ local function drawCamera(throw: Throw, dt: number, now: number, p: Vector3?)
 	local shotEye, shotLook = throw.shotEye :: Vector3, throw.shotLook :: Vector3
 	local eye, look = shotEye, shotLook
 	local released = throw.releasedAt
+	local heroEye, heroLook = nil, nil
 	if p ~= nil and throw.landed then
+		heroEye, heroLook = HighwayFxController.hero(throw.fx, p, throw.eye or shotEye, throw.look or shotLook)
+	end
+	if heroEye ~= nil and heroLook ~= nil then
+		eye, look = heroEye, heroLook -- part 4: the design's hero shot instead of the landing shot
+	elseif p ~= nil and throw.landed then
 		local goalEye, goalLook = HighwayThrowController.shotGoal("landing", p)
 		local a = 1 - math.exp(-dt * U.landingShot.posRate)
 		eye = (throw.eye or shotEye):Lerp(goalEye, a)
@@ -658,7 +678,13 @@ local function drawCamera(throw: Throw, dt: number, now: number, p: Vector3?)
 	local up = if since < jolt.joltSeconds
 		then jolt.joltStuds * (1 - since / jolt.joltSeconds) * math.sin(since * jolt.joltHz * 2 * math.pi)
 		else 0
-	camera.CFrame = CFrame.lookAt(eye + Vector3.new(0, up, 0), look + Vector3.new(0, up, 0))
+	-- Part 4: the design's camera shakes and FOV kicks on top of the shot (not kept in throw.eye).
+	local fov0 = throw.fov0 or camera.FieldOfView
+	local turn, fov = HighwayFxController.camera(throw.fx, dt, fov0)
+	camera.CFrame = CFrame.lookAt(eye + Vector3.new(0, up, 0), look + Vector3.new(0, up, 0)) * turn
+	if throw.fx ~= nil then
+		camera.FieldOfView = fov
+	end
 end
 
 -- The flight lines for a squishy at d (lane-local), `boost` while it may boost.
@@ -673,6 +699,7 @@ local function drawFlight(throw: Throw, d: number, boost: boolean)
 			h:punch("zone")
 			play(U.sounds.zone)
 			h:zoneBanner(HighwayThrowController.zoneBanner(biome, deps.gripLevel(), deps.gear()))
+			HighwayFxController.zone(throw.fx, biome) -- part 4: the zone's ring, sparkles, warp lines and theme
 		end
 		deps.mood.enter(biome) -- Claude Design's zone mood (HighwayMood), the first zone's too
 		throw.biome = biome
@@ -726,9 +753,11 @@ local function stepThrow(throw: Throw, dt: number, now: number, serverNow: numbe
 	else
 		pose(nil, 0)
 	end
-	-- The flight, on the server's clock.
+	-- The flight, on the server's clock (part 4: held back by a slow motion, then catching up; the boost button keeps
+	-- the server's).
 	local p = plan :: Types.HighwayPlan
-	local at, inAir = HighwayMath.planAt(p, serverNow)
+	local drawnNow, rate = HighwayFxController.clock(throw.fx, serverNow, dt)
+	local at, inAir = HighwayMath.planAt(p, drawnNow)
 	local from, blendAt = throw.blendFrom, throw.blendAt
 	if from ~= nil and blendAt ~= nil then
 		local u = (serverNow - blendAt) / U.boostBlendSeconds
@@ -741,10 +770,10 @@ local function stepThrow(throw: Throw, dt: number, now: number, serverNow: numbe
 	throw.drawn = at
 	if not throw.landed and not deps.reducedMotion() then
 		if inAir then
-			throw.spin += dt * U.spinAir
+			throw.spin += dt * rate * U.spinAir
 		else
-			local v = math.clamp((serverNow - HighwayMath.airEnd(p)) / math.max(p.roll, 1e-3), 0, 1)
-			throw.spin += dt * (U.spinRoll * (1 - v) + U.spinRollMin)
+			local v = math.clamp((drawnNow - HighwayMath.airEnd(p)) / math.max(p.roll, 1e-3), 0, 1)
+			throw.spin += dt * rate * (U.spinRoll * (1 - v) + U.spinRollMin)
 		end
 	end
 	local model = throw.model
@@ -752,7 +781,10 @@ local function stepThrow(throw: Throw, dt: number, now: number, serverNow: numbe
 		model:PivotTo(WorldLayout.highwayCFrame(at.X, at.Y, at.Z) * CFrame.Angles(-throw.spin, math.pi, 0))
 	end
 	drawFlight(throw, math.max(at.Z, 0), not throw.landed and serverNow < HighwayMath.airEnd(p))
-	if not throw.landed and serverNow >= p.landsAt then
+	if not throw.landed then
+		HighwayFxController.flight(throw.fx, p, at, inAir, drawnNow) -- part 4: apex, speed lines, bounces, roll
+	end
+	if not throw.landed and drawnNow >= p.landsAt then
 		land(throw, now, at)
 	end
 	drawCamera(throw, dt, now, at)

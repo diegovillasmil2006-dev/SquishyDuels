@@ -28,6 +28,10 @@
 -- Part 3 (duel flight, duelflight.html; data in Config.FlightFx) adds the anchors held (actor.held, the held squishy),
 -- root (a flying squishy's centre) and hands (between the hands), a glow on the held squishy (target "held") and the
 -- screen word ("banner": CAUGHT!, first person's MAX!).
+-- Part 4 (the highway, highway.html; data in Config.HighwayFx) adds an event's Vector3 `offset` (in actor.space), the
+-- band anchor (along actor.space's right, by a number offset), `group` (a stop ends every hold of that group), tinted
+-- speed lines (actor.tint), the edge glow ("vignette"), `freeze` (a hit-stop of so many seconds), a run's own camera
+-- (actor.camera: the highway's scripted camera) and pop texts (actor.texts) and height (actor.popLift).
 -- views "1P" / "3P" filter what the own camera sees (other characters are always 3P); an actor with `view` set ("V1P"
 -- the local victim, "A1P" the local attacker, "OBS" anyone else: hit.html) uses that instead. Anchors and aims are the
 -- design's (move.html / hit.html hooks.anchor / aim): feet (CONFIG.stage.feetLift over the floor), chest (chestHeight
@@ -83,6 +87,10 @@ export type Actor = {
 	view: string?, -- part 2: "V1P" | "A1P" | "OBS" (this client's role in the hit); part 3: "R1P" | "OBS" (a catch)
 	held: Model?, -- part 3: the "held" anchor (the held squishy) and a glow's target = "held"
 	call: ((name: string, actor: any, ev: any) -> ())?, -- part 3: this run's `call` events (else hooks.call)
+	space: CFrame?, -- part 4: the frame an event's Vector3 `offset` and the "band" anchor's side are in (rotation)
+	camera: any?, -- part 4: this run's camera moves (else hooks.camera): the highway's own scripted camera
+	texts: { [string]: string }?, -- part 4: a pop's text by its name, instead of its def's (the landing distance)
+	popLift: number?, -- part 4: studs added to every pop's height (the flying squishy is bigger than the design's)
 }
 
 export type Hooks = {
@@ -447,8 +455,17 @@ local function jointPosition(actor: Actor, partName: string, jointName: string):
 	return if part then part.Position else nil
 end
 
--- An anchor's world position and (for slideGround) its side axis.
-local function anchorOf(actor: Actor, name: string?): (Vector3, Vector3?)
+-- An anchor's world position and (for slideGround and band) its side axis. `ev`: its event (part 4: a Vector3 `offset`
+-- in actor.space; band's number offset along the side).
+local function anchorOf(actor: Actor, name: string?, ev: any?): (Vector3, Vector3?)
+	if ev and typeof(ev.offset) == "Vector3" then
+		local at, side = anchorOf(actor, name, nil)
+		return at + (actor.space or CFrame.identity):VectorToWorldSpace(ev.offset), side
+	end
+	if name == "band" then
+		local side = if actor.space then actor.space.RightVector else facingOf(actor):Cross(UP)
+		return actor.root.Position + side * (if ev and type(ev.offset) == "number" then ev.offset else 0), side
+	end
 	local stage = MoveFxConfig.stage
 	local p = actor.root.Position
 	local floor = feetY(actor)
@@ -531,7 +548,7 @@ local function standsOnX(name: string?): boolean
 end
 
 local function eventFrame(actor: Actor, ev: any): CFrame
-	local at, side = anchorOf(actor, ev.at)
+	local at, side = anchorOf(actor, ev.at, ev)
 	local forward = facingOf(actor)
 	if side then
 		return CFrame.fromMatrix(at, side, UP) -- the slide's flat trail: its attachments lie along X
@@ -566,7 +583,7 @@ local function ringContent(): string?
 end
 
 local function ringFrame(actor: Actor, ev: any): CFrame
-	local at = anchorOf(actor, ev.at)
+	local at = anchorOf(actor, ev.at, ev)
 	local forward = facingOf(actor)
 	local normal = if ev.face == "back" then -forward elseif ev.face == "forward" then forward else UP
 	return frameUp(at, normal, forward)
@@ -654,7 +671,7 @@ local function startPop(actor: Actor, ev: any, def: any)
 	if #pops >= MAX_POPS then
 		return
 	end
-	local at = anchorOf(actor, ev.at) + def.offset
+	local at = anchorOf(actor, ev.at, ev) + def.offset + Vector3.new(0, actor.popLift or 0, 0)
 	local part = Instance.new("Part")
 	part.Name = "Pop"
 	part.Anchored = true
@@ -688,7 +705,7 @@ local function startPop(actor: Actor, ev: any, def: any)
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Size = UDim2.fromScale(1, 1)
-	label.Text = def.text
+	label.Text = if actor.texts and actor.texts[ev.pop] then actor.texts[ev.pop] else def.text
 	label.TextColor3 = def.color
 	label.FontFace = Font.fromEnum(Enum.Font.FredokaOne)
 	label.TextScaled = true
@@ -754,7 +771,7 @@ local function linesParent(): ScreenGui?
 	return gui
 end
 
-local function startLines(def: any)
+local function startLines(def: any, tint: Color3?)
 	local gui = linesParent()
 	if lineTexture == nil then
 		lineTexture = AssetTable.image("img.kit.speedline") or ""
@@ -774,7 +791,7 @@ local function startLines(def: any)
 		local image = Instance.new("ImageLabel")
 		image.BackgroundTransparency = 1
 		image.Image = lineTexture
-		image.ImageColor3 = def.color
+		image.ImageColor3 = if def.tinted and tint then tint else def.color -- part 4: the zone's warp lines
 		image.ImageTransparency = 1
 		image.AnchorPoint = Vector2.new(0.5, 0.5)
 		local len, wid = rr(def.lengthPx) * k, rr(def.widthPx) * k
@@ -872,7 +889,7 @@ local function startLight(actor: Actor, ev: any, def: any)
 	part.CastShadow = false
 	part.Transparency = 1
 	part.Size = Vector3.new(0.2, 0.2, 0.2)
-	part.CFrame = CFrame.new((anchorOf(actor, ev.at)))
+	part.CFrame = CFrame.new((anchorOf(actor, ev.at, ev)))
 	local light = Instance.new("PointLight")
 	light.Color = def.color
 	light.Brightness = def.brightness
@@ -1050,6 +1067,61 @@ local function startBars(def: any)
 		kill = function()
 			top:Destroy()
 			bottom:Destroy()
+		end,
+	} :: any)
+end
+
+-- An edge glow (part 4: the highway's frost, heat and Heaven; squishy-fx.js uiVignette): four edge bands, each from
+-- the screen edge to clearRadius of the way to the centre, fading in (Quad Out), holding and out (Quad In).
+local function startVignette(def: any)
+	local gui = linesParent()
+	if gui == nil then
+		return
+	end
+	local depth = (1 - def.clearRadius) / 2
+	local bands = {}
+	-- { position, size, gradient rotation (0 = clear toward +X) }
+	for _, b in {
+		{ UDim2.fromScale(0, 0), UDim2.fromScale(1, depth), 90 },
+		{ UDim2.fromScale(0, 1 - depth), UDim2.fromScale(1, depth), -90 },
+		{ UDim2.fromScale(0, 0), UDim2.fromScale(depth, 1), 0 },
+		{ UDim2.fromScale(1 - depth, 0), UDim2.fromScale(depth, 1), 180 },
+	} do
+		local frame = screenFrame("Vignette", def.color)
+		frame.Position, frame.Size = b[1], b[2]
+		frame.BackgroundTransparency = 1
+		frame.ZIndex = 1
+		local gradient = Instance.new("UIGradient")
+		gradient.Rotation = b[3]
+		gradient.Transparency = NumberSequence.new(0, 1)
+		gradient.Parent = frame
+		frame.Parent = gui
+		table.insert(bands, frame)
+	end
+	local total = def.fadeIn + def.hold + def.fadeOut
+	table.insert(screens, {
+		age = 0,
+		step = function(self: any, dt: number): boolean
+			self.age += dt
+			local a = self.age
+			if a >= total then
+				for _, frame in bands do
+					frame:Destroy()
+				end
+				return false
+			end
+			local o = if a < def.fadeIn
+				then FeelFx.ease("Quad Out", a / def.fadeIn)
+				else 1 - FeelFx.ease("Quad In", (a - def.fadeIn - def.hold) / def.fadeOut)
+			for _, frame in bands do
+				frame.BackgroundTransparency = 1 - def.opacity * math.clamp(o, 0, 1)
+			end
+			return true
+		end,
+		kill = function()
+			for _, frame in bands do
+				frame:Destroy()
+			end
 		end,
 	} :: any)
 end
@@ -1290,9 +1362,10 @@ end
 
 -- Events -------------------------------------------------------------------------------------------------------------------
 
+-- Ends the held emitters and trails called `name`, or started with that `group` (part 4: the zone's ambient).
 local function stopNamed(run: RunData, name: string)
 	for _, hold in run.holds do
-		if hold.name == name then
+		if hold.name == name or hold.ev.group == name then
 			hold.untilAt = 0
 		end
 	end
@@ -1344,7 +1417,7 @@ local function fire(run: RunData, ev: any)
 		end
 	elseif ev.dip or ev.shake or ev.fov or ev.punch then
 		-- The own camera: the own body's moves, or a hit's (its views already picked this client's role).
-		local camera = hooks.camera
+		local camera = actor.camera or hooks.camera
 		if (actor.own or actor.view ~= nil) and camera then
 			if ev.dip and cfg.dips[ev.dip] then
 				camera.dip(cfg.dips[ev.dip])
@@ -1379,7 +1452,11 @@ local function fire(run: RunData, ev: any)
 			startBars(def)
 		elseif def and def.kind == "banner" then
 			startBanner(def)
+		elseif def and def.kind == "vignette" then
+			startVignette(def)
 		end
+	elseif ev.freeze then
+		FeelFx.freeze(ev.freeze) -- part 4: the highway's impact freeze (a hit-stop)
 	elseif ev.slowmo then
 		local def = cfg.slowmos and cfg.slowmos[ev.slowmo]
 		if def and not Tweens.reducedMotion() then -- hit.html CONFIG.reduceMotion.slowMo false
@@ -1393,7 +1470,7 @@ local function fire(run: RunData, ev: any)
 	elseif ev.lines then
 		local def = cfg.lines[ev.lines]
 		if def and actor.own and not Tweens.reducedMotion() then
-			startLines(def)
+			startLines(def, actor.tint)
 		end
 	elseif ev.afterimage then
 		local def = cfg.afterimages[ev.afterimage]
@@ -1413,7 +1490,7 @@ local function fire(run: RunData, ev: any)
 	elseif ev.sound then
 		local sound = hooks.sound
 		if sound then
-			local at: Instance | Vector3 = if ev.at then anchorOf(actor, ev.at) else actor.root
+			local at: Instance | Vector3 = if ev.at then anchorOf(actor, ev.at, ev) else actor.root
 			sound(ev.sound, at, actor.priority or (if actor.own then 0 else -1), actor.soundPitch or 1, cfg.sounds)
 		end
 	end

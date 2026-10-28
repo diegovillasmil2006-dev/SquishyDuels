@@ -1637,8 +1637,8 @@ local UI = {
 		-- [P] SD_Highway (UIController.screenGui): over the HUD (10) and the kill banner's layer order, under modals.
 		gui = { displayOrder = 13, insets = Enum.ScreenInsets.CoreUISafeInsets } :: ScreenGuiSpec,
 		-- The ScreenGuis a launch does not hide (ScreenHold): its own screen, the fade, and the viewmodel's (it hides
-		-- itself: FirstPersonController.setAway).
-		keepGuis = { "SD_Highway", "SD_Fade", "SD_Viewmodel", "SD_ViewmodelPad" },
+		-- itself: FirstPersonController.setAway); FeelFx's (part 4).
+		keepGuis = { "SD_Highway", "SD_Fade", "SD_Viewmodel", "SD_ViewmodelPad", "SD_FeelLines" },
 		-- [P] On the deck: the camera at least zoomStuds out (third person), back to the player's own zoom after
 		-- restoreFrames render steps; the held squishy heldScale x bigger.
 		deck = { zoomStuds = 14, restoreFrames = 2, heldScale = 1.8 },

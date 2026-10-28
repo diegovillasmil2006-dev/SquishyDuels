@@ -966,6 +966,29 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 		end
 		return debugState()
 	end,
+	-- Physics upgrade part 4 (2026-10-28): HighwayFxController's live state (its beats so far, the effects' speed); with
+	-- a beat ("zone<n>", "sonic", "apexLong", "fast", "impactBig"), that beat on the throw in the air first.
+	highwayFx = function(beat: unknown): Reply
+		local hfx = optionalModule("Controllers", "HighwayFxController")
+		local debugState, debugSignal = functionOf(hfx, "debugState"), functionOf(hfx, "debugSignal")
+		if debugState == nil or debugSignal == nil then
+			return missing("HighwayFxController")
+		end
+		if type(beat) == "string" and not debugSignal(beat) then
+			return { ok = false, error = "no throw in the air" }
+		end
+		return debugState()
+	end,
+	-- Physics upgrade (2026-10-28): every FeelFx effect (and the highway's drawn flight) stands still for `seconds`, for
+	-- a screen capture.
+	feelFreeze = function(seconds: unknown): Reply
+		local freeze = functionOf(optionalModule("Anim", "FeelFx"), "freeze")
+		if freeze == nil then
+			return missing("FeelFx")
+		end
+		freeze(if type(seconds) == "number" then seconds else 10, true)
+		return { ok = true }
+	end,
 	-- Physics upgrade part 3 (2026-10-28): FlightFxController's live state; with a piece ("charge", "release",
 	-- "bounce", "catch"; FlightFxController.debugPlay), that piece on the own character first.
 	flightFx = function(kind: unknown, opts: unknown): Reply
