@@ -161,7 +161,6 @@ local MoveFx = {
 				},
 				{
 					t = 0.06,
-					easing = "Cubic InOut",
 					rootPos = v(0, -0.5, 0.2),
 					joints = {
 						Waist = v(-14, 0, 0),
@@ -176,6 +175,12 @@ local MoveFx = {
 						RightAnkle = v(35, 0, 0),
 					},
 				},
+				-- Eclipse pass (2026-10-28): the design's Cubic InOut rise baked at 30 fps with the Root raised so a
+				-- standard R15's feet never dip into the floor (it sank 0.13 studs); the joints are the design's.
+				{ t = 0.0933, rootPos = v(0, -0.42, 0.19), joints = { LeftAnkle = v(33.73, 0, 0), LeftHip = v(43.37, 0, 0), LeftKnee = v(-77.11, 0, 0), LeftShoulder = v(24.1, 0, -19.28), Neck = v(7.71, 0, 0), RightAnkle = v(33.73, 0, 0), RightHip = v(43.37, 0, 0), RightKnee = v(-77.11, 0, 0), RightShoulder = v(24.1, 0, 19.28), Waist = v(-13.49, 0, 0) } },
+				{ t = 0.1267, rootPos = v(0, -0.23, 0.14), joints = { LeftAnkle = v(24.87, 0, 0), LeftHip = v(31.98, 0, 0), LeftKnee = v(-56.85, 0, 0), LeftShoulder = v(17.77, 0, -14.21), Neck = v(5.69, 0, 0), RightAnkle = v(24.87, 0, 0), RightHip = v(31.98, 0, 0), RightKnee = v(-56.85, 0, 0), RightShoulder = v(17.77, 0, 14.21), Waist = v(-9.95, 0, 0) } },
+				{ t = 0.16, rootPos = v(0, -0.02, 0.04), joints = { LeftAnkle = v(7.38, 0, 0), LeftHip = v(9.49, 0, 0), LeftKnee = v(-16.88, 0, 0), LeftShoulder = v(5.27, 0, -4.22), Neck = v(1.69, 0, 0), RightAnkle = v(7.38, 0, 0), RightHip = v(9.49, 0, 0), RightKnee = v(-16.88, 0, 0), RightShoulder = v(5.27, 0, 4.22), Waist = v(-2.95, 0, 0) } },
+				{ t = 0.1933, rootPos = v(0, 0, 0), joints = { LeftAnkle = v(0.65, 0, 0), LeftHip = v(0.83, 0, 0), LeftKnee = v(-1.48, 0, 0), LeftShoulder = v(0.46, 0, -0.37), Neck = v(0.15, 0, 0), RightAnkle = v(0.65, 0, 0), RightHip = v(0.83, 0, 0), RightKnee = v(-1.48, 0, 0), RightShoulder = v(0.46, 0, 0.37), Waist = v(-0.26, 0, 0) } },
 				{ t = 0.22, joints = {} },
 			},
 		},
@@ -203,7 +208,6 @@ local MoveFx = {
 				},
 				{
 					t = 0.1,
-					easing = "Cubic InOut",
 					rootPos = v(0, -1, 0.33),
 					joints = {
 						Waist = v(-24, 0, 0),
@@ -220,6 +224,14 @@ local MoveFx = {
 						RightAnkle = v(45, 0, 0),
 					},
 				},
+				-- Eclipse pass (2026-10-28): the design's Cubic InOut rise baked at 30 fps, Root raised so the feet stay
+				-- on the floor (it sank 0.26 studs on a standard R15); the joints are the design's.
+				{ t = 0.1333, rootPos = v(0, -0.88, 0.33), joints = { LeftAnkle = v(44.52, 0, 0), LeftElbow = v(19.79, 0, 0), LeftHip = v(69.25, 0, 0), LeftKnee = v(-113.77, 0, 0), LeftShoulder = v(-19.79, 0, -64.3), Neck = v(13.85, 0, 0), RightAnkle = v(44.52, 0, 0), RightElbow = v(19.79, 0, 0), RightHip = v(69.25, 0, 0), RightKnee = v(-113.77, 0, 0), RightShoulder = v(-19.79, 0, 64.3), Waist = v(-23.74, 0, 0) } },
+				{ t = 0.1667, rootPos = v(0, -0.77, 0.3), joints = { LeftAnkle = v(41.14, 0, 0), LeftElbow = v(18.29, 0, 0), LeftHip = v(64, 0, 0), LeftKnee = v(-105.14, 0, 0), LeftShoulder = v(-18.29, 0, -59.43), Neck = v(12.8, 0, 0), RightAnkle = v(41.14, 0, 0), RightElbow = v(18.29, 0, 0), RightHip = v(64, 0, 0), RightKnee = v(-105.14, 0, 0), RightShoulder = v(-18.29, 0, 59.43), Waist = v(-21.94, 0, 0) } },
+				{ t = 0.2, rootPos = v(0, -0.48, 0.23), joints = { LeftAnkle = v(31.98, 0, 0), LeftElbow = v(14.21, 0, 0), LeftHip = v(49.75, 0, 0), LeftKnee = v(-81.72, 0, 0), LeftShoulder = v(-14.21, 0, -46.19), Neck = v(9.95, 0, 0), RightAnkle = v(31.98, 0, 0), RightElbow = v(14.21, 0, 0), RightHip = v(49.75, 0, 0), RightKnee = v(-81.72, 0, 0), RightShoulder = v(-14.21, 0, 46.19), Waist = v(-17.06, 0, 0) } },
+				{ t = 0.2333, rootPos = v(0, -0.12, 0.12), joints = { LeftAnkle = v(15.8, 0, 0), LeftElbow = v(7.02, 0, 0), LeftHip = v(24.58, 0, 0), LeftKnee = v(-40.38, 0, 0), LeftShoulder = v(-7.02, 0, -22.83), Neck = v(4.92, 0, 0), RightAnkle = v(15.8, 0, 0), RightElbow = v(7.02, 0, 0), RightHip = v(24.58, 0, 0), RightKnee = v(-40.38, 0, 0), RightShoulder = v(-7.02, 0, 22.83), Waist = v(-8.43, 0, 0) } },
+				{ t = 0.2667, rootPos = v(0, -0.01, 0.04), joints = { LeftAnkle = v(5.14, 0, 0), LeftElbow = v(2.28, 0, 0), LeftHip = v(7.99, 0, 0), LeftKnee = v(-13.12, 0, 0), LeftShoulder = v(-2.28, 0, -7.42), Neck = v(1.6, 0, 0), RightAnkle = v(5.14, 0, 0), RightElbow = v(2.28, 0, 0), RightHip = v(7.99, 0, 0), RightKnee = v(-13.12, 0, 0), RightShoulder = v(-2.28, 0, 7.42), Waist = v(-2.74, 0, 0) } },
+				{ t = 0.3, rootPos = v(0, 0, 0.01), joints = { LeftAnkle = v(0.83, 0, 0), LeftElbow = v(0.37, 0, 0), LeftHip = v(1.3, 0, 0), LeftKnee = v(-2.13, 0, 0), LeftShoulder = v(-0.37, 0, -1.2), Neck = v(0.26, 0, 0), RightAnkle = v(0.83, 0, 0), RightElbow = v(0.37, 0, 0), RightHip = v(1.3, 0, 0), RightKnee = v(-2.13, 0, 0), RightShoulder = v(-0.37, 0, 1.2), Waist = v(-0.44, 0, 0) } },
 				{ t = 0.34, joints = {} },
 			},
 		},
@@ -393,13 +405,15 @@ local MoveFx = {
 				},
 			},
 		},
+		-- Eclipse pass (2026-10-28): the held keys' Root drop is -1.18 (the design's -1.85 put a standard R15's lead
+		-- foot 0.67 studs into the floor: the preview rig's legs are shorter); now that foot rests on the floor.
 		slidePose = {
 			fadeIn = 0.06,
 			fadeOut = 0.14,
 			keys = {
 				{
 					t = 0,
-					rootPos = v(0, -1.85, 0),
+					rootPos = v(0, -1.18, 0),
 					joints = {
 						Root = v(24, 0, 0),
 						Waist = v(-14, 0, 0),
@@ -417,8 +431,7 @@ local MoveFx = {
 				},
 				{
 					t = 0.56,
-					easing = "Cubic InOut",
-					rootPos = v(0, -1.85, 0),
+					rootPos = v(0, -1.18, 0),
 					joints = {
 						Root = v(24, 0, 0),
 						Waist = v(-14, 0, 0),
@@ -434,6 +447,11 @@ local MoveFx = {
 						RightElbow = v(30, 0, 0),
 					},
 				},
+				-- Eclipse pass (2026-10-28): the design's Cubic InOut get-up baked at 30 fps, Root raised so the lead foot
+				-- never cuts into the floor (it sank 0.85 studs on a standard R15); the joints are the design's.
+				{ t = 0.5933, rootPos = v(0, -1.03, 0), joints = { LeftAnkle = v(-9.46, 0, 0), LeftElbow = v(9.46, 0, 0), LeftHip = v(62.44, 0, 0), LeftKnee = v(-3.78, 0, 0), LeftShoulder = v(-18.92, 0, -56.76), Neck = v(-11.35, 0, 0), RightElbow = v(28.38, 0, 0), RightHip = v(34.06, 0, -11.35), RightKnee = v(-141.9, 0, 0), RightShoulder = v(70.95, 0, 28.38), Root = v(22.7, 0, 0), Waist = v(-13.24, 0, 0) } },
+				{ t = 0.6267, rootPos = v(0, -0.2, 0), joints = { LeftAnkle = v(-5.68, 0, 0), LeftElbow = v(5.68, 0, 0), LeftHip = v(37.49, 0, 0), LeftKnee = v(-2.27, 0, 0), LeftShoulder = v(-11.36, 0, -34.08), Neck = v(-6.82, 0, 0), RightElbow = v(17.04, 0, 0), RightHip = v(20.45, 0, -6.82), RightKnee = v(-85.21, 0, 0), RightShoulder = v(42.61, 0, 17.04), Root = v(13.63, 0, 0), Waist = v(-7.95, 0, 0) } },
+				{ t = 0.66, rootPos = v(0, 0.06, 0), joints = { LeftAnkle = v(-0.93, 0, 0), LeftElbow = v(0.93, 0, 0), LeftHip = v(6.16, 0, 0), LeftKnee = v(-0.37, 0, 0), LeftShoulder = v(-1.87, 0, -5.6), Neck = v(-1.12, 0, 0), RightElbow = v(2.8, 0, 0), RightHip = v(3.36, 0, -1.12), RightKnee = v(-13.99, 0, 0), RightShoulder = v(7, 0, 2.8), Root = v(2.24, 0, 0), Waist = v(-1.31, 0, 0) } },
 				{ t = 0.7, joints = {} },
 			},
 		},
