@@ -13,19 +13,32 @@
 --                         a new pose blends in over fadeIn from the old one); the held arm keeps the hold pose
 --   dip / shake / fov     the own camera (hooks.camera: MoveFeelController); lines = the own screen speed lines
 --   afterimage            Anim/Afterimage ghosts, `count` of them `interval` apart
---   sound                 hooks.sound with the design's sound name (Config.MoveFx.sounds maps it to our keys)
--- views "1P" / "3P" filter what the own camera sees (other characters are always 3P). Anchors and aims are the design's
--- (move.html hooks.anchor / aim): feet (CONFIG.stage.feetLift over the floor), chest (chestHeight over it), backFoot =
--- RightFoot, stepFoot = actor.foot, leadFoot = LeftFoot, the shoulders' joints, slideGround (groundLift, flat along the
--- character's right); aims up, down, back (against actor.dir or the facing), forward, backUp (back tilted backUpAngle up).
+--   sound                 hooks.sound with the design's sound name (the run's cfg.sounds maps it to our keys)
+-- Part 2 (getting hit, hit.html; data in Config.HitFx) adds:
+--   pop with `texture`    a kit picture (img.kit.<texture>) drawn square, tilted at random within `rotation`
+--   glow / light          a Highlight on the character / a PointLight at the anchor, fading out over `time`
+--   flash / screen        the own screen: a full-screen flash (at most 3 a second), the jelly splats on the bottom edge,
+--                         the movie bars (squishy-fx.js flash, uiEdgeSplat, uiLetterbox)
+--   punch                 the own camera (hooks.camera.punch): a camera-space offset and turn on an envelope
+--   slowmo                this client's effects at `speed` (squishy-fx.js slowScale): poses, rings, pops, glows,
+--                         lights and every emitter under Workspace.SD_ClientFx; the events keep real time (as the
+--                         design's queue does). FeelFx.freeze(seconds) = the hit-stop's freeze (speed 0).
+--   call                  hooks.call(name, actor, ev): the knockback, hiding and showing a body (HitFxController)
+-- views "1P" / "3P" filter what the own camera sees (other characters are always 3P); an actor with `view` set ("V1P"
+-- the local victim, "A1P" the local attacker, "OBS" anyone else: hit.html) uses that instead. Anchors and aims are the
+-- design's (move.html / hit.html hooks.anchor / aim): feet (CONFIG.stage.feetLift over the floor), chest (chestHeight
+-- over it), hit (actor.hitAt), backFoot = RightFoot, stepFoot = actor.foot, leadFoot = LeftFoot, the shoulders' joints,
+-- slideGround (groundLift, flat along the character's right); aims up, down, back (against actor.dir or the facing),
+-- forward, backUp (back tilted backUpAngle up).
 -- Cosmetic only, never replicated: everything lives under Workspace.SD_ClientFx.Feel or the PlayerGui.
 --
 -- API
 --   FeelFx.play(events, actor, cfg?) -> Run      cfg = the data tables (default Config.MoveFx)
 --   Run:signal(name) / Run:stop() / Run:isDone()
---   FeelFx.setHooks(hooks)                       camera, sound, layerFor, holding, firstPerson (controllers set them)
+--   FeelFx.setHooks(hooks)                       camera, sound, layerFor, holding, firstPerson, call (controllers)
+--   FeelFx.freeze(seconds), FeelFx.timeScale()   the hit-stop's freeze; the effects' speed now
 --   FeelFx.ease(name, u), envelope(...), evalPose(def, t), shakeAt(def, age, phases), flipVariant(def, kind),
---   aimVector(name, dir) (pure, unit-tested); counts(), clear()
+--   aimVector(name, dir), slowAt(def, age) (pure, unit-tested); counts(), clear()
 
 -- Services
 
@@ -62,6 +75,8 @@ export type Actor = {
 	foot: string?, -- stepFoot: "Left" | "Right"
 	flip: string?, -- doubleFlip's variant (flipVariant)
 	soundPitch: number?, -- x every sound's pitch
+	hitAt: Vector3?, -- part 2: the "hit" anchor (where the squishy struck)
+	view: string?, -- part 2: "V1P" | "A1P" | "OBS" (this client's role in the hit)
 }
 
 export type Hooks = {
@@ -69,11 +84,13 @@ export type Hooks = {
 		dip: (spec: any) -> (),
 		shake: (spec: any) -> (),
 		fov: (spec: any) -> (),
+		punch: ((spec: any) -> ())?,
 	}?,
-	sound: ((name: string, at: Instance | Vector3, priority: number, pitch: number) -> ())?,
+	sound: ((name: string, at: Instance | Vector3, priority: number, pitch: number, sounds: any) -> ())?,
 	layerFor: ((player: Player) -> any)?,
 	holding: ((player: Player) -> boolean)?,
 	firstPerson: (() -> boolean)?,
+	call: ((name: string, actor: Actor, ev: any) -> ())?,
 }
 
 type Hold = { name: string, handle: MoveVfx.Handle, ev: any, untilAt: number }
@@ -100,8 +117,9 @@ type Ring = {
 type Pop = {
 	part: BasePart,
 	gui: BillboardGui,
-	label: TextLabel,
-	stroke: UIStroke,
+	label: TextLabel?,
+	stroke: UIStroke?,
+	image: ImageLabel?,
 	def: any,
 	age: number,
 }
@@ -114,7 +132,11 @@ type PoseState = {
 	player: Player,
 	layer: any,
 	mask: { [string]: boolean }?,
+	priority: number,
 }
+
+type Fade = { instance: Instance, def: any, age: number } -- a glow (Highlight) or a light (Part with a PointLight)
+type ScreenItem = { age: number, step: (self: ScreenItem, dt: number) -> boolean, kill: () -> () }
 
 -- Constants
 
@@ -133,6 +155,11 @@ local LINES_ORDER = 4 -- under the HUD (Diego's HUD layers are higher)
 local REF_HEIGHT = 1080
 local TAU = 2 * math.pi
 local UP = Vector3.yAxis
+local MAX_GLOWS = 4 -- Highlights share Config.Vfx.Budgets.highlights (16) with VfxController's
+local MAX_LIGHTS = 2
+local MAX_FLASHES_PER_SECOND = 3 -- hit.html CONFIG.rules
+local GLOW_NAME = "SD_FeelGlow"
+local EMITTER_FREEZE = 1e-4 -- an emitter's TimeScale in the freeze (particle clean-ups count in this time)
 
 -- Module table
 
@@ -150,6 +177,19 @@ local stepHandle: any = nil
 local folder: Folder? = nil
 local linesGui: ScreenGui? = nil
 local rng = Random.new()
+local glows: { [Model]: Fade } = {}
+local lights: { Fade } = {}
+local screens: { ScreenItem } = {}
+local lastFlash = -math.huge
+-- Slow motion and the hit-stop's freeze: the poses' clock (fxTime) runs at timeScale; rings, pops, glows and lights
+-- step at dt x timeScale; emitters under SD_ClientFx get it as their TimeScale.
+local slow: { def: any, age: number }? = nil
+local frozenUntil = 0
+local screensFrozenUntil = 0 -- Studio photos only (freeze(seconds, true)): the screen effects and glows stand still too
+local scale = 1
+local appliedScale = 1
+local fxTime = 0
+local lastReal = os.clock()
 
 -- Pure -----------------------------------------------------------------------------------------------------------------
 
@@ -299,6 +339,19 @@ function FeelFx.flipVariant(def: any, kind: string?): any
 	return out
 end
 
+-- The slow motion's speed `age` real seconds in (squishy-fx.js slowScale): eases from 1 to def.speed over fadeIn, holds,
+-- eases back to 1 over fadeOut; nil once it is over.
+function FeelFx.slowAt(def: any, age: number): number?
+	if age < def.fadeIn then
+		return 1 + (def.speed - 1) * FeelFx.ease(def.inEasing, age / def.fadeIn)
+	elseif age < def.fadeIn + def.hold then
+		return def.speed
+	elseif age < def.fadeIn + def.hold + def.fadeOut then
+		return def.speed + (1 - def.speed) * FeelFx.ease(def.outEasing, (age - def.fadeIn - def.hold) / def.fadeOut)
+	end
+	return nil
+end
+
 -- A world aim: up, down, back (against `dir`), forward, backUp (back tilted `backUpAngle` degrees up), else up.
 function FeelFx.aimVector(name: string?, dir: Vector3, backUpAngle: number?): Vector3
 	local flat = Vector3.new(dir.X, 0, dir.Z)
@@ -345,6 +398,18 @@ local function phone(): boolean
 	return UserInputService.PreferredInput == Enum.PreferredInput.Touch
 end
 
+local function rr(range: { number }): number
+	return range[1] + rng:NextNumber() * (range[2] - range[1])
+end
+
+-- The poses' clock: real seconds, slowed by a slow motion and stopped by the hit-stop's freeze.
+local function fxNow(): number
+	local real = os.clock()
+	fxTime += (real - lastReal) * scale
+	lastReal = real
+	return fxTime
+end
+
 local function partOf(character: Model, name: string): BasePart?
 	local part = character:FindFirstChild(name)
 	return if part and part:IsA("BasePart") then part else nil
@@ -385,6 +450,8 @@ local function anchorOf(actor: Actor, name: string?): (Vector3, Vector3?)
 		return Vector3.new(p.X, floor + stage.feetLift, p.Z), nil
 	elseif name == "chest" then
 		return Vector3.new(p.X, floor + stage.chestHeight, p.Z), nil
+	elseif name == "hit" then
+		return actor.hitAt or Vector3.new(p.X, floor + stage.chestHeight, p.Z), nil
 	elseif name == "slideGround" then
 		local forward = facingOf(actor)
 		return Vector3.new(p.X, floor + stage.groundLift, p.Z), forward:Cross(UP)
@@ -466,8 +533,8 @@ local function seen(actor: Actor, ev: any): boolean
 	if views == nil then
 		return true
 	end
-	local view = "3P"
-	if actor.own and hooks.firstPerson and hooks.firstPerson() then
+	local view = actor.view or "3P"
+	if actor.view == nil and actor.own and hooks.firstPerson and hooks.firstPerson() then
 		view = "1P"
 	end
 	return table.find(views, view) ~= nil
@@ -589,6 +656,20 @@ local function startPop(actor: Actor, ev: any, def: any)
 	gui.Size = UDim2.fromScale(0, 0)
 	gui.StudsOffset = Vector3.new(0, 0, POP_TOWARD_CAMERA) -- in front of the body, so the text is never hidden by it
 	gui.Adornee = part
+	if def.texture then
+		-- Part 2: a kit picture (the POW burst, the core flash's sparkle), square, at a random tilt.
+		local image = Instance.new("ImageLabel")
+		image.BackgroundTransparency = 1
+		image.Size = UDim2.fromScale(1, 1)
+		image.Image = AssetTable.image("img.kit." .. def.texture) or ""
+		image.ImageColor3 = def.color
+		image.Rotation = rr(def.rotation or { 0, 0 })
+		image.Parent = gui
+		gui.Parent = part
+		part.Parent = ownFolder()
+		table.insert(pops, { part = part, gui = gui, image = image, def = def, age = 0 })
+		return
+	end
 	local label = Instance.new("TextLabel")
 	label.BackgroundTransparency = 1
 	label.Size = UDim2.fromScale(1, 1)
@@ -615,15 +696,22 @@ local function stepPop(pop: Pop, dt: number, camera: Camera?): boolean
 	end
 	local canvas = MoveFxConfig.textCanvas
 	local h = math.max(seqAt(d.size, pop.age), 0)
-	pop.gui.Size = UDim2.new(h * canvas.aspect, 0, h, 0)
 	local transparency = math.clamp(seqAt(d.transparency, pop.age), 0, 1)
-	pop.label.TextTransparency = transparency
-	pop.stroke.Transparency = transparency
+	local image = pop.image
+	if image then
+		pop.gui.Size = UDim2.fromScale(h, h)
+		image.ImageTransparency = transparency
+		return true
+	end
+	pop.gui.Size = UDim2.new(h * canvas.aspect, 0, h, 0)
+	local label, stroke = pop.label :: TextLabel, pop.stroke :: UIStroke
+	label.TextTransparency = transparency
+	stroke.Transparency = transparency
 	-- The stroke is the design's share of the text height, in screen pixels (UIStroke does not scale with distance).
 	if camera then
 		local distance = math.max((camera.CFrame.Position - pop.part.Position).Magnitude, 1)
 		local pixels = h / (2 * distance * math.tan(math.rad(camera.FieldOfView) / 2)) * camera.ViewportSize.Y
-		pop.stroke.Thickness = math.clamp(pixels * canvas.fontShare * canvas.strokeShare, 0, 12)
+		stroke.Thickness = math.clamp(pixels * canvas.fontShare * canvas.strokeShare, 0, 12)
 	end
 	return true
 end
@@ -649,10 +737,6 @@ local function linesParent(): ScreenGui?
 	gui.Parent = playerGui
 	linesGui = gui
 	return gui
-end
-
-local function rr(range: { number }): number
-	return range[1] + rng:NextNumber() * (range[2] - range[1])
 end
 
 local function startLines(def: any)
@@ -711,6 +795,279 @@ local function stepLines(set: any, dt: number, camera: Camera?): boolean
 		it.image.ImageTransparency = 1 - opacity
 	end
 	return not done
+end
+
+-- Glows and lights (part 2) ----------------------------------------------------------------------------------------------
+
+local function startGlow(actor: Actor, def: any)
+	local character = actor.character
+	local old = glows[character]
+	if old then
+		old.instance:Destroy()
+		glows[character] = nil
+	end
+	-- Never on the own body in first person: a Highlight draws on its hidden parts (VfxController.ghostWanted).
+	if actor.own and hooks.firstPerson and hooks.firstPerson() then
+		return
+	end
+	local n = 0
+	for _ in glows do
+		n += 1
+	end
+	if n >= MAX_GLOWS then
+		return
+	end
+	local highlight = Instance.new("Highlight")
+	highlight.Name = GLOW_NAME
+	highlight.FillColor = def.fill
+	highlight.OutlineColor = def.outline
+	highlight.FillTransparency = def.fillFrom
+	highlight.OutlineTransparency = def.outlineFrom
+	highlight.DepthMode = Enum.HighlightDepthMode.Occluded
+	highlight.Adornee = character
+	highlight.Parent = character
+	glows[character] = { instance = highlight, def = def, age = 0 }
+end
+
+local function stepGlow(glow: Fade, dt: number): boolean
+	glow.age += dt
+	local d = glow.def
+	local highlight = glow.instance :: Highlight
+	if glow.age >= d.time or highlight.Parent == nil then
+		highlight:Destroy()
+		return false
+	end
+	local e = FeelFx.ease(d.easing, glow.age / d.time)
+	highlight.FillTransparency = d.fillFrom + (1 - d.fillFrom) * e
+	highlight.OutlineTransparency = d.outlineFrom + (1 - d.outlineFrom) * e
+	return true
+end
+
+local function startLight(actor: Actor, ev: any, def: any)
+	if #lights >= MAX_LIGHTS then
+		return
+	end
+	local part = Instance.new("Part")
+	part.Name = "Light"
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Transparency = 1
+	part.Size = Vector3.new(0.2, 0.2, 0.2)
+	part.CFrame = CFrame.new((anchorOf(actor, ev.at)))
+	local light = Instance.new("PointLight")
+	light.Color = def.color
+	light.Brightness = def.brightness
+	light.Range = def.range
+	light.Shadows = false
+	light.Parent = part
+	part.Parent = ownFolder()
+	table.insert(lights, { instance = part, def = def, age = 0 })
+end
+
+local function stepLight(item: Fade, dt: number): boolean
+	item.age += dt
+	local d = item.def
+	local part = item.instance
+	if item.age >= d.time or part.Parent == nil then
+		part:Destroy()
+		return false
+	end
+	local light = part:FindFirstChildOfClass("PointLight")
+	if light then
+		light.Brightness = d.brightness * (1 - FeelFx.ease(d.easing, item.age / d.time))
+	end
+	return true
+end
+
+-- The own screen (part 2): flash, edge splats, movie bars. Real time (the design's ui items step at dtR). -------------------
+
+local function screenFrame(name: string, color: Color3): Frame
+	local frame = Instance.new("Frame")
+	frame.Name = name
+	frame.BorderSizePixel = 0
+	frame.BackgroundColor3 = color
+	frame.Active = false
+	return frame
+end
+
+local function startFlash(def: any, cfg: any)
+	local now = os.clock()
+	local gui = linesParent()
+	if gui == nil or now - lastFlash < 1 / MAX_FLASHES_PER_SECOND then
+		return
+	end
+	lastFlash = now
+	local reduce = cfg.reduceMotion
+	local k = if Tweens.reducedMotion() and reduce and reduce.flash then reduce.flash else 1
+	local frame = screenFrame("Flash", def.color)
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.BackgroundTransparency = 1
+	frame.ZIndex = 3
+	frame.Parent = gui
+	table.insert(screens, {
+		age = 0,
+		step = function(self: any, dt: number): boolean
+			self.age += dt
+			local a = self.age
+			if a >= def.fadeIn + def.fadeOut then
+				frame:Destroy()
+				return false
+			end
+			local o = if a < def.fadeIn then a / def.fadeIn else 1 - math.clamp((a - def.fadeIn) / def.fadeOut, 0, 1)
+			frame.BackgroundTransparency = 1 - o * def.opacity * k
+			return true
+		end,
+		kill = function()
+			frame:Destroy()
+		end,
+	} :: any)
+end
+
+-- The jelly splats on the bottom edge, in the thrown squishy's colour (the design's jelly is that colour).
+local function startEdgeSplat(def: any, actor: Actor)
+	local gui = linesParent()
+	local camera = Workspace.CurrentCamera
+	local texture = AssetTable.image("img.kit." .. def.texture)
+	if gui == nil or camera == nil or texture == nil then
+		return
+	end
+	local view = camera.ViewportSize
+	local k = view.Y / REF_HEIGHT
+	local n = if phone() then math.ceil(def.count * MoveFxConfig.phone.countShare) else def.count
+	local items = {}
+	for i = 1, n do
+		local image = Instance.new("ImageLabel")
+		image.Name = "Splat"
+		image.BackgroundTransparency = 1
+		image.Image = texture
+		image.ImageColor3 = actor.tint or def.color
+		image.ImageTransparency = 1
+		image.AnchorPoint = Vector2.new(0.5, 0.5)
+		image.Rotation = rr(def.rotation)
+		image.Size = UDim2.fromOffset(0, 0)
+		image.ZIndex = 2
+		image.Parent = gui
+		local along = 0.5 + (rng:NextNumber() - 0.5) * def.spread
+		table.insert(items, {
+			image = image,
+			size = rr(def.sizePx) * k,
+			x = along * view.X,
+			y = (1 - def.inset) * view.Y,
+			delay = (i - 1) * def.stagger,
+		})
+	end
+	local total = def.popTime + def.hold + def.fadeTime + def.stagger * n
+	local drip = def.drip * view.Y
+	table.insert(screens, {
+		age = 0,
+		step = function(self: any, dt: number): boolean
+			self.age += dt
+			if self.age >= total then
+				for _, it in items do
+					it.image:Destroy()
+				end
+				return false
+			end
+			for _, it in items do
+				local a = self.age - it.delay
+				if a < 0 then
+					continue
+				end
+				local s = FeelFx.ease(def.popEasing, a / def.popTime)
+				local f = math.clamp((a - def.popTime - def.hold) / def.fadeTime, 0, 1)
+				it.image.Size = UDim2.fromOffset(it.size * s, it.size * s)
+				it.image.Position = UDim2.fromOffset(it.x, it.y + FeelFx.ease("Quad In", f) * drip)
+				it.image.ImageTransparency = 1 - def.opacity * (1 - f)
+			end
+			return true
+		end,
+		kill = function()
+			for _, it in items do
+				it.image:Destroy()
+			end
+		end,
+	} :: any)
+end
+
+-- The movie bars: slide in from the top and bottom edges, hold, slide out.
+local function startBars(def: any)
+	local gui = linesParent()
+	if gui == nil then
+		return
+	end
+	local top = screenFrame("BarTop", def.color)
+	local bottom = screenFrame("BarBottom", def.color)
+	for _, bar in { top, bottom } do
+		bar.Size = UDim2.fromScale(1, def.height)
+		bar.ZIndex = 1
+	end
+	top.Position = UDim2.fromScale(0, -def.height)
+	bottom.AnchorPoint = Vector2.new(0, 1)
+	bottom.Position = UDim2.fromScale(0, 1 + def.height)
+	top.Parent = gui
+	bottom.Parent = gui
+	local total = def.fadeIn + def.hold + def.fadeOut
+	table.insert(screens, {
+		age = 0,
+		step = function(self: any, dt: number): boolean
+			self.age += dt
+			local a = self.age
+			if a >= total then
+				top:Destroy()
+				bottom:Destroy()
+				return false
+			end
+			local v = math.clamp(
+				if a < def.fadeIn
+					then FeelFx.ease(def.inEasing, a / def.fadeIn)
+					else 1 - FeelFx.ease(def.outEasing, (a - def.fadeIn - def.hold) / def.fadeOut),
+				0,
+				1
+			)
+			top.Position = UDim2.fromScale(0, (v - 1) * def.height)
+			bottom.Position = UDim2.fromScale(0, 1 + (1 - v) * def.height)
+			return true
+		end,
+		kill = function()
+			top:Destroy()
+			bottom:Destroy()
+		end,
+	} :: any)
+end
+
+-- Slow motion and freeze: the speed this frame, handed to every emitter under SD_ClientFx while it is not 1.
+local function stepScale(dt: number)
+	local s = 1
+	local current = slow
+	if current then
+		current.age += dt
+		local v = FeelFx.slowAt(current.def, current.age)
+		if v == nil then
+			slow = nil
+		else
+			s = v
+		end
+	end
+	if os.clock() < frozenUntil then
+		s = 0
+	end
+	fxNow() -- the poses' clock banks the time so far at the old speed
+	scale = s
+	if s < 1 or appliedScale ~= 1 then
+		appliedScale = s
+		local fx = Workspace:FindFirstChild(FX_FOLDER)
+		if fx then
+			local emitterScale = math.max(s, EMITTER_FREEZE) -- the freeze: nearly still, never a stopped clock
+			for _, d in fx:GetDescendants() do
+				if d:IsA("ParticleEmitter") then
+					d.TimeScale = emitterScale
+				end
+			end
+		end
+	end
 end
 
 -- Poses -------------------------------------------------------------------------------------------------------------------
@@ -779,16 +1136,17 @@ local function startPose(actor: Actor, def: any, cfg: any)
 	if layer:has(slot) then
 		layer:clear(slot)
 	end
+	local priority = cfg.posePriority or MoveFxConfig.posePriority
 	poses[actor.character] = {
 		slot = slot,
 		other = other,
 		def = def,
-		start = os.clock(),
+		start = fxNow(),
 		player = player,
 		layer = layer,
 		mask = heldMask(player),
+		priority = priority,
 	}
-	local priority = cfg.posePriority or MoveFxConfig.posePriority
 	local frames = poseFrames(def, 0, poses[actor.character].mask)
 	layer:setFrames(slot, frames, poseWeight(def, 0), priority)
 end
@@ -798,7 +1156,7 @@ local function stepPose(character: Model, state: PoseState): boolean
 	if character.Parent == nil or layer == nil then
 		return false
 	end
-	local t = os.clock() - state.start
+	local t = fxNow() - state.start
 	local def = state.def
 	local w = poseWeight(def, t)
 	local frames, past = poseFrames(def, t, state.mask)
@@ -813,7 +1171,7 @@ local function stepPose(character: Model, state: PoseState): boolean
 		end
 		return false
 	end
-	layer:setFrames(state.slot, frames, w, MoveFxConfig.posePriority)
+	layer:setFrames(state.slot, frames, w, state.priority)
 	local other = state.other
 	if other and w >= 1 then
 		if layer:has(other) then
@@ -898,16 +1256,51 @@ local function fire(run: RunData, ev: any)
 			end
 			startPose(actor, def, cfg)
 		end
-	elseif ev.dip or ev.shake or ev.fov then
+	elseif ev.dip or ev.shake or ev.fov or ev.punch then
+		-- The own camera: the own body's moves, or a hit's (its views already picked this client's role).
 		local camera = hooks.camera
-		if actor.own and camera then
+		if (actor.own or actor.view ~= nil) and camera then
 			if ev.dip and cfg.dips[ev.dip] then
 				camera.dip(cfg.dips[ev.dip])
 			elseif ev.shake and cfg.shakes[ev.shake] then
 				camera.shake(cfg.shakes[ev.shake])
 			elseif ev.fov and cfg.fovs[ev.fov] then
 				camera.fov(cfg.fovs[ev.fov])
+			elseif ev.punch and cfg.punches and cfg.punches[ev.punch] and camera.punch then
+				camera.punch(cfg.punches[ev.punch])
 			end
+		end
+	elseif ev.glow then
+		local def = cfg.glows and cfg.glows[ev.glow]
+		if def then
+			startGlow(actor, def)
+		end
+	elseif ev.light then
+		local def = cfg.lights and cfg.lights[ev.light]
+		if def then
+			startLight(actor, ev, def)
+		end
+	elseif ev.flash then
+		local def = cfg.flashes and cfg.flashes[ev.flash]
+		if def then
+			startFlash(def, cfg)
+		end
+	elseif ev.screen then
+		local def = cfg.screens and cfg.screens[ev.screen]
+		if def and def.kind == "edgeSplat" then
+			startEdgeSplat(def, actor)
+		elseif def and def.kind == "letterbox" then
+			startBars(def)
+		end
+	elseif ev.slowmo then
+		local def = cfg.slowmos and cfg.slowmos[ev.slowmo]
+		if def and not Tweens.reducedMotion() then -- hit.html CONFIG.reduceMotion.slowMo false
+			slow = { def = def, age = 0 }
+		end
+	elseif ev.call then
+		local call = hooks.call
+		if call then
+			call(ev.call, actor, ev)
 		end
 	elseif ev.lines then
 		local def = cfg.lines[ev.lines]
@@ -933,7 +1326,7 @@ local function fire(run: RunData, ev: any)
 		local sound = hooks.sound
 		if sound then
 			local at: Instance | Vector3 = if ev.at then anchorOf(actor, ev.at) else actor.root
-			sound(ev.sound, at, actor.priority or (if actor.own then 0 else -1), actor.soundPitch or 1)
+			sound(ev.sound, at, actor.priority or (if actor.own then 0 else -1), actor.soundPitch or 1, cfg.sounds)
 		end
 	end
 end
@@ -970,16 +1363,30 @@ local function stepRun(run: RunData, now: number): boolean
 	return true
 end
 
+local function stepList(list: { any }, fn: (any, number) -> boolean, dt: number)
+	local i = 1
+	while i <= #list do
+		if fn(list[i], dt) then
+			i += 1
+		else
+			table.remove(list, i)
+		end
+	end
+end
+
 local function step(dt: number, now: number): boolean
+	stepScale(dt)
+	local worldDt = dt * scale -- the design's dtW: world effects slow down with a slow motion
 	local clock = os.clock()
 	for run in runs do
-		if not stepRun(run, clock) then
+		-- A run with nothing queued or held leaves the list (MAX_RUNS counts it); Run:signal puts it back.
+		if not stepRun(run, clock) or (run :: any):isDone() then
 			runs[run] = nil
 		end
 	end
 	local k = 1
 	while k <= #rings do
-		if stepRing(rings[k], dt) then
+		if stepRing(rings[k], worldDt) then
 			k += 1
 		else
 			table.remove(rings, k)
@@ -988,12 +1395,22 @@ local function step(dt: number, now: number): boolean
 	local camera = Workspace.CurrentCamera
 	local m = 1
 	while m <= #pops do
-		if stepPop(pops[m], dt, camera) then
+		if stepPop(pops[m], worldDt, camera) then
 			m += 1
 		else
 			table.remove(pops, m)
 		end
 	end
+	local uiDt = if clock < screensFrozenUntil then 0 else dt
+	for character, glow in glows do
+		if not stepGlow(glow, uiDt) then
+			glows[character] = nil
+		end
+	end
+	stepList(lights, stepLight, worldDt)
+	stepList(screens, function(item: any, d: number): boolean
+		return item:step(d)
+	end, uiDt)
 	local n = 1
 	while n <= #lineSets do
 		if stepLines(lineSets[n], dt, camera) then
@@ -1092,15 +1509,42 @@ function FeelFx.setHooks(new: Hooks)
 	end
 end
 
+-- The hit-stop (hit.html hitStopS / M / L): this client's poses and effects stand still for `seconds` (real time).
+-- `screens` (Studio photos only): the screen effects and glows too.
+function FeelFx.freeze(seconds: number, screens: boolean?)
+	frozenUntil = math.max(frozenUntil, os.clock() + seconds)
+	if screens then
+		screensFrozenUntil = math.max(screensFrozenUntil, frozenUntil)
+	end
+	ensureStep()
+end
+
+-- The effects' speed this frame (1, a slow motion's, or 0 in the freeze).
+function FeelFx.timeScale(): number
+	return scale
+end
+
 function FeelFx.counts(): { [string]: number }
-	local live, posed = 0, 0
+	local live, posed, glowing = 0, 0, 0
 	for _ in runs do
 		live += 1
 	end
 	for _ in poses do
 		posed += 1
 	end
-	return { runs = live, rings = #rings, pops = #pops, lines = #lineSets, poses = posed }
+	for _ in glows do
+		glowing += 1
+	end
+	return {
+		runs = live,
+		rings = #rings,
+		pops = #pops,
+		lines = #lineSets,
+		poses = posed,
+		glows = glowing,
+		lights = #lights,
+		screens = #screens,
+	}
 end
 
 function FeelFx.clear()
@@ -1125,6 +1569,21 @@ function FeelFx.clear()
 	for character in poses do
 		FeelFx.clearPose(character)
 	end
+	for _, glow in glows do
+		glow.instance:Destroy()
+	end
+	table.clear(glows)
+	for _, item in lights do
+		item.instance:Destroy()
+	end
+	table.clear(lights)
+	for _, item in screens do
+		item.kill()
+	end
+	table.clear(screens)
+	slow = nil
+	frozenUntil = 0
+	screensFrozenUntil = 0
 end
 
 return FeelFx

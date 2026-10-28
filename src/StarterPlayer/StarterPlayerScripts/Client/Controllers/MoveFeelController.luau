@@ -80,6 +80,8 @@ local dips: { { spec: any, age: number } } = {}
 local shakes: { { spec: any, age: number, phases: { number } } } = {}
 local kicks: { { spec: any, age: number } } = {}
 local kickFov = 0 -- the kicks' FOV this frame (degrees)
+-- Part 2 (Config.HitFx punches): camera-space offset (studs) and turn (degrees) on an envelope.
+local punches: { { spec: any, age: number } } = {}
 local rng = Random.new()
 
 -- Pure -----------------------------------------------------------------------------------------------------------------
@@ -232,6 +234,14 @@ local function step(dt: number, camera: Camera)
 		local s = k.spec
 		kickFov += s.delta * FeelFx.envelope(k.age, s.attack, s.hold, s.release, s.attackEasing, s.releaseEasing)
 	end
+	local punchAt, punchTurn = Vector3.zero, Vector3.zero
+	for _, p in punches do
+		p.age += dt
+		local s = p.spec
+		local e = FeelFx.envelope(p.age, s.attack, s.hold, s.release, s.attackEasing, s.releaseEasing)
+		punchAt += s.offset * e
+		punchTurn += s.rotation * e
+	end
 	MoveFeelController.prune()
 	if not on then
 		-- Off: no offset at all (the springs are reset so nothing is left over when it comes back).
@@ -241,7 +251,9 @@ local function step(dt: number, camera: Camera)
 		table.clear(dips)
 		table.clear(shakes)
 		table.clear(kicks)
+		table.clear(punches)
 		fov, roll, dip, bobAmount, kickFov, shake = 0, 0, 0, 0, 0, Vector3.zero
+		punchAt, punchTurn = Vector3.zero, Vector3.zero
 	end
 	writeFov(fov + kickFov)
 	local bobX, bobY = MoveFeelController.bobOffset(bobPhase, bobAmount)
@@ -255,10 +267,15 @@ local function step(dt: number, camera: Camera)
 		and math.abs(bobY) < REST
 		and math.abs(dip) < REST
 		and shake.Magnitude < REST
+		and punchAt.Magnitude < REST
+		and punchTurn.Magnitude < REST
 	then
 		return
 	end
-	local offset = CFrame.new(bobX, bobY + dip, 0)
+	-- The punch first (the design moves the camera along its own axes, then turns it), then the feel's offset.
+	local offset = CFrame.new(punchAt)
+		* CFrame.Angles(math.rad(punchTurn.X), math.rad(punchTurn.Y), math.rad(punchTurn.Z))
+		* CFrame.new(bobX, bobY + dip, 0)
 		* CFrame.Angles(math.rad(dip * FEEL.dipPitchPerStud + shake.X), math.rad(shake.Y), math.rad(roll + shake.Z))
 	camera.CFrame *= offset
 	applied = offset
@@ -301,8 +318,9 @@ function MoveFeelController.fovOffset(): number
 	return if started then fovSpring.position + kickFov else 0
 end
 
--- The design's camera moves (Config.MoveFx dips / shakes / fovs; Anim/FeelFx's camera hooks). Each plays once and
--- ends on its own; all of them are off with the rest of the feel (ReducedMotion, settings.cameraShake false).
+-- The design's camera moves (Config.MoveFx dips / shakes / fovs, Config.HitFx punches too; Anim/FeelFx's camera
+-- hooks). Each plays once and ends on its own; all of them are off with the rest of the feel (ReducedMotion,
+-- settings.cameraShake false).
 function MoveFeelController.dip(spec: any)
 	if started and feelOn() then
 		table.insert(dips, { spec = spec, age = 0 })
@@ -325,6 +343,12 @@ function MoveFeelController.fovKick(spec: any)
 	end
 end
 
+function MoveFeelController.punch(spec: any)
+	if started and feelOn() then
+		table.insert(punches, { spec = spec, age = 0 })
+	end
+end
+
 -- Drops the camera moves that have ended.
 function MoveFeelController.prune()
 	for i = #dips, 1, -1 do
@@ -342,6 +366,12 @@ function MoveFeelController.prune()
 		local s = kicks[i].spec
 		if kicks[i].age >= s.attack + s.hold + s.release then
 			table.remove(kicks, i)
+		end
+	end
+	for i = #punches, 1, -1 do
+		local s = punches[i].spec
+		if punches[i].age >= s.attack + s.hold + s.release then
+			table.remove(punches, i)
 		end
 	end
 end

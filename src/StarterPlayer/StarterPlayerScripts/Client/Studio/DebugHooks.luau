@@ -966,6 +966,22 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 		end
 		return debugState()
 	end,
+	-- Physics upgrade part 2 (2026-10-28): HitFxController's live state; with a moment name (Config.HitFx.moments), that
+	-- moment on the own character first (opts: view "V1P" | "A1P" | "OBS", knockback, freeze).
+	hitFx = function(moment: unknown, opts: unknown): Reply
+		local hfx = optionalModule("Controllers", "HitFxController")
+		local debugState, debugPlay = functionOf(hfx, "debugState"), functionOf(hfx, "debugPlay")
+		if debugState == nil or debugPlay == nil then
+			return missing("HitFxController")
+		end
+		if type(moment) == "string" then
+			local ok, err = debugPlay(moment, if type(opts) == "table" then opts else nil)
+			if not ok then
+				return { ok = false, error = err }
+			end
+		end
+		return debugState()
+	end,
 	vmPose = function(name: unknown): Reply
 		local viewmodel = optionalModule("Controllers", "ViewmodelController")
 		local pose, read = functionOf(viewmodel, "debugPose"), functionOf(viewmodel, "debugState")

@@ -209,6 +209,18 @@ local function prepare(source: BasePart, opts: Options?): (BasePart, { ParticleE
 	return part, emitters, trails, longest
 end
 
+-- Calls fn after `seconds` of the particles' own time: FeelFx's slow motion and hit-stop freeze lower the TimeScale of
+-- every emitter under SD_ClientFx, and a slowed burst keeps its particles to their end (at most 8x longer in real time).
+local function afterParticleTime(seconds: number, probe: ParticleEmitter?, fn: () -> ())
+	task.spawn(function()
+		local left, start = seconds, os.clock()
+		while left > 0 and os.clock() - start < seconds * 8 do
+			left -= task.wait() * (if probe and probe.Parent then probe.TimeScale else 1)
+		end
+		fn()
+	end)
+end
+
 -- Runs one emitter's VFX Studio contract. Returns when it ends (seconds from now).
 local function runEmitter(e: ParticleEmitter, multiplier: number): number
 	local delay, count, duration = ThrowVfx.emitPlan(e:GetAttributes(), multiplier)
@@ -264,7 +276,7 @@ function MoveVfx.burst(path: string, at: CFrame, opts: Options?): boolean
 	end
 	live.bursts += 1
 	bursts[part] = true
-	task.delay(ends + END_MARGIN, function()
+	afterParticleTime(ends + END_MARGIN, emitters[1], function()
 		if bursts[part] then
 			bursts[part] = nil
 			live.bursts = math.max(live.bursts - 1, 0)
@@ -343,7 +355,7 @@ function MoveVfx.hold(path: string, opts: Options?): Handle?
 			t.Enabled = false -- its segments fade on their own lifetime
 		end
 		local carrier = self.part
-		task.delay(self.linger + END_MARGIN, function()
+		afterParticleTime(self.linger + END_MARGIN, self.emitters[1], function()
 			if handles[self] then
 				handles[self] = nil
 				live.holds = math.max(live.holds - 1, 0)

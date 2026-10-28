@@ -297,7 +297,14 @@ local function start(
 	end
 	carriers[part] = kind
 	live[kind] += 1
-	task.delay(ends + END_MARGIN, function()
+	-- In the particles' own time (2026-10-28: the final K.O.'s slow motion, Anim/FeelFx, lowers every TimeScale under
+	-- SD_ClientFx), so a slowed kill effect keeps its particles to their end; at most 8x longer in real time.
+	local probe = emitters[1]
+	task.spawn(function()
+		local left, begun = ends + END_MARGIN, os.clock()
+		while left > 0 and os.clock() - begun < (ends + END_MARGIN) * 8 do
+			left -= task.wait() * (if probe.Parent then probe.TimeScale else 1)
+		end
 		if carriers[part] then
 			release(part)
 		end

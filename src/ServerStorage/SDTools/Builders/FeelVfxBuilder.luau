@@ -7,7 +7,10 @@
 -- made in VFX Studio since.
 --
 -- Every number is the co-owner's Claude Design page docs/squishy-fx-spec/move.html CONFIG.fx (notes.md "Part 1 · Move"),
--- one template per design name; megaConfetti is the owner's extra 4 (NOT IN DESIGN). The mapping (notes.md "How each
+-- one template per design name; megaConfetti is the owner's extra 4 (NOT IN DESIGN). Part 2 (2026-10-28, getting hit)
+-- adds hit.html CONFIG.fx's particles and knockTrail (Page "hit.html"); the jelly takes the thrown squishy's colour
+-- (SD_Tint "team": the design's "Color = the thrown squishy's main colour"), the skid and respawn dust the floor's
+-- (extra 2). hit.html's fallWindKO is part 1's fallWind (the same numbers). The mapping (notes.md "How each
 -- part maps to Roblox"): a template is an invisible anchored Part (its Top = the event's aim); its emitters sit in it,
 -- so Cylinder / Sphere / Box shapes use the Part's size (Surface + Outward for Cylinder / Sphere, the design's shape);
 -- Tints = one emitter per tint, the count split evenly; Count / Rate = the PC number (phones get the halves at runtime);
@@ -22,7 +25,7 @@ local AssetTable = require(ReplicatedStorage.Shared.AssetTable)
 -- Constants
 
 local GENERATOR_ID = "feel_vfx"
-local VERSION = 1
+local VERSION = 2 -- 2: part 2's hit templates
 local ROOT_NAME = "Feel"
 local POINT = 0.05 -- the part size of a template with no shape (a point)
 local RIBBON_HALF = 0.5 -- a trail's attachments are width apart: +- width x this
@@ -147,6 +150,94 @@ local SPECS: { [string]: Spec } = {
 		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -90, 0 }, Drag = 1.5,
 		Rotation = { 0, 360 }, RotSpeed = { -420, 420 }, LightEmission = 0,
 	},
+	-- Part 2: hit.html CONFIG.fx (104-155).
+	jellySplat = {
+		Page = "hit.html", Texture = "jelly", Count = 16, Lifetime = { 0.4, 0.7 }, Speed = { 20, 36 },
+		SpreadAngle = { 70, 70 }, Size = { { 0, 0.7 }, { 0.25, 0.95 }, { 1, 0.3 } }, Color = "#FF8FB1",
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -110, 0 }, Drag = 1.5,
+		Orientation = "VelocityParallel", Squash = 0.3, LightEmission = 0, Tint = "team",
+	},
+	jellySplatBig = {
+		Page = "hit.html", Texture = "jelly", Count = 26, Lifetime = { 0.45, 0.8 }, Speed = { 26, 46 },
+		SpreadAngle = { 80, 80 }, Size = { { 0, 0.8 }, { 0.25, 1.1 }, { 1, 0.35 } }, Color = "#FF8FB1",
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -110, 0 }, Drag = 1.5,
+		Orientation = "VelocityParallel", Squash = 0.3, LightEmission = 0, Tint = "team",
+	},
+	hitStars = {
+		Page = "hit.html", Texture = "star", Count = 8, Lifetime = { 0.35, 0.55 }, Speed = { 14, 24 },
+		SpreadAngle = { 180, 180 }, Size = { { 0, 0.9 }, { 0.7, 0.8 }, { 1, 0 } }, Color = "#FFD86B", Transparency = 0,
+		Acceleration = { 0, -40, 0 }, Drag = 2, Rotation = { 0, 360 }, RotSpeed = { -300, 300 }, LightEmission = 0.2,
+	},
+	hitStarsBig = {
+		Page = "hit.html", Texture = "star", Count = 14, Lifetime = { 0.4, 0.65 }, Speed = { 18, 32 },
+		SpreadAngle = { 180, 180 }, Size = { { 0, 1.1 }, { 0.7, 1 }, { 1, 0 } }, Color = "#FFD86B", Transparency = 0,
+		Acceleration = { 0, -40, 0 }, Drag = 2, Rotation = { 0, 360 }, RotSpeed = { -300, 300 }, LightEmission = 0.2,
+	},
+	hitSprinkles = {
+		Page = "hit.html", Texture = "confetti", Tints = { "#8EDFC4", "#FFD86B", "#8CC8FF" }, Count = 18,
+		Lifetime = { 0.45, 0.75 }, Speed = { 18, 30 }, SpreadAngle = { 80, 80 }, Size = 0.35,
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -120, 0 }, Drag = 1,
+		Rotation = { 0, 360 }, RotSpeed = { -540, 540 }, LightEmission = 0,
+	},
+	hitSprinklesBig = {
+		Page = "hit.html", Texture = "confetti", Tints = { "#8EDFC4", "#FFD86B", "#8CC8FF" }, Count = 30,
+		Lifetime = { 0.5, 0.85 }, Speed = { 22, 38 }, SpreadAngle = { 90, 90 }, Size = 0.4,
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -120, 0 }, Drag = 1,
+		Rotation = { 0, 360 }, RotSpeed = { -540, 540 }, LightEmission = 0,
+	},
+	skidPuff = {
+		Page = "hit.html", Texture = "puff", Count = 8, Lifetime = { 0.3, 0.45 }, Speed = { 8, 13 },
+		SpreadAngle = { 8, 8 }, Shape = "Cylinder", ShapeRadius = 0.7, Size = { { 0, 0.7 }, { 0.35, 1.5 }, { 1, 0.3 } },
+		Color = CREAM, Transparency = { { 0, 0.1 }, { 0.7, 0.4 }, { 1, 1 } }, Acceleration = { 0, 8, 0 }, Drag = 6,
+		Rotation = { 0, 360 }, RotSpeed = { -90, 90 }, LightEmission = 0, Tint = "floor",
+	},
+	poofCloud = {
+		Page = "hit.html", Texture = "puff", Count = 14, Lifetime = { 0.45, 0.7 }, Speed = { 6, 12 },
+		SpreadAngle = { 180, 180 }, Shape = "Sphere", ShapeRadius = 1.6, Size = { { 0, 2 }, { 0.3, 4.2 }, { 1, 1 } },
+		Color = { { 0, "#FFFFFF" }, { 1, "#FFC7DA" } }, Transparency = { { 0, 0 }, { 0.6, 0.2 }, { 1, 1 } },
+		Acceleration = { 0, 6, 0 }, Drag = 4, Rotation = { 0, 360 }, RotSpeed = { -60, 60 }, LightEmission = 0,
+	},
+	poofConfetti = {
+		Page = "hit.html", Texture = "confetti", Tints = { "#FF8FB1", "#8EDFC4", "#FFD86B", "#8CC8FF" }, Count = 32,
+		Lifetime = { 0.6, 1 }, Speed = { 20, 34 }, SpreadAngle = { 180, 180 }, Size = 0.4,
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -90, 0 }, Drag = 1.5,
+		Rotation = { 0, 360 }, RotSpeed = { -540, 540 }, LightEmission = 0,
+	},
+	poofSparkles = {
+		Page = "hit.html", Texture = "sparkle", Count = 12, Lifetime = { 0.4, 0.7 }, Speed = { 2, 6 },
+		SpreadAngle = { 180, 180 }, Shape = "Sphere", ShapeRadius = 2.2, Size = { { 0, 0 }, { 0.3, 1.3 }, { 1, 0 } },
+		Color = "#FFFFFF", Transparency = 0, Drag = 2, Rotation = { 0, 45 }, RotSpeed = { -90, 90 }, LightEmission = 0.7,
+	},
+	respawnPuff = {
+		Page = "hit.html", Texture = "puff", Count = 10, Lifetime = { 0.3, 0.45 }, Speed = { 8, 12 },
+		SpreadAngle = { 8, 8 }, Shape = "Cylinder", ShapeRadius = 1, Size = { { 0, 0.8 }, { 0.35, 1.8 }, { 1, 0.3 } },
+		Color = CREAM, Transparency = { { 0, 0.05 }, { 0.7, 0.35 }, { 1, 1 } }, Acceleration = { 0, 10, 0 }, Drag = 7,
+		Rotation = { 0, 360 }, RotSpeed = { -90, 90 }, LightEmission = 0, Tint = "floor",
+	},
+	respawnSparkles = {
+		Page = "hit.html", Texture = "sparkle", Count = 10, Lifetime = { 0.35, 0.6 }, Speed = { 6, 10 },
+		SpreadAngle = { 10, 10 }, Shape = "Cylinder", ShapeRadius = 1.5, Size = { { 0, 0 }, { 0.3, 1 }, { 1, 0 } },
+		Color = "#FFFFFF", Transparency = 0, Acceleration = { 0, 14, 0 }, Drag = 2, Rotation = { 0, 45 },
+		RotSpeed = { -90, 90 }, LightEmission = 0.7,
+	},
+	fallPoof = {
+		Page = "hit.html", Texture = "puff", Count = 12, Lifetime = { 0.4, 0.6 }, Speed = { 8, 14 },
+		SpreadAngle = { 180, 180 }, Shape = "Sphere", ShapeRadius = 1.4, Size = { { 0, 1.6 }, { 0.3, 3.4 }, { 1, 0.8 } },
+		Color = { { 0, "#FFFFFF" }, { 1, "#B9A6E8" } }, Transparency = { { 0, 0 }, { 0.6, 0.25 }, { 1, 1 } },
+		Acceleration = { 0, 10, 0 }, Drag = 4, Rotation = { 0, 360 }, RotSpeed = { -60, 60 }, LightEmission = 0,
+	},
+	finalConfetti = {
+		Page = "hit.html", Texture = "confetti", Tints = { "#FF8FB1", "#8EDFC4", "#FFD86B", "#8CC8FF" }, Count = 40,
+		Lifetime = { 0.7, 1.2 }, Speed = { 24, 40 }, SpreadAngle = { 180, 180 }, Size = 0.45,
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -80, 0 }, Drag = 1.5,
+		Rotation = { 0, 360 }, RotSpeed = { -540, 540 }, LightEmission = 0,
+	},
+	dizzyStars = {
+		Page = "hit.html", Texture = "star", Rate = 24, Lifetime = { 0.3, 0.45 }, Speed = { 4, 7 },
+		SpreadAngle = { 180, 180 }, Shape = "Sphere", ShapeRadius = 1.4, Size = { { 0, 0 }, { 0.3, 0.8 }, { 1, 0 } },
+		Color = "#FFD86B", Transparency = 0, Drag = 2, Rotation = { 0, 360 }, RotSpeed = { -300, 300 },
+		LightEmission = 0.3, LockedToPart = true,
+	},
 }
 
 -- The design's trails (CONFIG.fx dashRibbon, slideStreak). flat = the attachments lie along X (on the floor).
@@ -159,6 +250,12 @@ local TRAILS: { [string]: Spec } = {
 	slideStreak = {
 		Color = { { 0, CREAM }, { 1, CREAM } }, Width = 1, Lifetime = 0.35, Transparency = { { 0, 0.35 }, { 1, 1 } },
 		WidthScale = { { 0, 1 }, { 1, 0.5 } }, LightEmission = 0, FaceCamera = false, MinLength = 0.2, Flat = true,
+	},
+	-- Part 2: hit.html CONFIG.fx.knockTrail (it draws the launch arc).
+	knockTrail = {
+		Page = "hit.html", Color = { { 0, "#FFFFFF" }, { 1, "#FFC7DA" } }, Width = 1.2, Lifetime = 0.25,
+		Transparency = { { 0, 0.3 }, { 1, 1 } }, WidthScale = { { 0, 1 }, { 1, 0 } }, LightEmission = 0.2,
+		FaceCamera = true, MinLength = 0.3,
 	},
 }
 
@@ -285,7 +382,7 @@ end
 
 local function particleTemplate(name: string, spec: Spec): Part
 	local part = carrier(name, FeelVfxBuilder.shapeSize(spec))
-	part:SetAttribute("SD_Theme", `docs/squishy-fx-spec/move.html CONFIG.fx.{name}`)
+	part:SetAttribute("SD_Theme", `docs/squishy-fx-spec/{spec.Page or "move.html"} CONFIG.fx.{name}`)
 	if spec.Shape == "Cylinder" then
 		part:SetAttribute("SD_AxisX", true)
 	end
@@ -302,7 +399,7 @@ end
 
 local function trailTemplate(name: string, spec: Spec): Part
 	local part = carrier(name, Vector3.new(POINT, POINT, POINT))
-	part:SetAttribute("SD_Theme", `docs/squishy-fx-spec/move.html CONFIG.fx.{name}`)
+	part:SetAttribute("SD_Theme", `docs/squishy-fx-spec/{spec.Page or "move.html"} CONFIG.fx.{name}`)
 	local half = spec.Width * RIBBON_HALF
 	local offset = if spec.Flat then Vector3.new(half, 0, 0) else Vector3.new(0, half, 0)
 	local a0 = Instance.new("Attachment")
@@ -339,7 +436,7 @@ function FeelVfxBuilder.build(Generated: any?): Folder
 	root.Name = ROOT_NAME
 	root:SetAttribute(
 		"SD_Note",
-		"Physics upgrade part 1 (2026-10-28): the design's movement particles and trails for the VFX Studio plugin; drag a template into Workspace, select it and press Emit / Trail to preview."
+		"Physics upgrade parts 1-2 (2026-10-28): the design's movement and hit particles and trails for the VFX Studio plugin; drag a template into Workspace, select it and press Emit / Trail to preview."
 	)
 	local names = {}
 	for name in SPECS do

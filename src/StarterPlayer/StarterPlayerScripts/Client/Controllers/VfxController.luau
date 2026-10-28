@@ -106,6 +106,13 @@
 -- and the burst's lost life (CatchEvent "burst" with livesLeft) as a "player" hit on the thrower dealt by the catcher
 -- (handleImpact's attackerOverride): the boing, flinch, ghost, vignette, the catcher's punch, the hit-stop, the
 -- elimination and "K.O.!" as for a throw's hit, with no knockback (the toy burst in the catcher's hands).
+-- Physics upgrade part 2 (2026-10-28, Config.HitFx.enabled; owner: "Yes, build part 2"): a "player" impact on a player or
+-- a bot plays the co-owner's design moment (Controllers/HitFxController, required inline: hitNormal / hitCharged /
+-- hitUltimate / squished / finalKO) with its hit-stop length (Config.HitFx.hitStop, same holders and rules); it replaces
+-- the old puffs and ring, the hit flash (the steady invulnerable ghost starts when the design's glow ends), the flinch,
+-- the 22/8 knockback, the victim's vignette and shake and the thrower's punch. The elimination keeps the kill banner,
+-- Diego's kill effect, the held squishy's shrink, the confetti and the sound; the OUT! text, its flinch and dizzy pose and
+-- its two shakes give way to the design's. ThrowStarted's power is kept per projectile (the charged hit).
 
 -- Services
 
@@ -163,7 +170,7 @@ type Effect = {
 	stop: () -> (),
 }
 
-type ProjInfo = { squishyId: string, throwerId: number, untilAt: number }
+type ProjInfo = { squishyId: string, throwerId: number, untilAt: number, power: number? }
 
 type Rush = {
 	casterId: number,
@@ -1194,16 +1201,22 @@ local function playStandard(player: Player, attackerId: number?, effectId: strin
 	local head = character and character:FindFirstChild("Head")
 	local root = rootOf(player)
 	local anchor: BasePart? = if head and head:IsA("BasePart") then head else root
-	flinch(player, 1)
-	if anchor then
-		billboardText(anchor, text("combat.out"), Palette.Strawberry, OUT_LABEL_S)
-	end
-	if player == Players.LocalPlayer then
-		shake(SHAKE.eliminated)
+	-- Physics upgrade part 2: the design's K.O. moment (HitFxController) brings its own pose, words and shakes.
+	local designed = require(Shared.Config.HitFx).enabled
+	if not designed then
+		flinch(player, 1)
+		if anchor then
+			billboardText(anchor, text("combat.out"), Palette.Strawberry, OUT_LABEL_S)
+		end
+		if player == Players.LocalPlayer then
+			shake(SHAKE.eliminated)
+		end
 	end
 	if attackerId ~= nil and attackerId == Players.LocalPlayer.UserId then
 		koBanner(effectId)
-		shake(SHAKE.elimDealt)
+		if not designed then
+			shake(SHAKE.elimDealt)
+		end
 	end
 	-- Kill effects v3 (2026-10-17): the kill set's VFX Studio kill effect plays now, at the K.O.'d player.
 	local KillStyle = require(Shared.Art.KillStyle)
@@ -1235,7 +1248,7 @@ local function playStandard(player: Player, attackerId: number?, effectId: strin
 			local layer = CharacterAnimController.getLayer(player)
 			-- Dizzy with sway from the end of the flinch until dizzyEndMs, blended in and out.
 			local dizzy = 0
-			if t >= ELIM_FLINCH_S and t < ELIM_DIZZY_S + DIZZY_BLEND_S then
+			if not designed and t >= ELIM_FLINCH_S and t < ELIM_DIZZY_S + DIZZY_BLEND_S then
 				local into = math.clamp((t - ELIM_FLINCH_S) / DIZZY_BLEND_S, 0, 1)
 				local out = math.clamp((ELIM_DIZZY_S + DIZZY_BLEND_S - t) / DIZZY_BLEND_S, 0, 1)
 				dizzy = math.min(into, out)
@@ -1870,6 +1883,7 @@ local function onThrowStarted(raw: unknown)
 		squishyId = payload.squishyId,
 		throwerId = payload.throwerId,
 		untilAt = payload.releaseAt + Config.Duel.Rules.ProjectileMaxLifetime + 5,
+		power = if type((payload :: any).power) == "number" then (payload :: any).power else nil,
 	}
 end
 
@@ -1911,8 +1925,24 @@ local function handleImpact(impact: Types.ThrowImpactPayload, noKnockback: boole
 		isReduced,
 		shakeEnabled()
 	)
+	-- Physics upgrade part 2: the design's moment for a hit on a player or a bot (HitFxController, inline require).
+	local HitFxController = require(script.Parent.HitFxController)
+	local moment: string? = nil
+	if require(Shared.Config.HitFx).enabled and impact.kind == "player" and type(impact.victimId) == "number" then
+		local match = StateController.match()
+		moment = HitFxController.momentFor(
+			impact.eliminated,
+			match ~= nil,
+			HitFxController.matchWins(match, attackerId),
+			rushCaster ~= nil or ultInfo ~= nil,
+			if info then info.power else nil
+		)
+	end
 	local holdStart: number? = nil
 	local stopSeconds = juice.stopSeconds
+	if stopSeconds ~= nil and moment ~= nil then
+		stopSeconds = HitFxController.hitStopFor(moment)
+	end
 	if stopSeconds ~= nil then
 		-- A throw ends at its first impact, so its projId is also ProjectileRenderer's key (the first asker registers);
 		-- a lane can hit more than once and only this module asks for it, so it goes unkeyed.
@@ -1930,15 +1960,17 @@ local function handleImpact(impact: Types.ThrowImpactPayload, noKnockback: boole
 			fn()
 		end
 	end
+	local designed = moment ~= nil
+		and HitFxController.play(moment, impact, attackerId, accent, noKnockback, if held then stopSeconds else nil)
 	-- First person (spec 2026-10-10 §3.10), an inline require: this module gets no new top-level local.
 	local firstPerson = require(script.Parent.FirstPersonController).isActive()
-	if rushCaster == nil then
+	if rushCaster == nil and not designed then
 		local scale = VfxController.impactScale(juice.localIsVictim, firstPerson)
 		afterHold(function()
 			impactBurst(impact, accent, scale)
 		end)
 	end
-	local punch = juice.punch
+	local punch = if designed then nil else juice.punch
 	if impact.kind ~= "player" or type(impact.victimId) ~= "number" then
 		if punch ~= nil then
 			local spec: PunchSpec = punch
@@ -1956,15 +1988,30 @@ local function handleImpact(impact: Types.ThrowImpactPayload, noKnockback: boole
 	local victim = Players:GetPlayerByUserId(impact.victimId :: number)
 	if victim ~= nil then
 		local invulnUntil = if type(impact.invulnUntil) == "number" then impact.invulnUntil :: number else serverNow()
-		if VfxController.ghostWanted(victim == localPlayer, firstPerson) then
+		if designed then
+			-- The design's glow is the hit flash; the steady ghost (invulnerable) follows it, never on top of it.
+			local glowEnds = (if held then stopSeconds or 0 else 0) + require(Shared.Config.HitFx).glows.victimGlow.time
+			task.delay(glowEnds, function()
+				local wanted = VfxController.ghostWanted(victim == localPlayer, firstPerson)
+				if victim.Parent and serverNow() < invulnUntil and wanted then
+					showGhost(victim, invulnUntil, false)
+					local ghost = ghosts[victim]
+					if ghost then
+						ghost.flashStart -= FLASH_S
+					end
+				end
+			end)
+		elseif VfxController.ghostWanted(victim == localPlayer, firstPerson) then
 			showGhost(victim, invulnUntil, held)
 		end
-		if held then
-			holdFlinch(victim)
-		else
-			flinch(victim, 1)
+		if not designed then -- (designed: the design's recoil and tumble poses instead)
+			if held then
+				holdFlinch(victim)
+			else
+				flinch(victim, 1)
+			end
 		end
-		if victim == localPlayer and noKnockback ~= true then
+		if victim == localPlayer and noKnockback ~= true and not designed then
 			local multiplier = if rushCaster ~= nil
 				then RUSH.knockbackMultiplier
 				elseif ultInfo ~= nil then ultInfo.knockbackMultiplier
@@ -1974,7 +2021,7 @@ local function handleImpact(impact: Types.ThrowImpactPayload, noKnockback: boole
 		afterHold(function()
 			releaseHeldFlinch(victim, true)
 			HeldSquishyController.react(victim, "hit", 1) -- the held boing: the held model's own rig (§3.2)
-			if victim == Players.LocalPlayer then
+			if victim == Players.LocalPlayer and not designed then
 				local rushAccent = if rushCaster ~= nil then Palette.Danger else accent
 				playVignette(rushAccent)
 				shake(SHAKE.hitReceived)
@@ -2201,7 +2248,8 @@ end
 -- Studio (DebugHooks "juice"): plays one juice piece locally with a fake payload and no remote. Names: "hitstop"
 -- (opts.seconds, default the hit hold), "punch" (opts.kind: hitDealt / elimDealt / practiceHit), "confetti" (the
 -- elimination confetti at the local held squishy), "victim" (a fake hit on the local player: hold, held flash and
--- flinch, then boing, vignette and shake; opts.eliminated plays the elimination too; no knockback), plus the hooks
+-- flinch, then boing, vignette and shake; opts.eliminated plays the elimination too; no knockback unless opts.knockback;
+-- opts.power = the throw's charge 0..1), plus the hooks
 -- other controllers add ("splat"). Returns whether it played and, when not, why.
 function VfxController.debugJuice(name: string, opts: { [string]: any }?): (boolean, string?)
 	local options: { [string]: any } = opts or {}
@@ -2242,7 +2290,12 @@ function VfxController.debugJuice(name: string, opts: { [string]: any }?): (bool
 		debugSerial += 1
 		local projId = -debugSerial -- never a server projId
 		local squishyId = HeldSquishyController.getSquishyId(localPlayer)
-		projectiles[projId] = { squishyId = squishyId or "", throwerId = 0, untilAt = serverNow() + 5 }
+		projectiles[projId] = {
+			squishyId = squishyId or "",
+			throwerId = 0,
+			untilAt = serverNow() + 5,
+			power = if type(options.power) == "number" then options.power else nil, -- part 2: 1 = a charged hit
+		}
 		local impact: Types.ThrowImpactPayload = {
 			projId = projId,
 			kind = "player",
@@ -2250,10 +2303,11 @@ function VfxController.debugJuice(name: string, opts: { [string]: any }?): (bool
 			normal = root.CFrame.LookVector,
 			victimId = localPlayer.UserId,
 			invulnUntil = serverNow() + 1,
+			knockbackDir = -root.CFrame.LookVector,
 			eliminated = options.eliminated == true,
 			effectId = if type(options.effectId) == "string" then options.effectId else "standard", -- kill banners: any set
 		}
-		handleImpact(impact, true)
+		handleImpact(impact, options.knockback ~= true) -- part 2: opts.knockback = true pushes the body too
 		return true, nil
 	end
 	return false, `unknown juice {name}`

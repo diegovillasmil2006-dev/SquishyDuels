@@ -20,9 +20,11 @@
 --   (Catalog visuals.accent); 2 dust puffs tinted by the floor; 3 the hop chain (bigger landing puffs and a rising boing);
 --   4 the mega landing after a big drop (SUPER BOING!, confetti, a bigger ring); 5 the flip variety (DoubleJumpController
 --   picks it); 6 lobby footprints; 7 phone buzz (HapticEffect); 8 every movement sound a little higher or lower.
+-- * Part 2 (getting hit): knock(seconds) while HitFxController's knockback flies and skids: no take-off, fall flail or
+--   landing moment and no run (the hit plays its own), and a jump cut armed before the hit is dropped.
 -- API: actorFor(player, character, root, extra?) -> FeelFx.Actor, floorColor(root), squishyTint(player), buzz(kind),
---   suppress(seconds), noteDoubleJump(), heldNow() / landTier(speed) / chainScale(n) (pure parts unit-tested),
---   debugState(); init(), destroy().
+--   suppress(seconds), knock(seconds), noteDoubleJump(), heldNow() / landTier(speed) / chainScale(n) (pure parts
+--   unit-tested), debugState(); init(), destroy().
 
 -- Services
 
@@ -98,6 +100,7 @@ local force: VectorForce? = nil
 local lastJumpRequest = -math.huge
 local touchJumpHeld = false
 local suppressUntil = 0
+local knockedUntil = 0
 
 -- The own character's air / run state.
 local state = {
@@ -280,6 +283,13 @@ function MoveFxController.suppress(seconds: number)
 	suppressUntil = math.max(suppressUntil, os.clock() + seconds)
 end
 
+-- A knockback (HitFxController): no take-off, fall or landing moment and no run while it lasts; never cut.
+function MoveFxController.knock(seconds: number)
+	knockedUntil = math.max(knockedUntil, os.clock() + seconds)
+	suppressUntil = math.max(suppressUntil, knockedUntil)
+	state.cutArmed = false
+end
+
 -- The own double jump: the ground jump's cut is over.
 function MoveFxController.noteDoubleJump()
 	state.cutArmed = false
@@ -287,8 +297,8 @@ function MoveFxController.noteDoubleJump()
 	MoveFxController.buzz("doubleJump")
 end
 
-local function playSound(name: string, at: Instance | Vector3, priority: number, pitch: number)
-	local map = MOVE_FX.sounds[name]
+local function playSound(name: string, at: Instance | Vector3, priority: number, pitch: number, sounds: any?)
+	local map = (sounds or MOVE_FX.sounds)[name]
 	if not map then
 		return
 	end
@@ -513,6 +523,7 @@ local function stepRender(_dt: number, _now: number): boolean
 	local v = root.AssemblyLinearVelocity
 	local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
 	local busy = now < suppressUntil
+	local knocked = now < knockedUntil
 	if state.grounded and not grounded then
 		-- Left the ground.
 		state.grounded = false
@@ -520,14 +531,16 @@ local function stepRender(_dt: number, _now: number): boolean
 		state.maxY = root.Position.Y
 		state.fastSent = false
 		state.fallSent = false
-		state.jumped = false
+		state.jumped = knocked -- a knockback is no walk off a ledge either (no fall flail)
 		state.rising = v.Y > 0
-		if humanoid:GetState() == Enum.HumanoidStateType.Jumping or v.Y > 10 then
+		if not knocked and (humanoid:GetState() == Enum.HumanoidStateType.Jumping or v.Y > 10) then
 			takeoff(character, root)
 		end
 	elseif not state.grounded and grounded then
 		state.grounded = true
-		landing(character, root, math.max(-state.lastVy, 0))
+		if not knocked then
+			landing(character, root, math.max(-state.lastVy, 0))
+		end
 	end
 	if not grounded then
 		state.maxY = math.max(state.maxY, root.Position.Y)
@@ -667,6 +680,7 @@ function MoveFxController.debugState(): { [string]: any }
 	return {
 		enabled = MOVE_FX.enabled,
 		grounded = state.grounded,
+		knocked = os.clock() < knockedUntil,
 		running = state.running,
 		chain = state.chain,
 		cutArmed = state.cutArmed,
@@ -686,6 +700,7 @@ function MoveFxController.init()
 			dip = MoveFeelController.dip,
 			shake = MoveFeelController.shake,
 			fov = MoveFeelController.fovKick,
+			punch = MoveFeelController.punch,
 		},
 		sound = playSound,
 		layerFor = CharacterAnimController.getLayer,
