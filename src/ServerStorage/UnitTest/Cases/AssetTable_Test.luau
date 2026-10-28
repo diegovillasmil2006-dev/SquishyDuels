@@ -629,6 +629,16 @@ return function(t: Context)
 				-- The squish medals (2026-10-26): the gold face and its rays.
 				"img.medal.face",
 				"img.medal.rays",
+				-- The physics upgrade's kit (2026-10-28, docs/squishy-fx-spec/kit) and the lobby footprint (extra 6).
+				"img.kit.puff",
+				"img.kit.star",
+				"img.kit.sparkle",
+				"img.kit.pow",
+				"img.kit.jelly",
+				"img.kit.confetti",
+				"img.kit.ring",
+				"img.kit.speedline",
+				"img.kit.footprint",
 			})
 		)
 	end)

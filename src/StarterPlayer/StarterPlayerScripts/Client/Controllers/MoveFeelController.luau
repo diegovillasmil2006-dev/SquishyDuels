@@ -46,6 +46,8 @@ local StateController = require(script.Parent.StateController)
 
 local FEEL = Config.Vfx.MoveFeel
 local SHAKE = Config.Vfx.Shake
+local MOVE_FX = require(Shared.Config.MoveFx)
+local FeelFx = require(Client.Anim.FeelFx)
 local FOV_OWNER = "move"
 local FP_FOCUS_STUDS = 1.5
 local MIN_WALK = 8 -- the speed scale never drops below this (a frozen WalkSpeed of 0 would divide by 0)
@@ -72,6 +74,13 @@ local fallSpeed = 0 -- the fastest fall of this air time (studs/s, positive down
 local firstPerson = false
 local applied: CFrame? = nil -- the offset on the camera now (taken off before the camera module's next frame)
 local last = { roll = 0, bobY = 0, bobX = 0, dip = 0 } -- the frame's parts (the hands' sway)
+-- 2026-10-28 physics upgrade (Config.MoveFx.enabled): the design's camera dips, shakes and FOV kicks (Anim/FeelFx
+-- envelopes), started by dip() / shake() / fovKick(); they replace the old landing dip and its shake.
+local dips: { { spec: any, age: number } } = {}
+local shakes: { { spec: any, age: number, phases: { number } } } = {}
+local kicks: { { spec: any, age: number } } = {}
+local kickFov = 0 -- the kicks' FOV this frame (degrees)
+local rng = Random.new()
 
 -- Pure -----------------------------------------------------------------------------------------------------------------
 
@@ -176,7 +185,7 @@ local function step(dt: number, camera: Camera)
 		end
 		local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
 		if grounded then
-			if airTime >= FEEL.airSeconds and fallSpeed > 0 then
+			if airTime >= FEEL.airSeconds and fallSpeed > 0 and not MOVE_FX.enabled then
 				local dip = MoveFeelController.landDip(fallSpeed, firstPerson)
 				dipSpring:impulse(dip * FEEL.dipSpring.omega * 2)
 				if fallSpeed >= FEEL.hardLandSpeed then
@@ -207,24 +216,50 @@ local function step(dt: number, camera: Camera)
 	local fov = fovSpring:step(dt)
 	local roll = rollSpring:step(dt)
 	local dip = dipSpring:step(dt)
+	local shake = Vector3.zero
+	kickFov = 0
+	for _, d in dips do
+		d.age += dt
+		local s = d.spec
+		dip -= s.depth * FeelFx.envelope(d.age, s.down, s.hold, s.up, s.downEasing, s.upEasing)
+	end
+	for _, s in shakes do
+		s.age += dt
+		shake += FeelFx.shakeAt(s.spec, s.age, s.phases)
+	end
+	for _, k in kicks do
+		k.age += dt
+		local s = k.spec
+		kickFov += s.delta * FeelFx.envelope(k.age, s.attack, s.hold, s.release, s.attackEasing, s.releaseEasing)
+	end
+	MoveFeelController.prune()
 	if not on then
 		-- Off: no offset at all (the springs are reset so nothing is left over when it comes back).
 		fovSpring:reset(0, 0)
 		rollSpring:reset(0, 0)
 		dipSpring:reset(0, 0)
-		fov, roll, dip, bobAmount = 0, 0, 0, 0
+		table.clear(dips)
+		table.clear(shakes)
+		table.clear(kicks)
+		fov, roll, dip, bobAmount, kickFov, shake = 0, 0, 0, 0, 0, Vector3.zero
 	end
-	writeFov(fov)
+	writeFov(fov + kickFov)
 	local bobX, bobY = MoveFeelController.bobOffset(bobPhase, bobAmount)
 	last.roll, last.bobX, last.bobY, last.dip = roll, bobX, bobY, dip
 	if camera.CameraType ~= Enum.CameraType.Custom then
 		return
 	end
-	if math.abs(roll) < REST and math.abs(bobX) < REST and math.abs(bobY) < REST and math.abs(dip) < REST then
+	if
+		math.abs(roll) < REST
+		and math.abs(bobX) < REST
+		and math.abs(bobY) < REST
+		and math.abs(dip) < REST
+		and shake.Magnitude < REST
+	then
 		return
 	end
 	local offset = CFrame.new(bobX, bobY + dip, 0)
-		* CFrame.Angles(math.rad(dip * FEEL.dipPitchPerStud), 0, math.rad(roll))
+		* CFrame.Angles(math.rad(dip * FEEL.dipPitchPerStud + shake.X), math.rad(shake.Y), math.rad(roll + shake.Z))
 	camera.CFrame *= offset
 	applied = offset
 end
@@ -260,9 +295,61 @@ end
 
 -- Public -----------------------------------------------------------------------------------------------------------------
 
--- The speed FOV now (degrees): the first-person hands add it to their own world FOV offset while they relay it.
+-- The speed FOV now (degrees) plus the design's FOV kicks: the first-person hands add it to their own world FOV
+-- offset while they relay it.
 function MoveFeelController.fovOffset(): number
-	return if started then fovSpring.position else 0
+	return if started then fovSpring.position + kickFov else 0
+end
+
+-- The design's camera moves (Config.MoveFx dips / shakes / fovs; Anim/FeelFx's camera hooks). Each plays once and
+-- ends on its own; all of them are off with the rest of the feel (ReducedMotion, settings.cameraShake false).
+function MoveFeelController.dip(spec: any)
+	if started and feelOn() then
+		table.insert(dips, { spec = spec, age = 0 })
+	end
+end
+
+function MoveFeelController.shake(spec: any)
+	if started and feelOn() then
+		local phases = {}
+		for i = 1, 6 do
+			phases[i] = rng:NextNumber() * TAU
+		end
+		table.insert(shakes, { spec = spec, age = 0, phases = phases })
+	end
+end
+
+function MoveFeelController.fovKick(spec: any)
+	if started and feelOn() then
+		table.insert(kicks, { spec = spec, age = 0 })
+	end
+end
+
+-- Drops the camera moves that have ended.
+function MoveFeelController.prune()
+	for i = #dips, 1, -1 do
+		local s = dips[i].spec
+		if dips[i].age >= s.down + s.hold + s.up then
+			table.remove(dips, i)
+		end
+	end
+	for i = #shakes, 1, -1 do
+		if shakes[i].age >= shakes[i].spec.time then
+			table.remove(shakes, i)
+		end
+	end
+	for i = #kicks, 1, -1 do
+		local s = kicks[i].spec
+		if kicks[i].age >= s.attack + s.hold + s.release then
+			table.remove(kicks, i)
+		end
+	end
+end
+
+-- True while the own camera is in first person (Roblox's first person puts the Focus at the head).
+function MoveFeelController.isFirstPerson(): boolean
+	local camera = Workspace.CurrentCamera
+	return camera ~= nil and (camera.CFrame.Position - camera.Focus.Position).Magnitude < FP_FOCUS_STUDS
 end
 
 -- The first-person hands own the world FOV (true while they show): this module stops holding it.

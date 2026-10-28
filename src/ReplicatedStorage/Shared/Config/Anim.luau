@@ -103,9 +103,19 @@ local Anim = {
 			LeftHip = { "LeftUpperLeg", "LeftHip" },
 			RightKnee = { "RightLowerLeg", "RightKnee" },
 			LeftKnee = { "LeftLowerLeg", "LeftKnee" },
+			-- 2026-10-28 physics upgrade: the ankles, for the design's landing and jump poses (Anim/FeelFx).
+			RightAnkle = { "RightFoot", "RightAnkle" },
+			LeftAnkle = { "LeftFoot", "LeftAnkle" },
 		} :: { [string]: { string } },
 		-- Joints a rig may lack without disabling its layer (JointLayer skips them): the legs above.
-		optional = { RightHip = true, LeftHip = true, RightKnee = true, LeftKnee = true } :: { [string]: boolean },
+		optional = {
+			RightHip = true,
+			LeftHip = true,
+			RightKnee = true,
+			LeftKnee = true,
+			RightAnkle = true,
+			LeftAnkle = true,
+		} :: { [string]: boolean },
 		R6 = {
 			RightShoulder = { "Torso", "Right Shoulder" },
 			LeftShoulder = { "Torso", "Left Shoulder" },

@@ -274,6 +274,20 @@ local function vfxStudio(key: string, id: number, name: string, by: string, use:
 	}
 end
 
+-- An image slot holding a game-feel kit picture (2026-10-28): the co-owner's Claude Design "Squishy effects" kit
+-- (docs/squishy-fx-spec/kit/png, white to tint), uploaded by Claude (Studio MCP upload_image) at the owner's yes.
+local function fxKit(key: string, id: number, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `jayyyyy upload (Studio MCP upload_image): 'kit/png/{string.match(key, "[^.]+$")}.png'`,
+		license = "Own upload; the co-owner's own Claude Design Squishy effects kit",
+		verifiedAt = "2026-10-28",
+		notes = use,
+	}
+end
+
 -- §14.2 sound slots and §14.3 animation and image slots, in document order.
 local SLOTS: { AssetSlot } = {
 	-- SFX (§14.2)
@@ -1751,6 +1765,26 @@ local SLOTS: { AssetSlot } = {
 	-- The squish medals (2026-10-26): drawn from the page's CSS (S:72-73; make_medal_pngs.mjs).
 	matchHud("img.medal.face", 131392992364061, "the medal's gold face with its top highlight, a circle (S:73)"),
 	matchHud("img.medal.rays", 118728654062426, "the gold rays turning behind the medal, 216 px box (S:72)"),
+	-- Game-feel kit (2026-10-28, docs/squishy-fx-spec/kit.html): particles, rings and screen lines of the 4 physics parts.
+	fxKit("img.kit.puff", 122238719185576, "dust puffs: steps, jumps, landings, dash, slide"),
+	fxKit("img.kit.star", 102594930640784, "stars: hard landings, double jump"),
+	fxKit("img.kit.sparkle", 89379435106762, "sparkles: double jump, flip streak"),
+	fxKit("img.kit.pow", 87261002910971, "the POW burst (part 2)"),
+	fxKit("img.kit.jelly", 95085356654375, "jelly drops (parts 2-3)"),
+	fxKit("img.kit.confetti", 101790383174494, "confetti and sprinkles: slide, mega landing"),
+	fxKit("img.kit.ring", 94752683020130, "flat rings and shockwaves"),
+	fxKit("img.kit.speedline", 81819232656092, "speed lines: wind, dash sparks, screen lines"),
+	-- Extra 6 (2026-10-28, NOT IN DESIGN): a cartoon shoe print drawn by Claude (scratchpad tools/make_footprint.mjs),
+	-- white to tint, for the lobby's fading footprints (MoveFxController).
+	{
+		key = "img.kit.footprint",
+		kind = "image",
+		id = 112523143090301,
+		source = "jayyyyy upload (Studio MCP upload_image): 'footprint.png' (drawn by Claude)",
+		license = "Own upload; drawn for the game",
+		verifiedAt = "2026-10-28",
+		notes = "the lobby's fading footprints (extra 6)",
+	},
 }
 
 -- UI FINAL picture ids (plan work/ui/PLAN.md R10): the design's 26 pictures, rendered 1:1 from the co-owner's UI FINAL

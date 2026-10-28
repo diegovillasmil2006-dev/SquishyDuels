@@ -42,8 +42,13 @@ local Tweens = require(script.Parent.Tweens)
 -- Types
 
 export type Options = {
-	tint: Color3?, -- SD_Tint "team" pieces take it (default Palette.White)
+	tint: Color3?, -- SD_Tint "team" pieces take it (none = they keep the template's own colours)
 	low: boolean?, -- a far-away player's effect: fewer particles
+	-- 2026-10-28 physics upgrade (Anim/FeelFx): SD_Tint "floor" emitters take `floor` (the extras' floor-tinted dust);
+	-- counts and rates x `scale` (the phone's halves, the hop chain); trails last x `trailScale` (phones).
+	floor: Color3?,
+	scale: number?,
+	trailScale: number?,
 }
 
 export type Handle = {
@@ -70,6 +75,7 @@ local LOW_SHARE = 0.5
 local END_MARGIN = 0.15 -- seconds after the longest particle before a carrier goes
 local ROLE_WHILE = "while"
 local TINT_TEAM = "team"
+local TINT_FLOOR = "floor"
 
 -- Module table
 
@@ -149,6 +155,9 @@ local function multiplierFor(opts: Options?): number
 	if opts and opts.low then
 		m *= LOW_SHARE
 	end
+	if opts and opts.scale then
+		m *= opts.scale
+	end
 	return m
 end
 
@@ -171,22 +180,28 @@ end
 local function prepare(source: BasePart, opts: Options?): (BasePart, { ParticleEmitter }, { Trail }, number)
 	local part = source:Clone()
 	styleCarrier(part)
-	local tint = if opts and opts.tint then opts.tint else Palette.White
+	local tint = if opts then opts.tint else nil
+	local floor = if opts then opts.floor else nil
+	local trailScale = if opts and opts.trailScale then opts.trailScale else 1
 	local emitters: { ParticleEmitter } = {}
 	local trails: { Trail } = {}
 	local longest = 0
 	for _, d in part:GetDescendants() do
 		if d:IsA("ParticleEmitter") then
 			d.Enabled = false
-			if d:GetAttribute("SD_Tint") == TINT_TEAM then
+			local kind = d:GetAttribute("SD_Tint")
+			if kind == TINT_TEAM and tint then
 				d.Color = ThrowVfx.tintSequence(tint)
+			elseif kind == TINT_FLOOR and floor then
+				d.Color = ColorSequence.new(floor)
 			end
 			longest = math.max(longest, d.Lifetime.Max)
 			table.insert(emitters, d)
 		elseif d:IsA("Trail") then
-			if d:GetAttribute("SD_Tint") == TINT_TEAM then
+			if d:GetAttribute("SD_Tint") == TINT_TEAM and tint then
 				d.Color = MoveVfx.trailColor(tint, d:GetAttribute("SD_TintFirst") == true)
 			end
+			d.Lifetime *= trailScale
 			longest = math.max(longest, d.Lifetime)
 			table.insert(trails, d)
 		end

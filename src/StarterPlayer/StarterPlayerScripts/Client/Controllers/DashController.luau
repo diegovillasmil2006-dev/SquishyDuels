@@ -40,6 +40,9 @@
 --   a FOV kick (CameraController.punch, off with settings.cameraShake or ReducedMotion, and while a throw holds the
 --   FOV) and, since the 2026-10-17 movement overhaul, a camera shake (Config.Vfx.Shake.dashStart). Players who are
 --   neither this one nor the duel opponent get fewer particles (MoveVfx `low`).
+-- * Physics upgrade (2026-10-28, Config.MoveFx.enabled): instead of the effects above, the design's dash moment
+--   (Anim/FeelFx, Config.MoveFx.moments.dash: the lunge pose for a forward dash, afterimages, shoulder ribbons, puffs,
+--   the shock ring, sparks, the own FOV kick and screen lines) through MoveFxController.actorFor; "dashEnd" at seconds.
 -- * Other players: DashStarted {userId, dir, from, to, startAt} plays the same pose, effects and sounds on their
 --   character from its arrival (their movement arrives through replication with the same delay). The own DashStarted
 --   is ignored (the dash already plays). Sounds of a player who is neither this one nor the duel opponent play at the
@@ -82,12 +85,14 @@ local Types = require(Shared.Types)
 
 local Client = script.Parent.Parent
 local Afterimage = require(Client.Anim.Afterimage)
+local FeelFx = require(Client.Anim.FeelFx)
 local MoveVfx = require(Client.Anim.MoveVfx)
 local Scheduler = require(Client.Anim.Scheduler)
 local CameraController = require(script.Parent.CameraController)
 local CatchController = require(script.Parent.CatchController)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
+local MoveFxController = require(script.Parent.MoveFxController)
 local NetController = require(script.Parent.NetController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
@@ -134,6 +139,8 @@ type Dash = {
 	skid: MoveVfx.Handle?,
 	lines: MoveVfx.Handle?,
 	ghostsDone: number,
+	feel: any, -- the physics upgrade's dash moment (Anim/FeelFx run), when Config.MoveFx.enabled
+	ended: boolean,
 	-- The own dash's move:
 	from: Vector3?,
 	distance: number,
@@ -181,6 +188,17 @@ local MIN_STEP = 1 / 240
 local LINES_AHEAD = 9 -- studs in front of the camera (the template's SD_Ahead)
 local CLIP_SECONDS = DashMath.eventSeconds(DASH.visualFrames)
 local LIVE_SECONDS = math.max(CLIP_SECONDS, DASH.ribbonSeconds, (FX.ghosts - 1) * FX.ghostEverySeconds)
+-- 2026-10-28 physics upgrade (docs/squishy-fx-spec/move.html "Dash (duel)"): the design's dash moment replaces the
+-- effects above when Config.MoveFx.enabled. Its pose is the design's forward lunge, so a back or side dash keeps its
+-- own key's pose (Config.Anim.dash B / L / R) and plays the moment without the pose event.
+local MOVE_FX = require(ReplicatedStorage.Shared.Config.MoveFx)
+local FEEL_DASH = MOVE_FX.moments.dash
+local FEEL_DASH_NO_POSE = {}
+for _, ev in FEEL_DASH do
+	if ev.pose == nil then
+		table.insert(FEEL_DASH_NO_POSE, ev)
+	end
+end
 
 -- Module table
 
@@ -561,6 +579,19 @@ local function fovKick()
 end
 
 local function startEffects(dash: Dash)
+	if MOVE_FX.enabled then
+		local actor = MoveFxController.actorFor(dash.player, dash.character, dash.root, {
+			dir = dash.dir,
+			low = dash.low,
+			priority = dash.soundPriority,
+		})
+		dash.feel = FeelFx.play(if dash.key == "F" then FEEL_DASH else FEEL_DASH_NO_POSE, actor)
+		if dash.own then
+			MoveFxController.suppress(DASH.seconds + 0.15)
+			MoveFxController.buzz("dash")
+		end
+		return
+	end
 	local at = footPoint(dash, DashController.pushoffFoot(dash.key))
 	MoveVfx.burst(VFX_START, along(dash, at), vfxOptions(dash))
 	playSound(SOUND_DASH, { at = at, priority = dash.soundPriority })
@@ -654,6 +685,8 @@ local function startDash(player: Player, character: Model, root: BasePart, dir: 
 		skid = nil,
 		lines = nil,
 		ghostsDone = 0,
+		feel = nil,
+		ended = false,
 		from = if own then root.Position else nil,
 		distance = distance,
 		mover = nil,
@@ -676,6 +709,16 @@ local function stepDash(dash: Dash): boolean
 	end
 	local t = os.clock() - dash.startClock
 	local frame = DashMath.frameAt(t)
+	if dash.feel then
+		if dash.key ~= "F" then
+			applyPose(dash, frame)
+		end
+		if not dash.ended and t >= DASH.seconds then
+			dash.ended = true
+			dash.feel:signal("dashEnd")
+		end
+		return t < LIVE_SECONDS
+	end
 	applyPose(dash, frame)
 	local times = DashController.ghostTimes()
 	while dash.ghostsDone < #times and t >= times[dash.ghostsDone + 1] do

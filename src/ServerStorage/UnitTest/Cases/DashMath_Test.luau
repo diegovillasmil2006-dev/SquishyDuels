@@ -2,8 +2,8 @@
 -- DashMath_Test: unit tests for ReplicatedStorage.Shared.DashMath (spec phase 5 §3.3; the design's dash). Server only
 -- (ServerStorage.UnitTest). Pure math, runs in Edit mode.
 -- Contract (design numbers in Config.Duel.Rules.Dash):
---   * the dash covers distanceStuds (14) in seconds (0.22) along e(x) = 1 - (1 - x)³ (design: fp.js:537), so 87.5% of
---     it is done halfway, and it never moves before 0 or after the end;
+--   * the dash covers distanceStuds (18) in seconds (0.22) on a linear speed ramp down to endSpeedStuds (2026-10-28,
+--     docs/squishy-fx-spec/move.html; was e(x) = 1 - (1 - x)³), and it never moves before 0 or after the end;
 --   * clampToZone keeps the end point inside a box shrunk by a margin on X and Z (the own half minus the body radius,
 --     so a dash never crosses into the neutral band), from an origin that may already sit in the margin;
 --   * snapDirection picks one of 4 camera-relative directions from the movement input (no input = forward);
@@ -38,19 +38,27 @@ return function(t: Context)
 		expect.equal(DASH.cooldownSeconds, 2) -- Duel HUD 2026-10-24 (Duel HUD.dc.html:231 CD dash 2)
 	end)
 
-	t.test("the ease-out cubic: 0 at the start, 87.5% halfway, all of it at the end, never past it", function()
+	-- 2026-10-28 physics upgrade (docs/squishy-fx-spec/move.html feel): a linear speed ramp 141.6 -> 22 studs/s, the
+	-- same 18 studs in 0.22 s (k = endSpeed x seconds / distance; ease = (2 - k) u - (1 - k) u²).
+	t.test("the front-loaded ramp: 141.6 -> 22 studs/s, all 18 studs at the end, never past it", function()
+		local k = DASH.endSpeedStuds * DASH.seconds / DASH.distanceStuds
 		expect.near(DashMath.ease(0), 0, 1e-12)
-		expect.near(DashMath.ease(0.5), 0.875, 1e-12)
+		expect.near(DashMath.ease(0.5), 0.75 - 0.25 * k, 1e-12)
 		expect.near(DashMath.ease(1), 1, 1e-12)
 		expect.near(DashMath.ease(-1), 0, 1e-12)
 		expect.near(DashMath.ease(2), 1, 1e-12)
-		expect.near(DashMath.offsetAt(0.11, 14, 0.22), 14 * 0.875, 1e-9)
-		expect.near(DashMath.offsetAt(0.22, 14, 0.22), 14, 1e-9)
-		expect.near(DashMath.offsetAt(1, 14, 0.22), 14, 1e-9)
-		expect.near(DashMath.offsetAt(-0.1, 14, 0.22), 0, 1e-9)
-		-- The peak speed is at the start: 3 × 14 / 0.22 ≈ 191 studs/s (spec §1.2, derived).
-		expect.near(DashMath.speedAt(0, 14, 0.22), 3 * 14 / 0.22, 1e-6)
-		expect.near(DashMath.speedAt(0.22, 14, 0.22), 0, 1e-9)
+		expect.near(DashMath.offsetAt(0.11, 18, 0.22), 18 * (0.75 - 0.25 * k), 1e-9)
+		expect.near(DashMath.offsetAt(0.22, 18, 0.22), 18, 1e-9)
+		expect.near(DashMath.offsetAt(1, 18, 0.22), 18, 1e-9)
+		expect.near(DashMath.offsetAt(-0.1, 18, 0.22), 0, 1e-9)
+		expect.near(DashMath.speedAt(0, 18, 0.22), 141.6, 0.1) -- the design's start speed (2 x 18 / 0.22 - 22)
+		expect.near(DashMath.speedAt(0.22, 18, 0.22), 22, 1e-6) -- the duel walk: it blends into the run
+		local last = math.huge
+		for i = 0, 22 do
+			local v = DashMath.speedAt(i / 100, 18, 0.22)
+			expect.truthy(v <= last + 1e-9)
+			last = v
+		end
 	end)
 
 	-- A half like WorldLayout's HalfA: X -36..36, Z -52..-8.

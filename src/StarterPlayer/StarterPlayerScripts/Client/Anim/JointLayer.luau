@@ -448,6 +448,21 @@ function JointLayerClass.setAngles(
 	putLayer(self, layer)
 end
 
+-- Sets override layer `id` to ready joint frames ({ [logical joint]: CFrame }, joint space; Anim/FeelFx's poses: the
+-- design's XYZ angles and a Root translation), computed each frame by the caller.
+function JointLayerClass.setFrames(
+	self: JointLayer,
+	id: string,
+	frames: { [string]: CFrame },
+	weight: number?,
+	priority: number?
+)
+	local layer = newLayer(id, "override", priority or DEFAULT_PRIORITY, clampWeight(weight))
+	layer.angles = {}
+	layer.cframes = frames
+	putLayer(self, layer)
+end
+
 -- Spring impulse (flinch): layer `id` with pose `poseName` whose weight starts at `amount` (default 1) and springs
 -- back to 0 with the pose's spring (omega, zeta); removed once settled. Kicking again restarts it.
 function JointLayerClass.kick(self: JointLayer, id: string, poseName: string, amount: number?)

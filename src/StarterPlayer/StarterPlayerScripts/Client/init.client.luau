@@ -85,6 +85,7 @@ local CONTROLLER_ORDER = {
 	"DashController",
 	"DoubleJumpController",
 	"MoveFeelController", -- 2026-10-17: the camera's movement feel (speed FOV, lean, bob, landing)
+	"MoveFxController", -- 2026-10-28: the physics upgrade's movement feel (run, jump, fall, landing; Config.MoveFx)
 	"LobbyMoveController", -- 2026-10-17: the lobby's power slide
 	"FirstPersonController",
 	"ViewmodelController",

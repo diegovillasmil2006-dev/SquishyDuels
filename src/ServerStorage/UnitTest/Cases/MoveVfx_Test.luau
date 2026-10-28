@@ -73,7 +73,11 @@ return function(t: Context)
 				expect.truthy(template.Anchored and template.Transparency == 1 and not template.CanCollide)
 			end
 		end
+		local feel = lib:FindFirstChild("Feel") -- the physics upgrade's templates: FeelFx_Test checks them
 		for _, d in lib:GetDescendants() do
+			if feel and d:IsDescendantOf(feel) then
+				continue
+			end
 			if d:IsA("ParticleEmitter") then
 				expect.truthy(string.sub(d.Texture, 1, 11) == "rbxasset://")
 				local role = d:GetAttribute("SD_Role")

@@ -941,6 +941,31 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 		}
 	end,
 	lobbyZoom = lobbyZoom,
+	-- Physics upgrade (2026-10-28): MoveFxController's live state; with a moment name, that Config.MoveFx moment on the
+	-- own character first (then `signal`, e.g. "landHard"), for photos and checks without a real jump.
+	moveFx = function(moment: unknown, signal: unknown): Reply
+		local mfx = optionalModule("Controllers", "MoveFxController")
+		local debugState, actorFor = functionOf(mfx, "debugState"), functionOf(mfx, "actorFor")
+		if debugState == nil or actorFor == nil then
+			return missing("MoveFxController")
+		end
+		if type(moment) == "string" then
+			local feel = optionalModule("Anim", "FeelFx")
+			local play = functionOf(feel, "play")
+			local events = require(ReplicatedStorage.Shared.Config.MoveFx).moments[moment]
+			local player = Players.LocalPlayer
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if play == nil or events == nil or root == nil then
+				return { ok = false, error = "no such moment, or no character" }
+			end
+			local run = play(events, actorFor(player, character, root))
+			if type(signal) == "string" then
+				run:signal(signal)
+			end
+		end
+		return debugState()
+	end,
 	vmPose = function(name: unknown): Reply
 		local viewmodel = optionalModule("Controllers", "ViewmodelController")
 		local pose, read = functionOf(viewmodel, "debugPose"), functionOf(viewmodel, "debugState")

@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squishy Duels · Part 3 · Duel flight</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+    "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js",
+    "three/addons/exporters/OBJExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js",
+    "three/addons/exporters/GLTFExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js"
+  },
+  "integrity": {
+    "https://unpkg.com/three@0.184.0/build/three.module.js": "sha384-8FCZ1eVO6it4+pbec2aDtnTrwjWXZLJRC+MAGCIPDgsYnUrl/E0A2YlF8ioMKI/J",
+    "https://unpkg.com/three@0.184.0/build/three.core.js": "sha384-dw2ooPewaEIrAgl6oFDBmmBWCE9oW9LxRGcfwZ0hLvEprzo202wXl7vCYHRlSnOT",
+    "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js": "sha384-4rziNxOBZKQ69i+w+f89KJ55TCYquwchVbByQwmaOeIOXdOU2PLDn3kOfXHwIJC9",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js": "sha384-nbwtoZENJD3Vq+ACK0CuGQdPMuDWHkamC2KJD70EV5nfg6jQjfppKOea07YJN+N3",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js": "sha384-VofkvpG6HERhFCYbsUOHeNXBCqID2nfqkQqnVzE1jc/oPcz+qJ13ADdXH08hE+cQ"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* =====================================================================================
+   CONFIG — every number on this page. Units: studs, seconds, degrees, studs/s, studs/s².
+   Squishy visual = a MeshPart CFramed every frame: CFrame.lookAt(pos, pos + velocity) × spin around its own Z.
+   Squash keys: [t, X, Y, Z, Easing] on the squishy's own axes (Z = travel, Y = up / contact normal).
+   Spin around Z (travel axis) never fights a Z stretch, so both can run at once in Roblox.
+   Poses: R15 Motor6D.Transform = CFrame.Angles(rad(X), rad(Y), rad(Z)); a key's Easing is the curve to the next key.
+   ===================================================================================== */
+const CONFIG = {
+  page: { file: 'duelflight.html', title: 'Part 3 · Duel flight', subtitle: 'The squishy from hand to target in duels and matches: tap throw, charged throw, flight, missing (bounce + roll) and catching.' },
+  world: { gravity: 196.2, fov: 70 },
+  throw: {
+    speedTap: 100,          // studs/s — KEEP the game's value (85–115 by squishy; preview = 100)
+    speedCharged: 115,      // studs/s — KEEP (preview = top of range)
+    gravity: 35,            // studs/s² squishy's own gravity in flight — KEEP (20–50 by squishy)
+    radius: 1.1,            // studs — KEEP (0.8–1.4 by squishy)
+    chargeTime: 1,          // s hold for a full charge — KEEP
+    color: '#FF8FB1',       // squishy main colour (trail + jelly tint follow it)
+    spinTap: 540,           // NEW visual: deg/s barrel spin around the travel axis
+    spinCharged: 900,       // NEW visual: deg/s
+    holdOffset: [0, -0.45, -0.55], // studs from RightHand (thrower space) where the squishy sits in the palm
+    viewmodel: { offset: [1.0, -1.25, -2.6], scale: 0.5, growTime: 0.12 }, // 1st person only: held squishy drawn in camera space (studs, −Z = ahead) at ×0.5, grows to world size 0.12 s after leaving the hand — keeps the lower-right quadrant, centre clear
+  },
+  bounce: {                 // NEW — misses only (a hit is Part 2)
+    gravity: 120,           // studs/s² after the first floor contact (bouncier than world gravity, floatier than flight)
+    restitution: 0.45,      // × vertical speed kept per bounce
+    hopFromSpeed: 0.12,     // + this × horizontal speed added upward per bounce (keeps fast misses hopping)
+    keepHorizontal: 0.6,    // × horizontal speed kept per bounce
+    rollBelow: 9,           // studs/s outgoing vertical speed below which it rolls instead
+    rollDecel: 90,          // studs/s² rolling slow-down (rotation = distance ÷ radius)
+    bigFrom: 18,            // studs/s landing speed for the big squash
+  },
+  camera: {
+    thrower: { eyeHeight: 5.1, pitch: -4, back: 0, hideParts: ['LeftUpperArm', 'RightUpperArm', 'LeftLowerArm', 'RightLowerArm', 'LeftHand', 'RightHand'] },  // back = studs behind the head; thrower's own arms hidden in 1st person (the game's viewmodel replaces them)
+    target:  { eyeHeight: 5.1, pitch: -8, back: 0 },
+    observer: { dist: 50, az: 80, el: 14, minDist: 8, maxDist: 200, elMin: -20, elMax: 80 },
+  },
+  views: { T1P: 'Thrower · 1st person', R1P: 'Target · 1st person', OBS: 'Side · orbit (preview only)' },
+
+  fx: {
+    // ---------- release ----------
+    throwOverhand: { FadeOut: 0.2, Keys: [   // projectile leaves on the click; the arm "catches up" in 0.06 s (no input delay)
+      { t: 0, Easing: 'Quad Out', Waist: [-6, -25, 0], RightShoulder: [165, 0, 20], RightElbow: [90, 0, 0], LeftShoulder: [70, 0, -15], LeftElbow: [20, 0, 0] },
+      { t: 0.06, Easing: 'Cubic Out', Waist: [-12, 20, 0], RightShoulder: [85, 0, 10], RightElbow: [10, 0, 0], LeftShoulder: [20, 0, -30], LeftElbow: [30, 0, 0], LeftHip: [-10, 0, 0], RightHip: [20, 0, 0], RightKnee: [-25, 0, 0] },
+      { t: 0.3, Waist: [-6, 10, 0], RightShoulder: [55, 0, 8], RightElbow: [20, 0, 0], LeftShoulder: [10, 0, -15], LeftElbow: [20, 0, 0] } ] },
+    releaseStretch:    { Hold: true, Keys: [[0, 0.8, 0.8, 1.45, 'Quad Out'], [0.06, 1.1, 1.1, 0.88, 'Quad InOut'], [0.12, 0.96, 0.96, 1.1, 'Sine InOut'], [0.2, 1, 1, 1.05]] },   // ends on the cruise stretch (Z 1.05)
+    releaseStretchBig: { Hold: true, Keys: [[0, 0.72, 0.72, 1.6, 'Quad Out'], [0.07, 1.15, 1.15, 0.85, 'Quad InOut'], [0.14, 0.94, 0.94, 1.14, 'Sine InOut'], [0.22, 0.97, 0.97, 1.08]] },
+    flightJiggle:  { Amplitude: 0.06, Frequency: 7, Decay: 2.5, AxisRatio: 1, Time: 1.2 },     // scale wobble ±6 %, 7 Hz, e^(−2.5t)
+    flightTrail:   { Color: [[0, '#FF8FB1'], [1, '#FFF4E6']], Width: 1.4, Lifetime: 0.18, Transparency: [[0, 0.25], [1, 1]], WidthScale: [[0, 1], [1, 0]], LightEmission: 0.2, FaceCamera: true, MinLength: 0.3 }, // Width ≈ 1.27 × radius
+    flightTrailCharged: { Color: [[0, '#FFD86B'], [0.4, '#FF8FB1'], [1, '#FFF4E6']], Width: 1.9, Lifetime: 0.24, Transparency: [[0, 0.15], [1, 1]], WidthScale: [[0, 1], [1, 0]], LightEmission: 0.35, FaceCamera: true, MinLength: 0.3 },
+    chargedSparkTrail: { Texture: 'sparkle', Rate: [40, 20], Lifetime: [0.2, 0.35], Speed: [1, 3], SpreadAngle: [180, 180], Size: [[0, 0.6], [1, 0]], Color: '#FFD86B', Transparency: 0, Drag: 2, Rotation: [0, 45], RotSpeed: [-180, 180], LightEmission: 0.7 },
+    releasePuff:   { Texture: 'puff', Count: [4, 2], Lifetime: [0.18, 0.28], Speed: [6, 10], SpreadAngle: [35, 35], Size: [[0, 0.5], [0.4, 1.0], [1, 0.2]], Color: '#FFF4E6', Transparency: [[0, 0.2], [1, 1]], Drag: 6, Rotation: [0, 360], RotSpeed: [-90, 90], LightEmission: 0 },
+    releaseKick:    { Rotation: [0.6, 0, 0], Attack: 0.03, AttackEasing: 'Quad Out', Hold: 0, Release: 0.12, ReleaseEasing: 'Quad Out' },     // camera pitch-up "recoil"
+    releaseKickBig: { Rotation: [1.5, 0, 0.6], Attack: 0.03, AttackEasing: 'Quad Out', Hold: 0, Release: 0.18, ReleaseEasing: 'Back Out' },
+    releaseFovCharged: { Delta: 4, Attack: 0.04, AttackEasing: 'Quad Out', Hold: 0.03, Release: 0.25, ReleaseEasing: 'Sine InOut' },
+
+    // ---------- charge (hold 1 s) ----------
+    chargeHold: { FadeIn: 0.1, Keys: [
+      { t: 0, Easing: 'Cubic Out', Waist: [-4, -12, 0], RightShoulder: [55, 0, 25], RightElbow: [60, 0, 0], LeftShoulder: [75, 0, 10], LeftElbow: [10, 0, 0] },
+      { t: 1, Waist: [-6, -22, 0], RightShoulder: [62, 0, 30], RightElbow: [72, 0, 0], LeftShoulder: [80, 0, 8], LeftElbow: [8, 0, 0] } ] },   // squishy held low-right so the charge reads without covering the view
+    chargeGrow:    { Hold: true, Keys: [[0, 1, 1, 1, 'Quad Out'], [1, 1.18, 1.18, 1.18]] },     // inflates 18 % over the full charge
+    chargeJiggle:  { Amplitude: 0.05, Frequency: 6, Decay: 0, AxisRatio: 1, Time: 1 },
+    chargeSparksA: { Texture: 'sparkle', Rate: [12, 6], Lifetime: [0.25, 0.4], Speed: [4, 7], SpreadAngle: [0, 0], Shape: 'Sphere', ShapeInOut: 'Inward', ShapeRadius: 1.6, Size: [[0, 0], [0.4, 0.6], [1, 0]], Color: '#FFD86B', Transparency: 0, Drag: 0, Rotation: [0, 45], RotSpeed: [-90, 90], LightEmission: 0.7 },
+    chargeSparksB: { Texture: 'sparkle', Rate: [30, 15], Lifetime: [0.2, 0.35], Speed: [5, 8], SpreadAngle: [0, 0], Shape: 'Sphere', ShapeInOut: 'Inward', ShapeRadius: 1.6, Size: [[0, 0], [0.4, 0.7], [1, 0]], Color: '#FFFFFF', Transparency: 0, Drag: 0, Rotation: [0, 45], RotSpeed: [-90, 90], LightEmission: 0.7 },
+    chargeFocus:   { Delta: -3, Attack: 1, AttackEasing: 'Sine InOut', Hold: 0, Release: 0.15, ReleaseEasing: 'Quad Out' },   // slow 3° zoom-in while holding
+    chargeReadyGlow: { FillColor: '#FFFFFF', OutlineColor: '#FFD86B', FillTransparencyStart: 0.3, OutlineTransparencyStart: 0, Time: 0.18, Easing: 'Quad Out' },
+    chargeReadyRing: { Texture: 'ring', Color: '#FFD86B', SizeStart: 0.8, SizeEnd: 3.6, Time: 0.2, Easing: 'Quad Out', TransparencyStart: 0, TransparencyEnd: 1, TransparencyEasing: 'Quad In', LightEmission: 0.6 },
+    chargeReadyPop:  { Texture: 'sparkle', Count: [10, 5], Lifetime: [0.2, 0.35], Speed: [6, 10], SpreadAngle: [180, 180], Size: [[0, 0.8], [1, 0]], Color: '#FFFFFF', Transparency: 0, Drag: 3, Rotation: [0, 45], RotSpeed: [-180, 180], LightEmission: 0.7 },
+
+    // ---------- miss: bounce + roll ----------
+    bounceSquashBig:   { Keys: [[0, 1.45, 0.55, 1.45, 'Quad Out'], [0.05, 0.85, 1.2, 0.85, 'Quad InOut'], [0.11, 1.06, 0.94, 1.06, 'Sine InOut'], [0.18, 1, 1, 1]] },
+    bounceSquashSmall: { Keys: [[0, 1.22, 0.76, 1.22, 'Quad Out'], [0.05, 0.93, 1.08, 0.93, 'Sine InOut'], [0.12, 1, 1, 1]] },
+    bouncePuff:      { Texture: 'puff', Count: [8, 4], Lifetime: [0.25, 0.4], Speed: [8, 12], SpreadAngle: [8, 8], Shape: 'Cylinder', ShapeRadius: 0.8, Size: [[0, 0.6], [0.35, 1.3], [1, 0.2]], Color: '#FFF4E6', Transparency: [[0, 0.1], [0.7, 0.4], [1, 1]], Acceleration: [0, 8, 0], Drag: 7, Rotation: [0, 360], RotSpeed: [-90, 90], LightEmission: 0 },
+    bounceDrops:     { Texture: 'jelly', Count: [6, 3], Lifetime: [0.25, 0.4], Speed: [10, 16], SpreadAngle: [50, 50], Size: [[0, 0.45], [1, 0.15]], Color: '#FF8FB1', Transparency: [[0, 0], [0.8, 0], [1, 1]], Acceleration: [0, -120, 0], Drag: 1, Orientation: 'VelocityParallel', Squash: 0.3, LightEmission: 0 },
+    bouncePuffSmall: { Texture: 'puff', Count: [4, 2], Lifetime: [0.2, 0.3], Speed: [5, 8], SpreadAngle: [8, 8], Shape: 'Cylinder', ShapeRadius: 0.6, Size: [[0, 0.4], [0.35, 0.9], [1, 0.2]], Color: '#FFF4E6', Transparency: [[0, 0.2], [0.7, 0.5], [1, 1]], Acceleration: [0, 6, 0], Drag: 7, Rotation: [0, 360], RotSpeed: [-90, 90], LightEmission: 0 },
+    rollDust:        { Texture: 'puff', Rate: [14, 7], Lifetime: [0.2, 0.32], Speed: [1, 3], SpreadAngle: [40, 40], Size: [[0, 0.3], [0.4, 0.7], [1, 0.1]], Color: '#FFF4E6', Transparency: [[0, 0.3], [1, 1]], Acceleration: [0, 4, 0], Drag: 4, Rotation: [0, 360], RotSpeed: [-60, 60], LightEmission: 0 },
+    restJiggle:      { Amplitude: 0.09, Frequency: 5, Decay: 4, AxisRatio: 1.2, Time: 1 },
+
+    // ---------- catch (hands crush it, bursts at 1.02 s) ----------
+    catchReady: { FadeIn: 0.08, Keys: [ { t: 0, Neck: [-8, 0, 0], LeftShoulder: [45, 0, 22], RightShoulder: [45, 0, -22], LeftElbow: [25, 0, 0], RightElbow: [25, 0, 0] } ] },   // hands low in front of the chest
+    catchClamp: { FadeIn: 0, Keys: [
+      { t: 0, Easing: 'Cubic Out', Root: [6, 0, 0], RootPos: [0, -0.2, 0.15], Waist: [-8, 0, 0], Neck: [-10, 0, 0], LeftShoulder: [38, 0, 30], RightShoulder: [38, 0, -30], LeftElbow: [30, 0, 0], RightElbow: [30, 0, 0] },
+      { t: 0.12, Easing: 'Sine InOut', Root: [0, 0, 0], RootPos: [0, -0.1, 0.05], Waist: [-6, 0, 0], Neck: [-10, 0, 0], LeftShoulder: [38, 0, 28], RightShoulder: [38, 0, -28], LeftElbow: [28, 0, 0], RightElbow: [28, 0, 0] },
+      { t: 1.02, Waist: [-10, 0, 0], Neck: [-12, 0, 0], LeftShoulder: [40, 0, 36], RightShoulder: [40, 0, -36], LeftElbow: [36, 0, 0], RightElbow: [36, 0, 0] } ] },
+    catchRelease: { FadeOut: 0.25, Keys: [
+      { t: 0, Easing: 'Cubic Out', Neck: [10, 0, 0], LeftShoulder: [60, 0, -40], RightShoulder: [60, 0, 40], LeftElbow: [20, 0, 0], RightElbow: [20, 0, 0] },
+      { t: 0.25, Neck: [0, 0, 0], LeftShoulder: [20, 0, -20], RightShoulder: [20, 0, 20], LeftElbow: [15, 0, 0], RightElbow: [15, 0, 0] } ] },
+    catchCrush: { Hold: true, Keys: [   // squeezed side to side (X) by the hands, bulges up/out — ends at the burst
+      [0, 0.72, 1.12, 1.3, 'Quad Out'], [0.08, 1.1, 0.95, 0.95, 'Sine InOut'], [0.18, 0.82, 1.08, 1.2, 'Sine InOut'], [0.35, 0.76, 1.1, 1.3, 'Sine InOut'],
+      [0.6, 0.62, 1.14, 1.45, 'Sine InOut'], [0.85, 0.5, 1.18, 1.65, 'Quad In'], [1.02, 0.36, 1.2, 1.9]] },   // bulges forward (Z) more than up (Y) so it never rises into the screen centre
+    catchPuff:   { Texture: 'puff', Count: [6, 3], Lifetime: [0.18, 0.28], Speed: [5, 8], SpreadAngle: [70, 70], Size: [[0, 0.4], [0.4, 0.9], [1, 0.2]], Color: '#FFFFFF', Transparency: [[0, 0.2], [1, 1]], Drag: 6, Rotation: [0, 360], RotSpeed: [-90, 90], LightEmission: 0 },
+    catchRing:   { Texture: 'ring', Color: '#FFFFFF', SizeStart: 0.8, SizeEnd: 3.2, Time: 0.16, Easing: 'Quad Out', TransparencyStart: 0.2, TransparencyEnd: 1, TransparencyEasing: 'Quad In' },
+    catchLeak:   { Texture: 'jelly', Rate: [14, 7], Lifetime: [0.25, 0.4], Speed: [4, 8], SpreadAngle: [55, 55], Size: [[0, 0.3], [1, 0.1]], Color: '#FF8FB1', Transparency: [[0, 0], [0.8, 0], [1, 1]], Acceleration: [0, -60, 0], Drag: 1, Orientation: 'VelocityParallel', Squash: 0.3, LightEmission: 0 },
+    catchBurstJelly:    { Texture: 'jelly', Count: [18, 9], Lifetime: [0.3, 0.5], Speed: [18, 30], SpreadAngle: [80, 80], Size: [[0, 0.55], [0.3, 0.7], [1, 0.2]], Color: '#FF8FB1', Transparency: [[0, 0], [0.8, 0], [1, 1]], Acceleration: [0, -120, 0], Drag: 1.5, Orientation: 'VelocityParallel', Squash: 0.3, LightEmission: 0 },
+    catchBurstConfetti: { Texture: 'confetti', Tints: ['#8EDFC4', '#FFD86B'], Count: [16, 8], Lifetime: [0.4, 0.65], Speed: [16, 26], SpreadAngle: [80, 80], Size: 0.3, Transparency: [[0, 0], [0.8, 0], [1, 1]], Acceleration: [0, -110, 0], Drag: 1, Rotation: [0, 360], RotSpeed: [-540, 540], LightEmission: 0 },
+    catchBurstPuff:     { Texture: 'puff', Count: [6, 3], Lifetime: [0.2, 0.3], Speed: [6, 10], SpreadAngle: [70, 70], Size: [[0, 0.6], [0.4, 1.6], [1, 0.3]], Color: '#FFC7DA', Transparency: [[0, 0.1], [1, 1]], Drag: 6, Rotation: [0, 360], RotSpeed: [-90, 90], LightEmission: 0 },
+    catchBurstRing:     { Texture: 'ring', Color: '#FF8FB1', SizeStart: 1, SizeEnd: 6, Time: 0.2, Easing: 'Quad Out', TransparencyStart: 0.1, TransparencyEnd: 1, TransparencyEasing: 'Quad In' },
+    catchAbsorb: { Rotation: [-1.2, 0, 0], Offset: [0, 0, 0.25], Attack: 0.04, AttackEasing: 'Quad Out', Hold: 0, Release: 0.22, ReleaseEasing: 'Quad Out' },
+    catchFocus:  { Delta: -2, Attack: 0.3, AttackEasing: 'Sine InOut', Hold: 0.6, Release: 0.15, ReleaseEasing: 'Quad Out' },
+    catchShake:  { Amplitude: 0.6, Time: 0.15, Frequency: 22, Easing: 'Quad Out', Axes: [1, 0.6, 0.3] },
+
+    // ---------- extra juice ----------
+    readyText:    { Kind: 'Text', Text: 'MAX!', Color: '#FFD86B', Stroke: '#3B2A35', Follow: true, Offset: [0, 2.2, 0], Size: [[0, 0], [0.08, 1.4], [0.14, 1.1], [0.35, 1.1], [0.45, 0]], Transparency: [[0, 0], [0.35, 0], [0.45, 1]], Time: 0.45 },   // pops on the squishy at full charge
+    chargedAura:  { Texture: 'sparkle', Rate: [40, 20], Lifetime: [0.2, 0.3], Speed: [2, 5], SpreadAngle: [180, 180], Shape: 'Sphere', ShapeRadius: 1.5, Size: [[0, 0.7], [1, 0]], Color: '#FFD86B', Transparency: 0, Rotation: [0, 45], RotSpeed: [-180, 180], LightEmission: 0.8, LockedToPart: true },   // gold halo riding a charged throw
+    boingText:    { Kind: 'Text', Text: 'BOING!', Color: '#FF8FB1', Stroke: '#3B2A35', Offset: [0, 2.6, 0], Size: [[0, 0], [0.08, 2.6], [0.14, 2.1], [0.4, 2.2], [0.55, 0]], Transparency: [[0, 0], [0.4, 0], [0.55, 1]], Time: 0.55 },
+    caughtBanner: { Kind: 'Banner', Text: 'CAUGHT!', Color: '#8EDFC4', Stroke: '#3B2A35', StrokePx: 12, FontPx: 84, Y: 0.22, FromY: 0.08, FromScale: 0.6, In: 0.18, InEasing: 'Back Out', Hold: 0.7, Out: 0.25, OutEasing: 'Quad In' },   // catcher's screen, top, clear of the centre
+    catchBurstStars: { Texture: 'star', Count: [10, 5], Lifetime: [0.3, 0.5], Speed: [14, 22], SpreadAngle: [70, 70], Size: [[0, 0.8], [1, 0]], Color: '#FFD86B', Transparency: 0, Acceleration: [0, -60, 0], Drag: 2, Rotation: [0, 360], RotSpeed: [-300, 300], LightEmission: 0.2 },
+  },
+
+  shared: {
+    missEnd: [
+      { on: 'bounceBig', t: 0, squash: 'bounceSquashBig', target: 'squishy' },
+      { on: 'bounceBig', t: 0, burst: 'bouncePuff', at: 'floor', aim: 'up' },
+      { on: 'bounceBig', t: 0, burst: 'bounceDrops', at: 'floor', aim: 'up' },
+      { on: 'bounceBig', t: 0, sound: 'squishy_boing' },
+      { on: 'bounceBig', t: 0, pop: 'boingText', at: 'floor', views: ['T1P', 'OBS'] },
+      { on: 'bounceSmall', t: 0, squash: 'bounceSquashSmall', target: 'squishy' },
+      { on: 'bounceSmall', t: 0, burst: 'bouncePuffSmall', at: 'floor', aim: 'up' },
+      { on: 'bounceSmall', t: 0, sound: 'squishy_boing_small' },
+      { on: 'roll', t: 0, emit: 'rollDust', at: 'floor', aim: 'back' },
+      { on: 'roll', t: 0, sound: 'squishy_roll_loop' },
+      { on: 'rest', t: 0, stop: 'rollDust' },
+      { on: 'rest', t: 0, wobble: 'restJiggle', target: 'squishy' },
+      { on: 'rest', t: 0, sound: 'squishy_settle' },
+    ],
+  },
+
+  moments: {
+    throwTap: { label: 'Throw (tap)', views: ['T1P', 'OBS', 'R1P'], obs: [0, 3, -45], note: 'The squishy leaves on the click (no wind-up delay); the arm catches up in 0.06 s. Release stretch along the travel axis, barrel spin, short trail. It misses here, so it ends in bounces and a roll.', events: [
+      { t: 0, motion: 'throw', kind: 'tap', pitch: 4, label: 'release · tap speed, aimed 4° up' },
+      { t: 0, pose: 'throwOverhand', target: 'thrower' },
+      { t: 0, squash: 'releaseStretch', target: 'squishy' },
+      { t: 0, wobble: 'flightJiggle', target: 'squishy' },
+      { t: 0, trail: 'flightTrail', at: 'squishy' },
+      { t: 0, burst: 'releasePuff', at: 'hand', aim: 'forward' },
+      { t: 0, punch: 'releaseKick', views: ['T1P'] },
+      { t: 0, sound: 'throw_whoosh' },
+      { on: 'rest', t: 0, stop: 'flightTrail' },
+      { include: 'missEnd' },
+    ] },
+    chargeThrow: { label: 'Charge (hold 1 s) + throw', views: ['T1P', 'OBS', 'R1P'], obs: [0, 3, -45], note: 'Hold: the squishy inflates 18 % and jiggles, sparkles get sucked in, FOV narrows 3°. Full at 1.00 s: ding + ring + glow. Release: bigger stretch, faster spin, gold trail with sparkles, small camera kick.', events: [
+      { t: 0, pose: 'chargeHold', target: 'thrower' },
+      { t: 0, squash: 'chargeGrow', target: 'squishy' },
+      { t: 0, wobble: 'chargeJiggle', target: 'squishy' },
+      { t: 0, emit: 'chargeSparksA', at: 'squishy', for: 0.5 },
+      { t: 0.5, emit: 'chargeSparksB', at: 'squishy', for: 0.5 },
+      { t: 0, fov: 'chargeFocus', views: ['T1P'] },
+      { t: 0, sound: 'charge_loop' },
+      { t: 1, glow: 'chargeReadyGlow', target: 'squishy' },
+      { t: 1, ring: 'chargeReadyRing', at: 'squishy', face: 'forward' },
+      { t: 1, burst: 'chargeReadyPop', at: 'squishy' },
+      { t: 1, sound: 'charge_ready_ding' },
+      { t: 1, pop: 'readyText', at: 'squishy' },
+      { t: 1.05, motion: 'throw', kind: 'charged', pitch: 4, label: 'release · charged speed, aimed 4° up' },
+      { t: 1.05, pose: 'throwOverhand', target: 'thrower' },
+      { t: 1.05, squash: 'releaseStretchBig', target: 'squishy' },
+      { t: 1.05, wobble: 'flightJiggle', target: 'squishy' },
+      { t: 1.05, trail: 'flightTrailCharged', at: 'squishy' },
+      { t: 1.05, emit: 'chargedSparkTrail', at: 'squishy' },
+      { t: 1.05, burst: 'releasePuff', at: 'hand', aim: 'forward' },
+      { t: 1.05, punch: 'releaseKickBig', views: ['T1P'] },
+      { t: 1.05, fov: 'releaseFovCharged', views: ['T1P'] },
+      { t: 1.05, sound: 'throw_charged_whoosh' },
+      { t: 1.05, emit: 'chargedAura', at: 'squishy' },
+      { on: 'bounce', t: 0, stop: 'chargedSparkTrail' },
+      { on: 'bounce', t: 0, stop: 'chargedAura' },
+      { on: 'rest', t: 0, stop: 'flightTrailCharged' },
+      { include: 'missEnd' },
+    ] },
+    missBounce: { label: 'Miss · bounce + roll', views: ['OBS', 'T1P', 'R1P'], obs: [0, 2, -42], note: 'First floor hit switches to bounce gravity 120. Each bounce keeps 45 % of the vertical speed plus a hop from the forward speed, so fast misses skip like candy. Below 9 studs/s it rolls (spin = distance ÷ radius) and settles with a jiggle.', events: [
+      { t: 0, motion: 'throw', kind: 'tap', pitch: -6, label: 'release · tap speed, aimed 6° down' },
+      { t: 0, pose: 'throwOverhand', target: 'thrower' },
+      { t: 0, squash: 'releaseStretch', target: 'squishy' },
+      { t: 0, wobble: 'flightJiggle', target: 'squishy' },
+      { t: 0, trail: 'flightTrail', at: 'squishy' },
+      { t: 0, sound: 'throw_whoosh' },
+      { on: 'rest', t: 0, stop: 'flightTrail' },
+      { include: 'missEnd' },
+    ] },
+    catch: { label: 'Catch (crush → burst at 1.02 s)', views: ['R1P', 'OBS', 'T1P'], preRoll: 0.34, obs: [0, 3, -30], note: 'Catcher’s hands clamp it from the sides; the squishy is squeezed in steps with a jiggle, leaking jelly drops, then bursts at 1.02 s. In 1st person the hands hold it low in front of the chest, so it stays in the bottom fifth of the screen; it bulges forward, not up, and every burst sprays down/out, so the centre stays clear.', events: [
+      { t: -0.34, call: 'throwIn', label: 'squishy flies in (lead-in)' },
+      { t: -0.34, pose: 'catchReady', target: 'catcher' },
+      { t: -0.34, trail: 'flightTrail', at: 'squishy', for: 0.34 },
+      { t: 0, call: 'caught', label: 'caught: squishy held between the hands' },
+      { t: 0, pose: 'catchClamp', target: 'catcher' },
+      { t: 0, squash: 'catchCrush', target: 'squishy' },
+      { t: 0, burst: 'catchPuff', at: 'hands', aim: 'down' },
+      { t: 0, ring: 'catchRing', at: 'hands', face: 'up' },
+      { t: 0, punch: 'catchAbsorb', views: ['R1P'] },
+      { t: 0, fov: 'catchFocus', views: ['R1P'] },
+      { t: 0, sound: 'catch_smack' },
+      { t: 0, ui: 'caughtBanner', views: ['R1P'] },
+      { t: 0.05, sound: 'squish_squeeze_loop' },
+      { t: 0.05, emit: 'catchLeak', at: 'hands', aim: 'down', for: 0.95 },
+      { t: 1.02, call: 'burst', label: 'squishy bursts (hidden)' },
+      { t: 1.02, burst: 'catchBurstJelly', at: 'hands', aim: 'down' },
+      { t: 1.02, burst: 'catchBurstConfetti', at: 'hands', aim: 'down' },
+      { t: 1.02, burst: 'catchBurstPuff', at: 'hands', aim: 'down' },
+      { t: 1.02, ring: 'catchBurstRing', at: 'hands', face: 'up' },
+      { t: 1.02, pose: 'catchRelease', target: 'catcher' },
+      { t: 1.02, shake: 'catchShake', views: ['R1P'] },
+      { t: 1.02, sound: 'catch_burst_pop' },
+      { t: 1.02, burst: 'catchBurstStars', at: 'hands', aim: 'down' },
+    ] },
+  },
+
+  rules: { maxParticles: [60, 30], maxEffectTime: 1.5, maxFlashTime: 0.1, maxFlashOpacity: 0.3, maxFlashesPerSecond: 3, maxCenterCover: 0.3, maxHitStop: 0.12, maxShake: 2, maxFovKick: 8, maxLightsPerEffect: 1, centerClear: 0.25 },
+  reduceMotion: { shake: 0, fovKick: 0.25, punch: 0, dip: 0.35, slowMo: false, speedLines: 0.5, flash: 0.5 },
+  phone: { trailLifetimeScale: 0.7 },
+
+  stage: {   // preview arena (studs)
+    distance: 34, sideOffset: 6, catchPoint: [0, 3.2, 1.25], floorLift: 0.06, groundSize: 900,
+    posts: { every: 16, count: 14, offsetX: 14, size: [1.2, 3.5, 1.2], colors: ['#FF8FB1', '#8CC8FF', '#FFD86B', '#B9A6E8'] },
+  },
+  avatars: {
+    thrower: { head: '#FFD25E', torso: '#5FD3AE', arms: '#FFD25E', legs: '#B9A6E8', shoes: '#3B2A35' },
+    target:  { head: '#FFD25E', torso: '#F2687F', arms: '#FFD25E', legs: '#8CC8FF', shoes: '#3B2A35' },
+  },
+  viewer: {  // PREVIEW ONLY — stand-in rig, lights, renderer, UI
+    previewSlowMo: 0.25,
+    sky: { top: '#8FD0FF', horizon: '#FFF1E0', power: 0.55, radius: 2600, segments: 32 },   // gradient sky dome, fog = horizon colour
+    textBillboard: { w: 1024, h: 256, font: 150, stroke: 22 },                          // canvas size for text billboards
+    render: { maxPixelRatio: 2, near: 0.1, far: 3000, fogNear: 160, fogFar: 650, maxDt: 0.05 },
+    light: { hemi: 1.7, sun: 2.4, sunOffset: [30, 60, 25], shadowMap: 2048, shadowExtent: 70, shadowNear: 1, shadowFar: 240, shadowBias: -0.0005, pointPool: 1, pointDecay: 1, pointScale: 6 },
+    colors: { sky: '#CFE8FF', hemiSky: '#FFF4E6', hemiGround: '#B9A6E8', sun: '#FFFFFF', ink: '#3B2A35', black: '#000000', white: '#FFFFFF', groundA: '#FFF0DA', groundB: '#FBE3C3' },
+    ground: { tile: 4, checkerPx: 32, roughness: 0.95 },
+    rig: { torsoW: 2, torsoD: 1, upperTorsoH: 1.6, lowerTorsoH: 0.4, headSize: 1.2, limbW: 0.9, limbD: 0.9, upperArmH: 1.1, lowerArmH: 0.9, handH: 0.3, upperLegH: 1.1, lowerLegH: 1.0, footH: 0.3, footD: 1.1, eye: [0.16, 0.26, 0.06], eyeSpacing: 0.24, eyeY: 0.08,
+      firstPersonHidden: ['Head', 'UpperTorso', 'LowerTorso', 'LeftUpperArm', 'RightUpperArm', 'LeftUpperLeg', 'LeftLowerLeg', 'LeftFoot', 'RightUpperLeg', 'RightLowerLeg', 'RightFoot'] },
+    material: { avatarRoughness: 0.75, outline: 0.05, glowScale: 1 },
+    squishy: { roughness: 0.35, segments: 40, rings: 28, restSquash: 0.9, outline: 0.06, eyeSize: 0.11, eyeSeg: 12, eyeX: 0.3, eyeY: 0.12, shineSize: 0.12, shine: [-0.45, 0.45] },
+    loco: { strideHz: 1.6, hip: 40, knee: 60, shoulder: 38, elbow: 25, twist: 8, lean: -6, bob: 0.18, airShoulder: 30, airSpread: 25, airKnee: 20 },
+    fx: { textureSize: 256, maxSprites: 700, trailMaxPoints: 64, additiveFrom: 0.5, velocityProbe: 0.02, popRenderOrder: 10, upTest: 0.9 },
+    orbit: { degPerPx: 0.3, wheelStep: 0.1 },
+    shakeNoise: [0.65, 0.35, 1.73],
+    ui: { bg: '#FFF4E6', panel: '#FFFFFF', ink: '#3B2A35', muted: '#76656F', line: '#EADBCB', accent: '#FFC7DA', accentSoft: '#FFE6EE', accentInk: '#B83E70', good: '#23805F', bad: '#C23B5A', stage: '#CFE8FF', refHeight: 1080, sfxHold: 1.1, sfxFade: 0.35, sfxMax: 6 },
+  },
+};
+
+/* ------------------------------- page logic (no numbers) ------------------------------- */
+const V3 = THREE.Vector3;
+let thr, tgt, sq, API;
+const fs = {};
+function fresh() { return { vm: false, mode: 'held', vel: new V3(), bounced: false, rolled: 0, rollDir: new V3(), flight: null, from: null, contacts: 0 }; }
+function restY() { return CONFIG.throw.radius * CONFIG.viewer.squishy.restSquash; }
+function eyeOf(av, k) { return av.group.position.clone().add(new V3(0, CONFIG.camera[k].eyeHeight, 0)); }
+function handPos() {
+  if (API && API.S.view === 'T1P') {
+    const C = CONFIG.camera.thrower, o = CONFIG.throw.viewmodel.offset, k = C.pitch * API.DEG;
+    const eye = thr.group.position.clone().add(new V3(0, C.eyeHeight, C.back)), f = new V3(0, Math.sin(k), -Math.cos(k)), u = new V3(0, Math.cos(k), Math.sin(k));
+    return eye.add(new V3(o[0], 0, 0)).addScaledVector(u, o[1]).addScaledVector(f, -o[2]);
+  }
+  const h = thr.parts.RightHand.getWorldPosition(new V3()), o = CONFIG.throw.holdOffset;
+  return h.add(new V3(o[0], o[1], o[2]));
+}
+function handsMid() { return tgt.parts.LeftHand.getWorldPosition(new V3()).add(tgt.parts.RightHand.getWorldPosition(new V3())).multiplyScalar(0.5); }
+
+SquishyFX(THREE, CONFIG, {
+  setup(api) {
+    API = api;
+    const Vw = CONFIG.viewer, St = CONFIG.stage;
+    const g = new THREE.Mesh(new THREE.PlaneGeometry(St.groundSize, St.groundSize), new THREE.MeshStandardMaterial({ name: 'floor', map: api.checker(Vw.colors.groundA, Vw.colors.groundB, St.groundSize / Vw.ground.tile), roughness: Vw.ground.roughness }));
+    g.name = 'Floor'; g.rotation.x = -Math.PI / 2; g.receiveShadow = true; api.scene.add(g);
+    const P = St.posts, geo = new THREE.BoxGeometry(P.size[0], P.size[1], P.size[2]), mats = P.colors.map((c, i) => api.material('post' + i, c, Vw.ground.roughness));
+    for (let i = 0; i < P.count; i++) for (const s of [-1, 1]) { const m = new THREE.Mesh(geo, mats[i % mats.length]); m.name = 'Post'; m.position.set(s * P.offsetX, P.size[1] / 2, -i * P.every); m.castShadow = true; api.scene.add(m); }
+    thr = api.avatar({ name: 'Thrower', colors: CONFIG.avatars.thrower });
+    tgt = api.avatar({ name: 'Target', colors: CONFIG.avatars.target });
+    sq = api.squishy({ name: 'Squishy', color: CONFIG.throw.color, radius: CONFIG.throw.radius });
+    api.scene.add(thr.group, tgt.group, sq.group);
+  },
+  reset(api, id, m) {
+    Object.assign(fs, fresh());
+    const St = CONFIG.stage;
+    thr.group.position.set(0, 0, 0); thr.group.rotation.y = 0;
+    tgt.group.position.set(id === 'catch' ? 0 : St.sideOffset, 0, -St.distance); tgt.group.rotation.y = Math.PI;
+    thr.setFirstPerson(api.S.view === 'T1P'); tgt.setFirstPerson(api.S.view === 'R1P');
+    for (const n of CONFIG.camera.thrower.hideParts) thr.parts[n].visible = api.S.view !== 'T1P';
+    fs.vm = api.S.view === 'T1P'; sq.group.scale.setScalar(fs.vm ? CONFIG.throw.viewmodel.scale : 1);
+    fs.obs = new V3(m.obs[0], m.obs[1], m.obs[2]);
+    sq.group.visible = true; sq.spin.rotation.set(0, 0, 0);
+    if (id === 'catch') { fs.mode = 'wait'; const c = St.catchPoint; fs.catchAt = tgt.group.position.clone().add(new V3(c[0], c[1], c[2])); sq.group.position.copy(fs.catchAt); }
+    else { thr.update(0, 0); sq.group.position.copy(handPos()); sq.face(new V3(0, 0, -1)); }
+  },
+  update(api, dt) {
+    const B = CONFIG.bounce, T = CONFIG.throw, p = sq.group.position;
+    api.setFocus(fs.mode === 'held' ? thr.group.position : p.clone().setY(0));
+    if (fs.mode === 'held') { p.copy(handPos()); return; }
+    if (fs.mode === 'caught') { p.copy(handsMid()); return; }
+    if (dt <= 0) return;
+    if (fs.vm && (fs.mode === 'in' || fs.mode === 'fly') && sq.group.scale.x < 1) { const VM = CONFIG.throw.viewmodel; sq.group.scale.setScalar(Math.min(1, sq.group.scale.x + (1 - VM.scale) * dt / VM.growTime)); }
+    if (fs.mode === 'in') {
+      const f = fs.flight, tau = Math.min(api.S.world - f.t0, f.T);
+      p.copy(f.S).addScaledVector(f.v0, tau).add(new V3(0, -0.5 * f.g * tau * tau, 0));
+      sq.face(f.v0.clone().add(new V3(0, -f.g * tau, 0)));
+      return;
+    }
+    if (fs.mode === 'fly') {
+      fs.vel.y -= (fs.bounced ? B.gravity : T.gravity) * dt;
+      p.addScaledVector(fs.vel, dt);
+      sq.face(fs.bounced ? new V3(fs.vel.x, 0, fs.vel.z) : fs.vel);
+      if (p.y <= restY() && fs.vel.y < 0) {
+        const vin = -fs.vel.y, h = Math.hypot(fs.vel.x, fs.vel.z);
+        p.y = restY(); fs.contacts++;
+        if (!fs.bounced) api.measure('flight', `Flight ${fs.from.distanceTo(p).toFixed(1)} studs · lands at ${vin.toFixed(1)} studs/s down, ${h.toFixed(1)} forward`);
+        fs.bounced = true; sq.spinRate = 0; sq.spinAngle = 0; sq.base = [1, 1, 1];
+        const out = vin * B.restitution + h * B.hopFromSpeed;
+        fs.vel.x *= B.keepHorizontal; fs.vel.z *= B.keepHorizontal;
+        api.signal(vin >= B.bigFrom ? 'bounceBig' : 'bounceSmall', {}); api.signal('bounce', {});
+        if (out < B.rollBelow) { fs.mode = 'roll'; fs.vel.y = 0; fs.rollDir.set(fs.vel.x, 0, fs.vel.z).normalize(); fs.rollSpeed = Math.hypot(fs.vel.x, fs.vel.z); api.signal('roll', {}); }
+        else fs.vel.y = out;
+      }
+      return;
+    }
+    if (fs.mode === 'roll') {
+      const s0 = fs.rollSpeed, s1 = Math.max(0, s0 - B.rollDecel * dt), d = (s0 + s1) / 2 * dt;
+      fs.rollSpeed = s1; p.addScaledVector(fs.rollDir, d); fs.rolled += d;
+      sq.face(fs.rollDir); sq.spin.rotation.x = -fs.rolled / CONFIG.throw.radius;
+      if (s1 <= 0) { fs.mode = 'rest'; api.measure('rest', `${fs.contacts} floor contacts · rolled ${fs.rolled.toFixed(1)} studs · rests ${fs.from.distanceTo(p).toFixed(1)} studs from the hand`); api.signal('rest', {}); }
+    }
+  },
+  camera(api, view) {
+    const C = CONFIG.camera;
+    if (view === 'T1P') { const e = eyeOf(thr, 'thrower').add(new V3(0, 0, C.thrower.back)), k = C.thrower.pitch * api.DEG; return { pos: e, look: e.clone().add(new V3(0, Math.sin(k), -Math.cos(k))) }; }
+    if (view === 'R1P') { const e = eyeOf(tgt, 'target').add(new V3(0, 0, -C.target.back)), k = C.target.pitch * api.DEG; return { pos: e, look: e.clone().add(new V3(0, Math.sin(k), Math.cos(k))) }; }
+    return api.orbit('OBS', fs.obs, C.observer);
+  },
+  anchor(api, name) {
+    switch (name) {
+      case 'squishy': return { pos: sq.group.position.clone(), dir: api.UP, vel: fs.vel };
+      case 'hand': return { pos: handPos(), dir: new V3(0, 0, -1) };
+      case 'hands': return { pos: handsMid(), dir: api.UP };
+      case 'floor': { const p = sq.group.position; return { pos: new V3(p.x, CONFIG.stage.floorLift, p.z), dir: api.UP }; }
+    }
+    return { pos: sq.group.position.clone(), dir: api.UP };
+  },
+  aim(api, name) {
+    if (name === 'forward') return new V3(0, 0, -1);
+    if (name === 'toThrower') return new V3(0, 0, 1);
+    if (name === 'back') return fs.rollDir.lengthSq() ? fs.rollDir.clone().negate() : new V3(0, 0, 1);
+    return null;
+  },
+  target(api, name) { return name === 'thrower' ? thr : name === 'squishy' ? sq : tgt; },
+  motions: {
+    throw(api, ev) {
+      const T = CONFIG.throw, k = ev.pitch * api.DEG, speed = ev.kind === 'charged' ? T.speedCharged : T.speedTap;
+      fs.mode = 'fly'; fs.from = sq.group.position.clone();
+      fs.vel.set(0, Math.sin(k), -Math.cos(k)).multiplyScalar(speed);
+      sq.spinRate = ev.kind === 'charged' ? T.spinCharged : T.spinTap;
+      sq.base = [1, 1, 1];
+    },
+  },
+  calls: {
+    throwIn(api) {
+      const T = CONFIG.throw; thr.update(0, 0);
+      const S = handPos(), H = fs.catchAt, time = H.distanceTo(S) / T.speedTap;
+      const v0 = H.clone().sub(S).divideScalar(time).add(new V3(0, 0.5 * T.gravity * time, 0));
+      fs.flight = { S, v0, g: T.gravity, t0: api.S.world, T: time }; fs.mode = 'in';
+      sq.group.position.copy(S); sq.spinRate = T.spinTap; sq.face(v0);
+    },
+    caught() { fs.mode = 'caught'; sq.spinRate = 0; sq.spinAngle = 0; sq.face(new V3(0, 0, 1)); },
+    burst() { fs.mode = 'gone'; sq.group.visible = false; },
+  },
+});
+</script>
+<script src="squishy-kit.js"></script>
+<script src="squishy-fx.js"></script>
+</head>
+<body></body>
+</html>

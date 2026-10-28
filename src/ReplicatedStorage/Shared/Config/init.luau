@@ -775,7 +775,14 @@ local function checkDuel(problems: Problems)
 		"bodyRadiusStuds",
 		"maxAccelStuds",
 		"blockedLagStuds",
+		"endSpeedStuds",
 	}, expectPositive)
+	-- The physics upgrade's ramp (2026-10-28) needs the end below the average speed, else it would speed up.
+	expect(
+		problems,
+		type(dash.endSpeedStuds) ~= "number" or dash.endSpeedStuds < dash.distanceStuds / dash.seconds,
+		`{d}.endSpeedStuds must be below distanceStuds / seconds`
+	)
 	eachField(problems, d, dash, {
 		"cooldownToleranceSeconds",
 		"groundToleranceStuds",

@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squishy Duels · Part 4 · Highway</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.184.0/build/three.module.js",
+    "three/addons/controls/OrbitControls.js": "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js",
+    "three/addons/exporters/OBJExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js",
+    "three/addons/exporters/GLTFExporter.js": "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js"
+  },
+  "integrity": {
+    "https://unpkg.com/three@0.184.0/build/three.module.js": "sha384-8FCZ1eVO6it4+pbec2aDtnTrwjWXZLJRC+MAGCIPDgsYnUrl/E0A2YlF8ioMKI/J",
+    "https://unpkg.com/three@0.184.0/build/three.core.js": "sha384-dw2ooPewaEIrAgl6oFDBmmBWCE9oW9LxRGcfwZ0hLvEprzo202wXl7vCYHRlSnOT",
+    "https://unpkg.com/three@0.184.0/examples/jsm/controls/OrbitControls.js": "sha384-4rziNxOBZKQ69i+w+f89KJ55TCYquwchVbByQwmaOeIOXdOU2PLDn3kOfXHwIJC9",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/OBJExporter.js": "sha384-nbwtoZENJD3Vq+ACK0CuGQdPMuDWHkamC2KJD70EV5nfg6jQjfppKOea07YJN+N3",
+    "https://unpkg.com/three@0.184.0/examples/jsm/exporters/GLTFExporter.js": "sha384-VofkvpG6HERhFCYbsUOHeNXBCqID2nfqkQqnVzE1jc/oPcz+qJ13ADdXH08hE+cQ"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* =====================================================================================
+   CONFIG — every number on this page. Units: studs, seconds, degrees, studs/s, studs/s².
+   The game decides the stop distance D. The solver below splits D into flight + bounces + roll so the
+   squishy ALWAYS ends exactly at D (the flight takes whatever is left after the bounces and roll).
+   Slow motion is allowed here (your own highway throw). Squash keys: [t, X, Y, Z, Easing], Z = travel.
+   ===================================================================================== */
+const CONFIG = {
+  page: { file: 'highway.html', title: 'Part 4 · Highway', subtitle: 'Your highway throw: wind-up, slow-mo release, chase-camera flight through the 7 zones, bounces and a roll that end exactly on the game’s stop point.' },
+  world: { gravity: 196.2, fov: 70 },
+  highway: {
+    minDistance: 70,          // studs — game range
+    maxDistance: 8500,        // studs — game range
+    maxHeight: 60,            // studs — never higher than this
+    radius: 1.2,              // studs squishy radius (preview)
+    color: '#FF8FB1',         // squishy main colour
+    spinRate: 720,            // deg/s barrel spin in flight (visual only)
+    fastFrom: 400,            // studs/s: above this, screen speed lines
+    fastLinesEvery: 0.22,     // s between speed-line bursts while fast
+    customDefault: 2500,      // studs, slider start
+    customStep: 10,           // studs, slider step
+  },
+  solver: {                   // NEW — distances in studs, times in s
+    twoBouncesFrom: 300,      // D ≥ 300 → 2 bounces (else 1)
+    threeBouncesFrom: 2000,   // D ≥ 2000 → 3 bounces
+    firstBounceShare: 0.06,   // first bounce length = D × 0.06 …
+    firstBounceMin: 3,        // … clamped to 3 …
+    firstBounceMax: 220,      // … to 220
+    bounceLengthKeep: 0.45,   // each next bounce = previous × 0.45
+    firstBounceHeightShare: 0.22, // first bounce height = flight apex × 0.22 …
+    bounceHeightMin: 1.2,     // … clamped 1.2 …
+    bounceHeightMax: 14,      // … to 14
+    bounceHeightKeep: 0.4,    // next bounce height = previous × 0.4 (bounce time = 2·√(2h/g), g = world gravity)
+    rollShare: 0.035,         // roll = D × 0.035 …
+    rollMin: 2.5,             // … clamped 2.5 …
+    rollMax: 60,              // … to 60 (constant slow-down, ends at speed 0 exactly on D)
+    rollEntryKeep: 0.85,      // roll start speed = last bounce speed × 0.85
+    apexShare: 0.18,          // flight apex = flight length × 0.18 …
+    apexMin: 6,               // … at least 6, at most maxHeight − release height
+    timeBase: 1,              // flight time = 1 + 0.075·√(flight length) …
+    timePerSqrtStud: 0.075,
+    timeMin: 1.2,             // … clamped 1.2 …
+    timeMax: 7.5,             // … to 7.5 s (8,500 studs ≈ 1,080 studs/s average)
+    linearShare: 0.6,         // forward progress = 60 % linear + 40 % Quad Out → starts 1.4× and lands 0.6× the average speed
+  },
+  zones: [                    // PREVIEW start distances — replace with the game's real zone starts
+    { name: 'Candy Meadow', start: 0, color: '#8EDFC4', ground: '#E3F8EF' },
+    { name: 'Bakery Town', start: 400, color: '#FFD25E', ground: '#FFF2D6' },
+    { name: 'Boba Lagoon', start: 1100, color: '#8CC8FF', ground: '#E4F2FF' },
+    { name: 'Frozen Dessert Peaks', start: 2000, color: '#B9A6E8', ground: '#F1ECFB' },
+    { name: 'Lava Volcano', start: 3200, color: '#F2687F', ground: '#FFE4E8' },
+    { name: 'Rainbow Road', start: 4800, color: '#B892F0', ground: '#F3EAFF' },
+    { name: 'Divine Heaven', start: 6800, color: '#FFD86B', ground: '#FFF9E6' },
+  ],
+  chaseCam: {                 // Scriptable camera, offsets from the squishy (Back = behind along the road, Up = above)
+    Launch: { Back: 13, Up: 5.5, LookAhead: 6, Fov: 70 },
+    Fast:   { Back: 30, Up: 12, LookAhead: 40, Fov: 80 },   // reached at SpeedHigh
+    Ground: { Back: 14, Up: 4.5, LookAhead: 6, Fov: 72 },   // bounces + roll
+    Hero:   { Side: 9, Up: 3.5, Front: 11, Fov: 58, Time: 0.9, Easing: 'Sine InOut' },  // after the stop
+    SpeedLow: 120, SpeedHigh: 1200,                         // studs/s mapped to 0…1 between Launch and Fast
+    FollowRate: 6,                                          // 1/s smoothing of the offsets (position itself is locked to the squishy)
+    LookHeight: 1.5,
+  },
+  views: { CHASE: '3rd person · chase', SIDE: 'Side · orbit (preview only)' },
+  sideCam: { dist: 40, az: 90, el: 12, minDist: 8, maxDist: 400, elMin: -10, elMax: 85 },
+
+  fx: {
+    windup: { FadeIn: 0.12, Keys: [
+      { t: 0, Easing: 'Cubic InOut', Root: [5, 0, 0], Waist: [8, -35, 0], RightShoulder: [150, 0, 35], RightElbow: [100, 0, 0], LeftShoulder: [85, 0, -10], LeftElbow: [10, 0, 0], LeftHip: [30, 0, 0], LeftKnee: [-30, 0, 0], RightHip: [-20, 0, 0] },
+      { t: 0.5, Root: [6, 0, 0], Waist: [12, -45, 0], RightShoulder: [165, 0, 40], RightElbow: [110, 0, 0], LeftShoulder: [90, 0, -10], LeftElbow: [5, 0, 0], LeftHip: [35, 0, 0], LeftKnee: [-35, 0, 0], RightHip: [-25, 0, 0] } ] },
+    throwBig: { FadeOut: 0.3, Keys: [
+      { t: 0, Easing: 'Cubic Out', Root: [-10, 0, 0], Waist: [-18, 30, 0], RightShoulder: [95, 0, 10], RightElbow: [5, 0, 0], LeftShoulder: [10, 0, -35], LeftElbow: [30, 0, 0], LeftHip: [40, 0, 0], LeftKnee: [-20, 0, 0], RightHip: [-30, 0, 0], RightKnee: [-40, 0, 0] },
+      { t: 0.45, Root: [-4, 0, 0], Waist: [-8, 20, 0], RightShoulder: [50, 0, 8], RightElbow: [20, 0, 0], LeftShoulder: [10, 0, -20], LeftElbow: [20, 0, 0], LeftHip: [15, 0, 0], RightHip: [-10, 0, 0], RightKnee: [-15, 0, 0] } ] },
+    windupSquish:  { Hold: true, Keys: [[0, 1, 1, 1, 'Sine InOut'], [0.5, 1.12, 0.88, 1.12]] },
+    launchStretch: { Hold: true, Keys: [[0, 0.7, 0.7, 1.7, 'Quad Out'], [0.1, 1.12, 1.12, 0.86, 'Quad InOut'], [0.2, 0.95, 0.95, 1.12, 'Sine InOut'], [0.32, 0.97, 0.97, 1.08]] },
+    flightWobble:  { Amplitude: 0.05, Frequency: 6, Decay: 0.8, AxisRatio: 1, Time: 8 },
+    releaseSlow:   { Speed: 0.3, In: 0.04, InEasing: 'Quad Out', Hold: 0.3, Out: 0.35, OutEasing: 'Sine InOut' },
+    launchFov:     { Delta: 8, Attack: 0.08, AttackEasing: 'Quad Out', Hold: 0.3, Release: 0.6, ReleaseEasing: 'Sine InOut' },
+    launchShake:   { Amplitude: 0.8, Time: 0.25, Frequency: 18, Easing: 'Quad Out', Axes: [1, 0.6, 0.4] },
+    launchStars:   { Texture: 'star', Count: [16, 8], Lifetime: [0.4, 0.7], Speed: [20, 34], SpreadAngle: [50, 50], Size: [[0, 1.0], [0.7, 0.9], [1, 0]], Color: [[0, '#FFFFFF'], [0.2, '#FFD86B'], [1, '#FFD86B']], Transparency: 0, Acceleration: [0, -40, 0], Drag: 2, Rotation: [0, 360], RotSpeed: [-300, 300], LightEmission: 0.2 },
+    launchPuff:    { Texture: 'puff', Count: [8, 4], Lifetime: [0.25, 0.4], Speed: [8, 12], SpreadAngle: [40, 40], Size: [[0, 0.7], [0.35, 1.6], [1, 0.3]], Color: '#FFF4E6', Transparency: [[0, 0.1], [0.7, 0.4], [1, 1]], Drag: 6, Rotation: [0, 360], RotSpeed: [-90, 90], LightEmission: 0 },
+    launchSparkles: { Texture: 'sparkle', Count: [12, 6], Lifetime: [0.3, 0.5], Speed: [3, 7], SpreadAngle: [180, 180], Shape: 'Sphere', ShapeRadius: 1.5, Size: [[0, 0], [0.3, 1.1], [1, 0]], Color: '#FFFFFF', Transparency: 0, Drag: 2, Rotation: [0, 45], RotSpeed: [-90, 90], LightEmission: 0.7 },
+    launchRing:    { Texture: 'ring', Color: '#FFFFFF', SizeStart: 1, SizeEnd: 9, Time: 0.3, Easing: 'Quad Out', TransparencyStart: 0.05, TransparencyEnd: 1, TransparencyEasing: 'Quad In' },
+    flightTrail:   { Width: 1.6, Lifetime: 0.15, Transparency: [[0, 0.2], [1, 1]], WidthScale: [[0, 1], [1, 0]], LightEmission: 0.3, FaceCamera: true, MinLength: 1, TrailEnd: '#FFF4E6' },  // Color = [[0, zone colour], [1, TrailEnd]], swapped at each zone gate
+    zoneRing:      { Texture: 'ring', SizeStart: 6, SizeEnd: 28, Time: 0.35, Easing: 'Quad Out', TransparencyStart: 0, TransparencyEnd: 1, TransparencyEasing: 'Quad In', LightEmission: 0.6 },  // Color = zone colour
+    zoneSparkles:  { Texture: 'sparkle', Count: [16, 8], Lifetime: [0.3, 0.5], Speed: [10, 20], SpreadAngle: [180, 180], Shape: 'Sphere', ShapeRadius: 3, Size: [[0, 0], [0.3, 1.4], [1, 0]], Transparency: 0, Drag: 2, Rotation: [0, 45], RotSpeed: [-90, 90], LightEmission: 0.7 },          // Tints = [zone colour]
+    speedLines:    { Kind: 'SpeedLines', Texture: 'speedline', Color: '#FFFFFF', Count: [10, 5], Inner: 0.62, Outer: 1.0, LengthPx: [160, 300], WidthPx: [8, 14], Jitter: 14, Travel: 0.12, Time: 0.3, Stagger: 0.06, Opacity: 0.55, Easing: 'Quad Out', FadeEasing: 'Quad In' },
+    bounceSquashBig:   { Keys: [[0, 1.6, 0.45, 1.6, 'Quad Out'], [0.06, 0.82, 1.25, 0.82, 'Quad InOut'], [0.13, 1.08, 0.92, 1.08, 'Sine InOut'], [0.22, 1, 1, 1]] },
+    bounceSquashSmall: { Keys: [[0, 1.3, 0.7, 1.3, 'Quad Out'], [0.06, 0.9, 1.12, 0.9, 'Sine InOut'], [0.14, 1, 1, 1]] },
+    landPuffBig:   { Texture: 'puff', Count: [20, 10], Lifetime: [0.35, 0.55], Speed: [20, 32], SpreadAngle: [10, 10], Shape: 'Cylinder', ShapeRadius: 1.5, Size: [[0, 1.2], [0.35, 2.8], [1, 0.5]], Color: '#FFF4E6', Transparency: [[0, 0], [0.7, 0.3], [1, 1]], Acceleration: [0, 14, 0], Drag: 6, Rotation: [0, 360], RotSpeed: [-120, 120], LightEmission: 0 },
+    landDrops:     { Texture: 'jelly', Count: [10, 5], Lifetime: [0.35, 0.55], Speed: [14, 24], SpreadAngle: [50, 50], Size: [[0, 0.6], [1, 0.2]], Color: '#FF8FB1', Transparency: [[0, 0], [0.8, 0], [1, 1]], Acceleration: [0, -120, 0], Drag: 1, Orientation: 'VelocityParallel', Squash: 0.3, LightEmission: 0 },
+    landRing:      { Texture: 'ring', Color: '#FFF4E6', SizeStart: 2, SizeEnd: 14, Time: 0.35, Easing: 'Quad Out', TransparencyStart: 0.05, TransparencyEnd: 1, TransparencyEasing: 'Quad In' },
+    landShake:     { Amplitude: 1.2, Time: 0.3, Frequency: 16, Easing: 'Quad Out', Axes: [1, 0.6, 0.4] },
+    bouncePuff:    { Texture: 'puff', Count: [8, 4], Lifetime: [0.25, 0.4], Speed: [8, 12], SpreadAngle: [8, 8], Shape: 'Cylinder', ShapeRadius: 0.9, Size: [[0, 0.6], [0.35, 1.4], [1, 0.2]], Color: '#FFF4E6', Transparency: [[0, 0.1], [0.7, 0.4], [1, 1]], Acceleration: [0, 8, 0], Drag: 7, Rotation: [0, 360], RotSpeed: [-90, 90], LightEmission: 0 },
+    finalSlow:     { Speed: 0.5, In: 0.08, InEasing: 'Quad Out', Hold: 0.35, Out: 0.3, OutEasing: 'Sine InOut' },
+    rollDust:      { Texture: 'puff', Rate: [16, 8], Lifetime: [0.2, 0.35], Speed: [1, 3], SpreadAngle: [40, 40], Size: [[0, 0.35], [0.4, 0.8], [1, 0.1]], Color: '#FFF4E6', Transparency: [[0, 0.3], [1, 1]], Acceleration: [0, 4, 0], Drag: 4, Rotation: [0, 360], RotSpeed: [-60, 60], LightEmission: 0 },
+    stopSquash:    { Keys: [[0, 1.3, 0.7, 1.3, 'Quad Out'], [0.1, 0.88, 1.18, 0.88, 'Sine InOut'], [0.22, 1.05, 0.95, 1.05, 'Sine InOut'], [0.34, 1, 1, 1]] },
+    stopConfetti:  { Texture: 'confetti', Tints: ['#FF8FB1', '#8EDFC4', '#FFD86B', '#8CC8FF'], Count: [40, 20], Lifetime: [0.8, 1.2], Speed: [22, 36], SpreadAngle: [35, 35], Size: 0.45, Transparency: [[0, 0], [0.8, 0], [1, 1]], Acceleration: [0, -70, 0], Drag: 1.2, Rotation: [0, 360], RotSpeed: [-540, 540], LightEmission: 0 },
+    stopSparkles:  { Texture: 'sparkle', Count: [14, 7], Lifetime: [0.4, 0.7], Speed: [3, 7], SpreadAngle: [180, 180], Shape: 'Sphere', ShapeRadius: 2, Size: [[0, 0], [0.3, 1.3], [1, 0]], Color: '#FFFFFF', Transparency: 0, Drag: 2, Rotation: [0, 45], RotSpeed: [-90, 90], LightEmission: 0.7 },
+    stopRing:      { Texture: 'ring', Color: '#FFD86B', SizeStart: 2, SizeEnd: 14, Time: 0.4, Easing: 'Quad Out', TransparencyStart: 0, TransparencyEnd: 1, TransparencyEasing: 'Quad In' },
+    stopGlow:      { FillColor: '#FFFFFF', OutlineColor: '#FFD86B', FillTransparencyStart: 0.35, OutlineTransparencyStart: 0, Time: 0.35, Easing: 'Quad Out' },
+  },
+
+  shared: {
+    highwayThrow: [
+      { t: -0.5, pose: 'windup', target: 'thrower' },
+      { t: -0.5, squash: 'windupSquish', target: 'squishy' },
+      { t: -0.5, sound: 'windup_stretch' },
+      { t: 0, motion: 'launch', label: 'release · path solved so it stops exactly at D' },
+      { t: 0, pose: 'throwBig', target: 'thrower' },
+      { t: 0, squash: 'launchStretch', target: 'squishy' },
+      { t: 0, wobble: 'flightWobble', target: 'squishy' },
+      { t: 0, slowmo: 'releaseSlow' },
+      { t: 0, fov: 'launchFov' },
+      { t: 0, shake: 'launchShake' },
+      { t: 0, burst: 'launchStars', at: 'squishy', aim: 'back' },
+      { t: 0, burst: 'launchSparkles', at: 'squishy' },
+      { t: 0, burst: 'launchPuff', at: 'squishy', aim: 'forward' },
+      { t: 0, ring: 'launchRing', at: 'squishy', face: 'forward' },
+      { t: 0, call: 'zoneTrail', label: 'trail in the current zone colour' },
+      { t: 0, sound: 'highway_launch_whoomp' },
+      { on: 'apex', t: 0, sound: 'apex_whistle' },
+      { on: 'zone', t: 0, call: 'zoneFx', label: 'zone gate: zoneRing + zoneSparkles in the zone colour, trail colour swaps' },
+      { on: 'zone', t: 0, sound: 'zone_chime' },
+      { on: 'fast', t: 0, ui: 'speedLines' },
+      { on: 'bounce1', t: 0, squash: 'bounceSquashBig', target: 'squishy' },
+      { on: 'bounce1', t: 0, burst: 'landPuffBig', at: 'floor', aim: 'up' },
+      { on: 'bounce1', t: 0, burst: 'landDrops', at: 'floor', aim: 'up' },
+      { on: 'bounce1', t: 0, ring: 'landRing', at: 'floor' },
+      { on: 'bounce1', t: 0, shake: 'landShake' },
+      { on: 'bounce1', t: 0, sound: 'land_boing_big' },
+      { on: 'bounceN', t: 0, squash: 'bounceSquashSmall', target: 'squishy' },
+      { on: 'bounceN', t: 0, burst: 'bouncePuff', at: 'floor', aim: 'up' },
+      { on: 'bounceN', t: 0, sound: 'land_boing_small' },
+      { on: 'lastBounce', t: 0, slowmo: 'finalSlow' },
+      { on: 'roll', t: 0, squash: 'bounceSquashSmall', target: 'squishy' },
+      { on: 'roll', t: 0, emit: 'rollDust', at: 'floor', aim: 'back' },
+      { on: 'roll', t: 0, sound: 'roll_squish_loop' },
+      { on: 'stop', t: 0, stop: 'rollDust' },
+      { on: 'stop', t: 0, call: 'endTrail', label: 'trail off' },
+      { on: 'stop', t: 0, squash: 'stopSquash', target: 'squishy' },
+      { on: 'stop', t: 0, burst: 'stopConfetti', at: 'floor', aim: 'up' },
+      { on: 'stop', t: 0, burst: 'stopSparkles', at: 'squishy' },
+      { on: 'stop', t: 0, ring: 'stopRing', at: 'floor' },
+      { on: 'stop', t: 0, glow: 'stopGlow', target: 'squishy' },
+      { on: 'stop', t: 0, call: 'heroCam', label: 'camera swings to the hero shot' },
+      { on: 'stop', t: 0, sound: 'highway_stop_fanfare' },
+    ],
+  },
+
+  moments: {
+    short:  { label: 'Short · 70 studs', distance: 70, views: ['CHASE', 'SIDE'], preRoll: 0.5, slowMoAllowed: true, note: 'Shortest throw: 1 bounce, 2.5-stud roll. Release slow-mo still plays (your own throw).', events: [{ include: 'highwayThrow' }] },
+    medium: { label: 'Medium · 1,200 studs', distance: 1200, views: ['CHASE', 'SIDE'], preRoll: 0.5, slowMoAllowed: true, note: 'Crosses into Bakery Town and Boba Lagoon: gate ring + sparkles + trail colour swap at each zone start.', events: [{ include: 'highwayThrow' }] },
+    long:   { label: 'Long · 4,000 studs', distance: 4000, views: ['CHASE', 'SIDE'], preRoll: 0.5, slowMoAllowed: true, note: 'Fast flight: camera pulls back to 30 studs and widens to 80° as speed rises, speed lines while above 400 studs/s.', events: [{ include: 'highwayThrow' }] },
+    max:    { label: 'Max · 8,500 studs', distance: 8500, views: ['CHASE', 'SIDE'], preRoll: 0.5, slowMoAllowed: true, note: 'All 7 zones, apex capped under 60 studs, 7.5 s flight, 3 bounces and a 60-stud roll that ends exactly on the stop point.', events: [{ include: 'highwayThrow' }] },
+    custom: { label: 'Custom distance (slider)', distance: null, views: ['CHASE', 'SIDE'], preRoll: 0.5, slowMoAllowed: true, note: 'Pick any distance in the game range with the slider; the measured stop error should read 0.000 studs.', events: [{ include: 'highwayThrow' }] },
+  },
+
+  rules: { maxParticles: [60, 30], maxEffectTime: 1.5, maxFlashTime: 0.1, maxFlashOpacity: 0.3, maxFlashesPerSecond: 3, maxCenterCover: 0.3, maxHitStop: 0.12, maxShake: 2, maxFovKick: 8, maxLightsPerEffect: 1 },
+  reduceMotion: { shake: 0, fovKick: 0.25, punch: 0, dip: 0.35, slowMo: false, speedLines: 0.5, flash: 0.5 },
+  phone: { trailLifetimeScale: 0.7 },
+
+  stage: {   // preview road (studs)
+    roadWidth: 22, roadColor: '#FFF8EE', groundWidth: 600, margin: 600, startBack: 80, floorLift: 0.06,
+    posts: { every: 40, offsetX: 16, size: [1.6, 6, 1.6] },
+    arch: { height: 30, pillar: [4, 30, 4], bar: [40, 4, 4], labelHeight: 36, labelSize: [44, 11] },
+    stopMarker: { radius: 3, height: 10, pole: 0.3, color: '#3B2A35' },
+    holdOffset: [0, -0.5, -0.6],
+  },
+  avatars: { thrower: { head: '#FFD25E', torso: '#8CC8FF', arms: '#FFD25E', legs: '#8EDFC4', shoes: '#3B2A35' } },
+  viewer: {  // PREVIEW ONLY — stand-in rig, lights, renderer, UI
+    previewSlowMo: 0.25,
+    render: { maxPixelRatio: 2, near: 0.2, far: 4000, fogNear: 220, fogFar: 900, maxDt: 0.05 },
+    light: { hemi: 1.7, sun: 2.4, sunOffset: [30, 60, 25], shadowMap: 2048, shadowExtent: 60, shadowNear: 1, shadowFar: 240, shadowBias: -0.0005, pointPool: 1, pointDecay: 1, pointScale: 6 },
+    colors: { sky: '#CFE8FF', hemiSky: '#FFF4E6', hemiGround: '#B9A6E8', sun: '#FFFFFF', ink: '#3B2A35', black: '#000000', white: '#FFFFFF' },
+    ground: { tile: 4, checkerPx: 32, roughness: 0.95 },
+    label: { w: 1024, h: 256, font: 150, stroke: 18 },
+    rig: { torsoW: 2, torsoD: 1, upperTorsoH: 1.6, lowerTorsoH: 0.4, headSize: 1.2, limbW: 0.9, limbD: 0.9, upperArmH: 1.1, lowerArmH: 0.9, handH: 0.3, upperLegH: 1.1, lowerLegH: 1.0, footH: 0.3, footD: 1.1, eye: [0.16, 0.26, 0.06], eyeSpacing: 0.24, eyeY: 0.08,
+      firstPersonHidden: ['Head', 'UpperTorso', 'LowerTorso', 'LeftUpperLeg', 'LeftLowerLeg', 'LeftFoot', 'RightUpperLeg', 'RightLowerLeg', 'RightFoot'] },
+    material: { avatarRoughness: 0.75, outline: 0.05, glowScale: 1 },
+    squishy: { roughness: 0.35, segments: 40, rings: 28, restSquash: 0.9, outline: 0.06, eyeSize: 0.11, eyeSeg: 12, eyeX: 0.3, eyeY: 0.12, shineSize: 0.12, shine: [-0.45, 0.45] },
+    loco: { strideHz: 1.6, hip: 40, knee: 60, shoulder: 38, elbow: 25, twist: 8, lean: -6, bob: 0.18, airShoulder: 30, airSpread: 25, airKnee: 20 },
+    fx: { textureSize: 256, maxSprites: 700, trailMaxPoints: 64, additiveFrom: 0.5, velocityProbe: 0.02, popRenderOrder: 10, upTest: 0.9 },
+    orbit: { degPerPx: 0.3, wheelStep: 0.1 },
+    shakeNoise: [0.65, 0.35, 1.73],
+    ui: { bg: '#FFF4E6', panel: '#FFFFFF', ink: '#3B2A35', muted: '#76656F', line: '#EADBCB', accent: '#FFC7DA', accentSoft: '#FFE6EE', accentInk: '#B83E70', good: '#23805F', bad: '#C23B5A', stage: '#CFE8FF', refHeight: 1080, sfxHold: 1.1, sfxFade: 0.35, sfxMax: 6 },
+  },
+};
+
+/* ------------------------------- page logic (no numbers) ------------------------------- */
+const V3 = THREE.Vector3;
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+let thr, sq, marker, custom = CONFIG.highway.customDefault;
+const hs = {};
+
+function restY() { return CONFIG.highway.radius * CONFIG.viewer.squishy.restSquash; }
+// Splits D into flight + bounces + roll; every piece is measured along the road from the release point.
+function solve(D, y0) {
+  const P = CONFIG.solver, g = CONFIG.world.gravity, ry = restY();
+  const n = D >= P.threeBouncesFrom ? 3 : D >= P.twoBouncesFrom ? 2 : 1;
+  const B = [], Hb = [];
+  let b = clamp(D * P.firstBounceShare, P.firstBounceMin, P.firstBounceMax);
+  for (let i = 0; i < n; i++) { B.push(b); b *= P.bounceLengthKeep; }
+  const R = clamp(D * P.rollShare, P.rollMin, P.rollMax);
+  const F = D - B.reduce((a, x) => a + x, 0) - R;
+  const H = clamp(F * P.apexShare, P.apexMin, CONFIG.highway.maxHeight - y0);
+  const T = clamp(P.timeBase + P.timePerSqrtStud * Math.sqrt(F), P.timeMin, P.timeMax);
+  let h = clamp(H * P.firstBounceHeightShare, P.bounceHeightMin, P.bounceHeightMax);
+  for (let i = 0; i < n; i++) { Hb.push(h); h *= P.bounceHeightKeep; }
+  const segs = [{ kind: 'flight', t0: 0, t1: T, s0: 0, s1: F, H, y0, ry }];
+  let t = T, s = F;
+  for (let i = 0; i < n; i++) { const tb = 2 * Math.sqrt(2 * Hb[i] / g); segs.push({ kind: 'bounce', i, t0: t, t1: t + tb, s0: s, s1: s + B[i], h: Hb[i], ry }); t += tb; s += B[i]; }
+  const vLast = B[n - 1] / (segs[n].t1 - segs[n].t0), v0 = vLast * P.rollEntryKeep, tr = 2 * R / v0;
+  segs.push({ kind: 'roll', t0: t, t1: t + tr, s0: s, s1: s + R, v0, a: v0 / tr, ry });
+  let maxY = 0; for (let k = 0; k <= 1; k += 1 / 512) maxY = Math.max(maxY, flightY(segs[0], k));
+  return { D, n, B, Hb, R, F, H, T, segs, total: t + tr, maxY };
+}
+function flightY(sg, p) { return sg.ry + (sg.y0 - sg.ry) * (1 - p) + 4 * sg.H * p * (1 - p); }
+// position along the road (s), height (y) and their speeds at path time t
+function sample(sol, t) {
+  const L = CONFIG.solver.linearShare;
+  const sg = sol.segs.find(x => t < x.t1) || sol.segs[sol.segs.length - 1];
+  const tt = Math.min(Math.max(t, sg.t0), sg.t1);
+  if (sg.kind === 'flight') {
+    const u = (tt - sg.t0) / (sg.t1 - sg.t0), F = sg.s1 - sg.s0;
+    const s = F * (L * u + (1 - L) * (1 - (1 - u) * (1 - u))), ds = F / (sg.t1 - sg.t0) * (L + 2 * (1 - L) * (1 - u)), p = s / F;
+    return { sg, s, y: flightY(sg, p), ds, dy: (-(sg.y0 - sg.ry) + 4 * sg.H * (1 - 2 * p)) * ds / F };
+  }
+  if (sg.kind === 'bounce') {
+    const d = sg.t1 - sg.t0, u = (tt - sg.t0) / d;
+    return { sg, s: sg.s0 + (sg.s1 - sg.s0) * u, y: sg.ry + 4 * sg.h * u * (1 - u), ds: (sg.s1 - sg.s0) / d, dy: 4 * sg.h * (1 - 2 * u) / d };
+  }
+  const tau = tt - sg.t0;
+  return { sg, s: sg.s0 + sg.v0 * tau - 0.5 * sg.a * tau * tau, y: sg.ry, ds: Math.max(0, sg.v0 - sg.a * tau), dy: 0 };
+}
+function zoneAt(s) { let z = CONFIG.zones[0]; for (const x of CONFIG.zones) if (s >= x.start) z = x; return z; }
+function textSprite(api, text, color) {
+  const L = CONFIG.viewer.label, c = document.createElement('canvas'); c.width = L.w; c.height = L.h;
+  const g = c.getContext('2d'); g.font = `700 ${L.font}px Fredoka, sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = L.stroke; g.strokeStyle = CONFIG.viewer.colors.ink; g.strokeText(text, L.w / 2, L.h / 2); g.fillStyle = color; g.fillText(text, L.w / 2, L.h / 2);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true })); s.name = 'ZoneLabel'; return s;
+}
+
+SquishyFX(THREE, CONFIG, {
+  setup(api) {
+    const St = CONFIG.stage, H = CONFIG.highway, Vw = CONFIG.viewer, Z = CONFIG.zones, end = H.maxDistance + St.margin;
+    Z.forEach((z, i) => {
+      const z1 = i + 1 < Z.length ? Z[i + 1].start : end, len = z1 - z.start + (i === 0 ? St.startBack : 0);
+      const gnd = new THREE.Mesh(new THREE.PlaneGeometry(St.groundWidth, len), api.material('ground_' + i, z.ground, Vw.ground.roughness));
+      gnd.name = 'Zone_' + z.name; gnd.rotation.x = -Math.PI / 2; gnd.position.set(0, 0, -(z.start + z1) / 2 + (i === 0 ? St.startBack / 2 : 0)); gnd.receiveShadow = true; api.scene.add(gnd);
+      if (i > 0) {
+        const A = St.arch, m = api.material('arch_' + i, z.color, Vw.ground.roughness);
+        for (const s of [-1, 1]) { const p = new THREE.Mesh(new THREE.BoxGeometry(A.pillar[0], A.pillar[1], A.pillar[2]), m); p.name = 'ArchPillar'; p.position.set(s * A.bar[0] / 2, A.pillar[1] / 2, -z.start); p.castShadow = true; api.scene.add(p); }
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(A.bar[0] + A.pillar[0], A.bar[1], A.bar[2]), m); bar.name = 'ArchBar'; bar.position.set(0, A.height, -z.start); api.scene.add(bar);
+        const lab = textSprite(api, z.name, z.color); lab.scale.set(A.labelSize[0], A.labelSize[1], 1); lab.position.set(0, A.labelHeight, -z.start); api.scene.add(lab);
+      }
+    });
+    const road = new THREE.Mesh(new THREE.PlaneGeometry(St.roadWidth, end + St.startBack), api.material('road', St.roadColor, Vw.ground.roughness));
+    road.name = 'Road'; road.rotation.x = -Math.PI / 2; road.position.set(0, St.floorLift / 2, -(end - St.startBack) / 2); road.receiveShadow = true; api.scene.add(road);
+    const P = St.posts, count = Math.ceil(end / P.every), inst = new THREE.InstancedMesh(new THREE.BoxGeometry(P.size[0], P.size[1], P.size[2]), new THREE.MeshStandardMaterial({ name: 'post', roughness: Vw.ground.roughness }), count * 2);
+    inst.name = 'Posts'; const m4 = new THREE.Matrix4(), c = new THREE.Color();
+    for (let i = 0; i < count; i++) for (const s of [0, 1]) {
+      const zz = i * P.every; m4.makeTranslation((s ? 1 : -1) * P.offsetX, P.size[1] / 2, -zz); inst.setMatrixAt(i * 2 + s, m4); inst.setColorAt(i * 2 + s, c.set(zoneAt(zz).color));
+    }
+    inst.castShadow = true; api.scene.add(inst);
+    const M = St.stopMarker; marker = new THREE.Group(); marker.name = 'StopMarker (preview)';
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(M.pole, M.pole, M.height), api.material('marker', M.color, Vw.ground.roughness)); pole.position.y = M.height / 2; marker.add(pole);
+    api.scene.add(marker);
+    thr = api.avatar({ name: 'Player', colors: CONFIG.avatars.thrower });
+    sq = api.squishy({ name: 'Squishy', color: H.color, radius: H.radius });
+    api.scene.add(thr.group, sq.group);
+    api.el.extra.innerHTML = `<div class="sq-label">Custom distance</div><label class="sq-slider"><span>D = <b id="hw-d"></b> studs</span><input id="hw-range" type="range" min="${H.minDistance}" max="${H.maxDistance}" step="${H.customStep}" value="${custom}"></label><button class="sq-btn" id="hw-go"><span>Throw custom</span><span class="k">C</span></button>`;
+    const r = api.el.extra.querySelector('#hw-range'), d = api.el.extra.querySelector('#hw-d');
+    d.textContent = custom.toLocaleString();
+    r.oninput = () => { custom = +r.value; d.textContent = custom.toLocaleString(); };
+    r.onchange = () => api.play('custom');
+    api.el.extra.querySelector('#hw-go').onclick = () => api.play('custom');
+    window.addEventListener('keydown', e => { if (e.key === 'c' || e.key === 'C') api.play('custom'); });
+  },
+  validate(api, ok) {
+    const H = CONFIG.highway; thr.update(0, 0); const y0 = handPos().y;
+    for (const D of [H.minDistance, H.maxDistance]) {
+      const s = solve(D, y0), end = sample(s, s.total);
+      ok(s.F > 0, `solver ${D}: flight length ${s.F.toFixed(1)} > 0`);
+      ok(s.maxY <= H.maxHeight, `solver ${D}: apex ${s.maxY.toFixed(1)} ≤ ${H.maxHeight} studs`);
+      ok(Math.abs(end.s - D) < 1e-6, `solver ${D}: ends exactly on D`);
+    }
+  },
+  reset(api, id, m) {
+    Object.assign(hs, { mode: 'held', sol: null, t0: 0, zone: null, apexSent: false, contact: 0, lastFast: -Infinity, trailName: null, hero: null, off: null, D: m.distance != null ? m.distance : custom });
+    thr.group.position.set(0, 0, 0); thr.group.rotation.y = 0;
+    sq.group.visible = true; sq.spin.rotation.set(0, 0, 0);
+    thr.update(0, 0); sq.group.position.copy(handPos()); sq.face(new V3(0, 0, -1));
+    marker.visible = false;
+  },
+  update(api, dt, dtR) {
+    const p = sq.group.position;
+    api.setFocus(new V3(p.x, 0, p.z));
+    if (hs.mode === 'held') { p.copy(handPos()); return; }
+    if (hs.mode !== 'path' || dt <= 0) return;
+    const sol = hs.sol, t = api.S.world - hs.t0, smp = sample(sol, t);
+    p.set(hs.start.x, smp.y, hs.start.z - smp.s);
+    const speed = Math.hypot(smp.ds, smp.dy); hs.speed = speed;
+    const z = zoneAt(smp.s);
+    if (z !== hs.zone) { const first = !hs.zone; hs.zone = z; if (!first) api.signal('zone', { zone: z }); }
+    if (smp.sg.kind === 'flight') {
+      sq.face(new V3(0, smp.dy, -smp.ds));
+      if (!hs.apexSent && smp.dy <= 0) { hs.apexSent = true; api.signal('apex', {}); }
+      if (speed >= CONFIG.highway.fastFrom && api.S.t - hs.lastFast >= CONFIG.highway.fastLinesEvery) { hs.lastFast = api.S.t; api.signal('fast', {}); }
+    } else { sq.face(new V3(0, 0, -1)); sq.spinRate = 0; sq.spinAngle = 0; }
+    const segIdx = sol.segs.indexOf(smp.sg);
+    while (hs.contact < segIdx) {
+      hs.contact++;
+      const k = sol.segs[hs.contact];
+      if (k.kind === 'bounce') { api.signal(k.i === 0 ? 'bounce1' : 'bounceN', {}); if (k.i === sol.n - 1) api.signal('lastBounce', {}); }
+      if (k.kind === 'roll') api.signal('roll', {});
+    }
+    if (smp.sg.kind === 'roll') { const rolled = smp.s - smp.sg.s0; sq.spin.rotation.x = -rolled / CONFIG.highway.radius; }
+    if (t >= sol.total && hs.mode === 'path') {
+      hs.mode = 'done';
+      const err = Math.abs(hs.start.z - p.z - hs.D);
+      api.measure('end', `Stop: target ${hs.D.toLocaleString()} studs · actual ${(hs.start.z - p.z).toFixed(3)} · error ${err.toFixed(3)} studs`);
+      api.signal('stop', {});
+    }
+  },
+  camera(api, view, dtR) {
+    const p = sq.group.position;
+    if (view === 'SIDE') return api.orbit('SIDE', p.clone(), CONFIG.sideCam);
+    const C = CONFIG.chaseCam;
+    let target;
+    if (hs.mode === 'held') target = C.Launch;
+    else if (hs.mode === 'path' && hs.sol && api.S.world - hs.t0 < hs.sol.T) { const k = clamp((hs.speed - C.SpeedLow) / (C.SpeedHigh - C.SpeedLow), 0, 1); target = { Back: C.Launch.Back + (C.Fast.Back - C.Launch.Back) * k, Up: C.Launch.Up + (C.Fast.Up - C.Launch.Up) * k, LookAhead: C.Launch.LookAhead + (C.Fast.LookAhead - C.Launch.LookAhead) * k, Fov: C.Launch.Fov + (C.Fast.Fov - C.Launch.Fov) * k }; }
+    else target = C.Ground;
+    if (!hs.off) hs.off = Object.assign({}, C.Launch);
+    const a = 1 - Math.exp(-C.FollowRate * dtR);
+    for (const k of ['Back', 'Up', 'LookAhead', 'Fov']) hs.off[k] += (target[k] - hs.off[k]) * a;
+    const o = hs.off, chase = { pos: new V3(p.x, p.y + o.Up, p.z + o.Back), look: new V3(p.x, p.y + C.LookHeight, p.z - o.LookAhead), fov: o.Fov };
+    if (hs.hero) {
+      const Hh = C.Hero, e = api.ease(Hh.Easing, (api.S.t - hs.hero) / Hh.Time);
+      const heroPos = new V3(p.x + Hh.Side, p.y + Hh.Up, p.z - Hh.Front);
+      return { pos: chase.pos.lerp(heroPos, e), look: chase.look.lerp(p.clone(), e), fov: chase.fov + (Hh.Fov - chase.fov) * e };
+    }
+    return chase;
+  },
+  anchor(api, name) {
+    const p = sq.group.position;
+    if (name === 'floor') return { pos: new V3(p.x, CONFIG.stage.floorLift, p.z), dir: api.UP };
+    return { pos: p.clone(), dir: api.UP };
+  },
+  aim(api, name) {
+    if (name === 'forward') return new V3(0, 0, -1);
+    if (name === 'back') return new V3(0, 0, 1);
+    return null;
+  },
+  target(api, name) { return name === 'thrower' ? thr : sq; },
+  motions: {
+    launch(api) {
+      hs.start = sq.group.position.clone();
+      hs.sol = solve(hs.D, hs.start.y); hs.t0 = api.S.world; hs.mode = 'path'; hs.zone = null;
+      sq.spinRate = CONFIG.highway.spinRate;
+      marker.position.set(hs.start.x + CONFIG.stage.stopMarker.radius, 0, hs.start.z - hs.D); marker.visible = true;
+      const s = hs.sol;
+      api.measure('plan', `D ${hs.D.toLocaleString()} = flight ${s.F.toFixed(1)} + bounces ${s.B.map(b => b.toFixed(1)).join(' + ')} + roll ${s.R.toFixed(1)} studs`);
+      api.measure('arc', `Flight ${s.T.toFixed(2)} s · apex ${s.maxY.toFixed(1)} studs (max ${CONFIG.highway.maxHeight}) · avg ${(s.F / s.T).toFixed(0)} studs/s · total ${s.total.toFixed(2)} s`);
+    },
+  },
+  calls: {
+    zoneTrail(api) { startTrail(api, zoneAt(0)); },
+    zoneFx(api, ev, data) {
+      const z = data.zone, F = CONFIG.fx;
+      api.ring(Object.assign({}, F.zoneRing, { Color: z.color }), sq.group.position.clone(), new V3(0, 0, -1));
+      api.burst(Object.assign({}, F.zoneSparkles, { Tints: [z.color] }), sq.group.position.clone(), api.UP);
+      startTrail(api, z);
+      api.measure('zone', `Entered ${z.name} at ${z.start.toLocaleString()} studs`);
+    },
+    endTrail(api) { if (hs.trailName) api.stopNamed(hs.trailName); },
+    heroCam(api) { hs.hero = api.S.t; },
+  },
+});
+function handPos() { const h = thr.parts.RightHand.getWorldPosition(new V3()), o = CONFIG.stage.holdOffset; return h.add(new V3(o[0], o[1], o[2])); }
+function startTrail(api, z) {
+  if (hs.trailName) api.stopNamed(hs.trailName);
+  hs.trailName = 'trail_' + z.name;
+  const F = CONFIG.fx.flightTrail;
+  api.trailOn(Object.assign({}, F, { Color: [[0, z.color], [1, F.TrailEnd]] }), { trail: hs.trailName, at: 'squishy' }, {});
+}
+</script>
+<script src="squishy-kit.js"></script>
+<script src="squishy-fx.js"></script>
+</head>
+<body></body>
+</html>

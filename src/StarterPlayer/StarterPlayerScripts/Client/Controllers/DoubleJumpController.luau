@@ -27,6 +27,10 @@
 --   Config.Vfx.Shake.doubleJump). When it lands within landWithinSeconds
 --   (a ray down from the HRP meets the floor within the standing height + landSlackStuds while it falls):
 --   DoubleJump/Land and sfx.dashPlant.
+-- * Physics upgrade (2026-10-28, Config.MoveFx.enabled): instead of the flip and effects above, the design's double
+--   jump moment (Anim/FeelFx, Config.MoveFx.moments.doubleJump) with the flip turned the jump's way (FeelFx.flipVariant;
+--   a forward one is a spin SPIN_CHANCE of the time); the own landing is MoveFxController's, another player's gets the
+--   design's landing tier for its speed.
 -- * Network: DoubleJumpRequest(seq, key, clientTime) through NetController; DoubleJumped {userId, key, at, startAt}
 --   plays the same flip, effects and sounds on the other player's character from its arrival. The own one is ignored.
 -- * FFA/TDM v1 (2026-10-15; the 12-player match): "only when dueling" now also means a Free for All / Team
@@ -55,6 +59,7 @@ local Types = require(Shared.Types)
 
 local Client = script.Parent.Parent
 local Afterimage = require(Client.Anim.Afterimage)
+local FeelFx = require(Client.Anim.FeelFx)
 local MoveVfx = require(Client.Anim.MoveVfx)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
@@ -62,6 +67,7 @@ local CameraController = require(script.Parent.CameraController)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
 local DashController = require(script.Parent.DashController)
+local MoveFxController = require(script.Parent.MoveFxController)
 local NetController = require(script.Parent.NetController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
@@ -132,6 +138,13 @@ local SPIN: { [Key]: Vector3 } = {
 	R = Vector3.new(0, 0, -1),
 }
 local LIVE_SECONDS = math.max(ANIM.seconds, FX.bodySeconds, FX.footTrailSeconds)
+-- 2026-10-28 physics upgrade (docs/squishy-fx-spec/move.html "Double jump"): the design's moment replaces the effects
+-- and the flip when Config.MoveFx.enabled; the flip turns the way the jump goes (extra 5: a forward one is sometimes
+-- a spin instead).
+local MOVE_FX = require(ReplicatedStorage.Shared.Config.MoveFx)
+local FLIP_FOR: { [Key]: string } = { F = "front", B = "back", L = "left", R = "right" }
+local SPIN_CHANCE = 1 / 3
+local flipRng = Random.new()
 
 -- Module table
 
@@ -401,6 +414,22 @@ local function applyPose(jump: Jump, t: number)
 end
 
 local function startEffects(jump: Jump)
+	if MOVE_FX.enabled then
+		local flip = FLIP_FOR[jump.key] or "front"
+		if flip == "front" and flipRng:NextNumber() < SPIN_CHANCE then
+			flip = "spin"
+		end
+		local actor = MoveFxController.actorFor(jump.player, jump.character, jump.root, {
+			low = jump.low,
+			priority = jump.soundPriority,
+			flip = flip,
+		})
+		FeelFx.play(MOVE_FX.moments.doubleJump, actor)
+		if jump.own then
+			MoveFxController.noteDoubleJump()
+		end
+		return
+	end
 	local root = jump.root
 	local p = root.Position
 	local facing = facingOf(root)
@@ -473,6 +502,18 @@ local function checkLanding(jump: Jump, t: number)
 	end
 	jump.landed = true
 	stats.landed += 1
+	if MOVE_FX.enabled then
+		-- The own landing is MoveFxController's; another player's gets the design's landing by its speed.
+		if not jump.own then
+			local speed = math.max(-jump.root.AssemblyLinearVelocity.Y, 0)
+			local actor = MoveFxController.actorFor(jump.player, jump.character, jump.root, {
+				low = jump.low,
+				priority = jump.soundPriority,
+			})
+			FeelFx.play(MOVE_FX.moments.landing, actor):signal(MoveFxController.landTier(speed))
+		end
+		return
+	end
 	local facing = facingOf(jump.root)
 	MoveVfx.burst(VFX_LAND, CFrame.lookAt(floor, floor + facing), vfxOptions(jump))
 	playSound(SOUND_LAND, { at = floor, priority = jump.soundPriority, volume = FX.landVolume })
@@ -484,7 +525,9 @@ local function stepJump(jump: Jump): boolean
 		return false
 	end
 	local t = os.clock() - jump.startClock
-	applyPose(jump, t)
+	if not MOVE_FX.enabled then
+		applyPose(jump, t) -- else the design's flip plays on the FeelFx layer
+	end
 	local body = jump.body
 	if body then
 		if t < FX.bodySeconds then

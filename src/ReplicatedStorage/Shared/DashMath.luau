@@ -4,9 +4,12 @@
 -- with it (DashController), so both stop at the same spot; every client samples the pose clip with it.
 --
 -- API:
---   DashMath.ease(x)                                      -> 1 - (1 - x)³ for x clamped to [0, 1] (design: fp.js:537)
+--   DashMath.ease(x)                                      -> the share travelled at x (clamped to [0, 1]): a linear
+--                                                            speed ramp down to endSpeedStuds (2026-10-28, the
+--                                                            physics upgrade; was 1 - (1 - x)³, fp.js:537)
 --   DashMath.offsetAt(t, distance, seconds)               -> studs travelled t seconds into the dash
---   DashMath.speedAt(t, distance, seconds)                -> studs/s at t (3·distance/seconds at the start, 0 at the end)
+--   DashMath.speedAt(t, distance, seconds)                -> studs/s at t (141.6 at the start of a full dash, 22 at
+--                                                            its end)
 --   DashMath.clampToZone(origin, dir, length, zone, margin) -> the longest distance (<= length) along the flat `dir`
 --                                                            whose end stays inside `zone` shrunk by `margin` on X
 --                                                            and Z (an origin already past an edge may still move
@@ -58,9 +61,13 @@ end
 
 -- Public: the move
 
+-- 2026-10-28 physics upgrade (docs/squishy-fx-spec/move.html feel): the speed falls linearly from 2D/T - endSpeed to
+-- endSpeed, so the full dash ends at the duel walk speed: k = the end speed's share of the average.
+local END_SHARE = DASH.endSpeedStuds * DASH.seconds / DASH.distanceStuds
+
 function DashMath.ease(x: number): number
 	local u = math.clamp(x, 0, 1)
-	return 1 - (1 - u) ^ 3
+	return (2 - END_SHARE) * u - (1 - END_SHARE) * u * u
 end
 
 function DashMath.offsetAt(t: number, distance: number, seconds: number): number
@@ -75,7 +82,7 @@ function DashMath.speedAt(t: number, distance: number, seconds: number): number
 		return 0
 	end
 	local u = math.clamp(t / seconds, 0, 1)
-	return 3 * distance / seconds * (1 - u) ^ 2
+	return distance / seconds * ((2 - END_SHARE) - 2 * (1 - END_SHARE) * u)
 end
 
 function DashMath.clampToZone(

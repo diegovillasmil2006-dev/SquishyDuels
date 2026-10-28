@@ -56,6 +56,9 @@ local Duel = {
 		Dash = {
 			distanceStuds = 18, -- design: main.js:310, fp.js:525 (D = s(14)); movement overhaul 2026-10-17: 18
 			seconds = 0.22, -- design: main.js:310, fp.js:537 (T2 = 0.22)
+			-- 2026-10-28 physics upgrade (docs/squishy-fx-spec/move.html feel.dashEndSpeed): the speed falls linearly to
+			-- this (the duel walk) from 2 x 18 / 0.22 - 22 = 141.6, so the dash pops and blends into the run.
+			endSpeedStuds = 22,
 			-- The pose clip (design: avatar.js:79-99, 155): keys at frames 0, 2, 4, 7, 12 at 30 fps (0.40 s); the
 			-- push-off puff and sound at frame 2, the plant at frame 7; full weight until frame 9, then w² with
 			-- w = (12 - f) / 3 (design: avatar.js:160-161).

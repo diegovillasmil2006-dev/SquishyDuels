@@ -551,10 +551,11 @@ return function(t: Context)
 		"validate reports a dash pose on a missing joint, a pulse above 3 Hz and a roller spin above 720°/s",
 		function()
 			local joint = validateBrokenCopy(t.Shared, "Anim", function(anim)
-				-- LeftAnkle: a joint the layer still has not (the legs' hips and knees came with the throw, 2026-10-15)
-				anim.dash.keys.F[2].angles.LeftAnkle = Vector3.new(10, 0, 0)
+				-- LeftWrist: a joint the layer still has not (the hips and knees came with the throw, 2026-10-15; the
+				-- ankles with the physics upgrade, 2026-10-28)
+				anim.dash.keys.F[2].angles.LeftWrist = Vector3.new(10, 0, 0)
 			end)
-			expect.truthy(containsAll(joint, { "Config.Anim.dash.keys.F", "LeftAnkle" }))
+			expect.truthy(containsAll(joint, { "Config.Anim.dash.keys.F", "LeftWrist" }))
 			local fade = validateBrokenCopy(t.Shared, "Anim", function(anim)
 				anim.dash.holdFadeInFrames = 0
 			end)
@@ -576,9 +577,9 @@ return function(t: Context)
 			end)
 			expect.truthy(containsAll(flip, { "Config.Anim.doubleJump" }))
 			local tuck = validateBrokenCopy(t.Shared, "Anim", function(anim)
-				anim.doubleJump.tuck.LeftAnkle = Vector3.new(10, 0, 0)
+				anim.doubleJump.tuck.LeftWrist = Vector3.new(10, 0, 0) -- not a layer joint (the ankles are, 2026-10-28)
 			end)
-			expect.truthy(containsAll(tuck, { "Config.Anim.doubleJump.tuck", "LeftAnkle" }))
+			expect.truthy(containsAll(tuck, { "Config.Anim.doubleJump.tuck", "LeftWrist" }))
 		end
 	)
 

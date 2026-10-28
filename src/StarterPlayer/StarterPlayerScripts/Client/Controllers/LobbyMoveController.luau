@@ -19,6 +19,9 @@
 --   blendInSeconds and out over blendOutSeconds (poseWeight, pure).
 -- * Effects: the dash's skid (MoveVfx Dash/Skid on the floor under the HRP, in Sky) and sfx.dashWhoosh at Slide.pitch;
 --   another player's at the other-player priority (-1) with fewer particles.
+-- * Physics upgrade (2026-10-28, Config.MoveFx.enabled): instead of the pose, the skid, the sound and the HipHeight
+--   drop, the design's slide moment (Anim/FeelFx, Config.MoveFx.moments.slide) through MoveFxController.actorFor;
+--   "slideEnd" when the slide ends (an early end also stops its held dust, sprinkles and streak).
 -- * Touch (phones and tablets, 2026-10-17): a round Slide button (its own ScreenGui SD_SlideTouch, safe insets, with the
 --   duel's SD_Touch order) shows while touchShown() (pure): touch input, the Lobby context on, not the throw box, not in
 --   a duel or a match, no screen blocking the controls, alive. touchRect() (pure) puts it left of Roblox's jump button,
@@ -47,11 +50,13 @@ local Palette = require(Shared.Art.Palette)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local FeelFx = require(Client.Anim.FeelFx)
 local MoveVfx = require(Client.Anim.MoveVfx)
 local Scheduler = require(Client.Anim.Scheduler)
 local Theme = require(Client.UI.Theme)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
+local MoveFxController = require(script.Parent.MoveFxController)
 local NetController = require(script.Parent.NetController)
 local SoundController = require(script.Parent.SoundController)
 
@@ -98,6 +103,8 @@ type Slide = {
 	length: number, -- seconds it lasts (an own slide that ends early shortens it)
 	dir: Vector3,
 	skid: MoveVfx.Handle?,
+	feel: any, -- the physics upgrade's slide moment (Anim/FeelFx run), when Config.MoveFx.enabled
+	ended: boolean,
 	-- own only
 	mover: LinearVelocity?,
 	attachment: Attachment?,
@@ -111,6 +118,10 @@ type Slide = {
 -- Constants
 
 local SLIDE = Config.LobbyMove.Slide
+-- 2026-10-28 physics upgrade (docs/squishy-fx-spec/move.html "Power slide"): the design's slide moment (pose, dust,
+-- sprinkles, the floor streak, the own camera drop, FOV and rumble) replaces the skid, the pose and the HipHeight drop
+-- (the design lowers the body with the pose's Root) when Config.MoveFx.enabled.
+local MOVE_FX = require(ReplicatedStorage.Shared.Config.MoveFx)
 local ACTION = "LobbySlide"
 local REMOTE_REQUEST = "SlideRequest"
 local ATTR_SLIDE_AT = "SD_SlideAt"
@@ -336,7 +347,7 @@ local function startMove(slide: Slide, humanoid: Humanoid)
 	slide.mover = mover
 	slide.humanoid = humanoid
 	local hipFrom = humanoid.HipHeight
-	local hipSet = math.max(hipFrom - SLIDE.hipDrop, SLIDE.minHipHeight)
+	local hipSet = if MOVE_FX.enabled then hipFrom else math.max(hipFrom - SLIDE.hipDrop, SLIDE.minHipHeight)
 	if hipSet < hipFrom then
 		slide.hipFrom, slide.hipSet = hipFrom, hipSet
 		humanoid.HipHeight = hipSet
@@ -395,9 +406,20 @@ local function stopSkid(slide: Slide)
 	end
 end
 
+-- The design's slide end: the puff and the pop, then its held dust, sprinkles and streak stop (an early end: a jump).
+local function endFeel(slide: Slide)
+	local feel = slide.feel
+	if feel and not slide.ended then
+		slide.ended = true
+		feel:signal("slideEnd")
+		feel:stop()
+	end
+end
+
 local function finishSlide(slide: Slide)
 	endMove(slide)
 	stopSkid(slide)
+	endFeel(slide)
 	clearPose(slide.player)
 	if slides[slide.player] == slide then
 		slides[slide.player] = nil
@@ -421,7 +443,9 @@ local function startSlide(player: Player, character: Model, root: BasePart, own:
 		startClock = os.clock(),
 		length = SLIDE.seconds,
 		dir = if look.Magnitude > 1e-3 then look.Unit else Vector3.zAxis,
-		skid = MoveVfx.hold(VFX_SKID, { tint = Palette.Sky, low = not own }),
+		skid = if MOVE_FX.enabled then nil else MoveVfx.hold(VFX_SKID, { tint = Palette.Sky, low = not own }),
+		feel = nil,
+		ended = false,
 		mover = nil,
 		attachment = nil,
 		humanoid = nil,
@@ -431,6 +455,20 @@ local function startSlide(player: Player, character: Model, root: BasePart, own:
 		jumpConnection = nil,
 	}
 	slides[player] = slide
+	if MOVE_FX.enabled then
+		slide.feel = FeelFx.play(
+			MOVE_FX.moments.slide,
+			MoveFxController.actorFor(player, character, root, {
+				dir = slide.dir,
+				low = not own,
+				priority = if own then 0 else OTHER_PRIORITY,
+			})
+		)
+		if own then
+			MoveFxController.suppress(SLIDE.seconds + 0.1)
+		end
+		return slide
+	end
 	playSound(SOUND_WHOOSH, {
 		at = root,
 		pitch = SLIDE.pitch,
@@ -445,6 +483,14 @@ local function stepSlide(slide: Slide): boolean
 		return false
 	end
 	local t = os.clock() - slide.startClock
+	if slide.feel then
+		local feel = slide.feel
+		feel.actor.dir = slide.dir -- the streak and the dust follow the steering
+		if t >= slide.length then
+			endFeel(slide)
+		end
+		return t < slide.length
+	end
 	applyPose(slide, t)
 	local skid = slide.skid
 	if skid then
