@@ -966,6 +966,22 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 		end
 		return debugState()
 	end,
+	-- Physics upgrade part 3 (2026-10-28): FlightFxController's live state; with a piece ("charge", "release",
+	-- "bounce", "catch"; FlightFxController.debugPlay), that piece on the own character first.
+	flightFx = function(kind: unknown, opts: unknown): Reply
+		local ffx = optionalModule("Controllers", "FlightFxController")
+		local debugState, debugPlay = functionOf(ffx, "debugState"), functionOf(ffx, "debugPlay")
+		if debugState == nil or debugPlay == nil then
+			return missing("FlightFxController")
+		end
+		if type(kind) == "string" then
+			local ok, err = debugPlay(kind, if type(opts) == "table" then opts else nil)
+			if not ok then
+				return { ok = false, error = err }
+			end
+		end
+		return debugState()
+	end,
 	-- Physics upgrade part 2 (2026-10-28): HitFxController's live state; with a moment name (Config.HitFx.moments), that
 	-- moment on the own character first (opts: view "V1P" | "A1P" | "OBS", knockback, freeze).
 	hitFx = function(moment: unknown, opts: unknown): Reply

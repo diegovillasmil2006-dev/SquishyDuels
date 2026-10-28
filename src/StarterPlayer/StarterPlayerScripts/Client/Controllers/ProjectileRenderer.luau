@@ -88,6 +88,11 @@
 --   real surfaces (Anim/GroundBounce, by its feel: foam, mochi, jelly, plush; down slopes too), with Land / Bounce /
 --   Skid dust, a soft sound on the bigger bounces, then the design's ground splat (face up and flat, peel up facing
 --   its thrower, a breath) and a Poof. Duel throws keep it short. Players, targets and the minor ends are unchanged.
+-- * Physics upgrade part 3 (2026-10-28, Config.FlightFx; owner: "Yes, build part 3", added on top): every drawn throw
+--   gets the design's release pop, flight jiggle and barrel spin over its flight style (shapeSample: scale and roll
+--   only; none under ReducedMotion), the release beat plays FlightFxController.release (the puff, the own third-person
+--   camera kick), a charged throw carries its halo and sparkle trail until it touches anything, and a miss's floor
+--   contact from Config.FlightFx.bounce.bigFrom adds BOING! and jelly drops (FlightFxController.bigBounce).
 -- Impact puffs, rings, hit flashes and Dragon Rush visuals are VfxController's.
 
 -- Services
@@ -130,6 +135,7 @@ local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
 local CatchController = require(script.Parent.CatchController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
+local FlightFxController = require(script.Parent.FlightFxController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
 local NetController = require(script.Parent.NetController)
 local SoundController = require(script.Parent.SoundController)
@@ -214,6 +220,8 @@ type Projectile = {
 	vfx: ThrowVfx.Handle?, -- 2026-10-15: the squishy's signature trail (Anim/ThrowVfx)
 	ground: GroundBounce.State?, -- after a geometry impact: bouncing, rolling, the ground splat
 	skid: ThrowVfx.Handle?, -- the skid dust while it rolls
+	feel: boolean, -- physics upgrade part 3: the release pop, jiggle and spin on top (FlightFxController.flightShape)
+	charged: boolean, -- part 3: the design's charged throw (its spin, pop and halo)
 }
 
 -- Feature 1: a caught throw's drawn toy (server times but startClock).
@@ -1027,6 +1035,17 @@ local function releaseBeat(p: Projectile, ringScale: number)
 	if not ok then
 		log:warn("throw sound failed:", err)
 	end
+	FlightFxController.release(p.thrower, from, p.payload.velocity, p.charged) -- part 3: the puff, the camera kick
+end
+
+-- Physics upgrade part 3 (Config.FlightFx): the design's release pop, flight jiggle and barrel spin on top of the
+-- sample's flight style (the server path never changes).
+local function shapeSample(p: Projectile, sample: FlightSample, tau: number)
+	if p.feel then
+		local shape, spin = FlightFxController.flightShape(tau, p.charged)
+		sample.scale *= shape
+		sample.roll += spin
+	end
 end
 
 local function spawnVisual(p: Projectile, tau: number, at: Vector3?)
@@ -1053,6 +1072,7 @@ local function spawnVisual(p: Projectile, tau: number, at: Vector3?)
 		end
 	end
 	local sample = ProjectileRenderer.flightSample(p.payload, tau, p.handOffset, p.handScale, p.spinKind, p.flight)
+	shapeSample(p, sample, tau)
 	local position = at or sample.position
 	local root = p.root :: BasePart
 	root.CFrame = ProjectileRenderer.poseAt(position, sample.velocity, sample.roll, sample.nod)
@@ -1074,6 +1094,12 @@ local function spawnVisual(p: Projectile, tau: number, at: Vector3?)
 		attachSpecks(p, root)
 		if tau < PUFF_WINDOW then
 			releaseBeat(p, ProjectileRenderer.ringScale(ownFirstPerson))
+		end
+		if p.charged then
+			-- Part 3: the charged throw's halo and sparkle trail while it flies free.
+			FlightFxController.flying(model, root, function(): boolean
+				return p.contact == nil and p.ground == nil and p.impact == nil and p.caught == nil
+			end)
 		end
 	end
 	p.lastPosition = position
@@ -1312,6 +1338,7 @@ local function stepFlight(p: Projectile, now: number, dt: number, eye: Vector3?)
 	end
 	local sample = ProjectileRenderer.sampleAtTime(p.payload, now, p.handOffset, p.handScale, p.spinKind, p.flight)
 		or ProjectileRenderer.flightSample(p.payload, 0, p.handOffset, p.handScale, p.spinKind, p.flight)
+	shapeSample(p, sample, tau)
 	if sample.position.Y < p.floorY - FLOOR_DROP_STUDS then
 		stats.expired += 1
 		return false
@@ -1427,6 +1454,12 @@ local function groundEvents(p: Projectile, events: { GroundBounce.Event })
 		local floor = e.position - e.normal * radius
 		if e.kind == "land" or e.kind == "bounce" then
 			ThrowVfx.burst(if e.kind == "land" then "Land" else "Bounce", surfaceFrame(floor, e.normal), vfxOptions(p))
+			local model, root = p.model, p.root
+			if e.speed >= FlightFxController.bigFrom() and model and root then
+				-- Part 3: the design's big bounce (BOING! and jelly drops in the toy's colour).
+				local accent = if p.def then Color3.fromHex(p.def.visuals.accent) else nil
+				FlightFxController.bigBounce(model, root, floor, accent)
+			end
 			if e.kind == "bounce" and e.speed >= GROUND_SOUND_MIN then
 				local loud = math.clamp(e.speed / 40, 0.35, 1)
 				groundSound(p, floor, "sfx.impactSoft", BOUNCE_VOLUME * loud, 1 + (1 - loud) * 0.3)
@@ -1659,6 +1692,8 @@ local function onThrowStarted(raw: unknown)
 		vfx = nil,
 		ground = nil,
 		skid = nil,
+		feel = FlightFxController.enabled() and not Tweens.reducedMotion(),
+		charged = FlightFxController.isCharged(ProjectileRenderer.powerOf(payload.power)),
 	}
 end
 

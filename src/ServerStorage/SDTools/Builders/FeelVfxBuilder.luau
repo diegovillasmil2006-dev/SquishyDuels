@@ -10,7 +10,9 @@
 -- one template per design name; megaConfetti is the owner's extra 4 (NOT IN DESIGN). Part 2 (2026-10-28, getting hit)
 -- adds hit.html CONFIG.fx's particles and knockTrail (Page "hit.html"); the jelly takes the thrown squishy's colour
 -- (SD_Tint "team": the design's "Color = the thrown squishy's main colour"), the skid and respawn dust the floor's
--- (extra 2). hit.html's fallWindKO is part 1's fallWind (the same numbers). The mapping (notes.md "How each
+-- (extra 2). hit.html's fallWindKO is part 1's fallWind (the same numbers). Part 3 (duelflight.html, Page
+-- "duelflight.html") adds only what the game did not have yet (Config.FlightFx's header); its bounce drops and catch
+-- leak take the thrown squishy's colour, its charge sparkles are drawn inward (ShapeInOut). The mapping (notes.md "How each
 -- part maps to Roblox"): a template is an invisible anchored Part (its Top = the event's aim); its emitters sit in it,
 -- so Cylinder / Sphere / Box shapes use the Part's size (Surface + Outward for Cylinder / Sphere, the design's shape);
 -- Tints = one emitter per tint, the count split evenly; Count / Rate = the PC number (phones get the halves at runtime);
@@ -25,7 +27,7 @@ local AssetTable = require(ReplicatedStorage.Shared.AssetTable)
 -- Constants
 
 local GENERATOR_ID = "feel_vfx"
-local VERSION = 2 -- 2: part 2's hit templates
+local VERSION = 3 -- 2: part 2's hit templates; 3: part 3's flight templates
 local ROOT_NAME = "Feel"
 local POINT = 0.05 -- the part size of a template with no shape (a point)
 local RIBBON_HALF = 0.5 -- a trail's attachments are width apart: +- width x this
@@ -238,6 +240,53 @@ local SPECS: { [string]: Spec } = {
 		Color = "#FFD86B", Transparency = 0, Drag = 2, Rotation = { 0, 360 }, RotSpeed = { -300, 300 },
 		LightEmission = 0.3, LockedToPart = true,
 	},
+	-- Part 3: duelflight.html CONFIG.fx (78-134), the pieces the game did not have yet (Config.FlightFx's header).
+	releasePuff = {
+		Page = "duelflight.html", Texture = "puff", Count = 4, Lifetime = { 0.18, 0.28 }, Speed = { 6, 10 },
+		SpreadAngle = { 35, 35 }, Size = { { 0, 0.5 }, { 0.4, 1 }, { 1, 0.2 } }, Color = CREAM,
+		Transparency = { { 0, 0.2 }, { 1, 1 } }, Drag = 6, Rotation = { 0, 360 }, RotSpeed = { -90, 90 },
+		LightEmission = 0,
+	},
+	chargedSparkTrail = {
+		Page = "duelflight.html", Texture = "sparkle", Rate = 40, Lifetime = { 0.2, 0.35 }, Speed = { 1, 3 },
+		SpreadAngle = { 180, 180 }, Size = { { 0, 0.6 }, { 1, 0 } }, Color = "#FFD86B", Transparency = 0, Drag = 2,
+		Rotation = { 0, 45 }, RotSpeed = { -180, 180 }, LightEmission = 0.7,
+	},
+	chargedAura = {
+		Page = "duelflight.html", Texture = "sparkle", Rate = 40, Lifetime = { 0.2, 0.3 }, Speed = { 2, 5 },
+		SpreadAngle = { 180, 180 }, Shape = "Sphere", ShapeRadius = 1.5, Size = { { 0, 0.7 }, { 1, 0 } },
+		Color = "#FFD86B", Transparency = 0, Rotation = { 0, 45 }, RotSpeed = { -180, 180 }, LightEmission = 0.8,
+		LockedToPart = true,
+	},
+	chargeSparksA = {
+		Page = "duelflight.html", Texture = "sparkle", Rate = 12, Lifetime = { 0.25, 0.4 }, Speed = { 4, 7 },
+		SpreadAngle = { 0, 0 }, Shape = "Sphere", ShapeInOut = "Inward", ShapeRadius = 1.6,
+		Size = { { 0, 0 }, { 0.4, 0.6 }, { 1, 0 } }, Color = "#FFD86B", Transparency = 0, Drag = 0,
+		Rotation = { 0, 45 }, RotSpeed = { -90, 90 }, LightEmission = 0.7,
+	},
+	chargeSparksB = {
+		Page = "duelflight.html", Texture = "sparkle", Rate = 30, Lifetime = { 0.2, 0.35 }, Speed = { 5, 8 },
+		SpreadAngle = { 0, 0 }, Shape = "Sphere", ShapeInOut = "Inward", ShapeRadius = 1.6,
+		Size = { { 0, 0 }, { 0.4, 0.7 }, { 1, 0 } }, Color = "#FFFFFF", Transparency = 0, Drag = 0,
+		Rotation = { 0, 45 }, RotSpeed = { -90, 90 }, LightEmission = 0.7,
+	},
+	chargeReadyPop = {
+		Page = "duelflight.html", Texture = "sparkle", Count = 10, Lifetime = { 0.2, 0.35 }, Speed = { 6, 10 },
+		SpreadAngle = { 180, 180 }, Size = { { 0, 0.8 }, { 1, 0 } }, Color = "#FFFFFF", Transparency = 0, Drag = 3,
+		Rotation = { 0, 45 }, RotSpeed = { -180, 180 }, LightEmission = 0.7,
+	},
+	bounceDrops = {
+		Page = "duelflight.html", Texture = "jelly", Count = 6, Lifetime = { 0.25, 0.4 }, Speed = { 10, 16 },
+		SpreadAngle = { 50, 50 }, Size = { { 0, 0.45 }, { 1, 0.15 } }, Color = "#FF8FB1",
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -120, 0 }, Drag = 1,
+		Orientation = "VelocityParallel", Squash = 0.3, LightEmission = 0, Tint = "team",
+	},
+	catchLeak = {
+		Page = "duelflight.html", Texture = "jelly", Rate = 14, Lifetime = { 0.25, 0.4 }, Speed = { 4, 8 },
+		SpreadAngle = { 55, 55 }, Size = { { 0, 0.3 }, { 1, 0.1 } }, Color = "#FF8FB1",
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -60, 0 }, Drag = 1,
+		Orientation = "VelocityParallel", Squash = 0.3, LightEmission = 0, Tint = "team",
+	},
 }
 
 -- The design's trails (CONFIG.fx dashRibbon, slideStreak). flat = the attachments lie along X (on the floor).
@@ -345,7 +394,9 @@ function FeelVfxBuilder.emitter(name: string, spec: Spec, color: string?, share:
 	if shape == "Cylinder" or shape == "Sphere" then
 		e.Shape = (Enum.ParticleEmitterShape :: any)[shape]
 		e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Surface
-		e.ShapeInOut = Enum.ParticleEmitterShapeInOut.Outward
+		e.ShapeInOut = if spec.ShapeInOut == "Inward"
+			then Enum.ParticleEmitterShapeInOut.Inward -- part 3's charge sparkles: drawn into the squishy
+			else Enum.ParticleEmitterShapeInOut.Outward
 	elseif shape == "Box" then
 		e.Shape = Enum.ParticleEmitterShape.Box
 		e.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
@@ -436,7 +487,7 @@ function FeelVfxBuilder.build(Generated: any?): Folder
 	root.Name = ROOT_NAME
 	root:SetAttribute(
 		"SD_Note",
-		"Physics upgrade parts 1-2 (2026-10-28): the design's movement and hit particles and trails for the VFX Studio plugin; drag a template into Workspace, select it and press Emit / Trail to preview."
+		"Physics upgrade parts 1-3 (2026-10-28): the design's movement, hit and flight particles and trails for the VFX Studio plugin; drag a template into Workspace, select it and press Emit / Trail to preview."
 	)
 	local names = {}
 	for name in SPECS do

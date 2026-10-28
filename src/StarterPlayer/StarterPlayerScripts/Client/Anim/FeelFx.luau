@@ -23,7 +23,11 @@
 --   slowmo                this client's effects at `speed` (squishy-fx.js slowScale): poses, rings, pops, glows,
 --                         lights and every emitter under Workspace.SD_ClientFx; the events keep real time (as the
 --                         design's queue does). FeelFx.freeze(seconds) = the hit-stop's freeze (speed 0).
---   call                  hooks.call(name, actor, ev): the knockback, hiding and showing a body (HitFxController)
+--   call                  actor.call or hooks.call(name, actor, ev): the knockback, hiding and showing a body
+--                         (HitFxController), the first-person ready moment (FlightFxController)
+-- Part 3 (duel flight, duelflight.html; data in Config.FlightFx) adds the anchors held (actor.held, the held squishy),
+-- root (a flying squishy's centre) and hands (between the hands), a glow on the held squishy (target "held") and the
+-- screen word ("banner": CAUGHT!, first person's MAX!).
 -- views "1P" / "3P" filter what the own camera sees (other characters are always 3P); an actor with `view` set ("V1P"
 -- the local victim, "A1P" the local attacker, "OBS" anyone else: hit.html) uses that instead. Anchors and aims are the
 -- design's (move.html / hit.html hooks.anchor / aim): feet (CONFIG.stage.feetLift over the floor), chest (chestHeight
@@ -76,7 +80,9 @@ export type Actor = {
 	flip: string?, -- doubleFlip's variant (flipVariant)
 	soundPitch: number?, -- x every sound's pitch
 	hitAt: Vector3?, -- part 2: the "hit" anchor (where the squishy struck)
-	view: string?, -- part 2: "V1P" | "A1P" | "OBS" (this client's role in the hit)
+	view: string?, -- part 2: "V1P" | "A1P" | "OBS" (this client's role in the hit); part 3: "R1P" | "OBS" (a catch)
+	held: Model?, -- part 3: the "held" anchor (the held squishy) and a glow's target = "held"
+	call: ((name: string, actor: any, ev: any) -> ())?, -- part 3: this run's `call` events (else hooks.call)
 }
 
 export type Hooks = {
@@ -452,6 +458,15 @@ local function anchorOf(actor: Actor, name: string?): (Vector3, Vector3?)
 		return Vector3.new(p.X, floor + stage.chestHeight, p.Z), nil
 	elseif name == "hit" then
 		return actor.hitAt or Vector3.new(p.X, floor + stage.chestHeight, p.Z), nil
+	elseif name == "root" then
+		return p, nil -- part 3: a flying squishy's own centre
+	elseif name == "held" then
+		local held = actor.held
+		return if held and held.Parent then held:GetPivot().Position else Vector3.new(p.X, floor + stage.chestHeight, p.Z),
+			nil
+	elseif name == "hands" then
+		local left, right = partOf(actor.character, "LeftHand"), partOf(actor.character, "RightHand")
+		return if left and right then (left.Position + right.Position) / 2 else p, nil
 	elseif name == "slideGround" then
 		local forward = facingOf(actor)
 		return Vector3.new(p.X, floor + stage.groundLift, p.Z), forward:Cross(UP)
@@ -799,14 +814,15 @@ end
 
 -- Glows and lights (part 2) ----------------------------------------------------------------------------------------------
 
-local function startGlow(actor: Actor, def: any)
-	local character = actor.character
+local function startGlow(actor: Actor, def: any, target: string?)
+	local character = if target == "held" and actor.held then actor.held else actor.character
 	local old = glows[character]
 	if old then
 		old.instance:Destroy()
 		glows[character] = nil
 	end
-	-- Never on the own body in first person: a Highlight draws on its hidden parts (VfxController.ghostWanted).
+	-- Never on the own body or held model in first person: a Highlight draws on its hidden parts
+	-- (VfxController.ghostWanted).
 	if actor.own and hooks.firstPerson and hooks.firstPerson() then
 		return
 	end
@@ -1038,6 +1054,76 @@ local function startBars(def: any)
 	} :: any)
 end
 
+-- A screen word (part 3: CAUGHT! on the catcher's screen, first person's MAX!; squishy-fx.js uiBanner): it slides from
+-- fromY to y growing from fromScale over fadeIn, holds, then slides back fading over fadeOut. One at a time.
+local banner: any = nil
+local function startBanner(def: any)
+	local gui = linesParent()
+	local camera = Workspace.CurrentCamera
+	if gui == nil or camera == nil then
+		return
+	end
+	if banner then
+		banner.kill()
+	end
+	local k = camera.ViewportSize.Y / REF_HEIGHT
+	local label = Instance.new("TextLabel")
+	label.Name = "Banner"
+	label.BackgroundTransparency = 1
+	label.AnchorPoint = Vector2.new(0.5, 0.5)
+	label.Size = UDim2.new(1, 0, 0, def.fontPx * k * 1.25) -- the full width: one line, never wrapped
+	label.FontFace = Font.fromEnum(Enum.Font.FredokaOne)
+	label.Text = def.text
+	label.TextColor3 = def.color
+	label.TextSize = def.fontPx * k
+	label.ZIndex = 4
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = def.stroke
+	stroke.Thickness = def.strokePx * k
+	stroke.LineJoinMode = Enum.LineJoinMode.Round
+	stroke.Parent = label
+	local grow = Instance.new("UIScale")
+	grow.Parent = label
+	label.Parent = gui
+	local total = def.fadeIn + def.hold + def.fadeOut
+	local item: any
+	item = {
+		age = 0,
+		step = function(self: any, dt: number): boolean
+			self.age += dt
+			local a = self.age
+			if a >= total or label.Parent == nil then
+				label:Destroy()
+				if banner == item then
+					banner = nil
+				end
+				return false
+			end
+			local y, s, o = def.y, 1, 1
+			if a < def.fadeIn then
+				local e = FeelFx.ease(def.inEasing, a / def.fadeIn)
+				y = def.fromY + (def.y - def.fromY) * e
+				s = def.fromScale + (1 - def.fromScale) * e
+			elseif a > def.fadeIn + def.hold then
+				local e = FeelFx.ease(def.outEasing, (a - def.fadeIn - def.hold) / def.fadeOut)
+				y = def.y + (def.fromY - def.y) * e
+				o = 1 - e
+			end
+			label.Position = UDim2.fromScale(def.x, y)
+			grow.Scale = math.max(s, 0.01)
+			label.TextTransparency = 1 - o
+			stroke.Transparency = 1 - o
+			return true
+		end,
+		kill = function()
+			label:Destroy()
+		end,
+	}
+	banner = item
+	item:step(0)
+	table.insert(screens, item)
+end
+
 -- Slow motion and freeze: the speed this frame, handed to every emitter under SD_ClientFx while it is not 1.
 local function stepScale(dt: number)
 	local s = 1
@@ -1144,7 +1230,7 @@ local function startPose(actor: Actor, def: any, cfg: any)
 		start = fxNow(),
 		player = player,
 		layer = layer,
-		mask = heldMask(player),
+		mask = if def.allArms then nil else heldMask(player), -- allArms (part 3's catch): the holding arm too
 		priority = priority,
 	}
 	local frames = poseFrames(def, 0, poses[actor.character].mask)
@@ -1273,7 +1359,7 @@ local function fire(run: RunData, ev: any)
 	elseif ev.glow then
 		local def = cfg.glows and cfg.glows[ev.glow]
 		if def then
-			startGlow(actor, def)
+			startGlow(actor, def, ev.target)
 		end
 	elseif ev.light then
 		local def = cfg.lights and cfg.lights[ev.light]
@@ -1291,6 +1377,8 @@ local function fire(run: RunData, ev: any)
 			startEdgeSplat(def, actor)
 		elseif def and def.kind == "letterbox" then
 			startBars(def)
+		elseif def and def.kind == "banner" then
+			startBanner(def)
 		end
 	elseif ev.slowmo then
 		local def = cfg.slowmos and cfg.slowmos[ev.slowmo]
@@ -1298,7 +1386,7 @@ local function fire(run: RunData, ev: any)
 			slow = { def = def, age = 0 }
 		end
 	elseif ev.call then
-		local call = hooks.call
+		local call = actor.call or hooks.call
 		if call then
 			call(ev.call, actor, ev)
 		end

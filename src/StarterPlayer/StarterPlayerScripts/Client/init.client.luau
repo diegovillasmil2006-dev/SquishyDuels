@@ -87,6 +87,7 @@ local CONTROLLER_ORDER = {
 	"MoveFeelController", -- 2026-10-17: the camera's movement feel (speed FOV, lean, bob, landing)
 	"MoveFxController", -- 2026-10-28: the physics upgrade's movement feel (run, jump, fall, landing; Config.MoveFx)
 	"HitFxController", -- 2026-10-28: the physics upgrade's hits (knockback, K.O. poof, respawn; Config.HitFx)
+	"FlightFxController", -- 2026-10-28: the physics upgrade's throws (release pop, charge, BOING!, catch; Config.FlightFx)
 	"LobbyMoveController", -- 2026-10-17: the lobby's power slide
 	"FirstPersonController",
 	"ViewmodelController",
