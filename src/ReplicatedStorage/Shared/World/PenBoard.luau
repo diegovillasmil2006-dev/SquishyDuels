@@ -8,7 +8,8 @@
 -- (AutomaticSize text inside a UIScale sizes wrong, and PenController's buy pop scales the button).
 -- Public: build(parent) (the "Board" SurfaceGui, rows empty, no Adornee: the caller sets it), row(board, index),
 -- setRow(card, row) (a whole row), setState(card, state, need) (only its button and caption: "buy", "need" with the
--- "Need N more" line, "max").
+-- "Need N more" line, "max"), buildTaps(parent) (owner 2026-10-28: the clear "BoardTaps" SurfaceGui, a clear button
+-- "Row1" / "Row2" over each row's price button and its caption; no Adornee: the caller sets it).
 
 -- Services
 
@@ -46,6 +47,8 @@ local ROWS_Y = { 24, 332 } -- each card's top on the canvas
 local BAR_W, BAR_H, SEG_GAP = 280, 40, 7
 local DETAIL_PX, PRICE_PX = 42, 62 -- the From / To and the Price text sizes
 local PRICE_H = 72
+-- A row's tap area on its card (buildRow): the price button (700, 38, 252 × 132) down to its caption's bottom (209 + 34).
+local TAP = { x = 700, y = 38, w = 252, h = 205 }
 
 -- Module table
 
@@ -250,6 +253,29 @@ function PenBoard.build(parent: Instance): SurfaceGui
 	local bg = box(gui, "Background", 0, 0, CANVAS.X, CANVAS.Y, Palette.PenBoardBg, nil, 1)
 	for index = 1, #ROWS_Y do
 		buildRow(bg, index)
+	end
+	gui.Parent = parent
+	return gui
+end
+
+-- Owner 2026-10-28 ("kids in phones can tap the upgrade amount and it upgrades"): the board's tap layer. A
+-- SurfaceGui's buttons get input only under the PlayerGui, so a client builds this there over the board's canvas.
+function PenBoard.buildTaps(parent: Instance): SurfaceGui
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "BoardTaps"
+	gui.Face = Enum.NormalId.Front
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.FixedSize
+	gui.CanvasSize = CANVAS
+	gui.ResetOnSpawn = false
+	for index, y in ROWS_Y do
+		local button = Instance.new("TextButton")
+		button.Name = "Row" .. index
+		button.Text = ""
+		button.BackgroundTransparency = 1
+		button.Selectable = false -- a gamepad buys with the prompts
+		button.Position = UDim2.fromOffset(24 + TAP.x, y + TAP.y) -- the card sits at (24, y) on the canvas
+		button.Size = UDim2.fromOffset(TAP.w, TAP.h)
+		button.Parent = gui
 	end
 	gui.Parent = parent
 	return gui

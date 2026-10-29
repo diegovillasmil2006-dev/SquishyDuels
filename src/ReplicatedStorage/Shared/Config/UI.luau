@@ -1584,6 +1584,9 @@ local UI = {
 		-- tapStuds of the camera.
 		tapStuds = 60,
 		tapMinPx = 28,
+		-- Owner 2026-10-28 [P]: a tap or click on the own board's price box buys only within this many studs of the
+		-- camera, so a tap from across the lobby never spends Coins.
+		boardTapStuds = 30,
 		-- Pens3 phase 6 [P]: the STAND-IN pen screen (UI/PenScreen; base px), in Diego's Squishies window frame until
 		-- he draws the real one: cards of his card face (cardSize, cardGap apart, cardPad inside, the squishy artPx,
 		-- the lock lockPx), gap between the rows, bodyPad inside the window's border, cardLift room over the first row

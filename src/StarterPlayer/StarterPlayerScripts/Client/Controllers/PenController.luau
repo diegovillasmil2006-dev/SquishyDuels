@@ -40,6 +40,10 @@
 --   prompt sends PenBuySpot(the Sign's SD_Price) once at a time; an accepted buy plays ui.purchase and the row's
 --   button pop (A13 UpgradeBuyPunch, Config.UI.Pen.signPop, a UIScale on the button; none under ReducedMotion;
 --   HudController squashes the coin pill on the spend), a refusal shows its reason (NotifyController.showResult).
+--   Owner 2026-10-28: a tap or click on an own row's price box buys the same way, no hold: PenBoard.buildTaps's
+--   "BoardTaps" in the PlayerGui (a SurfaceGui's buttons get input only there), on its own clear part just in front
+--   of the own pen's SignFace (placed again when it streams in or the plot changes); only within
+--   Config.UI.Pen.boardTapStuds of the camera.
 -- * Coins while away (pens3 phase 4): the state field awayGift {coins, seconds} (PenService, once per load) shows a
 --   stand-in pop-up, Diego's congrats overlay (UI/CongratsOverlay, the shop's, in its SD_Prompt layer): "You got" the
 --   Coins (common.coinsAmount), the line away.body with the time away in words, the best pen squishy in the disc, the
@@ -289,6 +293,8 @@ local SHELF_UP = 12
 local SHELF_RADIUS = 20
 -- Neon Sugar part 4: Diego's pen board (BaseService's SurfaceGui in the "Pen" Folder) and each buy spot's row on it.
 local BOARD_NAME = "Board"
+local BOARD_FACE = "SignFace" -- the board's part in Diego's pen Model (BaseService's Adornee)
+local TAP_DEPTH = 0.05 -- owner 2026-10-28: the taps' part's thickness and its gap in front of the board
 local BOARD_ROWS = { Sign = 1, ShelfSign = 2 }
 local BOARD_STATES = { canBuy = "buy", tooExpensive = "need", max = "max" } -- signState's state -> PenBoard's
 local FORMS = P.forms
@@ -318,6 +324,7 @@ local effect: Scheduler.Handle? = nil
 local random = Random.new()
 local pending = false -- a PenBuySpot is running
 local pop: { scale: UIScale, at: number }? = nil
+local tapPart: Part? = nil -- owner 2026-10-28: the clear part the own board's price box taps sit on (start)
 local awayOverlay: CongratsOverlay.CongratsOverlay? = nil -- pens3 phase 4: the open away pop-up
 local awayBack: (() -> ())? = nil -- its back handler (UIController.pushBack)
 -- Pens3 phase 6: the pen screen.
@@ -662,6 +669,26 @@ local function setPrompts(pen: Pen)
 	end
 end
 
+-- Owner 2026-10-28: the price box taps' part sits just in front of the own pen's board only (none while it has not
+-- streamed in). Not on the board's own part: with two SurfaceGuis on one part only the one that came first gets input
+-- (play test: BaseService's board, drawn before the taps, took every click).
+local function aimTaps()
+	local part = tapPart
+	if part == nil then
+		return
+	end
+	local plot = ownPlot()
+	local pen = if plot then pens[plot] else nil
+	local face = if pen then pen.model:FindFirstChild(BOARD_FACE) else nil
+	if face and face:IsA("BasePart") then
+		part.Size = Vector3.new(face.Size.X, face.Size.Y, TAP_DEPTH)
+		part.CFrame = face.CFrame * CFrame.new(0, 0, -(face.Size.Z + TAP_DEPTH) / 2 - TAP_DEPTH)
+		part.Parent = folder
+	else
+		part.Parent = nil
+	end
+end
+
 local function watch(model: Instance)
 	local plot = model:GetAttribute(ATTR_PLOT_MODEL)
 	local frame = if type(plot) == "number" then WorldLayout.plotFrame(plot) else nil
@@ -697,6 +724,9 @@ local function watch(model: Instance)
 		if pen.plot == ownPlot() and d:FindFirstAncestor(PEN_FOLDER) then
 			paintOwnSign() -- a part of the own sign streamed in, or BaseService drew it again
 		end
+		if pen.plot == ownPlot() and d.Name == BOARD_FACE then
+			aimTaps() -- the own board's part streamed in
+		end
 	end))
 	pc:add(function()
 		for _, w in pen.walkers do
@@ -709,6 +739,7 @@ local function watch(model: Instance)
 		table.clear(pen.shelf)
 	end)
 	setPrompts(pen)
+	aimTaps()
 	queueSync(pen)
 end
 
@@ -718,6 +749,7 @@ local function unwatch(model: Instance)
 	if pen and pen.model == model then
 		pens[pen.plot] = nil
 		pen.cleanup:clean()
+		aimTaps()
 	end
 end
 
@@ -814,13 +846,14 @@ local function step(dt: number, now: number): boolean
 	return true
 end
 
--- A buy at the own sign `name` (pens3 phase 11: PenBuySpot at PEN SPACE, PenBuyShelf at SHELF SPOTS).
-local function buy(prompt: ProximityPrompt, name: string, remote: string)
+-- A buy at the own sign `name` (pens3 phase 11: PenBuySpot at PEN SPACE, PenBuyShelf at SHELF SPOTS); `prompt` nil:
+-- a tap on the own board's price box (owner 2026-10-28).
+local function buy(prompt: ProximityPrompt?, name: string, remote: string)
 	local plot = ownPlot()
 	local pen = if plot then pens[plot] else nil
 	local sign = signOf(pen, name)
 	local price = if sign then sign:GetAttribute(ATTR_PRICE) else nil
-	if pending or sign == nil or not prompt:IsDescendantOf(sign) or type(price) ~= "number" then
+	if pending or sign == nil or (prompt and not prompt:IsDescendantOf(sign)) or type(price) ~= "number" then
 		return
 	end
 	pending = true
@@ -1523,7 +1556,7 @@ function PenController.start()
 		if handle then
 			handle:disconnect()
 		end
-		effect, pop, pending = nil, nil, false
+		effect, pop, pending, tapPart = nil, nil, false, nil
 		local away = awayOverlay
 		if away then
 			away:destroy()
@@ -1607,7 +1640,33 @@ function PenController.start()
 				setPrompts(pen)
 			end
 			paintOwnSign()
+			aimTaps()
 		end))
+		-- Owner 2026-10-28: the price box taps (see the header); without a PlayerGui only the prompts buy.
+		local playerGui = player:FindFirstChildOfClass("PlayerGui")
+		if playerGui then
+			local part = c:add(Instance.new("Part"))
+			part.Name = "BoardTaps"
+			part.Anchored = true
+			part.CanCollide = false
+			part.CanTouch = false -- CanQuery stays on: a SurfaceGui's part needs it for input
+			part.CastShadow = false
+			part.Transparency = 1
+			tapPart = part
+			local gui = c:add(PenBoard.buildTaps(playerGui))
+			gui.Adornee = part
+			for name, index in BOARD_ROWS do
+				local remote = if name == SIGN_NAME then REMOTE_BUY else REMOTE_BUY_SHELF
+				c:add((gui:FindFirstChild("Row" .. index) :: TextButton).Activated:Connect(function()
+					-- checked here: a SurfaceGui's MaxDistance hides it but still lets it take input (play test)
+					local camera = Workspace.CurrentCamera
+					if camera and (camera.CFrame.Position - part.Position).Magnitude <= P.boardTapStuds then
+						task.spawn(buy, nil, name, remote)
+					end
+				end))
+			end
+			aimTaps()
+		end
 	end
 	effect = Scheduler.add(step, "render")
 	paintOwnSign()

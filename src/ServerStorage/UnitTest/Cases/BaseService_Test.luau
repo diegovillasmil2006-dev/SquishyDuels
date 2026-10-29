@@ -23,7 +23,8 @@
 --   * the board (Diego's PenBoard, the "Board" SurfaceGui adorned to the pen's SignFace): boardRows gives row 1 PEN
 --     SPACE (open spots of maxSpots, the next spot's price) and row 2 SHELF SPOTS (the open shelf spots with the TOP
 --     spot, of 12: Neon Sugar part 5, one cubby a buy); each BUY with its price, MAX when nothing is left; PenBoard.setState paints a viewer's own state
---     (grey "Need N more", BUY, MAX) without touching the price;
+--     (grey "Need N more", BUY, MAX) without touching the price; PenBoard.buildTaps (owner 2026-10-28) puts a clear
+--     button over each row's price button and its caption, on the board's canvas;
 --   * the buy spots: "Sign" (SD_PenSign, PenPrompt on E / ButtonX) and "ShelfSign" (SD_ShelfSign, ShelfPrompt on F /
 --     ButtonY) at Bases.pen.signs, each an invisible Face with SD_Price = the next buy's price and a hold prompt; no
 --     price and the prompt off at MAX;
@@ -661,6 +662,35 @@ return function(t: Context)
 		expect.equal(text(row, "Caption"), "BUY")
 		PenBoard.setState(row, "max")
 		expect.equal(text(row, "Button", "Content", "Price"), "MAX")
+		finish(w)
+	end)
+
+	t.test("PenBoard.buildTaps: a clear button over each row's price button and its caption", function()
+		local w = fresh()
+		local folder = Instance.new("Folder")
+		table.insert(w.made, folder)
+		local board = PenBoard.build(folder)
+		local taps = PenBoard.buildTaps(folder)
+		expect.equal(taps.CanvasSize, board.CanvasSize)
+		expect.equal(taps.Face, board.Face)
+		-- on the canvas: a piece's offset within its card plus the card's (the Background sits at 0, 0)
+		local function covers(tap: GuiObject, card: Frame, name: string)
+			local piece = card:FindFirstChild(name) :: GuiObject
+			local x = card.Position.X.Offset + piece.Position.X.Offset
+			local y = card.Position.Y.Offset + piece.Position.Y.Offset
+			expect.truthy(tap.Position.X.Offset <= x and tap.Position.Y.Offset <= y)
+			expect.truthy(tap.Position.X.Offset + tap.Size.X.Offset >= x + piece.Size.X.Offset)
+			expect.truthy(tap.Position.Y.Offset + tap.Size.Y.Offset >= y + piece.Size.Y.Offset)
+		end
+		for index = 1, 2 do
+			local tap = taps:FindFirstChild("Row" .. index) :: TextButton
+			expect.truthy(tap and tap:IsA("TextButton"))
+			expect.equal(tap.BackgroundTransparency, 1)
+			expect.equal(tap.Text, "")
+			local card = PenBoard.row(board, index) :: Frame
+			covers(tap, card, "Button")
+			covers(tap, card, "Caption")
+		end
 		finish(w)
 	end)
 
