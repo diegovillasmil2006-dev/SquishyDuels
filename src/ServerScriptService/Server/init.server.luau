@@ -85,6 +85,7 @@ local SERVICE_ORDER = {
 	"PreferencesService",
 	"ShowOffService",
 	"TrackingService", -- 2026-10-30: player tracking for Roblox's analytics (only listens to the services above)
+	"ReminderService", -- 2026-10-30: come-back reminders (last: its leave hook runs first, while the profile is here)
 }
 
 -- Studio only, appended after the services; each needs its Config.Debug flag (always false outside Studio).

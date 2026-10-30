@@ -12,7 +12,8 @@
 --   into the pill (HudController.flyCoins, only for amounts >= coinFlight.minAmount) and common.coinsGain is toasted. A
 --   failure toasts its reason ({time} filled with the countdown, e.g. daily.alreadyClaimed "Claimed! Come back in
 --   {time}."). The day-7 Treat Box reveal is NOT opened here: BoxController plays it from StateDelta.unseenReveals
---   (planner note 6).
+--   (planner note 6). Come-back reminders (2026-10-30): a claim without the Treat Box offers the reminder opt-in
+--   (ReminderOptIn: tomorrow's reward is the payoff that comes later).
 -- * "Daily reward ready" (daily.popup): one toast per session, the first time a full state arrives (or at start) with
 --   a ready profile whose reward is claimable (§6.9 "appears once on join"); back after a missed day it reads
 --   daily.welcomeBack ("Welcome back! Day 4 is waiting.") instead. Reading: not during a duel (it waits for the next
@@ -77,6 +78,7 @@ local WellPill = require(Client.UI.Components.WellPill)
 local BoxController = require(script.Parent.BoxController)
 local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
+local ReminderOptIn = require(script.Parent.ReminderOptIn)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -465,6 +467,8 @@ local function claim()
 			task.delay((flow.closeAfterMs + flow.revealAfterMs) / 1000, function()
 				BoxController.debugHoldReveals(false)
 			end)
+		else
+			ReminderOptIn.offer()
 		end
 	else
 		if boxDay then

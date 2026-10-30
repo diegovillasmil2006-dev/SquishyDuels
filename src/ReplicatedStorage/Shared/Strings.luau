@@ -1579,6 +1579,12 @@ local Strings = {
 		underMinute = "less than a minute",
 	},
 
+	-- Come-back reminders (2026-10-30): the line shown just before Roblox's own opt-in box (Client ReminderOptIn).
+	-- The reminders' own texts live in Creator Hub (Config.Reminders).
+	reminders = {
+		ask = "Want a ping when your next reward is ready?",
+	},
+
 	-- Collection display (§7.6, §7.7).
 	collection = {
 		title = "MY COLLECTION",

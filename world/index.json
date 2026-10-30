@@ -48,6 +48,12 @@
 		"container": "ReplicatedStorage"
 	},
 	{
+		"file": "ServerScriptService/OpenCloud.rbxm",
+		"class": "Model",
+		"name": "OpenCloud",
+		"container": "ServerScriptService"
+	},
+	{
 		"file": "ServerStorage/DuelMapKits.rbxm",
 		"class": "Folder",
 		"name": "DuelMapKits",

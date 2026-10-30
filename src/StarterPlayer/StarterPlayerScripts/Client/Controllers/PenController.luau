@@ -49,7 +49,8 @@
 --   Coins (common.coinsAmount), the line away.body with the time away in words, the best pen squishy in the disc, the
 --   ui.coin sound and the overlay's rain (Config.UI.Pen.awayRain). A tap, AWESOME! or back closes it. The Coins are
 --   already in the pill (the server paid them on load): nothing to claim, no timer. A gift shows when it arrives (or is
---   there at start); StateController fires only on a new value, so a resent one never shows twice.
+--   there at start); StateController fires only on a new value, so a resent one never shows twice. Come-back reminders
+--   (2026-10-30): closing it offers the reminder opt-in (ReminderOptIn: the pen keeps earning while away).
 -- * No result before its reveal (pens3 phase 5, §9.11 "no fake-outs"): a box result is a new pen item (a copy when
 --   the kind is owned), and BaseService draws it on the plot at once; so while BoxController's "boxReveal" screen is
 --   open the own pen's sync waits (its walkers keep walking as they were) and runs when the reveal closes (syncWaits).
@@ -158,6 +159,7 @@ local UiFx = require(Client.UI.UiFx)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
+local ReminderOptIn = require(script.Parent.ReminderOptIn)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -908,6 +910,7 @@ local function showAway(gift: any)
 			if awayOverlay == overlay then
 				dropAway()
 			end
+			ReminderOptIn.offer()
 		end,
 	})
 	awayOverlay = overlay
