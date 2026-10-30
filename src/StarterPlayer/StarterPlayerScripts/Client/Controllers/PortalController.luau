@@ -360,7 +360,24 @@ end
 -- Game fix (2026-10-30): after a reveal the game's camera sits its zoom (12.5) behind the player, behind the arrival
 -- portal's see-through Membrane, which then tints the whole view (Diego's preview camera stops 6 studs back). On this
 -- client a portal's Membrane hides while the camera is behind it and near; from the front nothing changes.
+-- Owner 2026-10-30 ("Yes, fix it"): so do the HubFX pull beads spiralling in its ring; behind the hidden Membrane
+-- their ~50 pink Neon balls bloom over the whole view.
 local MEMBRANE_NEAR = 20
+local BEAD_NEAR = 8 -- the beads stay inside the ring (radius ~7)
+local FX_FOLDER = "SquishyLobbyFX" -- HubFX.start's effects folder
+local function hideBeads(q, hide)
+	for _, d in q.beads or {} do d.LocalTransparencyModifier = 0 end
+	q.beads = nil
+	local fx = hide and Workspace:FindFirstChild(FX_FOLDER)
+	if not fx then return end
+	q.beads = {}
+	for _, d in fx:GetDescendants() do
+		if d:IsA("BasePart") and (d.Position - q.cf.Position).Magnitude < BEAD_NEAR then
+			d.LocalTransparencyModifier = 1
+			table.insert(q.beads, d)
+		end
+	end
+end
 local function watchMembranes()
 	local list = {}
 	local function add(m)
@@ -383,7 +400,10 @@ local function watchMembranes()
 			local rel = cp - q.cf.Position
 			local behind = rel:Dot(q.cf.LookVector) < 0 and rel.Magnitude < MEMBRANE_NEAR
 			local want = if behind then 1 else 0
-			if q.part.LocalTransparencyModifier ~= want then q.part.LocalTransparencyModifier = want end
+			if q.part.LocalTransparencyModifier ~= want then
+				q.part.LocalTransparencyModifier = want
+				hideBeads(q, behind)
+			end
 		end
 	end)
 end
