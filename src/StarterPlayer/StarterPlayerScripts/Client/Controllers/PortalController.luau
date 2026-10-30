@@ -50,6 +50,7 @@ local gui, barTop, barBot, flash, title, titleStroke, sub, subStroke, blur, cc
 local snapshot: any = nil -- CameraController.save() while a trip runs
 local releaseControls: (() -> ())? = nil
 local heldHidden = false
+local hiddenScreens: { ScreenGui } = {} -- the game's screens a trip turned off
 
 ---------------------------------------------------------------- UI (zip :17-44)
 local function buildUi()
@@ -98,8 +99,28 @@ local function run(dur, fn)
 	end
 end
 local function io(u) return u < 0.5 and 4 * u * u * u or 1 - (-2 * u + 2) ^ 3 / 2 end
+-- Owner 2026-10-30: no game screens during a trip, like the preview (the HUD, touch buttons, cards). Only the
+-- screens this trip turned off come back on.
+-- shortcut: a screen its owner turns off during the trip comes back on (seen: the island's emptied viewmodel screens,
+-- harmless); upgrade if one ever keeps content its owner meant to hide.
+local function screens(on)
+	if on then
+		for _, g in hiddenScreens do
+			if g.Parent then g.Enabled = true end
+		end
+		table.clear(hiddenScreens)
+	elseif #hiddenScreens == 0 then
+		for _, g in player.PlayerGui:GetChildren() do
+			if g:IsA("ScreenGui") and g ~= gui and g.Enabled then
+				g.Enabled = false
+				table.insert(hiddenScreens, g)
+			end
+		end
+	end
+end
 -- Game hand-over (replaces the zip's PlayerModule controls and the end's Custom camera at FOV 70).
 local function controls(on)
+	screens(on)
 	if on then
 		if releaseControls then releaseControls(); releaseControls = nil end
 		if snapshot then CameraController.restore(snapshot); snapshot = nil end
