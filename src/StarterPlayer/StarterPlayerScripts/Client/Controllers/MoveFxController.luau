@@ -22,9 +22,12 @@
 --   picks it); 6 lobby footprints; 7 phone buzz (HapticEffect); 8 every movement sound a little higher or lower.
 -- * Part 2 (getting hit): knock(seconds) while HitFxController's knockback flies and skids: no take-off, fall flail or
 --   landing moment and no run (the hit plays its own), and a jump cut armed before the hit is dropped.
--- API: actorFor(player, character, root, extra?) -> FeelFx.Actor, floorColor(root), squishyTint(player), buzz(kind),
---   suppress(seconds), knock(seconds), noteDoubleJump(), heldNow() / landTier(speed) / chainScale(n) (pure parts
---   unit-tested), debugState(); init(), destroy().
+-- * Others (2026-10-30, Config.MoveFx.others): other players' and bots' (Workspace.SD_Bots) takeoff, apex and landing
+--   moments within maxStuds of the camera, from a ray under the feet and the body's height (otherStep); fewer
+--   particles, never the own camera; the double jump's landing too. Not during their knockback (knock(seconds, body)).
+-- API: actorFor(player?, character, root, extra?) -> FeelFx.Actor, floorColor(root), squishyTint(player), buzz(kind),
+--   suppress(seconds), knock(seconds, character?), noteDoubleJump(), heldNow() / landTier(speed) / chainScale(n) /
+--   otherStep(o, grounded, y, gravity) (pure parts unit-tested), debugState(); init(), destroy().
 
 -- Services
 
@@ -60,6 +63,8 @@ local MOMENTS = MOVE_FX.moments
 local EXTRAS = MOVE_FX.extras
 local RUN = MOVE_FX.run
 local AIR = MOVE_FX.air
+local OTHERS = MOVE_FX.others
+local BOTS_FOLDER = "SD_Bots" -- BotService: the practice bot's and the match bots' rigs
 local PRESS_GAP = Config.Duel.Rules.DoubleJump.pressGapSeconds
 local CREAM = Color3.fromHex("#FFF4E6") -- the design's puff colour
 local FORCE_NAME = "SD_FallGravity"
@@ -128,7 +133,12 @@ local state = {
 }
 local footprints: { BasePart } = {}
 local haptics: { [string]: Instance } = {}
-local stats = { takeoffs = 0, landings = 0, cuts = 0, megas = 0, steps = 0 }
+local stats = { takeoffs = 0, landings = 0, cuts = 0, megas = 0, steps = 0, otherTakeoffs = 0, otherLandings = 0 }
+
+-- Other players' and bots' air state, by body (otherStep).
+export type Other = { grounded: boolean, jumped: boolean, rising: boolean, fromY: number, maxY: number, takeoffRun: any }
+local others: { [Model]: Other } = {}
+local knockedOthers: { [Model]: number } = {} -- os.clock() until which a knocked body plays no takeoff or landing
 
 -- Pure -------------------------------------------------------------------------------------------------------------------
 
@@ -150,6 +160,39 @@ end
 -- True while any jump input is held (see the header).
 function MoveFxController.heldNow(now: number, lastRequest: number, keyDown: boolean, buttonDown: boolean, touch: boolean): boolean
 	return now - lastRequest < PRESS_GAP or keyDown or buttonDown or touch
+end
+
+-- Another body's air step from its height (writes `o`; a replicated body's velocity lags behind, seen 2026-10-30: 0 at
+-- the take-off, -15 at a -50 landing): "takeoff" once it rose OTHERS.riseStuds above where it left the ground, "apex"
+-- once it comes down again, "land" with the speed its fall gives (sqrt(2 g h) under `gravity`, the falling gravity, up to
+-- the speed cap; a drop without a jump only from AIR.minLandSpeed: steps and slopes are no landings), or nil.
+function MoveFxController.otherStep(o: Other, grounded: boolean, y: number, gravity: number): (string?, number)
+	if o.grounded then
+		if not grounded then
+			o.grounded, o.jumped, o.rising = false, false, false
+			o.fromY, o.maxY = y, y
+		end
+		return nil, 0
+	end
+	if grounded then
+		o.grounded = true
+		local speed = math.min(math.sqrt(2 * gravity * math.max(o.maxY - y, 0)), FEEL.maxFallSpeed)
+		if speed < AIR.minLandSpeed and not o.jumped then
+			return nil, 0
+		end
+		return "land", speed
+	end
+	if y > o.maxY then
+		o.maxY = y
+		if not o.jumped and y - o.fromY >= OTHERS.riseStuds then
+			o.jumped, o.rising = true, true
+			return "takeoff", 0
+		end
+	elseif o.rising and y < o.maxY - OTHERS.apexDropStuds then
+		o.rising = false
+		return "apex", 0
+	end
+	return nil, 0
 end
 
 -- Private ----------------------------------------------------------------------------------------------------------------
@@ -174,9 +217,11 @@ local function downParams(): RaycastParams
 			table.insert(ignore, player.Character)
 		end
 	end
-	local fx = Workspace:FindFirstChild("SD_ClientFx")
-	if fx then
-		table.insert(ignore, fx)
+	for _, name in { "SD_ClientFx", BOTS_FOLDER } do
+		local folder = Workspace:FindFirstChild(name)
+		if folder then
+			table.insert(ignore, folder)
+		end
 	end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -227,7 +272,7 @@ end
 
 -- A FeelFx actor for any character: own or not (other players: fewer particles, the other-player sound priority).
 function MoveFxController.actorFor(
-	player: Player,
+	player: Player?,
 	character: Model,
 	root: BasePart,
 	extra: { [string]: any }?
@@ -240,7 +285,7 @@ function MoveFxController.actorFor(
 		own = own,
 		low = not own,
 		priority = if own then 0 else -1,
-		tint = MoveFxController.squishyTint(player),
+		tint = if player then MoveFxController.squishyTint(player) else nil, -- a bot holds nothing
 		floor = MoveFxController.floorColor(root),
 	}
 	for k, v in extra or {} do
@@ -283,8 +328,13 @@ function MoveFxController.suppress(seconds: number)
 	suppressUntil = math.max(suppressUntil, os.clock() + seconds)
 end
 
--- A knockback (HitFxController): no take-off, fall or landing moment and no run while it lasts; never cut.
-function MoveFxController.knock(seconds: number)
+-- A knockback (HitFxController): no take-off, fall or landing moment and no run while it lasts; never cut. With
+-- `character` (another player's or a bot's body): no takeoff or landing on that body.
+function MoveFxController.knock(seconds: number, character: Model?)
+	if character and character ~= Players.LocalPlayer.Character then
+		knockedOthers[character] = math.max(knockedOthers[character] or 0, os.clock() + seconds)
+		return
+	end
 	knockedUntil = math.max(knockedUntil, os.clock() + seconds)
 	suppressUntil = math.max(suppressUntil, knockedUntil)
 	state.cutArmed = false
@@ -618,6 +668,80 @@ local function stepRender(_dt: number, _now: number): boolean
 	return true
 end
 
+-- One other body's frame: its takeoff, apex and landing moments (no run, fall or extras; the camera stays the own).
+local function watchOther(character: Model, player: Player?, from: Vector3, params: RaycastParams, now: number, seen: { [Model]: boolean })
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if humanoid == nil or humanoid.Health <= 0 or root == nil or not root:IsA("BasePart") then
+		return
+	end
+	if (root.Position - from).Magnitude > OTHERS.maxStuds then
+		return
+	end
+	seen[character] = true
+	local reach = humanoid.HipHeight + root.Size.Y / 2 + OTHERS.landSlack
+	local grounded = Workspace:Raycast(root.Position, Vector3.new(0, -reach, 0), params) ~= nil
+	local y = root.Position.Y
+	local o = others[character]
+	if o == nil then
+		others[character] = { grounded = grounded, jumped = false, rising = false, fromY = y, maxY = y, takeoffRun = nil }
+		return
+	end
+	local event, speed = MoveFxController.otherStep(o, grounded, y, Workspace.Gravity * FEEL.fallGravityMultiplier)
+	if event == nil or now < (knockedOthers[character] or 0) then
+		return
+	end
+	if event == "takeoff" then
+		stats.otherTakeoffs += 1
+		o.takeoffRun = FeelFx.play(MOMENTS.takeoff, MoveFxController.actorFor(player, character, root))
+	elseif event == "apex" then
+		if o.takeoffRun then
+			o.takeoffRun:signal("apex")
+		end
+	else
+		stats.otherLandings += 1
+		o.takeoffRun = nil
+		FeelFx.play(MOMENTS.landing, MoveFxController.actorFor(player, character, root)):signal(MoveFxController.landTier(speed))
+	end
+end
+
+-- Render: other players' and bots' jumps and landings within OTHERS.maxStuds of the camera.
+local function stepOthers()
+	local camera = Workspace.CurrentCamera
+	if not MOVE_FX.enabled or camera == nil then
+		return
+	end
+	local from = camera.CFrame.Position
+	local params = downParams()
+	local now = os.clock()
+	local seen: { [Model]: boolean } = {}
+	for _, player in Players:GetPlayers() do
+		local character = player.Character
+		if player ~= Players.LocalPlayer and character then
+			watchOther(character, player, from, params, now, seen)
+		end
+	end
+	local bots = Workspace:FindFirstChild(BOTS_FOLDER)
+	if bots then
+		for _, rig in bots:GetChildren() do
+			if rig:IsA("Model") then
+				watchOther(rig, nil, from, params, now, seen)
+			end
+		end
+	end
+	-- Bodies gone or out of reach start over (as standing) when they come back.
+	for character in others do
+		if not seen[character] then
+			others[character] = nil
+		end
+	end
+	for character, untilAt in knockedOthers do
+		if now >= untilAt then
+			knockedOthers[character] = nil
+		end
+	end
+end
+
 -- The jump cut starts at the Humanoid's Jumping state (the floor reading lags a few frames behind it).
 local stateConnection: RBXScriptConnection? = nil
 local function bindHumanoid(character: Model)
@@ -721,6 +845,10 @@ function MoveFxController.init()
 		if not ok then
 			log:warn("step failed:", err)
 		end
+		ok, err = pcall(stepOthers)
+		if not ok then
+			log:warn("others step failed:", err)
+		end
 		return true
 	end, "render"))
 	c:add(Players.LocalPlayer.CharacterAdded:Connect(function(character: Model)
@@ -755,6 +883,8 @@ function MoveFxController.init()
 			h:Destroy()
 		end
 		table.clear(haptics)
+		table.clear(others)
+		table.clear(knockedOthers)
 	end)
 end
 

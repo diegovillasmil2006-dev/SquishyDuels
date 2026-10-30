@@ -5,7 +5,8 @@
 --   * FeelFx (pure): the design's easing and envelope; a shake within its amplitude and over at its time; a pose track
 --     at its keys, turning the short way (the flip's -295 -> -360), its Root translation; the flip variants turn only
 --     the Root about the right axis; the aims;
---   * MoveFxController (pure): the landing tiers at the design's speeds, the hop chain's scale, the jump hold;
+--   * MoveFxController (pure): the landing tiers at the design's speeds, the hop chain's scale, the jump hold, another
+--     body's takeoff / apex / landing (otherStep);
 --   * Config.MoveFx: every name a moment plays exists (poses, rings, camera moves, texts, lines, afterimages, sounds,
 --     and the VFX Studio templates of SDTools.Builders.FeelVfxBuilder); the design's hard rules (CONFIG.rules): shakes
 --     at most 2 deg, FOV kicks at most 8 deg, every effect over within 1.5 s, at most 60 particles an effect (a burst's
@@ -124,6 +125,31 @@ return function(t: Context)
 		expect.falsy(MoveFx.heldNow(10, 10 - gap * 2, false, false, false))
 		expect.truthy(MoveFx.heldNow(10, -math.huge, true, false, false))
 		expect.truthy(MoveFx.heldNow(10, -math.huge, false, false, true))
+	end)
+
+	t.test("MoveFxController.otherStep: another body's jump, apex and landing", function()
+		local g = 196.2 * FX.feel.fallGravityMultiplier
+		local o = { grounded = true, jumped = false, rising = false, fromY = 3, maxY = 3, takeoffRun = nil }
+		expect.equal(MoveFx.otherStep(o, true, 3, g), nil) -- standing
+		expect.equal(MoveFx.otherStep(o, false, 3.6, g), nil) -- left the floor
+		expect.equal(MoveFx.otherStep(o, false, 3.6 + FX.others.riseStuds / 2, g), nil)
+		expect.equal(MoveFx.otherStep(o, false, 3.61 + FX.others.riseStuds, g), "takeoff")
+		expect.equal(MoveFx.otherStep(o, false, 10.2, g), nil)
+		expect.equal(MoveFx.otherStep(o, false, 10.1, g), "apex")
+		expect.equal(MoveFx.otherStep(o, false, 5, g), nil)
+		-- The design's full jump (7.2 studs) lands at ~67 studs/s, the normal tier.
+		local event, speed = MoveFx.otherStep(o, true, 3, g)
+		expect.equal(event, "land")
+		expect.near(speed, math.sqrt(2 * g * 7.2), 1e-6)
+		expect.equal(MoveFx.landTier(speed), "landNormal")
+		-- A step down without a jump is no landing; a fall without a jump is (capped at the fall speed cap).
+		expect.equal(MoveFx.otherStep(o, false, 3, g), nil)
+		expect.equal(MoveFx.otherStep(o, true, 2.99, g), nil)
+		MoveFx.otherStep(o, false, 2.99, g)
+		MoveFx.otherStep(o, false, -50, g)
+		event, speed = MoveFx.otherStep(o, true, -60, g)
+		expect.equal(event, "land")
+		expect.equal(speed, FX.feel.maxFallSpeed)
 	end)
 
 	t.test("the design's KEEP values are still the game's", function()

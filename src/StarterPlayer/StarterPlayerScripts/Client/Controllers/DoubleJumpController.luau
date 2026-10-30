@@ -29,8 +29,8 @@
 --   DoubleJump/Land and sfx.dashPlant.
 -- * Physics upgrade (2026-10-28, Config.MoveFx.enabled): instead of the flip and effects above, the design's double
 --   jump moment (Anim/FeelFx, Config.MoveFx.moments.doubleJump) with the flip turned the jump's way (FeelFx.flipVariant;
---   a forward one is a spin SPIN_CHANCE of the time); the own landing is MoveFxController's, another player's gets the
---   design's landing tier for its speed.
+--   a forward one is a spin SPIN_CHANCE of the time); every landing is MoveFxController's (another player's too, since
+--   2026-10-30).
 -- * Network: DoubleJumpRequest(seq, key, clientTime) through NetController; DoubleJumped {userId, key, at, startAt}
 --   plays the same flip, effects and sounds on the other player's character from its arrival. The own one is ignored.
 -- * FFA/TDM v1 (2026-10-15; the 12-player match): "only when dueling" now also means a Free for All / Team
@@ -503,16 +503,7 @@ local function checkLanding(jump: Jump, t: number)
 	jump.landed = true
 	stats.landed += 1
 	if MOVE_FX.enabled then
-		-- The own landing is MoveFxController's; another player's gets the design's landing by its speed.
-		if not jump.own then
-			local speed = math.max(-jump.root.AssemblyLinearVelocity.Y, 0)
-			local actor = MoveFxController.actorFor(jump.player, jump.character, jump.root, {
-				low = jump.low,
-				priority = jump.soundPriority,
-			})
-			FeelFx.play(MOVE_FX.moments.landing, actor):signal(MoveFxController.landTier(speed))
-		end
-		return
+		return -- every landing is MoveFxController's (another player's too, since 2026-10-30)
 	end
 	local facing = facingOf(jump.root)
 	MoveVfx.burst(VFX_LAND, CFrame.lookAt(floor, floor + facing), vfxOptions(jump))

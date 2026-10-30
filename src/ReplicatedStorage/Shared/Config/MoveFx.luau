@@ -729,6 +729,11 @@ local MoveFx = {
 	run = { strideStuds = 6.2, runFromShare = 0.6, stopBelowShare = 0.25, standSeconds = 0.25 },
 	-- Air: a fall without a jump counts after fallAfterSeconds in the air going down (steps and slopes are not falls).
 	air = { fallAfterSeconds = 0.12, minLandSpeed = 4 },
+	-- Other players' and bots' jumps and landings (2026-10-30, owner: "Yes, build it"): the takeoff and landing moments
+	-- on every body within maxStuds of the camera; one counts as landed once a ray finds the floor within landSlack
+	-- under its feet, as jumping once it rose riseStuds above where it left the floor, at its apex once it came down
+	-- apexDropStuds.
+	others = { maxStuds = 120, landSlack = 0.6, riseStuds = 0.25, apexDropStuds = 0.05 },
 
 	-- The owner's 8 extras (2026-10-28, NOT IN DESIGN; the design's own rules still hold: at most 60 particles an effect).
 	extras = {

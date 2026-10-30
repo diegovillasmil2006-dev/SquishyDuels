@@ -398,6 +398,8 @@ local function onCall(name: string, actor: any, ev: any)
 	if name == "knockback" then
 		if actor.own and actor.noKnockback ~= true then
 			startKnock(ev.kind, actor.dir)
+		elseif not actor.own then
+			MoveFxController.knock(HIT_FX.landMax + SKID_MAX, character) -- no jump or landing puffs on the flying body
 		end
 		if actor.run then
 			watches[character] = { run = actor.run, character = character, since = os.clock(), own = actor.own }
