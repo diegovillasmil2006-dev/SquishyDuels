@@ -243,6 +243,25 @@ local FOUND_SOUND_KEYS = {
 	"box.ux.stamp",
 }
 
+-- Diego's FULL FINAL lobby (2026-10-30): the portal trip's 7 cues and the practice island's 8, checked on their own below.
+local LOBBY_SOUND_KEYS = {
+	"portal.start",
+	"portal.windup",
+	"portal.suck",
+	"portal.poof",
+	"portal.spit",
+	"portal.land",
+	"portal.chime",
+	"practice.squish",
+	"practice.squishBig",
+	"practice.ding",
+	"practice.combo2",
+	"practice.combo3",
+	"practice.combo4",
+	"practice.combo5",
+	"practice.fanfare",
+}
+
 return function(t: Context)
 	local expect = t.expect
 	local AssetTable = t.requireShared("AssetTable")
@@ -271,6 +290,7 @@ return function(t: Context)
 				and string.sub(slot.key, 1, #KILL_SOUND_PREFIX) ~= KILL_SOUND_PREFIX -- kill banners: below
 				and not table.find(MATCH_SOUND_KEYS, slot.key) -- Match HUD M6 / M7: below
 				and not table.find(FOUND_SOUND_KEYS, slot.key) -- MATCH FOUND: below
+				and not table.find(LOBBY_SOUND_KEYS, slot.key) -- FULL FINAL lobby: below
 			then
 				table.insert(keys, slot.key)
 			end
@@ -306,6 +326,26 @@ return function(t: Context)
 					expect.equal(slot.spatial, false)
 					expect.truthy(string.find(slot.notes, ".wav'", 1, true) ~= nil)
 					expectApproved(expect, key, slot)
+				end
+			end
+			expect.equal(found, 1)
+		end
+	end)
+
+	-- FULL FINAL lobby (2026-10-30): the owner's picks, once each, SFX, 2D, uploaded, each note naming its file; the
+	-- ElevenLabs takes (.mp3) carry their own licence.
+	t.test("FULL FINAL lobby's 15 sound keys: once each, SFX, 2D, naming a file, uploaded", function()
+		for _, key in LOBBY_SOUND_KEYS do
+			local found = 0
+			for _, slot in soundSlots() do
+				if slot.key == key then
+					found += 1
+					expect.equal(slot.group, "SFX")
+					expect.equal(slot.spatial, false)
+					expect.truthy(string.find(slot.notes, "file 'lobby_", 1, true) ~= nil)
+					expectApproved(expect, key, slot)
+					local eleven = string.find(slot.notes, ".mp3'", 1, true) ~= nil
+					expect.equal(string.find(slot.license, "ElevenLabs", 1, true) ~= nil, eleven)
 				end
 			end
 			expect.equal(found, 1)

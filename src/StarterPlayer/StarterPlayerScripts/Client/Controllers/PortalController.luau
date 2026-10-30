@@ -15,7 +15,6 @@ local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local SoundService = game:GetService("SoundService")
 local TeleportService = game:GetService("TeleportService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
@@ -31,6 +30,7 @@ local CameraController = require(Controllers.CameraController)
 local ControlsController = require(Controllers.ControlsController)
 local HeldSquishyController = require(Controllers.HeldSquishyController)
 local NetController = require(Controllers.NetController)
+local SoundController = require(Controllers.SoundController)
 
 -- Constants
 
@@ -122,15 +122,16 @@ local function showTitle(on, link)
 end
 
 ---------------------------------------------------------------- sound (zip :79-90)
--- Ids live in Portal.Sfx (empty = silent). 2D one-shots, only during a portal trip: nothing plays while idle.
-local function sfx(key, volume, speed)
-	local id = Cfg.Sfx and Cfg.Sfx[key]
-	if not id or id == "" then return end
-	local s = Instance.new("Sound")
-	s.SoundId = id; s.Volume = (volume or 0.5) * Cfg.SfxVolume; s.PlaybackSpeed = (speed or 1) * (0.96 + math.random() * 0.08)
-	s.Parent = SoundService; s:Play()
-	s.Ended:Once(function() s:Destroy() end)
-	task.delay(10, function() if s.Parent then s:Destroy() end end)
+-- His Portal.Sfx keys play the game's sound keys (ids only in AssetTable, 2D on SFX, the settings' volume). The files
+-- are his preview's own sounds at its level, so his per-call trims for stand-in clips (volume × SfxVolume) are not
+-- applied; his ±4% pitch is. 2D one-shots, only during a portal trip: nothing plays while idle.
+local SFX_KEYS = {
+	Start = "portal.start", Windup = "portal.windup", Suck = "portal.suck", Poof = "portal.poof",
+	Spit = "portal.spit", Land = "portal.land", Chime = "portal.chime",
+}
+local function sfx(key, _volume, speed)
+	local soundKey = SFX_KEYS[key]
+	if soundKey then SoundController.play(soundKey, { pitch = speed, variance = 0.04 }) end
 end
 
 ---------------------------------------------------------------- sequences (zip :92-268)

@@ -75,6 +75,8 @@ return function(t: Context)
 				render = render or string.sub(slot.key, 1, 6) == "match." -- Match HUD M6/M7 (2026-10-17): the M3 pack's renders
 				render = render or string.sub(slot.key, 1, 13) == "grip.levelUp." -- the new short level-up's renders
 				render = render or string.sub(slot.key, 1, 7) == "box.ux." -- the fancier box reveal's renders
+				-- FULL FINAL lobby (2026-10-30): the portal and practice cues, picked by ear by the owner
+				render = render or string.sub(slot.key, 1, 7) == "portal." or string.sub(slot.key, 1, 9) == "practice."
 				if slot.kind == "sound" and string.sub(slot.key, 1, 8) ~= "sfx.wax." and not render then
 					soundKeys[slot.key] = true
 					count += 1

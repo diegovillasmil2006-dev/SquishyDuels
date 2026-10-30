@@ -203,6 +203,24 @@ local function hudSound(id: number, volume: number, file: string): ApprovedSound
 	}
 end
 
+-- Diego's FULL FINAL lobby sounds (2026-10-30): the owner listened to his preview's own sounds (sfx.js, recorded with
+-- one common gain, x9.074) and to ElevenLabs takes, and picked per sound. Uploaded by Claude through Creator Hub's
+-- asset API at the owner's yes (Studio's Import Queue was stuck). A '.mp3' file is an ElevenLabs take.
+local LOBBY_SOUND_DATE = "2026-10-30"
+local ELEVEN_LICENSE = "Group-owned upload; made with ElevenLabs Sound Effects on the owner's account"
+local LOBBY_LEVEL = 0.1102 -- 1 / 9.074: the recordings play at his preview's level
+local LOBBY_CHIME_LEVEL = 0.2386 -- the ElevenLabs chime, +6.7 dB to his chime's loudness (the combo notes match as is)
+
+local function lobbySound(id: number, volume: number, file: string): ApprovedSound
+	return {
+		id = id,
+		volume = volume,
+		source = `DIJAY Studios group upload (Creator Hub asset API): '{file}'`,
+		license = if string.sub(file, -4) == ".mp3" then ELEVEN_LICENSE else UPLOAD_LICENSE,
+		verifiedAt = LOBBY_SOUND_DATE,
+	}
+end
+
 -- An image slot holding a kill banner emblem (`file` is the uploaded PNG).
 local function killEmblem(key: string, id: number, file: string, use: string): AssetSlot
 	return {
@@ -1426,6 +1444,128 @@ local SLOTS: { AssetSlot } = {
 		nil,
 		"lib:146 claim(): a DOUBLE / TRIPLE SQUISH! medal lands; file 'medal_claim.wav'",
 		hudSound(116526391968845, 0.1253, "medal_claim.wav")
+	),
+	-- Diego's FULL FINAL lobby (2026-10-30): the portal trip's 7 cues (his Portal.Sfx keys, PortalController) and the
+	-- practice island's hit, bullseye, combo and time's-up cues (Hub Props.html:449, :397), 2D on SFX.
+	soundSlot(
+		"portal.start",
+		"SFX",
+		false,
+		nil,
+		"sfx.js start(): stepping into a portal; file 'lobby_portal_start.wav'",
+		lobbySound(72488718212037, LOBBY_LEVEL, "lobby_portal_start.wav")
+	),
+	soundSlot(
+		"portal.windup",
+		"SFX",
+		false,
+		nil,
+		"sfx.js windup(0.55): the portal grabs you; file 'lobby_portal_windup.wav'",
+		lobbySound(91097862347449, LOBBY_LEVEL, "lobby_portal_windup.wav")
+	),
+	soundSlot(
+		"portal.suck",
+		"SFX",
+		false,
+		nil,
+		"sfx.js suck(1.05): pulled in; file 'lobby_portal_suck.wav'",
+		lobbySound(123316670870297, LOBBY_LEVEL, "lobby_portal_suck.wav")
+	),
+	soundSlot(
+		"portal.poof",
+		"SFX",
+		false,
+		nil,
+		"sfx.js poof(): the white flash; file 'lobby_portal_poof.wav'",
+		lobbySound(113825858852685, LOBBY_LEVEL, "lobby_portal_poof.wav")
+	),
+	soundSlot(
+		"portal.spit",
+		"SFX",
+		false,
+		nil,
+		"sfx.js spit(): out of the other portal; file 'lobby_portal_spit.wav'",
+		lobbySound(90224224487418, LOBBY_LEVEL, "lobby_portal_spit.wav")
+	),
+	soundSlot(
+		"portal.land",
+		"SFX",
+		false,
+		nil,
+		"sfx.js boing(): the landing; file 'lobby_portal_land.wav'",
+		lobbySound(70831509007040, LOBBY_LEVEL, "lobby_portal_land.wav")
+	),
+	soundSlot(
+		"portal.chime",
+		"SFX",
+		false,
+		nil,
+		"sfx.js chime(): the place's title card (the owner's pick: ElevenLabs); file 'lobby_portal_chime.mp3'",
+		lobbySound(84895639821118, LOBBY_CHIME_LEVEL, "lobby_portal_chime.mp3")
+	),
+	soundSlot(
+		"practice.squish",
+		"SFX",
+		false,
+		nil,
+		":449 squish(false): a scored hit under 50; file 'lobby_practice_squish.wav'",
+		lobbySound(122440544513838, LOBBY_LEVEL, "lobby_practice_squish.wav")
+	),
+	soundSlot(
+		"practice.squishBig",
+		"SFX",
+		false,
+		nil,
+		":449 squish(true): a hit of 50 or more; file 'lobby_practice_squish_big.wav'",
+		lobbySound(102801266408508, LOBBY_LEVEL, "lobby_practice_squish_big.wav")
+	),
+	soundSlot(
+		"practice.ding",
+		"SFX",
+		false,
+		nil,
+		":449 ding(): a 100 (the bullseye); file 'lobby_practice_ding.wav'",
+		lobbySound(131758545866276, LOBBY_LEVEL, "lobby_practice_ding.wav")
+	),
+	soundSlot(
+		"practice.combo2",
+		"SFX",
+		false,
+		nil,
+		":449 combo(2) (the owner's pick: ElevenLabs, one note pitched like his PENTA[n + 3]); file 'lobby_practice_combo_2.mp3'",
+		lobbySound(95121742330296, LOBBY_LEVEL, "lobby_practice_combo_2.mp3")
+	),
+	soundSlot(
+		"practice.combo3",
+		"SFX",
+		false,
+		nil,
+		":449 combo(3), 2 semitones up; file 'lobby_practice_combo_3.mp3'",
+		lobbySound(87815032816345, LOBBY_LEVEL, "lobby_practice_combo_3.mp3")
+	),
+	soundSlot(
+		"practice.combo4",
+		"SFX",
+		false,
+		nil,
+		":449 combo(4), 4 semitones up; file 'lobby_practice_combo_4.mp3'",
+		lobbySound(135790863115437, LOBBY_LEVEL, "lobby_practice_combo_4.mp3")
+	),
+	soundSlot(
+		"practice.combo5",
+		"SFX",
+		false,
+		nil,
+		":449 combo(5), 7 semitones up; file 'lobby_practice_combo_5.mp3'",
+		lobbySound(138580686883058, LOBBY_LEVEL, "lobby_practice_combo_5.mp3")
+	),
+	soundSlot(
+		"practice.fanfare",
+		"SFX",
+		false,
+		nil,
+		":397 fanfare(): TIME! (the round's end card); file 'lobby_practice_fanfare.wav'",
+		lobbySound(77334445883333, LOBBY_LEVEL, "lobby_practice_fanfare.wav")
 	),
 	soundSlot(
 		"amb.lobby",

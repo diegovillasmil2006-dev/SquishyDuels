@@ -26,8 +26,8 @@
 --   over 250 ms (no scale under ReducedMotion), shows "Hit!" at the reticle for 400 ms, and "Hit!" plus the target's
 --   distance ("{distance} studs", practice.distanceLabel) above the target while it is down.
 --   Feel pass (§18.4.2, §18.6): the reticle's "Hit!" pops 1.3 -> 1 (Back Out, 200 ms) and tilts ±6° -> 0, the other
---   way on each hit (hitTextPop, pure: UI/DuelFormat's, shared with the duel reticle; none under ReducedMotion), and
---   ui.hitConfirm plays on the contact frame (2D, the thrower only).
+--   way on each hit (hitTextPop, pure: UI/DuelFormat's, shared with the duel reticle; none under ReducedMotion). A
+--   scored hit (PracticeHit) plays Diego's squish, ding and combo note; TIME! his fanfare (2D, the thrower only).
 -- * Panel (SD_Hud, §11.6): throws, hits, accuracy of the session. Server-counted: StateDelta.practice
 --   (StateController "practice") when the server sends it; until then (reading: Part 4 has no StateService) the same
 --   numbers from server-confirmed events - own accepted practice throws (ThrowStarted) and own confirmed target hits.
@@ -212,7 +212,17 @@ local RETICLE_CHARGE = Config.UI.Reticle -- feature 1: the charge fill
 local RETICLE_TEXT_WIDTH = 220
 local RETICLE_TEXT_GAP = 6 -- the state text under the ring
 local RETICLE_TEXT_EDGE = 12 -- overlays fix: the state text keeps this far (base px) inside the screen's edges
-local SOUND_HIT_CONFIRM = "ui.hitConfirm" -- §18.6: the thrower's own hit cue
+-- Diego's practice island cues (Hub Props.html:449, :397), by a hit's base points (before the combo multiplies them):
+-- the squish (big from 50), the ding on a 100, the combo's note from x2 to x5, the fanfare at TIME!. Owner 2026-10-30:
+-- a practice hit plays only his squish, not the game's hit tick (ui.hitConfirm).
+local SOUND_SQUISH = "practice.squish"
+local SOUND_SQUISH_BIG = "practice.squishBig"
+local SOUND_DING = "practice.ding"
+local SOUND_COMBO = "practice.combo" -- .. 2 to 5
+local SOUND_FANFARE = "practice.fanfare"
+local SQUISH_BIG_POINTS = 50
+local DING_POINTS = 100
+local COMBO_SOUND_MAX = 5
 -- Part 8 panel placement (readings: §11.6 says "in the practice zone", not where). Base px under SD_Hud's UIScale.
 local PANEL_NAME = "Practice_Panel"
 local PANEL_EDGE = 16 -- as built (x 16)
@@ -881,6 +891,7 @@ local function onRoundEnds()
 		return
 	end
 	bestRound = math.max(bestRound, score)
+	SoundController.play(SOUND_FANFARE)
 	if ensureCardGui() and card then
 		PracticeScoreBox.showCard(card :: PracticeScoreBox.Card, score, bestRound)
 	end
@@ -895,6 +906,14 @@ local function onPracticeHit(raw: unknown)
 	local points, combo, position = hit.points, hit.combo, hit.position
 	if type(points) ~= "number" or type(combo) ~= "number" or typeof(position) ~= "Vector3" then
 		return
+	end
+	local base = points / math.max(1, combo)
+	SoundController.play(if base >= SQUISH_BIG_POINTS then SOUND_SQUISH_BIG else SOUND_SQUISH)
+	if base >= DING_POINTS then
+		SoundController.play(SOUND_DING)
+	end
+	if combo > 1 then
+		SoundController.play(SOUND_COMBO .. math.clamp(math.floor(combo), 2, COMBO_SOUND_MAX))
 	end
 	local camera = Workspace.CurrentCamera
 	local gui = ensureCardGui()
@@ -1283,8 +1302,6 @@ local function onHitConfirmed(impact: Types.ThrowImpactPayload)
 	if impact.kind ~= "target" then
 		return
 	end
-	-- §18.4.4 / §18.6: the thrower's hit cue lands on the contact frame (it never waits for the hit-stop).
-	SoundController.play(SOUND_HIT_CONFIRM)
 	hitTiltSign = -hitTiltSign
 	stats.ownHits += 1
 	if inZone then
