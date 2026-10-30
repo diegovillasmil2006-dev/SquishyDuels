@@ -97,4 +97,18 @@ return function(t: Context)
 		expect.equal(hits[2].countsForQuest, true)
 		PracticeService.destroy()
 	end)
+
+	t.test("practice hits are scored on the target's face: the contact point moves onto the face's plane", function()
+		local bull = Vector3.new(1382, 7.6, -7.5)
+		-- a dead-centre throw touches the ball 3.4 in front of the bullseye: on the face it is the bullseye
+		local onFace = PracticeService.onFace(bull + Vector3.new(0, 0, 3.4), bull, Vector3.zAxis)
+		expect.near((onFace - bull).Magnitude, 0, 1e-3)
+		-- 0.8 to the side keeps its 0.8 (Diego's GREAT ring)
+		onFace = PracticeService.onFace(bull + Vector3.new(0.8, 0, 2.9), bull, Vector3.zAxis)
+		expect.near((onFace - bull).Magnitude, 0.8, 1e-3)
+		-- a tipped face (a pop-up target going down): measured across that face
+		local normal = Vector3.new(0, 1, 1).Unit
+		onFace = PracticeService.onFace(bull + normal * 3, bull, normal)
+		expect.near((onFace - bull).Magnitude, 0, 1e-3)
+	end)
 end

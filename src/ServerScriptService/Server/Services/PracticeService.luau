@@ -17,6 +17,14 @@
 --   Config.Economy.Quests.practiceTargetRepeatSeconds per player) for the `practice_hits` quest (Part 7).
 -- * Practice NEVER pays Coins, never gives ult charge and never counts toward duel stats (§5.11). Practice projectiles
 --   only ever test practice targets, never players (§5.3, §12 #12).
+-- * FULL FINAL lobby (owner 2026-10-30, "Yes, start step 4"): the range is Diego's PracticeArena (the sky island behind
+--   the TARGET PRACTICE portal). start() reads its Target_* (the wheel's Target_W* too) and Dummy_* models into the
+--   targets: a ball round each one's bullseye (Markers.Bull, else its Bullseye part; a dummy: its box centre) that
+--   follows his motion on the server (HubFX.cframeAt, the clock every client animates with), radius half the target's
+--   width (a dummy's widest half). Projectiles splat on his arena parts (ARENA_GEOMETRY). A confirmed throw hit is
+--   scored by his PracticeRange.registerHit (rings by the distance from the bullseye across the target's face,
+--   combos, 30 s rounds, his score board, the target's spin) and PracticeHit tells the thrower (points, callout,
+--   combo, where), for the screen pop.
 -- playerAdded/playerRemoving never yield. start() runs the session watcher.
 
 -- Services
@@ -28,12 +36,15 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
+local HubFX = require(Shared.SquishyLobby.HubFX)
 local Log = require(Shared.Util.Log)
+local PracticeRange = require(Shared.SquishyLobby.PracticeRange)
 local PracticeTargets = require(Shared.Practice.PracticeTargets)
 local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
 local CharacterService = require(script.Parent.CharacterService)
+local NetService = require(script.Parent.NetService)
 local StateService = require(script.Parent.StateService)
 local WorldService = require(script.Parent.WorldService)
 
@@ -47,14 +58,31 @@ type Session = {
 	hits: number,
 }
 
+-- One of Diego's arena targets: its def, its model, the animated model that carries it (a Pivot part, HubFX's), the
+-- ball centre and the face normal in that model's rest pivot frame, and the ball's radius.
+type ArenaTarget = {
+	def: TargetDef,
+	model: Model,
+	anchor: Model?,
+	rel: CFrame,
+	normal: Vector3,
+	radius: number,
+	dummy: boolean,
+}
+
 -- Constants
 
 local ZONE_TAG = WorldLayout.PracticeRange.zoneTag -- "SD_PracticeZone"
-local RANGE_MODEL = WorldLayout.PracticeRange.model -- "PracticeRange"
+local ARENA_MODEL = "PracticeArena" -- Diego's arena, a child of the lobby
 local ATTR_MATCH_ID = "SD_MatchId"
--- Solid parts of the generated range that practice projectiles splat on (LobbyBuilder names). The targets are
--- cosmetic (their hitbox is the capsule) and the throw box is a volume, so neither is in the list.
-local RANGE_GEOMETRY = { "LaneFloor", "FiringLine", "Backstop", "Hedge" }
+-- His arena's solid parts that practice projectiles splat on (his rbxmx folder names). His targets and dummies are hit
+-- by their balls and the throw box is a volume, so none of those is in the list.
+local ARENA_GEOMETRY = {
+	"Floor", "Grout", "BackWall", "Counters", "CounterTops", "Barrier", "WheelPost", "SlideRails", "DummyPads",
+	"Rails", "RailPosts", "ScoreBoard", "ScoreFrame", "WallTargets", "Crenels",
+}
+local THROW_LINE_Z = 14 -- the middle of his counter line (Z 13..15): a target's distance is measured from it
+local REMOTE_HIT = "PracticeHit"
 local WATCH_SECONDS = 0.5 -- how often sessions are checked for "left the zone" / "match started"
 local TARGET_DOWN_SECONDS = Config.Combat.Practice.targetDownSeconds
 local QUEST_REPEAT_SECONDS = Config.Economy.Quests.practiceTargetRepeatSeconds
@@ -78,6 +106,9 @@ local lastQuestHit: { [Player]: { [string]: number } } = {}
 local rangeParams: RaycastParams? = nil
 local rangeOverlap: OverlapParams? = nil
 local watching = false
+local lobbyRef: Instance? = nil
+local arenaList: { TargetDef } = {}
+local arenaById: { [string]: ArenaTarget } = {}
 
 local function accuracy(hits: number, throws: number): number
 	if throws <= 0 then
@@ -106,15 +137,15 @@ local function resetSession(player: Player)
 	PracticeService.StatsChanged:fire(player, snapshot(nil))
 end
 
--- Include lists of the range's solid parts, built once from the generated lobby (nil when it is not built).
+-- Include lists of the arena's solid parts, built once from the lobby (nil when it has no arena).
 local function buildRangeParams(): (RaycastParams?, OverlapParams?)
 	local lobby = WorldService.lobby()
-	local range = if lobby then lobby:FindFirstChild(RANGE_MODEL, true) else nil
+	local range = if lobby then lobby:FindFirstChild(ARENA_MODEL) else nil
 	if range == nil then
 		return nil, nil
 	end
 	local include: { Instance } = {}
-	for _, name in RANGE_GEOMETRY do
+	for _, name in ARENA_GEOMETRY do
 		local child = range:FindFirstChild(name)
 		if child then
 			table.insert(include, child)
@@ -132,6 +163,83 @@ local function buildRangeParams(): (RaycastParams?, OverlapParams?)
 	overlap.FilterDescendantsInstances = include
 	overlap.CollisionGroup = "Default"
 	return params, overlap
+end
+
+-- The nearest model at or above `m` that HubFX animates (it has a Pivot part; PracticeRange's animatedAncestor).
+local function animatedAncestor(lobby: Instance, m: Instance?): Model?
+	while m and m ~= lobby do
+		if m:IsA("Model") and m:FindFirstChild("Pivot") then
+			return m
+		end
+		m = m.Parent
+	end
+	return nil
+end
+
+-- Diego's targets and dummies (see the header), in name order.
+local function buildArenaTargets(lobby: Instance)
+	table.clear(arenaList)
+	table.clear(arenaById)
+	local arena = lobby:FindFirstChild(ARENA_MODEL)
+	if arena == nil then
+		return
+	end
+	local models: { Model } = {}
+	for _, m in arena:GetDescendants() do
+		if m:IsA("Model") and (string.match(m.Name, "^Target_") or string.match(m.Name, "^Dummy_")) then
+			table.insert(models, m)
+		end
+	end
+	table.sort(models, function(a: Model, b: Model): boolean
+		return a.Name < b.Name
+	end)
+	for _, m in models do
+		local dummy = string.match(m.Name, "^Dummy_") ~= nil
+		local box, size = m:GetBoundingBox()
+		local markers = m:FindFirstChild("Markers")
+		local bull = markers and markers:FindFirstChild("Bull")
+		local face = bull or m:FindFirstChild("Bullseye")
+		local center = if not dummy and face and face:IsA("BasePart") then face.Position else box.Position
+		-- a target faces the throwers (+Z), so its width is its face; the wheel's are scaled down to 0.72 (his scoreFor)
+		local radius = if dummy then math.max(size.X, size.Z) / 2 else size.X / 2
+		local anchor = animatedAncestor(lobby, m)
+		local rest = if anchor then (anchor :: any).Pivot.CFrame else CFrame.identity
+		local def: TargetDef = table.freeze({
+			id = m.Name,
+			distance = math.floor(THROW_LINE_Z - center.Z + 0.5),
+			position = center,
+			moving = anchor ~= nil,
+			railLength = 0,
+			period = 0,
+		})
+		table.insert(arenaList, def)
+		arenaById[m.Name] = {
+			def = def,
+			model = m,
+			anchor = anchor,
+			rel = rest:ToObjectSpace(CFrame.new(center)),
+			normal = rest:VectorToObjectSpace(Vector3.zAxis),
+			radius = radius,
+			dummy = dummy,
+		}
+	end
+end
+
+-- An arena target's ball centre and face normal at server time t (its rest values when nothing animates it).
+local function arenaPose(at: ArenaTarget, t: number): (Vector3, Vector3)
+	local lobby = lobbyRef
+	if at.anchor == nil or lobby == nil then
+		return at.def.position, Vector3.zAxis
+	end
+	local pose = HubFX.cframeAt(lobby, at.anchor :: Model, t - HubFX.EPOCH)
+	return (pose * at.rel).Position, pose:VectorToWorldSpace(at.normal)
+end
+
+-- Where a hit lands on the target's face: the contact point moved onto the face's plane (Diego's rings measure the
+-- distance from the bullseye across the face; a ball's contact point is a radius in front of it). Pure.
+function PracticeService.onFace(hit: Vector3, center: Vector3, normal: Vector3): Vector3
+	local n = if normal.Magnitude > 1e-6 then normal.Unit else Vector3.zAxis
+	return hit - n * (hit - center):Dot(n)
 end
 
 local function watchSessions()
@@ -210,9 +318,9 @@ end
 
 -- Public: targets
 
--- Every practice target (frozen definitions from PracticeTargets).
+-- Every practice target: Diego's arena targets once start() has read them, else the old range's (PracticeTargets).
 function PracticeService.targets(): { TargetDef }
-	return PracticeTargets.list()
+	return if #arenaList > 0 then arenaList else PracticeTargets.list()
 end
 
 -- True while the target is "down" after a hit (it cannot be hit again until then).
@@ -221,9 +329,16 @@ function PracticeService.isTargetDown(targetId: string, t: number): boolean
 	return untilTime ~= nil and t < untilTime
 end
 
--- The target's hitbox at server time t: capsule axis (bottom, top) and radius (§5.5).
+-- The target's hitbox at server time t: capsule axis (bottom, top) and radius (§5.5); an arena target's is its ball
+-- (a capsule 0.02 tall).
 function PracticeService.capsuleAt(target: TargetDef, t: number): (Vector3, Vector3, number)
-	return PracticeTargets.capsuleAt(target, t)
+	local at = arenaById[target.id]
+	if at == nil then
+		return PracticeTargets.capsuleAt(target, t)
+	end
+	local center = arenaPose(at, t)
+	local half = Vector3.new(0, 0.01, 0)
+	return center - half, center + half, at.radius
 end
 
 -- Public: stats
@@ -245,15 +360,35 @@ end
 -- A server-confirmed hit of `targetId` at server time `t` by a projectile of `player`. Returns false (and changes
 -- nothing) for an unknown or down target. Marks the target down, counts the hit in the thrower's session (if it is
 -- still open) and fires TargetHit. `fromLane` = a Dragon Rush rehearsal lane (§5.11): the target reacts, but the hit
--- is not a throw, so it counts neither in the session stats nor for the quest (reading).
-function PracticeService.registerHit(player: Player, targetId: string, t: number, fromLane: boolean?): boolean
-	if PracticeTargets.get(targetId) == nil or PracticeService.isTargetDown(targetId, t) then
+-- is not a throw, so it counts neither in the session stats nor for the quest (reading). An arena target's throw hit
+-- at `position` (the projectile's contact point) is also scored (see the header).
+function PracticeService.registerHit(
+	player: Player,
+	targetId: string,
+	t: number,
+	fromLane: boolean?,
+	position: Vector3?
+): boolean
+	local at = arenaById[targetId]
+	if (at == nil and PracticeTargets.get(targetId) == nil) or PracticeService.isTargetDown(targetId, t) then
 		return false
 	end
 	downUntil[targetId] = t + TARGET_DOWN_SECONDS
 	if fromLane == true then
 		PracticeService.TargetHit:fire(player, targetId, t, false)
 		return true
+	end
+	local lobby = lobbyRef
+	if at and lobby and position then
+		local center, normal = arenaPose(at, t)
+		local onFace = if at.dummy then position else PracticeService.onFace(position, center, normal)
+		local part = at.model:FindFirstChildWhichIsA("BasePart", true)
+		if part then
+			local points, callout, combo = PracticeRange.registerHit(lobby, player, part, onFace)
+			if points > 0 then
+				NetService.fire(REMOTE_HIT, player, { points = points, callout = callout, combo = combo, position = position })
+			end
+		end
 	end
 	local session = sessions[player]
 	if session then
@@ -290,8 +425,13 @@ end
 
 function PracticeService.start()
 	rangeParams, rangeOverlap = buildRangeParams()
-	if rangeParams == nil and WorldService.lobby() ~= nil then
-		log:warn(`no {RANGE_MODEL} geometry found in the lobby; practice projectiles only splat on the floor`)
+	local lobby = WorldService.lobby()
+	if rangeParams == nil and lobby ~= nil then
+		log:warn(`no {ARENA_MODEL} geometry found in the lobby; practice projectiles only splat on the floor`)
+	end
+	if lobby then
+		lobbyRef = lobby
+		buildArenaTargets(lobby)
 	end
 	if watching then
 		return
@@ -320,6 +460,9 @@ function PracticeService.destroy()
 	table.clear(sessions)
 	table.clear(lastQuestHit)
 	table.clear(downUntil)
+	table.clear(arenaList)
+	table.clear(arenaById)
+	lobbyRef = nil
 	PracticeService.StatsChanged:disconnectAll()
 	PracticeService.TargetHit:disconnectAll()
 end

@@ -163,26 +163,26 @@ return function(t: Context)
 
 	-- Practice context ---------------------------------------------------------------------------------------------
 
-	t.test("inThrowBox is the SD_PracticeZone box", function()
-		expect.truthy(PracticeTargets.inThrowBox(range.approach + Vector3.new(0, 3, 0)))
-		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(24, 3, 5))) -- a corner spot behind the firing line
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(30, 3, 0))) -- on the runway, past the firing line
-		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(21, 3, 9))) -- beside the throw box (the plaza)
+	t.test("inThrowBox is the SD_PracticeZone box: behind Diego's arena counters", function()
+		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(1400, 5, 27))) -- the return portal's arrival spot
+		expect.truthy(PracticeTargets.inThrowBox(Vector3.new(1366, 5, 16))) -- a corner behind the counter line
+		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(1400, 5, 10))) -- past the counters, among the targets
+		expect.falsy(PracticeTargets.inThrowBox(range.approach + Vector3.new(0, 3, 0))) -- the hub portal's arrival
 		expect.falsy(PracticeTargets.inThrowBox(Vector3.new(0, 3, 0))) -- the spawn
 	end)
 
-	t.test("inCone accepts aims within 75° of +X only (the design range throws east, D3)", function()
+	t.test("inCone accepts aims within 75° of -Z only (toward Diego's arena targets)", function()
 		local cone = Config.Combat.Throw.practiceConeDeg
-		expect.truthy(PracticeTargets.FORWARD == Vector3.new(1, 0, 0))
-		expect.truthy(PracticeTargets.inCone(Vector3.new(1, 0, 0)))
-		expect.truthy(PracticeTargets.inCone(Vector3.new(1, 0.9, 0.2).Unit))
-		expect.falsy(PracticeTargets.inCone(Vector3.new(-1, 0, 0)))
-		expect.falsy(PracticeTargets.inCone(Vector3.new(0, 0, -1)))
+		expect.truthy(PracticeTargets.FORWARD == Vector3.new(0, 0, -1))
+		expect.truthy(PracticeTargets.inCone(Vector3.new(0, 0, -1)))
+		expect.truthy(PracticeTargets.inCone(Vector3.new(0.2, 0.9, -1).Unit))
+		expect.falsy(PracticeTargets.inCone(Vector3.new(0, 0, 1)))
+		expect.falsy(PracticeTargets.inCone(Vector3.new(1, 0, 0)))
 		expect.falsy(PracticeTargets.inCone(Vector3.new(0, 1, 0)))
 		local inside = math.rad(cone - 1)
 		local outside = math.rad(cone + 1)
-		expect.truthy(PracticeTargets.inCone(Vector3.new(math.cos(inside), 0, math.sin(inside))))
-		expect.falsy(PracticeTargets.inCone(Vector3.new(math.cos(outside), 0, math.sin(outside))))
+		expect.truthy(PracticeTargets.inCone(Vector3.new(math.sin(inside), 0, -math.cos(inside))))
+		expect.falsy(PracticeTargets.inCone(Vector3.new(math.sin(outside), 0, -math.cos(outside))))
 	end)
 
 	t.test("the projectile bounds are WorldLayout.PracticeRange.bounds (data, not a hard-coded box)", function()
@@ -191,12 +191,15 @@ return function(t: Context)
 		expect.truthy(table.isfrozen(PracticeTargets.BOUNDS))
 	end)
 
-	t.test("every target and the throw box lie inside the practice bounds", function()
-		for _, def in PracticeTargets.list() do
-			for _, time in { 0, 2.355, 7.065 } do
-				local root = PracticeTargets.rootAt(def, time)
-				expect.truthy(PracticeTargets.inBounds(root))
-			end
+	t.test("Diego's arena targets and the throw box lie inside the practice bounds", function()
+		-- his rbxmx: the front pop-up row, the far sliders, the wheel's top, the dummies (PracticeService reads them)
+		for _, point in {
+			Vector3.new(1382, 7.6, -7.5),
+			Vector3.new(1412, 7.9, -21.5),
+			Vector3.new(1400, 15.2, -36),
+			Vector3.new(1385, 5, -30),
+		} do
+			expect.truthy(PracticeTargets.inBounds(point))
 		end
 		expect.truthy(PracticeTargets.inBounds(PracticeTargets.THROW_BOX.position))
 		expect.falsy(PracticeTargets.inBounds(Vector3.new(0, 3, 0))) -- the lobby centre

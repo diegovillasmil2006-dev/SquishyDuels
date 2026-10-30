@@ -57,7 +57,7 @@ return function(t: Context)
 		expect.equal(spawn and spawn.zoneId, "lobby")
 		local mat = WorldBinder.pickZone(candidates, Vector3.new(-29.7, 3, 4.8)) -- a BunCat seat (Neon Sugar lobby)
 		expect.equal(mat and mat.zoneId, "squeeze")
-		local range = WorldBinder.pickZone(candidates, Vector3.new(37, 3, 0)) -- Diego's runway
+		local range = WorldBinder.pickZone(candidates, Vector3.new(1400, 5, 24)) -- Diego's arena, behind its counters
 		expect.equal(range and range.zoneId, "practice")
 		local plot = WorldBinder.pickZone(candidates, Vector3.new(0, 3, -122)) -- plot 1, north of the hub
 		expect.equal(plot and plot.zoneId, "lobby")

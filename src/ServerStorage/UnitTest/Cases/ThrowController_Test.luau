@@ -330,19 +330,20 @@ return function(t: Context)
 	end)
 
 	t.test("clampToCone turns the heading into the practice cone and keeps the pitch", function()
-		-- The range forward (WorldLayout's throwDirection: +X since the design range, phase 3 D3).
+		-- The range forward (WorldLayout's arenaThrowDirection: -Z toward Diego's arena targets, FULL FINAL lobby).
 		local PracticeTargets = t.requireShared("Practice/PracticeTargets")
 		local forward = PracticeTargets.FORWARD
+		local side = forward:Cross(Vector3.yAxis) -- 90° off forward, flat
 		local cone = combat.Throw.practiceConeDeg - 1
 		local pitch = math.rad(10)
-		local sideways = Vector3.new(0, math.sin(pitch), -math.cos(pitch)) -- 90° off forward
+		local sideways = side * math.cos(pitch) + Vector3.new(0, math.sin(pitch), 0) -- 90° off forward
 		local clamped = ThrowController.clampToCone(sideways, forward, cone)
 		expect.near(flatAngleDeg(clamped, forward), cone, 1e-3)
 		expect.near(ProjectileMath.pitchDeg(clamped), 10, 1e-3)
 		expect.near(clamped.Magnitude, 1, 1e-6)
 		-- It turns toward the side the aim was on.
-		expect.truthy(clamped.Z < 0)
-		local inside = Vector3.new(forward.X, 0.2, 0.3).Unit
+		expect.truthy(clamped:Dot(side) > 0)
+		local inside = (forward + Vector3.new(0, 0.2, 0) + side * 0.3).Unit
 		expectVectorNear(ThrowController.clampToCone(inside, forward, cone), inside)
 		-- A clamped aim passes the server's practice cone check.
 		expect.truthy(PracticeTargets.inCone(clamped))

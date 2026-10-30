@@ -306,7 +306,8 @@ local CAPSULE_CENTRE_Y = (HITBOX.bottomOffset + HITBOX.topOffset) / 2
 -- The capsule's lowest point is the floor: HRP height above the floor = radius - bottomOffset (3.0 studs).
 local HRP_ABOVE_FLOOR = HITBOX.radius - HITBOX.bottomOffset
 local RANGE = WorldLayout.PracticeRange
-local RANGE_FORWARD = Vector3.new(RANGE.throwDirection.X, 0, RANGE.throwDirection.Z).Unit
+-- FULL FINAL lobby: the range forward is Diego's arena's (PracticeTargets.FORWARD, the server's cone)
+local RANGE_FORWARD = Vector3.new(RANGE.arenaThrowDirection.X, 0, RANGE.arenaThrowDirection.Z).Unit
 -- reading (not in DESIGN, provisional): the client stays 1° inside the server's practice cone (rounding margin).
 local CONE_MARGIN_DEG = 1
 -- reading (not in DESIGN, provisional): the predicted ultCharge pose blends in over this long.

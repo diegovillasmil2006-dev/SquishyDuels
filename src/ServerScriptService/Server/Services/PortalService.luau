@@ -30,6 +30,7 @@ local Shared = ReplicatedStorage.Shared
 local HubFX = require(Shared.SquishyLobby.HubFX)
 local Log = require(Shared.Util.Log)
 local Portal = require(Shared.SquishyLobby.Portal)
+local PracticeRange = require(Shared.SquishyLobby.PracticeRange)
 
 local Services = script.Parent
 local HighwayAccessService = require(Services.HighwayAccessService)
@@ -40,6 +41,7 @@ local NetService = require(Services.NetService)
 local REMOTE = "PortalTrip"
 local LOBBY_NAME = "SquishyDuelsLobby"
 local HIGHWAY_LINK = "HighwayPortal"
+local PRACTICE_LINK = "Portal"
 local RETURN_LINK = "HighwayReturn"
 local NOTIFY_KIND = "warn"
 -- zip PracticePortal.server.luau:126-135: the height check's box round the arena centre and its drop.
@@ -132,6 +134,9 @@ local function trip(name: string, link: any, hit: BasePart)
 			NetService.fire(REMOTE, player, "cancel", name)
 		elseif player.Parent and char.Parent then
 			move(char, cf)
+			if name == PRACTICE_LINK then
+				PracticeRange.resetScore(player) -- zip :66: a fresh score on every trip to the arena
+			end
 			NetService.fire(REMOTE, player, "arrive", name)
 		end
 	end

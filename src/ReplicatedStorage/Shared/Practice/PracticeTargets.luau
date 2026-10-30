@@ -11,8 +11,8 @@
 -- * Hitbox = the standard player capsule (Config.Combat.Hitbox, §5.5) on a virtual root ROOT_HEIGHT above the floor
 --   point, so it spans floor+0 .. floor+6.1 like a standing R15 player.
 -- * Practice context for ThrowRules (§5.6 #3, #5, #6): inThrowBox (the SD_PracticeZone box) and inCone (flat aim
---   within Config.Combat.Throw.practiceConeDeg of the range forward, WorldLayout's throwDirection: +X, the island's
---   range runs east, lobby bases spec §3 and D3).
+--   within Config.Combat.Throw.practiceConeDeg of the range forward, WorldLayout's arenaThrowDirection: -Z, toward
+--   Diego's arena targets, FULL FINAL lobby).
 
 local Config = require(script.Parent.Parent.Config)
 local WorldLayout = require(script.Parent.Parent.World.WorldLayout)
@@ -50,7 +50,7 @@ local PracticeTargets = {}
 
 PracticeTargets.ROOT_HEIGHT = ROOT_HEIGHT
 PracticeTargets.FLOOR_Y = RANGE.laneFloorTopY -- the lane floor top (projectile shadow discs, §9.7)
-PracticeTargets.FORWARD = RANGE.throwDirection -- range forward: throws go toward +X (D3)
+PracticeTargets.FORWARD = RANGE.arenaThrowDirection -- range forward: toward Diego's arena targets (-Z, FULL FINAL)
 PracticeTargets.THROW_BOX = table.freeze({ position = RANGE.throwBox.position, size = RANGE.throwBox.size }) :: Box
 PracticeTargets.BOUNDS = BOUNDS
 

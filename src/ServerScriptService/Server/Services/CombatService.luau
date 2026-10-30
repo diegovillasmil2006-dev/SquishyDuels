@@ -1261,7 +1261,7 @@ local function applyTargetHit(candidate: Candidate)
 	if
 		player == nil
 		or targetId == nil
-		or not PracticeService.registerHit(player, targetId, candidate.time, fromLane)
+		or not PracticeService.registerHit(player, targetId, candidate.time, fromLane, candidate.position)
 	then
 		rewind(candidate)
 		return

@@ -648,6 +648,20 @@ local Palette = {
 	PenBoardCoinShine = Color3.fromHex("#FFF1A8"),
 	PenShelfBackOn = Color3.fromHex("#2B7FA8"),
 	PenShelfBackOff = Color3.fromHex("#7A1F6E"),
+	-- FULL FINAL lobby step 4: Diego's practice score box, TIME! card and hit pop (reference-preview "Hub Props.html"
+	-- CSS .score / .result / .pop).
+	PracticeBoxBg = Color3.fromHex("#1D1636"),
+	PracticeBoxBorder = Color3.fromHex("#3FD8FF"),
+	PracticeBoxShadow = Color3.fromHex("#1B1030"),
+	PracticeBoxLabel = Color3.fromHex("#B9ADF0"),
+	PracticeBoxInk = Color3.fromHex("#FFFFFF"),
+	PracticeBoxTime = Color3.fromHex("#FFE14D"),
+	PracticeBoxCombo = Color3.fromHex("#FF5CC8"),
+	PracticeBoxTrack = Color3.fromHex("#3A3066"),
+	PracticeBoxFillFrom = Color3.fromHex("#2FE04B"),
+	PracticeBoxFillTo = Color3.fromHex("#FFE14D"),
+	PracticeCardBorder = Color3.fromHex("#FFE14D"),
+	PracticeTextStroke = Color3.fromHex("#2A1748"),
 	-- Pens3 phase 12 (the highway; World only, SDTools HighwayBuilder; WorldLayout.Highway.biomes picks the biome
 	-- tints). The v6 kit's materials (`K:n` = kit.json line n) and the per-biome tints of layout.json (`L:n`).
 	HighwayFrosting = Color3.fromHex("#FFF6EC"), -- K:7

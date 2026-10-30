@@ -682,6 +682,12 @@ local SqueezeZone = {
 -- Neon Sugar lobby (2026-10-23): Diego's TargetRange (his lobby_manifest, Hub.TargetRange): a runway X 25..49, Z -5..5,
 -- top 0.9, thrown along +X from its west end (the firing line, X 25) at his 4 targets standing still (owner: "Keep
 -- Diego's") at X 31 / 36 / 41 / 46, into his cushion wall at X 49..51.
+-- FULL FINAL lobby (owner 2026-10-30, "Yes, start step 4"): practice moved to Diego's PracticeArena (his rbxmx, the sky
+-- island at X 1400 behind the hub's TARGET PRACTICE portal): players throw from behind his counter line (Z 13..15)
+-- toward his targets at -Z (Server PracticeService takes the targets from his models; the old 4-target data below stays
+-- only for the old range's board and tests). The approach is the hub portal's ArrivalSpawn floor point.
+local ARENA_THROW_DIRECTION = NORTH
+local ARENA_APPROACH = Vector3.new(28, 0, 0)
 local FIRING_LINE_X = 25
 local TARGET_DISTANCES = { 6, 11, 16, 21 }
 local THROW_DIRECTION = EAST
@@ -706,7 +712,7 @@ local PracticeRange = {
 	targetTag = "SD_PracticeTarget",
 	-- range_floor (design: lobby.js:402); reading: X 46..91, Z -10..10, from the garden (Y -0.9) up to the top 0.6.
 	laneFloor = { position = Vector3.new(68.5, -0.15, 0), size = Vector3.new(45, 1.5, 20), color = "LobbyCourtMint" } :: Box,
-	laneFloorTopY = 0.9, -- Diego's runway top
+	laneFloorTopY = 2, -- FULL FINAL: Diego's arena Floor top (his rbxmx, PracticeArena.Floor Y 0..2)
 	-- range_firing_line_paint B(32, 0.08, 1.2) (design: lobby.js:403; reading: across the 20-wide lane).
 	firingLine = {
 		position = Vector3.new(FIRING_LINE_X, 0.64, 0),
@@ -715,8 +721,11 @@ local PracticeRange = {
 	} :: Box,
 	firingLineX = FIRING_LINE_X,
 	-- Reading (D3): the throw box runs 8 deep behind the firing line across the lane, so the approach lies inside it.
-	throwBox = span("ThrowBox", 17, 25, 0, 12, -6, 6), -- SD_PracticeZone, invisible (Neon Sugar: before the runway)
-	throwDirection = THROW_DIRECTION,
+	-- FULL FINAL: the arena's whole width (X 1364..1436) behind the counters (Z 15.5) to past the return portal's
+	-- arrival spot (Z 33), from the floor up; SD_PracticeZone, invisible, in PracticeArena.AddedByIntegration.
+	throwBox = span("ThrowBox", 1364, 1436, 2, 14, 15.5, 33),
+	throwDirection = THROW_DIRECTION, -- the old range's (its backstop tools: JellySkin, AutoDriver)
+	arenaThrowDirection = ARENA_THROW_DIRECTION, -- the range forward (PracticeTargets.FORWARD): toward his targets
 	distances = TARGET_DISTANCES,
 	targets = targets, -- anchored; the target hitbox is the player capsule (§5.11)
 	-- Reading (D3): each target is dressed as the design's bullseye board (lobby.js:406-409); its centre stands this
@@ -734,10 +743,12 @@ local PracticeRange = {
 	} :: Box,
 	-- Practice projectiles expire outside this box (the throw box's west edge to past the cushion wall, the ropes
 	-- either side, the arena zones' height Y -15..40).
-	bounds = span("Bounds", 17, 54, -15, 40, -12, 12),
+	-- FULL FINAL: Diego's arena from its rock to its force-field walls' top and past them a little (X 1360..1440,
+	-- Z -50..36).
+	bounds = span("Bounds", 1360, 1440, -20, 45, -50, 36),
 	-- range_board (design: lobby.js:415): reading, its front (local +Z, the plates' side) toward the throw spot.
 	boardFrame = CFrame.lookAt(RANGE_BOARD, 2 * RANGE_BOARD - THROW_SPOT),
-	approach = THROW_SPOT,
+	approach = ARENA_APPROACH,
 }
 
 -- Private: stations list (§6.3, §17.6) -----------------------------------------------------------------------------
@@ -1274,7 +1285,8 @@ local AudioZones: { AudioZone } = {
 	-- Neon Sugar lobby (2026-10-23): Diego's island to its shallow water (radius 206), his BunCat, his TargetRange.
 	audioZone("lobby", Vector3.new(0, 18, 0), Vector3.new(420, 40, 420), 1, "music.lobby", 1.0, "amb.lobby"),
 	audioZone("squeeze", Vector3.new(-38, 15, 0), Vector3.new(32, 30, 32), 2, "music.lobby", 0.8, "amb.lobby"),
-	audioZone("practice", Vector3.new(36, 15, 0), Vector3.new(40, 30, 26), 2, "music.lobby", 0.6, "amb.lobby"),
+	-- FULL FINAL lobby: the practice zone is Diego's arena (X 1360..1440, Z -50..50), round its throw box.
+	audioZone("practice", Vector3.new(1400, 15, 0), Vector3.new(80, 40, 100), 2, "music.lobby", 0.6, "amb.lobby"),
 }
 
 -- Activities and their walk points (routes, waypoints): the stands' approaches; the squeeze zone counts each mat.

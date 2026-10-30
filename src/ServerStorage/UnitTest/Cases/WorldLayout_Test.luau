@@ -102,7 +102,7 @@ local SPAWN_ROUTES: { [string]: number } = {
 	collection = 37.5,
 	shop = 31.0,
 	duel = 21.5,
-	practice = 21.0,
+	practice = 28.0, -- FULL FINAL: the TARGET PRACTICE portal's arrival spot
 	giftBox = 29.9,
 }
 local ROUTE_TOLERANCE = 0.1
@@ -482,8 +482,8 @@ return function(t: Context)
 					error(`{id}: approach {show(entry[1].approach)}, expected {show(entry[2])}`)
 				end
 			end
-			-- The practice approach is the throw spot, inside the throw box before Diego's runway.
-			expect.truthy(flatNear(WorldLayout.PracticeRange.approach, Vector3.new(21, 0, 0), 1e-6))
+			-- FULL FINAL: the practice approach is the hub's TARGET PRACTICE portal (its ArrivalSpawn), the way to the arena.
+			expect.truthy(flatNear(WorldLayout.PracticeRange.approach, Vector3.new(28, 0, 0), 1e-6))
 			expect.truthy(flatNear(WorldLayout.waypoint("spawn"), Vector3.zero, 1e-6))
 		end
 	)
@@ -637,7 +637,7 @@ return function(t: Context)
 	-- Practice range, collection, return points, audio zones -----------------------------------------------------
 
 	t.test(
-		"practice range: Diego's runway east (Z 0), 4 still targets 6/11/16/21 past the firing line at X 25, throws +X",
+		"practice range: the old runway's 4 targets 6/11/16/21 past X 25 (+X), and Diego's arena throw box (-Z)",
 		function()
 			local range = WorldLayout.PracticeRange
 			local targets = range.targets
@@ -657,23 +657,20 @@ return function(t: Context)
 				expect.equal(target.railLength, 0)
 				expect.equal(target.period, 0)
 			end
-			-- The throw box: X 17..25 before the runway, Z -6..6, Y 0..12; the approach (throw spot) inside it.
+			-- FULL FINAL: the throw box is behind Diego's arena counters (X 1364..1436, Z 15.5..33, from his floor top 2),
+			-- throws go toward his targets (-Z); the old range's data above stays for its backstop tools.
 			local low, high =
 				range.throwBox.position - range.throwBox.size / 2, range.throwBox.position + range.throwBox.size / 2
-			expect.truthy(vectorNear(low, Vector3.new(17, 0, -6)))
-			expect.truthy(vectorNear(high, Vector3.new(25, 12, 6)))
-			expect.truthy(WorldLayout.contains(range.throwBox, range.approach + Vector3.new(0, 3, 0)))
-			expect.equal(range.laneFloorTopY, 0.9) -- Diego's runway top
+			expect.truthy(vectorNear(low, Vector3.new(1364, 2, 15.5)))
+			expect.truthy(vectorNear(high, Vector3.new(1436, 14, 33)))
+			expect.truthy(vectorNear(range.arenaThrowDirection, Vector3.new(0, 0, -1)))
+			expect.equal(range.laneFloorTopY, 2) -- his arena floor top
 			-- The backstop is Diego's cushion wall at the runway's east end: X 49..51, Y 0.9..5.7, Z -4.8..4.8.
 			local backLow, backHigh = WorldLayout.boxBounds(range.backstop)
 			expect.truthy(vectorNear(backLow, Vector3.new(49, 0.9, -4.8), 1e-3))
 			expect.truthy(vectorNear(backHigh, Vector3.new(51, 5.7, 4.8), 1e-3))
 			expect.truthy(backLow.X > range.firingLineX + 21) -- past the farthest target
-			-- Every target root and the throw box lie inside the projectile bounds.
-			for _, target in targets do
-				local root = target.position + Vector3.new(0, range.laneFloorTopY + 3, 0)
-				expect.truthy(WorldLayout.contains(range.bounds, root))
-			end
+			-- The throw box lies inside the projectile bounds (his targets: PracticeTargets_Test).
 			expect.truthy(WorldLayout.contains(range.bounds, range.throwBox.position))
 		end
 	)
@@ -740,15 +737,15 @@ return function(t: Context)
 			-- The squeeze zone is around Diego's BunCat and its seats; the practice zone his runway with the throw box.
 			expect.truthy(vectorNear(byId.squeeze.position, Vector3.new(-38, 15, 0), 1e-4))
 			expect.truthy(vectorNear(byId.squeeze.size, Vector3.new(32, 30, 32)))
-			expect.truthy(vectorNear(byId.practice.position, Vector3.new(36, 15, 0)))
-			expect.truthy(vectorNear(byId.practice.size, Vector3.new(40, 30, 26)))
+			expect.truthy(vectorNear(byId.practice.position, Vector3.new(1400, 15, 0))) -- FULL FINAL: Diego's arena
+			expect.truthy(vectorNear(byId.practice.size, Vector3.new(80, 40, 100)))
 			expect.equal(byId.lobby.priority, 1)
 			expect.equal(byId.squeeze.musicMul, 0.8)
 			expect.equal(byId.practice.musicMul, 0.6)
 			for _, mat in WorldLayout.SqueezeZone.mats do
 				expect.equal(WorldLayout.audioZoneAt(mat.position + Vector3.new(0, 3, 0)).zoneId, "squeeze")
 			end
-			expect.equal(WorldLayout.audioZoneAt(Vector3.new(37, 3, 0)).zoneId, "practice") -- the runway
+			expect.equal(WorldLayout.audioZoneAt(Vector3.new(37, 3, 0)).zoneId, "lobby") -- the hub's TARGET PRACTICE portal
 			expect.equal(WorldLayout.audioZoneAt(WorldLayout.PracticeRange.throwBox.position).zoneId, "practice")
 			expect.equal(WorldLayout.audioZoneAt(Vector3.new(0, 3, 0)).zoneId, "lobby")
 			for index = 1, #WorldLayout.Bases.frames do -- every pen hears the lobby, to its back corners

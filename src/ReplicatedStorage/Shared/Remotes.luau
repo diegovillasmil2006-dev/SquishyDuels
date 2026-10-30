@@ -306,6 +306,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- pull-in into the link's portal), "arrive" (the reveal at the destination), "leave" (a quick flash out) or "cancel";
 	-- link = a key of Shared/SquishyLobby/Portal.Links.
 	PortalTrip = s2c("owner", { arg("kind", "string"), arg("link", "string") }),
+	-- FULL FINAL lobby step 4 (PracticeService): a scored practice hit on Diego's arena target, to the thrower only:
+	-- { points, callout, combo, position } (his PracticeRange.registerHit's answer and the contact point), for the pop.
+	PracticeHit = s2c("owner", { arg("hit", "table") }),
 } :: { [string]: RemoteSpec })
 
 Remotes.SPEC = SPEC

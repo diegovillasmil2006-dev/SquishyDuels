@@ -417,6 +417,11 @@ local Strings = {
 		-- zone (stats.* rows, §5.11) and the waypoint the queue's Practice button shows (§5.4).
 		panelTitle = "Practice",
 		waypoint = "Practice Range",
+		-- FULL FINAL lobby step 4: Diego's score box, TIME! card and hit pop (reference-preview "Hub Props.html"
+		-- :93-98, :344-397, :448). "Click to play again" reads "Throw" here: you throw to play.
+		box = { score = "SCORE", time = "TIME", combo = "COMBO x{n}", best = "BEST {n}" },
+		card = { title = "TIME!", newBest = "New best! Throw to play again", best = "Best {n} · throw to play again" },
+		pop = { points = "+{points}", combo = "+{points} (x{combo})" },
 	},
 
 	-- Queue pill, queue board and messages (§5.4, §7.7, §11.6).

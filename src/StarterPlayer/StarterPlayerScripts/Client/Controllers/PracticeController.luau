@@ -66,6 +66,10 @@
 -- while charging (ThrowController's AimState) the reticle's fill grows from its top to c in the held toy's colour at
 -- Config.UI.Reticle.chargeFillTransparency and the ring pulses at full (DuelFormat.chargeLook, as the duel reticle;
 -- none under ReducedMotion). The catch is duel-only: the range has no catch prompt.
+-- FULL FINAL lobby (owner 2026-10-30, "Yes, add them"): the range is Diego's PracticeArena, its targets his models
+-- (HubFX moves them, his PracticeRange scores them on the server). The panel is now his score box (UI/PracticeScoreBox:
+-- score, time, combo, best from his Practice* player attributes; same zone and placement as before); his TIME! card
+-- shows when a round runs out, his pop at each scored hit (PracticeHit). Best = this session's best round.
 
 -- Services
 
@@ -81,8 +85,10 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
+local HubFX = require(Shared.SquishyLobby.HubFX)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
+local PracticeScore = require(Shared.Config.PracticeScore)
 local PracticeTargets = require(Shared.Practice.PracticeTargets)
 local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
@@ -92,9 +98,9 @@ local WorldLayout = require(Shared.World.WorldLayout)
 local Client = script.Parent.Parent
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
-local Chip = require(Client.UI.Components.Chip)
 local DuelFormat = require(Client.UI.DuelFormat)
 local HudFormat = require(Client.UI.HudFormat)
+local PracticeScoreBox = require(Client.UI.PracticeScoreBox)
 local Theme = require(Client.UI.Theme)
 local ControlsController = require(script.Parent.ControlsController)
 local NetController = require(script.Parent.NetController)
@@ -209,7 +215,6 @@ local RETICLE_TEXT_EDGE = 12 -- overlays fix: the state text keeps this far (bas
 local SOUND_HIT_CONFIRM = "ui.hitConfirm" -- §18.6: the thrower's own hit cue
 -- Part 8 panel placement (readings: §11.6 says "in the practice zone", not where). Base px under SD_Hud's UIScale.
 local PANEL_NAME = "Practice_Panel"
-local PANEL_WIDTH = 190
 local PANEL_EDGE = 16 -- as built (x 16)
 local PANEL_GAP = 8 -- HudController's row gap
 -- SD_Hud frames of other modules the panel keeps clear of (stable names: HudController's, QueueController's pill,
@@ -222,6 +227,12 @@ local HUD_LEFT_FRAMES = { "Hud_Left", "Hud_Nav" }
 -- Never covered: other HUD frames that are not above it (none since the lobby HUD of spec 2026-10-11 removed the
 -- equipped dock and moved the Duel CTA to the top; the touch areas are added on narrow layouts).
 local HUD_AVOID_FRAMES: { string } = {}
+-- FULL FINAL lobby: Diego's PracticeRange player attributes, the card's ScreenGui, and how early a cleared round may be
+-- and still count as run out (the server's task.delay against this client's clock).
+local ATTR_ROUND_ENDS = "PracticeRoundEnds"
+local ATTR_SCORE = "PracticeScore"
+local CARD_GUI = "SD_PracticeCard"
+local ROUND_END_SLACK = 0.5
 
 -- Module table
 
@@ -239,7 +250,11 @@ local inZone = false
 local zoneTimer = 0
 local tally: Tally = { throws = 0, hits = 0 }
 local panel: Frame? = nil
-local panelRows: { [string]: TextLabel } = {}
+local box: PracticeScoreBox.Box? = nil
+local cardGui: ScreenGui? = nil
+local card: PracticeScoreBox.Card? = nil
+local roundEnds: number? = nil -- the last PracticeRoundEnds seen (HubFX.now() seconds)
+local bestRound = 0 -- this session's best round
 local hitBoards: { [BillboardGui]: thread } = {}
 local reticle: Reticle? = nil
 local hitTiltSign = 1 -- "Hit!" tilts the other way on each hit (§18.4.2)
@@ -698,31 +713,13 @@ local function ensurePanel(): Frame?
 		return nil
 	end
 	local hud = result :: Instance
-	-- Placed by layoutPanel (panelPlacement) while it shows.
-	local frame = Theme.panel({
-		Name = PANEL_NAME,
-		Position = UDim2.fromOffset(PANEL_EDGE, PANEL_EDGE),
-		Size = UDim2.fromOffset(PANEL_WIDTH, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		Visible = false,
-	})
-	Theme.list(Enum.FillDirection.Vertical, 4, frame, Enum.HorizontalAlignment.Left)
-	-- Foam UI: the title as a chip (Chip kind, the outlined-text rule). UI FINAL R9 (plan R9 "Screens the design lacks",
-	-- a reading): the purple card with the DUEL pink title chip (H:126's pink).
-	Chip.new({ name = "Title", text = text("practice.panelTitle"), accent = "pink", parent = frame })
-	panelRows = {}
-	for order, key in { "throws", "hits", "accuracy" } do
-		-- Foam fix 2: left-aligned under the chip (centred rows under a left chip looked lopsided).
-		panelRows[key] = Theme.label({
-			Name = "Row_" .. key,
-			LayoutOrder = order + 1,
-			Text = "",
-			TextXAlignment = Enum.TextXAlignment.Left,
-			Parent = frame,
-		}, "Body")
-	end
+	-- Placed by layoutPanel (panelPlacement) while it shows. FULL FINAL lobby: Diego's score box.
+	local made = PracticeScoreBox.buildBox(PANEL_NAME)
+	local frame = made.root
+	frame.Position = UDim2.fromOffset(PANEL_EDGE, PANEL_EDGE)
 	frame.Parent = hud
 	panel = frame
+	box = made
 	-- Foam fix 2: on a phone it may take the top row, where toasts arrive; they keep beside it.
 	UIController.toastsBeside("practice", frame)
 	return frame
@@ -811,6 +808,15 @@ local function currentStats(): (number, number)
 	return tally.throws, tally.hits
 end
 
+-- Diego's score box's numbers, now (every frame while it shows: the time runs).
+local function updateBox()
+	local made = box
+	if made == nil or not inZone then
+		return
+	end
+	PracticeScoreBox.setBox(made, PracticeScoreBox.view(Players.LocalPlayer:GetAttributes(), HubFX.now(), bestRound))
+end
+
 local function refreshPanel()
 	local frame = ensurePanel()
 	if frame == nil then
@@ -820,17 +826,88 @@ local function refreshPanel()
 	if not inZone then
 		return
 	end
-	local throws, hits = currentStats()
-	local percent = text("common.percent", { value = PracticeController.accuracyPercent(hits, throws) })
-	local rows: { [string]: string } = {
-		throws = `{text("stats.throws")}: {throws}`,
-		hits = `{text("stats.hits")}: {hits}`,
-		accuracy = `{text("stats.accuracy")}: {percent}`,
-	}
-	for key, label in panelRows do
-		label.Text = rows[key] or ""
-	end
+	updateBox()
 	layoutPanel()
+end
+
+-- Diego's TIME! card and hit pops: their own full-screen ScreenGui (pops sit at the hit's screen point), scaled like
+-- the HUD.
+local function ensureCardGui(): ScreenGui?
+	local gui = cardGui
+	if gui and gui.Parent ~= nil then
+		return gui
+	end
+	local playerGui = Players.LocalPlayer:FindFirstChildOfClass("PlayerGui")
+	if playerGui == nil then
+		return nil
+	end
+	local made = Instance.new("ScreenGui")
+	made.Name = CARD_GUI
+	made.ResetOnSpawn = false
+	made.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	made.DisplayOrder = PracticeScore.cardDisplayOrder
+	made.ScreenInsets = Enum.ScreenInsets.None -- full-bleed, as the reticle's: pops sit at viewport fractions
+	local uiScale = Instance.new("UIScale")
+	uiScale.Parent = made
+	UIController.trackScale(uiScale)
+	card = PracticeScoreBox.buildCard(made)
+	made.Parent = playerGui
+	cardGui = made
+	return made
+end
+
+local function hideCard()
+	local current = card
+	if current then
+		PracticeScoreBox.hideCard(current)
+	end
+end
+
+-- PracticeRoundEnds: set = a round started (the card goes); cleared after it ran out = TIME! (preview :393-397). A
+-- clear before its end is a reset (the arena portal's arrival), no card.
+local function onRoundEnds()
+	local ends = Players.LocalPlayer:GetAttribute(ATTR_ROUND_ENDS)
+	local was = roundEnds
+	roundEnds = if type(ends) == "number" then ends else nil
+	if roundEnds ~= nil then
+		hideCard()
+		return
+	end
+	if was == nil or HubFX.now() < was - ROUND_END_SLACK then
+		return
+	end
+	local score = Players.LocalPlayer:GetAttribute(ATTR_SCORE)
+	if type(score) ~= "number" or score <= 0 or not inZone then
+		return
+	end
+	bestRound = math.max(bestRound, score)
+	if ensureCardGui() and card then
+		PracticeScoreBox.showCard(card :: PracticeScoreBox.Card, score, bestRound)
+	end
+end
+
+-- A scored hit (PracticeHit, the thrower only): Diego's pop at the hit's screen point.
+local function onPracticeHit(raw: unknown)
+	if type(raw) ~= "table" then
+		return
+	end
+	local hit = raw :: { [string]: any }
+	local points, combo, position = hit.points, hit.combo, hit.position
+	if type(points) ~= "number" or type(combo) ~= "number" or typeof(position) ~= "Vector3" then
+		return
+	end
+	local camera = Workspace.CurrentCamera
+	local gui = ensureCardGui()
+	if camera == nil or gui == nil then
+		return
+	end
+	local point, onScreen = camera:WorldToViewportPoint(position)
+	local viewport = camera.ViewportSize
+	if not onScreen or viewport.X <= 0 or viewport.Y <= 0 then
+		return
+	end
+	local callout = if type(hit.callout) == "string" then hit.callout else nil
+	PracticeScoreBox.pop(gui, Vector2.new(point.X / viewport.X, point.Y / viewport.Y), points, callout, combo)
 end
 
 -- Reticle -----------------------------------------------------------------------------------------------------------
@@ -1164,6 +1241,7 @@ local function setZone(inside: boolean)
 		stats.entered += 1
 	else
 		tally.throws, tally.hits = 0, 0
+		hideCard()
 	end
 	refreshPanel()
 	PracticeController.ZoneChanged:fire(inside)
@@ -1237,6 +1315,7 @@ local function step(dt: number, clock: number): boolean
 			layoutPanel() -- the HUD around it can change (the queue pill, the cards in the left column)
 		end
 	end
+	updateBox()
 	stepTargets(now, clock)
 	stepReticle(now)
 	return true
@@ -1319,6 +1398,8 @@ function PracticeController.init()
 	track(StateController.changed("practice"):connect(function()
 		refreshPanel()
 	end))
+	track(NetController.on("PracticeHit", onPracticeHit))
+	c:add(Players.LocalPlayer:GetAttributeChangedSignal(ATTR_ROUND_ENDS):Connect(onRoundEnds))
 	c:add(function()
 		setZone(false)
 		for model in table.clone(targets) do
@@ -1328,8 +1409,14 @@ function PracticeController.init()
 		clearHitBoards()
 		local current = panel
 		panel = nil
+		box = nil
 		if current then
 			current:Destroy()
+		end
+		local gui = cardGui
+		cardGui, card = nil, nil
+		if gui then
+			gui:Destroy()
 		end
 		local r = reticle
 		reticle = nil
