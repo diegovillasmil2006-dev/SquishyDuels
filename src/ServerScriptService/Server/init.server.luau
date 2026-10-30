@@ -84,6 +84,7 @@ local SERVICE_ORDER = {
 	"TipService",
 	"PreferencesService",
 	"ShowOffService",
+	"TrackingService", -- 2026-10-30: player tracking for Roblox's analytics (only listens to the services above)
 }
 
 -- Studio only, appended after the services; each needs its Config.Debug flag (always false outside Studio).

@@ -32,6 +32,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
 local Validate = require(Shared.Util.Validate)
 local EconomyService = require(script.Parent.EconomyService)
@@ -72,6 +73,9 @@ local dynamicRequire = require :: (ModuleScript) -> any
 -- Module table
 
 local PreferencesService = {}
+
+-- A step newly recorded (markStep), or Config.Onboarding.skipStepId when the tutorial is newly skipped (TrackingService).
+PreferencesService.StepDone = Signal.new() :: Signal.Signal<Player, string>
 
 -- Private
 
@@ -232,6 +236,7 @@ function PreferencesService.markStep(player: any, stepId: string): boolean
 	end)
 	if recorded then
 		changed(player, "onboarding", saveable)
+		PreferencesService.StepDone:fire(player, stepId)
 	end
 	return recorded
 end
@@ -249,6 +254,7 @@ function PreferencesService.skip(player: any): boolean
 	end)
 	if skipped then
 		changed(player, "onboarding", saveable)
+		PreferencesService.StepDone:fire(player, Config.Onboarding.skipStepId)
 	end
 	return skipped
 end
