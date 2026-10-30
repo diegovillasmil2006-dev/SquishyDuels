@@ -36,8 +36,11 @@ local Combat = {
 		noSolutionPitchDeg = 45, -- solveLaunchDir fallback when the target is out of reach
 		zoneToleranceStuds = 2, -- HRP inside own half + 2 studs
 		practiceConeDeg = 75, -- dot(flat aim, range forward) >= cos 75°
-		originBaseStuds = 3, -- originHint accepted within originBaseStuds + originPerPingStuds * min(ping, cap)
-		originPerPingStuds = 16,
+		-- originHint accepted within originBaseStuds + originPerPingStuds * min(ping, cap); a farther one is pulled back to
+		-- that distance. 3 and 16 until 2026-10-30: scaled with the 2026-10-17 walk speed 16 -> 22 (a walking thrower's
+		-- hint ran ~3 studs ahead of the server's view, so throws started from the server origin and missed sideways).
+		originBaseStuds = 4,
+		originPerPingStuds = 22,
 		originPingCapSeconds = 0.25,
 	},
 

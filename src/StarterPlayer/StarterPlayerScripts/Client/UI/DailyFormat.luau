@@ -19,7 +19,7 @@
 --                                    back in {time}". Phase 5 (progression spec 2026-10-12 §9): a day's Coins are its
 --                                    squeezes (coinsByDay) × the squeeze value of `pen` (pens3 phase 1: the player's pen
 --                                    state; PenMath.rewardCoins, as the server pays at claim time)
---   signText(daily, now)             the stand sign's status line: daily.ready / daily.wait {time}; nil = unknown
+--   signText(daily, now)             the stand sign's status line: daily.ready / the countdown; nil = unknown
 --   bodyHeight(screenH, contentH, chromeH, maxShare, minH)   Part 8: a scrolling panel part (CapsuleController's): the
 --                                    content's height, capped so the whole panel stays within maxShare of the screen
 -- UI FINAL R8 (the design's Daily window, plan work/ui/PLAN.md R8; `H:n` = "Squishy Duels HUD.dc.html" line n;
@@ -353,8 +353,8 @@ function DailyFormat.bodyHeight(
 	return math.max(minHeight, math.min(content, room))
 end
 
--- The daily stand sign's live line (§7.7): "Ready to claim!" or "Next reward in {time}"; nil while unknown (the line
--- keeps what it shows: built empty).
+-- The daily stand sign's live line (§7.7; Diego's Label_DailyTimer, FULL FINAL lobby): "READY!" or the countdown
+-- alone (the plaque is small); nil while unknown (the line keeps what it shows).
 function DailyFormat.signText(daily: unknown, now: number): string?
 	if valid(daily) == nil or not finite(now) then
 		return nil
@@ -362,7 +362,7 @@ function DailyFormat.signText(daily: unknown, now: number): string?
 	if DailyFormat.canClaim(daily, TimeUtil.utcDay(now)) then
 		return Strings.daily.ready
 	end
-	return Strings.format(Strings.daily.wait, { time = DailyFormat.countdownText(now) })
+	return DailyFormat.countdownText(now)
 end
 
 return DailyFormat

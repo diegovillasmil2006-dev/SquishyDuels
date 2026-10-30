@@ -19,8 +19,9 @@
 --      Config.Combat.Catch; design: html:323 throws only from the hold) ........................................ throw.busy
 --   8. Cooldown: releaseAt >= nextThrowAt - CooldownToleranceSeconds ......................... throw.cooldown
 --   9. Live projectiles < MaxActiveProjectilesPerPlayer ............................................. throw.tooMany
---  10. Origin: originHint only if within 3 + 16·min(ping, 0.25) studs of serverHRP.CFrame * ReleaseOffset, in line
---      of sight from the HRP (adapter) and inside the same zone as check 5; else the server origin (originClamped).
+--  10. Origin: originHint within 4 + 22·min(ping, 0.25) studs of serverHRP.CFrame * ReleaseOffset (a farther one is
+--      pulled back to that distance, toward the hint: a lag spike only nudges a walker's throw), in line of sight from
+--      the HRP (adapter) and inside the same zone as check 5; else the server origin. originClamped = not the hint.
 --  11. Spawn overlap (adapter, GetPartBoundsInRadius vs Geometry without Barriers): accepted with fizzle = true; the
 --      throw still uses its cooldown.
 --  12. Accept: nextThrowAt = releaseAt + clamp(cooldown, CooldownClamp) × cooldownMultiplier (SuddenDeath 0.8).
@@ -197,7 +198,8 @@ local function directionOk(direction: Vector3, mode: Mode, state: ThrowState, c:
 	return flatAim.Unit:Dot(flatForward.Unit) >= math.cos(math.rad(throwCfg.practiceConeDeg)) - CONE_EPSILON
 end
 
--- Check 10: the hint when it is close, visible and in the right zone; else the server origin.
+-- Check 10: the hint when it is close (a farther one pulled back to the allowance), visible and in the right zone; else
+-- the server origin.
 local function chooseOrigin(
 	hint: Vector3,
 	root: CFrame,
@@ -211,17 +213,17 @@ local function chooseOrigin(
 	local ping = finitePing(state.ping)
 	local allowed = throwCfg.originBaseStuds
 		+ throwCfg.originPerPingStuds * math.min(ping, throwCfg.originPingCapSeconds)
-	if (hint - serverOrigin).Magnitude > allowed then
-		return serverOrigin, true
-	end
-	if zone == nil or not HitMath.inZone(hint, zone, margin) then
+	local offset = hint - serverOrigin
+	local pulled = offset.Magnitude > allowed
+	local origin = if pulled then serverOrigin + offset.Unit * allowed else hint
+	if zone == nil or not HitMath.inZone(origin, zone, margin) then
 		return serverOrigin, true
 	end
 	local isClear = state.isClear
-	if isClear ~= nil and not isClear(root.Position, hint) then
+	if isClear ~= nil and not isClear(root.Position, origin) then
 		return serverOrigin, true
 	end
-	return hint, false
+	return origin, pulled
 end
 
 -- Public

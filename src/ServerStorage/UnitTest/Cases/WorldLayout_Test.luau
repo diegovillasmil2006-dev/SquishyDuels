@@ -136,7 +136,7 @@ local TEXTS: { [string]: string } = {
 	["box.restrictedNote"] = "Coin boxes open in a fixed order on your account, so you see the next squishy first, "
 		.. "and day 7 of Daily Rewards gives a free Royal Box.",
 	["box.unknownNote"] = "Couldn't check box availability. Try again.",
-	["daily.ready"] = "Ready to claim!",
+	["daily.ready"] = "READY!",
 	["daily.wait"] = "Next reward in {time}",
 	["prompt.joinQueue"] = "Join 1v1 Queue",
 	["prompt.leaveQueue"] = "Leave Queue",
@@ -315,15 +315,15 @@ return function(t: Context)
 		end
 	)
 
-	t.test("the six squeeze stations are the seats around Diego's BunCat: 3.4 square, top 2.5 (Neon Sugar)", function()
-		-- Diego's BunCat at 270° r 38 (his lobby_manifest): 6 seats 9.6 from the bun, 30° + 60° k around it.
+	t.test("the six squeeze stations are the seats around Diego's Kitty Bread: 2.6 round, top 2.5 (FULL FINAL)", function()
+		-- Diego's Kitty Bread at 270° r 38 (his FULL FINAL rbxmx, Hub.KittyBread.SeatTops): 6 seats 11 from the cat.
 		local expected = {
-			Vector3.new(-38, 0, -9.6),
-			Vector3.new(-46.3138, 0, -4.8),
-			Vector3.new(-29.6862, 0, -4.8),
-			Vector3.new(-46.3138, 0, 4.8),
-			Vector3.new(-29.6862, 0, 4.8),
-			Vector3.new(-38, 0, 9.6),
+			Vector3.new(-38, 0, -11),
+			Vector3.new(-47.526, 0, -5.5),
+			Vector3.new(-28.474, 0, -5.5),
+			Vector3.new(-47.526, 0, 5.5),
+			Vector3.new(-28.474, 0, 5.5),
+			Vector3.new(-38, 0, 11),
 		}
 		expect.equal(#WorldLayout.SqueezeZone.mats, 6)
 		expect.near(WorldLayout.SqueezeZone.matHeight, 2.5, 1e-9) -- the seat tops: plaza 0.6 + 0.4 + 1.2 + 0.3
@@ -334,7 +334,7 @@ return function(t: Context)
 			end
 			expect.near(mat.position.Y, 1.75, FLOAT_TOLERANCE) -- 0.75 under the seat top, as the old mats' centre
 			local station = WorldLayout.station(mat.id)
-			expect.near(station.halfSize, 1.7, 1e-9)
+			expect.near(station.halfSize, 1.3, 1e-9)
 			expect.equal(station.top, WorldLayout.SqueezeZone.matHeight)
 			expect.equal(station.position, mat.position)
 		end
@@ -426,8 +426,8 @@ return function(t: Context)
 		if #tooLong > 0 then
 			error("routes over the limit: " .. table.concat(tooLong, ", "))
 		end
-		-- Neon Sugar lobby: the worst is the quest board <-> the index shelf, across Diego's plaza (68.87 studs, 4.3 s).
-		expect.near(worst, 68.87 / 16, 0.01)
+		-- FULL FINAL lobby: the worst is the quest board's new prompt <-> the old index shelf spot (67.91 studs, 4.2 s).
+		expect.near(worst, 67.91 / 16, 0.01)
 		expect.truthy(worstPair == "quests/collection" or worstPair == "collection/quests")
 	end)
 
@@ -470,11 +470,11 @@ return function(t: Context)
 			-- Neon Sugar lobby: a stand's approach is its stand marker's floor point, in front of Diego's piece; the duel
 			-- gate's is 5.5 in front of the podium at the Monument (2026-10-24).
 			local markers: { [string]: { any } } = {
-				box = { WorldLayout.GiftBoxCounter, Vector3.new(21.1707, 0, 21.1708) },
-				shop = { WorldLayout.ShopCounter, Vector3.new(0, 0, 31.03) },
+				box = { WorldLayout.GiftBoxCounter, Vector3.new(19.092, 0, 19.092) },
+				shop = { WorldLayout.ShopCounter, Vector3.new(0, 0, 31) },
 				collection = { WorldLayout.Collection, Vector3.new(-26.5165, 0, 26.5165) },
-				quests = { WorldLayout.QuestBoard, Vector3.new(0, 0, -37.04) },
-				daily = { WorldLayout.DailyStand, Vector3.new(17.918, 0, -17.9181) },
+				quests = { WorldLayout.QuestBoard, Vector3.new(0, 0, -36) },
+				daily = { WorldLayout.DailyStand, Vector3.new(17.678, 0, -17.678) },
 				duel = { WorldLayout.DuelGate, Vector3.new(0, 0, 21.5) },
 			}
 			for id, entry in markers do

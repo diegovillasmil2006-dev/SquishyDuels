@@ -491,7 +491,7 @@ local GiftBoxCounter = {
 	oddsFrame = BOX_ODDS,
 	mysteryBox = groupCF("box", 0, 1.4, -3.2), -- the "GiftBox" model's pivot: mystery_box (design: lobby.js:210)
 	mysteryScale = 0.8, -- reading: the design's box at 0.8 (8 × 6.4 × 8)
-	approach = Vector3.new(21.1707, 0, 21.1708), -- Neon Sugar lobby: the stand marker in front of Diego's mystery box
+	approach = Vector3.new(19.092, 0, 19.092), -- FULL FINAL lobby: Diego's Hub.MysteryBox.Markers.Prompt
 	-- Restricted/unknown clients relabel it locally to "Shop Squishies". Reading: 0.6 in front of the pedestal.
 	prompt = prompt("prompt.seeBoxes", at("box", 0, 3, 9.3), "prompt.shopDirect"),
 }
@@ -509,7 +509,7 @@ local ShopCounter = {
 		color = "LobbyWafer",
 	} :: Box,
 	turntable = groupCF("shop", 7.8, 0, 8.2), -- preview_turntable (design: lobby.js:255; reading: on the square)
-	approach = Vector3.new(0, 0, 31.03), -- Neon Sugar lobby: the stand marker in front of Diego's SHOP counter
+	approach = Vector3.new(0, 0, 31), -- FULL FINAL lobby: Diego's Hub.Shop.Markers.Prompt
 	prompt = prompt("prompt.openShop", at("shop", 0, 3.4, 4.3)), -- reading: in front of the SHOP plate (lobby.js:250)
 }
 
@@ -610,7 +610,7 @@ local QuestBoard = {
 		facing = frontOf("quests"),
 		color = "LobbyCork",
 	} :: Box,
-	approach = Vector3.new(0, 0, -37.04), -- Neon Sugar lobby: the stand marker in front of Diego's quest board
+	approach = Vector3.new(0, 0, -36), -- FULL FINAL lobby: Diego's Hub.QuestBoard.Markers.Prompt
 	prompt = prompt("prompt.viewQuests", at("quests", 0, 4.5, 0.2)), -- reading: in front of the cork, under the cards
 }
 
@@ -620,7 +620,7 @@ local DailyStand = {
 	tag = "SD_DailyStand",
 	pedestal = { position = at("daily", 0, 0.6, 0), diameter = 15.2, height = 1.2, color = "LobbyLilac" } :: Disc, -- design: lobby.js:314 (C(7.2, 7.6, 1.2))
 	gift = groupCF("daily", 0, 1.2, 0), -- the "GiftBox" model's pivot: daily_gift (design: lobby.js:315)
-	approach = Vector3.new(17.918, 0, -17.9181), -- Neon Sugar lobby: the stand marker in front of Diego's daily sign
+	approach = Vector3.new(17.678, 0, -17.678), -- FULL FINAL lobby: Diego's Hub.DailyReward.Markers.Prompt
 	prompt = prompt("prompt.dailyReward", at("daily", 0, 2.5, 8.2)), -- reading: 0.6 in front of the dais
 }
 
@@ -628,17 +628,18 @@ local DailyStand = {
 -- Ø40 floor (reading; the design's 46) that reaches from the square into the garden, so its top stays 0.6.
 local MAT_DIAMETER = 7.6 -- design: lobby.js:341 (superF 3.8)
 local MAT_THICKNESS = 1.5 -- design: lobby.js:341 (superF 0.75 up and down)
--- Neon Sugar lobby (2026-10-23): the 6 squeeze stations are the seats around Diego's BunCat (his lobby_manifest,
--- Hub.BunCat "SeatTops", 3.4 square): a station's top is the seat top, its position 0.75 under it as the old mats'.
+-- FULL FINAL lobby (2026-10-30): the 6 squeeze stations are the seats around Diego's Kitty Bread (his rbxmx,
+-- Hub.KittyBread "Seats" 2.6 round, "SeatTops" top 2.5): a station's top is the seat top, its position 0.75 under it
+-- as the old mats'; same order as the bun cat's seats were (by angle round the cat).
 local MAT_TOP = 2.5
-local SEAT_HALF = 1.7
+local SEAT_HALF = 1.3
 local SEAT_TOPS = {
-	Vector3.new(-38, 2.5, -9.6),
-	Vector3.new(-46.3138, 2.5, -4.8),
-	Vector3.new(-29.6862, 2.5, -4.8),
-	Vector3.new(-46.3138, 2.5, 4.8),
-	Vector3.new(-29.6862, 2.5, 4.8),
-	Vector3.new(-38, 2.5, 9.6),
+	Vector3.new(-38, 2.5, -11),
+	Vector3.new(-47.526, 2.5, -5.5),
+	Vector3.new(-28.474, 2.5, -5.5),
+	Vector3.new(-47.526, 2.5, 5.5),
+	Vector3.new(-28.474, 2.5, 5.5),
+	Vector3.new(-38, 2.5, 11),
 }
 local mats: { { id: string, position: Vector3, frame: CFrame } } = {}
 for k, seatTop in SEAT_TOPS do

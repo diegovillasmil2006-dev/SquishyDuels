@@ -17,9 +17,7 @@
 -- reason.inventory.full; a restricted account opens the paid boxes in a fixed order (never random, D1:235) and its
 -- card shows the next squishy first (OpenView.nextText, Boxes.fixedItem of the boxOrder state field); its box counter
 -- opens the boxes again (only "unknown" still goes to the shop).
---   boardText(policy, boxId)                 the in-world odds board's live line (or the restricted / unknown note)
---   oddsLines(items)                         the board's odds lines: one per rarity when its items share one weight
---                                            (spec 2026-10-09 §3.3), else one per item
+--   signLines(boxId)                         Diego's in-world odds sign: 3 lines, the chance of each rarity
 --   promptKey(policy) / standScreen(policy)  the counter prompt's text key and the screen it opens (§7.6)
 --   revealFromEntry(entry) / pendingReveals(unseen, skip)   the unseen-reveal replay rule (see BoxController)
 --   isIndeterminate(reason)                  a BoxOpen reply that does not settle the request (retry with the same id)
@@ -155,7 +153,7 @@ local REVEAL = Config.Anim.boxReveal
 local BOXES_UI = Config.UI.Boxes
 local BURST = Config.UI.Fx.events.boxBurst
 local POLICY_STATES: { [string]: boolean } = { checking = true, eligible = true, restricted = true, unknown = true }
-local LINE_BREAK = "\n"
+local SIGN_LINES = 3 -- Diego's odds sign: Label_OddsCommon, Label_OddsRare, Label_OddsLegend
 local SOUND_LAND = "ui.click" -- RL8: the design's stamp (lib:184) is a low ui.click (REVEAL.landPitch)
 local SOUND_CLOSE = "ui.pop" -- H:835: NICE! / the close
 local PHI_EPSILON = 1e-6 -- OrbitControls' polar limits keep the camera off the poles
@@ -890,82 +888,23 @@ end
 
 -- Public: the world (§7.6, §7.7) ---------------------------------------------------------------------------------------
 
--- The odds board's lines for a box's items, in item order (spec 2026-10-09 §3.3: 13 lines would crowd the 7×8-stud
--- board). A rarity with two or more items that all share one weight is one box.boardGroupLine at its first item
--- ("Common 64.00% — 16.00% each: Toast, Banana, …"), so every item's chance is still shown; any other item keeps its
--- own box.boardLine.
-function BoxFormat.oddsLines(items: { Boxes.BoxItem }): { string }
-	local groups: { [string]: { total: number, weight: number, same: boolean, names: { string } } } = {}
-	for _, entry in items do
-		local def = Catalog.get(entry.id)
-		if def then
-			local group = groups[def.rarity]
-			if group == nil then
-				group = { total = 0, weight = entry.weight, same = true, names = {} }
-				groups[def.rarity] = group
-			end
-			group.total += entry.weight
-			group.same = group.same and entry.weight == group.weight
-			table.insert(group.names, squishyName(entry.id))
-		end
-	end
+-- Diego's box odds sign (FULL FINAL lobby, Hub.MysteryBox.OddsSign; owner 2026-10-30 "The real odds" in his look):
+-- its 3 plaques, top to bottom, show the box's chance of each rarity, commonest first ("COMMON  76%", box.signLine; a
+-- whole percent drops its ".00"), "" for a plaque the box has no rarity for.
+-- shortcut: a box with more than 3 rarities shows its 3 commonest; no box has more today.
+function BoxFormat.signLines(boxId: string): { string }
+	local rows = Boxes.byRarity(boxId) -- rarest first
 	local lines: { string } = {}
-	local written: { [string]: boolean } = {}
-	for _, entry in items do
-		local def = Catalog.get(entry.id)
-		local rarity = if def then def.rarity else ""
-		local group = groups[rarity]
-		if group and group.same and #group.names > 1 then
-			if not written[rarity] then
-				written[rarity] = true
-				table.insert(
-					lines,
-					Strings.format(Strings.box.boardGroupLine, {
-						rarity = rarityName(rarity),
-						total = Boxes.percentText(group.total),
-						each = Boxes.percentText(group.weight),
-						names = table.concat(group.names, Strings.box.boardNameSeparator),
-					})
-				)
-			end
-		else
-			table.insert(
-				lines,
-				Strings.format(Strings.box.boardLine, {
-					name = squishyName(entry.id),
-					rarity = if def then rarityName(rarity) else "",
-					percent = Boxes.percentText(entry.weight),
-				})
-			)
-		end
+	for index = 1, SIGN_LINES do
+		local row = rows[#rows + 1 - index]
+		lines[index] = if row
+			then Strings.format(Strings.box.signLine, {
+				rarity = string.upper(rarityName(row.rarity)),
+				percent = (string.gsub(row.text, "%.00$", "")),
+			})
+		else ""
 	end
 	return lines
-end
-
--- The odds board's live line: box.restrictedNote / box.unknownNote, else box.boardHeader and the box's oddsLines
--- (checking shows the odds too: §6.10 "Odds list: shown" in every state).
-function BoxFormat.boardText(policy: string?, boxId: string): string
-	if policy == "restricted" then
-		return Strings.box.restrictedNote
-	elseif policy == "unknown" then
-		return Strings.box.unknownNote
-	end
-	local box = Boxes.get(boxId)
-	if box == nil then
-		return ""
-	end
-	local name = textOf(box.nameKey)
-	local lines: { string } = {}
-	local cost = box.cost
-	if cost ~= nil and box.paid then
-		table.insert(lines, Strings.format(Strings.box.boardHeader, { box = name, cost = Format.coins(cost) }))
-	else
-		table.insert(lines, name)
-	end
-	for _, line in BoxFormat.oddsLines(box.items) do
-		table.insert(lines, line)
-	end
-	return table.concat(lines, LINE_BREAK)
 end
 
 -- The counter prompt's text key (§7.6): "Shop Squishies" for unknown, else "See Boxes" (pens3 phase 5: restricted

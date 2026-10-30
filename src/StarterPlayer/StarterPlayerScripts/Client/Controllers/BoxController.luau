@@ -57,8 +57,8 @@
 --   the stand's BoxId box; unknown opens "shop" filtered to it (the boxes screen when no shop exists). Like
 --   QueueController does for its podium, the prompt is relabelled locally from its SD_TextKey / SD_AltTextKey
 --   ("See Boxes" / "Shop Squishies",
---   BoxFormat.promptKey) and the odds board's live line "Body" shows BoxFormat.boardText, on policy changes, stream-in
---   and once a second.
+--   BoxFormat.promptKey) and Diego's odds sign plaques (Label_OddsCommon / Rare / Legend in the stand's Hub prop) show
+--   BoxFormat.signLines, on policy changes, stream-in and once a second.
 -- Readings (DESIGN is silent):
 --   * A reveal closed by a match before its result is not acknowledged: it plays again after the duel (still unseen).
 --     Any other close counts as seen (AckReveal), like a skip. While it animates, Backspace / ButtonB skip to the result
@@ -177,9 +177,8 @@ local STAND_TAG = "SD_BoxStand"
 local ATTR_BOX_ID = WorldLayout.Attributes.BoxId
 local ATTR_TEXT_KEY = "SD_TextKey"
 local ATTR_ALT_TEXT_KEY = "SD_AltTextKey"
-local ODDS_BOARD_PART = "OddsBoard"
-local BOARD_LINE = "Body"
-local BOARD_TITLE = "Title"
+local SIGN_PLAQUES = { "Label_OddsCommon", "Label_OddsRare", "Label_OddsLegend" } -- Diego's OddsSign, top to bottom
+local PLAQUE_TEXT = "Text" -- the TextLabel his Labels.build puts in each plaque's LabelGui
 local SHOP_PROMPT_KEY = "prompt.shopDirect"
 local SQUEEZE_WAYPOINT = "squeeze"
 local HANDOFF_REASON = "inspect"
@@ -1364,39 +1363,19 @@ end
 
 -- World: the box counter prompt and the odds board ----------------------------------------------------------------------
 
--- The odds board's live line under a stand (the OddsBoard part of the stand's model), sized to hold every line.
-local function boardLines(stand: Instance): { TextLabel }
-	local found: { TextLabel } = {}
-	local model = stand.Parent
-	local board = if model then model:FindFirstChild(ODDS_BOARD_PART) else nil
-	if board == nil then
-		return found
-	end
-	for _, descendant in board:GetDescendants() do
-		if descendant:IsA("TextLabel") and descendant.Name == BOARD_LINE then
-			table.insert(found, descendant)
+-- The odds sign's plaque labels of a stand (its Hub prop, the stand marker's Model ancestor), top to bottom; a plaque
+-- not streamed in yet is skipped.
+local function signLabels(stand: Instance): { [number]: TextLabel }
+	local found: { [number]: TextLabel } = {}
+	local model = stand:FindFirstAncestorOfClass("Model")
+	for index, name in SIGN_PLAQUES do
+		local plaque = if model then model:FindFirstChild(name, true) else nil
+		local label = if plaque then plaque:FindFirstChild(PLAQUE_TEXT, true) else nil
+		if label and label:IsA("TextLabel") then
+			found[index] = label
 		end
 	end
 	return found
-end
-
--- Reading: the generator bakes the live line one text line tall; this owner lets it fill the panel under the title
--- (TextScaled under its baked UITextSizeConstraint, wrapped, top-aligned) so every odds line fits.
-local function writeBoard(lineLabel: TextLabel, text: string)
-	local holder = lineLabel.Parent
-	local title = if holder then holder:FindFirstChild(BOARD_TITLE) else nil
-	local layout = if holder then holder:FindFirstChildOfClass("UIListLayout") else nil
-	local used = (if title and title:IsA("GuiObject") then title.Size.Y.Offset else 0)
-		+ (if layout then layout.Padding.Offset else 0)
-	local size = UDim2.new(1, 0, 1, -used)
-	if lineLabel.Size ~= size then
-		lineLabel.Size = size
-	end
-	lineLabel.TextWrapped = true
-	lineLabel.TextYAlignment = Enum.TextYAlignment.Top
-	if lineLabel.Text ~= text then
-		lineLabel.Text = text
-	end
 end
 
 local function refreshWorld()
@@ -1416,9 +1395,11 @@ local function refreshWorld()
 				end
 			end
 		end
-		local boardText = BoxFormat.boardText(policy, standBoxId(stand))
-		for _, line in boardLines(stand) do
-			writeBoard(line, boardText)
+		local lines = BoxFormat.signLines(standBoxId(stand))
+		for index, label in signLabels(stand) do
+			if label.Text ~= lines[index] then
+				label.Text = lines[index]
+			end
 		end
 	end
 end
@@ -1470,8 +1451,8 @@ function BoxController.debugState(): { [string]: any }
 				table.insert(prompts, descendant.ActionText)
 			end
 		end
-		for _, line in boardLines(stand) do
-			table.insert(boards, line.Text)
+		for _, label in signLabels(stand) do
+			table.insert(boards, label.Text)
 		end
 	end
 	local stageExists = ViewportStage.exists()

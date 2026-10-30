@@ -1048,6 +1048,8 @@ local Strings = {
 		-- chance, {each} = each item's, {names} = the names joined with boardNameSeparator).
 		boardGroupLine = "{rarity} {total}% — {each}% each: {names}",
 		boardNameSeparator = ", ",
+		-- Diego's odds sign plaques (FULL FINAL lobby, "COMMON  70%"): {rarity} in capitals, {percent} e.g. "76" / "0.04".
+		signLine = "{rarity}  {percent}%",
 		standTitle = "SQUISHY BOXES",
 		standSubtitle = "Odds are listed before you open",
 		oddsTitle = "Box Odds",
@@ -1271,7 +1273,7 @@ local Strings = {
 		title = "DAILY REWARD", -- the world sign (§7.7); the Daily screen's tab reads panelTitle
 		-- UI FINAL R3: the design's "DAILY REWARDS" (H:386; the band shows its title in capitals, Q5)
 		panelTitle = "Daily Rewards",
-		ready = "Ready to claim!",
+		ready = "READY!", -- Diego's Label_DailyTimer (FULL FINAL lobby zip, Theme.Labels)
 		wait = "Next reward in {time}",
 		popup = "Daily reward ready",
 		dayLabel = "Day {n}",

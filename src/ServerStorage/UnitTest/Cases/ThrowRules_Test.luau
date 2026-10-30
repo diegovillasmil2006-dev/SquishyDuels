@@ -5,9 +5,9 @@
 -- alive / HRP (throw.context) -> not rooted by Dragon Rush (throw.rooted) -> own half + 2 or the practice zone
 -- (throw.context) -> |aimDir| 0.95..1.05, pitch -35°..+65°, practice cone 75° (throw.direction) -> lag compensation
 -- clamp -> cooldown with 0.05 s tolerance
--- (throw.cooldown) -> 4 live projectiles (throw.tooMany) -> origin hint only within 3 + 16·min(ping, 0.25) studs with
--- line of sight and in the own zone -> spawn overlap fizzles but still uses the cooldown -> accept with
--- nextThrowAt = releaseAt + clamp(cooldown) × multiplier. Lifetime 3 s and Bounds expiry (§12 #10). The thrown
+-- (throw.cooldown) -> 4 live projectiles (throw.tooMany) -> origin hint within 4 + 22·min(ping, 0.25) studs (a farther
+-- one pulled back to it) with line of sight and in the own zone -> spawn overlap fizzles but still uses the cooldown ->
+-- accept with nextThrowAt = releaseAt + clamp(cooldown) × multiplier. Lifetime 3 s and Bounds expiry (§12 #10). The thrown
 -- squishy's stats come from the server state, never the request. validate never modifies the state it reads.
 -- Feature 1 (2026-10-11, the charge throw and the catch): #7b the hands: a press (lag-compensated) before
 -- handsBusyUntil (a catch window or a crush) is throw.busy; the charge c is measured from chargeStartAt to the press,
@@ -433,18 +433,19 @@ return function(t: Context)
 		expect.near((decision.origin - hint).Magnitude, 0, FLOAT_TOLERANCE)
 	end)
 
-	t.test("#10 a hint farther than 3 + 16·min(ping, 0.25) studs falls back to the server origin", function()
+	t.test("#10 a hint farther than 4 + 22·min(ping, 0.25) studs is pulled back to that distance", function()
 		local server = serverOrigin(DUEL_ROOT)
-		local far = validate(input({ originHint = server + Vector3.new(0, 0, 5) }), duelState({ ping = 0.1 })) -- 4.6 allowed
+		local far = validate(input({ originHint = server + Vector3.new(0, 0, 8) }), duelState({ ping = 0.1 })) -- 6.2 allowed
 		expect.truthy(far.ok)
 		expect.truthy(far.originClamped)
-		expect.near((far.origin - server).Magnitude, 0, FLOAT_TOLERANCE)
-		-- More ping allows more, up to 7 studs (ping capped at 0.25 s).
+		-- Toward the hint, not back to the server origin: a walker's lag spike only nudges the throw.
+		expect.near((far.origin - (server + Vector3.new(0, 0, 6.2))).Magnitude, 0, FLOAT_TOLERANCE)
+		-- More ping allows more, up to 9.5 studs (ping capped at 0.25 s).
 		expect.falsy(
-			validate(input({ originHint = server + Vector3.new(0, 0, 5) }), duelState({ ping = 0.25 })).originClamped
+			validate(input({ originHint = server + Vector3.new(0, 0, 8) }), duelState({ ping = 0.25 })).originClamped
 		)
 		expect.truthy(
-			validate(input({ originHint = server + Vector3.new(0, 0, 7.5) }), duelState({ ping = 2 })).originClamped
+			validate(input({ originHint = server + Vector3.new(0, 0, 10) }), duelState({ ping = 2 })).originClamped
 		)
 	end)
 

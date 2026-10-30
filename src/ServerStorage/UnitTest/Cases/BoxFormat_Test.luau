@@ -617,72 +617,13 @@ return function(t: Context)
 			expect.falsy(string.find(BoxFormat.resultText(true), "Coins", 1, true))
 		end
 	)
-	t.test("odds board: the stand's box rows, or the restricted / unknown note", function()
-		local text = BoxFormat.boardText("eligible", "snack")
-		local lines = string.split(text, "\n")
-		local box = Boxes.get("snack")
-		expect.equal(
-			lines[1],
-			Strings.format(Strings.box.boardHeader, { box = Strings.box.snack.name, cost = "150.0K" })
-		)
-		expect.deepEqual(table.move(lines, 2, #lines, 1, {}), BoxFormat.oddsLines(box.items))
-		expect.equal(BoxFormat.boardText("checking", "snack"), text)
-		expect.equal(BoxFormat.boardText(nil, "snack"), text)
-		expect.equal(BoxFormat.boardText("restricted", "snack"), Strings.box.restrictedNote)
-		expect.equal(BoxFormat.boardText("unknown", "snack"), Strings.box.unknownNote)
-		expect.equal(BoxFormat.boardText("eligible", "nope"), "")
-	end)
-
-	-- Spec 2026-10-09 §3.3: with 14 squishies the 7×8-stud board would hold 13 lines, so a rarity whose items all share
-	-- one weight takes one line that still names every item and its chance.
-	t.test("odds board grouping: one line per rarity when its items share a weight", function()
-		local function line(id: string, percent: string): string
-			local def = Catalog.get(id)
-			return Strings.format(
-				Strings.box.boardLine,
-				{ name = Strings.resolve(def.nameKey), rarity = rarityName(def.rarity), percent = percent }
-			)
-		end
-		local function group(rarity: string, total: string, each: string, names: { string }): string
-			return Strings.format(Strings.box.boardGroupLine, {
-				rarity = rarityName(rarity),
-				total = total,
-				each = each,
-				names = table.concat(names, Strings.box.boardNameSeparator),
-			})
-		end
-
-		-- ECONOMY_V3 (pens3 phase 5): the 4 Commons share 19%; the Uncommons do not share one weight (8% / 4%).
-		local snack = string.split(BoxFormat.boardText("eligible", "snack"), "\n")
-		expect.deepEqual(table.move(snack, 2, #snack, 1, {}), {
-			"Common 76.00% — 19.00% each: Toast, Banana, Boba Bear, Pancake Pup",
-			line("butter", "8.00"),
-			line("chocolate", "8.00"),
-			line("mochi_fox", "4.00"),
-			line("strawberry_frog", "4.00"),
-		})
-
-		-- Dragon, alone in its rarity, keeps its own line.
-		expect.deepEqual(BoxFormat.oddsLines(Boxes.get("sweet").items), {
-			group("Epic", "99.96", "24.99", { "Birdie", "Donut", "Cloud Bunny", "Cupcake Axolotl" }),
-			line("dragon", "0.04"),
-		})
-
-		-- Different weights inside a rarity: one line per item; an unknown id keeps a line of its own.
-		local mixed = {
-			{ id = "toast", weight = 5000 },
-			{ id = "banana", weight = 3000 },
-			{ id = "butter", weight = 900 },
-			{ id = "chocolate", weight = 900 },
-			{ id = "nope", weight = 200 },
-		}
-		expect.deepEqual(BoxFormat.oddsLines(mixed), {
-			line("toast", "50.00"),
-			line("banana", "30.00"),
-			group("Uncommon", "18.00", "9.00", { "Butter", "Chocolate" }),
-			Strings.format(Strings.box.boardLine, { name = "nope", rarity = "", percent = "2.00" }),
-		})
-		expect.deepEqual(BoxFormat.oddsLines({}), {})
+	t.test("odds sign: the box's chance by rarity on Diego's 3 plaques, commonest first (owner: the real odds)", function()
+		-- ECONOMY_V3: the Soft Box's 4 Commons 19% each, its Uncommons 8 + 8 + 4 + 4.
+		expect.deepEqual(BoxFormat.signLines("snack"), { "COMMON  76%", "UNCOMMON  24%", "" })
+		-- A non-whole percent keeps its two decimals.
+		expect.deepEqual(BoxFormat.signLines("sweet"), { "EPIC  99.96%", "EXCLUSIVE  0.04%", "" })
+		expect.deepEqual(BoxFormat.signLines("treat"), { "COMMON  56%", "UNCOMMON  30%", "EPIC  14%" })
+		expect.deepEqual(BoxFormat.signLines("nope"), { "", "", "" })
 	end)
 
 	t.test("counter prompt: Shop Squishies for unknown (§7.6); restricted opens the boxes (pens3 phase 5)", function()
