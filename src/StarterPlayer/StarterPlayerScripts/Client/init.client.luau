@@ -76,6 +76,7 @@ local CONTROLLER_ORDER = {
 	"NotifyController",
 	"WorldBinder",
 	"AmbientController",
+	"LobbyFxController", -- 2026-10-30: Diego's FULL FINAL lobby motion and effects (his HubFX)
 	"CollectionController",
 	"HeldSquishyController",
 	"CharacterAnimController",
