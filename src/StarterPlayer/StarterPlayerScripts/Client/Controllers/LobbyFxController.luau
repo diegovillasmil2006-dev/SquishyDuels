@@ -6,6 +6,8 @@
 -- black outlines. Shared/SquishyLobby/HubFX and HubFXSpec are his files as delivered. Nothing here touches the server.
 -- The place streams (StreamingEnabled), so the three models HubFX moves are Persistent (his README: Hub, PracticeArena,
 -- Enclosure): each arrives whole and never streams out; start waits for them, since HubFX reads their parts once.
+-- Step 3: so does the highway's LobbyPortal (a Persistent copy of Hub.HighwayPortal that HubFX animates by its tag),
+-- waited for a few seconds only, so a place without it still starts.
 
 -- Services
 
@@ -20,6 +22,9 @@ local HubFX = require(ReplicatedStorage.Shared.SquishyLobby.HubFX)
 
 local LOBBY_NAME = "SquishyDuelsLobby"
 local MOVED_MODELS = { "Hub", "Enclosure", "PracticeArena" } -- Persistent in the place
+local COPIES_FOLDER = "AddedByIntegration"
+local RETURN_PORTAL = "LobbyPortal"
+local COPY_WAIT_SECONDS = 5
 
 -- Module table
 
@@ -31,6 +36,10 @@ function LobbyFxController.start()
 	local lobby = Workspace:WaitForChild(LOBBY_NAME)
 	for _, name in MOVED_MODELS do
 		lobby:WaitForChild(name)
+	end
+	local copies = lobby:WaitForChild(COPIES_FOLDER, COPY_WAIT_SECONDS)
+	if copies then
+		copies:WaitForChild(RETURN_PORTAL, COPY_WAIT_SECONDS)
 	end
 	HubFX.start(lobby)
 end

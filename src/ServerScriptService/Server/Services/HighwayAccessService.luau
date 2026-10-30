@@ -342,6 +342,12 @@ function HighwayAccessService.go(player: any): Reply
 	return NetService.ok({ charged = false, savePending = false })
 end
 
+-- FULL FINAL lobby (2026-10-30): Diego's HIGHWAY portal asks this before its pull-in movie (PortalService), then uses
+-- go() for the move. The refusal's code (as go() would answer), or nil when a trip may start.
+function HighwayAccessService.refusal(player: any): string?
+	return (check(player))
+end
+
 -- Public: tests -----------------------------------------------------------------------------------------------------
 
 -- Replaces dependencies (fields not given keep their defaults). nil restores every default.

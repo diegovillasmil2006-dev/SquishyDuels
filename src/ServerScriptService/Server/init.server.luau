@@ -77,6 +77,7 @@ local SERVICE_ORDER = {
 	"MatchService", -- FFA/TDM v1: the in-server Free for All / Team Deathmatch (reads the duel services above)
 	"MatchBotService", -- 2026-10-17: the FFA / TDM match bots (after MatchService: its init hands them over)
 	"HighwayAccessService", -- access2 (2026-10-18): GoHighway, the HUD's HIGHWAY button (reads the queues above)
+	"PortalService", -- 2026-10-30: Diego's FULL FINAL lobby portals (its HIGHWAY portal uses HighwayAccessService)
 	"BoxService",
 	"ShopService",
 	"QuestService",

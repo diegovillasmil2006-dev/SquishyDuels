@@ -108,6 +108,7 @@ local CONTROLLER_ORDER = {
 	"HighwayThrowController", -- pens3 phase 13: the throw for distance
 	"QueueController",
 	"HighwayController",
+	"PortalController", -- 2026-10-30: Diego's FULL FINAL portal trip movie (PortalService's PortalTrip)
 	"DuelController",
 	"MatchController",
 	"MatchHudController",

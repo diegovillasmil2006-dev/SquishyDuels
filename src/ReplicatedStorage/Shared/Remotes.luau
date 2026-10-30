@@ -302,6 +302,10 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- P13v4 (HighwayService's settle at the landing): Types.HighwayLanding, what the thrower's landing paid (Coins with
 	-- the rings' share, Grip, best, gifts, the Food Bag, the rings, BULLSEYE), to the thrower only.
 	HighwayLanded = s2c("owner", { arg("landing", "table") }),
+	-- FULL FINAL lobby (2026-10-30, PortalService): Diego's portal trip, to the traveller only: kind "enter" (play the
+	-- pull-in into the link's portal), "arrive" (the reveal at the destination), "leave" (a quick flash out) or "cancel";
+	-- link = a key of Shared/SquishyLobby/Portal.Links.
+	PortalTrip = s2c("owner", { arg("kind", "string"), arg("link", "string") }),
 } :: { [string]: RemoteSpec })
 
 Remotes.SPEC = SPEC

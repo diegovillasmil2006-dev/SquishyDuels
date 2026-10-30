@@ -169,27 +169,33 @@ return function(t: Context)
 		"refusals in PenBuySpot's order, nothing moved: not ready, the decision, paused, in a duel, queued",
 		function()
 			local w = fresh()
+			-- what Diego's HIGHWAY portal asks before its movie (PortalService), then the same go()
+			local function refusedBoth(world: World, code: string)
+				expect.equal(Service.refusal(world.player), code)
+				refused(world, code)
+			end
 			w.status, w.hasCharacter, w.deck, w.closing, w.phase, w.queue =
 				"loading", false, nil, true, "Active", "Searching"
-			refused(w, "data.notReady")
+			refusedBoth(w, "data.notReady")
 			w.status = "ready"
-			refused(w, "highway.noCharacter")
+			refusedBoth(w, "highway.noCharacter")
 			w.hasCharacter = true
-			refused(w, "highway.closed") -- the place has no SD_Highway deck
+			refusedBoth(w, "highway.closed") -- the place has no SD_Highway deck
 			w.deck = DECK
-			refused(w, "highway.paused") -- the server is closing
+			refusedBoth(w, "highway.paused") -- the server is closing
 			w.closing, w.restart = false, true
-			refused(w, "highway.paused") -- a restart is pending
+			refusedBoth(w, "highway.paused") -- a restart is pending
 			w.restart = false
-			refused(w, "highway.inDuel") -- a duel or a match
+			refusedBoth(w, "highway.inDuel") -- a duel or a match
 			w.phase = ""
-			refused(w, "highway.inQueue") -- the 1v1 queue (Searching, then Matched)
+			refusedBoth(w, "highway.inQueue") -- the 1v1 queue (Searching, then Matched)
 			w.queue = "Matched"
-			refused(w, "highway.inQueue")
+			refusedBoth(w, "highway.inQueue")
 			w.queue, w.matchQueue = "Idle", "ffa"
-			refused(w, "highway.inQueue") -- a Free for All / Team Deathmatch queue
+			refusedBoth(w, "highway.inQueue") -- a Free for All / Team Deathmatch queue
 			w.matchQueue = nil
 			expect.equal(#w.streams, 0) -- nothing streams in for a refused trip
+			expect.equal(Service.refusal(w.player), nil)
 			local reply = Service.go(w.player)
 			expect.equal(reply.ok, true)
 			expect.deepEqual(reply.data, { charged = false, savePending = false })

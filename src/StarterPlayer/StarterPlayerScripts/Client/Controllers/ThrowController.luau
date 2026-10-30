@@ -14,8 +14,8 @@
 --     2026-10-11: aimed well above the opponent, the solved arc to that point in the air still went "all the way
 --     up"; the Combat FP design throws along the camera direction too), unless aim assist moved the point.
 --   * Aim assist (Config.Combat.AimAssist; gamepad 4°, touch 5°, 50%; off for keyboard/mouse), applied once at throw
---     time: when the opponent's capsule centre (practice: the nearest practice target, reading) is inside the cone
---     and in line of sight, the aim point moves `strength` of the way toward it.
+--     time: when the opponent's capsule centre (practice: the nearest practice target, reading; a duel bot: its rig in
+--     Workspace.SD_Bots) is inside the cone and in line of sight, the aim point moves `strength` of the way toward it.
 --   * aimDir = ProjectileMath.solveLaunchDir(originHint, aimPoint, speed, g) (a ray that hit nothing: the ray's own
 --     direction), then clamped to the pitch band [-35°, +65°] and, in practice, into the 75° cone around the range
 --     forward (+X) (limitDirection: clampPitch / clampToCone).
@@ -293,6 +293,7 @@ local OVERLAY_POP = "popIn"
 local HIDE_REASON = "thrown"
 local ATTR_EQUIPPED = "SD_Equipped"
 local CLIENT_FX = "SD_ClientFx"
+local BOTS_FOLDER = "SD_Bots" -- BotService: a duel bot's rig, named after the bot
 local SNAP_S = THROW_ANIM.releaseSnapMs / 1000
 local FOLLOW_S = THROW_ANIM.followEndMs / 1000
 local RETURN_S = THROW_ANIM.returnEndMs / 1000
@@ -1104,21 +1105,29 @@ local function insideOwnHalf(position: Vector3): boolean
 	return math.abs(p.X) <= half.X and math.abs(p.Z) <= half.Z
 end
 
-local function opponentPlayer(): Player?
+-- The duel opponent's body: its character, or a duel bot's rig (a bot is no Player; user bug 2026-10-30: aim assist
+-- pulled toward the bot's pad, wherever the bot was).
+local function opponentBody(): Model?
 	local m = match
 	if m == nil then
 		return nil
 	end
-	return Players:GetPlayerByUserId(m.opponent.userId)
+	local opponent = Players:GetPlayerByUserId(m.opponent.userId)
+	if opponent then
+		return opponent.Character
+	end
+	local bots = Workspace:FindFirstChild(BOTS_FOLDER)
+	local rig = if bots then bots:FindFirstChild(m.opponent.displayName) else nil
+	return if rig and rig:IsA("Model") then rig else nil
 end
 
 local function opponentCentre(): Vector3?
-	local opponent = opponentPlayer()
-	local root = opponent and rootOf(opponent)
-	if root then
+	local body = opponentBody()
+	local root = body and body:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") then
 		return ThrowController.capsuleCentre(root.Position)
 	end
-	-- No character to find (e.g. the Studio test dummy): the opponent's pad.
+	-- No body to find (e.g. the Studio test dummy): the opponent's pad.
 	local m = match
 	local pads = m and m.arena and m.arena.pads
 	local otherSide = if m and m.you.side == "A" then "B" else "A"
@@ -1249,9 +1258,7 @@ local function assisted(ctx: Ctx, ray: Ray?, aimPoint: Vector3, count: boolean?)
 	if ctx.kind == "duel" then
 		local centre = opponentCentre()
 		if centre then
-			local opponent = opponentPlayer()
-			local model: Instance? = if opponent then opponent.Character else nil
-			table.insert(candidates, { centre = centre, model = model })
+			table.insert(candidates, { centre = centre, model = opponentBody() })
 		end
 	elseif ctx.kind == "match" then
 		candidates = ThrowController.enemyTargets() -- FFA/TDM v1: every live enemy
