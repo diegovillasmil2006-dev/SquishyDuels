@@ -60,11 +60,12 @@ return function(t: Context)
 				expect.equal(berry.team, "strawberry")
 				expect.equal(mint.lane, lane)
 				expect.equal(berry.lane, lane)
-				-- The mint row 5.2 south of the Monument's centre, the strawberry row 10: one lane = one column.
-				expect.near(mint.position.X, -9.6 + (lane - 1) * 4.8, 1e-4)
+				-- The mint row 5.2 south of the Monument's centre, the strawberry row 5.2 north, behind the pillars (FULL
+				-- FINAL lobby): one lane = one column.
+				expect.near(mint.position.X, -9 + (lane - 1) * 4.5, 1e-4)
 				expect.near(berry.position.X, mint.position.X, 1e-6)
 				expect.near(mint.position.Z, 5.2, 1e-6)
-				expect.near(berry.position.Z, 10, 1e-6)
+				expect.near(berry.position.Z, -5.2, 1e-6)
 				expect.near(mint.position.Y, 2.3 + 0.5, 1e-6) -- the pad's top on Diego's Monument base (top 2.3)
 				expect.near(berry.position.Y, mint.position.Y, 1e-6)
 				seen[pair.mint], seen[pair.strawberry] = true, true

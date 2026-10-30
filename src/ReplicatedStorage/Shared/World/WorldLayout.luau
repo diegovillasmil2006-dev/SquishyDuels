@@ -758,9 +758,12 @@ end
 
 -- Batch 3 (review #6, the duel pads; Services/FriendDuelService): the 10 queue pads as the game reads them, each with
 -- its top centre, its team and its lane (a mint pad and the strawberry pad across from it). Neon Sugar lobby (owner
--- 2026-10-24, "On the Monument stage"): 2 rows of 5 on Diego's Monument base (top 2.3), in front of its pillars: the
--- mint row 5.2 south of the centre, the strawberry row 10, lanes 1..5 left to right from the plaza (X -9.6 .. 9.6, 4.8
--- apart). The pads (0.5 tall, Ø3.6 squares) and their queue_pad_ring parts are in the lobby's DuelGate model.
+-- 2026-10-24, "On the Monument stage"): 2 rows of 5 on Diego's Monument base (top 2.3). FULL FINAL lobby (owner
+-- 2026-10-30, "Back row behind and make them so they can see the queue board"): his new Monument has corner gems, so
+-- the mint row stays 5.2 south of the centre, in front of the pillars, and the strawberry row moves 5.2 north, behind
+-- them (the queue board shows on both faces); lanes 1..5 left to right from the plaza, X -9 .. 9, 4.5 apart (clear of
+-- his side glow strips at X ±11.4). The pads (0.5 tall, Ø3.6 squares) and their queue_pad_ring parts are in the
+-- lobby's DuelGate model.
 local MONUMENT_BASE_TOP = 2.3
 local QUEUE_PAD_HEIGHT = 0.5
 local QueuePads: { QueuePad } = {}
@@ -768,9 +771,9 @@ for _, team in { "mint", "strawberry" } do
 	for lane = 1, 5 do
 		table.insert(QueuePads, {
 			position = Vector3.new(
-				-9.6 + (lane - 1) * 4.8,
+				-9 + (lane - 1) * 4.5,
 				MONUMENT_BASE_TOP + QUEUE_PAD_HEIGHT,
-				if team == "mint" then 5.2 else 10
+				if team == "mint" then 5.2 else -5.2
 			),
 			team = team,
 			lane = lane,
