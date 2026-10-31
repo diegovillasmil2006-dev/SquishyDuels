@@ -48,6 +48,7 @@ local Economy = {
 		"sell", -- pens3 phase 7: a sale's Coins, and a buy-back's spend (PenService)
 		"highway", -- pens3 phase 13: a throw's landing (HighwayService)
 		"gear", -- gear step 2: a gear step bought (HighwayService.buyGear)
+		"event", -- 2026-10-31: a timed event's pay, a candy from the candy rain (EventService)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
 	},

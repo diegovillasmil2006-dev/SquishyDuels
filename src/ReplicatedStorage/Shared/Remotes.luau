@@ -309,6 +309,9 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- FULL FINAL lobby step 4 (PracticeService): a scored practice hit on Diego's arena target, to the thrower only:
 	-- { points, callout, combo, position } (his PracticeRange.registerHit's answer and the contact point), for the pop.
 	PracticeHit = s2c("owner", { arg("hit", "table") }),
+	-- 2026-10-31 (EventService): a candy the server gave this player, to the grabber only: { coins, position } (the
+	-- Coins it paid and where it lay), for the coin flight.
+	CandyGrab = s2c("owner", { arg("grab", "table") }),
 } :: { [string]: RemoteSpec })
 
 Remotes.SPEC = SPEC

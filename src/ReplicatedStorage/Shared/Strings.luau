@@ -1325,6 +1325,14 @@ local Strings = {
 		perfReadout = "{fps} FPS · {ping} ms",
 	},
 
+	-- Timed events (2026-10-31, Shared/EventSchedule): the pill under DUEL and the start toast. Keyed by event kind.
+	event = {
+		candyRain = "Candy rain",
+		pillNext = "{event} in {time}",
+		pillLive = "{event}! {time}",
+		candyStart = "Candy rain in Squish Square! Grab the candy!",
+	},
+
 	-- Onboarding card (§11.8). Keyed by step id. {goal} = the cheapest shop price from the Catalog (Batch 1).
 	onboarding = {
 		welcome = "Welcome to Squishy Duels! Your first squishy is {starterName}.",

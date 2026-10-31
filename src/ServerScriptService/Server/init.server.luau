@@ -79,6 +79,7 @@ local SERVICE_ORDER = {
 	"MatchServerService", -- 2026-10-30: one match per server (sends matches away; in a match server, starts them)
 	"HighwayAccessService", -- access2 (2026-10-18): GoHighway, the HUD's HIGHWAY button (reads the queues above)
 	"PortalService", -- 2026-10-30: Diego's FULL FINAL lobby portals (its HIGHWAY portal uses HighwayAccessService)
+	"EventService", -- 2026-10-31: the timed events (candy rain; lobby servers only, reads MatchServerService)
 	"BoxService",
 	"ShopService",
 	"QuestService",
