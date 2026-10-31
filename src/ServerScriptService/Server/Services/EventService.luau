@@ -11,7 +11,8 @@
 --   most grabCap a player per event. It pays EventSchedule.candyCoins(the grabber's pen rate) through
 --   EconomyService.grantCoins(.., "event"); CandyGrab tells the grabber { coins, position } for the coin flight. A
 --   candy nobody grabs (or that pays nothing: a profile still loading) goes after lifeSeconds.
--- * The start: one "event.candyStart" toast to everyone, once per event.
+-- * The start of any event: one "event.<kind>Start" toast to everyone, once per event.
+-- * Golden luck needs nothing here: BoxService asks EventSchedule.boxForm when it draws.
 -- One Heartbeat connection, working every TICK seconds.
 
 -- Services
@@ -43,7 +44,7 @@ local FOLDER_NAME = "SD_Candies"
 local LOBBY_NAME = "SquishyDuelsLobby"
 local ATTR_LAND = "SD_LandAt"
 local REMOTE_GRAB = "CandyGrab"
-local CODE_START = "event.candyStart"
+local CODE_START_PREFIX = "event." -- + kind + "Start": Strings.event.<kind>Start
 local REASON = "event"
 -- Strong lobby colours: the pastel ones (and sky blue) washed out on the square's pale floor in the test games.
 local COLORS = { Palette.LobbyStrawberryRed, Palette.LobbyRoyalVelvet, Palette.LobbyMint, Palette.LobbyButter }
@@ -143,11 +144,6 @@ local function grab(player: Player, candy: Candy): boolean
 end
 
 local function dropCandies(t: number, state: EventSchedule.State)
-	if eventIndex ~= state.index then
-		eventIndex, seenAt, spawned = state.index, t - state.startsAt, 0
-		table.clear(grabs)
-		NetService.notifyAll(CODE_START)
-	end
 	-- Counted from when this server first saw the event: a server started mid-event spreads the whole share evenly over
 	-- what is left of it (MAX_PER_TICK caps the pace), never a burst of what fell before it existed.
 	local elapsed = (t - state.startsAt - seenAt) * EVENTS.liveSeconds / (EVENTS.liveSeconds - seenAt)
@@ -167,6 +163,11 @@ end
 local function tick()
 	local t = Workspace:GetServerTimeNow()
 	local state = EventSchedule.at(t)
+	if state.live and eventIndex ~= state.index then
+		eventIndex, seenAt, spawned = state.index, t - state.startsAt, 0
+		table.clear(grabs)
+		NetService.notifyAll(CODE_START_PREFIX .. state.kind .. "Start")
+	end
 	if state.live and state.kind == "candyRain" then
 		dropCandies(t, state)
 	end

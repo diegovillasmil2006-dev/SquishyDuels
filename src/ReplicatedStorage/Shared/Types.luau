@@ -118,6 +118,7 @@ export type BoxLogEntry = {
 	box: string,
 	squishy: string,
 	dup: boolean, -- pens3 phase 5: the kind was owned before (a copy)
+	form: number?, -- 2026-10-31 (golden luck): 1 Golden, 2 Rainbow; 0 or missing (older entries) = plain
 	refund: number?, -- only in entries from before pens3 phase 5 (copies replaced the refund)
 	cost: number,
 	at: number,
@@ -608,7 +609,8 @@ export type ClientOnboardingStep = "welcome" | "inspect" | "skip"
 -- Pens3 phase 5: a buy always charges (an owned squishy is bought again as a copy); every refusal is a ResultErr.
 export type ShopResult = { squishyId: string, charged: boolean, savePending: boolean }
 -- Pens3 phase 5: `isDuplicate` = the kind was owned before (the squishy is a copy); there is no refund.
-export type BoxResult = { squishyId: string, isDuplicate: boolean, savePending: boolean }
+-- form (2026-10-31, golden luck): 0 plain, 1 Golden, 2 Rainbow.
+export type BoxResult = { squishyId: string, isDuplicate: boolean, form: number?, savePending: boolean }
 -- reading: day 7 carries the free Treat Box result so the reveal can play at once (§6.9). Readings (Part 7):
 -- `treatRequestId` is the free Treat Box's boxLog key "daily:<dayIndex>" (§3.4), the id AckReveal sends. A missed day
 -- only pauses the streak (review quick win 2026-10-14), so there is no reset flag.

@@ -145,6 +145,7 @@ export type Reveal = {
 	boxId: string,
 	squishyId: string,
 	isDuplicate: boolean, -- the kind was owned before: a copy (pens3 phase 5)
+	form: number?, -- 2026-10-31 (golden luck): 1 Golden, 2 Rainbow; 0 / nil plain
 }
 
 -- Constants
@@ -949,6 +950,7 @@ function BoxFormat.revealFromEntry(entry: unknown): Reveal?
 		boxId = box,
 		squishyId = squishy :: string,
 		isDuplicate = e.dup == true,
+		form = if e.form == 1 or e.form == 2 then e.form else 0,
 	}
 end
 

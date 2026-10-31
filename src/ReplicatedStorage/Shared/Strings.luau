@@ -1080,6 +1080,9 @@ local Strings = {
 		howToEarn = "How to earn Coins",
 		stillChecking = "Still checking your box…",
 		revealNew = "NEW!",
+		-- 2026-10-31 (golden luck): the stand-in badge over NEW! for a Golden / Rainbow squishy (BoxReveal).
+		revealGolden = "GOLDEN!",
+		revealRainbow = "RAINBOW!",
 		-- UI FINAL R7 (`H:n` = "Squishy Duels HUD.dc.html" line n): the duplicate line (H:492; pens3 phase 5: a copy
 		-- for the pen, no Coins), the band's subtitle (H:260), OPEN (H:277), the hints (H:484, H:495) and the result
 		-- buttons (H:498-499).
@@ -1328,9 +1331,14 @@ local Strings = {
 	-- Timed events (2026-10-31, Shared/EventSchedule): the pill under DUEL and the start toast. Keyed by event kind.
 	event = {
 		candyRain = "Candy rain",
+		goldenLuck = "Golden luck",
 		pillNext = "{event} in {time}",
 		pillLive = "{event}! {time}",
-		candyStart = "Candy rain in Squish Square! Grab the candy!",
+		-- The start toasts, keyed "<kind>Start" (EventService).
+		candyRainStart = "Candy rain in Squish Square! Grab the candy!",
+		goldenLuckStart = "Golden luck! Boxes can give Golden squishies for 5 minutes!",
+		-- The Boxes window's odds line while golden luck is live (BoxFormat).
+		goldenOdds = "Golden luck: {golden}% Golden, {rainbow}% Rainbow",
 	},
 
 	-- Onboarding card (§11.8). Keyed by step id. {goal} = the cheapest shop price from the Catalog (Batch 1).

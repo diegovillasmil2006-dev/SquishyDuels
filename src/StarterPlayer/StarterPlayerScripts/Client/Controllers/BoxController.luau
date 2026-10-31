@@ -84,6 +84,7 @@ local GuiService = game:GetService("GuiService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 -- Requires
 
@@ -92,6 +93,7 @@ local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
+local EventSchedule = require(Shared.EventSchedule)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local Strings = require(Shared.Strings)
@@ -416,6 +418,11 @@ local function refresh()
 		w.total.Text = BoxFormat.totalText(selectedBox)
 		local view = currentView()
 		local note = if view.kind == "freeOnly" then nil else view.note
+		-- 2026-10-31 (golden luck): its extra odds show while it is live (a restricted account has its own note and no
+		-- golden chance). shortcut: read when the window refreshes, not at the event's exact start.
+		if note == nil and view.kind ~= "freeOnly" then
+			note = EventSchedule.goldenOddsText(Workspace:GetServerTimeNow())
+		end
 		w.note.Text = note or ""
 		w.note.Visible = note ~= nil
 		w.status.Text = statusText or ""
@@ -867,6 +874,7 @@ openPaid = function(boxId: string): { [string]: any }
 				boxId = boxId,
 				squishyId = squishyId,
 				isDuplicate = data.isDuplicate == true,
+				form = if data.form == 1 or data.form == 2 then data.form else 0,
 			}
 			if statusRequest == requestId then
 				setStatus(nil, nil)

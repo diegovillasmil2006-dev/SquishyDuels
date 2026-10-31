@@ -203,7 +203,7 @@ return function(t: Context)
 		local result = BoxService.open(p, "snack", REQ_A)
 		expect.deepEqual(result, {
 			ok = true,
-			data = { squishyId = "banana", isDuplicate = false, savePending = false },
+			data = { squishyId = "banana", isDuplicate = false, form = 0, savePending = false },
 		})
 		expect.equal(profile.coins, COINS - SNACK_COST)
 		expect.deepEqual(profile.owned.banana, { at = NOW, src = "box" })
@@ -214,6 +214,7 @@ return function(t: Context)
 				box = "snack",
 				squishy = "banana",
 				dup = false,
+				form = 0,
 				cost = SNACK_COST,
 				at = NOW,
 				seen = false,
@@ -248,7 +249,7 @@ return function(t: Context)
 		profile.owned.toast = { at = 5, src = "shop" }
 		w.rolls = { R_TOAST }
 		local result = BoxService.open(p, "snack", REQ_A)
-		expect.deepEqual(result.data, { squishyId = "toast", isDuplicate = true, savePending = false })
+		expect.deepEqual(result.data, { squishyId = "toast", isDuplicate = true, form = 0, savePending = false })
 		expect.equal(profile.coins, COINS - SNACK_COST)
 		expect.deepEqual(profile.owned.toast, { at = 5, src = "shop" })
 		expect.equal(#profile.pen.items, 2)
@@ -351,7 +352,7 @@ return function(t: Context)
 			w.saveResult = false
 			w.rolls = { R_BUTTER }
 			local result = BoxService.open(p, "snack", REQ_A)
-			expect.deepEqual(result.data, { squishyId = "butter", isDuplicate = false, savePending = true })
+			expect.deepEqual(result.data, { squishyId = "butter", isDuplicate = false, form = 0, savePending = true })
 			expect.equal(profile.owned.butter ~= nil, true)
 			w.clock.advance(MIN_SECONDS + 1)
 			refused(BoxService.open(p, "snack", REQ_B), "box.saving")
@@ -404,13 +405,14 @@ return function(t: Context)
 		w.policy[p] = false -- the Treat Box is not a paid random item: random for everyone
 		w.rolls = { 1 }
 		local result = BoxService.grantFree(p, "treat", "daily:20000")
-		expect.deepEqual(result, { squishyId = "toast", isDuplicate = false, savePending = false })
+		expect.deepEqual(result, { squishyId = "toast", isDuplicate = false, form = 0, savePending = false })
 		expect.equal(profile.coins, 0)
 		expect.deepEqual(profile.boxLog[1], {
 			req = "daily:20000",
 			box = "treat",
 			squishy = "toast",
 			dup = false,
+			form = 0,
 			cost = 0,
 			at = NOW,
 			seen = false,
@@ -434,7 +436,7 @@ return function(t: Context)
 		local items = #profile.pen.items
 		w.rolls = { Boxes.WeightTotal } -- the last Treat item: cupcake_axolotl
 		local result = BoxService.grantFree(p, "treat", "daily:20000")
-		expect.deepEqual(result, { squishyId = "cupcake_axolotl", isDuplicate = false, savePending = false })
+		expect.deepEqual(result, { squishyId = "cupcake_axolotl", isDuplicate = false, form = 0, savePending = false })
 		expect.deepEqual(profile.giftQueue, { "cupcake_axolotl" })
 		expect.equal(profile.owned.cupcake_axolotl, nil) -- owned once it drops in
 		expect.equal(#profile.pen.items, items)

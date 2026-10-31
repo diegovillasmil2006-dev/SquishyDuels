@@ -7,7 +7,14 @@
 local Events = {
 	loopSeconds = 15 * 60, -- owner: "next event is 10 minutes apart" (5 live + 10 waiting)
 	liveSeconds = 5 * 60, -- owner: "every event should last i think 5 or 10 minutes" (5 picked with "Yes, build it")
-	kinds = { "candyRain" },
+	kinds = { "candyRain", "goldenLuck" },
+
+	-- Golden luck (owner: "1 in 10", "Also a rare Rainbow"): while it is live, a box opened at random (not a fixed
+	-- order: PolicyService-restricted accounts keep theirs) gives its squishy Rainbow 1 in 100, else Golden 1 in 10.
+	GoldenLuck = {
+		rainbowChance = 0.01,
+		goldenChance = 0.10,
+	},
 
 	-- Candy rain: candy falls around the dragon Monument in Squish Square; the first player within grabRadius of a
 	-- landed candy gets it (the server checks); it pays penSeconds of that player's pen Coins a second, at least

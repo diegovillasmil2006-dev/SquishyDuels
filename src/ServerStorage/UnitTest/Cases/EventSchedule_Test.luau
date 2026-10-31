@@ -28,12 +28,17 @@ return function(t: Context)
 		expect.equal(CANDY.perPlayer, 30)
 	end)
 
+	-- BASE is loop 1000 (even): candy rain; the next loop golden luck (they take turns).
+	local GOLDEN = BASE + LOOP
+
 	t.test("at: live for the first 5 minutes of a loop, then waiting for the next one", function()
 		local live = EventSchedule.at(BASE + 10)
 		expect.equal(live.live, true)
 		expect.equal(live.startsAt, BASE)
 		expect.equal(live.endsAt, BASE + 300)
 		expect.equal(live.kind, "candyRain")
+		expect.equal(EventSchedule.at(GOLDEN + 10).kind, "goldenLuck")
+		expect.equal(EventSchedule.at(GOLDEN + LOOP + 10).kind, "candyRain")
 		local waiting = EventSchedule.at(BASE + 300)
 		expect.equal(waiting.live, false)
 		expect.equal(waiting.startsAt, BASE + LOOP)
@@ -41,8 +46,9 @@ return function(t: Context)
 	end)
 
 	t.test("pillText: the countdown while waiting, the time left while live", function()
-		expect.equal(EventSchedule.pillText(BASE + 300), "Candy rain in 10:00")
-		expect.equal(EventSchedule.pillText(BASE + LOOP - 1), "Candy rain in 0:01")
+		expect.equal(EventSchedule.pillText(BASE + 300), "Golden luck in 10:00") -- the next one takes its turn
+		expect.equal(EventSchedule.pillText(GOLDEN + 300), "Candy rain in 10:00")
+		expect.equal(EventSchedule.pillText(GOLDEN + LOOP - 1), "Candy rain in 0:01")
 		expect.equal(EventSchedule.pillText(BASE + 79), "CANDY RAIN! 3:41")
 	end)
 
@@ -68,6 +74,35 @@ return function(t: Context)
 			local r = Vector2.new(x - CANDY.centre.X, z - CANDY.centre.Z).Magnitude
 			expect.truthy(r >= CANDY.innerRadius - 1e-6 and r <= CANDY.outerRadius + 1e-6)
 		end
+	end)
+
+	t.test("boxForm: golden luck gives Rainbow 1 in 100, Golden 1 in 10; nothing outside it", function()
+		expect.equal(EVENTS.GoldenLuck.rainbowChance, 0.01)
+		expect.equal(EVENTS.GoldenLuck.goldenChance, 0.10)
+		local function rolls(value: number): () -> number
+			return function(): number
+				return value
+			end
+		end
+		expect.equal(EventSchedule.boxForm(GOLDEN + 10, rolls(0.005)), 2)
+		expect.equal(EventSchedule.boxForm(GOLDEN + 10, rolls(0.05)), 1)
+		expect.equal(EventSchedule.boxForm(GOLDEN + 10, rolls(0.109)), 1)
+		expect.equal(EventSchedule.boxForm(GOLDEN + 10, rolls(0.12)), 0)
+		-- Outside golden luck no roll is taken, so the box draws stay exactly as before.
+		local rolled = false
+		local function spy(): number
+			rolled = true
+			return 0
+		end
+		expect.equal(EventSchedule.boxForm(GOLDEN + 400, spy), 0) -- golden luck is over
+		expect.equal(EventSchedule.boxForm(BASE + 10, spy), 0) -- candy rain: no golden chance
+		expect.equal(rolled, false)
+	end)
+
+	t.test("goldenOddsText: the odds line only while golden luck is live", function()
+		expect.equal(EventSchedule.goldenOddsText(GOLDEN + 10), "Golden luck: 10% Golden, 1% Rainbow")
+		expect.equal(EventSchedule.goldenOddsText(BASE + 10), nil)
+		expect.equal(EventSchedule.pillText(GOLDEN + 79), "GOLDEN LUCK! 3:41")
 	end)
 
 	t.test("grabber: the nearest root within the radius, nobody beyond it", function()

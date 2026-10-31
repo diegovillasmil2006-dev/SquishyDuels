@@ -649,11 +649,11 @@ return function(t: Context)
 		-- An entry from before pens3 phase 5 still carries `refund`: it is not read (copies).
 		expect.deepEqual(
 			BoxFormat.revealFromEntry(entry),
-			{ requestId = guid, boxId = "snack", squishyId = "toast", isDuplicate = true }
+			{ requestId = guid, boxId = "snack", squishyId = "toast", isDuplicate = true, form = 0 }
 		)
 		expect.deepEqual(
 			BoxFormat.revealFromEntry(daily),
-			{ requestId = "daily:20000", boxId = "treat", squishyId = "bird", isDuplicate = false }
+			{ requestId = "daily:20000", boxId = "treat", squishyId = "bird", isDuplicate = false, form = 0 }
 		)
 		local bads: { any } = {
 			"x",

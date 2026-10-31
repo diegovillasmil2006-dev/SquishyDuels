@@ -278,7 +278,7 @@ local function rememberMatchGrant(matchId: string, key: any)
 end
 
 -- Pens3 phase 5: adds one squishy to a profile inside an edit (see the header). Never yields.
-local function addSquishyTo(profile: any, id: string, source: string, mayWait: boolean): SquishyGrant
+local function addSquishyTo(profile: any, id: string, source: string, mayWait: boolean, form: number?): SquishyGrant
 	local owned = profile.owned
 	if type(owned) ~= "table" then
 		owned = {}
@@ -298,7 +298,10 @@ local function addSquishyTo(profile: any, id: string, source: string, mayWait: b
 		owned[id] = { at = getDeps().now(), src = source :: Types.OwnedSource }
 	end
 	local slot = PenMath.freeSlot(pen) -- pens3 phase 6: the first free spot, else the Toy Box (0)
-	table.insert(pen.items, { id = pen.nextId, kind = id, form = 0, level = 1, coat = 0, slot = slot, locked = false })
+	-- shortcut: a queued squishy (a full Toy Box, above) keeps only its kind, so a Golden free box reward waiting
+	-- there lands plain; store {kind, form} in giftQueue if that ever matters (paid boxes refuse a full Toy Box).
+	local item = { id = pen.nextId, kind = id, form = form or 0, level = 1, coat = 0, slot = slot, locked = false }
+	table.insert(pen.items, item)
 	pen.nextId += 1
 	PenMath.arrange(pen) -- qb1 (owner 2026-10-18): the best squishies go to the TOP spot and the shelf
 	return { added = true, copy = copy, queued = false, refused = nil }
@@ -480,15 +483,23 @@ function EconomyService.trySpend(player: any, amount: number, reason: string): (
 end
 
 -- Adds a squishy to the pen (§6.5, pens3 phase 5: a copy when owned; see the header). `mayWait` (a free reward): a
--- full Toy Box queues it instead of refusing. Returns {added, copy, queued, refused?}. Never yields.
-function EconomyService.grantSquishy(player: any, id: string, source: string, mayWait: boolean?): SquishyGrant
-	if not Catalog.isValidId(id) or not OWNED_SOURCES[source] then
-		log:warn(`grantSquishy: invalid id {tostring(id)} or source {tostring(source)}`)
+-- full Toy Box queues it instead of refusing. `form` (2026-10-31, golden luck): 0 plain (the default), 1 Golden,
+-- 2 Rainbow. Returns {added, copy, queued, refused?}. Never yields.
+function EconomyService.grantSquishy(
+	player: any,
+	id: string,
+	source: string,
+	mayWait: boolean?,
+	form: number?
+): SquishyGrant
+	local validForm = form == nil or form == 0 or form == 1 or form == 2
+	if not Catalog.isValidId(id) or not OWNED_SOURCES[source] or not validForm then
+		log:warn(`grantSquishy: invalid id {tostring(id)}, source {tostring(source)} or form {tostring(form)}`)
 		return { added = false, copy = false, queued = false, refused = "invalid" }
 	end
 	local grant: SquishyGrant = { added = false, copy = false, queued = false, refused = "notReady" }
 	local ok = edit(player, function(profile: any)
-		grant = addSquishyTo(profile, id, source, mayWait == true)
+		grant = addSquishyTo(profile, id, source, mayWait == true, form)
 	end)
 	if not ok then
 		return { added = false, copy = false, queued = false, refused = "notReady" }

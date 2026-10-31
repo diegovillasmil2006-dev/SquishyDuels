@@ -1025,6 +1025,21 @@ function BoxReveal.start(spec: Spec): Run
 				keyframes(holder, frames, ms, delayMs, curve)
 			end
 		end
+		-- 2026-10-31 (golden luck, stand-in until Diego designs it): a GOLDEN! / RAINBOW! pill above the rest, NEW!'s look.
+		local form = reveal.form or 0
+		if form > 0 then
+			local formSlot = pill(
+				resultBlock,
+				"Form",
+				0,
+				if form == 2 then Strings.box.revealRainbow else Strings.box.revealGolden,
+				R.newPill,
+				if form == 2 then Palette.StickerBoxSweetTop else Palette.StickerGoldTop,
+				if form == 2 then Palette.StickerBoxSweetEnd else Palette.StickerGoldEnd
+			)
+			-- lihfolk-ignore: findfirstchild-chain (pill() always builds its Pose holder, as NEW! below relies on)
+			rise(formSlot:FindFirstChild("Pose") :: GuiObject, REVEAL_FRAMES, R.newMs, delays.newMs, R.newCurve)
+		end
 		if not reveal.isDuplicate then
 			local newSlot = pill(
 				resultBlock,
@@ -1312,6 +1327,12 @@ function BoxReveal.start(spec: Spec): Run
 		local def = Catalog.get(reveal.squishyId)
 		local rarity = if def then def.rarity else "Common"
 		local base, lightTone, dark = rarityColors(rarity)
+		-- 2026-10-31 (golden luck, stand-in): a Golden squishy's rays, halo and rings turn gold, a Rainbow's lilac.
+		if reveal.form == 1 then
+			lightTone = Palette.StickerGoldTop
+		elseif reveal.form == 2 then
+			lightTone = Palette.StickerBoxSweetTop
+		end
 		boxBlock.Visible = false
 		-- H:473: the tint
 		tint.Visible = true

@@ -10,6 +10,10 @@
 --                                 over the event
 --   ringPoint(u, v)               a spot (x, z) in the candy ring from two numbers in [0, 1)
 --   grabber(position, roots, radius)   the key of the root nearest `position` within `radius`, or nil
+--   boxForm(t, roll)              a box squishy's form at t, roll() giving a number in [0, 1) (called only while
+--                                 golden luck is live): 2 (Rainbow)
+--                                 under rainbowChance, 1 (Golden) under rainbowChance + goldenChance; else 0
+--   goldenOddsText(t)             the Boxes window's odds line while golden luck is live, else nil
 
 -- Services
 
@@ -90,6 +94,34 @@ function EventSchedule.grabber<K>(position: Vector3, roots: { [K]: Vector3 }, ra
 		end
 	end
 	return best
+end
+
+function EventSchedule.boxForm(t: number, roll: () -> number): number
+	local state = EventSchedule.at(t)
+	if not (state.live and state.kind == "goldenLuck") then
+		return 0 -- no roll taken: outside golden luck the box draws stay exactly as before
+	end
+	local luck = EVENTS.GoldenLuck
+	local r = roll()
+	if r < luck.rainbowChance then
+		return 2
+	elseif r < luck.rainbowChance + luck.goldenChance then
+		return 1
+	end
+	return 0
+end
+
+-- The Boxes window's odds line while golden luck is live ("Golden luck: 10% Golden, 1% Rainbow"), else nil.
+function EventSchedule.goldenOddsText(t: number): string?
+	local state = EventSchedule.at(t)
+	if not (state.live and state.kind == "goldenLuck") then
+		return nil
+	end
+	local luck = EVENTS.GoldenLuck
+	return Strings.format(Strings.event.goldenOdds, {
+		golden = math.round(luck.goldenChance * 100),
+		rainbow = math.round(luck.rainbowChance * 100),
+	})
 end
 
 return EventSchedule

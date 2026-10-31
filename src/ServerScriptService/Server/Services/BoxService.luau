@@ -19,11 +19,12 @@
 --      refusal writes nothing);
 --  10. EconomyService.trySpend(p, cost, "box") (economy.notEnoughCoins), the draw (BoxDraw.draw(box, rng) with the one
 --      server Random.new(), never sent to clients; or the fixed order, step 4), EconomyService.grantSquishy(p, id,
---      "box") (a pen item; a copy when the kind is owned: never Coins), then one DataService.mutate appending the
---      boxLog entry {req, box, squishy, dup, cost, at, seen = false} (cap Config.Data.caps.boxLog; dup = a copy),
+--      "box", .., form) (a pen item; a copy when the kind is owned: never Coins; 2026-10-31 golden luck: a random draw
+--      while the event is live comes Golden / Rainbow by EventSchedule.boxForm), then one DataService.mutate appending
+--      the boxLog entry {req, box, squishy, dup, form, cost, at, seen = false} (cap Config.Data.caps.boxLog),
 --      stats.boxesOpened + 1 (and the fixed order's count), and markDirty("unseenReveals"). Nothing yields between the
 --      spend and the log append (one in-memory change).
---  11. DataService.saveNowAsync (awaited; the reveal's anticipation covers it) -> ok {squishyId, isDuplicate,
+--  11. DataService.saveNowAsync (awaited; the reveal's anticipation covers it) -> ok {squishyId, isDuplicate, form,
 --      savePending = not saved}. A failed save keeps the change in memory and blocks spends until a save succeeds.
 -- Every refusal carries charged = false (nothing was taken). Reading: the BoxOpen remote is also one-in-flight in
 -- NetService; open() refuses a second concurrent call itself (net.rateLimited) so direct callers are serialized too.
@@ -52,6 +53,7 @@ local Shared = ReplicatedStorage.Shared
 local Boxes = require(Shared.Boxes)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local EventSchedule = require(Shared.EventSchedule)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
 local Types = require(Shared.Types)
@@ -79,7 +81,8 @@ export type Economy = {
 		player: any,
 		id: string,
 		source: string,
-		mayWait: boolean?
+		mayWait: boolean?,
+		form: number? -- 2026-10-31: golden luck's Golden (1) / Rainbow (2)
 	) -> { added: boolean, copy: boolean, queued: boolean, refused: string? },
 	grantCoins: (player: any, amount: number, reason: string) -> (number, string?),
 }
@@ -193,6 +196,7 @@ local function resultFrom(entry: any, savePending: boolean): BoxResult
 	return {
 		squishyId = if type(entry.squishy) == "string" then entry.squishy else "",
 		isDuplicate = entry.dup == true,
+		form = if entry.form == 1 or entry.form == 2 then entry.form else 0,
 		savePending = savePending,
 	}
 end
@@ -221,7 +225,13 @@ local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number,
 		log:error(`box {box.id}: the draw failed ({tostring(id)})`)
 		return nil
 	end
-	local grant = d.economy.grantSquishy(player, id, SOURCE_BOX, not box.paid)
+	-- 2026-10-31 (golden luck): a random draw may come Golden or Rainbow while the event is live; a fixed order never.
+	local form = if fixedAt == nil
+		then EventSchedule.boxForm(d.now(), function(): number
+			return d.rng:NextNumber()
+		end)
+		else 0
+	local grant = d.economy.grantSquishy(player, id, SOURCE_BOX, not box.paid, form)
 	if grant.refused ~= nil then
 		log:error(`box {box.id}: {id} could not be granted to user {userIdOf(player)} ({grant.refused})`)
 		return nil
@@ -231,6 +241,7 @@ local function drawAndGrant(player: any, box: BoxDef, req: string, cost: number,
 		box = box.id,
 		squishy = id,
 		dup = grant.copy,
+		form = form,
 		cost = cost,
 		at = d.now(),
 		seen = false,
