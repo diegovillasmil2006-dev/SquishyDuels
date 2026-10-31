@@ -40,6 +40,8 @@ export type Card = {
 	state: CardState,
 	missing: number,
 	color: string, -- a Palette token
+	squishy: string?, -- 2026-10-31 RESTOCK tab: this squishy's picture on the tile instead of the tier number
+	maxText: string?, -- 2026-10-31 RESTOCK tab: the "max" chip's text (SOLD OUT / BOUGHT), else Strings.gear.max
 }
 
 -- Constants

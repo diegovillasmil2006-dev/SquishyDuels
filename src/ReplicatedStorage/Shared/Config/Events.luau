@@ -3,11 +3,31 @@
 -- Shared, data only. The server-wide timed events (Shared/EventSchedule, Server/Services/EventService,
 -- Client/Controllers/EventController). An event starts every loopSeconds on the UTC clock (:00, :15, :30, :45), the
 -- same in every lobby server, and runs liveSeconds; the countdown shows the rest of the loop. `kinds` take turns in
--- order; the shop restock joins later.
+-- order (4 kinds x 15 minutes: each one once an hour, candy rain on the hour).
 local Events = {
 	loopSeconds = 15 * 60, -- owner: "next event is 10 minutes apart" (5 live + 10 waiting)
 	liveSeconds = 5 * 60, -- owner: "every event should last i think 5 or 10 minutes" (5 picked with "Yes, build it")
-	kinds = { "candyRain", "goldenLuck", "doubleCoins" },
+	kinds = { "candyRain", "goldenLuck", "doubleCoins", "shopRestock" },
+
+	-- Shop restock (owner: "a combination of special stock and real limited stock", "both", "Shared, first come",
+	-- "Premium"; the counts are Claude's, "Yes, build it"): while it is live the Shop's RESTOCK tab sells goldenOffers
+	-- Golden squishies (goldenPriceMult x the Catalog shopPrice; one of them Rainbow, rainbowPriceMult x, on
+	-- rainbowChance of the restocks) and rareOffers squishies of rareRarities at rareDiscount off. The offers come from
+	-- the restock's number, so every server shows the same ones; each server has its own stock of each (stock, the
+	-- Rainbow rainbowStock), first come, and a player buys at most perPlayer of each (ShopService).
+	ShopRestock = {
+		goldenOffers = 2,
+		rareOffers = 2,
+		goldenRarities = { "Common", "Uncommon", "Epic" }, -- not the Exclusive Dragon
+		rareRarities = { "Uncommon", "Epic" },
+		rainbowChance = 0.25,
+		goldenPriceMult = 3,
+		rainbowPriceMult = 6,
+		rareDiscount = 0.30,
+		stock = 3,
+		rainbowStock = 1,
+		perPlayer = 1,
+	},
 
 	-- Double coins (owner: "Pen + playing"): while it is live, a grant with one of these Config.Economy.CoinReasons pays
 	-- mult times (EconomyService, in every server: match servers too, they share the UTC clock). Sells, refunds, the

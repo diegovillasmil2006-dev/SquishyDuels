@@ -6,7 +6,9 @@
 --   * a candy pays 10 s of the grabber's pen Coins a second, at least 100;
 --   * 30 candies per player fall evenly over the event; spots stay inside the ring;
 --   * the nearest player within the grab radius gets a candy, nobody farther;
---   * double coins (owner: "Pen + playing") pays 2x for the pen, squeezes, duels, matches, throws and candy only.
+--   * double coins (owner: "Pen + playing") pays 2x for the pen, squeezes, duels, matches, throws and candy only;
+--   * the shop restock (owner "both", "Premium"): 2 Golden offers at 3x (the first Rainbow at 6x on some restocks),
+--     2 rare offers at 30% off, the same for every server; the stock as a string the client reads back.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -20,7 +22,7 @@ return function(t: Context)
 	local EVENTS = t.requireShared("Config/Events")
 	local CANDY = EVENTS.CandyRain
 	local LOOP = EVENTS.loopSeconds -- 900
-	local BASE = 999 * LOOP -- a loop start on the clock (999 % 3 == 0: candy rain's turn)
+	local BASE = 1_000 * LOOP -- a loop start on the clock (1000 % 4 == 0: candy rain's turn, on the hour)
 
 	t.test("owner's timing: an event every 15 minutes, 5 minutes long", function()
 		expect.equal(LOOP, 900)
@@ -29,9 +31,10 @@ return function(t: Context)
 		expect.equal(CANDY.perPlayer, 30)
 	end)
 
-	-- BASE is candy rain's loop; the next one golden luck, then double coins (they take turns).
+	-- BASE is candy rain's loop; the next one golden luck, then double coins, then the shop restock (they take turns).
 	local GOLDEN = BASE + LOOP
 	local DOUBLE = BASE + 2 * LOOP
+	local RESTOCK = BASE + 3 * LOOP
 
 	t.test("at: live for the first 5 minutes of a loop, then waiting for the next one", function()
 		local live = EventSchedule.at(BASE + 10)
@@ -41,7 +44,8 @@ return function(t: Context)
 		expect.equal(live.kind, "candyRain")
 		expect.equal(EventSchedule.at(GOLDEN + 10).kind, "goldenLuck")
 		expect.equal(EventSchedule.at(DOUBLE + 10).kind, "doubleCoins")
-		expect.equal(EventSchedule.at(DOUBLE + LOOP + 10).kind, "candyRain")
+		expect.equal(EventSchedule.at(RESTOCK + 10).kind, "shopRestock")
+		expect.equal(EventSchedule.at(RESTOCK + LOOP + 10).kind, "candyRain")
 		local waiting = EventSchedule.at(BASE + 300)
 		expect.equal(waiting.live, false)
 		expect.equal(waiting.startsAt, BASE + LOOP)
@@ -51,7 +55,9 @@ return function(t: Context)
 	t.test("pillText: the countdown while waiting, the time left while live", function()
 		expect.equal(EventSchedule.pillText(BASE + 300), "Golden luck in 10:00") -- the next one takes its turn
 		expect.equal(EventSchedule.pillText(GOLDEN + 300), "Double coins in 10:00")
-		expect.equal(EventSchedule.pillText(DOUBLE + 300), "Candy rain in 10:00")
+		expect.equal(EventSchedule.pillText(DOUBLE + 300), "Shop restock in 10:00")
+		expect.equal(EventSchedule.pillText(RESTOCK + 300), "Candy rain in 10:00")
+		expect.equal(EventSchedule.pillText(RESTOCK + 79), "SHOP RESTOCK! 3:41")
 		expect.equal(EventSchedule.pillText(DOUBLE - 1), "Double coins in 0:01")
 		expect.equal(EventSchedule.pillText(DOUBLE + 79), "DOUBLE COINS! 3:41")
 		expect.equal(EventSchedule.pillText(BASE + 79), "CANDY RAIN! 3:41")
@@ -120,6 +126,64 @@ return function(t: Context)
 		end
 		expect.equal(EventSchedule.coinMult(DOUBLE + 300, "squeeze"), 1) -- over
 		expect.equal(EventSchedule.coinMult(GOLDEN + 10, "squeeze"), 1) -- another event
+	end)
+
+	t.test("restockAt / nextStart: the restock's index only while it is live; the next start of a kind", function()
+		local index = RESTOCK // LOOP
+		expect.equal(EventSchedule.restockAt(RESTOCK + 10), index)
+		expect.equal(EventSchedule.restockAt(RESTOCK + 300), nil)
+		expect.equal(EventSchedule.restockAt(DOUBLE + 10), nil)
+		expect.equal(EventSchedule.nextStart(BASE + 10, "shopRestock"), RESTOCK)
+		expect.equal(EventSchedule.nextStart(RESTOCK + 10, "shopRestock"), RESTOCK) -- live: its own start
+		expect.equal(EventSchedule.nextStart(RESTOCK + 300, "shopRestock"), RESTOCK + 4 * LOOP)
+		expect.equal(EventSchedule.nextStart(BASE + 10, "nope"), math.huge)
+	end)
+
+	t.test("restockOffers: 2 Golden at 3x (a Rainbow at 6x, stock 1), 2 rare at 30% off; the same each call", function()
+		local Catalog = t.requireShared("Catalog")
+		local cfg = EVENTS.ShopRestock
+		expect.equal(cfg.goldenPriceMult, 3) -- owner: "Premium"
+		expect.equal(cfg.rainbowPriceMult, 6)
+		local sawRainbow, sawPlain = false, false
+		for index = 1, 200 do
+			local offers = EventSchedule.restockOffers(index)
+			expect.deepEqual(EventSchedule.restockOffers(index), offers) -- every server and client gets the same
+			expect.equal(#offers, 4)
+			for slot, offer in offers do
+				local def = Catalog.get(offer.squishy)
+				if slot <= 2 then
+					expect.truthy(table.find(cfg.goldenRarities, def.rarity) ~= nil)
+					if offer.deal == "rainbow" then
+						expect.equal(slot, 1)
+						expect.deepEqual({ offer.form, offer.price, offer.stock }, { 2, def.shopPrice * 6, 1 })
+					else
+						local got = { offer.deal, offer.form, offer.price, offer.stock }
+						expect.deepEqual(got, { "golden", 1, def.shopPrice * 3, 3 })
+					end
+				else
+					expect.truthy(table.find(cfg.rareRarities, def.rarity) ~= nil)
+					expect.deepEqual({ offer.deal, offer.form, offer.stock }, { "rare", 0, 3 })
+					expect.equal(offer.price, math.floor(def.shopPrice * 0.7))
+				end
+			end
+			expect.truthy(offers[1].squishy ~= offers[2].squishy and offers[3].squishy ~= offers[4].squishy)
+			sawRainbow = sawRainbow or offers[1].deal == "rainbow"
+			sawPlain = sawPlain or offers[1].deal == "golden"
+		end
+		expect.truthy(sawRainbow and sawPlain)
+	end)
+
+	t.test("stockText / stockLeft: this restock's numbers; another restock or a broken text = the full stock", function()
+		local offers = EventSchedule.restockOffers(7)
+		local full = {}
+		for i, offer in offers do
+			full[i] = offer.stock
+		end
+		expect.equal(EventSchedule.stockText(7, { 3, 0, 2, 1 }), "7:3,0,2,1")
+		expect.deepEqual(EventSchedule.stockLeft("7:3,0,2,1", 7, offers), { math.min(3, full[1]), 0, 2, 1 })
+		expect.deepEqual(EventSchedule.stockLeft("6:0,0,0,0", 7, offers), full)
+		expect.deepEqual(EventSchedule.stockLeft(nil, 7, offers), full)
+		expect.deepEqual(EventSchedule.stockLeft("junk", 7, offers), full)
 	end)
 
 	t.test("grabber: the nearest root within the radius, nobody beyond it", function()

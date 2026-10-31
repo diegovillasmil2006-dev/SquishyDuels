@@ -30,21 +30,29 @@
 --   INCOME: INCOME over 2 gear cards (UI/IncomeFormat: SQUISHY COINS and ALL EARNINGS, the tile the level it buys, the
 --   line the boost now -> after); a tap sends PenBuyIncome the same way. open({tab = "income"}) opens on INCOME (the
 --   HUD's 6th sticker); an open without a tab shows SHOP.
+-- * 2026-10-31 shop restock (owner "Yes, build it"; [P] a stand-in until Diego draws it): a fourth tab RESTOCK: while a
+--   restock is live its offers as gear cards (UI/RestockFormat: the squishy's picture on the tile, Golden / Rainbow /
+--   the discount, the stock left from the Workspace attribute SD_RestockStock, SOLD OUT / BOUGHT); a tap sends
+--   ShopRestockBuy(slot, price, a new requestId). Between restocks only the head and "Next restock in ...". The tab
+--   repaints every second while it is shown and whenever the stock changes. open({tab = "restock"}) opens on it.
 -- Stable names: Shop_CloseButton, Shop_BuyButton (the featured BUY), Shop_Pass_<key>, Shop_Pack_<key>,
--- Shop_Bundle_<key>Button (a pack's price bar), Shop_Tabs (Tab_shop / Tab_gear / Tab_income), Shop_Gear_<line>
--- (Shop_Gear_coins / Shop_Gear_all on INCOME).
+-- Shop_Bundle_<key>Button (a pack's price bar), Shop_Tabs (Tab_shop / Tab_gear / Tab_income / Tab_restock),
+-- Shop_Gear_<line> (Shop_Gear_coins / Shop_Gear_all on INCOME, Shop_Gear_1..4 on RESTOCK).
 
 -- Services
 
+local HttpService = game:GetService("HttpService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
+local EventSchedule = require(Shared.EventSchedule) -- 2026-10-31 shop restock
 local Format = require(Shared.Util.Format)
 local GearShop = require(Shared.Config.GearShop) -- gear step 3
 local Log = require(Shared.Util.Log)
@@ -60,6 +68,7 @@ local IconGlyph = require(Client.UI.Components.IconGlyph)
 local IncomeFormat = require(Client.UI.IncomeFormat) -- INCOME step 2
 local Layout = require(Client.UI.Layout)
 local MotionTrack = require(Client.UI.MotionTrack)
+local RestockFormat = require(Client.UI.RestockFormat) -- 2026-10-31 shop restock
 local SegmentedTabs = require(Client.UI.Components.SegmentedTabs)
 local ShopFormat = require(Client.UI.ShopFormat)
 local SquishyImage = require(Client.UI.Components.SquishyImage)
@@ -98,6 +107,8 @@ type GearCard = {
 	maxChip: Frame,
 	maxText: TextLabel,
 	view: GearFormat.Card?,
+	squishy: string?, -- 2026-10-31 RESTOCK: the squishy pictured on the tile
+	image: SquishyImage.SquishyImage?,
 }
 type Featured = {
 	root: Frame,
@@ -133,7 +144,11 @@ local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives t
 local WHITE = Color3.new(1, 1, 1)
 local REMOTE_GEAR = "GearBuy" -- gear step 3
 local REMOTE_INCOME = "PenBuyIncome" -- INCOME step 2
-local PAGE_SHOP, PAGE_GEAR, PAGE_INCOME = "shop", "gear", "income"
+local REMOTE_RESTOCK = "ShopRestockBuy" -- 2026-10-31 shop restock
+local PAGE_SHOP, PAGE_GEAR, PAGE_INCOME, PAGE_RESTOCK = "shop", "gear", "income", "restock"
+local ATTR_STOCK = "SD_RestockStock" -- ShopService's stock of the live restock (EventSchedule.stockText)
+local RESTOCK = require(Shared.Config.Events).ShopRestock
+local RESTOCK_SLOTS = RESTOCK.goldenOffers + RESTOCK.rareOffers
 local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result
 local GEAR_CARD = GearShop.card
 local GEAR_TILE = GearShop.tile
@@ -177,6 +192,12 @@ local gearBusy: string? = nil
 -- INCOME step 2: the INCOME page and its 2 cards (gearBusy holds their line while one is bought: no line is shared).
 local incomePage: Frame? = nil
 local incomeCards: { GearCard } = {}
+-- 2026-10-31 shop restock: the RESTOCK page, its cards, its wait line, and the slots bought (slot -> restock index).
+local restockPage: Frame? = nil
+local restockCards: { GearCard } = {}
+local restockWait: TextLabel? = nil
+local restockGrid: GuiObject? = nil -- hidden between restocks, so the wait line sits under the head
+local restockBought: { [number]: number } = {}
 
 -- A design surface as a foam face (`top` -> `bottom`, the ink border inside the box, the inset highlight, the lip).
 local function sticker(
@@ -441,6 +462,11 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 	if old then
 		old:Destroy()
 	end
+	local oldImage = card.image
+	if oldImage then
+		oldImage:destroy()
+		card.image = nil
+	end
 	table.clear(card.dots)
 	local spec = PASSES.tile
 	local found = (Palette :: any)[view.color]
@@ -461,6 +487,16 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		0,
 		spec.inset
 	)
+	card.tile, card.tier, card.steps, card.squishy = tile, view.tier, view.steps, view.squishy
+	local squishy = view.squishy
+	if squishy then -- 2026-10-31 RESTOCK: the squishy's picture instead of the tier number
+		local image = SquishyImage.new(squishy, { name = "Squishy", size = spec.px - 2 * spec.border, parent = tile })
+		image.root.AnchorPoint = Vector2.new(0.5, 0.5)
+		image.root.Position = UDim2.fromScale(0.5, 0.5)
+		image.root.ZIndex = 2
+		card.image = image
+		return
+	end
 	local number = Theme.label({
 		Name = "Tier",
 		Text = tostring(view.tier),
@@ -506,14 +542,13 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 			table.insert(card.dots, dot)
 		end
 	end
-	card.tile, card.tier, card.steps = tile, view.tier, view.steps
 end
 
 -- One card from its view: the tile, the stars, the name over the line over the chip (BUY with the price, pink when
 -- short with the Coins missing on the line, … while buying; the lilac MAX once all is bought).
 local function paintGearCard(card: GearCard, view: GearFormat.Card)
 	card.view = view
-	if card.tile == nil or card.tier ~= view.tier or card.steps ~= view.steps then
+	if card.tile == nil or card.tier ~= view.tier or card.steps ~= view.steps or card.squishy ~= view.squishy then
 		gearTile(card, view)
 	end
 	for i, dot in card.dots do
@@ -524,7 +559,7 @@ local function paintGearCard(card: GearCard, view: GearFormat.Card)
 	card.maxChip.Visible = max
 	card.buyChip.Visible = not max
 	if max then
-		setChip(card.maxChip, card.maxText, Strings.gear.max)
+		setChip(card.maxChip, card.maxText, view.maxText or Strings.gear.max)
 	else
 		local price = if view.state == "busy" then Strings.shop.robuxLoading else Format.coins(view.price :: number)
 		setChip(card.buyChip, card.buyText, price)
@@ -571,6 +606,33 @@ local function paintGear()
 			paintGearCard(card, view)
 		end
 	end
+	-- 2026-10-31 shop restock: the live restock's cards, else the wait line.
+	local now = Workspace:GetServerTimeNow()
+	local index = EventSchedule.restockAt(now)
+	local bought: { [number]: boolean } = {}
+	for slot, at in restockBought do
+		bought[slot] = at == index
+	end
+	local restockViews = RestockFormat.cards(
+		now,
+		Workspace:GetAttribute(ATTR_STOCK),
+		if type(coins) == "number" then coins else nil,
+		gearBusy,
+		bought
+	)
+	for slot, card in restockCards do
+		local view = restockViews[slot]
+		card.root.Visible = view ~= nil
+		if view then
+			paintGearCard(card, view)
+		end
+	end
+	local wait, grid = restockWait, restockGrid
+	if wait and grid then
+		wait.Visible = #restockViews == 0
+		grid.Visible = #restockViews > 0
+		wait.Text = RestockFormat.waitText(now)
+	end
 end
 
 -- A tap on a gear card (see the header): buy the shown step, or say why not.
@@ -591,16 +653,31 @@ local function buyGear(card: GearCard)
 	gearBusy = card.line
 	ShopController.refresh()
 	task.spawn(function()
-		local result = NetController.invokeAsync(card.remote, card.line, view.price)
+		local restock = card.remote == REMOTE_RESTOCK
+		local slot = tonumber(card.line) :: number
+		local index = EventSchedule.restockAt(Workspace:GetServerTimeNow())
+		local result = if restock
+			then NetController.invokeAsync(card.remote, slot, view.price, HttpService:GenerateGUID(false))
+			else NetController.invokeAsync(card.remote, card.line, view.price)
 		gearBusy = nil
 		if result.ok then
 			SoundController.play(SOUND_PURCHASE)
-			local bought = if card.remote == REMOTE_INCOME
-				then Strings.format(Strings.income.bought, { name = view.name, level = view.tier })
+			if restock and index ~= nil then
+				restockBought[slot] = index
+			end
+			local bought = if restock
+				then Strings.format(Strings.event.restockGot, { name = view.name })
+				elseif card.remote == REMOTE_INCOME then Strings.format(
+					Strings.income.bought,
+					{ name = view.name, level = view.tier }
+				)
 				else Strings.format(Strings.gear.bought, { name = view.name })
 			UIController.toast(bought, "success")
 			MotionTrack.play(card.rise, CARD_IN.frames :: any, PASSES.rise.ms, 0, CARD_IN.curve)
 		else
+			if restock and index ~= nil and result.reason == "shop.restockBought" then
+				restockBought[slot] = index -- bought before a rejoin: show BOUGHT
+			end
 			UIController.toast(Strings.reasonText(result.reason), "warn")
 		end
 		ShopController.refresh()
@@ -718,8 +795,9 @@ local function buildCardPage(
 	remote: string,
 	list: { GearCard }
 ): Frame
+	local pageName = if id == PAGE_GEAR then "Gear" elseif id == PAGE_RESTOCK then "Restock" else "Income"
 	local pageFrame: Frame = Create("Frame", {
-		Name = if id == PAGE_GEAR then "GearPage" else "IncomePage",
+		Name = pageName .. "Page",
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(left, 0),
 		Size = UDim2.fromOffset(width, height),
@@ -727,7 +805,7 @@ local function buildCardPage(
 		Parent = body,
 	})
 	Theme.list(Enum.FillDirection.Vertical, SHOP.sections.gap, pageFrame, Enum.HorizontalAlignment.Left)
-	sectionHead(pageFrame, if id == PAGE_GEAR then "GearHead" else "IncomeHead", head, 1)
+	sectionHead(pageFrame, pageName .. "Head", head, 1)
 	local cellW = math.floor((width - SHOP.sections.cellGap) / PASSES.columns)
 	local rows = math.ceil(#lines / PASSES.columns)
 	local gridH = rows * (GEAR_CARD.height + CARD_LIP) + (rows - 1) * Layout.lipGap(SHOP.sections.cellGap, CARD_LIP)
@@ -772,9 +850,50 @@ local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, w
 	return pageFrame
 end
 
+-- 2026-10-31 shop restock: the RESTOCK page, its cards (one per offer slot), then the wait line between restocks.
+local function buildRestockPage(c: Cleanup.Cleanup, body: Instance, left: number, width: number, height: number): Frame
+	local lines = {}
+	for slot = 1, RESTOCK_SLOTS do
+		table.insert(lines, tostring(slot))
+	end
+	local pageFrame = buildCardPage(
+		c,
+		body,
+		left,
+		width,
+		height,
+		PAGE_RESTOCK,
+		Strings.event.restockSection,
+		lines,
+		REMOTE_RESTOCK,
+		restockCards
+	)
+	local kind = roleKind(GearShop.powerRole)
+	local wait = Theme.label({
+		Name = "Wait",
+		Text = "",
+		Size = UDim2.new(1, 0, 0, 2 * math.ceil(Theme.lineHeight(kind))),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextWrapped = true,
+		LayoutOrder = 3,
+		Parent = pageFrame,
+	}, kind)
+	Theme.stickerText(wait, GearShop.powerRole)
+	restockWait = wait
+	-- lihfolk-ignore: findfirstchild-chain (stored as optional; paintGear checks it before use)
+	restockGrid = pageFrame:FindFirstChild("Cards") :: GuiObject? -- buildCardPage's grid
+	local list = pageFrame:FindFirstChildOfClass("UIListLayout")
+	if list then
+		list.VerticalAlignment = Enum.VerticalAlignment.Top -- the head stays up top while the cards are hidden
+	end
+	return pageFrame
+end
+
 -- Shows a page and paints the picked tab (the cards rise in on GEAR and INCOME, like the shop's on open).
 local function setPage(id: string)
-	page = if id == PAGE_GEAR or id == PAGE_INCOME then id else PAGE_SHOP
+	page = if id == PAGE_GEAR or id == PAGE_INCOME or id == PAGE_RESTOCK then id else PAGE_SHOP
 	if shopPage then
 		shopPage.Visible = page == PAGE_SHOP
 	end
@@ -784,12 +903,16 @@ local function setPage(id: string)
 	if incomePage then
 		incomePage.Visible = page == PAGE_INCOME
 	end
+	if restockPage then
+		restockPage.Visible = page == PAGE_RESTOCK
+	end
 	local picker = tabs
 	if picker and picker:selected() ~= page then
 		picker:select(page)
 	end
 	if page ~= PAGE_SHOP then
-		for index, card in if page == PAGE_GEAR then gearCards else incomeCards do
+		local cards = if page == PAGE_GEAR then gearCards elseif page == PAGE_RESTOCK then restockCards else incomeCards
+		for index, card in cards do
 			MotionTrack.play(
 				card.rise,
 				CARD_IN.frames :: any,
@@ -836,6 +959,14 @@ local function buildTabs(c: Cleanup.Cleanup): SegmentedTabs.SegmentedTabs
 				chip = "",
 				short = Strings.income.tab,
 				stops = stops(spec.income),
+				rotation = spec.rotation,
+			},
+			{
+				id = PAGE_RESTOCK, -- 2026-10-31 shop restock
+				label = Strings.event.restockTab,
+				chip = "",
+				short = Strings.event.restockTab,
+				stops = stops(spec.restock),
 				rotation = spec.rotation,
 			},
 		},
@@ -1582,6 +1713,7 @@ local function build(parent: Instance): GuiObject
 		REMOTE_INCOME,
 		incomeCards
 	)
+	restockPage = buildRestockPage(c, body, columnLeft, columnW, bodyH) -- 2026-10-31 shop restock
 	setPage(page)
 
 	panel = root
@@ -1616,7 +1748,8 @@ function ShopController.refresh()
 	end
 end
 
--- Opens the shop ({tab = "gear"} on the GEAR tab, gear step 3; {tab = "income"} on INCOME, INCOME step 2; else SHOP).
+-- Opens the shop ({tab = "gear"} on the GEAR tab, gear step 3; {tab = "income"} on INCOME, INCOME step 2;
+-- {tab = "restock"} on RESTOCK, 2026-10-31; else SHOP).
 -- Returns UIController.open's result.
 function ShopController.open(params: { [string]: any }?): boolean
 	return UIController.open(SCREEN, params)
@@ -1645,11 +1778,12 @@ function ShopController.debugState(): { [string]: any }
 		page = page, -- gear step 3
 		gear = (function(): { any }
 			local list = {}
-			for _, cards in { gearCards, incomeCards } do -- INCOME step 2: then coins, all
+			-- INCOME step 2: then coins, all; 2026-10-31: then the RESTOCK cards shown (1..4)
+			for _, cards in { gearCards, incomeCards, restockCards } do
 				for _, card in cards do
 					local view = card.view
-					if view then
-						table.insert(list, { line = card.line, name = view.name, state = view.state })
+					if view and card.root.Visible then
+						table.insert(list, { line = card.line, name = view.name, state = view.state, price = view.price })
 					end
 				end
 			end
@@ -1676,6 +1810,19 @@ function ShopController.init()
 			applyLayout()
 			refresh()
 			riseCards()
+			-- 2026-10-31 shop restock: the RESTOCK tab's countdown and stock, every second while it is shown.
+			local ticking = true
+			oc:add(function()
+				ticking = false
+			end)
+			task.spawn(function()
+				while ticking do
+					task.wait(1)
+					if ticking and page == PAGE_RESTOCK then
+						ShopController.refresh()
+					end
+				end
+			end)
 			-- gear step 3 / INCOME step 2: the tab asked for, else SHOP (the HUD's Shop and INCOME stickers).
 			setPage(if type(params) == "table" and type(params.tab) == "string" then params.tab else PAGE_SHOP)
 		end,
@@ -1699,6 +1846,7 @@ function ShopController.init()
 	end
 	c:add(StateController.Loaded:connect(ShopController.refresh))
 	c:add(StateController.LobbyLockChanged:connect(ShopController.refresh))
+	c:add(Workspace:GetAttributeChangedSignal(ATTR_STOCK):Connect(ShopController.refresh)) -- 2026-10-31 shop restock
 	c:add(
 		MarketplaceService.PromptProductPurchaseFinished:Connect(
 			function(userId: number, productId: number, _isPurchased: boolean)
@@ -1732,6 +1880,13 @@ function ShopController.init()
 		tabs, shopPage, gearPage, gearPower, gearBusy, page = nil, nil, nil, nil, nil, PAGE_SHOP
 		table.clear(incomeCards) -- INCOME step 2
 		incomePage = nil
+		for _, card in restockCards do -- 2026-10-31 shop restock
+			if card.image then
+				card.image:destroy()
+			end
+		end
+		table.clear(restockCards)
+		restockPage, restockWait, restockGrid = nil, nil, nil
 	end)
 	log:debug("ready")
 end

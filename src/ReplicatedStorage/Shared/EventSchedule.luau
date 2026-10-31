@@ -15,6 +15,14 @@
 --                                 under rainbowChance, 1 (Golden) under rainbowChance + goldenChance; else 0
 --   goldenOddsText(t)             the Boxes window's odds line while golden luck is live, else nil
 --   coinMult(t, reason)           DoubleCoins.mult while double coins is live and `reason` is one of its reasons, else 1
+--   restockAt(t)                  the live shop restock's index, else nil
+--   nextStart(t, kind)            when the next `kind` event starts (its start, if it is live at t)
+--   restockOffers(index)          that restock's offers { squishy, form, price, stock, deal }: the Golden ones (the
+--                                 first Rainbow on rainbowChance), then the rare ones at a discount; picked by a Random
+--                                 seeded with the index, so every server and client gets the same
+--   stockText(index, left)        the stock as one string "index:3,2,1,3" (ShopService's Workspace attribute)
+--   stockLeft(text, index, offers) what stockText says is left of each offer, the full stock when it is about another
+--                                 restock or broken
 
 -- Services
 
@@ -23,14 +31,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local Catalog = require(Shared.Catalog)
 local EVENTS = require(Shared.Config.Events)
 local Format = require(Shared.Util.Format)
 local Strings = require(Shared.Strings)
+local Types = require(Shared.Types)
 
 -- Types
 
 export type Kind = string
 export type State = { kind: Kind, live: boolean, startsAt: number, endsAt: number, index: number }
+export type Deal = "golden" | "rainbow" | "rare"
+export type Offer = { squishy: string, form: number, price: number, stock: number, deal: Deal }
 
 -- Constants
 
@@ -132,6 +144,86 @@ function EventSchedule.coinMult(t: number, reason: string): number
 		return double.mult
 	end
 	return 1
+end
+
+function EventSchedule.restockAt(t: number): number?
+	local state = EventSchedule.at(t)
+	return if state.live and state.kind == "shopRestock" then state.index else nil
+end
+
+function EventSchedule.nextStart(t: number, kind: Kind): number
+	local loop = EVENTS.loopSeconds
+	local index = t // loop
+	for k = 0, #EVENTS.kinds do
+		local startsAt = (index + k) * loop
+		if EVENTS.kinds[(index + k) % #EVENTS.kinds + 1] == kind and t < startsAt + EVENTS.liveSeconds then
+			return startsAt
+		end
+	end
+	return math.huge -- not a kind in the turn order
+end
+
+function EventSchedule.restockOffers(index: number): { Offer }
+	local cfg = EVENTS.ShopRestock
+	local rng = Random.new(index)
+	local function pick(rarities: { string }, count: number): { Types.SquishyDef }
+		local pool = {}
+		for _, def in Catalog.list() do
+			if def.shopPrice ~= nil and table.find(rarities, def.rarity) then
+				table.insert(pool, def)
+			end
+		end
+		local picked = {}
+		for _ = 1, math.min(count, #pool) do
+			table.insert(picked, table.remove(pool, rng:NextInteger(1, #pool)) :: Types.SquishyDef)
+		end
+		return picked
+	end
+	local rainbow = rng:NextNumber() < cfg.rainbowChance
+	local offers: { Offer } = {}
+	for i, def in pick(cfg.goldenRarities, cfg.goldenOffers) do
+		local isRainbow = rainbow and i == 1
+		table.insert(offers, {
+			squishy = def.id,
+			form = if isRainbow then 2 else 1,
+			price = (def.shopPrice :: number) * (if isRainbow then cfg.rainbowPriceMult else cfg.goldenPriceMult),
+			stock = if isRainbow then cfg.rainbowStock else cfg.stock,
+			deal = if isRainbow then "rainbow" else "golden",
+		})
+	end
+	for _, def in pick(cfg.rareRarities, cfg.rareOffers) do
+		table.insert(offers, {
+			squishy = def.id,
+			form = 0,
+			price = math.floor((def.shopPrice :: number) * (1 - cfg.rareDiscount)),
+			stock = cfg.stock,
+			deal = "rare",
+		})
+	end
+	return offers
+end
+
+function EventSchedule.stockText(index: number, left: { number }): string
+	return `{index}:{table.concat(left, ",")}`
+end
+
+function EventSchedule.stockLeft(text: unknown, index: number, offers: { Offer }): { number }
+	local left = {}
+	for i, offer in offers do
+		left[i] = offer.stock
+	end
+	local head, rest = string.match(if type(text) == "string" then text else "", "^(%d+):([%d,]*)$")
+	if head == nil or tonumber(head) ~= index then
+		return left
+	end
+	local i = 0
+	for n in string.gmatch(rest :: string, "%d+") do
+		i += 1
+		if left[i] ~= nil then
+			left[i] = math.min(left[i], tonumber(n) :: number)
+		end
+	end
+	return left
 end
 
 return EventSchedule

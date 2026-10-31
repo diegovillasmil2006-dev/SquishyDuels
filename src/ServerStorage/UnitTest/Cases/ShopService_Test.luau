@@ -15,7 +15,9 @@
 --     (savePending), purchase.unavailable (closing / restart), inventory.lockedInDuel, economy.notEnoughCoins;
 --   * one buy in flight per player and one charged buy per second (net.rateLimited);
 --   * every Catalog price is valid at boot (nothing disabled); Dragon's 1.1T price is bought with its exact
---     expectedPrice, above the 1e6 bound of plain integer arguments.
+--     expectedPrice, above the 1e6 bound of plain integer arguments;
+--   * 2026-10-31 shop restock: buyRestock(slot) sells the live restock's offer in its form at its price, drops this
+--     server's stock (published as text) first come, 1 each per player; sold out, over, a bad slot or price refused.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -39,6 +41,11 @@ return function(t: Context)
 	local Config = t.requireShared("Config")
 	local FakeClock = t.requireFake("FakeClock")
 
+	local EventSchedule = t.requireShared("EventSchedule")
+	local EVENTS = t.requireShared("Config/Events")
+	local LOOP = EVENTS.loopSeconds
+	local RESTOCK_AT = (4 * 1_000 + 3) * LOOP + 10 -- 10 s into a shop restock (index % 4 == 3)
+	local INDEX = RESTOCK_AT // LOOP
 	local WELCOME = Config.Economy.Pen.welcomePrice.Common -- the first of each Common (D1:202)
 	local TOAST = Catalog.get("toast").shopPrice -- every Toast after the first
 	local PEN = Config.Economy.Pen
@@ -68,6 +75,8 @@ return function(t: Context)
 			locked = {},
 			clock = FakeClock.new(100),
 			onSave = nil,
+			serverNow = RESTOCK_AT,
+			published = {},
 		}
 		local port = {
 			getProfile = function(player: any): any?
@@ -131,6 +140,12 @@ return function(t: Context)
 				return NOW
 			end,
 			clock = w.clock.now,
+			serverNow = function(): number
+				return w.serverNow
+			end,
+			publishStock = function(text: string)
+				table.insert(w.published, text)
+			end,
 		})
 		return w
 	end
@@ -283,6 +298,48 @@ return function(t: Context)
 		local result = ShopService.buy(p, "dragon", dragon, REQ_A)
 		expect.deepEqual(result, { ok = true, data = { squishyId = "dragon", charged = true, savePending = false } })
 		expect.equal(profile.coins, 0)
+	end)
+
+	t.test("restock: an offer in its form at its price; the stock drops and is published; 1 each per player", function()
+		local w = setup()
+		local offers = EventSchedule.restockOffers(INDEX)
+		local offer = offers[1]
+		local p, profile = readyPlayer(w, offer.price * 2)
+		local okResult = { ok = true, data = { squishyId = offer.squishy, charged = true, savePending = false } }
+		expect.deepEqual(ShopService.buyRestock(p, 1, offer.price, REQ_A), okResult)
+		expect.equal(profile.coins, offer.price)
+		local item = profile.pen.items[#profile.pen.items]
+		expect.deepEqual({ item.kind, item.form }, { offer.squishy, offer.form })
+		local left = { offer.stock - 1, offers[2].stock, offers[3].stock, offers[4].stock }
+		expect.deepEqual(w.published, { EventSchedule.stockText(INDEX, left) })
+		w.clock.advance(5)
+		expect.deepEqual(ShopService.buyRestock(p, 1, offer.price, REQ_A), okResult) -- a replay: no second charge
+		refused(ShopService.buyRestock(p, 1, offer.price, REQ_B), "shop.restockBought")
+		expect.equal(profile.coins, offer.price)
+	end)
+
+	t.test("restock: the server's stock is shared, first come; then sold out; the refusals", function()
+		local w = setup()
+		local offers = EventSchedule.restockOffers(INDEX)
+		local slot = 3 -- a rare deal: stock 3
+		local offer = offers[slot]
+		expect.deepEqual({ offer.deal, offer.stock }, { "rare", 3 })
+		for i = 1, offer.stock do
+			local p = readyPlayer(w, 1e13, 10 + i)
+			local req = string.format("%08x-0000-0000-0000-000000000000", i)
+			expect.equal(ShopService.buyRestock(p, slot, offer.price, req).ok, true)
+		end
+		local late, profile = readyPlayer(w, 1e13, 99)
+		refused(ShopService.buyRestock(late, slot, offer.price, REQ_C), "shop.soldOut")
+		refused(ShopService.buyRestock(late, 9, offer.price, REQ_C), "net.invalid")
+		refused(ShopService.buyRestock(late, 1.5, offer.price, REQ_C), "net.invalid")
+		refused(ShopService.buyRestock(late, 4, offers[4].price - 1, REQ_C), "shop.priceChanged")
+		w.serverNow = RESTOCK_AT + EVENTS.liveSeconds -- over
+		refused(ShopService.buyRestock(late, 4, offers[4].price, REQ_C), "shop.restockOver")
+		expect.equal(profile.coins, 1e13)
+		w.serverNow = RESTOCK_AT + 4 * LOOP -- the next restock starts full
+		local fresh = EventSchedule.restockOffers(INDEX + 4)[slot]
+		expect.equal(ShopService.buyRestock(late, slot, fresh.price, REQ_C).ok, true)
 	end)
 
 	t.test("every Catalog shop price is valid at boot (nothing is disabled); priceOf reads the Catalog", function()

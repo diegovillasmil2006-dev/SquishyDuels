@@ -29,17 +29,28 @@
 -- remote's own rate instead of a second tunable). NetService enforces the same bucket on the remote.
 -- Fail closed at boot (§2.6 "invalid shop entries are disabled"): a shopPrice that is not a positive whole number
 -- within maxCoins, or above Pricing.ceiling(id) (the expected box spend, §6.6), is logged and not sold.
--- useDeps(overrides?) swaps the collaborators (tests). init() registers the ShopBuy handler and never yields.
+-- 2026-10-31 shop restock (Config.Events.ShopRestock; owner "Shared, first come", "Premium"): buyRestock(p, slot,
+-- expectedPrice, requestId) buys offer `slot` of the live restock (EventSchedule.restockOffers of restockAt(serverNow),
+-- the same offers in every server). Order: net.invalid (slot, requestId), data.notReady (no profile), the shopLog
+-- replay, shop.restockOver (no restock live), net.invalid (no such slot), shop.notForSale (disabled at boot),
+-- shop.priceChanged, inventory.full, shop.restockBought (this player has perPlayer of it), shop.soldOut (this server's
+-- stock is gone), then steps 7-11 of a buy with the offer's form (Golden 1, Rainbow 2, a rare deal 0). The stock is
+-- this server's, in memory, first come: it drops in the same no-yield step as the spend and is published as the
+-- Workspace attribute SD_RestockStock (EventSchedule.stockText; a new restock starts full, so an older text means full).
+-- useDeps(overrides?) swaps the collaborators (tests). init() registers the ShopBuy and ShopRestockBuy handlers and
+-- never yields.
 
 -- Services
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local EventSchedule = require(Shared.EventSchedule)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
 local Pricing = require(Shared.Pricing)
@@ -59,7 +70,13 @@ export type ShopResult = Types.ShopResult
 
 export type Economy = {
 	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?),
-	grantSquishy: (player: any, id: string, source: string) -> { added: boolean, refused: string? },
+	grantSquishy: (
+		player: any,
+		id: string,
+		source: string,
+		mayWait: boolean?,
+		form: number?
+	) -> { added: boolean, refused: string? },
 	grantCoins: (player: any, amount: number, reason: string) -> (number, string?),
 }
 
@@ -72,11 +89,16 @@ export type Deps = {
 	isLocked: (player: any) -> boolean, -- InventoryService.isLocked: matched or in a match
 	now: () -> number, -- os.time: the shopLog `at`
 	clock: () -> number, -- os.clock: the per-player spacing
+	serverNow: () -> number, -- Workspace:GetServerTimeNow: which restock is live
+	publishStock: (text: string) -> (), -- the SD_RestockStock attribute
 }
 
 -- Constants
 
 local REMOTE_BUY = "ShopBuy"
+local REMOTE_RESTOCK = "ShopRestockBuy"
+local ATTR_STOCK = "SD_RestockStock"
+local PER_PLAYER = require(Shared.Config.Events).ShopRestock.perPlayer
 local REASON_SHOP = "shop"
 local REASON_REFUND = "refund"
 local SOURCE_SHOP = "shop"
@@ -95,6 +117,9 @@ local CODE_LOCKED = "inventory.lockedInDuel"
 local CODE_FULL = "inventory.full" -- pens3 phase 5: the Toy Box is full
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
 local CODE_GENERIC = "error.generic"
+local CODE_SOLD_OUT = "shop.soldOut"
+local CODE_RESTOCK_BOUGHT = "shop.restockBought"
+local CODE_RESTOCK_OVER = "shop.restockOver"
 
 -- Module table
 
@@ -107,6 +132,9 @@ local deps: Deps? = nil
 local busy: { [any]: boolean } = {}
 local lastChargeAt: { [any]: number } = {}
 local disabled: { [string]: string } = {} -- squishyId -> why it is not sold (boot check)
+-- The restock this server's stock is for: what is left of each offer and how many each buyer (UserId) took.
+type Restock = { index: number, left: { number }, buyers: { { [any]: number } } }
+local restock: Restock? = nil
 
 local function defaultDeps(): Deps
 	return {
@@ -120,6 +148,12 @@ local function defaultDeps(): Deps
 		isLocked = InventoryService.isLocked,
 		now = os.time,
 		clock = os.clock,
+		serverNow = function(): number
+			return Workspace:GetServerTimeNow()
+		end,
+		publishStock = function(text: string)
+			Workspace:SetAttribute(ATTR_STOCK, text)
+		end,
 	}
 end
 
@@ -171,6 +205,8 @@ local function appendShopLog(player: any, entry: Types.ShopLogEntry): boolean
 	return ok
 end
 
+local charge: (player: any, request: string, id: string, price: number, form: number, onGranted: (() -> ())?) -> any
+
 local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown, requestId: unknown): any
 	local d = getDeps()
 	-- 1-3: the request itself
@@ -204,6 +240,78 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 	if PenMath.room(profile.pen) <= 0 then
 		return refuse(CODE_FULL)
 	end
+	return charge(player, request, id, price, 0, nil)
+end
+
+-- The restock this server sells now (a new one starts with its full stock).
+local function restockFor(index: number, offers: { EventSchedule.Offer }): Restock
+	local current = restock
+	if current and current.index == index then
+		return current
+	end
+	local fresh: Restock = { index = index, left = {}, buyers = {} }
+	for slot, offer in offers do
+		fresh.left[slot] = offer.stock
+		fresh.buyers[slot] = {}
+	end
+	restock = fresh
+	return fresh
+end
+
+local function buyRestockLocked(player: any, slot: unknown, expectedPrice: unknown, requestId: unknown): any
+	local d = getDeps()
+	local request = Validate.requestId(requestId)
+	if type(slot) ~= "number" or slot ~= math.floor(slot) or request == nil then
+		return refuse(CODE_INVALID)
+	end
+	local data = d.data
+	local profile = data.getProfile(player)
+	if type(profile) ~= "table" then
+		return refuse(CODE_NOT_READY)
+	end
+	local prior = EconomyService.findLog(profile.shopLog, "req", request)
+	if prior ~= nil then
+		return NetService.ok(resultFrom(tostring(prior.squishy), true, data.savePending(player)))
+	end
+	local index = EventSchedule.restockAt(d.serverNow())
+	if index == nil then
+		return refuse(CODE_RESTOCK_OVER)
+	end
+	local offers = EventSchedule.restockOffers(index)
+	local offer = offers[slot :: number]
+	if offer == nil then
+		return refuse(CODE_INVALID)
+	end
+	if disabled[offer.squishy] ~= nil then
+		return refuse(CODE_NOT_FOR_SALE)
+	end
+	if expectedPrice ~= offer.price then
+		return refuse(CODE_PRICE_CHANGED)
+	end
+	if PenMath.room(profile.pen) <= 0 then
+		return refuse(CODE_FULL)
+	end
+	local stock = restockFor(index, offers)
+	local key = player.UserId
+	local buyers = stock.buyers[slot :: number]
+	if (buyers[key] or 0) >= PER_PLAYER then
+		return refuse(CODE_RESTOCK_BOUGHT)
+	end
+	if stock.left[slot :: number] <= 0 then
+		return refuse(CODE_SOLD_OUT)
+	end
+	return charge(player, request, offer.squishy, offer.price, offer.form, function()
+		stock.left[slot :: number] -= 1
+		buyers[key] = (buyers[key] or 0) + 1
+		d.publishStock(EventSchedule.stockText(index, stock.left))
+	end)
+end
+
+-- Steps 7-11 of a buy (see the header) for a sold `id` at `price` in `form`; `onGranted` runs right after the grant,
+-- in the same no-yield step as the spend (the restock's stock).
+function charge(player: any, request: string, id: string, price: number, form: number, onGranted: (() -> ())?): any
+	local d = getDeps()
+	local data = d.data
 	-- 7-10: context gates
 	if data.status(player) ~= STATUS_READY then
 		return refuse(CODE_NOT_READY)
@@ -234,13 +342,16 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 		return refuse(CODE_GENERIC)
 	end
 	lastChargeAt[player] = d.clock()
-	local grant = d.economy.grantSquishy(player, id, SOURCE_SHOP)
+	local grant = d.economy.grantSquishy(player, id, SOURCE_SHOP, false, form)
 	if grant.refused ~= nil or not grant.added then
 		-- Cannot happen after a successful spend in the same step (the id is valid and the room was checked); never
 		-- keep Coins for nothing: the spend is given back.
 		log:error(`buy {id}: the squishy could not be granted ({tostring(grant.refused)}); refunding {price}`)
 		d.economy.grantCoins(player, price, REASON_REFUND)
 		return refuse(CODE_GENERIC)
+	end
+	if onGranted then
+		onGranted()
 	end
 	appendShopLog(player, { req = request, squishy = id, price = price, at = d.now() })
 	local saved = d.saveNow(player)
@@ -261,6 +372,7 @@ function ShopService.useDeps(overrides: { [string]: any }?)
 	deps = fresh
 	busy = {}
 	lastChargeAt = {}
+	restock = nil
 end
 
 -- The shop price of a squishy that is on sale, or nil (not sold, or disabled at boot).
@@ -282,6 +394,21 @@ function ShopService.buy(player: any, squishyId: unknown, expectedPrice: unknown
 	busy[player] = nil
 	if not ok then
 		log:error("buy failed:", result)
+		return NetService.err(CODE_GENERIC) -- whether anything was charged is unknown here: no `charged`
+	end
+	return result
+end
+
+-- ShopRestockBuy (see the header): ShopBuy's answers and its one-in-flight and one-a-second rules.
+function ShopService.buyRestock(player: any, slot: unknown, expectedPrice: unknown, requestId: unknown): any
+	if busy[player] then
+		return refuse(CODE_RATE_LIMITED)
+	end
+	busy[player] = true
+	local ok, result = pcall(buyRestockLocked, player, slot, expectedPrice, requestId)
+	busy[player] = nil
+	if not ok then
+		log:error("restock buy failed:", result)
 		return NetService.err(CODE_GENERIC) -- whether anything was charged is unknown here: no `charged`
 	end
 	return result
@@ -315,6 +442,9 @@ function ShopService.init()
 	end
 	NetService.onInvoke(REMOTE_BUY, function(player: Player, squishyId: any, expectedPrice: any, requestId: any): any
 		return ShopService.buy(player, squishyId, expectedPrice, requestId)
+	end)
+	NetService.onInvoke(REMOTE_RESTOCK, function(player: Player, slot: any, expectedPrice: any, requestId: any): any
+		return ShopService.buyRestock(player, slot, expectedPrice, requestId)
 	end)
 end
 

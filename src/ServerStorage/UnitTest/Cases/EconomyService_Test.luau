@@ -126,6 +126,9 @@ return function(t: Context)
 			debugAllowed = function(): boolean
 				return w.debug
 			end,
+			coinMult = function(reason: string): number -- the real schedule on the test's clock
+				return t.requireShared("EventSchedule").coinMult(w.clock, reason)
+			end,
 		}
 	end
 

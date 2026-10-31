@@ -51,8 +51,8 @@
 --   SAME step: the time away counted is the time stamped as paid, so a second call pays 0, and a crash before the next
 --   save loses the grant and the stamp together (the next load pays that time once). A "soon" save when it paid.
 -- * 2026-10-31 double coins (owner: "Pen + playing"): while the timed event is live, every grant whose reason is in
---   Config.Events.DoubleCoins.reasons pays EventSchedule.coinMult times (on deps.now()); the returned amount is the
---   doubled one, so the squeeze, highway, duel and match results show it.
+--   Config.Events.DoubleCoins.reasons pays deps.coinMult times (EventSchedule.coinMult on os.time; none in tests that
+--   leave it out); the returned amount is the doubled one, so the squeeze, highway, duel and match results show it.
 -- Failures come back as a short kind ("invalid", "reason", "notReady", "savePending", "notEnoughCoins", "full"); CODES
 -- maps the kinds that have a §2.10 code. Collaborators are reached through `deps` (useDeps in tests).
 
@@ -83,6 +83,9 @@ export type Deps = {
 	markDirty: (player: any, field: string) -> (),
 	now: () -> number, -- os.time(): owned `at`, the same-pair record's times
 	debugAllowed: () -> boolean, -- the Studio-only "debug" reason
+	-- 2026-10-31 double coins: a grant's multiplier by reason (EventSchedule.coinMult on os.time); nil = none, so a
+	-- test's fake clock never lands in a double coins window by chance.
+	coinMult: ((reason: string) -> number)?,
 }
 
 -- What grantSquishy did (pens3 phase 5): `added` = a pen item was added; `copy` = the kind was owned before; `queued` =
@@ -179,6 +182,9 @@ local function defaultDeps(): Deps
 		debugAllowed = function(): boolean
 			return Config.Debug.debugCoinReason == true
 		end,
+		coinMult = function(reason: string): number
+			return EventSchedule.coinMult(os.time(), reason)
+		end,
 	}
 end
 
@@ -243,7 +249,8 @@ end
 -- header). Returns what was really added.
 local function addCoinsTo(profile: any, amount: number, reason: string): number
 	local before = coinsOf(profile)
-	local after = math.min(MAX_COINS, before + amount * EventSchedule.coinMult(getDeps().now(), reason))
+	local mult = getDeps().coinMult
+	local after = math.min(MAX_COINS, before + amount * (if mult then mult(reason) else 1))
 	profile.coins = after
 	local added = after - before
 	if added > 0 and reason ~= REASON_DEBUG then

@@ -62,6 +62,7 @@ local Net = {
 		BoxOpen = { rate = 0.5, burst = 1, oneInFlight = true },
 		AckReveal = { rate = 5, burst = 5 },
 		ShopBuy = { rate = 1, burst = 1, oneInFlight = true },
+		ShopRestockBuy = { rate = 1, burst = 1, oneInFlight = true }, -- 2026-10-31 shop restock: ShopBuy's
 		QuestClaim = { rate = 2, burst = 3 },
 		QuestSwap = { rate = 0.5, burst = 1 },
 		DailyClaim = { rate = 0.5, burst = 1 },

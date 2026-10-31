@@ -162,6 +162,10 @@ local Strings = {
 		shop = {
 			priceChanged = "The price changed. Please check it and try again.",
 			notForSale = "This squishy isn't sold in the shop.",
+			-- 2026-10-31 shop restock (ShopService.buyRestock)
+			soldOut = "Sold out! Someone was faster.",
+			restockBought = "You already bought this one in this restock.",
+			restockOver = "This restock is over. The next one comes soon!",
 		},
 		quest = {
 			notReady = "This quest isn't finished yet.",
@@ -1333,12 +1337,26 @@ local Strings = {
 		candyRain = "Candy rain",
 		goldenLuck = "Golden luck",
 		doubleCoins = "Double coins",
+		shopRestock = "Shop restock",
 		pillNext = "{event} in {time}",
 		pillLive = "{event}! {time}",
 		-- The start toasts, keyed "<kind>Start" (EventService).
 		candyRainStart = "Candy rain in Squish Square! Grab the candy!",
 		goldenLuckStart = "Golden luck! Boxes can give Golden squishies for 5 minutes!",
 		doubleCoinsStart = "Double coins! Your pen, squeezes, duels and throws pay double for 5 minutes!",
+		shopRestockStart = "Shop restock! Golden squishies and deals in the Shop, while stock lasts!",
+		-- The Shop's RESTOCK tab (ShopController, UI/RestockFormat).
+		restockTab = "RESTOCK",
+		restockSection = "RESTOCK",
+		restockNext = "Next restock in {time}. Golden squishies and deals, first come!",
+		restockGolden = "Golden {name}",
+		restockRainbow = "Rainbow {name}",
+		restockGoldenLine = "Earns 2x · {left} left",
+		restockRainbowLine = "Earns 4x · {left} left",
+		restockRareLine = "{off}% off · {left} left",
+		restockSoldOut = "SOLD OUT",
+		restockBought = "BOUGHT",
+		restockGot = "You got {name}!",
 		-- The Boxes window's odds line while golden luck is live (BoxFormat).
 		goldenOdds = "Golden luck: {golden}% Golden, {rainbow}% Rainbow",
 	},

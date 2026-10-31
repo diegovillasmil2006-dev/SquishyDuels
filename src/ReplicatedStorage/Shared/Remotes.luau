@@ -180,6 +180,13 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 		arg("expectedPrice", "coins"), -- compared only, never charged (Dragon costs 1.1T, above the 1e6 "integer" bound)
 		arg("requestId", "requestId"),
 	}),
+	-- 2026-10-31 shop restock (ShopService.buyRestock): buys offer `slot` of the live restock (EventSchedule
+	-- .restockOffers); expectedPrice is compared, never charged. data: ShopResult.
+	ShopRestockBuy = c2s("RemoteFunction", {
+		arg("slot", "integer"),
+		arg("expectedPrice", "coins"),
+		arg("requestId", "requestId"),
+	}),
 	QuestClaim = c2s("RemoteFunction", { arg("questId", "questId") }),
 	QuestSwap = c2s("RemoteFunction", { arg("questId", "questId") }),
 	DailyClaim = c2s("RemoteFunction", {}), -- data: Types.DailyClaimResult
