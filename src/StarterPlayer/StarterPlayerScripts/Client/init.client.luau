@@ -115,6 +115,7 @@ local CONTROLLER_ORDER = {
 	"MatchHudController",
 	"AbilityBarController", -- Duel HUD part 2 (2026-10-24): the Catch / Ultimate / Dash bar of duels, TDM and FFA
 	"UltReadyTagController",
+	"PerfController", -- 2026-10-31: the small ping + FPS number (LihFolk check)
 	"SettingsController",
 	"OnboardingController",
 	"ProjectileRenderer",

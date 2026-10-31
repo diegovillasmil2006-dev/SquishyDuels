@@ -51,8 +51,10 @@
 --   click: Toggle's order); the Volume row follows, and dragging it to 0 turns the switch off.
 -- * The no-sound notes are the design's well pill (H:391) under their row, only while needed.
 -- Stable names: Settings_SoundToggle, Settings_CameraShakeToggle, Settings_ReducedMotionToggle, Settings_SfxSlider,
--- Settings_MusicSlider, Settings_ShowTipsToggle, Settings_FirstPersonToggle, Settings_ReplayTutorialButton,
--- Settings_CloseButton.
+-- Settings_MusicSlider, Settings_ShowTipsToggle, Settings_FirstPersonToggle, Settings_PerfButton,
+-- Settings_ReplayTutorialButton, Settings_CloseButton.
+-- 2026-10-31 (LihFolk check): Ping & FPS, the Replay row's look with a chip naming PerfController's session mode
+-- (When bad / Always / Off); a tap steps to the next.
 
 -- Services
 
@@ -82,6 +84,8 @@ local UiPrefs = require(Client.UI.UiPrefs)
 local WellPill = require(Client.UI.Components.WellPill)
 local FirstPersonController = require(script.Parent.FirstPersonController)
 local NetController = require(script.Parent.NetController)
+local PerfController = require(script.Parent.PerfController)
+local PerfFormat = require(Client.UI.PerfFormat)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -147,6 +151,7 @@ local toggles: { [string]: Toggle.Toggle } = {} -- the saved switches (cameraSha
 local soundToggle: Toggle.Toggle? = nil -- UI FINAL R9: Sound effects (the SFX volume above 0)
 local reducedToggle: Toggle.Toggle? = nil -- UI FINAL R9: Reduced motion (UiPrefs, the session)
 local firstPersonToggle: Toggle.Toggle? = nil -- the session switch: not in `toggles` (not a saved setting)
+local perfButton: Button.Button? = nil -- 2026-10-31: the Ping & FPS chip (PerfController's session mode)
 local replayRow: Frame? = nil
 local closeButton: Button.Button? = nil
 local panel: Frame? = nil
@@ -189,6 +194,9 @@ local function refreshControls()
 	end
 	if firstPersonToggle then
 		firstPersonToggle:setValue(FirstPersonController.isEnabled())
+	end
+	if perfButton then
+		perfButton:setText(Strings.settings.perfMode[PerfController.mode()])
 	end
 	if replayRow then
 		replayRow.Visible = UIController.isRegistered(ONBOARDING_SCREEN)
@@ -421,6 +429,30 @@ local function replayRowOf(c: Cleanup.Cleanup, parent: Instance, order: number, 
 	return frame
 end
 
+-- 2026-10-31: Ping & FPS, the Replay row's look with the chip showing the mode; a tap steps to the next one.
+local function perfRowOf(c: Cleanup.Cleanup, parent: Instance, order: number, entry: SettingsFormat.Row): Button.Button
+	local _, content = rowFace("PerfRow", order, parent)
+	iconSlot(content, nil)
+	local chip: Button.Button
+	chip = Button.new({
+		name = "Settings_PerfButton",
+		text = Strings.settings.perfMode[PerfController.mode()],
+		size = "chip",
+		accent = "cyan",
+		parent = content,
+		onActivated = function()
+			local mode = PerfFormat.nextMode(PerfController.mode())
+			PerfController.setMode(mode)
+			chip:setText(Strings.settings.perfMode[mode])
+		end,
+	})
+	chip.root.AnchorPoint = Vector2.new(1, 0.5)
+	chip.root.Position = UDim2.fromScale(1, 0.5)
+	c:add(chip)
+	rowLabel(content, Strings.resolve(entry.text) or "")
+	return chip
+end
+
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
@@ -558,6 +590,8 @@ local function build(parent: Instance): GuiObject
 			sliderRow(c, body, index, entry)
 		elseif entry.kind == "action" then
 			replayRow = replayRowOf(c, body, index, entry)
+		elseif entry.kind == "cycle" then
+			perfButton = perfRowOf(c, body, index, entry)
 		elseif entry.id == "sound" then
 			-- PR27, H:891: Off = the SFX volume 0, On = the last volume above 0 (Toggle plays the click around it).
 			soundToggle = switchRow(c, body, index, entry, SettingsFormat.soundOn(current.sfx), function(on: boolean)
@@ -653,7 +687,7 @@ function SettingsController.init()
 		edits = {}
 		table.clear(rows)
 		table.clear(toggles)
-		soundToggle, reducedToggle, firstPersonToggle, replayRow, closeButton = nil, nil, nil, nil, nil
+		soundToggle, reducedToggle, firstPersonToggle, perfButton, replayRow, closeButton = nil, nil, nil, nil, nil, nil
 		panel, bodyScroll, lastSfx = nil, nil, nil
 	end)
 end

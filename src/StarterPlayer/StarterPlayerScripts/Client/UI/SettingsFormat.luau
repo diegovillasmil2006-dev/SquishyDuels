@@ -19,7 +19,8 @@
 --   ROWS                     the window's rows in order: the design's Sound effects, Screen shake and Reduced motion
 --                            switches (H:979) and its Volume row (H:440, the SFX volume), then the game's Music volume
 --                            (the Volume row's look) and its extras in the design's row look (Show tips, First-person
---                            duels, Replay tutorial): each { id, kind ("switch" / "volume" / "action"), text (a
+--                            duels, Ping & FPS, Replay tutorial): each { id, kind ("switch" / "volume" / "action" /
+--                            "cycle"), text (a
 --                            Strings key), icon (an AssetTable image key, or nil), key (the saved setting it drives) }
 --   soundOn(sfx)             the Sound effects switch's state: the SFX volume is above 0 (no save key of its own)
 --   sfxFor(on, last?)        the SFX volume the switch sets: 0 when off; on, the last volume above 0 this visit, else
@@ -41,7 +42,7 @@ local Types = require(Shared.Types)
 export type Edits = { [string]: any }
 
 -- UI FINAL R9: one Settings row (ROWS).
-export type RowKind = "switch" | "volume" | "action"
+export type RowKind = "switch" | "volume" | "action" | "cycle" -- cycle: a chip that steps through modes
 export type Row = { id: string, kind: RowKind, text: string, icon: string?, key: string? }
 
 -- Constants
@@ -58,6 +59,7 @@ local ROWS: { Row } = {
 	{ id = "music", kind = "volume", text = "settings.music", icon = "img.icon.sound", key = "music" }, -- PR27
 	{ id = "showTips", kind = "switch", text = "settings.showTips", icon = "img.icon.star", key = "showTips" }, -- PR28
 	{ id = "firstPerson", kind = "switch", text = "settings.firstPerson", icon = "img.nav.duel" }, -- PR28 (session)
+	{ id = "perf", kind = "cycle", text = "settings.perf" }, -- 2026-10-31 (session): PerfController's mode
 	{ id = "replayTutorial", kind = "action", text = "settings.replayTutorial" }, -- PR28: the chip, no picture
 }
 

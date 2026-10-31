@@ -1319,6 +1319,10 @@ local Strings = {
 		-- UI FINAL R9 (H:979, H:442; Q6): the Reduced motion switch (a session switch, UiPrefs) and the volume row.
 		reducedMotion = "Reduced motion",
 		volume = "Volume",
+		-- LihFolk check 2026-10-31: the ping + FPS number's chip (PerfFormat.MODES), a session setting.
+		perf = "Ping & FPS",
+		perfMode = { bad = "When bad", always = "Always", off = "Off" },
+		perfReadout = "{fps} FPS · {ping} ms",
 	},
 
 	-- Onboarding card (§11.8). Keyed by step id. {goal} = the cheapest shop price from the Catalog (Batch 1).

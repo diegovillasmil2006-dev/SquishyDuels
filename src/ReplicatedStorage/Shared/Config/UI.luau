@@ -614,6 +614,16 @@ local UI = {
 		saveDebounceSeconds = 1.5, -- SetSettings client debounce
 	},
 
+	-- LihFolk check 2026-10-31 (owner: "Ping + FPS only"): the small ping + FPS number (PerfController). One sample a
+	-- second, averaged over the last `samples`; "bad" (LihFolk's ping display) = under badFps or from badPingMs up.
+	Perf = {
+		sampleSeconds = 1,
+		samples = 5,
+		badFps = 30,
+		badPingMs = 250,
+		marginPx = 8, -- from the bottom-left corner (base px)
+	},
+
 	-- Final polish (2026-10-11): the "In the lane!" warning (DuelController, UI/LaneCue) sits this far (base px) under
 	-- the duel bar, or under the banner that shows there.
 	LaneCue = {

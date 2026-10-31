@@ -177,7 +177,7 @@ return function(t: Context)
 	-- UI FINAL R9 (G9.8, G9.9, PR27, PR28; H:431-447, H:979): the design's rows first in its order, then Music in the
 	-- Volume row's look and the game's extras; the body's padding; the Sound effects switch is SFX volume 0.
 	t.test(
-		"R9 rows: Sound effects, Screen shake, Reduced motion, Volume, Music, then Show tips, First-person, Replay",
+		"R9 rows: Sound effects, Screen shake, Reduced motion, Volume, Music, then Show tips, First-person, Ping, Replay",
 		function()
 			local ids, kinds = {}, {}
 			for _, row in SettingsFormat.ROWS do
@@ -193,15 +193,20 @@ return function(t: Context)
 				"music",
 				"showTips",
 				"firstPerson",
+				"perf",
 				"replayTutorial",
 			})
-			expect.deepEqual(kinds, { "switch", "switch", "switch", "volume", "volume", "switch", "switch", "action" })
+			expect.deepEqual(
+				kinds,
+				{ "switch", "switch", "switch", "volume", "volume", "switch", "switch", "cycle", "action" }
+			)
 			expect.equal(SettingsFormat.ROWS[1].icon, "img.icon.sound") -- H:979
 			expect.equal(SettingsFormat.ROWS[2].icon, "img.icon.bolt")
 			expect.equal(SettingsFormat.ROWS[3].icon, "img.icon.clock")
 			expect.equal(SettingsFormat.ROWS[3].key, nil) -- Q6: a session switch (UiPrefs), never saved
 			expect.equal(SettingsFormat.ROWS[4].key, "sfx") -- H:440: the Volume row drives the sound effects
-			expect.equal(SettingsFormat.ROWS[8].icon, nil) -- PR28: an empty picture slot
+			expect.equal(SettingsFormat.ROWS[8].key, nil) -- 2026-10-31: Ping & FPS is a session setting, never saved
+			expect.equal(SettingsFormat.ROWS[9].icon, nil) -- PR28: an empty picture slot
 			expect.equal(Strings.settings.cameraShake, "Screen shake")
 			local look = Config.UI.Sticker.settings
 			expect.deepEqual({ look.bodyPad.top, look.bodyPad.x, look.bodyPad.bottom }, { 20, 26, 24 }) -- H:431

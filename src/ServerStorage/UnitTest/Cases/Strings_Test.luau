@@ -452,13 +452,16 @@ return function(t: Context)
 	-- §11.6 lists the Settings rows (Music, Sound effects, Camera shake, Show tips, Replay tutorial), plus the session
 	-- switch "First-person duels" (first-person spec 2026-10-10 §3.8). UI FINAL R9 (H:979, H:442; the user's Q6): the
 	-- design's Reduced motion switch and its Volume row; the settings texts hold nothing else.
-	t.test("the settings texts are §11.6's rows, the first-person switch and the design's two (R9)", function()
+	t.test("the settings texts are §11.6's rows, the first-person switch, the design's two (R9) and Ping & FPS", function()
 		local expected = {
 			"cameraShake",
 			"firstPerson",
 			"music",
 			"noMusic",
 			"noSfx",
+			"perf",
+			"perfMode",
+			"perfReadout",
 			"reducedMotion",
 			"replayTutorial",
 			"sfx",
