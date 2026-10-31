@@ -50,6 +50,9 @@
 --   the last save, DataService), lastSeenAt, createdAt, now), with reason "away", and stamps lastSeenAt = now in the
 --   SAME step: the time away counted is the time stamped as paid, so a second call pays 0, and a crash before the next
 --   save loses the grant and the stamp together (the next load pays that time once). A "soon" save when it paid.
+-- * 2026-10-31 double coins (owner: "Pen + playing"): while the timed event is live, every grant whose reason is in
+--   Config.Events.DoubleCoins.reasons pays EventSchedule.coinMult times (on deps.now()); the returned amount is the
+--   doubled one, so the squeeze, highway, duel and match results show it.
 -- Failures come back as a short kind ("invalid", "reason", "notReady", "savePending", "notEnoughCoins", "full"); CODES
 -- maps the kinds that have a §2.10 code. Collaborators are reached through `deps` (useDeps in tests).
 
@@ -62,6 +65,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local EventSchedule = require(Shared.EventSchedule)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
 local Signal = require(Shared.Util.Signal)
@@ -235,10 +239,11 @@ local function coinsOf(profile: any): number
 	return EconomyService.clampCoins(profile.coins)
 end
 
--- Adds Coins to a profile inside an edit (no checks on the reason). Returns what was really added.
+-- Adds Coins to a profile inside an edit (no checks on the reason), doubled while double coins is live (see the
+-- header). Returns what was really added.
 local function addCoinsTo(profile: any, amount: number, reason: string): number
 	local before = coinsOf(profile)
-	local after = math.min(MAX_COINS, before + amount)
+	local after = math.min(MAX_COINS, before + amount * EventSchedule.coinMult(getDeps().now(), reason))
 	profile.coins = after
 	local added = after - before
 	if added > 0 and reason ~= REASON_DEBUG then

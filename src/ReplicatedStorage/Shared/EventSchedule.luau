@@ -14,6 +14,7 @@
 --                                 golden luck is live): 2 (Rainbow)
 --                                 under rainbowChance, 1 (Golden) under rainbowChance + goldenChance; else 0
 --   goldenOddsText(t)             the Boxes window's odds line while golden luck is live, else nil
+--   coinMult(t, reason)           DoubleCoins.mult while double coins is live and `reason` is one of its reasons, else 1
 
 -- Services
 
@@ -122,6 +123,15 @@ function EventSchedule.goldenOddsText(t: number): string?
 		golden = math.round(luck.goldenChance * 100),
 		rainbow = math.round(luck.rainbowChance * 100),
 	})
+end
+
+function EventSchedule.coinMult(t: number, reason: string): number
+	local state = EventSchedule.at(t)
+	local double = EVENTS.DoubleCoins
+	if state.live and state.kind == "doubleCoins" and table.find(double.reasons, reason) then
+		return double.mult
+	end
+	return 1
 end
 
 return EventSchedule

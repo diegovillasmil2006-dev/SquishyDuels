@@ -5,7 +5,8 @@
 --   * an event starts every 15 minutes on the UTC clock and runs 5; the pill counts down to it, then the time left;
 --   * a candy pays 10 s of the grabber's pen Coins a second, at least 100;
 --   * 30 candies per player fall evenly over the event; spots stay inside the ring;
---   * the nearest player within the grab radius gets a candy, nobody farther.
+--   * the nearest player within the grab radius gets a candy, nobody farther;
+--   * double coins (owner: "Pen + playing") pays 2x for the pen, squeezes, duels, matches, throws and candy only.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -19,7 +20,7 @@ return function(t: Context)
 	local EVENTS = t.requireShared("Config/Events")
 	local CANDY = EVENTS.CandyRain
 	local LOOP = EVENTS.loopSeconds -- 900
-	local BASE = 1_000 * LOOP -- a loop start on the clock
+	local BASE = 999 * LOOP -- a loop start on the clock (999 % 3 == 0: candy rain's turn)
 
 	t.test("owner's timing: an event every 15 minutes, 5 minutes long", function()
 		expect.equal(LOOP, 900)
@@ -28,8 +29,9 @@ return function(t: Context)
 		expect.equal(CANDY.perPlayer, 30)
 	end)
 
-	-- BASE is loop 1000 (even): candy rain; the next loop golden luck (they take turns).
+	-- BASE is candy rain's loop; the next one golden luck, then double coins (they take turns).
 	local GOLDEN = BASE + LOOP
+	local DOUBLE = BASE + 2 * LOOP
 
 	t.test("at: live for the first 5 minutes of a loop, then waiting for the next one", function()
 		local live = EventSchedule.at(BASE + 10)
@@ -38,7 +40,8 @@ return function(t: Context)
 		expect.equal(live.endsAt, BASE + 300)
 		expect.equal(live.kind, "candyRain")
 		expect.equal(EventSchedule.at(GOLDEN + 10).kind, "goldenLuck")
-		expect.equal(EventSchedule.at(GOLDEN + LOOP + 10).kind, "candyRain")
+		expect.equal(EventSchedule.at(DOUBLE + 10).kind, "doubleCoins")
+		expect.equal(EventSchedule.at(DOUBLE + LOOP + 10).kind, "candyRain")
 		local waiting = EventSchedule.at(BASE + 300)
 		expect.equal(waiting.live, false)
 		expect.equal(waiting.startsAt, BASE + LOOP)
@@ -47,8 +50,10 @@ return function(t: Context)
 
 	t.test("pillText: the countdown while waiting, the time left while live", function()
 		expect.equal(EventSchedule.pillText(BASE + 300), "Golden luck in 10:00") -- the next one takes its turn
-		expect.equal(EventSchedule.pillText(GOLDEN + 300), "Candy rain in 10:00")
-		expect.equal(EventSchedule.pillText(GOLDEN + LOOP - 1), "Candy rain in 0:01")
+		expect.equal(EventSchedule.pillText(GOLDEN + 300), "Double coins in 10:00")
+		expect.equal(EventSchedule.pillText(DOUBLE + 300), "Candy rain in 10:00")
+		expect.equal(EventSchedule.pillText(DOUBLE - 1), "Double coins in 0:01")
+		expect.equal(EventSchedule.pillText(DOUBLE + 79), "DOUBLE COINS! 3:41")
 		expect.equal(EventSchedule.pillText(BASE + 79), "CANDY RAIN! 3:41")
 	end)
 
@@ -103,6 +108,18 @@ return function(t: Context)
 		expect.equal(EventSchedule.goldenOddsText(GOLDEN + 10), "Golden luck: 10% Golden, 1% Rainbow")
 		expect.equal(EventSchedule.goldenOddsText(BASE + 10), nil)
 		expect.equal(EventSchedule.pillText(GOLDEN + 79), "GOLDEN LUCK! 3:41")
+	end)
+
+	t.test("coinMult: double coins pays 2x for the pen and playing, nothing else, only while live", function()
+		expect.equal(EVENTS.DoubleCoins.mult, 2)
+		for _, reason in { "pen", "squeeze", "duel_win", "duel_loss", "duel_draw", "match", "highway", "event" } do
+			expect.equal(EventSchedule.coinMult(DOUBLE + 10, reason), 2)
+		end
+		for _, reason in { "sell", "refund", "daily", "quest", "starter", "away", "robux", "debug" } do
+			expect.equal(EventSchedule.coinMult(DOUBLE + 10, reason), 1)
+		end
+		expect.equal(EventSchedule.coinMult(DOUBLE + 300, "squeeze"), 1) -- over
+		expect.equal(EventSchedule.coinMult(GOLDEN + 10, "squeeze"), 1) -- another event
 	end)
 
 	t.test("grabber: the nearest root within the radius, nobody beyond it", function()

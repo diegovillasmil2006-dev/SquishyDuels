@@ -3,11 +3,19 @@
 -- Shared, data only. The server-wide timed events (Shared/EventSchedule, Server/Services/EventService,
 -- Client/Controllers/EventController). An event starts every loopSeconds on the UTC clock (:00, :15, :30, :45), the
 -- same in every lobby server, and runs liveSeconds; the countdown shows the rest of the loop. `kinds` take turns in
--- order; golden luck, double coins and the shop restock join later (until then every event is candy rain).
+-- order; the shop restock joins later.
 local Events = {
 	loopSeconds = 15 * 60, -- owner: "next event is 10 minutes apart" (5 live + 10 waiting)
 	liveSeconds = 5 * 60, -- owner: "every event should last i think 5 or 10 minutes" (5 picked with "Yes, build it")
-	kinds = { "candyRain", "goldenLuck" },
+	kinds = { "candyRain", "goldenLuck", "doubleCoins" },
+
+	-- Double coins (owner: "Pen + playing"): while it is live, a grant with one of these Config.Economy.CoinReasons pays
+	-- mult times (EconomyService, in every server: match servers too, they share the UTC clock). Sells, refunds, the
+	-- daily reward, quests, away Coins and Robux stay as they are.
+	DoubleCoins = {
+		mult = 2,
+		reasons = { "pen", "squeeze", "duel_win", "duel_loss", "duel_draw", "match", "highway", "event" },
+	},
 
 	-- Golden luck (owner: "1 in 10", "Also a rare Rainbow"): while it is live, a box opened at random (not a fixed
 	-- order: PolicyService-restricted accounts keep theirs) gives its squishy Rainbow 1 in 100, else Golden 1 in 10.

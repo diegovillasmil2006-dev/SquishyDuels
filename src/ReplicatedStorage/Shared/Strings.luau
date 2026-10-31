@@ -1332,11 +1332,13 @@ local Strings = {
 	event = {
 		candyRain = "Candy rain",
 		goldenLuck = "Golden luck",
+		doubleCoins = "Double coins",
 		pillNext = "{event} in {time}",
 		pillLive = "{event}! {time}",
 		-- The start toasts, keyed "<kind>Start" (EventService).
 		candyRainStart = "Candy rain in Squish Square! Grab the candy!",
 		goldenLuckStart = "Golden luck! Boxes can give Golden squishies for 5 minutes!",
+		doubleCoinsStart = "Double coins! Your pen, squeezes, duels and throws pay double for 5 minutes!",
 		-- The Boxes window's odds line while golden luck is live (BoxFormat).
 		goldenOdds = "Golden luck: {golden}% Golden, {rainbow}% Rainbow",
 	},

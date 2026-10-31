@@ -274,6 +274,20 @@ return function(t: Context)
 		expect.equal(profile.coins, ECONOMY.maxCoins)
 	end)
 
+	t.test("double coins (2026-10-31): pen and playing grants pay 2x while it is live, the rest stay as they are", function()
+		local EVENTS = t.requireShared("Config/Events")
+		local cycle = EVENTS.loopSeconds * #EVENTS.kinds
+		local w = setup()
+		w.clock = (NOW // cycle) * cycle + 2 * EVENTS.loopSeconds + 10 -- 10 s into double coins (kinds[3])
+		local player, profile = readyPlayer(w, 0)
+		expect.equal(EconomyService.grantCoins(player, 25, "squeeze"), 50)
+		expect.equal(EconomyService.grantCoins(player, 25, "sell"), 25)
+		expect.equal(profile.coins, 75)
+		expect.equal(profile.stats.coinsEarned, 75)
+		w.clock += EVENTS.liveSeconds -- over
+		expect.equal(EconomyService.grantCoins(player, 25, "squeeze"), 25)
+	end)
+
 	t.test("grants need a ready profile (loading, OFFLINE and READONLY earn nothing)", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 10)
