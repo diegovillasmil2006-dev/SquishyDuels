@@ -241,8 +241,8 @@ return function(t: Context)
 			-- A Common not owned yet shows its Welcome price (D1:202), the price its first one costs.
 			local toast = InspectFormat.view("toast", UNOWNED)
 			assert(toast ~= nil, "no view")
-			expect.equal(toast.shopPrice, 3_000)
-			expect.equal(toast.howToGet[#toast.howToGet].text, "Shop: 3,000 Coins")
+			expect.equal(toast.shopPrice, 1_000) -- owner 2026-10-31: the Welcome price 3K -> 1K
+			expect.equal(toast.howToGet[#toast.howToGet].text, "Shop: 1,000 Coins")
 			expect.equal(bird.previewBadge, "Preview · Not owned") -- foam fix batch: sentence case, not all caps
 			-- The free starter is in no box and not sold: nothing to list, no View in Shop.
 			local kitty = InspectFormat.view("kitty_bread", UNOWNED)

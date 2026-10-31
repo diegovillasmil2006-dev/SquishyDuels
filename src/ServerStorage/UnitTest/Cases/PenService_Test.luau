@@ -785,12 +785,12 @@ return function(t: Context)
 		local reply = PenService.sellItems(w.a, { 3 }, REQ)
 		expect.equal(reply.ok, true)
 		expect.deepEqual(idsOf(a), { 1, 2, 4, 5 })
-		expect.deepEqual(w.grants, { { player = w.a, amount = 1_000, reason = "sell" } })
-		expect.equal(a.coins, 1_000)
-		expect.deepEqual(a.buyBack, { { item = penItem(3, "toast", 0), price = 1_000, at = w.now, req = REQ } })
+		expect.deepEqual(w.grants, { { player = w.a, amount = 900, reason = "sell" } })
+		expect.equal(a.coins, 900)
+		expect.deepEqual(a.buyBack, { { item = penItem(3, "toast", 0), price = 900, at = w.now, req = REQ } })
 		expect.deepEqual(
 			reply.data,
-			{ pen = TableUtil.deepCopy(a.pen), coins = 1_000, charged = false, savePending = false }
+			{ pen = TableUtil.deepCopy(a.pen), coins = 900, charged = false, savePending = false }
 		)
 		expect.equal(w.writes, 1)
 		expect.deepEqual(w.shown, { w.a })
@@ -805,13 +805,13 @@ return function(t: Context)
 		"a retried sale (same requestId) replays what it paid and changes nothing; the ids are gone after",
 		function()
 			local w, a = sellWorld()
-			expect.equal(PenService.sellItems(w.a, { 3, 4 }, REQ).data.coins, 2_000)
+			expect.equal(PenService.sellItems(w.a, { 3, 4 }, REQ).data.coins, 1_800)
 			local writes, saves = w.writes, w.nowSaves
 			local again = PenService.sellItems(w.a, { 3, 4 }, REQ)
 			expect.equal(again.ok, true)
-			expect.equal(again.data.coins, 2_000) -- what it paid then, never twice
+			expect.equal(again.data.coins, 1_800) -- what it paid then, never twice
 			expect.equal(#w.grants, 1)
-			expect.equal(a.coins, 2_000)
+			expect.equal(a.coins, 1_800)
 			expect.equal(w.writes, writes)
 			expect.equal(w.nowSaves, saves)
 			expectRefused(PenService.sellItems(w.a, { 3 }, REQ2), "inventory.notOwned") -- a new request: it is sold
@@ -863,12 +863,12 @@ return function(t: Context)
 		a.pen.items[4].form = 2 -- a Rainbow Toast
 		a.pen.items[4].coat = 7 -- Galaxy
 		a.pen.items[4].level = 12 -- food is not refunded
-		expect.equal(PenService.sellItems(w.a, { 3, 4 }, REQ).data.coins, 3_000 + 9_000)
-		expect.deepEqual(w.grants, { { player = w.a, amount = 12_000, reason = "sell" } }) -- one grant, the exact total
+		expect.equal(PenService.sellItems(w.a, { 3, 4 }, REQ).data.coins, 2_700 + 8_100)
+		expect.deepEqual(w.grants, { { player = w.a, amount = 10_800, reason = "sell" } }) -- one grant, the exact total
 		expect.deepEqual(a.bag, { 0, 0, 0, 0, 0, 0, 1 })
 		expect.equal(a.buyBack[2].item.coat, 0)
 		expect.equal(a.buyBack[2].item.level, 12)
-		expect.equal(a.buyBack[2].price, 9_000)
+		expect.equal(a.buyBack[2].price, 8_100)
 		finish()
 	end)
 
@@ -885,13 +885,13 @@ return function(t: Context)
 			expect.equal(reply.ok, true)
 			-- Kitty Bread, the placed Toast, the best Butter, the levelled Banana.
 			expect.deepEqual(idsOf(a), { 1, 2, 5, 7 })
-			expect.equal(reply.data.coins, 1_000 + 1_000 + 150_000)
-			expect.deepEqual(w.grants, { { player = w.a, amount = 152_000, reason = "sell" } })
+			expect.equal(reply.data.coins, 900 + 900 + 150_000)
+			expect.deepEqual(w.grants, { { player = w.a, amount = 151_800, reason = "sell" } })
 			expect.equal(#a.buyBack, 3)
 			for _, entry in a.buyBack do
 				expect.equal(entry.req, REQ)
 			end
-			expect.equal(PenService.sellAll(w.a, REQ).data.coins, 152_000) -- a retry replays
+			expect.equal(PenService.sellAll(w.a, REQ).data.coins, 151_800) -- a retry replays
 			expectRefused(PenService.sellAll(w.a, REQ2), "pen.nothingToSell")
 			expect.equal(#w.grants, 1)
 			finish()
@@ -906,8 +906,8 @@ return function(t: Context)
 		local saves, shown = w.nowSaves, #w.shown
 		local reply = PenService.buyBack(w.a, 2)
 		expect.equal(reply.ok, true)
-		expect.deepEqual(w.spends, { { player = w.a, amount = 1_000, reason = "sell" } })
-		expect.equal(a.coins, 4_000)
+		expect.deepEqual(w.spends, { { player = w.a, amount = 900, reason = "sell" } })
+		expect.equal(a.coins, 4_100)
 		expect.deepEqual(a.buyBack, {})
 		local back = a.pen.items[#a.pen.items]
 		expect.deepEqual(back, penItem(6, "toast", 2)) -- a fresh id, the first free spot, unlocked
@@ -1008,9 +1008,9 @@ return function(t: Context)
 			end,
 		})
 		local reply = PenService.sellItems(w.a, { 3, 4 }, REQ)
-		expect.equal(reply.data.coins, 1_600)
-		expect.equal(a.buyBack[1].price + a.buyBack[2].price, 1_600)
-		expect.deepEqual({ a.buyBack[1].price, a.buyBack[2].price }, { 1_000, 600 })
+		expect.equal(reply.data.coins, 1_400)
+		expect.equal(a.buyBack[1].price + a.buyBack[2].price, 1_400)
+		expect.deepEqual({ a.buyBack[1].price, a.buyBack[2].price }, { 900, 500 })
 		finish()
 	end)
 

@@ -93,13 +93,13 @@ return function(t: Context)
 		expect.equal(pen.awayRate, 0.05) -- pens3 phase 4 (owner: 5% of the pen's rate while away)
 		-- Pens3 phase 5: the gift queue (D1:254-258, [P] 50), the Welcome price (D1:202) and the Frog gift (SIM:226).
 		expect.equal(pen.giftQueueMax, 50)
-		expect.deepEqual(pen.welcomePrice, { Common = 3_000 })
+		expect.deepEqual(pen.welcomePrice, { Common = 1_000 }) -- owner 2026-10-31: 3K -> 1K
 		expect.deepEqual(pen.frogGift, { kind = "strawberry_frog", seconds = 180 })
 		-- Pens3 phase 7: V3:164's sell prices (Rare comes with phase 22), Golden x3 / Rainbow x9, D1:222's hold rule,
 		-- the 10-minute buy-back of at most toyBoxMax + placedMax sales.
 		expect.deepEqual(
 			pen.sellPrice,
-			{ Common = 1_000, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 }
+			{ Common = 900, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 } -- Common 1K -> 900
 		)
 		expect.deepEqual(pen.sellFormMult, { 1, 3, 9 })
 		expect.equal(pen.sellMaxIds, 50)
@@ -181,7 +181,7 @@ return function(t: Context)
 			},
 			{ changes = { sellPrice = sells({ Common = 2.5 }) }, field = "sellPrice.Common" },
 			{ changes = { sellPrice = sells({ Common = -1 }) }, field = "sellPrice.Common" },
-			{ changes = { sellPrice = sells({ Common = 3_000 }) }, field = "sellPrice.Common" }, -- = the Welcome price
+			{ changes = { sellPrice = sells({ Common = 1_000 }) }, field = "sellPrice.Common" }, -- = the Welcome price
 			{ changes = { sellPrice = sells({ Epic = 1_800_000_000 }) }, field = "sellPrice.Epic" }, -- = the shop price
 			{ changes = { sellPrice = sells({ Exclusive = 1e15 }) }, field = "sellPrice.Exclusive" }, -- x9 > maxCoins
 			{ changes = { sellPrice = sells({ Rare = 300_000 }) }, field = "sellPrice.Rare" }, -- not a rarity yet

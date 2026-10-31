@@ -4,7 +4,7 @@
 -- table, mutate like DataService), the "now" save, the shutdown flags, the duel lock and both clocks are fakes; players
 -- are plain tables. Prices come from the test's Catalog copy; tables are compared by value.
 -- Contract (DESIGN §6.6, §3.4, §3.11, §12 #3 #4 #6 #7 #14; pens3 phase 5):
---   * a buy charges Pricing.shopPrice(id, owned) once (reason "shop"): the Welcome price (3,000) for the first of a
+--   * a buy charges Pricing.shopPrice(id, owned) once (reason "shop"): the Welcome price (1,000) for the first of a
 --     Common, the Catalog price after that; it adds the squishy (a pen item; src "shop" when the kind is new, a copy
 --     when it is owned), appends shopLog {req, squishy, price, at} (cap Config.Data.caps.shopLog), awaits the "now"
 --     save and answers {squishyId, charged = true, savePending = not saved};
@@ -150,7 +150,7 @@ return function(t: Context)
 	t.test("the first of a Common costs the Welcome price; it is added, logged and the now save is awaited", function()
 		local w = setup()
 		local p, profile = readyPlayer(w, COINS)
-		expect.equal(WELCOME, 3_000)
+		expect.equal(WELCOME, 1_000) -- owner 2026-10-31: 3K -> 1K
 		local result = ShopService.buy(p, "toast", WELCOME, REQ_A)
 		expect.deepEqual(result, { ok = true, data = { squishyId = "toast", charged = true, savePending = false } })
 		expect.equal(profile.coins, COINS - WELCOME)

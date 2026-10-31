@@ -470,17 +470,17 @@ return function(t: Context)
 	-- Pens3 phase 7 (selling + the 10-minute buy-back) -------------------------------------------------------------
 
 	t.test(
-		"sellPrice: Common 1K, Uncommon 150K, Epic 90M, Dragon 225B; Golden x3, Rainbow x9; level and coat free",
+		"sellPrice: Common 900, Uncommon 150K, Epic 90M, Dragon 225B; Golden x3, Rainbow x9; level and coat free",
 		function()
-			expect.equal(PenMath.sellPrice(item("toast")), 1_000)
+			expect.equal(PenMath.sellPrice(item("toast")), 900) -- owner 2026-10-31: under the 1K Welcome price
 			expect.equal(PenMath.sellPrice(item("butter")), 150_000)
 			expect.equal(PenMath.sellPrice(item("mochi_fox")), 150_000) -- Uncommon until the Rare tier (phase 22)
 			expect.equal(PenMath.sellPrice(item("bird")), 90_000_000)
 			expect.equal(PenMath.sellPrice(item("dragon")), 225_000_000_000)
-			expect.equal(PenMath.sellPrice(item("toast", 1)), 3_000)
-			expect.equal(PenMath.sellPrice(item("toast", 2)), 9_000)
+			expect.equal(PenMath.sellPrice(item("toast", 1)), 2_700)
+			expect.equal(PenMath.sellPrice(item("toast", 2)), 8_100)
 			expect.equal(PenMath.sellPrice(item("dragon", 2)), 2_025_000_000_000)
-			expect.equal(PenMath.sellPrice(item("toast", 0, 9, 3)), 1_000) -- food and coatings are not refunded
+			expect.equal(PenMath.sellPrice(item("toast", 0, 9, 3)), 900) -- food and coatings are not refunded
 			expect.equal(PenMath.sellPrice(item("unicorn")), 0)
 			expect.equal(PenMath.sellPrice(item("toast", 3)), 0)
 			expect.equal(PenMath.sellPrice(nil), 0)
@@ -502,10 +502,10 @@ return function(t: Context)
 		local box, list = sellPen()
 		local sale = PenMath.sellDecision(box, { list[3].id }) :: any
 		expect.deepEqual(sale.items, { list[3] })
-		expect.equal(sale.coins, 1_000)
+		expect.equal(sale.coins, 900)
 		list[2].form = 1 -- a Golden Toast still counts as a Toast copy (every form counts)
 		local two = PenMath.sellDecision(box, { list[3].id }) :: any
-		expect.equal(two.coins, 1_000)
+		expect.equal(two.coins, 900)
 		local both = PenMath.sellDecision(
 			pen(3, {
 				at(1, item("kitty_bread")),
@@ -515,7 +515,7 @@ return function(t: Context)
 			}),
 			{ nextId - 2, nextId - 1 }
 		) :: any
-		expect.equal(both.coins, 2_000)
+		expect.equal(both.coins, 1_800)
 	end)
 
 	t.test("sellDecision refusals, in order: invalid, not owned, Kitty Bread, locked, the last copy", function()
@@ -582,7 +582,7 @@ return function(t: Context)
 			expect.deepEqual(PenMath.sellAllIds(pen(3, { at(1, item("kitty_bread")) })), {})
 			expect.deepEqual(PenMath.sellAllIds(nil), {})
 			local sale = PenMath.sellDecision(box, PenMath.sellAllIds(box)) :: any
-			expect.equal(sale.coins, 3 * 1_000 + 150_000 + 2 * 90_000_000)
+			expect.equal(sale.coins, 3 * 900 + 150_000 + 2 * 90_000_000)
 		end
 	)
 

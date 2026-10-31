@@ -3,7 +3,7 @@
 -- Contract (DESIGN §6.5, §6.6, §13.2 Part 7 L1; pens3 phase 5, ECONOMY_V3:159-163): ceiling(id) = floor(min over the
 -- paid boxes containing id of cost × 10000 / weight) (Commons 789,473, Butter and Chocolate 1,875,000, Mochi Fox and
 -- Strawberry Frog 3,750,000, Epics 1,800,720,288, Dragon 1,125,000,000,000; nil for Kitty Bread, which is in no box and
--- not sold); every Catalog shopPrice <= its ceiling; shopPrice(id, owned) is the Welcome price (3,000) for a Common
+-- not sold); every Catalog shopPrice <= its ceiling; shopPrice(id, owned) is the Welcome price (1,000) for a Common
 -- while it is not in `owned`, else the Catalog price (a missing `owned` pays the full price: fail closed), and the
 -- Welcome price is under every ceiling too; copies replaced the duplicate refund (DuplicatePolicy "copy").
 
@@ -84,7 +84,7 @@ return function(t: Context)
 
 	t.test("shopPrice: the Welcome price for a Common not owned yet, then the Catalog price", function()
 		local welcome = Config.Economy.Pen.welcomePrice.Common
-		expect.equal(welcome, 3_000) -- D1:202 "Welcome price: first one 3K"
+		expect.equal(welcome, 1_000) -- D1:202 said 3K; owner 2026-10-31: "Cheaper first + tip order"
 		local owned: { [string]: any } = { kitty_bread = { at = 1, src = "starter" } }
 		for _, def in Catalog.byRarity("Common") do
 			if def.shopPrice ~= nil then

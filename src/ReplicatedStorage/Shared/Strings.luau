@@ -1332,7 +1332,8 @@ local Strings = {
 		squeeze = "Squeeze squishies anywhere to earn Coins. {squeezeHint}.",
 		-- Pens3 phase 1: the pen step (the first pen spot bought at the sign; it replaced Batch 1's capsule step).
 		pen = "Your squishies earn Coins in your pen. Buy more pen space at the sign!",
-		-- Pens3 phase 5: {goal} = the cheapest Welcome price (3K; V4:161 points new players to the cheap Commons).
+		-- Pens3 phase 5: {goal} = the cheapest Welcome price (1K since 2026-10-31; V4:161 points new players to the
+		-- cheap Commons).
 		firstBox = "Get a new squishy in the Shop: your first of each Common has a Welcome price! {coins}/{goal} Coins",
 		-- Lobby HUD spec 2026-10-11 §2: Inspect is in the Squishies screen now (no equipped card). Batch 1: it follows
 		-- the capsule card, so it names the squishy.

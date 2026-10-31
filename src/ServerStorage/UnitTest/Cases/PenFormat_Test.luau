@@ -291,7 +291,7 @@ return function(t: Context)
 				view.status,
 				Strings.format(
 					screen.confirmSell,
-					{ name = PenFormat.cardText(pen.items[3]).name, coins = Format.coins(1_000) }
+					{ name = PenFormat.cardText(pen.items[3]).name, coins = Format.coins(900) }
 				)
 			)
 			expect.equal(view.hint, Strings.format(screen.sellNote, { minutes = MINUTES }))
@@ -314,7 +314,7 @@ return function(t: Context)
 		local all = screen.confirmSellAll
 		expect.equal(
 			view.status,
-			Strings.format(Strings.plural(2, all.one, all.many), { n = 2, coins = Format.coins(2_000) })
+			Strings.format(Strings.plural(2, all.one, all.many), { n = 2, coins = Format.coins(1_800) })
 		)
 		expect.equal(view.hint, Strings.format(screen.sellAllNote, { minutes = MINUTES }))
 		expect.equal(view.actions[1].hold, nil)

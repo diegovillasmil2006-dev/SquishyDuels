@@ -48,7 +48,8 @@ local Pen = {
 	giftQueueMax = 50,
 	-- The first squishy of each kind of these rarities costs this in the shop while the kind is not owned (D1:202,
 	-- "Welcome price: first one 3K"; it never runs out). ValidatePen keeps it at or below each one's shopPrice.
-	welcomePrice = { Common = 3_000 } :: { [string]: number },
+	-- Owner 2026-10-31 ("Cheaper first + tip order", LihFolk: first buy under 2 minutes): 1K, about a minute in.
+	welcomePrice = { Common = 1_000 } :: { [string]: number },
 	-- The free gift of the first play (SIM:226): this squishy once per account (profile.gifts.frog), this many seconds
 	-- into a session.
 	frogGift = { kind = "strawberry_frog", seconds = 180 },
@@ -56,7 +57,8 @@ local Pen = {
 	-- Pens3 phase 7 (selling, D1:217-225, V3:164): a squishy sells for sellPrice[its rarity] × sellFormMult[form + 1]
 	-- Coins (Golden ×3, Rainbow ×9: they are 3 and 9 copies; food and coatings are not refunded). V3's Rare 300K comes
 	-- with the Rare tier (phase 22). ValidatePen keeps each price below what that rarity can be bought for.
-	sellPrice = { Common = 1_000, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 } :: {
+	-- Owner 2026-10-31 ("Commons sell for 900"): Common 1K -> 900, under the new 1K Welcome price (buying to sell loses).
+	sellPrice = { Common = 900, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 } :: {
 		[string]: number,
 	},
 	sellFormMult = { 1, 3, 9 },

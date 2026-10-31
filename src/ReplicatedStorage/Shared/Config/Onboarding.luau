@@ -19,6 +19,10 @@ local Onboarding = {
 		{ id = "welcome", textKey = "onboarding.welcome", recordedBy = "client", guidance = "none" },
 		-- First accepted squeeze.
 		{ id = "squeeze", textKey = "onboarding.squeeze", recordedBy = "server", guidance = "waypointMat" },
+		-- First box opened or first shop purchase; everyone is pointed to the Shop and its cheapest squishy (a Welcome
+		-- price Common), never the 150,000 Snack Box. Owner 2026-10-31 ("Cheaper first + tip order"): right after the
+		-- squeeze, now that the goal is short (1,000; Batch 1 had put it last so a 10,000 goal never hid the duel card).
+		{ id = "firstBox", textKey = "onboarding.firstBox", recordedBy = "server", guidance = "waypointShop" },
 		-- Pens3 phase 1: the first pen spot bought at the sign (replaces Batch 1's capsule step; an old save keeps its
 		-- done.capsule, which nothing reads). A new player spawns facing their own pen, so no waypoint.
 		{ id = "pen", textKey = "onboarding.pen", recordedBy = "server", guidance = "none" },
@@ -26,9 +30,6 @@ local Onboarding = {
 		{ id = "inspect", textKey = "onboarding.inspect", recordedBy = "client", guidance = "pulseSquishies" },
 		-- QueueJoin accepted.
 		{ id = "duel", textKey = "onboarding.duel", recordedBy = "server", guidance = "waypointPodium" },
-		-- First box opened or first shop purchase. Batch 1 (review #1): last, so no long goal hides the duel card, and
-		-- everyone is pointed to the Shop and its cheapest squishy (a 10,000 Common), never the 150,000 Snack Box.
-		{ id = "firstBox", textKey = "onboarding.firstBox", recordedBy = "server", guidance = "waypointShop" },
 	} :: { Step },
 
 	-- Reading (PROGRESS Part 5 open item; DESIGN gives `onboarding.skipped` no remote): the "Skip tutorial" link sends

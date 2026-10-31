@@ -6,7 +6,7 @@
 --   * shown only for a ready profile that has not skipped and has a step left;
 --   * the welcome card has [Got it] and names the starter; the others have one "Skip tutorial" link;
 --   * the squeeze hint follows the input kind; the firstBox step reads {coins}/{goal}: the cheapest shop price for the
---     player (pens3 phase 5: Pricing.shopPrice, so a new player's 3,000 Welcome price of a Common) and a Shop waypoint
+--     player (pens3 phase 5: Pricing.shopPrice, so a new player's 1,000 Welcome price of a Common) and a Shop waypoint
 --     for everyone (Batch 1, never the 150K Snack Box);
 --   * guidance: waypoints "shop" / "duel", the "squishies" pulse (inspect); the squeeze and pen steps have none
 --     (spec 2026-10-11 §5: the squeeze text says squeeze anywhere, so it sends no one to a mat; pens3 phase 1: a new
@@ -117,11 +117,11 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("firstBox: the cheapest shop squishy (a 3,000 Welcome price Common) and the Shop for everyone", function()
+	t.test("firstBox: the cheapest shop squishy (a 1,000 Welcome price Common) and the Shop for everyone", function()
 		-- Pens3 phase 5 (V4:161): a new player owns the starter only, so every Common has its Welcome price.
 		local starterOnly = { [Catalog.starterId()] = { at = 0, src = "starter" } }
 		local price = cheapest(starterOnly)
-		expect.equal(price, 3_000)
+		expect.equal(price, 1_000) -- owner 2026-10-31: "Cheaper first + tip order"
 		expect.equal(price, Config.Economy.Pen.welcomePrice.Common)
 		expect.equal(OnboardingFormat.goal(starterOnly), price)
 		expect.equal(OnboardingFormat.goal(nil), price) -- no owned map yet: a new player's
@@ -219,13 +219,13 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"pens3 phase 1: the pen step follows squeeze (it replaced capsule), firstBox is last; no equip step",
+		"owner 2026-10-31: firstBox follows squeeze, then the pen step (it replaced capsule); no equip step",
 		function()
 			local ids = {}
 			for _, step in STEPS do
 				table.insert(ids, step.id)
 			end
-			expect.deepEqual(ids, { "welcome", "squeeze", "pen", "inspect", "duel", "firstBox" })
+			expect.deepEqual(ids, { "welcome", "squeeze", "firstBox", "pen", "inspect", "duel" })
 		end
 	)
 

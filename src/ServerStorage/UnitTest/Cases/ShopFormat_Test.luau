@@ -121,8 +121,8 @@ return function(t: Context)
 		-- ECONOMY_V3:163 (pens3 phase 5): a Common not owned yet has the Welcome price (D1:202), Butter 1.875M,
 		-- Birdie 1.8B, Dragon 1.1T.
 		expect.equal(byId.toast.price, Config.Economy.Pen.welcomePrice.Common)
-		expect.equal(byId.toast.price, 3_000)
-		expect.equal(byId.toast.welcomeText, Strings.format(Strings.shop.welcomePrice, { coins = "3,000" }))
+		expect.equal(byId.toast.price, 1_000) -- owner 2026-10-31: 3K -> 1K
+		expect.equal(byId.toast.welcomeText, Strings.format(Strings.shop.welcomePrice, { coins = "1,000" }))
 		expect.equal(byId.butter.price, 1_875_000)
 		expect.equal(byId.butter.welcomeText, nil)
 		expect.equal(byId.butter.state, "buy")
@@ -140,7 +140,7 @@ return function(t: Context)
 				expect.equal(e.state, "buy")
 				expect.equal(e.welcomeText, nil)
 			elseif e.id == "banana" then
-				expect.equal(e.price, 3_000) -- each Common has its own Welcome price
+				expect.equal(e.price, 1_000) -- each Common has its own Welcome price
 			end
 		end
 		-- A buy in flight marks only that card.
