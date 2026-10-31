@@ -1087,6 +1087,7 @@ local function buildPort(match: Match, fighters: { Fighter }, slot: Slot): Match
 			floorY = slot.floorY,
 			killY = slot.killY,
 			zones = slot.zones,
+			freeRoam = slot.model:GetAttribute("FreeRoam") == true, -- Diego's open 1v1 sky maps (2026-10-30)
 			geometry = slot.geometry,
 			raycastParams = slot.raycastParams,
 			overlapParams = slot.overlapParams,

@@ -1,8 +1,8 @@
 --!strict
 -- ArenaService (server only). DESIGN §2.3, §5.3, §5.4, §7.8.
--- The arena slot pool: up to Config.Duel.Arena.MaxSlots (6) clones of the arena templates in ServerStorage.SD_Templates
--- (WorldService.arenaTemplates(): Candy Court plus the design arenas that are built, by World/Arenas id), placed in
--- Workspace.SD_ArenaSlots (created at runtime) on the grid Config.Duel.Arena.SlotOrigins (X 320/520 x Z -300..300, far
+-- The arena slot pool: up to Config.Duel.Arena.MaxSlots (6) clones of the arena templates: since 2026-10-30 Diego's 1v1
+-- sky maps in ServerStorage.SquishyMaps (skyMapTemplates(), by MapId; the old SD_Templates arenas left), placed in
+-- Workspace.SD_ArenaSlots (created at runtime) on the grid Config.Duel.Arena.SlotOrigins (a sky row, Y 300, far
 -- from the lobby). Clones are made lazily (PrewarmSlots at start), pivoted to their slot BEFORE they are parented, and
 -- kept for the server's lifetime; release() clears the slot's Runtime folder and resets its state so the next match
 -- reuses it. The templates are never changed. Without a usable template, duels are disabled: available() is false,
@@ -49,6 +49,7 @@
 -- Services
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
 -- Requires
@@ -59,7 +60,6 @@ local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local Signal = require(Shared.Util.Signal)
 local Types = require(Shared.Types)
-local WorldService = require(script.Parent.WorldService)
 
 -- Types
 
@@ -89,6 +89,7 @@ export type Slot = {
 -- Constants
 
 local CONTAINER_NAME = "SD_ArenaSlots"
+local SKY_MAPS_NAME = "SquishyMaps" -- ServerStorage: Diego's sky maps (the 1v1 ones are the arena templates)
 local CLONE_PREFIX = "Arena_"
 local ATTR_SLOT = "SD_ArenaSlot"
 local TAG_GENERATED = "SD_Generated"
@@ -127,6 +128,7 @@ local templates: { [string]: Instance } = {} -- arena id -> template
 local broken: { [string]: boolean } = {} -- arena ids whose clone lacked a required child
 local rng: Random = Random.new() -- the arena roll (server only)
 local forcedArena: string? = nil -- Studio (debugForceArena): every pick returns it while it is usable
+local preferredArena: string? = nil -- one match per server (prefer): the next pick only
 local container: Instance? = nil -- clones' parent; nil = Workspace.SD_ArenaSlots (made on the first clone)
 local slots: { [number]: Slot } = {}
 local handoffSlot: Slot? = nil
@@ -447,7 +449,7 @@ end
 
 -- Public: pool ---------------------------------------------------------------------------------------------------------
 
--- Uses these templates (arena id -> template) and container (init() passes WorldService.arenaTemplates() and nil =
+-- Uses these templates (arena id -> template) and container (init() passes skyMapTemplates() and nil =
 -- Workspace.SD_ArenaSlots; tests pass in-memory templates, an unparented folder, a fake clock, a recording logger and a
 -- scripted Random). Destroys the clones made so far and clears the Studio pin. The clock defaults to the server time,
 -- the logger to [SD][Arena], the Random to a new one.
@@ -500,10 +502,21 @@ function ArenaService.pickArena(): string?
 	if forced ~= nil and table.find(usable, forced) then
 		return forced
 	end
+	local wanted = preferredArena
+	preferredArena = nil
+	if wanted ~= nil and table.find(usable, wanted) then
+		return wanted -- a match server's ticket (prefer)
+	end
 	if #usable <= 1 then
 		return usable[1]
 	end
 	return usable[rng:NextInteger(1, #usable)]
+end
+
+-- One match per server (2026-10-30, MatchServerService): the next pickArena returns `arenaId` (a match server's
+-- ticket) when it is usable, once.
+function ArenaService.prefer(arenaId: string?)
+	preferredArena = arenaId
 end
 
 -- Takes a slot holding a freshly picked arena (pickArena, then a free clone of it, else a new clone, else a free slot
@@ -716,8 +729,21 @@ end
 
 -- Lifecycle ------------------------------------------------------------------------------------------------------------
 
+-- Diego's 1v1 sky maps (NEW MAPS FINALS, 2026-10-30; SDTools "sky_maps"): the Models of `folder` whose Mode is DUEL,
+-- by their MapId ("D1"...). They replace the old arenas (WorldService.arenaTemplates) in the rotation.
+function ArenaService.skyMapTemplates(folder: Instance?): { [string]: Instance }
+	local list: { [string]: Instance } = {}
+	for _, child in if folder then folder:GetChildren() else {} do
+		local id = child:GetAttribute("MapId")
+		if child:IsA("Model") and child:GetAttribute("Mode") == "DUEL" and type(id) == "string" then
+			list[id] = child
+		end
+	end
+	return list
+end
+
 function ArenaService.init()
-	ArenaService.useTemplates(WorldService.arenaTemplates(), nil)
+	ArenaService.useTemplates(ArenaService.skyMapTemplates(ServerStorage:FindFirstChild(SKY_MAPS_NAME)), nil)
 	if not ArenaService.available() then
 		log:warn("no arena template; duels are disabled (queue.unavailable)")
 	end

@@ -9,7 +9,7 @@
 --   board:destroy()
 -- * The head (the mode's pill with its tails, the name and chip), the line under it (VOTE FOR A MAP with the timer
 --   until the result, then MAP CHOSEN! / IT'S A TIE! / RANDOM PICK!), a card per offered map (its card picture and
---   floating board, by Workspace.DuelMaps model name; a plain card with the name when there is no picture).
+--   floating board, by Workspace.SquishyMaps model name; a plain card with the name when there is no picture).
 -- * Tapping a card while the vote is open votes for it at once (Config.UI.MatchFound.vote.tapGapMs apart): your pick
 --   lifts and glows with YOUR VOTE and your chip flies there from your tile; the server's next views confirm it (or
 --   put it back once pickHoldS has passed). Anyone else's vote in a view flies from their tile; a moved vote leaves

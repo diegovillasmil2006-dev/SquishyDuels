@@ -21,6 +21,7 @@
 --   "arena_arcade_toyworks"   Builders/Arenas/<Name> -> ServerStorage.SD_Templates.Arena_<Name>: the 5 design arenas
 --             (phase 4 spec 2026-10-11 §5.2; World/Arenas names them). Each has its own generator id, so building one
 --             never removes Candy Court or another arena.
+--   "sky_maps" Builders/SkyMapBuilder -> ServerStorage.SquishyMaps: Diego's 11 sky maps (NEW MAPS FINALS, 2026-10-30)
 -- Builders are required lazily, per target, so a broken builder only breaks its own target.
 
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
@@ -157,6 +158,15 @@ local TARGETS: { [string]: Target } = {
 			return require(script.Parent.Builders.Arenas.ArcadeToyworks)
 		end,
 		parent = templatesFolder,
+	},
+	-- Diego's 11 sky maps (NEW MAPS FINALS, 2026-10-30) -> ServerStorage.SquishyMaps
+	sky_maps = {
+		load = function(): any
+			return require(script.Parent.Builders.SkyMapBuilder)
+		end,
+		parent = function(_report: Report): (Instance?, string?)
+			return ServerStorage, nil
+		end,
 	},
 }
 

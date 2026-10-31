@@ -51,6 +51,7 @@
 
 -- Services
 
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -67,6 +68,7 @@ local Types = require(Shared.Types)
 local Services = script.Parent
 local ArenaService = require(Services.ArenaService)
 local CharacterService = require(Services.CharacterService)
+local MatchServerService = require(Services.MatchServerService)
 local NetService = require(Services.NetService)
 local ShutdownService = require(Services.ShutdownService)
 local Matchmaker = require(Services.Parent.Logic.Matchmaker)
@@ -483,6 +485,27 @@ local function startMatchWith(a: any, b: any, found: boolean?): (boolean, any)
 	return true, match
 end
 
+-- One match per server (2026-10-30, MatchServerService): two real players the queue paired go to a server of their
+-- own on a rolled 1v1 map; their tickets go quietly. False when they were not sent (Studio, off, a failure): the match
+-- starts here as before. The practice bot and friend-pad duels always stay in this server.
+local function sendAway(a: any, b: any): boolean
+	local d = getDeps()
+	if not (d.isPlayer(a) and d.isPlayer(b)) or not MatchServerService.canSend() then
+		return false
+	end
+	local arenaId = ArenaService.pickArena()
+	if arenaId == nil or not MatchServerService.send("duel", "1v1", arenaId, HttpService:GenerateGUID(false), { a, b }, nil) then
+		return false
+	end
+	for _, player in { a, b } do
+		local record = records[player]
+		if record and record.state == "Searching" then
+			dropTicket(record, nil, nil, nil)
+		end
+	end
+	return true
+end
+
 local function pairOnce(): number
 	local d = getDeps()
 	if #queue < 2 or d.duel == nil or closed or not accepting or d.closing() or d.restartPending() then
@@ -505,7 +528,9 @@ local function pairOnce(): number
 		end
 		local a: Ticket, b: Ticket = pair.a :: any, pair.b :: any
 		-- Both must still be waiting (an earlier start in this loop may have yielded).
-		if positionOf(a) ~= nil and positionOf(b) ~= nil then
+		if positionOf(a) ~= nil and positionOf(b) ~= nil and sendAway(a.player, b.player) then
+			started += 1 -- one match per server (2026-10-30): they play it in its own server
+		elseif positionOf(a) ~= nil and positionOf(b) ~= nil then
 			local ok, match = startMatchWith(a.player, b.player, true)
 			if ok then
 				markMatched(a.player, b.player, match, now)
@@ -957,6 +982,12 @@ function QueueService.forceMatch(a: any, b: any): (boolean, any)
 	if not RunService:IsStudio() then
 		return false, "studioOnly"
 	end
+	return QueueService.startHosted(a, b)
+end
+
+-- One match per server (2026-10-30, MatchServerService): in a match server, the 1v1 a lobby sent here starts at once
+-- between the two players who arrived (forceMatch's start; `found` plays the MATCH FOUND show first).
+function QueueService.startHosted(a: any, b: any, found: boolean?): (boolean, any)
 	local recordA = records[a]
 	if (recordA and recordA.state == "Matched") or inMatch(a) or inMatch(b) then
 		return false, "alreadyInMatch"
@@ -968,7 +999,7 @@ function QueueService.forceMatch(a: any, b: any): (boolean, any)
 	if recordB and recordB.state == "Searching" then
 		dropTicket(recordB, nil, nil, nil)
 	end
-	local ok, match = startMatchWith(a, b)
+	local ok, match = startMatchWith(a, b, found)
 	if ok then
 		local now = getDeps().now()
 		markMatched(a, b, match, now)

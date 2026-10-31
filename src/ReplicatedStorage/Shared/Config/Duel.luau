@@ -148,15 +148,18 @@ local Duel = {
 	Arena = {
 		MaxSlots = 6,
 		PrewarmSlots = 1,
+		-- Diego's NEW MAPS FINALS (2026-10-30): his 1v1 sky maps float at Y 300 (SUPERPROMPT), in a row south of the
+		-- Team / Free for All maps (Z 3000..3270, SDTools SkyMapBuilder); 700 apart, so a slot's sky props and clouds
+		-- stay clear of the next map.
 		SlotOrigins = {
-			Vector3.new(320, 0, -300),
-			Vector3.new(320, 0, -100),
-			Vector3.new(320, 0, 100),
-			Vector3.new(320, 0, 300),
-			Vector3.new(520, 0, -300),
-			Vector3.new(520, 0, -100),
-			Vector3.new(520, 0, 100),
-			Vector3.new(520, 0, 300),
+			Vector3.new(-2450, 300, 3950),
+			Vector3.new(-1750, 300, 3950),
+			Vector3.new(-1050, 300, 3950),
+			Vector3.new(-350, 300, 3950),
+			Vector3.new(350, 300, 3950),
+			Vector3.new(1050, 300, 3950),
+			Vector3.new(1750, 300, 3950),
+			Vector3.new(2450, 300, 3950),
 		},
 		LeaseGraceSeconds = 60,
 		JanitorIntervalSeconds = 5, -- voids matches whose lease expired

@@ -5,7 +5,7 @@
 -- (Config.UI.Match.finish.podium.at after the last squish, S:824: the jelly wave covers the screen) or at a skip, and
 -- ends it with the session. Owner 2026-10-26: "Middle of the arena", "Top 6", "Two steps" (this is step 1; the
 -- fireworks, balloons, spotlights, confetti and sprinkle rain are step 2). Every number is Config's (CFG below).
--- * Where: the match's map (Workspace.DuelMaps[view.mapName]; a preview: the first map of its mode): its pivot is the
+-- * Where: the match's map (Workspace.SquishyMaps[view.mapName]; a preview: the first map of its mode): its pivot is the
 --   centre, its Y the floor (MatchMapService's rule), the scene `lift` over it. The scene faces the one of `yaws`
 --   turns from the map's own whose camera shots the map's geometry blocks least.
 -- * On this screen only, while it shows: the camera is the scene's (deps.saveCamera / restoreCamera; its subject is the
@@ -156,7 +156,7 @@ type Balloon = { toy: Model, cord: BasePart, p: Vector3, t: number, ph: number, 
 local CFG = Config.UI.Match.finish.podium
 local CAM = CFG.camera
 local UP = Vector3.new(0, 1, 0)
-local MAPS_FOLDER = "DuelMaps"
+local MAPS_FOLDER = "SquishyMaps" -- Diego's NEW MAPS FINALS (2026-10-30; MatchMapService)
 local BOTS_FOLDER = "SD_Bots" -- BotService: the match bots' rigs, named after the bot
 local CLIENT_FX = "SD_ClientFx"
 local STORM_WALL = "SD_StormWall" -- MatchController's

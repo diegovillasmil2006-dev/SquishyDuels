@@ -100,9 +100,18 @@ local Match = {
 	Vote = {
 		enabled = true, -- [P] false: a queue match starts at once (the tests' setting)
 		maxChoices = 3, -- L:1035: the mode's 3 maps
-		-- The cards' order (Workspace.DuelMaps model names; L:1035 toybox, sprinkle, bath / arcade, sundae, park); a map
+		-- The cards' order (Workspace.SquishyMaps model names: Diego's NEW MAPS FINALS 2026-10-30, maps.json order); a map
 		-- not listed comes after, by name.
-		mapOrder = { "ToyBoxClash", "SprinkleFactory", "BubbleBathBay", "JellyArcade", "SundaePlaza", "PillowFortPark" },
+		mapOrder = {
+			"CookieCounter",
+			"FluffCycle",
+			"CrayonCanyon",
+			"ShelfLife",
+			"TeatimeTerrace",
+			"CupcakeCarousel",
+			"PuzzlePlaza",
+			"DollhouseDrop",
+		},
 		-- found -> the vote opens: the waiting bar's fill-up (up to 12 x 70 ms + 350 ms), the show (3 s) and the swap to
 		-- the vote (.64 s, L:1048-1066).
 		introSeconds = 4.83,
@@ -137,6 +146,18 @@ local Match = {
 	outOfBoundsIsKo = true,
 	readoutHz = 4, -- [P] the client's test readout chip refreshes this many times a second
 	returnSpreadStuds = 4, -- [P] players sent back to the same lobby return point stand this far apart (rings of 6)
+	-- One match per server (owner 2026-10-30 "every match its a different server", Diego's NEW MAPS FINALS SUPERPROMPT;
+	-- decided 2026-10-15/17: matches leave the lobby server, players go back to the server they came from;
+	-- Server/Services/MatchServerService). A Team / Free for All match whose vote is done, and a 1v1 the queue paired
+	-- (two real players), go to a reserved server of this place with a ticket; it plays there on that map and sends
+	-- everyone back afterwards. Live servers only (Studio cannot teleport: matches stay in the server there); a failed
+	-- teleport plays the match here as before. false: every match stays in the lobby server (the old way).
+	Servers = {
+		enabled = true,
+		waitSeconds = 20, -- [P] the match server starts with whoever arrived after this long
+		settleSeconds = 2, -- [P] after the last player's character appears, before the match starts
+		homeAfterSeconds = 12, -- [P] idle this long after the match (end screen, a 1v1 Rematch) = everyone goes back
+	},
 	-- UI FINAL R4 (the user, 2026-10-15: "testers get the new picker", work/tdmffa/PLAN.md D3 / D5): the HUD's DUEL
 	-- button shows Diego's TEAM DEATHMATCH / FREE FOR ALL picker under it (N:144-162) and joins this in-server queue
 	-- (MatchJoin) for these userIds (the co-owners jayyyyy2806 and VillasmilGaming), or for everyone with
@@ -146,7 +167,8 @@ local Match = {
 	pickerTesters = { 8963996639, 136002404 },
 	pickerForEveryone = true, -- [P]
 
-	-- Diego's maps in Workspace.DuelMaps (MatchMapService). footprint = the floor size (X x Z) by the map's Mode
+	-- Diego's maps in Workspace.SquishyMaps (MatchMapService). footprint = the floor size (X x Z) by the map's Mode (a sky
+	-- map carries its own: FootprintX / FootprintZ)
 	-- attribute. The Bounds box the combat code reads spans the footprint from floorY + boundsBottomOffset (the kill
 	-- line: Config.Duel OutOfBounds.KillYOffset) to floorY + boundsTop (throw arcs, platforms up to 29 studs, the super
 	-- jump). Studio scan 2026-10-15: walls 20 tall at the footprint edge.
@@ -166,7 +188,8 @@ local Match = {
 	-- edgeStuds from the pad's edges; a respawn avoids spots with a standing player within occupiedStuds; a respawn
 	-- moved into the storm's safe circle is raised onto geometry by a downward raycast from raycastUpStuds above.
 	Spawns = {
-		spotsPerPad = { tdm = 6, ffa = 2 }, -- [P] TDM: one pad per team for 6 players; FFA: 8 pads for 12
+		-- [P] TDM: one pad per team for 6 players; FFA: Diego's sky maps have 12 pads for 12 (one each)
+		spotsPerPad = { tdm = 6, ffa = 1 },
 		edgeStuds = 4, -- [P]
 		occupiedStuds = 4, -- [P]
 		raycastUpStuds = 40, -- [P]

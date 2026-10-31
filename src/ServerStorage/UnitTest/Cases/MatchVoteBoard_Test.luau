@@ -24,7 +24,7 @@ return function(t: Context)
 		return {
 			id = "match:test",
 			mode = "ffa",
-			maps = { "JellyArcade", "SundaePlaza", "PillowFortPark" },
+			maps = { "TeatimeTerrace", "CupcakeCarousel", "PuzzlePlaza" },
 			opensAt = 100,
 			closesAt = 110,
 			votes = votes,
@@ -155,7 +155,7 @@ return function(t: Context)
 		local result = { winner = 2, kind = "chosen", roulette = {}, at = 110.3, revealAt = 110.7, startsAt = 114.2 }
 		board:setView(view({ { 1 }, { 3, 2 }, {} }, result))
 		expect.near(board:endsAt() :: number, 110.7 + V.reveal.endAfterMs / 1000, 1e-9)
-		expect.equal(board:winnerName(), "Sundae Plaza")
+		expect.equal(board:winnerName(), "Cupcake Carousel")
 		board:destroy()
 		expect.equal(stage:FindFirstChild("VoteHead"), nil)
 		expect.equal(stage:FindFirstChild("Card1"), nil)

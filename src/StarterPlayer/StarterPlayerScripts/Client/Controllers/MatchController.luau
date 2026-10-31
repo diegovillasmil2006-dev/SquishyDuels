@@ -21,7 +21,9 @@
 --   refreshed Config.Match.readoutHz times a second (every frame when that is missing); toasts start under it while it
 --   shows (UIController.toastsBelow "match"). Not made while Config.UI.Match.enabled.topBar is on (2026-10-26: the
 --   live top bar, UI/Match/TopBar, shows all of it: the scores, the clock, OVERTIME and the power-ups).
--- * Lighting and map animations (D10): Diego's ReplicatedStorage.DuelMapScripts.MapLighting.Apply(mapCode) when the
+-- * Lighting and map animations (D10): Diego's sky maps (NEW MAPS FINALS, 2026-10-30) use Shared/Maps/MapLighting and
+--   animate themselves (SkyMapFxController); for any other map code, as before: Diego's
+--   ReplicatedStorage.DuelMapScripts.MapLighting.Apply(mapCode) when the
 --   local player's match view appears and MapLighting.Reset() when it ends; MapAnimations_<mapCode>.Start(map) (the
 --   Workspace.DuelMaps child whose MapCode attribute is the view's mapCode) once the phase reaches Countdown (reading:
 --   the player has been moved to the map by then, so its parts are streamed in; review fix: while the map model is
@@ -78,6 +80,8 @@ local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local MapData = require(Shared.Maps.MapData)
+local SkyMapLighting = require(Shared.Maps.MapLighting)
 local Palette = require(Shared.Art.Palette)
 
 local Client = script.Parent.Parent
@@ -141,7 +145,7 @@ local RESET_RETRY_SECONDS = 0.5 -- SetCore fails until the CoreGui registers the
 local MAP_SCRIPTS = "DuelMapScripts"
 local MAP_LIGHTING = "MapLighting"
 local MAP_ANIMATIONS_PREFIX = "MapAnimations_"
-local MAPS_FOLDER = "DuelMaps"
+local MAPS_FOLDER = "SquishyMaps" -- Diego's NEW MAPS FINALS (2026-10-30; MatchMapService)
 local ATTR_MAP_CODE = "MapCode"
 local DUEL_GUI = "SD_DuelHud"
 local READOUT_NAME = "Match_Readout"
@@ -286,7 +290,8 @@ local function startLighting(lc: Cleanup.Cleanup, code: string)
 	if code == "" then
 		return
 	end
-	local lighting = mapScript(MAP_LIGHTING)
+	-- Diego's sky maps (2026-10-30) have their own look (Shared/Maps/MapLighting); older maps kept his DuelMapScripts
+	local lighting = if MapData.maps[code] then SkyMapLighting else mapScript(MAP_LIGHTING)
 	if lighting == nil or type(lighting.Apply) ~= "function" then
 		return
 	end
@@ -338,8 +343,8 @@ end
 -- PAD_STREAM_WAIT_SECONDS) until the view's pads have streamed in (see the header).
 local function startAnimations(state: Look, view: StateController.MatchView)
 	local code = view.mapCode
-	if code == "" then
-		state.animations = true
+	if code == "" or MapData.maps[code] then
+		state.animations = true -- a sky map animates itself (SkyMapFxController)
 		return
 	end
 	local animations = mapScript(MAP_ANIMATIONS_PREFIX .. code)

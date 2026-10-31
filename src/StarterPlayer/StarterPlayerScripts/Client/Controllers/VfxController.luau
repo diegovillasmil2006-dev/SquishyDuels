@@ -128,6 +128,7 @@ local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local MapData = require(Shared.Maps.MapData)
 local Palette = require(Shared.Art.Palette)
 local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
@@ -443,6 +444,11 @@ end
 -- True when the duel view calls for the Arena lighting preset: the match reached Positioning (the player was moved
 -- to the arena) and the view still exists (it ends back in the lobby).
 function VfxController.arenaLightingWanted(view: any): boolean
+	-- 2026-10-30: Diego's 1v1 sky maps bring their own look (Shared/Maps/MapLighting, DuelController), not this preset
+	local arenaId = type(view) == "table" and type(view.arena) == "table" and view.arena.arenaId or nil
+	if type(arenaId) == "string" and MapData.maps[arenaId] ~= nil then
+		return false
+	end
 	return type(view) == "table" and view.positioned == true
 end
 

@@ -338,7 +338,7 @@ local Strings = {
 			chips = { ["1v1"] = "1v1", tdm = "6v6", ffa = "SOLO" },
 			you = "YOU",
 			-- Round 3 of the match flow (LOBBY HUD L:1029, L:1116-1119, L:714-715, L:1145): the map vote's lines and the
-			-- teleport toast; each map's name by its Workspace.DuelMaps model (uploads/duel-maps.js).
+			-- teleport toast; each map's name by its Workspace.SquishyMaps model (Diego's NEW MAPS FINALS maps.json, 2026-10-30).
 			vote = {
 				sub = "VOTE FOR A MAP",
 				chosen = "MAP CHOSEN!",
@@ -349,12 +349,17 @@ local Strings = {
 				teleport = "Teleporting to {map}…",
 				arena = "the arena",
 				maps = {
-					ToyBoxClash = "Toy Box Clash",
-					SprinkleFactory = "Sprinkle Factory",
-					BubbleBathBay = "Bubble Bath Bay",
-					JellyArcade = "Jelly Arcade",
-					SundaePlaza = "Sundae Plaza",
-					PillowFortPark = "Pillow Fort Park",
+					CookieCounter = "Cookie Counter",
+					FluffCycle = "Fluff Cycle",
+					CrayonCanyon = "Crayon Canyon",
+					ShelfLife = "Shelf Life",
+					TeatimeTerrace = "Teatime Terrace",
+					CupcakeCarousel = "Cupcake Carousel",
+					PuzzlePlaza = "Puzzle Plaza",
+					DollhouseDrop = "Dollhouse Drop",
+					PencilCase = "Pencil Case",
+					PianoKeys = "Piano Keys",
+					Lunchbox = "Lunchbox",
 				},
 			},
 		},

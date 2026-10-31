@@ -305,13 +305,12 @@ function WorldService.init()
 	end
 	local roots = WorldService.findRoots(Workspace, ServerStorage)
 	WorldService.useWorld(roots.lobby, roots.arena, roots.arenas)
-	local missing = #roots.missing > 0
+	-- 2026-10-30: Diego's sky maps (ServerStorage.SquishyMaps, ArenaService) replaced the generated arenas, which went
+	-- to the backup, so only a missing lobby still counts.
+	local missing = roots.lobby == nil
 	Workspace:SetAttribute(ATTR_WORLD_MISSING, missing)
 	if missing then
-		log:warn(`World not built: run the generator (missing: {table.concat(roots.missing, ", ")})`)
-	end
-	if #roots.missingArenas > 0 then
-		log:warn(`arena templates not built, not in the rotation: {table.concat(roots.missingArenas, ", ")}`)
+		log:warn(`World not built: run the generator (missing: {LOBBY_ID})`)
 	end
 end
 

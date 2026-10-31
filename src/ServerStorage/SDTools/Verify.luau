@@ -2033,11 +2033,58 @@ local function arenaVerifier(contract: ArenaContract): (report: Report, root: In
 	end
 end
 
+-- Diego's sky maps (target "sky_maps", NEW MAPS FINALS zip, his SUPERPROMPT rule 6): 11 Models (attribute MapId) with his
+-- folders, the spawns each mode needs (Team / 1v1: Spawn_Red + Spawn_Blue, Free for All: 12 Spawn_Ffa_nn), a 1v1
+-- map's ArenaService frame (Origin as PrimaryPart, Zones, Spawns/PadA + PadB), every part anchored.
+local SKY_MAP_COUNT = 11
+local function verifySkyMaps(report: Report, root: Instance, _deps: Deps?)
+	local maps = root:GetChildren()
+	if #maps ~= SKY_MAP_COUNT then
+		note(report, "skymaps", string.format("expected %d maps, found %d", SKY_MAP_COUNT, #maps))
+	end
+	for _, map in maps do
+		if not map:IsA("Model") or map:GetAttribute("MapId") == nil then
+			note(report, "skymaps", string.format("%s is not a map Model (MapId)", map.Name))
+			continue
+		end
+		local mode = map:GetAttribute("Mode")
+		local spawns = map:FindFirstChild("Spawns")
+		local red, blue, ffa = 0, 0, 0
+		for _, child in if spawns then spawns:GetChildren() else {} do
+			red += if child.Name == "Spawn_Red" then 1 else 0
+			blue += if child.Name == "Spawn_Blue" then 1 else 0
+			ffa += if string.sub(child.Name, 1, 10) == "Spawn_Ffa_" then 1 else 0
+		end
+		local spawnsOk = if mode == "FFA" then ffa == 12 and red == 0 else red == 1 and blue == 1 and ffa == 0
+		if not spawnsOk then
+			note(report, "skymaps", string.format("%s (%s): spawns red %d blue %d ffa %d", map.Name, tostring(mode), red, blue, ffa))
+		end
+		if mode == "DUEL" then
+			local origin = map:FindFirstChild("Origin")
+			if origin == nil or (map :: Model).PrimaryPart ~= origin then
+				note(report, "skymaps", map.Name .. ": the Origin part is not its PrimaryPart")
+			end
+			for _, path in { { "Zones", "HalfA" }, { "Zones", "Neutral" }, { "Zones", "HalfB" }, { "Zones", "Bounds" }, { "Spawns", "PadA" }, { "Spawns", "PadB" }, { "Geometry", "Floor" }, { "Geometry", "Barriers" } } do
+				local holder = map:FindFirstChild(path[1])
+				if holder == nil or holder:FindFirstChild(path[2]) == nil then
+					note(report, "skymaps", string.format("%s has no %s/%s", map.Name, path[1], path[2]))
+				end
+			end
+		end
+		for _, d in map:GetDescendants() do
+			if d:IsA("BasePart") and not d.Anchored then
+				note(report, "anchored", string.format("%s is not anchored", d:GetFullName()))
+			end
+		end
+	end
+end
+
 -- Target id -> target-specific checks.
 local CHECKS: { [string]: (report: Report, root: Instance, deps: Deps?) -> () } = {
 	shapes = verifyShapes,
 	lobby = verifyLobby,
 	highway = verifyHighway, -- pens3 phase 12
+	sky_maps = verifySkyMaps, -- Diego's NEW MAPS FINALS (2026-10-30)
 }
 for target, contract in ARENA_CONTRACTS do
 	CHECKS[target] = arenaVerifier(contract)

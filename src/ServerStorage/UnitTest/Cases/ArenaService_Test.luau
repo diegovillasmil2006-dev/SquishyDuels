@@ -30,7 +30,6 @@ type Context = {
 	requireFake: (name: string) -> any,
 }
 
-local STREAMING_RADIUS = 1024 -- §5.3: slots stay inside the lobby's streaming radius
 local ROLL_UP = CFrame.Angles(0, 0, math.pi / 2) -- how ArenaBuilder rolls a cylinder pad about its look axis
 
 return function(t: Context)
@@ -40,7 +39,7 @@ return function(t: Context)
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local FakeClock = t.requireFake("FakeClock")
 	local FakeRng = t.requireFake("FakeRng")
-	local Arenas = t.requireShared("World/Arenas")
+	local MapData = t.requireShared("Maps/MapData")
 	local Arena = WorldLayout.Arena
 
 	local function part(name: string, size: Vector3, cf: CFrame, parent: Instance): Part
@@ -132,7 +131,10 @@ return function(t: Context)
 		expect.equal(ArenaService.slotOrigin(1.5), nil)
 	end)
 
-	t.test("grid: slot footprints never overlap each other or the lobby, and stay within streaming range", function()
+	-- 2026-10-30: Diego's 1v1 sky maps float far from the lobby (Y 300, the row south of the Team maps), like his old
+	-- Team / Free for All maps did; the old "inside the lobby's streaming radius" rule went with the old arenas
+	-- (DuelService streams the pad in before each teleport).
+	t.test("grid: slot footprints never overlap each other or the lobby", function()
 		local halfX, halfZ = Arena.apron.size.X / 2, Arena.apron.size.Z / 2
 		local lobbyHalfX, lobbyHalfZ = WorldLayout.Lobby.baseSlab.size.X / 2, WorldLayout.Lobby.baseSlab.size.Z / 2
 		local maxSlots = ArenaService.maxSlots()
@@ -142,11 +144,6 @@ return function(t: Context)
 			local clearOfLobby = math.abs(a.X) >= halfX + lobbyHalfX or math.abs(a.Z) >= halfZ + lobbyHalfZ
 			if not clearOfLobby then
 				error(`slot {i} overlaps the lobby`)
-			end
-			-- Farthest apron corner inside the streaming radius.
-			local far = Vector3.new(math.abs(a.X) + halfX, 0, math.abs(a.Z) + halfZ).Magnitude
-			if far > STREAMING_RADIUS then
-				error(`slot {i} reaches {far} studs from the lobby centre`)
 			end
 			for j = i + 1, maxSlots do
 				local b = ArenaService.slotOrigin(j) :: Vector3
@@ -519,20 +516,20 @@ return function(t: Context)
 		teardownArenas(templates, container)
 	end)
 
-	t.test("grid: every arena's apron fits its slot cell, clear of the lobby and within streaming range", function()
-		local lobbyHalfX, lobbyHalfZ = WorldLayout.Lobby.baseSlab.size.X / 2, WorldLayout.Lobby.baseSlab.size.Z / 2
+	t.test("grid: every 1v1 sky map with its floating props fits its slot, clear of the lobby and the Team maps", function()
+		local lobbyRadius = (WorldLayout.Lobby.baseSlab.size * Vector3.new(1, 0, 1)).Magnitude / 2
 		local maxSlots = ArenaService.maxSlots()
-		for _, id in Arenas.ids do
-			local apron = Arenas.byId[id].apron
-			local halfX, halfZ = apron.X / 2, apron.Z / 2
+		for _, id in MapData.ofMode("duel") do
+			local map = MapData.maps[id]
+			-- his layout: sky props up to hypot(W, H) / 2 + 45 + 150 from the centre (MapLayout), ~12 studs of prop
+			local reach = math.sqrt(map.W ^ 2 + map.H ^ 2) / 2 + 45 + 150 + 12
 			for i = 1, maxSlots do
 				local a = ArenaService.slotOrigin(i) :: Vector3
-				expect.truthy(math.abs(a.X) >= halfX + lobbyHalfX or math.abs(a.Z) >= halfZ + lobbyHalfZ)
-				local far = Vector3.new(math.abs(a.X) + halfX, 0, math.abs(a.Z) + halfZ).Magnitude
-				expect.truthy(far <= STREAMING_RADIUS)
+				expect.truthy(Vector3.new(a.X, 0, a.Z).Magnitude >= reach + lobbyRadius)
+				expect.truthy(a.Z - reach >= 3000 + 270 + 50) -- south of the Team / Free for All row (Z 3000..3270)
 				for j = i + 1, maxSlots do
 					local b = ArenaService.slotOrigin(j) :: Vector3
-					if not (math.abs(a.X - b.X) >= 2 * halfX or math.abs(a.Z - b.Z) >= 2 * halfZ) then
+					if (a - b).Magnitude < 2 * reach then
 						error(`{id}: slots {i} and {j} overlap`)
 					end
 				end

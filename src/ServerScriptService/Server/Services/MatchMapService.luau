@@ -1,10 +1,12 @@
 --!strict
--- MatchMapService (server only). SPEC D14 (FFA/TDM v1, 2026-10-15): the registry of Diego's maps in Workspace.DuelMaps
+-- MatchMapService (server only). SPEC D14 (FFA/TDM v1, 2026-10-15): the registry of Diego's maps in Workspace.SquishyMaps
 -- that Free for All / Team Deathmatch matches are played on inside the lobby server, one match per map.
--- * init() reads the folder's children once (FindFirstChild, no yield). A map is a Model with the attributes Mode
+-- * init() copies his sky maps (ServerStorage.SquishyMaps, NEW MAPS FINALS 2026-10-30) into the folder
+--   (placeTemplates), then reads its children once (FindFirstChild, no yield). A map is a Model with the attributes Mode
 --   ("TDM" / "FFA") and MapCode. Per map:
 --   - centre = the model's pivot position; its floor top is the pivot's Y (floorY);
---   - footprint = Config.Match.Maps.footprint[Mode] (X x Z), startRadius = StormMath.startRadius(footprint);
+--   - footprint = its FootprintX / FootprintZ attributes (a sky map), else Config.Match.Maps.footprint[Mode] (X x Z);
+--     startRadius = StormMath.startRadius(footprint);
 --   - the Bounds zone the combat code reads (Types.ArenaZone): the footprint around the centre, axis-aligned, from
 --     floorY + Maps.boundsBottomOffset to floorY + Maps.boundsTop (throw arcs, platforms up to 29 studs, the super
 --     jump; the kill line is MovementRules' floorY + KillYOffset);
@@ -31,6 +33,7 @@
 -- Services
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local Workspace = game:GetService("Workspace")
 
 -- Requires
@@ -72,7 +75,10 @@ export type MapRecord = {
 
 -- Constants
 
-local FOLDER_NAME = "DuelMaps"
+-- Diego's NEW MAPS FINALS (2026-10-30): his Team / Free for All sky maps live in ServerStorage.SquishyMaps (SDTools
+-- "sky_maps", each built at its own sky spot); init() copies them into Workspace.SquishyMaps, which scan() reads.
+local FOLDER_NAME = "SquishyMaps"
+local ATTR_FOOTPRINT_X, ATTR_FOOTPRINT_Z = "FootprintX", "FootprintZ" -- a sky map's own floor size
 local ATTR_MODE = "Mode"
 local ATTR_CODE = "MapCode"
 local COLLISION_GROUP = "Default" -- the projectile rule of §5.3, as the duel arenas
@@ -262,6 +268,10 @@ function MatchMapService.recordFrom(model: Instance, cfg: any?): (MapRecord?, st
 		return nil, `unknown Mode {tostring(modeAttribute)}`
 	end
 	local footprint = c.Maps.footprint[string.upper(modeId)]
+	local fx, fz = model:GetAttribute(ATTR_FOOTPRINT_X), model:GetAttribute(ATTR_FOOTPRINT_Z)
+	if type(fx) == "number" and type(fz) == "number" then
+		footprint = Vector3.new(fx, 0, fz) -- a sky map carries its own size (they differ per map)
+	end
 	if typeof(footprint) ~= "Vector3" then
 		return nil, `no Config.Match.Maps.footprint for {string.upper(modeId)}`
 	end
@@ -317,7 +327,7 @@ end
 
 -- Public: registry -----------------------------------------------------------------------------------------------------
 
--- Reads every map of `folder` (default Workspace.DuelMaps) into the registry. Returns how many maps it holds. A map a
+-- Reads every map of `folder` (default Workspace.SquishyMaps) into the registry. Returns how many maps it holds. A map a
 -- running match holds stays held by it (one match per map), so a rescan never frees a map in use.
 function MatchMapService.scan(folder: Instance?, cfg: any?): number
 	local root = folder or Workspace:FindFirstChild(FOLDER_NAME)
@@ -357,6 +367,19 @@ function MatchMapService.acquire(modeId: string, matchId: string, r: number?): M
 		record.matchId = matchId
 	end
 	return record
+end
+
+-- One match per server (2026-10-30): the free map whose MapCode is `code`, now held by `matchId`; nil when it is
+-- missing or in use (a match server plays the map its ticket names).
+function MatchMapService.acquireCode(code: string, matchId: string): MapRecord?
+	for _, record in records do
+		if record.code == code and not record.inUse then
+			record.inUse = true
+			record.matchId = matchId
+			return record
+		end
+	end
+	return nil
 end
 
 -- Frees the map. The match holds the record it acquired; a rescan since then made a new record of the same model,
@@ -416,7 +439,32 @@ end
 
 -- Lifecycle
 
+-- Copies every Team / Free for All map of `templates` (ServerStorage.SquishyMaps) that `into` lacks into `into`
+-- (Workspace.SquishyMaps, made when missing). Returns how many it copied. The 1v1 ones stay (ArenaService's).
+function MatchMapService.placeTemplates(templates: Instance?, into: Instance?): number
+	if templates == nil then
+		return 0
+	end
+	local folder = into or Workspace:FindFirstChild(FOLDER_NAME)
+	if folder == nil then
+		local made = Instance.new("Folder")
+		made.Name = FOLDER_NAME
+		made.Parent = Workspace
+		folder = made
+	end
+	local copied = 0
+	for _, template in templates:GetChildren() do
+		local mode = template:GetAttribute(ATTR_MODE)
+		if (mode == "TDM" or mode == "FFA") and (folder :: Instance):FindFirstChild(template.Name) == nil then
+			template:Clone().Parent = folder
+			copied += 1
+		end
+	end
+	return copied
+end
+
 function MatchMapService.init()
+	MatchMapService.placeTemplates(ServerStorage:FindFirstChild(FOLDER_NAME), nil)
 	MatchMapService.scan(nil, nil)
 end
 

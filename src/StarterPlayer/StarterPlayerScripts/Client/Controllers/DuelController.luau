@@ -203,6 +203,8 @@ local Shared = ReplicatedStorage.Shared
 local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local MapData = require(Shared.Maps.MapData)
+local SkyMapLighting = require(Shared.Maps.MapLighting)
 local Palette = require(Shared.Art.Palette)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
@@ -2721,6 +2723,20 @@ local function endMatch()
 	end
 end
 
+-- Diego's 1v1 sky maps (NEW MAPS FINALS, 2026-10-30): their sky and light while this duel's arena is one of them.
+local skyLit = false
+local function skyLighting(view: StateController.DuelView?)
+	local arenaId = view and view.arena and view.arena.arenaId
+	local leaving = view ~= nil and (view.phase == "Returning" or view.phase == "Cancelled" or view.phase == "Void")
+	local want = type(arenaId) == "string" and MapData.maps[arenaId] ~= nil and not leaving
+	if want and not skyLit then
+		skyLit = SkyMapLighting.Apply(arenaId :: string)
+	elseif not want and skyLit then
+		SkyMapLighting.Reset()
+		skyLit = false
+	end
+end
+
 local function onDuelChanged(new: StateController.DuelView?, old: StateController.DuelView?)
 	if new then
 		if old == nil or old.matchId ~= new.matchId then
@@ -2730,6 +2746,7 @@ local function onDuelChanged(new: StateController.DuelView?, old: StateControlle
 	elseif old then
 		endMatch()
 	end
+	skyLighting(new)
 end
 
 local function onUltimateEvent(event: Types.UltimateEventPayload)

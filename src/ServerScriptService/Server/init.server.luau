@@ -73,9 +73,10 @@ local SERVICE_ORDER = {
 	"QueueService",
 	"FriendDuelService",
 	"BotService", -- 2026-10-16: the 1v1 practice bot
-	"MatchMapService", -- FFA/TDM v1 (2026-10-15): Diego's maps in Workspace.DuelMaps (read once at init)
+	"MatchMapService", -- FFA/TDM v1 (2026-10-15): Diego's maps in Workspace.SquishyMaps (copied + read once at init)
 	"MatchService", -- FFA/TDM v1: the in-server Free for All / Team Deathmatch (reads the duel services above)
 	"MatchBotService", -- 2026-10-17: the FFA / TDM match bots (after MatchService: its init hands them over)
+	"MatchServerService", -- 2026-10-30: one match per server (sends matches away; in a match server, starts them)
 	"HighwayAccessService", -- access2 (2026-10-18): GoHighway, the HUD's HIGHWAY button (reads the queues above)
 	"PortalService", -- 2026-10-30: Diego's FULL FINAL lobby portals (its HIGHWAY portal uses HighwayAccessService)
 	"BoxService",

@@ -709,8 +709,8 @@ return function(t: Context)
 		local c = baseConfig()
 		c.Vote.enabled = true
 		local w = setup(count, c)
-		table.insert(w.maps, mapRecord(c, "ffa", "PillowFortPark"))
-		table.insert(w.maps, mapRecord(c, "ffa", "SundaePlaza"))
+		table.insert(w.maps, mapRecord(c, "ffa", "PuzzlePlaza"))
+		table.insert(w.maps, mapRecord(c, "ffa", "CupcakeCarousel"))
 		return w, c.Vote
 	end
 
@@ -736,7 +736,7 @@ return function(t: Context)
 		MatchService.join(p[2], "ffa")
 		expect.equal(w.port, nil) -- no match yet: the show and the vote first
 		local view = lastVote(w, p[2])
-		expect.deepEqual(view.maps, { "SundaePlaza", "PillowFortPark", "JAR" }) -- Vote.mapOrder, then by name
+		expect.deepEqual(view.maps, { "CupcakeCarousel", "PuzzlePlaza", "JAR" }) -- Vote.mapOrder, then by name
 		expect.equal(view.mode, "ffa")
 		expect.near(view.opensAt, T0 + vote.introSeconds, 1e-9)
 		expect.near(view.closesAt, view.opensAt + vote.seconds, 1e-9)

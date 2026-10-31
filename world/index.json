@@ -1,11 +1,5 @@
 [
 	{
-		"file": "Workspace/DuelMaps.rbxm",
-		"class": "Folder",
-		"name": "DuelMaps",
-		"container": "Workspace"
-	},
-	{
 		"file": "Workspace/SD_Highway.rbxm",
 		"class": "Model",
 		"name": "SD_Highway",
@@ -16,12 +10,6 @@
 		"class": "Model",
 		"name": "SquishyDuelsLobby",
 		"container": "Workspace"
-	},
-	{
-		"file": "ReplicatedStorage/DuelMapScripts.rbxm",
-		"class": "Folder",
-		"name": "DuelMapScripts",
-		"container": "ReplicatedStorage"
 	},
 	{
 		"file": "ReplicatedStorage/SD_KillVfx.rbxm",
@@ -48,16 +36,16 @@
 		"container": "ReplicatedStorage"
 	},
 	{
+		"file": "ReplicatedStorage/SquishyOutlineMeshes.rbxm",
+		"class": "Folder",
+		"name": "SquishyOutlineMeshes",
+		"container": "ReplicatedStorage"
+	},
+	{
 		"file": "ServerScriptService/OpenCloud.rbxm",
 		"class": "Model",
 		"name": "OpenCloud",
 		"container": "ServerScriptService"
-	},
-	{
-		"file": "ServerStorage/DuelMapKits.rbxm",
-		"class": "Folder",
-		"name": "DuelMapKits",
-		"container": "ServerStorage"
 	},
 	{
 		"file": "ServerStorage/Eclipse Animator Saves.rbxm",
@@ -78,15 +66,21 @@
 		"container": "ServerStorage"
 	},
 	{
+		"file": "ServerStorage/MapsBackup_20261030.rbxm",
+		"class": "Folder",
+		"name": "MapsBackup_20261030",
+		"container": "ServerStorage"
+	},
+	{
 		"file": "ServerStorage/SD_MeshLibrary.rbxm",
 		"class": "Model",
 		"name": "SD_MeshLibrary",
 		"container": "ServerStorage"
 	},
 	{
-		"file": "ServerStorage/SD_Templates.rbxm",
+		"file": "ServerStorage/SquishyMaps.rbxm",
 		"class": "Folder",
-		"name": "SD_Templates",
+		"name": "SquishyMaps",
 		"container": "ServerStorage"
 	},
 	{
@@ -124,6 +118,12 @@
 		"class": "SunRaysEffect",
 		"name": "SunRays",
 		"container": "Lighting"
+	},
+	{
+		"file": "MaterialService/SquishyMapStud.rbxm",
+		"class": "MaterialVariant",
+		"name": "SquishyMapStud",
+		"container": "MaterialService"
 	},
 	{
 		"file": "MaterialService/SquishyStud.rbxm",

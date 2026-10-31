@@ -77,6 +77,7 @@ local CONTROLLER_ORDER = {
 	"WorldBinder",
 	"AmbientController",
 	"LobbyFxController", -- 2026-10-30: Diego's FULL FINAL lobby motion and effects (his HubFX)
+	"SkyMapFxController", -- 2026-10-30: Diego's NEW MAPS FINALS sky maps move (his demos' animations)
 	"CollectionController",
 	"HeldSquishyController",
 	"CharacterAnimController",

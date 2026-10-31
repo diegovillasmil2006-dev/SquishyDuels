@@ -169,6 +169,7 @@ export type ArenaInfo = {
 	floorY: number,
 	killY: number,
 	zones: { [string]: Zone }, -- HalfA, Neutral, HalfB, Bounds (FFA/TDM v1, an ffa port: Bounds only)
+	freeRoam: boolean?, -- Diego's open 1v1 sky maps (2026-10-30): the movement guard keeps only the Bounds
 	geometry: Instance?,
 	raycastParams: RaycastParams,
 	overlapParams: OverlapParams,
@@ -2185,10 +2186,13 @@ local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 	local zones = port.arena.zones
 	local own = zones[HALF_BY_SIDE[fighter.side]]
 	local speedFactor = 1 -- power-ups v1.1: how much faster than the match walk speed this fighter may walk
-	if port.ffa then
-		-- FFA/TDM v1: an open map has no halves and no neutral band; its Bounds is the own zone and the only one.
+	if port.ffa or port.arena.freeRoam then
+		-- FFA/TDM v1 and Diego's 1v1 sky maps: an open map has no halves and no neutral band; its Bounds is the own
+		-- zone and the only one.
 		own = zones.Bounds
 		zones = if own then { Bounds = own } else {}
+	end
+	if port.ffa then
 		local movement = port.movement
 		if movement then
 			local walk = movement(fighter)
