@@ -227,6 +227,7 @@ local Palette = {
 	LobbyMallowToast = Color3.fromHex("#E2A866"), -- mallow_toast, lobby.js:79
 	LobbyPebble = Color3.fromHex("#E8DCCB"), -- pebble, lobby.js:80 (the unlit queue pad rings, lobby.js:193)
 	LobbyInk = Color3.fromHex("#2B2233"), -- ink_dark, lobby.js:80 (also the plates' text and border, lobby.js:29-30)
+	HubOutlineInk = Color3.fromHex("#1C1326"), -- Diego's lobby outlines (SquishyLobby/HubFX); the pen squishies' too
 	LobbyCottonPink = Color3.fromHex("#F9B8D0"), -- cotton_candy_pink, lobby.js:80
 	LobbyCottonBlue = Color3.fromHex("#A9DDF6"), -- cotton_candy_blue, lobby.js:80
 	LobbyCandyStick = Color3.fromHex("#FFF4E6"), -- candy_stick, lobby.js:80

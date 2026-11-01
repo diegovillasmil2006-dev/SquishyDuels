@@ -1586,12 +1586,13 @@ function PenController.start()
 	folder = made
 	-- 2026-10-31 (owner 2026-10-16 "With outlines", plan step 10): one Highlight on a Model holding every shown pen and
 	-- shelf squishy draws the dark cartoon outline round each of them, as one of the engine's 31 Highlights.
+	-- 2026-11-01 (restyle part 3): the ink of Diego's lobby outlines (HubFX), so both match.
 	local squishies = Instance.new("Model")
 	squishies.Name = OUTLINED_NAME
 	local outline = Instance.new("Highlight")
 	outline.Name = "SD_SquishyOutline"
 	outline.FillTransparency = 1
-	outline.OutlineColor = Palette.LobbyInk
+	outline.OutlineColor = Palette.HubOutlineInk
 	outline.OutlineTransparency = 0
 	outline.DepthMode = Enum.HighlightDepthMode.Occluded
 	outline.Parent = squishies
