@@ -29,8 +29,9 @@
 --   - Gate (pens3 phase 10; owner 2026-10-24 "Keep the photo gate sign", no bulbs or bow): the Model "Gate" (LK:87-96
 --     pen_gate, K:700) at Bases.pen.gate: 2 GatePosts (they block) with their balls in the tier's post colour (L:187
 --     GatePost tints), the SignFrame, the OwnerSign (P3D:245-251: the headshot in a PenOwnerDisc<n> disc, the display
---     name, "BASE n"), the NumberBadge disc reading the base number (P3D:268) and the VisitorBoard (a heart and "0
---     visitors" until phase 18, P3D:277); its GUIs as K:7872-7873 says (PixelsPerStud 25, hidden beyond 150 studs),
+--     name, "BASE n"), the NumberBadge disc reading the base number (P3D:268) and the VisitorBoard (a heart and "N
+--     visitors", P3D:277: friendly visits, 2026-10-31, the different players noteVisit counted since the owner got
+--     the plot; not saved); its GUIs as K:7872-7873 says (PixelsPerStud 25, hidden beyond 150 studs),
 --     on P3D's planes 0.1 stud inside each face. The headshot (K:4271): deps.headshotOf(userId)
 --     (Players:GetUserThumbnailAsync on its own thread, pcall), asked once per user and cached for the server's life,
 --     painted on that owner's gate when it comes (after a failure it is asked again on the next draw).
@@ -163,7 +164,6 @@ local BOARD_GUI = { -- P3D:277 on its 2.4 × 1 plane (40 px tall): the heart 30 
 local HEADSHOT_TYPE = Enum.ThumbnailType.HeadShot
 local HEADSHOT_SIZE = Enum.ThumbnailSize.Size150x150
 local OWNER_DISCS = 6 -- Palette PenOwnerDisc1..6 (P3D:244)
-local VISITORS_TODAY = 0 -- shortcut: phase 18 (visits) counts the visitors; the board reads 0 until then
 -- The board's two buy spots (see the header): PEN SPACE and SHELF SPOTS, one key each (both on one board).
 type SignKind = {
 	model: string,
@@ -207,6 +207,7 @@ local plots: { [any]: number } = {} -- player -> plot
 local waiting: { [any]: boolean } = {} -- players with no plot yet, still retrying
 local headshots: { [number]: string } = {} -- pens3 phase 10: UserId -> its headshot (kept for the server's life)
 local asking: { [number]: boolean } = {} -- UserIds whose headshot is on its way
+local visitors: { [number]: { [any]: true } } = {} -- friendly visits: plot -> the visitors since its owner got it
 
 local function defaultDeps(): Deps
 	return {
@@ -467,6 +468,26 @@ local function headshotFor(owner: any): string
 	return headshots[id] or "" -- read again: a dep may answer at once
 end
 
+-- Friendly visits: how many different visitors the plot had since its owner got it.
+local function visitorCount(plot: number): number
+	local count = 0
+	for _ in visitors[plot] or {} do
+		count += 1
+	end
+	return count
+end
+
+-- Friendly visits: writes the plot's visitor count on its drawn gate board (no redraw).
+local function paintVisitors(plot: number)
+	local model = deps.plotModel(plot)
+	local pen = if model then model:FindFirstChild(PEN_FOLDER) else nil
+	local gate = if pen then pen:FindFirstChild("Gate") else nil
+	local label = if gate then gate:FindFirstChild("Count", true) else nil
+	if label and label:IsA("TextLabel") then
+		label.Text = BaseService.visitorText(visitorCount(plot))
+	end
+end
+
 -- The owner sign's face (P3D:245-251, OWNER_GUI).
 local function drawOwnerGui(sign: BasePart, plot: number, name: string, image: string)
 	local size = GATE.signSize
@@ -538,7 +559,7 @@ local function drawGate(folder: Instance, at: CFrame, plot: number, step: WorldL
 	planeLabel("Heart", Strings.pen.gate.heart, boardPlane, boardHeight, heart, heart.px).TextColor3 =
 		Palette.PenGateHeart
 	local count = BOARD_GUI.count
-	planeLabel("Count", BaseService.visitorText(VISITORS_TODAY), boardPlane, boardHeight, count, count.px)
+	planeLabel("Count", BaseService.visitorText(visitorCount(plot)), boardPlane, boardHeight, count, count.px)
 	gate.WorldPivot = at
 	gate.Parent = folder
 end
@@ -628,6 +649,7 @@ local function assign(player: any): number?
 	end
 	owners[plot] = player
 	plots[player] = plot
+	visitors[plot] = {}
 	if typeof(player) == "Instance" then
 		(player :: Instance):SetAttribute(ATTR_PLOT, plot)
 		local spawn = deps.spawnOf(plot)
@@ -649,6 +671,30 @@ end
 -- The player on plot `plot`, or nil for an open plot.
 function BaseService.ownerOf(plot: number): any?
 	return owners[plot]
+end
+
+-- Friendly visits: the owner of the base whose plot holds `position` (WorldLayout.inPlot), or nil (an open plot, or
+-- outside every plot).
+function BaseService.ownerAt(position: Vector3): any?
+	for plot = 1, PLOT_COUNT do
+		if owners[plot] ~= nil and WorldLayout.inPlot(plot, position) then
+			return owners[plot]
+		end
+	end
+	return nil
+end
+
+-- Friendly visits: `visitor` squeezed in `owner`'s base. True the first time since the owner got it (the gate board
+-- counts one more); false after that, for the owner themself and for a player without a plot.
+function BaseService.noteVisit(owner: any, visitor: any): boolean
+	local plot = plots[owner]
+	local seen = if plot then visitors[plot] else nil
+	if seen == nil or owner == visitor or seen[visitor] then
+		return false
+	end
+	seen[visitor] = true
+	paintVisitors(plot :: number)
+	return true
 end
 
 -- Redraws the player's plot (their profile loaded, or their pen changed). Nothing for a player without a plot.
@@ -715,6 +761,7 @@ function BaseService.reset()
 	table.clear(waiting)
 	table.clear(headshots) -- pens3 phase 10
 	table.clear(asking)
+	table.clear(visitors)
 end
 
 -- Lifecycle
@@ -754,6 +801,7 @@ function BaseService.playerRemoving(player: Player)
 	if plot ~= nil then
 		plots[player] = nil
 		owners[plot] = nil
+		visitors[plot] = nil
 		render(plot)
 	end
 end

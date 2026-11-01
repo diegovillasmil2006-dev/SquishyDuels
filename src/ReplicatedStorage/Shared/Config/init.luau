@@ -4200,6 +4200,14 @@ local function checkSocial(problems: Problems, rarities: { string }, defs: { [st
 		`{p}.FriendBoost.perFriend must be a number in (0, 1] (got {show(boost.perFriend)})`
 	)
 	expectCount(problems, `{p}.FriendBoost.maxFriends`, boost.maxFriends, 1)
+	expectCount(problems, `{p}.Visits.visitorMult`, Social.Visits.visitorMult, 1)
+	expectCount(problems, `{p}.Visits.tipSqueezes`, Social.Visits.tipSqueezes, 1)
+	expectPositive(problems, `{p}.Visits.squishSeconds`, Social.Visits.squishSeconds)
+	expect(
+		problems,
+		isNumber(Social.Visits.squishDepth) and Social.Visits.squishDepth > 0 and Social.Visits.squishDepth < 1,
+		`{p}.Visits.squishDepth must be a number in (0, 1) (got {show(Social.Visits.squishDepth)})`
+	)
 
 	local board = Social.Board
 	expectCount(problems, `{p}.Board.size`, board.size, 1)

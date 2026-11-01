@@ -28,6 +28,10 @@
 --     SD_SqueezeAt = server time (others see the squeeze, their Foam Mat pulses); Squeezed(p, squishyId, coins, tier)
 --     for the layers above (QuestService, Part 7: onSqueezed(p, id)); then SqueezeResult{ok = true, coins,
 --     total, limit, nextAt, grip, gripTotal, doubled}. `coins` is what the balance really gained (0 at the Coin cap).
+--     Friendly visits (owner 2026-10-31, Config.Social.Visits): a paid squeeze while the server's root stands in
+--     another player's base (deps.ownerAt) pays visitorMult x the Coins, tips the owner tipSqueezes of their own
+--     squeezes (reason "visit"), and a visitor new since the owner got the base counts on its board and sends the
+--     owner pen.visiting. No limit (owner: "No limit").
 -- nextAt is a server time (§17.10): workspace:GetServerTimeNow() + max(0, 1 - tokens) × cycleSeconds, from the os.clock
 -- bucket (with a full cap it is simply now). `limit` is the squeeze Coins limit's whole points left (dormant while the
 -- limit is off). Accepted squeezes ride the autosave (§3.4: no idempotency key; the cap bounds them).
@@ -71,6 +75,7 @@ local SqueezeRules = require(Server.Logic.SqueezeRules)
 
 local Services = script.Parent
 local AutoClickService = require(Services.AutoClickService)
+local BaseService = require(Services.BaseService)
 local CharacterService = require(Services.CharacterService)
 local EconomyService = require(Services.EconomyService)
 local GripService = require(Services.GripService)
@@ -102,6 +107,11 @@ export type Deps = {
 	setSqueezeAt: (player: any, at: number) -> (),
 	reply: (player: any, result: SqueezeResult) -> (),
 	autoClick: (player: any, now: number, fastSeconds: number?) -> string?, -- AutoClickService.check: nil, or why
+	-- Friendly visits (2026-10-31): the owner of the base a position is in (BaseService.ownerAt), the board count
+	-- (BaseService.noteVisit: true for a new visitor) and the owner's toast (NetService.notify).
+	ownerAt: (position: Vector3) -> any?,
+	noteVisit: (owner: any, visitor: any) -> boolean,
+	notify: (player: any, code: string, args: Types.NotifyArgs?) -> (),
 }
 
 -- One problem the stale-lobby check found.
@@ -131,6 +141,9 @@ type Stats = {
 local REMOTE_REQUEST = "SqueezeRequest"
 local REMOTE_RESULT = "SqueezeResult"
 local COIN_REASON = "squeeze"
+local VISIT_REASON = "visit" -- friendly visits: the owner's tip
+local CODE_VISITING = "pen.visiting"
+local VISITS = Config.Social.Visits
 local STATUS_READY = "ready"
 local ATTR_PHASE = "SD_DuelPhase"
 local ATTR_SQUEEZE_AT = "SD_SqueezeAt"
@@ -225,6 +238,11 @@ local function defaultDeps(): Deps
 			NetService.fire(REMOTE_RESULT, player, result)
 		end,
 		autoClick = AutoClickService.check,
+		ownerAt = BaseService.ownerAt,
+		noteVisit = BaseService.noteVisit,
+		notify = function(player: any, code: string, args: Types.NotifyArgs?)
+			NetService.notify(player, code, args, "info")
+		end,
 	}
 end
 
@@ -255,6 +273,21 @@ local function padAt(rootPosition: Vector3?): SqueezeRules.StationInfo?
 		return nil
 	end
 	return { tier = station.tier }
+end
+
+-- Friendly visits: the owner's tip (tipSqueezes of their own squeezes, while their profile is ready) and, for a new
+-- visitor since they got the base, the board count and their toast.
+local function visited(owner: any, visitor: any)
+	local profile = deps.profileOf(owner)
+	if deps.statusOf(owner) == STATUS_READY and type(profile) == "table" then
+		deps.grantCoins(owner, PenMath.rewardCoins(VISITS.tipSqueezes, PenMath.squeezeValue(profile.pen)), VISIT_REASON)
+	end
+	if deps.noteVisit(owner, visitor) then
+		local ok, name = pcall(function(): any
+			return visitor.DisplayName
+		end)
+		deps.notify(owner, CODE_VISITING, { name = if ok and type(name) == "string" then name else "" })
+	end
 end
 
 -- Rolling-hour squeeze alert (spec 2026-10-12 §12): logs once when the last hour's paid squeezes pass
@@ -451,7 +484,16 @@ function SqueezeService.request(player: any, fastSeconds: number?): SqueezeResul
 		return reject(REASON_NOT_READY, decision.nextAt)
 	end
 	local gain = GripService.addFromSqueeze(player, tier)
-	local gained = if decision.coins > 0 then deps.grantCoins(player, decision.coins, COIN_REASON) else 0
+	-- Friendly visits (Config.Social.Visits): a paid squeeze in another player's base pays visitorMult and tips them.
+	local owner = if decision.coins > 0 and root then deps.ownerAt(root) else nil
+	if owner == player then
+		owner = nil
+	end
+	local coins = if owner ~= nil then decision.coins * VISITS.visitorMult else decision.coins
+	local gained = if coins > 0 then deps.grantCoins(player, coins, COIN_REASON) else 0
+	if owner ~= nil then
+		visited(owner, player)
+	end
 	deps.markDirty(player, FIELD_STATS)
 	deps.markDirty(player, FIELD_LIMIT)
 	deps.setSqueezeAt(player, serverNow)

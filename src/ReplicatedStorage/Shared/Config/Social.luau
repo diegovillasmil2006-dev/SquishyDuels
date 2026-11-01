@@ -14,6 +14,11 @@
 --   FriendBoost (owner 2026-10-31, plan step 2): each friend in the server (Services/FriendsService) adds perFriend
 --            to the pen's pay, counting at most maxFriends of them (+10% each, +30% at most). Pen coins only (not away
 --            coins); the player sees it as the "Friends +N%" pill (Client/Controllers/EventController).
+--   Visits   (owner 2026-10-31, plan step 3, friendly visits): a paid squeeze while standing in another player's base
+--            (WorldLayout.inPlot, the server's root position) pays the visitor visitorMult x their squeeze Coins and the
+--            owner a tip of tipSqueezes of the owner's own squeezes (Coin reason "visit"). No daily limit. The gate's
+--            visitor board counts the different visitors since the owner got the plot (BaseService, not saved); the
+--            owner hears "{name} is visiting your pen!" once per visitor then (SqueezeService).
 --   Board    "Top Wins This Week" (Services/ShowOffService; the Quests screen shows it): an OrderedDataStore written by
 --            the server only, one scope per week ("w" .. week, weeks start on Monday 00:00 UTC: 1970-01-01 was a
 --            Thursday, so weekOffsetSeconds = 4 days), + 1 for each fully paid win over another player. Read every
@@ -42,6 +47,9 @@ local Social = {
 	Pads = { checkHz = 5, holdSeconds = 3, radiusStuds = 1.8, heightStuds = 5, waitingToastSeconds = 30 },
 	Rematch = { windowSeconds = 20 },
 	FriendBoost = { perFriend = 0.10, maxFriends = 3 },
+	-- squishSeconds / squishDepth: a visitor's tap on the owner's walking squishy shrinks it by squishDepth and back
+	-- over squishSeconds (PenController; here, not in Config/UI, which is at its Source size limit).
+	Visits = { visitorMult = 2, tipSqueezes = 1, squishSeconds = 0.3, squishDepth = 0.2 },
 	Board = {
 		size = 5,
 		readSize = 100,

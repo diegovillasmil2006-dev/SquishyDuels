@@ -37,6 +37,9 @@
 --     2026-10-18: "Yes, above 20 a second"): the speed report a request carries reaches the check; wired, an
 --     auto-clicker at 36 a second through the client's 18 sends a second (Shared/PressSpeed's report on each) is
 --     caught once (squeeze.superFast).
+--   * friendly visits (2026-10-31): a paid squeeze in another player's base (deps.ownerAt) pays visitorMult x the
+--     Coins and tips the owner tipSqueezes of their own squeezes (reason "visit") every time; the owner's toast
+--     (pen.visiting) only for a new visitor (deps.noteVisit); in one's own base or no one's nothing changes.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -79,6 +82,12 @@ return function(t: Context)
 		squeezed: { { id: string, coins: number, tier: number } },
 		dirty: { string },
 		frozen: boolean, -- the session takes no more changes (its final save took its snapshot): mutate refuses
+		-- Friendly visits (2026-10-31): the base owner deps.ownerAt answers (nil = in no one's base), the owner's tips
+		-- (reason "visit"), the visitors noteVisit has seen and the owner's toasts.
+		owner: any?,
+		tips: { number },
+		seen: { [any]: boolean },
+		notices: { { player: any, code: string, args: any } },
 	}
 
 	local function onStation(id: string): Vector3
@@ -133,6 +142,10 @@ return function(t: Context)
 			squeezed = {},
 			dirty = {},
 			frozen = false,
+			owner = nil,
+			tips = {},
+			seen = {},
+			notices = {},
 		}
 		local function status(_player: any): string
 			return world.status
@@ -201,7 +214,12 @@ return function(t: Context)
 			equippedOf = function(_player: any): string
 				return world.equipped
 			end,
-			grantCoins = function(_player: any, amount: number, reason: string): number
+			grantCoins = function(player: any, amount: number, reason: string): number
+				if reason == "visit" then
+					assert(player == world.owner, "only the base owner gets a visit tip")
+					table.insert(world.tips, amount)
+					return amount
+				end
 				assert(reason == "squeeze", "squeeze Coins use the reason squeeze")
 				-- Like EconomyService: clamped at maxCoins, the return value is what was really added.
 				local added = math.min(amount, Config.Economy.maxCoins - world.profile.coins)
@@ -219,6 +237,17 @@ return function(t: Context)
 			-- Auto-clicker check (2026-10-16): off unless a case passes one (the cases at the end).
 			autoClick = autoClick or function(_player: any, _now: number): string?
 				return nil
+			end,
+			ownerAt = function(_position: Vector3): any?
+				return world.owner
+			end,
+			noteVisit = function(owner: any, visitor: any): boolean
+				local new = owner ~= visitor and not world.seen[visitor]
+				world.seen[visitor] = true
+				return new
+			end,
+			notify = function(player: any, code: string, args: any)
+				table.insert(world.notices, { player = player, code = code, args = args })
 			end,
 		})
 		GripService.playerAdded(world.player)
@@ -260,6 +289,33 @@ return function(t: Context)
 		expect.truthy(table.find(world.dirty, "stats") ~= nil)
 		expect.truthy(table.find(world.dirty, "squeezeLimit") ~= nil)
 		expect.truthy(table.find(world.dirty, "grip") ~= nil)
+		finish()
+	end)
+
+	t.test("friendly visits: in another's base a squeeze pays double and tips the owner; one toast a visitor", function()
+		local world = fresh()
+		local owner = { UserId = 8, DisplayName = "Owner" }
+		world.owner = owner
+		local coins = valueOf(world) -- the fakes share one profile: the owner's own squeeze pays the same
+		local result = SqueezeService.request(world.player)
+		expect.equal(result.ok, true)
+		expect.equal(result.coins, coins * Config.Social.Visits.visitorMult)
+		expect.equal(world.squeezed[1].coins, coins * Config.Social.Visits.visitorMult)
+		local tip = PenMath.rewardCoins(Config.Social.Visits.tipSqueezes, PenMath.squeezeValue(world.profile.pen))
+		expect.deepEqual(world.tips, { tip })
+		expect.deepEqual(world.notices, { { player = owner, code = "pen.visiting", args = { name = "Squeezer" } } })
+		wait(world, 1)
+		SqueezeService.request(world.player)
+		expect.equal(#world.tips, 2) -- every paid squeeze tips (no limit)
+		expect.equal(#world.notices, 1) -- the toast only once
+		-- In one's own base (or no one's) it is a normal squeeze: no double, no tip.
+		world.owner = world.player
+		wait(world, 1)
+		expect.equal(SqueezeService.request(world.player).coins, coins)
+		world.owner = nil
+		wait(world, 1)
+		expect.equal(SqueezeService.request(world.player).coins, coins)
+		expect.equal(#world.tips, 2)
 		finish()
 	end)
 

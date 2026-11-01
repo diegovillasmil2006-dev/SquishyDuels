@@ -69,6 +69,9 @@
 --   walker's middle (or its drawn size when bigger; tapHit, pure) within tapStuds of the camera (the walkers are out
 --   of every query, so this is a screen-space test, not a ray), so that press never squeezes; on its release the
 --   screen opens when it was a tap (Config.Inspect.Input tapMaxPixels and tapMaxMs), else it was a camera drag.
+--   Friendly visits (2026-10-31): a press on someone else's walking squishy is not taken (it squeezes as usual; the
+--   server makes a squeeze in their base a visit) but squishes it: its model shrinks by Config.Social.Visits
+--   squishDepth and back over squishSeconds (sin), restored when the walker leaves; none under ReducedMotion.
 -- * Pens3 phases 7-8 (selling, the 10-minute buy-back, fusion; stand-ins in the same screen): PenFormat.view also gets
 --   StateController's buyBack and coins, the server's time (Workspace:GetServerTimeNow), the selected sold card and
 --   the confirm step open. SELL / SELL ALL / BUY BACK / FUSE open the confirm; its confirm sends SellItems(ids, a new
@@ -236,6 +239,7 @@ export type ShadowConfig = { offAtOrBelow: number, automatic: boolean } -- Confi
 -- Constants
 
 local P = Config.UI.Pen
+local VISITS = Config.Social.Visits -- friendly visits: the squish of someone else's tapped squishy
 local LAYOUT = WorldLayout.Bases.pen
 local TAG_BASE = WorldLayout.Tags.Base
 local ATTR_PLOT_MODEL = WorldLayout.Attributes.Plot
@@ -322,6 +326,7 @@ local cleanup: Cleanup.Cleanup? = nil
 local folder: Folder? = nil
 local pens: { [number]: Pen } = {}
 local pool: { [string]: { Walker } } = {}
+local squishes: { [Walker]: { at: number, scale: number } } = {} -- friendly visits: walkers squishing now
 local effect: Scheduler.Handle? = nil
 local random = Random.new()
 local pending = false -- a PenBuySpot is running
@@ -466,6 +471,11 @@ local function build(look: PenMath.Look): Walker?
 end
 
 local function release(w: Walker)
+	local squish = squishes[w]
+	if squish then -- friendly visits: back to its own size before the pool keeps it
+		w.model:ScaleTo(squish.scale)
+		squishes[w] = nil
+	end
 	w.model.Parent = nil
 	w.gui.StudsOffsetWorldSpace = Vector3.new(0, w.labelY, 0) -- it may leave mid-hop
 	w.lastLift = 0
@@ -807,10 +817,25 @@ local function stepShelf(pen: Pen, eye: Vector3, now: number, reduced: boolean, 
 	end
 end
 
+-- Friendly visits: one frame of every squish (see the header).
+local function stepSquishes()
+	local now = os.clock()
+	for w, squish in squishes do
+		local t = now - squish.at
+		if t >= VISITS.squishSeconds then
+			w.model:ScaleTo(squish.scale)
+			squishes[w] = nil
+		else
+			w.model:ScaleTo(squish.scale * (1 - VISITS.squishDepth * math.sin(math.pi * t / VISITS.squishSeconds)))
+		end
+	end
+end
+
 -- One frame of every pen near the camera and of the sign pop (see the header).
 local function step(dt: number, now: number): boolean
 	stepPop()
 	stepScreen() -- pens3 phases 7-8
+	stepSquishes()
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
 		return true
@@ -1210,14 +1235,8 @@ local function buildScreen(parent: Instance): GuiObject
 	return made.root
 end
 
--- ControlsController's pointer claim: a world press on an own walking squishy waits to open the screen.
-local function claim(input: InputObject): boolean
-	local plot = ownPlot()
-	local pen = if plot then pens[plot] else nil
-	local camera = Workspace.CurrentCamera
-	if pen == nil or not pen.shown or camera == nil or StateController.isLobbyLocked() then
-		return false
-	end
+-- The walking squishy of `pen` a press at `input` lands on (tapHit within tapStuds of the camera), or nil.
+local function walkerAt(pen: Pen, input: InputObject, camera: Camera): Walker?
 	local points: { TapPoint } = {}
 	local walkers: { Walker } = {}
 	local tanHalf = math.tan(math.rad(camera.FieldOfView) / 2)
@@ -1230,12 +1249,30 @@ local function claim(input: InputObject): boolean
 		end
 	end
 	local hit = PenController.tapHit(Vector2.new(input.Position.X, input.Position.Y), points, P.tapMinPx)
-	local w = if hit then walkers[hit] else nil
-	if w == nil then
+	return if hit then walkers[hit] else nil
+end
+
+-- ControlsController's pointer claim: a world press on an own walking squishy waits to open the screen; one on someone
+-- else's squishes it and is not taken (it squeezes: friendly visits).
+local function claim(input: InputObject): boolean
+	local camera = Workspace.CurrentCamera
+	if camera == nil or StateController.isLobbyLocked() then
 		return false
 	end
-	pendingTap = { input = input, from = input.Position, at = os.clock(), index = w.index, look = w.look }
-	return true
+	local own = ownPlot()
+	for plot, pen in pens do
+		local w = if pen.shown then walkerAt(pen, input, camera) else nil
+		if w ~= nil and plot == own then
+			pendingTap = { input = input, from = input.Position, at = os.clock(), index = w.index, look = w.look }
+			return true
+		elseif w ~= nil then
+			if squishes[w] == nil and not Tweens.reducedMotion() then
+				squishes[w] = { at = os.clock(), scale = w.model:GetScale() }
+			end
+			return false
+		end
+	end
+	return false
 end
 
 local function onInputEnded(input: InputObject)
@@ -1555,6 +1592,7 @@ function PenController.start()
 			end
 		end
 		table.clear(pool)
+		table.clear(squishes) -- friendly visits
 		local handle = effect
 		if handle then
 			handle:disconnect()

@@ -464,6 +464,45 @@ return function(t: Context)
 		end
 	end)
 
+	t.test("friendly visits: ownerAt finds the base a spot is in; noteVisit counts each visitor once on the board", function()
+		local w = fresh()
+		local model = plotModel(w, 1)
+		plotModel(w, 2)
+		local a, b, c = { UserId = 71 }, { UserId = 72 }, { UserId = 73 }
+		w.pens[a] = pen(3)
+		BaseService.playerAdded(a :: any)
+		BaseService.playerAdded(b :: any)
+		local middle = (WorldLayout.plotFrame(1) :: CFrame).Position
+		expect.equal(BaseService.ownerAt(middle), a)
+		expect.equal(BaseService.ownerAt((WorldLayout.plotFrame(2) :: CFrame).Position), b)
+		expect.equal(BaseService.ownerAt((WorldLayout.plotFrame(3) :: CFrame).Position), nil) -- an open plot
+		expect.equal(BaseService.ownerAt(middle + Vector3.new(0, 0, 10_000)), nil) -- in no plot
+		local function count(): string
+			-- lihfolk-ignore: findfirstchild-chain (a test: a missing board should fail it loudly)
+			local gate = (model:FindFirstChild("Pen") :: Instance):FindFirstChild("Gate") :: Instance
+			-- lihfolk-ignore: findfirstchild-chain (as above)
+			return (gate:FindFirstChild("Count", true) :: TextLabel).Text
+		end
+		expect.equal(count(), "0 visitors")
+		expect.equal(BaseService.noteVisit(a, b), true)
+		expect.equal(BaseService.noteVisit(a, b), false) -- once per visitor
+		expect.equal(BaseService.noteVisit(a, a), false) -- not the owner
+		expect.equal(BaseService.noteVisit(c, b), false) -- c has no plot
+		expect.equal(count(), "1 visitor")
+		expect.equal(BaseService.noteVisit(a, c), true)
+		expect.equal(count(), "2 visitors")
+		BaseService.refresh(a) -- a redraw keeps the count
+		expect.equal(count(), "2 visitors")
+		-- A new owner starts at 0.
+		BaseService.playerRemoving(a :: any)
+		BaseService.playerAdded(c :: any)
+		w.pens[c] = pen(3)
+		BaseService.refresh(c)
+		expect.equal(BaseService.ownerAt(middle), c)
+		expect.equal(count(), "0 visitors")
+		finish(w)
+	end)
+
 	t.test("visitorText: the hearts board's line (P3D:277), 1 visitor or N visitors", function()
 		expect.equal(BaseService.visitorText(0), "0 visitors")
 		expect.equal(BaseService.visitorText(1), "1 visitor")
