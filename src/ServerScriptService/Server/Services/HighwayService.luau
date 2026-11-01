@@ -56,7 +56,10 @@
 --   power is also x GearMath.multiplier(profile.gear) (before PERFECT). Then a trap: with GearMath.trapChance of the
 --   zone that power would reach (deps.random), the throw keeps GearMath.trapKeep(zone, armor pieces) of its power;
 --   plan.trap = true when it took some (the client's TRAP! pop). The flight's power is the trapped one, so a boost
---   keeps the trap.
+--   keeps the trap. Traps you can see (plan step 5, 2026-10-31, owner: "Same luck, now you see it", "Everyone
+--   nearby"): a trapped throw's settle stands the landing biome's trap (Art/HighwayTraps, the owner's concept sheet)
+--   on the lane where it came to rest (HighwayMath.planAt at landsAt) in Workspace.SD_HighwayTraps for
+--   Gear.trapShowSeconds (deps.showTrap; the server's parts, so every client streaming that spot sees it).
 -- * GearBuy(line, expectedPrice) (RF; Config.Net 2 a second, one in flight; PenBuySpot's shape and refusal order): (1)
 --   line not a GearMath line or expectedPrice not whole Coins -> net.invalid; (2) no READY profile -> data.notReady;
 --   (3) GearMath.buyDecision -> gear.max / gear.priceChanged (compared, never charged); (4) a pending failed save,
@@ -73,6 +76,7 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
+local Debris = game:GetService("Debris")
 
 -- Requires
 
@@ -82,6 +86,7 @@ local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local GearMath = require(Shared.GearMath)
 local HighwayMath = require(Shared.HighwayMath)
+local HighwayTraps = require(Shared.Art.HighwayTraps)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
 local Strings = require(Shared.Strings)
@@ -128,6 +133,8 @@ export type Deps = {
 	random: () -> number, -- gear step 2: a number in [0, 1) (the trap roll)
 	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?), -- EconomyService.trySpend
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
+	-- Traps you can see (2026-10-31): stands biome's trap (Art/HighwayTraps) at `at` for Gear.trapShowSeconds.
+	showTrap: (biome: number, at: CFrame) -> (),
 }
 
 -- What the remote answers: NetService.ok(Types.HighwayPlan) or NetService.err(reason, false).
@@ -169,6 +176,8 @@ local CODE_NO_FUEL = "highway.noFuel"
 local CODE_NOT_IN_AREA = "highway.notInArea"
 local CODE_PAUSED = "highway.paused"
 local CODE_IN_DUEL = "inventory.lockedInDuel"
+local TRAP_FOLDER = "SD_HighwayTraps" -- traps you can see: the shown traps (Workspace)
+local REST_OVER_LANE = 1 -- a resting squishy's centre over the lane top (HighwayMath's CLEAR = LANE_Y + 1)
 local GEAR_REMOTE = "GearBuy" -- gear step 2
 local GEAR_REASON = "gear"
 local FIELD_GEAR = "gear"
@@ -307,6 +316,20 @@ local function defaultDeps(): Deps
 		end,
 		saveNow = function(player: any): boolean
 			return DataService.saveNowAsync(player)
+		end,
+		showTrap = function(biome: number, at: CFrame)
+			local model = HighwayTraps.build(biome, at)
+			if model == nil then
+				return
+			end
+			local folder = Workspace:FindFirstChild(TRAP_FOLDER)
+			if folder == nil then
+				folder = Instance.new("Folder")
+				folder.Name = TRAP_FOLDER
+				folder.Parent = Workspace
+			end
+			model.Parent = folder
+			Debris:AddItem(model, Config.Economy.Gear.trapShowSeconds)
 		end,
 	}
 end
@@ -463,6 +486,11 @@ local function settle(player: any, session: Session, fire: boolean)
 	end
 	onBoard(deps.nameOf(player), studs)
 	deps.requestSave(player, SAVE_SOON)
+	if fire and plan.trap then
+		-- Traps you can see: the landing biome's trap where the squishy came to rest (the plan's end point).
+		local rest = HighwayMath.planAt(plan :: any, plan.landsAt)
+		deps.showTrap(plan.biome, WorldLayout.highwayCFrame(rest.X, rest.Y - REST_OVER_LANE, rest.Z))
+	end
 	if fire then
 		deps.fireLanded(player, {
 			id = plan.id,

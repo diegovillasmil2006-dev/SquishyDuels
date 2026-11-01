@@ -70,6 +70,9 @@ local Gear = {
 	-- what a trap takes: a trap in zone n halves the throw power (n + trapBase - armor pieces) times (at least 0).
 	trapChance = { 0.08, 0.11, 0.14, 0.18, 0.22, 0.26, 0.30 },
 	trapBase = 1,
+	-- Traps you can see (plan step 5, 2026-10-31; [P] Claude's call): a trapped throw's landing biome trap
+	-- (Art/HighwayTraps) stands where it stopped for trapShowSeconds, for everyone nearby (HighwayService).
+	trapShowSeconds = 6,
 }
 
 return Gear

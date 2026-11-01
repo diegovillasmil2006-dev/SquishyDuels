@@ -85,6 +85,7 @@ return function(t: Context)
 		timers: { Timer },
 		landed: { { player: any, landing: any } },
 		random: number, -- gear step 2: what deps.random answers (1 = never a trap)
+		traps: { { biome: number, at: CFrame } }, -- 2026-10-31 traps you can see: deps.showTrap calls
 		spends: { { player: any, amount: number, reason: string } },
 		nowSaves: number,
 		saveOk: boolean,
@@ -142,6 +143,7 @@ return function(t: Context)
 			timers = {},
 			landed = {},
 			random = 1,
+			traps = {},
 			spends = {},
 			nowSaves = 0,
 			saveOk = true,
@@ -240,6 +242,9 @@ return function(t: Context)
 			saveNow = function(): boolean
 				w.nowSaves += 1
 				return w.saveOk
+			end,
+			showTrap = function(biome: number, at: CFrame)
+				table.insert(w.traps, { biome = biome, at = at })
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -870,6 +875,23 @@ return function(t: Context)
 		expect.equal(boosted.boosted, true)
 		expect.equal(boosted.trap, true)
 		expect.equal(boosted.studs, math.max(HighwayMath.landing(900 / 4 * 4), trapped.studs))
+		finish()
+	end)
+
+	t.test("traps you can see: a trapped landing stands its biome's trap where it rests; others show none", function()
+		local w = fresh()
+		throwAndLand(w, w.a)
+		expect.equal(#w.traps, 0) -- not trapped (random 1)
+		w.random = 0
+		local plan = throwAndLand(w, w.a)
+		expect.equal(plan.trap, true)
+		expect.equal(#w.traps, 1)
+		expect.equal(w.traps[1].biome, plan.biome)
+		-- On the lane top (1 stud under a resting squishy's centre), at the plan's rest point.
+		local rest = HighwayMath.planAt(plan, plan.landsAt)
+		local want = WorldLayout.highwayCFrame(rest.X, rest.Y - 1, rest.Z)
+		expect.near((w.traps[1].at.Position - want.Position).Magnitude, 0, 1e-6)
+		expect.near((w.traps[1].at.Position - WorldLayout.highwayCFrame(rest.X, 1, plan.studs).Position).Magnitude, 0, 1e-6)
 		finish()
 	end)
 
