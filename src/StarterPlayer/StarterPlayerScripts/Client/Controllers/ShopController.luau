@@ -64,6 +64,7 @@ local Strings = require(Shared.Strings)
 local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
 local CoinIcon = require(Client.UI.Components.CoinIcon)
+local CountBadge = require(Client.UI.Components.CountBadge)
 local Create = require(Client.UI.Create)
 local GearFormat = require(Client.UI.GearFormat)
 local IconGlyph = require(Client.UI.Components.IconGlyph)
@@ -111,6 +112,7 @@ type GearCard = {
 	view: GearFormat.Card?,
 	squishy: string?, -- 2026-10-31 RESTOCK: the squishy pictured on the tile
 	image: SquishyImage.SquishyImage?,
+	icon: string?, -- 2026-11-01 INCOME: the picture on the tile (AssetTable key)
 }
 type Featured = {
 	root: Frame,
@@ -490,7 +492,21 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		0,
 		spec.inset
 	)
-	card.tile, card.tier, card.steps, card.squishy = tile, view.tier, view.steps, view.squishy
+	card.tile, card.tier, card.steps, card.squishy, card.icon = tile, view.tier, view.steps, view.squishy, view.icon
+	local icon = view.icon
+	if icon then -- 2026-11-01 INCOME: the picture bobbing like a pass card's (H:342), the tier in a badge
+		local bob = holder("SD_Bob", tile)
+		bob.Size = UDim2.fromOffset(PASSES.art.px, PASSES.art.px)
+		bob.ZIndex = 2
+		picture(bob, icon, PASSES.art.px, "Picture")
+		UiIdle.add(bob, "bob", { periodS = PASSES.art.bobS }) -- ends with the tile (Destroying)
+		local badgeSpec = GEAR_TILE.badge
+		local badge = CountBadge.new({ name = "Level", small = true, accent = badgeSpec.accent, parent = tile })
+		badge.root.AnchorPoint = Vector2.new(1, 1)
+		badge.root.Position = UDim2.new(1, badgeSpec.out, 1, badgeSpec.out)
+		badge:setText(tostring(view.tier))
+		return
+	end
 	local squishy = view.squishy
 	if squishy then -- 2026-10-31 RESTOCK: the squishy's picture instead of the tier number
 		local image = SquishyImage.new(squishy, { name = "Squishy", size = spec.px - 2 * spec.border, parent = tile })
@@ -551,7 +567,13 @@ end
 -- short with the Coins missing on the line, … while buying; the lilac MAX once all is bought).
 local function paintGearCard(card: GearCard, view: GearFormat.Card)
 	card.view = view
-	if card.tile == nil or card.tier ~= view.tier or card.steps ~= view.steps or card.squishy ~= view.squishy then
+	if
+		card.tile == nil
+		or card.tier ~= view.tier
+		or card.steps ~= view.steps
+		or card.squishy ~= view.squishy
+		or card.icon ~= view.icon
+	then
 		gearTile(card, view)
 	end
 	for i, dot in card.dots do

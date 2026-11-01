@@ -264,6 +264,21 @@ local function lobbyHud(key: string, id: number, use: string, date: string?): As
 end
 local MF_DATE = "2026-10-25" -- the MATCH FOUND pictures
 
+-- An image slot of the restyle part 2 (2026-11-01, the owner's style rule): one of Diego's hud-icons drawings (or the
+-- Friends icon drawn in their style), rendered 512 px with a clear background and uploaded by Claude (Studio MCP
+-- upload_image) at the owner's yes.
+local function hudIcon(key: string, id: number, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `jayyyyy upload (Studio MCP upload_image): '{(string.gsub(key, "%.", "_"))}.png'`,
+		license = "Own upload; rendered from the co-owner's own hud-icons drawings (or drawn in their style)",
+		verifiedAt = "2026-11-01",
+		notes = use,
+	}
+end
+
 -- An image slot holding a match screens picture (round 1, 2026-10-26): rendered 1:1 from the design's own canvas code
 -- ("Squishy Duels LOADING SCREEN Y MATCH HUD.dc.html" with uploads/tdm-hud.js; make_intro_pngs.mjs), uploaded by Claude
 -- (Studio MCP upload_image) at the owner's yes.
@@ -1715,16 +1730,19 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.food.prism_tart", "image", IMAGE_NOTE),
 	otherSlot("img.food.halo_puff", "image", IMAGE_NOTE),
 	-- The shop = Diego's design (2026-10-22): his pass and coin pack pictures and the Robux mark (his upgraded_v1
-	-- PNGs and hud-icons/robux.svg; nil until the owner uploads them, the shop hides a picture without an id).
-	otherSlot("img.pass.coins2", "image", IMAGE_NOTE),
-	otherSlot("img.pass.grip2", "image", IMAGE_NOTE),
-	otherSlot("img.pass.lucky", "image", IMAGE_NOTE),
-	otherSlot("img.pass.fast", "image", IMAGE_NOTE),
-	otherSlot("img.pack.1000", "image", IMAGE_NOTE),
-	otherSlot("img.pack.3300", "image", IMAGE_NOTE),
-	otherSlot("img.pack.9600", "image", IMAGE_NOTE),
-	otherSlot("img.pack.32500", "image", IMAGE_NOTE),
+	-- PNGs and hud-icons/robux.svg; nil until uploaded, the shop hides a picture without an id). 2026-11-01 (restyle
+	-- part 2): the passes and packs uploaded from his hud-icons (pack1..4 in pack size order).
+	hudIcon("img.pass.coins2", 80544534424212, "the 2x Coins pass (hud-icons/pass_coins2.svg)"),
+	hudIcon("img.pass.grip2", 75817346721664, "the 2x Grip pass (hud-icons/pass_grip2.svg)"),
+	hudIcon("img.pass.lucky", 105769522698713, "the Lucky Boxes pass (hud-icons/pass_lucky.svg)"),
+	hudIcon("img.pass.fast", 91239203376822, "the Fast Open pass (hud-icons/pass_fast.svg)"),
+	hudIcon("img.pack.1000", 111475798750212, "the 1,000 coin pack (hud-icons/pack1.svg); also INCOME's ALL EARNINGS"),
+	hudIcon("img.pack.3300", 72494930811327, "the 3,300 coin pack (hud-icons/pack2.svg)"),
+	hudIcon("img.pack.9600", 70850143969863, "the 9,600 coin pack (hud-icons/pack3.svg)"),
+	hudIcon("img.pack.32500", 99140243082056, "the 32,500 coin pack (hud-icons/pack4.svg)"),
 	otherSlot("img.icon.robux", "image", IMAGE_NOTE),
+	-- 2026-11-01 (restyle part 2): the Friends pill's icon, drawn in Diego's hud-icons style (two squishies, a heart).
+	hudIcon("img.icon.friends", 79139755939740, "the Friend Boost pill (two smiling squishies and a heart)"),
 
 	-- Kill banners and kill effects (2026-10-16): VFX Studio library textures for the SD_KillVfx emitters
 	-- (SDTools.Builders.KillVfxBuilder) and the kill banner (UI/KillBanner). Sheets keep the library's grid.

@@ -9,9 +9,10 @@
 -- * The candies (Workspace.SD_Candies): each drops from dropHeight onto its spot until its SD_LandAt (falling faster
 --   as it goes), then turns slowly and bobs (still under reduced motion). Local CFrames only: the server's never move.
 -- * CandyGrab (the grabber only): the coins fly from the candy's spot into the coin disc (HudController.flyCoins).
--- * The Friend Boost pill (Friend_Pill, 2026-10-31, owner: "Small pill"): the same pill with the star picture right
---   under the event pill, "Friends +20%" from the local player's SD_FriendBoost (whole percent, FriendsService); only
---   while that is above 0 and the event pill shows. Stand-in look until Diego draws one (his to-do).
+-- * The Friend Boost pill (Friend_Pill, 2026-10-31, owner: "Small pill"): the same pill right under the event pill,
+--   "Friends +20%" from the local player's SD_FriendBoost (whole percent, FriendsService); only while that is above 0
+--   and the event pill shows. 2026-11-01 (restyle part 2): its picture is the Friends icon drawn in Diego's hud-icons
+--   style (img.icon.friends), no longer the star.
 
 -- Services
 
@@ -190,7 +191,7 @@ function EventController.init()
 	local friends = WellPill.new({
 		name = "Friend_Pill",
 		look = Config.UI.Daily.timer,
-		icon = "img.icon.star",
+		icon = "img.icon.friends",
 		parent = UIController.screenGui(HUD_GUI),
 	})
 	friends.root.AnchorPoint = Vector2.new(0.5, 0)

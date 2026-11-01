@@ -14,7 +14,12 @@ local GearShop = {
 		rotation = 90,
 	},
 	-- INCOME step 2: the INCOME cards' tile colours (Palette tokens; UI/IncomeFormat), SQUISHY COINS and ALL EARNINGS.
-	income = { colors = { coins = "Lemon", all = "UIMint", grip = "StickerGripTop" } }, -- grip: 2026-10-31 buy Grip
+	-- 2026-11-01 (restyle part 2, owner "All 3 cards"): each card's picture (AssetTable keys, Diego's hud-icons: the
+	-- coin, the coin stack, the Grip blob) on its tile, the level in a badge (`tile.badge`).
+	income = {
+		colors = { coins = "Lemon", all = "UIMint", grip = "StickerGripTop" }, -- grip: 2026-10-31 buy Grip
+		icons = { coins = "img.coin", all = "img.pack.1000", grip = "img.icon.grip" },
+	},
 	-- 2026-10-31 shop restock: the RESTOCK cards' tile colours by deal (Palette tokens; UI/RestockFormat).
 	restock = { colors = { golden = "StickerGoldTop", rainbow = "StickerBoxSweetTop", rare = "UIMint" } },
 	-- A gear card: the pass card's look (Config.UI.Shop.rows) a little taller, its text stacked over its price chip
@@ -22,8 +27,17 @@ local GearShop = {
 	card = { height = 140, chipGap = 6 },
 	-- A gear card's tile: the tier number (a Sticker text role) over the stars bought (dots `pipPx`, a tier of 8 steps
 	-- the smaller ones, `pipGap` apart, `pipBottom` up from the tile's bottom), the zone colour darkened by `endShade`
-	-- towards ink at the bottom.
-	tile = { numberRole = "packAmount", pipPx = 9, pipPxSmall = 6, pipGap = 2, pipBottom = 10, endShade = 0.25 },
+	-- towards ink at the bottom. A tile with a picture (INCOME) shows the tier in a small CountBadge (`badge`: its accent,
+	-- base px its corner sits outside the tile's bottom right).
+	tile = {
+		numberRole = "packAmount",
+		pipPx = 9,
+		pipPxSmall = 6,
+		pipGap = 2,
+		pipBottom = 10,
+		endShade = 0.25,
+		badge = { accent = "plum", out = 6 },
+	},
 	-- The page's power line under the cards (a Sticker text role).
 	powerRole = "confirmDesc",
 	-- TRAP! (HighwayThrowController): the pop's colour (a Palette token), its sound (an AssetTable key; the uploaded

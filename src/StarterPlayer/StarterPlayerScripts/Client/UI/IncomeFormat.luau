@@ -12,6 +12,8 @@
 --   multText(x) -> string                     a boost with 2 decimals, no trailing zeros ("1", "1.07", "1.1")
 -- 2026-10-31 buy Grip: with `grip` (the Grip total), cards() adds a third card, GRIP: the next level (the tile's
 -- number), "Lv n -> Lv n+1 Grip", GripMath.buyPrice; max at the top level (Strings.income.gripMax). Its line is "grip".
+-- 2026-11-01 (restyle part 2): every card names its picture (Config/GearShop.income.icons; the tile's tier becomes a
+-- badge).
 
 -- Services
 
@@ -79,6 +81,7 @@ function IncomeFormat.cards(pen: any, coins: number?, busyLine: string?, grip: n
 			state = state,
 			missing = if state == "needCoins" then (price :: number) - have else 0,
 			color = (GearShop.income.colors :: any)[line],
+			icon = (GearShop.income.icons :: any)[line],
 		})
 	end
 	if type(grip) == "number" then
@@ -100,6 +103,7 @@ function IncomeFormat.cards(pen: any, coins: number?, busyLine: string?, grip: n
 			state = state,
 			missing = if state == "needCoins" then (price :: number) - have else 0,
 			color = GearShop.income.colors.grip,
+			icon = GearShop.income.icons.grip,
 		})
 	end
 	return list

@@ -63,6 +63,16 @@ return function(t: Context)
 		end
 	)
 
+	t.test("cards: each card names its uploaded picture (2026-11-01: coin, coin stack, Grip blob)", function()
+		local AssetTable = t.requireShared("AssetTable")
+		local cards = IncomeFormat.cards(pen(), 0, nil, 0)
+		expect.equal(#cards, 3)
+		expect.deepEqual({ cards[1].icon, cards[2].icon, cards[3].icon }, { "img.coin", "img.pack.1000", "img.icon.grip" })
+		for _, card in cards do
+			expect.truthy(AssetTable.image(card.icon) ~= nil)
+		end
+	end)
+
 	t.test("cards: the levels bought move each card on; busy while its buy is on its way", function()
 		local cards = IncomeFormat.cards(pen(1, 2), 0, "coins")
 		expect.equal(cards[1].tier, 2)

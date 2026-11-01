@@ -679,6 +679,8 @@ return function(t: Context)
 				"img.kit.ring",
 				"img.kit.speedline",
 				"img.kit.footprint",
+				-- Restyle part 2 (2026-11-01): the Friends pill's icon.
+				"img.icon.friends",
 			})
 		)
 	end)

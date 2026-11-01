@@ -196,6 +196,8 @@ type Card = {
 	chipRow: Frame,
 	chipLabel: TextLabel,
 	goalLabel: TextLabel,
+	buy: TextButton, -- 2026-11-01: the buy "+" (in buySlot on the regular row, on the root's right when compact)
+	buySlot: Frame,
 	compactLabel: TextLabel,
 	compactBar: ProgressBar.ProgressBar,
 	levelScales: { UIScale }, -- the level pop (§18.5.1 A9): on the compact level label (UI FINAL R4: the regular row
@@ -503,9 +505,18 @@ local function buildRegular(c: Cleanup.Cleanup, body: Frame): (Frame, { [string]
 	}, "Small")
 	Theme.stickerText(barLabel, "gripText") -- H:87
 	barLabel.TextWrapped = false
+	-- 2026-11-01 (restyle part 2): the buy "+" sits here, right after the bar (applyCardLayout parents it), sized to
+	-- the "+" face so the row keeps its height (its tap target overhangs the slot).
+	local buySlot: Frame = Create("Frame", {
+		Name = "BuySlot",
+		LayoutOrder = 2,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(PLUS.face, PLUS.face + PLUS.lip),
+		Parent = row,
+	})
 	local chipRow: Frame = Create("Frame", {
 		Name = "Chip",
-		LayoutOrder = 2,
+		LayoutOrder = 3,
 		BackgroundTransparency = 1,
 		Size = UDim2.fromOffset(0, 0),
 		AutomaticSize = Enum.AutomaticSize.XY,
@@ -568,6 +579,7 @@ local function buildRegular(c: Cleanup.Cleanup, body: Frame): (Frame, { [string]
 			chipRow = chipRow,
 			chipLabel = chipLabel,
 			goalLabel = goalLabel,
+			buySlot = buySlot,
 		}
 end
 
@@ -608,8 +620,9 @@ local function buildCard(c: Cleanup.Cleanup)
 	local squash: UIScale = Create("UIScale", { Name = "Scale", Scale = 1, Parent = root })
 	Focus.decorate(root, Theme.Radius.panel)
 	-- 2026-10-31 buy Grip (owner "Grip bar + Shop"; a stand-in until Diego draws it): the coin pill's green "+"
-	-- (CoinCapsule.plus) right of the row, its tap target at least Touch.minTarget; it opens the Shop on INCOME, where
-	-- the GRIP card buys the next level.
+	-- (CoinCapsule.plus), its tap target at least Touch.minTarget; it opens the Shop on INCOME, where the GRIP card
+	-- buys the next level. 2026-11-01 (restyle part 2): on the regular row it sits right after the bar (BuySlot), on
+	-- the compact card right of the row (here); applyCardLayout moves it.
 	local buyTarget = math.max(PLUS.face + PLUS.lip, Config.UI.Touch.minTarget)
 	local buy: TextButton = Create("TextButton", {
 		Name = "Hud_GripBuy",
@@ -714,6 +727,8 @@ local function buildCard(c: Cleanup.Cleanup)
 		chipRow = parts.chipRow,
 		chipLabel = parts.chipLabel,
 		goalLabel = parts.goalLabel,
+		buy = buy,
+		buySlot = parts.buySlot,
 		compactLabel = compactLabel,
 		compactBar = compactBar,
 		levelScales = levelScales,
@@ -842,6 +857,12 @@ applyCardLayout = function()
 	k.regular.Visible = not compactLayout
 	k.compact.Visible = compactLayout
 	k.face.Visible = compactLayout
+	local buyParent = if compactLayout then k.root else k.buySlot
+	if k.buy.Parent ~= buyParent then
+		k.buy.AnchorPoint = Vector2.new(if compactLayout then 0 else 0.5, 0.5)
+		k.buy.Position = if compactLayout then UDim2.new(1, COLUMN.gripRowGap, 0.5, 0) else UDim2.fromScale(0.5, 0.5)
+		k.buy.Parent = buyParent
+	end
 	local scale = UIController.scale() * feelScale(k.root)
 	local textScale = HudController.textScale()
 	local width, height = CARD_WIDTH, 0

@@ -42,6 +42,7 @@ export type Card = {
 	color: string, -- a Palette token
 	squishy: string?, -- 2026-10-31 RESTOCK tab: this squishy's picture on the tile instead of the tier number
 	maxText: string?, -- 2026-10-31 RESTOCK tab: the "max" chip's text (SOLD OUT / BOUGHT), else Strings.gear.max
+	icon: string?, -- 2026-11-01 INCOME tab: a picture (AssetTable key) on the tile, the tier in a badge
 }
 
 -- Constants
