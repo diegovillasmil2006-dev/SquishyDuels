@@ -13,6 +13,10 @@
 --     aim state's now: a throw whose ray hits nothing leaves along the crosshair (missDirection, user bug report
 --     2026-10-11: aimed well above the opponent, the solved arc to that point in the air still went "all the way
 --     up"; the Combat FP design throws along the camera direction too), unless aim assist moved the point.
+--     User bug 2026-10-31 (owner: "thrown in the last position of the character, not the last click"): from a Throw
+--     press until no press is left (held, charging or buffered) the aim ray starts at the camera's spot at that press
+--     (pressCamera), so walking (the camera follows the character) no longer drags the aim; turning the camera or
+--     moving the mouse still aims. The ultimate keeps the live camera.
 --   * Aim assist (Config.Combat.AimAssist; gamepad 4°, touch 5°, 50%; off for keyboard/mouse), applied once at throw
 --     time: when the opponent's capsule centre (practice: the nearest practice target, reading; a duel bot: its rig in
 --     Workspace.SD_Bots) is inside the cone and in line of sight, the aim point moves `strength` of the way toward it.
@@ -354,6 +358,7 @@ local lastReleaseAt = 0
 local pending: Pending? = nil
 local holdDown = false
 local bufferedAt: number? = nil
+local pressCamera: Vector3? = nil -- the camera's spot at the last Throw press (see the header, user bug 2026-10-31)
 local charge: Charge? = nil -- feature 1: the running charge (hold Throw)
 local chargeTone: SoundController.Loop? = nil
 local walkHold: WalkHold? = nil
@@ -1215,8 +1220,9 @@ local function missReachFor(ray: Ray): number
 	return ThrowController.missReach(ray.Origin, ray.Direction, anchors, COMBAT.Aim.maxRayStuds)
 end
 
--- The aim ray and point from the camera (mouse or centre); the last value is false when the ray hit nothing.
-local function cameraAim(): (Vector3?, Vector2, boolean, Ray?, boolean)
+-- The aim ray and point from the camera (mouse or centre); the last value is false when the ray hit nothing. `from`
+-- (pressCamera) moves the ray's start there, keeping its direction.
+local function cameraAim(from: Vector3?): (Vector3?, Vector2, boolean, Ray?, boolean)
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
 		return nil, Vector2.zero, true, nil, false
@@ -1226,6 +1232,9 @@ local function cameraAim(): (Vector3?, Vector2, boolean, Ray?, boolean)
 		or UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter
 	local screen = if centered then viewport / 2 else UserInputService:GetMouseLocation()
 	local ray = camera:ViewportPointToRay(screen.X, screen.Y)
+	if from then
+		ray = Ray.new(from, ray.Direction)
+	end
 	local reach = COMBAT.Aim.maxRayStuds
 	local result = Workspace:Raycast(ray.Origin, ray.Direction * reach, refreshAimParams())
 	local missAt = missReachFor(ray)
@@ -1500,7 +1509,7 @@ function ThrowController.launchFor(
 	local aimRay = ray
 	local missed = false -- the camera ray hit nothing (open sky): the throw leaves along the crosshair (see the header)
 	if point == nil then
-		local camPoint, _, _, camRay, hit = cameraAim()
+		local camPoint, _, _, camRay, hit = cameraAim(pressCamera)
 		point, aimRay, missed = camPoint, camRay, not hit
 	end
 	if point == nil then
@@ -1717,6 +1726,8 @@ local function onThrowInput(inputState: Enum.UserInputState, _input: InputObject
 	local holdToCharge = RULES.HoldToCharge == true
 	if inputState == Enum.UserInputState.Begin then
 		holdDown = true
+		local camera = Workspace.CurrentCamera
+		pressCamera = if camera then camera.CFrame.Position else nil
 		if not holdToCharge then
 			return tryThrow(true)
 		end
@@ -2111,7 +2122,7 @@ local function updateAim(now: number)
 		state.aimPoint = nil
 		return
 	end
-	local point, screen, centered, ray = cameraAim()
+	local point, screen, centered, ray = cameraAim(pressCamera)
 	state.screenPosition = screen
 	state.centered = centered
 	state.aimPoint = point
@@ -2319,6 +2330,9 @@ local function step(dt: number, _clock: number): boolean
 				bufferedAt = nil -- pressed too early: the cooldown (or the root) ended long after it
 			end
 		end
+	end
+	if not holdDown and charge == nil and bufferedAt == nil then
+		pressCamera = nil -- no press left: the aim follows the camera again
 	end
 	stepThrowers(dt, now)
 	updateShoulder()
