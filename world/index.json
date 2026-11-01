@@ -72,6 +72,12 @@
 		"container": "ServerStorage"
 	},
 	{
+		"file": "ServerStorage/SD_HighwayProps.rbxm",
+		"class": "Folder",
+		"name": "SD_HighwayProps",
+		"container": "ServerStorage"
+	},
+	{
 		"file": "ServerStorage/SD_MeshLibrary.rbxm",
 		"class": "Model",
 		"name": "SD_MeshLibrary",
