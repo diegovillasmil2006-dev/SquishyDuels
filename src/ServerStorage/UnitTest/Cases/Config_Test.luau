@@ -904,7 +904,8 @@ return function(t: Context)
 			"1 soft, 10 firm, 20 strong, 30 iron, 40 titan, 50 master, 60 legend, 70 mythic, 80 cosmic, 90 galaxy, "
 				.. "100 infinite"
 		)
-		expect.deepEqual(economy.SquishyPower, { Common = 1, Uncommon = 4, Epic = 16, Exclusive = 64 })
+		-- 2026-11-01 (owner): "1 · 2 · 4 · 16 · 256", the Rare tier in between.
+		expect.deepEqual(economy.SquishyPower, { Common = 1, Uncommon = 2, Rare = 4, Epic = 16, Exclusive = 256 })
 		expect.equal(economy.DuelRewards.win, 600)
 		expect.equal(economy.DuelRewards.draw, 450) -- batch B (owner 2026-10-17): was 300
 		expect.equal(economy.DuelRewards.loss, 350) -- batch B (owner 2026-10-17): was 180
@@ -921,13 +922,13 @@ return function(t: Context)
 	-- Pens3 phase 2: G5 covers 4 × the top squeeze value (Double Grip × 2, the Squeaky Ring × 2): 21 placed Rainbow
 	-- Galaxy Exclusives at Lv 70, 39,797,105,083.3 Grip.
 	t.test("G5 reports a per-event cap one Grip below 4 × the top squeeze value", function()
-		-- Neon Sugar part 5: placedMax 24 (12 pen + 11 shelf + the TOP spot).
-		local event = math.ceil(24 * 10 * 64 * 4 * 12 * 1.15 ^ 69 * 4)
-		expect.equal(event, 45_482_405_810)
+		-- Neon Sugar part 5: placedMax 24 (12 pen + 11 shelf + the TOP spot). 2026-11-01: the top power 64 -> 256.
+		local event = math.ceil(24 * 10 * 256 * 4 * 12 * 1.15 ^ 69 * 4)
+		expect.equal(event, 181_929_623_238)
 		local low = validateBrokenCopy(t.Shared, "Grip", function(grip)
 			grip.maxGripPerEvent = event - 1
 		end)
-		expect.truthy(containsAll(low, { "G5:", "maxGripPerEvent", "4 × the top squeeze value", "4.548e+10" }))
+		expect.truthy(containsAll(low, { "G5:", "maxGripPerEvent", "4 × the top squeeze value", "1.819e+11" }))
 		local exact = validateBrokenCopy(t.Shared, "Grip", function(grip)
 			grip.maxGripPerEvent = event
 		end)
@@ -2492,11 +2493,11 @@ return function(t: Context)
 		-- §9.15: 1 rays picture + the 2 rings + 21 pieces = 24 moving frames.
 		expect.equal(fx.events.boxBurst.maxPieces, 21)
 		expect.equal(#fx.events.boxBurst.rings, 2)
-		-- PR18: Epic / Exclusive (index 2 on) get the design's rain after the burst (H:830).
+		-- PR18: Epic / Exclusive (index 3 on since Rare, 2026-11-01) get the design's rain after the burst (H:830).
 		expect.deepEqual(fx.events.boxBurst.rarityRain, {
 			n = 50,
 			perRarity = 20,
-			fromRarity = 2,
+			fromRarity = 3,
 			colors = { "rarityBase", "rarityLight", "White", "StickerFxYellow" },
 		})
 		-- lib:262-266: the float's pop, x / y as shares of its drift and rise.

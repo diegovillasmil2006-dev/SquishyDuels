@@ -7,7 +7,7 @@
 --   * squish (the end of anticipation, 70 ms): sfx.squish;
 --   * peak (peak compression): the rarity's puffs (another player's: othersPuffs, given in play's options);
 --   * releaseStart: the Exclusive squeezeFx hook's steam puffs from the Nostril* parts (own squeezes only);
---   * popEnd (390 ms; 430 ms for Uncommon and Epic): sfx.squeezeRelease and, for an own squeeze, the release pop
+--   * popEnd (390 ms; 430 ms for Uncommon, Rare and Epic): sfx.squeezeRelease and, for an own squeeze, the release pop
 --     sparkles, or every rhythm.popEvery-th the big pop with sfx.pop.
 -- No arm moves (spec 2026-10-11 §4: the holding arm stays in its hold pose; only the held squishy squishes). Every
 -- click pays (startKind, interruptFx): an own press restarts the rig at once; one before the running squeeze's pop end

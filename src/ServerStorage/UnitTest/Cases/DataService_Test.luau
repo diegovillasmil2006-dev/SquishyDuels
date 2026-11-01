@@ -652,11 +652,11 @@ return function(t: Context)
 		h.clock.advance(10)
 		expect.equal(h.core.saveNowAsync(p), true)
 		local value = h.store.getRaw(KEY)
-		expect.equal(value.pen.awayRate, 50) -- Kitty Bread 10 + Butter 40
+		expect.equal(value.pen.awayRate, 30) -- Kitty Bread 10 + Butter 20 (Uncommon power 2 since 2026-11-01)
 		expect.equal(value.lastSeenAt, T0 + 10)
-		expect.equal(h.core.getProfile(p).pen.awayRate, 50) -- the profile in memory matches the save
+		expect.equal(h.core.getProfile(p).pen.awayRate, 30) -- the profile in memory matches the save
 		expect.truthy(h.core.releaseAsync(p))
-		expect.equal(h.store.getRaw(KEY).pen.awayRate, 50) -- the final write too
+		expect.equal(h.store.getRaw(KEY).pen.awayRate, 30) -- the final write too
 	end)
 
 	t.test("'soon' saves run at max(now + 6, lastWriteAt + 6) and later requests join them", function()

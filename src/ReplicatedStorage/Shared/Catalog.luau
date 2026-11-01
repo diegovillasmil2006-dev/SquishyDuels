@@ -29,7 +29,7 @@
 --   power        optional squishy power for one squishy (spec 2026-10-12 §6: tunable without touching the others); no
 --                def sets one today, so each uses Config.Economy.SquishyPower by rarity.
 --   eliminationEffectId  the kill set (Art/KillStyle; kill banners 2026-10-16): its kill banner, kill sounds and kill
---                effect. Every Common and Uncommon squishy shares "standard"; each squishy above Uncommon has its own.
+--                effect. Every Common, Uncommon and Rare squishy shares "standard"; each squishy above Rare has its own.
 
 local Config = require(script.Parent.Config)
 local TableUtil = require(script.Parent.Util.TableUtil)
@@ -89,7 +89,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.butter.name",
 		rarity = "Uncommon",
 		blueprintId = "butter",
-		shopPrice = 1_875_000, -- the Pricing.ceiling (pens3 phase 5)
+		shopPrice = 937_500, -- half the Pricing.ceiling: Uncommon power 4 -> 2 (2026-11-01, the same pay-back)
 		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 },
 		eliminationEffectId = "standard",
 		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#FFD86B" }, -- Ribbon (gold)
@@ -102,7 +102,7 @@ local DEFS: { SquishyDef } = {
 		nameKey = "squishy.chocolate.name",
 		rarity = "Uncommon",
 		blueprintId = "chocolate",
-		shopPrice = 1_875_000, -- the Pricing.ceiling (pens3 phase 5)
+		shopPrice = 937_500, -- half the Pricing.ceiling: Uncommon power 4 -> 2 (2026-11-01, the same pay-back)
 		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 },
 		eliminationEffectId = "standard",
 		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#7A4632" }, -- Ribbon (cocoa)
@@ -183,9 +183,9 @@ local DEFS: { SquishyDef } = {
 	{
 		id = "mochi_fox",
 		nameKey = "squishy.mochiFox.name",
-		rarity = "Uncommon",
+		rarity = "Rare", -- 2026-11-01 (the Rare tier, pens3 phase 22)
 		blueprintId = "mochi_fox",
-		shopPrice = 3_750_000, -- the Pricing.ceiling (pens3 phase 5; Rare-to-be, phase 22)
+		shopPrice = 3_750_000, -- the Pricing.ceiling (pens3 phase 5)
 		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = butter
 		eliminationEffectId = "standard",
 		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#F39A4C" },
@@ -196,9 +196,9 @@ local DEFS: { SquishyDef } = {
 	{
 		id = "strawberry_frog",
 		nameKey = "squishy.strawberryFrog.name",
-		rarity = "Uncommon",
+		rarity = "Rare", -- 2026-11-01 (the Rare tier, pens3 phase 22)
 		blueprintId = "strawberry_frog",
-		shopPrice = 3_750_000, -- the Pricing.ceiling (pens3 phase 5; Rare-to-be, phase 22)
+		shopPrice = 3_750_000, -- the Pricing.ceiling (pens3 phase 5)
 		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = chocolate
 		eliminationEffectId = "standard",
 		-- The design's trail start: the body red (#EE4A5C) is too near the reserved Danger red (splat red guard).

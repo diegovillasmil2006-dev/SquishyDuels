@@ -114,7 +114,11 @@ return function(t: Context)
 			return Strings.format(Strings.box.chancesByRarity, { list = table.concat(list, Strings.box.listSeparator) })
 		end
 		-- ECONOMY_V3:159-161 (pens3 phase 5): Soft 4 x 19% Commons; Sweet 4 Epics and Dragon at 0.04%.
-		expect.equal(BoxFormat.raritySummary("snack"), summary({ { "Uncommon", "24.00" }, { "Common", "76.00" } }))
+		-- 2026-11-01: Mochi Fox and Strawberry Frog (4% each) are Rare now.
+		expect.equal(
+			BoxFormat.raritySummary("snack"),
+			summary({ { "Rare", "8.00" }, { "Uncommon", "16.00" }, { "Common", "76.00" } })
+		)
 		expect.equal(BoxFormat.raritySummary("sweet"), summary({ { "Exclusive", "0.04" }, { "Epic", "99.96" } }))
 	end)
 
@@ -619,10 +623,11 @@ return function(t: Context)
 	)
 	t.test("odds sign: the box's chance by rarity on Diego's 3 plaques, commonest first (owner: the real odds)", function()
 		-- ECONOMY_V3: the Soft Box's 4 Commons 19% each, its Uncommons 8 + 8 + 4 + 4.
-		expect.deepEqual(BoxFormat.signLines("snack"), { "COMMON  76%", "UNCOMMON  24%", "" })
+		expect.deepEqual(BoxFormat.signLines("snack"), { "COMMON  76%", "UNCOMMON  16%", "RARE  8%" })
 		-- A non-whole percent keeps its two decimals.
-		expect.deepEqual(BoxFormat.signLines("sweet"), { "EPIC  99.96%", "EXCLUSIVE  0.04%", "" })
-		expect.deepEqual(BoxFormat.signLines("treat"), { "COMMON  56%", "UNCOMMON  30%", "EPIC  14%" })
+		expect.deepEqual(BoxFormat.signLines("sweet"), { "EPIC  99.96%", "LEGENDARY  0.04%", "" })
+		-- the Royal Box has 4 rarities since Rare (2026-11-01): its 3 commonest (it is never on a stand)
+		expect.deepEqual(BoxFormat.signLines("treat"), { "COMMON  56%", "UNCOMMON  18%", "RARE  12%" })
 		expect.deepEqual(BoxFormat.signLines("nope"), { "", "", "" })
 	end)
 

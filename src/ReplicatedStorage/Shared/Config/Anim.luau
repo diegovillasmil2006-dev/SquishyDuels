@@ -350,6 +350,7 @@ local Anim = {
 		flourish = {
 			Common = { particles = 6 },
 			Uncommon = { particles = 8, twistDeg = 6, wideningExtraMs = 40 },
+			Rare = { particles = 9, twistDeg = 6, wideningExtraMs = 40 }, -- 2026-11-01: between Uncommon and Epic
 			Epic = { particles = 10, twistDeg = 6, wideningExtraMs = 40, releaseKick = 1.5 },
 			Exclusive = { particles = 12, useSqueezeFx = true, releaseKick = 1.5, sectionFlareDeg = 12 },
 		} :: { [string]: Flourish },

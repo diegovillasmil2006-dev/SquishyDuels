@@ -1,12 +1,14 @@
 --!strict
--- Rarity: the four rarities in canonical order and the facts every system shares about them (DESIGN §0.3, §2.2,
+-- Rarity: the five rarities in canonical order and the facts every system shares about them (DESIGN §0.3, §2.2,
 -- §4.3). Shared (server and client). Rarity is always shown as label text + pips + colour; the colours, pip
 -- shapes, card frames and trail styles are in Art/RarityStyle.
+-- 2026-11-01 (owner): Rare (sky blue, 3 pips) between Uncommon and Epic, so Epic has 4 pips and Exclusive 5; Exclusive
+-- is shown as Legendary (its Strings name and label) but keeps the id "Exclusive" (saves, Config keys, asset keys).
 --
 -- API:
---   Rarity.ORDER            {"Common", "Uncommon", "Epic", "Exclusive"} (lowest first, frozen)
+--   Rarity.ORDER            {"Common", "Uncommon", "Rare", "Epic", "Exclusive"} (lowest first, frozen)
 --   Rarity.get(r)           -> Info? (nil for anything that is not a rarity)
---   Rarity.index(r)         -> number? (1 = Common .. 4 = Exclusive; nil for anything else)
+--   Rarity.index(r)         -> number? (1 = Common .. 5 = Exclusive; nil for anything else)
 --   Rarity.isValid(r)       -> boolean
 --   Rarity.compare(a, b)    -> number: < 0 when a ranks below b, 0 when equal, > 0 when above. Anything that is
 --                              not a rarity ranks below Common. Sort "rarity descending" with compare(x, y) > 0.
@@ -29,7 +31,7 @@ export type Info = {
 
 -- Constants
 
-local ORDER: { Rarity } = { "Common", "Uncommon", "Epic", "Exclusive" }
+local ORDER: { Rarity } = { "Common", "Uncommon", "Rare", "Epic", "Exclusive" }
 
 local INFO: { [string]: Info } = {
 	Common = {
@@ -46,18 +48,25 @@ local INFO: { [string]: Info } = {
 		pips = 2,
 		hasTrail = true,
 	},
+	Rare = {
+		rarity = "Rare",
+		nameKey = "rarity.rare.name",
+		labelKey = "rarity.rare.label",
+		pips = 3,
+		hasTrail = true,
+	},
 	Epic = {
 		rarity = "Epic",
 		nameKey = "rarity.epic.name",
 		labelKey = "rarity.epic.label",
-		pips = 3,
+		pips = 4,
 		hasTrail = true,
 	},
 	Exclusive = {
 		rarity = "Exclusive",
 		nameKey = "rarity.exclusive.name",
 		labelKey = "rarity.exclusive.label",
-		pips = 4,
+		pips = 5,
 		hasTrail = true,
 	},
 }

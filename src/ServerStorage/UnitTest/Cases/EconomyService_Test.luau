@@ -677,17 +677,17 @@ return function(t: Context)
 	t.test("a duel reward pays its squeezes × the squeeze value of that moment (the pen's)", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		-- Pens3 phase 1: Kitty Bread 10 + Butter 40 a second = 50 a squeeze. A capsule counts for nothing now.
+		-- Pens3 phase 1: Kitty Bread 10 + Butter 20 a second (2026-11-01) = 30 a squeeze. A capsule counts for nothing.
 		table.insert(profile.pen.items, penItem(2, "butter", 0, 1, 0, 2))
 		profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 		local first = EconomyService.grantDuelResult(player, "m-1", "win", duelResult("win", 600, 7, "m-1"))
-		expect.equal(first.coins, 600 * 50)
+		expect.equal(first.coins, 600 * 30)
 		-- The value changes with the pen: the next result pays the new one.
-		table.insert(profile.pen.items, penItem(3, "dragon", 0, 1, 0, 3)) -- + 640
+		table.insert(profile.pen.items, penItem(3, "dragon", 0, 1, 0, 3)) -- + 2560 (Legendary 256)
 		local second = EconomyService.grantDuelResult(player, "m-2", "loss", duelResult("loss", 350, 8, "m-2"))
-		expect.equal(second.coins, 350 * 690)
-		expect.equal(profile.coins, 600 * 50 + 350 * 690)
-		expect.equal(EconomyService.rewardCoins(profile, 300), 300 * 690)
+		expect.equal(second.coins, 350 * 2590)
+		expect.equal(profile.coins, 600 * 30 + 350 * 2590)
+		expect.equal(EconomyService.rewardCoins(profile, 300), 300 * 2590)
 		-- A levelled squishy earns a part of a Coin a second: the reward is floored once, never per squeeze.
 		profile.pen.items = { penItem(1, "kitty_bread", 0, 2, 0, 1) } -- 11.5
 		expect.equal(EconomyService.rewardCoins(profile, 3), 34)
@@ -698,13 +698,13 @@ return function(t: Context)
 	t.test("at the top squeeze value a duel win still pays in full, and Coins stop at maxCoins", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
-		-- Pens3 phase 1's top: 12 Rainbow Galaxy Dragons at the top level (about 5.7B a squeeze).
+		-- Pens3 phase 1's top: 12 Rainbow Galaxy Dragons at the top level (about 22.7B a squeeze since 2026-11-01).
 		local items = {}
 		for id = 1, 12 do
 			table.insert(items, penItem(id, "dragon", 2, ECONOMY.Pen.maxLevel, 7, id))
 		end
 		profile.pen = { spots = 12, nextId = 13, items = items }
-		local top = 12 * 10 * 64 * 4 * 12 * ECONOMY.Pen.levelGain ^ (ECONOMY.Pen.maxLevel - 1)
+		local top = 12 * 10 * 256 * 4 * 12 * ECONOMY.Pen.levelGain ^ (ECONOMY.Pen.maxLevel - 1)
 		local grant = EconomyService.grantDuelResult(player, "top-1", "win", duelResult("win", 600, 7, "top-1"))
 		expect.near(grant.coins, math.floor(600 * top), 1) -- PenMath sums 12 items: the float order may move 1 Coin
 		expect.truthy(grant.coins > 3e12)

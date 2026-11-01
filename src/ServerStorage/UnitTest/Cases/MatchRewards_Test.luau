@@ -177,14 +177,14 @@ return function(t: Context)
 			nextId = 3,
 			items = {
 				{ id = 1, kind = "kitty_bread", form = 0, level = 2, coat = 0, slot = 1, locked = false }, -- 11.5
-				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false }, -- 40
+				{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false }, -- 20 (2026-11-01)
 			},
 		}
 		local capsules: any = { slots = 1, list = { { level = 40, squishyId = "dragon" } } } -- counts for nothing
 		local coins, grip = MatchRewards.squeezeWorth({ pen = pen, capsules = capsules })
 		expect.equal(coins, PenMath.squeezeValue(pen))
-		expect.near(coins, 51.5, 1e-9)
-		expect.equal(grip, 51) -- floored
+		expect.near(coins, 31.5, 1e-9)
+		expect.equal(grip, 31) -- floored
 		local newCoins, newGrip = MatchRewards.squeezeWorth(nil)
 		expect.equal(newCoins, 10)
 		expect.equal(newGrip, 10)

@@ -120,7 +120,7 @@ return function(t: Context)
 	end)
 
 	t.test("filters: cycle with wrap-around; visible cards and chip counts follow Show not owned", function()
-		expect.deepEqual(InventoryFormat.FILTERS, { "All", "Common", "Uncommon", "Epic", "Exclusive" })
+		expect.deepEqual(InventoryFormat.FILTERS, { "All", "Common", "Uncommon", "Rare", "Epic", "Exclusive" })
 		expect.equal(InventoryFormat.nextFilter("All", 1), "Common")
 		expect.equal(InventoryFormat.nextFilter("Exclusive", 1), "All")
 		expect.equal(InventoryFormat.nextFilter("All", -1), "Exclusive")
@@ -135,7 +135,7 @@ return function(t: Context)
 		-- UI FINAL R5 (H:927): the tab counts are the catalogue totals, owned or not.
 		expect.deepEqual(
 			InventoryFormat.tabCounts(list),
-			{ All = 14, Common = 5, Uncommon = 4, Epic = 4, Exclusive = 1 }
+			{ All = 14, Common = 5, Uncommon = 2, Rare = 2, Epic = 4, Exclusive = 1 } -- Rare since 2026-11-01
 		)
 		local n, total = InventoryFormat.collected(list)
 		expect.equal(n, 2)
@@ -581,7 +581,7 @@ return function(t: Context)
 		local counts = InventoryFormat.tabCounts(list)
 		expect.equal(counts.All, #Catalog.list())
 		local sum = 0
-		for _, rarity in { "Common", "Uncommon", "Epic", "Exclusive" } do
+		for _, rarity in { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } do
 			sum += counts[rarity]
 		end
 		expect.equal(sum, counts.All)

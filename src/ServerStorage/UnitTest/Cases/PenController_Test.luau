@@ -139,7 +139,7 @@ return function(t: Context)
 
 	t.test("labelText: +{coins}/s with the whole Coins a second", function()
 		expect.equal(PenController.labelText({ kind = "kitty_bread", form = 0, level = 1, coat = 0 }), "+10/s")
-		expect.equal(PenController.labelText({ kind = "dragon", form = 0, level = 1, coat = 0 }), "+640/s")
+		expect.equal(PenController.labelText({ kind = "dragon", form = 0, level = 1, coat = 0 }), "+2,560/s") -- 256 power
 		-- Lv 2 earns 11.5: the label shows 11, as the pen pays whole Coins.
 		expect.equal(PenController.labelText({ kind = "kitty_bread", form = 0, level = 2, coat = 0 }), "+11/s")
 		local big = { kind = "dragon", form = 2, level = 70, coat = 7 }
@@ -147,10 +147,11 @@ return function(t: Context)
 			PenController.labelText(big),
 			Strings.format(Strings.pen.rate, { coins = Format.coins(math.floor(PenMath.itemRate(big))) })
 		)
-		-- INCOME step 2: the base's SD_PenIncome boost (1 when missing): 640 x 1.07 x 1.05 = 719.04.
+		-- INCOME step 2: the base's SD_PenIncome boost (1 when missing): 2560 x 1.07 x 1.05 = 2876.16 (Legendary 256 power
+		-- since 2026-11-01).
 		local dragon = { kind = "dragon", form = 0, level = 1, coat = 0 }
-		expect.equal(PenController.labelText(dragon, 1.07 * 1.05), "+719/s")
-		expect.equal(PenController.labelText(dragon, nil), "+640/s")
+		expect.equal(PenController.labelText(dragon, 1.07 * 1.05), "+2,876/s")
+		expect.equal(PenController.labelText(dragon, nil), "+2,560/s")
 	end)
 
 	t.test("labelLayout: icon and text labelInner of the label's height, never wider than the label", function()

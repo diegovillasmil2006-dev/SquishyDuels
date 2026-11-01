@@ -152,14 +152,14 @@ return function(t: Context)
 	end)
 
 	t.test("a day's Coins are its squeezes × the squeeze value of the player's pen (pens3 phase 1)", function()
-		-- Kitty Bread (10/s) and Butter (40/s) walk in the pen: 50 Coins a squeeze.
+		-- Kitty Bread (10/s) and Butter (20/s since 2026-11-01) walk in the pen: 30 Coins a squeeze.
 		local items: { any } = {
 			{ id = 1, kind = "kitty_bread", form = 0, level = 1, coat = 0, slot = 1, locked = false },
 			{ id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 2, locked = false },
 		}
 		local pen = { spots = 3, nextId = 3, items = items }
 		local value = PenMath.squeezeValue(pen)
-		expect.equal(value, 50)
+		expect.equal(value, 30)
 		local model = DailyFormat.model(daily(D - 1, 3), NOON, pen)
 		for n, card in model.cards do
 			expect.equal(card.coins, DAILY.coinsByDay[n] * value)

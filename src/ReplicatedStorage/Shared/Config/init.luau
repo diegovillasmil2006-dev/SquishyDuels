@@ -100,7 +100,7 @@ export type ValidateDeps = {
 }
 
 -- Canonical decisions (DESIGN §0.3, §2.7, §5.9) that Config and the catalog modules must agree on.
-local RARITY_ORDER = { "Common", "Uncommon", "Epic", "Exclusive" } -- Rarity.ORDER must match once it exists
+local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } -- Rarity.ORDER must match (Rare 2026-11-01)
 local STARTER_ID = "kitty_bread"
 local ID_PATTERN = "^[a-z_]+$" -- squishyId, boxId, bundleKey, passKey, ultimateId
 local ID_MAX_LENGTH = 24

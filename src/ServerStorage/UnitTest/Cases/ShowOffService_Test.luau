@@ -270,8 +270,8 @@ return function(t: Context)
 		expect.equal(income.Value, "10") -- Kitty Bread earns 10 a second
 		pen.items[2].slot = 2
 		ShowOffService.refreshIncome()
-		expect.equal(income.Value, "50") -- + Butter's 40
-		pen.items[1].level = 70 -- 10 × 1.15^69 + 40 ≈ 154K a second: the short form
+		expect.equal(income.Value, "30") -- + Butter's 20 (Uncommon power 2 since 2026-11-01)
+		pen.items[1].level = 70 -- 10 × 1.15^69 + 20 ≈ 154K a second: the short form
 		ShowOffService.refreshIncome()
 		expect.truthy(string.match(income.Value, "^%d+%.%dK$") ~= nil)
 		finish(w)

@@ -1228,6 +1228,15 @@ local SLOTS: { AssetSlot } = {
 		"lib:179 unbox(1): Uncommon; file 'box_unbox_uncommon.wav'",
 		hudSound(138094624049938, 0.2118, "box_unbox_uncommon.wav")
 	),
+	-- 2026-11-01: the Rare tier (not in Diego's 4-rarity design) borrows the Uncommon unbox until it has its own.
+	soundSlot(
+		"box.ux.unboxRare",
+		"UI",
+		false,
+		nil,
+		"the Rare unbox: Uncommon's file 'box_unbox_uncommon.wav' until a Rare render exists",
+		hudSound(138094624049938, 0.2118, "box_unbox_uncommon.wav")
+	),
 	soundSlot(
 		"box.ux.unboxEpic",
 		"UI",

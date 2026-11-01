@@ -69,12 +69,13 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("the whole collection through the shop costs 1,107,214,406,000 Coins at full price (V3:163)", function()
+	-- 2026-11-01: Butter and Chocolate cost half (937.5K: Uncommon power 4 -> 2).
+	t.test("the whole collection through the shop costs 1,107,212,531,000 Coins at full price (V3:163)", function()
 		local total = 0
 		for _, def in Catalog.list() do
 			total += def.shopPrice or 0
 		end
-		expect.equal(total, 4 * 789_000 + 2 * 1_875_000 + 2 * 3_750_000 + 4 * 1_800_000_000 + 1_100_000_000_000)
+		expect.equal(total, 4 * 789_000 + 2 * 937_500 + 2 * 3_750_000 + 4 * 1_800_000_000 + 1_100_000_000_000)
 	end)
 
 	t.test("copies replaced the duplicate refund (pens3 phase 5)", function()

@@ -123,8 +123,8 @@ return function(t: Context)
 		expect.equal(Format.tierFor(2.7), 2)
 	end)
 
-	t.test("setFor: Common and Uncommon share standard, every squishy above Uncommon has its own", function()
-		local uncommon = Rarity.index("Uncommon")
+	t.test("setFor: Common, Uncommon and Rare share standard, every squishy above Rare has its own", function()
+		local uncommon = Rarity.index("Rare") -- 2026-11-01: Rare keeps the standard set ("Standard for now")
 		local seen: { [string]: boolean } = {}
 		for _, def in Catalog.list() do
 			local set = Format.setFor(def.id)

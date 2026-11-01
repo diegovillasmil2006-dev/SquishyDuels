@@ -343,7 +343,8 @@ return function(t: Context)
 
 	t.test("own squeezes pay the pen's squeeze value, whole, and train its floor in Grip (x mult doubled)", function()
 		local world = fresh()
-		-- Pens3 phase 1: Kitty Bread Lv 2 (11.5) + Dragon (640) = 651.5 a squeeze; a capsule counts for nothing.
+		-- Pens3 phase 1: Kitty Bread Lv 2 (11.5) + Dragon (2560, Legendary 256 since 2026-11-01) = 2571.5 a squeeze; a
+		-- capsule counts for nothing.
 		world.profile.pen.items[1].level = 2
 		table.insert(
 			world.profile.pen.items,
@@ -351,16 +352,16 @@ return function(t: Context)
 		)
 		world.profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 		local plain = SqueezeService.request(world.player)
-		expect.equal(plain.coins, 651)
-		expect.equal(plain.grip, 651)
+		expect.equal(plain.coins, 2571)
+		expect.equal(plain.grip, 2571)
 		expect.equal(plain.doubled, false)
 		world.profile.grip.rested = { value = 1, at = UNIX_START }
 		world.clock.advance(SQ.cycleSeconds)
 		world.server.advance(SQ.cycleSeconds)
 		local doubled = SqueezeService.request(world.player)
-		expect.equal(doubled.coins, 651) -- Double Grip doubles Grip only
+		expect.equal(doubled.coins, 2571) -- Double Grip doubles Grip only
 		expect.equal(doubled.doubled, REST.enabled)
-		expect.equal(doubled.grip, 651 * (if REST.enabled then REST.mult else 1))
+		expect.equal(doubled.grip, 2571 * (if REST.enabled then REST.mult else 1))
 		finish()
 	end)
 

@@ -318,7 +318,7 @@ return function(t: Context)
 			PenService.step(1)
 			local after = grantsOf(w, w.a)
 			expect.equal(#after, before + 1)
-			expect.equal(after[#after].amount, 51) -- 11.5 + 40, and the carried 0 from before: 51.5 -> 51
+			expect.equal(after[#after].amount, 31) -- 11.5 + 20 (2026-11-01), and the carried 0 from before: 31.5 -> 31
 			-- A server hitch pays at most maxTickSeconds of time.
 			PenService.step(60)
 			expect.equal(grantsOf(w, w.b)[4].amount, 10 * PEN.maxTickSeconds)
@@ -899,13 +899,13 @@ return function(t: Context)
 			expect.equal(reply.ok, true)
 			-- Kitty Bread, the placed Toast, the best Butter, the levelled Banana.
 			expect.deepEqual(idsOf(a), { 1, 2, 5, 7 })
-			expect.equal(reply.data.coins, 900 + 900 + 150_000)
-			expect.deepEqual(w.grants, { { player = w.a, amount = 151_800, reason = "sell" } })
+			expect.equal(reply.data.coins, 900 + 900 + 75_000) -- Uncommon sells for 75K since 2026-11-01
+			expect.deepEqual(w.grants, { { player = w.a, amount = 76_800, reason = "sell" } })
 			expect.equal(#a.buyBack, 3)
 			for _, entry in a.buyBack do
 				expect.equal(entry.req, REQ)
 			end
-			expect.equal(PenService.sellAll(w.a, REQ).data.coins, 151_800) -- a retry replays
+			expect.equal(PenService.sellAll(w.a, REQ).data.coins, 76_800) -- a retry replays
 			expectRefused(PenService.sellAll(w.a, REQ2), "pen.nothingToSell")
 			expect.equal(#w.grants, 1)
 			finish()
@@ -1507,7 +1507,7 @@ return function(t: Context)
 		table.insert(a.pen.items, { id = 2, kind = "butter", form = 0, level = 1, coat = 0, slot = 13, locked = false })
 		table.insert(a.pen.items, { id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 24, locked = false })
 		PenService.step(1)
-		expect.deepEqual(grantsOf(w, w.a), { { player = w.a, amount = 10 + 40 + 640, reason = "pen" } })
+		expect.deepEqual(grantsOf(w, w.a), { { player = w.a, amount = 10 + 20 + 2560, reason = "pen" } }) -- 2026-11-01
 		finish()
 	end)
 

@@ -313,14 +313,14 @@ return function(t: Context)
 		BaseService.playerAdded(a)
 		expect.equal(model:GetAttribute("SD_PenSpots"), 3)
 		expect.equal(model:GetAttribute("SD_Pen"), "kitty_bread.0.1.0;butter.0.1.0") -- spot order (PenMath.placed)
-		expect.equal(model:GetAttribute("SD_PenRate"), 50)
+		expect.equal(model:GetAttribute("SD_PenRate"), 30) -- 10 + 20 (Uncommon power 2 since 2026-11-01)
 		expect.equal(model:GetAttribute("SD_PenTier"), 1)
 		expect.equal(model:GetAttribute("SD_Pen"), PenMath.encode(PenMath.placed(w.pens[a])))
 		w.pens[a] = pen(6, { "kitty_bread", "butter", "bird" })
 		BaseService.refresh(a)
 		expect.equal(model:GetAttribute("SD_PenSpots"), 6)
 		expect.equal(model:GetAttribute("SD_PenTier"), 2) -- Mint from 6 spots
-		expect.equal(model:GetAttribute("SD_PenRate"), 210)
+		expect.equal(model:GetAttribute("SD_PenRate"), 190) -- 10 + 20 + 160
 		expect.equal(model:GetAttribute("SD_PenIncome"), 1)
 		-- INCOME step 2: the owner's SQUISHY COINS x ALL EARNINGS boost, for every client's coin labels.
 		w.pens[a].income = { coins = 2, all = 1 }
@@ -847,7 +847,7 @@ return function(t: Context)
 		expect.equal(model:GetAttribute("SD_Shelf"), "13=toast.0.1.0;24=dragon.0.1.0")
 		expect.equal(model:GetAttribute("SD_ShelfRows"), 2)
 		expect.equal(model:GetAttribute("SD_ShelfTop"), true)
-		expect.equal(model:GetAttribute("SD_PenRate"), 10 + 40 + 10 + 640)
+		expect.equal(model:GetAttribute("SD_PenRate"), 10 + 20 + 10 + 2560) -- 2026-11-01: Uncommon 2, Legendary 256
 		BaseService.playerRemoving(a)
 		for _, name in { "SD_Shelf", "SD_ShelfRows", "SD_ShelfTop" } do
 			expect.equal(model:GetAttribute(name), nil)

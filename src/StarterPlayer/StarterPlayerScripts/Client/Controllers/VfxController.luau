@@ -39,8 +39,8 @@
 --   where the server pivots it): in the local 12-player match view it also comes back once that player is alive again
 --   after the view showed them knocked out, and not before the elimination effect hid it (matchRespawned, pure).
 -- Kill banners and kill effects (2026-10-16, VillasmilGaming: Valorant-style; Art/KillStyle): the effectId is the
---   attacker's kill set (eliminationEffect -> KillStyle.resolve: "standard" for every Common and Uncommon squishy, its
---   own for each squishy above Uncommon; "epic_pending" stays standard unless Config.Anim.elimination.epicEnabled), and
+--   attacker's kill set (eliminationEffect -> KillStyle.resolve: "standard" for every Common, Uncommon and Rare
+--   squishy, its own for each squishy above Rare; "epic_pending" stays standard unless Config.Anim.elimination.epicEnabled), and
 --   every set plays this sequence. The set's kill effect, made for the VFX Studio plugin (Anim/KillVfx Kill/<set>,
 --   ReplicatedStorage.SD_KillVfx), plays at the K.O. itself at the K.O.'d player's HumanoidRootPart (v3 2026-10-17:
 --   it used to wait for 700 ms; its own finisher still pops then) and takes the foam puff's place; the standard set

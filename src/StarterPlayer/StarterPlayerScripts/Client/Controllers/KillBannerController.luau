@@ -4,8 +4,8 @@
 -- slams in top-centre, under the HUD's top bar, clear of the held squishy), plays the tier's kill sound
 -- (the kill set's AssetTable sheet, one region, Config.Audio.killBanner) and the VFX Studio burst behind the banner
 -- (Anim/KillVfx Banner/<set>). Cosmetic only: nothing here changes game state.
--- * The kill set is the set of the squishy that made the K.O. (Art/KillStyle; Catalog eliminationEffectId): Common and
---   Uncommon squishies share "standard"; each squishy above Uncommon has its own banner, sounds and burst.
+-- * The kill set is the set of the squishy that made the K.O. (Art/KillStyle; Catalog eliminationEffectId): Common,
+--   Uncommon and Rare squishies share "standard"; each squishy above Rare has its own banner, sounds and burst.
 -- * The tier is the K.O. streak (K.O.s without being knocked out; KillBannerFormat.tierFor): 1k-5k, and the 6k banner
 --   with the 6k sound for the 6th K.O. and every one after it, until the player is knocked out.
 -- * Free for All / Team Deathmatch: StateController.MatchMoments, the server's own streak (MatchMoment.streak, the

@@ -143,7 +143,7 @@ return function(t: Context)
 			local RarityStyle = t.requireShared("Art/RarityStyle")
 			local pills = Config.UI.Sticker.pills
 			local footer = Config.UI.Inventory.footer
-			for _, rarity in { "Common", "Uncommon", "Epic", "Exclusive" } do
+			for _, rarity in { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } do
 				for _, variant in { "card", "detail" } do
 					local spec = pills[variant]
 					local m = RarityTag.measurePill(rarity, variant)

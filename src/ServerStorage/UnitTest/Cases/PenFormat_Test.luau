@@ -212,10 +212,10 @@ return function(t: Context)
 	t.test("cardText: the name, +N/s and Lv N", function()
 		local text = PenFormat.cardText(item(1, "butter", 1, false, 2))
 		expect.equal(text.name, Strings.resolve("squishy.butter.name"))
-		expect.equal(text.rate, "+46/s") -- 40 × 1.15
+		expect.equal(text.rate, "+23/s") -- 20 × 1.15 (Uncommon power 2 since 2026-11-01)
 		expect.equal(text.level, "Lv 2")
-		-- INCOME step 2: with the pen's boost (view.income: SQUISHY COINS x ALL EARNINGS), 46 x 1.07 x 1.05 = 51.7.
-		expect.equal(PenFormat.cardText(item(1, "butter", 1, false, 2), 1.07 * 1.05).rate, "+51/s")
+		-- INCOME step 2: with the pen's boost (view.income: SQUISHY COINS x ALL EARNINGS), 23 x 1.07 x 1.05 = 25.8.
+		expect.equal(PenFormat.cardText(item(1, "butter", 1, false, 2), 1.07 * 1.05).rate, "+25/s")
 		local boosted =
 			{ spots = 3, nextId = 2, items = { item(1, "kitty_bread", 1) }, income = { coins = 1, all = 1 } }
 		expect.near(PenFormat.view(boosted, nil, false).income, 1.07 * 1.05, 1e-9)

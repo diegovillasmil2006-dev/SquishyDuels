@@ -181,10 +181,10 @@ return function(t: Context)
 		expect.truthy(butter.trail.colors ~= nil)
 		local dragon = InspectFormat.view("dragon", UNOWNED)
 		assert(dragon ~= nil, "no view")
-		-- Phase 5 (progression spec 2026-10-12 §6): capsule power by rarity, x1 / x4 / x16 / x64.
+		-- Phase 5 (progression spec 2026-10-12 §6): power by rarity; 2026-11-01 x1 / x2 / x4 / x16 / x256.
 		expect.equal(kitty.coinsText, "x1 power")
-		expect.equal(butter.coinsText, "x4 power")
-		expect.equal(dragon.coinsText, "x64 power")
+		expect.equal(butter.coinsText, "x2 power")
+		expect.equal(dragon.coinsText, "x256 power")
 		local ultimate = dragon.ultimate
 		assert(ultimate ~= nil, "Dragon has no ultimate text")
 		expect.equal(string.sub(ultimate, 1, #"Ultimate: Dragon Burst. "), "Ultimate: Dragon Burst. ")

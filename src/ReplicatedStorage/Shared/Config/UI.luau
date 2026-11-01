@@ -888,7 +888,7 @@ local UI = {
 			raysSpinS = 16,
 			raysHigh = 1,
 			raysLow = 0.45,
-			raysFromIndex = 3,
+			raysFromIndex = 4,
 			floorWidth = 150,
 			floorHeight = 24,
 			floorBottom = 16,
@@ -1556,8 +1556,8 @@ local UI = {
 		labelInner = 0.8,
 		labelGap = 0.1,
 		labelStrokePx = 2,
-		-- K:4052-4081: the longest side of a squishy of each rarity.
-		rarityStuds = { Common = 2, Uncommon = 2.8, Epic = 3.8, Exclusive = 5 } :: { [string]: number },
+		-- K:4052-4081: a squishy's longest side by rarity (Rare 11-01).
+		rarityStuds = { Common = 2, Uncommon = 2.8, Rare = 3.3, Epic = 3.8, Exclusive = 5 } :: { [string]: number },
 		-- K:5711-5747 (A13 UpgradeBuyPunch): the price face's scale after an own buy (Anim/Timeline keys).
 		signPop = {
 			{ t_ms = 0, value = 1 },
@@ -2930,7 +2930,7 @@ local UI = {
 				rarityRain = { -- H:830
 					n = 50,
 					perRarity = 20,
-					fromRarity = 2,
+					fromRarity = 3,
 					colors = { "rarityBase", "rarityLight", "White", "StickerFxYellow" },
 				},
 			},

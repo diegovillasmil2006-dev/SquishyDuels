@@ -55,7 +55,7 @@
 -- and twist. At the pop end the toy's release spring takes over (ω = √kRel, ζ = cRel/(2ω), from rest), with a release
 -- kick on the feel jiggle; under ReducedMotion the recovery is today's SmoothDamp with foamRecoveryT and nothing jiggles,
 -- twists, bounces, blinks or flaps. An early release() pops from where it is (never down to the pop value).
--- Twist (Uncommon, Epic): one half-swing twistDeg·sin(πu), u over [anticipation end, peak]; a restart fades the old
+-- Twist (Uncommon, Rare, Epic): one half-swing twistDeg·sin(πu), u over [anticipation end, peak]; a restart fades the old
 -- twist out over the anticipation. Exclusive: a section flare kick at the release start.
 -- Face: squish below face.squishBelow, back above squishAbove (y on the squeeze axis, hold included), each state held
 -- >= minHoldSeconds. Priority: a squish lock, then the squeeze's squish, then a wow lock, then normal. Grip rule: a tap

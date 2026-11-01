@@ -107,6 +107,9 @@ local STACKED_GAP = 2 + PIP_OUTLINE + CHIP_OUTLINE -- between the pips and the c
 local PILLS = Config.UI.Sticker.pills
 local FOOTER = Config.UI.Inventory.footer
 local PILL_ROLE = "rarityPill"
+-- 2026-11-01: room beyond the measured word for the label's stroke and the window's UIScale (a card showed
+-- "LEGENDAR" for LEGENDARY with exactly the measured width; COMMON had 2 px to spare).
+local PILL_TEXT_ROOM = 6
 
 -- Module table
 
@@ -138,7 +141,7 @@ function RarityTag.measurePill(rarity: string, variant: Variant): PillMeasure
 	local bounds = Theme.textBounds(string.upper(Strings.resolve(info.labelKey) or ""), kind)
 	local pips = if variant == "card" then style.pips else 0
 	return {
-		pillWidth = math.ceil(bounds.X) + 2 * (spec.padX + spec.border),
+		pillWidth = math.ceil(bounds.X) + PILL_TEXT_ROOM + 2 * (spec.padX + spec.border),
 		pillHeight = math.max(spec.height, math.ceil(bounds.Y) + spec.padTop + 2 * spec.border),
 		pipsWidth = if pips > 0 then pips * FOOTER.dotPx + (pips - 1) * FOOTER.dotGap else 0,
 	}

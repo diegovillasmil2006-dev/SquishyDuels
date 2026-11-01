@@ -34,10 +34,12 @@
 
 -- == Catalog (§4.1) ==
 
-export type Rarity = "Common" | "Uncommon" | "Epic" | "Exclusive"
+-- 2026-11-01 (owner): Rare between Uncommon and Epic; "Exclusive" is shown as Legendary (the id stays: saves, keys).
+export type Rarity = "Common" | "Uncommon" | "Rare" | "Epic" | "Exclusive"
 export type TrailKind = "ribbon" | "twinRibbon" | "comet" | "ember"
--- The kill set (Art/KillStyle, kill banners 2026-10-16): "standard" for every Common and Uncommon squishy, one of its
--- own for each squishy above Uncommon. "epic_pending" (before 2026-10-16) still plays the standard set.
+-- The kill set (Art/KillStyle, kill banners 2026-10-16): "standard" for every Common, Uncommon and Rare squishy (Rare:
+-- owner 2026-11-01 "Standard for now"), one of its own for each squishy above Rare. "epic_pending" (before 2026-10-16)
+-- still plays the standard set.
 export type EliminationEffectId =
 	"standard"
 	| "epic_pending"

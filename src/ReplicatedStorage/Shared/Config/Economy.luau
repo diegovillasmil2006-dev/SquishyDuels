@@ -58,11 +58,15 @@ local Economy = {
 	-- Squishy power by rarity (spec 2026-10-12 §3, §6): a capsule squeeze pays squishy power × capsule power Coins
 	-- (CapsuleMath), and an own squeeze pays the best capsule's (the squeeze value; it replaced CoinsByRarity in
 	-- Phase 3). A Catalog def's `power` may override it for one squishy.
+	-- 2026-11-01 (owner: the low rarities close, the top ones "waay worthy"; "1 · 2 · 4 · 16 · 256"): Uncommon 4 -> 2
+	-- (Butter and Chocolate cost half), Rare 4 (Mochi Fox and Strawberry Frog keep their earnings), Exclusive (shown as
+	-- Legendary) 64 -> 256 (Dragon's price and odds stay: "Keep 1.1T price and odds").
 	SquishyPower = {
 		Common = 1,
-		Uncommon = 4,
+		Uncommon = 2,
+		Rare = 4,
 		Epic = 16,
-		Exclusive = 64,
+		Exclusive = 256,
 	} :: { [string]: number },
 
 	-- Squeeze earnings limit (§6.3): a rate limit, not a currency; never sold, never changed by passes or products.

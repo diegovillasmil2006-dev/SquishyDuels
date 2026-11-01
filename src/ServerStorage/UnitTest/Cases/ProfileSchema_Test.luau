@@ -1042,7 +1042,7 @@ return function(t: Context)
 			}
 			-- What the pen paid before phase 6: its best 3 (Dragon, Butter, then Kitty Bread: the lower id of the 10s);
 			-- pens3 phase 11: the next two (Toast, Banana) fill the shelf's start row and earn too.
-			local paid = 640 + 40 + 10 + 10 + 10
+			local paid = 2560 + 20 + 10 + 10 + 10 -- the 2026-11-01 ladder (Dragon 256, Butter 2)
 			local pen, owned, problems = fixedPen({ spots = 3, nextId = 6, items = items, awayRate = 0 })
 			expect.deepEqual(pen.items, {
 				penItem(1, "kitty_bread", 0, 1, 0, 3),

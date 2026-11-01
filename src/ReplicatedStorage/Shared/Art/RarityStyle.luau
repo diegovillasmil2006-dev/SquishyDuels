@@ -131,6 +131,25 @@ local STYLES: { [string]: Style } = {
 		card = { strokePx = 3 },
 		trail = "ribbon",
 	},
+	-- 2026-11-01 (owner: "Sky blue"): the Rare tier, not in Diego's rarity table (lib:12-17); its stops follow his
+	-- light / base / dark pattern between Uncommon's green and Epic's purple.
+	Rare = {
+		rarity = "Rare",
+		color = Color3.fromHex("#38A6F5"),
+		ui = {
+			faceTop = Color3.fromHex("#4FB4FF"),
+			faceBottom = Color3.fromHex("#1A62B8"),
+			glow = Color3.fromHex("#A8DCFF"),
+			light = Color3.fromHex("#DCEFFF"),
+			base = Color3.fromHex("#3FA2F0"),
+			dark = Color3.fromHex("#1F6CC0"),
+		},
+		labelTextColor = Palette.Ink, -- 5.1:1
+		pipShape = "dot",
+		pips = pipsOf("Rare"),
+		card = { strokePx = 3 },
+		trail = "ribbon",
+	},
 	Epic = {
 		rarity = "Epic",
 		color = Color3.fromHex("#7C3AED"),
@@ -186,7 +205,7 @@ local STYLES: { [string]: Style } = {
 local COMET_COLORS = { Color3.fromHex("#FF4F8B"), Color3.fromHex("#FF9F1C"), Color3.fromHex("#FFD86B") }
 
 local TRAILS: { [string]: TrailStyle } = {
-	ribbon = { -- Uncommon
+	ribbon = { -- Uncommon, Rare
 		kind = "ribbon",
 		nameKey = "trail.ribbon",
 		offsets = { 0 },

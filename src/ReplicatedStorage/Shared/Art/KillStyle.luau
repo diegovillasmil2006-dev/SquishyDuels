@@ -1,11 +1,12 @@
 --!strict
 -- KillStyle: the kill sets (2026-10-16, VillasmilGaming: Valorant-style kill banners, kill sounds and kill effects).
--- Shared, data only. A squishy's kill set is its Catalog eliminationEffectId: every Common and Uncommon squishy shares
--- "standard" (Candy Pop); each squishy above Uncommon (Epic, Exclusive) has its own set, built around that squishy.
+-- Shared, data only. A squishy's kill set is its Catalog eliminationEffectId: every Common, Uncommon and Rare squishy
+-- shares "standard" (Candy Pop; Rare: owner 2026-11-01 "Standard for now"); each squishy above Rare (Epic, Exclusive)
+-- has its own set, built around that squishy.
 --
 -- A set names (colours are Art/Palette tokens, pictures AssetTable image keys):
 --   nameKey          Strings key of its name (elimination.<id>, shown in Inspect)
---   squishyId        the squishy the set belongs to (nil: standard, every Common and Uncommon squishy)
+--   squishyId        the squishy the set belongs to (nil: standard, every Common, Uncommon and Rare squishy)
 --   emblem           v2 (2026-10-17): the banner's emblem, a low-fidelity sticker of the squishy (flat cel colours, ink
 --                    outline; standard: a squished jelly blob with the game's squish face) — `emblemWhite` is its white
 --                    silhouette (the slam's flash and the ink shadow, tinted)
@@ -74,7 +75,7 @@ export type Style = {
 local STANDARD = "standard"
 
 local STYLES: { [string]: Style } = {
-	-- Candy Pop: every Common and Uncommon squishy. A squished jelly blob emblem, the game's own stars.
+	-- Candy Pop: every Common, Uncommon and Rare squishy. A squished jelly blob emblem, the game's own stars.
 	standard = {
 		id = "standard",
 		nameKey = "elimination.standard",

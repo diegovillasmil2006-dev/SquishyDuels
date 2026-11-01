@@ -24,8 +24,8 @@ type Context = {
 
 local DAY = 20000
 local DAY_SECONDS = 86400
--- Pens3 phase 1: the squeeze value of the test profile's pen, Kitty Bread (10) + Butter (40) a second.
-local VALUE = 50
+-- Pens3 phase 1: the squeeze value of the test profile's pen, Kitty Bread (10) + Butter (20 since 2026-11-01) a second.
+local VALUE = 30
 
 return function(t: Context)
 	local expect = t.expect
@@ -154,9 +154,9 @@ return function(t: Context)
 		table.insert(
 			w.profile.pen.items,
 			{ id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 3, locked = false }
-		) -- + 640
+		) -- + 2560 (Legendary power 256 since 2026-11-01)
 		local reply = DailyRewardService.claim(w.player)
-		expect.equal(reply.data.coins, DAILY.coinsByDay[2] * 690)
+		expect.equal(reply.data.coins, DAILY.coinsByDay[2] * 2590)
 		finish()
 	end)
 

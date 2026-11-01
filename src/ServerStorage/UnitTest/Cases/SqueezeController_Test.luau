@@ -85,10 +85,10 @@ return function(t: Context)
 		expect.truthy(deepest.endMs > base.compression[2])
 	end)
 
-	t.test("Uncommon and Epic widen longer; Common and Exclusive do not", function()
+	t.test("Uncommon, Rare and Epic widen longer; Common and Exclusive do not", function()
 		for _, def in Catalog.list() do
 			local extra = squeeze.flourish[def.rarity].wideningExtraMs or 0
-			if def.rarity == "Uncommon" or def.rarity == "Epic" then
+			if def.rarity == "Uncommon" or def.rarity == "Rare" or def.rarity == "Epic" then
 				expect.truthy(extra > 0)
 			else
 				expect.equal(extra, 0)

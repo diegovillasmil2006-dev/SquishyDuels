@@ -236,6 +236,7 @@ local FOUND_SOUND_KEYS = {
 	"box.ux.rise",
 	"box.ux.unboxCommon",
 	"box.ux.unboxUncommon",
+	"box.ux.unboxRare", -- 2026-11-01: the Rare tier (Uncommon's file for now)
 	"box.ux.unboxEpic",
 	"box.ux.unboxExclusive",
 	"box.ux.letterLow",

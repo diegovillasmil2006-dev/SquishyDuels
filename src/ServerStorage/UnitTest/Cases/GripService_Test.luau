@@ -296,15 +296,15 @@ return function(t: Context)
 		"an own squeeze trains the floor of the pen's squeeze value (a capsule counts for nothing), x mult doubled",
 		function()
 			local world = fresh()
-			-- Kitty Bread Lv 2 (11.5) + Dragon (640) = 651.5 a squeeze: 651 Grip.
+			-- Kitty Bread Lv 2 (11.5) + Dragon (2560, Legendary 256 since 2026-11-01) = 2571.5 a squeeze: 2571 Grip.
 			world.profile.pen.items = { penItem(1, "kitty_bread", 0, 2), penItem(2, "dragon") }
 			world.profile.capsules = { slots = 1, list = { { level = 100, squishyId = "dragon" } } }
 			local plain = GripService.addFromSqueeze(world.player, 1)
-			expect.equal(plain.grip, 651)
+			expect.equal(plain.grip, 2571)
 			world.profile.grip.rested = { value = 3, at = UNIX_START }
 			local doubled = GripService.addFromSqueeze(world.player, 1)
 			expect.equal(doubled.doubled, REST.enabled)
-			expect.equal(doubled.grip, if REST.enabled then 651 * REST.mult else 651)
+			expect.equal(doubled.grip, if REST.enabled then 2571 * REST.mult else 2571)
 			-- Without a pen the squeeze trains the least squeeze value, 10.
 			world.profile.pen = nil
 			expect.equal(GripService.addFromSqueeze(world.player, 1).grip, 10 * (if REST.enabled then REST.mult else 1))

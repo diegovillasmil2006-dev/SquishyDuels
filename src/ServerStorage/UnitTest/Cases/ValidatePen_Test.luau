@@ -95,12 +95,15 @@ return function(t: Context)
 		expect.equal(pen.giftQueueMax, 50)
 		expect.deepEqual(pen.welcomePrice, { Common = 1_000 }) -- owner 2026-10-31: 3K -> 1K
 		expect.deepEqual(pen.frogGift, { kind = "strawberry_frog", seconds = 180 })
-		-- Pens3 phase 7: V3:164's sell prices (Rare comes with phase 22), Golden x3 / Rainbow x9, D1:222's hold rule,
-		-- the 10-minute buy-back of at most toyBoxMax + placedMax sales.
-		expect.deepEqual(
-			pen.sellPrice,
-			{ Common = 900, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 } -- Common 1K -> 900
-		)
+		-- Pens3 phase 7: V3:164's sell prices (Rare 300K since 2026-11-01, phase 22; Uncommon halved with its price),
+		-- Golden x3 / Rainbow x9, D1:222's hold rule, the 10-minute buy-back of at most toyBoxMax + placedMax sales.
+		expect.deepEqual(pen.sellPrice, {
+			Common = 900, -- Common 1K -> 900
+			Uncommon = 75_000,
+			Rare = 300_000,
+			Epic = 90_000_000,
+			Exclusive = 225_000_000_000,
+		})
 		expect.deepEqual(pen.sellFormMult, { 1, 3, 9 })
 		expect.equal(pen.sellMaxIds, 50)
 		expect.deepEqual(pen.sellHold, { form = 1, level = 10, rarity = "Epic" })
@@ -169,7 +172,7 @@ return function(t: Context)
 			{ changes = { welcomePrice = { Common = 0 } }, field = "welcomePrice.Common" },
 			{ changes = { welcomePrice = { Common = 2_999.5 } }, field = "welcomePrice.Common" },
 			{ changes = { welcomePrice = { Common = 789_001 } }, field = "welcomePrice.Common" }, -- above the price
-			{ changes = { welcomePrice = { Rare = 3_000 } }, field = "welcomePrice.Rare" }, -- no sold squishy
+			{ changes = { welcomePrice = { Rare = 3_750_001 } }, field = "welcomePrice.Rare" }, -- above the price
 			{ changes = { frogGift = "frog" }, field = "frogGift" },
 			{ changes = { frogGift = { kind = "unicorn", seconds = 180 } }, field = "frogGift.kind" },
 			{ changes = { frogGift = { kind = "strawberry_frog", seconds = -1 } }, field = "frogGift.seconds" },
@@ -184,7 +187,8 @@ return function(t: Context)
 			{ changes = { sellPrice = sells({ Common = 1_000 }) }, field = "sellPrice.Common" }, -- = the Welcome price
 			{ changes = { sellPrice = sells({ Epic = 1_800_000_000 }) }, field = "sellPrice.Epic" }, -- = the shop price
 			{ changes = { sellPrice = sells({ Exclusive = 1e15 }) }, field = "sellPrice.Exclusive" }, -- x9 > maxCoins
-			{ changes = { sellPrice = sells({ Rare = 300_000 }) }, field = "sellPrice.Rare" }, -- not a rarity yet
+			{ changes = { sellPrice = sells({ Rare = 3_750_000 }) }, field = "sellPrice.Rare" }, -- = the shop price
+			{ changes = { sellPrice = sells({ Legendary = 1 }) }, field = "sellPrice.Legendary" }, -- not a rarity id
 			{ changes = { sellFormMult = { 1, 3 } }, field = "sellFormMult" }, -- one per form
 			{ changes = { sellFormMult = { 1, 0.5, 9 } }, field = "sellFormMult[2]" },
 			{ changes = { sellFormMult = { 1, 9, 3 } }, field = "sellFormMult[3]" },
@@ -193,7 +197,7 @@ return function(t: Context)
 			{ changes = { sellHold = true }, field = "sellHold" },
 			{ changes = { sellHold = { form = 3, level = 10, rarity = "Epic" } }, field = "sellHold.form" },
 			{ changes = { sellHold = { form = 1, level = 0, rarity = "Epic" } }, field = "sellHold.level" },
-			{ changes = { sellHold = { form = 1, level = 10, rarity = "Rare" } }, field = "sellHold.rarity" },
+			{ changes = { sellHold = { form = 1, level = 10, rarity = "Legendary" } }, field = "sellHold.rarity" }, -- a name
 			{ changes = { buyBackSeconds = 0 }, field = "buyBackSeconds" },
 			{ changes = { buyBackMax = 0 }, field = "buyBackMax" },
 			{ changes = { buyBackMax = 70.5 }, field = "buyBackMax" },

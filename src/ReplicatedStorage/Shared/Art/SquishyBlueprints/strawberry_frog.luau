@@ -1,5 +1,5 @@
 --!strict
--- Strawberry Frog (Uncommon, new; spec 2026-10-09 §4): the 3D Lab StrawberryFrog (sd/toys.js) in E parts. Berry + tip E
+-- Strawberry Frog (Rare since 2026-11-01; spec 2026-10-09 §4): the 3D Lab StrawberryFrog (sd/toys.js) in E parts. Berry + tip E
 -- (the taper) and two eye bumps, all body; big eyes on the bumps; 4 seeds; a 3-leaf calyx + stem that bounce together
 -- (section Calyx); feet with toe bars. 24 visible + 6 hidden squish-face parts + Root.
 

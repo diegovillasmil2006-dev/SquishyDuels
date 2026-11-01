@@ -118,12 +118,12 @@ return function(t: Context)
 		end
 		expect.equal(byId.kitty_bread.state, "owned")
 		expect.equal(byId.toast.state, "buy")
-		-- ECONOMY_V3:163 (pens3 phase 5): a Common not owned yet has the Welcome price (D1:202), Butter 1.875M,
-		-- Birdie 1.8B, Dragon 1.1T.
+		-- ECONOMY_V3:163 (pens3 phase 5): a Common not owned yet has the Welcome price (D1:202), Butter 937.5K (half
+		-- since 2026-11-01), Birdie 1.8B, Dragon 1.1T.
 		expect.equal(byId.toast.price, Config.Economy.Pen.welcomePrice.Common)
 		expect.equal(byId.toast.price, 1_000) -- owner 2026-10-31: 3K -> 1K
 		expect.equal(byId.toast.welcomeText, Strings.format(Strings.shop.welcomePrice, { coins = "1,000" }))
-		expect.equal(byId.butter.price, 1_875_000)
+		expect.equal(byId.butter.price, 937_500)
 		expect.equal(byId.butter.welcomeText, nil)
 		expect.equal(byId.butter.state, "buy")
 		expect.equal(byId.bird.state, "needCoins")

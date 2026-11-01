@@ -179,9 +179,13 @@ return function(t: Context)
 			end
 			return out
 		end
-		expect.deepEqual(summary("snack"), { { "Uncommon", "24.00" }, { "Common", "76.00" } })
+		-- 2026-11-01: Mochi Fox and Strawberry Frog are Rare (Soft 4% each, Royal 6% each).
+		expect.deepEqual(summary("snack"), { { "Rare", "8.00" }, { "Uncommon", "16.00" }, { "Common", "76.00" } })
 		expect.deepEqual(summary("sweet"), { { "Exclusive", "0.04" }, { "Epic", "99.96" } })
-		expect.deepEqual(summary("treat"), { { "Epic", "14.00" }, { "Uncommon", "30.00" }, { "Common", "56.00" } })
+		expect.deepEqual(
+			summary("treat"),
+			{ { "Epic", "14.00" }, { "Rare", "12.00" }, { "Uncommon", "18.00" }, { "Common", "56.00" } }
+		)
 		for _, box in Boxes.list() do
 			local sum = 0
 			for _, row in Boxes.byRarity(box.id) do

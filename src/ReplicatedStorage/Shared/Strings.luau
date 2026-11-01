@@ -860,12 +860,14 @@ local Strings = {
 		dontShow = "Don't show tips",
 	},
 
-	-- Rarity names (§0.3 #3). Always shown with pips and colour too (§4.3).
+	-- Rarity names (§0.3 #3). Always shown with pips and colour too (§4.3). 2026-11-01 (owner): Rare, and Exclusive is
+	-- shown as Legendary (the rarity id stays "Exclusive").
 	rarity = {
 		common = { name = "Common", label = "COMMON" },
 		uncommon = { name = "Uncommon", label = "UNCOMMON" },
+		rare = { name = "Rare", label = "RARE" },
 		epic = { name = "Epic", label = "EPIC" },
-		exclusive = { name = "Exclusive", label = "EXCLUSIVE" },
+		exclusive = { name = "Legendary", label = "LEGENDARY" },
 		ultimateBadge = "Ultimate",
 	},
 
@@ -905,7 +907,7 @@ local Strings = {
 	-- Elimination effect names (§9.9). `epic_pending` shows Standard until the Epic effect ships.
 	elimination = {
 		standard = "Standard",
-		-- Kill banners 2026-10-16 (Art/KillStyle): each squishy above Uncommon has its own kill banner, kill sounds and
+		-- Kill banners 2026-10-16 (Art/KillStyle): each squishy above Rare has its own kill banner, kill sounds and
 		-- kill effect.
 		feather_storm = "Feather Storm",
 		sprinkle_blast = "Sprinkle Blast",
@@ -1146,7 +1148,7 @@ local Strings = {
 		passes = {
 			coins2 = { name = "2x Coins", desc = "Double coins from every squeeze." },
 			grip2 = { name = "2x Grip", desc = "Double Grip from every squeeze." },
-			lucky = { name = "Lucky Boxes", desc = "Epic and Exclusive odds ×1.5." },
+			lucky = { name = "Lucky Boxes", desc = "Epic and Legendary odds ×1.5." },
 			fast = { name = "Fast Open", desc = "Skip the shake, reveal instantly." },
 		},
 	},

@@ -79,17 +79,19 @@ return function(t: Context)
 		return pen(spots, items)
 	end
 
-	t.test("itemRate: 10 / 40 / 160 / 640 by rarity; Golden x2, Rainbow x4, Wax x1.5, x1.15 a level", function()
+	-- 2026-11-01 (owner's ladder 1 · 2 · 4 · 16 · 256): Uncommon 20, Rare 40, Legendary (Exclusive) 2560.
+	t.test("itemRate: 10 / 20 / 40 / 160 / 2560 by rarity; Golden x2, Rainbow x4, Wax x1.5, x1.15 a level", function()
 		expect.equal(PenMath.itemRate(item("kitty_bread")), 10)
-		expect.equal(PenMath.itemRate(item("butter")), 40)
+		expect.equal(PenMath.itemRate(item("butter")), 20)
+		expect.equal(PenMath.itemRate(item("mochi_fox")), 40)
 		expect.equal(PenMath.itemRate(item("bird")), 160)
-		expect.equal(PenMath.itemRate(item("dragon")), 640)
+		expect.equal(PenMath.itemRate(item("dragon")), 2560)
 		expect.equal(PenMath.itemRate(item("kitty_bread", 1)), 20)
 		expect.equal(PenMath.itemRate(item("kitty_bread", 2)), 40)
 		expect.equal(PenMath.itemRate(item("kitty_bread", 0, 1, 1)), 15)
 		expect.near(PenMath.itemRate(item("kitty_bread", 0, 2)), 11.5, 1e-9)
 		expect.near(PenMath.itemRate(item("kitty_bread", 0, 11)), 10 * 1.15 ^ 10, 1e-9)
-		expect.near(PenMath.itemRate(item("dragon", 2, 1, 7)), 640 * 4 * 12, 1e-9) -- Rainbow Galaxy Dragon
+		expect.near(PenMath.itemRate(item("dragon", 2, 1, 7)), 2560 * 4 * 12, 1e-9) -- Rainbow Galaxy Dragon
 	end)
 
 	t.test("itemRate: anything that is not a pen item earns 0", function()
@@ -141,14 +143,14 @@ return function(t: Context)
 		expect.equal(PenMath.squeezeValue(pen(3, {})), 10)
 		expect.equal(PenMath.rate(pen(3, {})), 0)
 		expect.equal(PenMath.squeezeValue(placedPen(3, { item("kitty_bread") })), 10)
-		expect.equal(PenMath.squeezeValue(placedPen(3, { item("dragon") })), 640)
+		expect.equal(PenMath.squeezeValue(placedPen(3, { item("dragon") })), 2560)
 		expect.equal(PenMath.squeezeValue(pen(3, { at(0, item("dragon")) })), 10) -- in the Toy Box: no pay
 		local two = placedPen(3, { item("kitty_bread"), item("butter") })
-		expect.equal(PenMath.rate(two), 50)
-		expect.equal(PenMath.squeezeValue(two), 50)
+		expect.equal(PenMath.rate(two), 30)
+		expect.equal(PenMath.squeezeValue(two), 30)
 		-- Only the placed spots count: the 4th squishy waits in the Toy Box.
 		local four = placedPen(3, { item("dragon"), item("bird"), item("butter"), item("kitty_bread") })
-		expect.equal(PenMath.rate(four), 640 + 160 + 40)
+		expect.equal(PenMath.rate(four), 2560 + 160 + 20)
 		local levelled = placedPen(3, { item("kitty_bread", 0, 2) })
 		expect.near(PenMath.squeezeValue(levelled), 11.5, 1e-9)
 		expect.equal(PenMath.squeezeGrip(levelled), 11)
@@ -175,7 +177,8 @@ return function(t: Context)
 		do
 			table.insert(all, item(kind))
 		end
-		expect.equal(PenMath.squeezeValue(placedPen(12, all)), 1_470)
+		-- 2026-11-01: Dragon 2560 + 4 Epics 640 + Butter, Chocolate 20 each + Mochi Fox, Strawberry Frog 40 each + 3 x 10.
+		expect.equal(PenMath.squeezeValue(placedPen(12, all)), 3_350)
 	end)
 
 	t.test("spotPrice: the J table; 3, 13, 4.5 and non-numbers give nil", function()
@@ -470,11 +473,11 @@ return function(t: Context)
 	-- Pens3 phase 7 (selling + the 10-minute buy-back) -------------------------------------------------------------
 
 	t.test(
-		"sellPrice: Common 900, Uncommon 150K, Epic 90M, Dragon 225B; Golden x3, Rainbow x9; level and coat free",
+		"sellPrice: Common 900, Uncommon 75K, Rare 300K, Epic 90M, Dragon 225B; Golden x3, Rainbow x9; level and coat free",
 		function()
 			expect.equal(PenMath.sellPrice(item("toast")), 900) -- owner 2026-10-31: under the 1K Welcome price
-			expect.equal(PenMath.sellPrice(item("butter")), 150_000)
-			expect.equal(PenMath.sellPrice(item("mochi_fox")), 150_000) -- Uncommon until the Rare tier (phase 22)
+			expect.equal(PenMath.sellPrice(item("butter")), 75_000) -- 2026-11-01: half, with its halved price
+			expect.equal(PenMath.sellPrice(item("mochi_fox")), 300_000) -- Rare since 2026-11-01 (V3's Rare 300K)
 			expect.equal(PenMath.sellPrice(item("bird")), 90_000_000)
 			expect.equal(PenMath.sellPrice(item("dragon")), 225_000_000_000)
 			expect.equal(PenMath.sellPrice(item("toast", 1)), 2_700)
@@ -582,7 +585,7 @@ return function(t: Context)
 			expect.deepEqual(PenMath.sellAllIds(pen(3, { at(1, item("kitty_bread")) })), {})
 			expect.deepEqual(PenMath.sellAllIds(nil), {})
 			local sale = PenMath.sellDecision(box, PenMath.sellAllIds(box)) :: any
-			expect.equal(sale.coins, 3 * 900 + 150_000 + 2 * 90_000_000)
+			expect.equal(sale.coins, 3 * 900 + 75_000 + 2 * 90_000_000)
 		end
 	)
 
@@ -914,13 +917,13 @@ return function(t: Context)
 
 	t.test("rate, squeezeValue and Feed All count the shelf and the TOP spot like the pen", function()
 		local kitty = at(1, item("kitty_bread"))
-		local dragon = at(24, item("dragon")) -- 640/s on the TOP spot
-		local butter = at(13, item("butter")) -- 40/s on the shelf
+		local dragon = at(24, item("dragon")) -- 2560/s on the TOP spot (2026-11-01)
+		local butter = at(13, item("butter")) -- 20/s on the shelf (2026-11-01)
 		local box = shelfPen(3, 2, true, { kitty, dragon, butter })
-		expect.equal(PenMath.rate(box), 10 + 640 + 40)
-		expect.equal(PenMath.squeezeValue(box), 690)
+		expect.equal(PenMath.rate(box), 10 + 2560 + 20)
+		expect.equal(PenMath.squeezeValue(box), 2590)
 		box.top = false
-		expect.equal(PenMath.rate(box), 50) -- an unbought TOP spot earns nothing
+		expect.equal(PenMath.rate(box), 30) -- an unbought TOP spot earns nothing
 		box.top = true
 		local plan = PenMath.feedAllPlan(box, { candy_drop = 3 }, 10)
 		expect.deepEqual(plan.levels, { [kitty.id] = 2, [butter.id] = 2, [dragon.id] = 2 })
@@ -1172,15 +1175,16 @@ return function(t: Context)
 		expect.near(PenMath.incomeMult(incomePen(99, 0, {}), "coins"), 1.07 ^ 20, 1e-9)
 		expect.near(PenMath.incomeMult(incomePen(2.9, 0, {}), "coins"), 1.07 ^ 2, 1e-12)
 		-- The rate: both lines (the pen, the shelf, the away rate DataService stamps).
+		-- 2026-11-01: a Dragon earns 2560 a second (Legendary power 256).
 		local dragon = incomePen(2, 3, { item("dragon") })
-		expect.near(PenMath.rate(dragon), 640 * 1.07 ^ 2 * 1.05 ^ 3, 1e-6)
+		expect.near(PenMath.rate(dragon), 2560 * 1.07 ^ 2 * 1.05 ^ 3, 1e-6)
 		-- The squeeze value (squeezes, duels, matches, the highway, Grip): ALL only, on top of the floor of 10.
-		expect.near(PenMath.squeezeValue(dragon), 640 * 1.05 ^ 3, 1e-6)
+		expect.near(PenMath.squeezeValue(dragon), 2560 * 1.05 ^ 3, 1e-6)
 		expect.near(PenMath.squeezeValue(incomePen(5, 2, {})), 10 * 1.05 ^ 2, 1e-9)
-		expect.equal(PenMath.squeezeGrip(incomePen(0, 2, { item("dragon") })), math.floor(640 * 1.05 ^ 2))
+		expect.equal(PenMath.squeezeGrip(incomePen(0, 2, { item("dragon") })), math.floor(2560 * 1.05 ^ 2))
 		-- None bought: as before.
-		expect.equal(PenMath.rate(incomePen(0, 0, { item("dragon") })), 640)
-		expect.equal(PenMath.squeezeValue(incomePen(0, 0, { item("dragon") })), 640)
+		expect.equal(PenMath.rate(incomePen(0, 0, { item("dragon") })), 2560)
+		expect.equal(PenMath.squeezeValue(incomePen(0, 0, { item("dragon") })), 2560)
 		-- INCOME step 2: the rate's boost alone (the coin labels over each squishy and the pen cards use it).
 		expect.near(PenMath.rateBoost(dragon), 1.07 ^ 2 * 1.05 ^ 3, 1e-12)
 		expect.equal(PenMath.rateBoost(nil), 1)

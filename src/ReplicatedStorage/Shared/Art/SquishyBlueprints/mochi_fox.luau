@@ -1,5 +1,5 @@
 --!strict
--- Mochi Fox (Uncommon, new; spec 2026-10-09 §4): the 3D Lab MochiFox (sd/toys.js) in E/TRI parts. A cream mochi body
+-- Mochi Fox (Rare since 2026-11-01; spec 2026-10-09 §4): the 3D Lab MochiFox (sd/toys.js) in E/TRI parts. A cream mochi body
 -- with a flared base, an orange hood overlay (top and back), TRI ears with cream inners (sections EarL/EarR), a 4-E tail
 -- curling round its left with a white tip (section Tail), a sakura pin, happy-arc eyes. 24 visible + 6 hidden
 -- squish-face parts + Root.

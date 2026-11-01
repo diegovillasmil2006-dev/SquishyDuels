@@ -3,7 +3,8 @@
 -- §5.8 (throw stat bands). What InventoryController shows, as plain data:
 --   entries(defs, owned, equipped, isNew)  one entry per Catalog squishy, sorted: equipped first, then rarity
 --                                          descending, then name (§11.6)
---   FILTERS / nextFilter(f, dir)           All, Common, Uncommon, Epic, Exclusive; L1 / R1 cycle them (§11.4)
+--   FILTERS / nextFilter(f, dir)           All, Common, Uncommon, Rare, Epic, Exclusive (shown Legendary); L1 / R1
+--                                          cycle them (§11.4)
 --   visible(entries, filter, showNotOwned) the cards a filter shows ("Show locked" off hides unowned ones)
 --   collected(entries)                     owned, total ("Collected {n}/8")
 --   columns(gridWidth, cardWidth, pad)     floor(gridWidth / (cardWidth + pad)), at least 1 (§11.6)
@@ -176,7 +177,7 @@ export type CardTags = { twoRows: boolean, leftY: number, rightY: number }
 
 -- Constants
 
-local FILTERS: { Filter } = { "All", "Common", "Uncommon", "Epic", "Exclusive" }
+local FILTERS: { Filter } = { "All", "Common", "Uncommon", "Rare", "Epic", "Exclusive" } -- Rare: 2026-11-01
 local BANDS = Config.Combat.Bands
 -- §10.8 order: Speed, Size, Reload, Windup, Arc; each from a SquishyDef.throw field and its band.
 local STATS: { { stat: string, field: string, unitKey: string } } = {

@@ -454,9 +454,9 @@ return function(t: Context)
 		table.insert(
 			w.profile.pen.items,
 			{ id = 3, kind = "dragon", form = 0, level = 1, coat = 0, slot = 3, locked = false }
-		) -- + 640
+		) -- + 2560 (Legendary power 256 since 2026-11-01)
 		expect.equal(QuestService.claim(w.player, done.id).ok, true)
-		expect.deepEqual(w.grants, { { amount = 150 * 660, reason = "quest" } })
+		expect.deepEqual(w.grants, { { amount = 150 * 2580, reason = "quest" } })
 		finish()
 	end)
 

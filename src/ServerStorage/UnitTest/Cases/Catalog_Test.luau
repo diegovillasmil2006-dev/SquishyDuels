@@ -95,7 +95,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.15,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 1_875_000,
+		shopPrice = 937_500, -- 2026-11-01: half (Uncommon power 4 -> 2)
 	},
 	{
 		id = "chocolate",
@@ -108,7 +108,7 @@ local EXPECTED: { Expected } = {
 		windup = 0.18,
 		trail = "ribbon",
 		elimination = "standard",
-		shopPrice = 1_875_000,
+		shopPrice = 937_500, -- 2026-11-01: half (Uncommon power 4 -> 2)
 	},
 	{
 		id = "bird",
@@ -180,7 +180,7 @@ local EXPECTED: { Expected } = {
 	{
 		id = "mochi_fox",
 		name = "Mochi Fox",
-		rarity = "Uncommon",
+		rarity = "Rare", -- 2026-11-01
 		speed = 95,
 		gravity = 30,
 		radius = 0.9,
@@ -193,7 +193,7 @@ local EXPECTED: { Expected } = {
 	{
 		id = "strawberry_frog",
 		name = "Strawberry Frog",
-		rarity = "Uncommon",
+		rarity = "Rare", -- 2026-11-01
 		speed = 90,
 		gravity = 40,
 		radius = 1.4,
@@ -390,14 +390,16 @@ local PRESENTATION: { [string]: Presentation } = {
 	},
 }
 
-local RARITY_ORDER = { "Common", "Uncommon", "Epic", "Exclusive" }
+local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } -- Rare: 2026-11-01
 
 -- DESIGN §4.3 rarity table. contrast = label text on the rarity colour.
 local RARITY_STYLE = {
 	Common = { color = "#A9B4C2", pips = 1, shape = "dot", label = "Ink", contrast = 6.4, stroke = 2 },
 	Uncommon = { color = "#4CC38A", pips = 2, shape = "dot", label = "Ink", contrast = 6.0, stroke = 3 },
-	Epic = { color = "#7C3AED", pips = 3, shape = "dot", label = "White", contrast = 5.7, stroke = 3 },
-	Exclusive = { color = "#FF9F1C", pips = 4, shape = "diamond", label = "Ink", contrast = 6.5, stroke = 4 },
+	-- 2026-11-01 (owner): Rare, sky blue, 3 pips; Epic 4 and Exclusive (shown Legendary) 5.
+	Rare = { color = "#38A6F5", pips = 3, shape = "dot", label = "Ink", contrast = 5.1, stroke = 3 },
+	Epic = { color = "#7C3AED", pips = 4, shape = "dot", label = "White", contrast = 5.7, stroke = 3 },
+	Exclusive = { color = "#FF9F1C", pips = 5, shape = "diamond", label = "Ink", contrast = 6.5, stroke = 4 },
 }
 
 -- DESIGN §7.2 tokens and reserved gameplay colours.
@@ -512,7 +514,8 @@ return function(t: Context)
 		for id, siblingId in SIBLING do
 			local def, sibling = Catalog.get(id), Catalog.get(siblingId)
 			assert(def ~= nil and sibling ~= nil, id .. " or " .. siblingId .. " is missing")
-			expect.equal(def.rarity, sibling.rarity)
+			-- 2026-11-01: Mochi Fox and Strawberry Frog moved up to Rare; they still throw like their Uncommon siblings.
+			expect.equal(def.rarity, rows[id].rarity)
 			expect.deepEqual(def.throw, sibling.throw)
 			-- Spec phase 5: the Epics have their own ultimates (the design's, ults.js:3-6); the others have none.
 			expect.equal(def.ultimateId, rows[id].ultimate)
@@ -546,8 +549,8 @@ return function(t: Context)
 	end)
 
 	-- Pens3 phase 5 (ECONOMY_V3:163, each at most its Pricing.ceiling): Commons 789K (the first one 3K,
-	-- Pricing.shopPrice), Butter / Chocolate 1.875M, Mochi Fox / Strawberry Frog 3.75M, Epics 1.8B, Dragon 1.1T (were
-	-- the spec 2026-10-12 §6 ladder 10K / 2.7M / 1.7B / 1.1T).
+	-- Pricing.shopPrice), Butter / Chocolate 1.875M (937.5K since 2026-11-01: Uncommon power halved), Mochi Fox /
+	-- Strawberry Frog 3.75M, Epics 1.8B, Dragon 1.1T (were the spec 2026-10-12 §6 ladder 10K / 2.7M / 1.7B / 1.1T).
 	t.test("shop prices match the V3 prices and the starter is not sold", function()
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
@@ -658,10 +661,10 @@ return function(t: Context)
 
 	-- Kill banners (2026-10-16): Common and Uncommon squishies share the standard kill set; every squishy above
 	-- Uncommon has a kill set of its own (Art/KillStyle), built around it, and no two share one.
-	t.test("kill sets: standard up to Uncommon, one of its own above Uncommon", function()
+	t.test("kill sets: standard up to Rare, one of its own above Rare", function()
 		local KillStyle = t.requireShared("Art/KillStyle")
 		local Rarity = t.requireShared("Rarity")
-		local uncommon = Rarity.index("Uncommon")
+		local uncommon = Rarity.index("Rare") -- 2026-11-01: Rare keeps the standard set ("Standard for now")
 		local owners: { [string]: string } = {}
 		for _, def in Catalog.list() do
 			local index = Rarity.index(def.rarity)
@@ -785,8 +788,9 @@ return function(t: Context)
 		expect.equal(#Catalog.byRarity(nil), 0)
 	end)
 
-	t.test("getPower follows Config.Economy.SquishyPower (1 / 4 / 16 / 64) unless overridden", function()
-		local byRarity = { Common = 1, Uncommon = 4, Epic = 16, Exclusive = 64 } -- spec 2026-10-12 §6
+	t.test("getPower follows Config.Economy.SquishyPower (1 / 2 / 4 / 16 / 256) unless overridden", function()
+		-- spec 2026-10-12 §6; 2026-11-01 the owner's ladder "1 · 2 · 4 · 16 · 256"
+		local byRarity = { Common = 1, Uncommon = 2, Rare = 4, Epic = 16, Exclusive = 256 }
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
 			expect.equal(Catalog.getPower(row.id), if def.power ~= nil then def.power else byRarity[row.rarity])
@@ -817,7 +821,7 @@ return function(t: Context)
 
 	-- Rarity (§2.2, §4.3, §6.5) --------------------------------------------------------------------------------------
 
-	t.test("Rarity.ORDER is Common, Uncommon, Epic, Exclusive", function()
+	t.test("Rarity.ORDER is Common, Uncommon, Rare, Epic, Exclusive", function()
 		expect.deepEqual(Rarity.ORDER, RARITY_ORDER)
 		expect.truthy(table.isfrozen(Rarity.ORDER))
 	end)
@@ -836,7 +840,7 @@ return function(t: Context)
 		expect.truthy(Rarity.compare("Legendary", "Common") < 0) -- not a rarity: ranks below Common
 	end)
 
-	t.test("Rarity.get: Strings name and label keys, pips 1-4, a trail for every rarity above Common", function()
+	t.test("Rarity.get: Strings name and label keys, pips 1-5, a trail for every rarity above Common", function()
 		for position, rarity in RARITY_ORDER do
 			local info = Rarity.get(rarity)
 			assert(info ~= nil, rarity .. " has no info")

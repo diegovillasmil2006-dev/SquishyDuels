@@ -163,6 +163,7 @@ local DAMPING_FPS = 60 -- OrbitControls damps once a frame at 60 fps
 local REVEAL_SOUNDS: { [string]: string } = {
 	Common = "reveal.common",
 	Uncommon = "reveal.uncommon",
+	Rare = "reveal.uncommon", -- 2026-11-01: the Rare tier has no reveal sound of its own yet
 	Epic = "reveal.epic",
 	Exclusive = "reveal.exclusive",
 }
@@ -892,7 +893,8 @@ end
 -- Diego's box odds sign (FULL FINAL lobby, Hub.MysteryBox.OddsSign; owner 2026-10-30 "The real odds" in his look):
 -- its 3 plaques, top to bottom, show the box's chance of each rarity, commonest first ("COMMON  76%", box.signLine; a
 -- whole percent drops its ".00"), "" for a plaque the box has no rarity for.
--- shortcut: a box with more than 3 rarities shows its 3 commonest; no box has more today.
+-- shortcut: a box with more than 3 rarities shows its 3 commonest; only the Royal Box has 4 (Rare, 2026-11-01), and
+-- it is never on a stand (free on day 7). A 4th plaque is Diego's call once a stand box has 4.
 function BoxFormat.signLines(boxId: string): { string }
 	local rows = Boxes.byRarity(boxId) -- rarest first
 	local lines: { string } = {}

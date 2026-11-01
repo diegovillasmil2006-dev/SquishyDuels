@@ -24,7 +24,7 @@
 --   Boxes.percentText(weight)        -> "32.00": weight / 100 with two decimals, integer math (no float rounding)
 --   Boxes.odds(boxId)                -> { OddsRow } {id, weight, percent, text} in item order (empty for an unknown id)
 --   Boxes.byRarity(boxId)            -> { RarityRow } {rarity, weight, percent, text}, rarity descending
---                                       (Snack: Uncommon 24.00 · Common 76.00)
+--                                       (Snack: Rare 8.00 · Uncommon 16.00 · Common 76.00)
 --   Boxes.totalText(boxId)           -> "100.00" (the sum of the weights), nil for an unknown id
 --   Boxes.containing(squishyId)      -> { ContainingRow } {boxId, weight, percent, text, paid} in list order
 --   Boxes.fixedItem(boxId, n)        -> string?: the squishy of open n + 1 in the box's fixed order (n = the opens so
@@ -77,8 +77,8 @@ local function item(id: string, weight: number): BoxItem
 end
 
 -- §6.4, in order. Pens3 phase 5 (ECONOMY_V3:159-161; Snack = the Soft Box, Treat = the Royal Box): Soft 150K, the 4
--- Commons 19% each, Butter and Chocolate 8% each, Mochi Fox and Strawberry Frog 4% each (Rare-to-be: their rarity moves
--- in phase 22); Sweet 450M, the 4 Epics 24.99% each and Dragon 0.04%; Royal (free on day 7, never sold) Commons 14%,
+-- Commons 19% each, Butter and Chocolate 8% each, Mochi Fox and Strawberry Frog 4% each (Rare since 2026-11-01,
+-- phase 22); Sweet 450M, the 4 Epics 24.99% each and Dragon 0.04%; Royal (free on day 7, never sold) Commons 14%,
 -- Butter and Chocolate 9%, Mochi Fox and Strawberry Frog 6%, Epics 3.5% each. New items sit right after their
 -- same-rarity siblings and Dragon stays last.
 local LIST: { BoxDef } = {

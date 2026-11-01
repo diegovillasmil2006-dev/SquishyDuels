@@ -206,14 +206,14 @@ return function(t: Context)
 	end)
 
 	t.test("rewards are the squeezes × the squeeze value of the pen in the context (pens3 phase 1)", function()
-		-- The Dragon (power 64) walks in the pen: 640 Coins a second, so 640 Coins a squeeze.
+		-- The Dragon (power 256 since 2026-11-01) walks in the pen: 2560 Coins a second, so 2560 Coins a squeeze.
 		local pen = {
 			spots = 3,
 			nextId = 2,
 			items = { { id = 1, kind = "dragon", form = 0, level = 1, coat = 0, slot = 1, locked = false } },
 		}
 		local value = PenMath.squeezeValue(pen)
-		expect.equal(value, 640)
+		expect.equal(value, 2560)
 		local rich = { owned = ctx.owned, equipped = ctx.equipped, now = NOW, pen = pen }
 		local defs = QuestDefs.starter()
 		local board = QuestFormat.board(quests({ entry(1, "squeeze_any", 100, 37) }), rich)

@@ -58,7 +58,14 @@ local Pen = {
 	-- Coins (Golden ×3, Rainbow ×9: they are 3 and 9 copies; food and coatings are not refunded). V3's Rare 300K comes
 	-- with the Rare tier (phase 22). ValidatePen keeps each price below what that rarity can be bought for.
 	-- Owner 2026-10-31 ("Commons sell for 900"): Common 1K -> 900, under the new 1K Welcome price (buying to sell loses).
-	sellPrice = { Common = 900, Uncommon = 150_000, Epic = 90_000_000, Exclusive = 225_000_000_000 } :: {
+	-- 2026-11-01 (the Rare tier, owner "Yes, build it"): Rare 300K (V3); Uncommon 150K -> 75K with its halved price.
+	sellPrice = {
+		Common = 900,
+		Uncommon = 75_000,
+		Rare = 300_000,
+		Epic = 90_000_000,
+		Exclusive = 225_000_000_000,
+	} :: {
 		[string]: number,
 	},
 	sellFormMult = { 1, 3, 9 },
