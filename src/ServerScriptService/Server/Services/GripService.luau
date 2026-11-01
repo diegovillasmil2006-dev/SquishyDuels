@@ -1,8 +1,8 @@
 --!strict
 -- GripService (server only). DESIGN §17.2-§17.4, §17.3.1 step 8a, §17.3.4, §17.6, §17.7, §17.9, §17.10.
--- Grip is a lobby-only stat: never a currency, never sold, never read by duel or matchmaking code (§17.2). This
--- service is its only runtime writer (§17.2 rule 2: GripService, ProfileSchema's migration and sanitize, and the
--- Studio DebugHooks through the debug* functions below). There is no Grip remote: Grip comes only from
+-- Grip is a lobby-only stat: never a currency, never sold for Robux, never read by duel or matchmaking code (§17.2).
+-- This service is its only runtime writer (§17.2 rule 2: GripService, ProfileSchema's migration and sanitize, and the
+-- Studio DebugHooks through the debug* functions below). Its one remote is GripBuy (2026-10-31). Grip comes only from
 --   * addFromSqueeze(p, tier) - step 8a of a squeeze SqueezeService accepted, after the earnings limit decided the
 --     Coins, whether or not it paid. One Double Grip point is used when there is one (SqueezeLimit.spend on
 --     grip.rested with Config.Grip.Rested) and the Grip is PenMath.squeezeGrip(profile.pen) (pens3 phase 1: 1 squeeze
@@ -19,6 +19,13 @@
 --     addFromMatch: one own squeeze's Grip (PenMath.squeezeGrip) clamped to maxGripPerEvent, then × squeezes, so a top
 --     landing is never one clipped event; never doubled, no Double Grip point; a squeezes count outside 1..
 --     Config.Economy.Highway.pay.grip gives nothing. The same anomaly counter, toasts and level changes.
+--   * buyLevel(p, expectedPrice) - the GripBuy remote (owner 2026-10-31, plan step 4: buy Grip with Coins): the next
+--     level for GripMath.buyPrice Coins (Config.Grip.Buy.coinsPerGrip a missing Grip). Refusals: expectedPrice not
+--     whole Coins -> net.invalid; no ready grip -> data.notReady; the max level -> gripBuy.max; a price above
+--     expectedPrice -> gripBuy.priceChanged (the price only falls inside a level as squeezes add Grip, so the price now
+--     is charged when it is at most the shown one); the spend (reason "grip") -> economy.notEnoughCoins and the like.
+--     Then the total becomes the next level's total: no maxGripPerEvent clamp and no anomaly count (a buy is not an
+--     event), the usual intro toast, level-up toast, rank broadcast and LevelChanged.
 -- Build plan Phase 6 removed slow training (the per-player tick on a pad, its bank grip.afk and Config.Grip.Afk) and
 -- the trainers (upgradeTrainer, the TrainerUpgrade RF and grip.trainer): an old save's grip.afk and grip.trainer are
 -- unknown fields nothing reads, and a grip field without them is valid. Pens3 phase 2 removed addFromCapsule (with
@@ -64,8 +71,11 @@ local SqueezeLimit = require(Shared.SqueezeLimit)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 
+local Validate = require(Shared.Util.Validate)
+
 local Services = script.Parent
 local MatchRewards = require(Services.Parent.Logic.MatchRewards)
+local EconomyService = require(Services.EconomyService)
 local NetService = require(Services.NetService)
 local StateService = require(Services.StateService)
 
@@ -97,6 +107,7 @@ export type Deps = {
 	setLevelAttribute: (player: any, level: number) -> (),
 	migratedFrom: (player: any) -> number?, -- schema version a migration started from this session (nil = none)
 	displayName: (player: any) -> string,
+	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?), -- 2026-10-31 buy Grip
 }
 
 -- What one Grip write did (inside DataService.mutate): the gain, i.e. what the total really gained (less than the
@@ -130,6 +141,13 @@ local NOTICE_RANK_UP = "grip.rankUp"
 local NOTICE_HEAD_START = "grip.headStart"
 local NOTICE_WELCOME = "grip.welcome"
 local NOTICE_WELCOME_BACK = "grip.welcomeBack"
+-- 2026-10-31 buy Grip (see the header).
+local REMOTE_BUY = "GripBuy"
+local BUY_REASON = "grip"
+local CODE_INVALID = "net.invalid"
+local CODE_NOT_READY = "data.notReady"
+local CODE_BUY_MAX = "gripBuy.max"
+local CODE_PRICE_CHANGED = "gripBuy.priceChanged"
 
 -- Module table
 
@@ -237,6 +255,9 @@ local function defaultDeps(): Deps
 				return (player :: Player).DisplayName
 			end
 			return tostring(player)
+		end,
+		trySpend = function(player: any, amount: number, reason: string): (boolean, string?)
+			return EconomyService.trySpend(player, amount, reason)
 		end,
 	}
 end
@@ -570,6 +591,50 @@ function GripService.addFromHighway(player: any, squeezes: number): number
 	return written.gain
 end
 
+-- 2026-10-31 buy Grip: the GripBuy remote (see the header for the order of the checks). The reply's data is the new
+-- {level, total}.
+function GripService.buyLevel(player: any, expectedPrice: any): any
+	if Validate.coins(expectedPrice) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local session = ensureSession(player)
+	local grip = readyGrip(player)
+	if grip == nil or not Config.Grip.enabled then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local _, price = GripMath.buyPrice(grip.total)
+	if price == nil then
+		return NetService.err(CODE_BUY_MAX, false)
+	end
+	if price > expectedPrice then
+		return NetService.err(CODE_PRICE_CHANGED, false)
+	end
+	if session.level == nil then
+		setLevel(session, GripMath.levelFor(grip.total), true) -- the Loaded baseline was missed: set it silently
+	end
+	local spent, why = deps.trySpend(player, price, BUY_REASON)
+	if not spent then
+		return NetService.err(if why == "notEnoughCoins" then "economy.notEnoughCoins" else CODE_NOT_READY, false)
+	end
+	local written = writeGrip(player, function(live: GripState): Written
+		local before = live.total
+		live.total = math.max(before, GripMath.clampTotal(GripMath.progress(before).nextTotal))
+		return { gain = live.total - before, before = before, after = live.total, doubled = false }
+	end)
+	if written == nil then
+		-- Cannot happen without a yield after the spend (the session was ready a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: a Grip level was paid ({price} Coins) but could not be written`)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	deps.markDirty(player, FIELD)
+	if written.before <= 0 and written.after > 0 then
+		notice(player, NOTICE_INTRO, nil, "info")
+	end
+	setLevel(session, GripMath.levelFor(written.after), false)
+	log:info(`user {userIdOf(player)} bought Grip Lv {session.level} for {price} Coins`)
+	return NetService.ok({ level = session.level, total = written.after })
+end
+
 -- Sets the level baseline from the loaded profile, silently (no toasts or broadcast). With `withToasts` (a
 -- DataService.Loaded event) the load toasts follow. Profiles that are not ready or read-only are left alone.
 function GripService.refreshBaseline(player: any, withToasts: boolean?)
@@ -706,6 +771,9 @@ function GripService.init()
 		if active then
 			GripService.refreshBaseline(player, false)
 		end
+	end)
+	NetService.onInvoke(REMOTE_BUY, function(player: Player, expectedPrice: any): any
+		return GripService.buyLevel(player, expectedPrice)
 	end)
 end
 

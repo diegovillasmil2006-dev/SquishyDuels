@@ -14,7 +14,7 @@ local GearShop = {
 		rotation = 90,
 	},
 	-- INCOME step 2: the INCOME cards' tile colours (Palette tokens; UI/IncomeFormat), SQUISHY COINS and ALL EARNINGS.
-	income = { colors = { coins = "Lemon", all = "UIMint" } },
+	income = { colors = { coins = "Lemon", all = "UIMint", grip = "StickerGripTop" } }, -- grip: 2026-10-31 buy Grip
 	-- 2026-10-31 shop restock: the RESTOCK cards' tile colours by deal (Palette tokens; UI/RestockFormat).
 	restock = { colors = { golden = "StickerGoldTop", rainbow = "StickerBoxSweetTop", rare = "UIMint" } },
 	-- A gear card: the pass card's look (Config.UI.Shop.rows) a little taller, its text stacked over its price chip

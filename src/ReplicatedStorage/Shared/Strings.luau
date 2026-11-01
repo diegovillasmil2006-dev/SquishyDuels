@@ -237,6 +237,11 @@ local Strings = {
 			priceChanged = "The price changed. Please check it again.",
 			paused = "Buying is paused for a moment. Try again soon.",
 		},
+		-- 2026-10-31 buy Grip (GripBuy; GripMath.buyPrice, GripService.buyLevel).
+		gripBuy = {
+			max = "Your Grip is at the top level!",
+			priceChanged = "The price changed. Please check it again.",
+		},
 	},
 
 	-- Small texts reused by many screens.
@@ -1209,10 +1214,13 @@ local Strings = {
 	income = {
 		tab = "INCOME",
 		section = "INCOME",
-		names = { coins = "Squishy Coins", all = "All Earnings" },
+		names = { coins = "Squishy Coins", all = "All Earnings", grip = "Grip" },
 		lines = { coins = "x{now} -> x{next} squishy coins", all = "x{now} -> x{next} on everything" },
 		maxLine = "Fully upgraded!",
 		bought = "{name} is now level {level}!",
+		-- 2026-10-31 buy Grip: the GRIP card (IncomeFormat), its line and its max line.
+		gripLine = "Lv {now} -> Lv {next} Grip",
+		gripMax = "Top Grip level!",
 	},
 
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).

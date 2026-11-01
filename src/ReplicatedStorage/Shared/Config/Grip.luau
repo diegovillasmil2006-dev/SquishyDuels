@@ -1,6 +1,7 @@
 --!strict
 -- Config.Grip: Grip training (DESIGN §17, approved 2026-10-05). Shared, data only. Every value is [P].
--- Grip is a lobby-only stat: never a currency, never sold, never read by duel or matchmaking code (§17.2).
+-- Grip is a lobby-only stat: never a currency, never sold for Robux, never read by duel or matchmaking code (§17.2).
+-- Owner 2026-10-15 / 2026-10-31: it can be bought with Coins (Buy, below).
 -- Pads are indexed by GripTier (WorldLayout gives each squeeze station its tier). Config.validate checks the rules
 -- G1 (levels), G2 (pads), G5 (caps and timers) and G8 (world, with WorldLayout) from Part 3 on; G3 (squeeze ceiling)
 -- and G6 (Strings names) from Part 5; G7 (Robux allowlist)
@@ -187,6 +188,10 @@ local Grip = {
 	-- [P] Rolling-hour anomaly log (log only). The honest top hour at SV 9.9B is about 3.3e14 (8,000 squeezes × Ring 2,
 	-- Double Grip's 1,440 doubled squeezes, 120 highway landings × 60 squeezes × Ring 2); the old 7.96e13 flagged it.
 	gripAlertPerHour = 400_000_000_000_000,
+	-- Owner 2026-10-31 (plan step 4, "2 coins"): the next level can be bought with Coins, every Grip still missing for
+	-- it at coinsPerGrip Coins (GripMath.buyPrice; GripService.buyLevel, the GripBuy remote). A buy is no event: no
+	-- maxGripPerEvent clamp and no anomaly count.
+	Buy = { coinsPerGrip = 2 },
 	-- G-E / G7b (lobby spec 2026-10-11 §11; was allowBundlesWithTrainer, then allowBundlesWithCapsules until pens3
 	-- phase 3): coin bundles stay off while Grip is on.
 	allowCoinBundles = false,

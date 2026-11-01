@@ -13,6 +13,8 @@
 -- API:
 --   levelFor(total, cfg?)                     -> level (1..maxLevel): the highest level whose LevelTotals <= total
 --   progress(total, cfg?)                     -> Progress (level, the level's start and the next level's total)
+--   buyPrice(total, cfg?)                     -> (missing?, price?): the Grip still missing for the next level and
+--                                                its Coins (Grip.Buy.coinsPerGrip each); nil, nil at the max level
 --   rankFor(level, cfg?)                      -> (Rank, index): the rank of a level (Lv 1 "soft" .. Lv 50 "master")
 --   nextRank(level, cfg?)                     -> (Rank?, index?): the first rank above that level
 --   restedMinutes(restedValue, cfg?)          -> "Double Grip: about {minutes} min" (§17.3.4)
@@ -181,6 +183,18 @@ function GripMath.progress(total: number, cfg: GripConfig?): Progress
 		need = nextTotal,
 		isMax = isMax,
 	}
+end
+
+-- Buy Grip (owner 2026-10-31): the Grip still missing for the next level and its price in Coins (Grip.Buy.coinsPerGrip
+-- each); nil, nil at the max level.
+function GripMath.buyPrice(total: number, cfg: GripConfig?): (number?, number?)
+	local c = sections(cfg)
+	local p = GripMath.progress(total, c)
+	if p.isMax then
+		return nil, nil
+	end
+	local missing = p.nextTotal - p.total
+	return missing, missing * c.Grip.Buy.coinsPerGrip
 end
 
 function GripMath.rankFor(level: number, cfg: GripConfig?): (Rank, number)

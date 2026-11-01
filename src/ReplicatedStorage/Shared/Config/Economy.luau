@@ -50,6 +50,7 @@ local Economy = {
 		"gear", -- gear step 2: a gear step bought (HighwayService.buyGear)
 		"event", -- 2026-10-31: a timed event's pay, a candy from the candy rain (EventService)
 		"visit", -- 2026-10-31: a base owner's tip from a visitor's squeeze (SqueezeService, Config.Social.Visits)
+		"grip", -- 2026-10-31: the next Grip level bought with Coins (GripService.buyLevel, Config.Grip.Buy)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
 	},

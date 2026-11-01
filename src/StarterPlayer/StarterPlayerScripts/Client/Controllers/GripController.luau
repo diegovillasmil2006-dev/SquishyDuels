@@ -138,6 +138,7 @@ local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 local UiIdle = require(Client.Anim.UiIdle)
 local Button = require(Client.UI.Components.Button)
+local CoinCapsule = require(Client.UI.Components.CoinCapsule)
 local Create = require(Client.UI.Create)
 local Focus = require(Client.UI.Focus)
 local HudFormat = require(Client.UI.HudFormat)
@@ -225,6 +226,8 @@ local GRIP = Config.Grip
 local UI_GRIP = Config.UI.Grip
 local RESTED = GRIP.Rested
 local SCREEN_PANEL = "grip"
+local SCREEN_SHOP = "shop" -- 2026-10-31 buy Grip: the "+" opens it on INCOME
+local PLUS = Config.UI.Sticker.hud.coinPlus
 local SCREEN_IDLE = "gripIdle"
 local IDLE_BUTTON = "GripIdle_KeepGoingButton"
 local HUD_GUI = "SD_Hud"
@@ -604,6 +607,30 @@ local function buildCard(c: Cleanup.Cleanup)
 	cardFoam(face)
 	local squash: UIScale = Create("UIScale", { Name = "Scale", Scale = 1, Parent = root })
 	Focus.decorate(root, Theme.Radius.panel)
+	-- 2026-10-31 buy Grip (owner "Grip bar + Shop"; a stand-in until Diego draws it): the coin pill's green "+"
+	-- (CoinCapsule.plus) right of the row, its tap target at least Touch.minTarget; it opens the Shop on INCOME, where
+	-- the GRIP card buys the next level.
+	local buyTarget = math.max(PLUS.face + PLUS.lip, Config.UI.Touch.minTarget)
+	local buy: TextButton = Create("TextButton", {
+		Name = "Hud_GripBuy",
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(1, COLUMN.gripRowGap, 0.5, 0),
+		Size = UDim2.fromOffset(buyTarget, buyTarget),
+		ZIndex = 2,
+		Parent = root,
+	})
+	local plus = CoinCapsule.plus(buy)
+	plus.AnchorPoint = Vector2.new(0.5, 0.5)
+	plus.Position = UDim2.fromScale(0.5, 0.5)
+	c:add(Button.decorate(buy))
+	c:add(buy.Activated:Connect(function()
+		if not suppressed() then
+			UIController.open(SCREEN_SHOP, { tab = "income" })
+		end
+	end))
 	-- Part 8: one layout at a time (the other is invisible, so the list skips it). The root's size follows the body
 	-- (applyCardLayout): no AutomaticSize.
 	local body: Frame = Create("Frame", {

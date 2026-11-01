@@ -140,6 +140,42 @@ end
 
 -- Public: component
 
+-- The green "+" (H:80, PLUS; see the header): its face (PLUS.face square plus its lip) with the foam and the "+" label,
+-- in `parent`. The caller places it. 2026-10-31: the Grip bar's buy "+" (GripController) uses it too.
+function CoinCapsule.plus(parent: Instance): Frame
+	local plus: Frame = Create("Frame", {
+		Name = "Plus",
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(PLUS.face, PLUS.face + PLUS.lip),
+		Active = false,
+		Parent = parent,
+	})
+	local plusBands = Layout.stickerBands(PLUS.border, PLUS.highlightPx, 0, PLUS.lip)
+	Theme.foam(plus, {
+		radius = PLUS.radius,
+		stroke = PLUS.border,
+		inner = true,
+		top = plusBands.top,
+		bevel = plusBands.bevel,
+		drop = plusBands.drop,
+		colors = Theme.surfaceColors(
+			Theme.accent(PLUS_ACCENT),
+			{ highlightPx = PLUS.highlightPx, highlightAlpha = PLUS.highlightAlpha },
+			true
+		),
+	})
+	local plusLabel = Theme.label({
+		Name = "Label",
+		Text = Strings.hud.coinsPlus,
+		Size = UDim2.new(1, 0, 0, PLUS.face),
+		AutomaticSize = Enum.AutomaticSize.None,
+		Parent = plus,
+	}, "Large")
+	Theme.stickerText(plusLabel, "coinPlus")
+	plusLabel.TextWrapped = false
+	return plus
+end
+
 function CoinCapsule.new(spec: Spec): CoinCapsule
 	local cleanup = Cleanup.new()
 	local frame = FACE + LIP
@@ -233,39 +269,10 @@ function CoinCapsule.new(spec: Spec): CoinCapsule
 	local pop: UIScale = Create("UIScale", { Name = "SD_Pop", Parent = label })
 
 	-- 2026-10-16 (plan [UD5]): the green "+" at the face's right end (H:80; see the header), its lip inside its box.
-	local plus: Frame = Create("Frame", {
-		Name = "Plus",
-		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -(BORDER + HUD.padRight), 0, (FACE - PLUS.face) / 2),
-		Size = UDim2.fromOffset(PLUS.face, PLUS.face + PLUS.lip),
-		Active = false,
-		ZIndex = 2,
-		Parent = visual,
-	})
-	local plusBands = Layout.stickerBands(PLUS.border, PLUS.highlightPx, 0, PLUS.lip)
-	Theme.foam(plus, {
-		radius = PLUS.radius,
-		stroke = PLUS.border,
-		inner = true,
-		top = plusBands.top,
-		bevel = plusBands.bevel,
-		drop = plusBands.drop,
-		colors = Theme.surfaceColors(
-			Theme.accent(PLUS_ACCENT),
-			{ highlightPx = PLUS.highlightPx, highlightAlpha = PLUS.highlightAlpha },
-			true
-		),
-	})
-	local plusLabel = Theme.label({
-		Name = "Label",
-		Text = Strings.hud.coinsPlus,
-		Size = UDim2.new(1, 0, 0, PLUS.face),
-		AutomaticSize = Enum.AutomaticSize.None,
-		Parent = plus,
-	}, "Large")
-	Theme.stickerText(plusLabel, "coinPlus")
-	plusLabel.TextWrapped = false
+	local plus = CoinCapsule.plus(visual)
+	plus.AnchorPoint = Vector2.new(1, 0)
+	plus.Position = UDim2.new(1, -(BORDER + HUD.padRight), 0, (FACE - PLUS.face) / 2)
+	plus.ZIndex = 2
 
 	-- H:76-78: the coin with its glow, rays and halo behind it, over the face; CSS absolute offsets are from the
 	-- padding edge, inside the 4 px border.

@@ -199,6 +199,7 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- INCOME step 1 (PenService): buys the next level of one of the caller's own INCOME lines ("coins" = SQUISHY COINS,
 	-- "all" = ALL EARNINGS). expectedPrice is compared, never charged. data: Types.PenResult {pen, charged, savePending}.
 	PenBuyIncome = c2s("RemoteFunction", { arg("line", "string"), arg("expectedPrice", "coins") }),
+	GripBuy = c2s("RemoteFunction", { arg("expectedPrice", "coins") }), -- 2026-10-31: the next Grip level for Coins
 	-- Pens3 phase 6 (PenService, the pen screen): one of the caller's own squishies (its pen item id) to a slot (0 =
 	-- the Toy Box; an occupied pen spot swaps), and its lock. data: Types.PenResult {pen, charged = false,
 	-- savePending}.

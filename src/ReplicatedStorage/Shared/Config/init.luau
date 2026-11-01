@@ -3298,6 +3298,15 @@ local function checkGripSettings(problems: Problems)
 		isNumber(Grip.gripAlertPerHour) and Grip.gripAlertPerHour >= Grip.maxGripPerEvent,
 		`{p}.gripAlertPerHour must be >= maxGripPerEvent (got {show(Grip.gripAlertPerHour)})`
 	)
+	-- 2026-10-31 (plan step 4): buying the next level with Coins; the top level's price must fit under maxCoins.
+	expectCount(problems, `{p}.Buy.coinsPerGrip`, Grip.Buy.coinsPerGrip, 1)
+	local totals = Grip.LevelTotals
+	local topStep = if #totals >= 2 then totals[#totals] - totals[#totals - 1] else 0
+	expect(
+		problems,
+		isNumber(Grip.Buy.coinsPerGrip) and topStep * Grip.Buy.coinsPerGrip <= Economy.maxCoins,
+		`{p}.Buy.coinsPerGrip ({show(Grip.Buy.coinsPerGrip)}) makes the top level cost more than Config.Economy.maxCoins`
+	)
 end
 
 -- Private: feel pass checks (DESIGN §18.9 "New Config.validate rules"; each has a planted bad value in Config_Test) --

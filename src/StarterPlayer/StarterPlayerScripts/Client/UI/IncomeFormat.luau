@@ -10,6 +10,8 @@
 --                                             busy (busyLine's buy on its way) / max (every level bought: no price,
 --                                             Strings.income.maxLine)
 --   multText(x) -> string                     a boost with 2 decimals, no trailing zeros ("1", "1.07", "1.1")
+-- 2026-10-31 buy Grip: with `grip` (the Grip total), cards() adds a third card, GRIP: the next level (the tile's
+-- number), "Lv n -> Lv n+1 Grip", GripMath.buyPrice; max at the top level (Strings.income.gripMax). Its line is "grip".
 
 -- Services
 
@@ -20,6 +22,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local GearShop = require(Shared.Config.GearShop)
+local GripMath = require(Shared.GripMath)
 local PenMath = require(Shared.PenMath)
 local Strings = require(Shared.Strings)
 
@@ -43,7 +46,7 @@ function IncomeFormat.multText(x: number): string
 	return (string.gsub(text, "%.$", ""))
 end
 
-function IncomeFormat.cards(pen: any, coins: number?, busyLine: string?): { GearFormat.Card }
+function IncomeFormat.cards(pen: any, coins: number?, busyLine: string?, grip: number?): { GearFormat.Card }
 	local have = if type(coins) == "number" and coins == coins then coins else 0
 	local list: { GearFormat.Card } = {}
 	for _, line in LINES do
@@ -76,6 +79,27 @@ function IncomeFormat.cards(pen: any, coins: number?, busyLine: string?): { Gear
 			state = state,
 			missing = if state == "needCoins" then (price :: number) - have else 0,
 			color = (GearShop.income.colors :: any)[line],
+		})
+	end
+	if type(grip) == "number" then
+		local level = GripMath.levelFor(grip)
+		local _, price = GripMath.buyPrice(grip)
+		local state: GearFormat.CardState = if price == nil
+			then "max"
+			elseif busyLine == "grip" then "busy"
+			elseif have >= price then "buy"
+			else "needCoins"
+		table.insert(list, {
+			line = "grip",
+			name = S.names.grip,
+			tier = if price then level + 1 else level,
+			stars = 0,
+			steps = 0,
+			desc = if price then Strings.format(S.gripLine, { now = level, next = level + 1 }) else S.gripMax,
+			price = price,
+			state = state,
+			missing = if state == "needCoins" then (price :: number) - have else 0,
+			color = GearShop.income.colors.grip,
 		})
 	end
 	return list

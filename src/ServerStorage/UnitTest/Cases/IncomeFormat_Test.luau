@@ -91,4 +91,29 @@ return function(t: Context)
 			expect.equal(none[1].missing, INCOME.coins.prices[1])
 		end
 	)
+
+	t.test("cards with a Grip total: a third card, GRIP, buys the next level (2026-10-31 buy Grip)", function()
+		local GripMath = t.requireShared("GripMath")
+		local totals = Config.Grip.LevelTotals
+		expect.equal(#IncomeFormat.cards(pen(), 0), 2) -- no Grip total: the two INCOME cards only
+		local list = IncomeFormat.cards(pen(), 0, nil, totals[2] + 10)
+		expect.equal(#list, 3)
+		local grip = list[3]
+		local _, price = GripMath.buyPrice(totals[2] + 10)
+		expect.equal(grip.line, "grip")
+		expect.equal(grip.name, S.names.grip)
+		expect.equal(grip.tier, 3) -- the level it buys
+		expect.equal(grip.desc, Strings.format(S.gripLine, { now = 2, next = 3 }))
+		expect.equal(grip.price, price)
+		expect.equal(grip.state, "needCoins")
+		expect.equal(grip.missing, price)
+		expect.truthy(Palette[grip.color] ~= nil)
+		expect.equal(IncomeFormat.cards(pen(), price, nil, totals[2] + 10)[3].state, "buy")
+		expect.equal(IncomeFormat.cards(pen(), price, "grip", totals[2] + 10)[3].state, "busy")
+		local top = IncomeFormat.cards(pen(), 1e30, nil, totals[Config.Grip.maxLevel])[3]
+		expect.equal(top.state, "max")
+		expect.equal(top.price, nil)
+		expect.equal(top.tier, Config.Grip.maxLevel)
+		expect.equal(top.desc, S.gripMax)
+	end)
 end

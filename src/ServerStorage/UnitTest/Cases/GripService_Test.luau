@@ -155,6 +155,15 @@ return function(t: Context)
 			displayName = function(player: any): string
 				return player.DisplayName
 			end,
+			-- 2026-10-31 buy Grip: like EconomyService.trySpend over the same fake profile.
+			trySpend = function(_player: any, amount: number, reason: string): (boolean, string?)
+				assert(reason == "grip", "a Grip buy spends with the reason grip")
+				if world.profile.coins < amount then
+					return false, "notEnoughCoins"
+				end
+				world.profile.coins -= amount
+				return true, nil
+			end,
 		})
 		GripService.playerAdded(world.player)
 		return world
@@ -179,6 +188,42 @@ return function(t: Context)
 		end
 		return list
 	end
+
+	-- 2026-10-31 buy Grip ------------------------------------------------------------------------------------------------
+
+	t.test("buy Grip: the next level for the missing Grip x coinsPerGrip Coins; refusals; the level-up toast", function()
+		local world = fresh()
+		local totals = Config.Grip.LevelTotals
+		local missing, price = GripMath.buyPrice(0)
+		expect.equal(missing, totals[2])
+		expect.equal(price, totals[2] * Config.Grip.Buy.coinsPerGrip)
+		world.profile.coins = (price :: number) - 1
+		expect.equal(GripService.buyLevel(world.player, price).reason, "economy.notEnoughCoins")
+		expect.equal(world.profile.grip.total, 0)
+		world.profile.coins = (price :: number) * 10
+		expect.equal(GripService.buyLevel(world.player, (price :: number) - 1).reason, "gripBuy.priceChanged")
+		expect.equal(GripService.buyLevel(world.player, "lots").reason, "net.invalid")
+		expect.equal(world.profile.coins, (price :: number) * 10) -- nothing charged yet
+		local reply = GripService.buyLevel(world.player, price)
+		expect.equal(reply.ok, true)
+		expect.equal(world.profile.grip.total, totals[2])
+		expect.equal(world.profile.coins, (price :: number) * 9)
+		expect.equal(world.levelAttr, 2)
+		expect.truthy(table.find(codes(world), "grip.levelUp") ~= nil)
+		expect.truthy(table.find(world.dirty, "grip") ~= nil)
+		-- A squeeze into the next level lowers the price; a shown price above it still buys, at the lower one.
+		GripService.addFromSqueeze(world.player, 1)
+		local _, lower = GripMath.buyPrice(world.profile.grip.total)
+		expect.truthy((lower :: number) < (totals[3] - totals[2]) * Config.Grip.Buy.coinsPerGrip)
+		local coins = world.profile.coins
+		expect.equal(GripService.buyLevel(world.player, (lower :: number) + 100).ok, true)
+		expect.equal(world.profile.coins, coins - (lower :: number))
+		expect.equal(world.profile.grip.total, totals[3])
+		-- The top level: nothing left to buy.
+		world.profile.grip.total = totals[Config.Grip.maxLevel]
+		expect.equal(GripService.buyLevel(world.player, 0).reason, "gripBuy.max")
+		finish()
+	end)
 
 	-- Slow training and the trainers are gone (build plan Phase 6) ----------------------------------------------------
 

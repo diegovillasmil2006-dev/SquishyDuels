@@ -29,7 +29,9 @@
 -- * INCOME step 2 (2026-10-26; owner "An INCOME tab in the shop"; [P] a stand-in until Diego draws it): a third tab
 --   INCOME: INCOME over 2 gear cards (UI/IncomeFormat: SQUISHY COINS and ALL EARNINGS, the tile the level it buys, the
 --   line the boost now -> after); a tap sends PenBuyIncome the same way. open({tab = "income"}) opens on INCOME (the
---   HUD's 6th sticker); an open without a tab shows SHOP.
+--   HUD's 6th sticker, and since 2026-10-31 the Grip bar's "+"); an open without a tab shows SHOP. 2026-10-31 buy
+--   Grip: a third card, GRIP (IncomeFormat with the state's Grip total), sends GripBuy(price) and reads "Grip is now
+--   level n!".
 -- * 2026-10-31 shop restock (owner "Yes, build it"; [P] a stand-in until Diego draws it): a fourth tab RESTOCK: while a
 --   restock is live its offers as gear cards (UI/RestockFormat: the squishy's picture on the tile, Golden / Rainbow /
 --   the discount, the stock left from the Workspace attribute SD_RestockStock, SOLD OUT / BOUGHT); a tap sends
@@ -144,6 +146,7 @@ local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives t
 local WHITE = Color3.new(1, 1, 1)
 local REMOTE_GEAR = "GearBuy" -- gear step 3
 local REMOTE_INCOME = "PenBuyIncome" -- INCOME step 2
+local REMOTE_GRIP = "GripBuy" -- 2026-10-31 buy Grip: the INCOME tab's third card
 local REMOTE_RESTOCK = "ShopRestockBuy" -- 2026-10-31 shop restock
 local PAGE_SHOP, PAGE_GEAR, PAGE_INCOME, PAGE_RESTOCK = "shop", "gear", "income", "restock"
 local ATTR_STOCK = "SD_RestockStock" -- ShopService's stock of the live restock (EventSchedule.stockText)
@@ -597,9 +600,14 @@ local function paintGear()
 	if power then
 		power.Text = Strings.format(Strings.gear.power, { x = GearFormat.powerText(gear) })
 	end
-	-- INCOME step 2: the INCOME cards from the pen's levels.
-	local incomeViews =
-		IncomeFormat.cards(StateController.get("pen"), if type(coins) == "number" then coins else nil, gearBusy)
+	-- INCOME step 2: the INCOME cards from the pen's levels (2026-10-31: and the GRIP card from the Grip total).
+	local grip = StateController.get("grip")
+	local incomeViews = IncomeFormat.cards(
+		StateController.get("pen"),
+		if type(coins) == "number" then coins else nil,
+		gearBusy,
+		if type(grip) == "table" and type(grip.total) == "number" then grip.total else nil
+	)
 	for index, card in incomeCards do
 		local view = incomeViews[index]
 		if view then
@@ -658,6 +666,7 @@ local function buyGear(card: GearCard)
 		local index = EventSchedule.restockAt(Workspace:GetServerTimeNow())
 		local result = if restock
 			then NetController.invokeAsync(card.remote, slot, view.price, HttpService:GenerateGUID(false))
+			elseif card.remote == REMOTE_GRIP then NetController.invokeAsync(card.remote, view.price)
 			else NetController.invokeAsync(card.remote, card.line, view.price)
 		gearBusy = nil
 		if result.ok then
@@ -667,7 +676,7 @@ local function buyGear(card: GearCard)
 			end
 			local bought = if restock
 				then Strings.format(Strings.event.restockGot, { name = view.name })
-				elseif card.remote == REMOTE_INCOME then Strings.format(
+				elseif card.remote == REMOTE_INCOME or card.remote == REMOTE_GRIP then Strings.format(
 					Strings.income.bought,
 					{ name = view.name, level = view.tier }
 				)
@@ -1709,10 +1718,15 @@ local function build(parent: Instance): GuiObject
 		bodyH,
 		PAGE_INCOME,
 		Strings.income.section,
-		{ "coins", "all" },
+		{ "coins", "all", "grip" },
 		REMOTE_INCOME,
 		incomeCards
 	)
+	for _, card in incomeCards do
+		if card.line == "grip" then
+			card.remote = REMOTE_GRIP -- 2026-10-31 buy Grip: its own remote
+		end
+	end
 	restockPage = buildRestockPage(c, body, columnLeft, columnW, bodyH) -- 2026-10-31 shop restock
 	setPage(page)
 
@@ -1839,7 +1853,7 @@ function ShopController.init()
 	c:add(WorldBinder.registerStand(COUNTER_TAG, function()
 		UIController.open(SCREEN)
 	end))
-	for _, field in { "owned", "dataStatus", "monetization", "gear", "coins", "pen" } do
+	for _, field in { "owned", "dataStatus", "monetization", "gear", "coins", "pen", "grip" } do
 		c:add(StateController.changed(field):connect(function()
 			ShopController.refresh()
 		end))
