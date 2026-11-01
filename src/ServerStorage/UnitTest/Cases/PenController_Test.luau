@@ -298,6 +298,11 @@ return function(t: Context)
 		PenController.init()
 		PenController.start()
 		expect.truthy(Workspace:FindFirstChild("SD_PenClient") ~= nil)
+		-- 2026-10-31: the pen squishies' one dark outline (a Highlight on their Model, no fill).
+		-- lihfolk-ignore: findfirstchild-chain (checked just above; a test should fail loudly anyway)
+		local squishies = (Workspace:FindFirstChild("SD_PenClient") :: Instance):FindFirstChild("Squishies")
+		local outline = if squishies then squishies:FindFirstChild("SD_SquishyOutline") else nil
+		expect.truthy(outline ~= nil and outline:IsA("Highlight") and (outline :: Highlight).FillTransparency == 1)
 		expect.equal(PenController.debugState().walkers, 0) -- no pen attributes in Edit mode: nothing is built
 		expect.equal(PenController.debugState().shelved, 0) -- pens3 phase 11: nor on the shelves
 		expect.equal(UIController.isRegistered("pen"), true) -- pens3 phase 6: the pen screen

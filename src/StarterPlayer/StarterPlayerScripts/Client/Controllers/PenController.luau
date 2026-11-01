@@ -9,7 +9,9 @@
 --   (kind.form.coat) is still placed, gives the rest back to a pool (unparented, kept for the next sync) and takes the
 --   missing ones from the pool, or clones them: SquishyCache "World" (a model slot replaces the blueprint), scaled so
 --   its longest side is Config.UI.Pen.rarityStuds of its rarity (K:4052-4081), its bottom on the plot floor, under
---   Workspace.SD_PenClient (SquishyCache builds every part CanCollide / CanQuery / CanTouch false).
+--   Workspace.SD_PenClient (SquishyCache builds every part CanCollide / CanQuery / CanTouch false). 2026-10-31 (owner
+--   2026-10-16 "With outlines"): every shown walker and shelf squishy sits in its Model "Squishies", whose one
+--   Highlight (no fill, the LobbyInk outline, Occluded) draws each one's dark cartoon outline.
 -- * Walk (P3D:829-833; Config.UI.Pen): a new walker stands somewhere in its walk area (PenMath.walkArea of its studs;
 --   wb, owner 2026-10-17: the whole base's fenced floor, round its blocks: the front row with the arch, the spawn, the
 --   signs and the gate, the shelf row, the trees), waits 0..firstWaitMax s, then walks speedMin..speedMax studs/s to a
@@ -249,6 +251,7 @@ local ATTR_PEN = "SD_Pen"
 local ATTR_INCOME = "SD_PenIncome" -- INCOME step 2: the owner's boost on the coin labels
 local ATTR_PRICE = "SD_Price"
 local FOLDER_NAME = "SD_PenClient"
+local OUTLINED_NAME = "Squishies" -- 2026-10-31: the outlined squishies' Model in it
 local PEN_FOLDER = "Pen" -- BaseService's folder on a plot model
 local SIGN_NAME = "Sign"
 local PROMPT_NAME = "PenPrompt"
@@ -324,6 +327,7 @@ local PenController = {}
 local log = Log.new("Pen")
 local cleanup: Cleanup.Cleanup? = nil
 local folder: Folder? = nil
+local outlined: Model? = nil -- 2026-10-31: every shown pen and shelf squishy, under its one dark outline
 local pens: { [number]: Pen } = {}
 local pool: { [string]: { Walker } } = {}
 local squishes: { [Walker]: { at: number, scale: number } } = {} -- friendly visits: walkers squishing now
@@ -504,10 +508,10 @@ end
 local function show(pen: Pen, shown: boolean)
 	pen.shown = shown
 	for _, w in pen.walkers do
-		w.model.Parent = if shown then folder else nil
+		w.model.Parent = if shown then outlined else nil
 	end
 	for _, w in pen.shelf do -- pens3 phase 11
-		w.model.Parent = if shown then folder else nil
+		w.model.Parent = if shown then outlined else nil
 	end
 end
 
@@ -549,7 +553,7 @@ local function syncShelf(pen: Pen)
 			w.rest, w.labelAt = rest, labelAt
 			w.lastLift = math.huge -- the label is written at once
 			placeShelf(w, 0, CFrame.identity)
-			w.model.Parent = if pen.shown then folder else nil
+			w.model.Parent = if pen.shown then outlined else nil
 		elseif w then
 			release(w)
 		end
@@ -590,7 +594,7 @@ local function sync(pen: Pen)
 			w.look, w.index = look, index
 			table.insert(kept, w)
 			place(pen, w, 0)
-			w.model.Parent = if pen.shown then folder else nil
+			w.model.Parent = if pen.shown then outlined else nil
 		end
 	end
 	for _, list in free do
@@ -1580,6 +1584,19 @@ function PenController.start()
 	made.Name = FOLDER_NAME
 	made.Parent = Workspace
 	folder = made
+	-- 2026-10-31 (owner 2026-10-16 "With outlines", plan step 10): one Highlight on a Model holding every shown pen and
+	-- shelf squishy draws the dark cartoon outline round each of them, as one of the engine's 31 Highlights.
+	local squishies = Instance.new("Model")
+	squishies.Name = OUTLINED_NAME
+	local outline = Instance.new("Highlight")
+	outline.Name = "SD_SquishyOutline"
+	outline.FillTransparency = 1
+	outline.OutlineColor = Palette.LobbyInk
+	outline.OutlineTransparency = 0
+	outline.DepthMode = Enum.HighlightDepthMode.Occluded
+	outline.Parent = squishies
+	squishies.Parent = made
+	outlined = squishies
 	c:add(function()
 		for plot in table.clone(pens) do
 			local pen = pens[plot]
@@ -1605,6 +1622,7 @@ function PenController.start()
 		end
 		made:Destroy()
 		folder = nil
+		outlined = nil
 		screen, selectedId, picking, busy, pendingTap = nil, nil, false, false, nil -- pens3 phase 6
 		soldId, confirm, holdAt, soldMinute = nil, nil, nil, -1 -- pens3 phases 7-8
 		foodId, pendingReq = nil, nil -- pens3 phase 9
