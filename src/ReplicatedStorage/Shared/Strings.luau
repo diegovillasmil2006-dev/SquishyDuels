@@ -1269,6 +1269,7 @@ local Strings = {
 		statWins = "Wins",
 		statLevel = "Grip Lv",
 		statIncome = "Coins/s", -- qb1 (owner 2026-10-15): the pen's Coins a second
+		friendBoost = "Friends +{percent}%", -- 2026-10-31: the Friend Boost pill (EventController)
 	},
 
 	-- Batch 3 (review #10): "Top Wins This Week" in the Quests screen (ShowOffService's weekly board, UI/QuestFormat).

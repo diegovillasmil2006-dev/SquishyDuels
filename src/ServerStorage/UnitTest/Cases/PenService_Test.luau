@@ -101,6 +101,7 @@ return function(t: Context)
 		now: number, -- pens3 phase 7: os.time (the buy-back's `at`)
 		backSent: { any }, -- sendBuyBack calls
 		foodSent: { any }, -- pens3 phase 9: sendFood calls
+		friendMult: { [any]: number }, -- 2026-10-31: deps.friendMult (the Friend Boost; 1 when not set)
 	}
 
 	-- Pens3 phase 9: none of each Config food.
@@ -157,6 +158,7 @@ return function(t: Context)
 			now = 1_800_000_000,
 			backSent = {},
 			foodSent = {},
+			friendMult = {},
 		}
 		PenService.reset()
 		PenService.useDeps({
@@ -255,6 +257,9 @@ return function(t: Context)
 			sendFood = function(player: any)
 				table.insert(w.foodSent, player)
 			end,
+			friendMult = function(player: any): number
+				return w.friendMult[player] or 1
+			end,
 		})
 		for _, player in { w.a, w.b } do
 			w.profiles[player] = newProfile()
@@ -320,6 +325,15 @@ return function(t: Context)
 			finish()
 		end
 	)
+
+	t.test("Friend Boost: the tick pays the pen's rate x the player's friend multiplier (2026-10-31)", function()
+		local w = fresh()
+		w.friendMult[w.a] = 1.2 -- two friends here: +20%
+		PenService.step(1)
+		expect.deepEqual(grantsOf(w, w.a), { { player = w.a, amount = 12, reason = "pen" } }) -- Kitty Bread 10 x 1.2
+		expect.deepEqual(grantsOf(w, w.b), { { player = w.b, amount = 10, reason = "pen" } })
+		finish()
+	end)
 
 	t.test("a player who is not ready is paid nothing; one player's error does not stop the others", function()
 		local w = fresh()

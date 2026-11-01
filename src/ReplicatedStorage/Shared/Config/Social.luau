@@ -11,6 +11,9 @@
 --   Rematch  after a finished duel (a win or a draw, nobody bailed, two players still in the server) both may press
 --            Rematch for windowSeconds; both presses start a new duel. Validator: at least the Result phase, both
 --            return fades, the result card's auto-close and the requeue cooldown, so the offer outlives the card.
+--   FriendBoost (owner 2026-10-31, plan step 2): each friend in the server (Services/FriendsService) adds perFriend
+--            to the pen's pay, counting at most maxFriends of them (+10% each, +30% at most). Pen coins only (not away
+--            coins); the player sees it as the "Friends +N%" pill (Client/Controllers/EventController).
 --   Board    "Top Wins This Week" (Services/ShowOffService; the Quests screen shows it): an OrderedDataStore written by
 --            the server only, one scope per week ("w" .. week, weeks start on Monday 00:00 UTC: 1970-01-01 was a
 --            Thursday, so weekOffsetSeconds = 4 days), + 1 for each fully paid win over another player. Read every
@@ -38,6 +41,7 @@ export type Badge = { key: string, id: number?, rule: BadgeRule }
 local Social = {
 	Pads = { checkHz = 5, holdSeconds = 3, radiusStuds = 1.8, heightStuds = 5, waitingToastSeconds = 30 },
 	Rematch = { windowSeconds = 20 },
+	FriendBoost = { perFriend = 0.10, maxFriends = 3 },
 	Board = {
 		size = 5,
 		readSize = 100,

@@ -4193,6 +4193,14 @@ local function checkSocial(problems: Problems, rarities: { string }, defs: { [st
 			.. `result card's auto-close and the requeue cooldown, so the card never outlives the offer`
 	)
 
+	local boost = Social.FriendBoost
+	expect(
+		problems,
+		isNumber(boost.perFriend) and boost.perFriend > 0 and boost.perFriend <= 1,
+		`{p}.FriendBoost.perFriend must be a number in (0, 1] (got {show(boost.perFriend)})`
+	)
+	expectCount(problems, `{p}.FriendBoost.maxFriends`, boost.maxFriends, 1)
+
 	local board = Social.Board
 	expectCount(problems, `{p}.Board.size`, board.size, 1)
 	expect(

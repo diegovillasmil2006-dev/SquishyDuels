@@ -5,7 +5,8 @@
 -- * Config.Economy.Pen (Config/Pen) is checked by Config/ValidatePen in init: any problem stops with an error (the pen
 --   is the Coin source of the game; the shipped table is pinned by ValidatePen_Test).
 -- * The tick (start: every Pen.tickSeconds, step(dt) with the time that really passed): for each player in the server
---   with a READY profile, PenMath.payStep(carry, PenMath.rate(pen), dt) (at most Pen.maxTickSeconds of time at once)
+--   with a READY profile, PenMath.payStep(carry, PenMath.rate(pen) x the Friend Boost, dt) (at most Pen.maxTickSeconds
+--   of time at once; the boost is FriendsService.penMult since 2026-10-31, never in away coins)
 --   and ONE EconomyService.grantCoins(p, coins, "pen") per player and tick, each player in its own pcall. The pen pays
 --   no Grip. The carry (a part of a Coin) lives in this session only: it starts at 0 on join, time while not ready or
 --   out of the server never pays here (the time away pays once on the next load, below).
@@ -151,6 +152,7 @@ local Services = script.Parent
 local BaseService = require(Services.BaseService)
 local DataService = require(Services.DataService)
 local EconomyService = require(Services.EconomyService)
+local FriendsService = require(Services.FriendsService)
 local NetService = require(Services.NetService)
 local ShutdownService = require(Services.ShutdownService)
 local StateService = require(Services.StateService)
@@ -180,6 +182,7 @@ export type Deps = {
 	now: () -> number, -- pens3 phase 7: os.time (a buy-back entry's `at`)
 	sendBuyBack: (player: any) -> (), -- StateService.markDirty(p, "buyBack")
 	sendFood: (player: any) -> (), -- pens3 phase 9: StateService.markDirty(p, "food")
+	friendMult: ((player: any) -> number)?, -- 2026-10-31: FriendsService.penMult (nil: no Friend Boost, as in the tests)
 }
 
 -- What the remote answers: NetService.ok(Types.PenResult) or NetService.err(reason, false).
@@ -317,6 +320,7 @@ local function defaultDeps(): Deps
 		sendFood = function(player: any)
 			StateService.markDirty(player, FIELD_FOOD)
 		end,
+		friendMult = FriendsService.penMult,
 	}
 end
 
@@ -338,7 +342,9 @@ local function pay(player: any, session: Session, dt: number)
 	if pen == nil then
 		return
 	end
-	local coins, carry = PenMath.payStep(session.carry, PenMath.rate(pen), dt)
+	local friendMult = deps.friendMult
+	local rate = PenMath.rate(pen) * (if friendMult then friendMult(player) else 1)
+	local coins, carry = PenMath.payStep(session.carry, rate, dt)
 	session.carry = carry
 	if coins > 0 then
 		deps.grantCoins(player, coins, COIN_REASON)
