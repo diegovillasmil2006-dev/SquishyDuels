@@ -71,6 +71,7 @@ local SERVICE_ORDER = {
 	"LobbyMoveService", -- 2026-10-17: the lobby run's speed and the lobby slide (Config.LobbyMove)
 	"DuelService",
 	"QueueService",
+	"FriendsService", -- 2026-10-31: who is friends with whom here (MatchService deals Team matches by it)
 	"FriendDuelService",
 	"BotService", -- 2026-10-16: the 1v1 practice bot
 	"MatchMapService", -- FFA/TDM v1 (2026-10-15): Diego's maps in Workspace.SquishyMaps (copied + read once at init)

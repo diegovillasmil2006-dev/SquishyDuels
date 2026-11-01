@@ -130,8 +130,9 @@
 --   the ones startMatch did not take go back through release). A bot ref is a Player-shaped table (kind "bot", isBot,
 --   squishyId: its squishy) with a character in the Workspace: it plays through the same port, rules, spawns and
 --   movement as a player (MatchRules: arrived from the start; isBot), gets no MatchState and no toast, is never paid
---   (MatchRewards) and has no win streak. TDM: the players are shuffled and dealt Red, Blue, ... as before, then each
---   bot joins the smaller team (MatchBotRules.dealTeams: 6 vs 6). A match with bots pays its real players like any match
+--   (MatchRewards) and has no win streak. TDM: the players are shuffled and dealt Red, Blue, ... as before (friends in
+--   this server together on one team since 2026-10-31, FriendsService), then each bot joins the smaller team
+--   (MatchBotRules.dealTeams: 6 vs 6). A match with bots pays its real players like any match
 --   (owner: bots never block pay; Config.Match.Rewards.enabled still decides, off until M9). Once no real player is
 --   left in it (left, never arrived) a bot match is void (MatchRules `empty`) and goes back as any void. A player who queues while a bot match
 --   runs gets the next match: a running match takes nobody new (MatchRules' entrants are fixed at the start).
@@ -173,6 +174,7 @@ local AbilityService = require(Services.AbilityService)
 local CharacterService = require(Services.CharacterService)
 local CombatService = require(Services.CombatService)
 local EconomyService = require(Services.EconomyService)
+local FriendsService = require(Services.FriendsService)
 local GripService = require(Services.GripService)
 local InventoryService = require(Services.InventoryService)
 local MatchMapService = require(Services.MatchMapService)
@@ -272,6 +274,7 @@ export type Deps = {
 	heartbeat: boolean, -- tick matches every Heartbeat (false in tests: they call tick)
 	matchConfig: any?, -- a Config.Match-shaped table (tests pass their copy); nil = the live Config.Match
 	gripLevel: ((ref: any) -> number)?, -- round 2 of the match flow: GripService.levelOf (nil: MATCH FOUND makes them up)
+	areFriends: ((a: number, b: number) -> boolean)?, -- 2026-10-31: FriendsService.areFriends (nil: nobody is friends)
 }
 
 type SavedMovement = { walkSpeed: number, jumpHeight: number, jumpPower: number, autoRotate: boolean }
@@ -2520,17 +2523,43 @@ function Pend.entrants(refs: { any }, mode: any): ({ any }, { any })
 	return list, bots
 end
 
--- TDM: the players shuffled, then Red, Blue, Red, ... (friends together: later), then each bot to the smaller team
--- (MatchBotRules.dealTeams). Returns the players then the bots, and ref -> team (empty outside TDM).
+-- The friend group of each player in `list` (deps.areFriends; a friend's friend joins the group too) as the index of
+-- its first player; nil without deps.areFriends.
+local function friendGroups(list: { any }): { number }?
+	local areFriends = getDeps().areFriends
+	if areFriends == nil then
+		return nil
+	end
+	local group: { number } = {}
+	for i = 1, #list do
+		group[i] = i
+		for j = 1, i - 1 do
+			if group[i] ~= group[j] and areFriends(userIdOf(list[i]) :: number, userIdOf(list[j]) :: number) then
+				local old, new = math.max(group[i], group[j]), math.min(group[i], group[j])
+				for k = 1, i do
+					if group[k] == old then
+						group[k] = new
+					end
+				end
+			end
+		end
+	end
+	return group
+end
+
+-- TDM: the players shuffled, then friends together on one team while the teams stay even, everyone else Red, Blue,
+-- Red, ..., then each bot to the smaller team (MatchBotRules.dealTeams). Returns the players then the bots, and
+-- ref -> team (empty outside TDM).
 function Pend.deal(list: { any }, bots: { any }, mode: any): ({ any }, { [any]: string })
 	local teams: { [any]: string } = {}
 	if mode.teams then
 		shuffle(list, getDeps().rng)
 	end
 	local humans = #list
+	local groups = if mode.teams then friendGroups(list) else nil
 	table.move(bots, 1, #bots, humans + 1, list)
 	if mode.teams then
-		for index, team in MatchBotRules.dealTeams(humans, #bots, cfg().teamNames) do
+		for index, team in MatchBotRules.dealTeams(humans, #bots, cfg().teamNames, groups) do
 			teams[list[index]] = team
 		end
 	end
@@ -3338,6 +3367,7 @@ defaultDeps = function(): Deps
 		heartbeat = true,
 		matchConfig = nil,
 		gripLevel = GripService.levelOf, -- round 2 of the match flow: MATCH FOUND shows each player's Grip level
+		areFriends = FriendsService.areFriends, -- 2026-10-31: friends on the same team in Team matches
 	}
 end
 

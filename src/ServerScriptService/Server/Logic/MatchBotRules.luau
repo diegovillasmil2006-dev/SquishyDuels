@@ -6,10 +6,15 @@
 -- practice bot's (Logic/BotRules).
 --
 -- API:
---   MatchBotRules.dealTeams(humans, bots, teamNames)      -> { team }: the team of each entrant, humans first: the
---                                                             humans Red, Blue, Red, ... (as MatchService always dealt
---                                                             them), then each bot to the team with fewer players (the
---                                                             first on a tie), so 12 entrants play 6 vs 6
+--   MatchBotRules.dealTeams(humans, bots, teamNames, groupOf?) -> { team }: the team of each entrant, humans first:
+--                                                             groupOf[i] = human i's friend group (any key; nil = each
+--                                                             human alone). Biggest group first (equal sizes in order of
+--                                                             their first human), each whole group to the team with
+--                                                             fewer players (the first on a tie), spilling to the other
+--                                                             team only past half of all entrants (rounded up). Humans
+--                                                             alone deal Red, Blue, Red, ... as MatchService always did.
+--                                                             Then each bot to the team with fewer players (the first on
+--                                                             a tie), so 12 entrants play 6 vs 6
 --   MatchBotRules.pickTarget(from, enemies, reach, visible) -> the index of the nearest enemy position within `reach`
 --                                                             (flat) that visible(index) says the bot can see, or nil;
 --                                                             visible is asked nearest first, only until one is seen
@@ -96,13 +101,44 @@ end
 
 -- Public
 
-function MatchBotRules.dealTeams(humans: number, botCount: number, teamNames: { string }): { string }
+function MatchBotRules.dealTeams(
+	humans: number,
+	botCount: number,
+	teamNames: { string },
+	groupOf: { any }?
+): { string }
 	local out: { string } = {}
 	local count = { 0, 0 }
+	local members: { [any]: { number } } = {}
+	local order: { any } = {}
 	for i = 1, humans do
-		local side = (i - 1) % 2 + 1
-		out[i] = teamNames[side]
-		count[side] += 1
+		local key = if groupOf then groupOf[i] else i
+		if members[key] == nil then
+			members[key] = {}
+			table.insert(order, key)
+		end
+		table.insert(members[key], i)
+	end
+	local firstOf: { [any]: number } = {}
+	for _, key in order do
+		firstOf[key] = members[key][1]
+	end
+	table.sort(order, function(a: any, b: any): boolean
+		if #members[a] ~= #members[b] then
+			return #members[a] > #members[b]
+		end
+		return firstOf[a] < firstOf[b]
+	end)
+	local cap = math.ceil((humans + botCount) / 2)
+	for _, key in order do
+		local side = if count[2] < count[1] then 2 else 1
+		for _, i in members[key] do
+			if count[side] >= cap then
+				side = 3 - side
+			end
+			out[i] = teamNames[side]
+			count[side] += 1
+		end
 	end
 	for i = 1, botCount do
 		local side = if count[2] < count[1] then 2 else 1

@@ -104,6 +104,7 @@ type World = {
 	streaks: { [number]: number },
 	grantedBefore: { [number]: boolean }, -- users whose grant comes back alreadyGranted (EconomyService's once rule)
 	payRules: any, -- deps.rewards.config: this world's copy of PAY_RULES (a case may tune it)
+	friends: { [string]: boolean }, -- deps.areFriends: "a:b" (smaller userId first) for each pair of friends
 	flush: () -> (),
 }
 
@@ -270,6 +271,7 @@ return function(t: Context)
 			streaks = {},
 			grantedBefore = {},
 			payRules = deepCopy(PAY_RULES),
+			friends = {},
 			flush = function() end,
 		}
 		w.flush = function()
@@ -508,6 +510,9 @@ return function(t: Context)
 				else nil,
 			heartbeat = false,
 			matchConfig = c,
+			areFriends = function(a: number, b: number): boolean
+				return w.friends[`{math.min(a, b)}:{math.max(a, b)}`] == true
+			end,
 		})
 		return w
 	end
@@ -2694,6 +2699,24 @@ return function(t: Context)
 		end
 		expect.equal(red, 2)
 		close()
+	end)
+
+	t.test("TDM: friends play on the same team, still 6 vs 6 (2026-10-31)", function()
+		for _ = 1, 10 do -- each run shuffles the players again
+			local w = setup(4)
+			withBots(w)
+			local a, b = w.players[1].UserId, w.players[3].UserId
+			w.friends[`{math.min(a, b)}:{math.max(a, b)}`] = true
+			live(w, "tdm")
+			expect.equal(w.players[1]:GetAttribute("SD_Team"), w.players[3]:GetAttribute("SD_Team"))
+			local sides: { [string]: number } = { A = 0, B = 0 }
+			for _, fighter in w.port.fighters do
+				sides[fighter.side] += 1
+			end
+			expect.equal(sides.A, 6)
+			expect.equal(sides.B, 6)
+			close()
+		end
 	end)
 
 	t.test(

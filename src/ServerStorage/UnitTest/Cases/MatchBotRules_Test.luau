@@ -3,7 +3,7 @@
 -- 2026-10-17). Server only (ServerStorage.UnitTest). Pure: seeded Random objects, plain zones, fake raycasts.
 -- Contract (Logic/MatchBotRules header, Config/MatchBots):
 --   * dealTeams: humans Red, Blue, Red, ... then each bot to the smaller team: 12 entrants are always 6 vs 6, humans
---     only are dealt exactly as before;
+--     only are dealt exactly as before; friend groups play on one team unless it would pass half of the match;
 --   * pickTarget: the nearest enemy within reach that is visible; visibility is asked nearest first and stops at the
 --     first seen one; nil when none is seen or in reach;
 --   * safeCircle: nil before the storm (with look-ahead), then the smaller of the circle now and stormLookaheadSeconds
@@ -97,6 +97,31 @@ return function(t: Context)
 			expect.equal(red, 6)
 		end
 		expect.deepEqual(MatchBotRules.dealTeams(1, 2, names), { "Red", "Blue", "Red" })
+	end)
+
+	t.test("dealTeams: friend groups play on one team, split only past half of the match (2026-10-31)", function()
+		local names = { "Red", "Blue" }
+		-- Everyone alone (each their own group): Red, Blue, Red, ... as without groups.
+		expect.deepEqual(MatchBotRules.dealTeams(4, 0, names, { 1, 2, 3, 4 }), { "Red", "Blue", "Red", "Blue" })
+		-- Humans 2 and 4 are friends: together, the others on the other team.
+		expect.deepEqual(MatchBotRules.dealTeams(4, 0, names, { 1, 2, 3, 2 }), { "Blue", "Red", "Blue", "Red" })
+		-- 4 friends with 8 bots: all 4 on one team, the bots make it 6 vs 6.
+		local four = MatchBotRules.dealTeams(4, 8, names, { 1, 1, 1, 1 })
+		local red = 0
+		for index, team in four do
+			if index <= 4 then
+				expect.equal(team, "Red")
+			end
+			red += if team == "Red" then 1 else 0
+		end
+		expect.equal(red, 6)
+		-- 4 friends alone: the match needs 2 vs 2, so the group splits.
+		expect.deepEqual(MatchBotRules.dealTeams(4, 0, names, { 1, 1, 1, 1 }), { "Red", "Red", "Blue", "Blue" })
+		-- Two groups of 3 and a loner: each group whole, the loner on the first team (a tie): 4 vs 3.
+		expect.deepEqual(
+			MatchBotRules.dealTeams(7, 0, names, { 1, 2, 1, 2, 1, 2, 7 }),
+			{ "Red", "Blue", "Red", "Blue", "Red", "Blue", "Red" }
+		)
 	end)
 
 	t.test("pickTarget: the nearest visible enemy in reach, asked nearest first", function()
