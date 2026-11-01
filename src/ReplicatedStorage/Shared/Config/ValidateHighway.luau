@@ -30,6 +30,7 @@
 --   numbers), flight.releaseUp >= 0; timing.periodSeconds > 0, 0 < perfectHalfWidth < 0.5, perfectPower >= 1,
 --   maxOneWaySeconds >= 0; boost.fuel a whole number >= 0, boost.power >= 1, afterReleaseSeconds,
 --   beforeCarrySeconds and minAheadStuds >= 0, speedUp and minAirSeconds > 0; pay.ringShare >= 0. Every number finite.
+-- 2026-10-31 boosters (plan step 6): boosters.chance one number in [0, 1) a biome, power above 1, showSeconds >= 0.
 
 local H = "Config.Economy.Highway"
 local MIN_BLOCKS = 10 -- = Config/ValidateAutoClick's: the spread of fewer block means is too noisy to trust
@@ -225,6 +226,24 @@ return function(config: any, catalog: any?): { string }
 	atLeast("boost", "minAheadStuds", boost.minAheadStuds, 0)
 	above("boost", "speedUp", boost.speedUp, 0)
 	above("boost", "minAirSeconds", boost.minAirSeconds, 0)
+	-- 2026-10-31 boosters (plan step 6): one chance a biome in [0, 1), power above 1, showSeconds >= 0.
+	local boosters = section("boosters")
+	local chances = boosters.chance
+	local biomeCount = if type(starts) == "table" then #starts else 0
+	expect(
+		type(chances) == "table" and #chances == biomeCount,
+		`{H}.boosters.chance must list one chance a biome ({biomeCount}, got {show(chances)})`
+	)
+	if type(chances) == "table" then
+		for index, chance in chances do
+			expect(
+				isNumber(chance) and chance >= 0 and chance < 1,
+				`{H}.boosters.chance[{index}] must be in [0, 1) (got {show(chance)})`
+			)
+		end
+	end
+	above("boosters", "power", boosters.power, 1)
+	atLeast("boosters", "showSeconds", boosters.showSeconds, 0)
 	atLeast("pay", "ringShare", pay.ringShare, 0)
 
 	local a = section("autoClick")

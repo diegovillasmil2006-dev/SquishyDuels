@@ -276,6 +276,31 @@ return function(t: Context)
 		expect.truthy(late.arcs[2].air >= 0.5)
 	end)
 
+	t.test("boosters: bounce adds a second arc from the first touchdown; a boost before it flies over it", function()
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		local bounced = HighwayMath.bounce(plain, 900)
+		assert(bounced ~= nil, "a Lv 1 throw bounces")
+		local first, second = plain.arcs[1], bounced.arcs[2]
+		expect.equal(#bounced.arcs, 2)
+		expect.equal(bounced.arcs[1], first)
+		expect.near(second.from, first.carry, 1e-9)
+		expect.near(second.startAt, first.startAt + first.air, 1e-9)
+		expect.equal(bounced.studs, math.max(HighwayMath.landing(900 * H.boosters.power), plain.studs))
+		expect.truthy(bounced.studs > plain.studs)
+		expect.truthy(second.carry >= second.from + H.boost.minAheadStuds - 1e-9 or second.carry == bounced.studs)
+		expect.near(bounced.landsAt, second.startAt + second.air + bounced.roll, 1e-9)
+		-- Continuous at the touchdown.
+		local touch = first.startAt + first.air
+		expect.truthy((HighwayMath.planAt(plain, touch - 1e-6) - HighwayMath.planAt(bounced, touch + 1e-6)).Magnitude < 0.01)
+		expect.equal(HighwayMath.bounce(bounced, 900), nil) -- only a one-arc plan bounces
+		-- A boost during the first arc drops the bounce still ahead (the arcs stay in order).
+		local boosted = HighwayMath.boost(bounced, 900 * H.boosters.power, RELEASE + 0.5)
+		assert(boosted ~= nil, "a boost before the bounce goes")
+		expect.equal(#boosted.arcs, 2)
+		expect.truthy(boosted.arcs[2] ~= second)
+		expect.truthy(boosted.arcs[2].startAt > boosted.arcs[1].startAt)
+	end)
+
 	t.test("p13v4 ringsHit: Lv 1 plain none, PERFECT ring 1, PERFECT + a boost at +1 s rings 1-3", function()
 		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
 		local perfect = HighwayMath.newPlan(3600, ROOT, RELEASE)

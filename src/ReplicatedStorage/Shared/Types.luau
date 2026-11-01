@@ -655,6 +655,8 @@ export type HighwayPlan = {
 	fuel: number, -- boosts left
 	boosted: boolean,
 	trap: boolean, -- gear step 2: a trap took some of this throw's power (a boost keeps it)
+	-- 2026-10-31 boosters: arcs[2] is a booster's bounce (HighwayMath.bounce; a boost before it flies over it: false)
+	booster: boolean?,
 	charged: boolean, -- false
 	savePending: boolean,
 }

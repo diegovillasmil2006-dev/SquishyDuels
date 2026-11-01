@@ -60,6 +60,13 @@
 --   nearby"): a trapped throw's settle stands the landing biome's trap (Art/HighwayTraps, the owner's concept sheet)
 --   on the lane where it came to rest (HighwayMath.planAt at landsAt) in Workspace.SD_HighwayTraps for
 --   Gear.trapShowSeconds (deps.showTrap; the server's parts, so every client streaming that spot sees it).
+-- * Boosters (plan step 6, 2026-10-31; Claude's calls while the owner was away, Config.Economy.Highway.boosters): a
+--   throw the trap roll missed rolls again (deps.random) against boosters.chance of the zone it would reach; a hit
+--   bounces it off its first touchdown (HighwayMath.bounce: a second arc to landing(power x boosters.power)), the
+--   touchdown biome's booster (Art/HighwayBoosters, the owner's concept sheet) stands there from the press until the
+--   landing plus showSeconds (deps.showBooster) and plan.booster = true (the client's BOOSTER! pop). The flight's power
+--   includes the bounce, so a later boost builds on it; a boost before the bounce flies over the booster (booster =
+--   false). HighwayLanded's boosts never count the bounce.
 -- * GearBuy(line, expectedPrice) (RF; Config.Net 2 a second, one in flight; PenBuySpot's shape and refusal order): (1)
 --   line not a GearMath line or expectedPrice not whole Coins -> net.invalid; (2) no READY profile -> data.notReady;
 --   (3) GearMath.buyDecision -> gear.max / gear.priceChanged (compared, never charged); (4) a pending failed save,
@@ -86,6 +93,7 @@ local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local GearMath = require(Shared.GearMath)
 local HighwayMath = require(Shared.HighwayMath)
+local HighwayBoosters = require(Shared.Art.HighwayBoosters)
 local HighwayTraps = require(Shared.Art.HighwayTraps)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
@@ -135,6 +143,8 @@ export type Deps = {
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 	-- Traps you can see (2026-10-31): stands biome's trap (Art/HighwayTraps) at `at` for Gear.trapShowSeconds.
 	showTrap: (biome: number, at: CFrame) -> (),
+	-- Boosters (2026-10-31): stands biome's booster (Art/HighwayBoosters) at `at` for `seconds`.
+	showBooster: (biome: number, at: CFrame, seconds: number) -> (),
 }
 
 -- What the remote answers: NetService.ok(Types.HighwayPlan) or NetService.err(reason, false).
@@ -229,6 +239,22 @@ local function writeBoardLines(lines: { [string]: string })
 	end
 end
 
+-- Traps you can see and boosters (2026-10-31): a shown trap or booster stands in Workspace.SD_HighwayTraps for
+-- `seconds` (nothing for no model).
+local function stand(model: Model?, seconds: number)
+	if model == nil then
+		return
+	end
+	local folder = Workspace:FindFirstChild(TRAP_FOLDER)
+	if folder == nil then
+		folder = Instance.new("Folder")
+		folder.Name = TRAP_FOLDER
+		folder.Parent = Workspace
+	end
+	model.Parent = folder
+	Debris:AddItem(model, seconds)
+end
+
 local function defaultDeps(): Deps
 	return {
 		statusOf = function(player: any): string
@@ -318,18 +344,10 @@ local function defaultDeps(): Deps
 			return DataService.saveNowAsync(player)
 		end,
 		showTrap = function(biome: number, at: CFrame)
-			local model = HighwayTraps.build(biome, at)
-			if model == nil then
-				return
-			end
-			local folder = Workspace:FindFirstChild(TRAP_FOLDER)
-			if folder == nil then
-				folder = Instance.new("Folder")
-				folder.Name = TRAP_FOLDER
-				folder.Parent = Workspace
-			end
-			model.Parent = folder
-			Debris:AddItem(model, Config.Economy.Gear.trapShowSeconds)
+			stand(HighwayTraps.build(biome, at), Config.Economy.Gear.trapShowSeconds)
+		end,
+		showBooster = function(biome: number, at: CFrame, seconds: number)
+			stand(HighwayBoosters.build(biome, at), seconds)
 		end,
 	}
 end
@@ -506,7 +524,7 @@ local function settle(player: any, session: Session, fire: boolean)
 			rings = rings,
 			bullseye = HighwayMath.bullseye(studs),
 			perfect = plan.perfect,
-			boosts = #plan.arcs - 1,
+			boosts = #plan.arcs - 1 - (if plan.booster then 1 else 0), -- a booster's bounce is no boost
 		})
 	end
 end
@@ -546,6 +564,7 @@ local function boost(player: any, session: Session, flight: Flight, now: number)
 		fuel = plan.fuel - 1,
 		boosted = true,
 		trap = plan.trap, -- gear step 2: the flight's power is the trapped one
+		booster = plan.booster == true and core.arcs[2] == plan.arcs[2], -- boosters: kept unless flown over
 		charged = false,
 		savePending = deps.savePending(player),
 	}
@@ -565,9 +584,25 @@ local function launch(player: any, session: Session, root: Vector3, now: number)
 	-- Gear step 2: a trap of the zone this throw would reach takes some of its power (each armor piece halves less).
 	local zone = HighwayMath.biomeAt(HighwayMath.landing(power))
 	local armor = if type(gear) == "table" and isFinite(gear.armor) then gear.armor else 0
-	local keep = if deps.random() < GearMath.trapChance(zone) then GearMath.trapKeep(zone, armor) else 1
+	local trapped = deps.random() < GearMath.trapChance(zone)
+	local keep = if trapped then GearMath.trapKeep(zone, armor) else 1
 	power *= keep
 	local core = HighwayMath.newPlan(power, LAYOUT.origin:PointToObjectSpace(root), now + H.flight.releaseSeconds)
+	-- 2026-10-31 boosters: a throw the trap missed may bounce off its first touchdown's booster (see the header).
+	local bounced = if not trapped and deps.random() < H.boosters.chance[zone]
+		then HighwayMath.bounce(core, power)
+		else nil
+	if bounced ~= nil then
+		local touchdown = core.arcs[1]
+		local at = HighwayMath.planAt(core, touchdown.startAt + touchdown.air)
+		deps.showBooster(
+			HighwayMath.biomeAt(touchdown.carry),
+			WorldLayout.highwayCFrame(at.X, at.Y - REST_OVER_LANE, at.Z),
+			bounced.landsAt - now + H.boosters.showSeconds
+		)
+		core = bounced
+		power *= H.boosters.power
+	end
 	session.throws += 1
 	local plan: Types.HighwayPlan = {
 		id = session.throws,
@@ -581,6 +616,7 @@ local function launch(player: any, session: Session, root: Vector3, now: number)
 		fuel = H.boost.fuel,
 		boosted = false,
 		trap = keep < 1,
+		booster = bounced ~= nil,
 		charged = false,
 		savePending = deps.savePending(player),
 	}

@@ -7,9 +7,13 @@
 -- The sheet's kit calls (concept-kit.js:88-95): u = a box standing on y (its centre size.y / 2 higher), b = a box at
 -- its centre, c = an upright cylinder {diameter, height} at its centre, s = a ball {diameter}; rot = the sheet's
 -- degrees (three.js XYZ = CFrame.fromEulerAnglesXYZ). The palette keys name a Roblox material and the sheet's hex.
--- Glass parts are see-through (0.45, HighwayZones' props), Neon and Glass cast no shadow.
+-- Glass parts are see-through (0.45, HighwayZones' props), Neon and Glass cast no shadow. Boosters (plan step 6) add
+-- r = the sheet's torus {radius, tube, segments} as that many straight segments in its XY plane (three.js'
+-- TorusGeometry ring, standing across the lane).
 --   HighwayTraps.build(biome, origin) -> Model?  an unparented decor Model (anchored, no collide, query or touch) of
 --                                                biome 1..7's trap at `origin`; nil for any other biome
+--   HighwayTraps.make(piece, origin) -> Model    the same for any piece in this shape (Art/HighwayBoosters' too)
+--   HighwayTraps.kit                             the u / b / c / s / r constructors of a piece's parts
 
 -- Types
 
@@ -31,6 +35,9 @@ local function c(key: string, d: number, h: number, at: { number }, rot: { numbe
 end
 local function s(key: string, d: number, at: { number }): PartDef
 	return { kind = "s", key = key, size = { d }, at = at }
+end
+local function r(key: string, radius: number, tube: number, at: { number }, segments: number): PartDef
+	return { kind = "r", key = key, size = { radius, tube, segments }, at = at }
 end
 
 local TRAPS: { Trap } = {
@@ -120,12 +127,46 @@ local TRAPS: { Trap } = {
 local HighwayTraps = {}
 
 HighwayTraps.list = TRAPS
+HighwayTraps.kit = { u = u, b = b, c = c, s = s, r = r }
 
 -- Private
+
+local function finish(part: Part, material: Enum.Material, hex: string, parent: Instance)
+	part.Color = Color3.fromHex(hex)
+	part.Material = material
+	part.Transparency = if material == Enum.Material.Glass then GLASS_SEE_THROUGH else 0
+	part.CastShadow = material ~= Enum.Material.Neon and material ~= Enum.Material.Glass
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.Parent = parent
+end
+
+-- The sheet's torus: `segments` straight pieces round a circle of `radius` in its XY plane, each the tube thick.
+local function makeRing(def: PartDef, material: Enum.Material, hex: string, origin: CFrame, parent: Instance)
+	local radius, tube, segments = def.size[1], def.size[2], def.size[3]
+	local length = 2 * radius * math.sin(math.pi / segments) + tube -- a little overlap closes the joints
+	local centre = origin * CFrame.new(def.at[1], def.at[2], def.at[3])
+	for i = 0, segments - 1 do
+		local angle = (i + 0.5) * 2 * math.pi / segments
+		local part = Instance.new("Part")
+		part.Name = def.key
+		part.Size = Vector3.new(2 * tube, length, 2 * tube)
+		part.CFrame = centre
+			* CFrame.new(radius * math.cos(angle), radius * math.sin(angle), 0)
+			* CFrame.Angles(0, 0, angle)
+		finish(part, material, hex, parent)
+	end
+end
 
 local function makePart(def: PartDef, pal: { [string]: { string } }, origin: CFrame, parent: Instance)
 	local entry = pal[def.key]
 	local material = (Enum.Material :: any)[entry[1]] :: Enum.Material
+	if def.kind == "r" then
+		makeRing(def, material, entry[2], origin, parent)
+		return
+	end
 	local part = Instance.new("Part")
 	part.Name = def.key
 	local at = Vector3.new(def.at[1], def.at[2], def.at[3])
@@ -147,31 +188,24 @@ local function makePart(def: PartDef, pal: { [string]: { string } }, origin: CFr
 		end
 	end
 	part.CFrame = origin * CFrame.new(at) * turn
-	part.Color = Color3.fromHex(entry[2])
-	part.Material = material
-	part.Transparency = if material == Enum.Material.Glass then GLASS_SEE_THROUGH else 0
-	part.CastShadow = material ~= Enum.Material.Neon and material ~= Enum.Material.Glass
-	part.Anchored = true
-	part.CanCollide = false
-	part.CanQuery = false
-	part.CanTouch = false
-	part.Parent = parent
+	finish(part, material, entry[2], parent)
 end
 
 -- Public
 
-function HighwayTraps.build(biome: number, origin: CFrame): Model?
-	local trap = TRAPS[biome]
-	if trap == nil then
-		return nil
-	end
+function HighwayTraps.make(piece: Trap, origin: CFrame): Model
 	local model = Instance.new("Model")
-	model.Name = trap.id
-	for _, def in trap.parts do
-		makePart(def, trap.pal, origin, model)
+	model.Name = piece.id
+	for _, def in piece.parts do
+		makePart(def, piece.pal, origin, model)
 	end
 	model.WorldPivot = origin
 	return model
+end
+
+function HighwayTraps.build(biome: number, origin: CFrame): Model?
+	local trap = TRAPS[biome]
+	return if trap then HighwayTraps.make(trap, origin) else nil
 end
 
 return HighwayTraps

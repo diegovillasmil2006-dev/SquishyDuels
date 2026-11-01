@@ -1628,6 +1628,7 @@ local Strings = {
 			landed = "{distance} studs!",
 			newBest = "NEW BEST!",
 			trap = "TRAP!", -- gear step 3: a trap took some of this throw's power
+			booster = "BOOSTER!", -- 2026-10-31: the throw bounced off a booster
 		},
 	},
 

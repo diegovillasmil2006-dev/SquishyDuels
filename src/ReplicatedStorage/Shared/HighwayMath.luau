@@ -51,7 +51,14 @@
 --                                        beforeCarrySeconds, or with no room ahead; else a new arc from planAt(core,
 --                                        t) to max(landing(power x boost.power), core.studs), carrying at least
 --                                        minAheadStuds farther, flying speedUp x faster than the arc in force (never
---                                        under minAirSeconds); the roll and landsAt again
+--                                        under minAirSeconds), after the arcs up to the one in force (a booster's
+--                                        bounce still ahead is dropped: the boost flies over it); the roll and
+--                                        landsAt again
+--   HighwayMath.bounce(core, power)   -> Core?: boosters (plan step 6, 2026-10-31): a one-arc plan whose first arc
+--                                        touches down on a booster: a second arc from that touchdown (the first
+--                                        carry, at its startAt + air) to max(landing(power x boosters.power),
+--                                        core.studs), carrying at least boost.minAheadStuds farther; the roll and
+--                                        landsAt again; nil for a plan with more than one arc or no room ahead
 --   HighwayMath.ringsHit(core)        -> { number }: the WorldLayout.Highway.rings indices (ascending) the plan flies
 --                                        through: the arc in force at the ring's d is within ringRadius of its
 --                                        centre (rolling never hits)
@@ -271,16 +278,33 @@ function HighwayMath.boost(core: Core, power: number, t: number): Core?
 	local here = HighwayMath.planAt(core, t)
 	local studs = math.max(HighwayMath.landing(power * B.power), core.studs)
 	local new = HighwayMath.arc(here.Z, here.Y, studs, t, here.Z + B.minAheadStuds)
-	local current = core.arcs[arcAt(core, t)]
+	local index = arcAt(core, t)
+	local current = core.arcs[index]
 	local speed = (current.carry - current.from) / current.air
 	if new.carry <= here.Z or not (speed > 0) then
 		return nil
 	end
 	new.air = math.max((new.carry - new.from) / (speed * B.speedUp), B.minAirSeconds)
-	local arcs = table.clone(core.arcs)
+	local arcs = table.move(core.arcs, 1, index, 1, {}) -- boosters: a booster's bounce still ahead is flown over
 	table.insert(arcs, new)
 	local roll = HighwayMath.rollSeconds(new.carry, studs)
 	return { x0 = core.x0, arcs = arcs, roll = roll, studs = studs, landsAt = t + new.air + roll }
+end
+
+-- Boosters (plan step 6, 2026-10-31): the plan after its first arc touches down on a booster (see the API).
+function HighwayMath.bounce(core: Core, power: number): Core?
+	if #core.arcs ~= 1 then
+		return nil
+	end
+	local first = core.arcs[1]
+	local t = first.startAt + first.air
+	local studs = math.max(HighwayMath.landing(power * H.boosters.power), core.studs)
+	local new = HighwayMath.arc(first.carry, CLEAR, studs, t, first.carry + B.minAheadStuds)
+	if new.carry <= first.carry then
+		return nil
+	end
+	local roll = HighwayMath.rollSeconds(new.carry, studs)
+	return { x0 = core.x0, arcs = { first, new }, roll = roll, studs = studs, landsAt = t + new.air + roll }
 end
 
 function HighwayMath.ringsHit(core: Core): { number }

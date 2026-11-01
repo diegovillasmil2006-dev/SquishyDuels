@@ -46,7 +46,8 @@
 -- * Launchers (held and platform) and gear are phase 14: nothing here changes for them but the trail's colour and the
 --   launcher motion (the hook: `release`). Gear step 3 (2026-10-26): the trail fades from the held launcher's zone
 --   colour to white (trailColor; white without one), and a trapped plan (plan.trap) pops TRAP! at the release with
---   the splat and a short camera jolt (Config/GearShop.trap).
+--   the splat and a short camera jolt (Config/GearShop.trap). 2026-10-31 boosters: a plan with a booster pops
+--   BOOSTER! (Config/GearShop.booster) as the squishy reaches its bounce (arcs[2].from).
 -- * Physics upgrade part 4 (2026-10-28, Config.HighwayFx; owner: "Yes, build part 4", added on top): HighwayFxController
 --   plays the design's wind-up (at the press), launch (at the release), zone themes (at each new zone), bounces, roll
 --   and fireworks finish (at the drawn landing). The drawn flight runs on its clock (held back by a slow motion, then
@@ -144,6 +145,7 @@ type Throw = {
 	eye: Vector3?,
 	look: Vector3?,
 	joltAt: number?, -- gear step 3: clock of a trap's camera jolt
+	bounced: boolean?, -- 2026-10-31 boosters: its BOOSTER! pop shown
 	fx: HighwayFxController.State?, -- physics upgrade part 4: the design's effects for this throw
 	fov0: number?, -- part 4: the camera's FOV when the throw shot took it
 }
@@ -718,6 +720,13 @@ local function drawFlight(throw: Throw, d: number, boost: boolean)
 		end
 	end
 	local plan = throw.plan
+	-- 2026-10-31 boosters: BOOSTER! as the squishy reaches the bounce off its booster (the second arc's start).
+	local bounce = if plan and plan.booster then plan.arcs[2] else nil
+	if bounce and not throw.bounced and d >= bounce.from then
+		throw.bounced = true
+		pop({ { text = Strings.highway.pop.booster, big = true, color = GearShop.booster.color } })
+		play(GearShop.booster.sound)
+	end
 	h:setFlight({
 		studs = math.floor(d),
 		biome = biome,

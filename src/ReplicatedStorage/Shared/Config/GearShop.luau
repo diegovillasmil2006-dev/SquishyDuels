@@ -29,6 +29,8 @@ local GearShop = {
 	-- TRAP! (HighwayThrowController): the pop's colour (a Palette token), its sound (an AssetTable key; the uploaded
 	-- splat), and a short camera jolt (studs up and down, seconds; none under ReducedMotion: no camera shots then).
 	trap = { color = "CandyLavender", sound = "match.splat", joltStuds = 0.6, joltSeconds = 0.3, joltHz = 18 },
+	-- 2026-10-31 boosters: the BOOSTER! pop as a throw bounces off a booster (the boost pop's colour and sound).
+	booster = { color = "CandyCyan", sound = "sfx.dashWhoosh" },
 }
 
 return GearShop

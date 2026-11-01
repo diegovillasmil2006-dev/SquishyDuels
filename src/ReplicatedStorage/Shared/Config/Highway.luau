@@ -108,6 +108,15 @@ local Highway = {
 		speedUp = 1.25,
 		minAirSeconds = 0.5,
 	},
+	-- Boosters (plan step 6, 2026-10-31; [P] Claude's call while the owner is away, built like the traps you can see):
+	-- a throw the trap missed hits a booster with `chance` of the zone it would reach; its first arc's touchdown then
+	-- stands that biome's booster (Art/HighwayBoosters, the owner's concept sheet) and bounces it into a second arc to
+	-- landing(power x `power`) (HighwayMath.bounce), the booster shown for its flight plus showSeconds.
+	boosters = {
+		chance = { 0.10, 0.10, 0.10, 0.12, 0.12, 0.14, 0.14 },
+		power = 2,
+		showSeconds = 4,
+	},
 	-- [P] The next throw may start this much before the server's landing (the client times its landing on the server
 	-- clock it reads, a few ms off).
 	inFlightGraceSeconds = 0.1,

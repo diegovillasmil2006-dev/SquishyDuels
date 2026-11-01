@@ -86,6 +86,7 @@ return function(t: Context)
 		landed: { { player: any, landing: any } },
 		random: number, -- gear step 2: what deps.random answers (1 = never a trap)
 		traps: { { biome: number, at: CFrame } }, -- 2026-10-31 traps you can see: deps.showTrap calls
+		boosters: { { biome: number, at: CFrame, seconds: number } }, -- 2026-10-31 boosters: deps.showBooster calls
 		spends: { { player: any, amount: number, reason: string } },
 		nowSaves: number,
 		saveOk: boolean,
@@ -144,6 +145,7 @@ return function(t: Context)
 			landed = {},
 			random = 1,
 			traps = {},
+			boosters = {},
 			spends = {},
 			nowSaves = 0,
 			saveOk = true,
@@ -245,6 +247,9 @@ return function(t: Context)
 			end,
 			showTrap = function(biome: number, at: CFrame)
 				table.insert(w.traps, { biome = biome, at = at })
+			end,
+			showBooster = function(biome: number, at: CFrame, seconds: number)
+				table.insert(w.boosters, { biome = biome, at = at, seconds = seconds })
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -361,6 +366,7 @@ return function(t: Context)
 			fuel = 1,
 			boosted = false,
 			trap = false,
+			booster = false, -- 2026-10-31 boosters
 			charged = false,
 			savePending = false,
 		})
@@ -892,6 +898,33 @@ return function(t: Context)
 		local want = WorldLayout.highwayCFrame(rest.X, rest.Y - 1, rest.Z)
 		expect.near((w.traps[1].at.Position - want.Position).Magnitude, 0, 1e-6)
 		expect.near((w.traps[1].at.Position - WorldLayout.highwayCFrame(rest.X, 1, plan.studs).Position).Magnitude, 0, 1e-6)
+		finish()
+	end)
+
+	t.test("boosters: a throw the trap missed may bounce off its touchdown's booster, shown there", function()
+		local w = fresh()
+		-- Zone 1: a roll of 0.09 misses the trap (8 %) and hits the booster (10 %).
+		expect.truthy(0.09 >= Config.Economy.Gear.trapChance[1] and 0.09 < H.boosters.chance[1])
+		w.random = 0.09
+		local plan = throwAndLand(w, w.a)
+		expect.equal(plan.trap, false)
+		expect.equal(plan.booster, true)
+		expect.equal(#plan.arcs, 2)
+		expect.equal(plan.studs, math.max(HighwayMath.landing(900 * H.boosters.power), 213))
+		expect.equal(#w.boosters, 1)
+		local first = plan.arcs[1]
+		expect.equal(w.boosters[1].biome, HighwayMath.biomeAt(first.carry))
+		local touch = HighwayMath.planAt(plan, first.startAt + first.air)
+		expect.near((w.boosters[1].at.Position - WorldLayout.highwayCFrame(touch.X, touch.Y - 1, touch.Z).Position).Magnitude, 0, 1e-3)
+		expect.truthy(w.boosters[1].seconds > H.boosters.showSeconds)
+		expect.equal(w.landed[#w.landed].landing.boosts, 0) -- a bounce is no boost
+		-- No booster on a trapped throw, nor on a miss of both rolls.
+		w.random = 0
+		local trapped = throwAndLand(w, w.a)
+		expect.equal(trapped.booster, false)
+		w.random = 1
+		expect.equal(throwAndLand(w, w.a).booster, false)
+		expect.equal(#w.boosters, 1)
 		finish()
 	end)
 

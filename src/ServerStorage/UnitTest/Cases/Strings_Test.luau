@@ -1206,6 +1206,7 @@ return function(t: Context)
 			landed = "{distance} studs!",
 			newBest = "NEW BEST!",
 			trap = "TRAP!", -- gear step 3
+			booster = "BOOSTER!", -- 2026-10-31 boosters
 		})
 		expect.equal(Strings.format(p.rings, { hit = 2, total = 3 }), "2/3 RINGS")
 		expect.equal(Strings.format(p.landed, { distance = "1,117" }), "1,117 studs!")
