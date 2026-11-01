@@ -12,7 +12,8 @@
 --   through MatchService.startHosted (the lobby's teams; bots fill the rest), a 1v1 through QueueService.startHosted
 --   on ArenaService.prefer(mapId). When nobody here has a match (SD_MatchId) for homeAfterSeconds (the end screen, a
 --   Rematch), everyone goes home: the lobby server the ticket names, else any lobby server.
--- * A teleport that fails after it started (TeleportInitFailed) is tried once more for that player.
+-- * A teleport that fails after it started (TeleportInitFailed) is tried once more for that player. A failed trip to
+--   the ticket's lobby server (closed once its players all left) goes to any lobby server, now and from then on.
 
 -- Services
 
@@ -45,6 +46,7 @@ local firstArrivalAt: number? = nil
 local started = false
 local idleSince: number? = nil
 local retried: { [Player]: boolean } = {}
+local homeGone = false
 
 local function cfg(): any
 	return Config.Match.Servers
@@ -84,7 +86,7 @@ local function sendHome()
 	if #players == 0 then
 		return
 	end
-	local home = ticket and ticket.home
+	local home = ticket and not homeGone and ticket.home
 	if home then
 		local options = Instance.new("TeleportOptions")
 		options.ServerInstanceId = home
@@ -224,6 +226,12 @@ end
 function MatchServerService.init()
 	TeleportService.TeleportInitFailed:Connect(function(player: Player, result: Enum.TeleportResult, message: string, _placeId: number, options: TeleportOptions?)
 		log:warn(`teleport of user {player.UserId} failed ({result.Name}): {message}`)
+		-- The lobby server we came from has closed (it empties when its players all leave for a match, error 771):
+		-- this and every later trip home go to any lobby server instead.
+		if options and options.ServerInstanceId ~= "" then
+			homeGone = true
+			options = nil
+		end
 		if not retried[player] and player.Parent == Players then
 			retried[player] = true
 			local ok, err = teleport({ player }, options)
