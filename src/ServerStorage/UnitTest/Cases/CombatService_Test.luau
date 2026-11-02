@@ -630,7 +630,10 @@ return function(t: Context)
 		-- 2. A real DuelRules match whose Active deadline is 5 ms after that impact; A already lost a life.
 		local function ownerAt(deadline: number): { state: any }
 			local base = deadline - RULES.MatchSeconds - RULES.CountdownSeconds
-			local s = DuelRules.new("sync-match", { A = { userId = 1 }, B = { userId = 2 } }, base)
+			local noRounds = table.clone(Config.Duel) -- A's lost life must not start a round break here
+			noRounds.Rules = table.clone(RULES)
+			noRounds.Rules.Rounds = false
+			local s = DuelRules.new("sync-match", { A = { userId = 1 }, B = { userId = 2 } }, base, noRounds)
 			for _, kind in { "streamed", "positioned" } do
 				s = DuelRules.step(s, { kind = kind, side = "A" }, base)
 				s = DuelRules.step(s, { kind = kind, side = "B" }, base)

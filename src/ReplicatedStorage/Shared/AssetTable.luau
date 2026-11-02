@@ -263,6 +263,7 @@ local function lobbyHud(key: string, id: number, use: string, date: string?): As
 	}
 end
 local MF_DATE = "2026-10-25" -- the MATCH FOUND pictures
+local VOTE_DATE = "2026-11-01" -- the sky maps' vote cards
 
 -- An image slot of the restyle part 2 (2026-11-01, the owner's style rule): one of Diego's hud-icons drawings (or the
 -- Friends icon drawn in their style), rendered 512 px with a clear background and uploaded by Claude (Studio MCP
@@ -1882,6 +1883,31 @@ local SLOTS: { AssetSlot } = {
 	lobbyHud("img.vote.board.JellyArcade", 71049181512991, "Jelly Arcade's tilted board", MF_DATE),
 	lobbyHud("img.vote.board.SundaePlaza", 138565113660868, "Sundae Plaza's tilted board", MF_DATE),
 	lobbyHud("img.vote.board.PillowFortPark", 117998982297460, "Pillow Fort Park's tilted board", MF_DATE),
+	-- Diego's 11 sky maps (owner 2026-11-01): his Duel demo's PICK A MAP card (his own map photo, his mini map, the name
+	-- band in the map's theme) drawn at the same 372 x 292 at (40, 30) of 452 x 400, 2x, once with each of his 2 photos
+	-- (card = photo a, cardB = photo b, faded in and out like his sq-xfade; tools/maps/make_vote_cards.mjs).
+	lobbyHud("img.vote.card.CookieCounter", 88419102238260, "Cookie Counter's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.CookieCounter", 107460898234600, "Cookie Counter's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.FluffCycle", 80105118040656, "Fluff Cycle's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.FluffCycle", 98873460298023, "Fluff Cycle's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.CrayonCanyon", 90711951905592, "Crayon Canyon's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.CrayonCanyon", 136150057001455, "Crayon Canyon's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.ShelfLife", 138727619697006, "Shelf Life's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.ShelfLife", 113116161956471, "Shelf Life's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.TeatimeTerrace", 118728213725971, "Teatime Terrace's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.TeatimeTerrace", 122758857004398, "Teatime Terrace's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.CupcakeCarousel", 92715999246122, "Cupcake Carousel's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.CupcakeCarousel", 124276618666869, "Cupcake Carousel's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.PuzzlePlaza", 81131276907488, "Puzzle Plaza's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.PuzzlePlaza", 135547398315181, "Puzzle Plaza's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.DollhouseDrop", 134432851271883, "Dollhouse Drop's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.DollhouseDrop", 131649384101997, "Dollhouse Drop's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.PencilCase", 122576125677995, "Pencil Case's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.PencilCase", 102592883730010, "Pencil Case's vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.PianoKeys", 78306419845411, "Piano Keys' vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.PianoKeys", 132844169756723, "Piano Keys' vote card, photo b", VOTE_DATE),
+	lobbyHud("img.vote.card.Lunchbox", 124772403149860, "Lunchbox's vote card, photo a", VOTE_DATE),
+	lobbyHud("img.vote.cardB.Lunchbox", 107032748555155, "Lunchbox's vote card, photo b", VOTE_DATE),
 	lobbyHud("img.vote.headTeam", 87176303448390, "the TEAM vote head 600 x 92 at (40, 20) of 680 x 170", MF_DATE),
 	lobbyHud("img.vote.headSolo", 126731794402890, "the FREE FOR ALL vote head, gold (L:669)", MF_DATE),
 	lobbyHud("img.vote.tailRed", 81764687848013, "the TEAM head's left tail, 110 x 104 at 3x (L:667)", MF_DATE),

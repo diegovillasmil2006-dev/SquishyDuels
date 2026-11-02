@@ -9,7 +9,8 @@
 --   board:destroy()
 -- * The head (the mode's pill with its tails, the name and chip), the line under it (VOTE FOR A MAP with the timer
 --   until the result, then MAP CHOSEN! / IT'S A TIE! / RANDOM PICK!), a card per offered map (its card picture and
---   floating board, by Workspace.SquishyMaps model name; a plain card with the name when there is no picture).
+--   floating board, by Workspace.SquishyMaps model name; a sky map's card has no board but a second photo fading in
+--   and out, Config/VoteCards; a plain card with the name when there is no picture).
 -- * Tapping a card while the vote is open votes for it at once (Config.UI.MatchFound.vote.tapGapMs apart): your pick
 --   lifts and glows with YOUR VOTE and your chip flies there from your tile; the server's next views confirm it (or
 --   put it back once pickHoldS has passed). Anyone else's vote in a view flies from their tile; a moved vote leaves
@@ -38,6 +39,7 @@ local Config = require(Shared.Config)
 local Palette = require(Shared.Art.Palette)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
+local VoteCards = require(Shared.Config.VoteCards)
 
 local Client = script.Parent.Parent
 local Create = require(script.Parent.Create)
@@ -126,6 +128,8 @@ type Card = {
 	target: CardPose,
 	moveElapsed: number,
 	fade: Tweens.FadeGroup?,
+	photoB: ImageLabel?, -- a sky map's second photo (VoteCards), faded by photoFade until the card loses
+	photoFade: UiIdle.Handle?,
 }
 
 -- Constants
@@ -630,6 +634,8 @@ function MatchVoteBoard.new(ctx: Context): Board
 		})
 		local p = cs.picture
 		local pictures: { ImageLabel } = {}
+		local photoB: ImageLabel? = nil
+		local photoFade: UiIdle.Handle? = nil
 		local cardKey, boardKey = "img.vote.card." .. model, "img.vote.board." .. model
 		if AssetTable.image(cardKey) then
 			table.insert(
@@ -641,22 +647,42 @@ function MatchVoteBoard.new(ctx: Context): Board
 					Parent = pose,
 				})
 			)
-			local float = clear("Float", { Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = pose })
-			table.insert(
-				pictures,
-				picture("Board", boardKey, {
+			-- The sky maps (2026-11-01): the same card with Diego's second photo fades in and out over it.
+			local cardBKey = "img.vote.cardB." .. model
+			if AssetTable.image(cardBKey) then
+				local b = picture("CardB", cardBKey, {
 					Position = UDim2.fromOffset(-p.cardX, -p.cardY),
 					Size = UDim2.fromOffset(p.width, p.height),
 					ZIndex = 8,
-					Parent = float,
+					Parent = pose,
 				})
-			)
-			local delay = (cs.floatS - (index - 1) * cs.floatStepS) % cs.floatS
-			ctx.loop(UiIdle.addFrames(float, {
-				{ at = 0, y = 0 },
-				{ at = 0.5, y = -cs.floatPx },
-				{ at = 1, y = 0 },
-			}, { periodS = cs.floatS, delayS = delay, curve = "easeInOut" }))
+				table.insert(pictures, b)
+				photoB = b
+				photoFade = UiIdle.addFrames(b, VoteCards.photoFade, {
+					periodS = VoteCards.photoFadeS,
+					delayS = (VoteCards.photoFadeS - (index - 1) * VoteCards.photoFadeStepS) % VoteCards.photoFadeS,
+					curve = VoteCards.photoFadeCurve,
+				})
+				ctx.loop(photoFade)
+			end
+			if AssetTable.image(boardKey) then -- the old maps' floating board (the sky maps' cards have none)
+				local float = clear("Float", { Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = pose })
+				table.insert(
+					pictures,
+					picture("Board", boardKey, {
+						Position = UDim2.fromOffset(-p.cardX, -p.cardY),
+						Size = UDim2.fromOffset(p.width, p.height),
+						ZIndex = 8,
+						Parent = float,
+					})
+				)
+				local delay = (cs.floatS - (index - 1) * cs.floatStepS) % cs.floatS
+				ctx.loop(UiIdle.addFrames(float, {
+					{ at = 0, y = 0 },
+					{ at = 0.5, y = -cs.floatPx },
+					{ at = 1, y = 0 },
+				}, { periodS = cs.floatS, delayS = delay, curve = "easeInOut" }))
+			end
 		else
 			-- A map with no picture yet: a plain card with its name.
 			local plain: Frame =
@@ -833,6 +859,8 @@ function MatchVoteBoard.new(ctx: Context): Board
 			glow = glow,
 			glowScale = glowScale,
 			pictures = pictures,
+			photoB = photoB,
+			photoFade = photoFade,
 			hit = hit,
 			strip = strip,
 			chips = {},
@@ -1370,6 +1398,15 @@ function MatchVoteBoard.new(ctx: Context): Board
 			card.glow.ImageTransparency = 1 - shownPose.glow
 			card.glowScale.Scale = glowPulse
 			if shownPose.alpha < 1 and card.fade == nil then
+				local photoFade = card.photoFade
+				if photoFade then -- a losing card keeps photo a: two writers on photo b's transparency would fight
+					photoFade:remove()
+					card.photoFade = nil
+					local photoB = card.photoB
+					if photoB then
+						photoB.ImageTransparency = 1
+					end
+				end
 				card.fade = Tweens.fadeGroup(card.pose)
 			end
 			local fade = card.fade

@@ -34,6 +34,10 @@ return function(t: Context)
 		local d = MatchTicket.read(trip(duel), maps)
 		expect.equal(d.kind, "duel")
 		expect.equal(d.mapId, "D3")
+		-- The queue shared by every server (2026-11-01): no map, the match server picks it.
+		local open, whyOpen = MatchTicket.read(trip(MatchTicket.make("match", "ffa", "", "m-3", { 7 }, nil, "job-3")), maps)
+		expect.equal(whyOpen, nil)
+		expect.equal(open.mapId, "")
 	end)
 
 	t.test("bent tickets are refused", function()

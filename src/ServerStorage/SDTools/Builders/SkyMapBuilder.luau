@@ -44,8 +44,10 @@ local ROW_Z = 3000 -- south of the lobby (Z -300..300), away from the highway (Z
 local SPACING = 800 -- his builder's Spacing
 local FIRST_X = -2800
 
-local DECK_H, WALL_H, COVER_H, STEPS = 10, 16, 4, 6
+-- His deck / wall / cover heights, slab and cap come from MapData.constants (his numbers x SCALE; owner 2026-11-01:
+-- every map 1.5x): buildMap's `C`.
 local T = 0.32 -- his outline thickness
+local STEP_RISE = 1.25 -- a stair step's height, studs (the vault: steps about 1 stud high read best)
 local UP = CFrame.Angles(0, 0, math.pi / 2) -- a Roblox cylinder's axis is X: this stands it up
 
 local function hex(h: string): Color3
@@ -73,15 +75,15 @@ function SkyMapBuilder.modelName(map: any): string
 end
 
 -- The ramp under a stair: a WedgePart whose slope climbs along local +Z (its tall face at +Z) from the floor to the
--- deck, over the stair's footprint. `corner` = the map's corner.
+-- deck (deckH high), over the stair's footprint. `corner` = the map's corner.
 local CLIMB: { [string]: Vector3 } =
 	{ n = Vector3.new(0, 0, -1), s = Vector3.new(0, 0, 1), e = Vector3.new(1, 0, 0), w = Vector3.new(-1, 0, 0) }
-function SkyMapBuilder.wedgeCFrame(e: any, corner: Vector3): (CFrame, Vector3)
+function SkyMapBuilder.wedgeCFrame(e: any, corner: Vector3, deckH: number): (CFrame, Vector3)
 	local dir = CLIMB[e.stairUp]
 	local ns = e.stairUp == "n" or e.stairUp == "s"
 	local run, width = if ns then e.d else e.w, if ns then e.w else e.d
-	local c = corner + Vector3.new(e.x + e.w / 2, DECK_H / 2, e.z + e.d / 2)
-	return CFrame.lookAt(c, c - dir), Vector3.new(width, DECK_H, run)
+	local c = corner + Vector3.new(e.x + e.w / 2, deckH / 2, e.z + e.d / 2)
+	return CFrame.lookAt(c, c - dir), Vector3.new(width, deckH, run)
 end
 
 -- Builder state for one map.
@@ -402,8 +404,11 @@ local function skyProp(ctx: Ctx, parent: Instance, kind: string, pal: { string }
 end
 
 -- One map's Model, built at `corner` (its north-west floor corner).
-function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls: Instance?): (Model, number)
+function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls: Instance?, C: any): (Model, number)
 	local W, H = map.W, map.H
+	local DECK_H, SLAB, WALL_H, COVER_H, STEPS = C.DECK_H, C.DECK_SLAB, C.WALL_H, C.COVER_H, C.STAIR_STEPS
+	local CAP_H, CAP_OVER, S = C.CAP_H, C.CAP_OVERHANG, C.SCALE
+	local CAP_SINK = CAP_H / 1.4 -- his 1.4 cap sat 1 stud into its wall
 	local th: { [string]: Color3 } = {}
 	for k, v in map.theme do
 		th[k] = hex(v)
@@ -505,7 +510,7 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 				-- the hull, cap and face follow the visible part (his outl adds them to the mesh): they are its children
 				local vis = cyl(ctx, F.Structures, r, hh, col, bottom, { name = "Round" .. name, hullOnSelf = true })
 				if t == "wall" then
-					cyl(ctx, vis, r + 0.25, 1.4, capCol, bottom + Vector3.new(0, hh - 1, 0), { name = "Cap", t = 0.22 })
+					cyl(ctx, vis, r + CAP_OVER, CAP_H, capCol, bottom + Vector3.new(0, hh - CAP_SINK, 0), { name = "Cap", t = 0.22 })
 				end
 				if math.abs(cx - W / 2) < 0.5 then
 					face(ctx, vis, bottom, r, hh, math.pi / 2)
@@ -517,20 +522,20 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 			else
 				box(ctx, F.Structures, e.w, hh, e.d, col, P(cx, base, cz), { name = name, collide = true })
 				if t == "wall" then
-					box(ctx, F.Structures, e.w + 0.5, 1.4, e.d + 0.5, capCol, P(cx, base + hh - 1, cz), { name = "Cap", t = 0.22, collide = true })
+					box(ctx, F.Structures, e.w + 2 * CAP_OVER, CAP_H, e.d + 2 * CAP_OVER, capCol, P(cx, base + hh - CAP_SINK, cz), { name = "Cap", t = 0.22, collide = true })
 				end
 			end
 		elseif t == "deck" then
 			if e.round then
 				local r = e.w / 2
-				local centre = P(cx, DECK_H - 0.8, cz)
-				local collider = cyl(ctx, F.Colliders, r, 1.6, th.deck, centre, { name = "DeckCollider", center = true, t = 0, collide = true, transparency = 1, shadow = false })
+				local centre = P(cx, DECK_H - SLAB / 2, cz)
+				local collider = cyl(ctx, F.Colliders, r, SLAB, th.deck, centre, { name = "DeckCollider", center = true, t = 0, collide = true, transparency = 1, shadow = false })
 				local slab = model("RoundDeck", F.Structures)
-				cyl(ctx, slab, r, 1.6, th.deck, centre, { name = "Slab", center = true })
+				cyl(ctx, slab, r, SLAB, th.deck, centre, { name = "Slab", center = true })
 				for k = 0, 7 do
 					local a = k / 8 * math.pi * 2
 					local stripeCol = if k % 2 == 1 then WHITE else mix(th.deck, hex("#ff8fb0"), 0.45)
-					box(ctx, slab, r * 0.8, 0.25, 1.4, stripeCol, centre + Vector3.new(math.cos(a) * r * 0.5, 0.9, math.sin(a) * r * 0.5), { name = "Stripe", center = true, t = 0.1, cf = CFrame.Angles(0, -a, 0) })
+					box(ctx, slab, r * 0.8, 0.25, 1.4, stripeCol, centre + Vector3.new(math.cos(a) * r * 0.5, SLAB / 2 + 0.1, math.sin(a) * r * 0.5), { name = "Stripe", center = true, t = 0.1, cf = CFrame.Angles(0, -a, 0) })
 				end
 				slab.WorldPivot = CFrame.new(centre)
 				if e.spin then
@@ -541,11 +546,11 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 			elseif e.solid then
 				box(ctx, F.Structures, e.w, DECK_H, e.d, th.deck, P(cx, 0, cz), { name = "Block", collide = true })
 			else
-				local st = 1.6
+				local st = SLAB
 				box(ctx, F.Structures, e.w, st, e.d, th.deck, P(cx, DECK_H - st / 2, cz), { name = "Deck", center = true, collide = true })
-				local ps = math.min(3, e.w * 0.3, e.d * 0.3)
-				local cols = math.max(2, math.floor(e.w / 26 + 0.5) + 1)
-				local rows = math.max(2, math.floor(e.d / 26 + 0.5) + 1)
+				local ps = math.min(3 * S, e.w * 0.3, e.d * 0.3)
+				local cols = math.max(2, math.floor(e.w / (26 * S) + 0.5) + 1)
+				local rows = math.max(2, math.floor(e.d / (26 * S) + 0.5) + 1)
 				local pc = mix(th.deck, INK, 0.15)
 				for a = 0, cols - 1 do
 					for b = 0, rows - 1 do
@@ -559,9 +564,13 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 			end
 		elseif t == "stair" then
 			local steps = model("Stair", F.Structures)
-			for j = 0, STEPS - 1 do
+			-- Gentler stairs (owner 2026-11-01): steps about STEP_RISE high (his 6 became 2.5 studs each at 1.5x), each
+			-- top half a step above the ramp's line at its front edge and half below at its back, so feet on the
+			-- ramp never sink into or float over a step by more than half a step, whatever the avatar.
+			local n = math.max(STEPS, math.floor(DECK_H / STEP_RISE + 0.5))
+			for j = 0, n - 1 do
 				local x, z, ww, dd = e.x, e.z, e.w, e.d
-				local f, g = j / STEPS, 1 / STEPS
+				local f, g = j / n, 1 / n
 				if e.stairUp == "n" then
 					z, dd = e.z + e.d * (1 - f - g), e.d * g
 				elseif e.stairUp == "s" then
@@ -572,10 +581,10 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 					x, ww = e.x + e.w * (1 - f - g), e.w * g
 				end
 				local col = if j % 2 == 1 then th.stair else mix(th.stair, WHITE, 0.4)
-				local step = box(ctx, steps, ww, DECK_H * (j + 1) / STEPS, dd, col, P(x + ww / 2, 0, z + dd / 2), { name = "Step", t = 0.22 })
-				tag(step, "Chase", { Index = j, Count = STEPS, Phase = ph / 10 })
+				local step = box(ctx, steps, ww, DECK_H * (j + 0.5) / n, dd, col, P(x + ww / 2, 0, z + dd / 2), { name = "Step", t = 0.22 })
+				tag(step, "Chase", { Index = j, Count = n, Phase = ph / 10 })
 			end
-			local cf, size = SkyMapBuilder.wedgeCFrame(e, corner)
+			local cf, size = SkyMapBuilder.wedgeCFrame(e, corner, DECK_H)
 			newPart(ctx, F.Colliders, size, cf, WHITE, { name = "Ramp", wedge = true, collide = true, transparency = 1, shadow = false })
 		end
 	end
@@ -739,7 +748,8 @@ function SkyMapBuilder.build(ctx: Generated.BuildContext): Generated.BuildResult
 	local root = Instance.new("Folder")
 	root.Name = SkyMapBuilder.ROOT_NAME
 	for index, id in MapData.order do
-		local mapModel, parts = SkyMapBuilder.buildMap(MapData.maps[id], MapLayout, SkyMapBuilder.slotCorner(index), hulls)
+		local mapModel, parts =
+			SkyMapBuilder.buildMap(MapData.maps[id], MapLayout, SkyMapBuilder.slotCorner(index), hulls, MapData.constants)
 		mapModel.Parent = root
 		if parts > 2500 then
 			table.insert(warnings, `{mapModel.Name} has {parts} parts (SUPERPROMPT budget ~2,500)`)

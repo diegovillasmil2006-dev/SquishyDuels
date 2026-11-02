@@ -50,11 +50,13 @@ return function(t: Context)
 		return duel
 	end
 
+	-- The cases written before rounds (2026-11-01) play with Rounds off: a hit keeps the fight going. The round cases
+	-- pass duelWith({ Rounds = true }).
 	local function newMatch(duel: any?): any
 		return DuelRules.new(MATCH_ID, {
 			A = { userId = USER_A, rewardsEnabled = true },
 			B = { userId = USER_B, rewardsEnabled = true },
-		}, T0, duel or Config.Duel)
+		}, T0, duel or duelWith({ Rounds = false }))
 	end
 
 	-- Steps through { {event, now}, ... }; returns the final state and every effect in order.
@@ -445,6 +447,70 @@ return function(t: Context)
 			expect.equal(quiet.phase, "SuddenDeath")
 		end
 	)
+
+	-- Rounds (2026-11-01, owner: a hit ends the round: pause, both back on their pads, 3-2-1, next round) ------------
+
+	local ROUNDS = duelWith({ Rounds = true })
+
+	t.test("rounds: a hit that is not the last ends the round: pause, 3-2-1 on the pads, then the clock left", function()
+		local s, startAt = toActive(ROUNDS)
+		local endAt = startAt + RULES.MatchSeconds
+		local effects
+		s, effects = run(s, { { hit("B", startAt + 10), startAt + 10 } })
+		expect.equal(s.participants.B.lives, 2)
+		expect.equal(s.phase, "Active")
+		local resetAt = startAt + 10 + RULES.RoundOverSeconds
+		expect.equal(find(effects, "roundOver").at, startAt + 10)
+		-- the pause: nobody can be hit, a hit on A is ignored
+		expect.falsy(DuelRules.canBeHit(s, "A", startAt + 10.5))
+		s = run(s, { { hit("A", startAt + 11), startAt + 11 } })
+		expect.equal(s.participants.A.lives, RULES.Lives)
+		-- the 3-2-1 of round 2, the clock stopped at what was left
+		s = run(s, { { { kind = "tick" }, resetAt } })
+		expect.equal(s.phase, "Countdown")
+		expect.equal(s.round, 2)
+		expect.equal(s.phaseEndsAt, resetAt + RULES.CountdownSeconds)
+		expect.equal(s.clockLeft, endAt - resetAt)
+		expect.equal(s.participants.B.invulnUntil, -math.huge)
+		-- round 2 plays with the clock left; Active time still counts from the first start
+		local goAt = resetAt + RULES.CountdownSeconds
+		s = run(s, { { { kind = "tick" }, goAt } })
+		expect.equal(s.phase, "Active")
+		expect.equal(s.phaseEndsAt, goAt + (endAt - resetAt))
+		expect.equal(s.activeStartedAt, startAt)
+		expect.equal(s.clockLeft, nil)
+		s = run(s, { { hit("B", goAt + 1), goAt + 1 } })
+		expect.equal(s.participants.B.lives, 1)
+	end)
+
+	t.test("rounds: the last life still ends the match at once, with no round break", function()
+		local s, startAt = toActive(duelWith({ Rounds = true, Lives = 1 }))
+		local effects
+		s, effects = run(s, { { hit("B", startAt + 10), startAt + 10 } })
+		expect.equal(s.phase, "Result")
+		expect.equal(s.outcome.winner, "A")
+		expect.equal(count(effects, "roundOver"), 0)
+	end)
+
+	t.test("rounds: leaving during a round's 3-2-1 after 20 s of play is a win, not a cancel", function()
+		local s, startAt = toActive(ROUNDS)
+		local resetAt = startAt + 25 + RULES.RoundOverSeconds
+		s = run(s, { { hit("B", startAt + 25), startAt + 25 }, { { kind = "tick" }, resetAt } })
+		expect.equal(s.phase, "Countdown")
+		s = run(s, { { { kind = "leave", side = "A" }, resetAt + 1 } })
+		expect.equal(s.outcome.kind, "win")
+		expect.equal(s.outcome.winner, "B")
+		expect.equal(s.outcome.reason, "opponentLeft")
+	end)
+
+	t.test("rounds: time-up during the pause ends the match as before, with no 3-2-1 after it", function()
+		local s, startAt = toActive(ROUNDS)
+		local endAt = startAt + RULES.MatchSeconds
+		s = run(s, { { hit("B", endAt - 0.5), endAt - 0.5 }, { { kind = "tick" }, endAt + RULES.RoundOverSeconds } })
+		expect.equal(s.phase, "Result")
+		expect.equal(s.outcome.reason, "timeUp")
+		expect.equal(s.outcome.winner, "A")
+	end)
 
 	-- Forfeit ------------------------------------------------------------------------------------------------------
 

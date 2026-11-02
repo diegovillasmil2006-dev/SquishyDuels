@@ -625,6 +625,29 @@ return function(t: Context)
 				"img.vote.board.JellyArcade",
 				"img.vote.board.SundaePlaza",
 				"img.vote.board.PillowFortPark",
+				-- Diego's 11 sky maps (2026-11-01): each card with his photo a and with photo b.
+				"img.vote.card.CookieCounter",
+				"img.vote.cardB.CookieCounter",
+				"img.vote.card.FluffCycle",
+				"img.vote.cardB.FluffCycle",
+				"img.vote.card.CrayonCanyon",
+				"img.vote.cardB.CrayonCanyon",
+				"img.vote.card.ShelfLife",
+				"img.vote.cardB.ShelfLife",
+				"img.vote.card.TeatimeTerrace",
+				"img.vote.cardB.TeatimeTerrace",
+				"img.vote.card.CupcakeCarousel",
+				"img.vote.cardB.CupcakeCarousel",
+				"img.vote.card.PuzzlePlaza",
+				"img.vote.cardB.PuzzlePlaza",
+				"img.vote.card.DollhouseDrop",
+				"img.vote.cardB.DollhouseDrop",
+				"img.vote.card.PencilCase",
+				"img.vote.cardB.PencilCase",
+				"img.vote.card.PianoKeys",
+				"img.vote.cardB.PianoKeys",
+				"img.vote.card.Lunchbox",
+				"img.vote.cardB.Lunchbox",
 				"img.vote.headTeam",
 				"img.vote.headSolo",
 				"img.vote.tailRed",
@@ -872,6 +895,18 @@ return function(t: Context)
 			local style = KillStyle.get(id) :: any
 			expect.truthy(AssetTable.image(style.emblem) ~= nil)
 			expect.truthy(AssetTable.image(style.emblemWhite) ~= nil)
+		end
+	end)
+
+	t.test("map vote: every sky map has its two card pictures (owner 2026-11-01, Diego's Duel demo cards)", function()
+		local MapData = t.requireShared("Maps/MapData")
+		for _, id in MapData.order do
+			local model = string.gsub(MapData.maps[id].name, "%s", "")
+			for _, key in { "img.vote.card." .. model, "img.vote.cardB." .. model } do
+				if AssetTable.image(key) == nil then
+					error(`{key} has no picture`)
+				end
+			end
 		end
 	end)
 

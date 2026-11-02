@@ -34,6 +34,10 @@ return function(t: Context)
 
 	local REWARDS = Config.Economy.DuelRewards
 	local RULES = Config.Duel.Rules
+	-- The hit timings below predate rounds (2026-11-01): they play with Rounds off (a hit keeps the fight going).
+	local NO_ROUNDS = table.clone(Config.Duel)
+	NO_ROUNDS.Rules = table.clone(Config.Duel.Rules)
+	NO_ROUNDS.Rules.Rounds = false
 
 	local function step(s: any, event: any, now: number): any
 		local nextState = DuelRules.step(s, event, now)
@@ -45,7 +49,7 @@ return function(t: Context)
 		local s = DuelRules.new(MATCH_ID, {
 			A = { userId = USER_A, rewardsEnabled = true },
 			B = entrantB or { userId = USER_B, rewardsEnabled = true },
-		}, T0, Config.Duel)
+		}, T0, NO_ROUNDS)
 		s = step(s, { kind = "streamed", side = "A" }, T0 + 0.1)
 		s = step(s, { kind = "streamed", side = "B" }, T0 + 0.2)
 		s = step(s, { kind = "positioned", side = "A" }, T0 + 0.3)

@@ -469,6 +469,7 @@ local Strings = {
 		-- §17.7 "Changed text": no word for the lobby stat here, because the tip is shown on the duel result panel.
 		lossTip = "Tough streak! Squeezing earns Coins to unlock new squishies, and each one throws a little differently, but squeezing and training on pads don't make your throws stronger. The Practice Range is a great place to sharpen your aim.",
 		countdownGo = "Throw!",
+		round = "ROUND {n}", -- rounds (2026-11-01): the banner over a new round's 3-2-1
 		you = "You",
 		sideA = "Strawberry side",
 		sideB = "Mint side",
@@ -612,6 +613,8 @@ local Strings = {
 		cancelled = "Not enough players arrived, so the match was cancelled.",
 		void = "The server is shutting down. This match won't count.",
 		voidError = "Something went wrong, so this match won't count.",
+		-- The queue shared by every server (2026-11-01): the trip to the match's server did not start.
+		joinFailed = "Couldn't reach your match. Join the queue again!",
 		-- qb1 (owner 2026-10-16): the match pay toast ({coins} / {grip} = Format.coins), until M9's results bar.
 		paid = "+{coins} Coins, +{grip} Grip",
 		-- MatchJoin refusals (the first that applies).

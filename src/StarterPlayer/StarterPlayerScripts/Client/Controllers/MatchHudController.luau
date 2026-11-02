@@ -119,6 +119,7 @@ local REMOTE_JOIN = "MatchJoin" -- end screens round A: PLAY AGAIN (MatchControl
 local REMOTE_LEAVE = "MatchLeave"
 local ATTR_MATCH_ID = "SD_MatchId" -- MatchService's marks of a player in a match
 local ATTR_PHASE = "SD_DuelPhase"
+local ATTR_MATCH_SERVER = "SD_MatchServer" -- on the Workspace of a match's own server (MatchServerService)
 local AGAIN_WAIT_SECONDS = 6 -- PLAY AGAIN joins at the latest this long after its leave
 local DEBUG_ONLY = "debugShow needs Studio with Config.Debug.debugHooks"
 local PODIUM_HIDE = "podium" -- HeldSquishyController.setHidden's reason
@@ -291,6 +292,11 @@ local function startSession(matchId: string, preview: boolean, view: () -> any, 
 		act = function(action: string, mode: string?)
 			if preview then
 				return -- a Studio preview has no match to leave
+			end
+			if action == "again" and mode and Workspace:GetAttribute(ATTR_MATCH_SERVER) == true then
+				-- A match's own server (2026-11-01): the server sends us to the lobby, queued again there.
+				NetController.fire(REMOTE_JOIN, mode)
+				return
 			end
 			NetController.fire(REMOTE_LEAVE) -- Remotes: MatchLeave() (the Result phase: back to the lobby now)
 			if action == "again" and mode then

@@ -19,9 +19,10 @@ return function(t: Context)
 
 	t.test("srng and layout match Diego's demo (T3 doodle draws, F2 no bunting, D1)", function()
 		local cases = {
-			T3 = { first = { 0.362993, 0.009462 }, posts = 26, bunting = 2, sparkle = { 104.849491, 25.874601 }, splat = { 3.485895, 133.490006, 69.119619 }, sky = { 259.787246, 34.527984, 10.366445, 0.00998 }, amb = { 121.596926, 18.377737, -0.469589 } },
-			F2 = { first = { 0.598853, 0.791054 }, posts = 40, bunting = 0, sparkle = { 10.919978, 33.332849 }, splat = { 2.952883, 171.308086, 25.898703 }, sky = { 381.145459, 11.333607, 17.825358, 0.163726 }, amb = { 17.369277, 181.507565, -1.6559 } },
-			D1 = { first = { 0.00882, 0.706941 }, posts = 16, bunting = 2, sparkle = { 58.46523, 7.697615 }, splat = { 1.599376, 71.917176, 68.022805 }, sky = { 186.44586, -26.297431, -22.104437, -0.008698 }, amb = { 100.552967, 20.876671, -1.757112 } },
+			-- his layout(m) on the 1.5x maps (owner 2026-11-01), printed by tools/maps/make_mapdata.mjs
+			T3 = { first = { 0.362993, 0.009462 }, posts = 38, bunting = 2, sparkle = { 157.490709, 37.529101 }, splat = { 3.485895, 199.583684, 103.888901 }, sky = { 361.917391, 34.527984, 24.75437, 0.00998 }, amb = { 182.979938, 26.038007, -0.469589 } },
+			F2 = { first = { 0.598853, 0.791054 }, posts = 60, bunting = 0, sparkle = { 14.494346, 48.484114 }, splat = { 2.952883, 256.102382, 36.349703 }, sky = { 525.184053, 11.333607, 46.208534, 0.163726 }, amb = { 24.274895, 273.195356, -1.6559 } },
+			D1 = { first = { 0.00882, 0.706941 }, posts = 24, bunting = 2, sparkle = { 87.643032, 9.763929 }, splat = { 1.599376, 105.61541, 104.848846 }, sky = { 248.517558, -26.297431, -18.349312, -0.008698 }, amb = { 152.277771, 30.307752, -1.757112 } },
 		}
 		for id, want in cases do
 			local sr = MapLayout.srng(id)
@@ -44,6 +45,51 @@ return function(t: Context)
 			expect.near(L.amb[46].z, want.amb[2], 1e-4)
 			expect.near(L.amb[46].ry, want.amb[3], 1e-4)
 		end
+	end)
+
+	t.test("every map is 1.5x Diego's, floor and heights (owner 2026-11-01: more room to run and jump)", function()
+		local C = MapData.constants
+		expect.equal(C.SCALE, 1.5)
+		expect.equal(MapData.maps.D1.W, 180) -- Pencil Case: his 120 x 76
+		expect.equal(MapData.maps.D1.H, 114)
+		expect.equal(MapData.maps.F3.W, 405) -- Puzzle Plaza: his 270
+		expect.equal(C.DECK_H, 17) -- his 10 x 1.5, + 2 (owner 2026-11-01 "raise them")
+		expect.equal(C.DECK_SLAB, 2.4)
+		-- under a platform: a tall avatar's 2x3x1 collider (top ~6.3 over the floor) plus a full held jump (~7.4) fits
+		expect.truthy(C.DECK_H - C.DECK_SLAB >= 14.5)
+		expect.equal(C.WALL_H, 24)
+		expect.equal(C.COVER_H, 6)
+		expect.equal(C.CAP_H, 2.1)
+		local first = MapData.maps.D1.elements[1]
+		local route = MapData.maps.D1.botRoutes[1].points[1]
+		expect.truthy(first.x % 1.5 == 0 and first.w % 1.5 == 0 and route[1] % 1.5 == 0) -- his whole studs, scaled
+	end)
+
+	-- 40: the two Fluff Cycle stairs with no floor to grow into climb 39 degrees to the raised platforms (were 59 max)
+	t.test("gentler stairs (owner 2026-11-01): none steeper than 40 degrees, the 1v1 ones lengthened", function()
+		local C = MapData.constants
+		for _, id in MapData.order do
+			for _, e in MapData.maps[id].elements do
+				if e.type == "stair" then
+					local run = if e.stairUp == "n" or e.stairUp == "s" then e.d else e.w
+					local deg = math.deg(math.atan(C.DECK_H / run))
+					if deg > 40 then
+						error(`{id}: the stair at {e.x},{e.z} climbs {math.floor(deg)} degrees`)
+					end
+				end
+			end
+		end
+		local function runs(id: string): { number }
+			local out = {}
+			for _, e in MapData.maps[id].elements do
+				if e.type == "stair" then
+					table.insert(out, if e.stairUp == "n" or e.stairUp == "s" then e.d else e.w)
+				end
+			end
+			return out
+		end
+		expect.deepEqual(runs("D3"), { 27, 27 }) -- Lunchbox: his 6 (59 degrees) -> 18, x 1.5
+		expect.deepEqual(runs("D1"), { 24, 24 }) -- Pencil Case: his 10 -> 16, his 6 of floor left below
 	end)
 
 	t.test("11 maps: 4 Team, 4 Free for All, 3 1v1, each with the spawns its mode needs", function()

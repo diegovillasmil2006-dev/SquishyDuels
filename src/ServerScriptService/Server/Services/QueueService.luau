@@ -46,12 +46,15 @@
 -- MATCH FOUND (round 2 of the match flow, 2026-10-25): a paired or practice-bot duel starts with
 -- Config.Duel.Rules.FoundHoldSeconds (DuelService.startMatch's holdSeconds: the lobby's show plays before the teleport);
 -- startDirect and forceMatch start without it.
+-- The queue shared by every server (2026-11-01, GlobalQueueService, live lobby servers): every ticket also waits there,
+-- the leader pairs real players across servers and each pair plays in its own server (pairOnce pairs nobody here); the
+-- practice bot first takes the player out of it. In a match server QueueJoin (Queue Again) and QueueLeave (the 1v1
+-- result's X) send the player home (MatchServerService.goHome).
 -- All collaborators are reached through `deps` (useDeps in tests; init() builds the real ones), so the queue rules are
 -- unit-tested without Players, remotes or DuelService.
 
 -- Services
 
-local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -68,6 +71,7 @@ local Types = require(Shared.Types)
 local Services = script.Parent
 local ArenaService = require(Services.ArenaService)
 local CharacterService = require(Services.CharacterService)
+local GlobalQueueService = require(Services.GlobalQueueService)
 local MatchServerService = require(Services.MatchServerService)
 local NetService = require(Services.NetService)
 local ShutdownService = require(Services.ShutdownService)
@@ -371,6 +375,9 @@ local function addTicket(record: Record, priority: number, now: number): Ticket
 	record.state = "Searching"
 	record.ticket = ticket
 	record.messageKey = nil
+	if GlobalQueueService.on() and getDeps().isPlayer(record.player) then
+		GlobalQueueService.enqueue(record.player, "1v1") -- 2026-11-01: the opponent may be in any server
+	end
 	return ticket
 end
 
@@ -380,6 +387,7 @@ local function dropTicket(record: Record, code: string?, args: Types.NotifyArgs?
 		return false
 	end
 	removeTicket(record.player)
+	GlobalQueueService.forget(record.player)
 	record.state = "Idle"
 	record.ticket = nil
 	record.messageKey = nil
@@ -485,30 +493,14 @@ local function startMatchWith(a: any, b: any, found: boolean?): (boolean, any)
 	return true, match
 end
 
--- One match per server (2026-10-30, MatchServerService): two real players the queue paired go to a server of their
--- own on a rolled 1v1 map; their tickets go quietly. False when they were not sent (Studio, off, a failure): the match
--- starts here as before. The practice bot and friend-pad duels always stay in this server.
-local function sendAway(a: any, b: any): boolean
-	local d = getDeps()
-	if not (d.isPlayer(a) and d.isPlayer(b)) or not MatchServerService.canSend() then
-		return false
-	end
-	local arenaId = ArenaService.pickArena()
-	if arenaId == nil or not MatchServerService.send("duel", "1v1", arenaId, HttpService:GenerateGUID(false), { a, b }, nil) then
-		return false
-	end
-	for _, player in { a, b } do
-		local record = records[player]
-		if record and record.state == "Searching" then
-			dropTicket(record, nil, nil, nil)
-		end
-	end
-	return true
-end
-
+-- The queue shared by every server (2026-11-01, GlobalQueueService) pairs real players there instead, and each pair
+-- plays in its own server. The practice bot and friend-pad duels always stay in this server.
 local function pairOnce(): number
 	local d = getDeps()
 	if #queue < 2 or d.duel == nil or closed or not accepting or d.closing() or d.restartPending() then
+		return 0
+	end
+	if GlobalQueueService.on() then
 		return 0
 	end
 	local now = d.now()
@@ -528,9 +520,7 @@ local function pairOnce(): number
 		end
 		local a: Ticket, b: Ticket = pair.a :: any, pair.b :: any
 		-- Both must still be waiting (an earlier start in this loop may have yielded).
-		if positionOf(a) ~= nil and positionOf(b) ~= nil and sendAway(a.player, b.player) then
-			started += 1 -- one match per server (2026-10-30): they play it in its own server
-		elseif positionOf(a) ~= nil and positionOf(b) ~= nil then
+		if positionOf(a) ~= nil and positionOf(b) ~= nil then
 			local ok, match = startMatchWith(a.player, b.player, true)
 			if ok then
 				markMatched(a.player, b.player, match, now)
@@ -1060,12 +1050,31 @@ function QueueService.startWithBot(player: any, bot: any): (boolean, any)
 	if closed or not accepting or d.closing() or d.restartPending() then
 		return false, CODE_UNAVAILABLE
 	end
+	-- The queue shared by every server (2026-11-01): out of it first (yields); a player another server's match already
+	-- claimed keeps the ticket and goes there.
+	if not GlobalQueueService.cancel(player) then
+		return false, "matchedElsewhere"
+	elseif record.state ~= "Searching" or records[player] ~= record then
+		return false, "notAlone"
+	end
 	local ok, match = startMatchWith(player, bot, true)
 	if not ok then
+		if GlobalQueueService.on() and record.state == "Searching" then
+			GlobalQueueService.enqueue(player, "1v1")
+		end
 		return false, match
 	end
 	markMatched(player, bot, match, d.now())
 	return true, match
+end
+
+-- The queue shared by every server (2026-11-01, GlobalQueueService) matched `player`: the ticket goes quietly (they
+-- leave for the match's server).
+function QueueService.handOff(player: any)
+	local record = records[player]
+	if record then
+		dropTicket(record, nil, nil, nil)
+	end
 end
 
 -- Pairs waiting tickets now (re-entrant calls while a start is running are folded into one more pass). Returns how
@@ -1156,9 +1165,18 @@ end
 function QueueService.init()
 	QueueService.useDeps(defaultDeps())
 	NetService.onInvoke("QueueJoin", function(player: Player): any
+		if MatchServerService.isMatchServer() then
+			-- Queue Again in a match server (2026-11-01): back to the lobby, queued again there (the trip is the answer).
+			MatchServerService.goHome(player, "1v1")
+			return { ok = true, data = { position = 1 } }
+		end
 		return QueueService.join(player)
 	end)
 	NetService.on("QueueLeave", function(player: Player)
+		if MatchServerService.isMatchServer() then
+			MatchServerService.goHome(player, nil) -- the 1v1 result's X in a match server: the real lobby (2026-11-01)
+			return
+		end
 		QueueService.leave(player)
 	end)
 	NetService.on("ReportIdle", function(player: Player)

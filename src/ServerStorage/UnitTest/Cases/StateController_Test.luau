@@ -202,6 +202,22 @@ return function(t: Context)
 		expect.equal(other.positioned, false)
 	end)
 
+	t.test("duel: rounds: a new round's Countdown follows Active; an old round never comes back", function()
+		local active = duelState("m1", "Active")
+		active.round = 1
+		local v1 = StateController.reduceDuel(nil, stateEvent(active, 10))
+		local reset = duelState("m1", "Countdown")
+		reset.round = 2
+		reset.clockSeconds = 83.2
+		local v2 = StateController.reduceDuel(v1, stateEvent(reset, 11))
+		expect.equal(v2.phase, "Countdown")
+		expect.equal(v2.round, 2)
+		expect.equal(v2.clockSeconds, 83.2)
+		local stale = duelState("m1", "Countdown")
+		stale.round = 1
+		expect.equal(StateController.reduceDuel(v1, stateEvent(stale, 12)), v1) -- same round: still backwards
+	end)
+
 	t.test("duel: malformed DuelState payloads are ignored", function()
 		local good = StateController.reduceDuel(nil, stateEvent(duelState("m1", "Active")))
 		local missingId = duelState("m1", "Active")

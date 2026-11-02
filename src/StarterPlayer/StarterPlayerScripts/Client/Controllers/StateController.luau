@@ -150,6 +150,8 @@ export type DuelView = {
 	charges: { [number]: number }, -- ultimate charge by userId (UltimateCharge)
 	positioned: boolean, -- the match reached Positioning or later (the player was moved to the arena)
 	receivedAt: number, -- os.clock() of the last DuelState
+	round: number, -- rounds (2026-11-01): a new round's Countdown may follow Active
+	clockSeconds: number?, -- rounds: the clock left, stopped during a round's 3-2-1
 }
 
 export type DuelEvent =
@@ -1244,8 +1246,10 @@ function StateController.reduceDuel(view: DuelView?, event: DuelEvent): DuelView
 			return view
 		end
 		local same = view ~= nil and view.matchId == s.matchId
-		if same and view and phaseIndex < (PHASE_ORDER[view.phase] or 0) then
-			return view -- a match never goes back a phase
+		local round = if finite(s.round) then s.round else 1
+		local newRound = same and view ~= nil and round > view.round
+		if same and view and phaseIndex < (PHASE_ORDER[view.phase] or 0) and not newRound then
+			return view -- a match never goes back a phase (but a new round starts with its own Countdown)
 		end
 		local newView: DuelView = {
 			matchId = s.matchId,
@@ -1259,6 +1263,8 @@ function StateController.reduceDuel(view: DuelView?, event: DuelEvent): DuelView
 			positioned = (same and view ~= nil and view.positioned)
 				or (phaseIndex >= PHASE_ORDER.Positioning and phaseIndex <= PHASE_ORDER.Returning),
 			receivedAt = event.now,
+			round = round,
+			clockSeconds = if finite(s.clockSeconds) then s.clockSeconds else nil,
 		}
 		if same and view then
 			newView.you.invulnUntil = view.you.invulnUntil

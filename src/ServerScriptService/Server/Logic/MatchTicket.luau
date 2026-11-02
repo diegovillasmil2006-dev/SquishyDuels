@@ -5,8 +5,9 @@
 -- in it: read() rebuilds it from checked fields only.
 --   make(kind, mode, mapId, matchId, userIds, teams?, home) -> Ticket
 --   read(data, maps) -> (Ticket?, why?)   maps = Shared.Maps.MapData.maps
--- kind "match" (mode "tdm" | "ffa") or "duel" (mode "1v1"); mapId a MapData id of that mode; 1..12 user ids; teams
--- by user id (JSON keys are strings, so tostring(userId)); home = the lobby server's JobId.
+-- kind "match" (mode "tdm" | "ffa") or "duel" (mode "1v1"); mapId a MapData id of that mode, or "" (the queue shared
+-- by every server, 2026-11-01: the match server votes or rolls its map); 1..12 user ids; teams by user id (JSON keys
+-- are strings, so tostring(userId)); home = the JobId of the lobby server this player came from.
 
 export type Ticket = {
 	v: number,
@@ -69,7 +70,7 @@ function MatchTicket.read(data: unknown, maps: { [string]: any }): (Ticket?, str
 		return nil, "mode"
 	end
 	local map = if type(t.mapId) == "string" then maps[t.mapId] else nil
-	if map == nil or map.mode ~= MAP_MODE[mode] then
+	if t.mapId ~= "" and (map == nil or map.mode ~= MAP_MODE[mode]) then
 		return nil, "map"
 	end
 	if not text(t.matchId) or not text(t.home) then

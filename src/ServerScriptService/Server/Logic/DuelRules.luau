@@ -10,6 +10,11 @@
 -- `outcome`; every event that would end the match again is a no-op (double end, late spam, §12 #22). `closed` is set
 -- when DuelService reports the players returned (the slot can be released).
 --
+-- Rounds (2026-11-01, owner; Rules.Rounds): a hit in Active that leaves both sides alive ends the round: `roundOver`,
+-- nobody can be hit for RoundOverSeconds (resetAt), then a new Countdown on the pads (round + 1, both invulnerabilities
+-- cleared, the Active clock stopped at clockLeft) and Active again with the clock left (activeStartedAt kept, so a bail
+-- in that Countdown follows the Active rules). A time-up during the pause wins over the reset.
+--
 -- Victory and draw (§5.2): opponent at 0 lives -> win; opponent forfeits/leaves/dies/goes missing after
 -- >= EarlyForfeitSeconds of Active -> win (reason "opponentLeft"); time-up with different lives -> more lives wins;
 -- equal lives -> SuddenDeath (next hit wins; SuddenDeathSeconds = 0 -> draw); SuddenDeath timeout -> draw; a bail
@@ -36,7 +41,7 @@
 --   error, leaseExpired          an error in the match tick / the arena lease expired
 --   returned                     DuelService finished returning the players (Returning, Cancelled or Void)
 -- Effects ({ kind = ..., ... }): phase {phase, startedAt, endsAt}, ended {outcome}, lifeLost {side, lives,
---   invulnUntil, at, eliminated}, repivot {side, silent, count?, invulnUntil?}, requeue {side} (front of the queue),
+--   invulnUntil, at, eliminated}, roundOver {at, endsAt} (rounds: the pause before the reset), repivot {side, silent, count?, invulnUntil?}, requeue {side} (front of the queue),
 --   requeueCooldown {side, seconds}, notify {side, key}, forceReturn {reason}, closed.
 -- `endsAt = math.huge` means the phase has no timer (Returning, Cancelled, Void).
 --
@@ -133,6 +138,9 @@ export type MatchState = {
 	phaseStartedAt: number,
 	phaseEndsAt: number, -- math.huge = no timer
 	activeStartedAt: number?,
+	round: number, -- rounds: 1, then + 1 at each reset
+	resetAt: number?, -- rounds: the pause after a round's hit ends here (Active only)
+	clockLeft: number?, -- rounds: Active seconds left, kept through a round's Countdown
 	participants: { A: Participant, B: Participant },
 	outcome: Outcome?,
 	ended: boolean,
@@ -260,10 +268,22 @@ local function enterPhase(s: MatchState, phase: Phase, at: number, fx: Effects)
 	s.phase = phase
 	s.phaseStartedAt = at
 	s.phaseEndsAt = at + phaseSeconds(s, phase)
+	s.resetAt = nil
 	if phase == "Active" then
-		s.activeStartedAt = at
+		local left = s.clockLeft
+		if left ~= nil then -- a new round: the clock left, Active time still counted from the first start
+			s.phaseEndsAt = at + left
+			s.clockLeft = nil
+		else
+			s.activeStartedAt = at
+		end
 	end
 	emit(fx, { kind = "phase", phase = phase, startedAt = at, endsAt = s.phaseEndsAt })
+end
+
+-- Before the first Active (a round's Countdown comes after it).
+local function beforeStart(s: MatchState): boolean
+	return PRE_ACTIVE[s.phase] == true and s.activeStartedAt == nil
 end
 
 -- The single end of a match: sets `ended` and `outcome`, enters Result/Cancelled/Void and emits the requeue effects.
@@ -339,9 +359,9 @@ local function bail(s: MatchState, side: SideName, reason: string, at: number, f
 	if s.ended then
 		return
 	end
-	if PRE_ACTIVE[s.phase] then
+	if beforeStart(s) then
 		cancel(s, reason, side, at, fx)
-	elseif LIVE[s.phase] then
+	elseif LIVE[s.phase] or s.phase == "Countdown" then -- a round's Countdown plays by the Active rules
 		if activeSecondsAt(s, at) >= s.duel.Rules.EarlyForfeitSeconds then
 			win(s, otherSide(side), "opponentLeft", at, fx)
 		else
@@ -385,12 +405,24 @@ local function nextDeadline(s: MatchState): (number, string, SideName?)
 			end
 		end
 	end
+	local resetAt = s.resetAt
+	if resetAt ~= nil and resetAt < due then
+		due, what, who = resetAt, "roundReset", nil
+	end
 	return due, what, who
 end
 
 local function fireDeadline(s: MatchState, what: string, side: SideName?, at: number, fx: Effects)
 	if side ~= nil then
 		bail(s, side, what, at, fx)
+		return
+	end
+	if what == "roundReset" then -- rounds: the next round's 3-2-1 on the pads, the clock stopped
+		s.clockLeft = math.max(0, s.phaseEndsAt - at)
+		s.round += 1
+		s.participants.A.invulnUntil = -math.huge
+		s.participants.B.invulnUntil = -math.huge
+		enterPhase(s, "Countdown", at, fx)
 		return
 	end
 	local phase = s.phase
@@ -437,6 +469,9 @@ end
 -- Private: events
 
 local function applyHitGroup(s: MatchState, group: { Hit }, at: number, fx: Effects)
+	if s.resetAt ~= nil then
+		return -- rounds: the pause after a round's hit, nobody can be hit (a caught throw's burst neither)
+	end
 	local rules = s.duel.Rules
 	local suddenDeath = s.phase == "SuddenDeath"
 	local struckA, struckB = false, false
@@ -470,6 +505,9 @@ local function applyHitGroup(s: MatchState, group: { Hit }, at: number, fx: Effe
 		win(s, "B", reason, at, fx)
 	elseif bOut then
 		win(s, "A", reason, at, fx)
+	elseif (struckA or struckB) and rules.Rounds and s.phase == "Active" then
+		s.resetAt = at + rules.RoundOverSeconds
+		emit(fx, { kind = "roundOver", at = at, endsAt = s.resetAt })
 	end
 end
 
@@ -547,11 +585,20 @@ local function onOutOfBounds(s: MatchState, side: SideName, now: number, fx: Eff
 	end
 end
 
--- Worst-case time the running match is over (Result included), for restartScheduled.
+-- Worst-case time the running match is over (Result included), for restartScheduled. Rounds: every hit still to come
+-- that is not the last stops the clock for one Countdown.
 local function worstCaseEnd(s: MatchState): number
 	local rules = s.duel.Rules
+	local breaks = 0
+	if rules.Rounds then
+		local a, b = s.participants.A.lives, s.participants.B.lives
+		breaks = math.max(0, a - 1) + math.max(0, b - 1) + (if s.resetAt ~= nil then 1 else 0)
+	end
+	local rest = breaks * rules.CountdownSeconds + rules.SuddenDeathSeconds + rules.ResultSeconds
 	if s.phase == "Active" then
-		return s.phaseEndsAt + rules.SuddenDeathSeconds + rules.ResultSeconds
+		return s.phaseEndsAt + rest
+	elseif s.phase == "Countdown" and s.clockLeft ~= nil then -- a round's 3-2-1, then the clock left
+		return s.phaseEndsAt + s.clockLeft + rest
 	end
 	return s.phaseEndsAt + rules.ResultSeconds
 end
@@ -595,9 +642,9 @@ local function handle(s: MatchState, event: Event, now: number, fx: Effects)
 		if s.ended or type(deadline) ~= "number" then
 			return
 		end
-		if PRE_ACTIVE[s.phase] then
+		if beforeStart(s) then
 			cancel(s, "restart", nil, now, fx)
-		elseif LIVE[s.phase] and worstCaseEnd(s) > deadline then
+		elseif (LIVE[s.phase] or s.phase == "Countdown") and worstCaseEnd(s) > deadline then
 			void(s, "restart", now, fx)
 		end
 		return
@@ -664,7 +711,7 @@ local function handle(s: MatchState, event: Event, now: number, fx: Effects)
 	elseif kind == "respawned" then
 		p.deadSince = nil
 	elseif kind == "missing" then
-		if PRE_ACTIVE[s.phase] and not s.ended then
+		if beforeStart(s) and not s.ended then
 			if p.missingSince == nil then
 				p.missingSince = now
 			end
@@ -729,6 +776,9 @@ function DuelRules.new(
 		phaseStartedAt = now,
 		phaseEndsAt = now + c.Rules.PreparingTimeoutSeconds + math.max(0, holdSeconds or 0),
 		activeStartedAt = nil,
+		round = 1,
+		resetAt = nil,
+		clockLeft = nil,
 		participants = {
 			A = newParticipant("A", entrants.A, lives),
 			B = newParticipant("B", entrants.B, lives),
@@ -765,7 +815,7 @@ end
 
 -- CombatService's canDamage uses this for the victim's side (plus same match, opposite sides, inside Bounds).
 function DuelRules.canBeHit(state: MatchState, side: SideName, at: number): boolean
-	if not DuelRules.isLive(state) or not isSide(side) then
+	if not DuelRules.isLive(state) or not isSide(side) or state.resetAt ~= nil then
 		return false
 	end
 	local p = participant(state, side)

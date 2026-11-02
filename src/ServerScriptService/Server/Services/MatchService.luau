@@ -9,7 +9,11 @@
 --   in-server queue per mode. A join is refused with a match.refused.* toast while the server is closing or a restart
 --   is pending, when already queued, in a duel or a match (SD_MatchId / SD_DuelPhase set), in the duel queue
 --   (QueueService.state ~= "Idle"), practicing, or when this server has no map of the mode. Joining the duel queue
---   afterwards drops the ticket (QueueService.Joined). Once minPlayers are queued the gather timer
+--   afterwards drops the ticket (QueueService.Joined). The queue shared by every server (2026-11-01,
+--   GlobalQueueService, live lobby servers): each ticket also waits there and the match starts in its own server (its
+--   players join that server's queue, which runs the steps below); here the queue starts nothing. In a match server
+--   MatchJoin (PLAY AGAIN) and MatchLeave (LOBBY) send the player home (MatchServerService.goHome). Otherwise, once
+--   minPlayers are queued the gather timer
 --   (Config.Match.gatherSeconds) runs; at 0, or at once at maxPlayers or when everyone in the server is queued, the
 --   match starts with the queued players (first come, up to maxPlayers) on a random free map of the mode; with no free
 --   map the queue keeps waiting (one match.waitingMap toast). TDM: the players are shuffled (server Random), then
@@ -175,6 +179,7 @@ local CharacterService = require(Services.CharacterService)
 local CombatService = require(Services.CombatService)
 local EconomyService = require(Services.EconomyService)
 local FriendsService = require(Services.FriendsService)
+local GlobalQueueService = require(Services.GlobalQueueService)
 local GripService = require(Services.GripService)
 local InventoryService = require(Services.InventoryService)
 local MatchMapService = require(Services.MatchMapService)
@@ -218,13 +223,6 @@ export type MapDeps = {
 	acquire: (modeId: string, matchId: string) -> any?,
 	release: (record: any) -> (),
 	hasMode: (modeId: string) -> boolean,
-	acquireCode: ((code: string, matchId: string) -> any?)?, -- one map by its MapCode (a match server's ticket)
-}
-
--- One match per server (2026-10-30, MatchServerService). Optional: nil = every match plays in this server.
-export type ServerDeps = {
-	canSend: () -> boolean,
-	send: (kind: string, mode: string, mapId: string, matchId: string, players: { any }, teams: { [any]: string }?) -> boolean,
 }
 
 -- Match HUD M2: the match pay (EconomyService / GripService). Optional: nil = nothing is paid.
@@ -270,7 +268,6 @@ export type Deps = {
 	maps: MapDeps,
 	rewards: RewardDeps?, -- Match HUD M2 (nil: no pay, as in the older tests' fakes)
 	bots: BotDeps?, -- match bots (attachBots; nil: none)
-	servers: ServerDeps?, -- one match per server (2026-10-30; nil: matches stay in this server, as in the tests)
 	heartbeat: boolean, -- tick matches every Heartbeat (false in tests: they call tick)
 	matchConfig: any?, -- a Config.Match-shaped table (tests pass their copy); nil = the live Config.Match
 	gripLevel: ((ref: any) -> number)?, -- round 2 of the match flow: GripService.levelOf (nil: MATCH FOUND makes them up)
@@ -2277,6 +2274,7 @@ local function dropTicket(ref: any, code: string?, entered: boolean?): boolean
 		return false
 	end
 	table.remove(queueOf(modeId), index)
+	GlobalQueueService.forget(ref)
 	if code ~= nil then
 		notify(ref, code, { mode = modeName(modeId) }, "info")
 	end
@@ -2294,6 +2292,7 @@ local function clearQueues(code: string?)
 				notify(ticket.player, code, { mode = modeName(modeId) }, "warn")
 			end
 			sendQueue(ticket.player, {})
+			GlobalQueueService.forget(ticket.player)
 		end
 		queues[modeId] = {}
 		gathers[modeId] = nil
@@ -2329,6 +2328,7 @@ local function pruneQueue(modeId: string)
 		if not d.isPlayer(ref) or inAnyMatch(ref) or d.queueState(ref) ~= "Idle" then
 			table.remove(queue, index)
 			sendQueue(ref, {}) -- sendQueue skips a player who left the game
+			GlobalQueueService.forget(ref)
 			pruned = true
 		end
 	end
@@ -2459,6 +2459,9 @@ local function tickQueue(modeId: string, now: number)
 		return
 	end
 	pruneQueue(modeId)
+	if GlobalQueueService.on() then
+		return -- the queue shared by every server (2026-11-01) starts it, in the match's own server
+	end
 	local queue = queueOf(modeId)
 	local gather = gathers[modeId]
 	-- Match bots: while they can fill it, one queued player is enough.
@@ -2738,44 +2741,18 @@ function Pend.begin(pending: Pending)
 			try(d.maps.release, map)
 		end
 	end
-	local function startHere()
-		local started, why = MatchService.startMatch(pending.refs, pending.modeId, winner, pending.id, pending.teams)
-		releaseBots(pending.bots)
-		if started == nil then
-			try(d.maps.release, winner)
-			log:warn(`vote {pending.id}: could not start {pending.modeId}: {tostring(why)}`)
-		end
-		for _, ref in humans do
-			Pend.sendTo(ref, {})
-			if started == nil then
-				notify(ref, if why == "closing" then CODE.closing else CODE.voidError, nil, "warn")
-			end
-		end
-	end
-	-- One match per server (2026-10-30): the players go to the map's own server; a failed send plays it here.
-	local servers = d.servers
-	local players = {}
-	for _, ref in humans do
-		if d.isPlayer(ref) then
-			table.insert(players, ref)
-		end
-	end
-	if servers == nil or #players == 0 or not servers.canSend() then
-		startHere()
-		return
-	end
-	d.spawn(function()
-		local ok, sent = try(servers.send, "match", pending.modeId, winner.code, pending.id, players, pending.teams)
-		if not (ok and sent) then
-			startHere()
-			return
-		end
+	local started, why = MatchService.startMatch(pending.refs, pending.modeId, winner, pending.id, pending.teams)
+	releaseBots(pending.bots)
+	if started == nil then
 		try(d.maps.release, winner)
-		releaseBots(pending.bots)
-		for _, ref in humans do
-			Pend.sendTo(ref, {})
+		log:warn(`vote {pending.id}: could not start {pending.modeId}: {tostring(why)}`)
+	end
+	for _, ref in humans do
+		Pend.sendTo(ref, {})
+		if started == nil then
+			notify(ref, if why == "closing" then CODE.closing else CODE.voidError, nil, "warn")
 		end
-	end)
+	end
 end
 
 -- `ref` is out of `pending` (/leave, `inGame`; or gone from the game): its vote goes with it and the others see that;
@@ -2866,6 +2843,9 @@ function MatchService.join(player: any, mode: unknown): (boolean, string?)
 	local now = d.now()
 	local queue = queueOf(modeId)
 	table.insert(queue, { player = player, userId = userIdOf(player) :: number, joinedAt = now })
+	if GlobalQueueService.on() then
+		GlobalQueueService.enqueue(player, modeId) -- 2026-11-01: the others may be in any server
+	end
 	notify(player, CODE.joined, { mode = modeName(modeId), count = #queue, max = modeCfg.maxPlayers }, "info")
 	syncQueue(modeId)
 	local hadGather = gathers[modeId] ~= nil
@@ -3070,57 +3050,10 @@ function MatchService.startMatch(
 	return id, nil
 end
 
--- One match per server (2026-10-30, MatchServerService): in a match server, the match a lobby sent here, on the map
--- with MapCode `mapCode`: the players who arrived, Team Deathmatch on the lobby's teams (`teamOf`: team name by
--- tostring(userId); anyone without one goes to the smaller team, as each bot does), bots filling the empty places.
--- Returns startMatch's (id, why); "noMap" when that map is not free here.
-function MatchService.startHosted(
-	players: { any },
-	modeId: string,
-	mapCode: string,
-	matchId: string,
-	teamOf: { [string]: string }
-): (string?, string?)
-	local d = getDeps()
-	local c = cfg()
-	local mode = c.Modes[modeId]
-	if mode == nil then
-		return nil, "unknownMode"
-	end
-	local map = if d.maps.acquireCode then d.maps.acquireCode(mapCode, matchId) else nil
-	if map == nil then
-		return nil, "noMap"
-	end
-	local refs = table.clone(players)
-	local bots = takeBots(modeId, mode.maxPlayers - #refs)
-	local teams: { [any]: string }? = nil
-	if mode.teams then
-		local picked: { [any]: string } = {}
-		local count: { [string]: number } = {}
-		local function smaller(): string
-			local a, b = c.teamNames[1], c.teamNames[2]
-			return if (count[a] or 0) <= (count[b] or 0) then a else b
-		end
-		for _, ref in refs do
-			local wanted = teamOf[tostring(userIdOf(ref))]
-			local team = if table.find(c.teamNames, wanted) then wanted :: string else smaller()
-			picked[ref] = team
-			count[team] = (count[team] or 0) + 1
-		end
-		for _, bot in bots do
-			local team = smaller()
-			picked[bot] = team
-			count[team] = (count[team] or 0) + 1
-		end
-		teams = picked
-	end
-	table.move(bots, 1, #bots, #refs + 1, refs)
-	local started, why = MatchService.startMatch(refs, modeId, map, matchId, teams)
-	releaseBots(bots)
-	if started == nil then
-		try(d.maps.release, map)
-	end
-	return started, why
+-- The queue shared by every server (2026-11-01, GlobalQueueService) matched `player`: the ticket goes quietly (they
+-- leave for the match's server, which plays MATCH FOUND and the vote).
+function MatchService.handOff(player: any)
+	dropTicket(player, nil)
 end
 
 -- The match of a Player (or a userId), or nil.
@@ -3353,11 +3286,6 @@ defaultDeps = function(): Deps
 			end,
 			release = MatchMapService.release,
 			hasMode = MatchMapService.hasMode,
-			acquireCode = MatchMapService.acquireCode,
-		},
-		servers = { -- one match per server (2026-10-30)
-			canSend = MatchServerService.canSend,
-			send = MatchServerService.send,
 		},
 		rewards = { -- Match HUD M2
 			grant = EconomyService.grantMatchResult,
@@ -3376,9 +3304,17 @@ end
 function MatchService.init()
 	MatchService.useDeps(defaultDeps())
 	NetService.on(REMOTE_JOIN, function(player: Player, mode: any)
+		if MatchServerService.isMatchServer() then
+			MatchServerService.goHome(player, mode) -- PLAY AGAIN in a match server: back to the lobby, queued there
+			return
+		end
 		MatchService.join(player, mode)
 	end)
 	NetService.on(REMOTE_LEAVE, function(player: Player)
+		if MatchServerService.isMatchServer() then
+			MatchServerService.goHome(player, nil) -- LOBBY in a match server: the real lobby (owner 2026-11-01)
+			return
+		end
 		MatchService.leave(player)
 	end)
 	NetService.on(REMOTE_VOTE, function(player: Player, choice: any)

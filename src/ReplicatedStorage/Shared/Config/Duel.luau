@@ -20,6 +20,11 @@ local Duel = {
 		ResultSeconds = 4, -- result shown in the arena before return
 		HitInvulnSeconds = 1.5, -- victim can't be hit (projectiles pass through) but can throw
 		OutOfBoundsInvulnSeconds = 1.0,
+		-- Rounds (2026-11-01, owner "Yes: reset + 3-2-1"): a hit that is not the last ends the round: both freeze and
+		-- nobody can be hit for RoundOverSeconds, then both go back to their pads for a CountdownSeconds 3-2-1 (the clock
+		-- stopped at what was left) and the next round starts. false: a hit only costs the life and the fight goes on.
+		Rounds = true,
+		RoundOverSeconds = 1.5,
 		CooldownClamp = { Min = 0.6, Max = 2.0 }, -- hard clamp on any catalog cooldown, seconds
 		CooldownToleranceSeconds = 0.05, -- jitter allowance: releaseAt >= nextThrowAt - tolerance
 		InputBufferSeconds = 0.15, -- a press this close to the cooldown end is buffered on the client

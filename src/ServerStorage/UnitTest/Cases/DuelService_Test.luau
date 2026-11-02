@@ -65,7 +65,8 @@ return function(t: Context)
 	t.test("elimination: the survivor wins, the other is out", function()
 		local s, start = active()
 		for i = 1, RULES.Lives do
-			local at = start + i * (RULES.HitInvulnSeconds + 0.5)
+			-- rounds: each hit but the last ends the round (pause + 3-2-1), so the next one comes after it
+			local at = start + i * (RULES.RoundOverSeconds + RULES.CountdownSeconds + 1)
 			s = step(s, { kind = "hit", victim = "B", at = at }, at)
 		end
 		expect.truthy(s.ended)
@@ -76,7 +77,7 @@ return function(t: Context)
 	t.test("time-up with different lives: more lives wins", function()
 		local s, start = active()
 		s = step(s, { kind = "hit", victim = "B", at = start + 1 }, start + 1)
-		s = step(s, { kind = "tick" }, start + RULES.MatchSeconds)
+		s = step(s, { kind = "tick" }, start + RULES.MatchSeconds + RULES.CountdownSeconds) -- rounds: the clock stopped for one 3-2-1
 		expectResult(s, "A", "win", "duel.timeUpWin")
 		expectResult(s, "B", "loss", "duel.timeUpLoss")
 	end)

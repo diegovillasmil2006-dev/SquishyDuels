@@ -369,19 +369,6 @@ function MatchMapService.acquire(modeId: string, matchId: string, r: number?): M
 	return record
 end
 
--- One match per server (2026-10-30): the free map whose MapCode is `code`, now held by `matchId`; nil when it is
--- missing or in use (a match server plays the map its ticket names).
-function MatchMapService.acquireCode(code: string, matchId: string): MapRecord?
-	for _, record in records do
-		if record.code == code and not record.inUse then
-			record.inUse = true
-			record.matchId = matchId
-			return record
-		end
-	end
-	return nil
-end
-
 -- Frees the map. The match holds the record it acquired; a rescan since then made a new record of the same model,
 -- which is freed too.
 function MatchMapService.release(record: MapRecord?)

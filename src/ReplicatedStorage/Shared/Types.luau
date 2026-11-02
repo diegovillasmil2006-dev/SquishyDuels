@@ -423,6 +423,8 @@ export type DuelStateView = {
 	opponent: DuelParticipantView,
 	arena: DuelArenaView,
 	rules: { [string]: any }, -- reading: this match's copy of Config.Duel.Rules
+	round: number?, -- rounds (2026-11-01): 1, + 1 at each reset (a Countdown with round > 1 is a round's 3-2-1)
+	clockSeconds: number?, -- rounds: Active seconds left, shown stopped during a round's 3-2-1
 }
 
 -- == Free for All / Team Deathmatch views (FFA/TDM v1, 2026-10-15; MatchService -> the MatchState remote) ==

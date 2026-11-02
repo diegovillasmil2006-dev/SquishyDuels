@@ -363,6 +363,7 @@ local RETICLE_GUI_SPEC: UIController.ScreenGuiSpec = {
 	insets = Enum.ScreenInsets.None,
 }
 local QUEUE_SCREEN = "queue"
+local ATTR_MATCH_SERVER = "SD_MatchServer" -- on the Workspace of a match's own server (MatchServerService)
 local RESET_CALLBACK = "ResetButtonCallback"
 local RESET_RETRY_SECONDS = 0.5 -- SetCore fails until the CoreGui registers the callback; try again this often
 -- The duel screens' sizes and looks, kept in one table: this module is near Luau's 200-locals-per-function limit, and
@@ -1840,6 +1841,9 @@ local function openResult(model: DuelFormat.ResultModel, opponent: { userId: num
 		onActivated = function()
 			closeResult()
 			SoundController.play("ui.back")
+			if Workspace:GetAttribute(ATTR_MATCH_SERVER) == true then
+				NetController.queueLeave() -- a match's own server (2026-11-01): back to the real lobby (MatchServerService)
+			end
 		end,
 	})
 	Theme.attachClose(frame, close.root)
@@ -2488,7 +2492,7 @@ local function updateFrame()
 		return
 	end
 	local now = serverNow()
-	local timer = DuelFormat.timerText(view.phase, view.phaseEndsAt, now, view.rules)
+	local timer = DuelFormat.timerText(view.phase, view.phaseEndsAt, now, view.rules, view.clockSeconds)
 	h.timer.Text = timer or ""
 	do -- Duel HUD part 3: the design's bar in the duel HUD's px (its canvas scale over the HUD's UI scale)
 		local screen = h.gui.AbsoluteSize
@@ -2682,6 +2686,12 @@ local function applyView(view: StateController.DuelView, old: StateController.Du
 			POSITIONING.CameraBehindStuds,
 			POSITIONING.CameraHeightStuds
 		)
+		if view.round > 1 then -- rounds (2026-11-01): a hit ended the last round
+			UIController.banner(Strings.format(Strings.duel.round, { n = view.round }), {
+				seconds = RULES.CountdownSeconds,
+				below = topBar(),
+			})
+		end
 	elseif view.phase == "SuddenDeath" then
 		UIController.banner(Strings.duel.suddenDeath, {
 			seconds = UI_CONFIG.motion.toast.autoDismissSeconds,

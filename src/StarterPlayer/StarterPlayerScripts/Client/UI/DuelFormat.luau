@@ -1,8 +1,9 @@
 --!strict
 -- DuelFormat (client only, pure). DESIGN §5.2, §5.4, §5.9, §5.10, §9.14, §11.6: what the duel HUD and the result
 -- panel show, as plain data, so it is unit-tested in Edit mode. Times are server times (GetServerTimeNow).
---   timerText(phase, phaseEndsAt, now, rules)   "m:ss": the time left in Active / SuddenDeath; the full match length
---                                               before Active; nil (hidden) from Result on
+--   timerText(phase, phaseEndsAt, now, rules, clockSeconds?)   "m:ss": the time left in Active / SuddenDeath; the full
+--                                               match length before Active (clockSeconds, the clock left, in a round's
+--                                               3-2-1); nil (hidden) from Result on
 --   countdown(endsAt, now, seconds)             "3", "2", "1", then "Throw!" for one tick from the end, then nil
 --   sideText / nameText / livesText             side labels (text, never colour alone), the opponent's name (a Studio
 --                                               test dummy is always labelled "TEST DUMMY (Studio)"), "3 lives"
@@ -313,11 +314,17 @@ end
 
 -- Public: HUD texts
 
-function DuelFormat.timerText(phase: string, phaseEndsAt: number, now: number, rules: { [string]: any }?): string?
+function DuelFormat.timerText(
+	phase: string,
+	phaseEndsAt: number,
+	now: number,
+	rules: { [string]: any }?,
+	clockSeconds: number?
+): string?
 	if LIVE[phase] then
 		return TimeUtil.formatCountdown(math.max(0, phaseEndsAt - now))
 	elseif BEFORE_ACTIVE[phase] then
-		return TimeUtil.formatCountdown(rule(rules, "MatchSeconds"))
+		return TimeUtil.formatCountdown(clockSeconds or rule(rules, "MatchSeconds"))
 	end
 	return nil
 end

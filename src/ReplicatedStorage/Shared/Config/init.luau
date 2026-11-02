@@ -727,6 +727,7 @@ local function checkDuel(problems: Problems)
 		"FoundHoldSeconds",
 		"HitInvulnSeconds",
 		"OutOfBoundsInvulnSeconds",
+		"RoundOverSeconds",
 		"CooldownToleranceSeconds",
 		"InputBufferSeconds",
 		"EarlyForfeitSeconds",
@@ -744,6 +745,7 @@ local function checkDuel(problems: Problems)
 		`{p}.CooldownClamp must satisfy 0 < Min < Max`
 	)
 	expectBoolean(problems, `{p}.HoldToCharge`, rules.HoldToCharge) -- feature 1 (was HoldToRepeat)
+	expectBoolean(problems, `{p}.Rounds`, rules.Rounds)
 	expectCount(problems, `{p}.MaxActiveProjectilesPerPlayer`, rules.MaxActiveProjectilesPerPlayer, 1)
 	expect(
 		problems,

@@ -147,6 +147,7 @@ type Match = {
 	returning: boolean,
 	closed: boolean,
 	endedFired: boolean,
+	roundFrozen: boolean, -- rounds: both frozen by a round's hit, until the next Active (or a time-up's SuddenDeath)
 	createdAt: number,
 	holdUntil: number?, -- round 2 of the match flow: the MATCH FOUND show plays until then (no teleport before)
 }
@@ -557,6 +558,8 @@ local function sendDuelState(match: Match)
 				opponent = participantView(match, onSide(match, otherSide(p.side))),
 				arena = match.arenaView,
 				rules = RULES,
+				round = state.round,
+				clockSeconds = state.clockLeft,
 			}
 			NetService.fire("DuelState", player, view)
 		end
@@ -795,9 +798,23 @@ local function onPhase(match: Match, phase: Phase, startedAt: number)
 			p.positioning = true -- set now: a return that starts before the deferred thread runs must wait for it
 			task.defer(positionParticipant, match, p) -- never re-enters stepMatch from inside this step
 		end
+	elseif phase == "Countdown" and match.state.round > 1 then
+		for _, p in match.list do -- rounds: the next round's 3-2-1 on the pads
+			local cf = placementFor(match, p)
+			if cf then
+				CombatService.pivotFighter(p.fighter, cf)
+			end
+			freezeMovement(p)
+		end
 	elseif phase == "Active" then
+		match.roundFrozen = false
 		for _, p in match.list do
 			p.fighter.nextThrowAt = startedAt -- §5.4: nextThrowAt = now at Active start
+			duelMovement(p)
+		end
+	elseif phase == "SuddenDeath" and match.roundFrozen then
+		match.roundFrozen = false -- a time-up during a round's pause
+		for _, p in match.list do
 			duelMovement(p)
 		end
 	elseif RETURN_PHASES[phase] then
@@ -984,6 +1001,12 @@ perform = function(match: Match, effect: Effect)
 			onEnded(match, outcome)
 		end
 	elseif kind == "lifeLost" then
+		match.stateDirty = true
+	elseif kind == "roundOver" then
+		match.roundFrozen = true -- rounds: both stop while the round ends
+		for _, p in match.list do
+			freezeMovement(p)
+		end
 		match.stateDirty = true
 	elseif kind == "repivot" then
 		onRepivot(match, effect)
@@ -1273,6 +1296,7 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?, holdSeconds: number
 		returning = false,
 		closed = false,
 		endedFired = false,
+		roundFrozen = false,
 		createdAt = now,
 		holdUntil = if hold then now + hold else nil,
 	}

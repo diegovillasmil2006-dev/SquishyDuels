@@ -64,6 +64,11 @@ return function(t: Context)
 		expect.equal(DuelFormat.timerText("Returning", 10, 0, nil), nil)
 	end)
 
+	t.test("timer: a round's 3-2-1 shows the clock left, stopped", function()
+		expect.equal(DuelFormat.timerText("Countdown", 50, 48, nil, 83.2), "1:24")
+		expect.equal(DuelFormat.timerText("Countdown", 50, 49.9, nil, 83.2), "1:24")
+	end)
+
 	t.test("countdown: 3, 2, 1, then Throw! from the end for one tick", function()
 		local seconds = RULES.CountdownSeconds
 		expect.equal(DuelFormat.countdown(10, 7.0, seconds), "3")

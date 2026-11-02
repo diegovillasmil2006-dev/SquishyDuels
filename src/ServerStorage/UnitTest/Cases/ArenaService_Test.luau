@@ -519,6 +519,12 @@ return function(t: Context)
 	t.test("grid: every 1v1 sky map with its floating props fits its slot, clear of the lobby and the Team maps", function()
 		local lobbyRadius = (WorldLayout.Lobby.baseSlab.size * Vector3.new(1, 0, 1)).Magnitude / 2
 		local maxSlots = ArenaService.maxSlots()
+		local rowDepth = 0 -- the Team / Free for All row's floors: Z 3000 .. 3000 + the deepest of them
+		for _, id in MapData.order do
+			if MapData.maps[id].mode ~= "duel" then
+				rowDepth = math.max(rowDepth, MapData.maps[id].H)
+			end
+		end
 		for _, id in MapData.ofMode("duel") do
 			local map = MapData.maps[id]
 			-- his layout: sky props up to hypot(W, H) / 2 + 45 + 150 from the centre (MapLayout), ~12 studs of prop
@@ -526,7 +532,7 @@ return function(t: Context)
 			for i = 1, maxSlots do
 				local a = ArenaService.slotOrigin(i) :: Vector3
 				expect.truthy(Vector3.new(a.X, 0, a.Z).Magnitude >= reach + lobbyRadius)
-				expect.truthy(a.Z - reach >= 3000 + 270 + 50) -- south of the Team / Free for All row (Z 3000..3270)
+				expect.truthy(a.Z - reach >= 3000 + rowDepth + 50) -- south of the Team / Free for All row
 				for j = i + 1, maxSlots do
 					local b = ArenaService.slotOrigin(j) :: Vector3
 					if (a - b).Magnitude < 2 * reach then
