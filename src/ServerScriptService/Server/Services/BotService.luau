@@ -34,6 +34,7 @@
 -- Services
 
 local Players = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
 local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -89,6 +90,11 @@ export type Bot = {
 	ultDueAt: number?,
 	nextMoveAt: number,
 	dashingUntil: number,
+	-- The walk in progress (2026-11-02): a PathfindingService path's waypoints, the next one to reach, and a counter
+	-- that makes an older path's late result harmless.
+	walkGen: number,
+	waypoints: { PathWaypoint }?,
+	waypointIndex: number,
 	warned: boolean,
 	connections: { RBXScriptConnection },
 }
@@ -107,6 +113,10 @@ local LIVE_PHASES: { [string]: boolean } = { Active = true, SuddenDeath = true }
 local HALF_BY_SIDE: { [string]: string } = { A = "HalfA", B = "HalfB" }
 local WALK_MIN_SPEED = 0.5 -- studs/s: slower counts as standing (idle clip)
 local FADE_SECONDS = 0.2
+-- The walk's path (owner bug 2026-11-02: on the sky maps a straight walk ran into the middle deck and the bot hugged
+-- it for the whole duel, never coming round): a plain R15 agent, no jumps (every deck has a ramp).
+local PATH_AGENT = { AgentRadius = 2, AgentHeight = 5, AgentCanJump = false, WaypointSpacing = 4 }
+local WAYPOINT_REACHED_STUDS = 2.5 -- flat distance: a waypoint on a ramp sits at floor height, the root above it
 
 -- Module table
 
@@ -218,6 +228,9 @@ local function makeBot(rig: Model, folder: Instance): Bot
 		ultDueAt = nil,
 		nextMoveAt = 0,
 		dashingUntil = 0,
+		walkGen = 0,
+		waypoints = nil,
+		waypointIndex = 1,
 		warned = false,
 		connections = {},
 	}
@@ -394,6 +407,48 @@ local function castAt(bot: Bot, root: BasePart, target: BasePart)
 	AbilityService.requestUltimate(bot, bot.ultSeq, aim.Unit, serverNow())
 end
 
+-- Walks the bot to `point`: straight at once, then along a PathfindingService path once one is computed (the vault's
+-- follower, cut down: no jumps, no custom links; the next pick replaces the walk anyway). A failed path keeps the
+-- straight walk.
+local function walkTo(bot: Bot, humanoid: Humanoid, root: BasePart, point: Vector3)
+	bot.walkGen += 1
+	local gen = bot.walkGen
+	bot.waypoints = nil
+	humanoid:MoveTo(point)
+	task.spawn(function()
+		local path = PathfindingService:CreatePath(PATH_AGENT)
+		local ok = pcall(path.ComputeAsync, path, root.Position, point)
+		if not ok or path.Status ~= Enum.PathStatus.Success or gen ~= bot.walkGen or not bot.alive then
+			return
+		end
+		local waypoints = path:GetWaypoints()
+		if #waypoints > 2 then -- 1 is where it stands; 2 alone = a straight line, already walking
+			bot.waypoints = waypoints
+			bot.waypointIndex = 2
+			humanoid:MoveTo(waypoints[2].Position)
+		end
+	end)
+end
+
+-- Advances the walk to the next waypoint once the current one is reached (every think step).
+local function followPath(bot: Bot, humanoid: Humanoid, root: BasePart)
+	local waypoints = bot.waypoints
+	if waypoints == nil then
+		return
+	end
+	local current = waypoints[bot.waypointIndex]
+	if current ~= nil and flat(current.Position - root.Position).Magnitude > WAYPOINT_REACHED_STUDS then
+		return
+	end
+	bot.waypointIndex += 1
+	local nextPoint = waypoints[bot.waypointIndex]
+	if nextPoint then
+		humanoid:MoveTo(nextPoint.Position)
+	else
+		bot.waypoints = nil
+	end
+end
+
 -- One decision step (see the header). `now` = os.clock().
 local function step(bot: Bot, now: number)
 	local fighter = CombatService.getFighter(bot)
@@ -423,6 +478,7 @@ local function step(bot: Bot, now: number)
 	local dashing = now < bot.dashingUntil
 	if not dashing then
 		face(root, target.Position)
+		followPath(bot, humanoid, root)
 	end
 
 	if not rooted and not dashing and now >= bot.nextMoveAt then
@@ -430,7 +486,7 @@ local function step(bot: Bot, now: number)
 		if zone then
 			local params = port.arena.raycastParams
 			local eye = target.Position
-			humanoid:MoveTo(BotRules.pickMove(rng, zone, root.Position, BOTS, function(point: Vector3): boolean
+			walkTo(bot, humanoid, root, BotRules.pickMove(rng, zone, root.Position, BOTS, function(point: Vector3): boolean
 				return Workspace:Raycast(eye, point - eye, params) ~= nil -- cover between the player and that spot
 			end))
 		end
