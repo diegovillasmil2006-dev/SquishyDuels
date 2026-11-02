@@ -1700,10 +1700,12 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.fx.radial.scrimWindow", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.plateCommon", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.plateUncommon", "image", IMAGE_NOTE),
+	otherSlot("img.fx.radial.plateRare", "image", IMAGE_NOTE), -- the Rare tier (2026-11-01) was missing: an unknown-key warning on every Rare plate
 	otherSlot("img.fx.radial.plateEpic", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.plateExclusive", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.stageCommon", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.stageUncommon", "image", IMAGE_NOTE),
+	otherSlot("img.fx.radial.stageRare", "image", IMAGE_NOTE), -- the Rare tier's reveal stage, same as the plate above
 	otherSlot("img.fx.radial.stageEpic", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.stageExclusive", "image", IMAGE_NOTE),
 	otherSlot("img.fx.radial.congrats", "image", IMAGE_NOTE),

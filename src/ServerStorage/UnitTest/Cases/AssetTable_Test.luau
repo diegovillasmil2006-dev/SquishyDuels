@@ -507,10 +507,12 @@ return function(t: Context)
 				"img.fx.radial.scrimWindow",
 				"img.fx.radial.plateCommon",
 				"img.fx.radial.plateUncommon",
+				"img.fx.radial.plateRare", -- the Rare tier (2026-11-02 bug hunt: the key was missing)
 				"img.fx.radial.plateEpic",
 				"img.fx.radial.plateExclusive",
 				"img.fx.radial.stageCommon",
 				"img.fx.radial.stageUncommon",
+				"img.fx.radial.stageRare",
 				"img.fx.radial.stageEpic",
 				"img.fx.radial.stageExclusive",
 				"img.fx.radial.congrats",
