@@ -1221,10 +1221,10 @@ local function missReachFor(ray: Ray): number
 	return ThrowController.missReach(ray.Origin, ray.Direction, anchors, COMBAT.Aim.maxRayStuds)
 end
 
--- The aim ray and point from the camera (mouse or centre); the last value is false when the ray hit nothing. `from`
--- (pressRay) is used instead of the live camera ray: the aim stays on the spot of the press, and the reticle is put
--- where that spot is on screen now.
-local function cameraAim(from: Ray?): (Vector3?, Vector2, boolean, Ray?, boolean)
+-- The aim ray and point from the camera (mouse or centre); the 5th value is false when the ray hit nothing, the 6th is
+-- the hit surface's normal (nil without a hit). `from` (pressRay) is used instead of the live camera ray: the aim stays
+-- on the spot of the press, and the reticle is put where that spot is on screen now.
+local function cameraAim(from: Ray?): (Vector3?, Vector2, boolean, Ray?, boolean, Vector3?)
 	local camera = Workspace.CurrentCamera
 	if camera == nil then
 		return nil, Vector2.zero, true, nil, false
@@ -1246,7 +1246,7 @@ local function cameraAim(from: Ray?): (Vector3?, Vector2, boolean, Ray?, boolean
 			screen, centered = Vector2.new(onScreen.X, onScreen.Y), false
 		end
 	end
-	return point, screen, centered, ray, hit
+	return point, screen, centered, ray, hit, if hit and result then result.Normal else nil
 end
 
 local function hasLineOfSight(from: Vector3, to: Vector3, targetModel: Instance?): boolean
@@ -1513,9 +1513,10 @@ function ThrowController.launchFor(
 	local point = aimPoint
 	local aimRay = ray
 	local missed = false -- the camera ray hit nothing (open sky): the throw leaves along the crosshair (see the header)
+	local normal: Vector3? = nil
 	if point == nil then
-		local camPoint, _, _, camRay, hit = cameraAim(pressRay)
-		point, aimRay, missed = camPoint, camRay, not hit
+		local camPoint, _, _, camRay, hit, hitNormal = cameraAim(pressRay)
+		point, aimRay, missed, normal = camPoint, camRay, not hit, hitNormal
 	end
 	if point == nil then
 		return nil, nil, "throw.direction"
@@ -1525,6 +1526,11 @@ function ThrowController.launchFor(
 		point = assisted(ctx, aimRay, unassisted, countAssist)
 		if point ~= unassisted then
 			missed = false -- aim assist found a target: aim at it
+		elseif normal then
+			-- Owner 2026-11-02 ("it should go exactly where you aim"): the squishy is a ball, so its centre aims one
+			-- radius off the surface and its edge, not its middle, lands on the crosshair spot (it touched down
+			-- ~3.5 studs short on a flat throw).
+			point = unassisted + normal * ctx.def.throw.radius
 		end
 	end
 	local origin = originHintOf(root)
