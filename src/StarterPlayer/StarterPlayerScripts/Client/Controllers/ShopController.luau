@@ -10,7 +10,7 @@
 -- * The featured card (H:318-336): the Dragon Bundle on the gold -> orange -> purple card with the rays, the LIMITED
 --   badge (and the "Ends in" pill only while Config.UI.Shop.featured.bundle.endsAt is a real end time: no fake
 --   countdown for kids), the stars and the gem twinkling, the Dragon floating, DRAGON BUNDLE, the line
---   "Exclusive Dragon + (coin) 2,500" and the green Robux BUY (or the lilac OWNED bar once the Dragon is owned).
+--   "Legendary Dragon + (coin) 2,500" and the green Robux BUY (or the lilac OWNED bar once the Dragon is owned).
 -- * The right column (H:337-366): GAME PASSES over Diego's 4 pass cards (2 columns: the coloured tile with the picture
 --   bobbing, the name over the line, the green Robux price chip), then COINS over his 4 coin pack cards (the +10% /
 --   +20% / +30% and BEST badges, the picture bobbing, the amount, the green Robux price bar). Cards rise in on open.
