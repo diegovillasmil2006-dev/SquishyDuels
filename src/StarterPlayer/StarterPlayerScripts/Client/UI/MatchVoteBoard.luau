@@ -649,7 +649,7 @@ function MatchVoteBoard.new(ctx: Context): Board
 			)
 			-- The sky maps (2026-11-01): the same card with Diego's second photo fades in and out over it.
 			local cardBKey = "img.vote.cardB." .. model
-			if AssetTable.image(cardBKey) then
+			if AssetTable.hasImage(cardBKey) then
 				local b = picture("CardB", cardBKey, {
 					Position = UDim2.fromOffset(-p.cardX, -p.cardY),
 					Size = UDim2.fromOffset(p.width, p.height),
@@ -665,7 +665,7 @@ function MatchVoteBoard.new(ctx: Context): Board
 				})
 				ctx.loop(photoFade)
 			end
-			if AssetTable.image(boardKey) then -- the old maps' floating board (the sky maps' cards have none)
+			if AssetTable.hasImage(boardKey) then -- the old maps' floating board (the sky maps' cards have none)
 				local float = clear("Float", { Size = UDim2.fromScale(1, 1), ZIndex = 8, Parent = pose })
 				table.insert(
 					pictures,

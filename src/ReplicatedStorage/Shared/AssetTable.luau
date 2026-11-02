@@ -2117,6 +2117,11 @@ function AssetTable.image(key: string): string?
 	return contentId("image", key)
 end
 
+-- True when an image key exists: for optional pictures (a map's vote board), without the unknown-key warning.
+function AssetTable.hasImage(key: string): boolean
+	return BY_KIND.image[key] ~= nil
+end
+
 -- Every slot with its metadata (frozen), in document order. Used for startup warnings, audio checks and audits.
 function AssetTable.all(): { AssetSlot }
 	return SLOTS

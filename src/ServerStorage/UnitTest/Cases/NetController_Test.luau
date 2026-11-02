@@ -53,6 +53,56 @@ return function(t: Context)
 		expect.truthy(check("ShopBuy", "dragon", Config.Economy.maxCoins + 2, guid))
 	end)
 
+	t.test("SellItems: a list of pen item ids passes; an empty list, a string or a fraction is refused", function()
+		local guid = "0123abcd-4567-89ab-cdef-0123456789ab"
+		-- owner bug 2026-11-02: itemIds had no client check, so the pen's SELL never sent anything
+		expect.equal(check("SellItems", { 2 }, guid), nil)
+		expect.equal(check("SellItems", { 2, 7, 9 }, guid), nil)
+		expect.truthy(check("SellItems", {}, guid))
+		expect.truthy(check("SellItems", "2", guid))
+		expect.truthy(check("SellItems", { 2.5 }, guid))
+	end)
+
+	t.test("every argument type a C->S remote declares has a client check: a valid sample passes", function()
+		local guid = "0123abcd-4567-89ab-cdef-0123456789ab"
+		local samples: { [string]: any } = {
+			integer = 1,
+			number = 1.5,
+			serverTime = NOW,
+			coins = 10,
+			boolean = true,
+			string = "x",
+			table = {},
+			Vector3 = AIM,
+			squishyId = "dragon",
+			boxId = "snack",
+			bundleKey = "small",
+			passKey = "small",
+			requestId = guid,
+			revealRequestId = guid,
+			questId = "q20759_1",
+			stepId = "squeeze",
+			reasonCode = "net.invalid",
+			messageCode = "net.invalid",
+			itemIds = { 2 },
+		}
+		for _, name in Remotes.names("c2s") do
+			local spec = Remotes.SPEC[name]
+			local args = {}
+			for i, argSpec in spec.args do
+				local sample = samples[argSpec.type]
+				if sample == nil then
+					error(`no sample for the argument type {argSpec.type} ({name})`)
+				end
+				args[i] = sample
+			end
+			local problem = check(name, table.unpack(args, 1, #spec.args))
+			if problem ~= nil then
+				error(`{name}: {problem}`)
+			end
+		end
+	end)
+
 	t.test("every C->S remote: the declared argument count, nothing more", function()
 		expect.equal(check("QueueJoin"), nil)
 		expect.truthy(check("QueueJoin", 1))

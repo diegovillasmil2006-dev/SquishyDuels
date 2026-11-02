@@ -99,6 +99,10 @@ local ARG_CHECKS: { [string]: (unknown) -> boolean } = {
 	questId = function(v)
 		return Validate.questId(v) ~= nil
 	end,
+	-- owner bug 2026-11-02: this entry was missing, so the pen's SELL (chosen squishies) never sent SellItems.
+	itemIds = function(v)
+		return Validate.itemIds(v) ~= nil
+	end,
 	stepId = function(v)
 		return type(v) == "string"
 	end,
