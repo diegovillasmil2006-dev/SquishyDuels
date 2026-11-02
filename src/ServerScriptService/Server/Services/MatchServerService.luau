@@ -7,8 +7,9 @@
 --   ReservedServerId = the leader's GUID: every lobby of the match uses the same one, so they all land together) with
 --   a ticket (Logic/MatchTicket as TeleportData, no map: the match server picks it). canSend() says whether this
 --   server sends matches away at all (on, live, not a match server).
--- * Match side (a reserved server: PrivateServerId set, PrivateServerOwnerId 0; Workspace attribute SD_MatchServer for
---   the client): the first valid ticket a player brings names the match (the server trusts only MatchTicket.read);
+-- * Match side (a reserved server: PrivateServerId set, PrivateServerOwnerId 0, once a valid ticket reached it: Studio's
+--   Team Test server is reserved-looking too and stays a lobby; Workspace attribute SD_MatchServer for the client from
+--   that first ticket on): the first valid ticket a player brings names the match (the server trusts only MatchTicket.read);
 --   each player's own ticket names the lobby server they came from. Once every ticket player is in with a character
 --   (or waitSeconds after the first arrived), settleSeconds later it starts: a Team / Free for All match by putting
 --   them all in this server's own queue (MatchService: MATCH FOUND, the map vote, the bots, as in a lobby), a 1v1
@@ -212,20 +213,36 @@ local function onPlayerAdded(player: Player)
 	homes[player.UserId] = read.home
 	if ticket == nil then
 		ticket = read
+		Workspace:SetAttribute(ATTR_MATCH_SERVER, true)
 		log:info(`match server for {read.kind} {read.matchId} on {if read.mapId ~= "" then read.mapId else "a vote"} ({#read.players} players)`)
 	end
 end
 
 -- Public
 
--- True in a reserved server (a match server), false in a public lobby server, Studio and a VIP server.
-function MatchServerService.isMatchServer(): boolean
-	return game.PrivateServerId ~= "" and game.PrivateServerOwnerId == 0
+-- Pure (unit-tested): what a server is from its ids and whether a match ticket reached it: "lobby" (public or a
+-- player's VIP server), "reserved" (a reserved server no ticket reached: Studio's Team Test server looks exactly like
+-- one, owner bug 2026-11-02: QUEUE / PLAY tried to teleport "home" there) or "match".
+function MatchServerService.kindOf(privateServerId: string, ownerId: number, hasTicket: boolean): string
+	if privateServerId == "" or ownerId ~= 0 then
+		return "lobby"
+	end
+	return if hasTicket then "match" else "reserved"
 end
 
--- Whether this server sends its matches away (on, a live lobby server).
+-- True in a reserved server (a match server, or Studio's Team Test server), false in a public lobby or a VIP server.
+function MatchServerService.isReservedServer(): boolean
+	return MatchServerService.kindOf(game.PrivateServerId, game.PrivateServerOwnerId, false) ~= "lobby"
+end
+
+-- True in a match server: a reserved server a player reached with a valid match ticket.
+function MatchServerService.isMatchServer(): boolean
+	return MatchServerService.kindOf(game.PrivateServerId, game.PrivateServerOwnerId, ticket ~= nil) == "match"
+end
+
+-- Whether this server sends its matches away (on, a live public lobby server; never a reserved one).
 function MatchServerService.canSend(): boolean
-	return cfg().enabled == true and not RunService:IsStudio() and not MatchServerService.isMatchServer()
+	return cfg().enabled == true and not RunService:IsStudio() and not MatchServerService.isReservedServer()
 end
 
 -- Lobby side: this server's `players` of match `matchId` go to its reserved server `serverId` (a GUID); `all` = every
@@ -286,18 +303,17 @@ function MatchServerService.init()
 		retried[player] = nil
 		leaving[player] = nil
 	end)
-	if not MatchServerService.isMatchServer() then
+	if not MatchServerService.isReservedServer() then
 		return
 	end
-	Workspace:SetAttribute(ATTR_MATCH_SERVER, true)
-	Players.PlayerAdded:Connect(onPlayerAdded)
+	Players.PlayerAdded:Connect(onPlayerAdded) -- the first valid ticket makes it a match server (SD_MatchServer)
 	for _, player in Players:GetPlayers() do
 		onPlayerAdded(player)
 	end
 end
 
 function MatchServerService.start()
-	if not MatchServerService.isMatchServer() then
+	if not MatchServerService.isReservedServer() then
 		return
 	end
 	while true do

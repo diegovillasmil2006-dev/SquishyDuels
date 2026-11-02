@@ -197,7 +197,7 @@ end
 -- Lifecycle
 
 function EventService.init()
-	if MatchServerService.isMatchServer() then
+	if MatchServerService.isReservedServer() then -- init runs before any match ticket arrives
 		return
 	end
 	local made = Instance.new("Folder")
