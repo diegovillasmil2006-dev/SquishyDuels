@@ -281,9 +281,12 @@ return function(t: Context)
 			open.result = nil
 			expect.deepEqual(StateController.normalizeMatchVote(open), open)
 			expect.deepEqual(StateController.normalizeMatchVote({}), {})
+			local duel = vote() -- the 1v1 map vote (2026-11-01, Logic/DuelVote)
+			duel.mode = "1v1"
+			expect.deepEqual(StateController.normalizeMatchVote(duel), duel)
 			local bad: { (v: any) -> () } = {
 				function(v)
-					v.mode = "1v1"
+					v.mode = "2v2"
 				end,
 				function(v)
 					v.maps = {}

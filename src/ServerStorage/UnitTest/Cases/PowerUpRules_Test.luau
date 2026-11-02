@@ -62,7 +62,31 @@ return function(t: Context)
 		expect.truthy((PowerUpRules.take(taken, 50 + P.padRefillSeconds, MATCH)))
 	end)
 
+	-- Squish Pods (owner 2026-11-01): no Ult Charge for a squishy without an ult.
+	t.test("kindsFor / roll: without an ult the ult charge is never offered", function()
+		for _, modeId in { "ffa", "tdm" } do
+			local kinds = PowerUpRules.kindsFor(modeId, MATCH, false)
+			expect.equal(table.find(kinds, "ultCharge"), nil)
+			expect.equal(#kinds, #PowerUpRules.kindsFor(modeId, MATCH) - 1)
+			expect.deepEqual(PowerUpRules.kindsFor(modeId, MATCH, true), PowerUpRules.kindsFor(modeId, MATCH))
+			for i = 0, 99 do
+				expect.truthy(PowerUpRules.roll(modeId, i / 100, MATCH, false) ~= "ultCharge")
+			end
+		end
+	end)
+
+	-- Squish Pods (owner 2026-11-01): one power-up at a time; a box can't be grabbed while one runs or still rolls.
+	t.test("canGrab: not while a power-up runs or the roll still spins", function()
+		expect.truthy(PowerUpRules.canGrab({}, nil, 10))
+		expect.falsy(PowerUpRules.canGrab({ speed = 12 }, nil, 10))
+		expect.truthy(PowerUpRules.canGrab({ speed = 10 }, nil, 10)) -- ended
+		expect.falsy(PowerUpRules.canGrab({}, 11, 10)) -- rolling until 11
+		expect.truthy(PowerUpRules.canGrab({}, 10, 10))
+	end)
+
 	t.test("Config: every kind in the order has a row; timed kinds last a positive time", function()
+		expect.equal(P.padRefillSeconds, 5) -- owner 2026-11-01: "each 5 seconds so its more frenetic"
+		expect.equal(P.rollSeconds, 1.35) -- Diego's In-Game HUD: the dial lands at 1350 ms
 		for _, kind in P.order do
 			local row = P.kinds[kind]
 			expect.truthy(row)

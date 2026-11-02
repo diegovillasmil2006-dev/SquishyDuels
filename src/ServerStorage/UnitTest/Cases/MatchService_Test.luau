@@ -97,6 +97,7 @@ type World = {
 	syncs: number, -- CombatService.syncTo calls
 	onSync: ((now: number) -> ())?, -- runs once inside the next syncTo (a projectile the sweep brings in)
 	charged: { { userId: number, fraction: number } }, -- power-ups v1.1: AbilityService.addChargeFraction calls
+	equippedIds: { [number]: string }, -- Squish Pods: a user's equipped squishy (none = the starter, no ult)
 	-- Match HUD M2: the pay fakes (setup's withRewards): EconomyService.grantMatchResult / GripService.addFromMatch
 	-- calls and each user's saved win streak.
 	grants: { { userId: number, matchId: string, pay: any } },
@@ -176,6 +177,7 @@ return function(t: Context)
 		-- Power-ups v1.1 (2026-10-16): the pickup reach and the timed power-ups' numbers.
 		local pu = cfg.PowerUps
 		pu.padRefillSeconds = 20
+		pu.rollSeconds = 0 -- Squish Pods: the power-up starts at the grab (the cases with the dial roll set it)
 		pu.pickupRadiusStuds = 4
 		pu.pickupHeightStuds = 6
 		pu.kinds.shield.seconds = 6
@@ -266,6 +268,7 @@ return function(t: Context)
 			syncs = 0,
 			onSync = nil,
 			charged = {},
+			equippedIds = {},
 			grants = {},
 			grips = {},
 			streaks = {},
@@ -350,8 +353,8 @@ return function(t: Context)
 				table.insert(w.teleports, { userId = ref.UserId, cf = cf })
 				return true, nil
 			end,
-			equipped = function(_ref: any): string?
-				return nil -- the starter
+			equipped = function(ref: any): string?
+				return w.equippedIds[ref.UserId] -- nil = the starter
 			end,
 			queueState = function(ref: any): string
 				return w.queueState[ref.UserId] or "Idle"
@@ -1583,6 +1586,79 @@ return function(t: Context)
 		close()
 	end)
 
+	-- Squish Pods (owner 2026-11-01) -------------------------------------------------------------------------------------
+
+	t.test("Squish Pods: one power-up at a time: no grab while yours runs; the box stays for the others", function()
+		local cfg = onlyKind("speed")
+		local w = setup(3, cfg)
+		w.maps[1].powerUps = {
+			{ name = "JAR_PowerUp_Pad_01", position = PAD_AT, top = 0.5 },
+			{ name = "JAR_PowerUp_Pad_02", position = PAD_AT + Vector3.new(20, 0, 0), top = 0.5 },
+		}
+		local a = live(w, "ffa")
+		onPad(w, 1)
+		MatchService.tick(a + 0.01)
+		expect.truthy(lastView(w, w.players[1]).you.buffs.speed ~= nil)
+		-- Player 1 walks onto the second box while the speed boost runs: it stays ready.
+		w.roots[1].Position = Vector3.new(PAD_AT.X + 20, 3.6, PAD_AT.Z)
+		MatchService.tick(a + 1)
+		expect.equal(lastView(w, w.players[1]).pads[2].readyAt, 0)
+		-- Player 2 can take it.
+		w.roots[2].Position = Vector3.new(PAD_AT.X + 20.5, 3.6, PAD_AT.Z)
+		MatchService.tick(a + 1.5)
+		expect.truthy(lastView(w, w.players[2]).pads[2].readyAt > 0)
+		expect.truthy(lastView(w, w.players[2]).you.buffs.speed ~= nil)
+		close()
+	end)
+
+	t.test("Squish Pods: the box breaks at the grab; the power-up starts when the dial lands (rollSeconds)", function()
+		local cfg = onlyKind("shield")
+		cfg.PowerUps.rollSeconds = 1.35
+		local w = setup(2, cfg)
+		withPad(w)
+		local a = live(w, "ffa")
+		onPad(w, 1)
+		local grabAt = a + 0.01
+		MatchService.tick(grabAt)
+		expect.equal(lastView(w, w.players[2]).pads[1].readyAt, grabAt + cfg.PowerUps.padRefillSeconds) -- gone at once
+		expect.deepEqual(lastView(w, w.players[1]).you.buffs, {})
+		expect.falsy(hasCode(w, w.players[1], "match.powerUp.shield"))
+		MatchService.tick(grabAt + 1.3)
+		expect.deepEqual(lastView(w, w.players[1]).you.buffs, {}) -- still rolling
+		local landAt = grabAt + 1.4
+		MatchService.tick(landAt)
+		expect.truthy(hasCode(w, w.players[1], "match.powerUp.shield"))
+		expect.equal(lastView(w, w.players[1]).you.buffs.shield, landAt + cfg.PowerUps.kinds.shield.seconds)
+		close()
+
+		-- K.O.'d while the dial rolls: the power-up is lost (power-ups end on a K.O.).
+		local v = setup(2, cfg)
+		withPad(v)
+		local b = live(v, "ffa")
+		onPad(v, 1)
+		MatchService.tick(b + 0.01)
+		hit(v, 1, 2, b + 0.5)
+		MatchService.tick(b + 1.5)
+		expect.falsy(hasCode(v, v.players[1], "match.powerUp.shield"))
+		expect.deepEqual(lastView(v, v.players[1]).you.buffs, {})
+		close()
+	end)
+
+	t.test("Squish Pods: a squishy without an ult never rolls the ult charge", function()
+		local cfg = baseConfig()
+		cfg.PowerUps.order = { "ultCharge", "speed" }
+		local w = setup(2, cfg)
+		withPad(w)
+		local a = live(w, "ffa")
+		onPad(w, 1) -- the starter: no ult
+		for i = 0, 5 do
+			MatchService.tick(a + 0.01 + i * cfg.PowerUps.padRefillSeconds) -- the speed boost (6 s) is over by then
+		end
+		expect.deepEqual(w.charged, {})
+		expect.truthy(hasCode(w, w.players[1], "match.powerUp.speed"))
+		close()
+	end)
+
 	t.test(
 		"pads review fix: the sweep's K.O. of the taker, or the time-up, lands first: the pad stays ready, no pickup",
 		function()
@@ -1717,20 +1793,24 @@ return function(t: Context)
 			expect.equal(w.port.cooldownMultiplier(), 1)
 			expect.equal(w.port.throwSpeedMultiplier(f1), 1)
 			expect.falsy(w.port.dashCooldownFree(f1))
+			-- They end with their seconds (the clock is the callbacks' time). Squish Pods: one power-up at a time, so
+			-- the next pickup comes once the last one ended.
+			local t1 = a + 0.01 + cfg.PowerUps.kinds.rapidThrow.seconds
+			w.clock.set(t1)
+			expect.equal(w.port.cooldownMultiplier(f1), 1)
 			cfg.PowerUps.order = { "throwBoost" }
-			MatchService.tick(a + 1.01)
+			MatchService.tick(t1)
 			expect.equal(w.port.throwSpeedMultiplier(f1), cfg.PowerUps.kinds.throwBoost.speedMultiplier)
 			expect.equal(w.port.throwSpeedMultiplier(f2), 1)
+			local t2 = t1 + cfg.PowerUps.kinds.throwBoost.seconds
+			w.clock.set(t2)
+			expect.equal(w.port.throwSpeedMultiplier(f1), 1)
 			cfg.PowerUps.order = { "dashBoost" }
-			MatchService.tick(a + 2.01)
+			MatchService.tick(t2)
 			expect.truthy(w.port.dashCooldownFree(f1))
 			expect.falsy(w.port.dashCooldownFree(f2))
-			-- They end with their seconds (the clock is the callbacks' time).
-			w.clock.set(a + 0.01 + cfg.PowerUps.kinds.rapidThrow.seconds)
-			expect.equal(w.port.cooldownMultiplier(f1), 1)
-			w.clock.set(a + 2.01 + cfg.PowerUps.kinds.dashBoost.seconds)
+			w.clock.set(t2 + cfg.PowerUps.kinds.dashBoost.seconds)
 			expect.falsy(w.port.dashCooldownFree(f1))
-			expect.equal(w.port.throwSpeedMultiplier(f1), 1)
 			close()
 		end
 	)
@@ -1740,6 +1820,7 @@ return function(t: Context)
 		function()
 			local cfg = onlyKind("ultCharge")
 			local w = setup(2, cfg)
+			w.equippedIds[1] = "bird" -- Squish Pods: only a squishy with an ult can roll the ult charge
 			withPad(w)
 			local a = live(w, "ffa")
 			onPad(w, 1)

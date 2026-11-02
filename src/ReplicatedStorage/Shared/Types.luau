@@ -553,7 +553,7 @@ export type MatchVoteResultView = {
 }
 export type MatchVoteView = {
 	id: string?,
-	mode: MatchMode?,
+	mode: (MatchMode | "1v1")?, -- 1v1: the duel's map vote (2026-11-01, Logic/DuelVote)
 	maps: { string }?,
 	opensAt: number?,
 	closesAt: number?,

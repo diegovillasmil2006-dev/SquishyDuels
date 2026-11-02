@@ -7,8 +7,10 @@
 -- offers, which one a roll picks (equal chance) and whether a pad is ready.
 --
 -- API (`match` = a Config.Match-shaped table; nil = the live Config.Match):
---   PowerUpRules.kindsFor(modeId, match?) -> { string }        PowerUps.order, without teamsOnly kinds in a no-team mode
---   PowerUpRules.roll(modeId, r, match?) -> string             r in [0, 1) (Random:NextNumber()) picks one kind
+--   PowerUpRules.kindsFor(modeId, match?, hasUlt?) -> { string }  PowerUps.order, without teamsOnly kinds in a no-team
+--                                                              mode, without the ult charge when hasUlt is false
+--   PowerUpRules.roll(modeId, r, match?, hasUlt?) -> string    r in [0, 1) (Random:NextNumber()) picks one kind
+--   PowerUpRules.canGrab(buffs, rollingUntil?, now) -> boolean no live timed power-up and no roll still spinning
 --   PowerUpRules.newPad() -> Pad                               ready at once
 --   PowerUpRules.isReady(pad, now) -> boolean
 --   PowerUpRules.take(pad, now, match?) -> (boolean, Pad)      taken only when ready; the pad refills padRefillSeconds
@@ -22,23 +24,37 @@ export type Pad = { readyAt: number }
 
 local PowerUpRules = {}
 
-function PowerUpRules.kindsFor(modeId: string, match: any?): { string }
+function PowerUpRules.kindsFor(modeId: string, match: any?, hasUlt: boolean?): { string }
 	local cfg = match or Config.Match
 	local mode = cfg.Modes[modeId]
 	assert(mode, `PowerUpRules: unknown mode {modeId}`)
 	local out: { string } = {}
 	for _, kind in cfg.PowerUps.order do
-		if mode.teams or not cfg.PowerUps.kinds[kind].teamsOnly then
+		local row = cfg.PowerUps.kinds[kind]
+		if (mode.teams or not row.teamsOnly) and not (hasUlt == false and row.ultFraction) then
 			table.insert(out, kind)
 		end
 	end
 	return out
 end
 
-function PowerUpRules.roll(modeId: string, r: number, match: any?): string
-	local kinds = PowerUpRules.kindsFor(modeId, match)
+function PowerUpRules.roll(modeId: string, r: number, match: any?, hasUlt: boolean?): string
+	local kinds = PowerUpRules.kindsFor(modeId, match, hasUlt)
 	local index = math.clamp(math.floor(r * #kinds) + 1, 1, #kinds)
 	return kinds[index]
+end
+
+-- Squish Pods (owner 2026-11-01): one power-up at a time: no grab while a timed one runs or the dial still rolls.
+function PowerUpRules.canGrab(buffs: { [string]: number? }, rollingUntil: number?, now: number): boolean
+	if rollingUntil ~= nil and now < rollingUntil then
+		return false
+	end
+	for _, untilAt in buffs do
+		if type(untilAt) == "number" and untilAt > now then
+			return false
+		end
+	end
+	return true
 end
 
 function PowerUpRules.newPad(): Pad

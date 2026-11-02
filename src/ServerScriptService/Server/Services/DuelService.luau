@@ -58,6 +58,12 @@
 -- * MATCH FOUND (round 2 of the match flow, 2026-10-25): startMatch's holdSeconds (a queue duel) sends each real player
 --   MatchFound (Logic/MatchFoundRoster: both names, squishies and Grip levels) and holds the `streamed` events until
 --   then, so the lobby's show plays before the teleport.
+-- * The 1v1 map vote (2026-11-01, owner: every duel, 5 s, "if both vote it should be random between the 2 maps"; on
+--   while Config.Duel.Vote.enabled): every duel sends MatchFound and a vote over the duel maps (Logic/DuelVote: the
+--   Team / Free for All vote's rules, MatchVoteState to the real players, their MatchVote through MatchService's
+--   remote -> DuelService.vote; the practice bot and the test dummy vote by themselves). Preparing waits for the
+--   result; the duel then moves to a slot holding the voted arena (ArenaService.prefer + acquire; the rolled one stays
+--   when none is free), streams its pads and starts at the result's startsAt. Ended during the vote: {} to the players.
 
 -- Services
 
@@ -83,6 +89,8 @@ local Logic = script.Parent.Parent.Logic
 local DuelRewards = require(Logic.DuelRewards)
 local DuelRules = require(Logic.DuelRules)
 local MatchFoundRoster = require(Logic.MatchFoundRoster)
+local DuelVote = require(Logic.DuelVote)
+local MapData = require(Shared.Maps.MapData)
 local AbilityService = require(script.Parent.AbilityService)
 local ArenaService = require(script.Parent.ArenaService)
 local CharacterService = require(script.Parent.CharacterService)
@@ -148,6 +156,7 @@ type Match = {
 	closed: boolean,
 	endedFired: boolean,
 	roundFrozen: boolean, -- rounds: both frozen by a round's hit, until the next Active (or a time-up's SuddenDeath)
+	vote: DuelVote.Vote?, -- the 1v1 map vote through Preparing (its result picks the arena)
 	createdAt: number,
 	holdUntil: number?, -- round 2 of the match flow: the MATCH FOUND show plays until then (no teleport before)
 }
@@ -229,6 +238,16 @@ export type Settlement = { coins: number, coinsBlockedReason: string? }
 
 local RULES = Config.Duel.Rules
 local POSITIONING = Config.Duel.Positioning
+-- The 1v1 map vote (Logic/DuelVote): Config.Match.Vote's times and rules with Config.Duel.Vote's length; the cards are
+-- the duel maps (their arena ids and Workspace.SquishyMaps names), in MapData order.
+local VOTE_CFG = table.clone(Config.Match.Vote)
+VOTE_CFG.seconds = Config.Duel.Vote.seconds
+local VOTE_ARENAS = MapData.ofMode("duel")
+local VOTE_MAPS: { string } = {}
+for index, id in VOTE_ARENAS do
+	VOTE_MAPS[index] = (string.gsub(MapData.maps[id].name, "%s", ""))
+end
+local REMOTE_VOTE_STATE = "MatchVoteState"
 local ATTR_MATCH_ID = "SD_MatchId"
 local ATTR_PHASE = "SD_DuelPhase"
 local PRE_ACTIVE: { [string]: boolean } = { Preparing = true, Positioning = true, Countdown = true }
@@ -566,6 +585,75 @@ local function sendDuelState(match: Match)
 	end
 end
 
+-- The 1v1 map vote: its view to each real player ({} when the vote ends without a result: the show fades out).
+local function sendVote(match: Match, over: boolean?)
+	local vote = match.vote
+	if vote == nil then
+		return
+	end
+	local view = if over then {} else DuelVote.view(vote)
+	for _, p in match.list do
+		local player = p.player
+		if player and not p.isTestDummy then
+			local ok, err = pcall(NetService.fire, REMOTE_VOTE_STATE, player, view)
+			if not ok then
+				log:warn(`MatchVoteState to user {p.userId} failed:`, err)
+			end
+		end
+	end
+end
+
+-- The vote's winner: the duel moves to a slot holding that arena (ArenaService.prefer + acquire), unless it already
+-- holds it or none is free (then it stays on the rolled one). Nothing in the arena is used before the vote ends.
+local function useVotedArena(match: Match)
+	local vote = match.vote
+	local wanted = if vote then DuelVote.winner(vote) else nil
+	if wanted == nil or match.slot.arenaId == wanted then
+		return
+	end
+	ArenaService.prefer(wanted)
+	local slot = ArenaService.acquire(match.matchId)
+	if slot == nil then
+		ArenaService.prefer(nil)
+		return
+	end
+	if slot.arenaId ~= wanted then -- that arena is not usable: the rolled one stays
+		ArenaService.release(slot)
+		return
+	end
+	local old = match.slot
+	match.slot = slot
+	match.arenaView = ArenaService.view(slot)
+	local arena = match.port.arena
+	arena.slot = slot.index
+	arena.floorY = slot.floorY
+	arena.killY = slot.killY
+	arena.zones = slot.zones
+	arena.freeRoam = slot.model:GetAttribute("FreeRoam") == true
+	arena.geometry = slot.geometry
+	arena.raycastParams = slot.raycastParams
+	arena.overlapParams = slot.overlapParams
+	ArenaService.release(old)
+	match.stateDirty = true
+	log:info(`match {match.matchId} moved to slot {slot.index} ({wanted}), the vote's map`)
+end
+
+-- The vote's bots and result (Logic/DuelVote); once decided the arena follows it and Preparing waits until startsAt.
+local function stepVote(match: Match, now: number)
+	local vote = match.vote
+	if vote == nil or vote.result ~= nil or match.state.ended then
+		return
+	end
+	if DuelVote.step(vote, now, rng, VOTE_CFG) then
+		local result = vote.result
+		if result then
+			useVotedArena(match)
+			match.holdUntil = result.startsAt
+		end
+		sendVote(match)
+	end
+end
+
 local function syncFighters(match: Match)
 	for _, p in match.list do
 		p.fighter.invulnUntil = DuelRules.participant(match.state, p.side).invulnUntil
@@ -615,6 +703,10 @@ local function closeMatch(match: Match)
 	end
 	match.closed = true
 	local matchId = match.matchId
+	local vote = match.vote
+	if vote and vote.result == nil then
+		sendVote(match, true) -- ended during the vote (a leave, a forfeit): the show fades out
+	end
 	try(CombatService.unregisterMatch, matchId)
 	try(AbilityService.detachMatch, matchId)
 	local slot = match.slot
@@ -766,6 +858,10 @@ local function positionParticipant(match: Match, p: Participant)
 end
 
 local function streamParticipant(match: Match, p: Participant)
+	-- The 1v1 map vote: the arena is the voted one, known once the vote is decided.
+	while match.vote ~= nil and (match.vote :: DuelVote.Vote).result == nil and not match.closed do
+		task.wait(POLL_SECONDS)
+	end
 	local player = p.player
 	local pad = ArenaService.padCFrame(match.slot, p.side)
 	if player and pad then
@@ -1050,6 +1146,7 @@ local function tickMatch(match: Match, now: number)
 	if match.closed then
 		return
 	end
+	stepVote(match, now)
 	checkPresence(match, now)
 	stepMatch(match, { kind = "tick" }, now) -- DuelRules runs every timer that is due
 end
@@ -1281,7 +1378,13 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?, holdSeconds: number
 		}
 	end
 
-	local hold = if holdSeconds and holdSeconds > 0 then holdSeconds else nil
+	-- The 1v1 map vote (every duel, Config.Duel.Vote): the MATCH FOUND show votes, then the duel moves to the voted
+	-- arena; Preparing allows its longest run, and holdUntil becomes the result's startsAt once decided.
+	local voting = Config.Duel.Vote.enabled and #VOTE_ARENAS >= 2
+	local hold = if voting
+		then DuelVote.holdSeconds(#VOTE_ARENAS, VOTE_CFG)
+		elseif holdSeconds and holdSeconds > 0 then holdSeconds
+		else nil
 	local match: Match = {
 		matchId = matchId,
 		state = DuelRules.new(matchId, { A = entrant(sides.A), B = entrant(sides.B) }, now, nil, hold),
@@ -1297,9 +1400,19 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?, holdSeconds: number
 		closed = false,
 		endedFired = false,
 		roundFrozen = false,
+		vote = nil,
 		createdAt = now,
-		holdUntil = if hold then now + hold else nil,
+		holdUntil = if hold and not voting then now + hold else nil,
 	}
+	if voting then
+		local botIds: { number } = {}
+		for _, p in { pa, pb } do
+			if p.player == nil then -- the practice bot or the Studio test dummy votes by itself
+				table.insert(botIds, p.userId)
+			end
+		end
+		match.vote = DuelVote.new(matchId, VOTE_MAPS, VOTE_ARENAS, botIds, now, rng, VOTE_CFG)
+	end
 	match.port = buildPort(match, { sides.A.fighter, sides.B.fighter }, useSlot)
 	matches[matchId] = match
 	for _, p in match.list do
@@ -1325,6 +1438,7 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?, holdSeconds: number
 	if hold then
 		sendFound(match)
 	end
+	sendVote(match)
 	ensureHeartbeat()
 	log:info(
 		string.format(
@@ -1342,6 +1456,23 @@ function DuelService.startMatch(a: any, b: any, slot: Slot?, holdSeconds: number
 		task.spawn(streamParticipant, match, p)
 	end
 	return DuelService.getMatch(a), nil
+end
+
+-- The 1v1 map vote: a real player's vote for card `choice` of their duel's vote (Logic/DuelVote.cast checks it: open,
+-- undecided, a whole card number, not too fast). True when it moved (both get the new view). MatchService's MatchVote
+-- remote hands over every vote that is not one of its own.
+function DuelService.vote(player: any, choice: unknown): boolean
+	local userId = userIdOf(player)
+	local match = if userId then matchOfUser[userId] else nil
+	local vote = if match then match.vote else nil
+	if match == nil or vote == nil or match.closed or not isRealPlayer(player) then
+		return false
+	end
+	if not DuelVote.cast(vote, userId :: number, choice, serverNow(), VOTE_CFG) then
+		return false
+	end
+	sendVote(match)
+	return true
 end
 
 -- The match of a Player (or the test dummy / a userId), or nil.

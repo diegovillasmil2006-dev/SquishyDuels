@@ -6,7 +6,8 @@
 -- Each map floats in the sky: its north-west floor corner at SLOT(i) (Y 300), the floor top at local Y 0.
 -- Folders (his SUPERPROMPT): Floor, Structures, Colliders, InvisibleWalls, Spawns, Routes, Decor, Sky, Ambient; a 1v1
 -- map nests Floor/Structures/Colliders and Barriers (= InvisibleWalls) in Geometry and adds Origin, Zones and
--- Spawns/PadA/PadB (ArenaService's frame). Power-up pads are not built (the zip says IGNORE POWERUPS); MapData keeps them.
+-- Spawns/PadA/PadB (ArenaService's frame). Power-up pads: the zip says IGNORE POWERUPS; since 2026-11-01 they are his
+-- Squish Pods (below).
 -- Readings where the demo can't be copied 1:1 in Roblox:
 --   * toon shading -> SmoothPlastic; his stud canvas -> MaterialVariant SquishyMapStud (MapStud.png, 8 studs a tile,
 --     tinted by the part colour like his smat); the floor canvas -> 2 Textures (FloorCheck tinted theme.grid, FloorStud)
@@ -17,6 +18,11 @@
 --   * stairs -> his 6 steps (no collision) + a smooth WedgePart ramp (his rampTop line)
 --   * wires -> Beams with a Bezier sag (his TubeGeometry curves); the torus donut -> 16 balls (his old Roblox builder)
 --   * cones (crayon tips, pencil tip) -> ellipsoids (his old Roblox builder); flags -> 2 mirrored wedges each
+-- Squish Pods (owner 2026-11-01: "each map should have their own box design", Diego's Pod Gallery pictures): every
+-- Team / Free for All pad is his stand (stud base, round top, 4 posts with knobs; measured on his pictures, which win
+-- over his demo code) with the floating cake, its topper, the beam and the ring from ServerStorage.SD_SquishPods
+-- (tools/meshes/squish_pods.py -> SD_SquishPods.glb, set up by tools/meshes/squish_pods_setup.luau). 1:1 size: the players did not
+-- grow with the maps. Named Pod_PowerUp_Pad_NN (MatchMapService's pads); tagged Pod (SkyMapFxController moves it).
 -- Pure helpers (unit-tested): slotCorner(index), wedgeCFrame(element, corner).
 
 local CollectionService = game:GetService("CollectionService")
@@ -90,6 +96,7 @@ end
 type Ctx = {
 	corner: Vector3,
 	hulls: Instance?,
+	pods: Instance?, -- Squish Pods: ServerStorage.SD_SquishPods (nil = stands without cakes)
 	F: { [string]: Instance },
 	parts: number,
 }
@@ -275,6 +282,89 @@ local function model(name: string, parent: Instance): Model
 	return m
 end
 
+-- Squish Pods: his POD palette (TDM Demo :249-258) as his pictures show it (squish_pods.py POD).
+local POD: { [string]: { [string]: string } } = {
+	T1 = { base = "D9773A", top = "FF8FB8", post = "FFF3E0", knob = "FF5FA2", body = "E8A55C", icing = "FF8FB8", topper = "cherry" },
+	T2 = { base = "3F7FE0", top = "33D39B", post = "FFFFFF", knob = "FF6FAE", body = "A6F0D4", icing = "FFFFFF", topper = "bubble" },
+	T3 = { base = "C97A3D", top = "4EC92F", post = "FFD77A", knob = "FF5F87", body = "FF5F87", icing = "FFE066", topper = "crayon" },
+	T4 = { base = "8A5A35", top = "55C94A", post = "D9A066", knob = "3FA9FF", body = "3FA9FF", icing = "FFF7E0", topper = "star" },
+	F1 = { base = "E8457F", top = "FFCF3A", post = "FFFFFF", knob = "3FCF9C", body = "3FCF9C", icing = "FFFFFF", topper = "cherry" },
+	F2 = { base = "7A4FE0", top = "FF8FC8", post = "FFFFFF", knob = "FF9A3C", body = "FFCF3A", icing = "FF8FC8", topper = "cherry" },
+	F3 = { base = "2A8FD6", top = "FFD23D", post = "FFFFFF", knob = "FF6B5A", body = "FF6B5A", icing = "FFD23D", topper = "star" },
+	F4 = { base = "D8643F", top = "7A4FE0", post = "FFE0C8", knob = "3FB0FF", body = "9B7DFF", icing = "FFFFFF", topper = "bubble" },
+}
+-- The kit's fixed colours (squish_pods.py colour_of); body / icing / crayon / beam / ring come from the map's POD.
+local POD_COLOURS: { [string]: string } = {
+	ink = "1C1530", wrap = "1C1530", stem = "1C1530", Outline = "1C1530", white = "FFFFFF", blush = "FF9BB8",
+	fruit = "FF4F6B", bubble = "E6F6FF", star = "FFD23D",
+	s1 = "FF4F8B", s2 = "FFD23D", s3 = "7FD0FF", s4 = "5FD6A6", s5 = "9B7DFF", s6 = "FF9A3C",
+}
+local POD_BASE_W, POD_BASE_H, POD_DISC_D, POD_DISC_H = 5.4, 0.4, 4.4, 0.1
+local POD_POST_AT, POD_POST_W, POD_POST_H, POD_KNOB = 2.2, 0.7, 1.45, 0.45
+local POD_GEM_Y = POD_BASE_H + 2.85 -- the cake's centre over the floor (his gem 3.2; 3.25 measured on his pictures)
+
+-- One kit piece ("cake__body", "fx__ring", ...) cloned into `parent` at `origin` + its offset from the kit's origin
+-- (cake__body sits at the kit's origin), coloured for the map.
+local function podPiece(ctx: Ctx, parent: Instance, source: BasePart, origin: Vector3, kitOrigin: Vector3, pal: { [string]: string })
+	local key = string.match(source.Name, "__(.+)$") or source.Name
+	local p = source:Clone()
+	for _, d in p:GetChildren() do
+		d:Destroy() -- the importer's SurfaceAppearance / attachments: the colour is the part's own
+	end
+	if p:IsA("MeshPart") then
+		p.TextureID = "" -- TextureID wins over Material and Color (the vault)
+	end
+	local colour = POD_COLOURS[key] or pal[key] or (if key == "crayon" or key == "beam" or key == "ring" then pal.knob else nil)
+	p.Color = hex("#" .. (colour or "FFFFFF"))
+	p.Material = Enum.Material.SmoothPlastic
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = key == "body"
+	p.Transparency = if key == "beam" then 0.9 elseif key == "ring" then 0.15 else 0
+	p.CFrame = CFrame.new(origin + (source.Position - kitOrigin)) * source.CFrame.Rotation
+	p.Name = key
+	p.Parent = parent
+	ctx.parts += 1
+end
+
+-- His pod on a pad (`at` = the pad's floor centre): the stand, then the Gem (cake + topper) and the Fx (beam, ring).
+local function pod(ctx: Ctx, parent: Instance, mapId: string, index: number, at: Vector3, ph: number)
+	local pal = POD[mapId]
+	if pal == nil then
+		return -- no pod design for this map
+	end
+	local m = model(string.format("Pod_PowerUp_Pad_%02d", index), parent)
+	box(ctx, m, POD_BASE_W, POD_BASE_H, POD_BASE_W, hex("#" .. pal.base), at, { name = "PodBase", t = 0.14, collide = true })
+	local top = at + Vector3.new(0, POD_BASE_H, 0)
+	cyl(ctx, m, POD_DISC_D / 2, POD_DISC_H, hex("#" .. pal.top), top, { name = "PodTop", t = 0.1 })
+	for _, s in { { 1, 1 }, { 1, -1 }, { -1, 1 }, { -1, -1 } } do
+		local foot = top + Vector3.new(s[1] * POD_POST_AT, 0, s[2] * POD_POST_AT)
+		box(ctx, m, POD_POST_W, POD_POST_H, POD_POST_W, hex("#" .. pal.post), foot, { name = "PodPost", t = 0.1 })
+		box(ctx, m, POD_KNOB, POD_KNOB, POD_KNOB, hex("#" .. pal.knob), foot + Vector3.new(0, POD_POST_H, 0), { name = "PodKnob", t = 0.08 })
+	end
+	local kit = ctx.pods
+	local origin = kit and kit:FindFirstChild("cake__body")
+	if kit and origin and origin:IsA("BasePart") then
+		local gem = model("Gem", m)
+		local fx = folder("Fx", m)
+		for _, source in kit:GetChildren() do
+			local group = string.match(source.Name, "^(.-)__")
+			if source:IsA("BasePart") and (group == "cake" or group == pal.topper) then
+				podPiece(ctx, gem, source, at + Vector3.new(0, POD_GEM_Y, 0), origin.Position, pal)
+			elseif source:IsA("BasePart") and group == "fx" then
+				podPiece(ctx, fx, source, at, origin.Position, pal)
+			end
+		end
+		local body = gem:FindFirstChild("body")
+		if body and body:IsA("BasePart") then
+			gem.PrimaryPart = body
+		end
+	end
+	tag(m, "Pod", { Phase = ph })
+end
+
 -- A wire from a to b sagging `depth` at the middle (his TubeGeometry r .13 through sag(t)): a Beam, its Attachments on
 -- `holder`.
 local function wire(holder: BasePart, a: Vector3, b: Vector3, depth: number)
@@ -404,7 +494,7 @@ local function skyProp(ctx: Ctx, parent: Instance, kind: string, pal: { string }
 end
 
 -- One map's Model, built at `corner` (its north-west floor corner).
-function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls: Instance?, C: any): (Model, number)
+function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls: Instance?, C: any, pods: Instance?): (Model, number)
 	local W, H = map.W, map.H
 	local DECK_H, SLAB, WALL_H, COVER_H, STEPS = C.DECK_H, C.DECK_SLAB, C.WALL_H, C.COVER_H, C.STAIR_STEPS
 	local CAP_H, CAP_OVER, S = C.CAP_H, C.CAP_OVERHANG, C.SCALE
@@ -416,7 +506,7 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 	local duel = map.mode == "duel"
 	local root = Instance.new("Model")
 	root.Name = SkyMapBuilder.modelName(map) -- "CookieCounter" (his name without spaces, like the old maps)
-	local ctx: Ctx = { corner = corner, hulls = hulls, F = {}, parts = 0 }
+	local ctx: Ctx = { corner = corner, hulls = hulls, pods = pods, F = {}, parts = 0 }
 	local geometry: Instance = root
 	if duel then
 		geometry = folder("Geometry", root)
@@ -464,6 +554,7 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 
 	-- elements (his loadMap)
 	local spawnIndex = 0
+	local padIndex = 0
 	local phaseRng = Random.new(#map.id * 7919 + string.byte(map.id, 2))
 	for _, e in map.elements do
 		local base = if e.level == 2 then DECK_H else 0
@@ -497,7 +588,8 @@ function SkyMapBuilder.buildMap(map: any, MapLayout: any, corner: Vector3, hulls
 				box(ctx, F.Spawns, fr[1], 0.35, fr[2], col, P(fr[3], 0, fr[4]), { name = "SpawnFrame", t = 0.12, plain = true })
 			end
 		elseif t == "pad" then
-			continue -- IGNORE POWERUPS (the zip's name): the Squish Pods design comes later; MapData keeps the spots
+			padIndex += 1
+			pod(ctx, F.Structures, map.id, padIndex, P(cx, base, cz), ph) -- Squish Pods (see the header)
 		elseif t == "wall" or t == "cover" then
 			local hh = e.height or (if t == "wall" then WALL_H else COVER_H)
 			local col = if t == "wall" then th.wall else th.cover
@@ -745,11 +837,21 @@ function SkyMapBuilder.build(ctx: Generated.BuildContext): Generated.BuildResult
 	if hulls == nil then
 		table.insert(warnings, "ReplicatedStorage.SquishyOutlineMeshes is missing: the maps have no ink outlines")
 	end
+	local pods = game:GetService("ServerStorage"):FindFirstChild("SD_SquishPods")
+	if pods == nil then
+		table.insert(warnings, "ServerStorage.SD_SquishPods is missing: the Squish Pods have no cakes")
+	end
 	local root = Instance.new("Folder")
 	root.Name = SkyMapBuilder.ROOT_NAME
 	for index, id in MapData.order do
-		local mapModel, parts =
-			SkyMapBuilder.buildMap(MapData.maps[id], MapLayout, SkyMapBuilder.slotCorner(index), hulls, MapData.constants)
+		local mapModel, parts = SkyMapBuilder.buildMap(
+			MapData.maps[id],
+			MapLayout,
+			SkyMapBuilder.slotCorner(index),
+			hulls,
+			MapData.constants,
+			pods
+		)
 		mapModel.Parent = root
 		if parts > 2500 then
 			table.insert(warnings, `{mapModel.Name} has {parts} parts (SUPERPROMPT budget ~2,500)`)

@@ -226,7 +226,10 @@ local Match = {
 	},
 
 	PowerUps = {
-		padRefillSeconds = 20,
+		padRefillSeconds = 5, -- owner 2026-11-01: "appear each 5 seconds so its more frenetic and fun"
+		-- Squish Pods (2026-11-01): a grab spins the HUD dial; the power-up starts when it lands (Diego's In-Game HUD,
+		-- LAND at 1350 ms). Owner: one power-up at a time (PowerUpRules.canGrab).
+		rollSeconds = 1.35,
 		-- Power-ups v1.1 (2026-10-16): a standing player whose HumanoidRootPart is within pickupRadiusStuds of a ready
 		-- pad's centre (horizontally) and within pickupHeightStuds of standing height on the pad's top takes it.
 		pickupRadiusStuds = 4, -- [P]

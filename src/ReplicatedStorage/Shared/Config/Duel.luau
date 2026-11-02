@@ -131,6 +131,14 @@ local Duel = {
 		RatingWindow = { base = 0, growthPerSecond = 0 },
 	},
 
+	-- The 1v1 map vote (2026-11-01, owner: "1v1 vote and if both vote it should be random between the 2 maps", "Short:
+	-- 5 s vote", "Every duel"; Logic/DuelVote): every duel's MATCH FOUND show votes between the duel maps, with
+	-- Config.Match.Vote's other times and rules. false: a duel starts on a rolled map, as before.
+	Vote = {
+		enabled = true,
+		seconds = 5,
+	},
+
 	-- Preparing / Positioning (§5.4).
 	Positioning = {
 		StreamAroundTimeoutSeconds = 3, -- RequestStreamAroundAsync(pad, 3), in pcall

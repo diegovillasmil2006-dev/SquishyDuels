@@ -101,6 +101,9 @@
 --   (Config.Duel.Rules.CooldownClamp.Min), not none; a pad is taken only once the match is up to the sample's time (a
 --   hit that K.O.s the taker, or the time-up, lands first, so MatchRules always accepts the pickup); a speed / super
 --   jump that ends in Result goes back too.
+--   Squish Pods (owner 2026-11-01): one power-up at a time (no grab while a timed one runs or the dial rolls); the
+--   kind is rolled at the grab, without the ult charge for a squishy with no ult, and starts PowerUps.rollSeconds later
+--   (landRolls; lost with a K.O.).
 -- * Match HUD M1 (2026-10-16, the data of Diego's Match HUD: the kill feed and the final K.O. M:497-516, 567-572, the
 --   respawn seconds M:73, 88, 113, 641, the streaks M:149, 349, 527, the standings M:610-614, 688): every MatchRules
 --   `ko` becomes a HUD event {seq (1, 2, ... per match), kind "ko", at, victim, by (nil for a storm / out-of-bounds
@@ -294,6 +297,7 @@ type Participant = {
 	throws: number,
 	sentStormBar: number, -- the storm bar of the last view this player got
 	buffsCheckedAt: number, -- power-ups v1.1: buffs ending at or before this were already handled (expireBuffs)
+	rolling: { power: string, landsAt: number }?, -- Squish Pods: a grabbed power-up while the HUD dial spins
 	streak: number, -- Match HUD M1: K.O.s since this player was last knocked out
 	bestStreak: number, -- Match HUD M1: the longest streak of this match
 }
@@ -1337,6 +1341,9 @@ end
 local function onKo(match: Match, effect: Effect)
 	match.stateDirty = true
 	local p = match.byUserId[effect.victim]
+	if p then
+		p.rolling = nil -- Squish Pods: a power-up still rolling is lost with the K.O., like the live ones
+	end
 	if p and active(p) then
 		freezeMovement(p, true) -- D3: where it fell, frozen, not turning
 	end
@@ -1943,13 +1950,27 @@ local function sampleStorm(match: Match, now: number)
 	end
 end
 
+-- Squish Pods (owner 2026-11-01): no Ult Charge for a squishy without an ult (AbilityService's abilityOf).
+local function hasUlt(p: Participant): boolean
+	local def = Catalog.get(p.squishyId)
+	local id = if def then def.ultimateId else nil
+	return id ~= nil and (Config.Abilities :: any)[id] ~= nil
+end
+
+-- Squish Pods: whether p may grab a box at `now` (one power-up at a time, PowerUpRules.canGrab).
+local function canGrab(match: Match, p: Participant, now: number): boolean
+	local r = record(match, p)
+	return PowerUpRules.canGrab(if r then r.buffs else {}, if p.rolling then p.rolling.landsAt else nil, now)
+end
+
 -- Power-ups v1.1: who takes `entry` now: the nearest eligible player in reach (see samplePads), or nil.
 local function padTaker(
 	match: Match,
 	entry: MatchPad,
 	took: { [Participant]: boolean },
 	radius: number,
-	height: number
+	height: number,
+	now: number
 ): Participant?
 	local d = getDeps()
 	local best: Participant? = nil
@@ -1961,6 +1982,7 @@ local function padTaker(
 			and standing(match, p)
 			and not p.placing
 			and not p.positioning
+			and canGrab(match, p, now)
 			and d.isAlive(p.ref)
 		then
 			local root = d.getRoot(p.ref)
@@ -2002,14 +2024,14 @@ local function samplePads(match: Match, now: number)
 	local synced = false
 	for _, entry in match.pads do
 		if PowerUpRules.isReady(entry.pad, now) then
-			local best = padTaker(match, entry, took, radius, height)
+			local best = padTaker(match, entry, took, radius, height, now)
 			if best and not synced then
 				synced = true
 				stepMatch(match, { kind = "tick" }, now)
 				if match.closed or match.returning or not MatchRules.isLive(match.state) then
 					return
 				end
-				best = padTaker(match, entry, took, radius, height)
+				best = padTaker(match, entry, took, radius, height, now)
 			end
 			if best then
 				local taken, pad = PowerUpRules.take(entry.pad, now, c)
@@ -2017,11 +2039,40 @@ local function samplePads(match: Match, now: number)
 					entry.pad = pad
 					took[best] = true
 					match.stateDirty = true -- everyone sees the pad go (its readyAt)
-					local power = PowerUpRules.roll(match.modeId, d.rng:NextNumber(), c)
-					stepMatch(match, { kind = "pickup", userId = best.userId, power = power }, now)
-					if match.closed or not MatchRules.isLive(match.state) then
-						return
+					local power = PowerUpRules.roll(match.modeId, d.rng:NextNumber(), c, hasUlt(best))
+					local roll = tonumber(pu.rollSeconds) or 0
+					if roll > 0 then
+						best.rolling = { power = power, landsAt = now + roll } -- Squish Pods: landRolls starts it
+						match.stateDirty = false
+						sendState(match) -- no step follows: everyone sees the box break now
+					else
+						stepMatch(match, { kind = "pickup", userId = best.userId, power = power }, now)
+						if match.closed or not MatchRules.isLive(match.state) then
+							return
+						end
 					end
+				end
+			end
+		end
+	end
+end
+
+-- Squish Pods (2026-11-01): a grabbed power-up starts once its HUD dial lands (PowerUps.rollSeconds after the grab).
+-- Like samplePads, the match is brought up to `now` first, so a hit that K.O.s the player lands first (onKo drops the
+-- roll). Outside a live match the rolls are dropped.
+local function landRolls(match: Match, now: number)
+	local synced = false
+	for _, p in match.list do
+		local rolling = p.rolling
+		if rolling and now >= rolling.landsAt then
+			if not synced then
+				synced = true
+				stepMatch(match, { kind = "tick" }, now)
+			end
+			if p.rolling == rolling then
+				p.rolling = nil
+				if not match.closed and MatchRules.isLive(match.state) then
+					stepMatch(match, { kind = "pickup", userId = p.userId, power = rolling.power }, now)
 				end
 			end
 		end
@@ -2106,6 +2157,9 @@ local function tickMatch(match: Match, now: number)
 	end
 	checkPresence(match)
 	sampleStorm(match, now)
+	if not match.closed then
+		landRolls(match, now) -- Squish Pods
+	end
 	if not match.closed then
 		samplePads(match, now) -- power-ups v1.1
 	end
@@ -3318,7 +3372,9 @@ function MatchService.init()
 		MatchService.leave(player)
 	end)
 	NetService.on(REMOTE_VOTE, function(player: Player, choice: any)
-		MatchService.vote(player, choice)
+		if not MatchService.vote(player, choice) then
+			require(script.Parent.DuelService).vote(player, choice) -- the 1v1 map vote (lazy: no load-order tie)
+		end
 	end)
 	QueueService.Joined:connect(function(player: any)
 		MatchService.onDuelQueueJoined(player)

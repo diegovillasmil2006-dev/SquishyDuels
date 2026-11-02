@@ -1966,7 +1966,7 @@ function StateController.normalizeMatchVote(raw: unknown): Types.MatchVoteView
 	local maps, votes = view.maps, view.votes
 	if
 		type(view.id) ~= "string"
-		or not MATCH_MODES[view.mode]
+		or (view.mode ~= "1v1" and not MATCH_MODES[view.mode]) -- 1v1: the duel's map vote (Logic/DuelVote)
 		or type(maps) ~= "table"
 		or #maps < 1
 		or #maps > 8

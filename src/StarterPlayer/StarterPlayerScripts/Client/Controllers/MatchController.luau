@@ -91,6 +91,7 @@ local MatchFormat = require(Client.UI.MatchFormat)
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local NetController = require(script.Parent.NetController)
+local SkyMapFxController = require(script.Parent.SkyMapFxController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local ThrowController = require(script.Parent.ThrowController)
@@ -345,6 +346,7 @@ local function startAnimations(state: Look, view: StateController.MatchView)
 	local code = view.mapCode
 	if code == "" or MapData.maps[code] then
 		state.animations = true -- a sky map animates itself (SkyMapFxController)
+		state.animationsModule = SkyMapFxController -- Squish Pods: its pods' Collect (syncPads finds the map)
 		return
 	end
 	local animations = mapScript(MAP_ANIMATIONS_PREFIX .. code)
@@ -394,7 +396,8 @@ end
 -- Power-ups v1.1 (SPEC P4): Diego's pad pop and refill timer for every pad whose readyAt rose since it was last played
 -- (see the header). Nothing before the map animations run.
 local function syncPads(state: Look, view: StateController.MatchView, now: number)
-	local animations, map = state.animationsModule, state.map
+	local animations, map = state.animationsModule, state.map or mapModel(view.mapCode) -- a sky map: once streamed in
+	state.map = map
 	if animations == nil or map == nil or type(animations.Collect) ~= "function" then
 		return
 	end

@@ -9,6 +9,11 @@
 --   Pulse   spawn plates grow 1 -> 1.12 and fade              Shimmer zones flicker .8 + .15 sin
 --   Amb     falling / rising bits with wobble                 Spark  sparkles rise 30 studs
 --   Cloud   blocky clouds drift +X (wrap at 900) and bob
+--   Pod     Squish Pods (2026-11-01, his TDM Demo :983 pad anim): the cake bobs .35 at 2.2, turns .9 rad/s, wobbles
+--           (squash q = .1 sin 4.4t + .025 sin 9.1t, tilt .08 sin 1.7t); the beam's opacity .1 + .07 sin 3t; the
+--           ring grows 1 -> 2.3 and fades .85 -> 0 (u = .8t % 1). SkyMapFxController.Collect(pod, seconds) (the
+--           match's pad pickup, MatchController.syncPads): his shatter (:938, 18 cubes) and the cake and beam hidden
+--           for `seconds`, then his pop back (:983, easeOutBack over 1 / 2.2 s).
 -- Only the map nearest the camera (within ACTIVE_RANGE of its centre) animates. The place streams, so items join and
 -- leave with CollectionService signals. Time = server time, so every screen shows the same pose.
 
@@ -21,7 +26,8 @@ local Workspace = game:GetService("Workspace")
 -- Constants
 
 local PREFIX = "SquishyFX_"
-local KINDS = { "Squish", "Bob", "Float", "Flag", "SpinY", "Bulb", "Chase", "Pulse", "Shimmer", "Amb", "Spark", "Cloud" }
+local KINDS =
+	{ "Squish", "Bob", "Float", "Flag", "SpinY", "Bulb", "Chase", "Pulse", "Shimmer", "Amb", "Spark", "Cloud", "Pod" }
 local INK = Color3.fromHex("1c1530")
 local WHITE = Color3.new(1, 1, 1)
 local ACTIVE_RANGE = 900 -- studs from a map's centre (his maps are <= 270 wide; their sky props reach ~400)
@@ -49,7 +55,17 @@ type Item = {
 	attrs: { [string]: any },
 	color: Color3?,
 	tr: number?,
+	-- Pod: the cake's parts (it.parts / cfs relative to the cake's centre, it.base / sizes), the beam and the ring
+	beam: BasePart?,
+	ring: BasePart?,
+	ringSize: Vector3?,
+	hiddenUntil: number?, -- server time (- EPOCH) the cake pops back after a pickup
+	hidden: boolean?,
 }
+
+-- Squish Pods: a shard of his shatter (a cube with its ink hull), flying on its own (every map, not only the active one).
+type Shard = { part: BasePart, hull: BasePart?, v: Vector3, av: Vector3, life: number, max: number, size: Vector3 }
+local shards: { Shard } = {}
 
 local items: { [Instance]: Item } = {}
 local byMap: { [Model]: { [Instance]: Item } } = {} -- the same items, by map
@@ -115,6 +131,30 @@ local function add(kind: string, inst: Instance)
 				end
 			end
 			it.parts, it.cfs, it.sizes = kids, cfs, sizes
+		end
+	end
+	if kind == "Pod" then
+		-- the cake's parts relative to its centre (the body's), so it turns, bobs and squashes around it
+		local gem = inst:FindFirstChild("Gem")
+		local body = gem and gem:FindFirstChild("body")
+		local kids: { BasePart } = {}
+		local cfs: { CFrame } = {}
+		local sizes: { Vector3 } = {}
+		if gem and body and body:IsA("BasePart") then
+			local centre = CFrame.new(body.Position)
+			it.base = centre
+			for _, p in partsOf(gem) do
+				table.insert(kids, p)
+				table.insert(cfs, centre:ToObjectSpace(p.CFrame))
+				table.insert(sizes, p.Size)
+			end
+		end
+		it.parts, it.cfs, it.sizes = kids, cfs, sizes
+		local fx = inst:FindFirstChild("Fx")
+		local beam, ring = fx and fx:FindFirstChild("beam"), fx and fx:FindFirstChild("ring")
+		it.beam = if beam and beam:IsA("BasePart") then beam else nil
+		if ring and ring:IsA("BasePart") then
+			it.ring, it.ringSize = ring, ring.Size
 		end
 	end
 	items[inst] = it
@@ -258,11 +298,100 @@ local function step(t: number, active: Model)
 			local x = (localX + it.sp * t + 900) % 1800 - 900
 			local y = -math.cos(t * 0.3 + it.ph) * 0.8 / 0.3
 			move(it.parts :: { BasePart }, it.cfs :: { CFrame }, CFrame.new(x - localX, y, 0))
+		elseif k == "Pod" then
+			local hid = it.hiddenUntil
+			local hidden = hid ~= nil and t < hid
+			if hidden ~= (it.hidden == true) then
+				it.hidden = hidden
+				local m = if hidden then 1 else 0
+				for _, p in it.parts :: { BasePart } do
+					p.LocalTransparencyModifier = m
+				end
+				if it.beam then
+					it.beam.LocalTransparencyModifier = m
+				end
+			end
+			local ring, ringSize = it.ring, it.ringSize
+			if ring and ringSize then
+				local u = (t * 0.8 + it.ph) % 1
+				ring.Size = Vector3.new(ringSize.X * (1 + 1.3 * u), ringSize.Y, ringSize.Z * (1 + 1.3 * u))
+				ring.Transparency = 1 - 0.85 * (1 - u)
+			end
+			if not hidden and it.base then
+				if it.beam then
+					it.beam.Transparency = 1 - (0.1 + 0.07 * math.sin(t * 3 + it.ph))
+				end
+				local ps = 1 -- his pop back: easeOutBack over 1 / 2.2 s
+				if hid then
+					local x = math.min(1, (t - hid) * 2.2)
+					if x >= 1 then
+						it.hiddenUntil = nil
+					end
+					local x1 = x - 1
+					ps = 1 + 2.7 * x1 * x1 * x1 + 1.7 * x1 * x1
+				end
+				local q = math.sin(t * 4.4 + it.ph) * 0.1 + math.sin(t * 9.1 + it.ph) * 0.025
+				local sxz, sy = ps * (1 + q), ps * (1 - q)
+				local base = it.base :: CFrame
+				local pivot = CFrame.new(base.Position + Vector3.new(0, math.sin(t * 2.2 + it.ph) * 0.35, 0))
+					* CFrame.Angles(0, (t * 0.9) % TAU, 0)
+					* CFrame.Angles(0, 0, math.sin(t * 1.7 + it.ph) * 0.08)
+				local cfs, sizes = it.cfs :: { CFrame }, it.sizes :: { Vector3 }
+				for i, p in it.parts :: { BasePart } do
+					local cf = cfs[i]
+					local o = cf.Position
+					p.Size = scaledSize(cf, sizes[i], sxz, sy)
+					table.insert(moveParts, p)
+					table.insert(moveCFrames, pivot * CFrame.new(o.X * sxz, o.Y * sy, o.Z * sxz) * cf.Rotation)
+				end
+			end
 		end
 	end
 	if #moveParts > 0 then
 		Workspace:BulkMoveTo(moveParts, moveCFrames, Enum.BulkMoveMode.FireCFrameChanged)
 	end
+end
+
+-- Squish Pods: his updateShards (:947-950): gravity 38, spin, shrink after 55% of the life.
+local function stepShards(dt: number)
+	for i = #shards, 1, -1 do
+		local s = shards[i]
+		s.life += dt
+		s.v -= Vector3.new(0, 38 * dt, 0)
+		local cf = s.part.CFrame
+		local nextCf = CFrame.new(cf.Position + s.v * dt) * cf.Rotation * CFrame.Angles(s.av.X * dt, s.av.Y * dt, s.av.Z * dt)
+		local k = s.life / s.max
+		local scale = if k > 0.55 then math.max(0.001, 1 - (k - 0.55) / 0.45) else 1
+		s.part.Size = s.size * scale
+		s.part.CFrame = nextCf
+		local hull = s.hull
+		if hull then
+			hull.Size = (s.size + Vector3.one * 0.2) * scale
+			hull.CFrame = nextCf
+		end
+		if k >= 1 then
+			s.part:Destroy()
+			if hull then
+				hull:Destroy()
+			end
+			table.remove(shards, i)
+		end
+	end
+end
+
+local function shardPart(size: Vector3, color: Color3, cf: CFrame, source: BasePart?): BasePart
+	local part: BasePart = if source then source:Clone() else Instance.new("Part")
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Material = Enum.Material.SmoothPlastic
+	part.Color = color
+	part.Size = size
+	part.CFrame = cf
+	part.Parent = Workspace.CurrentCamera -- this screen only
+	return part
 end
 
 -- Public
@@ -278,12 +407,55 @@ function SkyMapFxController.start()
 		end)
 		CollectionService:GetInstanceRemovedSignal(tagName):Connect(remove)
 	end
-	conn = RunService.RenderStepped:Connect(function()
+	conn = RunService.RenderStepped:Connect(function(dt: number)
 		local active = activeMap()
 		if active then
 			step(Workspace:GetServerTimeNow() - EPOCH, active)
 		end
+		if #shards > 0 then
+			stepShards(dt)
+		end
 	end)
+end
+
+-- Squish Pods: `pod` was picked up (MatchController.syncPads): his shatter (:938-945, 18 cubes in the cake's, icing's
+-- and knob's colours), then the cake and beam hide for `seconds` and pop back.
+function SkyMapFxController.Collect(pod: Instance, seconds: number)
+	local it = items[pod]
+	if it == nil or it.kind ~= "Pod" or it.base == nil then
+		return
+	end
+	it.hiddenUntil = Workspace:GetServerTimeNow() - EPOCH + math.max(seconds, 0)
+	local gem = pod:FindFirstChild("Gem")
+	local function colourOf(holder: Instance?, name: string, fallback: Color3): Color3
+		local p = holder and holder:FindFirstChild(name, true)
+		return if p and p:IsA("BasePart") then p.Color else fallback
+	end
+	local body = colourOf(gem, "body", WHITE)
+	local cols = { body, colourOf(gem, "icing", WHITE), colourOf(pod, "PodKnob", body), Color3.fromHex("FFD23D"), body, body:Lerp(WHITE, 0.3) }
+	local hulls = game:GetService("ReplicatedStorage"):FindFirstChild("SquishyOutlineMeshes")
+	local hullBox = hulls and hulls:FindFirstChild("HullBox")
+	local centre = (it.base :: CFrame).Position
+	local rng = Random.new()
+	for i = 1, 18 do
+		local sz = rng:NextNumber(0.32, 0.7)
+		local dir = Vector3.new(rng:NextNumber(-1, 1), rng:NextNumber(-0.3, 1), rng:NextNumber(-1, 1))
+		dir = if dir.Magnitude > 1e-3 then dir.Unit else Vector3.yAxis
+		local cf = CFrame.new(centre + dir * rng:NextNumber(0.3, 1.4))
+			* CFrame.Angles(rng:NextNumber(0, 3), rng:NextNumber(0, 3), rng:NextNumber(0, 3))
+		local size = Vector3.one * sz
+		local part = shardPart(size, cols[(i - 1) % #cols + 1], cf, nil)
+		local hull = if hullBox and hullBox:IsA("BasePart") then shardPart(size + Vector3.one * 0.2, INK, cf, hullBox) else nil
+		table.insert(shards, {
+			part = part,
+			hull = hull,
+			v = dir * rng:NextNumber(8, 15) + Vector3.new(0, rng:NextNumber(6, 11), 0),
+			av = Vector3.new(rng:NextNumber(-10, 10), rng:NextNumber(-10, 10), rng:NextNumber(-10, 10)),
+			life = 0,
+			max = rng:NextNumber(0.8, 1.2),
+			size = size,
+		})
+	end
 end
 
 function SkyMapFxController.destroy()
@@ -293,6 +465,13 @@ function SkyMapFxController.destroy()
 	end
 	table.clear(items)
 	table.clear(byMap)
+	for _, s in shards do
+		s.part:Destroy()
+		if s.hull then
+			s.hull:Destroy()
+		end
+	end
+	table.clear(shards)
 end
 
 -- Studio / tests: how many items are tracked, by kind.
