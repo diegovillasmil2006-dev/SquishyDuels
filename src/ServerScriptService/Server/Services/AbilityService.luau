@@ -238,7 +238,7 @@ local function defaultDeps(): Deps
 			task.delay(seconds, fn, ...)
 		end,
 		overlaps = function(origin: Vector3, radius: number, params: OverlapParams): boolean
-			return #Workspace:GetPartBoundsInRadius(origin, radius, params) > 0
+			return CombatService.overlapsGeometry(origin, radius, params)
 		end,
 		cast = function(
 			origin: Vector3,

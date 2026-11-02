@@ -140,8 +140,9 @@ end
 -- True when `point` lies inside a part's real shape: the movement guard's "inside cover" check (user bug 2026-10-15: a
 -- bounding-box test flagged players standing NEXT TO round or turned cover and snapped them back several times a
 -- second). `shape` is the PartType name: "Ball" (radius = half the smallest side), "Cylinder" (axis along the part's X:
--- |x| <= length / 2 and the distance from the axis <= half the smaller of Y and Z), anything else the part's own
--- (turned) box.
+-- |x| <= length / 2 and the distance from the axis <= half the smaller of Y and Z), "Wedge" (a WedgePart: full
+-- height at its back, +Z, sloping down to nothing at its front, -Z; the stair ramps, owner bug 2026-11-02: the box
+-- counted the whole air over a stair as "inside"), anything else the part's own (turned) box.
 function HitMath.pointInShape(point: Vector3, cframe: CFrame, size: Vector3, shape: string): boolean
 	local p = cframe:PointToObjectSpace(point)
 	local half = size / 2
@@ -151,7 +152,11 @@ function HitMath.pointInShape(point: Vector3, cframe: CFrame, size: Vector3, sha
 		local radius = math.min(half.Y, half.Z)
 		return math.abs(p.X) <= half.X and p.Y * p.Y + p.Z * p.Z <= radius * radius
 	end
-	return math.abs(p.X) <= half.X and math.abs(p.Y) <= half.Y and math.abs(p.Z) <= half.Z
+	local inBox = math.abs(p.X) <= half.X and math.abs(p.Y) <= half.Y and math.abs(p.Z) <= half.Z
+	if shape == "Wedge" then
+		return inBox and p.Y <= -half.Y + (p.Z + half.Z) * (half.Y / half.Z)
+	end
+	return inBox
 end
 
 return table.freeze(HitMath)

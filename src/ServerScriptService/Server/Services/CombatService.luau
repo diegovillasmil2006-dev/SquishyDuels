@@ -1507,6 +1507,18 @@ end
 
 -- Private: throws ---------------------------------------------------------------------------------------------------
 
+-- True when a sphere of `radius` at `origin` meets the geometry in `params`. A box query sees a WedgePart's whole box
+-- (the sky maps' stair ramps: the air over a slope), so a wedge counts only when `origin` is inside its real shape
+-- (owner bug 2026-11-02: every throw from a stair fizzled and the ultimate had no room there).
+function CombatService.overlapsGeometry(origin: Vector3, radius: number, params: OverlapParams): boolean
+	for _, part in Workspace:GetPartBoundsInRadius(origin, radius, params) do
+		if not part:IsA("WedgePart") or HitMath.pointInShape(origin, part.CFrame, part.Size, "Wedge") then
+			return true
+		end
+	end
+	return false
+end
+
 local function newProjId(): number
 	nextProjId += 1
 	return nextProjId
@@ -1535,7 +1547,7 @@ local function duelState(fighter: Fighter, port: MatchPort, now: number): ThrowR
 			return Workspace:Raycast(from, to - from, arena.raycastParams) == nil
 		end,
 		overlaps = function(origin: Vector3, radius: number): boolean
-			return #Workspace:GetPartBoundsInRadius(origin, radius, arena.overlapParams) > 0
+			return CombatService.overlapsGeometry(origin, radius, arena.overlapParams)
 		end,
 		-- Feature 1: the charge record, the hands (an open catch window or a crush) and the charge's floor.
 		chargeStartAt = fighter.chargeStartAt,
@@ -1575,7 +1587,7 @@ local function practiceState(
 			else nil,
 		overlaps = if overlap
 			then function(origin: Vector3, radius: number): boolean
-				return #Workspace:GetPartBoundsInRadius(origin, radius, overlap) > 0
+				return CombatService.overlapsGeometry(origin, radius, overlap)
 			end
 			else nil,
 		chargeStartAt = actor.chargeStartAt, -- feature 1 (no catch in practice)
@@ -2215,7 +2227,9 @@ local function guardFighter(port: MatchPort, fighter: Fighter, now: number)
 		if port.ffa and part:IsA("MeshPart") and (part :: MeshPart).CollisionFidelity ~= Enum.CollisionFidelity.Box then
 			continue
 		end
-		local shape = if part:IsA("Part") then (part :: Part).Shape.Name else "Block"
+		-- A WedgePart (the sky maps' stair ramps) is its slope, not its box (owner bug 2026-11-02: every stair pulled
+		-- the climber back to its foot).
+		local shape = if part:IsA("Part") then (part :: Part).Shape.Name elseif part:IsA("WedgePart") then "Wedge" else "Block"
 		if part.CanCollide and HitMath.pointInShape(root.Position, part.CFrame, part.Size, shape) then
 			insideGeometry = true
 			break

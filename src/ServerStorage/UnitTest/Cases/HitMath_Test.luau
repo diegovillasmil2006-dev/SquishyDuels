@@ -300,4 +300,17 @@ return function(t: Context)
 		expect.truthy(HitMath.pointInShape(Vector3.new(0, 2, 0), crate, size, "Block"))
 		expect.falsy(HitMath.pointInShape(Vector3.new(2.3, 2, 2.3), crate, size, "Block"))
 	end)
+
+	t.test("pointInShape: a Wedge (stair ramp) is only the slope's underside, not the air over it", function()
+		-- a ramp like SkyMapBuilder's: 18 wide, 17 high, 24 long, climbing toward local +Z; stood on a floor at Y 0
+		local ramp = CFrame.new(0, 8.5, 0)
+		local size = Vector3.new(18, 17, 24)
+		-- 40% along the run the slope is 6.8 studs high: a player's root 3 studs over it is outside, 1 stud under inside
+		expect.falsy(HitMath.pointInShape(Vector3.new(0, 6.8 + 3, -12 + 9.6), ramp, size, "Wedge"))
+		expect.truthy(HitMath.pointInShape(Vector3.new(0, 6.8 - 1, -12 + 9.6), ramp, size, "Wedge"))
+		expect.falsy(HitMath.pointInShape(Vector3.new(0, 1, -11), ramp, size, "Wedge")) -- the thin front edge
+		expect.truthy(HitMath.pointInShape(Vector3.new(0, 16, 11), ramp, size, "Wedge")) -- just under the top
+		expect.falsy(HitMath.pointInShape(Vector3.new(0, 18, 11), ramp, size, "Wedge")) -- over the top
+		expect.truthy(HitMath.pointInShape(Vector3.new(0, 6.8 + 3, -12 + 9.6), ramp, size, "Block")) -- the old box
+	end)
 end
