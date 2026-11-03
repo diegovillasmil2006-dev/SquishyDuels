@@ -9,7 +9,7 @@
 --     releaseAt when on time, or now when the answer came late; an unanswered windup cancels 600 ms after it could
 --     have released and fades out over 120 ms; another thrower's windup is mapped onto releaseAt - W;
 --   * release -> follow-through -> return timings (70 / 250 / 450 ms), Dragon Rush caster release and recovery;
---   * aim: pitch clamped to [-35°, +65°] keeping the heading, the practice cone keeps the pitch, aim assist moves the
+--   * aim: pitch clamped to [-60°, +65°] keeping the heading, the practice cone keeps the pitch, aim assist moves the
 --     point `strength` of the way only inside its cone, ultimate aim is flat;
 --   * cooldown ring progress, input buffer (0.15 s), the ThrowRejected nextThrowAt guard, the touch shoulder offset;
 --   * server payloads are type-checked before use.
@@ -312,7 +312,7 @@ return function(t: Context)
 
 	-- Aim ---------------------------------------------------------------------------------------------------------------
 
-	t.test("clampPitch keeps the heading and clamps the pitch to [-35°, +65°]", function()
+	t.test("clampPitch keeps the heading and clamps the pitch to [-60°, +65°]", function()
 		local minDeg, maxDeg = combat.Throw.pitchMinDeg, combat.Throw.pitchMaxDeg
 		local steep = Vector3.new(0.1, math.sin(math.rad(80)), -math.cos(math.rad(80))).Unit
 		local up = ThrowController.clampPitch(steep, minDeg, maxDeg)

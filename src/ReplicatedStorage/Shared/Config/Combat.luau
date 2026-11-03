@@ -31,7 +31,9 @@ local Combat = {
 		seqWindow = 1000, -- seq must be > lastSeq and < lastSeq + seqWindow
 		aimMagnitudeMin = 0.95,
 		aimMagnitudeMax = 1.05,
-		pitchMinDeg = -35, -- also the pitch clamp of ProjectileMath.solveLaunchDir (§5.5)
+		-- -35 until 2026-11-02: a throw aimed within ~7 studs of the feet needed a steeper arc and landed past the spot
+		-- (owner: "it should go exactly where you aim").
+		pitchMinDeg = -60, -- also the pitch clamp of ProjectileMath.solveLaunchDir (§5.5)
 		pitchMaxDeg = 65,
 		noSolutionPitchDeg = 45, -- solveLaunchDir fallback when the target is out of reach
 		zoneToleranceStuds = 2, -- HRP inside own half + 2 studs

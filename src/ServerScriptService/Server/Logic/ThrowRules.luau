@@ -11,7 +11,7 @@
 --   4. Alive and server HRP present ............................................................ throw.context
 --      not rooted by Dragon Rush (telegraph or recovery) ........................................ throw.rooted
 --   5. Position: duel HRP inside own half + zoneToleranceStuds (X, Z); practice inside the zone .. throw.context
---   6. Direction: |aimDir| in [0.95, 1.05], pitch in [-35°, +65°]; practice: flat aim within 75° of the range's
+--   6. Direction: |aimDir| in [0.95, 1.05], pitch in [-60°, +65°]; practice: flat aim within 75° of the range's
 --      forward ......................................................................................... throw.direction
 --   7. Latency: lat = clamp(now - clientTime, 0, min(ping/2 + 0.03, 0.12)); abnormal clientTime (more than 0.05 s
 --      ahead or 1 s behind) -> lat = min(ping/2, 0.12). releaseAt = now - lat + windup (always in the future).

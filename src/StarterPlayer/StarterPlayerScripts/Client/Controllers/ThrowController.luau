@@ -22,7 +22,7 @@
 --     time: when the opponent's capsule centre (practice: the nearest practice target, reading; a duel bot: its rig in
 --     Workspace.SD_Bots) is inside the cone and in line of sight, the aim point moves `strength` of the way toward it.
 --   * aimDir = ProjectileMath.solveLaunchDir(originHint, aimPoint, speed, g) (a ray that hit nothing: the ray's own
---     direction), then clamped to the pitch band [-35°, +65°] and, in practice, into the 75° cone around the range
+--     direction), then clamped to the pitch band [-60°, +65°] and, in practice, into the 75° cone around the range
 --     forward (+X) (limitDirection: clampPitch / clampToCone).
 --   * ThrowRequest(seq, aimDir, originHint = HRP.CFrame * ReleaseOffset, clientTime = GetServerTimeNow()) through
 --     NetController.throwRequest (its per-remote seq counter, local shape checks and token buckets); a request the

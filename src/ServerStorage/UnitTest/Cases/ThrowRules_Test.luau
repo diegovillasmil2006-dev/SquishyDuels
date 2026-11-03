@@ -3,7 +3,7 @@
 -- Contract (DESIGN §5.6, §12 #2, #5, #7, #8, #9, #10): one case per rejection reason, cheapest check first —
 -- rate bucket (silent drop, NetService) -> payload types and seq replay (net.invalid) -> context (throw.context) ->
 -- alive / HRP (throw.context) -> not rooted by Dragon Rush (throw.rooted) -> own half + 2 or the practice zone
--- (throw.context) -> |aimDir| 0.95..1.05, pitch -35°..+65°, practice cone 75° (throw.direction) -> lag compensation
+-- (throw.context) -> |aimDir| 0.95..1.05, pitch -60°..+65°, practice cone 75° (throw.direction) -> lag compensation
 -- clamp -> cooldown with 0.05 s tolerance
 -- (throw.cooldown) -> 4 live projectiles (throw.tooMany) -> origin hint within 4 + 22·min(ping, 0.25) studs (a farther
 -- one pulled back to it) with line of sight and in the own zone -> spawn overlap fizzles but still uses the cooldown ->
@@ -327,11 +327,11 @@ return function(t: Context)
 		expect.near(scaled.direction.Magnitude, 1, FLOAT_TOLERANCE)
 	end)
 
-	t.test("#6 pitch must be within -35°..+65° (the limits themselves pass)", function()
+	t.test("#6 pitch must be within -60°..+65° (the limits themselves pass)", function()
 		expect.truthy(validate(input({ aimDir = aim(0, 65, FORWARD_A) }), duelState()).ok)
-		expect.truthy(validate(input({ aimDir = aim(0, -35, FORWARD_A) }), duelState()).ok)
+		expect.truthy(validate(input({ aimDir = aim(0, -60, FORWARD_A) }), duelState()).ok)
 		expectRejected(validate(input({ aimDir = aim(0, 66, FORWARD_A) }), duelState()), "throw.direction")
-		expectRejected(validate(input({ aimDir = aim(0, -36, FORWARD_A) }), duelState()), "throw.direction")
+		expectRejected(validate(input({ aimDir = aim(0, -61, FORWARD_A) }), duelState()), "throw.direction")
 		expectRejected(validate(input({ aimDir = Vector3.new(0, 1, 0) }), duelState()), "throw.direction")
 	end)
 

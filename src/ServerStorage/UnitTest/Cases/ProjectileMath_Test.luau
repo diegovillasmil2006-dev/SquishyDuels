@@ -2,7 +2,7 @@
 -- ProjectileMath_Test: unit tests for ReplicatedStorage.Shared.ProjectileMath. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §5.5, §5.7, §9.7): positionAt(o, v, g, t) = o + v·t + (0, -½·g·t², 0), deterministic;
 -- solveLaunchDir returns a unit low-arc direction that lands on the target, falls back to 45° when the target is out
--- of reach and clamps the pitch to [-35°, +65°] (Config.Combat.Throw); the sweep splits (tPrev, tNow] into
+-- of reach and clamps the pitch to [-60°, +65°] (Config.Combat.Throw); the sweep splits (tPrev, tNow] into
 -- clamp(ceil(span · 60), 1, 6) contiguous sub-steps whose ends are fresh positionAt values; impactTime =
 -- releaseAt + a + f·(b - a); the client path settles from the hand onto the server path.
 
@@ -146,7 +146,7 @@ return function(t: Context)
 		expect.near(dir.Z, 0, 1e-6)
 	end)
 
-	t.test("solveLaunchDir clamps the pitch inside [-35°, +65°]", function()
+	t.test("solveLaunchDir clamps the pitch inside [-60°, +65°]", function()
 		local inset = ProjectileMath.PITCH_INSET_DEG
 		local up = ProjectileMath.solveLaunchDir(Vector3.zero, Vector3.new(0.5, 30, 0), 95, 35)
 		expect.near(ProjectileMath.pitchDeg(up), throwConfig.pitchMaxDeg - inset, PITCH_TOLERANCE_DEG)
