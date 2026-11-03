@@ -84,6 +84,12 @@
 		"container": "ServerStorage"
 	},
 	{
+		"file": "ServerStorage/SD_SquishPods.rbxm",
+		"class": "Folder",
+		"name": "SD_SquishPods",
+		"container": "ServerStorage"
+	},
+	{
 		"file": "ServerStorage/SquishyMaps.rbxm",
 		"class": "Folder",
 		"name": "SquishyMaps",
