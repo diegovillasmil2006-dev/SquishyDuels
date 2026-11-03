@@ -76,6 +76,7 @@ local MatchHudFormat = require(Client.UI.MatchHudFormat)
 local DeathCard = require(Client.UI.Match.DeathCard)
 local Killcam = require(Client.UI.Match.Killcam)
 local KillFeed = require(Client.UI.Match.KillFeed)
+local PodHud = require(Client.UI.Match.PodHud)
 local MatchEnd = require(Client.UI.Match.MatchEnd)
 local MatchIntro = require(Client.UI.Match.MatchIntro)
 local MatchPodium = require(Client.UI.Match.MatchPodium)
@@ -160,6 +161,7 @@ local PIECES: { MatchHudFormat.PieceSpec } = {
 	{ name = "topBar", new = TopBar.new }, -- the live top bar (before the feed: it tells the feed where it ends)
 	{ name = "card", new = DeathCard.new }, -- M7
 	{ name = "feed", new = KillFeed.new }, -- M6
+	{ name = "pod", new = PodHud.new }, -- Squish Pods: the grab toast (after the feed: it keeps under its rows), edge
 	{ name = "medal", new = SquishMedal.new }, -- DOUBLE / TRIPLE SQUISH! (2026-10-26)
 	{ name = "intro", new = MatchIntro.new }, -- round 1 of the match screens: cover, intro, 3-2-1
 	{ name = "finish", new = MatchEnd.new }, -- end screens round A: VICTORY! / DEFEAT, results, scoreboard

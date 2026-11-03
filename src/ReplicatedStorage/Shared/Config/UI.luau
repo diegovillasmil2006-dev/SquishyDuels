@@ -703,6 +703,52 @@ local UI = {
 		displayOrder = 12, -- with SD_Touch, above SD_DuelHud (11)
 	},
 
+	-- Squish Pods HUD (2026-11-03; `H:n` = "Squishy Duels In-Game HUD.dc.html" line n): the pod dial (UI/PodDial), "a
+	-- third dial left of Q/E" (H:47, H:131), on the ability bar's canvas at the catch button's size: PC left of the bar's
+	-- row, the row's gap apart, centred on the catch button; phone over the touch Throw button. Every dial px of H
+	-- (R 37 = a designPx dial) is scaled by size / designPx. The toast and the screen edge are UI/Match/PodHud (base px
+	-- of SD_MatchHud: H's 691 px high reference x 810 / 691).
+	Pod = {
+		designPx = 74, -- H:169 R 37
+		desk = { size = 84, gapPx = 18 }, -- AbilityBar.desk: the catch button and the row's gap
+		phone = { size = 62, gapPx = 10 }, -- AbilityBar.phone's catch size; gapPx over the Throw button
+		spinRingPx = 7, -- H:178 the rolling conic ring, inset -7
+		burst = { insetPx = 4, borderPx = 6, ms = 550, scale = 2.1 }, -- H:179, H:20 hg-burst
+		rimPx = 3, -- H:180
+		innerInsetPx = 6, -- H:182
+		rollingScale = 1.12, -- H:180 (transition .35 s, cubic-bezier(.3,1.4,.5,1))
+		growMs = 350,
+		popMs = 600, -- H:18 hg-pop 1.12 -> 1.08 -> 1
+		landMs = 600, -- H:16 hg-land .55 -> 1.06 -> 1, bright 1.8 -> 1
+		rollInMs = 70, -- H:15 hg-rollin from -80% up, .3 -> 1
+		spinTurnMs = 500, -- H:17 hg-spin
+		iconShare = 0.78, -- H:127 the glyph's share of its tile
+		glyphBox = 72 / 64, -- the uploaded glyphs' clear margin round his 64 box
+		tileRotation = 70, -- H:126 linear-gradient(160deg) = a UIGradient at 70
+		tag = { overlapPx = 9, heightPx = 26, borderPx = 3, padPx = 9, textPx = 12, activeTextPx = 17, dropPx = 2, minPx = 30 }, -- H:183
+		chip = { abovePx = 12, textPx = 18, padX = 12, heightPx = 34, borderPx = 3, dropPx = 3, ms = 1500 }, -- H:184, H:19
+		shards = { px = 14, borderPx = 2.5, distancePx = 70, stepPx = 16, ms = 600 }, -- H:176, H:21
+		ring = { px = 88, borderPx = 5, pulseMs = 800, peak = 1.07 }, -- H:186, H:24: around a button of designPx
+		toast = { -- H:190-191 x 810 / 691, the kill feed's right edge (Match.feed.right)
+			right = 18,
+			top = 148,
+			belowFeedPx = 8, -- under the kill feed while its rows reach down there
+			heightPx = 52, -- the border box (CSS: 28 + 2 x 5 + 2 x 3)
+			padLeft = 7,
+			padRight = 14,
+			gap = 9,
+			iconPx = 33,
+			iconRadius = 9,
+			iconBorder = 5,
+			radius = 14,
+			border = 3,
+			drop = 4,
+			textPx = 18,
+			ms = 3000, -- H:22 hg-toast: in from the right by 12%, settled by 18%, fading from 85%
+		},
+		edge = { pulseMs = 1400, low = 0.55 }, -- H:23 hg-pulse .55 -> 1 -> .55
+	},
+
 	-- Duel HUD part 3 (owner 2026-10-24, "yes, start part 3"; `D:n` = "Squishy Duels Duel HUD.dc.html" line n): the duel
 	-- 1v1 top bar (UI/DuelTopBar, drawn in DuelController's TopBar). Design px on the canvas of AbilityBar.desk/phone.
 	DuelTopBar = {
@@ -3014,6 +3060,7 @@ local UI = {
 		enabled = {
 			topBar = true, -- the live top bar (2026-10-26: Diego's page 3; UI/Match/TopBar; the test readout goes)
 			feed = true, -- M6 kill feed (2026-10-17: on, with look-alike pictures and sounds until the owner's upload)
+			pod = true, -- Squish Pods HUD (2026-11-03): the grab toast and the power-up's screen edge (UI/Match/PodHud)
 			medal = true, -- DOUBLE / TRIPLE SQUISH! (2026-10-26; one squish: the kill banner, owner)
 			card = true, -- M7 "squished by" card
 			respawn = true, -- M7 RESPAWNING IN bar and vignette

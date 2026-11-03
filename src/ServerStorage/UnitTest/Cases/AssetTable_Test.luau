@@ -178,6 +178,8 @@ local KILL_IMAGE_PREFIX = "img.kill."
 
 -- Match HUD M6 / M7 (2026-10-17): the match screens' sounds of the M3 pack, checked on their own below.
 local MATCH_SOUND_KEYS = { "match.splat", "match.knockedOut", "match.whoosh" }
+-- Squish Pods HUD (2026-11-03): Diego's itembox sound, the dial's roll on a grab.
+local POD_SOUND_KEYS = { "match.podRoll" }
 -- MATCH FOUND (2026-10-25, round 2 of the match flow): the show's own 6 sounds (its whoosh is match.whoosh).
 local FOUND_SOUND_KEYS = {
 	"match.found.charge",
@@ -290,6 +292,7 @@ return function(t: Context)
 				and not table.find(R2_SOUND_KEYS, slot.key)
 				and string.sub(slot.key, 1, #KILL_SOUND_PREFIX) ~= KILL_SOUND_PREFIX -- kill banners: below
 				and not table.find(MATCH_SOUND_KEYS, slot.key) -- Match HUD M6 / M7: below
+				and not table.find(POD_SOUND_KEYS, slot.key) -- Squish Pods HUD: below
 				and not table.find(FOUND_SOUND_KEYS, slot.key) -- MATCH FOUND: below
 				and not table.find(LOBBY_SOUND_KEYS, slot.key) -- FULL FINAL lobby: below
 			then
@@ -309,6 +312,22 @@ return function(t: Context)
 				if slot.key == key then
 					found += 1
 					expect.equal(slot.spatial, false)
+				end
+			end
+			expect.equal(found, 1)
+		end
+	end)
+
+	t.test("Squish Pods HUD's sound: match.podRoll, once, SFX, 2D, naming its file, uploaded", function()
+		for _, key in POD_SOUND_KEYS do
+			local found = 0
+			for _, slot in soundSlots() do
+				if slot.key == key then
+					found += 1
+					expect.equal(slot.group, "SFX")
+					expect.equal(slot.spatial, false)
+					expect.truthy(string.find(slot.notes, ".ogg", 1, true) ~= nil)
+					expect.truthy(slot.id ~= nil)
 				end
 			end
 			expect.equal(found, 1)
@@ -707,6 +726,16 @@ return function(t: Context)
 				"img.kit.footprint",
 				-- Restyle part 2 (2026-11-01): the Friends pill's icon.
 				"img.icon.friends",
+				-- Squish Pods HUD (2026-11-03): the power-up glyphs, the dial's box and the screen edge.
+				"img.pod.shield",
+				"img.pod.speed",
+				"img.pod.throwBoost",
+				"img.pod.ultCharge",
+				"img.pod.dashBoost",
+				"img.pod.rapidThrow",
+				"img.pod.superJump",
+				"img.pod.box",
+				"img.pod.edge",
 			})
 		)
 	end)

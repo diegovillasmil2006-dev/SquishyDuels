@@ -477,6 +477,8 @@ export type MatchStandingView = { userId: number, kos: number, knockedOut: numbe
 -- protectUntil = the spawn protection's end (0 = none); stormBar 0..1 (TDM); out = TDM, no team life left.
 -- Power-ups v1.1 (2026-10-16): buffs = the player's live timed power-ups, Config.Match.PowerUps kind -> the server
 -- time it ends (an ended or used-up one is left out; a K.O. clears them all).
+-- Squish Pods (2026-11-03): rolling = a grabbed power-up while the HUD dial spins (the kind and the server time it
+-- lands and starts); nil otherwise (landed, lost with a K.O.).
 export type MatchYouView = {
 	userId: number,
 	team: string?,
@@ -486,6 +488,7 @@ export type MatchYouView = {
 	stormBar: number,
 	out: boolean,
 	buffs: { [string]: number },
+	rolling: { power: string, landsAt: number }?,
 }
 
 -- Power-ups v1.1 (2026-10-16): one power-up pad of the map: its instance name under the map's model (the client finds

@@ -866,6 +866,22 @@ return function(t: Context)
 		expect.deepEqual(plain.pads, {})
 	end)
 
+	t.test("Squish Pods: you.rolling is read; a partial you keeps it, a full you without it has none", function()
+		local raw = matchState("match:p", "Active")
+		raw.you.rolling = { power = "speed", landsAt = 501.35 } :: any
+		local v1 = StateController.reduceMatch(nil, stateEvent(raw, 10))
+		expect.deepEqual(v1.you.rolling, { power = "speed", landsAt = 501.35 })
+		local bar = StateController.reduceMatch(v1, stateEvent({ matchId = "match:p", you = { stormBar = 0.2 } }, 11))
+		expect.deepEqual(bar.you.rolling, v1.you.rolling)
+		local landed = StateController.reduceMatch(bar, stateEvent(matchState("match:p", "Active"), 12))
+		expect.equal(landed.you.rolling, nil)
+		for _, junk in { { power = 5, landsAt = 1 }, { power = "speed", landsAt = 0 / 0 }, "speed" } :: { any } do
+			local bad = matchState("match:p", "Active")
+			bad.you.rolling = junk
+			expect.equal(StateController.reduceMatch(nil, stateEvent(bad, 13)).you.rolling, nil)
+		end
+	end)
+
 	t.test(
 		"power-ups: hasBuff while now < its end; buffMultiplier = the kind's number while it lives, else 1",
 		function()

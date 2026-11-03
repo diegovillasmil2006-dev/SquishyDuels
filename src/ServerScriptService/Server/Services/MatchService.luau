@@ -898,6 +898,8 @@ local function viewFor(
 			stormBar = if r then r.stormBar else 0,
 			out = r ~= nil and r.out,
 			buffs = buffsView(match, r), -- power-ups v1.1
+			-- Squish Pods: what the HUD dial lands on, and when
+			rolling = if p.rolling then { power = p.rolling.power, landsAt = p.rolling.landsAt } else nil,
 		},
 		players = players,
 		teamScore = if match.mode.teams then table.clone(state.teamScore) else nil,

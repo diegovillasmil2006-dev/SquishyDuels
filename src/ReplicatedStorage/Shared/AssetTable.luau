@@ -268,6 +268,22 @@ local VOTE_DATE = "2026-11-01" -- the sky maps' vote cards
 -- An image slot of the restyle part 2 (2026-11-01, the owner's style rule): one of Diego's hud-icons drawings (or the
 -- Friends icon drawn in their style), rendered 512 px with a clear background and uploaded by Claude (Studio MCP
 -- upload_image) at the owner's yes.
+-- An image slot of the Squish Pods HUD (2026-11-03; `H:n` = "Squishy Duels In-Game HUD.dc.html" line n): one of
+-- Diego's power-up glyphs or the dial's box glyph (288 px on a clear box 72 of his 64-unit glyph units wide, his
+-- strokes reach past the 64), or the white screen edge (tinted in game); uploaded by Claude (Studio MCP upload_image)
+-- at the owner's "Yes, start part 2".
+local function podHud(key: string, id: number, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `jayyyyy upload (Studio MCP upload_image): '{(string.gsub(key, "%.", "_"))}.png'`,
+		license = "Own upload; rendered from the co-owner's own Claude Design In-Game HUD file",
+		verifiedAt = "2026-11-03",
+		notes = use,
+	}
+end
+
 local function hudIcon(key: string, id: number, use: string): AssetSlot
 	return {
 		key = key,
@@ -1004,6 +1020,15 @@ local SLOTS: { AssetSlot } = {
 			.. "S:682 and uploaded by Claude; the killcam's squish plays it too)",
 		hudSound(88453541901991, 0.0809, "match_splat.wav")
 	),
+	-- Squish Pods HUD (2026-11-03): Diego's itembox sound (his zip's ITEMBOX SFX SQUISHY DUELS.mp4, H:145), at his
+	-- preview's level; uploaded by Claude through Creator Hub's asset API at the owner's "Yes, start part 2".
+	soundSlot("match.podRoll", "SFX", false, nil, "H:153 the dial's roll on a Squish Pod grab; file 'SquishPodRoll.ogg'", {
+		id = 136944845820490,
+		volume = 1,
+		source = "DIJAY Studios group upload (Creator Hub asset API): 'SquishPodRoll.ogg'",
+		license = "Group-owned upload; the co-owner's own sound from his Claude Design zip",
+		verifiedAt = "2026-11-03",
+	}),
 	soundSlot(
 		"match.knockedOut",
 		"SFX",
@@ -1755,6 +1780,16 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.icon.robux", "image", IMAGE_NOTE),
 	-- 2026-11-01 (restyle part 2): the Friends pill's icon, drawn in Diego's hud-icons style (two squishies, a heart).
 	hudIcon("img.icon.friends", 79139755939740, "the Friend Boost pill (two smiling squishies and a heart)"),
+	-- Squish Pods HUD (2026-11-03): img.pod.<Config.Match.PowerUps kind>, the dial's idle box and the screen edge.
+	podHud("img.pod.shield", 113091654701128, "Shield glyph (H:74-77)"),
+	podHud("img.pod.speed", 100236392723097, "Speed Boost glyph (H:79-85)"),
+	podHud("img.pod.throwBoost", 88522486852286, "Throw Boost glyph (H:87-90)"),
+	podHud("img.pod.ultCharge", 91008263430115, "Ult Charge glyph (H:92-99)"),
+	podHud("img.pod.dashBoost", 110352642346748, "Dash Boost glyph (H:101-106)"),
+	podHud("img.pod.rapidThrow", 112104864274886, "Rapid Throw glyph (H:108-112)"),
+	podHud("img.pod.superJump", 121771767207115, "Super Jump glyph (H:114-119)"),
+	podHud("img.pod.box", 111889440448229, "the idle dial's box with a ? (H:133-136)"),
+	podHud("img.pod.edge", 120032998777278, "white screen edge, 1285x691, inset 0 0 90px 18px (H:189), stretched"),
 
 	-- Kill banners and kill effects (2026-10-16): VFX Studio library textures for the SD_KillVfx emitters
 	-- (SDTools.Builders.KillVfxBuilder) and the kill banner (UI/KillBanner). Sheets keep the library's grid.

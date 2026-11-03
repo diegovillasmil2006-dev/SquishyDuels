@@ -626,8 +626,27 @@ local Strings = {
 			practice = "Leave the Practice Range first.",
 			noMaps = "{mode} isn't available on this server yet.",
 		},
+		-- Squish Pods HUD (2026-11-03; H = "Squishy Duels In-Game HUD.dc.html"): the dial's tag (H:183), its chip on
+		-- landing (H:184, {name} = name.<kind>), the toast (H:191: "You grabbed" + the name in the power-up's colour)
+		-- and Diego's names of the Config.Match.PowerUps kinds (H:53-59).
+		pod = {
+			tag = "POD",
+			seconds = "{seconds}s",
+			chip = "{name}!",
+			chipUlt = "+{pct}% Ult!", -- {pct} = Config.Match.PowerUps.kinds.ultCharge.ultFraction x 100
+			grabbed = "You grabbed",
+			name = {
+				shield = "Shield",
+				speed = "Speed Boost",
+				throwBoost = "Throw Boost",
+				ultCharge = "Ult Charge",
+				dashBoost = "Dash Boost",
+				rapidThrow = "Rapid Throw",
+				superJump = "Super Jump",
+			},
+		},
 		-- Power-ups v1.1 (2026-10-16): the toast MatchService sends the player who took a pad, by Config.Match.PowerUps
-		-- kind.
+		-- kind (the client leaves it to the Squish Pods HUD since 2026-11-03).
 		powerUp = {
 			shield = "SHIELD!",
 			speed = "SPEED BOOST!",

@@ -460,7 +460,7 @@ return function(t: Context)
 		end)
 	end)
 
-	t.test("top: not before the 3-2-1; OVERTIME in overtime; your power-ups as pills under it", function()
+	t.test("top: not before the 3-2-1; OVERTIME in overtime; no power-up pills under it (the pod dial has them)", function()
 		local waiting = run(TopBar, "tdm_waiting")
 		local bar = waiting.root:FindFirstChild("MatchTopBar")
 		local shown = bar ~= nil and (bar :: Frame).Visible
@@ -475,14 +475,7 @@ return function(t: Context)
 		local boosted = run(TopBar, "tdm_powerUps")
 		guarded(boosted, function()
 			local pills = assert(boosted.root:FindFirstChild("Boosts", true))
-			local texts = {}
-			for _, d in pills:GetDescendants() do
-				if d:IsA("TextLabel") then
-					table.insert(texts, d.Text)
-				end
-			end
-			expect.truthy(#texts > 0)
-			expect.truthy(string.find(table.concat(texts, " "), Strings.match.readout.powerUpName.speed, 1, true))
+			expect.equal(#pills:GetChildren(), 0)
 		end)
 	end)
 

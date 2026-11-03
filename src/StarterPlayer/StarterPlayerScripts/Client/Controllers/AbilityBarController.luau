@@ -19,6 +19,12 @@
 -- * Timers: CatchController.state (left, open), DashController.cooldownLeft, the ultimate's meter (StateController
 --   charge, run on between messages by AbilityBarFormat.ultLeft). The server stays the judge of every press: a touch or
 --   click on a button presses the same Controls action as its key.
+-- * Squish Pods HUD (2026-11-03; H = "Squishy Duels In-Game HUD.dc.html"): in a match on a map with pads, the pod dial
+--   (UI/PodDial, Config.UI.Pod) sits left of the bar's row on PC and over the touch Throw button on phones, drawn from
+--   the match view's you.rolling and you.buffs (UI/PodFormat; the server sends the grab, server times). A grab plays
+--   Diego's itembox sound (match.podRoll). While a power-up lasts its button rings in its colour (H:186): Dash Boost the
+--   Dash button; Throw / Rapid Throw the touch Throw button (owner: Q is Catch here, so PC rings nothing). The server's
+--   match.powerUp.* toasts are routed away (the dial's chip and UI/Match/PodHud's toast say it).
 
 -- Services
 
@@ -44,11 +50,14 @@ local Create = require(Client.UI.Create)
 local DuelFormat = require(Client.UI.DuelFormat)
 local KeyText = require(Client.UI.KeyText)
 local MotionTrack = require(Client.UI.MotionTrack)
+local PodDial = require(Client.UI.PodDial)
+local PodFormat = require(Client.UI.PodFormat)
 local Theme = require(Client.UI.Theme)
 local UiFx = require(Client.UI.UiFx)
 local CatchController = require(script.Parent.CatchController)
 local ControlsController = require(script.Parent.ControlsController)
 local DashController = require(script.Parent.DashController)
+local NotifyController = require(script.Parent.NotifyController)
 local SoundController = require(script.Parent.SoundController)
 local StateController = require(script.Parent.StateController)
 local UIController = require(script.Parent.UIController)
@@ -109,6 +118,8 @@ local TAG_IN: { Tweens.Pose } = {
 	{ at = 0.6, alpha = 1, y = -2, scale = 1.08 },
 	{ at = 1, alpha = 1, y = 0, scale = 1 },
 }
+local POD = Config.UI.Pod
+local SOUND_POD_ROLL = "match.podRoll"
 
 -- Module table
 
@@ -127,6 +138,10 @@ local shown = false
 local lastCharge: number? = nil
 local lastChargeAt = 0
 local builtUlt: string? = nil -- the ultimate the bar was drawn for (its icon and name)
+local podDial: PodDial.Dial? = nil
+local podMemory: PodFormat.Memory = {} -- the dial's last grab (PodFormat.remember)
+local podMatchId: string? = nil -- the match podMemory belongs to
+local glowRings: { [string]: Frame } = {} -- "dash" / "throw": the ring round that button (made on first use)
 
 -- Private: building
 
@@ -598,6 +613,7 @@ local function clearButtons()
 			end
 		end
 	end
+	podDial = nil -- its frame was one of the root's children
 	builtForm = nil
 	builtUlt = nil
 end
@@ -662,8 +678,122 @@ local function build(form: AbilityBarFormat.Form, ultimateId: string?)
 			end
 		end)
 	end
+	-- Squish Pods HUD: the pod dial (placed by step: placeDial)
+	local dial = PodDial.new(r, POD[form].size)
+	dial.frame.Visible = false
+	podDial = dial
 	builtForm = form
 	builtUlt = ultimateId
+end
+
+-- Squish Pods HUD: on PC the dial is a third dial left of Q (the catch button's centre, the row's gap apart; the row
+-- re-centres when a squishy has no ultimate); on phones it stands over the touch Throw button (its tag clear of it),
+-- else left of the arc.
+local function placeDial(dial: PodDial.Dial, form: AbilityBarFormat.Form, k: number)
+	local r = root :: Frame
+	if form == "desk" then
+		local catch = buttons.catch
+		if catch then
+			local size = BAR.desk.sizes.catch
+			local at = (catch.slot.AbsolutePosition - r.AbsolutePosition) / k
+			dial.frame.Position = UDim2.fromOffset(at.X - BAR.desk.gapPx - POD.desk.size / 2, at.Y + size / 2)
+		end
+		return
+	end
+	local spec = POD.phone
+	local hang = (POD.tag.heightPx - POD.tag.overlapPx + POD.tag.dropPx) * spec.size / POD.designPx -- the tag under it
+	local throw = ControlsController.touchButtonOf("Throw")
+	local x, y
+	if throw and throw.Visible and throw.AbsoluteSize.X > 0 then
+		local at = (throw.AbsolutePosition - r.AbsolutePosition) / k
+		x = at.X + throw.AbsoluteSize.X / k / 2
+		y = at.Y - spec.gapPx - hang - spec.size / 2
+	else
+		local catch = BAR.phone.places.catch
+		local size = r.AbsoluteSize / k
+		x = size.X - catch.right - catch.size - spec.gapPx - spec.size / 2
+		y = size.Y - catch.bottom - hang - spec.size / 2
+	end
+	dial.frame.Position = UDim2.fromOffset(x, y)
+end
+
+-- Squish Pods HUD: the ring round a button while its power-up lasts (H:186 hg-ring, pulsing); made on first use,
+-- remade when the button was rebuilt.
+local function setRing(key: string, holder: GuiObject?, color: Color3?, clock: number)
+	local ring = glowRings[key]
+	if ring and (holder == nil or ring.Parent ~= holder) then
+		ring:Destroy()
+		ring = nil
+		glowRings[key] = nil
+	end
+	if holder == nil or color == nil then
+		if ring then
+			ring.Visible = false
+		end
+		return
+	end
+	local R = POD.ring
+	if ring == nil then
+		ring = Create("Frame", {
+			Name = "PodRing",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.fromScale(R.px / POD.designPx, R.px / POD.designPx),
+			BackgroundTransparency = 1,
+			ZIndex = 30,
+			Parent = holder,
+		})
+		round(ring :: Frame)
+		Create("UIStroke", { Parent = ring })
+		Create("UIScale", { Parent = ring })
+		glowRings[key] = ring :: Frame
+	end
+	local frame = ring :: Frame
+	frame.Visible = true
+	local wave = if Tweens.reducedMotion() then 0 else (1 - math.cos(2 * math.pi * (clock * 1000 % R.pulseMs) / R.pulseMs)) / 2
+	local stroke = frame:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = color
+		stroke.Thickness = R.borderPx / POD.designPx * holder.Size.X.Offset
+		stroke.Transparency = 0.1 * (1 - wave)
+	end
+	local pulse = frame:FindFirstChildOfClass("UIScale")
+	if pulse then
+		pulse.Scale = 1 + (R.peak - 1) * wave
+	end
+end
+
+-- Squish Pods HUD: the dial, its sound and the power-up's button ring (see the header).
+local function updatePod(form: AbilityBarFormat.Form, k: number, clock: number)
+	local dial = podDial
+	local match = StateController.match()
+	local state: PodFormat.State = { phase = "idle" }
+	if dial then
+		dial.frame.Visible = match ~= nil and #match.pads > 0
+	end
+	if dial and match and #match.pads > 0 then
+		if match.matchId ~= podMatchId then
+			podMatchId, podMemory = match.matchId, {}
+		end
+		local now = workspace:GetServerTimeNow()
+		local rolling = match.you.rolling
+		local before = podMemory
+		podMemory = PodFormat.remember(podMemory, rolling, match.you.alive, now)
+		if podMemory ~= before and rolling and podMemory.landsAt == rolling.landsAt then
+			SoundController.play(SOUND_POD_ROLL) -- H:153 the grab
+		end
+		state = PodFormat.state(podMemory, match.you.buffs, now, Config.Match.PowerUps)
+		dial:update(state, clock)
+		placeDial(dial, form, k)
+	end
+	local power = if state.phase == "active" then state.power else nil
+	local glow = if power then PodFormat.glowButton(power) else nil
+	local look = if power then PodFormat.look(power) else nil
+	local color = if look then look.bottom else nil
+	local dash = buttons.dash
+	setRing("dash", if dash then dash.holder else nil, if glow == "dash" then color else nil, clock)
+	local throw = if form == "phone" then ControlsController.touchButtonOf("Throw") else nil
+	setRing("throw", throw, if glow == "throw" then color else nil, clock)
 end
 
 -- SD_AbilityBar in the PlayerGui, made the first time there is one (never waits for it).
@@ -736,6 +866,7 @@ local function step(_dt: number, _now: number): boolean
 	for id, button in buttons do
 		updateButton(button, view, form, keys[id], clock)
 	end
+	updatePod(form, k, clock)
 	return true
 end
 
@@ -777,9 +908,15 @@ function AbilityBarController.start()
 		end
 		return true
 	end, "render")
+	-- Squish Pods HUD: the pickup toast is the dial's chip and PodHud's toast now
+	c:add(NotifyController.route("match.powerUp.", function() end))
 	c:add(function()
 		handle:disconnect()
 		clearButtons()
+		for _, ring in glowRings do
+			ring:Destroy()
+		end
+		table.clear(glowRings)
 		gui, root, rootScale = nil, nil, nil
 		shown = false
 	end)

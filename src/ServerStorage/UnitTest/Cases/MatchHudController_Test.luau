@@ -89,14 +89,14 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the pieces are respawn, storm, topBar, card, feed, intro, finish in draw order, each with its switch",
+		"the pieces are respawn, storm, topBar, card, feed, pod, medal, intro, finish in draw order, each with its switch",
 		function()
 			local names = {}
 			for _, spec in Hud.PIECES do
 				table.insert(names, spec.name)
 				expect.truthy(type(Config.UI.Match.enabled[spec.name]) == "boolean")
 			end
-			expect.deepEqual(names, { "respawn", "storm", "topBar", "card", "feed", "medal", "intro", "finish" })
+			expect.deepEqual(names, { "respawn", "storm", "topBar", "card", "feed", "pod", "medal", "intro", "finish" })
 		end
 	)
 

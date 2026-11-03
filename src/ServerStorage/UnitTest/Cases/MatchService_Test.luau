@@ -1623,12 +1623,16 @@ return function(t: Context)
 		expect.equal(lastView(w, w.players[2]).pads[1].readyAt, grabAt + cfg.PowerUps.padRefillSeconds) -- gone at once
 		expect.deepEqual(lastView(w, w.players[1]).you.buffs, {})
 		expect.falsy(hasCode(w, w.players[1], "match.powerUp.shield"))
+		-- the HUD dial: the grabber's own view says what lands and when; nobody else's does
+		expect.deepEqual(lastView(w, w.players[1]).you.rolling, { power = "shield", landsAt = grabAt + 1.35 })
+		expect.equal(lastView(w, w.players[2]).you.rolling, nil)
 		MatchService.tick(grabAt + 1.3)
 		expect.deepEqual(lastView(w, w.players[1]).you.buffs, {}) -- still rolling
 		local landAt = grabAt + 1.4
 		MatchService.tick(landAt)
 		expect.truthy(hasCode(w, w.players[1], "match.powerUp.shield"))
 		expect.equal(lastView(w, w.players[1]).you.buffs.shield, landAt + cfg.PowerUps.kinds.shield.seconds)
+		expect.equal(lastView(w, w.players[1]).you.rolling, nil)
 		close()
 
 		-- K.O.'d while the dial rolls: the power-up is lost (power-ups end on a K.O.).
@@ -1638,6 +1642,7 @@ return function(t: Context)
 		onPad(v, 1)
 		MatchService.tick(b + 0.01)
 		hit(v, 1, 2, b + 0.5)
+		expect.equal(lastView(v, v.players[1]).you.rolling, nil) -- the K.O. view drops the dial
 		MatchService.tick(b + 1.5)
 		expect.falsy(hasCode(v, v.players[1], "match.powerUp.shield"))
 		expect.deepEqual(lastView(v, v.players[1]).you.buffs, {})

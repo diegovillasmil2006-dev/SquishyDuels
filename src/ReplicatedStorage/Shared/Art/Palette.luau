@@ -826,6 +826,41 @@ local Palette = {
 	PodiumLineTint = Color3.new(0.88, 0.87, 1),
 	PodiumSlamLight = Color3.fromHex("#FFE8B0"),
 	PodiumSpot = Color3.fromHex("#FFF4C8"), -- round B2: the spotlights' warm beams (E:79)
+	-- Squish Pods HUD (2026-11-03; H = "Squishy Duels In-Game HUD.dc.html"): each power-up's name colour and its icon
+	-- tile's two stops (H:53-59 color, bg), the dial's face and rim (H:180), the toast's face (H:190), the POD tag and
+	-- the toast's ink (H:51 #1c1530, his ink), the rolling dial's conic ring (H:178) and the spin's shards (H:176).
+	PodShield = Color3.fromHex("#8FD0FF"),
+	PodShieldTop = Color3.fromHex("#BFE6FF"),
+	PodShieldEnd = Color3.fromHex("#5AAEFF"),
+	PodSpeed = Color3.fromHex("#FFB3C6"),
+	PodSpeedTop = Color3.fromHex("#FFD0DC"),
+	PodSpeedEnd = Color3.fromHex("#FF6F91"),
+	PodThrowBoost = Color3.fromHex("#FFD59A"),
+	PodThrowBoostTop = Color3.fromHex("#FFE2B0"),
+	PodThrowBoostEnd = Color3.fromHex("#FF9A3C"),
+	PodUltCharge = Color3.fromHex("#D8C8FF"),
+	PodUltChargeTop = Color3.fromHex("#E2D6FF"),
+	PodUltChargeEnd = Color3.fromHex("#8A63F2"),
+	PodDashBoost = Color3.fromHex("#E0D2FF"),
+	PodDashBoostTop = Color3.fromHex("#EFE6FF"),
+	PodDashBoostEnd = Color3.fromHex("#B48CFF"),
+	PodRapidThrow = Color3.fromHex("#A6F0DC"),
+	PodRapidThrowTop = Color3.fromHex("#C9F7EA"),
+	PodRapidThrowEnd = Color3.fromHex("#2FC79C"),
+	PodSuperJump = Color3.fromHex("#C8F5A0"),
+	PodSuperJumpTop = Color3.fromHex("#DCF9C0"),
+	PodSuperJumpEnd = Color3.fromHex("#5FC93A"),
+	PodDial = Color3.fromHex("#1D2233"),
+	PodDialRim = Color3.fromHex("#0F1220"),
+	PodIdle = Color3.fromHex("#3B4560"), -- H:171 the idle tile colour
+	PodToast = Color3.fromHex("#2B3150"),
+	PodTag = Color3.fromHex("#FFD23D"),
+	PodInk = Color3.fromHex("#1C1530"),
+	PodSpinPink = Color3.fromHex("#FF8FB8"),
+	PodSpinYellow = Color3.fromHex("#FFD95E"),
+	PodSpinMint = Color3.fromHex("#9FF0C8"),
+	PodSpinBlue = Color3.fromHex("#7FD0FF"),
+	PodSpinLilac = Color3.fromHex("#C6A6FF"),
 
 	-- Reserved gameplay colours (§7.2): never decoration.
 	CoinGold = Color3.fromHex("#FFC83D"),

@@ -1246,6 +1246,13 @@ function ControlsController.setTouchState(button: TouchButton, progress: number,
 	end
 end
 
+-- Squish Pods HUD (2026-11-03): a touch button's widget (nil before it is made), so the pod dial can sit over Throw
+-- and ring it while a throw power-up lasts.
+function ControlsController.touchButtonOf(button: TouchButton): GuiObject?
+	local widget = touchWidgets[button]
+	return if widget then widget.button else nil
+end
+
 -- Public: contexts
 
 function ControlsController.setContext(context: Context, on: boolean)

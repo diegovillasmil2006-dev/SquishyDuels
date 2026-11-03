@@ -18,9 +18,9 @@
 --   All keeps its place tags), no bars and no goal pill.
 -- * Motion: drops in from the top (S:665); a side whose score goes up bumps its number (S:696; text scales evenly:
 --   √(sx·sy)); a squished player's head shakes (S:697). Reduced motion: it simply shows, no bump or shake.
--- * Under it: your live power-ups as small pills (what the old test readout listed, [P]); the toast column
---   (ctx.toastsBelow) and the kill feed (ctx.shared.topBarBottom, S:990) start under it. MatchController leaves its test
---   readout off while Config.UI.Match.enabled.topBar is on.
+-- * Under it: the toast column (ctx.toastsBelow) and the kill feed (ctx.shared.topBarBottom, S:990) start under it
+--   (the power-up pills that hung under it went 2026-11-03: Diego's pod dial counts the power-up down, UI/PodDial).
+--   MatchController leaves its test readout off while Config.UI.Match.enabled.topBar is on.
 
 -- Services
 
@@ -36,7 +36,6 @@ local Strings = require(Shared.Strings)
 
 local UI = script.Parent.Parent
 local Create = require(UI.Create)
-local MatchFormat = require(UI.MatchFormat)
 local MatchHudFormat = require(UI.MatchHudFormat)
 local Theme = require(UI.Theme)
 local Tweens = require(UI.Parent.Anim.Tweens)
@@ -86,7 +85,6 @@ type Made = {
 	time: TextLabel,
 	goal: Frame?,
 	boosts: Frame,
-	boostKey: string,
 	rowSize: Vector2,
 	timeWidth: number,
 }
@@ -98,7 +96,6 @@ local MATCH = Config.Match
 local TEAM_NAMES = MATCH.teamNames
 local FADE_MS = Config.UI.motion.reducedMotionMaxFadeMs
 local WORDS = Strings.matchHud.top
-local READOUT = Strings.match.readout
 local CLOCK_KEY = "img.icon.clock"
 local SLOTS = 6 -- S:960: six heads a side
 local SCORE_SAMPLE = "88" -- the widest score: the number keeps one width
@@ -369,7 +366,6 @@ local function build(ctx: MatchHudFormat.Context, view: any): Made
 		time = time,
 		goal = goal,
 		boosts = boosts,
-		boostKey = "",
 		rowSize = Vector2.zero,
 		timeWidth = -1,
 	}
@@ -501,36 +497,6 @@ local function fillSlot(ctx: MatchHudFormat.Context, made: Made, slot: Slot, vie
 		seconds.Parent = bubble
 		slot.bubble = seconds
 	end
-end
-
--- Your live power-ups as pills under the bar ([P]); rebuilt when their words change (once a second while one lasts).
-local function placeBoosts(made: Made, view: any, now: number, z: number)
-	local words = {}
-	if view.phase == "Active" then
-		for _, left in MatchFormat.powerUpsLeft(view, now) do
-			local name = READOUT.powerUpName[left.power]
-			if name then
-				table.insert(words, Strings.format(READOUT.powerUp, { name = name, seconds = left.seconds }))
-			end
-		end
-	end
-	local key = table.concat(words, "|")
-	if key == made.boostKey then
-		return
-	end
-	made.boostKey = key
-	made.boosts:ClearAllChildren()
-	local P = CFG.pill
-	local x, height = 0, 0
-	for index, text in words do
-		local chip = pill("Pill" .. index, text, "Small", P, Palette.StickerGripTop, Palette.StickerGripEnd, z)
-		chip.Position = UDim2.fromOffset(x, 0)
-		chip.Parent = made.boosts
-		x += chip.Size.X.Offset + P.gap
-		height = math.max(height, chip.Size.Y.Offset)
-	end
-	made.boosts.Size = UDim2.fromOffset(math.max(x - P.gap, 0), height)
-	arrange(made)
 end
 
 -- Public
@@ -675,7 +641,6 @@ function TopBar.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 				fill.Size = UDim2.fromOffset(math.clamp(math.round(inner * share), 0, inner), fill.Size.Y.Offset)
 			end
 		end
-		placeBoosts(current, view, now, CFG.z)
 		-- Placed on the safe area at the stage scale (the intro's), dropping in (S:665).
 		local k = MatchIntro.stageScale(ctx.canvas(), L)
 		current.scale.Scale = k

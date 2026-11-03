@@ -314,7 +314,10 @@ function KillFeed.new(ctx: MatchHudFormat.Context): MatchHudFormat.Piece
 		list.Visible = SHOWN_PHASES[view.matchPhase] == true
 		-- The live top bar (2026-10-26, S:990): under it while it shows (it updates first and says where it ends).
 		local below = ctx.shared.topBarBottom
-		list.Position = UDim2.new(1, -CFG.right, 0, if type(below) == "number" then math.round(below) else CFG.top)
+		local top = if type(below) == "number" then math.round(below) else CFG.top
+		list.Position = UDim2.new(1, -CFG.right, 0, top)
+		-- Squish Pods HUD (2026-11-03): where the rows end (base px), so PodHud's toast keeps under them
+		ctx.shared.feedBottom = if list.Visible then top + list.Size.Y.Offset else nil
 		local clock = os.clock()
 		local reduced = ctx.reduced()
 		local removed = false

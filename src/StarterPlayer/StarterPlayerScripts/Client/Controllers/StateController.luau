@@ -230,6 +230,7 @@ export type MatchYou = {
 	stormBar: number, -- 0..1
 	out: boolean, -- TDM: no team life left
 	buffs: { [string]: number }, -- power-ups v1.1: power -> server time it ends (Config.Match.PowerUps.kinds keys)
+	rolling: { power: string, landsAt: number }?, -- Squish Pods: the grabbed power-up while the HUD dial spins
 }
 
 -- Power-ups v1.1 (SPEC P2): one power-up pad of the map, by its model's name (a Workspace.DuelMaps child, e.g.
@@ -634,6 +635,12 @@ local function matchYouFrom(raw: unknown, players: { MatchPlayer }, old: MatchYo
 	local stormBar = field("stormBar", finite(t.stormBar)) or 0
 	-- Power-ups v1.1: a full you without buffs has none; a partial one keeps the old ones.
 	local buffs = buffsFrom(t.buffs) or (if partial and old then old.buffs else {})
+	-- Squish Pods: the same for the rolling power-up ({power, landsAt}; anything else is none).
+	local roll = t.rolling
+	local rolling = if type(roll) == "table" and type(roll.power) == "string" and finite(roll.landsAt)
+		then { power = roll.power :: string, landsAt = roll.landsAt :: number }
+		elseif partial and old then old.rolling
+		else nil
 	return {
 		userId = userId,
 		displayName = if entry then entry.displayName elseif old then old.displayName else "",
@@ -645,6 +652,7 @@ local function matchYouFrom(raw: unknown, players: { MatchPlayer }, old: MatchYo
 		stormBar = math.clamp(stormBar, 0, 1),
 		out = field("out", type(t.out) == "boolean") == true,
 		buffs = buffs,
+		rolling = rolling,
 	}
 end
 
